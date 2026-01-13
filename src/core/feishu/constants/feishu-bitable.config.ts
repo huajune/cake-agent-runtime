@@ -15,7 +15,8 @@ export interface TestSuiteFieldNames {
   testStatus: string; // 测试状态（单选）
   lastTestTime: string; // 最近测试时间（日期时间）
   testBatch: string; // 测试批次（文本）
-  failureCategory: string; // 失败分类（单选）
+  failureCategory: string; // 失败分类（单选）- 测试场景分类
+  errorReason: string; // 错误原因（单选）- Agent 错误归因
 }
 
 export interface FeishuBitableConfig {
@@ -66,4 +67,5 @@ export const testSuiteFieldNames: TestSuiteFieldNames = {
   lastTestTime: '最近测试时间',
   testBatch: '测试批次',
   failureCategory: '分类',
+  errorReason: '错误原因',
 };

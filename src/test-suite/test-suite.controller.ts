@@ -668,7 +668,7 @@ export class TestSuiteController {
       const result = await this.testService.writeBackToFeishu(
         id,
         request.testStatus,
-        request.failureCategory,
+        request.errorReason,
       );
 
       return {

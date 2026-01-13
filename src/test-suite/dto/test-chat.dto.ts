@@ -370,10 +370,10 @@ export class WriteBackFeishuRequestDto {
   @IsEnum(FeishuTestStatus)
   testStatus: FeishuTestStatus;
 
-  @ApiPropertyOptional({ description: '失败原因分类（失败时必填）' })
+  @ApiPropertyOptional({ description: '错误原因 - Agent 错误归因（失败时必填）' })
   @IsOptional()
   @IsString()
-  failureCategory?: string;
+  errorReason?: string;
 }
 
 /**

@@ -207,7 +207,7 @@ export class TestBatchService {
         execution.case_id!,
         feishuStatus,
         execution.batch_id || undefined,
-        review.failureReason,
+        review.failureReason, // 错误原因（Agent 错误归因）
       )
       .then((result) => {
         if (result.success) {

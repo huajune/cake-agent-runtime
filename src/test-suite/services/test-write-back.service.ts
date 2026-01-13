@@ -27,7 +27,7 @@ export class TestWriteBackService {
   async writeBackToFeishu(
     executionId: string,
     testStatus: FeishuTestStatus,
-    failureCategory?: string,
+    errorReason?: string,
   ): Promise<{ success: boolean; error?: string }> {
     // 1. 获取执行记录
     const execution = await this.executionService.getExecution(executionId);
@@ -46,7 +46,7 @@ export class TestWriteBackService {
       recordId,
       testStatus,
       execution.batch_id || undefined,
-      failureCategory,
+      errorReason,
     );
   }
 
@@ -57,7 +57,7 @@ export class TestWriteBackService {
     items: Array<{
       executionId: string;
       testStatus: FeishuTestStatus;
-      failureCategory?: string;
+      errorReason?: string;
     }>,
   ): Promise<{ success: number; failed: number; errors: string[] }> {
     // 先获取所有执行记录的 recordId
@@ -65,7 +65,7 @@ export class TestWriteBackService {
       recordId: string;
       testStatus: FeishuTestStatus;
       batchId?: string;
-      failureCategory?: string;
+      errorReason?: string;
     }> = [];
 
     const errors: string[] = [];
@@ -85,7 +85,7 @@ export class TestWriteBackService {
         recordId: execution.case_id,
         testStatus: item.testStatus,
         batchId: execution.batch_id || undefined,
-        failureCategory: item.failureCategory,
+        errorReason: item.errorReason,
       });
     }
 

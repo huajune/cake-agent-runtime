@@ -261,7 +261,7 @@ export class FeishuTestSyncService {
     recordId: string,
     testStatus: FeishuTestStatus,
     batchId?: string,
-    failureCategory?: string,
+    errorReason?: string,
   ): Promise<{ success: boolean; error?: string }> {
     try {
       const { appToken, tableId } = this.bitableApi.getTableConfig('testSuite');
@@ -282,9 +282,10 @@ export class FeishuTestSyncService {
         updateFields[testSuiteFieldNames.testBatch] = batchId;
       }
 
-      // 4. 分类/失败原因（单选字段）- 仅在失败时更新
-      if (testStatus === FeishuTestStatus.FAILED && failureCategory) {
-        updateFields[testSuiteFieldNames.failureCategory] = failureCategory;
+      // 4. 错误原因（单选字段）- Agent 错误归因，仅在失败时更新
+      // 注意：failureCategory（分类）是导入时已有的，不需要回写
+      if (testStatus === FeishuTestStatus.FAILED && errorReason) {
+        updateFields[testSuiteFieldNames.errorReason] = errorReason;
       }
 
       // 调用飞书 API 更新记录
@@ -313,7 +314,7 @@ export class FeishuTestSyncService {
       recordId: string;
       testStatus: FeishuTestStatus;
       batchId?: string;
-      failureCategory?: string;
+      errorReason?: string;
     }>,
   ): Promise<{ success: number; failed: number; errors: string[] }> {
     let success = 0;
@@ -325,7 +326,7 @@ export class FeishuTestSyncService {
         item.recordId,
         item.testStatus,
         item.batchId,
-        item.failureCategory,
+        item.errorReason,
       );
 
       if (result.success) {

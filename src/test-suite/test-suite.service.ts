@@ -245,9 +245,9 @@ export class TestSuiteService {
   async writeBackToFeishu(
     executionId: string,
     testStatus: FeishuTestStatus,
-    failureCategory?: string,
+    errorReason?: string,
   ): Promise<{ success: boolean; error?: string }> {
-    return this.writeBackService.writeBackToFeishu(executionId, testStatus, failureCategory);
+    return this.writeBackService.writeBackToFeishu(executionId, testStatus, errorReason);
   }
 
   /**
@@ -257,7 +257,7 @@ export class TestSuiteService {
     items: Array<{
       executionId: string;
       testStatus: FeishuTestStatus;
-      failureCategory?: string;
+      errorReason?: string;
     }>,
   ): Promise<{ success: number; failed: number; errors: string[] }> {
     return this.writeBackService.batchWriteBackToFeishu(items);

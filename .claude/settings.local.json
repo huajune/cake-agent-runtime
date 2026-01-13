@@ -345,7 +345,9 @@
       "Bash(npx ts-node:*)",
       "Bash(__NEW_LINE__ echo -e \"\\\\n=== 测试 getBatchExecutions ===\")",
       "Bash(# 检查前端是否运行在正确端口 lsof -i :5175)",
-      "Bash(pnpm run type-check:*)"
+      "Bash(pnpm run type-check:*)",
+      "Bash(brew list:*)",
+      "mcp__feishu-mcp__get_feishu_document_blocks"
     ],
     "deny": [
       "Bash(git restore:*)",
