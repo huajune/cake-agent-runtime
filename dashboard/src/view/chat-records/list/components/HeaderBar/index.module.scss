@@ -19,7 +19,7 @@
   right: -5%;
   width: 300px;
   height: 300px;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.06) 0%, transparent 70%);
+  background: radial-gradient(circle, $primary-06 0%, transparent 70%);
   pointer-events: none;
 }
 
@@ -94,7 +94,7 @@
   border-radius: 10px;
 
   &.sessions {
-    background: rgba(99, 102, 241, 0.06);
+    background: $primary-06;
   }
 
   &.messages {
@@ -121,7 +121,7 @@
   font-weight: $font-weight-extrabold;
 
   &.primary {
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    background: linear-gradient(135deg, $primary, $accent);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -141,27 +141,27 @@
   font-size: $font-size-sm;
   font-weight: $font-weight-semibold;
   color: $primary;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  background: linear-gradient(135deg, $primary-10 0%, $accent-10 100%);
+  border: 1px solid $primary-20;
   border-radius: $radius-lg;
   cursor: pointer;
   transition: all 0.3s $transition-timing;
   display: flex;
   align-items: center;
   gap: 8px;
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.08);
+  box-shadow: 0 2px 8px $primary-08;
   letter-spacing: 0.02em;
 
   &:hover {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%);
+    background: linear-gradient(135deg, $primary-15 0%, $accent-15 100%);
     transform: translateY(-1px);
   }
 
   &.active {
     color: #fff;
-    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    background: linear-gradient(135deg, $primary 0%, $accent 100%);
     border: none;
-    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35);
+    box-shadow: 0 6px 20px $primary-35;
   }
 }
 

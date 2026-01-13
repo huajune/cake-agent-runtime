@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useUserTrend } from '@/hooks/monitoring/useUsers';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Area, AreaChart } from 'recharts';
 import { IconUsers, IconBarChart, IconFlame, IconTrend, IconEmpty, IconInfo } from '../Icons';
+import { THEME_COLORS } from '@/constants';
 import styles from './index.module.scss';
 
 export default function UserTrendChart() {
@@ -109,12 +110,12 @@ export default function UserTrendChart() {
                 <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorUsers" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                      <stop offset="5%" stopColor={THEME_COLORS.primary} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={THEME_COLORS.primary} stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="colorMessages" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                      <stop offset="5%" stopColor={THEME_COLORS.accent} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={THEME_COLORS.accent} stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
@@ -165,20 +166,20 @@ export default function UserTrendChart() {
                   <Area
                     type="monotone"
                     dataKey="用户数"
-                    stroke="#6366f1"
+                    stroke={THEME_COLORS.primary}
                     strokeWidth={3}
                     fill="url(#colorUsers)"
-                    dot={{ r: 3, fill: '#6366f1', strokeWidth: 2, stroke: '#fff' }}
-                    activeDot={{ r: 6, fill: '#6366f1', strokeWidth: 2, stroke: '#fff' }}
+                    dot={{ r: 3, fill: THEME_COLORS.primary, strokeWidth: 2, stroke: '#fff' }}
+                    activeDot={{ r: 6, fill: THEME_COLORS.primary, strokeWidth: 2, stroke: '#fff' }}
                   />
                   <Area
                     type="monotone"
                     dataKey="消息数"
-                    stroke="#8b5cf6"
+                    stroke={THEME_COLORS.accent}
                     strokeWidth={3}
                     fill="url(#colorMessages)"
-                    dot={{ r: 3, fill: '#8b5cf6', strokeWidth: 2, stroke: '#fff' }}
-                    activeDot={{ r: 6, fill: '#8b5cf6', strokeWidth: 2, stroke: '#fff' }}
+                    dot={{ r: 3, fill: THEME_COLORS.accent, strokeWidth: 2, stroke: '#fff' }}
+                    activeDot={{ r: 6, fill: THEME_COLORS.accent, strokeWidth: 2, stroke: '#fff' }}
                   />
                 </AreaChart>
               </ResponsiveContainer>

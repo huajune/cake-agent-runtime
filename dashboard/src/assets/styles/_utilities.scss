@@ -120,7 +120,7 @@
   left: -10%;
   width: 60vw;
   height: 60vw;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.25), transparent 70%);
+  background: radial-gradient(circle, $primary-25, transparent 70%);
   animation-delay: 0s;
 }
 
@@ -129,7 +129,7 @@
   right: -10%;
   width: 55vw;
   height: 55vw;
-  background: radial-gradient(circle, rgba(139, 92, 246, 0.3), transparent 70%);
+  background: radial-gradient(circle, $primary-30, transparent 70%);
   animation-delay: -12s;
 }
 
@@ -210,7 +210,7 @@ canvas {
   }
 
   &.active {
-    background: rgba(99, 102, 241, 0.04);
+    background: $primary-04;
     border-left-color: $primary;
   }
 }
@@ -272,7 +272,7 @@ canvas {
   }
 
   &.active {
-    background: linear-gradient(90deg, rgba(99, 102, 241, 0.12) 0%, rgba(99, 102, 241, 0.02) 100%);
+    background: linear-gradient(90deg, $primary-12 0%, $primary-02 100%);
     box-shadow: inset 4px 0 0 $primary;
 
     .candidate-name {
@@ -486,13 +486,13 @@ canvas {
     transition: all 0.2s;
 
     &:hover {
-      background: rgba(99, 102, 241, 0.06);
+      background: $primary-06;
       color: $text-primary;
     }
 
     &.default-item {
-      background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%);
-      border: 1px solid rgba(99, 102, 241, 0.15);
+      background: linear-gradient(135deg, $primary-08 0%, $accent-08 100%);
+      border: 1px solid $primary-15;
       color: $text-primary;
       font-weight: 500;
     }
@@ -552,30 +552,31 @@ canvas {
   &.error { color: $danger; }
 }
 
-// ========== 圣诞主题 ==========
-.christmas-card {
+// ========== 新春主题 ==========
+.spring-card {
   margin-top: 16px;
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
   border-radius: 16px;
   padding: 16px;
   position: relative;
   overflow: hidden;
-  color: white;
-  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.25);
+  color: #fef3c7;
+  box-shadow: 0 4px 12px rgba(185, 28, 28, 0.25);
   cursor: default;
+  border: 1px solid rgba(253, 224, 71, 0.3);
 }
 
-.santa-floating {
+.spring-floating {
   position: absolute;
   top: -10px;
   right: 10px;
   font-size: 32px;
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.15));
-  animation: santaFloat 3s ease-in-out infinite;
+  animation: springFloat 3s ease-in-out infinite;
   z-index: 20;
 }
 
-.christmas-title {
+.spring-title {
   font-size: 14px;
   font-weight: 700;
   margin-bottom: 4px;
@@ -584,9 +585,10 @@ canvas {
   gap: 6px;
   position: relative;
   z-index: 2;
+  color: #fef3c7;
 }
 
-.christmas-text {
+.spring-text {
   font-size: 11px;
   opacity: 0.9;
   line-height: 1.4;
@@ -594,7 +596,7 @@ canvas {
   z-index: 2;
 }
 
-.christmas-sticker {
+.spring-sticker {
   position: absolute;
   font-size: 28px;
   z-index: 15;
@@ -624,17 +626,18 @@ canvas {
   animation: floatSticker 4s ease-in-out infinite;
 }
 
-.christmas-garland {
+.spring-garland {
   position: fixed;
   top: 0;
-  left: 320px;
-  right: 40px;
+  left: 260px;
+  right: 0;
   height: 60px;
-  z-index: 30;
+  z-index: 1000;
   display: flex;
-  justify-content: space-between;
+  justify-content: space-around;
   pointer-events: none;
-  padding: 0 20px;
+  padding: 0 40px;
+  transition: left 0.3s ease;
 }
 
 .garland-string {
@@ -649,26 +652,76 @@ canvas {
 }
 
 .garland-item {
-  font-size: 32px;
-  margin-top: 10px;
+  font-size: 22px;
+  width: 42px;
+  height: 48px;
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  // Festive Red Card Style
+  background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+  border: 2px solid #fbbf24;
+  border-radius: 12px;
+  // Gold Text
+  color: #fffbeb;
+  font-weight: 800;
+  text-shadow: 0 1px 0 #7f1d1d;
+  // 3D Depth
+  box-shadow: 0 4px 0 #7f1d1d, 0 6px 8px rgba(0, 0, 0, 0.15);
+  position: relative;
+  z-index: 10;
   transform-origin: top center;
   animation: swing 3s ease-in-out infinite;
-  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
+
+  // The 'String' loop
+  &::before {
+    content: '';
+    position: absolute;
+    top: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 8px;
+    background: #fbbf24;
+    border-radius: 2px;
+  }
+
+  // The 'Fu Dao' (Fortune Arrives) Charm
+  &::after {
+    content: '福';
+    position: absolute;
+    bottom: -10px;
+    right: -6px;
+    width: 20px;
+    height: 20px;
+    background: #fbbf24;
+    color: #dc2626;
+    font-size: 10px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: 1px solid #fff;
+    transform: rotate(15deg);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  }
 }
 
-.snowflake {
-  color: rgba(255, 255, 255, 0.3);
+.firework {
+  color: rgba(253, 224, 71, 0.5);
   font-size: 1em;
   font-family: Arial, sans-serif;
-  text-shadow: 0 0 5px #000;
+  text-shadow: 0 0 5px rgba(253, 224, 71, 0.8);
   position: absolute;
   top: -10%;
   z-index: 1;
-  animation: snowflakes-fall 5s linear infinite, snowflakes-shake 3s ease-in-out infinite;
+  animation: fireworks-rise 4s ease-out infinite, fireworks-shake 2s ease-in-out infinite;
 
   &:nth-of-type(1) { left: 10%; animation-delay: 0s, 0s; }
-  &:nth-of-type(2) { left: 50%; animation-delay: 2s, 1s; font-size: 1.5em; }
-  &:nth-of-type(3) { left: 80%; animation-delay: 4s, 2s; }
+  &:nth-of-type(2) { left: 50%; animation-delay: 1.5s, 0.5s; font-size: 1.5em; }
+  &:nth-of-type(3) { left: 80%; animation-delay: 3s, 1s; }
 }
 
 // ========== 动画 ==========
@@ -712,7 +765,7 @@ canvas {
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes santaFloat {
+@keyframes springFloat {
   0%, 100% { transform: rotate(-5deg) translateY(0); }
   50% { transform: rotate(5deg) translateY(-6px); }
 }
@@ -727,25 +780,27 @@ canvas {
   50% { transform: rotate(8deg); }
 }
 
-@keyframes snowflakes-fall {
-  0% { top: -10%; }
-  100% { top: 100%; }
+@keyframes fireworks-rise {
+  0% { top: 100%; opacity: 0; }
+  50% { opacity: 1; }
+  100% { top: -10%; opacity: 0; }
 }
 
-@keyframes snowflakes-shake {
-  0%, 100% { transform: translateX(0); }
-  50% { transform: translateX(20px); }
+@keyframes fireworks-shake {
+  0%, 100% { transform: translateX(0) scale(1); }
+  25% { transform: translateX(-5px) scale(1.1); }
+  75% { transform: translateX(5px) scale(1.1); }
 }
 
 // ========== 选中样式 ==========
 ::selection {
-  background: rgba(139, 92, 246, 0.3);
+  background: $primary-30;
   color: $text-primary;
 }
 
 // ========== 边框颜色工具类 ==========
 .border-warning-soft { border: 1px solid rgba(245, 158, 11, 0.3) !important; }
-.border-primary-soft { border: 1px solid rgba(99, 102, 241, 0.3) !important; }
+.border-primary-soft { border: 1px solid $primary-30 !important; }
 .border-purple-soft { border: 1px solid rgba(168, 85, 247, 0.3) !important; }
 .border-success-soft { border: 1px solid rgba(16, 185, 129, 0.3) !important; }
 

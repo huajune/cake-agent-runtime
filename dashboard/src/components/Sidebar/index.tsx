@@ -7,7 +7,7 @@ interface SidebarProps {
   onToggle: () => void;
 }
 
-// SVG 图标组件 - 圣诞节日限定版
+// SVG 图标组件 - 新春节日限定版
 const DashboardIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -103,8 +103,8 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       {/* Background Decorations */}
       {!isCollapsed && (
         <>
-          <div className="sidebar-watermark">❄️</div>
-          <div className="sidebar-watermark-2">🎄</div>
+          <div className="sidebar-watermark">🏮</div>
+          <div className="sidebar-watermark-2">🧧</div>
         </>
       )}
 
@@ -213,16 +213,16 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
 
       {!isCollapsed && (
         <div className="sidebar-footer">
-          <div className="santa-floating">🎅</div>
+          <div className="spring-floating">🐎</div>
 
-          {/* Christmas Decorative Element */}
-          <div className="christmas-card">
-            <div className="christmas-title">Merry Christmas! 🎄</div>
-            <div className="christmas-text">May your code be bug-free and your holidays bright.</div>
-            <div className="snowflakes" aria-hidden="true">
-              <div className="snowflake">❅</div>
-              <div className="snowflake">❆</div>
-              <div className="snowflake">❅</div>
+          {/* Spring Festival Decorative Element */}
+          <div className="spring-card">
+            <div className="spring-title">新春快乐! 🧧</div>
+            <div className="spring-text">马年大吉，代码无 Bug，事业步步高升!</div>
+            <div className="fireworks" aria-hidden="true">
+              <div className="firework">✨</div>
+              <div className="firework">🎇</div>
+              <div className="firework">✨</div>
             </div>
           </div>
         </div>

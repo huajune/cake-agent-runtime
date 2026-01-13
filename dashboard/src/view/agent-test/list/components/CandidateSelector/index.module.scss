@@ -26,10 +26,10 @@
   align-items: center;
   gap: 6px;
   padding: 6px 14px;
-  border: 1px solid rgba(139, 92, 246, 0.2);
+  border: 1px solid $accent-20;
   border-radius: $radius-full;
-  background: rgba(139, 92, 246, 0.06);
-  color: #8b5cf6;
+  background: $accent-06;
+  color: $accent;
   font-size: $font-size-xs;
   font-weight: $font-weight-medium;
   cursor: pointer;
@@ -37,8 +37,8 @@
   white-space: nowrap;
 
   &:hover:not(:disabled) {
-    background: rgba(139, 92, 246, 0.12);
-    border-color: rgba(139, 92, 246, 0.3);
+    background: $accent-12;
+    border-color: $accent-20;
   }
 
   &:disabled {
@@ -71,7 +71,7 @@
   max-height: 420px;
   z-index: 99999; // 高于圣诞装饰，低于 modal
   background: $bg-primary;
-  border: 1px solid rgba(139, 92, 246, 0.12);
+  border: 1px solid $accent-12;
   border-radius: $radius-xl;
   box-shadow:
     0 10px 40px rgba(0, 0, 0, 0.12),
@@ -86,7 +86,7 @@
   gap: $spacing-sm;
   padding: $spacing-md;
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-  background: rgba(139, 92, 246, 0.02);
+  background: $accent-02;
 }
 
 .searchBox {
@@ -102,7 +102,7 @@
 
   &:focus-within {
     border-color: $primary;
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    box-shadow: 0 0 0 3px $primary-10;
   }
 
   svg {
@@ -168,8 +168,8 @@
   text-align: left;
 
   &:hover:not(:disabled) {
-    background: rgba(139, 92, 246, 0.04);
-    border-color: rgba(139, 92, 246, 0.1);
+    background: $accent-04;
+    border-color: $accent-10;
   }
 
   &:disabled {
@@ -182,7 +182,7 @@
   width: 40px;
   height: 40px;
   border-radius: $radius-lg;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(236, 72, 153, 0.1));
+  background: linear-gradient(135deg, $accent-10, rgba(236, 72, 153, 0.1));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -196,7 +196,7 @@
   }
 
   svg {
-    color: #8b5cf6;
+    color: $accent;
     opacity: 0.6;
   }
 }
@@ -266,6 +266,6 @@
 }
 
 .sessionCount {
-  color: #8b5cf6;
+  color: $accent;
   font-weight: $font-weight-medium;
 }

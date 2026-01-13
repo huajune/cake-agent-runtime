@@ -105,17 +105,17 @@
   padding: 10px 18px;
   border-radius: $radius-lg;
   border: none;
-  background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+  background: linear-gradient(135deg, $accent 0%, #ec4899 100%);
   color: $text-on-primary;
   font-size: $font-size-sm;
   font-weight: $font-weight-medium;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+  box-shadow: 0 2px 8px $accent-30;
 
   &:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 4px 16px rgba(139, 92, 246, 0.4);
+    box-shadow: 0 4px 16px $accent-40;
   }
 
   &:active:not(:disabled) {
@@ -143,9 +143,9 @@
   transition: all 0.2s ease;
 
   &:hover:not(:disabled) {
-    border-color: #8b5cf6;
-    color: #8b5cf6;
-    background: rgba(139, 92, 246, 0.05);
+    border-color: $accent;
+    color: $accent;
+    background: $accent-05;
   }
 
   &:disabled {
@@ -201,7 +201,7 @@
     position: absolute;
     width: 180px;
     height: 180px;
-    background: radial-gradient(circle, rgba(139, 92, 246, 0.12) 0%, rgba(236, 72, 153, 0.06) 50%, transparent 70%);
+    background: radial-gradient(circle, $accent-12 0%, rgba(236, 72, 153, 0.06) 50%, transparent 70%);
     border-radius: 50%;
     pointer-events: none;
     animation: pulse 4s ease-in-out infinite;
@@ -213,9 +213,9 @@
   }
 
   svg {
-    color: #8b5cf6;
+    color: $accent;
     margin-bottom: $spacing-md;
-    filter: drop-shadow(0 4px 16px rgba(139, 92, 246, 0.35));
+    filter: drop-shadow(0 4px 16px $accent-35);
     animation: float 3s ease-in-out infinite;
   }
 
@@ -241,7 +241,7 @@
   padding: $spacing-sm $spacing-lg;
   border-radius: $radius-lg;
   border: none;
-  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  background: linear-gradient(135deg, $accent 0%, $primary-dark 100%);
   color: $text-on-primary;
   font-size: $font-size-sm;
   font-weight: $font-weight-medium;
@@ -249,11 +249,11 @@
   transition: all 0.2s ease;
   margin-bottom: $spacing-md;
   flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+  box-shadow: 0 2px 8px $accent-30;
 
   &:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 16px rgba(139, 92, 246, 0.4);
+    box-shadow: 0 4px 16px $accent-40;
   }
 
   &:active {

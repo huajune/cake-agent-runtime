@@ -75,13 +75,13 @@
 
       &:hover {
         transform: scale(1.08);
-        background: rgba(99, 102, 241, 0.1);
+        background: $primary-10;
       }
 
       &.active {
         width: 48px;
         height: 48px;
-        box-shadow: 0 6px 16px rgba(99, 102, 241, 0.3);
+        box-shadow: 0 6px 16px $primary-30;
       }
     }
 
@@ -125,7 +125,7 @@
   &:hover {
     background: $primary;
     color: #ffffff;
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    box-shadow: 0 4px 12px $primary-30;
     transform: scale(1.1);
   }
 }
@@ -226,7 +226,7 @@
   overflow: hidden;
 
   &:hover {
-    background: rgba(99, 102, 241, 0.05);
+    background: $primary-05;
     color: $primary;
     transform: translateX(4px);
   }
@@ -234,7 +234,7 @@
   &.active {
     background: $gradient-primary;
     color: #ffffff;
-    box-shadow: 0 8px 20px rgba(99, 102, 241, 0.25);
+    box-shadow: 0 8px 20px $primary-25;
     font-weight: 600;
 
     .nav-icon {
@@ -243,14 +243,14 @@
     }
   }
 
-  // Christmas decoration
+  // Spring Festival decoration - 福袋
   &::after {
-    content: '🎄';
+    content: '🧧';
     position: absolute;
     right: 12px;
     top: 50%;
     transform: translateY(-50%);
-    font-size: 12px;
+    font-size: 14px;
     opacity: 0;
     transition: all 0.3s ease;
   }
@@ -258,7 +258,7 @@
   &:hover::after,
   &.active::after {
     opacity: 1;
-    transform: translateY(-50%) scale(1.2);
+    transform: translateY(-50%) scale(1.15);
   }
 }
 
@@ -280,8 +280,8 @@
 }
 
 // Nav icon hover colors
-.nav-item:hover .icon-dashboard { color: #6366f1; }
-.nav-item:hover .icon-users { color: #8b5cf6; }
+.nav-item:hover .icon-dashboard { color: $primary; }
+.nav-item:hover .icon-users { color: $accent; }
 .nav-item:hover .icon-hosting { color: #06b6d4; }
 .nav-item:hover .icon-config { color: #6b7280; }
 .nav-item:hover .icon-system { color: #ef4444; }

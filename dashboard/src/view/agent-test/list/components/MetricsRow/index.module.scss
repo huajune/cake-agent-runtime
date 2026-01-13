@@ -11,7 +11,7 @@
   padding: $spacing-md;
   background: rgba(255, 255, 255, 0.9);
   border-radius: $radius-lg;
-  border: 1px solid rgba(139, 92, 246, 0.08);
+  border: 1px solid $accent-08;
   text-align: center;
   transition: all 0.2s ease;
   position: relative;
@@ -19,8 +19,8 @@
 
   // 每个卡片不同的强调色 - 紫粉调色盘
   &:nth-child(1) {
-    .metricValue { color: #6366f1; }
-    .metricLabel svg { color: #6366f1; }
+    .metricValue { color: $primary; }
+    .metricLabel svg { color: $primary; }
     &::before {
       content: '';
       position: absolute;
@@ -28,13 +28,13 @@
       left: 0;
       right: 0;
       height: 2px;
-      background: linear-gradient(90deg, #6366f1, #818cf8);
+      background: linear-gradient(90deg, $primary, $primary-light);
     }
   }
 
   &:nth-child(2) {
-    .metricValue { color: #8b5cf6; }
-    .metricLabel svg { color: #8b5cf6; }
+    .metricValue { color: $accent; }
+    .metricLabel svg { color: $accent; }
     &::before {
       content: '';
       position: absolute;
@@ -42,7 +42,7 @@
       left: 0;
       right: 0;
       height: 2px;
-      background: linear-gradient(90deg, #8b5cf6, #a78bfa);
+      background: linear-gradient(90deg, $accent, $accent-light);
     }
   }
 
@@ -76,7 +76,7 @@
 
   &:hover {
     transform: translateY(-1px);
-    box-shadow: 0 3px 10px rgba(139, 92, 246, 0.08);
+    box-shadow: 0 3px 10px $accent-08;
   }
 
   .metricValue {

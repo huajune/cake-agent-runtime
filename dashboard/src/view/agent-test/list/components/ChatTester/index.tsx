@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import TextareaAutosize from 'react-textarea-autosize';
 import {
   Trash2,
@@ -20,6 +21,7 @@ import { MetricsRow } from '../MetricsRow';
 import { FeedbackButtons } from '../FeedbackButtons';
 import { CandidateSelector } from '../CandidateSelector';
 import { HISTORY_PLACEHOLDER } from '../../constants';
+import RedPacketRain from '@/components/RedPacketRain';
 import styles from './index.module.scss';
 
 interface ChatTesterProps {
@@ -52,6 +54,16 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
   const feedback = useFeedback({
     onError: (error) => setLocalError(error),
   });
+
+  // 红包雨状态
+  const [showRedPacketRain, setShowRedPacketRain] = useState(false);
+
+  // 监听反馈成功，触发红包雨
+  useEffect(() => {
+    if (feedback.successType) {
+      setShowRedPacketRain(true);
+    }
+  }, [feedback.successType]);
 
   // 清空（包括反馈状态）
   const handleClear = () => {
@@ -296,6 +308,14 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
         onScenarioTypeChange={feedback.setScenarioType}
         onRemarkChange={feedback.setRemark}
         onSubmit={handleSubmitFeedback}
+      />
+
+      {/* 红包雨特效 - 反馈成功时触发 */}
+      <RedPacketRain
+        active={showRedPacketRain}
+        duration={3000}
+        density={30}
+        onComplete={() => setShowRedPacketRain(false)}
       />
     </div>
   );
