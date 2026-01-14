@@ -5,3 +5,4 @@
 
 export * from './test-batch.repository';
 export * from './test-execution.repository';
+export * from './conversation-source.repository';

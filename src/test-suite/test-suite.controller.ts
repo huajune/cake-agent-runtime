@@ -27,12 +27,21 @@ import {
   QuickCreateBatchRequestDto,
   WriteBackFeishuRequestDto,
 } from './dto/test-chat.dto';
+import {
+  GetConversationSourcesDto,
+  UpdateTurnReviewDto,
+  ExecuteConversationBatchDto,
+  ExecuteConversationDto,
+  SyncConversationTestsDto,
+} from './dto/conversation-test.dto';
 import { BatchSource, BatchStatus, ExecutionStatus, MessageRole, ReviewStatus } from './enums';
 import {
   FeishuBitableSyncService,
   AgentTestFeedback,
 } from '@core/feishu/services/feishu-bitable.service';
 import { SSEStreamHandler, VercelAIStreamHandler } from './utils/sse-stream-handler';
+import { ConversationTestService } from './services';
+import { ConversationSourceRepository, TestExecutionRepository } from './repositories';
 
 @ApiTags('测试套件')
 @Controller('test-suite')
@@ -43,6 +52,9 @@ export class TestSuiteController {
     private readonly testService: TestSuiteService,
     private readonly feishuBitableService: FeishuBitableSyncService,
     private readonly testProcessor: TestSuiteProcessor,
+    private readonly conversationTestService: ConversationTestService,
+    private readonly conversationSourceRepository: ConversationSourceRepository,
+    private readonly executionRepository: TestExecutionRepository,
   ) {}
 
   // ==================== 单条测试 ====================
@@ -830,6 +842,286 @@ export class TestSuiteController {
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(`[Feedback] 提交失败: ${errorMessage}`);
+      throw new HttpException(
+        {
+          success: false,
+          error: errorMessage,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // ==================== 对话验证 (Conversation Verification) ====================
+
+  /**
+   * 从飞书同步对话验证记录
+   * POST /test-suite/conversations/sync
+   */
+  @Post('conversations/sync')
+  @ApiOperation({
+    summary: '从飞书同步对话验证记录',
+    description: '从飞书多维表格导入对话验证测试数据，创建测试批次和对话源记录',
+  })
+  async syncConversationTests(@Body() _request: SyncConversationTestsDto) {
+    this.logger.log('[ConversationSync] 开始同步对话验证记录');
+
+    try {
+      // TODO: 实现从飞书同步对话验证记录的逻辑
+      // 1. 调用 FeishuTestSyncService.getConversationTestsFromDefaultTable()
+      // 2. 创建测试批次（类型为 CONVERSATION）
+      // 3. 批量创建 ConversationSource 记录
+      // 4. 返回批次信息和导入统计
+
+      throw new HttpException(
+        {
+          success: false,
+          error: '对话验证同步功能即将上线',
+        },
+        HttpStatus.NOT_IMPLEMENTED,
+      );
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[ConversationSync] 同步失败: ${errorMessage}`);
+      throw new HttpException(
+        {
+          success: false,
+          error: errorMessage,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 获取对话源列表
+   * GET /test-suite/conversations?batchId=xxx&page=1&pageSize=20
+   */
+  @Get('conversations')
+  @ApiOperation({
+    summary: '获取对话源列表',
+    description: '获取指定批次的对话验证记录列表（分页）',
+  })
+  @ApiQuery({ name: 'batchId', required: true, description: '批次ID' })
+  @ApiQuery({ name: 'page', required: false, description: '页码', example: 1 })
+  @ApiQuery({ name: 'pageSize', required: false, description: '每页数量', example: 20 })
+  async getConversationSources(@Query() query: GetConversationSourcesDto) {
+    const { batchId, page = 1, pageSize = 20, status } = query;
+    this.logger.log(`[ConversationList] 获取对话列表: batchId=${batchId}, page=${page}`);
+
+    try {
+      const result = await this.conversationSourceRepository.findByBatchIdPaginated(
+        batchId,
+        page,
+        pageSize,
+        status ? { status } : undefined,
+      );
+
+      return {
+        success: true,
+        data: {
+          sources: result.data.map((source) => ({
+            id: source.id,
+            batchId: source.batch_id,
+            feishuRecordId: source.feishu_record_id,
+            conversationId: source.conversation_id,
+            participantName: source.participant_name,
+            totalTurns: source.total_turns,
+            avgSimilarityScore: source.avg_similarity_score,
+            minSimilarityScore: source.min_similarity_score,
+            status: source.status,
+            createdAt: source.created_at,
+            updatedAt: source.updated_at,
+          })),
+          total: result.total,
+          page,
+          pageSize,
+        },
+      };
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[ConversationList] 获取失败: ${errorMessage}`);
+      throw new HttpException(
+        {
+          success: false,
+          error: errorMessage,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 获取对话的轮次列表
+   * GET /test-suite/conversations/:sourceId/turns
+   */
+  @Get('conversations/:sourceId/turns')
+  @ApiOperation({
+    summary: '获取对话轮次列表',
+    description: '获取指定对话的所有轮次执行记录',
+  })
+  @ApiParam({ name: 'sourceId', description: '对话源ID' })
+  async getConversationTurns(@Param('sourceId') sourceId: string) {
+    this.logger.log(`[ConversationTurns] 获取对话轮次: sourceId=${sourceId}`);
+
+    try {
+      const result = await this.conversationTestService.getConversationTurns(sourceId);
+
+      return {
+        success: true,
+        data: result,
+      };
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[ConversationTurns] 获取失败: ${errorMessage}`);
+      throw new HttpException(
+        {
+          success: false,
+          error: errorMessage,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 执行单个对话的测试
+   * POST /test-suite/conversations/:sourceId/execute
+   */
+  @Post('conversations/:sourceId/execute')
+  @ApiOperation({
+    summary: '执行单个对话测试',
+    description: '执行指定对话的所有轮次测试，计算相似度分数',
+  })
+  @ApiParam({ name: 'sourceId', description: '对话源ID' })
+  async executeConversation(
+    @Param('sourceId') sourceId: string,
+    @Body() request: ExecuteConversationDto,
+  ) {
+    this.logger.log(`[ConversationExecute] 执行对话测试: sourceId=${sourceId}`);
+
+    try {
+      const result = await this.conversationTestService.executeConversation(
+        sourceId,
+        request.forceRerun,
+      );
+
+      return {
+        success: true,
+        data: result,
+      };
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[ConversationExecute] 执行失败: ${errorMessage}`);
+      throw new HttpException(
+        {
+          success: false,
+          error: errorMessage,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 批量执行对话测试
+   * POST /test-suite/conversations/batch/:batchId/execute
+   */
+  @Post('conversations/batch/:batchId/execute')
+  @ApiOperation({
+    summary: '批量执行对话测试',
+    description: '执行指定批次的所有对话验证测试',
+  })
+  @ApiParam({ name: 'batchId', description: '批次ID' })
+  async executeConversationBatch(
+    @Param('batchId') batchId: string,
+    @Body() request: ExecuteConversationBatchDto,
+  ) {
+    this.logger.log(`[ConversationBatchExecute] 执行批量对话测试: batchId=${batchId}`);
+
+    try {
+      // 获取该批次的所有对话源
+      const sources = await this.conversationSourceRepository.findByBatchId(batchId);
+
+      if (sources.length === 0) {
+        throw new Error(`批次 ${batchId} 下没有对话验证记录`);
+      }
+
+      const results = [];
+      let successCount = 0;
+      let failedCount = 0;
+
+      // 逐个执行对话测试
+      for (const source of sources) {
+        try {
+          const result = await this.conversationTestService.executeConversation(
+            source.id,
+            request.forceRerun,
+          );
+          results.push(result);
+          successCount++;
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          this.logger.error(`对话 ${source.id} 执行失败: ${errorMessage}`);
+          failedCount++;
+        }
+      }
+
+      return {
+        success: true,
+        data: {
+          batchId,
+          total: sources.length,
+          successCount,
+          failedCount,
+          results,
+        },
+      };
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[ConversationBatchExecute] 执行失败: ${errorMessage}`);
+      throw new HttpException(
+        {
+          success: false,
+          error: errorMessage,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * 更新轮次评审状态
+   * PATCH /test-suite/conversations/turns/:executionId/review
+   */
+  @Patch('conversations/turns/:executionId/review')
+  @ApiOperation({
+    summary: '更新轮次评审状态',
+    description: '更新对话轮次的人工评审结果',
+  })
+  @ApiParam({ name: 'executionId', description: '执行记录ID' })
+  async updateTurnReview(
+    @Param('executionId') executionId: string,
+    @Body() request: UpdateTurnReviewDto,
+  ) {
+    this.logger.log(`[TurnReview] 更新评审: executionId=${executionId}`);
+
+    try {
+      await this.executionRepository.updateExecution(executionId, {
+        review_status: request.reviewStatus,
+        review_comment: request.reviewComment,
+      });
+
+      return {
+        success: true,
+        data: {
+          executionId,
+          reviewStatus: request.reviewStatus,
+        },
+      };
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[TurnReview] 更新失败: ${errorMessage}`);
       throw new HttpException(
         {
           success: false,

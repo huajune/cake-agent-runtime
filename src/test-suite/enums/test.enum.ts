@@ -119,3 +119,44 @@ export enum FeedbackType {
   /** 正面案例 */
   GOODCASE = 'goodcase',
 }
+
+/**
+ * 测试类型
+ * 区分场景测试和对话验证测试
+ */
+export enum TestType {
+  /** 场景测试 - 预设的测试用例 */
+  SCENARIO = 'scenario',
+  /** 对话验证 - 真实对话记录验证 */
+  CONVERSATION = 'conversation',
+}
+
+/**
+ * 对话源执行状态
+ * 表示对话验证测试的执行状态
+ */
+export enum ConversationSourceStatus {
+  /** 待执行 */
+  PENDING = 'pending',
+  /** 执行中 */
+  RUNNING = 'running',
+  /** 已完成 */
+  COMPLETED = 'completed',
+  /** 执行失败 */
+  FAILED = 'failed',
+}
+
+/**
+ * 相似度评级
+ * 基于相似度分数的评级
+ */
+export enum SimilarityRating {
+  /** 优秀 (80-100) - Agent 回复与真人高度一致 */
+  EXCELLENT = 'excellent',
+  /** 良好 (60-79) - 主要信息覆盖，表述有差异 */
+  GOOD = 'good',
+  /** 及格 (40-59) - 部分信息一致，需要关注 */
+  FAIR = 'fair',
+  /** 不及格 (0-39) - 回复内容差异较大，需人工复核 */
+  POOR = 'poor',
+}

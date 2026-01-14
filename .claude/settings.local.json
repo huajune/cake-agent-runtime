@@ -350,7 +350,13 @@
       "mcp__feishu-mcp__get_feishu_document_blocks",
       "mcp__supabase__execute_sql",
       "mcp__supabase__list_tables",
-      "Bash(pnpm run dev:*)"
+      "Bash(pnpm run dev:*)",
+      "mcp__feishu-mcp__convert_feishu_wiki_to_document_id",
+      "Bash(claude --version:*)",
+      "Bash(pnpm approve-builds:*)",
+      "Bash(pnpm rebuild:*)",
+      "mcp__supabase__list_migrations",
+      "mcp__supabase__apply_migration"
     ],
     "deny": [
       "Bash(git restore:*)",

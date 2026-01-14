@@ -17,6 +17,7 @@ export interface TestSuiteFieldNames {
   testBatch: string; // 测试批次（文本）
   failureCategory: string; // 失败分类（单选）- 测试场景分类
   errorReason: string; // 错误原因（单选）- Agent 错误归因
+  similarityScore?: string; // 相似度分数（数字）- 对话验证平均相似度
 }
 
 export interface FeishuBitableConfig {
@@ -68,4 +69,5 @@ export const testSuiteFieldNames: TestSuiteFieldNames = {
   testBatch: '测试批次',
   failureCategory: '分类',
   errorReason: '错误原因',
+  similarityScore: '相似度分数',
 };

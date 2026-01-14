@@ -19,3 +19,9 @@ export { FeishuTestSyncService } from './feishu-test-sync.service';
 
 // 统计服务（原有）
 export { TestStatsService } from './test-stats.service';
+
+// 对话验证测试服务
+export { ConversationTestService } from './conversation-test.service';
+
+// 语义相似度服务
+export { SemanticSimilarityService } from './semantic-similarity.service';

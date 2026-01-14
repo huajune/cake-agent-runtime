@@ -29,6 +29,11 @@ export interface TestExecution {
   failure_reason: string | null;
   test_scenario: string | null;
   created_at: string;
+  // 对话验证相关字段
+  conversation_source_id: string | null;
+  turn_number: number | null;
+  similarity_score: number | null;
+  input_message: string | null;
 }
 
 /**
@@ -49,6 +54,12 @@ export interface CreateExecutionData {
   durationMs: number;
   tokenUsage: unknown;
   errorMessage: string | null;
+  // 对话验证相关字段
+  conversationSourceId?: string;
+  turnNumber?: number;
+  similarityScore?: number | null;
+  inputMessage?: string;
+  reviewStatus?: ReviewStatus;
 }
 
 /**
@@ -125,6 +136,11 @@ export class TestExecutionRepository extends BaseRepository {
       duration_ms: data.durationMs,
       token_usage: data.tokenUsage,
       error_message: data.errorMessage,
+      conversation_source_id: data.conversationSourceId || null,
+      turn_number: data.turnNumber || null,
+      similarity_score: data.similarityScore || null,
+      input_message: data.inputMessage || null,
+      review_status: data.reviewStatus || ReviewStatus.PENDING,
     });
   }
 
@@ -348,5 +364,53 @@ export class TestExecutionRepository extends BaseRepository {
         reviewed_at: new Date().toISOString(),
       },
     );
+  }
+
+  // ==================== 对话验证相关查询 ====================
+
+  /**
+   * 根据对话源ID和轮次查询执行记录
+   */
+  async findByConversationSourceAndTurn(
+    conversationSourceId: string,
+    turnNumber: number,
+  ): Promise<TestExecution | null> {
+    return this.selectOne<TestExecution>({
+      conversation_source_id: `eq.${conversationSourceId}`,
+      turn_number: `eq.${turnNumber}`,
+    });
+  }
+
+  /**
+   * 根据对话源ID查询所有轮次的执行记录
+   */
+  async findByConversationSourceId(conversationSourceId: string): Promise<TestExecution[]> {
+    return this.select<TestExecution>({
+      conversation_source_id: `eq.${conversationSourceId}`,
+      order: 'turn_number.asc',
+    });
+  }
+
+  /**
+   * 更新执行记录（通用方法）
+   */
+  async updateExecution(
+    id: string,
+    data: Partial<{
+      agent_request: unknown;
+      agent_response: unknown;
+      actual_output: string;
+      tool_calls: unknown[];
+      execution_status: ExecutionStatus;
+      duration_ms: number;
+      token_usage: unknown;
+      error_message: string | null;
+      similarity_score: number | null;
+      review_status: ReviewStatus;
+      review_comment: string | null;
+    }>,
+  ): Promise<TestExecution> {
+    const results = await this.update<TestExecution>({ id: `eq.${id}` }, data);
+    return results[0];
   }
 }

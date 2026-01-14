@@ -39,11 +39,15 @@
     "class-validator": "^0.14.0",
     "crypto": "^1.0.1",
     "ioredis": "^5.8.2",
+    "nodejieba": "^3.5.2",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.1",
     "winston": "^3.11.0",
     "winston-daily-rotate-file": "^4.7.1"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["nodejieba"]
   },
   "devDependencies": {
     "@nestjs/cli": "^10.2.1",

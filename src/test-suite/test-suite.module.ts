@@ -12,8 +12,14 @@ import {
   TestWriteBackService,
   FeishuTestSyncService,
   TestStatsService,
+  ConversationTestService,
+  SemanticSimilarityService,
 } from './services';
-import { TestBatchRepository, TestExecutionRepository } from './repositories';
+import {
+  TestBatchRepository,
+  TestExecutionRepository,
+  ConversationSourceRepository,
+} from './repositories';
 import { AgentModule } from '@agent';
 import { FeishuModule } from '@core/feishu';
 
@@ -66,14 +72,17 @@ import { FeishuModule } from '@core/feishu';
     // 仓储层
     TestBatchRepository,
     TestExecutionRepository,
+    ConversationSourceRepository,
 
     // 基础服务（无依赖其他子服务）
     TestStatsService,
     FeishuTestSyncService,
+    SemanticSimilarityService,
 
     // 子服务（有依赖关系）
     TestExecutionService,
     TestBatchService,
+    ConversationTestService,
 
     // Processor（依赖子服务，使用 forwardRef 解决循环依赖）
     TestSuiteProcessor,
@@ -97,8 +106,11 @@ import { FeishuModule } from '@core/feishu';
     TestSuiteProcessor,
     FeishuTestSyncService,
     TestStatsService,
+    ConversationTestService,
+    SemanticSimilarityService,
     TestBatchRepository,
     TestExecutionRepository,
+    ConversationSourceRepository,
   ],
 })
 export class TestSuiteModule {}
