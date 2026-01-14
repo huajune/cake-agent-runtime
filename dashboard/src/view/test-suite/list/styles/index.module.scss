@@ -261,6 +261,44 @@
   }
 }
 
+// ==================== Tab 容器 ====================
+.tabContainer {
+  margin-bottom: $spacing-md;
+  flex-shrink: 0;
+  z-index: 1;
+  position: relative;
+}
+
+// ==================== 对话验证视图 ====================
+.conversationView {
+  display: flex;
+  gap: $spacing-lg;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.conversationListPanel {
+  width: 380px;
+  flex-shrink: 0;
+  overflow-y: auto;
+
+  @media (max-width: 1280px) {
+    width: 320px;
+  }
+
+  @media (max-width: 1024px) {
+    width: 100%;
+    flex-shrink: 1;
+  }
+}
+
+.turnComparePanel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
 // ==================== 响应式适配 ====================
 @media (max-width: 640px) {
   .page {
@@ -276,5 +314,14 @@
       width: 100%;
       justify-content: flex-end;
     }
+  }
+
+  .conversationView {
+    flex-direction: column;
+  }
+
+  .conversationListPanel {
+    width: 100%;
+    max-height: 40vh;
   }
 }

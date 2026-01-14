@@ -543,4 +543,153 @@ export async function batchWriteBackToFeishu(
   return data.data;
 }
 
+// ==================== 对话验证相关类型 ====================
+
+/**
+ * 对话源状态
+ */
+export type ConversationSourceStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+/**
+ * 对话源记录
+ */
+export interface ConversationSource {
+  id: string;
+  batchId: string;
+  feishuRecordId: string;
+  conversationId: string;
+  participantName: string | null;
+  totalTurns: number;
+  avgSimilarityScore: number | null;
+  minSimilarityScore: number | null;
+  status: ConversationSourceStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * 对话轮次执行记录
+ */
+export interface ConversationTurnExecution {
+  id: string;
+  conversationSourceId: string;
+  turnNumber: number;
+  inputMessage: string;
+  expectedOutput: string | null;
+  actualOutput: string | null;
+  similarityScore: number | null;
+  executionStatus: string;
+  toolCalls: unknown[] | null;
+  durationMs: number | null;
+  tokenUsage: {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+  } | null;
+  reviewStatus: string;
+  reviewComment: string | null;
+  createdAt: Date;
+}
+
+/**
+ * 对话轮次列表响应
+ */
+export interface TurnListResponse {
+  turns: ConversationTurnExecution[];
+  conversationInfo: {
+    id: string;
+    participantName: string | null;
+    totalTurns: number;
+    avgSimilarityScore: number | null;
+  };
+}
+
+/**
+ * 对话源列表响应
+ */
+export interface ConversationSourceListResponse {
+  sources: ConversationSource[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+// ==================== 对话验证 API 函数 ====================
+
+/**
+ * 获取对话源列表
+ */
+export async function getConversationSources(params: {
+  batchId: string;
+  page?: number;
+  pageSize?: number;
+  status?: ConversationSourceStatus;
+}): Promise<ConversationSourceListResponse> {
+  const { data } = await api.get('/test-suite/conversations', { params });
+  return data.data;
+}
+
+/**
+ * 获取对话轮次列表
+ */
+export async function getConversationTurns(sourceId: string): Promise<TurnListResponse> {
+  const { data } = await api.get(`/test-suite/conversations/${sourceId}/turns`);
+  return data.data;
+}
+
+/**
+ * 执行单个对话测试
+ */
+export async function executeConversation(params: {
+  sourceId: string;
+  forceRerun?: boolean;
+}): Promise<{
+  sourceId: string;
+  conversationId: string;
+  totalTurns: number;
+  executedTurns: number;
+  avgSimilarityScore: number | null;
+  minSimilarityScore: number | null;
+}> {
+  const { data } = await api.post(`/test-suite/conversations/${params.sourceId}/execute`, {
+    forceRerun: params.forceRerun,
+  });
+  return data.data;
+}
+
+/**
+ * 批量执行对话测试
+ */
+export async function executeConversationBatch(params: {
+  batchId: string;
+  forceRerun?: boolean;
+  parallel?: boolean;
+}): Promise<{
+  batchId: string;
+  totalConversations: number;
+  executedConversations: number;
+  avgSimilarityScore: number | null;
+}> {
+  const { data } = await api.post(`/test-suite/conversations/batch/${params.batchId}/execute`, {
+    forceRerun: params.forceRerun,
+    parallel: params.parallel,
+  });
+  return data.data;
+}
+
+/**
+ * 更新轮次评审
+ */
+export async function updateTurnReview(params: {
+  executionId: string;
+  reviewStatus: 'passed' | 'failed' | 'skipped';
+  reviewComment?: string;
+}): Promise<ConversationTurnExecution> {
+  const { data } = await api.patch(`/test-suite/conversations/turns/${params.executionId}/review`, {
+    reviewStatus: params.reviewStatus,
+    reviewComment: params.reviewComment,
+  });
+  return data.data;
+}
+
 export default api;

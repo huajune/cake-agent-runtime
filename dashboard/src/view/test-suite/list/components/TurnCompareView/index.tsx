@@ -13,7 +13,6 @@ interface TurnCompareViewProps {
   currentTurnIndex: number;
   loading: boolean;
   onTurnChange: (index: number) => void;
-  onReview?: (turnId: string, status: 'passed' | 'failed', comment?: string) => void;
 }
 
 /**
@@ -26,7 +25,6 @@ export function TurnCompareView({
   currentTurnIndex,
   loading,
   onTurnChange,
-  onReview,
 }: TurnCompareViewProps) {
   if (loading) {
     return (
