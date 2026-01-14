@@ -1,2 +1,5 @@
+packages:
+  - 'dashboard'
+
 ignoredBuiltDependencies:
   - nodejieba

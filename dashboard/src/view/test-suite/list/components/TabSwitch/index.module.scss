@@ -1,57 +1,146 @@
+// TabSwitch 组件样式 - iOS 风格分段控制器
+@use '@/assets/styles/variables' as *;
+
 .tabSwitch {
-  display: flex;
-  gap: 8px;
+  display: inline-flex;
+  gap: 6px;
   padding: 4px;
-  background: #f5f5f7;
-  border-radius: 8px;
-  width: fit-content;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-radius: 12px;
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.08),
+    0 1px 2px rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  position: relative;
 }
 
 .tab {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 16px;
+  padding: 10px 24px;
   border: none;
   background: transparent;
-  color: #666;
+  color: #6b7280;
   font-size: 14px;
   font-weight: 500;
-  border-radius: 6px;
+  border-radius: 9px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
+  white-space: nowrap;
+  user-select: none;
 
-  &:hover {
-    background: rgba(255, 255, 255, 0.5);
-    color: #333;
+  // 未激活状态的悬浮效果
+  &:hover:not(.active) {
+    color: #374151;
+    background: rgba(255, 255, 255, 0.4);
   }
 
+  // 激活状态
   &.active {
-    background: #fff;
-    color: #2563eb;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    background: linear-gradient(135deg, #ffffff 0%, #fefefe 100%);
+    color: #ec4899;
+    font-weight: 600;
+    box-shadow:
+      0 2px 8px rgba(236, 72, 153, 0.15),
+      0 1px 3px rgba(0, 0, 0, 0.1),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(236, 72, 153, 0.1);
+
+    // 激活状态的微妙渐变光泽
+    &::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 50%;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.6) 0%, transparent 100%);
+      border-radius: 9px 9px 0 0;
+      pointer-events: none;
+    }
+  }
+
+  // 点击动画
+  &:active {
+    transform: scale(0.98);
   }
 }
 
 .tabLabel {
   white-space: nowrap;
+  position: relative;
+  z-index: 1;
 }
 
 .badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   color: #fff;
-  background: #2563eb;
-  border-radius: 10px;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border-radius: 11px;
+  box-shadow:
+    0 2px 4px rgba(37, 99, 235, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  position: relative;
+  z-index: 1;
+  letter-spacing: -0.02em;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+
+  // Badge 光泽效果
+  &::before {
+    content: '';
+    position: absolute;
+    top: 1px;
+    left: 2px;
+    right: 2px;
+    height: 40%;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.4) 0%, transparent 100%);
+    border-radius: 11px 11px 0 0;
+    pointer-events: none;
+  }
 }
 
 .tab.active .badge {
-  background: #1d4ed8;
+  background: linear-gradient(135deg, #ec4899 0%, #db2777 100%);
+  box-shadow:
+    0 2px 6px rgba(236, 72, 153, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  animation: badgePulse 2s ease-in-out infinite;
+}
+
+// Badge 脉动动画
+@keyframes badgePulse {
+  0%, 100% {
+    box-shadow:
+      0 2px 6px rgba(236, 72, 153, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  }
+  50% {
+    box-shadow:
+      0 2px 8px rgba(236, 72, 153, 0.5),
+      0 0 0 2px rgba(236, 72, 153, 0.1),
+      inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  }
+}
+
+// 响应式适配
+@media (max-width: 640px) {
+  .tab {
+    padding: 8px 16px;
+    font-size: 13px;
+  }
+
+  .badge {
+    min-width: 20px;
+    height: 20px;
+    font-size: 11px;
+  }
 }
