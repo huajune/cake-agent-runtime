@@ -14,6 +14,7 @@ import type { ConversationSource, ConversationTurnExecution, ToolCall } from '..
 import { CompactMetrics } from './CompactMetrics';
 import { HistoryMessage } from './HistoryMessage';
 import { ToolCallItem } from './ToolCallItem';
+import { LoadingSkeleton } from './LoadingSkeleton';
 import styles from './index.module.scss';
 
 interface ConversationDetailModalProps {
@@ -75,7 +76,7 @@ export function ConversationDetailModal({
         {/* 内容区 */}
         <div className={styles.modalBody}>
           {loading ? (
-            <div className={styles.loading}>加载中...</div>
+            <LoadingSkeleton />
           ) : turns.length === 0 ? (
             <div className={styles.empty}>
               <p>暂无轮次数据</p>
