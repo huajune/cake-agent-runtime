@@ -89,6 +89,7 @@ export function BatchList({
           <>
             {batches.map((batch) => {
               const status = getBatchStatusDisplay(batch.status);
+              const isConversation = batch.test_type === 'conversation';
               const reviewedCount = batch.total_cases - (batch.pending_review_count || 0);
               return (
                 <div
@@ -105,17 +106,33 @@ export function BatchList({
                   </div>
                   {/* 第二行：统计信息 */}
                   <div className={styles.batchMeta}>
-                    <span>用例 {batch.total_cases}</span>
+                    {/* 对话验证显示"对话"，场景测试显示"用例" */}
+                    <span>{isConversation ? '对话' : '用例'} {batch.total_cases}</span>
                     <span className={styles.sep}>·</span>
+                    {/* 对话验证显示执行进度，场景测试显示评审进度 */}
+                    {isConversation ? (
+                      <span>
+                        完成{' '}
+                        {batch.total_cases > 0
+                          ? Math.round((batch.executed_count / batch.total_cases) * 100)
+                          : 0}
+                        %
+                      </span>
+                    ) : (
+                      <span>
+                        评审{' '}
+                        {batch.total_cases > 0
+                          ? Math.round((reviewedCount / batch.total_cases) * 100)
+                          : 0}
+                        %
+                      </span>
+                    )}
+                    <span className={styles.sep}>·</span>
+                    {/* 对话验证显示平均相似度，场景测试显示通过率 */}
                     <span>
-                      评审{' '}
-                      {batch.total_cases > 0
-                        ? Math.round((reviewedCount / batch.total_cases) * 100)
-                        : 0}
-                      %
+                      {isConversation ? '相似度' : '通过'}{' '}
+                      {batch.pass_rate !== null ? `${batch.pass_rate.toFixed(0)}%` : '-'}
                     </span>
-                    <span className={styles.sep}>·</span>
-                    <span>通过 {batch.pass_rate !== null ? `${batch.pass_rate.toFixed(0)}%` : '-'}</span>
                   </div>
                 </div>
               );

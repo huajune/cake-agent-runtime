@@ -64,79 +64,7 @@ export default function Layout() {
           </svg>
         </div>
 
-        {/* 小福袋E - 在2前面 */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          animation: 'swing 2.5s ease-in-out infinite',
-          transformOrigin: 'top center'
-        }}>
-          <div style={{ width: '2px', height: '13px', background: '#fbbf24' }} />
-          <svg width="24" height="32" viewBox="0 0 60 70" fill="none">
-            <defs>
-              <linearGradient id="bagRedE" x1="30" y1="0" x2="30" y2="70" gradientUnits="userSpaceOnUse">
-                <stop offset="0" stopColor="#EF4444" />
-                <stop offset="0.6" stopColor="#DC2626" />
-                <stop offset="1" stopColor="#991B1B" />
-              </linearGradient>
-              <linearGradient id="bagGoldE" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stopColor="#FCD34D" />
-                <stop offset="1" stopColor="#D97706" />
-              </linearGradient>
-            </defs>
-            <path d="M12 28 C 4 38, 2 58, 14 65 Q 30 73 46 65 C 58 58, 56 38, 48 28 Q 30 22 12 28 Z" fill="url(#bagRedE)" stroke="#B91C1C" strokeWidth="1" />
-            <g transform="translate(0, -2)">
-              <path d="M20 16 Q 30 24 40 16 L 44 12 Q 30 18 16 12 Z" fill="url(#bagGoldE)" stroke="#B45309" strokeWidth="1" />
-            </g>
-            <path d="M18 24 L 14 12 C 12 8, 20 4, 30 8 C 40 4, 48 8, 46 12 L 42 24 Z" fill="#EF4444" stroke="#B91C1C" strokeWidth="1" />
-            <path d="M14 26 Q 30 30 46 26" stroke="#FCD34D" strokeWidth="4" strokeLinecap="round" />
-            <circle cx="30" cy="27" r="5" fill="url(#bagGoldE)" stroke="#B45309" strokeWidth="0.5" />
-            <text x="30" y="52" fontSize="18" fill="#FCD34D" textAnchor="middle" fontWeight="bold">福</text>
-          </svg>
-        </div>
-
         <FestivalPendant content="2" delay="0s" ropeHeight={15} fontSize={64} />
-
-        {/* 中国结1 */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          animation: 'swing 2.3s ease-in-out infinite',
-          transformOrigin: 'top center'
-        }}>
-          <div style={{ width: '2px', height: '6px', background: '#DC2626' }} />
-          <svg width="52" height="112" viewBox="0 0 60 130" fill="none">
-            <path d="M30 0 L30 12" stroke="#DC2626" strokeWidth="4" />
-            <circle cx="30" cy="14" r="4" fill="#DC2626" />
-            <path d="M30 18 L30 22" stroke="#DC2626" strokeWidth="4" />
-            <circle cx="30" cy="26" r="5" fill="none" stroke="#DC2626" strokeWidth="3.5" />
-            <g transform="translate(30, 58)">
-              <path d="M0 -22 L22 0 L0 22 L-22 0 Z" fill="none" stroke="#DC2626" strokeWidth="4" />
-              <path d="M-15 -7 L15 -7" stroke="#DC2626" strokeWidth="3.5" />
-              <path d="M-15 0 L15 0" stroke="#DC2626" strokeWidth="3.5" />
-              <path d="M-15 7 L15 7" stroke="#DC2626" strokeWidth="3.5" />
-              <path d="M-7 -15 L-7 15" stroke="#DC2626" strokeWidth="3.5" />
-              <path d="M0 -18 L0 18" stroke="#DC2626" strokeWidth="3.5" />
-              <path d="M7 -15 L7 15" stroke="#DC2626" strokeWidth="3.5" />
-              <circle cx="0" cy="-22" r="5" fill="none" stroke="#DC2626" strokeWidth="3" />
-              <circle cx="22" cy="0" r="5" fill="none" stroke="#DC2626" strokeWidth="3" />
-              <circle cx="0" cy="22" r="5" fill="none" stroke="#DC2626" strokeWidth="3" />
-              <circle cx="-22" cy="0" r="5" fill="none" stroke="#DC2626" strokeWidth="3" />
-            </g>
-            <circle cx="30" cy="84" r="4" fill="#DC2626" />
-            <path d="M30 88 L30 95" stroke="#DC2626" strokeWidth="4" />
-            <circle cx="30" cy="97" r="3" fill="#DC2626" />
-            <path d="M24 100 L24 125" stroke="#DC2626" strokeWidth="2" />
-            <path d="M26 100 L26 127" stroke="#DC2626" strokeWidth="2" />
-            <path d="M28 100 L28 128" stroke="#DC2626" strokeWidth="2" />
-            <path d="M30 100 L30 130" stroke="#DC2626" strokeWidth="2" />
-            <path d="M32 100 L32 128" stroke="#DC2626" strokeWidth="2" />
-            <path d="M34 100 L34 127" stroke="#DC2626" strokeWidth="2" />
-            <path d="M36 100 L36 125" stroke="#DC2626" strokeWidth="2" />
-          </svg>
-        </div>
 
         <FestivalPendant content="0" delay="0.3s" ropeHeight={10} fontSize={64} />
 
@@ -212,38 +140,6 @@ export default function Layout() {
         </div>
 
         <FestivalPendant content="2" delay="0.6s" ropeHeight={16} fontSize={64} />
-
-        {/* 小福袋A */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          animation: 'swing 2.6s ease-in-out infinite',
-          transformOrigin: 'top center'
-        }}>
-          <div style={{ width: '2px', height: '14px', background: '#fbbf24' }} />
-          <svg width="24" height="32" viewBox="0 0 60 70" fill="none">
-            <defs>
-              <linearGradient id="bagRedA" x1="30" y1="0" x2="30" y2="70" gradientUnits="userSpaceOnUse">
-                <stop offset="0" stopColor="#EF4444" />
-                <stop offset="0.6" stopColor="#DC2626" />
-                <stop offset="1" stopColor="#991B1B" />
-              </linearGradient>
-              <linearGradient id="bagGoldA" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stopColor="#FCD34D" />
-                <stop offset="1" stopColor="#D97706" />
-              </linearGradient>
-            </defs>
-            <path d="M12 28 C 4 38, 2 58, 14 65 Q 30 73 46 65 C 58 58, 56 38, 48 28 Q 30 22 12 28 Z" fill="url(#bagRedA)" stroke="#B91C1C" strokeWidth="1" />
-            <g transform="translate(0, -2)">
-              <path d="M20 16 Q 30 24 40 16 L 44 12 Q 30 18 16 12 Z" fill="url(#bagGoldA)" stroke="#B45309" strokeWidth="1" />
-            </g>
-            <path d="M18 24 L 14 12 C 12 8, 20 4, 30 8 C 40 4, 48 8, 46 12 L 42 24 Z" fill="#EF4444" stroke="#B91C1C" strokeWidth="1" />
-            <path d="M14 26 Q 30 30 46 26" stroke="#FCD34D" strokeWidth="4" strokeLinecap="round" />
-            <circle cx="30" cy="27" r="5" fill="url(#bagGoldA)" stroke="#B45309" strokeWidth="0.5" />
-            <text x="30" y="52" fontSize="18" fill="#FCD34D" textAnchor="middle" fontWeight="bold">福</text>
-          </svg>
-        </div>
 
         {/* 金币串 */}
         <div style={{

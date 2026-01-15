@@ -34,7 +34,14 @@ import {
   ExecuteConversationDto,
   SyncConversationTestsDto,
 } from './dto/conversation-test.dto';
-import { BatchSource, BatchStatus, ExecutionStatus, MessageRole, ReviewStatus } from './enums';
+import {
+  BatchSource,
+  BatchStatus,
+  ExecutionStatus,
+  MessageRole,
+  ReviewStatus,
+  TestType,
+} from './enums';
 import {
   FeishuBitableSyncService,
   AgentTestFeedback,
@@ -352,12 +359,16 @@ export class TestSuiteController {
     description: '从预配置的飞书测试集表自动导入用例并执行测试',
   })
   async quickCreateBatch(@Body() request: QuickCreateBatchRequestDto) {
-    this.logger.log(`一键创建批量测试: batchName=${request.batchName || '自动生成'}`);
+    const testType = request.testType || TestType.SCENARIO;
+    this.logger.log(
+      `一键创建批量测试: batchName=${request.batchName || '自动生成'}, testType=${testType}`,
+    );
 
     try {
       const result = await this.testService.quickCreateBatch({
         batchName: request.batchName,
         parallel: request.parallel,
+        testType,
       });
       return {
         success: true,
@@ -384,8 +395,18 @@ export class TestSuiteController {
   @ApiOperation({ summary: '获取测试批次列表' })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'offset', required: false, type: Number })
-  async getBatches(@Query('limit') limit?: number, @Query('offset') offset?: number) {
-    const result = await this.testService.getBatches(limit || 20, offset || 0);
+  @ApiQuery({
+    name: 'testType',
+    required: false,
+    enum: ['scenario', 'conversation'],
+    description: '测试类型过滤：scenario-场景测试，conversation-对话验证',
+  })
+  async getBatches(
+    @Query('limit') limit?: number,
+    @Query('offset') offset?: number,
+    @Query('testType') testType?: TestType,
+  ) {
+    const result = await this.testService.getBatches(limit || 20, offset || 0, testType);
     return {
       success: true,
       data: result.data,

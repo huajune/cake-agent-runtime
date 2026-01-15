@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import {
   Zap,
   Bot,
@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { TestExecution } from '@/services/agent-test';
 import { formatJson, formatToolResult } from '@/utils/format';
+import type { ToolCall, TokenUsage } from '../../types';
 import styles from './index.module.scss';
 
 /**
@@ -30,11 +31,7 @@ interface HistoryMessage {
  */
 interface CompactMetricsProps {
   durationMs: number;
-  tokenUsage: {
-    totalTokens?: number;
-    inputTokens?: number;
-    outputTokens?: number;
-  };
+  tokenUsage: TokenUsage;
   status: string;
 }
 
@@ -80,18 +77,13 @@ function CompactMetrics({ durationMs, tokenUsage, status }: CompactMetricsProps)
  * 工具调用组件
  */
 interface ToolCallItemProps {
-  tool: {
-    toolName?: string;
-    name?: string;
-    input?: unknown;
-    output?: unknown;
-  };
+  tool: ToolCall;
   defaultExpanded?: boolean;
 }
 
-function ToolCallItem({ tool, defaultExpanded = false }: ToolCallItemProps) {
+const ToolCallItem = memo(function ToolCallItem({ tool, defaultExpanded = false }: ToolCallItemProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
-  const toolName = tool.toolName || tool.name || 'Unknown Tool';
+  const toolName = tool.toolName || tool.name || tool.tool || '未知工具';
   const hasContent = tool.input !== undefined || tool.output !== undefined;
 
   return (
@@ -135,7 +127,7 @@ function ToolCallItem({ tool, defaultExpanded = false }: ToolCallItemProps) {
       )}
     </div>
   );
-}
+});
 
 /**
  * 聊天历史组件 - 简洁版
@@ -144,7 +136,7 @@ interface ChatHistoryProps {
   history: HistoryMessage[];
 }
 
-function ChatHistory({ history }: ChatHistoryProps) {
+const ChatHistory = memo(function ChatHistory({ history }: ChatHistoryProps) {
   if (!history || history.length === 0) return null;
 
   return (
@@ -162,7 +154,7 @@ function ChatHistory({ history }: ChatHistoryProps) {
       ))}
     </div>
   );
-}
+});
 
 /**
  * 执行详情查看器 - 重新设计版
@@ -177,13 +169,13 @@ export function ExecutionDetailViewer({ execution, showHistory = true }: Executi
   const [showToolCalls, setShowToolCalls] = useState(false);
   const [showHistoryPanel, setShowHistoryPanel] = useState(true);
 
-  const toolCalls = execution.tool_calls || [];
+  const toolCalls: ToolCall[] = execution.tool_calls || [];
   const history: HistoryMessage[] = execution.test_input?.history || [];
   const inputMessage = execution.input_message || execution.test_input?.message || '';
 
   // 指标数据
   const durationMs = execution.duration_ms || 0;
-  const tokenUsage = execution.token_usage || {
+  const tokenUsage: TokenUsage = execution.token_usage || {
     totalTokens: 0,
     inputTokens: 0,
     outputTokens: 0,
@@ -256,7 +248,7 @@ export function ExecutionDetailViewer({ execution, showHistory = true }: Executi
               </div>
               {showToolCalls && (
                 <div className={styles.toolCallsList}>
-                  {toolCalls.map((call: any, idx: number) => (
+                  {toolCalls.map((call, idx) => (
                     <ToolCallItem key={idx} tool={call} />
                   ))}
                 </div>

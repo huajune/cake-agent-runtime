@@ -15,7 +15,7 @@ import {
   TestImportService,
   TestWriteBackService,
 } from './services';
-import { BatchStatus, ExecutionStatus, ReviewStatus, FeishuTestStatus } from './enums';
+import { BatchStatus, ExecutionStatus, ReviewStatus, FeishuTestStatus, TestType } from './enums';
 
 /**
  * 测试套件门面服务
@@ -139,9 +139,17 @@ export class TestSuiteService {
 
   /**
    * 获取测试批次列表
+   *
+   * @param limit 每页数量
+   * @param offset 偏移量
+   * @param testType 测试类型过滤：scenario-场景测试，conversation-对话验证
    */
-  async getBatches(limit = 20, offset = 0): Promise<{ data: TestBatch[]; total: number }> {
-    return this.batchService.getBatches(limit, offset);
+  async getBatches(
+    limit = 20,
+    offset = 0,
+    testType?: TestType,
+  ): Promise<{ data: TestBatch[]; total: number }> {
+    return this.batchService.getBatches(limit, offset, testType);
   }
 
   /**
@@ -233,6 +241,7 @@ export class TestSuiteService {
   async quickCreateBatch(options?: {
     batchName?: string;
     parallel?: boolean;
+    testType?: TestType;
   }): Promise<ImportResult> {
     return this.importService.quickCreateBatch(options);
   }

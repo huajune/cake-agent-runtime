@@ -1,6 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { TestExecution, TestExecutionRepository } from '../repositories';
-import { ExecutionStatus, ReviewStatus } from '../enums';
+import {
+  TestExecution,
+  TestExecutionRepository,
+  TestBatchRepository,
+  ConversationSourceRepository,
+} from '../repositories';
+import { ExecutionStatus, ReviewStatus, TestType, ConversationSourceStatus } from '../enums';
 
 /**
  * 批次统计数据
@@ -49,17 +54,74 @@ export interface FailureReasonStats {
 export class TestStatsService {
   private readonly logger = new Logger(TestStatsService.name);
 
-  constructor(private readonly executionRepository: TestExecutionRepository) {
+  constructor(
+    private readonly executionRepository: TestExecutionRepository,
+    private readonly batchRepository: TestBatchRepository,
+    private readonly conversationSourceRepository: ConversationSourceRepository,
+  ) {
     this.logger.log('TestStatsService 初始化完成');
   }
 
   /**
    * 计算批次统计信息
-   * 使用轻量版查询，只获取统计所需字段，提升性能
+   * 根据批次类型选择不同的统计方式：
+   * - scenario: 从 TestExecution 表统计
+   * - conversation: 从 ConversationSource 表统计
    */
   async calculateBatchStats(batchId: string): Promise<BatchStats> {
+    // 获取批次信息以确定测试类型
+    const batch = await this.batchRepository.findById(batchId);
+
+    // 根据测试类型选择不同的统计方式
+    if (batch?.test_type === TestType.CONVERSATION) {
+      return this.calculateConversationBatchStats(batchId);
+    }
+
+    // 默认：场景测试统计
     const executions = await this.executionRepository.findByBatchIdLite(batchId);
     return this.computeStats(executions as TestExecution[]);
+  }
+
+  /**
+   * 计算对话验证批次统计
+   * 从 ConversationSource 表统计
+   */
+  private async calculateConversationBatchStats(batchId: string): Promise<BatchStats> {
+    const statusCounts =
+      await this.conversationSourceRepository.countByBatchIdGroupByStatus(batchId);
+
+    // 获取所有对话源以计算通过率
+    const sources = await this.conversationSourceRepository.findByBatchId(batchId);
+
+    // 计算通过率（相似度 >= 60 视为通过）
+    const SIMILARITY_THRESHOLD = 60;
+    const completedSources = sources.filter((s) => s.status === ConversationSourceStatus.COMPLETED);
+    const passedCount = completedSources.filter(
+      (s) => s.avg_similarity_score !== null && s.avg_similarity_score >= SIMILARITY_THRESHOLD,
+    ).length;
+    const failedCount = completedSources.filter(
+      (s) => s.avg_similarity_score !== null && s.avg_similarity_score < SIMILARITY_THRESHOLD,
+    ).length;
+
+    // 计算平均相似度（作为通过率）
+    const validScores = sources
+      .map((s) => s.avg_similarity_score)
+      .filter((s): s is number => s !== null);
+    const avgSimilarity =
+      validScores.length > 0
+        ? Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length)
+        : null;
+
+    return {
+      totalCases: statusCounts.total,
+      executedCount: statusCounts.completed + statusCounts.failed,
+      passedCount,
+      failedCount,
+      pendingReviewCount: statusCounts.pending + statusCounts.running,
+      passRate: avgSimilarity, // 对话验证使用平均相似度作为通过率
+      avgDurationMs: null,
+      avgTokenUsage: null,
+    };
   }
 
   /**

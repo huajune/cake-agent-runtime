@@ -65,6 +65,7 @@ export interface TestBatch {
   avg_duration_ms: number | null;
   avg_token_usage: number | null;
   status: 'created' | 'running' | 'completed' | 'reviewing';
+  test_type: 'scenario' | 'conversation';
   created_by: string | null;
   created_at: string;
   completed_at: string | null;
@@ -367,11 +368,24 @@ export interface BatchListResponse {
 }
 
 /**
- * 获取批次列表（支持分页）
+ * 测试类型
  */
-export async function getBatches(limit = 20, offset = 0): Promise<BatchListResponse> {
+export type TestType = 'scenario' | 'conversation';
+
+/**
+ * 获取批次列表（支持分页和类型过滤）
+ *
+ * @param limit 每页数量
+ * @param offset 偏移量
+ * @param testType 测试类型过滤：scenario-场景测试，conversation-对话验证
+ */
+export async function getBatches(
+  limit = 20,
+  offset = 0,
+  testType?: TestType,
+): Promise<BatchListResponse> {
   const { data } = await api.get('/test-suite/batches', {
-    params: { limit, offset },
+    params: { limit, offset, testType },
   });
   return { data: data.data, total: data.total };
 }
@@ -489,6 +503,7 @@ export async function submitFeedback(request: SubmitFeedbackRequest): Promise<Su
 export interface QuickCreateBatchRequest {
   batchName?: string;
   parallel?: boolean;
+  testType?: TestType;
 }
 
 export interface WriteBackFeishuRequest {

@@ -4,8 +4,16 @@ import { ImportFromFeishuRequestDto, ImportResult } from '../dto/test-chat.dto';
 import { TestBatchService } from './test-batch.service';
 import { TestExecutionService } from './test-execution.service';
 import { FeishuTestSyncService } from './feishu-test-sync.service';
+import { ConversationTestService } from './conversation-test.service';
 import { TestSuiteProcessor } from '../test-suite.processor';
-import { BatchStatus, BatchSource, ExecutionStatus } from '../enums';
+import { ConversationSourceRepository } from '../repositories';
+import {
+  BatchStatus,
+  BatchSource,
+  ExecutionStatus,
+  TestType,
+  ConversationSourceStatus,
+} from '../enums';
 
 /**
  * 测试导入服务
@@ -24,6 +32,8 @@ export class TestImportService {
     private readonly executionService: TestExecutionService,
     private readonly feishuSyncService: FeishuTestSyncService,
     private readonly feishuBitableApi: FeishuBitableApiService,
+    private readonly conversationSourceRepository: ConversationSourceRepository,
+    private readonly conversationTestService: ConversationTestService,
     @Inject(forwardRef(() => TestSuiteProcessor))
     private readonly testProcessor: TestSuiteProcessor,
   ) {
@@ -53,6 +63,7 @@ export class TestImportService {
       source: BatchSource.FEISHU,
       feishuAppToken: request.appToken,
       feishuTableId: request.tableId,
+      testType: request.testType,
     });
 
     // 3. 保存测试用例（不执行）
@@ -112,23 +123,192 @@ export class TestImportService {
 
   /**
    * 一键从预配置的测试集表导入并执行
+   *
+   * @param options.testType 测试类型：scenario-场景测试，conversation-对话验证
    */
   async quickCreateBatch(options?: {
     batchName?: string;
     parallel?: boolean;
+    testType?: TestType;
   }): Promise<ImportResult> {
+    const testType = options?.testType || TestType.SCENARIO;
+
+    // 根据测试类型选择不同的数据源
+    if (testType === TestType.CONVERSATION) {
+      return this.quickCreateConversationBatch(options);
+    }
+
+    // 场景测试：从测试集表导入
     const { appToken, tableId } = this.feishuBitableApi.getTableConfig('testSuite');
 
-    this.logger.log(`一键创建批量测试: 从测试集表 ${tableId} 导入`);
+    this.logger.log(`一键创建场景测试: 从测试集表 ${tableId} 导入`);
 
     return this.importFromFeishu({
       appToken,
       tableId,
       batchName:
         options?.batchName ||
-        `批量测试 ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`,
+        `场景测试 ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`,
       executeImmediately: true,
       parallel: options?.parallel || false,
+      testType: TestType.SCENARIO,
     });
+  }
+
+  /**
+   * 一键创建对话验证批次
+   * 从测试集表 (testSuite) 中获取 test_type='对话验证' 的数据
+   *
+   * 执行流程：
+   * 1. 获取数据 → 2. 创建批次 → 3. 创建 ConversationSource → 4. 异步触发执行
+   */
+  private async quickCreateConversationBatch(options?: {
+    batchName?: string;
+    parallel?: boolean;
+  }): Promise<ImportResult> {
+    // 1. 从测试集表获取对话验证记录
+    const { appToken, tableId, conversations } =
+      await this.feishuSyncService.getConversationTestsFromDefaultTable();
+
+    this.logger.log(`一键创建对话验证: 从测试集表 ${tableId} 导入 test_type='对话验证' 的数据`);
+    this.logger.log(`获取到 ${conversations.length} 条对话验证记录`);
+
+    if (conversations.length === 0) {
+      throw new Error('测试集表中没有 test_type=对话验证 的数据');
+    }
+
+    // 2. 创建批次
+    const batchName =
+      options?.batchName ||
+      `对话验证 ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`;
+    const batch = await this.batchService.createBatch({
+      name: batchName,
+      source: BatchSource.FEISHU,
+      feishuAppToken: appToken,
+      feishuTableId: tableId,
+      testType: TestType.CONVERSATION,
+    });
+
+    // 3. 创建 ConversationSource 记录（复用现有数据结构）
+    const savedCases: ImportResult['cases'] = [];
+    const sourceIds: string[] = [];
+
+    for (const conv of conversations) {
+      const caseName = conv.participantName || '未知用户';
+
+      // 使用 ConversationSource 存储（而非 TestExecution）
+      const source = await this.conversationSourceRepository.create({
+        batchId: batch.id,
+        feishuRecordId: conv.recordId,
+        conversationId: conv.conversationId || conv.recordId,
+        participantName: conv.participantName || undefined,
+        fullConversation: conv.parseResult.messages,
+        rawText: conv.rawText,
+        totalTurns: conv.parseResult.totalTurns,
+      });
+
+      sourceIds.push(source.id);
+
+      savedCases.push({
+        caseId: source.id,
+        caseName,
+        category: '对话验证',
+        message: conv.rawText.slice(0, 100) + (conv.rawText.length > 100 ? '...' : ''),
+      });
+    }
+
+    // 4. 更新批次状态为运行中
+    await this.batchService.updateBatchStatus(batch.id, BatchStatus.RUNNING);
+
+    // 5. 异步触发执行（不阻塞返回）
+    this.executeConversationBatchAsync(batch.id, sourceIds).catch((err: Error) => {
+      this.logger.error(`对话验证批量执行失败: ${err.message}`, err.stack);
+    });
+
+    this.logger.log(`对话验证批次已创建，共 ${savedCases.length} 条用例，开始异步执行`);
+
+    return {
+      batchId: batch.id,
+      batchName: batch.name,
+      totalImported: savedCases.length,
+      cases: savedCases,
+    };
+  }
+
+  /**
+   * 异步执行对话验证批次
+   * 复用 ConversationTestService.executeConversation()
+   */
+  private async executeConversationBatchAsync(batchId: string, sourceIds: string[]): Promise<void> {
+    this.logger.log(`开始异步执行对话验证批次: ${batchId}, 共 ${sourceIds.length} 条对话`);
+
+    let successCount = 0;
+    let failedCount = 0;
+
+    for (const sourceId of sourceIds) {
+      try {
+        // 复用现有的 executeConversation 方法
+        const result = await this.conversationTestService.executeConversation(sourceId);
+        successCount++;
+        this.logger.debug(`对话 ${sourceId} 执行成功 (${successCount}/${sourceIds.length})`);
+
+        // P0 修复：回写相似度分数到飞书
+        await this.writeBackConversationResult(sourceId, result.avgSimilarityScore);
+      } catch (error: unknown) {
+        failedCount++;
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        this.logger.error(`对话 ${sourceId} 执行失败: ${errorMsg}`);
+
+        // 更新对话源状态为失败
+        await this.conversationSourceRepository.updateStatus(
+          sourceId,
+          ConversationSourceStatus.FAILED,
+        );
+      }
+    }
+
+    // 更新批次统计
+    await this.batchService.updateBatchStats(batchId);
+
+    // 更新批次状态
+    const finalStatus =
+      failedCount === sourceIds.length ? BatchStatus.CANCELLED : BatchStatus.REVIEWING;
+    await this.batchService.updateBatchStatus(batchId, finalStatus);
+
+    this.logger.log(`对话验证批次 ${batchId} 执行完成: 成功 ${successCount}, 失败 ${failedCount}`);
+  }
+
+  /**
+   * 回写对话验证结果到飞书
+   * 根据 sourceId 查询 feishuRecordId，然后回写相似度分数
+   */
+  private async writeBackConversationResult(
+    sourceId: string,
+    avgSimilarityScore: number | null,
+  ): Promise<void> {
+    try {
+      // 获取对话源记录以获取飞书记录ID
+      const source = await this.conversationSourceRepository.findById(sourceId);
+      if (!source?.feishu_record_id) {
+        this.logger.warn(`对话源 ${sourceId} 缺少飞书记录ID，跳过回写`);
+        return;
+      }
+
+      // 回写相似度分数到飞书
+      const result = await this.feishuSyncService.writeBackSimilarityScore(
+        source.feishu_record_id,
+        avgSimilarityScore,
+      );
+
+      if (result.success) {
+        this.logger.debug(`对话 ${sourceId} 回写飞书成功，相似度=${avgSimilarityScore}`);
+      } else {
+        this.logger.warn(`对话 ${sourceId} 回写飞书失败: ${result.error}`);
+      }
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`对话 ${sourceId} 回写飞书异常: ${errorMsg}`);
+      // 不抛出异常，避免影响主流程
+    }
   }
 }

@@ -118,6 +118,27 @@ export class TestExecutionRepository extends BaseRepository {
   // ==================== 基础 CRUD ====================
 
   /**
+   * 清理 agentRequest 中的大字段，减少存储空间
+   * 移除: context, systemPrompt, toolContext (这些字段占用大量空间但查询时不需要)
+   * 保留: model, messages, allowedTools, stream 等有用信息
+   */
+  private sanitizeAgentRequest(agentRequest: unknown): unknown {
+    if (!agentRequest || typeof agentRequest !== 'object') {
+      return agentRequest;
+    }
+
+    const request = agentRequest as Record<string, unknown>;
+    const sanitized = { ...request };
+
+    // 移除大字段
+    delete sanitized.context;
+    delete sanitized.systemPrompt;
+    delete sanitized.toolContext;
+
+    return sanitized;
+  }
+
+  /**
    * 创建执行记录
    */
   async create(data: CreateExecutionData): Promise<TestExecution> {
@@ -128,7 +149,7 @@ export class TestExecutionRepository extends BaseRepository {
       category: data.category || null,
       test_input: data.testInput,
       expected_output: data.expectedOutput || null,
-      agent_request: data.agentRequest,
+      agent_request: this.sanitizeAgentRequest(data.agentRequest),
       agent_response: data.agentResponse,
       actual_output: data.actualOutput,
       tool_calls: data.toolCalls,
@@ -315,7 +336,7 @@ export class TestExecutionRepository extends BaseRepository {
         case_id: `eq.${caseId}`,
       },
       {
-        agent_request: data.agentRequest || null,
+        agent_request: this.sanitizeAgentRequest(data.agentRequest) || null,
         agent_response: data.agentResponse || null,
         actual_output: data.actualOutput || '',
         tool_calls: data.toolCalls || [],
@@ -410,7 +431,12 @@ export class TestExecutionRepository extends BaseRepository {
       review_comment: string | null;
     }>,
   ): Promise<TestExecution> {
-    const results = await this.update<TestExecution>({ id: `eq.${id}` }, data);
+    // 如果包含 agent_request，清理大字段
+    const sanitizedData =
+      data.agent_request !== undefined
+        ? { ...data, agent_request: this.sanitizeAgentRequest(data.agent_request) }
+        : data;
+    const results = await this.update<TestExecution>({ id: `eq.${id}` }, sanitizedData);
     return results[0];
   }
 }

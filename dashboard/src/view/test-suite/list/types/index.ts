@@ -1,3 +1,9 @@
+// 从 agent-test 服务导入并重新导出共享类型
+export type {
+  ConversationTurnExecution,
+  TurnListResponse,
+} from '@/services/agent-test';
+
 /**
  * 测试类型
  */
@@ -14,6 +20,29 @@ export type ConversationSourceStatus = 'pending' | 'running' | 'completed' | 'fa
 export type SimilarityRating = 'excellent' | 'good' | 'fair' | 'poor';
 
 /**
+ * 工具调用记录
+ * 通用工具调用接口，支持多种命名约定
+ */
+export interface ToolCall {
+  name?: string;
+  toolName?: string;
+  tool?: string;
+  input?: unknown;
+  output?: unknown;
+  arguments?: unknown;
+  result?: unknown;
+}
+
+/**
+ * Token 使用量
+ */
+export interface TokenUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+}
+
+/**
  * 对话源记录
  */
 export interface ConversationSource {
@@ -28,43 +57,6 @@ export interface ConversationSource {
   status: ConversationSourceStatus;
   createdAt: string;
   updatedAt: string;
-}
-
-/**
- * 对话轮次执行记录
- */
-export interface ConversationTurnExecution {
-  id: string;
-  conversationSourceId: string;
-  turnNumber: number;
-  inputMessage: string;
-  expectedOutput: string | null;
-  actualOutput: string | null;
-  similarityScore: number | null;
-  executionStatus: string;
-  toolCalls: unknown[] | null;
-  durationMs: number | null;
-  tokenUsage: {
-    inputTokens?: number;
-    outputTokens?: number;
-    totalTokens?: number;
-  } | null;
-  reviewStatus: string;
-  reviewComment: string | null;
-  createdAt: Date;
-}
-
-/**
- * 对话轮次列表响应
- */
-export interface TurnListResponse {
-  turns: ConversationTurnExecution[];
-  conversationInfo: {
-    id: string;
-    participantName: string | null;
-    totalTurns: number;
-    avgSimilarityScore: number | null;
-  };
 }
 
 /**

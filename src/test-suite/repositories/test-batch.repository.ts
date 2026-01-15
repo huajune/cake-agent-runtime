@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase/repositories/base.repository';
 import { SupabaseService } from '@core/supabase';
-import { BatchStatus, BatchSource } from '../enums';
+import { BatchStatus, BatchSource, TestType } from '../enums';
 
 /**
  * 测试批次（数据库格式）
@@ -21,6 +21,7 @@ export interface TestBatch {
   avg_duration_ms: number | null;
   avg_token_usage: number | null;
   status: BatchStatus;
+  test_type: TestType;
   created_by: string | null;
   created_at: string;
   completed_at: string | null;
@@ -34,6 +35,7 @@ export interface CreateBatchData {
   source?: BatchSource;
   feishuAppToken?: string;
   feishuTableId?: string;
+  testType?: TestType;
 }
 
 /**
@@ -98,22 +100,39 @@ export class TestBatchRepository extends BaseRepository {
       feishu_app_token: data.feishuAppToken || null,
       feishu_table_id: data.feishuTableId || null,
       status: BatchStatus.CREATED,
+      test_type: data.testType || TestType.SCENARIO,
     });
 
-    this.logger.log(`创建测试批次: ${batch.id} - ${batch.name}`);
+    this.logger.log(`创建测试批次: ${batch.id} - ${batch.name}, testType: ${batch.test_type}`);
     return batch;
   }
 
   /**
    * 获取批次列表（带总数）
+   *
+   * @param limit 每页数量
+   * @param offset 偏移量
+   * @param testType 测试类型过滤：scenario-场景测试，conversation-对话验证
    */
-  async findMany(limit = 20, offset = 0): Promise<{ data: TestBatch[]; total: number }> {
+  async findMany(
+    limit = 20,
+    offset = 0,
+    testType?: TestType,
+  ): Promise<{ data: TestBatch[]; total: number }> {
+    // 构建查询参数
+    const params: Record<string, string | number> = {
+      order: 'created_at.desc',
+      limit,
+      offset,
+    };
+
+    // 根据测试类型过滤（使用 test_type 字段）
+    if (testType) {
+      params['test_type'] = `eq.${testType}`;
+    }
+
     const response = await this.getClient().get<TestBatch[]>(`/${this.tableName}`, {
-      params: {
-        order: 'created_at.desc',
-        limit,
-        offset,
-      },
+      params,
       headers: {
         Prefer: 'count=exact',
       },

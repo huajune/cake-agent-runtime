@@ -8,6 +8,7 @@ import {
   FeishuTestStatus,
   MessageRole,
   FeedbackType,
+  TestType,
 } from '../enums';
 
 /**
@@ -172,6 +173,15 @@ export class CreateBatchRequestDto {
   @IsOptional()
   @IsString()
   feishuTableId?: string;
+
+  @ApiPropertyOptional({
+    description: '测试类型：scenario-场景测试，conversation-对话验证',
+    enum: TestType,
+    default: TestType.SCENARIO,
+  })
+  @IsOptional()
+  @IsEnum(TestType)
+  testType?: TestType;
 }
 
 /**
@@ -281,6 +291,15 @@ export class ImportFromFeishuRequestDto {
   @IsOptional()
   @IsBoolean()
   parallel?: boolean;
+
+  @ApiPropertyOptional({
+    description: '测试类型：scenario-场景测试，conversation-对话验证',
+    enum: TestType,
+    default: TestType.SCENARIO,
+  })
+  @IsOptional()
+  @IsEnum(TestType)
+  testType?: TestType;
 }
 
 /**
@@ -356,6 +375,15 @@ export class QuickCreateBatchRequestDto {
   @IsOptional()
   @IsBoolean()
   parallel?: boolean;
+
+  @ApiPropertyOptional({
+    description: '测试类型：scenario-场景测试，conversation-对话验证',
+    enum: TestType,
+    default: TestType.SCENARIO,
+  })
+  @IsOptional()
+  @IsEnum(TestType)
+  testType?: TestType;
 }
 
 /**

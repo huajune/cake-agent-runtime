@@ -1,5 +1,6 @@
 import { CheckCircle2, XCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { ConversationTurnExecution } from '../../types';
+import { getScoreStyleClass, getScoreRatingWithRange, formatPercent } from '../../utils';
 import styles from './index.module.scss';
 
 interface TurnCompareViewProps {
@@ -45,28 +46,6 @@ export function TurnCompareView({
   const currentTurn = turns[currentTurnIndex];
   const hasPrev = currentTurnIndex > 0;
   const hasNext = currentTurnIndex < turns.length - 1;
-
-  /**
-   * 获取相似度分数样式类名
-   */
-  const getScoreClassName = (score: number | null) => {
-    if (!score) return '';
-    if (score >= 80) return styles.scoreExcellent;
-    if (score >= 60) return styles.scoreGood;
-    if (score >= 40) return styles.scoreFair;
-    return styles.scorePoor;
-  };
-
-  /**
-   * 获取相似度评级
-   */
-  const getRating = (score: number | null) => {
-    if (!score) return '--';
-    if (score >= 80) return '优秀 (80-100)';
-    if (score >= 60) return '良好 (60-79)';
-    if (score >= 40) return '一般 (40-59)';
-    return '较差 (0-39)';
-  };
 
   return (
     <div className={styles.container}>
@@ -143,15 +122,15 @@ export function TurnCompareView({
             <div className={styles.scoreDisplay}>
               <span className={styles.scoreLabel}>相似度分数</span>
               <span
-                className={`${styles.scoreValue} ${getScoreClassName(currentTurn.similarityScore)}`}
+                className={`${styles.scoreValue} ${styles[getScoreStyleClass(currentTurn.similarityScore)]}`}
               >
-                {currentTurn.similarityScore !== null ? `${currentTurn.similarityScore}%` : '--'}
+                {formatPercent(currentTurn.similarityScore)}
               </span>
             </div>
             <div className={styles.scoreRating}>
               <span className={styles.ratingLabel}>评级</span>
               <span className={styles.ratingValue}>
-                {getRating(currentTurn.similarityScore)}
+                {getScoreRatingWithRange(currentTurn.similarityScore)}
               </span>
             </div>
           </div>

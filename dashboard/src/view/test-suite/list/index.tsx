@@ -8,7 +8,7 @@ import { ReviewModal } from './components/ReviewModal';
 import { SkeletonLoader } from './components/SkeletonLoader';
 import { TabSwitch } from './components/TabSwitch';
 import { ConversationList } from './components/ConversationList';
-import { TurnCompareView } from './components/TurnCompareView';
+import { ConversationDetailModal } from './components/ConversationDetailModal';
 import type { TestType } from './types';
 import styles from './styles/index.module.scss';
 
@@ -20,7 +20,7 @@ export default function TestSuite() {
   // Tab 状态
   const [activeTab, setActiveTab] = useState<TestType>('scenario');
 
-  // 批次数据管理
+  // 批次数据管理 - 传入 testType 进行过滤
   const {
     batches,
     selectedBatch,
@@ -38,7 +38,7 @@ export default function TestSuite() {
     loadMoreBatches,
     refreshBatchStats,
     handleQuickCreate,
-  } = useBatches();
+  } = useBatches({ testType: activeTab });
 
   // 场景测试评审功能
   const {
@@ -79,7 +79,6 @@ export default function TestSuite() {
   // 轮次对比功能
   const {
     turns,
-    conversationInfo,
     currentTurnIndex,
     loading: turnsLoading,
     setCurrentTurnIndex,
@@ -128,9 +127,8 @@ export default function TestSuite() {
         <TabSwitch
           activeTab={activeTab}
           onTabChange={setActiveTab}
-          scenarioCount={batches.filter((b) => !b.feishu_table_id?.includes('conversation')).length}
-          conversationCount={batches.filter((b) => b.feishu_table_id?.includes('conversation'))
-            .length}
+          scenarioCount={activeTab === 'scenario' ? total : undefined}
+          conversationCount={activeTab === 'conversation' ? total : undefined}
         />
       </div>
 
@@ -178,39 +176,16 @@ export default function TestSuite() {
                 </>
               )}
 
-              {/* 对话验证视图 */}
+              {/* 对话验证视图 - 与场景测试统一为列表+弹窗模式 */}
               {activeTab === 'conversation' && (
-                <div className={styles.conversationView}>
-                  {/* 左侧：对话列表 */}
-                  <div className={styles.conversationListPanel}>
-                    <ConversationList
-                      conversations={conversations}
-                      selectedConversation={selectedConversation}
-                      loading={conversationsLoading}
-                      executing={executing}
-                      onSelect={setSelectedConversation}
-                      onExecute={executeConversationTest}
-                    />
-                  </div>
-
-                  {/* 右侧：轮次对比 */}
-                  <div className={styles.turnComparePanel}>
-                    {selectedConversation ? (
-                      <TurnCompareView
-                        turns={turns}
-                        conversationInfo={conversationInfo}
-                        currentTurnIndex={currentTurnIndex}
-                        loading={turnsLoading}
-                        onTurnChange={setCurrentTurnIndex}
-                      />
-                    ) : (
-                      <div className={styles.noSelection}>
-                        <Sparkles size={48} strokeWidth={1} />
-                        <p>选择左侧对话查看轮次详情</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <ConversationList
+                  conversations={conversations}
+                  selectedConversation={null}
+                  loading={conversationsLoading}
+                  executing={executing}
+                  onSelect={setSelectedConversation}
+                  onExecute={executeConversationTest}
+                />
               )}
             </>
           ) : (
@@ -238,6 +213,18 @@ export default function TestSuite() {
           onPass={() => handleReview('passed')}
           onFail={(reason) => handleReview('failed', reason)}
           onShowFailureOptions={setShowFailureOptions}
+        />
+      )}
+
+      {/* 对话详情弹窗（仅对话验证） */}
+      {selectedConversation && (
+        <ConversationDetailModal
+          conversation={selectedConversation}
+          turns={turns}
+          currentTurnIndex={currentTurnIndex}
+          loading={turnsLoading}
+          onClose={() => setSelectedConversation(null)}
+          onTurnChange={setCurrentTurnIndex}
         />
       )}
     </div>

@@ -1,5 +1,6 @@
-import { Play, CheckCircle2, XCircle, Clock, User } from 'lucide-react';
+import { MessageSquare, ChevronRight, Check, X, Clock, Loader2, Play } from 'lucide-react';
 import type { ConversationSource } from '../../types';
+import { getScoreStyleClass } from '../../utils';
 import styles from './index.module.scss';
 
 interface ConversationListProps {
@@ -11,9 +12,20 @@ interface ConversationListProps {
   executing?: string | null;
 }
 
+// 执行状态图标配置
+const getStatusConfig = (status: string) => {
+  const config: Record<string, { icon: typeof Check; className: string; title: string }> = {
+    completed: { icon: Check, className: 'statusCompleted', title: '执行完成' },
+    failed: { icon: X, className: 'statusFailed', title: '执行失败' },
+    running: { icon: Loader2, className: 'statusRunning', title: '执行中' },
+    pending: { icon: Clock, className: 'statusPending', title: '待执行' },
+  };
+  return config[status] || config.pending;
+};
+
 /**
  * 对话验证列表组件
- * 显示所有对话源记录，支持选择和执行
+ * 与 CaseList 保持一致的视觉风格
  */
 export function ConversationList({
   conversations,
@@ -23,138 +35,112 @@ export function ConversationList({
   onExecute,
   executing,
 }: ConversationListProps) {
-  /**
-   * 获取状态图标
-   */
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle2 size={16} className={styles.statusCompleted} />;
-      case 'failed':
-        return <XCircle size={16} className={styles.statusFailed} />;
-      case 'running':
-        return <Clock size={16} className={styles.statusRunning} />;
-      default:
-        return <Clock size={16} className={styles.statusPending} />;
-    }
-  };
-
-  /**
-   * 获取相似度分数样式类名
-   */
-  const getScoreClassName = (score: number | null) => {
-    if (!score) return '';
-    if (score >= 80) return styles.scoreExcellent;
-    if (score >= 60) return styles.scoreGood;
-    if (score >= 40) return styles.scoreFair;
-    return styles.scorePoor;
-  };
-
-  /**
-   * 获取相似度评级文本
-   */
-  const getRatingText = (score: number | null) => {
-    if (!score) return '--';
-    if (score >= 80) return '优秀';
-    if (score >= 60) return '良好';
-    if (score >= 40) return '一般';
-    return '较差';
-  };
-
   if (loading && conversations.length === 0) {
     return (
-      <div className={styles.container}>
-        <div className={styles.loading}>加载中...</div>
-      </div>
+      <>
+        <div className={styles.listHeader}>
+          <h4>
+            <MessageSquare size={16} /> 对话验证
+          </h4>
+          <span className={styles.itemCount}>加载中...</span>
+        </div>
+        <div className={styles.list}>
+          <div className={styles.loading}>加载中...</div>
+        </div>
+      </>
     );
   }
 
   if (conversations.length === 0) {
     return (
-      <div className={styles.container}>
-        <div className={styles.empty}>
-          <p>暂无对话验证记录</p>
-          <span className={styles.emptyHint}>请先从飞书同步对话测试数据</span>
+      <>
+        <div className={styles.listHeader}>
+          <h4>
+            <MessageSquare size={16} /> 对话验证
+          </h4>
+          <span className={styles.itemCount}>共 0 条</span>
         </div>
-      </div>
+        <div className={styles.list}>
+          <div className={styles.empty}>
+            <p>暂无对话验证记录</p>
+            <span>请先从飞书同步对话测试数据</span>
+          </div>
+        </div>
+      </>
     );
   }
 
   return (
-    <div className={styles.container}>
-      <div className={styles.list}>
-        {conversations.map((conversation) => (
-          <div
-            key={conversation.id}
-            className={`${styles.card} ${
-              selectedConversation?.id === conversation.id ? styles.selected : ''
-            }`}
-            onClick={() => onSelect(conversation)}
-          >
-            {/* 头部：参与者信息 */}
-            <div className={styles.cardHeader}>
-              <div className={styles.participant}>
-                <User size={16} className={styles.userIcon} />
-                <span className={styles.name}>
-                  {conversation.participantName || '未知参与者'}
-                </span>
-              </div>
-              <div className={styles.status}>{getStatusIcon(conversation.status)}</div>
-            </div>
-
-            {/* 主体：统计信息 */}
-            <div className={styles.cardBody}>
-              <div className={styles.stat}>
-                <span className={styles.statLabel}>总轮数</span>
-                <span className={styles.statValue}>{conversation.totalTurns}</span>
-              </div>
-              <div className={styles.stat}>
-                <span className={styles.statLabel}>平均相似度</span>
-                <span
-                  className={`${styles.statValue} ${getScoreClassName(conversation.avgSimilarityScore)}`}
-                >
-                  {conversation.avgSimilarityScore !== null
-                    ? `${conversation.avgSimilarityScore}%`
-                    : '--'}
-                </span>
-              </div>
-              <div className={styles.stat}>
-                <span className={styles.statLabel}>评级</span>
-                <span className={styles.statValue}>
-                  {getRatingText(conversation.avgSimilarityScore)}
-                </span>
-              </div>
-            </div>
-
-            {/* 底部：操作按钮 */}
-            <div className={styles.cardFooter}>
-              <span className={styles.conversationId}>
-                #{conversation.conversationId.slice(-8)}
-              </span>
-              <button
-                className={styles.executeBtn}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onExecute(conversation.id);
-                }}
-                disabled={executing === conversation.id || conversation.status === 'running'}
-              >
-                {executing === conversation.id ? (
-                  <>
-                    <Clock size={14} className={styles.spinning} />
-                    执行中...
-                  </>
-                ) : (
-                  <>
-                    <Play size={14} />
-                    执行测试
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        ))}
+    <>
+      <div className={styles.listHeader}>
+        <h4>
+          <MessageSquare size={16} /> 对话验证
+        </h4>
+        <span className={styles.itemCount}>共 {conversations.length} 条</span>
       </div>
-    </div>
+
+      <div className={styles.list}>
+        {conversations.map((conversation, index) => {
+          const statusConfig = getStatusConfig(conversation.status);
+          const StatusIcon = statusConfig.icon;
+          const isSelected = selectedConversation?.id === conversation.id;
+          const isExecuting = executing === conversation.id;
+
+          return (
+            <div
+              key={conversation.id}
+              className={`${styles.item} ${isSelected ? styles.selected : ''}`}
+              onClick={() => onSelect(conversation)}
+            >
+              <div className={styles.itemIndex}>{index + 1}</div>
+              <div className={styles.itemContent}>
+                <div className={styles.itemNameRow}>
+                  <span className={styles.itemName}>
+                    {conversation.participantName || '未知参与者'}
+                  </span>
+                </div>
+                <div className={styles.itemMeta}>
+                  共 {conversation.totalTurns} 轮对话
+                </div>
+              </div>
+              <div className={styles.itemStatus}>
+                <div className={styles.statusGroup} title={`相似度: ${conversation.avgSimilarityScore ?? '--'}%`}>
+                  <span className={styles.statusLabel}>相似度</span>
+                  <span className={`${styles.scoreTag} ${styles[getScoreStyleClass(conversation.avgSimilarityScore)]}`}>
+                    {conversation.avgSimilarityScore !== null
+                      ? `${conversation.avgSimilarityScore}%`
+                      : '--'}
+                  </span>
+                </div>
+                <div className={styles.statusGroup} title={statusConfig.title}>
+                  <span className={styles.statusLabel}>状态</span>
+                  <span className={`${styles.statusIcon} ${styles[statusConfig.className]}`}>
+                    <StatusIcon size={12} />
+                  </span>
+                </div>
+                <button
+                  className={styles.executeBtn}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onExecute(conversation.id);
+                  }}
+                  disabled={isExecuting || conversation.status === 'running'}
+                  title="执行测试"
+                >
+                  {isExecuting ? (
+                    <Loader2 size={12} className={styles.spinning} />
+                  ) : (
+                    <Play size={12} />
+                  )}
+                </button>
+                <ChevronRight size={14} className={styles.chevron} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
+
+export default ConversationList;

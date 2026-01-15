@@ -8,7 +8,7 @@ import {
 } from '../repositories';
 import { TestStatsService } from './test-stats.service';
 import { FeishuTestSyncService } from './feishu-test-sync.service';
-import { BatchStatus, ExecutionStatus, ReviewStatus, FeishuTestStatus } from '../enums';
+import { BatchStatus, ExecutionStatus, ReviewStatus, FeishuTestStatus, TestType } from '../enums';
 
 /**
  * 批次管理服务
@@ -41,14 +41,23 @@ export class TestBatchService {
       source: request.source,
       feishuAppToken: request.feishuAppToken,
       feishuTableId: request.feishuTableId,
+      testType: request.testType,
     });
   }
 
   /**
    * 获取测试批次列表（带分页）
+   *
+   * @param limit 每页数量
+   * @param offset 偏移量
+   * @param testType 测试类型过滤：scenario-场景测试，conversation-对话验证
    */
-  async getBatches(limit = 20, offset = 0): Promise<{ data: TestBatch[]; total: number }> {
-    return this.batchRepository.findMany(limit, offset);
+  async getBatches(
+    limit = 20,
+    offset = 0,
+    testType?: TestType,
+  ): Promise<{ data: TestBatch[]; total: number }> {
+    return this.batchRepository.findMany(limit, offset, testType);
   }
 
   /**
