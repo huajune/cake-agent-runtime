@@ -1005,6 +1005,6 @@ cancelled  cancelled  cancelled
 ## 相关文档
 
 - [对话验证工作流程](./conversation-test-workflow.md)
-- [测试套件架构设计](./test-suite-architecture.md)
+- [测试套件架构设计](../architecture/test-suite-architecture.md)
 - [飞书 API 集成指南](../integrations/feishu-integration.md)
 - [Bull Queue 使用文档](../technical/bull-queue-guide.md)
