@@ -356,7 +356,8 @@
       "Bash(pnpm approve-builds:*)",
       "Bash(pnpm rebuild:*)",
       "mcp__supabase__list_migrations",
-      "mcp__supabase__apply_migration"
+      "mcp__supabase__apply_migration",
+      "Bash(pnpm list:*)"
     ],
     "deny": [
       "Bash(git restore:*)",

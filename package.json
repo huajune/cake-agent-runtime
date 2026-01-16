@@ -18,9 +18,10 @@
     "start:prod": "node dist/src/main",
     "dashboard:dev": "cd dashboard && pnpm run dev",
     "dashboard:install": "cd dashboard && pnpm install",
+    "install:all": "pnpm install --ignore-scripts && pnpm run dashboard:install",
     "test": "jest",
     "test:cov": "jest --coverage",
-    "postinstall": "cd dashboard && pnpm install || true"
+    "test:evaluation": "pnpm run build && node dist/scripts/test-evaluation-cases.js"
   },
   "dependencies": {
     "@nestjs/bull": "^11.0.4",
