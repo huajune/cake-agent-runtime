@@ -767,5 +767,3 @@ const CRITERIA = {
 
 - [场景测试工作流程](./scenario-test-workflow.md)
 - [测试套件架构设计](../architecture/test-suite-architecture.md)
-- [飞书 API 集成指南](../integrations/feishu-integration.md)
-- [Agent API 使用文档](../agent/agent-api-guide.md)
