@@ -137,6 +137,14 @@
   height: 100%;
 }
 
+// ==================== 紧凑指标条容器 ====================
+.compactMetricsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
 // ==================== 紧凑指标条 ====================
 .compactMetrics {
   display: flex;
@@ -148,6 +156,33 @@
   border-radius: 16px;
   box-shadow: 0 4px 12px $accent-06;
   flex-shrink: 0;
+}
+
+// LLM 评估理由（紧凑版，在指标条下方）
+.evaluationReasonCompact {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 18px;
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.04) 0%, rgba(252, 211, 77, 0.06) 100%);
+  border: 1px solid rgba(251, 191, 36, 0.15);
+  border-left: 3px solid rgba(251, 191, 36, 0.5);
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.evaluationLabel {
+  font-weight: 600;
+  color: #92400e;
+  flex-shrink: 0;
+}
+
+.evaluationText {
+  color: #1e293b;
+  flex: 1;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .metricItem {
@@ -443,8 +478,8 @@
   line-height: 1.8;
   white-space: pre-wrap;
   word-break: break-word;
-  flex: 1;
   min-height: 80px;
+  max-height: 180px;
   overflow-y: auto;
 
   &::-webkit-scrollbar {

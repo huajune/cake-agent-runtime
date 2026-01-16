@@ -290,9 +290,13 @@ export class AgentRegistryService implements OnModuleInit, OnModuleDestroy {
    * @returns 可用的工具列表
    */
   validateTools(requestedTools?: string[]): string[] {
-    // 如果没有提供工具，使用配置的工具列表
-    if (!requestedTools || requestedTools.length === 0) {
+    // 如果没有提供工具参数（undefined），使用配置的工具列表
+    // 如果明确传递空数组 []，则返回空数组（禁用所有工具）
+    if (requestedTools === undefined) {
       return [...this.configuredTools];
+    }
+    if (requestedTools.length === 0) {
+      return [];
     }
 
     // 如果工具列表未初始化，返回请求的工具（不做验证）

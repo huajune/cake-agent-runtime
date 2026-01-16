@@ -7,7 +7,7 @@ import {
   type AgentResult,
 } from '@agent';
 import { MessageRole } from '@shared/enums';
-import { SemanticSimilarityService } from './semantic-similarity.service';
+import { LlmEvaluationService } from './llm-evaluation.service';
 import {
   ConversationSourceRepository,
   TestExecutionRepository,
@@ -57,7 +57,7 @@ export class ConversationTestService {
   constructor(
     private readonly configService: ConfigService,
     private readonly agentFacade: AgentFacadeService,
-    private readonly similarityService: SemanticSimilarityService,
+    private readonly llmEvaluationService: LlmEvaluationService,
     private readonly conversationSourceRepository: ConversationSourceRepository,
     private readonly executionRepository: TestExecutionRepository,
   ) {
@@ -223,9 +223,10 @@ export class ConversationTestService {
 
       const minScore = validScores.length > 0 ? Math.min(...validScores) : null;
 
-      // 更新对话源状态
+      // 更新对话源状态和统计数据
       await this.conversationSourceRepository.updateSource(sourceId, {
         status: ConversationSourceStatus.COMPLETED,
+        total_turns: turns.length,
         avg_similarity_score: avgScore,
         min_similarity_score: minScore,
       });
@@ -282,7 +283,7 @@ export class ConversationTestService {
         turnNumber: turn.turnNumber,
         similarityScore: existingExecution.similarity_score ?? null,
         rating: existingExecution.similarity_score
-          ? this.similarityService.getRating(existingExecution.similarity_score)
+          ? this.llmEvaluationService.getRating(existingExecution.similarity_score)
           : null,
         executionStatus: existingExecution.execution_status,
       };
@@ -334,17 +335,25 @@ export class ConversationTestService {
       totalTokens: 0,
     };
 
-    // 计算相似度
+    // 使用 LLM 评估（替代语义相似度）
     let similarityScore: number | null = null;
     let rating: SimilarityRating | null = null;
+    let evaluationReason: string | null = null;
 
     if (executionStatus === ExecutionStatus.SUCCESS && turn.expectedOutput && actualOutput) {
-      const similarity = this.similarityService.calculateSimilarity(
-        turn.expectedOutput,
+      const evaluation = await this.llmEvaluationService.evaluate({
+        userMessage: turn.userMessage,
+        expectedOutput: turn.expectedOutput,
         actualOutput,
+        history: turn.history,
+      });
+      similarityScore = evaluation.score;
+      rating = this.llmEvaluationService.getRating(evaluation.score);
+      evaluationReason = evaluation.reason;
+
+      this.logger.debug(
+        `LLM 评估完成: 轮次 ${turn.turnNumber}, 分数: ${evaluation.score}, 通过: ${evaluation.passed}`,
       );
-      similarityScore = similarity.score;
-      rating = similarity.rating;
     }
 
     // 确定评审状态
@@ -366,6 +375,7 @@ export class ConversationTestService {
         error_message: errorMessage,
         similarity_score: similarityScore,
         review_status: reviewStatus,
+        evaluation_reason: evaluationReason,
       });
     } else {
       await this.executionRepository.create({
@@ -389,6 +399,7 @@ export class ConversationTestService {
         errorMessage,
         similarityScore,
         reviewStatus,
+        evaluationReason,
       });
     }
 
@@ -425,6 +436,7 @@ export class ConversationTestService {
         expectedOutput: exec.expected_output || turn?.expectedOutput || null,
         actualOutput: exec.actual_output,
         similarityScore: exec.similarity_score ?? null,
+        evaluationReason: exec.evaluation_reason ?? null,
         executionStatus: exec.execution_status,
         toolCalls: exec.tool_calls as unknown[] | null,
         durationMs: exec.duration_ms,
@@ -497,28 +509,57 @@ export class ConversationTestService {
 
   /**
    * 提取工具调用
+   * 使用两遍扫描配对 tool_call/tool_use 和 tool_result
    */
   private extractToolCalls(result: AgentResult): unknown[] {
     try {
       const response = result.data || result.fallback;
       if (!response?.messages?.length) return [];
 
-      const toolCalls: unknown[] = [];
+      // 第一遍: 收集所有 tool_call/tool_use
+      const toolCallMap = new Map<string, { toolName: string; input: unknown; output?: unknown }>();
+
       for (const msg of response.messages) {
-        if (msg.parts) {
-          for (const part of msg.parts) {
-            const partAny = part as unknown as Record<string, unknown>;
-            if (partAny.type === 'tool_call' || partAny.toolName) {
-              toolCalls.push({
-                toolName: partAny.toolName,
-                input: partAny.input,
-                output: partAny.output,
-              });
+        if (!msg.parts) continue;
+
+        for (const part of msg.parts) {
+          const partAny = part as unknown as Record<string, unknown>;
+
+          // 提取 tool_call/tool_use
+          if (partAny.type === 'tool_call' || partAny.type === 'tool_use') {
+            const toolCallId = (partAny.toolCallId || partAny.id) as string;
+            const toolName = (partAny.toolName || partAny.name) as string;
+            const input = partAny.input || partAny.args;
+
+            if (toolCallId && toolName) {
+              toolCallMap.set(toolCallId, { toolName, input });
             }
           }
         }
       }
-      return toolCalls;
+
+      // 第二遍: 匹配 tool_result
+      for (const msg of response.messages) {
+        if (!msg.parts) continue;
+
+        for (const part of msg.parts) {
+          const partAny = part as unknown as Record<string, unknown>;
+
+          // 提取 tool_result
+          if (partAny.type === 'tool_result') {
+            const toolCallId = partAny.toolCallId as string;
+            const output = partAny.result || partAny.output;
+
+            if (toolCallId && toolCallMap.has(toolCallId)) {
+              const toolCall = toolCallMap.get(toolCallId)!;
+              toolCall.output = output;
+            }
+          }
+        }
+      }
+
+      // 转换为数组格式
+      return Array.from(toolCallMap.values());
     } catch {
       return [];
     }

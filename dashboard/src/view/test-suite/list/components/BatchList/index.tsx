@@ -128,9 +128,9 @@ export function BatchList({
                       </span>
                     )}
                     <span className={styles.sep}>·</span>
-                    {/* 对话验证显示平均相似度，场景测试显示通过率 */}
+                    {/* 对话验证显示平均评分，场景测试显示通过率 */}
                     <span>
-                      {isConversation ? '相似度' : '通过'}{' '}
+                      {isConversation ? '评分' : '通过'}{' '}
                       {batch.pass_rate !== null ? `${batch.pass_rate.toFixed(0)}%` : '-'}
                     </span>
                   </div>

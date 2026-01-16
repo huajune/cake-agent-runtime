@@ -18,7 +18,7 @@ interface TurnCompareViewProps {
 
 /**
  * 对话轮次对比视图
- * 展示单个轮次的输入、期望输出、实际输出和相似度对比
+ * 展示单个轮次的输入、期望输出、实际输出和 LLM 评估对比
  */
 export function TurnCompareView({
   turns,
@@ -54,7 +54,7 @@ export function TurnCompareView({
         <div className={styles.conversationInfo}>
           <h3>{conversationInfo.participantName || '未知参与者'}</h3>
           <span className={styles.avgScore}>
-            平均相似度: {conversationInfo.avgSimilarityScore?.toFixed(1) || '--'}%
+            平均评分: {conversationInfo.avgSimilarityScore?.toFixed(1) || '--'}%
           </span>
         </div>
         <div className={styles.navigation}>
@@ -113,14 +113,14 @@ export function TurnCompareView({
           </div>
         </div>
 
-        {/* 相似度分析 */}
+        {/* LLM 评估分析 */}
         <div className={styles.section}>
           <div className={styles.sectionHeader}>
-            <h4>相似度分析</h4>
+            <h4>LLM 评估分析</h4>
           </div>
           <div className={styles.scorePanel}>
             <div className={styles.scoreDisplay}>
-              <span className={styles.scoreLabel}>相似度分数</span>
+              <span className={styles.scoreLabel}>评估分数</span>
               <span
                 className={`${styles.scoreValue} ${styles[getScoreStyleClass(currentTurn.similarityScore)]}`}
               >
@@ -134,6 +134,13 @@ export function TurnCompareView({
               </span>
             </div>
           </div>
+          {/* LLM 评估理由 */}
+          {currentTurn.evaluationReason && (
+            <div className={styles.evaluationReason}>
+              <span className={styles.reasonLabel}>评估理由</span>
+              <p className={styles.reasonText}>{currentTurn.evaluationReason}</p>
+            </div>
+          )}
         </div>
 
         {/* 元数据 */}

@@ -40,6 +40,7 @@ export interface CreateConversationSourceData {
  */
 export interface UpdateConversationSourceData {
   status?: ConversationSourceStatus;
+  total_turns?: number;
   avg_similarity_score?: number | null;
   min_similarity_score?: number | null;
 }

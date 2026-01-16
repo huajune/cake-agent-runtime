@@ -62,7 +62,7 @@ export function ConversationDetailModal({
               <h3>{conversation.participantName || '未知参与者'}</h3>
             </div>
             <div className={styles.headerMeta}>
-              总轮数: {conversation.totalTurns} · 平均相似度:{' '}
+              总轮数: {conversation.totalTurns} · 平均评分:{' '}
               {conversation.avgSimilarityScore !== null
                 ? `${conversation.avgSimilarityScore}%`
                 : '--'}
@@ -89,6 +89,7 @@ export function ConversationDetailModal({
                 similarityScore={currentTurn.similarityScore}
                 status={currentTurn.executionStatus}
                 durationMs={currentTurn.durationMs}
+                evaluationReason={currentTurn.evaluationReason}
               />
 
               {/* 主内容区：左右分栏 */}
@@ -139,7 +140,27 @@ export function ConversationDetailModal({
 
                 {/* 右侧：回复对比区域 */}
                 <div className={styles.replyPanel}>
-                  {/* 工具调用（如果有） */}
+                  {/* 期望回复 */}
+                  <div className={styles.replySection}>
+                    <div className={styles.sectionLabel}>
+                      <MessageCircle size={14} /> 真人回复（期望）
+                    </div>
+                    <div className={styles.expectedReply}>
+                      {currentTurn.expectedOutput || '(无期望回复)'}
+                    </div>
+                  </div>
+
+                  {/* 实际回复 */}
+                  <div className={styles.replySection}>
+                    <div className={styles.sectionLabel}>
+                      <Bot size={14} /> Agent 回复（实际）
+                    </div>
+                    <div className={styles.actualReply}>
+                      {currentTurn.actualOutput?.replace(/\n\n+/g, ' ') || '(无实际回复)'}
+                    </div>
+                  </div>
+
+                  {/* 工具调用（如果有） - 移到 Agent 回复下面 */}
                   {toolCalls.length > 0 && (
                     <div className={styles.toolCallsSection}>
                       <div
@@ -162,26 +183,6 @@ export function ConversationDetailModal({
                       )}
                     </div>
                   )}
-
-                  {/* 期望回复 */}
-                  <div className={styles.replySection}>
-                    <div className={styles.sectionLabel}>
-                      <MessageCircle size={14} /> 真人回复（期望）
-                    </div>
-                    <div className={styles.expectedReply}>
-                      {currentTurn.expectedOutput || '(无期望回复)'}
-                    </div>
-                  </div>
-
-                  {/* 实际回复 */}
-                  <div className={styles.replySection}>
-                    <div className={styles.sectionLabel}>
-                      <Bot size={14} /> Agent 回复（实际）
-                    </div>
-                    <div className={styles.actualReply}>
-                      {currentTurn.actualOutput || '(无实际回复)'}
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>

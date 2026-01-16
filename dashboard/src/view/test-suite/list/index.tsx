@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, Rocket, Sparkles, Play } from 'lucide-react';
 import { useBatches, useReview, useConversations, useTurns } from './hooks';
 import { BatchList } from './components/BatchList';
@@ -73,8 +73,18 @@ export default function TestSuite() {
     executing,
     setSelectedConversation,
     loadConversations,
-    executeConversationTest,
+    executeConversationTest: originalExecuteConversationTest,
   } = useConversations();
+
+  // 包装执行函数,完成后刷新批次列表
+  const executeConversationTest = useCallback(
+    async (conversationId: string, forceRerun?: boolean) => {
+      await originalExecuteConversationTest(conversationId, forceRerun);
+      // 刷新批次列表以更新统计信息
+      await loadBatches();
+    },
+    [originalExecuteConversationTest, loadBatches],
+  );
 
   // 轮次对比功能
   const {
@@ -153,7 +163,7 @@ export default function TestSuite() {
           ) : selectedBatch ? (
             <>
               {/* 统计卡片 */}
-              {batchStats && <StatsRow stats={batchStats} />}
+              {batchStats && <StatsRow stats={batchStats} testType={activeTab} />}
 
               {/* 场景测试视图 */}
               {activeTab === 'scenario' && (

@@ -47,7 +47,7 @@ import {
   AgentTestFeedback,
 } from '@core/feishu/services/feishu-bitable.service';
 import { SSEStreamHandler, VercelAIStreamHandler } from './utils/sse-stream-handler';
-import { ConversationTestService } from './services';
+import { ConversationTestService, TestBatchService } from './services';
 import { ConversationSourceRepository, TestExecutionRepository } from './repositories';
 
 @ApiTags('测试套件')
@@ -62,6 +62,7 @@ export class TestSuiteController {
     private readonly conversationTestService: ConversationTestService,
     private readonly conversationSourceRepository: ConversationSourceRepository,
     private readonly executionRepository: TestExecutionRepository,
+    private readonly testBatchService: TestBatchService,
   ) {}
 
   // ==================== 单条测试 ====================
@@ -1027,6 +1028,13 @@ export class TestSuiteController {
         request.forceRerun,
       );
 
+      // 执行完成后,更新批次统计
+      const source = await this.conversationSourceRepository.findById(sourceId);
+      if (source?.batch_id) {
+        await this.testBatchService.updateBatchStats(source.batch_id);
+        this.logger.log(`[ConversationExecute] 已更新批次统计: batchId=${source.batch_id}`);
+      }
+
       return {
         success: true,
         data: result,
@@ -1087,6 +1095,10 @@ export class TestSuiteController {
           failedCount++;
         }
       }
+
+      // 批量执行完成后,更新批次统计
+      await this.testBatchService.updateBatchStats(batchId);
+      this.logger.log(`[ConversationBatchExecute] 已更新批次统计: batchId=${batchId}`);
 
       return {
         success: true,

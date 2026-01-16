@@ -3,18 +3,18 @@
  */
 
 /**
- * 相似度分数样式类名
+ * LLM 评估分数样式类名
  */
 export type ScoreStyleClass = 'scoreExcellent' | 'scoreGood' | 'scoreFair' | 'scorePoor' | 'scoreDefault';
 
 /**
- * 相似度评级文本
+ * LLM 评估评级文本
  */
 export type ScoreRating = '优秀' | '良好' | '一般' | '较差' | '--';
 
 /**
- * 获取相似度分数样式类名
- * @param score 相似度分数 (0-100)
+ * 获取评分样式类名
+ * @param score 评估分数 (0-100)
  * @returns 样式类名
  */
 export function getScoreStyleClass(score: number | null): ScoreStyleClass {
@@ -26,8 +26,8 @@ export function getScoreStyleClass(score: number | null): ScoreStyleClass {
 }
 
 /**
- * 获取相似度评级文本
- * @param score 相似度分数 (0-100)
+ * 获取评分评级文本
+ * @param score 评估分数 (0-100)
  * @returns 评级文本
  */
 export function getScoreRating(score: number | null): ScoreRating {
@@ -39,8 +39,8 @@ export function getScoreRating(score: number | null): ScoreRating {
 }
 
 /**
- * 获取相似度评级带范围文本
- * @param score 相似度分数 (0-100)
+ * 获取评分评级带范围文本
+ * @param score 评估分数 (0-100)
  * @returns 评级文本（含范围）
  */
 export function getScoreRatingWithRange(score: number | null): string {

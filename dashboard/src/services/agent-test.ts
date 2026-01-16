@@ -593,6 +593,8 @@ export interface ConversationTurnExecution {
   expectedOutput: string | null;
   actualOutput: string | null;
   similarityScore: number | null;
+  /** LLM 评估理由 */
+  evaluationReason: string | null;
   executionStatus: string;
   toolCalls: unknown[] | null;
   durationMs: number | null;

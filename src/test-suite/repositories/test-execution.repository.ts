@@ -34,6 +34,8 @@ export interface TestExecution {
   turn_number: number | null;
   similarity_score: number | null;
   input_message: string | null;
+  /** LLM 评估理由 */
+  evaluation_reason: string | null;
 }
 
 /**
@@ -60,6 +62,8 @@ export interface CreateExecutionData {
   similarityScore?: number | null;
   inputMessage?: string;
   reviewStatus?: ReviewStatus;
+  /** LLM 评估理由 */
+  evaluationReason?: string | null;
 }
 
 /**
@@ -162,6 +166,7 @@ export class TestExecutionRepository extends BaseRepository {
       similarity_score: data.similarityScore || null,
       input_message: data.inputMessage || null,
       review_status: data.reviewStatus || ReviewStatus.PENDING,
+      evaluation_reason: data.evaluationReason || null,
     });
   }
 
@@ -429,6 +434,7 @@ export class TestExecutionRepository extends BaseRepository {
       similarity_score: number | null;
       review_status: ReviewStatus;
       review_comment: string | null;
+      evaluation_reason: string | null;
     }>,
   ): Promise<TestExecution> {
     // 如果包含 agent_request，清理大字段

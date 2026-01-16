@@ -119,25 +119,46 @@ export class ReplyNormalizer {
   }
 
   private static cleanWhitespace(text: string): string {
-    let cleaned = text.replace(/\n{3,}/g, '\n\n');
-    cleaned = cleaned
-      .split('\n')
-      .map((l) => l.trim())
-      .join('\n');
-    return cleaned.trim();
+    // 1. 首先将 3 个及以上的连续换行符统一为双换行（段落分隔）
+    const cleaned = text.replace(/\n{3,}/g, '\n\n');
+
+    // 2. 按双换行符分割段落
+    const paragraphs = cleaned.split(/\n\n/);
+
+    // 3. 对每个段落：移除内部的单换行符，合并为一行
+    const processedParagraphs = paragraphs
+      .map((paragraph) => {
+        // 移除段落内部的所有换行符，将多行文本合并为一行
+        return paragraph.replace(/\n/g, '').trim();
+      })
+      .filter((p) => p.length > 0); // 过滤空段落
+
+    // 4. 用空字符串连接段落（不保留段落间的换行）
+    return processedParagraphs.join('');
   }
 
   static needsNormalization(text: string): boolean {
     if (!text) return false;
     // 检测时间标记（需要清理）
     if (this.TIME_MARKER_PATTERN.test(text)) return true;
+    // 检测列表符号
     if (/^\s*[-*•]\s+/m.test(text)) return true;
     if (/^\s*\d+[\.\)]\s+/m.test(text)) return true;
+
+    // 检测是否包含单换行符（需要合并的段落内换行）
+    // 如果文本中只包含单换行而没有双换行，说明是段落内断行
+    const hasSingleNewline = /[^\n]\n[^\n]/.test(text);
+    if (hasSingleNewline) {
+      return true;
+    }
+
+    // 检测短行（可能是格式化导致的断行）
     const lines = text.split('\n').filter((l) => l.trim());
     if (lines.length > 2) {
       const avgLength = lines.reduce((sum, l) => sum + l.length, 0) / lines.length;
       if (avgLength < 30) return true;
     }
+
     return false;
   }
 }

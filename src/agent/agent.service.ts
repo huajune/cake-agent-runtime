@@ -368,7 +368,8 @@ export class AgentService {
     // 只添加有值的可选字段
     if (params.systemPrompt) chatRequest.systemPrompt = params.systemPrompt;
     if (params.promptType) chatRequest.promptType = params.promptType as any;
-    if (params.allowedTools && params.allowedTools.length > 0) {
+    // 注意：空数组 [] 表示禁用所有工具，也需要传递
+    if (params.allowedTools !== undefined) {
       chatRequest.allowedTools = params.allowedTools;
     }
     // 初始化 context（确保 modelConfig 总是被注入）

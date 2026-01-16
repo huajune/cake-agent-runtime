@@ -24,13 +24,18 @@ export type SimilarityRating = 'excellent' | 'good' | 'fair' | 'poor';
  * 通用工具调用接口，支持多种命名约定
  */
 export interface ToolCall {
+  // 工具名称字段（支持多种命名）
   name?: string;
   toolName?: string;
   tool?: string;
-  input?: unknown;
-  output?: unknown;
-  arguments?: unknown;
-  result?: unknown;
+
+  // 输入参数字段（支持多种命名）
+  input?: unknown; // 后端对话测试返回的字段
+  arguments?: unknown; // 场景测试返回的字段
+
+  // 输出结果字段（支持多种命名）
+  output?: unknown; // 后端对话测试返回的字段
+  result?: unknown; // 场景测试返回的字段
 }
 
 /**

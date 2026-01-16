@@ -17,7 +17,11 @@ export const ToolCallItem = memo(function ToolCallItem({
 }: ToolCallItemProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const toolName = tool.name || tool.tool || tool.toolName || '未知工具';
-  const hasContent = tool.arguments !== undefined || tool.result !== undefined;
+
+  // 兼容不同的字段命名: arguments/input, result/output
+  const inputData = tool.arguments ?? tool.input;
+  const outputData = tool.result ?? tool.output;
+  const hasContent = inputData !== undefined || outputData !== undefined;
 
   return (
     <div className={styles.toolCallItem}>
@@ -37,27 +41,23 @@ export const ToolCallItem = memo(function ToolCallItem({
       </div>
       {isExpanded && (
         <div className={styles.toolBody}>
-          {tool.arguments !== undefined && (
+          {inputData !== undefined && (
             <div className={styles.toolSection}>
-              <div className={styles.toolSectionLabel}>参数</div>
+              <div className={styles.toolSectionLabel}>入参</div>
               <pre className={styles.toolDetail}>
-                {typeof tool.arguments === 'string'
-                  ? tool.arguments
-                  : JSON.stringify(tool.arguments, null, 2)}
+                {typeof inputData === 'string' ? inputData : JSON.stringify(inputData, null, 2)}
               </pre>
             </div>
           )}
-          {tool.result !== undefined && (
+          {outputData !== undefined && (
             <div className={styles.toolSection}>
-              <div className={styles.toolSectionLabel}>结果</div>
+              <div className={styles.toolSectionLabel}>出参</div>
               <pre className={styles.toolDetail}>
-                {typeof tool.result === 'string'
-                  ? tool.result.substring(0, 500)
-                  : JSON.stringify(tool.result, null, 2).substring(0, 500)}
-                {(typeof tool.result === 'string'
-                  ? tool.result
-                  : JSON.stringify(tool.result)
-                ).length > 500 && '...'}
+                {typeof outputData === 'string'
+                  ? outputData.substring(0, 500)
+                  : JSON.stringify(outputData, null, 2).substring(0, 500)}
+                {(typeof outputData === 'string' ? outputData : JSON.stringify(outputData)).length >
+                  500 && '...'}
               </pre>
             </div>
           )}

@@ -23,5 +23,6 @@ export { TestStatsService } from './test-stats.service';
 // 对话验证测试服务
 export { ConversationTestService } from './conversation-test.service';
 
-// 语义相似度服务
-export { SemanticSimilarityService } from './semantic-similarity.service';
+// LLM 评估服务
+export { LlmEvaluationService } from './llm-evaluation.service';
+export type { LlmEvaluationResult, EvaluationInput } from './llm-evaluation.service';

@@ -68,27 +68,31 @@ export default function Layout() {
 
         <FestivalPendant content="0" delay="0.3s" ropeHeight={10} fontSize={64} />
 
-        {/* 小金币串D - 在0和2之间 */}
+        <FestivalPendant content="2" delay="0.6s" ropeHeight={16} fontSize={64} />
+
+        {/* 金币串 */}
         <div style={{
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          animation: 'swing 2.4s ease-in-out infinite',
+          animation: 'swing 2.2s ease-in-out infinite',
           transformOrigin: 'top center'
         }}>
-          <div style={{ width: '2px', height: '8px', background: '#fbbf24' }} />
-          <svg width="16" height="48" viewBox="0 0 18 65" fill="none">
-            {[0, 1, 2, 3].map((i) => (
+          <div style={{ width: '2px', height: '6px', background: '#fbbf24' }} />
+          <svg width="16" height="72" viewBox="0 0 18 95" fill="none">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
               <g key={i}>
                 <circle cx="9" cy={8 + i * 15} r="5" fill="#FCD34D" stroke="#D97706" strokeWidth="1" />
                 <rect x="6.5" y={5.5 + i * 15} width="5" height="5" fill="#D97706" rx="1" />
-                {i < 3 && <path d={`M9 ${13 + i * 15} L9 ${15 + i * 15}`} stroke="#D97706" strokeWidth="1" />}
+                {i < 5 && <path d={`M9 ${13 + i * 15} L9 ${15 + i * 15}`} stroke="#D97706" strokeWidth="1" />}
               </g>
             ))}
           </svg>
         </div>
 
-        {/* 交错鞭炮串1 - 仿真实鞭炮 */}
+        <FestivalPendant content="6" delay="0.9s" ropeHeight={12} fontSize={64} />
+
+        {/* 交错鞭炮串 - 仿真实鞭炮 */}
         <div style={{
           display: 'flex',
           flexDirection: 'column',
@@ -139,30 +143,6 @@ export default function Layout() {
           </svg>
         </div>
 
-        <FestivalPendant content="2" delay="0.6s" ropeHeight={16} fontSize={64} />
-
-        {/* 金币串 */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          animation: 'swing 2.2s ease-in-out infinite',
-          transformOrigin: 'top center'
-        }}>
-          <div style={{ width: '2px', height: '6px', background: '#fbbf24' }} />
-          <svg width="16" height="72" viewBox="0 0 18 95" fill="none">
-            {[0, 1, 2, 3, 4, 5].map((i) => (
-              <g key={i}>
-                <circle cx="9" cy={8 + i * 15} r="5" fill="#FCD34D" stroke="#D97706" strokeWidth="1" />
-                <rect x="6.5" y={5.5 + i * 15} width="5" height="5" fill="#D97706" rx="1" />
-                {i < 5 && <path d={`M9 ${13 + i * 15} L9 ${15 + i * 15}`} stroke="#D97706" strokeWidth="1" />}
-              </g>
-            ))}
-          </svg>
-        </div>
-
-        <FestivalPendant content="6" delay="0.9s" ropeHeight={12} fontSize={64} />
-
         {/* 小福袋B */}
         <div style={{
           display: 'flex',
@@ -195,6 +175,8 @@ export default function Layout() {
           </svg>
         </div>
 
+        <FestivalPendant content="马" delay="1.2s" ropeHeight={8} fontSize={48} />
+
         {/* 金币串2 */}
         <div style={{
           display: 'flex',
@@ -214,8 +196,6 @@ export default function Layout() {
             ))}
           </svg>
         </div>
-
-        <FestivalPendant content="马" delay="1.2s" ropeHeight={8} fontSize={48} />
 
         {/* 中国结 */}
         <div style={{
@@ -259,6 +239,8 @@ export default function Layout() {
 
         <FestivalPendant content="年" delay="1.5s" ropeHeight={18} fontSize={48} />
 
+        <FestivalPendant content="大" delay="1.8s" ropeHeight={11} fontSize={48} />
+
         {/* 小福袋2 */}
         <div style={{
           display: 'flex',
@@ -291,92 +273,7 @@ export default function Layout() {
           </svg>
         </div>
 
-        <FestivalPendant content="大" delay="1.8s" ropeHeight={11} fontSize={48} />
-
-        {/* 交错鞭炮串2 */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          animation: 'swing 2.1s ease-in-out infinite',
-          transformOrigin: 'top center'
-        }}>
-          <div style={{ width: '2px', height: '6px', background: '#fbbf24' }} />
-          <svg width="38" height="88" viewBox="0 0 50 115" fill="none">
-            <defs>
-              <linearGradient id="fcOrange3" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0" stopColor="#EA580C" />
-                <stop offset="0.3" stopColor="#F97316" />
-                <stop offset="0.5" stopColor="#FDBA74" />
-                <stop offset="0.7" stopColor="#F97316" />
-                <stop offset="1" stopColor="#C2410C" />
-              </linearGradient>
-              <linearGradient id="fcCap3" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0" stopColor="#DC2626" />
-                <stop offset="0.5" stopColor="#EF4444" />
-                <stop offset="1" stopColor="#B91C1C" />
-              </linearGradient>
-            </defs>
-            <path d="M25 5 Q28 22 22 40 Q28 58 22 76 Q28 94 25 100" stroke="#92400E" strokeWidth="1.5" fill="none" />
-            {[0, 1, 2, 3, 4, 5, 6].map((i) => {
-              const isLeft = i % 2 === 0;
-              const cx = isLeft ? 15 : 35;
-              const cy = 10 + i * 13;
-              return (
-                <g key={i} transform={`rotate(${isLeft ? -15 : 15} ${cx} ${cy})`}>
-                  <ellipse cx={cx} cy={cy - 4} rx="5.5" ry="2.2" fill="url(#fcCap3)" />
-                  <rect x={cx - 5.5} y={cy - 4} width="11" height="12" fill="url(#fcOrange3)" />
-                  <ellipse cx={cx} cy={cy + 8} rx="5.5" ry="2.2" fill="#DC2626" />
-                  <path d={`M${cx} ${cy - 6} Q${cx + (isLeft ? 3 : -3)} ${cy - 9} ${cx + (isLeft ? 5 : -5)} ${cy - 11}`} stroke="#78350F" strokeWidth="0.8" fill="none" />
-                </g>
-              );
-            })}
-            <circle cx="25" cy="105" r="3.5" fill="#FBBF24">
-              <animate attributeName="r" values="3.5;6;3.5" dur="0.25s" repeatCount="indefinite" />
-              <animate attributeName="opacity" values="1;0.5;1" dur="0.25s" repeatCount="indefinite" />
-            </circle>
-            <circle cx="18" cy="108" r="2" fill="#FCD34D">
-              <animate attributeName="opacity" values="0.7;0.2;0.7" dur="0.3s" repeatCount="indefinite" />
-            </circle>
-            <circle cx="32" cy="107" r="2" fill="#FEF3C7">
-              <animate attributeName="opacity" values="0.5;1;0.5" dur="0.35s" repeatCount="indefinite" />
-            </circle>
-          </svg>
-        </div>
-
         <FestivalPendant content="吉" delay="2.1s" ropeHeight={13} fontSize={48} />
-
-        {/* 小福袋C */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          animation: 'swing 2.3s ease-in-out infinite',
-          transformOrigin: 'top center'
-        }}>
-          <div style={{ width: '2px', height: '11px', background: '#fbbf24' }} />
-          <svg width="24" height="32" viewBox="0 0 60 70" fill="none">
-            <defs>
-              <linearGradient id="bagRedC" x1="30" y1="0" x2="30" y2="70" gradientUnits="userSpaceOnUse">
-                <stop offset="0" stopColor="#EF4444" />
-                <stop offset="0.6" stopColor="#DC2626" />
-                <stop offset="1" stopColor="#991B1B" />
-              </linearGradient>
-              <linearGradient id="bagGoldC" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stopColor="#FCD34D" />
-                <stop offset="1" stopColor="#D97706" />
-              </linearGradient>
-            </defs>
-            <path d="M12 28 C 4 38, 2 58, 14 65 Q 30 73 46 65 C 58 58, 56 38, 48 28 Q 30 22 12 28 Z" fill="url(#bagRedC)" stroke="#B91C1C" strokeWidth="1" />
-            <g transform="translate(0, -2)">
-              <path d="M20 16 Q 30 24 40 16 L 44 12 Q 30 18 16 12 Z" fill="url(#bagGoldC)" stroke="#B45309" strokeWidth="1" />
-            </g>
-            <path d="M18 24 L 14 12 C 12 8, 20 4, 30 8 C 40 4, 48 8, 46 12 L 42 24 Z" fill="#EF4444" stroke="#B91C1C" strokeWidth="1" />
-            <path d="M14 26 Q 30 30 46 26" stroke="#FCD34D" strokeWidth="4" strokeLinecap="round" />
-            <circle cx="30" cy="27" r="5" fill="url(#bagGoldC)" stroke="#B45309" strokeWidth="0.5" />
-            <text x="30" y="52" fontSize="18" fill="#FCD34D" textAnchor="middle" fontWeight="bold">福</text>
-          </svg>
-        </div>
 
         {/* 右侧春灯笼 */}
         <div style={{

@@ -104,8 +104,8 @@ export function ConversationList({
                 </div>
               </div>
               <div className={styles.itemStatus}>
-                <div className={styles.statusGroup} title={`相似度: ${conversation.avgSimilarityScore ?? '--'}%`}>
-                  <span className={styles.statusLabel}>相似度</span>
+                <div className={styles.statusGroup} title={`评分: ${conversation.avgSimilarityScore ?? '--'}%`}>
+                  <span className={styles.statusLabel}>评分</span>
                   <span className={`${styles.scoreTag} ${styles[getScoreStyleClass(conversation.avgSimilarityScore)]}`}>
                     {conversation.avgSimilarityScore !== null
                       ? `${conversation.avgSimilarityScore}%`

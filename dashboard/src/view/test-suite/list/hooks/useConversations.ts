@@ -75,13 +75,14 @@ export function useConversations(): UseConversationsResult {
           forceRerun,
         });
 
-        // 更新对话状态为 completed 并更新相似度分数
+        // 更新对话状态为 completed 并更新相似度分数和轮次数
         setConversations((prev) =>
           prev.map((conv) =>
             conv.id === conversationId
               ? {
                   ...conv,
                   status: 'completed' as const,
+                  totalTurns: result.totalTurns,
                   avgSimilarityScore: result.avgSimilarityScore,
                   minSimilarityScore: result.minSimilarityScore,
                 }
@@ -96,6 +97,7 @@ export function useConversations(): UseConversationsResult {
               ? {
                   ...prev,
                   status: 'completed' as const,
+                  totalTurns: result.totalTurns,
                   avgSimilarityScore: result.avgSimilarityScore,
                   minSimilarityScore: result.minSimilarityScore,
                 }

@@ -13,7 +13,7 @@ import {
   FeishuTestSyncService,
   TestStatsService,
   ConversationTestService,
-  SemanticSimilarityService,
+  LlmEvaluationService,
 } from './services';
 import {
   TestBatchRepository,
@@ -77,7 +77,7 @@ import { FeishuModule } from '@core/feishu';
     // 基础服务（无依赖其他子服务）
     TestStatsService,
     FeishuTestSyncService,
-    SemanticSimilarityService,
+    LlmEvaluationService,
 
     // 子服务（有依赖关系）
     TestExecutionService,
@@ -107,7 +107,7 @@ import { FeishuModule } from '@core/feishu';
     FeishuTestSyncService,
     TestStatsService,
     ConversationTestService,
-    SemanticSimilarityService,
+    LlmEvaluationService,
     TestBatchRepository,
     TestExecutionRepository,
     ConversationSourceRepository,
