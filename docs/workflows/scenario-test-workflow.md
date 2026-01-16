@@ -1006,3 +1006,4 @@ cancelled  cancelled  cancelled
 
 - [对话验证工作流程](./conversation-test-workflow.md)
 - [测试套件架构设计](../architecture/test-suite-architecture.md)
+- [Bull Queue 使用指南](../technical/bull-queue-guide.md)

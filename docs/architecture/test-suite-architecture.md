@@ -736,4 +736,5 @@ async evaluateConversation(turns: Turn[]) {
 
 - [场景测试工作流程](../workflows/scenario-test-workflow.md)
 - [对话验证工作流程](../workflows/conversation-test-workflow.md)
+- [Bull Queue 使用指南](../technical/bull-queue-guide.md)
 - [NestJS 最佳实践](../../.claude/agents/code-standards.md)
