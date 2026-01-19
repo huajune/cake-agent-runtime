@@ -566,6 +566,18 @@ export async function batchWriteBackToFeishu(
 export type ConversationSourceStatus = 'pending' | 'running' | 'completed' | 'failed';
 
 /**
+ * 解析后的对话消息（真人对话历史）
+ */
+export interface ParsedMessage {
+  /** 角色: user(候选人) | assistant(招募经理) */
+  role: 'user' | 'assistant';
+  /** 消息内容 */
+  content: string;
+  /** 发送时间（原始格式，如 "12/04 17:20"） */
+  timestamp?: string;
+}
+
+/**
  * 对话源记录
  */
 export interface ConversationSource {
@@ -590,6 +602,8 @@ export interface ConversationTurnExecution {
   conversationSourceId: string;
   turnNumber: number;
   inputMessage: string;
+  /** 真人对话历史（候选人 + 招募经理的对话，作为 Agent 的上下文） */
+  history: ParsedMessage[];
   expectedOutput: string | null;
   actualOutput: string | null;
   similarityScore: number | null;

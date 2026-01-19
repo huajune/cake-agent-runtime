@@ -6,13 +6,12 @@ import {
   ChevronDown,
   User,
   Bot,
-  History,
   Wrench,
-  MessageCircle,
+  Headphones,
+  MessageSquare,
 } from 'lucide-react';
-import type { ConversationSource, ConversationTurnExecution, ToolCall } from '../../types';
+import type { ConversationSource, ConversationTurnExecution, ToolCall, ParsedMessage } from '../../types';
 import { CompactMetrics } from './CompactMetrics';
-import { HistoryMessage } from './HistoryMessage';
 import { ToolCallItem } from './ToolCallItem';
 import { LoadingSkeleton } from './LoadingSkeleton';
 import styles from './index.module.scss';
@@ -24,6 +23,21 @@ interface ConversationDetailModalProps {
   loading: boolean;
   onClose: () => void;
   onTurnChange: (index: number) => void;
+}
+
+/**
+ * 真人对话历史消息组件
+ */
+function RealHistoryMessage({ message }: { message: ParsedMessage }) {
+  const isUser = message.role === 'user';
+  return (
+    <div className={styles.historyMessage}>
+      <div className={isUser ? styles.historyUser : styles.historyAssistant}>
+        {isUser ? <User size={12} /> : <Headphones size={12} />}
+        <span>{message.content}</span>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -45,8 +59,8 @@ export function ConversationDetailModal({
   const hasPrev = currentTurnIndex > 0;
   const hasNext = currentTurnIndex < turns.length - 1;
 
-  // 获取历史轮次（当前轮次之前的所有轮次）
-  const historyTurns = turns.slice(0, currentTurnIndex);
+  // 获取当前轮次的真人对话历史（候选人 + 招募经理）
+  const realHistory = currentTurn?.history || [];
 
   // 获取工具调用（将 unknown[] 转换为 ToolCall[]）
   const toolCalls = (currentTurn?.toolCalls || []) as ToolCall[];
@@ -106,16 +120,16 @@ export function ConversationDetailModal({
                     </div>
                   </div>
 
-                  {/* 聊天历史 */}
-                  {historyTurns.length > 0 && (
+                  {/* 真人对话历史（候选人 + 招募经理） */}
+                  {realHistory.length > 0 && (
                     <div className={styles.historySection}>
                       <div
                         className={styles.sectionLabel}
                         onClick={() => setShowHistory(!showHistory)}
                         style={{ cursor: 'pointer' }}
                       >
-                        <History size={14} />
-                        历史上下文 ({historyTurns.length})
+                        <MessageSquare size={14} />
+                        历史上下文 ({realHistory.length})
                         <span className={styles.toggleIcon}>
                           <ChevronDown
                             size={14}
@@ -125,12 +139,8 @@ export function ConversationDetailModal({
                       </div>
                       {showHistory && (
                         <div className={styles.chatHistory}>
-                          {historyTurns.map((turn, idx) => (
-                            <HistoryMessage
-                              key={turn.id}
-                              turn={turn}
-                              onClick={() => onTurnChange(idx)}
-                            />
+                          {realHistory.map((msg, idx) => (
+                            <RealHistoryMessage key={idx} message={msg} />
                           ))}
                         </div>
                       )}
@@ -143,7 +153,7 @@ export function ConversationDetailModal({
                   {/* 期望回复 */}
                   <div className={styles.replySection}>
                     <div className={styles.sectionLabel}>
-                      <MessageCircle size={14} /> 真人回复（期望）
+                      <Headphones size={14} /> 真人回复（期望）
                     </div>
                     <div className={styles.expectedReply}>
                       {currentTurn.expectedOutput || '(无期望回复)'}

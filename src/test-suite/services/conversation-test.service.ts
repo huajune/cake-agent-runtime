@@ -422,7 +422,7 @@ export class ConversationTestService {
 
     const executions = await this.executionRepository.findByConversationSourceId(sourceId);
 
-    // 解析对话以获取期望输出
+    // 解析对话以获取期望输出和真人历史
     const turns = this.splitIntoTurns(source.full_conversation as ParsedMessage[]);
     const turnMap = new Map(turns.map((t) => [t.turnNumber, t]));
 
@@ -433,6 +433,8 @@ export class ConversationTestService {
         conversationSourceId: sourceId,
         turnNumber: exec.turn_number ?? 0,
         inputMessage: exec.input_message || turn?.userMessage || '',
+        // 返回真人对话历史（候选人 + 招募经理）
+        history: turn?.history || [],
         expectedOutput: exec.expected_output || turn?.expectedOutput || null,
         actualOutput: exec.actual_output,
         similarityScore: exec.similarity_score ?? null,

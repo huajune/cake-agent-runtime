@@ -17,16 +17,19 @@
 ### 功能定位
 
 对话验证是测试套件的核心功能之一,用于:
-- 从飞书多维表格导入真实客户对话记录
+- 从飞书多维表格 **validationSet 表** 导入真实客户对话记录
 - 将历史对话重放给 AI Agent,验证回复质量
 - 使用 LLM 自动评估 Agent 回复与真人回复的相似度
 - 提供可视化界面查看测试结果和评估详情
+- 将评估结果（相似度分数）回写到飞书
+
+> **注意**: 对话验证数据存储在独立的 `validationSet` 飞书表中,与场景测试的 `testSuite` 表分离。
 
 ### 核心概念
 
 | 概念 | 说明 | 示例 |
 |------|------|------|
-| **测试批次 (Batch)** | 一次导入的完整测试集 | "对话验证 2026/1/16" |
+| **测试批次 (Batch)** | 一次导入的完整测试/验证集 | "对话验证 2026/1/16" |
 | **对话源 (Source)** | 单个完整对话记录 | Paidax 的 3 轮对话 |
 | **测试轮次 (Turn)** | 对话中的单次交互 | 用户问 → Agent 答 |
 | **相似度评分 (Score)** | LLM 对回复质量的评分 | 0-100 分,60分及格 |
@@ -725,14 +728,43 @@ const CRITERIA = {
 
 ### 飞书表格格式
 
-**必填字段**:
-- `姓名`: 参与者姓名 (TEXT)
-- `对话记录`: 完整对话文本 (TEXT)
+> **重要**: 对话验证使用独立的 **validationSet 表**,与场景测试的 testSuite 表分离。
+
+**validationSet 表字段**:
+
+| 字段名 | 字段类型 | 必填 | 说明 |
+|--------|---------|------|------|
+| `候选人微信昵称` | 单行文本 | ❌ | 参与者姓名 |
+| `完整对话记录` | 多行文本 | ✅ | 完整对话文本 |
+| `相似度分数` | 数字 | ❌ | 回写字段,LLM 评估平均分 |
+| `最近测试时间` | 日期时间 | ❌ | 回写字段,最后一次测试时间 |
+| `测试批次` | 单行文本 | ❌ | 回写字段,测试批次标识 |
+| `测试状态` | 单选 | ❌ | 回写字段,执行状态 |
 
 **对话记录格式**:
 ```
 【杜力岱】消息内容  时间戳
 【🎯杜力岱招聘助手】回复内容  时间戳
+```
+
+**配置位置**: `src/core/feishu/constants/feishu-bitable.config.ts`
+
+```typescript
+// validationSet 表配置
+validationSet: {
+  appToken: 'WXQgb98iPauYsHsSYzMckqHcnbb',
+  tableId: 'tblfVcyKmPsFwUhy',
+}
+
+// validationSet 字段名配置
+export const validationSetFieldNames = {
+  participantName: '候选人微信昵称',
+  conversation: '完整对话记录',
+  similarityScore: '相似度分数',
+  lastTestTime: '最近测试时间',
+  testBatch: '测试批次',
+  testStatus: '测试状态',
+};
 ```
 
 ## 常见问题

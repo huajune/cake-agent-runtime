@@ -53,7 +53,7 @@ export const THEME_COLORS = {
  * 测试场景分类（与飞书表格一致）
  *
  * 用于：
- * - 测试集页面：标记用例所属场景
+ * - 测试/验证集页面：标记用例所属场景
  * - 飞书回写：同步到飞书多维表格的"分类"字段
  */
 export const TEST_SCENARIO_TYPES = [
@@ -79,7 +79,7 @@ export const TEST_SCENARIO_OPTIONS = [
  * Agent 错误原因分类（问题归因）
  *
  * 用于：
- * - 测试集页面：评审时标记失败原因
+ * - 测试/验证集页面：评审时标记失败原因
  * - 对话测试页面：反馈弹窗标记错误类型
  */
 export const AGENT_ERROR_TYPES = [

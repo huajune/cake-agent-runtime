@@ -64,11 +64,56 @@ export default function Layout() {
           </svg>
         </div>
 
-        <FestivalPendant content="2" delay="0s" ropeHeight={15} fontSize={64} />
-
-        <FestivalPendant content="0" delay="0.3s" ropeHeight={10} fontSize={64} />
-
-        <FestivalPendant content="2" delay="0.6s" ropeHeight={16} fontSize={64} />
+        {/* 左侧鞭炮串 */}
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          animation: 'swing 2s ease-in-out infinite',
+          transformOrigin: 'top center'
+        }}>
+          <div style={{ width: '2px', height: '8px', background: '#fbbf24' }} />
+          <svg width="38" height="85" viewBox="0 0 50 110" fill="none">
+            <defs>
+              <linearGradient id="fcOrangeL" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stopColor="#EA580C" />
+                <stop offset="0.3" stopColor="#F97316" />
+                <stop offset="0.5" stopColor="#FDBA74" />
+                <stop offset="0.7" stopColor="#F97316" />
+                <stop offset="1" stopColor="#C2410C" />
+              </linearGradient>
+              <linearGradient id="fcCapL" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stopColor="#DC2626" />
+                <stop offset="0.5" stopColor="#EF4444" />
+                <stop offset="1" stopColor="#B91C1C" />
+              </linearGradient>
+            </defs>
+            <path d="M25 5 Q28 20 22 35 Q28 50 22 65 Q28 80 25 95" stroke="#92400E" strokeWidth="1.5" fill="none" />
+            {[0, 1, 2, 3, 4, 5].map((i) => {
+              const isLeft = i % 2 === 0;
+              const cx = isLeft ? 15 : 35;
+              const cy = 12 + i * 15;
+              return (
+                <g key={i} transform={`rotate(${isLeft ? -15 : 15} ${cx} ${cy})`}>
+                  <ellipse cx={cx} cy={cy - 5} rx="6" ry="2.5" fill="url(#fcCapL)" />
+                  <rect x={cx - 6} y={cy - 5} width="12" height="14" fill="url(#fcOrangeL)" />
+                  <ellipse cx={cx} cy={cy + 9} rx="6" ry="2.5" fill="#DC2626" />
+                  <path d={`M${cx} ${cy - 7} Q${cx + (isLeft ? 3 : -3)} ${cy - 10} ${cx + (isLeft ? 5 : -5)} ${cy - 12}`} stroke="#78350F" strokeWidth="1" fill="none" />
+                </g>
+              );
+            })}
+            <circle cx="25" cy="100" r="3" fill="#FBBF24">
+              <animate attributeName="r" values="3;5;3" dur="0.3s" repeatCount="indefinite" />
+              <animate attributeName="opacity" values="1;0.6;1" dur="0.3s" repeatCount="indefinite" />
+            </circle>
+            <circle cx="20" cy="103" r="2" fill="#FCD34D">
+              <animate attributeName="opacity" values="0.8;0.3;0.8" dur="0.25s" repeatCount="indefinite" />
+            </circle>
+            <circle cx="30" cy="102" r="2" fill="#FEF3C7">
+              <animate attributeName="opacity" values="0.6;1;0.6" dur="0.35s" repeatCount="indefinite" />
+            </circle>
+          </svg>
+        </div>
 
         {/* 金币串 */}
         <div style={{
@@ -90,58 +135,11 @@ export default function Layout() {
           </svg>
         </div>
 
-        <FestivalPendant content="6" delay="0.9s" ropeHeight={12} fontSize={64} />
-
-        {/* 交错鞭炮串 - 仿真实鞭炮 */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          animation: 'swing 2s ease-in-out infinite',
-          transformOrigin: 'top center'
-        }}>
-          <div style={{ width: '2px', height: '8px', background: '#fbbf24' }} />
-          <svg width="38" height="85" viewBox="0 0 50 110" fill="none">
-            <defs>
-              <linearGradient id="fcOrange1" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0" stopColor="#EA580C" />
-                <stop offset="0.3" stopColor="#F97316" />
-                <stop offset="0.5" stopColor="#FDBA74" />
-                <stop offset="0.7" stopColor="#F97316" />
-                <stop offset="1" stopColor="#C2410C" />
-              </linearGradient>
-              <linearGradient id="fcCap1" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0" stopColor="#DC2626" />
-                <stop offset="0.5" stopColor="#EF4444" />
-                <stop offset="1" stopColor="#B91C1C" />
-              </linearGradient>
-            </defs>
-            <path d="M25 5 Q28 20 22 35 Q28 50 22 65 Q28 80 25 95" stroke="#92400E" strokeWidth="1.5" fill="none" />
-            {[0, 1, 2, 3, 4, 5].map((i) => {
-              const isLeft = i % 2 === 0;
-              const cx = isLeft ? 15 : 35;
-              const cy = 12 + i * 15;
-              return (
-                <g key={i} transform={`rotate(${isLeft ? -15 : 15} ${cx} ${cy})`}>
-                  <ellipse cx={cx} cy={cy - 5} rx="6" ry="2.5" fill="url(#fcCap1)" />
-                  <rect x={cx - 6} y={cy - 5} width="12" height="14" fill="url(#fcOrange1)" />
-                  <ellipse cx={cx} cy={cy + 9} rx="6" ry="2.5" fill="#DC2626" />
-                  <path d={`M${cx} ${cy - 7} Q${cx + (isLeft ? 3 : -3)} ${cy - 10} ${cx + (isLeft ? 5 : -5)} ${cy - 12}`} stroke="#78350F" strokeWidth="1" fill="none" />
-                </g>
-              );
-            })}
-            <circle cx="25" cy="100" r="3" fill="#FBBF24">
-              <animate attributeName="r" values="3;5;3" dur="0.3s" repeatCount="indefinite" />
-              <animate attributeName="opacity" values="1;0.6;1" dur="0.3s" repeatCount="indefinite" />
-            </circle>
-            <circle cx="20" cy="103" r="2" fill="#FCD34D">
-              <animate attributeName="opacity" values="0.8;0.3;0.8" dur="0.25s" repeatCount="indefinite" />
-            </circle>
-            <circle cx="30" cy="102" r="2" fill="#FEF3C7">
-              <animate attributeName="opacity" values="0.6;1;0.6" dur="0.35s" repeatCount="indefinite" />
-            </circle>
-          </svg>
-        </div>
+        {/* 2026 连在一起 */}
+        <FestivalPendant content="2" delay="0s" ropeHeight={15} fontSize={64} />
+        <FestivalPendant content="0" delay="0.2s" ropeHeight={10} fontSize={64} />
+        <FestivalPendant content="2" delay="0.4s" ropeHeight={16} fontSize={64} />
+        <FestivalPendant content="6" delay="0.6s" ropeHeight={12} fontSize={64} />
 
         {/* 小福袋B */}
         <div style={{
@@ -172,28 +170,6 @@ export default function Layout() {
             <path d="M14 26 Q 30 30 46 26" stroke="#FCD34D" strokeWidth="4" strokeLinecap="round" />
             <circle cx="30" cy="27" r="5" fill="url(#bagGoldB)" stroke="#B45309" strokeWidth="0.5" />
             <text x="30" y="52" fontSize="18" fill="#FCD34D" textAnchor="middle" fontWeight="bold">福</text>
-          </svg>
-        </div>
-
-        <FestivalPendant content="马" delay="1.2s" ropeHeight={8} fontSize={48} />
-
-        {/* 金币串2 */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          animation: 'swing 2.5s ease-in-out infinite',
-          transformOrigin: 'top center'
-        }}>
-          <div style={{ width: '2px', height: '7px', background: '#fbbf24' }} />
-          <svg width="16" height="60" viewBox="0 0 18 80" fill="none">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <g key={i}>
-                <circle cx="9" cy={8 + i * 15} r="5" fill="#FCD34D" stroke="#D97706" strokeWidth="1" />
-                <rect x="6.5" y={5.5 + i * 15} width="5" height="5" fill="#D97706" rx="1" />
-                {i < 4 && <path d={`M9 ${13 + i * 15} L9 ${15 + i * 15}`} stroke="#D97706" strokeWidth="1" />}
-              </g>
-            ))}
           </svg>
         </div>
 
@@ -237,9 +213,11 @@ export default function Layout() {
           </svg>
         </div>
 
-        <FestivalPendant content="年" delay="1.5s" ropeHeight={18} fontSize={48} />
-
-        <FestivalPendant content="大" delay="1.8s" ropeHeight={11} fontSize={48} />
+        {/* 马年大吉 连在一起 */}
+        <FestivalPendant content="马" delay="0.9s" ropeHeight={8} fontSize={48} />
+        <FestivalPendant content="年" delay="1.1s" ropeHeight={18} fontSize={48} />
+        <FestivalPendant content="大" delay="1.3s" ropeHeight={11} fontSize={48} />
+        <FestivalPendant content="吉" delay="1.5s" ropeHeight={13} fontSize={48} />
 
         {/* 小福袋2 */}
         <div style={{
@@ -273,7 +251,77 @@ export default function Layout() {
           </svg>
         </div>
 
-        <FestivalPendant content="吉" delay="2.1s" ropeHeight={13} fontSize={48} />
+        {/* 金币串2 */}
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          animation: 'swing 2.5s ease-in-out infinite',
+          transformOrigin: 'top center'
+        }}>
+          <div style={{ width: '2px', height: '7px', background: '#fbbf24' }} />
+          <svg width="16" height="60" viewBox="0 0 18 80" fill="none">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <g key={i}>
+                <circle cx="9" cy={8 + i * 15} r="5" fill="#FCD34D" stroke="#D97706" strokeWidth="1" />
+                <rect x="6.5" y={5.5 + i * 15} width="5" height="5" fill="#D97706" rx="1" />
+                {i < 4 && <path d={`M9 ${13 + i * 15} L9 ${15 + i * 15}`} stroke="#D97706" strokeWidth="1" />}
+              </g>
+            ))}
+          </svg>
+        </div>
+
+        {/* 右侧鞭炮串 */}
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          animation: 'swing 2s ease-in-out infinite',
+          animationDelay: '0.3s',
+          transformOrigin: 'top center'
+        }}>
+          <div style={{ width: '2px', height: '8px', background: '#fbbf24' }} />
+          <svg width="38" height="85" viewBox="0 0 50 110" fill="none">
+            <defs>
+              <linearGradient id="fcOrangeR" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stopColor="#EA580C" />
+                <stop offset="0.3" stopColor="#F97316" />
+                <stop offset="0.5" stopColor="#FDBA74" />
+                <stop offset="0.7" stopColor="#F97316" />
+                <stop offset="1" stopColor="#C2410C" />
+              </linearGradient>
+              <linearGradient id="fcCapR" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stopColor="#DC2626" />
+                <stop offset="0.5" stopColor="#EF4444" />
+                <stop offset="1" stopColor="#B91C1C" />
+              </linearGradient>
+            </defs>
+            <path d="M25 5 Q28 20 22 35 Q28 50 22 65 Q28 80 25 95" stroke="#92400E" strokeWidth="1.5" fill="none" />
+            {[0, 1, 2, 3, 4, 5].map((i) => {
+              const isLeft = i % 2 === 0;
+              const cx = isLeft ? 15 : 35;
+              const cy = 12 + i * 15;
+              return (
+                <g key={i} transform={`rotate(${isLeft ? -15 : 15} ${cx} ${cy})`}>
+                  <ellipse cx={cx} cy={cy - 5} rx="6" ry="2.5" fill="url(#fcCapR)" />
+                  <rect x={cx - 6} y={cy - 5} width="12" height="14" fill="url(#fcOrangeR)" />
+                  <ellipse cx={cx} cy={cy + 9} rx="6" ry="2.5" fill="#DC2626" />
+                  <path d={`M${cx} ${cy - 7} Q${cx + (isLeft ? 3 : -3)} ${cy - 10} ${cx + (isLeft ? 5 : -5)} ${cy - 12}`} stroke="#78350F" strokeWidth="1" fill="none" />
+                </g>
+              );
+            })}
+            <circle cx="25" cy="100" r="3" fill="#FBBF24">
+              <animate attributeName="r" values="3;5;3" dur="0.3s" repeatCount="indefinite" />
+              <animate attributeName="opacity" values="1;0.6;1" dur="0.3s" repeatCount="indefinite" />
+            </circle>
+            <circle cx="20" cy="103" r="2" fill="#FCD34D">
+              <animate attributeName="opacity" values="0.8;0.3;0.8" dur="0.25s" repeatCount="indefinite" />
+            </circle>
+            <circle cx="30" cy="102" r="2" fill="#FEF3C7">
+              <animate attributeName="opacity" values="0.6;1;0.6" dur="0.35s" repeatCount="indefinite" />
+            </circle>
+          </svg>
+        </div>
 
         {/* 右侧春灯笼 */}
         <div style={{

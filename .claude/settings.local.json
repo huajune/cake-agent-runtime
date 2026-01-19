@@ -357,7 +357,13 @@
       "Bash(pnpm rebuild:*)",
       "mcp__supabase__list_migrations",
       "mcp__supabase__apply_migration",
-      "Bash(pnpm list:*)"
+      "Bash(pnpm list:*)",
+      "Bash(pnpm exec ts-node:*)",
+      "mcp__feishu-mcp__get_feishu_document_info",
+      "Bash(pnpm tsx:*)",
+      "Bash(npx tsx:*)",
+      "Bash(PORT=8080 npx tsx:*)",
+      "Bash(pnpm exec tsx:*)"
     ],
     "deny": [
       "Bash(git restore:*)",

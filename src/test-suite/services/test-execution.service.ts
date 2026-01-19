@@ -69,7 +69,7 @@ export class TestExecutionService {
     let errorMessage: string | null = null;
 
     try {
-      // 测试集的 history 包含完整聊天记录（包括最新的 user + assistant）
+      // 测试/验证集的 history 包含完整聊天记录（包括最新的 user + assistant）
       // 重新测试时需要去掉最后两条，用当前 message 重新获取 AI 回答
       const historyForAgent = (request.history || []).slice(0, -2);
 
@@ -170,7 +170,7 @@ export class TestExecutionService {
       `[Stream] 执行流式测试: ${request.caseName || request.message.substring(0, 50)}...`,
     );
 
-    // 测试集的 history 包含完整聊天记录（包括最新的 user + assistant）
+    // 测试/验证集的 history 包含完整聊天记录（包括最新的 user + assistant）
     // 重新测试时需要去掉最后两条，用当前 message 重新获取 AI 回答
     const historyForAgent = (request.history || []).slice(0, -2);
 

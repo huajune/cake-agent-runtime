@@ -13,7 +13,7 @@ import type { TestType } from './types';
 import styles from './styles/index.module.scss';
 
 /**
- * 飞书测试集页面
+ * 飞书测试/验证集页面
  * 支持场景测试和对话验证两种模式
  */
 export default function TestSuite() {
@@ -114,7 +114,7 @@ export default function TestSuite() {
       {/* 页面标题 */}
       <div className={styles.pageHeader}>
         <div className={styles.headerLeft}>
-          <h1>飞书测试集</h1>
+          <h1>飞书测试/验证集</h1>
           <p className={styles.subtitle}>从飞书多维表格导入测试用例,执行自动化测试并进行评审</p>
         </div>
         <div className={styles.headerActions}>

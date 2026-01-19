@@ -363,7 +363,7 @@ export class SubmitFeedbackRequestDto {
 
 /**
  * 一键创建批量测试请求 DTO
- * 自动从预配置的飞书测试集表导入并执行
+ * 自动从预配置的飞书测试/验证集表导入并执行
  */
 export class QuickCreateBatchRequestDto {
   @ApiPropertyOptional({ description: '批次名称（可选，默认自动生成）' })

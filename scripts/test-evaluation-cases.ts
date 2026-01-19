@@ -137,7 +137,7 @@ async function main() {
         name: testCase.name,
         oldScore: testCase.oldScore,
         newScore: 0,
-        expectedScore: expectedRange,
+        expectedScore: testCase.expectedScore,
         reason: '评估异常',
         status: '❌',
       });

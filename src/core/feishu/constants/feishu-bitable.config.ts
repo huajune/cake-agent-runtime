@@ -8,7 +8,7 @@ export interface FeishuBitableTableConfig {
 }
 
 /**
- * 测试集表字段名配置
+ * 测试/验证集表字段名配置
  * 用于回写飞书时定位正确的字段
  */
 export interface TestSuiteFieldNames {
@@ -28,6 +28,7 @@ export interface FeishuBitableConfig {
     badcase: FeishuBitableTableConfig;
     goodcase: FeishuBitableTableConfig;
     testSuite: FeishuBitableTableConfig;
+    validationSet: FeishuBitableTableConfig;
   };
 }
 
@@ -52,15 +53,21 @@ export const feishuBitableConfig: FeishuBitableConfig = {
       tableId: 'tblmI0UBzhknkIOm',
     },
     testSuite: {
-      // 测试集表（汇总表）
+      // 测试/验证集表（汇总表）- 场景测试数据
       appToken: 'WXQgb98iPauYsHsSYzMckqHcnbb',
       tableId: 'tblCRHFQqqJDJeSx',
+    },
+    validationSet: {
+      // 验证集表（对话验证数据）
+      // 注意：与 testSuite 在同一个多维表格文档中，只是不同的 sheet
+      appToken: 'WXQgb98iPauYsHsSYzMckqHcnbb',
+      tableId: 'tblfVcyKmPsFwUhy',
     },
   },
 };
 
 /**
- * 测试集表字段名配置
+ * 测试/验证集表字段名配置
  * 如飞书表格字段名变化，只需修改此处
  */
 export const testSuiteFieldNames: TestSuiteFieldNames = {
@@ -70,4 +77,26 @@ export const testSuiteFieldNames: TestSuiteFieldNames = {
   failureCategory: '分类',
   errorReason: '错误原因',
   similarityScore: '相似度分数',
+};
+
+/**
+ * 验证集表字段名配置
+ * 用于对话验证数据的读取和回写
+ */
+export interface ValidationSetFieldNames {
+  participantName: string; // 候选人微信昵称（文本）
+  conversation: string; // 完整对话记录（多行文本）
+  similarityScore: string; // 相似度分数（数字）
+  lastTestTime: string; // 最近测试时间（日期时间）
+  testBatch: string; // 测试批次（文本）
+  testStatus?: string; // 测试状态（单选，可选）
+}
+
+export const validationSetFieldNames: ValidationSetFieldNames = {
+  participantName: '候选人微信昵称',
+  conversation: '完整对话记录',
+  similarityScore: '相似度分数',
+  lastTestTime: '最近测试时间',
+  testBatch: '测试批次',
+  testStatus: '测试状态',
 };

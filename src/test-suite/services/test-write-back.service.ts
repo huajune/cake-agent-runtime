@@ -22,7 +22,7 @@ export class TestWriteBackService {
   }
 
   /**
-   * 回写测试结果到飞书测试集表
+   * 回写测试结果到飞书测试/验证集表
    */
   async writeBackToFeishu(
     executionId: string,

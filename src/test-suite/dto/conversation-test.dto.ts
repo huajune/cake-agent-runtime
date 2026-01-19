@@ -56,6 +56,8 @@ export interface ConversationTurnExecution {
   conversationSourceId: string;
   turnNumber: number;
   inputMessage: string;
+  /** 真人对话历史（候选人 + 招募经理的对话，作为 Agent 的上下文） */
+  history: ParsedMessage[];
   expectedOutput: string | null;
   actualOutput: string | null;
   similarityScore: number | null;

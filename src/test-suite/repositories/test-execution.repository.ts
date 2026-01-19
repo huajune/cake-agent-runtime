@@ -163,7 +163,7 @@ export class TestExecutionRepository extends BaseRepository {
       error_message: data.errorMessage,
       conversation_source_id: data.conversationSourceId || null,
       turn_number: data.turnNumber || null,
-      similarity_score: data.similarityScore || null,
+      similarity_score: data.similarityScore ?? null,
       input_message: data.inputMessage || null,
       review_status: data.reviewStatus || ReviewStatus.PENDING,
       evaluation_reason: data.evaluationReason || null,

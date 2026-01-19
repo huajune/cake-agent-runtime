@@ -122,7 +122,7 @@ export class TestImportService {
   }
 
   /**
-   * 一键从预配置的测试集表导入并执行
+   * 一键从预配置的测试/验证集表导入并执行
    *
    * @param options.testType 测试类型：scenario-场景测试，conversation-对话验证
    */
@@ -138,10 +138,10 @@ export class TestImportService {
       return this.quickCreateConversationBatch(options);
     }
 
-    // 场景测试：从测试集表导入
+    // 场景测试：从测试/验证集表导入
     const { appToken, tableId } = this.feishuBitableApi.getTableConfig('testSuite');
 
-    this.logger.log(`一键创建场景测试: 从测试集表 ${tableId} 导入`);
+    this.logger.log(`一键创建场景测试: 从测试/验证集表 ${tableId} 导入`);
 
     return this.importFromFeishu({
       appToken,
@@ -157,7 +157,7 @@ export class TestImportService {
 
   /**
    * 一键创建对话验证批次
-   * 从测试集表 (testSuite) 中获取 test_type='对话验证' 的数据
+   * 从验证集表 (validationSet) 中获取对话验证数据
    *
    * 执行流程：
    * 1. 获取数据 → 2. 创建批次 → 3. 创建 ConversationSource → 4. 异步触发执行
@@ -166,15 +166,15 @@ export class TestImportService {
     batchName?: string;
     parallel?: boolean;
   }): Promise<ImportResult> {
-    // 1. 从测试集表获取对话验证记录
+    // 1. 从验证集表获取对话验证记录
     const { appToken, tableId, conversations } =
       await this.feishuSyncService.getConversationTestsFromDefaultTable();
 
-    this.logger.log(`一键创建对话验证: 从测试集表 ${tableId} 导入 test_type='对话验证' 的数据`);
+    this.logger.log(`一键创建对话验证: 从验证集表 ${tableId} 导入对话验证数据`);
     this.logger.log(`获取到 ${conversations.length} 条对话验证记录`);
 
     if (conversations.length === 0) {
-      throw new Error('测试集表中没有 test_type=对话验证 的数据');
+      throw new Error('验证集表中没有对话验证数据');
     }
 
     // 2. 创建批次

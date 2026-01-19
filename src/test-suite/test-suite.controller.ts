@@ -351,13 +351,13 @@ export class TestSuiteController {
   }
 
   /**
-   * 一键创建批量测试（从预配置的飞书测试集表导入并执行）
+   * 一键创建批量测试（从预配置的飞书测试/验证集表导入并执行）
    * POST /agent/test/batches/quick-create
    */
   @Post('batches/quick-create')
   @ApiOperation({
     summary: '一键创建批量测试',
-    description: '从预配置的飞书测试集表自动导入用例并执行测试',
+    description: '从预配置的飞书测试/验证集表自动导入用例并执行测试',
   })
   async quickCreateBatch(@Body() request: QuickCreateBatchRequestDto) {
     const testType = request.testType || TestType.SCENARIO;
@@ -687,7 +687,7 @@ export class TestSuiteController {
   @Post('executions/:id/write-back')
   @ApiOperation({
     summary: '回写测试结果到飞书',
-    description: '将测试执行结果回写到飞书测试集表',
+    description: '将测试执行结果回写到飞书测试/验证集表',
   })
   @ApiParam({ name: 'id', description: '执行记录ID' })
   async writeBackToFeishu(@Param('id') id: string, @Body() request: WriteBackFeishuRequestDto) {
@@ -729,7 +729,7 @@ export class TestSuiteController {
   @Post('executions/batch-write-back')
   @ApiOperation({
     summary: '批量回写测试结果到飞书',
-    description: '将多个测试执行结果批量回写到飞书测试集表',
+    description: '将多个测试执行结果批量回写到飞书测试/验证集表',
   })
   async batchWriteBackToFeishu(@Body() body: { items: WriteBackFeishuRequestDto[] }) {
     this.logger.log(`批量回写测试结果到飞书: ${body.items.length} 条记录`);

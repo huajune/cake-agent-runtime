@@ -4,7 +4,10 @@ import {
   BitableField,
   BitableRecord,
 } from '@core/feishu/services/feishu-bitable-api.service';
-import { testSuiteFieldNames } from '@core/feishu/constants/feishu-bitable.config';
+import {
+  testSuiteFieldNames,
+  validationSetFieldNames,
+} from '@core/feishu/constants/feishu-bitable.config';
 import { FeishuTestStatus, MessageRole, TestType } from '../enums';
 import { ConversationTestService } from './conversation-test.service';
 import { ConversationParseResult } from '../dto/conversation-test.dto';
@@ -35,7 +38,7 @@ export interface ParsedConversationTest {
 }
 
 /**
- * 飞书测试集同步服务
+ * 飞书测试/验证集同步服务
  *
  * 职责：
  * - 从飞书多维表格读取测试用例
@@ -61,7 +64,7 @@ export class FeishuTestSyncService {
   // ==================== 测试用例读取 ====================
 
   /**
-   * 从预配置的测试集表获取所有测试用例
+   * 从预配置的测试/验证集表获取所有测试用例
    */
   async getTestCasesFromDefaultTable(): Promise<{
     appToken: string;
@@ -269,20 +272,94 @@ export class FeishuTestSyncService {
 
   /**
    * 从预配置表获取对话验证记录
+   *
+   * 注意：对话验证数据现在从 validationSet 表读取（已从 testSuite 迁移）
    */
   async getConversationTestsFromDefaultTable(): Promise<{
     appToken: string;
     tableId: string;
     conversations: ParsedConversationTest[];
   }> {
-    const { appToken, tableId } = this.bitableApi.getTableConfig('testSuite');
+    // 对话验证使用独立的验证集表
+    const { appToken, tableId } = this.bitableApi.getTableConfig('validationSet');
 
     const fields = await this.bitableApi.getFields(appToken, tableId);
     const records = await this.bitableApi.getAllRecords(appToken, tableId);
 
-    const conversations = this.parseConversationRecords(records, fields);
+    // 验证集表的所有记录都是对话验证，不需要过滤 test_type
+    const conversations = this.parseValidationSetRecords(records, fields);
 
     return { appToken, tableId, conversations };
+  }
+
+  /**
+   * 解析验证集表记录（专用于 validationSet 表）
+   *
+   * 与 parseConversationRecords 的区别：
+   * - 不需要检查 test_type 字段，所有记录都是对话验证
+   * - 字段名可能略有不同
+   */
+  parseValidationSetRecords(
+    records: BitableRecord[],
+    fields: BitableField[],
+  ): ParsedConversationTest[] {
+    const conversations: ParsedConversationTest[] = [];
+    const fieldNameToId = this.bitableApi.buildFieldNameToIdMap(fields);
+
+    for (const record of records) {
+      try {
+        const recordFields = record.fields;
+
+        // 提取对话记录字段
+        const rawText = this.extractFieldValue(recordFields, fieldNameToId, [
+          '完整对话记录',
+          '对话记录',
+          '聊天记录',
+          'conversation',
+          'full_conversation',
+        ]);
+
+        if (!rawText) {
+          this.logger.debug(`跳过验证集记录 ${record.record_id}: 缺少对话内容`);
+          continue;
+        }
+
+        // 提取参与者名称
+        const participantName = this.extractFieldValue(recordFields, fieldNameToId, [
+          '候选人微信昵称',
+          '候选人姓名',
+          '参与者',
+          'participant',
+          'name',
+          '姓名',
+        ]);
+
+        // 使用 ConversationTestService 解析对话
+        const parseResult = this.conversationTestService.parseConversation(rawText);
+
+        if (!parseResult.success) {
+          this.logger.warn(
+            `验证集对话解析失败 ${record.record_id}: ${parseResult.error || '未知错误'}`,
+          );
+          continue;
+        }
+
+        conversations.push({
+          recordId: record.record_id,
+          conversationId: `conv-${record.record_id}`,
+          participantName: participantName || null,
+          rawText,
+          parseResult,
+          testType: TestType.CONVERSATION,
+        });
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`解析验证集记录 ${record.record_id} 失败: ${errorMessage}`);
+      }
+    }
+
+    this.logger.log(`成功解析 ${conversations.length} 条验证集对话记录`);
+    return conversations;
   }
 
   /**
@@ -471,25 +548,28 @@ export class FeishuTestSyncService {
 
   /**
    * 回写对话验证相似度分数到飞书
+   *
+   * 注意：对话验证数据现在写入 validationSet 表（已从 testSuite 迁移）
    */
   async writeBackSimilarityScore(
     recordId: string,
     avgSimilarityScore: number | null,
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const { appToken, tableId } = this.bitableApi.getTableConfig('testSuite');
+      // 对话验证使用独立的验证集表
+      const { appToken, tableId } = this.bitableApi.getTableConfig('validationSet');
 
       const updateFields: Record<string, any> = {};
 
       this.logger.debug(`回写相似度分数: 记录=${recordId}, 分数=${avgSimilarityScore}`);
 
-      // 相似度分数字段（数字字段）
+      // 相似度分数字段（数字字段）- 使用验证集字段名配置
       if (avgSimilarityScore !== null) {
-        updateFields[testSuiteFieldNames.similarityScore || '相似度分数'] = avgSimilarityScore;
+        updateFields[validationSetFieldNames.similarityScore] = avgSimilarityScore;
       }
 
-      // 更新最近测试时间
-      updateFields[testSuiteFieldNames.lastTestTime] = Date.now();
+      // 更新最近测试时间 - 使用验证集字段名配置
+      updateFields[validationSetFieldNames.lastTestTime] = Date.now();
 
       // 调用飞书 API 更新记录
       this.logger.debug(`更新字段: ${JSON.stringify(updateFields)}`);

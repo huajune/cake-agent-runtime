@@ -70,17 +70,17 @@ export class LlmEvaluationService {
     this.logger.debug(`开始 LLM 评估: ${evaluationId}`);
 
     try {
-      // 构建评估 prompt
-      const evaluationPrompt = this.buildEvaluationPrompt(input);
+      // 构建系统提示词（定义评估者角色和规则）和用户消息（待评估内容）
+      const { systemPrompt, userMessage } = this.buildEvaluationPrompts(input);
 
       // 调用 Agent API 进行评估
       // 注意：必须禁用工具调用，确保获得纯文本 JSON 响应
       const result = await this.agentService.chat({
         conversationId: evaluationId,
-        userMessage: '',
+        userMessage,
         model: EVALUATION_MODEL,
         allowedTools: [], // 禁用所有工具，只需要纯 LLM 回复
-        systemPrompt: evaluationPrompt,
+        systemPrompt,
       });
 
       // 提取响应文本
@@ -131,29 +131,18 @@ export class LlmEvaluationService {
   }
 
   /**
-   * 构建评估 prompt
+   * 构建评估的 systemPrompt 和 userMessage
+   * - systemPrompt: 定义评估者角色和评分规则（稳定不变）
+   * - userMessage: 待评估的具体内容（每次评估不同）
    */
-  private buildEvaluationPrompt(input: EvaluationInput): string {
-    const { userMessage, expectedOutput, actualOutput, history } = input;
+  private buildEvaluationPrompts(input: EvaluationInput): {
+    systemPrompt: string;
+    userMessage: string;
+  } {
+    const { userMessage: originalUserMessage, expectedOutput, actualOutput, history } = input;
 
-    let historyContext = '';
-    if (history && history.length > 0) {
-      historyContext =
-        '\n【对话历史】\n' +
-        history.map((h) => `${h.role === 'user' ? '用户' : '客服'}: ${h.content}`).join('\n') +
-        '\n';
-    }
-
-    return `你是一个 AI 客服回复评估专家。请严格按照评分规则评估 AI 客服的回复质量。
-${historyContext}
-【用户消息】
-${userMessage}
-
-【参考回复（真人客服）】
-${expectedOutput}
-
-【实际回复（AI 客服）】
-${actualOutput}
+    // 系统提示词：定义评估者角色和规则
+    const systemPrompt = `你是一个 AI 客服回复评估专家。请严格按照评分规则评估 AI 客服的回复质量。
 
 【评分规则 - 严格执行】
 
@@ -183,14 +172,40 @@ ${actualOutput}
 
 【优先级】准确性 > 完整性 > 效率 > 语气
 
+【输出格式】
 请严格按以下 JSON 格式输出，不要输出其他内容：
 {"score": 85, "passed": true, "reason": "回复正确理解了用户需求，虽然用词不同但意图一致"}
 
 注意：
 - score 为 0-100 的整数
 - passed 为 true 当且仅当 score >= 60
-- reason 用简短中文说明评估理由（不超过100字）
+- reason 用简短中文说明评估理由（不超过100字），不要使用英文双引号，用「」代替
 - "意思对"不等于"内容对"：即使语气友好，事实错误也必须严厉扣分`;
+
+    // 构建对话历史上下文
+    let historyContext = '';
+    if (history && history.length > 0) {
+      historyContext =
+        '【对话历史】\n' +
+        history.map((h) => `${h.role === 'user' ? '用户' : '客服'}: ${h.content}`).join('\n') +
+        '\n\n';
+    }
+
+    // 用户消息：包含待评估的具体内容
+    const userMessage = `请评估以下 AI 客服回复的质量：
+
+${historyContext}【用户消息】
+${originalUserMessage}
+
+【参考回复（真人客服）】
+${expectedOutput}
+
+【实际回复（AI 客服）】
+${actualOutput}
+
+请按照评分规则进行评估，直接输出 JSON 结果。`;
+
+    return { systemPrompt, userMessage };
   }
 
   /**
@@ -215,46 +230,45 @@ ${actualOutput}
   }
 
   /**
-   * 解析评估结果 JSON（增强版）
+   * 解析评估结果 JSON
    */
   private parseEvaluationResult(responseText: string, evaluationId: string): LlmEvaluationResult {
     try {
-      // 1. 清理可能的 markdown 代码块标记
+      // 1. 清理 markdown 代码块：去掉 ```json 和 ```
       const cleanedText = responseText
-        .replace(/```json\s*/g, '')
-        .replace(/```\s*/g, '')
+        .replace(/```json/gi, '')
+        .replace(/```/g, '')
         .trim();
 
-      // 2. 尝试多种方式提取 JSON
-      let jsonMatch = cleanedText.match(
-        /\{[\s\S]*?"score"[\s\S]*?"passed"[\s\S]*?"reason"[\s\S]*?\}/,
-      );
+      // 2. 提取 JSON 对象：找到第一个 { 和最后一个 }
+      const firstBrace = cleanedText.indexOf('{');
+      const lastBrace = cleanedText.lastIndexOf('}');
 
-      if (!jsonMatch) {
-        // 3. 如果没找到，尝试整段解析（可能就是纯 JSON）
-        try {
-          const parsed = JSON.parse(cleanedText);
-          if (
-            parsed.score !== undefined &&
-            parsed.passed !== undefined &&
-            parsed.reason !== undefined
-          ) {
-            jsonMatch = [cleanedText];
-          }
-        } catch {
-          // 继续下面的错误处理
-        }
+      if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+        this.logger.warn(`未找到 JSON 边界: ${responseText.slice(0, 200)}`);
+        return this.createDefaultResult(evaluationId, '无法解析评估结果：未找到JSON');
       }
 
-      if (!jsonMatch) {
-        this.logger.warn(`未找到有效 JSON: ${responseText.slice(0, 300)}`);
-        this.logEvaluationFailure(evaluationId, responseText, '未找到有效JSON');
-        return this.createDefaultResult(evaluationId, '无法解析评估结果：未找到JSON格式');
+      const jsonStr = cleanedText.slice(firstBrace, lastBrace + 1);
+
+      // 3. 解析 JSON
+      const parsed = JSON.parse(jsonStr) as {
+        score?: number;
+        passed?: boolean;
+        reason?: string;
+      };
+
+      // 4. 验证必需字段
+      if (
+        parsed?.score === undefined ||
+        parsed?.passed === undefined ||
+        parsed?.reason === undefined
+      ) {
+        this.logger.warn(`JSON 缺少必需字段: ${jsonStr.slice(0, 200)}`);
+        return this.createDefaultResult(evaluationId, '评估结果缺少必需字段');
       }
 
-      const parsed = JSON.parse(jsonMatch[0]);
-
-      // 4. 严格验证字段类型
+      // 5. 严格验证字段类型
       if (
         typeof parsed.score !== 'number' ||
         typeof parsed.passed !== 'boolean' ||
@@ -267,7 +281,7 @@ ${actualOutput}
         return this.createDefaultResult(evaluationId, '评估结果格式错误：字段类型不匹配');
       }
 
-      // 5. 验证数值范围并修正
+      // 6. 验证数值范围并修正
       let score = parsed.score;
       if (score < 0 || score > 100) {
         this.logger.warn(`分数超出范围: ${score}，已修正到 [0, 100]`);
@@ -275,7 +289,7 @@ ${actualOutput}
       }
       score = Math.round(score);
 
-      // 6. 验证 passed 与 score 的一致性
+      // 7. 验证 passed 与 score 的一致性
       const shouldPass = score >= PASS_THRESHOLD;
       let passed = parsed.passed;
       if (passed !== shouldPass) {
@@ -285,7 +299,7 @@ ${actualOutput}
         passed = shouldPass;
       }
 
-      // 7. 限制 reason 长度
+      // 8. 限制 reason 长度
       const reason = parsed.reason.slice(0, 200);
 
       return {

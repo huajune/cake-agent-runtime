@@ -236,7 +236,7 @@ export class TestSuiteService {
   }
 
   /**
-   * 一键从预配置的测试集表导入并执行
+   * 一键从预配置的测试/验证集表导入并执行
    */
   async quickCreateBatch(options?: {
     batchName?: string;
