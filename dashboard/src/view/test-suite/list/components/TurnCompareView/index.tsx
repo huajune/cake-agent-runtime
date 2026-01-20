@@ -1,6 +1,6 @@
 import { CheckCircle2, XCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { ConversationTurnExecution } from '../../types';
-import { getScoreStyleClass, getScoreRatingWithRange, formatPercent } from '../../utils';
+import { getScoreStyleClass, getScoreRatingWithRange, formatScore } from '../../utils';
 import styles from './index.module.scss';
 
 interface TurnCompareViewProps {
@@ -54,7 +54,7 @@ export function TurnCompareView({
         <div className={styles.conversationInfo}>
           <h3>{conversationInfo.participantName || '未知参与者'}</h3>
           <span className={styles.avgScore}>
-            平均评分: {conversationInfo.avgSimilarityScore?.toFixed(1) || '--'}%
+            平均评分: {conversationInfo.avgSimilarityScore?.toFixed(1) || '--'}分
           </span>
         </div>
         <div className={styles.navigation}>
@@ -124,7 +124,7 @@ export function TurnCompareView({
               <span
                 className={`${styles.scoreValue} ${styles[getScoreStyleClass(currentTurn.similarityScore)]}`}
               >
-                {formatPercent(currentTurn.similarityScore)}
+                {formatScore(currentTurn.similarityScore)}
               </span>
             </div>
             <div className={styles.scoreRating}>

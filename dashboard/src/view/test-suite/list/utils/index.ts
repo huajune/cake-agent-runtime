@@ -62,12 +62,12 @@ export function formatDuration(durationMs: number | null): string {
 }
 
 /**
- * 格式化百分比显示
- * @param value 百分比值
+ * 格式化评分显示
+ * @param value 评分值 (0-100)
  * @param defaultValue 默认显示
  * @returns 格式化字符串
  */
-export function formatPercent(value: number | null, defaultValue = '--'): string {
+export function formatScore(value: number | null, defaultValue = '--'): string {
   if (value === null) return defaultValue;
-  return `${value}%`;
+  return `${value}分`;
 }

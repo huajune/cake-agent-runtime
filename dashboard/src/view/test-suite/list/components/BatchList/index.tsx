@@ -131,7 +131,11 @@ export function BatchList({
                     {/* 对话验证显示平均评分，场景测试显示通过率 */}
                     <span>
                       {isConversation ? '评分' : '通过'}{' '}
-                      {batch.pass_rate !== null ? `${batch.pass_rate.toFixed(0)}%` : '-'}
+                      {batch.pass_rate !== null
+                        ? isConversation
+                          ? `${batch.pass_rate.toFixed(0)}分`
+                          : `${batch.pass_rate.toFixed(0)}%`
+                        : '-'}
                     </span>
                   </div>
                 </div>

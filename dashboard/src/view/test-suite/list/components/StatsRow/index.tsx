@@ -79,7 +79,11 @@ export function StatsRow({ stats, testType = 'scenario' }: StatsRowProps) {
 
       <div className={styles.statCard}>
         <div className={styles.statValue}>
-          {stats.passRate !== null ? `${stats.passRate.toFixed(1)}%` : '-'}
+          {stats.passRate !== null
+            ? isConversation
+              ? `${stats.passRate.toFixed(1)}分`
+              : `${stats.passRate.toFixed(1)}%`
+            : '-'}
         </div>
         <div className={styles.statLabel}>
           <Activity size={12} />

@@ -78,7 +78,7 @@ export function ConversationDetailModal({
             <div className={styles.headerMeta}>
               总轮数: {conversation.totalTurns} · 平均评分:{' '}
               {conversation.avgSimilarityScore !== null
-                ? `${conversation.avgSimilarityScore}%`
+                ? `${conversation.avgSimilarityScore}分`
                 : '--'}
             </div>
           </div>

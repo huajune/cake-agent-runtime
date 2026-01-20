@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { Activity, Clock, CheckCircle2, AlertTriangle } from 'lucide-react';
-import { getScoreStyleClass, getScoreRating, formatDuration, formatPercent } from '../../utils';
+import { getScoreStyleClass, getScoreRating, formatDuration, formatScore } from '../../utils';
 import styles from './index.module.scss';
 
 interface CompactMetricsProps {
@@ -25,7 +25,7 @@ export const CompactMetrics = memo(function CompactMetrics({
         <div className={styles.metricItem}>
           <Activity size={14} />
           <span className={`${styles.metricValue} ${styles[getScoreStyleClass(similarityScore)]}`}>
-            {formatPercent(similarityScore)}
+            {formatScore(similarityScore)}
           </span>
           <span className={styles.metricLabel}>评分</span>
           <span className={styles.metricRating}>({getScoreRating(similarityScore)})</span>
