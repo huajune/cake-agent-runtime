@@ -38,8 +38,8 @@ export default function RedPacketRain({
       newPackets.push({
         id: i,
         left: Math.random() * 100,
-        delay: Math.random() * 1500,
-        duration: 2000 + Math.random() * 1500,
+        delay: Math.random() * 500, // 缩短延迟，让红包快速出现
+        duration: 1200 + Math.random() * 800, // 缩短下落时间，快速划过
         size: 0.6 + Math.random() * 0.6,
         rotation: -30 + Math.random() * 60,
         type: types[Math.floor(Math.random() * types.length)],
@@ -57,7 +57,7 @@ export default function RedPacketRain({
         setIsVisible(false);
         setPackets([]);
         onComplete?.();
-      }, duration + 2000); // 额外 2s 让动画完成
+      }, duration); // 与 duration 同步移除容器
 
       return () => clearTimeout(timer);
     }
