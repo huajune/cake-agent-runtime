@@ -363,7 +363,8 @@
       "Bash(pnpm tsx:*)",
       "Bash(npx tsx:*)",
       "Bash(PORT=8080 npx tsx:*)",
-      "Bash(pnpm exec tsx:*)"
+      "Bash(pnpm exec tsx:*)",
+      "mcp__supabase__get_logs"
     ],
     "deny": [
       "Bash(git restore:*)",

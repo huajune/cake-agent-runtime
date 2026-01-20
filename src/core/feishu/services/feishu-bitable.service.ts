@@ -97,7 +97,6 @@ export class FeishuBitableSyncService {
         招募经理姓名: 'AI测试',
         咨询时间: Date.now(),
         聊天记录: this.bitableApi.truncateText(feedback.chatHistory, 10000),
-        test_type: '场景测试',
       };
 
       // 用户消息（最后一条用户输入）
