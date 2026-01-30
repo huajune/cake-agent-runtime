@@ -364,7 +364,11 @@
       "Bash(npx tsx:*)",
       "Bash(PORT=8080 npx tsx:*)",
       "Bash(pnpm exec tsx:*)",
-      "mcp__supabase__get_logs"
+      "mcp__supabase__get_logs",
+      "Bash(npx add-skill:*)",
+      "Bash(git clone:*)",
+      "WebFetch(domain:docs.clawd.bot)",
+      "WebFetch(domain:cloud.tencent.com)"
     ],
     "deny": [
       "Bash(git restore:*)",
