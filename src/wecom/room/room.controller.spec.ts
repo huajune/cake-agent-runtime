@@ -9,6 +9,7 @@ describe('RoomController', () => {
   const mockRoomService = {
     getRoomSimpleList: jest.fn(),
     getRoomList: jest.fn(),
+    getEnterpriseGroupChatList: jest.fn(),
     addMember: jest.fn(),
     addFriendFromRoom: jest.fn(),
     handleJoinedCallback: jest.fn(),
@@ -133,6 +134,113 @@ describe('RoomController', () => {
 
       await expect(controller.getRoomList(token, current, pageSize)).rejects.toThrow(
         'Service error',
+      );
+    });
+  });
+
+  describe('getEnterpriseGroupChatList', () => {
+    it('should call roomService.getEnterpriseGroupChatList with all parameters', async () => {
+      const token = 'test-enterprise-token';
+      const current = 1;
+      const pageSize = 20;
+      const imBotId = 'bot123';
+      const wecomUserId = 'user456';
+      const mockResult = {
+        errcode: 0,
+        errmsg: 'ok',
+        data: [
+          {
+            groupName: 'Enterprise Group 1',
+            ownerId: 'owner1',
+            createTime: '2024-01-01T00:00:00Z',
+            members: [{ wxid: 'user1', name: 'User 1' }],
+          },
+        ],
+        total: 1,
+      };
+
+      mockRoomService.getEnterpriseGroupChatList.mockResolvedValue(mockResult);
+
+      const result = await controller.getEnterpriseGroupChatList(
+        token,
+        current,
+        pageSize,
+        imBotId,
+        wecomUserId,
+      );
+
+      expect(service.getEnterpriseGroupChatList).toHaveBeenCalledWith(
+        token,
+        current,
+        pageSize,
+        imBotId,
+        wecomUserId,
+      );
+      expect(result).toEqual(mockResult);
+    });
+
+    it('should call roomService.getEnterpriseGroupChatList with only token', async () => {
+      const token = 'test-enterprise-token';
+      const mockResult = {
+        errcode: 0,
+        errmsg: 'ok',
+        data: [],
+        total: 0,
+      };
+
+      mockRoomService.getEnterpriseGroupChatList.mockResolvedValue(mockResult);
+
+      const result = await controller.getEnterpriseGroupChatList(token);
+
+      expect(service.getEnterpriseGroupChatList).toHaveBeenCalledWith(
+        token,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+      );
+      expect(result).toEqual(mockResult);
+    });
+
+    it('should call roomService.getEnterpriseGroupChatList with pagination only', async () => {
+      const token = 'test-enterprise-token';
+      const current = 2;
+      const pageSize = 50;
+      const mockResult = {
+        errcode: 0,
+        errmsg: 'ok',
+        data: [
+          {
+            groupName: 'Enterprise Group 2',
+            ownerId: 'owner2',
+            createTime: '2024-01-02T00:00:00Z',
+          },
+        ],
+        total: 100,
+      };
+
+      mockRoomService.getEnterpriseGroupChatList.mockResolvedValue(mockResult);
+
+      const result = await controller.getEnterpriseGroupChatList(token, current, pageSize);
+
+      expect(service.getEnterpriseGroupChatList).toHaveBeenCalledWith(
+        token,
+        current,
+        pageSize,
+        undefined,
+        undefined,
+      );
+      expect(result).toEqual(mockResult);
+    });
+
+    it('should handle errors from roomService.getEnterpriseGroupChatList', async () => {
+      const token = 'test-enterprise-token';
+      const error = new Error('Enterprise API error');
+
+      mockRoomService.getEnterpriseGroupChatList.mockRejectedValue(error);
+
+      await expect(controller.getEnterpriseGroupChatList(token)).rejects.toThrow(
+        'Enterprise API error',
       );
     });
   });

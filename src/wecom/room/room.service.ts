@@ -79,6 +79,50 @@ export class RoomService {
   }
 
   /**
+   * 获取企业级群列表
+   * @param token - 企业级 token
+   * @param current - 当前页码（最小值 1）
+   * @param pageSize - 每页大小（最大 1000，默认 10）
+   * @param imBotId - 托管账号系统 ID（可选）
+   * @param wecomUserId - 员工 IM ID（可选）
+   * @returns 企业级群列表数据
+   */
+  async getEnterpriseGroupChatList(
+    token: string,
+    current?: number,
+    pageSize?: number,
+    imBotId?: string,
+    wecomUserId?: string,
+  ) {
+    try {
+      const apiUrl = this.apiConfig.endpoints.groupChat.list();
+
+      const params: any = { token };
+
+      if (current !== undefined) {
+        params.current = current;
+      }
+      if (pageSize !== undefined) {
+        params.pageSize = pageSize;
+      }
+      if (imBotId) {
+        params.imBotId = imBotId;
+      }
+      if (wecomUserId) {
+        params.wecomUserId = wecomUserId;
+      }
+
+      const result = await this.httpService.get(apiUrl, params);
+
+      this.logger.log('获取企业级群列表成功');
+      return result;
+    } catch (error) {
+      this.logger.error('获取企业级群列表失败:', error);
+      throw error;
+    }
+  }
+
+  /**
    * 加入群聊
    * @param data - 加入群聊参数
    * @returns 加入结果

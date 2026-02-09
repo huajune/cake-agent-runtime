@@ -92,6 +92,10 @@ export class ApiConfigService {
       addMember: () => this.buildApiUrl('/room/addMember'),
       addFriendSend: () => this.buildApiUrl('/addFriend/room/send'), // 群聊加好友
     },
+    // 群聊相关（企业级接口）
+    groupChat: {
+      list: () => this.buildApiUrl('/groupChat/list', 'enterprise-v2'), // 企业级群列表
+    },
     // 用户相关
     user: {
       list: () => this.buildApiUrl('/user/list'),

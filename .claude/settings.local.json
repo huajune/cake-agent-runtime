@@ -368,7 +368,15 @@
       "Bash(npx add-skill:*)",
       "Bash(git clone:*)",
       "WebFetch(domain:docs.clawd.bot)",
-      "WebFetch(domain:cloud.tencent.com)"
+      "WebFetch(domain:cloud.tencent.com)",
+      "Bash(npm search:*)",
+      "Bash(./start-chrome-debug.sh)",
+      "WebFetch(domain:gingjqcjzc.feishu.cn)",
+      "Bash(do echo -n \"$brand: \")",
+      "Bash(if cat \"/Users/jiezhu/Downloads/品牌_合并后.json\")",
+      "Bash(then echo \"✓ 存在\")",
+      "Bash(else echo \"✗ 不存在\")",
+      "WebFetch(domain:s.apifox.cn)"
     ],
     "deny": [
       "Bash(git restore:*)",

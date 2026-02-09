@@ -311,7 +311,7 @@ Content-Type: application/json
 GET {{baseUrl}}/room/simple-list
   ?token={{tokenGroup}}
   &current=0
-  &pageSize=5
+  &pageSize=50
 
 ### ========================================
 ### 9. 测试获取群列表接口（含成员信息）⭐ 已迁移到 RoomModule
@@ -320,6 +320,90 @@ GET {{baseUrl}}/room/list
   &current=0
   &pageSize=5
 
+### ========================================
+### 10. 测试获取企业级群列表接口（使用企业级 token）⭐ 新增企业级接口
+# API 文档: https://s.apifox.cn/34adc635-40ac-4161-8abb-8cd1eea9f445/315430920e0
+# 接口地址: GET /api/v2/groupChat/list
+# 参数说明:
+#   - token (必填): 企业级 token
+#   - current (可选): 页码，最小值 1
+#   - pageSize (可选): 每页大小，最大 1000，默认 10
+#   - imBotId (可选): 托管账号系统 ID
+#   - wecomUserId (可选): 员工 IM ID
+# 预期响应:
+#   {
+#     "errcode": 0,
+#     "errmsg": "success",
+#     "data": [
+#       {
+#         "wecomChatId": "群聊ID",
+#         "name": "群聊名称",
+#         "owner": "群主ID",
+#         "createTime": 1234567890,
+#         "notice": "群公告",
+#         "imRoomid": "IM系统群ID",
+#         "chatAvatar": "群头像URL",
+#         "external": true,
+#         "systemTag": [{"groupName": "标签组", "tagId": "标签ID", "tagName": "标签名"}],
+#         "memberList": [
+#           {
+#             "type": 1,
+#             "externalUserId": "外部用户ID",
+#             "joinTime": 1234567890,
+#             "joinScene": 1,
+#             "imContactId": "IM联系人ID",
+#             "corpName": "企业名称",
+#             "nickName": "昵称"
+#           }
+#         ]
+#       }
+#     ],
+#     "total": 100
+#   }
+GET {{baseUrl}}/room/enterprise-list
+  ?token={{tokenEnterprise}}
+  &current=1
+  &pageSize=50
+
+### ========================================
+### 10.1 测试获取企业级群列表接口（带筛选参数）
+# 通过 imBotId 和 wecomUserId 筛选特定托管账号和员工的群聊
+GET {{baseUrl}}/room/enterprise-list
+  ?token={{tokenEnterprise}}
+  &current=1
+  &pageSize=10
+  &imBotId={{imBotId}}
+  &wecomUserId={{wecomUserId}}
+
+### ========================================
+### 10.2 测试获取企业级群列表接口（仅 token，使用默认分页）
+# 不传分页参数，使用 API 默认值（pageSize=10）
+GET {{baseUrl}}/room/enterprise-list
+  ?token={{tokenEnterprise}}
+
+### ========================================
+### 10.3 测试获取企业级群列表接口（大分页）
+# 测试获取较多数据，pageSize 最大支持 1000
+GET {{baseUrl}}/room/enterprise-list
+  ?token={{tokenEnterprise}}
+  &current=1
+  &pageSize=1000
+
+### ========================================
+### 10.4 测试获取企业级群列表接口（仅按 imBotId 筛选）
+# 只筛选特定托管账号的群聊
+GET {{baseUrl}}/room/enterprise-list
+  ?token={{tokenEnterprise}}
+  &imBotId={{imBotId}}
+  &pageSize=20
+
+### ========================================
+### 10.5 测试获取企业级群列表接口（仅按 wecomUserId 筛选）
+# 只筛选特定员工相关的群聊
+GET {{baseUrl}}/room/enterprise-list
+  ?token={{tokenEnterprise}}
+  &wecomUserId={{wecomUserId}}
+  &pageSize=20
 
 ### ========================================
 ### 11. 测试聊天历史接口（使用小组级 token）⭐ 已迁移到 ChatModule
