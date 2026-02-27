@@ -164,7 +164,6 @@ export interface AgentInputParams {
   historyCount: number; // 历史消息数量
   historyMessages?: SimpleMessageItem[]; // 历史消息详情（用于调试）
   model?: string;
-  promptType?: string;
   allowedTools?: string[];
   contextStrategy?: string;
   prune?: boolean;
@@ -177,10 +176,6 @@ export interface AgentInputParams {
   contextLength?: number;
   hasToolContext?: boolean;
   toolContextLength?: number;
-  // 品牌配置相关（configData = brandData, replyPrompts 来自 brandConfigService）
-  hasConfigData?: boolean;
-  hasReplyPrompts?: boolean;
-  brandPriorityStrategy?: string;
   // 调试字段
   _mergedContextKeys?: string[];
   // 完整原始入参 JSON（超长字段已省略，用于 Dashboard 展示调试）

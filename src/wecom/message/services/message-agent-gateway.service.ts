@@ -95,18 +95,15 @@ export class AgentGatewayService {
         return this.buildFallbackContextWithCache(baseContext);
       }
 
-      // 合并配置：基础 context + 品牌配置
-      // 注意：API 契约要求使用 configData 字段传递品牌数据
+      // 合并配置：基础 context + 品牌同步状态
       const mergedContext: BrandContext = {
         ...(baseContext || {}),
-        configData: brandConfig.brandData,
-        replyPrompts: brandConfig.replyPrompts,
         synced: brandConfig.synced,
         lastRefreshTime: brandConfig.lastRefreshTime,
       };
 
       // 【优化】缓存成功的品牌配置
-      if (brandConfig.synced && brandConfig.brandData && brandConfig.replyPrompts) {
+      if (brandConfig.synced) {
         this.lastValidBrandConfig = mergedContext;
         this.logger.debug(
           `✅ 已合并品牌配置到 context (synced: ${brandConfig.synced}, lastRefresh: ${brandConfig.lastRefreshTime})`,
@@ -154,19 +151,8 @@ export class AgentGatewayService {
    * 这些字段只用于内部逻辑判断，不需要传给 Agent API
    */
   private cleanContextForAgent(context: BrandContext): Record<string, any> {
-    const {
-      synced: _synced,
-      lastRefreshTime: _lastRefreshTime,
-      configData,
-      replyPrompts,
-      ...cleanedContext
-    } = context;
-    // 注意：configData 和 replyPrompts 需要传给 Agent，所以要保留
-    return {
-      ...cleanedContext,
-      ...(configData && { configData }),
-      ...(replyPrompts && { replyPrompts }),
-    };
+    const { synced: _synced, lastRefreshTime: _lastRefreshTime, ...cleanedContext } = context;
+    return cleanedContext;
   }
 
   // ========================================
@@ -255,7 +241,6 @@ export class AgentGatewayService {
         messages: historyMessages, // API 契约字段名
         model: agentProfile.model,
         systemPrompt,
-        promptType: agentProfile.promptType,
         allowedTools: agentProfile.allowedTools,
         context: cleanedContext,
         toolContext: agentProfile.toolContext,

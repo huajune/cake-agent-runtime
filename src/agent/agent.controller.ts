@@ -265,7 +265,6 @@ export class AgentController {
    * Body: { "message": "你好", "conversationId": "test-user", "model"?: "...", "allowedTools"?: [...], "scenario"?: "..." }
    *
    * 改进：使用配置档案自动传递 context 和 toolContext，避免缺少必需参数的错误
-   * 注意：会动态注入品牌配置（configData、replyPrompts）以支持 zhipin_reply_generator 工具
    */
   @Post('test-chat')
   async testChat(
@@ -294,37 +293,11 @@ export class AgentController {
 
     this.logger.log(`使用配置档案: ${profile.name} (${profile.description})`);
 
-    // 动态注入品牌配置（configData、replyPrompts）
-    // 这样 zhipin_reply_generator 工具才能正常工作
-    const brandConfigData = await this.brandConfig.getBrandConfig();
-
-    // 调试日志：检查品牌配置数据
-    this.logger.debug(
-      `[test-chat] brandConfigData: brandData=${!!brandConfigData?.brandData}, replyPrompts=${!!brandConfigData?.replyPrompts}`,
-    );
-
-    const mergedContext = {
-      ...(profile.context || {}),
-      ...(brandConfigData?.brandData && { configData: brandConfigData.brandData }),
-      ...(brandConfigData?.replyPrompts && { replyPrompts: brandConfigData.replyPrompts }),
-    };
-
-    // 调试日志：检查合并后的 context 中的关键字段
-    this.logger.debug(`[test-chat] mergedContext keys: ${Object.keys(mergedContext).join(', ')}`);
-    this.logger.debug(
-      `[test-chat] configData 类型: ${typeof mergedContext.configData}, 是否存在: ${!!mergedContext.configData}`,
-    );
-    this.logger.debug(
-      `[test-chat] replyPrompts 类型: ${typeof mergedContext.replyPrompts}, 是否存在: ${!!mergedContext.replyPrompts}`,
-    );
-
     // 使用配置档案调用聊天接口（自动传递 context 和 toolContext）
     const result = await this.agentService.chatWithProfile(conversationId, body.message, profile, {
       // 允许通过请求参数覆盖配置档案的设置
       model: body.model,
       allowedTools: body.allowedTools,
-      // 使用合并后的 context（包含品牌配置）
-      context: mergedContext,
     });
 
     // 基于状态返回不同响应
@@ -475,7 +448,6 @@ export class AgentController {
       description: profile.description,
       model: profile.model,
       allowedTools: profile.allowedTools || [],
-      promptType: profile.promptType,
       contextStrategy: profile.contextStrategy,
       prune: profile.prune,
       pruneOptions: profile.pruneOptions,
@@ -624,44 +596,17 @@ export class AgentController {
       return { error: `未找到场景 ${scenario} 的配置` };
     }
 
-    // 获取品牌配置
-    const brandConfigData = await this.brandConfig.getBrandConfig();
-
-    // 构建合并后的 context（与 test-chat 逻辑一致）
-    const mergedContext = {
-      ...(profile.context || {}),
-      ...(brandConfigData?.brandData && { configData: brandConfigData.brandData }),
-      ...(brandConfigData?.replyPrompts && { replyPrompts: brandConfigData.replyPrompts }),
-    };
-
     return {
       scenario,
       profileName: profile.name,
-      // 原始 profile.context（来自 context.json）
-      originalContext: profile.context,
-      // 品牌配置原始数据
-      brandConfigRaw: {
-        synced: brandConfigData?.synced,
-        hasBrandData: !!brandConfigData?.brandData,
-        hasReplyPrompts: !!brandConfigData?.replyPrompts,
-        brandDataKeys: brandConfigData?.brandData ? Object.keys(brandConfigData.brandData) : [],
-        replyPromptsKeys: brandConfigData?.replyPrompts
-          ? Object.keys(brandConfigData.replyPrompts)
-          : [],
-        lastRefreshTime: brandConfigData?.lastRefreshTime,
-      },
-      // 合并后的完整 context（传给 Agent API）
-      mergedContext: {
-        ...mergedContext,
+      // 原始 profile.context
+      originalContext: {
+        ...(profile.context || {}),
         // 脱敏 dulidayToken
-        dulidayToken: mergedContext.dulidayToken
-          ? `${String(mergedContext.dulidayToken).substring(0, 20)}...`
+        dulidayToken: profile.context?.dulidayToken
+          ? `${String(profile.context.dulidayToken).substring(0, 20)}...`
           : undefined,
       },
-      // configData 完整结构（关键！这是 zhipin_reply_generator 工具需要的）
-      configDataStructure: brandConfigData?.brandData,
-      // replyPrompts 完整结构
-      replyPromptsStructure: brandConfigData?.replyPrompts,
       // toolContext 结构
       toolContext: profile.toolContext,
       timestamp: new Date().toISOString(),

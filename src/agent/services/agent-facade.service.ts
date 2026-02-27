@@ -209,21 +209,9 @@ export class AgentFacadeService {
     profile: AgentProfile,
     extraContext?: Record<string, unknown>,
   ): Promise<ChatContext> {
-    // 获取品牌配置
-    const brandConfigData = await this.brandConfig.getBrandConfig();
-
-    // 调试日志
-    this.logger.debug(
-      `[buildMergedContext] brandConfigData: brandData=${!!brandConfigData?.brandData}, ` +
-        `replyPrompts=${!!brandConfigData?.replyPrompts}`,
-    );
-
     // 合并上下文
     const mergedContext: ChatContext = {
       ...(profile.context || {}),
-      // 注入品牌配置（configData 和 replyPrompts 是 API 契约字段名）
-      ...(brandConfigData?.brandData && { configData: brandConfigData.brandData }),
-      ...(brandConfigData?.replyPrompts && { replyPrompts: brandConfigData.replyPrompts }),
       // 合并额外上下文
       ...extraContext,
     };

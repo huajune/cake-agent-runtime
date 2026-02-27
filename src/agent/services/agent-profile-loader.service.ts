@@ -237,8 +237,7 @@ export class ProfileLoaderService implements OnModuleInit {
       .filter((tool) => tool.length > 0);
 
     // 从文件系统加载 .md 文件
-    const systemPrompt = await this.readTextFile(join(scenarioDir, 'system-prompt.md'));
-    const generalChatPrompt = await this.readTextFile(join(scenarioDir, 'general-chat-prompt.md'));
+    const systemPrompt = await this.readTextFile(join(scenarioDir, 'system-prompt-v2.md'));
 
     // 记录配置加载情况
     if (dulidayToken) {
@@ -256,17 +255,7 @@ export class ProfileLoaderService implements OnModuleInit {
       systemPrompt,
       context: {
         dulidayToken,
-        brandPriorityStrategy: 'smart',
       },
-      toolContext: generalChatPrompt
-        ? {
-            zhipin_reply_generator: {
-              replyPrompts: {
-                general_chat: generalChatPrompt,
-              },
-            },
-          }
-        : {},
     };
 
     this.logger.log(`成功加载配置: ${ScenarioType.CANDIDATE_CONSULTATION}`);

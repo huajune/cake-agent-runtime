@@ -77,7 +77,6 @@ export class AgentService {
     messages?: SimpleMessage[]; // API 契约字段名：历史消息数组
     model?: string;
     systemPrompt?: string;
-    promptType?: string;
     allowedTools?: string[];
     context?: any;
     toolContext?: any;
@@ -159,7 +158,6 @@ export class AgentService {
     messages?: SimpleMessage[];
     model?: string;
     systemPrompt?: string;
-    promptType?: string;
     allowedTools?: string[];
     context?: any;
     toolContext?: any;
@@ -349,7 +347,6 @@ export class AgentService {
     userMessage: string;
     messages: SimpleMessage[]; // API 契约字段名：历史消息数组
     systemPrompt?: string;
-    promptType?: string;
     allowedTools?: string[];
     context?: any;
     toolContext?: any;
@@ -367,7 +364,6 @@ export class AgentService {
 
     // 只添加有值的可选字段
     if (params.systemPrompt) chatRequest.systemPrompt = params.systemPrompt;
-    if (params.promptType) chatRequest.promptType = params.promptType as any;
     // 注意：空数组 [] 表示禁用所有工具，也需要传递
     if (params.allowedTools !== undefined) {
       chatRequest.allowedTools = params.allowedTools;

@@ -261,7 +261,6 @@ describe('AgentController', () => {
       expect(service.chatWithProfile).toHaveBeenCalledWith('conv123', '你好', mockProfile, {
         model: 'gpt-4',
         allowedTools: undefined,
-        context: expect.any(Object), // mergedContext from brandConfig
       });
       expect(result).toEqual({
         response: mockAgentResult.data,
@@ -286,7 +285,6 @@ describe('AgentController', () => {
       expect(service.chatWithProfile).toHaveBeenCalledWith('test-user', '测试消息', mockProfile, {
         model: undefined,
         allowedTools: undefined,
-        context: expect.any(Object), // mergedContext from brandConfig
       });
       expect(result).toEqual({
         response: mockAgentResult.data,
@@ -314,7 +312,6 @@ describe('AgentController', () => {
       expect(service.chatWithProfile).toHaveBeenCalledWith('conv456', '你好', mockProfile, {
         model: undefined,
         allowedTools: undefined,
-        context: expect.any(Object), // mergedContext from brandConfig
       });
       expect(result).toEqual({
         response: mockAgentResult.data,
@@ -365,7 +362,6 @@ describe('AgentController', () => {
       expect(service.chatWithProfile).toHaveBeenCalledWith('test-user', '你好', mockProfile, {
         model: undefined,
         allowedTools: undefined,
-        context: expect.any(Object), // mergedContext from brandConfig
       });
       expect(result).toEqual({
         response: mockAgentResult.data,
@@ -397,7 +393,6 @@ describe('AgentController', () => {
         {
           model: undefined,
           allowedTools: ['duliday_job_list', 'duliday_job_details'],
-          context: expect.any(Object), // mergedContext from brandConfig
         },
       );
       expect(result).toEqual({
@@ -432,7 +427,6 @@ describe('AgentController', () => {
         {
           model: undefined,
           allowedTools: ['duliday_job_list'],
-          context: expect.any(Object), // mergedContext from brandConfig
         },
       );
       expect(result).toEqual({
@@ -453,7 +447,6 @@ describe('AgentController', () => {
         description: 'Test',
         model: 'test-model',
         allowedTools: ['tool1', 'tool2'],
-        promptType: 'safe',
         contextStrategy: 'skip',
         prune: true,
         pruneOptions: { maxTokens: 1000 },
@@ -474,7 +467,6 @@ describe('AgentController', () => {
         description: 'Test',
         model: 'test-model',
         allowedTools: ['tool1', 'tool2'],
-        promptType: 'safe',
         contextStrategy: 'skip',
         prune: true,
         pruneOptions: { maxTokens: 1000 },

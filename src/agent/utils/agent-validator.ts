@@ -5,10 +5,6 @@ import { AgentProfile } from '../utils/agent-profile-sanitizer';
  * 品牌配置验证结果
  */
 export interface BrandConfigValidation {
-  /** 是否有品牌数据 */
-  hasBrandData: boolean;
-  /** 是否有回复提示词 */
-  hasReplyPrompts: boolean;
   /** 是否完整可用 */
   isValid: boolean;
   /** 缺失的字段 */
@@ -33,35 +29,11 @@ export class AgentConfigValidator {
    * @param profile Agent 配置档案
    * @returns 验证结果
    */
-  validateBrandConfig(profile: AgentProfile): BrandConfigValidation {
+  validateBrandConfig(_profile: AgentProfile): BrandConfigValidation {
     const missingFields: string[] = [];
 
-    // 检查品牌数据（API 契约使用 configData 字段）
-    const hasBrandData =
-      profile.context?.configData &&
-      typeof profile.context.configData === 'object' &&
-      Object.keys(profile.context.configData).length > 0;
-
-    if (!hasBrandData) {
-      missingFields.push('context.configData');
-    }
-
-    // 检查回复提示词
-    const hasReplyPrompts =
-      profile.context?.replyPrompts &&
-      typeof profile.context.replyPrompts === 'object' &&
-      Object.keys(profile.context.replyPrompts).length > 0;
-
-    if (!hasReplyPrompts) {
-      missingFields.push('context.replyPrompts');
-    }
-
-    const isValid = hasBrandData && hasReplyPrompts;
-
     return {
-      hasBrandData,
-      hasReplyPrompts,
-      isValid,
+      isValid: missingFields.length === 0,
       missingFields,
     };
   }
@@ -100,15 +72,7 @@ export class AgentConfigValidator {
       return { isValid: false, errors };
     }
 
-    // 验证特定字段的类型（API 契约使用 configData 字段）
-    if (context.configData && typeof context.configData !== 'object') {
-      errors.push('context.configData 必须是对象类型');
-    }
-
-    if (context.replyPrompts && typeof context.replyPrompts !== 'object') {
-      errors.push('context.replyPrompts 必须是对象类型');
-    }
-
+    // 验证特定字段的类型
     if (context.modelConfig && typeof context.modelConfig !== 'object') {
       errors.push('context.modelConfig 必须是对象类型');
     }

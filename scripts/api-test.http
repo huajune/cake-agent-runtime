@@ -2,7 +2,7 @@
 @baseUrl = http://localhost:8080
 
 ### Token 配置
-@tokenGroup = 691d3b1c77279273a79275f5
+@tokenGroup = 68f88a31d53018ed04950739
 @tokenEnterprise = 9eaebbf614104879b81c2da7c41819bd
 
 ### ChatId 配置
@@ -13,7 +13,7 @@
 @GroupChatId = 68e763179d6d3a463bac17d0
 
 ### 其他常用参数
-@wecomUserId = ZhuJie
+@wecomUserId = gaoyaqi
 @imBotId = 68d3b986de170dd6eb01982a
 @wxid = 1688854747775509
 
@@ -311,7 +311,7 @@ Content-Type: application/json
 GET {{baseUrl}}/room/simple-list
   ?token={{tokenGroup}}
   &current=0
-  &pageSize=50
+  &pageSize=200
 
 ### ========================================
 ### 9. 测试获取群列表接口（含成员信息）⭐ 已迁移到 RoomModule
@@ -320,46 +320,6 @@ GET {{baseUrl}}/room/list
   &current=0
   &pageSize=5
 
-### ========================================
-### 10. 测试获取企业级群列表接口（使用企业级 token）⭐ 新增企业级接口
-# API 文档: https://s.apifox.cn/34adc635-40ac-4161-8abb-8cd1eea9f445/315430920e0
-# 接口地址: GET /api/v2/groupChat/list
-# 参数说明:
-#   - token (必填): 企业级 token
-#   - current (可选): 页码，最小值 1
-#   - pageSize (可选): 每页大小，最大 1000，默认 10
-#   - imBotId (可选): 托管账号系统 ID
-#   - wecomUserId (可选): 员工 IM ID
-# 预期响应:
-#   {
-#     "errcode": 0,
-#     "errmsg": "success",
-#     "data": [
-#       {
-#         "wecomChatId": "群聊ID",
-#         "name": "群聊名称",
-#         "owner": "群主ID",
-#         "createTime": 1234567890,
-#         "notice": "群公告",
-#         "imRoomid": "IM系统群ID",
-#         "chatAvatar": "群头像URL",
-#         "external": true,
-#         "systemTag": [{"groupName": "标签组", "tagId": "标签ID", "tagName": "标签名"}],
-#         "memberList": [
-#           {
-#             "type": 1,
-#             "externalUserId": "外部用户ID",
-#             "joinTime": 1234567890,
-#             "joinScene": 1,
-#             "imContactId": "IM联系人ID",
-#             "corpName": "企业名称",
-#             "nickName": "昵称"
-#           }
-#         ]
-#       }
-#     ],
-#     "total": 100
-#   }
 GET {{baseUrl}}/room/enterprise-list
   ?token={{tokenEnterprise}}
   &current=1
@@ -387,7 +347,7 @@ GET {{baseUrl}}/room/enterprise-list
 GET {{baseUrl}}/room/enterprise-list
   ?token={{tokenEnterprise}}
   &current=1
-  &pageSize=1000
+  &pageSize=20
 
 ### ========================================
 ### 10.4 测试获取企业级群列表接口（仅按 imBotId 筛选）
