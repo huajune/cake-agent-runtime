@@ -15,11 +15,6 @@ interface HealthData {
     availableCount: number;
     configuredCount: number;
   };
-  brandConfig?: {
-    available: boolean;
-    synced: boolean;
-    lastUpdated?: string;
-  };
 }
 
 interface ModelsData {
@@ -34,23 +29,14 @@ interface ToolsData {
   lastRefreshTime?: string;
 }
 
-interface BrandData {
-  available: boolean;
-  synced: boolean;
-  hasBrandData: boolean;
-  hasReplyPrompts: boolean;
-  lastUpdated?: string;
-}
-
 interface HealthGridProps {
   health?: HealthData;
   modelsData?: ModelsData;
   toolsData?: ToolsData;
-  brandData?: BrandData;
 }
 
-export default function HealthGrid({ health, modelsData, toolsData, brandData }: HealthGridProps) {
-  const [hoveredCard, setHoveredCard] = useState<'model' | 'tool' | 'brand' | null>(null);
+export default function HealthGrid({ health, modelsData, toolsData }: HealthGridProps) {
+  const [hoveredCard, setHoveredCard] = useState<'model' | 'tool' | null>(null);
 
   const getHealthState = (isHealthy: boolean | undefined): string => {
     if (isHealthy === undefined) return 'loading';
@@ -151,69 +137,6 @@ export default function HealthGrid({ health, modelsData, toolsData, brandData }:
             </div>
             <div className={styles.tooltipFooter}>
               共 {toolsData.count} 个工具 | 更新于 {toolsData.lastRefreshTime ? formatDateTime(toolsData.lastRefreshTime) : '-'}
-            </div>
-          </div>
-        )}
-      </article>
-
-      {/* 品牌数据 */}
-      <article
-        className={`health-item ${styles.healthItem} ${styles.hoverable}`}
-        data-state={getHealthState(health?.brandConfig?.available && health?.brandConfig?.synced)}
-        onMouseEnter={() => setHoveredCard('brand')}
-        onMouseLeave={() => setHoveredCard(null)}
-      >
-        <div className={styles.healthIcon}>🏷️</div>
-        <div className={styles.healthInfo}>
-          <div className={styles.healthTitle}>品牌数据</div>
-          <div className={styles.healthStatus}>
-            {health?.brandConfig?.available && health?.brandConfig?.synced
-              ? '数据同步'
-              : health?.brandConfig?.available
-                ? '需同步'
-                : '-'}
-          </div>
-          <div className={styles.healthDesc}>
-            {health?.brandConfig?.available && health?.brandConfig?.synced
-              ? `更新于 ${health.brandConfig.lastUpdated ? formatDateTime(health.brandConfig.lastUpdated) : '未知'}`
-              : health?.brandConfig?.available
-                ? '品牌数据待同步'
-                : '检查中...'}
-          </div>
-        </div>
-        {hoveredCard === 'brand' && brandData && (
-          <div className={styles.healthTooltip}>
-            <div className={styles.tooltipTitle}>品牌配置状态</div>
-            <div className={styles.tooltipContent}>
-              <div className={styles.tooltipStatusGrid}>
-                <div className={styles.statusRow}>
-                  <span className={styles.statusLabel}>配置可用</span>
-                  <span className={`${styles.statusValue} ${brandData.available ? styles.success : styles.error}`}>
-                    {brandData.available ? '是' : '否'}
-                  </span>
-                </div>
-                <div className={styles.statusRow}>
-                  <span className={styles.statusLabel}>数据已同步</span>
-                  <span className={`${styles.statusValue} ${brandData.synced ? styles.success : styles.warning}`}>
-                    {brandData.synced ? '是' : '否'}
-                  </span>
-                </div>
-                <div className={styles.statusRow}>
-                  <span className={styles.statusLabel}>品牌数据</span>
-                  <span className={`${styles.statusValue} ${brandData.hasBrandData ? styles.success : styles.warning}`}>
-                    {brandData.hasBrandData ? '已加载' : '未加载'}
-                  </span>
-                </div>
-                <div className={styles.statusRow}>
-                  <span className={styles.statusLabel}>回复模板</span>
-                  <span className={`${styles.statusValue} ${brandData.hasReplyPrompts ? styles.success : styles.warning}`}>
-                    {brandData.hasReplyPrompts ? '已加载' : '未加载'}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className={styles.tooltipFooter}>
-              更新于 {brandData.lastUpdated ? formatDateTime(brandData.lastUpdated) : '-'}
             </div>
           </div>
         )}

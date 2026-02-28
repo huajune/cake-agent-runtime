@@ -7,15 +7,14 @@ import {
   AgentResultHelper,
   AgentProfile,
   ChatResponse,
-  BrandConfigService,
   ScenarioType,
   AgentError,
   AgentInvocationException,
   SimpleMessage,
+  StrategyConfigService,
 } from '@agent';
 import { MonitoringService } from '@/core/monitoring/monitoring.service';
 import { AgentInvokeResult, AgentReply, FallbackMessageOptions } from '../types';
-import { BrandContext } from '@agent';
 import { ReplyNormalizer } from '../utils/reply-normalizer.util';
 import { MessageParser } from '../utils/message-parser.util';
 
@@ -24,7 +23,7 @@ import { MessageParser } from '../utils/message-parser.util';
  * 封装 Agent API 调用的完整流程 + 上下文构建 + 降级处理
  *
  * 职责：
- * - 构建会话上下文（合并品牌配置）
+ * - 构建会话上下文
  * - 构造 Agent 请求参数
  * - 调用 Agent API
  * - 解析响应结果
@@ -35,9 +34,6 @@ import { MessageParser } from '../utils/message-parser.util';
 @Injectable()
 export class AgentGatewayService {
   private readonly logger = new Logger(AgentGatewayService.name);
-
-  // 缓存最后一次成功的品牌配置（用于降级）
-  private lastValidBrandConfig: BrandContext | null = null;
 
   // 默认降级话术（优化版，学习真实招募经理 LiHanTing 的极简风格）
   // 分级设计：轻量级(12字以内)为主，中等复杂(18字以内)，复杂场景(25字以内)
@@ -61,99 +57,8 @@ export class AgentGatewayService {
     private readonly profileLoader: ProfileLoaderService,
     private readonly configValidator: AgentConfigValidator,
     private readonly monitoringService: MonitoringService,
-    private readonly brandConfigService: BrandConfigService,
+    private readonly strategyConfigService: StrategyConfigService,
   ) {}
-
-  // ========================================
-  // 上下文构建（合并自 ConversationContextBuilderService）
-  // ========================================
-
-  /**
-   * 构建会话上下文
-   * 合并品牌配置到 Agent 上下文
-   *
-   * @param baseContext 基础 context（来自 profile.json）
-   * @returns 合并后的 context
-   */
-  async buildContext(baseContext?: Record<string, any>): Promise<BrandContext> {
-    try {
-      // 调试日志：检查 baseContext 中的 dulidayToken
-      if (baseContext && 'dulidayToken' in baseContext) {
-        const tokenLength = baseContext.dulidayToken ? String(baseContext.dulidayToken).length : 0;
-        this.logger.debug(
-          `✅ buildContext: baseContext 中包含 dulidayToken (长度: ${tokenLength})`,
-        );
-      } else {
-        this.logger.warn('⚠️ buildContext: baseContext 中未找到 dulidayToken');
-      }
-
-      // 获取最新的品牌配置（从 Redis 缓存）
-      const brandConfig = await this.brandConfigService.getBrandConfig();
-
-      if (!brandConfig) {
-        this.logger.warn('⚠️ 无法获取品牌配置，尝试使用缓存的旧配置');
-        return this.buildFallbackContextWithCache(baseContext);
-      }
-
-      // 合并配置：基础 context + 品牌同步状态
-      const mergedContext: BrandContext = {
-        ...(baseContext || {}),
-        synced: brandConfig.synced,
-        lastRefreshTime: brandConfig.lastRefreshTime,
-      };
-
-      // 【优化】缓存成功的品牌配置
-      if (brandConfig.synced) {
-        this.lastValidBrandConfig = mergedContext;
-        this.logger.debug(
-          `✅ 已合并品牌配置到 context (synced: ${brandConfig.synced}, lastRefresh: ${brandConfig.lastRefreshTime})`,
-        );
-      }
-
-      return mergedContext;
-    } catch (error) {
-      this.logger.error('❌ 合并品牌配置失败，尝试使用缓存的旧配置:', error);
-      return this.buildFallbackContextWithCache(baseContext);
-    }
-  }
-
-  /**
-   * 构建带缓存的降级上下文
-   * 优先使用缓存的旧配置，没有缓存时才使用空配置
-   */
-  private buildFallbackContextWithCache(baseContext?: Record<string, any>): BrandContext {
-    if (this.lastValidBrandConfig) {
-      this.logger.warn('⚠️ 使用缓存的旧品牌配置（标记为未同步）');
-      return {
-        ...this.lastValidBrandConfig,
-        synced: false, // 标记为未同步，提示当前是旧数据
-        lastRefreshTime: this.lastValidBrandConfig.lastRefreshTime, // 保留原始刷新时间
-      };
-    }
-
-    this.logger.warn('⚠️ 无可用缓存，使用空配置');
-    return this.buildFallbackContext(baseContext);
-  }
-
-  /**
-   * 构建降级上下文（无品牌配置）
-   */
-  private buildFallbackContext(baseContext?: Record<string, any>): BrandContext {
-    return {
-      ...(baseContext || {}),
-      synced: false,
-      lastRefreshTime: new Date().toISOString(),
-    };
-  }
-
-  /**
-   * 清理 context，移除内部元数据字段
-   * 这些字段只用于内部逻辑判断，不需要传给 Agent API
-   */
-  private cleanContextForAgent(context: BrandContext): Record<string, any> {
-    const { synced: _synced, lastRefreshTime: _lastRefreshTime, ...cleanedContext } = context;
-    return cleanedContext;
-  }
 
   // ========================================
   // 降级消息管理（合并自 FallbackMessageProviderService）
@@ -220,7 +125,6 @@ export class AgentGatewayService {
     try {
       // 1. 获取 Agent 配置档案
       const agentProfile = this.loadAndValidateProfile(scenario);
-      const mergedContext = await this.buildContext(agentProfile.context);
 
       // 2. 【监控埋点】记录 AI 处理开始
       if (recordMonitoring && messageId) {
@@ -228,22 +132,38 @@ export class AgentGatewayService {
         shouldRecordAiEnd = true;
       }
 
-      // 3. 清理 context，移除内部元数据字段（不传给 Agent API）
-      const cleanedContext = this.cleanContextForAgent(mergedContext);
-
-      // 4. 动态注入当前时间到 System Prompt
+      // 3. 动态注入当前时间到 System Prompt
       const systemPrompt = this.injectCurrentTime(agentProfile.systemPrompt);
 
-      // 5. 调用 Agent API
+      // 5. 策略配置注入（人格 + 红线 → systemPrompt，阶段目标 → toolContext）
+      let finalSystemPrompt = systemPrompt;
+      let finalToolContext = agentProfile.toolContext;
+      try {
+        finalSystemPrompt = await this.strategyConfigService.composeSystemPrompt(
+          systemPrompt || '',
+        );
+        const stageGoals = await this.strategyConfigService.getStageGoalsForToolContext();
+        finalToolContext = {
+          ...agentProfile.toolContext,
+          wework_plan_turn: {
+            ...agentProfile.toolContext?.wework_plan_turn,
+            stageGoals,
+          },
+        };
+      } catch (error) {
+        this.logger.warn('策略配置注入失败，使用基础 prompt', error);
+      }
+
+      // 6. 调用 Agent API
       const agentResult = await this.agentService.chat({
         conversationId,
         userMessage,
         messages: historyMessages, // API 契约字段名
         model: agentProfile.model,
-        systemPrompt,
+        systemPrompt: finalSystemPrompt,
         allowedTools: agentProfile.allowedTools,
-        context: cleanedContext,
-        toolContext: agentProfile.toolContext,
+        context: agentProfile.context,
+        toolContext: finalToolContext,
         contextStrategy: agentProfile.contextStrategy,
         prune: agentProfile.prune,
         pruneOptions: agentProfile.pruneOptions,

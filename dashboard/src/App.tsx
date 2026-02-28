@@ -12,6 +12,7 @@ import Hosting from '@/view/hosting/list';
 import Users from '@/view/users/list';
 import AgentTest from '@/view/agent-test/list';
 import TestSuite from '@/view/test-suite/list';
+import Strategy from '@/view/strategy/list';
 
 function App() {
   return (
@@ -50,6 +51,7 @@ function App() {
           <Route path="chat-records" element={<ChatRecords />} />
           <Route path="agent-test" element={<AgentTest />} />
           <Route path="test-suite" element={<TestSuite />} />
+          <Route path="strategy" element={<Strategy />} />
         </Route>
       </Routes>
     </>

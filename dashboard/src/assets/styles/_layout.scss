@@ -197,7 +197,8 @@
 }
 
 // ========== 导航项 ==========
-.nav-group-title {
+.nav-group-title,
+.group-title {
   font-size: 11px;
   color: $text-muted;
   text-transform: uppercase;
@@ -260,12 +261,12 @@
     opacity: 1;
     transform: translateY(-50%) scale(1.15);
   }
+
 }
 
 .nav-icon {
   width: 24px;
   height: 24px;
-  margin-right: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -526,7 +527,8 @@
     font-size: 120px;
   }
 
-  .nav-group-title {
+  .nav-group-title,
+  .group-title {
     font-size: 10px;
     margin: 16px 0 8px 8px;
   }
@@ -541,7 +543,6 @@
   .nav-icon {
     width: 20px;
     height: 20px;
-    margin-right: 8px;
   }
 
   .content {

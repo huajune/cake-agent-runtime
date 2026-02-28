@@ -6,7 +6,7 @@ import { StatsRow } from './components/StatsRow';
 import { CaseList } from './components/CaseList';
 import { ReviewModal } from './components/ReviewModal';
 import { SkeletonLoader } from './components/SkeletonLoader';
-import { TabSwitch } from './components/TabSwitch';
+import { TabSwitch } from '@/components/TabSwitch';
 import { ConversationList } from './components/ConversationList';
 import { ConversationDetailModal } from './components/ConversationDetailModal';
 import type { TestType } from './types';
@@ -135,10 +135,12 @@ export default function TestSuite() {
       {/* Tab 切换 */}
       <div className={styles.tabContainer}>
         <TabSwitch
+          tabs={[
+            { key: 'scenario' as const, label: '场景测试', count: activeTab === 'scenario' ? total : undefined },
+            { key: 'conversation' as const, label: '对话验证', count: activeTab === 'conversation' ? total : undefined },
+          ]}
           activeTab={activeTab}
           onTabChange={setActiveTab}
-          scenarioCount={activeTab === 'scenario' ? total : undefined}
-          conversationCount={activeTab === 'conversation' ? total : undefined}
         />
       </div>
 

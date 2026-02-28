@@ -33,16 +33,6 @@ export interface ConfiguredToolsResponse {
   lastRefreshTime: string;
 }
 
-// 品牌配置状态响应
-export interface BrandConfigStatusResponse {
-  available: boolean;
-  synced: boolean;
-  hasBrandData: boolean;
-  hasReplyPrompts: boolean;
-  lastRefreshTime: string;
-  lastUpdated: string;
-}
-
 // ==================== Query Hooks ====================
 
 /**
@@ -68,20 +58,6 @@ export function useConfiguredTools() {
     queryFn: async () => {
       const { data } = await api.get('/agent/configured-tools');
       return unwrapResponse<ConfiguredToolsResponse>(data);
-    },
-    staleTime: 60000, // 1 分钟内不重新请求
-  });
-}
-
-/**
- * 获取品牌配置状态
- */
-export function useBrandConfigStatus() {
-  return useQuery({
-    queryKey: ['brand-config-status'],
-    queryFn: async () => {
-      const { data } = await api.get('/agent/config/status');
-      return unwrapResponse<BrandConfigStatusResponse>(data);
     },
     staleTime: 60000, // 1 分钟内不重新请求
   });

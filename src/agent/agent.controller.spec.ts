@@ -2,7 +2,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AgentController } from './agent.controller';
 import { AgentService } from './agent.service';
 import { ProfileLoaderService } from './services/agent-profile-loader.service';
-import { BrandConfigService } from './services/brand-config.service';
 import { AgentConfigValidator } from './utils/agent-validator';
 import { AgentRegistryService } from './services/agent-registry.service';
 import { ConfigService } from '@nestjs/config';
@@ -36,17 +35,9 @@ describe('AgentController', () => {
     deleteProfile: jest.fn(),
   };
 
-  const mockBrandConfig = {
-    getBrandConfigStatus: jest.fn(),
-    refreshBrandConfig: jest.fn(),
-    getBrandConfig: jest.fn(),
-  };
-
   const mockConfigValidator = {
-    validateBrandConfig: jest.fn(),
     validateRequiredFields: jest.fn(),
     validateContext: jest.fn(),
-    logValidationWarnings: jest.fn(),
   };
 
   const mockConfigService = {
@@ -73,10 +64,6 @@ describe('AgentController', () => {
         {
           provide: ProfileLoaderService,
           useValue: mockProfileLoader,
-        },
-        {
-          provide: BrandConfigService,
-          useValue: mockBrandConfig,
         },
         {
           provide: AgentConfigValidator,
@@ -114,27 +101,13 @@ describe('AgentController', () => {
         lastRefreshTime: new Date().toISOString(),
       };
 
-      const mockBrandConfigStatus = {
-        available: true,
-        synced: true,
-        hasBrandData: true,
-        hasReplyPrompts: true,
-        lastRefreshTime: new Date().toISOString(),
-      };
-
       mockRegistryService.getHealthStatus.mockReturnValue(mockHealthStatus);
-      mockBrandConfig.getBrandConfigStatus.mockResolvedValue(mockBrandConfigStatus);
 
       const result = await controller.healthCheck();
 
       expect(registryService.getHealthStatus).toHaveBeenCalled();
-      expect(mockBrandConfig.getBrandConfigStatus).toHaveBeenCalled();
       expect(result.success).toBe(true);
       expect(result.data.status).toEqual('healthy');
-      // 验证不返回完整品牌配置数据
-      expect(result.data.brandConfig.available).toBe(true);
-      expect(result.data.brandConfig.synced).toBe(true);
-      expect(result.data.brandConfig).not.toHaveProperty('data');
     });
 
     it('should return degraded status when some resources are unavailable', async () => {
@@ -144,25 +117,13 @@ describe('AgentController', () => {
         lastRefreshTime: new Date().toISOString(),
       };
 
-      const mockBrandConfigStatus = {
-        available: true,
-        synced: true,
-        hasBrandData: true,
-        hasReplyPrompts: true,
-        lastRefreshTime: new Date().toISOString(),
-      };
-
       mockRegistryService.getHealthStatus.mockReturnValue(mockHealthStatus);
-      mockBrandConfig.getBrandConfigStatus.mockResolvedValue(mockBrandConfigStatus);
 
       const result = await controller.healthCheck();
 
       expect(registryService.getHealthStatus).toHaveBeenCalled();
-      expect(mockBrandConfig.getBrandConfigStatus).toHaveBeenCalled();
       expect(result.success).toBe(true);
       expect(result.data.status).toEqual('degraded');
-      // 验证不返回完整品牌配置数据
-      expect(result.data.brandConfig).not.toHaveProperty('data');
     });
   });
 
@@ -497,10 +458,6 @@ describe('AgentController', () => {
 
       mockProfileLoader.getProfile.mockReturnValue(mockProfile);
       mockConfigValidator.validateRequiredFields.mockReturnValue(undefined);
-      mockConfigValidator.validateBrandConfig.mockReturnValue({
-        isValid: true,
-        errors: [],
-      });
       mockConfigValidator.validateContext.mockReturnValue({
         isValid: true,
         errors: [],

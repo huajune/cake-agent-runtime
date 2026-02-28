@@ -237,11 +237,6 @@ export interface HealthStatus {
     configuredCount: number;
     allAvailable: boolean;
   };
-  brandConfig: {
-    available: boolean;
-    synced: boolean;
-    lastUpdated?: string;
-  };
 }
 
 export interface SystemInfo {

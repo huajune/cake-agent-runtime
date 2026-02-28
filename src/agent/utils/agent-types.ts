@@ -56,21 +56,6 @@ export interface ModelConfig {
 }
 
 /**
- * 品牌数据
- */
-export interface BrandData {
-  name: string;
-  description?: string;
-  location?: string;
-  stores?: Array<{
-    name: string;
-    address: string;
-    contact?: string;
-  }>;
-  [key: string]: any;
-}
-
-/**
  * 系统提示词映射
  */
 export interface SystemPrompts {
@@ -89,15 +74,6 @@ export interface ChatContext {
   systemPrompts?: SystemPrompts;
   dulidayToken?: string | null;
   defaultWechatId?: string | null;
-  [key: string]: any;
-}
-
-/**
- * 品牌上下文（供下游服务合并使用）
- */
-export interface BrandContext {
-  synced?: boolean;
-  lastRefreshTime?: string;
   [key: string]: any;
 }
 

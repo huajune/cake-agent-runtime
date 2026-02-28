@@ -58,7 +58,6 @@ export type {
 export {
   useAvailableModels,
   useConfiguredTools,
-  useBrandConfigStatus,
   useAiReplyStatus,
   useBlacklist,
   useAgentReplyConfig,
@@ -73,7 +72,6 @@ export {
 export type {
   AvailableModelsResponse,
   ConfiguredToolsResponse,
-  BrandConfigStatusResponse,
 } from './monitoring/useSystemConfig';
 
 // 监控指标相关 (4 个函数)

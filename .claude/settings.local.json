@@ -376,7 +376,17 @@
       "Bash(if cat \"/Users/jiezhu/Downloads/品牌_合并后.json\")",
       "Bash(then echo \"✓ 存在\")",
       "Bash(else echo \"✗ 不存在\")",
-      "WebFetch(domain:s.apifox.cn)"
+      "WebFetch(domain:s.apifox.cn)",
+      "Bash(npx skills add https://github.com/nextlevelbuilder/ui-ux-pro-max-skill --skill ui-ux-pro-max -g -y)",
+      "Bash(npx vite build)",
+      "mcp__chrome-devtools__list_pages",
+      "mcp__upstash__redis_database_list_databases",
+      "mcp__upstash__redis_database_run_redis_commands",
+      "mcp__chrome-devtools__take_screenshot",
+      "mcp__chrome-devtools__take_snapshot",
+      "Bash(npx jest --passWithNoTests)",
+      "Bash(npx vite build --config dashboard/vite.config.ts)",
+      "Bash(npx --prefix dashboard vite build --config dashboard/vite.config.ts)"
     ],
     "deny": [
       "Bash(git restore:*)",
@@ -396,6 +406,10 @@
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
       "Bash(git stash:*)"
+    ],
+    "additionalDirectories": [
+      "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/agent",
+      "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/agent/services"
     ]
   },
   "enableAllProjectMcpServers": true,

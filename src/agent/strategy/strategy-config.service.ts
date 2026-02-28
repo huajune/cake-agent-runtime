@@ -1,0 +1,151 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { StrategyConfigRepository } from './strategy-config.repository';
+import {
+  StrategyConfigRecord,
+  StrategyPersona,
+  StrategyStageGoals,
+  StrategyRedLines,
+  StageGoalConfig,
+} from './strategy-config.types';
+
+/**
+ * 策略配置 Service
+ *
+ * 职责：
+ * - 从 Repository 获取策略配置
+ * - 将结构化数据组装为系统提示词文本
+ * - 提供阶段目标供工具上下文使用
+ */
+@Injectable()
+export class StrategyConfigService {
+  private readonly logger = new Logger(StrategyConfigService.name);
+
+  constructor(private readonly repository: StrategyConfigRepository) {}
+
+  // ==================== 配置读写 ====================
+
+  /**
+   * 获取当前激活的完整策略配置
+   */
+  async getActiveConfig(): Promise<StrategyConfigRecord> {
+    return this.repository.getActiveConfig();
+  }
+
+  /**
+   * 更新人格配置
+   */
+  async updatePersona(persona: StrategyPersona): Promise<StrategyConfigRecord> {
+    const result = await this.repository.updatePersona(persona);
+    this.logger.log('人格配置已更新');
+    return result;
+  }
+
+  /**
+   * 更新阶段目标
+   */
+  async updateStageGoals(stageGoals: StrategyStageGoals): Promise<StrategyConfigRecord> {
+    const result = await this.repository.updateStageGoals(stageGoals);
+    this.logger.log('阶段目标配置已更新');
+    return result;
+  }
+
+  /**
+   * 更新红线规则
+   */
+  async updateRedLines(redLines: StrategyRedLines): Promise<StrategyConfigRecord> {
+    const result = await this.repository.updateRedLines(redLines);
+    this.logger.log('红线规则已更新');
+    return result;
+  }
+
+  // ==================== Prompt 组装 ====================
+
+  /**
+   * 从人格结构化数据生成提示词文本
+   */
+  async getPersonaPromptText(): Promise<string> {
+    const config = await this.repository.getActiveConfig();
+    return this.buildPersonaText(config.persona);
+  }
+
+  /**
+   * 从红线规则生成提示词文本
+   */
+  async getRedLinesPromptText(): Promise<string> {
+    const config = await this.repository.getActiveConfig();
+    return this.buildRedLinesText(config.red_lines);
+  }
+
+  /**
+   * 组装最终系统提示词：persona + basePrompt + redLines
+   */
+  async composeSystemPrompt(basePrompt: string): Promise<string> {
+    const config = await this.repository.getActiveConfig();
+
+    const personaText = this.buildPersonaText(config.persona);
+    const redLinesText = this.buildRedLinesText(config.red_lines);
+
+    const parts: string[] = [];
+
+    if (personaText) {
+      parts.push(personaText);
+    }
+
+    if (basePrompt) {
+      parts.push(basePrompt);
+    }
+
+    if (redLinesText) {
+      parts.push(redLinesText);
+    }
+
+    return parts.join('\n\n');
+  }
+
+  /**
+   * 获取阶段目标供工具上下文使用
+   * 返回以 stage 为 key 的映射
+   */
+  async getStageGoalsForToolContext(): Promise<Record<string, StageGoalConfig>> {
+    const config = await this.repository.getActiveConfig();
+    const result: Record<string, StageGoalConfig> = {};
+
+    for (const stage of config.stage_goals.stages) {
+      result[stage.stage] = stage;
+    }
+
+    return result;
+  }
+
+  // ==================== 私有方法 ====================
+
+  /**
+   * 构建人格提示词文本
+   *
+   * 从 textDimensions 组装沟通风格提示词
+   */
+  private buildPersonaText(persona: StrategyPersona): string {
+    const dims = (persona.textDimensions || []).filter((d) => d.group === 'style' && d.value);
+    if (dims.length === 0) return '';
+
+    const sections: string[] = ['# 人格设定'];
+
+    for (const dim of dims) {
+      sections.push(`## ${dim.label}\n${dim.value}`);
+    }
+
+    return sections.join('\n\n');
+  }
+
+  /**
+   * 构建红线规则提示词文本
+   */
+  private buildRedLinesText(redLines: StrategyRedLines): string {
+    if (!redLines?.rules || redLines.rules.length === 0) {
+      return '';
+    }
+
+    const rulesText = redLines.rules.map((rule) => `- ${rule}`).join('\n');
+    return `# 红线规则（以下行为绝对禁止）\n${rulesText}`;
+  }
+}

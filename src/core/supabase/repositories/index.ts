@@ -51,3 +51,6 @@ export {
 
 // ==================== 预约统计 ====================
 export { BookingRepository, BookingRecordInput, BookingStats } from './booking.repository';
+
+// ==================== 策略配置 ====================
+export { StrategyConfigRepository } from '../../../agent/strategy/strategy-config.repository';

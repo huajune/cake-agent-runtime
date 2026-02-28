@@ -11,6 +11,7 @@ import {
   MonitoringRepository,
   MessageProcessingRepository,
   BookingRepository,
+  StrategyConfigRepository,
 } from './repositories';
 
 /**
@@ -24,6 +25,7 @@ const REPOSITORIES = [
   MonitoringRepository,
   MessageProcessingRepository,
   BookingRepository,
+  StrategyConfigRepository,
 ];
 
 /**

@@ -126,16 +126,20 @@ export class MessageProcessingRepository extends BaseRepository {
     try {
       const params: Record<string, string> = {
         status: 'eq.success',
-        'ai_duration.gt': '0',
+        ai_duration: 'gt.0',
         order: 'ai_duration.desc',
         limit: String(limit),
       };
 
+      const andConditions: string[] = [];
       if (startTime) {
-        params['received_at.gte'] = new Date(startTime).toISOString();
+        andConditions.push(`received_at.gte.${new Date(startTime).toISOString()}`);
       }
       if (endTime) {
-        params['received_at.lte'] = new Date(endTime).toISOString();
+        andConditions.push(`received_at.lte.${new Date(endTime).toISOString()}`);
+      }
+      if (andConditions.length > 0) {
+        params['and'] = `(${andConditions.join(',')})`;
       }
 
       const results = await this.select<MessageProcessingDbRecord>(params);
@@ -169,11 +173,15 @@ export class MessageProcessingRepository extends BaseRepository {
         order: 'received_at.desc',
       };
 
+      const andConditions: string[] = [];
       if (options.startTime) {
-        params['received_at.gte'] = new Date(options.startTime).toISOString();
+        andConditions.push(`received_at.gte.${new Date(options.startTime).toISOString()}`);
       }
       if (options.endTime) {
-        params['received_at.lte'] = new Date(options.endTime).toISOString();
+        andConditions.push(`received_at.lte.${new Date(options.endTime).toISOString()}`);
+      }
+      if (andConditions.length > 0) {
+        params['and'] = `(${andConditions.join(',')})`;
       }
       if (options.status) {
         params.status = `eq.${options.status}`;

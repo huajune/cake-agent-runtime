@@ -8,10 +8,10 @@ import { AgentFallbackService } from './services/agent-fallback.service';
 import { AgentApiClientService } from './services/agent-api-client.service';
 import { AgentFacadeService } from './services/agent-facade.service';
 import { AgentConfigValidator } from './utils/agent-validator';
-import { BrandConfigMonitor } from './utils/agent-monitor';
 import { AgentController } from './agent.controller';
 import { ProfileLoaderService } from './services/agent-profile-loader.service';
-import { BrandConfigService } from './services/brand-config.service';
+import { StrategyConfigService } from './strategy/strategy-config.service';
+import { StrategyConfigController } from './strategy/strategy-config.controller';
 
 /**
  * AI Agent 模块
@@ -22,10 +22,8 @@ import { BrandConfigService } from './services/brand-config.service';
  * - AgentApiClientService: HTTP 客户端层（API 调用、重试、速率限制）
  * - AgentRegistryService: 模型和工具注册表
  * - ProfileLoaderService: Profile 加载服务
- * - BrandConfigService: 品牌配置管理服务
  * - AgentFallbackService: 降级消息管理
  * - AgentConfigValidator: 配置验证器
- * - BrandConfigMonitor: 品牌配置监控器
  *
  * 工具类：
  * - ProfileSanitizer: Profile 清洗器（静态类，无需注册）
@@ -37,18 +35,19 @@ import { BrandConfigService } from './services/brand-config.service';
     HttpModule, // 依赖 HTTP 模块提供的 HttpClientFactory
     FeishuModule, // 依赖告警模块提供的 FeishuAlertService
   ],
-  controllers: [AgentController],
+  controllers: [AgentController, StrategyConfigController],
   providers: [
     // 基础服务（按字母排序）
     AgentApiClientService,
     AgentFallbackService,
     AgentRegistryService,
     AgentConfigValidator,
-    BrandConfigMonitor,
 
     // 配置服务
     ProfileLoaderService,
-    BrandConfigService,
+
+    // 策略配置服务
+    StrategyConfigService,
 
     // 主服务
     AgentService,
@@ -62,10 +61,9 @@ import { BrandConfigService } from './services/brand-config.service';
     AgentRegistryService,
     AgentFallbackService,
     AgentConfigValidator,
-    BrandConfigMonitor,
     ProfileLoaderService,
-    BrandConfigService,
     AgentFacadeService,
+    StrategyConfigService,
   ],
 })
 export class AgentModule {}

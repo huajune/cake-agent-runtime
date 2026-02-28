@@ -1,0 +1,892 @@
+@use '@/assets/styles/variables' as *;
+
+// ==================== 粉紫渐变局部色彩 ====================
+$_pp: #a78bfa; // 柔和淡紫（标签/文字）
+$_gradient-pp: linear-gradient(135deg, #c084fc 0%, #818cf8 100%);
+
+$_pp-03: rgba(167, 139, 250, 0.03);
+$_pp-05: rgba(167, 139, 250, 0.05);
+$_pp-06: rgba(167, 139, 250, 0.06);
+$_pp-08: rgba(167, 139, 250, 0.08);
+$_pp-10: rgba(167, 139, 250, 0.1);
+$_pp-15: rgba(167, 139, 250, 0.15);
+$_pp-25: rgba(167, 139, 250, 0.25);
+$_pp-30: rgba(167, 139, 250, 0.3);
+
+.page {
+  padding: $spacing-md;
+  position: relative;
+
+  // 左上角柔紫光晕
+  &::before {
+    content: '';
+    position: fixed;
+    top: -120px;
+    left: -80px;
+    width: 500px;
+    height: 500px;
+    background: radial-gradient(circle, rgba(196, 181, 253, 0.25) 0%, rgba(196, 181, 253, 0.05) 60%, transparent 100%);
+    border-radius: 50%;
+    filter: blur(60px);
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  // 右下角柔粉光晕
+  &::after {
+    content: '';
+    position: fixed;
+    bottom: -100px;
+    right: -60px;
+    width: 450px;
+    height: 450px;
+    background: radial-gradient(circle, rgba(244, 114, 182, 0.18) 0%, rgba(244, 114, 182, 0.04) 60%, transparent 100%);
+    border-radius: 50%;
+    filter: blur(60px);
+    z-index: 0;
+    pointer-events: none;
+  }
+}
+
+// ==================== 顶部导航栏 ====================
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  padding: $spacing-md $spacing-md $spacing-sm;
+  margin-bottom: $spacing-lg;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
+  border-radius: $radius-lg;
+  box-shadow: $shadow-sm;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+  z-index: 1;
+
+  // 右上角网格点阵纹理
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 240px;
+    height: 100%;
+    background:
+      radial-gradient(circle, $primary-08 1px, transparent 1px);
+    background-size: 16px 16px;
+    mask-image: linear-gradient(135deg, transparent 30%, rgba(0, 0, 0, 0.5) 60%, transparent 90%);
+    -webkit-mask-image: linear-gradient(135deg, transparent 30%, rgba(0, 0, 0, 0.5) 60%, transparent 90%);
+    pointer-events: none;
+  }
+
+  // 左下角柔和光晕
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: -40px;
+    left: -20px;
+    width: 140px;
+    height: 140px;
+    border-radius: 50%;
+    background: radial-gradient(circle, $accent-06 0%, transparent 70%);
+    pointer-events: none;
+  }
+}
+
+.headerTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+}
+
+.headerTitle {
+  font-size: $font-size-lg;
+  font-weight: $font-weight-semibold;
+  color: $text-primary;
+  margin: 0;
+}
+
+.headerSubtitle {
+  font-size: $font-size-sm;
+  color: $text-muted;
+  margin: 0;
+}
+
+.headerBottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+}
+
+.saveStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-xs;
+  padding: 6px 12px;
+  margin-right: $spacing-sm;
+  border-radius: $radius-full;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-medium;
+  transition: all $transition-normal;
+
+  &[data-status='saving'] {
+    background: rgba($warning, 0.1);
+    color: $warning;
+  }
+
+  &[data-status='saved'] {
+    background: rgba($success, 0.1);
+    color: $success;
+  }
+
+  &[data-status='error'] {
+    background: rgba($danger, 0.1);
+    color: $danger;
+  }
+}
+
+.spinIcon {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+// ==================== 通用面板 ====================
+.panel {
+  padding: $spacing-lg $spacing-xl;
+  min-height: calc(100vh - 300px);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px) saturate(180%);
+  border-radius: $radius-lg;
+  box-shadow: $shadow-sm;
+  position: relative;
+  z-index: 1;
+  overflow: clip;
+
+  // 右上角淡紫装饰弧
+  &::before {
+    content: '';
+    position: absolute;
+    top: -60px;
+    right: -40px;
+    width: 280px;
+    height: 280px;
+    background: radial-gradient(circle, $_pp-08 0%, $_pp-03 50%, transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  // 左下角淡粉装饰弧
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: -80px;
+    left: -40px;
+    width: 220px;
+    height: 220px;
+    background: radial-gradient(circle, rgba(244, 114, 182, 0.06) 0%, rgba(244, 114, 182, 0.02) 50%, transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 0;
+  }
+}
+
+.sectionHeader {
+  position: relative;
+  z-index: 1;
+}
+
+.personaHeader {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  margin: (-$spacing-lg) (-$spacing-xl) $spacing-lg;
+  padding: $spacing-lg $spacing-xl $spacing-md;
+  border-radius: $radius-lg $radius-lg 0 0;
+  border-bottom: 1px solid $border;
+}
+
+.dimensionNav {
+  display: flex;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+  margin-top: $spacing-md;
+}
+
+.dimensionNavItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px $spacing-md;
+  border: none;
+  border-radius: $radius-full;
+  background: $_pp-05;
+  color: $text-secondary;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-medium;
+  cursor: pointer;
+  transition: all $transition-fast;
+  white-space: nowrap;
+
+  &:hover {
+    background: $_pp-10;
+    color: $_pp;
+  }
+}
+
+.dimensionNavActive {
+  background: linear-gradient(135deg, #f9a8d4 0%, #f472b6 100%);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(244, 114, 182, 0.3);
+
+  &:hover {
+    background: linear-gradient(135deg, #f9a8d4 0%, #f472b6 100%);
+    color: #fff;
+    filter: brightness(1.05);
+  }
+}
+
+.sectionTitle {
+  font-size: $font-size-xl;
+  font-weight: $font-weight-bold;
+  color: $text-primary;
+  margin: 0 0 $spacing-xs;
+}
+
+.sectionDesc {
+  font-size: $font-size-sm;
+  color: $text-muted;
+  margin: 0;
+  line-height: $line-height-relaxed;
+}
+
+// ==================== 人格面板 ====================
+.dimensionGroup {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+  position: relative;
+  z-index: 1;
+}
+
+.groupLabel {
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  color: $text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: $spacing-md;
+}
+
+.dimensionItem {
+  padding: $spacing-md;
+  border-radius: $radius-lg;
+  background: $_pp-03;
+  scroll-margin-top: 160px;
+  transition: all $transition-fast;
+
+  &:hover {
+    background: $_pp-05;
+  }
+
+  &:focus-within {
+    background: $_pp-06;
+    box-shadow: 0 2px 8px $_pp-08;
+  }
+}
+
+.dimensionContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.dimensionLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  color: $_pp;
+  margin-bottom: $spacing-sm;
+  letter-spacing: 0.3px;
+}
+
+.dimensionIcon {
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.textInput {
+  @include input-base;
+}
+
+.textArea {
+  width: 100%;
+  padding: $spacing-sm $spacing-md;
+  border: 1px solid transparent;
+  border-radius: $radius-md;
+  font-size: $font-size-base;
+  color: $text-primary;
+  background: rgba(255, 255, 255, 0.6);
+  resize: none;
+  overflow: hidden;
+  line-height: $line-height-relaxed;
+  font-family: $font-family-sans;
+  transition: all $transition-fast;
+
+  &::placeholder {
+    color: $text-muted;
+    opacity: 0.6;
+  }
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.8);
+    border-color: $_pp-10;
+  }
+
+  &:focus {
+    outline: none;
+    background: #fff;
+    border-color: $_pp-30;
+    box-shadow: 0 0 0 3px $_pp-06;
+  }
+}
+
+// ==================== 阶段目标面板 ====================
+.stagesGrid {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.stageCard {
+  border-radius: $radius-lg;
+  padding: $spacing-md $spacing-lg;
+  background: $_pp-03;
+  transition: all $transition-normal;
+
+  &:hover {
+    background: $_pp-05;
+  }
+}
+
+.stageCardExpanded {
+  padding: $spacing-lg $spacing-xl;
+  background: #fff;
+  border: 1px solid $_pp-25;
+  border-left: 3px solid #f9a8d4;
+  box-shadow: 0 4px 20px $_pp-10, 0 1px 4px $_pp-06;
+
+  &:hover {
+    background: #fff;
+  }
+}
+
+.stageHeader {
+  @include flex-between;
+  cursor: pointer;
+  user-select: none;
+
+  .stageCardExpanded & {
+    margin-bottom: $spacing-md;
+    padding-bottom: $spacing-sm;
+    border-bottom: 1px solid $_pp-10;
+  }
+}
+
+.stageChevron {
+  color: $text-muted;
+  transition: transform $transition-normal, color $transition-fast;
+  flex-shrink: 0;
+
+  .stageCard:hover & {
+    color: $_pp;
+  }
+}
+
+.stageChevronOpen {
+  transform: rotate(180deg);
+  color: $_pp;
+}
+
+.stageHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.stageIndex {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: $radius-full;
+  background: rgba(236, 72, 153, 0.08);
+  border: 1px solid rgba(236, 72, 153, 0.15);
+  color: #ec4899;
+  font-size: 10px;
+  font-weight: $font-weight-semibold;
+  font-family: $font-family-mono;
+  flex-shrink: 0;
+  white-space: nowrap;
+  letter-spacing: 0.3px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 1px 2px rgba(236, 72, 153, 0.06);
+  transition: all $transition-fast;
+
+  .stageCard:hover & {
+    background: rgba(236, 72, 153, 0.12);
+    border-color: rgba(236, 72, 153, 0.25);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 2px 4px rgba(236, 72, 153, 0.1);
+  }
+}
+
+.stageName {
+  font-size: $font-size-base;
+  font-weight: $font-weight-semibold;
+  color: $text-primary;
+  flex: 1;
+}
+
+.stageFields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: $spacing-md;
+
+  @include respond-to(lg) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.fieldGroupFull {
+  grid-column: 1 / -1;
+}
+
+.fieldLabel {
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  color: $_pp;
+  letter-spacing: 0.2px;
+}
+
+.fieldTextArea {
+  width: 100%;
+  padding: $spacing-sm $spacing-md;
+  border: 1px solid $border;
+  border-radius: $radius-md;
+  font-size: $font-size-sm;
+  color: $text-primary;
+  background: rgba(255, 255, 255, 0.5);
+  resize: none;
+  overflow: hidden;
+  line-height: $line-height-relaxed;
+  font-family: $font-family-sans;
+  transition: all $transition-fast;
+
+  &::placeholder {
+    color: $text-muted;
+    opacity: 0.6;
+  }
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.75);
+    border-color: $_pp-25;
+  }
+
+  &:focus {
+    outline: none;
+    background: #fff;
+    border-color: $_pp;
+    box-shadow: 0 0 0 3px $_pp-06;
+  }
+}
+
+.fieldTextAreaDanger {
+  color: $danger;
+}
+
+.listField {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+}
+
+.listItem {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  padding: $spacing-sm $spacing-md;
+  border: 1px solid $border;
+  border-radius: $radius-md;
+  background: $bg-card;
+  transition: border-color $transition-fast, box-shadow $transition-fast;
+
+  &:hover {
+    border-color: $border-hover;
+  }
+
+  &:focus-within {
+    border-color: $primary;
+    box-shadow: 0 0 0 3px $primary-soft;
+  }
+
+  .fieldTextArea {
+    border: none;
+    padding: 0;
+    background: transparent;
+
+    &:hover {
+      background: transparent;
+      border-color: transparent;
+    }
+
+    &:focus {
+      box-shadow: none;
+      border-color: transparent;
+    }
+  }
+}
+
+.listIndex {
+  font-size: $font-size-xs;
+  color: $text-muted;
+  flex-shrink: 0;
+  min-width: 20px;
+}
+
+.listInput {
+  width: 100%;
+  padding: $spacing-sm $spacing-md;
+  border: 1px solid $border;
+  border-radius: $radius-md;
+  font-size: $font-size-sm;
+  color: $text-primary;
+  background: rgba(255, 255, 255, 0.5);
+  transition: all $transition-fast;
+
+  &::placeholder {
+    color: $text-muted;
+  }
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.75);
+    border-color: $_pp-25;
+  }
+
+  &:focus {
+    outline: none;
+    background: #fff;
+    border-color: $_pp;
+    box-shadow: 0 0 0 3px $_pp-06;
+  }
+}
+
+.removeBtn {
+  @include flex-center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  color: $text-muted;
+  cursor: pointer;
+  border-radius: $radius-sm;
+  flex-shrink: 0;
+  transition: all $transition-fast;
+
+  &:hover {
+    color: $danger;
+    background: $danger-soft;
+  }
+}
+
+.addBtn {
+  @include button-base;
+  font-size: $font-size-xs;
+  color: $_pp;
+  background: none;
+  padding: $spacing-xs $spacing-sm;
+  align-self: flex-start;
+
+  &:hover:not(:disabled) {
+    background: $_pp-05;
+  }
+}
+
+// ==================== 红线面板 ====================
+.rulesList {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.ruleItem {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  padding: $spacing-sm $spacing-md;
+  border: 1px solid $border;
+  border-radius: $radius-md;
+  background: $bg-card;
+  transition: border-color $transition-fast, box-shadow $transition-fast;
+  touch-action: none;
+
+  &:hover {
+    border-color: $border-hover;
+  }
+
+  &:focus-within {
+    border-color: $primary;
+    box-shadow: 0 0 0 3px $primary-soft;
+  }
+}
+
+.ruleItemDragging {
+  opacity: 0.5;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-color: $primary;
+  z-index: 10;
+}
+
+.ruleDragHandle {
+  @include flex-center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  color: $text-muted;
+  cursor: grab;
+  border-radius: $radius-sm;
+  flex-shrink: 0;
+  transition: color $transition-fast;
+
+  &:hover {
+    color: $text-secondary;
+  }
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+.ruleIndex {
+  font-size: $font-size-xs;
+  color: $text-muted;
+  flex-shrink: 0;
+  min-width: 20px;
+}
+
+.ruleInput {
+  @include input-base;
+  border: none;
+  padding: 0;
+  font-size: $font-size-sm;
+  color: $danger;
+
+  &:focus {
+    box-shadow: none;
+    border-color: transparent;
+  }
+}
+
+.ruleRemoveBtn {
+  @include flex-center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  color: $text-muted;
+  cursor: pointer;
+  border-radius: $radius-sm;
+  flex-shrink: 0;
+  transition: all $transition-fast;
+
+  &:hover {
+    color: $danger;
+    background: $danger-soft;
+  }
+}
+
+.ruleRemoveConfirm {
+  width: auto;
+  padding: 0 $spacing-sm;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  color: #fff;
+  background: $danger;
+  border-radius: $radius-sm;
+
+  &:hover {
+    color: #fff;
+    background: darken(#ef4444, 8%);
+  }
+}
+
+.addRuleRow {
+  display: flex;
+  gap: $spacing-sm;
+  margin-top: $spacing-sm;
+  margin-bottom: $spacing-lg;
+}
+
+.addRuleInput {
+  @include input-base;
+  flex: 1;
+  font-size: $font-size-sm;
+}
+
+.addRuleBtn {
+  @include button-primary;
+  white-space: nowrap;
+  font-size: $font-size-sm;
+}
+
+.rulesCount {
+  font-size: $font-size-xs;
+  color: $text-muted;
+  font-weight: $font-weight-normal;
+  margin-left: $spacing-sm;
+}
+
+// ==================== 空列表状态 ====================
+.emptyListState {
+  @include flex-center;
+  flex-direction: column;
+  gap: $spacing-sm;
+  padding: $spacing-lg;
+  border: 2px dashed $border;
+  border-radius: $radius-md;
+  color: $text-muted;
+  font-size: $font-size-sm;
+  transition: border-color $transition-fast;
+
+  &:hover {
+    border-color: $primary-30;
+  }
+}
+
+.emptyIcon {
+  opacity: 0.5;
+}
+
+.emptyHint {
+  font-size: $font-size-xs;
+  color: $text-muted;
+  opacity: 0.7;
+}
+
+// ==================== 行业 Skill 占位 ====================
+.placeholder {
+  @include flex-center;
+  flex-direction: column;
+  gap: $spacing-md;
+  padding: $spacing-2xl;
+  color: $text-muted;
+}
+
+.placeholderIcon {
+  @include flex-center;
+  width: 64px;
+  height: 64px;
+  border-radius: $radius-full;
+  background: $primary-05;
+  color: $primary;
+}
+
+.placeholderTitle {
+  font-size: $font-size-lg;
+  font-weight: $font-weight-medium;
+  color: $text-secondary;
+}
+
+.placeholderDesc {
+  font-size: $font-size-sm;
+  color: $text-muted;
+  text-align: center;
+}
+
+// ==================== Skeleton 加载态 ====================
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+%skeleton-base {
+  background: linear-gradient(90deg, $accent-06 0%, $accent-12 50%, $accent-06 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: $radius-md;
+}
+
+.skeletonHeader {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  margin-bottom: $spacing-lg;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 10px;
+}
+
+.skeletonTabs {
+  display: flex;
+  gap: 2px;
+}
+
+.skeletonTab {
+  @extend %skeleton-base;
+  width: 90px;
+  height: 32px;
+  border-radius: 8px;
+}
+
+.skeletonPanel {
+  @include card;
+  padding: $spacing-lg;
+}
+
+.skeletonHeading {
+  @extend %skeleton-base;
+  width: 100px;
+  height: 20px;
+  margin-bottom: $spacing-sm;
+}
+
+.skeletonDesc {
+  @extend %skeleton-base;
+  width: 60%;
+  height: 14px;
+  margin-bottom: $spacing-lg;
+}
+
+.skeletonField {
+  margin-bottom: $spacing-lg;
+}
+
+.skeletonLabel {
+  @extend %skeleton-base;
+  width: 80px;
+  height: 14px;
+  margin-bottom: $spacing-xs;
+}
+
+.skeletonTextarea {
+  @extend %skeleton-base;
+  width: 100%;
+  height: 80px;
+}

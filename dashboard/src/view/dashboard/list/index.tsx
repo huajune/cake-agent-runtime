@@ -20,7 +20,6 @@ import {
   useToggleAiReply,
   useAvailableModels,
   useConfiguredTools,
-  useBrandConfigStatus,
 } from '@/hooks/monitoring/useSystemConfig';
 import { formatDuration, formatMinuteLabel, formatDayLabel, formatHourLabel } from '@/utils/format';
 import { THEME_COLORS } from '@/constants';
@@ -63,7 +62,6 @@ export default function Dashboard() {
   // 详情数据（悬浮时加载）
   const { data: modelsData } = useAvailableModels();
   const { data: toolsData } = useConfiguredTools();
-  const { data: brandData } = useBrandConfigStatus();
 
   // 新春装饰效果
   useEffect(() => {
@@ -107,8 +105,7 @@ export default function Dashboard() {
   // 健康状态
   const healthStatus = health?.status === 'healthy' &&
     health?.models?.allConfiguredModelsAvailable &&
-    health?.tools?.allAvailable &&
-    health?.brandConfig?.synced
+    health?.tools?.allAvailable
     ? 'healthy'
     : health?.status !== 'healthy' ? 'error' : 'warning';
 
@@ -276,7 +273,6 @@ export default function Dashboard() {
           health={health}
           modelsData={modelsData}
           toolsData={toolsData}
-          brandData={brandData}
         />
       </ControlPanel>
 

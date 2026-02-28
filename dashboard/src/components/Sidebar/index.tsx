@@ -70,6 +70,14 @@ const AgentTestIcon = () => (
   </svg>
 );
 
+const StrategyIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 2L2 7l10 5 10-5-10-5z" />
+    <path d="M2 17l10 5 10-5" />
+    <path d="M2 12l10 5 10-5" />
+  </svg>
+);
+
 const TestSuiteIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
@@ -100,14 +108,6 @@ const ChatRecordsIcon = () => (
 export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   return (
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
-      {/* Background Decorations */}
-      {!isCollapsed && (
-        <>
-          <div className="sidebar-watermark">🏮</div>
-          <div className="sidebar-watermark-2">🧧</div>
-        </>
-      )}
-
       {/* 收起/展开按钮 - 放在侧边栏右边缘 */}
       <button
         className="sidebar-toggle"
@@ -161,15 +161,19 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           title={isCollapsed ? '消息总览' : undefined}
         >
           <span className="nav-icon"><ChatRecordsIcon /></span>
-          {!isCollapsed && <span className="nav-text">消息总览</span>}
+          {!isCollapsed && <span className="nav-text">聊天记录</span>}
         </NavLink>
+
+        {/* 运营 */}
+        {!isCollapsed && <div className="group-title">运营</div>}
+
         <NavLink
-          to="/hosting"
+          to="/strategy"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title={isCollapsed ? '托管设置' : undefined}
+          title={isCollapsed ? '策略配置' : undefined}
         >
-          <span className="nav-icon"><HostingIcon /></span>
-          {!isCollapsed && <span className="nav-text">托管设置</span>}
+          <span className="nav-icon"><StrategyIcon /></span>
+          {!isCollapsed && <span className="nav-text">策略配置</span>}
         </NavLink>
         <NavLink
           to="/config"
@@ -177,22 +181,9 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           title={isCollapsed ? '回复设置' : undefined}
         >
           <span className="nav-icon"><ConfigIcon /></span>
-          {!isCollapsed && <span className="nav-text">回复设置</span>}
+          {!isCollapsed && <span className="nav-text">消息处理</span>}
         </NavLink>
 
-        {/* 系统 */}
-        {!isCollapsed && <div className="group-title">系统</div>}
-        <NavLink
-          to="/system"
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title={isCollapsed ? '系统监控' : undefined}
-        >
-          <span className="nav-icon"><SystemIcon /></span>
-          {!isCollapsed && <span className="nav-text">系统监控</span>}
-        </NavLink>
-
-        {/* 开发工具 */}
-        {!isCollapsed && <div className="group-title">开发</div>}
         <NavLink
           to="/agent-test"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
@@ -209,24 +200,26 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           <span className="nav-icon"><TestSuiteIcon /></span>
           {!isCollapsed && <span className="nav-text">飞书测试集</span>}
         </NavLink>
+
+        {/* 系统 */}
+        {!isCollapsed && <div className="group-title">系统</div>}
+        <NavLink
+          to="/hosting"
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title={isCollapsed ? '托管设置' : undefined}
+        >
+          <span className="nav-icon"><HostingIcon /></span>
+          {!isCollapsed && <span className="nav-text">托管开关</span>}
+        </NavLink>
+        <NavLink
+          to="/system"
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title={isCollapsed ? '系统监控' : undefined}
+        >
+          <span className="nav-icon"><SystemIcon /></span>
+          {!isCollapsed && <span className="nav-text">系统监控</span>}
+        </NavLink>
       </div>
-
-      {!isCollapsed && (
-        <div className="sidebar-footer">
-          <div className="spring-floating">🐎</div>
-
-          {/* Spring Festival Decorative Element */}
-          <div className="spring-card">
-            <div className="spring-title">新春快乐! 🧧</div>
-            <div className="spring-text">马年大吉，代码无 Bug，事业步步高升!</div>
-            <div className="fireworks" aria-hidden="true">
-              <div className="firework">✨</div>
-              <div className="firework">🎇</div>
-              <div className="firework">✨</div>
-            </div>
-          </div>
-        </div>
-      )}
     </aside>
   );
 }

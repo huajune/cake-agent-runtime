@@ -1,7 +1,6 @@
 import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { AgentService } from '../agent.service';
 import { ProfileLoaderService } from './agent-profile-loader.service';
-import { BrandConfigService } from './brand-config.service';
 import { AgentResult, AgentProfile, SimpleMessage, ChatContext } from '../utils/agent-types';
 import { ProfileSanitizer } from '../utils/agent-profile-sanitizer';
 
@@ -40,10 +39,9 @@ export interface ScenarioOptions {
  *
  * 职责：
  * 1. 封装基于场景的 Agent 调用逻辑
- * 2. 自动加载 Profile 和品牌配置
- * 3. 合并上下文数据
- * 4. 提供统一的流式/非流式调用接口
- * 5. 减轻 Controller 的复杂度
+ * 2. 自动加载 Profile 并合并上下文数据
+ * 3. 提供统一的流式/非流式调用接口
+ * 4. 减轻 Controller 的复杂度
  *
  * 设计原则：
  * - 作为 Controller 和核心服务之间的协调层
@@ -57,7 +55,6 @@ export class AgentFacadeService {
   constructor(
     private readonly agentService: AgentService,
     private readonly profileLoader: ProfileLoaderService,
-    private readonly brandConfig: BrandConfigService,
   ) {}
 
   /**
@@ -78,7 +75,7 @@ export class AgentFacadeService {
     // 1. 加载配置档案
     const profile = this.loadProfile(scenario);
 
-    // 2. 合并上下文（品牌配置 + 额外上下文）
+    // 2. 合并上下文
     const mergedContext = await this.buildMergedContext(profile, options?.extraContext);
 
     this.logger.log(
@@ -173,21 +170,6 @@ export class AgentFacadeService {
     return this.profileLoader.getAllProfiles().map((p) => p.name);
   }
 
-  /**
-   * 获取品牌配置状态
-   */
-  async getBrandConfigStatus() {
-    return this.brandConfig.getBrandConfigStatus();
-  }
-
-  /**
-   * 刷新品牌配置
-   */
-  async refreshBrandConfig() {
-    await this.brandConfig.refreshBrandConfig();
-    return this.brandConfig.getBrandConfigStatus();
-  }
-
   // ========== 私有方法 ==========
 
   /**
@@ -203,7 +185,7 @@ export class AgentFacadeService {
 
   /**
    * 构建合并后的上下文
-   * 合并顺序：profile.context -> 品牌配置 -> 额外上下文
+   * 合并顺序：profile.context -> 额外上下文
    */
   private async buildMergedContext(
     profile: AgentProfile,

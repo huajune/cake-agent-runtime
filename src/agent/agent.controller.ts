@@ -11,7 +11,6 @@ import {
 import { AgentService } from './agent.service';
 import { AgentRegistryService } from './services/agent-registry.service';
 import { ProfileLoaderService } from './services/agent-profile-loader.service';
-import { BrandConfigService } from './services/brand-config.service';
 import { AgentConfigValidator } from './utils/agent-validator';
 import { ConfigService } from '@nestjs/config';
 import { RawResponse } from '@/core';
@@ -24,7 +23,6 @@ export class AgentController {
   constructor(
     private readonly agentService: AgentService,
     private readonly profileLoader: ProfileLoaderService,
-    private readonly brandConfig: BrandConfigService,
     private readonly validator: AgentConfigValidator,
     private readonly registryService: AgentRegistryService,
     private readonly configService: ConfigService,
@@ -38,31 +36,18 @@ export class AgentController {
   @Get('health')
   async healthCheck() {
     const healthStatus = this.registryService.getHealthStatus();
-    const brandConfigStatus = await this.brandConfig.getBrandConfigStatus();
 
     const isModelHealthy = healthStatus.models.configuredAvailable;
     const isToolHealthy = healthStatus.tools.allAvailable;
-    const isBrandConfigHealthy = brandConfigStatus.available && brandConfigStatus.synced;
 
-    // 整体健康状态：模型、工具和品牌配置都必须正常
-    const isHealthy = isModelHealthy && isToolHealthy && isBrandConfigHealthy;
+    const isHealthy = isModelHealthy && isToolHealthy;
 
-    // 返回自定义格式的健康状态（只包含状态信息，不暴露敏感数据）
     return {
       success: true,
       data: {
         status: isHealthy ? 'healthy' : 'degraded',
         message: isHealthy ? 'Agent 服务正常' : '⚠️ Agent 服务运行中（部分功能降级）',
         ...healthStatus,
-        brandConfig: {
-          available: brandConfigStatus.available,
-          synced: brandConfigStatus.synced,
-          hasBrandData: brandConfigStatus.hasBrandData,
-          hasReplyPrompts: brandConfigStatus.hasReplyPrompts,
-          lastRefreshTime: brandConfigStatus.lastRefreshTime,
-          lastUpdated: brandConfigStatus.lastUpdated,
-          // 不返回完整的品牌配置数据，避免暴露敏感信息
-        },
       },
     };
   }
@@ -175,32 +160,6 @@ export class AgentController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
-  }
-
-  /**
-   * 手动刷新品牌配置
-   * POST /agent/config/refresh
-   */
-  @Post('config/refresh')
-  async refreshBrandConfig() {
-    this.logger.log('手动刷新品牌配置');
-    await this.brandConfig.refreshBrandConfig();
-    const brandConfigStatus = await this.brandConfig.getBrandConfigStatus();
-
-    return {
-      success: true,
-      message: brandConfigStatus.available ? '品牌配置刷新成功' : '⚠️ 品牌配置刷新失败，请检查日志',
-      data: brandConfigStatus,
-    };
-  }
-
-  /**
-   * 获取品牌配置状态
-   * GET /agent/config/status
-   */
-  @Get('config/status')
-  async getBrandConfigStatus() {
-    return await this.brandConfig.getBrandConfigStatus();
   }
 
   /**
@@ -479,15 +438,11 @@ export class AgentController {
       };
     }
 
-    // 验证品牌配置
-    const brandValidation = this.validator.validateBrandConfig(profile);
-
     // 验证上下文
     const contextValidation = this.validator.validateContext(profile.context);
 
     return {
-      valid: brandValidation.isValid && contextValidation.isValid,
-      brandConfig: brandValidation,
+      valid: contextValidation.isValid,
       context: contextValidation,
     };
   }
