@@ -69,7 +69,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     () =>
       new DefaultChatTransport({
         api: CHAT_API_ENDPOINT,
-        body: { scenario: DEFAULT_SCENARIO, saveExecution: false, chatId },
+        body: { scenario: DEFAULT_SCENARIO, saveExecution: false, chatId, userId: 'dashboard-test-user' },
       }),
     [chatId],
   );

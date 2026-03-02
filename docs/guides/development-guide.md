@@ -420,13 +420,13 @@ describe('MessageSenderService', () => {
 ### 健康检查
 GET http://localhost:8080/agent/health
 
-### 测试聊天
-POST http://localhost:8080/agent/test-chat
+### 调试聊天（完整原始响应）
+POST http://localhost:8080/agent/debug-chat
 Content-Type: application/json
 
 {
   "message": "你好",
-  "conversationId": "test-001"
+  "conversationId": "debug-001"
 }
 ```
 

@@ -82,6 +82,11 @@ export class VercelAIChatRequestDto {
   @IsOptional()
   @IsString()
   chatId?: string;
+
+  @ApiPropertyOptional({ description: '用户 ID（注入 toolContext，生产为 imContactId）' })
+  @IsOptional()
+  @IsString()
+  userId?: string;
 }
 
 /**
@@ -146,6 +151,11 @@ export class TestChatRequestDto {
   @IsOptional()
   @IsString()
   chatId?: string;
+
+  @ApiPropertyOptional({ description: '用户 ID（注入 toolContext，生产为 imContactId）' })
+  @IsOptional()
+  @IsString()
+  userId?: string;
 }
 
 /**

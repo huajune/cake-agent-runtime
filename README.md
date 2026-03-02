@@ -146,10 +146,10 @@ curl http://localhost:8080/agent/health
 # 查看可用 AI 模型
 curl http://localhost:8080/agent/models
 
-# 测试 AI 对话
-curl -X POST http://localhost:8080/agent/test-chat \
+# 调试 AI 对话（返回完整原始响应）
+curl -X POST http://localhost:8080/agent/debug-chat \
   -H "Content-Type: application/json" \
-  -d '{"message":"你好","conversationId":"test-001"}'
+  -d '{"message":"你好","conversationId":"debug-001"}'
 ```
 
 ---
@@ -288,9 +288,9 @@ tail -f logs/combined-$(date +%Y-%m-%d).log
 
 # API 测试（使用 curl）
 curl http://localhost:8080/agent/health
-curl -X POST http://localhost:8080/agent/test-chat \
+curl -X POST http://localhost:8080/agent/debug-chat \
   -H "Content-Type: application/json" \
-  -d '{"message":"你好","conversationId":"test-001"}'
+  -d '{"message":"你好","conversationId":"debug-001"}'
 
 # VS Code 调试：按 F5 启动，在代码中设置断点
 # 或使用项目根目录的 api-test.http 文件（需 REST Client 插件）
@@ -391,11 +391,11 @@ GET /agent/models
 # 获取可用工具
 GET /agent/tools
 
-# 测试聊天
-POST /agent/test-chat
+# 调试聊天（完整原始响应）
+POST /agent/debug-chat
 {
   "message": "你好",
-  "conversationId": "test-user"
+  "conversationId": "debug-001"
 }
 ```
 

@@ -75,6 +75,7 @@ export class TestExecutionService {
 
       const options: ScenarioOptions = {
         messages: historyForAgent,
+        userId: request.userId,
       };
 
       result = await this.agentFacade.chatWithScenario(
@@ -184,6 +185,7 @@ export class TestExecutionService {
 
     const options: ScenarioOptions = {
       messages: historyForAgent,
+      userId: request.userId,
     };
 
     const result = await this.agentFacade.chatStreamWithScenario(

@@ -16,6 +16,8 @@ import { AgentConfigValidator } from './utils/agent-validator';
 import { ConfigService } from '@nestjs/config';
 import { RawResponse } from '@/core';
 import { FeishuAlertService } from '@core/feishu';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Controller('agent')
 export class AgentController {
@@ -217,57 +219,6 @@ export class AgentController {
       count: availableModels.length,
       defaultModelAvailable: healthStatus.models.defaultAvailable,
       lastRefreshTime: healthStatus.lastRefreshTime,
-    };
-  }
-
-  /**
-   * 测试聊天接口
-   * POST /agent/test-chat
-   * Body: { "message": "你好", "conversationId": "test-user", "model"?: "...", "allowedTools"?: [...], "scenario"?: "..." }
-   *
-   * 改进：使用配置档案自动传递 context 和 toolContext，避免缺少必需参数的错误
-   */
-  @Post('test-chat')
-  async testChat(
-    @Body()
-    body: {
-      message: string;
-      conversationId?: string;
-      model?: string;
-      allowedTools?: string[];
-      scenario?: string;
-      userId?: string;
-      sessionId?: string;
-    },
-  ) {
-    this.logger.log('测试聊天:', body.message);
-    const conversationId = body.conversationId || 'test-user';
-    const scenario = body.scenario || 'candidate-consultation';
-
-    // 通过 Facade 统一调用（参数准备全在 Facade 内部）
-    const result = await this.agentFacade.chatWithScenario(scenario, conversationId, body.message, {
-      model: body.model,
-      allowedTools: body.allowedTools,
-      userId: body.userId,
-      sessionId: body.sessionId,
-    });
-
-    // 基于状态返回不同响应
-    if (result.status === 'error') {
-      throw new HttpException(
-        result.error?.message || 'Agent 调用失败',
-        result.error?.retryable ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-
-    return {
-      response: result.data || result.fallback,
-      metadata: {
-        status: result.status,
-        fromCache: result.fromCache,
-        correlationId: result.correlationId,
-        ...(result.fallbackInfo && { fallbackInfo: result.fallbackInfo }),
-      },
     };
   }
 
@@ -476,10 +427,12 @@ export class AgentController {
     });
 
     // 返回完整的 AgentResult，不做任何裁剪
-    return {
+    const debugResponse = {
       success: result.status !== 'error',
       conversationId,
       scenario,
+      // === 发给花卷 API 的完整请求体（便于调试入参） ===
+      requestBody: (result as any).requestBody || null,
       // === 完整的 AgentResult ===
       agentResult: {
         status: result.status,
@@ -494,6 +447,23 @@ export class AgentController {
       extractedText: this.extractResponseText(result),
       timestamp: new Date().toISOString(),
     };
+
+    // 写入调试文件，便于开发时查看完整入参+出参
+    this.writeDebugFile(debugResponse);
+
+    return debugResponse;
+  }
+
+  /**
+   * 写入调试文件 scripts/agent-debug-response.json
+   * 异步写入，不阻塞响应
+   */
+  private writeDebugFile(data: unknown): void {
+    const filePath = path.resolve(process.cwd(), 'scripts/agent-debug-response.json');
+    fs.promises
+      .writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8')
+      .then(() => this.logger.debug(`调试文件已写入: ${filePath}`))
+      .catch((err) => this.logger.warn(`调试文件写入失败: ${err.message}`));
   }
 
   /**

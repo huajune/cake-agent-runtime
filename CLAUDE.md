@@ -350,10 +350,10 @@ curl http://localhost:8080/agent/health
 # View available models
 curl http://localhost:8080/agent/models
 
-# Test chat
-curl -X POST http://localhost:8080/agent/test-chat \
+# Debug chat (complete raw response)
+curl -X POST http://localhost:8080/agent/debug-chat \
   -H "Content-Type: application/json" \
-  -d '{"message":"你好","conversationId":"test-001"}'
+  -d '{"message":"你好","conversationId":"debug-001"}'
 
 # View logs
 tail -f logs/combined-$(date +%Y-%m-%d).log

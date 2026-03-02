@@ -210,6 +210,7 @@ export class TestSuiteController {
         saveExecution: request.saveExecution ?? false,
         skipHistoryTrim: true,
         chatId: request.chatId,
+        userId: request.userId,
       };
 
       // 获取花卷 API 的流式响应（带估算的 input token 数量）

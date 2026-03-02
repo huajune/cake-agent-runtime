@@ -199,7 +199,7 @@ describe('AgentController', () => {
     });
   });
 
-  describe('testChat', () => {
+  describe('debugChat', () => {
     const createMockAgentResult = (text: string) => ({
       status: 'success',
       data: {
@@ -214,13 +214,14 @@ describe('AgentController', () => {
       const mockBody = {
         message: '你好',
         conversationId: 'conv123',
+        scenario: 'candidate-consultation',
         model: 'gpt-4',
       };
       const mockAgentResult = createMockAgentResult('你好！');
 
       mockAgentFacadeService.chatWithScenario.mockResolvedValue(mockAgentResult);
 
-      const result = await controller.testChat(mockBody);
+      const result = await controller.debugChat(mockBody);
 
       expect(mockAgentFacadeService.chatWithScenario).toHaveBeenCalledWith(
         'candidate-consultation',
@@ -233,31 +234,29 @@ describe('AgentController', () => {
           sessionId: undefined,
         },
       );
-      expect(result).toEqual({
-        response: mockAgentResult.data,
-        metadata: {
-          status: 'success',
-          fromCache: false,
-          correlationId: 'test-correlation-id',
-        },
-      });
+      expect(result.success).toBe(true);
+      expect(result.conversationId).toBe('conv123');
+      expect(result.scenario).toBe('candidate-consultation');
+      expect(result.agentResult.status).toBe('success');
+      expect(result.agentResult.data).toEqual(mockAgentResult.data);
     });
 
-    it('should use default conversationId when not provided', async () => {
+    it('should use default conversationId and scenario when not provided', async () => {
       const mockBody = { message: '测试消息' };
       const mockAgentResult = createMockAgentResult('收到测试消息');
 
       mockAgentFacadeService.chatWithScenario.mockResolvedValue(mockAgentResult);
 
-      const result = await controller.testChat(mockBody);
+      const result = await controller.debugChat(mockBody);
 
       expect(mockAgentFacadeService.chatWithScenario).toHaveBeenCalledWith(
         'candidate-consultation',
-        'test-user',
+        expect.stringMatching(/^debug-\d+$/),
         '测试消息',
         expect.objectContaining({ model: undefined, allowedTools: undefined }),
       );
-      expect(result.response).toEqual(mockAgentResult.data);
+      expect(result.success).toBe(true);
+      expect(result.scenario).toBe('candidate-consultation');
     });
 
     it('should use custom scenario when provided', async () => {
@@ -269,17 +268,18 @@ describe('AgentController', () => {
 
       mockAgentFacadeService.chatWithScenario.mockResolvedValue(mockAgentResult);
 
-      await controller.testChat(mockBody);
+      const result = await controller.debugChat(mockBody);
 
       expect(mockAgentFacadeService.chatWithScenario).toHaveBeenCalledWith(
         'wechat-group-assistant',
-        'test-user',
+        expect.stringMatching(/^debug-\d+$/),
         '你好',
         expect.any(Object),
       );
+      expect(result.scenario).toBe('wechat-group-assistant');
     });
 
-    it('should throw HttpException when result status is error', async () => {
+    it('should return success false when result status is error', async () => {
       const mockBody = { message: '测试' };
       const mockErrorResult = {
         status: 'error',
@@ -288,7 +288,11 @@ describe('AgentController', () => {
 
       mockAgentFacadeService.chatWithScenario.mockResolvedValue(mockErrorResult);
 
-      await expect(controller.testChat(mockBody)).rejects.toThrow('Agent 调用失败');
+      const result = await controller.debugChat(mockBody);
+
+      expect(result.success).toBe(false);
+      expect(result.agentResult.status).toBe('error');
+      expect(result.agentResult.error).toEqual(mockErrorResult.error);
     });
 
     it('should handle errors from agentFacade.chatWithScenario', async () => {
@@ -296,7 +300,7 @@ describe('AgentController', () => {
 
       mockAgentFacadeService.chatWithScenario.mockRejectedValue(new Error('Chat failed'));
 
-      await expect(controller.testChat(mockBody)).rejects.toThrow('Chat failed');
+      await expect(controller.debugChat(mockBody)).rejects.toThrow('Chat failed');
     });
   });
 

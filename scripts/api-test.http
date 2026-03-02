@@ -429,14 +429,14 @@ GET {{baseUrl}}/agent/health/cache
 POST {{baseUrl}}/agent/cache/clear
 
 ### ========================================
-### 21. 测试 Agent 聊天（简单测试）
-POST {{baseUrl}}/agent/test-chat
+### 21. 调试 Agent 聊天（返回完整原始响应）
+POST {{baseUrl}}/agent/debug-chat
 Content-Type: application/json
 
 {
   "message": "你好，请介绍一下你自己",
-  "conversationId": "test-user-001",
-  "model": "claude-3-5-sonnet-20241022"
+  "conversationId": "debug-001",
+  "scenario": "candidate-consultation"
 }
 
 ### ========================================

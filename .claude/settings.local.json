@@ -392,7 +392,13 @@
       "Bash(head -10 grep -E \"AGENT_.*MODEL|AGENT_REPLY|AGENT_CHAT|AGENT_CLASSIFY|AGENT_DEFAULT\" /Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/.env.local)",
       "Bash(# 看看日志写到哪里 lsof -p 73295)",
       "Bash(./scripts/test-agent.sh health)",
-      "Bash(xxd)"
+      "Bash(xxd)",
+      "Bash(git status -u)",
+      "Read(//Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/**)",
+      "mcp__chrome-devtools__list_network_requests",
+      "mcp__chrome-devtools__fill",
+      "mcp__chrome-devtools__click",
+      "mcp__chrome-devtools__get_network_request"
     ],
     "deny": [
       "Bash(git restore:*)",
