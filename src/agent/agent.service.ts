@@ -76,6 +76,7 @@ export class AgentService {
     userMessage: string; // 用户当前消息，会被添加到 messages 数组
     messages?: SimpleMessage[]; // API 契约字段名：历史消息数组
     model?: string;
+    promptType?: string;
     systemPrompt?: string;
     allowedTools?: string[];
     context?: any;
@@ -344,6 +345,7 @@ export class AgentService {
    */
   private buildChatRequest(params: {
     model: string;
+    promptType?: string;
     userMessage: string;
     messages: SimpleMessage[]; // API 契约字段名：历史消息数组
     systemPrompt?: string;
@@ -363,6 +365,7 @@ export class AgentService {
     };
 
     // 只添加有值的可选字段
+    if (params.promptType) chatRequest.promptType = params.promptType;
     if (params.systemPrompt) chatRequest.systemPrompt = params.systemPrompt;
     // 注意：空数组 [] 表示禁用所有工具，也需要传递
     if (params.allowedTools !== undefined) {
@@ -376,15 +379,14 @@ export class AgentService {
     if (!context.modelConfig) {
       context.modelConfig = this.registryService.getModelConfig();
       this.logger.debug(
-        `✅ buildChatRequest: 注入 modelConfig - chatModel: ${context.modelConfig.chatModel}, classifyModel: ${context.modelConfig.classifyModel}, replyModel: ${context.modelConfig.replyModel}`,
+        `✅ buildChatRequest: 注入 modelConfig - chatModel: ${context.modelConfig.chatModel}, classifyModel: ${context.modelConfig.classifyModel}, extractModel: ${context.modelConfig.extractModel}`,
       );
     }
 
     // 调试日志：检查 context 中的 dulidayToken
     if ('dulidayToken' in context) {
-      const tokenLength = context.dulidayToken ? String(context.dulidayToken).length : 0;
       this.logger.debug(
-        `✅ buildChatRequest: context 中包含 dulidayToken (长度: ${tokenLength})，将传递给 Agent API`,
+        `✅ buildChatRequest: context 中包含 dulidayToken: ${context.dulidayToken ? '已设置' : '为空'}`,
       );
     } else {
       this.logger.warn('⚠️ buildChatRequest: context 中未找到 dulidayToken');
@@ -395,7 +397,25 @@ export class AgentService {
       chatRequest.context = context;
     }
     if (params.toolContext && Object.keys(params.toolContext).length > 0) {
-      chatRequest.toolContext = params.toolContext;
+      // 过滤 toolContext：只保留 allowedTools 中存在的工具
+      // 避免 Agent API 因引用了不在 allowedTools 中的工具 context 而返回 400
+      if (params.allowedTools === undefined) {
+        // allowedTools 未指定：直接透传全量 toolContext
+        chatRequest.toolContext = params.toolContext;
+      } else if (params.allowedTools.length > 0) {
+        // allowedTools 已指定：过滤掉未在列表中的工具 context
+        const allowedSet = new Set(params.allowedTools);
+        const filteredToolContext: Record<string, unknown> = {};
+        for (const [toolName, toolCtx] of Object.entries(params.toolContext)) {
+          if (allowedSet.has(toolName)) {
+            filteredToolContext[toolName] = toolCtx;
+          }
+        }
+        if (Object.keys(filteredToolContext).length > 0) {
+          chatRequest.toolContext = filteredToolContext as typeof params.toolContext;
+        }
+      }
+      // allowedTools 为 [] 时：禁用所有工具，toolContext 无意义，不传
     }
     if (params.contextStrategy) chatRequest.contextStrategy = params.contextStrategy;
     if (params.prune !== undefined) chatRequest.prune = params.prune;

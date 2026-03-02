@@ -77,6 +77,11 @@ export class VercelAIChatRequestDto {
   @IsOptional()
   @IsBoolean()
   saveExecution?: boolean;
+
+  @ApiPropertyOptional({ description: '会话 ID（同一对话保持一致，清空聊天后生成新值）' })
+  @IsOptional()
+  @IsString()
+  chatId?: string;
 }
 
 /**
@@ -128,6 +133,19 @@ export class TestChatRequestDto {
   @IsOptional()
   @IsString()
   batchId?: string;
+
+  @ApiPropertyOptional({
+    description: '跳过历史截断（ai-stream 等已预处理历史的场景使用）',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  skipHistoryTrim?: boolean;
+
+  @ApiPropertyOptional({ description: '会话 ID（同一对话保持一致，用作 sessionId）' })
+  @IsOptional()
+  @IsString()
+  chatId?: string;
 }
 
 /**

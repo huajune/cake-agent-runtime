@@ -52,7 +52,7 @@ export interface PruneOptions {
 export interface ModelConfig {
   chatModel?: string;
   classifyModel?: string;
-  replyModel?: string;
+  extractModel?: string;
 }
 
 /**
@@ -74,6 +74,8 @@ export interface ChatContext {
   systemPrompts?: SystemPrompts;
   dulidayToken?: string | null;
   defaultWechatId?: string | null;
+  userId?: string | null; // 候选人用户 ID（即 imContactId / user_id）
+  sessionId?: string | null; // 会话 ID（即 chatId / chat_id）
   [key: string]: any;
 }
 
@@ -96,6 +98,9 @@ export interface ChatRequest {
   // 必填字段
   model: string;
   messages: (UIMessage | SimpleMessage)[];
+
+  // 提示词类型（指定 Agent 使用哪套 system prompt）
+  promptType?: string;
 
   // 流式输出配置
   stream?: boolean;
@@ -266,6 +271,12 @@ export interface AgentProfile {
    * 例如: 'anthropic/claude-3-7-sonnet-20250219'
    */
   model: string;
+
+  /**
+   * 提示词类型（指定 Agent 使用哪套 system prompt）
+   * 例如: 'weworkSystemPrompt'
+   */
+  promptType?: string;
 
   /**
    * 系统提示词

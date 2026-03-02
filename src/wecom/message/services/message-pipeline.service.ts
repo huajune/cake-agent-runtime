@@ -348,6 +348,8 @@ export class MessagePipelineService {
       scenario,
       messageId,
       recordMonitoring: true,
+      userId: params.primaryMessage.imContactId,
+      sessionId: chatId,
     });
 
     this.logger.log(

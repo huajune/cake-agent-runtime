@@ -49,6 +49,9 @@ lerna-debug.log*
 *.temp
 .cache
 
+# Agent test output
+scripts/agent-debug-response*.json
+
 # VSCode History Extension
 .history/
 .history

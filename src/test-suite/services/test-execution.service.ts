@@ -60,7 +60,7 @@ export class TestExecutionService {
   async executeTest(request: TestChatRequestDto): Promise<TestChatResponse> {
     const startTime = Date.now();
     const scenario = request.scenario || DEFAULT_SCENARIO;
-    const testId = `test-${Date.now()}`;
+    const conversationId = request.chatId || `test-${Date.now()}`;
 
     this.logger.log(`执行测试: ${request.caseName || request.message.substring(0, 50)}...`);
 
@@ -77,7 +77,12 @@ export class TestExecutionService {
         messages: historyForAgent,
       };
 
-      result = await this.agentFacade.chatWithScenario(scenario, testId, request.message, options);
+      result = await this.agentFacade.chatWithScenario(
+        scenario,
+        conversationId,
+        request.message,
+        options,
+      );
 
       if (result.status === AgentResultStatus.ERROR) {
         executionStatus = ExecutionStatus.FAILURE;
@@ -164,7 +169,7 @@ export class TestExecutionService {
     request: TestChatRequestDto,
   ): Promise<{ stream: NodeJS.ReadableStream; estimatedInputTokens: number }> {
     const scenario = request.scenario || DEFAULT_SCENARIO;
-    const testId = `test-stream-${Date.now()}`;
+    const conversationId = request.chatId || `test-stream-${Date.now()}`;
 
     this.logger.log(
       `[Stream] 执行流式测试: ${request.caseName || request.message.substring(0, 50)}...`,
@@ -172,7 +177,10 @@ export class TestExecutionService {
 
     // 测试/验证集的 history 包含完整聊天记录（包括最新的 user + assistant）
     // 重新测试时需要去掉最后两条，用当前 message 重新获取 AI 回答
-    const historyForAgent = (request.history || []).slice(0, -2);
+    // ai-stream 等场景已在 Controller 层预处理好历史，无需再截断
+    const historyForAgent = request.skipHistoryTrim
+      ? request.history || []
+      : (request.history || []).slice(0, -2);
 
     const options: ScenarioOptions = {
       messages: historyForAgent,
@@ -180,7 +188,7 @@ export class TestExecutionService {
 
     const result = await this.agentFacade.chatStreamWithScenario(
       scenario,
-      testId,
+      conversationId,
       request.message,
       options,
     );

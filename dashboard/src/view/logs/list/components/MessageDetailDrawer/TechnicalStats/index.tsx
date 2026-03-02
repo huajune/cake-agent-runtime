@@ -31,7 +31,7 @@ interface AgentMessage {
 interface ModelConfigDisplay {
   chatModel?: string;
   classifyModel?: string;
-  replyModel?: string;
+  extractModel?: string;
 }
 
 // ChatRequest 请求结构
@@ -293,11 +293,11 @@ export default function TechnicalStats({ message }: TechnicalStatsProps) {
                     </span>
                   </div>
                 )}
-                {request.context.modelConfig.replyModel && (
+                {request.context.modelConfig.extractModel && (
                   <div className={styles.breakdownItem}>
-                    <span className={styles.indentL1}>└ replyModel</span>
-                    <span className={styles.modelText} title={request.context.modelConfig.replyModel}>
-                      {shortModelName(request.context.modelConfig.replyModel)}
+                    <span className={styles.indentL1}>└ extractModel</span>
+                    <span className={styles.modelText} title={request.context.modelConfig.extractModel}>
+                      {shortModelName(request.context.modelConfig.extractModel)}
                     </span>
                   </div>
                 )}

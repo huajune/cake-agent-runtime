@@ -38,6 +38,8 @@ import { validate } from './core/config/env.validation';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: [
+        // 本地 Agent 服务模式（AGENT_ENV=local）：优先加载本地 Agent 配置覆盖
+        ...(process.env.AGENT_ENV === 'local' ? ['.env.agent.local'] : []),
         '.env.local', // 优先加载本地配置
         `.env.${process.env.NODE_ENV || 'development'}`,
         '.env',

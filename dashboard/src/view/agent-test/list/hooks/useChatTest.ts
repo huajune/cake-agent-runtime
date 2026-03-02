@@ -55,20 +55,23 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
   );
   const startTimeRef = useRef<number>(0);
 
+  // 会话 ID：同一对话保持一致，清空聊天时重新生成
+  const [chatId, setChatId] = useState(() => crypto.randomUUID());
+
   // Refs
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const replyContentRef = useRef<HTMLDivElement>(null);
   const currentInputRef = useRef<string>('');
   const tokenUsageRef = useRef<TokenUsage | null>(null);
 
-  // Transport
+  // Transport（chatId 变化时重建，确保新对话用新 sessionId）
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
         api: CHAT_API_ENDPOINT,
-        body: { scenario: DEFAULT_SCENARIO, saveExecution: false },
+        body: { scenario: DEFAULT_SCENARIO, saveExecution: false, chatId },
       }),
-    [],
+    [chatId],
   );
 
   // useChat hook
@@ -253,7 +256,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
   // 取消
   const handleCancel = useCallback(() => stop(), [stop]);
 
-  // 清空
+  // 清空（重新生成 chatId，开启新会话）
   const handleClear = useCallback(() => {
     setHistoryTextState('');
     setHistoryStatus('empty');
@@ -263,6 +266,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     setLocalError(null);
     setMetrics(null);
     setIsRequesting(false);
+    setChatId(crypto.randomUUID());
     messageInputRef.current?.focus();
   }, [setMessages]);
 

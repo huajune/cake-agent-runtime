@@ -208,6 +208,8 @@ export class TestSuiteController {
         history,
         scenario: request.scenario || 'candidate-consultation',
         saveExecution: request.saveExecution ?? false,
+        skipHistoryTrim: true,
+        chatId: request.chatId,
       };
 
       // 获取花卷 API 的流式响应（带估算的 input token 数量）
@@ -239,7 +241,7 @@ export class TestSuiteController {
         res.setHeader('Content-Type', 'text/event-stream');
         res.flushHeaders();
       }
-      res.write(`data: {"type":"error","error":"${errorMessage}"}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: 'error', error: errorMessage })}\n\n`);
       res.end();
     }
   }

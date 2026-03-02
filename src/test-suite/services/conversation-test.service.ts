@@ -299,6 +299,7 @@ export class ConversationTestService {
           role: m.role === 'user' ? MessageRole.USER : MessageRole.ASSISTANT,
           content: m.content,
         })),
+        sessionId: source.conversation_id,
       };
 
       agentResult = await this.agentFacade.chatWithScenario(

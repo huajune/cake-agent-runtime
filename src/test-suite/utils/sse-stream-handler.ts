@@ -398,7 +398,7 @@ export class VercelAIStreamHandler {
    * 发送错误并结束响应
    */
   sendError(message: string): void {
-    this.res.write(`data: {"type":"error","error":"${message}"}\n\n`);
+    this.res.write(`data: ${JSON.stringify({ type: 'error', error: message })}\n\n`);
     this.res.end();
   }
 

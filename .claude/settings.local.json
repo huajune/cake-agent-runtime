@@ -386,7 +386,13 @@
       "mcp__chrome-devtools__take_snapshot",
       "Bash(npx jest --passWithNoTests)",
       "Bash(npx vite build --config dashboard/vite.config.ts)",
-      "Bash(npx --prefix dashboard vite build --config dashboard/vite.config.ts)"
+      "Bash(npx --prefix dashboard vite build --config dashboard/vite.config.ts)",
+      "Bash(pnpm run start:dev:local-agent)",
+      "Bash(/tmp/architecture_diagram.txt:*)",
+      "Bash(head -10 grep -E \"AGENT_.*MODEL|AGENT_REPLY|AGENT_CHAT|AGENT_CLASSIFY|AGENT_DEFAULT\" /Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/.env.local)",
+      "Bash(# 看看日志写到哪里 lsof -p 73295)",
+      "Bash(./scripts/test-agent.sh health)",
+      "Bash(xxd)"
     ],
     "deny": [
       "Bash(git restore:*)",
@@ -409,7 +415,10 @@
     ],
     "additionalDirectories": [
       "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/agent",
-      "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/agent/services"
+      "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/agent/services",
+      "/tmp",
+      "/Users/jiezhu/workSpace/DuLiDay/agent-computer-user/lib/mcp",
+      "/Users/jiezhu/.claude/projects/-Users-jiezhu-workSpace-DuLiDay-duliday-wecom-service/232623d2-db7d-4962-a279-4ac9ef63f6f1/tool-results"
     ]
   },
   "enableAllProjectMcpServers": true,

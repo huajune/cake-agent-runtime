@@ -241,7 +241,7 @@ export class ProfileLoaderService implements OnModuleInit {
 
     // 记录配置加载情况
     if (dulidayToken) {
-      this.logger.debug(`✅ DULIDAY_API_TOKEN 已加载 (长度: ${dulidayToken.length})`);
+      this.logger.debug('✅ DULIDAY_API_TOKEN 已加载');
     } else {
       this.logger.warn('⚠️ DULIDAY_API_TOKEN 未设置');
     }
@@ -250,6 +250,7 @@ export class ProfileLoaderService implements OnModuleInit {
       name: ScenarioType.CANDIDATE_CONSULTATION,
       description: '候选人私聊咨询服务',
       model,
+      promptType: 'weworkSystemPrompt',
       allowedTools,
       contextStrategy: ContextStrategy.SKIP,
       systemPrompt,

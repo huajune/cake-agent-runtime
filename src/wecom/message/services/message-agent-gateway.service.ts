@@ -1,22 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
-  AgentService,
-  ProfileLoaderService,
-  AgentConfigValidator,
   AgentResultHelper,
-  AgentProfile,
   ChatResponse,
   ScenarioType,
   AgentError,
   AgentInvocationException,
   SimpleMessage,
-  StrategyConfigService,
 } from '@agent';
+import { AgentFacadeService } from '@agent/services/agent-facade.service';
 import { MonitoringService } from '@/core/monitoring/monitoring.service';
 import { AgentInvokeResult, AgentReply, FallbackMessageOptions } from '../types';
 import { ReplyNormalizer } from '../utils/reply-normalizer.util';
-import { MessageParser } from '../utils/message-parser.util';
 
 /**
  * Agent 网关服务（增强版）
@@ -53,11 +48,8 @@ export class AgentGatewayService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly agentService: AgentService,
-    private readonly profileLoader: ProfileLoaderService,
-    private readonly configValidator: AgentConfigValidator,
+    private readonly agentFacade: AgentFacadeService,
     private readonly monitoringService: MonitoringService,
-    private readonly strategyConfigService: StrategyConfigService,
   ) {}
 
   // ========================================
@@ -109,6 +101,8 @@ export class AgentGatewayService {
     scenario?: ScenarioType;
     messageId?: string; // 可选，用于监控埋点
     recordMonitoring?: boolean; // 是否记录监控（默认 true）
+    userId: string; // 候选人用户 ID（即 imContactId / user_id）
+    sessionId: string; // 会话 ID（即 chatId / chat_id）
   }): Promise<AgentInvokeResult> {
     const {
       conversationId,
@@ -117,80 +111,54 @@ export class AgentGatewayService {
       scenario = ScenarioType.CANDIDATE_CONSULTATION,
       messageId,
       recordMonitoring = true,
+      userId,
+      sessionId,
     } = params;
 
     const startTime = Date.now();
     let shouldRecordAiEnd = false;
 
     try {
-      // 1. 获取 Agent 配置档案
-      const agentProfile = this.loadAndValidateProfile(scenario);
-
-      // 2. 【监控埋点】记录 AI 处理开始
+      // 1. 【监控埋点】记录 AI 处理开始
       if (recordMonitoring && messageId) {
         this.monitoringService.recordAiStart(messageId);
         shouldRecordAiEnd = true;
       }
 
-      // 3. 动态注入当前时间到 System Prompt
-      const systemPrompt = this.injectCurrentTime(agentProfile.systemPrompt);
-
-      // 5. 策略配置注入（人格 + 红线 → systemPrompt，阶段目标 → toolContext）
-      let finalSystemPrompt = systemPrompt;
-      let finalToolContext = agentProfile.toolContext;
-      try {
-        finalSystemPrompt = await this.strategyConfigService.composeSystemPrompt(
-          systemPrompt || '',
-        );
-        const stageGoals = await this.strategyConfigService.getStageGoalsForToolContext();
-        finalToolContext = {
-          ...agentProfile.toolContext,
-          wework_plan_turn: {
-            ...agentProfile.toolContext?.wework_plan_turn,
-            stageGoals,
-          },
-        };
-      } catch (error) {
-        this.logger.warn('策略配置注入失败，使用基础 prompt', error);
-      }
-
-      // 6. 调用 Agent API
-      const agentResult = await this.agentService.chat({
+      // 2. 通过 Facade 统一调用 Agent API（参数准备全在 Facade 内部）
+      const agentResult = await this.agentFacade.chatWithScenario(
+        scenario,
         conversationId,
         userMessage,
-        messages: historyMessages, // API 契约字段名
-        model: agentProfile.model,
-        systemPrompt: finalSystemPrompt,
-        allowedTools: agentProfile.allowedTools,
-        context: agentProfile.context,
-        toolContext: finalToolContext,
-        contextStrategy: agentProfile.contextStrategy,
-        prune: agentProfile.prune,
-        pruneOptions: agentProfile.pruneOptions,
-      });
+        {
+          messages: historyMessages,
+          userId,
+          sessionId,
+        },
+      );
 
       const processingTime = Date.now() - startTime;
 
-      // 4. 检查 Agent 调用结果
+      // 3. 检查 Agent 调用结果
       if (AgentResultHelper.isError(agentResult)) {
         this.logger.error(`Agent 调用失败:`, agentResult.error);
         throw this.buildAgentInvocationError(agentResult.error);
       }
 
-      // 5. 检查是否为降级响应
+      // 4. 检查是否为降级响应
       const isFallback = AgentResultHelper.isFallback(agentResult);
       if (isFallback && agentResult.fallbackInfo) {
         this.handleFallbackResponse(agentResult, conversationId, userMessage, scenario);
       }
 
-      // 6. 提取响应数据
+      // 5. 提取响应数据
       const chatResponse = AgentResultHelper.getResponse(agentResult);
       if (!chatResponse) {
         this.logger.error(`Agent 返回空响应`);
         throw new Error('Agent 返回空响应');
       }
 
-      // 7. 构造回复对象
+      // 6. 构造回复对象
       const reply = this.buildAgentReply(chatResponse);
 
       this.logger.log(
@@ -207,36 +175,11 @@ export class AgentGatewayService {
       this.logger.error(`Agent 调用异常: ${error.message}`);
       throw error;
     } finally {
-      // 8. 【监控埋点】记录 AI 处理完成（无论成功还是失败）
+      // 7. 【监控埋点】记录 AI 处理完成（无论成功还是失败）
       if (shouldRecordAiEnd && messageId) {
         this.monitoringService.recordAiEnd(messageId);
       }
     }
-  }
-
-  /**
-   * 加载并验证 Agent 配置档案
-   */
-  private loadAndValidateProfile(scenario: string): AgentProfile {
-    const agentProfile = this.profileLoader.getProfile(scenario);
-
-    if (!agentProfile) {
-      throw new Error(`无法获取场景 ${scenario} 的 Agent 配置`);
-    }
-
-    // 验证配置有效性
-    try {
-      this.configValidator.validateRequiredFields(agentProfile);
-      const contextValidation = this.configValidator.validateContext(agentProfile.context);
-
-      if (!contextValidation.isValid) {
-        throw new Error(`Agent 配置验证失败: ${contextValidation.errors.join(', ')}`);
-      }
-    } catch (error) {
-      throw new Error(`Agent 配置验证失败: ${error.message}`);
-    }
-
-    return agentProfile;
   }
 
   /**
@@ -357,16 +300,5 @@ export class AgentGatewayService {
     }
 
     return rawContent;
-  }
-
-  /**
-   * 动态注入当前时间到 System Prompt
-   * 替换 {{CURRENT_TIME}} 占位符为实际时间
-   */
-  private injectCurrentTime(systemPrompt?: string): string | undefined {
-    if (!systemPrompt) return systemPrompt;
-
-    const currentTime = MessageParser.formatCurrentTime();
-    return systemPrompt.replace('{{CURRENT_TIME}}', currentTime);
   }
 }

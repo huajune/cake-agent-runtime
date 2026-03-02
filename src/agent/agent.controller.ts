@@ -11,6 +11,7 @@ import {
 import { AgentService } from './agent.service';
 import { AgentRegistryService } from './services/agent-registry.service';
 import { ProfileLoaderService } from './services/agent-profile-loader.service';
+import { AgentFacadeService } from './services/agent-facade.service';
 import { AgentConfigValidator } from './utils/agent-validator';
 import { ConfigService } from '@nestjs/config';
 import { RawResponse } from '@/core';
@@ -27,6 +28,7 @@ export class AgentController {
     private readonly registryService: AgentRegistryService,
     private readonly configService: ConfigService,
     private readonly feishuAlertService: FeishuAlertService,
+    private readonly agentFacade: AgentFacadeService,
   ) {}
 
   /**
@@ -233,30 +235,21 @@ export class AgentController {
       conversationId?: string;
       model?: string;
       allowedTools?: string[];
-      scenario?: string; // 新增：指定使用的场景配置
+      scenario?: string;
+      userId?: string;
+      sessionId?: string;
     },
   ) {
     this.logger.log('测试聊天:', body.message);
     const conversationId = body.conversationId || 'test-user';
-
-    // 默认使用 candidate-consultation 场景配置（包含所有必需的 context）
     const scenario = body.scenario || 'candidate-consultation';
-    const profile = this.profileLoader.getProfile(scenario);
 
-    if (!profile) {
-      throw new HttpException(
-        `未找到场景 ${scenario} 的配置，请检查配置文件`,
-        HttpStatus.NOT_FOUND,
-      );
-    }
-
-    this.logger.log(`使用配置档案: ${profile.name} (${profile.description})`);
-
-    // 使用配置档案调用聊天接口（自动传递 context 和 toolContext）
-    const result = await this.agentService.chatWithProfile(conversationId, body.message, profile, {
-      // 允许通过请求参数覆盖配置档案的设置
+    // 通过 Facade 统一调用（参数准备全在 Facade 内部）
+    const result = await this.agentFacade.chatWithScenario(scenario, conversationId, body.message, {
       model: body.model,
       allowedTools: body.allowedTools,
+      userId: body.userId,
+      sessionId: body.sessionId,
     });
 
     // 基于状态返回不同响应
@@ -267,7 +260,6 @@ export class AgentController {
       );
     }
 
-    // 返回扁平结构
     return {
       response: result.data || result.fallback,
       metadata: {
@@ -467,29 +459,20 @@ export class AgentController {
       scenario?: string;
       model?: string;
       allowedTools?: string[];
+      userId?: string;
+      sessionId?: string;
     },
   ) {
     this.logger.log('【调试模式】测试聊天:', body.message);
     const conversationId = body.conversationId || `debug-${Date.now()}`;
-
-    // 使用指定的场景配置，默认 candidate-consultation
     const scenario = body.scenario || 'candidate-consultation';
-    const profile = this.profileLoader.getProfile(scenario);
 
-    if (!profile) {
-      return {
-        success: false,
-        error: `未找到场景 ${scenario} 的配置`,
-        availableProfiles: this.profileLoader.getAllProfiles().map((p) => p.name),
-      };
-    }
-
-    this.logger.log(`【调试模式】使用配置档案: ${profile.name}`);
-
-    // 调用 AgentService 并返回完整的原始响应
-    const result = await this.agentService.chatWithProfile(conversationId, body.message, profile, {
+    // 通过 Facade 统一调用（参数准备全在 Facade 内部）
+    const result = await this.agentFacade.chatWithScenario(scenario, conversationId, body.message, {
       model: body.model,
       allowedTools: body.allowedTools,
+      userId: body.userId,
+      sessionId: body.sessionId,
     });
 
     // 返回完整的 AgentResult，不做任何裁剪
@@ -497,11 +480,10 @@ export class AgentController {
       success: result.status !== 'error',
       conversationId,
       scenario,
-      profileUsed: profile.name,
       // === 完整的 AgentResult ===
       agentResult: {
         status: result.status,
-        data: result.data, // 完整的 ChatResponse
+        data: result.data,
         fallback: result.fallback,
         fallbackInfo: result.fallbackInfo,
         error: result.error,
@@ -510,7 +492,6 @@ export class AgentController {
       },
       // === 便于查看的响应文本提取 ===
       extractedText: this.extractResponseText(result),
-      // === 元数据 ===
       timestamp: new Date().toISOString(),
     };
   }
@@ -586,28 +567,25 @@ export class AgentController {
       message: string;
       roomId?: string;
       fromUser: string;
-      overrides?: any;
+      model?: string;
+      allowedTools?: string[];
     },
   ) {
     this.logger.log(`使用配置档案聊天: ${body.scenario}, 消息: ${body.message}`);
 
-    // 获取配置档案
-    const profile = this.profileLoader.getProfile(body.scenario);
-    if (!profile) {
-      throw new HttpException(`未找到场景 ${body.scenario} 的配置`, HttpStatus.NOT_FOUND);
-    }
-
-    // 生成会话ID
     const conversationId = body.roomId ? `room_${body.roomId}` : `user_${body.fromUser}`;
 
-    const result = await this.agentService.chatWithProfile(
+    // 通过 Facade 统一调用
+    const result = await this.agentFacade.chatWithScenario(
+      body.scenario,
       conversationId,
       body.message,
-      profile,
-      body.overrides,
+      {
+        model: body.model,
+        allowedTools: body.allowedTools,
+      },
     );
 
-    // 基于状态返回不同响应
     if (result.status === 'error') {
       throw new HttpException(
         result.error?.message || 'Agent 调用失败',

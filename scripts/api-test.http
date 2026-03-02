@@ -449,7 +449,7 @@ POST {{baseUrl}}/agent/chat-with-profile
 Content-Type: application/json
 
 {
-  "scenario": "wechat-group-customer-service",
+  "scenario": "candidate-consultation",
   "message": "我想了解一下招募信息",
   "roomId": "{{GroupChatId}}",
   "fromUser": "test_user_123"

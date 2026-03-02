@@ -1,3 +1,4 @@
+@use 'sass:color';
 @use '@/assets/styles/variables' as *;
 
 // ==================== 粉紫渐变局部色彩 ====================
@@ -733,7 +734,7 @@ $_pp-30: rgba(167, 139, 250, 0.3);
 
   &:hover {
     color: #fff;
-    background: darken(#ef4444, 8%);
+    background: color.adjust(#ef4444, $lightness: -8%);
   }
 }
 
