@@ -211,17 +211,18 @@ export class TestSuiteController {
         skipHistoryTrim: true,
         chatId: request.chatId,
         userId: request.userId,
+        thinking: request.thinking,
       };
 
-      // 获取花卷 API 的流式响应（带估算的 input token 数量）
+      // 获取花卷 API 的流式响应
       const { stream, estimatedInputTokens } =
         await this.testService.executeTestStreamWithMeta(testRequest);
 
-      // 使用 Vercel AI SDK 流处理工具类
-      const handler = new VercelAIStreamHandler(res, estimatedInputTokens, '[AI-Stream]');
+      // 使用 Vercel AI SDK 流处理工具类（优先从 finish 事件提取真实 token usage，否则估算）
+      const handler = new VercelAIStreamHandler(res, '[AI-Stream]', estimatedInputTokens);
       handler.setupHeaders();
 
-      // 处理流式数据（透传并追踪输出长度）
+      // 处理流式数据（透传并从 finish 事件捕获 token usage）
       stream.on('data', (chunk: Buffer) => {
         handler.processChunk(chunk);
       });

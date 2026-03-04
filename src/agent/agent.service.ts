@@ -66,13 +66,13 @@ export class AgentService {
    *
    * 注意：API 契约字段名映射
    * - messages: 历史消息数组（API 契约字段名）
-   * - conversationId: 仅用于日志追踪，不传给 API
+   * - sessionId: 仅用于日志追踪，不传给 API
    * - userMessage: 仅用于内部处理，会被添加到 messages 数组中
    *
    * @returns AgentResult 统一响应模型
    */
   async chat(params: {
-    conversationId: string; // 仅用于日志追踪，不传给 API
+    sessionId: string; // 仅用于日志追踪，不传给 API
     userMessage: string; // 用户当前消息，会被添加到 messages 数组
     messages?: SimpleMessage[]; // API 契约字段名：历史消息数组
     model?: string;
@@ -89,22 +89,23 @@ export class AgentService {
       preserveRecentMessages?: number;
     };
     validateOnly?: boolean;
+    thinking?: { type: 'enabled' | 'disabled'; budgetTokens: number };
   }): Promise<AgentResult> {
-    const { conversationId, messages = [] } = params;
+    const { sessionId, messages = [] } = params;
 
     // 保存 chatRequest 引用，用于错误时也能附加到结果
     let chatRequest: ChatRequest | undefined;
 
     try {
       // 1. 准备请求（验证 + 构建）
-      const preparedRequest = this.prepareRequest(params, conversationId, messages);
+      const preparedRequest = this.prepareRequest(params, sessionId, messages);
       chatRequest = preparedRequest.chatRequest;
 
       // 2. 执行请求（直接调用 API）
-      const result = await this.executeRequest(preparedRequest, conversationId);
+      const result = await this.executeRequest(preparedRequest, sessionId);
 
       // 3. 记录结果（日志 + 统计）
-      this.recordResult(result.data, conversationId);
+      this.recordResult(result.data, sessionId);
 
       // 4. 返回成功结果（包含原始 HTTP 响应信息 + 请求参数）
       const agentResult = createSuccessResult(result.data, undefined, false);
@@ -113,7 +114,7 @@ export class AgentService {
       return agentResult;
     } catch (error) {
       // 统一错误处理，附加 chatRequest
-      const agentResult = this.handleChatError(error, conversationId);
+      const agentResult = this.handleChatError(error, sessionId);
       if (chatRequest) {
         (agentResult as any).requestBody = chatRequest;
       }
@@ -123,14 +124,14 @@ export class AgentService {
 
   /**
    * 使用配置档案调用 chat 接口
-   * @param conversationId 会话ID
+   * @param sessionId 会话ID
    * @param userMessage 用户消息
    * @param profile Agent配置档案
    * @param overrides 覆盖配置档案的参数
    * @returns AgentResult 统一响应模型
    */
   async chatWithProfile(
-    conversationId: string,
+    sessionId: string,
     userMessage: string,
     profile: AgentProfile,
     overrides?: Partial<AgentProfile>,
@@ -141,7 +142,7 @@ export class AgentService {
     // 2. 调用 chat 方法
     // 注意：品牌配置验证已在 AgentConfigService.getProfile() 中完成
     return this.chat({
-      conversationId,
+      sessionId,
       userMessage,
       ...sanitized,
     });
@@ -154,7 +155,7 @@ export class AgentService {
    * @returns 包含流和请求元数据的对象
    */
   async chatStream(params: {
-    conversationId: string;
+    sessionId: string;
     userMessage: string;
     messages?: SimpleMessage[];
     model?: string;
@@ -169,26 +170,27 @@ export class AgentService {
       targetTokens?: number;
       preserveRecentMessages?: number;
     };
+    thinking?: { type: 'enabled' | 'disabled'; budgetTokens: number };
   }): Promise<{
     stream: NodeJS.ReadableStream;
     requestBody: ChatRequest;
     estimatedInputTokens: number;
   }> {
-    const { conversationId, messages = [] } = params;
+    const { sessionId, messages = [] } = params;
 
     // 1. 准备请求（验证 + 构建）
-    const preparedRequest = this.prepareRequest(params, conversationId, messages);
+    const preparedRequest = this.prepareRequest(params, sessionId, messages);
     const { chatRequest } = preparedRequest;
 
     // 2. 计算预估输入 Token
     const estimatedInputTokens = this.estimateInputTokens(chatRequest);
 
     this.logger.log(
-      `[Stream] 发起流式请求，会话: ${conversationId}, 预估 Token: ${estimatedInputTokens}`,
+      `[Stream] 发起流式请求，会话: ${sessionId}, 预估 Token: ${estimatedInputTokens}`,
     );
 
     // 3. 调用流式 API
-    const stream = await this.apiClient.chatStream(chatRequest, conversationId);
+    const stream = await this.apiClient.chatStream(chatRequest, sessionId);
 
     return {
       stream,
@@ -199,17 +201,20 @@ export class AgentService {
 
   /**
    * 使用配置档案调用流式 chat 接口
-   * @param conversationId 会话ID
+   * @param sessionId 会话ID
    * @param userMessage 用户消息
    * @param profile Agent配置档案
    * @param overrides 覆盖配置档案的参数
    * @returns 包含流和请求元数据的对象
    */
   async chatStreamWithProfile(
-    conversationId: string,
+    sessionId: string,
     userMessage: string,
     profile: AgentProfile,
-    overrides?: Partial<AgentProfile> & { messages?: SimpleMessage[] },
+    overrides?: Partial<AgentProfile> & {
+      messages?: SimpleMessage[];
+      thinking?: { type: 'enabled' | 'disabled'; budgetTokens: number };
+    },
   ): Promise<{
     stream: NodeJS.ReadableStream;
     requestBody: ChatRequest;
@@ -220,9 +225,10 @@ export class AgentService {
 
     // 2. 调用 chatStream 方法
     return this.chatStream({
-      conversationId,
+      sessionId,
       userMessage,
       messages: overrides?.messages,
+      thinking: overrides?.thinking,
       ...sanitized,
     });
   }
@@ -249,7 +255,7 @@ export class AgentService {
    */
   private prepareRequest(
     params: any,
-    conversationId: string,
+    sessionId: string,
     messages: SimpleMessage[],
   ): { chatRequest: ChatRequest; validatedModel: string; validatedTools: string[] } {
     const { userMessage } = params;
@@ -262,7 +268,7 @@ export class AgentService {
     const validatedTools = this.registryService.validateTools(params.allowedTools);
 
     // 记录模型和工具信息
-    this.logModelAndTools(conversationId, validatedModel, validatedTools, params.model);
+    this.logModelAndTools(sessionId, validatedModel, validatedTools, params.model);
 
     // 构建请求
     const chatRequest = this.buildChatRequest({
@@ -274,7 +280,7 @@ export class AgentService {
     });
 
     // 记录请求日志
-    this.agentLogger.logRequest(conversationId, chatRequest);
+    this.agentLogger.logRequest(sessionId, chatRequest);
 
     return { chatRequest, validatedModel, validatedTools };
   }
@@ -284,13 +290,13 @@ export class AgentService {
    */
   private async executeRequest(
     preparedRequest: { chatRequest: ChatRequest },
-    conversationId: string,
+    sessionId: string,
   ): Promise<{ data: ChatResponse; rawHttpResponse?: RawHttpResponseInfo }> {
     const { chatRequest } = preparedRequest;
 
     // 直接调用 API
-    const response = await this.apiClient.chat(chatRequest, conversationId);
-    const handled = this.handleChatResponse(response, conversationId);
+    const response = await this.apiClient.chat(chatRequest, sessionId);
+    const handled = this.handleChatResponse(response, sessionId);
 
     return { data: handled.data, rawHttpResponse: response };
   }
@@ -299,12 +305,12 @@ export class AgentService {
    * 记录结果（日志 + 统计）
    * 职责：记录响应日志和使用统计
    */
-  private recordResult(data: ChatResponse, conversationId: string): void {
+  private recordResult(data: ChatResponse, sessionId: string): void {
     // 记录响应日志
-    this.agentLogger.logResponse(conversationId, data);
+    this.agentLogger.logResponse(sessionId, data);
 
     // 记录使用统计
-    this.logUsageStats(data, conversationId);
+    this.logUsageStats(data, sessionId);
   }
 
   /**
@@ -320,7 +326,7 @@ export class AgentService {
    * 记录模型和工具信息
    */
   private logModelAndTools(
-    conversationId: string,
+    sessionId: string,
     validatedModel: string,
     validatedTools: string[],
     requestedModel?: string,
@@ -329,14 +335,12 @@ export class AgentService {
       this.logger.warn(
         `请求的模型 "${requestedModel}" 不可用，已回退到默认模型 "${validatedModel}"`,
       );
-      this.logger.warn(`会话: ${conversationId}`);
+      this.logger.warn(`会话: ${sessionId}`);
     } else if (validatedModel !== this.registryService.getConfiguredModel() && requestedModel) {
-      this.logger.log(`使用模型: ${getModelDisplayName(validatedModel)}，会话: ${conversationId}`);
+      this.logger.log(`使用模型: ${getModelDisplayName(validatedModel)}，会话: ${sessionId}`);
     }
 
-    this.logger.log(
-      `传递给 Agent API 的消息: ${validatedTools.length} 个工具, 会话: ${conversationId}`,
-    );
+    this.logger.log(`传递给 Agent API 的消息: ${validatedTools.length} 个工具, 会话: ${sessionId}`);
   }
 
   /**
@@ -356,6 +360,7 @@ export class AgentService {
     prune?: boolean;
     pruneOptions?: any;
     validateOnly?: boolean;
+    thinking?: { type: 'enabled' | 'disabled'; budgetTokens: number };
   }): ChatRequest {
     const userMsg: SimpleMessage = { role: MessageRole.USER, content: params.userMessage };
     const chatRequest: ChatRequest = {
@@ -421,6 +426,7 @@ export class AgentService {
     if (params.prune !== undefined) chatRequest.prune = params.prune;
     if (params.pruneOptions) chatRequest.pruneOptions = params.pruneOptions;
     if (params.validateOnly !== undefined) chatRequest.validateOnly = params.validateOnly;
+    if (params.thinking) chatRequest.thinking = params.thinking;
 
     return chatRequest;
   }
@@ -431,7 +437,7 @@ export class AgentService {
    */
   private handleChatResponse(
     response: AxiosResponse<ApiResponse<ChatResponse>>,
-    conversationId: string,
+    sessionId: string,
   ): { data: ChatResponse } {
     // 提取 correlationId
     const correlationId =
@@ -442,7 +448,7 @@ export class AgentService {
       const errorData = response.data as any;
 
       this.logger.error(
-        `Agent API 返回失败，会话: ${conversationId}, correlationId: ${correlationId}`,
+        `Agent API 返回失败，会话: ${sessionId}, correlationId: ${correlationId}`,
         errorData,
       );
 
@@ -460,7 +466,7 @@ export class AgentService {
     const chatResponse = response.data.data;
 
     // 记录 correlationId
-    this.logger.log(`Agent API 成功，会话: ${conversationId}, correlationId: ${correlationId}`);
+    this.logger.log(`Agent API 成功，会话: ${sessionId}, correlationId: ${correlationId}`);
 
     return { data: chatResponse };
   }
@@ -472,8 +478,8 @@ export class AgentService {
    * 注意：告警已统一移至 MessagePipelineService，此处仅负责降级处理
    * 这样可以避免重复告警，确保每个错误只告警一次
    */
-  private handleChatError(error: any, conversationId: string): AgentResult {
-    this.logger.error(`Agent API 调用失败，会话: ${conversationId}`, error);
+  private handleChatError(error: any, sessionId: string): AgentResult {
+    this.logger.error(`Agent API 调用失败，会话: ${sessionId}`, error);
 
     // 提取调试信息（用于附加到结果，供上层告警使用）
     const requestParams = (error as any).requestParams;
@@ -485,7 +491,7 @@ export class AgentService {
     const retryAfter = error instanceof AgentRateLimitException ? error.retryAfter : undefined;
     const errorMessage = error.message || '未知错误';
 
-    return this.createFallbackResultWithMetadata(errorMessage, retryAfter, conversationId, {
+    return this.createFallbackResultWithMetadata(errorMessage, retryAfter, sessionId, {
       requestParams,
       apiKey,
       apiResponse,
@@ -499,12 +505,12 @@ export class AgentService {
   private createFallbackResultWithMetadata(
     errorMessage: string,
     retryAfter: number | undefined,
-    conversationId: string,
+    sessionId: string,
     metadata: { requestParams?: any; apiKey?: any; apiResponse?: any; requestHeaders?: any },
   ): AgentResult {
     const fallbackInfo = this.fallbackService.getFallbackInfo(errorMessage, retryAfter);
     const fallbackResponse = this.createFallbackResponse(fallbackInfo.message);
-    const fallbackResult = createFallbackResult(fallbackResponse, fallbackInfo, conversationId);
+    const fallbackResult = createFallbackResult(fallbackResponse, fallbackInfo, sessionId);
     // 附加调试信息
     (fallbackResult as any).requestParams = metadata.requestParams;
     (fallbackResult as any).apiKey = metadata.apiKey;
@@ -516,12 +522,12 @@ export class AgentService {
   /**
    * 记录使用统计
    */
-  private logUsageStats(response: ChatResponse, conversationId: string): void {
+  private logUsageStats(response: ChatResponse, sessionId: string): void {
     const { usage, tools } = response;
 
     // 记录 Token 使用情况
     this.logger.log(
-      `Token使用 [会话: ${conversationId}] - ` +
+      `Token使用 [会话: ${sessionId}] - ` +
         `输入: ${usage.inputTokens}, 输出: ${usage.outputTokens}, 总计: ${usage.totalTokens}` +
         (usage.cachedInputTokens ? `, 缓存: ${usage.cachedInputTokens}` : ''),
     );
@@ -529,15 +535,13 @@ export class AgentService {
     // 记录工具调用情况
     if (tools) {
       if (tools.used && tools.used.length > 0) {
-        this.logger.log(`工具调用 [会话: ${conversationId}] - 已使用: [${tools.used.join(', ')}]`);
+        this.logger.log(`工具调用 [会话: ${sessionId}] - 已使用: [${tools.used.join(', ')}]`);
       } else {
-        this.logger.log(`工具调用 [会话: ${conversationId}] - 未使用任何工具`);
+        this.logger.log(`工具调用 [会话: ${sessionId}] - 未使用任何工具`);
       }
 
       if (tools.skipped && tools.skipped.length > 0) {
-        this.logger.debug(
-          `工具调用 [会话: ${conversationId}] - 已跳过: [${tools.skipped.join(', ')}]`,
-        );
+        this.logger.debug(`工具调用 [会话: ${sessionId}] - 已跳过: [${tools.skipped.join(', ')}]`);
       }
     }
   }

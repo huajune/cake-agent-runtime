@@ -83,10 +83,14 @@ export class VercelAIChatRequestDto {
   @IsString()
   chatId?: string;
 
-  @ApiPropertyOptional({ description: '用户 ID（注入 toolContext，生产为 imContactId）' })
+  @ApiPropertyOptional({ description: '用户 ID（注入 context，生产为 imContactId）' })
   @IsOptional()
   @IsString()
   userId?: string;
+
+  @ApiPropertyOptional({ description: '扩展思考配置（AI SDK extended thinking）' })
+  @IsOptional()
+  thinking?: { type: 'enabled' | 'disabled'; budgetTokens: number };
 }
 
 /**
@@ -147,15 +151,21 @@ export class TestChatRequestDto {
   @IsBoolean()
   skipHistoryTrim?: boolean;
 
-  @ApiPropertyOptional({ description: '会话 ID（同一对话保持一致，用作 sessionId）' })
+  @ApiPropertyOptional({
+    description: '会话 ID（同一对话保持一致，自动注入 Agent context.sessionId）',
+  })
   @IsOptional()
   @IsString()
   chatId?: string;
 
-  @ApiPropertyOptional({ description: '用户 ID（注入 toolContext，生产为 imContactId）' })
+  @ApiPropertyOptional({ description: '用户 ID（注入 context，生产为 imContactId）' })
   @IsOptional()
   @IsString()
   userId?: string;
+
+  @ApiPropertyOptional({ description: '扩展思考配置（AI SDK extended thinking）' })
+  @IsOptional()
+  thinking?: { type: 'enabled' | 'disabled'; budgetTokens: number };
 }
 
 /**

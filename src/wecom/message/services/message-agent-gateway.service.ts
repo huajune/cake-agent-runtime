@@ -95,24 +95,22 @@ export class AgentGatewayService {
    * @returns Agent 调用结果
    */
   async invoke(params: {
-    conversationId: string;
+    sessionId: string;
     userMessage: string;
     historyMessages: SimpleMessage[];
     scenario?: ScenarioType;
     messageId?: string; // 可选，用于监控埋点
     recordMonitoring?: boolean; // 是否记录监控（默认 true）
     userId: string; // 候选人用户 ID（即 imContactId / user_id）
-    sessionId: string; // 会话 ID（即 chatId / chat_id）
   }): Promise<AgentInvokeResult> {
     const {
-      conversationId,
+      sessionId,
       userMessage,
       historyMessages,
       scenario = ScenarioType.CANDIDATE_CONSULTATION,
       messageId,
       recordMonitoring = true,
       userId,
-      sessionId,
     } = params;
 
     const startTime = Date.now();
@@ -128,12 +126,11 @@ export class AgentGatewayService {
       // 2. 通过 Facade 统一调用 Agent API（参数准备全在 Facade 内部）
       const agentResult = await this.agentFacade.chatWithScenario(
         scenario,
-        conversationId,
+        sessionId,
         userMessage,
         {
           messages: historyMessages,
           userId,
-          sessionId,
         },
       );
 
@@ -148,7 +145,7 @@ export class AgentGatewayService {
       // 4. 检查是否为降级响应
       const isFallback = AgentResultHelper.isFallback(agentResult);
       if (isFallback && agentResult.fallbackInfo) {
-        this.handleFallbackResponse(agentResult, conversationId, userMessage, scenario);
+        this.handleFallbackResponse(agentResult, sessionId, userMessage, scenario);
       }
 
       // 5. 提取响应数据
@@ -190,7 +187,7 @@ export class AgentGatewayService {
    */
   private handleFallbackResponse(
     agentResult: any,
-    _conversationId: string,
+    _sessionId: string,
     _userMessage: string,
     _scenario: ScenarioType,
   ): void {

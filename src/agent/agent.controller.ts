@@ -233,14 +233,14 @@ export class AgentController {
     body: {
       message: string;
       allowedTools: string[];
-      conversationId?: string;
+      sessionId?: string;
     },
   ) {
     this.logger.log(`测试工具安全校验，请求的工具: ${body.allowedTools.join(', ')}`);
-    const conversationId = body.conversationId || 'test-tool-validation';
+    const sessionId = body.sessionId || 'test-tool-validation';
 
     const result = await this.agentService.chat({
-      conversationId,
+      sessionId,
       userMessage: body.message,
       allowedTools: body.allowedTools,
     });
@@ -277,14 +277,14 @@ export class AgentController {
     body: {
       message: string;
       model: string;
-      conversationId?: string;
+      sessionId?: string;
     },
   ) {
     this.logger.log(`测试模型安全校验，请求的模型: ${body.model}`);
-    const conversationId = body.conversationId || 'test-model-validation';
+    const sessionId = body.sessionId || 'test-model-validation';
 
     const result = await this.agentService.chat({
-      conversationId,
+      sessionId,
       userMessage: body.message,
       model: body.model,
     });
@@ -393,7 +393,7 @@ export class AgentController {
   /**
    * 调试接口：测试聊天并返回完整的 Agent 原始响应
    * POST /agent/debug-chat
-   * Body: { "message": "你好", "conversationId"?: "...", "scenario"?: "..." }
+   * Body: { "message": "你好", "sessionId"?: "...", "scenario"?: "..." }
    *
    * 返回完整的 AgentResult，包括：
    * - data: 完整的 ChatResponse 原始响应
@@ -406,30 +406,30 @@ export class AgentController {
     @Body()
     body: {
       message: string;
-      conversationId?: string;
+      sessionId?: string;
       scenario?: string;
       model?: string;
       allowedTools?: string[];
       userId?: string;
-      sessionId?: string;
+      thinking?: { type: 'enabled' | 'disabled'; budgetTokens: number };
     },
   ) {
     this.logger.log('【调试模式】测试聊天:', body.message);
-    const conversationId = body.conversationId || `debug-${Date.now()}`;
+    const sessionId = body.sessionId || `debug-${Date.now()}`;
     const scenario = body.scenario || 'candidate-consultation';
 
     // 通过 Facade 统一调用（参数准备全在 Facade 内部）
-    const result = await this.agentFacade.chatWithScenario(scenario, conversationId, body.message, {
+    const result = await this.agentFacade.chatWithScenario(scenario, sessionId, body.message, {
       model: body.model,
       allowedTools: body.allowedTools,
       userId: body.userId,
-      sessionId: body.sessionId,
+      thinking: body.thinking,
     });
 
     // 返回完整的 AgentResult，不做任何裁剪
     const debugResponse = {
       success: result.status !== 'error',
-      conversationId,
+      sessionId,
       scenario,
       // === 发给花卷 API 的完整请求体（便于调试入参） ===
       requestBody: (result as any).requestBody || null,
@@ -539,22 +539,19 @@ export class AgentController {
       fromUser: string;
       model?: string;
       allowedTools?: string[];
+      userId?: string;
     },
   ) {
     this.logger.log(`使用配置档案聊天: ${body.scenario}, 消息: ${body.message}`);
 
-    const conversationId = body.roomId ? `room_${body.roomId}` : `user_${body.fromUser}`;
+    const sessionId = body.roomId ? `room_${body.roomId}` : `user_${body.fromUser}`;
 
     // 通过 Facade 统一调用
-    const result = await this.agentFacade.chatWithScenario(
-      body.scenario,
-      conversationId,
-      body.message,
-      {
-        model: body.model,
-        allowedTools: body.allowedTools,
-      },
-    );
+    const result = await this.agentFacade.chatWithScenario(body.scenario, sessionId, body.message, {
+      model: body.model,
+      allowedTools: body.allowedTools,
+      userId: body.userId,
+    });
 
     if (result.status === 'error') {
       throw new HttpException(
@@ -564,7 +561,7 @@ export class AgentController {
     }
 
     return {
-      conversationId,
+      sessionId,
       scenario: body.scenario,
       response: result.data || result.fallback,
       metadata: {

@@ -27,10 +27,10 @@ POST http://localhost:8080/agent/debug-chat
 Content-Type: application/json
 
 {
-  "message": "你好，我在五角场附近，有什么兼职吗？",
+  "message": "你好",
   "conversationId": "debug-001",
   "scenario": "candidate-consultation",
-  "userId":"test-user-123"
+  "userId":"test-user-1233"
 }
 
 ### 8. 流式聊天测试（与 Dashboard 对话测试页面调用的接口一致）
@@ -43,6 +43,7 @@ Content-Type: application/json
   "saveExecution": false,
   "chatId": "health-check-test-001",
   "userId": "dashboard-test-user",
+  "thinking": { "type": "enabled", "budgetTokens": 10000 },
   "messages": [
     {
       "id": "msg-1",

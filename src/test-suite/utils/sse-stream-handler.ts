@@ -323,16 +323,25 @@ export class SSEStreamHandler {
  * Vercel AI SDK 流处理器
  *
  * 专门处理 Vercel AI SDK 兼容格式的流式响应
- * 透传原始数据，只追踪输出文本长度用于估算 token
+ * 透传原始数据，从 finish 事件提取真实 token usage
+ *
+ * Token Usage 获取策略（按优先级）：
+ * 1. 从 data: finish 事件的 usage 字段提取（UI Message Stream）
+ * 2. 从 e: 事件提取（Vercel AI Data Stream Protocol）
+ * 3. 降级为估算值：input 用调用方传入的 estimatedInputTokens，
+ *    output 根据累积的 text-delta / reasoning-delta 字符数估算
  */
 export class VercelAIStreamHandler {
   private readonly logger = new Logger(VercelAIStreamHandler.name);
-  private outputTextLength = 0;
+  private tokenUsage: TokenUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+  /** 累积输出字符数（text-delta + reasoning-delta），用于估算 output tokens */
+  private outputCharCount = 0;
 
   constructor(
     private readonly res: Response,
-    private readonly estimatedInputTokens: number,
     private readonly logPrefix = '[AI-Stream]',
+    /** 调用方预估的 input tokens（由 AgentService.estimateInputTokens 计算） */
+    private readonly estimatedInputTokens = 0,
   ) {}
 
   /**
@@ -348,22 +357,47 @@ export class VercelAIStreamHandler {
   }
 
   /**
-   * 处理数据块（透传并追踪输出长度）
+   * 处理数据块（透传并从流事件提取 token usage）
+   *
+   * 同时兼容两种流协议：
+   * - UI Message Stream: `data: {"type":"finish","usage":{...}}`
+   * - Data Stream Protocol: `e:{"finishReason":"stop","usage":{...}}`
    */
   processChunk(chunk: Buffer): void {
     const text = chunk.toString();
 
-    // 解析 SSE 数据，追踪输出文本长度
     const lines = text.split('\n').filter((line) => line.trim());
     for (const line of lines) {
       try {
+        // UI Message Stream 格式（data: 前缀）
         if (line.startsWith('data: ')) {
           const jsonStr = line.slice(6);
           if (jsonStr && jsonStr !== '[DONE]') {
             const data = JSON.parse(jsonStr) as HuajuanStreamData;
-            if (data.type === 'text-delta' && data.delta) {
-              this.outputTextLength += data.delta.length;
+            // 从 finish 事件提取 usage
+            if (data.type === 'finish' && data.usage) {
+              this.tokenUsage = this.parseUsage(data.usage);
             }
+            // 累积输出字符数用于估算
+            if (data.type === 'text-delta' && data.delta) {
+              this.outputCharCount += data.delta.length;
+            }
+            if (data.type === 'reasoning-delta' && data.delta) {
+              this.outputCharCount += data.delta.length;
+            }
+          }
+        }
+        // Vercel AI Data Stream Protocol（e: 前缀 = finish message）
+        else if (line.startsWith('e:')) {
+          const data = JSON.parse(line.slice(2));
+          if (data.usage) {
+            this.tokenUsage = {
+              inputTokens: data.usage.promptTokens || data.usage.inputTokens || 0,
+              outputTokens: data.usage.completionTokens || data.usage.outputTokens || 0,
+              totalTokens: 0,
+            };
+            this.tokenUsage.totalTokens =
+              this.tokenUsage.inputTokens + this.tokenUsage.outputTokens;
           }
         }
       } catch {
@@ -377,21 +411,48 @@ export class VercelAIStreamHandler {
 
   /**
    * 发送 token usage 并结束响应
+   * 优先使用 API 返回的真实 usage，否则降级为估算值
    */
   sendUsageAndEnd(): void {
-    const estimatedOutputTokens = Math.round(this.outputTextLength / 4);
-    const tokenUsage = {
+    const finalUsage = this.resolveUsage();
+    const isEstimated = this.tokenUsage.totalTokens === 0;
+
+    this.logger.log(
+      `${this.logPrefix} token usage: input=${finalUsage.inputTokens}, output=${finalUsage.outputTokens}, total=${finalUsage.totalTokens}${isEstimated ? ' (estimated)' : ''}`,
+    );
+
+    const usageData = `data: ${JSON.stringify({ type: 'data-tokenUsage', data: finalUsage })}\n\n`;
+    this.res.write(usageData);
+    this.res.end();
+  }
+
+  /**
+   * 解析 usage 统计（兼容 camelCase 和 snake_case）
+   */
+  private parseUsage(usage: HuajuanStreamData['usage']): TokenUsage {
+    if (!usage) {
+      return { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+    }
+    const inputTokens = usage.inputTokens || usage.input_tokens || 0;
+    const outputTokens = usage.outputTokens || usage.output_tokens || 0;
+    const totalTokens = usage.totalTokens || usage.total_tokens || inputTokens + outputTokens;
+    return { inputTokens, outputTokens, totalTokens };
+  }
+
+  /**
+   * 确定最终 usage：真实值 > 估算值
+   * 估算规则：中英文混合场景下，平均每字符约 0.5 token
+   */
+  private resolveUsage(): TokenUsage {
+    if (this.tokenUsage.totalTokens > 0) {
+      return this.tokenUsage;
+    }
+    const estimatedOutputTokens = Math.ceil(this.outputCharCount * 0.5);
+    return {
       inputTokens: this.estimatedInputTokens,
       outputTokens: estimatedOutputTokens,
       totalTokens: this.estimatedInputTokens + estimatedOutputTokens,
     };
-
-    const usageData = `data: ${JSON.stringify({ type: 'data-tokenUsage', data: tokenUsage })}\n\n`;
-    this.res.write(usageData);
-    this.logger.log(
-      `${this.logPrefix} 发送估算 token usage: input=${this.estimatedInputTokens}, output=${estimatedOutputTokens}`,
-    );
-    this.res.end();
   }
 
   /**

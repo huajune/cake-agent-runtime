@@ -213,7 +213,7 @@ describe('AgentController', () => {
     it('should call agentFacade.chatWithScenario with correct parameters', async () => {
       const mockBody = {
         message: '你好',
-        conversationId: 'conv123',
+        sessionId: 'conv123',
         scenario: 'candidate-consultation',
         model: 'gpt-4',
       };
@@ -231,17 +231,16 @@ describe('AgentController', () => {
           model: 'gpt-4',
           allowedTools: undefined,
           userId: undefined,
-          sessionId: undefined,
         },
       );
       expect(result.success).toBe(true);
-      expect(result.conversationId).toBe('conv123');
+      expect(result.sessionId).toBe('conv123');
       expect(result.scenario).toBe('candidate-consultation');
       expect(result.agentResult.status).toBe('success');
       expect(result.agentResult.data).toEqual(mockAgentResult.data);
     });
 
-    it('should use default conversationId and scenario when not provided', async () => {
+    it('should use default sessionId and scenario when not provided', async () => {
       const mockBody = { message: '测试消息' };
       const mockAgentResult = createMockAgentResult('收到测试消息');
 

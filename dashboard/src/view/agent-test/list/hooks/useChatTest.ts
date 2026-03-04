@@ -16,6 +16,7 @@ export interface UseChatTestReturn {
   localError: string | null;
   result: TestChatResponse | null;
   metrics: { durationMs: number; tokenUsage: TokenUsage } | null;
+  elapsedMs: number;
   isLoading: boolean;
   isStreaming: boolean;
   latestAssistantMessage: UIMessage | undefined;
@@ -69,7 +70,13 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     () =>
       new DefaultChatTransport({
         api: CHAT_API_ENDPOINT,
-        body: { scenario: DEFAULT_SCENARIO, saveExecution: false, chatId, userId: 'dashboard-test-user' },
+        body: {
+          scenario: DEFAULT_SCENARIO,
+          saveExecution: false,
+          chatId,
+          userId: 'dashboard-test-user',
+          thinking: { type: 'enabled', budgetTokens: 10000 },
+        },
       }),
     [chatId],
   );
@@ -108,12 +115,10 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
         .map((p) => p.text)
         .join('');
 
-      const serverTokenUsage = tokenUsageRef.current;
-      const estimatedTokens = Math.round(textContent.length / 4);
-      const finalTokenUsage: TokenUsage = serverTokenUsage || {
+      const finalTokenUsage: TokenUsage = tokenUsageRef.current || {
         inputTokens: 0,
-        outputTokens: estimatedTokens,
-        totalTokens: estimatedTokens,
+        outputTokens: 0,
+        totalTokens: 0,
       };
 
       setMetrics({ durationMs, tokenUsage: finalTokenUsage });
@@ -161,6 +166,19 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
   useEffect(() => {
     if (chatError) setLocalError(chatError.message);
   }, [chatError]);
+
+  // 流式实时耗时
+  const [elapsedMs, setElapsedMs] = useState(0);
+  useEffect(() => {
+    if (!isStreaming) {
+      setElapsedMs(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setElapsedMs(Date.now() - startTimeRef.current);
+    }, 100);
+    return () => clearInterval(interval);
+  }, [isStreaming]);
 
   // 流式开始时清空 result
   useEffect(() => {
@@ -279,6 +297,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     localError,
     result,
     metrics,
+    elapsedMs,
     isLoading,
     isStreaming,
     latestAssistantMessage,

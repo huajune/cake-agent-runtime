@@ -76,7 +76,7 @@ export class LlmEvaluationService {
       // 调用 Agent API 进行评估
       // 注意：必须禁用工具调用，确保获得纯文本 JSON 响应
       const result = await this.agentService.chat({
-        conversationId: evaluationId,
+        sessionId: evaluationId,
         userMessage,
         model: EVALUATION_MODEL,
         allowedTools: [], // 禁用所有工具，只需要纯 LLM 回复

@@ -8,13 +8,158 @@ import {
   ArrowLeft,
   ChevronRight,
   ChevronDown,
+  Brain,
+  Target,
 } from 'lucide-react';
 import { formatJson, formatToolResult } from '@/utils/format';
 import styles from './index.module.scss';
 
-/**
- * 工具调用组件（可展开收起）
- */
+// ==================== 常量 ====================
+const THINKING_TOOL = 'wework_plan_turn';
+
+const STAGE_LABELS: Record<string, string> = {
+  trust_building: '建立信任',
+  qualify_candidate: '资格确认',
+  job_consultation: '岗位咨询',
+  interview_scheduling: '约面安排',
+  onboard_followup: '入职跟进',
+};
+
+// ==================== 思考过程组件 ====================
+interface PlanTurnOutput {
+  stage?: string;
+  reasoning?: string;
+  confidence?: number;
+  needs?: string[];
+  riskFlags?: string[];
+  stageGoal?: {
+    label?: string;
+    primaryGoal?: string;
+    ctaStrategy?: string[];
+    disallowedActions?: string[];
+  };
+}
+
+function ThinkingBlock({ output, isCalling, reasoningText }: { output: PlanTurnOutput; isCalling: boolean; reasoningText?: string }) {
+  const [showDetail, setShowDetail] = useState(false);
+  const [showReasoning, setShowReasoning] = useState(false);
+
+  if (isCalling) {
+    return (
+      <div className={styles.thinkingBlock}>
+        <div className={styles.thinkingHeader}>
+          <Brain size={14} />
+          <span>思考中</span>
+          <Loader2 size={14} className={styles.toolSpinnerIcon} />
+        </div>
+        <div className={styles.thinkingReasoning}>
+          {reasoningText || '正在进行回合规划，识别当前对话阶段、评估置信度、分析用户需求...'}
+        </div>
+      </div>
+    );
+  }
+
+  const stage = output.stage || 'unknown';
+  const stageLabel = STAGE_LABELS[stage] || stage;
+  const confidence = output.confidence ?? 0;
+  const reasoning = output.reasoning || '';
+  const needs = output.needs || [];
+  const riskFlags = output.riskFlags || [];
+  const stageGoal = output.stageGoal;
+  const hasDetail = stageGoal || needs.length > 0 || riskFlags.length > 0;
+
+  return (
+    <div className={styles.thinkingBlock}>
+      <div className={styles.thinkingHeader}>
+        <Brain size={14} />
+        <span>思考过程</span>
+        <span className={styles.stageBadge}>{stageLabel}</span>
+        <span className={styles.confidenceBadge}>
+          置信度 {(confidence * 100).toFixed(0)}%
+        </span>
+      </div>
+
+      {reasoningText && (
+        <div
+          className={styles.thinkingDetailToggle}
+          onClick={() => setShowReasoning(!showReasoning)}
+        >
+          {showReasoning ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          <Brain size={12} />
+          工作思路
+        </div>
+      )}
+
+      {showReasoning && reasoningText && (
+        <div className={styles.thinkingDetail}>
+          <div className={styles.thinkingReasoning}>{reasoningText}</div>
+        </div>
+      )}
+
+      {reasoning && (
+        <div className={styles.thinkingReasoning}>{reasoning}</div>
+      )}
+
+      {needs.length > 0 && needs[0] !== 'none' && (
+        <div className={styles.thinkingNeeds}>
+          <span className={styles.needsLabel}>NeedsInfo:</span>
+          {needs.map((n) => (
+            <span key={n} className={styles.needTag}>{n}</span>
+          ))}
+        </div>
+      )}
+
+      {riskFlags.length > 0 && (
+        <div className={styles.thinkingRisks}>
+          <span className={styles.needsLabel}>风险标记:</span>
+          {riskFlags.map((r) => (
+            <span key={r} className={styles.riskTag}>{r}</span>
+          ))}
+        </div>
+      )}
+
+      {hasDetail && (
+        <div
+          className={styles.thinkingDetailToggle}
+          onClick={() => setShowDetail(!showDetail)}
+        >
+          {showDetail ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          <Target size={12} />
+          策略详情
+        </div>
+      )}
+
+      {showDetail && stageGoal && (
+        <div className={styles.thinkingDetail}>
+          {stageGoal.primaryGoal && (
+            <div className={styles.detailItem}>
+              <span className={styles.detailLabel}>目标</span>
+              <span>{stageGoal.primaryGoal}</span>
+            </div>
+          )}
+          {stageGoal.ctaStrategy && stageGoal.ctaStrategy.length > 0 && (
+            <div className={styles.detailItem}>
+              <span className={styles.detailLabel}>策略</span>
+              <ul className={styles.detailList}>
+                {stageGoal.ctaStrategy.map((s, i) => <li key={i}>{s}</li>)}
+              </ul>
+            </div>
+          )}
+          {stageGoal.disallowedActions && stageGoal.disallowedActions.length > 0 && (
+            <div className={styles.detailItem}>
+              <span className={styles.detailLabel}>禁止</span>
+              <ul className={styles.detailList}>
+                {stageGoal.disallowedActions.map((a, i) => <li key={i}>{a}</li>)}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ==================== 通用工具调用组件 ====================
 interface ToolInvocationProps {
   toolName: string;
   args: unknown;
@@ -34,7 +179,6 @@ function ToolInvocation({
   const isCompleted = state === 'result';
   const isCalling = state !== 'result';
 
-  // 检查是否有内容可展开
   const hasContent =
     (args !== undefined && args !== null) ||
     (isCompleted && result !== undefined && result !== null);
@@ -54,13 +198,9 @@ function ToolInvocation({
             className={`${styles.toolStatus} ${isCalling ? styles.statusCalling : styles.statusSuccess}`}
           >
             {isCalling ? (
-              <>
-                <Loader2 size={12} className={styles.toolSpinnerIcon} /> 调用中
-              </>
+              <><Loader2 size={12} className={styles.toolSpinnerIcon} /> 调用中</>
             ) : (
-              <>
-                <CheckCircle2 size={12} /> 完成
-              </>
+              <><CheckCircle2 size={12} /> 完成</>
             )}
           </div>
           {hasContent && (
@@ -94,9 +234,7 @@ function ToolInvocation({
   );
 }
 
-/**
- * 从 UIMessage.parts 中提取工具调用信息
- */
+// ==================== Segment 构建 ====================
 interface ExtractedToolCall {
   toolCallId: string;
   toolName: string;
@@ -105,52 +243,58 @@ interface ExtractedToolCall {
   result?: unknown;
 }
 
-function extractToolCalls(parts: UIMessage['parts']): ExtractedToolCall[] {
-  const toolCalls: ExtractedToolCall[] = [];
+type Segment =
+  | { kind: 'text'; texts: string[] }
+  | { kind: 'thinking'; tool: ExtractedToolCall }
+  | { kind: 'tool'; tool: ExtractedToolCall };
+
+function buildSegments(parts: UIMessage['parts']): Segment[] {
+  const segments: Segment[] = [];
 
   for (const part of parts) {
-    // 检查是否是工具相关的部件（type 以 'tool-' 开头）
-    if (part.type.startsWith('tool-')) {
-      // 类型断言以访问工具调用属性
+    if (part.type === 'text') {
+      const text = (part as { type: 'text'; text: string }).text;
+      const last = segments[segments.length - 1];
+      if (last && last.kind === 'text') {
+        last.texts.push(text);
+      } else {
+        segments.push({ kind: 'text', texts: [text] });
+      }
+    } else if (part.type.startsWith('tool-')) {
       const toolPart = part as unknown as {
         type: string;
         toolCallId?: string;
-        toolName?: string; // dynamic-tool 使用这个字段
-        input?: unknown; // Vercel AI SDK 使用 input
+        toolName?: string;
+        input?: unknown;
         state?: string;
-        output?: unknown; // Vercel AI SDK 使用 output
+        output?: unknown;
       };
 
-      // 从 type 字段提取工具名称（格式: "tool-{toolName}"）
-      // 例如: "tool-duliday_job_list" -> "duliday_job_list"
       const extractedToolName = toolPart.toolName || part.type.replace(/^tool-/, '');
-
-      // 判断是否已完成（output-available 或 output-error 状态）
       const isCompleted =
         toolPart.state === 'output-available' ||
         toolPart.state === 'output-error' ||
         toolPart.output !== undefined;
 
-      toolCalls.push({
-        toolCallId: toolPart.toolCallId || `tool-${Date.now()}`,
+      const tool: ExtractedToolCall = {
+        toolCallId: toolPart.toolCallId || `tool-${Date.now()}-${segments.length}`,
         toolName: extractedToolName,
         args: toolPart.input,
         state: isCompleted ? 'result' : 'call',
         result: toolPart.output,
+      };
+
+      segments.push({
+        kind: extractedToolName === THINKING_TOOL ? 'thinking' : 'tool',
+        tool,
       });
     }
   }
 
-  return toolCalls;
+  return segments;
 }
 
-/**
- * 消息部件适配器
- *
- * 根据 Vercel AI SDK 的 UIMessage.parts 数组渲染不同类型的内容:
- * - text: 文本内容
- * - tool-*: 工具调用相关（包含多种状态）
- */
+// ==================== 主组件 ====================
 interface MessagePartsAdapterProps {
   message: UIMessage;
   isStreaming?: boolean;
@@ -159,72 +303,94 @@ interface MessagePartsAdapterProps {
 function MessagePartsAdapterComponent({ message, isStreaming }: MessagePartsAdapterProps) {
   const parts = message.parts;
 
-  // 如果没有 parts，显示空状态
   if (!parts || parts.length === 0) {
     return (
       <div className={styles.replyContent}>
-        <span className={styles.streamingPlaceholder}>等待响应...</span>
-        {isStreaming && <span className={styles.streamCursor}>|</span>}
+        {isStreaming ? (
+          <span className={styles.streamingLoading}>
+            <span className={styles.loadingDots}>
+              <span />
+              <span />
+              <span />
+            </span>
+            <span className={styles.streamingPlaceholder}>思考中</span>
+          </span>
+        ) : (
+          <span className={styles.streamingPlaceholder}>等待响应...</span>
+        )}
       </div>
     );
   }
 
-  // 提取工具调用
-  const toolInvocations = extractToolCalls(parts);
+  const segments = buildSegments(parts);
 
-  // 提取文本内容
-  const textParts: string[] = [];
-  for (const part of parts) {
-    if (part.type === 'text') {
-      textParts.push((part as { type: 'text'; text: string }).text);
-    }
-  }
-  const fullText = textParts.join('');
+  // 判断是否已有文本内容在流式输出（用于决定底部显示光标还是 loading）
+  const hasStreamingText = segments.some(
+    (s) => s.kind === 'text' && s.texts.join('').trim().length > 0,
+  );
+
+  // 提取 reasoning 文本（AI 扩展思考，逐字流式到达）
+  const reasoningText = parts
+    .filter((p) => p.type === 'reasoning')
+    .map((p) => (p as unknown as { text: string }).text || '')
+    .join('');
+  const hasThinkingSegment = segments.some((s) => s.kind === 'thinking');
+  const showEarlyThinking = isStreaming && reasoningText && !hasThinkingSegment;
 
   return (
     <div className={styles.messagePartsContainer}>
-      {/* 工具调用（先显示，因为 Agent 执行流程是先调工具再生成文本） */}
-      {toolInvocations.length > 0 && (
-        <div className={styles.collapsibleSection}>
-          <div className={styles.collapsibleHeader}>
-            <h4>
-              <Zap size={16} /> 工具调用 ({toolInvocations.length})
-            </h4>
-          </div>
-          <div className={styles.toolCallsList}>
-            {toolInvocations.map((tool) => (
-              <ToolInvocation
-                key={tool.toolCallId}
-                toolName={tool.toolName}
-                args={tool.args}
-                state={tool.state}
-                result={tool.result}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+      {showEarlyThinking && <ThinkingBlock output={{}} isCalling={true} reasoningText={reasoningText} />}
+      {segments.map((seg, idx) => {
+        if (seg.kind === 'text') {
+          const text = seg.texts.join('');
+          if (!text && !isStreaming) return null;
+          return (
+            <div key={`text-${idx}`} className={styles.replyContent}>
+              {text || <span className={styles.streamingPlaceholder}>等待响应...</span>}
+            </div>
+          );
+        }
 
-      {/* 文本内容 */}
-      {(fullText || isStreaming) && (
-        <div className={styles.replyContent}>
-          {fullText || <span className={styles.streamingPlaceholder}>等待响应...</span>}
-          {isStreaming && <span className={styles.streamCursor}>|</span>}
-        </div>
-      )}
+        if (seg.kind === 'thinking') {
+          const isCalling = seg.tool.state !== 'result';
+          const output = (seg.tool.result as PlanTurnOutput) || {};
+          return (
+            <div key={seg.tool.toolCallId} className={styles.thinkingToolGroup}>
+              <ThinkingBlock output={output} isCalling={isCalling} reasoningText={reasoningText} />
+              <ToolInvocation
+                toolName={seg.tool.toolName}
+                args={seg.tool.args}
+                state={seg.tool.state}
+                result={seg.tool.result}
+              />
+            </div>
+          );
+        }
+
+        return (
+          <ToolInvocation
+            key={seg.tool.toolCallId}
+            toolName={seg.tool.toolName}
+            args={seg.tool.args}
+            state={seg.tool.state}
+            result={seg.tool.result}
+          />
+        );
+      })}
+      {isStreaming &&
+        (hasStreamingText ? (
+          <span className={styles.streamCursor}>|</span>
+        ) : (
+          <span className={styles.streamingWaiting}>正在生成回复</span>
+        ))}
     </div>
   );
 }
 
-/**
- * 使用 memo 优化，只在流式输出时实时更新最新的 assistant 消息
- */
 export const MessagePartsAdapter = memo(MessagePartsAdapterComponent, (prevProps, nextProps) => {
-  // 如果正在流式输出，始终重新渲染以显示最新内容
   if (nextProps.isStreaming) {
     return false;
   }
-  // 否则只在消息 ID 变化时重新渲染
   return prevProps.message.id === nextProps.message.id;
 });
 

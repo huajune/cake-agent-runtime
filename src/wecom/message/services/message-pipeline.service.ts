@@ -342,14 +342,13 @@ export class MessagePipelineService {
 
     // 2. 调用 Agent
     const agentResult = await this.agentGateway.invoke({
-      conversationId: chatId,
+      sessionId: chatId,
       userMessage: content,
       historyMessages,
       scenario,
       messageId,
       recordMonitoring: true,
       userId: params.primaryMessage.imContactId,
-      sessionId: chatId,
     });
 
     this.logger.log(

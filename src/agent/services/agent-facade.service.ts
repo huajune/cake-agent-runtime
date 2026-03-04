@@ -11,8 +11,6 @@ import {
 
 /** 需要注入 stageGoals 的 toolContext 工具名 */
 const TOOL_PLAN_TURN = 'wework_plan_turn';
-/** 需要注入 userId/sessionId 的 toolContext 工具名 */
-const TOOL_EXTRACT_FACTS = 'wework_extract_facts';
 
 /**
  * 流式聊天结果接口
@@ -27,7 +25,7 @@ export interface StreamChatResult {
   /** 使用的配置档案名称 */
   profileName: string;
   /** 会话 ID */
-  conversationId: string;
+  sessionId: string;
 }
 
 /**
@@ -42,10 +40,10 @@ export interface ScenarioOptions {
   extraContext?: Record<string, unknown>;
   /** 历史消息 */
   messages?: SimpleMessage[];
-  /** 用户 ID（注入 toolContext.wework_extract_facts，生产传真实值，测试传占位值） */
+  /** 用户 ID（注入 context，供 route.ts / extract_facts / job_list 使用） */
   userId?: string;
-  /** 会话 ID（注入 toolContext.wework_extract_facts，生产传真实值，测试传占位值） */
-  sessionId?: string;
+  /** 扩展思考配置 */
+  thinking?: { type: 'enabled' | 'disabled'; budgetTokens: number };
 }
 
 /**
@@ -77,14 +75,14 @@ export class AgentFacadeService {
    * 基于场景进行非流式聊天
    *
    * @param scenario 场景标识（如 'candidate-consultation'）
-   * @param conversationId 会话 ID
+   * @param sessionId 会话 ID
    * @param userMessage 用户消息
    * @param options 可选配置
    * @returns AgentResult 统一响应
    */
   async chatWithScenario(
     scenario: string,
-    conversationId: string,
+    sessionId: string,
     userMessage: string,
     options?: ScenarioOptions,
   ): Promise<AgentResult> {
@@ -92,18 +90,19 @@ export class AgentFacadeService {
     const profile = this.loadProfile(scenario);
 
     // 2. 准备参数（与生产链路对齐）
-    const prepared = await this.prepareRequestParams(profile, options, conversationId);
+    const prepared = await this.prepareRequestParams(profile, options, sessionId);
 
     this.logger.log(
-      `[chatWithScenario] 场景: ${scenario}, 会话: ${conversationId}, ` +
+      `[chatWithScenario] 场景: ${scenario}, 会话: ${sessionId}, ` +
         `context 字段: ${Object.keys(prepared.context || {}).join(', ')}`,
     );
 
     // 3. 调用 AgentService.chat()
     const result = await this.agentService.chat({
-      conversationId,
+      sessionId,
       userMessage,
       messages: options?.messages,
+      thinking: options?.thinking,
       ...prepared,
     });
 
@@ -114,14 +113,14 @@ export class AgentFacadeService {
    * 基于场景进行流式聊天
    *
    * @param scenario 场景标识
-   * @param conversationId 会话 ID
+   * @param sessionId 会话 ID
    * @param userMessage 用户消息
    * @param options 可选配置
    * @returns StreamChatResult 包含流和元数据
    */
   async chatStreamWithScenario(
     scenario: string,
-    conversationId: string,
+    sessionId: string,
     userMessage: string,
     options?: ScenarioOptions,
   ): Promise<StreamChatResult> {
@@ -129,30 +128,26 @@ export class AgentFacadeService {
     const profile = this.loadProfile(scenario);
 
     // 2. 准备参数（与生产链路对齐）
-    const prepared = await this.prepareRequestParams(profile, options, conversationId);
+    const prepared = await this.prepareRequestParams(profile, options, sessionId);
 
     this.logger.log(
-      `[chatStreamWithScenario] 场景: ${scenario}, 会话: ${conversationId}, ` +
+      `[chatStreamWithScenario] 场景: ${scenario}, 会话: ${sessionId}, ` +
         `context 字段: ${Object.keys(prepared.context || {}).join(', ')}`,
     );
 
     // 3. 通过 AgentService 调用流式 API
-    const result = await this.agentService.chatStreamWithProfile(
-      conversationId,
-      userMessage,
-      profile,
-      {
-        ...prepared,
-        messages: options?.messages,
-      },
-    );
+    const result = await this.agentService.chatStreamWithProfile(sessionId, userMessage, profile, {
+      ...prepared,
+      messages: options?.messages,
+      thinking: options?.thinking,
+    });
 
     return {
       stream: result.stream,
       estimatedInputTokens: result.estimatedInputTokens,
       scenario,
       profileName: profile.name,
-      conversationId,
+      sessionId,
     };
   }
 
@@ -183,21 +178,29 @@ export class AgentFacadeService {
    * 统一参数准备（与 AgentGatewayService 生产链路对齐）
    *
    * 步骤：
-   * 1. 合并上下文（profile.context + extraContext）
+   * 1. 合并上下文（profile.context + extraContext + userId，sessionId 从 sessionId 自动注入）
    * 2. 注入 {{CURRENT_TIME}} 到 systemPrompt
    * 3. 注入策略配置（人格+红线）到 systemPrompt
-   * 4. 构建 toolContext（stageGoals + userId/sessionId）
+   * 4. 构建 toolContext（仅 stageGoals）
    * 5. 清洗并合并配置
    */
   private async prepareRequestParams(
     profile: AgentProfile,
     options?: ScenarioOptions,
-    conversationId?: string,
+    sessionId?: string,
   ): Promise<PreparedProfile> {
-    // 1. 合并上下文
+    // 1. 合并上下文（profile.context + extraContext + userId，sessionId 从 sessionId 自动注入）
+    const userId = options?.userId;
+
+    if (!userId) {
+      this.logger.warn('[prepareRequestParams] userId 未传入，context 将不含用户信息');
+    }
+
     const mergedContext: ChatContext = {
       ...(profile.context || {}),
       ...options?.extraContext,
+      ...(userId !== undefined && { userId }),
+      ...(sessionId !== undefined && { sessionId: sessionId }),
     };
 
     // 2. 注入当前时间到 systemPrompt
@@ -210,30 +213,16 @@ export class AgentFacadeService {
       this.logger.warn('策略配置注入 systemPrompt 失败，使用基础 prompt', error);
     }
 
-    // 4. 构建 toolContext（stageGoals + userId/sessionId）
+    // 4. 构建 toolContext（仅 stageGoals，userId 已移至 context，sessionId 从 sessionId 自动注入）
     let toolContext = profile.toolContext;
     try {
       const stageGoals = await this.strategyConfigService.getStageGoalsForToolContext();
-
-      if (!options?.userId) {
-        this.logger.warn(
-          `[prepareRequestParams] userId 未传入，${TOOL_EXTRACT_FACTS} 将不含用户信息`,
-        );
-      }
-      const userId = options?.userId;
-      // sessionId 即 chatId：优先用显式传入值，其次用 conversationId 兜底
-      const sessionId = options?.sessionId || conversationId;
 
       toolContext = {
         ...profile.toolContext,
         [TOOL_PLAN_TURN]: {
           ...profile.toolContext?.[TOOL_PLAN_TURN],
           stageGoals,
-        },
-        [TOOL_EXTRACT_FACTS]: {
-          ...profile.toolContext?.[TOOL_EXTRACT_FACTS],
-          ...(userId !== undefined && { userId }),
-          ...(sessionId !== undefined && { sessionId }),
         },
       };
     } catch (error) {

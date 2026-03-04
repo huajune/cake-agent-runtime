@@ -700,6 +700,20 @@
   animation: pulse 1.5s ease-in-out infinite;
 }
 
+.liveTimer {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: $spacing-sm;
+  font-size: $font-size-xs;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: $font-weight-normal;
+  color: $text-secondary;
+  padding: 2px 8px;
+  background: $accent-06;
+  border-radius: $radius-full;
+}
+
 .streamCursor {
   display: inline-block;
   color: #ec4899;

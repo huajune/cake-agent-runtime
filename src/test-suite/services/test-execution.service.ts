@@ -60,7 +60,7 @@ export class TestExecutionService {
   async executeTest(request: TestChatRequestDto): Promise<TestChatResponse> {
     const startTime = Date.now();
     const scenario = request.scenario || DEFAULT_SCENARIO;
-    const conversationId = request.chatId || `test-${Date.now()}`;
+    const sessionId = request.chatId || `test-${Date.now()}`;
 
     this.logger.log(`执行测试: ${request.caseName || request.message.substring(0, 50)}...`);
 
@@ -80,7 +80,7 @@ export class TestExecutionService {
 
       result = await this.agentFacade.chatWithScenario(
         scenario,
-        conversationId,
+        sessionId,
         request.message,
         options,
       );
@@ -170,7 +170,7 @@ export class TestExecutionService {
     request: TestChatRequestDto,
   ): Promise<{ stream: NodeJS.ReadableStream; estimatedInputTokens: number }> {
     const scenario = request.scenario || DEFAULT_SCENARIO;
-    const conversationId = request.chatId || `test-stream-${Date.now()}`;
+    const sessionId = request.chatId || `test-stream-${Date.now()}`;
 
     this.logger.log(
       `[Stream] 执行流式测试: ${request.caseName || request.message.substring(0, 50)}...`,
@@ -186,11 +186,12 @@ export class TestExecutionService {
     const options: ScenarioOptions = {
       messages: historyForAgent,
       userId: request.userId,
+      thinking: request.thinking,
     };
 
     const result = await this.agentFacade.chatStreamWithScenario(
       scenario,
-      conversationId,
+      sessionId,
       request.message,
       options,
     );

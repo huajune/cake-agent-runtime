@@ -122,8 +122,17 @@ export function useBatches(options: UseBatchesOptions = {}) {
       toast.success(`成功导入 ${result.totalImported} 条测试用例`);
       await loadBatches();
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { error?: string } }; message?: string };
-      toast.error(error.response?.data?.error || error.message || '创建失败');
+      console.error('Quick create error:', err);
+      const error = err as { response?: { data?: { error?: any; message?: any } }; message?: string };
+      let errMsg = error.response?.data?.error || error.response?.data?.message || error.message || '创建失败';
+      if (typeof errMsg !== 'string') {
+        try {
+          errMsg = JSON.stringify(errMsg);
+        } catch (e) {
+          errMsg = '创建失败（未知错误）';
+        }
+      }
+      toast.error(errMsg);
     } finally {
       setQuickCreating(false);
     }

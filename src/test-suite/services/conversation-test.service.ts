@@ -268,9 +268,11 @@ export class ConversationTestService {
   }> {
     const startTime = Date.now();
     const scenario = DEFAULT_SCENARIO;
-    const testId = `conv-${source.id}-turn-${turn.turnNumber}`;
+    const sessionId = source.conversation_id;
 
-    this.logger.debug(`执行对话轮次: ${source.conversation_id} 第 ${turn.turnNumber} 轮`);
+    this.logger.debug(
+      `执行对话轮次: ${sessionId} 第 ${turn.turnNumber} 轮 (sourceId: ${source.id})`,
+    );
 
     // 检查是否已有执行记录
     const existingExecution = await this.executionRepository.findByConversationSourceAndTurn(
@@ -299,12 +301,11 @@ export class ConversationTestService {
           role: m.role === 'user' ? MessageRole.USER : MessageRole.ASSISTANT,
           content: m.content,
         })),
-        sessionId: source.conversation_id,
       };
 
       agentResult = await this.agentFacade.chatWithScenario(
         scenario,
-        testId,
+        sessionId,
         turn.userMessage,
         options,
       );

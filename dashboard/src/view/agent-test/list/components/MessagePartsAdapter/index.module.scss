@@ -6,16 +6,6 @@
   to { transform: rotate(360deg); }
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-}
-
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
@@ -47,53 +37,7 @@
   white-space: pre-wrap;
 }
 
-// ==================== 可折叠区块 ====================
-.collapsibleSection {
-  border: 1px solid $accent-10;
-  border-radius: $radius-lg;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.95);
-
-  .collapsibleHeader {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: $spacing-sm $spacing-md;
-    background: rgba(250, 248, 255, 0.6);
-    cursor: pointer;
-    user-select: none;
-
-    &:hover {
-      background: rgba(245, 243, 255, 0.8);
-    }
-
-    h4 {
-      display: flex;
-      align-items: center;
-      gap: $spacing-sm;
-      font-size: $font-size-sm;
-      font-weight: $font-weight-semibold;
-      color: $text-primary;
-      margin: 0;
-
-      svg {
-        color: $accent;
-        opacity: 0.7;
-      }
-    }
-  }
-}
-
-// ==================== 工具调用列表 ====================
-.toolCallsList {
-  padding: $spacing-md;
-  display: flex;
-  flex-direction: column;
-  gap: $spacing-sm;
-  background: rgba(255, 255, 255, 0.5);
-  border-top: 1px solid $accent-06;
-}
-
+// ==================== 工具调用卡片 ====================
 .toolCallItem {
   background: rgba(255, 255, 255, 0.9);
   border-radius: $radius-md;
@@ -133,6 +77,15 @@
     align-items: center;
     justify-content: center;
     color: $accent;
+  }
+
+  .toolTimer {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 11px;
+    color: $text-muted;
+    font-family: 'JetBrains Mono', monospace;
   }
 
   .toolName {
@@ -230,6 +183,143 @@
   animation: spin 1s linear infinite;
 }
 
+.thinkingToolGroup {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+// ==================== 思考过程卡片 ====================
+.thinkingBlock {
+  border-radius: $radius-md;
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.04) 0%, rgba(139, 92, 246, 0.04) 100%);
+  padding: $spacing-sm $spacing-md;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+
+}
+
+.thinkingHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  color: $primary;
+
+  svg {
+    flex-shrink: 0;
+  }
+}
+
+.stageBadge {
+  display: inline-flex;
+  padding: 2px 8px;
+  background: $primary-10;
+  color: $primary;
+  border-radius: $radius-full;
+  font-size: 11px;
+  font-weight: $font-weight-medium;
+}
+
+.confidenceBadge {
+  font-size: 11px;
+  font-weight: $font-weight-normal;
+  color: $text-muted;
+}
+
+.thinkingReasoning {
+  font-size: $font-size-xs;
+  color: $text-secondary;
+  line-height: 1.7;
+}
+
+.thinkingNeeds,
+.thinkingRisks {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.needsLabel {
+  font-size: 11px;
+  color: $text-muted;
+  font-weight: $font-weight-medium;
+  margin-right: 2px;
+}
+
+.needTag {
+  display: inline-flex;
+  padding: 1px 6px;
+  background: $info-soft;
+  color: $info;
+  border-radius: $radius-sm;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.riskTag {
+  display: inline-flex;
+  padding: 1px 6px;
+  background: $danger-soft;
+  color: $danger;
+  border-radius: $radius-sm;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.thinkingDetailToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: $text-muted;
+  cursor: pointer;
+  user-select: none;
+  width: fit-content;
+
+  &:hover {
+    color: $primary;
+  }
+}
+
+.thinkingDetail {
+  padding: $spacing-sm;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: $radius-sm;
+  animation: slideDown 0.2s ease-out;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.detailItem {
+  display: flex;
+  gap: $spacing-sm;
+  font-size: $font-size-xs;
+  line-height: 1.6;
+}
+
+.detailLabel {
+  flex-shrink: 0;
+  font-weight: $font-weight-semibold;
+  color: $text-secondary;
+  min-width: 32px;
+}
+
+.detailList {
+  margin: 0;
+  padding-left: $spacing-md;
+  color: $text-secondary;
+
+  li {
+    margin-bottom: 2px;
+  }
+}
+
 // ==================== 流式输出样式 ====================
 .streamCursor {
   display: inline-block;
@@ -237,6 +327,66 @@
   font-weight: bold;
   animation: blink 1s step-end infinite;
   margin-left: 2px;
+}
+
+.streamingLoading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.loadingDots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+
+  span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: $accent;
+    animation: dotBounce 1.4s ease-in-out infinite;
+
+    &:nth-child(2) {
+      animation-delay: 0.16s;
+    }
+
+    &:nth-child(3) {
+      animation-delay: 0.32s;
+    }
+  }
+}
+
+@keyframes dotBounce {
+  0%, 80%, 100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.streamingWaiting {
+  color: $text-muted;
+  font-size: $font-size-xs;
+
+  &::after {
+    content: '';
+    animation: ellipsis 1.5s steps(3) infinite;
+  }
+}
+
+@keyframes ellipsis {
+  0%   { content: '.'; }
+  33%  { content: '..'; }
+  66%  { content: '...'; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .streamingPlaceholder {

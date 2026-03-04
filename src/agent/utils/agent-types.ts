@@ -75,7 +75,11 @@ export interface ChatContext {
   dulidayToken?: string | null;
   defaultWechatId?: string | null;
   userId?: string | null; // 候选人用户 ID（即 imContactId / user_id）
-  sessionId?: string | null; // 会话 ID（即 chatId / chat_id）
+  /**
+   * 会话 ID（花卷 API 外部契约字段）
+   * 由 AgentFacadeService.prepareRequestParams() 自动从 sessionId 参数注入，调用方无需手动设置。
+   */
+  sessionId?: string | null;
   [key: string]: any;
 }
 
@@ -124,6 +128,9 @@ export interface ChatRequest {
 
   // 仅验证模式
   validateOnly?: boolean;
+
+  // 扩展思考配置（AI SDK extended thinking）
+  thinking?: { type: 'enabled' | 'disabled'; budgetTokens: number };
 }
 
 /**

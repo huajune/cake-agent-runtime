@@ -93,26 +93,26 @@ export class AgentApiClientService {
   /**
    * 调用 /api/v1/chat 接口
    * @param request 聊天请求参数
-   * @param conversationId 会话ID（用于日志）
+   * @param sessionId 会话ID（用于日志）
    * @returns API 响应
    */
   async chat(
     request: ChatRequest,
-    conversationId: string,
+    sessionId: string,
   ): Promise<AxiosResponse<ApiResponse<ChatResponse>>> {
     try {
       // 仅记录元数据，避免泄漏 system prompt / 用户消息 / toolContext
       this.logger.debug(
-        `[Chat Request] 会话: ${conversationId}, 消息数: ${request.messages?.length ?? 0}, 模型: ${request.model ?? 'default'}, 工具数: ${request.allowedTools?.length ?? 0}`,
+        `[Chat Request] 会话: ${sessionId}, 消息数: ${request.messages?.length ?? 0}, 模型: ${request.model ?? 'default'}, 工具数: ${request.allowedTools?.length ?? 0}`,
       );
-      // 将 conversationId 附加到 config，供拦截器使用
+      // 将 sessionId 附加到 config，供拦截器使用
       const response = await this.httpClient.post<ApiResponse<ChatResponse>>('/chat', request, {
-        headers: { 'X-Conversation-Id': conversationId },
+        headers: { 'X-Conversation-Id': sessionId },
       });
       return response;
     } catch (error) {
       // 【优化】调用失败时记录会话ID
-      this.logger.error(`Agent API 调用失败，会话: ${conversationId}`);
+      this.logger.error(`Agent API 调用失败，会话: ${sessionId}`);
 
       // 【优化】将请求元数据和脱敏 API Key 附加到错误对象，供飞书告警使用
       (error as any).requestParams = {
@@ -135,27 +135,27 @@ export class AgentApiClientService {
   /**
    * 调用 /api/v1/chat 接口（流式输出）
    * @param request 聊天请求参数
-   * @param conversationId 会话ID（用于日志）
+   * @param sessionId 会话ID（用于日志）
    * @returns 可读流
    */
   async chatStream(
     request: Omit<ChatRequest, 'stream'>,
-    conversationId: string,
+    sessionId: string,
   ): Promise<NodeJS.ReadableStream> {
     try {
       // 强制设置 stream: true
       const streamRequest = { ...request, stream: true };
 
-      this.logger.log(`[Stream] 发起流式请求，会话: ${conversationId}`);
+      this.logger.log(`[Stream] 发起流式请求，会话: ${sessionId}`);
 
       const response = await this.httpClient.post('/chat', streamRequest, {
-        headers: { 'X-Conversation-Id': conversationId },
+        headers: { 'X-Conversation-Id': sessionId },
         responseType: 'stream',
       });
 
       return response.data as NodeJS.ReadableStream;
     } catch (error) {
-      this.logger.error(`[Stream] Agent API 流式调用失败，会话: ${conversationId}`);
+      this.logger.error(`[Stream] Agent API 流式调用失败，会话: ${sessionId}`);
       (error as any).requestParams = {
         model: request.model,
         messageCount: request.messages?.length,
@@ -206,7 +206,7 @@ export class AgentApiClientService {
       // 错误响应处理
       async (error) => {
         const config = error.config;
-        const conversationId = config?.headers?.['X-Conversation-Id'] || 'unknown';
+        const sessionId = config?.headers?.['X-Conversation-Id'] || 'unknown';
 
         // 初始化重试计数器
         config.retryCount = config.retryCount || 0;
@@ -221,7 +221,7 @@ export class AgentApiClientService {
           const delay = this.calculateRetryDelay(error, config.retryCount);
 
           this.logger.warn(
-            `请求失败，${delay}ms后重试，会话: ${conversationId}, 尝试 ${config.retryCount}/${this.maxRetries}`,
+            `请求失败，${delay}ms后重试，会话: ${sessionId}, 尝试 ${config.retryCount}/${this.maxRetries}`,
           );
 
           // 延迟后重试（使用 Promise 不阻塞）

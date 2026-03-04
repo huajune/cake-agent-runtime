@@ -36,7 +36,7 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
     currentInput,
     localError,
     result,
-    metrics,
+    elapsedMs,
     isLoading,
     isStreaming,
     latestAssistantMessage,
@@ -233,17 +233,14 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
             {/* 流式输出中 */}
             {isStreaming && latestAssistantMessage && (
               <div className={styles.streamingContent}>
-                {metrics && (
-                  <MetricsRow
-                    durationMs={metrics.durationMs}
-                    tokenUsage={metrics.tokenUsage}
-                    showDetails={false}
-                  />
-                )}
                 <div className={styles.replySection}>
                   <div className={styles.sectionHeader}>
                     <h4>
                       <Radio size={16} className={styles.streamingIcon} /> AI 回复中...
+                      <span className={styles.liveTimer}>
+                        <Clock size={12} />
+                        {Math.floor(elapsedMs / 1000)}s
+                      </span>
                     </h4>
                     <button className={styles.cancelBtn} onClick={handleCancel}>
                       <X size={12} /> 取消
@@ -254,8 +251,8 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
               </div>
             )}
 
-            {/* 加载中状态 */}
-            {isLoading && !isStreaming && (
+            {/* 加载中状态（含流式已开始但尚未收到首消息的过渡态） */}
+            {isLoading && (!isStreaming || !latestAssistantMessage) && (
               <div className={styles.loadingState}>
                 <div className={styles.loadingSpinner}></div>
                 <p>正在调用 Agent API...</p>
