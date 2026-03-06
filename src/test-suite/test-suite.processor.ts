@@ -196,6 +196,11 @@ export class TestSuiteProcessor implements OnModuleInit {
     const { batchId, caseId, caseName, category, message, history, expectedOutput } = job.data;
     const startTime = Date.now();
 
+    // 自动生成 userId（批次级别唯一）和 sessionId（用例级别唯一）
+    // userId + sessionId 是 Agent 会话记忆的组合 key
+    const userId = `scenario-test-${batchId}`;
+    const sessionId = `test-${caseId}`;
+
     this.logger.log(
       `[TestSuite] 执行测试: ${caseName} (${job.data.caseIndex + 1}/${job.data.totalCases})`,
     );
@@ -214,6 +219,8 @@ export class TestSuiteProcessor implements OnModuleInit {
         expectedOutput,
         batchId,
         saveExecution: false, // 已经保存过了，这里只更新
+        userId,
+        sessionId,
       });
 
       // 更新进度到 80%

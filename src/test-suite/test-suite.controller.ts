@@ -209,18 +209,21 @@ export class TestSuiteController {
         scenario: request.scenario || 'candidate-consultation',
         saveExecution: request.saveExecution ?? false,
         skipHistoryTrim: true,
-        chatId: request.chatId,
+        sessionId: request.sessionId,
         userId: request.userId,
         thinking: request.thinking,
       };
 
-      // 获取花卷 API 的流式响应
+      // 立即 flush SSE headers + start 事件，让前端 useChat 进入 streaming 状态
+      VercelAIStreamHandler.flushSSEHeaders(res);
+      res.write(`data: ${JSON.stringify({ type: 'start', messageId: `msg-${Date.now()}` })}\n\n`);
+
+      // 获取花卷 API 的流式响应（此处 await 可能耗时 1-3s，但前端已进入 streaming 状态）
       const { stream, estimatedInputTokens } =
         await this.testService.executeTestStreamWithMeta(testRequest);
 
       // 使用 Vercel AI SDK 流处理工具类（优先从 finish 事件提取真实 token usage，否则估算）
       const handler = new VercelAIStreamHandler(res, '[AI-Stream]', estimatedInputTokens);
-      handler.setupHeaders();
 
       // 处理流式数据（透传并从 finish 事件捕获 token usage）
       stream.on('data', (chunk: Buffer) => {
@@ -404,7 +407,7 @@ export class TestSuiteController {
     name: 'testType',
     required: false,
     enum: ['scenario', 'conversation'],
-    description: '测试类型过滤：scenario-场景测试，conversation-对话验证',
+    description: '测试类型过滤：scenario-用例测试，conversation-回归验证',
   })
   async getBatches(
     @Query('limit') limit?: number,
@@ -878,22 +881,22 @@ export class TestSuiteController {
     }
   }
 
-  // ==================== 对话验证 (Conversation Verification) ====================
+  // ==================== 回归验证 (Conversation Verification) ====================
 
   /**
-   * 从飞书同步对话验证记录
+   * 从飞书同步回归验证记录
    * POST /test-suite/conversations/sync
    */
   @Post('conversations/sync')
   @ApiOperation({
-    summary: '从飞书同步对话验证记录',
-    description: '从飞书多维表格导入对话验证测试数据，创建测试批次和对话源记录',
+    summary: '从飞书同步回归验证记录',
+    description: '从飞书多维表格导入回归验证测试数据，创建测试批次和对话源记录',
   })
   async syncConversationTests(@Body() _request: SyncConversationTestsDto) {
-    this.logger.log('[ConversationSync] 开始同步对话验证记录');
+    this.logger.log('[ConversationSync] 开始同步回归验证记录');
 
     try {
-      // TODO: 实现从飞书同步对话验证记录的逻辑
+      // TODO: 实现从飞书同步回归验证记录的逻辑
       // 1. 调用 FeishuTestSyncService.getConversationTestsFromDefaultTable()
       // 2. 创建测试批次（类型为 CONVERSATION）
       // 3. 批量创建 ConversationSource 记录
@@ -902,7 +905,7 @@ export class TestSuiteController {
       throw new HttpException(
         {
           success: false,
-          error: '对话验证同步功能即将上线',
+          error: '回归验证同步功能即将上线',
         },
         HttpStatus.NOT_IMPLEMENTED,
       );
@@ -926,7 +929,7 @@ export class TestSuiteController {
   @Get('conversations')
   @ApiOperation({
     summary: '获取对话源列表',
-    description: '获取指定批次的对话验证记录列表（分页）',
+    description: '获取指定批次的回归验证记录列表（分页）',
   })
   @ApiQuery({ name: 'batchId', required: true, description: '批次ID' })
   @ApiQuery({ name: 'page', required: false, description: '页码', example: 1 })
@@ -1011,12 +1014,12 @@ export class TestSuiteController {
   }
 
   /**
-   * 执行单个对话的测试
+   * 执行单个对话的回归验证
    * POST /test-suite/conversations/:sourceId/execute
    */
   @Post('conversations/:sourceId/execute')
   @ApiOperation({
-    summary: '执行单个对话测试',
+    summary: '执行单个回归验证',
     description: '执行指定对话的所有轮次测试，计算相似度分数',
   })
   @ApiParam({ name: 'sourceId', description: '对话源ID' })
@@ -1024,7 +1027,7 @@ export class TestSuiteController {
     @Param('sourceId') sourceId: string,
     @Body() request: ExecuteConversationDto,
   ) {
-    this.logger.log(`[ConversationExecute] 执行对话测试: sourceId=${sourceId}`);
+    this.logger.log(`[ConversationExecute] 执行回归验证: sourceId=${sourceId}`);
 
     try {
       const result = await this.conversationTestService.executeConversation(
@@ -1045,7 +1048,7 @@ export class TestSuiteController {
       };
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`[ConversationExecute] 执行失败: ${errorMessage}`);
+      this.logger.error(`[ConversationExecute] 回归验证执行失败: ${errorMessage}`);
       throw new HttpException(
         {
           success: false,
@@ -1057,34 +1060,34 @@ export class TestSuiteController {
   }
 
   /**
-   * 批量执行对话测试
+   * 批量执行回归验证
    * POST /test-suite/conversations/batch/:batchId/execute
    */
   @Post('conversations/batch/:batchId/execute')
   @ApiOperation({
-    summary: '批量执行对话测试',
-    description: '执行指定批次的所有对话验证测试',
+    summary: '批量执行回归验证',
+    description: '执行指定批次的所有回归验证测试',
   })
   @ApiParam({ name: 'batchId', description: '批次ID' })
   async executeConversationBatch(
     @Param('batchId') batchId: string,
     @Body() request: ExecuteConversationBatchDto,
   ) {
-    this.logger.log(`[ConversationBatchExecute] 执行批量对话测试: batchId=${batchId}`);
+    this.logger.log(`[ConversationBatchExecute] 执行批量回归验证: batchId=${batchId}`);
 
     try {
       // 获取该批次的所有对话源
       const sources = await this.conversationSourceRepository.findByBatchId(batchId);
 
       if (sources.length === 0) {
-        throw new Error(`批次 ${batchId} 下没有对话验证记录`);
+        throw new Error(`批次 ${batchId} 下没有回归验证记录`);
       }
 
       const results = [];
       let successCount = 0;
       let failedCount = 0;
 
-      // 逐个执行对话测试
+      // 逐个执行回归验证
       for (const source of sources) {
         try {
           const result = await this.conversationTestService.executeConversation(
@@ -1116,7 +1119,7 @@ export class TestSuiteController {
       };
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`[ConversationBatchExecute] 执行失败: ${errorMessage}`);
+      this.logger.error(`[ConversationBatchExecute] 回归验证批量执行失败: ${errorMessage}`);
       throw new HttpException(
         {
           success: false,

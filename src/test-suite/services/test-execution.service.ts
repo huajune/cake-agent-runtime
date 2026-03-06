@@ -13,6 +13,9 @@ import { ExecutionStatus } from '../enums';
 /** 默认场景 */
 const DEFAULT_SCENARIO = 'candidate-consultation';
 
+/** 测试场景默认开启 extended thinking */
+const DEFAULT_TEST_THINKING = { type: 'enabled' as const, budgetTokens: 10000 };
+
 /**
  * 测试执行结果提取接口
  */
@@ -60,7 +63,11 @@ export class TestExecutionService {
   async executeTest(request: TestChatRequestDto): Promise<TestChatResponse> {
     const startTime = Date.now();
     const scenario = request.scenario || DEFAULT_SCENARIO;
-    const sessionId = request.chatId || `test-${Date.now()}`;
+    const sessionId = request.sessionId || `test-${Date.now()}`;
+
+    if (!request.userId) {
+      throw new Error('userId 是必填项，请在请求中传入 userId');
+    }
 
     this.logger.log(`执行测试: ${request.caseName || request.message.substring(0, 50)}...`);
 
@@ -76,6 +83,7 @@ export class TestExecutionService {
       const options: ScenarioOptions = {
         messages: historyForAgent,
         userId: request.userId,
+        thinking: request.thinking || DEFAULT_TEST_THINKING,
       };
 
       result = await this.agentFacade.chatWithScenario(
@@ -170,7 +178,11 @@ export class TestExecutionService {
     request: TestChatRequestDto,
   ): Promise<{ stream: NodeJS.ReadableStream; estimatedInputTokens: number }> {
     const scenario = request.scenario || DEFAULT_SCENARIO;
-    const sessionId = request.chatId || `test-stream-${Date.now()}`;
+    const sessionId = request.sessionId || `test-stream-${Date.now()}`;
+
+    if (!request.userId) {
+      throw new Error('userId 是必填项，请在请求中传入 userId');
+    }
 
     this.logger.log(
       `[Stream] 执行流式测试: ${request.caseName || request.message.substring(0, 50)}...`,
@@ -186,7 +198,7 @@ export class TestExecutionService {
     const options: ScenarioOptions = {
       messages: historyForAgent,
       userId: request.userId,
-      thinking: request.thinking,
+      thinking: request.thinking || DEFAULT_TEST_THINKING,
     };
 
     const result = await this.agentFacade.chatStreamWithScenario(

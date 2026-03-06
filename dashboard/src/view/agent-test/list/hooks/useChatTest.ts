@@ -56,8 +56,9 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
   );
   const startTimeRef = useRef<number>(0);
 
-  // 会话 ID：同一对话保持一致，清空聊天时重新生成
-  const [chatId, setChatId] = useState(() => crypto.randomUUID());
+  // 会话 ID + 用户 ID：同一对话保持一致，清空聊天时重新生成（确保花卷 API 服务端记忆完全隔离）
+  const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
+  const [userId, setUserId] = useState(() => `dashboard-test-${crypto.randomUUID().slice(0, 8)}`);
 
   // Refs
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
@@ -65,7 +66,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
   const currentInputRef = useRef<string>('');
   const tokenUsageRef = useRef<TokenUsage | null>(null);
 
-  // Transport（chatId 变化时重建，确保新对话用新 sessionId）
+  // Transport（sessionId 变化时重建，确保新对话用新 sessionId）
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
@@ -73,16 +74,17 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
         body: {
           scenario: DEFAULT_SCENARIO,
           saveExecution: false,
-          chatId,
-          userId: 'dashboard-test-user',
+          sessionId,
+          userId,
           thinking: { type: 'enabled', budgetTokens: 10000 },
         },
       }),
-    [chatId],
+    [sessionId, userId],
   );
 
   // useChat hook
   const { messages, sendMessage, status, stop, setMessages, error: chatError } = useChat({
+    id: sessionId,
     transport,
     onData: (dataPart: unknown) => {
       const part = dataPart as { type?: string; data?: TokenUsage };
@@ -274,7 +276,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
   // 取消
   const handleCancel = useCallback(() => stop(), [stop]);
 
-  // 清空（重新生成 chatId，开启新会话）
+  // 清空（重新生成 sessionId，开启新会话）
   const handleClear = useCallback(() => {
     setHistoryTextState('');
     setHistoryStatus('empty');
@@ -284,7 +286,8 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     setLocalError(null);
     setMetrics(null);
     setIsRequesting(false);
-    setChatId(crypto.randomUUID());
+    setSessionId(crypto.randomUUID());
+    setUserId(`dashboard-test-${crypto.randomUUID().slice(0, 8)}`);
     messageInputRef.current?.focus();
   }, [setMessages]);
 

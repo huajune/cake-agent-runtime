@@ -81,7 +81,7 @@ export class VercelAIChatRequestDto {
   @ApiPropertyOptional({ description: '会话 ID（同一对话保持一致，清空聊天后生成新值）' })
   @IsOptional()
   @IsString()
-  chatId?: string;
+  sessionId?: string;
 
   @ApiPropertyOptional({ description: '用户 ID（注入 context，生产为 imContactId）' })
   @IsOptional()
@@ -156,7 +156,7 @@ export class TestChatRequestDto {
   })
   @IsOptional()
   @IsString()
-  chatId?: string;
+  sessionId?: string;
 
   @ApiPropertyOptional({ description: '用户 ID（注入 context，生产为 imContactId）' })
   @IsOptional()
@@ -213,7 +213,7 @@ export class CreateBatchRequestDto {
   feishuTableId?: string;
 
   @ApiPropertyOptional({
-    description: '测试类型：scenario-场景测试，conversation-对话验证',
+    description: '测试类型：scenario-用例测试，conversation-回归验证',
     enum: TestType,
     default: TestType.SCENARIO,
   })
@@ -331,7 +331,7 @@ export class ImportFromFeishuRequestDto {
   parallel?: boolean;
 
   @ApiPropertyOptional({
-    description: '测试类型：scenario-场景测试，conversation-对话验证',
+    description: '测试类型：scenario-用例测试，conversation-回归验证',
     enum: TestType,
     default: TestType.SCENARIO,
   })
@@ -415,7 +415,7 @@ export class QuickCreateBatchRequestDto {
   parallel?: boolean;
 
   @ApiPropertyOptional({
-    description: '测试类型：scenario-场景测试，conversation-对话验证',
+    description: '测试类型：scenario-用例测试，conversation-回归验证',
     enum: TestType,
     default: TestType.SCENARIO,
   })
