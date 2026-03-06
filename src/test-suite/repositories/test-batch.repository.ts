@@ -112,7 +112,7 @@ export class TestBatchRepository extends BaseRepository {
    *
    * @param limit 每页数量
    * @param offset 偏移量
-   * @param testType 测试类型过滤：scenario-场景测试，conversation-对话验证
+   * @param testType 测试类型过滤：scenario-用例测试，conversation-回归验证
    */
   async findMany(
     limit = 20,

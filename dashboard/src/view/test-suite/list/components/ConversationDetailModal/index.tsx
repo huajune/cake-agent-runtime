@@ -41,7 +41,7 @@ function RealHistoryMessage({ message }: { message: ParsedMessage }) {
 }
 
 /**
- * 对话验证详情弹窗
+ * 回归验证详情弹窗
  * 参考 ExecutionDetailViewer 布局设计
  */
 export function ConversationDetailModal({

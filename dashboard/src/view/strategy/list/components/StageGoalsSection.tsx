@@ -130,6 +130,20 @@ export default function StageGoalsSection({ config }: Props) {
             </div>
 
             {expandedIndex === index && <div className={styles.stageFields}>
+              {/* 阶段定义 */}
+              <div className={`${styles.fieldGroup} ${styles.fieldGroupFull}`}>
+                <label className={styles.fieldLabel}>阶段定义</label>
+                <TextareaAutosize
+                  className={styles.fieldTextArea}
+                  value={stage.description}
+                  onChange={(e) => handleFieldChange(index, 'description', e.target.value)}
+                  onBlur={handleBlur}
+                  minRows={1}
+                  maxRows={4}
+                  placeholder="描述这个阶段的含义和定位"
+                />
+              </div>
+
               {/* 主要目标 */}
               <div className={`${styles.fieldGroup} ${styles.fieldGroupFull}`}>
                 <label className={styles.fieldLabel}>主要目标</label>

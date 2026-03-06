@@ -33,7 +33,7 @@ Content-Type: application/json
   "userId":"test-user-1233"
 }
 
-### 8. 流式聊天测试（与 Dashboard 对话测试页面调用的接口一致）
+### 8. 流式聊天测试（与 Dashboard 对话调试页面调用的接口一致）
 ### 接口：POST /test-suite/chat/ai-stream（Vercel AI SDK 格式）
 POST http://localhost:8080/test-suite/chat/ai-stream
 Content-Type: application/json

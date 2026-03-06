@@ -6,8 +6,8 @@
 ## 背景
 
 当前 `src/test-suite/` 模块承载了过多职责：
-- 场景测试执行
-- 对话验证测试
+- 用例测试执行
+- 回归验证测试
 - 批次生命周期管理
 - 评审系统
 - Bull Queue 任务队列
@@ -45,7 +45,7 @@ src/
     │   ├── batch.processor.ts
     │   └── dto/
     │
-    ├── conversation/               # 对话验证子域
+    ├── conversation/               # 回归验证子域
     │   ├── conversation.controller.ts
     │   ├── conversation.service.ts
     │   ├── conversation-source.repository.ts

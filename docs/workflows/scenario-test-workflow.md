@@ -1,6 +1,6 @@
-# 场景测试工作流程
+# 用例测试工作流程
 
-> 本文档描述场景测试功能的完整数据流、执行流程和设计决策
+> 本文档描述用例测试功能的完整数据流、执行流程和设计决策
 
 ## 目录
 
@@ -16,7 +16,7 @@
 
 ### 功能定位
 
-场景测试是测试套件的核心功能之一,用于:
+用例测试是测试套件的核心功能之一,用于:
 - 基于预设的测试用例验证 AI Agent 的回复质量
 - 从飞书多维表格导入标准化的测试场景
 - 人工评审 Agent 回复,标注通过/失败
@@ -26,14 +26,14 @@
 
 | 概念 | 说明 | 示例 |
 |------|------|------|
-| **测试批次 (Batch)** | 一次导入的完整测试/验证集 | "场景测试 2026/1/16" |
+| **测试批次 (Batch)** | 一次导入的完整测试/验证集 | "用例测试 2026/1/16" |
 | **测试用例 (Case)** | 单个预设的测试场景 | "候选人咨询Java岗位" |
 | **测试分类 (Category)** | 用例的功能分类 | "岗位咨询", "薪资问题" |
 | **人工评审 (Review)** | 对 Agent 回复的质量判断 | 通过/失败 + 失败原因 |
 
-### 与对话验证的区别
+### 与回归验证的区别
 
-| 维度 | 场景测试 (Scenario Test) | 对话验证 (Conversation Test) |
+| 维度 | 用例测试 (Scenario Test) | 回归验证 (Conversation Test) |
 |------|-------------------------|------------------------------|
 | **飞书数据表** | testSuite 表 | validationSet 表 (独立) |
 | **数据来源** | 人工编写的标准测试用例 | 真实客户对话记录 |
@@ -42,7 +42,7 @@
 | **典型用途** | 功能回归测试 | 质量基准测试 |
 | **测试轮次** | 单轮问答 | 多轮对话 |
 
-> **注意**: 场景测试和对话验证使用独立的飞书表格，不再通过 `test_type` 字段区分。
+> **注意**: 用例测试和回归验证使用独立的飞书表格，不再通过 `test_type` 字段区分。
 
 ### 技术栈
 
@@ -97,7 +97,7 @@
 | 字段 | 类型 | 说明 | 示例 |
 |------|------|------|------|
 | `id` | UUID | 主键 | `batch-001` |
-| `name` | TEXT | 批次名称 | "场景测试 2026/1/16 14:30" |
+| `name` | TEXT | 批次名称 | "用例测试 2026/1/16 14:30" |
 | `test_type` | TEXT | 测试类型 | `'scenario'` |
 | `source` | TEXT | 来源 | `'feishu'` \| `'manual'` |
 | `status` | TEXT | 批次状态 | `'created'` \| `'running'` \| `'reviewing'` \| `'completed'` |
@@ -234,7 +234,7 @@ const cases = records.map(record => ({
 
 ```typescript
 const batch = await testBatchRepository.create({
-  name: batchName || `场景测试 ${new Date().toLocaleString('zh-CN')}`,
+  name: batchName || `用例测试 ${new Date().toLocaleString('zh-CN')}`,
   test_type: TestType.SCENARIO,
   source: BatchSource.FEISHU,
   status: BatchStatus.CREATED,
@@ -523,7 +523,7 @@ POST /test-suite/quick-create
 Content-Type: application/json
 
 {
-  "batchName": "场景测试 2026/1/16",  // 可选
+  "batchName": "用例测试 2026/1/16",  // 可选
   "parallel": false,                   // 是否并行执行
   "testType": "scenario"
 }
@@ -533,7 +533,7 @@ Content-Type: application/json
   "success": true,
   "data": {
     "batchId": "batch-001",
-    "name": "场景测试 2026/1/16 14:30:17",
+    "name": "用例测试 2026/1/16 14:30:17",
     "totalImported": 50,
     "cases": [
       {
@@ -654,7 +654,7 @@ GET /test-suite/batches?test_type=scenario
   "data": [
     {
       "id": "batch-001",
-      "name": "场景测试 2026/1/16",
+      "name": "用例测试 2026/1/16",
       "testType": "scenario",
       "totalCases": 50,
       "executedCount": 30,
@@ -675,7 +675,7 @@ GET /test-suite/batch/:batchId
   "data": {
     "batch": {
       "id": "batch-001",
-      "name": "场景测试 2026/1/16",
+      "name": "用例测试 2026/1/16",
       "testType": "scenario",
       "status": "reviewing"
     },
@@ -794,7 +794,7 @@ GET /test-suite/execution/:executionId
 
 **表名**: "测试/验证集" (testSuite)
 
-> **注意**: 场景测试数据存储在 `testSuite` 表中。对话验证数据已迁移到独立的 `validationSet` 表，不再需要 `测试类型` 字段区分。
+> **注意**: 用例测试数据存储在 `testSuite` 表中。回归验证数据已迁移到独立的 `validationSet` 表，不再需要 `测试类型` 字段区分。
 
 **必填字段**:
 
@@ -820,7 +820,7 @@ GET /test-suite/execution/:executionId
 
 | 字段名 | 说明 |
 |--------|------|
-| ~~`测试类型`~~ | 已废弃,对话验证数据已迁移到独立的 validationSet 表 |
+| ~~`测试类型`~~ | 已废弃,回归验证数据已迁移到独立的 validationSet 表 |
 
 ### 数据同步流程
 
@@ -1015,6 +1015,6 @@ cancelled  cancelled  cancelled
 
 ## 相关文档
 
-- [对话验证工作流程](./conversation-test-workflow.md)
+- [回归验证工作流程](./conversation-test-workflow.md)
 - [测试套件架构设计](../architecture/test-suite-architecture.md)
 - [Bull Queue 使用指南](../technical/bull-queue-guide.md)

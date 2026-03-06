@@ -189,34 +189,40 @@ export class AgentFacadeService {
     options?: ScenarioOptions,
     sessionId?: string,
   ): Promise<PreparedProfile> {
-    // 1. 合并上下文（profile.context + extraContext + userId，sessionId 从 sessionId 自动注入）
+    // 1. 合并上下文（profile.context + extraContext + userId + sessionId）
+    // userId + sessionId 是 Agent 会话记忆的组合 key，缺失直接报错
     const userId = options?.userId;
 
     if (!userId) {
-      this.logger.warn('[prepareRequestParams] userId 未传入，context 将不含用户信息');
+      throw new HttpException(
+        'userId 是必填项，用于 Agent 会话记忆管理（userId + sessionId 组合 key）',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    if (!sessionId) {
+      throw new HttpException(
+        'sessionId 是必填项，用于 Agent 会话记忆管理（userId + sessionId 组合 key）',
+        HttpStatus.BAD_REQUEST,
+      );
     }
 
     const mergedContext: ChatContext = {
       ...(profile.context || {}),
       ...options?.extraContext,
-      ...(userId !== undefined && { userId }),
-      ...(sessionId !== undefined && { sessionId: sessionId }),
+      userId,
+      sessionId,
     };
 
     // 2. 注入当前时间到 systemPrompt
     let systemPrompt = this.injectCurrentTime(profile.systemPrompt);
 
-    // 3. 注入策略配置（人格+红线）到 systemPrompt
-    try {
-      systemPrompt = await this.strategyConfigService.composeSystemPrompt(systemPrompt || '');
-    } catch (error) {
-      this.logger.warn('策略配置注入 systemPrompt 失败，使用基础 prompt', error);
-    }
-
-    // 4. 构建 toolContext（仅 stageGoals，userId 已移至 context，sessionId 从 sessionId 自动注入）
+    // 3+4. 一次查询同时获取 systemPrompt 和 stageGoals（避免两次串行 getActiveConfig）
     let toolContext = profile.toolContext;
     try {
-      const stageGoals = await this.strategyConfigService.getStageGoalsForToolContext();
+      const { systemPrompt: composed, stageGoals } =
+        await this.strategyConfigService.composeSystemPromptAndStageGoals(systemPrompt || '');
+      systemPrompt = composed;
 
       toolContext = {
         ...profile.toolContext,
@@ -226,7 +232,7 @@ export class AgentFacadeService {
         },
       };
     } catch (error) {
-      this.logger.warn('策略配置注入 toolContext 失败，使用基础 toolContext', error);
+      this.logger.warn('策略配置注入失败，使用基础配置', error);
     }
 
     // 5. 清洗并合并配置

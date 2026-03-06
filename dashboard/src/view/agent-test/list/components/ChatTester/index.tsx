@@ -251,12 +251,11 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
               </div>
             )}
 
-            {/* 加载中状态（含流式已开始但尚未收到首消息的过渡态） */}
-            {isLoading && (!isStreaming || !latestAssistantMessage) && (
+            {/* 加载中状态（仅在流式未开始时显示，start 事件到达后立即切换到流式 UI） */}
+            {isLoading && !isStreaming && (
               <div className={styles.loadingState}>
                 <div className={styles.loadingSpinner}></div>
-                <p>正在调用 Agent API...</p>
-                <p className={styles.loadingHint}>通常需要 5-30 秒</p>
+                <p>正在连接 Agent API...</p>
               </div>
             )}
 

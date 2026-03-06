@@ -345,15 +345,24 @@ export class VercelAIStreamHandler {
   ) {}
 
   /**
-   * 设置响应头
+   * 静态方法：立即 flush SSE 响应头
+   * 在耗时 await 之前调用，让浏览器尽快脱离 pending 状态
+   */
+  static flushSSEHeaders(res: Response): void {
+    if (res.headersSent) return;
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.setHeader('x-vercel-ai-ui-message-stream', 'v1');
+    res.flushHeaders();
+  }
+
+  /**
+   * 设置响应头（如已发送则跳过）
    */
   setupHeaders(): void {
-    this.res.setHeader('Content-Type', 'text/event-stream');
-    this.res.setHeader('Cache-Control', 'no-cache');
-    this.res.setHeader('Connection', 'keep-alive');
-    this.res.setHeader('X-Accel-Buffering', 'no');
-    this.res.setHeader('x-vercel-ai-ui-message-stream', 'v1');
-    this.res.flushHeaders();
+    VercelAIStreamHandler.flushSSEHeaders(this.res);
   }
 
   /**
@@ -384,6 +393,9 @@ export class VercelAIStreamHandler {
             }
             if (data.type === 'reasoning-delta' && data.delta) {
               this.outputCharCount += data.delta.length;
+              this.logger.debug(
+                `${this.logPrefix} 收到 reasoning-delta: ${data.delta.substring(0, 100)}`,
+              );
             }
           }
         }

@@ -122,18 +122,18 @@ export enum FeedbackType {
 
 /**
  * 测试类型
- * 区分场景测试和对话验证测试
+ * 区分用例测试和回归验证测试
  */
 export enum TestType {
-  /** 场景测试 - 预设的测试用例 */
+  /** 用例测试 - 预设的测试用例 */
   SCENARIO = 'scenario',
-  /** 对话验证 - 真实对话记录验证 */
+  /** 回归验证 - 真实对话记录验证 */
   CONVERSATION = 'conversation',
 }
 
 /**
  * 对话源执行状态
- * 表示对话验证测试的执行状态
+ * 表示回归验证测试的执行状态
  */
 export enum ConversationSourceStatus {
   /** 待执行 */

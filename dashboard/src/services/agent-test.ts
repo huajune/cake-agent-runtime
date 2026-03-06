@@ -377,7 +377,7 @@ export type TestType = 'scenario' | 'conversation';
  *
  * @param limit 每页数量
  * @param offset 偏移量
- * @param testType 测试类型过滤：scenario-场景测试，conversation-对话验证
+ * @param testType 测试类型过滤：scenario-用例测试，conversation-回归验证
  */
 export async function getBatches(
   limit = 20,
@@ -558,7 +558,7 @@ export async function batchWriteBackToFeishu(
   return data.data;
 }
 
-// ==================== 对话验证相关类型 ====================
+// ==================== 回归验证相关类型 ====================
 
 /**
  * 对话源状态
@@ -645,7 +645,7 @@ export interface ConversationSourceListResponse {
   pageSize: number;
 }
 
-// ==================== 对话验证 API 函数 ====================
+// ==================== 回归验证 API 函数 ====================
 
 /**
  * 获取对话源列表
@@ -669,7 +669,7 @@ export async function getConversationTurns(sourceId: string): Promise<TurnListRe
 }
 
 /**
- * 执行单个对话测试
+ * 执行单个回归验证
  */
 export async function executeConversation(params: {
   sourceId: string;
@@ -689,7 +689,7 @@ export async function executeConversation(params: {
 }
 
 /**
- * 批量执行对话测试
+ * 批量执行回归验证
  */
 export async function executeConversationBatch(params: {
   batchId: string;

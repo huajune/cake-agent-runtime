@@ -65,8 +65,8 @@ export class TestStatsService {
   /**
    * 计算批次统计信息
    * 根据批次类型选择不同的统计方式：
-   * - scenario: 从 TestExecution 表统计
-   * - conversation: 从 ConversationSource 表统计
+   * - scenario: 从 TestExecution 表统计（用例测试）
+   * - conversation: 从 ConversationSource 表统计（回归验证）
    */
   async calculateBatchStats(batchId: string): Promise<BatchStats> {
     // 获取批次信息以确定测试类型
@@ -77,13 +77,13 @@ export class TestStatsService {
       return this.calculateConversationBatchStats(batchId);
     }
 
-    // 默认：场景测试统计
+    // 默认：用例测试统计
     const executions = await this.executionRepository.findByBatchIdLite(batchId);
     return this.computeStats(executions as TestExecution[]);
   }
 
   /**
-   * 计算对话验证批次统计
+   * 计算回归验证批次统计
    * 从 ConversationSource 表统计
    */
   private async calculateConversationBatchStats(batchId: string): Promise<BatchStats> {
@@ -118,7 +118,7 @@ export class TestStatsService {
       passedCount,
       failedCount,
       pendingReviewCount: statusCounts.pending + statusCounts.running,
-      passRate: avgSimilarity, // 对话验证使用平均相似度作为通过率
+      passRate: avgSimilarity, // 回归验证使用平均相似度作为通过率
       avgDurationMs: null,
       avgTokenUsage: null,
     };

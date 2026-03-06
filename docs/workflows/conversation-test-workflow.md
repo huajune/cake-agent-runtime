@@ -1,6 +1,6 @@
-# 对话验证工作流程
+# 回归验证工作流程
 
-> 本文档描述对话验证功能的完整数据流、执行流程和设计决策
+> 本文档描述回归验证功能的完整数据流、执行流程和设计决策
 
 ## 目录
 
@@ -16,20 +16,20 @@
 
 ### 功能定位
 
-对话验证是测试套件的核心功能之一,用于:
+回归验证是测试套件的核心功能之一,用于:
 - 从飞书多维表格 **validationSet 表** 导入真实客户对话记录
 - 将历史对话重放给 AI Agent,验证回复质量
 - 使用 LLM 自动评估 Agent 回复与真人回复的相似度
 - 提供可视化界面查看测试结果和评估详情
 - 将评估结果（相似度分数）回写到飞书
 
-> **注意**: 对话验证数据存储在独立的 `validationSet` 飞书表中,与场景测试的 `testSuite` 表分离。
+> **注意**: 回归验证数据存储在独立的 `validationSet` 飞书表中,与用例测试的 `testSuite` 表分离。
 
 ### 核心概念
 
 | 概念 | 说明 | 示例 |
 |------|------|------|
-| **测试批次 (Batch)** | 一次导入的完整测试/验证集 | "对话验证 2026/1/16" |
+| **测试批次 (Batch)** | 一次导入的完整测试/验证集 | "回归验证 2026/1/16" |
 | **对话源 (Source)** | 单个完整对话记录 | Paidax 的 3 轮对话 |
 | **测试轮次 (Turn)** | 对话中的单次交互 | 用户问 → Agent 答 |
 | **相似度评分 (Score)** | LLM 对回复质量的评分 | 0-100 分,60分及格 |
@@ -96,7 +96,7 @@
 | 字段 | 类型 | 说明 | 示例 |
 |------|------|------|------|
 | `id` | UUID | 主键 | `batch-001` |
-| `name` | TEXT | 批次名称 | "对话验证 2026/1/16 11:13" |
+| `name` | TEXT | 批次名称 | "回归验证 2026/1/16 11:13" |
 | `test_type` | TEXT | 测试类型 | `'conversation'` |
 | `status` | TEXT | 批次状态 | `'created'` \| `'running'` \| `'completed'` |
 | `total_cases` | INTEGER | 对话总数 | `19` |
@@ -212,7 +212,7 @@ sequenceDiagram
 
 ```typescript
 const batch = await testBatchRepository.create({
-  name: '对话验证 2026/1/16 11:13:17',
+  name: '回归验证 2026/1/16 11:13:17',
   test_type: 'conversation',
   status: 'created',
 });
@@ -441,7 +441,7 @@ Content-Type: application/json
 {
   "feishuAppToken": "bascn...",
   "feishuTableId": "tbl...",
-  "batchName": "对话验证 2026/1/16"  // 可选
+  "batchName": "回归验证 2026/1/16"  // 可选
 }
 
 // 响应
@@ -449,7 +449,7 @@ Content-Type: application/json
   "success": true,
   "data": {
     "batchId": "batch-001",
-    "name": "对话验证 2026/1/16 11:13:17",
+    "name": "回归验证 2026/1/16 11:13:17",
     "totalCases": 19,
     "syncedCount": 19,
     "createdAt": "2026-01-16T03:13:17.000Z"
@@ -503,7 +503,7 @@ GET /test-suite/batches?test_type=conversation
   "data": [
     {
       "id": "batch-001",
-      "name": "对话验证 2026/1/16",
+      "name": "回归验证 2026/1/16",
       "totalCases": 19,
       "executedCount": 2,
       "passRate": 82.0,
@@ -728,7 +728,7 @@ const CRITERIA = {
 
 ### 飞书表格格式
 
-> **重要**: 对话验证使用独立的 **validationSet 表**,与场景测试的 testSuite 表分离。
+> **重要**: 回归验证使用独立的 **validationSet 表**,与用例测试的 testSuite 表分离。
 
 **validationSet 表字段**:
 
@@ -797,6 +797,6 @@ export const validationSetFieldNames = {
 
 ## 相关文档
 
-- [场景测试工作流程](./scenario-test-workflow.md)
+- [用例测试工作流程](./scenario-test-workflow.md)
 - [测试套件架构设计](../architecture/test-suite-architecture.md)
 - [Bull Queue 使用指南](../technical/bull-queue-guide.md)

@@ -124,7 +124,7 @@ export class TestImportService {
   /**
    * 一键从预配置的测试/验证集表导入并执行
    *
-   * @param options.testType 测试类型：scenario-场景测试，conversation-对话验证
+   * @param options.testType 测试类型：scenario-用例测试，conversation-回归验证
    */
   async quickCreateBatch(options?: {
     batchName?: string;
@@ -138,17 +138,17 @@ export class TestImportService {
       return this.quickCreateConversationBatch(options);
     }
 
-    // 场景测试：从测试/验证集表导入
+    // 用例测试：从测试/验证集表导入
     const { appToken, tableId } = this.feishuBitableApi.getTableConfig('testSuite');
 
-    this.logger.log(`一键创建场景测试: 从测试/验证集表 ${tableId} 导入`);
+    this.logger.log(`一键创建用例测试: 从测试/验证集表 ${tableId} 导入`);
 
     return this.importFromFeishu({
       appToken,
       tableId,
       batchName:
         options?.batchName ||
-        `场景测试 ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`,
+        `用例测试 ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`,
       executeImmediately: true,
       parallel: options?.parallel || false,
       testType: TestType.SCENARIO,
@@ -156,8 +156,8 @@ export class TestImportService {
   }
 
   /**
-   * 一键创建对话验证批次
-   * 从验证集表 (validationSet) 中获取对话验证数据
+   * 一键创建回归验证批次
+   * 从验证集表 (validationSet) 中获取回归验证数据
    *
    * 执行流程：
    * 1. 获取数据 → 2. 创建批次 → 3. 创建 ConversationSource → 4. 异步触发执行
@@ -166,21 +166,21 @@ export class TestImportService {
     batchName?: string;
     parallel?: boolean;
   }): Promise<ImportResult> {
-    // 1. 从验证集表获取对话验证记录
+    // 1. 从验证集表获取回归验证记录
     const { appToken, tableId, conversations } =
       await this.feishuSyncService.getConversationTestsFromDefaultTable();
 
-    this.logger.log(`一键创建对话验证: 从验证集表 ${tableId} 导入对话验证数据`);
-    this.logger.log(`获取到 ${conversations.length} 条对话验证记录`);
+    this.logger.log(`一键创建回归验证: 从验证集表 ${tableId} 导入回归验证数据`);
+    this.logger.log(`获取到 ${conversations.length} 条回归验证记录`);
 
     if (conversations.length === 0) {
-      throw new Error('验证集表中没有对话验证数据');
+      throw new Error('验证集表中没有回归验证数据');
     }
 
     // 2. 创建批次
     const batchName =
       options?.batchName ||
-      `对话验证 ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`;
+      `回归验证 ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`;
     const batch = await this.batchService.createBatch({
       name: batchName,
       source: BatchSource.FEISHU,
@@ -212,7 +212,7 @@ export class TestImportService {
       savedCases.push({
         caseId: source.id,
         caseName,
-        category: '对话验证',
+        category: '回归验证',
         message: conv.rawText.slice(0, 100) + (conv.rawText.length > 100 ? '...' : ''),
       });
     }
@@ -222,10 +222,10 @@ export class TestImportService {
 
     // 5. 异步触发执行（不阻塞返回）
     this.executeConversationBatchAsync(batch.id, sourceIds).catch((err: Error) => {
-      this.logger.error(`对话验证批量执行失败: ${err.message}`, err.stack);
+      this.logger.error(`回归验证批量执行失败: ${err.message}`, err.stack);
     });
 
-    this.logger.log(`对话验证批次已创建，共 ${savedCases.length} 条用例，开始异步执行`);
+    this.logger.log(`回归验证批次已创建，共 ${savedCases.length} 条用例，开始异步执行`);
 
     return {
       batchId: batch.id,
@@ -236,11 +236,11 @@ export class TestImportService {
   }
 
   /**
-   * 异步执行对话验证批次
+   * 异步执行回归验证批次
    * 复用 ConversationTestService.executeConversation()
    */
   private async executeConversationBatchAsync(batchId: string, sourceIds: string[]): Promise<void> {
-    this.logger.log(`开始异步执行对话验证批次: ${batchId}, 共 ${sourceIds.length} 条对话`);
+    this.logger.log(`开始异步执行回归验证批次: ${batchId}, 共 ${sourceIds.length} 条对话`);
 
     let successCount = 0;
     let failedCount = 0;
@@ -275,11 +275,11 @@ export class TestImportService {
       failedCount === sourceIds.length ? BatchStatus.CANCELLED : BatchStatus.REVIEWING;
     await this.batchService.updateBatchStatus(batchId, finalStatus);
 
-    this.logger.log(`对话验证批次 ${batchId} 执行完成: 成功 ${successCount}, 失败 ${failedCount}`);
+    this.logger.log(`回归验证批次 ${batchId} 执行完成: 成功 ${successCount}, 失败 ${failedCount}`);
   }
 
   /**
-   * 回写对话验证结果到飞书
+   * 回写回归验证结果到飞书
    * 根据 sourceId 查询 feishuRecordId，然后回写相似度分数
    */
   private async writeBackConversationResult(

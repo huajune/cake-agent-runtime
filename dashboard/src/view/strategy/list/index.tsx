@@ -15,7 +15,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'persona', label: '人格设定' },
   { key: 'stageGoals', label: '阶段目标' },
   { key: 'industrySkills', label: '行业 Skills' },
-  { key: 'redLines', label: '红线' },
+  { key: 'redLines', label: '政策红线' },
 ];
 
 export default function Strategy() {

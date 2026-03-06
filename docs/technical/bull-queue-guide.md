@@ -778,6 +778,6 @@ for (const job of activeJobs) {
 
 - [Bull 官方文档](https://github.com/OptimalBits/bull)
 - [NestJS Bull 文档](https://docs.nestjs.com/techniques/queues)
-- [场景测试工作流程](../workflows/scenario-test-workflow.md)
-- [对话验证工作流程](../workflows/conversation-test-workflow.md)
+- [用例测试工作流程](../workflows/scenario-test-workflow.md)
+- [回归验证工作流程](../workflows/conversation-test-workflow.md)
 - [测试套件架构设计](../architecture/test-suite-architecture.md)

@@ -31,6 +31,9 @@ import {
 /** 默认场景 */
 const DEFAULT_SCENARIO = 'candidate-consultation';
 
+/** 测试场景默认开启 extended thinking */
+const DEFAULT_TEST_THINKING = { type: 'enabled' as const, budgetTokens: 10000 };
+
 /** 相似度阈值（及格线） */
 const SIMILARITY_THRESHOLD = 60;
 
@@ -42,12 +45,12 @@ const SIMILARITY_THRESHOLD = 60;
 const CONVERSATION_LINE_PATTERN = /^\[(\d{2}\/\d{2}\s+\d{2}:\d{2})\s+(候选人|招募经理)\]\s*(.+)$/;
 
 /**
- * 对话验证测试服务
+ * 回归验证测试服务
  *
  * 职责：
  * - 解析原始对话记录
  * - 拆解对话为多个测试轮次
- * - 执行对话测试并计算相似度
+ * - 执行回归验证并计算相似度
  * - 汇总统计结果
  */
 @Injectable()
@@ -295,12 +298,19 @@ export class ConversationTestService {
     let executionStatus: ExecutionStatus = ExecutionStatus.SUCCESS;
     let errorMessage: string | null = null;
 
+    const userId = source.participant_name;
+    if (!userId) {
+      throw new Error(`对话源 ${source.id} 缺少 participant_name，无法作为 userId`);
+    }
+
     try {
       const options: ScenarioOptions = {
         messages: turn.history.map((m) => ({
           role: m.role === 'user' ? MessageRole.USER : MessageRole.ASSISTANT,
           content: m.content,
         })),
+        userId,
+        thinking: DEFAULT_TEST_THINKING,
       };
 
       agentResult = await this.agentFacade.chatWithScenario(

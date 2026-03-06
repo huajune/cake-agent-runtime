@@ -15,7 +15,7 @@ export interface ParsedMessage {
 }
 
 /**
- * 对话测试轮次数据
+ * 回归验证轮次数据
  * 用于拆解后的单轮测试执行
  */
 export interface ConversationTurn {
@@ -116,7 +116,7 @@ export interface SimilarityResult {
 }
 
 /**
- * 对话验证批次统计
+ * 回归验证批次统计
  */
 export interface ConversationBatchStats {
   totalConversations: number;
@@ -184,7 +184,7 @@ export class UpdateTurnReviewDto {
 }
 
 /**
- * 批量执行对话测试请求 DTO
+ * 批量执行回归验证请求 DTO
  */
 export class ExecuteConversationBatchDto {
   @ApiProperty({ description: '批次ID' })
@@ -197,7 +197,7 @@ export class ExecuteConversationBatchDto {
 }
 
 /**
- * 执行单个对话测试请求 DTO
+ * 执行单个回归验证请求 DTO
  */
 export class ExecuteConversationDto {
   @ApiProperty({ description: '对话源ID' })
@@ -210,7 +210,7 @@ export class ExecuteConversationDto {
 }
 
 /**
- * 同步对话测试请求 DTO
+ * 同步回归验证请求 DTO
  */
 export class SyncConversationTestsDto {
   @ApiPropertyOptional({ description: '批次名称（可选，默认自动生成）' })
@@ -244,7 +244,7 @@ export interface ConversationParseResult {
 }
 
 /**
- * 对话测试执行结果
+ * 回归验证执行结果
  */
 export interface ConversationExecutionResult {
   sourceId: string;

@@ -1,5 +1,6 @@
 import { memo, useState } from 'react';
 import type { UIMessage } from 'ai';
+import Markdown from 'react-markdown';
 import {
   Zap,
   CheckCircle2,
@@ -53,7 +54,7 @@ function ThinkingBlock({ output, isCalling, reasoningText }: { output: PlanTurnO
           <Loader2 size={14} className={styles.toolSpinnerIcon} />
         </div>
         <div className={styles.thinkingReasoning}>
-          {reasoningText || '正在进行回合规划，识别当前对话阶段、评估置信度、分析用户需求...'}
+          <Markdown>{reasoningText || '正在进行回合规划，识别当前对话阶段、评估置信度、分析用户需求...'}</Markdown>
         </div>
       </div>
     );
@@ -92,12 +93,12 @@ function ThinkingBlock({ output, isCalling, reasoningText }: { output: PlanTurnO
 
       {showReasoning && reasoningText && (
         <div className={styles.thinkingDetail}>
-          <div className={styles.thinkingReasoning}>{reasoningText}</div>
+          <div className={styles.thinkingReasoning}><Markdown>{reasoningText}</Markdown></div>
         </div>
       )}
 
       {reasoning && (
-        <div className={styles.thinkingReasoning}>{reasoning}</div>
+        <div className={styles.thinkingReasoning}><Markdown>{reasoning}</Markdown></div>
       )}
 
       {needs.length > 0 && needs[0] !== 'none' && (
@@ -157,6 +158,17 @@ function ThinkingBlock({ output, isCalling, reasoningText }: { output: PlanTurnO
       )}
     </div>
   );
+}
+
+// ==================== 工具结果 Markdown 提取 ====================
+function extractMarkdown(result: unknown): string | null {
+  if (typeof result === 'object' && result !== null) {
+    const obj = result as Record<string, unknown>;
+    if (typeof obj.markdown === 'string') {
+      return obj.markdown;
+    }
+  }
+  return null;
 }
 
 // ==================== 通用工具调用组件 ====================
@@ -225,7 +237,13 @@ function ToolInvocation({
               <div className={styles.toolSectionLabel}>
                 <ArrowLeft size={12} /> 返回结果
               </div>
-              <pre className={styles.toolDetail}>{formatToolResult(result)}</pre>
+              {extractMarkdown(result) ? (
+                <div className={styles.toolResultMarkdown}>
+                  <Markdown>{extractMarkdown(result)!}</Markdown>
+                </div>
+              ) : (
+                <pre className={styles.toolDetail}>{formatToolResult(result)}</pre>
+              )}
             </div>
           )}
         </div>

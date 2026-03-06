@@ -15,6 +15,11 @@ interface BatchListProps {
   onLoadMore: () => void;
 }
 
+/** 将历史批次名称中的旧术语替换为新术语 */
+function normalizeBatchName(name: string): string {
+  return name.replace('场景测试', '用例测试').replace('对话验证', '回归验证');
+}
+
 /**
  * 批次列表组件（支持无限滚动）
  */
@@ -99,17 +104,17 @@ export function BatchList({
                 >
                   {/* 第一行：标题 + 状态 */}
                   <div className={styles.batchRow}>
-                    <div className={styles.batchName}>{batch.name}</div>
+                    <div className={styles.batchName}>{normalizeBatchName(batch.name)}</div>
                     <span className={`${styles.batchStatusTag} ${styles[status.className]}`}>
                       {status.text}
                     </span>
                   </div>
                   {/* 第二行：统计信息 */}
                   <div className={styles.batchMeta}>
-                    {/* 对话验证显示"对话"，场景测试显示"用例" */}
+                    {/* 回归验证显示"对话"，用例测试显示"用例" */}
                     <span>{isConversation ? '对话' : '用例'} {batch.total_cases}</span>
                     <span className={styles.sep}>·</span>
-                    {/* 对话验证显示执行进度，场景测试显示评审进度 */}
+                    {/* 回归验证显示执行进度，用例测试显示评审进度 */}
                     {isConversation ? (
                       <span>
                         完成{' '}
@@ -128,7 +133,7 @@ export function BatchList({
                       </span>
                     )}
                     <span className={styles.sep}>·</span>
-                    {/* 对话验证显示平均评分，场景测试显示通过率 */}
+                    {/* 回归验证显示平均评分，用例测试显示通过率 */}
                     <span>
                       {isConversation ? '评分' : '通过'}{' '}
                       {batch.pass_rate !== null

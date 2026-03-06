@@ -4,7 +4,7 @@ import styles from './index.module.scss';
 
 interface StatsRowProps {
   stats: BatchStats;
-  /** 测试类型：scenario(场景测试) 或 conversation(对话验证) */
+  /** 测试类型：scenario(用例测试) 或 conversation(回归验证) */
   testType?: 'scenario' | 'conversation';
 }
 
@@ -25,7 +25,7 @@ export function StatsRow({ stats, testType = 'scenario' }: StatsRowProps) {
       </div>
       <div className={styles.divider} />
 
-      {/* 场景测试：显示通过/失败/待评审 */}
+      {/* 用例测试：显示通过/失败/待评审 */}
       {!isConversation && (
         <>
           <div className={styles.statCard}>
@@ -55,7 +55,7 @@ export function StatsRow({ stats, testType = 'scenario' }: StatsRowProps) {
         </>
       )}
 
-      {/* 对话验证：显示已执行/待执行 */}
+      {/* 回归验证：显示已执行/待执行 */}
       {isConversation && (
         <>
           <div className={styles.statCard}>

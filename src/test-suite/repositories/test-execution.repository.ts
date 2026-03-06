@@ -29,7 +29,7 @@ export interface TestExecution {
   failure_reason: string | null;
   test_scenario: string | null;
   created_at: string;
-  // 对话验证相关字段
+  // 回归验证相关字段
   conversation_source_id: string | null;
   turn_number: number | null;
   similarity_score: number | null;
@@ -56,7 +56,7 @@ export interface CreateExecutionData {
   durationMs: number;
   tokenUsage: unknown;
   errorMessage: string | null;
-  // 对话验证相关字段
+  // 回归验证相关字段
   conversationSourceId?: string;
   turnNumber?: number;
   similarityScore?: number | null;
@@ -392,7 +392,7 @@ export class TestExecutionRepository extends BaseRepository {
     );
   }
 
-  // ==================== 对话验证相关查询 ====================
+  // ==================== 回归验证相关查询 ====================
 
   /**
    * 根据对话源ID和轮次查询执行记录

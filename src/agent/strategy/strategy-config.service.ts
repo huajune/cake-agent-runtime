@@ -108,16 +108,42 @@ export class StrategyConfigService {
    */
   async getStageGoalsForToolContext(): Promise<Record<string, StageGoalConfig>> {
     const config = await this.repository.getActiveConfig();
-    const result: Record<string, StageGoalConfig> = {};
+    return this.buildStageGoalsMap(config);
+  }
 
-    for (const stage of config.stage_goals.stages) {
-      result[stage.stage] = stage;
-    }
+  /**
+   * 一次查询同时返回组装后的 systemPrompt 和 stageGoals
+   * 避免 prepareRequestParams 中两次串行 getActiveConfig()
+   */
+  async composeSystemPromptAndStageGoals(basePrompt: string): Promise<{
+    systemPrompt: string;
+    stageGoals: Record<string, StageGoalConfig>;
+  }> {
+    const config = await this.repository.getActiveConfig();
 
-    return result;
+    const personaText = this.buildPersonaText(config.persona);
+    const redLinesText = this.buildRedLinesText(config.red_lines);
+
+    const parts: string[] = [];
+    if (personaText) parts.push(personaText);
+    if (basePrompt) parts.push(basePrompt);
+    if (redLinesText) parts.push(redLinesText);
+
+    return {
+      systemPrompt: parts.join('\n\n'),
+      stageGoals: this.buildStageGoalsMap(config),
+    };
   }
 
   // ==================== 私有方法 ====================
+
+  private buildStageGoalsMap(config: StrategyConfigRecord): Record<string, StageGoalConfig> {
+    const result: Record<string, StageGoalConfig> = {};
+    for (const stage of config.stage_goals.stages) {
+      result[stage.stage] = stage;
+    }
+    return result;
+  }
 
   /**
    * 构建人格提示词文本

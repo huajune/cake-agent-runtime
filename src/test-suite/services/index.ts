@@ -20,7 +20,7 @@ export { FeishuTestSyncService } from './feishu-test-sync.service';
 // 统计服务（原有）
 export { TestStatsService } from './test-stats.service';
 
-// 对话验证测试服务
+// 回归验证测试服务
 export { ConversationTestService } from './conversation-test.service';
 
 // LLM 评估服务

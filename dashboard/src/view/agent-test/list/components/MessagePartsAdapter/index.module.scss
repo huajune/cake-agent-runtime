@@ -172,6 +172,70 @@
       border-radius: 2px;
     }
   }
+
+  .toolResultMarkdown {
+    padding: 12px;
+    background: rgba(248, 250, 252, 0.8);
+    border-radius: $radius-md;
+    border: 1px solid $accent-08;
+    font-size: $font-size-xs;
+    color: $text-primary;
+    line-height: 1.8;
+    max-height: 400px;
+    overflow-y: auto;
+
+    &::-webkit-scrollbar {
+      width: 4px;
+    }
+    &::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.15);
+      border-radius: 2px;
+    }
+
+    h1, h2, h3 {
+      margin: 0.6em 0 0.3em;
+      color: $text-primary;
+      font-weight: $font-weight-semibold;
+
+      &:first-child { margin-top: 0; }
+    }
+
+    h1 { font-size: 15px; }
+    h2 { font-size: 14px; }
+    h3 { font-size: 13px; }
+
+    p {
+      margin: 0 0 0.5em;
+      &:last-child { margin-bottom: 0; }
+    }
+
+    strong {
+      font-weight: $font-weight-semibold;
+      color: $text-primary;
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid $accent-08;
+      margin: 0.6em 0;
+    }
+
+    ul, ol {
+      margin: 0.3em 0;
+      padding-left: 1.5em;
+
+      li { margin-bottom: 0.2em; }
+    }
+
+    code {
+      padding: 1px 5px;
+      background: rgba(99, 102, 241, 0.08);
+      border-radius: 3px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9em;
+      color: $primary;
+    }
+  }
 }
 
 .toolCalling {
@@ -234,6 +298,41 @@
   font-size: $font-size-xs;
   color: $text-secondary;
   line-height: 1.7;
+
+  // Markdown 渲染样式
+  p {
+    margin: 0 0 0.5em;
+    &:last-child { margin-bottom: 0; }
+  }
+
+  strong {
+    font-weight: $font-weight-semibold;
+    color: $text-primary;
+  }
+
+  code {
+    padding: 1px 5px;
+    background: rgba(99, 102, 241, 0.08);
+    border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.9em;
+    color: $primary;
+  }
+
+  ol, ul {
+    margin: 0.3em 0;
+    padding-left: 1.5em;
+
+    li {
+      margin-bottom: 0.2em;
+    }
+  }
+
+  hr {
+    border: none;
+    border-top: 1px solid rgba(99, 102, 241, 0.12);
+    margin: 0.5em 0;
+  }
 }
 
 .thinkingNeeds,

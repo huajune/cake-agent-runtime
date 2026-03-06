@@ -19,6 +19,7 @@ export interface StrategyPersona {
 export interface StageGoalConfig {
   stage: string;
   label: string;
+  description: string;
   primaryGoal: string;
   successCriteria: string[];
   ctaStrategy: string[];

@@ -108,6 +108,10 @@ const ChatRecordsIcon = () => (
 export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   return (
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
+      {/* 背景水印装饰 */}
+      <span className="sidebar-watermark">🏮</span>
+      <span className="sidebar-watermark-2">🧧</span>
+
       {/* 收起/展开按钮 - 放在侧边栏右边缘 */}
       <button
         className="sidebar-toggle"
@@ -176,21 +180,12 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           {!isCollapsed && <span className="nav-text">策略配置</span>}
         </NavLink>
         <NavLink
-          to="/config"
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title={isCollapsed ? '回复设置' : undefined}
-        >
-          <span className="nav-icon"><ConfigIcon /></span>
-          {!isCollapsed && <span className="nav-text">消息处理</span>}
-        </NavLink>
-
-        <NavLink
           to="/agent-test"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title={isCollapsed ? '对话测试' : undefined}
+          title={isCollapsed ? '对话调试' : undefined}
         >
           <span className="nav-icon"><AgentTestIcon /></span>
-          {!isCollapsed && <span className="nav-text">对话测试</span>}
+          {!isCollapsed && <span className="nav-text">对话调试</span>}
         </NavLink>
         <NavLink
           to="/test-suite"
@@ -210,6 +205,14 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         >
           <span className="nav-icon"><HostingIcon /></span>
           {!isCollapsed && <span className="nav-text">托管开关</span>}
+        </NavLink>
+        <NavLink
+          to="/config"
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title={isCollapsed ? '回复设置' : undefined}
+        >
+          <span className="nav-icon"><ConfigIcon /></span>
+          {!isCollapsed && <span className="nav-text">消息设置</span>}
         </NavLink>
         <NavLink
           to="/system"

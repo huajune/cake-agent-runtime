@@ -31,6 +31,8 @@ export interface StageGoalConfig {
   stage: string;
   /** 阶段中文名 */
   label: string;
+  /** 阶段定义 */
+  description: string;
   /** 主要目标 */
   primaryGoal: string;
   /** 成功标准列表 */
@@ -166,6 +168,8 @@ export const DEFAULT_STAGE_GOALS: StrategyStageGoals = {
     {
       stage: 'trust_building',
       label: '建立信任',
+      description:
+        '候选人首次触达后的破冰阶段。通过自然的自我介绍和轻松提问，让候选人愿意开口聊，同时摸清其所在城市/区域和初步意向，为后续精准匹配做铺垫。',
       primaryGoal:
         '主动自我介绍，了解候选人来源、所在城市/区域/意向品牌，建立初步信任并引导进入岗位咨询',
       successCriteria: [
@@ -179,6 +183,8 @@ export const DEFAULT_STAGE_GOALS: StrategyStageGoals = {
     {
       stage: 'qualify_candidate',
       label: '资格确认',
+      description:
+        '在候选人表达求职意愿后，自然地确认其是否符合基本招聘条件（非在校学生、年龄达标、有可用工时）。不符合条件的及时诚实告知，避免无效推荐浪费双方时间。',
       primaryGoal:
         '确认候选人基本资格（年龄、是否在校学生、可用工时），筛除不符合条件的候选人，为匹配岗位做准备',
       successCriteria: [
@@ -199,6 +205,8 @@ export const DEFAULT_STAGE_GOALS: StrategyStageGoals = {
     {
       stage: 'job_consultation',
       label: '岗位咨询',
+      description:
+        '候选人资格通过后的核心服务阶段。根据其区域、品牌偏好，调用工具查询真实岗位数据，逐一解答薪资、班次、工作内容等关切，帮助候选人从多个选项中锁定意向岗位。',
       primaryGoal:
         '通过工具查询真实数据，为候选人提供清晰的岗位/品牌/门店/薪资/班次/要求信息，帮助确定目标岗位',
       successCriteria: [
@@ -221,6 +229,8 @@ export const DEFAULT_STAGE_GOALS: StrategyStageGoals = {
     {
       stage: 'interview_scheduling',
       label: '面试安排',
+      description:
+        '候选人确认意向岗位后的转化阶段。逐项收集面试所需个人信息，补充确认学生身份和平台签约事项，完成面试预约提交，确保候选人清楚试工和到店流程。',
       primaryGoal:
         '确认候选人意愿，收集面试所需个人信息（姓名/联系方式/性别/年龄/应聘门店/岗位/面试时间），补充确认学生身份和平台签约事项，提交面试预约并回执信息',
       successCriteria: [
@@ -243,6 +253,8 @@ export const DEFAULT_STAGE_GOALS: StrategyStageGoals = {
     {
       stage: 'onboard_followup',
       label: '入职跟进',
+      description:
+        '面试完成后的持续跟进阶段。确认候选人是否顺利到岗，提供到店注意事项和必要提醒，保持回访节奏，防止面试后失联导致流失。',
       primaryGoal: '促进到岗并保持回访，确认候选人顺利上岗',
       successCriteria: ['候选人确认上岗安排', '已提供到店注意事项'],
       ctaStrategy: ['明确下一步动作与提醒，保持跟进节奏'],

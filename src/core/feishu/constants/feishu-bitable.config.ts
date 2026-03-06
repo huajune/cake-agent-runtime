@@ -17,7 +17,7 @@ export interface TestSuiteFieldNames {
   testBatch: string; // 测试批次（文本）
   failureCategory: string; // 失败分类（单选）- 测试场景分类
   errorReason: string; // 错误原因（单选）- Agent 错误归因
-  similarityScore?: string; // 相似度分数（数字）- 对话验证平均相似度
+  similarityScore?: string; // 相似度分数（数字）- 回归验证平均相似度
 }
 
 export interface FeishuBitableConfig {
@@ -53,12 +53,12 @@ export const feishuBitableConfig: FeishuBitableConfig = {
       tableId: 'tblmI0UBzhknkIOm',
     },
     testSuite: {
-      // 测试/验证集表（汇总表）- 场景测试数据
+      // 测试/验证集表（汇总表）- 用例测试数据
       appToken: 'WXQgb98iPauYsHsSYzMckqHcnbb',
       tableId: 'tblCRHFQqqJDJeSx',
     },
     validationSet: {
-      // 验证集表（对话验证数据）
+      // 验证集表（回归验证数据）
       // 注意：与 testSuite 在同一个多维表格文档中，只是不同的 sheet
       appToken: 'WXQgb98iPauYsHsSYzMckqHcnbb',
       tableId: 'tblfVcyKmPsFwUhy',
@@ -81,7 +81,7 @@ export const testSuiteFieldNames: TestSuiteFieldNames = {
 
 /**
  * 验证集表字段名配置
- * 用于对话验证数据的读取和回写
+ * 用于回归验证数据的读取和回写
  */
 export interface ValidationSetFieldNames {
   participantName: string; // 候选人微信昵称（文本）

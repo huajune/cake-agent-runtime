@@ -24,7 +24,7 @@ const getStatusConfig = (status: string) => {
 };
 
 /**
- * 对话验证列表组件
+ * 回归验证列表组件
  * 与 CaseList 保持一致的视觉风格
  */
 export function ConversationList({
@@ -40,7 +40,7 @@ export function ConversationList({
       <>
         <div className={styles.listHeader}>
           <h4>
-            <MessageSquare size={16} /> 对话验证
+            <MessageSquare size={16} /> 回归验证
           </h4>
           <span className={styles.itemCount}>加载中...</span>
         </div>
@@ -56,14 +56,14 @@ export function ConversationList({
       <>
         <div className={styles.listHeader}>
           <h4>
-            <MessageSquare size={16} /> 对话验证
+            <MessageSquare size={16} /> 回归验证
           </h4>
           <span className={styles.itemCount}>共 0 条</span>
         </div>
         <div className={styles.list}>
           <div className={styles.empty}>
-            <p>暂无对话验证记录</p>
-            <span>请先从飞书同步对话测试数据</span>
+            <p>暂无回归验证记录</p>
+            <span>请先从飞书同步回归验证数据</span>
           </div>
         </div>
       </>
@@ -74,7 +74,7 @@ export function ConversationList({
     <>
       <div className={styles.listHeader}>
         <h4>
-          <MessageSquare size={16} /> 对话验证
+          <MessageSquare size={16} /> 回归验证
         </h4>
         <span className={styles.itemCount}>共 {conversations.length} 条</span>
       </div>

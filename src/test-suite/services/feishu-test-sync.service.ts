@@ -13,7 +13,7 @@ import { ConversationTestService } from './conversation-test.service';
 import { ConversationParseResult } from '../dto/conversation-test.dto';
 
 /**
- * 解析后的测试用例（场景测试）
+ * 解析后的测试用例（用例测试）
  */
 export interface ParsedTestCase {
   caseId: string; // 飞书记录 ID
@@ -26,7 +26,7 @@ export interface ParsedTestCase {
 }
 
 /**
- * 解析后的对话验证记录
+ * 解析后的回归验证记录
  */
 export interface ParsedConversationTest {
   recordId: string; // 飞书记录 ID
@@ -94,7 +94,7 @@ export class FeishuTestSyncService {
   // ==================== 记录解析 ====================
 
   /**
-   * 解析飞书记录为测试用例（支持场景测试和对话验证）
+   * 解析飞书记录为测试用例（支持用例测试和回归验证）
    */
   parseRecords(records: BitableRecord[], fields: BitableField[]): ParsedTestCase[] {
     const cases: ParsedTestCase[] = [];
@@ -104,7 +104,7 @@ export class FeishuTestSyncService {
       try {
         const recordFields = record.fields;
 
-        // 提取测试类型（默认为场景测试）
+        // 提取测试类型（默认为用例测试）
         const testTypeStr = this.extractFieldValue(recordFields, fieldNameToId, [
           '测试类型',
           'test_type',
@@ -113,9 +113,9 @@ export class FeishuTestSyncService {
         ]);
         const testType = testTypeStr === '对话验证' ? TestType.CONVERSATION : TestType.SCENARIO;
 
-        // 对话验证类型，跳过解析（使用专门的方法）
+        // 回归验证类型，跳过解析（使用专门的方法）
         if (testType === TestType.CONVERSATION) {
-          this.logger.debug(`跳过对话验证记录 ${record.record_id}，使用专门方法解析`);
+          this.logger.debug(`跳过回归验证记录 ${record.record_id}，使用专门方法解析`);
           continue;
         }
 
@@ -189,12 +189,12 @@ export class FeishuTestSyncService {
       }
     }
 
-    this.logger.log(`成功解析 ${cases.length}/${records.length} 条场景测试用例`);
+    this.logger.log(`成功解析 ${cases.length}/${records.length} 条用例测试用例`);
     return cases;
   }
 
   /**
-   * 解析对话验证记录
+   * 解析回归验证记录
    */
   parseConversationRecords(
     records: BitableRecord[],
@@ -215,7 +215,7 @@ export class FeishuTestSyncService {
           'type',
         ]);
 
-        // 只处理对话验证类型
+        // 只处理回归验证类型
         if (testTypeStr !== '对话验证') {
           continue;
         }
@@ -266,27 +266,27 @@ export class FeishuTestSyncService {
       }
     }
 
-    this.logger.log(`成功解析 ${conversations.length} 条对话验证记录`);
+    this.logger.log(`成功解析 ${conversations.length} 条回归验证记录`);
     return conversations;
   }
 
   /**
-   * 从预配置表获取对话验证记录
+   * 从预配置表获取回归验证记录
    *
-   * 注意：对话验证数据现在从 validationSet 表读取（已从 testSuite 迁移）
+   * 注意：回归验证数据现在从 validationSet 表读取（已从 testSuite 迁移）
    */
   async getConversationTestsFromDefaultTable(): Promise<{
     appToken: string;
     tableId: string;
     conversations: ParsedConversationTest[];
   }> {
-    // 对话验证使用独立的验证集表
+    // 回归验证使用独立的验证集表
     const { appToken, tableId } = this.bitableApi.getTableConfig('validationSet');
 
     const fields = await this.bitableApi.getFields(appToken, tableId);
     const records = await this.bitableApi.getAllRecords(appToken, tableId);
 
-    // 验证集表的所有记录都是对话验证，不需要过滤 test_type
+    // 验证集表的所有记录都是回归验证，不需要过滤 test_type
     const conversations = this.parseValidationSetRecords(records, fields);
 
     return { appToken, tableId, conversations };
@@ -296,7 +296,7 @@ export class FeishuTestSyncService {
    * 解析验证集表记录（专用于 validationSet 表）
    *
    * 与 parseConversationRecords 的区别：
-   * - 不需要检查 test_type 字段，所有记录都是对话验证
+   * - 不需要检查 test_type 字段，所有记录都是回归验证
    * - 字段名可能略有不同
    */
   parseValidationSetRecords(
@@ -547,16 +547,16 @@ export class FeishuTestSyncService {
   }
 
   /**
-   * 回写对话验证相似度分数到飞书
+   * 回写回归验证相似度分数到飞书
    *
-   * 注意：对话验证数据现在写入 validationSet 表（已从 testSuite 迁移）
+   * 注意：回归验证数据现在写入 validationSet 表（已从 testSuite 迁移）
    */
   async writeBackSimilarityScore(
     recordId: string,
     avgSimilarityScore: number | null,
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      // 对话验证使用独立的验证集表
+      // 回归验证使用独立的验证集表
       const { appToken, tableId } = this.bitableApi.getTableConfig('validationSet');
 
       const updateFields: Record<string, any> = {};

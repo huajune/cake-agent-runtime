@@ -31,12 +31,12 @@ export interface ToolCall {
   tool?: string;
 
   // 输入参数字段（支持多种命名）
-  input?: unknown; // 后端对话测试返回的字段
-  arguments?: unknown; // 场景测试返回的字段
+  input?: unknown; // 后端回归验证返回的字段
+  arguments?: unknown; // 用例测试返回的字段
 
   // 输出结果字段（支持多种命名）
-  output?: unknown; // 后端对话测试返回的字段
-  result?: unknown; // 场景测试返回的字段
+  output?: unknown; // 后端回归验证返回的字段
+  result?: unknown; // 用例测试返回的字段
 }
 
 /**

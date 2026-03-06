@@ -80,7 +80,7 @@ export const TEST_SCENARIO_OPTIONS = [
  *
  * 用于：
  * - 测试/验证集页面：评审时标记失败原因
- * - 对话测试页面：反馈弹窗标记错误类型
+ * - 对话调试页面：反馈弹窗标记错误类型
  */
 export const AGENT_ERROR_TYPES = [
   '工具误触发',       // 不该调用却调用了（如用户说"好的"却触发岗位查询）

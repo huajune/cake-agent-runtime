@@ -20,7 +20,7 @@ interface UseConversationsResult {
 }
 
 /**
- * 对话验证列表管理 Hook
+ * 回归验证列表管理 Hook
  * 管理对话源列表的加载、选择和执行
  */
 export function useConversations(): UseConversationsResult {
@@ -55,7 +55,7 @@ export function useConversations(): UseConversationsResult {
   }, [page, pageSize]);
 
   /**
-   * 执行单个对话测试
+   * 执行单个回归验证
    */
   const executeConversationTest = useCallback(
     async (conversationId: string, forceRerun = false) => {
@@ -105,7 +105,7 @@ export function useConversations(): UseConversationsResult {
           );
         }
       } catch (error) {
-        console.error('执行对话测试失败:', error);
+        console.error('执行回归验证失败:', error);
         // 更新状态为 failed
         setConversations((prev) =>
           prev.map((conv) =>

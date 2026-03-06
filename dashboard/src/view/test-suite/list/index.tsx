@@ -14,7 +14,7 @@ import styles from './styles/index.module.scss';
 
 /**
  * 飞书测试/验证集页面
- * 支持场景测试和对话验证两种模式
+ * 支持用例测试和回归验证两种模式
  */
 export default function TestSuite() {
   // Tab 状态
@@ -40,7 +40,7 @@ export default function TestSuite() {
     handleQuickCreate,
   } = useBatches({ testType: activeTab });
 
-  // 场景测试评审功能
+  // 用例测试评审功能
   const {
     reviewMode,
     currentReviewIndex,
@@ -65,7 +65,7 @@ export default function TestSuite() {
     },
   });
 
-  // 对话验证功能
+  // 回归验证功能
   const {
     conversations,
     selectedConversation,
@@ -136,8 +136,8 @@ export default function TestSuite() {
       <div className={styles.tabContainer}>
         <TabSwitch
           tabs={[
-            { key: 'scenario' as const, label: '场景测试', count: activeTab === 'scenario' ? total : undefined },
-            { key: 'conversation' as const, label: '对话验证', count: activeTab === 'conversation' ? total : undefined },
+            { key: 'scenario' as const, label: '用例测试', count: activeTab === 'scenario' ? total : undefined },
+            { key: 'conversation' as const, label: '回归验证', count: activeTab === 'conversation' ? total : undefined },
           ]}
           activeTab={activeTab}
           onTabChange={setActiveTab}
@@ -167,7 +167,7 @@ export default function TestSuite() {
               {/* 统计卡片 */}
               {batchStats && <StatsRow stats={batchStats} testType={activeTab} />}
 
-              {/* 场景测试视图 */}
+              {/* 用例测试视图 */}
               {activeTab === 'scenario' && (
                 <>
                   {/* 评审按钮 */}
@@ -188,7 +188,7 @@ export default function TestSuite() {
                 </>
               )}
 
-              {/* 对话验证视图 - 与场景测试统一为列表+弹窗模式 */}
+              {/* 回归验证视图 - 与用例测试统一为列表+弹窗模式 */}
               {activeTab === 'conversation' && (
                 <ConversationList
                   conversations={conversations}
@@ -210,7 +210,7 @@ export default function TestSuite() {
         </div>
       </div>
 
-      {/* 评审弹窗（仅场景测试） */}
+      {/* 评审弹窗（仅用例测试） */}
       {reviewMode && currentExecution && (
         <ReviewModal
           execution={currentExecution}
@@ -228,7 +228,7 @@ export default function TestSuite() {
         />
       )}
 
-      {/* 对话详情弹窗（仅对话验证） */}
+      {/* 对话详情弹窗（仅回归验证） */}
       {selectedConversation && (
         <ConversationDetailModal
           conversation={selectedConversation}
