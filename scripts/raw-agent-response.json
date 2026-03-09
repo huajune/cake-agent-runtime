@@ -23,8 +23,7 @@
             "dulidayToken": "5D5FF5C9262AA637BE7A9E8B413B9D01A571B49BBC53056550DF105F686CECB4774B129445F4DFD6B59BBA89B813CB556515B40BE4957EFB1BA841D003C0FEB61F9CDAE3DF3723C643C9CD169E77DD70E05D498E471E1C13",
             "modelConfig": {
                 "chatModel": "anthropic/claude-sonnet-4-5-20250929",
-                "classifyModel": "openai/gpt-5-mini",
-                "extractModel": "openai/gpt-5-mini"
+                "classifyModel": "openai/gpt-5-mini"
             }
         },
         "toolContext": {

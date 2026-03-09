@@ -155,7 +155,6 @@ export interface SimpleMessageItem {
 export interface ModelConfigParams {
   chatModel?: string; // 主对话模型
   classifyModel?: string; // 意图分类模型
-  extractModel?: string; // 信息提取模型
 }
 
 export interface AgentInputParams {

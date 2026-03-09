@@ -384,7 +384,7 @@ export class AgentService {
     if (!context.modelConfig) {
       context.modelConfig = this.registryService.getModelConfig();
       this.logger.debug(
-        `✅ buildChatRequest: 注入 modelConfig - chatModel: ${context.modelConfig.chatModel}, classifyModel: ${context.modelConfig.classifyModel}, extractModel: ${context.modelConfig.extractModel}`,
+        `✅ buildChatRequest: 注入 modelConfig - chatModel: ${context.modelConfig.chatModel}, classifyModel: ${context.modelConfig.classifyModel}`,
       );
     }
 
@@ -427,6 +427,9 @@ export class AgentService {
     if (params.pruneOptions) chatRequest.pruneOptions = params.pruneOptions;
     if (params.validateOnly !== undefined) chatRequest.validateOnly = params.validateOnly;
     if (params.thinking) chatRequest.thinking = params.thinking;
+
+    // 渠道类型，默认私聊
+    chatRequest.channelType = 'private';
 
     return chatRequest;
   }

@@ -52,7 +52,6 @@ export interface PruneOptions {
 export interface ModelConfig {
   chatModel?: string;
   classifyModel?: string;
-  extractModel?: string;
 }
 
 /**
@@ -131,6 +130,9 @@ export interface ChatRequest {
 
   // 扩展思考配置（AI SDK extended thinking）
   thinking?: { type: 'enabled' | 'disabled'; budgetTokens: number };
+
+  // 渠道类型（private=私聊, group=群聊）
+  channelType?: string;
 }
 
 /**

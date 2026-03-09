@@ -80,12 +80,6 @@ export class EnvironmentVariables {
   })
   AGENT_CLASSIFY_MODEL: string;
 
-  @IsString({ message: 'AGENT_EXTRACT_MODEL 必须是字符串' })
-  @IsNotEmpty({
-    message: 'AGENT_EXTRACT_MODEL 环境变量未配置，请在 .env 文件中设置',
-  })
-  AGENT_EXTRACT_MODEL: string;
-
   @IsOptional()
   @IsNumber({}, { message: 'AGENT_API_TIMEOUT 必须是数字' })
   @Min(1000, { message: 'AGENT_API_TIMEOUT 必须大于等于 1000ms' })

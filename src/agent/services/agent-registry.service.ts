@@ -36,7 +36,6 @@ export class AgentRegistryService implements OnModuleInit, OnModuleDestroy {
   private readonly configuredTools: string[];
   private readonly chatModel: string;
   private readonly classifyModel: string;
-  private readonly extractModel: string;
 
   // 刷新策略
   private readonly autoRefreshInterval: number;
@@ -52,7 +51,6 @@ export class AgentRegistryService implements OnModuleInit, OnModuleDestroy {
     this.configuredModel = this.configService.get<string>('AGENT_DEFAULT_MODEL')!;
     this.chatModel = this.configService.get<string>('AGENT_CHAT_MODEL')!;
     this.classifyModel = this.configService.get<string>('AGENT_CLASSIFY_MODEL')!;
-    this.extractModel = this.configService.get<string>('AGENT_EXTRACT_MODEL')!;
     const toolsString = this.configService.get<string>('AGENT_ALLOWED_TOOLS', '');
     this.configuredTools = parseToolsFromEnv(toolsString);
 
@@ -65,7 +63,6 @@ export class AgentRegistryService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`配置的默认模型: ${this.configuredModel}`);
     this.logger.log(`配置的聊天模型: ${this.chatModel}`);
     this.logger.log(`配置的分类模型: ${this.classifyModel}`);
-    this.logger.log(`配置的提取模型: ${this.extractModel}`);
     this.logger.log(
       `配置的工具: ${this.configuredTools.length > 0 ? this.configuredTools.join(', ') : '无'}`,
     );
@@ -186,7 +183,6 @@ export class AgentRegistryService implements OnModuleInit, OnModuleDestroy {
         { name: '默认模型', value: this.configuredModel },
         { name: '聊天模型', value: this.chatModel },
         { name: '分类模型', value: this.classifyModel },
-        { name: '提取模型', value: this.extractModel },
       ];
 
       let allModelsValid = true;
@@ -390,15 +386,13 @@ export class AgentRegistryService implements OnModuleInit, OnModuleDestroy {
    * 花卷 API 会根据这些配置在不同阶段使用不同模型：
    * - chatModel: 主对话模型
    * - classifyModel: 意图分类模型
-   * - extractModel: 信息提取模型
    *
    * @see https://docs.wolian.cc/concepts/context#modelconfig
    */
-  getModelConfig(): { chatModel: string; classifyModel: string; extractModel: string } {
+  getModelConfig(): { chatModel: string; classifyModel: string } {
     return {
       chatModel: this.chatModel,
       classifyModel: this.classifyModel,
-      extractModel: this.extractModel,
     };
   }
 
@@ -410,13 +404,8 @@ export class AgentRegistryService implements OnModuleInit, OnModuleDestroy {
     const configuredModelAvailable = this.availableModels.includes(this.configuredModel);
     const chatModelAvailable = this.availableModels.includes(this.chatModel);
     const classifyModelAvailable = this.availableModels.includes(this.classifyModel);
-    const extractModelAvailable = this.availableModels.includes(this.extractModel);
-
     const allConfiguredModelsAvailable =
-      configuredModelAvailable &&
-      chatModelAvailable &&
-      classifyModelAvailable &&
-      extractModelAvailable;
+      configuredModelAvailable && chatModelAvailable && classifyModelAvailable;
 
     const configuredToolsStatus = this.configuredTools.map((tool) => ({
       name: tool,
@@ -426,13 +415,8 @@ export class AgentRegistryService implements OnModuleInit, OnModuleDestroy {
     const allToolsAvailable =
       configuredToolsStatus.length > 0 && configuredToolsStatus.every((tool) => tool.available);
 
-    // 计算实际配置的模型数量（4个：默认、聊天、分类、提取）
-    const configuredModelsList = [
-      this.configuredModel,
-      this.chatModel,
-      this.classifyModel,
-      this.extractModel,
-    ];
+    // 计算实际配置的模型数量（3个：默认、聊天、分类）
+    const configuredModelsList = [this.configuredModel, this.chatModel, this.classifyModel];
     const uniqueConfiguredModels = [...new Set(configuredModelsList)]; // 去重
     const availableConfiguredModelsCount = uniqueConfiguredModels.filter((model) =>
       this.availableModels.includes(model),
@@ -457,10 +441,6 @@ export class AgentRegistryService implements OnModuleInit, OnModuleDestroy {
           classifyModel: {
             configured: this.classifyModel,
             available: classifyModelAvailable,
-          },
-          extractModel: {
-            configured: this.extractModel,
-            available: extractModelAvailable,
           },
         },
         allConfiguredModelsAvailable,
