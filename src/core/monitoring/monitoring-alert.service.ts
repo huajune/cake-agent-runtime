@@ -2,8 +2,8 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { MonitoringService } from './monitoring.service';
 import { FeishuAlertService } from '@core/feishu';
-import { AgentReplyConfig } from '@supabase';
-import { SystemConfigService } from '@supabase/config';
+import { AgentReplyConfig } from '@db';
+import { SystemConfigService } from '@db/config';
 
 /**
  * 监控告警服务（简化版）

@@ -1,6 +1,6 @@
 import { Controller, Get, Logger, Param, Query } from '@nestjs/common';
-import { ChatMessageRepository } from '@supabase/message';
-import { MonitoringRepository } from '@supabase/monitoring';
+import { ChatMessageRepository } from '@db/message';
+import { MonitoringRepository } from '@db/monitoring';
 
 /**
  * 聊天记录控制器

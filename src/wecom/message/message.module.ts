@@ -6,7 +6,6 @@ import { MessageService } from './message.service';
 import { MessageProcessor } from './message.processor';
 import { AgentModule } from '@agent';
 import { MessageSenderModule } from '../message-sender/message-sender.module';
-import { SupabaseModule } from '@supabase';
 
 // 导入子服务
 import { MessageDeduplicationService } from './services/message-deduplication.service';
@@ -35,7 +34,6 @@ import { BookingDetectionService } from './services/booking-detection.service';
     ConfigModule,
     AgentModule,
     MessageSenderModule,
-    SupabaseModule, // Agent 回复策略配置
     // 配置 Bull 队列根模块
     BullModule.forRootAsync({
       imports: [ConfigModule],

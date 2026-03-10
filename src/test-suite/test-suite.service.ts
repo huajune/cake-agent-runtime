@@ -8,7 +8,7 @@ import {
   ImportFromFeishuRequestDto,
   ImportResult,
 } from './dto/test-chat.dto';
-import { TestBatch, TestExecution } from '@supabase/test-suite';
+import { TestBatch, TestExecution } from '@db/test-suite';
 import {
   TestExecutionService,
   TestBatchService,

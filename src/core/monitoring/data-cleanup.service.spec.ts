@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataCleanupService } from './data-cleanup.service';
-import { SupabaseService } from '@supabase';
-import { ChatMessageRepository, MessageProcessingRepository } from '@supabase/message';
-import { MonitoringErrorLogRepository } from '@supabase/monitoring';
-import { UserHostingRepository } from '@supabase/user';
+import { SupabaseService } from '@core/supabase';
+import { ChatMessageRepository, MessageProcessingRepository } from '@db/message';
+import { MonitoringErrorLogRepository } from '@db/monitoring';
+import { UserHostingRepository } from '@db/user';
 
 describe('DataCleanupService', () => {
   let service: DataCleanupService;

@@ -1,6 +1,6 @@
 import { Controller, Get, Logger, Param, Query } from '@nestjs/common';
 import { MonitoringService } from '../monitoring.service';
-import { MessageProcessingRepository } from '@supabase/message';
+import { MessageProcessingRepository } from '@db/message';
 
 /**
  * 消息处理记录控制器

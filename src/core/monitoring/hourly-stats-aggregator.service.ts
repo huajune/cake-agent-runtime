@@ -5,7 +5,7 @@ import {
   DashboardFallbackStats,
   DailyTrendData,
   HourlyTrendData,
-} from '@supabase/monitoring';
+} from '@db/monitoring';
 import { HourlyStats } from './interfaces/monitoring.interface';
 
 /**

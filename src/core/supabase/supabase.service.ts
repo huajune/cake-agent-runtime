@@ -6,15 +6,6 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
  * Supabase 基础服务
  *
  * 职责：提供 SupabaseClient 给 Repository 层使用
- *
- * 所有业务逻辑已迁移到专门的 Repository：
- * - SystemConfigRepository: 系统配置管理
- * - UserHostingRepository: 用户托管状态
- * - GroupBlacklistRepository: 群组黑名单
- * - ChatMessageRepository: 聊天消息
- * - MonitoringRepository: 监控统计
- * - MessageProcessingRepository: 消息处理记录
- * - BookingRepository: 预约统计
  */
 @Injectable()
 export class SupabaseService implements OnModuleInit {

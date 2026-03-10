@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { BaseRepository } from '../base.repository';
-import { SupabaseService } from '../supabase.service';
+import { BaseRepository } from '@core/supabase';
+import { SupabaseService } from '@core/supabase';
 
 /**
  * 消息处理记录输入

@@ -2,8 +2,8 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { RedisService } from '@core/redis';
-import { AgentReplyConfig } from '@supabase';
-import { SystemConfigService } from '@supabase/config';
+import { AgentReplyConfig } from '@db';
+import { SystemConfigService } from '@db/config';
 import { EnterpriseMessageCallbackDto } from '../dto/message-callback.dto';
 import { RedisKeyBuilder } from '../utils/redis-key.util';
 

@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Delete, HttpCode, Logger, Body, Param } from '@nestjs/common';
-import { AgentReplyConfig, DEFAULT_AGENT_REPLY_CONFIG } from '@supabase';
-import { SystemConfigService, GroupBlacklistService } from '@supabase/config';
-import { UserHostingService } from '@supabase/user';
+import { AgentReplyConfig, DEFAULT_AGENT_REPLY_CONFIG } from '@db';
+import { SystemConfigService, GroupBlacklistService } from '@db/config';
+import { UserHostingService } from '@db/user';
 
 /**
  * 管理控制器

@@ -21,7 +21,7 @@ import {
 import { MonitoringCacheService } from '../monitoring-cache.service';
 import { RedisService } from '@core/redis';
 import { FeishuBookingService } from '@/core/feishu/services/feishu-booking.service';
-import { MessageProcessingRepository, BookingRepository } from '@supabase/message';
+import { MessageProcessingRepository, BookingRepository } from '@db/message';
 import {
   MonitoringHourlyStatsRepository,
   MonitoringErrorLogRepository,
@@ -29,8 +29,8 @@ import {
   DashboardOverviewStats,
   DashboardFallbackStats,
   DailyTrendData,
-} from '@supabase/monitoring';
-import { UserHostingRepository, UserHostingService } from '@supabase/user';
+} from '@db/monitoring';
+import { UserHostingRepository, UserHostingService } from '@db/user';
 import { HourlyStatsAggregatorService } from '../hourly-stats-aggregator.service';
 import { MessageTrackingService } from './message-tracking.service';
 

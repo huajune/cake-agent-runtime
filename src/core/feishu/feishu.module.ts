@@ -1,7 +1,6 @@
 import { Module, Global } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
-import { SupabaseModule } from '@supabase';
 import { FeishuApiService } from './services/feishu-api.service';
 import { FeishuBitableApiService } from './services/feishu-bitable-api.service';
 import { FeishuWebhookService } from './services/feishu-webhook.service';
@@ -27,11 +26,7 @@ import { FeishuController } from './feishu.controller';
  */
 @Global() // 设为全局模块，其他模块可直接注入
 @Module({
-  imports: [
-    ConfigModule,
-    ScheduleModule.forRoot(),
-    SupabaseModule, // ChatRecordSyncService 直接依赖 SupabaseService
-  ],
+  imports: [ConfigModule, ScheduleModule.forRoot()],
   controllers: [FeishuController],
   providers: [
     // 基础 API 服务

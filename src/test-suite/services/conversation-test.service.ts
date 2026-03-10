@@ -12,7 +12,7 @@ import {
   ConversationSourceRepository,
   TestExecutionRepository,
   type ConversationSourceRecord,
-} from '@supabase/test-suite';
+} from '@db/test-suite';
 import {
   ExecutionStatus,
   ReviewStatus,

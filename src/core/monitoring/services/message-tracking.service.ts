@@ -7,9 +7,9 @@ import {
   AlertErrorType,
 } from '../interfaces/monitoring.interface';
 import { MonitoringCacheService } from '../monitoring-cache.service';
-import { MessageProcessingRepository } from '@supabase/message';
-import { MonitoringErrorLogRepository } from '@supabase/monitoring';
-import { UserHostingRepository } from '@supabase/user';
+import { MessageProcessingRepository } from '@db/message';
+import { MonitoringErrorLogRepository } from '@db/monitoring';
+import { UserHostingRepository } from '@db/user';
 
 /**
  * 消息追踪服务

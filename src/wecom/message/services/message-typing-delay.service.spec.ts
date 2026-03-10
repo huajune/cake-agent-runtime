@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { AgentReplyConfig, DEFAULT_AGENT_REPLY_CONFIG } from '@supabase';
-import { SystemConfigService } from '@supabase/config';
+import { AgentReplyConfig, DEFAULT_AGENT_REPLY_CONFIG } from '@db';
+import { SystemConfigService } from '@db/config';
 import { TypingDelayService } from './message-typing-delay.service';
 import {
   TYPING_MIN_DELAY_MS,

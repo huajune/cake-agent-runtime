@@ -7,7 +7,7 @@ import {
   type AgentResult,
 } from '@agent';
 import { TestChatRequestDto, TestChatResponse } from '../dto/test-chat.dto';
-import { TestExecutionRepository, TestExecution } from '@supabase/test-suite';
+import { TestExecutionRepository, TestExecution } from '@db/test-suite';
 import { ExecutionStatus } from '../enums';
 
 /** 默认场景 */

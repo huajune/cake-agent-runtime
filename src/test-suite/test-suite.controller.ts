@@ -48,7 +48,7 @@ import {
 } from '@core/feishu/services/feishu-bitable.service';
 import { SSEStreamHandler, VercelAIStreamHandler } from './utils/sse-stream-handler';
 import { ConversationTestService, TestBatchService } from './services';
-import { ConversationSourceRepository, TestExecutionRepository } from '@supabase/test-suite';
+import { ConversationSourceRepository, TestExecutionRepository } from '@db/test-suite';
 
 @ApiTags('测试套件')
 @Controller('test-suite')

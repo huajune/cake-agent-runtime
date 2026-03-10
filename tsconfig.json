@@ -32,14 +32,15 @@
       "@shared/*": ["src/shared/*"],
       "@test-suite": ["src/test-suite"],
       "@test-suite/*": ["src/test-suite/*"],
-      "@supabase": ["src/supabase"],
-      "@supabase/*": ["src/supabase/*"],
-      "@supabase/config": ["src/supabase/config"],
-      "@supabase/user": ["src/supabase/user"],
-      "@supabase/agent": ["src/supabase/agent"],
-      "@supabase/message": ["src/supabase/message"],
-      "@supabase/monitoring": ["src/supabase/monitoring"],
-      "@supabase/test-suite": ["src/supabase/test-suite"]
+      "@core/supabase": ["src/core/supabase"],
+      "@db": ["src/db"],
+      "@db/*": ["src/db/*"],
+      "@db/config": ["src/db/config"],
+      "@db/user": ["src/db/user"],
+      "@db/agent": ["src/db/agent"],
+      "@db/message": ["src/db/message"],
+      "@db/monitoring": ["src/db/monitoring"],
+      "@db/test-suite": ["src/db/test-suite"]
     }
   },
   "include": ["src/**/*"],

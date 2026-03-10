@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { AgentReplyConfig } from '@supabase';
-import { SystemConfigService } from '@supabase/config';
+import { AgentReplyConfig } from '@db';
+import { SystemConfigService } from '@db/config';
 import { FeishuWebhookService } from './feishu-webhook.service';
 import { AlertLevel } from '../interfaces/feishu.interface';
 import { ALERT_THROTTLE } from '../constants/feishu.constants';

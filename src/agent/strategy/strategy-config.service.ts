@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { StrategyConfigService as SupabaseStrategyConfigService } from '@supabase/agent';
+import { StrategyConfigService as SupabaseStrategyConfigService } from '@db/agent';
 import {
   StrategyConfigRecord,
   StrategyPersona,
