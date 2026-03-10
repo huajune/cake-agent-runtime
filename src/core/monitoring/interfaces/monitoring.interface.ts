@@ -319,6 +319,13 @@ export interface HourlyStats {
   // 活跃度
   activeUsers: number; // 活跃用户数
   activeChats: number; // 活跃会话数
+
+  // 扩展字段（用于历史 Dashboard 查询）
+  totalTokenUsage: number; // Token 消耗总量
+  fallbackCount: number; // 降级次数
+  fallbackSuccessCount: number; // 降级成功次数
+  scenarioStats: Record<string, { count: number; successCount: number; avgDuration: number }>; // 场景分布
+  toolStats: Record<string, number>; // 工具使用统计
 }
 
 /**

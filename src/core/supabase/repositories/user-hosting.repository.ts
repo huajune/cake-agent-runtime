@@ -247,26 +247,22 @@ export class UserHostingRepository extends BaseRepository {
     groupName?: string;
     messageCount?: number;
     totalTokens?: number;
+    activeAt?: Date;
   }): Promise<void> {
     if (!this.isAvailable()) {
       return;
     }
 
     try {
-      const record: Partial<UserActivityRecord> = {
-        chat_id: data.chatId,
-        od_id: data.odId,
-        od_name: data.odName,
-        group_id: data.groupId,
-        group_name: data.groupName,
-        last_active_at: new Date().toISOString(),
-        message_count: data.messageCount ?? 1,
-        total_tokens: data.totalTokens ?? 0,
-      };
-
-      await this.insertToTable('user_activity', record, {
-        onConflict: 'chat_id',
-        resolution: 'merge-duplicates',
+      await this.rpc('upsert_user_activity', {
+        p_chat_id: data.chatId,
+        p_od_id: data.odId || null,
+        p_od_name: data.odName || null,
+        p_group_id: data.groupId || null,
+        p_group_name: data.groupName || null,
+        p_message_count: data.messageCount ?? 1,
+        p_token_usage: data.totalTokens ?? 0,
+        p_active_at: (data.activeAt ?? new Date()).toISOString(),
       });
     } catch (error) {
       this.logger.error('更新用户活跃记录失败', error);
@@ -326,36 +322,6 @@ export class UserHostingRepository extends BaseRepository {
     } catch (error) {
       this.handleError(`SELECT from ${table}`, error);
       return [];
-    }
-  }
-
-  /**
-   * 插入到其他表
-   */
-  private async insertToTable<T>(
-    table: string,
-    data: Partial<T>,
-    options?: {
-      onConflict?: string;
-      resolution?: 'merge-duplicates' | 'ignore-duplicates';
-    },
-  ): Promise<void> {
-    if (!this.isAvailable()) {
-      return;
-    }
-
-    try {
-      const url = options?.onConflict ? `/${table}?on_conflict=${options.onConflict}` : `/${table}`;
-
-      const prefer = options?.resolution
-        ? `return=minimal,resolution=${options.resolution}`
-        : 'return=minimal';
-
-      await this.getClient().post(url, data, {
-        headers: { Prefer: prefer },
-      });
-    } catch (error) {
-      this.handleError(`INSERT to ${table}`, error);
     }
   }
 }

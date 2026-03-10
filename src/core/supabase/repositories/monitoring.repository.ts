@@ -3,21 +3,6 @@ import { BaseRepository } from './base.repository';
 import { SupabaseService } from '../supabase.service';
 
 /**
- * 监控小时聚合数据
- */
-export interface MonitoringHourlyData {
-  hour: string;
-  message_count: number;
-  success_count: number;
-  failure_count: number;
-  avg_duration: number;
-  p95_duration: number;
-  active_users: number;
-  active_chats: number;
-  total_tokens: number;
-}
-
-/**
  * Dashboard 概览统计
  */
 export interface DashboardOverviewStats {
@@ -68,83 +53,15 @@ export interface HourlyTrendData {
 /**
  * 监控数据 Repository
  *
- * 负责管理 monitoring_hourly 表和 Dashboard 统计：
- * - 监控小时聚合数据
- * - Dashboard 概览统计
- * - 趋势数据查询
+ * 负责 Dashboard 统计（通过 RPC 查询 message_processing_records）
  */
 @Injectable()
 export class MonitoringRepository extends BaseRepository {
-  protected readonly tableName = 'monitoring_hourly';
+  protected readonly tableName = 'message_processing_records';
 
   constructor(supabaseService: SupabaseService) {
     super(supabaseService);
   }
-
-  // ==================== 监控数据持久化 ====================
-
-  /**
-   * 插入或更新监控小时聚合数据
-   */
-  async upsertMonitoringHourly(data: MonitoringHourlyData): Promise<void> {
-    if (!this.isAvailable()) {
-      this.logger.warn('Supabase 未初始化，跳过监控数据持久化');
-      return;
-    }
-
-    try {
-      await this.insert(data, { resolution: 'merge-duplicates' });
-      this.logger.debug(`监控数据已保存: ${data.hour}`);
-    } catch (error) {
-      this.logger.error('保存监控数据失败', error);
-      throw error;
-    }
-  }
-
-  /**
-   * 删除指定日期之前的监控数据
-   */
-  async deleteMonitoringHourlyBefore(cutoffDate: Date): Promise<number> {
-    if (!this.isAvailable()) {
-      return 0;
-    }
-
-    try {
-      const deleted = await this.delete<MonitoringHourlyData>(
-        { hour: `lt.${cutoffDate.toISOString()}` },
-        true,
-      );
-      return deleted.length;
-    } catch (error) {
-      this.logger.error('删除过期监控数据失败', error);
-      return 0;
-    }
-  }
-
-  /**
-   * 获取最近 N 天的监控历史数据
-   */
-  async getMonitoringHourlyHistory(days: number = 7): Promise<MonitoringHourlyData[]> {
-    if (!this.isAvailable()) {
-      return [];
-    }
-
-    try {
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - days);
-
-      return await this.select<MonitoringHourlyData>({
-        hour: `gte.${cutoffDate.toISOString()}`,
-        order: 'hour.desc',
-        select: '*',
-      });
-    } catch (error) {
-      this.logger.error('获取监控历史数据失败', error);
-      return [];
-    }
-  }
-
-  // ==================== Dashboard 统计 ====================
 
   /**
    * 获取 Dashboard 概览统计
@@ -467,6 +384,103 @@ export class MonitoringRepository extends BaseRepository {
     } catch (error) {
       this.logger.error('获取 Dashboard 工具统计失败:', error);
       return [];
+    }
+  }
+
+  // ==================== 小时聚合 RPC ====================
+
+  /**
+   * 调用数据库级聚合 RPC，替代 TypeScript 侧的聚合逻辑
+   * 解决 getRecordsByTimeRange limit 2000 的 bug
+   */
+  async aggregateHourlyStats(
+    hourStart: Date,
+    hourEnd: Date,
+  ): Promise<{
+    messageCount: number;
+    successCount: number;
+    failureCount: number;
+    successRate: number;
+    avgDuration: number;
+    minDuration: number;
+    maxDuration: number;
+    p50Duration: number;
+    p95Duration: number;
+    p99Duration: number;
+    avgAiDuration: number;
+    avgSendDuration: number;
+    activeUsers: number;
+    activeChats: number;
+    totalTokenUsage: number;
+    fallbackCount: number;
+    fallbackSuccessCount: number;
+    scenarioStats: Record<string, { count: number; successCount: number; avgDuration: number }>;
+    toolStats: Record<string, number>;
+  } | null> {
+    if (!this.isAvailable()) {
+      return null;
+    }
+
+    try {
+      const result = await this.rpc<
+        Array<{
+          message_count: string;
+          success_count: string;
+          failure_count: string;
+          success_rate: string;
+          avg_duration: string;
+          min_duration: string;
+          max_duration: string;
+          p50_duration: string;
+          p95_duration: string;
+          p99_duration: string;
+          avg_ai_duration: string;
+          avg_send_duration: string;
+          active_users: string;
+          active_chats: string;
+          total_token_usage: string;
+          fallback_count: string;
+          fallback_success_count: string;
+          scenario_stats: Record<
+            string,
+            { count: number; successCount: number; avgDuration: number }
+          >;
+          tool_stats: Record<string, number>;
+        }>
+      >('aggregate_hourly_stats', {
+        p_hour_start: hourStart.toISOString(),
+        p_hour_end: hourEnd.toISOString(),
+      });
+
+      if (!result || result.length === 0) {
+        return null;
+      }
+
+      const row = result[0];
+      return {
+        messageCount: parseInt(row.message_count ?? '0', 10),
+        successCount: parseInt(row.success_count ?? '0', 10),
+        failureCount: parseInt(row.failure_count ?? '0', 10),
+        successRate: parseFloat(row.success_rate ?? '0'),
+        avgDuration: parseFloat(row.avg_duration ?? '0'),
+        minDuration: parseFloat(row.min_duration ?? '0'),
+        maxDuration: parseFloat(row.max_duration ?? '0'),
+        p50Duration: parseFloat(row.p50_duration ?? '0'),
+        p95Duration: parseFloat(row.p95_duration ?? '0'),
+        p99Duration: parseFloat(row.p99_duration ?? '0'),
+        avgAiDuration: parseFloat(row.avg_ai_duration ?? '0'),
+        avgSendDuration: parseFloat(row.avg_send_duration ?? '0'),
+        activeUsers: parseInt(row.active_users ?? '0', 10),
+        activeChats: parseInt(row.active_chats ?? '0', 10),
+        totalTokenUsage: parseInt(row.total_token_usage ?? '0', 10),
+        fallbackCount: parseInt(row.fallback_count ?? '0', 10),
+        fallbackSuccessCount: parseInt(row.fallback_success_count ?? '0', 10),
+        scenarioStats: row.scenario_stats ?? {},
+        toolStats: row.tool_stats ?? {},
+      };
+    } catch (error) {
+      this.logger.error('调用 aggregate_hourly_stats RPC 失败:', error);
+      return null;
     }
   }
 }

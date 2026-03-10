@@ -403,7 +403,11 @@
       "Bash(git status -u --short)",
       "Bash(git diff --no-stat -- src/)",
       "Bash(git diff --no-stat -- dashboard/)",
-      "Bash(git diff --no-stat -- docs/)"
+      "Bash(git diff --no-stat -- docs/)",
+      "Bash(npx jest data-cleanup.service.spec.ts --no-coverage)",
+      "Bash(npx jest --testPathPattern='data-cleanup' --no-coverage)",
+      "Bash(npx jest --no-coverage)",
+      "Bash(npx jest src/core/monitoring/data-cleanup.service.spec.ts --no-coverage)"
     ],
     "deny": [
       "Bash(git restore:*)",

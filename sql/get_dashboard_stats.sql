@@ -260,11 +260,11 @@ BEGIN
     tool as tool_name,
     COUNT(*)::bigint as use_count
   FROM message_processing_records,
-       jsonb_array_elements_text(tools) as tool
+       unnest(tools) as tool
   WHERE received_at >= p_start_date
     AND received_at < p_end_date
     AND tools IS NOT NULL
-    AND jsonb_array_length(tools) > 0
+    AND array_length(tools, 1) > 0
   GROUP BY tool
   ORDER BY use_count DESC;
 END;

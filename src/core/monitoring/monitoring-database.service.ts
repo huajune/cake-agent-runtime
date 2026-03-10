@@ -7,7 +7,6 @@ import {
   MessageProcessingRecord,
   HourlyStats,
   MonitoringErrorLog,
-  DailyStats,
   TimeRange,
 } from './interfaces/monitoring.interface';
 
@@ -19,7 +18,6 @@ import {
  * - message_processing_records: 详细消息处理记录（已存在）
  * - monitoring_hourly_stats: 小时级聚合统计（新建）
  * - monitoring_error_logs: 错误日志（新建）
- * - monitoring_daily_stats: 每日统计（新建）
  */
 @Injectable()
 export class MonitoringDatabaseService implements OnModuleInit {
@@ -32,8 +30,6 @@ export class MonitoringDatabaseService implements OnModuleInit {
   private readonly TABLE_RECORDS = 'message_processing_records';
   private readonly TABLE_HOURLY_STATS = 'monitoring_hourly_stats';
   private readonly TABLE_ERROR_LOGS = 'monitoring_error_logs';
-  private readonly TABLE_DAILY_STATS = 'monitoring_daily_stats';
-
   // 查询缓存（简单内存缓存，避免频繁查询）
   private queryCache = new Map<string, { data: any; timestamp: number }>();
   private readonly CACHE_TTL_MS = 60 * 1000; // 1 分钟缓存
@@ -384,6 +380,11 @@ export class MonitoringDatabaseService implements OnModuleInit {
         avg_send_duration: stats.avgSendDuration,
         active_users: stats.activeUsers,
         active_chats: stats.activeChats,
+        total_token_usage: stats.totalTokenUsage ?? 0,
+        fallback_count: stats.fallbackCount ?? 0,
+        fallback_success_count: stats.fallbackSuccessCount ?? 0,
+        scenario_stats: stats.scenarioStats ?? {},
+        tool_stats: stats.toolStats ?? {},
       };
 
       await this.supabaseHttpClient.post(`/monitoring_hourly_stats`, statsRecord, {
@@ -419,6 +420,11 @@ export class MonitoringDatabaseService implements OnModuleInit {
         avg_send_duration: stats.avgSendDuration,
         active_users: stats.activeUsers,
         active_chats: stats.activeChats,
+        total_token_usage: stats.totalTokenUsage ?? 0,
+        fallback_count: stats.fallbackCount ?? 0,
+        fallback_success_count: stats.fallbackSuccessCount ?? 0,
+        scenario_stats: stats.scenarioStats ?? {},
+        tool_stats: stats.toolStats ?? {},
       }));
 
       await this.supabaseHttpClient.post(`/monitoring_hourly_stats`, statsRecords, {
@@ -465,6 +471,11 @@ export class MonitoringDatabaseService implements OnModuleInit {
         avgSendDuration: row.avg_send_duration,
         activeUsers: row.active_users,
         activeChats: row.active_chats,
+        totalTokenUsage: row.total_token_usage ?? 0,
+        fallbackCount: row.fallback_count ?? 0,
+        fallbackSuccessCount: row.fallback_success_count ?? 0,
+        scenarioStats: row.scenario_stats ?? {},
+        toolStats: row.tool_stats ?? {},
       }));
     } catch (error) {
       this.logger.error(`查询小时统计失败:`, error);
@@ -473,17 +484,15 @@ export class MonitoringDatabaseService implements OnModuleInit {
   }
 
   /**
-   * 按时间范围查询小时统计数据
+   * 按日期范围查询小时统计（用于历史 Dashboard 查询）
+   * 无 limit 限制（一年 8760 行，内存完全可控）
    */
-  async getHourlyStatsByTimeRange(startTime: number, endTime: number): Promise<HourlyStats[]> {
+  async getHourlyStatsByDateRange(startDate: Date, endDate: Date): Promise<HourlyStats[]> {
     try {
-      const startDate = new Date(startTime).toISOString();
-      const endDate = new Date(endTime).toISOString();
-
       const response = await this.supabaseHttpClient.get(`/monitoring_hourly_stats`, {
         params: {
           select: '*',
-          and: `(hour.gte.${startDate},hour.lt.${endDate})`,
+          and: `(hour.gte.${startDate.toISOString()},hour.lt.${endDate.toISOString()})`,
           order: 'hour.asc',
         },
       });
@@ -504,15 +513,20 @@ export class MonitoringDatabaseService implements OnModuleInit {
         avgSendDuration: row.avg_send_duration,
         activeUsers: row.active_users,
         activeChats: row.active_chats,
+        totalTokenUsage: row.total_token_usage ?? 0,
+        fallbackCount: row.fallback_count ?? 0,
+        fallbackSuccessCount: row.fallback_success_count ?? 0,
+        scenarioStats: row.scenario_stats ?? {},
+        toolStats: row.tool_stats ?? {},
       }));
     } catch (error) {
-      this.logger.error(`按时间范围查询小时统计失败:`, error);
+      this.logger.error(`按日期范围查询小时统计失败:`, error);
       return [];
     }
   }
 
   // ========================================
-  // 错误日志（MonitoringErrorLog）- TODO: 需要实现
+  // 错误日志（MonitoringErrorLog）
   // ========================================
 
   /**
@@ -616,33 +630,38 @@ export class MonitoringDatabaseService implements OnModuleInit {
     }
   }
 
-  // ========================================
-  // 每日统计（DailyStats）
-  // ========================================
-
   /**
-   * 保存每日统计（UPSERT）
+   * 清理过期错误日志
    */
-  async saveDailyStats(stats: DailyStats): Promise<void> {
+  async cleanupErrorLogs(retentionDays: number = 30): Promise<number> {
     try {
-      const statsRecord = {
-        date: stats.date,
-        message_count: stats.messageCount,
-        success_count: stats.successCount,
-        avg_duration: stats.avgDuration,
-        token_usage: stats.tokenUsage,
-        unique_users: stats.uniqueUsers,
-      };
+      const cutoffTimestamp = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
 
-      await this.supabaseHttpClient.post(`/monitoring_daily_stats`, statsRecord, {
+      const response = await this.supabaseHttpClient.delete(`/${this.TABLE_ERROR_LOGS}`, {
+        params: {
+          timestamp: `lt.${cutoffTimestamp}`,
+        },
         headers: {
-          Prefer: 'resolution=merge-duplicates',
+          Prefer: 'count=exact',
         },
       });
 
-      this.logger.log(`每日统计已保存: ${stats.date}`);
+      const contentRange = response.headers?.['content-range'];
+      let deletedCount = 0;
+      if (contentRange) {
+        const match = contentRange.match(/\d+-\d+\/(\d+)/);
+        if (match) {
+          deletedCount = parseInt(match[1], 10);
+        }
+      }
+
+      if (deletedCount > 0) {
+        this.logger.log(`✅ 错误日志清理完成: 删除 ${deletedCount} 条 ${retentionDays} 天前的记录`);
+      }
+      return deletedCount;
     } catch (error) {
-      this.logger.error(`保存每日统计失败 [${stats.date}]:`, error);
+      this.logger.error('清理错误日志失败:', error);
+      return 0;
     }
   }
 
@@ -835,6 +854,7 @@ export class MonitoringDatabaseService implements OnModuleInit {
         groupName: data.groupName,
         messageCount: data.messageCount,
         totalTokens: data.tokenUsage,
+        activeAt: new Date(data.activeAt),
       });
       this.logger.debug(`[user_activity] 已更新用户活跃记录: ${data.chatId}`);
     } catch (error) {

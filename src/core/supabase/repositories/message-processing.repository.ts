@@ -207,27 +207,6 @@ export class MessageProcessingRepository extends BaseRepository {
   }
 
   /**
-   * 获取指定批次的消息处理记录
-   */
-  async getMessagesByBatchId(batchId: string): Promise<MessageProcessingRecordInput[]> {
-    if (!this.isAvailable()) {
-      return [];
-    }
-
-    try {
-      const results = await this.select<MessageProcessingDbRecord>({
-        batch_id: `eq.${batchId}`,
-        order: 'received_at.asc',
-      });
-
-      return results.map((r) => this.fromDbRecord(r));
-    } catch (error) {
-      this.logger.error(`获取批次消息记录失败 [${batchId}]:`, error);
-      return [];
-    }
-  }
-
-  /**
    * 根据消息ID获取单条消息处理记录详情
    */
   async getMessageProcessingRecordById(
@@ -253,6 +232,57 @@ export class MessageProcessingRepository extends BaseRepository {
     } catch (error) {
       this.logger.error(`[消息处理记录] 查询详情失败 (messageId: ${messageId}):`, error);
       return null;
+    }
+  }
+
+  // ==================== 清理方法 ====================
+
+  /**
+   * 清理过期消息处理记录
+   * 调用数据库 RPC 函数 cleanup_message_processing_records
+   * @param retentionDays 保留天数
+   * @returns 删除的记录数
+   */
+  async cleanupMessageProcessingRecords(retentionDays: number): Promise<number> {
+    if (!this.isAvailable()) {
+      return 0;
+    }
+
+    try {
+      const result = await this.rpc<Array<{ cleanup_message_processing_records: string }>>(
+        'cleanup_message_processing_records',
+        { days_to_keep: retentionDays },
+      );
+
+      const deletedCount = parseInt(result?.[0]?.cleanup_message_processing_records ?? '0', 10);
+      return deletedCount;
+    } catch (error) {
+      this.logger.error(`[消息处理记录] 清理失败:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 将过期的 agent_invocation 字段置为 NULL（释放 TOAST 空间）
+   * @param daysOld 超过多少天的记录将被清理
+   * @returns 更新的记录数
+   */
+  async nullAgentInvocations(daysOld: number = 7): Promise<number> {
+    if (!this.isAvailable()) {
+      return 0;
+    }
+
+    try {
+      const result = await this.rpc<Array<{ null_agent_invocation: string }>>(
+        'null_agent_invocation',
+        { p_days_old: daysOld },
+      );
+
+      const updatedCount = parseInt(result?.[0]?.null_agent_invocation ?? '0', 10);
+      return updatedCount;
+    } catch (error) {
+      this.logger.error(`[消息处理记录] NULL agent_invocation 失败:`, error);
+      throw error;
     }
   }
 

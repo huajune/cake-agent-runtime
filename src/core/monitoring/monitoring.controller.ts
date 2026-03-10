@@ -883,12 +883,15 @@ export class MonitoringController {
   > {
     const daysNum = parseInt(days || '7', 10);
     this.logger.debug(`获取聊天趋势: 最近 ${daysNum} 天`);
-    const history = await this.monitoringRepository.getMonitoringHourlyHistory(daysNum);
-    return history.map((item) => ({
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - daysNum);
+    const endDate = new Date();
+    const trend = await this.monitoringRepository.getDashboardHourlyTrend(startDate, endDate);
+    return trend.map((item) => ({
       hour: item.hour,
-      message_count: item.message_count,
-      active_users: item.active_users,
-      active_chats: item.active_chats,
+      message_count: item.messageCount,
+      active_users: item.uniqueUsers,
+      active_chats: 0,
     }));
   }
 

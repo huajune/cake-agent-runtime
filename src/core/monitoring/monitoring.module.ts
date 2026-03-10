@@ -9,6 +9,7 @@ import { MonitoringCacheService } from './monitoring-cache.service';
 import { MonitoringMigrationService } from './monitoring-migration.service';
 import { MonitoringAlertService } from './monitoring-alert.service';
 import { DataCleanupService } from './data-cleanup.service';
+import { HourlyStatsAggregatorService } from './hourly-stats-aggregator.service';
 import { MessageModule } from '@wecom/message/message.module';
 import { FeishuModule } from '@/core/feishu/feishu.module';
 
@@ -43,6 +44,7 @@ import { FeishuModule } from '@/core/feishu/feishu.module';
     MonitoringMigrationService, // 数据迁移服务
     DataCleanupService, // 定期清理过期数据
     MonitoringAlertService, // 业务指标告警
+    HourlyStatsAggregatorService, // 小时统计历史聚合
   ],
   exports: [
     MonitoringService,
@@ -50,6 +52,7 @@ import { FeishuModule } from '@/core/feishu/feishu.module';
     MonitoringDatabaseService,
     MonitoringCacheService,
     DataCleanupService,
+    HourlyStatsAggregatorService,
   ],
 })
 export class MonitoringModule {}

@@ -1,19 +1,39 @@
 -- ============================================
 -- 面试预约记录表
--- 从 booking_stats 重命名为 interview_booking_records
--- 并添加用户和招募经理信息
 -- ============================================
 
--- Step 1: 重命名表
-ALTER TABLE booking_stats RENAME TO interview_booking_records;
+-- === 全量建表（新环境使用） ===
+CREATE TABLE IF NOT EXISTS interview_booking_records (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
 
--- Step 2: 添加用户和招募经理信息字段
-ALTER TABLE interview_booking_records
-ADD COLUMN IF NOT EXISTS chat_id VARCHAR(255),
-ADD COLUMN IF NOT EXISTS user_id VARCHAR(255),
-ADD COLUMN IF NOT EXISTS user_name VARCHAR(255),
-ADD COLUMN IF NOT EXISTS manager_id VARCHAR(255),
-ADD COLUMN IF NOT EXISTS manager_name VARCHAR(255);
+  -- 预约信息
+  date DATE NOT NULL,                            -- 预约日期
+  brand_name TEXT,                               -- 品牌名称
+  store_name TEXT,                               -- 门店名称
+  booking_count INTEGER DEFAULT 1,               -- 预约次数（通常为 1）
+
+  -- 用户信息
+  chat_id VARCHAR(255),                          -- 会话ID
+  user_id VARCHAR(255),                          -- 用户系统ID
+  user_name VARCHAR(255),                        -- 用户昵称
+
+  -- 招募经理信息
+  manager_id VARCHAR(255),                       -- 招募经理ID
+  manager_name VARCHAR(255),                     -- 招募经理昵称
+
+  -- 系统字段
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- === 迁移脚本（从 booking_stats 升级，已执行可跳过） ===
+-- ALTER TABLE booking_stats RENAME TO interview_booking_records;
+-- ALTER TABLE interview_booking_records
+-- ADD COLUMN IF NOT EXISTS chat_id VARCHAR(255),
+-- ADD COLUMN IF NOT EXISTS user_id VARCHAR(255),
+-- ADD COLUMN IF NOT EXISTS user_name VARCHAR(255),
+-- ADD COLUMN IF NOT EXISTS manager_id VARCHAR(255),
+-- ADD COLUMN IF NOT EXISTS manager_name VARCHAR(255);
 
 -- Step 3: 索引
 -- 按用户查询

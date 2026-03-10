@@ -36,7 +36,6 @@ export {
 // ==================== 监控统计 ====================
 export {
   MonitoringRepository,
-  MonitoringHourlyData,
   DashboardOverviewStats,
   DashboardFallbackStats,
   DailyTrendData,

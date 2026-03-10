@@ -23,7 +23,14 @@ import { MonitoringCacheService } from './monitoring-cache.service';
 import { MonitoringMigrationService } from './monitoring-migration.service';
 import { RedisService } from '@core/redis';
 import { FeishuBookingService } from '@/core/feishu/services/feishu-booking.service';
-import { MonitoringRepository, BookingRepository } from '@core/supabase/repositories';
+import {
+  MonitoringRepository,
+  BookingRepository,
+  DashboardOverviewStats,
+  DashboardFallbackStats,
+  DailyTrendData,
+} from '@core/supabase/repositories';
+import { HourlyStatsAggregatorService } from './hourly-stats-aggregator.service';
 
 /**
  * 监控服务
@@ -48,6 +55,7 @@ export class MonitoringService implements OnModuleInit {
     private readonly feishuBookingService: FeishuBookingService,
     private readonly monitoringRepository: MonitoringRepository,
     private readonly bookingRepository: BookingRepository,
+    private readonly hourlyStatsAggregator: HourlyStatsAggregatorService,
   ) {
     // 定期清理超时的临时记录（每10分钟执行一次）
     setInterval(
@@ -1687,35 +1695,91 @@ export class MonitoringService implements OnModuleInit {
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
       sevenDaysAgo.setHours(0, 0, 0, 0);
 
-      // 2. 并行执行 SQL 聚合查询（使用 RPC 函数）
-      const [
-        currentOverview,
-        previousOverview,
-        currentFallback,
-        previousFallback,
-        dailyTrend,
-        minuteTrend,
-        tokenTrendData,
-      ] = await Promise.all([
-        // 当前时间范围概览统计
-        this.monitoringRepository.getDashboardOverviewStats(currentStartDate, currentEndDate),
-        // 前一时间范围概览统计（用于计算增长率）
-        this.monitoringRepository.getDashboardOverviewStats(previousStartDate, previousEndDate),
-        // 当前时间范围降级统计
-        this.monitoringRepository.getDashboardFallbackStats(currentStartDate, currentEndDate),
-        // 前一时间范围降级统计
-        this.monitoringRepository.getDashboardFallbackStats(previousStartDate, previousEndDate),
-        // 每日趋势（最近 7 天，用于备用）
-        this.monitoringRepository.getDashboardDailyTrend(sevenDaysAgo, new Date()),
-        // 分钟级趋势（用于响应时间图表）
-        timeRange === 'today'
-          ? this.monitoringRepository.getDashboardMinuteTrend(currentStartDate, currentEndDate, 5)
-          : this.monitoringRepository.getDashboardDailyTrend(currentStartDate, currentEndDate),
-        // Token 趋势（本日用小时级，本周/本月用天级）
-        timeRange === 'today'
-          ? this.monitoringRepository.getDashboardHourlyTrend(currentStartDate, currentEndDate)
-          : this.monitoringRepository.getDashboardDailyTrend(currentStartDate, currentEndDate),
-      ]);
+      // 2. 分层查询路由：today 用实时+聚合混合，其他时间范围全部用聚合表
+      let currentOverview: DashboardOverviewStats;
+      let previousOverview: DashboardOverviewStats;
+      let currentFallback: DashboardFallbackStats;
+      let previousFallback: DashboardFallbackStats;
+      let dailyTrend: DailyTrendData[];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let minuteTrend: any[];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let tokenTrendData: any[];
+
+      if (timeRange === 'today') {
+        // === 实时查询：已聚合的完整小时 + 当前小时 RPC ===
+        const currentHourStart = new Date();
+        currentHourStart.setMinutes(0, 0, 0);
+
+        const [
+          historicalOverview,
+          realtimeOverview,
+          historicalFallback,
+          realtimeFallback,
+          prevOverview,
+          prevFallback,
+          daily,
+          minute,
+          historicalTokenTrend,
+          realtimeTokenTrend,
+        ] = await Promise.all([
+          // 今日已完成小时概览 → 聚合表
+          this.hourlyStatsAggregator.getOverviewFromHourly(currentStartDate, currentHourStart),
+          // 当前小时概览 → 实时 RPC
+          this.monitoringRepository.getDashboardOverviewStats(currentHourStart, currentEndDate),
+          // 今日已完成小时降级 → 聚合表
+          this.hourlyStatsAggregator.getFallbackFromHourly(currentStartDate, currentHourStart),
+          // 当前小时降级 → 实时 RPC
+          this.monitoringRepository.getDashboardFallbackStats(currentHourStart, currentEndDate),
+          // 昨日概览（用于增长率）→ 聚合表
+          this.hourlyStatsAggregator.getOverviewFromHourly(previousStartDate, previousEndDate),
+          // 昨日降级 → 聚合表
+          this.hourlyStatsAggregator.getFallbackFromHourly(previousStartDate, previousEndDate),
+          // 每日趋势（最近 7 天）→ 聚合表
+          this.hourlyStatsAggregator.getDailyTrendFromHourly(sevenDaysAgo, new Date()),
+          // 分钟级趋势（今日实时）→ RPC
+          this.monitoringRepository.getDashboardMinuteTrend(currentStartDate, currentEndDate, 5),
+          // Token 趋势：已完成小时 → 聚合表
+          this.hourlyStatsAggregator.getHourlyTrendFromHourly(currentStartDate, currentHourStart),
+          // Token 趋势：当前小时 → 实时 RPC
+          this.monitoringRepository.getDashboardHourlyTrend(currentHourStart, currentEndDate),
+        ]);
+
+        // 合并当前周期数据（历史小时 + 当前小时实时）
+        currentOverview = this.hourlyStatsAggregator.mergeOverviewStats(
+          historicalOverview,
+          realtimeOverview,
+        );
+        currentFallback = this.hourlyStatsAggregator.mergeFallbackStats(
+          historicalFallback,
+          realtimeFallback,
+        );
+        previousOverview = prevOverview;
+        previousFallback = prevFallback;
+        dailyTrend = daily;
+        minuteTrend = minute;
+        tokenTrendData = [...historicalTokenTrend, ...realtimeTokenTrend];
+      } else {
+        // === 非实时查询（week/month）：全部从 monitoring_hourly_stats 聚合 ===
+        const [curOverview, prevOverview, curFallback, prevFallback, daily, currentPeriodDaily] =
+          await Promise.all([
+            this.hourlyStatsAggregator.getOverviewFromHourly(currentStartDate, currentEndDate),
+            this.hourlyStatsAggregator.getOverviewFromHourly(previousStartDate, previousEndDate),
+            this.hourlyStatsAggregator.getFallbackFromHourly(currentStartDate, currentEndDate),
+            this.hourlyStatsAggregator.getFallbackFromHourly(previousStartDate, previousEndDate),
+            this.hourlyStatsAggregator.getDailyTrendFromHourly(sevenDaysAgo, new Date()),
+            this.hourlyStatsAggregator.getDailyTrendFromHourly(currentStartDate, currentEndDate),
+          ]);
+
+        currentOverview = curOverview;
+        previousOverview = prevOverview;
+        currentFallback = curFallback;
+        previousFallback = prevFallback;
+        dailyTrend = daily;
+        // 非实时：响应趋势和 Token 趋势均使用每日聚合数据
+        minuteTrend = currentPeriodDaily;
+        tokenTrendData = currentPeriodDaily;
+      }
 
       // 3. 构建概览指标
       const overview = {
@@ -2069,167 +2133,53 @@ export class MonitoringService implements OnModuleInit {
         `聚合时间范围: ${lastHourStart.toISOString()} ~ ${lastHourEnd.toISOString()}`,
       );
 
-      // 2. 从 Supabase 读取该小时的详细记录（已持久化的数据）
-      const detailRecords = await this.databaseService.getRecordsByTimeRange(
-        lastHourStart.getTime(),
-        lastHourEnd.getTime(),
+      // 2. 调用数据库级聚合 RPC（替代 TypeScript 侧聚合，解决 limit 2000 bug）
+      const aggregated = await this.monitoringRepository.aggregateHourlyStats(
+        lastHourStart,
+        lastHourEnd,
       );
 
-      if (detailRecords.length === 0) {
+      if (!aggregated || aggregated.messageCount === 0) {
         this.logger.warn(`该小时无数据记录,跳过聚合: ${hourKey}`);
         return;
       }
 
-      this.logger.log(`读取到 ${detailRecords.length} 条详细记录`);
-
-      // 3. 聚合计算统计数据
-      const messageCount = detailRecords.length;
-      const successRecords = detailRecords.filter((r) => r.status === 'success');
-      const failureRecords = detailRecords.filter((r) => r.status === 'failure');
-
-      const successCount = successRecords.length;
-      const failureCount = failureRecords.length;
-      const successRate = messageCount > 0 ? (successCount / messageCount) * 100 : 0;
-
-      // 计算耗时统计（仅统计成功的记录）
-      const durations = successRecords.filter((r) => r.totalDuration).map((r) => r.totalDuration!);
-      const aiDurations = successRecords.filter((r) => r.aiDuration).map((r) => r.aiDuration!);
-      const sendDurations = successRecords
-        .filter((r) => r.sendDuration)
-        .map((r) => r.sendDuration!);
-
-      const avgDuration =
-        durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0;
-      const minDuration = durations.length > 0 ? Math.min(...durations) : 0;
-      const maxDuration = durations.length > 0 ? Math.max(...durations) : 0;
-
-      const percentiles = this.calculatePercentilesFromArray(durations);
-
-      const avgAiDuration =
-        aiDurations.length > 0 ? aiDurations.reduce((a, b) => a + b, 0) / aiDurations.length : 0;
-      const avgSendDuration =
-        sendDurations.length > 0
-          ? sendDurations.reduce((a, b) => a + b, 0) / sendDurations.length
-          : 0;
-
-      // 统计活跃用户和会话（去重）
-      const uniqueUserIds = new Set(detailRecords.filter((r) => r.userId).map((r) => r.userId!));
-      const uniqueChatIds = new Set(detailRecords.map((r) => r.chatId));
-
-      const activeUsers = uniqueUserIds.size;
-      const activeChats = uniqueChatIds.size;
-
-      // 4. 构造小时统计对象
+      // 3. 构造小时统计对象
       const hourlyStats: HourlyStats = {
         hour: hourKey,
-        messageCount,
-        successCount,
-        failureCount,
-        successRate: Math.round(successRate * 100) / 100, // 保留两位小数
-        avgDuration: Math.round(avgDuration),
-        minDuration: Math.round(minDuration),
-        maxDuration: Math.round(maxDuration),
-        p50Duration: Math.round(percentiles.p50),
-        p95Duration: Math.round(percentiles.p95),
-        p99Duration: Math.round(percentiles.p99),
-        avgAiDuration: Math.round(avgAiDuration),
-        avgSendDuration: Math.round(avgSendDuration),
-        activeUsers,
-        activeChats,
+        messageCount: aggregated.messageCount,
+        successCount: aggregated.successCount,
+        failureCount: aggregated.failureCount,
+        successRate: aggregated.successRate,
+        avgDuration: aggregated.avgDuration,
+        minDuration: aggregated.minDuration,
+        maxDuration: aggregated.maxDuration,
+        p50Duration: aggregated.p50Duration,
+        p95Duration: aggregated.p95Duration,
+        p99Duration: aggregated.p99Duration,
+        avgAiDuration: aggregated.avgAiDuration,
+        avgSendDuration: aggregated.avgSendDuration,
+        activeUsers: aggregated.activeUsers,
+        activeChats: aggregated.activeChats,
+        totalTokenUsage: aggregated.totalTokenUsage,
+        fallbackCount: aggregated.fallbackCount,
+        fallbackSuccessCount: aggregated.fallbackSuccessCount,
+        scenarioStats: aggregated.scenarioStats,
+        toolStats: aggregated.toolStats,
       };
 
-      // 5. 保存到 Supabase
+      // 4. 保存到 Supabase
       await this.databaseService.saveHourlyStats(hourlyStats);
 
       const elapsed = Date.now() - startTime;
       this.logger.log(
         `小时统计聚合完成: ${hourKey}, ` +
-          `消息数=${messageCount}, 成功率=${successRate.toFixed(2)}%, ` +
-          `活跃用户=${activeUsers}, 活跃会话=${activeChats}, ` +
-          `耗时=${elapsed}ms`,
+          `消息数=${aggregated.messageCount}, 成功率=${aggregated.successRate}%, ` +
+          `活跃用户=${aggregated.activeUsers}, 活跃会话=${aggregated.activeChats}, ` +
+          `Token=${aggregated.totalTokenUsage}, 耗时=${elapsed}ms`,
       );
     } catch (error) {
       this.logger.error('小时统计聚合任务失败:', error);
-    }
-  }
-
-  /**
-   * 每日统计聚合定时任务
-   * 每天凌晨 1:05 执行
-   */
-  @Cron('5 1 * * *', {
-    name: 'aggregateDailyStats',
-    timeZone: 'Asia/Shanghai',
-  })
-  async aggregateDailyStats(): Promise<void> {
-    try {
-      const startTime = Date.now();
-      this.logger.log('开始执行每日统计聚合任务...');
-
-      // 1. 计算昨天的日期范围
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-
-      const dateKey = yesterday.toISOString().split('T')[0]; // YYYY-MM-DD
-      this.logger.log(`聚合日期: ${dateKey}`);
-
-      // 2. 从 Supabase 读取该日期的所有小时统计
-      const yesterdayEnd = new Date(yesterday.getTime() + 24 * 60 * 60 * 1000);
-      const hourlyStats = await this.databaseService.getHourlyStatsByTimeRange(
-        yesterday.getTime(),
-        yesterdayEnd.getTime(),
-      );
-
-      if (hourlyStats.length === 0) {
-        this.logger.warn(`该日期无小时统计数据,跳过聚合: ${dateKey}`);
-        return;
-      }
-
-      this.logger.log(`读取到 ${hourlyStats.length} 条小时统计`);
-
-      // 3. 聚合计算每日统计
-      const messageCount = hourlyStats.reduce((sum, stat) => sum + stat.messageCount, 0);
-      const successCount = hourlyStats.reduce((sum, stat) => sum + stat.successCount, 0);
-
-      // 计算平均耗时（加权平均）
-      const totalDuration = hourlyStats.reduce(
-        (sum, stat) => sum + stat.avgDuration * stat.messageCount,
-        0,
-      );
-      const avgDuration = messageCount > 0 ? totalDuration / messageCount : 0;
-
-      // 从详细记录统计 Token 使用和唯一用户数
-      const detailRecords = await this.databaseService.getRecordsByTimeRange(
-        yesterday.getTime(),
-        yesterdayEnd.getTime(),
-      );
-
-      const tokenUsage = detailRecords.reduce((sum, record) => sum + (record.tokenUsage || 0), 0);
-      const uniqueUserIds = new Set(detailRecords.filter((r) => r.userId).map((r) => r.userId!));
-      const uniqueUsers = uniqueUserIds.size;
-
-      // 4. 构造每日统计对象
-      const dailyStats: DailyStats = {
-        date: dateKey,
-        messageCount,
-        successCount,
-        avgDuration: Math.round(avgDuration),
-        tokenUsage,
-        uniqueUsers,
-      };
-
-      // 5. 保存到 Supabase
-      await this.databaseService.saveDailyStats(dailyStats);
-
-      const elapsed = Date.now() - startTime;
-      this.logger.log(
-        `每日统计聚合完成: ${dateKey}, ` +
-          `消息数=${messageCount}, Token=${tokenUsage}, ` +
-          `唯一用户=${uniqueUsers}, 耗时=${elapsed}ms`,
-      );
-    } catch (error) {
-      this.logger.error('每日统计聚合任务失败:', error);
     }
   }
 }
