@@ -33,6 +33,13 @@ pnpm run test:cov      # Test coverage
 
 # Single test file
 pnpm run test -- message.service.spec.ts
+
+# Database Migrations (Supabase CLI)
+pnpm run db:new <name>  # Create new migration
+pnpm run db:push        # Apply migrations to remote
+pnpm run db:status      # List migration status
+pnpm run db:pull        # Pull remote schema changes
+pnpm run db:diff        # Generate diff migration
 ```
 
 ## Architecture
@@ -40,6 +47,11 @@ pnpm run test -- message.service.spec.ts
 ### DDD Layered Architecture (2 Business Domains)
 
 ```
+supabase/
+├── config.toml                     # Supabase project configuration
+└── migrations/                     # Database migrations (YYYYMMDDHHMMSS_*.sql)
+    └── 20260310000000_baseline.sql # Full schema baseline (12 tables, 19 functions)
+
 src/
 ├── core/                           # Infrastructure Layer (Horizontal)
 │   ├── client-http/                # HTTP client factory (Bearer Token)

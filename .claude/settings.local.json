@@ -407,7 +407,13 @@
       "Bash(npx jest data-cleanup.service.spec.ts --no-coverage)",
       "Bash(npx jest --testPathPattern='data-cleanup' --no-coverage)",
       "Bash(npx jest --no-coverage)",
-      "Bash(npx jest src/core/monitoring/data-cleanup.service.spec.ts --no-coverage)"
+      "Bash(npx jest src/core/monitoring/data-cleanup.service.spec.ts --no-coverage)",
+      "Bash(npx supabase init)",
+      "Bash(npx supabase link --project-ref uvmbxcilpteaiizplcyp)",
+      "Bash(SUPABASE_ACCESS_TOKEN=sbp_f2aff494adfdf1759b54c40cf5008cb1aaac40ae npx supabase link --project-ref uvmbxcilpteaiizplcyp)",
+      "Bash(npx supabase login --token sbp_f2aff494adfdf1759b54c40cf5008cb1aaac40ae)",
+      "Bash(npx supabase db pull)",
+      "Bash(npx supabase db pull --debug)"
     ],
     "deny": [
       "Bash(git restore:*)",
