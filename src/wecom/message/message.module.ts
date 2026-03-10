@@ -6,7 +6,7 @@ import { MessageService } from './message.service';
 import { MessageProcessor } from './message.processor';
 import { AgentModule } from '@agent';
 import { MessageSenderModule } from '../message-sender/message-sender.module';
-import { SupabaseModule } from '@core/supabase';
+import { SupabaseModule } from '@supabase';
 
 // 导入子服务
 import { MessageDeduplicationService } from './services/message-deduplication.service';

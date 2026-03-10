@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { BaseRepository } from '@core/supabase/repositories/base.repository';
-import { SupabaseService } from '@core/supabase';
-import { BatchStatus, BatchSource, TestType } from '../enums';
+import { BaseRepository } from '../base.repository';
+import { SupabaseService } from '../supabase.service';
+import { BatchStatus, BatchSource, TestType } from '@test-suite/enums';
 
 /**
  * 测试批次（数据库格式）
@@ -119,43 +119,33 @@ export class TestBatchRepository extends BaseRepository {
     offset = 0,
     testType?: TestType,
   ): Promise<{ data: TestBatch[]; total: number }> {
-    // 构建查询参数
-    const params: Record<string, string | number> = {
-      order: 'created_at.desc',
-      limit,
-      offset,
-    };
-
-    // 根据测试类型过滤（使用 test_type 字段）
-    if (testType) {
-      params['test_type'] = `eq.${testType}`;
-    }
-
-    const response = await this.getClient().get<TestBatch[]>(`/${this.tableName}`, {
-      params,
-      headers: {
-        Prefer: 'count=exact',
-      },
-    });
-
-    // Supabase 返回 content-range header: "0-19/42" 格式
-    const contentRange = response.headers['content-range'];
-    let total = response.data.length;
-    if (contentRange) {
-      const match = contentRange.match(/\/(\d+)$/);
-      if (match) {
-        total = parseInt(match[1], 10);
+    if (!this.isAvailable()) return { data: [], total: 0 };
+    try {
+      let query = this.getClient()
+        .from(this.tableName)
+        .select('*', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1);
+      if (testType) {
+        query = query.eq('test_type', testType);
       }
+      const { data, error, count } = await query;
+      if (error) {
+        this.handleError('SELECT', error);
+        return { data: [], total: 0 };
+      }
+      return { data: (data as TestBatch[]) ?? [], total: count ?? 0 };
+    } catch (error) {
+      this.handleError('SELECT', error);
+      return { data: [], total: 0 };
     }
-
-    return { data: response.data, total };
   }
 
   /**
    * 获取批次详情
    */
   async findById(batchId: string): Promise<TestBatch | null> {
-    return this.selectOne<TestBatch>({ id: `eq.${batchId}` });
+    return this.selectOne<TestBatch>('*', (q) => q.eq('id', batchId));
   }
 
   // ==================== 状态管理 ====================
@@ -195,7 +185,7 @@ export class TestBatchRepository extends BaseRepository {
       updateData.completed_at = new Date().toISOString();
     }
 
-    await this.update({ id: `eq.${batchId}` }, updateData);
+    await this.update(updateData, (q) => q.eq('id', batchId));
     this.logger.log(`[Batch] 状态更新: ${batchId} ${currentStatus} → ${newStatus}`);
   }
 
@@ -206,7 +196,6 @@ export class TestBatchRepository extends BaseRepository {
    */
   async updateStats(batchId: string, stats: BatchStatsData): Promise<void> {
     await this.update(
-      { id: `eq.${batchId}` },
       {
         total_cases: stats.totalCases,
         executed_count: stats.executedCount,
@@ -217,6 +206,7 @@ export class TestBatchRepository extends BaseRepository {
         avg_duration_ms: stats.avgDurationMs,
         avg_token_usage: stats.avgTokenUsage,
       },
+      (q) => q.eq('id', batchId),
     );
   }
 }

@@ -35,7 +35,7 @@ export {
   TestExecutionRepository,
   type TestBatch,
   type TestExecution,
-} from './repositories';
+} from '@supabase/test-suite';
 
 // 枚举
 export {

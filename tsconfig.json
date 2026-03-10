@@ -29,7 +29,17 @@
       "@wecom": ["src/wecom"],
       "@wecom/*": ["src/wecom/*"],
       "@shared": ["src/shared"],
-      "@shared/*": ["src/shared/*"]
+      "@shared/*": ["src/shared/*"],
+      "@test-suite": ["src/test-suite"],
+      "@test-suite/*": ["src/test-suite/*"],
+      "@supabase": ["src/supabase"],
+      "@supabase/*": ["src/supabase/*"],
+      "@supabase/config": ["src/supabase/config"],
+      "@supabase/user": ["src/supabase/user"],
+      "@supabase/agent": ["src/supabase/agent"],
+      "@supabase/message": ["src/supabase/message"],
+      "@supabase/monitoring": ["src/supabase/monitoring"],
+      "@supabase/test-suite": ["src/supabase/test-suite"]
     }
   },
   "include": ["src/**/*"],

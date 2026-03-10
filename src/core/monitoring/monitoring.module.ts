@@ -1,15 +1,18 @@
 import { Module, Global, forwardRef } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
-import { HttpModule } from '@core/client-http/http.module';
 import { MonitoringService } from './monitoring.service';
 import { MonitoringController } from './monitoring.controller';
 import { DashboardController } from './dashboard.controller';
-import { MonitoringDatabaseService } from './monitoring-database.service';
+import { MonitoringDashboardController } from './controllers/monitoring-dashboard.controller';
+import { MonitoringChatController } from './controllers/monitoring-chat.controller';
+import { MonitoringMessagesController } from './controllers/monitoring-messages.controller';
+import { MonitoringAdminController } from './controllers/monitoring-admin.controller';
 import { MonitoringCacheService } from './monitoring-cache.service';
-import { MonitoringMigrationService } from './monitoring-migration.service';
 import { MonitoringAlertService } from './monitoring-alert.service';
 import { DataCleanupService } from './data-cleanup.service';
 import { HourlyStatsAggregatorService } from './hourly-stats-aggregator.service';
+import { MessageTrackingService } from './services/message-tracking.service';
+import { DashboardStatsService } from './services/dashboard-stats.service';
 import { MessageModule } from '@wecom/message/message.module';
 import { FeishuModule } from '@/core/feishu/feishu.module';
 
@@ -17,39 +20,55 @@ import { FeishuModule } from '@/core/feishu/feishu.module';
  * 监控模块
  * 全局模块，可在整个应用中使用
  *
- * 服务说明:
- * - MonitoringService: 核心监控数据收集与统计
- * - MonitoringDatabaseService: Supabase 数据持久化（详细记录、小时统计、错误日志）
- * - MonitoringCacheService: Redis 实时指标缓存（计数器、活跃用户、并发数）
- * - DataCleanupService: 定期清理过期数据 (聊天消息、历史监控数据)
+ * 服务架构:
+ * - MonitoringService: 门面层，统一对外 API
+ *   - MessageTrackingService: 消息生命周期追踪
+ *   - DashboardStatsService: Dashboard 数据聚合与统计
+ * - MonitoringCacheService: Redis 实时指标缓存
+ * - DataCleanupService: 定期清理过期数据
  * - MonitoringAlertService: 业务指标主动告警
+ * - HourlyStatsAggregatorService: 小时统计历史聚合
  *
- * 存储策略:
- * - Supabase: 详细记录、小时统计、错误日志、每日统计（永久存储）
- * - Redis: 全局计数器、活跃用户/会话、实时并发数（24h TTL）
+ * 注：数据库访问通过全局 SupabaseModule 的 Repository 直接注入，
+ *     无需中间委托层 MonitoringDatabaseService。
+ *
+ * 控制器架构:
+ * - MonitoringDashboardController: Dashboard 概览、趋势、指标、用户
+ * - MonitoringChatController: 聊天记录、会话列表
+ * - MonitoringMessagesController: 消息处理记录
+ * - MonitoringAdminController: 数据管理（用户托管、黑名单、Agent 配置）→ 直接用 Supabase Service
+ * - MonitoringController: 运行时状态（AI 开关、聚合开关、Worker）→ MessageService/MessageProcessor
+ * - DashboardController: SPA 静态资源路由
  */
 @Global()
 @Module({
-  imports: [
-    ScheduleModule.forRoot(), // 启用定时任务
-    HttpModule, // HTTP 客户端工厂
-    forwardRef(() => MessageModule),
-    FeishuModule, // 飞书通知服务
+  imports: [ScheduleModule.forRoot(), forwardRef(() => MessageModule), FeishuModule],
+  controllers: [
+    MonitoringDashboardController,
+    MonitoringChatController,
+    MonitoringMessagesController,
+    MonitoringAdminController,
+    MonitoringController,
+    DashboardController,
   ],
-  controllers: [MonitoringController, DashboardController],
   providers: [
-    MonitoringService,
-    MonitoringDatabaseService,
+    // 基础服务
     MonitoringCacheService,
-    MonitoringMigrationService, // 数据迁移服务
-    DataCleanupService, // 定期清理过期数据
-    MonitoringAlertService, // 业务指标告警
-    HourlyStatsAggregatorService, // 小时统计历史聚合
+    HourlyStatsAggregatorService,
+    // 核心子服务
+    MessageTrackingService,
+    DashboardStatsService,
+    // 门面层
+    MonitoringService,
+    // 辅助服务
+    DataCleanupService,
+    MonitoringAlertService,
   ],
   exports: [
     MonitoringService,
+    MessageTrackingService,
+    DashboardStatsService,
     MonitoringAlertService,
-    MonitoringDatabaseService,
     MonitoringCacheService,
     DataCleanupService,
     HourlyStatsAggregatorService,

@@ -1,12 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { MonitoringDatabaseService } from './monitoring-database.service';
-import { HourlyStats } from './interfaces/monitoring.interface';
 import {
+  MonitoringHourlyStatsRepository,
   DashboardOverviewStats,
   DashboardFallbackStats,
   DailyTrendData,
   HourlyTrendData,
-} from '@core/supabase/repositories';
+} from '@supabase/monitoring';
+import { HourlyStats } from './interfaces/monitoring.interface';
 
 /**
  * 小时统计聚合服务
@@ -18,13 +18,13 @@ import {
 export class HourlyStatsAggregatorService {
   private readonly logger = new Logger(HourlyStatsAggregatorService.name);
 
-  constructor(private readonly databaseService: MonitoringDatabaseService) {}
+  constructor(private readonly hourlyStatsRepository: MonitoringHourlyStatsRepository) {}
 
   /**
    * 从小时统计聚合概览数据
    */
   async getOverviewFromHourly(startDate: Date, endDate: Date): Promise<DashboardOverviewStats> {
-    const rows = await this.databaseService.getHourlyStatsByDateRange(startDate, endDate);
+    const rows = await this.hourlyStatsRepository.getHourlyStatsByDateRange(startDate, endDate);
 
     if (rows.length === 0) {
       return {
@@ -64,7 +64,7 @@ export class HourlyStatsAggregatorService {
    * 从小时统计聚合降级数据
    */
   async getFallbackFromHourly(startDate: Date, endDate: Date): Promise<DashboardFallbackStats> {
-    const rows = await this.databaseService.getHourlyStatsByDateRange(startDate, endDate);
+    const rows = await this.hourlyStatsRepository.getHourlyStatsByDateRange(startDate, endDate);
 
     const totalCount = this.sumField(rows, 'fallbackCount');
     const successCount = this.sumField(rows, 'fallbackSuccessCount');
@@ -82,7 +82,7 @@ export class HourlyStatsAggregatorService {
    * 从小时统计聚合每日趋势
    */
   async getDailyTrendFromHourly(startDate: Date, endDate: Date): Promise<DailyTrendData[]> {
-    const rows = await this.databaseService.getHourlyStatsByDateRange(startDate, endDate);
+    const rows = await this.hourlyStatsRepository.getHourlyStatsByDateRange(startDate, endDate);
 
     // 按日期分组
     const dayMap = new Map<string, HourlyStats[]>();
@@ -91,7 +91,7 @@ export class HourlyStatsAggregatorService {
       if (!dayMap.has(dateKey)) {
         dayMap.set(dateKey, []);
       }
-      dayMap.get(dateKey)!.push(row);
+      dayMap.get(dateKey)!.push(row as unknown as HourlyStats);
     }
 
     // 聚合每日数据
@@ -114,7 +114,7 @@ export class HourlyStatsAggregatorService {
    * 从小时统计返回小时趋势（直接映射）
    */
   async getHourlyTrendFromHourly(startDate: Date, endDate: Date): Promise<HourlyTrendData[]> {
-    const rows = await this.databaseService.getHourlyStatsByDateRange(startDate, endDate);
+    const rows = await this.hourlyStatsRepository.getHourlyStatsByDateRange(startDate, endDate);
 
     return rows.map((row) => ({
       hour: row.hour,
@@ -141,7 +141,7 @@ export class HourlyStatsAggregatorService {
       uniqueUsers: number;
     }>
   > {
-    const rows = await this.databaseService.getHourlyStatsByDateRange(startDate, endDate);
+    const rows = await this.hourlyStatsRepository.getHourlyStatsByDateRange(startDate, endDate);
 
     return rows.map((row) => ({
       minute: row.hour, // 历史数据降级为小时粒度
@@ -166,7 +166,7 @@ export class HourlyStatsAggregatorService {
       avgDuration: number;
     }>
   > {
-    const rows = await this.databaseService.getHourlyStatsByDateRange(startDate, endDate);
+    const rows = await this.hourlyStatsRepository.getHourlyStatsByDateRange(startDate, endDate);
 
     // 合并所有小时的 scenarioStats JSONB
     const scenarioMap = new Map<
@@ -211,7 +211,7 @@ export class HourlyStatsAggregatorService {
       useCount: number;
     }>
   > {
-    const rows = await this.databaseService.getHourlyStatsByDateRange(startDate, endDate);
+    const rows = await this.hourlyStatsRepository.getHourlyStatsByDateRange(startDate, endDate);
 
     // 合并所有小时的 toolStats JSONB
     const toolMap = new Map<string, number>();

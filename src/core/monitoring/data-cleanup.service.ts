@@ -1,12 +1,9 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { SupabaseService } from '@core/supabase';
-import {
-  ChatMessageRepository,
-  MessageProcessingRepository,
-  UserHostingRepository,
-} from '@core/supabase/repositories';
-import { MonitoringDatabaseService } from './monitoring-database.service';
+import { SupabaseService } from '@supabase';
+import { ChatMessageRepository, MessageProcessingRepository } from '@supabase/message';
+import { MonitoringErrorLogRepository } from '@supabase/monitoring';
+import { UserHostingRepository } from '@supabase/user';
 
 /**
  * 数据清理服务（分层存储策略）
@@ -35,7 +32,7 @@ export class DataCleanupService implements OnModuleInit {
     private readonly chatMessageRepository: ChatMessageRepository,
     private readonly messageProcessingRepository: MessageProcessingRepository,
     private readonly userHostingRepository: UserHostingRepository,
-    private readonly monitoringDatabaseService: MonitoringDatabaseService,
+    private readonly errorLogRepository: MonitoringErrorLogRepository,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -135,7 +132,7 @@ export class DataCleanupService implements OnModuleInit {
    */
   private async cleanupErrorLogs(): Promise<void> {
     try {
-      const deletedCount = await this.monitoringDatabaseService.cleanupErrorLogs(
+      const deletedCount = await this.errorLogRepository.cleanupErrorLogs(
         this.ERROR_LOGS_RETENTION_DAYS,
       );
       if (deletedCount > 0) {
@@ -220,9 +217,7 @@ export class DataCleanupService implements OnModuleInit {
     }
 
     try {
-      errorLogs = await this.monitoringDatabaseService.cleanupErrorLogs(
-        this.ERROR_LOGS_RETENTION_DAYS,
-      );
+      errorLogs = await this.errorLogRepository.cleanupErrorLogs(this.ERROR_LOGS_RETENTION_DAYS);
     } catch {
       // ignore
     }

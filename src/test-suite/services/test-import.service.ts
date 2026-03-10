@@ -6,7 +6,7 @@ import { TestExecutionService } from './test-execution.service';
 import { FeishuTestSyncService } from './feishu-test-sync.service';
 import { ConversationTestService } from './conversation-test.service';
 import { TestSuiteProcessor } from '../test-suite.processor';
-import { ConversationSourceRepository } from '../repositories';
+import { ConversationSourceRepository } from '@supabase/test-suite';
 import {
   BatchStatus,
   BatchSource,

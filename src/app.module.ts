@@ -2,7 +2,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { HttpModule, RedisModule } from './core';
-import { SupabaseModule } from './core/supabase';
+import { SupabaseModule } from './supabase';
 import { MonitoringModule } from './core/monitoring/monitoring.module';
 import { LoggerModule } from './core/logger';
 import { FeishuModule } from './core/feishu';
@@ -23,14 +23,13 @@ import { validate } from './core/config/env.validation';
  *   │   ├── client-http/   - 客户端 HTTP 工具
  *   │   ├── response/      - 响应处理（拦截器、过滤器）
  *   │   ├── redis/         - Redis 缓存服务
- *   │   ├── supabase/      - Supabase 数据库服务
  *   │   ├── monitoring/    - 监控服务（指标、仪表盘）
- *   │   ├── alert/         - 告警服务
- *   │   ├── feishu-sync/   - 飞书同步服务
+ *   │   ├── feishu/        - 飞书服务（告警、通知、同步）
  *   │   └── config/        - 配置管理
  *   │
- *   ├── agent/             - AI Agent 业务域
- *   └── wecom/             - 企业微信业务域
+ *   ├── supabase/           - 数据层（Repository + 数据服务）
+ *   ├── agent/              - AI Agent 业务域
+ *   └── wecom/              - 企业微信业务域
  */
 @Module({
   imports: [
@@ -51,7 +50,7 @@ import { validate } from './core/config/env.validation';
     // ==================== 核心层 (Core Layer) ====================
     HttpModule, // HTTP 客户端服务
     RedisModule, // Redis 缓存服务（全局）
-    SupabaseModule, // Supabase 数据库服务（全局）- 系统配置和用户托管状态持久化
+    SupabaseModule, // 数据层（全局）- Repository + 数据服务
     MonitoringModule, // 监控服务（全局）
     FeishuModule, // 飞书统一服务（告警、通知、多维表格同步）
     LoggerModule, // 实时日志推送（仅开发环境）

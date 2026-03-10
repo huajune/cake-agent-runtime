@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { BaseRepository } from '@core/supabase/repositories/base.repository';
-import { SupabaseService } from '@core/supabase';
-import { ConversationSourceStatus } from '../enums';
+import { BaseRepository } from '../base.repository';
+import { SupabaseService } from '../supabase.service';
+import { ConversationSourceStatus } from '@test-suite/enums';
 
 /**
  * 对话源记录（数据库格式）
@@ -91,7 +91,7 @@ export class ConversationSourceRepository extends BaseRepository {
    * 根据ID查询对话源
    */
   async findById(id: string): Promise<ConversationSourceRecord | null> {
-    return this.selectOne<ConversationSourceRecord>({ id: `eq.${id}` });
+    return this.selectOne<ConversationSourceRecord>('*', (q) => q.eq('id', id));
   }
 
   /**
@@ -101,16 +101,13 @@ export class ConversationSourceRepository extends BaseRepository {
     batchId: string,
     filters?: ConversationSourceFilters,
   ): Promise<ConversationSourceRecord[]> {
-    const params: Record<string, string> = {
-      batch_id: `eq.${batchId}`,
-      order: 'created_at.asc',
-    };
-
-    if (filters?.status) {
-      params.status = `eq.${filters.status}`;
-    }
-
-    return this.select<ConversationSourceRecord>(params);
+    return this.select<ConversationSourceRecord>('*', (q) => {
+      let r = q.eq('batch_id', batchId).order('created_at');
+      if (filters?.status) {
+        r = r.eq('status', filters.status);
+      }
+      return r;
+    });
   }
 
   /**
@@ -122,35 +119,30 @@ export class ConversationSourceRepository extends BaseRepository {
     pageSize: number,
     filters?: ConversationSourceFilters,
   ): Promise<{ data: ConversationSourceRecord[]; total: number }> {
-    const params: Record<string, string> = {
-      batch_id: `eq.${batchId}`,
-      order: 'created_at.asc',
-      limit: String(pageSize),
-      offset: String((page - 1) * pageSize),
-    };
-
-    if (filters?.status) {
-      params.status = `eq.${filters.status}`;
-    }
-
     // 查询数据
-    const data = await this.select<ConversationSourceRecord>(params);
+    const data = await this.select<ConversationSourceRecord>('*', (q) => {
+      let r = q
+        .eq('batch_id', batchId)
+        .order('created_at')
+        .range((page - 1) * pageSize, page * pageSize - 1);
+      if (filters?.status) {
+        r = r.eq('status', filters.status);
+      }
+      return r;
+    });
 
     // 查询总数
-    const countParams: Record<string, string> = {
-      batch_id: `eq.${batchId}`,
-      select: 'count',
-    };
-
-    if (filters?.status) {
-      countParams.status = `eq.${filters.status}`;
-    }
-
-    const countResult = await this.count(countParams);
+    const total = await this.count((q) => {
+      let r = q.eq('batch_id', batchId);
+      if (filters?.status) {
+        r = r.eq('status', filters.status);
+      }
+      return r;
+    });
 
     return {
       data,
-      total: countResult,
+      total,
     };
   }
 
@@ -158,9 +150,9 @@ export class ConversationSourceRepository extends BaseRepository {
    * 根据对话ID查询对话源
    */
   async findByConversationId(conversationId: string): Promise<ConversationSourceRecord | null> {
-    return this.selectOne<ConversationSourceRecord>({
-      conversation_id: `eq.${conversationId}`,
-    });
+    return this.selectOne<ConversationSourceRecord>('*', (q) =>
+      q.eq('conversation_id', conversationId),
+    );
   }
 
   // ==================== 更新操作 ====================
@@ -186,7 +178,7 @@ export class ConversationSourceRepository extends BaseRepository {
       updateData.min_similarity_score = data.min_similarity_score;
     }
 
-    const results = await this.update<ConversationSourceRecord>({ id: `eq.${id}` }, updateData);
+    const results = await this.update<ConversationSourceRecord>(updateData, (q) => q.eq('id', id));
 
     return results[0];
   }
@@ -195,7 +187,7 @@ export class ConversationSourceRepository extends BaseRepository {
    * 更新对话源状态
    */
   async updateStatus(id: string, status: ConversationSourceStatus): Promise<void> {
-    await this.update({ id: `eq.${id}` }, { status });
+    await this.update({ status }, (q) => q.eq('id', id));
   }
 
   // ==================== 统计操作 ====================
@@ -210,10 +202,9 @@ export class ConversationSourceRepository extends BaseRepository {
     completed: number;
     failed: number;
   }> {
-    const records = await this.select<ConversationSourceRecord>({
-      batch_id: `eq.${batchId}`,
-      select: 'status',
-    });
+    const records = await this.select<ConversationSourceRecord>('status', (q) =>
+      q.eq('batch_id', batchId),
+    );
 
     return {
       total: records.length,
@@ -228,11 +219,9 @@ export class ConversationSourceRepository extends BaseRepository {
    * 计算批次的平均相似度
    */
   async calculateBatchAvgSimilarity(batchId: string): Promise<number | null> {
-    const records = await this.select<ConversationSourceRecord>({
-      batch_id: `eq.${batchId}`,
-      status: `eq.${ConversationSourceStatus.COMPLETED}`,
-      select: 'avg_similarity_score',
-    });
+    const records = await this.select<ConversationSourceRecord>('avg_similarity_score', (q) =>
+      q.eq('batch_id', batchId).eq('status', ConversationSourceStatus.COMPLETED),
+    );
 
     const validScores = records
       .map((r) => r.avg_similarity_score)

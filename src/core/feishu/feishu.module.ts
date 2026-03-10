@@ -1,7 +1,7 @@
 import { Module, Global } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
-import { SupabaseModule } from '@core/supabase';
+import { SupabaseModule } from '@supabase';
 import { FeishuApiService } from './services/feishu-api.service';
 import { FeishuBitableApiService } from './services/feishu-bitable-api.service';
 import { FeishuWebhookService } from './services/feishu-webhook.service';

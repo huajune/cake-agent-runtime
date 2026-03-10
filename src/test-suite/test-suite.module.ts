@@ -15,11 +15,6 @@ import {
   ConversationTestService,
   LlmEvaluationService,
 } from './services';
-import {
-  TestBatchRepository,
-  TestExecutionRepository,
-  ConversationSourceRepository,
-} from './repositories';
 import { AgentModule } from '@agent';
 import { FeishuModule } from '@core/feishu';
 
@@ -69,12 +64,8 @@ import { FeishuModule } from '@core/feishu';
   ],
   controllers: [TestSuiteController],
   providers: [
-    // 仓储层
-    TestBatchRepository,
-    TestExecutionRepository,
-    ConversationSourceRepository,
-
     // 基础服务（无依赖其他子服务）
+    // 注：Repository 由 @Global SupabaseModule 提供
     TestStatsService,
     FeishuTestSyncService,
     LlmEvaluationService,
@@ -108,9 +99,6 @@ import { FeishuModule } from '@core/feishu';
     TestStatsService,
     ConversationTestService,
     LlmEvaluationService,
-    TestBatchRepository,
-    TestExecutionRepository,
-    ConversationSourceRepository,
   ],
 })
 export class TestSuiteModule {}

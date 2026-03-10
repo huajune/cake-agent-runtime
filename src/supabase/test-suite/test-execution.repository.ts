@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { BaseRepository } from '@core/supabase/repositories/base.repository';
-import { SupabaseService } from '@core/supabase';
-import { ExecutionStatus, ReviewStatus } from '../enums';
+import { BaseRepository } from '../base.repository';
+import { SupabaseService } from '../supabase.service';
+import { ExecutionStatus, ReviewStatus } from '@test-suite/enums';
 
 /**
  * 测试执行记录（数据库格式）
@@ -174,40 +174,35 @@ export class TestExecutionRepository extends BaseRepository {
    * 获取执行记录详情
    */
   async findById(executionId: string): Promise<TestExecution | null> {
-    return this.selectOne<TestExecution>({ id: `eq.${executionId}` });
+    return this.selectOne<TestExecution>('*', (q) => q.eq('id', executionId));
   }
 
   /**
    * 获取执行记录列表
    */
   async findMany(limit = 50, offset = 0): Promise<TestExecution[]> {
-    return this.select<TestExecution>({
-      order: 'created_at.desc',
-      limit: String(limit),
-      offset: String(offset),
-    });
+    return this.select<TestExecution>('*', (q) =>
+      q.order('created_at', { ascending: false }).range(offset, offset + limit - 1),
+    );
   }
 
   /**
    * 获取批次的执行记录（完整数据，用于详情展示）
    */
   async findByBatchId(batchId: string, filters?: ExecutionFilters): Promise<TestExecution[]> {
-    const params: Record<string, string> = {
-      batch_id: `eq.${batchId}`,
-      order: 'created_at.asc',
-    };
-
-    if (filters?.reviewStatus) {
-      params.review_status = `eq.${filters.reviewStatus}`;
-    }
-    if (filters?.executionStatus) {
-      params.execution_status = `eq.${filters.executionStatus}`;
-    }
-    if (filters?.category) {
-      params.category = `eq.${filters.category}`;
-    }
-
-    return this.select<TestExecution>(params);
+    return this.select<TestExecution>('*', (q) => {
+      let r = q.eq('batch_id', batchId).order('created_at');
+      if (filters?.reviewStatus) {
+        r = r.eq('review_status', filters.reviewStatus);
+      }
+      if (filters?.executionStatus) {
+        r = r.eq('execution_status', filters.executionStatus);
+      }
+      if (filters?.category) {
+        r = r.eq('category', filters.category);
+      }
+      return r;
+    });
   }
 
   /**
@@ -229,24 +224,22 @@ export class TestExecutionRepository extends BaseRepository {
       | 'failure_reason'
     >[]
   > {
-    const params: Record<string, string> = {
-      batch_id: `eq.${batchId}`,
-      order: 'created_at.asc',
-      // 只选择统计所需字段，排除 agent_request, agent_response, test_input, actual_output 等大字段
-      select: 'id,execution_status,review_status,category,duration_ms,token_usage,failure_reason',
-    };
-
-    if (filters?.reviewStatus) {
-      params.review_status = `eq.${filters.reviewStatus}`;
-    }
-    if (filters?.executionStatus) {
-      params.execution_status = `eq.${filters.executionStatus}`;
-    }
-    if (filters?.category) {
-      params.category = `eq.${filters.category}`;
-    }
-
-    return this.select(params);
+    return this.select(
+      'id,execution_status,review_status,category,duration_ms,token_usage,failure_reason',
+      (q) => {
+        let r = q.eq('batch_id', batchId).order('created_at');
+        if (filters?.reviewStatus) {
+          r = r.eq('review_status', filters.reviewStatus);
+        }
+        if (filters?.executionStatus) {
+          r = r.eq('execution_status', filters.executionStatus);
+        }
+        if (filters?.category) {
+          r = r.eq('category', filters.category);
+        }
+        return r;
+      },
+    );
   }
 
   /**
@@ -268,25 +261,22 @@ export class TestExecutionRepository extends BaseRepository {
       | 'created_at'
     > & { input_message?: string })[]
   > {
-    const params: Record<string, string> = {
-      batch_id: `eq.${batchId}`,
-      order: 'created_at.asc',
-      // 列表展示需要的字段：id, case_id, case_name, category, execution_status, review_status
-      // 排除大字段：agent_request, agent_response, test_input, actual_output, tool_calls
-      select: 'id,case_id,case_name,category,execution_status,review_status,created_at,test_input',
-    };
-
-    if (filters?.reviewStatus) {
-      params.review_status = `eq.${filters.reviewStatus}`;
-    }
-    if (filters?.executionStatus) {
-      params.execution_status = `eq.${filters.executionStatus}`;
-    }
-    if (filters?.category) {
-      params.category = `eq.${filters.category}`;
-    }
-
-    const results = await this.select<TestExecution>(params);
+    const results = await this.select<TestExecution>(
+      'id,case_id,case_name,category,execution_status,review_status,created_at,test_input',
+      (q) => {
+        let r = q.eq('batch_id', batchId).order('created_at');
+        if (filters?.reviewStatus) {
+          r = r.eq('review_status', filters.reviewStatus);
+        }
+        if (filters?.executionStatus) {
+          r = r.eq('execution_status', filters.executionStatus);
+        }
+        if (filters?.category) {
+          r = r.eq('category', filters.category);
+        }
+        return r;
+      },
+    );
 
     // 从 test_input 中提取 input_message，然后清除大字段
     return results.map((r) => ({
@@ -311,11 +301,9 @@ export class TestExecutionRepository extends BaseRepository {
     timeout: number;
   }> {
     // 获取所有非 pending 状态的记录
-    const records = await this.select<TestExecution>({
-      batch_id: `eq.${batchId}`,
-      execution_status: 'neq.pending',
-      select: 'execution_status',
-    });
+    const records = await this.select<TestExecution>('execution_status', (q) =>
+      q.eq('batch_id', batchId).neq('execution_status', 'pending'),
+    );
 
     return {
       total: records.length,
@@ -337,10 +325,6 @@ export class TestExecutionRepository extends BaseRepository {
   ): Promise<void> {
     await this.update(
       {
-        batch_id: `eq.${batchId}`,
-        case_id: `eq.${caseId}`,
-      },
-      {
         agent_request: this.sanitizeAgentRequest(data.agentRequest) || null,
         agent_response: data.agentResponse || null,
         actual_output: data.actualOutput || '',
@@ -350,6 +334,7 @@ export class TestExecutionRepository extends BaseRepository {
         token_usage: data.tokenUsage || null,
         error_message: data.errorMessage || null,
       },
+      (q) => q.eq('batch_id', batchId).eq('case_id', caseId),
     );
   }
 
@@ -358,7 +343,6 @@ export class TestExecutionRepository extends BaseRepository {
    */
   async updateReview(executionId: string, review: UpdateReviewData): Promise<TestExecution> {
     const results = await this.update<TestExecution>(
-      { id: `eq.${executionId}` },
       {
         review_status: review.reviewStatus,
         review_comment: review.reviewComment || null,
@@ -367,6 +351,7 @@ export class TestExecutionRepository extends BaseRepository {
         reviewed_by: review.reviewedBy || null,
         reviewed_at: new Date().toISOString(),
       },
+      (q) => q.eq('id', executionId),
     );
 
     return results[0];
@@ -380,7 +365,6 @@ export class TestExecutionRepository extends BaseRepository {
     review: UpdateReviewData,
   ): Promise<TestExecution[]> {
     return this.update<TestExecution>(
-      { id: `in.(${executionIds.join(',')})` },
       {
         review_status: review.reviewStatus,
         review_comment: review.reviewComment || null,
@@ -389,6 +373,7 @@ export class TestExecutionRepository extends BaseRepository {
         reviewed_by: review.reviewedBy || null,
         reviewed_at: new Date().toISOString(),
       },
+      (q) => q.in('id', executionIds),
     );
   }
 
@@ -401,20 +386,18 @@ export class TestExecutionRepository extends BaseRepository {
     conversationSourceId: string,
     turnNumber: number,
   ): Promise<TestExecution | null> {
-    return this.selectOne<TestExecution>({
-      conversation_source_id: `eq.${conversationSourceId}`,
-      turn_number: `eq.${turnNumber}`,
-    });
+    return this.selectOne<TestExecution>('*', (q) =>
+      q.eq('conversation_source_id', conversationSourceId).eq('turn_number', turnNumber),
+    );
   }
 
   /**
    * 根据对话源ID查询所有轮次的执行记录
    */
   async findByConversationSourceId(conversationSourceId: string): Promise<TestExecution[]> {
-    return this.select<TestExecution>({
-      conversation_source_id: `eq.${conversationSourceId}`,
-      order: 'turn_number.asc',
-    });
+    return this.select<TestExecution>('*', (q) =>
+      q.eq('conversation_source_id', conversationSourceId).order('turn_number'),
+    );
   }
 
   /**
@@ -442,7 +425,7 @@ export class TestExecutionRepository extends BaseRepository {
       data.agent_request !== undefined
         ? { ...data, agent_request: this.sanitizeAgentRequest(data.agent_request) }
         : data;
-    const results = await this.update<TestExecution>({ id: `eq.${id}` }, sanitizedData);
+    const results = await this.update<TestExecution>(sanitizedData, (q) => q.eq('id', id));
     return results[0];
   }
 }

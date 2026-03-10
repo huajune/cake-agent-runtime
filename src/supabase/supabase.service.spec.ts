@@ -1,27 +1,19 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from './supabase.service';
-import { HttpClientFactory } from '@core/client-http';
-import { RedisService } from '@core/redis';
+
+// Mock @supabase/supabase-js
+const mockSupabaseClient = {
+  from: jest.fn().mockReturnThis(),
+  rpc: jest.fn(),
+};
+
+jest.mock('@supabase/supabase-js', () => ({
+  createClient: jest.fn(() => mockSupabaseClient),
+}));
 
 describe('SupabaseService', () => {
   let service: SupabaseService;
-
-  const mockHttpClient = {
-    get: jest.fn(),
-    post: jest.fn(),
-    patch: jest.fn(),
-    delete: jest.fn(),
-  };
-
-  const mockHttpClientFactory = {
-    createWithBearerAuth: jest.fn().mockReturnValue(mockHttpClient),
-  };
-
-  const mockRedisService = {
-    get: jest.fn(),
-    setex: jest.fn(),
-  };
 
   const mockConfigService = {
     get: jest.fn((key: string, defaultValue?: string) => {
@@ -45,14 +37,6 @@ describe('SupabaseService', () => {
           provide: ConfigService,
           useValue: mockConfigService,
         },
-        {
-          provide: HttpClientFactory,
-          useValue: mockHttpClientFactory,
-        },
-        {
-          provide: RedisService,
-          useValue: mockRedisService,
-        },
       ],
     }).compile();
 
@@ -64,13 +48,15 @@ describe('SupabaseService', () => {
   });
 
   describe('initialization', () => {
-    it('should initialize HTTP client when credentials are provided', () => {
-      expect(mockHttpClientFactory.createWithBearerAuth).toHaveBeenCalledWith(
-        expect.objectContaining({
-          baseURL: 'https://test.supabase.co/rest/v1',
-          timeout: 120000,
-        }),
+    it('should initialize Supabase client when credentials are provided', () => {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { createClient } = require('@supabase/supabase-js');
+      expect(createClient).toHaveBeenCalledWith(
+        'https://test.supabase.co',
         'test-service-key',
+        expect.objectContaining({
+          auth: { autoRefreshToken: false, persistSession: false },
+        }),
       );
     });
 
@@ -80,32 +66,11 @@ describe('SupabaseService', () => {
     });
   });
 
-  describe('getHttpClient', () => {
-    it('should return HTTP client when initialized', () => {
-      const client = service.getHttpClient();
+  describe('getSupabaseClient', () => {
+    it('should return Supabase client when initialized', () => {
+      const client = service.getSupabaseClient();
       expect(client).toBeDefined();
-      expect(client).toBe(mockHttpClient);
-    });
-  });
-
-  describe('getRedisService', () => {
-    it('should return Redis service', () => {
-      const redis = service.getRedisService();
-      expect(redis).toBe(mockRedisService);
-    });
-  });
-
-  describe('getCachePrefix', () => {
-    it('should return cache prefix', () => {
-      const prefix = service.getCachePrefix();
-      expect(prefix).toBe('supabase:');
-    });
-  });
-
-  describe('getConfigService', () => {
-    it('should return config service', () => {
-      const config = service.getConfigService();
-      expect(config).toBe(mockConfigService);
+      expect(client).toBe(mockSupabaseClient);
     });
   });
 
@@ -124,14 +89,6 @@ describe('SupabaseService', () => {
             provide: ConfigService,
             useValue: emptyConfigService,
           },
-          {
-            provide: HttpClientFactory,
-            useValue: mockHttpClientFactory,
-          },
-          {
-            provide: RedisService,
-            useValue: mockRedisService,
-          },
         ],
       }).compile();
 
@@ -143,8 +100,8 @@ describe('SupabaseService', () => {
       expect(uninitializedService.isClientInitialized()).toBe(false);
     });
 
-    it('should return null for HTTP client', () => {
-      expect(uninitializedService.getHttpClient()).toBeNull();
+    it('should return null for Supabase client', () => {
+      expect(uninitializedService.getSupabaseClient()).toBeNull();
     });
   });
 });

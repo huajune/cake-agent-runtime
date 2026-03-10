@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { BaseRepository } from './base.repository';
+import { BaseRepository } from '../base.repository';
 import { SupabaseService } from '../supabase.service';
 import {
   StorageMessageType,
@@ -61,6 +61,34 @@ export interface ChatMessageInput {
 }
 
 /**
+ * 会话列表查询的原始行
+ */
+interface SessionRawRow {
+  chat_id: string;
+  candidate_name?: string;
+  manager_name?: string;
+  content: string;
+  timestamp: string;
+  avatar?: string;
+  contact_type?: string;
+  role: string;
+}
+
+/**
+ * 会话摘要（分组后的结果）
+ */
+export interface ChatSessionSummary {
+  chatId: string;
+  candidateName?: string;
+  managerName?: string;
+  messageCount: number;
+  lastMessage?: string;
+  lastTimestamp?: number;
+  avatar?: string;
+  contactType?: string;
+}
+
+/**
  * 聊天消息 Repository
  *
  * 负责管理 chat_messages 表的操作：
@@ -110,10 +138,10 @@ export class ChatMessageRepository extends BaseRepository {
     try {
       const record = this.toDbRecord(message);
 
-      await this.insert(record, {
+      await this.upsert(record, {
         onConflict: 'message_id',
-        resolution: 'ignore-duplicates',
-        returnMinimal: true,
+        ignoreDuplicates: true,
+        returnData: false,
       });
 
       return true;
@@ -142,9 +170,9 @@ export class ChatMessageRepository extends BaseRepository {
     try {
       const records = privateMessages.map((m) => this.toDbRecord(m));
 
-      const count = await this.insertBatch(records, {
+      const count = await this.upsertBatch(records, {
         onConflict: 'message_id',
-        resolution: 'ignore-duplicates',
+        ignoreDuplicates: true,
       });
 
       this.logger.debug(`批量保存 ${count} 条聊天消息成功`);
@@ -173,13 +201,15 @@ export class ChatMessageRepository extends BaseRepository {
       const threeDaysAgo = new Date();
       threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
 
-      const results = await this.select<{ role: string; content: string; timestamp: string }>({
-        chat_id: `eq.${chatId}`,
-        timestamp: `gte.${threeDaysAgo.toISOString()}`,
-        select: 'role,content,timestamp',
-        order: 'timestamp.desc',
-        limit: String(limit),
-      });
+      const results = await this.select<{ role: string; content: string; timestamp: string }>(
+        'role,content,timestamp',
+        (q) =>
+          q
+            .eq('chat_id', chatId)
+            .gte('timestamp', threeDaysAgo.toISOString())
+            .order('timestamp', { ascending: false })
+            .limit(limit),
+      );
 
       // 返回时反转顺序（从旧到新）
       return results.reverse().map((m) => ({
@@ -217,12 +247,10 @@ export class ChatMessageRepository extends BaseRepository {
     }
 
     try {
-      const results = await this.select<ChatMessageRecord>({
-        chat_id: `eq.${chatId}`,
-        select:
-          'message_id,role,content,timestamp,candidate_name,manager_name,message_type,source,contact_type,is_self,avatar,external_user_id',
-        order: 'timestamp.asc',
-      });
+      const results = await this.select<ChatMessageRecord>(
+        'message_id,role,content,timestamp,candidate_name,manager_name,message_type,source,contact_type,is_self,avatar,external_user_id',
+        (q) => q.eq('chat_id', chatId).order('timestamp'),
+      );
 
       return results.map((m) => ({
         messageId: m.message_id,
@@ -277,10 +305,9 @@ export class ChatMessageRepository extends BaseRepository {
       endOfDay.setHours(23, 59, 59, 999);
 
       // 获取总数
-      const total = await this.count({
-        timestamp: `gte.${startOfDay.toISOString()}`,
-        and: `(timestamp.lte.${endOfDay.toISOString()})`,
-      });
+      const total = await this.count((q) =>
+        q.gte('timestamp', startOfDay.toISOString()).lte('timestamp', endOfDay.toISOString()),
+      );
 
       // 获取分页数据
       const offset = (page - 1) * pageSize;
@@ -292,14 +319,13 @@ export class ChatMessageRepository extends BaseRepository {
         timestamp: string;
         candidate_name?: string;
         manager_name?: string;
-      }>({
-        timestamp: `gte.${startOfDay.toISOString()}`,
-        and: `(timestamp.lte.${endOfDay.toISOString()})`,
-        select: 'id,chat_id,role,content,timestamp,candidate_name,manager_name',
-        order: 'timestamp.desc',
-        offset: String(offset),
-        limit: String(pageSize),
-      });
+      }>('id,chat_id,role,content,timestamp,candidate_name,manager_name', (q) =>
+        q
+          .gte('timestamp', startOfDay.toISOString())
+          .lte('timestamp', endOfDay.toISOString())
+          .order('timestamp', { ascending: false })
+          .range(offset, offset + pageSize - 1),
+      );
 
       const messages = results.map((m) => ({
         id: m.id,
@@ -344,10 +370,7 @@ export class ChatMessageRepository extends BaseRepository {
 
   private async getAllChatIdsFallback(): Promise<string[]> {
     try {
-      const results = await this.select<{ chat_id: string }>({
-        select: 'chat_id',
-        order: 'chat_id.asc',
-      });
+      const results = await this.select<{ chat_id: string }>('chat_id', (q) => q.order('chat_id'));
 
       const chatIds = new Set<string>();
       for (const m of results) {
@@ -364,18 +387,7 @@ export class ChatMessageRepository extends BaseRepository {
   /**
    * 获取会话列表（用于 Dashboard 展示）
    */
-  async getChatSessionList(days: number = 1): Promise<
-    Array<{
-      chatId: string;
-      candidateName?: string;
-      managerName?: string;
-      messageCount: number;
-      lastMessage?: string;
-      lastTimestamp?: number;
-      avatar?: string;
-      contactType?: string;
-    }>
-  > {
+  async getChatSessionList(days: number = 1): Promise<ChatSessionSummary[]> {
     if (!this.isAvailable()) {
       return [];
     }
@@ -385,71 +397,16 @@ export class ChatMessageRepository extends BaseRepository {
       startDate.setDate(startDate.getDate() - days);
       startDate.setHours(0, 0, 0, 0);
 
-      const results = await this.select<{
-        chat_id: string;
-        candidate_name?: string;
-        manager_name?: string;
-        content: string;
-        timestamp: string;
-        avatar?: string;
-        contact_type?: string;
-        role: string;
-      }>({
-        select: 'chat_id,candidate_name,manager_name,content,timestamp,avatar,contact_type,role',
-        order: 'timestamp.desc',
-        timestamp: `gte.${startDate.toISOString()}`,
-        limit: '10000',
-      });
-
-      // 按 chat_id 分组
-      const sessionMap = new Map<
-        string,
-        {
-          chatId: string;
-          candidateName?: string;
-          managerName?: string;
-          messageCount: number;
-          lastMessage?: string;
-          lastTimestamp?: number;
-          avatar?: string;
-          contactType?: string;
-        }
-      >();
-
-      for (const msg of results) {
-        const chatId = msg.chat_id;
-        if (!sessionMap.has(chatId)) {
-          sessionMap.set(chatId, {
-            chatId,
-            candidateName: msg.role === 'user' ? msg.candidate_name : undefined,
-            managerName: msg.manager_name,
-            messageCount: 1,
-            lastMessage: msg.content?.substring(0, 50) + (msg.content?.length > 50 ? '...' : ''),
-            lastTimestamp: new Date(msg.timestamp).getTime(),
-            avatar: msg.role === 'user' ? msg.avatar : undefined,
-            contactType: msg.role === 'user' ? msg.contact_type : undefined,
-          });
-        } else {
-          const session = sessionMap.get(chatId)!;
-          session.messageCount++;
-          if (!session.candidateName && msg.role === 'user' && msg.candidate_name) {
-            session.candidateName = msg.candidate_name;
-          }
-          if (!session.managerName && msg.manager_name) {
-            session.managerName = msg.manager_name;
-          }
-          if (!session.avatar && msg.role === 'user' && msg.avatar) {
-            session.avatar = msg.avatar;
-          }
-          if (!session.contactType && msg.contact_type && msg.role === 'user') {
-            session.contactType = msg.contact_type;
-          }
-        }
-      }
-
-      return Array.from(sessionMap.values()).sort(
-        (a, b) => (b.lastTimestamp || 0) - (a.lastTimestamp || 0),
+      const results = await this.select<SessionRawRow>(
+        'chat_id,candidate_name,manager_name,content,timestamp,avatar,contact_type,role',
+        (q) =>
+          q
+            .gte('timestamp', startDate.toISOString())
+            .order('timestamp', { ascending: false })
+            .limit(10000),
       );
+
+      return this.groupMessagesBySession(results);
     } catch (error) {
       this.logger.error('获取会话列表失败:', error);
       return [];
@@ -463,88 +420,23 @@ export class ChatMessageRepository extends BaseRepository {
   async getChatSessionListByDateRange(
     startDate: Date,
     endDate: Date,
-  ): Promise<
-    Array<{
-      chatId: string;
-      candidateName?: string;
-      managerName?: string;
-      messageCount: number;
-      lastMessage?: string;
-      lastTimestamp?: number;
-      avatar?: string;
-      contactType?: string;
-    }>
-  > {
+  ): Promise<ChatSessionSummary[]> {
     if (!this.isAvailable()) {
       return [];
     }
 
     try {
-      const results = await this.select<{
-        chat_id: string;
-        candidate_name?: string;
-        manager_name?: string;
-        content: string;
-        timestamp: string;
-        avatar?: string;
-        contact_type?: string;
-        role: string;
-      }>({
-        select: 'chat_id,candidate_name,manager_name,content,timestamp,avatar,contact_type,role',
-        order: 'timestamp.desc',
-        and: `(timestamp.gte.${startDate.toISOString()},timestamp.lte.${endDate.toISOString()})`,
-        limit: '1000',
-      });
-
-      // 按 chat_id 分组
-      const sessionMap = new Map<
-        string,
-        {
-          chatId: string;
-          candidateName?: string;
-          managerName?: string;
-          messageCount: number;
-          lastMessage?: string;
-          lastTimestamp?: number;
-          avatar?: string;
-          contactType?: string;
-        }
-      >();
-
-      for (const msg of results) {
-        const chatId = msg.chat_id;
-        if (!sessionMap.has(chatId)) {
-          sessionMap.set(chatId, {
-            chatId,
-            candidateName: msg.role === 'user' ? msg.candidate_name : undefined,
-            managerName: msg.manager_name,
-            messageCount: 1,
-            lastMessage: msg.content?.substring(0, 50) + (msg.content?.length > 50 ? '...' : ''),
-            lastTimestamp: new Date(msg.timestamp).getTime(),
-            avatar: msg.role === 'user' ? msg.avatar : undefined,
-            contactType: msg.role === 'user' ? msg.contact_type : undefined,
-          });
-        } else {
-          const session = sessionMap.get(chatId)!;
-          session.messageCount++;
-          if (!session.candidateName && msg.role === 'user' && msg.candidate_name) {
-            session.candidateName = msg.candidate_name;
-          }
-          if (!session.managerName && msg.manager_name) {
-            session.managerName = msg.manager_name;
-          }
-          if (!session.avatar && msg.role === 'user' && msg.avatar) {
-            session.avatar = msg.avatar;
-          }
-          if (!session.contactType && msg.contact_type && msg.role === 'user') {
-            session.contactType = msg.contact_type;
-          }
-        }
-      }
-
-      return Array.from(sessionMap.values()).sort(
-        (a, b) => (b.lastTimestamp || 0) - (a.lastTimestamp || 0),
+      const results = await this.select<SessionRawRow>(
+        'chat_id,candidate_name,manager_name,content,timestamp,avatar,contact_type,role',
+        (q) =>
+          q
+            .gte('timestamp', startDate.toISOString())
+            .lte('timestamp', endDate.toISOString())
+            .order('timestamp', { ascending: false })
+            .limit(1000),
       );
+
+      return this.groupMessagesBySession(results);
     } catch (error) {
       this.logger.error('获取会话列表(时间范围)失败:', error);
       return [];
@@ -742,12 +634,9 @@ export class ChatMessageRepository extends BaseRepository {
         timestamp: string;
         candidate_name?: string;
         manager_name?: string;
-      }>({
-        timestamp: `gte.${startIso}`,
-        and: `(timestamp.lt.${endIso})`,
-        select: 'chat_id,message_id,role,content,timestamp,candidate_name,manager_name',
-        order: 'chat_id.asc,timestamp.asc',
-      });
+      }>('chat_id,message_id,role,content,timestamp,candidate_name,manager_name', (q) =>
+        q.gte('timestamp', startIso).lt('timestamp', endIso).order('chat_id').order('timestamp'),
+      );
 
       // 按 chat_id 分组
       const grouped = new Map<
@@ -815,6 +704,48 @@ export class ChatMessageRepository extends BaseRepository {
   }
 
   // ==================== 私有方法 ====================
+
+  /**
+   * 将消息列表按 chat_id 分组为会话摘要（去重逻辑）
+   */
+  private groupMessagesBySession(rows: SessionRawRow[]): ChatSessionSummary[] {
+    const sessionMap = new Map<string, ChatSessionSummary>();
+
+    for (const msg of rows) {
+      const chatId = msg.chat_id;
+      if (!sessionMap.has(chatId)) {
+        sessionMap.set(chatId, {
+          chatId,
+          candidateName: msg.role === 'user' ? msg.candidate_name : undefined,
+          managerName: msg.manager_name,
+          messageCount: 1,
+          lastMessage: msg.content?.substring(0, 50) + (msg.content?.length > 50 ? '...' : ''),
+          lastTimestamp: new Date(msg.timestamp).getTime(),
+          avatar: msg.role === 'user' ? msg.avatar : undefined,
+          contactType: msg.role === 'user' ? msg.contact_type : undefined,
+        });
+      } else {
+        const session = sessionMap.get(chatId)!;
+        session.messageCount++;
+        if (!session.candidateName && msg.role === 'user' && msg.candidate_name) {
+          session.candidateName = msg.candidate_name;
+        }
+        if (!session.managerName && msg.manager_name) {
+          session.managerName = msg.manager_name;
+        }
+        if (!session.avatar && msg.role === 'user' && msg.avatar) {
+          session.avatar = msg.avatar;
+        }
+        if (!session.contactType && msg.contact_type && msg.role === 'user') {
+          session.contactType = msg.contact_type;
+        }
+      }
+    }
+
+    return Array.from(sessionMap.values()).sort(
+      (a, b) => (b.lastTimestamp || 0) - (a.lastTimestamp || 0),
+    );
+  }
 
   /**
    * 转换为数据库记录格式

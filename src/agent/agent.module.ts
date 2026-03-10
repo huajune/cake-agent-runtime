@@ -12,6 +12,7 @@ import { AgentController } from './agent.controller';
 import { ProfileLoaderService } from './services/agent-profile-loader.service';
 import { StrategyConfigService } from './strategy/strategy-config.service';
 import { StrategyConfigController } from './strategy/strategy-config.controller';
+import { StrategyConfigService as SupabaseStrategyConfigService } from '@supabase/agent';
 
 /**
  * AI Agent 模块
@@ -47,6 +48,7 @@ import { StrategyConfigController } from './strategy/strategy-config.controller'
     ProfileLoaderService,
 
     // 策略配置服务
+    SupabaseStrategyConfigService,
     StrategyConfigService,
 
     // 主服务

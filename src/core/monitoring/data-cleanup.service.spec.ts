@@ -1,12 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataCleanupService } from './data-cleanup.service';
-import { SupabaseService } from '@core/supabase';
-import {
-  ChatMessageRepository,
-  MessageProcessingRepository,
-  UserHostingRepository,
-} from '@core/supabase/repositories';
-import { MonitoringDatabaseService } from './monitoring-database.service';
+import { SupabaseService } from '@supabase';
+import { ChatMessageRepository, MessageProcessingRepository } from '@supabase/message';
+import { MonitoringErrorLogRepository } from '@supabase/monitoring';
+import { UserHostingRepository } from '@supabase/user';
 
 describe('DataCleanupService', () => {
   let service: DataCleanupService;
@@ -32,7 +29,7 @@ describe('DataCleanupService', () => {
     cleanupUserActivity: jest.fn(),
   };
 
-  const mockMonitoringDatabaseService = {
+  const mockErrorLogRepository = {
     cleanupErrorLogs: jest.fn(),
   };
 
@@ -57,8 +54,8 @@ describe('DataCleanupService', () => {
           useValue: mockUserHostingRepository,
         },
         {
-          provide: MonitoringDatabaseService,
-          useValue: mockMonitoringDatabaseService,
+          provide: MonitoringErrorLogRepository,
+          useValue: mockErrorLogRepository,
         },
       ],
     }).compile();
@@ -97,7 +94,7 @@ describe('DataCleanupService', () => {
       mockMessageProcessingRepository.nullAgentInvocations.mockResolvedValue(20);
       mockChatMessageRepository.cleanupChatMessages.mockResolvedValue(10);
       mockMessageProcessingRepository.cleanupMessageProcessingRecords.mockResolvedValue(5);
-      mockMonitoringDatabaseService.cleanupErrorLogs.mockResolvedValue(3);
+      mockErrorLogRepository.cleanupErrorLogs.mockResolvedValue(3);
       mockUserHostingRepository.cleanupUserActivity.mockResolvedValue(2);
 
       await service.cleanupExpiredData();
@@ -109,7 +106,7 @@ describe('DataCleanupService', () => {
       // 3. DELETE message_processing_records (>14 天)
       expect(messageProcessingRepository.cleanupMessageProcessingRecords).toHaveBeenCalledWith(14);
       // 4. DELETE monitoring_error_logs (>30 天)
-      expect(mockMonitoringDatabaseService.cleanupErrorLogs).toHaveBeenCalledWith(30);
+      expect(mockErrorLogRepository.cleanupErrorLogs).toHaveBeenCalledWith(30);
       // 5. DELETE user_activity (>35 天)
       expect(mockUserHostingRepository.cleanupUserActivity).toHaveBeenCalledWith(35);
     });
@@ -122,7 +119,7 @@ describe('DataCleanupService', () => {
       expect(messageProcessingRepository.nullAgentInvocations).not.toHaveBeenCalled();
       expect(chatMessageRepository.cleanupChatMessages).not.toHaveBeenCalled();
       expect(messageProcessingRepository.cleanupMessageProcessingRecords).not.toHaveBeenCalled();
-      expect(mockMonitoringDatabaseService.cleanupErrorLogs).not.toHaveBeenCalled();
+      expect(mockErrorLogRepository.cleanupErrorLogs).not.toHaveBeenCalled();
       expect(mockUserHostingRepository.cleanupUserActivity).not.toHaveBeenCalled();
     });
 
@@ -133,7 +130,7 @@ describe('DataCleanupService', () => {
       );
       mockChatMessageRepository.cleanupChatMessages.mockResolvedValue(0);
       mockMessageProcessingRepository.cleanupMessageProcessingRecords.mockResolvedValue(0);
-      mockMonitoringDatabaseService.cleanupErrorLogs.mockResolvedValue(0);
+      mockErrorLogRepository.cleanupErrorLogs.mockResolvedValue(0);
 
       // Should not throw
       await expect(service.cleanupExpiredData()).resolves.not.toThrow();
@@ -149,7 +146,7 @@ describe('DataCleanupService', () => {
       mockChatMessageRepository.cleanupChatMessages.mockResolvedValue(15);
       mockMessageProcessingRepository.cleanupMessageProcessingRecords.mockResolvedValue(8);
       mockUserHostingRepository.cleanupUserActivity.mockResolvedValue(3);
-      mockMonitoringDatabaseService.cleanupErrorLogs.mockResolvedValue(5);
+      mockErrorLogRepository.cleanupErrorLogs.mockResolvedValue(5);
 
       const result = await service.triggerCleanup();
 
@@ -184,7 +181,7 @@ describe('DataCleanupService', () => {
       mockChatMessageRepository.cleanupChatMessages.mockRejectedValue(new Error('Error'));
       mockMessageProcessingRepository.cleanupMessageProcessingRecords.mockResolvedValue(4);
       mockUserHostingRepository.cleanupUserActivity.mockResolvedValue(2);
-      mockMonitoringDatabaseService.cleanupErrorLogs.mockResolvedValue(1);
+      mockErrorLogRepository.cleanupErrorLogs.mockResolvedValue(1);
 
       const result = await service.triggerCleanup();
 

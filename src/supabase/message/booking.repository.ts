@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { BaseRepository } from './base.repository';
+import { BaseRepository } from '../base.repository';
 import { SupabaseService } from '../supabase.service';
 
 /**
@@ -113,24 +113,24 @@ export class BookingRepository extends BaseRepository {
     }
 
     try {
-      const queryParams: Record<string, string> = {
-        order: 'date.desc,brand_name.asc',
-      };
+      const results = await this.select<BookingDbRecord>('*', (q) => {
+        let query = q.order('date', { ascending: false }).order('brand_name');
 
-      // 构建日期范围过滤条件
-      if (params.startDate && params.endDate) {
-        queryParams['and'] = `(date.gte.${params.startDate},date.lte.${params.endDate})`;
-      } else if (params.startDate) {
-        queryParams['date'] = `gte.${params.startDate}`;
-      } else if (params.endDate) {
-        queryParams['date'] = `lte.${params.endDate}`;
-      }
+        // 构建日期范围过滤条件
+        if (params.startDate && params.endDate) {
+          query = query.gte('date', params.startDate).lte('date', params.endDate);
+        } else if (params.startDate) {
+          query = query.gte('date', params.startDate);
+        } else if (params.endDate) {
+          query = query.lte('date', params.endDate);
+        }
 
-      if (params.brandName) {
-        queryParams['brand_name'] = `eq.${params.brandName}`;
-      }
+        if (params.brandName) {
+          query = query.eq('brand_name', params.brandName);
+        }
 
-      const results = await this.select<BookingDbRecord>(queryParams);
+        return query;
+      });
 
       return results.map((row) => this.fromDbRecord(row));
     } catch (error) {

@@ -5,7 +5,7 @@ import {
   TestExecutionRepository,
   TestBatch,
   TestExecution,
-} from '../repositories';
+} from '@supabase/test-suite';
 import { TestStatsService } from './test-stats.service';
 import { FeishuTestSyncService } from './feishu-test-sync.service';
 import { BatchStatus, ExecutionStatus, ReviewStatus, FeishuTestStatus, TestType } from '../enums';

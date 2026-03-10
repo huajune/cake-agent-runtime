@@ -4,7 +4,7 @@ import {
   TestExecutionRepository,
   TestBatchRepository,
   ConversationSourceRepository,
-} from '../repositories';
+} from '@supabase/test-suite';
 import { ExecutionStatus, ReviewStatus, TestType, ConversationSourceStatus } from '../enums';
 
 /**
