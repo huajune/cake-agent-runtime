@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { MonitoringService } from '@/core/monitoring/monitoring.service';
+import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { SystemConfigService } from '@biz/hosting-config/services';
 
 // 导入子服务
@@ -45,7 +45,7 @@ export class MessageService implements OnModuleInit {
     private readonly statisticsService: MessageStatisticsService,
     private readonly pipelineService: MessagePipelineService,
     // 监控
-    private readonly monitoringService: MonitoringService,
+    private readonly monitoringService: MessageTrackingService,
     // Repository
     private readonly systemConfigService: SystemConfigService,
   ) {

@@ -3,7 +3,7 @@ import { StrategyModule } from './strategy/strategy.module';
 import { HostingConfigModule } from './hosting-config/hosting-config.module';
 import { UserModule } from './user/user.module';
 import { BizMessageModule } from './message/message.module';
-import { AnalyticsModule } from './analytics/analytics.module';
+import { MonitoringModule } from './monitoring/monitoring.module';
 import { TestSuiteModule } from './test-suite/test-suite.module';
 
 @Module({
@@ -12,7 +12,7 @@ import { TestSuiteModule } from './test-suite/test-suite.module';
     HostingConfigModule,
     UserModule,
     BizMessageModule,
-    AnalyticsModule,
+    MonitoringModule,
     TestSuiteModule,
   ],
   exports: [
@@ -20,7 +20,7 @@ import { TestSuiteModule } from './test-suite/test-suite.module';
     HostingConfigModule,
     UserModule,
     BizMessageModule,
-    AnalyticsModule,
+    MonitoringModule,
     TestSuiteModule,
   ],
 })

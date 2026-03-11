@@ -462,7 +462,8 @@
       "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/supabase/repositories",
       "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/biz/booking",
       "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/biz/strategy",
-      "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/s|import { SystemConfigService } from './system-config.service';|import { SystemConfigService, GroupBlacklistService } from '."
+      "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/s|import { SystemConfigService } from './system-config.service';|import { SystemConfigService, GroupBlacklistService } from '.",
+      "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/core/monitoring/services"
     ]
   },
   "enableAllProjectMcpServers": true,

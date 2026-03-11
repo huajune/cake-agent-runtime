@@ -1,12 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { MonitoringHourlyStatsRepository } from '../repositories';
+import { MonitoringHourlyStatsRepository } from '../../repositories/monitoring-hourly-stats.repository';
 import {
   DashboardOverviewStats,
   DashboardFallbackStats,
   DailyTrendData,
   HourlyTrendData,
-} from '../types';
-import { HourlyStats } from '@/core/monitoring/interfaces/monitoring.interface';
+} from '../../types/analytics.types';
+import { HourlyStats } from '../../types/analytics.types';
 
 /**
  * 小时统计聚合服务

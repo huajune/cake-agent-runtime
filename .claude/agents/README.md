@@ -26,7 +26,7 @@ This directory contains modular guidelines for Claude Code agents. Each file foc
 | -------------------------------------------------------------- | -------------------------------------- | --------------------------------- |
 | **[code-standards.md](code-standards.md)**                     | TypeScript, NestJS, coding conventions | Writing or modifying backend code |
 | **[frontend-standards.md](frontend-standards.md)**             | React, SCSS Modules, component design  | Writing or modifying frontend code |
-| **[architecture-principles.md](architecture-principles.md)**   | SOLID, design patterns, layering       | Designing features or refactoring |
+| **[architecture-principles.md](architecture-principles.md)**   | SOLID, design patterns, biz module conventions | Designing features or refactoring |
 | **[development-workflow.md](development-workflow.md)**         | Git workflow, testing, deployment      | Daily development tasks           |
 | **[performance-optimization.md](performance-optimization.md)** | Performance tuning, monitoring         | Optimizing system performance     |
 | **[code-quality-guardian.md](code-quality-guardian.md)**       | Automated quality checks               | Before committing code            |

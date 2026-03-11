@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase';
 import { SupabaseService } from '@core/supabase';
-import { HourlyStatsDbRecord } from '../entities';
-import { HourlyStatsRecord } from '../types';
+import { HourlyStatsDbRecord } from '../types/repository.types';
+import { HourlyStatsRecord } from '../types/repository.types';
 
 /**
  * 监控小时统计 Repository

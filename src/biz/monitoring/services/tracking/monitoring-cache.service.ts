@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '@core/redis';
-import { MonitoringGlobalCounters } from './interfaces/monitoring.interface';
+import { MonitoringGlobalCounters } from '../../types/tracking.types';
 
 /**
  * 监控缓存服务

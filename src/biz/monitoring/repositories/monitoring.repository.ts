@@ -6,7 +6,7 @@ import {
   DashboardFallbackStats,
   DailyTrendData,
   HourlyTrendData,
-} from '../types';
+} from '../types/repository.types';
 
 // ==================== RPC 字段映射 ====================
 

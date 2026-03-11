@@ -2,36 +2,38 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import {
   MessageProcessingRecord,
+  MonitoringErrorLog,
+  MonitoringGlobalCounters,
+  AlertErrorType,
+} from '../../types/tracking.types';
+import {
   HourlyStats,
   DashboardData,
   MetricsData,
   ScenarioUsageMetric,
   ToolUsageMetric,
-  MonitoringErrorLog,
-  MonitoringGlobalCounters,
   ResponseMinuteTrendPoint,
   AlertTrendPoint,
   AlertTypeMetric,
   TimeRange,
   DailyStats,
   TodayUser,
-  AlertErrorType,
   BusinessMetricTrendPoint,
-} from '@/core/monitoring/interfaces/monitoring.interface';
-import { MonitoringCacheService } from '@/core/monitoring/monitoring-cache.service';
+  DashboardOverviewStats,
+  DashboardFallbackStats,
+  DailyTrendData,
+} from '../../types/analytics.types';
+import { MonitoringCacheService } from '../tracking/monitoring-cache.service';
 import { RedisService } from '@core/redis';
 import { FeishuBookingService } from '@/core/feishu/services/feishu-booking.service';
 import { MessageProcessingRepository, BookingRepository } from '@biz/message/repositories';
-import {
-  MonitoringHourlyStatsRepository,
-  MonitoringErrorLogRepository,
-  MonitoringRepository,
-} from '../repositories';
-import { DashboardOverviewStats, DashboardFallbackStats, DailyTrendData } from '../types';
+import { MonitoringHourlyStatsRepository } from '../../repositories/monitoring-hourly-stats.repository';
+import { MonitoringErrorLogRepository } from '../../repositories/monitoring-error-log.repository';
+import { MonitoringRepository } from '../../repositories/monitoring.repository';
 import { UserHostingRepository } from '@biz/user/repositories';
 import { UserHostingService } from '@biz/user/services';
 import { HourlyStatsAggregatorService } from './hourly-stats-aggregator.service';
-import { MessageTrackingService } from '@/core/monitoring/services/message-tracking.service';
+import { MessageTrackingService } from '../tracking/message-tracking.service';
 import { AgentRegistryService } from '@/agent/services/agent-registry.service';
 import * as os from 'os';
 

@@ -4,7 +4,7 @@
  */
 
 import { ChatResponse, AgentResult } from '@agent';
-export { AlertErrorType } from '@core/monitoring/interfaces/monitoring.interface';
+export { AlertErrorType } from '@biz/monitoring/types/tracking.types';
 
 // ========================================
 // 品牌配置类型

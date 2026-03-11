@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MessageSenderService } from '../../message-sender/message-sender.service';
 import { SendMessageType } from '../../message-sender/dto/send-message.dto';
-import { MonitoringService } from '@/core/monitoring/monitoring.service';
+import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { TypingDelayService } from './message-typing-delay.service';
 import { MessageSplitter } from '../utils/message-splitter.util';
 import { DeliveryContext, DeliveryResult, MessageSegment, AgentReply } from '../types';
@@ -25,7 +25,7 @@ export class MessageDeliveryService {
 
   constructor(
     private readonly messageSenderService: MessageSenderService,
-    private readonly monitoringService: MonitoringService,
+    private readonly monitoringService: MessageTrackingService,
     private readonly typingDelayService: TypingDelayService,
     private readonly configService: ConfigService,
     private readonly feishuAlertService: FeishuAlertService,

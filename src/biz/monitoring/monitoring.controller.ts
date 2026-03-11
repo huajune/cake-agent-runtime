@@ -1,9 +1,12 @@
-import { Controller, Get, Logger, Query, Post, HttpCode } from '@nestjs/common';
-import { AnalyticsService } from './services';
-import { MetricsData, TimeRange } from '@/core/monitoring/interfaces/monitoring.interface';
+import { Controller, Get, Logger, Query, Post, HttpCode, Res, Req } from '@nestjs/common';
+import { Response, Request } from 'express';
+import { join } from 'path';
+import { existsSync } from 'fs';
+import { AnalyticsService } from './services/analytics/analytics.service';
+import { MetricsData, TimeRange } from './types/analytics.types';
 
 /**
- * Analytics 业务概览控制器
+ * Analytics API 控制器
  * 提供 Dashboard 概览、System 监控、趋势数据、指标等接口
  */
 @Controller('analytics')
@@ -116,5 +119,35 @@ export class AnalyticsController {
     this.logger.log(`手动触发清除缓存: ${cacheType}`);
     await this.analyticsService.clearCacheAsync(cacheType);
     return { success: true, message: `缓存 [${cacheType}] 已清除` };
+  }
+}
+
+/**
+ * Dashboard SPA 控制器
+ * 托管前端 Dashboard 静态资源
+ */
+@Controller('dashboard')
+export class DashboardController {
+  @Get('*')
+  serveDashboard(@Req() req: Request, @Res() res: Response) {
+    const relativePath = req.path.replace(/^\/dashboard/, '');
+    const publicDashboardPath = join(process.cwd(), 'public', 'dashboard');
+
+    if (relativePath.includes('.') && !relativePath.endsWith('.html')) {
+      const filePath = join(publicDashboardPath, relativePath);
+      if (existsSync(filePath)) {
+        return res.sendFile(filePath);
+      }
+    }
+
+    const indexPath = join(publicDashboardPath, 'index.html');
+    if (existsSync(indexPath)) {
+      return res.sendFile(indexPath);
+    } else {
+      return res.status(404).send(`
+          <h1>Dashboard not found</h1>
+          <p>Please run <code>pnpm run build:dashboard</code> to build the frontend.</p>
+        `);
+    }
   }
 }

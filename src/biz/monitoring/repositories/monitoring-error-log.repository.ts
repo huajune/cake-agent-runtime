@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase';
 import { SupabaseService } from '@core/supabase';
-import { ErrorLogDbRecord } from '../entities';
-import { ErrorLogAlertType, ErrorLogRecord } from '../types';
+import { ErrorLogDbRecord, ErrorLogRecord } from '../types/repository.types';
+import { AlertErrorType } from '../types/tracking.types';
 
 /**
  * 监控错误日志 Repository
@@ -106,7 +106,7 @@ export class MonitoringErrorLogRepository extends BaseRepository {
       messageId: row.message_id,
       timestamp: Number(row.timestamp),
       error: row.error,
-      alertType: row.alert_type as ErrorLogAlertType | undefined,
+      alertType: row.alert_type as AlertErrorType | undefined,
     };
   }
 }

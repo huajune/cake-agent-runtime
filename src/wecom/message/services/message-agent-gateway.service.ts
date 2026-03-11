@@ -9,7 +9,7 @@ import {
   SimpleMessage,
 } from '@agent';
 import { AgentFacadeService } from '@agent/services/agent-facade.service';
-import { MonitoringService } from '@/core/monitoring/monitoring.service';
+import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { AgentInvokeResult, AgentReply, FallbackMessageOptions } from '../types';
 import { ReplyNormalizer } from '../utils/reply-normalizer.util';
 
@@ -49,7 +49,7 @@ export class AgentGatewayService {
   constructor(
     private readonly configService: ConfigService,
     private readonly agentFacade: AgentFacadeService,
-    private readonly monitoringService: MonitoringService,
+    private readonly monitoringService: MessageTrackingService,
   ) {}
 
   // ========================================

@@ -3,7 +3,7 @@ import { InjectQueue } from '@nestjs/bull';
 import { Queue, Job } from 'bull';
 import { EnterpriseMessageCallbackDto } from './dto/message-callback.dto';
 import { SystemConfigService } from '@biz/hosting-config/services';
-import { MonitoringService } from '@core/monitoring/monitoring.service';
+import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 
 // 导入子服务
 import { SimpleMergeService } from './services/simple-merge.service';
@@ -37,7 +37,7 @@ export class MessageProcessor implements OnModuleInit {
     private readonly messageService: MessageService,
     private readonly simpleMergeService: SimpleMergeService,
     private readonly systemConfigService: SystemConfigService,
-    private readonly monitoringService: MonitoringService,
+    private readonly monitoringService: MessageTrackingService,
   ) {}
 
   async onModuleInit() {

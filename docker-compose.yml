@@ -2,31 +2,29 @@ version: '3.8'
 
 services:
   wecom-service:
-    build: .
-    container_name: duliday-wecom-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: duliday-wecom-service:latest
+    container_name: wecom-service
     restart: always
     ports:
       - "8080:8080"
     env_file:
-      - .env
+      - .env.prod
     volumes:
       - ./logs:/app/logs
     environment:
       - NODE_ENV=production
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/agent/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
-      - wecom-network
-
-  # 可选：Redis（用于缓存）
-  # redis:
-  #   image: redis:7-alpine
-  #   container_name: wecom-redis
-  #   restart: always
-  #   ports:
-  #     - "6379:6379"
-  #   networks:
-  #     - wecom-network
+      - app-network
 
 networks:
-  wecom-network:
+  app-network:
     driver: bridge
 

@@ -44,7 +44,10 @@ pnpm run db:diff        # Generate diff migration
 
 ## Architecture
 
-### DDD Layered Architecture (2 Business Domains)
+### Layered Architecture
+
+**Layer placement criteria**: 依赖业务数据（用户、消息等）→ `biz/`；可独立于业务存在 → `core/`。
+`core/` 禁止 import `biz/`、`wecom/`、`agent/`。
 
 ```
 supabase/
@@ -53,12 +56,12 @@ supabase/
     └── 20260310000000_baseline.sql # Full schema baseline (12 tables, 19 functions)
 
 src/
-├── core/                           # Infrastructure Layer (Horizontal)
+├── core/                           # Infrastructure Layer (业务无关，禁止依赖 biz/)
 │   ├── client-http/                # HTTP client factory (Bearer Token)
 │   ├── config/                     # Config management (env validation)
 │   ├── redis/                      # Redis cache (Global module)
 │   ├── supabase/                   # Supabase database service
-│   ├── monitoring/                 # System monitoring & metrics (Dashboard)
+│   ├── feishu/                     # 飞书集成 (告警通知)
 │   ├── alert/                      # Alert system (simplified ~300 lines)
 │   └── server/response/            # Unified response (Interceptor + Filter)
 │
@@ -71,6 +74,20 @@ src/
 │   │   ├── brand-config.service.ts
 │   │   └── agent-profile-loader.service.ts
 │   └── profiles/                   # Agent context configurations
+│
+├── biz/                            # Business Layer (业务领域)
+│   ├── monitoring/                 # 业务监控 (tracking + analytics + cleanup)
+│   │   ├── monitoring.module.ts
+│   │   ├── monitoring.controller.ts
+│   │   ├── services/
+│   │   │   ├── tracking/           # 采集写入
+│   │   │   ├── analytics/          # 聚合分析
+│   │   │   └── cleanup/            # 数据清理
+│   │   ├── repositories/
+│   │   └── types/                  # 按消费者域拆分 (.types.ts)
+│   ├── user/                       # 用户管理
+│   ├── hosting-config/             # 托管配置
+│   └── message/                    # 消息业务
 │
 └── wecom/                          # WeChat Enterprise Domain
     ├── message/                    # Message processing (Core business)
@@ -85,8 +102,7 @@ src/
     ├── bot/                        # Bot management
     ├── chat/                       # Chat session
     ├── contact/                    # Contact management
-    ├── room/                       # Group chat
-    └── user/                       # User management
+    └── room/                       # Group chat
 ```
 
 ### Message Processing Flow
