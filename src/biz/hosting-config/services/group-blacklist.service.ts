@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '@core/redis';
-import { GroupBlacklistRepository, GroupBlacklistItem } from '@db/config';
+import { GroupBlacklistRepository } from '../repositories';
+import { GroupBlacklistItem } from '../types';
 
 /**
  * 小组黑名单 Service

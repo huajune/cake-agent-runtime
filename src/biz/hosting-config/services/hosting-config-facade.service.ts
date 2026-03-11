@@ -1,5 +1,5 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
-import { AgentReplyConfig, DEFAULT_AGENT_REPLY_CONFIG } from '@db';
+import { AgentReplyConfig, DEFAULT_AGENT_REPLY_CONFIG } from '../types';
 import { SystemConfigService } from './system-config.service';
 import { GroupBlacklistService } from './group-blacklist.service';
 import { UserHostingService } from '@biz/user';

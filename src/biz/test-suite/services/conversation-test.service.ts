@@ -8,11 +8,8 @@ import {
 } from '@agent';
 import { MessageRole } from '@shared/enums';
 import { LlmEvaluationService } from './llm-evaluation.service';
-import {
-  ConversationSourceRepository,
-  TestExecutionRepository,
-  type ConversationSourceRecord,
-} from '@db/test-suite';
+import { ConversationSourceRepository, TestExecutionRepository } from '../repositories';
+import { type ConversationSourceRecord } from '../types';
 import {
   ExecutionStatus,
   ReviewStatus,

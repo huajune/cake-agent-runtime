@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ChatMessageRepository } from '@db/message';
+import { ChatMessageRepository } from '@biz/message/repositories';
 import { MessageParser } from '../utils/message-parser.util';
 import { EnhancedMessageHistoryItem } from '../types';
 import { SimpleMessage } from '@agent';

@@ -29,13 +29,8 @@ export {
   TestStatsService,
 } from './services';
 
-// 仓储
-export {
-  TestBatchRepository,
-  TestExecutionRepository,
-  type TestBatch,
-  type TestExecution,
-} from '@db/test-suite';
+// 类型
+export type { TestBatch, TestExecution } from './types';
 
 // 枚举
 export {

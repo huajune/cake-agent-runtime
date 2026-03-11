@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { ChatMessageRepository } from '@db/message';
+import { ChatMessageRepository } from '@biz/message/repositories';
 import { FeishuBitableApiService, BatchCreateRequest } from './feishu-bitable-api.service';
 
 /**

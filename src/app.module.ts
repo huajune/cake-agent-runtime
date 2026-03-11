@@ -3,7 +3,6 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { HttpModule, RedisModule } from './core';
 import { SupabaseModule } from '@core/supabase';
-import { DbModule } from './db';
 import { MonitoringModule } from './core/monitoring/monitoring.module';
 import { LoggerModule } from './core/logger';
 import { FeishuModule } from './core/feishu';
@@ -30,7 +29,6 @@ import { validate } from './core/config/env.validation';
  *   │
  *   │   └── supabase/       - Supabase 客户端基础设施
  *   │
- *   ├── db/                 - 数据访问层（Repository + 数据服务）
  *   ├── agent/              - AI Agent 业务域
  *   └── wecom/              - 企业微信业务域
  */
@@ -54,7 +52,6 @@ import { validate } from './core/config/env.validation';
     HttpModule, // HTTP 客户端服务
     RedisModule, // Redis 缓存服务（全局）
     SupabaseModule, // Supabase 客户端（全局）
-    DbModule, // 数据访问层（全局）- Repository + 数据服务
     MonitoringModule, // 监控服务（全局）
     FeishuModule, // 飞书统一服务（告警、通知、多维表格同步）
     LoggerModule, // 实时日志推送（仅开发环境）

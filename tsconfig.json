@@ -33,14 +33,6 @@
       "@test-suite": ["src/biz/test-suite"],
       "@test-suite/*": ["src/biz/test-suite/*"],
       "@core/supabase": ["src/core/supabase"],
-      "@db": ["src/db"],
-      "@db/*": ["src/db/*"],
-      "@db/config": ["src/db/config"],
-      "@db/user": ["src/db/user"],
-      "@db/agent": ["src/db/agent"],
-      "@db/message": ["src/db/message"],
-      "@db/monitoring": ["src/db/monitoring"],
-      "@db/test-suite": ["src/db/test-suite"],
       "@biz/*": ["src/biz/*"]
     }
   },

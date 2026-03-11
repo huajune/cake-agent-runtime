@@ -1,11 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CreateBatchRequestDto, UpdateReviewRequestDto, BatchStats } from '../dto/test-chat.dto';
-import {
-  TestBatchRepository,
-  TestExecutionRepository,
-  TestBatch,
-  TestExecution,
-} from '@db/test-suite';
+import { TestBatchRepository, TestExecutionRepository } from '../repositories';
+import { TestBatch, TestExecution } from '../types';
 import { TestStatsService } from './test-stats.service';
 import { FeishuTestSyncService } from './feishu-test-sync.service';
 import { BatchStatus, ExecutionStatus, ReviewStatus, FeishuTestStatus, TestType } from '../enums';

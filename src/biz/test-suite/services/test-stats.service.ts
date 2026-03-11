@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
-  TestExecution,
   TestExecutionRepository,
   TestBatchRepository,
   ConversationSourceRepository,
-} from '@db/test-suite';
+} from '../repositories';
+import { TestExecution } from '../types';
 import { ExecutionStatus, ReviewStatus, TestType, ConversationSourceStatus } from '../enums';
 
 /**

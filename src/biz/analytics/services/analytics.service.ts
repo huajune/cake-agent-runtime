@@ -21,16 +21,14 @@ import {
 import { MonitoringCacheService } from '@/core/monitoring/monitoring-cache.service';
 import { RedisService } from '@core/redis';
 import { FeishuBookingService } from '@/core/feishu/services/feishu-booking.service';
-import { MessageProcessingRepository, BookingRepository } from '@db/message';
+import { MessageProcessingRepository, BookingRepository } from '@biz/message/repositories';
 import {
   MonitoringHourlyStatsRepository,
   MonitoringErrorLogRepository,
   MonitoringRepository,
-  DashboardOverviewStats,
-  DashboardFallbackStats,
-  DailyTrendData,
-} from '@db/monitoring';
-import { UserHostingRepository } from '@db/user';
+} from '../repositories';
+import { DashboardOverviewStats, DashboardFallbackStats, DailyTrendData } from '../types';
+import { UserHostingRepository } from '@biz/user/repositories';
 import { UserHostingService } from '@biz/user';
 import { HourlyStatsAggregatorService } from './hourly-stats-aggregator.service';
 import { MessageTrackingService } from '@/core/monitoring/services/message-tracking.service';

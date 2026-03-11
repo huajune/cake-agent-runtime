@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { UserHostingRepository } from '@db/user';
+import { UserHostingRepository } from '../repositories';
 
 /**
  * 缓存中单个用户的暂停状态

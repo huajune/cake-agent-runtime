@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Delete, HttpCode, Body } from '@nestjs/common';
-import { AgentReplyConfig } from '@db';
+import { AgentReplyConfig } from './types';
 import { HostingConfigFacadeService } from './services';
 
 /**

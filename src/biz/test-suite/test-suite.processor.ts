@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit, Inject, forwardRef } from '@nestjs/co
 import { InjectQueue } from '@nestjs/bull';
 import { Queue, Job } from 'bull';
 import { TestSuiteService } from './test-suite.service';
-import { TestBatch } from '@db/test-suite';
+import { TestBatch } from './types';
 import { RedisService } from '@core/redis/redis.service';
 import { ExecutionStatus, MessageRole, BatchStatus } from './enums';
 

@@ -2,6 +2,11 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
 import { HttpModule } from '@core/client-http';
+import {
+  TestBatchRepository,
+  TestExecutionRepository,
+  ConversationSourceRepository,
+} from './repositories';
 import { TestSuiteController } from './test-suite.controller';
 import { TestSuiteService } from './test-suite.service';
 import { TestSuiteProcessor } from './test-suite.processor';
@@ -64,8 +69,12 @@ import { FeishuModule } from '@core/feishu';
   ],
   controllers: [TestSuiteController],
   providers: [
-    // 基础服务（无依赖其他子服务）
-    // 注：Repository 由 @Global SupabaseModule 提供
+    // repositories
+    TestBatchRepository,
+    TestExecutionRepository,
+    ConversationSourceRepository,
+
+    // 基础服务
     TestStatsService,
     FeishuTestSyncService,
     LlmEvaluationService,

@@ -7,9 +7,9 @@ import {
   AlertErrorType,
 } from '../interfaces/monitoring.interface';
 import { MonitoringCacheService } from '../monitoring-cache.service';
-import { MessageProcessingRepository } from '@db/message';
-import { MonitoringErrorLogRepository } from '@db/monitoring';
-import { UserHostingRepository } from '@db/user';
+import { MessageProcessingRepository } from '@biz/message/repositories';
+import { MonitoringErrorLogRepository } from '@biz/analytics/repositories';
+import { UserHostingRepository } from '@biz/user/repositories';
 
 /**
  * 消息追踪服务

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ChatMessageRepository } from '@db/message';
-import { MonitoringRepository } from '@db/monitoring';
+import { ChatMessageRepository } from '../repositories';
+import { MonitoringRepository } from '@biz/analytics/repositories';
 
 /**
  * 聊天会话服务

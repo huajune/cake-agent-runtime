@@ -1,11 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { MonitoringHourlyStatsRepository } from '../repositories';
 import {
-  MonitoringHourlyStatsRepository,
   DashboardOverviewStats,
   DashboardFallbackStats,
   DailyTrendData,
   HourlyTrendData,
-} from '@db/monitoring';
+} from '../types';
 import { HourlyStats } from '@/core/monitoring/interfaces/monitoring.interface';
 
 /**

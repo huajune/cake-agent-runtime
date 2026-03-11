@@ -4,9 +4,9 @@ import {
   StrategyRedLines,
   StrategyIndustrySkills,
   StrategyConfigRecord,
-} from '@db/agent/types';
+} from '@biz/strategy/types';
 
-export * from '@db/agent/types';
+export * from '@biz/strategy/types';
 
 // ==================== 默认种子数据 ====================
 
