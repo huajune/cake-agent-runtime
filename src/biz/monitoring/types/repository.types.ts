@@ -1,6 +1,6 @@
 /**
  * Repository 层类型定义
- * 数据库记录格式 + 应用层映射格式
+ * 应用层映射格式（camelCase）
  */
 
 import { AlertErrorType } from './tracking.types';
@@ -14,45 +14,9 @@ import {
 // Re-export analytics types used by repositories
 export type { DashboardOverviewStats, DashboardFallbackStats, DailyTrendData, HourlyTrendData };
 
-// ========================================
-// 数据库行格式（snake_case，对应 Supabase 表）
-// ========================================
-
-/**
- * @table monitoring_hourly_stats
- */
-export interface HourlyStatsDbRecord {
-  hour: string;
-  message_count: number;
-  success_count: number;
-  failure_count: number;
-  success_rate: number;
-  avg_duration: number;
-  min_duration: number;
-  max_duration: number;
-  p50_duration: number;
-  p95_duration: number;
-  p99_duration: number;
-  avg_ai_duration: number;
-  avg_send_duration: number;
-  active_users: number;
-  active_chats: number;
-  total_token_usage: number;
-  fallback_count: number;
-  fallback_success_count: number;
-  scenario_stats: Record<string, { count: number; successCount: number; avgDuration: number }>;
-  tool_stats: Record<string, number>;
-}
-
-/**
- * @table monitoring_error_logs
- */
-export interface ErrorLogDbRecord {
-  message_id: string;
-  timestamp: number;
-  error: string;
-  alert_type?: string;
-}
+// Re-export entity types for backward compatibility
+export type { HourlyStatsDbRecord } from '../entities/hourly-stats.entity';
+export type { ErrorLogDbRecord } from '../entities/error-log.entity';
 
 // ========================================
 // 应用层映射格式（camelCase）

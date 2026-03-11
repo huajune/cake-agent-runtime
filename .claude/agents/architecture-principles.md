@@ -521,9 +521,11 @@ src/biz/<domain>/
 │   ├── <subdomain-b>/
 │   │   └── baz.service.ts
 │   └── ...
+├── entities/                   # DB 记录接口（snake_case 字段，一个表一个文件）
+│   └── <table-name>.entity.ts
 ├── repositories/               # 数据访问层（直接使用 Supabase BaseRepository）
 │   └── <domain>-xxx.repository.ts
-└── types/                      # 类型定义，按消费者域拆分
+└── types/                      # 类型定义，按消费者域拆分（camelCase 业务 DTO）
     ├── <consumer-a>.types.ts
     ├── <consumer-b>.types.ts
     └── ...
@@ -535,6 +537,9 @@ src/biz/<domain>/
 src/biz/monitoring/
 ├── monitoring.module.ts
 ├── monitoring.controller.ts        # AnalyticsController + DashboardController
+├── entities/
+│   ├── hourly-stats.entity.ts      # @table monitoring_hourly_stats
+│   └── error-log.entity.ts         # @table monitoring_error_logs
 ├── services/
 │   ├── tracking/                   # 采集写入
 │   │   ├── message-tracking.service.ts
