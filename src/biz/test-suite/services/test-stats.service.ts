@@ -4,7 +4,7 @@ import {
   TestBatchRepository,
   ConversationSourceRepository,
 } from '../repositories';
-import { TestExecution } from '../types';
+import { TestExecution } from '../entities';
 import { ExecutionStatus, ReviewStatus, TestType, ConversationSourceStatus } from '../enums';
 
 /**

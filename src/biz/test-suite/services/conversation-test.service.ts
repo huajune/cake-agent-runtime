@@ -9,7 +9,7 @@ import {
 import { MessageRole } from '@shared/enums';
 import { LlmEvaluationService } from './llm-evaluation.service';
 import { ConversationSourceRepository, TestExecutionRepository } from '../repositories';
-import { type ConversationSourceRecord } from '../types';
+import { type ConversationSourceRecord } from '../entities';
 import {
   ExecutionStatus,
   ReviewStatus,

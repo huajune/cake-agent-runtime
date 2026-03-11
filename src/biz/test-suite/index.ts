@@ -29,8 +29,9 @@ export {
   TestStatsService,
 } from './services';
 
-// 类型
-export type { TestBatch, TestExecution } from './types';
+// 实体
+export type { TestBatch, TestExecution } from './entities';
+export type { ConversationSourceRecord } from './entities';
 
 // 枚举
 export {

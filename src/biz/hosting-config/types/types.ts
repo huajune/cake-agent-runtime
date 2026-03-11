@@ -65,23 +65,3 @@ export const DEFAULT_AGENT_REPLY_CONFIG: AgentReplyConfig = {
   queueDepthCritical: 20, // 队列深度高于 20 条触发告警
   errorRateCritical: 10, // 每小时错误超过 10 次触发告警
 };
-
-/**
- * 系统配置数据库记录
- */
-export interface SystemConfigRecord {
-  key: string;
-  value: unknown;
-  description?: string;
-  created_at?: string;
-  updated_at?: string;
-}
-
-/**
- * 小组黑名单项
- */
-export interface GroupBlacklistItem {
-  groupId: string;
-  reason?: string;
-  addedAt: number;
-}

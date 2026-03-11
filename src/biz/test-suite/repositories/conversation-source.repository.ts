@@ -2,8 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase';
 import { SupabaseService } from '@core/supabase';
 import { ConversationSourceStatus } from '@test-suite/enums';
+import { ConversationSourceRecord } from '../entities';
 import {
-  ConversationSourceRecord,
   CreateConversationSourceData,
   UpdateConversationSourceData,
   ConversationSourceFilters,

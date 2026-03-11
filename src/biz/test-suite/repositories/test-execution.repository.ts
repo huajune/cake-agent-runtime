@@ -2,8 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase';
 import { SupabaseService } from '@core/supabase';
 import { ExecutionStatus, ReviewStatus } from '@test-suite/enums';
+import { TestExecution } from '../entities';
 import {
-  TestExecution,
   CreateExecutionData,
   UpdateExecutionResultData,
   UpdateReviewData,

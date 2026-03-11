@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase';
 import { SupabaseService } from '@core/supabase';
-import { ErrorLogAlertType, ErrorLogRecord, ErrorLogDbRecord } from '../types';
+import { ErrorLogDbRecord } from '../entities';
+import { ErrorLogAlertType, ErrorLogRecord } from '../types';
 
 /**
  * 监控错误日志 Repository

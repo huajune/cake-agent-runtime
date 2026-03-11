@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase';
 import { SupabaseService } from '@core/supabase';
 import { BatchStatus, BatchSource, TestType } from '@test-suite/enums';
-import { TestBatch, CreateBatchData, BatchStatsData } from '../types';
+import { TestBatch } from '../entities';
+import { CreateBatchData, BatchStatsData } from '../types';
 
 /**
  * 测试批次 Repository

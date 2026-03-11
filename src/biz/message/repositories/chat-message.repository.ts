@@ -6,7 +6,8 @@ import {
   toStorageMessageSource,
   toStorageContactType,
 } from '@wecom/message/enums';
-import { ChatMessageRecord, ChatMessageInput, SessionRawRow, ChatSessionSummary } from '../types';
+import { ChatMessageRecord } from '../entities';
+import { ChatMessageInput, SessionRawRow, ChatSessionSummary } from '../types';
 
 /**
  * 聊天消息 Repository

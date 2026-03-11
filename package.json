@@ -32,6 +32,7 @@
     "db:new": "supabase migration new"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.41",
     "@nestjs/bull": "^11.0.4",
     "@nestjs/common": "^10.3.0",
     "@nestjs/config": "^3.1.1",
@@ -43,6 +44,7 @@
     "@nestjs/websockets": "^10.4.20",
     "@supabase/supabase-js": "^2.99.0",
     "@upstash/redis": "^1.35.6",
+    "ai": "^6.0.38",
     "axios": "^1.6.2",
     "bull": "^4.16.5",
     "class-transformer": "^0.5.1",

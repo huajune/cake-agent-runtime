@@ -1,1 +1,1 @@
-export { UserHostingStatus, UserActivityRecord, UserProfile } from './types';
+export { UserProfile } from './types';

@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase';
 import { SupabaseService } from '@core/supabase';
-import { MessageProcessingRecordInput, MessageProcessingDbRecord } from '../types';
+import { MessageProcessingDbRecord } from '../entities';
+import { MessageProcessingRecordInput } from '../types';
 
 /**
  * 消息处理记录 Repository

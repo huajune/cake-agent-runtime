@@ -10,7 +10,7 @@ import {
   SubmitFeedbackRequestDto,
   VercelAIChatRequestDto,
 } from './dto/test-chat.dto';
-import { TestBatch, TestExecution } from './types';
+import { TestBatch, TestExecution } from './entities';
 import {
   TestExecutionService,
   TestBatchService,

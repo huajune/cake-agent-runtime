@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase';
 import { SupabaseService } from '@core/supabase';
-import { UserHostingStatus, UserProfile } from '../types';
+import { UserHostingStatus } from '../entities';
+import { UserProfile } from '../types';
 
 /**
  * 用户托管状态 Repository
