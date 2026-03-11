@@ -3,7 +3,7 @@
  * @table system_config (JSON value of 'group_blacklist' key)
  */
 export interface GroupBlacklistItem {
-  groupId: string;
+  group_id: string;
   reason?: string;
-  addedAt: number;
+  added_at: number;
 }

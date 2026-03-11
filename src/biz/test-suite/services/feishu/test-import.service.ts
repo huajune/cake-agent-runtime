@@ -1,19 +1,20 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { FeishuBitableApiService } from '@core/feishu/services/feishu-bitable-api.service';
-import { ImportFromFeishuRequestDto, ImportResult } from '../dto/test-chat.dto';
-import { TestBatchService } from './test-batch.service';
-import { TestExecutionService } from './test-execution.service';
+import { ImportFromFeishuRequestDto, ImportResult } from '../../dto/test-chat.dto';
+import { TestBatchService } from '../execution/test-batch.service';
+import { TestExecutionService } from '../execution/test-execution.service';
 import { FeishuTestSyncService } from './feishu-test-sync.service';
-import { ConversationTestService } from './conversation-test.service';
-import { TestSuiteProcessor } from '../test-suite.processor';
-import { ConversationSourceRepository } from '../repositories';
+import { TestWriteBackService } from './test-write-back.service';
+import { ConversationTestService } from '../conversation/conversation-test.service';
+import { TestSuiteProcessor } from '../../test-suite.processor';
+import { ConversationSourceRepository } from '../../repositories/conversation-source.repository';
 import {
   BatchStatus,
   BatchSource,
   ExecutionStatus,
   TestType,
   ConversationSourceStatus,
-} from '../enums';
+} from '../../enums/test.enum';
 
 /**
  * 测试导入服务
@@ -31,6 +32,7 @@ export class TestImportService {
     private readonly batchService: TestBatchService,
     private readonly executionService: TestExecutionService,
     private readonly feishuSyncService: FeishuTestSyncService,
+    private readonly writeBackService: TestWriteBackService,
     private readonly feishuBitableApi: FeishuBitableApiService,
     private readonly conversationSourceRepository: ConversationSourceRepository,
     private readonly conversationTestService: ConversationTestService,
@@ -295,7 +297,7 @@ export class TestImportService {
       }
 
       // 回写相似度分数到飞书
-      const result = await this.feishuSyncService.writeBackSimilarityScore(
+      const result = await this.writeBackService.writeBackSimilarityScore(
         source.feishu_record_id,
         avgSimilarityScore,
       );

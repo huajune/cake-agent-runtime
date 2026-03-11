@@ -6,10 +6,10 @@ import {
   type ScenarioOptions,
   type AgentResult,
 } from '@agent';
-import { TestChatRequestDto, TestChatResponse } from '../dto/test-chat.dto';
-import { TestExecutionRepository } from '../repositories';
-import { TestExecution } from '../entities';
-import { ExecutionStatus } from '../enums';
+import { TestChatRequestDto, TestChatResponse } from '../../dto/test-chat.dto';
+import { TestExecutionRepository } from '../../repositories/test-execution.repository';
+import { TestExecution } from '../../entities/test-execution.entity';
+import { ExecutionStatus } from '../../enums/test.enum';
 
 /** 默认场景 */
 const DEFAULT_SCENARIO = 'candidate-consultation';

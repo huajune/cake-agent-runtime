@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { UserHostingRepository } from '../repositories';
+import { UserHostingRepository } from '../repositories/user-hosting.repository';
 
 /**
  * 缓存中单个用户的暂停状态
@@ -128,10 +128,10 @@ export class UserHostingService {
 
       const profileMap = new Map<string, { odName?: string; groupName?: string }>();
       for (const record of profiles) {
-        if (!profileMap.has(record.chat_id)) {
-          profileMap.set(record.chat_id, {
-            odName: record.od_name,
-            groupName: record.group_name,
+        if (!profileMap.has(record.chatId)) {
+          profileMap.set(record.chatId, {
+            odName: record.odName,
+            groupName: record.groupName,
           });
         }
       }

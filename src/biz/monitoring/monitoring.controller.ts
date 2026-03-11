@@ -2,7 +2,9 @@ import { Controller, Get, Logger, Query, Post, HttpCode, Res, Req } from '@nestj
 import { Response, Request } from 'express';
 import { join } from 'path';
 import { existsSync } from 'fs';
-import { AnalyticsService } from './services/analytics/analytics.service';
+import { AnalyticsDashboardService } from './services/analytics/analytics-dashboard.service';
+import { AnalyticsQueryService } from './services/analytics/analytics-query.service';
+import { AnalyticsMaintenanceService } from './services/analytics/analytics-maintenance.service';
 import { MetricsData, TimeRange } from './types/analytics.types';
 
 /**
@@ -13,7 +15,11 @@ import { MetricsData, TimeRange } from './types/analytics.types';
 export class AnalyticsController {
   private readonly logger = new Logger(AnalyticsController.name);
 
-  constructor(private readonly analyticsService: AnalyticsService) {}
+  constructor(
+    private readonly dashboardService: AnalyticsDashboardService,
+    private readonly queryService: AnalyticsQueryService,
+    private readonly maintenanceService: AnalyticsMaintenanceService,
+  ) {}
 
   /**
    * 获取 Dashboard 概览数据
@@ -23,7 +29,7 @@ export class AnalyticsController {
   async getDashboardOverview(@Query('range') range?: TimeRange) {
     const timeRange = range || 'today';
     this.logger.debug(`获取 Dashboard 概览: ${timeRange}`);
-    return this.analyticsService.getDashboardOverviewAsync(timeRange);
+    return this.dashboardService.getDashboardOverviewAsync(timeRange);
   }
 
   /**
@@ -33,7 +39,7 @@ export class AnalyticsController {
   @Get('dashboard/system')
   async getSystemMonitoring() {
     this.logger.debug('获取 System 监控数据');
-    return this.analyticsService.getSystemMonitoringAsync();
+    return this.queryService.getSystemMonitoringAsync();
   }
 
   /**
@@ -44,7 +50,7 @@ export class AnalyticsController {
   async getTrends(@Query('range') range?: TimeRange) {
     const timeRange = range || 'today';
     this.logger.debug(`获取趋势数据: ${timeRange}`);
-    return this.analyticsService.getTrendsDataAsync(timeRange);
+    return this.queryService.getTrendsDataAsync(timeRange);
   }
 
   /**
@@ -53,7 +59,7 @@ export class AnalyticsController {
    */
   @Get('metrics')
   async getMetrics(): Promise<MetricsData> {
-    return this.analyticsService.getMetricsDataAsync();
+    return this.queryService.getMetricsDataAsync();
   }
 
   /**
@@ -63,9 +69,9 @@ export class AnalyticsController {
   @Get('users')
   async getUsersByDate(@Query('date') date?: string) {
     if (!date) {
-      return this.analyticsService.getTodayUsersFromDatabase();
+      return this.queryService.getTodayUsersFromDatabase();
     }
-    return this.analyticsService.getUsersByDate(date);
+    return this.queryService.getUsersByDate(date);
   }
 
   /**
@@ -74,7 +80,7 @@ export class AnalyticsController {
    */
   @Get('user-trend')
   async getUserTrend() {
-    return this.analyticsService.getUserTrend();
+    return this.queryService.getUserTrend();
   }
 
   /**
@@ -84,7 +90,7 @@ export class AnalyticsController {
   @Get('recent-messages')
   async getRecentMessages(@Query('limit') limit?: string) {
     const limitNum = parseInt(limit || '50', 10);
-    return this.analyticsService.getRecentDetailRecords(limitNum);
+    return this.queryService.getRecentDetailRecords(limitNum);
   }
 
   /**
@@ -93,7 +99,7 @@ export class AnalyticsController {
    */
   @Get('system')
   async getSystemInfo() {
-    return this.analyticsService.getSystemInfo();
+    return this.queryService.getSystemInfo();
   }
 
   /**
@@ -104,7 +110,7 @@ export class AnalyticsController {
   @HttpCode(200)
   async clearAllData() {
     this.logger.log('手动触发清空所有监控统计数据');
-    await this.analyticsService.clearAllDataAsync();
+    await this.maintenanceService.clearAllDataAsync();
     return { success: true, message: '监控统计数据已清空' };
   }
 
@@ -117,7 +123,7 @@ export class AnalyticsController {
   async clearCache(@Query('type') type?: 'all' | 'metrics' | 'history' | 'agent') {
     const cacheType = type || 'all';
     this.logger.log(`手动触发清除缓存: ${cacheType}`);
-    await this.analyticsService.clearCacheAsync(cacheType);
+    await this.maintenanceService.clearCacheAsync(cacheType);
     return { success: true, message: `缓存 [${cacheType}] 已清除` };
   }
 }

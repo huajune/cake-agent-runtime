@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, HttpCode } from '@nestjs/common';
-import { StrategyConfigService } from './services';
-import { StrategyPersona, StrategyStageGoals, StrategyRedLines } from './types';
+import { StrategyConfigService } from './services/strategy-config.service';
+import { StrategyPersona, StrategyStageGoals, StrategyRedLines } from './types/strategy.types';
 
 /**
  * 策略配置控制器

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase';
 import { SupabaseService } from '@core/supabase';
-import { SystemConfigRecord } from '../entities';
+import { SystemConfigRecord } from '../entities/system-config.entity';
 
 /**
  * 系统配置 Repository

@@ -10,7 +10,9 @@ import { MessageTrackingService } from './services/tracking/message-tracking.ser
 import { MonitoringCacheService } from './services/tracking/monitoring-cache.service';
 
 // Analytics (聚合分析)
-import { AnalyticsService } from './services/analytics/analytics.service';
+import { AnalyticsDashboardService } from './services/analytics/analytics-dashboard.service';
+import { AnalyticsQueryService } from './services/analytics/analytics-query.service';
+import { AnalyticsMaintenanceService } from './services/analytics/analytics-maintenance.service';
 import { HourlyStatsAggregatorService } from './services/analytics/hourly-stats-aggregator.service';
 import { AnalyticsAlertService } from './services/analytics/analytics-alert.service';
 
@@ -29,9 +31,9 @@ import { MonitoringErrorLogRepository } from './repositories/monitoring-error-lo
  * 业务监控模块 (Business Layer)
  *
  * 统一管理消息处理全链路的监控体系：
- * - services/tracking/   采集写入：消息生命周期追踪、Redis 实时计数
- * - services/analytics/  聚合分析：Dashboard 数据、趋势计算、业务告警
- * - services/cleanup/    数据清理：定时清理过期记录
+ * - services/tracking/     采集写入：消息生命周期追踪、Redis 实时计数
+ * - services/analytics/    聚合分析：Dashboard 数据、趋势计算、业务告警
+ * - services/cleanup/      数据清理：定时清理过期记录
  */
 @Global()
 @Module({
@@ -52,7 +54,9 @@ import { MonitoringErrorLogRepository } from './repositories/monitoring-error-lo
     MonitoringCacheService,
     MessageTrackingService,
     // Analytics
-    AnalyticsService,
+    AnalyticsDashboardService,
+    AnalyticsQueryService,
+    AnalyticsMaintenanceService,
     HourlyStatsAggregatorService,
     AnalyticsAlertService,
     // Cleanup
@@ -61,7 +65,9 @@ import { MonitoringErrorLogRepository } from './repositories/monitoring-error-lo
   exports: [
     MessageTrackingService,
     MonitoringCacheService,
-    AnalyticsService,
+    AnalyticsDashboardService,
+    AnalyticsQueryService,
+    AnalyticsMaintenanceService,
     HourlyStatsAggregatorService,
     AnalyticsAlertService,
     DataCleanupService,

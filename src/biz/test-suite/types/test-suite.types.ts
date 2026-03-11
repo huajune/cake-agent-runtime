@@ -4,7 +4,7 @@ import {
   ExecutionStatus,
   ReviewStatus,
   ConversationSourceStatus,
-} from '@test-suite/enums';
+} from '../enums/test.enum';
 
 /**
  * 创建批次请求
@@ -111,9 +111,9 @@ export interface CreateConversationSourceData {
  */
 export interface UpdateConversationSourceData {
   status?: ConversationSourceStatus;
-  total_turns?: number;
-  avg_similarity_score?: number | null;
-  min_similarity_score?: number | null;
+  totalTurns?: number;
+  avgSimilarityScore?: number | null;
+  minSimilarityScore?: number | null;
 }
 
 /**
@@ -121,4 +121,38 @@ export interface UpdateConversationSourceData {
  */
 export interface ConversationSourceFilters {
   status?: ConversationSourceStatus;
+}
+
+/**
+ * LLM 评估结果接口
+ */
+export interface LlmEvaluationResult {
+  /** 评估分数 (0-100) */
+  score: number;
+  /** 是否通过 (score >= 60) */
+  passed: boolean;
+  /** 评估理由 */
+  reason: string;
+  /** 评估 ID（用于追踪） */
+  evaluationId: string;
+  /** Token 消耗 */
+  tokenUsage?: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  };
+}
+
+/**
+ * 评估输入参数
+ */
+export interface EvaluationInput {
+  /** 用户消息 */
+  userMessage: string;
+  /** 期望回复（真人参考） */
+  expectedOutput: string;
+  /** 实际回复（Agent 生成） */
+  actualOutput: string;
+  /** 对话历史（可选，提供上下文） */
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
 }

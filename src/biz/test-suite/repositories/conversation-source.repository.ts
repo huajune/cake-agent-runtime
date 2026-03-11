@@ -1,13 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase';
 import { SupabaseService } from '@core/supabase';
-import { ConversationSourceStatus } from '@test-suite/enums';
-import { ConversationSourceRecord } from '../entities';
+import { ConversationSourceStatus } from '../enums/test.enum';
+import { ConversationSourceRecord } from '../entities/conversation-source.entity';
 import {
   CreateConversationSourceData,
   UpdateConversationSourceData,
   ConversationSourceFilters,
-} from '../types';
+} from '../types/test-suite.types';
 
 /**
  * 对话源 Repository
@@ -127,12 +127,16 @@ export class ConversationSourceRepository extends BaseRepository {
       updateData.status = data.status;
     }
 
-    if (data.avg_similarity_score !== undefined) {
-      updateData.avg_similarity_score = data.avg_similarity_score;
+    if (data.totalTurns !== undefined) {
+      updateData.total_turns = data.totalTurns;
     }
 
-    if (data.min_similarity_score !== undefined) {
-      updateData.min_similarity_score = data.min_similarity_score;
+    if (data.avgSimilarityScore !== undefined) {
+      updateData.avg_similarity_score = data.avgSimilarityScore;
+    }
+
+    if (data.minSimilarityScore !== undefined) {
+      updateData.min_similarity_score = data.minSimilarityScore;
     }
 
     const results = await this.update<ConversationSourceRecord>(updateData, (q) => q.eq('id', id));

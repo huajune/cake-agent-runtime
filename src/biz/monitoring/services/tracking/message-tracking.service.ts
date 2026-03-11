@@ -7,9 +7,9 @@ import {
   AlertErrorType,
 } from '../../types/tracking.types';
 import { MonitoringCacheService } from './monitoring-cache.service';
-import { MessageProcessingRepository } from '@biz/message/repositories';
+import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
 import { MonitoringErrorLogRepository } from '../../repositories/monitoring-error-log.repository';
-import { UserHostingRepository } from '@biz/user/repositories';
+import { UserHostingRepository } from '@biz/user/repositories/user-hosting.repository';
 
 /**
  * 消息追踪服务

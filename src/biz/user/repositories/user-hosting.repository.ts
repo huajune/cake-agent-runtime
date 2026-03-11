@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase';
 import { SupabaseService } from '@core/supabase';
-import { UserHostingStatus } from '../entities';
-import { UserProfile } from '../types';
+import { UserHostingStatus } from '../entities/user-hosting-status.entity';
+import { UserProfile } from '../types/user.types';
 
 /**
  * 用户托管状态 Repository
@@ -78,7 +78,12 @@ export class UserHostingRepository extends BaseRepository {
       return [];
     }
 
-    return (data as UserProfile[]) ?? [];
+    const rows = (data as { chat_id: string; od_name?: string; group_name?: string }[]) ?? [];
+    return rows.map((row) => ({
+      chatId: row.chat_id,
+      odName: row.od_name,
+      groupName: row.group_name,
+    }));
   }
 
   /**

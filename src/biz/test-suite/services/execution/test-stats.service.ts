@@ -1,11 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { TestExecutionRepository } from '../../repositories/test-execution.repository';
+import { TestBatchRepository } from '../../repositories/test-batch.repository';
+import { ConversationSourceRepository } from '../../repositories/conversation-source.repository';
+import { TestExecution } from '../../entities/test-execution.entity';
 import {
-  TestExecutionRepository,
-  TestBatchRepository,
-  ConversationSourceRepository,
-} from '../repositories';
-import { TestExecution } from '../entities';
-import { ExecutionStatus, ReviewStatus, TestType, ConversationSourceStatus } from '../enums';
+  ExecutionStatus,
+  ReviewStatus,
+  TestType,
+  ConversationSourceStatus,
+} from '../../enums/test.enum';
 
 /**
  * 批次统计数据

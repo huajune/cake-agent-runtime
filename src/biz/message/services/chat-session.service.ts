@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ChatMessageRepository } from '../repositories';
+import { ChatMessageRepository } from '../repositories/chat-message.repository';
 import { MonitoringRepository } from '@biz/monitoring/repositories/monitoring.repository';
 
 /**

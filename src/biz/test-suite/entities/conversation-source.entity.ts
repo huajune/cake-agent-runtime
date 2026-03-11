@@ -1,4 +1,4 @@
-import { ConversationSourceStatus } from '@test-suite/enums';
+import { ConversationSourceStatus } from '../enums/test.enum';
 
 /**
  * 对话源记录（数据库格式）

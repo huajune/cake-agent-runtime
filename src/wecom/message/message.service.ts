@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
-import { SystemConfigService } from '@biz/hosting-config/services';
+import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 
 // 导入子服务
 import { MessageHistoryService } from './services/message-history.service';

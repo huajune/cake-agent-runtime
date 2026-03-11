@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AgentReplyConfig } from '@biz/hosting-config/types';
+import { AgentReplyConfig } from '@biz/hosting-config/types/hosting-config.types';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import {
   TYPING_MIN_DELAY_MS,

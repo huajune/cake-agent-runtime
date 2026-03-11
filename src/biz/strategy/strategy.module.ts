@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
-import { StrategyConfigRepository } from './repositories';
-import { StrategyConfigService } from './services';
+import { StrategyConfigRepository } from './repositories/strategy-config.repository';
+import { StrategyConfigService } from './services/strategy-config.service';
 import { StrategyController } from './strategy.controller';
 
 @Module({

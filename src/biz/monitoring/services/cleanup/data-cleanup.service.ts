@@ -1,9 +1,10 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { SupabaseService } from '@core/supabase';
-import { ChatMessageRepository, MessageProcessingRepository } from '@biz/message/repositories';
+import { ChatMessageRepository } from '@biz/message/repositories/chat-message.repository';
+import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
 import { MonitoringErrorLogRepository } from '../../repositories/monitoring-error-log.repository';
-import { UserHostingRepository } from '@biz/user/repositories';
+import { UserHostingRepository } from '@biz/user/repositories/user-hosting.repository';
 
 /**
  * 数据清理服务（分层存储策略）

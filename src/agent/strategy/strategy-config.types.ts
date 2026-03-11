@@ -3,11 +3,11 @@ import {
   StrategyStageGoals,
   StrategyRedLines,
   StrategyIndustrySkills,
-} from '@biz/strategy/types';
-import { StrategyConfigRecord } from '@biz/strategy/entities';
+} from '@biz/strategy/types/strategy.types';
+import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 
-export * from '@biz/strategy/types';
-export * from '@biz/strategy/entities';
+export * from '@biz/strategy/types/strategy.types';
+export * from '@biz/strategy/entities/strategy-config.entity';
 
 // ==================== 默认种子数据 ====================
 

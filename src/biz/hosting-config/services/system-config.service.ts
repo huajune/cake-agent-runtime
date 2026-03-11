@@ -1,8 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@core/redis';
-import { SystemConfigRepository } from '../repositories';
-import { SystemConfig, AgentReplyConfig, DEFAULT_AGENT_REPLY_CONFIG } from '../types';
+import { SystemConfigRepository } from '../repositories/system-config.repository';
+import {
+  SystemConfig,
+  AgentReplyConfig,
+  DEFAULT_AGENT_REPLY_CONFIG,
+} from '../types/hosting-config.types';
 
 /**
  * 系统配置服务

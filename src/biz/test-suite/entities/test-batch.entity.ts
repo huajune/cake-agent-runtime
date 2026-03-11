@@ -1,4 +1,4 @@
-import { BatchStatus, BatchSource, TestType } from '@test-suite/enums';
+import { BatchStatus, BatchSource, TestType } from '../enums/test.enum';
 
 /**
  * 测试批次（数据库格式）

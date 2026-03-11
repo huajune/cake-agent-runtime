@@ -1,6 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { AgentReplyConfig, DEFAULT_AGENT_REPLY_CONFIG } from '@biz/hosting-config/types';
+import {
+  AgentReplyConfig,
+  DEFAULT_AGENT_REPLY_CONFIG,
+} from '@biz/hosting-config/types/hosting-config.types';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { TypingDelayService } from './message-typing-delay.service';
 import {

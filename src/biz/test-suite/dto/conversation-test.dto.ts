@@ -1,6 +1,6 @@
 import { IsString, IsOptional, IsNumber, IsEnum, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ConversationSourceStatus, SimilarityRating, ReviewStatus } from '../enums';
+import { ConversationSourceStatus, SimilarityRating, ReviewStatus } from '../enums/test.enum';
 
 /**
  * 解析后的对话消息

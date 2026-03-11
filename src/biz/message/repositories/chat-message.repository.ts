@@ -6,8 +6,9 @@ import {
   toStorageMessageSource,
   toStorageContactType,
 } from '@wecom/message/enums';
-import { ChatMessageRecord } from '../entities';
-import { ChatMessageInput, SessionRawRow, ChatSessionSummary } from '../types';
+import { ChatMessageRecord } from '../entities/chat-message.entity';
+import { ChatMessageInput, ChatSessionSummary } from '../types/message.types';
+import { SessionDbRow } from '../types/repository.types';
 
 /**
  * 聊天消息 Repository
@@ -318,7 +319,7 @@ export class ChatMessageRepository extends BaseRepository {
       startDate.setDate(startDate.getDate() - days);
       startDate.setHours(0, 0, 0, 0);
 
-      const results = await this.select<SessionRawRow>(
+      const results = await this.select<SessionDbRow>(
         'chat_id,candidate_name,manager_name,content,timestamp,avatar,contact_type,role',
         (q) =>
           q
@@ -347,7 +348,7 @@ export class ChatMessageRepository extends BaseRepository {
     }
 
     try {
-      const results = await this.select<SessionRawRow>(
+      const results = await this.select<SessionDbRow>(
         'chat_id,candidate_name,manager_name,content,timestamp,avatar,contact_type,role',
         (q) =>
           q
@@ -629,7 +630,7 @@ export class ChatMessageRepository extends BaseRepository {
   /**
    * 将消息列表按 chat_id 分组为会话摘要（去重逻辑）
    */
-  private groupMessagesBySession(rows: SessionRawRow[]): ChatSessionSummary[] {
+  private groupMessagesBySession(rows: SessionDbRow[]): ChatSessionSummary[] {
     const sessionMap = new Map<string, ChatSessionSummary>();
 
     for (const msg of rows) {

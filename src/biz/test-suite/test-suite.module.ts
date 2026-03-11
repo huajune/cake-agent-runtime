@@ -2,24 +2,21 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
 import { HttpModule } from '@core/client-http';
-import {
-  TestBatchRepository,
-  TestExecutionRepository,
-  ConversationSourceRepository,
-} from './repositories';
+import { TestBatchRepository } from './repositories/test-batch.repository';
+import { TestExecutionRepository } from './repositories/test-execution.repository';
+import { ConversationSourceRepository } from './repositories/conversation-source.repository';
 import { TestSuiteController } from './test-suite.controller';
 import { TestSuiteService } from './test-suite.service';
 import { TestSuiteProcessor } from './test-suite.processor';
-import {
-  TestExecutionService,
-  TestBatchService,
-  TestImportService,
-  TestWriteBackService,
-  FeishuTestSyncService,
-  TestStatsService,
-  ConversationTestService,
-  LlmEvaluationService,
-} from './services';
+import { TestExecutionService } from './services/execution/test-execution.service';
+import { TestBatchService } from './services/execution/test-batch.service';
+import { TestStatsService } from './services/execution/test-stats.service';
+import { FeishuTestSyncService } from './services/feishu/feishu-test-sync.service';
+import { TestImportService } from './services/feishu/test-import.service';
+import { TestWriteBackService } from './services/feishu/test-write-back.service';
+import { ConversationTestService } from './services/conversation/conversation-test.service';
+import { ConversationParserService } from './services/conversation/conversation-parser.service';
+import { LlmEvaluationService } from './services/conversation/llm-evaluation.service';
 import { AgentModule } from '@agent';
 import { FeishuModule } from '@core/feishu';
 
@@ -78,6 +75,7 @@ import { FeishuModule } from '@core/feishu';
     TestStatsService,
     FeishuTestSyncService,
     LlmEvaluationService,
+    ConversationParserService,
 
     // 子服务（有依赖关系）
     TestExecutionService,
@@ -107,6 +105,7 @@ import { FeishuModule } from '@core/feishu';
     FeishuTestSyncService,
     TestStatsService,
     ConversationTestService,
+    ConversationParserService,
     LlmEvaluationService,
   ],
 })

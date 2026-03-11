@@ -10,14 +10,13 @@ import {
   SubmitFeedbackRequestDto,
   VercelAIChatRequestDto,
 } from './dto/test-chat.dto';
-import { TestBatch, TestExecution } from './entities';
-import {
-  TestExecutionService,
-  TestBatchService,
-  TestImportService,
-  TestWriteBackService,
-  ConversationTestService,
-} from './services';
+import { TestBatch } from './entities/test-batch.entity';
+import { TestExecution } from './entities/test-execution.entity';
+import { TestExecutionService } from './services/execution/test-execution.service';
+import { TestBatchService } from './services/execution/test-batch.service';
+import { TestImportService } from './services/feishu/test-import.service';
+import { TestWriteBackService } from './services/feishu/test-write-back.service';
+import { ConversationTestService } from './services/conversation/conversation-test.service';
 import {
   BatchStatus,
   ExecutionStatus,
@@ -25,7 +24,7 @@ import {
   FeishuTestStatus,
   TestType,
   ConversationSourceStatus,
-} from './enums';
+} from './enums/test.enum';
 import { MessageRole } from '@shared/enums';
 import {
   FeishuBitableSyncService,

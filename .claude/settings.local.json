@@ -431,7 +431,10 @@
       "Bash(mv agent-config/agent-config.service.ts agent-config/strategy-config.service.ts)",
       "Bash(mv agent-config:*)",
       "Read(//Users/jiezhu/workSpace/snowmountain-top/TheVitality/**)",
-      "Read(//Users/jiezhu/workSpace/snowmountain-top/Gaia/**)"
+      "Read(//Users/jiezhu/workSpace/snowmountain-top/Gaia/**)",
+      "Bash(while read:*)",
+      "Bash(do echo:*)",
+      "Read(//Users/jiezhu/.claude/**)"
     ],
     "deny": [
       "Bash(git restore:*)",

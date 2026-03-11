@@ -24,20 +24,6 @@ export interface ChatMessageInput {
 }
 
 /**
- * 会话列表查询的原始行
- */
-export interface SessionRawRow {
-  chat_id: string;
-  candidate_name?: string;
-  manager_name?: string;
-  content: string;
-  timestamp: string;
-  avatar?: string;
-  contact_type?: string;
-  role: string;
-}
-
-/**
  * 会话摘要（分组后的结果）
  */
 export interface ChatSessionSummary {

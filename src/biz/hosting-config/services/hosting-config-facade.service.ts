@@ -1,16 +1,15 @@
-import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
-import { AgentReplyConfig, DEFAULT_AGENT_REPLY_CONFIG } from '../types';
+import { Injectable, Logger } from '@nestjs/common';
+import { AgentReplyConfig, DEFAULT_AGENT_REPLY_CONFIG } from '../types/hosting-config.types';
 import { SystemConfigService } from './system-config.service';
 import { GroupBlacklistService } from './group-blacklist.service';
-import { UserHostingService } from '@biz/user/services';
-import { MessageService } from '@wecom/message/message.service';
-import { MessageProcessor } from '@wecom/message/message.processor';
+import { UserHostingService } from '@biz/user/services/user-hosting.service';
 
 /**
  * 系统配置门面服务
  *
- * 统一协调 Agent 配置、黑名单、运行时开关、Worker 管理等操作。
- * 消除 Controller 对 wecom 域的直接依赖。
+ * 统一协调 Agent 配置、黑名单等 biz 层操作。
+ * 运行时开关（AI 回复、消息聚合）和 Worker 管理由 Controller 直接调用
+ * wecom 域服务处理，避免 biz/ 对 wecom/ 的跨域依赖。
  */
 @Injectable()
 export class HostingConfigFacadeService {
@@ -20,10 +19,6 @@ export class HostingConfigFacadeService {
     private readonly systemConfigService: SystemConfigService,
     private readonly groupBlacklistService: GroupBlacklistService,
     private readonly userHostingService: UserHostingService,
-    @Inject(forwardRef(() => MessageService))
-    private readonly messageService: MessageService,
-    @Inject(forwardRef(() => MessageProcessor))
-    private readonly messageProcessor: MessageProcessor,
   ) {}
 
   // ==================== Agent 配置 ====================
@@ -58,7 +53,7 @@ export class HostingConfigFacadeService {
     ]);
     return {
       chatIds: pausedUsers.map((u) => u.userId),
-      groupIds: groupBlacklist.map((g) => g.groupId),
+      groupIds: groupBlacklist.map((g) => g.group_id),
     };
   }
 
@@ -84,38 +79,5 @@ export class HostingConfigFacadeService {
       await this.groupBlacklistService.removeGroupFromBlacklist(id);
       return { message: `小组 ${id} 已从黑名单移除` };
     }
-  }
-
-  // ==================== 运行时开关 ====================
-
-  getAiReplyStatus(): boolean {
-    return this.messageService.getAiReplyStatus();
-  }
-
-  async toggleAiReply(enabled: boolean): Promise<boolean> {
-    return this.messageService.toggleAiReply(enabled);
-  }
-
-  getMessageMergeStatus(): boolean {
-    return this.messageService.getMessageMergeStatus();
-  }
-
-  async toggleMessageMerge(enabled: boolean): Promise<boolean> {
-    return this.messageService.toggleMessageMerge(enabled);
-  }
-
-  // ==================== Worker 管理 ====================
-
-  getWorkerStatus(): Record<string, unknown> {
-    return {
-      ...this.messageProcessor.getWorkerStatus(),
-      messageMergeEnabled: this.messageService.getMessageMergeStatus(),
-    };
-  }
-
-  async setWorkerConcurrency(
-    concurrency: number,
-  ): Promise<{ success: boolean; message: string; concurrency?: number }> {
-    return this.messageProcessor.setConcurrency(concurrency);
   }
 }

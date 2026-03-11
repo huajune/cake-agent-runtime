@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { FeishuBookingService } from '@core/feishu';
-import { BookingRepository } from '@biz/message/repositories';
+import { BookingRepository } from '@biz/message/repositories/booking.repository';
 import { ChatResponse, UIMessage } from '@agent';
 import { InterviewBookingInfo } from '@core/feishu/interfaces/feishu.interface';
 

@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase';
 import { SupabaseService } from '@core/supabase';
-import { BookingDbRecord } from '../entities';
-import { BookingRecordInput, BookingStats } from '../types';
+import { BookingDbRecord } from '../entities/booking.entity';
+import { BookingRecordInput, BookingStats } from '../types/message.types';
 
 /**
  * 预约统计 Repository

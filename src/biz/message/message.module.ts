@@ -1,11 +1,10 @@
 import { Module } from '@nestjs/common';
-import {
-  ChatMessageRepository,
-  MessageProcessingRepository,
-  BookingRepository,
-} from './repositories';
+import { ChatMessageRepository } from './repositories/chat-message.repository';
+import { MessageProcessingRepository } from './repositories/message-processing.repository';
+import { BookingRepository } from './repositories/booking.repository';
 import { MessageController } from './message.controller';
-import { ChatSessionService, MessageProcessingService } from './services';
+import { ChatSessionService } from './services/chat-session.service';
+import { MessageProcessingService } from './services/message-processing.service';
 
 @Module({
   controllers: [MessageController],

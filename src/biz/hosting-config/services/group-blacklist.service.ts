@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '@core/redis';
-import { GroupBlacklistRepository } from '../repositories';
-import { GroupBlacklistItem } from '../entities';
+import { GroupBlacklistRepository } from '../repositories/group-blacklist.repository';
+import { GroupBlacklistItem } from '../entities/group-blacklist.entity';
 
 /**
  * 小组黑名单 Service
@@ -64,9 +64,9 @@ export class GroupBlacklistService {
    */
   async addGroupToBlacklist(groupId: string, reason?: string): Promise<void> {
     const item: GroupBlacklistItem = {
-      groupId,
+      group_id: groupId,
       reason,
-      addedAt: Date.now(),
+      added_at: Date.now(),
     };
 
     this.memoryCache.set(groupId, item);
@@ -145,7 +145,7 @@ export class GroupBlacklistService {
   private populateMemoryCache(items: GroupBlacklistItem[]): void {
     this.memoryCache.clear();
     for (const item of items) {
-      this.memoryCache.set(item.groupId, item);
+      this.memoryCache.set(item.group_id, item);
     }
     this.memoryCacheExpiry = Date.now() + this.CACHE_TTL_MS;
   }

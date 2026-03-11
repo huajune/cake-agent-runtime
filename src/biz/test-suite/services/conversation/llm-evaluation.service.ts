@@ -1,41 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AgentService } from '@agent';
 import { randomUUID } from 'crypto';
-import { SimilarityRating } from '../enums';
+import { SimilarityRating } from '../../enums/test.enum';
+import { LlmEvaluationResult, EvaluationInput } from '../../types/test-suite.types';
 
-/**
- * LLM 评估结果接口
- */
-export interface LlmEvaluationResult {
-  /** 评估分数 (0-100) */
-  score: number;
-  /** 是否通过 (score >= 60) */
-  passed: boolean;
-  /** 评估理由 */
-  reason: string;
-  /** 评估 ID（用于追踪） */
-  evaluationId: string;
-  /** Token 消耗 */
-  tokenUsage?: {
-    inputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-  };
-}
-
-/**
- * 评估输入参数
- */
-export interface EvaluationInput {
-  /** 用户消息 */
-  userMessage: string;
-  /** 期望回复（真人参考） */
-  expectedOutput: string;
-  /** 实际回复（Agent 生成） */
-  actualOutput: string;
-  /** 对话历史（可选，提供上下文） */
-  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
-}
+export type { LlmEvaluationResult, EvaluationInput };
 
 /** 通过分数阈值 */
 const PASS_THRESHOLD = 60;

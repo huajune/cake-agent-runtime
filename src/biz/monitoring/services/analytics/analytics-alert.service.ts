@@ -1,9 +1,9 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { AnalyticsService } from './analytics.service';
+import { AnalyticsDashboardService } from './analytics-dashboard.service';
 import { FeishuAlertService } from '@core/feishu';
-import { AgentReplyConfig } from '@biz/hosting-config/types';
-import { SystemConfigService } from '@biz/hosting-config/services';
+import { AgentReplyConfig } from '@biz/hosting-config/types/hosting-config.types';
+import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 
 /**
  * 业务指标告警服务
@@ -30,7 +30,7 @@ export class AnalyticsAlertService implements OnModuleInit {
   private lastAlertTimestamps = new Map<string, number>();
 
   constructor(
-    private readonly analyticsService: AnalyticsService,
+    private readonly analyticsDashboardService: AnalyticsDashboardService,
     private readonly feishuAlertService: FeishuAlertService,
     private readonly systemConfigService: SystemConfigService,
   ) {
@@ -80,7 +80,7 @@ export class AnalyticsAlertService implements OnModuleInit {
     if (!this.enabled) return;
 
     try {
-      const dashboard = await this.analyticsService.getDashboardDataAsync('today');
+      const dashboard = await this.analyticsDashboardService.getDashboardDataAsync('today');
       const totalMessages = dashboard.overview.totalMessages;
 
       if (totalMessages >= this.minSamples) {

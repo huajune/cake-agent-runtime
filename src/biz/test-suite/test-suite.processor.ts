@@ -2,9 +2,9 @@ import { Injectable, Logger, OnModuleInit, Inject, forwardRef } from '@nestjs/co
 import { InjectQueue } from '@nestjs/bull';
 import { Queue, Job } from 'bull';
 import { TestSuiteService } from './test-suite.service';
-import { TestBatch } from './entities';
+import { TestBatch } from './entities/test-batch.entity';
 import { RedisService } from '@core/redis/redis.service';
-import { ExecutionStatus, MessageRole, BatchStatus } from './enums';
+import { ExecutionStatus, MessageRole, BatchStatus } from './enums/test.enum';
 
 /**
  * 测试任务 Job 数据结构

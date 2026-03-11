@@ -1,4 +1,4 @@
-import { ExecutionStatus, ReviewStatus } from '@test-suite/enums';
+import { ExecutionStatus, ReviewStatus } from '../enums/test.enum';
 
 /**
  * 测试执行记录（数据库格式）

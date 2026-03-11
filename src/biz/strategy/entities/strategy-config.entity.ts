@@ -3,7 +3,7 @@ import {
   StrategyStageGoals,
   StrategyRedLines,
   StrategyIndustrySkills,
-} from '../types';
+} from '../types/strategy.types';
 
 /**
  * 策略配置数据库记录

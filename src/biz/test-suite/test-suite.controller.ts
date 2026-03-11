@@ -33,7 +33,7 @@ import {
   ExecuteConversationDto,
   SyncConversationTestsDto,
 } from './dto/conversation-test.dto';
-import { BatchSource, ExecutionStatus, ReviewStatus, TestType } from './enums';
+import { BatchSource, ExecutionStatus, ReviewStatus, TestType } from './enums/test.enum';
 import { SSEStreamHandler, VercelAIStreamHandler } from './utils/sse-stream-handler';
 
 /**

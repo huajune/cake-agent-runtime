@@ -1,10 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { CreateBatchRequestDto, UpdateReviewRequestDto, BatchStats } from '../dto/test-chat.dto';
-import { TestBatchRepository, TestExecutionRepository } from '../repositories';
-import { TestBatch, TestExecution } from '../entities';
+import { CreateBatchRequestDto, UpdateReviewRequestDto, BatchStats } from '../../dto/test-chat.dto';
+import { TestBatchRepository } from '../../repositories/test-batch.repository';
+import { TestExecutionRepository } from '../../repositories/test-execution.repository';
+import { TestBatch } from '../../entities/test-batch.entity';
+import { TestExecution } from '../../entities/test-execution.entity';
 import { TestStatsService } from './test-stats.service';
-import { FeishuTestSyncService } from './feishu-test-sync.service';
-import { BatchStatus, ExecutionStatus, ReviewStatus, FeishuTestStatus, TestType } from '../enums';
+import { TestWriteBackService } from '../feishu/test-write-back.service';
+import {
+  BatchStatus,
+  ExecutionStatus,
+  ReviewStatus,
+  FeishuTestStatus,
+  TestType,
+} from '../../enums/test.enum';
 
 /**
  * 批次管理服务
@@ -23,7 +31,7 @@ export class TestBatchService {
     private readonly batchRepository: TestBatchRepository,
     private readonly executionRepository: TestExecutionRepository,
     private readonly statsService: TestStatsService,
-    private readonly feishuSyncService: FeishuTestSyncService,
+    private readonly writeBackService: TestWriteBackService,
   ) {
     this.logger.log('TestBatchService 初始化完成');
   }
@@ -207,7 +215,7 @@ export class TestBatchService {
           ? FeishuTestStatus.FAILED
           : FeishuTestStatus.SKIPPED;
 
-    this.feishuSyncService
+    this.writeBackService
       .writeBackResult(
         execution.case_id!,
         feishuStatus,

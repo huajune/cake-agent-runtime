@@ -9,7 +9,7 @@ import {
   MessageRole,
   FeedbackType,
   TestType,
-} from '../enums';
+} from '../enums/test.enum';
 
 /**
  * 简单消息结构（用于对话历史）

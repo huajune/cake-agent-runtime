@@ -4,13 +4,9 @@ import {
   BitableField,
   BitableRecord,
 } from '@core/feishu/services/feishu-bitable-api.service';
-import {
-  testSuiteFieldNames,
-  validationSetFieldNames,
-} from '@core/feishu/constants/feishu-bitable.config';
-import { FeishuTestStatus, MessageRole, TestType } from '../enums';
-import { ConversationTestService } from './conversation-test.service';
-import { ConversationParseResult } from '../dto/conversation-test.dto';
+import { MessageRole, TestType } from '../../enums/test.enum';
+import { ConversationParserService } from '../conversation/conversation-parser.service';
+import { ConversationParseResult } from '../../dto/conversation-test.dto';
 
 /**
  * 解析后的测试用例（用例测试）
@@ -38,17 +34,14 @@ export interface ParsedConversationTest {
 }
 
 /**
- * 飞书测试/验证集同步服务
+ * 飞书测试/验证集同步服务（读取层）
  *
  * 职责：
  * - 从飞书多维表格读取测试用例
  * - 解析飞书记录为测试用例格式
- * - 回写测试结果到飞书
+ * - 解析飞书记录为回归验证格式
  *
- * 重构说明：
- * - 使用 FeishuBitableApiService 进行 API 调用
- * - 移除重复的 Token 管理代码
- * - 遵循模块边界：业务逻辑在此，API 调用委托给 core/feishu
+ * 写回操作已迁移至 TestWriteBackService
  */
 @Injectable()
 export class FeishuTestSyncService {
@@ -56,7 +49,7 @@ export class FeishuTestSyncService {
 
   constructor(
     private readonly bitableApi: FeishuBitableApiService,
-    private readonly conversationTestService: ConversationTestService,
+    private readonly parserService: ConversationParserService,
   ) {
     this.logger.log('FeishuTestSyncService 初始化完成');
   }
@@ -244,8 +237,8 @@ export class FeishuTestSyncService {
           '姓名',
         ]);
 
-        // 使用 ConversationTestService 解析对话
-        const parseResult = this.conversationTestService.parseConversation(rawText);
+        // 使用 ConversationParserService 解析对话
+        const parseResult = this.parserService.parseConversation(rawText);
 
         if (!parseResult.success) {
           this.logger.warn(`对话解析失败 ${record.record_id}: ${parseResult.error || '未知错误'}`);
@@ -334,8 +327,8 @@ export class FeishuTestSyncService {
           '姓名',
         ]);
 
-        // 使用 ConversationTestService 解析对话
-        const parseResult = this.conversationTestService.parseConversation(rawText);
+        // 使用 ConversationParserService 解析对话
+        const parseResult = this.parserService.parseConversation(rawText);
 
         if (!parseResult.success) {
           this.logger.warn(
@@ -363,10 +356,52 @@ export class FeishuTestSyncService {
   }
 
   /**
+   * 解析对话历史文本
+   */
+  parseHistory(historyText: string): Array<{ role: MessageRole; content: string }> {
+    if (!historyText?.trim()) return [];
+
+    const lines = historyText.split('\n').filter((line) => line.trim());
+
+    return lines.map((line) => {
+      // 格式1: [时间 用户名] 消息内容
+      const bracketMatch = line.match(/^\[[\d/]+ [\d:]+ ([^\]]+)\]\s*(.*)$/);
+      if (bracketMatch) {
+        const userName = bracketMatch[1].trim();
+        const content = bracketMatch[2];
+        const isAssistant =
+          userName === '招募经理' ||
+          userName === '经理' ||
+          userName === 'AI' ||
+          userName === 'assistant';
+        return { role: isAssistant ? MessageRole.ASSISTANT : MessageRole.USER, content };
+      }
+
+      // 格式2: user:/候选人: 开头
+      if (line.startsWith('user:') || line.startsWith('候选人:')) {
+        return { role: MessageRole.USER, content: line.replace(/^(user|候选人):\s*/i, '') };
+      }
+
+      // 格式3: AI:/assistant:/招募经理: 开头
+      if (line.startsWith('AI:') || line.startsWith('assistant:') || line.startsWith('招募经理:')) {
+        return {
+          role: MessageRole.ASSISTANT,
+          content: line.replace(/^(AI|assistant|招募经理):\s*/i, ''),
+        };
+      }
+
+      // 默认当作用户消息
+      return { role: MessageRole.USER, content: line };
+    });
+  }
+
+  // ==================== 私有工具方法 ====================
+
+  /**
    * 从记录中提取字段值（支持多个字段名候选）
    */
   private extractFieldValue(
-    recordFields: Record<string, any>,
+    recordFields: Record<string, unknown>,
     fieldNameToId: Record<string, string>,
     candidateNames: string[],
   ): string | undefined {
@@ -416,176 +451,5 @@ export class FeishuTestSyncService {
     }
 
     return String(value).trim();
-  }
-
-  /**
-   * 解析对话历史文本
-   */
-  parseHistory(historyText: string): Array<{ role: MessageRole; content: string }> {
-    if (!historyText?.trim()) return [];
-
-    const lines = historyText.split('\n').filter((line) => line.trim());
-
-    return lines.map((line) => {
-      // 格式1: [时间 用户名] 消息内容
-      const bracketMatch = line.match(/^\[[\d/]+ [\d:]+ ([^\]]+)\]\s*(.*)$/);
-      if (bracketMatch) {
-        const userName = bracketMatch[1].trim();
-        const content = bracketMatch[2];
-        const isAssistant =
-          userName === '招募经理' ||
-          userName === '经理' ||
-          userName === 'AI' ||
-          userName === 'assistant';
-        return { role: isAssistant ? MessageRole.ASSISTANT : MessageRole.USER, content };
-      }
-
-      // 格式2: user:/候选人: 开头
-      if (line.startsWith('user:') || line.startsWith('候选人:')) {
-        return { role: MessageRole.USER, content: line.replace(/^(user|候选人):\s*/i, '') };
-      }
-
-      // 格式3: AI:/assistant:/招募经理: 开头
-      if (line.startsWith('AI:') || line.startsWith('assistant:') || line.startsWith('招募经理:')) {
-        return {
-          role: MessageRole.ASSISTANT,
-          content: line.replace(/^(AI|assistant|招募经理):\s*/i, ''),
-        };
-      }
-
-      // 默认当作用户消息
-      return { role: MessageRole.USER, content: line };
-    });
-  }
-
-  // ==================== 结果回写 ====================
-
-  /**
-   * 回写测试结果到飞书记录
-   */
-  async writeBackResult(
-    recordId: string,
-    testStatus: FeishuTestStatus,
-    batchId?: string,
-    errorReason?: string,
-  ): Promise<{ success: boolean; error?: string }> {
-    try {
-      const { appToken, tableId } = this.bitableApi.getTableConfig('testSuite');
-
-      // 构建更新数据（飞书 API 更新记录时需要使用字段名称，不是字段 ID）
-      const updateFields: Record<string, any> = {};
-
-      this.logger.debug(`回写飞书: 记录=${recordId}, 状态=${testStatus}, 批次=${batchId}`);
-
-      // 1. 测试状态（单选字段）- 单选字段使用选项名称（不是选项 ID）
-      updateFields[testSuiteFieldNames.testStatus] = testStatus;
-
-      // 2. 最近测试时间（日期时间字段）
-      updateFields[testSuiteFieldNames.lastTestTime] = Date.now();
-
-      // 3. 测试批次（文本字段）
-      if (batchId) {
-        updateFields[testSuiteFieldNames.testBatch] = batchId;
-      }
-
-      // 4. 错误原因（单选字段）- Agent 错误归因，仅在失败时更新
-      // 注意：failureCategory（分类）是导入时已有的，不需要回写
-      if (testStatus === FeishuTestStatus.FAILED && errorReason) {
-        updateFields[testSuiteFieldNames.errorReason] = errorReason;
-      }
-
-      // 调用飞书 API 更新记录
-      this.logger.debug(`更新字段: ${JSON.stringify(updateFields)}`);
-      const result = await this.bitableApi.updateRecord(appToken, tableId, recordId, updateFields);
-
-      if (!result.success) {
-        this.logger.error(`回写飞书失败: ${result.error}`);
-        return { success: false, error: result.error };
-      }
-
-      this.logger.log(`回写飞书成功: ${recordId} -> ${testStatus}`);
-      return { success: true };
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`回写飞书异常: ${errorMessage}`);
-      return { success: false, error: errorMessage };
-    }
-  }
-
-  /**
-   * 批量回写测试结果
-   */
-  async batchWriteBackResults(
-    items: Array<{
-      recordId: string;
-      testStatus: FeishuTestStatus;
-      batchId?: string;
-      errorReason?: string;
-    }>,
-  ): Promise<{ success: number; failed: number; errors: string[] }> {
-    let success = 0;
-    let failed = 0;
-    const errors: string[] = [];
-
-    for (const item of items) {
-      const result = await this.writeBackResult(
-        item.recordId,
-        item.testStatus,
-        item.batchId,
-        item.errorReason,
-      );
-
-      if (result.success) {
-        success++;
-      } else {
-        failed++;
-        errors.push(`${item.recordId}: ${result.error}`);
-      }
-    }
-
-    return { success, failed, errors };
-  }
-
-  /**
-   * 回写回归验证相似度分数到飞书
-   *
-   * 注意：回归验证数据现在写入 validationSet 表（已从 testSuite 迁移）
-   */
-  async writeBackSimilarityScore(
-    recordId: string,
-    avgSimilarityScore: number | null,
-  ): Promise<{ success: boolean; error?: string }> {
-    try {
-      // 回归验证使用独立的验证集表
-      const { appToken, tableId } = this.bitableApi.getTableConfig('validationSet');
-
-      const updateFields: Record<string, any> = {};
-
-      this.logger.debug(`回写相似度分数: 记录=${recordId}, 分数=${avgSimilarityScore}`);
-
-      // 相似度分数字段（数字字段）- 使用验证集字段名配置
-      if (avgSimilarityScore !== null) {
-        updateFields[validationSetFieldNames.similarityScore] = avgSimilarityScore;
-      }
-
-      // 更新最近测试时间 - 使用验证集字段名配置
-      updateFields[validationSetFieldNames.lastTestTime] = Date.now();
-
-      // 调用飞书 API 更新记录
-      this.logger.debug(`更新字段: ${JSON.stringify(updateFields)}`);
-      const result = await this.bitableApi.updateRecord(appToken, tableId, recordId, updateFields);
-
-      if (!result.success) {
-        this.logger.error(`回写相似度分数失败: ${result.error}`);
-        return { success: false, error: result.error };
-      }
-
-      this.logger.log(`回写相似度分数成功: ${recordId} -> ${avgSimilarityScore}`);
-      return { success: true };
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`回写相似度分数异常: ${errorMessage}`);
-      return { success: false, error: errorMessage };
-    }
   }
 }

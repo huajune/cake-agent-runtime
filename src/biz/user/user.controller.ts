@@ -1,5 +1,5 @@
 import { Controller, Get, Post, HttpCode, Logger, Body, Param } from '@nestjs/common';
-import { UserHostingService } from './services';
+import { UserHostingService } from './services/user-hosting.service';
 
 /**
  * 用户管理控制器

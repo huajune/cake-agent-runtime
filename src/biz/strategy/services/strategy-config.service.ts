@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '@core/redis';
-import { StrategyConfigRepository } from '../repositories';
-import { StrategyConfigRecord } from '../entities';
-import { StrategyPersona, StrategyStageGoals, StrategyRedLines } from '../types';
+import { StrategyConfigRepository } from '../repositories/strategy-config.repository';
+import { StrategyConfigRecord } from '../entities/strategy-config.entity';
+import { StrategyPersona, StrategyStageGoals, StrategyRedLines } from '../types/strategy.types';
 import { buildDefaultStrategyRecord } from '@agent/strategy/strategy-config.types';
 
 /**

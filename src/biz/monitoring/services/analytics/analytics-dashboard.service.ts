@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
 import {
   MessageProcessingRecord,
   MonitoringErrorLog,
@@ -9,57 +8,48 @@ import {
 import {
   HourlyStats,
   DashboardData,
-  MetricsData,
   ScenarioUsageMetric,
   ToolUsageMetric,
   ResponseMinuteTrendPoint,
   AlertTrendPoint,
   AlertTypeMetric,
   TimeRange,
-  DailyStats,
   TodayUser,
   BusinessMetricTrendPoint,
   DashboardOverviewStats,
   DashboardFallbackStats,
+  DailyStats,
   DailyTrendData,
 } from '../../types/analytics.types';
 import { MonitoringCacheService } from '../tracking/monitoring-cache.service';
-import { RedisService } from '@core/redis';
-import { FeishuBookingService } from '@/core/feishu/services/feishu-booking.service';
-import { MessageProcessingRepository, BookingRepository } from '@biz/message/repositories';
+import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
+import { BookingRepository } from '@biz/message/repositories/booking.repository';
 import { MonitoringHourlyStatsRepository } from '../../repositories/monitoring-hourly-stats.repository';
 import { MonitoringErrorLogRepository } from '../../repositories/monitoring-error-log.repository';
 import { MonitoringRepository } from '../../repositories/monitoring.repository';
-import { UserHostingRepository } from '@biz/user/repositories';
-import { UserHostingService } from '@biz/user/services';
+import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { HourlyStatsAggregatorService } from './hourly-stats-aggregator.service';
 import { MessageTrackingService } from '../tracking/message-tracking.service';
-import { AgentRegistryService } from '@/agent/services/agent-registry.service';
-import * as os from 'os';
 
 /**
- * Analytics 业务分析服务
- * 负责 Dashboard 数据聚合、趋势计算、用户统计
+ * Dashboard 数据聚合服务
+ * 负责仪表盘完整数据和概览数据的聚合计算
  */
 @Injectable()
-export class AnalyticsService {
-  private readonly logger = new Logger(AnalyticsService.name);
+export class AnalyticsDashboardService {
+  private readonly logger = new Logger(AnalyticsDashboardService.name);
   private readonly DEFAULT_WINDOW_HOURS = 24;
 
   constructor(
     private readonly messageProcessingRepository: MessageProcessingRepository,
     private readonly hourlyStatsRepository: MonitoringHourlyStatsRepository,
     private readonly errorLogRepository: MonitoringErrorLogRepository,
-    private readonly userHostingRepository: UserHostingRepository,
     private readonly userHostingService: UserHostingService,
     private readonly cacheService: MonitoringCacheService,
-    private readonly redisService: RedisService,
-    private readonly feishuBookingService: FeishuBookingService,
     private readonly monitoringRepository: MonitoringRepository,
     private readonly bookingRepository: BookingRepository,
     private readonly hourlyStatsAggregator: HourlyStatsAggregatorService,
     private readonly messageTrackingService: MessageTrackingService,
-    private readonly agentRegistryService: AgentRegistryService,
   ) {}
 
   // ========================================
@@ -167,7 +157,7 @@ export class AnalyticsService {
     tokenTrend: { time: string; tokenUsage: number; messageCount: number }[];
     businessTrend: BusinessMetricTrendPoint[];
     responseTrend: ResponseMinuteTrendPoint[];
-    business: ReturnType<AnalyticsService['calculateBusinessMetrics']>;
+    business: ReturnType<AnalyticsDashboardService['calculateBusinessMetrics']>;
     businessDelta: { consultations: number; bookingAttempts: number; bookingSuccessRate: number };
     fallback: DashboardFallbackStats;
     fallbackDelta: { totalCount: number; successRate: number };
@@ -393,388 +383,6 @@ export class AnalyticsService {
     }
   }
 
-  /**
-   * 获取 System 监控数据（轻量级）
-   */
-  async getSystemMonitoringAsync(): Promise<{
-    queue: { currentProcessing: number; peakProcessing: number; avgQueueDuration: number };
-    alertsSummary: {
-      total: number;
-      lastHour: number;
-      last24Hours: number;
-      byType: AlertTypeMetric[];
-    };
-    alertTrend: AlertTrendPoint[];
-  }> {
-    try {
-      const [currentRecords, errorLogs, globalCounters] = await Promise.all([
-        this.getRecordsByTimeRange(Date.now() - 24 * 60 * 60 * 1000, Date.now()),
-        this.getErrorLogsByTimeRange('today'),
-        this.cacheService.getCounters(),
-      ]);
-
-      const queue = this.calculateQueueMetrics(currentRecords, globalCounters);
-      const alertsSummary = this.calculateAlertsSummary(errorLogs);
-      const alertTrend = this.buildAlertTrend(errorLogs, 'today');
-
-      return { queue, alertsSummary, alertTrend };
-    } catch (error) {
-      this.logger.error('获取System监控数据失败:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * 获取趋势数据（独立接口）
-   */
-  async getTrendsDataAsync(timeRange: TimeRange = 'today'): Promise<{
-    dailyTrend: { hourly: HourlyStats[] };
-    responseTrend: ResponseMinuteTrendPoint[];
-    alertTrend: AlertTrendPoint[];
-    businessTrend: BusinessMetricTrendPoint[];
-  }> {
-    try {
-      const timeRanges = this.calculateTimeRanges(timeRange);
-      const { currentStart, currentEnd } = timeRanges;
-
-      const [currentRecords, errorLogs, trends] = await Promise.all([
-        this.getRecordsByTimeRange(currentStart, currentEnd),
-        this.getErrorLogsByTimeRange(timeRange),
-        this.calculateTrends(timeRange),
-      ]);
-
-      return {
-        dailyTrend: trends,
-        responseTrend: this.buildResponseTrend(currentRecords, timeRange),
-        alertTrend: this.buildAlertTrend(errorLogs, timeRange),
-        businessTrend: this.buildBusinessTrend(currentRecords, timeRange),
-      };
-    } catch (error) {
-      this.logger.error('获取趋势数据失败:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * 获取详细指标数据
-   */
-  async getMetricsDataAsync(): Promise<MetricsData> {
-    try {
-      const [detailRecords, hourlyStats, globalCounters, recentErrors] = await Promise.all([
-        this.getRecentDetailRecords(50),
-        this.getHourlyStats(72),
-        this.cacheService.getCounters(),
-        this.getRecentErrors(20),
-      ]);
-
-      const MAX_DURATION_MS = 60 * 1000;
-      const durations = detailRecords
-        .filter(
-          (r) =>
-            r.status === 'success' &&
-            r.totalDuration !== undefined &&
-            r.totalDuration <= MAX_DURATION_MS,
-        )
-        .map((r) => r.totalDuration!);
-
-      const percentiles = this.calculatePercentilesFromArray(durations);
-
-      const slowestRecords = [...detailRecords]
-        .filter((r) => r.totalDuration !== undefined)
-        .sort((a, b) => (b.totalDuration || 0) - (a.totalDuration || 0))
-        .slice(0, 10);
-
-      return {
-        detailRecords,
-        hourlyStats,
-        globalCounters,
-        percentiles,
-        slowestRecords,
-        recentAlertCount: recentErrors.length,
-      };
-    } catch (error) {
-      this.logger.error('获取指标数据失败:', error);
-      return {
-        detailRecords: [],
-        hourlyStats: [],
-        globalCounters: {
-          totalMessages: 0,
-          totalSuccess: 0,
-          totalFailure: 0,
-          totalAiDuration: 0,
-          totalSendDuration: 0,
-          totalFallback: 0,
-          totalFallbackSuccess: 0,
-        },
-        percentiles: { p50: 0, p95: 0, p99: 0, p999: 0 },
-        slowestRecords: [],
-        recentAlertCount: 0,
-      };
-    }
-  }
-
-  /**
-   * 获取消息统计数据（聚合查询）
-   */
-  async getMessageStatsAsync(
-    startTime: number,
-    endTime: number,
-  ): Promise<{ total: number; success: number; failed: number; avgDuration: number }> {
-    return this.messageProcessingRepository.getMessageStats(startTime, endTime);
-  }
-
-  // ========================================
-  // 用户相关
-  // ========================================
-
-  async getTodayUsers(): Promise<TodayUser[]> {
-    const CACHE_KEY = 'monitoring:today_users';
-    const CACHE_TTL_SEC = 30;
-
-    try {
-      const cached = await this.redisService.get<string>(CACHE_KEY);
-      if (cached) {
-        const parsedData = JSON.parse(cached) as TodayUser[];
-        this.logger.debug(`[Redis] 命中今日用户缓存 (${parsedData.length} 条记录)`);
-        return parsedData;
-      }
-    } catch (error) {
-      this.logger.warn('[Redis] 获取今日用户缓存失败，降级到数据库查询', error);
-    }
-
-    const users = await this.getTodayUsersFromDatabase();
-
-    if (users.length > 0) {
-      try {
-        await this.redisService.setex(CACHE_KEY, CACHE_TTL_SEC, JSON.stringify(users));
-      } catch (error) {
-        this.logger.warn('[Redis] 写入今日用户缓存失败', error);
-      }
-    }
-
-    return users;
-  }
-
-  async getTodayUsersFromDatabase(): Promise<TodayUser[]> {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const dbUsers = await this.messageProcessingRepository.getActiveUsers(todayStart, new Date());
-
-    const chatIds = dbUsers.map((u) => u.chatId);
-    const pausedSet = new Set<string>();
-
-    for (const chatId of chatIds) {
-      const status = await this.userHostingService.getUserHostingStatus(chatId);
-      if (status.isPaused) {
-        pausedSet.add(chatId);
-      }
-    }
-
-    return dbUsers.map((user) => ({
-      chatId: user.chatId,
-      odId: user.userId || user.chatId,
-      odName: user.userName || user.chatId,
-      messageCount: user.messageCount,
-      tokenUsage: user.tokenUsage,
-      firstActiveAt: user.firstActiveAt,
-      lastActiveAt: user.lastActiveAt,
-      isPaused: pausedSet.has(user.chatId),
-    }));
-  }
-
-  // ========================================
-  // 系统管理接口
-  // ========================================
-
-  /**
-   * 获取系统状态信息
-   */
-  async getSystemInfo() {
-    return {
-      status: 'healthy',
-      uptime: process.uptime(),
-      memory: {
-        used: process.memoryUsage().heapUsed,
-        total: os.totalmem(),
-        rss: process.memoryUsage().rss,
-        heapTotal: process.memoryUsage().heapTotal,
-      },
-      cpu: os.loadavg()[0],
-      platform: os.platform(),
-      nodeVersion: process.version,
-    };
-  }
-
-  /**
-   * 清空所有监控统计数据（数据库记录）
-   */
-  async clearAllDataAsync(): Promise<void> {
-    try {
-      this.logger.warn('执行大规模数据清理: Monitoring stats & Message processing records');
-      await Promise.all([
-        this.messageProcessingRepository.clearAllRecords(),
-        this.hourlyStatsRepository.clearAllRecords(),
-        this.errorLogRepository.clearAllRecords(),
-      ]);
-      await this.cacheService.resetCounters();
-    } catch (error) {
-      this.logger.error('清空监控数据失败:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * 清除指定类型的缓存
-   */
-  async clearCacheAsync(type: 'all' | 'metrics' | 'history' | 'agent' = 'all'): Promise<void> {
-    try {
-      this.logger.log(`执行清除缓存任务: ${type}`);
-      if (type === 'all' || type === 'metrics') {
-        await this.cacheService.resetCounters();
-      }
-
-      if (type === 'all' || type === 'history') {
-        await this.cacheService.clearAll();
-      }
-
-      if (type === 'all' || type === 'agent') {
-        await this.agentRegistryService.refresh();
-      }
-    } catch (error) {
-      this.logger.error(`清除缓存失败 [${type}]:`, error);
-      throw error;
-    }
-  }
-
-  async getUsersByDate(date: string): Promise<TodayUser[]> {
-    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-    if (!datePattern.test(date)) {
-      this.logger.warn(`无效的日期格式 [${date}]，应为 YYYY-MM-DD`);
-      return [];
-    }
-
-    const startDate = new Date(date);
-    startDate.setHours(0, 0, 0, 0);
-    const endDate = new Date(date);
-    endDate.setHours(23, 59, 59, 999);
-
-    const dbUsers = await this.messageProcessingRepository.getActiveUsers(startDate, endDate);
-
-    const chatIds = dbUsers.map((u) => u.chatId);
-    const pausedSet = new Set<string>();
-
-    for (const chatId of chatIds) {
-      const status = await this.userHostingService.getUserHostingStatus(chatId);
-      if (status.isPaused) {
-        pausedSet.add(chatId);
-      }
-    }
-
-    return dbUsers.map((user) => ({
-      chatId: user.chatId,
-      odId: user.userId || user.chatId,
-      odName: user.userName || user.chatId,
-      messageCount: user.messageCount,
-      tokenUsage: user.tokenUsage,
-      firstActiveAt: user.firstActiveAt,
-      lastActiveAt: user.lastActiveAt,
-      isPaused: pausedSet.has(user.chatId),
-    }));
-  }
-
-  async getUserTrend(): Promise<Array<{ date: string; userCount: number; messageCount: number }>> {
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 30);
-    const stats = await this.messageProcessingRepository.getDailyUserStats(startDate, endDate);
-    return stats.map((s) => ({
-      date: s.date,
-      userCount: s.uniqueUsers,
-      messageCount: s.messageCount,
-    }));
-  }
-
-  // ========================================
-  // 定时聚合任务
-  // ========================================
-
-  /**
-   * 小时统计聚合定时任务
-   * 每小时第 5 分钟执行
-   */
-  @Cron('5 * * * *', {
-    name: 'aggregateHourlyStats',
-    timeZone: 'Asia/Shanghai',
-  })
-  async aggregateHourlyStats(): Promise<void> {
-    try {
-      const startTime = Date.now();
-      this.logger.log('开始执行小时统计聚合任务...');
-
-      const now = new Date();
-      const lastHourEnd = new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate(),
-        now.getHours(),
-        0,
-        0,
-        0,
-      );
-      const lastHourStart = new Date(lastHourEnd.getTime() - 60 * 60 * 1000);
-      const hourKey = lastHourStart.toISOString();
-
-      this.logger.log(
-        `聚合时间范围: ${lastHourStart.toISOString()} ~ ${lastHourEnd.toISOString()}`,
-      );
-
-      const aggregated = await this.monitoringRepository.aggregateHourlyStats(
-        lastHourStart,
-        lastHourEnd,
-      );
-
-      if (!aggregated || aggregated.messageCount === 0) {
-        this.logger.warn(`该小时无数据记录,跳过聚合: ${hourKey}`);
-        return;
-      }
-
-      const hourlyStats: HourlyStats = {
-        hour: hourKey,
-        messageCount: aggregated.messageCount,
-        successCount: aggregated.successCount,
-        failureCount: aggregated.failureCount,
-        successRate: aggregated.successRate,
-        avgDuration: aggregated.avgDuration,
-        minDuration: aggregated.minDuration,
-        maxDuration: aggregated.maxDuration,
-        p50Duration: aggregated.p50Duration,
-        p95Duration: aggregated.p95Duration,
-        p99Duration: aggregated.p99Duration,
-        avgAiDuration: aggregated.avgAiDuration,
-        avgSendDuration: aggregated.avgSendDuration,
-        activeUsers: aggregated.activeUsers,
-        activeChats: aggregated.activeChats,
-        totalTokenUsage: aggregated.totalTokenUsage,
-        fallbackCount: aggregated.fallbackCount,
-        fallbackSuccessCount: aggregated.fallbackSuccessCount,
-        scenarioStats: aggregated.scenarioStats,
-        toolStats: aggregated.toolStats,
-      };
-
-      await this.hourlyStatsRepository.saveHourlyStats(hourlyStats);
-
-      const elapsed = Date.now() - startTime;
-      this.logger.log(
-        `小时统计聚合完成: ${hourKey}, ` +
-          `消息数=${aggregated.messageCount}, 成功率=${aggregated.successRate}%, ` +
-          `活跃用户=${aggregated.activeUsers}, 活跃会话=${aggregated.activeChats}, ` +
-          `Token=${aggregated.totalTokenUsage}, 耗时=${elapsed}ms`,
-      );
-    } catch (error) {
-      this.logger.error('小时统计聚合任务失败:', error);
-    }
-  }
-
   // ========================================
   // 私有数据访问方法
   // ========================================
@@ -795,7 +403,7 @@ export class AnalyticsService {
     }
   }
 
-  public async getRecentDetailRecords(limit: number = 50): Promise<MessageProcessingRecord[]> {
+  private async getRecentDetailRecords(limit: number = 50): Promise<MessageProcessingRecord[]> {
     try {
       const result = await this.messageProcessingRepository.getMessageProcessingRecords({ limit });
       return result.records as unknown as MessageProcessingRecord[];
@@ -831,15 +439,6 @@ export class AnalyticsService {
     }
   }
 
-  private async getRecentErrors(limit: number = 20): Promise<MonitoringErrorLog[]> {
-    try {
-      return (await this.errorLogRepository.getRecentErrors(limit)) as MonitoringErrorLog[];
-    } catch (error) {
-      this.logger.error('查询错误日志失败:', error);
-      return [];
-    }
-  }
-
   private async getErrorLogsByTimeRange(range: TimeRange): Promise<MonitoringErrorLog[]> {
     try {
       const cutoff = this.getTimeRangeCutoff(range);
@@ -852,20 +451,35 @@ export class AnalyticsService {
     }
   }
 
-  private getTimeRangeCutoff(range: TimeRange): Date {
-    const now = new Date();
-    switch (range) {
-      case 'today':
-        now.setHours(0, 0, 0, 0);
-        return now;
-      case 'week':
-        now.setDate(now.getDate() - 7);
-        return now;
-      case 'month':
-        now.setDate(now.getDate() - 30);
-        return now;
-      default:
-        return now;
+  private async getTodayUsersFromDatabase(): Promise<TodayUser[]> {
+    try {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const dbUsers = await this.messageProcessingRepository.getActiveUsers(todayStart, new Date());
+
+      const chatIds = dbUsers.map((u) => u.chatId);
+      const pausedSet = new Set<string>();
+
+      for (const chatId of chatIds) {
+        const status = await this.userHostingService.getUserHostingStatus(chatId);
+        if (status.isPaused) {
+          pausedSet.add(chatId);
+        }
+      }
+
+      return dbUsers.map((user) => ({
+        chatId: user.chatId,
+        odId: user.userId || user.chatId,
+        odName: user.userName || user.chatId,
+        messageCount: user.messageCount,
+        tokenUsage: user.tokenUsage,
+        firstActiveAt: user.firstActiveAt,
+        lastActiveAt: user.lastActiveAt,
+        isPaused: pausedSet.has(user.chatId),
+      }));
+    } catch (error) {
+      this.logger.error('查询今日用户失败:', error);
+      return [];
     }
   }
 
@@ -917,6 +531,28 @@ export class AnalyticsService {
     }
 
     return { currentStart, currentEnd, previousStart, previousEnd };
+  }
+
+  private getTimeRangeCutoff(range: TimeRange): Date {
+    const now = new Date();
+    switch (range) {
+      case 'today':
+        now.setHours(0, 0, 0, 0);
+        return now;
+      case 'week':
+        now.setDate(now.getDate() - 7);
+        return now;
+      case 'month':
+        now.setDate(now.getDate() - 30);
+        return now;
+      default:
+        return now;
+    }
+  }
+
+  private calculatePercentChange(current: number, previous: number): number {
+    if (previous === 0) return current === 0 ? 0 : 100;
+    return parseFloat((((current - previous) / previous) * 100).toFixed(2));
   }
 
   private calculateOverview(records: MessageProcessingRecord[]) {
@@ -1071,31 +707,6 @@ export class AnalyticsService {
     return { hourly: hourlyStats };
   }
 
-  private calculatePercentChange(current: number, previous: number): number {
-    if (previous === 0) return current === 0 ? 0 : 100;
-    return parseFloat((((current - previous) / previous) * 100).toFixed(2));
-  }
-
-  private calculatePercentilesFromArray(values: number[]): {
-    p50: number;
-    p95: number;
-    p99: number;
-    p999: number;
-  } {
-    if (values.length === 0) return { p50: 0, p95: 0, p99: 0, p999: 0 };
-    const sorted = [...values].sort((a, b) => a - b);
-    const getPercentile = (p: number) => {
-      const index = Math.ceil((p / 100) * sorted.length) - 1;
-      return sorted[Math.max(0, index)] || 0;
-    };
-    return {
-      p50: getPercentile(50),
-      p95: getPercentile(95),
-      p99: getPercentile(99),
-      p999: getPercentile(99.9),
-    };
-  }
-
   // ========================================
   // 趋势构建方法
   // ========================================
@@ -1157,7 +768,7 @@ export class AnalyticsService {
       .map(([minute, count]) => ({ minute, count }));
   }
 
-  private buildBusinessTrend(
+  buildBusinessTrend(
     records: MessageProcessingRecord[],
     timeRange: TimeRange,
   ): BusinessMetricTrendPoint[] {

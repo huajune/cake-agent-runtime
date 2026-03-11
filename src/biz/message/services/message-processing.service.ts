@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { MessageProcessingRepository } from '../repositories';
+import { MessageProcessingRepository } from '../repositories/message-processing.repository';
 
 /**
  * 消息处理记录服务

@@ -1,14 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase';
 import { SupabaseService } from '@core/supabase';
-import { ExecutionStatus, ReviewStatus } from '@test-suite/enums';
-import { TestExecution } from '../entities';
+import { ExecutionStatus, ReviewStatus } from '../enums/test.enum';
+import { TestExecution } from '../entities/test-execution.entity';
 import {
   CreateExecutionData,
   UpdateExecutionResultData,
   UpdateReviewData,
   ExecutionFilters,
-} from '../types';
+} from '../types/test-suite.types';
 
 /**
  * 测试执行记录 Repository
