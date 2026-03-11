@@ -7,8 +7,8 @@ import {
   getMessageSourceDescription,
 } from '../dto/message-callback.dto';
 import { MessageParser } from '../utils/message-parser.util';
-import { GroupBlacklistService } from '@biz/hosting-config/group-blacklist.service';
-import { UserHostingService } from '@biz/user/user-hosting.service';
+import { GroupBlacklistService } from '@biz/hosting-config';
+import { UserHostingService } from '@biz/user';
 
 /**
  * 消息过滤原因枚举

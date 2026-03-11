@@ -11,7 +11,7 @@ import {
 import { AgentService } from '@agent';
 import { MessageCallbackAdapterService } from './services/message-callback-adapter.service';
 import { MessageFilterService } from './services/message-filter.service';
-import { GroupBlacklistService } from '@biz/hosting-config/group-blacklist.service';
+import { GroupBlacklistService } from '@biz/hosting-config';
 import { LogSanitizer } from './utils/log-sanitizer.util';
 
 /**

@@ -453,8 +453,8 @@ export class TestSuiteProcessor implements OnModuleInit {
 
       // 更新批次统计和状态
       try {
-        await this.testSuiteService.updateBatchStatsPublic(batchId);
-        await this.testSuiteService.updateBatchStatusPublic(batchId, BatchStatus.REVIEWING);
+        await this.testSuiteService.updateBatchStats(batchId);
+        await this.testSuiteService.updateBatchStatus(batchId, BatchStatus.REVIEWING);
         this.logger.log(`[TestSuite] 批次 ${batchId} 状态已更新为 reviewing`);
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : String(error);

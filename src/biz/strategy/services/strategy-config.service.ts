@@ -67,6 +67,9 @@ export class StrategyConfigService {
    * 更新人格配置并刷新缓存
    */
   async updatePersona(persona: StrategyPersona): Promise<StrategyConfigRecord> {
+    if (!persona.textDimensions || !Array.isArray(persona.textDimensions)) {
+      throw new Error('人格配置必须包含 textDimensions 数组');
+    }
     const config = await this.getActiveConfig();
     const updated = await this.strategyConfigRepository.updateConfigField(config.id, { persona });
 
@@ -84,6 +87,9 @@ export class StrategyConfigService {
    * 更新阶段目标并刷新缓存
    */
   async updateStageGoals(stageGoals: StrategyStageGoals): Promise<StrategyConfigRecord> {
+    if (!stageGoals.stages || !Array.isArray(stageGoals.stages)) {
+      throw new Error('阶段目标配置必须包含 stages 数组');
+    }
     const config = await this.getActiveConfig();
     const updated = await this.strategyConfigRepository.updateConfigField(config.id, {
       stage_goals: stageGoals,
@@ -103,6 +109,9 @@ export class StrategyConfigService {
    * 更新红线规则并刷新缓存
    */
   async updateRedLines(redLines: StrategyRedLines): Promise<StrategyConfigRecord> {
+    if (!redLines.rules || !Array.isArray(redLines.rules)) {
+      throw new Error('红线规则必须包含 rules 数组');
+    }
     const config = await this.getActiveConfig();
     const updated = await this.strategyConfigRepository.updateConfigField(config.id, {
       red_lines: redLines,

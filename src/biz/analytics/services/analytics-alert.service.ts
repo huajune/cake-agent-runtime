@@ -1,9 +1,9 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { AnalyticsService } from '../analytics.service';
+import { AnalyticsService } from './analytics.service';
 import { FeishuAlertService } from '@core/feishu';
 import { AgentReplyConfig } from '@db';
-import { SystemConfigService } from '@biz/hosting-config/system-config.service';
+import { SystemConfigService } from '@biz/hosting-config';
 
 /**
  * 业务指标告警服务

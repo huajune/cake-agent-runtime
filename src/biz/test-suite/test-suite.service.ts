@@ -7,6 +7,8 @@ import {
   UpdateReviewRequestDto,
   ImportFromFeishuRequestDto,
   ImportResult,
+  SubmitFeedbackRequestDto,
+  VercelAIChatRequestDto,
 } from './dto/test-chat.dto';
 import { TestBatch, TestExecution } from '@db/test-suite';
 import {
@@ -14,8 +16,23 @@ import {
   TestBatchService,
   TestImportService,
   TestWriteBackService,
+  ConversationTestService,
 } from './services';
-import { BatchStatus, ExecutionStatus, ReviewStatus, FeishuTestStatus, TestType } from './enums';
+import {
+  BatchStatus,
+  ExecutionStatus,
+  ReviewStatus,
+  FeishuTestStatus,
+  TestType,
+  ConversationSourceStatus,
+} from './enums';
+import { MessageRole } from '@shared/enums';
+import {
+  FeishuBitableSyncService,
+  AgentTestFeedback,
+} from '@core/feishu/services/feishu-bitable.service';
+import { TestSuiteProcessor } from './test-suite.processor';
+import { Inject, forwardRef } from '@nestjs/common';
 
 /**
  * 测试套件门面服务
@@ -24,17 +41,6 @@ import { BatchStatus, ExecutionStatus, ReviewStatus, FeishuTestStatus, TestType 
  * - 作为 Controller 和子服务之间的协调层
  * - 提供统一的 API 入口
  * - 委托具体实现给专门的子服务
- *
- * 子服务架构：
- * - TestExecutionService: 测试执行（单条/流式）
- * - TestBatchService: 批次管理（创建/查询/更新状态/评审）
- * - TestImportService: 飞书导入
- * - TestWriteBackService: 飞书回写
- *
- * 设计原则：
- * - 门面模式：简化复杂的子系统调用
- * - 单一职责：每个子服务只负责一类功能
- * - 依赖倒置：依赖抽象接口而非具体实现
  */
 @Injectable()
 export class TestSuiteService {
@@ -45,38 +51,30 @@ export class TestSuiteService {
     private readonly batchService: TestBatchService,
     private readonly importService: TestImportService,
     private readonly writeBackService: TestWriteBackService,
+    private readonly conversationTestService: ConversationTestService,
+    private readonly feishuBitableService: FeishuBitableSyncService,
+    @Inject(forwardRef(() => TestSuiteProcessor))
+    private readonly testProcessor: TestSuiteProcessor,
   ) {
     this.logger.log('TestSuiteService 门面服务初始化完成');
   }
 
-  // ========== 测试执行相关 (委托给 TestExecutionService) ==========
+  // ========== 测试执行 ==========
 
-  /**
-   * 执行单条测试
-   */
   async executeTest(request: TestChatRequestDto): Promise<TestChatResponse> {
     return this.executionService.executeTest(request);
   }
 
-  /**
-   * 执行流式测试
-   */
   async executeTestStream(request: TestChatRequestDto): Promise<NodeJS.ReadableStream> {
     return this.executionService.executeTestStream(request);
   }
 
-  /**
-   * 执行流式测试（带元数据）
-   */
   async executeTestStreamWithMeta(
     request: TestChatRequestDto,
   ): Promise<{ stream: NodeJS.ReadableStream; estimatedInputTokens: number }> {
     return this.executionService.executeTestStreamWithMeta(request);
   }
 
-  /**
-   * 批量执行测试
-   */
   async executeBatch(
     cases: TestChatRequestDto[],
     batchId?: string,
@@ -114,36 +112,20 @@ export class TestSuiteService {
     return results;
   }
 
-  /**
-   * 获取执行记录详情
-   */
   async getExecution(executionId: string): Promise<TestExecution | null> {
     return this.executionService.getExecution(executionId);
   }
 
-  /**
-   * 获取执行记录列表
-   */
   async getExecutions(limit = 50, offset = 0): Promise<TestExecution[]> {
     return this.executionService.getExecutions(limit, offset);
   }
 
-  // ========== 批次管理相关 (委托给 TestBatchService) ==========
+  // ========== 批次管理 ==========
 
-  /**
-   * 创建测试批次
-   */
   async createBatch(request: CreateBatchRequestDto): Promise<TestBatch> {
     return this.batchService.createBatch(request);
   }
 
-  /**
-   * 获取测试批次列表
-   *
-   * @param limit 每页数量
-   * @param offset 偏移量
-   * @param testType 测试类型过滤：scenario-用例测试，conversation-回归验证
-   */
   async getBatches(
     limit = 20,
     offset = 0,
@@ -152,16 +134,10 @@ export class TestSuiteService {
     return this.batchService.getBatches(limit, offset, testType);
   }
 
-  /**
-   * 获取批次详情
-   */
   async getBatch(batchId: string): Promise<TestBatch | null> {
     return this.batchService.getBatch(batchId);
   }
 
-  /**
-   * 获取批次的执行记录（完整版）
-   */
   async getBatchExecutions(
     batchId: string,
     filters?: {
@@ -173,9 +149,6 @@ export class TestSuiteService {
     return this.batchService.getBatchExecutions(batchId, filters);
   }
 
-  /**
-   * 获取批次的执行记录（列表版，轻量）
-   */
   async getBatchExecutionsForList(
     batchId: string,
     filters?: {
@@ -187,57 +160,63 @@ export class TestSuiteService {
     return this.batchService.getBatchExecutionsForList(batchId, filters);
   }
 
-  /**
-   * 获取批次统计信息
-   */
   async getBatchStats(batchId: string): Promise<BatchStats> {
     return this.batchService.getBatchStats(batchId);
   }
 
-  /**
-   * 获取分类统计
-   */
   async getCategoryStats(
     batchId: string,
   ): Promise<Array<{ category: string; total: number; passed: number; failed: number }>> {
     return this.batchService.getCategoryStats(batchId);
   }
 
-  /**
-   * 获取失败原因统计
-   */
   async getFailureReasonStats(
     batchId: string,
   ): Promise<Array<{ reason: string; count: number; percentage: number }>> {
     return this.batchService.getFailureReasonStats(batchId);
   }
 
-  /**
-   * 更新评审状态
-   */
   async updateReview(executionId: string, review: UpdateReviewRequestDto): Promise<TestExecution> {
     return this.batchService.updateReview(executionId, review);
   }
 
-  /**
-   * 批量更新评审状态
-   */
   async batchUpdateReview(executionIds: string[], review: UpdateReviewRequestDto): Promise<number> {
     return this.batchService.batchUpdateReview(executionIds, review);
   }
 
-  // ========== 飞书导入相关 (委托给 TestImportService) ==========
+  // ========== 批次进度与取消 ==========
 
-  /**
-   * 从飞书多维表格导入测试用例
-   */
+  async getBatchProgress(batchId: string) {
+    return this.testProcessor.getBatchProgress(batchId);
+  }
+
+  async cancelBatch(batchId: string) {
+    const cancelled = await this.testProcessor.cancelBatchJobs(batchId);
+    await this.batchService.updateBatchStatus(batchId, BatchStatus.CANCELLED);
+    const totalCancelled = cancelled.waiting + cancelled.delayed + cancelled.active;
+
+    return {
+      batchId,
+      cancelled,
+      totalCancelled,
+      message: `已取消 ${totalCancelled} 个任务（等待=${cancelled.waiting}, 延迟=${cancelled.delayed}, 执行中=${cancelled.active}）`,
+    };
+  }
+
+  async getQueueStatus() {
+    return this.testProcessor.getQueueStatus();
+  }
+
+  async cleanFailedJobs(): Promise<number> {
+    return this.testProcessor.cleanFailedJobs();
+  }
+
+  // ========== 飞书导入 ==========
+
   async importFromFeishu(request: ImportFromFeishuRequestDto): Promise<ImportResult> {
     return this.importService.importFromFeishu(request);
   }
 
-  /**
-   * 一键从预配置的测试/验证集表导入并执行
-   */
   async quickCreateBatch(options?: {
     batchName?: string;
     parallel?: boolean;
@@ -246,11 +225,8 @@ export class TestSuiteService {
     return this.importService.quickCreateBatch(options);
   }
 
-  // ========== 飞书回写相关 (委托给 TestWriteBackService) ==========
+  // ========== 飞书回写 ==========
 
-  /**
-   * 回写测试结果到飞书
-   */
   async writeBackToFeishu(
     executionId: string,
     testStatus: FeishuTestStatus,
@@ -259,9 +235,6 @@ export class TestSuiteService {
     return this.writeBackService.writeBackToFeishu(executionId, testStatus, errorReason);
   }
 
-  /**
-   * 批量回写测试结果到飞书
-   */
   async batchWriteBackToFeishu(
     items: Array<{
       executionId: string;
@@ -272,25 +245,121 @@ export class TestSuiteService {
     return this.writeBackService.batchWriteBackToFeishu(items);
   }
 
-  // ========== 供 Processor 调用的方法 ==========
+  // ========== 反馈 ==========
 
-  /**
-   * 更新批次状态
-   */
+  async submitFeedback(
+    request: SubmitFeedbackRequestDto,
+  ): Promise<{ recordId?: string; type: string }> {
+    const feedback: AgentTestFeedback = {
+      type: request.type,
+      chatHistory: request.chatHistory,
+      userMessage: request.userMessage,
+      errorType: request.errorType,
+      remark: request.remark,
+      chatId: request.chatId,
+    };
+
+    const result = await this.feishuBitableService.writeAgentTestFeedback(feedback);
+    if (!result.success) {
+      throw new Error(result.error || '写入飞书表格失败');
+    }
+
+    return { recordId: result.recordId, type: request.type };
+  }
+
+  // ========== Vercel AI SDK 格式转换 ==========
+
+  convertVercelAIToTestRequest(request: VercelAIChatRequestDto): {
+    testRequest: TestChatRequestDto;
+    messageText: string;
+  } {
+    const userMessages = request.messages.filter((m) => m.role === 'user');
+    const latestUserMessage = userMessages[userMessages.length - 1];
+
+    const messageText =
+      latestUserMessage?.parts
+        ?.filter((p) => p.type === 'text')
+        .map((p) => p.text)
+        .join('') || '';
+
+    const history = request.messages.slice(0, -1).map((msg) => {
+      const textContent =
+        msg.parts
+          ?.filter((p) => p.type === 'text')
+          .map((p) => p.text)
+          .join('') || '';
+      return {
+        role: msg.role as MessageRole,
+        content: textContent,
+      };
+    });
+
+    const testRequest: TestChatRequestDto = {
+      message: messageText,
+      history,
+      scenario: request.scenario || 'candidate-consultation',
+      saveExecution: request.saveExecution ?? false,
+      skipHistoryTrim: true,
+      sessionId: request.sessionId,
+      userId: request.userId,
+      thinking: request.thinking,
+    };
+
+    return { testRequest, messageText };
+  }
+
+  // ========== 回归验证 ==========
+
+  async getConversationSources(
+    batchId: string,
+    page?: number,
+    pageSize?: number,
+    status?: ConversationSourceStatus,
+  ) {
+    return this.conversationTestService.getConversationSources(batchId, page, pageSize, status);
+  }
+
+  async getConversationTurns(sourceId: string) {
+    return this.conversationTestService.getConversationTurns(sourceId);
+  }
+
+  async executeConversation(sourceId: string, forceRerun?: boolean) {
+    const result = await this.conversationTestService.executeConversation(sourceId, forceRerun);
+
+    // 执行完成后，更新批次统计
+    const batchId = await this.conversationTestService.getSourceBatchId(sourceId);
+    if (batchId) {
+      await this.batchService.updateBatchStats(batchId);
+      this.logger.log(`[ConversationExecute] 已更新批次统计: batchId=${batchId}`);
+    }
+
+    return result;
+  }
+
+  async executeConversationBatch(batchId: string, forceRerun?: boolean) {
+    const result = await this.conversationTestService.executeConversationBatch(batchId, forceRerun);
+
+    // 批量执行完成后，更新批次统计
+    await this.batchService.updateBatchStats(batchId);
+    this.logger.log(`[ConversationBatchExecute] 已更新批次统计: batchId=${batchId}`);
+
+    return result;
+  }
+
+  async updateTurnReview(executionId: string, reviewStatus: ReviewStatus, reviewComment?: string) {
+    return this.conversationTestService.updateTurnReview(executionId, reviewStatus, reviewComment);
+  }
+
+  // ========== 供 Processor 调用 ==========
+
   async updateBatchStatus(batchId: string, status: BatchStatus): Promise<void> {
     return this.batchService.updateBatchStatus(batchId, status);
   }
 
-  /**
-   * 更新批次统计信息
-   */
   async updateBatchStats(batchId: string): Promise<void> {
     return this.batchService.updateBatchStats(batchId);
   }
 
-  /**
-   * 统计批次中已完成的执行记录数量
-   */
   async countCompletedExecutions(batchId: string): Promise<{
     total: number;
     success: number;
@@ -300,9 +369,6 @@ export class TestSuiteService {
     return this.executionService.countCompletedExecutions(batchId);
   }
 
-  /**
-   * 根据 batchId 和 caseId 更新执行记录
-   */
   async updateExecutionByBatchAndCase(
     batchId: string,
     caseId: string,
@@ -318,21 +384,5 @@ export class TestSuiteService {
     },
   ): Promise<void> {
     return this.executionService.updateExecutionByBatchAndCase(batchId, caseId, data);
-  }
-
-  // ========== 向后兼容的公开方法（已废弃，供 Processor 调用） ==========
-
-  /**
-   * @deprecated 使用 updateBatchStatus 代替
-   */
-  async updateBatchStatusPublic(batchId: string, status: BatchStatus): Promise<void> {
-    return this.updateBatchStatus(batchId, status);
-  }
-
-  /**
-   * @deprecated 使用 updateBatchStats 代替
-   */
-  async updateBatchStatsPublic(batchId: string): Promise<void> {
-    return this.updateBatchStats(batchId);
   }
 }

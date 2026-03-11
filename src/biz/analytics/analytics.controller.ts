@@ -1,5 +1,5 @@
 import { Controller, Get, Logger, Query, Post, HttpCode } from '@nestjs/common';
-import { AnalyticsService } from './analytics.service';
+import { AnalyticsService } from './services';
 import { MetricsData, TimeRange } from '@/core/monitoring/interfaces/monitoring.interface';
 
 /**

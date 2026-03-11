@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit, forwardRef, Inject } from '@nestjs/co
 import { InjectQueue } from '@nestjs/bull';
 import { Queue, Job } from 'bull';
 import { EnterpriseMessageCallbackDto } from './dto/message-callback.dto';
-import { SystemConfigService } from '@biz/hosting-config/system-config.service';
+import { SystemConfigService } from '@biz/hosting-config';
 import { MonitoringService } from '@core/monitoring/monitoring.service';
 
 // 导入子服务

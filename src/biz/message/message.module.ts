@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MessageController } from './message.controller';
-import { ChatSessionService } from './chat-session.service';
-import { MessageProcessingService } from './message-processing.service';
+import { ChatSessionService, MessageProcessingService } from './services';
 
 @Module({
   controllers: [MessageController],

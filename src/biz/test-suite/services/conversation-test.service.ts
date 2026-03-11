@@ -477,6 +477,103 @@ export class ConversationTestService {
   }
 
   /**
+   * 获取对话源列表（分页）
+   */
+  async getConversationSources(
+    batchId: string,
+    page = 1,
+    pageSize = 20,
+    status?: ConversationSourceStatus,
+  ) {
+    const result = await this.conversationSourceRepository.findByBatchIdPaginated(
+      batchId,
+      page,
+      pageSize,
+      status ? { status } : undefined,
+    );
+
+    return {
+      sources: result.data.map((source) => ({
+        id: source.id,
+        batchId: source.batch_id,
+        feishuRecordId: source.feishu_record_id,
+        conversationId: source.conversation_id,
+        participantName: source.participant_name,
+        totalTurns: source.total_turns,
+        avgSimilarityScore: source.avg_similarity_score,
+        minSimilarityScore: source.min_similarity_score,
+        status: source.status,
+        createdAt: source.created_at,
+        updatedAt: source.updated_at,
+      })),
+      total: result.total,
+      page,
+      pageSize,
+    };
+  }
+
+  /**
+   * 批量执行回归验证
+   */
+  async executeConversationBatch(
+    batchId: string,
+    forceRerun?: boolean,
+  ): Promise<{
+    batchId: string;
+    total: number;
+    successCount: number;
+    failedCount: number;
+    results: ConversationExecutionResult[];
+  }> {
+    const sources = await this.conversationSourceRepository.findByBatchId(batchId);
+
+    if (sources.length === 0) {
+      throw new Error(`批次 ${batchId} 下没有回归验证记录`);
+    }
+
+    const results: ConversationExecutionResult[] = [];
+    let successCount = 0;
+    let failedCount = 0;
+
+    for (const source of sources) {
+      try {
+        const result = await this.executeConversation(source.id, forceRerun);
+        results.push(result);
+        successCount++;
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.error(`对话 ${source.id} 执行失败: ${errorMessage}`);
+        failedCount++;
+      }
+    }
+
+    return { batchId, total: sources.length, successCount, failedCount, results };
+  }
+
+  /**
+   * 更新轮次评审状态
+   */
+  async updateTurnReview(
+    executionId: string,
+    reviewStatus: ReviewStatus,
+    reviewComment?: string,
+  ): Promise<{ executionId: string; reviewStatus: ReviewStatus }> {
+    await this.executionRepository.updateExecution(executionId, {
+      review_status: reviewStatus,
+      review_comment: reviewComment,
+    });
+    return { executionId, reviewStatus };
+  }
+
+  /**
+   * 获取对话源的批次ID
+   */
+  async getSourceBatchId(sourceId: string): Promise<string | null> {
+    const source = await this.conversationSourceRepository.findById(sourceId);
+    return source?.batch_id ?? null;
+  }
+
+  /**
    * 合并连续的同角色消息
    */
   private mergeConsecutiveMessages(messages: ParsedMessage[]): ParsedMessage[] {

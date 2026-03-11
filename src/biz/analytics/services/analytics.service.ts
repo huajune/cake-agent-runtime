@@ -31,8 +31,8 @@ import {
   DailyTrendData,
 } from '@db/monitoring';
 import { UserHostingRepository } from '@db/user';
-import { UserHostingService } from '@biz/user/user-hosting.service';
-import { HourlyStatsAggregatorService } from './services/hourly-stats-aggregator.service';
+import { UserHostingService } from '@biz/user';
+import { HourlyStatsAggregatorService } from './hourly-stats-aggregator.service';
 import { MessageTrackingService } from '@/core/monitoring/services/message-tracking.service';
 import { AgentRegistryService } from '@/agent/services/agent-registry.service';
 import * as os from 'os';

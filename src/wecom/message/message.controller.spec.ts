@@ -6,6 +6,7 @@ import { MessageType, ContactType, MessageSource } from './dto/message-callback.
 import { AgentService } from '@agent';
 import { MessageCallbackAdapterService } from './services/message-callback-adapter.service';
 import { MessageFilterService } from './services/message-filter.service';
+import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
 
 describe('MessageController', () => {
   let controller: MessageController;
@@ -28,6 +29,9 @@ describe('MessageController', () => {
   const mockFilterService = {
     shouldFilter: jest.fn().mockReturnValue(false),
     getFilterReason: jest.fn().mockReturnValue(null),
+  };
+
+  const mockGroupBlacklistService = {
     getGroupBlacklist: jest.fn().mockResolvedValue([]),
     addGroupToBlacklist: jest.fn().mockResolvedValue(undefined),
     removeGroupFromBlacklist: jest.fn().mockResolvedValue(true),
@@ -75,6 +79,10 @@ describe('MessageController', () => {
         {
           provide: MessageFilterService,
           useValue: mockFilterService,
+        },
+        {
+          provide: GroupBlacklistService,
+          useValue: mockGroupBlacklistService,
         },
         {
           provide: MessageProcessor,

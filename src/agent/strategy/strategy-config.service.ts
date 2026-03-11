@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { StrategyConfigService as BizStrategyConfigService } from '@biz/strategy/strategy-config.service';
+import { StrategyConfigService as BizStrategyConfigService } from '@biz/strategy';
 import {
   StrategyConfigRecord,
   StrategyPersona,

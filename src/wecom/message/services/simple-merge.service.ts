@@ -3,7 +3,7 @@ import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { RedisService } from '@core/redis';
 import { AgentReplyConfig } from '@db';
-import { SystemConfigService } from '@biz/hosting-config/system-config.service';
+import { SystemConfigService } from '@biz/hosting-config';
 import { EnterpriseMessageCallbackDto } from '../dto/message-callback.dto';
 import { RedisKeyBuilder } from '../utils/redis-key.util';
 
