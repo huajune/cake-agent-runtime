@@ -2,7 +2,7 @@ import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { AgentReplyConfig, DEFAULT_AGENT_REPLY_CONFIG } from '../types';
 import { SystemConfigService } from './system-config.service';
 import { GroupBlacklistService } from './group-blacklist.service';
-import { UserHostingService } from '@biz/user';
+import { UserHostingService } from '@biz/user/services';
 import { MessageService } from '@wecom/message/message.service';
 import { MessageProcessor } from '@wecom/message/message.processor';
 

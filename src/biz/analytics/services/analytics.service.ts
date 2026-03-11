@@ -29,7 +29,7 @@ import {
 } from '../repositories';
 import { DashboardOverviewStats, DashboardFallbackStats, DailyTrendData } from '../types';
 import { UserHostingRepository } from '@biz/user/repositories';
-import { UserHostingService } from '@biz/user';
+import { UserHostingService } from '@biz/user/services';
 import { HourlyStatsAggregatorService } from './hourly-stats-aggregator.service';
 import { MessageTrackingService } from '@/core/monitoring/services/message-tracking.service';
 import { AgentRegistryService } from '@/agent/services/agent-registry.service';
