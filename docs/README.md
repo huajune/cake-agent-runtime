@@ -16,6 +16,8 @@ docs/
 │   ├── message-service-architecture.md
 │   ├── monitoring-system-architecture.md
 │   └── alert-system-architecture.md
+├── db/                    # 数据库文档
+│   └── database-schema.md
 ├── infrastructure/        # 基础设施文档
 │   └── redis-supabase-usage.md
 ├── guides/                # 开发指南和教程
@@ -64,6 +66,17 @@ docs/
   - 8 个核心服务组件
   - 飞书 Webhook 集成
   - **更新日期**：2025-11-25
+
+---
+
+## 🗄️ 数据库 (db/)
+
+- **[数据库表设计与使用说明](db/database-schema.md)**
+  - 12 张表的完整字段定义与索引说明
+  - 表分类：核心业务、用户管理、监控统计、配置管理、测试套件
+  - 19 个 RPC 函数（清理、查询、Dashboard、聚合）
+  - 数据生命周期与存储估算
+  - **更新日期**：2026-03-11
 
 ---
 

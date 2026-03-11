@@ -434,7 +434,8 @@
       "Read(//Users/jiezhu/workSpace/snowmountain-top/Gaia/**)",
       "Bash(while read:*)",
       "Bash(do echo:*)",
-      "Read(//Users/jiezhu/.claude/**)"
+      "Read(//Users/jiezhu/.claude/**)",
+      "Bash(/tmp/test_audit.txt:*)"
     ],
     "deny": [
       "Bash(git restore:*)",
@@ -466,7 +467,8 @@
       "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/biz/booking",
       "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/biz/strategy",
       "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/s|import { SystemConfigService } from './system-config.service';|import { SystemConfigService, GroupBlacklistService } from '.",
-      "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/core/monitoring/services"
+      "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/core/monitoring/services",
+      "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/docs"
     ]
   },
   "enableAllProjectMcpServers": true,
