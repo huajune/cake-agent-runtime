@@ -15,7 +15,7 @@ import {
   useChatSessionMessages,
   useChatDailyStats,
   useChatSummaryStats,
-} from '@/hooks/monitoring/useChatRecords';
+} from '@/hooks/chat/useChatSessions';
 import { THEME_COLORS } from '@/constants';
 
 // 组件导入

@@ -13,14 +13,14 @@ import {
   Legend,
   Filler,
 } from 'chart.js';
-import { useDashboardOverview } from '@/hooks/monitoring/useDashboard';
-import { useHealthStatus } from '@/hooks/monitoring/useMetrics';
+import { useDashboardOverview } from '@/hooks/analytics/useDashboard';
+import { useHealthStatus } from '@/hooks/analytics/useMetrics';
 import {
   useAiReplyStatus,
   useToggleAiReply,
   useAvailableModels,
   useConfiguredTools,
-} from '@/hooks/monitoring/useSystemConfig';
+} from '@/hooks/config/useSystemConfig';
 import { formatDuration, formatMinuteLabel, formatDayLabel, formatHourLabel } from '@/utils/format';
 import { THEME_COLORS } from '@/constants';
 

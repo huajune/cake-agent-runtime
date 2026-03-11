@@ -3,7 +3,7 @@
  */
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { api, unwrapResponse } from '@/hooks/monitoring/shared';
+import { api, unwrapResponse } from '@/hooks/shared';
 import { useSaveStatusStore } from '@/hooks/strategy/useSaveStatusStore';
 import type {
   StrategyConfigRecord,

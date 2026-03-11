@@ -2,12 +2,11 @@
  * 监控指标相关 Hooks
  *
  * 包含系统指标、健康状态、最近消息等查询功能
- * 从 useMonitoring.ts 拆分而来（2025-12-16）
  */
 
 import { useQuery } from '@tanstack/react-query';
 import type { MetricsData, HealthStatus, MessageRecord, SystemInfo } from '@/types/monitoring';
-import { api, unwrapResponse } from './shared';
+import { api, unwrapResponse } from '../shared';
 
 // ==================== Query Hooks ====================
 
@@ -35,7 +34,7 @@ export function useHealthStatus(autoRefresh = true) {
       const { data } = await api.get('/agent/health');
       return unwrapResponse<HealthStatus>(data);
     },
-    refetchInterval: autoRefresh ? 60000 : false, // 1 分钟刷新一次
+    refetchInterval: autoRefresh ? 60000 : false,
   });
 }
 
@@ -63,6 +62,6 @@ export function useSystemInfo() {
       const { data } = await api.get('/analytics/system');
       return unwrapResponse(data) as SystemInfo;
     },
-    refetchInterval: 30000, // 每 30 秒刷新
+    refetchInterval: 30000,
   });
 }

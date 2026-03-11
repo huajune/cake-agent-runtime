@@ -3,11 +3,11 @@ import {
   useAgentReplyConfig,
   useUpdateAgentReplyConfig,
   useToggleMessageMerge,
-} from '@/hooks/monitoring/useSystemConfig';
+} from '@/hooks/config/useSystemConfig';
 import {
   useWorkerStatus,
   useSetWorkerConcurrency,
-} from '@/hooks/monitoring/useWorker';
+} from '@/hooks/config/useWorker';
 import type { AgentReplyConfig } from '@/types/monitoring';
 
 // 组件导入

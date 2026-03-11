@@ -2,7 +2,6 @@
  * 系统配置相关 Hooks
  *
  * 包含 AI 回复开关、消息聚合开关、黑名单、Agent 配置等功能
- * 从 useMonitoring.ts 拆分而来（2025-12-16）
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -13,11 +12,10 @@ import type {
   AgentReplyConfig,
   AgentReplyConfigResponse,
 } from '@/types/monitoring';
-import { api, unwrapResponse } from './shared';
+import { api, unwrapResponse } from '../shared';
 
 // ==================== 类型定义 ====================
 
-// 可用模型响应
 export interface AvailableModelsResponse {
   availableModels: string[];
   defaultModel: string;
@@ -25,7 +23,6 @@ export interface AvailableModelsResponse {
   lastRefreshTime: string;
 }
 
-// 配置的工具列表响应
 export interface ConfiguredToolsResponse {
   configuredTools: string[];
   count: number;
@@ -45,7 +42,7 @@ export function useAvailableModels() {
       const { data } = await api.get('/agent/available-models');
       return unwrapResponse<AvailableModelsResponse>(data);
     },
-    staleTime: 60000, // 1 分钟内不重新请求
+    staleTime: 60000,
   });
 }
 
@@ -59,7 +56,7 @@ export function useConfiguredTools() {
       const { data } = await api.get('/agent/configured-tools');
       return unwrapResponse<ConfiguredToolsResponse>(data);
     },
-    staleTime: 60000, // 1 分钟内不重新请求
+    staleTime: 60000,
   });
 }
 
@@ -115,11 +112,8 @@ export function useToggleAiReply() {
       return unwrapResponse<{ enabled: boolean; message: string }>(data);
     },
     onMutate: async (enabled) => {
-      // 取消正在进行的查询
       await queryClient.cancelQueries({ queryKey: ['ai-reply-status'] });
-      // 保存之前的状态
       const previousStatus = queryClient.getQueryData<{ enabled: boolean }>(['ai-reply-status']);
-      // 乐观更新 - 立即更新 UI
       queryClient.setQueryData(['ai-reply-status'], { enabled });
       return { previousStatus, enabled };
     },
@@ -127,14 +121,12 @@ export function useToggleAiReply() {
       toast.success(enabled ? '智能回复已启用' : '智能回复已禁用');
     },
     onError: (_err, _enabled, context) => {
-      // 出错时回滚到之前的状态
       if (context?.previousStatus) {
         queryClient.setQueryData(['ai-reply-status'], context.previousStatus);
       }
       toast.error('操作失败，请重试');
     },
     onSettled: () => {
-      // 无论成功失败，最终都重新获取最新状态
       queryClient.invalidateQueries({ queryKey: ['ai-reply-status'] });
     },
   });
@@ -151,11 +143,8 @@ export function useToggleMessageMerge() {
       return unwrapResponse<{ enabled: boolean; message: string }>(data);
     },
     onMutate: async (enabled) => {
-      // 取消正在进行的查询
       await queryClient.cancelQueries({ queryKey: ['worker-status'] });
-      // 保存之前的状态
       const previousStatus = queryClient.getQueryData<WorkerStatus>(['worker-status']);
-      // 乐观更新 - 立即更新 UI
       if (previousStatus) {
         queryClient.setQueryData<WorkerStatus>(['worker-status'], {
           ...previousStatus,
@@ -168,14 +157,12 @@ export function useToggleMessageMerge() {
       toast.success(enabled ? '消息聚合已启用' : '消息聚合已禁用');
     },
     onError: (_err, _enabled, context) => {
-      // 出错时回滚到之前的状态
       if (context?.previousStatus) {
         queryClient.setQueryData(['worker-status'], context.previousStatus);
       }
       toast.error('操作失败，请重试');
     },
     onSettled: () => {
-      // 无论成功失败，最终都重新获取最新状态
       queryClient.invalidateQueries({ queryKey: ['worker-status'] });
     },
   });

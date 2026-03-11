@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useTodayUsers, useToggleUserHosting, usePausedUsers } from '@/hooks/monitoring/useUsers';
+import { useTodayUsers, useToggleUserHosting, usePausedUsers } from '@/hooks/user/useUsers';
 
 // 类型导入
 import type { TabType } from './types';

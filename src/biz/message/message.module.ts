@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
-import { MessageChatController } from './message-chat.controller';
-import { MessageRecordsController } from './message-records.controller';
-import { AnalyticsModule } from '../analytics/analytics.module';
+import { MessageController } from './message.controller';
+import { ChatSessionService } from './chat-session.service';
+import { MessageProcessingService } from './message-processing.service';
 
 @Module({
-  imports: [AnalyticsModule],
-  controllers: [MessageChatController, MessageRecordsController],
+  controllers: [MessageController],
+  providers: [ChatSessionService, MessageProcessingService],
+  exports: [ChatSessionService, MessageProcessingService],
 })
 export class BizMessageModule {}
