@@ -4,7 +4,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } 
 import { CSS } from '@dnd-kit/utilities';
 import { X, Shield, GripVertical } from 'lucide-react';
 import { useUpdateRedLines } from '@/hooks/strategy/useStrategyConfig';
-import type { StrategyConfigRecord } from '@/types/strategy';
+import type { StrategyConfigRecord } from '@/api/types/strategy.types';
 import styles from '../styles/index.module.scss';
 
 interface Props {

@@ -3,7 +3,7 @@ import {
   getConversationSources,
   executeConversation,
   type ConversationSource,
-} from '@/services/agent-test';
+} from '@/api/services/agent-test.service';
 
 interface UseConversationsResult {
   conversations: ConversationSource[];

@@ -6,29 +6,13 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import type {
-  BlacklistData,
-  WorkerStatus,
-  AgentReplyConfig,
-  AgentReplyConfigResponse,
-} from '@/types/monitoring';
-import { api, unwrapResponse } from '../shared';
+import type { WorkerStatus } from '@/api/types/monitoring.types';
+import type { AgentReplyConfig } from '@/api/types/config.types';
+import * as agentService from '@/api/services/agent.service';
+import * as monitoringService from '@/api/services/monitoring.service';
+import * as configService from '@/api/services/config.service';
 
-// ==================== 类型定义 ====================
-
-export interface AvailableModelsResponse {
-  availableModels: string[];
-  defaultModel: string;
-  defaultModelAvailable: boolean;
-  lastRefreshTime: string;
-}
-
-export interface ConfiguredToolsResponse {
-  configuredTools: string[];
-  count: number;
-  allAvailable: boolean;
-  lastRefreshTime: string;
-}
+export type { AvailableModelsResponse, ConfiguredToolsResponse } from '@/api/services/agent.service';
 
 // ==================== Query Hooks ====================
 
@@ -38,10 +22,7 @@ export interface ConfiguredToolsResponse {
 export function useAvailableModels() {
   return useQuery({
     queryKey: ['available-models'],
-    queryFn: async () => {
-      const { data } = await api.get('/agent/available-models');
-      return unwrapResponse<AvailableModelsResponse>(data);
-    },
+    queryFn: () => agentService.getAvailableModels(),
     staleTime: 60000,
   });
 }
@@ -52,10 +33,7 @@ export function useAvailableModels() {
 export function useConfiguredTools() {
   return useQuery({
     queryKey: ['configured-tools'],
-    queryFn: async () => {
-      const { data } = await api.get('/agent/configured-tools');
-      return unwrapResponse<ConfiguredToolsResponse>(data);
-    },
+    queryFn: () => agentService.getConfiguredTools(),
     staleTime: 60000,
   });
 }
@@ -66,10 +44,7 @@ export function useConfiguredTools() {
 export function useAiReplyStatus() {
   return useQuery({
     queryKey: ['ai-reply-status'],
-    queryFn: async () => {
-      const { data } = await api.get('/monitoring/ai-reply-status');
-      return unwrapResponse<{ enabled: boolean }>(data);
-    },
+    queryFn: () => monitoringService.getAiReplyStatus(),
   });
 }
 
@@ -79,10 +54,7 @@ export function useAiReplyStatus() {
 export function useBlacklist() {
   return useQuery({
     queryKey: ['blacklist'],
-    queryFn: async () => {
-      const { data } = await api.get('/config/blacklist');
-      return unwrapResponse<BlacklistData>(data);
-    },
+    queryFn: () => configService.getBlacklist(),
   });
 }
 
@@ -92,10 +64,7 @@ export function useBlacklist() {
 export function useAgentReplyConfig() {
   return useQuery({
     queryKey: ['agent-reply-config'],
-    queryFn: async () => {
-      const { data } = await api.get('/config/agent-config');
-      return unwrapResponse<AgentReplyConfigResponse>(data);
-    },
+    queryFn: () => configService.getAgentReplyConfig(),
   });
 }
 
@@ -107,10 +76,7 @@ export function useAgentReplyConfig() {
 export function useToggleAiReply() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (enabled: boolean) => {
-      const { data } = await api.post('/monitoring/toggle-ai-reply', { enabled });
-      return unwrapResponse<{ enabled: boolean; message: string }>(data);
-    },
+    mutationFn: (enabled: boolean) => monitoringService.toggleAiReply(enabled),
     onMutate: async (enabled) => {
       await queryClient.cancelQueries({ queryKey: ['ai-reply-status'] });
       const previousStatus = queryClient.getQueryData<{ enabled: boolean }>(['ai-reply-status']);
@@ -138,10 +104,7 @@ export function useToggleAiReply() {
 export function useToggleMessageMerge() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (enabled: boolean) => {
-      const { data } = await api.post('/monitoring/toggle-message-merge', { enabled });
-      return unwrapResponse<{ enabled: boolean; message: string }>(data);
-    },
+    mutationFn: (enabled: boolean) => monitoringService.toggleMessageMerge(enabled),
     onMutate: async (enabled) => {
       await queryClient.cancelQueries({ queryKey: ['worker-status'] });
       const previousStatus = queryClient.getQueryData<WorkerStatus>(['worker-status']);
@@ -174,10 +137,8 @@ export function useToggleMessageMerge() {
 export function useAddToBlacklist() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (params: { id: string; type: 'chatId' | 'groupId' }) => {
-      const { data } = await api.post('/config/blacklist', params);
-      return unwrapResponse(data);
-    },
+    mutationFn: (params: { id: string; type: 'chatId' | 'groupId' }) =>
+      configService.addToBlacklist(params),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['blacklist'] });
       toast.success('已添加到黑名单');
@@ -194,10 +155,8 @@ export function useAddToBlacklist() {
 export function useRemoveFromBlacklist() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (params: { id: string; type: 'chatId' | 'groupId' }) => {
-      const { data } = await api.delete('/config/blacklist', { data: params });
-      return unwrapResponse(data);
-    },
+    mutationFn: (params: { id: string; type: 'chatId' | 'groupId' }) =>
+      configService.removeFromBlacklist(params),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['blacklist'] });
       toast.success('已从黑名单移除');
@@ -214,10 +173,8 @@ export function useRemoveFromBlacklist() {
 export function useUpdateAgentReplyConfig() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (config: Partial<AgentReplyConfig>) => {
-      const { data } = await api.post('/config/agent-config', config);
-      return unwrapResponse<{ config: AgentReplyConfig; message: string }>(data);
-    },
+    mutationFn: (config: Partial<AgentReplyConfig>) =>
+      configService.updateAgentReplyConfig(config),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['agent-reply-config'] });
       toast.success(data.message || '配置已更新');
@@ -234,10 +191,7 @@ export function useUpdateAgentReplyConfig() {
 export function useResetAgentReplyConfig() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async () => {
-      const { data } = await api.post('/config/agent-config/reset');
-      return unwrapResponse<{ config: AgentReplyConfig; message: string }>(data);
-    },
+    mutationFn: () => configService.resetAgentReplyConfig(),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['agent-reply-config'] });
       toast.success(data.message || '配置已重置');

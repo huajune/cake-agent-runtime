@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { formatDuration } from '@/utils/format';
-import type { MessageRecord } from '@/types/monitoring';
+import type { MessageRecord } from '@/api/types/chat.types';
 import styles from './index.module.scss';
 
 // 场景类型中文映射

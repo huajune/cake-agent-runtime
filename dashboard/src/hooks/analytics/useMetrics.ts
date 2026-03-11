@@ -5,8 +5,8 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import type { MetricsData, HealthStatus, MessageRecord, SystemInfo } from '@/types/monitoring';
-import { api, unwrapResponse } from '../shared';
+import * as analyticsService from '@/api/services/analytics.service';
+import * as agentService from '@/api/services/agent.service';
 
 // ==================== Query Hooks ====================
 
@@ -16,10 +16,7 @@ import { api, unwrapResponse } from '../shared';
 export function useMetrics(autoRefresh = true) {
   return useQuery({
     queryKey: ['metrics'],
-    queryFn: async () => {
-      const { data } = await api.get('/analytics/metrics');
-      return unwrapResponse<MetricsData>(data);
-    },
+    queryFn: () => analyticsService.getMetrics(),
     refetchInterval: autoRefresh ? 5000 : false,
   });
 }
@@ -30,10 +27,7 @@ export function useMetrics(autoRefresh = true) {
 export function useHealthStatus(autoRefresh = true) {
   return useQuery({
     queryKey: ['health-status'],
-    queryFn: async () => {
-      const { data } = await api.get('/agent/health');
-      return unwrapResponse<HealthStatus>(data);
-    },
+    queryFn: () => agentService.getHealthStatus(),
     refetchInterval: autoRefresh ? 60000 : false,
   });
 }
@@ -44,10 +38,7 @@ export function useHealthStatus(autoRefresh = true) {
 export function useRecentMessages() {
   return useQuery({
     queryKey: ['recent-messages'],
-    queryFn: async () => {
-      const { data } = await api.get('/analytics/recent-messages');
-      return unwrapResponse<MessageRecord[]>(data);
-    },
+    queryFn: () => analyticsService.getRecentMessages(),
     refetchInterval: 5000,
   });
 }
@@ -58,10 +49,7 @@ export function useRecentMessages() {
 export function useSystemInfo() {
   return useQuery({
     queryKey: ['systemInfo'],
-    queryFn: async () => {
-      const { data } = await api.get('/analytics/system');
-      return unwrapResponse(data) as SystemInfo;
-    },
+    queryFn: () => analyticsService.getSystemInfo(),
     refetchInterval: 30000,
   });
 }

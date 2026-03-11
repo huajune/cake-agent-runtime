@@ -4,7 +4,7 @@ import {
   updateTurnReview,
   type ConversationTurnExecution,
   type TurnListResponse,
-} from '@/services/agent-test';
+} from '@/api/services/agent-test.service';
 
 interface UseTurnsResult {
   turns: ConversationTurnExecution[];

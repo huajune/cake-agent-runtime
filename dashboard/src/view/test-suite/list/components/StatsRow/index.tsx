@@ -1,4 +1,4 @@
-import { BatchStats } from '@/services/agent-test';
+import { BatchStats } from '@/api/services/agent-test.service';
 import { Layers, CheckCircle2, XCircle, Clock, Activity, Timer } from 'lucide-react';
 import styles from './index.module.scss';
 

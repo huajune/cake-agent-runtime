@@ -13,7 +13,7 @@ import {
   Radio,
   FileJson,
 } from 'lucide-react';
-import { TestChatResponse } from '@/services/agent-test';
+import { TestChatResponse } from '@/api/services/agent-test.service';
 import { MessagePartsAdapter } from '../MessagePartsAdapter';
 import { useChatTest, useFeedback } from '../../hooks';
 import { FeedbackModal } from '../FeedbackModal';

@@ -9,7 +9,7 @@ import {
   TestExecution,
   BatchStats,
   TestType,
-} from '@/services/agent-test';
+} from '@/api/services/agent-test.service';
 
 const PAGE_SIZE = 20;
 

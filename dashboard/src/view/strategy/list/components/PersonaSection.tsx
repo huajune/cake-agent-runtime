@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import TextareaAutosize from 'react-textarea-autosize';
 import { useUpdatePersona } from '@/hooks/strategy/useStrategyConfig';
-import type { StrategyConfigRecord, PersonaTextDimension } from '@/types/strategy';
+import type { StrategyConfigRecord, PersonaTextDimension } from '@/api/types/strategy.types';
 import styles from '../styles/index.module.scss';
 
 interface Props {

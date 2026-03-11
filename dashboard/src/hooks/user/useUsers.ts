@@ -6,36 +6,11 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import type { UserInfo, DashboardData } from '@/types/monitoring';
-import { api, unwrapResponse } from '../shared';
+import type { UserInfo } from '@/api/types/user.types';
+import type { DashboardData } from '@/api/types/analytics.types';
+import * as userService from '@/api/services/user.service';
 
-// ==================== 类型定义 ====================
-
-export interface UserTrendData {
-  date: string;
-  uniqueUsers: number;
-  messageCount: number;
-  tokenUsage: number;
-}
-
-export interface TodayUserData {
-  chatId: string;
-  odId: string;
-  odName: string;
-  groupName?: string;
-  messageCount: number;
-  tokenUsage: number;
-  firstActiveAt: number;
-  lastActiveAt: number;
-  isPaused: boolean;
-}
-
-export interface PausedUserData {
-  chatId: string;
-  pausedAt: number;
-  odName?: string;
-  groupName?: string;
-}
+export type { UserTrendData, TodayUserData, PausedUserData } from '@/api/services/user.service';
 
 // ==================== Query Hooks ====================
 
@@ -45,10 +20,7 @@ export interface PausedUserData {
 export function useUserTrend(autoRefresh = true) {
   return useQuery({
     queryKey: ['user-trend'],
-    queryFn: async () => {
-      const { data } = await api.get('/analytics/user-trend');
-      return unwrapResponse<UserTrendData[]>(data);
-    },
+    queryFn: () => userService.getUserTrend(),
     refetchInterval: autoRefresh ? 60000 : false,
   });
 }
@@ -59,10 +31,7 @@ export function useUserTrend(autoRefresh = true) {
 export function useTodayUsers(autoRefresh = true) {
   return useQuery({
     queryKey: ['today-users'],
-    queryFn: async () => {
-      const { data } = await api.get('/analytics/users');
-      return unwrapResponse<TodayUserData[]>(data);
-    },
+    queryFn: () => userService.getTodayUsers(),
     refetchInterval: autoRefresh ? 10000 : false,
   });
 }
@@ -73,18 +42,7 @@ export function useTodayUsers(autoRefresh = true) {
 export function usePausedUsers(autoRefresh = true) {
   return useQuery({
     queryKey: ['paused-users'],
-    queryFn: async () => {
-      const { data } = await api.get('/user/users/paused');
-      const response = unwrapResponse<{
-        users: Array<{ userId: string; pausedAt: number; odName?: string; groupName?: string }>;
-      }>(data);
-      return response.users.map((user) => ({
-        chatId: user.userId,
-        pausedAt: user.pausedAt,
-        odName: user.odName,
-        groupName: user.groupName,
-      }));
-    },
+    queryFn: () => userService.getPausedUsers(),
     refetchInterval: autoRefresh ? 10000 : false,
   });
 }
@@ -95,10 +53,7 @@ export function usePausedUsers(autoRefresh = true) {
 export function useUsers() {
   return useQuery({
     queryKey: ['users'],
-    queryFn: async () => {
-      const { data } = await api.get('/analytics/users');
-      return unwrapResponse<UserInfo[]>(data);
-    },
+    queryFn: () => userService.getUsers(),
     refetchInterval: 10000,
   });
 }
@@ -111,12 +66,8 @@ export function useUsers() {
 export function useToggleUserHosting() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ chatId, enabled }: { chatId: string; enabled: boolean }) => {
-      const { data } = await api.post(`/user/users/${encodeURIComponent(chatId)}/hosting`, {
-        enabled,
-      });
-      return unwrapResponse(data);
-    },
+    mutationFn: ({ chatId, enabled }: { chatId: string; enabled: boolean }) =>
+      userService.toggleUserHosting(chatId, enabled),
     onMutate: async ({ chatId, enabled }) => {
       await queryClient.cancelQueries({ queryKey: ['users'] });
       await queryClient.cancelQueries({ queryKey: ['dashboard'] });

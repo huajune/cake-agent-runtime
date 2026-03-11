@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { MessageRecord } from '@/types/monitoring';
+import type { MessageRecord } from '@/api/types/chat.types';
 import styles from './index.module.scss';
 
 // 需要截断的大字段路径（仅截断 request 部分，response 完整展示）

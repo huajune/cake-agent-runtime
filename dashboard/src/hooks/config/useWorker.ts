@@ -6,22 +6,10 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import type { WorkerStatus } from '@/types/monitoring';
-import { api, unwrapResponse } from '../shared';
+import type { WorkerStatus } from '@/api/types/monitoring.types';
+import * as monitoringService from '@/api/services/monitoring.service';
 
-// ==================== 类型定义 ====================
-
-export interface WorkerConcurrencyResponse {
-  success: boolean;
-  message: string;
-  concurrency: number;
-}
-
-export interface GroupInfo {
-  id: string;
-  name: string;
-  description: string;
-}
+export type { WorkerConcurrencyResponse, GroupInfo } from '@/api/services/monitoring.service';
 
 // ==================== Query Hooks ====================
 
@@ -31,10 +19,7 @@ export interface GroupInfo {
 export function useWorkerStatus(autoRefresh = true) {
   return useQuery({
     queryKey: ['worker-status'],
-    queryFn: async () => {
-      const { data } = await api.get('/monitoring/worker-status');
-      return unwrapResponse<WorkerStatus>(data);
-    },
+    queryFn: () => monitoringService.getWorkerStatus(),
     refetchInterval: autoRefresh ? 5000 : false,
   });
 }
@@ -45,12 +30,7 @@ export function useWorkerStatus(autoRefresh = true) {
 export function useGroupList() {
   return useQuery({
     queryKey: ['group-list'],
-    queryFn: async () => {
-      const token = import.meta.env.VITE_ENTERPRISE_TOKEN || '9eaebbf614104879b81c2da7c41819bd';
-      const { data } = await api.get(`/group/list?token=${token}`);
-      const groups = unwrapResponse<GroupInfo[]>(data);
-      return groups || [];
-    },
+    queryFn: () => monitoringService.getGroupList(),
     staleTime: 60000,
   });
 }
@@ -63,10 +43,7 @@ export function useGroupList() {
 export function useSetWorkerConcurrency() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (concurrency: number) => {
-      const { data } = await api.post('/monitoring/worker-concurrency', { concurrency });
-      return unwrapResponse<WorkerConcurrencyResponse>(data);
-    },
+    mutationFn: (concurrency: number) => monitoringService.setWorkerConcurrency(concurrency),
     onMutate: async (concurrency) => {
       await queryClient.cancelQueries({ queryKey: ['worker-status'] });
       const previousStatus = queryClient.getQueryData<WorkerStatus>(['worker-status']);

@@ -1,6 +1,6 @@
 import { memo, useCallback } from 'react';
 import { Activity, ChevronRight, Check, X, Clock, Loader2, AlertTriangle } from 'lucide-react';
-import { TestExecution } from '@/services/agent-test';
+import { TestExecution } from '@/api/services/agent-test.service';
 import styles from './index.module.scss';
 
 interface CaseListProps {

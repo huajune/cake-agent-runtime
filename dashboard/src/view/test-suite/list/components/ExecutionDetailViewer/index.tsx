@@ -13,7 +13,7 @@ import {
   Clock,
   Activity,
 } from 'lucide-react';
-import { TestExecution } from '@/services/agent-test';
+import { TestExecution } from '@/api/services/agent-test.service';
 import { formatJson, formatToolResult } from '@/utils/format';
 import type { ToolCall, TokenUsage } from '../../types';
 import styles from './index.module.scss';

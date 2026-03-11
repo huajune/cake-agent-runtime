@@ -5,8 +5,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import type { MessageRecord } from '@/types/monitoring';
-import { api, unwrapResponse } from '../shared';
+import * as chatService from '@/api/services/chat.service';
 
 // ==================== Query Hooks ====================
 
@@ -16,19 +15,7 @@ import { api, unwrapResponse } from '../shared';
 export function useMessageStats(options?: { startDate?: string; endDate?: string }) {
   return useQuery({
     queryKey: ['message-stats', options],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (options?.startDate) params.set('startDate', options.startDate);
-      if (options?.endDate) params.set('endDate', options.endDate);
-
-      const { data } = await api.get(`/analytics/message-stats?${params.toString()}`);
-      return unwrapResponse<{
-        total: number;
-        success: number;
-        failed: number;
-        avgDuration: number;
-      }>(data);
-    },
+    queryFn: () => chatService.getMessageStats(options),
     refetchInterval: 5000,
   });
 }
@@ -43,15 +30,7 @@ export function useSlowestMessages(options?: {
 }) {
   return useQuery({
     queryKey: ['slowest-messages', options],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (options?.startDate) params.set('startDate', options.startDate);
-      if (options?.endDate) params.set('endDate', options.endDate);
-      if (options?.limit) params.set('limit', String(options.limit));
-
-      const { data } = await api.get(`/analytics/slowest-messages?${params.toString()}`);
-      return unwrapResponse<MessageRecord[]>(data);
-    },
+    queryFn: () => chatService.getSlowestMessages(options),
     refetchInterval: 5000,
   });
 }
@@ -70,19 +49,7 @@ export function useMessageProcessingRecords(options?: {
 }) {
   return useQuery({
     queryKey: ['message-processing-records', options],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (options?.startDate) params.set('startDate', options.startDate);
-      if (options?.endDate) params.set('endDate', options.endDate);
-      if (options?.status) params.set('status', options.status);
-      if (options?.chatId) params.set('chatId', options.chatId);
-      if (options?.userName) params.set('userName', options.userName);
-      if (options?.limit) params.set('limit', String(options.limit));
-      if (options?.offset) params.set('offset', String(options.offset));
-
-      const { data } = await api.get(`/analytics/message-processing-records?${params.toString()}`);
-      return unwrapResponse<MessageRecord[]>(data);
-    },
+    queryFn: () => chatService.getMessageProcessingRecords(options),
   });
 }
 
@@ -92,11 +59,7 @@ export function useMessageProcessingRecords(options?: {
 export function useMessageProcessingRecordDetail(messageId: string | null) {
   return useQuery({
     queryKey: ['message-processing-record-detail', messageId],
-    queryFn: async () => {
-      if (!messageId) return null;
-      const { data } = await api.get(`/analytics/message-processing-records/${encodeURIComponent(messageId)}`);
-      return unwrapResponse<MessageRecord>(data);
-    },
+    queryFn: () => chatService.getMessageProcessingRecordDetail(messageId!),
     enabled: !!messageId,
     staleTime: 60000,
   });

@@ -1,5 +1,5 @@
 import { X, Check, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
-import { TestExecution } from '@/services/agent-test';
+import { TestExecution } from '@/api/services/agent-test.service';
 import { AGENT_ERROR_TYPES } from '@/constants';
 import { ExecutionDetailViewer } from '../ExecutionDetailViewer';
 import { DetailSkeleton } from './DetailSkeleton';

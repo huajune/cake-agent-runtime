@@ -1,9 +1,3 @@
-/**
- * 策略配置前端类型定义
- *
- * 与后端 strategy-config.types.ts 保持一致
- */
-
 export interface PersonaTextDimension {
   key: string;
   label: string;

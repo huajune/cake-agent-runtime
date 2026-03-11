@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import TextareaAutosize from 'react-textarea-autosize';
 import { X, Plus, ListChecks, ShieldAlert, MessageSquare, ChevronDown } from 'lucide-react';
 import { useUpdateStageGoals } from '@/hooks/strategy/useStrategyConfig';
-import type { StrategyConfigRecord, StageGoalConfig } from '@/types/strategy';
+import type { StrategyConfigRecord, StageGoalConfig } from '@/api/types/strategy.types';
 import styles from '../styles/index.module.scss';
 
 interface Props {

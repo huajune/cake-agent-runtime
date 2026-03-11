@@ -1,6 +1,6 @@
 import { useRef, useCallback, useEffect } from 'react';
 import { FolderOpen, Sparkles, Loader2 } from 'lucide-react';
-import { TestBatch } from '@/services/agent-test';
+import { TestBatch } from '@/api/services/agent-test.service';
 import { getBatchStatusDisplay } from '../../constants';
 import styles from './index.module.scss';
 

@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
-import { TestChatResponse, SimpleMessage, TokenUsage } from '@/services/agent-test';
+import { TestChatResponse, SimpleMessage, TokenUsage } from '@/api/services/agent-test.service';
 import { CHAT_API_ENDPOINT, DEFAULT_SCENARIO } from '../constants';
 
 export interface UseChatTestOptions {

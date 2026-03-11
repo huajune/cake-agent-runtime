@@ -17,7 +17,7 @@ import {
 import { useSystemMonitoring } from '@/hooks/analytics/useDashboard';
 import { useMetrics } from '@/hooks/analytics/useMetrics';
 import { formatDuration, formatHourLabel } from '@/utils/format';
-import type { AgentReplyConfig } from '@/types/monitoring';
+import type { AgentReplyConfig } from '@/api/types/config.types';
 
 // 组件导入
 import KpiCard, { KpiGrid } from './components/KpiCard';

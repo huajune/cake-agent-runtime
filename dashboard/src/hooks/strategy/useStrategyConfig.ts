@@ -3,14 +3,13 @@
  */
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { api, unwrapResponse } from '@/hooks/shared';
 import { useSaveStatusStore } from '@/hooks/strategy/useSaveStatusStore';
+import * as strategyService from '@/api/services/strategy.service';
 import type {
-  StrategyConfigRecord,
   StrategyPersona,
   StrategyStageGoals,
   StrategyRedLines,
-} from '@/types/strategy';
+} from '@/api/types/strategy.types';
 
 const QUERY_KEY = ['strategy-config'];
 
@@ -18,10 +17,7 @@ const QUERY_KEY = ['strategy-config'];
 export function useStrategyConfig() {
   return useQuery({
     queryKey: QUERY_KEY,
-    queryFn: async () => {
-      const { data } = await api.get('/strategy');
-      return unwrapResponse<StrategyConfigRecord>(data);
-    },
+    queryFn: () => strategyService.getStrategyConfig(),
     staleTime: 30000,
   });
 }
@@ -31,10 +27,7 @@ export function useUpdatePersona() {
   const queryClient = useQueryClient();
   const setStatus = useSaveStatusStore((s) => s.setStatus);
   return useMutation({
-    mutationFn: async (persona: StrategyPersona) => {
-      const { data } = await api.post('/strategy/persona', persona);
-      return unwrapResponse<{ config: StrategyConfigRecord; message: string }>(data);
-    },
+    mutationFn: (persona: StrategyPersona) => strategyService.updatePersona(persona),
     onMutate: () => setStatus('saving'),
     onSuccess: (result) => {
       queryClient.setQueryData(QUERY_KEY, result.config);
@@ -52,10 +45,8 @@ export function useUpdateStageGoals() {
   const queryClient = useQueryClient();
   const setStatus = useSaveStatusStore((s) => s.setStatus);
   return useMutation({
-    mutationFn: async (stageGoals: StrategyStageGoals) => {
-      const { data } = await api.post('/strategy/stage-goals', stageGoals);
-      return unwrapResponse<{ config: StrategyConfigRecord; message: string }>(data);
-    },
+    mutationFn: (stageGoals: StrategyStageGoals) =>
+      strategyService.updateStageGoals(stageGoals),
     onMutate: () => setStatus('saving'),
     onSuccess: (result) => {
       queryClient.setQueryData(QUERY_KEY, result.config);
@@ -73,10 +64,7 @@ export function useUpdateRedLines() {
   const queryClient = useQueryClient();
   const setStatus = useSaveStatusStore((s) => s.setStatus);
   return useMutation({
-    mutationFn: async (redLines: StrategyRedLines) => {
-      const { data } = await api.post('/strategy/red-lines', redLines);
-      return unwrapResponse<{ config: StrategyConfigRecord; message: string }>(data);
-    },
+    mutationFn: (redLines: StrategyRedLines) => strategyService.updateRedLines(redLines),
     onMutate: () => setStatus('saving'),
     onSuccess: (result) => {
       queryClient.setQueryData(QUERY_KEY, result.config);

@@ -1,5 +1,5 @@
 import { ThumbsUp, ThumbsDown, Check } from 'lucide-react';
-import { FeedbackType } from '@/services/agent-test';
+import { FeedbackType } from '@/api/services/agent-test.service';
 import styles from './index.module.scss';
 
 export interface FeedbackButtonsProps {
