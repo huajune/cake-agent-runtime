@@ -83,7 +83,7 @@ export function useBlacklist() {
   return useQuery({
     queryKey: ['blacklist'],
     queryFn: async () => {
-      const { data } = await api.get('/monitoring/blacklist');
+      const { data } = await api.get('/config/blacklist');
       return unwrapResponse<BlacklistData>(data);
     },
   });
@@ -96,7 +96,7 @@ export function useAgentReplyConfig() {
   return useQuery({
     queryKey: ['agent-reply-config'],
     queryFn: async () => {
-      const { data } = await api.get('/monitoring/agent-config');
+      const { data } = await api.get('/config/agent-config');
       return unwrapResponse<AgentReplyConfigResponse>(data);
     },
   });
@@ -188,7 +188,7 @@ export function useAddToBlacklist() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (params: { id: string; type: 'chatId' | 'groupId' }) => {
-      const { data } = await api.post('/monitoring/blacklist', params);
+      const { data } = await api.post('/config/blacklist', params);
       return unwrapResponse(data);
     },
     onSuccess: () => {
@@ -208,7 +208,7 @@ export function useRemoveFromBlacklist() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (params: { id: string; type: 'chatId' | 'groupId' }) => {
-      const { data } = await api.delete('/monitoring/blacklist', { data: params });
+      const { data } = await api.delete('/config/blacklist', { data: params });
       return unwrapResponse(data);
     },
     onSuccess: () => {
@@ -228,7 +228,7 @@ export function useUpdateAgentReplyConfig() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (config: Partial<AgentReplyConfig>) => {
-      const { data } = await api.post('/monitoring/agent-config', config);
+      const { data } = await api.post('/config/agent-config', config);
       return unwrapResponse<{ config: AgentReplyConfig; message: string }>(data);
     },
     onSuccess: (data) => {
@@ -248,7 +248,7 @@ export function useResetAgentReplyConfig() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      const { data } = await api.post('/monitoring/agent-config/reset');
+      const { data } = await api.post('/config/agent-config/reset');
       return unwrapResponse<{ config: AgentReplyConfig; message: string }>(data);
     },
     onSuccess: (data) => {

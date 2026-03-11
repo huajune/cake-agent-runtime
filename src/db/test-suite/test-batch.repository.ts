@@ -2,55 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase';
 import { SupabaseService } from '@core/supabase';
 import { BatchStatus, BatchSource, TestType } from '@test-suite/enums';
-
-/**
- * 测试批次（数据库格式）
- */
-export interface TestBatch {
-  id: string;
-  name: string;
-  source: BatchSource;
-  feishu_app_token: string | null;
-  feishu_table_id: string | null;
-  total_cases: number;
-  executed_count: number;
-  passed_count: number;
-  failed_count: number;
-  pending_review_count: number;
-  pass_rate: number | null;
-  avg_duration_ms: number | null;
-  avg_token_usage: number | null;
-  status: BatchStatus;
-  test_type: TestType;
-  created_by: string | null;
-  created_at: string;
-  completed_at: string | null;
-}
-
-/**
- * 创建批次请求
- */
-export interface CreateBatchData {
-  name: string;
-  source?: BatchSource;
-  feishuAppToken?: string;
-  feishuTableId?: string;
-  testType?: TestType;
-}
-
-/**
- * 批次统计数据
- */
-export interface BatchStatsData {
-  totalCases: number;
-  executedCount: number;
-  passedCount: number;
-  failedCount: number;
-  pendingReviewCount: number;
-  passRate: number | null;
-  avgDurationMs: number | null;
-  avgTokenUsage: number | null;
-}
+import { TestBatch, CreateBatchData, BatchStatsData } from './types';
 
 /**
  * 测试批次 Repository

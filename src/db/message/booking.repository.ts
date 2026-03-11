@@ -1,49 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase';
 import { SupabaseService } from '@core/supabase';
-
-/**
- * 预约记录输入
- */
-export interface BookingRecordInput {
-  brandName?: string;
-  storeName?: string;
-  chatId?: string;
-  userId?: string;
-  userName?: string;
-  managerId?: string;
-  managerName?: string;
-}
-
-/**
- * 预约统计数据
- */
-export interface BookingStats {
-  date: string;
-  brandName: string | null;
-  storeName: string | null;
-  bookingCount: number;
-  chatId: string | null;
-  userId: string | null;
-  userName: string | null;
-  managerId: string | null;
-  managerName: string | null;
-}
-
-/**
- * 预约记录数据库格式
- */
-interface BookingDbRecord {
-  date: string;
-  brand_name: string | null;
-  store_name: string | null;
-  booking_count: number;
-  chat_id: string | null;
-  user_id: string | null;
-  user_name: string | null;
-  manager_id: string | null;
-  manager_name: string | null;
-}
+import { BookingRecordInput, BookingStats, BookingDbRecord } from './types';
 
 /**
  * 预约统计 Repository

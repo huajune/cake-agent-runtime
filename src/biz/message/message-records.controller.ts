@@ -1,17 +1,17 @@
 import { Controller, Get, Logger, Param, Query } from '@nestjs/common';
-import { MonitoringService } from '../monitoring.service';
+import { AnalyticsService } from '../analytics/analytics.service';
 import { MessageProcessingRepository } from '@db/message';
 
 /**
- * 消息处理记录控制器
+ * 消息-处理记录控制器
  * 提供消息统计、最慢消息、处理记录查询等接口
  */
-@Controller('monitoring')
-export class MonitoringMessagesController {
-  private readonly logger = new Logger(MonitoringMessagesController.name);
+@Controller('analytics')
+export class MessageRecordsController {
+  private readonly logger = new Logger(MessageRecordsController.name);
 
   constructor(
-    private readonly monitoringService: MonitoringService,
+    private readonly analyticsService: AnalyticsService,
     private readonly messageProcessingRepository: MessageProcessingRepository,
   ) {}
 
@@ -40,7 +40,7 @@ export class MonitoringMessagesController {
 
     this.logger.debug(`获取消息统计: ${JSON.stringify(options)}`);
 
-    return this.monitoringService.getMessageStatsAsync(
+    return this.analyticsService.getMessageStatsAsync(
       options.startDate?.getTime() || Date.now() - 24 * 60 * 60 * 1000,
       options.endDate?.getTime() || Date.now(),
     );

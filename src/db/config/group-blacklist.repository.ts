@@ -1,15 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase';
 import { SupabaseService } from '@core/supabase';
+import { GroupBlacklistItem } from './types';
 
-/**
- * 小组黑名单项
- */
-export interface GroupBlacklistItem {
-  groupId: string;
-  reason?: string;
-  addedAt: number;
-}
+export * from './types';
 
 /**
  * 小组黑名单 Repository

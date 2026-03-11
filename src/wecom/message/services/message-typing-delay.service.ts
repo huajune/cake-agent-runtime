@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AgentReplyConfig } from '@db';
-import { SystemConfigService } from '@db/config';
+import { SystemConfigService } from '@biz/hosting-config/system-config.service';
 import {
   TYPING_MIN_DELAY_MS,
   TYPING_MAX_DELAY_MS,

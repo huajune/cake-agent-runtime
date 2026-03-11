@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   EnterpriseMessageCallbackDto,
   MessageSource,
@@ -7,8 +7,8 @@ import {
   getMessageSourceDescription,
 } from '../dto/message-callback.dto';
 import { MessageParser } from '../utils/message-parser.util';
-import { GroupBlacklistService } from '@db/config';
-import { UserHostingService } from '@db/user';
+import { GroupBlacklistService } from '@biz/hosting-config/group-blacklist.service';
+import { UserHostingService } from '@biz/user/user-hosting.service';
 
 /**
  * 消息过滤原因枚举
@@ -56,77 +56,13 @@ export interface FilterResult {
  * - 小组级消息：不应用 groupId 黑名单，允许通过
  */
 @Injectable()
-export class MessageFilterService implements OnModuleInit {
+export class MessageFilterService {
   private readonly logger = new Logger(MessageFilterService.name);
 
   constructor(
     private readonly userHostingService: UserHostingService,
     private readonly groupBlacklistService: GroupBlacklistService,
   ) {}
-
-  async onModuleInit() {
-    this.logger.log('✅ MessageFilterService 已初始化，使用 Supabase 持久化用户托管状态');
-  }
-
-  /**
-   * 暂停用户托管（持久化到 Supabase）
-   */
-  async pauseUser(userId: string): Promise<void> {
-    await this.userHostingService.pauseUser(userId);
-  }
-
-  /**
-   * 恢复用户托管（持久化到 Supabase）
-   */
-  async resumeUser(userId: string): Promise<void> {
-    await this.userHostingService.resumeUser(userId);
-  }
-
-  /**
-   * 检查用户是否被暂停托管
-   */
-  async isUserPaused(userId: string): Promise<boolean> {
-    return this.userHostingService.isUserPaused(userId);
-  }
-
-  /**
-   * 获取所有暂停托管的用户列表（附带用户资料）
-   */
-  async getPausedUsers(): Promise<
-    { userId: string; pausedAt: number; odName?: string; groupName?: string }[]
-  > {
-    return this.userHostingService.getPausedUsersWithProfiles();
-  }
-
-  // ==================== 小组黑名单管理 ====================
-
-  /**
-   * 检查小组是否在黑名单中
-   */
-  async isGroupBlacklisted(groupId: string): Promise<boolean> {
-    return this.groupBlacklistService.isGroupBlacklisted(groupId);
-  }
-
-  /**
-   * 添加小组到黑名单
-   */
-  async addGroupToBlacklist(groupId: string, reason?: string): Promise<void> {
-    await this.groupBlacklistService.addGroupToBlacklist(groupId, reason);
-  }
-
-  /**
-   * 从黑名单移除小组
-   */
-  async removeGroupFromBlacklist(groupId: string): Promise<boolean> {
-    return this.groupBlacklistService.removeGroupFromBlacklist(groupId);
-  }
-
-  /**
-   * 获取黑名单列表
-   */
-  async getGroupBlacklist(): Promise<{ groupId: string; reason?: string; addedAt: number }[]> {
-    return this.groupBlacklistService.getGroupBlacklist();
-  }
 
   /**
    * 验证消息是否应该被处理
@@ -178,7 +114,7 @@ export class MessageFilterService implements OnModuleInit {
     // 2.6 检查用户是否被暂停托管
     // 使用 imContactId 作为用户标识（私聊场景）
     const userId = messageData.imContactId || messageData.externalUserId;
-    if (userId && (await this.isUserPaused(userId))) {
+    if (userId && (await this.userHostingService.isUserPaused(userId))) {
       this.logger.log(
         `[过滤-暂停托管] 跳过暂停托管用户的消息 [${messageData.messageId}], userId=${userId}`,
       );
@@ -192,7 +128,10 @@ export class MessageFilterService implements OnModuleInit {
     }
 
     // 2.7 检查小组是否在黑名单中（仅记录历史，不触发AI回复）
-    if (messageData.groupId && (await this.isGroupBlacklisted(messageData.groupId))) {
+    if (
+      messageData.groupId &&
+      (await this.groupBlacklistService.isGroupBlacklisted(messageData.groupId))
+    ) {
       const content = MessageParser.extractContent(messageData);
       this.logger.log(
         `[过滤-小组黑名单] 小组在黑名单中，仅记录历史 [${messageData.messageId}], groupId=${messageData.groupId}`,

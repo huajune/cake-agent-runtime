@@ -3,12 +3,12 @@ import { ChatMessageRepository } from '@db/message';
 import { MonitoringRepository } from '@db/monitoring';
 
 /**
- * 聊天记录控制器
+ * 消息-聊天记录控制器
  * 提供聊天记录查询、会话列表、每日统计等接口
  */
-@Controller('monitoring')
-export class MonitoringChatController {
-  private readonly logger = new Logger(MonitoringChatController.name);
+@Controller('analytics')
+export class MessageChatController {
+  private readonly logger = new Logger(MessageChatController.name);
 
   constructor(
     private readonly chatMessageRepository: ChatMessageRepository,

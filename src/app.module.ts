@@ -8,8 +8,8 @@ import { MonitoringModule } from './core/monitoring/monitoring.module';
 import { LoggerModule } from './core/logger';
 import { FeishuModule } from './core/feishu';
 import { AgentModule } from './agent';
-import { TestSuiteModule } from './test-suite/test-suite.module';
 import { WecomModule } from './wecom/wecom.module';
+import { BizModule } from '@biz/biz.module';
 import { validate } from './core/config/env.validation';
 
 /**
@@ -59,9 +59,11 @@ import { validate } from './core/config/env.validation';
     FeishuModule, // 飞书统一服务（告警、通知、多维表格同步）
     LoggerModule, // 实时日志推送（仅开发环境）
 
+    // ==================== 业务逻辑层 (Business Logic Layer) ====================
+    BizModule,
+
     // ==================== 业务域 (Business Domains) ====================
     AgentModule, // AI Agent 业务域
-    TestSuiteModule, // 测试套件模块
     WecomModule, // 企业微信业务域
   ],
 })

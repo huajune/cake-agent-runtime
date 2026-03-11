@@ -18,7 +18,7 @@ export function useMetrics(autoRefresh = true) {
   return useQuery({
     queryKey: ['metrics'],
     queryFn: async () => {
-      const { data } = await api.get('/monitoring/metrics');
+      const { data } = await api.get('/analytics/metrics');
       return unwrapResponse<MetricsData>(data);
     },
     refetchInterval: autoRefresh ? 5000 : false,
@@ -46,7 +46,7 @@ export function useRecentMessages() {
   return useQuery({
     queryKey: ['recent-messages'],
     queryFn: async () => {
-      const { data } = await api.get('/monitoring/recent-messages');
+      const { data } = await api.get('/analytics/recent-messages');
       return unwrapResponse<MessageRecord[]>(data);
     },
     refetchInterval: 5000,
@@ -60,7 +60,7 @@ export function useSystemInfo() {
   return useQuery({
     queryKey: ['systemInfo'],
     queryFn: async () => {
-      const { data } = await api.get('/monitoring/system');
+      const { data } = await api.get('/analytics/system');
       return unwrapResponse(data) as SystemInfo;
     },
     refetchInterval: 30000, // 每 30 秒刷新

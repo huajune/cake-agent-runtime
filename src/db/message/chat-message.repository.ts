@@ -2,91 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase';
 import { SupabaseService } from '@core/supabase';
 import {
-  StorageMessageType,
-  StorageMessageSource,
-  StorageContactType,
   toStorageMessageType,
   toStorageMessageSource,
   toStorageContactType,
 } from '@wecom/message/enums';
-
-/**
- * 聊天消息记录（Supabase 存储格式）
- */
-export interface ChatMessageRecord {
-  chat_id: string;
-  message_id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: string;
-  candidate_name?: string;
-  manager_name?: string;
-  org_id?: string;
-  bot_id?: string;
-  message_type?: StorageMessageType;
-  source?: StorageMessageSource;
-  is_room?: boolean;
-  im_bot_id?: string;
-  im_contact_id?: string;
-  contact_type?: StorageContactType;
-  is_self?: boolean;
-  payload?: Record<string, unknown>;
-  avatar?: string;
-  external_user_id?: string;
-}
-
-/**
- * 聊天消息输入格式
- */
-export interface ChatMessageInput {
-  chatId: string;
-  messageId: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: number;
-  candidateName?: string;
-  managerName?: string;
-  orgId?: string;
-  botId?: string;
-  messageType?: number;
-  source?: number;
-  isRoom?: boolean;
-  imBotId?: string;
-  imContactId?: string;
-  contactType?: number;
-  isSelf?: boolean;
-  payload?: Record<string, unknown>;
-  avatar?: string;
-  externalUserId?: string;
-}
-
-/**
- * 会话列表查询的原始行
- */
-interface SessionRawRow {
-  chat_id: string;
-  candidate_name?: string;
-  manager_name?: string;
-  content: string;
-  timestamp: string;
-  avatar?: string;
-  contact_type?: string;
-  role: string;
-}
-
-/**
- * 会话摘要（分组后的结果）
- */
-export interface ChatSessionSummary {
-  chatId: string;
-  candidateName?: string;
-  managerName?: string;
-  messageCount: number;
-  lastMessage?: string;
-  lastTimestamp?: number;
-  avatar?: string;
-  contactType?: string;
-}
+import { ChatMessageRecord, ChatMessageInput, SessionRawRow, ChatSessionSummary } from './types';
 
 /**
  * 聊天消息 Repository

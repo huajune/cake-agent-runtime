@@ -19,21 +19,20 @@ import { AgentGatewayService } from './services/message-agent-gateway.service';
 import { MessageCallbackAdapterService } from './services/message-callback-adapter.service';
 import { MessagePipelineService } from './services/message-pipeline.service';
 import { BookingDetectionService } from './services/booking-detection.service';
+import { BizModule } from '@biz/biz.module';
+import { FeishuModule } from '@core/feishu';
 
 /**
  * 消息处理模块
  * 负责接收、解析消息并触发 AI 自动回复
- *
- * 重构说明 v3：
- * - 8 个核心子服务，职责清晰（从10个优化到8个）
- * - AgentGatewayService 增强：整合上下文构建和降级处理
- * - MessageService 作为协调者，职责精简
  */
 @Module({
   imports: [
     ConfigModule,
     AgentModule,
     MessageSenderModule,
+    BizModule,
+    FeishuModule,
     // 配置 Bull 队列根模块
     BullModule.forRootAsync({
       imports: [ConfigModule],
@@ -192,7 +191,7 @@ import { BookingDetectionService } from './services/booking-detection.service';
     AgentGatewayService, // Agent 调用网关（增强版：包含上下文构建、降级处理和降级话术）
     MessageCallbackAdapterService, // 消息回调适配器（支持小组级和企业级格式）
     MessagePipelineService, // 消息处理管线（核心处理逻辑）
-    BookingDetectionService, // 预约成功检测（异步通知和统计更新）
+    BookingDetectionService, // 预约成功检测
   ],
   exports: [MessageService, MessageFilterService, MessageHistoryService, MessageProcessor],
 })

@@ -33,18 +33,18 @@ export interface SystemHealth {
 }
 
 // API 函数
-export async function fetchMonitoringStats(): Promise<MonitoringStats> {
-  const { data } = await api.get('/monitoring/stats');
+export async function fetchMonitoringStats(): Promise<any> {
+  const { data } = await api.get('/analytics/metrics');
   return data.data || data;
 }
 
 export async function fetchAlerts(): Promise<AlertItem[]> {
-  const { data } = await api.get('/monitoring/alerts');
+  const { data } = await api.get('/analytics/alerts?range=today');
   return data.data || data || [];
 }
 
 export async function fetchSystemHealth(): Promise<SystemHealth> {
-  const { data } = await api.get('/monitoring/health');
+  const { data } = await api.get('/analytics/dashboard/system');
   return data.data || data;
 }
 

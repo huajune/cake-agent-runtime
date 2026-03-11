@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { StrategyConfigService as SupabaseStrategyConfigService } from '@db/agent';
+import { StrategyConfigService as BizStrategyConfigService } from '@biz/strategy/strategy-config.service';
 import {
   StrategyConfigRecord,
   StrategyPersona,
@@ -20,7 +20,7 @@ import {
 export class StrategyConfigService {
   private readonly logger = new Logger(StrategyConfigService.name);
 
-  constructor(private readonly supabaseStrategyConfigService: SupabaseStrategyConfigService) {}
+  constructor(private readonly agentConfigService: BizStrategyConfigService) {}
 
   // ==================== 配置读写 ====================
 
@@ -28,28 +28,28 @@ export class StrategyConfigService {
    * 获取当前激活的完整策略配置
    */
   async getActiveConfig(): Promise<StrategyConfigRecord> {
-    return this.supabaseStrategyConfigService.getActiveConfig();
+    return this.agentConfigService.getActiveConfig();
   }
 
   /**
    * 更新人格配置
    */
   async updatePersona(persona: StrategyPersona): Promise<StrategyConfigRecord> {
-    return this.supabaseStrategyConfigService.updatePersona(persona);
+    return this.agentConfigService.updatePersona(persona);
   }
 
   /**
    * 更新阶段目标
    */
   async updateStageGoals(stageGoals: StrategyStageGoals): Promise<StrategyConfigRecord> {
-    return this.supabaseStrategyConfigService.updateStageGoals(stageGoals);
+    return this.agentConfigService.updateStageGoals(stageGoals);
   }
 
   /**
    * 更新红线规则
    */
   async updateRedLines(redLines: StrategyRedLines): Promise<StrategyConfigRecord> {
-    return this.supabaseStrategyConfigService.updateRedLines(redLines);
+    return this.agentConfigService.updateRedLines(redLines);
   }
 
   // ==================== Prompt 组装 ====================
@@ -58,7 +58,7 @@ export class StrategyConfigService {
    * 从人格结构化数据生成提示词文本
    */
   async getPersonaPromptText(): Promise<string> {
-    const config = await this.supabaseStrategyConfigService.getActiveConfig();
+    const config = await this.agentConfigService.getActiveConfig();
     return this.buildPersonaText(config.persona);
   }
 
@@ -66,7 +66,7 @@ export class StrategyConfigService {
    * 从红线规则生成提示词文本
    */
   async getRedLinesPromptText(): Promise<string> {
-    const config = await this.supabaseStrategyConfigService.getActiveConfig();
+    const config = await this.agentConfigService.getActiveConfig();
     return this.buildRedLinesText(config.red_lines);
   }
 
@@ -74,7 +74,7 @@ export class StrategyConfigService {
    * 组装最终系统提示词：persona + basePrompt + redLines
    */
   async composeSystemPrompt(basePrompt: string): Promise<string> {
-    const config = await this.supabaseStrategyConfigService.getActiveConfig();
+    const config = await this.agentConfigService.getActiveConfig();
 
     const personaText = this.buildPersonaText(config.persona);
     const redLinesText = this.buildRedLinesText(config.red_lines);
@@ -101,7 +101,7 @@ export class StrategyConfigService {
    * 返回以 stage 为 key 的映射
    */
   async getStageGoalsForToolContext(): Promise<Record<string, StageGoalConfig>> {
-    const config = await this.supabaseStrategyConfigService.getActiveConfig();
+    const config = await this.agentConfigService.getActiveConfig();
     return this.buildStageGoalsMap(config);
   }
 
@@ -113,7 +113,7 @@ export class StrategyConfigService {
     systemPrompt: string;
     stageGoals: Record<string, StageGoalConfig>;
   }> {
-    const config = await this.supabaseStrategyConfigService.getActiveConfig();
+    const config = await this.agentConfigService.getActiveConfig();
 
     const personaText = this.buildPersonaText(config.persona);
     const redLinesText = this.buildRedLinesText(config.red_lines);

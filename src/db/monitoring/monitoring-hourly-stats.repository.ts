@@ -1,58 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase';
 import { SupabaseService } from '@core/supabase';
-
-/**
- * 小时统计数据库记录格式
- */
-interface HourlyStatsDbRecord {
-  hour: string;
-  message_count: number;
-  success_count: number;
-  failure_count: number;
-  success_rate: number;
-  avg_duration: number;
-  min_duration: number;
-  max_duration: number;
-  p50_duration: number;
-  p95_duration: number;
-  p99_duration: number;
-  avg_ai_duration: number;
-  avg_send_duration: number;
-  active_users: number;
-  active_chats: number;
-  total_token_usage: number;
-  fallback_count: number;
-  fallback_success_count: number;
-  scenario_stats: Record<string, { count: number; successCount: number; avgDuration: number }>;
-  tool_stats: Record<string, number>;
-}
-
-/**
- * 小时统计应用层格式
- */
-export interface HourlyStatsRecord {
-  hour: string;
-  messageCount: number;
-  successCount: number;
-  failureCount: number;
-  successRate: number;
-  avgDuration: number;
-  minDuration: number;
-  maxDuration: number;
-  p50Duration: number;
-  p95Duration: number;
-  p99Duration: number;
-  avgAiDuration: number;
-  avgSendDuration: number;
-  activeUsers: number;
-  activeChats: number;
-  totalTokenUsage: number;
-  fallbackCount: number;
-  fallbackSuccessCount: number;
-  scenarioStats: Record<string, { count: number; successCount: number; avgDuration: number }>;
-  toolStats: Record<string, number>;
-}
+import { HourlyStatsDbRecord, HourlyStatsRecord } from './types';
 
 /**
  * 监控小时统计 Repository
@@ -116,6 +65,15 @@ export class MonitoringHourlyStatsRepository extends BaseRepository {
     );
 
     return results.map((r) => this.fromDbRecord(r));
+  }
+
+  /**
+   * 清空统计数据
+   */
+  async clearAllRecords(): Promise<void> {
+    if (!this.isAvailable()) return;
+    await this.delete((q) => q.gte('hour', '1970-01-01'));
+    this.logger.warn('[小时统计] 已清空所有数据库记录');
   }
 
   // ==================== 私有方法 ====================

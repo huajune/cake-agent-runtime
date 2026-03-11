@@ -1,21 +1,4 @@
-export {
-  TestBatchRepository,
-  TestBatch,
-  CreateBatchData,
-  BatchStatsData,
-} from './test-batch.repository';
-export {
-  TestExecutionRepository,
-  TestExecution,
-  CreateExecutionData,
-  UpdateExecutionResultData,
-  UpdateReviewData,
-  ExecutionFilters,
-} from './test-execution.repository';
-export {
-  ConversationSourceRepository,
-  ConversationSourceRecord,
-  CreateConversationSourceData,
-  UpdateConversationSourceData,
-  ConversationSourceFilters,
-} from './conversation-source.repository';
+export { TestBatchRepository } from './test-batch.repository';
+export { TestExecutionRepository } from './test-execution.repository';
+export { ConversationSourceRepository } from './conversation-source.repository';
+export * from './types';

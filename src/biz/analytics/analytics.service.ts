@@ -17,8 +17,8 @@ import {
   TodayUser,
   AlertErrorType,
   BusinessMetricTrendPoint,
-} from '../interfaces/monitoring.interface';
-import { MonitoringCacheService } from '../monitoring-cache.service';
+} from '@/core/monitoring/interfaces/monitoring.interface';
+import { MonitoringCacheService } from '@/core/monitoring/monitoring-cache.service';
 import { RedisService } from '@core/redis';
 import { FeishuBookingService } from '@/core/feishu/services/feishu-booking.service';
 import { MessageProcessingRepository, BookingRepository } from '@db/message';
@@ -30,26 +30,20 @@ import {
   DashboardFallbackStats,
   DailyTrendData,
 } from '@db/monitoring';
-import { UserHostingRepository, UserHostingService } from '@db/user';
-import { HourlyStatsAggregatorService } from '../hourly-stats-aggregator.service';
-import { MessageTrackingService } from './message-tracking.service';
+import { UserHostingRepository } from '@db/user';
+import { UserHostingService } from '@biz/user/user-hosting.service';
+import { HourlyStatsAggregatorService } from './services/hourly-stats-aggregator.service';
+import { MessageTrackingService } from '@/core/monitoring/services/message-tracking.service';
+import { AgentRegistryService } from '@/agent/services/agent-registry.service';
+import * as os from 'os';
 
 /**
- * Dashboard 统计服务
+ * Analytics 业务分析服务
  * 负责 Dashboard 数据聚合、趋势计算、用户统计
- *
- * 职责：
- * - getDashboardDataAsync: 完整 Dashboard 数据（已废弃接口）
- * - getDashboardOverviewAsync: 优化版概览（主力接口）
- * - getSystemMonitoringAsync: System 页面数据
- * - getTrendsDataAsync: 趋势数据
- * - getMetricsDataAsync: 详细指标
- * - 用户相关查询
- * - 小时统计聚合定时任务
  */
 @Injectable()
-export class DashboardStatsService {
-  private readonly logger = new Logger(DashboardStatsService.name);
+export class AnalyticsService {
+  private readonly logger = new Logger(AnalyticsService.name);
   private readonly DEFAULT_WINDOW_HOURS = 24;
 
   constructor(
@@ -65,6 +59,7 @@ export class DashboardStatsService {
     private readonly bookingRepository: BookingRepository,
     private readonly hourlyStatsAggregator: HourlyStatsAggregatorService,
     private readonly messageTrackingService: MessageTrackingService,
+    private readonly agentRegistryService: AgentRegistryService,
   ) {}
 
   // ========================================
@@ -172,7 +167,7 @@ export class DashboardStatsService {
     tokenTrend: { time: string; tokenUsage: number; messageCount: number }[];
     businessTrend: BusinessMetricTrendPoint[];
     responseTrend: ResponseMinuteTrendPoint[];
-    business: ReturnType<DashboardStatsService['calculateBusinessMetrics']>;
+    business: ReturnType<AnalyticsService['calculateBusinessMetrics']>;
     businessDelta: { consultations: number; bookingAttempts: number; bookingSuccessRate: number };
     fallback: DashboardFallbackStats;
     fallbackDelta: { totalCount: number; successRate: number };
@@ -587,6 +582,70 @@ export class DashboardStatsService {
     }));
   }
 
+  // ========================================
+  // 系统管理接口
+  // ========================================
+
+  /**
+   * 获取系统状态信息
+   */
+  async getSystemInfo() {
+    return {
+      status: 'healthy',
+      uptime: process.uptime(),
+      memory: {
+        used: process.memoryUsage().heapUsed,
+        total: os.totalmem(),
+        rss: process.memoryUsage().rss,
+        heapTotal: process.memoryUsage().heapTotal,
+      },
+      cpu: os.loadavg()[0],
+      platform: os.platform(),
+      nodeVersion: process.version,
+    };
+  }
+
+  /**
+   * 清空所有监控统计数据（数据库记录）
+   */
+  async clearAllDataAsync(): Promise<void> {
+    try {
+      this.logger.warn('执行大规模数据清理: Monitoring stats & Message processing records');
+      await Promise.all([
+        this.messageProcessingRepository.clearAllRecords(),
+        this.hourlyStatsRepository.clearAllRecords(),
+        this.errorLogRepository.clearAllRecords(),
+      ]);
+      await this.cacheService.resetCounters();
+    } catch (error) {
+      this.logger.error('清空监控数据失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 清除指定类型的缓存
+   */
+  async clearCacheAsync(type: 'all' | 'metrics' | 'history' | 'agent' = 'all'): Promise<void> {
+    try {
+      this.logger.log(`执行清除缓存任务: ${type}`);
+      if (type === 'all' || type === 'metrics') {
+        await this.cacheService.resetCounters();
+      }
+
+      if (type === 'all' || type === 'history') {
+        await this.cacheService.clearAll();
+      }
+
+      if (type === 'all' || type === 'agent') {
+        await this.agentRegistryService.refresh();
+      }
+    } catch (error) {
+      this.logger.error(`清除缓存失败 [${type}]:`, error);
+      throw error;
+    }
+  }
+
   async getUsersByDate(date: string): Promise<TodayUser[]> {
     const datePattern = /^\d{4}-\d{2}-\d{2}$/;
     if (!datePattern.test(date)) {
@@ -736,7 +795,7 @@ export class DashboardStatsService {
     }
   }
 
-  private async getRecentDetailRecords(limit: number = 50): Promise<MessageProcessingRecord[]> {
+  public async getRecentDetailRecords(limit: number = 50): Promise<MessageProcessingRecord[]> {
     try {
       const result = await this.messageProcessingRepository.getMessageProcessingRecords({ limit });
       return result.records as unknown as MessageProcessingRecord[];

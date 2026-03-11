@@ -419,7 +419,17 @@
       "Bash(cp /Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/test-suite/repositories/test-execution.repository.ts /Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/core/supabase/repositories/test-execution.repository.ts)",
       "Bash(cp /Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/test-suite/repositories/conversation-source.repository.ts /Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/core/supabase/repositories/conversation-source.repository.ts)",
       "Bash(cp /Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/agent/strategy/strategy-config.repository.ts /Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/core/supabase/repositories/strategy-config.repository.ts)",
-      "Read(//dev/**)"
+      "Read(//dev/**)",
+      "Bash(mv hosting-config/config.module.ts hosting-config/hosting-config.module.ts)",
+      "Bash(mv hosting-config/config.controller.ts hosting-config/hosting-config.controller.ts)",
+      "Bash(mv agent-config/strategy.module.ts agent-config/agent-config.module.ts)",
+      "Bash(mv agent-config/strategy.controller.ts agent-config/agent-config.controller.ts)",
+      "Bash(mv agent-config/strategy-config.service.ts agent-config/agent-config.service.ts)",
+      "Bash(mv analytics/analytics-dashboard.controller.ts analytics/analytics.controller.ts)",
+      "Bash(mv agent-config/agent-config.module.ts agent-config/strategy.module.ts)",
+      "Bash(mv agent-config/agent-config.controller.ts agent-config/strategy.controller.ts)",
+      "Bash(mv agent-config/agent-config.service.ts agent-config/strategy-config.service.ts)",
+      "Bash(mv agent-config:*)"
     ],
     "deny": [
       "Bash(git restore:*)",
@@ -447,7 +457,8 @@
       "/Users/jiezhu/workSpace/DuLiDay/agent-computer-user/lib/mcp",
       "/Users/jiezhu/.claude/projects/-Users-jiezhu-workSpace-DuLiDay-duliday-wecom-service/232623d2-db7d-4962-a279-4ac9ef63f6f1/tool-results",
       "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/core/monitoring",
-      "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/supabase/repositories"
+      "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/supabase/repositories",
+      "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/biz/booking"
     ]
   },
   "enableAllProjectMcpServers": true,

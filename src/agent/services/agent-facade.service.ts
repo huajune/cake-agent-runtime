@@ -151,27 +151,6 @@ export class AgentFacadeService {
     };
   }
 
-  /**
-   * 获取指定场景的配置档案
-   */
-  getProfile(scenario: string): AgentProfile | null {
-    return this.profileLoader.getProfile(scenario);
-  }
-
-  /**
-   * 检查场景是否存在
-   */
-  hasScenario(scenario: string): boolean {
-    return this.profileLoader.hasProfile(scenario);
-  }
-
-  /**
-   * 获取所有可用场景
-   */
-  getAllScenarios(): string[] {
-    return this.profileLoader.getAllProfiles().map((p) => p.name);
-  }
-
   // ========== 私有方法 ==========
 
   /**

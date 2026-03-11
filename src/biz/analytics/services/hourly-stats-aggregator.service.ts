@@ -6,7 +6,7 @@ import {
   DailyTrendData,
   HourlyTrendData,
 } from '@db/monitoring';
-import { HourlyStats } from './interfaces/monitoring.interface';
+import { HourlyStats } from '../interfaces/monitoring.interface';
 
 /**
  * 小时统计聚合服务

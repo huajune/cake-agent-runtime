@@ -6,7 +6,7 @@ import {
   SystemConfig,
   AgentReplyConfig,
   DEFAULT_AGENT_REPLY_CONFIG,
-} from './system-config.repository';
+} from '@db/config';
 
 /**
  * 系统配置服务

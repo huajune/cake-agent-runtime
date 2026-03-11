@@ -30,8 +30,8 @@
       "@wecom/*": ["src/wecom/*"],
       "@shared": ["src/shared"],
       "@shared/*": ["src/shared/*"],
-      "@test-suite": ["src/test-suite"],
-      "@test-suite/*": ["src/test-suite/*"],
+      "@test-suite": ["src/biz/test-suite"],
+      "@test-suite/*": ["src/biz/test-suite/*"],
       "@core/supabase": ["src/core/supabase"],
       "@db": ["src/db"],
       "@db/*": ["src/db/*"],
@@ -40,7 +40,8 @@
       "@db/agent": ["src/db/agent"],
       "@db/message": ["src/db/message"],
       "@db/monitoring": ["src/db/monitoring"],
-      "@db/test-suite": ["src/db/test-suite"]
+      "@db/test-suite": ["src/db/test-suite"],
+      "@biz/*": ["src/biz/*"]
     }
   },
   "include": ["src/**/*"],

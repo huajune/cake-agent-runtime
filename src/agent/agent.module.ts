@@ -11,8 +11,7 @@ import { AgentConfigValidator } from './utils/agent-validator';
 import { AgentController } from './agent.controller';
 import { ProfileLoaderService } from './services/agent-profile-loader.service';
 import { StrategyConfigService } from './strategy/strategy-config.service';
-import { StrategyConfigController } from './strategy/strategy-config.controller';
-import { StrategyConfigService as SupabaseStrategyConfigService } from '@db/agent';
+import { BizModule } from '@biz/biz.module';
 
 /**
  * AI Agent 模块
@@ -35,8 +34,9 @@ import { StrategyConfigService as SupabaseStrategyConfigService } from '@db/agen
     ConfigModule,
     HttpModule, // 依赖 HTTP 模块提供的 HttpClientFactory
     FeishuModule, // 依赖告警模块提供的 FeishuAlertService
+    BizModule,
   ],
-  controllers: [AgentController, StrategyConfigController],
+  controllers: [AgentController],
   providers: [
     // 基础服务（按字母排序）
     AgentApiClientService,
@@ -48,7 +48,6 @@ import { StrategyConfigService as SupabaseStrategyConfigService } from '@db/agen
     ProfileLoaderService,
 
     // 策略配置服务
-    SupabaseStrategyConfigService,
     StrategyConfigService,
 
     // 主服务

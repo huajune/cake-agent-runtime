@@ -65,7 +65,7 @@ export function useChatMessages(date?: string, page = 1, pageSize = 50) {
       if (date) params.set('date', date);
       params.set('page', String(page));
       params.set('pageSize', String(pageSize));
-      const { data } = await api.get(`/monitoring/chat-messages?${params.toString()}`);
+      const { data } = await api.get(`/analytics/chat-messages?${params.toString()}`);
       return unwrapResponse<ChatMessagesResponse>(data);
     },
   });
@@ -91,7 +91,7 @@ export function useChatSessions(days: number = 1, startDate?: string, endDate?: 
       } else {
         params.set('days', String(days));
       }
-      const { data } = await api.get(`/monitoring/chat-sessions?${params.toString()}`);
+      const { data } = await api.get(`/analytics/chat-sessions?${params.toString()}`);
       return unwrapResponse<{ sessions: ChatSession[] }>(data);
     },
   });
@@ -110,7 +110,7 @@ export function useChatDailyStats(startDate: string, endDate: string) {
       const params = new URLSearchParams();
       params.set('startDate', startDate);
       params.set('endDate', endDate);
-      const { data } = await api.get(`/monitoring/chat-daily-stats?${params.toString()}`);
+      const { data } = await api.get(`/analytics/chat-daily-stats?${params.toString()}`);
       return unwrapResponse<
         Array<{
           date: string;
@@ -135,7 +135,7 @@ export function useChatSummaryStats(startDate: string, endDate: string) {
       const params = new URLSearchParams();
       params.set('startDate', startDate);
       params.set('endDate', endDate);
-      const { data } = await api.get(`/monitoring/chat-summary-stats?${params.toString()}`);
+      const { data } = await api.get(`/analytics/chat-summary-stats?${params.toString()}`);
       return unwrapResponse<{
         totalSessions: number;
         totalMessages: number;
@@ -158,7 +158,7 @@ export function useChatSessionsOptimized(startDate: string, endDate: string) {
       const params = new URLSearchParams();
       params.set('startDate', startDate);
       params.set('endDate', endDate);
-      const { data } = await api.get(`/monitoring/chat-sessions-optimized?${params.toString()}`);
+      const { data } = await api.get(`/analytics/chat-sessions-optimized?${params.toString()}`);
       // API 返回数组，包装成 { sessions: [...] } 格式
       const sessions = unwrapResponse<
         Array<{
@@ -185,7 +185,7 @@ export function useChatTrend(days: number = 7) {
   return useQuery({
     queryKey: ['chat-trend', days],
     queryFn: async () => {
-      const { data } = await api.get(`/monitoring/chat-trend?days=${days}`);
+      const { data } = await api.get(`/analytics/chat-trend?days=${days}`);
       return unwrapResponse<
         Array<{
           hour: string;
@@ -207,7 +207,7 @@ export function useChatSessionMessages(chatId: string | null) {
     queryKey: ['chat-session-messages', chatId],
     queryFn: async () => {
       if (!chatId) return { chatId: '', messages: [] };
-      const { data } = await api.get(`/monitoring/chat-sessions/${encodeURIComponent(chatId)}/messages`);
+      const { data } = await api.get(`/analytics/chat-sessions/${encodeURIComponent(chatId)}/messages`);
       return unwrapResponse<{ chatId: string; messages: ChatMessage[] }>(data);
     },
     enabled: !!chatId,
@@ -229,7 +229,7 @@ export function useMessageStats(options?: { startDate?: string; endDate?: string
       if (options?.startDate) params.set('startDate', options.startDate);
       if (options?.endDate) params.set('endDate', options.endDate);
 
-      const { data } = await api.get(`/monitoring/message-stats?${params.toString()}`);
+      const { data } = await api.get(`/analytics/message-stats?${params.toString()}`);
       return unwrapResponse<{
         total: number;
         success: number;
@@ -260,7 +260,7 @@ export function useSlowestMessages(options?: {
       if (options?.endDate) params.set('endDate', options.endDate);
       if (options?.limit) params.set('limit', String(options.limit));
 
-      const { data } = await api.get(`/monitoring/slowest-messages?${params.toString()}`);
+      const { data } = await api.get(`/analytics/slowest-messages?${params.toString()}`);
       return unwrapResponse<MessageRecord[]>(data);
     },
     refetchInterval: 5000, // 每 5 秒刷新
@@ -298,7 +298,7 @@ export function useMessageProcessingRecords(options?: {
       if (options?.limit) params.set('limit', String(options.limit));
       if (options?.offset) params.set('offset', String(options.offset));
 
-      const { data } = await api.get(`/monitoring/message-processing-records?${params.toString()}`);
+      const { data } = await api.get(`/analytics/message-processing-records?${params.toString()}`);
       return unwrapResponse<MessageRecord[]>(data);
     },
   });
@@ -313,7 +313,7 @@ export function useMessageProcessingRecordDetail(messageId: string | null) {
     queryKey: ['message-processing-record-detail', messageId],
     queryFn: async () => {
       if (!messageId) return null;
-      const { data } = await api.get(`/monitoring/message-processing-records/${encodeURIComponent(messageId)}`);
+      const { data } = await api.get(`/analytics/message-processing-records/${encodeURIComponent(messageId)}`);
       return unwrapResponse<MessageRecord>(data);
     },
     enabled: !!messageId,

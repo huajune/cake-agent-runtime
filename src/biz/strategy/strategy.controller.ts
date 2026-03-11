@@ -5,22 +5,23 @@ import {
   StrategyPersona,
   StrategyStageGoals,
   StrategyRedLines,
-} from './strategy-config.types';
+} from '@db/agent';
 
 /**
- * 策略配置 Controller
+ * 策略配置 Controller (Business Logic)
  *
  * 提供策略配置的 REST API，供 Dashboard 前端调用
+ * 路径前缀: /strategy (迁移自 /agent/strategy)
  */
-@Controller('agent/strategy')
-export class StrategyConfigController {
-  private readonly logger = new Logger(StrategyConfigController.name);
+@Controller('strategy')
+export class StrategyController {
+  private readonly logger = new Logger(StrategyController.name);
 
   constructor(private readonly strategyConfigService: StrategyConfigService) {}
 
   /**
    * 获取当前激活的完整策略配置
-   * GET /agent/strategy
+   * GET /strategy
    */
   @Get()
   async getActiveConfig(): Promise<StrategyConfigRecord> {
@@ -30,7 +31,7 @@ export class StrategyConfigController {
 
   /**
    * 更新人格配置
-   * POST /agent/strategy/persona
+   * POST /strategy/persona
    */
   @Post('persona')
   @HttpCode(200)
@@ -49,7 +50,7 @@ export class StrategyConfigController {
 
   /**
    * 更新阶段目标
-   * POST /agent/strategy/stage-goals
+   * POST /strategy/stage-goals
    */
   @Post('stage-goals')
   @HttpCode(200)
@@ -68,7 +69,7 @@ export class StrategyConfigController {
 
   /**
    * 更新红线规则
-   * POST /agent/strategy/red-lines
+   * POST /strategy/red-lines
    */
   @Post('red-lines')
   @HttpCode(200)

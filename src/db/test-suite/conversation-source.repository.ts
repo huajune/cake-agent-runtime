@@ -2,55 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase';
 import { SupabaseService } from '@core/supabase';
 import { ConversationSourceStatus } from '@test-suite/enums';
-
-/**
- * 对话源记录（数据库格式）
- */
-export interface ConversationSourceRecord {
-  id: string;
-  batch_id: string;
-  feishu_record_id: string;
-  conversation_id: string;
-  participant_name: string | null;
-  full_conversation: unknown;
-  raw_text: string | null;
-  total_turns: number;
-  avg_similarity_score: number | null;
-  min_similarity_score: number | null;
-  status: ConversationSourceStatus;
-  created_at: string;
-  updated_at: string;
-}
-
-/**
- * 创建对话源数据
- */
-export interface CreateConversationSourceData {
-  batchId: string;
-  feishuRecordId: string;
-  conversationId: string;
-  participantName?: string;
-  fullConversation: unknown;
-  rawText?: string;
-  totalTurns: number;
-}
-
-/**
- * 更新对话源数据
- */
-export interface UpdateConversationSourceData {
-  status?: ConversationSourceStatus;
-  total_turns?: number;
-  avg_similarity_score?: number | null;
-  min_similarity_score?: number | null;
-}
-
-/**
- * 对话源筛选条件
- */
-export interface ConversationSourceFilters {
-  status?: ConversationSourceStatus;
-}
+import {
+  ConversationSourceRecord,
+  CreateConversationSourceData,
+  UpdateConversationSourceData,
+  ConversationSourceFilters,
+} from './types';
 
 /**
  * 对话源 Repository

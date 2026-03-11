@@ -51,7 +51,7 @@ export function useDashboard(timeRange: string, autoRefresh = true) {
   return useQuery({
     queryKey: ['dashboard', timeRange],
     queryFn: async () => {
-      const { data } = await api.get(`/monitoring/dashboard?range=${timeRange}`);
+      const { data } = await api.get(`/analytics/dashboard?range=${timeRange}`);
       return unwrapResponse<DashboardData>(data);
     },
     refetchInterval: autoRefresh ? 5000 : false,
@@ -65,7 +65,7 @@ export function useDashboardOverview(timeRange: string, autoRefresh = true) {
   return useQuery({
     queryKey: ['dashboard-overview', timeRange],
     queryFn: async () => {
-      const { data } = await api.get(`/monitoring/dashboard/overview?range=${timeRange}`);
+      const { data } = await api.get(`/analytics/dashboard/overview?range=${timeRange}`);
       return unwrapResponse<DashboardOverviewData>(data);
     },
     refetchInterval: autoRefresh ? 5000 : false,
@@ -79,7 +79,7 @@ export function useSystemMonitoring(autoRefresh = true) {
   return useQuery({
     queryKey: ['system-monitoring'],
     queryFn: async () => {
-      const { data } = await api.get('/monitoring/dashboard/system');
+      const { data } = await api.get('/analytics/dashboard/system');
       return unwrapResponse<SystemMonitoringData>(data);
     },
     refetchInterval: autoRefresh ? 5000 : false,
@@ -93,7 +93,7 @@ export function useTrendsData(timeRange: string, autoRefresh = true) {
   return useQuery({
     queryKey: ['trends-data', timeRange],
     queryFn: async () => {
-      const { data } = await api.get(`/monitoring/stats/trends?range=${timeRange}`);
+      const { data } = await api.get(`/analytics/stats/trends?range=${timeRange}`);
       return unwrapResponse<TrendsData>(data);
     },
     refetchInterval: autoRefresh ? 10000 : false, // 10秒刷新

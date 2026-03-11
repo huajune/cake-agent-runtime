@@ -1,31 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase';
 import { SupabaseService } from '@core/supabase';
-
-/**
- * 错误日志告警类型
- */
-export type ErrorLogAlertType = 'agent' | 'message' | 'delivery' | 'system' | 'merge' | 'unknown';
-
-/**
- * 错误日志应用层格式
- */
-export interface ErrorLogRecord {
-  messageId: string;
-  timestamp: number;
-  error: string;
-  alertType?: ErrorLogAlertType;
-}
-
-/**
- * 错误日志数据库格式
- */
-interface ErrorLogDbRecord {
-  message_id: string;
-  timestamp: number;
-  error: string;
-  alert_type?: string;
-}
+import { ErrorLogAlertType, ErrorLogRecord, ErrorLogDbRecord } from './types';
 
 /**
  * 监控错误日志 Repository
@@ -102,6 +78,15 @@ export class MonitoringErrorLogRepository extends BaseRepository {
       this.logger.log(`错误日志清理完成: 删除 ${deletedCount} 条 ${retentionDays} 天前的记录`);
     }
     return deletedCount;
+  }
+
+  /**
+   * 清空错误日志
+   */
+  async clearAllRecords(): Promise<void> {
+    if (!this.isAvailable()) return;
+    await this.delete((q) => q.gte('timestamp', 0));
+    this.logger.warn('[错误日志] 已清空所有数据库记录');
   }
 
   // ==================== 私有方法 ====================

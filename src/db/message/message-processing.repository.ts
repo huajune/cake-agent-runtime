@@ -1,70 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase';
 import { SupabaseService } from '@core/supabase';
-
-/**
- * 消息处理记录输入
- */
-export interface MessageProcessingRecordInput {
-  messageId: string;
-  chatId: string;
-  userId?: string;
-  userName?: string;
-  managerName?: string;
-  receivedAt: number;
-  messagePreview?: string;
-  replyPreview?: string;
-  replySegments?: number;
-  status: 'processing' | 'success' | 'failure';
-  error?: string;
-  scenario?: string;
-  totalDuration?: number;
-  queueDuration?: number;
-  prepDuration?: number;
-  aiStartAt?: number;
-  aiEndAt?: number;
-  aiDuration?: number;
-  sendDuration?: number;
-  tools?: string[];
-  tokenUsage?: number;
-  isFallback?: boolean;
-  fallbackSuccess?: boolean;
-  agentInvocation?: unknown;
-  batchId?: string;
-  isPrimary?: boolean;
-}
-
-/**
- * 消息处理记录数据库格式
- */
-interface MessageProcessingDbRecord {
-  message_id: string;
-  chat_id: string;
-  user_id?: string;
-  user_name?: string;
-  manager_name?: string;
-  received_at: string;
-  message_preview?: string;
-  reply_preview?: string;
-  reply_segments?: number;
-  status: string;
-  error?: string;
-  scenario?: string;
-  total_duration?: number;
-  queue_duration?: number;
-  prep_duration?: number;
-  ai_start_at?: number;
-  ai_end_at?: number;
-  ai_duration?: number;
-  send_duration?: number;
-  tools?: string[];
-  token_usage?: number;
-  is_fallback?: boolean;
-  fallback_success?: boolean;
-  agent_invocation?: unknown;
-  batch_id?: string;
-  is_primary?: boolean;
-}
+import { MessageProcessingRecordInput, MessageProcessingDbRecord } from './types';
 
 /**
  * 消息处理记录 Repository
@@ -511,6 +448,15 @@ export class MessageProcessingRepository extends BaseRepository {
       this.logger.error(`[消息处理记录] NULL agent_invocation 失败:`, error);
       throw error;
     }
+  }
+
+  /**
+   * 清空所有消息处理记录（危险操作）
+   */
+  async clearAllRecords(): Promise<void> {
+    if (!this.isAvailable()) return;
+    await this.delete((q) => q.gte('received_at', '1970-01-01'));
+    this.logger.warn('[消息处理记录] 已清空所有数据库记录');
   }
 
   // ==================== 私有方法 ====================

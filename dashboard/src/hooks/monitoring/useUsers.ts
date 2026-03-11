@@ -50,7 +50,7 @@ export function useUserTrend(autoRefresh = true) {
   return useQuery({
     queryKey: ['user-trend'],
     queryFn: async () => {
-      const { data } = await api.get('/monitoring/user-trend');
+      const { data } = await api.get('/analytics/user-trend');
       return unwrapResponse<UserTrendData[]>(data);
     },
     refetchInterval: autoRefresh ? 60000 : false, // 1分钟刷新一次
@@ -64,7 +64,7 @@ export function useTodayUsers(autoRefresh = true) {
   return useQuery({
     queryKey: ['today-users'],
     queryFn: async () => {
-      const { data } = await api.get('/monitoring/users');
+      const { data } = await api.get('/analytics/users');
       return unwrapResponse<TodayUserData[]>(data);
     },
     refetchInterval: autoRefresh ? 10000 : false, // 10秒刷新一次
@@ -78,7 +78,7 @@ export function usePausedUsers(autoRefresh = true) {
   return useQuery({
     queryKey: ['paused-users'],
     queryFn: async () => {
-      const { data } = await api.get('/monitoring/users/paused');
+      const { data } = await api.get('/user/users/paused');
       const response = unwrapResponse<{
         users: Array<{ userId: string; pausedAt: number; odName?: string; groupName?: string }>;
       }>(data);
@@ -101,7 +101,7 @@ export function useUsers() {
   return useQuery({
     queryKey: ['users'],
     queryFn: async () => {
-      const { data } = await api.get('/monitoring/users');
+      const { data } = await api.get('/analytics/users');
       return unwrapResponse<UserInfo[]>(data);
     },
     refetchInterval: 10000,
@@ -117,7 +117,7 @@ export function useToggleUserHosting() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ chatId, enabled }: { chatId: string; enabled: boolean }) => {
-      const { data } = await api.post(`/monitoring/users/${encodeURIComponent(chatId)}/hosting`, {
+      const { data } = await api.post(`/user/users/${encodeURIComponent(chatId)}/hosting`, {
         enabled,
       });
       return unwrapResponse(data);
@@ -191,7 +191,7 @@ export function useClearData() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      const { data } = await api.post('/monitoring/clear');
+      const { data } = await api.post('/analytics/clear');
       return unwrapResponse(data);
     },
     onSuccess: () => {
@@ -212,7 +212,7 @@ export function useClearCache() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (type: 'metrics' | 'history' | 'agent' | 'all') => {
-      const { data } = await api.post(`/monitoring/cache/clear?type=${type}`);
+      const { data } = await api.post(`/analytics/cache/clear?type=${type}`);
       return unwrapResponse(data);
     },
     onSuccess: (_data, type) => {

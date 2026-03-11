@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase';
 import { SupabaseService } from '@core/supabase';
-import { StrategyConfigRecord } from '@agent/strategy/strategy-config.types';
+import { StrategyConfigRecord } from './types';
 
 /**
  * 策略配置 Repository

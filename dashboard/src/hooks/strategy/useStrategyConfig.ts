@@ -19,7 +19,7 @@ export function useStrategyConfig() {
   return useQuery({
     queryKey: QUERY_KEY,
     queryFn: async () => {
-      const { data } = await api.get('/agent/strategy');
+      const { data } = await api.get('/strategy');
       return unwrapResponse<StrategyConfigRecord>(data);
     },
     staleTime: 30000,
@@ -32,7 +32,7 @@ export function useUpdatePersona() {
   const setStatus = useSaveStatusStore((s) => s.setStatus);
   return useMutation({
     mutationFn: async (persona: StrategyPersona) => {
-      const { data } = await api.post('/agent/strategy/persona', persona);
+      const { data } = await api.post('/strategy/persona', persona);
       return unwrapResponse<{ config: StrategyConfigRecord; message: string }>(data);
     },
     onMutate: () => setStatus('saving'),
@@ -53,7 +53,7 @@ export function useUpdateStageGoals() {
   const setStatus = useSaveStatusStore((s) => s.setStatus);
   return useMutation({
     mutationFn: async (stageGoals: StrategyStageGoals) => {
-      const { data } = await api.post('/agent/strategy/stage-goals', stageGoals);
+      const { data } = await api.post('/strategy/stage-goals', stageGoals);
       return unwrapResponse<{ config: StrategyConfigRecord; message: string }>(data);
     },
     onMutate: () => setStatus('saving'),
@@ -74,7 +74,7 @@ export function useUpdateRedLines() {
   const setStatus = useSaveStatusStore((s) => s.setStatus);
   return useMutation({
     mutationFn: async (redLines: StrategyRedLines) => {
-      const { data } = await api.post('/agent/strategy/red-lines', redLines);
+      const { data } = await api.post('/strategy/red-lines', redLines);
       return unwrapResponse<{ config: StrategyConfigRecord; message: string }>(data);
     },
     onMutate: () => setStatus('saving'),
