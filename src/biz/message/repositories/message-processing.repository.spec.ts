@@ -360,62 +360,45 @@ describe('MessageProcessingRepository', () => {
       expect(result).toEqual([]);
     });
 
-    it('should return aggregated user data sorted by lastActiveAt', async () => {
+    it('should return aggregated user data from RPC', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
-      const now = Date.now();
-      const dbRows = [
+      const now = new Date().toISOString();
+      const rpcRows = [
         {
           user_id: 'user_001',
           user_name: 'Alice',
           chat_id: 'chat_001',
-          received_at: new Date(now - 1000).toISOString(),
-          token_usage: 50,
-        },
-        {
-          user_id: 'user_001',
-          user_name: 'Alice',
-          chat_id: 'chat_001',
-          received_at: new Date(now).toISOString(),
-          token_usage: 100,
+          message_count: '2',
+          token_usage: '150',
+          first_active_at: now,
+          last_active_at: now,
         },
         {
           user_id: 'user_002',
           user_name: 'Bob',
           chat_id: 'chat_002',
-          received_at: new Date(now - 2000).toISOString(),
-          token_usage: 75,
+          message_count: '1',
+          token_usage: '75',
+          first_active_at: now,
+          last_active_at: now,
         },
       ];
 
-      const queryMock = makeQueryMock({ data: dbRows, error: null });
-      mockSupabaseClient.from.mockReturnValue(queryMock);
+      mockSupabaseClient.rpc.mockResolvedValue({ data: rpcRows, error: null });
 
       const result = await repository.getActiveUsers(new Date(), new Date());
 
       expect(result).toHaveLength(2);
-      // user_001 should be first (most recently active)
       expect(result[0].userId).toBe('user_001');
       expect(result[0].messageCount).toBe(2);
       expect(result[0].tokenUsage).toBe(150);
       expect(result[1].userId).toBe('user_002');
     });
 
-    it('should skip rows with no user_id', async () => {
+    it('should return empty array when RPC returns null', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
-
-      const dbRows = [
-        {
-          user_id: null,
-          user_name: null,
-          chat_id: 'chat_001',
-          received_at: new Date().toISOString(),
-          token_usage: 50,
-        },
-      ];
-
-      const queryMock = makeQueryMock({ data: dbRows, error: null });
-      mockSupabaseClient.from.mockReturnValue(queryMock);
+      mockSupabaseClient.rpc.mockResolvedValue({ data: null, error: null });
 
       const result = await repository.getActiveUsers(new Date(), new Date());
 
@@ -434,18 +417,15 @@ describe('MessageProcessingRepository', () => {
       expect(result).toEqual([]);
     });
 
-    it('should aggregate by date', async () => {
+    it('should return pre-aggregated stats from RPC', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
-      const dbRows = [
-        { user_id: 'u1', received_at: '2026-03-10T10:00:00Z', token_usage: 100 },
-        { user_id: 'u1', received_at: '2026-03-10T11:00:00Z', token_usage: 50 },
-        { user_id: 'u2', received_at: '2026-03-10T12:00:00Z', token_usage: 75 },
-        { user_id: 'u3', received_at: '2026-03-11T09:00:00Z', token_usage: 200 },
+      const rpcRows = [
+        { stat_date: '2026-03-10', unique_users: '2', message_count: '3', token_usage: '225' },
+        { stat_date: '2026-03-11', unique_users: '1', message_count: '1', token_usage: '200' },
       ];
 
-      const queryMock = makeQueryMock({ data: dbRows, error: null });
-      mockSupabaseClient.from.mockReturnValue(queryMock);
+      mockSupabaseClient.rpc.mockResolvedValue({ data: rpcRows, error: null });
 
       const result = await repository.getDailyUserStats(new Date(), new Date());
 
@@ -526,7 +506,7 @@ describe('MessageProcessingRepository', () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
       mockSupabaseClient.rpc.mockResolvedValue({
-        data: [{ cleanup_message_processing_records: '35' }],
+        data: [{ deleted_count: '35' }],
         error: null,
       });
 

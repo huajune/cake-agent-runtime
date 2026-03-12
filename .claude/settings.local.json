@@ -437,7 +437,8 @@
       "Read(//Users/jiezhu/.claude/**)",
       "Bash(/tmp/test_audit.txt:*)",
       "Bash(npx eslint:*)",
-      "Bash(pnpm run:*)"
+      "Bash(pnpm run:*)",
+      "Bash(pnpm tsc:*)"
     ],
     "deny": [
       "Bash(git restore:*)",

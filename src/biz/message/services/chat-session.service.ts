@@ -76,7 +76,7 @@ export class ChatSessionService {
     this.logger.debug(
       `获取聊天会话列表（优化版）: ${start.toISOString().split('T')[0]} ~ ${end.toISOString().split('T')[0]}`,
     );
-    return this.chatMessageRepository.getChatSessionListOptimized(start, end);
+    return this.chatMessageRepository.getChatSessionListByDateRange(start, end);
   }
 
   /**

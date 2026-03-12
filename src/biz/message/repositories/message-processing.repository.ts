@@ -390,9 +390,12 @@ export class MessageProcessingRepository extends BaseRepository {
     }
 
     try {
-      const result = await this.rpc<number>('null_agent_invocation', { p_days_old: daysOld });
+      const result = await this.rpc<Array<{ null_agent_invocation: string }>>(
+        'null_agent_invocation',
+        { p_days_old: daysOld },
+      );
 
-      const updatedCount = result ?? 0;
+      const updatedCount = parseInt(result?.[0]?.null_agent_invocation ?? '0', 10);
       return updatedCount;
     } catch (error) {
       this.logger.error(`[消息处理记录] NULL agent_invocation 失败:`, error);

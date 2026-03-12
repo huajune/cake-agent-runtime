@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { DataCleanupService } from './data-cleanup.service';
 import { SupabaseService } from '@core/supabase';
 import { ChatMessageRepository } from '@biz/message/repositories/chat-message.repository';
@@ -38,6 +39,14 @@ describe('DataCleanupService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DataCleanupService,
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest
+              .fn()
+              .mockImplementation((_key: string, defaultValue?: string) => defaultValue),
+          },
+        },
         {
           provide: SupabaseService,
           useValue: mockSupabaseService,

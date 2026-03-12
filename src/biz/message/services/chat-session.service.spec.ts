@@ -180,22 +180,22 @@ describe('ChatSessionService', () => {
   // ==================== getChatSessionsOptimized ====================
 
   describe('getChatSessionsOptimized', () => {
-    it('should call optimized repository method with 30-day range', async () => {
+    it('should call getChatSessionListByDateRange with 30-day range', async () => {
       const mockSessions = [{ chatId: 'chat1', messages: 10 }];
-      mockChatMessageRepository.getChatSessionListOptimized.mockResolvedValue(mockSessions);
+      mockChatMessageRepository.getChatSessionListByDateRange.mockResolvedValue(mockSessions);
 
       const result = await service.getChatSessionsOptimized();
 
       expect(result).toEqual(mockSessions);
-      expect(mockChatMessageRepository.getChatSessionListOptimized).toHaveBeenCalledTimes(1);
+      expect(mockChatMessageRepository.getChatSessionListByDateRange).toHaveBeenCalledTimes(1);
     });
 
     it('should use provided date range', async () => {
-      mockChatMessageRepository.getChatSessionListOptimized.mockResolvedValue([]);
+      mockChatMessageRepository.getChatSessionListByDateRange.mockResolvedValue([]);
 
       await service.getChatSessionsOptimized('2024-01-01', '2024-01-31');
 
-      const [start, end] = mockChatMessageRepository.getChatSessionListOptimized.mock.calls[0];
+      const [start, end] = mockChatMessageRepository.getChatSessionListByDateRange.mock.calls[0];
       expect(start.getFullYear()).toBe(2024);
       expect(start.getMonth()).toBe(0); // January = 0
       expect(start.getDate()).toBe(1);

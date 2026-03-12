@@ -83,14 +83,9 @@ describe('BookingRepository', () => {
       expect(mockSupabaseClient.from).not.toHaveBeenCalled();
     });
 
-    it('should insert a booking record with full params', async () => {
+    it('should call RPC increment_booking_count with full params', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
-
-      const insertResult = makeQueryMock({
-        data: [{ id: 'rec_001', booking_count: 1 }],
-        error: null,
-      });
-      mockSupabaseClient.from.mockReturnValue(insertResult);
+      mockSupabaseClient.rpc.mockResolvedValue({ data: null, error: null });
 
       await repository.incrementBookingCount({
         brandName: 'BrandA',
@@ -102,17 +97,21 @@ describe('BookingRepository', () => {
         managerName: 'Bob',
       });
 
-      expect(mockSupabaseClient.from).toHaveBeenCalledWith('interview_booking_records');
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledWith('increment_booking_count', {
+        p_date: expect.any(String),
+        p_brand_name: 'BrandA',
+        p_store_name: 'StoreA',
+        p_chat_id: 'chat_001',
+        p_user_id: 'user_001',
+        p_user_name: 'Alice',
+        p_manager_id: 'mgr_001',
+        p_manager_name: 'Bob',
+      });
     });
 
-    it('should insert record with partial params (nulls for missing fields)', async () => {
+    it('should call RPC with null for missing fields', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
-
-      const insertResult = makeQueryMock({
-        data: [{ id: 'rec_002', booking_count: 1 }],
-        error: null,
-      });
-      mockSupabaseClient.from.mockReturnValue(insertResult);
+      mockSupabaseClient.rpc.mockResolvedValue({ data: null, error: null });
 
       // No error should be thrown
       await expect(
@@ -122,14 +121,12 @@ describe('BookingRepository', () => {
       ).resolves.not.toThrow();
     });
 
-    it('should not throw when insert fails', async () => {
+    it('should not throw when RPC fails', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
-
-      const errorResult = makeQueryMock({
+      mockSupabaseClient.rpc.mockResolvedValue({
         data: null,
-        error: { message: 'Insert failed', code: '23000' },
+        error: { message: 'RPC failed', code: '42P01' },
       });
-      mockSupabaseClient.from.mockReturnValue(errorResult);
 
       await expect(
         repository.incrementBookingCount({ brandName: 'BrandA' }),

@@ -221,36 +221,36 @@ export class DataCleanupService implements OnModuleInit {
       agentInvocations = await this.messageProcessingRepository.nullAgentInvocations(
         this.agentInvocationRetentionDays,
       );
-    } catch {
-      // ignore
+    } catch (error: unknown) {
+      this.logger.warn(`[数据清理] 手动清理 agent_invocation 失败: ${String(error)}`);
     }
 
     try {
       chatMessages = await this.chatMessageRepository.cleanupChatMessages(this.chatRetentionDays);
-    } catch {
-      // ignore
+    } catch (error: unknown) {
+      this.logger.warn(`[数据清理] 手动清理聊天消息失败: ${String(error)}`);
     }
 
     try {
       processingRecords = await this.messageProcessingRepository.cleanupMessageProcessingRecords(
         this.processingRetentionDays,
       );
-    } catch {
-      // ignore
+    } catch (error: unknown) {
+      this.logger.warn(`[数据清理] 手动清理消息处理记录失败: ${String(error)}`);
     }
 
     try {
       userActivity = await this.userHostingRepository.cleanupUserActivity(
         this.userActivityRetentionDays,
       );
-    } catch {
-      // ignore
+    } catch (error: unknown) {
+      this.logger.warn(`[数据清理] 手动清理用户活跃记录失败: ${String(error)}`);
     }
 
     try {
       errorLogs = await this.errorLogRepository.cleanupErrorLogs(this.errorLogsRetentionDays);
-    } catch {
-      // ignore
+    } catch (error: unknown) {
+      this.logger.warn(`[数据清理] 手动清理错误日志失败: ${String(error)}`);
     }
 
     this.logger.log(

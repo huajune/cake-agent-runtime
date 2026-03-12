@@ -450,44 +450,33 @@ describe('ChatMessageRepository', () => {
       expect(result).toEqual([]);
     });
 
-    it('should return grouped session summaries', async () => {
+    it('should return session summaries from RPC', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
-      const dbRows = [
+      const rpcRows = [
         {
           chat_id: 'chat_001',
           candidate_name: 'Alice',
           manager_name: 'Bob',
-          content: 'Hello, how are you?',
-          timestamp: new Date().toISOString(),
+          message_count: '2',
+          last_message: 'I am fine',
+          last_timestamp: new Date().toISOString(),
           avatar: null,
           contact_type: '1',
-          role: 'user',
-        },
-        {
-          chat_id: 'chat_001',
-          candidate_name: 'Alice',
-          manager_name: 'Bob',
-          content: 'I am fine',
-          timestamp: new Date().toISOString(),
-          avatar: null,
-          contact_type: '1',
-          role: 'assistant',
         },
         {
           chat_id: 'chat_002',
           candidate_name: 'Carol',
           manager_name: 'Dave',
-          content: 'Another session',
-          timestamp: new Date().toISOString(),
+          message_count: '1',
+          last_message: 'Another session',
+          last_timestamp: new Date().toISOString(),
           avatar: null,
           contact_type: '1',
-          role: 'user',
         },
       ];
 
-      const queryMock = makeQueryMock({ data: dbRows, error: null });
-      mockSupabaseClient.from.mockReturnValue(queryMock);
+      mockSupabaseClient.rpc.mockResolvedValue({ data: rpcRows, error: null });
 
       const result = await repository.getChatSessionList(1);
 
@@ -498,13 +487,13 @@ describe('ChatMessageRepository', () => {
     });
   });
 
-  // ==================== getChatSessionListOptimized ====================
+  // ==================== getChatSessionListByDateRange ====================
 
-  describe('getChatSessionListOptimized', () => {
+  describe('getChatSessionListByDateRange', () => {
     it('should return empty array when supabase is not available', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(false);
 
-      const result = await repository.getChatSessionListOptimized(new Date(), new Date());
+      const result = await repository.getChatSessionListByDateRange(new Date(), new Date());
 
       expect(result).toEqual([]);
     });
@@ -528,7 +517,7 @@ describe('ChatMessageRepository', () => {
         error: null,
       });
 
-      const result = await repository.getChatSessionListOptimized(new Date(), new Date());
+      const result = await repository.getChatSessionListByDateRange(new Date(), new Date());
 
       expect(result).toHaveLength(1);
       expect(result[0].chatId).toBe('chat_001');
@@ -540,7 +529,7 @@ describe('ChatMessageRepository', () => {
 
       mockSupabaseClient.rpc.mockResolvedValue({ data: null, error: null });
 
-      const result = await repository.getChatSessionListOptimized(new Date(), new Date());
+      const result = await repository.getChatSessionListByDateRange(new Date(), new Date());
 
       expect(result).toEqual([]);
     });

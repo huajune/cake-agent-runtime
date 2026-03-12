@@ -3,7 +3,6 @@
  * 应用层映射格式（camelCase）
  */
 
-import { AlertErrorType } from './tracking.types';
 import {
   DashboardOverviewStats,
   DashboardFallbackStats,
@@ -49,11 +48,6 @@ export interface HourlyStatsRecord {
 }
 
 /**
- * 错误日志应用层格式
+ * 错误日志应用层格式（与 MonitoringErrorLog 相同，type alias 统一为一个定义）
  */
-export interface ErrorLogRecord {
-  messageId: string;
-  timestamp: number;
-  error: string;
-  alertType?: AlertErrorType;
-}
+export type { MonitoringErrorLog as ErrorLogRecord } from './tracking.types';

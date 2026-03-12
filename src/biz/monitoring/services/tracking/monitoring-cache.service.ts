@@ -1,28 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '@core/redis';
 import { MonitoringGlobalCounters } from '../../types/tracking.types';
+import { MONITORING_REDIS_KEYS } from '../../utils/monitoring-redis-keys';
 
 /**
  * 监控缓存服务
  * 使用 Redis 存储高频更新的实时指标
  *
- * 数据结构：
- * - monitoring:counters (Hash) - 全局计数器
- * - monitoring:active_users:{date} (Sorted Set) - 活跃用户（24h TTL）
- * - monitoring:active_chats:{date} (Sorted Set) - 活跃会话（24h TTL）
- * - monitoring:current_processing (String) - 当前处理数
- * - monitoring:peak_processing (String) - 峰值处理数
+ * Redis Key 定义见 utils/monitoring-redis-keys.ts
  */
 @Injectable()
 export class MonitoringCacheService {
   private readonly logger = new Logger(MonitoringCacheService.name);
-
-  // Redis Key 前缀
-  private readonly KEY_COUNTERS = 'monitoring:counters';
-  private readonly KEY_ACTIVE_USERS_PREFIX = 'monitoring:active_users:';
-  private readonly KEY_ACTIVE_CHATS_PREFIX = 'monitoring:active_chats:';
-  private readonly KEY_CURRENT_PROCESSING = 'monitoring:current_processing';
-  private readonly KEY_PEAK_PROCESSING = 'monitoring:peak_processing';
 
   // TTL 配置
   private readonly TTL_24_HOURS = 86400; // 24 小时
@@ -39,7 +28,7 @@ export class MonitoringCacheService {
   async incrementCounter(field: keyof MonitoringGlobalCounters, value: number = 1): Promise<void> {
     try {
       const client = this.redisService.getClient();
-      await client.hincrby(this.KEY_COUNTERS, field, value);
+      await client.hincrby(MONITORING_REDIS_KEYS.COUNTERS, field, value);
     } catch (error) {
       this.logger.error(`增量更新计数器失败 [${field}]:`, error);
     }
@@ -55,7 +44,7 @@ export class MonitoringCacheService {
 
       for (const [field, value] of Object.entries(updates)) {
         if (typeof value === 'number') {
-          pipeline.hincrby(this.KEY_COUNTERS, field, value);
+          pipeline.hincrby(MONITORING_REDIS_KEYS.COUNTERS, field, value);
         }
       }
 
@@ -71,7 +60,7 @@ export class MonitoringCacheService {
   async getCounters(): Promise<MonitoringGlobalCounters> {
     try {
       const client = this.redisService.getClient();
-      const data = await client.hgetall(this.KEY_COUNTERS);
+      const data = await client.hgetall(MONITORING_REDIS_KEYS.COUNTERS);
 
       if (!data) {
         return this.createDefaultCounters();
@@ -98,7 +87,7 @@ export class MonitoringCacheService {
    */
   async resetCounters(): Promise<void> {
     try {
-      await this.redisService.del(this.KEY_COUNTERS);
+      await this.redisService.del(MONITORING_REDIS_KEYS.COUNTERS);
       this.logger.log('全局计数器已重置');
     } catch (error) {
       this.logger.error('重置全局计数器失败:', error);
@@ -121,7 +110,7 @@ export class MonitoringCacheService {
       };
 
       const client = this.redisService.getClient();
-      await client.hmset(this.KEY_COUNTERS, data);
+      await client.hmset(MONITORING_REDIS_KEYS.COUNTERS, data);
       this.logger.log('全局计数器已设置');
     } catch (error) {
       this.logger.error('设置全局计数器失败:', error);
@@ -141,7 +130,7 @@ export class MonitoringCacheService {
   async addActiveUser(userId: string, timestamp: number, date?: string): Promise<void> {
     try {
       const dateKey = date || this.getTodayDateKey();
-      const key = `${this.KEY_ACTIVE_USERS_PREFIX}${dateKey}`;
+      const key = MONITORING_REDIS_KEYS.activeUsers(dateKey);
 
       const client = this.redisService.getClient();
       await client.zadd(key, { score: timestamp, member: userId });
@@ -158,7 +147,7 @@ export class MonitoringCacheService {
   async getActiveUsers(date?: string): Promise<string[]> {
     try {
       const dateKey = date || this.getTodayDateKey();
-      const key = `${this.KEY_ACTIVE_USERS_PREFIX}${dateKey}`;
+      const key = MONITORING_REDIS_KEYS.activeUsers(dateKey);
 
       const client = this.redisService.getClient();
       const users = await client.zrange<string[]>(key, 0, -1);
@@ -176,7 +165,7 @@ export class MonitoringCacheService {
   async getActiveUserCount(date?: string): Promise<number> {
     try {
       const dateKey = date || this.getTodayDateKey();
-      const key = `${this.KEY_ACTIVE_USERS_PREFIX}${dateKey}`;
+      const key = MONITORING_REDIS_KEYS.activeUsers(dateKey);
 
       const client = this.redisService.getClient();
       const count = await client.zcard(key);
