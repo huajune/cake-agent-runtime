@@ -69,7 +69,11 @@ jobs:
 
           echo "Changes: +$ADDED_LINES -$REMOVED_LINES lines"
 
-      - name: AI Code Review with Anthropic Claude
+      - name: Install Claude Code CLI
+        if: steps.changed-files.outputs.has_changes == 'true'
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: AI Code Review with Claude Code
         id: ai-review
         if: steps.changed-files.outputs.has_changes == 'true'
         env:
@@ -107,7 +111,7 @@ jobs:
               '---\n\n' +
               `${reviewContent}\n\n` +
               '---\n\n' +
-              `<sub>Powered by Claude Sonnet 4.5 🚀 | [View Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})</sub>`
+              `<sub>Powered by Claude Code 🚀 | [View Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})</sub>`
 
             // 检查是否已有 AI review 评论
             const { data: comments } = await github.rest.issues.listComments({

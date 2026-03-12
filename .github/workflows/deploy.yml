@@ -11,10 +11,16 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      image_tag: ${{ steps.short_sha.outputs.sha }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Get short SHA
+        id: short_sha
+        run: echo "sha=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -45,58 +51,86 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy:
+  create-release:
     needs: build-and-push
     runs-on: ubuntu-latest
-    steps:
-      - name: Deploy to Server via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          passphrase: ${{ secrets.SSH_PASSPHRASE }} # 可选
-          script: |
-            # 确保目标目录存在
-            mkdir -p /opt/wecom-service
-            cd /opt/wecom-service
-            
-            # 登录 GHCR (使用临时 Token)
-            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            
-            # 我们直接在远程写入一个简单的 docker-compose.yml (或者你可以手动维护一个更复杂的)
-            # 这里为了自动化，我们动态生成一个指向最新镜像的 compose 文件
-            cat > docker-compose.yml <<EOF
-            version: '3.8'
-            services:
-              wecom-service:
-                image: ghcr.io/${{ github.repository }}:latest
-                container_name: wecom-service
-                restart: always
-                ports:
-                  - "8080:8080"
-                env_file:
-                  - .env
-                volumes:
-                  - ./logs:/app/logs
-                environment:
-                  - NODE_ENV=production
-                healthcheck:
-                  test: ["CMD", "curl", "-f", "http://localhost:8080/agent/health"]
-                  interval: 30s
-                  timeout: 10s
-                  retries: 3
-                networks:
-                  - app-network
-            networks:
-              app-network:
-                driver: bridge
-            EOF
+    permissions:
+      contents: write
 
-            # 拉取镜像并重新启动
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version info
+        id: info
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          SHA="${{ needs.build-and-push.outputs.image_tag }}"
+          IMAGE="ghcr.io/${{ github.repository }}:sha-${SHA}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+
+      - name: Generate docker-compose.yml
+        run: |
+          IMAGE="${{ steps.info.outputs.image }}"
+          REPO="${{ github.repository }}"
+          cat > /tmp/docker-compose.yml << EOF
+          services:
+            wecom-service:
+              image: ${IMAGE}
+              container_name: wecom-service
+              restart: always
+              ports:
+                - "8080:8080"
+              env_file:
+                - .env
+              volumes:
+                - ./logs:/app/logs
+              environment:
+                - NODE_ENV=production
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost:8080/agent/health"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+              networks:
+                - app-network
+          networks:
+            app-network:
+              driver: bridge
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.info.outputs.version }}-${{ steps.info.outputs.sha }}
+          name: v${{ steps.info.outputs.version }}
+          body: |
+            ## 部署说明
+
+            ### 镜像地址
+            ```
+            ghcr.io/${{ github.repository }}:sha-${{ steps.info.outputs.sha }}
+            ```
+
+            ### 快速部署步骤
+            1. 下载 `docker-compose.yml` 和 `.env.example`
+            2. 将 `.env.example` 复制为 `.env` 并填写配置项
+            3. 执行部署：
+            ```bash
+            docker compose up -d
+            ```
+
+            ### 更新已有部署
+            ```bash
             docker compose pull
             docker compose up -d
-            
-            # 清理
             docker image prune -f
-            docker logout ghcr.io
+            ```
+
+            > `.env` 必填项见 `.env.example` 中 `Layer 1` 部分
+          files: |
+            /tmp/docker-compose.yml
+            .env.example
+          make_latest: true
