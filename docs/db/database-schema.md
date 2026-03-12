@@ -2,7 +2,7 @@
 
 > DuLiDay 企业微信服务 - Supabase (PostgreSQL) 数据库设计文档
 
-**最后更新**：2026-03-11
+**最后更新**：2026-03-12
 
 **数据库**：Supabase PostgreSQL | **基线迁移**：`supabase/migrations/20260310000000_baseline.sql`
 
@@ -228,7 +228,8 @@
 - `idx_interview_booking_date_manager` - date, manager_id（部分索引）
 
 **操作说明**：
-- **写入**：`incrementBookingCount()` — 每次预约 +1
+
+- **写入**：`incrementBookingCount()` — 每次预约 +1，通过 RPC `increment_booking_count` 原子 upsert；`brand_name`/`store_name` 为空时存 `''`（RPC 内 COALESCE 处理，确保唯一约束生效）
 - **读取**：`getBookingStats()` / `getTodayBookingCount()` — Dashboard 统计
 
 ---
@@ -354,7 +355,7 @@
 |------|------|--------|------|
 | `id` | uuid | gen_random_uuid() | 主键 |
 | `message_id` | text | NOT NULL | 关联的消息ID |
-| `timestamp` | bigint | NOT NULL | 错误发生时间戳（Unix ms） |
+| `timestamp` | timestamptz | NOT NULL | 错误发生时间（迁移 20260312000001 由 bigint Unix ms 转换而来） |
 | `error` | text | NOT NULL | 错误信息 |
 | `alert_type` | text | - | 告警类型分类 |
 | `created_at` | timestamptz | now() | - |

@@ -37,15 +37,11 @@ export class MessageTrackingService {
     private readonly errorLogRepository: MonitoringErrorLogRepository,
     private readonly userHostingRepository: UserHostingRepository,
     private readonly cacheService: MonitoringCacheService,
-  ) {
-    // 定期清理超时的临时记录（每10分钟执行一次）
-    setInterval(
-      () => {
-        this.cleanupPendingRecords();
-      },
-      10 * 60 * 1000,
-    );
+  ) {}
 
+  onModuleInit(): void {
+    // 定期清理超时的临时记录（每10分钟执行一次）
+    setInterval(() => this.cleanupPendingRecords(), 10 * 60 * 1000);
     this.logger.log('消息追踪服务已启动');
   }
 
@@ -110,11 +106,10 @@ export class MessageTrackingService {
     }
 
     // 更新并发统计
-    this.cacheService.incrementCurrentProcessing(1).then((newValue) => {
-      this.cacheService.updatePeakProcessing(newValue).catch((err) => {
-        this.logger.warn('更新峰值处理数失败:', err);
-      });
-    });
+    this.cacheService
+      .incrementCurrentProcessing(1)
+      .then((newValue) => this.cacheService.updatePeakProcessing(newValue))
+      .catch((err) => this.logger.warn('更新峰值处理数失败:', err));
 
     // 立即写入 user_activity 表（消息接收时就记录，不等处理完成）
     this.saveUserActivity({

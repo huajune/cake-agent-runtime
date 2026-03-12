@@ -24,6 +24,7 @@ export class MonitoringErrorLogRepository extends BaseRepository {
    * 保存错误日志
    */
   async saveErrorLog(log: ErrorLogRecord): Promise<void> {
+    if (!this.isAvailable()) return;
     await this.upsert<ErrorLogDbRecord>(this.toDbRecord(log), {
       returnData: false,
     });
