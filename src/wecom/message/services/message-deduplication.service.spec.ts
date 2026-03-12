@@ -7,11 +7,15 @@ import { RedisKeyBuilder } from '../utils/redis-key.util';
 describe('MessageDeduplicationService', () => {
   let service: MessageDeduplicationService;
 
+  const mockRedisClient = {
+    set: jest.fn(),
+  };
+
   const mockRedisService = {
     exists: jest.fn(),
-    setex: jest.fn(),
     scan: jest.fn(),
     del: jest.fn(),
+    getClient: jest.fn(() => mockRedisClient),
   };
 
   const mockConfigService = {
@@ -73,33 +77,30 @@ describe('MessageDeduplicationService', () => {
 
   describe('markMessageAsProcessedAsync', () => {
     it('should return true and set key when message not yet processed', async () => {
-      mockRedisService.exists.mockResolvedValue(0);
-      mockRedisService.setex.mockResolvedValue('OK');
+      mockRedisClient.set.mockResolvedValue('OK');
 
       const result = await service.markMessageAsProcessedAsync('msg-123');
 
       expect(result).toBe(true);
-      expect(mockRedisService.setex).toHaveBeenCalledWith(
+      expect(mockRedisClient.set).toHaveBeenCalledWith(
         RedisKeyBuilder.dedup('msg-123'),
-        300,
         expect.any(String),
+        { nx: true, ex: 300 },
       );
     });
 
     it('should return false when message already processed by another process', async () => {
-      mockRedisService.exists.mockResolvedValue(1);
+      mockRedisClient.set.mockResolvedValue(null);
 
       const result = await service.markMessageAsProcessedAsync('msg-123');
 
       expect(result).toBe(false);
-      expect(mockRedisService.setex).not.toHaveBeenCalled();
     });
   });
 
   describe('markMessageAsProcessed (sync version)', () => {
     it('should call markMessageAsProcessedAsync asynchronously without blocking', async () => {
-      mockRedisService.exists.mockResolvedValue(0);
-      mockRedisService.setex.mockResolvedValue('OK');
+      mockRedisClient.set.mockResolvedValue('OK');
 
       // Should not throw
       expect(() => service.markMessageAsProcessed('msg-123')).not.toThrow();
@@ -109,7 +110,7 @@ describe('MessageDeduplicationService', () => {
     });
 
     it('should log error when async operation fails', async () => {
-      mockRedisService.exists.mockRejectedValue(new Error('Redis connection failed'));
+      mockRedisClient.set.mockRejectedValue(new Error('Redis connection failed'));
 
       // Should not throw synchronously
       expect(() => service.markMessageAsProcessed('msg-error')).not.toThrow();

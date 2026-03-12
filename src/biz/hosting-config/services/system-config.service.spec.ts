@@ -1,7 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { SystemConfigService } from './system-config.service';
-import { RedisService } from '@core/redis';
 import { SystemConfigRepository } from '../repositories/system-config.repository';
 import { DEFAULT_AGENT_REPLY_CONFIG } from '../types/hosting-config.types';
 
@@ -11,11 +10,6 @@ describe('SystemConfigService', () => {
   const mockSystemConfigRepository = {
     getConfigValue: jest.fn(),
     setConfigValue: jest.fn(),
-  };
-
-  const mockRedisService = {
-    get: jest.fn(),
-    setex: jest.fn(),
   };
 
   const mockConfigService = {
@@ -33,7 +27,6 @@ describe('SystemConfigService', () => {
       providers: [
         SystemConfigService,
         { provide: SystemConfigRepository, useValue: mockSystemConfigRepository },
-        { provide: RedisService, useValue: mockRedisService },
         { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
@@ -63,22 +56,11 @@ describe('SystemConfigService', () => {
       const result = await service.getAiReplyEnabled();
 
       expect(result).toBe(true);
-      expect(mockRedisService.get).not.toHaveBeenCalled();
+      expect(mockSystemConfigRepository.getConfigValue).not.toHaveBeenCalled();
     });
 
-    it('should return Redis cached value when memory cache is null', async () => {
-      mockRedisService.get.mockResolvedValue(false);
-
-      const result = await service.getAiReplyEnabled();
-
-      expect(result).toBe(false);
-      expect(mockRedisService.get).toHaveBeenCalledWith('config:ai_reply_enabled');
-    });
-
-    it('should load from DB when Redis cache is null', async () => {
-      mockRedisService.get.mockResolvedValue(null);
+    it('should load from DB when memory cache is null', async () => {
       mockSystemConfigRepository.getConfigValue.mockResolvedValue(true);
-      mockRedisService.setex.mockResolvedValue(undefined);
 
       const result = await service.getAiReplyEnabled();
 
@@ -87,10 +69,8 @@ describe('SystemConfigService', () => {
     });
 
     it('should initialize default value and write to DB when DB returns null', async () => {
-      mockRedisService.get.mockResolvedValue(null);
       mockSystemConfigRepository.getConfigValue.mockResolvedValue(null);
       mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
-      mockRedisService.setex.mockResolvedValue(undefined);
 
       const result = await service.getAiReplyEnabled();
 
@@ -103,7 +83,6 @@ describe('SystemConfigService', () => {
     });
 
     it('should return default value from env when DB load fails', async () => {
-      mockRedisService.get.mockResolvedValue(null);
       mockSystemConfigRepository.getConfigValue.mockRejectedValue(new Error('DB error'));
 
       const result = await service.getAiReplyEnabled();
@@ -115,15 +94,13 @@ describe('SystemConfigService', () => {
   // ==================== setAiReplyEnabled ====================
 
   describe('setAiReplyEnabled', () => {
-    it('should update memory cache and Redis', async () => {
-      mockRedisService.setex.mockResolvedValue(undefined);
+    it('should update memory cache and persist to DB', async () => {
       mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
 
       const result = await service.setAiReplyEnabled(false);
 
       expect(result).toBe(false);
       expect((service as any).aiReplyEnabled).toBe(false);
-      expect(mockRedisService.setex).toHaveBeenCalledWith('config:ai_reply_enabled', 300, false);
       expect(mockSystemConfigRepository.setConfigValue).toHaveBeenCalledWith(
         'ai_reply_enabled',
         false,
@@ -131,7 +108,6 @@ describe('SystemConfigService', () => {
     });
 
     it('should handle DB update failure gracefully', async () => {
-      mockRedisService.setex.mockResolvedValue(undefined);
       mockSystemConfigRepository.setConfigValue.mockRejectedValue(new Error('DB error'));
 
       const result = await service.setAiReplyEnabled(true);
@@ -151,33 +127,23 @@ describe('SystemConfigService', () => {
       const result = await service.getMessageMergeEnabled();
 
       expect(result).toBe(false);
-      expect(mockRedisService.get).not.toHaveBeenCalled();
+      expect(mockSystemConfigRepository.getConfigValue).not.toHaveBeenCalled();
     });
 
-    it('should return Redis cached value when memory cache is null', async () => {
-      mockRedisService.get.mockResolvedValue(true);
-
-      const result = await service.getMessageMergeEnabled();
-
-      expect(result).toBe(true);
-      expect(mockRedisService.get).toHaveBeenCalledWith('config:message_merge_enabled');
-    });
-
-    it('should load from DB when Redis cache is null', async () => {
-      mockRedisService.get.mockResolvedValue(null);
+    it('should load from DB when memory cache is null', async () => {
       mockSystemConfigRepository.getConfigValue.mockResolvedValue(false);
-      mockRedisService.setex.mockResolvedValue(undefined);
 
       const result = await service.getMessageMergeEnabled();
 
       expect(result).toBe(false);
+      expect(mockSystemConfigRepository.getConfigValue).toHaveBeenCalledWith(
+        'message_merge_enabled',
+      );
     });
 
     it('should use env default when DB returns null', async () => {
-      mockRedisService.get.mockResolvedValue(null);
       mockSystemConfigRepository.getConfigValue.mockResolvedValue(null);
       mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
-      mockRedisService.setex.mockResolvedValue(undefined);
 
       const result = await service.getMessageMergeEnabled();
 
@@ -188,17 +154,15 @@ describe('SystemConfigService', () => {
   // ==================== setMessageMergeEnabled ====================
 
   describe('setMessageMergeEnabled', () => {
-    it('should update memory cache, Redis, and DB', async () => {
-      mockRedisService.setex.mockResolvedValue(undefined);
+    it('should update memory cache and persist to DB', async () => {
       mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
 
       const result = await service.setMessageMergeEnabled(false);
 
       expect(result).toBe(false);
       expect((service as any).messageMergeEnabled).toBe(false);
-      expect(mockRedisService.setex).toHaveBeenCalledWith(
-        'config:message_merge_enabled',
-        300,
+      expect(mockSystemConfigRepository.setConfigValue).toHaveBeenCalledWith(
+        'message_merge_enabled',
         false,
       );
     });
@@ -215,36 +179,23 @@ describe('SystemConfigService', () => {
       const result = await service.getAgentReplyConfig();
 
       expect(result).toEqual(cachedConfig);
-      expect(mockRedisService.get).not.toHaveBeenCalled();
+      expect(mockSystemConfigRepository.getConfigValue).not.toHaveBeenCalled();
     });
 
-    it('should reload when memory cache is expired', async () => {
+    it('should reload from DB when memory cache is expired', async () => {
       (service as any).agentReplyConfig = null;
       (service as any).agentReplyConfigExpiry = 0;
-
-      mockRedisService.get.mockResolvedValue(DEFAULT_AGENT_REPLY_CONFIG);
-
-      const result = await service.getAgentReplyConfig();
-
-      expect(result).toMatchObject(DEFAULT_AGENT_REPLY_CONFIG);
-      expect(mockRedisService.get).toHaveBeenCalledWith('config:agent_reply_config');
-    });
-
-    it('should load from DB when Redis cache is null', async () => {
-      mockRedisService.get.mockResolvedValue(null);
       mockSystemConfigRepository.getConfigValue.mockResolvedValue(DEFAULT_AGENT_REPLY_CONFIG);
-      mockRedisService.setex.mockResolvedValue(undefined);
 
       const result = await service.getAgentReplyConfig();
 
       expect(result).toMatchObject(DEFAULT_AGENT_REPLY_CONFIG);
+      expect(mockSystemConfigRepository.getConfigValue).toHaveBeenCalledWith('agent_reply_config');
     });
 
     it('should seed default config when DB returns null', async () => {
-      mockRedisService.get.mockResolvedValue(null);
       mockSystemConfigRepository.getConfigValue.mockResolvedValue(null);
       mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
-      mockRedisService.setex.mockResolvedValue(undefined);
 
       const result = await service.getAgentReplyConfig();
 
@@ -257,7 +208,6 @@ describe('SystemConfigService', () => {
     });
 
     it('should return default config and set short backoff when DB fails', async () => {
-      mockRedisService.get.mockResolvedValue(null);
       mockSystemConfigRepository.getConfigValue.mockRejectedValue(new Error('DB error'));
 
       const result = await service.getAgentReplyConfig();
@@ -274,7 +224,6 @@ describe('SystemConfigService', () => {
   describe('setAgentReplyConfig', () => {
     it('should merge partial config with existing config', async () => {
       (service as any).agentReplyConfig = { ...DEFAULT_AGENT_REPLY_CONFIG };
-      mockRedisService.setex.mockResolvedValue(undefined);
       mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
 
       const partial = { maxMergedMessages: 10 };
@@ -287,7 +236,6 @@ describe('SystemConfigService', () => {
 
     it('should use DEFAULT_AGENT_REPLY_CONFIG as base when no existing config', async () => {
       (service as any).agentReplyConfig = null;
-      mockRedisService.setex.mockResolvedValue(undefined);
       mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
 
       const partial = { maxMergedMessages: 7 };
@@ -297,18 +245,12 @@ describe('SystemConfigService', () => {
       expect(result.paragraphGapMs).toBe(DEFAULT_AGENT_REPLY_CONFIG.paragraphGapMs);
     });
 
-    it('should persist to Redis and DB', async () => {
+    it('should persist to DB', async () => {
       (service as any).agentReplyConfig = { ...DEFAULT_AGENT_REPLY_CONFIG };
-      mockRedisService.setex.mockResolvedValue(undefined);
       mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
 
       await service.setAgentReplyConfig({ maxMergedMessages: 5 });
 
-      expect(mockRedisService.setex).toHaveBeenCalledWith(
-        'config:agent_reply_config',
-        60,
-        expect.objectContaining({ maxMergedMessages: 5 }),
-      );
       expect(mockSystemConfigRepository.setConfigValue).toHaveBeenCalledWith(
         'agent_reply_config',
         expect.objectContaining({ maxMergedMessages: 5 }),
@@ -318,7 +260,6 @@ describe('SystemConfigService', () => {
 
     it('should notify registered callbacks on config change', async () => {
       (service as any).agentReplyConfig = { ...DEFAULT_AGENT_REPLY_CONFIG };
-      mockRedisService.setex.mockResolvedValue(undefined);
       mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
 
       const callback = jest.fn();
@@ -331,7 +272,6 @@ describe('SystemConfigService', () => {
 
     it('should handle callback errors gracefully', async () => {
       (service as any).agentReplyConfig = { ...DEFAULT_AGENT_REPLY_CONFIG };
-      mockRedisService.setex.mockResolvedValue(undefined);
       mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
 
       const errorCallback = jest.fn().mockImplementation(() => {
@@ -348,7 +288,6 @@ describe('SystemConfigService', () => {
   describe('onAgentReplyConfigChange', () => {
     it('should register and invoke multiple callbacks', async () => {
       (service as any).agentReplyConfig = { ...DEFAULT_AGENT_REPLY_CONFIG };
-      mockRedisService.setex.mockResolvedValue(undefined);
       mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
 
       const cb1 = jest.fn();
@@ -366,30 +305,17 @@ describe('SystemConfigService', () => {
   // ==================== getSystemConfig ====================
 
   describe('getSystemConfig', () => {
-    it('should return cached system config from Redis', async () => {
-      const mockConfig = { workerConcurrency: 5 };
-      mockRedisService.get.mockResolvedValue(mockConfig);
-
-      const result = await service.getSystemConfig();
-
-      expect(result).toEqual(mockConfig);
-      expect(mockSystemConfigRepository.getConfigValue).not.toHaveBeenCalled();
-    });
-
-    it('should load from DB when Redis cache is empty', async () => {
+    it('should load system config from DB', async () => {
       const mockConfig = { workerConcurrency: 3 };
-      mockRedisService.get.mockResolvedValue(null);
       mockSystemConfigRepository.getConfigValue.mockResolvedValue(mockConfig);
-      mockRedisService.setex.mockResolvedValue(undefined);
 
       const result = await service.getSystemConfig();
 
       expect(result).toEqual(mockConfig);
-      expect(mockRedisService.setex).toHaveBeenCalledWith('config:system_config', 300, mockConfig);
+      expect(mockSystemConfigRepository.getConfigValue).toHaveBeenCalledWith('system_config');
     });
 
     it('should return null when no config in DB', async () => {
-      mockRedisService.get.mockResolvedValue(null);
       mockSystemConfigRepository.getConfigValue.mockResolvedValue(null);
 
       const result = await service.getSystemConfig();
@@ -398,7 +324,6 @@ describe('SystemConfigService', () => {
     });
 
     it('should return null when DB throws error', async () => {
-      mockRedisService.get.mockResolvedValue(null);
       mockSystemConfigRepository.getConfigValue.mockRejectedValue(new Error('DB error'));
 
       const result = await service.getSystemConfig();
@@ -412,8 +337,7 @@ describe('SystemConfigService', () => {
   describe('updateSystemConfig', () => {
     it('should merge new config with existing config', async () => {
       const existingConfig = { workerConcurrency: 3 };
-      mockRedisService.get.mockResolvedValue(existingConfig);
-      mockRedisService.setex.mockResolvedValue(undefined);
+      mockSystemConfigRepository.getConfigValue.mockResolvedValue(existingConfig);
       mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
 
       const result = await service.updateSystemConfig({ workerConcurrency: 10 });
@@ -422,9 +346,7 @@ describe('SystemConfigService', () => {
     });
 
     it('should create config from scratch when no existing config', async () => {
-      mockRedisService.get.mockResolvedValue(null);
       mockSystemConfigRepository.getConfigValue.mockResolvedValue(null);
-      mockRedisService.setex.mockResolvedValue(undefined);
       mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
 
       const result = await service.updateSystemConfig({ workerConcurrency: 5 });
@@ -432,19 +354,12 @@ describe('SystemConfigService', () => {
       expect(result.workerConcurrency).toBe(5);
     });
 
-    it('should persist to Redis and DB', async () => {
-      mockRedisService.get.mockResolvedValue(null);
+    it('should persist to DB', async () => {
       mockSystemConfigRepository.getConfigValue.mockResolvedValue(null);
-      mockRedisService.setex.mockResolvedValue(undefined);
       mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
 
       await service.updateSystemConfig({ workerConcurrency: 5 });
 
-      expect(mockRedisService.setex).toHaveBeenCalledWith(
-        'config:system_config',
-        300,
-        expect.objectContaining({ workerConcurrency: 5 }),
-      );
       expect(mockSystemConfigRepository.setConfigValue).toHaveBeenCalledWith(
         'system_config',
         expect.objectContaining({ workerConcurrency: 5 }),
@@ -463,15 +378,10 @@ describe('SystemConfigService', () => {
       (service as any).agentReplyConfigExpiry = Date.now() + 60_000;
 
       // Mock the reload calls
-      mockRedisService.get.mockResolvedValue(null);
       mockSystemConfigRepository.getConfigValue.mockResolvedValue(true);
-      mockRedisService.setex.mockResolvedValue(undefined);
 
       await service.refreshCache();
 
-      // Memory cache nulls should be re-set during refreshCache
-      // The method clears first, then reloads - so aiReplyEnabled and messageMergeEnabled
-      // will be non-null after reload, but agentReplyConfigExpiry will be updated
       expect(mockSystemConfigRepository.getConfigValue).toHaveBeenCalled();
     });
 
@@ -481,10 +391,8 @@ describe('SystemConfigService', () => {
       (service as any).agentReplyConfig = null;
       (service as any).agentReplyConfigExpiry = 0;
 
-      mockRedisService.get.mockResolvedValue(null);
       mockSystemConfigRepository.getConfigValue.mockResolvedValue(null);
       mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
-      mockRedisService.setex.mockResolvedValue(undefined);
 
       await service.refreshCache();
 

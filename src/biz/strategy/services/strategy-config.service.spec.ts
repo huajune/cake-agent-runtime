@@ -1,18 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { StrategyConfigService } from './strategy-config.service';
-import { RedisService } from '@core/redis';
 import { StrategyConfigRepository } from '../repositories/strategy-config.repository';
 import { StrategyConfigRecord } from '../entities/strategy-config.entity';
 import { buildDefaultStrategyRecord } from '@agent/strategy/strategy-config.types';
 
 describe('StrategyConfigService', () => {
   let service: StrategyConfigService;
-
-  const mockRedisService = {
-    get: jest.fn(),
-    setex: jest.fn(),
-    del: jest.fn(),
-  };
 
   const mockStrategyConfigRepository = {
     findActiveConfig: jest.fn(),
@@ -32,7 +25,6 @@ describe('StrategyConfigService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         StrategyConfigService,
-        { provide: RedisService, useValue: mockRedisService },
         { provide: StrategyConfigRepository, useValue: mockStrategyConfigRepository },
       ],
     }).compile();
@@ -61,44 +53,23 @@ describe('StrategyConfigService', () => {
       const result = await service.getActiveConfig();
 
       expect(result).toBe(cached);
-      expect(mockRedisService.get).not.toHaveBeenCalled();
-    });
-
-    it('should load from Redis (L2) when memory cache is expired', async () => {
-      const redisRecord = makeRecord({ id: 'redis-1' });
-      mockRedisService.get.mockResolvedValue(redisRecord);
-
-      const result = await service.getActiveConfig();
-
-      expect(result).toEqual(redisRecord);
-      expect(mockRedisService.get).toHaveBeenCalledWith('config:strategy_config:active');
       expect(mockStrategyConfigRepository.findActiveConfig).not.toHaveBeenCalled();
     });
 
-    it('should load from DB (L3) when Redis cache is null', async () => {
+    it('should load from DB when memory cache is expired', async () => {
       const dbRecord = makeRecord({ id: 'db-1' });
-      mockRedisService.get.mockResolvedValue(null);
       mockStrategyConfigRepository.findActiveConfig.mockResolvedValue(dbRecord);
-      mockRedisService.setex.mockResolvedValue(undefined);
 
       const result = await service.getActiveConfig();
 
       expect(result).toEqual(dbRecord);
       expect(mockStrategyConfigRepository.findActiveConfig).toHaveBeenCalledTimes(1);
-      // Should write to Redis
-      expect(mockRedisService.setex).toHaveBeenCalledWith(
-        'config:strategy_config:active',
-        300,
-        dbRecord,
-      );
     });
 
     it('should seed defaults when DB returns null (first run)', async () => {
       const insertedRecord = makeRecord({ id: 'seeded-1' });
-      mockRedisService.get.mockResolvedValue(null);
       mockStrategyConfigRepository.findActiveConfig.mockResolvedValue(null);
       mockStrategyConfigRepository.insertConfig.mockResolvedValue(insertedRecord);
-      mockRedisService.setex.mockResolvedValue(undefined);
 
       const result = await service.getActiveConfig();
 
@@ -108,12 +79,10 @@ describe('StrategyConfigService', () => {
 
     it('should query DB again when insert fails (concurrent conflict)', async () => {
       const existingRecord = makeRecord({ id: 'existing-1' });
-      mockRedisService.get.mockResolvedValue(null);
       mockStrategyConfigRepository.findActiveConfig
         .mockResolvedValueOnce(null) // First call returns null (triggers seed)
         .mockResolvedValueOnce(existingRecord); // Second call returns existing
       mockStrategyConfigRepository.insertConfig.mockResolvedValue(null); // Insert fails
-      mockRedisService.setex.mockResolvedValue(undefined);
 
       const result = await service.getActiveConfig();
 
@@ -122,7 +91,6 @@ describe('StrategyConfigService', () => {
     });
 
     it('should return fallback record when DB fails', async () => {
-      mockRedisService.get.mockResolvedValue(null);
       mockStrategyConfigRepository.findActiveConfig.mockRejectedValue(new Error('DB error'));
 
       const result = await service.getActiveConfig();
@@ -131,7 +99,6 @@ describe('StrategyConfigService', () => {
     });
 
     it('should return fallback when insert and re-query both fail', async () => {
-      mockRedisService.get.mockResolvedValue(null);
       mockStrategyConfigRepository.findActiveConfig
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce(null); // Re-query also returns null
@@ -165,7 +132,6 @@ describe('StrategyConfigService', () => {
       };
 
       mockStrategyConfigRepository.updateConfigField.mockResolvedValue(updatedRecord);
-      mockRedisService.setex.mockResolvedValue(undefined);
 
       const result = await service.updatePersona(newPersona);
 
@@ -227,7 +193,6 @@ describe('StrategyConfigService', () => {
       const newStageGoals = { stages: [{ stage: 'trust_building', label: 'Test' } as any] };
 
       mockStrategyConfigRepository.updateConfigField.mockResolvedValue(updatedRecord);
-      mockRedisService.setex.mockResolvedValue(undefined);
 
       const result = await service.updateStageGoals(newStageGoals);
 
@@ -269,7 +234,6 @@ describe('StrategyConfigService', () => {
       const newRedLines = { rules: ['rule1', 'rule2'] };
 
       mockStrategyConfigRepository.updateConfigField.mockResolvedValue(updatedRecord);
-      mockRedisService.setex.mockResolvedValue(undefined);
 
       const result = await service.updateRedLines(newRedLines);
 
@@ -308,22 +272,11 @@ describe('StrategyConfigService', () => {
   // ==================== refreshCache ====================
 
   describe('refreshCache', () => {
-    it('should clear memory cache and delete Redis cache', async () => {
+    it('should clear memory cache', async () => {
       (service as any).cachedConfig = makeRecord();
       (service as any).cacheExpiry = Date.now() + 60_000;
-      mockRedisService.del.mockResolvedValue(1);
 
       await service.refreshCache();
-
-      expect((service as any).cachedConfig).toBeNull();
-      expect((service as any).cacheExpiry).toBe(0);
-      expect(mockRedisService.del).toHaveBeenCalledWith('config:strategy_config:active');
-    });
-
-    it('should handle Redis del failure gracefully', async () => {
-      mockRedisService.del.mockRejectedValue(new Error('Redis error'));
-
-      await expect(service.refreshCache()).resolves.not.toThrow();
 
       expect((service as any).cachedConfig).toBeNull();
       expect((service as any).cacheExpiry).toBe(0);

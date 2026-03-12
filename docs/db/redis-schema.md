@@ -6,7 +6,7 @@
 
 **Redis 客户端**：`@upstash/redis`（REST API 模式）| **连接方式**：`UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`
 
-**Key 常量定义**：各模块 `utils/*-redis-keys.ts` 文件
+**Key 常量定义**：`src/wecom/message/utils/redis-key.util.ts` 和 `src/biz/monitoring/utils/monitoring-redis-keys.ts`
 
 ---
 
@@ -24,15 +24,6 @@
   - [monitoring:current_processing](#6-monitoringcurrent_processing---当前并发数)
   - [monitoring:peak_processing](#7-monitoringpeak_processing---峰值并发数)
   - [monitoring:today_users](#8-monitoringtoday_users---今日用户缓存)
-  - [monitoring:active_users:{date}](#9-monitoringactive_usersdate---活跃用户集合)
-  - [monitoring:active_chats:{date}](#10-monitoringactive_chatsdate---活跃会话集合)
-- [配置模块（config:*）](#配置模块config)
-  - [config:ai_reply_enabled](#11-configai_reply_enabled---ai回复开关)
-  - [config:message_merge_enabled](#12-configmessage_merge_enabled---消息聚合开关)
-  - [config:agent_reply_config](#13-configagent_reply_config---agent回复策略配置)
-  - [config:system_config](#14-configsystem_config---系统配置)
-  - [config:group_blacklist](#15-configgroup_blacklist---小组黑名单)
-  - [config:strategy_config:active](#16-configstrategy_configactive---策略配置)
 - [Bull Queue](#bull-queue)
 - [数据生命周期](#数据生命周期)
 - [连接配置](#连接配置)
@@ -43,7 +34,7 @@
 
 | # | Key 模式 | 数据结构 | TTL | 所属模块 | 用途 |
 |---|---------|---------|-----|---------|------|
-| 1 | `wecom:message:dedup:{id}` | String | 5min | wecom/message | 消息去重标记 |
+| 1 | `wecom:message:dedup:{id}` | String | 5min | wecom/message | 消息去重标记（原子 SET NX EX） |
 | 2 | `wecom:message:pending:{chatId}` | List | 5min | wecom/message | 消息聚合队列 |
 | 3 | `wecom:message:history:{chatId}` | String | — | wecom/message | 消息历史缓存（预留） |
 | 4 | `wecom:message:lock:{chatId}` | String | — | wecom/message | 分布式处理锁（预留） |
@@ -51,14 +42,8 @@
 | 6 | `monitoring:current_processing` | String | 永久 | biz/monitoring | 实时并发处理数 |
 | 7 | `monitoring:peak_processing` | String | 永久 | biz/monitoring | 历史峰值并发数 |
 | 8 | `monitoring:today_users` | String | 30s | biz/monitoring | 今日用户列表缓存 |
-| 9 | `monitoring:active_users:{date}` | Sorted Set | 24h | biz/monitoring | 日活跃用户集合 |
-| 10 | `monitoring:active_chats:{date}` | Sorted Set | 24h | biz/monitoring | 日活跃会话集合 |
-| 11 | `config:ai_reply_enabled` | String | 5min | biz/hosting-config | AI 回复开关缓存 |
-| 12 | `config:message_merge_enabled` | String | 5min | biz/hosting-config | 消息聚合开关缓存 |
-| 13 | `config:agent_reply_config` | String | 1min | biz/hosting-config | Agent 回复策略缓存 |
-| 14 | `config:system_config` | String | 5min | biz/hosting-config | 系统配置缓存 |
-| 15 | `config:group_blacklist` | String | 5min | biz/hosting-config | 小组黑名单缓存 |
-| 16 | `config:strategy_config:active` | String | 5min | biz/strategy | 策略配置缓存 |
+
+> **注**：配置类（`config:*`）的 Redis L2 缓存层已移除。所有配置服务（SystemConfigService、StrategyConfigService、GroupBlacklistService）现采用 L1 内存缓存 → Supabase DB 两级架构，Redis 不再参与配置读写路径。
 
 ---
 
@@ -72,16 +57,13 @@
 |---------|------|------|
 | `wecom` | 企业微信消息处理 | `wecom:message:dedup:msg_123` |
 | `monitoring` | 运行时监控指标 | `monitoring:counters` |
-| `config` | 配置缓存（三级缓存 L2 层） | `config:ai_reply_enabled` |
 
 **Key 常量定义位置**：
 
 ```
 src/
 ├── wecom/message/utils/redis-key.util.ts          → RedisKeyBuilder（静态方法）
-├── biz/monitoring/utils/monitoring-redis-keys.ts   → MONITORING_REDIS_KEYS
-├── biz/hosting-config/utils/hosting-config-redis-keys.ts → HOSTING_CONFIG_REDIS_KEYS
-└── biz/strategy/utils/strategy-redis-keys.ts       → STRATEGY_REDIS_KEYS
+└── biz/monitoring/utils/monitoring-redis-keys.ts   → MONITORING_REDIS_KEYS
 ```
 
 ---
@@ -107,9 +89,10 @@ src/
 
 | 操作 | Redis 命令 | 触发时机 |
 |------|-----------|---------|
-| 检查是否重复 | `EXISTS` | 每条消息到达时 |
-| 标记为已处理 | `SETEX` | 消息开始处理时 |
+| 原子标记（check-and-set） | `SET key value NX EX ttl` | 消息开始处理时（返回 OK=首次处理，null=已重复） |
 | 批量清理 | `SCAN` + `DEL` | 手动维护 |
+
+> **注**：使用原子 `SET NX EX` 替代非原子的 `EXISTS + SETEX`，消除了分布式竞态条件（TOCTOU）。
 
 **示例**：
 
@@ -281,199 +264,6 @@ TTL:   298s
 
 ---
 
-### 9. monitoring:active_users:{date} - 活跃用户集合
-
-**用途**：记录每日有消息交互的用户（去重），支持日活统计
-
-**代码位置**：`src/biz/monitoring/services/tracking/monitoring-cache.service.ts`
-
-| 属性 | 值 |
-|------|----|
-| Key 格式 | `monitoring:active_users:{YYYY-MM-DD}` |
-| 数据结构 | Sorted Set |
-| Score | 用户最后活跃时间戳（毫秒） |
-| Member | userId（字符串） |
-| TTL | 86400s（24小时） |
-
-**操作**：
-
-| 操作 | Redis 命令 | 触发时机 |
-|------|-----------|---------|
-| 记录活跃 | `ZADD` | 每次收到用户消息 |
-| 刷新 TTL | `EXPIRE` | 每次 ZADD 后 |
-| 获取列表 | `ZRANGE 0 -1` | 统计查询 |
-| 获取数量 | `ZCARD` | DAU 统计 |
-
-**示例**：
-
-```
-Key:    monitoring:active_users:2026-03-12
-Score:  1773250000000
-Member: wxid_abc123
-TTL:    82400s
-```
-
----
-
-### 10. monitoring:active_chats:{date} - 活跃会话集合
-
-**用途**：记录每日有消息往来的会话（去重），支持活跃会话数统计
-
-**代码位置**：`src/biz/monitoring/services/tracking/monitoring-cache.service.ts`
-
-| 属性 | 值 |
-|------|----|
-| Key 格式 | `monitoring:active_chats:{YYYY-MM-DD}` |
-| 数据结构 | Sorted Set |
-| Score | 会话最后活跃时间戳（毫秒） |
-| Member | chatId（字符串） |
-| TTL | 86400s（24小时） |
-
-（操作与 `monitoring:active_users:{date}` 相同）
-
----
-
-## 配置模块（config:*）
-
-**Key 常量**：
-
-- `src/biz/hosting-config/utils/hosting-config-redis-keys.ts` — `HOSTING_CONFIG_REDIS_KEYS`
-- `src/biz/strategy/utils/strategy-redis-keys.ts` — `STRATEGY_REDIS_KEYS`
-
-**三级缓存架构**：
-
-```
-读取请求
-  → L1: 内存缓存（服务实例内）
-  → L2: Redis 缓存（config:* keys，5min TTL）
-  → L3: Supabase system_config / strategy_config 表
-```
-
-### 11. config:ai_reply_enabled - AI回复开关
-
-**代码位置**：`src/biz/hosting-config/services/system-config.service.ts`
-
-| 属性 | 值 |
-|------|----|
-| Key | `config:ai_reply_enabled` |
-| 数据结构 | String（JSON boolean） |
-| TTL | 300s（5分钟） |
-| L1 内存缓存 | 实例变量 `aiReplyEnabled`（重启失效） |
-| Supabase 持久化 | `system_config` 表，key = `ai_reply_enabled` |
-
----
-
-### 12. config:message_merge_enabled - 消息聚合开关
-
-**代码位置**：`src/biz/hosting-config/services/system-config.service.ts`
-
-| 属性 | 值 |
-|------|----|
-| Key | `config:message_merge_enabled` |
-| 数据结构 | String（JSON boolean） |
-| TTL | 300s（5分钟） |
-| Supabase 持久化 | `system_config` 表，key = `message_merge_enabled` |
-
----
-
-### 13. config:agent_reply_config - Agent回复策略配置
-
-**代码位置**：`src/biz/hosting-config/services/system-config.service.ts`
-
-| 属性 | 值 |
-|------|----|
-| Key | `config:agent_reply_config` |
-| 数据结构 | String（JSON 对象） |
-| TTL | **60s（1分钟，比其他配置更短，配置变更实时生效）** |
-| Supabase 持久化 | `system_config` 表，key = `agent_reply_config` |
-
-**存储内容（`AgentReplyConfig`）**：
-
-```typescript
-{
-  initialMergeWindowMs: number;   // 消息聚合等待窗口（ms）
-  maxMergedMessages: number;       // 最大聚合消息条数
-  typingDelayPerCharMs: number;    // 打字延迟（ms/字符）
-  paragraphGapMs: number;          // 段落间隔（ms）
-}
-```
-
----
-
-### 14. config:system_config - 系统配置
-
-**代码位置**：`src/biz/hosting-config/services/system-config.service.ts`
-
-| 属性 | 值 |
-|------|----|
-| Key | `config:system_config` |
-| 数据结构 | String（JSON 对象） |
-| TTL | 300s（5分钟） |
-| Supabase 持久化 | `system_config` 表，key = `system_config` |
-
-**存储内容（`SystemConfig`）**：
-
-```typescript
-{
-  workerConcurrency?: number;    // Worker 并发数
-}
-```
-
----
-
-### 15. config:group_blacklist - 小组黑名单
-
-**代码位置**：`src/biz/hosting-config/services/group-blacklist.service.ts`
-
-| 属性 | 值 |
-|------|----|
-| Key | `config:group_blacklist` |
-| 数据结构 | String（JSON 数组） |
-| TTL | 300s（5分钟） |
-| L1 内存缓存 | `Map<groupId, GroupBlacklistItem>`（重启失效） |
-| Supabase 持久化 | `system_config` 表，key = `group_blacklist` |
-
-**存储内容（`GroupBlacklistItem[]`）**：
-
-```typescript
-[
-  {
-    group_id: string;    // 小组 ID
-    reason?: string;     // 加入黑名单原因
-    added_at: number;    // 加入时间戳（ms）
-  }
-]
-```
-
----
-
-### 16. config:strategy_config:active - 策略配置
-
-**代码位置**：`src/biz/strategy/services/strategy-config.service.ts`
-
-| 属性 | 值 |
-|------|----|
-| Key | `config:strategy_config:active` |
-| 数据结构 | String（JSON 对象） |
-| TTL | 300s（5分钟） |
-| L1 内存缓存 | 实例变量 `cachedConfig`，独立 60s TTL |
-| Supabase 持久化 | `strategy_config` 表 |
-
-**存储内容（`StrategyConfigRecord`）**：
-
-```typescript
-{
-  id: string;
-  persona: StrategyPersona;         // AI 人格配置
-  stage_goals: StrategyStageGoals;  // 阶段目标
-  red_lines: StrategyRedLines;      // 红线规则
-  created_at: string;
-  updated_at: string;
-}
-```
-
----
-
 ## Bull Queue
 
 Bull Queue 使用独立的 Redis TCP 连接（与应用层 REST API 分开），专门处理消息聚合任务。
@@ -533,17 +323,14 @@ bull:message-merge:{jobId}  — 任务数据
 | 全局计数器 | **永久** | 手动重置 / `resetCounters()` |
 | 当前/峰值并发 | **永久** | 手动重置 |
 | 今日用户缓存 | 30s | Redis 自动过期 |
-| 活跃用户/会话 | 24h | Redis 自动过期 |
-| 配置缓存（通用）| 5 min | Redis 自动过期 |
-| Agent 回复配置 | 1 min | Redis 自动过期 |
 
 ### 消息处理中的 Redis 时序
 
 ```
 消息到达
-  ① EXISTS wecom:message:dedup:{msgId}
-     → 命中：丢弃（重复消息）
-     → 未命中：继续
+  ① SET wecom:message:dedup:{msgId} {timestamp} NX EX 300
+     → 返回 OK：首次处理，继续
+     → 返回 null：重复消息，丢弃
   ② RPUSH wecom:message:pending:{chatId}
      EXPIRE wecom:message:pending:{chatId} 300
   ③ Bull 创建延迟 Job（delay = initialMergeWindowMs，默认 2s）
@@ -553,11 +340,8 @@ bull:message-merge:{jobId}  — 任务数据
   ④ LRANGE wecom:message:pending:{chatId} 0 -1  → 取出所有消息
      DEL wecom:message:pending:{chatId}           → 清空队列
   ⑤ 调用 Agent API
-  ⑥ SETEX wecom:message:dedup:{msgId} 300 {timestamp}  → 标记已处理
-  ⑦ HINCRBY monitoring:counters totalMessages 1
+  ⑥ HINCRBY monitoring:counters totalMessages 1
      HINCRBY monitoring:counters totalSuccess/totalFailure 1
-  ⑧ ZADD monitoring:active_users:{today} {timestamp} {userId}
-     ZADD monitoring:active_chats:{today} {timestamp} {chatId}
 ```
 
 ---
@@ -606,14 +390,6 @@ curl -X GET "$UPSTASH_REDIS_REST_URL/exists/wecom:message:dedup:{msgId}" \
 ```bash
 # 查看队列长度
 curl -X GET "$UPSTASH_REDIS_REST_URL/llen/wecom:message:pending:{chatId}" \
-  -H "Authorization: Bearer $UPSTASH_REDIS_REST_TOKEN"
-```
-
-### 配置缓存未更新
-
-```bash
-# 手动删除配置缓存，触发重新从 DB 加载
-curl -X GET "$UPSTASH_REDIS_REST_URL/del/config:ai_reply_enabled" \
   -H "Authorization: Bearer $UPSTASH_REDIS_REST_TOKEN"
 ```
 

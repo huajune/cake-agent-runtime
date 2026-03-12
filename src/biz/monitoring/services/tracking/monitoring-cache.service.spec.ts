@@ -15,11 +15,7 @@ describe('MonitoringCacheService', () => {
     hincrby: jest.fn(),
     hgetall: jest.fn(),
     hmset: jest.fn(),
-    zadd: jest.fn(),
-    zrange: jest.fn(),
-    zcard: jest.fn(),
     incrby: jest.fn(),
-    keys: jest.fn(),
     pipeline: jest.fn(() => mockPipeline),
   };
 
@@ -27,9 +23,7 @@ describe('MonitoringCacheService', () => {
     getClient: jest.fn(() => mockRedisClient),
     get: jest.fn(),
     set: jest.fn(),
-    setex: jest.fn(),
     del: jest.fn(),
-    expire: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -258,190 +252,6 @@ describe('MonitoringCacheService', () => {
   });
 
   // ========================================
-  // addActiveUser
-  // ========================================
-
-  describe('addActiveUser', () => {
-    it('should add user to sorted set with correct score and expire', async () => {
-      mockRedisClient.zadd.mockResolvedValue(1);
-      mockRedisService.expire.mockResolvedValue(1);
-      const timestamp = Date.now();
-
-      await service.addActiveUser('user-1', timestamp, '2026-03-11');
-
-      expect(mockRedisClient.zadd).toHaveBeenCalledWith('monitoring:active_users:2026-03-11', {
-        score: timestamp,
-        member: 'user-1',
-      });
-      expect(redisService.expire).toHaveBeenCalledWith('monitoring:active_users:2026-03-11', 86400);
-    });
-
-    it('should use today date key when date is not provided', async () => {
-      mockRedisClient.zadd.mockResolvedValue(1);
-      mockRedisService.expire.mockResolvedValue(1);
-      const timestamp = Date.now();
-      const today = new Date().toISOString().split('T')[0];
-
-      await service.addActiveUser('user-1', timestamp);
-
-      expect(mockRedisClient.zadd).toHaveBeenCalledWith(`monitoring:active_users:${today}`, {
-        score: timestamp,
-        member: 'user-1',
-      });
-    });
-
-    it('should handle errors gracefully without throwing', async () => {
-      mockRedisClient.zadd.mockRejectedValue(new Error('Redis error'));
-
-      await expect(service.addActiveUser('user-1', Date.now())).resolves.not.toThrow();
-    });
-  });
-
-  // ========================================
-  // getActiveUsers
-  // ========================================
-
-  describe('getActiveUsers', () => {
-    it('should return list of active users for given date', async () => {
-      mockRedisClient.zrange.mockResolvedValue(['user-1', 'user-2']);
-
-      const result = await service.getActiveUsers('2026-03-11');
-
-      expect(result).toEqual(['user-1', 'user-2']);
-      expect(mockRedisClient.zrange).toHaveBeenCalledWith(
-        'monitoring:active_users:2026-03-11',
-        0,
-        -1,
-      );
-    });
-
-    it('should return empty array when Redis returns null', async () => {
-      mockRedisClient.zrange.mockResolvedValue(null);
-
-      const result = await service.getActiveUsers('2026-03-11');
-
-      expect(result).toEqual([]);
-    });
-
-    it('should return empty array on error', async () => {
-      mockRedisClient.zrange.mockRejectedValue(new Error('Redis error'));
-
-      const result = await service.getActiveUsers('2026-03-11');
-
-      expect(result).toEqual([]);
-    });
-  });
-
-  // ========================================
-  // getActiveUserCount
-  // ========================================
-
-  describe('getActiveUserCount', () => {
-    it('should return count of active users for given date', async () => {
-      mockRedisClient.zcard.mockResolvedValue(5);
-
-      const result = await service.getActiveUserCount('2026-03-11');
-
-      expect(result).toBe(5);
-      expect(mockRedisClient.zcard).toHaveBeenCalledWith('monitoring:active_users:2026-03-11');
-    });
-
-    it('should return 0 when Redis returns null', async () => {
-      mockRedisClient.zcard.mockResolvedValue(null);
-
-      const result = await service.getActiveUserCount('2026-03-11');
-
-      expect(result).toBe(0);
-    });
-
-    it('should return 0 on error', async () => {
-      mockRedisClient.zcard.mockRejectedValue(new Error('Redis error'));
-
-      const result = await service.getActiveUserCount('2026-03-11');
-
-      expect(result).toBe(0);
-    });
-  });
-
-  // ========================================
-  // addActiveChat
-  // ========================================
-
-  describe('addActiveChat', () => {
-    it('should add chat to sorted set with correct score and expire', async () => {
-      mockRedisClient.zadd.mockResolvedValue(1);
-      mockRedisService.expire.mockResolvedValue(1);
-      const timestamp = Date.now();
-
-      await service.addActiveChat('chat-1', timestamp, '2026-03-11');
-
-      expect(mockRedisClient.zadd).toHaveBeenCalledWith('monitoring:active_chats:2026-03-11', {
-        score: timestamp,
-        member: 'chat-1',
-      });
-      expect(redisService.expire).toHaveBeenCalledWith('monitoring:active_chats:2026-03-11', 86400);
-    });
-
-    it('should handle errors gracefully without throwing', async () => {
-      mockRedisClient.zadd.mockRejectedValue(new Error('Redis error'));
-
-      await expect(service.addActiveChat('chat-1', Date.now())).resolves.not.toThrow();
-    });
-  });
-
-  // ========================================
-  // getActiveChats
-  // ========================================
-
-  describe('getActiveChats', () => {
-    it('should return list of active chats for given date', async () => {
-      mockRedisClient.zrange.mockResolvedValue(['chat-1', 'chat-2', 'chat-3']);
-
-      const result = await service.getActiveChats('2026-03-11');
-
-      expect(result).toEqual(['chat-1', 'chat-2', 'chat-3']);
-    });
-
-    it('should return empty array when Redis returns null', async () => {
-      mockRedisClient.zrange.mockResolvedValue(null);
-
-      const result = await service.getActiveChats('2026-03-11');
-
-      expect(result).toEqual([]);
-    });
-
-    it('should return empty array on error', async () => {
-      mockRedisClient.zrange.mockRejectedValue(new Error('Redis error'));
-
-      const result = await service.getActiveChats('2026-03-11');
-
-      expect(result).toEqual([]);
-    });
-  });
-
-  // ========================================
-  // getActiveChatCount
-  // ========================================
-
-  describe('getActiveChatCount', () => {
-    it('should return count of active chats', async () => {
-      mockRedisClient.zcard.mockResolvedValue(3);
-
-      const result = await service.getActiveChatCount('2026-03-11');
-
-      expect(result).toBe(3);
-    });
-
-    it('should return 0 on error', async () => {
-      mockRedisClient.zcard.mockRejectedValue(new Error('Redis error'));
-
-      const result = await service.getActiveChatCount('2026-03-11');
-
-      expect(result).toBe(0);
-    });
-  });
-
-  // ========================================
   // setCurrentProcessing / getCurrentProcessing
   // ========================================
 
@@ -596,8 +406,7 @@ describe('MonitoringCacheService', () => {
   // ========================================
 
   describe('clearAll', () => {
-    it('should delete all monitoring keys including pattern-matched keys', async () => {
-      mockRedisClient.keys.mockResolvedValue(['monitoring:active_users:2026-03-11']);
+    it('should delete the 3 monitoring keys', async () => {
       mockRedisService.del.mockResolvedValue(1);
 
       await service.clearAll();
@@ -605,21 +414,11 @@ describe('MonitoringCacheService', () => {
       expect(redisService.del).toHaveBeenCalledWith('monitoring:counters');
       expect(redisService.del).toHaveBeenCalledWith('monitoring:current_processing');
       expect(redisService.del).toHaveBeenCalledWith('monitoring:peak_processing');
-      expect(redisService.del).toHaveBeenCalledWith('monitoring:active_users:2026-03-11');
-    });
-
-    it('should skip pattern keys that have no matches', async () => {
-      mockRedisClient.keys.mockResolvedValue([]);
-      mockRedisService.del.mockResolvedValue(1);
-
-      await service.clearAll();
-
-      // Only exact key deletions should be called (not pattern ones)
       expect(redisService.del).toHaveBeenCalledTimes(3);
     });
 
     it('should handle errors gracefully without throwing', async () => {
-      mockRedisClient.keys.mockRejectedValue(new Error('Redis error'));
+      mockRedisService.del.mockRejectedValue(new Error('Redis error'));
 
       await expect(service.clearAll()).resolves.not.toThrow();
     });

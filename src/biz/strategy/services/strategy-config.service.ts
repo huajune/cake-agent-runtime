@@ -1,18 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { RedisService } from '@core/redis';
 import { StrategyConfigRepository } from '../repositories/strategy-config.repository';
 import { StrategyConfigRecord } from '../entities/strategy-config.entity';
 import { StrategyPersona, StrategyStageGoals, StrategyRedLines } from '../types/strategy.types';
 import { buildDefaultStrategyRecord } from '@agent/strategy/strategy-config.types';
-import { STRATEGY_REDIS_KEYS } from '../utils/strategy-redis-keys';
 
 /**
  * 策略配置 Service
  *
- * 负责 strategy_config 表的业务逻辑与两级缓存管理：
+ * 负责 strategy_config 表的业务逻辑与内存缓存管理：
  * - L1：内存（60s TTL）
- * - L2：Redis（300s TTL）
- * - L3：Supabase DB（持久化，通过 Repository 访问）
+ * - L2：Supabase DB（持久化，通过 Repository 访问）
  *
  * 首次查询时若库中无记录，自动插入默认种子数据。
  */
@@ -21,22 +18,18 @@ export class StrategyConfigService {
   private readonly logger = new Logger(StrategyConfigService.name);
 
   private readonly MEMORY_CACHE_TTL_MS = 60_000; // 60 秒
-  private readonly REDIS_CACHE_TTL_SECONDS = 300; // 300 秒
 
   // L1: 内存缓存
   private cachedConfig: StrategyConfigRecord | null = null;
   private cacheExpiry = 0;
 
-  constructor(
-    private readonly strategyConfigRepository: StrategyConfigRepository,
-    private readonly redisService: RedisService,
-  ) {}
+  constructor(private readonly strategyConfigRepository: StrategyConfigRepository) {}
 
   // ==================== 读取 ====================
 
   /**
    * 获取当前激活的策略配置
-   * 缓存优先级：内存 → Redis → DB → 自动 seed → 降级默认值
+   * 缓存优先级：内存 → DB → 自动 seed → 降级默认值
    */
   async getActiveConfig(): Promise<StrategyConfigRecord> {
     // L1: 内存缓存
@@ -44,18 +37,6 @@ export class StrategyConfigService {
       return this.cachedConfig;
     }
 
-    // L2: Redis 缓存
-    const redisResult = await this.redisService.get<StrategyConfigRecord>(
-      STRATEGY_REDIS_KEYS.ACTIVE_CONFIG,
-    );
-    if (redisResult) {
-      this.cachedConfig = redisResult;
-      this.cacheExpiry = Date.now() + this.MEMORY_CACHE_TTL_MS;
-      this.logger.debug('已从 Redis 加载策略配置');
-      return redisResult;
-    }
-
-    // L3: DB 加载
     return this.loadFromDb();
   }
 
@@ -72,7 +53,7 @@ export class StrategyConfigService {
     const updated = await this.strategyConfigRepository.updateConfigField(config.id, { persona });
 
     if (updated) {
-      await this.writeCache(updated);
+      this.writeCache(updated);
       this.logger.log('人格配置已更新');
       return updated;
     }
@@ -94,7 +75,7 @@ export class StrategyConfigService {
     });
 
     if (updated) {
-      await this.writeCache(updated);
+      this.writeCache(updated);
       this.logger.log('阶段目标配置已更新');
       return updated;
     }
@@ -116,7 +97,7 @@ export class StrategyConfigService {
     });
 
     if (updated) {
-      await this.writeCache(updated);
+      this.writeCache(updated);
       this.logger.log('红线规则已更新');
       return updated;
     }
@@ -128,18 +109,11 @@ export class StrategyConfigService {
   // ==================== 缓存管理 ====================
 
   /**
-   * 清除内存缓存与 Redis 缓存，下次访问时重新加载
+   * 清除内存缓存，下次访问时重新从 DB 加载
    */
   async refreshCache(): Promise<void> {
     this.cachedConfig = null;
     this.cacheExpiry = 0;
-
-    try {
-      await this.redisService.del(STRATEGY_REDIS_KEYS.ACTIVE_CONFIG);
-    } catch (error) {
-      this.logger.warn('清除 Redis 策略配置缓存失败', error);
-    }
-
     this.logger.log('策略配置缓存已清除');
   }
 
@@ -153,7 +127,7 @@ export class StrategyConfigService {
       const record = await this.strategyConfigRepository.findActiveConfig();
 
       if (record) {
-        await this.writeCache(record);
+        this.writeCache(record);
         this.logger.log('策略配置已从数据库加载');
         return record;
       }
@@ -177,7 +151,7 @@ export class StrategyConfigService {
     const inserted = await this.strategyConfigRepository.insertConfig(defaults);
 
     if (inserted) {
-      await this.writeCache(inserted);
+      this.writeCache(inserted);
       this.logger.log('默认策略配置已插入数据库');
       return inserted;
     }
@@ -185,7 +159,7 @@ export class StrategyConfigService {
     // 插入失败（并发冲突），重新查询
     const existing = await this.strategyConfigRepository.findActiveConfig();
     if (existing) {
-      await this.writeCache(existing);
+      this.writeCache(existing);
       return existing;
     }
 
@@ -193,21 +167,11 @@ export class StrategyConfigService {
   }
 
   /**
-   * 同时写入 L1 内存缓存和 L2 Redis 缓存
+   * 写入 L1 内存缓存
    */
-  private async writeCache(config: StrategyConfigRecord): Promise<void> {
+  private writeCache(config: StrategyConfigRecord): void {
     this.cachedConfig = config;
     this.cacheExpiry = Date.now() + this.MEMORY_CACHE_TTL_MS;
-
-    try {
-      await this.redisService.setex(
-        STRATEGY_REDIS_KEYS.ACTIVE_CONFIG,
-        this.REDIS_CACHE_TTL_SECONDS,
-        config,
-      );
-    } catch (error) {
-      this.logger.warn('写入 Redis 策略配置缓存失败', error);
-    }
   }
 
   /**

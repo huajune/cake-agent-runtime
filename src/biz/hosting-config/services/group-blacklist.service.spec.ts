@@ -1,16 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { GroupBlacklistService } from './group-blacklist.service';
-import { RedisService } from '@core/redis';
 import { GroupBlacklistRepository } from '../repositories/group-blacklist.repository';
 import { GroupBlacklistItem } from '../entities/group-blacklist.entity';
 
 describe('GroupBlacklistService', () => {
   let service: GroupBlacklistService;
-
-  const mockRedisService = {
-    get: jest.fn(),
-    setex: jest.fn(),
-  };
 
   const mockGroupBlacklistRepository = {
     loadBlacklistFromDb: jest.fn(),
@@ -26,7 +20,6 @@ describe('GroupBlacklistService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         GroupBlacklistService,
-        { provide: RedisService, useValue: mockRedisService },
         { provide: GroupBlacklistRepository, useValue: mockGroupBlacklistRepository },
       ],
     }).compile();
@@ -50,29 +43,11 @@ describe('GroupBlacklistService', () => {
     it('should return false for empty groupId', async () => {
       const result = await service.isGroupBlacklisted('');
       expect(result).toBe(false);
-      expect(mockRedisService.get).not.toHaveBeenCalled();
+      expect(mockGroupBlacklistRepository.loadBlacklistFromDb).not.toHaveBeenCalled();
     });
 
-    it('should return true when group is in blacklist (from Redis)', async () => {
-      mockRedisService.get.mockResolvedValue(sampleBlacklistItems);
-
-      const result = await service.isGroupBlacklisted('group1');
-
-      expect(result).toBe(true);
-    });
-
-    it('should return false when group is not in blacklist (from Redis)', async () => {
-      mockRedisService.get.mockResolvedValue(sampleBlacklistItems);
-
-      const result = await service.isGroupBlacklisted('unknown-group');
-
-      expect(result).toBe(false);
-    });
-
-    it('should load from DB when Redis returns null', async () => {
-      mockRedisService.get.mockResolvedValue(null);
+    it('should return true when group is in blacklist (loaded from DB)', async () => {
       mockGroupBlacklistRepository.loadBlacklistFromDb.mockResolvedValue(sampleBlacklistItems);
-      mockRedisService.setex.mockResolvedValue(undefined);
 
       const result = await service.isGroupBlacklisted('group1');
 
@@ -80,9 +55,17 @@ describe('GroupBlacklistService', () => {
       expect(mockGroupBlacklistRepository.loadBlacklistFromDb).toHaveBeenCalledTimes(1);
     });
 
+    it('should return false when group is not in blacklist', async () => {
+      mockGroupBlacklistRepository.loadBlacklistFromDb.mockResolvedValue(sampleBlacklistItems);
+
+      const result = await service.isGroupBlacklisted('unknown-group');
+
+      expect(result).toBe(false);
+    });
+
     it('should use memory cache when cache is not expired', async () => {
       // Pre-warm the cache
-      mockRedisService.get.mockResolvedValue(sampleBlacklistItems);
+      mockGroupBlacklistRepository.loadBlacklistFromDb.mockResolvedValue(sampleBlacklistItems);
       await service.isGroupBlacklisted('group1');
 
       // Memory cache should be set now - reset mocks and call again
@@ -90,12 +73,11 @@ describe('GroupBlacklistService', () => {
       const result = await service.isGroupBlacklisted('group1');
 
       expect(result).toBe(true);
-      // Redis should not be called again since memory cache is valid
-      expect(mockRedisService.get).not.toHaveBeenCalled();
+      // DB should not be called again since memory cache is valid
+      expect(mockGroupBlacklistRepository.loadBlacklistFromDb).not.toHaveBeenCalled();
     });
 
     it('should return false and set backoff expiry when DB load fails', async () => {
-      mockRedisService.get.mockResolvedValue(null);
       mockGroupBlacklistRepository.loadBlacklistFromDb.mockRejectedValue(
         new Error('DB connection error'),
       );
@@ -113,8 +95,8 @@ describe('GroupBlacklistService', () => {
   // ==================== getGroupBlacklist ====================
 
   describe('getGroupBlacklist', () => {
-    it('should return all blacklist items from Redis', async () => {
-      mockRedisService.get.mockResolvedValue(sampleBlacklistItems);
+    it('should return all blacklist items loaded from DB', async () => {
+      mockGroupBlacklistRepository.loadBlacklistFromDb.mockResolvedValue(sampleBlacklistItems);
 
       const result = await service.getGroupBlacklist();
 
@@ -124,28 +106,22 @@ describe('GroupBlacklistService', () => {
     });
 
     it('should return empty array when blacklist is empty', async () => {
-      mockRedisService.get.mockResolvedValue([]);
+      mockGroupBlacklistRepository.loadBlacklistFromDb.mockResolvedValue([]);
 
       const result = await service.getGroupBlacklist();
 
       expect(result).toEqual([]);
     });
 
-    it('should load from DB when Redis returns null array', async () => {
-      mockRedisService.get.mockResolvedValue(null);
-      mockGroupBlacklistRepository.loadBlacklistFromDb.mockResolvedValue(sampleBlacklistItems);
-      mockRedisService.setex.mockResolvedValue(undefined);
+    it('should use memory cache when cache is valid', async () => {
+      // Pre-populate cache
+      (service as any).memoryCache.set('group1', sampleBlacklistItems[0]);
+      (service as any).memoryCacheExpiry = Date.now() + 300_000;
 
       const result = await service.getGroupBlacklist();
 
-      expect(result).toHaveLength(2);
-      expect(mockGroupBlacklistRepository.loadBlacklistFromDb).toHaveBeenCalledTimes(1);
-      // Should backfill Redis
-      expect(mockRedisService.setex).toHaveBeenCalledWith(
-        'config:group_blacklist',
-        300,
-        expect.any(Array),
-      );
+      expect(result).toHaveLength(1);
+      expect(mockGroupBlacklistRepository.loadBlacklistFromDb).not.toHaveBeenCalled();
     });
   });
 
@@ -153,7 +129,6 @@ describe('GroupBlacklistService', () => {
 
   describe('addGroupToBlacklist', () => {
     beforeEach(() => {
-      mockRedisService.setex.mockResolvedValue(undefined);
       mockGroupBlacklistRepository.saveBlacklistToDb.mockResolvedValue(undefined);
     });
 
@@ -175,16 +150,9 @@ describe('GroupBlacklistService', () => {
       expect(item.reason).toBeUndefined();
     });
 
-    it('should persist to Redis and DB', async () => {
+    it('should persist to DB', async () => {
       await service.addGroupToBlacklist('newGroup', 'reason');
 
-      expect(mockRedisService.setex).toHaveBeenCalledWith(
-        'config:group_blacklist',
-        300,
-        expect.arrayContaining([
-          expect.objectContaining({ group_id: 'newGroup', reason: 'reason' }),
-        ]),
-      );
       expect(mockGroupBlacklistRepository.saveBlacklistToDb).toHaveBeenCalledWith(
         expect.arrayContaining([
           expect.objectContaining({ group_id: 'newGroup', reason: 'reason' }),
@@ -198,7 +166,7 @@ describe('GroupBlacklistService', () => {
       // Should not throw
       await expect(service.addGroupToBlacklist('newGroup')).resolves.not.toThrow();
 
-      // Item should still be in memory and Redis
+      // Item should still be in memory
       expect((service as any).memoryCache.has('newGroup')).toBe(true);
     });
   });
@@ -211,7 +179,6 @@ describe('GroupBlacklistService', () => {
       (service as any).memoryCache.set('group1', sampleBlacklistItems[0]);
       (service as any).memoryCache.set('group2', sampleBlacklistItems[1]);
       (service as any).memoryCacheExpiry = Date.now() + 300_000;
-      mockRedisService.setex.mockResolvedValue(undefined);
       mockGroupBlacklistRepository.saveBlacklistToDb.mockResolvedValue(undefined);
     });
 
@@ -228,15 +195,12 @@ describe('GroupBlacklistService', () => {
       expect(result).toBe(false);
     });
 
-    it('should persist changes to Redis and DB after removal', async () => {
+    it('should persist changes to DB after removal', async () => {
       await service.removeGroupFromBlacklist('group1');
 
-      expect(mockRedisService.setex).toHaveBeenCalledWith(
-        'config:group_blacklist',
-        300,
+      expect(mockGroupBlacklistRepository.saveBlacklistToDb).toHaveBeenCalledWith(
         expect.not.arrayContaining([expect.objectContaining({ group_id: 'group1' })]),
       );
-      expect(mockGroupBlacklistRepository.saveBlacklistToDb).toHaveBeenCalled();
     });
 
     it('should handle DB save failure gracefully when removing', async () => {
@@ -257,13 +221,11 @@ describe('GroupBlacklistService', () => {
       (service as any).memoryCacheExpiry = Date.now() + 300_000;
       (service as any).memoryCache.set('group1', sampleBlacklistItems[0]);
 
-      mockRedisService.get.mockResolvedValue(null);
       mockGroupBlacklistRepository.loadBlacklistFromDb.mockResolvedValue([]);
-      mockRedisService.setex.mockResolvedValue(undefined);
 
       await service.refreshCache();
 
-      // After refresh, memoryCacheExpiry should be 0 then reloaded
+      // After refresh, DB should have been called
       expect(mockGroupBlacklistRepository.loadBlacklistFromDb).toHaveBeenCalled();
     });
   });
@@ -271,41 +233,30 @@ describe('GroupBlacklistService', () => {
   // ==================== loadGroupBlacklist ====================
 
   describe('loadGroupBlacklist', () => {
-    it('should load from Redis (L2) if available', async () => {
-      mockRedisService.get.mockResolvedValue(sampleBlacklistItems);
-
-      await service.loadGroupBlacklist();
-
-      expect(mockRedisService.get).toHaveBeenCalledWith('config:group_blacklist');
-      expect(mockGroupBlacklistRepository.loadBlacklistFromDb).not.toHaveBeenCalled();
-      expect((service as any).memoryCache.size).toBe(2);
-    });
-
-    it('should fall back to DB (L3) when Redis returns null', async () => {
-      mockRedisService.get.mockResolvedValue(null);
+    it('should load from DB and populate memory cache', async () => {
       mockGroupBlacklistRepository.loadBlacklistFromDb.mockResolvedValue(sampleBlacklistItems);
-      mockRedisService.setex.mockResolvedValue(undefined);
 
       await service.loadGroupBlacklist();
 
       expect(mockGroupBlacklistRepository.loadBlacklistFromDb).toHaveBeenCalledTimes(1);
       expect((service as any).memoryCache.size).toBe(2);
-      // Should backfill Redis
-      expect(mockRedisService.setex).toHaveBeenCalledWith(
-        'config:group_blacklist',
-        300,
-        sampleBlacklistItems,
-      );
     });
 
-    it('should handle empty Redis response (not an array)', async () => {
-      mockRedisService.get.mockResolvedValue('not-an-array');
+    it('should handle empty DB response', async () => {
       mockGroupBlacklistRepository.loadBlacklistFromDb.mockResolvedValue([]);
-      mockRedisService.setex.mockResolvedValue(undefined);
 
       await service.loadGroupBlacklist();
 
-      expect(mockGroupBlacklistRepository.loadBlacklistFromDb).toHaveBeenCalled();
+      expect((service as any).memoryCache.size).toBe(0);
+    });
+
+    it('should set backoff expiry on DB error', async () => {
+      mockGroupBlacklistRepository.loadBlacklistFromDb.mockRejectedValue(new Error('DB error'));
+
+      await service.loadGroupBlacklist();
+
+      const expiry = (service as any).memoryCacheExpiry;
+      expect(expiry).toBeGreaterThan(Date.now());
     });
   });
 });

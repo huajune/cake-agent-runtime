@@ -31,8 +31,6 @@ describe('MessageTrackingService', () => {
   const mockCacheService = {
     incrementCounter: jest.fn().mockResolvedValue(undefined),
     incrementCounters: jest.fn().mockResolvedValue(undefined),
-    addActiveUser: jest.fn().mockResolvedValue(undefined),
-    addActiveChat: jest.fn().mockResolvedValue(undefined),
     incrementCurrentProcessing: jest.fn().mockResolvedValue(1),
     updatePeakProcessing: jest.fn().mockResolvedValue(undefined),
   };
@@ -149,24 +147,6 @@ describe('MessageTrackingService', () => {
       service.recordMessageReceived('msg-1', 'chat-1');
 
       expect(cacheService.incrementCounter).toHaveBeenCalledWith('totalMessages', 1);
-    });
-
-    it('should add active user when userId is provided', () => {
-      service.recordMessageReceived('msg-1', 'chat-1', 'user-1');
-
-      expect(cacheService.addActiveUser).toHaveBeenCalledWith('user-1', expect.any(Number));
-    });
-
-    it('should not add active user when userId is not provided', () => {
-      service.recordMessageReceived('msg-1', 'chat-1');
-
-      expect(cacheService.addActiveUser).not.toHaveBeenCalled();
-    });
-
-    it('should add active chat when chatId is provided', () => {
-      service.recordMessageReceived('msg-1', 'chat-1');
-
-      expect(cacheService.addActiveChat).toHaveBeenCalledWith('chat-1', expect.any(Number));
     });
 
     it('should increment current processing and update peak', async () => {

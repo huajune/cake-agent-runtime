@@ -1,19 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { RedisService } from '@core/redis';
 import { SystemConfigRepository } from '../repositories/system-config.repository';
 import {
   SystemConfig,
   AgentReplyConfig,
   DEFAULT_AGENT_REPLY_CONFIG,
 } from '../types/hosting-config.types';
-import { HOSTING_CONFIG_REDIS_KEYS } from '../utils/hosting-config-redis-keys';
 
 /**
  * 系统配置服务
  *
  * 封装所有系统配置的业务逻辑，包含：
- * - 三级缓存策略（内存 → Redis → 数据库）
+ * - 两级缓存策略（内存 → 数据库）
  * - 配置变更观察者模式（回调通知）
  * - 缺失记录时的默认值自动初始化
  * - 通过 ConfigService 从环境变量读取默认值
@@ -24,8 +22,7 @@ import { HOSTING_CONFIG_REDIS_KEYS } from '../utils/hosting-config-redis-keys';
 export class SystemConfigService {
   private readonly logger = new Logger(SystemConfigService.name);
 
-  // 缓存 TTL（秒）
-  private readonly CONFIG_CACHE_TTL = 300; // 5 分钟
+  // Agent 回复策略配置内存缓存 TTL（秒）
   private readonly AGENT_CONFIG_CACHE_TTL = 60; // 1 分钟
 
   // 内存缓存
@@ -39,7 +36,6 @@ export class SystemConfigService {
 
   constructor(
     private readonly systemConfigRepository: SystemConfigRepository,
-    private readonly redisService: RedisService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -48,18 +44,11 @@ export class SystemConfigService {
   /**
    * 获取 AI 回复开关状态
    *
-   * 优先级：内存缓存 → Redis 缓存 → 数据库 → 环境变量默认值
+   * 优先级：内存缓存 → 数据库 → 环境变量默认值
    */
   async getAiReplyEnabled(): Promise<boolean> {
     if (this.aiReplyEnabled !== null) {
       return this.aiReplyEnabled;
-    }
-
-    const cacheKey = HOSTING_CONFIG_REDIS_KEYS.AI_REPLY_ENABLED;
-    const cached = await this.redisService.get<boolean>(cacheKey);
-    if (cached !== null) {
-      this.aiReplyEnabled = cached;
-      return cached;
     }
 
     return this.loadAiReplyStatus();
@@ -70,9 +59,6 @@ export class SystemConfigService {
    */
   async setAiReplyEnabled(enabled: boolean): Promise<boolean> {
     this.aiReplyEnabled = enabled;
-
-    const cacheKey = HOSTING_CONFIG_REDIS_KEYS.AI_REPLY_ENABLED;
-    await this.redisService.setex(cacheKey, this.CONFIG_CACHE_TTL, enabled);
 
     try {
       await this.systemConfigRepository.setConfigValue('ai_reply_enabled', enabled);
@@ -89,18 +75,11 @@ export class SystemConfigService {
   /**
    * 获取消息聚合开关状态
    *
-   * 优先级：内存缓存 → Redis 缓存 → 数据库 → 环境变量默认值
+   * 优先级：内存缓存 → 数据库 → 环境变量默认值
    */
   async getMessageMergeEnabled(): Promise<boolean> {
     if (this.messageMergeEnabled !== null) {
       return this.messageMergeEnabled;
-    }
-
-    const cacheKey = HOSTING_CONFIG_REDIS_KEYS.MESSAGE_MERGE_ENABLED;
-    const cached = await this.redisService.get<boolean>(cacheKey);
-    if (cached !== null) {
-      this.messageMergeEnabled = cached;
-      return cached;
     }
 
     return this.loadMessageMergeStatus();
@@ -111,9 +90,6 @@ export class SystemConfigService {
    */
   async setMessageMergeEnabled(enabled: boolean): Promise<boolean> {
     this.messageMergeEnabled = enabled;
-
-    const cacheKey = HOSTING_CONFIG_REDIS_KEYS.MESSAGE_MERGE_ENABLED;
-    await this.redisService.setex(cacheKey, this.CONFIG_CACHE_TTL, enabled);
 
     try {
       await this.systemConfigRepository.setConfigValue('message_merge_enabled', enabled);
@@ -130,7 +106,7 @@ export class SystemConfigService {
   /**
    * 获取 Agent 回复策略配置
    *
-   * 内存缓存有效期内直接返回，否则重新加载
+   * 内存缓存有效期内直接返回，否则重新从 DB 加载
    */
   async getAgentReplyConfig(): Promise<AgentReplyConfig> {
     if (this.agentReplyConfig && Date.now() < this.agentReplyConfigExpiry) {
@@ -151,9 +127,6 @@ export class SystemConfigService {
 
     this.agentReplyConfig = newConfig;
     this.agentReplyConfigExpiry = Date.now() + this.AGENT_CONFIG_CACHE_TTL * 1000;
-
-    const cacheKey = HOSTING_CONFIG_REDIS_KEYS.AGENT_REPLY_CONFIG;
-    await this.redisService.setex(cacheKey, this.AGENT_CONFIG_CACHE_TTL, newConfig);
 
     try {
       await this.systemConfigRepository.setConfigValue(
@@ -183,24 +156,11 @@ export class SystemConfigService {
   /**
    * 获取系统配置（Worker 并发数等）
    *
-   * 优先级：Redis 缓存 → 数据库
+   * 直接从数据库读取（低频调用，无需缓存）
    */
   async getSystemConfig(): Promise<SystemConfig | null> {
-    const cacheKey = HOSTING_CONFIG_REDIS_KEYS.SYSTEM_CONFIG;
-    const cached = await this.redisService.get<SystemConfig>(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
     try {
-      const result =
-        await this.systemConfigRepository.getConfigValue<SystemConfig>('system_config');
-      if (result) {
-        await this.redisService.setex(cacheKey, this.CONFIG_CACHE_TTL, result);
-        return result;
-      }
-
-      return null;
+      return await this.systemConfigRepository.getConfigValue<SystemConfig>('system_config');
     } catch (error) {
       this.logger.error('获取系统配置失败', error);
       return null;
@@ -213,9 +173,6 @@ export class SystemConfigService {
   async updateSystemConfig(config: Partial<SystemConfig>): Promise<SystemConfig> {
     const existingConfig = (await this.getSystemConfig()) ?? {};
     const newConfig: SystemConfig = { ...existingConfig, ...config };
-
-    const cacheKey = HOSTING_CONFIG_REDIS_KEYS.SYSTEM_CONFIG;
-    await this.redisService.setex(cacheKey, this.CONFIG_CACHE_TTL, newConfig);
 
     try {
       await this.systemConfigRepository.setConfigValue(
@@ -236,7 +193,7 @@ export class SystemConfigService {
   /**
    * 刷新所有配置缓存
    *
-   * 清除内存缓存后重新从 Redis/数据库加载
+   * 清除内存缓存后重新从数据库加载
    */
   async refreshCache(): Promise<void> {
     this.aiReplyEnabled = null;
@@ -272,9 +229,6 @@ export class SystemConfigService {
         );
       }
 
-      const cacheKey = HOSTING_CONFIG_REDIS_KEYS.AI_REPLY_ENABLED;
-      await this.redisService.setex(cacheKey, this.CONFIG_CACHE_TTL, this.aiReplyEnabled);
-
       this.logger.log(`AI 回复开关状态已加载: ${this.aiReplyEnabled}`);
       return this.aiReplyEnabled;
     } catch (error) {
@@ -305,9 +259,6 @@ export class SystemConfigService {
         );
       }
 
-      const cacheKey = HOSTING_CONFIG_REDIS_KEYS.MESSAGE_MERGE_ENABLED;
-      await this.redisService.setex(cacheKey, this.CONFIG_CACHE_TTL, this.messageMergeEnabled);
-
       this.logger.log(`消息聚合开关状态已加载: ${this.messageMergeEnabled}`);
       return this.messageMergeEnabled;
     } catch (error) {
@@ -318,19 +269,9 @@ export class SystemConfigService {
   }
 
   /**
-   * 从 Redis/数据库加载 Agent 回复策略配置，缺失时写入默认值
+   * 从数据库加载 Agent 回复策略配置，缺失时写入默认值
    */
   private async loadAgentReplyConfig(): Promise<AgentReplyConfig> {
-    const cacheKey = HOSTING_CONFIG_REDIS_KEYS.AGENT_REPLY_CONFIG;
-    const cached = await this.redisService.get<AgentReplyConfig>(cacheKey);
-
-    if (cached) {
-      this.agentReplyConfig = { ...DEFAULT_AGENT_REPLY_CONFIG, ...cached };
-      this.agentReplyConfigExpiry = Date.now() + this.AGENT_CONFIG_CACHE_TTL * 1000;
-      this.logger.debug('已从 Redis 加载 Agent 回复策略配置');
-      return this.agentReplyConfig;
-    }
-
     try {
       const result =
         await this.systemConfigRepository.getConfigValue<Partial<AgentReplyConfig>>(
@@ -348,7 +289,6 @@ export class SystemConfigService {
         );
       }
 
-      await this.redisService.setex(cacheKey, this.AGENT_CONFIG_CACHE_TTL, this.agentReplyConfig);
       this.agentReplyConfigExpiry = Date.now() + this.AGENT_CONFIG_CACHE_TTL * 1000;
       this.logger.log('Agent 回复策略配置已加载');
       return this.agentReplyConfig;

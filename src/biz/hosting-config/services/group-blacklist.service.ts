@@ -1,16 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { RedisService } from '@core/redis';
 import { GroupBlacklistRepository } from '../repositories/group-blacklist.repository';
 import { GroupBlacklistItem } from '../entities/group-blacklist.entity';
-import { HOSTING_CONFIG_REDIS_KEYS } from '../utils/hosting-config-redis-keys';
 
 /**
  * 小组黑名单 Service
  *
- * 负责黑名单的业务逻辑与三级缓存管理：
+ * 负责黑名单的业务逻辑与两级缓存管理：
  * - L1：内存 Map（5分钟 TTL）
- * - L2：Redis（5分钟 TTL）
- * - L3：Supabase system_config 表（持久化）
+ * - L2：Supabase system_config 表（持久化）
  *
  * 黑名单小组不触发 AI 回复，但会继续记录聊天历史。
  */
@@ -18,23 +15,18 @@ import { HOSTING_CONFIG_REDIS_KEYS } from '../utils/hosting-config-redis-keys';
 export class GroupBlacklistService {
   private readonly logger = new Logger(GroupBlacklistService.name);
 
-  // Cache configuration
   private readonly CACHE_TTL_MS = 300_000; // 5 minutes
-  private readonly CACHE_TTL_SECONDS = 300; // 5 minutes (for Redis)
 
   // L1: Memory cache
   private readonly memoryCache = new Map<string, GroupBlacklistItem>();
   private memoryCacheExpiry = 0;
 
-  constructor(
-    private readonly groupBlacklistRepository: GroupBlacklistRepository,
-    private readonly redisService: RedisService,
-  ) {}
+  constructor(private readonly groupBlacklistRepository: GroupBlacklistRepository) {}
 
   // ==================== 黑名单查询 ====================
 
   /**
-   * 检查小组是否在黑名单中（带三级缓存）
+   * 检查小组是否在黑名单中（带内存缓存）
    */
   async isGroupBlacklisted(groupId: string): Promise<boolean> {
     if (!groupId) return false;
@@ -47,7 +39,7 @@ export class GroupBlacklistService {
   }
 
   /**
-   * 获取完整黑名单列表（带三级缓存）
+   * 获取完整黑名单列表（带内存缓存）
    */
   async getGroupBlacklist(): Promise<GroupBlacklistItem[]> {
     if (this.isCacheExpired()) {
@@ -60,7 +52,7 @@ export class GroupBlacklistService {
   // ==================== 黑名单写操作 ====================
 
   /**
-   * 添加小组到黑名单，同步更新所有缓存层
+   * 添加小组到黑名单，同步更新内存和数据库
    */
   async addGroupToBlacklist(groupId: string, reason?: string): Promise<void> {
     const item: GroupBlacklistItem = {
@@ -76,7 +68,7 @@ export class GroupBlacklistService {
   }
 
   /**
-   * 从黑名单移除小组，同步更新所有缓存层
+   * 从黑名单移除小组，同步更新内存和数据库
    *
    * @returns 如果小组原本在黑名单中则返回 true，否则返回 false
    */
@@ -95,7 +87,7 @@ export class GroupBlacklistService {
   // ==================== 缓存管理 ====================
 
   /**
-   * 强制刷新缓存（失效内存缓存并从 Redis/DB 重新加载）
+   * 强制刷新缓存（失效内存缓存并从 DB 重新加载）
    */
   async refreshCache(): Promise<void> {
     this.memoryCacheExpiry = 0;
@@ -104,42 +96,18 @@ export class GroupBlacklistService {
   }
 
   /**
-   * 从 Redis（L2）或数据库（L3）加载黑名单到内存缓存（L1）
+   * 从数据库加载黑名单到内存缓存
    */
   async loadGroupBlacklist(): Promise<void> {
-    // L2: Try Redis first
-    const cached = await this.redisService.get<GroupBlacklistItem[]>(
-      HOSTING_CONFIG_REDIS_KEYS.GROUP_BLACKLIST,
-    );
-
-    if (cached && Array.isArray(cached)) {
-      this.populateMemoryCache(cached);
-      this.logger.debug(`已从 Redis 加载 ${this.memoryCache.size} 个黑名单小组`);
-      return;
-    }
-
-    // L3: Fall back to database
     try {
       const items = await this.groupBlacklistRepository.loadBlacklistFromDb();
       this.populateMemoryCache(items);
-
-      // Backfill Redis from DB result
-      const blacklistArray = Array.from(this.memoryCache.values());
-      await this.redisService.setex(
-        HOSTING_CONFIG_REDIS_KEYS.GROUP_BLACKLIST,
-        this.CACHE_TTL_SECONDS,
-        blacklistArray,
-      );
-
       this.logger.log(`已加载 ${this.memoryCache.size} 个黑名单小组`);
     } catch (error) {
       this.logger.error('加载小组黑名单失败', error);
       // Back off for 30 seconds before the next retry attempt
       this.memoryCacheExpiry = Date.now() + 30_000;
-      return;
     }
-
-    this.memoryCacheExpiry = Date.now() + this.CACHE_TTL_MS;
   }
 
   // ==================== 私有方法 ====================
@@ -157,16 +125,10 @@ export class GroupBlacklistService {
   }
 
   /**
-   * 将当前内存缓存持久化到 Redis 和数据库
+   * 将当前内存缓存持久化到数据库
    */
   private async persistCache(): Promise<void> {
     const blacklistArray = Array.from(this.memoryCache.values());
-
-    await this.redisService.setex(
-      HOSTING_CONFIG_REDIS_KEYS.GROUP_BLACKLIST,
-      this.CACHE_TTL_SECONDS,
-      blacklistArray,
-    );
 
     try {
       await this.groupBlacklistRepository.saveBlacklistToDb(blacklistArray);

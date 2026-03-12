@@ -93,18 +93,6 @@ export class MessageTrackingService {
       this.logger.warn('更新 totalMessages 计数器失败:', err);
     });
 
-    // 记录活跃用户和会话
-    if (userId) {
-      this.cacheService.addActiveUser(userId, now).catch((err) => {
-        this.logger.warn('记录活跃用户失败:', err);
-      });
-    }
-    if (chatId) {
-      this.cacheService.addActiveChat(chatId, now).catch((err) => {
-        this.logger.warn('记录活跃会话失败:', err);
-      });
-    }
-
     // 更新并发统计
     this.cacheService
       .incrementCurrentProcessing(1)
