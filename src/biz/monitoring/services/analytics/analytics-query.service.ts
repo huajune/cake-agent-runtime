@@ -16,13 +16,11 @@ import {
   BusinessMetricTrendPoint,
 } from '../../types/analytics.types';
 import { MonitoringCacheService } from '../tracking/monitoring-cache.service';
-import { RedisService } from '@core/redis';
 import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
 import { MonitoringHourlyStatsRepository } from '../../repositories/monitoring-hourly-stats.repository';
 import { MonitoringErrorLogRepository } from '../../repositories/monitoring-error-log.repository';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { MessageTrackingService } from '../tracking/message-tracking.service';
-import { MONITORING_REDIS_KEYS } from '../../utils/monitoring-redis-keys';
 import * as os from 'os';
 
 /**
@@ -33,13 +31,14 @@ import * as os from 'os';
 export class AnalyticsQueryService {
   private readonly logger = new Logger(AnalyticsQueryService.name);
 
+  private todayUsersCache: { value: TodayUser[]; expireAt: number } | null = null;
+
   constructor(
     private readonly messageProcessingRepository: MessageProcessingRepository,
     private readonly hourlyStatsRepository: MonitoringHourlyStatsRepository,
     private readonly errorLogRepository: MonitoringErrorLogRepository,
     private readonly userHostingService: UserHostingService,
     private readonly cacheService: MonitoringCacheService,
-    private readonly redisService: RedisService,
     private readonly messageTrackingService: MessageTrackingService,
   ) {}
 
@@ -182,31 +181,18 @@ export class AnalyticsQueryService {
   // ========================================
 
   async getTodayUsers(): Promise<TodayUser[]> {
-    const CACHE_TTL_SEC = 30;
+    const CACHE_TTL_MS = 30_000;
+    const now = Date.now();
 
-    try {
-      const cached = await this.redisService.get<string>(MONITORING_REDIS_KEYS.TODAY_USERS);
-      if (cached) {
-        const parsedData = JSON.parse(cached) as TodayUser[];
-        this.logger.debug(`[Redis] 命中今日用户缓存 (${parsedData.length} 条记录)`);
-        return parsedData;
-      }
-    } catch (error) {
-      this.logger.warn('[Redis] 获取今日用户缓存失败，降级到数据库查询', error);
+    if (this.todayUsersCache && this.todayUsersCache.expireAt > now) {
+      this.logger.debug(`[Cache] 命中今日用户缓存 (${this.todayUsersCache.value.length} 条记录)`);
+      return this.todayUsersCache.value;
     }
 
     const users = await this.getTodayUsersFromDatabase();
 
     if (users.length > 0) {
-      try {
-        await this.redisService.setex(
-          MONITORING_REDIS_KEYS.TODAY_USERS,
-          CACHE_TTL_SEC,
-          JSON.stringify(users),
-        );
-      } catch (error) {
-        this.logger.warn('[Redis] 写入今日用户缓存失败', error);
-      }
+      this.todayUsersCache = { value: users, expireAt: now + CACHE_TTL_MS };
     }
 
     return users;

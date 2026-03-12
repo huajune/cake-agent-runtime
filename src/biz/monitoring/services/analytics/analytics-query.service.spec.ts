@@ -2,7 +2,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ScenarioType } from '@agent';
 import { AnalyticsQueryService } from './analytics-query.service';
 import { MonitoringCacheService } from '../tracking/monitoring-cache.service';
-import { RedisService } from '@core/redis';
 import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
 import { MonitoringHourlyStatsRepository } from '../../repositories/monitoring-hourly-stats.repository';
 import { MonitoringErrorLogRepository } from '../../repositories/monitoring-error-log.repository';
@@ -38,7 +37,6 @@ describe('AnalyticsQueryService', () => {
   let _errorLogRepository: jest.Mocked<MonitoringErrorLogRepository>;
   let _userHostingService: jest.Mocked<UserHostingService>;
   let _cacheService: jest.Mocked<MonitoringCacheService>;
-  let redisService: jest.Mocked<RedisService>;
   let _messageTrackingService: jest.Mocked<MessageTrackingService>;
 
   const mockMessageProcessingRepository = {
@@ -64,11 +62,6 @@ describe('AnalyticsQueryService', () => {
 
   const mockCacheService = {
     getCounters: jest.fn(),
-  };
-
-  const mockRedisService = {
-    get: jest.fn(),
-    setex: jest.fn(),
   };
 
   const mockMessageTrackingService = {
@@ -100,10 +93,6 @@ describe('AnalyticsQueryService', () => {
           useValue: mockCacheService,
         },
         {
-          provide: RedisService,
-          useValue: mockRedisService,
-        },
-        {
           provide: MessageTrackingService,
           useValue: mockMessageTrackingService,
         },
@@ -116,7 +105,6 @@ describe('AnalyticsQueryService', () => {
     _errorLogRepository = module.get(MonitoringErrorLogRepository);
     _userHostingService = module.get(UserHostingService);
     _cacheService = module.get(MonitoringCacheService);
-    redisService = module.get(RedisService);
     _messageTrackingService = module.get(MessageTrackingService);
 
     jest.clearAllMocks();
@@ -143,8 +131,6 @@ describe('AnalyticsQueryService', () => {
     });
     mockUserHostingService.getUserHostingStatus.mockResolvedValue({ isPaused: false });
     mockMessageTrackingService.getPendingCount.mockReturnValue(0);
-    mockRedisService.get.mockResolvedValue(null);
-    mockRedisService.setex.mockResolvedValue('OK');
   });
 
   it('should be defined', () => {
@@ -376,29 +362,7 @@ describe('AnalyticsQueryService', () => {
   // ========================================
 
   describe('getTodayUsers', () => {
-    it('should return cached users when Redis cache exists', async () => {
-      const cachedUsers = [
-        {
-          chatId: 'chat-1',
-          odId: 'user-1',
-          odName: 'User 1',
-          messageCount: 5,
-          tokenUsage: 100,
-          firstActiveAt: Date.now(),
-          lastActiveAt: Date.now(),
-          isPaused: false,
-        },
-      ];
-      mockRedisService.get.mockResolvedValue(JSON.stringify(cachedUsers));
-
-      const result = await service.getTodayUsers();
-
-      expect(result).toEqual(cachedUsers);
-      expect(messageProcessingRepository.getActiveUsers).not.toHaveBeenCalled();
-    });
-
-    it('should fetch from database and cache when Redis cache is empty', async () => {
-      mockRedisService.get.mockResolvedValue(null);
+    it('should return users from database on first call', async () => {
       mockMessageProcessingRepository.getActiveUsers.mockResolvedValue([
         {
           chatId: 'chat-1',
@@ -417,30 +381,35 @@ describe('AnalyticsQueryService', () => {
       expect(result).toHaveLength(1);
       expect(result[0].chatId).toBe('chat-1');
       expect(result[0].isPaused).toBe(false);
-      expect(redisService.setex).toHaveBeenCalledWith(
-        'monitoring:today_users',
-        30,
-        expect.any(String),
-      );
     });
 
-    it('should fall back to database when Redis get throws', async () => {
-      mockRedisService.get.mockRejectedValue(new Error('Redis error'));
-      mockMessageProcessingRepository.getActiveUsers.mockResolvedValue([]);
+    it('should return in-memory cached users on second call', async () => {
+      mockMessageProcessingRepository.getActiveUsers.mockResolvedValue([
+        {
+          chatId: 'chat-1',
+          userId: 'user-1',
+          userName: 'User One',
+          messageCount: 3,
+          tokenUsage: 150,
+          firstActiveAt: Date.now(),
+          lastActiveAt: Date.now(),
+        },
+      ]);
+      mockUserHostingService.getUserHostingStatus.mockResolvedValue({ isPaused: false });
 
-      const result = await service.getTodayUsers();
+      await service.getTodayUsers();
+      await service.getTodayUsers();
 
-      expect(result).toEqual([]);
-      expect(messageProcessingRepository.getActiveUsers).toHaveBeenCalled();
+      expect(messageProcessingRepository.getActiveUsers).toHaveBeenCalledTimes(1);
     });
 
     it('should not cache empty user list', async () => {
-      mockRedisService.get.mockResolvedValue(null);
       mockMessageProcessingRepository.getActiveUsers.mockResolvedValue([]);
 
       await service.getTodayUsers();
+      await service.getTodayUsers();
 
-      expect(redisService.setex).not.toHaveBeenCalled();
+      expect(messageProcessingRepository.getActiveUsers).toHaveBeenCalledTimes(2);
     });
   });
 

@@ -1,48 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { MonitoringCacheService } from './monitoring-cache.service';
-import { RedisService } from '@core/redis';
 
 describe('MonitoringCacheService', () => {
   let service: MonitoringCacheService;
-  let redisService: jest.Mocked<RedisService>;
-
-  const mockPipeline = {
-    hincrby: jest.fn().mockReturnThis(),
-    exec: jest.fn().mockResolvedValue([]),
-  };
-
-  const mockRedisClient = {
-    hincrby: jest.fn(),
-    hgetall: jest.fn(),
-    hmset: jest.fn(),
-    incrby: jest.fn(),
-    pipeline: jest.fn(() => mockPipeline),
-  };
-
-  const mockRedisService = {
-    getClient: jest.fn(() => mockRedisClient),
-    get: jest.fn(),
-    set: jest.fn(),
-    del: jest.fn(),
-  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        MonitoringCacheService,
-        {
-          provide: RedisService,
-          useValue: mockRedisService,
-        },
-      ],
+      providers: [MonitoringCacheService],
     }).compile();
 
     service = module.get<MonitoringCacheService>(MonitoringCacheService);
-    redisService = module.get(RedisService);
-
-    jest.clearAllMocks();
-    mockRedisService.getClient.mockReturnValue(mockRedisClient);
-    mockRedisClient.pipeline.mockReturnValue(mockPipeline);
   });
 
   it('should be defined', () => {
@@ -54,34 +21,23 @@ describe('MonitoringCacheService', () => {
   // ========================================
 
   describe('incrementCounter', () => {
-    it('should call hincrby with the correct key and field', async () => {
-      mockRedisClient.hincrby.mockResolvedValue(1);
-
+    it('should increment the specified counter field', async () => {
       await service.incrementCounter('totalMessages', 1);
-
-      expect(mockRedisClient.hincrby).toHaveBeenCalledWith(
-        'monitoring:counters',
-        'totalMessages',
-        1,
-      );
+      const counters = await service.getCounters();
+      expect(counters.totalMessages).toBe(1);
     });
 
     it('should use default value of 1 when value is not provided', async () => {
-      mockRedisClient.hincrby.mockResolvedValue(1);
-
       await service.incrementCounter('totalSuccess');
-
-      expect(mockRedisClient.hincrby).toHaveBeenCalledWith(
-        'monitoring:counters',
-        'totalSuccess',
-        1,
-      );
+      const counters = await service.getCounters();
+      expect(counters.totalSuccess).toBe(1);
     });
 
-    it('should handle errors gracefully without throwing', async () => {
-      mockRedisClient.hincrby.mockRejectedValue(new Error('Redis error'));
-
-      await expect(service.incrementCounter('totalMessages', 1)).resolves.not.toThrow();
+    it('should accumulate multiple increments', async () => {
+      await service.incrementCounter('totalMessages', 3);
+      await service.incrementCounter('totalMessages', 2);
+      const counters = await service.getCounters();
+      expect(counters.totalMessages).toBe(5);
     });
   });
 
@@ -90,24 +46,18 @@ describe('MonitoringCacheService', () => {
   // ========================================
 
   describe('incrementCounters', () => {
-    it('should call pipeline hincrby for each numeric field', async () => {
-      mockPipeline.exec.mockResolvedValue([]);
-
-      await service.incrementCounters({ totalSuccess: 1, totalFallback: 1 });
-
-      expect(mockRedisClient.pipeline).toHaveBeenCalled();
-      expect(mockPipeline.hincrby).toHaveBeenCalledWith('monitoring:counters', 'totalSuccess', 1);
-      expect(mockPipeline.hincrby).toHaveBeenCalledWith('monitoring:counters', 'totalFallback', 1);
-      expect(mockPipeline.exec).toHaveBeenCalled();
+    it('should increment multiple fields at once', async () => {
+      await service.incrementCounters({ totalSuccess: 1, totalFallback: 2 });
+      const counters = await service.getCounters();
+      expect(counters.totalSuccess).toBe(1);
+      expect(counters.totalFallback).toBe(2);
     });
 
-    it('should handle errors gracefully without throwing', async () => {
-      mockRedisClient.pipeline.mockReturnValue({
-        hincrby: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockRejectedValue(new Error('Pipeline error')),
-      });
-
-      await expect(service.incrementCounters({ totalSuccess: 1 })).resolves.not.toThrow();
+    it('should not affect fields not in the update', async () => {
+      await service.incrementCounters({ totalSuccess: 1 });
+      const counters = await service.getCounters();
+      expect(counters.totalMessages).toBe(0);
+      expect(counters.totalFailure).toBe(0);
     });
   });
 
@@ -116,35 +66,8 @@ describe('MonitoringCacheService', () => {
   // ========================================
 
   describe('getCounters', () => {
-    it('should return parsed counters from Redis hash', async () => {
-      mockRedisClient.hgetall.mockResolvedValue({
-        totalMessages: '10',
-        totalSuccess: '8',
-        totalFailure: '2',
-        totalAiDuration: '5000',
-        totalSendDuration: '3000',
-        totalFallback: '1',
-        totalFallbackSuccess: '1',
-      });
-
+    it('should return all zeroes by default', async () => {
       const result = await service.getCounters();
-
-      expect(result).toEqual({
-        totalMessages: 10,
-        totalSuccess: 8,
-        totalFailure: 2,
-        totalAiDuration: 5000,
-        totalSendDuration: 3000,
-        totalFallback: 1,
-        totalFallbackSuccess: 1,
-      });
-    });
-
-    it('should return default counters when Redis returns null', async () => {
-      mockRedisClient.hgetall.mockResolvedValue(null);
-
-      const result = await service.getCounters();
-
       expect(result).toEqual({
         totalMessages: 0,
         totalSuccess: 0,
@@ -156,30 +79,11 @@ describe('MonitoringCacheService', () => {
       });
     });
 
-    it('should return default counters when Redis throws an error', async () => {
-      mockRedisClient.hgetall.mockRejectedValue(new Error('Redis error'));
-
-      const result = await service.getCounters();
-
-      expect(result).toEqual({
-        totalMessages: 0,
-        totalSuccess: 0,
-        totalFailure: 0,
-        totalAiDuration: 0,
-        totalSendDuration: 0,
-        totalFallback: 0,
-        totalFallbackSuccess: 0,
-      });
-    });
-
-    it('should use 0 as default for missing fields', async () => {
-      mockRedisClient.hgetall.mockResolvedValue({ totalMessages: '5' });
-
-      const result = await service.getCounters();
-
-      expect(result.totalMessages).toBe(5);
-      expect(result.totalSuccess).toBe(0);
-      expect(result.totalFailure).toBe(0);
+    it('should return a copy, not the internal reference', async () => {
+      const result1 = await service.getCounters();
+      result1.totalMessages = 999;
+      const result2 = await service.getCounters();
+      expect(result2.totalMessages).toBe(0);
     });
   });
 
@@ -188,18 +92,22 @@ describe('MonitoringCacheService', () => {
   // ========================================
 
   describe('resetCounters', () => {
-    it('should delete the counters key from Redis', async () => {
-      mockRedisService.del.mockResolvedValue(1);
+    it('should reset all counters to zero', async () => {
+      await service.incrementCounter('totalMessages', 10);
+      await service.incrementCounter('totalSuccess', 8);
 
       await service.resetCounters();
 
-      expect(redisService.del).toHaveBeenCalledWith('monitoring:counters');
-    });
-
-    it('should handle errors gracefully without throwing', async () => {
-      mockRedisService.del.mockRejectedValue(new Error('Redis error'));
-
-      await expect(service.resetCounters()).resolves.not.toThrow();
+      const result = await service.getCounters();
+      expect(result).toEqual({
+        totalMessages: 0,
+        totalSuccess: 0,
+        totalFailure: 0,
+        totalAiDuration: 0,
+        totalSendDuration: 0,
+        totalFallback: 0,
+        totalFallbackSuccess: 0,
+      });
     });
   });
 
@@ -208,9 +116,7 @@ describe('MonitoringCacheService', () => {
   // ========================================
 
   describe('setCounters', () => {
-    it('should call hmset with stringified counter values', async () => {
-      mockRedisClient.hmset.mockResolvedValue('OK');
-
+    it('should replace all counters with provided values', async () => {
       const counters = {
         totalMessages: 100,
         totalSuccess: 90,
@@ -223,31 +129,8 @@ describe('MonitoringCacheService', () => {
 
       await service.setCounters(counters);
 
-      expect(mockRedisClient.hmset).toHaveBeenCalledWith('monitoring:counters', {
-        totalMessages: '100',
-        totalSuccess: '90',
-        totalFailure: '10',
-        totalAiDuration: '50000',
-        totalSendDuration: '30000',
-        totalFallback: '5',
-        totalFallbackSuccess: '4',
-      });
-    });
-
-    it('should handle errors gracefully without throwing', async () => {
-      mockRedisClient.hmset.mockRejectedValue(new Error('Redis error'));
-
-      await expect(
-        service.setCounters({
-          totalMessages: 0,
-          totalSuccess: 0,
-          totalFailure: 0,
-          totalAiDuration: 0,
-          totalSendDuration: 0,
-          totalFallback: 0,
-          totalFallbackSuccess: 0,
-        }),
-      ).resolves.not.toThrow();
+      const result = await service.getCounters();
+      expect(result).toEqual(counters);
     });
   });
 
@@ -256,43 +139,16 @@ describe('MonitoringCacheService', () => {
   // ========================================
 
   describe('setCurrentProcessing', () => {
-    it('should set current processing count as string', async () => {
-      mockRedisService.set.mockResolvedValue('OK');
-
+    it('should set current processing count', async () => {
       await service.setCurrentProcessing(5);
-
-      expect(redisService.set).toHaveBeenCalledWith('monitoring:current_processing', '5');
-    });
-
-    it('should handle errors gracefully without throwing', async () => {
-      mockRedisService.set.mockRejectedValue(new Error('Redis error'));
-
-      await expect(service.setCurrentProcessing(5)).resolves.not.toThrow();
+      const result = await service.getCurrentProcessing();
+      expect(result).toBe(5);
     });
   });
 
   describe('getCurrentProcessing', () => {
-    it('should return parsed current processing count', async () => {
-      mockRedisService.get.mockResolvedValue('7');
-
+    it('should return 0 by default', async () => {
       const result = await service.getCurrentProcessing();
-
-      expect(result).toBe(7);
-    });
-
-    it('should return 0 when Redis returns null', async () => {
-      mockRedisService.get.mockResolvedValue(null);
-
-      const result = await service.getCurrentProcessing();
-
-      expect(result).toBe(0);
-    });
-
-    it('should return 0 on error', async () => {
-      mockRedisService.get.mockRejectedValue(new Error('Redis error'));
-
-      const result = await service.getCurrentProcessing();
-
       expect(result).toBe(0);
     });
   });
@@ -302,30 +158,20 @@ describe('MonitoringCacheService', () => {
   // ========================================
 
   describe('incrementCurrentProcessing', () => {
-    it('should call incrby with delta and return new value', async () => {
-      mockRedisClient.incrby.mockResolvedValue(3);
-
+    it('should increment and return new value', async () => {
       const result = await service.incrementCurrentProcessing(1);
-
-      expect(result).toBe(3);
-      expect(mockRedisClient.incrby).toHaveBeenCalledWith('monitoring:current_processing', 1);
+      expect(result).toBe(1);
     });
 
     it('should support negative delta for decrement', async () => {
-      mockRedisClient.incrby.mockResolvedValue(2);
-
+      await service.incrementCurrentProcessing(3);
       const result = await service.incrementCurrentProcessing(-1);
-
       expect(result).toBe(2);
-      expect(mockRedisClient.incrby).toHaveBeenCalledWith('monitoring:current_processing', -1);
     });
 
-    it('should return 0 on error', async () => {
-      mockRedisClient.incrby.mockRejectedValue(new Error('Redis error'));
-
-      const result = await service.incrementCurrentProcessing(1);
-
-      expect(result).toBe(0);
+    it('should use default delta of 1', async () => {
+      const result = await service.incrementCurrentProcessing();
+      expect(result).toBe(1);
     });
   });
 
@@ -334,70 +180,35 @@ describe('MonitoringCacheService', () => {
   // ========================================
 
   describe('getPeakProcessing', () => {
-    it('should return parsed peak processing value', async () => {
-      mockRedisService.get.mockResolvedValue('15');
-
+    it('should return 0 by default', async () => {
       const result = await service.getPeakProcessing();
-
-      expect(result).toBe(15);
-    });
-
-    it('should return 0 when Redis returns null', async () => {
-      mockRedisService.get.mockResolvedValue(null);
-
-      const result = await service.getPeakProcessing();
-
-      expect(result).toBe(0);
-    });
-
-    it('should return 0 on error', async () => {
-      mockRedisService.get.mockRejectedValue(new Error('Redis error'));
-
-      const result = await service.getPeakProcessing();
-
       expect(result).toBe(0);
     });
   });
 
   describe('updatePeakProcessing', () => {
     it('should update peak when new count is greater than current', async () => {
-      mockRedisService.get.mockResolvedValue('5');
-      mockRedisService.set.mockResolvedValue('OK');
-
       await service.updatePeakProcessing(10);
-
-      expect(redisService.set).toHaveBeenCalledWith('monitoring:peak_processing', '10');
+      expect(await service.getPeakProcessing()).toBe(10);
     });
 
     it('should not update peak when new count is less than current', async () => {
-      mockRedisService.get.mockResolvedValue('20');
-      mockRedisService.set.mockResolvedValue('OK');
-
+      await service.setPeakProcessing(20);
       await service.updatePeakProcessing(10);
-
-      expect(redisService.set).not.toHaveBeenCalled();
+      expect(await service.getPeakProcessing()).toBe(20);
     });
 
-    it('should handle errors gracefully without throwing', async () => {
-      mockRedisService.get.mockRejectedValue(new Error('Redis error'));
-
-      await expect(service.updatePeakProcessing(10)).resolves.not.toThrow();
+    it('should not update peak when new count equals current', async () => {
+      await service.setPeakProcessing(10);
+      await service.updatePeakProcessing(10);
+      expect(await service.getPeakProcessing()).toBe(10);
     });
   });
 
   describe('setPeakProcessing', () => {
     it('should set peak processing directly', async () => {
-      mockRedisService.set.mockResolvedValue('OK');
-
       await service.setPeakProcessing(25);
-
-      expect(redisService.set).toHaveBeenCalledWith('monitoring:peak_processing', '25');
-    });
-
-    it('should handle errors gracefully without throwing', async () => {
-      mockRedisService.set.mockRejectedValue(new Error('Redis error'));
-
-      await expect(service.setPeakProcessing(25)).resolves.not.toThrow();
+      expect(await service.getPeakProcessing()).toBe(25);
     });
   });
 
@@ -406,21 +217,17 @@ describe('MonitoringCacheService', () => {
   // ========================================
 
   describe('clearAll', () => {
-    it('should delete the 3 monitoring keys', async () => {
-      mockRedisService.del.mockResolvedValue(1);
+    it('should reset counters, currentProcessing, and peakProcessing', async () => {
+      await service.incrementCounter('totalMessages', 10);
+      await service.setCurrentProcessing(5);
+      await service.setPeakProcessing(15);
 
       await service.clearAll();
 
-      expect(redisService.del).toHaveBeenCalledWith('monitoring:counters');
-      expect(redisService.del).toHaveBeenCalledWith('monitoring:current_processing');
-      expect(redisService.del).toHaveBeenCalledWith('monitoring:peak_processing');
-      expect(redisService.del).toHaveBeenCalledTimes(3);
-    });
-
-    it('should handle errors gracefully without throwing', async () => {
-      mockRedisService.del.mockRejectedValue(new Error('Redis error'));
-
-      await expect(service.clearAll()).resolves.not.toThrow();
+      const counters = await service.getCounters();
+      expect(counters.totalMessages).toBe(0);
+      expect(await service.getCurrentProcessing()).toBe(0);
+      expect(await service.getPeakProcessing()).toBe(0);
     });
   });
 });

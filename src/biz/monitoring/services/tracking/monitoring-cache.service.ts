@@ -1,208 +1,49 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { RedisService } from '@core/redis';
 import { MonitoringGlobalCounters } from '../../types/tracking.types';
-import { MONITORING_REDIS_KEYS } from '../../utils/monitoring-redis-keys';
 
 /**
  * 监控缓存服务
- * 使用 Redis 存储高频更新的实时指标
- *
- * Redis Key 定义见 utils/monitoring-redis-keys.ts
+ * 使用进程内内存存储高频更新的实时指标（单实例部署）
  */
 @Injectable()
 export class MonitoringCacheService {
   private readonly logger = new Logger(MonitoringCacheService.name);
 
-  constructor(private readonly redisService: RedisService) {}
+  private counters: MonitoringGlobalCounters = {
+    totalMessages: 0,
+    totalSuccess: 0,
+    totalFailure: 0,
+    totalAiDuration: 0,
+    totalSendDuration: 0,
+    totalFallback: 0,
+    totalFallbackSuccess: 0,
+  };
+
+  private currentProcessing = 0;
+  private peakProcessing = 0;
 
   // ========================================
   // 全局计数器
   // ========================================
 
-  /**
-   * 增量更新计数器
-   */
   async incrementCounter(field: keyof MonitoringGlobalCounters, value: number = 1): Promise<void> {
-    try {
-      const client = this.redisService.getClient();
-      await client.hincrby(MONITORING_REDIS_KEYS.COUNTERS, field, value);
-    } catch (error) {
-      this.logger.error(`增量更新计数器失败 [${field}]:`, error);
-    }
+    this.counters[field] += value;
   }
 
-  /**
-   * 批量增量更新计数器
-   */
   async incrementCounters(updates: Partial<MonitoringGlobalCounters>): Promise<void> {
-    try {
-      const client = this.redisService.getClient();
-      const pipeline = client.pipeline();
-
-      for (const [field, value] of Object.entries(updates)) {
-        if (typeof value === 'number') {
-          pipeline.hincrby(MONITORING_REDIS_KEYS.COUNTERS, field, value);
-        }
+    for (const [field, value] of Object.entries(updates)) {
+      if (typeof value === 'number') {
+        this.counters[field as keyof MonitoringGlobalCounters] += value;
       }
-
-      await pipeline.exec();
-    } catch (error) {
-      this.logger.error('批量增量更新计数器失败:', error);
     }
   }
 
-  /**
-   * 获取全局计数器
-   */
   async getCounters(): Promise<MonitoringGlobalCounters> {
-    try {
-      const client = this.redisService.getClient();
-      const data = await client.hgetall(MONITORING_REDIS_KEYS.COUNTERS);
-
-      if (!data) {
-        return this.createDefaultCounters();
-      }
-
-      const counters = data as Record<string, string>;
-      return {
-        totalMessages: parseInt(counters.totalMessages || '0'),
-        totalSuccess: parseInt(counters.totalSuccess || '0'),
-        totalFailure: parseInt(counters.totalFailure || '0'),
-        totalAiDuration: parseInt(counters.totalAiDuration || '0'),
-        totalSendDuration: parseInt(counters.totalSendDuration || '0'),
-        totalFallback: parseInt(counters.totalFallback || '0'),
-        totalFallbackSuccess: parseInt(counters.totalFallbackSuccess || '0'),
-      };
-    } catch (error) {
-      this.logger.error('获取全局计数器失败:', error);
-      return this.createDefaultCounters();
-    }
+    return { ...this.counters };
   }
 
-  /**
-   * 重置全局计数器（用于测试或清理）
-   */
   async resetCounters(): Promise<void> {
-    try {
-      await this.redisService.del(MONITORING_REDIS_KEYS.COUNTERS);
-      this.logger.log('全局计数器已重置');
-    } catch (error) {
-      this.logger.error('重置全局计数器失败:', error);
-    }
-  }
-
-  /**
-   * 批量设置计数器（用于迁移）
-   */
-  async setCounters(counters: MonitoringGlobalCounters): Promise<void> {
-    try {
-      const data: Record<string, string> = {
-        totalMessages: String(counters.totalMessages),
-        totalSuccess: String(counters.totalSuccess),
-        totalFailure: String(counters.totalFailure),
-        totalAiDuration: String(counters.totalAiDuration),
-        totalSendDuration: String(counters.totalSendDuration),
-        totalFallback: String(counters.totalFallback),
-        totalFallbackSuccess: String(counters.totalFallbackSuccess),
-      };
-
-      const client = this.redisService.getClient();
-      await client.hmset(MONITORING_REDIS_KEYS.COUNTERS, data);
-      this.logger.log('全局计数器已设置');
-    } catch (error) {
-      this.logger.error('设置全局计数器失败:', error);
-    }
-  }
-
-  // ========================================
-  // 实时并发统计
-  // ========================================
-
-  /**
-   * 更新当前处理中的消息数
-   */
-  async setCurrentProcessing(count: number): Promise<void> {
-    try {
-      await this.redisService.set(MONITORING_REDIS_KEYS.CURRENT_PROCESSING, String(count));
-    } catch (error) {
-      this.logger.error('更新当前处理数失败:', error);
-    }
-  }
-
-  /**
-   * 获取当前处理中的消息数
-   */
-  async getCurrentProcessing(): Promise<number> {
-    try {
-      const value = await this.redisService.get(MONITORING_REDIS_KEYS.CURRENT_PROCESSING);
-      return parseInt(value || '0');
-    } catch (error) {
-      this.logger.error('获取当前处理数失败:', error);
-      return 0;
-    }
-  }
-
-  /**
-   * 增量更新当前处理数
-   */
-  async incrementCurrentProcessing(delta: number = 1): Promise<number> {
-    try {
-      const client = this.redisService.getClient();
-      const newValue = await client.incrby(MONITORING_REDIS_KEYS.CURRENT_PROCESSING, delta);
-      return newValue;
-    } catch (error) {
-      this.logger.error('增量更新当前处理数失败:', error);
-      return 0;
-    }
-  }
-
-  /**
-   * 更新峰值处理数（仅当新值更大时）
-   */
-  async updatePeakProcessing(count: number): Promise<void> {
-    try {
-      const current = await this.getPeakProcessing();
-      if (count > current) {
-        await this.redisService.set(MONITORING_REDIS_KEYS.PEAK_PROCESSING, String(count));
-      }
-    } catch (error) {
-      this.logger.error('更新峰值处理数失败:', error);
-    }
-  }
-
-  /**
-   * 获取峰值处理数
-   */
-  async getPeakProcessing(): Promise<number> {
-    try {
-      const value = await this.redisService.get(MONITORING_REDIS_KEYS.PEAK_PROCESSING);
-      return parseInt(value || '0');
-    } catch (error) {
-      this.logger.error('获取峰值处理数失败:', error);
-      return 0;
-    }
-  }
-
-  /**
-   * 设置峰值处理数（用于迁移）
-   */
-  async setPeakProcessing(count: number): Promise<void> {
-    try {
-      await this.redisService.set(MONITORING_REDIS_KEYS.PEAK_PROCESSING, String(count));
-    } catch (error) {
-      this.logger.error('设置峰值处理数失败:', error);
-    }
-  }
-
-  // ========================================
-  // 辅助方法
-  // ========================================
-
-  /**
-   * 创建默认计数器对象
-   */
-  private createDefaultCounters(): MonitoringGlobalCounters {
-    return {
+    this.counters = {
       totalMessages: 0,
       totalSuccess: 0,
       totalFailure: 0,
@@ -211,26 +52,53 @@ export class MonitoringCacheService {
       totalFallback: 0,
       totalFallbackSuccess: 0,
     };
+    this.logger.log('全局计数器已重置');
   }
 
-  /**
-   * 清空所有监控缓存数据（用于测试）
-   */
-  async clearAll(): Promise<void> {
-    try {
-      const keys = [
-        MONITORING_REDIS_KEYS.COUNTERS,
-        MONITORING_REDIS_KEYS.CURRENT_PROCESSING,
-        MONITORING_REDIS_KEYS.PEAK_PROCESSING,
-      ];
+  async setCounters(counters: MonitoringGlobalCounters): Promise<void> {
+    this.counters = { ...counters };
+    this.logger.log('全局计数器已设置');
+  }
 
-      for (const key of keys) {
-        await this.redisService.del(key);
-      }
+  // ========================================
+  // 实时并发统计
+  // ========================================
 
-      this.logger.log('所有监控缓存数据已清空');
-    } catch (error) {
-      this.logger.error('清空监控缓存数据失败:', error);
+  async setCurrentProcessing(count: number): Promise<void> {
+    this.currentProcessing = count;
+  }
+
+  async getCurrentProcessing(): Promise<number> {
+    return this.currentProcessing;
+  }
+
+  async incrementCurrentProcessing(delta: number = 1): Promise<number> {
+    this.currentProcessing += delta;
+    return this.currentProcessing;
+  }
+
+  async updatePeakProcessing(count: number): Promise<void> {
+    if (count > this.peakProcessing) {
+      this.peakProcessing = count;
     }
+  }
+
+  async getPeakProcessing(): Promise<number> {
+    return this.peakProcessing;
+  }
+
+  async setPeakProcessing(count: number): Promise<void> {
+    this.peakProcessing = count;
+  }
+
+  // ========================================
+  // 辅助方法
+  // ========================================
+
+  async clearAll(): Promise<void> {
+    await this.resetCounters();
+    this.currentProcessing = 0;
+    this.peakProcessing = 0;
+    this.logger.log('所有监控缓存数据已清空');
   }
 }
