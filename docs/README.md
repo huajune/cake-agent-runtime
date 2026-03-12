@@ -2,7 +2,7 @@
 
 > DuLiDay 企业微信服务 - 技术文档导航
 
-**最后更新**：2025-11-25
+**最后更新**：2026-03-12
 
 ---
 
@@ -28,6 +28,7 @@ docs/
 │   ├── ai-code-review-guide.md
 │   ├── auto-version-changelog.md
 │   ├── branch-protection-guide.md
+│   ├── deploy-guide.md
 │   └── version-release-guide.md
 └── product/               # 产品相关文档
     ├── business-flows.md
@@ -148,20 +149,32 @@ fix: 修复 bug         # 修订号 +1
 docs: 更新文档        # 修订号 +1
 ```
 
-- **[AI 代码审查指南](workflows/ai-code-review-guide.md)** (222 行)
-  - 🤖 配置 AI 自动代码审查功能
-  - Anthropic API Key 设置指南
-  - 审查范围和触发条件
-  - 自定义审查规则和模型选择
-  - 成本预估和监控建议
-  - **更新日期**：2025-11-10
+- **[AI 代码审查指南](workflows/ai-code-review-guide.md)**
+  - 🤖 配置 AI 自动代码审查功能（基于 Claude Code CLI）
+  - Anthropic API Key 设置指南（与本地 Claude Code 复用同一 Key）
+  - 审查范围和触发条件（仅 PR to `develop`）
+  - 自定义审查规则和成本参考
+  - **更新日期**：2026-03-12
 
 **核心功能**：
 
 - ✅ 自动审查 PR 的 TypeScript/JavaScript 代码
 - ✅ 检查安全漏洞、性能问题、代码质量
 - ✅ 验证架构合规性和项目规范
-- ✅ 使用 Claude 3.5 Sonnet 提供专业建议
+- ✅ 使用 Claude Code CLI 提供专业建议
+
+- **[构建与部署指南](workflows/deploy-guide.md)** (新增)
+  - 🚀 push to master 自动构建 Docker 镜像并发布 GitHub Release
+  - 对接方部署步骤（下载 Release 附件 → 配置 .env → docker compose up）
+  - 镜像更新流程和 GHCR 登录说明
+  - 常见问题排查
+  - **更新日期**：2026-03-12
+
+**部署流程**：
+
+- ✅ 自动构建 Docker 镜像推送到 GHCR
+- ✅ 自动生成含精确镜像 tag 的 docker-compose.yml
+- ✅ 以 GitHub Release 附件形式交付部署文件
 
 - **[分支保护规则配置指南](workflows/branch-protection-guide.md)** (新增)
   - 🔒 GitHub 分支保护规则配置步骤
