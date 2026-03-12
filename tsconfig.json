@@ -17,26 +17,82 @@
     "strictBindCallApply": false,
     "forceConsistentCasingInFileNames": false,
     "noFallthroughCasesInSwitch": false,
-    "types": ["jest", "node"],
+    "types": [
+      "jest",
+      "node"
+    ],
     "paths": {
-      "@/*": ["src/*"],
-      "@core": ["src/core"],
-      "@core/*": ["src/core/*"],
-      "@core/http": ["src/core/client-http"],
-      "@core/response": ["src/core/response"],
-      "@agent": ["src/agent"],
-      "@agent/*": ["src/agent/*"],
-      "@wecom": ["src/wecom"],
-      "@wecom/*": ["src/wecom/*"],
-      "@shared": ["src/shared"],
-      "@shared/*": ["src/shared/*"],
-      "@test-suite": ["src/biz/test-suite"],
-      "@test-suite/*": ["src/biz/test-suite/*"],
-      "@core/supabase": ["src/core/supabase"],
-      "@biz/*": ["src/biz/*"]
+      "@/*": [
+        "src/*"
+      ],
+      "@core": [
+        "src/core"
+      ],
+      "@core/*": [
+        "src/core/*"
+      ],
+      "@core/http": [
+        "src/core/client-http"
+      ],
+      "@core/response": [
+        "src/core/response"
+      ],
+      "@agent": [
+        "src/agent"
+      ],
+      "@agent/*": [
+        "src/agent/*"
+      ],
+      "@wecom": [
+        "src/wecom"
+      ],
+      "@wecom/*": [
+        "src/wecom/*"
+      ],
+      "@shared": [
+        "src/shared"
+      ],
+      "@shared/*": [
+        "src/shared/*"
+      ],
+      "@test-suite": [
+        "src/biz/test-suite"
+      ],
+      "@test-suite/*": [
+        "src/biz/test-suite/*"
+      ],
+      "@core/supabase": [
+        "src/core/supabase"
+      ],
+      "@biz/*": [
+        "src/biz/*"
+      ],
+      "@ai": [
+        "src/ai"
+      ],
+      "@ai/*": [
+        "src/ai/*"
+      ],
+      "@modelcontextprotocol/sdk/client": [
+        "./node_modules/@modelcontextprotocol/sdk/dist/cjs/client/index"
+      ],
+      "@modelcontextprotocol/sdk/client/stdio": [
+        "./node_modules/@modelcontextprotocol/sdk/dist/cjs/client/stdio"
+      ],
+      "@modelcontextprotocol/sdk/client/sse": [
+        "./node_modules/@modelcontextprotocol/sdk/dist/cjs/client/sse"
+      ],
+      "@modelcontextprotocol/sdk/client/streamableHttp": [
+        "./node_modules/@modelcontextprotocol/sdk/dist/cjs/client/streamableHttp"
+      ]
     }
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "dashboard"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "dashboard"
+  ]
 }
-

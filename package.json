@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.41",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "@nestjs/bull": "^11.0.4",
     "@nestjs/common": "^10.3.0",
     "@nestjs/config": "^3.1.1",
