@@ -16,11 +16,11 @@
 .btn-primary {
   background: $gradient-primary;
   color: #fff;
-  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+  box-shadow: 0 4px 12px $primary-30;
 
   &:hover {
     transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(139, 92, 246, 0.4);
+    box-shadow: 0 6px 16px $primary-40;
   }
 }
 
@@ -66,7 +66,7 @@
 
     &:hover {
       border-color: $primary;
-      background: rgba(139, 92, 246, 0.08);
+      background: $accent-08;
       color: $primary;
     }
 
@@ -74,7 +74,7 @@
       background: $gradient-primary;
       border-color: transparent;
       color: #fff;
-      box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+      box-shadow: 0 2px 8px $primary-30;
     }
   }
 }
@@ -168,7 +168,7 @@
   }
 
   &.primary::after {
-    background: radial-gradient(circle at top right, rgba(59, 130, 246, 0.15), transparent 70%);
+    background: radial-gradient(circle at top right, $primary-15, transparent 70%);
   }
 
   &.success::after {
@@ -187,7 +187,7 @@
     background: radial-gradient(circle at top right, rgba(6, 182, 212, 0.15), transparent 70%);
   }
 
-  // Christmas decoration
+  // Spring Festival decoration
   &::before {
     content: '';
     position: absolute;
@@ -195,7 +195,7 @@
     left: 0;
     right: 0;
     height: 3px;
-    background: linear-gradient(90deg, #ef4444 0%, #ffffff 50%, #10b981 100%);
+    background: linear-gradient(90deg, #dc2626 0%, #fbbf24 50%, #dc2626 100%);
     z-index: 10;
     opacity: 0.8;
   }
@@ -252,7 +252,7 @@
     left: 0;
     right: 0;
     height: 3px;
-    background: linear-gradient(90deg, #ef4444 0%, #ffffff 50%, #10b981 100%);
+    background: linear-gradient(90deg, #dc2626 0%, #fbbf24 50%, #dc2626 100%);
     z-index: 10;
     opacity: 0.8;
   }
@@ -322,7 +322,7 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: linear-gradient(45deg, transparent, rgba(139, 92, 246, 0.08), transparent);
+    background: linear-gradient(45deg, transparent, $accent-08, transparent);
     transform: translateX(-100%);
     transition: transform 0.6s;
   }
@@ -366,7 +366,7 @@
 
 // ========== 健康面板 ==========
 .health-panel {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(147, 51, 234, 0.08) 100%);
+  background: linear-gradient(135deg, $primary-08 0%, $accent-08 100%);
   border: 1px solid $border;
   border-radius: 20px;
   padding: 24px 32px;
@@ -380,7 +380,7 @@
     right: -20%;
     width: 300px;
     height: 300px;
-    background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
+    background: radial-gradient(circle, $primary-15 0%, transparent 70%);
     pointer-events: none;
   }
 
@@ -391,7 +391,7 @@
     left: -10%;
     width: 200px;
     height: 200px;
-    background: radial-gradient(circle, rgba(147, 51, 234, 0.1) 0%, transparent 70%);
+    background: radial-gradient(circle, $accent-10 0%, transparent 70%);
     pointer-events: none;
   }
 }
@@ -473,7 +473,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(139, 92, 246, 0.1);
+  background: $accent-10;
   border-radius: 12px;
 }
 
@@ -501,7 +501,7 @@
 
 // ========== 控制面板 ==========
 .control-panel {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.06) 0%, rgba(147, 51, 234, 0.06) 50%, rgba(236, 72, 153, 0.04) 100%);
+  background: linear-gradient(135deg, $primary-06 0%, $accent-06 50%, rgba(236, 72, 153, 0.04) 100%);
   border: 1px solid $border;
   border-radius: 20px;
   padding: 24px 32px;
@@ -516,7 +516,7 @@
     right: -15%;
     width: 400px;
     height: 400px;
-    background: radial-gradient(circle, rgba(59, 130, 246, 0.12) 0%, transparent 70%);
+    background: radial-gradient(circle, $primary-12 0%, transparent 70%);
     pointer-events: none;
   }
 
@@ -527,7 +527,7 @@
     left: -5%;
     width: 250px;
     height: 250px;
-    background: radial-gradient(circle, rgba(147, 51, 234, 0.08) 0%, transparent 70%);
+    background: radial-gradient(circle, $accent-08 0%, transparent 70%);
     pointer-events: none;
   }
 
@@ -562,7 +562,7 @@
   .decorative-dot {
     position: absolute;
     border-radius: 50%;
-    background: rgba(59, 130, 246, 0.3);
+    background: $primary-30;
     filter: blur(1px);
     pointer-events: none;
     z-index: 0;
@@ -580,7 +580,7 @@
       right: 200px;
       width: 4px;
       height: 4px;
-      background: rgba(147, 51, 234, 0.4);
+      background: $primary-40;
       animation: pulse-dot 4s infinite 1s;
     }
   }
@@ -832,7 +832,7 @@
 
   &:hover {
     color: $primary;
-    background: rgba(99, 102, 241, 0.04);
+    background: $primary-04;
   }
 
   &.active {
@@ -887,8 +887,8 @@
   }
 
   &.primary {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.04) 0%, rgba(139, 92, 246, 0.04) 100%);
-    border-color: rgba(99, 102, 241, 0.15);
+    background: linear-gradient(135deg, $primary-04 0%, $accent-04 100%);
+    border-color: $primary-15;
   }
 
   &.danger {
@@ -1021,7 +1021,7 @@ tbody td {
 }
 
 tbody tr:hover {
-  background: rgba(139, 92, 246, 0.04);
+  background: $accent-04;
 }
 
 .table-cell-truncate {
@@ -1181,7 +1181,7 @@ tbody tr:hover {
   &:focus {
     border-color: $primary;
     outline: none;
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    box-shadow: 0 0 0 3px $primary-10;
   }
 }
 
@@ -1197,7 +1197,7 @@ tbody tr:hover {
 
   &:focus {
     border-color: $primary;
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    box-shadow: 0 0 0 3px $primary-10;
   }
 }
 
@@ -1236,7 +1236,7 @@ tbody tr:hover {
 
   &:focus {
     border-color: $primary;
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    box-shadow: 0 0 0 3px $primary-10;
   }
 }
 
@@ -1270,10 +1270,10 @@ tbody tr:hover {
   font-size: 26px;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
 
-  &.primary-bg { background: rgba(59, 130, 246, 0.1); color: $primary; }
+  &.primary-bg { background: $primary-10; color: $primary; }
   &.success-bg { background: rgba(16, 185, 129, 0.1); color: $success; }
   &.warning-bg { background: rgba(245, 158, 11, 0.1); color: $warning; }
-  &.info-bg { background: rgba(99, 102, 241, 0.1); color: #6366f1; }
+  &.info-bg { background: $primary-10; color: $primary; }
 }
 
 .stat-content {
@@ -1376,7 +1376,7 @@ tbody tr:hover {
   }
 
   &.delivery {
-    background: rgba(59, 130, 246, 0.2);
+    background: $primary-20;
     color: $primary;
   }
 
@@ -1509,9 +1509,9 @@ tbody tr:hover {
     align-items: center;
     gap: 8px;
     padding: 6px 14px;
-    background: rgba(99, 102, 241, 0.08);
+    background: $primary-08;
     border-radius: 20px;
-    border: 1px solid rgba(99, 102, 241, 0.15);
+    border: 1px solid $primary-15;
 
     .count {
       font-size: 13px;
@@ -1591,7 +1591,7 @@ tbody tr:hover {
       &:focus {
         border-color: $primary;
         background: #fff;
-        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        box-shadow: 0 0 0 3px $primary-10;
       }
     }
   }
@@ -1646,7 +1646,7 @@ tbody tr:hover {
 
   &.personal { color: #16a34a; background: rgba(22, 163, 74, 0.1); }
   &.enterprise { color: #2563eb; background: rgba(37, 99, 235, 0.1); }
-  &.official { color: #9333ea; background: rgba(147, 51, 234, 0.1); }
+  &.official { color: $accent; background: $accent-10; }
   &.unknown { color: #6b7280; background: rgba(107, 114, 128, 0.1); }
 }
 

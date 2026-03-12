@@ -1,5 +1,5 @@
 import { formatDateTime, formatDuration } from '@/utils/format';
-import type { MessageRecord } from '@/types/monitoring';
+import type { MessageRecord } from '@/api/types/chat.types';
 import styles from './index.module.scss';
 
 interface LogsTableProps {

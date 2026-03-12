@@ -1,5 +1,5 @@
 import { Clock, Zap } from 'lucide-react';
-import { TokenUsage } from '@/services/agent-test';
+import { TokenUsage } from '@/api/services/agent-test.service';
 import styles from './index.module.scss';
 
 export interface MetricsRowProps {

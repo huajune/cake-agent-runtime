@@ -2,13 +2,12 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { HttpModule, RedisModule } from './core';
-import { SupabaseModule } from './core/supabase';
-import { MonitoringModule } from './core/monitoring/monitoring.module';
+import { SupabaseModule } from '@core/supabase';
 import { LoggerModule } from './core/logger';
 import { FeishuModule } from './core/feishu';
 import { AgentModule } from './agent';
-import { TestSuiteModule } from './test-suite/test-suite.module';
 import { WecomModule } from './wecom/wecom.module';
+import { BizModule } from '@biz/biz.module';
 import { validate } from './core/config/env.validation';
 
 /**
@@ -23,14 +22,16 @@ import { validate } from './core/config/env.validation';
  *   │   ├── client-http/   - 客户端 HTTP 工具
  *   │   ├── response/      - 响应处理（拦截器、过滤器）
  *   │   ├── redis/         - Redis 缓存服务
- *   │   ├── supabase/      - Supabase 数据库服务
- *   │   ├── monitoring/    - 监控服务（指标、仪表盘）
- *   │   ├── alert/         - 告警服务
- *   │   ├── feishu-sync/   - 飞书同步服务
+ *   │   ├── feishu/        - 飞书服务（告警、通知、同步）
  *   │   └── config/        - 配置管理
  *   │
- *   ├── agent/             - AI Agent 业务域
- *   └── wecom/             - 企业微信业务域
+ *   │   └── supabase/       - Supabase 客户端基础设施
+ *   │
+ *   ├── biz/                - 业务逻辑层
+ *   │   └── monitoring/     - 业务监控（采集、分析、告警、清理）
+ *   │
+ *   ├── agent/              - AI Agent 业务域
+ *   └── wecom/              - 企业微信业务域
  */
 @Module({
   imports: [
@@ -38,6 +39,8 @@ import { validate } from './core/config/env.validation';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: [
+        // 本地 Agent 服务模式（AGENT_ENV=local）：优先加载本地 Agent 配置覆盖
+        ...(process.env.AGENT_ENV === 'local' ? ['.env.agent.local'] : []),
         '.env.local', // 优先加载本地配置
         `.env.${process.env.NODE_ENV || 'development'}`,
         '.env',
@@ -49,14 +52,15 @@ import { validate } from './core/config/env.validation';
     // ==================== 核心层 (Core Layer) ====================
     HttpModule, // HTTP 客户端服务
     RedisModule, // Redis 缓存服务（全局）
-    SupabaseModule, // Supabase 数据库服务（全局）- 系统配置和用户托管状态持久化
-    MonitoringModule, // 监控服务（全局）
+    SupabaseModule, // Supabase 客户端（全局）
     FeishuModule, // 飞书统一服务（告警、通知、多维表格同步）
     LoggerModule, // 实时日志推送（仅开发环境）
 
+    // ==================== 业务逻辑层 (Business Logic Layer) ====================
+    BizModule,
+
     // ==================== 业务域 (Business Domains) ====================
     AgentModule, // AI Agent 业务域
-    TestSuiteModule, // 测试套件模块
     WecomModule, // 企业微信业务域
   ],
 })

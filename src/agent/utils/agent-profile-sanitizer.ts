@@ -6,8 +6,8 @@ import { ContextStrategy } from './agent-enums';
  */
 export interface AgentProfile {
   model: string;
-  systemPrompt?: string;
   promptType?: string;
+  systemPrompt?: string;
   allowedTools?: string[];
   context?: any;
   toolContext?: any;

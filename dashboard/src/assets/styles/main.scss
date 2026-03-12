@@ -3,11 +3,11 @@
 // ============================================================
 //
 // 样式架构:
-// 1. _variables.scss - SCSS 变量和 Mixins
-// 2. _common.scss    - 基础重置和全局样式
-// 3. _layout.scss    - 布局相关 (sidebar, content, grids)
-// 4. _components.scss - UI 组件 (buttons, cards, modals, tables)
-// 5. _utilities.scss  - 工具类和动画
+// 1. _variables.scss   - SCSS 变量和 Mixins
+// 2. _common.scss      - 基础重置和全局样式
+// 3. _layout.scss      - 布局相关 (sidebar, content, grids)
+// 4. _components.scss  - UI 组件 (buttons, cards, modals, tables)
+// 5. _utilities.scss   - 工具类和动画
 //
 // 组件级样式使用 CSS Modules: *.module.scss
 // ============================================================
@@ -18,18 +18,19 @@
 // 2. 基础重置
 @use './common';
 
-// 3. 布局
+// 4. 布局
 @use './layout';
 
-// 4. 组件
+// 5. 组件
 @use './components';
 
-// 5. 工具类和动画
+// 6. 工具类和动画
 @use './utilities';
 
 // ========== CSS 变量 (用于运行时主题) ==========
+// 默认主题 - 梦幻蓝紫
 :root {
-  // 主色调 - 梦幻蓝紫
+  // 主色调
   --primary: #{$primary};
   --primary-dark: #{$primary-dark};
   --primary-light: #{$primary-light};
@@ -67,3 +68,4 @@
   --shadow-lg: #{$shadow-lg};
   --shadow-glow: #{$shadow-glow};
 }
+

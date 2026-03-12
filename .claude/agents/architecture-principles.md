@@ -20,7 +20,7 @@ priority: high
 
 > System architecture guidelines and design patterns for the DuLiDay WeChat Service
 
-**Last Updated**: 2025-11-05 16:35:00
+**Last Updated**: 2026-03-11
 **Scope**: System design, module structure, and architectural decisions
 
 ---
@@ -138,7 +138,7 @@ export class MessageService {
 
 ## Layered Architecture
 
-### Four-Layer Architecture
+### Three-Layer Architecture
 
 ```
 ┌─────────────────────────────────────────┐
@@ -148,21 +148,17 @@ export class MessageService {
 └───────────────┬─────────────────────────┘
                 │
 ┌───────────────▼─────────────────────────┐
-│  Business Logic Layer (Services)        │  ← Core Logic
-│  - Business rules                       │
-│  - Workflow orchestration               │
+│  Business Layer (biz/ + wecom/ + agent/) │  ← Core Logic
+│  - Business rules & domain logic        │
+│  - Workflow orchestration                │
+│  - Domain-specific repositories          │
 └───────────────┬─────────────────────────┘
                 │
 ┌───────────────▼─────────────────────────┐
-│  Common Layer (Shared Services)         │  ← Utilities
-│  - Conversation management              │
-│  - Shared utilities                     │
-└───────────────┬─────────────────────────┘
-                │
-┌───────────────▼─────────────────────────┐
-│  Infrastructure Layer (Core)            │  ← Foundation
-│  - HTTP client, Config, Logger          │
-│  - External integrations                │
+│  Infrastructure Layer (core/)           │  ← Foundation
+│  - HTTP client, Config, Redis, Supabase │
+│  - Alert system, Server response        │
+│  - Generic, reusable, business-agnostic │
 └─────────────────────────────────────────┘
 ```
 
@@ -171,31 +167,47 @@ export class MessageService {
 **Dependency Direction:**
 
 - ✅ Higher layers can depend on lower layers
-- ✅ Business layer can skip Common and use Infrastructure directly
 - ❌ Lower layers NEVER depend on higher layers
+- ❌ `core/` NEVER imports from `biz/`, `wecom/`, or `agent/`
 - ❌ NO circular dependencies at any level
+
+**Layer Placement Criteria:**
+
+判断一个模块应放 `core/` 还是 `biz/`：
+- **依赖业务数据**（用户、消息、订单等）→ `biz/`
+- **可独立于业务存在**（HTTP、Redis、配置）→ `core/`
+- 如果 `core/` 中的模块需要 import `biz/` 的代码，说明它放错了位置
 
 **Project Structure:**
 
 ```
 src/
-├── core/                    # Infrastructure Layer
-│   ├── config/             # Configuration management
-│   └── http/               # HTTP client wrapper
+├── core/                    # Infrastructure Layer (业务无关)
+│   ├── config/             # 配置管理 (env validation)
+│   ├── client-http/        # HTTP 客户端工厂
+│   ├── redis/              # Redis 缓存 (Global)
+│   ├── supabase/           # Supabase 数据库基础服务
+│   ├── alert/              # 告警系统 (飞书通知)
+│   └── server/response/    # 统一响应 (Interceptor + Filter)
 │
-├── common/                  # Common Layer
-│   └── conversation/       # Conversation management
+├── agent/                   # AI Agent 领域
+│   ├── agent.service.ts
+│   ├── services/
+│   └── profiles/
 │
-├── agent/                   # AI Integration Layer
-│   ├── agent.service.ts    # AI service
-│   └── agent-config.service.ts
+├── biz/                     # 业务领域层
+│   ├── monitoring/         # 监控 (tracking + analytics + cleanup)
+│   ├── user/               # 用户管理
+│   ├── hosting-config/     # 托管配置
+│   └── message/            # 消息业务
 │
-└── modules/                 # Business Layer
-    ├── message/            # Message handling
-    ├── message-sender/     # Message sending
-    ├── chat/               # Chat operations
-    ├── contact/            # Contact management
-    └── room/               # Room management
+└── wecom/                   # 企业微信领域
+    ├── message/            # 消息处理 (核心业务)
+    ├── message-sender/     # 消息发送
+    ├── bot/                # 机器人管理
+    ├── chat/               # 会话管理
+    ├── contact/            # 联系人
+    └── room/              # 群聊
 ```
 
 **Validation:**
@@ -494,70 +506,123 @@ export class AgentService {
 
 ## Module Organization
 
-### Module Structure
+### Biz 模块目录规范
+
+业务领域模块统一使用以下结构：
 
 ```
-feature-module/
-├── feature.module.ts        # Module definition
-├── feature.service.ts       # Business logic
-├── feature.controller.ts    # API endpoints
-├── dto/                     # DTOs
-│   ├── create-feature.dto.ts
-│   └── update-feature.dto.ts
-├── interfaces/              # Type definitions
-│   └── feature.interface.ts
-└── __tests__/              # Tests
-    ├── feature.service.spec.ts
-    └── feature.controller.spec.ts
+src/biz/<domain>/
+├── <domain>.module.ts          # 模块定义（单文件）
+├── <domain>.controller.ts      # 控制器（合并为单文件，多 prefix 用多 class）
+├── services/                   # 按子域分目录，禁止铺平
+│   ├── <subdomain-a>/
+│   │   ├── foo.service.ts
+│   │   └── bar.service.ts
+│   ├── <subdomain-b>/
+│   │   └── baz.service.ts
+│   └── ...
+├── entities/                   # DB 记录接口（snake_case 字段，一个表一个文件）
+│   └── <table-name>.entity.ts
+├── repositories/               # 数据访问层（直接使用 Supabase BaseRepository）
+│   └── <domain>-xxx.repository.ts
+└── types/                      # 类型定义，按消费者域拆分（camelCase 业务 DTO）
+    ├── <consumer-a>.types.ts
+    ├── <consumer-b>.types.ts
+    └── ...
 ```
 
-### Module Definition
+**实际示例 — monitoring 模块：**
+
+```
+src/biz/monitoring/
+├── monitoring.module.ts
+├── monitoring.controller.ts        # AnalyticsController + DashboardController
+├── entities/
+│   ├── hourly-stats.entity.ts      # @table monitoring_hourly_stats
+│   └── error-log.entity.ts         # @table monitoring_error_logs
+├── services/
+│   ├── tracking/                   # 采集写入
+│   │   ├── message-tracking.service.ts
+│   │   └── monitoring-cache.service.ts
+│   ├── analytics/                  # 聚合分析
+│   │   ├── analytics.service.ts
+│   │   ├── analytics-alert.service.ts
+│   │   └── hourly-stats-aggregator.service.ts
+│   └── cleanup/                    # 数据清理
+│       └── data-cleanup.service.ts
+├── repositories/
+│   ├── monitoring.repository.ts
+│   ├── monitoring-hourly-stats.repository.ts
+│   └── monitoring-error-log.repository.ts
+└── types/
+    ├── tracking.types.ts           # tracking 服务消费的类型
+    ├── analytics.types.ts          # analytics 服务消费的类型
+    └── repository.types.ts         # DB 记录格式 + 应用层映射
+```
+
+### 核心约束
+
+| 规则 | 要求 |
+|------|------|
+| **禁止 barrel 导出** | 不使用 `index.ts`，所有导入直接指向具体文件路径 |
+| **services 按域分组** | 子目录按职责域划分（如 `tracking/`、`analytics/`），不铺平到同一目录 |
+| **controller 合并** | 同一模块的多个 controller 合并到一个 `.controller.ts` 文件，不单独建目录 |
+| **types 按消费者拆分** | 不搞大杂烩，按使用方/子域划分 `.types.ts` 文件 |
+| **DB 类型与业务类型分离** | `repository.types.ts` 放 `XxxDbRecord`（snake_case 字段），业务类型放各自 `.types.ts` |
+| **禁止无用 facade** | 如果 Service 只是纯委托转发，直接删除，让调用方使用底层服务 |
+| **单一职责** | 每个 service 文件 < 500 行 |
+| **禁止死代码** | 定义但无消费者的类型/代码必须删除 |
+
+### 类型文件规范
 
 ```typescript
-import { Module } from '@nestjs/common';
-import { FeatureController } from './feature.controller';
-import { FeatureService } from './feature.service';
-import { DependencyModule } from '../dependency/dependency.module';
+// ✅ 文件命名：<domain>.types.ts（不用 .interface.ts）
+// tracking.types.ts — tracking 服务消费的类型
+// analytics.types.ts — analytics 服务消费的类型
+// repository.types.ts — DB 记录格式
 
+// ✅ DB 记录类型：XxxDbRecord（snake_case 字段，对应数据库列名）
+interface ErrorLogDbRecord {
+  message_id: string;
+  timestamp: number;
+  error: string;
+  alert_type?: string;
+}
+
+// ✅ 应用层记录类型：XxxRecord（camelCase 字段）
+interface ErrorLogRecord {
+  messageId: string;
+  timestamp: number;
+  error: string;
+  alertType?: AlertErrorType;
+}
+
+// ❌ 禁止重复类型：如 ErrorLogAlertType ≈ AlertErrorType，统一为一个
+// ❌ 禁止跨层定义：Agent 领域类型不应定义在 monitoring 的 types 中
+```
+
+### 模块定义
+
+```typescript
+@Global()
 @Module({
-  imports: [DependencyModule], // Import other modules
-  controllers: [FeatureController], // Register controllers
-  providers: [FeatureService], // Register services
-  exports: [FeatureService], // Export for other modules
+  imports: [
+    ScheduleModule.forRoot(),
+    forwardRef(() => MessageModule),  // 必要时使用 forwardRef 解决循环依赖
+    FeishuModule,
+  ],
+  controllers: [AnalyticsController, DashboardController],
+  providers: [
+    // Repositories
+    MonitoringRepository,
+    // Services（按子域分组注册）
+    MonitoringCacheService,
+    MessageTrackingService,
+    AnalyticsService,
+  ],
+  exports: [MessageTrackingService, AnalyticsService],  // 只导出外部需要的
 })
-export class FeatureModule {}
-```
-
-### Feature Flags for Evolution
-
-```typescript
-@Injectable()
-export class FeatureFlagService {
-  constructor(private readonly configService: ConfigService) {}
-
-  isEnabled(feature: string): boolean {
-    return this.configService.get<boolean>(`FEATURE_${feature}`, false);
-  }
-}
-
-// Usage
-@Injectable()
-export class ConversationService {
-  constructor(
-    private readonly memoryStorage: MemoryStorage,
-    private readonly redisStorage: RedisStorage,
-    private readonly featureFlag: FeatureFlagService,
-  ) {}
-
-  async getHistory(conversationId: string): Promise<Message[]> {
-    // Gradual rollout of Redis storage
-    if (this.featureFlag.isEnabled('REDIS_STORAGE')) {
-      return this.redisStorage.get(conversationId);
-    }
-
-    return this.memoryStorage.get(conversationId);
-  }
-}
+export class MonitoringModule {}
 ```
 
 ---

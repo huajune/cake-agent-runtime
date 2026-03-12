@@ -8,14 +8,22 @@ import {
   TestBatch,
   TestExecution,
   BatchStats,
-} from '@/services/agent-test';
+  TestType,
+} from '@/api/services/agent-test.service';
 
 const PAGE_SIZE = 20;
 
+interface UseBatchesOptions {
+  testType?: TestType;
+}
+
 /**
  * 批次数据管理 Hook
+ *
+ * @param options.testType 测试类型过滤
  */
-export function useBatches() {
+export function useBatches(options: UseBatchesOptions = {}) {
+  const { testType } = options;
   // 批次列表
   const [batches, setBatches] = useState<TestBatch[]>([]);
   const [selectedBatch, setSelectedBatch] = useState<TestBatch | null>(null);
@@ -40,7 +48,12 @@ export function useBatches() {
     try {
       setLoading(true);
       offsetRef.current = 0;
-      const result = await getBatches(PAGE_SIZE, 0);
+      // 切换类型时清空所有状态，确保显示 loading
+      setBatches([]);
+      setSelectedBatch(null);
+      setBatchStats(null);
+      setExecutions([]);
+      const result = await getBatches(PAGE_SIZE, 0, testType);
       setBatches(result.data);
       setTotal(result.total);
       setHasMore(result.data.length < result.total);
@@ -51,7 +64,7 @@ export function useBatches() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [testType]);
 
   // 加载更多批次（无限滚动）
   const loadMoreBatches = useCallback(async () => {
@@ -59,7 +72,7 @@ export function useBatches() {
 
     try {
       setLoadingMore(true);
-      const result = await getBatches(PAGE_SIZE, offsetRef.current);
+      const result = await getBatches(PAGE_SIZE, offsetRef.current, testType);
       setBatches((prev) => [...prev, ...result.data]);
       setTotal(result.total);
       offsetRef.current += result.data.length;
@@ -70,7 +83,7 @@ export function useBatches() {
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, hasMore]);
+  }, [loadingMore, hasMore, testType]);
 
   // 加载批次详情
   const loadBatchData = useCallback(async (batch: TestBatch) => {
@@ -105,16 +118,25 @@ export function useBatches() {
   const handleQuickCreate = useCallback(async () => {
     try {
       setQuickCreating(true);
-      const result = await quickCreateBatch();
+      const result = await quickCreateBatch({ testType });
       toast.success(`成功导入 ${result.totalImported} 条测试用例`);
       await loadBatches();
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { error?: string } }; message?: string };
-      toast.error(error.response?.data?.error || error.message || '创建失败');
+      console.error('Quick create error:', err);
+      const error = err as { response?: { data?: { error?: any; message?: any } }; message?: string };
+      let errMsg = error.response?.data?.error || error.response?.data?.message || error.message || '创建失败';
+      if (typeof errMsg !== 'string') {
+        try {
+          errMsg = JSON.stringify(errMsg);
+        } catch (e) {
+          errMsg = '创建失败（未知错误）';
+        }
+      }
+      toast.error(errMsg);
     } finally {
       setQuickCreating(false);
     }
-  }, [loadBatches]);
+  }, [loadBatches, testType]);
 
   // 初始加载
   useEffect(() => {

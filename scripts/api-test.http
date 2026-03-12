@@ -2,7 +2,7 @@
 @baseUrl = http://localhost:8080
 
 ### Token 配置
-@tokenGroup = 691d3b1c77279273a79275f5
+@tokenGroup = 68f88a31d53018ed04950739
 @tokenEnterprise = 9eaebbf614104879b81c2da7c41819bd
 
 ### ChatId 配置
@@ -13,7 +13,7 @@
 @GroupChatId = 68e763179d6d3a463bac17d0
 
 ### 其他常用参数
-@wecomUserId = ZhuJie
+@wecomUserId = gaoyaqi
 @imBotId = 68d3b986de170dd6eb01982a
 @wxid = 1688854747775509
 
@@ -311,7 +311,7 @@ Content-Type: application/json
 GET {{baseUrl}}/room/simple-list
   ?token={{tokenGroup}}
   &current=0
-  &pageSize=5
+  &pageSize=200
 
 ### ========================================
 ### 9. 测试获取群列表接口（含成员信息）⭐ 已迁移到 RoomModule
@@ -320,6 +320,50 @@ GET {{baseUrl}}/room/list
   &current=0
   &pageSize=5
 
+GET {{baseUrl}}/room/enterprise-list
+  ?token={{tokenEnterprise}}
+  &current=1
+  &pageSize=50
+
+### ========================================
+### 10.1 测试获取企业级群列表接口（带筛选参数）
+# 通过 imBotId 和 wecomUserId 筛选特定托管账号和员工的群聊
+GET {{baseUrl}}/room/enterprise-list
+  ?token={{tokenEnterprise}}
+  &current=1
+  &pageSize=10
+  &imBotId={{imBotId}}
+  &wecomUserId={{wecomUserId}}
+
+### ========================================
+### 10.2 测试获取企业级群列表接口（仅 token，使用默认分页）
+# 不传分页参数，使用 API 默认值（pageSize=10）
+GET {{baseUrl}}/room/enterprise-list
+  ?token={{tokenEnterprise}}
+
+### ========================================
+### 10.3 测试获取企业级群列表接口（大分页）
+# 测试获取较多数据，pageSize 最大支持 1000
+GET {{baseUrl}}/room/enterprise-list
+  ?token={{tokenEnterprise}}
+  &current=1
+  &pageSize=20
+
+### ========================================
+### 10.4 测试获取企业级群列表接口（仅按 imBotId 筛选）
+# 只筛选特定托管账号的群聊
+GET {{baseUrl}}/room/enterprise-list
+  ?token={{tokenEnterprise}}
+  &imBotId={{imBotId}}
+  &pageSize=20
+
+### ========================================
+### 10.5 测试获取企业级群列表接口（仅按 wecomUserId 筛选）
+# 只筛选特定员工相关的群聊
+GET {{baseUrl}}/room/enterprise-list
+  ?token={{tokenEnterprise}}
+  &wecomUserId={{wecomUserId}}
+  &pageSize=20
 
 ### ========================================
 ### 11. 测试聊天历史接口（使用小组级 token）⭐ 已迁移到 ChatModule
@@ -385,14 +429,14 @@ GET {{baseUrl}}/agent/health/cache
 POST {{baseUrl}}/agent/cache/clear
 
 ### ========================================
-### 21. 测试 Agent 聊天（简单测试）
-POST {{baseUrl}}/agent/test-chat
+### 21. 调试 Agent 聊天（返回完整原始响应）
+POST {{baseUrl}}/agent/debug-chat
 Content-Type: application/json
 
 {
   "message": "你好，请介绍一下你自己",
-  "conversationId": "test-user-001",
-  "model": "claude-3-5-sonnet-20241022"
+  "conversationId": "debug-001",
+  "scenario": "candidate-consultation"
 }
 
 ### ========================================
@@ -405,7 +449,7 @@ POST {{baseUrl}}/agent/chat-with-profile
 Content-Type: application/json
 
 {
-  "scenario": "wechat-group-customer-service",
+  "scenario": "candidate-consultation",
   "message": "我想了解一下招募信息",
   "roomId": "{{GroupChatId}}",
   "fromUser": "test_user_123"

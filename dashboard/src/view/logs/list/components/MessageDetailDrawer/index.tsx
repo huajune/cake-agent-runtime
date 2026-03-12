@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { formatDateTime } from '@/utils/format';
-import { useMessageProcessingRecordDetail } from '@/hooks/monitoring/useChatRecords';
+import { useMessageProcessingRecordDetail } from '@/hooks/chat/useMessageRecords';
 import HistorySection from './HistorySection';
 import ChatSection from './ChatSection';
 import TechnicalStats from './TechnicalStats';

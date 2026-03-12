@@ -52,62 +52,6 @@ export interface PruneOptions {
 export interface ModelConfig {
   chatModel?: string;
   classifyModel?: string;
-  replyModel?: string;
-}
-
-/**
- * 品牌优先级策略
- * - user-selected: UI选择优先
- * - conversation-extracted: 职位详情识别优先（工具调用时从岗位信息提取）
- * - smart: 智能判断（推荐）
- */
-export type BrandPriorityStrategy = 'user-selected' | 'conversation-extracted' | 'smart';
-
-/**
- * 品牌筛选配置
- */
-export interface BrandScreening {
-  age?: {
-    min?: number;
-    max?: number;
-    preferred?: number[];
-  };
-  blacklistKeywords?: string[];
-  preferredKeywords?: string[];
-}
-
-/**
- * 品牌配置
- */
-export interface BrandConfig {
-  templates?: {
-    [key: string]: string[];
-  };
-  screening?: BrandScreening;
-}
-
-/**
- * 配置数据
- */
-export interface BrandData {
-  name: string;
-  description?: string;
-  location?: string;
-  stores?: Array<{
-    name: string;
-    address: string;
-    contact?: string;
-  }>;
-  [key: string]: any;
-}
-
-export interface ConfigData {
-  city?: string;
-  stores?: any[];
-  brands?: {
-    [brandName: string]: BrandConfig;
-  };
-  defaultBrand?: string;
 }
 
 /**
@@ -121,45 +65,20 @@ export interface SystemPrompts {
 }
 
 /**
- * 回复提示词映射
- */
-export interface ReplyPrompts {
-  general_chat?: string;
-  initial_inquiry?: string;
-  schedule_inquiry?: string;
-  salary_inquiry?: string;
-  interview_request?: string;
-  availability_inquiry?: string;
-  followup_chat?: string;
-  age_concern?: string;
-  [key: string]: string | undefined;
-}
-
-/**
  * 上下文配置
  */
 export interface ChatContext {
   preferredBrand?: string;
-  brandPriorityStrategy?: BrandPriorityStrategy;
   modelConfig?: ModelConfig;
-  configData?: ConfigData;
   systemPrompts?: SystemPrompts;
-  replyPrompts?: ReplyPrompts;
   dulidayToken?: string | null;
   defaultWechatId?: string | null;
-  sandboxId?: string | null;
-  [key: string]: any;
-}
-
-/**
- * 品牌上下文（供下游服务合并使用）
- * 注意：API 契约要求使用 configData 字段传递品牌数据
- */
-export interface BrandContext {
-  configData?: BrandData;
-  replyPrompts?: ReplyPrompts;
-  synced?: boolean;
-  lastRefreshTime?: string;
+  userId?: string | null; // 候选人用户 ID（即 imContactId / user_id）
+  /**
+   * 会话 ID（花卷 API 外部契约字段）
+   * 由 AgentFacadeService.prepareRequestParams() 自动从 sessionId 参数注入，调用方无需手动设置。
+   */
+  sessionId?: string | null;
   [key: string]: any;
 }
 
@@ -183,6 +102,9 @@ export interface ChatRequest {
   model: string;
   messages: (UIMessage | SimpleMessage)[];
 
+  // 提示词类型（指定 Agent 使用哪套 system prompt）
+  promptType?: string;
+
   // 流式输出配置
   stream?: boolean;
 
@@ -190,13 +112,11 @@ export interface ChatRequest {
   prune?: boolean;
   pruneOptions?: PruneOptions;
 
-  // 系统提示词配置（二选一，systemPrompt 优先级更高）
+  // 系统提示词
   systemPrompt?: string;
-  promptType?: string;
 
   // 工具配置
   allowedTools?: string[];
-  sandboxId?: string | null;
 
   // 上下文配置
   context?: ChatContext;
@@ -207,6 +127,12 @@ export interface ChatRequest {
 
   // 仅验证模式
   validateOnly?: boolean;
+
+  // 扩展思考配置（AI SDK extended thinking）
+  thinking?: { type: 'enabled' | 'disabled'; budgetTokens: number };
+
+  // 渠道类型（private=私聊, group=群聊）
+  channelType?: string;
 }
 
 /**
@@ -356,18 +282,15 @@ export interface AgentProfile {
   model: string;
 
   /**
-   * 系统提示词（直接指定）
-   * 优先级高于 promptType
-   */
-  systemPrompt?: string;
-
-  /**
-   * 预定义的场景标识符
-   * 具有两个作用:
-   * 1. 自动启用该场景对应的工具集
-   * 2. 从 context.systemPrompts[promptType] 查找提示词
+   * 提示词类型（指定 Agent 使用哪套 system prompt）
+   * 例如: 'weworkSystemPrompt'
    */
   promptType?: string;
+
+  /**
+   * 系统提示词
+   */
+  systemPrompt?: string;
 
   /**
    * 允许的工具列表

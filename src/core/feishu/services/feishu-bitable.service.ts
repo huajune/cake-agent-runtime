@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { MonitoringDatabaseService } from '@core/monitoring/monitoring-database.service';
-import { MessageProcessingRecord } from '@core/monitoring/interfaces/monitoring.interface';
+import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
+import { MessageProcessingRecord } from '@biz/monitoring/types/tracking.types';
 import { FeishuBitableApiService, BatchCreateRequest } from './feishu-bitable-api.service';
 
 /**
@@ -32,7 +32,7 @@ export class FeishuBitableSyncService {
   private readonly logger = new Logger(FeishuBitableSyncService.name);
 
   constructor(
-    private readonly databaseService: MonitoringDatabaseService,
+    private readonly messageProcessingRepository: MessageProcessingRepository,
     private readonly bitableApi: FeishuBitableApiService,
   ) {}
 
@@ -47,8 +47,12 @@ export class FeishuBitableSyncService {
       return;
     }
 
-    // 从数据库读取昨天的记录
-    const allRecords = await this.databaseService.getRecentDetailRecords(1000);
+    // 从数据库读取最近记录（限定 1000 条）
+    const result = await this.messageProcessingRepository.getMessageProcessingRecords({
+      limit: 1000,
+    });
+    const allRecords = result.records as unknown as MessageProcessingRecord[];
+
     if (!allRecords || allRecords.length === 0) {
       this.logger.warn('[FeishuSync] 未找到记录，跳过同步');
       return;
@@ -74,8 +78,9 @@ export class FeishuBitableSyncService {
         rows,
       );
       this.logger.log(`[FeishuSync] 同步完成，成功: ${result.created}，失败: ${result.failed}`);
-    } catch (error: any) {
-      this.logger.error(`[FeishuSync] 同步失败: ${error?.message ?? error}`);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[FeishuSync] 同步失败: ${errorMessage}`);
     }
   }
 
@@ -155,6 +160,7 @@ export class FeishuBitableSyncService {
         咨询时间: new Date(record.receivedAt).toISOString(),
         聊天记录: chatLog || '[空消息]',
         message_id: record.messageId,
+        test_type: '对话验证',
       },
     };
   }

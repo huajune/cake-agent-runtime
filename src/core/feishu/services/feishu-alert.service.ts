@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { AgentReplyConfig } from '@core/supabase';
-import { SystemConfigRepository } from '@core/supabase/repositories';
+import { AgentReplyConfig } from '@biz/hosting-config/types/hosting-config.types';
+import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { FeishuWebhookService } from './feishu-webhook.service';
 import { AlertLevel } from '../interfaces/feishu.interface';
 import { ALERT_THROTTLE } from '../constants/feishu.constants';
@@ -71,14 +71,14 @@ export class FeishuAlertService implements OnModuleInit {
 
   constructor(
     private readonly webhookService: FeishuWebhookService,
-    private readonly systemConfigRepository: SystemConfigRepository,
+    private readonly systemConfigService: SystemConfigService,
   ) {
     // 初始化默认配置
     this.throttleWindowMs = ALERT_THROTTLE.WINDOW_MS;
     this.throttleMaxCount = ALERT_THROTTLE.MAX_COUNT;
 
     // 注册配置变更回调
-    this.systemConfigRepository.onAgentReplyConfigChange((config) => {
+    this.systemConfigService.onAgentReplyConfigChange((config) => {
       this.onConfigChange(config);
     });
 
@@ -92,7 +92,7 @@ export class FeishuAlertService implements OnModuleInit {
    */
   async onModuleInit() {
     try {
-      const config = await this.systemConfigRepository.getAgentReplyConfig();
+      const config = await this.systemConfigService.getAgentReplyConfig();
       this.throttleWindowMs = config.alertThrottleWindowMs;
       this.throttleMaxCount = config.alertThrottleMaxCount;
       this.logger.log(

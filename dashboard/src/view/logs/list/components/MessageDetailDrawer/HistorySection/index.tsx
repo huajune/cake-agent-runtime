@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import type { MessageRecord } from '@/types/monitoring';
+import type { MessageRecord } from '@/api/types/chat.types';
 import styles from './index.module.scss';
 
 // Agent API 消息结构

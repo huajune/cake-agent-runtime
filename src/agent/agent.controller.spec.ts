@@ -2,11 +2,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AgentController } from './agent.controller';
 import { AgentService } from './agent.service';
 import { ProfileLoaderService } from './services/agent-profile-loader.service';
-import { BrandConfigService } from './services/brand-config.service';
 import { AgentConfigValidator } from './utils/agent-validator';
 import { AgentRegistryService } from './services/agent-registry.service';
 import { ConfigService } from '@nestjs/config';
 import { FeishuAlertService } from '@core/feishu';
+import { AgentFacadeService } from './services/agent-facade.service';
 
 describe('AgentController', () => {
   let controller: AgentController;
@@ -36,17 +36,9 @@ describe('AgentController', () => {
     deleteProfile: jest.fn(),
   };
 
-  const mockBrandConfig = {
-    getBrandConfigStatus: jest.fn(),
-    refreshBrandConfig: jest.fn(),
-    getBrandConfig: jest.fn(),
-  };
-
   const mockConfigValidator = {
-    validateBrandConfig: jest.fn(),
     validateRequiredFields: jest.fn(),
     validateContext: jest.fn(),
-    logValidationWarnings: jest.fn(),
   };
 
   const mockConfigService = {
@@ -56,6 +48,14 @@ describe('AgentController', () => {
   const mockFeishuAlertService = {
     sendAlert: jest.fn().mockResolvedValue(true),
     sendSimpleAlert: jest.fn().mockResolvedValue(true),
+  };
+
+  const mockAgentFacadeService = {
+    chatWithScenario: jest.fn(),
+    chatStreamWithScenario: jest.fn(),
+    getProfile: jest.fn(),
+    hasScenario: jest.fn(),
+    getAllScenarios: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -75,10 +75,6 @@ describe('AgentController', () => {
           useValue: mockProfileLoader,
         },
         {
-          provide: BrandConfigService,
-          useValue: mockBrandConfig,
-        },
-        {
           provide: AgentConfigValidator,
           useValue: mockConfigValidator,
         },
@@ -89,6 +85,10 @@ describe('AgentController', () => {
         {
           provide: FeishuAlertService,
           useValue: mockFeishuAlertService,
+        },
+        {
+          provide: AgentFacadeService,
+          useValue: mockAgentFacadeService,
         },
       ],
     }).compile();
@@ -114,27 +114,13 @@ describe('AgentController', () => {
         lastRefreshTime: new Date().toISOString(),
       };
 
-      const mockBrandConfigStatus = {
-        available: true,
-        synced: true,
-        hasBrandData: true,
-        hasReplyPrompts: true,
-        lastRefreshTime: new Date().toISOString(),
-      };
-
       mockRegistryService.getHealthStatus.mockReturnValue(mockHealthStatus);
-      mockBrandConfig.getBrandConfigStatus.mockResolvedValue(mockBrandConfigStatus);
 
       const result = await controller.healthCheck();
 
       expect(registryService.getHealthStatus).toHaveBeenCalled();
-      expect(mockBrandConfig.getBrandConfigStatus).toHaveBeenCalled();
       expect(result.success).toBe(true);
       expect(result.data.status).toEqual('healthy');
-      // 验证不返回完整品牌配置数据
-      expect(result.data.brandConfig.available).toBe(true);
-      expect(result.data.brandConfig.synced).toBe(true);
-      expect(result.data.brandConfig).not.toHaveProperty('data');
     });
 
     it('should return degraded status when some resources are unavailable', async () => {
@@ -144,25 +130,13 @@ describe('AgentController', () => {
         lastRefreshTime: new Date().toISOString(),
       };
 
-      const mockBrandConfigStatus = {
-        available: true,
-        synced: true,
-        hasBrandData: true,
-        hasReplyPrompts: true,
-        lastRefreshTime: new Date().toISOString(),
-      };
-
       mockRegistryService.getHealthStatus.mockReturnValue(mockHealthStatus);
-      mockBrandConfig.getBrandConfigStatus.mockResolvedValue(mockBrandConfigStatus);
 
       const result = await controller.healthCheck();
 
       expect(registryService.getHealthStatus).toHaveBeenCalled();
-      expect(mockBrandConfig.getBrandConfigStatus).toHaveBeenCalled();
       expect(result.success).toBe(true);
       expect(result.data.status).toEqual('degraded');
-      // 验证不返回完整品牌配置数据
-      expect(result.data.brandConfig).not.toHaveProperty('data');
     });
   });
 
@@ -225,15 +199,7 @@ describe('AgentController', () => {
     });
   });
 
-  describe('testChat', () => {
-    const mockProfile = {
-      name: 'candidate-consultation',
-      description: '测试配置',
-      model: 'test-model',
-      context: [],
-      toolContext: {},
-    };
-
+  describe('debugChat', () => {
     const createMockAgentResult = (text: string) => ({
       status: 'success',
       data: {
@@ -244,109 +210,52 @@ describe('AgentController', () => {
       correlationId: 'test-correlation-id',
     });
 
-    it('should call agentService.chatWithProfile with all parameters', async () => {
+    it('should call agentFacade.chatWithScenario with correct parameters', async () => {
       const mockBody = {
         message: '你好',
-        conversationId: 'conv123',
+        sessionId: 'conv123',
+        scenario: 'candidate-consultation',
         model: 'gpt-4',
       };
       const mockAgentResult = createMockAgentResult('你好！');
 
-      mockProfileLoader.getProfile.mockReturnValue(mockProfile);
-      mockAgentService.chatWithProfile.mockResolvedValue(mockAgentResult);
+      mockAgentFacadeService.chatWithScenario.mockResolvedValue(mockAgentResult);
 
-      const result = await controller.testChat(mockBody);
+      const result = await controller.debugChat(mockBody);
 
-      expect(mockProfileLoader.getProfile).toHaveBeenCalledWith('candidate-consultation');
-      expect(service.chatWithProfile).toHaveBeenCalledWith('conv123', '你好', mockProfile, {
-        model: 'gpt-4',
-        allowedTools: undefined,
-        context: expect.any(Object), // mergedContext from brandConfig
-      });
-      expect(result).toEqual({
-        response: mockAgentResult.data,
-        metadata: {
-          status: 'success',
-          fromCache: false,
-          correlationId: 'test-correlation-id',
+      expect(mockAgentFacadeService.chatWithScenario).toHaveBeenCalledWith(
+        'candidate-consultation',
+        'conv123',
+        '你好',
+        {
+          model: 'gpt-4',
+          allowedTools: undefined,
+          userId: undefined,
         },
-      });
+      );
+      expect(result.success).toBe(true);
+      expect(result.sessionId).toBe('conv123');
+      expect(result.scenario).toBe('candidate-consultation');
+      expect(result.agentResult.status).toBe('success');
+      expect(result.agentResult.data).toEqual(mockAgentResult.data);
     });
 
-    it('should use default conversationId when not provided', async () => {
+    it('should use default sessionId and scenario when not provided', async () => {
       const mockBody = { message: '测试消息' };
       const mockAgentResult = createMockAgentResult('收到测试消息');
 
-      mockProfileLoader.getProfile.mockReturnValue(mockProfile);
-      mockAgentService.chatWithProfile.mockResolvedValue(mockAgentResult);
+      mockAgentFacadeService.chatWithScenario.mockResolvedValue(mockAgentResult);
 
-      const result = await controller.testChat(mockBody);
+      const result = await controller.debugChat(mockBody);
 
-      expect(mockProfileLoader.getProfile).toHaveBeenCalledWith('candidate-consultation');
-      expect(service.chatWithProfile).toHaveBeenCalledWith('test-user', '测试消息', mockProfile, {
-        model: undefined,
-        allowedTools: undefined,
-        context: expect.any(Object), // mergedContext from brandConfig
-      });
-      expect(result).toEqual({
-        response: mockAgentResult.data,
-        metadata: {
-          status: 'success',
-          fromCache: false,
-          correlationId: 'test-correlation-id',
-        },
-      });
-    });
-
-    it('should call agentService.chatWithProfile without model parameter', async () => {
-      const mockBody = {
-        message: '你好',
-        conversationId: 'conv456',
-      };
-      const mockAgentResult = createMockAgentResult('你好！');
-
-      mockProfileLoader.getProfile.mockReturnValue(mockProfile);
-      mockAgentService.chatWithProfile.mockResolvedValue(mockAgentResult);
-
-      const result = await controller.testChat(mockBody);
-
-      expect(mockProfileLoader.getProfile).toHaveBeenCalledWith('candidate-consultation');
-      expect(service.chatWithProfile).toHaveBeenCalledWith('conv456', '你好', mockProfile, {
-        model: undefined,
-        allowedTools: undefined,
-        context: expect.any(Object), // mergedContext from brandConfig
-      });
-      expect(result).toEqual({
-        response: mockAgentResult.data,
-        metadata: {
-          status: 'success',
-          fromCache: false,
-          correlationId: 'test-correlation-id',
-        },
-      });
-    });
-
-    it('should handle errors from agentService.chatWithProfile', async () => {
-      const mockBody = { message: '测试' };
-      const error = new Error('Chat failed');
-
-      mockProfileLoader.getProfile.mockReturnValue(mockProfile);
-      mockAgentService.chatWithProfile.mockRejectedValue(error);
-
-      await expect(controller.testChat(mockBody)).rejects.toThrow('Chat failed');
-    });
-
-    it('should throw 404 when scenario is not found', async () => {
-      const mockBody = {
-        message: '你好',
-        scenario: 'non-existent-scenario',
-      };
-
-      mockProfileLoader.getProfile.mockReturnValue(null);
-
-      await expect(controller.testChat(mockBody)).rejects.toThrow(
-        '未找到场景 non-existent-scenario 的配置，请检查配置文件',
+      expect(mockAgentFacadeService.chatWithScenario).toHaveBeenCalledWith(
+        'candidate-consultation',
+        expect.stringMatching(/^debug-\d+$/),
+        '测试消息',
+        expect.objectContaining({ model: undefined, allowedTools: undefined }),
       );
+      expect(result.success).toBe(true);
+      expect(result.scenario).toBe('candidate-consultation');
     });
 
     it('should use custom scenario when provided', async () => {
@@ -356,93 +265,41 @@ describe('AgentController', () => {
       };
       const mockAgentResult = createMockAgentResult('你好！');
 
-      mockProfileLoader.getProfile.mockReturnValue(mockProfile);
-      mockAgentService.chatWithProfile.mockResolvedValue(mockAgentResult);
+      mockAgentFacadeService.chatWithScenario.mockResolvedValue(mockAgentResult);
 
-      const result = await controller.testChat(mockBody);
+      const result = await controller.debugChat(mockBody);
 
-      expect(mockProfileLoader.getProfile).toHaveBeenCalledWith('wechat-group-assistant');
-      expect(service.chatWithProfile).toHaveBeenCalledWith('test-user', '你好', mockProfile, {
-        model: undefined,
-        allowedTools: undefined,
-        context: expect.any(Object), // mergedContext from brandConfig
-      });
-      expect(result).toEqual({
-        response: mockAgentResult.data,
-        metadata: {
-          status: 'success',
-          fromCache: false,
-          correlationId: 'test-correlation-id',
-        },
-      });
+      expect(mockAgentFacadeService.chatWithScenario).toHaveBeenCalledWith(
+        'wechat-group-assistant',
+        expect.stringMatching(/^debug-\d+$/),
+        '你好',
+        expect.any(Object),
+      );
+      expect(result.scenario).toBe('wechat-group-assistant');
     });
 
-    it('should pass allowedTools to chatWithProfile when provided', async () => {
-      const mockBody = {
-        message: '帮我查询职位',
-        allowedTools: ['duliday_job_list', 'duliday_job_details'],
+    it('should return success false when result status is error', async () => {
+      const mockBody = { message: '测试' };
+      const mockErrorResult = {
+        status: 'error',
+        error: { message: 'Agent 调用失败', retryable: false },
       };
-      const mockAgentResult = createMockAgentResult('正在查询职位...');
 
-      mockProfileLoader.getProfile.mockReturnValue(mockProfile);
-      mockAgentService.chatWithProfile.mockResolvedValue(mockAgentResult);
+      mockAgentFacadeService.chatWithScenario.mockResolvedValue(mockErrorResult);
 
-      const result = await controller.testChat(mockBody);
+      const result = await controller.debugChat(mockBody);
 
-      expect(mockProfileLoader.getProfile).toHaveBeenCalledWith('candidate-consultation');
-      expect(service.chatWithProfile).toHaveBeenCalledWith(
-        'test-user',
-        '帮我查询职位',
-        mockProfile,
-        {
-          model: undefined,
-          allowedTools: ['duliday_job_list', 'duliday_job_details'],
-          context: expect.any(Object), // mergedContext from brandConfig
-        },
-      );
-      expect(result).toEqual({
-        response: mockAgentResult.data,
-        metadata: {
-          status: 'success',
-          fromCache: false,
-          correlationId: 'test-correlation-id',
-        },
-      });
+      expect(result.success).toBe(false);
+      expect(result.agentResult.status).toBe('error');
+      expect(result.agentResult.error).toEqual(mockErrorResult.error);
     });
 
-    it('should pass both custom scenario and allowedTools', async () => {
-      const mockBody = {
-        message: '帮我查询职位',
-        scenario: 'wechat-group-assistant',
-        allowedTools: ['duliday_job_list'],
-        conversationId: 'custom-conv-123',
-      };
-      const mockAgentResult = createMockAgentResult('正在查询...');
+    it('should handle errors from agentFacade.chatWithScenario', async () => {
+      const mockBody = { message: '测试' };
 
-      mockProfileLoader.getProfile.mockReturnValue(mockProfile);
-      mockAgentService.chatWithProfile.mockResolvedValue(mockAgentResult);
+      mockAgentFacadeService.chatWithScenario.mockRejectedValue(new Error('Chat failed'));
 
-      const result = await controller.testChat(mockBody);
-
-      expect(mockProfileLoader.getProfile).toHaveBeenCalledWith('wechat-group-assistant');
-      expect(service.chatWithProfile).toHaveBeenCalledWith(
-        'custom-conv-123',
-        '帮我查询职位',
-        mockProfile,
-        {
-          model: undefined,
-          allowedTools: ['duliday_job_list'],
-          context: expect.any(Object), // mergedContext from brandConfig
-        },
-      );
-      expect(result).toEqual({
-        response: mockAgentResult.data,
-        metadata: {
-          status: 'success',
-          fromCache: false,
-          correlationId: 'test-correlation-id',
-        },
-      });
+      await expect(controller.debugChat(mockBody)).rejects.toThrow('Chat failed');
     });
   });
 
@@ -453,7 +310,6 @@ describe('AgentController', () => {
         description: 'Test',
         model: 'test-model',
         allowedTools: ['tool1', 'tool2'],
-        promptType: 'safe',
         contextStrategy: 'skip',
         prune: true,
         pruneOptions: { maxTokens: 1000 },
@@ -474,7 +330,6 @@ describe('AgentController', () => {
         description: 'Test',
         model: 'test-model',
         allowedTools: ['tool1', 'tool2'],
-        promptType: 'safe',
         contextStrategy: 'skip',
         prune: true,
         pruneOptions: { maxTokens: 1000 },
@@ -505,10 +360,6 @@ describe('AgentController', () => {
 
       mockProfileLoader.getProfile.mockReturnValue(mockProfile);
       mockConfigValidator.validateRequiredFields.mockReturnValue(undefined);
-      mockConfigValidator.validateBrandConfig.mockReturnValue({
-        isValid: true,
-        errors: [],
-      });
       mockConfigValidator.validateContext.mockReturnValue({
         isValid: true,
         errors: [],

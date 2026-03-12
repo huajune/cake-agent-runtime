@@ -13,16 +13,16 @@ import {
   Legend,
   Filler,
 } from 'chart.js';
-import { useDashboardOverview } from '@/hooks/monitoring/useDashboard';
-import { useHealthStatus } from '@/hooks/monitoring/useMetrics';
+import { useDashboardOverview } from '@/hooks/analytics/useDashboard';
+import { useHealthStatus } from '@/hooks/analytics/useMetrics';
 import {
   useAiReplyStatus,
   useToggleAiReply,
   useAvailableModels,
   useConfiguredTools,
-  useBrandConfigStatus,
-} from '@/hooks/monitoring/useSystemConfig';
+} from '@/hooks/config/useSystemConfig';
 import { formatDuration, formatMinuteLabel, formatDayLabel, formatHourLabel } from '@/utils/format';
+import { THEME_COLORS } from '@/constants';
 
 // 组件导入
 import ControlPanel from './components/ControlPanel';
@@ -33,8 +33,8 @@ import ChartCard, { ChartsRow } from './components/ChartCard';
 // 样式导入
 import styles from './styles/index.module.scss';
 
-// 圣诞装饰 emoji 列表
-const christmasDecorations = ['🎀', '🧦', '⛄', '🎁', '🍬', '🔔', '🦌', '🎅', '🎄', '🍭', '🎈', '🎉', '🎊', '🥨', '🍩', '❄️', '☃️'];
+// 新春装饰 emoji 列表
+const springDecorations = ['🧧', '🧨', '🎊', '🎉', '🪭', '🏮', '🐴', '🌺', '🥟', '❤️', '🍊', '💰', '🎆'];
 
 // 注册 Chart.js 组件
 ChartJS.register(
@@ -62,33 +62,32 @@ export default function Dashboard() {
   // 详情数据（悬浮时加载）
   const { data: modelsData } = useAvailableModels();
   const { data: toolsData } = useConfiguredTools();
-  const { data: brandData } = useBrandConfigStatus();
 
-  // 圣诞装饰效果
+  // 新春装饰效果
   useEffect(() => {
     const cards = document.querySelectorAll('.metric-card, .chart-card, .insight-card');
 
     cards.forEach((card) => {
-      card.querySelectorAll('.christmas-sticker').forEach(s => s.remove());
+      card.querySelectorAll('.spring-sticker').forEach(s => s.remove());
 
       if (Math.random() > 0.2) {
         const sticker = document.createElement('div');
-        sticker.className = 'christmas-sticker sticker-tr';
-        sticker.textContent = christmasDecorations[Math.floor(Math.random() * christmasDecorations.length)];
+        sticker.className = 'spring-sticker sticker-tr';
+        sticker.textContent = springDecorations[Math.floor(Math.random() * springDecorations.length)];
         sticker.style.animationDelay = `${Math.random() * 2}s`;
         card.appendChild(sticker);
       }
 
       if (Math.random() > 0.7) {
         const sticker2 = document.createElement('div');
-        sticker2.className = 'christmas-sticker sticker-tl';
-        sticker2.textContent = christmasDecorations[Math.floor(Math.random() * christmasDecorations.length)];
+        sticker2.className = 'spring-sticker sticker-tl';
+        sticker2.textContent = springDecorations[Math.floor(Math.random() * springDecorations.length)];
         card.appendChild(sticker2);
       }
     });
 
     return () => {
-      document.querySelectorAll('.christmas-sticker').forEach(s => s.remove());
+      document.querySelectorAll('.spring-sticker').forEach(s => s.remove());
     };
   }, [dashboardLoading]);
 
@@ -106,8 +105,7 @@ export default function Dashboard() {
   // 健康状态
   const healthStatus = health?.status === 'healthy' &&
     health?.models?.allConfiguredModelsAvailable &&
-    health?.tools?.allAvailable &&
-    health?.brandConfig?.synced
+    health?.tools?.allAvailable
     ? 'healthy'
     : health?.status !== 'healthy' ? 'error' : 'warning';
 
@@ -159,11 +157,11 @@ export default function Dashboard() {
     datasets: [{
       label: '用户数',
       data: businessPoints.map((p) => p.consultations || 0),
-      borderColor: '#6366f1',
-      backgroundColor: 'rgba(99, 102, 241, 0.2)',
+      borderColor: THEME_COLORS.primary,
+      backgroundColor: THEME_COLORS.primary20,
       fill: true,
       pointBackgroundColor: '#ffffff',
-      pointBorderColor: '#6366f1',
+      pointBorderColor: THEME_COLORS.primary,
       pointRadius: 4,
       pointHoverRadius: 6,
     }],
@@ -176,12 +174,12 @@ export default function Dashboard() {
       {
         label: '预约次数',
         data: businessPoints.map((p) => p.bookingAttempts || 0),
-        borderColor: '#8b5cf6',
-        backgroundColor: 'rgba(139, 92, 246, 0.2)',
+        borderColor: THEME_COLORS.accent,
+        backgroundColor: THEME_COLORS.accent20,
         fill: true,
         yAxisID: 'y',
         pointBackgroundColor: '#ffffff',
-        pointBorderColor: '#8b5cf6',
+        pointBorderColor: THEME_COLORS.accent,
         pointRadius: 4,
         pointHoverRadius: 6,
       },
@@ -209,7 +207,7 @@ export default function Dashboard() {
     },
     scales: {
       x: commonOptions.scales.x,
-      y: { ...commonOptions.scales.y, position: 'left' as const, title: { display: true, text: '预约次数', color: '#8b5cf6', font: { size: 10 } } },
+      y: { ...commonOptions.scales.y, position: 'left' as const, title: { display: true, text: '预约次数', color: THEME_COLORS.accent, font: { size: 10 } } },
       y1: { ...commonOptions.scales.y, position: 'right' as const, grid: { drawOnChartArea: false }, ticks: { callback: (value: number | string) => `${value}%` }, title: { display: true, text: '成功率 (%)', color: '#10b981', font: { size: 10 } } },
     },
   };
@@ -275,7 +273,6 @@ export default function Dashboard() {
           health={health}
           modelsData={modelsData}
           toolsData={toolsData}
-          brandData={brandData}
         />
       </ControlPanel>
 

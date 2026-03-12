@@ -15,7 +15,8 @@ import {
   useChatSessionMessages,
   useChatDailyStats,
   useChatSummaryStats,
-} from '@/hooks/monitoring/useChatRecords';
+} from '@/hooks/chat/useChatSessions';
+import { THEME_COLORS } from '@/constants';
 
 // 组件导入
 import HeaderBar from './components/HeaderBar';
@@ -164,13 +165,13 @@ export default function ChatRecords() {
         {
           label: '消息数',
           data: formattedData.map((d) => d.messages),
-          borderColor: '#6366f1',
-          backgroundColor: 'rgba(99, 102, 241, 0.1)',
+          borderColor: THEME_COLORS.primary,
+          backgroundColor: THEME_COLORS.primary10,
           fill: true,
           tension: 0.4,
           pointRadius: 4,
           pointHoverRadius: 6,
-          pointBackgroundColor: '#6366f1',
+          pointBackgroundColor: THEME_COLORS.primary,
         },
         {
           label: '会话数',

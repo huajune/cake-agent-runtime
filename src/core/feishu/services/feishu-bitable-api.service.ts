@@ -64,7 +64,7 @@ export class FeishuBitableApiService {
    * 获取预配置的表格信息
    */
   getTableConfig(
-    tableName: 'chat' | 'badcase' | 'goodcase' | 'testSuite',
+    tableName: 'chat' | 'badcase' | 'goodcase' | 'testSuite' | 'validationSet',
   ): FeishuBitableTableConfig {
     return feishuBitableConfig.tables[tableName];
   }
@@ -84,6 +84,54 @@ export class FeishuBitableApiService {
     }
 
     return response.data.data?.items || [];
+  }
+
+  /**
+   * 创建表格字段
+   *
+   * @param appToken 多维表格 app token
+   * @param tableId 表格 ID
+   * @param fieldName 字段名称
+   * @param fieldType 字段类型：1-文本, 2-数字, 3-单选, 4-多选, 5-日期, 7-复选框, 11-人员, 13-电话, 15-超链接, 17-附件, 18-关联, 20-公式, 21-双向关联, 22-地理位置, 23-群组, 1001-创建时间, 1002-修改时间, 1003-创建人, 1004-修改人
+   * @param options 单选/多选的选项列表
+   */
+  async createField(
+    appToken: string,
+    tableId: string,
+    fieldName: string,
+    fieldType: number,
+    options?: string[],
+  ): Promise<{ fieldId: string }> {
+    const body: Record<string, unknown> = {
+      field_name: fieldName,
+      type: fieldType,
+    };
+
+    // 如果是单选(3)或多选(4)，需要添加选项
+    if ((fieldType === 3 || fieldType === 4) && options && options.length > 0) {
+      body.property = {
+        options: options.map((name) => ({ name })),
+      };
+    }
+
+    const response = await this.feishuApi.post<
+      FeishuResponse<{ field: { field_id: string; field_name: string } }>
+    >(`/bitable/v1/apps/${appToken}/tables/${tableId}/fields`, body);
+
+    if (response.data.code !== 0) {
+      throw new Error(`创建字段失败: ${response.data.msg}`);
+    }
+
+    this.logger.log(`成功创建字段: ${fieldName} (${response.data.data!.field.field_id})`);
+    return { fieldId: response.data.data!.field.field_id };
+  }
+
+  /**
+   * 检查字段是否存在
+   */
+  async fieldExists(appToken: string, tableId: string, fieldName: string): Promise<boolean> {
+    const fields = await this.getFields(appToken, tableId);
+    return fields.some((f) => f.field_name === fieldName);
   }
 
   /**

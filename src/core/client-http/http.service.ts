@@ -22,7 +22,7 @@ export class HttpService {
     this.logger.log(`初始化通用 HTTP 客户端，超时设置: ${timeout}ms`);
 
     // 使用工厂创建 HTTP 客户端实例
-    // 注意：verbose 设为 false，避免打印包含敏感数据的请求体（如 configData、brandData 等）
+    // 注意：verbose 设为 false，避免打印包含敏感数据的请求体
     this.httpClient = this.httpClientFactory.create({
       timeout,
       logPrefix: '[HTTP Service]',

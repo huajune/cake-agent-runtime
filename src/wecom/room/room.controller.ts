@@ -40,6 +40,28 @@ export class RoomController {
   }
 
   /**
+   * 获取企业级群列表
+   * @description 获取企业级群聊列表（企业级接口），支持分页和筛选
+   * @example GET /room/enterprise-list?token=xxx&current=1&pageSize=10
+   */
+  @Get('enterprise-list')
+  async getEnterpriseGroupChatList(
+    @Query('token') token: string,
+    @Query('current') current?: number,
+    @Query('pageSize') pageSize?: number,
+    @Query('imBotId') imBotId?: string,
+    @Query('wecomUserId') wecomUserId?: string,
+  ) {
+    return await this.roomService.getEnterpriseGroupChatList(
+      token,
+      current,
+      pageSize,
+      imBotId,
+      wecomUserId,
+    );
+  }
+
+  /**
    * 加入群聊
    * @description 将联系人加入到指定群聊
    * @example POST /room/addMember

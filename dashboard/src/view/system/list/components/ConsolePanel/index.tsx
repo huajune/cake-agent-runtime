@@ -1,6 +1,7 @@
 import { Line } from 'react-chartjs-2';
 import type { ChartData, ChartOptions } from 'chart.js';
-import type { AgentReplyConfig, AlertTypeItem } from '@/types/monitoring';
+import type { AgentReplyConfig } from '@/api/types/config.types';
+import type { AlertTypeItem } from '@/api/types/analytics.types';
 import styles from './index.module.scss';
 
 interface ConsolePanelProps {

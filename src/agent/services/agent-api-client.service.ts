@@ -93,26 +93,33 @@ export class AgentApiClientService {
   /**
    * 调用 /api/v1/chat 接口
    * @param request 聊天请求参数
-   * @param conversationId 会话ID（用于日志）
+   * @param sessionId 会话ID（用于日志）
    * @returns API 响应
    */
   async chat(
     request: ChatRequest,
-    conversationId: string,
+    sessionId: string,
   ): Promise<AxiosResponse<ApiResponse<ChatResponse>>> {
     try {
-      // 将 conversationId 附加到 config，供拦截器使用
+      // 仅记录元数据，避免泄漏 system prompt / 用户消息 / toolContext
+      this.logger.debug(
+        `[Chat Request] 会话: ${sessionId}, 消息数: ${request.messages?.length ?? 0}, 模型: ${request.model ?? 'default'}, 工具数: ${request.allowedTools?.length ?? 0}`,
+      );
+      // 将 sessionId 附加到 config，供拦截器使用
       const response = await this.httpClient.post<ApiResponse<ChatResponse>>('/chat', request, {
-        headers: { 'X-Conversation-Id': conversationId },
+        headers: { 'X-Conversation-Id': sessionId },
       });
       return response;
     } catch (error) {
       // 【优化】调用失败时记录会话ID
-      this.logger.error(`Agent API 调用失败，会话: ${conversationId}`);
+      this.logger.error(`Agent API 调用失败，会话: ${sessionId}`);
 
-      // 【优化】将请求参数和 API Key 附加到错误对象，供飞书告警使用
-      (error as any).requestParams = request;
-      (error as any).apiKey = this.apiKey; // 附加 API Key（飞书告警会自动脱敏）
+      // 【优化】将请求元数据和脱敏 API Key 附加到错误对象，供飞书告警使用
+      (error as any).requestParams = {
+        model: request.model,
+        messageCount: request.messages?.length,
+      };
+      (error as any).apiKey = this.maskApiKey(); // 仅附加脱敏后的 API Key
       const headersClone = (error as any)?.config?.headers
         ? { ...(error as any).config.headers }
         : undefined;
@@ -128,29 +135,32 @@ export class AgentApiClientService {
   /**
    * 调用 /api/v1/chat 接口（流式输出）
    * @param request 聊天请求参数
-   * @param conversationId 会话ID（用于日志）
+   * @param sessionId 会话ID（用于日志）
    * @returns 可读流
    */
   async chatStream(
     request: Omit<ChatRequest, 'stream'>,
-    conversationId: string,
+    sessionId: string,
   ): Promise<NodeJS.ReadableStream> {
     try {
       // 强制设置 stream: true
       const streamRequest = { ...request, stream: true };
 
-      this.logger.log(`[Stream] 发起流式请求，会话: ${conversationId}`);
+      this.logger.log(`[Stream] 发起流式请求，会话: ${sessionId}`);
 
       const response = await this.httpClient.post('/chat', streamRequest, {
-        headers: { 'X-Conversation-Id': conversationId },
+        headers: { 'X-Conversation-Id': sessionId },
         responseType: 'stream',
       });
 
       return response.data as NodeJS.ReadableStream;
     } catch (error) {
-      this.logger.error(`[Stream] Agent API 流式调用失败，会话: ${conversationId}`);
-      (error as any).requestParams = request;
-      (error as any).apiKey = this.apiKey;
+      this.logger.error(`[Stream] Agent API 流式调用失败，会话: ${sessionId}`);
+      (error as any).requestParams = {
+        model: request.model,
+        messageCount: request.messages?.length,
+      };
+      (error as any).apiKey = this.maskApiKey();
       throw this.convertError(error);
     }
   }
@@ -165,8 +175,7 @@ export class AgentApiClientService {
       return response.data;
     } catch (error) {
       this.logger.error('获取模型列表失败:', error);
-      // 附加 API Key 供告警使用（与 chat 方法保持一致）
-      (error as any).apiKey = this.apiKey;
+      (error as any).apiKey = this.maskApiKey();
       throw error;
     }
   }
@@ -181,8 +190,7 @@ export class AgentApiClientService {
       return response.data;
     } catch (error) {
       this.logger.error('获取工具列表失败:', error);
-      // 附加 API Key 供告警使用（与 chat 方法保持一致）
-      (error as any).apiKey = this.apiKey;
+      (error as any).apiKey = this.maskApiKey();
       throw error;
     }
   }
@@ -198,7 +206,7 @@ export class AgentApiClientService {
       // 错误响应处理
       async (error) => {
         const config = error.config;
-        const conversationId = config?.headers?.['X-Conversation-Id'] || 'unknown';
+        const sessionId = config?.headers?.['X-Conversation-Id'] || 'unknown';
 
         // 初始化重试计数器
         config.retryCount = config.retryCount || 0;
@@ -213,7 +221,7 @@ export class AgentApiClientService {
           const delay = this.calculateRetryDelay(error, config.retryCount);
 
           this.logger.warn(
-            `请求失败，${delay}ms后重试，会话: ${conversationId}, 尝试 ${config.retryCount}/${this.maxRetries}`,
+            `请求失败，${delay}ms后重试，会话: ${sessionId}, 尝试 ${config.retryCount}/${this.maxRetries}`,
           );
 
           // 延迟后重试（使用 Promise 不阻塞）
@@ -275,6 +283,13 @@ export class AgentApiClientService {
 
     // 其他错误：指数退避 1s, 2s, 4s
     return Math.pow(2, retryCount - 1) * 1000;
+  }
+
+  /** 返回脱敏后的 API Key（前6+后6） */
+  private maskApiKey(): string {
+    return this.apiKey.length > 12
+      ? `${this.apiKey.substring(0, 6)}...${this.apiKey.substring(this.apiKey.length - 6)}`
+      : '***';
   }
 
   /**

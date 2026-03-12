@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { MonitoringService } from '@/core/monitoring/monitoring.service';
+import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { FeishuAlertService, AlertLevel, ALERT_RECEIVERS } from '@core/feishu';
 import { maskApiKey } from '@core/utils';
 import { ScenarioType } from '@agent';
@@ -48,7 +48,7 @@ export class MessagePipelineService {
     private readonly agentGateway: AgentGatewayService,
     private readonly bookingDetection: BookingDetectionService,
     // 监控和告警
-    private readonly monitoringService: MonitoringService,
+    private readonly monitoringService: MessageTrackingService,
     private readonly feishuAlertService: FeishuAlertService,
   ) {}
 
@@ -342,12 +342,13 @@ export class MessagePipelineService {
 
     // 2. 调用 Agent
     const agentResult = await this.agentGateway.invoke({
-      conversationId: chatId,
+      sessionId: chatId,
       userMessage: content,
       historyMessages,
       scenario,
       messageId,
       recordMonitoring: true,
+      userId: params.primaryMessage.imContactId,
     });
 
     this.logger.log(

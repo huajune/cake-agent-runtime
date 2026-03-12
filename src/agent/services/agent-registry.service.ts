@@ -36,7 +36,6 @@ export class AgentRegistryService implements OnModuleInit, OnModuleDestroy {
   private readonly configuredTools: string[];
   private readonly chatModel: string;
   private readonly classifyModel: string;
-  private readonly replyModel: string;
 
   // 刷新策略
   private readonly autoRefreshInterval: number;
@@ -52,7 +51,6 @@ export class AgentRegistryService implements OnModuleInit, OnModuleDestroy {
     this.configuredModel = this.configService.get<string>('AGENT_DEFAULT_MODEL')!;
     this.chatModel = this.configService.get<string>('AGENT_CHAT_MODEL')!;
     this.classifyModel = this.configService.get<string>('AGENT_CLASSIFY_MODEL')!;
-    this.replyModel = this.configService.get<string>('AGENT_REPLY_MODEL')!;
     const toolsString = this.configService.get<string>('AGENT_ALLOWED_TOOLS', '');
     this.configuredTools = parseToolsFromEnv(toolsString);
 
@@ -65,7 +63,6 @@ export class AgentRegistryService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`配置的默认模型: ${this.configuredModel}`);
     this.logger.log(`配置的聊天模型: ${this.chatModel}`);
     this.logger.log(`配置的分类模型: ${this.classifyModel}`);
-    this.logger.log(`配置的回复模型: ${this.replyModel}`);
     this.logger.log(
       `配置的工具: ${this.configuredTools.length > 0 ? this.configuredTools.join(', ') : '无'}`,
     );
@@ -74,34 +71,51 @@ export class AgentRegistryService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * 模块初始化：加载模型和工具列表
+   * 使用启动重试机制应对 Agent API 冷启动时的瞬时 401
    */
   async onModuleInit() {
-    try {
-      await this.refresh();
-      this.startAutoRefresh();
-    } catch (error) {
-      this.logger.error('注册表初始化失败，将在后续请求时重试:', error);
+    const STARTUP_MAX_RETRIES = 3;
+    const STARTUP_RETRY_DELAY_MS = 2000;
 
-      // 从 error 对象中提取 API Key（由 AgentApiClientService 附加）
-      const apiKey = (error as any)?.apiKey;
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= STARTUP_MAX_RETRIES; attempt++) {
+      try {
+        await this.refresh();
+        // 初始化成功，立即退出循环
+        break;
+      } catch (error) {
+        lastError = error;
+        if (attempt < STARTUP_MAX_RETRIES) {
+          this.logger.warn(
+            `注册表初始化失败（第 ${attempt}/${STARTUP_MAX_RETRIES} 次），` +
+              `${STARTUP_RETRY_DELAY_MS / 1000}s 后重试...`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, STARTUP_RETRY_DELAY_MS));
+        }
+      }
+    }
+
+    if (lastError && !this.isInitialized()) {
+      this.logger.error('注册表初始化失败，将通过定时刷新自愈:', lastError);
+
+      const apiKey = (lastError as any)?.apiKey;
       const maskedApiKey = maskApiKey(apiKey);
 
-      // 发送飞书告警（异步，不阻塞服务启动）
       this.feishuAlertService
         .sendAlert({
           errorType: 'agent',
-          error,
+          error: lastError,
           apiEndpoint: '/agent/onModuleInit',
           scenario: 'REGISTRY_INIT_FAILED',
-          // 添加 API Key 脱敏信息，便于排查 401 问题
           extra: maskedApiKey ? { apiKey: maskedApiKey } : undefined,
         })
         .catch((alertError) => {
           this.logger.error(`飞书告警发送失败: ${alertError.message}`);
         });
-
-      // 不抛出错误，允许服务启动
     }
+
+    // 无论初始化成功与否，都启动定时刷新（保证自愈）
+    this.startAutoRefresh();
   }
 
   /**
@@ -123,11 +137,12 @@ export class AgentRegistryService implements OnModuleInit, OnModuleDestroy {
     try {
       this.logger.log('刷新 Agent 资源注册表...');
 
-      // 并行获取模型和工具列表（直接调用 API 客户端）
-      const [modelsResponse, toolsResponse] = await Promise.all([
-        this.apiClient.getModels(),
-        this.apiClient.getTools(),
-      ]);
+      // 串行获取模型和工具列表
+      // 注意：花卷 middleware 使用 token 缓存（60s TTL），两个并发请求会同时
+      // cache miss 并同时调用外部鉴权服务，导致竞争条件引发 401。
+      // 串行可确保第一个请求完成后 token 已写入缓存，第二个请求直接命中缓存。
+      const modelsResponse = await this.apiClient.getModels();
+      const toolsResponse = await this.apiClient.getTools();
 
       // 【修复】更新模型列表 - apiClient 返回 response.data，需要访问 data.models
       const models = modelsResponse?.data?.models || [];
@@ -168,7 +183,6 @@ export class AgentRegistryService implements OnModuleInit, OnModuleDestroy {
         { name: '默认模型', value: this.configuredModel },
         { name: '聊天模型', value: this.chatModel },
         { name: '分类模型', value: this.classifyModel },
-        { name: '回复模型', value: this.replyModel },
       ];
 
       let allModelsValid = true;
@@ -290,9 +304,13 @@ export class AgentRegistryService implements OnModuleInit, OnModuleDestroy {
    * @returns 可用的工具列表
    */
   validateTools(requestedTools?: string[]): string[] {
-    // 如果没有提供工具，使用配置的工具列表
-    if (!requestedTools || requestedTools.length === 0) {
+    // 如果没有提供工具参数（undefined），使用配置的工具列表
+    // 如果明确传递空数组 []，则返回空数组（禁用所有工具）
+    if (requestedTools === undefined) {
       return [...this.configuredTools];
+    }
+    if (requestedTools.length === 0) {
+      return [];
     }
 
     // 如果工具列表未初始化，返回请求的工具（不做验证）
@@ -368,15 +386,13 @@ export class AgentRegistryService implements OnModuleInit, OnModuleDestroy {
    * 花卷 API 会根据这些配置在不同阶段使用不同模型：
    * - chatModel: 主对话模型
    * - classifyModel: 意图分类模型
-   * - replyModel: 回复生成模型
    *
    * @see https://docs.wolian.cc/concepts/context#modelconfig
    */
-  getModelConfig(): { chatModel: string; classifyModel: string; replyModel: string } {
+  getModelConfig(): { chatModel: string; classifyModel: string } {
     return {
       chatModel: this.chatModel,
       classifyModel: this.classifyModel,
-      replyModel: this.replyModel,
     };
   }
 
@@ -388,13 +404,8 @@ export class AgentRegistryService implements OnModuleInit, OnModuleDestroy {
     const configuredModelAvailable = this.availableModels.includes(this.configuredModel);
     const chatModelAvailable = this.availableModels.includes(this.chatModel);
     const classifyModelAvailable = this.availableModels.includes(this.classifyModel);
-    const replyModelAvailable = this.availableModels.includes(this.replyModel);
-
     const allConfiguredModelsAvailable =
-      configuredModelAvailable &&
-      chatModelAvailable &&
-      classifyModelAvailable &&
-      replyModelAvailable;
+      configuredModelAvailable && chatModelAvailable && classifyModelAvailable;
 
     const configuredToolsStatus = this.configuredTools.map((tool) => ({
       name: tool,
@@ -404,13 +415,8 @@ export class AgentRegistryService implements OnModuleInit, OnModuleDestroy {
     const allToolsAvailable =
       configuredToolsStatus.length > 0 && configuredToolsStatus.every((tool) => tool.available);
 
-    // 计算实际配置的模型数量（4个：默认、聊天、分类、回复）
-    const configuredModelsList = [
-      this.configuredModel,
-      this.chatModel,
-      this.classifyModel,
-      this.replyModel,
-    ];
+    // 计算实际配置的模型数量（3个：默认、聊天、分类）
+    const configuredModelsList = [this.configuredModel, this.chatModel, this.classifyModel];
     const uniqueConfiguredModels = [...new Set(configuredModelsList)]; // 去重
     const availableConfiguredModelsCount = uniqueConfiguredModels.filter((model) =>
       this.availableModels.includes(model),
@@ -435,10 +441,6 @@ export class AgentRegistryService implements OnModuleInit, OnModuleDestroy {
           classifyModel: {
             configured: this.classifyModel,
             available: classifyModelAvailable,
-          },
-          replyModel: {
-            configured: this.replyModel,
-            available: replyModelAvailable,
           },
         },
         allConfiguredModelsAvailable,

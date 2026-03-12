@@ -17,6 +17,7 @@
     "strictBindCallApply": false,
     "forceConsistentCasingInFileNames": false,
     "noFallthroughCasesInSwitch": false,
+    "types": ["jest", "node"],
     "paths": {
       "@/*": ["src/*"],
       "@core": ["src/core"],
@@ -28,7 +29,11 @@
       "@wecom": ["src/wecom"],
       "@wecom/*": ["src/wecom/*"],
       "@shared": ["src/shared"],
-      "@shared/*": ["src/shared/*"]
+      "@shared/*": ["src/shared/*"],
+      "@test-suite": ["src/biz/test-suite"],
+      "@test-suite/*": ["src/biz/test-suite/*"],
+      "@core/supabase": ["src/core/supabase"],
+      "@biz/*": ["src/biz/*"]
     }
   },
   "include": ["src/**/*"],

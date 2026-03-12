@@ -1,6 +1,6 @@
 import { useRef, useCallback, useEffect } from 'react';
 import { FolderOpen, Sparkles, Loader2 } from 'lucide-react';
-import { TestBatch } from '@/services/agent-test';
+import { TestBatch } from '@/api/services/agent-test.service';
 import { getBatchStatusDisplay } from '../../constants';
 import styles from './index.module.scss';
 
@@ -13,6 +13,11 @@ interface BatchListProps {
   total: number;
   onSelect: (batch: TestBatch) => void;
   onLoadMore: () => void;
+}
+
+/** 将历史批次名称中的旧术语替换为新术语 */
+function normalizeBatchName(name: string): string {
+  return name.replace('场景测试', '用例测试').replace('对话验证', '回归验证');
 }
 
 /**
@@ -89,6 +94,7 @@ export function BatchList({
           <>
             {batches.map((batch) => {
               const status = getBatchStatusDisplay(batch.status);
+              const isConversation = batch.test_type === 'conversation';
               const reviewedCount = batch.total_cases - (batch.pending_review_count || 0);
               return (
                 <div
@@ -98,24 +104,44 @@ export function BatchList({
                 >
                   {/* 第一行：标题 + 状态 */}
                   <div className={styles.batchRow}>
-                    <div className={styles.batchName}>{batch.name}</div>
+                    <div className={styles.batchName}>{normalizeBatchName(batch.name)}</div>
                     <span className={`${styles.batchStatusTag} ${styles[status.className]}`}>
                       {status.text}
                     </span>
                   </div>
                   {/* 第二行：统计信息 */}
                   <div className={styles.batchMeta}>
-                    <span>用例 {batch.total_cases}</span>
+                    {/* 回归验证显示"对话"，用例测试显示"用例" */}
+                    <span>{isConversation ? '对话' : '用例'} {batch.total_cases}</span>
                     <span className={styles.sep}>·</span>
+                    {/* 回归验证显示执行进度，用例测试显示评审进度 */}
+                    {isConversation ? (
+                      <span>
+                        完成{' '}
+                        {batch.total_cases > 0
+                          ? Math.round((batch.executed_count / batch.total_cases) * 100)
+                          : 0}
+                        %
+                      </span>
+                    ) : (
+                      <span>
+                        评审{' '}
+                        {batch.total_cases > 0
+                          ? Math.round((reviewedCount / batch.total_cases) * 100)
+                          : 0}
+                        %
+                      </span>
+                    )}
+                    <span className={styles.sep}>·</span>
+                    {/* 回归验证显示平均评分，用例测试显示通过率 */}
                     <span>
-                      评审{' '}
-                      {batch.total_cases > 0
-                        ? Math.round((reviewedCount / batch.total_cases) * 100)
-                        : 0}
-                      %
+                      {isConversation ? '评分' : '通过'}{' '}
+                      {batch.pass_rate !== null
+                        ? isConversation
+                          ? `${batch.pass_rate.toFixed(0)}分`
+                          : `${batch.pass_rate.toFixed(0)}%`
+                        : '-'}
                     </span>
-                    <span className={styles.sep}>·</span>
-                    <span>通过 {batch.pass_rate !== null ? `${batch.pass_rate.toFixed(0)}%` : '-'}</span>
                   </div>
                 </div>
               );

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { formatDuration } from '@/utils/format';
-import type { MessageRecord } from '@/types/monitoring';
+import type { MessageRecord } from '@/api/types/chat.types';
 import styles from './index.module.scss';
 
 // 场景类型中文映射
@@ -31,7 +31,6 @@ interface AgentMessage {
 interface ModelConfigDisplay {
   chatModel?: string;
   classifyModel?: string;
-  replyModel?: string;
 }
 
 // ChatRequest 请求结构
@@ -287,17 +286,9 @@ export default function TechnicalStats({ message }: TechnicalStatsProps) {
                 )}
                 {request.context.modelConfig.classifyModel && (
                   <div className={styles.breakdownItem}>
-                    <span className={styles.indentL1}>├ classifyModel</span>
+                    <span className={styles.indentL1}>└ classifyModel</span>
                     <span className={styles.modelText} title={request.context.modelConfig.classifyModel}>
                       {shortModelName(request.context.modelConfig.classifyModel)}
-                    </span>
-                  </div>
-                )}
-                {request.context.modelConfig.replyModel && (
-                  <div className={styles.breakdownItem}>
-                    <span className={styles.indentL1}>└ replyModel</span>
-                    <span className={styles.modelText} title={request.context.modelConfig.replyModel}>
-                      {shortModelName(request.context.modelConfig.replyModel)}
                     </span>
                   </div>
                 )}

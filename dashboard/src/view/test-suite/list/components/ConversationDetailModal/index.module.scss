@@ -1,0 +1,901 @@
+@use '@/assets/styles/variables' as *;
+
+// ==================== 动画 ====================
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+// ==================== 弹窗容器 ====================
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100000;
+  animation: fadeIn 0.2s ease;
+}
+
+.modalContent {
+  background: #ffffff;
+  width: 1100px;
+  max-width: 95vw;
+  height: 85vh;
+  max-height: 900px;
+  display: flex;
+  flex-direction: column;
+  animation: slideUp 0.3s ease;
+  border-radius: 20px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  border: 1px solid $accent-15;
+  overflow: hidden;
+}
+
+// ==================== 头部 ====================
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: $spacing-md $spacing-lg;
+  border-bottom: 1px solid $accent-10;
+  background: linear-gradient(135deg, $accent-08 0%, rgba(236, 72, 153, 0.04) 100%);
+  flex-shrink: 0;
+}
+
+.headerInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.participant {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  color: $accent;
+
+  h3 {
+    font-size: $font-size-lg;
+    font-weight: $font-weight-semibold;
+    color: $text-primary;
+    margin: 0;
+  }
+}
+
+.headerMeta {
+  font-size: $font-size-xs;
+  color: $text-muted;
+}
+
+.closeBtn {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  color: $text-muted;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+
+  &:hover {
+    background: rgba(239, 68, 68, 0.1);
+    color: $danger;
+  }
+}
+
+// ==================== 内容区 ====================
+.modalBody {
+  flex: 1;
+  overflow: hidden;
+  padding: $spacing-lg;
+}
+
+.loading,
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: $text-muted;
+
+  p {
+    margin: 0 0 $spacing-xs;
+    font-size: $font-size-base;
+    color: $text-secondary;
+  }
+
+  span {
+    font-size: $font-size-sm;
+  }
+}
+
+// ==================== 详情查看器 ====================
+.detailViewer {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+}
+
+// ==================== 紧凑指标条容器 ====================
+.compactMetricsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+// ==================== 紧凑指标条 ====================
+.compactMetrics {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 14px 24px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, $accent-04 100%);
+  border: 1px solid $accent-12;
+  border-radius: 16px;
+  box-shadow: 0 4px 12px $accent-06;
+  flex-shrink: 0;
+}
+
+// LLM 评估理由（紧凑版，在指标条下方）
+.evaluationReasonCompact {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 18px;
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.04) 0%, rgba(252, 211, 77, 0.06) 100%);
+  border: 1px solid rgba(251, 191, 36, 0.15);
+  border-left: 3px solid rgba(251, 191, 36, 0.5);
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.evaluationLabel {
+  font-weight: 600;
+  color: #92400e;
+  flex-shrink: 0;
+}
+
+.evaluationText {
+  color: #1e293b;
+  flex: 1;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.metricItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #64748b;
+
+  svg {
+    color: $accent;
+    opacity: 0.8;
+  }
+}
+
+.metricValue {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e293b;
+  font-family: 'JetBrains Mono', monospace;
+
+  &.scoreExcellent { color: #10b981; }
+  &.scoreGood { color: #3b82f6; }
+  &.scoreFair { color: #f59e0b; }
+  &.scorePoor { color: #ef4444; }
+}
+
+.metricLabel {
+  font-size: 12px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.metricRating {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.metricDivider {
+  width: 1px;
+  height: 28px;
+  background: $accent-15;
+}
+
+.statusBadge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  margin-left: auto;
+
+  &.success {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(52, 211, 153, 0.1) 100%);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }
+
+  &.failed {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(220, 38, 38, 0.08) 100%);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.25);
+  }
+
+  &.pending {
+    background: linear-gradient(135deg, $accent-12 0%, $accent-08 100%);
+    color: $accent;
+    border: 1px solid $accent-25;
+  }
+}
+
+// ==================== 主内容区：左右分栏 ====================
+.mainContent {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+// ==================== 左侧输入面板 ====================
+.inputPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  padding: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(59, 130, 246, 0.02) 100%);
+  border: 1px solid rgba(59, 130, 246, 0.12);
+  border-radius: 16px;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.04);
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(59, 130, 246, 0.2);
+    border-radius: 2px;
+  }
+}
+
+.inputSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sectionLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  letter-spacing: 0.3px;
+
+  svg {
+    color: $accent;
+    opacity: 0.85;
+  }
+}
+
+.toggleIcon {
+  margin-left: auto;
+  color: #94a3b8;
+  transition: transform 0.2s ease;
+
+  .rotated {
+    transform: rotate(-90deg);
+  }
+}
+
+.userMessage {
+  padding: 16px 18px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.04) 0%, rgba(147, 197, 253, 0.08) 100%);
+  border: 1px solid rgba(59, 130, 246, 0.12);
+  border-left: 3px solid rgba(59, 130, 246, 0.5);
+  border-radius: 10px;
+  font-size: 14px;
+  color: #1e293b;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+// ==================== 聊天历史区域 ====================
+.historySection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chatHistory {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 2px;
+  }
+}
+
+.historyMessage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+  }
+}
+
+.historyUser,
+.historyAssistant {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+
+  svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  span {
+    flex: 1;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+.historyUser {
+  color: #3b82f6;
+
+  svg {
+    color: #3b82f6;
+  }
+}
+
+.historyAssistant {
+  color: #10b981;
+
+  svg {
+    color: #10b981;
+  }
+}
+
+// ==================== 右侧回复面板 ====================
+.replyPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  padding: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, $accent-02 100%);
+  border: 1px solid $accent-10;
+  border-radius: 16px;
+  box-shadow: 0 2px 8px $accent-04;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: $accent-20;
+    border-radius: 2px;
+  }
+}
+
+.replySection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.expectedReply {
+  padding: 16px 18px;
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.04) 0%, rgba(168, 85, 247, 0.08) 100%);
+  border: 1px solid rgba(168, 85, 247, 0.12);
+  border-left: 3px solid rgba(168, 85, 247, 0.5);
+  border-radius: 10px;
+  font-size: 14px;
+  color: #1e293b;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 180px;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(168, 85, 247, 0.2);
+    border-radius: 2px;
+  }
+}
+
+.actualReply {
+  padding: 16px 18px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.04) 0%, rgba(52, 211, 153, 0.08) 100%);
+  border: 1px solid rgba(16, 185, 129, 0.12);
+  border-left: 3px solid rgba(16, 185, 129, 0.5);
+  border-radius: 10px;
+  font-size: 14px;
+  color: #1e293b;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 80px;
+  max-height: 180px;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(16, 185, 129, 0.2);
+    border-radius: 2px;
+  }
+}
+
+// ==================== 工具调用区域 ====================
+.toolCallsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.toolCallsToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, $accent-08 0%, $accent-04 100%);
+  border: 1px solid $accent-15;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  svg {
+    color: $accent;
+    transition: transform 0.2s ease;
+  }
+
+  .rotatedIcon {
+    transform: rotate(-90deg);
+  }
+
+  &:hover {
+    background: linear-gradient(135deg, $accent-12 0%, $accent-06 100%);
+    border-color: $accent-25;
+  }
+}
+
+.toolCallsList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: $accent-20;
+    border-radius: 2px;
+  }
+}
+
+.toolCallItem {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 10px;
+  border: 1px solid $accent-10;
+  overflow: hidden;
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: $accent-20;
+    box-shadow: 0 2px 8px $accent-08;
+  }
+}
+
+.toolHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  user-select: none;
+
+  &.clickable {
+    cursor: pointer;
+
+    &:hover {
+      background: #f8fafc;
+    }
+  }
+}
+
+.toolName {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: linear-gradient(135deg, $accent-10 0%, $accent-05 100%);
+  color: $primary-dark;
+  border: 1px solid $accent-20;
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+
+  svg {
+    color: $accent;
+  }
+}
+
+.expandIcon {
+  display: flex;
+  align-items: center;
+  color: #94a3b8;
+  transition: transform 0.2s ease;
+
+  .rotated {
+    transform: rotate(90deg);
+  }
+}
+
+.toolBody {
+  padding: 0 14px 12px;
+  animation: slideDown 0.2s ease-out;
+}
+
+.toolSection {
+  margin-top: 10px;
+}
+
+.toolSectionLabel {
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.toolDetail {
+  margin: 0;
+  padding: 10px 12px;
+  background: #1e293b;
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: 'Monaco', 'Menlo', monospace;
+  color: #e2e8f0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.6;
+  max-height: 120px;
+  overflow-y: auto;
+  border: 1px solid #334155;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 2px;
+  }
+}
+
+// ==================== 底部导航 ====================
+.modalFooter {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: $spacing-md $spacing-lg;
+  border-top: 1px solid $accent-10;
+  background: linear-gradient(135deg, $accent-04 0%, rgba(236, 72, 153, 0.02) 100%);
+  flex-shrink: 0;
+}
+
+.navigation {
+  display: flex;
+  align-items: center;
+  gap: $spacing-md;
+}
+
+.navBtn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, $accent-12 0%, $accent-08 100%);
+  color: $accent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover:not(:disabled) {
+    background: linear-gradient(135deg, $accent-20 0%, $accent-12 100%);
+    transform: scale(1.08);
+    box-shadow: 0 2px 8px $accent-20;
+  }
+
+  &:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+}
+
+.turnIndicator {
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  color: $accent;
+  min-width: 120px;
+  text-align: center;
+}
+
+// ==================== 旋转动画类 ====================
+.rotated {
+  transform: rotate(-90deg);
+}
+
+// ==================== 骨架屏动画 ====================
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+// 骨架屏基础样式
+%skeleton-base {
+  background: linear-gradient(
+    90deg,
+    rgba(226, 232, 240, 0.6) 25%,
+    rgba(241, 245, 249, 0.8) 37%,
+    rgba(226, 232, 240, 0.6) 63%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+// 骨架屏顶部指标条
+.skeletonMetrics {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 14px 24px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, $accent-04 100%);
+  border: 1px solid $accent-12;
+  border-radius: 16px;
+  flex-shrink: 0;
+}
+
+.skeletonMetricItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.skeletonIcon {
+  @extend %skeleton-base;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+}
+
+.skeletonMetricValue {
+  @extend %skeleton-base;
+  width: 48px;
+  height: 22px;
+}
+
+.skeletonDivider {
+  width: 1px;
+  height: 28px;
+  background: $accent-15;
+}
+
+.skeletonStatusBadge {
+  @extend %skeleton-base;
+  width: 72px;
+  height: 28px;
+  border-radius: 20px;
+  margin-left: auto;
+}
+
+// 骨架屏输入面板
+.skeletonInputPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(59, 130, 246, 0.02) 100%);
+  border: 1px solid rgba(59, 130, 246, 0.12);
+  border-radius: 16px;
+}
+
+// 骨架屏回复面板
+.skeletonReplyPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, $accent-02 100%);
+  border: 1px solid $accent-10;
+  border-radius: 16px;
+}
+
+// 骨架屏通用区块
+.skeletonSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skeletonLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.skeletonLabelText {
+  @extend %skeleton-base;
+  width: 80px;
+  height: 16px;
+}
+
+// 骨架屏消息框
+.skeletonMessage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+  background: rgba(59, 130, 246, 0.04);
+  border: 1px solid rgba(59, 130, 246, 0.12);
+  border-left: 3px solid rgba(59, 130, 246, 0.3);
+  border-radius: 10px;
+}
+
+// 骨架屏行
+.skeletonLine {
+  @extend %skeleton-base;
+  height: 14px;
+}
+
+// 骨架屏历史列表
+.skeletonHistoryList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.skeletonHistoryItem {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+// 骨架屏回复框
+.skeletonReplyBox {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+  background: rgba(168, 85, 247, 0.04);
+  border: 1px solid rgba(168, 85, 247, 0.12);
+  border-left: 3px solid rgba(168, 85, 247, 0.3);
+  border-radius: 10px;
+  min-height: 80px;
+
+  &:last-child {
+    background: rgba(16, 185, 129, 0.04);
+    border-color: rgba(16, 185, 129, 0.12);
+    border-left-color: rgba(16, 185, 129, 0.3);
+  }
+}
+
+// ==================== 响应式适配 ====================
+@media (max-width: 768px) {
+  .modalContent {
+    width: 98vw;
+    height: 95vh;
+    max-height: none;
+    border-radius: 16px;
+  }
+
+  .mainContent {
+    grid-template-columns: 1fr;
+  }
+
+  .compactMetrics {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .skeletonMetrics {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+}

@@ -1,0 +1,136 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.short_sha.outputs.sha }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get short SHA
+        id: short_sha
+        run: echo "sha=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  create-release:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version info
+        id: info
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          SHA="${{ needs.build-and-push.outputs.image_tag }}"
+          IMAGE="ghcr.io/${{ github.repository }}:sha-${SHA}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+
+      - name: Generate docker-compose.yml
+        run: |
+          IMAGE="${{ steps.info.outputs.image }}"
+          REPO="${{ github.repository }}"
+          cat > /tmp/docker-compose.yml << EOF
+          services:
+            wecom-service:
+              image: ${IMAGE}
+              container_name: wecom-service
+              restart: always
+              ports:
+                - "8080:8080"
+              env_file:
+                - .env
+              volumes:
+                - ./logs:/app/logs
+              environment:
+                - NODE_ENV=production
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost:8080/agent/health"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+              networks:
+                - app-network
+          networks:
+            app-network:
+              driver: bridge
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.info.outputs.version }}-${{ steps.info.outputs.sha }}
+          name: v${{ steps.info.outputs.version }}
+          body: |
+            ## 部署说明
+
+            ### 镜像地址
+            ```
+            ghcr.io/${{ github.repository }}:sha-${{ steps.info.outputs.sha }}
+            ```
+
+            ### 快速部署步骤
+            1. 下载 `docker-compose.yml` 和 `.env.example`
+            2. 将 `.env.example` 复制为 `.env` 并填写配置项
+            3. 执行部署：
+            ```bash
+            docker compose up -d
+            ```
+
+            ### 更新已有部署
+            ```bash
+            docker compose pull
+            docker compose up -d
+            docker image prune -f
+            ```
+
+            > `.env` 必填项见 `.env.example` 中 `Layer 1` 部分
+          files: |
+            /tmp/docker-compose.yml
+            .env.example
+          make_latest: true

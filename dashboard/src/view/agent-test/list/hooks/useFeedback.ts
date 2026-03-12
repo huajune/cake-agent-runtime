@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { submitFeedback, FeedbackType } from '@/services/agent-test';
+import { submitFeedback, FeedbackType } from '@/api/services/agent-test.service';
 
 export interface UseFeedbackOptions {
   onError?: (error: string) => void;

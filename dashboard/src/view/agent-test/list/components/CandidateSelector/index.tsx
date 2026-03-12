@@ -6,7 +6,7 @@ import {
   useChatSessionMessages,
   type ChatSession,
   type ChatMessage,
-} from '@/hooks/monitoring/useChatRecords';
+} from '@/hooks/chat/useChatSessions';
 import styles from './index.module.scss';
 
 export interface CandidateSelectorProps {

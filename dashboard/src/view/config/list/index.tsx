@@ -3,12 +3,12 @@ import {
   useAgentReplyConfig,
   useUpdateAgentReplyConfig,
   useToggleMessageMerge,
-} from '@/hooks/monitoring/useSystemConfig';
+} from '@/hooks/config/useSystemConfig';
 import {
   useWorkerStatus,
   useSetWorkerConcurrency,
-} from '@/hooks/monitoring/useWorker';
-import type { AgentReplyConfig } from '@/types/monitoring';
+} from '@/hooks/config/useWorker';
+import type { AgentReplyConfig } from '@/api/types/config.types';
 
 // 组件导入
 import ControlBar from './components/ControlBar';

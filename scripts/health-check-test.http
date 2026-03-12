@@ -22,20 +22,33 @@ Accept: application/json
 GET http://localhost:8080/agent/tools
 Accept: application/json
 
-### 7. 获取品牌配置状态
-GET http://localhost:8080/agent/config/status
-Accept: application/json
-
-### 8. 手动刷新品牌配置
-POST http://localhost:8080/agent/config/refresh
-Content-Type: application/json
-
-### 9. 测试聊天（验证品牌配置）
-POST http://localhost:8080/agent/test-chat
+### 7. 调试聊天（完整入参+出参写入 scripts/agent-debug-response.json）
+POST http://localhost:8080/agent/debug-chat
 Content-Type: application/json
 
 {
   "message": "你好",
-  "conversationId": "test-brand-config",
-  "scenario": "candidate-consultation"
+  "conversationId": "debug-001",
+  "scenario": "candidate-consultation",
+  "userId":"test-user-1233"
+}
+
+### 8. 流式聊天测试（与 Dashboard 对话调试页面调用的接口一致）
+### 接口：POST /test-suite/chat/ai-stream（Vercel AI SDK 格式）
+POST http://localhost:8080/test-suite/chat/ai-stream
+Content-Type: application/json
+
+{
+  "scenario": "candidate-consultation",
+  "saveExecution": false,
+  "chatId": "health-check-test-001",
+  "userId": "dashboard-test-user",
+  "thinking": { "type": "enabled", "budgetTokens": 10000 },
+  "messages": [
+    {
+      "id": "msg-1",
+      "role": "user",
+      "parts": [{ "type": "text", "text": "你好，我想找兼职" }]
+    }
+  ]
 }

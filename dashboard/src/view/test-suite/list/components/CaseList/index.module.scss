@@ -23,7 +23,7 @@
     gap: $spacing-sm;
 
     svg {
-      color: #8b5cf6;
+      color: $accent;
       opacity: 0.7;
     }
   }
@@ -38,7 +38,7 @@
 .caseList {
   flex: 1;
   overflow-y: auto;
-  border: 1px solid rgba(139, 92, 246, 0.15);
+  border: 1px solid $accent-15;
   border-radius: $radius-lg;
   background: rgba(255, 255, 255, 0.6);
 
@@ -46,7 +46,7 @@
     width: 6px;
   }
   &::-webkit-scrollbar-thumb {
-    background: rgba(139, 92, 246, 0.2);
+    background: $accent-20;
     border-radius: 3px;
   }
 }
@@ -56,7 +56,7 @@
   align-items: center;
   gap: $spacing-sm;
   padding: $spacing-sm $spacing-md;
-  border-bottom: 1px solid rgba(139, 92, 246, 0.08);
+  border-bottom: 1px solid $accent-08;
   cursor: pointer;
   transition: all 0.2s ease;
 
@@ -66,7 +66,7 @@
 
   &:hover {
     background: rgba(255, 255, 255, 0.9);
-    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.1);
+    box-shadow: 0 4px 12px $accent-10;
     z-index: 1;
     position: relative;
     border-radius: 6px;
@@ -74,38 +74,38 @@
   }
 
   &.reviewing {
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.12) 0%, rgba(236, 72, 153, 0.06) 100%);
+    background: linear-gradient(135deg, $accent-12 0%, rgba(236, 72, 153, 0.06) 100%);
     border-radius: $radius-lg;
     margin: 2px 4px;
-    border: 1px solid rgba(139, 92, 246, 0.3);
-    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.15);
+    border: 1px solid $accent-30;
+    box-shadow: 0 4px 12px $accent-15;
 
     .caseIndex {
-      background: linear-gradient(135deg, #8b5cf6 0%, #a855f7 100%);
+      background: linear-gradient(135deg, $accent 0%, $accent-light 100%);
       color: white;
-      box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+      box-shadow: 0 2px 8px $accent-30;
     }
 
     .chevron {
       opacity: 1;
-      color: #8b5cf6;
+      color: $accent;
     }
   }
 
   &.selected {
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(236, 72, 153, 0.04) 100%);
+    background: linear-gradient(135deg, $accent-08 0%, rgba(236, 72, 153, 0.04) 100%);
     border-radius: $radius-lg;
     margin: 2px 4px;
-    border: 1px solid rgba(139, 92, 246, 0.2);
+    border: 1px solid $accent-20;
 
     .caseIndex {
-      background: rgba(139, 92, 246, 0.15);
-      color: #7c3aed;
+      background: $accent-15;
+      color: $primary-dark;
     }
 
     .chevron {
       opacity: 1;
-      color: #8b5cf6;
+      color: $accent;
     }
   }
 
@@ -113,13 +113,13 @@
     width: 26px;
     height: 26px;
     border-radius: $radius-md;
-    background: rgba(139, 92, 246, 0.08);
+    background: $accent-08;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: $font-size-xs;
     font-weight: $font-weight-medium;
-    color: #8b5cf6;
+    color: $accent;
     flex-shrink: 0;
     transition: all 0.2s ease;
   }
@@ -215,8 +215,8 @@
   }
 
   &.execRunning {
-    background: rgba(139, 92, 246, 0.15);
-    color: #8b5cf6;
+    background: $accent-15;
+    color: $accent;
 
     svg {
       animation: spin 1s linear infinite;
@@ -240,8 +240,8 @@
   }
 
   &.reviewPending {
-    background: rgba(168, 85, 247, 0.15);
-    color: #a855f7;
+    background: $accent-15;
+    color: $accent-light;
   }
 }
 
@@ -266,7 +266,7 @@
 .category6 { background: rgba(20, 184, 166, 0.12); color: #0d9488; }   // 青色 - 情绪处理
 .category7 { background: rgba(6, 182, 212, 0.12); color: #0891b2; }    // 天蓝 - 上下文记忆
 .category8 { background: rgba(59, 130, 246, 0.12); color: #2563eb; }   // 蓝色 - 查询岗位
-.category9 { background: rgba(99, 102, 241, 0.12); color: #4f46e5; }   // 靛蓝 - 了解岗位详情
-.category10 { background: rgba(139, 92, 246, 0.12); color: #7c3aed; }  // 紫色 - 预约面试
+.category9 { background: $primary-12; color: #4f46e5; }   // 靛蓝 - 了解岗位详情
+.category10 { background: $accent-12; color: $primary-dark; }  // 紫色 - 预约面试
 .category11 { background: rgba(236, 72, 153, 0.12); color: #db2777; }  // 粉色 - 首次接触
 .categoryDefault { background: rgba(148, 163, 184, 0.12); color: #64748b; } // 灰色 - 默认

@@ -237,12 +237,11 @@ export class ProfileLoaderService implements OnModuleInit {
       .filter((tool) => tool.length > 0);
 
     // 从文件系统加载 .md 文件
-    const systemPrompt = await this.readTextFile(join(scenarioDir, 'system-prompt.md'));
-    const generalChatPrompt = await this.readTextFile(join(scenarioDir, 'general-chat-prompt.md'));
+    const systemPrompt = await this.readTextFile(join(scenarioDir, 'system-prompt-v2.md'));
 
     // 记录配置加载情况
     if (dulidayToken) {
-      this.logger.debug(`✅ DULIDAY_API_TOKEN 已加载 (长度: ${dulidayToken.length})`);
+      this.logger.debug('✅ DULIDAY_API_TOKEN 已加载');
     } else {
       this.logger.warn('⚠️ DULIDAY_API_TOKEN 未设置');
     }
@@ -251,22 +250,13 @@ export class ProfileLoaderService implements OnModuleInit {
       name: ScenarioType.CANDIDATE_CONSULTATION,
       description: '候选人私聊咨询服务',
       model,
+      promptType: 'weworkSystemPrompt',
       allowedTools,
       contextStrategy: ContextStrategy.SKIP,
       systemPrompt,
       context: {
         dulidayToken,
-        brandPriorityStrategy: 'smart',
       },
-      toolContext: generalChatPrompt
-        ? {
-            zhipin_reply_generator: {
-              replyPrompts: {
-                general_chat: generalChatPrompt,
-              },
-            },
-          }
-        : {},
     };
 
     this.logger.log(`成功加载配置: ${ScenarioType.CANDIDATE_CONSULTATION}`);

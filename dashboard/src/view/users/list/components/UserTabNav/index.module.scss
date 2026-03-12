@@ -1,3 +1,5 @@
+@use '@/assets/styles/variables' as *;
+
 // UserTabNav 组件样式
 .tabNav {
   display: flex;
@@ -28,12 +30,12 @@
   }
 
   &.active {
-    color: #6366f1;
-    border-bottom-color: #6366f1;
+    color: $primary;
+    border-bottom-color: $primary;
 
     .tabCount {
-      background: rgba(99, 102, 241, 0.1);
-      color: #6366f1;
+      background: $primary-10;
+      color: $primary;
     }
   }
 }

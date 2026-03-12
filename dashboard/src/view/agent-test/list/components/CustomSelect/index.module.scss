@@ -32,13 +32,13 @@
   transition: all 0.2s ease;
 
   &:hover {
-    border-color: rgba(99, 102, 241, 0.3);
-    background: rgba(99, 102, 241, 0.02);
+    border-color: $primary-30;
+    background: $primary-02;
   }
 
   &.open {
     border-color: $primary;
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.08);
+    box-shadow: 0 0 0 3px $primary-08;
   }
 
   .selectedText {
@@ -99,11 +99,11 @@
   text-align: left;
 
   &:hover {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.05));
+    background: linear-gradient(135deg, $primary-08, $accent-05);
   }
 
   &.selected {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(139, 92, 246, 0.08));
+    background: linear-gradient(135deg, $primary-12, $accent-08);
     color: $primary;
     font-weight: 500;
   }

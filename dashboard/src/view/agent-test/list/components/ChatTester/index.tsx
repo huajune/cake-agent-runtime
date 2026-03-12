@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import TextareaAutosize from 'react-textarea-autosize';
 import {
   Trash2,
@@ -12,7 +13,7 @@ import {
   Radio,
   FileJson,
 } from 'lucide-react';
-import { TestChatResponse } from '@/services/agent-test';
+import { TestChatResponse } from '@/api/services/agent-test.service';
 import { MessagePartsAdapter } from '../MessagePartsAdapter';
 import { useChatTest, useFeedback } from '../../hooks';
 import { FeedbackModal } from '../FeedbackModal';
@@ -20,6 +21,7 @@ import { MetricsRow } from '../MetricsRow';
 import { FeedbackButtons } from '../FeedbackButtons';
 import { CandidateSelector } from '../CandidateSelector';
 import { HISTORY_PLACEHOLDER } from '../../constants';
+import RedPacketRain from '@/components/RedPacketRain';
 import styles from './index.module.scss';
 
 interface ChatTesterProps {
@@ -34,7 +36,7 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
     currentInput,
     localError,
     result,
-    metrics,
+    elapsedMs,
     isLoading,
     isStreaming,
     latestAssistantMessage,
@@ -52,6 +54,16 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
   const feedback = useFeedback({
     onError: (error) => setLocalError(error),
   });
+
+  // 红包雨状态
+  const [showRedPacketRain, setShowRedPacketRain] = useState(false);
+
+  // 监听反馈成功，触发红包雨
+  useEffect(() => {
+    if (feedback.successType) {
+      setShowRedPacketRain(true);
+    }
+  }, [feedback.successType]);
 
   // 清空（包括反馈状态）
   const handleClear = () => {
@@ -221,17 +233,14 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
             {/* 流式输出中 */}
             {isStreaming && latestAssistantMessage && (
               <div className={styles.streamingContent}>
-                {metrics && (
-                  <MetricsRow
-                    durationMs={metrics.durationMs}
-                    tokenUsage={metrics.tokenUsage}
-                    showDetails={false}
-                  />
-                )}
                 <div className={styles.replySection}>
                   <div className={styles.sectionHeader}>
                     <h4>
                       <Radio size={16} className={styles.streamingIcon} /> AI 回复中...
+                      <span className={styles.liveTimer}>
+                        <Clock size={12} />
+                        {Math.floor(elapsedMs / 1000)}s
+                      </span>
                     </h4>
                     <button className={styles.cancelBtn} onClick={handleCancel}>
                       <X size={12} /> 取消
@@ -242,12 +251,11 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
               </div>
             )}
 
-            {/* 加载中状态 */}
+            {/* 加载中状态（仅在流式未开始时显示，start 事件到达后立即切换到流式 UI） */}
             {isLoading && !isStreaming && (
               <div className={styles.loadingState}>
                 <div className={styles.loadingSpinner}></div>
-                <p>正在调用 Agent API...</p>
-                <p className={styles.loadingHint}>通常需要 5-30 秒</p>
+                <p>正在连接 Agent API...</p>
               </div>
             )}
 
@@ -296,6 +304,14 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
         onScenarioTypeChange={feedback.setScenarioType}
         onRemarkChange={feedback.setRemark}
         onSubmit={handleSubmitFeedback}
+      />
+
+      {/* 红包雨特效 - 反馈成功时触发 */}
+      <RedPacketRain
+        active={showRedPacketRain}
+        duration={3000}
+        density={30}
+        onComplete={() => setShowRedPacketRain(false)}
       />
     </div>
   );

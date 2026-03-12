@@ -49,6 +49,9 @@ lerna-debug.log*
 *.temp
 .cache
 
+# Agent test output
+scripts/agent-debug-response*.json
+
 # VSCode History Extension
 .history/
 .history
@@ -62,3 +65,7 @@ codex.config.yml
 
 tenant_token_cache.json
 user_token_cache.json
+
+# Supabase
+supabase/.temp/
+supabase/.env

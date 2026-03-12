@@ -4,11 +4,11 @@ import {
   useMessageProcessingRecords,
   useMessageStats,
   useSlowestMessages,
-} from '@/hooks/monitoring/useChatRecords';
+} from '@/hooks/chat/useMessageRecords';
 import ControlPanel from './components/ControlPanel';
 import LogsTable from './components/LogsTable';
 import MessageDetailDrawer from './components/MessageDetailDrawer';
-import type { MessageRecord } from '@/types/monitoring';
+import type { MessageRecord } from '@/api/types/chat.types';
 
 export default function Logs() {
   const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month'>('today');

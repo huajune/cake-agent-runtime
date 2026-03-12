@@ -11,11 +11,13 @@ import {
 import { AgentService } from './agent.service';
 import { AgentRegistryService } from './services/agent-registry.service';
 import { ProfileLoaderService } from './services/agent-profile-loader.service';
-import { BrandConfigService } from './services/brand-config.service';
+import { AgentFacadeService } from './services/agent-facade.service';
 import { AgentConfigValidator } from './utils/agent-validator';
 import { ConfigService } from '@nestjs/config';
 import { RawResponse } from '@/core';
 import { FeishuAlertService } from '@core/feishu';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Controller('agent')
 export class AgentController {
@@ -24,11 +26,11 @@ export class AgentController {
   constructor(
     private readonly agentService: AgentService,
     private readonly profileLoader: ProfileLoaderService,
-    private readonly brandConfig: BrandConfigService,
     private readonly validator: AgentConfigValidator,
     private readonly registryService: AgentRegistryService,
     private readonly configService: ConfigService,
     private readonly feishuAlertService: FeishuAlertService,
+    private readonly agentFacade: AgentFacadeService,
   ) {}
 
   /**
@@ -38,31 +40,18 @@ export class AgentController {
   @Get('health')
   async healthCheck() {
     const healthStatus = this.registryService.getHealthStatus();
-    const brandConfigStatus = await this.brandConfig.getBrandConfigStatus();
 
     const isModelHealthy = healthStatus.models.configuredAvailable;
     const isToolHealthy = healthStatus.tools.allAvailable;
-    const isBrandConfigHealthy = brandConfigStatus.available && brandConfigStatus.synced;
 
-    // 整体健康状态：模型、工具和品牌配置都必须正常
-    const isHealthy = isModelHealthy && isToolHealthy && isBrandConfigHealthy;
+    const isHealthy = isModelHealthy && isToolHealthy;
 
-    // 返回自定义格式的健康状态（只包含状态信息，不暴露敏感数据）
     return {
       success: true,
       data: {
         status: isHealthy ? 'healthy' : 'degraded',
         message: isHealthy ? 'Agent 服务正常' : '⚠️ Agent 服务运行中（部分功能降级）',
         ...healthStatus,
-        brandConfig: {
-          available: brandConfigStatus.available,
-          synced: brandConfigStatus.synced,
-          hasBrandData: brandConfigStatus.hasBrandData,
-          hasReplyPrompts: brandConfigStatus.hasReplyPrompts,
-          lastRefreshTime: brandConfigStatus.lastRefreshTime,
-          lastUpdated: brandConfigStatus.lastUpdated,
-          // 不返回完整的品牌配置数据，避免暴露敏感信息
-        },
       },
     };
   }
@@ -178,32 +167,6 @@ export class AgentController {
   }
 
   /**
-   * 手动刷新品牌配置
-   * POST /agent/config/refresh
-   */
-  @Post('config/refresh')
-  async refreshBrandConfig() {
-    this.logger.log('手动刷新品牌配置');
-    await this.brandConfig.refreshBrandConfig();
-    const brandConfigStatus = await this.brandConfig.getBrandConfigStatus();
-
-    return {
-      success: true,
-      message: brandConfigStatus.available ? '品牌配置刷新成功' : '⚠️ 品牌配置刷新失败，请检查日志',
-      data: brandConfigStatus,
-    };
-  }
-
-  /**
-   * 获取品牌配置状态
-   * GET /agent/config/status
-   */
-  @Get('config/status')
-  async getBrandConfigStatus() {
-    return await this.brandConfig.getBrandConfigStatus();
-  }
-
-  /**
    * 获取可用工具列表（Agent API 原始响应）
    * GET /agent/tools
    */
@@ -260,94 +223,6 @@ export class AgentController {
   }
 
   /**
-   * 测试聊天接口
-   * POST /agent/test-chat
-   * Body: { "message": "你好", "conversationId": "test-user", "model"?: "...", "allowedTools"?: [...], "scenario"?: "..." }
-   *
-   * 改进：使用配置档案自动传递 context 和 toolContext，避免缺少必需参数的错误
-   * 注意：会动态注入品牌配置（configData、replyPrompts）以支持 zhipin_reply_generator 工具
-   */
-  @Post('test-chat')
-  async testChat(
-    @Body()
-    body: {
-      message: string;
-      conversationId?: string;
-      model?: string;
-      allowedTools?: string[];
-      scenario?: string; // 新增：指定使用的场景配置
-    },
-  ) {
-    this.logger.log('测试聊天:', body.message);
-    const conversationId = body.conversationId || 'test-user';
-
-    // 默认使用 candidate-consultation 场景配置（包含所有必需的 context）
-    const scenario = body.scenario || 'candidate-consultation';
-    const profile = this.profileLoader.getProfile(scenario);
-
-    if (!profile) {
-      throw new HttpException(
-        `未找到场景 ${scenario} 的配置，请检查配置文件`,
-        HttpStatus.NOT_FOUND,
-      );
-    }
-
-    this.logger.log(`使用配置档案: ${profile.name} (${profile.description})`);
-
-    // 动态注入品牌配置（configData、replyPrompts）
-    // 这样 zhipin_reply_generator 工具才能正常工作
-    const brandConfigData = await this.brandConfig.getBrandConfig();
-
-    // 调试日志：检查品牌配置数据
-    this.logger.debug(
-      `[test-chat] brandConfigData: brandData=${!!brandConfigData?.brandData}, replyPrompts=${!!brandConfigData?.replyPrompts}`,
-    );
-
-    const mergedContext = {
-      ...(profile.context || {}),
-      ...(brandConfigData?.brandData && { configData: brandConfigData.brandData }),
-      ...(brandConfigData?.replyPrompts && { replyPrompts: brandConfigData.replyPrompts }),
-    };
-
-    // 调试日志：检查合并后的 context 中的关键字段
-    this.logger.debug(`[test-chat] mergedContext keys: ${Object.keys(mergedContext).join(', ')}`);
-    this.logger.debug(
-      `[test-chat] configData 类型: ${typeof mergedContext.configData}, 是否存在: ${!!mergedContext.configData}`,
-    );
-    this.logger.debug(
-      `[test-chat] replyPrompts 类型: ${typeof mergedContext.replyPrompts}, 是否存在: ${!!mergedContext.replyPrompts}`,
-    );
-
-    // 使用配置档案调用聊天接口（自动传递 context 和 toolContext）
-    const result = await this.agentService.chatWithProfile(conversationId, body.message, profile, {
-      // 允许通过请求参数覆盖配置档案的设置
-      model: body.model,
-      allowedTools: body.allowedTools,
-      // 使用合并后的 context（包含品牌配置）
-      context: mergedContext,
-    });
-
-    // 基于状态返回不同响应
-    if (result.status === 'error') {
-      throw new HttpException(
-        result.error?.message || 'Agent 调用失败',
-        result.error?.retryable ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-
-    // 返回扁平结构
-    return {
-      response: result.data || result.fallback,
-      metadata: {
-        status: result.status,
-        fromCache: result.fromCache,
-        correlationId: result.correlationId,
-        ...(result.fallbackInfo && { fallbackInfo: result.fallbackInfo }),
-      },
-    };
-  }
-
-  /**
    * 测试工具安全校验
    * POST /agent/test-tool-validation
    * Body: { "message": "你好", "allowedTools": ["duliday_job_list", "unsafe_tool"] }
@@ -358,14 +233,14 @@ export class AgentController {
     body: {
       message: string;
       allowedTools: string[];
-      conversationId?: string;
+      sessionId?: string;
     },
   ) {
     this.logger.log(`测试工具安全校验，请求的工具: ${body.allowedTools.join(', ')}`);
-    const conversationId = body.conversationId || 'test-tool-validation';
+    const sessionId = body.sessionId || 'test-tool-validation';
 
     const result = await this.agentService.chat({
-      conversationId,
+      sessionId,
       userMessage: body.message,
       allowedTools: body.allowedTools,
     });
@@ -402,14 +277,14 @@ export class AgentController {
     body: {
       message: string;
       model: string;
-      conversationId?: string;
+      sessionId?: string;
     },
   ) {
     this.logger.log(`测试模型安全校验，请求的模型: ${body.model}`);
-    const conversationId = body.conversationId || 'test-model-validation';
+    const sessionId = body.sessionId || 'test-model-validation';
 
     const result = await this.agentService.chat({
-      conversationId,
+      sessionId,
       userMessage: body.message,
       model: body.model,
     });
@@ -475,7 +350,6 @@ export class AgentController {
       description: profile.description,
       model: profile.model,
       allowedTools: profile.allowedTools || [],
-      promptType: profile.promptType,
       contextStrategy: profile.contextStrategy,
       prune: profile.prune,
       pruneOptions: profile.pruneOptions,
@@ -507,15 +381,11 @@ export class AgentController {
       };
     }
 
-    // 验证品牌配置
-    const brandValidation = this.validator.validateBrandConfig(profile);
-
     // 验证上下文
     const contextValidation = this.validator.validateContext(profile.context);
 
     return {
-      valid: brandValidation.isValid && contextValidation.isValid,
-      brandConfig: brandValidation,
+      valid: contextValidation.isValid,
       context: contextValidation,
     };
   }
@@ -523,7 +393,7 @@ export class AgentController {
   /**
    * 调试接口：测试聊天并返回完整的 Agent 原始响应
    * POST /agent/debug-chat
-   * Body: { "message": "你好", "conversationId"?: "...", "scenario"?: "..." }
+   * Body: { "message": "你好", "sessionId"?: "...", "scenario"?: "..." }
    *
    * 返回完整的 AgentResult，包括：
    * - data: 完整的 ChatResponse 原始响应
@@ -536,45 +406,37 @@ export class AgentController {
     @Body()
     body: {
       message: string;
-      conversationId?: string;
+      sessionId?: string;
       scenario?: string;
       model?: string;
       allowedTools?: string[];
+      userId?: string;
+      thinking?: { type: 'enabled' | 'disabled'; budgetTokens: number };
     },
   ) {
     this.logger.log('【调试模式】测试聊天:', body.message);
-    const conversationId = body.conversationId || `debug-${Date.now()}`;
-
-    // 使用指定的场景配置，默认 candidate-consultation
+    const sessionId = body.sessionId || `debug-${Date.now()}`;
     const scenario = body.scenario || 'candidate-consultation';
-    const profile = this.profileLoader.getProfile(scenario);
 
-    if (!profile) {
-      return {
-        success: false,
-        error: `未找到场景 ${scenario} 的配置`,
-        availableProfiles: this.profileLoader.getAllProfiles().map((p) => p.name),
-      };
-    }
-
-    this.logger.log(`【调试模式】使用配置档案: ${profile.name}`);
-
-    // 调用 AgentService 并返回完整的原始响应
-    const result = await this.agentService.chatWithProfile(conversationId, body.message, profile, {
+    // 通过 Facade 统一调用（参数准备全在 Facade 内部）
+    const result = await this.agentFacade.chatWithScenario(scenario, sessionId, body.message, {
       model: body.model,
       allowedTools: body.allowedTools,
+      userId: body.userId,
+      thinking: body.thinking,
     });
 
     // 返回完整的 AgentResult，不做任何裁剪
-    return {
+    const debugResponse = {
       success: result.status !== 'error',
-      conversationId,
+      sessionId,
       scenario,
-      profileUsed: profile.name,
+      // === 发给花卷 API 的完整请求体（便于调试入参） ===
+      requestBody: (result as any).requestBody || null,
       // === 完整的 AgentResult ===
       agentResult: {
         status: result.status,
-        data: result.data, // 完整的 ChatResponse
+        data: result.data,
         fallback: result.fallback,
         fallbackInfo: result.fallbackInfo,
         error: result.error,
@@ -583,9 +445,25 @@ export class AgentController {
       },
       // === 便于查看的响应文本提取 ===
       extractedText: this.extractResponseText(result),
-      // === 元数据 ===
       timestamp: new Date().toISOString(),
     };
+
+    // 写入调试文件，便于开发时查看完整入参+出参
+    this.writeDebugFile(debugResponse);
+
+    return debugResponse;
+  }
+
+  /**
+   * 写入调试文件 scripts/agent-debug-response.json
+   * 异步写入，不阻塞响应
+   */
+  private writeDebugFile(data: unknown): void {
+    const filePath = path.resolve(process.cwd(), 'scripts/agent-debug-response.json');
+    fs.promises
+      .writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8')
+      .then(() => this.logger.debug(`调试文件已写入: ${filePath}`))
+      .catch((err) => this.logger.warn(`调试文件写入失败: ${err.message}`));
   }
 
   /**
@@ -624,44 +502,17 @@ export class AgentController {
       return { error: `未找到场景 ${scenario} 的配置` };
     }
 
-    // 获取品牌配置
-    const brandConfigData = await this.brandConfig.getBrandConfig();
-
-    // 构建合并后的 context（与 test-chat 逻辑一致）
-    const mergedContext = {
-      ...(profile.context || {}),
-      ...(brandConfigData?.brandData && { configData: brandConfigData.brandData }),
-      ...(brandConfigData?.replyPrompts && { replyPrompts: brandConfigData.replyPrompts }),
-    };
-
     return {
       scenario,
       profileName: profile.name,
-      // 原始 profile.context（来自 context.json）
-      originalContext: profile.context,
-      // 品牌配置原始数据
-      brandConfigRaw: {
-        synced: brandConfigData?.synced,
-        hasBrandData: !!brandConfigData?.brandData,
-        hasReplyPrompts: !!brandConfigData?.replyPrompts,
-        brandDataKeys: brandConfigData?.brandData ? Object.keys(brandConfigData.brandData) : [],
-        replyPromptsKeys: brandConfigData?.replyPrompts
-          ? Object.keys(brandConfigData.replyPrompts)
-          : [],
-        lastRefreshTime: brandConfigData?.lastRefreshTime,
-      },
-      // 合并后的完整 context（传给 Agent API）
-      mergedContext: {
-        ...mergedContext,
+      // 原始 profile.context
+      originalContext: {
+        ...(profile.context || {}),
         // 脱敏 dulidayToken
-        dulidayToken: mergedContext.dulidayToken
-          ? `${String(mergedContext.dulidayToken).substring(0, 20)}...`
+        dulidayToken: profile.context?.dulidayToken
+          ? `${String(profile.context.dulidayToken).substring(0, 20)}...`
           : undefined,
       },
-      // configData 完整结构（关键！这是 zhipin_reply_generator 工具需要的）
-      configDataStructure: brandConfigData?.brandData,
-      // replyPrompts 完整结构
-      replyPromptsStructure: brandConfigData?.replyPrompts,
       // toolContext 结构
       toolContext: profile.toolContext,
       timestamp: new Date().toISOString(),
@@ -686,28 +537,22 @@ export class AgentController {
       message: string;
       roomId?: string;
       fromUser: string;
-      overrides?: any;
+      model?: string;
+      allowedTools?: string[];
+      userId?: string;
     },
   ) {
     this.logger.log(`使用配置档案聊天: ${body.scenario}, 消息: ${body.message}`);
 
-    // 获取配置档案
-    const profile = this.profileLoader.getProfile(body.scenario);
-    if (!profile) {
-      throw new HttpException(`未找到场景 ${body.scenario} 的配置`, HttpStatus.NOT_FOUND);
-    }
+    const sessionId = body.roomId ? `room_${body.roomId}` : `user_${body.fromUser}`;
 
-    // 生成会话ID
-    const conversationId = body.roomId ? `room_${body.roomId}` : `user_${body.fromUser}`;
+    // 通过 Facade 统一调用
+    const result = await this.agentFacade.chatWithScenario(body.scenario, sessionId, body.message, {
+      model: body.model,
+      allowedTools: body.allowedTools,
+      userId: body.userId,
+    });
 
-    const result = await this.agentService.chatWithProfile(
-      conversationId,
-      body.message,
-      profile,
-      body.overrides,
-    );
-
-    // 基于状态返回不同响应
     if (result.status === 'error') {
       throw new HttpException(
         result.error?.message || 'Agent 调用失败',
@@ -716,7 +561,7 @@ export class AgentController {
     }
 
     return {
-      conversationId,
+      sessionId,
       scenario: body.scenario,
       response: result.data || result.fallback,
       metadata: {

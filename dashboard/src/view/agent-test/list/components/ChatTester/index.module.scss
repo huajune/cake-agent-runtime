@@ -111,8 +111,8 @@
   justify-content: space-between;
   align-items: center;
   padding: $spacing-md $spacing-lg;
-  border-bottom: 1px solid rgba(139, 92, 246, 0.1);
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.03) 0%, $bg-secondary 30%, rgba(253, 242, 248, 0.3) 70%, rgba(236, 72, 153, 0.03) 100%);
+  border-bottom: 1px solid $accent-10;
+  background: linear-gradient(135deg, $primary-03 0%, $bg-secondary 30%, rgba(253, 242, 248, 0.3) 70%, rgba(236, 72, 153, 0.03) 100%);
   flex-shrink: 0;
   position: relative;
   overflow: hidden;
@@ -139,8 +139,8 @@
     gap: $spacing-sm;
 
     svg {
-      color: #8b5cf6;
-      filter: drop-shadow(0 0 3px rgba(139, 92, 246, 0.3));
+      color: $accent;
+      filter: drop-shadow(0 0 3px $accent-30);
     }
   }
 }
@@ -160,7 +160,7 @@
     left: -30px;
     width: 150px;
     height: 150px;
-    background: radial-gradient(circle, rgba(99, 102, 241, 0.05) 0%, transparent 70%);
+    background: radial-gradient(circle, $primary-05 0%, transparent 70%);
     pointer-events: none;
     z-index: 0;
   }
@@ -172,7 +172,7 @@
     right: -40px;
     width: 180px;
     height: 180px;
-    background: radial-gradient(circle, rgba(139, 92, 246, 0.04) 0%, rgba(236, 72, 153, 0.03) 50%, transparent 70%);
+    background: radial-gradient(circle, $accent-04 0%, rgba(236, 72, 153, 0.03) 50%, transparent 70%);
     pointer-events: none;
     z-index: 0;
   }
@@ -298,20 +298,20 @@
     justify-content: center;
     border-radius: $radius-md;
     border: none;
-    background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+    background: linear-gradient(135deg, $accent 0%, #ec4899 100%);
     color: $text-on-primary;
     cursor: pointer;
     transition: all 0.2s ease;
-    box-shadow: 0 2px 6px rgba(139, 92, 246, 0.3);
+    box-shadow: 0 2px 6px $accent-30;
 
     &:hover:not(:disabled) {
       transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+      box-shadow: 0 4px 12px $accent-40;
     }
 
     &:active:not(:disabled) {
       transform: translateY(0);
-      box-shadow: 0 2px 6px rgba(139, 92, 246, 0.3);
+      box-shadow: 0 2px 6px $accent-30;
     }
 
     &:disabled {
@@ -449,7 +449,7 @@
 // ==================== AI 回复 ====================
 .replySection {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(250, 248, 255, 0.9) 100%);
-  border: 1px solid rgba(139, 92, 246, 0.1);
+  border: 1px solid $accent-10;
   border-radius: $radius-lg;
   padding: $spacing-lg;
   position: relative;
@@ -460,7 +460,7 @@
     align-items: center;
     margin-bottom: $spacing-md;
     padding-bottom: $spacing-sm;
-    border-bottom: 1px solid rgba(139, 92, 246, 0.08);
+    border-bottom: 1px solid $accent-08;
     position: relative;
 
     h4 {
@@ -473,7 +473,7 @@
       margin: 0;
 
       svg {
-        color: #8b5cf6;
+        color: $accent;
         opacity: 0.7;
       }
     }
@@ -489,7 +489,7 @@
 
 // ==================== 可折叠区块 ====================
 .collapsibleSection {
-  border: 1px solid rgba(139, 92, 246, 0.1);
+  border: 1px solid $accent-10;
   border-radius: $radius-lg;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.95);
@@ -517,7 +517,7 @@
       margin: 0;
 
       svg {
-        color: #8b5cf6;
+        color: $accent;
         opacity: 0.7;
       }
     }
@@ -530,19 +530,19 @@
   flex-direction: column;
   gap: $spacing-sm;
   background: rgba(255, 255, 255, 0.5);
-  border-top: 1px solid rgba(139, 92, 246, 0.06);
+  border-top: 1px solid $accent-06;
 }
 
 .toolCallItem {
   background: rgba(255, 255, 255, 0.9);
   border-radius: $radius-md;
-  border: 1px solid rgba(139, 92, 246, 0.08);
+  border: 1px solid $accent-08;
   overflow: hidden;
   transition: all 0.2s ease;
 
   &:hover {
-    border-color: rgba(139, 92, 246, 0.15);
-    box-shadow: 0 2px 6px rgba(139, 92, 246, 0.06);
+    border-color: $accent-15;
+    box-shadow: 0 2px 6px $accent-06;
   }
 
   .toolHeader {
@@ -557,7 +557,7 @@
     cursor: pointer;
 
     &:hover {
-      background: rgba(139, 92, 246, 0.03);
+      background: $accent-03;
     }
   }
 
@@ -571,7 +571,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #8b5cf6;
+    color: $accent;
   }
 
   .toolName {
@@ -579,9 +579,9 @@
     align-items: center;
     gap: 6px;
     padding: 5px 10px;
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.12) 0%, rgba(236, 72, 153, 0.12) 100%);
-    color: #8b5cf6;
-    border: 1px solid rgba(139, 92, 246, 0.15);
+    background: linear-gradient(135deg, $accent-12 0%, rgba(236, 72, 153, 0.12) 100%);
+    color: $accent;
+    border: 1px solid $accent-15;
     border-radius: $radius-md;
     font-size: $font-size-xs;
     font-family: 'JetBrains Mono', monospace;
@@ -672,8 +672,8 @@
 }
 
 .toolCalling {
-  border-color: rgba(139, 92, 246, 0.2) !important;
-  background: rgba(139, 92, 246, 0.04) !important;
+  border-color: $accent-20 !important;
+  background: $accent-04 !important;
 }
 
 .toolSpinnerIcon {
@@ -698,6 +698,20 @@
 .streamingIcon {
   color: $success;
   animation: pulse 1.5s ease-in-out infinite;
+}
+
+.liveTimer {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: $spacing-sm;
+  font-size: $font-size-xs;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: $font-weight-normal;
+  color: $text-secondary;
+  padding: 2px 8px;
+  background: $accent-06;
+  border-radius: $radius-full;
 }
 
 .streamCursor {
@@ -783,16 +797,16 @@
     position: absolute;
     width: 180px;
     height: 180px;
-    background: radial-gradient(circle, rgba(139, 92, 246, 0.04) 0%, transparent 70%);
+    background: radial-gradient(circle, $accent-04 0%, transparent 70%);
     border-radius: 50%;
     pointer-events: none;
   }
 
   .emptyIcon {
-    color: rgba(139, 92, 246, 0.35);
+    color: $accent-35;
     margin-bottom: $spacing-md;
     animation: float 4s ease-in-out infinite;
-    filter: drop-shadow(0 3px 6px rgba(139, 92, 246, 0.15));
+    filter: drop-shadow(0 3px 6px $accent-15);
   }
 
   p {
@@ -809,8 +823,8 @@
   .loadingSpinner {
     width: 40px;
     height: 40px;
-    border: 3px solid rgba(139, 92, 246, 0.15);
-    border-top-color: #8b5cf6;
+    border: 3px solid $accent-15;
+    border-top-color: $accent;
     border-radius: 50%;
     animation: spin 1s linear infinite;
     margin-bottom: $spacing-lg;

@@ -15,24 +15,24 @@ export class AgentLogger {
   /**
    * Log chat request
    */
-  logRequest(conversationId: string, request: ChatRequest): void {
+  logRequest(sessionId: string, request: ChatRequest): void {
     const toolsCount = request.allowedTools?.length || 0;
     this.logger.log(
-      `[Request] conversation:${conversationId}, messages:${request.messages.length}, tools:${toolsCount}`,
+      `[Request] conversation:${sessionId}, messages:${request.messages.length}, tools:${toolsCount}`,
     );
   }
 
   /**
    * Log chat response
    */
-  logResponse(conversationId: string, response: ChatResponse): void {
+  logResponse(sessionId: string, response: ChatResponse): void {
     const messageCount = response.messages?.length || 0;
     const usedTools = response.tools?.used || [];
     const toolsStr = usedTools.length > 0 ? usedTools.join(', ') : 'none';
 
     // 记录响应概览
     this.logger.log(
-      `[Response] conversation:${conversationId}, messages:${messageCount}, usedTools:${toolsStr}`,
+      `[Response] conversation:${sessionId}, messages:${messageCount}, usedTools:${toolsStr}`,
     );
   }
 }

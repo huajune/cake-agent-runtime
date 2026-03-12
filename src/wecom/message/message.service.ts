@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { MonitoringService } from '@/core/monitoring/monitoring.service';
-import { SystemConfigRepository } from '@core/supabase/repositories';
+import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
+import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 
 // 导入子服务
 import { MessageHistoryService } from './services/message-history.service';
@@ -45,9 +45,9 @@ export class MessageService implements OnModuleInit {
     private readonly statisticsService: MessageStatisticsService,
     private readonly pipelineService: MessagePipelineService,
     // 监控
-    private readonly monitoringService: MonitoringService,
+    private readonly monitoringService: MessageTrackingService,
     // Repository
-    private readonly systemConfigRepository: SystemConfigRepository,
+    private readonly systemConfigService: SystemConfigService,
   ) {
     this.enableAiReply = this.configService.get<string>('ENABLE_AI_REPLY', 'true') === 'true';
     this.enableMessageMerge =
@@ -60,8 +60,8 @@ export class MessageService implements OnModuleInit {
    * 模块初始化 - 从 Supabase 加载开关状态
    */
   async onModuleInit() {
-    this.enableAiReply = await this.systemConfigRepository.getAiReplyEnabled();
-    this.enableMessageMerge = await this.systemConfigRepository.getMessageMergeEnabled();
+    this.enableAiReply = await this.systemConfigService.getAiReplyEnabled();
+    this.enableMessageMerge = await this.systemConfigService.getMessageMergeEnabled();
     this.logger.log(`AI 自动回复功能: ${this.enableAiReply ? '已启用' : '已禁用'} (来自 Supabase)`);
     this.logger.log(
       `消息聚合功能: ${this.enableMessageMerge ? '已启用' : '已禁用'} (来自 Supabase)`,
@@ -191,7 +191,7 @@ export class MessageService implements OnModuleInit {
    */
   async toggleAiReply(enabled: boolean): Promise<boolean> {
     this.enableAiReply = enabled;
-    await this.systemConfigRepository.setAiReplyEnabled(enabled);
+    await this.systemConfigService.setAiReplyEnabled(enabled);
     this.logger.log(`AI 自动回复功能已${enabled ? '启用' : '禁用'} (已持久化到 Supabase)`);
     return this.enableAiReply;
   }
@@ -208,7 +208,7 @@ export class MessageService implements OnModuleInit {
    */
   async toggleMessageMerge(enabled: boolean): Promise<boolean> {
     this.enableMessageMerge = enabled;
-    await this.systemConfigRepository.setMessageMergeEnabled(enabled);
+    await this.systemConfigService.setMessageMergeEnabled(enabled);
     this.logger.log(`消息聚合功能已${enabled ? '启用' : '禁用'} (已持久化到 Supabase)`);
     return this.enableMessageMerge;
   }

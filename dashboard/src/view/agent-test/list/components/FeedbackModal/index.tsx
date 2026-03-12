@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom';
 import { X, Loader2, Sparkles, AlertTriangle } from 'lucide-react';
-import { FeedbackType } from '@/services/agent-test';
+import { FeedbackType } from '@/api/services/agent-test.service';
 import { SCENARIO_TYPE_OPTIONS } from '../../constants';
 import { CustomSelect } from '../CustomSelect';
 import styles from './index.module.scss';

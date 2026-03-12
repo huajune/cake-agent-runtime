@@ -11,6 +11,7 @@ import {
 import { AgentService } from '@agent';
 import { MessageCallbackAdapterService } from './services/message-callback-adapter.service';
 import { MessageFilterService } from './services/message-filter.service';
+import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
 import { LogSanitizer } from './utils/log-sanitizer.util';
 
 /**
@@ -33,6 +34,7 @@ export class MessageController {
     private readonly agentService: AgentService,
     private readonly callbackAdapter: MessageCallbackAdapterService,
     private readonly filterService: MessageFilterService,
+    private readonly groupBlacklistService: GroupBlacklistService,
   ) {}
 
   /**
@@ -480,7 +482,7 @@ export class MessageController {
    */
   @Get('blacklist/groups')
   async getGroupBlacklist() {
-    const blacklist = await this.filterService.getGroupBlacklist();
+    const blacklist = await this.groupBlacklistService.getGroupBlacklist();
     return {
       success: true,
       data: blacklist,
@@ -510,7 +512,7 @@ export class MessageController {
       };
     }
 
-    await this.filterService.addGroupToBlacklist(body.groupId, body.reason);
+    await this.groupBlacklistService.addGroupToBlacklist(body.groupId, body.reason);
 
     return {
       success: true,
@@ -530,7 +532,7 @@ export class MessageController {
    */
   @Delete('blacklist/groups/:groupId')
   async removeGroupFromBlacklist(@Param('groupId') groupId: string) {
-    const removed = await this.filterService.removeGroupFromBlacklist(groupId);
+    const removed = await this.groupBlacklistService.removeGroupFromBlacklist(groupId);
 
     if (removed) {
       return {
@@ -552,7 +554,7 @@ export class MessageController {
    */
   @Get('blacklist/groups/:groupId/check')
   async checkGroupBlacklist(@Param('groupId') groupId: string) {
-    const isBlacklisted = await this.filterService.isGroupBlacklisted(groupId);
+    const isBlacklisted = await this.groupBlacklistService.isGroupBlacklisted(groupId);
 
     return {
       success: true,

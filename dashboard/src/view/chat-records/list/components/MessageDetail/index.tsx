@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatSession } from '@/hooks/monitoring/useChatRecords';
+import type { ChatMessage, ChatSession } from '@/hooks/chat/useChatSessions';
 import styles from './index.module.scss';
 
 // 格式化时间戳

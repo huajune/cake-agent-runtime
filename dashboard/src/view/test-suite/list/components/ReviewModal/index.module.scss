@@ -51,7 +51,7 @@
   animation: slideUp 0.3s ease;
   border-radius: 20px;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(139, 92, 246, 0.15);
+  border: 1px solid $accent-15;
   position: relative;
   overflow: hidden;
 }
@@ -61,8 +61,8 @@
   justify-content: space-between;
   align-items: center;
   padding: $spacing-md $spacing-lg;
-  border-bottom: 1px solid rgba(139, 92, 246, 0.1);
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(236, 72, 153, 0.04) 100%);
+  border-bottom: 1px solid $accent-10;
+  background: linear-gradient(135deg, $accent-08 0%, rgba(236, 72, 153, 0.04) 100%);
   flex-shrink: 0;
   position: relative;
   overflow: hidden;
@@ -134,8 +134,8 @@
   justify-content: space-between;
   align-items: center;
   padding: 16px 24px;
-  border-top: 1px solid rgba(139, 92, 246, 0.1);
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.04) 0%, rgba(236, 72, 153, 0.02) 100%);
+  border-top: 1px solid $accent-10;
+  background: linear-gradient(135deg, $accent-04 0%, rgba(236, 72, 153, 0.02) 100%);
   flex-shrink: 0;
   position: relative;
   z-index: 10;
@@ -151,8 +151,8 @@
     height: 32px;
     border-radius: 50%;
     border: none;
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(168, 85, 247, 0.06) 100%);
-    color: #8b5cf6;
+    background: linear-gradient(135deg, $accent-10 0%, $accent-06 100%);
+    color: $accent;
     font-size: 13px;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -161,9 +161,9 @@
     justify-content: center;
 
     &:hover:not(:disabled) {
-      background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(168, 85, 247, 0.12) 100%);
+      background: linear-gradient(135deg, $accent-20 0%, $accent-12 100%);
       transform: scale(1.1);
-      box-shadow: 0 2px 8px rgba(139, 92, 246, 0.2);
+      box-shadow: 0 2px 8px $accent-20;
     }
 
     &:disabled {
@@ -175,7 +175,7 @@
   span {
     font-size: 12px;
     font-weight: 500;
-    color: #8b5cf6;
+    color: $accent;
     min-width: 50px;
     text-align: center;
   }
@@ -194,8 +194,8 @@
   gap: 8px;
   padding: 12px 24px;
   border-radius: 14px;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(236, 72, 153, 0.05) 100%);
-  color: #8b5cf6;
+  background: linear-gradient(135deg, $accent-08 0%, rgba(236, 72, 153, 0.05) 100%);
+  color: $accent;
   font-size: $font-size-sm;
   font-weight: $font-weight-medium;
 }
@@ -232,9 +232,9 @@
 .skeletonBox {
   background: linear-gradient(
     90deg,
-    rgba(139, 92, 246, 0.08) 0%,
-    rgba(139, 92, 246, 0.15) 50%,
-    rgba(139, 92, 246, 0.08) 100%
+    $accent-08 0%,
+    $accent-15 50%,
+    $accent-08 100%
   );
   background-size: 200% 100%;
   animation: skeletonShimmer 1.8s ease-in-out infinite;
@@ -247,9 +247,9 @@
   align-items: center;
   gap: 16px;
   padding: 12px 16px;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.04) 0%, rgba(236, 72, 153, 0.02) 100%);
+  background: linear-gradient(135deg, $accent-04 0%, rgba(236, 72, 153, 0.02) 100%);
   border-radius: 12px;
-  border: 1px solid rgba(139, 92, 246, 0.08);
+  border: 1px solid $accent-08;
 
   .skeletonMetricItem {
     display: flex;
@@ -273,7 +273,7 @@
   .skeletonDivider {
     width: 1px;
     height: 20px;
-    background: rgba(139, 92, 246, 0.12);
+    background: $accent-12;
   }
 
   .skeletonBadge {
@@ -321,7 +321,7 @@
 
     .skeletonMessage {
       padding: 16px;
-      background: linear-gradient(135deg, rgba(59, 130, 246, 0.04) 0%, rgba(99, 102, 241, 0.02) 100%);
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.04) 0%, $primary-02 100%);
       border-radius: 12px;
       border: 1px solid rgba(59, 130, 246, 0.08);
       min-height: 60px;
@@ -394,9 +394,9 @@
 
   .skeletonToolCalls {
     padding: 12px;
-    background: rgba(139, 92, 246, 0.04);
+    background: $accent-04;
     border-radius: 10px;
-    border: 1px solid rgba(139, 92, 246, 0.08);
+    border: 1px solid $accent-08;
     margin-bottom: 12px;
 
     .skeletonToolItem {

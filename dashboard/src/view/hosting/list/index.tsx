@@ -4,8 +4,8 @@ import {
   useRemoveFromBlacklist,
   useAiReplyStatus,
   useToggleAiReply,
-} from '@/hooks/monitoring/useSystemConfig';
-import { useGroupList } from '@/hooks/monitoring/useWorker';
+} from '@/hooks/config/useSystemConfig';
+import { useGroupList } from '@/hooks/config/useWorker';
 
 // 组件导入
 import GlobalSwitch from './components/GlobalSwitch';

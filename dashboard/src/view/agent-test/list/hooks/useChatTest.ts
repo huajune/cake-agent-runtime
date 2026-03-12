@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
-import { TestChatResponse, SimpleMessage, TokenUsage } from '@/services/agent-test';
+import { TestChatResponse, SimpleMessage, TokenUsage } from '@/api/services/agent-test.service';
 import { CHAT_API_ENDPOINT, DEFAULT_SCENARIO } from '../constants';
 
 export interface UseChatTestOptions {
@@ -16,6 +16,7 @@ export interface UseChatTestReturn {
   localError: string | null;
   result: TestChatResponse | null;
   metrics: { durationMs: number; tokenUsage: TokenUsage } | null;
+  elapsedMs: number;
   isLoading: boolean;
   isStreaming: boolean;
   latestAssistantMessage: UIMessage | undefined;
@@ -55,24 +56,35 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
   );
   const startTimeRef = useRef<number>(0);
 
+  // 会话 ID + 用户 ID：同一对话保持一致，清空聊天时重新生成（确保花卷 API 服务端记忆完全隔离）
+  const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
+  const [userId, setUserId] = useState(() => `dashboard-test-${crypto.randomUUID().slice(0, 8)}`);
+
   // Refs
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const replyContentRef = useRef<HTMLDivElement>(null);
   const currentInputRef = useRef<string>('');
   const tokenUsageRef = useRef<TokenUsage | null>(null);
 
-  // Transport
+  // Transport（sessionId 变化时重建，确保新对话用新 sessionId）
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
         api: CHAT_API_ENDPOINT,
-        body: { scenario: DEFAULT_SCENARIO, saveExecution: false },
+        body: {
+          scenario: DEFAULT_SCENARIO,
+          saveExecution: false,
+          sessionId,
+          userId,
+          thinking: { type: 'enabled', budgetTokens: 10000 },
+        },
       }),
-    [],
+    [sessionId, userId],
   );
 
   // useChat hook
   const { messages, sendMessage, status, stop, setMessages, error: chatError } = useChat({
+    id: sessionId,
     transport,
     onData: (dataPart: unknown) => {
       const part = dataPart as { type?: string; data?: TokenUsage };
@@ -105,12 +117,10 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
         .map((p) => p.text)
         .join('');
 
-      const serverTokenUsage = tokenUsageRef.current;
-      const estimatedTokens = Math.round(textContent.length / 4);
-      const finalTokenUsage: TokenUsage = serverTokenUsage || {
+      const finalTokenUsage: TokenUsage = tokenUsageRef.current || {
         inputTokens: 0,
-        outputTokens: estimatedTokens,
-        totalTokens: estimatedTokens,
+        outputTokens: 0,
+        totalTokens: 0,
       };
 
       setMetrics({ durationMs, tokenUsage: finalTokenUsage });
@@ -158,6 +168,19 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
   useEffect(() => {
     if (chatError) setLocalError(chatError.message);
   }, [chatError]);
+
+  // 流式实时耗时
+  const [elapsedMs, setElapsedMs] = useState(0);
+  useEffect(() => {
+    if (!isStreaming) {
+      setElapsedMs(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setElapsedMs(Date.now() - startTimeRef.current);
+    }, 100);
+    return () => clearInterval(interval);
+  }, [isStreaming]);
 
   // 流式开始时清空 result
   useEffect(() => {
@@ -253,7 +276,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
   // 取消
   const handleCancel = useCallback(() => stop(), [stop]);
 
-  // 清空
+  // 清空（重新生成 sessionId，开启新会话）
   const handleClear = useCallback(() => {
     setHistoryTextState('');
     setHistoryStatus('empty');
@@ -263,6 +286,8 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     setLocalError(null);
     setMetrics(null);
     setIsRequesting(false);
+    setSessionId(crypto.randomUUID());
+    setUserId(`dashboard-test-${crypto.randomUUID().slice(0, 8)}`);
     messageInputRef.current?.focus();
   }, [setMessages]);
 
@@ -275,6 +300,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     localError,
     result,
     metrics,
+    elapsedMs,
     isLoading,
     isStreaming,
     latestAssistantMessage,

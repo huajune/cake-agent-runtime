@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
-import { feishuBitableConfig } from '../constants/feishu-bitable.config';
 
 /**
  * Token 缓存结构
@@ -178,23 +177,10 @@ export class FeishuApiService {
   }
 
   private loadAppId(): string {
-    // 代码配置优先
-    if (feishuBitableConfig.appId && feishuBitableConfig.appId !== 'PLEASE_SET_APP_ID') {
-      return feishuBitableConfig.appId;
-    }
-    // 环境变量兜底
     return this.configService.get<string>('FEISHU_APP_ID') || '';
   }
 
   private loadAppSecret(): string {
-    // 代码配置优先
-    if (
-      feishuBitableConfig.appSecret &&
-      feishuBitableConfig.appSecret !== 'PLEASE_SET_APP_SECRET'
-    ) {
-      return feishuBitableConfig.appSecret;
-    }
-    // 环境变量兜底
     return this.configService.get<string>('FEISHU_APP_SECRET') || '';
   }
 }

@@ -49,8 +49,8 @@
   justify-content: space-between;
   align-items: center;
   padding: $spacing-md $spacing-lg;
-  border-bottom: 1px solid rgba(139, 92, 246, 0.1);
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(236, 72, 153, 0.05) 100%);
+  border-bottom: 1px solid $accent-10;
+  background: linear-gradient(135deg, $accent-08 0%, rgba(236, 72, 153, 0.05) 100%);
   flex-shrink: 0;
   position: relative;
   overflow: hidden;
@@ -79,16 +79,16 @@
     z-index: 1;
 
     svg {
-      color: #8b5cf6;
-      filter: drop-shadow(0 0 4px rgba(139, 92, 246, 0.3));
+      color: $accent;
+      filter: drop-shadow(0 0 4px $accent-30);
     }
   }
 }
 
 .badge {
   font-size: $font-size-xs;
-  color: #8b5cf6;
-  background: rgba(139, 92, 246, 0.1);
+  color: $accent;
+  background: $accent-10;
   padding: 4px 10px;
   border-radius: $radius-full;
   font-weight: $font-weight-medium;
@@ -122,7 +122,7 @@
   cursor: pointer;
   transition: all 0.25s ease;
   background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(139, 92, 246, 0.12);
+  border: 1px solid $accent-12;
   position: relative;
   flex-shrink: 0; // 防止被压缩
 
@@ -140,30 +140,30 @@
 
   &:hover {
     background: rgba(255, 255, 255, 0.95);
-    border-color: rgba(139, 92, 246, 0.3);
-    box-shadow: 0 8px 20px rgba(139, 92, 246, 0.12);
+    border-color: $accent-30;
+    box-shadow: 0 8px 20px $accent-12;
     transform: translateY(-2px); // 改为向上浮动，更有质感
 
     &::before {
-      background: linear-gradient(180deg, #a855f7 0%, #8b5cf6 100%);
+      background: linear-gradient(180deg, $accent-light 0%, $accent 100%);
       height: 60%; // 装饰条变短一点，更精致
       top: 20%;
     }
   }
 
   &.selected {
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(236, 72, 153, 0.06) 100%);
-    border-color: rgba(139, 92, 246, 0.35);
-    box-shadow: 0 4px 16px rgba(139, 92, 246, 0.15);
+    background: linear-gradient(135deg, $accent-10 0%, rgba(236, 72, 153, 0.06) 100%);
+    border-color: $accent-35;
+    box-shadow: 0 4px 16px $accent-15;
 
     &::before {
-      background: linear-gradient(180deg, #ec4899 0%, #8b5cf6 100%);
+      background: linear-gradient(180deg, #ec4899 0%, $accent 100%);
       width: 4px;
     }
 
     .batchName {
-      color: #7c3aed;
-      text-shadow: 0 0 20px rgba(139, 92, 246, 0.2);
+      color: $primary-dark;
+      text-shadow: 0 0 20px $accent-20;
     }
   }
 }
@@ -235,15 +235,15 @@
 }
 
 .running {
-  color: #6366f1;
-  background: rgba(99, 102, 241, 0.1);
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  color: $primary;
+  background: $primary-10;
+  border: 1px solid $primary-20;
 }
 
 .reviewing {
-  color: #a855f7;
-  background: rgba(168, 85, 247, 0.1);
-  border: 1px solid rgba(168, 85, 247, 0.2);
+  color: $accent-light;
+  background: $accent-10;
+  border: 1px solid $accent-20;
 }
 
 .completed {
@@ -304,8 +304,8 @@
 .spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid rgba(139, 92, 246, 0.15);
-  border-top-color: #8b5cf6;
+  border: 3px solid $accent-15;
+  border-top-color: $accent;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -326,7 +326,7 @@
     position: absolute;
     width: 140px;
     height: 140px;
-    background: radial-gradient(circle, rgba(139, 92, 246, 0.1) 0%, rgba(236, 72, 153, 0.05) 50%, transparent 70%);
+    background: radial-gradient(circle, $accent-10 0%, rgba(236, 72, 153, 0.05) 50%, transparent 70%);
     border-radius: 50%;
     pointer-events: none;
     animation: pulse 3s ease-in-out infinite;
@@ -344,8 +344,8 @@
   }
 
   svg {
-    color: #8b5cf6;
-    filter: drop-shadow(0 4px 12px rgba(139, 92, 246, 0.3));
+    color: $accent;
+    filter: drop-shadow(0 4px 12px $accent-30);
     animation: float 3s ease-in-out infinite;
   }
 
@@ -374,7 +374,7 @@
 
 .spinningIcon {
   animation: spin 1s linear infinite;
-  color: #8b5cf6;
+  color: $accent;
 }
 
 .noMore {

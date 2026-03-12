@@ -62,24 +62,27 @@ export class MessageDeduplicationService implements OnModuleInit {
 
   /**
    * 标记消息为已处理（异步）
-   * 使用 SETNX 语义确保只有第一个处理者能成功标记
+   * 使用原子 SET NX EX 确保只有第一个处理者能成功标记，无竞态条件
    *
    * @returns true 如果成功标记（第一个处理者），false 如果已被其他进程标记
    */
   async markMessageAsProcessedAsync(messageId: string): Promise<boolean> {
     const key = RedisKeyBuilder.dedup(messageId);
 
-    // 使用 setex，TTL 自动管理
-    // 注意：这里使用 set + NX 语义更好，但 Upstash Redis SDK 可能不支持
-    // 先检查是否存在
-    const exists = await this.redisService.exists(key);
-    if (exists > 0) {
+    // 原子操作：SET key value NX EX ttl
+    // 返回 "OK" 表示成功设置（第一个处理者）
+    // 返回 null 表示 key 已存在（已被其他进程处理）
+    const client = this.redisService.getClient();
+    const result = await client.set(key, Date.now().toString(), {
+      nx: true,
+      ex: this.dedupeTTLSeconds,
+    });
+
+    if (result === null) {
       this.logger.debug(`[去重] 消息 [${messageId}] 已被其他进程处理`);
       return false;
     }
 
-    // 标记为已处理
-    await this.redisService.setex(key, this.dedupeTTLSeconds, Date.now().toString());
     return true;
   }
 

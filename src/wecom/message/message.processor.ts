@@ -2,8 +2,8 @@ import { Injectable, Logger, OnModuleInit, forwardRef, Inject } from '@nestjs/co
 import { InjectQueue } from '@nestjs/bull';
 import { Queue, Job } from 'bull';
 import { EnterpriseMessageCallbackDto } from './dto/message-callback.dto';
-import { SystemConfigRepository } from '@core/supabase/repositories';
-import { MonitoringService } from '@core/monitoring/monitoring.service';
+import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
+import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 
 // 导入子服务
 import { SimpleMergeService } from './services/simple-merge.service';
@@ -36,8 +36,8 @@ export class MessageProcessor implements OnModuleInit {
     @Inject(forwardRef(() => MessageService))
     private readonly messageService: MessageService,
     private readonly simpleMergeService: SimpleMergeService,
-    private readonly systemConfigRepository: SystemConfigRepository,
-    private readonly monitoringService: MonitoringService,
+    private readonly systemConfigService: SystemConfigService,
+    private readonly monitoringService: MessageTrackingService,
   ) {}
 
   async onModuleInit() {
@@ -125,7 +125,7 @@ export class MessageProcessor implements OnModuleInit {
 
   private async loadConcurrencyFromConfig(): Promise<void> {
     try {
-      const config = await this.systemConfigRepository.getSystemConfig();
+      const config = await this.systemConfigService.getSystemConfig();
       if (config?.workerConcurrency) {
         this.currentConcurrency = Math.max(
           this.MIN_CONCURRENCY,
@@ -233,7 +233,7 @@ export class MessageProcessor implements OnModuleInit {
 
     try {
       this.currentConcurrency = newConcurrency;
-      await this.systemConfigRepository.updateSystemConfig({ workerConcurrency: newConcurrency });
+      await this.systemConfigService.updateSystemConfig({ workerConcurrency: newConcurrency });
 
       return {
         success: true,
