@@ -9,7 +9,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  issues: write
+  id-token: write
 
 jobs:
   ai-code-review:
@@ -22,129 +22,49 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Get changed files
-        id: changed-files
-        run: |
-          # 获取 PR 中修改的文件列表（支持所有 TS/JS 扩展名）
-          git fetch origin ${{ github.event.pull_request.base.ref }}
-          CHANGED_FILES=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}...HEAD | grep -E '\.(ts|js|tsx|jsx|mts|cts|mjs|cjs|d\.ts)$' || echo "")
-
-          if [ -z "$CHANGED_FILES" ]; then
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-            echo "No TypeScript/JavaScript files changed"
-          else
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-            echo "changed_files<<EOF" >> $GITHUB_OUTPUT
-            echo "$CHANGED_FILES" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-
-            # 统计文件数量
-            FILE_COUNT=$(echo "$CHANGED_FILES" | wc -l)
-            echo "file_count=$FILE_COUNT" >> $GITHUB_OUTPUT
-
-            echo "Found $FILE_COUNT changed TypeScript/JavaScript files"
-          fi
-
-      - name: Get file diffs
-        id: get-diffs
-        if: steps.changed-files.outputs.has_changes == 'true'
-        run: |
-          git fetch origin ${{ github.event.pull_request.base.ref }}
-
-          # 使用 git diff --numstat 精确统计行数（基于完整 diff）
-          STATS=$(git diff --numstat origin/${{ github.event.pull_request.base.ref }}...HEAD -- '*.ts' '*.js' '*.tsx' '*.jsx' '*.mts' '*.cts' '*.mjs' '*.cjs' '*.d.ts')
-
-          # 计算新增和删除的总行数
-          ADDED_LINES=$(echo "$STATS" | awk '{sum += $1} END {print sum}' || echo "0")
-          REMOVED_LINES=$(echo "$STATS" | awk '{sum += $2} END {print sum}' || echo "0")
-
-          # 获取所有变更的详细 diff（限制大小以避免超出 API 限制，仅用于 AI 审查）
-          DIFF_OUTPUT=$(git diff origin/${{ github.event.pull_request.base.ref }}...HEAD -- '*.ts' '*.js' '*.tsx' '*.jsx' '*.mts' '*.cts' '*.mjs' '*.cjs' '*.d.ts' | head -c 50000)
-
-          # 保存到文件
-          echo "$DIFF_OUTPUT" > /tmp/pr-diff.txt
-
-          echo "added_lines=$ADDED_LINES" >> $GITHUB_OUTPUT
-          echo "removed_lines=$REMOVED_LINES" >> $GITHUB_OUTPUT
-
-          echo "Changes: +$ADDED_LINES -$REMOVED_LINES lines"
-
-      - name: Install Claude Code CLI
-        if: steps.changed-files.outputs.has_changes == 'true'
-        run: npm install -g @anthropic-ai/claude-code
-
-      - name: AI Code Review with Claude Code
-        id: ai-review
-        if: steps.changed-files.outputs.has_changes == 'true'
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          # 调用独立脚本执行 AI review
-          bash .github/scripts/ai-code-review.sh /tmp/pr-diff.txt /tmp/review-result.md
-
-      - name: Post review comment
-        if: steps.changed-files.outputs.has_changes == 'true'
-        uses: actions/github-script@v7
-        env:
-          FILE_COUNT: ${{ steps.changed-files.outputs.file_count }}
-          ADDED_LINES: ${{ steps.get-diffs.outputs.added_lines }}
-          REMOVED_LINES: ${{ steps.get-diffs.outputs.removed_lines }}
+      - uses: anthropics/claude-code-action@v1
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const fs = require('fs');
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
 
-            // 读取 AI 审查结果
-            let reviewContent;
-            try {
-              reviewContent = fs.readFileSync('/tmp/review-result.md', 'utf8');
-            } catch (error) {
-              reviewContent = '⚠️ AI review was skipped (ANTHROPIC_API_KEY not configured)\n\nTo enable AI code review, please add your Anthropic API key as a repository secret named `ANTHROPIC_API_KEY`.';
-            }
+            You are reviewing a NestJS TypeScript project — an enterprise WeChat intelligent service middleware.
 
-            // 构建评论内容
-            const comment = '## 🤖 AI Code Review\n\n' +
-              '**Changes Summary:**\n' +
-              `- 📝 Files changed: ${process.env.FILE_COUNT ?? 'N/A'}\n` +
-              `- ➕ Lines added: ${process.env.ADDED_LINES ? Number(process.env.ADDED_LINES) : 'N/A'}\n` +
-              `- ➖ Lines removed: ${process.env.REMOVED_LINES ? Number(process.env.REMOVED_LINES) : 'N/A'}\n\n` +
-              '---\n\n' +
-              `${reviewContent}\n\n` +
-              '---\n\n' +
-              `<sub>Powered by Claude Code 🚀 | [View Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})</sub>`
+            **Tech Stack**: NestJS 10.3 | TypeScript 5.3 | Node.js 20+ | Bull Queue | Redis (Upstash)
 
-            // 检查是否已有 AI review 评论
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
+            **Architecture**: DDD layered architecture
+            - `core/` — infrastructure (HTTP client, Redis, Supabase, alert). Cannot import from `biz/` or `wecom/`
+            - `agent/` — AI Agent domain
+            - `biz/` — business domain (monitoring, user, message, hosting-config)
+            - `wecom/` — WeChat Enterprise domain
 
-            const botComment = comments.find(comment =>
-              comment.user.type === 'Bot' &&
-              comment.body.includes('🤖 AI Code Review')
-            );
+            Please review this PR focusing on:
 
-            // 更新或创建评论
-            if (botComment) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: botComment.id,
-                body: comment
-              });
-              console.log('Updated existing AI review comment');
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: comment
-              });
-              console.log('Created new AI review comment');
-            }
+            ## Critical Issues
+            - Bugs and logic errors
+            - Security vulnerabilities (hardcoded secrets, SQL injection, XSS)
+            - Unhandled exceptions or missing try-catch
+            - Performance bottlenecks
 
-      - name: Summary
-        if: steps.changed-files.outputs.has_changes == 'false'
-        run: |
-          echo "✅ No TypeScript/JavaScript files changed, skipping AI review"
+            ## Code Quality
+            - TypeScript strict typing — no `any` abuse
+            - NestJS patterns: proper dependency injection (no `new Service()`), use `Logger` not `console.log`
+            - No hardcoded config values — must use `ConfigService` / env vars
+            - Service size <= 500 lines (Single Responsibility Principle)
+
+            ## Architecture Compliance
+            - Layer violations: `core/` must not import `biz/` or `wecom/`
+            - Services placed in the correct domain
+            - No business logic leaking into controllers
+
+            ## Suggestions
+            - Code improvements and optimizations
+            - Better naming or structure
+
+            Use `mcp__github_inline_comment__create_inline_comment` for specific line-level issues.
+            Use `gh pr comment` for an overall summary.
+            Only post GitHub comments — do not output review text as messages.
+
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr review:*)"
