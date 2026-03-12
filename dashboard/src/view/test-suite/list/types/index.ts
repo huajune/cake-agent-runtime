@@ -13,7 +13,7 @@ export type TestType = 'scenario' | 'conversation';
 /**
  * 对话源状态
  */
-export type ConversationSourceStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type ConversationSnapshotStatus = 'pending' | 'running' | 'completed' | 'failed';
 
 /**
  * 相似度评级
@@ -51,7 +51,7 @@ export interface TokenUsage {
 /**
  * 对话源记录
  */
-export interface ConversationSource {
+export interface ConversationSnapshot {
   id: string;
   batchId: string;
   feishuRecordId: string;
@@ -60,7 +60,7 @@ export interface ConversationSource {
   totalTurns: number;
   avgSimilarityScore: number | null;
   minSimilarityScore: number | null;
-  status: ConversationSourceStatus;
+  status: ConversationSnapshotStatus;
   createdAt: string;
   updatedAt: string;
 }
@@ -68,8 +68,8 @@ export interface ConversationSource {
 /**
  * 对话源列表响应
  */
-export interface ConversationSourceListResponse {
-  sources: ConversationSource[];
+export interface ConversationSnapshotListResponse {
+  sources: ConversationSnapshot[];
   total: number;
   page: number;
   pageSize: number;

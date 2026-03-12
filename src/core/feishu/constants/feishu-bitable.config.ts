@@ -21,8 +21,6 @@ export interface TestSuiteFieldNames {
 }
 
 export interface FeishuBitableConfig {
-  appId: string;
-  appSecret: string;
   tables: {
     chat: FeishuBitableTableConfig;
     badcase: FeishuBitableTableConfig;
@@ -33,9 +31,6 @@ export interface FeishuBitableConfig {
 }
 
 export const feishuBitableConfig: FeishuBitableConfig = {
-  // 飞书开放平台应用凭证
-  appId: 'cli_a9ae9bcd92f99cc0',
-  appSecret: 'SCcwMAhNyB014U3sBG5BuhhOmfgaDQJg',
   tables: {
     chat: {
       // 聊天记录表

@@ -293,7 +293,7 @@ CREATE TABLE IF NOT EXISTS test_executions (
   failure_reason character varying(100),
   created_at timestamp with time zone DEFAULT now(),
   test_scenario character varying(100),
-  conversation_source_id uuid,
+  conversation_snapshot_id uuid,
   turn_number integer,
   similarity_score numeric,
   input_message text,
@@ -302,14 +302,14 @@ CREATE TABLE IF NOT EXISTS test_executions (
 );
 
 COMMENT ON COLUMN test_executions.test_scenario IS '测试场景分类，用于飞书回写的分类字段';
-COMMENT ON COLUMN test_executions.conversation_source_id IS '关联的对话源ID（对话验证类型使用）';
+COMMENT ON COLUMN test_executions.conversation_snapshot_id IS '关联的对话快照ID（对话验证类型使用）';
 COMMENT ON COLUMN test_executions.turn_number IS '轮次编号（从1开始，对话验证类型使用）';
 COMMENT ON COLUMN test_executions.similarity_score IS '语义相似度分数(0-100)';
 COMMENT ON COLUMN test_executions.input_message IS '当前轮次的用户输入消息';
 COMMENT ON COLUMN test_executions.evaluation_reason IS 'LLM 评估理由，说明为什么给出该评分';
 
--- 2.12 conversation_test_sources - 对话测试数据源
-CREATE TABLE IF NOT EXISTS conversation_test_sources (
+-- 2.12 test_conversation_snapshots - 对话测试数据源
+CREATE TABLE IF NOT EXISTS test_conversation_snapshots (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
   batch_id uuid NOT NULL,
   feishu_record_id character varying(100) NOT NULL,
@@ -323,19 +323,19 @@ CREATE TABLE IF NOT EXISTS conversation_test_sources (
   status character varying(50) DEFAULT 'pending'::character varying,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT conversation_test_sources_pkey PRIMARY KEY (id)
+  CONSTRAINT test_conversation_snapshots_pkey PRIMARY KEY (id)
 );
 
-COMMENT ON COLUMN conversation_test_sources.batch_id IS '关联的测试批次ID';
-COMMENT ON COLUMN conversation_test_sources.feishu_record_id IS '飞书表格记录ID';
-COMMENT ON COLUMN conversation_test_sources.conversation_id IS '对话唯一标识（用于关联同一对话的多轮执行）';
-COMMENT ON COLUMN conversation_test_sources.participant_name IS '候选人/用户名称';
-COMMENT ON COLUMN conversation_test_sources.full_conversation IS '解析后的完整对话内容（JSON数组格式）';
-COMMENT ON COLUMN conversation_test_sources.raw_text IS '原始对话文本（含时间戳）';
-COMMENT ON COLUMN conversation_test_sources.total_turns IS '对话总轮数';
-COMMENT ON COLUMN conversation_test_sources.avg_similarity_score IS '所有轮次的平均相似度分数(0-100)';
-COMMENT ON COLUMN conversation_test_sources.min_similarity_score IS '所有轮次的最低相似度分数(0-100)';
-COMMENT ON COLUMN conversation_test_sources.status IS '执行状态: pending(待执行)/running(执行中)/completed(已完成)/failed(失败)';
+COMMENT ON COLUMN test_conversation_snapshots.batch_id IS '关联的测试批次ID';
+COMMENT ON COLUMN test_conversation_snapshots.feishu_record_id IS '飞书表格记录ID';
+COMMENT ON COLUMN test_conversation_snapshots.conversation_id IS '对话唯一标识（用于关联同一对话的多轮执行）';
+COMMENT ON COLUMN test_conversation_snapshots.participant_name IS '候选人/用户名称';
+COMMENT ON COLUMN test_conversation_snapshots.full_conversation IS '解析后的完整对话内容（JSON数组格式）';
+COMMENT ON COLUMN test_conversation_snapshots.raw_text IS '原始对话文本（含时间戳）';
+COMMENT ON COLUMN test_conversation_snapshots.total_turns IS '对话总轮数';
+COMMENT ON COLUMN test_conversation_snapshots.avg_similarity_score IS '所有轮次的平均相似度分数(0-100)';
+COMMENT ON COLUMN test_conversation_snapshots.min_similarity_score IS '所有轮次的最低相似度分数(0-100)';
+COMMENT ON COLUMN test_conversation_snapshots.status IS '执行状态: pending(待执行)/running(执行中)/completed(已完成)/failed(失败)';
 
 -- =====================================================
 -- 3. Indexes
@@ -384,14 +384,14 @@ CREATE INDEX IF NOT EXISTS idx_test_executions_created_at ON test_executions USI
 CREATE INDEX IF NOT EXISTS idx_test_executions_batch_exec_status ON test_executions USING btree (batch_id, execution_status);
 CREATE INDEX IF NOT EXISTS idx_test_executions_batch_review ON test_executions USING btree (batch_id, review_status);
 CREATE INDEX IF NOT EXISTS idx_test_executions_batch_created ON test_executions USING btree (batch_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_test_executions_conversation_source ON test_executions USING btree (conversation_source_id);
-CREATE INDEX IF NOT EXISTS idx_test_executions_conv_turn ON test_executions USING btree (conversation_source_id, turn_number) WHERE (conversation_source_id IS NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_test_executions_conversation_snapshot ON test_executions USING btree (conversation_snapshot_id);
+CREATE INDEX IF NOT EXISTS idx_test_executions_conv_turn ON test_executions USING btree (conversation_snapshot_id, turn_number) WHERE (conversation_snapshot_id IS NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_test_executions_turn_number ON test_executions USING btree (turn_number) WHERE (turn_number IS NOT NULL);
 
--- conversation_test_sources indexes
-CREATE INDEX IF NOT EXISTS idx_conversation_sources_batch_id ON conversation_test_sources USING btree (batch_id);
-CREATE INDEX IF NOT EXISTS idx_conversation_sources_status ON conversation_test_sources USING btree (status);
-CREATE INDEX IF NOT EXISTS idx_conversation_sources_batch_status ON conversation_test_sources USING btree (batch_id, status);
+-- test_conversation_snapshots indexes
+CREATE INDEX IF NOT EXISTS idx_conversation_snapshots_batch_id ON test_conversation_snapshots USING btree (batch_id);
+CREATE INDEX IF NOT EXISTS idx_conversation_snapshots_status ON test_conversation_snapshots USING btree (status);
+CREATE INDEX IF NOT EXISTS idx_conversation_snapshots_batch_status ON test_conversation_snapshots USING btree (batch_id, status);
 
 -- =====================================================
 -- 4. Trigger Functions
@@ -417,7 +417,7 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION update_conversation_sources_updated_at()
+CREATE OR REPLACE FUNCTION update_conversation_snapshots_updated_at()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
@@ -439,9 +439,9 @@ CREATE TRIGGER trigger_update_strategy_config_updated_at
   BEFORE UPDATE ON strategy_config
   FOR EACH ROW EXECUTE FUNCTION update_strategy_config_updated_at();
 
-CREATE TRIGGER trigger_conversation_sources_updated_at
-  BEFORE UPDATE ON conversation_test_sources
-  FOR EACH ROW EXECUTE FUNCTION update_conversation_sources_updated_at();
+CREATE TRIGGER trigger_conversation_snapshots_updated_at
+  BEFORE UPDATE ON test_conversation_snapshots
+  FOR EACH ROW EXECUTE FUNCTION update_conversation_snapshots_updated_at();
 
 -- =====================================================
 -- 6. RPC Functions - Cleanup
@@ -1052,9 +1052,9 @@ CREATE POLICY "Service role insert" ON test_executions AS PERMISSIVE FOR INSERT 
 CREATE POLICY "Service role update" ON test_executions AS PERMISSIVE FOR UPDATE TO public USING ((( SELECT auth.role() AS role) = 'service_role'::text));
 CREATE POLICY "Service role delete" ON test_executions AS PERMISSIVE FOR DELETE TO public USING ((( SELECT auth.role() AS role) = 'service_role'::text));
 
--- conversation_test_sources
-ALTER TABLE conversation_test_sources ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow public read" ON conversation_test_sources AS PERMISSIVE FOR SELECT TO public USING (true);
-CREATE POLICY "Service role insert" ON conversation_test_sources AS PERMISSIVE FOR INSERT TO public WITH CHECK ((( SELECT auth.role() AS role) = 'service_role'::text));
-CREATE POLICY "Service role update" ON conversation_test_sources AS PERMISSIVE FOR UPDATE TO public USING ((( SELECT auth.role() AS role) = 'service_role'::text));
-CREATE POLICY "Service role delete" ON conversation_test_sources AS PERMISSIVE FOR DELETE TO public USING ((( SELECT auth.role() AS role) = 'service_role'::text));
+-- test_conversation_snapshots
+ALTER TABLE test_conversation_snapshots ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public read" ON test_conversation_snapshots AS PERMISSIVE FOR SELECT TO public USING (true);
+CREATE POLICY "Service role insert" ON test_conversation_snapshots AS PERMISSIVE FOR INSERT TO public WITH CHECK ((( SELECT auth.role() AS role) = 'service_role'::text));
+CREATE POLICY "Service role update" ON test_conversation_snapshots AS PERMISSIVE FOR UPDATE TO public USING ((( SELECT auth.role() AS role) = 'service_role'::text));
+CREATE POLICY "Service role delete" ON test_conversation_snapshots AS PERMISSIVE FOR DELETE TO public USING ((( SELECT auth.role() AS role) = 'service_role'::text));

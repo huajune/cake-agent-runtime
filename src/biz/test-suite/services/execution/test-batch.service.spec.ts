@@ -81,7 +81,6 @@ describe('TestBatchService', () => {
       const result = await service.createBatch({
         name: 'Test Batch',
         source: BatchSource.MANUAL,
-        feishuAppToken: 'app-token',
         feishuTableId: 'table-id',
         testType: TestType.SCENARIO,
       });
@@ -89,7 +88,6 @@ describe('TestBatchService', () => {
       expect(batchRepository.create).toHaveBeenCalledWith({
         name: 'Test Batch',
         source: BatchSource.MANUAL,
-        feishuAppToken: 'app-token',
         feishuTableId: 'table-id',
         testType: TestType.SCENARIO,
       });

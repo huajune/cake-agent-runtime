@@ -8,7 +8,6 @@ export interface TestBatch {
   id: string;
   name: string;
   source: BatchSource;
-  feishu_app_token: string | null;
   feishu_table_id: string | null;
   total_cases: number;
   executed_count: number;

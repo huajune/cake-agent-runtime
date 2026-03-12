@@ -7,7 +7,7 @@ import { FeishuTestSyncService } from './feishu-test-sync.service';
 import { TestWriteBackService } from './test-write-back.service';
 import { ConversationTestService } from '../conversation/conversation-test.service';
 import { TestSuiteProcessor } from '../../test-suite.processor';
-import { ConversationSourceRepository } from '../../repositories/conversation-source.repository';
+import { ConversationSnapshotRepository } from '../../repositories/conversation-snapshot.repository';
 import { BatchStatus, BatchSource, ExecutionStatus, TestType } from '../../enums/test.enum';
 
 describe('TestImportService', () => {
@@ -17,7 +17,7 @@ describe('TestImportService', () => {
   let _feishuSyncService: jest.Mocked<FeishuTestSyncService>;
   let _writeBackService: jest.Mocked<TestWriteBackService>;
   let feishuBitableApi: jest.Mocked<FeishuBitableApiService>;
-  let _conversationSourceRepository: jest.Mocked<ConversationSourceRepository>;
+  let _conversationSnapshotRepository: jest.Mocked<ConversationSnapshotRepository>;
   let _conversationTestService: jest.Mocked<ConversationTestService>;
   let testProcessor: jest.Mocked<TestSuiteProcessor>;
 
@@ -44,7 +44,7 @@ describe('TestImportService', () => {
     getTableConfig: jest.fn(),
   };
 
-  const mockConversationSourceRepository = {
+  const mockConversationSnapshotRepository = {
     create: jest.fn(),
     findById: jest.fn(),
     updateStatus: jest.fn(),
@@ -84,7 +84,7 @@ describe('TestImportService', () => {
         { provide: FeishuTestSyncService, useValue: mockFeishuSyncService },
         { provide: TestWriteBackService, useValue: mockWriteBackService },
         { provide: FeishuBitableApiService, useValue: mockFeishuBitableApi },
-        { provide: ConversationSourceRepository, useValue: mockConversationSourceRepository },
+        { provide: ConversationSnapshotRepository, useValue: mockConversationSnapshotRepository },
         { provide: ConversationTestService, useValue: mockConversationTestService },
         {
           provide: TestSuiteProcessor,
@@ -99,7 +99,7 @@ describe('TestImportService', () => {
     _feishuSyncService = module.get(FeishuTestSyncService);
     _writeBackService = module.get(TestWriteBackService);
     feishuBitableApi = module.get(FeishuBitableApiService);
-    _conversationSourceRepository = module.get(ConversationSourceRepository);
+    _conversationSnapshotRepository = module.get(ConversationSnapshotRepository);
     _conversationTestService = module.get(ConversationTestService);
     testProcessor = module.get(TestSuiteProcessor);
 
@@ -268,7 +268,7 @@ describe('TestImportService', () => {
         ],
       });
       mockBatchService.createBatch.mockResolvedValue(makeBatch('batch-conv', 'Conv Batch'));
-      mockConversationSourceRepository.create.mockResolvedValue({ id: 'src-1' } as any);
+      mockConversationSnapshotRepository.create.mockResolvedValue({ id: 'src-1' } as any);
       mockBatchService.updateBatchStatus.mockResolvedValue(undefined);
       mockConversationTestService.executeConversation.mockResolvedValue({
         sourceId: 'src-1',
@@ -280,7 +280,7 @@ describe('TestImportService', () => {
         turns: [],
       });
       mockWriteBackService.writeBackSimilarityScore.mockResolvedValue({ success: true });
-      mockConversationSourceRepository.findById.mockResolvedValue({
+      mockConversationSnapshotRepository.findById.mockResolvedValue({
         id: 'src-1',
         feishu_record_id: 'rec-1',
       } as any);

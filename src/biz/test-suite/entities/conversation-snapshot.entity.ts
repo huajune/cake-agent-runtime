@@ -1,10 +1,10 @@
 import { ConversationSourceStatus } from '../enums/test.enum';
 
 /**
- * 对话源记录（数据库格式）
- * @table conversation_test_sources
+ * 对话快照记录（数据库格式）
+ * @table test_conversation_snapshots
  */
-export interface ConversationSourceRecord {
+export interface ConversationSnapshotRecord {
   id: string;
   batch_id: string;
   feishu_record_id: string;

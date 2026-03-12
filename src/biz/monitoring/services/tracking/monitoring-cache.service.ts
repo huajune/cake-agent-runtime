@@ -189,7 +189,7 @@ export class MonitoringCacheService {
   async addActiveChat(chatId: string, timestamp: number, date?: string): Promise<void> {
     try {
       const dateKey = date || this.getTodayDateKey();
-      const key = `${this.KEY_ACTIVE_CHATS_PREFIX}${dateKey}`;
+      const key = MONITORING_REDIS_KEYS.activeChats(dateKey);
 
       const client = this.redisService.getClient();
       await client.zadd(key, { score: timestamp, member: chatId });
@@ -206,7 +206,7 @@ export class MonitoringCacheService {
   async getActiveChats(date?: string): Promise<string[]> {
     try {
       const dateKey = date || this.getTodayDateKey();
-      const key = `${this.KEY_ACTIVE_CHATS_PREFIX}${dateKey}`;
+      const key = MONITORING_REDIS_KEYS.activeChats(dateKey);
 
       const client = this.redisService.getClient();
       const chats = await client.zrange<string[]>(key, 0, -1);
@@ -224,7 +224,7 @@ export class MonitoringCacheService {
   async getActiveChatCount(date?: string): Promise<number> {
     try {
       const dateKey = date || this.getTodayDateKey();
-      const key = `${this.KEY_ACTIVE_CHATS_PREFIX}${dateKey}`;
+      const key = MONITORING_REDIS_KEYS.activeChats(dateKey);
 
       const client = this.redisService.getClient();
       const count = await client.zcard(key);
@@ -244,7 +244,7 @@ export class MonitoringCacheService {
    */
   async setCurrentProcessing(count: number): Promise<void> {
     try {
-      await this.redisService.set(this.KEY_CURRENT_PROCESSING, String(count));
+      await this.redisService.set(MONITORING_REDIS_KEYS.CURRENT_PROCESSING, String(count));
     } catch (error) {
       this.logger.error('更新当前处理数失败:', error);
     }
@@ -255,7 +255,7 @@ export class MonitoringCacheService {
    */
   async getCurrentProcessing(): Promise<number> {
     try {
-      const value = await this.redisService.get(this.KEY_CURRENT_PROCESSING);
+      const value = await this.redisService.get(MONITORING_REDIS_KEYS.CURRENT_PROCESSING);
       return parseInt(value || '0');
     } catch (error) {
       this.logger.error('获取当前处理数失败:', error);
@@ -269,7 +269,7 @@ export class MonitoringCacheService {
   async incrementCurrentProcessing(delta: number = 1): Promise<number> {
     try {
       const client = this.redisService.getClient();
-      const newValue = await client.incrby(this.KEY_CURRENT_PROCESSING, delta);
+      const newValue = await client.incrby(MONITORING_REDIS_KEYS.CURRENT_PROCESSING, delta);
       return newValue;
     } catch (error) {
       this.logger.error('增量更新当前处理数失败:', error);
@@ -284,7 +284,7 @@ export class MonitoringCacheService {
     try {
       const current = await this.getPeakProcessing();
       if (count > current) {
-        await this.redisService.set(this.KEY_PEAK_PROCESSING, String(count));
+        await this.redisService.set(MONITORING_REDIS_KEYS.PEAK_PROCESSING, String(count));
       }
     } catch (error) {
       this.logger.error('更新峰值处理数失败:', error);
@@ -296,7 +296,7 @@ export class MonitoringCacheService {
    */
   async getPeakProcessing(): Promise<number> {
     try {
-      const value = await this.redisService.get(this.KEY_PEAK_PROCESSING);
+      const value = await this.redisService.get(MONITORING_REDIS_KEYS.PEAK_PROCESSING);
       return parseInt(value || '0');
     } catch (error) {
       this.logger.error('获取峰值处理数失败:', error);
@@ -309,7 +309,7 @@ export class MonitoringCacheService {
    */
   async setPeakProcessing(count: number): Promise<void> {
     try {
-      await this.redisService.set(this.KEY_PEAK_PROCESSING, String(count));
+      await this.redisService.set(MONITORING_REDIS_KEYS.PEAK_PROCESSING, String(count));
     } catch (error) {
       this.logger.error('设置峰值处理数失败:', error);
     }
@@ -347,11 +347,11 @@ export class MonitoringCacheService {
   async clearAll(): Promise<void> {
     try {
       const keys = [
-        this.KEY_COUNTERS,
-        `${this.KEY_ACTIVE_USERS_PREFIX}*`,
-        `${this.KEY_ACTIVE_CHATS_PREFIX}*`,
-        this.KEY_CURRENT_PROCESSING,
-        this.KEY_PEAK_PROCESSING,
+        MONITORING_REDIS_KEYS.COUNTERS,
+        MONITORING_REDIS_KEYS.ACTIVE_USERS_PATTERN,
+        MONITORING_REDIS_KEYS.ACTIVE_CHATS_PATTERN,
+        MONITORING_REDIS_KEYS.CURRENT_PROCESSING,
+        MONITORING_REDIS_KEYS.PEAK_PROCESSING,
       ];
 
       const client = this.redisService.getClient();

@@ -4,7 +4,7 @@ import { ConversationTestService } from './conversation-test.service';
 import { AgentFacadeService, AgentResultStatus } from '@agent';
 import { LlmEvaluationService } from './llm-evaluation.service';
 import { ConversationParserService } from './conversation-parser.service';
-import { ConversationSourceRepository } from '../../repositories/conversation-source.repository';
+import { ConversationSnapshotRepository } from '../../repositories/conversation-snapshot.repository';
 import { TestExecutionRepository } from '../../repositories/test-execution.repository';
 import {
   ExecutionStatus,
@@ -12,14 +12,14 @@ import {
   ConversationSourceStatus,
   SimilarityRating,
 } from '../../enums/test.enum';
-import { ConversationSourceRecord } from '../../entities/conversation-source.entity';
+import { ConversationSnapshotRecord } from '../../entities/conversation-snapshot.entity';
 
 describe('ConversationTestService', () => {
   let service: ConversationTestService;
   let agentFacade: jest.Mocked<AgentFacadeService>;
   let llmEvaluationService: jest.Mocked<LlmEvaluationService>;
   let parserService: jest.Mocked<ConversationParserService>;
-  let conversationSourceRepository: jest.Mocked<ConversationSourceRepository>;
+  let conversationSnapshotRepository: jest.Mocked<ConversationSnapshotRepository>;
   let executionRepository: jest.Mocked<TestExecutionRepository>;
 
   const mockConfigService = {
@@ -42,7 +42,7 @@ describe('ConversationTestService', () => {
     extractToolCalls: jest.fn(),
   };
 
-  const mockConversationSourceRepository = {
+  const mockConversationSnapshotRepository = {
     findById: jest.fn(),
     findByBatchId: jest.fn(),
     findByBatchIdPaginated: jest.fn(),
@@ -58,8 +58,8 @@ describe('ConversationTestService', () => {
   };
 
   const makeSource = (
-    overrides: Partial<ConversationSourceRecord> = {},
-  ): ConversationSourceRecord =>
+    overrides: Partial<ConversationSnapshotRecord> = {},
+  ): ConversationSnapshotRecord =>
     ({
       id: 'source-1',
       batch_id: 'batch-1',
@@ -74,7 +74,7 @@ describe('ConversationTestService', () => {
       avg_similarity_score: null,
       feishu_record_id: 'rec-001',
       ...overrides,
-    }) as ConversationSourceRecord;
+    }) as ConversationSnapshotRecord;
 
   const makeAgentSuccess = (text = 'AI回复') => ({
     status: AgentResultStatus.SUCCESS,
@@ -92,7 +92,7 @@ describe('ConversationTestService', () => {
         { provide: AgentFacadeService, useValue: mockAgentFacade },
         { provide: LlmEvaluationService, useValue: mockLlmEvaluationService },
         { provide: ConversationParserService, useValue: mockParserService },
-        { provide: ConversationSourceRepository, useValue: mockConversationSourceRepository },
+        { provide: ConversationSnapshotRepository, useValue: mockConversationSnapshotRepository },
         { provide: TestExecutionRepository, useValue: mockExecutionRepository },
       ],
     }).compile();
@@ -101,7 +101,7 @@ describe('ConversationTestService', () => {
     agentFacade = module.get(AgentFacadeService);
     llmEvaluationService = module.get(LlmEvaluationService);
     parserService = module.get(ConversationParserService);
-    conversationSourceRepository = module.get(ConversationSourceRepository);
+    conversationSnapshotRepository = module.get(ConversationSnapshotRepository);
     executionRepository = module.get(TestExecutionRepository);
 
     jest.clearAllMocks();
@@ -153,9 +153,9 @@ describe('ConversationTestService', () => {
     ];
 
     beforeEach(() => {
-      mockConversationSourceRepository.findById.mockResolvedValue(makeSource());
-      mockConversationSourceRepository.updateStatus.mockResolvedValue(undefined);
-      mockConversationSourceRepository.updateSource.mockResolvedValue(undefined);
+      mockConversationSnapshotRepository.findById.mockResolvedValue(makeSource());
+      mockConversationSnapshotRepository.updateStatus.mockResolvedValue(undefined);
+      mockConversationSnapshotRepository.updateSource.mockResolvedValue(undefined);
       mockParserService.splitIntoTurns.mockReturnValue(mockTurns);
       mockExecutionRepository.findByConversationSourceAndTurn.mockResolvedValue(null);
       mockExecutionRepository.create.mockResolvedValue({ id: 'exec-1' } as any);
@@ -172,7 +172,7 @@ describe('ConversationTestService', () => {
     });
 
     it('should throw error when source not found', async () => {
-      mockConversationSourceRepository.findById.mockResolvedValue(null);
+      mockConversationSnapshotRepository.findById.mockResolvedValue(null);
 
       await expect(service.executeConversation('non-existent')).rejects.toThrow('对话源不存在');
     });
@@ -189,7 +189,7 @@ describe('ConversationTestService', () => {
     it('should update source status to RUNNING at start', async () => {
       await service.executeConversation('source-1');
 
-      expect(conversationSourceRepository.updateStatus).toHaveBeenCalledWith(
+      expect(conversationSnapshotRepository.updateStatus).toHaveBeenCalledWith(
         'source-1',
         ConversationSourceStatus.RUNNING,
       );
@@ -198,7 +198,7 @@ describe('ConversationTestService', () => {
     it('should update source status to COMPLETED on success', async () => {
       await service.executeConversation('source-1');
 
-      expect(conversationSourceRepository.updateSource).toHaveBeenCalledWith(
+      expect(conversationSnapshotRepository.updateSource).toHaveBeenCalledWith(
         'source-1',
         expect.objectContaining({ status: ConversationSourceStatus.COMPLETED }),
       );
@@ -206,13 +206,13 @@ describe('ConversationTestService', () => {
 
     it('should set source to FAILED and re-throw when repository fails', async () => {
       // Make the updateStatus call (RUNNING) succeed first, then fail on updateSource (COMPLETED)
-      mockConversationSourceRepository.updateSource.mockRejectedValue(
+      mockConversationSnapshotRepository.updateSource.mockRejectedValue(
         new Error('Database write error'),
       );
 
       await expect(service.executeConversation('source-1')).rejects.toThrow('Database write error');
 
-      expect(conversationSourceRepository.updateStatus).toHaveBeenCalledWith(
+      expect(conversationSnapshotRepository.updateStatus).toHaveBeenCalledWith(
         'source-1',
         ConversationSourceStatus.FAILED,
       );
@@ -296,7 +296,7 @@ describe('ConversationTestService', () => {
     });
 
     it('should throw error when source has no participant_name', async () => {
-      mockConversationSourceRepository.findById.mockResolvedValue(
+      mockConversationSnapshotRepository.findById.mockResolvedValue(
         makeSource({ participant_name: null as unknown as string }),
       );
 
@@ -335,7 +335,7 @@ describe('ConversationTestService', () => {
 
   describe('getConversationTurns', () => {
     it('should throw error when source not found', async () => {
-      mockConversationSourceRepository.findById.mockResolvedValue(null);
+      mockConversationSnapshotRepository.findById.mockResolvedValue(null);
 
       await expect(service.getConversationTurns('non-existent')).rejects.toThrow('对话源不存在');
     });
@@ -345,7 +345,7 @@ describe('ConversationTestService', () => {
         total_turns: 2,
         avg_similarity_score: 80,
       });
-      mockConversationSourceRepository.findById.mockResolvedValue(source);
+      mockConversationSnapshotRepository.findById.mockResolvedValue(source);
       mockExecutionRepository.findByConversationSourceId.mockResolvedValue([
         {
           id: 'exec-1',
@@ -376,7 +376,7 @@ describe('ConversationTestService', () => {
     });
 
     it('should sort turns by turnNumber ascending', async () => {
-      mockConversationSourceRepository.findById.mockResolvedValue(makeSource());
+      mockConversationSnapshotRepository.findById.mockResolvedValue(makeSource());
       mockExecutionRepository.findByConversationSourceId.mockResolvedValue([
         {
           id: 'exec-2',
@@ -408,7 +408,7 @@ describe('ConversationTestService', () => {
 
   describe('getConversationSources', () => {
     it('should return paginated sources', async () => {
-      mockConversationSourceRepository.findByBatchIdPaginated.mockResolvedValue({
+      mockConversationSnapshotRepository.findByBatchIdPaginated.mockResolvedValue({
         data: [
           {
             id: 'src-1',
@@ -429,7 +429,7 @@ describe('ConversationTestService', () => {
 
       const result = await service.getConversationSources('batch-1', 1, 20);
 
-      expect(conversationSourceRepository.findByBatchIdPaginated).toHaveBeenCalledWith(
+      expect(conversationSnapshotRepository.findByBatchIdPaginated).toHaveBeenCalledWith(
         'batch-1',
         1,
         20,
@@ -442,14 +442,14 @@ describe('ConversationTestService', () => {
     });
 
     it('should pass status filter when provided', async () => {
-      mockConversationSourceRepository.findByBatchIdPaginated.mockResolvedValue({
+      mockConversationSnapshotRepository.findByBatchIdPaginated.mockResolvedValue({
         data: [],
         total: 0,
       });
 
       await service.getConversationSources('batch-1', 1, 10, ConversationSourceStatus.COMPLETED);
 
-      expect(conversationSourceRepository.findByBatchIdPaginated).toHaveBeenCalledWith(
+      expect(conversationSnapshotRepository.findByBatchIdPaginated).toHaveBeenCalledWith(
         'batch-1',
         1,
         10,
@@ -462,7 +462,7 @@ describe('ConversationTestService', () => {
 
   describe('executeConversationBatch', () => {
     it('should throw error when batch has no sources', async () => {
-      mockConversationSourceRepository.findByBatchId.mockResolvedValue([]);
+      mockConversationSnapshotRepository.findByBatchId.mockResolvedValue([]);
 
       await expect(service.executeConversationBatch('batch-empty')).rejects.toThrow(
         '没有回归验证记录',
@@ -470,13 +470,13 @@ describe('ConversationTestService', () => {
     });
 
     it('should execute all sources and return summary', async () => {
-      mockConversationSourceRepository.findByBatchId.mockResolvedValue([
+      mockConversationSnapshotRepository.findByBatchId.mockResolvedValue([
         makeSource({ id: 'src-1' }),
         makeSource({ id: 'src-2' }),
       ]);
-      mockConversationSourceRepository.findById.mockResolvedValue(makeSource());
-      mockConversationSourceRepository.updateStatus.mockResolvedValue(undefined);
-      mockConversationSourceRepository.updateSource.mockResolvedValue(undefined);
+      mockConversationSnapshotRepository.findById.mockResolvedValue(makeSource());
+      mockConversationSnapshotRepository.updateStatus.mockResolvedValue(undefined);
+      mockConversationSnapshotRepository.updateSource.mockResolvedValue(undefined);
       mockParserService.splitIntoTurns.mockReturnValue([]);
 
       const result = await service.executeConversationBatch('batch-1');
@@ -487,20 +487,20 @@ describe('ConversationTestService', () => {
     });
 
     it('should count failures separately when some sources fail', async () => {
-      mockConversationSourceRepository.findByBatchId.mockResolvedValue([
+      mockConversationSnapshotRepository.findByBatchId.mockResolvedValue([
         makeSource({ id: 'src-ok' }),
         makeSource({ id: 'src-fail' }),
       ]);
 
       // src-fail will throw a fatal error when looking up its source record
-      mockConversationSourceRepository.findById.mockImplementation((id: string) => {
+      mockConversationSnapshotRepository.findById.mockImplementation((id: string) => {
         if (id === 'src-fail') {
           return Promise.reject(new Error('Database error'));
         }
         return Promise.resolve(makeSource({ id }));
       });
-      mockConversationSourceRepository.updateStatus.mockResolvedValue(undefined);
-      mockConversationSourceRepository.updateSource.mockResolvedValue(undefined);
+      mockConversationSnapshotRepository.updateStatus.mockResolvedValue(undefined);
+      mockConversationSnapshotRepository.updateSource.mockResolvedValue(undefined);
       mockParserService.splitIntoTurns.mockReturnValue([]);
 
       const result = await service.executeConversationBatch('batch-1');
@@ -540,7 +540,7 @@ describe('ConversationTestService', () => {
 
   describe('getSourceBatchId', () => {
     it('should return batch_id from source', async () => {
-      mockConversationSourceRepository.findById.mockResolvedValue(
+      mockConversationSnapshotRepository.findById.mockResolvedValue(
         makeSource({ batch_id: 'batch-x' }),
       );
 
@@ -550,7 +550,7 @@ describe('ConversationTestService', () => {
     });
 
     it('should return null when source not found', async () => {
-      mockConversationSourceRepository.findById.mockResolvedValue(null);
+      mockConversationSnapshotRepository.findById.mockResolvedValue(null);
 
       const result = await service.getSourceBatchId('non-existent');
 

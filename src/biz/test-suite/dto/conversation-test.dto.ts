@@ -53,7 +53,7 @@ export interface ConversationSource {
  */
 export interface ConversationTurnExecution {
   id: string;
-  conversationSourceId: string;
+  conversationSnapshotId: string;
   turnNumber: number;
   inputMessage: string;
   /** 真人对话历史（候选人 + 招募经理的对话，作为 Agent 的上下文） */

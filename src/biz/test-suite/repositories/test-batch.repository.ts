@@ -50,7 +50,6 @@ export class TestBatchRepository extends BaseRepository {
     const batch = await this.insert<TestBatch>({
       name: data.name,
       source: data.source || BatchSource.MANUAL,
-      feishu_app_token: data.feishuAppToken || null,
       feishu_table_id: data.feishuTableId || null,
       status: BatchStatus.CREATED,
       test_type: data.testType || TestType.SCENARIO,

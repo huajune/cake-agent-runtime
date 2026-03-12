@@ -34,7 +34,6 @@ const sampleBatch = {
   id: 'batch_001',
   name: 'Test Batch 1',
   source: BatchSource.MANUAL,
-  feishu_app_token: null,
   feishu_table_id: null,
   status: BatchStatus.CREATED,
   test_type: TestType.SCENARIO,
@@ -106,7 +105,6 @@ describe('TestBatchRepository', () => {
       const feishuBatch = {
         ...sampleBatch,
         source: BatchSource.FEISHU,
-        feishu_app_token: 'app_token',
         feishu_table_id: 'table_id',
       };
       const insertResult = makeQueryMock({ data: [feishuBatch], error: null });
@@ -115,7 +113,6 @@ describe('TestBatchRepository', () => {
       const result = await repository.create({
         name: 'Feishu Batch',
         source: BatchSource.FEISHU,
-        feishuAppToken: 'app_token',
         feishuTableId: 'table_id',
       });
 

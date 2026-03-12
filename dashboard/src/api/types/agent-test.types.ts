@@ -45,7 +45,6 @@ export interface TestBatch {
   id: string;
   name: string;
   source: 'manual' | 'feishu';
-  feishu_app_token: string | null;
   feishu_table_id: string | null;
   total_cases: number;
   executed_count: number;
@@ -222,7 +221,7 @@ export interface BatchWriteBackResult {
 
 // ==================== 回归验证相关类型 ====================
 
-export type ConversationSourceStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type ConversationSnapshotStatus = 'pending' | 'running' | 'completed' | 'failed';
 
 export interface ParsedMessage {
   role: 'user' | 'assistant';
@@ -230,7 +229,7 @@ export interface ParsedMessage {
   timestamp?: string;
 }
 
-export interface ConversationSource {
+export interface ConversationSnapshot {
   id: string;
   batchId: string;
   feishuRecordId: string;
@@ -239,14 +238,14 @@ export interface ConversationSource {
   totalTurns: number;
   avgSimilarityScore: number | null;
   minSimilarityScore: number | null;
-  status: ConversationSourceStatus;
+  status: ConversationSnapshotStatus;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface ConversationTurnExecution {
   id: string;
-  conversationSourceId: string;
+  conversationSnapshotId: string;
   turnNumber: number;
   inputMessage: string;
   history: ParsedMessage[];
@@ -277,8 +276,8 @@ export interface TurnListResponse {
   };
 }
 
-export interface ConversationSourceListResponse {
-  sources: ConversationSource[];
+export interface ConversationSnapshotListResponse {
+  sources: ConversationSnapshot[];
   total: number;
   page: number;
   pageSize: number;

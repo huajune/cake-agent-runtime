@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConversationSourceRepository } from './conversation-source.repository';
+import { ConversationSnapshotRepository } from './conversation-snapshot.repository';
 import { SupabaseService } from '@core/supabase';
 import { ConversationSourceStatus } from '../enums/test.enum';
 
@@ -46,8 +46,8 @@ const sampleSource = {
   updated_at: '2026-03-10T00:00:00Z',
 };
 
-describe('ConversationSourceRepository', () => {
-  let repository: ConversationSourceRepository;
+describe('ConversationSnapshotRepository', () => {
+  let repository: ConversationSnapshotRepository;
 
   const mockSupabaseClient = {
     from: jest.fn(),
@@ -66,7 +66,7 @@ describe('ConversationSourceRepository', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        ConversationSourceRepository,
+        ConversationSnapshotRepository,
         {
           provide: SupabaseService,
           useValue: mockSupabaseService,
@@ -74,7 +74,7 @@ describe('ConversationSourceRepository', () => {
       ],
     }).compile();
 
-    repository = module.get<ConversationSourceRepository>(ConversationSourceRepository);
+    repository = module.get<ConversationSnapshotRepository>(ConversationSnapshotRepository);
   });
 
   it('should be defined', () => {
@@ -101,7 +101,7 @@ describe('ConversationSourceRepository', () => {
       });
 
       expect(result).toEqual(sampleSource);
-      expect(mockSupabaseClient.from).toHaveBeenCalledWith('conversation_test_sources');
+      expect(mockSupabaseClient.from).toHaveBeenCalledWith('test_conversation_snapshots');
     });
 
     it('should set status to PENDING on create', async () => {
@@ -331,7 +331,7 @@ describe('ConversationSourceRepository', () => {
         repository.updateStatus('src_001', ConversationSourceStatus.RUNNING),
       ).resolves.not.toThrow();
 
-      expect(mockSupabaseClient.from).toHaveBeenCalledWith('conversation_test_sources');
+      expect(mockSupabaseClient.from).toHaveBeenCalledWith('test_conversation_snapshots');
     });
   });
 

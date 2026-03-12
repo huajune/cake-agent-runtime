@@ -423,10 +423,10 @@ test_executions (执行记录表)
 ├── case_name, test_input (JSONB), expected_output
 ├── actual_output, tool_calls (JSONB), duration_ms
 ├── execution_status, review_status, failure_reason
-├── [回归验证专用] conversation_source_id, turn_number
+├── [回归验证专用] conversation_snapshot_id, turn_number
 └── [回归验证专用] similarity_score, evaluation_reason
 
-conversation_test_sources (对话源表，回归验证专用)
+test_conversation_snapshots (对话源表，回归验证专用)
 ├── batch_id → test_batches.id
 ├── participant_name, full_conversation (JSONB)
 ├── total_turns, raw_text

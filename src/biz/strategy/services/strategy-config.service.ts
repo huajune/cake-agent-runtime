@@ -4,6 +4,7 @@ import { StrategyConfigRepository } from '../repositories/strategy-config.reposi
 import { StrategyConfigRecord } from '../entities/strategy-config.entity';
 import { StrategyPersona, StrategyStageGoals, StrategyRedLines } from '../types/strategy.types';
 import { buildDefaultStrategyRecord } from '@agent/strategy/strategy-config.types';
+import { STRATEGY_REDIS_KEYS } from '../utils/strategy-redis-keys';
 
 /**
  * 策略配置 Service
@@ -21,7 +22,6 @@ export class StrategyConfigService {
 
   private readonly MEMORY_CACHE_TTL_MS = 60_000; // 60 秒
   private readonly REDIS_CACHE_TTL_SECONDS = 300; // 300 秒
-  private readonly REDIS_CACHE_KEY = 'supabase:strategy_config:active';
 
   // L1: 内存缓存
   private cachedConfig: StrategyConfigRecord | null = null;
@@ -45,7 +45,9 @@ export class StrategyConfigService {
     }
 
     // L2: Redis 缓存
-    const redisResult = await this.redisService.get<StrategyConfigRecord>(this.REDIS_CACHE_KEY);
+    const redisResult = await this.redisService.get<StrategyConfigRecord>(
+      STRATEGY_REDIS_KEYS.ACTIVE_CONFIG,
+    );
     if (redisResult) {
       this.cachedConfig = redisResult;
       this.cacheExpiry = Date.now() + this.MEMORY_CACHE_TTL_MS;
@@ -133,7 +135,7 @@ export class StrategyConfigService {
     this.cacheExpiry = 0;
 
     try {
-      await this.redisService.del(this.REDIS_CACHE_KEY);
+      await this.redisService.del(STRATEGY_REDIS_KEYS.ACTIVE_CONFIG);
     } catch (error) {
       this.logger.warn('清除 Redis 策略配置缓存失败', error);
     }
@@ -198,7 +200,11 @@ export class StrategyConfigService {
     this.cacheExpiry = Date.now() + this.MEMORY_CACHE_TTL_MS;
 
     try {
-      await this.redisService.setex(this.REDIS_CACHE_KEY, this.REDIS_CACHE_TTL_SECONDS, config);
+      await this.redisService.setex(
+        STRATEGY_REDIS_KEYS.ACTIVE_CONFIG,
+        this.REDIS_CACHE_TTL_SECONDS,
+        config,
+      );
     } catch (error) {
       this.logger.warn('写入 Redis 策略配置缓存失败', error);
     }

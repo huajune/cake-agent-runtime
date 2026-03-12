@@ -9,9 +9,9 @@ import {
 import { MessageRole } from '@shared/enums';
 import { LlmEvaluationService } from './llm-evaluation.service';
 import { ConversationParserService } from './conversation-parser.service';
-import { ConversationSourceRepository } from '../../repositories/conversation-source.repository';
+import { ConversationSnapshotRepository } from '../../repositories/conversation-snapshot.repository';
 import { TestExecutionRepository } from '../../repositories/test-execution.repository';
-import { type ConversationSourceRecord } from '../../entities/conversation-source.entity';
+import { type ConversationSnapshotRecord } from '../../entities/conversation-snapshot.entity';
 import {
   ExecutionStatus,
   ReviewStatus,
@@ -55,7 +55,7 @@ export class ConversationTestService {
     private readonly agentFacade: AgentFacadeService,
     private readonly llmEvaluationService: LlmEvaluationService,
     private readonly parserService: ConversationParserService,
-    private readonly conversationSourceRepository: ConversationSourceRepository,
+    private readonly conversationSnapshotRepository: ConversationSnapshotRepository,
     private readonly executionRepository: TestExecutionRepository,
   ) {
     this.logger.log('ConversationTestService 初始化完成');
@@ -92,13 +92,13 @@ export class ConversationTestService {
     sourceId: string,
     forceRerun = false,
   ): Promise<ConversationExecutionResult> {
-    const source = await this.conversationSourceRepository.findById(sourceId);
+    const source = await this.conversationSnapshotRepository.findById(sourceId);
     if (!source) {
       throw new Error(`对话源不存在: ${sourceId}`);
     }
 
     // 更新状态为执行中
-    await this.conversationSourceRepository.updateStatus(
+    await this.conversationSnapshotRepository.updateStatus(
       sourceId,
       ConversationSourceStatus.RUNNING,
     );
@@ -133,7 +133,7 @@ export class ConversationTestService {
       const minScore = validScores.length > 0 ? Math.min(...validScores) : null;
 
       // 更新对话源状态和统计数据
-      await this.conversationSourceRepository.updateSource(sourceId, {
+      await this.conversationSnapshotRepository.updateSource(sourceId, {
         status: ConversationSourceStatus.COMPLETED,
         totalTurns: turns.length,
         avgSimilarityScore: avgScore,
@@ -153,7 +153,7 @@ export class ConversationTestService {
       const errorMsg = error instanceof Error ? error.message : String(error);
       this.logger.error(`对话执行失败: ${errorMsg}`);
 
-      await this.conversationSourceRepository.updateStatus(
+      await this.conversationSnapshotRepository.updateStatus(
         sourceId,
         ConversationSourceStatus.FAILED,
       );
@@ -166,7 +166,7 @@ export class ConversationTestService {
    * 获取对话源的轮次列表
    */
   async getConversationTurns(sourceId: string): Promise<TurnListResponse> {
-    const source = await this.conversationSourceRepository.findById(sourceId);
+    const source = await this.conversationSnapshotRepository.findById(sourceId);
     if (!source) {
       throw new Error(`对话源不存在: ${sourceId}`);
     }
@@ -181,7 +181,7 @@ export class ConversationTestService {
       const turn = turnMap.get(exec.turn_number ?? 0);
       return {
         id: exec.id,
-        conversationSourceId: sourceId,
+        conversationSnapshotId: sourceId,
         turnNumber: exec.turn_number ?? 0,
         inputMessage: exec.input_message || turn?.userMessage || '',
         // 返回真人对话历史（候选人 + 招募经理）
@@ -224,7 +224,7 @@ export class ConversationTestService {
     pageSize = 20,
     status?: ConversationSourceStatus,
   ) {
-    const result = await this.conversationSourceRepository.findByBatchIdPaginated(
+    const result = await this.conversationSnapshotRepository.findByBatchIdPaginated(
       batchId,
       page,
       pageSize,
@@ -264,7 +264,7 @@ export class ConversationTestService {
     failedCount: number;
     results: ConversationExecutionResult[];
   }> {
-    const sources = await this.conversationSourceRepository.findByBatchId(batchId);
+    const sources = await this.conversationSnapshotRepository.findByBatchId(batchId);
 
     if (sources.length === 0) {
       throw new Error(`批次 ${batchId} 下没有回归验证记录`);
@@ -308,7 +308,7 @@ export class ConversationTestService {
    * 获取对话源的批次ID
    */
   async getSourceBatchId(sourceId: string): Promise<string | null> {
-    const source = await this.conversationSourceRepository.findById(sourceId);
+    const source = await this.conversationSnapshotRepository.findById(sourceId);
     return source?.batch_id ?? null;
   }
 
@@ -316,7 +316,7 @@ export class ConversationTestService {
    * 执行单个轮次测试
    */
   private async executeTurn(
-    source: ConversationSourceRecord,
+    source: ConversationSnapshotRecord,
     turn: ConversationTurn,
     forceRerun: boolean,
   ): Promise<{
@@ -448,7 +448,7 @@ export class ConversationTestService {
     } else {
       await this.executionRepository.create({
         batchId: source.batch_id,
-        conversationSourceId: source.id,
+        conversationSnapshotId: source.id,
         turnNumber: turn.turnNumber,
         inputMessage: turn.userMessage,
         testInput: {

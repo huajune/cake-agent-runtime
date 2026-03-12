@@ -28,7 +28,7 @@ export interface TestExecution {
   test_scenario: string | null;
   created_at: string;
   // 回归验证相关字段
-  conversation_source_id: string | null;
+  conversation_snapshot_id: string | null;
   turn_number: number | null;
   similarity_score: number | null;
   input_message: string | null;

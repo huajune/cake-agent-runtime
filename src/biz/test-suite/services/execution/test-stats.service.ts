@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TestExecutionRepository } from '../../repositories/test-execution.repository';
 import { TestBatchRepository } from '../../repositories/test-batch.repository';
-import { ConversationSourceRepository } from '../../repositories/conversation-source.repository';
+import { ConversationSnapshotRepository } from '../../repositories/conversation-snapshot.repository';
 import { TestExecution } from '../../entities/test-execution.entity';
 import {
   ExecutionStatus,
@@ -60,7 +60,7 @@ export class TestStatsService {
   constructor(
     private readonly executionRepository: TestExecutionRepository,
     private readonly batchRepository: TestBatchRepository,
-    private readonly conversationSourceRepository: ConversationSourceRepository,
+    private readonly conversationSnapshotRepository: ConversationSnapshotRepository,
   ) {
     this.logger.log('TestStatsService 初始化完成');
   }
@@ -91,10 +91,10 @@ export class TestStatsService {
    */
   private async calculateConversationBatchStats(batchId: string): Promise<BatchStats> {
     const statusCounts =
-      await this.conversationSourceRepository.countByBatchIdGroupByStatus(batchId);
+      await this.conversationSnapshotRepository.countByBatchIdGroupByStatus(batchId);
 
     // 获取所有对话源以计算通过率
-    const sources = await this.conversationSourceRepository.findByBatchId(batchId);
+    const sources = await this.conversationSnapshotRepository.findByBatchId(batchId);
 
     // 计算通过率（相似度 >= 60 视为通过）
     const SIMILARITY_THRESHOLD = 60;

@@ -115,7 +115,7 @@ src/test-suite/
 ├── repositories/                     # 数据访问层
 │   ├── test-batch.repository.ts     # 批次表
 │   ├── test-execution.repository.ts # 执行记录表
-│   └── conversation-source.repository.ts  # 对话源表
+│   └── conversation-snapshot.repository.ts  # 对话快照表
 │
 ├── services/                         # 业务服务层
 │   ├── test-execution.service.ts    # 测试执行服务
@@ -362,7 +362,7 @@ TestSuiteService (门面)
 │ id                   │  │ id                 │
 │ batch_id             │  │ batch_id           │
 │ conversation_id      │  │ case_id (场景)     │
-│ full_conversation    │  │ conversation_source_id (对话) │
+│ full_conversation    │  │ conversation_snapshot_id (对话) │
 │ total_turns          │  │ turn_number (对话) │
 │ avg_similarity_score │  │ test_input         │
 │ status               │  │ expected_output    │
@@ -383,7 +383,7 @@ TestSuiteService (门面)
   case_id: string;              // 飞书用例ID
   case_name: string;            // 用例名称
   category: string;             // 分类
-  conversation_source_id: null; // 不使用
+  conversation_snapshot_id: null; // 不使用
   turn_number: null;            // 不使用
 }
 
@@ -392,7 +392,7 @@ TestSuiteService (门面)
   case_id: null;                       // 不使用
   case_name: null;                     // 不使用
   category: null;                      // 不使用
-  conversation_source_id: string;      // 对话源ID
+  conversation_snapshot_id: string;      // 对话源ID
   turn_number: number;                 // 轮次编号
 }
 
@@ -541,7 +541,7 @@ CREATE INDEX idx_test_batches_status ON test_batches(status);
 CREATE INDEX idx_test_executions_batch_id ON test_executions(batch_id);
 CREATE INDEX idx_test_executions_review_status ON test_executions(review_status);
 CREATE INDEX idx_test_executions_conversation_source
-  ON test_executions(conversation_source_id, turn_number);
+  ON test_executions(conversation_snapshot_id, turn_number);
 ```
 
 #### 2. 分页查询

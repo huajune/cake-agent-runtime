@@ -4,7 +4,7 @@ import { BullModule } from '@nestjs/bull';
 import { HttpModule } from '@core/client-http';
 import { TestBatchRepository } from './repositories/test-batch.repository';
 import { TestExecutionRepository } from './repositories/test-execution.repository';
-import { ConversationSourceRepository } from './repositories/conversation-source.repository';
+import { ConversationSnapshotRepository } from './repositories/conversation-snapshot.repository';
 import { TestSuiteController } from './test-suite.controller';
 import { TestSuiteService } from './test-suite.service';
 import { TestSuiteProcessor } from './test-suite.processor';
@@ -69,7 +69,7 @@ import { FeishuModule } from '@core/feishu';
     // repositories
     TestBatchRepository,
     TestExecutionRepository,
-    ConversationSourceRepository,
+    ConversationSnapshotRepository,
 
     // 基础服务
     TestStatsService,

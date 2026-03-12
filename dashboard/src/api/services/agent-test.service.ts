@@ -19,8 +19,8 @@ import type {
   WriteBackFeishuRequest,
   WriteBackResult,
   BatchWriteBackResult,
-  ConversationSourceStatus,
-  ConversationSourceListResponse,
+  ConversationSnapshotStatus,
+  ConversationSnapshotListResponse,
   TurnListResponse,
   ConversationTurnExecution,
 } from '../types/agent-test.types';
@@ -51,12 +51,12 @@ export type {
   WriteBackFeishuRequest,
   WriteBackResult,
   BatchWriteBackResult,
-  ConversationSourceStatus,
+  ConversationSnapshotStatus,
   ParsedMessage,
-  ConversationSource,
+  ConversationSnapshot,
   ConversationTurnExecution,
   TurnListResponse,
-  ConversationSourceListResponse,
+  ConversationSnapshotListResponse,
 } from '../types/agent-test.types';
 
 /** Agent 测试请求超时时间（测试可能需要较长时间） */
@@ -308,12 +308,12 @@ export async function batchWriteBackToFeishu(
 
 // ==================== 回归验证 API ====================
 
-export async function getConversationSources(params: {
+export async function getConversationSnapshots(params: {
   batchId: string;
   page?: number;
   pageSize?: number;
-  status?: ConversationSourceStatus;
-}): Promise<ConversationSourceListResponse> {
+  status?: ConversationSnapshotStatus;
+}): Promise<ConversationSnapshotListResponse> {
   const { data } = await api.get('/test-suite/conversations', { params });
   return data.data;
 }

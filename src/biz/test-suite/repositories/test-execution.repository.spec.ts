@@ -47,7 +47,7 @@ const sampleExecution = {
   duration_ms: 1200,
   token_usage: 100,
   error_message: null,
-  conversation_source_id: null,
+  conversation_snapshot_id: null,
   turn_number: null,
   similarity_score: null,
   input_message: null,
@@ -493,7 +493,7 @@ describe('TestExecutionRepository', () => {
 
       const execWithConv = {
         ...sampleExecution,
-        conversation_source_id: 'src_001',
+        conversation_snapshot_id: 'src_001',
         turn_number: 1,
       };
       const queryMock = makeQueryMock({ data: [execWithConv], error: null });
@@ -502,7 +502,7 @@ describe('TestExecutionRepository', () => {
       const result = await repository.findByConversationSourceAndTurn('src_001', 1);
 
       expect(result).not.toBeNull();
-      expect(result?.conversation_source_id).toBe('src_001');
+      expect(result?.conversation_snapshot_id).toBe('src_001');
     });
   });
 
@@ -521,8 +521,8 @@ describe('TestExecutionRepository', () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
       const execs = [
-        { ...sampleExecution, conversation_source_id: 'src_001', turn_number: 1 },
-        { ...sampleExecution, id: 'exec_002', conversation_source_id: 'src_001', turn_number: 2 },
+        { ...sampleExecution, conversation_snapshot_id: 'src_001', turn_number: 1 },
+        { ...sampleExecution, id: 'exec_002', conversation_snapshot_id: 'src_001', turn_number: 2 },
       ];
       const queryMock = makeQueryMock({ data: execs, error: null });
       mockSupabaseClient.from.mockReturnValue(queryMock);

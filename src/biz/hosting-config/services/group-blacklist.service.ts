@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '@core/redis';
 import { GroupBlacklistRepository } from '../repositories/group-blacklist.repository';
 import { GroupBlacklistItem } from '../entities/group-blacklist.entity';
+import { HOSTING_CONFIG_REDIS_KEYS } from '../utils/hosting-config-redis-keys';
 
 /**
  * 小组黑名单 Service
@@ -20,7 +21,6 @@ export class GroupBlacklistService {
   // Cache configuration
   private readonly CACHE_TTL_MS = 300_000; // 5 minutes
   private readonly CACHE_TTL_SECONDS = 300; // 5 minutes (for Redis)
-  private readonly CACHE_KEY = 'supabase:config:group_blacklist';
 
   // L1: Memory cache
   private readonly memoryCache = new Map<string, GroupBlacklistItem>();
@@ -108,7 +108,9 @@ export class GroupBlacklistService {
    */
   async loadGroupBlacklist(): Promise<void> {
     // L2: Try Redis first
-    const cached = await this.redisService.get<GroupBlacklistItem[]>(this.CACHE_KEY);
+    const cached = await this.redisService.get<GroupBlacklistItem[]>(
+      HOSTING_CONFIG_REDIS_KEYS.GROUP_BLACKLIST,
+    );
 
     if (cached && Array.isArray(cached)) {
       this.populateMemoryCache(cached);
@@ -123,7 +125,11 @@ export class GroupBlacklistService {
 
       // Backfill Redis from DB result
       const blacklistArray = Array.from(this.memoryCache.values());
-      await this.redisService.setex(this.CACHE_KEY, this.CACHE_TTL_SECONDS, blacklistArray);
+      await this.redisService.setex(
+        HOSTING_CONFIG_REDIS_KEYS.GROUP_BLACKLIST,
+        this.CACHE_TTL_SECONDS,
+        blacklistArray,
+      );
 
       this.logger.log(`已加载 ${this.memoryCache.size} 个黑名单小组`);
     } catch (error) {
@@ -156,7 +162,11 @@ export class GroupBlacklistService {
   private async persistCache(): Promise<void> {
     const blacklistArray = Array.from(this.memoryCache.values());
 
-    await this.redisService.setex(this.CACHE_KEY, this.CACHE_TTL_SECONDS, blacklistArray);
+    await this.redisService.setex(
+      HOSTING_CONFIG_REDIS_KEYS.GROUP_BLACKLIST,
+      this.CACHE_TTL_SECONDS,
+      blacklistArray,
+    );
 
     try {
       await this.groupBlacklistRepository.saveBlacklistToDb(blacklistArray);

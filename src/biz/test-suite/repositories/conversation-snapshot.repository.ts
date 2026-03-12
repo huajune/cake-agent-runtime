@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@core/supabase';
 import { SupabaseService } from '@core/supabase';
 import { ConversationSourceStatus } from '../enums/test.enum';
-import { ConversationSourceRecord } from '../entities/conversation-source.entity';
+import { ConversationSnapshotRecord } from '../entities/conversation-snapshot.entity';
 import {
   CreateConversationSourceData,
   UpdateConversationSourceData,
@@ -10,29 +10,29 @@ import {
 } from '../types/test-suite.types';
 
 /**
- * 对话源 Repository
+ * 对话快照 Repository
  *
  * 职责：
- * - 封装 conversation_test_sources 表的 CRUD 操作
- * - 管理对话源的状态更新
- * - 查询对话源记录
+ * - 封装 test_conversation_snapshots 表的 CRUD 操作
+ * - 管理对话快照的状态更新
+ * - 查询对话快照记录
  */
 @Injectable()
-export class ConversationSourceRepository extends BaseRepository {
-  protected readonly tableName = 'conversation_test_sources';
+export class ConversationSnapshotRepository extends BaseRepository {
+  protected readonly tableName = 'test_conversation_snapshots';
 
   constructor(supabaseService: SupabaseService) {
     super(supabaseService);
-    this.logger.log('ConversationSourceRepository 初始化完成');
+    this.logger.log('ConversationSnapshotRepository 初始化完成');
   }
 
   // ==================== 基础 CRUD ====================
 
   /**
-   * 创建对话源记录
+   * 创建对话快照记录
    */
-  async create(data: CreateConversationSourceData): Promise<ConversationSourceRecord> {
-    return this.insert<ConversationSourceRecord>({
+  async create(data: CreateConversationSourceData): Promise<ConversationSnapshotRecord> {
+    return this.insert<ConversationSnapshotRecord>({
       batch_id: data.batchId,
       feishu_record_id: data.feishuRecordId,
       conversation_id: data.conversationId,
@@ -45,20 +45,20 @@ export class ConversationSourceRepository extends BaseRepository {
   }
 
   /**
-   * 根据ID查询对话源
+   * 根据ID查询对话快照
    */
-  async findById(id: string): Promise<ConversationSourceRecord | null> {
-    return this.selectOne<ConversationSourceRecord>('*', (q) => q.eq('id', id));
+  async findById(id: string): Promise<ConversationSnapshotRecord | null> {
+    return this.selectOne<ConversationSnapshotRecord>('*', (q) => q.eq('id', id));
   }
 
   /**
-   * 根据批次ID查询对话源列表
+   * 根据批次ID查询对话快照列表
    */
   async findByBatchId(
     batchId: string,
     filters?: ConversationSourceFilters,
-  ): Promise<ConversationSourceRecord[]> {
-    return this.select<ConversationSourceRecord>('*', (q) => {
+  ): Promise<ConversationSnapshotRecord[]> {
+    return this.select<ConversationSnapshotRecord>('*', (q) => {
       let r = q.eq('batch_id', batchId).order('created_at');
       if (filters?.status) {
         r = r.eq('status', filters.status);
@@ -68,16 +68,16 @@ export class ConversationSourceRepository extends BaseRepository {
   }
 
   /**
-   * 根据批次ID查询对话源列表（分页）
+   * 根据批次ID查询对话快照列表（分页）
    */
   async findByBatchIdPaginated(
     batchId: string,
     page: number,
     pageSize: number,
     filters?: ConversationSourceFilters,
-  ): Promise<{ data: ConversationSourceRecord[]; total: number }> {
+  ): Promise<{ data: ConversationSnapshotRecord[]; total: number }> {
     // 查询数据
-    const data = await this.select<ConversationSourceRecord>('*', (q) => {
+    const data = await this.select<ConversationSnapshotRecord>('*', (q) => {
       let r = q
         .eq('batch_id', batchId)
         .order('created_at')
@@ -104,10 +104,10 @@ export class ConversationSourceRepository extends BaseRepository {
   }
 
   /**
-   * 根据对话ID查询对话源
+   * 根据对话ID查询对话快照
    */
-  async findByConversationId(conversationId: string): Promise<ConversationSourceRecord | null> {
-    return this.selectOne<ConversationSourceRecord>('*', (q) =>
+  async findByConversationId(conversationId: string): Promise<ConversationSnapshotRecord | null> {
+    return this.selectOne<ConversationSnapshotRecord>('*', (q) =>
       q.eq('conversation_id', conversationId),
     );
   }
@@ -115,12 +115,12 @@ export class ConversationSourceRepository extends BaseRepository {
   // ==================== 更新操作 ====================
 
   /**
-   * 更新对话源
+   * 更新对话快照
    */
   async updateSource(
     id: string,
     data: UpdateConversationSourceData,
-  ): Promise<ConversationSourceRecord> {
+  ): Promise<ConversationSnapshotRecord> {
     const updateData: Record<string, unknown> = {};
 
     if (data.status !== undefined) {
@@ -139,13 +139,15 @@ export class ConversationSourceRepository extends BaseRepository {
       updateData.min_similarity_score = data.minSimilarityScore;
     }
 
-    const results = await this.update<ConversationSourceRecord>(updateData, (q) => q.eq('id', id));
+    const results = await this.update<ConversationSnapshotRecord>(updateData, (q) =>
+      q.eq('id', id),
+    );
 
     return results[0];
   }
 
   /**
-   * 更新对话源状态
+   * 更新对话快照状态
    */
   async updateStatus(id: string, status: ConversationSourceStatus): Promise<void> {
     await this.update({ status }, (q) => q.eq('id', id));
@@ -154,7 +156,7 @@ export class ConversationSourceRepository extends BaseRepository {
   // ==================== 统计操作 ====================
 
   /**
-   * 统计批次中对话源的状态分布
+   * 统计批次中对话快照的状态分布
    */
   async countByBatchIdGroupByStatus(batchId: string): Promise<{
     total: number;
@@ -163,7 +165,7 @@ export class ConversationSourceRepository extends BaseRepository {
     completed: number;
     failed: number;
   }> {
-    const records = await this.select<ConversationSourceRecord>('status', (q) =>
+    const records = await this.select<ConversationSnapshotRecord>('status', (q) =>
       q.eq('batch_id', batchId),
     );
 
@@ -180,7 +182,7 @@ export class ConversationSourceRepository extends BaseRepository {
    * 计算批次的平均相似度
    */
   async calculateBatchAvgSimilarity(batchId: string): Promise<number | null> {
-    const records = await this.select<ConversationSourceRecord>('avg_similarity_score', (q) =>
+    const records = await this.select<ConversationSnapshotRecord>('avg_similarity_score', (q) =>
       q.eq('batch_id', batchId).eq('status', ConversationSourceStatus.COMPLETED),
     );
 

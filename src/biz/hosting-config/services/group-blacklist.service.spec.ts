@@ -142,7 +142,7 @@ describe('GroupBlacklistService', () => {
       expect(mockGroupBlacklistRepository.loadBlacklistFromDb).toHaveBeenCalledTimes(1);
       // Should backfill Redis
       expect(mockRedisService.setex).toHaveBeenCalledWith(
-        'supabase:config:group_blacklist',
+        'config:group_blacklist',
         300,
         expect.any(Array),
       );
@@ -179,7 +179,7 @@ describe('GroupBlacklistService', () => {
       await service.addGroupToBlacklist('newGroup', 'reason');
 
       expect(mockRedisService.setex).toHaveBeenCalledWith(
-        'supabase:config:group_blacklist',
+        'config:group_blacklist',
         300,
         expect.arrayContaining([
           expect.objectContaining({ group_id: 'newGroup', reason: 'reason' }),
@@ -232,7 +232,7 @@ describe('GroupBlacklistService', () => {
       await service.removeGroupFromBlacklist('group1');
 
       expect(mockRedisService.setex).toHaveBeenCalledWith(
-        'supabase:config:group_blacklist',
+        'config:group_blacklist',
         300,
         expect.not.arrayContaining([expect.objectContaining({ group_id: 'group1' })]),
       );
@@ -276,7 +276,7 @@ describe('GroupBlacklistService', () => {
 
       await service.loadGroupBlacklist();
 
-      expect(mockRedisService.get).toHaveBeenCalledWith('supabase:config:group_blacklist');
+      expect(mockRedisService.get).toHaveBeenCalledWith('config:group_blacklist');
       expect(mockGroupBlacklistRepository.loadBlacklistFromDb).not.toHaveBeenCalled();
       expect((service as any).memoryCache.size).toBe(2);
     });
@@ -292,7 +292,7 @@ describe('GroupBlacklistService', () => {
       expect((service as any).memoryCache.size).toBe(2);
       // Should backfill Redis
       expect(mockRedisService.setex).toHaveBeenCalledWith(
-        'supabase:config:group_blacklist',
+        'config:group_blacklist',
         300,
         sampleBlacklistItems,
       );

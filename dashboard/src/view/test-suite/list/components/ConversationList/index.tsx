@@ -1,13 +1,13 @@
 import { MessageSquare, ChevronRight, Check, X, Clock, Loader2, Play } from 'lucide-react';
-import type { ConversationSource } from '../../types';
+import type { ConversationSnapshot } from '../../types';
 import { getScoreStyleClass } from '../../utils';
 import styles from './index.module.scss';
 
 interface ConversationListProps {
-  conversations: ConversationSource[];
-  selectedConversation: ConversationSource | null;
+  conversations: ConversationSnapshot[];
+  selectedConversation: ConversationSnapshot | null;
   loading: boolean;
-  onSelect: (conversation: ConversationSource) => void;
+  onSelect: (conversation: ConversationSnapshot) => void;
   onExecute: (conversationId: string) => void;
   executing?: string | null;
 }

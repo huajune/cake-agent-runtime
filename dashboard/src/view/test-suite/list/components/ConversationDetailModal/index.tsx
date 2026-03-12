@@ -10,14 +10,14 @@ import {
   Headphones,
   MessageSquare,
 } from 'lucide-react';
-import type { ConversationSource, ConversationTurnExecution, ToolCall, ParsedMessage } from '../../types';
+import type { ConversationSnapshot, ConversationTurnExecution, ToolCall, ParsedMessage } from '../../types';
 import { CompactMetrics } from './CompactMetrics';
 import { ToolCallItem } from './ToolCallItem';
 import { LoadingSkeleton } from './LoadingSkeleton';
 import styles from './index.module.scss';
 
 interface ConversationDetailModalProps {
-  conversation: ConversationSource;
+  conversation: ConversationSnapshot;
   turns: ConversationTurnExecution[];
   currentTurnIndex: number;
   loading: boolean;

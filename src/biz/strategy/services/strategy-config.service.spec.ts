@@ -71,7 +71,7 @@ describe('StrategyConfigService', () => {
       const result = await service.getActiveConfig();
 
       expect(result).toEqual(redisRecord);
-      expect(mockRedisService.get).toHaveBeenCalledWith('supabase:strategy_config:active');
+      expect(mockRedisService.get).toHaveBeenCalledWith('config:strategy_config:active');
       expect(mockStrategyConfigRepository.findActiveConfig).not.toHaveBeenCalled();
     });
 
@@ -87,7 +87,7 @@ describe('StrategyConfigService', () => {
       expect(mockStrategyConfigRepository.findActiveConfig).toHaveBeenCalledTimes(1);
       // Should write to Redis
       expect(mockRedisService.setex).toHaveBeenCalledWith(
-        'supabase:strategy_config:active',
+        'config:strategy_config:active',
         300,
         dbRecord,
       );
@@ -317,7 +317,7 @@ describe('StrategyConfigService', () => {
 
       expect((service as any).cachedConfig).toBeNull();
       expect((service as any).cacheExpiry).toBe(0);
-      expect(mockRedisService.del).toHaveBeenCalledWith('supabase:strategy_config:active');
+      expect(mockRedisService.del).toHaveBeenCalledWith('config:strategy_config:active');
     });
 
     it('should handle Redis del failure gracefully', async () => {

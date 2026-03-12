@@ -438,7 +438,12 @@
       "Bash(/tmp/test_audit.txt:*)",
       "Bash(npx eslint:*)",
       "Bash(pnpm run:*)",
-      "Bash(pnpm tsc:*)"
+      "Bash(pnpm tsc:*)",
+      "Bash(cp /Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/biz/test-suite/entities/conversation-source.entity.ts /Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/biz/test-suite/entities/conversation-snapshot.entity.ts)",
+      "Bash(cp /Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/biz/test-suite/repositories/conversation-source.repository.ts /Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/biz/test-suite/repositories/conversation-snapshot.repository.ts)",
+      "Bash(cp /Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/biz/test-suite/repositories/conversation-source.repository.spec.ts /Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/biz/test-suite/repositories/conversation-snapshot.repository.spec.ts)",
+      "Bash(supabase migration:*)",
+      "Bash(pnpm exec:*)"
     ],
     "deny": [
       "Bash(git restore:*)",

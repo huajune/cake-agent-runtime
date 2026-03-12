@@ -202,11 +202,6 @@ export class CreateBatchRequestDto {
   @IsEnum(BatchSource)
   source?: BatchSource;
 
-  @ApiPropertyOptional({ description: '飞书表格 app_token' })
-  @IsOptional()
-  @IsString()
-  feishuAppToken?: string;
-
   @ApiPropertyOptional({ description: '飞书表格 table_id' })
   @IsOptional()
   @IsString()

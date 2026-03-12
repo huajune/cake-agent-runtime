@@ -71,7 +71,7 @@ export class TestExecutionRepository extends BaseRepository {
       duration_ms: data.durationMs,
       token_usage: data.tokenUsage,
       error_message: data.errorMessage,
-      conversation_source_id: data.conversationSourceId || null,
+      conversation_snapshot_id: data.conversationSnapshotId || null,
       turn_number: data.turnNumber || null,
       similarity_score: data.similarityScore ?? null,
       input_message: data.inputMessage || null,
@@ -290,23 +290,23 @@ export class TestExecutionRepository extends BaseRepository {
   // ==================== 回归验证相关查询 ====================
 
   /**
-   * 根据对话源ID和轮次查询执行记录
+   * 根据对话快照ID和轮次查询执行记录
    */
   async findByConversationSourceAndTurn(
-    conversationSourceId: string,
+    conversationSnapshotId: string,
     turnNumber: number,
   ): Promise<TestExecution | null> {
     return this.selectOne<TestExecution>('*', (q) =>
-      q.eq('conversation_source_id', conversationSourceId).eq('turn_number', turnNumber),
+      q.eq('conversation_snapshot_id', conversationSnapshotId).eq('turn_number', turnNumber),
     );
   }
 
   /**
-   * 根据对话源ID查询所有轮次的执行记录
+   * 根据对话快照ID查询所有轮次的执行记录
    */
-  async findByConversationSourceId(conversationSourceId: string): Promise<TestExecution[]> {
+  async findByConversationSourceId(conversationSnapshotId: string): Promise<TestExecution[]> {
     return this.select<TestExecution>('*', (q) =>
-      q.eq('conversation_source_id', conversationSourceId).order('turn_number'),
+      q.eq('conversation_snapshot_id', conversationSnapshotId).order('turn_number'),
     );
   }
 

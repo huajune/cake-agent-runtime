@@ -76,7 +76,7 @@
 │ test_executions    │  执行记录
 │ ────────────────── │
 │ id                 │  UUID (PK)
-│ conversation_source_id │ UUID (FK)
+│ conversation_snapshot_id │ UUID (FK)
 │ turn_number        │  轮次编号
 │ input_message      │  用户输入
 │ expected_output    │  期望输出
@@ -153,7 +153,7 @@
 | 字段 | 类型 | 说明 | 示例 |
 |------|------|------|------|
 | `id` | UUID | 主键 | `exec-001` |
-| `conversation_source_id` | UUID | 所属对话源 | `source-001` |
+| `conversation_snapshot_id` | UUID | 所属对话源 | `source-001` |
 | `turn_number` | INTEGER | 轮次编号 | `1` (从1开始) |
 | `input_message` | TEXT | 用户输入 | "我想了解Java岗位" |
 | `expected_output` | TEXT | 期望输出 | "好的,我们有以下..." |
@@ -380,7 +380,7 @@ for (const turn of turns) {
 
   // 3.3 保存执行记录
   await testExecutionRepository.create({
-    conversation_source_id: sourceId,
+    conversation_snapshot_id: sourceId,
     turn_number: turn.turnNumber,
     input_message: turn.userMessage,
     expected_output: turn.expectedOutput,
@@ -465,14 +465,14 @@ Content-Type: application/json
 
 // 请求体
 {
-  "conversationSourceId": "source-001"
+  "conversationSnapshotId": "source-001"
 }
 
 // 响应
 {
   "success": true,
   "data": {
-    "conversationSourceId": "source-001",
+    "conversationSnapshotId": "source-001",
     "totalTurns": 3,
     "executedTurns": 3,
     "avgSimilarityScore": 83.5,

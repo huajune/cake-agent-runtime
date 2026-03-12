@@ -43,7 +43,6 @@ export class TestBatchService {
     return this.batchRepository.create({
       name: request.name,
       source: request.source,
-      feishuAppToken: request.feishuAppToken,
       feishuTableId: request.feishuTableId,
       testType: request.testType,
     });

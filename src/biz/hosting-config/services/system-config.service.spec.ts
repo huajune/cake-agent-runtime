@@ -72,7 +72,7 @@ describe('SystemConfigService', () => {
       const result = await service.getAiReplyEnabled();
 
       expect(result).toBe(false);
-      expect(mockRedisService.get).toHaveBeenCalledWith('supabase:config:ai_reply_enabled');
+      expect(mockRedisService.get).toHaveBeenCalledWith('config:ai_reply_enabled');
     });
 
     it('should load from DB when Redis cache is null', async () => {
@@ -123,11 +123,7 @@ describe('SystemConfigService', () => {
 
       expect(result).toBe(false);
       expect((service as any).aiReplyEnabled).toBe(false);
-      expect(mockRedisService.setex).toHaveBeenCalledWith(
-        'supabase:config:ai_reply_enabled',
-        300,
-        false,
-      );
+      expect(mockRedisService.setex).toHaveBeenCalledWith('config:ai_reply_enabled', 300, false);
       expect(mockSystemConfigRepository.setConfigValue).toHaveBeenCalledWith(
         'ai_reply_enabled',
         false,
@@ -164,7 +160,7 @@ describe('SystemConfigService', () => {
       const result = await service.getMessageMergeEnabled();
 
       expect(result).toBe(true);
-      expect(mockRedisService.get).toHaveBeenCalledWith('supabase:config:message_merge_enabled');
+      expect(mockRedisService.get).toHaveBeenCalledWith('config:message_merge_enabled');
     });
 
     it('should load from DB when Redis cache is null', async () => {
@@ -201,7 +197,7 @@ describe('SystemConfigService', () => {
       expect(result).toBe(false);
       expect((service as any).messageMergeEnabled).toBe(false);
       expect(mockRedisService.setex).toHaveBeenCalledWith(
-        'supabase:config:message_merge_enabled',
+        'config:message_merge_enabled',
         300,
         false,
       );
@@ -231,7 +227,7 @@ describe('SystemConfigService', () => {
       const result = await service.getAgentReplyConfig();
 
       expect(result).toMatchObject(DEFAULT_AGENT_REPLY_CONFIG);
-      expect(mockRedisService.get).toHaveBeenCalledWith('supabase:config:agent_reply_config');
+      expect(mockRedisService.get).toHaveBeenCalledWith('config:agent_reply_config');
     });
 
     it('should load from DB when Redis cache is null', async () => {
@@ -309,7 +305,7 @@ describe('SystemConfigService', () => {
       await service.setAgentReplyConfig({ maxMergedMessages: 5 });
 
       expect(mockRedisService.setex).toHaveBeenCalledWith(
-        'supabase:config:agent_reply_config',
+        'config:agent_reply_config',
         60,
         expect.objectContaining({ maxMergedMessages: 5 }),
       );
@@ -389,11 +385,7 @@ describe('SystemConfigService', () => {
       const result = await service.getSystemConfig();
 
       expect(result).toEqual(mockConfig);
-      expect(mockRedisService.setex).toHaveBeenCalledWith(
-        'supabase:config:system_config',
-        300,
-        mockConfig,
-      );
+      expect(mockRedisService.setex).toHaveBeenCalledWith('config:system_config', 300, mockConfig);
     });
 
     it('should return null when no config in DB', async () => {
@@ -449,7 +441,7 @@ describe('SystemConfigService', () => {
       await service.updateSystemConfig({ workerConcurrency: 5 });
 
       expect(mockRedisService.setex).toHaveBeenCalledWith(
-        'supabase:config:system_config',
+        'config:system_config',
         300,
         expect.objectContaining({ workerConcurrency: 5 }),
       );

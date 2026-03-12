@@ -7,7 +7,7 @@ import { FeishuTestSyncService } from './feishu-test-sync.service';
 import { TestWriteBackService } from './test-write-back.service';
 import { ConversationTestService } from '../conversation/conversation-test.service';
 import { TestSuiteProcessor } from '../../test-suite.processor';
-import { ConversationSourceRepository } from '../../repositories/conversation-source.repository';
+import { ConversationSnapshotRepository } from '../../repositories/conversation-snapshot.repository';
 import {
   BatchStatus,
   BatchSource,
@@ -34,7 +34,7 @@ export class TestImportService {
     private readonly feishuSyncService: FeishuTestSyncService,
     private readonly writeBackService: TestWriteBackService,
     private readonly feishuBitableApi: FeishuBitableApiService,
-    private readonly conversationSourceRepository: ConversationSourceRepository,
+    private readonly conversationSnapshotRepository: ConversationSnapshotRepository,
     private readonly conversationTestService: ConversationTestService,
     @Inject(forwardRef(() => TestSuiteProcessor))
     private readonly testProcessor: TestSuiteProcessor,
@@ -63,7 +63,6 @@ export class TestImportService {
     const batch = await this.batchService.createBatch({
       name: batchName,
       source: BatchSource.FEISHU,
-      feishuAppToken: request.appToken,
       feishuTableId: request.tableId,
       testType: request.testType,
     });
@@ -169,7 +168,7 @@ export class TestImportService {
     parallel?: boolean;
   }): Promise<ImportResult> {
     // 1. 从验证集表获取回归验证记录
-    const { appToken, tableId, conversations } =
+    const { tableId, conversations } =
       await this.feishuSyncService.getConversationTestsFromDefaultTable();
 
     this.logger.log(`一键创建回归验证: 从验证集表 ${tableId} 导入回归验证数据`);
@@ -186,7 +185,6 @@ export class TestImportService {
     const batch = await this.batchService.createBatch({
       name: batchName,
       source: BatchSource.FEISHU,
-      feishuAppToken: appToken,
       feishuTableId: tableId,
       testType: TestType.CONVERSATION,
     });
@@ -199,7 +197,7 @@ export class TestImportService {
       const caseName = conv.participantName || '未知用户';
 
       // 使用 ConversationSource 存储（而非 TestExecution）
-      const source = await this.conversationSourceRepository.create({
+      const source = await this.conversationSnapshotRepository.create({
         batchId: batch.id,
         feishuRecordId: conv.recordId,
         conversationId: conv.conversationId || conv.recordId,
@@ -262,7 +260,7 @@ export class TestImportService {
         this.logger.error(`对话 ${sourceId} 执行失败: ${errorMsg}`);
 
         // 更新对话源状态为失败
-        await this.conversationSourceRepository.updateStatus(
+        await this.conversationSnapshotRepository.updateStatus(
           sourceId,
           ConversationSourceStatus.FAILED,
         );
@@ -290,7 +288,7 @@ export class TestImportService {
   ): Promise<void> {
     try {
       // 获取对话源记录以获取飞书记录ID
-      const source = await this.conversationSourceRepository.findById(sourceId);
+      const source = await this.conversationSnapshotRepository.findById(sourceId);
       if (!source?.feishu_record_id) {
         this.logger.warn(`对话源 ${sourceId} 缺少飞书记录ID，跳过回写`);
         return;

@@ -12,7 +12,6 @@ import {
 export interface CreateBatchData {
   name: string;
   source?: BatchSource;
-  feishuAppToken?: string;
   feishuTableId?: string;
   testType?: TestType;
 }
@@ -50,7 +49,7 @@ export interface CreateExecutionData {
   tokenUsage: unknown;
   errorMessage: string | null;
   // 回归验证相关字段
-  conversationSourceId?: string;
+  conversationSnapshotId?: string;
   turnNumber?: number;
   similarityScore?: number | null;
   inputMessage?: string;

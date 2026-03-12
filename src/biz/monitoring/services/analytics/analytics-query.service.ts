@@ -22,6 +22,7 @@ import { MonitoringHourlyStatsRepository } from '../../repositories/monitoring-h
 import { MonitoringErrorLogRepository } from '../../repositories/monitoring-error-log.repository';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { MessageTrackingService } from '../tracking/message-tracking.service';
+import { MONITORING_REDIS_KEYS } from '../../utils/monitoring-redis-keys';
 import * as os from 'os';
 
 /**
@@ -181,11 +182,10 @@ export class AnalyticsQueryService {
   // ========================================
 
   async getTodayUsers(): Promise<TodayUser[]> {
-    const CACHE_KEY = 'monitoring:today_users';
     const CACHE_TTL_SEC = 30;
 
     try {
-      const cached = await this.redisService.get<string>(CACHE_KEY);
+      const cached = await this.redisService.get<string>(MONITORING_REDIS_KEYS.TODAY_USERS);
       if (cached) {
         const parsedData = JSON.parse(cached) as TodayUser[];
         this.logger.debug(`[Redis] 命中今日用户缓存 (${parsedData.length} 条记录)`);
@@ -199,7 +199,11 @@ export class AnalyticsQueryService {
 
     if (users.length > 0) {
       try {
-        await this.redisService.setex(CACHE_KEY, CACHE_TTL_SEC, JSON.stringify(users));
+        await this.redisService.setex(
+          MONITORING_REDIS_KEYS.TODAY_USERS,
+          CACHE_TTL_SEC,
+          JSON.stringify(users),
+        );
       } catch (error) {
         this.logger.warn('[Redis] 写入今日用户缓存失败', error);
       }

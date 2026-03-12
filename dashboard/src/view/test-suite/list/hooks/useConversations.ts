@@ -1,19 +1,19 @@
 import { useState, useCallback } from 'react';
 import {
-  getConversationSources,
+  getConversationSnapshots,
   executeConversation,
-  type ConversationSource,
+  type ConversationSnapshot,
 } from '@/api/services/agent-test.service';
 
 interface UseConversationsResult {
-  conversations: ConversationSource[];
-  selectedConversation: ConversationSource | null;
+  conversations: ConversationSnapshot[];
+  selectedConversation: ConversationSnapshot | null;
   loading: boolean;
   executing: string | null;
   total: number;
   page: number;
   pageSize: number;
-  setSelectedConversation: (conversation: ConversationSource | null) => void;
+  setSelectedConversation: (conversation: ConversationSnapshot | null) => void;
   loadConversations: (batchId: string) => Promise<void>;
   executeConversationTest: (conversationId: string, forceRerun?: boolean) => Promise<void>;
   refreshConversation: (conversationId: string) => Promise<void>;
@@ -24,8 +24,8 @@ interface UseConversationsResult {
  * 管理对话源列表的加载、选择和执行
  */
 export function useConversations(): UseConversationsResult {
-  const [conversations, setConversations] = useState<ConversationSource[]>([]);
-  const [selectedConversation, setSelectedConversation] = useState<ConversationSource | null>(null);
+  const [conversations, setConversations] = useState<ConversationSnapshot[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<ConversationSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [executing, setExecuting] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
@@ -38,7 +38,7 @@ export function useConversations(): UseConversationsResult {
   const loadConversations = useCallback(async (batchId: string) => {
     try {
       setLoading(true);
-      const result = await getConversationSources({
+      const result = await getConversationSnapshots({
         batchId,
         page,
         pageSize,

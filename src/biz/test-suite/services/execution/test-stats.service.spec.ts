@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { TestStatsService } from './test-stats.service';
 import { TestExecutionRepository } from '../../repositories/test-execution.repository';
 import { TestBatchRepository } from '../../repositories/test-batch.repository';
-import { ConversationSourceRepository } from '../../repositories/conversation-source.repository';
+import { ConversationSnapshotRepository } from '../../repositories/conversation-snapshot.repository';
 import {
   ExecutionStatus,
   ReviewStatus,
@@ -15,7 +15,7 @@ describe('TestStatsService', () => {
   let service: TestStatsService;
   let executionRepository: jest.Mocked<TestExecutionRepository>;
   let batchRepository: jest.Mocked<TestBatchRepository>;
-  let conversationSourceRepository: jest.Mocked<ConversationSourceRepository>;
+  let conversationSnapshotRepository: jest.Mocked<ConversationSnapshotRepository>;
 
   const mockExecutionRepository = {
     findByBatchIdLite: jest.fn(),
@@ -25,7 +25,7 @@ describe('TestStatsService', () => {
     findById: jest.fn(),
   };
 
-  const mockConversationSourceRepository = {
+  const mockConversationSnapshotRepository = {
     countByBatchIdGroupByStatus: jest.fn(),
     findByBatchId: jest.fn(),
   };
@@ -36,14 +36,14 @@ describe('TestStatsService', () => {
         TestStatsService,
         { provide: TestExecutionRepository, useValue: mockExecutionRepository },
         { provide: TestBatchRepository, useValue: mockBatchRepository },
-        { provide: ConversationSourceRepository, useValue: mockConversationSourceRepository },
+        { provide: ConversationSnapshotRepository, useValue: mockConversationSnapshotRepository },
       ],
     }).compile();
 
     service = module.get<TestStatsService>(TestStatsService);
     executionRepository = module.get(TestExecutionRepository);
     batchRepository = module.get(TestBatchRepository);
-    conversationSourceRepository = module.get(ConversationSourceRepository);
+    conversationSnapshotRepository = module.get(ConversationSnapshotRepository);
 
     jest.clearAllMocks();
   });
@@ -73,19 +73,19 @@ describe('TestStatsService', () => {
       await service.calculateBatchStats('batch-1');
 
       expect(executionRepository.findByBatchIdLite).toHaveBeenCalled();
-      expect(conversationSourceRepository.countByBatchIdGroupByStatus).not.toHaveBeenCalled();
+      expect(conversationSnapshotRepository.countByBatchIdGroupByStatus).not.toHaveBeenCalled();
     });
 
     it('should use conversation stats for conversation batch type', async () => {
       mockBatchRepository.findById.mockResolvedValue({ test_type: TestType.CONVERSATION });
-      mockConversationSourceRepository.countByBatchIdGroupByStatus.mockResolvedValue({
+      mockConversationSnapshotRepository.countByBatchIdGroupByStatus.mockResolvedValue({
         total: 10,
         completed: 7,
         failed: 1,
         pending: 2,
         running: 0,
       });
-      mockConversationSourceRepository.findByBatchId.mockResolvedValue([
+      mockConversationSnapshotRepository.findByBatchId.mockResolvedValue([
         {
           status: ConversationSourceStatus.COMPLETED,
           avg_similarity_score: 80,
@@ -102,7 +102,7 @@ describe('TestStatsService', () => {
 
       const result = await service.calculateBatchStats('batch-conv');
 
-      expect(conversationSourceRepository.countByBatchIdGroupByStatus).toHaveBeenCalledWith(
+      expect(conversationSnapshotRepository.countByBatchIdGroupByStatus).toHaveBeenCalledWith(
         'batch-conv',
       );
       expect(result.totalCases).toBe(10);
@@ -114,14 +114,14 @@ describe('TestStatsService', () => {
 
     it('should calculate average similarity score for conversation batch', async () => {
       mockBatchRepository.findById.mockResolvedValue({ test_type: TestType.CONVERSATION });
-      mockConversationSourceRepository.countByBatchIdGroupByStatus.mockResolvedValue({
+      mockConversationSnapshotRepository.countByBatchIdGroupByStatus.mockResolvedValue({
         total: 2,
         completed: 2,
         failed: 0,
         pending: 0,
         running: 0,
       });
-      mockConversationSourceRepository.findByBatchId.mockResolvedValue([
+      mockConversationSnapshotRepository.findByBatchId.mockResolvedValue([
         {
           status: ConversationSourceStatus.COMPLETED,
           avg_similarity_score: 70,

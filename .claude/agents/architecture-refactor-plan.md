@@ -48,7 +48,7 @@ src/
     ├── conversation/               # 回归验证子域
     │   ├── conversation.controller.ts
     │   ├── conversation.service.ts
-    │   ├── conversation-source.repository.ts
+    │   ├── conversation-snapshot.repository.ts
     │   ├── similarity.service.ts
     │   └── dto/
     │
@@ -74,7 +74,7 @@ src/
 ### Phase 2: 迁移 conversation 子域 (最独立)
 - [ ] 创建 `testing/conversation/` 目录
 - [ ] 迁移 `ConversationTestService`
-- [ ] 迁移 `ConversationSourceRepository`
+- [ ] 迁移 `ConversationSnapshotRepository`
 - [ ] 迁移 `SemanticSimilarityService`
 - [ ] 创建 `ConversationController`
 - [ ] 更新路由前缀
