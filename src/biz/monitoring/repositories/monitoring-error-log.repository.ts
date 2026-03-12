@@ -55,8 +55,9 @@ export class MonitoringErrorLogRepository extends BaseRepository {
    * 按时间戳范围查询错误日志
    */
   async getErrorLogsSince(cutoffTimestamp: number): Promise<ErrorLogRecord[]> {
+    const cutoffIso = new Date(cutoffTimestamp).toISOString();
     const results = await this.select<ErrorLogDbRecord>('*', (q) =>
-      q.gte('timestamp', cutoffTimestamp).order('timestamp', { ascending: false }),
+      q.gte('timestamp', cutoffIso).order('timestamp', { ascending: false }),
     );
 
     return results.map((r) => this.fromDbRecord(r));
@@ -67,12 +68,9 @@ export class MonitoringErrorLogRepository extends BaseRepository {
    * @returns 删除的记录数（通过 delete + select 获取）
    */
   async cleanupErrorLogs(retentionDays: number = 30): Promise<number> {
-    const cutoffTimestamp = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+    const cutoffIso = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
 
-    const deleted = await this.delete<ErrorLogDbRecord>(
-      (q) => q.lt('timestamp', cutoffTimestamp),
-      true,
-    );
+    const deleted = await this.delete<ErrorLogDbRecord>((q) => q.lt('timestamp', cutoffIso), true);
 
     const deletedCount = deleted.length;
     if (deletedCount > 0) {
@@ -86,7 +84,7 @@ export class MonitoringErrorLogRepository extends BaseRepository {
    */
   async clearAllRecords(): Promise<void> {
     if (!this.isAvailable()) return;
-    await this.delete((q) => q.gte('timestamp', 0));
+    await this.delete((q) => q.lte('timestamp', new Date().toISOString()));
     this.logger.warn('[错误日志] 已清空所有数据库记录');
   }
 
@@ -95,7 +93,7 @@ export class MonitoringErrorLogRepository extends BaseRepository {
   private toDbRecord(log: ErrorLogRecord): ErrorLogDbRecord {
     return {
       message_id: log.messageId,
-      timestamp: log.timestamp,
+      timestamp: new Date(log.timestamp).toISOString(), // Unix ms → ISO 8601
       error: log.error,
       alert_type: log.alertType,
     };
@@ -104,7 +102,7 @@ export class MonitoringErrorLogRepository extends BaseRepository {
   private fromDbRecord(row: ErrorLogDbRecord): ErrorLogRecord {
     return {
       messageId: row.message_id,
-      timestamp: Number(row.timestamp),
+      timestamp: new Date(row.timestamp).getTime(), // ISO 8601 → Unix ms
       error: row.error,
       alertType: row.alert_type as AlertErrorType | undefined,
     };

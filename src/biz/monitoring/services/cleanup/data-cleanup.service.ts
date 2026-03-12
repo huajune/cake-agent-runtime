@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '@core/supabase';
 import { ChatMessageRepository } from '@biz/message/repositories/chat-message.repository';
 import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
@@ -10,36 +11,65 @@ import { UserHostingRepository } from '@biz/user/repositories/user-hosting.repos
  * 数据清理服务（分层存储策略）
  *
  * 清理顺序（每日凌晨 3 点）:
- * 1. NULL agent_invocation（>7 天）— 释放 TOAST 空间，保留记录本身
- * 2. DELETE chat_messages（>60 天）
- * 3. DELETE message_processing_records（>14 天）— 历史数据已聚合到 monitoring_hourly_stats
- * 4. DELETE monitoring_error_logs（>30 天）
- * 5. DELETE user_activity（>35 天）
+ * 1. NULL agent_invocation（>N 天）— 释放 TOAST 空间，保留记录本身
+ * 2. DELETE chat_messages（>N 天）
+ * 3. DELETE message_processing_records（>N 天）— 历史数据已聚合到 monitoring_hourly_stats
+ * 4. DELETE monitoring_error_logs（>N 天）
+ * 5. DELETE user_activity（>N 天）
  *
  * monitoring_hourly_stats — 永久保留（~8760 行/年，约 5MB）
+ *
+ * 保留天数通过环境变量配置（Layer 2，有默认值）：
+ * - DATA_CLEANUP_AGENT_INVOCATION_DAYS (默认 7)
+ * - DATA_CLEANUP_PROCESSING_DAYS       (默认 14)
+ * - DATA_CLEANUP_CHAT_DAYS             (默认 60)
+ * - DATA_CLEANUP_USER_ACTIVITY_DAYS    (默认 35)
+ * - DATA_CLEANUP_ERROR_LOGS_DAYS       (默认 30)
  */
 @Injectable()
 export class DataCleanupService implements OnModuleInit {
   private readonly logger = new Logger(DataCleanupService.name);
 
-  private readonly AGENT_INVOCATION_RETENTION_DAYS = 7; // agent_invocation JSONB 保留 7 天后置 NULL
-  private readonly PROCESSING_RETENTION_DAYS = 14; // 消息处理记录保留 14 天（历史数据已聚合到 hourly stats）
-  private readonly CHAT_RETENTION_DAYS = 60; // 聊天记录保留 60 天
-  private readonly USER_ACTIVITY_RETENTION_DAYS = 35; // 用户活跃记录保留 35 天（覆盖 Dashboard 月度视图）
-  private readonly ERROR_LOGS_RETENTION_DAYS = 30; // 错误日志保留 30 天
+  private readonly agentInvocationRetentionDays: number;
+  private readonly processingRetentionDays: number;
+  private readonly chatRetentionDays: number;
+  private readonly userActivityRetentionDays: number;
+  private readonly errorLogsRetentionDays: number;
 
   constructor(
+    private readonly configService: ConfigService,
     private readonly supabaseService: SupabaseService,
     private readonly chatMessageRepository: ChatMessageRepository,
     private readonly messageProcessingRepository: MessageProcessingRepository,
     private readonly userHostingRepository: UserHostingRepository,
     private readonly errorLogRepository: MonitoringErrorLogRepository,
-  ) {}
+  ) {
+    this.agentInvocationRetentionDays = parseInt(
+      this.configService.get('DATA_CLEANUP_AGENT_INVOCATION_DAYS', '7'),
+      10,
+    );
+    this.processingRetentionDays = parseInt(
+      this.configService.get('DATA_CLEANUP_PROCESSING_DAYS', '14'),
+      10,
+    );
+    this.chatRetentionDays = parseInt(this.configService.get('DATA_CLEANUP_CHAT_DAYS', '60'), 10);
+    this.userActivityRetentionDays = parseInt(
+      this.configService.get('DATA_CLEANUP_USER_ACTIVITY_DAYS', '35'),
+      10,
+    );
+    this.errorLogsRetentionDays = parseInt(
+      this.configService.get('DATA_CLEANUP_ERROR_LOGS_DAYS', '30'),
+      10,
+    );
+  }
 
   async onModuleInit(): Promise<void> {
     if (this.supabaseService.isAvailable()) {
       this.logger.log(
-        '✅ 数据清理服务已启动 (分层策略: agent_invocation 7天NULL, 处理记录 14天DELETE, 小时聚合永久保留)',
+        `✅ 数据清理服务已启动 (agent_invocation ${this.agentInvocationRetentionDays}天NULL, ` +
+          `处理记录 ${this.processingRetentionDays}天DELETE, ` +
+          `聊天消息 ${this.chatRetentionDays}天DELETE, ` +
+          `小时聚合永久保留)`,
       );
     } else {
       this.logger.warn('⚠️ 数据清理服务已禁用 (Supabase 不可用)');
@@ -77,11 +107,11 @@ export class DataCleanupService implements OnModuleInit {
   private async nullAgentInvocations(): Promise<void> {
     try {
       const updatedCount = await this.messageProcessingRepository.nullAgentInvocations(
-        this.AGENT_INVOCATION_RETENTION_DAYS,
+        this.agentInvocationRetentionDays,
       );
       if (updatedCount > 0) {
         this.logger.log(
-          `[数据清理] 已清理 ${updatedCount} 条 agent_invocation (${this.AGENT_INVOCATION_RETENTION_DAYS} 天前)`,
+          `[数据清理] 已清理 ${updatedCount} 条 agent_invocation (${this.agentInvocationRetentionDays} 天前)`,
         );
       }
     } catch (error: unknown) {
@@ -96,11 +126,11 @@ export class DataCleanupService implements OnModuleInit {
   private async cleanupChatMessages(): Promise<void> {
     try {
       const deletedCount = await this.chatMessageRepository.cleanupChatMessages(
-        this.CHAT_RETENTION_DAYS,
+        this.chatRetentionDays,
       );
       if (deletedCount > 0) {
         this.logger.log(
-          `[数据清理] 已清理 ${deletedCount} 条过期聊天消息 (${this.CHAT_RETENTION_DAYS} 天前)`,
+          `[数据清理] 已清理 ${deletedCount} 条过期聊天消息 (${this.chatRetentionDays} 天前)`,
         );
       }
     } catch (error: unknown) {
@@ -115,11 +145,11 @@ export class DataCleanupService implements OnModuleInit {
   private async cleanupMessageProcessingRecords(): Promise<void> {
     try {
       const deletedCount = await this.messageProcessingRepository.cleanupMessageProcessingRecords(
-        this.PROCESSING_RETENTION_DAYS,
+        this.processingRetentionDays,
       );
       if (deletedCount > 0) {
         this.logger.log(
-          `[数据清理] 已清理 ${deletedCount} 条过期消息处理记录 (${this.PROCESSING_RETENTION_DAYS} 天前)`,
+          `[数据清理] 已清理 ${deletedCount} 条过期消息处理记录 (${this.processingRetentionDays} 天前)`,
         );
       }
     } catch (error: unknown) {
@@ -134,11 +164,11 @@ export class DataCleanupService implements OnModuleInit {
   private async cleanupErrorLogs(): Promise<void> {
     try {
       const deletedCount = await this.errorLogRepository.cleanupErrorLogs(
-        this.ERROR_LOGS_RETENTION_DAYS,
+        this.errorLogsRetentionDays,
       );
       if (deletedCount > 0) {
         this.logger.log(
-          `[数据清理] 已清理 ${deletedCount} 条过期错误日志 (${this.ERROR_LOGS_RETENTION_DAYS} 天前)`,
+          `[数据清理] 已清理 ${deletedCount} 条过期错误日志 (${this.errorLogsRetentionDays} 天前)`,
         );
       }
     } catch (error: unknown) {
@@ -153,11 +183,11 @@ export class DataCleanupService implements OnModuleInit {
   private async cleanupUserActivity(): Promise<void> {
     try {
       const deletedCount = await this.userHostingRepository.cleanupUserActivity(
-        this.USER_ACTIVITY_RETENTION_DAYS,
+        this.userActivityRetentionDays,
       );
       if (deletedCount > 0) {
         this.logger.log(
-          `[数据清理] 已清理 ${deletedCount} 条过期用户活跃记录 (${this.USER_ACTIVITY_RETENTION_DAYS} 天前)`,
+          `[数据清理] 已清理 ${deletedCount} 条过期用户活跃记录 (${this.userActivityRetentionDays} 天前)`,
         );
       }
     } catch (error: unknown) {
@@ -189,21 +219,21 @@ export class DataCleanupService implements OnModuleInit {
 
     try {
       agentInvocations = await this.messageProcessingRepository.nullAgentInvocations(
-        this.AGENT_INVOCATION_RETENTION_DAYS,
+        this.agentInvocationRetentionDays,
       );
     } catch {
       // ignore
     }
 
     try {
-      chatMessages = await this.chatMessageRepository.cleanupChatMessages(this.CHAT_RETENTION_DAYS);
+      chatMessages = await this.chatMessageRepository.cleanupChatMessages(this.chatRetentionDays);
     } catch {
       // ignore
     }
 
     try {
       processingRecords = await this.messageProcessingRepository.cleanupMessageProcessingRecords(
-        this.PROCESSING_RETENTION_DAYS,
+        this.processingRetentionDays,
       );
     } catch {
       // ignore
@@ -211,14 +241,14 @@ export class DataCleanupService implements OnModuleInit {
 
     try {
       userActivity = await this.userHostingRepository.cleanupUserActivity(
-        this.USER_ACTIVITY_RETENTION_DAYS,
+        this.userActivityRetentionDays,
       );
     } catch {
       // ignore
     }
 
     try {
-      errorLogs = await this.errorLogRepository.cleanupErrorLogs(this.ERROR_LOGS_RETENTION_DAYS);
+      errorLogs = await this.errorLogRepository.cleanupErrorLogs(this.errorLogsRetentionDays);
     } catch {
       // ignore
     }

@@ -24,7 +24,8 @@ export class BookingRepository extends BaseRepository {
 
   /**
    * 增加预约统计计数
-   * 每次预约成功都创建一条新记录，便于追溯每次预约的详细信息
+   * 使用 RPC increment_booking_count 原子性地 INSERT OR UPDATE booking_count+1，
+   * 避免直接 INSERT 在唯一约束 (date, brand_name, store_name) 上发生冲突。
    */
   async incrementBookingCount(params: BookingRecordInput): Promise<void> {
     if (!this.isAvailable()) {
@@ -36,20 +37,19 @@ export class BookingRepository extends BaseRepository {
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
     try {
-      await this.insert<BookingDbRecord>({
-        date: today,
-        brand_name: brandName || null,
-        store_name: storeName || null,
-        chat_id: chatId || null,
-        user_id: userId || null,
-        user_name: userName || null,
-        manager_id: managerId || null,
-        manager_name: managerName || null,
-        booking_count: 1,
+      await this.rpc('increment_booking_count', {
+        p_date: today,
+        p_brand_name: brandName ?? null,
+        p_store_name: storeName ?? null,
+        p_chat_id: chatId ?? null,
+        p_user_id: userId ?? null,
+        p_user_name: userName ?? null,
+        p_manager_id: managerId ?? null,
+        p_manager_name: managerName ?? null,
       });
 
       this.logger.debug(
-        `[预约统计] 新增: ${brandName || '未知品牌'} - ${storeName || '未知门店'}, ` +
+        `[预约统计] 已更新: ${brandName || '未知品牌'} - ${storeName || '未知门店'}, ` +
           `用户: ${userName || '未知'}, 招募经理: ${managerName || '未知'}`,
       );
     } catch (error) {

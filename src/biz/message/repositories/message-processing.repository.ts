@@ -203,6 +203,7 @@ export class MessageProcessingRepository extends BaseRepository {
 
   /**
    * 获取指定日期范围内的活跃用户（按 user_id 聚合）
+   * 使用 RPC get_active_users_by_range，在数据库侧完成聚合，避免拉取全量数据到内存。
    */
   async getActiveUsers(
     startDate: Date,
@@ -223,60 +224,32 @@ export class MessageProcessingRepository extends BaseRepository {
     }
 
     try {
-      const results = await this.select<{
-        user_id: string;
-        user_name: string;
-        chat_id: string;
-        received_at: string;
-        token_usage: number;
-      }>('user_id,user_name,chat_id,received_at,token_usage', (q) =>
-        q
-          .gte('received_at', startDate.toISOString())
-          .lte('received_at', endDate.toISOString())
-          .eq('status', 'success')
-          .order('received_at', { ascending: true }),
-      );
+      const result = await this.rpc<
+        Array<{
+          user_id: string;
+          user_name: string;
+          chat_id: string;
+          message_count: string;
+          token_usage: string;
+          first_active_at: string;
+          last_active_at: string;
+        }>
+      >('get_active_users_by_range', {
+        p_start_date: startDate.toISOString(),
+        p_end_date: endDate.toISOString(),
+      });
 
-      // 按 user_id 聚合
-      const userMap = new Map<
-        string,
-        {
-          userId: string;
-          userName: string;
-          chatId: string;
-          messageCount: number;
-          tokenUsage: number;
-          firstActiveAt: number;
-          lastActiveAt: number;
-        }
-      >();
+      if (!result) return [];
 
-      for (const row of results) {
-        const userId = row.user_id;
-        if (!userId) continue;
-
-        const receivedAt = new Date(row.received_at).getTime();
-        const tokenUsage = row.token_usage || 0;
-
-        if (!userMap.has(userId)) {
-          userMap.set(userId, {
-            userId,
-            userName: row.user_name || '',
-            chatId: row.chat_id,
-            messageCount: 1,
-            tokenUsage,
-            firstActiveAt: receivedAt,
-            lastActiveAt: receivedAt,
-          });
-        } else {
-          const user = userMap.get(userId)!;
-          user.messageCount++;
-          user.tokenUsage += tokenUsage;
-          user.lastActiveAt = Math.max(user.lastActiveAt, receivedAt);
-        }
-      }
-
-      return Array.from(userMap.values()).sort((a, b) => b.lastActiveAt - a.lastActiveAt);
+      return result.map((row) => ({
+        userId: row.user_id,
+        userName: row.user_name || '',
+        chatId: row.chat_id,
+        messageCount: parseInt(row.message_count, 10),
+        tokenUsage: parseInt(row.token_usage, 10),
+        firstActiveAt: new Date(row.first_active_at).getTime(),
+        lastActiveAt: new Date(row.last_active_at).getTime(),
+      }));
     } catch (error) {
       this.logger.error('获取活跃用户失败:', error);
       return [];
@@ -285,6 +258,7 @@ export class MessageProcessingRepository extends BaseRepository {
 
   /**
    * 获取每日用户统计（按日期聚合）
+   * 使用 RPC get_daily_user_stats_by_range，在数据库侧完成聚合，避免拉取全量数据到内存。
    */
   async getDailyUserStats(
     startDate: Date,
@@ -302,47 +276,25 @@ export class MessageProcessingRepository extends BaseRepository {
     }
 
     try {
-      const results = await this.select<{
-        user_id: string;
-        received_at: string;
-        token_usage: number;
-      }>('user_id,received_at,token_usage', (q) =>
-        q
-          .gte('received_at', startDate.toISOString())
-          .lte('received_at', endDate.toISOString())
-          .eq('status', 'success')
-          .order('received_at', { ascending: true }),
-      );
+      const result = await this.rpc<
+        Array<{
+          stat_date: string;
+          unique_users: string;
+          message_count: string;
+          token_usage: string;
+        }>
+      >('get_daily_user_stats_by_range', {
+        p_start_date: startDate.toISOString(),
+        p_end_date: endDate.toISOString(),
+      });
 
-      // 按日期聚合
-      const dailyStats = new Map<
-        string,
-        { date: string; uniqueUsers: Set<string>; messageCount: number; tokenUsage: number }
-      >();
+      if (!result) return [];
 
-      for (const row of results) {
-        const dateKey = new Date(row.received_at).toISOString().split('T')[0];
-
-        if (!dailyStats.has(dateKey)) {
-          dailyStats.set(dateKey, {
-            date: dateKey,
-            uniqueUsers: new Set(),
-            messageCount: 0,
-            tokenUsage: 0,
-          });
-        }
-
-        const stats = dailyStats.get(dateKey)!;
-        if (row.user_id) stats.uniqueUsers.add(row.user_id);
-        stats.messageCount++;
-        stats.tokenUsage += row.token_usage || 0;
-      }
-
-      return Array.from(dailyStats.values()).map((s) => ({
-        date: s.date,
-        uniqueUsers: s.uniqueUsers.size,
-        messageCount: s.messageCount,
-        tokenUsage: s.tokenUsage,
+      return result.map((row) => ({
+        date: row.stat_date,
+        uniqueUsers: parseInt(row.unique_users, 10),
+        messageCount: parseInt(row.message_count, 10),
+        tokenUsage: parseInt(row.token_usage, 10),
       }));
     } catch (error) {
       this.logger.error('获取每日用户统计失败:', error);
@@ -414,12 +366,12 @@ export class MessageProcessingRepository extends BaseRepository {
     }
 
     try {
-      const result = await this.rpc<Array<{ cleanup_message_processing_records: string }>>(
+      const result = await this.rpc<Array<{ deleted_count: string }>>(
         'cleanup_message_processing_records',
         { days_to_keep: retentionDays },
       );
 
-      const deletedCount = parseInt(result?.[0]?.cleanup_message_processing_records ?? '0', 10);
+      const deletedCount = parseInt(result?.[0]?.deleted_count ?? '0', 10);
       return deletedCount;
     } catch (error) {
       this.logger.error(`[消息处理记录] 清理失败:`, error);
@@ -438,12 +390,9 @@ export class MessageProcessingRepository extends BaseRepository {
     }
 
     try {
-      const result = await this.rpc<Array<{ null_agent_invocation: string }>>(
-        'null_agent_invocation',
-        { p_days_old: daysOld },
-      );
+      const result = await this.rpc<number>('null_agent_invocation', { p_days_old: daysOld });
 
-      const updatedCount = parseInt(result?.[0]?.null_agent_invocation ?? '0', 10);
+      const updatedCount = result ?? 0;
       return updatedCount;
     } catch (error) {
       this.logger.error(`[消息处理记录] NULL agent_invocation 失败:`, error);

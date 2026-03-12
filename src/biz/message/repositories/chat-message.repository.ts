@@ -8,7 +8,6 @@ import {
 } from '@wecom/message/enums';
 import { ChatMessageRecord } from '../entities/chat-message.entity';
 import { ChatMessageInput, ChatSessionSummary } from '../types/message.types';
-import { SessionDbRow } from '../types/repository.types';
 
 /**
  * 聊天消息 Repository
@@ -308,81 +307,30 @@ export class ChatMessageRepository extends BaseRepository {
 
   /**
    * 获取会话列表（用于 Dashboard 展示）
+   * 委托给 getChatSessionListOptimized（使用 RPC，DB 侧 DISTINCT ON 聚合）。
    */
   async getChatSessionList(days: number = 1): Promise<ChatSessionSummary[]> {
     if (!this.isAvailable()) {
       return [];
     }
 
-    try {
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - days);
-      startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    startDate.setHours(0, 0, 0, 0);
 
-      const results = await this.select<SessionDbRow>(
-        'chat_id,candidate_name,manager_name,content,timestamp,avatar,contact_type,role',
-        (q) =>
-          q
-            .gte('timestamp', startDate.toISOString())
-            .order('timestamp', { ascending: false })
-            .limit(10000),
-      );
-
-      return this.groupMessagesBySession(results);
-    } catch (error) {
-      this.logger.error('获取会话列表失败:', error);
-      return [];
-    }
+    return this.getChatSessionListByDateRange(startDate, endDate);
   }
 
   /**
    * 获取指定时间范围内的会话列表
-   * v1.4: 支持精确的时间范围筛选
+   * 使用 RPC get_chat_session_list，在数据库侧通过 DISTINCT ON 完成聚合，
+   * 避免拉取千行数据到内存再做 JS 分组。
    */
   async getChatSessionListByDateRange(
     startDate: Date,
     endDate: Date,
   ): Promise<ChatSessionSummary[]> {
-    if (!this.isAvailable()) {
-      return [];
-    }
-
-    try {
-      const results = await this.select<SessionDbRow>(
-        'chat_id,candidate_name,manager_name,content,timestamp,avatar,contact_type,role',
-        (q) =>
-          q
-            .gte('timestamp', startDate.toISOString())
-            .lte('timestamp', endDate.toISOString())
-            .order('timestamp', { ascending: false })
-            .limit(1000),
-      );
-
-      return this.groupMessagesBySession(results);
-    } catch (error) {
-      this.logger.error('获取会话列表(时间范围)失败:', error);
-      return [];
-    }
-  }
-
-  /**
-   * 获取会话列表（优化版，使用数据库 RPC 函数）
-   */
-  async getChatSessionListOptimized(
-    startDate: Date,
-    endDate: Date,
-  ): Promise<
-    Array<{
-      chatId: string;
-      candidateName?: string;
-      managerName?: string;
-      messageCount: number;
-      lastMessage?: string;
-      lastTimestamp?: number;
-      avatar?: string;
-      contactType?: string;
-    }>
-  > {
     if (!this.isAvailable()) {
       return [];
     }
@@ -404,13 +352,7 @@ export class ChatMessageRepository extends BaseRepository {
         p_end_date: endDate.toISOString(),
       });
 
-      if (!result) {
-        return [];
-      }
-
-      this.logger.log(
-        `获取会话列表: ${result.length} 个会话（${startDate.toISOString().split('T')[0]} ~ ${endDate.toISOString().split('T')[0]}）`,
-      );
+      if (!result) return [];
 
       return result.map((item) => ({
         chatId: item.chat_id,
@@ -423,7 +365,7 @@ export class ChatMessageRepository extends BaseRepository {
         contactType: item.contact_type,
       }));
     } catch (error) {
-      this.logger.error('获取会话列表(优化版)失败:', error);
+      this.logger.error('获取会话列表(时间范围)失败:', error);
       return [];
     }
   }
@@ -626,48 +568,6 @@ export class ChatMessageRepository extends BaseRepository {
   }
 
   // ==================== 私有方法 ====================
-
-  /**
-   * 将消息列表按 chat_id 分组为会话摘要（去重逻辑）
-   */
-  private groupMessagesBySession(rows: SessionDbRow[]): ChatSessionSummary[] {
-    const sessionMap = new Map<string, ChatSessionSummary>();
-
-    for (const msg of rows) {
-      const chatId = msg.chat_id;
-      if (!sessionMap.has(chatId)) {
-        sessionMap.set(chatId, {
-          chatId,
-          candidateName: msg.role === 'user' ? msg.candidate_name : undefined,
-          managerName: msg.manager_name,
-          messageCount: 1,
-          lastMessage: msg.content?.substring(0, 50) + (msg.content?.length > 50 ? '...' : ''),
-          lastTimestamp: new Date(msg.timestamp).getTime(),
-          avatar: msg.role === 'user' ? msg.avatar : undefined,
-          contactType: msg.role === 'user' ? msg.contact_type : undefined,
-        });
-      } else {
-        const session = sessionMap.get(chatId)!;
-        session.messageCount++;
-        if (!session.candidateName && msg.role === 'user' && msg.candidate_name) {
-          session.candidateName = msg.candidate_name;
-        }
-        if (!session.managerName && msg.manager_name) {
-          session.managerName = msg.manager_name;
-        }
-        if (!session.avatar && msg.role === 'user' && msg.avatar) {
-          session.avatar = msg.avatar;
-        }
-        if (!session.contactType && msg.contact_type && msg.role === 'user') {
-          session.contactType = msg.contact_type;
-        }
-      }
-    }
-
-    return Array.from(sessionMap.values()).sort(
-      (a, b) => (b.lastTimestamp || 0) - (a.lastTimestamp || 0),
-    );
-  }
 
   /**
    * 转换为数据库记录格式

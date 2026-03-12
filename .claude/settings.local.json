@@ -435,7 +435,9 @@
       "Bash(while read:*)",
       "Bash(do echo:*)",
       "Read(//Users/jiezhu/.claude/**)",
-      "Bash(/tmp/test_audit.txt:*)"
+      "Bash(/tmp/test_audit.txt:*)",
+      "Bash(npx eslint:*)",
+      "Bash(pnpm run:*)"
     ],
     "deny": [
       "Bash(git restore:*)",
@@ -468,7 +470,8 @@
       "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/biz/strategy",
       "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/s|import { SystemConfigService } from './system-config.service';|import { SystemConfigService, GroupBlacklistService } from '.",
       "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/src/core/monitoring/services",
-      "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/docs"
+      "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/docs",
+      "/Users/jiezhu/workSpace/DuLiDay/duliday-wecom-service/supabase/migrations"
     ]
   },
   "enableAllProjectMcpServers": true,

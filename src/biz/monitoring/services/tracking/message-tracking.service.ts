@@ -368,37 +368,56 @@ export class MessageTrackingService {
   // ========== 私有方法 ==========
 
   /**
-   * 保存消息处理记录到数据库
+   * 带指数退避重试的包装器（最多 retries 次，初始延迟 delayMs）
+   */
+  private async withRetry<T>(
+    fn: () => Promise<T>,
+    retries: number = 2,
+    delayMs: number = 500,
+  ): Promise<T> {
+    try {
+      return await fn();
+    } catch (error) {
+      if (retries <= 0) throw error;
+      await new Promise((r) => setTimeout(r, delayMs));
+      return this.withRetry(fn, retries - 1, delayMs * 2);
+    }
+  }
+
+  /**
+   * 保存消息处理记录到数据库（带重试）
    */
   private async saveRecordToDatabase(record: MessageProcessingRecord): Promise<void> {
-    await this.messageProcessingRepository.saveMessageProcessingRecord({
-      messageId: record.messageId,
-      chatId: record.chatId,
-      userId: record.userId,
-      userName: record.userName,
-      managerName: record.managerName,
-      receivedAt: record.receivedAt,
-      messagePreview: record.messagePreview,
-      replyPreview: record.replyPreview,
-      replySegments: record.replySegments,
-      status: record.status,
-      error: record.error,
-      scenario: record.scenario,
-      totalDuration: record.totalDuration,
-      queueDuration: record.queueDuration,
-      prepDuration: record.prepDuration,
-      aiStartAt: record.aiStartAt,
-      aiEndAt: record.aiEndAt,
-      aiDuration: record.aiDuration,
-      sendDuration: record.sendDuration,
-      tools: record.tools,
-      tokenUsage: record.tokenUsage,
-      isFallback: record.isFallback,
-      fallbackSuccess: record.fallbackSuccess,
-      agentInvocation: record.agentInvocation,
-      batchId: record.batchId,
-      isPrimary: record.isPrimary,
-    });
+    await this.withRetry(() =>
+      this.messageProcessingRepository.saveMessageProcessingRecord({
+        messageId: record.messageId,
+        chatId: record.chatId,
+        userId: record.userId,
+        userName: record.userName,
+        managerName: record.managerName,
+        receivedAt: record.receivedAt,
+        messagePreview: record.messagePreview,
+        replyPreview: record.replyPreview,
+        replySegments: record.replySegments,
+        status: record.status,
+        error: record.error,
+        scenario: record.scenario,
+        totalDuration: record.totalDuration,
+        queueDuration: record.queueDuration,
+        prepDuration: record.prepDuration,
+        aiStartAt: record.aiStartAt,
+        aiEndAt: record.aiEndAt,
+        aiDuration: record.aiDuration,
+        sendDuration: record.sendDuration,
+        tools: record.tools,
+        tokenUsage: record.tokenUsage,
+        isFallback: record.isFallback,
+        fallbackSuccess: record.fallbackSuccess,
+        agentInvocation: record.agentInvocation,
+        batchId: record.batchId,
+        isPrimary: record.isPrimary,
+      }),
+    );
     this.logger.debug(`已保存消息处理记录到数据库 [${record.messageId}]`);
   }
 
@@ -413,7 +432,7 @@ export class MessageTrackingService {
       alertType: alertType || 'unknown',
     };
 
-    this.errorLogRepository.saveErrorLog(errorLog).catch((err) => {
+    this.withRetry(() => this.errorLogRepository.saveErrorLog(errorLog)).catch((err) => {
       this.logger.warn(`保存错误日志到数据库失败 [${messageId}]:`, err);
     });
   }
@@ -431,16 +450,18 @@ export class MessageTrackingService {
     tokenUsage: number;
     activeAt: number;
   }): Promise<void> {
-    await this.userHostingRepository.upsertUserActivity({
-      chatId: data.chatId,
-      odId: data.userId,
-      odName: data.userName,
-      groupId: data.groupId,
-      groupName: data.groupName,
-      messageCount: data.messageCount,
-      totalTokens: data.tokenUsage,
-      activeAt: new Date(data.activeAt),
-    });
+    await this.withRetry(() =>
+      this.userHostingRepository.upsertUserActivity({
+        chatId: data.chatId,
+        odId: data.userId,
+        odName: data.userName,
+        groupId: data.groupId,
+        groupName: data.groupName,
+        messageCount: data.messageCount,
+        totalTokens: data.tokenUsage,
+        activeAt: new Date(data.activeAt),
+      }),
+    );
     this.logger.debug(`[user_activity] 已更新用户活跃记录: ${data.chatId}`);
   }
 
