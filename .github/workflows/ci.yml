@@ -10,9 +10,8 @@ permissions:
   pull-requests: write
 
 jobs:
-  # 代码质量检查
-  lint-and-format:
-    name: 代码质量检查
+  ci:
+    name: CI Checks
     runs-on: ubuntu-latest
 
     steps:
@@ -44,178 +43,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run ESLint (read-only)
+      - name: ESLint check
         run: pnpm run lint:check
 
-      - name: Run Prettier check
+      - name: Prettier check
         run: pnpm exec prettier --check "src/**/*.ts"
 
-  # 类型检查
-  type-check:
-    name: TypeScript 类型检查
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        run: echo "pnpm_cache_dir=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-      - name: Cache pnpm dependencies
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.pnpm_cache_dir }}
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Type check
+      - name: TypeScript type check
         run: pnpm exec tsc --noEmit
 
-  # 构建检查
-  build:
-    name: 构建检查
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        run: echo "pnpm_cache_dir=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-      - name: Cache pnpm dependencies
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.pnpm_cache_dir }}
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build project
+      - name: Build
         run: pnpm run build
 
-  # 单元测试
-  test:
-    name: 单元测试
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        run: echo "pnpm_cache_dir=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-      - name: Cache pnpm dependencies
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.pnpm_cache_dir }}
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run tests with coverage
+      - name: Unit tests with coverage
         run: pnpm run test:cov
 
-      - name: Upload coverage to artifacts
+      - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: coverage/
           retention-days: 7
-
-  # 检查汇总
-  ci-summary:
-    name: CI 检查汇总
-    runs-on: ubuntu-latest
-    needs: [lint-and-format, type-check, build, test]
-    if: always()
-
-    steps:
-      - name: Check all jobs status
-        run: |
-          echo "## CI 检查结果汇总" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # 检查各个 job 的状态
-          if [ "${{ needs.lint-and-format.result }}" == "success" ]; then
-            echo "✅ 代码质量检查: 通过" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ 代码质量检查: 失败" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          if [ "${{ needs.type-check.result }}" == "success" ]; then
-            echo "✅ TypeScript 类型检查: 通过" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ TypeScript 类型检查: 失败" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          if [ "${{ needs.build.result }}" == "success" ]; then
-            echo "✅ 构建检查: 通过" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ 构建检查: 失败" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          if [ "${{ needs.test.result }}" == "success" ]; then
-            echo "✅ 单元测试: 通过" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ 单元测试: 失败" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          # 如果任何检查失败，则整体失败
-          if [ "${{ needs.lint-and-format.result }}" != "success" ] || \
-             [ "${{ needs.type-check.result }}" != "success" ] || \
-             [ "${{ needs.build.result }}" != "success" ] || \
-             [ "${{ needs.test.result }}" != "success" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "❌ **CI 检查未通过，请修复后重新提交**" >> $GITHUB_STEP_SUMMARY
-            exit 1
-          else
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "✅ **所有 CI 检查通过，可以合并！**" >> $GITHUB_STEP_SUMMARY
-          fi

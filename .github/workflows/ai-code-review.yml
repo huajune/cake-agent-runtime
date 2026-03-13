@@ -22,6 +22,15 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
+      - name: Read review rules
+        id: review-rules
+        run: |
+          {
+            echo 'content<<EOF'
+            cat .github/review-rules.md
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -29,42 +38,9 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            You are reviewing a NestJS TypeScript project — an enterprise WeChat intelligent service middleware.
+            Review this PR according to the following rules:
 
-            **Tech Stack**: NestJS 10.3 | TypeScript 5.3 | Node.js 20+ | Bull Queue | Redis (Upstash)
-
-            **Architecture**: DDD layered architecture
-            - `core/` — infrastructure (HTTP client, Redis, Supabase, alert). Cannot import from `biz/` or `wecom/`
-            - `agent/` — AI Agent domain
-            - `biz/` — business domain (monitoring, user, message, hosting-config)
-            - `wecom/` — WeChat Enterprise domain
-
-            Please review this PR focusing on:
-
-            ## Critical Issues
-            - Bugs and logic errors
-            - Security vulnerabilities (hardcoded secrets, SQL injection, XSS)
-            - Unhandled exceptions or missing try-catch
-            - Performance bottlenecks
-
-            ## Code Quality
-            - TypeScript strict typing — no `any` abuse
-            - NestJS patterns: proper dependency injection (no `new Service()`), use `Logger` not `console.log`
-            - No hardcoded config values — must use `ConfigService` / env vars
-            - Service size <= 500 lines (Single Responsibility Principle)
-
-            ## Architecture Compliance
-            - Layer violations: `core/` must not import `biz/` or `wecom/`
-            - Services placed in the correct domain
-            - No business logic leaking into controllers
-
-            ## Suggestions
-            - Code improvements and optimizations
-            - Better naming or structure
-
-            Use `mcp__github_inline_comment__create_inline_comment` for specific line-level issues.
-            Use `gh pr comment` for an overall summary.
-            Only post GitHub comments — do not output review text as messages.
+            ${{ steps.review-rules.outputs.content }}
 
           claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr review:*)"
+            --allowedTools "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr review:*)"
