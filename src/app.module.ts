@@ -6,6 +6,7 @@ import { SupabaseModule } from '@core/supabase';
 import { LoggerModule } from './core/logger';
 import { FeishuModule } from './core/feishu';
 import { AgentModule } from './agent';
+import { AiModule } from './ai/ai.module';
 import { WecomModule } from './wecom/wecom.module';
 import { BizModule } from '@biz/biz.module';
 import { validate } from './core/config/env.validation';
@@ -58,6 +59,9 @@ import { validate } from './core/config/env.validation';
 
     // ==================== 业务逻辑层 (Business Logic Layer) ====================
     BizModule,
+
+    // ==================== AI 能力层 (AI Infrastructure) ====================
+    AiModule, // AI SDK 基础设施（全局，模型/工具/MCP/Agent引擎）
 
     // ==================== 业务域 (Business Domains) ====================
     AgentModule, // AI Agent 业务域

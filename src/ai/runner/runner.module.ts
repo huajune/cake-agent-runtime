@@ -7,4 +7,4 @@ import { AgentRunnerService } from './agent-runner.service';
   providers: [AgentRunnerService],
   exports: [AgentRunnerService],
 })
-export class AgentModule {}
+export class RunnerModule {}

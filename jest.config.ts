@@ -26,6 +26,8 @@ const config: JestConfigWithTsJest = {
             '@test-suite/*': ['src/biz/test-suite/*'],
             '@core/supabase': ['src/core/supabase'],
             '@biz/*': ['src/biz/*'],
+            '@ai': ['src/ai'],
+            '@ai/*': ['src/ai/*'],
           },
         },
       },
@@ -51,6 +53,8 @@ const config: JestConfigWithTsJest = {
     '^@test-suite/(.*)$': '<rootDir>/biz/test-suite/$1',
     '^@core/supabase$': '<rootDir>/core/supabase',
     '^@biz/(.*)$': '<rootDir>/biz/$1',
+    '^@ai$': '<rootDir>/ai',
+    '^@ai/(.*)$': '<rootDir>/ai/$1',
   },
 };
 

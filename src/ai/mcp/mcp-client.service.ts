@@ -5,6 +5,7 @@ import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp';
 import { tool, jsonSchema } from 'ai';
 import { ToolRegistryService } from '../tool/tool-registry.service';
+import { AiTool } from '../tool/tool.types';
 import { McpServerConfig, McpConnectedServer } from './mcp.types';
 
 @Injectable()
@@ -24,17 +25,13 @@ export class McpClientService implements OnModuleDestroy {
     for (const t of ts) {
       const n = t.name,
         c = client;
-      this.toolRegistry.register({
-        name: n,
-        source: 'mcp',
-        mcpServer: config.name,
-        tool: (tool as (...args: unknown[]) => unknown)({
-          description: t.description ?? '',
-          parameters: jsonSchema(t.inputSchema as Record<string, unknown>),
-          execute: async (args) =>
-            c.callTool({ name: n, arguments: args as Record<string, unknown> }),
-        }),
-      });
+      const mcpTool = (tool as (...args: unknown[]) => unknown)({
+        description: t.description ?? '',
+        parameters: jsonSchema(t.inputSchema as Record<string, unknown>),
+        execute: async (args) =>
+          c.callTool({ name: n, arguments: args as Record<string, unknown> }),
+      }) as AiTool;
+      this.toolRegistry.registerMcpTool(n, mcpTool, config.name);
       names.push(n);
     }
     const s = { name: config.name, config, toolNames: names, connectedAt: new Date() };
