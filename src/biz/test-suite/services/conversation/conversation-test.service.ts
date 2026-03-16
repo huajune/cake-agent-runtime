@@ -1,12 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import {
-  AgentFacadeService,
-  AgentResultStatus,
-  type ScenarioOptions,
-  type AgentResult,
-} from '@agent';
-import { MessageRole } from '@shared/enums';
+import { OrchestratorService, type OrchestratorRunParams, type AgentRunResult } from '@agent';
 import { LlmEvaluationService } from './llm-evaluation.service';
 import { ConversationParserService } from './conversation-parser.service';
 import { ConversationSnapshotRepository } from '../../repositories/conversation-snapshot.repository';
@@ -30,9 +23,6 @@ import {
 /** 默认场景 */
 const DEFAULT_SCENARIO = 'candidate-consultation';
 
-/** 测试场景默认开启 extended thinking */
-const DEFAULT_TEST_THINKING = { type: 'enabled' as const, budgetTokens: 10000 };
-
 /** 相似度阈值（及格线） */
 const SIMILARITY_THRESHOLD = 60;
 
@@ -51,8 +41,7 @@ export class ConversationTestService {
   private readonly logger = new Logger(ConversationTestService.name);
 
   constructor(
-    private readonly configService: ConfigService,
-    private readonly agentFacade: AgentFacadeService,
+    private readonly orchestrator: OrchestratorService,
     private readonly llmEvaluationService: LlmEvaluationService,
     private readonly parserService: ConversationParserService,
     private readonly conversationSnapshotRepository: ConversationSnapshotRepository,
@@ -350,7 +339,7 @@ export class ConversationTestService {
       };
     }
 
-    let agentResult: AgentResult;
+    let orchestratorResult: AgentRunResult | null = null;
     let executionStatus: ExecutionStatus = ExecutionStatus.SUCCESS;
     let errorMessage: string | null = null;
 
@@ -360,44 +349,34 @@ export class ConversationTestService {
     }
 
     try {
-      const options: ScenarioOptions = {
-        messages: turn.history.map((m) => ({
-          role: m.role === 'user' ? MessageRole.USER : MessageRole.ASSISTANT,
-          content: m.content,
-        })),
+      const orchestratorParams: OrchestratorRunParams = {
+        messages: [
+          ...turn.history.map((m) => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+          })),
+          { role: 'user' as const, content: turn.userMessage },
+        ],
         userId,
-        thinking: DEFAULT_TEST_THINKING,
+        corpId: 'test',
+        scenario,
       };
 
-      agentResult = await this.agentFacade.chatWithScenario(
-        scenario,
-        sessionId,
-        turn.userMessage,
-        options,
-      );
-
-      if (agentResult.status === AgentResultStatus.ERROR) {
-        executionStatus = ExecutionStatus.FAILURE;
-        errorMessage = agentResult.error?.message || '未知错误';
-      }
+      orchestratorResult = await this.orchestrator.run(orchestratorParams);
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       executionStatus = errorMsg.includes('timeout')
         ? ExecutionStatus.TIMEOUT
         : ExecutionStatus.FAILURE;
       errorMessage = errorMsg;
-      agentResult = {
-        status: AgentResultStatus.ERROR,
-        error: { code: 'EXECUTION_ERROR', message: errorMsg },
-      };
     }
 
     const durationMs = Date.now() - startTime;
 
     // 提取 Agent 回复
-    const actualOutput = this.parserService.extractResponseText(agentResult);
-    const toolCalls = this.parserService.extractToolCalls(agentResult);
-    const tokenUsage = agentResult.data?.usage || {
+    const actualOutput = orchestratorResult?.text ?? '';
+    const toolCalls: unknown[] = [];
+    const tokenUsage = orchestratorResult?.usage ?? {
       inputTokens: 0,
       outputTokens: 0,
       totalTokens: 0,
@@ -433,8 +412,8 @@ export class ConversationTestService {
     // 保存或更新执行记录
     if (existingExecution) {
       await this.executionRepository.updateExecution(existingExecution.id, {
-        agent_request: (agentResult as AgentResult & { requestBody?: unknown }).requestBody,
-        agent_response: agentResult.data || agentResult.fallback || agentResult.error,
+        agent_request: null,
+        agent_response: orchestratorResult ? { text: orchestratorResult.text } : null,
         actual_output: actualOutput,
         tool_calls: toolCalls,
         execution_status: executionStatus,
@@ -457,8 +436,8 @@ export class ConversationTestService {
           scenario,
         },
         expectedOutput: turn.expectedOutput,
-        agentRequest: (agentResult as AgentResult & { requestBody?: unknown }).requestBody,
-        agentResponse: agentResult.data || agentResult.fallback || agentResult.error,
+        agentRequest: null,
+        agentResponse: orchestratorResult ? { text: orchestratorResult.text } : null,
         actualOutput,
         toolCalls,
         executionStatus,

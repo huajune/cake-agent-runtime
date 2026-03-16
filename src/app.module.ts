@@ -5,34 +5,28 @@ import { HttpModule, RedisModule } from './core';
 import { SupabaseModule } from '@core/supabase';
 import { LoggerModule } from './core/logger';
 import { FeishuModule } from './core/feishu';
+import { ProvidersModule } from '@providers/providers.module';
+import { ToolModule } from '@tools/tool.module';
+import { McpModule } from '@mcp/mcp.module';
+import { MemoryModule } from '@memory/memory.module';
+import { SpongeModule } from '@sponge/sponge.module';
+import { ObservabilityModule } from '@/observability';
 import { AgentModule } from './agent';
-import { AiModule } from './ai/ai.module';
-import { WecomModule } from './wecom/wecom.module';
+import { WecomModule } from '@channels/wecom/wecom.module';
 import { BizModule } from '@biz/biz.module';
 import { validate } from './core/config/env.validation';
 
 /**
  * 应用根模块
  *
- * 采用扁平化 DDD 架构设计：
- * - Core Layer (核心层): 技术基础设施（水平分层）
- * - Business Domains (业务域): 各业务领域（垂直分层）
- *
- * 目录结构: src/
- *   ├── core/              - 核心技术层
- *   │   ├── client-http/   - 客户端 HTTP 工具
- *   │   ├── response/      - 响应处理（拦截器、过滤器）
- *   │   ├── redis/         - Redis 缓存服务
- *   │   ├── feishu/        - 飞书服务（告警、通知、同步）
- *   │   └── config/        - 配置管理
- *   │
- *   │   └── supabase/       - Supabase 客户端基础设施
- *   │
- *   ├── biz/                - 业务逻辑层
- *   │   └── monitoring/     - 业务监控（采集、分析、告警、清理）
- *   │
- *   ├── agent/              - AI Agent 业务域
- *   └── wecom/              - 企业微信业务域
+ * 架构：
+ * - Core Layer: 技术基础设施（Redis、Supabase、飞书、HTTP）
+ * - Provider Layer: 多模型 Provider + 容错 + 路由（@Global）
+ * - AI Capability Layer: 工具、MCP、记忆、海绵数据（独立模块）
+ * - Observability: Observer 可观测性
+ * - Agent Layer: 编排 + Profile + 策略
+ * - Channel Layer: 企业微信渠道
+ * - Business Layer: 监控、用户、消息等业务逻辑
  */
 @Module({
   imports: [
@@ -40,32 +34,36 @@ import { validate } from './core/config/env.validation';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: [
-        // 本地 Agent 服务模式（AGENT_ENV=local）：优先加载本地 Agent 配置覆盖
         ...(process.env.AGENT_ENV === 'local' ? ['.env.agent.local'] : []),
-        '.env.local', // 优先加载本地配置
+        '.env.local',
         `.env.${process.env.NODE_ENV || 'development'}`,
         '.env',
       ],
       expandVariables: true,
-      validate, // 启用环境变量验证，确保所有必需配置在启动时加载
+      validate,
     }),
 
     // ==================== 核心层 (Core Layer) ====================
-    HttpModule, // HTTP 客户端服务
-    RedisModule, // Redis 缓存服务（全局）
-    SupabaseModule, // Supabase 客户端（全局）
-    FeishuModule, // 飞书统一服务（告警、通知、多维表格同步）
-    LoggerModule, // 实时日志推送（仅开发环境）
+    HttpModule,
+    RedisModule,
+    SupabaseModule,
+    FeishuModule,
+    LoggerModule,
 
     // ==================== 业务逻辑层 (Business Logic Layer) ====================
     BizModule,
 
-    // ==================== AI 能力层 (AI Infrastructure) ====================
-    AiModule, // AI SDK 基础设施（全局，模型/工具/MCP/Agent引擎）
+    // ==================== AI 基础设施 (AI Infrastructure) ====================
+    ProvidersModule, // 多模型 Provider（@Global，三层架构）
+    ToolModule, // 工具注册表 + 内置工具
+    McpModule, // MCP 客户端
+    MemoryModule, // 记忆服务（Redis-backed）
+    SpongeModule, // 海绵数据服务（岗位/面试 HTTP）
+    ObservabilityModule, // Observer 可观测性
 
     // ==================== 业务域 (Business Domains) ====================
-    AgentModule, // AI Agent 业务域
-    WecomModule, // 企业微信业务域
+    AgentModule, // AI Agent 编排
+    WecomModule, // 企业微信渠道
   ],
 })
 export class AppModule {}

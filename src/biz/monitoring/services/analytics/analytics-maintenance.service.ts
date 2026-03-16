@@ -6,7 +6,6 @@ import { MessageProcessingRepository } from '@biz/message/repositories/message-p
 import { MonitoringHourlyStatsRepository } from '../../repositories/monitoring-hourly-stats.repository';
 import { MonitoringErrorLogRepository } from '../../repositories/monitoring-error-log.repository';
 import { MonitoringRepository } from '../../repositories/monitoring.repository';
-import { AgentRegistryService } from '@/agent/services/agent-registry.service';
 
 /**
  * 数据清理与聚合维护服务
@@ -22,7 +21,6 @@ export class AnalyticsMaintenanceService {
     private readonly errorLogRepository: MonitoringErrorLogRepository,
     private readonly cacheService: MonitoringCacheService,
     private readonly monitoringRepository: MonitoringRepository,
-    private readonly agentRegistryService: AgentRegistryService,
   ) {}
 
   // ========================================
@@ -62,7 +60,7 @@ export class AnalyticsMaintenanceService {
       }
 
       if (type === 'all' || type === 'agent') {
-        await this.agentRegistryService.refresh();
+        this.logger.log('Agent 缓存已由各独立模块自行管理');
       }
     } catch (error) {
       this.logger.error(`清除缓存失败 [${type}]:`, error);

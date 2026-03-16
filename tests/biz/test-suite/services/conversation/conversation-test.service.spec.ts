@@ -1,7 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConfigService } from '@nestjs/config';
 import { ConversationTestService } from '@biz/test-suite/services/conversation/conversation-test.service';
-import { AgentFacadeService, AgentResultStatus } from '@agent';
+import { OrchestratorService } from '@agent/services/orchestrator.service';
 import { LlmEvaluationService } from '@biz/test-suite/services/conversation/llm-evaluation.service';
 import { ConversationParserService } from '@biz/test-suite/services/conversation/conversation-parser.service';
 import { ConversationSnapshotRepository } from '@biz/test-suite/repositories/conversation-snapshot.repository';
@@ -16,18 +15,15 @@ import { ConversationSnapshotRecord } from '@biz/test-suite/entities/conversatio
 
 describe('ConversationTestService', () => {
   let service: ConversationTestService;
-  let agentFacade: jest.Mocked<AgentFacadeService>;
+  let orchestrator: jest.Mocked<OrchestratorService>;
   let llmEvaluationService: jest.Mocked<LlmEvaluationService>;
   let parserService: jest.Mocked<ConversationParserService>;
   let conversationSnapshotRepository: jest.Mocked<ConversationSnapshotRepository>;
   let executionRepository: jest.Mocked<TestExecutionRepository>;
 
-  const mockConfigService = {
-    get: jest.fn().mockReturnValue('https://api.example.com'),
-  };
-
-  const mockAgentFacade = {
-    chatWithScenario: jest.fn(),
+  const mockOrchestrator = {
+    run: jest.fn(),
+    stream: jest.fn(),
   };
 
   const mockLlmEvaluationService = {
@@ -76,20 +72,17 @@ describe('ConversationTestService', () => {
       ...overrides,
     }) as ConversationSnapshotRecord;
 
-  const makeAgentSuccess = (text = 'AI回复') => ({
-    status: AgentResultStatus.SUCCESS,
-    data: {
-      messages: [{ parts: [{ text }] }],
-      usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
-    },
+  const makeOrchestratorSuccess = (text = 'AI回复') => ({
+    text,
+    steps: 1,
+    usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
   });
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ConversationTestService,
-        { provide: ConfigService, useValue: mockConfigService },
-        { provide: AgentFacadeService, useValue: mockAgentFacade },
+        { provide: OrchestratorService, useValue: mockOrchestrator },
         { provide: LlmEvaluationService, useValue: mockLlmEvaluationService },
         { provide: ConversationParserService, useValue: mockParserService },
         { provide: ConversationSnapshotRepository, useValue: mockConversationSnapshotRepository },
@@ -98,7 +91,7 @@ describe('ConversationTestService', () => {
     }).compile();
 
     service = module.get<ConversationTestService>(ConversationTestService);
-    agentFacade = module.get(AgentFacadeService);
+    orchestrator = module.get(OrchestratorService);
     llmEvaluationService = module.get(LlmEvaluationService);
     parserService = module.get(ConversationParserService);
     conversationSnapshotRepository = module.get(ConversationSnapshotRepository);
@@ -159,9 +152,7 @@ describe('ConversationTestService', () => {
       mockParserService.splitIntoTurns.mockReturnValue(mockTurns);
       mockExecutionRepository.findByConversationSourceAndTurn.mockResolvedValue(null);
       mockExecutionRepository.create.mockResolvedValue({ id: 'exec-1' } as any);
-      mockAgentFacade.chatWithScenario.mockResolvedValue(makeAgentSuccess('您好，有什么可以帮您'));
-      mockParserService.extractResponseText.mockReturnValue('您好，有什么可以帮您');
-      mockParserService.extractToolCalls.mockReturnValue([]);
+      mockOrchestrator.run.mockResolvedValue(makeOrchestratorSuccess('您好，有什么可以帮您'));
       mockLlmEvaluationService.evaluate.mockResolvedValue({
         score: 85,
         passed: true,
@@ -205,7 +196,6 @@ describe('ConversationTestService', () => {
     });
 
     it('should set source to FAILED and re-throw when repository fails', async () => {
-      // Make the updateStatus call (RUNNING) succeed first, then fail on updateSource (COMPLETED)
       mockConversationSnapshotRepository.updateSource.mockRejectedValue(
         new Error('Database write error'),
       );
@@ -219,30 +209,15 @@ describe('ConversationTestService', () => {
     });
 
     it('should handle agent failures within turns gracefully (does not rethrow)', async () => {
-      mockAgentFacade.chatWithScenario.mockRejectedValue(new Error('Agent API down'));
-      mockParserService.extractResponseText.mockReturnValue('');
-      mockParserService.extractToolCalls.mockReturnValue([]);
+      mockOrchestrator.run.mockRejectedValue(new Error('Agent API down'));
 
-      // Agent errors are caught within executeTurn - the conversation still completes
       const result = await service.executeConversation('source-1');
 
       expect(result.turns[0].executionStatus).toBe(ExecutionStatus.FAILURE);
     });
 
-    it('should skip LLM evaluation when agent returns error status', async () => {
-      mockAgentFacade.chatWithScenario.mockResolvedValue({
-        status: AgentResultStatus.ERROR,
-        error: { code: 'ERR', message: 'failed' },
-      });
-      mockParserService.extractResponseText.mockReturnValue('');
-
-      await service.executeConversation('source-1');
-
-      expect(llmEvaluationService.evaluate).not.toHaveBeenCalled();
-    });
-
-    it('should skip LLM evaluation when actualOutput is empty', async () => {
-      mockParserService.extractResponseText.mockReturnValue('');
+    it('should skip LLM evaluation when orchestrator throws', async () => {
+      mockOrchestrator.run.mockRejectedValue(new Error('Agent error'));
 
       await service.executeConversation('source-1');
 
@@ -253,7 +228,6 @@ describe('ConversationTestService', () => {
       mockParserService.splitIntoTurns.mockReturnValue([
         { turnNumber: 1, userMessage: '你好', expectedOutput: '', history: [] },
       ]);
-      mockParserService.extractResponseText.mockReturnValue('AI回复');
 
       await service.executeConversation('source-1');
 
@@ -271,7 +245,7 @@ describe('ConversationTestService', () => {
 
       const result = await service.executeConversation('source-1', false);
 
-      expect(agentFacade.chatWithScenario).not.toHaveBeenCalled();
+      expect(orchestrator.run).not.toHaveBeenCalled();
       expect(result.turns[0].similarityScore).toBe(75);
     });
 
@@ -281,16 +255,13 @@ describe('ConversationTestService', () => {
 
       await service.executeConversation('source-1', true);
 
-      expect(agentFacade.chatWithScenario).toHaveBeenCalled();
+      expect(orchestrator.run).toHaveBeenCalled();
     });
 
     it('should use participant_name as userId', async () => {
       await service.executeConversation('source-1');
 
-      expect(agentFacade.chatWithScenario).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.any(String),
-        expect.any(String),
+      expect(orchestrator.run).toHaveBeenCalledWith(
         expect.objectContaining({ userId: 'Alice' }),
       );
     });
@@ -492,7 +463,6 @@ describe('ConversationTestService', () => {
         makeSource({ id: 'src-fail' }),
       ]);
 
-      // src-fail will throw a fatal error when looking up its source record
       mockConversationSnapshotRepository.findById.mockImplementation((id: string) => {
         if (id === 'src-fail') {
           return Promise.reject(new Error('Database error'));

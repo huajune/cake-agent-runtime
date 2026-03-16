@@ -1,11 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  AgentFacadeService,
-  AgentResultStatus,
-  type ScenarioOptions,
-  type AgentResult,
-} from '@agent';
+import { OrchestratorService, type AgentRunResult } from '@agent';
 import { TestChatRequestDto, TestChatResponse } from '../../dto/test-chat.dto';
 import { TestExecutionRepository } from '../../repositories/test-execution.repository';
 import { TestExecution } from '../../entities/test-execution.entity';
@@ -13,9 +8,6 @@ import { ExecutionStatus } from '../../enums/test.enum';
 
 /** 默认场景 */
 const DEFAULT_SCENARIO = 'candidate-consultation';
-
-/** 测试场景默认开启 extended thinking */
-const DEFAULT_TEST_THINKING = { type: 'enabled' as const, budgetTokens: 10000 };
 
 /**
  * 测试执行结果提取接口
@@ -52,7 +44,7 @@ export class TestExecutionService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly agentFacade: AgentFacadeService,
+    private readonly orchestrator: OrchestratorService,
     private readonly executionRepository: TestExecutionRepository,
   ) {
     this.logger.log('TestExecutionService 初始化完成');
@@ -64,7 +56,6 @@ export class TestExecutionService {
   async executeTest(request: TestChatRequestDto): Promise<TestChatResponse> {
     const startTime = Date.now();
     const scenario = request.scenario || DEFAULT_SCENARIO;
-    const sessionId = request.sessionId || `test-${Date.now()}`;
 
     if (!request.userId) {
       throw new Error('userId 是必填项，请在请求中传入 userId');
@@ -72,7 +63,7 @@ export class TestExecutionService {
 
     this.logger.log(`执行测试: ${request.caseName || request.message.substring(0, 50)}...`);
 
-    let result: AgentResult;
+    let agentResult: AgentRunResult | null = null;
     let executionStatus: ExecutionStatus = ExecutionStatus.SUCCESS;
     let errorMessage: string | null = null;
 
@@ -81,52 +72,45 @@ export class TestExecutionService {
       // 重新测试时需要去掉最后两条，用当前 message 重新获取 AI 回答
       const historyForAgent = (request.history || []).slice(0, -2);
 
-      const options: ScenarioOptions = {
-        messages: historyForAgent,
+      const messages = [
+        ...historyForAgent.map((m) => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+        })),
+        { role: 'user' as const, content: request.message },
+      ];
+
+      agentResult = await this.orchestrator.run({
+        messages,
         userId: request.userId,
-        thinking: request.thinking || DEFAULT_TEST_THINKING,
-      };
-
-      result = await this.agentFacade.chatWithScenario(
+        corpId: 'test',
         scenario,
-        sessionId,
-        request.message,
-        options,
-      );
-
-      if (result.status === AgentResultStatus.ERROR) {
-        executionStatus = ExecutionStatus.FAILURE;
-        errorMessage = result.error?.message || '未知错误';
-      }
+      });
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       executionStatus = errorMsg.includes('timeout')
         ? ExecutionStatus.TIMEOUT
         : ExecutionStatus.FAILURE;
       errorMessage = errorMsg;
-      result = {
-        status: AgentResultStatus.ERROR,
-        error: { code: 'TEST_EXECUTION_ERROR', message: errorMsg },
-      };
     }
 
     const durationMs = Date.now() - startTime;
 
     // 提取结果
-    const extracted = this.extractResult(result);
+    const extracted = this.extractResult(agentResult);
 
     // 构建响应
     const response: TestChatResponse = {
       actualOutput: extracted.actualOutput,
       status: executionStatus,
       request: {
-        url: `${this.configService.get('AGENT_API_BASE_URL')}/chat`,
+        url: 'orchestrator/run',
         method: 'POST',
-        body: (result as AgentResult & { requestBody?: unknown }).requestBody || null,
+        body: { scenario, message: request.message },
       },
       response: {
         statusCode: executionStatus === ExecutionStatus.SUCCESS ? 200 : 500,
-        body: result.data || result.fallback || result.error,
+        body: agentResult || { error: errorMessage },
         toolCalls: extracted.toolCalls,
       },
       metrics: {
@@ -179,7 +163,6 @@ export class TestExecutionService {
     request: TestChatRequestDto,
   ): Promise<{ stream: NodeJS.ReadableStream; estimatedInputTokens: number }> {
     const scenario = request.scenario || DEFAULT_SCENARIO;
-    const sessionId = request.sessionId || `test-stream-${Date.now()}`;
 
     if (!request.userId) {
       throw new Error('userId 是必填项，请在请求中传入 userId');
@@ -191,29 +174,28 @@ export class TestExecutionService {
 
     // 测试/验证集的 history 包含完整聊天记录（包括最新的 user + assistant）
     // 重新测试时需要去掉最后两条，用当前 message 重新获取 AI 回答
-    // ai-stream 等场景已在 Controller 层预处理好历史，无需再截断
     const historyForAgent = request.skipHistoryTrim
       ? request.history || []
       : (request.history || []).slice(0, -2);
 
-    const options: ScenarioOptions = {
-      messages: historyForAgent,
+    const messages = [
+      ...historyForAgent.map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      })),
+      { role: 'user' as const, content: request.message },
+    ];
+
+    const streamResult = this.orchestrator.stream({
+      messages,
       userId: request.userId,
-      thinking: request.thinking || DEFAULT_TEST_THINKING,
-    };
-
-    const result = await this.agentFacade.chatStreamWithScenario(
+      corpId: 'test',
       scenario,
-      sessionId,
-      request.message,
-      options,
-    );
-
-    this.logger.debug(`[Stream] 估算 input tokens: ${result.estimatedInputTokens}`);
+    });
 
     return {
-      stream: result.stream,
-      estimatedInputTokens: result.estimatedInputTokens,
+      stream: streamResult.textStream as unknown as NodeJS.ReadableStream,
+      estimatedInputTokens: 0,
     };
   }
 
@@ -297,65 +279,19 @@ export class TestExecutionService {
   /**
    * 提取 Agent 响应结果
    */
-  private extractResult(result: AgentResult): ExtractedResult {
+  private extractResult(result: AgentRunResult | null): ExtractedResult {
+    if (!result) {
+      return {
+        actualOutput: '',
+        toolCalls: [],
+        tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+      };
+    }
+
     return {
-      actualOutput: this.extractResponseText(result),
-      toolCalls: this.extractToolCalls(result),
-      tokenUsage: result.data?.usage || {
-        inputTokens: 0,
-        outputTokens: 0,
-        totalTokens: 0,
-      },
+      actualOutput: result.text || '',
+      toolCalls: [],
+      tokenUsage: result.usage || { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
     };
-  }
-
-  /**
-   * 提取响应文本
-   */
-  private extractResponseText(result: AgentResult): string {
-    try {
-      const response = result.data || result.fallback;
-      if (!response?.messages?.length) return '';
-
-      return response.messages
-        .map((msg) => {
-          if (msg.parts) {
-            return msg.parts.map((p) => p.text || '').join('');
-          }
-          return '';
-        })
-        .join('\n\n');
-    } catch {
-      return '';
-    }
-  }
-
-  /**
-   * 提取工具调用
-   */
-  private extractToolCalls(result: AgentResult): ToolCallInfo[] {
-    try {
-      const response = result.data || result.fallback;
-      if (!response?.messages?.length) return [];
-
-      const toolCalls: ToolCallInfo[] = [];
-      for (const msg of response.messages) {
-        if (msg.parts) {
-          for (const part of msg.parts) {
-            const partAny = part as unknown as Record<string, unknown>;
-            if (partAny.type === 'tool_call' || partAny.toolName) {
-              toolCalls.push({
-                toolName: partAny.toolName as string,
-                input: partAny.input,
-                output: partAny.output,
-              });
-            }
-          }
-        }
-      }
-      return toolCalls;
-    } catch {
-      return [];
-    }
   }
 }

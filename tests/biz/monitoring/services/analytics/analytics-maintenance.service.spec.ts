@@ -5,7 +5,6 @@ import { MessageProcessingRepository } from '@biz/message/repositories/message-p
 import { MonitoringHourlyStatsRepository } from '@biz/monitoring/repositories/monitoring-hourly-stats.repository';
 import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/monitoring-error-log.repository';
 import { MonitoringRepository } from '@biz/monitoring/repositories/monitoring.repository';
-import { AgentRegistryService } from '@/agent/services/agent-registry.service';
 
 describe('AnalyticsMaintenanceService', () => {
   let service: AnalyticsMaintenanceService;
@@ -14,7 +13,6 @@ describe('AnalyticsMaintenanceService', () => {
   let errorLogRepository: jest.Mocked<MonitoringErrorLogRepository>;
   let cacheService: jest.Mocked<MonitoringCacheService>;
   let monitoringRepository: jest.Mocked<MonitoringRepository>;
-  let agentRegistryService: jest.Mocked<AgentRegistryService>;
 
   const mockMessageProcessingRepository = {
     clearAllRecords: jest.fn(),
@@ -36,10 +34,6 @@ describe('AnalyticsMaintenanceService', () => {
 
   const mockMonitoringRepository = {
     aggregateHourlyStats: jest.fn(),
-  };
-
-  const mockAgentRegistryService = {
-    refresh: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -66,10 +60,6 @@ describe('AnalyticsMaintenanceService', () => {
           provide: MonitoringRepository,
           useValue: mockMonitoringRepository,
         },
-        {
-          provide: AgentRegistryService,
-          useValue: mockAgentRegistryService,
-        },
       ],
     }).compile();
 
@@ -79,7 +69,6 @@ describe('AnalyticsMaintenanceService', () => {
     errorLogRepository = module.get(MonitoringErrorLogRepository);
     cacheService = module.get(MonitoringCacheService);
     monitoringRepository = module.get(MonitoringRepository);
-    agentRegistryService = module.get(AgentRegistryService);
 
     jest.clearAllMocks();
 
@@ -89,7 +78,6 @@ describe('AnalyticsMaintenanceService', () => {
     mockErrorLogRepository.clearAllRecords.mockResolvedValue(undefined);
     mockCacheService.resetCounters.mockResolvedValue(undefined);
     mockCacheService.clearAll.mockResolvedValue(undefined);
-    mockAgentRegistryService.refresh.mockResolvedValue(undefined);
   });
 
   it('should be defined', () => {
@@ -134,7 +122,6 @@ describe('AnalyticsMaintenanceService', () => {
 
       expect(cacheService.resetCounters).toHaveBeenCalledTimes(1);
       expect(cacheService.clearAll).toHaveBeenCalledTimes(1);
-      expect(agentRegistryService.refresh).toHaveBeenCalledTimes(1);
     });
 
     it('should only reset counters when type is "metrics"', async () => {
@@ -142,7 +129,6 @@ describe('AnalyticsMaintenanceService', () => {
 
       expect(cacheService.resetCounters).toHaveBeenCalledTimes(1);
       expect(cacheService.clearAll).not.toHaveBeenCalled();
-      expect(agentRegistryService.refresh).not.toHaveBeenCalled();
     });
 
     it('should only clear all when type is "history"', async () => {
@@ -150,15 +136,13 @@ describe('AnalyticsMaintenanceService', () => {
 
       expect(cacheService.resetCounters).not.toHaveBeenCalled();
       expect(cacheService.clearAll).toHaveBeenCalledTimes(1);
-      expect(agentRegistryService.refresh).not.toHaveBeenCalled();
     });
 
-    it('should only refresh agent registry when type is "agent"', async () => {
+    it('should handle agent type (no-op, just logs)', async () => {
       await service.clearCacheAsync('agent');
 
       expect(cacheService.resetCounters).not.toHaveBeenCalled();
       expect(cacheService.clearAll).not.toHaveBeenCalled();
-      expect(agentRegistryService.refresh).toHaveBeenCalledTimes(1);
     });
 
     it('should default to "all" behavior when no type is specified', async () => {
@@ -166,19 +150,12 @@ describe('AnalyticsMaintenanceService', () => {
 
       expect(cacheService.resetCounters).toHaveBeenCalledTimes(1);
       expect(cacheService.clearAll).toHaveBeenCalledTimes(1);
-      expect(agentRegistryService.refresh).toHaveBeenCalledTimes(1);
     });
 
     it('should throw when cache operation fails', async () => {
       mockCacheService.resetCounters.mockRejectedValue(new Error('Cache error'));
 
       await expect(service.clearCacheAsync('metrics')).rejects.toThrow('Cache error');
-    });
-
-    it('should throw when agent refresh fails', async () => {
-      mockAgentRegistryService.refresh.mockRejectedValue(new Error('Agent error'));
-
-      await expect(service.clearCacheAsync('agent')).rejects.toThrow('Agent error');
     });
   });
 

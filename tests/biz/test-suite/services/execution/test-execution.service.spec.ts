@@ -2,24 +2,23 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { TestExecutionService } from '@biz/test-suite/services/execution/test-execution.service';
 import { TestExecutionRepository } from '@biz/test-suite/repositories/test-execution.repository';
-import { AgentFacadeService, AgentResultStatus } from '@agent';
+import { OrchestratorService } from '@agent/services/orchestrator.service';
 import { ExecutionStatus } from '@biz/test-suite/enums/test.enum';
 import { TestChatRequestDto } from '@biz/test-suite/dto/test-chat.dto';
 import { MessageRole } from '@shared/enums';
 
 describe('TestExecutionService', () => {
   let service: TestExecutionService;
-  let agentFacade: jest.Mocked<AgentFacadeService>;
+  let orchestrator: jest.Mocked<OrchestratorService>;
   let executionRepository: jest.Mocked<TestExecutionRepository>;
-  let _configService: jest.Mocked<ConfigService>;
 
   const mockConfigService = {
     get: jest.fn().mockReturnValue('https://api.example.com'),
   };
 
-  const mockAgentFacade = {
-    chatWithScenario: jest.fn(),
-    chatStreamWithScenario: jest.fn(),
+  const mockOrchestrator = {
+    run: jest.fn(),
+    stream: jest.fn(),
   };
 
   const mockExecutionRepository = {
@@ -30,17 +29,10 @@ describe('TestExecutionService', () => {
     countCompletedByBatchId: jest.fn(),
   };
 
-  const makeSuccessAgentResult = (text = 'Agent reply') => ({
-    status: AgentResultStatus.SUCCESS,
-    data: {
-      messages: [{ parts: [{ text }] }],
-      usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
-    },
-  });
-
-  const makeErrorAgentResult = (message = 'Agent error') => ({
-    status: AgentResultStatus.ERROR,
-    error: { code: 'ERR', message },
+  const makeSuccessResult = (text = 'Agent reply') => ({
+    text,
+    steps: 1,
+    usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
   });
 
   beforeEach(async () => {
@@ -48,15 +40,14 @@ describe('TestExecutionService', () => {
       providers: [
         TestExecutionService,
         { provide: ConfigService, useValue: mockConfigService },
-        { provide: AgentFacadeService, useValue: mockAgentFacade },
+        { provide: OrchestratorService, useValue: mockOrchestrator },
         { provide: TestExecutionRepository, useValue: mockExecutionRepository },
       ],
     }).compile();
 
     service = module.get<TestExecutionService>(TestExecutionService);
-    agentFacade = module.get(AgentFacadeService);
+    orchestrator = module.get(OrchestratorService);
     executionRepository = module.get(TestExecutionRepository);
-    _configService = module.get(ConfigService);
 
     jest.clearAllMocks();
   });
@@ -84,7 +75,7 @@ describe('TestExecutionService', () => {
     });
 
     it('should execute test and return response with SUCCESS status', async () => {
-      mockAgentFacade.chatWithScenario.mockResolvedValue(makeSuccessAgentResult('AI回复'));
+      mockOrchestrator.run.mockResolvedValue(makeSuccessResult('AI回复'));
 
       const result = await service.executeTest(baseRequest);
 
@@ -94,17 +85,8 @@ describe('TestExecutionService', () => {
       expect(result.response.statusCode).toBe(200);
     });
 
-    it('should return FAILURE status when agent returns error', async () => {
-      mockAgentFacade.chatWithScenario.mockResolvedValue(makeErrorAgentResult('Service error'));
-
-      const result = await service.executeTest(baseRequest);
-
-      expect(result.status).toBe(ExecutionStatus.FAILURE);
-      expect(result.response.statusCode).toBe(500);
-    });
-
     it('should return TIMEOUT status when timeout error is thrown', async () => {
-      mockAgentFacade.chatWithScenario.mockRejectedValue(new Error('Request timeout exceeded'));
+      mockOrchestrator.run.mockRejectedValue(new Error('Request timeout exceeded'));
 
       const result = await service.executeTest(baseRequest);
 
@@ -112,7 +94,7 @@ describe('TestExecutionService', () => {
     });
 
     it('should return FAILURE status for non-timeout errors', async () => {
-      mockAgentFacade.chatWithScenario.mockRejectedValue(new Error('Network error'));
+      mockOrchestrator.run.mockRejectedValue(new Error('Network error'));
 
       const result = await service.executeTest(baseRequest);
 
@@ -120,7 +102,7 @@ describe('TestExecutionService', () => {
     });
 
     it('should save execution record when saveExecution is true', async () => {
-      mockAgentFacade.chatWithScenario.mockResolvedValue(makeSuccessAgentResult());
+      mockOrchestrator.run.mockResolvedValue(makeSuccessResult());
       mockExecutionRepository.create.mockResolvedValue({ id: 'exec-1' } as any);
 
       const request = { ...baseRequest, saveExecution: true, batchId: 'batch-1' };
@@ -131,7 +113,7 @@ describe('TestExecutionService', () => {
     });
 
     it('should not save execution record when saveExecution is false', async () => {
-      mockAgentFacade.chatWithScenario.mockResolvedValue(makeSuccessAgentResult());
+      mockOrchestrator.run.mockResolvedValue(makeSuccessResult());
 
       await service.executeTest({ ...baseRequest, saveExecution: false });
 
@@ -139,7 +121,7 @@ describe('TestExecutionService', () => {
     });
 
     it('should save execution record by default when saveExecution is not set', async () => {
-      mockAgentFacade.chatWithScenario.mockResolvedValue(makeSuccessAgentResult());
+      mockOrchestrator.run.mockResolvedValue(makeSuccessResult());
       mockExecutionRepository.create.mockResolvedValue({ id: 'exec-2' } as any);
 
       const request = { ...baseRequest };
@@ -149,22 +131,35 @@ describe('TestExecutionService', () => {
       expect(executionRepository.create).toHaveBeenCalled();
     });
 
+    it('should call orchestrator.run with correct params', async () => {
+      mockOrchestrator.run.mockResolvedValue(makeSuccessResult());
+
+      await service.executeTest(baseRequest);
+
+      expect(orchestrator.run).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scenario: 'candidate-consultation',
+          userId: 'user-001',
+          corpId: 'test',
+        }),
+      );
+    });
+
     it('should use default scenario when none is provided', async () => {
-      mockAgentFacade.chatWithScenario.mockResolvedValue(makeSuccessAgentResult());
+      mockOrchestrator.run.mockResolvedValue(makeSuccessResult());
 
       const request = { ...baseRequest, scenario: undefined };
       await service.executeTest(request);
 
-      expect(agentFacade.chatWithScenario).toHaveBeenCalledWith(
-        'candidate-consultation',
-        expect.any(String),
-        baseRequest.message,
-        expect.any(Object),
+      expect(orchestrator.run).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scenario: 'candidate-consultation',
+        }),
       );
     });
 
-    it('should trim last 2 history entries before calling agent', async () => {
-      mockAgentFacade.chatWithScenario.mockResolvedValue(makeSuccessAgentResult());
+    it('should trim last 2 history entries and append current message', async () => {
+      mockOrchestrator.run.mockResolvedValue(makeSuccessResult());
 
       const history = [
         { role: MessageRole.USER, content: 'h1' },
@@ -174,13 +169,17 @@ describe('TestExecutionService', () => {
       ];
       await service.executeTest({ ...baseRequest, history });
 
-      const callArgs = agentFacade.chatWithScenario.mock.calls[0];
-      const options = callArgs[3] as { messages: unknown[] };
-      expect(options.messages).toHaveLength(2); // sliced last 2
+      const callArgs = orchestrator.run.mock.calls[0][0];
+      // history sliced to first 2 + current user message = 3
+      expect(callArgs.messages).toHaveLength(3);
+      expect(callArgs.messages[callArgs.messages.length - 1]).toEqual({
+        role: 'user',
+        content: baseRequest.message,
+      });
     });
 
     it('should include token usage in metrics', async () => {
-      mockAgentFacade.chatWithScenario.mockResolvedValue(makeSuccessAgentResult());
+      mockOrchestrator.run.mockResolvedValue(makeSuccessResult());
 
       const result = await service.executeTest(baseRequest);
 
@@ -191,11 +190,8 @@ describe('TestExecutionService', () => {
       });
     });
 
-    it('should return zero token usage when agent has no data', async () => {
-      mockAgentFacade.chatWithScenario.mockResolvedValue({
-        status: AgentResultStatus.ERROR,
-        error: { code: 'ERR', message: 'fail' },
-      });
+    it('should return zero token usage when orchestrator throws', async () => {
+      mockOrchestrator.run.mockRejectedValue(new Error('fail'));
 
       const result = await service.executeTest(baseRequest);
 
@@ -220,10 +216,9 @@ describe('TestExecutionService', () => {
     });
 
     it('should return a readable stream', async () => {
-      const mockStream = { pipe: jest.fn() } as unknown as NodeJS.ReadableStream;
-      mockAgentFacade.chatStreamWithScenario.mockResolvedValue({
-        stream: mockStream,
-        estimatedInputTokens: 100,
+      const mockTextStream = { pipe: jest.fn() } as unknown as NodeJS.ReadableStream;
+      mockOrchestrator.stream.mockReturnValue({
+        textStream: mockTextStream,
       });
 
       const result = await service.executeTestStream({
@@ -231,79 +226,7 @@ describe('TestExecutionService', () => {
         userId: 'user-1',
       });
 
-      expect(result).toBe(mockStream);
-    });
-  });
-
-  // ========== executeTestStreamWithMeta ==========
-
-  describe('executeTestStreamWithMeta', () => {
-    it('should return stream and estimatedInputTokens', async () => {
-      const mockStream = {} as NodeJS.ReadableStream;
-      mockAgentFacade.chatStreamWithScenario.mockResolvedValue({
-        stream: mockStream,
-        estimatedInputTokens: 250,
-      });
-
-      const result = await service.executeTestStreamWithMeta({
-        message: 'hello',
-        userId: 'user-1',
-      });
-
-      expect(result.stream).toBe(mockStream);
-      expect(result.estimatedInputTokens).toBe(250);
-    });
-
-    it('should not trim history when skipHistoryTrim is true', async () => {
-      const mockStream = {} as NodeJS.ReadableStream;
-      mockAgentFacade.chatStreamWithScenario.mockResolvedValue({
-        stream: mockStream,
-        estimatedInputTokens: 100,
-      });
-
-      const history = [
-        { role: MessageRole.USER, content: 'h1' },
-        { role: MessageRole.ASSISTANT, content: 'h2' },
-        { role: MessageRole.USER, content: 'h3' },
-        { role: MessageRole.ASSISTANT, content: 'h4' },
-      ];
-
-      await service.executeTestStreamWithMeta({
-        message: 'hello',
-        userId: 'user-1',
-        history,
-        skipHistoryTrim: true,
-      });
-
-      const callArgs = agentFacade.chatStreamWithScenario.mock.calls[0];
-      const options = callArgs[3] as { messages: unknown[] };
-      expect(options.messages).toHaveLength(4); // all preserved
-    });
-
-    it('should trim last 2 history entries when skipHistoryTrim is false', async () => {
-      const mockStream = {} as NodeJS.ReadableStream;
-      mockAgentFacade.chatStreamWithScenario.mockResolvedValue({
-        stream: mockStream,
-        estimatedInputTokens: 100,
-      });
-
-      const history = [
-        { role: MessageRole.USER, content: 'h1' },
-        { role: MessageRole.ASSISTANT, content: 'h2' },
-        { role: MessageRole.USER, content: 'h3' },
-        { role: MessageRole.ASSISTANT, content: 'h4' },
-      ];
-
-      await service.executeTestStreamWithMeta({
-        message: 'hello',
-        userId: 'user-1',
-        history,
-        skipHistoryTrim: false,
-      });
-
-      const callArgs = agentFacade.chatStreamWithScenario.mock.calls[0];
-      const options = callArgs[3] as { messages: unknown[] };
-      expect(options.messages).toHaveLength(2); // sliced
+      expect(result).toBe(mockTextStream);
     });
   });
 

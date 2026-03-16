@@ -1,33 +1,60 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { LlmEvaluationService } from '@biz/test-suite/services/conversation/llm-evaluation.service';
-import { AgentService } from '@agent';
+import { RouterService } from '@providers/router.service';
 import { SimilarityRating } from '@biz/test-suite/enums/test.enum';
+
+// Mock the 'ai' module
+jest.mock('ai', () => ({
+  generateText: jest.fn(),
+}));
+
+import { generateText } from 'ai';
+
+const mockGenerateText = generateText as jest.MockedFunction<typeof generateText>;
 
 describe('LlmEvaluationService', () => {
   let service: LlmEvaluationService;
-  let agentService: jest.Mocked<AgentService>;
 
-  const mockAgentService = {
-    chat: jest.fn(),
+  const mockRouter = {
+    resolveByRole: jest.fn().mockReturnValue({ modelId: 'test-model' }),
   };
 
-  const makeAgentResult = (jsonText: string) => ({
-    status: 'success',
-    data: {
-      messages: [{ parts: [{ text: jsonText }] }],
-      usage: { inputTokens: 50, outputTokens: 30, totalTokens: 80 },
-    },
+  const makeGenerateResult = (text: string) => ({
+    text,
+    usage: { inputTokens: 50, outputTokens: 30, totalTokens: 80, promptTokens: 50, completionTokens: 30 },
+    finishReason: 'stop' as const,
+    response: { id: 'test', timestamp: new Date(), modelId: 'test-model', headers: {} },
+    reasoning: undefined,
+    reasoningDetails: [],
+    experimental_output: undefined,
+    sources: [],
+    files: [],
+    steps: [],
+    request: { body: '' },
+    warnings: [],
+    providerMetadata: undefined,
+    experimental_providerMetadata: undefined,
+    toolCalls: [],
+    toolResults: [],
+    responseMessages: [],
+    roundtrips: [],
+    toJsonResponse: jest.fn(),
+    toDataStream: jest.fn(),
+    toDataStreamResponse: jest.fn(),
+    pipeDataStreamToResponse: jest.fn(),
+    toTextStreamResponse: jest.fn(),
+    pipeTextStreamToResponse: jest.fn(),
+    textStream: {} as any,
   });
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [LlmEvaluationService, { provide: AgentService, useValue: mockAgentService }],
+      providers: [LlmEvaluationService, { provide: RouterService, useValue: mockRouter }],
     }).compile();
 
     service = module.get<LlmEvaluationService>(LlmEvaluationService);
-    agentService = module.get(AgentService);
-
     jest.clearAllMocks();
+    mockRouter.resolveByRole.mockReturnValue({ modelId: 'test-model' });
   });
 
   it('should be defined', () => {
@@ -44,8 +71,8 @@ describe('LlmEvaluationService', () => {
     };
 
     it('should return evaluation result with correct score and passed flag', async () => {
-      mockAgentService.chat.mockResolvedValue(
-        makeAgentResult('{"score": 85, "passed": true, "reason": "回复内容基本一致"}'),
+      mockGenerateText.mockResolvedValue(
+        makeGenerateResult('{"score": 85, "passed": true, "reason": "回复内容基本一致"}') as any,
       );
 
       const result = await service.evaluate(input);
@@ -57,8 +84,8 @@ describe('LlmEvaluationService', () => {
     });
 
     it('should include token usage when available', async () => {
-      mockAgentService.chat.mockResolvedValue(
-        makeAgentResult('{"score": 70, "passed": true, "reason": "良好"}'),
+      mockGenerateText.mockResolvedValue(
+        makeGenerateResult('{"score": 70, "passed": true, "reason": "良好"}') as any,
       );
 
       const result = await service.evaluate(input);
@@ -70,8 +97,8 @@ describe('LlmEvaluationService', () => {
       });
     });
 
-    it('should return zero score on agent chat failure', async () => {
-      mockAgentService.chat.mockRejectedValue(new Error('API connection failed'));
+    it('should return zero score on generateText failure', async () => {
+      mockGenerateText.mockRejectedValue(new Error('API connection failed'));
 
       const result = await service.evaluate(input);
 
@@ -80,21 +107,9 @@ describe('LlmEvaluationService', () => {
       expect(result.reason).toContain('评估失败');
     });
 
-    it('should return zero score when agent response is empty', async () => {
-      mockAgentService.chat.mockResolvedValue({
-        status: 'error',
-        error: { code: 'ERR', message: 'failed' },
-      });
-
-      const result = await service.evaluate(input);
-
-      expect(result.score).toBe(0);
-      expect(result.passed).toBe(false);
-    });
-
     it('should handle markdown code block wrapped JSON', async () => {
       const jsonWithMarkdown = '```json\n{"score": 75, "passed": true, "reason": "良好"}\n```';
-      mockAgentService.chat.mockResolvedValue(makeAgentResult(jsonWithMarkdown));
+      mockGenerateText.mockResolvedValue(makeGenerateResult(jsonWithMarkdown) as any);
 
       const result = await service.evaluate(input);
 
@@ -102,23 +117,19 @@ describe('LlmEvaluationService', () => {
       expect(result.passed).toBe(true);
     });
 
-    it('should call agent with empty allowedTools to disable tools', async () => {
-      mockAgentService.chat.mockResolvedValue(
-        makeAgentResult('{"score": 80, "passed": true, "reason": "ok"}'),
+    it('should call router.resolveByRole with "chat"', async () => {
+      mockGenerateText.mockResolvedValue(
+        makeGenerateResult('{"score": 80, "passed": true, "reason": "ok"}') as any,
       );
 
       await service.evaluate(input);
 
-      expect(agentService.chat).toHaveBeenCalledWith(
-        expect.objectContaining({
-          allowedTools: [],
-        }),
-      );
+      expect(mockRouter.resolveByRole).toHaveBeenCalledWith('chat');
     });
 
     it('should include conversation history in the user message when provided', async () => {
-      mockAgentService.chat.mockResolvedValue(
-        makeAgentResult('{"score": 80, "passed": true, "reason": "ok"}'),
+      mockGenerateText.mockResolvedValue(
+        makeGenerateResult('{"score": 80, "passed": true, "reason": "ok"}') as any,
       );
 
       const inputWithHistory = {
@@ -131,15 +142,14 @@ describe('LlmEvaluationService', () => {
 
       await service.evaluate(inputWithHistory);
 
-      const chatCall = agentService.chat.mock.calls[0][0];
-      expect(chatCall.userMessage).toContain('对话历史');
-      expect(chatCall.userMessage).toContain('你好');
+      const callArgs = mockGenerateText.mock.calls[0][0];
+      expect(callArgs.prompt).toContain('对话历史');
+      expect(callArgs.prompt).toContain('你好');
     });
 
     it('should auto-correct passed flag when inconsistent with score', async () => {
-      // score >= 60 should be true, but JSON says false
-      mockAgentService.chat.mockResolvedValue(
-        makeAgentResult('{"score": 75, "passed": false, "reason": "inconsistent"}'),
+      mockGenerateText.mockResolvedValue(
+        makeGenerateResult('{"score": 75, "passed": false, "reason": "inconsistent"}') as any,
       );
 
       const result = await service.evaluate(input);
@@ -149,8 +159,8 @@ describe('LlmEvaluationService', () => {
     });
 
     it('should clamp score to 0-100 range', async () => {
-      mockAgentService.chat.mockResolvedValue(
-        makeAgentResult('{"score": 150, "passed": true, "reason": "out of range"}'),
+      mockGenerateText.mockResolvedValue(
+        makeGenerateResult('{"score": 150, "passed": true, "reason": "out of range"}') as any,
       );
 
       const result = await service.evaluate(input);
@@ -159,7 +169,7 @@ describe('LlmEvaluationService', () => {
     });
 
     it('should return zero score when JSON is malformed', async () => {
-      mockAgentService.chat.mockResolvedValue(makeAgentResult('not valid json at all'));
+      mockGenerateText.mockResolvedValue(makeGenerateResult('not valid json at all') as any);
 
       const result = await service.evaluate(input);
 
@@ -168,8 +178,8 @@ describe('LlmEvaluationService', () => {
     });
 
     it('should return zero score when JSON is missing required fields', async () => {
-      mockAgentService.chat.mockResolvedValue(
-        makeAgentResult('{"score": 80}'), // missing passed and reason
+      mockGenerateText.mockResolvedValue(
+        makeGenerateResult('{"score": 80}') as any, // missing passed and reason
       );
 
       const result = await service.evaluate(input);
@@ -178,8 +188,8 @@ describe('LlmEvaluationService', () => {
     });
 
     it('should return zero score when field types are wrong', async () => {
-      mockAgentService.chat.mockResolvedValue(
-        makeAgentResult('{"score": "high", "passed": "yes", "reason": 123}'),
+      mockGenerateText.mockResolvedValue(
+        makeGenerateResult('{"score": "high", "passed": "yes", "reason": 123}') as any,
       );
 
       const result = await service.evaluate(input);
@@ -189,8 +199,8 @@ describe('LlmEvaluationService', () => {
 
     it('should truncate reason to 200 characters', async () => {
       const longReason = 'a'.repeat(300);
-      mockAgentService.chat.mockResolvedValue(
-        makeAgentResult(`{"score": 80, "passed": true, "reason": "${longReason}"}`),
+      mockGenerateText.mockResolvedValue(
+        makeGenerateResult(`{"score": 80, "passed": true, "reason": "${longReason}"}`) as any,
       );
 
       const result = await service.evaluate(input);

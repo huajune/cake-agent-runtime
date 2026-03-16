@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AgentService } from '@agent';
+import { RouterService } from '@providers/router.service';
+import { generateText } from 'ai';
 import { randomUUID } from 'crypto';
 import { SimilarityRating } from '../../enums/test.enum';
 import { LlmEvaluationResult, EvaluationInput } from '../../types/test-suite.types';
@@ -8,9 +9,6 @@ export type { LlmEvaluationResult, EvaluationInput };
 
 /** 通过分数阈值 */
 const PASS_THRESHOLD = 60;
-
-/** 评估使用的模型（Claude Sonnet 4.5 - 最佳评估准确度） */
-const EVALUATION_MODEL = 'anthropic/claude-sonnet-4-5-20250929';
 
 /**
  * LLM 评估服务
@@ -22,7 +20,7 @@ const EVALUATION_MODEL = 'anthropic/claude-sonnet-4-5-20250929';
 export class LlmEvaluationService {
   private readonly logger = new Logger(LlmEvaluationService.name);
 
-  constructor(private readonly agentService: AgentService) {
+  constructor(private readonly router: RouterService) {
     this.logger.log('LlmEvaluationService 初始化完成');
   }
 
@@ -42,26 +40,21 @@ export class LlmEvaluationService {
       // 构建系统提示词（定义评估者角色和规则）和用户消息（待评估内容）
       const { systemPrompt, userMessage } = this.buildEvaluationPrompts(input);
 
-      // 调用 Agent API 进行评估
-      // 注意：必须禁用工具调用，确保获得纯文本 JSON 响应
-      const result = await this.agentService.chat({
-        sessionId: evaluationId,
-        userMessage,
-        model: EVALUATION_MODEL,
-        allowedTools: [], // 禁用所有工具，只需要纯 LLM 回复
-        systemPrompt,
+      // 调用 LLM 进行评估
+      // 注意：不注册任何工具，确保获得纯文本 JSON 响应
+      const model = this.router.resolveByRole('chat');
+      const aiResult = await generateText({
+        model,
+        system: systemPrompt,
+        prompt: userMessage,
       });
 
       // 提取响应文本
-      const responseText = this.extractResponseText(result);
+      const responseText = aiResult.text;
 
       // 调试日志：记录原始响应和提取结果
       if (!responseText) {
-        this.logger.warn(
-          `LLM 评估响应为空, result.status=${result.status}, ` +
-            `hasData=${!!result.data}, hasFallback=${!!result.fallback}`,
-        );
-        this.logger.warn(`完整响应: ${JSON.stringify(result).slice(0, 1000)}`);
+        this.logger.warn(`LLM 评估响应为空, evaluationId=${evaluationId}`);
       } else {
         this.logger.debug(`提取的文本 (${responseText.length}字): ${responseText.slice(0, 300)}`);
       }
@@ -70,11 +63,11 @@ export class LlmEvaluationService {
       const evaluation = this.parseEvaluationResult(responseText, evaluationId);
 
       // 添加 token 使用信息
-      if (result.data?.usage) {
+      if (aiResult.usage) {
         evaluation.tokenUsage = {
-          inputTokens: result.data.usage.inputTokens,
-          outputTokens: result.data.usage.outputTokens,
-          totalTokens: result.data.usage.totalTokens,
+          inputTokens: aiResult.usage.inputTokens ?? 0,
+          outputTokens: aiResult.usage.outputTokens ?? 0,
+          totalTokens: aiResult.usage.totalTokens,
         };
       }
 
@@ -175,27 +168,6 @@ ${actualOutput}
 请按照评分规则进行评估，直接输出 JSON 结果。`;
 
     return { systemPrompt, userMessage };
-  }
-
-  /**
-   * 从 Agent 响应中提取文本
-   */
-  private extractResponseText(result: any): string {
-    try {
-      const response = result.data || result.fallback;
-      if (!response?.messages?.length) return '';
-
-      return response.messages
-        .map((msg: any) => {
-          if (msg.parts) {
-            return msg.parts.map((p: any) => p.text || '').join('');
-          }
-          return '';
-        })
-        .join('');
-    } catch {
-      return '';
-    }
   }
 
   /**
