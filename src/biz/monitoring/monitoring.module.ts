@@ -20,7 +20,7 @@ import { AnalyticsAlertService } from './services/analytics/analytics-alert.serv
 import { DataCleanupService } from './services/cleanup/data-cleanup.service';
 
 // Controllers
-import { AnalyticsController, DashboardController } from './monitoring.controller';
+import { AnalyticsController, WebController } from './monitoring.controller';
 
 // Repositories
 import { MonitoringRepository } from './repositories/monitoring.repository';
@@ -44,7 +44,7 @@ import { MonitoringErrorLogRepository } from './repositories/monitoring-error-lo
     UserModule,
     HostingConfigModule,
   ],
-  controllers: [AnalyticsController, DashboardController],
+  controllers: [AnalyticsController, WebController],
   providers: [
     // Repositories
     MonitoringRepository,

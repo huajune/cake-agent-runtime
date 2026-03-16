@@ -43,11 +43,11 @@ DDD layered architecture:
 
 ---
 
-## Dashboard (`dashboard/`)
+## Web (`web/`)
 
 **Tech Stack**: React 18 | TypeScript 5.6 | Vite | Tailwind CSS | TanStack React Query | Zustand | Axios
 
-### Dashboard Directory Structure
+### Web Directory Structure
 
 - `api/services/` — API service modules (one per backend domain)
 - `api/types/` — TypeScript interfaces for API data
@@ -57,14 +57,14 @@ DDD layered architecture:
 - `utils/` — utility functions
 - `constants/` — app constants
 
-### Dashboard Critical (must block PR)
+### Web Critical (must block PR)
 
 - XSS vulnerabilities (unescaped `dangerouslySetInnerHTML`, unescaped user input)
 - Hardcoded API URLs, tokens, or credentials
 - Missing error handling on API calls (Axios/React Query)
 - Memory leaks (uncleared timers, unsubscribed listeners, missing cleanup in useEffect)
 
-### Dashboard Code Quality (should fix)
+### Web Code Quality (should fix)
 
 - TypeScript strict typing — no `any` abuse
 - React best practices:
@@ -76,11 +76,11 @@ DDD layered architecture:
 - Component files <= 300 lines — extract sub-components or hooks if too large
 - Naming: PascalCase components, camelCase hooks (`useXxx`), kebab-case files
 
-### Dashboard Architecture (should fix)
+### Web Architecture (should fix)
 
 - New API types must be in `api/types/`, not inline
 - Shared logic must be in `hooks/` or `utils/`, not duplicated across views
-- Route paths must use `/dashboard` prefix (basename configuration)
+- Route paths must use `/web` prefix (basename configuration)
 
 ---
 
@@ -89,7 +89,7 @@ DDD layered architecture:
 - Code improvements and optimizations
 - Better naming or structure
 - Missing test coverage for critical paths
-- Accessibility improvements (dashboard)
+- Accessibility improvements (web)
 
 ## Review Output Format
 

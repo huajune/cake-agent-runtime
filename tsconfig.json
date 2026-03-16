@@ -93,6 +93,6 @@
   "exclude": [
     "node_modules",
     "dist",
-    "dashboard"
+    "web"
   ]
 }

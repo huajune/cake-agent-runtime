@@ -25,7 +25,7 @@ priority: high
 > **FOR AI AGENTS**: See [code-quality-guardian.md](code-quality-guardian.md) for enforcement checklist
 
 **Last Updated**: 2025-01-05
-**Applies To**: All code in `dashboard/` directory
+**Applies To**: All code in `web/` directory
 **Tech Stack**: React 18 + TypeScript + Vite + SCSS Modules
 
 ---

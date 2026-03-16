@@ -31,8 +31,8 @@ pnpm run format        # Prettier formatting
 pnpm run test          # Run tests
 pnpm run test:cov      # Test coverage
 
-# Single test file
-pnpm run test -- message.service.spec.ts
+# Single test file (tests are in tests/ directory, mirroring src/ structure)
+pnpm run test -- tests/wecom/message/message.service.spec.ts
 
 # Database Migrations (Supabase CLI)
 pnpm run db:new <name>  # Create new migration
