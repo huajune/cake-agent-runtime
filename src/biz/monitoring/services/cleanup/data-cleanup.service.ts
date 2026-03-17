@@ -1,10 +1,10 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
-import { SupabaseService } from '@core/supabase';
+import { SupabaseService } from '@infra/supabase/supabase.service';
 import { ChatMessageRepository } from '@biz/message/repositories/chat-message.repository';
 import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
-import { MonitoringErrorLogRepository } from '../../repositories/monitoring-error-log.repository';
+import { MonitoringErrorLogRepository } from '../../repositories/error-log.repository';
 import { UserHostingRepository } from '@biz/user/repositories/user-hosting.repository';
 
 /**

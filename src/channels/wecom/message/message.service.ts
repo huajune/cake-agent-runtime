@@ -4,10 +4,10 @@ import { MessageTrackingService } from '@biz/monitoring/services/tracking/messag
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 
 // 导入子服务
-import { MessageHistoryService } from './services/message-history.service';
+import { MessageHistoryService } from './services/history.service';
 import { SimpleMergeService } from './services/simple-merge.service';
-import { MessageStatisticsService } from './services/message-statistics.service';
-import { MessagePipelineService } from './services/message-pipeline.service';
+import { MessageStatisticsService } from './services/statistics.service';
+import { MessagePipelineService } from './services/pipeline.service';
 
 // 导入工具和类型
 import { MessageParser } from './utils/message-parser.util';

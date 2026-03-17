@@ -9,9 +9,9 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { FeishuAlertService } from '@core/feishu';
-import { ProfileLoaderService } from './services/profile-loader.service';
-import { OrchestratorService } from './services/orchestrator.service';
+import { FeishuAlertService } from '@infra/feishu/services/alert.service';
+import { ProfileLoaderService } from './profile-loader.service';
+import { OrchestratorService } from './orchestrator.service';
 import { RouterService } from '@providers/router.service';
 import { ToolRegistryService } from '@tools/tool-registry.service';
 

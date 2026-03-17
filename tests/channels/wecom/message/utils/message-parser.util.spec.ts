@@ -6,7 +6,7 @@ import {
   MessageSource,
   LocationPayload,
 } from '@wecom/message/dto/message-callback.dto';
-import { ScenarioType } from '@agent';
+import { ScenarioType } from '@enums/agent.enum';
 
 describe('MessageParser', () => {
   const buildMessageData = (

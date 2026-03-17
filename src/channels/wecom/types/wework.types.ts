@@ -1,7 +1,7 @@
 /**
  * 企微 Agent 类型定义
  *
- * 迁移自花卷 agent:
+ * 迁移自原 agent 模块:
  * - types/reply-policy.ts → 漏斗阶段、回复需求、风险标记、回合规划
  * - lib/tools/wework/types.ts → 实体提取、计划输出
  * - lib/memory/wework/session-memory.ts → 会话状态、推荐岗位摘要

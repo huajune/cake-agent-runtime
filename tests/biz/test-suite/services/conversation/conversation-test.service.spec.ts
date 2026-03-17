@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConversationTestService } from '@biz/test-suite/services/conversation/conversation-test.service';
-import { OrchestratorService } from '@agent/services/orchestrator.service';
+import { OrchestratorService } from '@agent/orchestrator.service';
 import { LlmEvaluationService } from '@biz/test-suite/services/conversation/llm-evaluation.service';
 import { ConversationParserService } from '@biz/test-suite/services/conversation/conversation-parser.service';
 import { ConversationSnapshotRepository } from '@biz/test-suite/repositories/conversation-snapshot.repository';

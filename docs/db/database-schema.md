@@ -101,7 +101,7 @@
 
 - Repository: `src/biz/message/repositories/chat-message.repository.ts`
 - Entity: `src/biz/message/entities/chat-message.entity.ts`
-- Enum: `src/wecom/message/enums/chat-message.enum.ts`
+- Enum: `src/channels/wecom/message/enums/chat-message.enum.ts`
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|

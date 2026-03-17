@@ -4,7 +4,7 @@ import {
   MonitoringErrorLog,
   MonitoringGlobalCounters,
   AlertErrorType,
-} from '../../types/tracking.types';
+} from '@shared-types/tracking.types';
 import {
   HourlyStats,
   MetricsData,
@@ -17,8 +17,8 @@ import {
 } from '../../types/analytics.types';
 import { MonitoringCacheService } from '../tracking/monitoring-cache.service';
 import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
-import { MonitoringHourlyStatsRepository } from '../../repositories/monitoring-hourly-stats.repository';
-import { MonitoringErrorLogRepository } from '../../repositories/monitoring-error-log.repository';
+import { MonitoringHourlyStatsRepository } from '../../repositories/hourly-stats.repository';
+import { MonitoringErrorLogRepository } from '../../repositories/error-log.repository';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { MessageTrackingService } from '../tracking/message-tracking.service';
 import * as os from 'os';

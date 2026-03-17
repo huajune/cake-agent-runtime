@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { DataCleanupService } from '@biz/monitoring/services/cleanup/data-cleanup.service';
-import { SupabaseService } from '@core/supabase';
+import { SupabaseService } from '@infra/supabase/supabase.service';
 import { ChatMessageRepository } from '@biz/message/repositories/chat-message.repository';
 import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
-import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/monitoring-error-log.repository';
+import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error-log.repository';
 import { UserHostingRepository } from '@biz/user/repositories/user-hosting.repository';
 
 describe('DataCleanupService', () => {

@@ -2,9 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AnalyticsMaintenanceService } from '@biz/monitoring/services/analytics/analytics-maintenance.service';
 import { MonitoringCacheService } from '@biz/monitoring/services/tracking/monitoring-cache.service';
 import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
-import { MonitoringHourlyStatsRepository } from '@biz/monitoring/repositories/monitoring-hourly-stats.repository';
-import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/monitoring-error-log.repository';
-import { MonitoringRepository } from '@biz/monitoring/repositories/monitoring.repository';
+import { MonitoringHourlyStatsRepository } from '@biz/monitoring/repositories/hourly-stats.repository';
+import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error-log.repository';
+import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.repository';
 
 describe('AnalyticsMaintenanceService', () => {
   let service: AnalyticsMaintenanceService;
@@ -12,7 +12,7 @@ describe('AnalyticsMaintenanceService', () => {
   let hourlyStatsRepository: jest.Mocked<MonitoringHourlyStatsRepository>;
   let errorLogRepository: jest.Mocked<MonitoringErrorLogRepository>;
   let cacheService: jest.Mocked<MonitoringCacheService>;
-  let monitoringRepository: jest.Mocked<MonitoringRepository>;
+  let monitoringRepository: jest.Mocked<MonitoringRecordRepository>;
 
   const mockMessageProcessingRepository = {
     clearAllRecords: jest.fn(),
@@ -32,7 +32,7 @@ describe('AnalyticsMaintenanceService', () => {
     clearAll: jest.fn(),
   };
 
-  const mockMonitoringRepository = {
+  const mockMonitoringRecordRepository = {
     aggregateHourlyStats: jest.fn(),
   };
 
@@ -57,8 +57,8 @@ describe('AnalyticsMaintenanceService', () => {
           useValue: mockCacheService,
         },
         {
-          provide: MonitoringRepository,
-          useValue: mockMonitoringRepository,
+          provide: MonitoringRecordRepository,
+          useValue: mockMonitoringRecordRepository,
         },
       ],
     }).compile();
@@ -68,7 +68,7 @@ describe('AnalyticsMaintenanceService', () => {
     hourlyStatsRepository = module.get(MonitoringHourlyStatsRepository);
     errorLogRepository = module.get(MonitoringErrorLogRepository);
     cacheService = module.get(MonitoringCacheService);
-    monitoringRepository = module.get(MonitoringRepository);
+    monitoringRepository = module.get(MonitoringRecordRepository);
 
     jest.clearAllMocks();
 
@@ -186,7 +186,7 @@ describe('AnalyticsMaintenanceService', () => {
         scenarioStats: { job_consulting: { count: 30, successCount: 28, avgDuration: 5000 } },
         toolStats: { booking: 5 },
       };
-      mockMonitoringRepository.aggregateHourlyStats.mockResolvedValue(mockAggregated);
+      mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue(mockAggregated);
 
       await service.aggregateHourlyStats();
 
@@ -232,7 +232,7 @@ describe('AnalyticsMaintenanceService', () => {
         scenarioStats: {},
         toolStats: {},
       };
-      mockMonitoringRepository.aggregateHourlyStats.mockResolvedValue(mockAggregated);
+      mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue(mockAggregated);
 
       await service.aggregateHourlyStats();
 
@@ -244,7 +244,7 @@ describe('AnalyticsMaintenanceService', () => {
     });
 
     it('should skip saving when aggregated data has zero messages', async () => {
-      mockMonitoringRepository.aggregateHourlyStats.mockResolvedValue({
+      mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue({
         messageCount: 0,
         successCount: 0,
         failureCount: 0,
@@ -272,7 +272,7 @@ describe('AnalyticsMaintenanceService', () => {
     });
 
     it('should skip saving when aggregated data is null', async () => {
-      mockMonitoringRepository.aggregateHourlyStats.mockResolvedValue(null);
+      mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue(null);
 
       await service.aggregateHourlyStats();
 
@@ -280,7 +280,7 @@ describe('AnalyticsMaintenanceService', () => {
     });
 
     it('should not throw when aggregation fails', async () => {
-      mockMonitoringRepository.aggregateHourlyStats.mockRejectedValue(new Error('DB error'));
+      mockMonitoringRecordRepository.aggregateHourlyStats.mockRejectedValue(new Error('DB error'));
 
       await expect(service.aggregateHourlyStats()).resolves.not.toThrow();
     });
@@ -307,7 +307,7 @@ describe('AnalyticsMaintenanceService', () => {
         scenarioStats: {},
         toolStats: {},
       };
-      mockMonitoringRepository.aggregateHourlyStats.mockResolvedValue(mockAggregated);
+      mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue(mockAggregated);
 
       await service.aggregateHourlyStats();
 

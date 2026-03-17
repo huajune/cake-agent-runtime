@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { MemoryService } from '@memory/memory.service';
-import { AiTool, ToolBuildContext, ToolFactory } from './tool.types';
+import { AiTool, ToolBuildContext, ToolFactory } from '@shared-types/tool.types';
 
 /**
  * memory_store — LLM 工具：存储候选人事实信息到记忆

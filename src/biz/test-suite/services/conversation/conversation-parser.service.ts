@@ -4,7 +4,7 @@ import {
   ConversationTurn,
   ConversationParseResult,
 } from '../../dto/conversation-test.dto';
-import type { AgentResult } from '@agent';
+import type { AgentRunResult } from '@agent/orchestrator.service';
 
 /**
  * 对话解析正则表达式
@@ -134,82 +134,18 @@ export class ConversationParserService {
   }
 
   /**
-   * 提取响应文本
+   * 从 AgentRunResult 提取响应文本
    */
-  extractResponseText(result: AgentResult): string {
-    try {
-      const response = result.data || result.fallback;
-      if (!response?.messages?.length) return '';
-
-      return response.messages
-        .map((msg) => {
-          if (msg.parts) {
-            return msg.parts.map((p) => p.text || '').join('');
-          }
-          return '';
-        })
-        .join('\n\n');
-    } catch {
-      return '';
-    }
+  extractResponseText(result: AgentRunResult): string {
+    return result.text || '';
   }
 
   /**
-   * 提取工具调用
-   * 使用两遍扫描配对 tool_call/tool_use 和 tool_result
+   * 从 AgentRunResult 提取工具调用
+   * 新架构下 AgentRunResult 不包含工具调用明细，返回空数组
    */
-  extractToolCalls(result: AgentResult): unknown[] {
-    try {
-      const response = result.data || result.fallback;
-      if (!response?.messages?.length) return [];
-
-      // 第一遍: 收集所有 tool_call/tool_use
-      const toolCallMap = new Map<string, { toolName: string; input: unknown; output?: unknown }>();
-
-      for (const msg of response.messages) {
-        if (!msg.parts) continue;
-
-        for (const part of msg.parts) {
-          const partAny = part as unknown as Record<string, unknown>;
-
-          // 提取 tool_call/tool_use
-          if (partAny.type === 'tool_call' || partAny.type === 'tool_use') {
-            const toolCallId = (partAny.toolCallId || partAny.id) as string;
-            const toolName = (partAny.toolName || partAny.name) as string;
-            const input = partAny.input || partAny.args;
-
-            if (toolCallId && toolName) {
-              toolCallMap.set(toolCallId, { toolName, input });
-            }
-          }
-        }
-      }
-
-      // 第二遍: 匹配 tool_result
-      for (const msg of response.messages) {
-        if (!msg.parts) continue;
-
-        for (const part of msg.parts) {
-          const partAny = part as unknown as Record<string, unknown>;
-
-          // 提取 tool_result
-          if (partAny.type === 'tool_result') {
-            const toolCallId = partAny.toolCallId as string;
-            const output = partAny.result || partAny.output;
-
-            if (toolCallId && toolCallMap.has(toolCallId)) {
-              const toolCall = toolCallMap.get(toolCallId)!;
-              toolCall.output = output;
-            }
-          }
-        }
-      }
-
-      // 转换为数组格式
-      return Array.from(toolCallMap.values());
-    } catch {
-      return [];
-    }
+  extractToolCalls(_result: AgentRunResult): unknown[] {
+    return [];
   }
 
   /**

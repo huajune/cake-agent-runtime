@@ -1,15 +1,15 @@
 import { Controller, Post, Body, Logger, Get, Query, Delete, Param } from '@nestjs/common';
 import { MessageService } from './message.service';
 import { MessageProcessor } from './message.processor';
-import { RawResponse } from '@core/server';
+import { RawResponse } from '@infra/server/response/decorators/api-response.decorator';
 import {
   MessageType,
   ContactType,
   MessageSource,
   EnterpriseMessageCallbackDto,
 } from './dto/message-callback.dto';
-import { MessageCallbackAdapterService } from './services/message-callback-adapter.service';
-import { MessageFilterService } from './services/message-filter.service';
+import { MessageCallbackAdapterService } from './services/callback-adapter.service';
+import { MessageFilterService } from './services/filter.service';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
 import { LogSanitizer } from './utils/log-sanitizer.util';
 

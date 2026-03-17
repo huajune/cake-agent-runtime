@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { MemoryStoreToolService } from '@tools/memory-store.tool';
 import { MemoryService } from '@memory/memory.service';
-import { ToolBuildContext } from '@tools/tool.types';
+import { ToolBuildContext } from '@shared-types/tool.types';
 
 describe('MemoryStoreToolService', () => {
   let service: MemoryStoreToolService;

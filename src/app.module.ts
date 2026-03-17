@@ -1,20 +1,21 @@
 /* eslint-disable prettier/prettier */
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { HttpModule, RedisModule } from './core';
-import { SupabaseModule } from '@core/supabase';
-import { LoggerModule } from './core/logger';
-import { FeishuModule } from './core/feishu';
+import { HttpModule } from './infra/client-http/http.module';
+import { RedisModule } from './infra/redis/redis.module';
+import { SupabaseModule } from '@infra/supabase/supabase.module';
+import { LoggerModule } from './infra/logger/logger.module';
+import { FeishuModule } from './infra/feishu/feishu.module';
 import { ProvidersModule } from '@providers/providers.module';
 import { ToolModule } from '@tools/tool.module';
 import { McpModule } from '@mcp/mcp.module';
 import { MemoryModule } from '@memory/memory.module';
 import { SpongeModule } from '@sponge/sponge.module';
-import { ObservabilityModule } from '@/observability';
-import { AgentModule } from './agent';
+import { ObservabilityModule } from '@/observability/observability.module';
+import { AgentModule } from './agent/agent.module';
 import { WecomModule } from '@channels/wecom/wecom.module';
 import { BizModule } from '@biz/biz.module';
-import { validate } from './core/config/env.validation';
+import { validate } from './infra/config/env.validation';
 
 /**
  * 应用根模块

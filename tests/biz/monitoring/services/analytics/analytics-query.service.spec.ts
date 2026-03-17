@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ScenarioType } from '@agent';
+import { ScenarioType } from '@enums/agent.enum';
 import { AnalyticsQueryService } from '@biz/monitoring/services/analytics/analytics-query.service';
 import { MonitoringCacheService } from '@biz/monitoring/services/tracking/monitoring-cache.service';
 import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
-import { MonitoringHourlyStatsRepository } from '@biz/monitoring/repositories/monitoring-hourly-stats.repository';
-import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/monitoring-error-log.repository';
+import { MonitoringHourlyStatsRepository } from '@biz/monitoring/repositories/hourly-stats.repository';
+import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error-log.repository';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 

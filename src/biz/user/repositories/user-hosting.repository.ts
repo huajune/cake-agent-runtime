@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { BaseRepository } from '@core/supabase';
-import { SupabaseService } from '@core/supabase';
+import { BaseRepository } from '@infra/supabase/base.repository';
+import { SupabaseService } from '@infra/supabase/supabase.service';
 import { UserHostingStatus } from '../entities/user-hosting-status.entity';
 import { UserProfile } from '../types/user.types';
 

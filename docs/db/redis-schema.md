@@ -6,7 +6,7 @@
 
 **Redis 客户端**：`@upstash/redis`（REST API 模式）| **连接方式**：`UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`
 
-**Key 常量定义**：`src/wecom/message/utils/redis-key.util.ts`
+**Key 常量定义**：`src/channels/wecom/message/utils/redis-key.util.ts`
 
 ---
 
@@ -51,13 +51,13 @@
 
 ## 消息模块（wecom:message:*）
 
-**Key 常量**：`src/wecom/message/utils/redis-key.util.ts` — `RedisKeyBuilder`
+**Key 常量**：`src/channels/wecom/message/utils/redis-key.util.ts` — `RedisKeyBuilder`
 
 ### 1. wecom:message:dedup - 消息去重
 
 **用途**：防止同一条消息被重复处理（幂等保障）
 
-**代码位置**：`src/wecom/message/services/message-deduplication.service.ts`
+**代码位置**：`src/channels/wecom/message/services/message-deduplication.service.ts`
 
 | 属性 | 值 |
 |------|----|
@@ -89,7 +89,7 @@ TTL:   298s
 
 **用途**：暂存同一会话在聚合窗口内到达的多条消息，等待批量发送给 AI
 
-**代码位置**：`src/wecom/message/services/simple-merge.service.ts`
+**代码位置**：`src/channels/wecom/message/services/simple-merge.service.ts`
 
 | 属性 | 值 |
 |------|----|
@@ -151,7 +151,7 @@ Bull Queue 使用独立的 Redis TCP 连接，当前共有 **2 个队列**：`me
 
 ### 队列 1：message-merge（消息聚合）
 
-**代码位置**：`src/wecom/message/services/simple-merge.service.ts` + `src/wecom/message/message.processor.ts`
+**代码位置**：`src/channels/wecom/message/services/simple-merge.service.ts` + `src/channels/wecom/message/message.processor.ts`
 
 **Job 数据结构**：
 

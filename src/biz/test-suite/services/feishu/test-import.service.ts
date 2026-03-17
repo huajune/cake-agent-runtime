@@ -1,5 +1,5 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
-import { FeishuBitableApiService } from '@core/feishu/services/feishu-bitable-api.service';
+import { FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
 import { ImportFromFeishuRequestDto, ImportResult } from '../../dto/test-chat.dto';
 import { TestBatchService } from '../execution/test-batch.service';
 import { TestExecutionService } from '../execution/test-execution.service';

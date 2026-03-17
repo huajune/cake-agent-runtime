@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
-import { HttpModule } from '@core/client-http';
+import { HttpModule } from '@infra/client-http/http.module';
 import { TestBatchRepository } from './repositories/test-batch.repository';
 import { TestExecutionRepository } from './repositories/test-execution.repository';
 import { ConversationSnapshotRepository } from './repositories/conversation-snapshot.repository';
@@ -17,8 +17,8 @@ import { TestWriteBackService } from './services/feishu/test-write-back.service'
 import { ConversationTestService } from './services/conversation/conversation-test.service';
 import { ConversationParserService } from './services/conversation/conversation-parser.service';
 import { LlmEvaluationService } from './services/conversation/llm-evaluation.service';
-import { AgentModule } from '@agent';
-import { FeishuModule } from '@core/feishu';
+import { AgentModule } from '@agent/agent.module';
+import { FeishuModule } from '@infra/feishu/feishu.module';
 
 /**
  * 测试套件模块

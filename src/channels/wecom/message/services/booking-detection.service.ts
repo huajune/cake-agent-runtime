@@ -1,21 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { FeishuBookingService } from '@core/feishu';
+import { FeishuBookingService } from '@infra/feishu/services/booking.service';
 import { BookingRepository } from '@biz/message/repositories/booking.repository';
-import { ChatResponse, UIMessage } from '@agent';
-import { InterviewBookingInfo } from '@core/feishu/interfaces/feishu.interface';
-
-/**
- * 工具调用结果 Part 类型
- */
-interface ToolResultPart {
-  type: 'tool-invocation';
-  toolName: string;
-  input?: Record<string, unknown>;
-  output?: {
-    text?: string;
-    [key: string]: unknown;
-  };
-}
+import { InterviewBookingInfo } from '@infra/feishu/interfaces/interface';
 
 /**
  * 预约成功检测结果
@@ -23,14 +9,13 @@ interface ToolResultPart {
 export interface BookingDetectionResult {
   detected: boolean;
   bookingInfo?: InterviewBookingInfo;
-  toolOutput?: Record<string, unknown>;
 }
 
 /**
  * 预约成功检测服务 (Business Logic)
  *
  * 职责：
- * 1. 从 Agent 响应中检测预约成功的工具调用
+ * 1. 从 Agent 响应文本中检测预约成功关键词
  * 2. 异步发送飞书通知
  * 3. 更新统计数据表
  */
@@ -38,63 +23,34 @@ export interface BookingDetectionResult {
 export class BookingDetectionService {
   private readonly logger = new Logger(BookingDetectionService.name);
 
-  // 预约相关的工具名称
-  private readonly BOOKING_TOOL_NAME = 'duliday_book_interview';
-
   constructor(
     private readonly feishuBookingService: FeishuBookingService,
     private readonly bookingRepository: BookingRepository,
   ) {}
 
   /**
-   * 检测 Agent 响应中是否有预约成功
+   * 从 Agent 响应文本中检测预约成功
    */
-  detectBookingSuccess(chatResponse: ChatResponse | undefined): BookingDetectionResult {
-    if (!chatResponse?.messages) {
+  detectBookingSuccess(replyText: string | undefined): BookingDetectionResult {
+    if (!replyText) {
       return { detected: false };
     }
 
-    for (const message of chatResponse.messages) {
-      if (message.role !== 'assistant') continue;
-      const result = this.checkMessageForBooking(message);
-      if (result.detected) return result;
+    if (this.isBookingSuccessful(replyText)) {
+      this.logger.log('检测到预约成功关键词');
+      return {
+        detected: true,
+        bookingInfo: this.extractBookingInfoFromText(replyText),
+      };
     }
 
     return { detected: false };
   }
 
-  private checkMessageForBooking(message: UIMessage): BookingDetectionResult {
-    if (!message.parts) return { detected: false };
-
-    for (const part of message.parts as unknown[]) {
-      const toolPart = part as ToolResultPart;
-      if (toolPart.type !== 'tool-invocation') continue;
-      if (toolPart.toolName !== this.BOOKING_TOOL_NAME) continue;
-
-      const output = toolPart.output;
-      if (!output) continue;
-
-      const outputText = output.text || '';
-      const isSuccess = this.isBookingSuccessful(outputText);
-
-      if (isSuccess) {
-        this.logger.log(`检测到预约成功工具调用: ${this.BOOKING_TOOL_NAME}`);
-        const parsedOutput = this.parseToolOutput(outputText);
-        return {
-          detected: true,
-          bookingInfo: this.extractBookingInfo(toolPart.input, parsedOutput),
-          toolOutput: parsedOutput,
-        };
-      }
-    }
-
-    return { detected: false };
-  }
-
-  private isBookingSuccessful(outputText: string): boolean {
+  private isBookingSuccessful(text: string): boolean {
     const successKeywords = ['预约成功', '面试预约已创建', 'booking_id'];
     const failureKeywords = ['预约失败', '失败', 'error', '错误'];
-    const lowerText = outputText.toLowerCase();
+    const lowerText = text.toLowerCase();
 
     for (const keyword of failureKeywords) {
       if (lowerText.includes(keyword.toLowerCase())) return false;
@@ -105,25 +61,10 @@ export class BookingDetectionService {
     return false;
   }
 
-  private parseToolOutput(outputText: string): Record<string, unknown> {
-    try {
-      return JSON.parse(outputText);
-    } catch {
-      return { message: outputText };
-    }
-  }
-
-  private extractBookingInfo(
-    input?: Record<string, unknown>,
-    output?: Record<string, unknown>,
-  ): InterviewBookingInfo {
+  private extractBookingInfoFromText(text: string): InterviewBookingInfo {
+    // 从回复文本中尝试提取预约信息（基础实现）
     return {
-      candidateName: (input?.candidateName as string) || undefined,
-      brandName: (input?.brandName as string) || undefined,
-      storeName: (input?.storeName as string) || undefined,
-      interviewTime: (input?.interviewTime as string) || undefined,
-      contactInfo: (input?.contactInfo as string) || undefined,
-      toolOutput: output,
+      toolOutput: { rawText: text.substring(0, 500) },
     };
   }
 
@@ -136,10 +77,10 @@ export class BookingDetectionService {
     userId?: string;
     managerId?: string;
     managerName?: string;
-    chatResponse: ChatResponse | undefined;
+    replyText?: string;
   }): Promise<void> {
-    const { chatId, contactName, userId, managerId, managerName, chatResponse } = params;
-    const detection = this.detectBookingSuccess(chatResponse);
+    const { chatId, contactName, userId, managerId, managerName, replyText } = params;
+    const detection = this.detectBookingSuccess(replyText);
 
     if (!detection.detected || !detection.bookingInfo) return;
 

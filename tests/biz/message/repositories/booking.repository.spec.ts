@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BookingRepository } from '@biz/message/repositories/booking.repository';
-import { SupabaseService } from '@core/supabase';
+import { SupabaseService } from '@infra/supabase/supabase.service';
 
 function makeQueryMock(result: { data?: unknown; error?: unknown; count?: number }) {
   const chainMethods = [

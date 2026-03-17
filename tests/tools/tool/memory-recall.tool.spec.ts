@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { MemoryRecallToolService } from '@tools/memory-recall.tool';
 import { MemoryService } from '@memory/memory.service';
-import { ToolBuildContext } from '@tools/tool.types';
+import { ToolBuildContext } from '@shared-types/tool.types';
 
 describe('MemoryRecallToolService', () => {
   let service: MemoryRecallToolService;

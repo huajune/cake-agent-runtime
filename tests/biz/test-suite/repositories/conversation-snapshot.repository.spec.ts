@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConversationSnapshotRepository } from '@biz/test-suite/repositories/conversation-snapshot.repository';
-import { SupabaseService } from '@core/supabase';
+import { SupabaseService } from '@infra/supabase/supabase.service';
 import { ConversationSourceStatus } from '@biz/test-suite/enums/test.enum';
 
 function makeQueryMock(result: { data?: unknown; error?: unknown; count?: number }) {

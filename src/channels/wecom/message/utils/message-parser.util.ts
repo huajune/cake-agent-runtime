@@ -4,7 +4,7 @@ import {
   isLocationPayload,
   LocationPayload,
 } from '../dto/message-callback.dto';
-import { ScenarioType } from '@agent';
+import { ScenarioType } from '@enums/agent.enum';
 
 /**
  * 消息解析工具类

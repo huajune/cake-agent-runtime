@@ -83,7 +83,7 @@ vim .env.local
 
 | Layer | 说明 | 示例 |
 |-------|------|------|
-| **Layer 1** | 必填密钥/URL（无默认值） | `AGENT_API_KEY`, `FEISHU_ALERT_WEBHOOK_URL` |
+| **Layer 1** | 必填密钥/URL（无默认值） | `ANTHROPIC_API_KEY`, `FEISHU_ALERT_WEBHOOK_URL` |
 | **Layer 2** | 可选参数（有默认值） | `INITIAL_MERGE_WINDOW_MS=1000` |
 | **Layer 3** | 硬编码默认值 | 告警节流 5 分钟 |
 
@@ -91,13 +91,9 @@ vim .env.local
 
 ```env
 # === Layer 1: 必填密钥/URL ===
-AGENT_API_KEY=your-key
-AGENT_API_BASE_URL=https://huajune.duliday.com/api/v1
-AGENT_DEFAULT_MODEL=anthropic/claude-sonnet-4-5-20250929
+ANTHROPIC_API_KEY=your-anthropic-key
 AGENT_CHAT_MODEL=anthropic/claude-sonnet-4-5-20250929
-AGENT_CLASSIFY_MODEL=openai/gpt-4o
-AGENT_REPLY_MODEL=openai/gpt-5-chat-latest
-AGENT_ALLOWED_TOOLS=duliday_interview_booking,duliday_job_details,duliday_job_list
+AGENT_DEFAULT_MODEL=anthropic/claude-sonnet-4-5-20250929
 
 UPSTASH_REDIS_REST_URL=https://your-redis.upstash.io
 UPSTASH_REDIS_REST_TOKEN=your-token
@@ -121,7 +117,7 @@ SUPABASE_SERVICE_ROLE_KEY=your-key
 **获取配置的地方**：
 | 配置项 | 获取方式 |
 |--------|----------|
-| Agent API Key | [花卷平台](https://wolian.cc/platform/clients-management) |
+| AI Provider API Key | 各 Provider 官网 (Anthropic, OpenAI 等) |
 | Upstash Redis | [Upstash Console](https://console.upstash.com/) |
 | 飞书 Webhook | 飞书群 → 设置 → 群机器人 → 添加自定义机器人 |
 | Supabase | [Supabase Dashboard](https://supabase.com/dashboard) |
@@ -160,8 +156,8 @@ curl -X POST http://localhost:8080/agent/debug-chat \
 
 | 变量 | 说明 | 来源 |
 |------|------|------|
-| `AGENT_API_KEY` | AI Agent API 密钥 | 花卷平台 |
-| `AGENT_API_BASE_URL` | AI Agent API 地址 | 花卷平台 |
+| `ANTHROPIC_API_KEY` | Anthropic API 密钥 | Anthropic |
+| `AGENT_CHAT_MODEL` | 主聊天模型 ID | 环境配置 |
 | `UPSTASH_REDIS_REST_URL` | Redis REST API URL | Upstash |
 | `UPSTASH_REDIS_REST_TOKEN` | Redis REST Token | Upstash |
 | `DULIDAY_API_TOKEN` | 杜力岱 API Token | 内部系统 |
@@ -176,7 +172,6 @@ curl -X POST http://localhost:8080/agent/debug-chat \
 | 变量 | 默认值 | 说明 | 使用位置 |
 |------|--------|------|----------|
 | `PORT` | `8080` | 服务端口 | main.ts |
-| `AGENT_API_TIMEOUT` | `600000` | API 超时 (10min) | agent-api-client |
 | `MAX_HISTORY_PER_CHAT` | `60` | Redis 消息数限制 | message-history |
 | `HISTORY_TTL_MS` | `7200000` | Redis 消息 TTL (2h) | message-history |
 | `INITIAL_MERGE_WINDOW_MS` | `1000` | 聚合等待时间 | message-merge |
@@ -310,10 +305,9 @@ kill -9 <PID>        # 杀死进程
 
 ### Agent API 调用失败
 
-检查 `AGENT_API_KEY` 和 `AGENT_API_BASE_URL` 是否正确，测试连接：
+检查 `ANTHROPIC_API_KEY` 和 `AGENT_CHAT_MODEL` 是否正确，测试连接：
 ```bash
-curl -H "Authorization: Bearer YOUR_API_KEY" \
-  http://your-api-url/api/v1/models
+curl http://localhost:8080/agent/health
 ```
 
 ### 消息回调未触发
@@ -434,7 +428,7 @@ POST /message-sender/broadcast
 **API 文档**
 - [托管平台企业级 API](https://s.apifox.cn/34adc635-40ac-4161-8abb-8cd1eea9f445)
 - [托管平台小组级 API](https://s.apifox.cn/acec6592-fec1-443b-8563-10c4a10e64c4)
-- [花卷 Agent API](https://docs.wolian.cc/)
+- [Vercel AI SDK](https://sdk.vercel.ai/docs)
 
 **技术文档**
 - [NestJS 官方文档](https://docs.nestjs.com/)

@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bull';
 import { SimpleMergeService } from '@wecom/message/services/simple-merge.service';
-import { RedisService } from '@core/redis';
+import { RedisService } from '@infra/redis/redis.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import {
   EnterpriseMessageCallbackDto,

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { HttpService } from '@core/client-http';
-import { ApiConfigService } from '@core/config';
+import { HttpService } from '@infra/client-http/http.service';
+import { ApiConfigService } from '@infra/config/api-config.service';
 
 @Injectable()
 export class BotService {

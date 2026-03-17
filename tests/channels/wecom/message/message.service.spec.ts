@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { MessageService } from '@wecom/message/message.service';
-import { MessageHistoryService } from '@wecom/message/services/message-history.service';
+import { MessageHistoryService } from '@wecom/message/services/history.service';
 import { SimpleMergeService } from '@wecom/message/services/simple-merge.service';
-import { MessageStatisticsService } from '@wecom/message/services/message-statistics.service';
-import { MessagePipelineService } from '@wecom/message/services/message-pipeline.service';
+import { MessageStatisticsService } from '@wecom/message/services/statistics.service';
+import { MessagePipelineService } from '@wecom/message/services/pipeline.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import {

@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { GroupService } from '@wecom/group/group.service';
-import { HttpService } from '@core/client-http';
-import { ApiConfigService } from '@core/config';
+import { HttpService } from '@infra/client-http/http.service';
+import { ApiConfigService } from '@infra/config/api-config.service';
 
 describe('GroupService', () => {
   let service: GroupService;

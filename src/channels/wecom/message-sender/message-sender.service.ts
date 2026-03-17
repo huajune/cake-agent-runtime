@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { HttpService } from '@core/client-http';
-import { ApiConfigService } from '@core/config';
+import { HttpService } from '@infra/client-http/http.service';
+import { ApiConfigService } from '@infra/config/api-config.service';
 import { SendMessageDto } from './dto/send-message.dto';
 import { CreateBroadcastDto } from './dto/create-broadcast.dto';
 

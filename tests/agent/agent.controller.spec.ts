@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HttpException } from '@nestjs/common';
 import { AgentController } from '@agent/agent.controller';
-import { ProfileLoaderService } from '@agent/services/profile-loader.service';
-import { OrchestratorService } from '@agent/services/orchestrator.service';
+import { ProfileLoaderService } from '@agent/profile-loader.service';
+import { OrchestratorService } from '@agent/orchestrator.service';
 import { ConfigService } from '@nestjs/config';
-import { FeishuAlertService } from '@core/feishu';
+import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { RouterService } from '@providers/router.service';
 import { ToolRegistryService } from '@tools/tool-registry.service';
 

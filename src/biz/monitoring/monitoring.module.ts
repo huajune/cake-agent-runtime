@@ -1,7 +1,7 @@
 import { Module, Global, forwardRef } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { MessageModule } from '@wecom/message/message.module';
-import { FeishuModule } from '@/core/feishu/feishu.module';
+import { FeishuModule } from '@/infra/feishu/feishu.module';
 import { UserModule } from '../user/user.module';
 import { HostingConfigModule } from '../hosting-config/hosting-config.module';
 
@@ -23,9 +23,9 @@ import { DataCleanupService } from './services/cleanup/data-cleanup.service';
 import { AnalyticsController, WebController } from './monitoring.controller';
 
 // Repositories
-import { MonitoringRepository } from './repositories/monitoring.repository';
-import { MonitoringHourlyStatsRepository } from './repositories/monitoring-hourly-stats.repository';
-import { MonitoringErrorLogRepository } from './repositories/monitoring-error-log.repository';
+import { MonitoringRecordRepository } from './repositories/record.repository';
+import { MonitoringHourlyStatsRepository } from './repositories/hourly-stats.repository';
+import { MonitoringErrorLogRepository } from './repositories/error-log.repository';
 
 /**
  * 业务监控模块 (Business Layer)
@@ -47,7 +47,7 @@ import { MonitoringErrorLogRepository } from './repositories/monitoring-error-lo
   controllers: [AnalyticsController, WebController],
   providers: [
     // Repositories
-    MonitoringRepository,
+    MonitoringRecordRepository,
     MonitoringHourlyStatsRepository,
     MonitoringErrorLogRepository,
     // Tracking

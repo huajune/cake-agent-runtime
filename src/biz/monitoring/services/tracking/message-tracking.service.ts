@@ -5,10 +5,10 @@ import {
   MonitoringErrorLog,
   MonitoringGlobalCounters,
   AlertErrorType,
-} from '../../types/tracking.types';
+} from '@shared-types/tracking.types';
 import { MonitoringCacheService } from './monitoring-cache.service';
 import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
-import { MonitoringErrorLogRepository } from '../../repositories/monitoring-error-log.repository';
+import { MonitoringErrorLogRepository } from '../../repositories/error-log.repository';
 import { UserHostingRepository } from '@biz/user/repositories/user-hosting.repository';
 
 /**

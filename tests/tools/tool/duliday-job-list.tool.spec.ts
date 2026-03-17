@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DulidayJobListToolService } from '@tools/duliday-job-list.tool';
 import { SpongeService } from '@sponge/sponge.service';
-import { ToolBuildContext } from '@tools/tool.types';
+import { ToolBuildContext } from '@shared-types/tool.types';
 
 describe('DulidayJobListToolService', () => {
   let service: DulidayJobListToolService;

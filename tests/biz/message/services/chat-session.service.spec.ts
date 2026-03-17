@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ChatMessageRepository } from '@biz/message/repositories/chat-message.repository';
-import { MonitoringRepository } from '@biz/monitoring/repositories/monitoring.repository';
+import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.repository';
 
 describe('ChatSessionService', () => {
   let service: ChatSessionService;
@@ -16,7 +16,7 @@ describe('ChatSessionService', () => {
     getChatHistoryDetail: jest.fn(),
   };
 
-  const mockMonitoringRepository = {
+  const mockMonitoringRecordRepository = {
     getDashboardHourlyTrend: jest.fn(),
   };
 
@@ -25,7 +25,7 @@ describe('ChatSessionService', () => {
       providers: [
         ChatSessionService,
         { provide: ChatMessageRepository, useValue: mockChatMessageRepository },
-        { provide: MonitoringRepository, useValue: mockMonitoringRepository },
+        { provide: MonitoringRecordRepository, useValue: mockMonitoringRecordRepository },
       ],
     }).compile();
 
@@ -211,7 +211,7 @@ describe('ChatSessionService', () => {
         { hour: '2024-01-01T10:00:00Z', messageCount: 5, uniqueUsers: 3 },
         { hour: '2024-01-01T11:00:00Z', messageCount: 8, uniqueUsers: 4 },
       ];
-      mockMonitoringRepository.getDashboardHourlyTrend.mockResolvedValue(mockHourlyData);
+      mockMonitoringRecordRepository.getDashboardHourlyTrend.mockResolvedValue(mockHourlyData);
 
       const result = await service.getChatTrend(7);
 
@@ -231,11 +231,11 @@ describe('ChatSessionService', () => {
     });
 
     it('should use default 7 days when no parameter provided', async () => {
-      mockMonitoringRepository.getDashboardHourlyTrend.mockResolvedValue([]);
+      mockMonitoringRecordRepository.getDashboardHourlyTrend.mockResolvedValue([]);
 
       await service.getChatTrend();
 
-      const [startDate, endDate] = mockMonitoringRepository.getDashboardHourlyTrend.mock.calls[0];
+      const [startDate, endDate] = mockMonitoringRecordRepository.getDashboardHourlyTrend.mock.calls[0];
       const daysDiff = Math.round(
         (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
       );
@@ -243,7 +243,7 @@ describe('ChatSessionService', () => {
     });
 
     it('should return empty array when no trend data', async () => {
-      mockMonitoringRepository.getDashboardHourlyTrend.mockResolvedValue([]);
+      mockMonitoringRecordRepository.getDashboardHourlyTrend.mockResolvedValue([]);
 
       const result = await service.getChatTrend(3);
 

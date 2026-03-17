@@ -3,8 +3,8 @@ import { MessageController } from '@wecom/message/message.controller';
 import { MessageService } from '@wecom/message/message.service';
 import { MessageProcessor } from '@wecom/message/message.processor';
 import { MessageType, ContactType, MessageSource } from '@wecom/message/dto/message-callback.dto';
-import { MessageCallbackAdapterService } from '@wecom/message/services/message-callback-adapter.service';
-import { MessageFilterService } from '@wecom/message/services/message-filter.service';
+import { MessageCallbackAdapterService } from '@wecom/message/services/callback-adapter.service';
+import { MessageFilterService } from '@wecom/message/services/filter.service';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
 
 describe('MessageController', () => {

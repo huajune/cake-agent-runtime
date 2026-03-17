@@ -98,7 +98,7 @@ describe('MessageSplitter', () => {
   });
 
   describe('实际应用场景测试', () => {
-    it('应该正确拆分花卷Agent的多段回复（使用双换行符）', () => {
+    it('应该正确拆分 Agent 的多段回复（使用双换行符）', () => {
       const agentReply = `您好！很高兴为您服务。
 
 我们目前有以下几个岗位：

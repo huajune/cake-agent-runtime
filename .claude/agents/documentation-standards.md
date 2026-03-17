@@ -264,7 +264,7 @@ Below is the detailed deduplication logic implementation... (100 words explanati
 ```markdown
 ## 2.3 MessageDeduplicationService (Deduplication)
 
-**Location**: [src/wecom/message/services/message-deduplication.service.ts](...)
+**Location**: [src/channels/wecom/message/services/message-deduplication.service.ts](...)
 
 #### Deduplication Strategy
 - **Data Structure**: `Map<messageId, timestamp>`

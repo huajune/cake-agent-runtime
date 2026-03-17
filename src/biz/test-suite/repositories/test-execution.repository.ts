@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { BaseRepository } from '@core/supabase';
-import { SupabaseService } from '@core/supabase';
+import { BaseRepository } from '@infra/supabase/base.repository';
+import { SupabaseService } from '@infra/supabase/supabase.service';
 import { ExecutionStatus, ReviewStatus } from '../enums/test.enum';
 import { TestExecution } from '../entities/test-execution.entity';
 import {

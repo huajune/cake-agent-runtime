@@ -1,12 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ScenarioType } from '@agent';
+import { ScenarioType } from '@enums/agent.enum';
 import { AnalyticsDashboardService } from '@biz/monitoring/services/analytics/analytics-dashboard.service';
 import { MonitoringCacheService } from '@biz/monitoring/services/tracking/monitoring-cache.service';
 import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
 import { BookingRepository } from '@biz/message/repositories/booking.repository';
-import { MonitoringHourlyStatsRepository } from '@biz/monitoring/repositories/monitoring-hourly-stats.repository';
-import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/monitoring-error-log.repository';
-import { MonitoringRepository } from '@biz/monitoring/repositories/monitoring.repository';
+import { MonitoringHourlyStatsRepository } from '@biz/monitoring/repositories/hourly-stats.repository';
+import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error-log.repository';
+import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.repository';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { HourlyStatsAggregatorService } from '@biz/monitoring/services/analytics/hourly-stats-aggregator.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
@@ -51,7 +51,7 @@ describe('AnalyticsDashboardService', () => {
   let _errorLogRepository: jest.Mocked<MonitoringErrorLogRepository>;
   let _userHostingService: jest.Mocked<UserHostingService>;
   let _cacheService: jest.Mocked<MonitoringCacheService>;
-  let monitoringRepository: jest.Mocked<MonitoringRepository>;
+  let monitoringRepository: jest.Mocked<MonitoringRecordRepository>;
   let _bookingRepository: jest.Mocked<BookingRepository>;
   let hourlyStatsAggregator: jest.Mocked<HourlyStatsAggregatorService>;
   let _messageTrackingService: jest.Mocked<MessageTrackingService>;
@@ -78,7 +78,7 @@ describe('AnalyticsDashboardService', () => {
     getCounters: jest.fn(),
   };
 
-  const mockMonitoringRepository = {
+  const mockMonitoringRecordRepository = {
     getDashboardOverviewStats: jest.fn(),
     getDashboardFallbackStats: jest.fn(),
     getDashboardMinuteTrend: jest.fn(),
@@ -127,8 +127,8 @@ describe('AnalyticsDashboardService', () => {
           useValue: mockCacheService,
         },
         {
-          provide: MonitoringRepository,
-          useValue: mockMonitoringRepository,
+          provide: MonitoringRecordRepository,
+          useValue: mockMonitoringRecordRepository,
         },
         {
           provide: BookingRepository,
@@ -151,7 +151,7 @@ describe('AnalyticsDashboardService', () => {
     _errorLogRepository = module.get(MonitoringErrorLogRepository);
     _userHostingService = module.get(UserHostingService);
     _cacheService = module.get(MonitoringCacheService);
-    monitoringRepository = module.get(MonitoringRepository);
+    monitoringRepository = module.get(MonitoringRecordRepository);
     _bookingRepository = module.get(BookingRepository);
     hourlyStatsAggregator = module.get(HourlyStatsAggregatorService);
     _messageTrackingService = module.get(MessageTrackingService);
@@ -184,10 +184,10 @@ describe('AnalyticsDashboardService', () => {
     mockHourlyStatsAggregator.getHourlyTrendFromHourly.mockResolvedValue([]);
     mockHourlyStatsAggregator.mergeOverviewStats.mockReturnValue(defaultOverview);
     mockHourlyStatsAggregator.mergeFallbackStats.mockReturnValue(defaultFallback);
-    mockMonitoringRepository.getDashboardOverviewStats.mockResolvedValue(defaultOverview);
-    mockMonitoringRepository.getDashboardFallbackStats.mockResolvedValue(defaultFallback);
-    mockMonitoringRepository.getDashboardMinuteTrend.mockResolvedValue([]);
-    mockMonitoringRepository.getDashboardHourlyTrend.mockResolvedValue([]);
+    mockMonitoringRecordRepository.getDashboardOverviewStats.mockResolvedValue(defaultOverview);
+    mockMonitoringRecordRepository.getDashboardFallbackStats.mockResolvedValue(defaultFallback);
+    mockMonitoringRecordRepository.getDashboardMinuteTrend.mockResolvedValue([]);
+    mockMonitoringRecordRepository.getDashboardHourlyTrend.mockResolvedValue([]);
     mockMessageTrackingService.getPendingCount.mockReturnValue(0);
   });
 
@@ -426,7 +426,7 @@ describe('AnalyticsDashboardService', () => {
       };
 
       mockHourlyStatsAggregator.getOverviewFromHourly.mockResolvedValueOnce(historicalOverview);
-      mockMonitoringRepository.getDashboardOverviewStats.mockResolvedValueOnce(realtimeOverview);
+      mockMonitoringRecordRepository.getDashboardOverviewStats.mockResolvedValueOnce(realtimeOverview);
       mockHourlyStatsAggregator.mergeOverviewStats.mockReturnValue(mergedOverview);
 
       const result = await service.getDashboardOverviewAsync('today');
@@ -474,7 +474,7 @@ describe('AnalyticsDashboardService', () => {
         .mockResolvedValueOnce(previousOverview); // previous period
 
       mockHourlyStatsAggregator.mergeOverviewStats.mockReturnValue(currentOverview);
-      mockMonitoringRepository.getDashboardOverviewStats.mockResolvedValue(defaultOverview);
+      mockMonitoringRecordRepository.getDashboardOverviewStats.mockResolvedValue(defaultOverview);
 
       const result = await service.getDashboardOverviewAsync('today');
 
@@ -509,7 +509,7 @@ describe('AnalyticsDashboardService', () => {
     });
 
     it('should format response trend from minute trend for today', async () => {
-      mockMonitoringRepository.getDashboardMinuteTrend.mockResolvedValue([
+      mockMonitoringRecordRepository.getDashboardMinuteTrend.mockResolvedValue([
         { minute: '2026-03-11 10:00', avgDuration: 4000, messageCount: 10, successCount: 9 },
       ]);
       mockHourlyStatsAggregator.mergeOverviewStats.mockReturnValue(defaultOverview);
@@ -563,7 +563,7 @@ describe('AnalyticsDashboardService', () => {
 
       mockHourlyStatsAggregator.mergeFallbackStats.mockReturnValue(currentFallback);
       mockHourlyStatsAggregator.mergeOverviewStats.mockReturnValue(defaultOverview);
-      mockMonitoringRepository.getDashboardFallbackStats.mockResolvedValue(defaultFallback);
+      mockMonitoringRecordRepository.getDashboardFallbackStats.mockResolvedValue(defaultFallback);
 
       const result = await service.getDashboardOverviewAsync('today');
 

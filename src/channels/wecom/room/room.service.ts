@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { HttpService } from '@core/client-http';
-import { ApiConfigService } from '@core/config';
+import { HttpService } from '@infra/client-http/http.service';
+import { ApiConfigService } from '@infra/config/api-config.service';
 
 /**
  * 群聊管理服务

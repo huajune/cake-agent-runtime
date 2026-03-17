@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { TestExecutionRepository } from '@biz/test-suite/repositories/test-execution.repository';
-import { SupabaseService } from '@core/supabase';
+import { SupabaseService } from '@infra/supabase/supabase.service';
 import { ExecutionStatus, ReviewStatus } from '@biz/test-suite/enums/test.enum';
 
 function makeQueryMock(result: { data?: unknown; error?: unknown; count?: number }) {

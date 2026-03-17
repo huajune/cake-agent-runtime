@@ -5,7 +5,7 @@ import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp';
 import { tool, jsonSchema } from 'ai';
 import { ToolRegistryService } from '@tools/tool-registry.service';
-import { AiTool } from '@tools/tool.types';
+import { AiTool } from '@shared-types/tool.types';
 import { McpServerConfig, McpConnectedServer } from './mcp.types';
 
 @Injectable()

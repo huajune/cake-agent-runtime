@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HourlyStatsAggregatorService } from '@biz/monitoring/services/analytics/hourly-stats-aggregator.service';
-import { MonitoringHourlyStatsRepository } from '@biz/monitoring/repositories/monitoring-hourly-stats.repository';
+import { MonitoringHourlyStatsRepository } from '@biz/monitoring/repositories/hourly-stats.repository';
 import { HourlyStats } from '@biz/monitoring/types/analytics.types';
 
 const buildHourlyStats = (overrides: Partial<HourlyStats> = {}): HourlyStats => ({

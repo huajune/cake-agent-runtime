@@ -3,9 +3,9 @@ import { Cron } from '@nestjs/schedule';
 import { HourlyStats } from '../../types/analytics.types';
 import { MonitoringCacheService } from '../tracking/monitoring-cache.service';
 import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
-import { MonitoringHourlyStatsRepository } from '../../repositories/monitoring-hourly-stats.repository';
-import { MonitoringErrorLogRepository } from '../../repositories/monitoring-error-log.repository';
-import { MonitoringRepository } from '../../repositories/monitoring.repository';
+import { MonitoringHourlyStatsRepository } from '../../repositories/hourly-stats.repository';
+import { MonitoringErrorLogRepository } from '../../repositories/error-log.repository';
+import { MonitoringRecordRepository } from '../../repositories/record.repository';
 
 /**
  * 数据清理与聚合维护服务
@@ -20,7 +20,7 @@ export class AnalyticsMaintenanceService {
     private readonly hourlyStatsRepository: MonitoringHourlyStatsRepository,
     private readonly errorLogRepository: MonitoringErrorLogRepository,
     private readonly cacheService: MonitoringCacheService,
-    private readonly monitoringRepository: MonitoringRepository,
+    private readonly monitoringRepository: MonitoringRecordRepository,
   ) {}
 
   // ========================================

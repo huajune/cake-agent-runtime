@@ -2,10 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { TestExecutionService } from '@biz/test-suite/services/execution/test-execution.service';
 import { TestExecutionRepository } from '@biz/test-suite/repositories/test-execution.repository';
-import { OrchestratorService } from '@agent/services/orchestrator.service';
+import { OrchestratorService } from '@agent/orchestrator.service';
 import { ExecutionStatus } from '@biz/test-suite/enums/test.enum';
 import { TestChatRequestDto } from '@biz/test-suite/dto/test-chat.dto';
-import { MessageRole } from '@shared/enums';
+import { MessageRole } from '@enums/message.enum';
 
 describe('TestExecutionService', () => {
   let service: TestExecutionService;

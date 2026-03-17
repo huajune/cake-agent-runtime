@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
-import { RedisService } from '@core/redis';
+import { RedisService } from '@infra/redis/redis.service';
 import { AgentReplyConfig } from '@biz/hosting-config/types/hosting-config.types';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { EnterpriseMessageCallbackDto } from '../dto/message-callback.dto';

@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { GroupBlacklistRepository } from '@biz/hosting-config/repositories/group-blacklist.repository';
-import { SupabaseService } from '@core/supabase';
+import { SupabaseService } from '@infra/supabase/supabase.service';
 
 /**
  * Helper: create a chainable Supabase query mock that resolves to a given result.

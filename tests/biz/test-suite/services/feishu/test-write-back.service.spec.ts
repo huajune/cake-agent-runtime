@@ -1,11 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { TestWriteBackService } from '@biz/test-suite/services/feishu/test-write-back.service';
-import { FeishuBitableApiService } from '@core/feishu/services/feishu-bitable-api.service';
+import { FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
 import { TestExecutionService } from '@biz/test-suite/services/execution/test-execution.service';
 import { FeishuTestStatus } from '@biz/test-suite/enums/test.enum';
 
 // Mock the feishu-bitable.config constants
-jest.mock('@core/feishu/constants/feishu-bitable.config', () => ({
+jest.mock('@infra/feishu/constants/feishu-bitable.config', () => ({
   testSuiteFieldNames: {
     testStatus: '测试状态',
     lastTestTime: '最近测试时间',

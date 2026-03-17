@@ -4,23 +4,23 @@ import { BullModule } from '@nestjs/bull';
 import { MessageController } from './message.controller';
 import { MessageService } from './message.service';
 import { MessageProcessor } from './message.processor';
-import { AgentModule } from '@agent';
+import { AgentModule } from '@agent/agent.module';
 import { MessageSenderModule } from '../message-sender/message-sender.module';
 
 // 导入子服务
-import { MessageDeduplicationService } from './services/message-deduplication.service';
-import { MessageHistoryService } from './services/message-history.service';
-import { MessageFilterService } from './services/message-filter.service';
+import { MessageDeduplicationService } from './services/deduplication.service';
+import { MessageHistoryService } from './services/history.service';
+import { MessageFilterService } from './services/filter.service';
 import { SimpleMergeService } from './services/simple-merge.service';
-import { MessageStatisticsService } from './services/message-statistics.service';
-import { TypingDelayService } from './services/message-typing-delay.service';
-import { MessageDeliveryService } from './services/message-delivery.service';
-import { AgentGatewayService } from './services/message-agent-gateway.service';
-import { MessageCallbackAdapterService } from './services/message-callback-adapter.service';
-import { MessagePipelineService } from './services/message-pipeline.service';
+import { MessageStatisticsService } from './services/statistics.service';
+import { TypingDelayService } from './services/typing-delay.service';
+import { MessageDeliveryService } from './services/delivery.service';
+import { AgentGatewayService } from './services/agent-gateway.service';
+import { MessageCallbackAdapterService } from './services/callback-adapter.service';
+import { MessagePipelineService } from './services/pipeline.service';
 import { BookingDetectionService } from './services/booking-detection.service';
 import { BizModule } from '@biz/biz.module';
-import { FeishuModule } from '@core/feishu';
+import { FeishuModule } from '@infra/feishu/feishu.module';
 
 /**
  * 消息处理模块

@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConversationParserService } from '@biz/test-suite/services/conversation/conversation-parser.service';
-import type { AgentResult } from '@agent';
+import type { AgentRunResult } from '@agent/orchestrator.service';
 
 describe('ConversationParserService', () => {
   let service: ConversationParserService;
@@ -218,215 +218,38 @@ describe('ConversationParserService', () => {
   // ========== extractResponseText ==========
 
   describe('extractResponseText', () => {
-    it('should extract text from agent result messages', () => {
-      const result = {
-        status: 'success' as const,
-        data: {
-          messages: [
-            {
-              parts: [{ text: 'Hello ' }, { text: 'World' }],
-            },
-          ],
-          usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
-        },
-      } as unknown as AgentResult;
+    it('should return text from AgentRunResult', () => {
+      const result: AgentRunResult = {
+        text: 'Hello World',
+        steps: 1,
+        usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+      };
 
-      const text = service.extractResponseText(result);
-      expect(text).toBe('Hello World');
+      expect(service.extractResponseText(result)).toBe('Hello World');
     });
 
-    it('should join multiple messages with double newline', () => {
-      const result = {
-        status: 'success' as const,
-        data: {
-          messages: [{ parts: [{ text: 'First' }] }, { parts: [{ text: 'Second' }] }],
-          usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
-        },
-      } as unknown as AgentResult;
+    it('should return empty string when text is empty', () => {
+      const result: AgentRunResult = {
+        text: '',
+        steps: 0,
+        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+      };
 
-      const text = service.extractResponseText(result);
-      expect(text).toBe('First\n\nSecond');
-    });
-
-    it('should return empty string when no messages', () => {
-      const result = {
-        status: 'error' as const,
-        error: { code: 'ERR', message: 'failed' },
-      } as unknown as AgentResult;
-
-      const text = service.extractResponseText(result);
-      expect(text).toBe('');
-    });
-
-    it('should use fallback if data is absent', () => {
-      const result = {
-        status: 'fallback' as const,
-        fallback: {
-          messages: [{ parts: [{ text: 'Fallback response' }] }],
-          usage: { inputTokens: 5, outputTokens: 3, totalTokens: 8 },
-        },
-      } as unknown as AgentResult;
-
-      const text = service.extractResponseText(result);
-      expect(text).toBe('Fallback response');
-    });
-
-    it('should handle messages without parts gracefully', () => {
-      const result = {
-        status: 'success' as const,
-        data: {
-          messages: [{ parts: undefined }],
-          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-        },
-      } as unknown as AgentResult;
-
-      const text = service.extractResponseText(result);
-      expect(text).toBe('');
+      expect(service.extractResponseText(result)).toBe('');
     });
   });
 
   // ========== extractToolCalls ==========
 
   describe('extractToolCalls', () => {
-    it('should extract and pair tool_call with tool_result', () => {
-      const result = {
-        status: 'success' as const,
-        data: {
-          messages: [
-            {
-              parts: [
-                {
-                  type: 'tool_call',
-                  toolCallId: 'call-1',
-                  toolName: 'search',
-                  input: { query: 'jobs' },
-                },
-              ],
-            },
-            {
-              parts: [
-                {
-                  type: 'tool_result',
-                  toolCallId: 'call-1',
-                  result: { results: ['job1'] },
-                },
-              ],
-            },
-          ],
-          usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
-        },
-      } as unknown as AgentResult;
+    it('should return empty array (new architecture does not expose tool calls)', () => {
+      const result: AgentRunResult = {
+        text: 'Response with tools used internally',
+        steps: 3,
+        usage: { inputTokens: 50, outputTokens: 30, totalTokens: 80 },
+      };
 
-      const toolCalls = service.extractToolCalls(result);
-
-      expect(toolCalls).toHaveLength(1);
-      expect((toolCalls[0] as { toolName: string }).toolName).toBe('search');
-      expect((toolCalls[0] as { input: unknown }).input).toEqual({ query: 'jobs' });
-      expect((toolCalls[0] as { output: unknown }).output).toEqual({ results: ['job1'] });
-    });
-
-    it('should handle tool_use type (alternative to tool_call)', () => {
-      const result = {
-        status: 'success' as const,
-        data: {
-          messages: [
-            {
-              parts: [
-                {
-                  type: 'tool_use',
-                  id: 'call-2',
-                  name: 'calculator',
-                  args: { expression: '1+1' },
-                },
-              ],
-            },
-          ],
-          usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
-        },
-      } as unknown as AgentResult;
-
-      const toolCalls = service.extractToolCalls(result);
-
-      expect(toolCalls).toHaveLength(1);
-      expect((toolCalls[0] as { toolName: string }).toolName).toBe('calculator');
-    });
-
-    it('should return empty array when no messages', () => {
-      const result = {
-        status: 'error' as const,
-        error: { code: 'ERR', message: 'failed' },
-      } as unknown as AgentResult;
-
-      const toolCalls = service.extractToolCalls(result);
-      expect(toolCalls).toHaveLength(0);
-    });
-
-    it('should return empty array when messages have no tool parts', () => {
-      const result = {
-        status: 'success' as const,
-        data: {
-          messages: [{ parts: [{ text: 'Regular message', type: 'text' }] }],
-          usage: { inputTokens: 5, outputTokens: 3, totalTokens: 8 },
-        },
-      } as unknown as AgentResult;
-
-      const toolCalls = service.extractToolCalls(result);
-      expect(toolCalls).toHaveLength(0);
-    });
-
-    it('should handle multiple tool calls', () => {
-      const result = {
-        status: 'success' as const,
-        data: {
-          messages: [
-            {
-              parts: [
-                {
-                  type: 'tool_call',
-                  toolCallId: 'call-1',
-                  toolName: 'search',
-                  input: { query: 'jobs' },
-                },
-                {
-                  type: 'tool_call',
-                  toolCallId: 'call-2',
-                  toolName: 'calculate',
-                  input: { expr: '2+2' },
-                },
-              ],
-            },
-          ],
-          usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
-        },
-      } as unknown as AgentResult;
-
-      const toolCalls = service.extractToolCalls(result);
-      expect(toolCalls).toHaveLength(2);
-    });
-
-    it('should leave output undefined for unpaired tool calls', () => {
-      const result = {
-        status: 'success' as const,
-        data: {
-          messages: [
-            {
-              parts: [
-                {
-                  type: 'tool_call',
-                  toolCallId: 'call-no-result',
-                  toolName: 'search',
-                  input: { query: 'test' },
-                },
-              ],
-            },
-          ],
-          usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
-        },
-      } as unknown as AgentResult;
-
-      const toolCalls = service.extractToolCalls(result);
-      expect(toolCalls).toHaveLength(1);
-      expect((toolCalls[0] as { output?: unknown }).output).toBeUndefined();
+      expect(service.extractToolCalls(result)).toEqual([]);
     });
   });
 });

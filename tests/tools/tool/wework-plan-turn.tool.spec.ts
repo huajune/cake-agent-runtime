@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { WeworkPlanTurnToolService } from '@tools/wework-plan-turn.tool';
 import { RouterService } from '@providers/router.service';
-import { ToolBuildContext } from '@tools/tool.types';
+import { ToolBuildContext } from '@shared-types/tool.types';
 import { type StageGoals, type TurnPlan } from '@channels/wecom/types/wework.types';
 
 // Mock AI SDK generateText

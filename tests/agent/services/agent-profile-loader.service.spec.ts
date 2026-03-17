@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { ProfileLoaderService } from '@agent/services/profile-loader.service';
-import { ScenarioType, ContextStrategy } from '@agent/types/enums';
+import { ProfileLoaderService } from '@agent/profile-loader.service';
+import { ScenarioType, ContextStrategy } from '@enums/agent.enum';
 
 // Mock fs modules to control file system behavior
 jest.mock('fs', () => ({
@@ -28,7 +28,6 @@ describe('ProfileLoaderService', () => {
   function setupConfigMock(overrides?: Record<string, unknown>) {
     const defaults: Record<string, unknown> = {
       AGENT_DEFAULT_MODEL: 'anthropic/claude-sonnet-4-6',
-      AGENT_ALLOWED_TOOLS: 'job_list,wework_plan_turn',
       DULIDAY_API_TOKEN: 'test-duliday-token',
       ...overrides,
     };
@@ -112,24 +111,16 @@ describe('ProfileLoaderService', () => {
       expect(profile!.systemPrompt).toBeUndefined();
     });
 
-    it('should parse allowedTools from comma-separated env var', async () => {
-      setupConfigMock({ AGENT_ALLOWED_TOOLS: 'job_list,wework_plan_turn,bash' });
-
+    it('should have hardcoded allowedTools for candidate-consultation', async () => {
       await service.onModuleInit();
 
       const profile = service.getProfile(ScenarioType.CANDIDATE_CONSULTATION);
-      expect(profile!.allowedTools).toContain('job_list');
+      expect(profile!.allowedTools).toContain('duliday_job_list');
+      expect(profile!.allowedTools).toContain('duliday_interview_booking');
+      expect(profile!.allowedTools).toContain('memory_recall');
+      expect(profile!.allowedTools).toContain('memory_store');
       expect(profile!.allowedTools).toContain('wework_plan_turn');
-      expect(profile!.allowedTools).toContain('bash');
-    });
-
-    it('should parse empty tools list when env var is empty', async () => {
-      setupConfigMock({ AGENT_ALLOWED_TOOLS: '' });
-
-      await service.onModuleInit();
-
-      const profile = service.getProfile(ScenarioType.CANDIDATE_CONSULTATION);
-      expect(profile!.allowedTools).toEqual([]);
+      expect(profile!.allowedTools).toHaveLength(5);
     });
 
     it('should inject dulidayToken into profile context', async () => {

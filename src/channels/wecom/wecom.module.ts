@@ -7,7 +7,7 @@ import { GroupModule } from './group/group.module';
 import { MessageModule } from './message/message.module';
 import { MessageSenderModule } from './message-sender/message-sender.module';
 import { RoomModule } from './room/room.module';
-import { UserModule } from './user/user.module';
+import { WeworkUserModule } from './user/wework-user.module';
 
 /**
  * 企业微信业务域模块
@@ -33,7 +33,7 @@ import { UserModule } from './user/user.module';
     MessageModule,
     MessageSenderModule,
     RoomModule,
-    UserModule,
+    WeworkUserModule,
   ],
   exports: [
     BotModule,
@@ -44,7 +44,7 @@ import { UserModule } from './user/user.module';
     MessageModule,
     MessageSenderModule,
     RoomModule,
-    UserModule,
+    WeworkUserModule,
   ],
 })
 export class WecomModule {}

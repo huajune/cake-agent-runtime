@@ -2,9 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { MonitoringCacheService } from '@biz/monitoring/services/tracking/monitoring-cache.service';
 import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
-import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/monitoring-error-log.repository';
+import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error-log.repository';
 import { UserHostingRepository } from '@biz/user/repositories/user-hosting.repository';
-import { ScenarioType } from '@agent';
+import { ScenarioType } from '@enums/agent.enum';
 
 /** Flush all pending microtasks/promise chains */
 const flushPromises = () => new Promise<void>((resolve) => setImmediate(resolve));

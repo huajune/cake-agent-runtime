@@ -38,7 +38,7 @@
 
 - **后端**: NestJS + TypeScript + Supabase (PostgreSQL)
 - **前端**: React + TypeScript + Ant Design
-- **评估**: 花卷 Agent API (OpenAI GPT-4o-mini)
+- **评估**: Vercel AI SDK (多 Provider)
 - **数据源**: 飞书多维表格 API
 
 ## 数据模型
@@ -747,7 +747,7 @@ const CRITERIA = {
 【🎯杜力岱招聘助手】回复内容  时间戳
 ```
 
-**配置位置**: `src/core/feishu/constants/feishu-bitable.config.ts`
+**配置位置**: `src/infra/feishu/constants/feishu-bitable.config.ts`
 
 ```typescript
 // validationSet 表配置

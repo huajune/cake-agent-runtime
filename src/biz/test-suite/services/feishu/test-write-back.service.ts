@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { FeishuBitableApiService } from '@core/feishu/services/feishu-bitable-api.service';
+import { FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
 import {
   testSuiteFieldNames,
   validationSetFieldNames,
-} from '@core/feishu/constants/feishu-bitable.config';
+} from '@infra/feishu/constants/feishu-bitable.config';
 import { TestExecutionService } from '../execution/test-execution.service';
 import { FeishuTestStatus } from '../../enums/test.enum';
 

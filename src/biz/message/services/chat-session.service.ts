@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ChatMessageRepository } from '../repositories/chat-message.repository';
-import { MonitoringRepository } from '@biz/monitoring/repositories/monitoring.repository';
+import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.repository';
 
 /**
  * 聊天会话服务
@@ -12,7 +12,7 @@ export class ChatSessionService {
 
   constructor(
     private readonly chatMessageRepository: ChatMessageRepository,
-    private readonly monitoringRepository: MonitoringRepository,
+    private readonly monitoringRepository: MonitoringRecordRepository,
   ) {}
 
   /**

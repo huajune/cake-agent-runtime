@@ -1,0 +1,202 @@
+/**
+ * Agent 编排服务
+ *
+ * 编排流程：
+ * 1. MemoryService.recall() → 记忆前置注入
+ * 2. ProfileLoaderService.load() → systemPrompt
+ * 3. StrategyPromptService → persona + redLines + stageGoals
+ * 4. 构建 ToolBuildContext → toolRegistry.buildAll(context)
+ * 5. RouterService → 模型解析 + generateText
+ * 6. MemoryService.store() → 记忆后置存储
+ * 7. 返回 AgentRunResult
+ */
+
+import { Injectable, Logger } from '@nestjs/common';
+import { ModelMessage, generateText, streamText, stepCountIs, ToolSet } from 'ai';
+import { RouterService } from '@providers/router.service';
+import { ToolRegistryService } from '@tools/tool-registry.service';
+import { ToolBuildContext } from '@shared-types/tool.types';
+import { MemoryService } from '@memory/memory.service';
+import { ProfileLoaderService } from './profile-loader.service';
+import { StrategyPromptService } from './strategy-prompt.service';
+import {
+  type ChannelType,
+  type StageGoals,
+  type StageGoalPolicy,
+} from '@channels/wecom/types/wework.types';
+
+export interface OrchestratorRunParams {
+  /** 对话消息列表 */
+  messages: ModelMessage[];
+  /** 外部用户 ID */
+  userId: string;
+  /** 企业 ID */
+  corpId: string;
+  /** 场景标识（用于加载 profile） */
+  scenario?: string;
+  /** 渠道类型，默认 private */
+  channelType?: ChannelType;
+  /** 最大工具循环步数，默认 5 */
+  maxSteps?: number;
+}
+
+export interface AgentRunResult {
+  text: string;
+  steps: number;
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  };
+}
+
+@Injectable()
+export class OrchestratorService {
+  private readonly logger = new Logger(OrchestratorService.name);
+
+  constructor(
+    private readonly router: RouterService,
+    private readonly profileLoader: ProfileLoaderService,
+    private readonly strategyConfig: StrategyPromptService,
+    private readonly toolRegistry: ToolRegistryService,
+    private readonly memoryService: MemoryService,
+  ) {}
+
+  async run(params: OrchestratorRunParams): Promise<AgentRunResult> {
+    const {
+      messages,
+      userId,
+      corpId,
+      scenario = 'candidate-consultation',
+      channelType = 'private',
+      maxSteps = 5,
+    } = params;
+
+    this.logger.log(`编排开始: userId=${userId}, corpId=${corpId}, scenario=${scenario}`);
+
+    // 0. 记忆前置 — 回忆已有事实
+    const memoryKey = `wework_session:${corpId}:${userId}`;
+    const memory = await this.memoryService.recall(memoryKey);
+    const memoryContext = memory
+      ? `\n\n[会话记忆]\n${JSON.stringify(memory.content, null, 2)}`
+      : '';
+
+    // 1. 加载 profile → 基础 systemPrompt
+    const profile = this.profileLoader.getProfile(scenario);
+    const basePrompt = profile?.systemPrompt ?? '';
+
+    // 2. 策略配置 → persona + redLines + stageGoals
+    const { systemPrompt: composedPrompt, stageGoals: rawStageGoals } =
+      await this.strategyConfig.composeSystemPromptAndStageGoals(basePrompt);
+
+    // 注入记忆到 systemPrompt
+    const finalPrompt = composedPrompt + memoryContext;
+
+    // 转换 stageGoals 格式
+    const stageGoals = this.convertStageGoals(rawStageGoals);
+
+    // 3. 构建工具上下文 → 一行构建所有工具
+    const toolContext: ToolBuildContext = {
+      userId,
+      corpId,
+      messages,
+      channelType,
+      stageGoals: stageGoals as unknown as Record<string, unknown>,
+    };
+    const tools = this.toolRegistry.buildAll(toolContext);
+
+    // 4. 通过 RouterService 获取模型并执行 Agent Loop
+    try {
+      const chatModel = this.router.resolveByRole('chat');
+
+      const r = await generateText({
+        model: chatModel,
+        system: finalPrompt,
+        messages,
+        tools: tools as ToolSet,
+        stopWhen: stepCountIs(maxSteps),
+      });
+
+      this.logger.log(`编排完成: steps=${r.steps.length}, tokens=${r.usage.totalTokens}`);
+
+      // 5. 记忆后置 — 保底记录基本交互信息
+      const lastUserMsg = messages.filter((m) => m.role === 'user').pop();
+      if (lastUserMsg) {
+        await this.memoryService
+          .store(memoryKey, {
+            lastInteraction: new Date().toISOString(),
+            lastTopic:
+              typeof lastUserMsg.content === 'string' ? lastUserMsg.content.substring(0, 100) : '',
+          })
+          .catch((err) => this.logger.warn('记忆存储失败', err));
+      }
+
+      return {
+        text: r.text,
+        steps: r.steps.length,
+        usage: {
+          inputTokens: r.usage.inputTokens ?? 0,
+          outputTokens: r.usage.outputTokens ?? 0,
+          totalTokens: r.usage.totalTokens,
+        },
+      };
+    } catch (err) {
+      this.logger.error('Agent 执行失败', err);
+      throw err;
+    }
+  }
+
+  /** 流式执行 */
+  stream(params: OrchestratorRunParams): ReturnType<typeof streamText> {
+    const {
+      messages,
+      userId,
+      corpId,
+      scenario = 'candidate-consultation',
+      channelType = 'private',
+      maxSteps = 5,
+    } = params;
+
+    const chatModel = this.router.resolveByRole('chat');
+    const profile = this.profileLoader.getProfile(scenario);
+    const basePrompt = profile?.systemPrompt ?? '';
+
+    const toolContext: ToolBuildContext = {
+      userId,
+      corpId,
+      messages,
+      channelType,
+      stageGoals: {} as Record<string, unknown>,
+    };
+    const tools = this.toolRegistry.buildAll(toolContext);
+
+    return streamText({
+      model: chatModel,
+      system: basePrompt,
+      messages,
+      tools: tools as ToolSet,
+      stopWhen: stepCountIs(maxSteps),
+      onFinish: ({ usage, steps }) =>
+        this.logger.log('流式完成, 步数: ' + steps.length + ', Tokens: ' + usage.totalTokens),
+    });
+  }
+
+  private convertStageGoals(rawStageGoals: Record<string, unknown>): StageGoals {
+    const result = {} as Record<string, StageGoalPolicy>;
+
+    for (const [stage, config] of Object.entries(rawStageGoals)) {
+      const c = config as Record<string, unknown>;
+      result[stage] = {
+        description: (c.description as string) ?? '',
+        primaryGoal: (c.primaryGoal as string) ?? '',
+        successCriteria: (c.successCriteria as string[]) ?? [],
+        ctaStrategy: Array.isArray(c.ctaStrategy)
+          ? (c.ctaStrategy as string[]).join('\n')
+          : ((c.ctaStrategy as string) ?? ''),
+        disallowedActions: (c.disallowedActions as string[]) ?? [],
+      };
+    }
+
+    return result as StageGoals;
+  }
+}

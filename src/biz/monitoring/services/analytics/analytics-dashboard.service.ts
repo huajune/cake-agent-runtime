@@ -4,7 +4,7 @@ import {
   MonitoringErrorLog,
   MonitoringGlobalCounters,
   AlertErrorType,
-} from '../../types/tracking.types';
+} from '@shared-types/tracking.types';
 import {
   HourlyStats,
   DashboardData,
@@ -24,9 +24,9 @@ import {
 import { MonitoringCacheService } from '../tracking/monitoring-cache.service';
 import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
 import { BookingRepository } from '@biz/message/repositories/booking.repository';
-import { MonitoringHourlyStatsRepository } from '../../repositories/monitoring-hourly-stats.repository';
-import { MonitoringErrorLogRepository } from '../../repositories/monitoring-error-log.repository';
-import { MonitoringRepository } from '../../repositories/monitoring.repository';
+import { MonitoringHourlyStatsRepository } from '../../repositories/hourly-stats.repository';
+import { MonitoringErrorLogRepository } from '../../repositories/error-log.repository';
+import { MonitoringRecordRepository } from '../../repositories/record.repository';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { HourlyStatsAggregatorService } from './hourly-stats-aggregator.service';
 import { MessageTrackingService } from '../tracking/message-tracking.service';
@@ -46,7 +46,7 @@ export class AnalyticsDashboardService {
     private readonly errorLogRepository: MonitoringErrorLogRepository,
     private readonly userHostingService: UserHostingService,
     private readonly cacheService: MonitoringCacheService,
-    private readonly monitoringRepository: MonitoringRepository,
+    private readonly monitoringRepository: MonitoringRecordRepository,
     private readonly bookingRepository: BookingRepository,
     private readonly hourlyStatsAggregator: HourlyStatsAggregatorService,
     private readonly messageTrackingService: MessageTrackingService,

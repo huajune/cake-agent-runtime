@@ -4,7 +4,7 @@ import {
   FeishuBitableApiService,
   BitableRecord,
   BitableField,
-} from '@core/feishu/services/feishu-bitable-api.service';
+} from '@infra/feishu/services/bitable-api.service';
 import { ConversationParserService } from '@biz/test-suite/services/conversation/conversation-parser.service';
 import { TestType, MessageRole } from '@biz/test-suite/enums/test.enum';
 

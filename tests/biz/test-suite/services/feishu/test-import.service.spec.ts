@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { TestImportService } from '@biz/test-suite/services/feishu/test-import.service';
-import { FeishuBitableApiService } from '@core/feishu/services/feishu-bitable-api.service';
+import { FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
 import { TestBatchService } from '@biz/test-suite/services/execution/test-batch.service';
 import { TestExecutionService } from '@biz/test-suite/services/execution/test-execution.service';
 import { FeishuTestSyncService } from '@biz/test-suite/services/feishu/feishu-test-sync.service';

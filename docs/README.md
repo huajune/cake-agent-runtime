@@ -12,7 +12,6 @@
 docs/
 ├── README.md              # 本文档（文档索引）
 ├── architecture/          # 架构设计文档
-│   ├── agent-service-architecture.md
 │   ├── message-service-architecture.md
 │   ├── monitoring-system-architecture.md
 │   └── alert-system-architecture.md
@@ -23,7 +22,6 @@ docs/
 ├── guides/                # 开发指南和教程
 │   ├── development-guide.md
 │   ├── claude-code-safety-guide.md
-│   └── huajune-agent-api-guide.md
 ├── workflows/             # 工作流程文档
 │   ├── ai-code-review-guide.md
 │   ├── auto-version-changelog.md
@@ -39,13 +37,6 @@ docs/
 ---
 
 ## 🏗️ 架构设计 (architecture/)
-
-- **[Agent 服务架构](architecture/agent-service-architecture.md)**
-  - Agent 服务封装实现
-  - 4 个核心服务：AgentService、AgentConfigService、AgentRegistryService、AgentCacheService
-  - 17 个 HTTP API 端点
-  - 缓存策略、配置管理、错误处理
-  - **更新日期**：2025-11-04
 
 - **[消息服务架构](architecture/message-service-architecture.md)**
   - 消息处理服务的重构架构
@@ -210,14 +201,6 @@ docs: 更新文档        # 修订号 +1
   - 紧急情况处理方法
   - **更新日期**：2025-11-05
 
-- **[花卷 Agent API 使用指南](guides/huajune-agent-api-guide.md)**
-  - 花卷智能体 API 完整使用指南
-  - 认证与安全、模型选择
-  - System Prompt 配置、工具系统
-  - 上下文管理、消息剪裁
-  - 错误处理、性能优化
-  - **更新日期**：2025-11-04
-
 ---
 
 ## 🗂️ 文档命名规范
@@ -227,9 +210,8 @@ docs: 更新文档        # 修订号 +1
 ### ✅ 正确示例
 
 ```
-agent-service-architecture.md
-huajune-agent-api-guide.md
 message-service-architecture.md
+monitoring-system-architecture.md
 product-definition.md
 business-flows.md
 ```

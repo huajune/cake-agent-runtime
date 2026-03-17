@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { StrategyConfigRepository } from '../repositories/strategy-config.repository';
 import { StrategyConfigRecord } from '../entities/strategy-config.entity';
 import { StrategyPersona, StrategyStageGoals, StrategyRedLines } from '../types/strategy.types';
-import { buildDefaultStrategyRecord } from '@agent/strategy/strategy-config.types';
+import { buildDefaultStrategyRecord } from '@shared-types/strategy-config.types';
 
 /**
  * 策略配置 Service

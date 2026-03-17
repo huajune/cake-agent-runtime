@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AnalyticsAlertService } from '@biz/monitoring/services/analytics/analytics-alert.service';
 import { AnalyticsDashboardService } from '@biz/monitoring/services/analytics/analytics-dashboard.service';
-import { FeishuAlertService } from '@core/feishu';
+import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 
 // Minimal DashboardData shape for testing

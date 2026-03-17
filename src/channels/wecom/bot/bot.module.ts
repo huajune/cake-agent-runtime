@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import { BotController } from './bot.controller';
 import { BotService } from './bot.service';
-import { HttpModule } from '@core/client-http';
-import { ApiConfigModule } from '@core/config';
+import { HttpModule } from '@infra/client-http/http.module';
+import { ApiConfigModule } from '@infra/config/api-config.module';
 
 @Module({
   imports: [HttpModule, ApiConfigModule],

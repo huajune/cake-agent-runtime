@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
-import { HttpModule } from '@core/client-http';
-import { ApiConfigModule } from '@core/config';
+import { HttpModule } from '@infra/client-http/http.module';
+import { ApiConfigModule } from '@infra/config/api-config.module';
 
 /**
  * 会话管理模块

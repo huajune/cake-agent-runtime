@@ -3,7 +3,7 @@ import { InjectQueue } from '@nestjs/bull';
 import { Queue, Job } from 'bull';
 import { TestSuiteService } from './test-suite.service';
 import { TestBatch } from './entities/test-batch.entity';
-import { RedisService } from '@core/redis/redis.service';
+import { RedisService } from '@infra/redis/redis.service';
 import { ExecutionStatus, MessageRole, BatchStatus } from './enums/test.enum';
 
 /**

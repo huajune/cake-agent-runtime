@@ -1,5 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AiTool, AiToolSet, ToolBuildContext, ToolFactory, ToolRegistration } from './tool.types';
+import {
+  AiTool,
+  AiToolSet,
+  ToolBuildContext,
+  ToolFactory,
+  ToolRegistration,
+} from '@shared-types/tool.types';
 
 /**
  * 统一工具注册表

@@ -466,8 +466,8 @@ pending (待评审)
 | 服务 | 用途 | API 类型 |
 |------|------|---------|
 | **飞书多维表格** | 测试数据导入/导出 | RESTful API |
-| **花卷 Agent API** | AI 对话能力 | RESTful API (SSE) |
-| **OpenAI API** | LLM 评估 (via 花卷) | RESTful API |
+| **Vercel AI SDK** | AI 对话能力 | 多 Provider (Anthropic, OpenAI 等) |
+| **OpenAI API** | LLM 评估 | RESTful API |
 
 ### 前端技术栈
 

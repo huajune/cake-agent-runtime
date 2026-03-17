@@ -12,7 +12,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { tool, generateText, Output } from 'ai';
 import { z } from 'zod';
 import { RouterService } from '@providers/router.service';
-import { AiTool, ToolBuildContext, ToolFactory } from './tool.types';
+import { AiTool, ToolBuildContext, ToolFactory } from '@shared-types/tool.types';
 import {
   FunnelStageSchema,
   ChannelTypeSchema,

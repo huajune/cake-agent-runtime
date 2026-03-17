@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { OrchestratorService, type AgentRunResult } from '@agent';
+import { OrchestratorService, type AgentRunResult } from '@agent/orchestrator.service';
 import { TestChatRequestDto, TestChatResponse } from '../../dto/test-chat.dto';
 import { TestExecutionRepository } from '../../repositories/test-execution.repository';
 import { TestExecution } from '../../entities/test-execution.entity';

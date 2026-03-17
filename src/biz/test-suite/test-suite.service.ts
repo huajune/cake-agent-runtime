@@ -25,11 +25,11 @@ import {
   TestType,
   ConversationSourceStatus,
 } from './enums/test.enum';
-import { MessageRole } from '@shared/enums';
+import { MessageRole } from '@enums/message.enum';
 import {
   FeishuBitableSyncService,
   AgentTestFeedback,
-} from '@core/feishu/services/feishu-bitable.service';
+} from '@infra/feishu/services/bitable-sync.service';
 import { TestSuiteProcessor } from './test-suite.processor';
 import { Inject, forwardRef } from '@nestjs/common';
 

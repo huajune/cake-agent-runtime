@@ -56,7 +56,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
   );
   const startTimeRef = useRef<number>(0);
 
-  // 会话 ID + 用户 ID：同一对话保持一致，清空聊天时重新生成（确保花卷 API 服务端记忆完全隔离）
+  // 会话 ID + 用户 ID：同一对话保持一致，清空聊天时重新生成（确保 Agent API 服务端记忆完全隔离）
   const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
   const [userId, setUserId] = useState(() => `dashboard-test-${crypto.randomUUID().slice(0, 8)}`);
 

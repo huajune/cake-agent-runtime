@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { StrategyConfigService } from '@biz/strategy/services/strategy-config.service';
 import { StrategyConfigRepository } from '@biz/strategy/repositories/strategy-config.repository';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
-import { buildDefaultStrategyRecord } from '@agent/strategy/strategy-config.types';
+import { buildDefaultStrategyRecord } from '@shared-types/strategy-config.types';
 
 describe('StrategyConfigService', () => {
   let service: StrategyConfigService;

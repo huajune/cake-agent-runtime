@@ -839,7 +839,7 @@ Agent API
 ### 配置方式
 
 ```typescript
-// src/core/feishu/constants/feishu-bitable.config.ts
+// src/infra/feishu/constants/feishu-bitable.config.ts
 export const FEISHU_BITABLE_CONFIG = {
   testSuite: {
     appToken: process.env.FEISHU_TEST_SUITE_APP_TOKEN,
@@ -868,10 +868,9 @@ FEISHU_APP_SECRET=xxx
 FEISHU_TEST_SUITE_APP_TOKEN=bascn...
 FEISHU_TEST_SUITE_TABLE_ID=tbl...
 
-# Agent API 配置
-AGENT_API_KEY=your-key
-AGENT_API_BASE_URL=https://huajune.duliday.com/api/v1
-AGENT_API_TIMEOUT=600000
+# AI Provider 配置
+ANTHROPIC_API_KEY=your-key
+AGENT_CHAT_MODEL=anthropic/claude-sonnet-4-5-20250929
 
 # Redis 配置 (Bull Queue)
 UPSTASH_REDIS_REST_URL=https://...

@@ -11,7 +11,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
-import { AiTool, ToolBuildContext, ToolFactory } from './tool.types';
+import { AiTool, ToolBuildContext, ToolFactory } from '@shared-types/tool.types';
 
 // 学历映射
 const EDUCATION_MAPPING: Record<number, string> = {

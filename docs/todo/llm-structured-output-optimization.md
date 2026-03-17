@@ -56,9 +56,7 @@ tools: {
 
 ### 前提条件
 
-需要确认花卷平台是否支持：
-1. 自定义工具定义（不只是使用预定义工具）
-2. 或者是否有类似 `structuredOutputs` 的功能
+已迁移到 Vercel AI SDK，支持 Tool Calling 和 Structured Output
 
 ## 参考资料
 
@@ -67,9 +65,9 @@ tools: {
 
 ## 状态
 
-- [ ] 确认花卷平台是否支持自定义工具定义
-- [ ] 如支持，实现 tool-based 方案
-- [ ] 如不支持，保持当前方案并优化 prompt
+- [x] 确认平台是否支持自定义工具定义（已完成：Vercel AI SDK 原生支持自定义工具定义）
+- [ ] 实现 tool-based 方案
+- [ ] 保持当前方案并优化 prompt（备选）
 
 ---
 

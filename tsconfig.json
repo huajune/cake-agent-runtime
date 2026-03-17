@@ -25,23 +25,8 @@
       "@/*": [
         "src/*"
       ],
-      "@core": [
-        "src/core"
-      ],
-      "@core/*": [
-        "src/core/*"
-      ],
-      "@core/http": [
-        "src/core/client-http"
-      ],
-      "@core/response": [
-        "src/core/response"
-      ],
-      "@core/supabase": [
-        "src/core/supabase"
-      ],
-      "@agent": [
-        "src/agent"
+      "@infra/*": [
+        "src/infra/*"
       ],
       "@agent/*": [
         "src/agent/*"
@@ -58,14 +43,8 @@
       "@wecom/*": [
         "src/channels/wecom/*"
       ],
-      "@shared": [
-        "src/shared"
-      ],
-      "@shared/*": [
-        "src/shared/*"
-      ],
-      "@test-suite": [
-        "src/biz/test-suite"
+      "@enums/*": [
+        "src/enums/*"
       ],
       "@test-suite/*": [
         "src/biz/test-suite/*"
@@ -73,41 +52,26 @@
       "@biz/*": [
         "src/biz/*"
       ],
-      "@providers": [
-        "src/providers"
-      ],
       "@providers/*": [
         "src/providers/*"
-      ],
-      "@tools": [
-        "src/tools"
       ],
       "@tools/*": [
         "src/tools/*"
       ],
-      "@memory": [
-        "src/memory"
-      ],
       "@memory/*": [
         "src/memory/*"
-      ],
-      "@mcp": [
-        "src/mcp"
       ],
       "@mcp/*": [
         "src/mcp/*"
       ],
-      "@sponge": [
-        "src/sponge"
-      ],
       "@sponge/*": [
         "src/sponge/*"
       ],
-      "@observability": [
-        "src/observability"
-      ],
       "@observability/*": [
         "src/observability/*"
+      ],
+      "@shared-types/*": [
+        "src/types/*"
       ],
       "@modelcontextprotocol/sdk/client": [
         "./node_modules/@modelcontextprotocol/sdk/dist/cjs/client/index"

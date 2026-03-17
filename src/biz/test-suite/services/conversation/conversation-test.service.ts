@@ -1,5 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { OrchestratorService, type OrchestratorRunParams, type AgentRunResult } from '@agent';
+import {
+  OrchestratorService,
+  type OrchestratorRunParams,
+  type AgentRunResult,
+} from '@agent/orchestrator.service';
 import { LlmEvaluationService } from './llm-evaluation.service';
 import { ConversationParserService } from './conversation-parser.service';
 import { ConversationSnapshotRepository } from '../../repositories/conversation-snapshot.repository';

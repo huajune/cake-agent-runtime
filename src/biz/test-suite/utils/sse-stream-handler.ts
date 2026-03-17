@@ -42,7 +42,7 @@ export interface StreamAccumulator {
 }
 
 /**
- * 花卷 API 流式数据格式
+ * Agent API 流式数据格式
  */
 interface HuajuanStreamData {
   type?: string;
@@ -67,7 +67,7 @@ interface HuajuanStreamData {
  * SSE 流处理工具类
  *
  * 职责：
- * - 解析花卷 API 的流式响应
+ * - 解析 Agent API 的流式响应
  * - 发送 SSE 事件到客户端
  * - 累积流式数据用于最终统计
  * - 处理不同格式的流式事件
@@ -173,7 +173,7 @@ export class SSEStreamHandler {
   /**
    * 处理流式数据块
    *
-   * 解析花卷 API 的 SSE 格式数据，支持多种事件类型：
+   * 解析 Agent API 的 SSE 格式数据，支持多种事件类型：
    * - text-delta: 文本增量
    * - tool-call: 工具调用开始
    * - tool-result: 工具调用结果
@@ -234,7 +234,7 @@ export class SSEStreamHandler {
       return;
     }
 
-    // 花卷 API 工具调用格式
+    // Agent API 工具调用格式
     if (data.type === 'tool-call') {
       const toolCall: ToolCallInfo = {
         toolCallId: data.toolCallId,
@@ -257,7 +257,7 @@ export class SSEStreamHandler {
       return;
     }
 
-    // 花卷 API 工具结果格式
+    // Agent API 工具结果格式
     if (data.type === 'tool-result') {
       const toolCallId = data.toolCallId;
       const matchingTool = this.accumulator.toolCalls.find((t) => t.toolCallId === toolCallId);

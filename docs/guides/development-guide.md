@@ -550,9 +550,7 @@ pnpm run test -- -u
 ## 相关文档
 
 - [README.md](../README.md) - 项目概览和快速开始
-- [Agent 服务架构](./agent-service-architecture.md)
 - [消息服务架构](./message-service-architecture.md)
-- [Agent API 使用指南](./huajune-agent-api-guide.md)
 - [自动版本和 Changelog 管理](./auto-version-changelog.md)
 
 ---

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { RedisService } from '@core/redis';
+import { RedisService } from '@infra/redis/redis.service';
 import { MemoryEntry } from './memory.types';
 import { deepMerge } from './deep-merge.util';
 

@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { MemoryService } from '@memory/memory.service';
-import { AiTool, ToolBuildContext, ToolFactory } from './tool.types';
+import { AiTool, ToolBuildContext, ToolFactory } from '@shared-types/tool.types';
 
 /**
  * memory_recall — LLM 工具：回忆候选人已知信息

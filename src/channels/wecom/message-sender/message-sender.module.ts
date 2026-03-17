@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import { MessageSenderController } from './message-sender.controller';
 import { MessageSenderService } from './message-sender.service';
-import { HttpModule } from '@core/client-http';
-import { ApiConfigModule } from '@core/config';
+import { HttpModule } from '@infra/client-http/http.module';
+import { ApiConfigModule } from '@infra/config/api-config.module';
 
 /**
  * 消息发送模块
