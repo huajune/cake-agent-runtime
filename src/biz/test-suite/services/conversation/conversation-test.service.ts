@@ -1,9 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import {
-  OrchestratorService,
-  type OrchestratorRunParams,
-  type AgentRunResult,
-} from '@agent/orchestrator.service';
+import { LoopService, type LoopRunParams, type AgentRunResult } from '@agent/loop.service';
 import { LlmEvaluationService } from './llm-evaluation.service';
 import { ConversationParserService } from './conversation-parser.service';
 import { ConversationSnapshotRepository } from '../../repositories/conversation-snapshot.repository';
@@ -45,7 +41,7 @@ export class ConversationTestService {
   private readonly logger = new Logger(ConversationTestService.name);
 
   constructor(
-    private readonly orchestrator: OrchestratorService,
+    private readonly loop: LoopService,
     private readonly llmEvaluationService: LlmEvaluationService,
     private readonly parserService: ConversationParserService,
     private readonly conversationSnapshotRepository: ConversationSnapshotRepository,
@@ -343,7 +339,7 @@ export class ConversationTestService {
       };
     }
 
-    let orchestratorResult: AgentRunResult | null = null;
+    let loopResult: AgentRunResult | null = null;
     let executionStatus: ExecutionStatus = ExecutionStatus.SUCCESS;
     let errorMessage: string | null = null;
 
@@ -353,7 +349,7 @@ export class ConversationTestService {
     }
 
     try {
-      const orchestratorParams: OrchestratorRunParams = {
+      const loopParams: LoopRunParams = {
         messages: [
           ...turn.history.map((m) => ({
             role: m.role as 'user' | 'assistant',
@@ -366,7 +362,7 @@ export class ConversationTestService {
         scenario,
       };
 
-      orchestratorResult = await this.orchestrator.run(orchestratorParams);
+      loopResult = await this.loop.run(loopParams);
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       executionStatus = errorMsg.includes('timeout')
@@ -378,9 +374,9 @@ export class ConversationTestService {
     const durationMs = Date.now() - startTime;
 
     // 提取 Agent 回复
-    const actualOutput = orchestratorResult?.text ?? '';
+    const actualOutput = loopResult?.text ?? '';
     const toolCalls: unknown[] = [];
-    const tokenUsage = orchestratorResult?.usage ?? {
+    const tokenUsage = loopResult?.usage ?? {
       inputTokens: 0,
       outputTokens: 0,
       totalTokens: 0,
@@ -417,7 +413,7 @@ export class ConversationTestService {
     if (existingExecution) {
       await this.executionRepository.updateExecution(existingExecution.id, {
         agent_request: null,
-        agent_response: orchestratorResult ? { text: orchestratorResult.text } : null,
+        agent_response: loopResult ? { text: loopResult.text } : null,
         actual_output: actualOutput,
         tool_calls: toolCalls,
         execution_status: executionStatus,
@@ -441,7 +437,7 @@ export class ConversationTestService {
         },
         expectedOutput: turn.expectedOutput,
         agentRequest: null,
-        agentResponse: orchestratorResult ? { text: orchestratorResult.text } : null,
+        agentResponse: loopResult ? { text: loopResult.text } : null,
         actualOutput,
         toolCalls,
         executionStatus,

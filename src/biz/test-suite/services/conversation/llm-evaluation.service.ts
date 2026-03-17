@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { RouterService } from '@providers/router.service';
-import { generateText } from 'ai';
+import { CompletionService } from '@agent/completion.service';
 import { randomUUID } from 'crypto';
 import { SimilarityRating } from '../../enums/test.enum';
 import { LlmEvaluationResult, EvaluationInput } from '../../types/test-suite.types';
@@ -20,7 +19,7 @@ const PASS_THRESHOLD = 60;
 export class LlmEvaluationService {
   private readonly logger = new Logger(LlmEvaluationService.name);
 
-  constructor(private readonly router: RouterService) {
+  constructor(private readonly completion: CompletionService) {
     this.logger.log('LlmEvaluationService 初始化完成');
   }
 
@@ -40,17 +39,14 @@ export class LlmEvaluationService {
       // 构建系统提示词（定义评估者角色和规则）和用户消息（待评估内容）
       const { systemPrompt, userMessage } = this.buildEvaluationPrompts(input);
 
-      // 调用 LLM 进行评估
-      // 注意：不注册任何工具，确保获得纯文本 JSON 响应
-      const model = this.router.resolveByRole('chat');
-      const aiResult = await generateText({
-        model,
-        system: systemPrompt,
-        prompt: userMessage,
+      // 调用 LLM 进行评估（通过 CompletionService 统一入口）
+      const completionResult = await this.completion.generate({
+        systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
       });
 
       // 提取响应文本
-      const responseText = aiResult.text;
+      const responseText = completionResult.text;
 
       // 调试日志：记录原始响应和提取结果
       if (!responseText) {
@@ -63,13 +59,11 @@ export class LlmEvaluationService {
       const evaluation = this.parseEvaluationResult(responseText, evaluationId);
 
       // 添加 token 使用信息
-      if (aiResult.usage) {
-        evaluation.tokenUsage = {
-          inputTokens: aiResult.usage.inputTokens ?? 0,
-          outputTokens: aiResult.usage.outputTokens ?? 0,
-          totalTokens: aiResult.usage.totalTokens,
-        };
-      }
+      evaluation.tokenUsage = {
+        inputTokens: completionResult.usage.inputTokens,
+        outputTokens: completionResult.usage.outputTokens,
+        totalTokens: completionResult.usage.totalTokens,
+      };
 
       const durationMs = Date.now() - startTime;
       this.logger.log(

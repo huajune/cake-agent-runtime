@@ -4,7 +4,7 @@ import {
   ConversationTurn,
   ConversationParseResult,
 } from '../../dto/conversation-test.dto';
-import type { AgentRunResult } from '@agent/orchestrator.service';
+import type { AgentRunResult } from '@agent/loop.service';
 
 /**
  * 对话解析正则表达式

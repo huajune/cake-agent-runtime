@@ -1,14 +1,13 @@
 /**
- * Agent 编排服务
+ * Agent Loop 服务
  *
- * 编排流程：
+ * 执行流程：
  * 1. MemoryService.recall() → 记忆前置注入
- * 2. ProfileLoaderService.load() → systemPrompt
- * 3. StrategyPromptService → persona + redLines + stageGoals
- * 4. 构建 ToolBuildContext → toolRegistry.buildAll(context)
- * 5. RouterService → 模型解析 + generateText
- * 6. MemoryService.store() → 记忆后置存储
- * 7. 返回 AgentRunResult
+ * 2. SystemPromptService.compose() → systemPrompt + stageGoals
+ * 3. 构建 ToolBuildContext → toolRegistry.buildAll(context)
+ * 4. RouterService → 模型解析 + generateText
+ * 5. MemoryService.store() → 记忆后置存储
+ * 6. 返回 AgentRunResult
  */
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -17,22 +16,21 @@ import { RouterService } from '@providers/router.service';
 import { ToolRegistryService } from '@tools/tool-registry.service';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { MemoryService } from '@memory/memory.service';
-import { ProfileLoaderService } from './profile-loader.service';
-import { StrategyPromptService } from './strategy-prompt.service';
+import { SystemPromptService } from './system-prompt.service';
 import {
   type ChannelType,
   type StageGoals,
   type StageGoalPolicy,
 } from '@channels/wecom/types/wework.types';
 
-export interface OrchestratorRunParams {
+export interface LoopRunParams {
   /** 对话消息列表 */
   messages: ModelMessage[];
   /** 外部用户 ID */
   userId: string;
   /** 企业 ID */
   corpId: string;
-  /** 场景标识（用于加载 profile） */
+  /** 场景标识（用于加载 prompt） */
   scenario?: string;
   /** 渠道类型，默认 private */
   channelType?: ChannelType;
@@ -51,18 +49,17 @@ export interface AgentRunResult {
 }
 
 @Injectable()
-export class OrchestratorService {
-  private readonly logger = new Logger(OrchestratorService.name);
+export class LoopService {
+  private readonly logger = new Logger(LoopService.name);
 
   constructor(
     private readonly router: RouterService,
-    private readonly profileLoader: ProfileLoaderService,
-    private readonly strategyConfig: StrategyPromptService,
+    private readonly systemPrompt: SystemPromptService,
     private readonly toolRegistry: ToolRegistryService,
     private readonly memoryService: MemoryService,
   ) {}
 
-  async run(params: OrchestratorRunParams): Promise<AgentRunResult> {
+  async run(params: LoopRunParams): Promise<AgentRunResult> {
     const {
       messages,
       userId,
@@ -72,7 +69,7 @@ export class OrchestratorService {
       maxSteps = 5,
     } = params;
 
-    this.logger.log(`编排开始: userId=${userId}, corpId=${corpId}, scenario=${scenario}`);
+    this.logger.log(`Loop 开始: userId=${userId}, corpId=${corpId}, scenario=${scenario}`);
 
     // 0. 记忆前置 — 回忆已有事实
     const memoryKey = `wework_session:${corpId}:${userId}`;
@@ -81,13 +78,9 @@ export class OrchestratorService {
       ? `\n\n[会话记忆]\n${JSON.stringify(memory.content, null, 2)}`
       : '';
 
-    // 1. 加载 profile → 基础 systemPrompt
-    const profile = this.profileLoader.getProfile(scenario);
-    const basePrompt = profile?.systemPrompt ?? '';
-
-    // 2. 策略配置 → persona + redLines + stageGoals
+    // 1. 加载 systemPrompt + stageGoals（一次调用完成）
     const { systemPrompt: composedPrompt, stageGoals: rawStageGoals } =
-      await this.strategyConfig.composeSystemPromptAndStageGoals(basePrompt);
+      await this.systemPrompt.compose(scenario);
 
     // 注入记忆到 systemPrompt
     const finalPrompt = composedPrompt + memoryContext;
@@ -95,7 +88,7 @@ export class OrchestratorService {
     // 转换 stageGoals 格式
     const stageGoals = this.convertStageGoals(rawStageGoals);
 
-    // 3. 构建工具上下文 → 一行构建所有工具
+    // 2. 构建工具上下文 → 一行构建所有工具
     const toolContext: ToolBuildContext = {
       userId,
       corpId,
@@ -105,7 +98,7 @@ export class OrchestratorService {
     };
     const tools = this.toolRegistry.buildAll(toolContext);
 
-    // 4. 通过 RouterService 获取模型并执行 Agent Loop
+    // 3. 通过 RouterService 获取模型并执行 Agent Loop
     try {
       const chatModel = this.router.resolveByRole('chat');
 
@@ -117,9 +110,9 @@ export class OrchestratorService {
         stopWhen: stepCountIs(maxSteps),
       });
 
-      this.logger.log(`编排完成: steps=${r.steps.length}, tokens=${r.usage.totalTokens}`);
+      this.logger.log(`Loop 完成: steps=${r.steps.length}, tokens=${r.usage.totalTokens}`);
 
-      // 5. 记忆后置 — 保底记录基本交互信息
+      // 4. 记忆后置 — 保底记录基本交互信息
       const lastUserMsg = messages.filter((m) => m.role === 'user').pop();
       if (lastUserMsg) {
         await this.memoryService
@@ -147,7 +140,7 @@ export class OrchestratorService {
   }
 
   /** 流式执行 */
-  stream(params: OrchestratorRunParams): ReturnType<typeof streamText> {
+  async stream(params: LoopRunParams): Promise<ReturnType<typeof streamText>> {
     const {
       messages,
       userId,
@@ -158,21 +151,22 @@ export class OrchestratorService {
     } = params;
 
     const chatModel = this.router.resolveByRole('chat');
-    const profile = this.profileLoader.getProfile(scenario);
-    const basePrompt = profile?.systemPrompt ?? '';
+    const { systemPrompt: finalPrompt, stageGoals: rawStageGoals } =
+      await this.systemPrompt.compose(scenario);
+    const stageGoals = this.convertStageGoals(rawStageGoals);
 
     const toolContext: ToolBuildContext = {
       userId,
       corpId,
       messages,
       channelType,
-      stageGoals: {} as Record<string, unknown>,
+      stageGoals: stageGoals as unknown as Record<string, unknown>,
     };
     const tools = this.toolRegistry.buildAll(toolContext);
 
     return streamText({
       model: chatModel,
-      system: basePrompt,
+      system: finalPrompt,
       messages,
       tools: tools as ToolSet,
       stopWhen: stepCountIs(maxSteps),

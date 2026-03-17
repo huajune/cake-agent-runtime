@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { OrchestratorService } from '@agent/orchestrator.service';
+import { LoopService } from '@agent/loop.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import {
   AgentInvokeResult,
@@ -28,7 +28,7 @@ export class AgentGatewayService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly orchestrator: OrchestratorService,
+    private readonly loop: LoopService,
     private readonly monitoringService: MessageTrackingService,
   ) {}
 
@@ -91,7 +91,7 @@ export class AgentGatewayService {
       ];
 
       // 调用 Orchestrator
-      const result = await this.orchestrator.run({
+      const result = await this.loop.run({
         messages,
         userId,
         corpId,

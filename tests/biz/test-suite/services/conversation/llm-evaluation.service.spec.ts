@@ -1,60 +1,28 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { LlmEvaluationService } from '@biz/test-suite/services/conversation/llm-evaluation.service';
-import { RouterService } from '@providers/router.service';
+import { CompletionService } from '@agent/completion.service';
 import { SimilarityRating } from '@biz/test-suite/enums/test.enum';
-
-// Mock the 'ai' module
-jest.mock('ai', () => ({
-  generateText: jest.fn(),
-}));
-
-import { generateText } from 'ai';
-
-const mockGenerateText = generateText as jest.MockedFunction<typeof generateText>;
 
 describe('LlmEvaluationService', () => {
   let service: LlmEvaluationService;
 
-  const mockRouter = {
-    resolveByRole: jest.fn().mockReturnValue({ modelId: 'test-model' }),
+  const mockCompletion = {
+    generate: jest.fn(),
+    generateSimple: jest.fn(),
   };
 
-  const makeGenerateResult = (text: string) => ({
+  const makeCompletionResult = (text: string) => ({
     text,
-    usage: { inputTokens: 50, outputTokens: 30, totalTokens: 80, promptTokens: 50, completionTokens: 30 },
-    finishReason: 'stop' as const,
-    response: { id: 'test', timestamp: new Date(), modelId: 'test-model', headers: {} },
-    reasoning: undefined,
-    reasoningDetails: [],
-    experimental_output: undefined,
-    sources: [],
-    files: [],
-    steps: [],
-    request: { body: '' },
-    warnings: [],
-    providerMetadata: undefined,
-    experimental_providerMetadata: undefined,
-    toolCalls: [],
-    toolResults: [],
-    responseMessages: [],
-    roundtrips: [],
-    toJsonResponse: jest.fn(),
-    toDataStream: jest.fn(),
-    toDataStreamResponse: jest.fn(),
-    pipeDataStreamToResponse: jest.fn(),
-    toTextStreamResponse: jest.fn(),
-    pipeTextStreamToResponse: jest.fn(),
-    textStream: {} as any,
+    usage: { inputTokens: 50, outputTokens: 30, totalTokens: 80 },
   });
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [LlmEvaluationService, { provide: RouterService, useValue: mockRouter }],
+      providers: [LlmEvaluationService, { provide: CompletionService, useValue: mockCompletion }],
     }).compile();
 
     service = module.get<LlmEvaluationService>(LlmEvaluationService);
     jest.clearAllMocks();
-    mockRouter.resolveByRole.mockReturnValue({ modelId: 'test-model' });
   });
 
   it('should be defined', () => {
@@ -71,8 +39,8 @@ describe('LlmEvaluationService', () => {
     };
 
     it('should return evaluation result with correct score and passed flag', async () => {
-      mockGenerateText.mockResolvedValue(
-        makeGenerateResult('{"score": 85, "passed": true, "reason": "回复内容基本一致"}') as any,
+      mockCompletion.generate.mockResolvedValue(
+        makeCompletionResult('{"score": 85, "passed": true, "reason": "回复内容基本一致"}'),
       );
 
       const result = await service.evaluate(input);
@@ -83,9 +51,9 @@ describe('LlmEvaluationService', () => {
       expect(result.evaluationId).toBeDefined();
     });
 
-    it('should include token usage when available', async () => {
-      mockGenerateText.mockResolvedValue(
-        makeGenerateResult('{"score": 70, "passed": true, "reason": "良好"}') as any,
+    it('should include token usage', async () => {
+      mockCompletion.generate.mockResolvedValue(
+        makeCompletionResult('{"score": 70, "passed": true, "reason": "良好"}'),
       );
 
       const result = await service.evaluate(input);
@@ -97,8 +65,8 @@ describe('LlmEvaluationService', () => {
       });
     });
 
-    it('should return zero score on generateText failure', async () => {
-      mockGenerateText.mockRejectedValue(new Error('API connection failed'));
+    it('should return zero score on generate failure', async () => {
+      mockCompletion.generate.mockRejectedValue(new Error('API connection failed'));
 
       const result = await service.evaluate(input);
 
@@ -109,7 +77,7 @@ describe('LlmEvaluationService', () => {
 
     it('should handle markdown code block wrapped JSON', async () => {
       const jsonWithMarkdown = '```json\n{"score": 75, "passed": true, "reason": "良好"}\n```';
-      mockGenerateText.mockResolvedValue(makeGenerateResult(jsonWithMarkdown) as any);
+      mockCompletion.generate.mockResolvedValue(makeCompletionResult(jsonWithMarkdown));
 
       const result = await service.evaluate(input);
 
@@ -117,19 +85,24 @@ describe('LlmEvaluationService', () => {
       expect(result.passed).toBe(true);
     });
 
-    it('should call router.resolveByRole with "chat"', async () => {
-      mockGenerateText.mockResolvedValue(
-        makeGenerateResult('{"score": 80, "passed": true, "reason": "ok"}') as any,
+    it('should call completion.generate with systemPrompt and messages', async () => {
+      mockCompletion.generate.mockResolvedValue(
+        makeCompletionResult('{"score": 80, "passed": true, "reason": "ok"}'),
       );
 
       await service.evaluate(input);
 
-      expect(mockRouter.resolveByRole).toHaveBeenCalledWith('chat');
+      expect(mockCompletion.generate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          systemPrompt: expect.any(String),
+          messages: [{ role: 'user', content: expect.any(String) }],
+        }),
+      );
     });
 
     it('should include conversation history in the user message when provided', async () => {
-      mockGenerateText.mockResolvedValue(
-        makeGenerateResult('{"score": 80, "passed": true, "reason": "ok"}') as any,
+      mockCompletion.generate.mockResolvedValue(
+        makeCompletionResult('{"score": 80, "passed": true, "reason": "ok"}'),
       );
 
       const inputWithHistory = {
@@ -142,14 +115,15 @@ describe('LlmEvaluationService', () => {
 
       await service.evaluate(inputWithHistory);
 
-      const callArgs = mockGenerateText.mock.calls[0][0];
-      expect(callArgs.prompt).toContain('对话历史');
-      expect(callArgs.prompt).toContain('你好');
+      const callArgs = mockCompletion.generate.mock.calls[0][0];
+      const userContent = callArgs.messages[0].content;
+      expect(userContent).toContain('对话历史');
+      expect(userContent).toContain('你好');
     });
 
     it('should auto-correct passed flag when inconsistent with score', async () => {
-      mockGenerateText.mockResolvedValue(
-        makeGenerateResult('{"score": 75, "passed": false, "reason": "inconsistent"}') as any,
+      mockCompletion.generate.mockResolvedValue(
+        makeCompletionResult('{"score": 75, "passed": false, "reason": "inconsistent"}'),
       );
 
       const result = await service.evaluate(input);
@@ -159,8 +133,8 @@ describe('LlmEvaluationService', () => {
     });
 
     it('should clamp score to 0-100 range', async () => {
-      mockGenerateText.mockResolvedValue(
-        makeGenerateResult('{"score": 150, "passed": true, "reason": "out of range"}') as any,
+      mockCompletion.generate.mockResolvedValue(
+        makeCompletionResult('{"score": 150, "passed": true, "reason": "out of range"}'),
       );
 
       const result = await service.evaluate(input);
@@ -169,7 +143,7 @@ describe('LlmEvaluationService', () => {
     });
 
     it('should return zero score when JSON is malformed', async () => {
-      mockGenerateText.mockResolvedValue(makeGenerateResult('not valid json at all') as any);
+      mockCompletion.generate.mockResolvedValue(makeCompletionResult('not valid json at all'));
 
       const result = await service.evaluate(input);
 
@@ -178,8 +152,8 @@ describe('LlmEvaluationService', () => {
     });
 
     it('should return zero score when JSON is missing required fields', async () => {
-      mockGenerateText.mockResolvedValue(
-        makeGenerateResult('{"score": 80}') as any, // missing passed and reason
+      mockCompletion.generate.mockResolvedValue(
+        makeCompletionResult('{"score": 80}'), // missing passed and reason
       );
 
       const result = await service.evaluate(input);
@@ -188,8 +162,8 @@ describe('LlmEvaluationService', () => {
     });
 
     it('should return zero score when field types are wrong', async () => {
-      mockGenerateText.mockResolvedValue(
-        makeGenerateResult('{"score": "high", "passed": "yes", "reason": 123}') as any,
+      mockCompletion.generate.mockResolvedValue(
+        makeCompletionResult('{"score": "high", "passed": "yes", "reason": 123}'),
       );
 
       const result = await service.evaluate(input);
@@ -199,8 +173,8 @@ describe('LlmEvaluationService', () => {
 
     it('should truncate reason to 200 characters', async () => {
       const longReason = 'a'.repeat(300);
-      mockGenerateText.mockResolvedValue(
-        makeGenerateResult(`{"score": 80, "passed": true, "reason": "${longReason}"}`) as any,
+      mockCompletion.generate.mockResolvedValue(
+        makeCompletionResult(`{"score": 80, "passed": true, "reason": "${longReason}"}`),
       );
 
       const result = await service.evaluate(input);

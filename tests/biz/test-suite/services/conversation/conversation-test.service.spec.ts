@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConversationTestService } from '@biz/test-suite/services/conversation/conversation-test.service';
-import { OrchestratorService } from '@agent/orchestrator.service';
+import { LoopService } from '@agent/loop.service';
 import { LlmEvaluationService } from '@biz/test-suite/services/conversation/llm-evaluation.service';
 import { ConversationParserService } from '@biz/test-suite/services/conversation/conversation-parser.service';
 import { ConversationSnapshotRepository } from '@biz/test-suite/repositories/conversation-snapshot.repository';
@@ -15,7 +15,7 @@ import { ConversationSnapshotRecord } from '@biz/test-suite/entities/conversatio
 
 describe('ConversationTestService', () => {
   let service: ConversationTestService;
-  let orchestrator: jest.Mocked<OrchestratorService>;
+  let orchestrator: jest.Mocked<LoopService>;
   let llmEvaluationService: jest.Mocked<LlmEvaluationService>;
   let parserService: jest.Mocked<ConversationParserService>;
   let conversationSnapshotRepository: jest.Mocked<ConversationSnapshotRepository>;
@@ -82,7 +82,7 @@ describe('ConversationTestService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ConversationTestService,
-        { provide: OrchestratorService, useValue: mockOrchestrator },
+        { provide: LoopService, useValue: mockOrchestrator },
         { provide: LlmEvaluationService, useValue: mockLlmEvaluationService },
         { provide: ConversationParserService, useValue: mockParserService },
         { provide: ConversationSnapshotRepository, useValue: mockConversationSnapshotRepository },
@@ -91,7 +91,7 @@ describe('ConversationTestService', () => {
     }).compile();
 
     service = module.get<ConversationTestService>(ConversationTestService);
-    orchestrator = module.get(OrchestratorService);
+    orchestrator = module.get(LoopService);
     llmEvaluationService = module.get(LlmEvaluationService);
     parserService = module.get(ConversationParserService);
     conversationSnapshotRepository = module.get(ConversationSnapshotRepository);

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { OrchestratorService, type AgentRunResult } from '@agent/orchestrator.service';
+import { LoopService, type AgentRunResult } from '@agent/loop.service';
 import { TestChatRequestDto, TestChatResponse } from '../../dto/test-chat.dto';
 import { TestExecutionRepository } from '../../repositories/test-execution.repository';
 import { TestExecution } from '../../entities/test-execution.entity';
@@ -44,7 +44,7 @@ export class TestExecutionService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly orchestrator: OrchestratorService,
+    private readonly loop: LoopService,
     private readonly executionRepository: TestExecutionRepository,
   ) {
     this.logger.log('TestExecutionService 初始化完成');
@@ -80,7 +80,7 @@ export class TestExecutionService {
         { role: 'user' as const, content: request.message },
       ];
 
-      agentResult = await this.orchestrator.run({
+      agentResult = await this.loop.run({
         messages,
         userId: request.userId,
         corpId: 'test',
@@ -186,7 +186,7 @@ export class TestExecutionService {
       { role: 'user' as const, content: request.message },
     ];
 
-    const streamResult = this.orchestrator.stream({
+    const streamResult = await this.loop.stream({
       messages,
       userId: request.userId,
       corpId: 'test',
