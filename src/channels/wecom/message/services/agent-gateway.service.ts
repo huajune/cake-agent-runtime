@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoopService } from '@agent/loop.service';
+import { ContextService } from '@agent/context/context.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import {
   AgentInvokeResult,
@@ -29,6 +30,7 @@ export class AgentGatewayService {
   constructor(
     private readonly configService: ConfigService,
     private readonly loop: LoopService,
+    private readonly context: ContextService,
     private readonly monitoringService: MessageTrackingService,
   ) {}
 
@@ -90,12 +92,14 @@ export class AgentGatewayService {
         { role: 'user' as const, content: userMessage },
       ];
 
-      // 调用 Orchestrator
+      // 组装 systemPrompt，再调用 Loop
+      const { systemPrompt, stageGoals } = await this.context.compose({ scenario });
       const result = await this.loop.run({
+        systemPrompt,
+        stageGoals,
         messages,
         userId,
         corpId,
-        scenario,
       });
 
       const processingTime = Date.now() - startTime;

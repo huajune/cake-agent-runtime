@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConversationTestService } from '@biz/test-suite/services/conversation/conversation-test.service';
 import { LoopService } from '@agent/loop.service';
+import { ContextService } from '@agent/context/context.service';
 import { LlmEvaluationService } from '@biz/test-suite/services/conversation/llm-evaluation.service';
 import { ConversationParserService } from '@biz/test-suite/services/conversation/conversation-parser.service';
 import { ConversationSnapshotRepository } from '@biz/test-suite/repositories/conversation-snapshot.repository';
@@ -24,6 +25,13 @@ describe('ConversationTestService', () => {
   const mockOrchestrator = {
     run: jest.fn(),
     stream: jest.fn(),
+  };
+
+  const mockContext = {
+    compose: jest.fn().mockResolvedValue({
+      systemPrompt: 'test system prompt',
+      stageGoals: { initial: { description: 'test' } },
+    }),
   };
 
   const mockLlmEvaluationService = {
@@ -83,6 +91,7 @@ describe('ConversationTestService', () => {
       providers: [
         ConversationTestService,
         { provide: LoopService, useValue: mockOrchestrator },
+        { provide: ContextService, useValue: mockContext },
         { provide: LlmEvaluationService, useValue: mockLlmEvaluationService },
         { provide: ConversationParserService, useValue: mockParserService },
         { provide: ConversationSnapshotRepository, useValue: mockConversationSnapshotRepository },

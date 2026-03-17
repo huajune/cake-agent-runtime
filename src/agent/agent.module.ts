@@ -7,13 +7,13 @@ import { MemoryModule } from '@memory/memory.module';
 import { ObservabilityModule } from '@/observability/observability.module';
 import { LoopService } from './loop.service';
 import { CompletionService } from './completion.service';
-import { SystemPromptService } from './system-prompt.service';
+import { ContextService } from './context/context.service';
 import { AgentController } from './agent.controller';
 
 @Module({
   imports: [ConfigModule, FeishuModule, BizModule, ToolModule, MemoryModule, ObservabilityModule],
   controllers: [AgentController],
-  providers: [SystemPromptService, LoopService, CompletionService],
-  exports: [SystemPromptService, LoopService, CompletionService],
+  providers: [ContextService, LoopService, CompletionService],
+  exports: [ContextService, LoopService, CompletionService],
 })
 export class AgentModule {}

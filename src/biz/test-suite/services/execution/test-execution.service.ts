@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoopService, type AgentRunResult } from '@agent/loop.service';
+import { ContextService } from '@agent/context/context.service';
 import { TestChatRequestDto, TestChatResponse } from '../../dto/test-chat.dto';
 import { TestExecutionRepository } from '../../repositories/test-execution.repository';
 import { TestExecution } from '../../entities/test-execution.entity';
@@ -45,6 +46,7 @@ export class TestExecutionService {
   constructor(
     private readonly configService: ConfigService,
     private readonly loop: LoopService,
+    private readonly context: ContextService,
     private readonly executionRepository: TestExecutionRepository,
   ) {
     this.logger.log('TestExecutionService 初始化完成');
@@ -80,11 +82,13 @@ export class TestExecutionService {
         { role: 'user' as const, content: request.message },
       ];
 
+      const { systemPrompt, stageGoals } = await this.context.compose({ scenario });
       agentResult = await this.loop.run({
+        systemPrompt,
+        stageGoals,
         messages,
         userId: request.userId,
         corpId: 'test',
-        scenario,
       });
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -186,11 +190,13 @@ export class TestExecutionService {
       { role: 'user' as const, content: request.message },
     ];
 
+    const { systemPrompt, stageGoals } = await this.context.compose({ scenario });
     const streamResult = await this.loop.stream({
+      systemPrompt,
+      stageGoals,
       messages,
       userId: request.userId,
       corpId: 'test',
-      scenario,
     });
 
     return {

@@ -5,13 +5,7 @@ import { AlertLevel } from '@infra/feishu/interfaces/interface';
 import { ALERT_RECEIVERS } from '@infra/feishu/constants/constants';
 import { maskApiKey } from '@infra/utils/string.util';
 import { ScenarioType } from '@enums/agent.enum';
-import {
-  AgentException,
-  AgentAuthException,
-  AgentRateLimitException,
-  AgentConfigException,
-  AgentContextMissingException,
-} from '@agent/exceptions';
+import { HttpException, HttpStatus } from '@nestjs/common';
 
 // 导入子服务
 import { MessageDeduplicationService } from './deduplication.service';
@@ -475,47 +469,17 @@ export class MessagePipelineService {
    * 判断错误是否为 Agent API 错误
    */
   private isAgentError(error: unknown): boolean {
-    return (
-      error instanceof AgentException ||
-      Boolean((error as { isAgentError?: boolean })?.isAgentError)
-    );
+    return Boolean((error as { isAgentError?: boolean })?.isAgentError);
   }
 
   /**
    * 根据异常类型映射到告警级别
-   *
-   * 级别定义：
-   * - CRITICAL: 用户无响应（消息发送失败）
-   * - ERROR: 需要关注的错误（认证失败、配置错误）
-   * - WARNING: 可自动恢复的错误（频率限制、上下文缺失）
    */
   private getAlertLevelFromError(error: unknown): AlertLevel {
-    // 认证失败：需要人工干预修复 API Key
-    if (error instanceof AgentAuthException) {
-      return AlertLevel.ERROR;
+    if (error instanceof HttpException) {
+      const status = error.getStatus();
+      if (status === HttpStatus.TOO_MANY_REQUESTS) return AlertLevel.WARNING;
     }
-
-    // 频率限制：通常会自动恢复，但需要关注
-    if (error instanceof AgentRateLimitException) {
-      return AlertLevel.WARNING;
-    }
-
-    // 配置错误：需要人工干预修复配置
-    if (error instanceof AgentConfigException) {
-      return AlertLevel.ERROR;
-    }
-
-    // 上下文缺失：可能是临时问题，需要关注
-    if (error instanceof AgentContextMissingException) {
-      return AlertLevel.WARNING;
-    }
-
-    // 其他 Agent 错误：默认 ERROR
-    if (error instanceof AgentException) {
-      return AlertLevel.ERROR;
-    }
-
-    // 非 Agent 错误：默认 ERROR
     return AlertLevel.ERROR;
   }
 

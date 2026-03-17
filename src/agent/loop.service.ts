@@ -1,13 +1,14 @@
 /**
  * Agent Loop 服务
  *
+ * 纯执行层 — 接收调用方传入的 systemPrompt，执行多步工具循环。
+ *
  * 执行流程：
- * 1. MemoryService.recall() → 记忆前置注入
- * 2. SystemPromptService.compose() → systemPrompt + stageGoals
- * 3. 构建 ToolBuildContext → toolRegistry.buildAll(context)
- * 4. RouterService → 模型解析 + generateText
- * 5. MemoryService.store() → 记忆后置存储
- * 6. 返回 AgentRunResult
+ * 1. MemoryService.recall() → 记忆注入到 systemPrompt 末尾
+ * 2. 构建 ToolBuildContext → toolRegistry.buildAll(context)
+ * 3. RouterService → 模型解析 + generateText
+ * 4. MemoryService.store() → 记忆后置存储
+ * 5. 返回 AgentRunResult
  */
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -16,22 +17,24 @@ import { RouterService } from '@providers/router.service';
 import { ToolRegistryService } from '@tools/tool-registry.service';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { MemoryService } from '@memory/memory.service';
-import { SystemPromptService } from './system-prompt.service';
 import {
   type ChannelType,
   type StageGoals,
   type StageGoalPolicy,
 } from '@channels/wecom/types/wework.types';
+import { StageGoalConfig } from '@shared-types/strategy-config.types';
 
 export interface LoopRunParams {
+  /** 系统提示词（由调用方通过 ContextService 组装） */
+  systemPrompt: string;
+  /** stageGoals（由 ContextService.compose() 返回） */
+  stageGoals: Record<string, StageGoalConfig>;
   /** 对话消息列表 */
   messages: ModelMessage[];
   /** 外部用户 ID */
   userId: string;
   /** 企业 ID */
   corpId: string;
-  /** 场景标识（用于加载 prompt） */
-  scenario?: string;
   /** 渠道类型，默认 private */
   channelType?: ChannelType;
   /** 最大工具循环步数，默认 5 */
@@ -54,38 +57,32 @@ export class LoopService {
 
   constructor(
     private readonly router: RouterService,
-    private readonly systemPrompt: SystemPromptService,
     private readonly toolRegistry: ToolRegistryService,
     private readonly memoryService: MemoryService,
   ) {}
 
   async run(params: LoopRunParams): Promise<AgentRunResult> {
     const {
+      systemPrompt,
+      stageGoals: rawStageGoals,
       messages,
       userId,
       corpId,
-      scenario = 'candidate-consultation',
       channelType = 'private',
       maxSteps = 5,
     } = params;
 
-    this.logger.log(`Loop 开始: userId=${userId}, corpId=${corpId}, scenario=${scenario}`);
+    this.logger.log(`Loop 开始: userId=${userId}, corpId=${corpId}`);
 
-    // 0. 记忆前置 — 回忆已有事实
+    // 0. 记忆前置 — 回忆已有事实，注入到 systemPrompt 末尾
     const memoryKey = `wework_session:${corpId}:${userId}`;
     const memory = await this.memoryService.recall(memoryKey);
     const memoryContext = memory
       ? `\n\n[会话记忆]\n${JSON.stringify(memory.content, null, 2)}`
       : '';
+    const finalPrompt = systemPrompt + memoryContext;
 
-    // 1. 加载 systemPrompt + stageGoals（一次调用完成）
-    const { systemPrompt: composedPrompt, stageGoals: rawStageGoals } =
-      await this.systemPrompt.compose(scenario);
-
-    // 注入记忆到 systemPrompt
-    const finalPrompt = composedPrompt + memoryContext;
-
-    // 转换 stageGoals 格式
+    // 1. 转换 stageGoals 格式
     const stageGoals = this.convertStageGoals(rawStageGoals);
 
     // 2. 构建工具上下文 → 一行构建所有工具
@@ -142,17 +139,16 @@ export class LoopService {
   /** 流式执行 */
   async stream(params: LoopRunParams): Promise<ReturnType<typeof streamText>> {
     const {
+      systemPrompt,
+      stageGoals: rawStageGoals,
       messages,
       userId,
       corpId,
-      scenario = 'candidate-consultation',
       channelType = 'private',
       maxSteps = 5,
     } = params;
 
     const chatModel = this.router.resolveByRole('chat');
-    const { systemPrompt: finalPrompt, stageGoals: rawStageGoals } =
-      await this.systemPrompt.compose(scenario);
     const stageGoals = this.convertStageGoals(rawStageGoals);
 
     const toolContext: ToolBuildContext = {
@@ -166,7 +162,7 @@ export class LoopService {
 
     return streamText({
       model: chatModel,
-      system: finalPrompt,
+      system: systemPrompt,
       messages,
       tools: tools as ToolSet,
       stopWhen: stepCountIs(maxSteps),

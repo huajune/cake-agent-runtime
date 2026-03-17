@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
-import { SystemPromptService } from './system-prompt.service';
+import { ContextService } from './context/context.service';
 import { LoopService } from './loop.service';
 import { RouterService } from '@providers/router.service';
 
@@ -9,7 +9,7 @@ export class AgentController {
   private readonly logger = new Logger(AgentController.name);
 
   constructor(
-    private readonly systemPrompt: SystemPromptService,
+    private readonly context: ContextService,
     private readonly feishuAlertService: FeishuAlertService,
     private readonly loop: LoopService,
     private readonly router: RouterService,
@@ -24,7 +24,7 @@ export class AgentController {
     return {
       status: 'healthy',
       providers: this.router.listRoles(),
-      scenarios: this.systemPrompt.getLoadedScenarios(),
+      scenarios: this.context.getLoadedScenarios(),
       message: 'Agent 服务正常',
     };
   }
@@ -48,11 +48,13 @@ export class AgentController {
     const scenario = body.scenario || 'candidate-consultation';
 
     try {
+      const { systemPrompt, stageGoals } = await this.context.compose({ scenario });
       const result = await this.loop.run({
+        systemPrompt,
+        stageGoals,
         messages: [{ role: 'user', content: body.message }],
         userId: body.userId || 'debug-user',
         corpId: 'debug',
-        scenario,
       });
 
       return {

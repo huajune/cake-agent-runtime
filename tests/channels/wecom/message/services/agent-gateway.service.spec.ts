@@ -1,14 +1,22 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { AgentGatewayService } from '@wecom/message/services/agent-gateway.service';
-import { OrchestratorService } from '@agent/orchestrator.service';
+import { LoopService } from '@agent/loop.service';
+import { ContextService } from '@agent/context/context.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 
 describe('AgentGatewayService', () => {
   let service: AgentGatewayService;
 
-  const mockOrchestrator = {
+  const mockLoop = {
     run: jest.fn(),
+  };
+
+  const mockContext = {
+    compose: jest.fn().mockResolvedValue({
+      systemPrompt: 'test system prompt',
+      stageGoals: { initial: { description: 'test' } },
+    }),
   };
 
   const mockMonitoringService = {
@@ -27,7 +35,8 @@ describe('AgentGatewayService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AgentGatewayService,
-        { provide: OrchestratorService, useValue: mockOrchestrator },
+        { provide: LoopService, useValue: mockLoop },
+        { provide: ContextService, useValue: mockContext },
         { provide: MessageTrackingService, useValue: mockMonitoringService },
         { provide: ConfigService, useValue: mockConfigService },
       ],
@@ -36,7 +45,11 @@ describe('AgentGatewayService', () => {
     service = module.get<AgentGatewayService>(AgentGatewayService);
     jest.clearAllMocks();
 
-    mockOrchestrator.run.mockResolvedValue({
+    mockContext.compose.mockResolvedValue({
+      systemPrompt: 'test system prompt',
+      stageGoals: { initial: { description: 'test' } },
+    });
+    mockLoop.run.mockResolvedValue({
       text: 'Hello! How can I help you today?',
       steps: 1,
       usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
@@ -97,16 +110,19 @@ describe('AgentGatewayService', () => {
       userId: 'user-123',
     };
 
-    it('should successfully invoke orchestrator and return result', async () => {
+    it('should compose prompt then invoke loop and return result', async () => {
       const result = await service.invoke(invokeParams);
 
       expect(result.reply.content).toBe('Hello! How can I help you today?');
       expect(result.isFallback).toBe(false);
       expect(result.processingTime).toBeGreaterThanOrEqual(0);
-      expect(mockOrchestrator.run).toHaveBeenCalledWith(
+      expect(mockContext.compose).toHaveBeenCalledWith({ scenario: 'candidate-consultation' });
+      expect(mockLoop.run).toHaveBeenCalledWith(
         expect.objectContaining({
+          systemPrompt: 'test system prompt',
+          stageGoals: { initial: { description: 'test' } },
           userId: 'user-123',
-          scenario: 'candidate-consultation',
+          corpId: 'default',
         }),
       );
     });
@@ -125,7 +141,7 @@ describe('AgentGatewayService', () => {
     });
 
     it('should always record AI end in finally block even on error', async () => {
-      mockOrchestrator.run.mockRejectedValue(new Error('Agent failed'));
+      mockLoop.run.mockRejectedValue(new Error('Agent failed'));
 
       await expect(service.invoke(invokeParams)).rejects.toThrow('Agent failed');
 
@@ -133,7 +149,7 @@ describe('AgentGatewayService', () => {
     });
 
     it('should throw when agent returns empty text', async () => {
-      mockOrchestrator.run.mockResolvedValue({
+      mockLoop.run.mockResolvedValue({
         text: '',
         steps: 0,
         usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
@@ -152,11 +168,7 @@ describe('AgentGatewayService', () => {
 
       await service.invoke(paramsWithoutScenario);
 
-      expect(mockOrchestrator.run).toHaveBeenCalledWith(
-        expect.objectContaining({
-          scenario: 'candidate-consultation',
-        }),
-      );
+      expect(mockContext.compose).toHaveBeenCalledWith({ scenario: 'candidate-consultation' });
     });
 
     it('should include usage data in reply', async () => {
@@ -169,8 +181,8 @@ describe('AgentGatewayService', () => {
       });
     });
 
-    it('should rethrow error when orchestrator throws', async () => {
-      mockOrchestrator.run.mockRejectedValue(new Error('Network timeout'));
+    it('should rethrow error when loop throws', async () => {
+      mockLoop.run.mockRejectedValue(new Error('Network timeout'));
 
       await expect(service.invoke(invokeParams)).rejects.toThrow('Network timeout');
     });
@@ -186,7 +198,7 @@ describe('AgentGatewayService', () => {
 
       await service.invoke(paramsWithHistory);
 
-      const callArgs = mockOrchestrator.run.mock.calls[0][0];
+      const callArgs = mockLoop.run.mock.calls[0][0];
       expect(callArgs.messages).toEqual([
         { role: 'user', content: 'Previous question' },
         { role: 'assistant', content: 'Previous answer' },
