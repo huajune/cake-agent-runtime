@@ -10,6 +10,8 @@ export interface PromptContext {
   channelType: 'private' | 'group';
   /** 策略配置（from Supabase） */
   strategyConfig: StrategyConfigRecord;
+  /** 当前对话阶段标识（从 Redis 读取，默认第一阶段） */
+  currentStage?: string;
 }
 
 /**

@@ -5,7 +5,7 @@ import {
   ContactType,
   MessageSource,
   LocationPayload,
-} from '@wecom/message/dto/message-callback.dto';
+} from '@enums/message-callback.enum';
 import { ScenarioType } from '@enums/agent.enum';
 
 describe('MessageParser', () => {

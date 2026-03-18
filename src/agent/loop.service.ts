@@ -1,14 +1,14 @@
 /**
  * Agent Loop 服务
  *
- * 纯执行层 — 接收调用方传入的 systemPrompt，执行多步工具循环。
- *
- * 执行流程：
- * 1. MemoryService.recall() → 记忆注入到 systemPrompt 末尾
- * 2. 构建 ToolBuildContext → toolRegistry.buildAll(context)
- * 3. RouterService → 模型解析 + generateText
- * 4. MemoryService.store() → 记忆后置存储
- * 5. 返回 AgentRunResult
+ * 统一入口 invoke()：
+ * 1. 读取持久化阶段（stage）
+ * 2. 组装 systemPrompt（ContextService + section 体系）
+ * 3. 信号检测（SignalDetectorService: needs + riskFlags）
+ * 4. 事实提取（FactExtractionService: LLM 结构化提取 + 品牌别名映射）
+ * 5. 注入会话记忆（结构化格式）
+ * 6. 构建工具 → generateText 多步循环
+ * 7. 记忆后置存储
  */
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -17,26 +17,21 @@ import { RouterService } from '@providers/router.service';
 import { ToolRegistryService } from '@tools/tool-registry.service';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { MemoryService } from '@memory/memory.service';
-import {
-  type ChannelType,
-  type StageGoals,
-  type StageGoalPolicy,
-} from '@channels/wecom/types/wework.types';
-import { StageGoalConfig } from '@shared-types/strategy-config.types';
+import { ContextService } from './context/context.service';
+import { SignalDetectorService } from './signal-detector.service';
+import { FactExtractionService } from './fact-extraction.service';
 
-export interface LoopRunParams {
-  /** 系统提示词（由调用方通过 ContextService 组装） */
-  systemPrompt: string;
-  /** stageGoals（由 ContextService.compose() 返回） */
-  stageGoals: Record<string, StageGoalConfig>;
-  /** 对话消息列表 */
-  messages: ModelMessage[];
+export interface AgentInvokeParams {
+  /** 对话消息列表（含历史 + 当前用户消息） */
+  messages: { role: string; content: string }[];
   /** 外部用户 ID */
   userId: string;
   /** 企业 ID */
   corpId: string;
-  /** 渠道类型，默认 private */
-  channelType?: ChannelType;
+  /** 会话 ID（chatId，用于记忆隔离） */
+  sessionId: string;
+  /** 场景标识，默认 candidate-consultation */
+  scenario?: string;
   /** 最大工具循环步数，默认 5 */
   maxSteps?: number;
 }
@@ -59,61 +54,75 @@ export class LoopService {
     private readonly router: RouterService,
     private readonly toolRegistry: ToolRegistryService,
     private readonly memoryService: MemoryService,
+    private readonly context: ContextService,
+    private readonly classifier: SignalDetectorService,
+    private readonly factExtraction: FactExtractionService,
   ) {}
 
-  async run(params: LoopRunParams): Promise<AgentRunResult> {
+  /**
+   * Agent 执行入口 — prompt 编排 + 多步工具循环
+   */
+  async invoke(params: AgentInvokeParams): Promise<AgentRunResult> {
     const {
-      systemPrompt,
-      stageGoals: rawStageGoals,
       messages,
       userId,
       corpId,
-      channelType = 'private',
+      sessionId,
+      scenario = 'candidate-consultation',
       maxSteps = 5,
     } = params;
 
-    this.logger.log(`Loop 开始: userId=${userId}, corpId=${corpId}`);
+    this.logger.log(
+      `Agent invoke: userId=${userId}, corpId=${corpId}, sessionId=${sessionId}, scenario=${scenario}`,
+    );
 
-    // 0. 记忆前置 — 回忆已有事实，注入到 systemPrompt 末尾
-    const memoryKey = `wework_session:${corpId}:${userId}`;
-    const memory = await this.memoryService.recall(memoryKey);
-    const memoryContext = memory
-      ? `\n\n[会话记忆]\n${JSON.stringify(memory.content, null, 2)}`
-      : '';
-    const finalPrompt = systemPrompt + memoryContext;
+    // 1. 读取持久化的当前阶段
+    const stageKey = `stage:${corpId}:${userId}:${sessionId}`;
+    const stageMemory = await this.memoryService.recall(stageKey);
+    const currentStage = (stageMemory?.content?.currentStage as string) ?? undefined;
 
-    // 1. 转换 stageGoals 格式
-    const stageGoals = this.convertStageGoals(rawStageGoals);
+    // 2. 组装 systemPrompt（含阶段策略 + 风险场景，由 section 体系完成）
+    const { systemPrompt } = await this.context.compose({ scenario, currentStage });
 
-    // 2. 构建工具上下文 → 一行构建所有工具
-    const toolContext: ToolBuildContext = {
-      userId,
-      corpId,
-      messages,
-      channelType,
-      stageGoals: stageGoals as unknown as Record<string, unknown>,
-    };
-    const tools = this.toolRegistry.buildAll(toolContext);
+    // 3. 检测 needs + riskFlags（消息驱动，追加到 prompt 末尾）
+    const detection = this.classifier.detect(messages);
+    const detectionBlock = this.classifier.formatDetectionBlock(detection);
+    const enrichedPrompt = detectionBlock ? systemPrompt + '\n\n' + detectionBlock : systemPrompt;
 
-    // 3. 通过 RouterService 获取模型并执行 Agent Loop
+    // 4. 事实提取（LLM 结构化提取 + 品牌别名映射，fire-and-forget 不阻塞主流程）
+    this.factExtraction
+      .extractAndSave(corpId, userId, sessionId, messages)
+      .catch((err) => this.logger.warn('事实提取失败', err));
+
+    // 5. 注入会话记忆（结构化格式）
+    const sessionState = await this.memoryService.getSessionState(corpId, userId, sessionId);
+    const memoryContext = this.memoryService.formatSessionMemoryForPrompt(sessionState);
+    const finalPrompt = enrichedPrompt + memoryContext;
+
+    // 6. 构建工具 + 执行 Agent Loop
+    const typedMessages = messages as ModelMessage[];
+    const toolContext: ToolBuildContext = { userId, corpId, sessionId, messages: typedMessages };
+    const tools = this.toolRegistry.buildForScenario(scenario, toolContext);
+
     try {
       const chatModel = this.router.resolveByRole('chat');
 
       const r = await generateText({
         model: chatModel,
         system: finalPrompt,
-        messages,
+        messages: typedMessages,
         tools: tools as ToolSet,
         stopWhen: stepCountIs(maxSteps),
       });
 
       this.logger.log(`Loop 完成: steps=${r.steps.length}, tokens=${r.usage.totalTokens}`);
 
-      // 4. 记忆后置 — 保底记录基本交互信息
-      const lastUserMsg = messages.filter((m) => m.role === 'user').pop();
+      // 7. 记忆后置 — 保底记录基本交互信息
+      const lastUserMsg = typedMessages.filter((m) => m.role === 'user').pop();
       if (lastUserMsg) {
+        const factsKey = `wework_session:${corpId}:${userId}:${sessionId}`;
         await this.memoryService
-          .store(memoryKey, {
+          .store(factsKey, {
             lastInteraction: new Date().toISOString(),
             lastTopic:
               typeof lastUserMsg.content === 'string' ? lastUserMsg.content.substring(0, 100) : '',
@@ -137,56 +146,24 @@ export class LoopService {
   }
 
   /** 流式执行 */
-  async stream(params: LoopRunParams): Promise<ReturnType<typeof streamText>> {
-    const {
-      systemPrompt,
-      stageGoals: rawStageGoals,
-      messages,
-      userId,
-      corpId,
-      channelType = 'private',
-      maxSteps = 5,
-    } = params;
+  async stream(
+    params: Omit<AgentInvokeParams, 'scenario'> & { systemPrompt: string },
+  ): Promise<ReturnType<typeof streamText>> {
+    const { systemPrompt, messages, userId, corpId, sessionId, maxSteps = 5 } = params;
 
+    const typedMessages = messages as ModelMessage[];
     const chatModel = this.router.resolveByRole('chat');
-    const stageGoals = this.convertStageGoals(rawStageGoals);
-
-    const toolContext: ToolBuildContext = {
-      userId,
-      corpId,
-      messages,
-      channelType,
-      stageGoals: stageGoals as unknown as Record<string, unknown>,
-    };
+    const toolContext: ToolBuildContext = { userId, corpId, sessionId, messages: typedMessages };
     const tools = this.toolRegistry.buildAll(toolContext);
 
     return streamText({
       model: chatModel,
       system: systemPrompt,
-      messages,
+      messages: typedMessages,
       tools: tools as ToolSet,
       stopWhen: stepCountIs(maxSteps),
       onFinish: ({ usage, steps }) =>
         this.logger.log('流式完成, 步数: ' + steps.length + ', Tokens: ' + usage.totalTokens),
     });
-  }
-
-  private convertStageGoals(rawStageGoals: Record<string, unknown>): StageGoals {
-    const result = {} as Record<string, StageGoalPolicy>;
-
-    for (const [stage, config] of Object.entries(rawStageGoals)) {
-      const c = config as Record<string, unknown>;
-      result[stage] = {
-        description: (c.description as string) ?? '',
-        primaryGoal: (c.primaryGoal as string) ?? '',
-        successCriteria: (c.successCriteria as string[]) ?? [],
-        ctaStrategy: Array.isArray(c.ctaStrategy)
-          ? (c.ctaStrategy as string[]).join('\n')
-          : ((c.ctaStrategy as string) ?? ''),
-        disallowedActions: (c.disallowedActions as string[]) ?? [],
-      };
-    }
-
-    return result as StageGoals;
   }
 }

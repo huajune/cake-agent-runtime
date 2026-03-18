@@ -2,20 +2,16 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { AgentGatewayService } from '@wecom/message/services/agent-gateway.service';
 import { LoopService } from '@agent/loop.service';
-import { ContextService } from '@agent/context/context.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 
 describe('AgentGatewayService', () => {
   let service: AgentGatewayService;
 
   const mockLoop = {
-    run: jest.fn(),
-  };
-
-  const mockContext = {
-    compose: jest.fn().mockResolvedValue({
-      systemPrompt: 'test system prompt',
-      stageGoals: { initial: { description: 'test' } },
+    invoke: jest.fn().mockResolvedValue({
+      text: 'Hello! How can I help you today?',
+      steps: 1,
+      usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
     }),
   };
 
@@ -36,7 +32,6 @@ describe('AgentGatewayService', () => {
       providers: [
         AgentGatewayService,
         { provide: LoopService, useValue: mockLoop },
-        { provide: ContextService, useValue: mockContext },
         { provide: MessageTrackingService, useValue: mockMonitoringService },
         { provide: ConfigService, useValue: mockConfigService },
       ],
@@ -45,11 +40,7 @@ describe('AgentGatewayService', () => {
     service = module.get<AgentGatewayService>(AgentGatewayService);
     jest.clearAllMocks();
 
-    mockContext.compose.mockResolvedValue({
-      systemPrompt: 'test system prompt',
-      stageGoals: { initial: { description: 'test' } },
-    });
-    mockLoop.run.mockResolvedValue({
+    mockLoop.invoke.mockResolvedValue({
       text: 'Hello! How can I help you today?',
       steps: 1,
       usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
@@ -110,19 +101,38 @@ describe('AgentGatewayService', () => {
       userId: 'user-123',
     };
 
-    it('should compose prompt then invoke loop and return result', async () => {
+    it('should delegate to LoopService.invoke and return normalized result', async () => {
       const result = await service.invoke(invokeParams);
 
       expect(result.reply.content).toBe('Hello! How can I help you today?');
       expect(result.isFallback).toBe(false);
-      expect(result.processingTime).toBeGreaterThanOrEqual(0);
-      expect(mockContext.compose).toHaveBeenCalledWith({ scenario: 'candidate-consultation' });
-      expect(mockLoop.run).toHaveBeenCalledWith(
+      expect(mockLoop.invoke).toHaveBeenCalledWith({
+        messages: [{ role: 'user', content: 'Hello' }],
+        userId: 'user-123',
+        corpId: 'default',
+        sessionId: 'chat-123',
+        scenario: 'candidate-consultation',
+      });
+    });
+
+    it('should build messages from history and current user message', async () => {
+      const paramsWithHistory = {
+        ...invokeParams,
+        historyMessages: [
+          { role: 'user', content: 'Previous question' },
+          { role: 'assistant', content: 'Previous answer' },
+        ],
+      };
+
+      await service.invoke(paramsWithHistory);
+
+      expect(mockLoop.invoke).toHaveBeenCalledWith(
         expect.objectContaining({
-          systemPrompt: 'test system prompt',
-          stageGoals: { initial: { description: 'test' } },
-          userId: 'user-123',
-          corpId: 'default',
+          messages: [
+            { role: 'user', content: 'Previous question' },
+            { role: 'assistant', content: 'Previous answer' },
+            { role: 'user', content: 'Hello' },
+          ],
         }),
       );
     });
@@ -141,7 +151,7 @@ describe('AgentGatewayService', () => {
     });
 
     it('should always record AI end in finally block even on error', async () => {
-      mockLoop.run.mockRejectedValue(new Error('Agent failed'));
+      mockLoop.invoke.mockRejectedValue(new Error('Agent failed'));
 
       await expect(service.invoke(invokeParams)).rejects.toThrow('Agent failed');
 
@@ -149,7 +159,7 @@ describe('AgentGatewayService', () => {
     });
 
     it('should throw when agent returns empty text', async () => {
-      mockLoop.run.mockResolvedValue({
+      mockLoop.invoke.mockResolvedValue({
         text: '',
         steps: 0,
         usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
@@ -159,16 +169,16 @@ describe('AgentGatewayService', () => {
     });
 
     it('should use default scenario when none provided', async () => {
-      const paramsWithoutScenario = {
+      await service.invoke({
         sessionId: 'chat-123',
         userMessage: 'Hello',
         historyMessages: [],
         userId: 'user-123',
-      };
+      });
 
-      await service.invoke(paramsWithoutScenario);
-
-      expect(mockContext.compose).toHaveBeenCalledWith({ scenario: 'candidate-consultation' });
+      expect(mockLoop.invoke).toHaveBeenCalledWith(
+        expect.objectContaining({ scenario: 'candidate-consultation' }),
+      );
     });
 
     it('should include usage data in reply', async () => {
@@ -181,29 +191,10 @@ describe('AgentGatewayService', () => {
       });
     });
 
-    it('should rethrow error when loop throws', async () => {
-      mockLoop.run.mockRejectedValue(new Error('Network timeout'));
+    it('should rethrow error when LoopService throws', async () => {
+      mockLoop.invoke.mockRejectedValue(new Error('Network timeout'));
 
       await expect(service.invoke(invokeParams)).rejects.toThrow('Network timeout');
-    });
-
-    it('should build messages from history and current user message', async () => {
-      const paramsWithHistory = {
-        ...invokeParams,
-        historyMessages: [
-          { role: 'user', content: 'Previous question' },
-          { role: 'assistant', content: 'Previous answer' },
-        ],
-      };
-
-      await service.invoke(paramsWithHistory);
-
-      const callArgs = mockLoop.run.mock.calls[0][0];
-      expect(callArgs.messages).toEqual([
-        { role: 'user', content: 'Previous question' },
-        { role: 'assistant', content: 'Previous answer' },
-        { role: 'user', content: 'Hello' },
-      ]);
     });
   });
 });

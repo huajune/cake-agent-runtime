@@ -1,17 +1,16 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { DulidayInterviewBookingToolService } from '@tools/duliday-interview-booking.tool';
-import { SpongeService } from '@sponge/sponge.service';
+import { buildInterviewBookingTool } from '@tools/duliday-interview-booking.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 
-describe('DulidayInterviewBookingToolService', () => {
-  let service: DulidayInterviewBookingToolService;
-  let spongeService: { bookInterview: jest.Mock };
+describe('buildInterviewBookingTool', () => {
+  const mockSpongeService = {
+    bookInterview: jest.fn(),
+  };
 
   const mockContext: ToolBuildContext = {
     userId: 'user-1',
     corpId: 'corp-1',
+    sessionId: 'sess-1',
     messages: [],
-    channelType: 'private',
   };
 
   const validInput = {
@@ -25,83 +24,66 @@ describe('DulidayInterviewBookingToolService', () => {
     hasHealthCertificate: 1,
   };
 
-  beforeEach(async () => {
-    spongeService = { bookInterview: jest.fn() };
+  beforeEach(() => jest.clearAllMocks());
 
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        DulidayInterviewBookingToolService,
-        { provide: SpongeService, useValue: spongeService },
-      ],
-    }).compile();
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const executeTool = async (input: Record<string, any>) => {
+    const builder = buildInterviewBookingTool(mockSpongeService as never);
+    const builtTool = builder(mockContext);
+    return builtTool.execute(input as any, {
+      toolCallId: 'test',
+      messages: [],
+      abortSignal: undefined as any,
+    }) as any;
+  };
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 
-    service = module.get(DulidayInterviewBookingToolService);
+  it('should return error for missing required fields', async () => {
+    const result = await executeTool({ ...validInput, name: '' });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('姓名');
   });
 
-  it('should be defined', () => {
-    expect(service).toBeDefined();
-    expect(service.toolName).toBe('duliday_interview_booking');
+  it('should return error for invalid time format', async () => {
+    const result = await executeTool({ ...validInput, interviewTime: '2026/03/20 14:00' });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('格式错误');
   });
 
-  describe('buildTool execute', () => {
-    /* eslint-disable @typescript-eslint/no-explicit-any */
-    const executeTool = async (input: Record<string, any>) => {
-      const builtTool = service.buildTool(mockContext);
-      return builtTool.execute(input as any, {
-        toolCallId: 'test',
-        messages: [],
-        abortSignal: undefined as any,
-      }) as any;
-    };
-    /* eslint-enable @typescript-eslint/no-explicit-any */
+  it('should return error for invalid education', async () => {
+    const result = await executeTool({ ...validInput, education: '博士后' });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('无效的学历');
+  });
 
-    it('should return error for missing required fields', async () => {
-      const result = await executeTool({ ...validInput, name: '' });
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('姓名');
+  it('should call SpongeService and return success', async () => {
+    mockSpongeService.bookInterview.mockResolvedValue({
+      success: true,
+      code: 0,
+      message: '预约成功',
+      notice: '请准时到达',
+      errorList: null,
     });
 
-    it('should return error for invalid time format', async () => {
-      const result = await executeTool({ ...validInput, interviewTime: '2026/03/20 14:00' });
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('格式错误');
-    });
+    const result = await executeTool(validInput);
 
-    it('should return error for invalid education', async () => {
-      const result = await executeTool({ ...validInput, education: '博士后' });
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('无效的学历');
-    });
+    expect(result.success).toBe(true);
+    expect(result.notice).toBe('请准时到达');
+    expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: '张三',
+        jobId: 100,
+        educationId: 5,
+      }),
+    );
+  });
 
-    it('should call SpongeService and return success', async () => {
-      spongeService.bookInterview.mockResolvedValue({
-        success: true,
-        code: 0,
-        message: '预约成功',
-        notice: '请准时到达',
-        errorList: null,
-      });
+  it('should handle SpongeService error', async () => {
+    mockSpongeService.bookInterview.mockRejectedValue(new Error('Network error'));
 
-      const result = await executeTool(validInput);
+    const result = await executeTool(validInput);
 
-      expect(result.success).toBe(true);
-      expect(result.notice).toBe('请准时到达');
-      expect(spongeService.bookInterview).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: '张三',
-          jobId: 100,
-          educationId: 5,
-        }),
-      );
-    });
-
-    it('should handle SpongeService error', async () => {
-      spongeService.bookInterview.mockRejectedValue(new Error('Network error'));
-
-      const result = await executeTool(validInput);
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Network error');
-    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Network error');
   });
 });

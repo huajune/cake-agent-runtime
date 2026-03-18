@@ -13,7 +13,7 @@ import {
   MessageType,
   ContactType,
   MessageSource,
-} from '@wecom/message/dto/message-callback.dto';
+} from '@enums/message-callback.enum';
 import { FilterReason } from '@wecom/message/services/filter.service';
 
 describe('MessagePipelineService', () => {

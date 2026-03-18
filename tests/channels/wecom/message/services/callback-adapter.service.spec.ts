@@ -6,7 +6,7 @@ import {
   MessageSource,
   MessageType,
   ContactType,
-} from '@wecom/message/dto/message-callback.dto';
+} from '@enums/message-callback.enum';
 
 describe('MessageCallbackAdapterService', () => {
   let service: MessageCallbackAdapterService;

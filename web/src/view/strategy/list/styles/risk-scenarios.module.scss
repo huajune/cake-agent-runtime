@@ -1,0 +1,197 @@
+@use '@/assets/styles/variables' as *;
+
+// ==================== 局部色彩 ====================
+$_amber: #f59e0b;
+$_amber-06: rgba(245, 158, 11, 0.06);
+$_amber-10: rgba(245, 158, 11, 0.1);
+$_amber-15: rgba(245, 158, 11, 0.15);
+$_amber-25: rgba(245, 158, 11, 0.25);
+
+// ==================== 风险场景列表 ====================
+.scenariosList {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+  margin-top: $spacing-md;
+}
+
+.scenarioCard {
+  border: 1px solid $border;
+  border-left: 3px solid $_amber;
+  border-radius: $radius-lg;
+  background: $bg-card;
+  overflow: hidden;
+  transition: border-color $transition-fast, box-shadow $transition-fast;
+
+  &:hover {
+    border-color: $_amber-25;
+    box-shadow: 0 2px 8px $_amber-06;
+  }
+
+  &:focus-within {
+    border-color: $_amber;
+    box-shadow: 0 0 0 3px $_amber-06;
+  }
+}
+
+.scenarioHeader {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  padding: $spacing-sm $spacing-md;
+  background: $_amber-06;
+  border-bottom: 1px solid $_amber-10;
+}
+
+.scenarioIndex {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: $radius-full;
+  background: $_amber-15;
+  color: $_amber;
+  font-size: 10px;
+  font-weight: $font-weight-semibold;
+  font-family: $font-family-mono;
+  flex-shrink: 0;
+}
+
+.scenarioHeaderFields {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  flex: 1;
+  min-width: 0;
+}
+
+.flagInput {
+  width: 180px;
+  padding: 4px $spacing-sm;
+  border: 1px solid transparent;
+  border-radius: $radius-sm;
+  font-size: $font-size-xs;
+  font-family: $font-family-mono;
+  color: $_amber;
+  background: transparent;
+  transition: all $transition-fast;
+
+  &::placeholder {
+    color: $text-muted;
+    opacity: 0.5;
+  }
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.6);
+    border-color: $_amber-15;
+  }
+
+  &:focus {
+    outline: none;
+    background: #fff;
+    border-color: $_amber-25;
+  }
+}
+
+.labelInput {
+  flex: 1;
+  padding: 4px $spacing-sm;
+  border: 1px solid transparent;
+  border-radius: $radius-sm;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  color: $text-primary;
+  background: transparent;
+  transition: all $transition-fast;
+
+  &::placeholder {
+    color: $text-muted;
+    opacity: 0.5;
+  }
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.6);
+    border-color: $_amber-15;
+  }
+
+  &:focus {
+    outline: none;
+    background: #fff;
+    border-color: $_amber-25;
+  }
+}
+
+// ==================== 场景内容 ====================
+.scenarioBody {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  padding: $spacing-md;
+}
+
+.fieldRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fieldLabel {
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  color: $text-muted;
+  letter-spacing: 0.2px;
+}
+
+.fieldTextarea {
+  width: 100%;
+  padding: $spacing-sm $spacing-md;
+  border: 1px solid transparent;
+  border-radius: $radius-md;
+  font-size: $font-size-sm;
+  color: $text-primary;
+  background: rgba(255, 255, 255, 0.4);
+  resize: none;
+  line-height: $line-height-relaxed;
+  font-family: $font-family-sans;
+  transition: all $transition-fast;
+
+  &::placeholder {
+    color: $text-muted;
+    opacity: 0.5;
+  }
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.7);
+    border-color: $border;
+  }
+
+  &:focus {
+    outline: none;
+    background: #fff;
+    border-color: $_amber-25;
+    box-shadow: 0 0 0 3px $_amber-06;
+  }
+}
+
+// ==================== 添加按钮 ====================
+.addScenarioBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: $spacing-md;
+  padding: $spacing-sm $spacing-md;
+  border: 1px dashed $_amber-25;
+  border-radius: $radius-md;
+  background: $_amber-06;
+  color: $_amber;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  cursor: pointer;
+  transition: all $transition-fast;
+
+  &:hover {
+    background: $_amber-10;
+    border-color: $_amber;
+  }
+}

@@ -4,15 +4,14 @@
  * 渐进式数据返回：通过 6 个布尔开关控制返回的数据字段。
  * 支持 markdown / rawData 两种输出格式。
  *
- * 迁移自 agent/tools/duliday-job-list.tool.ts
- * 改造：实现 ToolFactory 接口 + 使用 SpongeService
+ * 导出 buildJobListTool 供注册表使用
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
-import { AiTool, ToolBuildContext, ToolFactory } from '@shared-types/tool.types';
+import { ToolBuilder } from '@shared-types/tool.types';
 
 // ==================== 常量 ====================
 
@@ -490,12 +489,11 @@ function mapJobsToSummaries(jobs: any[]): RecommendedJobSummary[] {
 
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-// ==================== 服务 ====================
+// ==================== 构建函数 ====================
 
-@Injectable()
-export class DulidayJobListToolService implements ToolFactory {
-  readonly toolName = 'duliday_job_list';
-  readonly toolDescription = `查询在招岗位列表。支持渐进式数据返回，按需获取岗位信息。
+const logger = new Logger('duliday_job_list');
+
+const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，按需获取岗位信息。
 筛选条件：城市、区域、品牌、门店、岗位类型、岗位ID
 数据开关：
 - includeBasicInfo（默认true）：品牌、门店、地址等基本信息
@@ -505,13 +503,10 @@ export class DulidayJobListToolService implements ToolFactory {
 - includeWorkTime：工作时间/班次
 - includeInterviewProcess：面试流程`;
 
-  private readonly logger = new Logger(DulidayJobListToolService.name);
-
-  constructor(private readonly spongeService: SpongeService) {}
-
-  buildTool(context: ToolBuildContext): AiTool {
+export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
+  return (context) => {
     return tool({
-      description: this.toolDescription,
+      description: DESCRIPTION,
       inputSchema,
       execute: async ({
         cityNameList = [],
@@ -542,7 +537,7 @@ export class DulidayJobListToolService implements ToolFactory {
 
         try {
           // 首次请求
-          let { jobs, total } = await this.spongeService.fetchJobs({
+          let { jobs, total } = await spongeService.fetchJobs({
             cityNameList,
             regionNameList,
             brandAliasList,
@@ -557,7 +552,7 @@ export class DulidayJobListToolService implements ToolFactory {
 
           // 门店名模糊匹配回退
           if (jobs.length === 0 && storeNameList.length > 0) {
-            const fallback = await this.spongeService.fetchJobs({ options });
+            const fallback = await spongeService.fetchJobs({ options });
             if (fallback.jobs.length > 0) {
               /* eslint-disable @typescript-eslint/no-explicit-any */
               const lowerKeywords = storeNameList.map((s) => s.toLowerCase());
@@ -609,12 +604,12 @@ export class DulidayJobListToolService implements ToolFactory {
 
           return result;
         } catch (err) {
-          this.logger.error('获取岗位列表失败', err);
+          logger.error('获取岗位列表失败', err);
           return {
             error: `获取岗位列表失败: ${err instanceof Error ? err.message : '未知错误'}`,
           };
         }
       },
     });
-  }
+  };
 }

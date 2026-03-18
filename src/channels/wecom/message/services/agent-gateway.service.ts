@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoopService } from '@agent/loop.service';
-import { ContextService } from '@agent/context/context.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import {
   AgentInvokeResult,
@@ -11,8 +10,15 @@ import {
 import { ReplyNormalizer } from '../utils/reply-normalizer.util';
 
 /**
- * Agent 网关服务
- * 封装 Orchestrator 调用的完整流程 + 降级处理 + 监控埋点
+ * Agent 网关服务（渠道层）
+ *
+ * 职责：渠道特有关注点
+ * - 参数适配（sessionId/historyMessages → messages/userId/corpId）
+ * - 降级消息管理
+ * - 监控埋点
+ * - 回复格式化（ReplyNormalizer：Markdown → 微信口语化纯文本）
+ *
+ * Agent 编排逻辑（stage → compose → classify → loop）由 LoopService.invoke() 完成。
  */
 @Injectable()
 export class AgentGatewayService {
@@ -30,7 +36,6 @@ export class AgentGatewayService {
   constructor(
     private readonly configService: ConfigService,
     private readonly loop: LoopService,
-    private readonly context: ContextService,
     private readonly monitoringService: MessageTrackingService,
   ) {}
 
@@ -51,7 +56,7 @@ export class AgentGatewayService {
   }
 
   // ========================================
-  // Agent 调用（新路径：Orchestrator）
+  // Agent 调用
   // ========================================
 
   async invoke(params: {
@@ -92,19 +97,18 @@ export class AgentGatewayService {
         { role: 'user' as const, content: userMessage },
       ];
 
-      // 组装 systemPrompt，再调用 Loop
-      const { systemPrompt, stageGoals } = await this.context.compose({ scenario });
-      const result = await this.loop.run({
-        systemPrompt,
-        stageGoals,
+      // 委托 LoopService.invoke() 执行完整的 prompt 编排 + loop
+      const result = await this.loop.invoke({
         messages,
         userId,
         corpId,
+        sessionId: params.sessionId,
+        scenario,
       });
 
       const processingTime = Date.now() - startTime;
 
-      // 提取并规范化回复内容
+      // 渠道特有：规范化回复内容（Markdown → 微信口语化纯文本）
       const content = this.normalizeContent(result.text);
       if (!content) {
         throw new Error('Agent 返回空响应');

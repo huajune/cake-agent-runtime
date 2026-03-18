@@ -42,8 +42,21 @@ export interface StrategyStageGoals {
 
 // ==================== 红线规则 ====================
 
+export interface RiskScenario {
+  /** 风险标识（与 signal-detector 的 RiskFlag 对应） */
+  flag: string;
+  /** 显示名称 */
+  label: string;
+  /** 识别信号描述 */
+  signals: string;
+  /** 应对策略 */
+  strategy: string;
+}
+
 export interface StrategyRedLines {
   rules: string[];
+  /** 风险场景定义（运营可配） */
+  riskScenarios?: RiskScenario[];
 }
 
 // ==================== 行业 Skill（预留） ====================

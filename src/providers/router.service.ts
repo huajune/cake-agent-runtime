@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LanguageModel, generateText, streamText } from 'ai';
 import { ReliableService } from './reliable.service';
-import { ReliableConfig } from './types';
+import { MODEL_ROLES, ModelRole, ReliableConfig } from './types';
 
 /**
  * 模型路由服务 — Layer 3: 角色 → 模型映射
@@ -30,7 +30,7 @@ export class RouterService {
    * @param role - 角色名 (chat, fast, classify, reasoning 等)
    * @returns 带容错的 LanguageModel
    */
-  resolveByRole(role: string): LanguageModel {
+  resolveByRole(role: ModelRole | string): LanguageModel {
     const modelId = this.config.get<string>(`AGENT_${role.toUpperCase()}_MODEL`);
     if (!modelId) {
       throw new Error(`角色 "${role}" 未配置模型 (AGENT_${role.toUpperCase()}_MODEL)`);
@@ -53,7 +53,7 @@ export class RouterService {
    * 按角色执行 generateText（带完整容错链）
    */
   async generateTextByRole(
-    role: string,
+    role: ModelRole | string,
     params: Omit<Parameters<typeof generateText>[0], 'model'>,
     config?: Partial<ReliableConfig>,
   ): Promise<Awaited<ReturnType<typeof generateText>>> {
@@ -69,7 +69,7 @@ export class RouterService {
    * 按角色执行 streamText（带模型降级）
    */
   streamTextByRole(
-    role: string,
+    role: ModelRole | string,
     params: Omit<Parameters<typeof streamText>[0], 'model'>,
   ): ReturnType<typeof streamText> {
     const modelId = this.config.get<string>(`AGENT_${role.toUpperCase()}_MODEL`);
@@ -81,18 +81,24 @@ export class RouterService {
   }
 
   /** 列出所有已配置的角色 */
-  listRoles(): string[] {
-    const roles: string[] = [];
-    const envKeys = ['CHAT', 'FAST', 'CLASSIFY', 'REASONING'];
-    for (const key of envKeys) {
-      if (this.config.get<string>(`AGENT_${key}_MODEL`)) {
-        roles.push(key.toLowerCase());
-      }
-    }
-    return roles;
+  listRoles(): ModelRole[] {
+    return MODEL_ROLES.filter((role) =>
+      this.config.get<string>(`AGENT_${role.toUpperCase()}_MODEL`),
+    );
   }
 
-  private parseFallbacks(role: string): string[] | undefined {
+  /** 列出所有已配置角色的详细信息（角色 → 模型 + fallbacks） */
+  listRoleDetails(): Record<string, { model: string; fallbacks?: string[] }> {
+    const details: Record<string, { model: string; fallbacks?: string[] }> = {};
+    for (const role of this.listRoles()) {
+      const model = this.config.get<string>(`AGENT_${role.toUpperCase()}_MODEL`)!;
+      const fallbacks = this.parseFallbacks(role);
+      details[role] = fallbacks ? { model, fallbacks } : { model };
+    }
+    return details;
+  }
+
+  private parseFallbacks(role: ModelRole | string): string[] | undefined {
     const raw = this.config.get<string>(`AGENT_${role.toUpperCase()}_FALLBACKS`);
     if (!raw) return undefined;
     return raw

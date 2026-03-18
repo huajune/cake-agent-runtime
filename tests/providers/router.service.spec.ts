@@ -166,6 +166,8 @@ describe('RouterService', () => {
       expect(roles).toContain('fast');
       expect(roles).toContain('classify');
       expect(roles).not.toContain('reasoning');
+      expect(roles).not.toContain('default');
+      expect(roles).not.toContain('extract');
     });
 
     it('should return empty when no roles configured', () => {
@@ -182,6 +184,16 @@ describe('RouterService', () => {
       setupConfig({ AGENT_REASONING_MODEL: 'anthropic/claude-sonnet-4-6' });
       const roles = service.listRoles();
       expect(roles).toContain('reasoning');
+    });
+
+    it('should include default and extract when configured', () => {
+      setupConfig({
+        AGENT_DEFAULT_MODEL: 'anthropic/claude-sonnet-4-6',
+        AGENT_EXTRACT_MODEL: 'openai/gpt-4o-mini',
+      });
+      const roles = service.listRoles();
+      expect(roles).toContain('default');
+      expect(roles).toContain('extract');
     });
   });
 });

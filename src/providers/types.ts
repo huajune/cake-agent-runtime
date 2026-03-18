@@ -5,6 +5,20 @@
  * OpenAI-compatible 厂商使用 @ai-sdk/openai-compatible 接入。
  */
 
+// ==================== 模型角色 ====================
+
+/**
+ * 模型角色定义 — 单一来源
+ *
+ * 每个角色对应环境变量 AGENT_{ROLE}_MODEL 和 AGENT_{ROLE}_FALLBACKS。
+ * 新增角色只需在此处添加一行。
+ */
+export const MODEL_ROLES = ['chat', 'default', 'fast', 'classify', 'extract', 'reasoning'] as const;
+
+export type ModelRole = (typeof MODEL_ROLES)[number];
+
+// ==================== Provider 配置 ====================
+
 /** 单个 Provider 的静态配置 */
 export interface ProviderDefaultConfig {
   /** 环境变量名（API Key） */
@@ -39,74 +53,37 @@ export const DEFAULT_RELIABLE_CONFIG: ReliableConfig = {
 /**
  * OpenAI-compatible Provider 默认配置表
  *
- * 原生 AI SDK Provider（anthropic, openai, google）不在此表中，
+ * 原生 AI SDK Provider（anthropic, google, deepseek）不在此表中，
  * 它们使用各自专用 SDK，在 RegistryService 中单独注册。
+ *
+ * deepseek 同时出现在此表（兼容模式备用）和原生注册中，
+ * RegistryService 优先使用原生 SDK，此处会被跳过。
+ *
+ * openai / ohmygpt 通过代理服务访问，共享 ANTHROPIC_API_KEY。
  */
 export const PROVIDER_DEFAULTS: Record<string, ProviderDefaultConfig> = {
   deepseek: {
     envKey: 'DEEPSEEK_API_KEY',
     baseUrlEnvKey: 'DEEPSEEK_BASE_URL',
-    defaultBaseURL: 'https://api.deepseek.com/v1',
+    defaultBaseURL: 'https://api.deepseek.com',
     displayName: 'DeepSeek',
   },
   qwen: {
-    envKey: 'QWEN_API_KEY',
+    envKey: 'DASHSCOPE_API_KEY',
     baseUrlEnvKey: 'QWEN_BASE_URL',
     defaultBaseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     displayName: '通义千问 (DashScope)',
   },
-  zhipu: {
-    envKey: 'ZHIPU_API_KEY',
-    baseUrlEnvKey: 'ZHIPU_BASE_URL',
-    defaultBaseURL: 'https://open.bigmodel.cn/api/paas/v4',
-    displayName: '智谱 GLM',
-  },
-  moonshot: {
+  moonshotai: {
     envKey: 'MOONSHOT_API_KEY',
     baseUrlEnvKey: 'MOONSHOT_BASE_URL',
     defaultBaseURL: 'https://api.moonshot.cn/v1',
-    displayName: 'Moonshot / Kimi',
+    displayName: 'MoonshotAI / Kimi',
   },
-  doubao: {
-    envKey: 'DOUBAO_API_KEY',
-    baseUrlEnvKey: 'DOUBAO_BASE_URL',
-    defaultBaseURL: 'https://ark.cn-beijing.volces.com/api/v3',
-    displayName: '字节豆包',
-  },
-  minimax: {
-    envKey: 'MINIMAX_API_KEY',
-    baseUrlEnvKey: 'MINIMAX_BASE_URL',
-    defaultBaseURL: 'https://api.minimax.chat/v1',
-    displayName: 'MiniMax',
-  },
-  yi: {
-    envKey: 'YI_API_KEY',
-    baseUrlEnvKey: 'YI_BASE_URL',
-    defaultBaseURL: 'https://api.lingyiwanwu.com/v1',
-    displayName: '零一万物 (Yi)',
-  },
-  stepfun: {
-    envKey: 'STEPFUN_API_KEY',
-    baseUrlEnvKey: 'STEPFUN_BASE_URL',
-    defaultBaseURL: 'https://api.stepfun.com/v1',
-    displayName: '阶跃星辰',
-  },
-  siliconflow: {
-    envKey: 'SILICONFLOW_API_KEY',
-    baseUrlEnvKey: 'SILICONFLOW_BASE_URL',
-    defaultBaseURL: 'https://api.siliconflow.cn/v1',
-    displayName: '硅基流动 (SiliconFlow)',
-  },
-  groq: {
-    envKey: 'GROQ_API_KEY',
-    baseUrlEnvKey: 'GROQ_BASE_URL',
-    defaultBaseURL: 'https://api.groq.com/openai/v1',
-    displayName: 'Groq',
-  },
-  openrouter: {
-    envKey: 'OPENROUTER_API_KEY',
-    baseUrlEnvKey: 'OPENROUTER_BASE_URL',
-    defaultBaseURL: 'https://openrouter.ai/api/v1',
-    displayName: 'OpenRouter',
+  ohmygpt: {
+    envKey: 'ANTHROPIC_API_KEY',
+    baseUrlEnvKey: 'OHMYGPT_BASE_URL',
+    defaultBaseURL: 'https://c-z0-api-01.hash070.com/v1',
+    displayName: 'OhMyGPT (代理)',
   },
 };

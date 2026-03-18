@@ -12,10 +12,8 @@ import { MessagePipelineService } from './services/pipeline.service';
 // 导入工具和类型
 import { MessageParser } from './utils/message-parser.util';
 import { LogSanitizer } from './utils/log-sanitizer.util';
-import {
-  EnterpriseMessageCallbackDto,
-  getMessageSourceDescription,
-} from './dto/message-callback.dto';
+import { EnterpriseMessageCallbackDto } from './dto/message-callback.dto';
+import { getMessageSourceDescription } from '@enums/message-callback.enum';
 
 /**
  * 消息处理服务（重构版 v4 - 协调器模式）

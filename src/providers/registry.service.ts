@@ -1,20 +1,26 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createProviderRegistry, LanguageModel } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { createCustomOpenAI } from './custom-openai.provider';
+import { createCustomOpenRouter } from './custom-openrouter.provider';
 import { PROVIDER_DEFAULTS } from './types';
+import { MODEL_DICTIONARY, ModelEntry, getModelsByProvider } from './models';
 
 /**
  * Provider 注册表 — Layer 1: 纯工厂注册
  *
- * 对标 ZeroClaw src/providers/mod.rs 的 create_provider 工厂。
  * 只负责 "provider名 → SDK实例" 的映射，不含角色路由或容错逻辑。
  *
  * 模型 ID 格式：provider/model（如 anthropic/claude-sonnet-4-6）
+ *
+ * Provider 分类：
+ * - 原生 SDK：anthropic, google, deepseek
+ * - 自定义：openai (代理, 强制 chat 端点), openrouter (官方 SDK + Kimi K2 修复)
+ * - OpenAI-compatible：qwen, moonshotai, ohmygpt
  */
 @Injectable()
 export class RegistryService implements OnModuleInit {
@@ -30,17 +36,43 @@ export class RegistryService implements OnModuleInit {
 
     // === 原生 AI SDK Provider（有专用 SDK）===
     this.registerNative(providers, 'anthropic', 'ANTHROPIC_API_KEY', (apiKey) =>
-      createAnthropic({ apiKey }),
+      createAnthropic({
+        apiKey,
+        baseURL: this.config.get<string>('ANTHROPIC_BASE_URL'),
+      }),
     );
-    this.registerNative(providers, 'openai', 'OPENAI_API_KEY', (apiKey) =>
-      createOpenAI({ apiKey }),
-    );
-    this.registerNative(providers, 'google', 'GOOGLE_API_KEY', (apiKey) =>
-      createGoogleGenerativeAI({ apiKey }),
+    this.registerNative(providers, 'google', 'GEMINI_API_KEY', (apiKey) =>
+      createGoogleGenerativeAI({
+        apiKey,
+        baseURL: this.config.get<string>('GOOGLE_BASE_URL'),
+      }),
     );
     this.registerNative(providers, 'deepseek', 'DEEPSEEK_API_KEY', (apiKey) =>
-      createDeepSeek({ apiKey }),
+      createDeepSeek({
+        apiKey,
+        baseURL: this.config.get<string>('DEEPSEEK_BASE_URL') ?? 'https://api.deepseek.com',
+      }),
     );
+
+    // === 自定义 Provider ===
+    // OpenAI — 通过代理访问，强制使用 /v1/chat/completions 端点
+    const anthropicKey = this.config.get<string>('ANTHROPIC_API_KEY');
+    const openaiBaseURL =
+      this.config.get<string>('OPENAI_BASE_URL') ?? 'https://c-z0-api-01.hash070.com/v1';
+    if (anthropicKey) {
+      providers['openai'] = createCustomOpenAI({ apiKey: anthropicKey, baseURL: openaiBaseURL });
+      this.registeredProviders.push('openai');
+      this.logger.log('Provider 已注册: openai (代理)');
+    }
+
+    // OpenRouter — 官方 SDK + Kimi K2 tool_calls 修复
+    const openrouterKey = this.config.get<string>('OPENROUTER_API_KEY');
+    if (openrouterKey) {
+      const baseURL = this.config.get<string>('OPENROUTER_BASE_URL');
+      providers['openrouter'] = createCustomOpenRouter({ apiKey: openrouterKey, baseURL });
+      this.registeredProviders.push('openrouter');
+      this.logger.log('Provider 已注册: openrouter');
+    }
 
     // === OpenAI-compatible Provider（国内厂商等）===
     for (const [name, cfg] of Object.entries(PROVIDER_DEFAULTS)) {
@@ -60,7 +92,11 @@ export class RegistryService implements OnModuleInit {
     const gatewayKey = this.config.get<string>('GATEWAY_API_KEY');
     const gatewayUrl = this.config.get<string>('GATEWAY_BASE_URL');
     if (gatewayKey && gatewayUrl) {
-      providers['gateway'] = createOpenAI({ apiKey: gatewayKey, baseURL: gatewayUrl });
+      providers['gateway'] = createOpenAICompatible({
+        name: 'gateway',
+        apiKey: gatewayKey,
+        baseURL: gatewayUrl,
+      });
       this.registeredProviders.push('gateway');
       this.logger.log('Provider 已注册: gateway');
     }
@@ -87,6 +123,13 @@ export class RegistryService implements OnModuleInit {
   /** 检查 Provider 是否已注册 */
   hasProvider(name: string): boolean {
     return this.registeredProviders.includes(name);
+  }
+
+  /** 列出当前可用的所有模型（按已注册 Provider 过滤） */
+  listModels(): Array<{ id: string } & ModelEntry> {
+    return this.registeredProviders.flatMap((provider) =>
+      getModelsByProvider(provider).map((id) => ({ id, ...MODEL_DICTIONARY[id] })),
+    );
   }
 
   private registerNative(

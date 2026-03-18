@@ -212,6 +212,20 @@ export const DEFAULT_RED_LINES: StrategyRedLines = {
     '禁止使用markdown格式（列表、标题符号等），只用普通文本',
     '禁止暴露技术细节（系统/接口/数据库/API/参数/模型/后台）',
   ],
+  riskScenarios: [
+    {
+      flag: 'age_sensitive',
+      label: '年龄敏感',
+      signals: '候选人提及具体年龄、未成年、在校、学生等信息',
+      strategy: '立即确认年龄是否符合岗位要求，不满足则诚实告知不适合，不推岗不通融',
+    },
+    {
+      flag: 'insurance_promise_risk',
+      label: '保险承诺风险',
+      signals: '候选人追问社保、五险一金、公积金等细节',
+      strategy: '只说"入职后按规定缴纳"，具体细节引导到店确认，禁止承诺具体方案',
+    },
+  ],
 };
 
 export const DEFAULT_INDUSTRY_SKILLS: StrategyIndustrySkills = {

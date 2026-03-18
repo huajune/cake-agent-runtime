@@ -33,6 +33,19 @@ export interface JobListResult {
   total: number;
 }
 
+/** 品牌列表 API 原始响应项 */
+export interface RawBrandItem {
+  name: string;
+  aliases: string[];
+  projectIdList: number[];
+}
+
+/** 品牌（精简，供事实提取使用） */
+export interface BrandItem {
+  name: string;
+  aliases: string[];
+}
+
 /** 面试预约请求参数 */
 export interface InterviewBookingParams {
   name: string;

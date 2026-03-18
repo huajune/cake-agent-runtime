@@ -4,7 +4,10 @@ import { RegistryService } from '@providers/registry.service';
 
 // Mock AI SDK modules
 jest.mock('@ai-sdk/openai', () => ({
-  createOpenAI: jest.fn(() => ({ type: 'openai-provider' })),
+  createOpenAI: jest.fn(() => ({
+    type: 'openai-provider',
+    chat: jest.fn(() => ({ type: 'openai-chat-model' })),
+  })),
 }));
 jest.mock('@ai-sdk/anthropic', () => ({
   createAnthropic: jest.fn(() => ({ type: 'anthropic-provider' })),
@@ -17,6 +20,17 @@ jest.mock('@ai-sdk/deepseek', () => ({
 }));
 jest.mock('@ai-sdk/openai-compatible', () => ({
   createOpenAICompatible: jest.fn(({ name }) => ({ type: `${name}-compatible` })),
+}));
+jest.mock('@openrouter/ai-sdk-provider', () => ({
+  createOpenRouter: jest.fn(() => ({ type: 'openrouter-provider' })),
+}));
+
+// Mock custom providers
+jest.mock('@providers/custom-openai.provider', () => ({
+  createCustomOpenAI: jest.fn(() => ({ type: 'custom-openai-provider' })),
+}));
+jest.mock('@providers/custom-openrouter.provider', () => ({
+  createCustomOpenRouter: jest.fn(() => ({ type: 'custom-openrouter-provider' })),
 }));
 
 const mockLanguageModel = { modelId: 'test-model', specificationVersion: 'v1' };
@@ -34,9 +48,9 @@ describe('RegistryService', () => {
   function createService(envOverrides: Record<string, string | undefined> = {}) {
     const env: Record<string, string | undefined> = {
       ANTHROPIC_API_KEY: 'sk-ant-test',
-      OPENAI_API_KEY: 'sk-openai-test',
-      GOOGLE_API_KEY: 'google-test',
+      GEMINI_API_KEY: 'gemini-test',
       DEEPSEEK_API_KEY: 'deepseek-test',
+      OPENROUTER_API_KEY: 'openrouter-test',
       ...envOverrides,
     };
 
@@ -66,38 +80,60 @@ describe('RegistryService', () => {
   describe('onModuleInit', () => {
     it('should register native providers with API keys', () => {
       const { createAnthropic } = require('@ai-sdk/anthropic');
-      const { createOpenAI } = require('@ai-sdk/openai');
       const { createGoogleGenerativeAI } = require('@ai-sdk/google');
       const { createDeepSeek } = require('@ai-sdk/deepseek');
 
-      expect(createAnthropic).toHaveBeenCalledWith({ apiKey: 'sk-ant-test' });
-      expect(createOpenAI).toHaveBeenCalledWith({ apiKey: 'sk-openai-test' });
-      expect(createGoogleGenerativeAI).toHaveBeenCalledWith({ apiKey: 'google-test' });
-      expect(createDeepSeek).toHaveBeenCalledWith({ apiKey: 'deepseek-test' });
+      expect(createAnthropic).toHaveBeenCalledWith(
+        expect.objectContaining({ apiKey: 'sk-ant-test' }),
+      );
+      expect(createGoogleGenerativeAI).toHaveBeenCalledWith(
+        expect.objectContaining({ apiKey: 'gemini-test' }),
+      );
+      expect(createDeepSeek).toHaveBeenCalledWith(
+        expect.objectContaining({ apiKey: 'deepseek-test' }),
+      );
+    });
+
+    it('should register openai proxy provider when ANTHROPIC_API_KEY exists', () => {
+      const { createCustomOpenAI } = require('@providers/custom-openai.provider');
+      expect(createCustomOpenAI).toHaveBeenCalledWith(
+        expect.objectContaining({ apiKey: 'sk-ant-test' }),
+      );
+      expect(service.hasProvider('openai')).toBe(true);
+    });
+
+    it('should register openrouter with custom provider', () => {
+      const { createCustomOpenRouter } = require('@providers/custom-openrouter.provider');
+      expect(createCustomOpenRouter).toHaveBeenCalledWith(
+        expect.objectContaining({ apiKey: 'openrouter-test' }),
+      );
+      expect(service.hasProvider('openrouter')).toBe(true);
     });
 
     it('should skip native providers without API keys', async () => {
       jest.clearAllMocks();
       const module = await createService({
         ANTHROPIC_API_KEY: undefined,
-        OPENAI_API_KEY: undefined,
-        GOOGLE_API_KEY: undefined,
+        GEMINI_API_KEY: undefined,
         DEEPSEEK_API_KEY: undefined,
+        OPENROUTER_API_KEY: undefined,
       });
       const svc = module.get<RegistryService>(RegistryService);
       svc.onModuleInit();
 
       const { createAnthropic } = require('@ai-sdk/anthropic');
-      const { createOpenAI } = require('@ai-sdk/openai');
+      const { createGoogleGenerativeAI } = require('@ai-sdk/google');
       expect(createAnthropic).not.toHaveBeenCalled();
-      expect(createOpenAI).not.toHaveBeenCalled();
+      expect(createGoogleGenerativeAI).not.toHaveBeenCalled();
+      expect(svc.hasProvider('openai')).toBe(false);
+      expect(svc.hasProvider('openrouter')).toBe(false);
     });
 
     it('should register OpenAI-compatible providers with API keys', async () => {
       jest.clearAllMocks();
       const module = await createService({
-        QWEN_API_KEY: 'qwen-test',
-        ZHIPU_API_KEY: 'zhipu-test',
+        DASHSCOPE_API_KEY: 'qwen-test',
+        MOONSHOT_API_KEY: 'moonshot-test',
       });
       const svc = module.get<RegistryService>(RegistryService);
       svc.onModuleInit();
@@ -107,8 +143,21 @@ describe('RegistryService', () => {
         expect.objectContaining({ name: 'qwen', apiKey: 'qwen-test' }),
       );
       expect(createOpenAICompatible).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'zhipu', apiKey: 'zhipu-test' }),
+        expect.objectContaining({ name: 'moonshotai', apiKey: 'moonshot-test' }),
       );
+    });
+
+    it('should register ohmygpt when ANTHROPIC_API_KEY exists', async () => {
+      jest.clearAllMocks();
+      const module = await createService({ ANTHROPIC_API_KEY: 'sk-ant-test' });
+      const svc = module.get<RegistryService>(RegistryService);
+      svc.onModuleInit();
+
+      const { createOpenAICompatible } = require('@ai-sdk/openai-compatible');
+      expect(createOpenAICompatible).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'ohmygpt', apiKey: 'sk-ant-test' }),
+      );
+      expect(svc.hasProvider('ohmygpt')).toBe(true);
     });
 
     it('should register gateway when both key and URL are present', async () => {
@@ -120,11 +169,14 @@ describe('RegistryService', () => {
       const svc = module.get<RegistryService>(RegistryService);
       svc.onModuleInit();
 
-      const { createOpenAI } = require('@ai-sdk/openai');
-      expect(createOpenAI).toHaveBeenCalledWith({
-        apiKey: 'gw-key',
-        baseURL: 'https://gw.example.com/v1',
-      });
+      const { createOpenAICompatible } = require('@ai-sdk/openai-compatible');
+      expect(createOpenAICompatible).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'gateway',
+          apiKey: 'gw-key',
+          baseURL: 'https://gw.example.com/v1',
+        }),
+      );
       expect(svc.hasProvider('gateway')).toBe(true);
     });
 
@@ -182,6 +234,7 @@ describe('RegistryService', () => {
       const providers = service.listProviders();
       expect(providers).toContain('anthropic');
       expect(providers).toContain('openai');
+      expect(providers).toContain('openrouter');
       expect(providers).toContain('google');
       expect(providers).toContain('deepseek');
     });

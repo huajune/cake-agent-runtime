@@ -2,16 +2,15 @@
  * DuLiDay 面试预约工具
  *
  * 为求职者预约面试，需要提供完整的个人信息和岗位信息。
- *
- * 迁移自 agent/tools/duliday-interview-booking.tool.ts
- * 改造：实现 ToolFactory 接口 + 使用 SpongeService
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
-import { AiTool, ToolBuildContext, ToolFactory } from '@shared-types/tool.types';
+import { ToolBuilder } from '@shared-types/tool.types';
+
+const logger = new Logger('duliday_interview_booking');
 
 // 学历映射
 const EDUCATION_MAPPING: Record<number, string> = {
@@ -34,19 +33,11 @@ function getEducationIdByName(name: string): number | null {
   return EDUCATION_NAME_TO_ID[name] ?? null;
 }
 
-@Injectable()
-export class DulidayInterviewBookingToolService implements ToolFactory {
-  readonly toolName = 'duliday_interview_booking';
-  readonly toolDescription =
-    '预约面试。为求职者预约指定岗位的面试，需要提供完整的个人信息包括姓名、电话、性别、年龄、岗位ID和面试时间。';
-
-  private readonly logger = new Logger(DulidayInterviewBookingToolService.name);
-
-  constructor(private readonly spongeService: SpongeService) {}
-
-  buildTool(_context: ToolBuildContext): AiTool {
+export function buildInterviewBookingTool(spongeService: SpongeService): ToolBuilder {
+  return (_context) => {
     return tool({
-      description: this.toolDescription,
+      description:
+        '预约面试。为求职者预约指定岗位的面试，需要提供完整的个人信息包括姓名、电话、性别、年龄、岗位ID和面试时间。',
       inputSchema: z.object({
         name: z.string().describe('求职者姓名'),
         phone: z.string().describe('联系电话'),
@@ -77,7 +68,7 @@ export class DulidayInterviewBookingToolService implements ToolFactory {
         education = '大专',
         hasHealthCertificate = 1,
       }) => {
-        this.logger.log(`预约面试: ${name}, jobId=${jobId}`);
+        logger.log(`预约面试: ${name}, jobId=${jobId}`);
 
         // 验证必填字段
         const missingFields: string[] = [];
@@ -109,7 +100,7 @@ export class DulidayInterviewBookingToolService implements ToolFactory {
         }
 
         try {
-          const result = await this.spongeService.bookInterview({
+          const result = await spongeService.bookInterview({
             name,
             phone,
             age,
@@ -125,7 +116,7 @@ export class DulidayInterviewBookingToolService implements ToolFactory {
             requestInfo: { name, phone, age, genderId, education, jobId, interviewTime },
           };
         } catch (err) {
-          this.logger.error('预约面试失败', err);
+          logger.error('预约面试失败', err);
           return {
             success: false,
             error: `预约面试失败: ${err instanceof Error ? err.message : '未知错误'}`,
@@ -133,5 +124,5 @@ export class DulidayInterviewBookingToolService implements ToolFactory {
         }
       },
     });
-  }
+  };
 }

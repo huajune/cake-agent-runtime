@@ -24,8 +24,16 @@ export interface StrategyStageGoals {
   stages: StageGoalConfig[];
 }
 
+export interface RiskScenario {
+  flag: string;
+  label: string;
+  signals: string;
+  strategy: string;
+}
+
 export interface StrategyRedLines {
   rules: string[];
+  riskScenarios?: RiskScenario[];
 }
 
 export interface StrategyIndustrySkills {

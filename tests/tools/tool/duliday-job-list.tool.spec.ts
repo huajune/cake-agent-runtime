@@ -1,17 +1,16 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { DulidayJobListToolService } from '@tools/duliday-job-list.tool';
-import { SpongeService } from '@sponge/sponge.service';
+import { buildJobListTool } from '@tools/duliday-job-list.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 
-describe('DulidayJobListToolService', () => {
-  let service: DulidayJobListToolService;
-  let spongeService: { fetchJobs: jest.Mock };
+describe('buildJobListTool', () => {
+  const mockSpongeService = {
+    fetchJobs: jest.fn(),
+  };
 
   const mockContext: ToolBuildContext = {
     userId: 'user-1',
     corpId: 'corp-1',
+    sessionId: 'sess-1',
     messages: [],
-    channelType: 'private',
   };
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -59,105 +58,75 @@ describe('DulidayJobListToolService', () => {
     includeInterviewProcess: false,
   };
 
-  beforeEach(async () => {
-    spongeService = { fetchJobs: jest.fn() };
+  beforeEach(() => jest.clearAllMocks());
 
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [DulidayJobListToolService, { provide: SpongeService, useValue: spongeService }],
-    }).compile();
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const executeTool = async (ctx: ToolBuildContext = mockContext, input = defaultInput) => {
+    const builder = buildJobListTool(mockSpongeService as never);
+    const builtTool = builder(ctx);
+    return builtTool.execute(input as any, {
+      toolCallId: 'test',
+      messages: [],
+      abortSignal: undefined as any,
+    }) as any;
+  };
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 
-    service = module.get(DulidayJobListToolService);
-  });
-
-  it('should be defined', () => {
-    expect(service).toBeDefined();
-    expect(service.toolName).toBe('duliday_job_list');
-  });
-
-  describe('buildTool execute', () => {
-    it('should return markdown format by default', async () => {
-      spongeService.fetchJobs.mockResolvedValue({
-        jobs: [makeJobData()],
-        total: 1,
-      });
-
-      const builtTool = service.buildTool(mockContext);
-      /* eslint-disable @typescript-eslint/no-explicit-any */
-      const result = (await builtTool.execute(defaultInput as any, {
-        toolCallId: 'test',
-        messages: [],
-        abortSignal: undefined as any,
-      })) as any;
-      /* eslint-enable @typescript-eslint/no-explicit-any */
-
-      expect(result.markdown).toBeDefined();
-      expect(result.markdown).toContain('KFC');
+  it('should return markdown format by default', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [makeJobData()],
+      total: 1,
     });
 
-    it('should return error when no jobs found', async () => {
-      spongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+    const result = await executeTool();
 
-      const builtTool = service.buildTool(mockContext);
-      /* eslint-disable @typescript-eslint/no-explicit-any */
-      const result = (await builtTool.execute(defaultInput as any, {
-        toolCallId: 'test',
-        messages: [],
-        abortSignal: undefined as any,
-      })) as any;
-      /* eslint-enable @typescript-eslint/no-explicit-any */
+    expect(result.markdown).toBeDefined();
+    expect(result.markdown).toContain('KFC');
+  });
 
-      expect(result.error).toContain('未找到');
-    });
+  it('should return error when no jobs found', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
 
-    it('should call onJobsFetched callback', async () => {
-      const job = makeJobData({
-        jobSalary: {
-          salaryScenarioList: [
-            {
-              comprehensiveSalary: {
-                minComprehensiveSalary: 4000,
-                maxComprehensiveSalary: 5000,
-                comprehensiveSalaryUnit: '元/月',
-              },
+    const result = await executeTool();
+
+    expect(result.error).toContain('未找到');
+  });
+
+  it('should call onJobsFetched callback', async () => {
+    const job = makeJobData({
+      jobSalary: {
+        salaryScenarioList: [
+          {
+            comprehensiveSalary: {
+              minComprehensiveSalary: 4000,
+              maxComprehensiveSalary: 5000,
+              comprehensiveSalaryUnit: '元/月',
             },
-          ],
-        },
-      });
-      spongeService.fetchJobs.mockResolvedValue({ jobs: [job], total: 1 });
-
-      const onJobsFetched = jest.fn();
-      const contextWithCallback = { ...mockContext, onJobsFetched };
-      const builtTool = service.buildTool(contextWithCallback);
-      /* eslint-disable @typescript-eslint/no-explicit-any */
-      await builtTool.execute(defaultInput as any, {
-        toolCallId: 'test',
-        messages: [],
-        abortSignal: undefined as any,
-      });
-      /* eslint-enable @typescript-eslint/no-explicit-any */
-
-      expect(onJobsFetched).toHaveBeenCalledWith([
-        expect.objectContaining({
-          jobId: 1,
-          brandName: 'KFC',
-          salaryDesc: '4000-5000 元/月',
-        }),
-      ]);
+          },
+        ],
+      },
     });
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job], total: 1 });
 
-    it('should handle SpongeService error', async () => {
-      spongeService.fetchJobs.mockRejectedValue(new Error('API timeout'));
+    const onJobsFetched = jest.fn();
+    const contextWithCallback = { ...mockContext, onJobsFetched };
 
-      const builtTool = service.buildTool(mockContext);
-      /* eslint-disable @typescript-eslint/no-explicit-any */
-      const result = (await builtTool.execute(defaultInput as any, {
-        toolCallId: 'test',
-        messages: [],
-        abortSignal: undefined as any,
-      })) as any;
-      /* eslint-enable @typescript-eslint/no-explicit-any */
+    await executeTool(contextWithCallback);
 
-      expect(result.error).toContain('API timeout');
-    });
+    expect(onJobsFetched).toHaveBeenCalledWith([
+      expect.objectContaining({
+        jobId: 1,
+        brandName: 'KFC',
+        salaryDesc: '4000-5000 元/月',
+      }),
+    ]);
+  });
+
+  it('should handle SpongeService error', async () => {
+    mockSpongeService.fetchJobs.mockRejectedValue(new Error('API timeout'));
+
+    const result = await executeTool();
+
+    expect(result.error).toContain('API timeout');
   });
 });

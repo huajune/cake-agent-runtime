@@ -23,8 +23,7 @@ describe('ConversationTestService', () => {
   let executionRepository: jest.Mocked<TestExecutionRepository>;
 
   const mockOrchestrator = {
-    run: jest.fn(),
-    stream: jest.fn(),
+    invoke: jest.fn(),
   };
 
   const mockContext = {
@@ -161,7 +160,7 @@ describe('ConversationTestService', () => {
       mockParserService.splitIntoTurns.mockReturnValue(mockTurns);
       mockExecutionRepository.findByConversationSourceAndTurn.mockResolvedValue(null);
       mockExecutionRepository.create.mockResolvedValue({ id: 'exec-1' } as any);
-      mockOrchestrator.run.mockResolvedValue(makeOrchestratorSuccess('您好，有什么可以帮您'));
+      mockOrchestrator.invoke.mockResolvedValue(makeOrchestratorSuccess('您好，有什么可以帮您'));
       mockLlmEvaluationService.evaluate.mockResolvedValue({
         score: 85,
         passed: true,
@@ -218,7 +217,7 @@ describe('ConversationTestService', () => {
     });
 
     it('should handle agent failures within turns gracefully (does not rethrow)', async () => {
-      mockOrchestrator.run.mockRejectedValue(new Error('Agent API down'));
+      mockOrchestrator.invoke.mockRejectedValue(new Error('Agent API down'));
 
       const result = await service.executeConversation('source-1');
 
@@ -226,7 +225,7 @@ describe('ConversationTestService', () => {
     });
 
     it('should skip LLM evaluation when orchestrator throws', async () => {
-      mockOrchestrator.run.mockRejectedValue(new Error('Agent error'));
+      mockOrchestrator.invoke.mockRejectedValue(new Error('Agent error'));
 
       await service.executeConversation('source-1');
 
@@ -254,7 +253,7 @@ describe('ConversationTestService', () => {
 
       const result = await service.executeConversation('source-1', false);
 
-      expect(orchestrator.run).not.toHaveBeenCalled();
+      expect(orchestrator.invoke).not.toHaveBeenCalled();
       expect(result.turns[0].similarityScore).toBe(75);
     });
 
@@ -264,13 +263,13 @@ describe('ConversationTestService', () => {
 
       await service.executeConversation('source-1', true);
 
-      expect(orchestrator.run).toHaveBeenCalled();
+      expect(orchestrator.invoke).toHaveBeenCalled();
     });
 
     it('should use participant_name as userId', async () => {
       await service.executeConversation('source-1');
 
-      expect(orchestrator.run).toHaveBeenCalledWith(
+      expect(orchestrator.invoke).toHaveBeenCalledWith(
         expect.objectContaining({ userId: 'Alice' }),
       );
     });

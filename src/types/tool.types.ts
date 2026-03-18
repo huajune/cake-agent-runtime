@@ -14,39 +14,47 @@ export interface ToolBuildContext {
   userId: string;
   /** 企业 ID */
   corpId: string;
+  /** 会话 ID（chatId） */
+  sessionId: string;
   /** 对话消息 */
   messages: unknown[];
-  /** 渠道类型 */
-  channelType: 'private' | 'public';
-  /** 阶段目标配置（plan-turn 用） */
-  stageGoals?: Record<string, unknown>;
   /** 岗位推荐回调（job-list 用） */
   onJobsFetched?: (jobs: unknown[]) => void;
 }
 
 /**
- * 工具工厂接口
+ * 工具构建函数
  *
- * 所有内置工具服务必须实现此接口。
- * 对标 ZeroClaw Tool trait，但因为 context 是 per-request 的，用 factory 模式。
+ * 每个内置工具导出一个 ToolBuilder，接收 per-request context 返回 AI SDK tool 实例。
  */
-export interface ToolFactory {
-  /** 工具名称（用于 LLM function calling） */
-  readonly toolName: string;
-  /** 工具描述 */
-  readonly toolDescription: string;
-  /** 根据上下文构建 AI SDK tool 实例 */
-  buildTool(context: ToolBuildContext): AiTool;
+export type ToolBuilder = (context: ToolBuildContext) => AiTool;
+
+/**
+ * 工具定义（用于 TOOL_REGISTRY）
+ *
+ * 通过 createToolDefinition() 创建，强制每个工具遵循同一 shape。
+ */
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  create: ToolBuilder;
 }
 
 /**
- * 工具注册记录
+ * 类型安全的工具定义构造器
+ *
+ * 约束所有工具必须声明 name + description + create，确保编写规范一致。
+ */
+export function createToolDefinition(def: ToolDefinition): ToolDefinition {
+  return def;
+}
+
+/**
+ * 工具注册记录（运行时，含 MCP）
  */
 export interface ToolRegistration {
   name: string;
   source: 'built-in' | 'mcp';
-  /** built-in 工具：工厂实例 */
-  factory?: ToolFactory;
   /** MCP 工具：预构建的 tool */
   tool?: AiTool;
   /** MCP 服务器名称 */

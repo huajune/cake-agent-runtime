@@ -16,11 +16,14 @@ import { IdentitySection } from './sections/identity.section';
 import { RedLinesSection } from './sections/red-lines.section';
 import { DateTimeSection } from './sections/datetime.section';
 import { ChannelSection } from './sections/channel.section';
+import { StageStrategySection } from './sections/stage-strategy.section';
+import { RiskScenariosSection } from './sections/risk-scenarios.section';
 import { SCENARIO_SECTIONS, DEFAULT_SCENARIO } from './scenarios/scenario.registry';
 
 export interface ComposeParams {
   scenario?: string;
   channelType?: 'private' | 'group';
+  currentStage?: string;
 }
 
 export interface ComposeResult {
@@ -53,7 +56,7 @@ export class ContextService implements OnModuleInit {
    * 组装系统提示词 + stageGoals
    */
   async compose(params: ComposeParams = {}): Promise<ComposeResult> {
-    const { scenario = DEFAULT_SCENARIO, channelType = 'private' } = params;
+    const { scenario = DEFAULT_SCENARIO, channelType = 'private', currentStage } = params;
 
     const config = await this.strategyConfigService.getActiveConfig();
 
@@ -61,6 +64,7 @@ export class ContextService implements OnModuleInit {
       scenario,
       channelType,
       strategyConfig: config,
+      currentStage,
     };
 
     const sectionNames = SCENARIO_SECTIONS[scenario];
@@ -110,6 +114,8 @@ export class ContextService implements OnModuleInit {
     const basePrompt = this.basePrompts.get('candidate-consultation') ?? '';
     this.sections.set('identity', new IdentitySection(basePrompt));
     this.sections.set('red-lines', new RedLinesSection());
+    this.sections.set('risk-scenarios', new RiskScenariosSection());
+    this.sections.set('stage-strategy', new StageStrategySection());
     this.sections.set('datetime', new DateTimeSection());
     this.sections.set('channel', new ChannelSection());
   }

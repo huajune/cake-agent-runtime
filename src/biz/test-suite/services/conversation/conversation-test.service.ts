@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { LoopService, type LoopRunParams, type AgentRunResult } from '@agent/loop.service';
-import { ContextService } from '@agent/context/context.service';
+import { LoopService, type AgentRunResult } from '@agent/loop.service';
 import { LlmEvaluationService } from './llm-evaluation.service';
 import { ConversationParserService } from './conversation-parser.service';
 import { ConversationSnapshotRepository } from '../../repositories/conversation-snapshot.repository';
@@ -43,7 +42,6 @@ export class ConversationTestService {
 
   constructor(
     private readonly loop: LoopService,
-    private readonly context: ContextService,
     private readonly llmEvaluationService: LlmEvaluationService,
     private readonly parserService: ConversationParserService,
     private readonly conversationSnapshotRepository: ConversationSnapshotRepository,
@@ -351,10 +349,7 @@ export class ConversationTestService {
     }
 
     try {
-      const { systemPrompt, stageGoals } = await this.context.compose({ scenario });
-      const loopParams: LoopRunParams = {
-        systemPrompt,
-        stageGoals,
+      loopResult = await this.loop.invoke({
         messages: [
           ...turn.history.map((m) => ({
             role: m.role as 'user' | 'assistant',
@@ -364,9 +359,9 @@ export class ConversationTestService {
         ],
         userId,
         corpId: 'test',
-      };
-
-      loopResult = await this.loop.run(loopParams);
+        sessionId,
+        scenario,
+      });
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       executionStatus = errorMsg.includes('timeout')

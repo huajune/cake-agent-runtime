@@ -12,6 +12,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ModelMessage, generateText } from 'ai';
 import { RouterService } from '@providers/router.service';
+import { ModelRole } from '@providers/types';
 
 export interface CompletionParams {
   /** 系统提示词 */
@@ -19,7 +20,7 @@ export interface CompletionParams {
   /** 对话消息列表 */
   messages: ModelMessage[];
   /** 模型角色（默认 'chat'），映射到 AGENT_{ROLE}_MODEL */
-  role?: string;
+  role?: ModelRole;
   /** 精确指定模型 ID（优先于 role） */
   modelId?: string;
   /** 温度参数 */
@@ -77,7 +78,7 @@ export class CompletionService {
   async generateSimple(params: {
     systemPrompt: string;
     userMessage: string;
-    role?: string;
+    role?: ModelRole;
     modelId?: string;
   }): Promise<string> {
     const { systemPrompt, userMessage, role, modelId } = params;

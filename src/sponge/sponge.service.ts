@@ -5,9 +5,12 @@ import {
   JobListResult,
   InterviewBookingParams,
   InterviewBookingResult,
+  BrandItem,
+  RawBrandItem,
 } from './sponge.types';
 
 const JOB_LIST_API = 'https://k8s.duliday.com/persistence/ai/api/job/list';
+const BRAND_LIST_API = 'https://k8s.duliday.com/persistence/ai/api/brand/list';
 const INTERVIEW_BOOKING_API = 'https://k8s.duliday.com/persistence/a/supplier/entryUser';
 
 const DEFAULT_PAGE_NUM = 1;
@@ -126,5 +129,48 @@ export class SpongeService {
       notice: data.data?.notice ?? null,
       errorList: data.data?.errorList ?? null,
     };
+  }
+
+  /**
+   * 获取品牌列表（含别名）
+   *
+   * 返回 { name, aliases }[] 格式，供事实提取时品牌别名映射使用。
+   * API 不可用时返回空数组（graceful 降级）。
+   */
+  async fetchBrandList(): Promise<BrandItem[]> {
+    if (!this.token) {
+      this.logger.warn('缺少 DULIDAY_API_TOKEN，品牌列表不可用');
+      return [];
+    }
+
+    try {
+      const response = await fetch(BRAND_LIST_API, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Duliday-Token': this.token,
+        },
+        body: JSON.stringify({ pageNum: 1, pageSize: 1000 }),
+      });
+
+      if (!response.ok) {
+        this.logger.warn(`品牌列表 API 返回 ${response.status}`);
+        return [];
+      }
+
+      const data = await response.json();
+      if (data.code !== 0 || !data.data?.result) {
+        this.logger.warn('品牌列表返回非零: ' + (data.message || data.code));
+        return [];
+      }
+
+      return (data.data.result as RawBrandItem[]).map((item) => ({
+        name: item.name,
+        aliases: (item.aliases ?? []).filter((a: string) => a !== item.name),
+      }));
+    } catch (err) {
+      this.logger.warn('品牌列表获取失败，降级为空列表', err);
+      return [];
+    }
   }
 }

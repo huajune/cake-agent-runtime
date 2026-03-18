@@ -82,13 +82,12 @@ export class TestExecutionService {
         { role: 'user' as const, content: request.message },
       ];
 
-      const { systemPrompt, stageGoals } = await this.context.compose({ scenario });
-      agentResult = await this.loop.run({
-        systemPrompt,
-        stageGoals,
+      agentResult = await this.loop.invoke({
         messages,
         userId: request.userId,
         corpId: 'test',
+        sessionId: request.sessionId ?? `test-${Date.now()}`,
+        scenario,
       });
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -190,13 +189,13 @@ export class TestExecutionService {
       { role: 'user' as const, content: request.message },
     ];
 
-    const { systemPrompt, stageGoals } = await this.context.compose({ scenario });
+    const { systemPrompt } = await this.context.compose({ scenario });
     const streamResult = await this.loop.stream({
       systemPrompt,
-      stageGoals,
       messages,
       userId: request.userId,
       corpId: 'test',
+      sessionId: request.sessionId ?? `test-${Date.now()}`,
     });
 
     return {
