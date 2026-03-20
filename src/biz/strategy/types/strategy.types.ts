@@ -43,7 +43,7 @@ export interface StrategyStageGoals {
 // ==================== 红线规则 ====================
 
 export interface RiskScenario {
-  /** 风险标识（与 signal-detector 的 RiskFlag 对应） */
+  /** 风险标识 */
   flag: string;
   /** 显示名称 */
   label: string;

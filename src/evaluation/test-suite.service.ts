@@ -6,12 +6,7 @@ import { TestWriteBackService } from './services/feishu/test-write-back.service'
 import { ConversationTestService } from './services/conversation/conversation-test.service';
 import { FeishuBitableSyncService } from '@biz/feishu-sync/bitable-sync.service';
 import { TestSuiteProcessor } from './test-suite.processor';
-import {
-  BatchStatus,
-  ExecutionStatus,
-  FeishuTestStatus,
-  ReviewStatus,
-} from './enums/test.enum';
+import { BatchStatus, ExecutionStatus, FeishuTestStatus, ReviewStatus } from './enums/test.enum';
 import { VercelAIChatRequestDto } from './dto/test-chat.dto';
 
 @Injectable()
@@ -146,11 +141,7 @@ export class TestSuiteService {
     return this.importService.quickCreateBatch(options as never);
   }
 
-  writeBackToFeishu(
-    executionId: string,
-    testStatus: FeishuTestStatus,
-    errorReason?: string,
-  ) {
+  writeBackToFeishu(executionId: string, testStatus: FeishuTestStatus, errorReason?: string) {
     return this.writeBackService.writeBackToFeishu(executionId, testStatus, errorReason);
   }
 
@@ -210,7 +201,12 @@ export class TestSuiteService {
   }
 
   getConversationSources(batchId: string, page = 1, pageSize = 20, status?: string) {
-    return this.conversationTestService.getConversationSources(batchId, page, pageSize, status as never);
+    return this.conversationTestService.getConversationSources(
+      batchId,
+      page,
+      pageSize,
+      status as never,
+    );
   }
 
   getConversationTurns(sourceId: string) {
@@ -232,11 +228,7 @@ export class TestSuiteService {
     return result;
   }
 
-  updateTurnReview(
-    executionId: string,
-    reviewStatus: ReviewStatus,
-    reviewComment?: string,
-  ) {
+  updateTurnReview(executionId: string, reviewStatus: ReviewStatus, reviewComment?: string) {
     return this.conversationTestService.updateTurnReview(executionId, reviewStatus, reviewComment);
   }
 

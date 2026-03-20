@@ -49,7 +49,8 @@ export class FeishuTestSyncService {
         return {
           caseId: record.record_id,
           caseName:
-            this.getTextValue(record.fields[fieldMap['用例名称']]) || `测试用例 ${record.record_id}`,
+            this.getTextValue(record.fields[fieldMap['用例名称']]) ||
+            `测试用例 ${record.record_id}`,
           category: this.getTextValue(record.fields[fieldMap['分类']]) || undefined,
           message,
           history: this.parseHistory(this.getTextValue(record.fields[fieldMap['聊天记录']])),

@@ -1,4 +1,14 @@
-import { Body, Controller, Get, HttpException, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpException,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { TestSuiteService } from './test-suite.service';
 import {
   BatchSource,
@@ -61,7 +71,9 @@ export class TestSuiteController {
   }
 
   @Post('batches/quick-create')
-  async quickCreateBatch(@Body() request: { batchName?: string; parallel?: boolean; testType?: TestType }) {
+  async quickCreateBatch(
+    @Body() request: { batchName?: string; parallel?: boolean; testType?: TestType },
+  ) {
     return {
       success: true,
       data: await this.testService.quickCreateBatch({
@@ -73,7 +85,11 @@ export class TestSuiteController {
   }
 
   @Get('batches')
-  getBatches(@Query('limit') limit?: number, @Query('offset') offset?: number, @Query('testType') testType?: TestType) {
+  getBatches(
+    @Query('limit') limit?: number,
+    @Query('offset') offset?: number,
+    @Query('testType') testType?: TestType,
+  ) {
     return this.testService.getBatches(limit || 20, offset || 0, testType);
   }
 
@@ -219,7 +235,9 @@ export class TestSuiteController {
   }
 
   @Get('conversations')
-  async getConversationSources(@Query() query: { batchId: string; page?: number; pageSize?: number; status?: string }) {
+  async getConversationSources(
+    @Query() query: { batchId: string; page?: number; pageSize?: number; status?: string },
+  ) {
     return {
       success: true,
       data: await this.testService.getConversationSources(
@@ -237,13 +255,25 @@ export class TestSuiteController {
   }
 
   @Post('conversations/:sourceId/execute')
-  async executeConversation(@Param('sourceId') sourceId: string, @Body() request: { forceRerun?: boolean }) {
-    return { success: true, data: await this.testService.executeConversation(sourceId, request.forceRerun) };
+  async executeConversation(
+    @Param('sourceId') sourceId: string,
+    @Body() request: { forceRerun?: boolean },
+  ) {
+    return {
+      success: true,
+      data: await this.testService.executeConversation(sourceId, request.forceRerun),
+    };
   }
 
   @Post('conversations/batches/:batchId/execute')
-  async executeConversationBatch(@Param('batchId') batchId: string, @Body() request: { forceRerun?: boolean }) {
-    return { success: true, data: await this.testService.executeConversationBatch(batchId, request.forceRerun) };
+  async executeConversationBatch(
+    @Param('batchId') batchId: string,
+    @Body() request: { forceRerun?: boolean },
+  ) {
+    return {
+      success: true,
+      data: await this.testService.executeConversationBatch(batchId, request.forceRerun),
+    };
   }
 
   @Patch('conversations/turns/:executionId/review')

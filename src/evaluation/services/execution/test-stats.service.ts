@@ -2,11 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { TestExecutionRepository } from '../../repositories/test-execution.repository';
 import { TestBatchRepository } from '../../repositories/test-batch.repository';
 import { ConversationSnapshotRepository } from '../../repositories/conversation-snapshot.repository';
-import {
-  ConversationSourceStatus,
-  ReviewStatus,
-  TestType,
-} from '../../enums/test.enum';
+import { ConversationSourceStatus, ReviewStatus, TestType } from '../../enums/test.enum';
 import type { TestExecution } from '../../entities/test-execution.entity';
 
 @Injectable()
@@ -66,8 +62,12 @@ export class TestStatsService {
       };
     }
 
-    const passedCount = executions.filter((item) => item.review_status === ReviewStatus.PASSED).length;
-    const failedCount = executions.filter((item) => item.review_status === ReviewStatus.FAILED).length;
+    const passedCount = executions.filter(
+      (item) => item.review_status === ReviewStatus.PASSED,
+    ).length;
+    const failedCount = executions.filter(
+      (item) => item.review_status === ReviewStatus.FAILED,
+    ).length;
     const executedCount = executions.filter((item) => item.execution_status !== 'pending').length;
 
     const successDurations = executions
@@ -86,7 +86,9 @@ export class TestStatsService {
       passRate: Math.round((passedCount / executions.length) * 100),
       avgDurationMs:
         successDurations.length > 0
-          ? Math.round(successDurations.reduce((sum, value) => sum + value, 0) / successDurations.length)
+          ? Math.round(
+              successDurations.reduce((sum, value) => sum + value, 0) / successDurations.length,
+            )
           : null,
       avgTokenUsage:
         tokenTotals.length > 0

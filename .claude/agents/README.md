@@ -30,6 +30,7 @@ This directory contains modular guidelines for Claude Code agents. Each file foc
 | **[development-workflow.md](development-workflow.md)**         | Git workflow, testing, deployment      | Daily development tasks           |
 | **[performance-optimization.md](performance-optimization.md)** | Performance tuning, monitoring         | Optimizing system performance     |
 | **[code-quality-guardian.md](code-quality-guardian.md)**       | Automated quality checks               | Before committing code            |
+| **[tune-prompt.md](tune-prompt.md)**                           | Prompt refinement harness (agent testing) | After observing suboptimal agent behavior |
 
 ---
 

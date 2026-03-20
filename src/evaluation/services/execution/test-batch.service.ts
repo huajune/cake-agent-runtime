@@ -3,11 +3,7 @@ import { TestBatchRepository } from '../../repositories/test-batch.repository';
 import { TestExecutionRepository } from '../../repositories/test-execution.repository';
 import { TestStatsService } from './test-stats.service';
 import { TestWriteBackService } from '../feishu/test-write-back.service';
-import {
-  BatchStatus,
-  FeishuTestStatus,
-  ReviewStatus,
-} from '../../enums/test.enum';
+import { BatchStatus, FeishuTestStatus, ReviewStatus } from '../../enums/test.enum';
 
 @Injectable()
 export class TestBatchService {

@@ -7,12 +7,7 @@ import { TestWriteBackService } from './test-write-back.service';
 import { ConversationTestService } from '../conversation/conversation-test.service';
 import { TestSuiteProcessor } from '../../test-suite.processor';
 import { ConversationSnapshotRepository } from '../../repositories/conversation-snapshot.repository';
-import {
-  BatchSource,
-  BatchStatus,
-  ExecutionStatus,
-  TestType,
-} from '../../enums/test.enum';
+import { BatchSource, BatchStatus, ExecutionStatus, TestType } from '../../enums/test.enum';
 
 @Injectable()
 export class TestImportService {

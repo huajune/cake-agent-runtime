@@ -8,7 +8,6 @@ import { ObservabilityModule } from '@/observability/observability.module';
 import { SpongeModule } from '@sponge/sponge.module';
 import { LoopService } from './loop.service';
 import { CompletionService } from './completion.service';
-import { SignalDetectorService } from './signal-detector.service';
 import { ContextService } from './context/context.service';
 import { AgentController } from './agent.controller';
 import { FactExtractionService } from './fact-extraction.service';
@@ -29,7 +28,6 @@ import { InputGuardService } from './input-guard.service';
     ContextService,
     LoopService,
     CompletionService,
-    SignalDetectorService,
     FactExtractionService,
     InputGuardService,
   ],
@@ -37,7 +35,6 @@ import { InputGuardService } from './input-guard.service';
     ContextService,
     LoopService,
     CompletionService,
-    SignalDetectorService,
     FactExtractionService,
     InputGuardService,
   ],

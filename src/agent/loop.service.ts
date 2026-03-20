@@ -4,10 +4,9 @@
  * invoke() / stream() 共享完整编排流程：
  * 1. 一次性读取所有记忆（recallAll）
  * 2. 组装 systemPrompt（ContextService + section 体系）
- * 3. 信号检测（SignalDetectorService: needs + riskFlags）
- * 4. 注入上一轮记忆（Profile + SessionFacts）
- * 5. 构建工具 → generateText / streamText 多步循环
- * 6. 记忆后置存储 + 事实提取（异步，供下一轮读取）
+ * 3. 注入记忆块（Profile + SessionFacts）
+ * 4. 构建工具 → generateText / streamText 多步循环
+ * 5. 记忆后置存储 + 事实提取（异步，供下一轮读取）
  */
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -21,7 +20,6 @@ import { MemoryService } from '@memory/memory.service';
 import { MemoryConfig } from '@memory/memory.config';
 import { SettlementService } from '@memory/settlement.service';
 import { ContextService } from './context/context.service';
-import { SignalDetectorService } from './signal-detector.service';
 import { FactExtractionService } from './fact-extraction.service';
 import { InputGuardService } from './input-guard.service';
 import { RecommendedJobSummary } from '@memory/memory.types';
@@ -91,7 +89,6 @@ export class LoopService {
     private readonly memoryConfig: MemoryConfig,
     private readonly settlement: SettlementService,
     private readonly context: ContextService,
-    private readonly classifier: SignalDetectorService,
     private readonly factExtraction: FactExtractionService,
     private readonly inputGuard: InputGuardService,
   ) {
@@ -216,12 +213,8 @@ export class LoopService {
     const currentStage = memory.procedural.currentStage ?? undefined;
     const { systemPrompt } = await this.context.compose({ scenario, currentStage });
 
-    // 4. 检测 needs + riskFlags（消息驱动，追加到 prompt 末尾）
-    const detection = this.classifier.detect(messages);
-    const detectionBlock = this.classifier.formatDetectionBlock(detection);
-    let finalPrompt = detectionBlock ? systemPrompt + '\n\n' + detectionBlock : systemPrompt;
-
-    // 5. 注入记忆块（Profile + SessionFacts）
+    // 4. 注入记忆块（Profile + SessionFacts）
+    let finalPrompt = systemPrompt;
     const profileBlock = this.memoryService.longTerm.formatProfileForPrompt(
       memory.longTerm.profile,
     );
@@ -230,7 +223,7 @@ export class LoopService {
       : '';
     finalPrompt += profileBlock + factsBlock;
 
-    // 6. Prompt injection 检测
+    // 5. Prompt injection 检测
     const guardResult = this.inputGuard.detectMessages(messages);
     if (!guardResult.safe) {
       finalPrompt += InputGuardService.GUARD_SUFFIX;
@@ -240,7 +233,7 @@ export class LoopService {
         .catch(() => {});
     }
 
-    // 7. 构建工具
+    // 6. 构建工具
     const typedMessages = messages as ModelMessage[];
     const chatModel = this.router.resolveByRole(ModelRole.Chat);
     const toolContext: ToolBuildContext = {
