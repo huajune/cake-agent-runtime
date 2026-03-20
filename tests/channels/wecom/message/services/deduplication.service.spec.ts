@@ -68,13 +68,6 @@ describe('MessageDeduplicationService', () => {
     });
   });
 
-  describe('isMessageProcessed (deprecated sync version)', () => {
-    it('should always return false for backward compatibility', () => {
-      const result = service.isMessageProcessed('msg-123');
-      expect(result).toBe(false);
-    });
-  });
-
   describe('markMessageAsProcessedAsync', () => {
     it('should return true and set key when message not yet processed', async () => {
       mockRedisClient.set.mockResolvedValue('OK');
@@ -95,28 +88,6 @@ describe('MessageDeduplicationService', () => {
       const result = await service.markMessageAsProcessedAsync('msg-123');
 
       expect(result).toBe(false);
-    });
-  });
-
-  describe('markMessageAsProcessed (sync version)', () => {
-    it('should call markMessageAsProcessedAsync asynchronously without blocking', async () => {
-      mockRedisClient.set.mockResolvedValue('OK');
-
-      // Should not throw
-      expect(() => service.markMessageAsProcessed('msg-123')).not.toThrow();
-
-      // Wait for async operation
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    });
-
-    it('should log error when async operation fails', async () => {
-      mockRedisClient.set.mockRejectedValue(new Error('Redis connection failed'));
-
-      // Should not throw synchronously
-      expect(() => service.markMessageAsProcessed('msg-error')).not.toThrow();
-
-      // Wait for async error handling
-      await new Promise((resolve) => setTimeout(resolve, 10));
     });
   });
 

@@ -2,11 +2,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { MessageController } from '@biz/message/message.controller';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
+import { AnalyticsQueryService } from '@biz/monitoring/services/analytics/analytics-query.service';
 
 describe('MessageController (biz/message)', () => {
   let controller: MessageController;
   let chatSessionService: ChatSessionService;
   let messageProcessingService: MessageProcessingService;
+  let analyticsQueryService: AnalyticsQueryService;
 
   const mockChatSessionService = {
     getChatMessages: jest.fn(),
@@ -14,7 +16,6 @@ describe('MessageController (biz/message)', () => {
     getChatDailyStats: jest.fn(),
     getChatSummaryStats: jest.fn(),
     getChatSessionsOptimized: jest.fn(),
-    getChatTrend: jest.fn(),
     getChatSessionMessages: jest.fn(),
   };
 
@@ -25,18 +26,24 @@ describe('MessageController (biz/message)', () => {
     getMessageProcessingRecordById: jest.fn(),
   };
 
+  const mockAnalyticsQueryService = {
+    getChatTrend: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [MessageController],
       providers: [
         { provide: ChatSessionService, useValue: mockChatSessionService },
         { provide: MessageProcessingService, useValue: mockMessageProcessingService },
+        { provide: AnalyticsQueryService, useValue: mockAnalyticsQueryService },
       ],
     }).compile();
 
     controller = module.get<MessageController>(MessageController);
     chatSessionService = module.get<ChatSessionService>(ChatSessionService);
     messageProcessingService = module.get<MessageProcessingService>(MessageProcessingService);
+    analyticsQueryService = module.get<AnalyticsQueryService>(AnalyticsQueryService);
     jest.clearAllMocks();
   });
 
@@ -173,20 +180,20 @@ describe('MessageController (biz/message)', () => {
   describe('getChatTrend', () => {
     it('should call chatSessionService with parsed days', async () => {
       const mockResult = [{ date: '2024-01-01', value: 5 }];
-      mockChatSessionService.getChatTrend.mockResolvedValue(mockResult);
+      mockAnalyticsQueryService.getChatTrend.mockResolvedValue(mockResult);
 
       const result = await controller.getChatTrend('7');
 
-      expect(chatSessionService.getChatTrend).toHaveBeenCalledWith(7);
+      expect(analyticsQueryService.getChatTrend).toHaveBeenCalledWith(7);
       expect(result).toEqual(mockResult);
     });
 
     it('should call with undefined when days not provided', async () => {
-      mockChatSessionService.getChatTrend.mockResolvedValue([]);
+      mockAnalyticsQueryService.getChatTrend.mockResolvedValue([]);
 
       await controller.getChatTrend();
 
-      expect(chatSessionService.getChatTrend).toHaveBeenCalledWith(undefined);
+      expect(analyticsQueryService.getChatTrend).toHaveBeenCalledWith(undefined);
     });
   });
 

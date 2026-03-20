@@ -318,8 +318,19 @@ export interface DeliveryResult {
   success: boolean;
   segmentCount: number;
   failedSegments: number;
+  deliveredSegments?: number;
   totalTime: number;
   error?: string;
+}
+
+export class DeliveryFailureError extends Error {
+  constructor(
+    message: string,
+    public readonly result: DeliveryResult,
+  ) {
+    super(message);
+    this.name = 'DeliveryFailureError';
+  }
 }
 
 // ========================================

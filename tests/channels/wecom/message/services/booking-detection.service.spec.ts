@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BookingDetectionService } from '@wecom/message/services/booking-detection.service';
 import { FeishuBookingService } from '@infra/feishu/services/booking.service';
-import { BookingRepository } from '@biz/message/repositories/booking.repository';
+import { BookingService } from '@biz/message/services/booking.service';
 
 describe('BookingDetectionService', () => {
   let service: BookingDetectionService;
@@ -10,7 +10,7 @@ describe('BookingDetectionService', () => {
     sendBookingNotification: jest.fn(),
   };
 
-  const mockBookingRepository = {
+  const mockBookingService = {
     incrementBookingCount: jest.fn(),
   };
 
@@ -19,7 +19,7 @@ describe('BookingDetectionService', () => {
       providers: [
         BookingDetectionService,
         { provide: FeishuBookingService, useValue: mockFeishuBookingService },
-        { provide: BookingRepository, useValue: mockBookingRepository },
+        { provide: BookingService, useValue: mockBookingService },
       ],
     }).compile();
 
@@ -27,7 +27,7 @@ describe('BookingDetectionService', () => {
     jest.clearAllMocks();
 
     mockFeishuBookingService.sendBookingNotification.mockResolvedValue(undefined);
-    mockBookingRepository.incrementBookingCount.mockResolvedValue(undefined);
+    mockBookingService.incrementBookingCount.mockResolvedValue(undefined);
   });
 
   it('should be defined', () => {
@@ -92,7 +92,7 @@ describe('BookingDetectionService', () => {
       });
 
       expect(mockFeishuBookingService.sendBookingNotification).not.toHaveBeenCalled();
-      expect(mockBookingRepository.incrementBookingCount).not.toHaveBeenCalled();
+      expect(mockBookingService.incrementBookingCount).not.toHaveBeenCalled();
     });
 
     it('should do nothing when replyText is undefined', async () => {
@@ -118,7 +118,7 @@ describe('BookingDetectionService', () => {
           candidateName: 'Alice',
         }),
       );
-      expect(mockBookingRepository.incrementBookingCount).toHaveBeenCalled();
+      expect(mockBookingService.incrementBookingCount).toHaveBeenCalled();
     });
 
     it('should handle feishu notification failure gracefully', async () => {
@@ -137,7 +137,7 @@ describe('BookingDetectionService', () => {
     });
 
     it('should handle booking stats update failure gracefully', async () => {
-      mockBookingRepository.incrementBookingCount.mockRejectedValue(new Error('DB error'));
+      mockBookingService.incrementBookingCount.mockRejectedValue(new Error('DB error'));
 
       await service.handleBookingSuccessAsync({
         ...baseParams,
@@ -146,7 +146,7 @@ describe('BookingDetectionService', () => {
 
       await new Promise((resolve) => setImmediate(resolve));
 
-      expect(mockBookingRepository.incrementBookingCount).toHaveBeenCalled();
+      expect(mockBookingService.incrementBookingCount).toHaveBeenCalled();
     });
   });
 });

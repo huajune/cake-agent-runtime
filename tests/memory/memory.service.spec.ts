@@ -1,7 +1,9 @@
 import { MemoryService } from '@memory/memory.service';
 
 describe('MemoryService', () => {
-  const mockShortTerm = {};
+  const mockShortTerm = {
+    getMessages: jest.fn(),
+  };
 
   const mockSessionFacts = {
     getSessionState: jest.fn(),
@@ -29,6 +31,7 @@ describe('MemoryService', () => {
 
   describe('recallAll', () => {
     it('should return complete memory context', async () => {
+      mockShortTerm.getMessages.mockResolvedValue([{ role: 'user', content: 'hello' }]);
       mockSessionFacts.getSessionState.mockResolvedValue({
         facts: { interview_info: { name: '张三' }, preferences: {}, reasoning: '' },
         lastRecommendedJobs: null,
@@ -45,9 +48,11 @@ describe('MemoryService', () => {
       expect(ctx.procedural.currentStage).toBe('needs_collection');
       expect(ctx.longTerm.profile?.name).toBe('张三');
       expect(ctx.sessionFacts).not.toBeNull();
+      expect(ctx.shortTerm).toEqual([{ role: 'user', content: 'hello' }]);
     });
 
     it('should return null sessionFacts when no facts', async () => {
+      mockShortTerm.getMessages.mockResolvedValue([]);
       mockSessionFacts.getSessionState.mockResolvedValue({
         facts: null,
         lastRecommendedJobs: null,
@@ -63,12 +68,14 @@ describe('MemoryService', () => {
     });
 
     it('should call all sub-services in parallel', async () => {
+      mockShortTerm.getMessages.mockResolvedValue([]);
       mockSessionFacts.getSessionState.mockResolvedValue({ facts: null, lastRecommendedJobs: null });
       mockProcedural.get.mockResolvedValue({ currentStage: null, advancedAt: null, reason: null });
       mockLongTerm.getProfile.mockResolvedValue(null);
 
       await service.recallAll('corp1', 'user1', 'sess1');
 
+      expect(mockShortTerm.getMessages).toHaveBeenCalledWith('sess1');
       expect(mockSessionFacts.getSessionState).toHaveBeenCalledWith('corp1', 'user1', 'sess1');
       expect(mockProcedural.get).toHaveBeenCalledWith('corp1', 'user1', 'sess1');
       expect(mockLongTerm.getProfile).toHaveBeenCalledWith('corp1', 'user1');

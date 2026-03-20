@@ -1,14 +1,16 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { MessagePipelineService } from '@wecom/message/services/pipeline.service';
 import { MessageDeduplicationService } from '@wecom/message/services/deduplication.service';
-import { MessageHistoryService } from '@wecom/message/services/history.service';
 import { MessageFilterService } from '@wecom/message/services/filter.service';
 import { MessageDeliveryService } from '@wecom/message/services/delivery.service';
-import { AgentGatewayService } from '@wecom/message/services/agent-gateway.service';
 import { BookingDetectionService } from '@wecom/message/services/booking-detection.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
+import { ChatSessionService } from '@biz/message/services/chat-session.service';
+import { LoopService } from '@agent/loop.service';
 import { EnterpriseMessageCallbackDto } from '@wecom/message/message-callback.dto';
+import { DeliveryFailureError } from '@wecom/message/message.types';
 import { MessageType, ContactType, MessageSource } from '@enums/message-callback.enum';
 import { FilterReason } from '@wecom/message/services/filter.service';
 
@@ -20,10 +22,9 @@ describe('MessagePipelineService', () => {
     markMessageAsProcessedAsync: jest.fn(),
   };
 
-  const mockHistoryService = {
-    addMessageToHistory: jest.fn(),
-    getHistoryForContext: jest.fn(),
-    getHistoryDetail: jest.fn(),
+  const mockChatSessionService = {
+    saveMessage: jest.fn(),
+    getChatSessionMessages: jest.fn(),
   };
 
   const mockFilterService = {
@@ -34,17 +35,24 @@ describe('MessagePipelineService', () => {
     deliverReply: jest.fn(),
   };
 
-  const mockAgentGateway = {
-    invoke: jest.fn(),
-    getFallbackMessage: jest.fn(),
+  const mockBookingDetectionService = {
+    handleBookingSuccessAsync: jest.fn(),
   };
 
-  const mockBookingDetection = {
-    handleBookingSuccessAsync: jest.fn(),
+  const mockLoopService = {
+    invoke: jest.fn(),
+  };
+
+  const mockConfigService = {
+    get: jest.fn().mockReturnValue(''),
   };
 
   const mockMonitoringService = {
     recordMessageReceived: jest.fn(),
+    recordAiStart: jest.fn(),
+    recordAiEnd: jest.fn(),
+    recordSendStart: jest.fn(),
+    recordSendEnd: jest.fn(),
     recordSuccess: jest.fn(),
     recordFailure: jest.fn(),
   };
@@ -57,6 +65,7 @@ describe('MessagePipelineService', () => {
     orgId: 'org-123',
     token: 'token-123',
     botId: 'bot-123',
+    botUserId: 'manager-bob',
     imBotId: 'wxid-bot-123',
     chatId: 'chat-123',
     messageType: MessageType.TEXT,
@@ -67,24 +76,7 @@ describe('MessagePipelineService', () => {
     contactType: ContactType.PERSONAL_WECHAT,
     imContactId: 'contact-123',
     contactName: 'Alice',
-    botUserId: 'manager-bob',
     payload: { text: 'Hello!' },
-  };
-
-  const successAgentResult = {
-    reply: {
-      content: 'Hi there! How can I help?',
-      usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
-    },
-    isFallback: false,
-    processingTime: 500,
-  };
-
-  const successDeliveryResult = {
-    success: true,
-    segmentCount: 1,
-    failedSegments: 0,
-    totalTime: 100,
   };
 
   beforeEach(async () => {
@@ -92,11 +84,12 @@ describe('MessagePipelineService', () => {
       providers: [
         MessagePipelineService,
         { provide: MessageDeduplicationService, useValue: mockDeduplicationService },
-        { provide: MessageHistoryService, useValue: mockHistoryService },
+        { provide: ChatSessionService, useValue: mockChatSessionService },
         { provide: MessageFilterService, useValue: mockFilterService },
         { provide: MessageDeliveryService, useValue: mockDeliveryService },
-        { provide: AgentGatewayService, useValue: mockAgentGateway },
-        { provide: BookingDetectionService, useValue: mockBookingDetection },
+        { provide: BookingDetectionService, useValue: mockBookingDetectionService },
+        { provide: LoopService, useValue: mockLoopService },
+        { provide: ConfigService, useValue: mockConfigService },
         { provide: MessageTrackingService, useValue: mockMonitoringService },
         { provide: FeishuAlertService, useValue: mockFeishuAlertService },
       ],
@@ -105,18 +98,26 @@ describe('MessagePipelineService', () => {
     service = module.get<MessagePipelineService>(MessagePipelineService);
     jest.clearAllMocks();
 
-    mockHistoryService.addMessageToHistory.mockResolvedValue(undefined);
-    mockHistoryService.getHistoryForContext.mockResolvedValue([]);
-    mockHistoryService.getHistoryDetail.mockResolvedValue(null);
     mockDeduplicationService.isMessageProcessedAsync.mockResolvedValue(false);
     mockDeduplicationService.markMessageAsProcessedAsync.mockResolvedValue(true);
-    mockAgentGateway.invoke.mockResolvedValue(successAgentResult);
-    mockAgentGateway.getFallbackMessage.mockReturnValue('抱歉，我暂时无法回复');
-    mockDeliveryService.deliverReply.mockResolvedValue(successDeliveryResult);
-    mockBookingDetection.handleBookingSuccessAsync.mockResolvedValue(undefined);
-    mockMonitoringService.recordMessageReceived.mockReturnValue(undefined);
-    mockMonitoringService.recordSuccess.mockReturnValue(undefined);
-    mockMonitoringService.recordFailure.mockReturnValue(undefined);
+    mockChatSessionService.saveMessage.mockResolvedValue(true);
+    mockChatSessionService.getChatSessionMessages.mockResolvedValue({
+      messages: [{ role: 'user', candidateName: 'Alice' }],
+    });
+    mockFilterService.validate.mockResolvedValue({ pass: true, content: 'Hello!' });
+    mockDeliveryService.deliverReply.mockResolvedValue({
+      success: true,
+      segmentCount: 1,
+      deliveredSegments: 1,
+      failedSegments: 0,
+      totalTime: 10,
+    });
+    mockBookingDetectionService.handleBookingSuccessAsync.mockResolvedValue(undefined);
+    mockLoopService.invoke.mockResolvedValue({
+      text: 'Reply from agent',
+      steps: 1,
+      usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
+    });
     mockFeishuAlertService.sendAlert.mockResolvedValue(undefined);
   });
 
@@ -124,260 +125,111 @@ describe('MessagePipelineService', () => {
     expect(service).toBeDefined();
   });
 
-  describe('handleSelfMessage', () => {
-    it('should store isSelf message as assistant history', async () => {
-      const selfMessage = { ...validMessageData, isSelf: true };
-      mockHistoryService.getHistoryDetail.mockResolvedValue(null);
+  describe('execute', () => {
+    it('should store self messages as assistant history and stop dispatch', async () => {
+      const result = await service.execute({ ...validMessageData, isSelf: true });
 
-      await service.handleSelfMessage(selfMessage);
-
-      expect(mockHistoryService.addMessageToHistory).toHaveBeenCalledWith(
-        'chat-123',
-        'assistant',
-        'Hello!',
+      expect(result).toEqual({
+        shouldDispatch: false,
+        response: { success: true, message: 'Self message stored' },
+      });
+      expect(mockChatSessionService.saveMessage).toHaveBeenCalledWith(
         expect.objectContaining({
-          messageId: 'msg-123',
-          isSelf: true,
+          role: 'assistant',
+          timestamp: 1700000000000,
         }),
       );
+      expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-123');
     });
 
-    it('should skip storing when content is empty', async () => {
-      const emptyMessage = { ...validMessageData, isSelf: true, payload: { text: '   ' } };
-
-      await service.handleSelfMessage(emptyMessage);
-
-      expect(mockHistoryService.addMessageToHistory).not.toHaveBeenCalled();
-    });
-
-    it('should use candidateName from history when available', async () => {
-      const mockDetail = {
-        chatId: 'chat-123',
-        messages: [{ role: 'user', candidateName: 'HistoryAlice', content: 'hi', timestamp: 1 }],
-        messageCount: 1,
-      };
-      mockHistoryService.getHistoryDetail.mockResolvedValue(mockDetail);
-
-      await service.handleSelfMessage({ ...validMessageData, isSelf: true });
-
-      expect(mockHistoryService.addMessageToHistory).toHaveBeenCalledWith(
-        expect.any(String),
-        'assistant',
-        expect.any(String),
-        expect.objectContaining({ candidateName: 'HistoryAlice' }),
-      );
-    });
-  });
-
-  describe('filterMessage', () => {
-    it('should return continue=true for valid message', async () => {
-      mockFilterService.validate.mockResolvedValue({ pass: true, content: 'Hello!' });
-
-      const result = await service.filterMessage(validMessageData);
-
-      expect(result.continue).toBe(true);
-      expect(result.data!.content).toBe('Hello!');
-    });
-
-    it('should return continue=false for filtered message', async () => {
-      mockFilterService.validate.mockResolvedValue({
-        pass: false,
-        reason: FilterReason.SELF_MESSAGE,
-      });
-
-      const result = await service.filterMessage(validMessageData);
-
-      expect(result.continue).toBe(false);
-      expect(result.response).toBeDefined();
-    });
-
-    it('should record history and return continue=false for historyOnly message', async () => {
+    it('should store historyOnly messages and mark them processed', async () => {
       mockFilterService.validate.mockResolvedValue({
         pass: true,
         historyOnly: true,
         reason: FilterReason.GROUP_BLACKLISTED,
-        content: 'Hello!',
+        content: 'History only message',
       });
 
-      const result = await service.filterMessage(validMessageData);
+      const result = await service.execute(validMessageData);
 
-      expect(result.continue).toBe(false);
-      expect(mockHistoryService.addMessageToHistory).toHaveBeenCalledWith(
-        'chat-123',
-        'user',
-        'Hello!',
-        expect.any(Object),
-      );
-    });
-  });
-
-  describe('checkDuplicationAsync', () => {
-    it('should return continue=true for new message', async () => {
-      mockDeduplicationService.isMessageProcessedAsync.mockResolvedValue(false);
-
-      const result = await service.checkDuplicationAsync(validMessageData);
-
-      expect(result.continue).toBe(true);
-    });
-
-    it('should return continue=false for duplicate message', async () => {
-      mockDeduplicationService.isMessageProcessedAsync.mockResolvedValue(true);
-
-      const result = await service.checkDuplicationAsync(validMessageData);
-
-      expect(result.continue).toBe(false);
-      expect(result.response).toMatchObject({
-        success: true,
-        message: 'Duplicate message ignored',
+      expect(result).toEqual({
+        shouldDispatch: false,
+        response: { success: true, message: 'Message recorded to history only' },
       });
-    });
-  });
-
-  describe('recordUserMessageToHistory', () => {
-    it('should save user message to history with metadata', async () => {
-      await service.recordUserMessageToHistory(validMessageData);
-
-      expect(mockHistoryService.addMessageToHistory).toHaveBeenCalledWith(
-        'chat-123',
-        'user',
-        'Hello!',
+      expect(mockChatSessionService.saveMessage).toHaveBeenCalledWith(
         expect.objectContaining({
-          messageId: 'msg-123',
-          candidateName: 'Alice',
-          managerName: 'manager-bob',
+          role: 'user',
+          content: 'History only message',
+          timestamp: 1700000000000,
         }),
       );
-    });
-
-    it('should use contentFromFilter when provided', async () => {
-      await service.recordUserMessageToHistory(validMessageData, 'Overridden content');
-
-      expect(mockHistoryService.addMessageToHistory).toHaveBeenCalledWith(
-        expect.any(String),
-        'user',
-        'Overridden content',
-        expect.any(Object),
-      );
-    });
-
-    it('should skip storing when content is empty', async () => {
-      const emptyMessage = { ...validMessageData, payload: {} };
-
-      await service.recordUserMessageToHistory(emptyMessage, '   ');
-
-      expect(mockHistoryService.addMessageToHistory).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('recordMessageReceived', () => {
-    it('should call monitoring service with parsed message data', () => {
-      service.recordMessageReceived(validMessageData);
-
-      expect(mockMonitoringService.recordMessageReceived).toHaveBeenCalledWith(
-        'msg-123',
-        'chat-123',
-        'contact-123',
-        'Alice',
-        'Hello!',
-        expect.any(Object),
-        'manager-bob',
-      );
+      expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-123');
     });
   });
 
   describe('processSingleMessage', () => {
-    it('should process single message through full pipeline', async () => {
+    it('should invoke agent with tenant and user context, then mark success', async () => {
       await service.processSingleMessage(validMessageData);
 
-      expect(mockHistoryService.getHistoryForContext).toHaveBeenCalledWith('chat-123', 'msg-123');
-      expect(mockAgentGateway.invoke).toHaveBeenCalled();
-      expect(mockDeliveryService.deliverReply).toHaveBeenCalled();
-      expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-123');
+      expect(mockLoopService.invoke).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userMessage: 'Hello!',
+          userId: 'contact-123',
+          corpId: 'org-123',
+          sessionId: 'chat-123',
+        }),
+      );
       expect(mockMonitoringService.recordSuccess).toHaveBeenCalledWith(
         'msg-123',
-        expect.any(Object),
+        expect.objectContaining({
+          tokenUsage: 30,
+          replyPreview: 'Reply from agent',
+        }),
+      );
+      expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-123');
+    });
+
+    it('should pass formatted location content to the agent', async () => {
+      await service.processSingleMessage({
+        ...validMessageData,
+        messageType: MessageType.LOCATION,
+        payload: {
+          name: '东方明珠',
+          address: '浦东新区世纪大道1号',
+          latitude: '31.2',
+          longitude: '121.4',
+        },
+      });
+
+      expect(mockLoopService.invoke).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userMessage: '[位置分享] 东方明珠（浦东新区世纪大道1号）',
+        }),
       );
     });
 
-    it('should invoke booking detection asynchronously', async () => {
-      await service.processSingleMessage(validMessageData);
+    it('should not send fallback or mark success when reply was only partially delivered', async () => {
+      mockDeliveryService.deliverReply.mockRejectedValue(
+        new DeliveryFailureError('partial delivery failure', {
+          success: false,
+          segmentCount: 2,
+          failedSegments: 1,
+          deliveredSegments: 1,
+          totalTime: 20,
+          error: 'partial delivery failure',
+        }),
+      );
 
-      expect(mockBookingDetection.handleBookingSuccessAsync).toHaveBeenCalled();
-    });
-
-    it('should handle processing error and send fallback reply', async () => {
-      mockAgentGateway.invoke.mockRejectedValue(new Error('Agent API failed'));
-
-      // Should not throw - error is handled internally
       await service.processSingleMessage(validMessageData);
 
       expect(mockMonitoringService.recordFailure).toHaveBeenCalledWith(
         'msg-123',
-        'Agent API failed',
-        expect.any(Object),
+        'partial delivery failure',
+        expect.objectContaining({ alertType: 'delivery' }),
       );
-      expect(mockDeliveryService.deliverReply).toHaveBeenCalledWith(
-        expect.objectContaining({ content: '抱歉，我暂时无法回复' }),
-        expect.any(Object),
-        false,
-      );
-    });
-
-    it('should send fallback alert when agent returns fallback response', async () => {
-      const fallbackAgentResult = {
-        ...successAgentResult,
-        isFallback: true,
-      };
-      mockAgentGateway.invoke.mockResolvedValue(fallbackAgentResult);
-
-      await service.processSingleMessage(validMessageData);
-
-      expect(mockFeishuAlertService.sendAlert).toHaveBeenCalled();
-    });
-  });
-
-  describe('processMergedMessages', () => {
-    const messages = [
-      validMessageData,
-      { ...validMessageData, messageId: 'msg-456', payload: { text: 'Second message' } },
-    ];
-
-    it('should process merged messages using last message as primary', async () => {
-      await service.processMergedMessages(messages, 'batch-001');
-
-      expect(mockAgentGateway.invoke).toHaveBeenCalledWith(
-        expect.objectContaining({ messageId: 'msg-456' }),
-      );
-    });
-
-    it('should mark all messages in batch as processed on success', async () => {
-      await service.processMergedMessages(messages, 'batch-001');
-
-      expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledTimes(2);
-      expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-123');
-      expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-456');
-    });
-
-    it('should record success for all messages in batch', async () => {
-      await service.processMergedMessages(messages, 'batch-001');
-
-      expect(mockMonitoringService.recordSuccess).toHaveBeenCalledTimes(2);
-    });
-
-    it('should return early when messages array is empty', async () => {
-      await service.processMergedMessages([], 'batch-empty');
-
-      expect(mockAgentGateway.invoke).not.toHaveBeenCalled();
-    });
-
-    it('should handle error and mark all non-primary messages as failed', async () => {
-      mockAgentGateway.invoke.mockRejectedValue(new Error('Batch processing failed'));
-
-      await expect(service.processMergedMessages(messages, 'batch-err')).rejects.toThrow(
-        'Batch processing failed',
-      );
-
-      expect(mockMonitoringService.recordFailure).toHaveBeenCalled();
+      expect(mockDeliveryService.deliverReply).toHaveBeenCalledTimes(1);
+      expect(mockMonitoringService.recordSuccess).not.toHaveBeenCalled();
+      expect(mockDeduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalled();
     });
   });
 });

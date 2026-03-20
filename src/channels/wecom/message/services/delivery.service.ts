@@ -4,7 +4,12 @@ import { MessageSenderService } from '../../message-sender/message-sender.servic
 import { SendMessageType } from '../../message-sender/dto/send-message.dto';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { MessageSplitter } from '../utils/message-splitter.util';
-import { DeliveryContext, DeliveryResult, AgentReply } from '../message.types';
+import {
+  DeliveryContext,
+  DeliveryResult,
+  AgentReply,
+  DeliveryFailureError,
+} from '../message.types';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { AgentReplyConfig } from '@biz/hosting-config/types/hosting-config.types';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
@@ -102,15 +107,23 @@ export class MessageDeliveryService implements OnModuleInit {
       return { ...result, totalTime };
     } catch (error) {
       const totalTime = Date.now() - startTime;
-      this.logger.error(`[${contactName}] 消息发送失败: ${error.message}`);
-      await this.sendDeliveryFailureAlert(error, context, reply.content);
-      return {
-        success: false,
-        segmentCount: 0,
-        failedSegments: 1,
-        totalTime,
-        error: error.message,
-      };
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const failureResult =
+        error instanceof DeliveryFailureError
+          ? { ...error.result, totalTime }
+          : {
+              success: false,
+              segmentCount: 0,
+              failedSegments: 1,
+              deliveredSegments: 0,
+              totalTime,
+              error: errorMessage,
+            };
+
+      this.logger.error(`[${contactName}] 消息发送失败: ${errorMessage}`);
+      await this.sendDeliveryFailureAlert(new Error(errorMessage), context, reply.content);
+
+      throw new DeliveryFailureError(errorMessage, failureResult);
     }
   }
 
@@ -130,7 +143,13 @@ export class MessageDeliveryService implements OnModuleInit {
       });
 
       this.logger.log(`[${contactName}] 单条消息发送成功: "${this.truncate(content)}"`);
-      return { success: true, segmentCount: 1, failedSegments: 0, totalTime: 0 };
+      return {
+        success: true,
+        segmentCount: 1,
+        failedSegments: 0,
+        deliveredSegments: 1,
+        totalTime: 0,
+      };
     } catch (error) {
       this.logger.error(`[${contactName}] 单条消息发送失败: ${error.message}`);
       throw error;
@@ -191,20 +210,20 @@ export class MessageDeliveryService implements OnModuleInit {
       `[${contactName}] 分段发送完成，成功 ${successCount}/${segments.length}，失败 ${failedCount}`,
     );
 
-    if (failedCount > 0) {
-      await this.sendDeliveryFailureAlert(
-        new Error(`${failedCount}/${segments.length} 个消息片段发送失败`),
-        context,
-        content,
-      );
-    }
-
-    return {
+    const result: DeliveryResult = {
       success: failedCount === 0,
       segmentCount: segments.length,
       failedSegments: failedCount,
+      deliveredSegments: successCount,
       totalTime: 0,
+      error: failedCount > 0 ? `${failedCount}/${segments.length} 个消息片段发送失败` : undefined,
     };
+
+    if (failedCount > 0) {
+      throw new DeliveryFailureError(result.error!, result);
+    }
+
+    return result;
   }
 
   private calculateDelay(text: string, isFirstSegment: boolean = false): number {

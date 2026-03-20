@@ -75,12 +75,16 @@ export function executeTestStream(
 ): AbortController {
   const controller = new AbortController();
 
+  const fetchHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'text/event-stream',
+  };
+  const apiGuardToken = import.meta.env.VITE_API_GUARD_TOKEN as string | undefined;
+  if (apiGuardToken) fetchHeaders['Authorization'] = `Bearer ${apiGuardToken}`;
+
   fetch('/test-suite/chat/stream', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'text/event-stream',
-    },
+    headers: fetchHeaders,
     body: JSON.stringify(request),
     signal: controller.signal,
   })

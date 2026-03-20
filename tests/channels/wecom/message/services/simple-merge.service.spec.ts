@@ -24,7 +24,8 @@ describe('SimpleMergeService', () => {
     expire: jest.fn(),
     llen: jest.fn(),
     lrange: jest.fn(),
-    del: jest.fn(),
+    ltrim: jest.fn(),
+    getClient: jest.fn(),
   };
 
   const mockSystemConfigService = {
@@ -72,6 +73,11 @@ describe('SimpleMergeService', () => {
     mockRedisService.rpush.mockResolvedValue(1);
     mockRedisService.expire.mockResolvedValue(1);
     mockRedisService.llen.mockResolvedValue(1);
+    mockRedisService.ltrim.mockResolvedValue(undefined);
+    mockRedisService.getClient.mockReturnValue({
+      set: jest.fn().mockResolvedValue('OK'),
+      eval: jest.fn().mockResolvedValue(1),
+    });
     mockMessageQueue.getJob.mockResolvedValue(null);
     mockMessageQueue.add.mockResolvedValue({ id: 'job-123' });
   });
@@ -187,13 +193,16 @@ describe('SimpleMergeService', () => {
         JSON.stringify({ ...validMessageData, messageId: 'msg-456' }),
       ];
       mockRedisService.lrange.mockResolvedValue(rawMessages);
-      mockRedisService.del.mockResolvedValue(1);
 
       const result = await service.getAndClearPendingMessages('chat-123');
 
       expect(result.messages).toHaveLength(2);
       expect(result.batchId).toMatch(/^batch_chat-123_\d+$/);
-      expect(mockRedisService.del).toHaveBeenCalled();
+      expect(mockRedisService.ltrim).toHaveBeenCalledWith(
+        'wecom:message:pending:chat-123',
+        2,
+        -1,
+      );
     });
 
     it('should return empty messages and empty batchId when queue is empty', async () => {
@@ -210,7 +219,6 @@ describe('SimpleMergeService', () => {
         JSON.stringify(validMessageData),
         'invalid-json-{{{',
       ]);
-      mockRedisService.del.mockResolvedValue(1);
 
       const result = await service.getAndClearPendingMessages('chat-123');
 
@@ -220,7 +228,6 @@ describe('SimpleMergeService', () => {
     it('should handle already-parsed objects in lrange result', async () => {
       // Simulate when Redis returns object instead of string
       mockRedisService.lrange.mockResolvedValue([validMessageData]);
-      mockRedisService.del.mockResolvedValue(1);
 
       const result = await service.getAndClearPendingMessages('chat-123');
 

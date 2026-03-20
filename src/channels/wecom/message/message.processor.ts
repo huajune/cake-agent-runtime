@@ -161,8 +161,16 @@ export class MessageProcessor implements OnModuleInit {
   private async handleProcessJob(job: Job<{ chatId: string }>) {
     this.activeJobs++;
     const { chatId } = job.data;
+    const lockOwner = `job:${job.id}:${Date.now()}`;
+    let lockAcquired = false;
 
     try {
+      lockAcquired = await this.simpleMergeService.acquireProcessingLock(chatId, lockOwner);
+      if (!lockAcquired) {
+        this.logger.debug(`[Bull] chatId=${chatId} 已有任务在处理中，跳过当前任务 ${job.id}`);
+        return;
+      }
+
       this.logger.log(`[Bull] 开始处理任务 ${job.id}, chatId: ${chatId}`);
 
       // 从 Redis 获取待处理消息
@@ -183,6 +191,11 @@ export class MessageProcessor implements OnModuleInit {
       this.logger.error(`[Bull] 任务 ${job.id} 处理失败: ${error.message}`);
       throw error;
     } finally {
+      if (lockAcquired) {
+        await this.simpleMergeService.releaseProcessingLock(chatId, lockOwner).catch((error) => {
+          this.logger.warn(`[Bull] 释放 chatId=${chatId} 处理锁失败: ${error.message}`);
+        });
+      }
       this.activeJobs--;
     }
   }

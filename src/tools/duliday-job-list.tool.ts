@@ -599,7 +599,7 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
 
           // 通知调用方已获取岗位数据
           if (context.onJobsFetched && jobs.length > 0) {
-            context.onJobsFetched(mapJobsToSummaries(jobs));
+            await context.onJobsFetched(mapJobsToSummaries(jobs));
           }
 
           return result;

@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { MonitoringCacheService } from '@biz/monitoring/services/tracking/monitoring-cache.service';
-import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
+import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error-log.repository';
-import { UserHostingRepository } from '@biz/user/repositories/user-hosting.repository';
+import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { ScenarioType } from '@enums/agent.enum';
 
 /** Flush all pending microtasks/promise chains */
@@ -11,21 +11,29 @@ const flushPromises = () => new Promise<void>((resolve) => setImmediate(resolve)
 
 describe('MessageTrackingService', () => {
   let service: MessageTrackingService;
-  let messageProcessingRepository: jest.Mocked<MessageProcessingRepository>;
+  let messageProcessingRepository: jest.Mocked<MessageProcessingService> & {
+    saveMessageProcessingRecord: jest.Mock;
+  };
   let errorLogRepository: jest.Mocked<MonitoringErrorLogRepository>;
-  let userHostingRepository: jest.Mocked<UserHostingRepository>;
+  let userHostingRepository: jest.Mocked<UserHostingService> & {
+    upsertUserActivity: jest.Mock;
+  };
   let cacheService: jest.Mocked<MonitoringCacheService>;
 
+  const saveRecordMock = jest.fn().mockResolvedValue(undefined);
   const mockMessageProcessingRepository = {
-    saveMessageProcessingRecord: jest.fn().mockResolvedValue(undefined),
+    saveRecord: saveRecordMock,
+    saveMessageProcessingRecord: saveRecordMock,
   };
 
   const mockErrorLogRepository = {
     saveErrorLog: jest.fn().mockResolvedValue(undefined),
   };
 
+  const upsertActivityMock = jest.fn().mockResolvedValue(undefined);
   const mockUserHostingRepository = {
-    upsertUserActivity: jest.fn().mockResolvedValue(undefined),
+    upsertActivity: upsertActivityMock,
+    upsertUserActivity: upsertActivityMock,
   };
 
   const mockCacheService = {
@@ -42,7 +50,7 @@ describe('MessageTrackingService', () => {
       providers: [
         MessageTrackingService,
         {
-          provide: MessageProcessingRepository,
+          provide: MessageProcessingService,
           useValue: mockMessageProcessingRepository,
         },
         {
@@ -50,7 +58,7 @@ describe('MessageTrackingService', () => {
           useValue: mockErrorLogRepository,
         },
         {
-          provide: UserHostingRepository,
+          provide: UserHostingService,
           useValue: mockUserHostingRepository,
         },
         {
@@ -61,18 +69,18 @@ describe('MessageTrackingService', () => {
     }).compile();
 
     service = module.get<MessageTrackingService>(MessageTrackingService);
-    messageProcessingRepository = module.get(MessageProcessingRepository);
+    messageProcessingRepository = module.get(MessageProcessingService) as typeof messageProcessingRepository;
     errorLogRepository = module.get(MonitoringErrorLogRepository);
-    userHostingRepository = module.get(UserHostingRepository);
+    userHostingRepository = module.get(UserHostingService) as typeof userHostingRepository;
     cacheService = module.get(MonitoringCacheService);
 
     jest.clearAllMocks();
     // Reset mock defaults after clearAllMocks
     mockCacheService.incrementCurrentProcessing.mockResolvedValue(1);
     mockCacheService.updatePeakProcessing.mockResolvedValue(undefined);
-    mockMessageProcessingRepository.saveMessageProcessingRecord.mockResolvedValue(undefined);
+    mockMessageProcessingRepository.saveRecord.mockResolvedValue(undefined);
     mockErrorLogRepository.saveErrorLog.mockResolvedValue(undefined);
-    mockUserHostingRepository.upsertUserActivity.mockResolvedValue(undefined);
+    mockUserHostingRepository.upsertActivity.mockResolvedValue(undefined);
   });
 
   afterEach(() => {

@@ -1,12 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { FeishuBitableSyncService, AgentTestFeedback } from '@biz/feishu-sync/bitable-sync.service';
 import { FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
-import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
+import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 
 describe('FeishuBitableSyncService', () => {
   let service: FeishuBitableSyncService;
   let mockBitableApi: jest.Mocked<FeishuBitableApiService>;
-  let mockRepository: jest.Mocked<MessageProcessingRepository>;
+  let mockMessageProcessingService: jest.Mocked<MessageProcessingService>;
 
   const chatTableConfig = { appToken: 'WXQgb98iPauYsHsSYzMckqHcnbb', tableId: 'tblKNwN8aquh2JAy' };
   const badcaseTableConfig = {
@@ -24,15 +24,17 @@ describe('FeishuBitableSyncService', () => {
       ),
     } as unknown as jest.Mocked<FeishuBitableApiService>;
 
-    mockRepository = {
-      getMessageProcessingRecords: jest.fn(),
-    } as unknown as jest.Mocked<MessageProcessingRepository>;
+    const getRecordsByTimestamps = jest.fn();
+    mockMessageProcessingService = {
+      getRecordsByTimestamps,
+      getMessageProcessingRecords: getRecordsByTimestamps,
+    } as unknown as jest.Mocked<MessageProcessingService>;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         FeishuBitableSyncService,
         { provide: FeishuBitableApiService, useValue: mockBitableApi },
-        { provide: MessageProcessingRepository, useValue: mockRepository },
+        { provide: MessageProcessingService, useValue: mockMessageProcessingService },
       ],
     }).compile();
 
@@ -49,7 +51,7 @@ describe('FeishuBitableSyncService', () => {
 
       await service.syncYesterday();
 
-      expect(mockRepository.getMessageProcessingRecords).not.toHaveBeenCalled();
+      expect(mockMessageProcessingService.getMessageProcessingRecords).not.toHaveBeenCalled();
     });
 
     it('should skip sync when chat config is incomplete (no tableId)', async () => {
@@ -57,12 +59,12 @@ describe('FeishuBitableSyncService', () => {
 
       await service.syncYesterday();
 
-      expect(mockRepository.getMessageProcessingRecords).not.toHaveBeenCalled();
+      expect(mockMessageProcessingService.getMessageProcessingRecords).not.toHaveBeenCalled();
     });
 
     it('should skip sync when no records found', async () => {
       mockBitableApi.getTableConfig.mockReturnValue(chatTableConfig);
-      mockRepository.getMessageProcessingRecords.mockResolvedValue({
+      mockMessageProcessingService.getMessageProcessingRecords.mockResolvedValue({
         records: [],
         total: 0,
       } as any);
@@ -92,7 +94,7 @@ describe('FeishuBitableSyncService', () => {
         },
       ];
 
-      mockRepository.getMessageProcessingRecords.mockResolvedValue({
+      mockMessageProcessingService.getMessageProcessingRecords.mockResolvedValue({
         records,
         total: 1,
       } as any);
@@ -122,7 +124,7 @@ describe('FeishuBitableSyncService', () => {
         },
       ];
 
-      mockRepository.getMessageProcessingRecords.mockResolvedValue({
+      mockMessageProcessingService.getMessageProcessingRecords.mockResolvedValue({
         records,
         total: 1,
       } as any);
@@ -134,7 +136,9 @@ describe('FeishuBitableSyncService', () => {
 
     it('should propagate error from getMessageProcessingRecords (not caught by syncYesterday)', async () => {
       mockBitableApi.getTableConfig.mockReturnValue(chatTableConfig);
-      mockRepository.getMessageProcessingRecords.mockRejectedValue(new Error('DB error'));
+      mockMessageProcessingService.getMessageProcessingRecords.mockRejectedValue(
+        new Error('DB error'),
+      );
 
       // syncYesterday does not catch errors from getMessageProcessingRecords
       await expect(service.syncYesterday()).rejects.toThrow('DB error');

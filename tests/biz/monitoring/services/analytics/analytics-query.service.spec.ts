@@ -2,7 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ScenarioType } from '@enums/agent.enum';
 import { AnalyticsQueryService } from '@biz/monitoring/services/analytics/analytics-query.service';
 import { MonitoringCacheService } from '@biz/monitoring/services/tracking/monitoring-cache.service';
-import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
+import { MessageProcessingService } from '@biz/message/services/message-processing.service';
+import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.repository';
 import { MonitoringHourlyStatsRepository } from '@biz/monitoring/repositories/hourly-stats.repository';
 import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error-log.repository';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
@@ -32,19 +33,29 @@ const buildErrorLog = (overrides = {}) => ({
 
 describe('AnalyticsQueryService', () => {
   let service: AnalyticsQueryService;
-  let messageProcessingRepository: jest.Mocked<MessageProcessingRepository>;
+  let messageProcessingService: jest.Mocked<MessageProcessingService>;
+  let _monitoringRecordRepository: jest.Mocked<MonitoringRecordRepository>;
   let hourlyStatsRepository: jest.Mocked<MonitoringHourlyStatsRepository>;
   let _errorLogRepository: jest.Mocked<MonitoringErrorLogRepository>;
   let _userHostingService: jest.Mocked<UserHostingService>;
   let _cacheService: jest.Mocked<MonitoringCacheService>;
   let _messageTrackingService: jest.Mocked<MessageTrackingService>;
 
-  const mockMessageProcessingRepository = {
+  const recordsByTimestampsMock = jest.fn();
+  const messageStatsByTimestampsMock = jest.fn();
+
+  const mockMessageProcessingService = {
     getRecordsByTimeRange: jest.fn(),
-    getMessageProcessingRecords: jest.fn(),
-    getMessageStats: jest.fn(),
+    getRecordsByTimestamps: recordsByTimestampsMock,
+    getMessageProcessingRecords: recordsByTimestampsMock,
+    getMessageStatsByTimestamps: messageStatsByTimestampsMock,
+    getMessageStats: messageStatsByTimestampsMock,
     getActiveUsers: jest.fn(),
     getDailyUserStats: jest.fn(),
+  };
+
+  const mockMonitoringRecordRepository = {
+    getDashboardHourlyTrend: jest.fn(),
   };
 
   const mockHourlyStatsRepository = {
@@ -73,8 +84,12 @@ describe('AnalyticsQueryService', () => {
       providers: [
         AnalyticsQueryService,
         {
-          provide: MessageProcessingRepository,
-          useValue: mockMessageProcessingRepository,
+          provide: MessageProcessingService,
+          useValue: mockMessageProcessingService,
+        },
+        {
+          provide: MonitoringRecordRepository,
+          useValue: mockMonitoringRecordRepository,
         },
         {
           provide: MonitoringHourlyStatsRepository,
@@ -100,7 +115,8 @@ describe('AnalyticsQueryService', () => {
     }).compile();
 
     service = module.get<AnalyticsQueryService>(AnalyticsQueryService);
-    messageProcessingRepository = module.get(MessageProcessingRepository);
+    messageProcessingService = module.get(MessageProcessingService);
+    _monitoringRecordRepository = module.get(MonitoringRecordRepository);
     hourlyStatsRepository = module.get(MonitoringHourlyStatsRepository);
     _errorLogRepository = module.get(MonitoringErrorLogRepository);
     _userHostingService = module.get(UserHostingService);
@@ -110,13 +126,20 @@ describe('AnalyticsQueryService', () => {
     jest.clearAllMocks();
 
     // Setup defaults
-    mockMessageProcessingRepository.getRecordsByTimeRange.mockResolvedValue([]);
-    mockMessageProcessingRepository.getMessageProcessingRecords.mockResolvedValue({
+    mockMessageProcessingService.getRecordsByTimeRange.mockResolvedValue([]);
+    mockMessageProcessingService.getRecordsByTimestamps.mockResolvedValue({
       records: [],
       total: 0,
     });
-    mockMessageProcessingRepository.getActiveUsers.mockResolvedValue([]);
-    mockMessageProcessingRepository.getDailyUserStats.mockResolvedValue([]);
+    mockMessageProcessingService.getMessageStatsByTimestamps.mockResolvedValue({
+      total: 0,
+      success: 0,
+      failed: 0,
+      avgDuration: 0,
+    });
+    mockMessageProcessingService.getActiveUsers.mockResolvedValue([]);
+    mockMessageProcessingService.getDailyUserStats.mockResolvedValue([]);
+    mockMonitoringRecordRepository.getDashboardHourlyTrend.mockResolvedValue([]);
     mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([]);
     mockErrorLogRepository.getErrorLogsSince.mockResolvedValue([]);
     mockErrorLogRepository.getRecentErrors.mockResolvedValue([]);
@@ -150,7 +173,7 @@ describe('AnalyticsQueryService', () => {
         buildErrorLog({ timestamp: now - 2000 }),
       ];
 
-      mockMessageProcessingRepository.getRecordsByTimeRange.mockResolvedValue(records);
+      mockMessageProcessingService.getRecordsByTimeRange.mockResolvedValue(records);
       mockErrorLogRepository.getErrorLogsSince.mockResolvedValue(errorLogs);
 
       const result = await service.getSystemMonitoringAsync();
@@ -165,7 +188,7 @@ describe('AnalyticsQueryService', () => {
     it('should return empty data gracefully when records fetch fails', async () => {
       // getRecordsByTimeRange private method swallows errors and returns []
       // so getSystemMonitoringAsync resolves with empty/default values
-      mockMessageProcessingRepository.getRecordsByTimeRange.mockRejectedValue(
+      mockMessageProcessingService.getRecordsByTimeRange.mockRejectedValue(
         new Error('DB error'),
       );
 
@@ -178,7 +201,7 @@ describe('AnalyticsQueryService', () => {
 
     it('should return queue with avgQueueDuration calculated from records', async () => {
       const records = [buildRecord({ queueDuration: 400 }), buildRecord({ queueDuration: 600 })];
-      mockMessageProcessingRepository.getRecordsByTimeRange.mockResolvedValue(records);
+      mockMessageProcessingService.getRecordsByTimeRange.mockResolvedValue(records);
 
       const result = await service.getSystemMonitoringAsync();
 
@@ -208,7 +231,7 @@ describe('AnalyticsQueryService', () => {
 
   describe('getTrendsDataAsync', () => {
     it('should return daily trend, response trend, alert trend, and business trend', async () => {
-      mockMessageProcessingRepository.getRecordsByTimeRange.mockResolvedValue([]);
+      mockMessageProcessingService.getRecordsByTimeRange.mockResolvedValue([]);
       mockErrorLogRepository.getErrorLogsSince.mockResolvedValue([]);
       mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([]);
 
@@ -223,7 +246,7 @@ describe('AnalyticsQueryService', () => {
     it('should return empty data gracefully when records fetch fails', async () => {
       // getRecordsByTimeRange private method swallows errors and returns []
       // so getTrendsDataAsync resolves with empty trend arrays
-      mockMessageProcessingRepository.getRecordsByTimeRange.mockRejectedValue(
+      mockMessageProcessingService.getRecordsByTimeRange.mockRejectedValue(
         new Error('DB error'),
       );
 
@@ -265,7 +288,7 @@ describe('AnalyticsQueryService', () => {
         buildRecord({ totalDuration: 5000 }),
         buildRecord({ totalDuration: 10000 }),
       ];
-      mockMessageProcessingRepository.getMessageProcessingRecords.mockResolvedValue({
+      mockMessageProcessingService.getMessageProcessingRecords.mockResolvedValue({
         records,
         total: records.length,
       });
@@ -286,7 +309,7 @@ describe('AnalyticsQueryService', () => {
         buildRecord({ totalDuration: 5000 }),
         buildRecord({ totalDuration: 70000 }), // exceeds 60s, excluded from percentiles
       ];
-      mockMessageProcessingRepository.getMessageProcessingRecords.mockResolvedValue({
+      mockMessageProcessingService.getMessageProcessingRecords.mockResolvedValue({
         records,
         total: records.length,
       });
@@ -301,7 +324,7 @@ describe('AnalyticsQueryService', () => {
       const records = Array.from({ length: 15 }, (_, i) =>
         buildRecord({ messageId: `msg-${i}`, totalDuration: (i + 1) * 1000 }),
       );
-      mockMessageProcessingRepository.getMessageProcessingRecords.mockResolvedValue({
+      mockMessageProcessingService.getMessageProcessingRecords.mockResolvedValue({
         records,
         total: records.length,
       });
@@ -317,7 +340,7 @@ describe('AnalyticsQueryService', () => {
         buildRecord({ messageId: 'msg-2', totalDuration: 5000 }),
         buildRecord({ messageId: 'msg-3', totalDuration: 3000 }),
       ];
-      mockMessageProcessingRepository.getMessageProcessingRecords.mockResolvedValue({
+      mockMessageProcessingService.getMessageProcessingRecords.mockResolvedValue({
         records,
         total: records.length,
       });
@@ -329,7 +352,7 @@ describe('AnalyticsQueryService', () => {
     });
 
     it('should return empty metrics on error', async () => {
-      mockMessageProcessingRepository.getMessageProcessingRecords.mockRejectedValue(
+      mockMessageProcessingService.getMessageProcessingRecords.mockRejectedValue(
         new Error('DB error'),
       );
 
@@ -348,12 +371,15 @@ describe('AnalyticsQueryService', () => {
   describe('getMessageStatsAsync', () => {
     it('should delegate to messageProcessingRepository.getMessageStats', async () => {
       const expected = { total: 100, success: 90, failed: 10, avgDuration: 5000 };
-      mockMessageProcessingRepository.getMessageStats = jest.fn().mockResolvedValue(expected);
+      mockMessageProcessingService.getMessageStatsByTimestamps.mockResolvedValue(expected);
 
       const result = await service.getMessageStatsAsync(1000, 2000);
 
       expect(result).toEqual(expected);
-      expect(messageProcessingRepository.getMessageStats).toHaveBeenCalledWith(1000, 2000);
+      expect(messageProcessingService.getMessageStatsByTimestamps).toHaveBeenCalledWith(
+        1000,
+        2000,
+      );
     });
   });
 
@@ -363,7 +389,7 @@ describe('AnalyticsQueryService', () => {
 
   describe('getTodayUsers', () => {
     it('should return users from database on first call', async () => {
-      mockMessageProcessingRepository.getActiveUsers.mockResolvedValue([
+      mockMessageProcessingService.getActiveUsers.mockResolvedValue([
         {
           chatId: 'chat-1',
           userId: 'user-1',
@@ -384,7 +410,7 @@ describe('AnalyticsQueryService', () => {
     });
 
     it('should return in-memory cached users on second call', async () => {
-      mockMessageProcessingRepository.getActiveUsers.mockResolvedValue([
+      mockMessageProcessingService.getActiveUsers.mockResolvedValue([
         {
           chatId: 'chat-1',
           userId: 'user-1',
@@ -400,16 +426,16 @@ describe('AnalyticsQueryService', () => {
       await service.getTodayUsers();
       await service.getTodayUsers();
 
-      expect(messageProcessingRepository.getActiveUsers).toHaveBeenCalledTimes(1);
+      expect(messageProcessingService.getActiveUsers).toHaveBeenCalledTimes(1);
     });
 
     it('should not cache empty user list', async () => {
-      mockMessageProcessingRepository.getActiveUsers.mockResolvedValue([]);
+      mockMessageProcessingService.getActiveUsers.mockResolvedValue([]);
 
       await service.getTodayUsers();
       await service.getTodayUsers();
 
-      expect(messageProcessingRepository.getActiveUsers).toHaveBeenCalledTimes(2);
+      expect(messageProcessingService.getActiveUsers).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -419,7 +445,7 @@ describe('AnalyticsQueryService', () => {
 
   describe('getTodayUsersFromDatabase', () => {
     it('should map database users to TodayUser format', async () => {
-      mockMessageProcessingRepository.getActiveUsers.mockResolvedValue([
+      mockMessageProcessingService.getActiveUsers.mockResolvedValue([
         {
           chatId: 'chat-1',
           userId: 'user-1',
@@ -446,7 +472,7 @@ describe('AnalyticsQueryService', () => {
     });
 
     it('should fallback to chatId for missing userId and userName', async () => {
-      mockMessageProcessingRepository.getActiveUsers.mockResolvedValue([
+      mockMessageProcessingService.getActiveUsers.mockResolvedValue([
         {
           chatId: 'chat-1',
           userId: null,
@@ -491,7 +517,7 @@ describe('AnalyticsQueryService', () => {
 
   describe('getUsersByDate', () => {
     it('should return users for a valid date string', async () => {
-      mockMessageProcessingRepository.getActiveUsers.mockResolvedValue([
+      mockMessageProcessingService.getActiveUsers.mockResolvedValue([
         {
           chatId: 'chat-1',
           userId: 'user-1',
@@ -514,15 +540,15 @@ describe('AnalyticsQueryService', () => {
       const result = await service.getUsersByDate('invalid-date');
 
       expect(result).toEqual([]);
-      expect(messageProcessingRepository.getActiveUsers).not.toHaveBeenCalled();
+      expect(messageProcessingService.getActiveUsers).not.toHaveBeenCalled();
     });
 
     it('should query the correct date range for given date', async () => {
-      mockMessageProcessingRepository.getActiveUsers.mockResolvedValue([]);
+      mockMessageProcessingService.getActiveUsers.mockResolvedValue([]);
 
       await service.getUsersByDate('2026-03-11');
 
-      const [startDate, endDate] = (messageProcessingRepository.getActiveUsers as jest.Mock).mock
+      const [startDate, endDate] = (messageProcessingService.getActiveUsers as jest.Mock).mock
         .calls[0];
 
       expect(startDate.getHours()).toBe(0);
@@ -538,7 +564,7 @@ describe('AnalyticsQueryService', () => {
 
   describe('getUserTrend', () => {
     it('should return 30-day user trend data', async () => {
-      mockMessageProcessingRepository.getDailyUserStats.mockResolvedValue([
+      mockMessageProcessingService.getDailyUserStats.mockResolvedValue([
         { date: '2026-03-11', uniqueUsers: 10, messageCount: 50 },
         { date: '2026-03-10', uniqueUsers: 8, messageCount: 40 },
       ]);
@@ -551,11 +577,11 @@ describe('AnalyticsQueryService', () => {
     });
 
     it('should query last 30 days', async () => {
-      mockMessageProcessingRepository.getDailyUserStats.mockResolvedValue([]);
+      mockMessageProcessingService.getDailyUserStats.mockResolvedValue([]);
 
       await service.getUserTrend();
 
-      const [startDate, endDate] = (messageProcessingRepository.getDailyUserStats as jest.Mock).mock
+      const [startDate, endDate] = (messageProcessingService.getDailyUserStats as jest.Mock).mock
         .calls[0];
 
       const daysDiff = Math.round(
@@ -572,7 +598,7 @@ describe('AnalyticsQueryService', () => {
   describe('getRecentDetailRecords', () => {
     it('should return recent detail records with default limit', async () => {
       const records = [buildRecord(), buildRecord({ messageId: 'msg-2' })];
-      mockMessageProcessingRepository.getMessageProcessingRecords.mockResolvedValue({
+      mockMessageProcessingService.getMessageProcessingRecords.mockResolvedValue({
         records,
         total: records.length,
       });
@@ -580,26 +606,26 @@ describe('AnalyticsQueryService', () => {
       const result = await service.getRecentDetailRecords();
 
       expect(result).toHaveLength(2);
-      expect(messageProcessingRepository.getMessageProcessingRecords).toHaveBeenCalledWith({
+      expect(messageProcessingService.getMessageProcessingRecords).toHaveBeenCalledWith({
         limit: 50,
       });
     });
 
     it('should respect custom limit parameter', async () => {
-      mockMessageProcessingRepository.getMessageProcessingRecords.mockResolvedValue({
+      mockMessageProcessingService.getMessageProcessingRecords.mockResolvedValue({
         records: [],
         total: 0,
       });
 
       await service.getRecentDetailRecords(20);
 
-      expect(messageProcessingRepository.getMessageProcessingRecords).toHaveBeenCalledWith({
+      expect(messageProcessingService.getMessageProcessingRecords).toHaveBeenCalledWith({
         limit: 20,
       });
     });
 
     it('should return empty array on error', async () => {
-      mockMessageProcessingRepository.getMessageProcessingRecords.mockRejectedValue(
+      mockMessageProcessingService.getMessageProcessingRecords.mockRejectedValue(
         new Error('DB error'),
       );
 

@@ -16,6 +16,7 @@ import { ObservabilityModule } from '@/observability/observability.module';
 import { AgentModule } from './agent/agent.module';
 import { WecomModule } from '@channels/wecom/wecom.module';
 import { BizModule } from '@biz/biz.module';
+import { TestSuiteModule } from '@biz/test-suite/test-suite.module';
 import { EvaluationModule } from './evaluation/evaluation.module';
 import { validate } from './infra/config/env.validation';
 import { ApiTokenGuard } from './infra/server/guards/api-token.guard';
@@ -69,6 +70,7 @@ import { ApiTokenGuard } from './infra/server/guards/api-token.guard';
     // ==================== 业务域 (Business Domains) ====================
     AgentModule, // AI Agent 编排
     WecomModule, // 企业微信渠道
+    TestSuiteModule, // Agent 测试套件（独立于 BizModule，避免循环依赖）
   ],
   providers: [{ provide: APP_GUARD, useClass: ApiTokenGuard }],
 })

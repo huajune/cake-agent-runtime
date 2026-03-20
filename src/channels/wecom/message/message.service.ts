@@ -106,6 +106,7 @@ export class MessageService implements OnModuleInit {
         scenario: MessageParser.determineScenario(),
         replyPreview: '[AI回复已禁用]',
       });
+      await this.deduplicationService.markMessageAsProcessedAsync(messageData.messageId);
       return { success: true, message: 'AI reply disabled, message recorded to history' };
     }
 

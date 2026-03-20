@@ -24,6 +24,7 @@ import { ContextService } from './context/context.service';
 import { SignalDetectorService } from './signal-detector.service';
 import { FactExtractionService } from './fact-extraction.service';
 import { InputGuardService } from './input-guard.service';
+import { RecommendedJobSummary } from '@memory/memory.types';
 
 export interface AgentInvokeParams {
   /**
@@ -242,7 +243,20 @@ export class LoopService {
     // 7. 构建工具
     const typedMessages = messages as ModelMessage[];
     const chatModel = this.router.resolveByRole(ModelRole.Chat);
-    const toolContext: ToolBuildContext = { userId, corpId, sessionId, messages: typedMessages };
+    const toolContext: ToolBuildContext = {
+      userId,
+      corpId,
+      sessionId,
+      messages: typedMessages,
+      onJobsFetched: async (jobs) => {
+        await this.memoryService.sessionFacts.saveLastRecommendedJobs(
+          corpId,
+          userId,
+          sessionId,
+          jobs as RecommendedJobSummary[],
+        );
+      },
+    };
     const tools = this.toolRegistry.buildForScenario(scenario, toolContext) as ToolSet;
 
     return {

@@ -27,6 +27,7 @@ export class SimpleMergeService implements OnModuleInit {
 
   // Redis 配置
   private readonly PENDING_TTL_SECONDS = 300; // 5分钟过期兜底
+  private readonly PROCESSING_LOCK_TTL_SECONDS = 300;
 
   // 配置参数（支持动态更新）
   private mergeDelayMs = 2000; // 聚合等待时间
@@ -169,8 +170,8 @@ export class SimpleMergeService implements OnModuleInit {
       return { messages: [], batchId: '' };
     }
 
-    // 清空队列
-    await this.redisService.del(pendingKey);
+    // 只裁剪掉本次读取到的消息，保留消费期间新追加的消息
+    await this.redisService.ltrim(pendingKey, rawMessages.length, -1);
 
     // 解析消息
     const messages: EnterpriseMessageCallbackDto[] = [];
@@ -188,6 +189,30 @@ export class SimpleMergeService implements OnModuleInit {
 
     this.logger.log(`[${chatId}] 获取到 ${messages.length} 条待处理消息, batchId=${batchId}`);
     return { messages, batchId };
+  }
+
+  async acquireProcessingLock(chatId: string, ownerToken: string): Promise<boolean> {
+    const result = await this.redisService.getClient().set(RedisKeyBuilder.lock(chatId), ownerToken, {
+      nx: true,
+      ex: this.PROCESSING_LOCK_TTL_SECONDS,
+    });
+
+    return result === 'OK';
+  }
+
+  async releaseProcessingLock(chatId: string, ownerToken: string): Promise<void> {
+    await this.redisService
+      .getClient()
+      .eval(
+        `
+          if redis.call("get", KEYS[1]) == ARGV[1] then
+            return redis.call("del", KEYS[1])
+          end
+          return 0
+        `,
+        [RedisKeyBuilder.lock(chatId)],
+        [ownerToken],
+      );
   }
 
   /**

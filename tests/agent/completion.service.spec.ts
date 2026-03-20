@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { CompletionService } from '@agent/completion.service';
 import { RouterService } from '@providers/router.service';
+import { ModelRole } from '@providers/types';
 
 // Mock the 'ai' module before any imports that use it
 jest.mock('ai', () => ({
@@ -81,10 +82,10 @@ describe('CompletionService', () => {
       await service.generate({
         systemPrompt: 'test',
         messages: [{ role: 'user', content: 'hi' }],
-        role: 'fast',
+        role: ModelRole.Fast,
       });
 
-      expect(mockRouter.resolveByRole).toHaveBeenCalledWith('fast');
+      expect(mockRouter.resolveByRole).toHaveBeenCalledWith(ModelRole.Fast);
     });
 
     it('should use resolve with modelId when provided (overrides role)', async () => {
@@ -178,10 +179,10 @@ describe('CompletionService', () => {
       await service.generateSimple({
         systemPrompt: 'test',
         userMessage: 'hi',
-        role: 'classify',
+        role: ModelRole.Classify,
       });
 
-      expect(mockRouter.resolveByRole).toHaveBeenCalledWith('classify');
+      expect(mockRouter.resolveByRole).toHaveBeenCalledWith(ModelRole.Classify);
     });
 
     it('should pass modelId through to generate', async () => {

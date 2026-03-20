@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ChatMessageRepository } from '../repositories/chat-message.repository';
 import { ChatMessageInput } from '../types/message.types';
+import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.repository';
 
 /**
  * 聊天会话服务
@@ -10,7 +11,10 @@ import { ChatMessageInput } from '../types/message.types';
 export class ChatSessionService {
   private readonly logger = new Logger(ChatSessionService.name);
 
-  constructor(private readonly chatMessageRepository: ChatMessageRepository) {}
+  constructor(
+    private readonly chatMessageRepository: ChatMessageRepository,
+    @Optional() private readonly monitoringRecordRepository?: MonitoringRecordRepository,
+  ) {}
 
   /**
    * 获取聊天消息列表（分页）
@@ -74,6 +78,36 @@ export class ChatSessionService {
       `获取聊天会话列表（优化版）: ${start.toISOString().split('T')[0]} ~ ${end.toISOString().split('T')[0]}`,
     );
     return this.chatMessageRepository.getChatSessionListByDateRange(start, end);
+  }
+
+  /**
+   * 获取聊天趋势（兼容旧监控接口）
+   */
+  async getChatTrend(days: number = 7): Promise<
+    Array<{
+      hour: string;
+      message_count: number;
+      active_users: number;
+      active_chats: number;
+    }>
+  > {
+    if (!this.monitoringRecordRepository) {
+      return [];
+    }
+
+    const endDate = new Date();
+    const startDate = new Date(endDate.getTime() - days * 24 * 60 * 60 * 1000);
+    const records = await this.monitoringRecordRepository.getDashboardHourlyTrend(
+      startDate,
+      endDate,
+    );
+
+    return records.map((item) => ({
+      hour: item.hour,
+      message_count: item.messageCount,
+      active_users: item.uniqueUsers,
+      active_chats: 0,
+    }));
   }
 
   /**

@@ -1,6 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { MessageCallbackAdapterService } from '@wecom/message/services/callback-adapter.service';
-import { EnterpriseMessageCallbackDto, GroupMessageCallbackDto } from '@wecom/message/message-callback.dto';
+import {
+  EnterpriseMessageCallbackDto,
+  GroupMessageCallbackDto,
+} from '@wecom/message/message-callback.dto';
 import { MessageSource, MessageType, ContactType } from '@enums/message-callback.enum';
 
 describe('MessageCallbackAdapterService', () => {
@@ -187,31 +190,6 @@ describe('MessageCallbackAdapterService', () => {
       const result = service.normalizeCallback(unknownBody);
 
       expect(result).toBeDefined();
-    });
-  });
-
-  describe('compareFormats', () => {
-    it('should return format comparison info', () => {
-      const result = service.compareFormats(
-        validGroupCallback,
-        validEnterpriseBody as EnterpriseMessageCallbackDto,
-      );
-
-      expect(result.groupOnly).toBeDefined();
-      expect(result.enterpriseOnly).toBeDefined();
-      expect(result.mapped).toBeDefined();
-      expect(Array.isArray(result.mapped)).toBe(true);
-    });
-
-    it('should include key field mappings', () => {
-      const result = service.compareFormats(
-        validGroupCallback,
-        validEnterpriseBody as EnterpriseMessageCallbackDto,
-      );
-
-      expect(
-        result.mapped.some((m) => m.group.includes('type') && m.enterprise.includes('messageType')),
-      ).toBe(true);
     });
   });
 });

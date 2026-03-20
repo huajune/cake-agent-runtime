@@ -2,33 +2,38 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { DataCleanupService } from '@biz/monitoring/services/cleanup/data-cleanup.service';
 import { SupabaseService } from '@infra/supabase/supabase.service';
-import { ChatMessageRepository } from '@biz/message/repositories/chat-message.repository';
-import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
+import { ChatSessionService } from '@biz/message/services/chat-session.service';
+import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error-log.repository';
-import { UserHostingRepository } from '@biz/user/repositories/user-hosting.repository';
+import { UserHostingService } from '@biz/user/services/user-hosting.service';
 
 describe('DataCleanupService', () => {
   let service: DataCleanupService;
   let supabaseService: jest.Mocked<SupabaseService>;
-  let chatMessageRepository: jest.Mocked<ChatMessageRepository>;
-  let messageProcessingRepository: jest.Mocked<MessageProcessingRepository>;
-  let _userHostingRepository: jest.Mocked<UserHostingRepository>;
+  let chatSessionService: jest.Mocked<ChatSessionService>;
+  let messageProcessingService: jest.Mocked<MessageProcessingService>;
+  let _userHostingService: jest.Mocked<UserHostingService>;
 
   const mockSupabaseService = {
     isAvailable: jest.fn(),
   };
 
-  const mockChatMessageRepository = {
+  const cleanupRecordsMock = jest.fn();
+  const cleanupActivityMock = jest.fn();
+
+  const mockChatSessionService = {
     cleanupChatMessages: jest.fn(),
   };
 
-  const mockMessageProcessingRepository = {
+  const mockMessageProcessingService = {
     nullAgentInvocations: jest.fn(),
-    cleanupMessageProcessingRecords: jest.fn(),
+    cleanupRecords: cleanupRecordsMock,
+    cleanupMessageProcessingRecords: cleanupRecordsMock,
   };
 
-  const mockUserHostingRepository = {
-    cleanupUserActivity: jest.fn(),
+  const mockUserHostingService = {
+    cleanupActivity: cleanupActivityMock,
+    cleanupUserActivity: cleanupActivityMock,
   };
 
   const mockErrorLogRepository = {
@@ -52,16 +57,16 @@ describe('DataCleanupService', () => {
           useValue: mockSupabaseService,
         },
         {
-          provide: ChatMessageRepository,
-          useValue: mockChatMessageRepository,
+          provide: ChatSessionService,
+          useValue: mockChatSessionService,
         },
         {
-          provide: MessageProcessingRepository,
-          useValue: mockMessageProcessingRepository,
+          provide: MessageProcessingService,
+          useValue: mockMessageProcessingService,
         },
         {
-          provide: UserHostingRepository,
-          useValue: mockUserHostingRepository,
+          provide: UserHostingService,
+          useValue: mockUserHostingService,
         },
         {
           provide: MonitoringErrorLogRepository,
@@ -72,9 +77,9 @@ describe('DataCleanupService', () => {
 
     service = module.get<DataCleanupService>(DataCleanupService);
     supabaseService = module.get(SupabaseService);
-    chatMessageRepository = module.get(ChatMessageRepository);
-    messageProcessingRepository = module.get(MessageProcessingRepository);
-    _userHostingRepository = module.get(UserHostingRepository);
+    chatSessionService = module.get(ChatSessionService);
+    messageProcessingService = module.get(MessageProcessingService);
+    _userHostingService = module.get(UserHostingService);
 
     // Reset mocks
     jest.clearAllMocks();
@@ -101,24 +106,24 @@ describe('DataCleanupService', () => {
   describe('cleanupExpiredData', () => {
     it('should run tiered cleanup when Supabase is available', async () => {
       mockSupabaseService.isAvailable.mockReturnValue(true);
-      mockMessageProcessingRepository.nullAgentInvocations.mockResolvedValue(20);
-      mockChatMessageRepository.cleanupChatMessages.mockResolvedValue(10);
-      mockMessageProcessingRepository.cleanupMessageProcessingRecords.mockResolvedValue(5);
+      mockMessageProcessingService.nullAgentInvocations.mockResolvedValue(20);
+      mockChatSessionService.cleanupChatMessages.mockResolvedValue(10);
+      mockMessageProcessingService.cleanupRecords.mockResolvedValue(5);
       mockErrorLogRepository.cleanupErrorLogs.mockResolvedValue(3);
-      mockUserHostingRepository.cleanupUserActivity.mockResolvedValue(2);
+      mockUserHostingService.cleanupActivity.mockResolvedValue(2);
 
       await service.cleanupExpiredData();
 
       // 1. NULL agent_invocation (>7 天)
-      expect(messageProcessingRepository.nullAgentInvocations).toHaveBeenCalledWith(7);
+      expect(messageProcessingService.nullAgentInvocations).toHaveBeenCalledWith(7);
       // 2. DELETE chat_messages (>60 天)
-      expect(chatMessageRepository.cleanupChatMessages).toHaveBeenCalledWith(60);
+      expect(chatSessionService.cleanupChatMessages).toHaveBeenCalledWith(60);
       // 3. DELETE message_processing_records (>14 天)
-      expect(messageProcessingRepository.cleanupMessageProcessingRecords).toHaveBeenCalledWith(14);
+      expect(messageProcessingService.cleanupRecords).toHaveBeenCalledWith(14);
       // 4. DELETE monitoring_error_logs (>30 天)
       expect(mockErrorLogRepository.cleanupErrorLogs).toHaveBeenCalledWith(30);
       // 5. DELETE user_activity (>35 天)
-      expect(mockUserHostingRepository.cleanupUserActivity).toHaveBeenCalledWith(35);
+      expect(mockUserHostingService.cleanupActivity).toHaveBeenCalledWith(35);
     });
 
     it('should skip cleanup when Supabase is not available', async () => {
@@ -126,36 +131,36 @@ describe('DataCleanupService', () => {
 
       await service.cleanupExpiredData();
 
-      expect(messageProcessingRepository.nullAgentInvocations).not.toHaveBeenCalled();
-      expect(chatMessageRepository.cleanupChatMessages).not.toHaveBeenCalled();
-      expect(messageProcessingRepository.cleanupMessageProcessingRecords).not.toHaveBeenCalled();
+      expect(messageProcessingService.nullAgentInvocations).not.toHaveBeenCalled();
+      expect(chatSessionService.cleanupChatMessages).not.toHaveBeenCalled();
+      expect(messageProcessingService.cleanupRecords).not.toHaveBeenCalled();
       expect(mockErrorLogRepository.cleanupErrorLogs).not.toHaveBeenCalled();
-      expect(mockUserHostingRepository.cleanupUserActivity).not.toHaveBeenCalled();
+      expect(mockUserHostingService.cleanupActivity).not.toHaveBeenCalled();
     });
 
     it('should handle errors gracefully during agent_invocation cleanup', async () => {
       mockSupabaseService.isAvailable.mockReturnValue(true);
-      mockMessageProcessingRepository.nullAgentInvocations.mockRejectedValue(
+      mockMessageProcessingService.nullAgentInvocations.mockRejectedValue(
         new Error('Database error'),
       );
-      mockChatMessageRepository.cleanupChatMessages.mockResolvedValue(0);
-      mockMessageProcessingRepository.cleanupMessageProcessingRecords.mockResolvedValue(0);
+      mockChatSessionService.cleanupChatMessages.mockResolvedValue(0);
+      mockMessageProcessingService.cleanupRecords.mockResolvedValue(0);
       mockErrorLogRepository.cleanupErrorLogs.mockResolvedValue(0);
 
       // Should not throw
       await expect(service.cleanupExpiredData()).resolves.not.toThrow();
       // Should continue to next steps even after error
-      expect(chatMessageRepository.cleanupChatMessages).toHaveBeenCalled();
+      expect(chatSessionService.cleanupChatMessages).toHaveBeenCalled();
     });
   });
 
   describe('triggerCleanup', () => {
     it('should return cleanup counts when Supabase is available', async () => {
       mockSupabaseService.isAvailable.mockReturnValue(true);
-      mockMessageProcessingRepository.nullAgentInvocations.mockResolvedValue(20);
-      mockChatMessageRepository.cleanupChatMessages.mockResolvedValue(15);
-      mockMessageProcessingRepository.cleanupMessageProcessingRecords.mockResolvedValue(8);
-      mockUserHostingRepository.cleanupUserActivity.mockResolvedValue(3);
+      mockMessageProcessingService.nullAgentInvocations.mockResolvedValue(20);
+      mockChatSessionService.cleanupChatMessages.mockResolvedValue(15);
+      mockMessageProcessingService.cleanupRecords.mockResolvedValue(8);
+      mockUserHostingService.cleanupActivity.mockResolvedValue(3);
       mockErrorLogRepository.cleanupErrorLogs.mockResolvedValue(5);
 
       const result = await service.triggerCleanup();
@@ -181,16 +186,16 @@ describe('DataCleanupService', () => {
         userActivity: 0,
         errorLogs: 0,
       });
-      expect(messageProcessingRepository.nullAgentInvocations).not.toHaveBeenCalled();
-      expect(chatMessageRepository.cleanupChatMessages).not.toHaveBeenCalled();
+      expect(messageProcessingService.nullAgentInvocations).not.toHaveBeenCalled();
+      expect(chatSessionService.cleanupChatMessages).not.toHaveBeenCalled();
     });
 
     it('should handle partial failures gracefully', async () => {
       mockSupabaseService.isAvailable.mockReturnValue(true);
-      mockMessageProcessingRepository.nullAgentInvocations.mockResolvedValue(10);
-      mockChatMessageRepository.cleanupChatMessages.mockRejectedValue(new Error('Error'));
-      mockMessageProcessingRepository.cleanupMessageProcessingRecords.mockResolvedValue(4);
-      mockUserHostingRepository.cleanupUserActivity.mockResolvedValue(2);
+      mockMessageProcessingService.nullAgentInvocations.mockResolvedValue(10);
+      mockChatSessionService.cleanupChatMessages.mockRejectedValue(new Error('Error'));
+      mockMessageProcessingService.cleanupRecords.mockResolvedValue(4);
+      mockUserHostingService.cleanupActivity.mockResolvedValue(2);
       mockErrorLogRepository.cleanupErrorLogs.mockResolvedValue(1);
 
       const result = await service.triggerCleanup();

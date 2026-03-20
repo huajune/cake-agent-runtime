@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { LoopService, type AgentRunResult } from '@agent/loop.service';
 import { LlmEvaluationService } from '@evaluation/llm-evaluation.service';
 import { ConversationParserService } from '@evaluation/conversation-parser.service';
@@ -45,7 +45,7 @@ export class ConversationTestService {
     private readonly parserService: ConversationParserService,
     private readonly conversationSnapshotRepository: ConversationSnapshotRepository,
     private readonly executionRepository: TestExecutionRepository,
-    private readonly batchService: TestBatchService,
+    @Optional() private readonly batchService?: TestBatchService,
   ) {
     this.logger.log('ConversationTestService 初始化完成');
   }
@@ -115,7 +115,7 @@ export class ConversationTestService {
       });
 
       // 更新批次统计
-      if (source.batch_id) {
+      if (source.batch_id && this.batchService) {
         await this.batchService.updateBatchStats(source.batch_id);
       }
 
@@ -229,6 +229,14 @@ export class ConversationTestService {
   }
 
   /**
+   * 获取对话源所属批次 ID（兼容旧 facade）
+   */
+  async getSourceBatchId(sourceId: string): Promise<string | null> {
+    const source = await this.conversationSnapshotRepository.findById(sourceId);
+    return source?.batch_id || null;
+  }
+
+  /**
    * 批量执行回归验证
    */
   async executeConversationBatch(
@@ -264,7 +272,9 @@ export class ConversationTestService {
     }
 
     // 批量执行完成后更新批次统计
-    await this.batchService.updateBatchStats(batchId);
+    if (this.batchService) {
+      await this.batchService.updateBatchStats(batchId);
+    }
 
     return { batchId, total: sources.length, successCount, failedCount, results };
   }

@@ -42,10 +42,12 @@ export const api = axios.create({
 
 // -------------------- 请求拦截器 --------------------
 
+const API_GUARD_TOKEN = import.meta.env.VITE_API_GUARD_TOKEN as string | undefined;
+
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  // 预留：注入 auth token
-  // const token = getAuthToken();
-  // if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (API_GUARD_TOKEN) {
+    config.headers.Authorization = `Bearer ${API_GUARD_TOKEN}`;
+  }
   return config;
 });
 

@@ -255,8 +255,7 @@ describe('MessageParser', () => {
     });
 
     it('should return CANDIDATE_CONSULTATION regardless of message data', () => {
-      const messageData = buildMessageData();
-      const result = MessageParser.determineScenario(messageData);
+      const result = MessageParser.determineScenario();
       expect(result).toBe(ScenarioType.CANDIDATE_CONSULTATION);
     });
   });

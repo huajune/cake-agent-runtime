@@ -1,12 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ChatRecordSyncService } from '@biz/feishu-sync/chat-record.service';
 import { FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
-import { ChatMessageRepository } from '@biz/message/repositories/chat-message.repository';
+import { ChatSessionService } from '@biz/message/services/chat-session.service';
 
 describe('ChatRecordSyncService', () => {
   let service: ChatRecordSyncService;
   let mockBitableApi: jest.Mocked<FeishuBitableApiService>;
-  let mockChatMessageRepository: jest.Mocked<ChatMessageRepository>;
+  let mockChatSessionService: jest.Mocked<ChatSessionService>;
 
   const chatTableConfig = { appToken: 'WXQgb98iPauYsHsSYzMckqHcnbb', tableId: 'tblKNwN8aquh2JAy' };
 
@@ -20,15 +20,15 @@ describe('ChatRecordSyncService', () => {
       ),
     } as unknown as jest.Mocked<FeishuBitableApiService>;
 
-    mockChatMessageRepository = {
+    mockChatSessionService = {
       getChatMessagesByTimeRange: jest.fn(),
-    } as unknown as jest.Mocked<ChatMessageRepository>;
+    } as unknown as jest.Mocked<ChatSessionService>;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ChatRecordSyncService,
         { provide: FeishuBitableApiService, useValue: mockBitableApi },
-        { provide: ChatMessageRepository, useValue: mockChatMessageRepository },
+        { provide: ChatSessionService, useValue: mockChatSessionService },
       ],
     }).compile();
 
@@ -64,7 +64,7 @@ describe('ChatRecordSyncService', () => {
 
       await service.syncYesterdayChatRecords();
 
-      expect(mockChatMessageRepository.getChatMessagesByTimeRange).not.toHaveBeenCalled();
+      expect(mockChatSessionService.getChatMessagesByTimeRange).not.toHaveBeenCalled();
     });
 
     it('should skip sync when chat config is incomplete (no tableId)', async () => {
@@ -72,12 +72,12 @@ describe('ChatRecordSyncService', () => {
 
       await service.syncYesterdayChatRecords();
 
-      expect(mockChatMessageRepository.getChatMessagesByTimeRange).not.toHaveBeenCalled();
+      expect(mockChatSessionService.getChatMessagesByTimeRange).not.toHaveBeenCalled();
     });
 
     it('should skip sync when no chat records found', async () => {
       mockBitableApi.getTableConfig.mockReturnValue(chatTableConfig);
-      mockChatMessageRepository.getChatMessagesByTimeRange.mockResolvedValue([]);
+      mockChatSessionService.getChatMessagesByTimeRange.mockResolvedValue([]);
 
       await service.syncYesterdayChatRecords();
 
@@ -86,7 +86,7 @@ describe('ChatRecordSyncService', () => {
 
     it('should sync chat records successfully', async () => {
       mockBitableApi.getTableConfig.mockReturnValue(chatTableConfig);
-      mockChatMessageRepository.getChatMessagesByTimeRange.mockResolvedValue([
+      mockChatSessionService.getChatMessagesByTimeRange.mockResolvedValue([
         { chatId: 'chat_001', messages: buildMessages() },
       ]);
       mockBitableApi.getAllRecords.mockResolvedValue([]);
@@ -99,7 +99,7 @@ describe('ChatRecordSyncService', () => {
 
     it('should deduplicate records that already exist in feishu', async () => {
       mockBitableApi.getTableConfig.mockReturnValue(chatTableConfig);
-      mockChatMessageRepository.getChatMessagesByTimeRange.mockResolvedValue([
+      mockChatSessionService.getChatMessagesByTimeRange.mockResolvedValue([
         { chatId: 'chat_existing', messages: buildMessages('chat_existing') },
         { chatId: 'chat_new', messages: buildMessages('chat_new') },
       ]);
@@ -120,7 +120,7 @@ describe('ChatRecordSyncService', () => {
 
     it('should skip write when all records already exist', async () => {
       mockBitableApi.getTableConfig.mockReturnValue(chatTableConfig);
-      mockChatMessageRepository.getChatMessagesByTimeRange.mockResolvedValue([
+      mockChatSessionService.getChatMessagesByTimeRange.mockResolvedValue([
         { chatId: 'chat_001', messages: buildMessages() },
       ]);
       mockBitableApi.getAllRecords.mockResolvedValue([
@@ -134,7 +134,7 @@ describe('ChatRecordSyncService', () => {
 
     it('should handle sync failure gracefully', async () => {
       mockBitableApi.getTableConfig.mockReturnValue(chatTableConfig);
-      mockChatMessageRepository.getChatMessagesByTimeRange.mockRejectedValue(new Error('DB error'));
+      mockChatSessionService.getChatMessagesByTimeRange.mockRejectedValue(new Error('DB error'));
 
       // Should not throw
       await expect(service.syncYesterdayChatRecords()).resolves.toBeUndefined();
@@ -142,7 +142,7 @@ describe('ChatRecordSyncService', () => {
 
     it('should continue when getExistingChatIds fails (skip deduplication)', async () => {
       mockBitableApi.getTableConfig.mockReturnValue(chatTableConfig);
-      mockChatMessageRepository.getChatMessagesByTimeRange.mockResolvedValue([
+      mockChatSessionService.getChatMessagesByTimeRange.mockResolvedValue([
         { chatId: 'chat_001', messages: buildMessages() },
       ]);
       mockBitableApi.getAllRecords.mockRejectedValue(new Error('API error'));
@@ -158,7 +158,7 @@ describe('ChatRecordSyncService', () => {
   describe('manualSync', () => {
     it('should return success message after sync', async () => {
       mockBitableApi.getTableConfig.mockReturnValue(chatTableConfig);
-      mockChatMessageRepository.getChatMessagesByTimeRange.mockResolvedValue([]);
+      mockChatSessionService.getChatMessagesByTimeRange.mockResolvedValue([]);
 
       const result = await service.manualSync();
 
@@ -193,7 +193,7 @@ describe('ChatRecordSyncService', () => {
 
     it('should return success with recordCount 0 when no data', async () => {
       mockBitableApi.getTableConfig.mockReturnValue(chatTableConfig);
-      mockChatMessageRepository.getChatMessagesByTimeRange.mockResolvedValue([]);
+      mockChatSessionService.getChatMessagesByTimeRange.mockResolvedValue([]);
 
       const result = await service.syncByTimeRange(startTime, endTime);
 
@@ -203,7 +203,7 @@ describe('ChatRecordSyncService', () => {
 
     it('should sync records in time range', async () => {
       mockBitableApi.getTableConfig.mockReturnValue(chatTableConfig);
-      mockChatMessageRepository.getChatMessagesByTimeRange.mockResolvedValue([
+      mockChatSessionService.getChatMessagesByTimeRange.mockResolvedValue([
         { chatId: 'chat_001', messages: buildMessages() },
       ]);
       mockBitableApi.getAllRecords.mockResolvedValue([]);
@@ -217,7 +217,7 @@ describe('ChatRecordSyncService', () => {
 
     it('should return success when all records already exist', async () => {
       mockBitableApi.getTableConfig.mockReturnValue(chatTableConfig);
-      mockChatMessageRepository.getChatMessagesByTimeRange.mockResolvedValue([
+      mockChatSessionService.getChatMessagesByTimeRange.mockResolvedValue([
         { chatId: 'chat_001', messages: buildMessages() },
       ]);
       mockBitableApi.getAllRecords.mockResolvedValue([
@@ -232,7 +232,7 @@ describe('ChatRecordSyncService', () => {
 
     it('should handle errors and return failure', async () => {
       mockBitableApi.getTableConfig.mockReturnValue(chatTableConfig);
-      mockChatMessageRepository.getChatMessagesByTimeRange.mockRejectedValue(
+      mockChatSessionService.getChatMessagesByTimeRange.mockRejectedValue(
         new Error('DB connection failed'),
       );
 
@@ -244,11 +244,11 @@ describe('ChatRecordSyncService', () => {
 
     it('should pass correct time range to repository', async () => {
       mockBitableApi.getTableConfig.mockReturnValue(chatTableConfig);
-      mockChatMessageRepository.getChatMessagesByTimeRange.mockResolvedValue([]);
+      mockChatSessionService.getChatMessagesByTimeRange.mockResolvedValue([]);
 
       await service.syncByTimeRange(startTime, endTime);
 
-      expect(mockChatMessageRepository.getChatMessagesByTimeRange).toHaveBeenCalledWith(
+      expect(mockChatSessionService.getChatMessagesByTimeRange).toHaveBeenCalledWith(
         startTime,
         endTime,
       );

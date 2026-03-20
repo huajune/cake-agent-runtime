@@ -2,8 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ScenarioType } from '@enums/agent.enum';
 import { AnalyticsDashboardService } from '@biz/monitoring/services/analytics/analytics-dashboard.service';
 import { MonitoringCacheService } from '@biz/monitoring/services/tracking/monitoring-cache.service';
-import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
-import { BookingRepository } from '@biz/message/repositories/booking.repository';
+import { MessageProcessingService } from '@biz/message/services/message-processing.service';
+import { BookingService } from '@biz/message/services/booking.service';
 import { MonitoringHourlyStatsRepository } from '@biz/monitoring/repositories/hourly-stats.repository';
 import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error-log.repository';
 import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.repository';
@@ -46,19 +46,19 @@ const defaultFallback = {
 
 describe('AnalyticsDashboardService', () => {
   let service: AnalyticsDashboardService;
-  let _messageProcessingRepository: jest.Mocked<MessageProcessingRepository>;
+  let _messageProcessingService: jest.Mocked<MessageProcessingService>;
   let _hourlyStatsRepository: jest.Mocked<MonitoringHourlyStatsRepository>;
   let _errorLogRepository: jest.Mocked<MonitoringErrorLogRepository>;
   let _userHostingService: jest.Mocked<UserHostingService>;
   let _cacheService: jest.Mocked<MonitoringCacheService>;
   let monitoringRepository: jest.Mocked<MonitoringRecordRepository>;
-  let _bookingRepository: jest.Mocked<BookingRepository>;
+  let _bookingService: jest.Mocked<BookingService>;
   let hourlyStatsAggregator: jest.Mocked<HourlyStatsAggregatorService>;
   let _messageTrackingService: jest.Mocked<MessageTrackingService>;
 
-  const mockMessageProcessingRepository = {
+  const mockMessageProcessingService = {
     getRecordsByTimeRange: jest.fn(),
-    getMessageProcessingRecords: jest.fn(),
+    getRecordsByTimestamps: jest.fn(),
     getActiveUsers: jest.fn(),
   };
 
@@ -85,7 +85,7 @@ describe('AnalyticsDashboardService', () => {
     getDashboardHourlyTrend: jest.fn(),
   };
 
-  const mockBookingRepository = {
+  const mockBookingService = {
     getBookingStats: jest.fn(),
   };
 
@@ -107,8 +107,8 @@ describe('AnalyticsDashboardService', () => {
       providers: [
         AnalyticsDashboardService,
         {
-          provide: MessageProcessingRepository,
-          useValue: mockMessageProcessingRepository,
+          provide: MessageProcessingService,
+          useValue: mockMessageProcessingService,
         },
         {
           provide: MonitoringHourlyStatsRepository,
@@ -131,8 +131,8 @@ describe('AnalyticsDashboardService', () => {
           useValue: mockMonitoringRecordRepository,
         },
         {
-          provide: BookingRepository,
-          useValue: mockBookingRepository,
+          provide: BookingService,
+          useValue: mockBookingService,
         },
         {
           provide: HourlyStatsAggregatorService,
@@ -146,25 +146,25 @@ describe('AnalyticsDashboardService', () => {
     }).compile();
 
     service = module.get<AnalyticsDashboardService>(AnalyticsDashboardService);
-    _messageProcessingRepository = module.get(MessageProcessingRepository);
+    _messageProcessingService = module.get(MessageProcessingService);
     _hourlyStatsRepository = module.get(MonitoringHourlyStatsRepository);
     _errorLogRepository = module.get(MonitoringErrorLogRepository);
     _userHostingService = module.get(UserHostingService);
     _cacheService = module.get(MonitoringCacheService);
     monitoringRepository = module.get(MonitoringRecordRepository);
-    _bookingRepository = module.get(BookingRepository);
+    _bookingService = module.get(BookingService);
     hourlyStatsAggregator = module.get(HourlyStatsAggregatorService);
     _messageTrackingService = module.get(MessageTrackingService);
 
     jest.clearAllMocks();
 
     // Setup defaults
-    mockMessageProcessingRepository.getRecordsByTimeRange.mockResolvedValue([]);
-    mockMessageProcessingRepository.getMessageProcessingRecords.mockResolvedValue({
+    mockMessageProcessingService.getRecordsByTimeRange.mockResolvedValue([]);
+    mockMessageProcessingService.getRecordsByTimestamps.mockResolvedValue({
       records: [],
       total: 0,
     });
-    mockMessageProcessingRepository.getActiveUsers.mockResolvedValue([]);
+    mockMessageProcessingService.getActiveUsers.mockResolvedValue([]);
     mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([]);
     mockErrorLogRepository.getErrorLogsSince.mockResolvedValue([]);
     mockCacheService.getCounters.mockResolvedValue({
@@ -177,7 +177,7 @@ describe('AnalyticsDashboardService', () => {
       totalFallbackSuccess: 0,
     });
     mockUserHostingService.getUserHostingStatus.mockResolvedValue({ isPaused: false });
-    mockBookingRepository.getBookingStats.mockResolvedValue([]);
+    mockBookingService.getBookingStats.mockResolvedValue([]);
     mockHourlyStatsAggregator.getOverviewFromHourly.mockResolvedValue(defaultOverview);
     mockHourlyStatsAggregator.getFallbackFromHourly.mockResolvedValue(defaultFallback);
     mockHourlyStatsAggregator.getDailyTrendFromHourly.mockResolvedValue([]);
@@ -247,7 +247,7 @@ describe('AnalyticsDashboardService', () => {
           totalDuration: 2000,
         }),
       ];
-      mockMessageProcessingRepository.getRecordsByTimeRange.mockResolvedValue(records);
+      mockMessageProcessingService.getRecordsByTimeRange.mockResolvedValue(records);
 
       const result = await service.getDashboardDataAsync('today');
 
@@ -270,7 +270,7 @@ describe('AnalyticsDashboardService', () => {
         }),
         buildRecord({ messageId: 'msg-3', isFallback: false }),
       ];
-      mockMessageProcessingRepository.getRecordsByTimeRange.mockResolvedValue(records);
+      mockMessageProcessingService.getRecordsByTimeRange.mockResolvedValue(records);
 
       const result = await service.getDashboardDataAsync('today');
 
@@ -286,7 +286,7 @@ describe('AnalyticsDashboardService', () => {
         buildRecord({ messageId: 'msg-2', tools: ['booking'] }),
         buildRecord({ messageId: 'msg-3', tools: [] }),
       ];
-      mockMessageProcessingRepository.getRecordsByTimeRange.mockResolvedValue(records);
+      mockMessageProcessingService.getRecordsByTimeRange.mockResolvedValue(records);
 
       const result = await service.getDashboardDataAsync('today');
 
@@ -301,7 +301,7 @@ describe('AnalyticsDashboardService', () => {
         buildRecord({ messageId: 'msg-2', scenario: ScenarioType.CANDIDATE_CONSULTATION }),
         buildRecord({ messageId: 'msg-3', scenario: undefined }),
       ];
-      mockMessageProcessingRepository.getRecordsByTimeRange.mockResolvedValue(records);
+      mockMessageProcessingService.getRecordsByTimeRange.mockResolvedValue(records);
 
       const result = await service.getDashboardDataAsync('today');
 
@@ -312,7 +312,7 @@ describe('AnalyticsDashboardService', () => {
     });
 
     it('should fetch todayUsers only for today range', async () => {
-      mockMessageProcessingRepository.getActiveUsers.mockResolvedValue([
+      mockMessageProcessingService.getActiveUsers.mockResolvedValue([
         {
           chatId: 'chat-1',
           userId: 'user-1',
@@ -328,8 +328,8 @@ describe('AnalyticsDashboardService', () => {
       expect(resultToday.todayUsers).toHaveLength(1);
 
       jest.clearAllMocks();
-      mockMessageProcessingRepository.getRecordsByTimeRange.mockResolvedValue([]);
-      mockMessageProcessingRepository.getMessageProcessingRecords.mockResolvedValue({
+      mockMessageProcessingService.getRecordsByTimeRange.mockResolvedValue([]);
+      mockMessageProcessingService.getRecordsByTimestamps.mockResolvedValue({
         records: [],
         total: 0,
       });
@@ -344,14 +344,14 @@ describe('AnalyticsDashboardService', () => {
         totalFallbackSuccess: 0,
       });
       mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([]);
-      mockBookingRepository.getBookingStats.mockResolvedValue([]);
+      mockBookingService.getBookingStats.mockResolvedValue([]);
 
       const resultWeek = await service.getDashboardDataAsync('week');
       expect(resultWeek.todayUsers).toHaveLength(0);
     });
 
     it('should return empty dashboard data on error', async () => {
-      mockMessageProcessingRepository.getRecordsByTimeRange.mockRejectedValue(
+      mockMessageProcessingService.getRecordsByTimeRange.mockRejectedValue(
         new Error('DB error'),
       );
 
@@ -367,7 +367,7 @@ describe('AnalyticsDashboardService', () => {
       // Current period: 100 messages
       // Previous period: 50 messages
       // Delta = 100%
-      mockMessageProcessingRepository.getRecordsByTimeRange
+      mockMessageProcessingService.getRecordsByTimeRange
         .mockResolvedValueOnce(
           Array.from({ length: 100 }, (_, i) => buildRecord({ messageId: `msg-${i}` })),
         )
@@ -572,7 +572,7 @@ describe('AnalyticsDashboardService', () => {
     });
 
     it('should include business metrics from message records', async () => {
-      mockMessageProcessingRepository.getMessageProcessingRecords.mockResolvedValue({
+      mockMessageProcessingService.getRecordsByTimestamps.mockResolvedValue({
         records: [
           buildRecord({ userId: 'user-1' }),
           buildRecord({ messageId: 'msg-2', userId: 'user-2' }),

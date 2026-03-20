@@ -1,14 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AnalyticsMaintenanceService } from '@biz/monitoring/services/analytics/analytics-maintenance.service';
 import { MonitoringCacheService } from '@biz/monitoring/services/tracking/monitoring-cache.service';
-import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
+import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { MonitoringHourlyStatsRepository } from '@biz/monitoring/repositories/hourly-stats.repository';
 import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error-log.repository';
 import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.repository';
 
 describe('AnalyticsMaintenanceService', () => {
   let service: AnalyticsMaintenanceService;
-  let messageProcessingRepository: jest.Mocked<MessageProcessingRepository>;
+  let messageProcessingRepository: jest.Mocked<MessageProcessingService>;
   let hourlyStatsRepository: jest.Mocked<MonitoringHourlyStatsRepository>;
   let errorLogRepository: jest.Mocked<MonitoringErrorLogRepository>;
   let cacheService: jest.Mocked<MonitoringCacheService>;
@@ -41,7 +41,7 @@ describe('AnalyticsMaintenanceService', () => {
       providers: [
         AnalyticsMaintenanceService,
         {
-          provide: MessageProcessingRepository,
+          provide: MessageProcessingService,
           useValue: mockMessageProcessingRepository,
         },
         {
@@ -64,7 +64,7 @@ describe('AnalyticsMaintenanceService', () => {
     }).compile();
 
     service = module.get<AnalyticsMaintenanceService>(AnalyticsMaintenanceService);
-    messageProcessingRepository = module.get(MessageProcessingRepository);
+    messageProcessingRepository = module.get(MessageProcessingService);
     hourlyStatsRepository = module.get(MonitoringHourlyStatsRepository);
     errorLogRepository = module.get(MonitoringErrorLogRepository);
     cacheService = module.get(MonitoringCacheService);

@@ -16,10 +16,7 @@ export class MessageParser {
    * 提取文本内容和基本信息，用于后续处理
    */
   static parse(messageData: EnterpriseMessageCallbackDto) {
-    // 提取文本内容（优先使用 pureText，不含 @ 信息）
-    const content = isTextPayload(messageData.messageType, messageData.payload)
-      ? messageData.payload.pureText || messageData.payload.text
-      : '';
+    const content = this.extractContent(messageData);
 
     // 根据 imRoomId 是否有值来判断是否为群聊
     const isRoom = !!messageData.imRoomId;
@@ -42,6 +39,7 @@ export class MessageParser {
       imRoomId: messageData.imRoomId, // 群聊的系统wxid（企业级接口 v2，群聊时使用）
       botWxid: messageData.imBotId, // 兼容字段
       botId: messageData.botId,
+      orgId: messageData.orgId,
       managerName: messageData.botUserId, // 企微回调中的 botUserId 即招募经理昵称
       isSelf: messageData.isSelf,
       timestamp: parseInt(messageData.timestamp),

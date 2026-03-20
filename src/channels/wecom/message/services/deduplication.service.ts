@@ -112,7 +112,6 @@ export class MessageDeduplicationService implements OnModuleInit {
 
   /**
    * 清理过期的消息记录（Redis 版本无需手动清理）
-   * 保留此方法用于兼容 MessageStatisticsService
    */
   cleanupExpiredMessages(): number {
     // Redis TTL 自动清理，无需手动操作

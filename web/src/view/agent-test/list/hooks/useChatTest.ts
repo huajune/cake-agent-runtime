@@ -68,20 +68,23 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
   const tokenUsageRef = useRef<TokenUsage | null>(null);
 
   // Transport（sessionId 变化时重建，确保新对话用新 sessionId）
-  const transport = useMemo(
-    () =>
-      new DefaultChatTransport({
-        api: CHAT_API_ENDPOINT,
-        body: {
-          scenario: DEFAULT_SCENARIO,
-          saveExecution: false,
-          sessionId,
-          userId,
-          thinking: { type: 'enabled', budgetTokens: 10000 },
-        },
-      }),
-    [sessionId, userId],
-  );
+  const transport = useMemo(() => {
+    const headers: Record<string, string> = {};
+    const apiGuardToken = import.meta.env.VITE_API_GUARD_TOKEN as string | undefined;
+    if (apiGuardToken) headers['Authorization'] = `Bearer ${apiGuardToken}`;
+
+    return new DefaultChatTransport({
+      api: CHAT_API_ENDPOINT,
+      headers,
+      body: {
+        scenario: DEFAULT_SCENARIO,
+        saveExecution: false,
+        sessionId,
+        userId,
+        thinking: { type: 'enabled', budgetTokens: 10000 },
+      },
+    });
+  }, [sessionId, userId]);
 
   // useChat hook
   const { messages, sendMessage, status, stop, setMessages, error: chatError } = useChat({

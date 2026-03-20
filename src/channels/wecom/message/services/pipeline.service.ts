@@ -25,6 +25,7 @@ import {
   AlertErrorType,
   AgentInvokeResult,
   FallbackMessageOptions,
+  DeliveryFailureError,
 } from '../message.types';
 
 /**
@@ -89,6 +90,7 @@ export class MessagePipelineService {
     // step 0: bot 自发消息
     if (messageData.isSelf === true) {
       await this.handleSelfMessage(messageData);
+      await this.deduplicationService.markMessageAsProcessedAsync(messageData.messageId);
       return { shouldDispatch: false, response: { success: true, message: 'Self message stored' } };
     }
 
@@ -119,6 +121,7 @@ export class MessagePipelineService {
 
     if (filterResult.historyOnly) {
       const parsed = MessageParser.parse(messageData);
+      await this.deduplicationService.markMessageAsProcessedAsync(messageData.messageId);
       this.logger.log(
         `[historyOnly] 消息已记录到历史但不触发AI回复 [${messageData.messageId}], ` +
           `chatId=${parsed.chatId}, contact=${parsed.contactName}, reason=${filterResult.reason}`,
@@ -165,7 +168,7 @@ export class MessagePipelineService {
       messageId: messageData.messageId,
       role: 'assistant',
       content,
-      timestamp: Date.now(),
+      timestamp: this.resolveStoredTimestamp(parsed.timestamp),
       candidateName,
       managerName: messageData.botUserId, // 统一使用 botUserId，避免与 user 消息的 managerName 不一致
       orgId: messageData.orgId,
@@ -210,7 +213,7 @@ export class MessagePipelineService {
       messageId: messageData.messageId,
       role: 'user',
       content,
-      timestamp: Date.now(),
+      timestamp: this.resolveStoredTimestamp(parsed.timestamp),
       candidateName: messageData.contactName || contactName,
       managerName: messageData.botUserId,
       orgId: messageData.orgId,
@@ -270,7 +273,11 @@ export class MessagePipelineService {
         isSingleMessage: true,
       });
     } catch (error) {
-      const errorType: AlertErrorType = this.isAgentError(error) ? 'agent' : 'message';
+      const errorType: AlertErrorType = this.isAgentError(error)
+        ? 'agent'
+        : this.isDeliveryError(error)
+          ? 'delivery'
+          : 'message';
       await this.handleProcessingError(error, parsed, { errorType, scenario });
     }
   }
@@ -308,7 +315,11 @@ export class MessagePipelineService {
     } catch (error) {
       this.logger.error(`聚合消息处理失败:`, error.message);
 
-      const errorType: AlertErrorType = this.isAgentError(error) ? 'agent' : 'merge';
+      const errorType: AlertErrorType = this.isAgentError(error)
+        ? 'agent'
+        : this.isDeliveryError(error)
+          ? 'delivery'
+          : 'merge';
       await this.handleProcessingError(error, parsed, { errorType, scenario });
 
       // 标记其他消息为失败
@@ -369,7 +380,8 @@ export class MessagePipelineService {
       scenario,
       messageId,
       recordMonitoring: true,
-      userId: params.primaryMessage.imContactId,
+      userId: this.resolveAgentUserId(params.primaryMessage, parsed),
+      corpId: this.resolveCorpId(params.primaryMessage),
     });
 
     this.logger.log(
@@ -497,6 +509,10 @@ export class MessagePipelineService {
     return Boolean((error as { isAgentError?: boolean })?.isAgentError);
   }
 
+  private isDeliveryError(error: unknown): error is DeliveryFailureError {
+    return error instanceof DeliveryFailureError;
+  }
+
   /**
    * 根据异常类型映射到告警级别
    */
@@ -530,6 +546,7 @@ export class MessagePipelineService {
     const scenario = options?.scenario || MessageParser.determineScenario();
     const errorType: AlertErrorType = options?.errorType || 'message';
     const errorMessage = error instanceof Error ? error.message : String(error);
+    const deliveryError = this.isDeliveryError(error) ? error : null;
 
     this.logger.error(`[${contactName}] 消息处理失败 [${messageId}]: ${errorMessage}`);
 
@@ -547,25 +564,32 @@ export class MessagePipelineService {
     const apiKey = (error as any)?.apiKey;
     const maskedApiKey = maskApiKey(apiKey);
 
-    this.feishuAlertService
-      .sendAlert({
-        errorType,
-        error: error instanceof Error ? error : new Error(errorMessage),
-        conversationId: chatId,
-        userMessage: content,
-        contactName,
-        apiEndpoint: '/api/v1/chat',
-        scenario,
-        fallbackMessage,
-        level: alertLevel,
-        // 添加 API Key 脱敏信息，便于排查 401 问题
-        extra: maskedApiKey ? { apiKey: maskedApiKey } : undefined,
-        // 注意：此处是异常处理告警，不需要 @ 琪琪
-        // 只有 sendFallbackAlert（Agent 降级响应）才需要 @ 琪琪人工介入
-      })
-      .catch((alertError) => {
-        this.logger.error(`告警发送失败: ${alertError.message}`);
-      });
+    if (!deliveryError) {
+      this.feishuAlertService
+        .sendAlert({
+          errorType,
+          error: error instanceof Error ? error : new Error(errorMessage),
+          conversationId: chatId,
+          userMessage: content,
+          contactName,
+          apiEndpoint: '/api/v1/chat',
+          scenario,
+          fallbackMessage,
+          level: alertLevel,
+          // 添加 API Key 脱敏信息，便于排查 401 问题
+          extra: maskedApiKey ? { apiKey: maskedApiKey } : undefined,
+          // 注意：此处是异常处理告警，不需要 @ 琪琪
+          // 只有 sendFallbackAlert（Agent 降级响应）才需要 @ 琪琪人工介入
+        })
+        .catch((alertError) => {
+          this.logger.error(`告警发送失败: ${alertError.message}`);
+        });
+    }
+
+    if ((deliveryError?.result.deliveredSegments ?? 0) > 0) {
+      this.logger.warn(`[${contactName}] 回复已部分发送，跳过降级回复 [${messageId}]`);
+      return;
+    }
 
     // 发送降级回复
     try {
@@ -671,7 +695,7 @@ export class MessagePipelineService {
     messageId?: string;
     recordMonitoring?: boolean;
     userId: string;
-    corpId?: string;
+    corpId: string;
   }): Promise<AgentInvokeResult> {
     const {
       userMessage,
@@ -679,7 +703,7 @@ export class MessagePipelineService {
       messageId,
       recordMonitoring = true,
       userId,
-      corpId = 'default',
+      corpId,
     } = params;
 
     const startTime = Date.now();
@@ -734,6 +758,21 @@ export class MessagePipelineService {
       return normalized;
     }
     return rawContent;
+  }
+
+  private resolveStoredTimestamp(timestamp: number): number {
+    return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : Date.now();
+  }
+
+  private resolveAgentUserId(
+    messageData: EnterpriseMessageCallbackDto,
+    parsed: ReturnType<typeof MessageParser.parse>,
+  ): string {
+    return parsed.imContactId || messageData.externalUserId || parsed.chatId;
+  }
+
+  private resolveCorpId(messageData: EnterpriseMessageCallbackDto): string {
+    return messageData.orgId || 'default';
   }
 
   /**

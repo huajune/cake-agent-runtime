@@ -19,7 +19,7 @@ export interface ToolBuildContext {
   /** 对话消息 */
   messages: unknown[];
   /** 岗位推荐回调（job-list 用） */
-  onJobsFetched?: (jobs: unknown[]) => void;
+  onJobsFetched?: (jobs: unknown[]) => void | Promise<void>;
 }
 
 /**
