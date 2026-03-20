@@ -1,62 +1,152 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { AlertLevel } from '@infra/feishu/interfaces/interface';
 import { ALERT_RECEIVERS } from '@infra/feishu/constants/constants';
 import { maskApiKey } from '@infra/utils/string.util';
 import { ScenarioType } from '@enums/agent.enum';
-import { HttpException, HttpStatus } from '@nestjs/common';
+import { LoopService } from '@agent/loop.service';
 
 // 导入子服务
 import { MessageDeduplicationService } from './deduplication.service';
-import { MessageHistoryService } from './history.service';
 import { MessageFilterService } from './filter.service';
 import { MessageDeliveryService } from './delivery.service';
-import { AgentGatewayService } from './agent-gateway.service';
 import { BookingDetectionService } from './booking-detection.service';
+import { ChatSessionService } from '@biz/message/services/chat-session.service';
+import { ChatMessageInput } from '@biz/message/types/message.types';
 
 // 导入工具和类型
 import { MessageParser } from '../utils/message-parser.util';
-import { EnterpriseMessageCallbackDto } from '../dto/message-callback.dto';
-import { DeliveryContext, PipelineResult, AlertErrorType } from '../types/wecom-message.types';
+import { ReplyNormalizer } from '../utils/reply-normalizer.util';
+import { EnterpriseMessageCallbackDto } from '../message-callback.dto';
+import {
+  DeliveryContext,
+  AlertErrorType,
+  AgentInvokeResult,
+  FallbackMessageOptions,
+} from '../message.types';
 
 /**
  * 消息处理管线服务
  *
- * 职责：
- * 1. 管线步骤：过滤 → 去重 → 历史记录 → 监控
- * 2. 单消息处理（直发路径）
- * 3. 聚合消息处理（聚合路径）
- * 4. 错误处理和降级回复
+ * 对外暴露：
+ *   execute(dto)             — 完整管线入口（MessageService 唯一调用点）
+ *   processSingleMessage()   — 直发路径
+ *   processMergedMessages()  — 聚合路径（MessageProcessor 调用）
  *
- * 从 MessageService 拆分，专注于消息处理逻辑
+ * 管线步骤全部私有，由 execute() 内部编排：
+ *   step0: handleSelfMessage
+ *   step1: filterMessage（只判断，不写副作用）
+ *   step2: checkDuplication
+ *   step3: recordHistory（含 historyOnly 分支）
+ *   step4: recordMonitoring
  */
 @Injectable()
 export class MessagePipelineService {
   private readonly logger = new Logger(MessagePipelineService.name);
 
+  private readonly defaultFallbackMessages: string[] = [
+    '我确认下哈，马上回你~',
+    '我这边查一下，稍等~',
+    '让我看看哈，很快~',
+    '这块我再核实下，确认好马上告诉你哈~',
+    '这个涉及几个细节，我确认下再回你',
+    '这块资料我这边暂时没看到，我先帮你记下来，确认好回你~',
+  ];
+
   constructor(
     // 子服务
     private readonly deduplicationService: MessageDeduplicationService,
-    private readonly historyService: MessageHistoryService,
+    private readonly chatSession: ChatSessionService,
     private readonly filterService: MessageFilterService,
     private readonly deliveryService: MessageDeliveryService,
-    private readonly agentGateway: AgentGatewayService,
     private readonly bookingDetection: BookingDetectionService,
+    // Agent 编排
+    private readonly loop: LoopService,
+    private readonly configService: ConfigService,
     // 监控和告警
     private readonly monitoringService: MessageTrackingService,
     private readonly feishuAlertService: FeishuAlertService,
   ) {}
 
   // ========================================
-  // 管线步骤
+  // 公开入口
   // ========================================
 
   /**
-   * 管线步骤 0: 处理 bot 自己发送的消息
-   * 将 isSelf=true 的消息存储为 assistant 历史记录
+   * 消息处理管线入口（MessageService 的唯一调用点）
+   *
+   * 返回值：
+   *   shouldDispatch=true  — 需要触发 AI，由 MessageService 决定是否 dispatch
+   *   shouldDispatch=false — 管线已终止，response 是最终响应
    */
-  async handleSelfMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
+  async execute(messageData: EnterpriseMessageCallbackDto): Promise<{
+    shouldDispatch: boolean;
+    response: { success: boolean; message: string };
+    content?: string;
+  }> {
+    // step 0: bot 自发消息
+    if (messageData.isSelf === true) {
+      await this.handleSelfMessage(messageData);
+      return { shouldDispatch: false, response: { success: true, message: 'Self message stored' } };
+    }
+
+    // step 1: 过滤（只判断，不写副作用）
+    const filterResult = await this.filterService.validate(messageData);
+
+    if (!filterResult.pass) {
+      return {
+        shouldDispatch: false,
+        response: { success: true, message: `${filterResult.reason} ignored` },
+      };
+    }
+
+    // step 2: 去重
+    const isProcessed = await this.deduplicationService.isMessageProcessedAsync(
+      messageData.messageId,
+    );
+    if (isProcessed) {
+      this.logger.log(`[消息去重] 消息 [${messageData.messageId}] 已处理过，跳过重复处理`);
+      return {
+        shouldDispatch: false,
+        response: { success: true, message: 'Duplicate message ignored' },
+      };
+    }
+
+    // step 3: 写历史（含 historyOnly 分支）
+    await this.recordUserMessageToHistory(messageData, filterResult.content);
+
+    if (filterResult.historyOnly) {
+      const parsed = MessageParser.parse(messageData);
+      this.logger.log(
+        `[historyOnly] 消息已记录到历史但不触发AI回复 [${messageData.messageId}], ` +
+          `chatId=${parsed.chatId}, contact=${parsed.contactName}, reason=${filterResult.reason}`,
+      );
+      return {
+        shouldDispatch: false,
+        response: { success: true, message: 'Message recorded to history only' },
+      };
+    }
+
+    // step 4: 监控
+    this.recordMessageReceived(messageData);
+
+    return {
+      shouldDispatch: true,
+      response: { success: true, message: 'Message received' },
+      content: filterResult.content,
+    };
+  }
+
+  // ========================================
+  // 管线步骤（全部私有）
+  // ========================================
+
+  /**
+   * step 0: 处理 bot 自己发送的消息，存储为 assistant 历史
+   */
+  private async handleSelfMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
     const parsed = MessageParser.parse(messageData);
     const { chatId, content } = parsed;
 
@@ -70,8 +160,12 @@ export class MessagePipelineService {
 
     // 存储为 assistant 消息（包含元数据）
     const isRoom = Boolean(messageData.imRoomId);
-    await this.historyService.addMessageToHistory(chatId, 'assistant', content, {
+    const assistantMsg: ChatMessageInput = {
+      chatId,
       messageId: messageData.messageId,
+      role: 'assistant',
+      content,
+      timestamp: Date.now(),
       candidateName,
       managerName: messageData.botUserId, // 统一使用 botUserId，避免与 user 消息的 managerName 不一致
       orgId: messageData.orgId,
@@ -86,7 +180,8 @@ export class MessagePipelineService {
       payload: messageData.payload as Record<string, unknown>,
       avatar: messageData.avatar,
       externalUserId: messageData.externalUserId,
-    });
+    };
+    await this.chatSession.saveMessage(assistantMsg);
 
     this.logger.log(
       `[自发消息] 已存储为 assistant 历史 [${messageData.messageId}]: "${content.substring(0, 50)}${content.length > 50 ? '...' : ''}"`,
@@ -94,80 +189,9 @@ export class MessagePipelineService {
   }
 
   /**
-   * 管线步骤 1: 消息过滤
+   * step 3: 将用户消息记录到历史
    */
-  async filterMessage(
-    messageData: EnterpriseMessageCallbackDto,
-  ): Promise<PipelineResult<{ content?: string }>> {
-    const filterResult = await this.filterService.validate(messageData);
-
-    if (!filterResult.pass) {
-      return {
-        continue: false,
-        response: { success: true, message: `${filterResult.reason} ignored` },
-      };
-    }
-
-    // 处理 historyOnly 模式（小组黑名单）：记录历史但不触发 AI 回复
-    if (filterResult.historyOnly) {
-      const parsed = MessageParser.parse(messageData);
-      const { chatId, content, contactName } = parsed;
-      const isRoom = Boolean(messageData.imRoomId);
-
-      await this.historyService.addMessageToHistory(chatId, 'user', content, {
-        messageId: messageData.messageId,
-        candidateName: messageData.contactName || contactName,
-        managerName: messageData.botUserId,
-        orgId: messageData.orgId,
-        botId: messageData.botId,
-        messageType: messageData.messageType,
-        source: messageData.source,
-        isRoom,
-        imBotId: messageData.imBotId,
-        imContactId: messageData.imContactId,
-        contactType: messageData.contactType,
-        isSelf: messageData.isSelf,
-        payload: messageData.payload as Record<string, unknown>,
-        avatar: messageData.avatar,
-        externalUserId: messageData.externalUserId,
-      });
-
-      this.logger.log(
-        `[historyOnly] 消息已记录到历史但不触发AI回复 [${messageData.messageId}], ` +
-          `chatId=${chatId}, contact=${contactName}, reason=${filterResult.reason}`,
-      );
-
-      return {
-        continue: false,
-        response: { success: true, message: 'Message recorded to history only' },
-      };
-    }
-
-    return { continue: true, data: { content: filterResult.content } };
-  }
-
-  /**
-   * 管线步骤 2: 消息去重（异步版本，使用 Redis）
-   */
-  async checkDuplicationAsync(messageData: EnterpriseMessageCallbackDto): Promise<PipelineResult> {
-    const isProcessed = await this.deduplicationService.isMessageProcessedAsync(
-      messageData.messageId,
-    );
-    if (isProcessed) {
-      this.logger.log(`[消息去重] 消息 [${messageData.messageId}] 已处理过，跳过重复处理`);
-      return {
-        continue: false,
-        response: { success: true, message: 'Duplicate message ignored' },
-      };
-    }
-
-    return { continue: true };
-  }
-
-  /**
-   * 管线步骤 3: 将用户消息记录到历史
-   */
-  async recordUserMessageToHistory(
+  private async recordUserMessageToHistory(
     messageData: EnterpriseMessageCallbackDto,
     contentFromFilter?: string,
   ): Promise<void> {
@@ -181,8 +205,12 @@ export class MessagePipelineService {
       return;
     }
 
-    await this.historyService.addMessageToHistory(chatId, 'user', content, {
+    const userMsg: ChatMessageInput = {
+      chatId,
       messageId: messageData.messageId,
+      role: 'user',
+      content,
+      timestamp: Date.now(),
       candidateName: messageData.contactName || contactName,
       managerName: messageData.botUserId,
       orgId: messageData.orgId,
@@ -197,15 +225,16 @@ export class MessagePipelineService {
       payload: messageData.payload as Record<string, unknown>,
       avatar: messageData.avatar,
       externalUserId: messageData.externalUserId,
-    });
+    };
+    await this.chatSession.saveMessage(userMsg);
   }
 
   /**
-   * 管线步骤 4: 记录监控
+   * step 4: 记录监控
    */
-  recordMessageReceived(messageData: EnterpriseMessageCallbackDto): void {
+  private recordMessageReceived(messageData: EnterpriseMessageCallbackDto): void {
     const parsed = MessageParser.parse(messageData);
-    const scenario = MessageParser.determineScenario(messageData);
+    const scenario = MessageParser.determineScenario();
     this.monitoringService.recordMessageReceived(
       messageData.messageId,
       parsed.chatId,
@@ -227,7 +256,7 @@ export class MessagePipelineService {
   async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
     const parsed = MessageParser.parse(messageData);
     const { chatId, content, contactName, messageId } = parsed;
-    const scenario = MessageParser.determineScenario(messageData);
+    const scenario = MessageParser.determineScenario();
 
     try {
       await this.processMessageCore({
@@ -256,7 +285,7 @@ export class MessagePipelineService {
   ): Promise<void> {
     if (messages.length === 0) return;
 
-    const scenario = MessageParser.determineScenario(messages[0]);
+    const scenario = MessageParser.determineScenario();
     const lastMessage = messages[messages.length - 1];
     const parsed = MessageParser.parse(lastMessage);
     const { chatId, contactName } = parsed;
@@ -333,14 +362,10 @@ export class MessagePipelineService {
 
     const logPrefix = isSingleMessage ? '' : '[聚合处理]';
 
-    // 1. 获取历史消息（已预先写入当前消息，此处排除当前消息）
-    const historyMessages = await this.historyService.getHistoryForContext(chatId, messageId);
-
-    // 2. 调用 Agent
-    const agentResult = await this.agentGateway.invoke({
+    // 1. 调用 Agent（历史消息由 ShortTermService 内部读取，当前消息已在 step3 写入 DB）
+    const agentResult = await this.callAgent({
       sessionId: chatId,
       userMessage: content,
-      historyMessages,
       scenario,
       messageId,
       recordMonitoring: true,
@@ -407,7 +432,7 @@ export class MessagePipelineService {
    * 构建成功记录的元数据
    */
   private buildSuccessMetadata(
-    agentResult: Awaited<ReturnType<AgentGatewayService['invoke']>>,
+    agentResult: AgentInvokeResult,
     deliveryResult: { segmentCount: number },
     scenario: ScenarioType,
   ): Record<string, unknown> {
@@ -515,7 +540,7 @@ export class MessagePipelineService {
     });
 
     // 发送告警（根据异常类型映射告警级别）
-    const fallbackMessage = this.agentGateway.getFallbackMessage();
+    const fallbackMessage = this.getFallbackMessage();
     const alertLevel = this.getAlertLevelFromError(error);
 
     // 从 error 对象中提取调试信息（由 Agent 服务附加）
@@ -610,7 +635,7 @@ export class MessagePipelineService {
    */
   private async getCandidateNameFromHistory(chatId: string): Promise<string | undefined> {
     try {
-      const detail = await this.historyService.getHistoryDetail(chatId);
+      const detail = await this.chatSession.getChatSessionMessages(chatId);
       if (!detail?.messages) {
         return undefined;
       }
@@ -621,6 +646,94 @@ export class MessagePipelineService {
       this.logger.debug(`获取候选人昵称失败 [${chatId}]: ${errorMessage}`);
       return undefined;
     }
+  }
+
+  // ========================================
+  // Agent 调用（原 AgentGatewayService）
+  // ========================================
+
+  private getFallbackMessage(options?: FallbackMessageOptions): string {
+    if (options?.customMessage) return options.customMessage;
+
+    const envMessage = this.configService.get<string>('AGENT_FALLBACK_MESSAGE', '');
+    if (envMessage) return envMessage;
+
+    if (options?.random === false) return this.defaultFallbackMessages[0];
+
+    const index = Math.floor(Math.random() * this.defaultFallbackMessages.length);
+    return this.defaultFallbackMessages[index];
+  }
+
+  private async callAgent(params: {
+    sessionId: string;
+    userMessage: string;
+    scenario?: string;
+    messageId?: string;
+    recordMonitoring?: boolean;
+    userId: string;
+    corpId?: string;
+  }): Promise<AgentInvokeResult> {
+    const {
+      userMessage,
+      scenario = 'candidate-consultation',
+      messageId,
+      recordMonitoring = true,
+      userId,
+      corpId = 'default',
+    } = params;
+
+    const startTime = Date.now();
+    let shouldRecordAiEnd = false;
+
+    try {
+      if (recordMonitoring && messageId) {
+        this.monitoringService.recordAiStart(messageId);
+        shouldRecordAiEnd = true;
+      }
+
+      const result = await this.loop.invoke({
+        userMessage,
+        userId,
+        corpId,
+        sessionId: params.sessionId,
+        scenario,
+      });
+
+      const processingTime = Date.now() - startTime;
+
+      const content = this.normalizeContent(result.text);
+      if (!content) {
+        throw new Error('Agent 返回空响应');
+      }
+
+      this.logger.log(
+        `Agent 调用成功，耗时 ${processingTime}ms，tokens=${result.usage?.totalTokens || 'N/A'}`,
+      );
+
+      return {
+        reply: { content, usage: result.usage },
+        isFallback: false,
+        processingTime,
+      };
+    } catch (error) {
+      this.logger.error(`Agent 调用异常: ${error.message}`);
+      throw error;
+    } finally {
+      if (shouldRecordAiEnd && messageId) {
+        this.monitoringService.recordAiEnd(messageId);
+      }
+    }
+  }
+
+  private normalizeContent(rawContent: string): string {
+    if (ReplyNormalizer.needsNormalization(rawContent)) {
+      const normalized = ReplyNormalizer.normalize(rawContent);
+      this.logger.debug(
+        `[ReplyNormalizer] 已清洗回复: "${rawContent.substring(0, 50)}..." → "${normalized.substring(0, 50)}..."`,
+      );
+      return normalized;
+    }
+    return rawContent;
   }
 
   /**
@@ -650,7 +763,7 @@ export class MessagePipelineService {
         scenario,
         fallbackMessage,
         level: AlertLevel.ERROR,
-        title: '🆘 小蛋糕出错了，需人工介入',
+        title: '🆘 蛋糕出错了，需人工介入',
         // 消息降级场景 @ 琪琪，需要人工介入回复用户
         atUsers: [...ALERT_RECEIVERS.FALLBACK],
       })

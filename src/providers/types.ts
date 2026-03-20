@@ -13,9 +13,14 @@
  * 每个角色对应环境变量 AGENT_{ROLE}_MODEL 和 AGENT_{ROLE}_FALLBACKS。
  * 新增角色只需在此处添加一行。
  */
-export const MODEL_ROLES = ['chat', 'default', 'fast', 'classify', 'extract', 'reasoning'] as const;
-
-export type ModelRole = (typeof MODEL_ROLES)[number];
+export enum ModelRole {
+  Chat = 'chat',
+  Default = 'default',
+  Fast = 'fast',
+  Classify = 'classify',
+  Extract = 'extract',
+  Reasoning = 'reasoning',
+}
 
 // ==================== Provider 配置 ====================
 

@@ -49,6 +49,9 @@
       "@test-suite/*": [
         "src/biz/test-suite/*"
       ],
+      "@evaluation/*": [
+        "src/evaluation/*"
+      ],
       "@biz/*": [
         "src/biz/*"
       ],

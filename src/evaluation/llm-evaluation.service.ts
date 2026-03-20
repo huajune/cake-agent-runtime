@@ -1,8 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CompletionService } from '@agent/completion.service';
 import { randomUUID } from 'crypto';
-import { SimilarityRating } from '../../enums/test.enum';
-import { LlmEvaluationResult, EvaluationInput } from '../../types/test-suite.types';
+import { SimilarityRating, LlmEvaluationResult, EvaluationInput } from './evaluation.types';
 
 export type { LlmEvaluationResult, EvaluationInput };
 

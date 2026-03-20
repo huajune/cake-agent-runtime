@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LanguageModel, generateText, streamText } from 'ai';
 import { ReliableService } from './reliable.service';
-import { MODEL_ROLES, ModelRole, ReliableConfig } from './types';
+import { ModelRole, ReliableConfig } from './types';
 
 /**
  * 模型路由服务 — Layer 3: 角色 → 模型映射
@@ -82,7 +82,7 @@ export class RouterService {
 
   /** 列出所有已配置的角色 */
   listRoles(): ModelRole[] {
-    return MODEL_ROLES.filter((role) =>
+    return Object.values(ModelRole).filter((role) =>
       this.config.get<string>(`AGENT_${role.toUpperCase()}_MODEL`),
     );
   }

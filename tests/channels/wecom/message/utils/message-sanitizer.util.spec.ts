@@ -1,5 +1,5 @@
 import { MessageSanitizer } from '@wecom/message/utils/message-sanitizer.util';
-import { EnterpriseMessageCallbackDto } from '@wecom/message/dto/message-callback.dto';
+import { EnterpriseMessageCallbackDto } from '@wecom/message/message-callback.dto';
 
 describe('MessageSanitizer', () => {
   describe('sanitizeString', () => {

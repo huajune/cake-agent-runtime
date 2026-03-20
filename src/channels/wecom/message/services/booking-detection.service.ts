@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { FeishuBookingService } from '@infra/feishu/services/booking.service';
-import { BookingRepository } from '@biz/message/repositories/booking.repository';
+import { BookingService } from '@biz/message/services/booking.service';
 import { InterviewBookingInfo } from '@infra/feishu/interfaces/interface';
 
 /**
@@ -25,7 +25,7 @@ export class BookingDetectionService {
 
   constructor(
     private readonly feishuBookingService: FeishuBookingService,
-    private readonly bookingRepository: BookingRepository,
+    private readonly bookingService: BookingService,
   ) {}
 
   /**
@@ -113,7 +113,7 @@ export class BookingDetectionService {
   private updateBookingStatsAsync(bookingInfo: InterviewBookingInfo): void {
     setImmediate(async () => {
       try {
-        await this.bookingRepository.incrementBookingCount({
+        await this.bookingService.incrementBookingCount({
           brandName: bookingInfo.brandName,
           storeName: bookingInfo.storeName,
           chatId: bookingInfo.chatId,

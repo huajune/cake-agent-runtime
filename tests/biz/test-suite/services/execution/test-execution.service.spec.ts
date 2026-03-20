@@ -1,11 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { TestExecutionService } from '@biz/test-suite/services/execution/test-execution.service';
-import { TestExecutionRepository } from '@biz/test-suite/repositories/test-execution.repository';
+import { TestExecutionService } from '@evaluation/services/execution/test-execution.service';
+import { TestExecutionRepository } from '@evaluation/repositories/test-execution.repository';
 import { LoopService } from '@agent/loop.service';
 import { ContextService } from '@agent/context/context.service';
-import { ExecutionStatus } from '@biz/test-suite/enums/test.enum';
-import { TestChatRequestDto } from '@biz/test-suite/dto/test-chat.dto';
+import { ExecutionStatus } from '@evaluation/enums/test.enum';
+import { TestChatRequestDto } from '@evaluation/dto/test-chat.dto';
 import { MessageRole } from '@enums/message.enum';
 
 describe('TestExecutionService', () => {

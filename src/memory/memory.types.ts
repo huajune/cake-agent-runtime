@@ -54,8 +54,30 @@ export interface MemoryStore {
 
 // ========== Supabase 表结构映射 ==========
 
-/** agent_memories 表行类型 */
+/** agent_memories 表行类型（v2: 每用户一行，Profile 平铺 + Summary jsonb） */
 export interface AgentMemoryRow {
+  id: string;
+  corp_id: string;
+  user_id: string;
+  // Profile 平铺字段
+  name?: string | null;
+  phone?: string | null;
+  gender?: string | null;
+  age?: string | null;
+  is_student?: boolean | null;
+  education?: string | null;
+  has_health_certificate?: string | null;
+  // Summary（分层压缩）
+  summary_data?: SummaryData | null;
+  // 消息元数据
+  message_metadata?: MessageMetadata | null;
+  // 时间戳
+  created_at: string;
+  updated_at: string;
+}
+
+/** agent_memories 表行类型（v1: 旧结构，过渡用） */
+export interface AgentMemoryRowV1 {
   id: string;
   corp_id: string;
   user_id: string;
@@ -188,13 +210,24 @@ export interface ProceduralState {
   reason: string | null;
 }
 
-/** 对话摘要数据 — 长期记忆 Summary */
-export interface SummaryData {
+/** 单条对话摘要 */
+export interface SummaryEntry {
   summary: string;
   sessionId: string;
   startTime: string;
   endTime: string;
 }
+
+/** 对话摘要数据 — 分层压缩结构 */
+export interface SummaryData {
+  /** 最近 N 条详细摘要 */
+  recent: SummaryEntry[];
+  /** 更早的摘要被 LLM 压缩合并成的总结 */
+  archive: string | null;
+}
+
+/** 最大保留的详细摘要条数 */
+export const MAX_RECENT_SUMMARIES = 5;
 
 /** 消息回调元数据 — 冗余到长期记忆中 */
 export interface MessageMetadata {

@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { MessageCallbackAdapterService } from '@wecom/message/services/callback-adapter.service';
-import { EnterpriseMessageCallbackDto, GroupMessageCallbackDto } from '@wecom/message/dto/message-callback.dto';
+import { EnterpriseMessageCallbackDto, GroupMessageCallbackDto } from '@wecom/message/message-callback.dto';
 import { MessageSource, MessageType, ContactType } from '@enums/message-callback.enum';
 
 describe('MessageCallbackAdapterService', () => {

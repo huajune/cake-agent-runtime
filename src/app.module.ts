@@ -16,6 +16,7 @@ import { ObservabilityModule } from '@/observability/observability.module';
 import { AgentModule } from './agent/agent.module';
 import { WecomModule } from '@channels/wecom/wecom.module';
 import { BizModule } from '@biz/biz.module';
+import { EvaluationModule } from './evaluation/evaluation.module';
 import { validate } from './infra/config/env.validation';
 import { ApiTokenGuard } from './infra/server/guards/api-token.guard';
 
@@ -62,6 +63,7 @@ import { ApiTokenGuard } from './infra/server/guards/api-token.guard';
     McpModule, // MCP 客户端
     MemoryModule, // 记忆服务（Redis-backed）
     SpongeModule, // 海绵数据服务（岗位/面试 HTTP）
+    EvaluationModule, // Agent 评估（LLM 评分 + 对话解析）
     ObservabilityModule, // Observer 可观测性
 
     // ==================== 业务域 (Business Domains) ====================

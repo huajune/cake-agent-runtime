@@ -1,9 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import {
-  ParsedMessage,
-  ConversationTurn,
-  ConversationParseResult,
-} from '../../dto/conversation-test.dto';
+import { ParsedMessage, ConversationTurn, ConversationParseResult } from './evaluation.types';
 import type { AgentRunResult } from '@agent/loop.service';
 
 /**

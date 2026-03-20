@@ -1,6 +1,7 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ChatSessionService } from './services/chat-session.service';
 import { MessageProcessingService } from './services/message-processing.service';
+import { AnalyticsQueryService } from '@biz/monitoring/services/analytics/analytics-query.service';
 
 /**
  * 消息查询控制器
@@ -11,6 +12,7 @@ export class MessageController {
   constructor(
     private readonly chatSessionService: ChatSessionService,
     private readonly messageProcessingService: MessageProcessingService,
+    private readonly analyticsQueryService: AnalyticsQueryService,
   ) {}
 
   @Get('chat-messages')
@@ -61,7 +63,7 @@ export class MessageController {
 
   @Get('chat-trend')
   async getChatTrend(@Query('days') days?: string) {
-    return this.chatSessionService.getChatTrend(days ? parseInt(days, 10) : undefined);
+    return this.analyticsQueryService.getChatTrend(days ? parseInt(days, 10) : undefined);
   }
 
   @Get('chat-sessions/:chatId/messages')

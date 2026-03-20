@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ProceduralService } from '@memory/procedural.service';
+import { LongTermService } from '@memory/long-term.service';
 import { SpongeService } from '@sponge/sponge.service';
 import {
   AiTool,
@@ -11,6 +12,7 @@ import {
 } from '@shared-types/tool.types';
 
 import { buildAdvanceStageTool } from './advance-stage.tool';
+import { buildRecallHistoryTool } from './recall-history.tool';
 import { buildJobListTool } from './duliday-job-list.tool';
 import { buildInterviewBookingTool } from './duliday-interview-booking.tool';
 
@@ -36,13 +38,24 @@ export class ToolRegistryService {
 
   private readonly registry: Record<string, ToolDefinition>;
 
-  constructor(proceduralService: ProceduralService, spongeService: SpongeService) {
+  constructor(
+    proceduralService: ProceduralService,
+    longTermService: LongTermService,
+    spongeService: SpongeService,
+  ) {
     this.registry = {
       // ===== 阶段工具 =====
       advance_stage: createToolDefinition({
         name: 'advance_stage',
         description: '推进对话阶段（当前阶段目标达成后切换）',
         create: buildAdvanceStageTool(proceduralService),
+      }),
+
+      // ===== 记忆工具（按需检索） =====
+      recall_history: createToolDefinition({
+        name: 'recall_history',
+        description: '查询用户历史求职记录（用户提到"上次""之前"时调用）',
+        create: buildRecallHistoryTool(longTermService),
       }),
 
       // ===== 业务工具 =====
@@ -65,7 +78,12 @@ export class ToolRegistryService {
   // ==================== 场景工具映射 ====================
 
   private readonly scenarioToolMap: Record<string, string[]> = {
-    'candidate-consultation': ['advance_stage', 'duliday_job_list', 'duliday_interview_booking'],
+    'candidate-consultation': [
+      'advance_stage',
+      'recall_history',
+      'duliday_job_list',
+      'duliday_interview_booking',
+    ],
     'group-operations': [],
     evaluation: [],
   };

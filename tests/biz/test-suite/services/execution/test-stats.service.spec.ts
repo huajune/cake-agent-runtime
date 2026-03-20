@@ -1,15 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { TestStatsService } from '@biz/test-suite/services/execution/test-stats.service';
-import { TestExecutionRepository } from '@biz/test-suite/repositories/test-execution.repository';
-import { TestBatchRepository } from '@biz/test-suite/repositories/test-batch.repository';
-import { ConversationSnapshotRepository } from '@biz/test-suite/repositories/conversation-snapshot.repository';
+import { TestStatsService } from '@evaluation/services/execution/test-stats.service';
+import { TestExecutionRepository } from '@evaluation/repositories/test-execution.repository';
+import { TestBatchRepository } from '@evaluation/repositories/test-batch.repository';
+import { ConversationSnapshotRepository } from '@evaluation/repositories/conversation-snapshot.repository';
 import {
   ExecutionStatus,
   ReviewStatus,
   TestType,
   ConversationSourceStatus,
-} from '@biz/test-suite/enums/test.enum';
-import { TestExecution } from '@biz/test-suite/entities/test-execution.entity';
+} from '@evaluation/enums/test.enum';
+import { TestExecution } from '@evaluation/entities/test-execution.entity';
 
 describe('TestStatsService', () => {
   let service: TestStatsService;

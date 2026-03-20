@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit, forwardRef, Inject } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue, Job } from 'bull';
-import { EnterpriseMessageCallbackDto } from './dto/message-callback.dto';
+import { EnterpriseMessageCallbackDto } from './message-callback.dto';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { EnterpriseMessageCallbackDto } from '../dto/message-callback.dto';
+import { EnterpriseMessageCallbackDto } from '../message-callback.dto';
 import {
   MessageSource,
   MessageType,

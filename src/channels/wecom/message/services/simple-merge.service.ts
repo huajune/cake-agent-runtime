@@ -4,7 +4,7 @@ import { Queue } from 'bull';
 import { RedisService } from '@infra/redis/redis.service';
 import { AgentReplyConfig } from '@biz/hosting-config/types/hosting-config.types';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
-import { EnterpriseMessageCallbackDto } from '../dto/message-callback.dto';
+import { EnterpriseMessageCallbackDto } from '../message-callback.dto';
 import { RedisKeyBuilder } from '../utils/redis-key.util';
 
 /**

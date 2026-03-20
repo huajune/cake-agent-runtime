@@ -4,8 +4,8 @@ import {
   testSuiteFieldNames,
   validationSetFieldNames,
 } from '@infra/feishu/constants/feishu-bitable.config';
-import { TestExecutionService } from '../execution/test-execution.service';
-import { FeishuTestStatus } from '../../enums/test.enum';
+import { TestExecutionService } from './test-execution.service';
+import { FeishuTestStatus } from '../enums/test.enum';
 
 /**
  * 测试结果回写服务
@@ -35,13 +35,11 @@ export class TestWriteBackService {
     testStatus: FeishuTestStatus,
     errorReason?: string,
   ): Promise<{ success: boolean; error?: string }> {
-    // 1. 获取执行记录
     const execution = await this.executionService.getExecution(executionId);
     if (!execution) {
       return { success: false, error: '执行记录不存在' };
     }
 
-    // case_id 是飞书记录的 record_id
     const recordId = execution.case_id;
     if (!recordId) {
       return { success: false, error: '执行记录缺少飞书记录 ID' };
@@ -109,23 +107,17 @@ export class TestWriteBackService {
     try {
       const { appToken, tableId } = this.bitableApi.getTableConfig('testSuite');
 
-      // 构建更新数据（飞书 API 更新记录时需要使用字段名称，不是字段 ID）
       const updateFields: Record<string, unknown> = {};
 
       this.logger.debug(`回写飞书: 记录=${recordId}, 状态=${testStatus}, 批次=${batchId}`);
 
-      // 1. 测试状态（单选字段）- 单选字段使用选项名称（不是选项 ID）
       updateFields[testSuiteFieldNames.testStatus] = testStatus;
-
-      // 2. 最近测试时间（日期时间字段）
       updateFields[testSuiteFieldNames.lastTestTime] = Date.now();
 
-      // 3. 测试批次（文本字段）
       if (batchId) {
         updateFields[testSuiteFieldNames.testBatch] = batchId;
       }
 
-      // 4. 错误原因（单选字段）- Agent 错误归因，仅在失败时更新
       if (testStatus === FeishuTestStatus.FAILED && errorReason) {
         updateFields[testSuiteFieldNames.errorReason] = errorReason;
       }
@@ -183,27 +175,22 @@ export class TestWriteBackService {
 
   /**
    * 回写回归验证相似度分数到飞书
-   *
-   * 注意：回归验证数据现在写入 validationSet 表（已从 testSuite 迁移）
    */
   async writeBackSimilarityScore(
     recordId: string,
     avgSimilarityScore: number | null,
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      // 回归验证使用独立的验证集表
       const { appToken, tableId } = this.bitableApi.getTableConfig('validationSet');
 
       const updateFields: Record<string, unknown> = {};
 
       this.logger.debug(`回写相似度分数: 记录=${recordId}, 分数=${avgSimilarityScore}`);
 
-      // 相似度分数字段（数字字段）- 使用验证集字段名配置
       if (avgSimilarityScore !== null) {
         updateFields[validationSetFieldNames.similarityScore] = avgSimilarityScore;
       }
 
-      // 更新最近测试时间 - 使用验证集字段名配置
       updateFields[validationSetFieldNames.lastTestTime] = Date.now();
 
       this.logger.debug(`更新字段: ${JSON.stringify(updateFields)}`);

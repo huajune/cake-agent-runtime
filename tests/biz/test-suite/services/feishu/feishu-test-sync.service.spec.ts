@@ -1,12 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { FeishuTestSyncService } from '@biz/test-suite/services/feishu/feishu-test-sync.service';
+import { FeishuTestSyncService } from '@evaluation/services/feishu/feishu-test-sync.service';
 import {
   FeishuBitableApiService,
   BitableRecord,
   BitableField,
 } from '@infra/feishu/services/bitable-api.service';
-import { ConversationParserService } from '@biz/test-suite/services/conversation/conversation-parser.service';
-import { TestType, MessageRole } from '@biz/test-suite/enums/test.enum';
+import { ConversationParserService } from '@evaluation/services/conversation/conversation-parser.service';
+import { TestType, MessageRole } from '@evaluation/enums/test.enum';
 
 describe('FeishuTestSyncService', () => {
   let service: FeishuTestSyncService;

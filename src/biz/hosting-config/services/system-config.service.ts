@@ -33,6 +33,8 @@ export class SystemConfigService {
 
   // 配置变更回调列表
   private readonly configChangeCallbacks: Array<(config: AgentReplyConfig) => void> = [];
+  private readonly aiReplyChangeCallbacks: Array<(enabled: boolean) => void> = [];
+  private readonly messageMergeChangeCallbacks: Array<(enabled: boolean) => void> = [];
 
   constructor(
     private readonly systemConfigRepository: SystemConfigRepository,
@@ -67,7 +69,22 @@ export class SystemConfigService {
       this.logger.error('更新 AI 回复状态到数据库失败', error);
     }
 
+    for (const cb of this.aiReplyChangeCallbacks) {
+      try {
+        cb(enabled);
+      } catch {
+        /* ignore */
+      }
+    }
+
     return enabled;
+  }
+
+  /**
+   * 注册 AI 回复开关变更回调
+   */
+  onAiReplyChange(callback: (enabled: boolean) => void): void {
+    this.aiReplyChangeCallbacks.push(callback);
   }
 
   // ==================== 消息聚合开关 ====================
@@ -98,7 +115,22 @@ export class SystemConfigService {
       this.logger.error('更新消息聚合状态到数据库失败', error);
     }
 
+    for (const cb of this.messageMergeChangeCallbacks) {
+      try {
+        cb(enabled);
+      } catch {
+        /* ignore */
+      }
+    }
+
     return enabled;
+  }
+
+  /**
+   * 注册消息聚合开关变更回调
+   */
+  onMessageMergeChange(callback: (enabled: boolean) => void): void {
+    this.messageMergeChangeCallbacks.push(callback);
   }
 
   // ==================== Agent 回复策略配置 ====================

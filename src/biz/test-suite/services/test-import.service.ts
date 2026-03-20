@@ -4,15 +4,29 @@ import {
   BitableField,
   BitableRecord,
 } from '@infra/feishu/services/bitable-api.service';
-import { MessageRole, TestType } from '../../enums/test.enum';
-import { ConversationParserService } from '../conversation/conversation-parser.service';
-import { ConversationParseResult } from '../../dto/conversation-test.dto';
+import { ImportFromFeishuRequestDto, ImportResult } from '../dto/test-chat.dto';
+import { ConversationParserService } from '@evaluation/conversation-parser.service';
+import { ConversationParseResult } from '../dto/conversation-test.dto';
+import { TestBatchService } from './test-batch.service';
+import { TestExecutionService } from './test-execution.service';
+import { TestWriteBackService } from './test-write-back.service';
+import { ConversationTestService } from './conversation-test.service';
+import { TestSuiteProcessor } from '../test-suite.processor';
+import { ConversationSnapshotRepository } from '../repositories/conversation-snapshot.repository';
+import {
+  BatchStatus,
+  BatchSource,
+  ExecutionStatus,
+  TestType,
+  ConversationSourceStatus,
+  MessageRole,
+} from '../enums/test.enum';
 
 /**
  * 解析后的测试用例（用例测试）
  */
 export interface ParsedTestCase {
-  caseId: string; // 飞书记录 ID
+  caseId: string;
   caseName: string;
   category?: string;
   message: string;
@@ -25,36 +39,147 @@ export interface ParsedTestCase {
  * 解析后的回归验证记录
  */
 export interface ParsedConversationTest {
-  recordId: string; // 飞书记录 ID
-  conversationId: string; // 对话标识
+  recordId: string;
+  conversationId: string;
   participantName: string | null;
-  rawText: string; // 原始对话文本（带时间戳）
+  rawText: string;
   parseResult: ConversationParseResult;
   testType: TestType;
 }
 
 /**
- * 飞书测试/验证集同步服务（读取层）
+ * 测试导入服务
  *
  * 职责：
- * - 从飞书多维表格读取测试用例
- * - 解析飞书记录为测试用例格式
- * - 解析飞书记录为回归验证格式
- *
- * 写回操作已迁移至 TestWriteBackService
+ * - 从飞书多维表格导入测试用例
+ * - 提供一键创建批次功能
+ * - 协调导入和执行流程
+ * - 读取并解析飞书表格数据
  */
 @Injectable()
-export class FeishuTestSyncService {
-  private readonly logger = new Logger(FeishuTestSyncService.name);
+export class TestImportService {
+  private readonly logger = new Logger(TestImportService.name);
 
   constructor(
+    private readonly batchService: TestBatchService,
+    private readonly executionService: TestExecutionService,
+    private readonly writeBackService: TestWriteBackService,
     private readonly bitableApi: FeishuBitableApiService,
+    private readonly conversationSnapshotRepository: ConversationSnapshotRepository,
+    private readonly conversationTestService: ConversationTestService,
     private readonly parserService: ConversationParserService,
+    private readonly testProcessor: TestSuiteProcessor,
   ) {
-    this.logger.log('FeishuTestSyncService 初始化完成');
+    this.logger.log('TestImportService 初始化完成');
   }
 
-  // ==================== 测试用例读取 ====================
+  // ==================== 飞书数据导入 ====================
+
+  /**
+   * 从飞书多维表格导入测试用例
+   */
+  async importFromFeishu(request: ImportFromFeishuRequestDto): Promise<ImportResult> {
+    this.logger.log(`从飞书导入测试用例: appToken=${request.appToken}, tableId=${request.tableId}`);
+
+    const cases = await this.getTestCases(request.appToken, request.tableId);
+    this.logger.log(`从飞书获取 ${cases.length} 个有效测试用例`);
+
+    if (cases.length === 0) {
+      throw new Error('飞书表格中没有数据');
+    }
+
+    const batchName =
+      request.batchName ||
+      `飞书导入 ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`;
+    const batch = await this.batchService.createBatch({
+      name: batchName,
+      source: BatchSource.FEISHU,
+      feishuTableId: request.tableId,
+      testType: request.testType,
+    });
+
+    const savedCases: ImportResult['cases'] = [];
+    for (const testCase of cases) {
+      const execution = await this.executionService.saveExecution({
+        batchId: batch.id,
+        caseId: testCase.caseId,
+        caseName: testCase.caseName,
+        category: testCase.category,
+        testInput: {
+          message: testCase.message,
+          history: testCase.history,
+          scenario: 'candidate-consultation',
+        },
+        expectedOutput: testCase.expectedOutput,
+        agentRequest: null,
+        agentResponse: null,
+        actualOutput: '',
+        toolCalls: [],
+        executionStatus: ExecutionStatus.PENDING,
+        durationMs: 0,
+        tokenUsage: null,
+        errorMessage: null,
+      });
+
+      savedCases.push({
+        caseId: execution.id,
+        caseName: testCase.caseName || '未命名',
+        category: testCase.category,
+        message: testCase.message,
+      });
+    }
+
+    await this.batchService.updateBatchStats(batch.id);
+
+    if (request.executeImmediately) {
+      this.logger.log('将测试用例添加到任务队列...');
+
+      await this.batchService.updateBatchStatus(batch.id, BatchStatus.RUNNING);
+
+      this.testProcessor.addBatchTestJobs(batch.id, cases).catch((err: Error) => {
+        this.logger.error(`添加任务到队列失败: ${err.message}`, err.stack);
+      });
+    }
+
+    return {
+      batchId: batch.id,
+      batchName: batch.name,
+      totalImported: savedCases.length,
+      cases: savedCases,
+    };
+  }
+
+  /**
+   * 一键从预配置的测试/验证集表导入并执行
+   */
+  async quickCreateBatch(options?: {
+    batchName?: string;
+    parallel?: boolean;
+    testType?: TestType;
+  }): Promise<ImportResult> {
+    const testType = options?.testType || TestType.SCENARIO;
+
+    if (testType === TestType.CONVERSATION) {
+      return this.quickCreateConversationBatch(options);
+    }
+
+    const { appToken, tableId } = this.bitableApi.getTableConfig('testSuite');
+
+    this.logger.log(`一键创建用例测试: 从测试/验证集表 ${tableId} 导入`);
+
+    return this.importFromFeishu({
+      appToken,
+      tableId,
+      batchName:
+        options?.batchName ||
+        `用例测试 ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`,
+      executeImmediately: true,
+      parallel: options?.parallel || false,
+      testType: TestType.SCENARIO,
+    });
+  }
+
+  // ==================== 飞书表格读取与解析 ====================
 
   /**
    * 从预配置的测试/验证集表获取所有测试用例
@@ -84,10 +209,26 @@ export class FeishuTestSyncService {
     return this.parseRecords(records, fields);
   }
 
-  // ==================== 记录解析 ====================
+  /**
+   * 从预配置表获取回归验证记录
+   */
+  async getConversationTestsFromDefaultTable(): Promise<{
+    appToken: string;
+    tableId: string;
+    conversations: ParsedConversationTest[];
+  }> {
+    const { appToken, tableId } = this.bitableApi.getTableConfig('validationSet');
+
+    const fields = await this.bitableApi.getFields(appToken, tableId);
+    const records = await this.bitableApi.getAllRecords(appToken, tableId);
+
+    const conversations = this.parseValidationSetRecords(records, fields);
+
+    return { appToken, tableId, conversations };
+  }
 
   /**
-   * 解析飞书记录为测试用例（支持用例测试和回归验证）
+   * 解析飞书记录为测试用例
    */
   parseRecords(records: BitableRecord[], fields: BitableField[]): ParsedTestCase[] {
     const cases: ParsedTestCase[] = [];
@@ -97,7 +238,6 @@ export class FeishuTestSyncService {
       try {
         const recordFields = record.fields;
 
-        // 提取测试类型（默认为用例测试）
         const testTypeStr = this.extractFieldValue(recordFields, fieldNameToId, [
           '测试类型',
           'test_type',
@@ -106,13 +246,11 @@ export class FeishuTestSyncService {
         ]);
         const testType = testTypeStr === '对话验证' ? TestType.CONVERSATION : TestType.SCENARIO;
 
-        // 回归验证类型，跳过解析（使用专门的方法）
         if (testType === TestType.CONVERSATION) {
           this.logger.debug(`跳过回归验证记录 ${record.record_id}，使用专门方法解析`);
           continue;
         }
 
-        // 提取字段值（支持多种常见字段名）
         const caseName = this.extractFieldValue(recordFields, fieldNameToId, [
           '用例名称',
           '名称',
@@ -133,7 +271,6 @@ export class FeishuTestSyncService {
           'question',
         ]);
 
-        // 消息是必填的
         if (!message) {
           this.logger.debug(`跳过记录 ${record.record_id}: 缺少消息字段`);
           continue;
@@ -200,7 +337,6 @@ export class FeishuTestSyncService {
       try {
         const recordFields = record.fields;
 
-        // 提取测试类型
         const testTypeStr = this.extractFieldValue(recordFields, fieldNameToId, [
           '测试类型',
           'test_type',
@@ -208,12 +344,10 @@ export class FeishuTestSyncService {
           'type',
         ]);
 
-        // 只处理回归验证类型
         if (testTypeStr !== '对话验证') {
           continue;
         }
 
-        // 提取对话记录字段
         const rawText = this.extractFieldValue(recordFields, fieldNameToId, [
           '完整对话记录',
           '对话记录',
@@ -227,7 +361,6 @@ export class FeishuTestSyncService {
           continue;
         }
 
-        // 提取参与者名称
         const participantName = this.extractFieldValue(recordFields, fieldNameToId, [
           '候选人微信昵称',
           '候选人姓名',
@@ -237,7 +370,6 @@ export class FeishuTestSyncService {
           '姓名',
         ]);
 
-        // 使用 ConversationParserService 解析对话
         const parseResult = this.parserService.parseConversation(rawText);
 
         if (!parseResult.success) {
@@ -264,33 +396,7 @@ export class FeishuTestSyncService {
   }
 
   /**
-   * 从预配置表获取回归验证记录
-   *
-   * 注意：回归验证数据现在从 validationSet 表读取（已从 testSuite 迁移）
-   */
-  async getConversationTestsFromDefaultTable(): Promise<{
-    appToken: string;
-    tableId: string;
-    conversations: ParsedConversationTest[];
-  }> {
-    // 回归验证使用独立的验证集表
-    const { appToken, tableId } = this.bitableApi.getTableConfig('validationSet');
-
-    const fields = await this.bitableApi.getFields(appToken, tableId);
-    const records = await this.bitableApi.getAllRecords(appToken, tableId);
-
-    // 验证集表的所有记录都是回归验证，不需要过滤 test_type
-    const conversations = this.parseValidationSetRecords(records, fields);
-
-    return { appToken, tableId, conversations };
-  }
-
-  /**
    * 解析验证集表记录（专用于 validationSet 表）
-   *
-   * 与 parseConversationRecords 的区别：
-   * - 不需要检查 test_type 字段，所有记录都是回归验证
-   * - 字段名可能略有不同
    */
   parseValidationSetRecords(
     records: BitableRecord[],
@@ -303,7 +409,6 @@ export class FeishuTestSyncService {
       try {
         const recordFields = record.fields;
 
-        // 提取对话记录字段
         const rawText = this.extractFieldValue(recordFields, fieldNameToId, [
           '完整对话记录',
           '对话记录',
@@ -317,7 +422,6 @@ export class FeishuTestSyncService {
           continue;
         }
 
-        // 提取参与者名称
         const participantName = this.extractFieldValue(recordFields, fieldNameToId, [
           '候选人微信昵称',
           '候选人姓名',
@@ -327,7 +431,6 @@ export class FeishuTestSyncService {
           '姓名',
         ]);
 
-        // 使用 ConversationParserService 解析对话
         const parseResult = this.parserService.parseConversation(rawText);
 
         if (!parseResult.success) {
@@ -364,7 +467,6 @@ export class FeishuTestSyncService {
     const lines = historyText.split('\n').filter((line) => line.trim());
 
     return lines.map((line) => {
-      // 格式1: [时间 用户名] 消息内容
       const bracketMatch = line.match(/^\[[\d/]+ [\d:]+ ([^\]]+)\]\s*(.*)$/);
       if (bracketMatch) {
         const userName = bracketMatch[1].trim();
@@ -377,12 +479,10 @@ export class FeishuTestSyncService {
         return { role: isAssistant ? MessageRole.ASSISTANT : MessageRole.USER, content };
       }
 
-      // 格式2: user:/候选人: 开头
       if (line.startsWith('user:') || line.startsWith('候选人:')) {
         return { role: MessageRole.USER, content: line.replace(/^(user|候选人):\s*/i, '') };
       }
 
-      // 格式3: AI:/assistant:/招募经理: 开头
       if (line.startsWith('AI:') || line.startsWith('assistant:') || line.startsWith('招募经理:')) {
         return {
           role: MessageRole.ASSISTANT,
@@ -390,12 +490,146 @@ export class FeishuTestSyncService {
         };
       }
 
-      // 默认当作用户消息
       return { role: MessageRole.USER, content: line };
     });
   }
 
-  // ==================== 私有工具方法 ====================
+  // ==================== 私有方法 ====================
+
+  /**
+   * 一键创建回归验证批次
+   */
+  private async quickCreateConversationBatch(options?: {
+    batchName?: string;
+    parallel?: boolean;
+  }): Promise<ImportResult> {
+    const { tableId, conversations } = await this.getConversationTestsFromDefaultTable();
+
+    this.logger.log(`一键创建回归验证: 从验证集表 ${tableId} 导入回归验证数据`);
+    this.logger.log(`获取到 ${conversations.length} 条回归验证记录`);
+
+    if (conversations.length === 0) {
+      throw new Error('验证集表中没有回归验证数据');
+    }
+
+    const batchName =
+      options?.batchName ||
+      `回归验证 ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`;
+    const batch = await this.batchService.createBatch({
+      name: batchName,
+      source: BatchSource.FEISHU,
+      feishuTableId: tableId,
+      testType: TestType.CONVERSATION,
+    });
+
+    const savedCases: ImportResult['cases'] = [];
+    const sourceIds: string[] = [];
+
+    for (const conv of conversations) {
+      const caseName = conv.participantName || '未知用户';
+
+      const source = await this.conversationSnapshotRepository.create({
+        batchId: batch.id,
+        feishuRecordId: conv.recordId,
+        conversationId: conv.conversationId || conv.recordId,
+        participantName: conv.participantName || undefined,
+        fullConversation: conv.parseResult.messages,
+        rawText: conv.rawText,
+        totalTurns: conv.parseResult.totalTurns,
+      });
+
+      sourceIds.push(source.id);
+
+      savedCases.push({
+        caseId: source.id,
+        caseName,
+        category: '回归验证',
+        message: conv.rawText.slice(0, 100) + (conv.rawText.length > 100 ? '...' : ''),
+      });
+    }
+
+    await this.batchService.updateBatchStatus(batch.id, BatchStatus.RUNNING);
+
+    this.executeConversationBatchAsync(batch.id, sourceIds).catch((err: Error) => {
+      this.logger.error(`回归验证批量执行失败: ${err.message}`, err.stack);
+    });
+
+    this.logger.log(`回归验证批次已创建，共 ${savedCases.length} 条用例，开始异步执行`);
+
+    return {
+      batchId: batch.id,
+      batchName: batch.name,
+      totalImported: savedCases.length,
+      cases: savedCases,
+    };
+  }
+
+  /**
+   * 异步执行回归验证批次
+   */
+  private async executeConversationBatchAsync(batchId: string, sourceIds: string[]): Promise<void> {
+    this.logger.log(`开始异步执行回归验证批次: ${batchId}, 共 ${sourceIds.length} 条对话`);
+
+    let successCount = 0;
+    let failedCount = 0;
+
+    for (const sourceId of sourceIds) {
+      try {
+        const result = await this.conversationTestService.executeConversation(sourceId);
+        successCount++;
+        this.logger.debug(`对话 ${sourceId} 执行成功 (${successCount}/${sourceIds.length})`);
+
+        await this.writeBackConversationResult(sourceId, result.avgSimilarityScore);
+      } catch (error: unknown) {
+        failedCount++;
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        this.logger.error(`对话 ${sourceId} 执行失败: ${errorMsg}`);
+
+        await this.conversationSnapshotRepository.updateStatus(
+          sourceId,
+          ConversationSourceStatus.FAILED,
+        );
+      }
+    }
+
+    await this.batchService.updateBatchStats(batchId);
+
+    const finalStatus =
+      failedCount === sourceIds.length ? BatchStatus.CANCELLED : BatchStatus.REVIEWING;
+    await this.batchService.updateBatchStatus(batchId, finalStatus);
+
+    this.logger.log(`回归验证批次 ${batchId} 执行完成: 成功 ${successCount}, 失败 ${failedCount}`);
+  }
+
+  /**
+   * 回写回归验证结果到飞书
+   */
+  private async writeBackConversationResult(
+    sourceId: string,
+    avgSimilarityScore: number | null,
+  ): Promise<void> {
+    try {
+      const source = await this.conversationSnapshotRepository.findById(sourceId);
+      if (!source?.feishu_record_id) {
+        this.logger.warn(`对话源 ${sourceId} 缺少飞书记录ID，跳过回写`);
+        return;
+      }
+
+      const result = await this.writeBackService.writeBackSimilarityScore(
+        source.feishu_record_id,
+        avgSimilarityScore,
+      );
+
+      if (result.success) {
+        this.logger.debug(`对话 ${sourceId} 回写飞书成功，相似度=${avgSimilarityScore}`);
+      } else {
+        this.logger.warn(`对话 ${sourceId} 回写飞书失败: ${result.error}`);
+      }
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`对话 ${sourceId} 回写飞书异常: ${errorMsg}`);
+    }
+  }
 
   /**
    * 从记录中提取字段值（支持多个字段名候选）
@@ -406,12 +640,10 @@ export class FeishuTestSyncService {
     candidateNames: string[],
   ): string | undefined {
     for (const name of candidateNames) {
-      // 先尝试用字段 ID
       const fieldId = fieldNameToId[name];
       if (fieldId && recordFields[fieldId]) {
         return this.normalizeFieldValue(recordFields[fieldId]);
       }
-      // 再尝试用字段名直接访问
       if (recordFields[name]) {
         return this.normalizeFieldValue(recordFields[name]);
       }
@@ -425,12 +657,10 @@ export class FeishuTestSyncService {
   private normalizeFieldValue(value: unknown): string | undefined {
     if (!value) return undefined;
 
-    // 文本字段
     if (typeof value === 'string') {
       return value.trim();
     }
 
-    // 数组（多行文本或多值字段）
     if (Array.isArray(value)) {
       return value
         .map((item: unknown) => {
@@ -444,7 +674,6 @@ export class FeishuTestSyncService {
         .trim();
     }
 
-    // 对象（富文本等）
     if (typeof value === 'object' && value !== null) {
       if ('text' in value) return String((value as { text: string }).text).trim();
       if ('value' in value) return String((value as { value: unknown }).value);

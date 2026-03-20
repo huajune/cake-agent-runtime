@@ -21,6 +21,28 @@ export class HostingConfigFacadeService {
     private readonly userHostingService: UserHostingService,
   ) {}
 
+  // ==================== 运行时开关 ====================
+
+  async getAiReplyStatus(): Promise<boolean> {
+    return this.systemConfigService.getAiReplyEnabled();
+  }
+
+  async toggleAiReply(enabled: boolean): Promise<{ enabled: boolean; message: string }> {
+    this.logger.log(`切换 AI 回复开关: ${enabled}`);
+    await this.systemConfigService.setAiReplyEnabled(enabled);
+    return { enabled, message: `AI 自动回复功能已${enabled ? '启用' : '禁用'}` };
+  }
+
+  async getMessageMergeStatus(): Promise<boolean> {
+    return this.systemConfigService.getMessageMergeEnabled();
+  }
+
+  async toggleMessageMerge(enabled: boolean): Promise<{ enabled: boolean; message: string }> {
+    this.logger.log(`切换消息聚合开关: ${enabled}`);
+    await this.systemConfigService.setMessageMergeEnabled(enabled);
+    return { enabled, message: `消息聚合功能已${enabled ? '启用' : '禁用'}` };
+  }
+
   // ==================== Agent 配置 ====================
 
   async getAgentReplyConfig(): Promise<{ config: AgentReplyConfig; defaults: AgentReplyConfig }> {

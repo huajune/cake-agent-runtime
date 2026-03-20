@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ChatMessageRepository } from '../repositories/chat-message.repository';
-import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.repository';
+import { ChatMessageInput } from '../types/message.types';
 
 /**
  * 聊天会话服务
@@ -10,10 +10,7 @@ import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.
 export class ChatSessionService {
   private readonly logger = new Logger(ChatSessionService.name);
 
-  constructor(
-    private readonly chatMessageRepository: ChatMessageRepository,
-    private readonly monitoringRepository: MonitoringRecordRepository,
-  ) {}
+  constructor(private readonly chatMessageRepository: ChatMessageRepository) {}
 
   /**
    * 获取聊天消息列表（分页）
@@ -80,20 +77,41 @@ export class ChatSessionService {
   }
 
   /**
-   * 获取聊天趋势（小时级）
+   * 按时间范围查询聊天记录（供飞书同步等外部服务使用）
    */
-  async getChatTrend(days = 7) {
-    this.logger.debug(`获取聊天趋势: 最近 ${days} 天`);
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-    const endDate = new Date();
-    const trend = await this.monitoringRepository.getDashboardHourlyTrend(startDate, endDate);
-    return trend.map((item) => ({
-      hour: item.hour,
-      message_count: item.messageCount,
-      active_users: item.uniqueUsers,
-      active_chats: 0,
-    }));
+  async getChatMessagesByTimeRange(startTime: number, endTime: number) {
+    return this.chatMessageRepository.getChatMessagesByTimeRange(startTime, endTime);
+  }
+
+  /**
+   * 清理过期聊天记录
+   */
+  async cleanupChatMessages(retentionDays: number): Promise<number> {
+    return this.chatMessageRepository.cleanupChatMessages(retentionDays);
+  }
+
+  /**
+   * 保存单条聊天消息
+   */
+  async saveMessage(message: ChatMessageInput): Promise<boolean> {
+    return this.chatMessageRepository.saveChatMessage(message);
+  }
+
+  /**
+   * 批量保存聊天消息
+   */
+  async saveMessagesBatch(messages: ChatMessageInput[]): Promise<number> {
+    return this.chatMessageRepository.saveChatMessagesBatch(messages);
+  }
+
+  /**
+   * 获取会话的历史消息（用于 AI 上下文）
+   */
+  async getChatHistory(
+    chatId: string,
+    limit: number,
+  ): Promise<Array<{ role: 'user' | 'assistant'; content: string; timestamp: number }>> {
+    return this.chatMessageRepository.getChatHistory(chatId, limit);
   }
 
   /**

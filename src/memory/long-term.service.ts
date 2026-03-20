@@ -1,17 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseStore } from './stores/supabase.store';
-import type { UserProfile } from './memory.types';
+import type { UserProfile, SummaryData, SummaryEntry, MessageMetadata } from './memory.types';
 
 /**
  * 长期记忆服务 — Profile + Summary
  *
- * 管理跨会话持久化的记忆：
- * - Profile（用户身份信息）：Supabase 永久 + Redis 缓存
- * - Summary（历次求职摘要）：Supabase 永久，按需检索
- *
- * 注意：当前 Phase 2 仅搭建接口框架。
- * DB 表结构变更（Phase 4）后，内部实现将重写为平铺列读写。
- * 目前 Profile 走 SupabaseStore 的旧 key-based 接口。
+ * 管理跨会话持久化的记忆（Supabase 永久，每用户一行）：
+ * - Profile（用户身份信息）：平铺列，非 null 覆盖更新
+ * - Summary（历次求职摘要）：jsonb，分层压缩（recent[] + archive）
  */
 @Injectable()
 export class LongTermService {
@@ -19,60 +15,39 @@ export class LongTermService {
 
   constructor(private readonly supabaseStore: SupabaseStore) {}
 
-  /**
-   * 获取用户 Profile
-   *
-   * 当前阶段：从 SupabaseStore 读取（旧 key-based），Phase 4 后重写。
-   */
+  // ==================== Profile ====================
+
   async getProfile(corpId: string, userId: string): Promise<UserProfile | null> {
     try {
-      const key = `profile:${corpId}:${userId}:identity`;
-      const entry = await this.supabaseStore.get(key);
-      if (!entry) return null;
-
-      const c = entry.content;
-      return {
-        name: (c.name as string) ?? null,
-        phone: (c.phone as string) ?? null,
-        gender: (c.gender as string) ?? null,
-        age: (c.age as string) ?? null,
-        is_student: (c.is_student as boolean) ?? null,
-        education: (c.education as string) ?? null,
-        has_health_certificate: (c.has_health_certificate as string) ?? null,
-      };
+      return await this.supabaseStore.getProfile(corpId, userId);
     } catch (error) {
       this.logger.warn('获取 Profile 失败', error);
       return null;
     }
   }
 
-  /**
-   * 保存/更新用户 Profile（非 null 字段覆盖）
-   *
-   * 当前阶段：走 SupabaseStore 的 set（内部 deepMerge），Phase 4 后重写。
-   */
-  async saveProfile(corpId: string, userId: string, profile: Partial<UserProfile>): Promise<void> {
+  async saveProfile(
+    corpId: string,
+    userId: string,
+    profile: Partial<UserProfile>,
+    metadata?: MessageMetadata,
+  ): Promise<void> {
     try {
-      // 过滤掉 null 值，只写入有值的字段
-      const nonNullFields: Record<string, unknown> = {};
+      // 过滤 null 值
+      const nonNull: Partial<UserProfile> = {};
       for (const [k, v] of Object.entries(profile)) {
         if (v !== null && v !== undefined) {
-          nonNullFields[k] = v;
+          (nonNull as Record<string, unknown>)[k] = v;
         }
       }
+      if (Object.keys(nonNull).length === 0) return;
 
-      if (Object.keys(nonNullFields).length === 0) return;
-
-      const key = `profile:${corpId}:${userId}:identity`;
-      await this.supabaseStore.set(key, nonNullFields);
+      await this.supabaseStore.upsertProfile(corpId, userId, nonNull, metadata);
     } catch (error) {
       this.logger.warn('保存 Profile 失败', error);
     }
   }
 
-  /**
-   * 格式化 Profile 为 prompt 段落
-   */
   formatProfileForPrompt(profile: UserProfile | null): string {
     if (!profile) return '';
 
@@ -87,5 +62,57 @@ export class LongTermService {
 
     if (lines.length === 0) return '';
     return `\n\n[用户档案]\n\n${lines.join('\n')}`;
+  }
+
+  // ==================== Summary ====================
+
+  async getSummaryData(corpId: string, userId: string): Promise<SummaryData | null> {
+    try {
+      return await this.supabaseStore.getSummaryData(corpId, userId);
+    } catch (error) {
+      this.logger.warn('获取 Summary 失败', error);
+      return null;
+    }
+  }
+
+  /**
+   * 追加一条摘要（自动分层压缩）
+   *
+   * @param compressArchive 压缩函数：将溢出的 recent 条目 + 旧 archive 合并为新 archive
+   */
+  async appendSummary(
+    corpId: string,
+    userId: string,
+    entry: SummaryEntry,
+    compressArchive?: (overflow: SummaryEntry[], existingArchive: string | null) => Promise<string>,
+  ): Promise<void> {
+    try {
+      await this.supabaseStore.appendSummary(corpId, userId, entry, compressArchive);
+    } catch (error) {
+      this.logger.warn('追加 Summary 失败', error);
+    }
+  }
+
+  /**
+   * 格式化 Summary 为 prompt 段落（recall_history 工具调用）
+   */
+  formatSummaryForPrompt(data: SummaryData | null): string {
+    if (!data) return '';
+
+    const parts: string[] = [];
+
+    if (data.archive) {
+      parts.push(`### 历史总结\n${data.archive}`);
+    }
+
+    if (data.recent.length > 0) {
+      const recentLines = data.recent.map(
+        (e) => `- [${e.startTime?.substring(0, 10) ?? '?'}] ${e.summary}`,
+      );
+      parts.push(`### 近期求职记录\n${recentLines.join('\n')}`);
+    }
+
+    if (parts.length === 0) return '';
+    return `\n\n[历史摘要]\n\n${parts.join('\n\n')}`;
   }
 }

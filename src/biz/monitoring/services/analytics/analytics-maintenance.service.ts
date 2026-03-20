@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { HourlyStats } from '../../types/analytics.types';
 import { MonitoringCacheService } from '../tracking/monitoring-cache.service';
-import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
+import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { MonitoringHourlyStatsRepository } from '../../repositories/hourly-stats.repository';
 import { MonitoringErrorLogRepository } from '../../repositories/error-log.repository';
 import { MonitoringRecordRepository } from '../../repositories/record.repository';
@@ -16,7 +16,7 @@ export class AnalyticsMaintenanceService {
   private readonly logger = new Logger(AnalyticsMaintenanceService.name);
 
   constructor(
-    private readonly messageProcessingRepository: MessageProcessingRepository,
+    private readonly messageProcessingService: MessageProcessingService,
     private readonly hourlyStatsRepository: MonitoringHourlyStatsRepository,
     private readonly errorLogRepository: MonitoringErrorLogRepository,
     private readonly cacheService: MonitoringCacheService,
@@ -34,7 +34,7 @@ export class AnalyticsMaintenanceService {
     try {
       this.logger.warn('执行大规模数据清理: Monitoring stats & Message processing records');
       await Promise.all([
-        this.messageProcessingRepository.clearAllRecords(),
+        this.messageProcessingService.clearAllRecords(),
         this.hourlyStatsRepository.clearAllRecords(),
         this.errorLogRepository.clearAllRecords(),
       ]);

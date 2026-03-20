@@ -4,7 +4,7 @@ import {
   GroupMessageCallbackDto,
   GroupMessageCallbackWrapperDto,
   MessageSource,
-} from '../dto/message-callback.dto';
+} from '../message-callback.dto';
 
 /**
  * 消息回调适配器服务
@@ -226,40 +226,5 @@ export class MessageCallbackAdapterService {
       return '****';
     }
     return `${token.substring(0, 4)}****${token.substring(token.length - 4)}`;
-  }
-
-  /**
-   * 比较两种格式的差异（调试用）
-   */
-  compareFormats(
-    _groupCallback: GroupMessageCallbackDto,
-    _enterpriseCallback: EnterpriseMessageCallbackDto,
-  ): {
-    groupOnly: string[];
-    enterpriseOnly: string[];
-    mapped: Array<{ group: string; enterprise: string }>;
-  } {
-    return {
-      groupOnly: [
-        'type (→ messageType)',
-        'contactId (→ imContactId)',
-        'botWxid (→ imBotId)',
-        'botWeixin (→ botUserId)',
-        'coworker',
-        'mentionSelf',
-        'roomTopic (→ roomName)',
-        'roomId (→ imRoomId)',
-      ],
-      enterpriseOnly: ['orgId', 'groupId', 'source'],
-      mapped: [
-        { group: 'type', enterprise: 'messageType' },
-        { group: 'contactId', enterprise: 'imContactId' },
-        { group: 'botWxid', enterprise: 'imBotId' },
-        { group: 'botWeixin', enterprise: 'botUserId' },
-        { group: 'timestamp (number)', enterprise: 'timestamp (string)' },
-        { group: 'roomId', enterprise: 'imRoomId' },
-        { group: 'roomTopic', enterprise: 'roomName' },
-      ],
-    };
   }
 }

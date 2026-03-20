@@ -8,7 +8,7 @@ import { AgentGatewayService } from '@wecom/message/services/agent-gateway.servi
 import { BookingDetectionService } from '@wecom/message/services/booking-detection.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
-import { EnterpriseMessageCallbackDto } from '@wecom/message/dto/message-callback.dto';
+import { EnterpriseMessageCallbackDto } from '@wecom/message/message-callback.dto';
 import { MessageType, ContactType, MessageSource } from '@enums/message-callback.enum';
 import { FilterReason } from '@wecom/message/services/filter.service';
 

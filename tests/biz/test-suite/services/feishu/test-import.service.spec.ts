@@ -1,14 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { TestImportService } from '@biz/test-suite/services/feishu/test-import.service';
+import { TestImportService } from '@evaluation/services/feishu/test-import.service';
 import { FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
-import { TestBatchService } from '@biz/test-suite/services/execution/test-batch.service';
-import { TestExecutionService } from '@biz/test-suite/services/execution/test-execution.service';
-import { FeishuTestSyncService } from '@biz/test-suite/services/feishu/feishu-test-sync.service';
-import { TestWriteBackService } from '@biz/test-suite/services/feishu/test-write-back.service';
-import { ConversationTestService } from '@biz/test-suite/services/conversation/conversation-test.service';
-import { TestSuiteProcessor } from '@biz/test-suite/test-suite.processor';
-import { ConversationSnapshotRepository } from '@biz/test-suite/repositories/conversation-snapshot.repository';
-import { BatchStatus, BatchSource, ExecutionStatus, TestType } from '@biz/test-suite/enums/test.enum';
+import { TestBatchService } from '@evaluation/services/execution/test-batch.service';
+import { TestExecutionService } from '@evaluation/services/execution/test-execution.service';
+import { FeishuTestSyncService } from '@evaluation/services/feishu/feishu-test-sync.service';
+import { TestWriteBackService } from '@evaluation/services/feishu/test-write-back.service';
+import { ConversationTestService } from '@evaluation/services/conversation/conversation-test.service';
+import { TestSuiteProcessor } from '@evaluation/test-suite.processor';
+import { ConversationSnapshotRepository } from '@evaluation/repositories/conversation-snapshot.repository';
+import { BatchStatus, BatchSource, ExecutionStatus, TestType } from '@evaluation/enums/test.enum';
 
 describe('TestImportService', () => {
   let service: TestImportService;

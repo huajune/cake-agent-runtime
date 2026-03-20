@@ -1,16 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { LoopService, type AgentRunResult } from '@agent/loop.service';
-import { LlmEvaluationService } from './llm-evaluation.service';
-import { ConversationParserService } from './conversation-parser.service';
-import { ConversationSnapshotRepository } from '../../repositories/conversation-snapshot.repository';
-import { TestExecutionRepository } from '../../repositories/test-execution.repository';
-import { type ConversationSnapshotRecord } from '../../entities/conversation-snapshot.entity';
+import { LlmEvaluationService } from '@evaluation/llm-evaluation.service';
+import { ConversationParserService } from '@evaluation/conversation-parser.service';
+import { ConversationSnapshotRepository } from '../repositories/conversation-snapshot.repository';
+import { TestExecutionRepository } from '../repositories/test-execution.repository';
+import { type ConversationSnapshotRecord } from '../entities/conversation-snapshot.entity';
+import { TestBatchService } from './test-batch.service';
 import {
   ExecutionStatus,
   ReviewStatus,
   ConversationSourceStatus,
   SimilarityRating,
-} from '../../enums/test.enum';
+} from '../enums/test.enum';
 import {
   ParsedMessage,
   ConversationParseResult,
@@ -18,7 +19,7 @@ import {
   ConversationTurn,
   ConversationTurnExecution,
   TurnListResponse,
-} from '../../dto/conversation-test.dto';
+} from '../dto/conversation-test.dto';
 
 /** 默认场景 */
 const DEFAULT_SCENARIO = 'candidate-consultation';
@@ -33,8 +34,6 @@ const SIMILARITY_THRESHOLD = 60;
  * - 执行回归验证（调用 Agent、记录结果）
  * - 查询对话源和轮次数据
  * - 汇总统计结果
- *
- * 文本解析委托给 ConversationParserService
  */
 @Injectable()
 export class ConversationTestService {
@@ -46,25 +45,20 @@ export class ConversationTestService {
     private readonly parserService: ConversationParserService,
     private readonly conversationSnapshotRepository: ConversationSnapshotRepository,
     private readonly executionRepository: TestExecutionRepository,
+    private readonly batchService: TestBatchService,
   ) {
     this.logger.log('ConversationTestService 初始化完成');
   }
 
   /**
-   * 解析原始对话文本（委托给 ConversationParserService）
-   *
-   * @param rawText 原始对话文本（带时间戳）
-   * @returns 解析结果
+   * 解析原始对话文本
    */
   parseConversation(rawText: string): ConversationParseResult {
     return this.parserService.parseConversation(rawText);
   }
 
   /**
-   * 将对话拆解为多个测试轮次（委托给 ConversationParserService）
-   *
-   * @param messages 解析后的消息列表
-   * @returns 测试轮次数组
+   * 将对话拆解为多个测试轮次
    */
   splitIntoTurns(messages: ParsedMessage[]): ConversationTurn[] {
     return this.parserService.splitIntoTurns(messages);
@@ -72,10 +66,6 @@ export class ConversationTestService {
 
   /**
    * 执行单个对话的所有轮次测试
-   *
-   * @param sourceId 对话源ID
-   * @param forceRerun 是否强制重新执行
-   * @returns 执行结果
    */
   async executeConversation(
     sourceId: string,
@@ -86,14 +76,12 @@ export class ConversationTestService {
       throw new Error(`对话源不存在: ${sourceId}`);
     }
 
-    // 更新状态为执行中
     await this.conversationSnapshotRepository.updateStatus(
       sourceId,
       ConversationSourceStatus.RUNNING,
     );
 
     try {
-      // 拆解对话为测试轮次
       const turns = this.parserService.splitIntoTurns(source.full_conversation as ParsedMessage[]);
 
       const turnResults: Array<{
@@ -103,13 +91,11 @@ export class ConversationTestService {
         executionStatus: string;
       }> = [];
 
-      // 逐轮执行测试
       for (const turn of turns) {
         const result = await this.executeTurn(source, turn, forceRerun);
         turnResults.push(result);
       }
 
-      // 计算统计数据
       const validScores = turnResults
         .map((t) => t.similarityScore)
         .filter((s): s is number => s !== null);
@@ -121,13 +107,17 @@ export class ConversationTestService {
 
       const minScore = validScores.length > 0 ? Math.min(...validScores) : null;
 
-      // 更新对话源状态和统计数据
       await this.conversationSnapshotRepository.updateSource(sourceId, {
         status: ConversationSourceStatus.COMPLETED,
         totalTurns: turns.length,
         avgSimilarityScore: avgScore,
         minSimilarityScore: minScore,
       });
+
+      // 更新批次统计
+      if (source.batch_id) {
+        await this.batchService.updateBatchStats(source.batch_id);
+      }
 
       return {
         sourceId,
@@ -162,7 +152,6 @@ export class ConversationTestService {
 
     const executions = await this.executionRepository.findByConversationSourceId(sourceId);
 
-    // 解析对话以获取期望输出和真人历史
     const turns = this.parserService.splitIntoTurns(source.full_conversation as ParsedMessage[]);
     const turnMap = new Map(turns.map((t) => [t.turnNumber, t]));
 
@@ -173,7 +162,6 @@ export class ConversationTestService {
         conversationSnapshotId: sourceId,
         turnNumber: exec.turn_number ?? 0,
         inputMessage: exec.input_message || turn?.userMessage || '',
-        // 返回真人对话历史（候选人 + 招募经理）
         history: turn?.history || [],
         expectedOutput: exec.expected_output || turn?.expectedOutput || null,
         actualOutput: exec.actual_output,
@@ -275,6 +263,9 @@ export class ConversationTestService {
       }
     }
 
+    // 批量执行完成后更新批次统计
+    await this.batchService.updateBatchStats(batchId);
+
     return { batchId, total: sources.length, successCount, failedCount, results };
   }
 
@@ -293,17 +284,8 @@ export class ConversationTestService {
     return { executionId, reviewStatus };
   }
 
-  /**
-   * 获取对话源的批次ID
-   */
-  async getSourceBatchId(sourceId: string): Promise<string | null> {
-    const source = await this.conversationSnapshotRepository.findById(sourceId);
-    return source?.batch_id ?? null;
-  }
+  // ========== 私有方法 ==========
 
-  /**
-   * 执行单个轮次测试
-   */
   private async executeTurn(
     source: ConversationSnapshotRecord,
     turn: ConversationTurn,
@@ -322,7 +304,6 @@ export class ConversationTestService {
       `执行对话轮次: ${sessionId} 第 ${turn.turnNumber} 轮 (sourceId: ${source.id})`,
     );
 
-    // 检查是否已有执行记录
     const existingExecution = await this.executionRepository.findByConversationSourceAndTurn(
       source.id,
       turn.turnNumber,
@@ -372,7 +353,6 @@ export class ConversationTestService {
 
     const durationMs = Date.now() - startTime;
 
-    // 提取 Agent 回复
     const actualOutput = loopResult?.text ?? '';
     const toolCalls: unknown[] = [];
     const tokenUsage = loopResult?.usage ?? {
@@ -381,7 +361,6 @@ export class ConversationTestService {
       totalTokens: 0,
     };
 
-    // 使用 LLM 评估（替代语义相似度）
     let similarityScore: number | null = null;
     let rating: SimilarityRating | null = null;
     let evaluationReason: string | null = null;
@@ -402,13 +381,11 @@ export class ConversationTestService {
       );
     }
 
-    // 确定评审状态
     const reviewStatus =
       similarityScore !== null && similarityScore >= SIMILARITY_THRESHOLD
         ? ReviewStatus.PASSED
         : ReviewStatus.PENDING;
 
-    // 保存或更新执行记录
     if (existingExecution) {
       await this.executionRepository.updateExecution(existingExecution.id, {
         agent_request: null,

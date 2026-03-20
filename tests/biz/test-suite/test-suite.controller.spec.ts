@@ -1,8 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HttpException, HttpStatus } from '@nestjs/common';
-import { TestSuiteController } from '@biz/test-suite/test-suite.controller';
-import { TestSuiteService } from '@biz/test-suite/test-suite.service';
-import { ExecutionStatus, BatchSource, ReviewStatus, TestType } from '@biz/test-suite/enums/test.enum';
+import { TestSuiteController } from '@evaluation/test-suite.controller';
+import { TestSuiteService } from '@evaluation/test-suite.service';
+import { ExecutionStatus, BatchSource, ReviewStatus, TestType } from '@evaluation/enums/test.enum';
 
 describe('TestSuiteController', () => {
   let controller: TestSuiteController;

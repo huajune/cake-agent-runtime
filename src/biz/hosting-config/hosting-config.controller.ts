@@ -4,13 +4,37 @@ import { HostingConfigFacadeService } from './services/hosting-config-facade.ser
 
 /**
  * 系统配置控制器
- * 纯委托层，不包含任何业务逻辑。
- * 所有操作委托给 HostingConfigFacadeService。
- * 运行时开关和 Worker 管理端点已迁移至 MessageController（wecom 层）。
+ * 纯委托层，不包含任何业务逻辑，所有操作委托给 HostingConfigFacadeService。
  */
 @Controller('config')
 export class HostingConfigController {
   constructor(private readonly facade: HostingConfigFacadeService) {}
+
+  // ==================== 运行时开关 ====================
+
+  @Get('ai-reply-status')
+  async getAiReplyStatus() {
+    return { enabled: await this.facade.getAiReplyStatus() };
+  }
+
+  @Post('toggle-ai-reply')
+  @HttpCode(200)
+  async toggleAiReply(@Body('enabled') enabled: boolean) {
+    return this.facade.toggleAiReply(enabled);
+  }
+
+  @Get('message-merge-status')
+  async getMessageMergeStatus() {
+    return { enabled: await this.facade.getMessageMergeStatus() };
+  }
+
+  @Post('toggle-message-merge')
+  @HttpCode(200)
+  async toggleMessageMerge(@Body('enabled') enabled: boolean) {
+    return this.facade.toggleMessageMerge(enabled);
+  }
+
+  // ==================== Agent 配置 ====================
 
   @Get('agent-config')
   async getAgentReplyConfig() {
@@ -28,6 +52,8 @@ export class HostingConfigController {
   async resetAgentReplyConfig() {
     return this.facade.resetAgentReplyConfig();
   }
+
+  // ==================== 黑名单 ====================
 
   @Get('blacklist')
   async getBlacklist() {

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { generateText, Output } from 'ai';
 import { RouterService } from '@providers/router.service';
+import { ModelRole } from '@providers/types';
 import { SpongeService } from '@/sponge/sponge.service';
 import { SessionFactsService } from '@memory/session-facts.service';
 import {
@@ -171,7 +172,7 @@ export class FactExtractionService {
 
   private async callLLM(prompt: string): Promise<EntityExtractionResult> {
     try {
-      const model = this.router.resolveByRole('extract');
+      const model = this.router.resolveByRole(ModelRole.Extract);
 
       const result = await generateText({
         model,

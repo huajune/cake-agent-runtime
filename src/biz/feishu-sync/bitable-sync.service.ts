@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
+import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { MessageProcessingRecord } from '@shared-types/tracking.types';
 import {
   FeishuBitableApiService,
@@ -31,7 +31,7 @@ export class FeishuBitableSyncService {
   private readonly logger = new Logger(FeishuBitableSyncService.name);
 
   constructor(
-    private readonly messageProcessingRepository: MessageProcessingRepository,
+    private readonly messageProcessingService: MessageProcessingService,
     private readonly bitableApi: FeishuBitableApiService,
   ) {}
 
@@ -47,7 +47,7 @@ export class FeishuBitableSyncService {
     }
 
     // 从数据库读取最近记录（限定 1000 条）
-    const result = await this.messageProcessingRepository.getMessageProcessingRecords({
+    const result = await this.messageProcessingService.getRecordsByTimestamps({
       limit: 1000,
     });
     const allRecords = result.records as unknown as MessageProcessingRecord[];

@@ -9,6 +9,7 @@ import { RouterService } from '@providers/router.service';
 import { ToolRegistryService } from '@tools/tool-registry.service';
 import { MemoryService } from '@memory/memory.service';
 import { MemoryConfig } from '@memory/memory.config';
+import { SettlementService } from '@memory/settlement.service';
 
 // Mock generateText from ai SDK
 jest.mock('ai', () => ({
@@ -102,6 +103,7 @@ describe('LoopService - invoke', () => {
         { provide: SignalDetectorService, useValue: mockClassifier },
         { provide: MemoryService, useValue: mockMemoryService },
         { provide: MemoryConfig, useValue: mockMemoryConfig },
+        { provide: SettlementService, useValue: { checkAndSettle: jest.fn().mockResolvedValue(false) } },
         { provide: RouterService, useValue: mockRouter },
         { provide: ToolRegistryService, useValue: mockToolRegistry },
         { provide: FactExtractionService, useValue: mockFactExtraction },

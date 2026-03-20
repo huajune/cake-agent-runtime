@@ -3,7 +3,7 @@ import {
   isTextPayload,
   isLocationPayload,
   LocationPayload,
-} from '../dto/message-callback.dto';
+} from '../message-callback.dto';
 import { ScenarioType } from '@enums/agent.enum';
 
 /**
@@ -105,10 +105,9 @@ export class MessageParser {
 
   /**
    * 判断消息场景
-   * 当前业务只有候选人私聊咨询这一个场景，预留 messageData 以便未来扩展
+   * 当前业务只有候选人私聊咨询这一个场景
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  static determineScenario(_messageData?: EnterpriseMessageCallbackDto): ScenarioType {
+  static determineScenario(): ScenarioType {
     return ScenarioType.CANDIDATE_CONSULTATION;
   }
 

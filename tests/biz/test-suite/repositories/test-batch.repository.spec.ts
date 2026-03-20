@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { TestBatchRepository } from '@biz/test-suite/repositories/test-batch.repository';
+import { TestBatchRepository } from '@evaluation/repositories/test-batch.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
-import { BatchStatus, BatchSource, TestType } from '@biz/test-suite/enums/test.enum';
+import { BatchStatus, BatchSource, TestType } from '@evaluation/enums/test.enum';
 
 function makeQueryMock(result: { data?: unknown; error?: unknown; count?: number }) {
   const chainMethods = [

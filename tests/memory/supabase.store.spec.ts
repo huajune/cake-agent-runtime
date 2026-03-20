@@ -13,18 +13,22 @@ describe('SupabaseStore', () => {
     eq: jest.fn().mockReturnThis(),
     maybeSingle: mockMaybeSingle,
     order: jest.fn().mockReturnThis(),
+    limit: jest.fn().mockReturnThis(),
   };
   const mockSelect = jest.fn().mockReturnValue(mockEqChain);
-  const mockUpsert = jest.fn();
-  const mockDeleteEq = {
-    eq: jest.fn().mockReturnThis(),
-  };
-  const mockDelete = jest.fn().mockReturnValue(mockDeleteEq);
+  const mockUpdate = jest.fn().mockReturnValue({ eq: jest.fn().mockResolvedValue({ error: null }) });
+  const mockInsert = jest.fn().mockResolvedValue({ error: null });
+  const mockDelete = jest.fn().mockReturnValue({
+    eq: jest.fn().mockReturnValue({
+      eq: jest.fn().mockResolvedValue({ error: null }),
+    }),
+  });
 
   const mockSupabaseClient = {
     from: jest.fn().mockReturnValue({
       select: mockSelect,
-      upsert: mockUpsert,
+      update: mockUpdate,
+      insert: mockInsert,
       delete: mockDelete,
     }),
   };
@@ -42,34 +46,26 @@ describe('SupabaseStore', () => {
     store = new SupabaseStore(mockSupabaseService as never, mockRedis as never, mockConfig as never);
   });
 
-  describe('get', () => {
+  describe('getProfile', () => {
     it('should return from Redis cache if available', async () => {
-      const entry = { key: 'profile_key', content: { pref: 'a' }, updatedAt: '2026-03-18' };
-      mockRedis.get.mockResolvedValue(entry);
+      const cached = { name: '张三', phone: '138', gender: null, age: null, is_student: null, education: null, has_health_certificate: null };
+      mockRedis.get.mockResolvedValue(cached);
 
-      const result = await store.get('profile:corp1:user1:pref');
-      expect(result).toEqual(entry);
-      expect(mockSupabaseClient.from).not.toHaveBeenCalled();
+      const result = await store.getProfile('corp1', 'user1');
+
+      expect(result).toEqual(cached);
     });
 
     it('should fallback to Supabase on cache miss', async () => {
       mockRedis.get.mockResolvedValue(null);
       mockMaybeSingle.mockResolvedValue({
-        data: {
-          memory_key: 'pref',
-          content: { style: 'formal' },
-          updated_at: '2026-03-18',
-        },
+        data: { name: '张三', phone: '138', gender: null, age: null, is_student: null, education: null, has_health_certificate: null },
         error: null,
       });
 
-      const result = await store.get('profile:corp1:user1:pref');
-      expect(result).toEqual({
-        key: 'pref',
-        content: { style: 'formal' },
-        updatedAt: '2026-03-18',
-      });
-      // Should backfill cache
+      const result = await store.getProfile('corp1', 'user1');
+
+      expect(result).toEqual(expect.objectContaining({ name: '张三', phone: '138' }));
       expect(mockRedis.setex).toHaveBeenCalled();
     });
 
@@ -77,24 +73,41 @@ describe('SupabaseStore', () => {
       mockRedis.get.mockResolvedValue(null);
       mockSupabaseService.getSupabaseClient.mockReturnValue(null);
 
-      const result = await store.get('profile:corp1:user1:pref');
+      const result = await store.getProfile('corp1', 'user1');
+
       expect(result).toBeNull();
     });
   });
 
-  describe('del', () => {
-    it('should delete from both Redis and Supabase', async () => {
-      // Mock the delete chain to resolve
-      mockDeleteEq.eq.mockReturnThis();
-      // The last .eq() returns an object with error
-      const finalEq = jest.fn().mockResolvedValue({ error: null });
-      mockDeleteEq.eq
-        .mockReturnValueOnce(mockDeleteEq)
-        .mockReturnValueOnce(mockDeleteEq)
-        .mockReturnValueOnce({ error: null } as never);
+  describe('getSummaryData', () => {
+    it('should return null when no row exists', async () => {
+      mockRedis.get.mockResolvedValue(null);
+      mockMaybeSingle.mockResolvedValue({ data: null, error: null });
 
-      const result = await store.del('profile:corp1:user1:pref');
-      expect(mockRedis.del).toHaveBeenCalled();
+      const result = await store.getSummaryData('corp1', 'user1');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return summary_data from row', async () => {
+      const summaryData = { recent: [{ summary: 'test', sessionId: 's1', startTime: '2026-03-15', endTime: '2026-03-15' }], archive: null };
+      mockRedis.get.mockResolvedValue(null);
+      mockMaybeSingle.mockResolvedValue({
+        data: { summary_data: summaryData },
+        error: null,
+      });
+
+      const result = await store.getSummaryData('corp1', 'user1');
+
+      expect(result).toEqual(summaryData);
+    });
+  });
+
+  describe('del (v1 compat)', () => {
+    it('should delete from Redis cache', async () => {
+      await store.del('profile:corp1:user1');
+
+      expect(mockRedis.del).toHaveBeenCalledWith('profile:corp1:user1');
     });
   });
 });

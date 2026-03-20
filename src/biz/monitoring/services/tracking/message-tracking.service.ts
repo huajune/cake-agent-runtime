@@ -7,9 +7,9 @@ import {
   AlertErrorType,
 } from '@shared-types/tracking.types';
 import { MonitoringCacheService } from './monitoring-cache.service';
-import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
+import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { MonitoringErrorLogRepository } from '../../repositories/error-log.repository';
-import { UserHostingRepository } from '@biz/user/repositories/user-hosting.repository';
+import { UserHostingService } from '@biz/user/services/user-hosting.service';
 
 /**
  * 消息追踪服务
@@ -33,9 +33,9 @@ export class MessageTrackingService {
   private readonly PENDING_RECORD_TTL_MS = 60 * 60 * 1000; // 1 小时
 
   constructor(
-    private readonly messageProcessingRepository: MessageProcessingRepository,
+    private readonly messageProcessingService: MessageProcessingService,
     private readonly errorLogRepository: MonitoringErrorLogRepository,
-    private readonly userHostingRepository: UserHostingRepository,
+    private readonly userHostingService: UserHostingService,
     private readonly cacheService: MonitoringCacheService,
   ) {}
 
@@ -372,7 +372,7 @@ export class MessageTrackingService {
    */
   private async saveRecordToDatabase(record: MessageProcessingRecord): Promise<void> {
     await this.withRetry(() =>
-      this.messageProcessingRepository.saveMessageProcessingRecord({
+      this.messageProcessingService.saveRecord({
         messageId: record.messageId,
         chatId: record.chatId,
         userId: record.userId,
@@ -434,7 +434,7 @@ export class MessageTrackingService {
     activeAt: number;
   }): Promise<void> {
     await this.withRetry(() =>
-      this.userHostingRepository.upsertUserActivity({
+      this.userHostingService.upsertActivity({
         chatId: data.chatId,
         odId: data.userId,
         odName: data.userName,

@@ -22,8 +22,8 @@ import {
   DailyTrendData,
 } from '../../types/analytics.types';
 import { MonitoringCacheService } from '../tracking/monitoring-cache.service';
-import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
-import { BookingRepository } from '@biz/message/repositories/booking.repository';
+import { MessageProcessingService } from '@biz/message/services/message-processing.service';
+import { BookingService } from '@biz/message/services/booking.service';
 import { MonitoringHourlyStatsRepository } from '../../repositories/hourly-stats.repository';
 import { MonitoringErrorLogRepository } from '../../repositories/error-log.repository';
 import { MonitoringRecordRepository } from '../../repositories/record.repository';
@@ -41,13 +41,13 @@ export class AnalyticsDashboardService {
   private readonly DEFAULT_WINDOW_HOURS = 24;
 
   constructor(
-    private readonly messageProcessingRepository: MessageProcessingRepository,
+    private readonly messageProcessingService: MessageProcessingService,
     private readonly hourlyStatsRepository: MonitoringHourlyStatsRepository,
     private readonly errorLogRepository: MonitoringErrorLogRepository,
     private readonly userHostingService: UserHostingService,
     private readonly cacheService: MonitoringCacheService,
     private readonly monitoringRepository: MonitoringRecordRepository,
-    private readonly bookingRepository: BookingRepository,
+    private readonly bookingService: BookingService,
     private readonly hourlyStatsAggregator: HourlyStatsAggregatorService,
     private readonly messageTrackingService: MessageTrackingService,
   ) {}
@@ -392,10 +392,7 @@ export class AnalyticsDashboardService {
     endTime: number,
   ): Promise<MessageProcessingRecord[]> {
     try {
-      const records = await this.messageProcessingRepository.getRecordsByTimeRange(
-        startTime,
-        endTime,
-      );
+      const records = await this.messageProcessingService.getRecordsByTimeRange(startTime, endTime);
       return records as unknown as MessageProcessingRecord[];
     } catch (error) {
       this.logger.error('按时间范围查询消息记录失败:', error);
@@ -405,7 +402,7 @@ export class AnalyticsDashboardService {
 
   private async getRecentDetailRecords(limit: number = 50): Promise<MessageProcessingRecord[]> {
     try {
-      const result = await this.messageProcessingRepository.getMessageProcessingRecords({ limit });
+      const result = await this.messageProcessingService.getRecordsByTimestamps({ limit });
       return result.records as unknown as MessageProcessingRecord[];
     } catch (error) {
       this.logger.error('查询最近消息记录异常:', error);
@@ -417,7 +414,7 @@ export class AnalyticsDashboardService {
     try {
       const cutoffTime = this.getTimeRangeCutoff(range);
       const limitByRange = { today: 2000, week: 5000, month: 10000 };
-      const result = await this.messageProcessingRepository.getMessageProcessingRecords({
+      const result = await this.messageProcessingService.getRecordsByTimestamps({
         startTime: cutoffTime.getTime(),
         limit: limitByRange[range] || 2000,
       });
@@ -455,7 +452,7 @@ export class AnalyticsDashboardService {
     try {
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
-      const dbUsers = await this.messageProcessingRepository.getActiveUsers(todayStart, new Date());
+      const dbUsers = await this.messageProcessingService.getActiveUsers(todayStart, new Date());
 
       const chatIds = dbUsers.map((u) => u.chatId);
       const pausedSet = new Set<string>();
@@ -621,7 +618,7 @@ export class AnalyticsDashboardService {
 
     let successfulBookings = 0;
     try {
-      const bookingStats = await this.bookingRepository.getBookingStats({ startDate, endDate });
+      const bookingStats = await this.bookingService.getBookingStats({ startDate, endDate });
       successfulBookings = bookingStats.reduce((sum, item) => sum + item.bookingCount, 0);
     } catch (error) {
       this.logger.warn('[业务指标] 获取预约统计失败，使用默认值 0:', error);

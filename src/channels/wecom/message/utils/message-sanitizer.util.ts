@@ -1,4 +1,4 @@
-import { EnterpriseMessageCallbackDto } from '../dto/message-callback.dto';
+import { EnterpriseMessageCallbackDto } from '../message-callback.dto';
 
 /**
  * 消息脱敏工具类

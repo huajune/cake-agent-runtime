@@ -4,15 +4,14 @@ import { MessageTrackingService } from '@biz/monitoring/services/tracking/messag
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 
 // 导入子服务
-import { MessageHistoryService } from './services/history.service';
 import { SimpleMergeService } from './services/simple-merge.service';
-import { MessageStatisticsService } from './services/statistics.service';
+import { MessageDeduplicationService } from './services/deduplication.service';
 import { MessagePipelineService } from './services/pipeline.service';
 
 // 导入工具和类型
 import { MessageParser } from './utils/message-parser.util';
 import { LogSanitizer } from './utils/log-sanitizer.util';
-import { EnterpriseMessageCallbackDto } from './dto/message-callback.dto';
+import { EnterpriseMessageCallbackDto } from './message-callback.dto';
 import { getMessageSourceDescription } from '@enums/message-callback.enum';
 
 /**
@@ -38,9 +37,8 @@ export class MessageService implements OnModuleInit {
   constructor(
     private readonly configService: ConfigService,
     // 子服务
-    private readonly historyService: MessageHistoryService,
     private readonly simpleMergeService: SimpleMergeService,
-    private readonly statisticsService: MessageStatisticsService,
+    private readonly deduplicationService: MessageDeduplicationService,
     private readonly pipelineService: MessagePipelineService,
     // 监控
     private readonly monitoringService: MessageTrackingService,
@@ -55,7 +53,7 @@ export class MessageService implements OnModuleInit {
   }
 
   /**
-   * 模块初始化 - 从 Supabase 加载开关状态
+   * 模块初始化 - 从 Supabase 加载开关状态，并订阅变更
    */
   async onModuleInit() {
     this.enableAiReply = await this.systemConfigService.getAiReplyEnabled();
@@ -64,14 +62,24 @@ export class MessageService implements OnModuleInit {
     this.logger.log(
       `消息聚合功能: ${this.enableMessageMerge ? '已启用' : '已禁用'} (来自 Supabase)`,
     );
+
+    // 订阅开关变更，确保 hosting-config 层的切换能实时生效
+    this.systemConfigService.onAiReplyChange((enabled) => {
+      this.enableAiReply = enabled;
+      this.logger.log(`AI 自动回复功能已${enabled ? '启用' : '禁用'} (来自配置变更)`);
+    });
+    this.systemConfigService.onMessageMergeChange((enabled) => {
+      this.enableMessageMerge = enabled;
+      this.logger.log(`消息聚合功能已${enabled ? '启用' : '禁用'} (来自配置变更)`);
+    });
   }
 
   /**
    * 处理接收到的消息（主入口）
-   * 消息处理管线：开关检查 → 过滤 → 去重 → 监控 → 分派
+   * 步骤 0-4 由 pipeline.execute() 统一执行
+   * 步骤 5（AI 开关）和步骤 6（分派）由本服务控制
    */
   async handleMessage(messageData: EnterpriseMessageCallbackDto) {
-    // 【安全】仅在 debug 级别输出脱敏后的消息数据
     const sanitized = LogSanitizer.sanitizeMessageCallback(messageData);
     this.logger.debug('=== [回调消息数据(已脱敏)] ===');
     this.logger.debug(JSON.stringify(sanitized, null, 2));
@@ -80,31 +88,14 @@ export class MessageService implements OnModuleInit {
       `[handleMessage] 收到消息 [${messageData.messageId}], source=${messageData.source}(${getMessageSourceDescription(messageData.source)}), isSelf=${messageData.isSelf}`,
     );
 
-    // 管线步骤 0: 处理 bot 自己发送的消息
-    if (messageData.isSelf === true) {
-      await this.pipelineService.handleSelfMessage(messageData);
-      return { success: true, message: 'Self message stored' };
+    // 步骤 0-4: 过滤 → 去重 → 写历史 → 监控
+    const pipelineResult = await this.pipelineService.execute(messageData);
+
+    if (!pipelineResult.shouldDispatch) {
+      return pipelineResult.response;
     }
 
-    // 管线步骤 1: 消息过滤
-    const filterResult = await this.pipelineService.filterMessage(messageData);
-    if (!filterResult.continue) {
-      return filterResult.response;
-    }
-
-    // 管线步骤 2: 消息去重
-    const dedupeResult = await this.pipelineService.checkDuplicationAsync(messageData);
-    if (!dedupeResult.continue) {
-      return dedupeResult.response;
-    }
-
-    // 管线步骤 3: 记录历史
-    await this.pipelineService.recordUserMessageToHistory(messageData, filterResult.data?.content);
-
-    // 管线步骤 4: 记录监控
-    this.pipelineService.recordMessageReceived(messageData);
-
-    // 管线步骤 5: 全局开关关闭时，仅记录历史不触发 AI
+    // 步骤 5: 全局 AI 开关
     if (!this.enableAiReply) {
       const parsed = MessageParser.parse(messageData);
       this.logger.log(
@@ -112,13 +103,13 @@ export class MessageService implements OnModuleInit {
           (parsed.chatId ? `, chatId=${parsed.chatId}` : ''),
       );
       this.monitoringService.recordSuccess(messageData.messageId, {
-        scenario: MessageParser.determineScenario(messageData),
+        scenario: MessageParser.determineScenario(),
         replyPreview: '[AI回复已禁用]',
       });
       return { success: true, message: 'AI reply disabled, message recorded to history' };
     }
 
-    // 管线步骤 6: 分派处理
+    // 步骤 6: 分派（聚合 or 直发）
     this.dispatchMessage(messageData).catch((error) => {
       this.logger.error(`[分派异常] 消息 [${messageData.messageId}] 分派失败: ${error.message}`);
     });
@@ -173,100 +164,25 @@ export class MessageService implements OnModuleInit {
     return { success: true };
   }
 
-  // ========================================
-  // 状态管理 API
-  // ========================================
-
-  /**
-   * 获取 AI 回复开关状态
-   */
-  getAiReplyStatus(): boolean {
-    return this.enableAiReply;
-  }
-
-  /**
-   * 切换 AI 回复开关（持久化到 Supabase）
-   */
-  async toggleAiReply(enabled: boolean): Promise<boolean> {
-    this.enableAiReply = enabled;
-    await this.systemConfigService.setAiReplyEnabled(enabled);
-    this.logger.log(`AI 自动回复功能已${enabled ? '启用' : '禁用'} (已持久化到 Supabase)`);
-    return this.enableAiReply;
-  }
-
-  /**
-   * 获取消息聚合开关状态
-   */
-  getMessageMergeStatus(): boolean {
-    return this.enableMessageMerge;
-  }
-
-  /**
-   * 切换消息聚合开关（持久化到 Supabase）
-   */
-  async toggleMessageMerge(enabled: boolean): Promise<boolean> {
-    this.enableMessageMerge = enabled;
-    await this.systemConfigService.setMessageMergeEnabled(enabled);
-    this.logger.log(`消息聚合功能已${enabled ? '启用' : '禁用'} (已持久化到 Supabase)`);
-    return this.enableMessageMerge;
-  }
-
-  // ========================================
-  // 统计和缓存 API
-  // ========================================
-
-  /**
-   * 获取服务状态
-   */
-  getServiceStatus() {
-    return this.statisticsService.getServiceStatus(
-      this.processingCount,
-      0,
-      this.enableAiReply,
-      this.enableMessageMerge,
-      true,
-    );
-  }
-
-  /**
-   * 获取缓存统计
-   */
-  getCacheStats() {
-    return this.statisticsService.getCacheStats(this.processingCount, 0);
-  }
-
-  /**
-   * 获取历史记录
-   */
-  async getAllHistory(chatId?: string) {
-    if (chatId) {
-      const detail = await this.historyService.getHistoryDetail(chatId);
-      if (detail) {
-        return {
-          chatId,
-          messages: detail.messages,
-          count: detail.messageCount,
-        };
-      }
-      return {
-        chatId,
-        messages: [],
-        count: 0,
-      };
-    }
-
-    return this.historyService.getStats();
-  }
-
   /**
    * 清理缓存
    */
-  clearCache(options?: {
+  async clearCache(options?: {
     deduplication?: boolean;
     history?: boolean;
     mergeQueues?: boolean;
     chatId?: string;
   }) {
-    return this.statisticsService.clearCache(options);
+    const opts = options || { deduplication: true, history: true, mergeQueues: true };
+    const cleared = { deduplication: false, history: false, mergeQueues: false };
+
+    if (opts.deduplication) {
+      await this.deduplicationService.clearAll();
+      cleared.deduplication = true;
+    }
+    if (opts.history) cleared.history = true; // 历史由 Supabase 永久存储，无需手动清理
+    if (opts.mergeQueues) cleared.mergeQueues = true; // Redis TTL 自动处理
+
+    return { timestamp: new Date().toISOString(), cleared };
   }
 }

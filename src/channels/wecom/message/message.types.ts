@@ -1,13 +1,12 @@
-/**
- * ========================================
- * 聊天消息存储枚举（数据库专用）
- * ========================================
- *
- * 设计原则：
- * 1. 与外部契约（企微回调）解耦，使用独立的英文字符串枚举
- * 2. 数据库存储可读性优先，便于直接查询和调试
- * 3. 提供双向映射工具函数，实现外部数字 ↔ 内部字符串转换
- */
+import { EnterpriseMessageCallbackDto } from './message-callback.dto';
+import { ConversationStatus } from '@enums/message-merge.enum';
+
+export { AlertErrorType } from '@shared-types/tracking.types';
+export { FilterReason, FilterResult } from './services/filter.service';
+
+// ========================================
+// 聊天消息存储枚举（数据库专用）
+// ========================================
 
 /**
  * 存储用消息类型枚举（英文字符串）
@@ -70,15 +69,10 @@ export enum StorageContactType {
   ENTERPRISE_WECHAT = 'ENTERPRISE_WECHAT',
 }
 
-/**
- * ========================================
- * 外部数字 → 内部字符串 映射表
- * ========================================
- */
+// ========================================
+// 外部数字 → 内部字符串 映射表
+// ========================================
 
-/**
- * 企微消息类型数字 → 存储字符串映射
- */
 const MESSAGE_TYPE_NUM_TO_STR: Record<number, StorageMessageType> = {
   0: StorageMessageType.UNKNOWN,
   1: StorageMessageType.FILE,
@@ -102,9 +96,6 @@ const MESSAGE_TYPE_NUM_TO_STR: Record<number, StorageMessageType> = {
   10001: StorageMessageType.WECOM_SYSTEM,
 };
 
-/**
- * 企微消息来源数字 → 存储字符串映射
- */
 const MESSAGE_SOURCE_NUM_TO_STR: Record<number, StorageMessageSource> = {
   0: StorageMessageSource.MOBILE_PUSH,
   1: StorageMessageSource.AGGREGATED_CHAT_MANUAL,
@@ -123,9 +114,6 @@ const MESSAGE_SOURCE_NUM_TO_STR: Record<number, StorageMessageSource> = {
   15: StorageMessageSource.AI_REPLY,
 };
 
-/**
- * 企微客户类型数字 → 存储字符串映射
- */
 const CONTACT_TYPE_NUM_TO_STR: Record<number, StorageContactType> = {
   0: StorageContactType.UNKNOWN,
   1: StorageContactType.PERSONAL_WECHAT,
@@ -133,57 +121,35 @@ const CONTACT_TYPE_NUM_TO_STR: Record<number, StorageContactType> = {
   3: StorageContactType.ENTERPRISE_WECHAT,
 };
 
-/**
- * ========================================
- * 转换工具函数
- * ========================================
- */
+// ========================================
+// 转换工具函数
+// ========================================
 
-/**
- * 将企微回调的消息类型数字转换为存储用字符串
- * @param numericType 企微回调中的 messageType 数字值
- * @returns 存储用的英文字符串枚举
- */
 export function toStorageMessageType(numericType: number | undefined): StorageMessageType {
   if (numericType === undefined || numericType === null) {
-    return StorageMessageType.TEXT; // 默认文本类型
+    return StorageMessageType.TEXT;
   }
   return MESSAGE_TYPE_NUM_TO_STR[numericType] ?? StorageMessageType.UNKNOWN;
 }
 
-/**
- * 将企微回调的消息来源数字转换为存储用字符串
- * @param numericSource 企微回调中的 source 数字值
- * @returns 存储用的英文字符串枚举
- */
 export function toStorageMessageSource(numericSource: number | undefined): StorageMessageSource {
   if (numericSource === undefined || numericSource === null) {
-    return StorageMessageSource.MOBILE_PUSH; // 默认手机推送
+    return StorageMessageSource.MOBILE_PUSH;
   }
   return MESSAGE_SOURCE_NUM_TO_STR[numericSource] ?? StorageMessageSource.UNKNOWN;
 }
 
-/**
- * 将企微回调的客户类型数字转换为存储用字符串
- * @param numericContactType 企微回调中的 contactType 数字值
- * @returns 存储用的英文字符串枚举
- */
 export function toStorageContactType(numericContactType: number | undefined): StorageContactType {
   if (numericContactType === undefined || numericContactType === null) {
-    return StorageContactType.UNKNOWN; // 默认未知
+    return StorageContactType.UNKNOWN;
   }
   return CONTACT_TYPE_NUM_TO_STR[numericContactType] ?? StorageContactType.UNKNOWN;
 }
 
-/**
- * ========================================
- * 中文描述映射（用于展示层）
- * ========================================
- */
+// ========================================
+// 中文描述映射（用于展示层）
+// ========================================
 
-/**
- * 消息类型中文描述
- */
 export const MESSAGE_TYPE_LABELS: Record<StorageMessageType, string> = {
   [StorageMessageType.UNKNOWN]: '未知',
   [StorageMessageType.FILE]: '文件',
@@ -207,9 +173,6 @@ export const MESSAGE_TYPE_LABELS: Record<StorageMessageType, string> = {
   [StorageMessageType.WECOM_SYSTEM]: '企微系统消息',
 };
 
-/**
- * 消息来源中文描述
- */
 export const MESSAGE_SOURCE_LABELS: Record<StorageMessageSource, string> = {
   [StorageMessageSource.MOBILE_PUSH]: '手机推送',
   [StorageMessageSource.AGGREGATED_CHAT_MANUAL]: '聚合聊天手动发送',
@@ -229,9 +192,6 @@ export const MESSAGE_SOURCE_LABELS: Record<StorageMessageSource, string> = {
   [StorageMessageSource.UNKNOWN]: '未知来源',
 };
 
-/**
- * 客户类型中文描述
- */
 export const CONTACT_TYPE_LABELS: Record<StorageContactType, string> = {
   [StorageContactType.UNKNOWN]: '未知',
   [StorageContactType.PERSONAL_WECHAT]: '个人微信',
@@ -239,23 +199,167 @@ export const CONTACT_TYPE_LABELS: Record<StorageContactType, string> = {
   [StorageContactType.ENTERPRISE_WECHAT]: '企业微信',
 };
 
-/**
- * 获取消息类型的中文描述
- */
 export function getMessageTypeLabel(type: StorageMessageType): string {
   return MESSAGE_TYPE_LABELS[type] ?? '未知';
 }
 
-/**
- * 获取消息来源的中文描述
- */
 export function getMessageSourceLabel(source: StorageMessageSource): string {
   return MESSAGE_SOURCE_LABELS[source] ?? '未知来源';
 }
 
-/**
- * 获取客户类型的中文描述
- */
 export function getContactTypeLabel(contactType: StorageContactType): string {
   return CONTACT_TYPE_LABELS[contactType] ?? '未知';
+}
+
+// ========================================
+// 消息聚合接口（原 interfaces/message-merge.interface.ts）
+// ========================================
+
+/**
+ * 待聚合的消息队列项
+ */
+export interface PendingMessage {
+  messageData: EnterpriseMessageCallbackDto;
+  receivedAt: number;
+}
+
+/**
+ * 消息聚合队列（内存模式 - 旧版）
+ * @deprecated 使用 ConversationState 替代
+ */
+export interface MessageMergeQueue {
+  messages: PendingMessage[];
+  timer: NodeJS.Timeout;
+  firstMessageTime: number;
+}
+
+/**
+ * 消息处理器函数类型
+ */
+export type MessageProcessorFn = (messages: EnterpriseMessageCallbackDto[]) => Promise<void>;
+
+/**
+ * Agent 请求元数据
+ */
+export interface AgentRequestMetadata {
+  startTime: number;
+  retryCount: number;
+  messageCount: number;
+}
+
+/**
+ * 会话状态（智能聚合策略）
+ */
+export interface ConversationState {
+  chatId: string;
+  status: ConversationStatus;
+  firstMessageTime: number;
+  initialTimer?: NodeJS.Timeout;
+  pendingMessages: PendingMessage[];
+  currentRequest?: AgentRequestMetadata;
+  lastUpdateTime: number;
+}
+
+/**
+ * 可持久化的会话状态（不含 timer，用于 Redis 存储）
+ */
+export interface PersistableConversationState {
+  chatId: string;
+  status: ConversationStatus;
+  firstMessageTime: number;
+  pendingMessages: PendingMessage[];
+  currentRequest?: AgentRequestMetadata;
+  lastUpdateTime: number;
+}
+
+// ========================================
+// Agent 回复相关类型（原 types/wecom-message.types.ts）
+// ========================================
+
+export interface AgentReply {
+  content: string;
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  };
+}
+
+export interface AgentInvokeResult {
+  reply: AgentReply;
+  isFallback: boolean;
+  processingTime: number;
+}
+
+// ========================================
+// 消息发送相关类型
+// ========================================
+
+export interface MessageSegment {
+  content: string;
+  index: number;
+  total: number;
+  isFirst: boolean;
+  isLast: boolean;
+}
+
+export interface DeliveryContext {
+  token: string;
+  imBotId: string;
+  imContactId: string;
+  imRoomId: string;
+  contactName: string;
+  messageId: string;
+  chatId: string;
+  _apiType?: 'enterprise' | 'group';
+}
+
+export interface DeliveryResult {
+  success: boolean;
+  segmentCount: number;
+  failedSegments: number;
+  totalTime: number;
+  error?: string;
+}
+
+// ========================================
+// 消息处理管线相关类型
+// ========================================
+
+export interface PipelineResult<T = unknown> {
+  continue: boolean;
+  data?: T;
+  reason?: string;
+  response?: {
+    success: boolean;
+    message: string;
+  };
+}
+
+// ========================================
+// 会话上下文相关类型
+// ========================================
+
+export interface FallbackMessageOptions {
+  customMessage?: string;
+  random?: boolean;
+}
+
+// ========================================
+// 消息历史相关类型
+// ========================================
+
+export interface MessageHistoryItem {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+}
+
+export interface EnhancedMessageHistoryItem extends MessageHistoryItem {
+  messageId: string;
+  chatId: string;
+  candidateName?: string;
+  managerName?: string;
+  orgId?: string;
+  botId?: string;
 }

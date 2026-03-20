@@ -1,18 +1,18 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConversationTestService } from '@biz/test-suite/services/conversation/conversation-test.service';
+import { ConversationTestService } from '@evaluation/services/conversation/conversation-test.service';
 import { LoopService } from '@agent/loop.service';
 import { ContextService } from '@agent/context/context.service';
-import { LlmEvaluationService } from '@biz/test-suite/services/conversation/llm-evaluation.service';
-import { ConversationParserService } from '@biz/test-suite/services/conversation/conversation-parser.service';
-import { ConversationSnapshotRepository } from '@biz/test-suite/repositories/conversation-snapshot.repository';
-import { TestExecutionRepository } from '@biz/test-suite/repositories/test-execution.repository';
+import { LlmEvaluationService } from '@evaluation/services/conversation/llm-evaluation.service';
+import { ConversationParserService } from '@evaluation/services/conversation/conversation-parser.service';
+import { ConversationSnapshotRepository } from '@evaluation/repositories/conversation-snapshot.repository';
+import { TestExecutionRepository } from '@evaluation/repositories/test-execution.repository';
 import {
   ExecutionStatus,
   ReviewStatus,
   ConversationSourceStatus,
   SimilarityRating,
-} from '@biz/test-suite/enums/test.enum';
-import { ConversationSnapshotRecord } from '@biz/test-suite/entities/conversation-snapshot.entity';
+} from '@evaluation/enums/test.enum';
+import { ConversationSnapshotRecord } from '@evaluation/entities/conversation-snapshot.entity';
 
 describe('ConversationTestService', () => {
   let service: ConversationTestService;

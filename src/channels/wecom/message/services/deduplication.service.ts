@@ -47,20 +47,6 @@ export class MessageDeduplicationService implements OnModuleInit {
   }
 
   /**
-   * 检查消息是否已处理（同步版本，用于兼容现有代码）
-   * 注意：这是一个同步方法，内部会启动异步检查但立即返回 false
-   * 建议迁移到 isMessageProcessedAsync
-   *
-   * @deprecated 建议使用 isMessageProcessedAsync
-   */
-  isMessageProcessed(_messageId: string): boolean {
-    // 为了向后兼容，这里先返回 false，让消息进入处理流程
-    // 真正的去重在 markMessageAsProcessed 时通过 Redis SETNX 实现
-    // 这样可以避免阻塞主线程
-    return false;
-  }
-
-  /**
    * 标记消息为已处理（异步）
    * 使用原子 SET NX EX 确保只有第一个处理者能成功标记，无竞态条件
    *
@@ -84,17 +70,6 @@ export class MessageDeduplicationService implements OnModuleInit {
     }
 
     return true;
-  }
-
-  /**
-   * 标记消息为已处理（同步版本，用于兼容现有代码）
-   * 内部会启动异步操作
-   */
-  markMessageAsProcessed(messageId: string): void {
-    // 异步执行，不阻塞
-    this.markMessageAsProcessedAsync(messageId).catch((error) => {
-      this.logger.error(`[去重] 标记消息 [${messageId}] 失败: ${error.message}`);
-    });
   }
 
   /**

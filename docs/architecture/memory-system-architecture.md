@@ -324,8 +324,7 @@ export class MemoryConfig {
 | 短期记忆 | Supabase（chat_messages 表） | 永久 | chat_id | 每条消息落库 |
 | Session Facts | Redis | SESSION_TTL | `facts:{corpId}:{userId}:{sessionId}` | deepMerge |
 | Stage | Redis | SESSION_TTL | `stage:{corpId}:{userId}:{sessionId}` | 覆盖写 |
-| Profile | `agent_memories` 表 (type='profile') + Redis 2h 缓存 | 永久 | `profile:{corpId}:{userId}` | 非 null 覆盖 |
-| Summary | `agent_memories` 表 (type='summary') | 永久 | 按 userId 查询 | 追加 |
+| Profile + Summary | `agent_memories` 表（每用户一行）+ Redis 2h 缓存 | 永久 | `(corp_id, user_id)` | Profile 非 null 覆盖，Summary 分层压缩 |
 
 ---
 
@@ -444,14 +443,16 @@ trust_building → needs_collection → job_recommendation → interview_arrange
 
 ### 7.4 长期记忆 — `agent_memories` 表（Supabase）
 
+**核心设计**：每个用户一行，所有长期记忆信息在同一行中。
+
 **表结构**：
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
+| | **基础信息** | |
 | `id` | uuid | 主键，自动生成 |
 | `corp_id` | string | 企业 ID |
 | `user_id` | string | 用户 ID |
-| `type` | string | 记忆类型：`'profile'` \| `'summary'` |
 | | | |
 | | **Profile 字段（平铺）** | |
 | `name` | string? | 姓名 |
@@ -462,8 +463,8 @@ trust_building → needs_collection → job_recommendation → interview_arrange
 | `education` | string? | 学历 |
 | `has_health_certificate` | string? | 健康证情况 |
 | | | |
-| | **Summary 字段（jsonb 对象）** | |
-| `summary_data` | jsonb? | 对话摘要数据（type='summary' 时使用，结构见 6.4.2） |
+| | **Summary 字段（jsonb，分层压缩）** | |
+| `summary_data` | jsonb? | 对话摘要数据（分层压缩结构，见下方） |
 | | | |
 | | **消息元数据（jsonb 对象）** | |
 | `message_metadata` | jsonb? | 消息回调的关键字段，首次沉淀时写入 |
@@ -471,13 +472,73 @@ trust_building → needs_collection → job_recommendation → interview_arrange
 | | **时间戳** | |
 | `created_at` | timestamptz | 创建时间 |
 | `updated_at` | timestamptz | 最后更新时间 |
-| `expires_at` | timestamptz? | 过期时间（长期记忆为 null） |
 
-**唯一约束**：
-- Profile：`(corp_id, user_id)` WHERE `type = 'profile'`（每用户一条）
-- Summary：`(corp_id, user_id, session_id)` WHERE `type = 'summary'`（每会话一条）
+**唯一约束**：`(corp_id, user_id)`（每用户一行）
 
-**Redis 缓存**：Profile 类型有 2h Redis 缓存（读时回填），Summary 不缓存（通过工具按需查询）。
+**Redis 缓存**：整行有 2h Redis 缓存（读时回填）。
+
+**设计说明**：
+- Profile 字段平铺为表列：可直接 SQL 查询、索引、过滤，不需要 jsonb 解析
+- Summary 和 message_metadata 收为 jsonb：它们是整体数据，不需要单独索引
+- 每个用户只有一行，不需要 type 字段区分
+
+#### 7.4.1 Profile
+
+**写入策略**: 非 null 字段覆盖更新
+
+**数据来源**：会话沉淀时从 Session Facts 中提取身份字段写入。跨会话复用，下次再聊无需重新询问。
+
+#### 7.4.2 Summary（分层压缩策略）
+
+`summary_data` jsonb 结构：
+
+```typescript
+interface SummaryData {
+  /** 最近 N 条详细摘要（默认保留 5 条） */
+  recent: SummaryEntry[];
+  /** 更早的摘要被 LLM 压缩合并成一段总结 */
+  archive: string | null;
+}
+
+interface SummaryEntry {
+  /** 摘要内容 */
+  summary: string;
+  /** 关联的 sessionId */
+  sessionId: string;
+  /** 会话开始时间 */
+  startTime: string;
+  /** 会话结束时间 */
+  endTime: string;
+}
+```
+
+**压缩策略**：
+1. 每次沉淀时，生成一条 `SummaryEntry` 追加到 `recent` 数组头部
+2. 当 `recent.length > MAX_RECENT_SUMMARIES`（默认 5）时，将最早的条目移出
+3. 移出的条目与现有 `archive` 一起，由 LLM 压缩合并为新的 `archive`
+4. `archive` 是一段自然语言总结，如：*"该候选人曾多次咨询，2026年1-2月期间主要找上海地区兼职，面试过KFC和麦当劳共3次，均未入职。"*
+
+**示例数据**：
+
+```json
+{
+  "recent": [
+    {
+      "summary": "找杭州全职服务员，意向星巴克，已安排西湖店面试。",
+      "sessionId": "chat_def456",
+      "startTime": "2026-03-19T09:00:00Z",
+      "endTime": "2026-03-19T11:00:00Z"
+    },
+    {
+      "summary": "找上海浦东兼职，意向KFC和麦当劳，推荐了KFC浦东店，候选人要确认时间，未安排面试。",
+      "sessionId": "chat_abc123",
+      "startTime": "2026-03-15T09:00:00Z",
+      "endTime": "2026-03-15T11:30:00Z"
+    }
+  ],
+  "archive": "2026年1-2月期间曾多次咨询上海地区兼职岗位，面试过麦当劳徐汇店（未到场）和必胜客人民广场店（通过但未入职）。"
+}
+```
 
 **`message_metadata` 结构**：
 
@@ -491,67 +552,6 @@ interface MessageMetadata {
   externalUserId: string;  // 企微外部用户 ID
   avatar: string;          // 用户头像 URL
 }
-```
-
-**设计说明**：
-- Profile 字段平铺为表列：可直接 SQL 查询、索引、过滤，不需要 jsonb 解析
-- Summary 字段收为 `summary_data` jsonb 对象：摘要是一个整体，不需要单独索引各子字段
-- 消息元数据收为 `message_metadata` jsonb 对象：这些字段来自同一数据源（消息回调），语义上是一组，主要用于关联和展示
-- Summary 行的 Profile 列为 null，Profile 行的 summary_data 列为 null——同一张表通过 type 区分用途
-
-#### 7.4.1 Profile（type = 'profile'）
-
-**写入策略**: 非 null 字段覆盖更新 | **Redis 缓存 TTL**: 2h
-
-每个用户一条 Profile 行，身份字段直接存在表列中：
-
-```sql
--- 示例行
-INSERT INTO agent_memories (corp_id, user_id, type,
-  name, phone, gender, age, is_student, education, has_health_certificate,
-  message_metadata)
-VALUES ('corp_001', 'ext_zhangsan', 'profile',
-  '张三', '13800138000', '男', '22', true, '本科在读', '无',
-  '{"botId":"bot_001","imBotId":"wxid_xxx","imContactId":"ct_xxx",
-    "contactType":1,"contactName":"张三","externalUserId":"eu_xxx",
-    "avatar":"https://..."}');
-```
-
-**数据来源**：会话沉淀时从 Session Facts 中提取身份字段写入。跨会话复用，下次再聊无需重新询问。
-
-**查询方式**：`WHERE corp_id = ? AND user_id = ? AND type = 'profile'`
-
-#### 7.4.2 Summary（type = 'summary'）
-
-**写入策略**: 追加（每次沉淀生成一条）
-
-`summary_data` jsonb 结构：
-
-```typescript
-interface SummaryData {
-  /** 摘要内容 */
-  summary: string;
-  /** 关联的 sessionId */
-  sessionId: string;
-  /** 会话开始时间 */
-  startTime: string;
-  /** 会话结束时间 */
-  endTime: string;
-}
-```
-
-```sql
--- 示例行
-INSERT INTO agent_memories (corp_id, user_id, type, summary_data, message_metadata)
-VALUES ('corp_001', 'ext_zhangsan', 'summary',
-  '{"summary":"候选人张三，找上海浦东兼职服务员，意向KFC和麦当劳。已推荐KFC浦东店，候选人表示感兴趣但需确认周末是否有空，未最终安排面试。",
-    "sessionId":"chat_abc123",
-    "startTime":"2026-03-15T09:00:00Z",
-    "endTime":"2026-03-15T11:30:00Z"}',
-  '{"botId":"bot_001","imBotId":"wxid_xxx","contactName":"张三"}');
-```
-
-**查询方式**：`WHERE corp_id = ? AND user_id = ? AND type = 'summary' ORDER BY created_at DESC`
 ```
 
 ### 7.5 字段归属对照（FACTS 拆分）

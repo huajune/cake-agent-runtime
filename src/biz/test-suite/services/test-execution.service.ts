@@ -3,10 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { streamText } from 'ai';
 import { Readable } from 'stream';
 import { LoopService, type AgentRunResult } from '@agent/loop.service';
-import { TestChatRequestDto, TestChatResponse } from '../../dto/test-chat.dto';
-import { TestExecutionRepository } from '../../repositories/test-execution.repository';
-import { TestExecution } from '../../entities/test-execution.entity';
-import { ExecutionStatus } from '../../enums/test.enum';
+import { TestChatRequestDto, TestChatResponse, VercelAIChatRequestDto } from '../dto/test-chat.dto';
+import { TestExecutionRepository } from '../repositories/test-execution.repository';
+import { TestExecution } from '../entities/test-execution.entity';
+import { ExecutionStatus, MessageRole } from '../enums/test.enum';
 
 /** 默认场景 */
 const DEFAULT_SCENARIO = 'candidate-consultation';
@@ -39,6 +39,7 @@ interface TokenUsage {
  * - 执行单条测试（流式/非流式）
  * - 提取和解析 Agent 响应
  * - 保存执行记录
+ * - 转换 Vercel AI SDK 请求格式
  */
 @Injectable()
 export class TestExecutionService {
@@ -70,8 +71,6 @@ export class TestExecutionService {
     let errorMessage: string | null = null;
 
     try {
-      // 测试/验证集的 history 包含完整聊天记录（包括最新的 user + assistant）
-      // 重新测试时需要去掉最后两条，用当前 message 重新获取 AI 回答
       const historyForAgent = (request.history || []).slice(0, -2);
 
       const messages = [
@@ -99,10 +98,8 @@ export class TestExecutionService {
 
     const durationMs = Date.now() - startTime;
 
-    // 提取结果
     const extracted = this.extractResult(agentResult);
 
-    // 构建响应
     const response: TestChatResponse = {
       actualOutput: extracted.actualOutput,
       status: executionStatus,
@@ -122,7 +119,6 @@ export class TestExecutionService {
       },
     };
 
-    // 保存执行记录
     if (request.saveExecution !== false) {
       const execution = await this.saveExecution({
         batchId: request.batchId,
@@ -152,7 +148,7 @@ export class TestExecutionService {
   }
 
   /**
-   * 执行流式测试（旧 SSE 格式，供 /chat/stream 端点使用）
+   * 执行流式测试（旧 SSE 格式）
    */
   async executeTestStream(request: TestChatRequestDto): Promise<NodeJS.ReadableStream> {
     const streamResult = await this.executeTestStreamWithMeta(request);
@@ -160,7 +156,7 @@ export class TestExecutionService {
   }
 
   /**
-   * 执行流式测试（返回 Vercel AI SDK StreamTextResult，供 /chat/ai-stream 端点使用）
+   * 执行流式测试（返回 Vercel AI SDK StreamTextResult）
    */
   async executeTestStreamWithMeta(
     request: TestChatRequestDto,
@@ -175,8 +171,6 @@ export class TestExecutionService {
       `[Stream] 执行流式测试: ${request.caseName || request.message.substring(0, 50)}...`,
     );
 
-    // 测试/验证集的 history 包含完整聊天记录（包括最新的 user + assistant）
-    // 重新测试时需要去掉最后两条，用当前 message 重新获取 AI 回答
     const historyForAgent = request.skipHistoryTrim
       ? request.history || []
       : (request.history || []).slice(0, -2);
@@ -215,7 +209,6 @@ export class TestExecutionService {
 
   /**
    * 根据 batchId 和 caseId 更新执行记录
-   * 供 Processor 在任务完成后调用
    */
   async updateExecutionByBatchAndCase(
     batchId: string,
@@ -274,11 +267,50 @@ export class TestExecutionService {
     return this.executionRepository.countCompletedByBatchId(batchId);
   }
 
+  /**
+   * 转换 Vercel AI SDK 格式为测试请求
+   */
+  convertVercelAIToTestRequest(request: VercelAIChatRequestDto): {
+    testRequest: TestChatRequestDto;
+    messageText: string;
+  } {
+    const userMessages = request.messages.filter((m) => m.role === 'user');
+    const latestUserMessage = userMessages[userMessages.length - 1];
+
+    const messageText =
+      latestUserMessage?.parts
+        ?.filter((p) => p.type === 'text')
+        .map((p) => p.text)
+        .join('') || '';
+
+    const history = request.messages.slice(0, -1).map((msg) => {
+      const textContent =
+        msg.parts
+          ?.filter((p) => p.type === 'text')
+          .map((p) => p.text)
+          .join('') || '';
+      return {
+        role: msg.role as MessageRole,
+        content: textContent,
+      };
+    });
+
+    const testRequest: TestChatRequestDto = {
+      message: messageText,
+      history,
+      scenario: request.scenario || 'candidate-consultation',
+      saveExecution: request.saveExecution ?? false,
+      skipHistoryTrim: true,
+      sessionId: request.sessionId,
+      userId: request.userId,
+      thinking: request.thinking,
+    };
+
+    return { testRequest, messageText };
+  }
+
   // ========== 私有方法 ==========
 
-  /**
-   * 提取 Agent 响应结果
-   */
   private extractResult(result: AgentRunResult | null): ExtractedResult {
     if (!result) {
       return {

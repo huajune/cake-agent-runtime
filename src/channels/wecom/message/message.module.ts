@@ -9,13 +9,10 @@ import { MessageSenderModule } from '../message-sender/message-sender.module';
 
 // 导入子服务
 import { MessageDeduplicationService } from './services/deduplication.service';
-import { MessageHistoryService } from './services/history.service';
+
 import { MessageFilterService } from './services/filter.service';
 import { SimpleMergeService } from './services/simple-merge.service';
-import { MessageStatisticsService } from './services/statistics.service';
-import { TypingDelayService } from './services/typing-delay.service';
 import { MessageDeliveryService } from './services/delivery.service';
-import { AgentGatewayService } from './services/agent-gateway.service';
 import { MessageCallbackAdapterService } from './services/callback-adapter.service';
 import { MessagePipelineService } from './services/pipeline.service';
 import { BookingDetectionService } from './services/booking-detection.service';
@@ -175,24 +172,20 @@ import { FeishuModule } from '@infra/feishu/feishu.module';
       }),
     }),
   ],
-  controllers: [MessageController],
+  controllers: [MessageController], // 仅回调接收，运维端点见 biz/hosting-config
   providers: [
     // 主服务
     MessageService,
     MessageProcessor,
     // 子服务（8个核心服务，按职责分类）
     MessageDeduplicationService, // 消息去重
-    MessageHistoryService, // 消息历史
     MessageFilterService, // 消息过滤
     SimpleMergeService, // 简化版消息聚合（使用 Bull Queue 原生能力）
-    MessageStatisticsService, // 统计监控
-    TypingDelayService, // 智能打字延迟
     MessageDeliveryService, // 消息发送（统一分段发送和监控）
-    AgentGatewayService, // Agent 调用网关（增强版：包含上下文构建、降级处理和降级话术）
     MessageCallbackAdapterService, // 消息回调适配器（支持小组级和企业级格式）
     MessagePipelineService, // 消息处理管线（核心处理逻辑）
     BookingDetectionService, // 预约成功检测
   ],
-  exports: [MessageService, MessageFilterService, MessageHistoryService, MessageProcessor],
+  exports: [MessageService, MessageFilterService, MessageProcessor],
 })
 export class MessageModule {}

@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { LlmEvaluationService } from '@biz/test-suite/services/conversation/llm-evaluation.service';
+import { LlmEvaluationService } from '@evaluation/llm-evaluation.service';
 import { CompletionService } from '@agent/completion.service';
-import { SimilarityRating } from '@biz/test-suite/enums/test.enum';
+import { SimilarityRating } from '@evaluation/evaluation.types';
 
 describe('LlmEvaluationService', () => {
   let service: LlmEvaluationService;

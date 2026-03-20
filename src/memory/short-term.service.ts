@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ChatMessageRepository } from '@biz/message/repositories/chat-message.repository';
+import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { MessageParser } from '@channels/wecom/message/utils/message-parser.util';
 import { MemoryConfig } from './memory.config';
 
@@ -16,7 +16,7 @@ export class ShortTermService {
   private readonly logger = new Logger(ShortTermService.name);
 
   constructor(
-    private readonly chatMessageRepo: ChatMessageRepository,
+    private readonly chatSession: ChatSessionService,
     private readonly config: MemoryConfig,
   ) {}
 
@@ -29,7 +29,7 @@ export class ShortTermService {
    */
   async getMessages(chatId: string): Promise<{ role: string; content: string }[]> {
     try {
-      const rawHistory = await this.chatMessageRepo.getChatHistory(
+      const rawHistory = await this.chatSession.getChatHistory(
         chatId,
         this.config.shortTermMaxMessages,
       );

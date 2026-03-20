@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConversationParserService } from '@biz/test-suite/services/conversation/conversation-parser.service';
+import { ConversationParserService } from '@evaluation/conversation-parser.service';
 import type { AgentRunResult } from '@agent/loop.service';
 
 describe('ConversationParserService', () => {

@@ -7,7 +7,7 @@ import type {
   RecommendedJobSummary,
   WeworkSessionState,
 } from './memory.types';
-import { EMPTY_SESSION_STATE, MEMORY_KEY_PREFIX, MemoryCategory } from './memory.types';
+import { EMPTY_SESSION_STATE } from './memory.types';
 
 /**
  * 会话事实服务 — 本次求职意向的结构化存储
@@ -181,6 +181,6 @@ export class SessionFactsService {
   // ---- 内部方法 ----
 
   private buildKey(corpId: string, userId: string, sessionId: string): string {
-    return `${MEMORY_KEY_PREFIX[MemoryCategory.FACTS]}${corpId}:${userId}:${sessionId}`;
+    return `facts:${corpId}:${userId}:${sessionId}`;
   }
 }

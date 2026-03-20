@@ -5,7 +5,7 @@ import { MessageSenderService } from '@wecom/message-sender/message-sender.servi
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { TypingDelayService } from '@wecom/message/services/typing-delay.service';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
-import { DeliveryContext } from '@wecom/message/types/wecom-message.types';
+import { DeliveryContext } from '@wecom/message/message.types';
 
 describe('MessageDeliveryService', () => {
   let service: MessageDeliveryService;

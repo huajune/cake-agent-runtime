@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { ChatMessageRepository } from '@biz/message/repositories/chat-message.repository';
+import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import {
   FeishuBitableApiService,
   BatchCreateRequest,
@@ -31,7 +31,7 @@ export class ChatRecordSyncService {
   private readonly logger = new Logger(ChatRecordSyncService.name);
 
   constructor(
-    private readonly chatMessageRepository: ChatMessageRepository,
+    private readonly chatSessionService: ChatSessionService,
     private readonly bitableApi: FeishuBitableApiService,
   ) {}
 
@@ -297,7 +297,7 @@ export class ChatRecordSyncService {
       `查询时间范围内的聊天记录: ${new Date(startTime).toISOString()} ~ ${new Date(endTime).toISOString()}`,
     );
 
-    const records = await this.chatMessageRepository.getChatMessagesByTimeRange(startTime, endTime);
+    const records = await this.chatSessionService.getChatMessagesByTimeRange(startTime, endTime);
 
     const result = records.map(({ chatId, messages }) => ({
       chatId,

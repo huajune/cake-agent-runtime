@@ -14,18 +14,28 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ModelMessage, generateText, streamText, stepCountIs, ToolSet } from 'ai';
 import { RouterService } from '@providers/router.service';
+import { ModelRole } from '@providers/types';
 import { ToolRegistryService } from '@tools/tool-registry.service';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { MemoryService } from '@memory/memory.service';
 import { MemoryConfig } from '@memory/memory.config';
+import { SettlementService } from '@memory/settlement.service';
 import { ContextService } from './context/context.service';
 import { SignalDetectorService } from './signal-detector.service';
 import { FactExtractionService } from './fact-extraction.service';
 import { InputGuardService } from './input-guard.service';
 
 export interface AgentInvokeParams {
-  /** 对话消息列表（含历史 + 当前用户消息） */
-  messages: { role: string; content: string }[];
+  /**
+   * 对话消息列表（含历史 + 当前用户消息）
+   * controller / test-suite 直接调用时使用；wecom 渠道请改用 userMessage。
+   */
+  messages?: { role: string; content: string }[];
+  /**
+   * 当前用户消息（wecom 渠道路径）
+   * 历史消息由 ShortTermService 内部从 Supabase 读取（已含当前消息，无需重复传入）。
+   */
+  userMessage?: string;
   /** 外部用户 ID */
   userId: string;
   /** 企业 ID */
@@ -78,6 +88,7 @@ export class LoopService {
     private readonly toolRegistry: ToolRegistryService,
     private readonly memoryService: MemoryService,
     private readonly memoryConfig: MemoryConfig,
+    private readonly settlement: SettlementService,
     private readonly context: ContextService,
     private readonly classifier: SignalDetectorService,
     private readonly factExtraction: FactExtractionService,
@@ -162,14 +173,19 @@ export class LoopService {
   // ==================== 内部方法 ====================
 
   /**
-   * 共享准备流程：参数规范化 → 记忆读取 → prompt 编排 → 工具构建
+   * 共享准备流程：参数规范化 → 记忆读取 → 消息选择 → prompt 编排 → 工具构建
+   *
+   * 两条路径：
+   * - userMessage 路径（wecom 渠道）：历史消息由 ShortTermService 内部读取，当前消息已写入 DB
+   * - messages 路径（controller / test-suite）：直接使用传入的完整消息列表
    */
   private async prepare(
     params: AgentInvokeParams,
     mode: 'invoke' | 'stream',
   ): Promise<PreparedContext> {
     const {
-      messages,
+      messages: passedMessages,
+      userMessage,
       userId,
       corpId,
       sessionId,
@@ -181,25 +197,51 @@ export class LoopService {
       `Agent ${mode}: userId=${userId}, corpId=${corpId}, sessionId=${sessionId}, scenario=${scenario}`,
     );
 
-    // 1. prompt 编排（含一次性记忆读取）
-    let finalPrompt = await this.enrichPrompt({ messages, userId, corpId, sessionId, scenario });
+    // 0. 空闲检测：如果超过 SESSION_TTL，触发沉淀（Session Facts → Profile + Summary）
+    await this.settlement
+      .checkAndSettle(corpId, userId, sessionId)
+      .catch((err) => this.logger.warn('沉淀检测失败', err));
 
-    // 2. 输入长度守卫
-    const trimmedMessages = this.trimMessages(messages);
+    // 1. 一次性读取所有记忆（shortTerm + sessionFacts + procedural + profile）
+    const memory = await this.memoryService.recallAll(corpId, userId, sessionId);
 
-    // 3. Prompt injection 检测
-    const guardResult = this.inputGuard.detectMessages(trimmedMessages);
+    // 2. 确定 LLM 消息列表
+    //    userMessage 路径：ShortTermService 已处理裁剪，且当前消息已在管线 step3 写入 DB，故已包含
+    //    messages 路径：使用传入的完整列表，字符上限裁剪兜底
+    const messages =
+      userMessage !== undefined ? memory.shortTerm : this.trimMessages(passedMessages ?? []);
+
+    // 3. 组装 systemPrompt（含阶段策略 + 风险场景，由 section 体系完成）
+    const currentStage = memory.procedural.currentStage ?? undefined;
+    const { systemPrompt } = await this.context.compose({ scenario, currentStage });
+
+    // 4. 检测 needs + riskFlags（消息驱动，追加到 prompt 末尾）
+    const detection = this.classifier.detect(messages);
+    const detectionBlock = this.classifier.formatDetectionBlock(detection);
+    let finalPrompt = detectionBlock ? systemPrompt + '\n\n' + detectionBlock : systemPrompt;
+
+    // 5. 注入记忆块（Profile + SessionFacts）
+    const profileBlock = this.memoryService.longTerm.formatProfileForPrompt(
+      memory.longTerm.profile,
+    );
+    const factsBlock = memory.sessionFacts
+      ? this.memoryService.sessionFacts.formatForPrompt(memory.sessionFacts)
+      : '';
+    finalPrompt += profileBlock + factsBlock;
+
+    // 6. Prompt injection 检测
+    const guardResult = this.inputGuard.detectMessages(messages);
     if (!guardResult.safe) {
       finalPrompt += InputGuardService.GUARD_SUFFIX;
-      const lastUserMsg = trimmedMessages.filter((m) => m.role === 'user').pop();
+      const lastUserMsg = messages.filter((m) => m.role === 'user').pop();
       this.inputGuard
         .alertInjection(userId, guardResult.reason!, lastUserMsg?.content ?? '')
         .catch(() => {});
     }
 
-    // 4. 构建工具
-    const typedMessages = trimmedMessages as ModelMessage[];
-    const chatModel = this.router.resolveByRole('chat');
+    // 7. 构建工具
+    const typedMessages = messages as ModelMessage[];
+    const chatModel = this.router.resolveByRole(ModelRole.Chat);
     const toolContext: ToolBuildContext = { userId, corpId, sessionId, messages: typedMessages };
     const tools = this.toolRegistry.buildForScenario(scenario, toolContext) as ToolSet;
 
@@ -264,47 +306,7 @@ export class LoopService {
   }
 
   /**
-   * prompt 编排流程
-   *
-   * 1. 一次性读取所有记忆（recallAll）
-   * 2. 组装 systemPrompt
-   * 3. 信号检测
-   * 4. 注入 Profile + SessionFacts
-   */
-  private async enrichPrompt(params: {
-    messages: { role: string; content: string }[];
-    userId: string;
-    corpId: string;
-    sessionId: string;
-    scenario: string;
-  }): Promise<string> {
-    const { messages, userId, corpId, sessionId, scenario } = params;
-
-    // 1. 一次性读取所有记忆（并行：stage + facts + profile）
-    const memory = await this.memoryService.recallAll(corpId, userId, sessionId);
-
-    // 2. 组装 systemPrompt（含阶段策略 + 风险场景，由 section 体系完成）
-    const currentStage = memory.procedural.currentStage ?? undefined;
-    const { systemPrompt } = await this.context.compose({ scenario, currentStage });
-
-    // 3. 检测 needs + riskFlags（消息驱动，追加到 prompt 末尾）
-    const detection = this.classifier.detect(messages);
-    const detectionBlock = this.classifier.formatDetectionBlock(detection);
-    const enrichedPrompt = detectionBlock ? systemPrompt + '\n\n' + detectionBlock : systemPrompt;
-
-    // 4. 注入记忆
-    const profileBlock = this.memoryService.longTerm.formatProfileForPrompt(
-      memory.longTerm.profile,
-    );
-    const factsBlock = memory.sessionFacts
-      ? this.memoryService.sessionFacts.formatForPrompt(memory.sessionFacts)
-      : '';
-
-    return enrichedPrompt + profileBlock + factsBlock;
-  }
-
-  /**
-   * 输入长度守卫 — 总字符数超限时从最早的消息开始丢弃
+   * 输入长度守卫 — 总字符数超限时从最早的消息开始丢弃（messages 路径兜底）
    */
   private trimMessages(
     messages: { role: string; content: string }[],
