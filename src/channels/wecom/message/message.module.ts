@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
 import { MessageController } from './message.controller';
@@ -29,9 +29,9 @@ import { FeishuModule } from '@infra/feishu/feishu.module';
 @Module({
   imports: [
     ConfigModule,
-    AgentModule,
+    forwardRef(() => AgentModule),
     MessageSenderModule,
-    BizModule,
+    forwardRef(() => BizModule),
     FeishuModule,
     // 配置 Bull 队列根模块
     BullModule.forRootAsync({

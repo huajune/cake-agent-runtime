@@ -34,7 +34,7 @@ import {
   SyncConversationTestsDto,
 } from './dto/conversation-test.dto';
 import { BatchSource, ExecutionStatus, ReviewStatus, TestType } from './enums/test.enum';
-import { SSEStreamHandler, VercelAIStreamHandler } from './utils/sse-stream-handler';
+import { SSEStreamHandler } from './utils/sse-stream-handler';
 
 /**
  * 测试套件控制器
@@ -86,11 +86,7 @@ export class TestSuiteController {
   }
 
   @Post('chat/ai-stream')
-  @Header('Content-Type', 'text/event-stream')
-  @Header('Cache-Control', 'no-cache')
-  @Header('Connection', 'keep-alive')
-  @Header('x-vercel-ai-ui-message-stream', 'v1')
-  @ApiOperation({ summary: '执行流式测试（Vercel AI SDK 格式）' })
+  @ApiOperation({ summary: '执行流式测试（Vercel AI SDK UI Message Stream 格式）' })
   async testChatAIStream(@Body() request: VercelAIChatRequestDto, @Res() res: Response) {
     const { testRequest, messageText } = this.testService.convertVercelAIToTestRequest(request);
     this.logger.log(
@@ -98,20 +94,8 @@ export class TestSuiteController {
     );
 
     try {
-      VercelAIStreamHandler.flushSSEHeaders(res);
-      res.write(`data: ${JSON.stringify({ type: 'start', messageId: `msg-${Date.now()}` })}\n\n`);
-
-      const { stream, estimatedInputTokens } =
-        await this.testService.executeTestStreamWithMeta(testRequest);
-
-      const handler = new VercelAIStreamHandler(res, '[AI-Stream]', estimatedInputTokens);
-
-      stream.on('data', (chunk: Buffer) => handler.processChunk(chunk));
-      stream.on('end', () => handler.sendUsageAndEnd());
-      stream.on('error', (error: Error) => {
-        this.logger.error(`[AI-Stream] 流式处理错误: ${error.message}`);
-        handler.sendError(error.message);
-      });
+      const streamResult = await this.testService.executeTestStreamWithMeta(testRequest);
+      streamResult.pipeUIMessageStreamToResponse(res, { sendReasoning: true });
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       if (!res.headersSent) {
@@ -188,8 +172,7 @@ export class TestSuiteController {
     @Query('offset') offset?: number,
     @Query('testType') testType?: TestType,
   ) {
-    const result = await this.testService.getBatches(limit || 20, offset || 0, testType);
-    return { success: true, data: result.data, total: result.total };
+    return this.testService.getBatches(limit || 20, offset || 0, testType);
   }
 
   @Get('batches/:id')

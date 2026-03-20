@@ -1,5 +1,6 @@
 /* eslint-disable prettier/prettier */
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { HttpModule } from './infra/client-http/http.module';
 import { RedisModule } from './infra/redis/redis.module';
@@ -16,6 +17,7 @@ import { AgentModule } from './agent/agent.module';
 import { WecomModule } from '@channels/wecom/wecom.module';
 import { BizModule } from '@biz/biz.module';
 import { validate } from './infra/config/env.validation';
+import { ApiTokenGuard } from './infra/server/guards/api-token.guard';
 
 /**
  * 应用根模块
@@ -66,5 +68,6 @@ import { validate } from './infra/config/env.validation';
     AgentModule, // AI Agent 编排
     WecomModule, // 企业微信渠道
   ],
+  providers: [{ provide: APP_GUARD, useClass: ApiTokenGuard }],
 })
 export class AppModule {}

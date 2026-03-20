@@ -5,7 +5,7 @@ import { TestBatchService } from '@biz/test-suite/services/execution/test-batch.
 import { TestImportService } from '@biz/test-suite/services/feishu/test-import.service';
 import { TestWriteBackService } from '@biz/test-suite/services/feishu/test-write-back.service';
 import { ConversationTestService } from '@biz/test-suite/services/conversation/conversation-test.service';
-import { FeishuBitableSyncService } from '@infra/feishu/services/bitable-sync.service';
+import { FeishuBitableSyncService } from '@biz/feishu-sync/bitable-sync.service';
 import { TestSuiteProcessor } from '@biz/test-suite/test-suite.processor';
 import {
   BatchStatus,

@@ -1,11 +1,6 @@
 import { MessageParser } from '@wecom/message/utils/message-parser.util';
-import {
-  EnterpriseMessageCallbackDto,
-  MessageType,
-  ContactType,
-  MessageSource,
-  LocationPayload,
-} from '@enums/message-callback.enum';
+import { EnterpriseMessageCallbackDto, LocationPayload } from '@wecom/message/dto/message-callback.dto';
+import { MessageType, ContactType, MessageSource } from '@enums/message-callback.enum';
 import { ScenarioType } from '@enums/agent.enum';
 
 describe('MessageParser', () => {

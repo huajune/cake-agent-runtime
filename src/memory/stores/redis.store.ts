@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '@infra/redis/redis.service';
-import type { MemoryEntry, MemoryStore } from './memory.types';
+import type { MemoryEntry, MemoryStore } from '../memory.types';
 import { deepMerge } from './deep-merge.util';
 
 /**

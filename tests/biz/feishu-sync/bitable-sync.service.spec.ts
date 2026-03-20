@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { FeishuBitableSyncService, AgentTestFeedback } from '@infra/feishu/services/bitable-sync.service';
+import { FeishuBitableSyncService, AgentTestFeedback } from '@biz/feishu-sync/bitable-sync.service';
 import { FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
 import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
 

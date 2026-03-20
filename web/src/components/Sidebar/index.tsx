@@ -190,10 +190,10 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         <NavLink
           to="/test-suite"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title={isCollapsed ? '飞书测试集' : undefined}
+          title={isCollapsed ? '飞书评测集' : undefined}
         >
           <span className="nav-icon"><TestSuiteIcon /></span>
-          {!isCollapsed && <span className="nav-text">飞书测试集</span>}
+          {!isCollapsed && <span className="nav-text">飞书评测集</span>}
         </NavLink>
 
         {/* 系统 */}

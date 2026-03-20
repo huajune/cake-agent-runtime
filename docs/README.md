@@ -2,7 +2,7 @@
 
 > DuLiDay 企业微信服务 - 技术文档导航
 
-**最后更新**：2026-03-12
+**最后更新**：2026-03-19
 
 ---
 
@@ -58,6 +58,20 @@ docs/
   - 8 个核心服务组件
   - 飞书 Webhook 集成
   - **更新日期**：2025-11-25
+
+- **[安全护栏说明](architecture/security-guardrails.md)** (新增)
+  - 8 个请求流安全检查点（从启动校验到 LLM 调用）
+  - API Token Guard、输入长度守卫、Prompt Injection 防护
+  - maxOutputTokens 上限、重试降级、告警节流
+  - 安全相关环境变量配置表
+  - **更新日期**：2026-03-19
+
+- **[Agent 记忆系统架构](architecture/memory-system-architecture.md)** (新增)
+  - 三层记忆模型：短期记忆、长期记忆、程序记忆（基于 CoALA 框架）
+  - 固定注入 vs 工具按需检索的 Hybrid 策略
+  - 会话沉淀机制：空闲超时 → Profile + Summary
+  - 读写时序、存储后端、模块结构
+  - **更新日期**：2026-03-19
 
 ---
 

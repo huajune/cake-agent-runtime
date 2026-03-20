@@ -1,4 +1,4 @@
-import { SupabaseStore } from '@memory/supabase.store';
+import { SupabaseStore } from '@memory/stores/supabase.store';
 
 describe('SupabaseStore', () => {
   const mockRedis = {
@@ -38,7 +38,8 @@ describe('SupabaseStore', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSupabaseService.getSupabaseClient.mockReturnValue(mockSupabaseClient);
-    store = new SupabaseStore(mockSupabaseService as never, mockRedis as never);
+    const mockConfig = { profileCacheTtl: 7200 };
+    store = new SupabaseStore(mockSupabaseService as never, mockRedis as never, mockConfig as never);
   });
 
   describe('get', () => {

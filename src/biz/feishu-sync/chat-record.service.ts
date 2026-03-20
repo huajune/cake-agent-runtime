@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ChatMessageRepository } from '@biz/message/repositories/chat-message.repository';
-import { FeishuBitableApiService, BatchCreateRequest } from './bitable-api.service';
+import {
+  FeishuBitableApiService,
+  BatchCreateRequest,
+} from '@infra/feishu/services/bitable-api.service';
 
 /**
  * 增强的消息历史记录项（用于飞书同步）
@@ -22,11 +25,6 @@ interface EnhancedMessageHistoryItem {
  * 职责：
  * - 每日 0 点将前一天的聊天记录从 Supabase 同步到飞书多维表格
  * - 支持手动触发同步和指定时间范围同步
- *
- * 重构说明：
- * - 使用 FeishuBitableApiService 进行 API 调用
- * - 移除重复的 Token 管理和配置加载代码
- * - 去重通过 chatId 字段实现（唯一标识）
  */
 @Injectable()
 export class ChatRecordSyncService {
@@ -194,7 +192,6 @@ export class ChatRecordSyncService {
     const existingChatIds = new Set<string>();
 
     try {
-      // 获取所有记录
       const records = await this.bitableApi.getAllRecords(appToken, tableId);
 
       for (const record of records) {

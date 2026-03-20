@@ -1,6 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { AgentReplyConfig } from '@biz/hosting-config/types/hosting-config.types';
-import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
+import { Injectable, Logger } from '@nestjs/common';
 import { FeishuWebhookService } from './webhook.service';
 import { AlertLevel } from '../interfaces/interface';
 import { ALERT_THROTTLE } from '../constants/constants';
@@ -59,65 +57,20 @@ interface ThrottleState {
  * - 节流控制（可动态配置）
  */
 @Injectable()
-export class FeishuAlertService implements OnModuleInit {
+export class FeishuAlertService {
   private readonly logger = new Logger(FeishuAlertService.name);
 
-  // 节流配置（支持动态更新）
-  private throttleWindowMs: number;
-  private throttleMaxCount: number;
+  // 节流配置
+  private readonly throttleWindowMs = ALERT_THROTTLE.WINDOW_MS;
+  private readonly throttleMaxCount = ALERT_THROTTLE.MAX_COUNT;
 
   // 节流状态
   private readonly throttleMap = new Map<string, ThrottleState>();
 
-  constructor(
-    private readonly webhookService: FeishuWebhookService,
-    private readonly systemConfigService: SystemConfigService,
-  ) {
-    // 初始化默认配置
-    this.throttleWindowMs = ALERT_THROTTLE.WINDOW_MS;
-    this.throttleMaxCount = ALERT_THROTTLE.MAX_COUNT;
-
-    // 注册配置变更回调
-    this.systemConfigService.onAgentReplyConfigChange((config) => {
-      this.onConfigChange(config);
-    });
-
+  constructor(private readonly webhookService: FeishuWebhookService) {
     this.logger.log(
       `飞书告警服务已初始化 (节流窗口=${this.throttleWindowMs / 1000}s, 最大次数=${this.throttleMaxCount})`,
     );
-  }
-
-  /**
-   * 模块初始化：从 Supabase 加载动态配置
-   */
-  async onModuleInit() {
-    try {
-      const config = await this.systemConfigService.getAgentReplyConfig();
-      this.throttleWindowMs = config.alertThrottleWindowMs;
-      this.throttleMaxCount = config.alertThrottleMaxCount;
-      this.logger.log(
-        `已从 Supabase 加载配置: 节流窗口=${this.throttleWindowMs / 1000}s, 最大次数=${this.throttleMaxCount}`,
-      );
-    } catch (error) {
-      this.logger.warn('从 Supabase 加载配置失败，使用默认值');
-    }
-  }
-
-  /**
-   * 配置变更回调
-   */
-  private onConfigChange(config: AgentReplyConfig): void {
-    const oldWindowMs = this.throttleWindowMs;
-    const oldMaxCount = this.throttleMaxCount;
-
-    this.throttleWindowMs = config.alertThrottleWindowMs;
-    this.throttleMaxCount = config.alertThrottleMaxCount;
-
-    if (oldWindowMs !== this.throttleWindowMs || oldMaxCount !== this.throttleMaxCount) {
-      this.logger.log(
-        `告警节流配置已更新: 节流窗口=${this.throttleWindowMs / 1000}s, 最大次数=${this.throttleMaxCount}`,
-      );
-    }
   }
 
   /**

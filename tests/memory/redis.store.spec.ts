@@ -1,4 +1,4 @@
-import { RedisStore } from '@memory/redis.store';
+import { RedisStore } from '@memory/stores/redis.store';
 
 describe('RedisStore', () => {
   const mockRedis = {

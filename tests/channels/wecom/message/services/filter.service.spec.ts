@@ -2,12 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { MessageFilterService, FilterReason } from '@wecom/message/services/filter.service';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
-import {
-  EnterpriseMessageCallbackDto,
-  MessageSource,
-  MessageType,
-  ContactType,
-} from '@enums/message-callback.enum';
+import { EnterpriseMessageCallbackDto } from '@wecom/message/dto/message-callback.dto';
+import { MessageSource, MessageType, ContactType } from '@enums/message-callback.enum';
 
 describe('MessageFilterService', () => {
   let service: MessageFilterService;

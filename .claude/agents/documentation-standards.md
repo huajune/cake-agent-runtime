@@ -117,7 +117,6 @@ git commit -m "feat: update default model"
 ```
 development-guide.md
 agent-service-architecture.md
-huajuan-agent-api.md
 auto-version-changelog.md
 ```
 
@@ -142,7 +141,7 @@ docs/
 ├── guides/                          # 📚 Usage and development guides
 │   ├── development-guide.md
 │   └── api-integration/            # API integration guides (optional subdirectory)
-│       └── huajuan-agent-api.md
+│       └── agent-api.md
 ├── workflows/                       # 🔄 Workflows and standards
 │   └── auto-version-changelog.md
 └── product/                         # 📦 Product documentation

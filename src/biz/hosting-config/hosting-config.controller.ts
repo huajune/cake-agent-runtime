@@ -1,22 +1,16 @@
 import { Controller, Get, Post, Delete, HttpCode, Body } from '@nestjs/common';
 import { AgentReplyConfig } from './types/hosting-config.types';
 import { HostingConfigFacadeService } from './services/hosting-config-facade.service';
-import { MessageService } from '@wecom/message/message.service';
-import { MessageProcessor } from '@wecom/message/message.processor';
 
 /**
  * 系统配置控制器
  * 纯委托层，不包含任何业务逻辑。
- * biz 层操作委托给 HostingConfigFacadeService；
- * wecom 域的运行时开关和 Worker 管理直接调用 MessageService / MessageProcessor。
+ * 所有操作委托给 HostingConfigFacadeService。
+ * 运行时开关和 Worker 管理端点已迁移至 MessageController（wecom 层）。
  */
 @Controller('config')
 export class HostingConfigController {
-  constructor(
-    private readonly facade: HostingConfigFacadeService,
-    private readonly messageService: MessageService,
-    private readonly messageProcessor: MessageProcessor,
-  ) {}
+  constructor(private readonly facade: HostingConfigFacadeService) {}
 
   @Get('agent-config')
   async getAgentReplyConfig() {
@@ -49,56 +43,5 @@ export class HostingConfigController {
   @Delete('blacklist')
   async removeFromBlacklist(@Body() body: { id: string; type: 'chatId' | 'groupId' }) {
     return this.facade.removeFromBlacklist(body.id, body.type);
-  }
-
-  // ==================== 运行时开关 ====================
-
-  @Get('ai-reply-status')
-  getAiReplyStatus() {
-    return { enabled: this.messageService.getAiReplyStatus() };
-  }
-
-  @Post('toggle-ai-reply')
-  @HttpCode(200)
-  async toggleAiReply(@Body('enabled') enabled: boolean) {
-    const newStatus = await this.messageService.toggleAiReply(enabled);
-    return {
-      enabled: newStatus,
-      message: `AI 自动回复功能已${newStatus ? '启用' : '禁用'}`,
-    };
-  }
-
-  @Get('message-merge-status')
-  getMessageMergeStatus() {
-    return { enabled: this.messageService.getMessageMergeStatus() };
-  }
-
-  @Post('toggle-message-merge')
-  @HttpCode(200)
-  async toggleMessageMerge(@Body('enabled') enabled: boolean) {
-    const newStatus = await this.messageService.toggleMessageMerge(enabled);
-    return {
-      enabled: newStatus,
-      message: `消息聚合功能已${newStatus ? '启用' : '禁用'}`,
-    };
-  }
-
-  // ==================== Worker 管理 ====================
-
-  @Get('worker-status')
-  getWorkerStatus() {
-    return {
-      ...this.messageProcessor.getWorkerStatus(),
-      messageMergeEnabled: this.messageService.getMessageMergeStatus(),
-    };
-  }
-
-  @Post('worker-concurrency')
-  @HttpCode(200)
-  async setWorkerConcurrency(@Body('concurrency') concurrency: number) {
-    if (concurrency === undefined || concurrency === null) {
-      return { success: false, message: 'concurrency 参数必填' };
-    }
-    return this.messageProcessor.setConcurrency(concurrency);
   }
 }

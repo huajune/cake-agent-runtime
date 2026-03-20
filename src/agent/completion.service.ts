@@ -10,6 +10,7 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ModelMessage, generateText } from 'ai';
 import { RouterService } from '@providers/router.service';
 import { ModelRole } from '@providers/types';
@@ -41,14 +42,30 @@ export interface CompletionResult {
 @Injectable()
 export class CompletionService {
   private readonly logger = new Logger(CompletionService.name);
+  private readonly defaultMaxOutputTokens: number;
 
-  constructor(private readonly router: RouterService) {}
+  constructor(
+    private readonly router: RouterService,
+    private readonly configService: ConfigService,
+  ) {
+    this.defaultMaxOutputTokens = parseInt(
+      this.configService.get('AGENT_MAX_OUTPUT_TOKENS', '4096'),
+      10,
+    );
+  }
 
   /**
    * 执行一次性 LLM 调用
    */
   async generate(params: CompletionParams): Promise<CompletionResult> {
-    const { systemPrompt, messages, role = 'chat', modelId, temperature, maxOutputTokens } = params;
+    const {
+      systemPrompt,
+      messages,
+      role = 'chat',
+      modelId,
+      temperature,
+      maxOutputTokens = this.defaultMaxOutputTokens,
+    } = params;
 
     const model = modelId ? this.router.resolve(modelId) : this.router.resolveByRole(role);
 

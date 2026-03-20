@@ -3,12 +3,8 @@ import { getQueueToken } from '@nestjs/bull';
 import { SimpleMergeService } from '@wecom/message/services/simple-merge.service';
 import { RedisService } from '@infra/redis/redis.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
-import {
-  EnterpriseMessageCallbackDto,
-  MessageType,
-  ContactType,
-  MessageSource,
-} from '@enums/message-callback.enum';
+import { EnterpriseMessageCallbackDto } from '@wecom/message/dto/message-callback.dto';
+import { MessageType, ContactType, MessageSource } from '@enums/message-callback.enum';
 
 describe('SimpleMergeService', () => {
   let service: SimpleMergeService;

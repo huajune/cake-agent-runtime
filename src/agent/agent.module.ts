@@ -5,15 +5,25 @@ import { BizModule } from '@biz/biz.module';
 import { ToolModule } from '@tools/tool.module';
 import { MemoryModule } from '@memory/memory.module';
 import { ObservabilityModule } from '@/observability/observability.module';
+import { SpongeModule } from '@sponge/sponge.module';
 import { LoopService } from './loop.service';
 import { CompletionService } from './completion.service';
 import { SignalDetectorService } from './signal-detector.service';
 import { ContextService } from './context/context.service';
 import { AgentController } from './agent.controller';
 import { FactExtractionService } from './fact-extraction.service';
+import { InputGuardService } from './input-guard.service';
 
 @Module({
-  imports: [ConfigModule, FeishuModule, BizModule, ToolModule, MemoryModule, ObservabilityModule],
+  imports: [
+    ConfigModule,
+    FeishuModule,
+    BizModule,
+    ToolModule,
+    MemoryModule,
+    ObservabilityModule,
+    SpongeModule,
+  ],
   controllers: [AgentController],
   providers: [
     ContextService,
@@ -21,6 +31,7 @@ import { FactExtractionService } from './fact-extraction.service';
     CompletionService,
     SignalDetectorService,
     FactExtractionService,
+    InputGuardService,
   ],
   exports: [
     ContextService,
@@ -28,6 +39,7 @@ import { FactExtractionService } from './fact-extraction.service';
     CompletionService,
     SignalDetectorService,
     FactExtractionService,
+    InputGuardService,
   ],
 })
 export class AgentModule {}

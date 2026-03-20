@@ -1,11 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { EnterpriseMessageCallbackDto } from '../dto/message-callback.dto';
 import {
-  EnterpriseMessageCallbackDto,
   MessageSource,
   MessageType,
   ContactType,
   getMessageSourceDescription,
-} from '../dto/message-callback.dto';
+} from '@enums/message-callback.enum';
 import { MessageParser } from '../utils/message-parser.util';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';

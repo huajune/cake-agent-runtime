@@ -413,7 +413,7 @@ export class MessagePipelineService {
   ): Record<string, unknown> {
     return {
       scenario,
-      tokenUsage: agentResult.reply.usage?.totalTokens,
+      tokenUsage: agentResult.reply.usage?.totalTokens ?? 0,
       replyPreview: agentResult.reply.content,
       replySegments: deliveryResult.segmentCount,
       isFallback: agentResult.isFallback,

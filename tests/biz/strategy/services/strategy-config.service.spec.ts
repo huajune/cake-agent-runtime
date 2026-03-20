@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { StrategyConfigService } from '@biz/strategy/services/strategy-config.service';
 import { StrategyConfigRepository } from '@biz/strategy/repositories/strategy-config.repository';
+import { StrategyChangelogRepository } from '@biz/strategy/repositories/strategy-changelog.repository';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 import { buildDefaultStrategyRecord } from '@shared-types/strategy-config.types';
 
@@ -11,6 +12,11 @@ describe('StrategyConfigService', () => {
     findActiveConfig: jest.fn(),
     insertConfig: jest.fn(),
     updateConfigField: jest.fn(),
+  };
+
+  const mockChangelogRepository = {
+    insertLog: jest.fn().mockResolvedValue(null),
+    findByConfigId: jest.fn().mockResolvedValue([]),
   };
 
   const makeRecord = (overrides: Partial<StrategyConfigRecord> = {}): StrategyConfigRecord => ({
@@ -26,6 +32,7 @@ describe('StrategyConfigService', () => {
       providers: [
         StrategyConfigService,
         { provide: StrategyConfigRepository, useValue: mockStrategyConfigRepository },
+        { provide: StrategyChangelogRepository, useValue: mockChangelogRepository },
       ],
     }).compile();
 

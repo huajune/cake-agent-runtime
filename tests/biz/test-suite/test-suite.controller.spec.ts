@@ -208,7 +208,7 @@ describe('TestSuiteController', () => {
       const result = await controller.getBatches();
 
       expect(testService.getBatches).toHaveBeenCalledWith(20, 0, undefined);
-      expect(result).toEqual({ success: true, data: mockResult.data, total: mockResult.total });
+      expect(result).toEqual(mockResult);
     });
 
     it('should pass custom limit, offset and testType', async () => {

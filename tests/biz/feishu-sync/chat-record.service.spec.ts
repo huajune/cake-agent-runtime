@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ChatRecordSyncService } from '@infra/feishu/services/chat-record.service';
+import { ChatRecordSyncService } from '@biz/feishu-sync/chat-record.service';
 import { FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
 import { ChatMessageRepository } from '@biz/message/repositories/chat-message.repository';
 

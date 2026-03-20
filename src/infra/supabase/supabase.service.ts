@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { Cron, CronExpression } from '@nestjs/schedule';
 
 /**
  * Supabase 基础服务
@@ -79,5 +80,19 @@ export class SupabaseService implements OnModuleInit {
    */
   isAvailable(): boolean {
     return this.isInitialized;
+  }
+
+  /**
+   * Keep-alive：每天凌晨 3 点执行一次轻量查询，防止 Supabase 免费版数据库因闲置自动暂停
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  async keepAlive(): Promise<void> {
+    if (!this.isInitialized) return;
+    try {
+      await this.supabaseClient.from('strategy_config').select('id').limit(1);
+      this.logger.debug('Supabase keep-alive ping 成功');
+    } catch {
+      this.logger.warn('Supabase keep-alive ping 失败');
+    }
   }
 }

@@ -7,12 +7,8 @@ import { MessageStatisticsService } from '@wecom/message/services/statistics.ser
 import { MessagePipelineService } from '@wecom/message/services/pipeline.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
-import {
-  EnterpriseMessageCallbackDto,
-  MessageType,
-  ContactType,
-  MessageSource,
-} from '@enums/message-callback.enum';
+import { EnterpriseMessageCallbackDto } from '@wecom/message/dto/message-callback.dto';
+import { MessageType, ContactType, MessageSource } from '@enums/message-callback.enum';
 
 describe('MessageService', () => {
   let service: MessageService;

@@ -65,7 +65,25 @@ describe('RouterService', () => {
       );
     });
 
-    it('should resolve fast role without fallbacks', () => {
+    it('should resolve fast role with default fallbacks when no role-specific fallbacks', () => {
+      setupConfig({ AGENT_DEFAULT_FALLBACKS: 'qwen/qwen-max-latest' });
+      service.resolveByRole('fast');
+      expect(mockReliable.resolveWithFallback).toHaveBeenCalledWith(
+        'deepseek/deepseek-chat',
+        ['qwen/qwen-max-latest'],
+      );
+    });
+
+    it('should use role-specific fallbacks over default fallbacks', () => {
+      setupConfig({ AGENT_DEFAULT_FALLBACKS: 'qwen/qwen-max-latest' });
+      service.resolveByRole('chat');
+      expect(mockReliable.resolveWithFallback).toHaveBeenCalledWith(
+        'anthropic/claude-sonnet-4-6',
+        ['openai/gpt-4o', 'deepseek/deepseek-chat'],
+      );
+    });
+
+    it('should return undefined fallbacks when neither role-specific nor default configured', () => {
       service.resolveByRole('fast');
       expect(mockReliable.resolveWithFallback).toHaveBeenCalledWith(
         'deepseek/deepseek-chat',

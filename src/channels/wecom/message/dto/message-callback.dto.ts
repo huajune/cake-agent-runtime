@@ -1,5 +1,12 @@
 import { IsString, IsNotEmpty, IsObject, IsBoolean, IsNumber } from 'class-validator';
-import { MessageType, ContactType, MessageSource } from '@enums/message-callback.enum';
+import {
+  MessageType,
+  ContactType,
+  MessageSource,
+  getMessageSourceDescription,
+} from '@enums/message-callback.enum';
+
+export { MessageType, ContactType, MessageSource, getMessageSourceDescription };
 
 /**
  * ========================================

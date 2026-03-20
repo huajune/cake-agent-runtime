@@ -67,7 +67,7 @@ export interface AgentMemoryRow {
   expires_at: string | null;
 }
 
-// ========== 候选人事实提取（从花卷迁移） ==========
+// ========== 候选人事实提取 ==========
 
 /** 面试信息 schema */
 export const InterviewInfoSchema = z.object({
@@ -109,7 +109,7 @@ export type EntityExtractionResult = z.infer<typeof EntityExtractionResultSchema
 export type InterviewInfo = z.infer<typeof InterviewInfoSchema>;
 export type Preferences = z.infer<typeof PreferencesSchema>;
 
-// ========== 会话记忆状态（从花卷 WeworkSessionState 迁移） ==========
+// ========== 会话记忆状态 ==========
 
 /** 已推荐岗位摘要 — 避免每次回调 API */
 export interface RecommendedJobSummary {
@@ -167,3 +167,56 @@ export const FALLBACK_EXTRACTION: EntityExtractionResult = {
   },
   reasoning: '实体提取失败，使用空值降级',
 };
+
+// ========== 新记忆架构类型（v2） ==========
+
+/** 用户身份信息 — 长期记忆 Profile，跨会话复用 */
+export interface UserProfile {
+  name: string | null;
+  phone: string | null;
+  gender: string | null;
+  age: string | null;
+  is_student: boolean | null;
+  education: string | null;
+  has_health_certificate: string | null;
+}
+
+/** 程序记忆 — 招聘流程阶段状态 */
+export interface ProceduralState {
+  currentStage: string | null;
+  advancedAt: string | null;
+  reason: string | null;
+}
+
+/** 对话摘要数据 — 长期记忆 Summary */
+export interface SummaryData {
+  summary: string;
+  sessionId: string;
+  startTime: string;
+  endTime: string;
+}
+
+/** 消息回调元数据 — 冗余到长期记忆中 */
+export interface MessageMetadata {
+  botId?: string;
+  imBotId?: string;
+  imContactId?: string;
+  contactType?: number;
+  contactName?: string;
+  externalUserId?: string;
+  avatar?: string;
+}
+
+/** Agent 完整记忆上下文 — recall() 返回值 */
+export interface AgentMemoryContext {
+  /** 短期记忆 — 裁剪后的对话窗口 */
+  shortTerm: { role: string; content: string }[];
+  /** 长期记忆 — 用户身份 */
+  longTerm: {
+    profile: UserProfile | null;
+  };
+  /** 程序记忆 — 当前流程阶段 */
+  procedural: ProceduralState;
+  /** 会话事实 — 本次求职意向（含 EntityExtractionResult + 推荐岗位） */
+  sessionFacts: WeworkSessionState | null;
+}

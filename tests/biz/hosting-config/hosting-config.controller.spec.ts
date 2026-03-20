@@ -1,14 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HostingConfigController } from '@biz/hosting-config/hosting-config.controller';
 import { HostingConfigFacadeService } from '@biz/hosting-config/services/hosting-config-facade.service';
-import { MessageService } from '@wecom/message/message.service';
-import { MessageProcessor } from '@wecom/message/message.processor';
 
 describe('HostingConfigController', () => {
   let controller: HostingConfigController;
   let facade: HostingConfigFacadeService;
-  let messageService: MessageService;
-  let messageProcessor: MessageProcessor;
 
   const mockFacadeService = {
     getAgentReplyConfig: jest.fn(),
@@ -19,32 +15,16 @@ describe('HostingConfigController', () => {
     removeFromBlacklist: jest.fn(),
   };
 
-  const mockMessageService = {
-    getAiReplyStatus: jest.fn(),
-    toggleAiReply: jest.fn(),
-    getMessageMergeStatus: jest.fn(),
-    toggleMessageMerge: jest.fn(),
-  };
-
-  const mockMessageProcessor = {
-    getWorkerStatus: jest.fn(),
-    setConcurrency: jest.fn(),
-  };
-
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [HostingConfigController],
       providers: [
         { provide: HostingConfigFacadeService, useValue: mockFacadeService },
-        { provide: MessageService, useValue: mockMessageService },
-        { provide: MessageProcessor, useValue: mockMessageProcessor },
       ],
     }).compile();
 
     controller = module.get<HostingConfigController>(HostingConfigController);
     facade = module.get<HostingConfigFacadeService>(HostingConfigFacadeService);
-    messageService = module.get<MessageService>(MessageService);
-    messageProcessor = module.get<MessageProcessor>(MessageProcessor);
     jest.clearAllMocks();
   });
 
@@ -169,162 +149,6 @@ describe('HostingConfigController', () => {
       await controller.removeFromBlacklist(body);
 
       expect(facade.removeFromBlacklist).toHaveBeenCalledWith('group-789', 'groupId');
-    });
-  });
-
-  describe('getAiReplyStatus', () => {
-    it('should return enabled true when AI reply is enabled', () => {
-      mockMessageService.getAiReplyStatus.mockReturnValue(true);
-
-      const result = controller.getAiReplyStatus();
-
-      expect(messageService.getAiReplyStatus).toHaveBeenCalled();
-      expect(result).toEqual({ enabled: true });
-    });
-
-    it('should return enabled false when AI reply is disabled', () => {
-      mockMessageService.getAiReplyStatus.mockReturnValue(false);
-
-      const result = controller.getAiReplyStatus();
-
-      expect(result).toEqual({ enabled: false });
-    });
-  });
-
-  describe('toggleAiReply', () => {
-    it('should enable AI reply and return enabled status', async () => {
-      mockMessageService.toggleAiReply.mockResolvedValue(true);
-
-      const result = await controller.toggleAiReply(true);
-
-      expect(messageService.toggleAiReply).toHaveBeenCalledWith(true);
-      expect(result).toEqual({
-        enabled: true,
-        message: 'AI 自动回复功能已启用',
-      });
-    });
-
-    it('should disable AI reply and return disabled status', async () => {
-      mockMessageService.toggleAiReply.mockResolvedValue(false);
-
-      const result = await controller.toggleAiReply(false);
-
-      expect(messageService.toggleAiReply).toHaveBeenCalledWith(false);
-      expect(result).toEqual({
-        enabled: false,
-        message: 'AI 自动回复功能已禁用',
-      });
-    });
-  });
-
-  describe('getMessageMergeStatus', () => {
-    it('should return enabled true when message merge is enabled', () => {
-      mockMessageService.getMessageMergeStatus.mockReturnValue(true);
-
-      const result = controller.getMessageMergeStatus();
-
-      expect(messageService.getMessageMergeStatus).toHaveBeenCalled();
-      expect(result).toEqual({ enabled: true });
-    });
-
-    it('should return enabled false when message merge is disabled', () => {
-      mockMessageService.getMessageMergeStatus.mockReturnValue(false);
-
-      const result = controller.getMessageMergeStatus();
-
-      expect(result).toEqual({ enabled: false });
-    });
-  });
-
-  describe('toggleMessageMerge', () => {
-    it('should enable message merge and return enabled status', async () => {
-      mockMessageService.toggleMessageMerge.mockResolvedValue(true);
-
-      const result = await controller.toggleMessageMerge(true);
-
-      expect(messageService.toggleMessageMerge).toHaveBeenCalledWith(true);
-      expect(result).toEqual({
-        enabled: true,
-        message: '消息聚合功能已启用',
-      });
-    });
-
-    it('should disable message merge and return disabled status', async () => {
-      mockMessageService.toggleMessageMerge.mockResolvedValue(false);
-
-      const result = await controller.toggleMessageMerge(false);
-
-      expect(result).toEqual({
-        enabled: false,
-        message: '消息聚合功能已禁用',
-      });
-    });
-  });
-
-  describe('getWorkerStatus', () => {
-    it('should return combined worker status and message merge status', () => {
-      const workerStatus = {
-        concurrency: 5,
-        isProcessing: false,
-        pendingJobs: 0,
-      };
-      mockMessageProcessor.getWorkerStatus.mockReturnValue(workerStatus);
-      mockMessageService.getMessageMergeStatus.mockReturnValue(true);
-
-      const result = controller.getWorkerStatus();
-
-      expect(messageProcessor.getWorkerStatus).toHaveBeenCalled();
-      expect(messageService.getMessageMergeStatus).toHaveBeenCalled();
-      expect(result).toEqual({
-        ...workerStatus,
-        messageMergeEnabled: true,
-      });
-    });
-
-    it('should reflect disabled message merge in combined status', () => {
-      mockMessageProcessor.getWorkerStatus.mockReturnValue({ concurrency: 3 });
-      mockMessageService.getMessageMergeStatus.mockReturnValue(false);
-
-      const result = controller.getWorkerStatus();
-
-      expect(result.messageMergeEnabled).toBe(false);
-    });
-  });
-
-  describe('setWorkerConcurrency', () => {
-    it('should set concurrency via messageProcessor', async () => {
-      const concurrency = 10;
-      const mockResult = { success: true, concurrency: 10 };
-
-      mockMessageProcessor.setConcurrency.mockResolvedValue(mockResult);
-
-      const result = await controller.setWorkerConcurrency(concurrency);
-
-      expect(messageProcessor.setConcurrency).toHaveBeenCalledWith(10);
-      expect(result).toEqual(mockResult);
-    });
-
-    it('should return failure when concurrency is undefined', async () => {
-      const result = await controller.setWorkerConcurrency(undefined as unknown as number);
-
-      expect(messageProcessor.setConcurrency).not.toHaveBeenCalled();
-      expect(result).toEqual({ success: false, message: 'concurrency 参数必填' });
-    });
-
-    it('should return failure when concurrency is null', async () => {
-      const result = await controller.setWorkerConcurrency(null as unknown as number);
-
-      expect(messageProcessor.setConcurrency).not.toHaveBeenCalled();
-      expect(result).toEqual({ success: false, message: 'concurrency 参数必填' });
-    });
-
-    it('should work with concurrency of 1', async () => {
-      mockMessageProcessor.setConcurrency.mockResolvedValue({ success: true, concurrency: 1 });
-
-      const result = await controller.setWorkerConcurrency(1);
-
-      expect(messageProcessor.setConcurrency).toHaveBeenCalledWith(1);
-      expect(result).toEqual({ success: true, concurrency: 1 });
     });
   });
 });

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
 import { HttpModule } from '@infra/client-http/http.module';
@@ -18,7 +18,7 @@ import { ConversationTestService } from './services/conversation/conversation-te
 import { ConversationParserService } from './services/conversation/conversation-parser.service';
 import { LlmEvaluationService } from './services/conversation/llm-evaluation.service';
 import { AgentModule } from '@agent/agent.module';
-import { FeishuModule } from '@infra/feishu/feishu.module';
+import { FeishuSyncModule } from '@biz/feishu-sync/feishu-sync.module';
 
 /**
  * 测试套件模块
@@ -41,8 +41,8 @@ import { FeishuModule } from '@infra/feishu/feishu.module';
   imports: [
     ConfigModule,
     HttpModule,
-    AgentModule,
-    FeishuModule,
+    forwardRef(() => AgentModule),
+    FeishuSyncModule,
     // 注册测试套件队列
     BullModule.registerQueueAsync({
       name: 'test-suite',

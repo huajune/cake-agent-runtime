@@ -6,49 +6,35 @@ import { FeishuBitableApiService } from './services/bitable-api.service';
 import { FeishuWebhookService } from './services/webhook.service';
 import { FeishuAlertService } from './services/alert.service';
 import { FeishuBookingService } from './services/booking.service';
-import { FeishuBitableSyncService } from './services/bitable-sync.service';
-import { ChatRecordSyncService } from './services/chat-record.service';
 import { FeishuController } from './feishu.controller';
 
 /**
- * 飞书统一模块
+ * 飞书基础设施模块（纯 infra，无 biz 依赖）
  *
- * 整合所有飞书相关功能：
+ * 提供飞书基础 API 能力：
  * - 基础 API 服务（FeishuApiService）：Token 管理、HTTP 请求
  * - 多维表格 API（FeishuBitableApiService）：Bitable CRUD 操作
  * - Webhook 通知（告警、预约等）
- * - 多维表格同步（聊天记录、反馈等）
  *
- * 架构说明：
- * - FeishuApiService: 底层 API 服务，负责 Token 管理和 HTTP 请求
- * - FeishuBitableApiService: 中间层，封装 Bitable 通用操作
- * - 业务服务：使用上述服务完成具体业务逻辑
+ * 注意：数据同步服务（聊天记录→飞书 BiTable）在 biz/feishu-sync 模块中。
  */
-@Global() // 设为全局模块，其他模块可直接注入
+@Global()
 @Module({
   imports: [ConfigModule, ScheduleModule.forRoot()],
   controllers: [FeishuController],
   providers: [
-    // 基础 API 服务
     FeishuApiService,
     FeishuBitableApiService,
-    // 业务服务
     FeishuWebhookService,
     FeishuAlertService,
     FeishuBookingService,
-    FeishuBitableSyncService,
-    ChatRecordSyncService,
   ],
   exports: [
-    // 导出 API 服务供其他模块使用
     FeishuApiService,
     FeishuBitableApiService,
-    // 导出业务服务
     FeishuWebhookService,
     FeishuAlertService,
     FeishuBookingService,
-    FeishuBitableSyncService,
-    ChatRecordSyncService,
   ],
 })
 export class FeishuModule {}

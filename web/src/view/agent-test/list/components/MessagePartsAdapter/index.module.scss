@@ -247,59 +247,74 @@
   animation: spin 1s linear infinite;
 }
 
-.thinkingToolGroup {
-  display: flex;
-  flex-direction: column;
-  gap: $spacing-sm;
-}
-
 // ==================== 思考过程卡片 ====================
-.thinkingBlock {
+.reasoningCard {
   border-radius: $radius-md;
-  border: 1px solid rgba(99, 102, 241, 0.15);
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.04) 0%, rgba(139, 92, 246, 0.04) 100%);
-  padding: $spacing-sm $spacing-md;
-  display: flex;
-  flex-direction: column;
-  gap: $spacing-sm;
+  border: 1px solid $accent-08;
+  background: rgba(255, 255, 255, 0.9);
+  overflow: hidden;
+  transition: all 0.2s ease;
 
-}
-
-.thinkingHeader {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: $font-size-xs;
-  font-weight: $font-weight-semibold;
-  color: $primary;
-
-  svg {
-    flex-shrink: 0;
+  &:hover {
+    border-color: $accent-15;
   }
 }
 
-.stageBadge {
+.reasoningActive {
+  border-color: rgba(99, 102, 241, 0.2);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.03) 0%, rgba(139, 92, 246, 0.03) 100%);
+}
+
+.reasoningHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: $spacing-sm $spacing-md;
+  cursor: pointer;
+  user-select: none;
+  color: $text-muted;
+
+  &:hover {
+    background: $accent-03;
+    color: $primary;
+  }
+
+  > svg {
+    flex-shrink: 0;
+    opacity: 0.5;
+  }
+}
+
+.reasoningLabel {
   display: inline-flex;
-  padding: 2px 8px;
-  background: $primary-10;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%);
   color: $primary;
-  border-radius: $radius-full;
-  font-size: 11px;
+  border: 1px solid rgba(99, 102, 241, 0.12);
+  border-radius: $radius-md;
+  font-size: $font-size-xs;
   font-weight: $font-weight-medium;
 }
 
-.confidenceBadge {
-  font-size: 11px;
-  font-weight: $font-weight-normal;
-  color: $text-muted;
-}
-
-.thinkingReasoning {
+.reasoningBody {
+  padding: 0 $spacing-md $spacing-md;
   font-size: $font-size-xs;
   color: $text-secondary;
   line-height: 1.7;
+  animation: slideDown 0.2s ease-out;
+  max-height: 300px;
+  overflow-y: auto;
 
-  // Markdown 渲染样式
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 2px;
+  }
+
   p {
     margin: 0 0 0.5em;
     &:last-child { margin-bottom: 0; }
@@ -330,92 +345,8 @@
 
   hr {
     border: none;
-    border-top: 1px solid rgba(99, 102, 241, 0.12);
+    border-top: 1px solid rgba(99, 102, 241, 0.08);
     margin: 0.5em 0;
-  }
-}
-
-.thinkingNeeds,
-.thinkingRisks {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.needsLabel {
-  font-size: 11px;
-  color: $text-muted;
-  font-weight: $font-weight-medium;
-  margin-right: 2px;
-}
-
-.needTag {
-  display: inline-flex;
-  padding: 1px 6px;
-  background: $info-soft;
-  color: $info;
-  border-radius: $radius-sm;
-  font-size: 11px;
-  font-family: 'JetBrains Mono', monospace;
-}
-
-.riskTag {
-  display: inline-flex;
-  padding: 1px 6px;
-  background: $danger-soft;
-  color: $danger;
-  border-radius: $radius-sm;
-  font-size: 11px;
-  font-family: 'JetBrains Mono', monospace;
-}
-
-.thinkingDetailToggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: $text-muted;
-  cursor: pointer;
-  user-select: none;
-  width: fit-content;
-
-  &:hover {
-    color: $primary;
-  }
-}
-
-.thinkingDetail {
-  padding: $spacing-sm;
-  background: rgba(255, 255, 255, 0.6);
-  border-radius: $radius-sm;
-  animation: slideDown 0.2s ease-out;
-  display: flex;
-  flex-direction: column;
-  gap: $spacing-sm;
-}
-
-.detailItem {
-  display: flex;
-  gap: $spacing-sm;
-  font-size: $font-size-xs;
-  line-height: 1.6;
-}
-
-.detailLabel {
-  flex-shrink: 0;
-  font-weight: $font-weight-semibold;
-  color: $text-secondary;
-  min-width: 32px;
-}
-
-.detailList {
-  margin: 0;
-  padding-left: $spacing-md;
-  color: $text-secondary;
-
-  li {
-    margin-bottom: 2px;
   }
 }
 

@@ -113,7 +113,11 @@ export const DEFAULT_STAGE_GOALS: StrategyStageGoals = {
         '已了解候选人意向品牌或岗位方向',
       ],
       ctaStrategy: ['用轻松友好的口吻提问，一次只问一个问题，引导候选人说出所在区域和意向品牌'],
-      disallowedActions: ['跳过自我介绍直接推岗位', '一次性抛出多个问题', '在此阶段询问是否为学生'],
+      disallowedActions: [
+        '未完成自我介绍就主动推荐详细岗位列表（候选人主动问岗位时须调用工具如实回答）',
+        '一次性抛出多个问题',
+        '在此阶段询问是否为学生',
+      ],
     },
     {
       stage: 'qualify_candidate',

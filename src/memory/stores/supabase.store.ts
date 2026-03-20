@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import { RedisService } from '@infra/redis/redis.service';
-import type { AgentMemoryRow, MemoryEntry, MemoryStore } from './memory.types';
-import { MEMORY_TTL } from './memory.types';
+import type { AgentMemoryRow, MemoryEntry, MemoryStore } from '../memory.types';
+import { MemoryConfig } from '../memory.config';
 import { deepMerge } from './deep-merge.util';
 
 const TABLE = 'agent_memories';
@@ -10,11 +10,9 @@ const TABLE = 'agent_memories';
 /**
  * Supabase 存储后端（profile 类别专用）
  *
- * 永久持久化到 Supabase + Redis 2h 缓存。
+ * 永久持久化到 Supabase + Redis 缓存。
  * 读取时 Redis 优先，miss 回落 Supabase 并回填缓存。
  * Supabase 不可用时 graceful 降级（warn log，不抛异常）。
- *
- * 本期仅搭基础设施，暂无上层调用方。
  */
 @Injectable()
 export class SupabaseStore implements MemoryStore {
@@ -23,6 +21,7 @@ export class SupabaseStore implements MemoryStore {
   constructor(
     private readonly supabase: SupabaseService,
     private readonly redis: RedisService,
+    private readonly config: MemoryConfig,
   ) {}
 
   // ---- 公共接口 ----
@@ -43,7 +42,7 @@ export class SupabaseStore implements MemoryStore {
     };
 
     // 回填缓存
-    await this.redis.setex(key, MEMORY_TTL.PROFILE_CACHE, entry).catch((err) => {
+    await this.redis.setex(key, this.config.profileCacheTtl, entry).catch((err) => {
       this.logger.warn('Redis 缓存回填失败', err);
     });
 
@@ -69,7 +68,7 @@ export class SupabaseStore implements MemoryStore {
     await this.upsertRow(corpId, userId, memoryKey, merged);
 
     // 回填 Redis 缓存
-    await this.redis.setex(key, MEMORY_TTL.PROFILE_CACHE, entry).catch((err) => {
+    await this.redis.setex(key, this.config.profileCacheTtl, entry).catch((err) => {
       this.logger.warn('Redis 缓存写入失败', err);
     });
   }

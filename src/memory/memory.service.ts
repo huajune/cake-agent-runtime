@@ -1,27 +1,35 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { RedisStore } from './redis.store';
-import { SupabaseStore } from './supabase.store';
+import { RedisStore } from './stores/redis.store';
+import { SupabaseStore } from './stores/supabase.store';
+import { MemoryConfig } from './memory.config';
+import { ShortTermService } from './short-term.service';
+import { SessionFactsService } from './session-facts.service';
+import { ProceduralService } from './procedural.service';
+import { LongTermService } from './long-term.service';
 import {
   type MemoryEntry,
+  type AgentMemoryContext,
   type EntityExtractionResult,
   type RecommendedJobSummary,
   type WeworkSessionState,
   MemoryCategory,
-  MEMORY_TTL,
   MEMORY_KEY_PREFIX,
   EMPTY_SESSION_STATE,
 } from './memory.types';
-import { deepMerge } from './deep-merge.util';
+import { deepMerge } from './stores/deep-merge.util';
 
 /**
- * 分层记忆服务 — 对外统一 API，内部按类别路由到对应存储后端
+ * 分层记忆服务 — 对外统一 API
  *
- * 路由规则（按 key 前缀自动识别）：
- * - stage:*         → Redis 3d
- * - wework_session:* → Redis 3d（写入时 deepMerge）
- * - profile:*       → Supabase 永久 + Redis 2h 缓存
+ * v2 接口（推荐）：
+ * - recallAll(corpId, userId, sessionId) → AgentMemoryContext（一次性读取所有记忆）
+ * - storeAll(corpId, userId, sessionId, data) → 一次性写入
  *
- * 对标 ZeroClaw Memory trait 的 store / recall / forget 接口。
+ * v1 接口（过渡，保留向后兼容）：
+ * - store(key, content) / recall(key) / forget(key) — 按 key 前缀路由
+ *
+ * 子服务可直接注入使用：
+ * - SessionFactsService / ProceduralService / LongTermService / ShortTermService
  */
 @Injectable()
 export class MemoryService {
@@ -30,7 +38,32 @@ export class MemoryService {
   constructor(
     private readonly redisStore: RedisStore,
     private readonly supabaseStore: SupabaseStore,
+    private readonly config: MemoryConfig,
+    readonly shortTerm: ShortTermService,
+    readonly sessionFacts: SessionFactsService,
+    readonly procedural: ProceduralService,
+    readonly longTerm: LongTermService,
   ) {}
+
+  // ==================== v2 统一接口 ====================
+
+  /**
+   * 一次性读取完整记忆上下文（Agent 每轮请求前调用）
+   */
+  async recallAll(corpId: string, userId: string, sessionId: string): Promise<AgentMemoryContext> {
+    const [sessionState, proceduralState, profile] = await Promise.all([
+      this.sessionFacts.getSessionState(corpId, userId, sessionId),
+      this.procedural.get(corpId, userId, sessionId),
+      this.longTerm.getProfile(corpId, userId),
+    ]);
+
+    return {
+      shortTerm: [], // 短期记忆由调用方通过 shortTerm.getMessages(chatId) 获取（需要 chatId 而非 sessionId）
+      longTerm: { profile },
+      procedural: proceduralState,
+      sessionFacts: sessionState.facts ? sessionState : null,
+    };
+  }
 
   // ==================== 通用接口（调用方无需关心后端） ====================
 
@@ -44,12 +77,12 @@ export class MemoryService {
         break;
 
       case MemoryCategory.FACTS:
-        await this.redisStore.set(key, content, ttl ?? MEMORY_TTL.FACTS, true);
+        await this.redisStore.set(key, content, ttl ?? this.config.sessionTtl, true);
         break;
 
       case MemoryCategory.STAGE:
       default:
-        await this.redisStore.set(key, content, ttl ?? MEMORY_TTL.STAGE, false);
+        await this.redisStore.set(key, content, ttl ?? this.config.sessionTtl, false);
         break;
     }
   }
@@ -74,7 +107,7 @@ export class MemoryService {
     return this.redisStore.del(key);
   }
 
-  // ==================== Facts 结构化访问（从花卷 WeworkSessionMemory 迁移） ====================
+  // ==================== Facts 结构化访问 ====================
 
   /**
    * 获取会话状态
@@ -120,7 +153,7 @@ export class MemoryService {
     await this.redisStore.set(
       key,
       { ...state, facts: mergedFacts } as unknown as Record<string, unknown>,
-      MEMORY_TTL.FACTS,
+      this.config.sessionTtl,
       false, // 已手动 merge，不需要 store 层再 merge
     );
   }
@@ -140,7 +173,7 @@ export class MemoryService {
     await this.redisStore.set(
       key,
       { ...state, lastRecommendedJobs: jobs } as unknown as Record<string, unknown>,
-      MEMORY_TTL.FACTS,
+      this.config.sessionTtl,
       false,
     );
   }
@@ -148,7 +181,6 @@ export class MemoryService {
   /**
    * 格式化会话记忆为系统提示词段落
    *
-   * 从花卷 formatSessionMemoryForPrompt 迁移。
    * 返回空字符串表示无记忆需要注入。
    */
   formatSessionMemoryForPrompt(state: WeworkSessionState): string {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, Loader2, AlertCircle } from 'lucide-react';
+import { Check, Loader2, AlertCircle, History } from 'lucide-react';
 import { TabSwitch } from '@/components/TabSwitch';
 import { useStrategyConfig } from '@/hooks/strategy/useStrategyConfig';
 import { useSaveStatusStore } from '@/hooks/strategy/useSaveStatusStore';
@@ -8,6 +8,7 @@ import StageGoalsSection from './components/StageGoalsSection';
 import RedLinesSection from './components/RedLinesSection';
 import RiskScenariosSection from './components/RiskScenariosSection';
 import IndustrySkillsSection from './components/IndustrySkillsSection';
+import { ChangelogModal } from './components/ChangelogModal';
 import styles from './styles/index.module.scss';
 
 type TabKey = 'persona' | 'stageGoals' | 'redLines' | 'riskScenarios' | 'industrySkills';
@@ -22,6 +23,7 @@ const TABS: { key: TabKey; label: string }[] = [
 
 export default function Strategy() {
   const [activeTab, setActiveTab] = useState<TabKey>('persona');
+  const [changelogOpen, setChangelogOpen] = useState(false);
   const { data: config, isLoading } = useStrategyConfig();
   const saveStatus = useSaveStatusStore((s) => s.status);
 
@@ -56,13 +58,19 @@ export default function Strategy() {
       <div className={styles.header}>
         <div className={styles.headerTop}>
           <h1 className={styles.headerTitle}>策略配置</h1>
-          {saveStatus !== 'idle' && (
-            <div className={styles.saveStatus} data-status={saveStatus}>
-              {saveStatus === 'saving' && <><Loader2 size={14} className={styles.spinIcon} /> 保存中...</>}
-              {saveStatus === 'saved' && <><Check size={14} /> 已保存</>}
-              {saveStatus === 'error' && <><AlertCircle size={14} /> 保存失败</>}
-            </div>
-          )}
+          <div className={styles.headerActions}>
+            {saveStatus !== 'idle' && (
+              <div className={styles.saveStatus} data-status={saveStatus}>
+                {saveStatus === 'saving' && <><Loader2 size={14} className={styles.spinIcon} /> 保存中...</>}
+                {saveStatus === 'saved' && <><Check size={14} /> 已保存</>}
+                {saveStatus === 'error' && <><AlertCircle size={14} /> 保存失败</>}
+              </div>
+            )}
+            <button className={styles.changelogBtn} onClick={() => setChangelogOpen(true)}>
+              <History size={14} />
+              变更记录
+            </button>
+          </div>
         </div>
         <div className={styles.headerBottom}>
           <TabSwitch tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
@@ -78,6 +86,8 @@ export default function Strategy() {
           {activeTab === 'industrySkills' && <IndustrySkillsSection />}
         </>
       )}
+
+      <ChangelogModal isOpen={changelogOpen} onClose={() => setChangelogOpen(false)} />
     </div>
   );
 }

@@ -16,6 +16,16 @@ export interface ConfiguredToolsResponse {
 
 // ==================== 健康状态 ====================
 
+/** 后端 GET /agent/health 实际返回结构 */
+export interface AgentHealthRaw {
+  status: string;
+  providers: string[];
+  roles: Record<string, { model: string }>;
+  scenarios: string[];
+  message: string;
+}
+
+/** 前端展示用的标准化健康状态 */
 export interface HealthStatus {
   status: 'healthy' | 'degraded' | 'unhealthy';
   message: string;

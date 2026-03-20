@@ -1,11 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { LoopService } from '@agent/loop.service';
 import { ContextService } from '@agent/context/context.service';
 import { SignalDetectorService } from '@agent/signal-detector.service';
 import { FactExtractionService } from '@agent/fact-extraction.service';
+import { InputGuardService } from '@agent/input-guard.service';
 import { RouterService } from '@providers/router.service';
 import { ToolRegistryService } from '@tools/tool-registry.service';
 import { MemoryService } from '@memory/memory.service';
+import { MemoryConfig } from '@memory/memory.config';
 
 // Mock generateText from ai SDK
 jest.mock('ai', () => ({
@@ -37,11 +40,35 @@ describe('LoopService - invoke', () => {
     formatDetectionBlock: jest.fn().mockReturnValue(''),
   };
 
+  const mockSessionFacts = {
+    storeInteraction: jest.fn().mockResolvedValue(undefined),
+    formatForPrompt: jest.fn().mockReturnValue(''),
+  };
+
+  const mockLongTerm = {
+    formatProfileForPrompt: jest.fn().mockReturnValue(''),
+  };
+
   const mockMemoryService = {
     recall: jest.fn().mockResolvedValue(null),
     store: jest.fn().mockResolvedValue(undefined),
     getSessionState: jest.fn().mockResolvedValue(null),
     formatSessionMemoryForPrompt: jest.fn().mockReturnValue(''),
+    recallAll: jest.fn().mockResolvedValue({
+      shortTerm: [],
+      longTerm: { profile: null },
+      procedural: { currentStage: null, advancedAt: null, reason: null },
+      sessionFacts: null,
+    }),
+    sessionFacts: mockSessionFacts,
+    longTerm: mockLongTerm,
+  };
+
+  const mockMemoryConfig = {
+    sessionTtl: 86400,
+    shortTermMaxMessages: 60,
+    shortTermMaxChars: 8000,
+    profileCacheTtl: 7200,
   };
 
   const mockRouter = {
@@ -57,16 +84,28 @@ describe('LoopService - invoke', () => {
     extractAndSave: jest.fn().mockResolvedValue(undefined),
   };
 
+  const mockInputGuard = {
+    detectMessages: jest.fn().mockReturnValue({ safe: true }),
+    alertInjection: jest.fn().mockResolvedValue(undefined),
+  };
+
+  const mockConfigService = {
+    get: jest.fn().mockImplementation((key: string, defaultValue?: string) => defaultValue),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         LoopService,
+        { provide: ConfigService, useValue: mockConfigService },
         { provide: ContextService, useValue: mockContext },
         { provide: SignalDetectorService, useValue: mockClassifier },
         { provide: MemoryService, useValue: mockMemoryService },
+        { provide: MemoryConfig, useValue: mockMemoryConfig },
         { provide: RouterService, useValue: mockRouter },
         { provide: ToolRegistryService, useValue: mockToolRegistry },
         { provide: FactExtractionService, useValue: mockFactExtraction },
+        { provide: InputGuardService, useValue: mockInputGuard },
       ],
     }).compile();
 
@@ -76,7 +115,12 @@ describe('LoopService - invoke', () => {
     mockContext.compose.mockResolvedValue({ systemPrompt: 'test system prompt' });
     mockClassifier.detect.mockReturnValue({ needs: ['none'], riskFlags: [] });
     mockClassifier.formatDetectionBlock.mockReturnValue('');
-    mockMemoryService.recall.mockResolvedValue(null);
+    mockMemoryService.recallAll.mockResolvedValue({
+      shortTerm: [],
+      longTerm: { profile: null },
+      procedural: { currentStage: null, advancedAt: null, reason: null },
+      sessionFacts: null,
+    });
     mockRouter.resolveByRole.mockReturnValue('mock-model');
 
     // Re-mock generateText for each test
@@ -95,12 +139,12 @@ describe('LoopService - invoke', () => {
     sessionId: 'sess-1',
   };
 
-  it('should read stage, compose, classify, and execute', async () => {
+  it('should recallAll, compose, classify, and execute', async () => {
     const result = await service.invoke(invokeParams);
 
     expect(result.text).toBe('Hello!');
     expect(result.steps).toBe(1);
-    expect(mockMemoryService.recall).toHaveBeenCalledWith('stage:corp-1:user-123:sess-1');
+    expect(mockMemoryService.recallAll).toHaveBeenCalledWith('corp-1', 'user-123', 'sess-1');
     expect(mockContext.compose).toHaveBeenCalledWith(
       expect.objectContaining({ scenario: 'candidate-consultation', currentStage: undefined }),
     );
@@ -108,9 +152,11 @@ describe('LoopService - invoke', () => {
   });
 
   it('should pass persisted stage to compose', async () => {
-    mockMemoryService.recall.mockResolvedValue({
-      content: { currentStage: 'job_consultation' },
-      updatedAt: new Date().toISOString(),
+    mockMemoryService.recallAll.mockResolvedValue({
+      shortTerm: [],
+      longTerm: { profile: null },
+      procedural: { currentStage: 'job_consultation', advancedAt: null, reason: null },
+      sessionFacts: null,
     });
 
     await service.invoke(invokeParams);
@@ -121,7 +167,12 @@ describe('LoopService - invoke', () => {
   });
 
   it('should pass undefined stage when no stage in memory', async () => {
-    mockMemoryService.recall.mockResolvedValue(null);
+    mockMemoryService.recallAll.mockResolvedValue({
+      shortTerm: [],
+      longTerm: { profile: null },
+      procedural: { currentStage: null, advancedAt: null, reason: null },
+      sessionFacts: null,
+    });
 
     await service.invoke(invokeParams);
 

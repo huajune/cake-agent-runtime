@@ -10,150 +10,31 @@ import {
   ChevronRight,
   ChevronDown,
   Brain,
-  Target,
 } from 'lucide-react';
 import { formatJson, formatToolResult } from '@/utils/format';
 import styles from './index.module.scss';
 
-// ==================== 常量 ====================
-const THINKING_TOOL = 'wework_plan_turn';
+// ==================== 思考过程组件（基于 AI reasoning） ====================
 
-const STAGE_LABELS: Record<string, string> = {
-  trust_building: '建立信任',
-  qualify_candidate: '资格确认',
-  job_consultation: '岗位咨询',
-  interview_scheduling: '约面安排',
-  onboard_followup: '入职跟进',
-};
-
-// ==================== 思考过程组件 ====================
-interface PlanTurnOutput {
-  stage?: string;
-  reasoning?: string;
-  confidence?: number;
-  needs?: string[];
-  riskFlags?: string[];
-  stageGoal?: {
-    label?: string;
-    primaryGoal?: string;
-    ctaStrategy?: string[];
-    disallowedActions?: string[];
-  };
-}
-
-function ThinkingBlock({ output, isCalling, reasoningText }: { output: PlanTurnOutput; isCalling: boolean; reasoningText?: string }) {
-  const [showDetail, setShowDetail] = useState(false);
-  const [showReasoning, setShowReasoning] = useState(false);
-
-  if (isCalling) {
-    return (
-      <div className={styles.thinkingBlock}>
-        <div className={styles.thinkingHeader}>
-          <Brain size={14} />
-          <span>思考中</span>
-          <Loader2 size={14} className={styles.toolSpinnerIcon} />
-        </div>
-        <div className={styles.thinkingReasoning}>
-          <Markdown>{reasoningText || '正在进行回合规划，识别当前对话阶段、评估置信度、分析用户需求...'}</Markdown>
-        </div>
-      </div>
-    );
-  }
-
-  const stage = output.stage || 'unknown';
-  const stageLabel = STAGE_LABELS[stage] || stage;
-  const confidence = output.confidence ?? 0;
-  const reasoning = output.reasoning || '';
-  const needs = output.needs || [];
-  const riskFlags = output.riskFlags || [];
-  const stageGoal = output.stageGoal;
-  const hasDetail = stageGoal || needs.length > 0 || riskFlags.length > 0;
+function ReasoningBlock({ text, isThinking }: { text: string; isThinking: boolean }) {
+  const [expanded, setExpanded] = useState(isThinking);
 
   return (
-    <div className={styles.thinkingBlock}>
-      <div className={styles.thinkingHeader}>
-        <Brain size={14} />
-        <span>思考过程</span>
-        <span className={styles.stageBadge}>{stageLabel}</span>
-        <span className={styles.confidenceBadge}>
-          置信度 {(confidence * 100).toFixed(0)}%
-        </span>
+    <div className={`${styles.reasoningCard} ${isThinking ? styles.reasoningActive : ''}`}>
+      <div className={styles.reasoningHeader} onClick={() => setExpanded(!expanded)}>
+        <div className={styles.reasoningLabel}>
+          {isThinking ? (
+            <Loader2 size={12} className={styles.toolSpinnerIcon} />
+          ) : (
+            <Brain size={12} />
+          )}
+          <span>{isThinking ? '思考中' : '思考过程'}</span>
+        </div>
+        {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
       </div>
-
-      {reasoningText && (
-        <div
-          className={styles.thinkingDetailToggle}
-          onClick={() => setShowReasoning(!showReasoning)}
-        >
-          {showReasoning ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          <Brain size={12} />
-          工作思路
-        </div>
-      )}
-
-      {showReasoning && reasoningText && (
-        <div className={styles.thinkingDetail}>
-          <div className={styles.thinkingReasoning}><Markdown>{reasoningText}</Markdown></div>
-        </div>
-      )}
-
-      {reasoning && (
-        <div className={styles.thinkingReasoning}><Markdown>{reasoning}</Markdown></div>
-      )}
-
-      {needs.length > 0 && needs[0] !== 'none' && (
-        <div className={styles.thinkingNeeds}>
-          <span className={styles.needsLabel}>NeedsInfo:</span>
-          {needs.map((n) => (
-            <span key={n} className={styles.needTag}>{n}</span>
-          ))}
-        </div>
-      )}
-
-      {riskFlags.length > 0 && (
-        <div className={styles.thinkingRisks}>
-          <span className={styles.needsLabel}>风险标记:</span>
-          {riskFlags.map((r) => (
-            <span key={r} className={styles.riskTag}>{r}</span>
-          ))}
-        </div>
-      )}
-
-      {hasDetail && (
-        <div
-          className={styles.thinkingDetailToggle}
-          onClick={() => setShowDetail(!showDetail)}
-        >
-          {showDetail ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          <Target size={12} />
-          策略详情
-        </div>
-      )}
-
-      {showDetail && stageGoal && (
-        <div className={styles.thinkingDetail}>
-          {stageGoal.primaryGoal && (
-            <div className={styles.detailItem}>
-              <span className={styles.detailLabel}>目标</span>
-              <span>{stageGoal.primaryGoal}</span>
-            </div>
-          )}
-          {stageGoal.ctaStrategy && stageGoal.ctaStrategy.length > 0 && (
-            <div className={styles.detailItem}>
-              <span className={styles.detailLabel}>策略</span>
-              <ul className={styles.detailList}>
-                {stageGoal.ctaStrategy.map((s, i) => <li key={i}>{s}</li>)}
-              </ul>
-            </div>
-          )}
-          {stageGoal.disallowedActions && stageGoal.disallowedActions.length > 0 && (
-            <div className={styles.detailItem}>
-              <span className={styles.detailLabel}>禁止</span>
-              <ul className={styles.detailList}>
-                {stageGoal.disallowedActions.map((a, i) => <li key={i}>{a}</li>)}
-              </ul>
-            </div>
-          )}
+      {expanded && (
+        <div className={styles.reasoningBody}>
+          <Markdown>{text}</Markdown>
         </div>
       )}
     </div>
@@ -263,7 +144,6 @@ interface ExtractedToolCall {
 
 type Segment =
   | { kind: 'text'; texts: string[] }
-  | { kind: 'thinking'; tool: ExtractedToolCall }
   | { kind: 'tool'; tool: ExtractedToolCall };
 
 function buildSegments(parts: UIMessage['parts']): Segment[] {
@@ -302,10 +182,7 @@ function buildSegments(parts: UIMessage['parts']): Segment[] {
         result: toolPart.output,
       };
 
-      segments.push({
-        kind: extractedToolName === THINKING_TOOL ? 'thinking' : 'tool',
-        tool,
-      });
+      segments.push({ kind: 'tool', tool });
     }
   }
 
@@ -342,22 +219,21 @@ function MessagePartsAdapterComponent({ message, isStreaming }: MessagePartsAdap
 
   const segments = buildSegments(parts);
 
-  // 判断是否已有文本内容在流式输出（用于决定底部显示光标还是 loading）
   const hasStreamingText = segments.some(
     (s) => s.kind === 'text' && s.texts.join('').trim().length > 0,
   );
 
-  // 提取 reasoning 文本（AI 扩展思考，逐字流式到达）
+  // 提取 reasoning 文本（AI 扩展思考）— 流式和完成后都展示
   const reasoningText = parts
     .filter((p) => p.type === 'reasoning')
     .map((p) => (p as unknown as { text: string }).text || '')
     .join('');
-  const hasThinkingSegment = segments.some((s) => s.kind === 'thinking');
-  const showEarlyThinking = isStreaming && reasoningText && !hasThinkingSegment;
 
   return (
     <div className={styles.messagePartsContainer}>
-      {showEarlyThinking && <ThinkingBlock output={{}} isCalling={true} reasoningText={reasoningText} />}
+      {reasoningText && (
+        <ReasoningBlock text={reasoningText} isThinking={!!isStreaming} />
+      )}
       {segments.map((seg, idx) => {
         if (seg.kind === 'text') {
           const text = seg.texts.join('');
@@ -365,22 +241,6 @@ function MessagePartsAdapterComponent({ message, isStreaming }: MessagePartsAdap
           return (
             <div key={`text-${idx}`} className={styles.replyContent}>
               {text || <span className={styles.streamingPlaceholder}>等待响应...</span>}
-            </div>
-          );
-        }
-
-        if (seg.kind === 'thinking') {
-          const isCalling = seg.tool.state !== 'result';
-          const output = (seg.tool.result as PlanTurnOutput) || {};
-          return (
-            <div key={seg.tool.toolCallId} className={styles.thinkingToolGroup}>
-              <ThinkingBlock output={output} isCalling={isCalling} reasoningText={reasoningText} />
-              <ToolInvocation
-                toolName={seg.tool.toolName}
-                args={seg.tool.args}
-                state={seg.tool.state}
-                result={seg.tool.result}
-              />
             </div>
           );
         }

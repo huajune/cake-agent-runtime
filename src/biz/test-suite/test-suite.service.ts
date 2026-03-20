@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { streamText } from 'ai';
 import {
   TestChatRequestDto,
   TestChatResponse,
@@ -26,10 +27,7 @@ import {
   ConversationSourceStatus,
 } from './enums/test.enum';
 import { MessageRole } from '@enums/message.enum';
-import {
-  FeishuBitableSyncService,
-  AgentTestFeedback,
-} from '@infra/feishu/services/bitable-sync.service';
+import { FeishuBitableSyncService, AgentTestFeedback } from '@biz/feishu-sync/bitable-sync.service';
 import { TestSuiteProcessor } from './test-suite.processor';
 import { Inject, forwardRef } from '@nestjs/common';
 
@@ -70,7 +68,7 @@ export class TestSuiteService {
 
   async executeTestStreamWithMeta(
     request: TestChatRequestDto,
-  ): Promise<{ stream: NodeJS.ReadableStream; estimatedInputTokens: number }> {
+  ): Promise<ReturnType<typeof streamText>> {
     return this.executionService.executeTestStreamWithMeta(request);
   }
 

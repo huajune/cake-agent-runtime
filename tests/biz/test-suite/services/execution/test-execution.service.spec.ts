@@ -222,17 +222,19 @@ describe('TestExecutionService', () => {
     });
 
     it('should return a readable stream', async () => {
-      const mockTextStream = { pipe: jest.fn() } as unknown as NodeJS.ReadableStream;
-      mockLoop.stream.mockReturnValue({
-        textStream: mockTextStream,
-      });
+      const { Readable } = require('stream');
+      const mockNodeStream = { pipe: jest.fn() } as unknown as NodeJS.ReadableStream;
+      const fromWebSpy = jest.spyOn(Readable, 'fromWeb').mockReturnValue(mockNodeStream);
+
+      mockLoop.stream.mockReturnValue({ textStream: {} });
 
       const result = await service.executeTestStream({
         message: 'hello',
         userId: 'user-1',
       });
 
-      expect(result).toBe(mockTextStream);
+      expect(result).toBe(mockNodeStream);
+      fromWebSpy.mockRestore();
     });
   });
 

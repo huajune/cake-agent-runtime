@@ -1,15 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { FeishuWebhookService } from '@infra/feishu/services/webhook.service';
-import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { AlertLevel } from '@infra/feishu/interfaces/interface';
-import { DEFAULT_AGENT_REPLY_CONFIG } from '@biz/hosting-config/types/hosting-config.types';
 
 describe('FeishuAlertService', () => {
   let service: FeishuAlertService;
-
-  // Store the onAgentReplyConfigChange callback to simulate config changes
-  let configChangeCallback: ((config: typeof DEFAULT_AGENT_REPLY_CONFIG) => void) | null = null;
 
   const mockWebhookService = {
     buildCard: jest.fn(),
@@ -17,18 +12,9 @@ describe('FeishuAlertService', () => {
     sendMessage: jest.fn(),
   };
 
-  const mockSystemConfigService = {
-    getAgentReplyConfig: jest.fn(),
-    onAgentReplyConfigChange: jest.fn((cb) => {
-      configChangeCallback = cb;
-    }),
-  };
-
   beforeEach(async () => {
     jest.clearAllMocks();
-    configChangeCallback = null;
 
-    mockSystemConfigService.getAgentReplyConfig.mockResolvedValue(DEFAULT_AGENT_REPLY_CONFIG);
     mockWebhookService.buildCard.mockReturnValue({ msg_type: 'interactive', card: {} });
     mockWebhookService.buildCardWithAtAll.mockReturnValue({ msg_type: 'interactive', card: {} });
     mockWebhookService.sendMessage.mockResolvedValue(true);
@@ -37,7 +23,6 @@ describe('FeishuAlertService', () => {
       providers: [
         FeishuAlertService,
         { provide: FeishuWebhookService, useValue: mockWebhookService },
-        { provide: SystemConfigService, useValue: mockSystemConfigService },
       ],
     }).compile();
 
@@ -49,31 +34,6 @@ describe('FeishuAlertService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
-  });
-
-  // ==================== onModuleInit ====================
-
-  describe('onModuleInit', () => {
-    it('should load throttle config from Supabase on init', async () => {
-      const customConfig = {
-        ...DEFAULT_AGENT_REPLY_CONFIG,
-        alertThrottleWindowMs: 10 * 60 * 1000,
-        alertThrottleMaxCount: 5,
-      };
-      mockSystemConfigService.getAgentReplyConfig.mockResolvedValue(customConfig);
-
-      await service.onModuleInit();
-
-      expect(mockSystemConfigService.getAgentReplyConfig).toHaveBeenCalled();
-      expect((service as any).throttleWindowMs).toBe(10 * 60 * 1000);
-      expect((service as any).throttleMaxCount).toBe(5);
-    });
-
-    it('should handle Supabase load failure gracefully', async () => {
-      mockSystemConfigService.getAgentReplyConfig.mockRejectedValue(new Error('Supabase error'));
-
-      await expect(service.onModuleInit()).resolves.not.toThrow();
-    });
   });
 
   // ==================== sendAlert ====================
@@ -331,38 +291,6 @@ describe('FeishuAlertService', () => {
       await service.sendSimpleAlert('Title', 'My special message', 'warning');
 
       expect(cardContent).toContain('My special message');
-    });
-  });
-
-  // ==================== config change callback ====================
-
-  describe('config change callback', () => {
-    it('should register a callback with systemConfigService', () => {
-      expect(mockSystemConfigService.onAgentReplyConfigChange).toHaveBeenCalledTimes(1);
-      expect(configChangeCallback).not.toBeNull();
-    });
-
-    it('should update throttle config when config changes', () => {
-      const newConfig = {
-        ...DEFAULT_AGENT_REPLY_CONFIG,
-        alertThrottleWindowMs: 10 * 60 * 1000,
-        alertThrottleMaxCount: 5,
-      };
-
-      configChangeCallback!(newConfig);
-
-      expect((service as any).throttleWindowMs).toBe(10 * 60 * 1000);
-      expect((service as any).throttleMaxCount).toBe(5);
-    });
-
-    it('should not throw when config values are unchanged', () => {
-      const sameConfig = {
-        ...DEFAULT_AGENT_REPLY_CONFIG,
-        alertThrottleWindowMs: (service as any).throttleWindowMs,
-        alertThrottleMaxCount: (service as any).throttleMaxCount,
-      };
-
-      expect(() => configChangeCallback!(sameConfig)).not.toThrow();
     });
   });
 });

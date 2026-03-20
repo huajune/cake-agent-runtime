@@ -33,7 +33,7 @@ export class NetworkError extends Error {
 // ==================== API 客户端 ====================
 
 export const api = axios.create({
-  baseURL: '',
+  baseURL: '/',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',

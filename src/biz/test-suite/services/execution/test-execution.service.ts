@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { streamText } from 'ai';
+import { Readable } from 'stream';
 import { LoopService, type AgentRunResult } from '@agent/loop.service';
-import { ContextService } from '@agent/context/context.service';
 import { TestChatRequestDto, TestChatResponse } from '../../dto/test-chat.dto';
 import { TestExecutionRepository } from '../../repositories/test-execution.repository';
 import { TestExecution } from '../../entities/test-execution.entity';
@@ -46,7 +47,6 @@ export class TestExecutionService {
   constructor(
     private readonly configService: ConfigService,
     private readonly loop: LoopService,
-    private readonly context: ContextService,
     private readonly executionRepository: TestExecutionRepository,
   ) {
     this.logger.log('TestExecutionService 初始化完成');
@@ -152,19 +152,19 @@ export class TestExecutionService {
   }
 
   /**
-   * 执行流式测试
+   * 执行流式测试（旧 SSE 格式，供 /chat/stream 端点使用）
    */
   async executeTestStream(request: TestChatRequestDto): Promise<NodeJS.ReadableStream> {
-    const result = await this.executeTestStreamWithMeta(request);
-    return result.stream;
+    const streamResult = await this.executeTestStreamWithMeta(request);
+    return Readable.fromWeb(streamResult.textStream as Parameters<typeof Readable.fromWeb>[0]);
   }
 
   /**
-   * 执行流式测试（带元数据）
+   * 执行流式测试（返回 Vercel AI SDK StreamTextResult，供 /chat/ai-stream 端点使用）
    */
   async executeTestStreamWithMeta(
     request: TestChatRequestDto,
-  ): Promise<{ stream: NodeJS.ReadableStream; estimatedInputTokens: number }> {
+  ): Promise<ReturnType<typeof streamText>> {
     const scenario = request.scenario || DEFAULT_SCENARIO;
 
     if (!request.userId) {
@@ -189,19 +189,14 @@ export class TestExecutionService {
       { role: 'user' as const, content: request.message },
     ];
 
-    const { systemPrompt } = await this.context.compose({ scenario });
-    const streamResult = await this.loop.stream({
-      systemPrompt,
+    return this.loop.stream({
       messages,
       userId: request.userId,
       corpId: 'test',
       sessionId: request.sessionId ?? `test-${Date.now()}`,
+      scenario,
+      thinking: request.thinking,
     });
-
-    return {
-      stream: streamResult.textStream as unknown as NodeJS.ReadableStream,
-      estimatedInputTokens: 0,
-    };
   }
 
   /**

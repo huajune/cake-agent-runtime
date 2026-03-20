@@ -1,6 +1,7 @@
 import { MemoryService } from '@memory/memory.service';
 import type { WeworkSessionState, EntityExtractionResult } from '@memory/memory.types';
-import { MEMORY_TTL } from '@memory/memory.types';
+// sessionTtl from mock config = 86400 (1d)
+const SESSION_TTL = 86400;
 
 describe('MemoryService', () => {
   const mockRedisStore = {
@@ -19,7 +20,20 @@ describe('MemoryService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new MemoryService(mockRedisStore as never, mockSupabaseStore as never);
+    const mockConfig = { sessionTtl: 86400 };
+    const mockShortTerm = {};
+    const mockSessionFacts = { getSessionState: jest.fn(), getFacts: jest.fn() };
+    const mockProcedural = { get: jest.fn() };
+    const mockLongTerm = { getProfile: jest.fn() };
+    service = new MemoryService(
+      mockRedisStore as never,
+      mockSupabaseStore as never,
+      mockConfig as never,
+      mockShortTerm as never,
+      mockSessionFacts as never,
+      mockProcedural as never,
+      mockLongTerm as never,
+    );
   });
 
   // ==================== 路由测试 ====================
@@ -30,7 +44,7 @@ describe('MemoryService', () => {
       expect(mockRedisStore.set).toHaveBeenCalledWith(
         'stage:corp1:user1',
         { currentStage: 'greeting' },
-        MEMORY_TTL.STAGE,
+        SESSION_TTL,
         false,
       );
     });
@@ -40,7 +54,7 @@ describe('MemoryService', () => {
       expect(mockRedisStore.set).toHaveBeenCalledWith(
         'wework_session:corp1:user1',
         { name: '张三' },
-        MEMORY_TTL.FACTS,
+        SESSION_TTL,
         true,
       );
     });
@@ -57,7 +71,7 @@ describe('MemoryService', () => {
       expect(mockRedisStore.set).toHaveBeenCalledWith(
         'unknown:key',
         { data: true },
-        MEMORY_TTL.STAGE,
+        SESSION_TTL,
         false,
       );
     });
@@ -218,7 +232,7 @@ describe('MemoryService', () => {
             }),
           }),
         }),
-        MEMORY_TTL.FACTS,
+        SESSION_TTL,
         false,
       );
     });

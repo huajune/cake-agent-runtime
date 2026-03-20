@@ -2,8 +2,8 @@ import { buildAdvanceStageTool } from '@tools/advance-stage.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 
 describe('buildAdvanceStageTool', () => {
-  const mockMemoryService = {
-    store: jest.fn().mockResolvedValue(undefined),
+  const mockProceduralService = {
+    set: jest.fn().mockResolvedValue(undefined),
   };
 
   const mockContext: ToolBuildContext = {
@@ -16,13 +16,13 @@ describe('buildAdvanceStageTool', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('should build a valid tool', () => {
-    const builder = buildAdvanceStageTool(mockMemoryService as never);
+    const builder = buildAdvanceStageTool(mockProceduralService as never);
     const builtTool = builder(mockContext);
     expect(builtTool).toBeDefined();
   });
 
   it('should store stage in memory when executed', async () => {
-    const builder = buildAdvanceStageTool(mockMemoryService as never);
+    const builder = buildAdvanceStageTool(mockProceduralService as never);
     const builtTool = builder(mockContext);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -32,8 +32,10 @@ describe('buildAdvanceStageTool', () => {
     });
 
     expect(result).toEqual({ success: true, newStage: 'job_consultation' });
-    expect(mockMemoryService.store).toHaveBeenCalledWith(
-      'stage:corp-456:user-123:sess-789',
+    expect(mockProceduralService.set).toHaveBeenCalledWith(
+      'corp-456',
+      'user-123',
+      'sess-789',
       expect.objectContaining({
         currentStage: 'job_consultation',
         reason: '候选人开始询问岗位信息',
@@ -42,7 +44,7 @@ describe('buildAdvanceStageTool', () => {
     );
   });
 
-  it('should use correct stage key format', async () => {
+  it('should use correct context params', async () => {
     const customContext: ToolBuildContext = {
       userId: 'custom-user',
       corpId: 'custom-corp',
@@ -50,7 +52,7 @@ describe('buildAdvanceStageTool', () => {
       messages: [],
     };
 
-    const builder = buildAdvanceStageTool(mockMemoryService as never);
+    const builder = buildAdvanceStageTool(mockProceduralService as never);
     const builtTool = builder(customContext);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -59,8 +61,10 @@ describe('buildAdvanceStageTool', () => {
       reason: '候选人确认意向',
     });
 
-    expect(mockMemoryService.store).toHaveBeenCalledWith(
-      'stage:custom-corp:custom-user:custom-sess',
+    expect(mockProceduralService.set).toHaveBeenCalledWith(
+      'custom-corp',
+      'custom-user',
+      'custom-sess',
       expect.any(Object),
     );
   });

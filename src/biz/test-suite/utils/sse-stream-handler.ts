@@ -44,7 +44,7 @@ export interface StreamAccumulator {
 /**
  * Agent API 流式数据格式
  */
-interface HuajuanStreamData {
+interface AgentStreamData {
   type?: string;
   id?: string;
   delta?: string;
@@ -193,7 +193,7 @@ export class SSEStreamHandler {
           continue;
         }
 
-        const data = JSON.parse(jsonStr) as HuajuanStreamData;
+        const data = JSON.parse(jsonStr) as AgentStreamData;
         this.logger.debug(`${this.logPrefix} 解析事件: ${JSON.stringify(data).substring(0, 300)}`);
 
         this.processStreamData(data);
@@ -206,7 +206,7 @@ export class SSEStreamHandler {
   /**
    * 处理解析后的流式数据
    */
-  private processStreamData(data: HuajuanStreamData): void {
+  private processStreamData(data: AgentStreamData): void {
     // 文本增量
     if (data.type === 'text-delta') {
       const textContent = data.delta || '';
@@ -306,7 +306,7 @@ export class SSEStreamHandler {
   /**
    * 解析 usage 统计
    */
-  private parseUsage(usage: HuajuanStreamData['usage']): TokenUsage {
+  private parseUsage(usage: AgentStreamData['usage']): TokenUsage {
     if (!usage) {
       return { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
     }
@@ -382,7 +382,7 @@ export class VercelAIStreamHandler {
         if (line.startsWith('data: ')) {
           const jsonStr = line.slice(6);
           if (jsonStr && jsonStr !== '[DONE]') {
-            const data = JSON.parse(jsonStr) as HuajuanStreamData;
+            const data = JSON.parse(jsonStr) as AgentStreamData;
             // 从 finish 事件提取 usage
             if (data.type === 'finish' && data.usage) {
               this.tokenUsage = this.parseUsage(data.usage);
@@ -441,7 +441,7 @@ export class VercelAIStreamHandler {
   /**
    * 解析 usage 统计（兼容 camelCase 和 snake_case）
    */
-  private parseUsage(usage: HuajuanStreamData['usage']): TokenUsage {
+  private parseUsage(usage: AgentStreamData['usage']): TokenUsage {
     if (!usage) {
       return { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
     }

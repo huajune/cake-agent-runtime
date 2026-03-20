@@ -99,7 +99,9 @@ export class RouterService {
   }
 
   private parseFallbacks(role: ModelRole | string): string[] | undefined {
-    const raw = this.config.get<string>(`AGENT_${role.toUpperCase()}_FALLBACKS`);
+    const raw =
+      this.config.get<string>(`AGENT_${role.toUpperCase()}_FALLBACKS`) ||
+      this.config.get<string>('AGENT_DEFAULT_FALLBACKS');
     if (!raw) return undefined;
     return raw
       .split(',')

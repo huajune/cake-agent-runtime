@@ -2,7 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
 import { MessageProcessingRecord } from '@shared-types/tracking.types';
-import { FeishuBitableApiService, BatchCreateRequest } from './bitable-api.service';
+import {
+  FeishuBitableApiService,
+  BatchCreateRequest,
+} from '@infra/feishu/services/bitable-api.service';
 
 /**
  * Agent 测试反馈数据
@@ -22,10 +25,6 @@ export interface AgentTestFeedback {
  * 职责：
  * - 每日同步聊天记录到飞书
  * - 写入 Agent 测试反馈
- *
- * 重构说明：
- * - 使用 FeishuBitableApiService 进行 API 调用
- * - 移除重复的 Token 管理和配置加载代码
  */
 @Injectable()
 export class FeishuBitableSyncService {

@@ -149,11 +149,11 @@ export default function UserTrendChart() {
                       color: '#6b7280',
                       fontSize: '13px'
                     }}
-                    labelFormatter={(label: string, payload: any) => {
+                    labelFormatter={(label, payload) => {
                       if (payload && payload[0]) {
-                        return `📅 ${payload[0].payload.fullDate}`;
+                        return `📅 ${(payload[0].payload as { fullDate: string }).fullDate}`;
                       }
-                      return label;
+                      return String(label);
                     }}
                   />
                   <Legend

@@ -51,28 +51,30 @@ export class MessageProcessor implements OnModuleInit {
   }
 
   private async waitForQueueReady(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      if (this.messageQueue.client?.status === 'ready') {
-        this.logger.log('Bull Queue 已就绪');
-        resolve();
-        return;
-      }
+    const maxWaitTime = 30000;
+    const checkInterval = 100;
+    const startTime = Date.now();
 
-      const timeout = setTimeout(() => {
-        reject(new Error('等待 Bull Queue 就绪超时'));
-      }, 30000);
+    return new Promise((resolve) => {
+      const checkClient = () => {
+        const clientStatus = this.messageQueue.client?.status;
 
-      this.messageQueue.on('ready', () => {
-        clearTimeout(timeout);
-        this.logger.log('Bull Queue 已就绪');
-        resolve();
-      });
+        if (clientStatus === 'ready') {
+          this.logger.log('[Bull] ✅ Queue client 已就绪');
+          resolve();
+          return;
+        }
 
-      this.messageQueue.on('error', (error) => {
-        clearTimeout(timeout);
-        this.logger.error('Bull Queue 连接错误:', error);
-        reject(error);
-      });
+        if (Date.now() - startTime > maxWaitTime) {
+          this.logger.warn('[Bull] ⚠️ Queue client 连接超时，继续运行');
+          resolve();
+          return;
+        }
+
+        setTimeout(checkClient, checkInterval);
+      };
+
+      checkClient();
     });
   }
 

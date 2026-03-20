@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Body, Logger, HttpException, HttpStatus } from '@nestjs/common';
+import { Public } from '@infra/server/response/decorators/api-response.decorator';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { LoopService } from './loop.service';
 import { ContextService } from './context/context.service';
@@ -21,6 +22,7 @@ export class AgentController {
    * 健康检查
    * GET /agent/health
    */
+  @Public()
   @Get('health')
   healthCheck() {
     return {
@@ -75,6 +77,7 @@ export class AgentController {
         success: true,
         sessionId,
         scenario,
+        reasoning: result.reasoning,
         text: result.text,
         usage: result.usage,
         steps: result.steps,

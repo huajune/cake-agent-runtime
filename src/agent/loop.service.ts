@@ -1,25 +1,27 @@
 /**
  * Agent Loop 服务
  *
- * 统一入口 invoke()：
- * 1. 读取持久化阶段（stage）
+ * invoke() / stream() 共享完整编排流程：
+ * 1. 一次性读取所有记忆（recallAll）
  * 2. 组装 systemPrompt（ContextService + section 体系）
  * 3. 信号检测（SignalDetectorService: needs + riskFlags）
- * 4. 事实提取（FactExtractionService: LLM 结构化提取 + 品牌别名映射）
- * 5. 注入会话记忆（结构化格式）
- * 6. 构建工具 → generateText 多步循环
- * 7. 记忆后置存储
+ * 4. 注入上一轮记忆（Profile + SessionFacts）
+ * 5. 构建工具 → generateText / streamText 多步循环
+ * 6. 记忆后置存储 + 事实提取（异步，供下一轮读取）
  */
 
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ModelMessage, generateText, streamText, stepCountIs, ToolSet } from 'ai';
 import { RouterService } from '@providers/router.service';
 import { ToolRegistryService } from '@tools/tool-registry.service';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { MemoryService } from '@memory/memory.service';
+import { MemoryConfig } from '@memory/memory.config';
 import { ContextService } from './context/context.service';
 import { SignalDetectorService } from './signal-detector.service';
 import { FactExtractionService } from './fact-extraction.service';
+import { InputGuardService } from './input-guard.service';
 
 export interface AgentInvokeParams {
   /** 对话消息列表（含历史 + 当前用户消息） */
@@ -38,6 +40,8 @@ export interface AgentInvokeParams {
 
 export interface AgentRunResult {
   text: string;
+  /** 模型思考过程（需启用 AGENT_THINKING_BUDGET_TOKENS） */
+  reasoning?: string;
   steps: number;
   usage: {
     inputTokens: number;
@@ -46,92 +50,77 @@ export interface AgentRunResult {
   };
 }
 
+/** prepare() 返回的共享上下文 */
+interface PreparedContext {
+  finalPrompt: string;
+  typedMessages: ModelMessage[];
+  chatModel: ReturnType<RouterService['resolveByRole']>;
+  tools: ToolSet;
+  scenario: string;
+  corpId: string;
+  userId: string;
+  sessionId: string;
+  maxSteps: number;
+}
+
 @Injectable()
 export class LoopService {
   private readonly logger = new Logger(LoopService.name);
 
+  /** thinking token 预算，>0 时启用 extended thinking */
+  private readonly thinkingBudgetTokens: number;
+  /** 输出 token 上限 */
+  private readonly maxOutputTokens: number;
+
   constructor(
+    private readonly configService: ConfigService,
     private readonly router: RouterService,
     private readonly toolRegistry: ToolRegistryService,
     private readonly memoryService: MemoryService,
+    private readonly memoryConfig: MemoryConfig,
     private readonly context: ContextService,
     private readonly classifier: SignalDetectorService,
     private readonly factExtraction: FactExtractionService,
-  ) {}
+    private readonly inputGuard: InputGuardService,
+  ) {
+    this.thinkingBudgetTokens = parseInt(
+      this.configService.get('AGENT_THINKING_BUDGET_TOKENS', '0'),
+      10,
+    );
+    this.maxOutputTokens = parseInt(this.configService.get('AGENT_MAX_OUTPUT_TOKENS', '4096'), 10);
+    if (this.thinkingBudgetTokens > 0) {
+      this.logger.log(`Extended thinking 已启用, budgetTokens=${this.thinkingBudgetTokens}`);
+    }
+    this.logger.log(`maxOutputTokens=${this.maxOutputTokens}`);
+  }
 
   /**
    * Agent 执行入口 — prompt 编排 + 多步工具循环
    */
   async invoke(params: AgentInvokeParams): Promise<AgentRunResult> {
-    const {
-      messages,
-      userId,
-      corpId,
-      sessionId,
-      scenario = 'candidate-consultation',
-      maxSteps = 5,
-    } = params;
-
-    this.logger.log(
-      `Agent invoke: userId=${userId}, corpId=${corpId}, sessionId=${sessionId}, scenario=${scenario}`,
-    );
-
-    // 1. 读取持久化的当前阶段
-    const stageKey = `stage:${corpId}:${userId}:${sessionId}`;
-    const stageMemory = await this.memoryService.recall(stageKey);
-    const currentStage = (stageMemory?.content?.currentStage as string) ?? undefined;
-
-    // 2. 组装 systemPrompt（含阶段策略 + 风险场景，由 section 体系完成）
-    const { systemPrompt } = await this.context.compose({ scenario, currentStage });
-
-    // 3. 检测 needs + riskFlags（消息驱动，追加到 prompt 末尾）
-    const detection = this.classifier.detect(messages);
-    const detectionBlock = this.classifier.formatDetectionBlock(detection);
-    const enrichedPrompt = detectionBlock ? systemPrompt + '\n\n' + detectionBlock : systemPrompt;
-
-    // 4. 事实提取（LLM 结构化提取 + 品牌别名映射，fire-and-forget 不阻塞主流程）
-    this.factExtraction
-      .extractAndSave(corpId, userId, sessionId, messages)
-      .catch((err) => this.logger.warn('事实提取失败', err));
-
-    // 5. 注入会话记忆（结构化格式）
-    const sessionState = await this.memoryService.getSessionState(corpId, userId, sessionId);
-    const memoryContext = this.memoryService.formatSessionMemoryForPrompt(sessionState);
-    const finalPrompt = enrichedPrompt + memoryContext;
-
-    // 6. 构建工具 + 执行 Agent Loop
-    const typedMessages = messages as ModelMessage[];
-    const toolContext: ToolBuildContext = { userId, corpId, sessionId, messages: typedMessages };
-    const tools = this.toolRegistry.buildForScenario(scenario, toolContext);
+    const ctx = await this.prepare(params, 'invoke');
 
     try {
-      const chatModel = this.router.resolveByRole('chat');
-
       const r = await generateText({
-        model: chatModel,
-        system: finalPrompt,
-        messages: typedMessages,
-        tools: tools as ToolSet,
-        stopWhen: stepCountIs(maxSteps),
+        model: ctx.chatModel,
+        system: ctx.finalPrompt,
+        messages: ctx.typedMessages,
+        tools: ctx.tools,
+        maxOutputTokens: this.maxOutputTokens,
+        stopWhen: stepCountIs(ctx.maxSteps),
+        providerOptions: this.buildProviderOptions(),
       });
 
+      if (r.reasoningText) {
+        this.logger.debug(`Thinking: ${r.reasoningText.substring(0, 200)}...`);
+      }
       this.logger.log(`Loop 完成: steps=${r.steps.length}, tokens=${r.usage.totalTokens}`);
 
-      // 7. 记忆后置 — 保底记录基本交互信息
-      const lastUserMsg = typedMessages.filter((m) => m.role === 'user').pop();
-      if (lastUserMsg) {
-        const factsKey = `wework_session:${corpId}:${userId}:${sessionId}`;
-        await this.memoryService
-          .store(factsKey, {
-            lastInteraction: new Date().toISOString(),
-            lastTopic:
-              typeof lastUserMsg.content === 'string' ? lastUserMsg.content.substring(0, 100) : '',
-          })
-          .catch((err) => this.logger.warn('记忆存储失败', err));
-      }
+      await this.storePostMemory(ctx);
 
       return {
         text: r.text,
+        reasoning: r.reasoningText || undefined,
         steps: r.steps.length,
         usage: {
           inputTokens: r.usage.inputTokens ?? 0,
@@ -145,25 +134,197 @@ export class LoopService {
     }
   }
 
-  /** 流式执行 */
+  /**
+   * 流式执行 — 与 invoke() 共享完整的 prompt 编排流程
+   */
   async stream(
-    params: Omit<AgentInvokeParams, 'scenario'> & { systemPrompt: string },
+    params: AgentInvokeParams & {
+      thinking?: { type: 'enabled' | 'disabled'; budgetTokens: number };
+    },
   ): Promise<ReturnType<typeof streamText>> {
-    const { systemPrompt, messages, userId, corpId, sessionId, maxSteps = 5 } = params;
-
-    const typedMessages = messages as ModelMessage[];
-    const chatModel = this.router.resolveByRole('chat');
-    const toolContext: ToolBuildContext = { userId, corpId, sessionId, messages: typedMessages };
-    const tools = this.toolRegistry.buildAll(toolContext);
+    const ctx = await this.prepare(params, 'stream');
 
     return streamText({
-      model: chatModel,
-      system: systemPrompt,
-      messages: typedMessages,
-      tools: tools as ToolSet,
-      stopWhen: stepCountIs(maxSteps),
-      onFinish: ({ usage, steps }) =>
-        this.logger.log('流式完成, 步数: ' + steps.length + ', Tokens: ' + usage.totalTokens),
+      model: ctx.chatModel,
+      system: ctx.finalPrompt,
+      messages: ctx.typedMessages,
+      tools: ctx.tools,
+      maxOutputTokens: this.maxOutputTokens,
+      stopWhen: stepCountIs(ctx.maxSteps),
+      providerOptions: this.buildProviderOptions(params.thinking),
+      onFinish: ({ usage, steps }) => {
+        this.logger.log('流式完成, 步数: ' + steps.length + ', Tokens: ' + usage.totalTokens);
+        this.storePostMemory(ctx).catch((err) => this.logger.warn('记忆存储失败', err));
+      },
     });
+  }
+
+  // ==================== 内部方法 ====================
+
+  /**
+   * 共享准备流程：参数规范化 → 记忆读取 → prompt 编排 → 工具构建
+   */
+  private async prepare(
+    params: AgentInvokeParams,
+    mode: 'invoke' | 'stream',
+  ): Promise<PreparedContext> {
+    const {
+      messages,
+      userId,
+      corpId,
+      sessionId,
+      scenario = 'candidate-consultation',
+      maxSteps = 5,
+    } = params;
+
+    this.logger.log(
+      `Agent ${mode}: userId=${userId}, corpId=${corpId}, sessionId=${sessionId}, scenario=${scenario}`,
+    );
+
+    // 1. prompt 编排（含一次性记忆读取）
+    let finalPrompt = await this.enrichPrompt({ messages, userId, corpId, sessionId, scenario });
+
+    // 2. 输入长度守卫
+    const trimmedMessages = this.trimMessages(messages);
+
+    // 3. Prompt injection 检测
+    const guardResult = this.inputGuard.detectMessages(trimmedMessages);
+    if (!guardResult.safe) {
+      finalPrompt += InputGuardService.GUARD_SUFFIX;
+      const lastUserMsg = trimmedMessages.filter((m) => m.role === 'user').pop();
+      this.inputGuard
+        .alertInjection(userId, guardResult.reason!, lastUserMsg?.content ?? '')
+        .catch(() => {});
+    }
+
+    // 4. 构建工具
+    const typedMessages = trimmedMessages as ModelMessage[];
+    const chatModel = this.router.resolveByRole('chat');
+    const toolContext: ToolBuildContext = { userId, corpId, sessionId, messages: typedMessages };
+    const tools = this.toolRegistry.buildForScenario(scenario, toolContext) as ToolSet;
+
+    return {
+      finalPrompt,
+      typedMessages,
+      chatModel,
+      tools,
+      scenario,
+      corpId,
+      userId,
+      sessionId,
+      maxSteps,
+    };
+  }
+
+  /**
+   * 构建 provider 选项（thinking 配置）
+   */
+  private buildProviderOptions(requestThinking?: {
+    type: 'enabled' | 'disabled';
+    budgetTokens: number;
+  }) {
+    const effectiveBudget =
+      requestThinking?.type === 'enabled'
+        ? requestThinking.budgetTokens
+        : this.thinkingBudgetTokens;
+
+    return effectiveBudget > 0
+      ? { anthropic: { thinking: { type: 'enabled', budgetTokens: effectiveBudget } } }
+      : undefined;
+  }
+
+  /**
+   * 记忆后置存储 — Agent 完成后异步执行（invoke / stream 共用）
+   *
+   * 1. 记录基本交互信息（lastInteraction, lastTopic）→ SessionFactsService
+   * 2. 事实提取（LLM 结构化提取）→ SessionFactsService
+   */
+  private async storePostMemory(ctx: PreparedContext): Promise<void> {
+    const lastUserMsg = ctx.typedMessages.filter((m) => m.role === 'user').pop();
+    if (!lastUserMsg) return;
+
+    // 1. 记录交互信息
+    await this.memoryService.sessionFacts
+      .storeInteraction(ctx.corpId, ctx.userId, ctx.sessionId, {
+        lastInteraction: new Date().toISOString(),
+        lastTopic:
+          typeof lastUserMsg.content === 'string' ? lastUserMsg.content.substring(0, 100) : '',
+      })
+      .catch((err) => this.logger.warn('记忆存储失败', err));
+
+    // 2. 事实提取（fire-and-forget）
+    this.factExtraction
+      .extractAndSave(
+        ctx.corpId,
+        ctx.userId,
+        ctx.sessionId,
+        ctx.typedMessages as { role: string; content: string }[],
+      )
+      .catch((err) => this.logger.warn('事实提取失败', err));
+  }
+
+  /**
+   * prompt 编排流程
+   *
+   * 1. 一次性读取所有记忆（recallAll）
+   * 2. 组装 systemPrompt
+   * 3. 信号检测
+   * 4. 注入 Profile + SessionFacts
+   */
+  private async enrichPrompt(params: {
+    messages: { role: string; content: string }[];
+    userId: string;
+    corpId: string;
+    sessionId: string;
+    scenario: string;
+  }): Promise<string> {
+    const { messages, userId, corpId, sessionId, scenario } = params;
+
+    // 1. 一次性读取所有记忆（并行：stage + facts + profile）
+    const memory = await this.memoryService.recallAll(corpId, userId, sessionId);
+
+    // 2. 组装 systemPrompt（含阶段策略 + 风险场景，由 section 体系完成）
+    const currentStage = memory.procedural.currentStage ?? undefined;
+    const { systemPrompt } = await this.context.compose({ scenario, currentStage });
+
+    // 3. 检测 needs + riskFlags（消息驱动，追加到 prompt 末尾）
+    const detection = this.classifier.detect(messages);
+    const detectionBlock = this.classifier.formatDetectionBlock(detection);
+    const enrichedPrompt = detectionBlock ? systemPrompt + '\n\n' + detectionBlock : systemPrompt;
+
+    // 4. 注入记忆
+    const profileBlock = this.memoryService.longTerm.formatProfileForPrompt(
+      memory.longTerm.profile,
+    );
+    const factsBlock = memory.sessionFacts
+      ? this.memoryService.sessionFacts.formatForPrompt(memory.sessionFacts)
+      : '';
+
+    return enrichedPrompt + profileBlock + factsBlock;
+  }
+
+  /**
+   * 输入长度守卫 — 总字符数超限时从最早的消息开始丢弃
+   */
+  private trimMessages(
+    messages: { role: string; content: string }[],
+  ): { role: string; content: string }[] {
+    const maxChars = this.memoryConfig.shortTermMaxChars;
+    const totalChars = messages.reduce((sum, m) => sum + (m.content?.length ?? 0), 0);
+    if (totalChars <= maxChars) return messages;
+
+    this.logger.warn(`输入消息总长度 ${totalChars} 超过上限 ${maxChars}，将丢弃最早的消息`);
+
+    const kept: { role: string; content: string }[] = [];
+    let charCount = 0;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msgLen = messages[i].content?.length ?? 0;
+      if (charCount + msgLen > maxChars && kept.length > 0) break;
+      kept.unshift(messages[i]);
+      charCount += msgLen;
+    }
+
+    this.logger.warn(`保留最近 ${kept.length}/${messages.length} 条消息，共 ${charCount} 字符`);
+    return kept;
   }
 }

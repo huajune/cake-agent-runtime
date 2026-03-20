@@ -103,6 +103,31 @@ $_pp-30: rgba(167, 139, 250, 0.3);
   z-index: 1;
 }
 
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.changelogBtn {
+  @include button-base;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: $radius-full;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-medium;
+  color: $text-secondary;
+  background: $_pp-05;
+  transition: all $transition-fast;
+
+  &:hover:not(:disabled) {
+    background: $_pp-10;
+    color: $_pp;
+  }
+}
+
 .headerTitle {
   font-size: $font-size-lg;
   font-weight: $font-weight-semibold;

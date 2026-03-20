@@ -7,29 +7,29 @@ export type { WorkerConcurrencyResponse, GroupInfo } from '../types/monitoring.t
 // ==================== 开关控制 API ====================
 
 export async function getAiReplyStatus() {
-  const { data } = await api.get('/monitoring/ai-reply-status');
+  const { data } = await api.get('/message/ai-reply-status');
   return unwrapResponse<{ enabled: boolean }>(data);
 }
 
 export async function toggleAiReply(enabled: boolean) {
-  const { data } = await api.post('/monitoring/toggle-ai-reply', { enabled });
+  const { data } = await api.post('/message/toggle-ai-reply', { enabled });
   return unwrapResponse<{ enabled: boolean; message: string }>(data);
 }
 
 export async function toggleMessageMerge(enabled: boolean) {
-  const { data } = await api.post('/monitoring/toggle-message-merge', { enabled });
+  const { data } = await api.post('/message/toggle-message-merge', { enabled });
   return unwrapResponse<{ enabled: boolean; message: string }>(data);
 }
 
 // ==================== Worker API ====================
 
 export async function getWorkerStatus() {
-  const { data } = await api.get('/monitoring/worker-status');
+  const { data } = await api.get('/message/worker-status');
   return unwrapResponse<WorkerStatus>(data);
 }
 
 export async function setWorkerConcurrency(concurrency: number) {
-  const { data } = await api.post('/monitoring/worker-concurrency', { concurrency });
+  const { data } = await api.post('/message/worker-concurrency', { concurrency });
   return unwrapResponse<WorkerConcurrencyResponse>(data);
 }
 

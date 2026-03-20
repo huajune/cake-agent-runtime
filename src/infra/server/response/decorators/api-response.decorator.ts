@@ -1,9 +1,19 @@
 import { SetMetadata } from '@nestjs/common';
+import { IS_PUBLIC_KEY } from '../../guards/api-token.guard';
 
 /**
  * 元数据键：标记原始响应
  */
 export const RAW_RESPONSE_KEY = 'raw_response';
+
+/**
+ * 公开端点装饰器 — 跳过 ApiTokenGuard 鉴权
+ *
+ * 使用场景：
+ * - 健康检查端点（负载均衡器探测）
+ * - 第三方回调端点（企微、飞书等外部平台推送）
+ */
+export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
 
 /**
  * 原始响应装饰器

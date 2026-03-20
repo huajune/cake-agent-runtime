@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { generateText, Output } from 'ai';
 import { RouterService } from '@providers/router.service';
 import { SpongeService } from '@/sponge/sponge.service';
-import { MemoryService } from '@memory/memory.service';
+import { SessionFactsService } from '@memory/session-facts.service';
 import {
   EntityExtractionResultSchema,
   type EntityExtractionResult,
@@ -83,7 +83,6 @@ preferences（意向信息）:
 /**
  * 事实提取服务 — 从对话历史中提取候选人结构化信息
  *
- * 从花卷 fact-extraction.ts 迁移，适配 NestJS 依赖注入。
  *
  * 流程：获取品牌数据 → 读历史 facts → 确定消息窗口 → LLM 提取 → 合并 → 写入
  * 调用后通过 memoryService.getSessionState() + formatSessionMemoryForPrompt() 读取结果。
@@ -93,7 +92,7 @@ export class FactExtractionService {
   private readonly logger = new Logger(FactExtractionService.name);
 
   constructor(
-    private readonly memoryService: MemoryService,
+    private readonly sessionFacts: SessionFactsService,
     private readonly router: RouterService,
     private readonly sponge: SpongeService,
   ) {}
@@ -124,7 +123,7 @@ export class FactExtractionService {
     const conversationHistory = allHistory.slice(0, -1);
 
     // 2. 增量提取策略
-    const previousFacts = await this.memoryService.getFacts(corpId, userId, sessionId);
+    const previousFacts = await this.sessionFacts.getFacts(corpId, userId, sessionId);
     const count = previousFacts ? INCREMENTAL_MESSAGES : FULL_MESSAGES;
     const messagesToProcess = conversationHistory.slice(-count);
 
@@ -142,7 +141,7 @@ export class FactExtractionService {
     const newFacts = await this.callLLM(prompt);
 
     // 5. 合并 + 写入
-    await this.memoryService.saveFacts(corpId, userId, sessionId, newFacts);
+    await this.sessionFacts.saveFacts(corpId, userId, sessionId, newFacts);
   }
 
   // ---- 内部方法 ----

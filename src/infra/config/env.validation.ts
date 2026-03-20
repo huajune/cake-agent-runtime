@@ -65,6 +65,21 @@ export class EnvironmentVariables {
   @IsString({ message: 'AGENT_FAST_MODEL 必须是字符串' })
   AGENT_FAST_MODEL?: string;
 
+  // ==================== Agent 安全护栏 ====================
+  @IsOptional()
+  @IsNumber({}, { message: 'AGENT_MAX_OUTPUT_TOKENS 必须是数字' })
+  @Min(100, { message: 'AGENT_MAX_OUTPUT_TOKENS 必须大于等于 100' })
+  AGENT_MAX_OUTPUT_TOKENS?: number;
+
+  @IsOptional()
+  @IsNumber({}, { message: 'AGENT_MAX_INPUT_CHARS 必须是数字' })
+  @Min(100, { message: 'AGENT_MAX_INPUT_CHARS 必须大于等于 100' })
+  AGENT_MAX_INPUT_CHARS?: number;
+
+  @IsOptional()
+  @IsString({ message: 'API_GUARD_TOKEN 必须是字符串' })
+  API_GUARD_TOKEN?: string;
+
   // ==================== 会话管理配置（可选，暂未使用）====================
   @IsOptional()
   @IsNumber({}, { message: 'CONVERSATION_MAX_MESSAGES 必须是数字' })

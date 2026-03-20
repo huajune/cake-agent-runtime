@@ -1,7 +1,17 @@
-import { Controller, Post, Body, Logger, Get, Query, Delete, Param } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Logger,
+  Get,
+  Query,
+  Delete,
+  Param,
+  HttpCode,
+} from '@nestjs/common';
 import { MessageService } from './message.service';
 import { MessageProcessor } from './message.processor';
-import { RawResponse } from '@infra/server/response/decorators/api-response.decorator';
+import { RawResponse, Public } from '@infra/server/response/decorators/api-response.decorator';
 import {
   MessageType,
   ContactType,
@@ -23,6 +33,7 @@ import { LogSanitizer } from './utils/log-sanitizer.util';
  * - 企业级回调格式（数据在顶层）
  * - 小组级回调格式（数据在 data 字段中）
  */
+@Public()
 @Controller('message')
 export class MessageController {
   private readonly logger = new Logger(MessageController.name);
@@ -619,5 +630,89 @@ export class MessageController {
       data: result.cleaned,
       message: result.message,
     };
+  }
+
+  // ==================== 运行时开关 ====================
+
+  /**
+   * 获取 AI 自动回复状态
+   * @description 获取当前 AI 自动回复功能的开关状态
+   * @example GET /message/ai-reply-status
+   */
+  @Get('ai-reply-status')
+  getAiReplyStatus() {
+    return { enabled: this.messageService.getAiReplyStatus() };
+  }
+
+  /**
+   * 切换 AI 自动回复开关
+   * @description 启用或禁用 AI 自动回复功能
+   * @example POST /message/toggle-ai-reply
+   * @body { "enabled": true }
+   */
+  @Post('toggle-ai-reply')
+  @HttpCode(200)
+  async toggleAiReply(@Body('enabled') enabled: boolean) {
+    const newStatus = await this.messageService.toggleAiReply(enabled);
+    return {
+      enabled: newStatus,
+      message: `AI 自动回复功能已${newStatus ? '启用' : '禁用'}`,
+    };
+  }
+
+  /**
+   * 获取消息聚合状态
+   * @description 获取当前消息聚合功能的开关状态
+   * @example GET /message/message-merge-status
+   */
+  @Get('message-merge-status')
+  getMessageMergeStatus() {
+    return { enabled: this.messageService.getMessageMergeStatus() };
+  }
+
+  /**
+   * 切换消息聚合开关
+   * @description 启用或禁用消息聚合功能
+   * @example POST /message/toggle-message-merge
+   * @body { "enabled": true }
+   */
+  @Post('toggle-message-merge')
+  @HttpCode(200)
+  async toggleMessageMerge(@Body('enabled') enabled: boolean) {
+    const newStatus = await this.messageService.toggleMessageMerge(enabled);
+    return {
+      enabled: newStatus,
+      message: `消息聚合功能已${newStatus ? '启用' : '禁用'}`,
+    };
+  }
+
+  // ==================== Worker 管理 ====================
+
+  /**
+   * 获取 Worker 状态
+   * @description 获取消息处理 Worker 的当前状态
+   * @example GET /message/worker-status
+   */
+  @Get('worker-status')
+  getWorkerStatus() {
+    return {
+      ...this.messageProcessor.getWorkerStatus(),
+      messageMergeEnabled: this.messageService.getMessageMergeStatus(),
+    };
+  }
+
+  /**
+   * 设置 Worker 并发数
+   * @description 动态调整消息处理 Worker 的并发数
+   * @example POST /message/worker-concurrency
+   * @body { "concurrency": 5 }
+   */
+  @Post('worker-concurrency')
+  @HttpCode(200)
+  async setWorkerConcurrency(@Body('concurrency') concurrency: number) {
+    if (concurrency === undefined || concurrency === null) {
+      return { success: false, message: 'concurrency 参数必填' };
+    }
+    return this.messageProcessor.setConcurrency(concurrency);
   }
 }

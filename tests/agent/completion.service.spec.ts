@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { CompletionService } from '@agent/completion.service';
 import { RouterService } from '@providers/router.service';
 
@@ -22,9 +23,17 @@ describe('CompletionService', () => {
     resolve: jest.fn().mockReturnValue(mockModel),
   };
 
+  const mockConfigService = {
+    get: jest.fn().mockImplementation((key: string, defaultValue?: string) => defaultValue),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [CompletionService, { provide: RouterService, useValue: mockRouter }],
+      providers: [
+        CompletionService,
+        { provide: RouterService, useValue: mockRouter },
+        { provide: ConfigService, useValue: mockConfigService },
+      ],
     }).compile();
 
     service = module.get<CompletionService>(CompletionService);
@@ -101,6 +110,33 @@ describe('CompletionService', () => {
         expect.objectContaining({
           temperature: 0.5,
           maxOutputTokens: 100,
+        }),
+      );
+    });
+
+    it('should use default maxOutputTokens when not explicitly provided', async () => {
+      await service.generate({
+        systemPrompt: 'test',
+        messages: [{ role: 'user', content: 'hi' }],
+      });
+
+      expect(mockGenerateText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          maxOutputTokens: 4096,
+        }),
+      );
+    });
+
+    it('should allow explicit maxOutputTokens to override default', async () => {
+      await service.generate({
+        systemPrompt: 'test',
+        messages: [{ role: 'user', content: 'hi' }],
+        maxOutputTokens: 1000,
+      });
+
+      expect(mockGenerateText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          maxOutputTokens: 1000,
         }),
       );
     });

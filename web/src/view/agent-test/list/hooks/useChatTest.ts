@@ -3,6 +3,7 @@ import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
 import { TestChatResponse, SimpleMessage, TokenUsage } from '@/api/services/agent-test.service';
 import { CHAT_API_ENDPOINT, DEFAULT_SCENARIO } from '../constants';
+import { generateUUID } from '@/utils/uuid';
 
 export interface UseChatTestOptions {
   onTestComplete?: (result: TestChatResponse) => void;
@@ -57,8 +58,8 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
   const startTimeRef = useRef<number>(0);
 
   // 会话 ID + 用户 ID：同一对话保持一致，清空聊天时重新生成（确保 Agent API 服务端记忆完全隔离）
-  const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
-  const [userId, setUserId] = useState(() => `dashboard-test-${crypto.randomUUID().slice(0, 8)}`);
+  const [sessionId, setSessionId] = useState(() => generateUUID());
+  const [userId, setUserId] = useState(() => `dashboard-test-${generateUUID().slice(0, 8)}`);
 
   // Refs
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
@@ -286,8 +287,8 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     setLocalError(null);
     setMetrics(null);
     setIsRequesting(false);
-    setSessionId(crypto.randomUUID());
-    setUserId(`dashboard-test-${crypto.randomUUID().slice(0, 8)}`);
+    setSessionId(generateUUID());
+    setUserId(`dashboard-test-${generateUUID().slice(0, 8)}`);
     messageInputRef.current?.focus();
   }, [setMessages]);
 

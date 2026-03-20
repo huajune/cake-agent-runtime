@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { MemoryService } from '@memory/memory.service';
+import { ProceduralService } from '@memory/procedural.service';
 import { SpongeService } from '@sponge/sponge.service';
 import {
   AiTool,
@@ -10,8 +10,6 @@ import {
   createToolDefinition,
 } from '@shared-types/tool.types';
 
-import { buildMemoryStoreTool } from './memory-store.tool';
-import { buildMemoryRecallTool } from './memory-recall.tool';
 import { buildAdvanceStageTool } from './advance-stage.tool';
 import { buildJobListTool } from './duliday-job-list.tool';
 import { buildInterviewBookingTool } from './duliday-interview-booking.tool';
@@ -22,6 +20,10 @@ import { buildInterviewBookingTool } from './duliday-interview-booking.tool';
  * 所有内置工具的 name + description + create 集中定义于此。
  * MCP 工具运行时动态注册。
  * orchestrator 调用 buildAll(context) 一次性构建所有工具。
+ *
+ * 记忆工具策略：
+ * - memory_store / memory_recall 已删除（编排层固定读写，不由 LLM 自主决定）
+ * - advance_stage 保留（程序记忆，只有 LLM 能判断推进时机）
  */
 @Injectable()
 export class ToolRegistryService {
@@ -31,33 +33,16 @@ export class ToolRegistryService {
   private readonly mcpTools = new Map<string, ToolRegistration>();
 
   // ========== 内置工具注册表 ==========
-  //
-  // 所有内置工具在此声明。新增工具时：
-  // 1. 在对应 *.tool.ts 中实现 build 函数
-  // 2. 在此处用 createToolDefinition() 添加一行
 
   private readonly registry: Record<string, ToolDefinition>;
 
-  constructor(memoryService: MemoryService, spongeService: SpongeService) {
+  constructor(proceduralService: ProceduralService, spongeService: SpongeService) {
     this.registry = {
-      // ===== 记忆工具 =====
-      memory_store: createToolDefinition({
-        name: 'memory_store',
-        description: '存储候选人信息到记忆（增量合并，不覆盖已有信息）',
-        create: buildMemoryStoreTool(memoryService),
-      }),
-
-      memory_recall: createToolDefinition({
-        name: 'memory_recall',
-        description: '回忆候选人已知信息（避免重复提问）',
-        create: buildMemoryRecallTool(memoryService),
-      }),
-
       // ===== 阶段工具 =====
       advance_stage: createToolDefinition({
         name: 'advance_stage',
         description: '推进对话阶段（当前阶段目标达成后切换）',
-        create: buildAdvanceStageTool(memoryService),
+        create: buildAdvanceStageTool(proceduralService),
       }),
 
       // ===== 业务工具 =====
@@ -78,19 +63,10 @@ export class ToolRegistryService {
   }
 
   // ==================== 场景工具映射 ====================
-  //
-  // 每个场景声明自己需要的工具。与 scenario.registry.ts 中的 section 映射对应。
-  // 新增场景时：在此添加一行。
 
   private readonly scenarioToolMap: Record<string, string[]> = {
-    'candidate-consultation': [
-      'memory_store',
-      'memory_recall',
-      'advance_stage',
-      'duliday_job_list',
-      'duliday_interview_booking',
-    ],
-    'group-operations': ['memory_store', 'memory_recall'],
+    'candidate-consultation': ['advance_stage', 'duliday_job_list', 'duliday_interview_booking'],
+    'group-operations': [],
     evaluation: [],
   };
 
@@ -144,7 +120,6 @@ export class ToolRegistryService {
       this.logger.warn(`场景 "${scenario}" 无工具映射，回退到 buildAll`);
       return this.buildAll(context);
     }
-    // MCP 工具追加到场景工具之后
     const tools = this.buildSubset(names, context);
     for (const [name, reg] of this.mcpTools) {
       if (reg.tool) tools[name] = reg.tool;

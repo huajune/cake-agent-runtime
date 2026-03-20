@@ -1,6 +1,7 @@
 import { Module, Global, forwardRef } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { MessageModule } from '@wecom/message/message.module';
+import { BizMessageModule } from '@biz/message/message.module';
 import { FeishuModule } from '@/infra/feishu/feishu.module';
 import { UserModule } from '../user/user.module';
 import { HostingConfigModule } from '../hosting-config/hosting-config.module';
@@ -40,13 +41,14 @@ import { MonitoringErrorLogRepository } from './repositories/error-log.repositor
   imports: [
     ScheduleModule.forRoot(),
     forwardRef(() => MessageModule),
+    BizMessageModule,
     FeishuModule,
     UserModule,
     HostingConfigModule,
   ],
   controllers: [AnalyticsController, WebController],
   providers: [
-    // Repositories
+    // Monitoring Repositories (biz message repos come from BizMessageModule)
     MonitoringRecordRepository,
     MonitoringHourlyStatsRepository,
     MonitoringErrorLogRepository,

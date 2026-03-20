@@ -6,6 +6,7 @@ import { AnalyticsDashboardService } from './services/analytics/analytics-dashbo
 import { AnalyticsQueryService } from './services/analytics/analytics-query.service';
 import { AnalyticsMaintenanceService } from './services/analytics/analytics-maintenance.service';
 import { MetricsData, TimeRange } from './types/analytics.types';
+import { Public } from '@infra/server/response/decorators/api-response.decorator';
 
 /**
  * Analytics API 控制器
@@ -132,6 +133,7 @@ export class AnalyticsController {
  * Web SPA 控制器
  * 托管前端 Web 静态资源
  */
+@Public()
 @Controller('web')
 export class WebController {
   @Get('*')

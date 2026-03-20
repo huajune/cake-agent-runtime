@@ -57,8 +57,7 @@ export class RegistryService implements OnModuleInit {
     // === 自定义 Provider ===
     // OpenAI — 通过代理访问，强制使用 /v1/chat/completions 端点
     const anthropicKey = this.config.get<string>('ANTHROPIC_API_KEY');
-    const openaiBaseURL =
-      this.config.get<string>('OPENAI_BASE_URL') ?? 'https://c-z0-api-01.hash070.com/v1';
+    const openaiBaseURL = this.config.get<string>('OPENAI_BASE_URL');
     if (anthropicKey) {
       providers['openai'] = createCustomOpenAI({ apiKey: anthropicKey, baseURL: openaiBaseURL });
       this.registeredProviders.push('openai');
