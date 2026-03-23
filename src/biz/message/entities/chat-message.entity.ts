@@ -1,4 +1,8 @@
-import { StorageMessageType, StorageMessageSource, StorageContactType } from '@wecom/message/enums';
+import {
+  StorageMessageType,
+  StorageMessageSource,
+  StorageContactType,
+} from '@enums/storage-message.enum';
 
 /**
  * 聊天消息记录（Supabase 存储格式）

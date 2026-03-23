@@ -1,14 +1,15 @@
 import { NestFactory, Reflector } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
-import { ResponseInterceptor, HttpExceptionFilter } from '@core/server';
+import { ResponseInterceptor } from '@infra/server/response/interceptors/response.interceptor';
+import { HttpExceptionFilter } from '@infra/server/response/filters/http-exception.filter';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { join } from 'path';
 import { networkInterfaces } from 'os';
 import { execSync } from 'child_process';
 import * as net from 'net';
-import { CustomLoggerService } from '@core/logger';
+import { CustomLoggerService } from '@infra/logger/custom-logger.service';
 
 /**
  * 获取本机局域网 IP 地址
@@ -145,7 +146,7 @@ async function bootstrap() {
   console.log(`🌍 运行环境: ${nodeEnv}`);
   console.log(`🔗 本地访问: http://localhost:${port}`);
   console.log(`🌐 局域网访问: http://${localIp}:${port}`);
-  console.log(`📊 监控仪表盘: http://${localIp}:${port}/dashboard/`);
+  console.log(`📊 监控仪表盘: http://${localIp}:${port}/web/`);
   console.log(`📦 API 响应格式: 统一包装（全局生效）`);
   console.log('========================================');
 }

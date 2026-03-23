@@ -1,11 +1,11 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
-import { SupabaseService } from '@core/supabase';
-import { ChatMessageRepository } from '@biz/message/repositories/chat-message.repository';
-import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
-import { MonitoringErrorLogRepository } from '../../repositories/monitoring-error-log.repository';
-import { UserHostingRepository } from '@biz/user/repositories/user-hosting.repository';
+import { SupabaseService } from '@infra/supabase/supabase.service';
+import { ChatSessionService } from '@biz/message/services/chat-session.service';
+import { MessageProcessingService } from '@biz/message/services/message-processing.service';
+import { MonitoringErrorLogRepository } from '../../repositories/error-log.repository';
+import { UserHostingService } from '@biz/user/services/user-hosting.service';
 
 /**
  * 数据清理服务（分层存储策略）
@@ -39,9 +39,9 @@ export class DataCleanupService implements OnModuleInit {
   constructor(
     private readonly configService: ConfigService,
     private readonly supabaseService: SupabaseService,
-    private readonly chatMessageRepository: ChatMessageRepository,
-    private readonly messageProcessingRepository: MessageProcessingRepository,
-    private readonly userHostingRepository: UserHostingRepository,
+    private readonly chatSessionService: ChatSessionService,
+    private readonly messageProcessingService: MessageProcessingService,
+    private readonly userHostingService: UserHostingService,
     private readonly errorLogRepository: MonitoringErrorLogRepository,
   ) {
     this.agentInvocationRetentionDays = parseInt(
@@ -106,7 +106,7 @@ export class DataCleanupService implements OnModuleInit {
    */
   private async nullAgentInvocations(): Promise<void> {
     try {
-      const updatedCount = await this.messageProcessingRepository.nullAgentInvocations(
+      const updatedCount = await this.messageProcessingService.nullAgentInvocations(
         this.agentInvocationRetentionDays,
       );
       if (updatedCount > 0) {
@@ -125,7 +125,7 @@ export class DataCleanupService implements OnModuleInit {
    */
   private async cleanupChatMessages(): Promise<void> {
     try {
-      const deletedCount = await this.chatMessageRepository.cleanupChatMessages(
+      const deletedCount = await this.chatSessionService.cleanupChatMessages(
         this.chatRetentionDays,
       );
       if (deletedCount > 0) {
@@ -144,7 +144,7 @@ export class DataCleanupService implements OnModuleInit {
    */
   private async cleanupMessageProcessingRecords(): Promise<void> {
     try {
-      const deletedCount = await this.messageProcessingRepository.cleanupMessageProcessingRecords(
+      const deletedCount = await this.messageProcessingService.cleanupRecords(
         this.processingRetentionDays,
       );
       if (deletedCount > 0) {
@@ -182,7 +182,7 @@ export class DataCleanupService implements OnModuleInit {
    */
   private async cleanupUserActivity(): Promise<void> {
     try {
-      const deletedCount = await this.userHostingRepository.cleanupUserActivity(
+      const deletedCount = await this.userHostingService.cleanupActivity(
         this.userActivityRetentionDays,
       );
       if (deletedCount > 0) {
@@ -218,7 +218,7 @@ export class DataCleanupService implements OnModuleInit {
     }
 
     try {
-      agentInvocations = await this.messageProcessingRepository.nullAgentInvocations(
+      agentInvocations = await this.messageProcessingService.nullAgentInvocations(
         this.agentInvocationRetentionDays,
       );
     } catch (error: unknown) {
@@ -226,13 +226,13 @@ export class DataCleanupService implements OnModuleInit {
     }
 
     try {
-      chatMessages = await this.chatMessageRepository.cleanupChatMessages(this.chatRetentionDays);
+      chatMessages = await this.chatSessionService.cleanupChatMessages(this.chatRetentionDays);
     } catch (error: unknown) {
       this.logger.warn(`[数据清理] 手动清理聊天消息失败: ${String(error)}`);
     }
 
     try {
-      processingRecords = await this.messageProcessingRepository.cleanupMessageProcessingRecords(
+      processingRecords = await this.messageProcessingService.cleanupRecords(
         this.processingRetentionDays,
       );
     } catch (error: unknown) {
@@ -240,9 +240,7 @@ export class DataCleanupService implements OnModuleInit {
     }
 
     try {
-      userActivity = await this.userHostingRepository.cleanupUserActivity(
-        this.userActivityRetentionDays,
-      );
+      userActivity = await this.userHostingService.cleanupActivity(this.userActivityRetentionDays);
     } catch (error: unknown) {
       this.logger.warn(`[数据清理] 手动清理用户活跃记录失败: ${String(error)}`);
     }

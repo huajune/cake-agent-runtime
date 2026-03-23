@@ -1,0 +1,210 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { LlmEvaluationService } from '@evaluation/llm-evaluation.service';
+import { CompletionService } from '@agent/completion.service';
+import { SimilarityRating } from '@evaluation/evaluation.types';
+
+describe('LlmEvaluationService', () => {
+  let service: LlmEvaluationService;
+
+  const mockCompletion = {
+    generate: jest.fn(),
+    generateSimple: jest.fn(),
+  };
+
+  const makeCompletionResult = (text: string) => ({
+    text,
+    usage: { inputTokens: 50, outputTokens: 30, totalTokens: 80 },
+  });
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [LlmEvaluationService, { provide: CompletionService, useValue: mockCompletion }],
+    }).compile();
+
+    service = module.get<LlmEvaluationService>(LlmEvaluationService);
+    jest.clearAllMocks();
+  });
+
+  it('should be defined', () => {
+    expect(service).toBeDefined();
+  });
+
+  // ========== evaluate ==========
+
+  describe('evaluate', () => {
+    const input = {
+      userMessage: '这还招人吗',
+      expectedOutput: '是的，目前还在招聘中',
+      actualOutput: '是的，我们还在招人',
+    };
+
+    it('should return evaluation result with correct score and passed flag', async () => {
+      mockCompletion.generate.mockResolvedValue(
+        makeCompletionResult('{"score": 85, "passed": true, "reason": "回复内容基本一致"}'),
+      );
+
+      const result = await service.evaluate(input);
+
+      expect(result.score).toBe(85);
+      expect(result.passed).toBe(true);
+      expect(result.reason).toBe('回复内容基本一致');
+      expect(result.evaluationId).toBeDefined();
+    });
+
+    it('should include token usage', async () => {
+      mockCompletion.generate.mockResolvedValue(
+        makeCompletionResult('{"score": 70, "passed": true, "reason": "良好"}'),
+      );
+
+      const result = await service.evaluate(input);
+
+      expect(result.tokenUsage).toEqual({
+        inputTokens: 50,
+        outputTokens: 30,
+        totalTokens: 80,
+      });
+    });
+
+    it('should return zero score on generate failure', async () => {
+      mockCompletion.generate.mockRejectedValue(new Error('API connection failed'));
+
+      const result = await service.evaluate(input);
+
+      expect(result.score).toBe(0);
+      expect(result.passed).toBe(false);
+      expect(result.reason).toContain('评估失败');
+    });
+
+    it('should handle markdown code block wrapped JSON', async () => {
+      const jsonWithMarkdown = '```json\n{"score": 75, "passed": true, "reason": "良好"}\n```';
+      mockCompletion.generate.mockResolvedValue(makeCompletionResult(jsonWithMarkdown));
+
+      const result = await service.evaluate(input);
+
+      expect(result.score).toBe(75);
+      expect(result.passed).toBe(true);
+    });
+
+    it('should call completion.generate with systemPrompt and messages', async () => {
+      mockCompletion.generate.mockResolvedValue(
+        makeCompletionResult('{"score": 80, "passed": true, "reason": "ok"}'),
+      );
+
+      await service.evaluate(input);
+
+      expect(mockCompletion.generate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          systemPrompt: expect.any(String),
+          messages: [{ role: 'user', content: expect.any(String) }],
+        }),
+      );
+    });
+
+    it('should include conversation history in the user message when provided', async () => {
+      mockCompletion.generate.mockResolvedValue(
+        makeCompletionResult('{"score": 80, "passed": true, "reason": "ok"}'),
+      );
+
+      const inputWithHistory = {
+        ...input,
+        history: [
+          { role: 'user' as const, content: '你好' },
+          { role: 'assistant' as const, content: '您好，有什么可以帮您？' },
+        ],
+      };
+
+      await service.evaluate(inputWithHistory);
+
+      const callArgs = mockCompletion.generate.mock.calls[0][0];
+      const userContent = callArgs.messages[0].content;
+      expect(userContent).toContain('对话历史');
+      expect(userContent).toContain('你好');
+    });
+
+    it('should auto-correct passed flag when inconsistent with score', async () => {
+      mockCompletion.generate.mockResolvedValue(
+        makeCompletionResult('{"score": 75, "passed": false, "reason": "inconsistent"}'),
+      );
+
+      const result = await service.evaluate(input);
+
+      expect(result.score).toBe(75);
+      expect(result.passed).toBe(true); // auto-corrected
+    });
+
+    it('should clamp score to 0-100 range', async () => {
+      mockCompletion.generate.mockResolvedValue(
+        makeCompletionResult('{"score": 150, "passed": true, "reason": "out of range"}'),
+      );
+
+      const result = await service.evaluate(input);
+
+      expect(result.score).toBe(100);
+    });
+
+    it('should return zero score when JSON is malformed', async () => {
+      mockCompletion.generate.mockResolvedValue(makeCompletionResult('not valid json at all'));
+
+      const result = await service.evaluate(input);
+
+      expect(result.score).toBe(0);
+      expect(result.passed).toBe(false);
+    });
+
+    it('should return zero score when JSON is missing required fields', async () => {
+      mockCompletion.generate.mockResolvedValue(
+        makeCompletionResult('{"score": 80}'), // missing passed and reason
+      );
+
+      const result = await service.evaluate(input);
+
+      expect(result.score).toBe(0);
+    });
+
+    it('should return zero score when field types are wrong', async () => {
+      mockCompletion.generate.mockResolvedValue(
+        makeCompletionResult('{"score": "high", "passed": "yes", "reason": 123}'),
+      );
+
+      const result = await service.evaluate(input);
+
+      expect(result.score).toBe(0);
+    });
+
+    it('should truncate reason to 200 characters', async () => {
+      const longReason = 'a'.repeat(300);
+      mockCompletion.generate.mockResolvedValue(
+        makeCompletionResult(`{"score": 80, "passed": true, "reason": "${longReason}"}`),
+      );
+
+      const result = await service.evaluate(input);
+
+      expect(result.reason.length).toBeLessThanOrEqual(200);
+    });
+  });
+
+  // ========== getRating ==========
+
+  describe('getRating', () => {
+    it('should return EXCELLENT for score >= 80', () => {
+      expect(service.getRating(80)).toBe(SimilarityRating.EXCELLENT);
+      expect(service.getRating(100)).toBe(SimilarityRating.EXCELLENT);
+      expect(service.getRating(95)).toBe(SimilarityRating.EXCELLENT);
+    });
+
+    it('should return GOOD for score in range 60-79', () => {
+      expect(service.getRating(60)).toBe(SimilarityRating.GOOD);
+      expect(service.getRating(79)).toBe(SimilarityRating.GOOD);
+    });
+
+    it('should return FAIR for score in range 40-59', () => {
+      expect(service.getRating(40)).toBe(SimilarityRating.FAIR);
+      expect(service.getRating(59)).toBe(SimilarityRating.FAIR);
+    });
+
+    it('should return POOR for score below 40', () => {
+      expect(service.getRating(0)).toBe(SimilarityRating.POOR);
+      expect(service.getRating(39)).toBe(SimilarityRating.POOR);
+    });
+  });
+});

@@ -1,6 +1,6 @@
 # 监控系统架构设计
 
-> DuLiDay 企业微信服务 - 监控数据存储与展示架构
+> Cake Agent Runtime - 监控数据存储与展示架构
 
 **最后更新**：2025-12-02
 
@@ -170,7 +170,7 @@ private persistSnapshot(): void {
 
 **职责**：核心监控数据收集与统计
 
-**文件位置**：`src/core/monitoring/monitoring.service.ts`
+**文件位置**：`src/infra/monitoring/monitoring.service.ts`
 
 **内存数据结构**：
 
@@ -218,7 +218,7 @@ private peakProcessing = 0;
 
 **职责**：实时快照分离存储到 Redis
 
-**文件位置**：`src/core/monitoring/monitoring-snapshot.service.ts`
+**文件位置**：`src/infra/monitoring/monitoring-snapshot.service.ts`
 
 **配置**：
 
@@ -268,7 +268,7 @@ private async writeToRedis(snapshot: MonitoringSnapshot): Promise<void> {
 
 **职责**：定期清理过期数据
 
-**文件位置**：`src/core/monitoring/data-cleanup.service.ts`
+**文件位置**：`src/infra/monitoring/data-cleanup.service.ts`
 
 **定时任务**：
 

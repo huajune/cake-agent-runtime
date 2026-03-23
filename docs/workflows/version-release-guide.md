@@ -53,7 +53,7 @@ PR 审核通过后，点击 **Merge pull request** 合并到 `master` 分支。
 大约 1-2 分钟后，你可以在以下位置查看结果：
 - [Actions 执行日志](../../.github/workflows/version-changelog.yml)
 - [CHANGELOG.md](../../CHANGELOG.md) 查看更新记录
-- [Releases](https://github.com/huajune/duliday-wecom-bot/tags) 查看版本标签
+- [Releases](https://github.com/huajune/cake-agent-runtime/tags) 查看版本标签
 
 ---
 
@@ -207,13 +207,13 @@ Feature 更新：
 **A:** 检查以下几点：
 1. 是否合并到了 `master` 分支（只有 `master` 触发自动化）
 2. 提交消息是否符合规范（必须有 `feat:` `fix:` 等前缀）
-3. 查看 [GitHub Actions](https://github.com/huajune/duliday-wecom-bot/actions) 是否执行成功
+3. 查看 [GitHub Actions](https://github.com/huajune/cake-agent-runtime/actions) 是否执行成功
 
 ### Q2: 如何查看历史版本？
 
 **A:** 三种方式：
 1. 查看 [CHANGELOG.md](../../CHANGELOG.md)
-2. 查看 [GitHub Releases](https://github.com/huajune/duliday-wecom-bot/releases)
+2. 查看 [GitHub Releases](https://github.com/huajune/cake-agent-runtime/releases)
 3. 运行 `git tag -l` 查看所有版本标签
 
 ### Q3: 我想回退到某个版本怎么办？
@@ -232,7 +232,7 @@ git checkout -b fix-branch v1.2.3
 
 ### Q4: 自动化失败了怎么办？
 
-**A:** 查看 [GitHub Actions 日志](https://github.com/huajune/duliday-wecom-bot/actions)，常见原因：
+**A:** 查看 [GitHub Actions 日志](https://github.com/huajune/cake-agent-runtime/actions)，常见原因：
 - 提交消息格式不正确
 - Git 冲突（需要手动解决）
 - 权限问题（联系管理员）

@@ -4,7 +4,7 @@ import {
   MonitoringErrorLog,
   MonitoringGlobalCounters,
   AlertErrorType,
-} from '../../types/tracking.types';
+} from '@shared-types/tracking.types';
 import {
   HourlyStats,
   MetricsData,
@@ -16,9 +16,10 @@ import {
   BusinessMetricTrendPoint,
 } from '../../types/analytics.types';
 import { MonitoringCacheService } from '../tracking/monitoring-cache.service';
-import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
-import { MonitoringHourlyStatsRepository } from '../../repositories/monitoring-hourly-stats.repository';
-import { MonitoringErrorLogRepository } from '../../repositories/monitoring-error-log.repository';
+import { MessageProcessingService } from '@biz/message/services/message-processing.service';
+import { MonitoringRecordRepository } from '../../repositories/record.repository';
+import { MonitoringHourlyStatsRepository } from '../../repositories/hourly-stats.repository';
+import { MonitoringErrorLogRepository } from '../../repositories/error-log.repository';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { MessageTrackingService } from '../tracking/message-tracking.service';
 import * as os from 'os';
@@ -34,7 +35,8 @@ export class AnalyticsQueryService {
   private todayUsersCache: { value: TodayUser[]; expireAt: number } | null = null;
 
   constructor(
-    private readonly messageProcessingRepository: MessageProcessingRepository,
+    private readonly messageProcessingService: MessageProcessingService,
+    private readonly monitoringRecordRepository: MonitoringRecordRepository,
     private readonly hourlyStatsRepository: MonitoringHourlyStatsRepository,
     private readonly errorLogRepository: MonitoringErrorLogRepository,
     private readonly userHostingService: UserHostingService,
@@ -173,7 +175,7 @@ export class AnalyticsQueryService {
     startTime: number,
     endTime: number,
   ): Promise<{ total: number; success: number; failed: number; avgDuration: number }> {
-    return this.messageProcessingRepository.getMessageStats(startTime, endTime);
+    return this.messageProcessingService.getMessageStatsByTimestamps(startTime, endTime);
   }
 
   // ========================================
@@ -201,7 +203,7 @@ export class AnalyticsQueryService {
   async getTodayUsersFromDatabase(): Promise<TodayUser[]> {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
-    const dbUsers = await this.messageProcessingRepository.getActiveUsers(todayStart, new Date());
+    const dbUsers = await this.messageProcessingService.getActiveUsers(todayStart, new Date());
 
     const chatIds = dbUsers.map((u) => u.chatId);
     const pausedSet = new Set<string>();
@@ -260,7 +262,7 @@ export class AnalyticsQueryService {
     const endDate = new Date(date);
     endDate.setHours(23, 59, 59, 999);
 
-    const dbUsers = await this.messageProcessingRepository.getActiveUsers(startDate, endDate);
+    const dbUsers = await this.messageProcessingService.getActiveUsers(startDate, endDate);
 
     const chatIds = dbUsers.map((u) => u.chatId);
     const pausedSet = new Set<string>();
@@ -288,7 +290,7 @@ export class AnalyticsQueryService {
     const endDate = new Date();
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 30);
-    const stats = await this.messageProcessingRepository.getDailyUserStats(startDate, endDate);
+    const stats = await this.messageProcessingService.getDailyUserStats(startDate, endDate);
     return stats.map((s) => ({
       date: s.date,
       userCount: s.uniqueUsers,
@@ -296,9 +298,27 @@ export class AnalyticsQueryService {
     }));
   }
 
+  async getChatTrend(
+    days = 7,
+  ): Promise<
+    Array<{ hour: string; message_count: number; active_users: number; active_chats: number }>
+  > {
+    this.logger.debug(`获取聊天趋势: 最近 ${days} 天`);
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    const endDate = new Date();
+    const trend = await this.monitoringRecordRepository.getDashboardHourlyTrend(startDate, endDate);
+    return trend.map((item) => ({
+      hour: item.hour,
+      message_count: item.messageCount,
+      active_users: item.uniqueUsers,
+      active_chats: 0,
+    }));
+  }
+
   public async getRecentDetailRecords(limit: number = 50): Promise<MessageProcessingRecord[]> {
     try {
-      const result = await this.messageProcessingRepository.getMessageProcessingRecords({ limit });
+      const result = await this.messageProcessingService.getRecordsByTimestamps({ limit });
       return result.records as unknown as MessageProcessingRecord[];
     } catch (error) {
       this.logger.error('查询最近消息记录异常:', error);
@@ -315,10 +335,7 @@ export class AnalyticsQueryService {
     endTime: number,
   ): Promise<MessageProcessingRecord[]> {
     try {
-      const records = await this.messageProcessingRepository.getRecordsByTimeRange(
-        startTime,
-        endTime,
-      );
+      const records = await this.messageProcessingService.getRecordsByTimeRange(startTime, endTime);
       return records as unknown as MessageProcessingRecord[];
     } catch (error) {
       this.logger.error('按时间范围查询消息记录失败:', error);
@@ -330,7 +347,7 @@ export class AnalyticsQueryService {
     try {
       const cutoffTime = this.getTimeRangeCutoff(range);
       const limitByRange = { today: 2000, week: 5000, month: 10000 };
-      const result = await this.messageProcessingRepository.getMessageProcessingRecords({
+      const result = await this.messageProcessingService.getRecordsByTimestamps({
         startTime: cutoffTime.getTime(),
         limit: limitByRange[range] || 2000,
       });

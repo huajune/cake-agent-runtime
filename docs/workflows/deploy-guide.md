@@ -36,8 +36,8 @@ cp .env.example .env
 
 | 变量 | 说明 | 来源 |
 |------|------|------|
-| `AGENT_API_KEY` | AI Agent API 密钥 | 花卷平台 |
-| `AGENT_API_BASE_URL` | AI Agent API 地址 | 花卷平台 |
+| `ANTHROPIC_API_KEY` | Anthropic API 密钥 | Anthropic |
+| `AGENT_CHAT_MODEL` | 主聊天模型 ID | 环境配置 |
 | `UPSTASH_REDIS_REST_URL` | Redis REST URL | Upstash |
 | `UPSTASH_REDIS_REST_TOKEN` | Redis REST Token | Upstash |
 | `DULIDAY_API_TOKEN` | 杜力岱 API Token | 内部系统 |

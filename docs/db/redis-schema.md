@@ -1,12 +1,12 @@
 # Redis Key 设计与使用说明
 
-> DuLiDay 企业微信服务 - Redis (Upstash) 缓存层设计文档
+> Cake Agent Runtime - Redis (Upstash) 缓存层设计文档
 
 **最后更新**：2026-03-12
 
 **Redis 客户端**：`@upstash/redis`（REST API 模式）| **连接方式**：`UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`
 
-**Key 常量定义**：`src/wecom/message/utils/redis-key.util.ts` 和 `src/biz/monitoring/utils/monitoring-redis-keys.ts`
+**Key 常量定义**：`src/channels/wecom/message/utils/redis-key.util.ts`
 
 ---
 
@@ -17,16 +17,12 @@
 - [消息模块（wecom:message:*）](#消息模块wecommessage)
   - [wecom:message:dedup](#1-wecommessagededup---消息去重)
   - [wecom:message:pending](#2-wecommessagepending---消息聚合队列)
-  - [wecom:message:history（预留）](#3-wecommessagehistory-预留)
-  - [wecom:message:lock（预留）](#4-wecommessagelock-预留)
-- [监控模块（monitoring:*）](#监控模块monitoring)
-  - [monitoring:counters](#5-monitoringcounters---全局计数器)
-  - [monitoring:current_processing](#6-monitoringcurrent_processing---当前并发数)
-  - [monitoring:peak_processing](#7-monitoringpeak_processing---峰值并发数)
-  - [monitoring:today_users](#8-monitoringtoday_users---今日用户缓存)
+- [测试套件模块（test-suite:*）](#测试套件模块test-suite)
+  - [test-suite:progress](#3-test-suiteprogress---测试批次进度缓存)
 - [Bull Queue](#bull-queue)
 - [数据生命周期](#数据生命周期)
 - [连接配置](#连接配置)
+- [故障排查](#故障排查)
 
 ---
 
@@ -36,14 +32,7 @@
 |---|---------|---------|-----|---------|------|
 | 1 | `wecom:message:dedup:{id}` | String | 5min | wecom/message | 消息去重标记（原子 SET NX EX） |
 | 2 | `wecom:message:pending:{chatId}` | List | 5min | wecom/message | 消息聚合队列 |
-| 3 | `wecom:message:history:{chatId}` | String | — | wecom/message | 消息历史缓存（预留） |
-| 4 | `wecom:message:lock:{chatId}` | String | — | wecom/message | 分布式处理锁（预留） |
-| 5 | `monitoring:counters` | Hash | 永久 | biz/monitoring | 全局累计计数器 |
-| 6 | `monitoring:current_processing` | String | 永久 | biz/monitoring | 实时并发处理数 |
-| 7 | `monitoring:peak_processing` | String | 永久 | biz/monitoring | 历史峰值并发数 |
-| 8 | `monitoring:today_users` | String | 30s | biz/monitoring | 今日用户列表缓存 |
-
-> **注**：配置类（`config:*`）的 Redis L2 缓存层已移除。所有配置服务（SystemConfigService、StrategyConfigService、GroupBlacklistService）现采用 L1 内存缓存 → Supabase DB 两级架构，Redis 不再参与配置读写路径。
+| 3 | `test-suite:progress:{batchId}` | String（JSON） | 1h | biz/test-suite | 测试批次执行进度缓存 |
 
 ---
 
@@ -56,43 +45,35 @@
 | 命名空间 | 含义 | 示例 |
 |---------|------|------|
 | `wecom` | 企业微信消息处理 | `wecom:message:dedup:msg_123` |
-| `monitoring` | 运行时监控指标 | `monitoring:counters` |
-
-**Key 常量定义位置**：
-
-```
-src/
-├── wecom/message/utils/redis-key.util.ts          → RedisKeyBuilder（静态方法）
-└── biz/monitoring/utils/monitoring-redis-keys.ts   → MONITORING_REDIS_KEYS
-```
+| `test-suite` | 测试套件执行进度 | `test-suite:progress:batch_abc` |
 
 ---
 
 ## 消息模块（wecom:message:*）
 
-**Key 常量**：`src/wecom/message/utils/redis-key.util.ts` — `RedisKeyBuilder`
+**Key 常量**：`src/channels/wecom/message/utils/redis-key.util.ts` — `RedisKeyBuilder`
 
 ### 1. wecom:message:dedup - 消息去重
 
 **用途**：防止同一条消息被重复处理（幂等保障）
 
-**代码位置**：`src/wecom/message/services/message-deduplication.service.ts`
+**代码位置**：`src/channels/wecom/message/services/message-deduplication.service.ts`
 
 | 属性 | 值 |
 |------|----|
 | Key 格式 | `wecom:message:dedup:{messageId}` |
 | 数据结构 | String |
 | 存储内容 | 接收时间戳（毫秒字符串） |
-| TTL | 300s（5分钟），由 `MESSAGE_DEDUP_TTL_SECONDS` 环境变量控制 |
+| TTL | 300s，由 `MESSAGE_DEDUP_TTL_SECONDS` 环境变量控制 |
 
 **操作**：
 
 | 操作 | Redis 命令 | 触发时机 |
 |------|-----------|---------|
-| 原子标记（check-and-set） | `SET key value NX EX ttl` | 消息开始处理时（返回 OK=首次处理，null=已重复） |
+| 原子标记 | `SET key value NX EX ttl` | 消息开始处理时（OK=首次，null=重复） |
 | 批量清理 | `SCAN` + `DEL` | 手动维护 |
 
-> **注**：使用原子 `SET NX EX` 替代非原子的 `EXISTS + SETEX`，消除了分布式竞态条件（TOCTOU）。
+> 使用原子 `SET NX EX` 消除了分布式竞态条件（TOCTOU）。
 
 **示例**：
 
@@ -108,15 +89,14 @@ TTL:   298s
 
 **用途**：暂存同一会话在聚合窗口内到达的多条消息，等待批量发送给 AI
 
-**代码位置**：`src/wecom/message/services/simple-merge.service.ts`
+**代码位置**：`src/channels/wecom/message/services/simple-merge.service.ts`
 
 | 属性 | 值 |
 |------|----|
 | Key 格式 | `wecom:message:pending:{chatId}` |
 | 数据结构 | List（右进左出） |
 | 存储内容 | JSON 序列化的消息对象 |
-| TTL | 300s（5分钟兜底，防内存泄漏） |
-| 实际生命周期 | 聚合窗口（默认 2s）到期后被清空，远短于 TTL |
+| TTL | 300s 兜底（正常由 Worker 主动清除） |
 
 **操作**：
 
@@ -128,163 +108,55 @@ TTL:   298s
 | 取出所有消息 | `LRANGE 0 -1` | 聚合 Worker 触发时 |
 | 清空队列 | `DEL` | 消息取出后立即删除 |
 
-**配合 Bull Queue 工作**：
-
-```
-消息到达
-  → RPUSH 到 pending 队列
-  → 创建/更新 Bull 延迟任务（jobId = chatId，延迟 2s）
-  → 2s 后 Worker 读取队列 → DEL → 批量发送 AI
-```
-
-**示例**：
-
-```
-Key:   wecom:message:pending:wxid_abc123
-Value: ["{"content":"你好"}","{"content":"请问有空吗"}"]
-TTL:   298s
-```
-
 ---
 
-### 3. wecom:message:history（预留）
+## 测试套件模块（test-suite:*）
 
-**用途**：消息历史缓存（当前历史记录已迁移至 Supabase `chat_messages` 表永久存储，此 key 暂未使用）
+### 3. test-suite:progress - 测试批次进度缓存
+
+**用途**：多 Worker 并发执行时共享批次进度，供前端轮询（进度仅用于展示，完成判断以数据库为准）
+
+**代码位置**：`src/biz/test-suite/test-suite.processor.ts`
 
 | 属性 | 值 |
 |------|----|
-| Key 格式 | `wecom:message:history:{chatId}` |
+| Key 格式 | `test-suite:progress:{batchId}` |
 | 数据结构 | String（JSON） |
-| 当前状态 | **未使用** — 消息历史由 `MessageHistoryService` 直接读写 Supabase |
+| TTL | 3600s（1小时兜底） |
 
----
+**JSON 结构**：
 
-### 4. wecom:message:lock（预留）
-
-**用途**：分布式处理锁，防止同一会话并发处理（多实例部署时使用）
-
-| 属性 | 值 |
-|------|----|
-| Key 格式 | `wecom:message:lock:{chatId}` |
-| 数据结构 | String |
-| 当前状态 | **未使用** — 当前由 Bull Queue `jobId=chatId` 去重机制替代 |
-
----
-
-## 监控模块（monitoring:*）
-
-**Key 常量**：`src/biz/monitoring/utils/monitoring-redis-keys.ts` — `MONITORING_REDIS_KEYS`
-
-### 5. monitoring:counters - 全局计数器
-
-**用途**：高频累计写入的全局监控指标，使用 Hash 支持原子增量更新
-
-**代码位置**：`src/biz/monitoring/services/tracking/monitoring-cache.service.ts`
-
-| 属性 | 值 |
-|------|----|
-| Key | `monitoring:counters` |
-| 数据结构 | Hash |
-| TTL | **永久**（无过期，随服务启动持续累计） |
-
-**Hash 字段**：
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `totalMessages` | integer | 累计收到消息数 |
-| `totalSuccess` | integer | 累计处理成功数 |
-| `totalFailure` | integer | 累计处理失败数 |
-| `totalAiDuration` | integer | 累计 AI 处理耗时（ms） |
-| `totalSendDuration` | integer | 累计消息发送耗时（ms） |
-| `totalFallback` | integer | 累计降级次数 |
-| `totalFallbackSuccess` | integer | 累计降级成功次数 |
+```typescript
+{
+  completedCases: number;  // 已完成用例数
+  successCount:   number;  // 成功数
+  failureCount:   number;  // 失败数
+  durations:      number[]; // 各用例耗时（ms）
+}
+```
 
 **操作**：
 
 | 操作 | Redis 命令 | 触发时机 |
-|------|-----------|---------|
-| 单字段增量 | `HINCRBY` | 每条消息处理完成 |
-| 批量增量 | `PIPELINE` + `HINCRBY` × N | 批量更新时 |
-| 读取全部 | `HGETALL` | Dashboard 查询 |
-| 重置 | `DEL` | 手动维护 |
-| 迁移/初始化 | `HMSET` | 数据迁移场景 |
-
----
-
-### 6. monitoring:current_processing - 当前并发数
-
-**用途**：实时追踪当前正在处理的消息数量
-
-**代码位置**：`src/biz/monitoring/services/tracking/monitoring-cache.service.ts`
-
-| 属性 | 值 |
-|------|----|
-| Key | `monitoring:current_processing` |
-| 数据结构 | String（数字） |
-| TTL | **永久** |
-
-**操作**：
-
-| 操作 | Redis 命令 | 触发时机 |
-|------|-----------|---------|
-| 原子增量 | `INCRBY +1` | 消息处理开始 |
-| 原子减量 | `INCRBY -1` | 消息处理结束 |
-| 直接设值 | `SET` | 重置或迁移 |
-| 读取 | `GET` | Dashboard 查询 |
-
----
-
-### 7. monitoring:peak_processing - 峰值并发数
-
-**用途**：记录历史最高并发数，用于容量规划参考
-
-**代码位置**：`src/biz/monitoring/services/tracking/monitoring-cache.service.ts`
-
-| 属性 | 值 |
-|------|----|
-| Key | `monitoring:peak_processing` |
-| 数据结构 | String（数字） |
-| TTL | **永久** |
-| 更新策略 | 仅当新值 > 当前值时才更新（Compare-and-Set 语义） |
-
----
-
-### 8. monitoring:today_users - 今日用户缓存
-
-**用途**：缓存今日用户列表数据库查询结果，减少 Supabase 查询压力
-
-**代码位置**：`src/biz/monitoring/services/analytics/analytics-query.service.ts`
-
-| 属性 | 值 |
-|------|----|
-| Key | `monitoring:today_users` |
-| 数据结构 | String（JSON 数组） |
-| TTL | 30s（短 TTL，数据接近实时） |
-| 存储内容 | `TodayUser[]` JSON 序列化 |
+| --- | --- | --- |
+| 写入/更新进度 | `SET key value EX 3600` | 每个测试用例完成后 |
+| 读取进度 | `GET key` | 前端轮询 |
+| 删除进度 | `DEL key` | 批次全部完成后 |
 
 ---
 
 ## Bull Queue
 
-Bull Queue 使用独立的 Redis TCP 连接（与应用层 REST API 分开），专门处理消息聚合任务。
+Bull Queue 使用独立的 Redis TCP 连接，当前共有 **2 个队列**：`message-merge`（消息聚合）和 `test-suite`（测试套件）。
 
-**连接配置**（优先级从高到低）：
+### 队列 1：message-merge（消息聚合）
 
-```bash
-UPSTASH_REDIS_TCP_URL=rediss://default:xxx@xxx.upstash.io:6379  # 首选
-REDIS_URL=redis://localhost:6379                                  # 备选
-# 兜底：localhost:6379
-```
-
-**队列名**：`message-merge`
+**代码位置**：`src/channels/wecom/message/services/simple-merge.service.ts` + `src/channels/wecom/message/message.processor.ts`
 
 **Job 数据结构**：
 
 ```typescript
-{
-  chatId: string;       // 会话 ID（同时作为 jobId，保证同一会话只有一个等待任务）
-  messageData?: {...};  // 可选消息数据
-}
+{ chatId: string }  // 同时作为 jobId，保证同一会话只有一个等待任务
 ```
 
 **队列配置**：
@@ -292,111 +164,115 @@ REDIS_URL=redis://localhost:6379                                  # 备选
 | 配置项 | 值 | 说明 |
 |--------|-----|------|
 | `attempts` | 3 | 失败重试次数 |
-| `backoff.type` | exponential | 指数退避 |
-| `backoff.delay` | 2000ms | 初始退避时间 |
-| `removeOnComplete` | 100 | 保留最近 100 个完成任务 |
-| `removeOnFail` | 1000 | 保留最近 1000 个失败任务 |
+| `backoff` | exponential / 2000ms | 指数退避 |
+| `removeOnComplete` | true | 完成后自动删除 |
+| `removeOnFail` | false | 失败任务保留 |
 | `stalledInterval` | 30000ms | 卡住检测间隔 |
 | `lockDuration` | 60000ms | 任务锁定时长 |
+| 并发数 | 4 | 来自 Supabase `system_config` |
 
-**Bull Queue 的 Redis 内部 Keys**（由框架自动管理，无需手动干预）：
+**聚合参数**（来自 Supabase `system_config`）：
+
+| 参数 | 默认值 | 环境变量覆盖 |
+| --- | --- | --- |
+| `initialMergeWindowMs` | 2000ms | `INITIAL_MERGE_WINDOW_MS` |
+| `maxMergedMessages` | 5 | `MAX_MERGED_MESSAGES` |
+
+---
+
+### 队列 2：test-suite（测试套件）
+
+**代码位置**：`src/biz/test-suite/test-suite.processor.ts`
+
+**Job 数据结构**：
+
+```typescript
+{
+  batchId: string;
+  caseId: string;
+  caseName: string;
+  message: string;
+  history?: Array<{ role: MessageRole; content: string }>;
+  expectedOutput?: string;
+  totalCases: number;
+  caseIndex: number;
+}
+```
+
+**队列配置**：
+
+| 配置项 | 值 | 说明 |
+|--------|-----|------|
+| `attempts` | 2 | 失败重试 1 次 |
+| `backoff` | exponential / 5000ms | 指数退避 |
+| `timeout` | 120000ms | 单任务超时（2 分钟） |
+| `removeOnComplete` | true | 完成后自动删除 |
+| `removeOnFail` | false | 失败任务保留 |
+| 并发数 | 3 | 硬编码 |
+
+---
+
+**Bull Queue 的 Redis 内部 Keys**（由框架自动管理）：
 
 ```
-bull:message-merge:wait     — 等待队列
-bull:message-merge:active   — 处理中
-bull:message-merge:completed — 已完成
-bull:message-merge:failed   — 失败
-bull:message-merge:delayed  — 延迟中（消息聚合等待窗口）
-bull:message-merge:{jobId}  — 任务数据
+bull:message-merge:waiting / active / completed / failed / delayed / {jobId}
+bull:test-suite:waiting   / active / completed / failed / delayed / {jobId}
 ```
 
 ---
 
 ## 数据生命周期
 
-### TTL 汇总
-
 | 数据类型 | TTL | 清理方式 |
 |---------|-----|---------|
 | 消息去重标记 | 5 min | Redis 自动过期 |
-| 消息聚合队列 | 5 min（兜底） | 正常由 Worker 主动 DEL |
-| 全局计数器 | **永久** | 手动重置 / `resetCounters()` |
-| 当前/峰值并发 | **永久** | 手动重置 |
-| 今日用户缓存 | 30s | Redis 自动过期 |
+| 消息聚合队列 | 5 min（兜底） | Worker 处理后主动 DEL |
+| 测试批次进度 | 1h（兜底） | 批次完成后主动 DEL |
 
-### 消息处理中的 Redis 时序
+**消息处理 Redis 时序**：
 
 ```
 消息到达
-  ① SET wecom:message:dedup:{msgId} {timestamp} NX EX 300
-     → 返回 OK：首次处理，继续
-     → 返回 null：重复消息，丢弃
+  ① SET wecom:message:dedup:{msgId} NX EX 300
+     → OK：首次处理 / null：重复丢弃
   ② RPUSH wecom:message:pending:{chatId}
      EXPIRE wecom:message:pending:{chatId} 300
-  ③ Bull 创建延迟 Job（delay = initialMergeWindowMs，默认 2s）
-     — 若 chatId Job 已存在，跳过（聚合去重）
+  ③ Bull 创建延迟 Job（jobId=chatId，delay=2s，重复则跳过）
 
 [2s 后 Worker 触发]
-  ④ LRANGE wecom:message:pending:{chatId} 0 -1  → 取出所有消息
-     DEL wecom:message:pending:{chatId}           → 清空队列
+  ④ LRANGE 0 -1 → DEL wecom:message:pending:{chatId}
   ⑤ 调用 Agent API
-  ⑥ HINCRBY monitoring:counters totalMessages 1
-     HINCRBY monitoring:counters totalSuccess/totalFailure 1
 ```
 
 ---
 
 ## 连接配置
 
-### 应用层（REST API）
+| 用途 | 连接方式 | 环境变量 |
+|------|---------|---------|
+| 所有 Service 缓存操作 | REST（`@upstash/redis`） | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` |
+| Bull Queue 任务队列 | TCP（`ioredis`） | `UPSTASH_REDIS_TCP_URL` |
 
 ```bash
-# 用于所有 Service 的 set/get/del/hset 等操作
-UPSTASH_REDIS_REST_URL=https://xxx.upstash.io
-UPSTASH_REDIS_REST_TOKEN=AXxx...
-```
-
-### Bull Queue（TCP，可选）
-
-```bash
-# 用于 Bull Queue 消息队列（需要 TCP 连接，REST 不支持 blocking 操作）
-UPSTASH_REDIS_TCP_URL=rediss://default:xxx@xxx.upstash.io:6379
-
-# 禁用 Bull Queue（本地开发或无 TCP Redis 时）
+# 禁用 Bull Queue（本地开发）
 ENABLE_BULL_QUEUE=false
 ```
-
-### 连接来源对照
-
-| 功能 | 连接方式 | 环境变量 |
-|------|---------|---------|
-| 所有 Service 的缓存操作 | REST（`@upstash/redis`） | `UPSTASH_REDIS_REST_*` |
-| Bull Queue 任务队列 | TCP（`ioredis`） | `UPSTASH_REDIS_TCP_URL` |
 
 ---
 
 ## 故障排查
 
-### 消息去重失效
-
 ```bash
-# 检查 key 是否存在
+# 消息去重 key 是否存在
 curl -X GET "$UPSTASH_REDIS_REST_URL/exists/wecom:message:dedup:{msgId}" \
   -H "Authorization: Bearer $UPSTASH_REDIS_REST_TOKEN"
-```
 
-### 消息聚合队列积压
-
-```bash
-# 查看队列长度
+# 消息聚合队列长度
 curl -X GET "$UPSTASH_REDIS_REST_URL/llen/wecom:message:pending:{chatId}" \
   -H "Authorization: Bearer $UPSTASH_REDIS_REST_TOKEN"
-```
 
-### 查看全局计数器
-
-```bash
-curl -X GET "$UPSTASH_REDIS_REST_URL/hgetall/monitoring:counters" \
+# 测试批次进度
+curl -X GET "$UPSTASH_REDIS_REST_URL/get/test-suite:progress:{batchId}" \
   -H "Authorization: Bearer $UPSTASH_REDIS_REST_TOKEN"
 ```
 
@@ -404,5 +280,4 @@ curl -X GET "$UPSTASH_REDIS_REST_URL/hgetall/monitoring:counters" \
 
 **参考**：
 - [database-schema.md](./database-schema.md) — Supabase 数据库表设计
-- [bull-queue-guide.md](../technical/bull-queue-guide.md) — Bull Queue 详细说明
 - [CLAUDE.md](../../CLAUDE.md) — 项目配置与环境变量
