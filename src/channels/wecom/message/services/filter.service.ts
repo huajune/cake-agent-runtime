@@ -159,8 +159,15 @@ export class MessageFilterService {
       };
     }
 
-    // 5. 只处理文本消息和位置消息
-    const supportedMessageTypes = [MessageType.TEXT, MessageType.LOCATION];
+    // 5. 只处理支持的消息类型
+    const supportedMessageTypes = [
+      MessageType.TEXT,
+      MessageType.LOCATION,
+      MessageType.VOICE,
+      MessageType.EMOTION,
+      MessageType.IMAGE,
+      MessageType.MINI_PROGRAM,
+    ];
     if (!supportedMessageTypes.includes(messageData.messageType)) {
       this.logger.log(
         `[过滤-非支持类型] 跳过不支持的消息类型 [${messageData.messageId}], messageType=${messageData.messageType}`,

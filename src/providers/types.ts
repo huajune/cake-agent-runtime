@@ -66,6 +66,29 @@ export const DEFAULT_RELIABLE_CONFIG: ReliableConfig = {
  *
  * openai / ohmygpt 通过代理服务访问，共享 ANTHROPIC_API_KEY。
  */
+// ==================== Vision 能力检测 ====================
+
+/** 已知支持多模态 vision 的厂商关键词（匹配模型 ID 中任意位置） */
+const VISION_CAPABLE_KEYWORDS = ['anthropic/', 'openai/', 'google/', 'gemini'];
+
+/** 已知不支持 vision 的厂商关键词 */
+const VISION_INCAPABLE_KEYWORDS = ['deepseek/', 'moonshotai/', 'qwen/'];
+
+/**
+ * 检测模型是否支持多模态 vision（图片输入）
+ * 支持嵌套路由格式如 openrouter/anthropic/claude-sonnet-4、ohmygpt/gemini-2.5-pro
+ * 不支持时应降级为纯文字描述
+ */
+export function supportsVision(modelId: string): boolean {
+  const id = modelId.toLowerCase();
+  // 先排除已知不支持的
+  if (VISION_INCAPABLE_KEYWORDS.some((k) => id.includes(k))) return false;
+  // 再匹配已知支持的
+  return VISION_CAPABLE_KEYWORDS.some((k) => id.includes(k));
+}
+
+// ==================== Provider 默认配置 ====================
+
 export const PROVIDER_DEFAULTS: Record<string, ProviderDefaultConfig> = {
   deepseek: {
     envKey: 'DEEPSEEK_API_KEY',

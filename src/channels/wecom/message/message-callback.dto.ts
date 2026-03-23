@@ -38,18 +38,11 @@ export interface TextPayload {
 
 /**
  * 图片消息 Payload (messageType=6)
+ * 参考文档: https://s.apifox.cn/34adc635-40ac-4161-8abb-8cd1eea9f445/315430967e0
  */
 export interface ImagePayload {
-  imageUrl: string; // 压缩图片URL
-  width: number; // 缩略图宽度
-  height: number; // 缩略图高度
-  size?: number; // 文件大小（字节）
-  artwork?: {
-    // 原图数据
-    url: string; // 原图URL
-    width: number; // 原图宽度
-    height: number; // 原图高度
-  };
+  url: string; // 图片地址
+  size?: number; // 图片大小（字节）
 }
 
 /**
@@ -63,12 +56,11 @@ export interface FilePayload {
 
 /**
  * 语音消息 Payload (messageType=2)
+ * 参考文档: https://s.apifox.cn/34adc635-40ac-4161-8abb-8cd1eea9f445/315430967e0
  */
 export interface VoicePayload {
-  voiceUrl: string; // 语音URL
-  duration: number; // 时长（秒）
-  text?: string; // 语音转文字结果
-  md5?: string; // 文件MD5
+  url: string; // 语音地址
+  duration?: number; // 时长（秒）
 }
 
 /**
@@ -95,14 +87,25 @@ export interface LocationPayload {
 }
 
 /**
+ * 表情消息 Payload (messageType=5)
+ * 参考文档: https://s.apifox.cn/34adc635-40ac-4161-8abb-8cd1eea9f445/315430967e0
+ */
+export interface EmotionPayload {
+  imageUrl: string; // 表情图片地址
+}
+
+/**
  * 小程序消息 Payload (messageType=9)
+ * 参考文档: https://s.apifox.cn/34adc635-40ac-4161-8abb-8cd1eea9f445/315430967e0
  */
 export interface MiniProgramPayload {
-  appid: string; // 小程序appid
+  appId: string; // 小程序appid
+  username: string; // 小程序用户名
   title: string; // 标题
+  thumbUrl: string; // 缩略图URL
   pagePath?: string; // 页面路径
   description?: string; // 描述
-  thumbnailUrl?: string; // 缩略图URL
+  iconUrl?: string; // 图标URL
 }
 
 /**
@@ -210,6 +213,7 @@ export class EnterpriseMessageCallbackDto {
     | FilePayload
     | VoicePayload
     | ContactCardPayload
+    | EmotionPayload
     | LocationPayload
     | MiniProgramPayload
     | VideoPayload
@@ -257,7 +261,7 @@ export function isTextPayload(type: MessageType, payload: any): payload is TextP
  * 判断 payload 是否为图片消息
  */
 export function isImagePayload(type: MessageType, payload: any): payload is ImagePayload {
-  return type === MessageType.IMAGE && payload && typeof payload.imageUrl === 'string';
+  return type === MessageType.IMAGE && payload && typeof payload.url === 'string';
 }
 
 /**
@@ -271,7 +275,24 @@ export function isFilePayload(type: MessageType, payload: any): payload is FileP
  * 判断 payload 是否为语音消息
  */
 export function isVoicePayload(type: MessageType, payload: any): payload is VoicePayload {
-  return type === MessageType.VOICE && payload && typeof payload.voiceUrl === 'string';
+  return type === MessageType.VOICE && payload && typeof payload.url === 'string';
+}
+
+/**
+ * 判断 payload 是否为表情消息
+ */
+export function isEmotionPayload(type: MessageType, payload: any): payload is EmotionPayload {
+  return type === MessageType.EMOTION && payload && typeof payload.imageUrl === 'string';
+}
+
+/**
+ * 判断 payload 是否为小程序消息
+ */
+export function isMiniProgramPayload(
+  type: MessageType,
+  payload: any,
+): payload is MiniProgramPayload {
+  return type === MessageType.MINI_PROGRAM && payload && typeof payload.title === 'string';
 }
 
 /**
@@ -353,6 +374,7 @@ export class GroupMessageCallbackDto {
     | FilePayload
     | VoicePayload
     | ContactCardPayload
+    | EmotionPayload
     | LocationPayload
     | MiniProgramPayload
     | VideoPayload

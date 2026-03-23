@@ -2,8 +2,15 @@ import {
   EnterpriseMessageCallbackDto,
   isTextPayload,
   isLocationPayload,
+  isVoicePayload,
+  isEmotionPayload,
+  isImagePayload,
+  isMiniProgramPayload,
   LocationPayload,
+  VoicePayload,
+  MiniProgramPayload,
 } from '../message-callback.dto';
+import { MessageType } from '@enums/message-callback.enum';
 import { ScenarioType } from '@enums/agent.enum';
 
 /**
@@ -55,20 +62,74 @@ export class MessageParser {
 
   /**
    * 提取消息文本内容
-   * 支持文本消息和位置消息
+   * 支持：文本、位置、语音、表情、图片、小程序
    */
   static extractContent(messageData: EnterpriseMessageCallbackDto): string {
+    const { messageType, payload } = messageData;
+
     // 文本消息
-    if (isTextPayload(messageData.messageType, messageData.payload)) {
-      return messageData.payload.pureText || messageData.payload.text;
+    if (isTextPayload(messageType, payload)) {
+      return payload.pureText || payload.text;
     }
 
     // 位置消息 - 转换为自然语言描述
-    if (isLocationPayload(messageData.messageType, messageData.payload)) {
-      return this.formatLocationAsText(messageData.payload);
+    if (isLocationPayload(messageType, payload)) {
+      return this.formatLocationAsText(payload);
+    }
+
+    // 语音消息 - 文字描述 + 引导发文字
+    if (isVoicePayload(messageType, payload)) {
+      return this.formatVoiceAsText(payload);
+    }
+
+    // 表情消息
+    if (isEmotionPayload(messageType, payload)) {
+      return '[表情消息]';
+    }
+
+    // 图片消息 - 文字标记（实际图片通过 image part 传入 Agent）
+    if (isImagePayload(messageType, payload)) {
+      return '[图片消息] 候选人发送了一张图片';
+    }
+
+    // 小程序消息
+    if (isMiniProgramPayload(messageType, payload)) {
+      return this.formatMiniProgramAsText(payload);
     }
 
     return '';
+  }
+
+  /**
+   * 提取图片 URL（供 pipeline 传递给 Agent 做多模态识别）
+   */
+  static extractImageUrl(messageData: EnterpriseMessageCallbackDto): string | null {
+    if (
+      messageData.messageType === MessageType.IMAGE &&
+      isImagePayload(messageData.messageType, messageData.payload)
+    ) {
+      return messageData.payload.url;
+    }
+    return null;
+  }
+
+  /**
+   * 将语音消息格式化为自然语言文本
+   */
+  static formatVoiceAsText(payload: VoicePayload): string {
+    const duration = payload.duration ? `${payload.duration}秒` : '未知时长';
+    return `[语音消息] 时长${duration}`;
+  }
+
+  /**
+   * 将小程序消息格式化为自然语言文本
+   */
+  static formatMiniProgramAsText(payload: MiniProgramPayload): string {
+    const { title, description } = payload;
+    if (description) {
+      return `[小程序] ${title} - ${description}`;
+    }
+    return `[小程序] ${title}`;
   }
 
   /**

@@ -374,6 +374,13 @@ export class MessagePipelineService {
     const logPrefix = isSingleMessage ? '' : '[聚合处理]';
 
     // 1. 调用 Agent（历史消息由 ShortTermService 内部读取，当前消息已在 step3 写入 DB）
+    // 提取图片 URL（如有），用于多模态传入 Agent
+    // 聚合路径：从所有消息中收集图片；单条路径：只看当前消息
+    const allMessages = batchContext?.allMessages ?? [params.primaryMessage];
+    const imageUrls = allMessages
+      .map((msg) => MessageParser.extractImageUrl(msg))
+      .filter((url): url is string => url !== null);
+
     const agentResult = await this.callAgent({
       sessionId: chatId,
       userMessage: content,
@@ -382,6 +389,7 @@ export class MessagePipelineService {
       recordMonitoring: true,
       userId: this.resolveAgentUserId(params.primaryMessage, parsed),
       corpId: this.resolveCorpId(params.primaryMessage),
+      imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
     });
 
     this.logger.log(
@@ -696,6 +704,7 @@ export class MessagePipelineService {
     recordMonitoring?: boolean;
     userId: string;
     corpId: string;
+    imageUrls?: string[];
   }): Promise<AgentInvokeResult> {
     const {
       userMessage,
@@ -721,6 +730,7 @@ export class MessagePipelineService {
         corpId,
         sessionId: params.sessionId,
         scenario,
+        imageUrls: params.imageUrls,
       });
 
       const processingTime = Date.now() - startTime;

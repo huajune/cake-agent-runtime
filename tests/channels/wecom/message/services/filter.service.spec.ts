@@ -188,7 +188,7 @@ describe('MessageFilterService', () => {
     it('should filter out unsupported message types', async () => {
       const messageData = {
         ...validMessageData,
-        messageType: MessageType.IMAGE,
+        messageType: MessageType.VIDEO,
       };
 
       const result = await service.validate(messageData);
