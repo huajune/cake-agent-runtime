@@ -6,7 +6,7 @@
 
 ## 1. 总览
 
-DuLiDay Agent 运行时是一个**自主 AI Agent 编排引擎**，基于 Vercel AI SDK 构建，通过企业微信渠道为招聘场景提供智能对话服务。
+Cake Agent Runtime 是一个**自主 AI Agent 编排引擎**，基于 Vercel AI SDK 构建，通过企业微信渠道为招聘场景提供智能对话服务。
 
 核心编排循环：**Recall → Compose → Execute → Store**
 

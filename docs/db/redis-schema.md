@@ -1,6 +1,6 @@
 # Redis Key 设计与使用说明
 
-> DuLiDay 企业微信服务 - Redis (Upstash) 缓存层设计文档
+> Cake Agent Runtime - Redis (Upstash) 缓存层设计文档
 
 **最后更新**：2026-03-12
 

@@ -4,14 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Cake Agent Runtime - 自主 AI Agent 运行时，基于 Vercel AI SDK 多 Provider 架构。
+Cake Agent Runtime - DuLiDay 旗下的招聘专用 AI Agent 运行时，基于 Vercel AI SDK 多 Provider 架构，通过企业微信渠道为餐饮连锁企业提供智能招聘对话服务。
 
-**Tech Stack**: NestJS 10.3 | TypeScript 5.3 | Node.js 20+ | Vercel AI SDK | Bull Queue | Redis (Upstash) | Winston
+**Tech Stack**: NestJS 10.3 | TypeScript 5.3 | Node.js 20+ | Vercel AI SDK | Supabase | Redis (Upstash) | Bull Queue | Winston
 
-**Core Purpose**:
-- Receive message callbacks from WeChat Enterprise hosting platform
-- Orchestrate AI Agent responses (multi-provider, tool calling, memory)
-- Send replies back through hosting platform API
+**Core Capabilities**:
+- Agent 编排：Recall → Compose → Execute → Store 闭环，多步工具调用
+- 多模型容错：三层 Provider 架构（注册 → 重试/降级 → 角色路由）
+- 四层记忆：短期对话 → 会话事实 → 程序性阶段 → 长期用户画像
+- 渠道接入：企业微信消息管道（去重、过滤、聚合、拟人化投递）
+- 质量评估：LLM 评分的对话测试框架
 
 ## Development Commands
 
@@ -75,33 +77,43 @@ src/
 │   ├── tool-registry.service.ts    # 工具注册与构建
 │   └── *.tool.ts                   # 各工具实现
 │
-├── memory/                         # 记忆服务
-│   └── memory.service.ts           # Redis-backed 会话记忆
+├── memory/                         # 四层记忆系统
+│   ├── memory.service.ts           # 统一读取 API (recallAll)
+│   ├── short-term.service.ts       # 短期：对话窗口
+│   ├── session-facts.service.ts    # 会话事实：意向/推荐记录
+│   ├── procedural.service.ts       # 程序性：阶段追踪
+│   ├── long-term.service.ts        # 长期：用户画像 (Supabase)
+│   └── settlement.service.ts       # 空闲沉淀 (Session → Profile)
 │
-├── mcp/                            # MCP 客户端
+├── mcp/                            # MCP 客户端 (动态工具扩展)
 ├── sponge/                         # 外部数据服务
 │
 ├── agent/                          # AI Agent 编排层
-│   ├── orchestrator.service.ts     # 编排引擎 (generateText/streamText)
-│   ├── profile-loader.service.ts   # Profile 加载与缓存
-│   ├── strategy-config.service.ts  # 策略配置 (persona, redLines, stageGoals)
-│   ├── exceptions.ts               # Agent 异常定义
-│   ├── profiles/                   # Agent 配置档案 (.md)
-│   └── types/                      # 类型定义 + 枚举
+│   ├── runner.service.ts           # 核心编排引擎 (invoke/stream)
+│   ├── completion.service.ts       # 简单一次性 LLM 调用
+│   ├── context/                    # 动态 Prompt 组装 (Section 体系)
+│   ├── fact-extraction.service.ts  # LLM 事实提取
+│   └── input-guard.service.ts      # 输入安全检测
 │
 ├── biz/                            # Business Layer (业务领域)
 │   ├── monitoring/                 # 业务监控 (tracking + analytics + cleanup)
 │   ├── user/                       # 用户管理
 │   ├── hosting-config/             # 托管配置
-│   ├── message/                    # 消息业务
-│   ├── strategy/                   # 业务策略
-│   └── test-suite/                 # Agent 测试套件
+│   ├── message/                    # 消息业务 (chat session + booking)
+│   ├── strategy/                   # 业务策略 (persona + redLines + stageGoals)
+│   ├── test-suite/                 # Agent 测试套件
+│   └── feishu-sync/                # 飞书多维表格双向同步
+│
+├── evaluation/                     # 对话质量评估框架
+│   ├── llm-evaluation.service.ts   # LLM 评分
+│   ├── conversation-parser.service.ts  # 对话解析
+│   └── services/                   # 执行/对话/飞书同步子服务
 │
 ├── channels/
 │   └── wecom/                      # WeChat Enterprise Domain
-│       ├── message/                # Message processing (Core business)
+│       ├── message/                # 消息管道 (去重/过滤/聚合/投递)
 │       │   ├── message.service.ts  # Main coordinator
-│       │   └── services/           # Sub-services (SRP)
+│       │   └── services/           # Sub-services (pipeline, delivery, etc.)
 │       ├── message-sender/         # Message sending
 │       ├── bot/                    # Bot management
 │       ├── chat/                   # Chat session
@@ -134,7 +146,7 @@ WeChat User Message
 
 ```typescript
 import { HttpClientFactory } from '@infra/http';
-import { OrchestratorService } from '@agent/orchestrator.service';
+import { AgentRunnerService } from '@agent/runner.service';
 import { RouterService } from '@providers/router.service';
 import { MessageService } from '@channels/wecom/message';
 ```

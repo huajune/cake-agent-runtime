@@ -1,6 +1,6 @@
 # 数据库表设计与使用说明
 
-> DuLiDay 企业微信服务 - Supabase (PostgreSQL) 数据库设计文档
+> Cake Agent Runtime - Supabase (PostgreSQL) 数据库设计文档
 
 **最后更新**：2026-03-12
 

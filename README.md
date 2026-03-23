@@ -6,29 +6,34 @@
 
 ## 项目简介
 
-本项目是一个企业微信服务的中间层系统，连接企业微信托管平台和 AI Agent 服务，实现：
+DuLiDay 旗下的**招聘专用 AI Agent 运行时**，通过企业微信渠道为餐饮连锁企业提供智能招聘对话服务。
 
-- 🤖 **AI 智能回复**：接收企业微信消息，自动调用 AI 生成智能回复
-- 💬 **多轮对话**：支持上下文记忆，维护连贯的对话体验
-- 🔧 **托管平台集成**：封装企业微信托管平台 API，提供统一的操作接口
-- 📦 **模块化设计**：支持按需启用功能，易于扩展
+- 🧠 **Agent 编排**：Recall → Compose → Execute → Store 闭环，多步工具调用
+- 🔄 **多模型容错**：三层 Provider 架构（注册 → 重试/降级 → 角色路由）
+- 💾 **四层记忆**：短期对话 → 会话事实 → 程序性阶段 → 长期用户画像
+- 🛠️ **工具调用**：岗位查询、面试预约、阶段推进 + MCP 动态扩展
+- 📊 **质量评估**：LLM 评分的对话测试框架，飞书双向同步
 
-**工作流程**：
+**核心流程**：
 ```
-企业微信用户发送消息
-  → 托管平台接收并回调本服务 (/message)
-  → 服务调用 AI Agent 生成回复
-  → 通过托管平台发送回复给用户
+企业微信用户消息
+  → 托管平台回调 → 消息管道（去重 → 过滤 → 存储 → 聚合）
+  → Agent 编排（记忆加载 → Prompt 组装 → 多步工具调用 → 记忆沉淀）
+  → 拟人化分段回复
 ```
 
 ## 技术栈
 
-- **框架**：NestJS 10.x
-- **语言**：TypeScript 5.x
-- **HTTP 客户端**：Axios
-- **队列**：Bull + Redis（可选）
-- **日志**：Winston
-- **配置管理**：@nestjs/config
+| 组件 | 技术 |
+|------|------|
+| 框架 | NestJS 10.3 + TypeScript 5.3 |
+| AI SDK | Vercel AI SDK（Anthropic、OpenAI、DeepSeek、Gemini 等） |
+| 数据库 | Supabase（PostgreSQL） |
+| 缓存 | Upstash Redis（REST） |
+| 队列 | Bull |
+| 告警 | 飞书 Webhook |
+| 日志 | Winston + 文件轮转 |
+| 前端 | React 18 + Vite |
 
 ---
 
@@ -185,8 +190,7 @@ curl -X POST http://localhost:8080/agent/debug-chat \
 |------|-----|------|
 | 告警节流窗口 | 5 分钟 | FeishuAlertService |
 | 告警最大次数 | 3 次/类型 | FeishuAlertService |
-| 健康检查间隔 | 1 小时 | AgentRegistryService |
-| Profile 缓存 TTL | 1 小时 | ProfileLoaderService |
+| Profile 缓存 TTL | 1 小时 | ContextService |
 
 > 完整配置项见 [.env.example](./.env.example)，配置策略详见 [CLAUDE.md](./CLAUDE.md#5-configuration-strategy)。
 
@@ -197,41 +201,38 @@ curl -X POST http://localhost:8080/agent/debug-chat \
 ```
 cake-agent-runtime/
 ├── src/
-│   ├── core/                        # 基础设施层（横向）
-│   │   ├── config/                  # 配置管理（环境变量验证）
-│   │   ├── http/                    # HTTP 客户端工厂
-│   │   ├── redis/                   # Redis 缓存（全局模块）
-│   │   ├── supabase/                # Supabase 数据库服务
-│   │   ├── monitoring/              # 系统监控 & 仪表盘
-│   │   ├── alert/                   # 告警系统（单一服务 ~300 行）
-│   │   └── server/response/         # 统一响应（拦截器 + 过滤器）
+│   ├── agent/                       # Agent 编排层
+│   │   ├── runner.service.ts        # 核心编排引擎（Recall → Compose → Execute → Store）
+│   │   ├── completion.service.ts    # 简单一次性 LLM 调用
+│   │   ├── context/                 # 动态 Prompt 组装（Section 体系）
+│   │   ├── fact-extraction.service.ts  # LLM 事实提取
+│   │   └── input-guard.service.ts   # 输入安全检测
 │   │
-│   ├── agent/                       # AI Agent 领域
-│   │   ├── agent.service.ts         # Agent API 调用层
-│   │   ├── services/
-│   │   │   ├── agent-api-client.service.ts  # HTTP 客户端层
-│   │   │   ├── agent-registry.service.ts    # 模型/工具注册
-│   │   │   ├── agent-fallback.service.ts    # 降级消息管理
-│   │   │   ├── brand-config.service.ts      # 品牌配置管理
-│   │   │   └── agent-profile-loader.service.ts  # Profile 加载（含缓存）
-│   │   └── profiles/                # Agent 配置文件
+│   ├── providers/                   # 多模型 Provider 层
+│   │   ├── registry.service.ts      # Layer 1: 工厂注册
+│   │   ├── reliable.service.ts      # Layer 2: 重试 + 降级
+│   │   └── router.service.ts        # Layer 3: 角色路由
 │   │
-│   └── wecom/                       # 企业微信领域
-│       ├── message/                 # 消息处理（核心业务）
-│       │   ├── message.service.ts   # 主协调器（~300 行）
-│       │   └── services/            # 子服务（单一职责）
-│       │       ├── message-history.service.ts   # Redis 历史
-│       │       ├── message-merge.service.ts     # 智能聚合
-│       │       └── message-filter.service.ts    # 消息过滤
-│       ├── message-sender/          # 消息发送
-│       └── ...                      # 其他模块
+│   ├── memory/                      # 四层记忆系统
+│   │   ├── short-term.service.ts    # 对话窗口
+│   │   ├── session-facts.service.ts # 会话事实（意向/推荐）
+│   │   ├── procedural.service.ts    # 阶段追踪
+│   │   ├── long-term.service.ts     # 用户画像（持久化）
+│   │   └── settlement.service.ts    # 空闲沉淀
+│   │
+│   ├── tools/                       # 工具注册表 + 内置工具
+│   ├── channels/wecom/              # 企业微信渠道
+│   │   └── message/                 # 消息管道（去重/过滤/聚合/投递）
+│   ├── biz/                         # 业务层（监控/用户/策略/测试套件）
+│   ├── evaluation/                  # 对话质量评估框架
+│   ├── infra/                       # 基础设施（Redis/Supabase/飞书/日志）
+│   └── mcp/                         # MCP 客户端（动态工具扩展）
 │
-├── docs/                            # 文档目录
-├── dashboard/                       # React 监控仪表盘
+├── web/                             # React 前端 Dashboard
+├── supabase/migrations/             # 数据库迁移
+├── docs/                            # 技术文档
 ├── .env.example                     # 环境变量模板
-├── .env.local                       # 本地配置（不提交）
-├── CLAUDE.md                        # Claude Code 开发指南
-└── README.md
+└── CLAUDE.md                        # Claude Code 开发指南
 ```
 
 ---
@@ -332,8 +333,8 @@ curl http://localhost:8080/agent/health
 ```bash
 # 方式 1: 使用 Docker
 docker build -t cake-agent-runtime .
-docker run -d -p 8080:8080 --env-file .env --name wecom-service cake-agent-runtime
-docker logs -f wecom-service
+docker run -d -p 8080:8080 --env-file .env --name cake-agent cake-agent-runtime
+docker logs -f cake-agent
 
 # 方式 2: 使用 Docker Compose（推荐）
 docker-compose up -d
@@ -416,10 +417,10 @@ POST /message-sender/broadcast
 ```
 
 **详细文档**：
-- [Agent 服务架构](./docs/agent-service-architecture.md)
-- [消息服务架构](./docs/message-service-architecture.md)
-- [Agent API 使用指南](./docs/huajune-agent-api-guide.md)
-- [完整开发指南](./docs/DEVELOPMENT_GUIDE.md)
+- [Agent 运行时架构](./docs/architecture/agent-runtime-architecture.md)
+- [消息服务架构](./docs/architecture/message-service-architecture.md)
+- [记忆系统架构](./docs/architecture/memory-system-architecture.md)
+- [开发指南](./docs/guides/development-guide.md)
 
 ---
 

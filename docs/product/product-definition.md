@@ -197,8 +197,8 @@ Cake Agent Runtime 是一个基于企业微信的**智能招聘自动化系统**
 
 - [业务流程详细说明](business-flows.md) - 完整的对话场景和流程图
 - [产品规划路线图](product-roadmap.md) - 实施计划和功能优先级
-- [Agent 服务架构](../agent-service-architecture.md) - Agent 服务架构设计
-- [消息服务架构](../message-service-architecture.md) - 消息处理流程
+- [Agent 运行时架构](../architecture/agent-runtime-architecture.md) - Agent 编排引擎设计
+- [消息服务架构](../architecture/message-service-architecture.md) - 消息处理流程
 
 ---
 
