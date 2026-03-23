@@ -13,6 +13,7 @@ import { MessageDeduplicationService } from './deduplication.service';
 import { MessageFilterService } from './filter.service';
 import { MessageDeliveryService } from './delivery.service';
 import { BookingDetectionService } from './booking-detection.service';
+import { ImageDescriptionService } from './image-description.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ChatMessageInput } from '@biz/message/types/message.types';
 
@@ -63,6 +64,7 @@ export class MessagePipelineService {
     private readonly filterService: MessageFilterService,
     private readonly deliveryService: MessageDeliveryService,
     private readonly bookingDetection: BookingDetectionService,
+    private readonly imageDescription: ImageDescriptionService,
     // Agent 编排
     private readonly runner: AgentRunnerService,
     private readonly configService: ConfigService,
@@ -118,6 +120,12 @@ export class MessagePipelineService {
 
     // step 3: 写历史（含 historyOnly 分支）
     await this.recordUserMessageToHistory(messageData, filterResult.content);
+
+    // step 3.5: 图片描述（写历史后立即触发，不受后续分支影响）
+    const imgUrl = MessageParser.extractImageUrl(messageData);
+    if (imgUrl) {
+      this.imageDescription.describeAndUpdateAsync(messageData.messageId, imgUrl);
+    }
 
     if (filterResult.historyOnly) {
       const parsed = MessageParser.parse(messageData);

@@ -161,6 +161,7 @@ export class ChatMessageRepository extends BaseRepository {
       isSelf?: boolean;
       avatar?: string;
       externalUserId?: string;
+      payload?: Record<string, unknown>;
     }>
   > {
     if (!this.isAvailable()) {
@@ -169,7 +170,7 @@ export class ChatMessageRepository extends BaseRepository {
 
     try {
       const results = await this.select<ChatMessageRecord>(
-        'message_id,role,content,timestamp,candidate_name,manager_name,message_type,source,contact_type,is_self,avatar,external_user_id',
+        'message_id,role,content,timestamp,candidate_name,manager_name,message_type,source,contact_type,is_self,avatar,external_user_id,payload',
         (q) => q.eq('chat_id', chatId).order('timestamp'),
       );
 
@@ -186,6 +187,7 @@ export class ChatMessageRepository extends BaseRepository {
         isSelf: m.is_self,
         avatar: m.avatar,
         externalUserId: m.external_user_id,
+        payload: m.payload,
       }));
     } catch (error) {
       this.logger.error(`获取会话详情失败 [${chatId}]:`, error);
@@ -537,6 +539,25 @@ export class ChatMessageRepository extends BaseRepository {
     } catch (error) {
       this.logger.error('获取时间范围内的聊天记录失败:', error);
       return [];
+    }
+  }
+
+  // ==================== 消息更新 ====================
+
+  /**
+   * 更新消息的 content 字段（按 message_id）
+   */
+  async updateContentByMessageId(messageId: string, content: string): Promise<boolean> {
+    if (!this.isAvailable()) {
+      return false;
+    }
+
+    try {
+      await this.update({ content }, (q) => q.eq('message_id', messageId));
+      return true;
+    } catch (error) {
+      this.logger.error(`更新消息 content 失败 [${messageId}]:`, error);
+      return false;
     }
   }
 

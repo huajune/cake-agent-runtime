@@ -240,10 +240,7 @@ export class AgentRunnerService {
     // 6. 图片多模态：将图片 URL 注入最后一条 user message 的 content
     const typedMessages = messages as ModelMessage[];
     const chatModel = this.router.resolveByRole(ModelRole.Chat);
-    const chatModelId =
-      this.configService.get<string>('AGENT_CHAT_MODEL') ||
-      this.configService.get<string>('AGENT_DEFAULT_MODEL') ||
-      '';
+    const chatModelId = this.configService.get<string>('AGENT_CHAT_MODEL') || '';
     if (imageUrls?.length && supportsVision(chatModelId)) {
       this.injectImageParts(typedMessages, imageUrls);
     }

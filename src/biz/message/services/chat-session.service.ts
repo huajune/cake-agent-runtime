@@ -157,6 +157,13 @@ export class ChatSessionService {
     return { chatId, messages };
   }
 
+  /**
+   * 更新消息的 content（按 messageId）
+   */
+  async updateMessageContent(messageId: string, content: string): Promise<boolean> {
+    return this.chatMessageRepository.updateContentByMessageId(messageId, content);
+  }
+
   // ==================== 内部工具方法 ====================
 
   private startOfDay(dateStr?: string, defaultDaysAgo = 0): Date {

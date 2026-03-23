@@ -15,11 +15,9 @@
  */
 export enum ModelRole {
   Chat = 'chat',
-  Default = 'default',
-  Fast = 'fast',
-  Classify = 'classify',
   Extract = 'extract',
-  Reasoning = 'reasoning',
+  Vision = 'vision',
+  Evaluate = 'evaluate',
 }
 
 // ==================== Provider 配置 ====================

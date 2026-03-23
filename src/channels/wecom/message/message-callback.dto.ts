@@ -39,10 +39,15 @@ export interface TextPayload {
 /**
  * 图片消息 Payload (messageType=6)
  * 参考文档: https://s.apifox.cn/34adc635-40ac-4161-8abb-8cd1eea9f445/315430967e0
+ *
+ * 注意：企业级回调使用 imageUrl，小组级回调使用 url
  */
 export interface ImagePayload {
-  url: string; // 图片地址
+  url?: string; // 图片地址（小组级回调）
+  imageUrl?: string; // 图片地址（企业级回调）
   size?: number; // 图片大小（字节）
+  width?: number; // 图片宽度
+  height?: number; // 图片高度
 }
 
 /**
@@ -57,10 +62,16 @@ export interface FilePayload {
 /**
  * 语音消息 Payload (messageType=2)
  * 参考文档: https://s.apifox.cn/34adc635-40ac-4161-8abb-8cd1eea9f445/315430967e0
+ *
+ * 注意：企业级回调使用 voiceUrl，小组级回调使用 url
  */
 export interface VoicePayload {
-  url: string; // 语音地址
+  url?: string; // 语音地址（小组级回调）
+  voiceUrl?: string; // 语音地址（企业级回调）
+  wxVoiceUrl?: string; // 微信原始语音地址（silk 格式）
   duration?: number; // 时长（秒）
+  text?: string; // STT 语音转文字结果
+  md5?: string; // 文件 MD5
 }
 
 /**
@@ -261,7 +272,11 @@ export function isTextPayload(type: MessageType, payload: any): payload is TextP
  * 判断 payload 是否为图片消息
  */
 export function isImagePayload(type: MessageType, payload: any): payload is ImagePayload {
-  return type === MessageType.IMAGE && payload && typeof payload.url === 'string';
+  return (
+    type === MessageType.IMAGE &&
+    payload &&
+    (typeof payload.url === 'string' || typeof payload.imageUrl === 'string')
+  );
 }
 
 /**
@@ -275,7 +290,11 @@ export function isFilePayload(type: MessageType, payload: any): payload is FileP
  * 判断 payload 是否为语音消息
  */
 export function isVoicePayload(type: MessageType, payload: any): payload is VoicePayload {
-  return type === MessageType.VOICE && payload && typeof payload.url === 'string';
+  return (
+    type === MessageType.VOICE &&
+    payload &&
+    (typeof payload.url === 'string' || typeof payload.voiceUrl === 'string')
+  );
 }
 
 /**

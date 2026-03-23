@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CompletionService } from '@agent/completion.service';
+import { ModelRole } from '@providers/types';
 import { randomUUID } from 'crypto';
 import { SimilarityRating, LlmEvaluationResult, EvaluationInput } from './evaluation.types';
 
@@ -42,6 +43,7 @@ export class LlmEvaluationService {
       const completionResult = await this.completion.generate({
         systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
+        role: ModelRole.Evaluate,
       });
 
       // 提取响应文本

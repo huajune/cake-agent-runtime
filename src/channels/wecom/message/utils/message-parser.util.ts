@@ -108,7 +108,7 @@ export class MessageParser {
       messageData.messageType === MessageType.IMAGE &&
       isImagePayload(messageData.messageType, messageData.payload)
     ) {
-      return messageData.payload.url;
+      return messageData.payload.imageUrl || messageData.payload.url || null;
     }
     return null;
   }
@@ -117,7 +117,12 @@ export class MessageParser {
    * 将语音消息格式化为自然语言文本
    */
   static formatVoiceAsText(payload: VoicePayload): string {
-    const duration = payload.duration ? `${payload.duration}秒` : '未知时长';
+    // 优先使用 STT 转写文本
+    if (payload.text && payload.text.trim().length > 0) {
+      const duration = payload.duration ? `${Math.round(payload.duration)}秒` : '';
+      return `[语音转文字${duration ? `，时长${duration}` : ''}] ${payload.text.trim()}`;
+    }
+    const duration = payload.duration ? `${Math.round(payload.duration)}秒` : '未知时长';
     return `[语音消息] 时长${duration}`;
   }
 
@@ -137,29 +142,25 @@ export class MessageParser {
    * 用于发送给 AI 处理
    */
   static formatLocationAsText(payload: LocationPayload): string {
-    const { name, address } = payload;
+    const { name, address, latitude, longitude } = payload;
 
-    // 如果名称和地址相同，只显示一个
-    if (name === address) {
-      return `[位置分享] ${address}`;
+    // 构建位置描述
+    let location: string;
+    if (name && address && name !== address) {
+      location = `${name}（${address}）`;
+    } else if (address) {
+      location = address;
+    } else if (name) {
+      location = name;
+    } else {
+      location = '未知位置';
     }
 
-    // 如果有名称，显示"名称（地址）"格式
-    if (name && address) {
-      return `[位置分享] ${name}（${address}）`;
-    }
+    // 附加经纬度（供后续智能推荐使用）
+    const coords =
+      latitude !== undefined && longitude !== undefined ? ` [经纬度:${latitude},${longitude}]` : '';
 
-    // 只有地址
-    if (address) {
-      return `[位置分享] ${address}`;
-    }
-
-    // 只有名称
-    if (name) {
-      return `[位置分享] ${name}`;
-    }
-
-    return '[位置分享] 未知位置';
+    return `[位置分享] ${location}${coords}`;
   }
 
   /**

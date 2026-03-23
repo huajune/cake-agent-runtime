@@ -9,6 +9,7 @@ export interface ChatMessage {
   candidateName?: string;
   managerName?: string;
   messageType?: string;
+  payload?: Record<string, unknown>;
   source?: string;
   contactType?: string;
   isSelf?: boolean;
