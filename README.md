@@ -1,8 +1,8 @@
-# DuLiDay 企业微信服务
+# Cake Agent Runtime
 
-**Last Updated**: 2025-11-25
+**Last Updated**: 2026-03-23
 
-基于 NestJS 的企业微信智能服务中间层，集成 AI Agent 实现智能对话和自动回复。
+自主 AI Agent 运行时，基于 NestJS + Vercel AI SDK 多 Provider 架构，支持智能对话和自动回复。
 
 ## 项目简介
 
@@ -63,7 +63,7 @@ pnpm --version    # 应输出 8.x.x 或更高
 ```bash
 # 克隆项目
 git clone <repository-url>
-cd duliday-wecom-service
+cd cake-agent-runtime
 
 # 安装依赖
 pnpm install
@@ -195,7 +195,7 @@ curl -X POST http://localhost:8080/agent/debug-chat \
 ## 项目结构
 
 ```
-duliday-wecom-service/
+cake-agent-runtime/
 ├── src/
 │   ├── core/                        # 基础设施层（横向）
 │   │   ├── config/                  # 配置管理（环境变量验证）
@@ -331,8 +331,8 @@ curl http://localhost:8080/agent/health
 
 ```bash
 # 方式 1: 使用 Docker
-docker build -t duliday-wecom-service .
-docker run -d -p 8080:8080 --env-file .env --name wecom-service duliday-wecom-service
+docker build -t cake-agent-runtime .
+docker run -d -p 8080:8080 --env-file .env --name wecom-service cake-agent-runtime
 docker logs -f wecom-service
 
 # 方式 2: 使用 Docker Compose（推荐）

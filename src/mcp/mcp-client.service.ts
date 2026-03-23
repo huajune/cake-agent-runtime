@@ -17,7 +17,7 @@ export class McpClientService implements OnModuleDestroy {
   async connect(config: McpServerConfig): Promise<McpConnectedServer> {
     if (this.clients.has(config.name)) throw new Error('MCP服务器已连接: ' + config.name);
     this.logger.log('连接MCP: ' + config.name);
-    const client = new Client({ name: 'duliday-wecom', version: '1.0.0' });
+    const client = new Client({ name: 'cake-agent-runtime', version: '1.0.0' });
     await client.connect(this.createTransport(config));
     this.clients.set(config.name, client);
     const { tools: ts } = await client.listTools();

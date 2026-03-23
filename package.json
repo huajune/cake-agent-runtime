@@ -1,7 +1,7 @@
 {
-  "name": "duliday-wecom-service",
+  "name": "cake-agent-runtime",
   "version": "1.1.0",
-  "description": "企业微信服务 Demo - 整合企业微信、托管平台和 Agent 服务",
+  "description": "自主 AI Agent 运行时 — 基于 Vercel AI SDK 多 Provider 架构",
   "author": "",
   "private": true,
   "license": "ISC",

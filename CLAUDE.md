@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-DuLiDay 企业微信智能服务 - 自主 AI Agent 运行时，基于 Vercel AI SDK 多 Provider 架构。
+Cake Agent Runtime - 自主 AI Agent 运行时，基于 Vercel AI SDK 多 Provider 架构。
 
 **Tech Stack**: NestJS 10.3 | TypeScript 5.3 | Node.js 20+ | Vercel AI SDK | Bull Queue | Redis (Upstash) | Winston
 

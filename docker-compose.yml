@@ -1,12 +1,12 @@
 version: '3.8'
 
 services:
-  wecom-service:
+  cake-agent:
     build:
       context: .
       dockerfile: Dockerfile
-    image: duliday-wecom-service:latest
-    container_name: wecom-service
+    image: cake-agent-runtime:latest
+    container_name: cake-agent
     restart: always
     ports:
       - "8080:8080"

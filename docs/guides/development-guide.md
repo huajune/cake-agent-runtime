@@ -29,7 +29,7 @@
 ```bash
 # 1. 克隆项目
 git clone <repository-url>
-cd duliday-wecom-service
+cd cake-agent-runtime
 
 # 2. 安装依赖
 pnpm install
