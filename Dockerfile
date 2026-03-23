@@ -5,11 +5,12 @@ WORKDIR /app
 # Install pnpm
 RUN npm install -g pnpm
 
-# Copy package files
+# Copy package files (including all workspace packages)
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY dashboard/package.json ./dashboard/
+COPY web/package.json ./web/
 
-# Install overall dependencies
+# Install dependencies
 RUN pnpm install --frozen-lockfile
 
 # Stage 2: Build
@@ -19,10 +20,11 @@ WORKDIR /app
 # Copy source code
 COPY . .
 
-# Build both backend and dashboard
-# This builds backend into dist/ and dashboard into public/dashboard/
-RUN pnpm run build
+# Build web frontend (public/web/) and dashboard (public/dashboard/) BEFORE nest build,
+# because nest-cli.json assets config copies public/ into dist/
+RUN pnpm run build:web
 RUN pnpm run build:dashboard
+RUN pnpm run build
 
 # Stage 3: Runner
 FROM node:20-bookworm-slim AS runner
@@ -41,6 +43,4 @@ RUN mkdir -p logs
 
 EXPOSE 8080
 
-# Start the application
 CMD ["node", "dist/main"]
-

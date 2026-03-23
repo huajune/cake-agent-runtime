@@ -77,9 +77,9 @@ jobs:
           REPO="${{ github.repository }}"
           cat > /tmp/docker-compose.yml << EOF
           services:
-            wecom-service:
+            cake-agent:
               image: ${IMAGE}
-              container_name: wecom-service
+              container_name: cake-agent
               restart: always
               ports:
                 - "8080:8080"

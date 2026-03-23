@@ -1,5 +1,6 @@
 packages:
   - 'dashboard'
+  - 'web'
 
 ignoredBuiltDependencies:
   - nodejieba

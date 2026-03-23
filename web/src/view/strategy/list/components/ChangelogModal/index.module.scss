@@ -1,0 +1,551 @@
+@use '@/assets/styles/variables' as *;
+
+$_pp: #a78bfa;
+$_pk: #f472b6;
+$_pp-03: rgba(167, 139, 250, 0.03);
+$_pp-05: rgba(167, 139, 250, 0.05);
+$_pp-08: rgba(167, 139, 250, 0.08);
+$_pp-10: rgba(167, 139, 250, 0.1);
+$_pp-15: rgba(167, 139, 250, 0.15);
+$_pp-20: rgba(167, 139, 250, 0.2);
+
+// ==================== 遮罩层 ====================
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(15, 10, 30, 0.35);
+  backdrop-filter: blur(6px);
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+// ==================== 抽屉面板 ====================
+
+.drawer {
+  position: relative;
+  width: 860px;
+  max-width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  box-shadow:
+    -24px 0 80px rgba(99, 102, 241, 0.1),
+    -4px 0 20px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+  animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+// 装饰圆
+.decorCircle1 {
+  position: absolute;
+  top: -60px;
+  right: -40px;
+  width: 260px;
+  height: 260px;
+  background: radial-gradient(circle, rgba(167, 139, 250, 0.07) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.decorCircle2 {
+  position: absolute;
+  bottom: 60px;
+  left: -60px;
+  width: 240px;
+  height: 240px;
+  background: radial-gradient(circle, rgba(244, 114, 182, 0.05) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+// ==================== 头部 ====================
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 28px 20px;
+  border-bottom: 1px solid $_pp-08;
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.03) 0%, rgba(244, 114, 182, 0.02) 100%);
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+
+  h3 {
+    font-size: 17px;
+    font-weight: 700;
+    color: $text-primary;
+    margin: 0 0 2px;
+    letter-spacing: 0.2px;
+  }
+}
+
+.headerSub {
+  font-size: 12px;
+  color: $text-muted;
+  margin: 0;
+}
+
+.headerIcon {
+  @include flex-center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, $_pp-15 0%, rgba(244, 114, 182, 0.1) 100%);
+  color: $_pp;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px $_pp-10;
+}
+
+.closeBtn {
+  @include flex-center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: none;
+  color: $text-muted;
+  cursor: pointer;
+  border-radius: 10px;
+  transition: all 0.15s;
+
+  &:hover {
+    background: $_pp-08;
+    color: $text-primary;
+  }
+}
+
+// ==================== 内容区 ====================
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 28px 40px;
+  position: relative;
+  z-index: 1;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: $_pp-15;
+    border-radius: 4px;
+  }
+}
+
+// ==================== 空状态 ====================
+
+.empty {
+  @include flex-center;
+  flex-direction: column;
+  gap: 12px;
+  padding: 100px 24px;
+  color: $text-muted;
+}
+
+.emptyIconWrap {
+  @include flex-center;
+  width: 68px;
+  height: 68px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, $_pp-08 0%, rgba(244, 114, 182, 0.05) 100%);
+  color: $_pp;
+  margin-bottom: 4px;
+}
+
+.emptyTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: $text-secondary;
+}
+
+.emptyHint {
+  font-size: 13px;
+  color: $text-muted;
+  opacity: 0.7;
+  text-align: center;
+  line-height: 1.6;
+}
+
+// ==================== 日期分组 ====================
+
+.dateGroup {
+  &:not(:first-child) {
+    margin-top: 28px;
+  }
+}
+
+.dateHeader {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: $text-muted;
+  letter-spacing: 0.3px;
+  margin-bottom: 12px;
+  padding: 3px 0;
+}
+
+// ==================== 变更记录卡片 ====================
+
+.logItem {
+  border-radius: 14px;
+  margin-bottom: 10px;
+  background: $_pp-03;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+
+  &:hover {
+    background: $_pp-05;
+    border-color: $_pp-10;
+  }
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.logItemExpanded {
+  background: #fff;
+  border-color: $_pp-15;
+  box-shadow: 0 4px 24px rgba(167, 139, 250, 0.08);
+
+  &:hover {
+    background: #fff;
+    border-color: $_pp-20;
+  }
+}
+
+.logMain {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  cursor: pointer;
+  user-select: none;
+  gap: 12px;
+}
+
+.logLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.fieldBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  flex-shrink: 0;
+  letter-spacing: 0.2px;
+}
+
+.logSummary {
+  font-size: 13px;
+  color: $text-secondary;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.logRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.logTime {
+  font-size: 12px;
+  color: $text-muted;
+  font-family: $font-family-mono;
+  white-space: nowrap;
+}
+
+.expandIcon {
+  @include flex-center;
+  color: $text-muted;
+  transition: color 0.15s;
+
+  .logItem:hover & {
+    color: $_pp;
+  }
+}
+
+// ==================== 回滚按钮 ====================
+
+.rollbackBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: $text-muted;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) {
+    color: $warning;
+    background: rgba($warning, 0.06);
+    border-color: rgba($warning, 0.15);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+.rollbackConfirm {
+  color: #fff !important;
+  background: $danger !important;
+  border-color: $danger !important;
+
+  &:hover:not(:disabled) {
+    background: color-mix(in srgb, $danger 94%, #000) !important;
+    border-color: color-mix(in srgb, $danger 94%, #000) !important;
+  }
+}
+
+// ==================== 对比区块 ====================
+
+.diffSection {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 0;
+  margin: 0 18px 18px;
+  border: 1px solid $_pp-10;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fafafa;
+}
+
+.diffDivider {
+  width: 1px;
+  background: $_pp-10;
+}
+
+.diffCol {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.diffHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.diffDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.diffHeaderOld {
+  background: rgba(239, 68, 68, 0.04);
+  color: #ef4444;
+  border-bottom: 1px solid rgba(239, 68, 68, 0.08);
+
+  .diffDot {
+    background: #ef4444;
+  }
+}
+
+.diffHeaderNew {
+  background: rgba(34, 197, 94, 0.04);
+  color: #16a34a;
+  border-bottom: 1px solid rgba(34, 197, 94, 0.08);
+
+  .diffDot {
+    background: #22c55e;
+  }
+}
+
+.diffContent {
+  padding: 14px 16px;
+  flex: 1;
+  min-height: 60px;
+  max-height: 340px;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar {
+    width: 3px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: $_pp-15;
+    border-radius: 3px;
+  }
+}
+
+// ==================== 值渲染 ====================
+
+.nullValue {
+  font-size: 13px;
+  color: $text-muted;
+  font-style: italic;
+}
+
+.textValue {
+  font-size: 13px;
+  color: $text-secondary;
+  line-height: 1.7;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.listValue {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.listItem {
+  font-size: 13px;
+  color: $text-secondary;
+  line-height: 1.6;
+  padding-left: 14px;
+  position: relative;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 8px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: $_pp;
+    opacity: 0.5;
+  }
+}
+
+.dictValue {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dictRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dictKey {
+  font-size: 11px;
+  font-weight: 600;
+  color: $_pp;
+  letter-spacing: 0.2px;
+  font-family: $font-family-mono;
+}
+
+.dictVal {
+  font-size: 13px;
+  color: $text-secondary;
+  line-height: 1.6;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.dictRowNested {
+  padding-left: 10px;
+  border-left: 2px solid $_pp-08;
+  margin-bottom: 6px;
+}
+
+// ==================== label+value 段落（persona textDimensions 等） ====================
+
+.lvList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lvItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lvLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: $_pp;
+  letter-spacing: 0.2px;
+}
+
+.lvValue {
+  font-size: 13px;
+  color: $text-secondary;
+  line-height: 1.7;
+  padding-left: 8px;
+  border-left: 2px solid $_pp-08;
+  white-space: pre-wrap;
+  word-break: break-word;
+
+  p {
+    margin: 0;
+  }
+}
+
+// ==================== 加载动画 ====================
+
+.spinIcon {
+  animation: spin 1s linear infinite;
+  color: $_pp;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

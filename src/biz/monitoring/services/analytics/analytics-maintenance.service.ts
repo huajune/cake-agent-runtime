@@ -2,11 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { HourlyStats } from '../../types/analytics.types';
 import { MonitoringCacheService } from '../tracking/monitoring-cache.service';
-import { MessageProcessingRepository } from '@biz/message/repositories/message-processing.repository';
-import { MonitoringHourlyStatsRepository } from '../../repositories/monitoring-hourly-stats.repository';
-import { MonitoringErrorLogRepository } from '../../repositories/monitoring-error-log.repository';
-import { MonitoringRepository } from '../../repositories/monitoring.repository';
-import { AgentRegistryService } from '@/agent/services/agent-registry.service';
+import { MessageProcessingService } from '@biz/message/services/message-processing.service';
+import { MonitoringHourlyStatsRepository } from '../../repositories/hourly-stats.repository';
+import { MonitoringErrorLogRepository } from '../../repositories/error-log.repository';
+import { MonitoringRecordRepository } from '../../repositories/record.repository';
 
 /**
  * 数据清理与聚合维护服务
@@ -17,12 +16,11 @@ export class AnalyticsMaintenanceService {
   private readonly logger = new Logger(AnalyticsMaintenanceService.name);
 
   constructor(
-    private readonly messageProcessingRepository: MessageProcessingRepository,
+    private readonly messageProcessingService: MessageProcessingService,
     private readonly hourlyStatsRepository: MonitoringHourlyStatsRepository,
     private readonly errorLogRepository: MonitoringErrorLogRepository,
     private readonly cacheService: MonitoringCacheService,
-    private readonly monitoringRepository: MonitoringRepository,
-    private readonly agentRegistryService: AgentRegistryService,
+    private readonly monitoringRepository: MonitoringRecordRepository,
   ) {}
 
   // ========================================
@@ -36,7 +34,7 @@ export class AnalyticsMaintenanceService {
     try {
       this.logger.warn('执行大规模数据清理: Monitoring stats & Message processing records');
       await Promise.all([
-        this.messageProcessingRepository.clearAllRecords(),
+        this.messageProcessingService.clearAllRecords(),
         this.hourlyStatsRepository.clearAllRecords(),
         this.errorLogRepository.clearAllRecords(),
       ]);
@@ -62,7 +60,7 @@ export class AnalyticsMaintenanceService {
       }
 
       if (type === 'all' || type === 'agent') {
-        await this.agentRegistryService.refresh();
+        this.logger.log('Agent 缓存已由各独立模块自行管理');
       }
     } catch (error) {
       this.logger.error(`清除缓存失败 [${type}]:`, error);

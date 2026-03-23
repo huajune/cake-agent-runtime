@@ -43,7 +43,7 @@
 用户消息：xxx
 小蛋糕已回复：收到，我需要跟同事同步一下再回复您～
 ---
-花卷报错：Agent API 调用失败
+Agent 报错：Agent 调用失败
 时间：2024-12-15 16:30:00
 ---
 请关注：@琪琪
@@ -70,7 +70,7 @@
 
 **告警内容**：
 ```
-标题：🤖 花卷出错了（根据 errorType 动态选择）
+标题：🤖 Agent 出错了（根据 errorType 动态选择）
 ---
 时间：2024-12-15 16:30:00
 级别：ERROR
@@ -97,10 +97,10 @@ handleProcessingError()
 
 **触发条件**：服务启动时初始化失败
 
-| 告警类型 | 触发时机 | 触发位置 |
-|----------|----------|----------|
-| `REGISTRY_INIT_FAILED` | 服务启动时 `refresh()` 失败 | `AgentRegistryService.onModuleInit()` |
-| `REGISTRY_AUTO_REFRESH_FAILED` | 定时刷新（每小时）时 `refresh()` 失败 | `AgentRegistryService.scheduleAutoRefresh()` |
+| 告警类型 | 触发时机 |
+|----------|----------|
+| `REGISTRY_INIT_FAILED` | 服务启动时初始化失败 |
+| `REGISTRY_AUTO_REFRESH_FAILED` | 定时刷新（每小时）时失败 |
 
 ### 5. 面试预约成功通知（@ 琪琪）
 
@@ -164,7 +164,7 @@ Agent 调用 zhipin_book_interview 工具
 | 面试预约成功 | @ 琪琪 | 业务通知，需要跟进 | `feishu-booking.service.ts` |
 | 异常处理（`handleProcessingError`） | 不 @ | 技术问题，开发自行关注 | `message-pipeline.service.ts` |
 | 消息发送失败（CRITICAL） | 不 @ | 技术问题，开发自行关注 | `message-pipeline.service.ts` |
-| 服务初始化失败 | 不 @ | 技术问题，开发自行关注 | `agent-registry.service.ts` |
+| 服务初始化失败 | 不 @ | 技术问题，开发自行关注 | 各模块 `onModuleInit()` |
 | @ 所有人 | **无此场景** | 功能已实现但未启用 | - |
 
 ### @ 功能说明
@@ -210,7 +210,7 @@ Agent 调用 zhipin_book_interview 工具
 
 ### 接收人配置
 
-接收人在 `src/core/feishu/constants/feishu.constants.ts` 中配置：
+接收人在 `src/infra/feishu/constants/feishu.constants.ts` 中配置：
 
 ```typescript
 export const ALERT_RECEIVERS = {
@@ -245,11 +245,11 @@ export const ALERT_RECEIVERS = {
 
 | 文件 | 职责 |
 |------|------|
-| `src/core/feishu/services/feishu-alert.service.ts` | 告警发送、节流控制、消息格式化 |
-| `src/core/feishu/services/feishu-webhook.service.ts` | Webhook 签名、HTTP 发送、卡片构建 |
-| `src/core/feishu/services/feishu-booking.service.ts` | 面试预约通知 |
-| `src/core/feishu/constants/feishu.constants.ts` | Webhook URL、接收人配置 |
-| `src/wecom/message/services/message-pipeline.service.ts` | 告警触发点（`sendFallbackAlert`、`handleProcessingError`） |
+| `src/infra/feishu/services/feishu-alert.service.ts` | 告警发送、节流控制、消息格式化 |
+| `src/infra/feishu/services/feishu-webhook.service.ts` | Webhook 签名、HTTP 发送、卡片构建 |
+| `src/infra/feishu/services/feishu-booking.service.ts` | 面试预约通知 |
+| `src/infra/feishu/constants/feishu.constants.ts` | Webhook URL、接收人配置 |
+| `src/channels/wecom/message/services/message-pipeline.service.ts` | 告警触发点（`sendFallbackAlert`、`handleProcessingError`） |
 
 ## 告警卡片样式
 
@@ -268,7 +268,7 @@ export const ALERT_RECEIVERS = {
 │ **小蛋糕已回复**                     │
 │ 收到，我需要跟同事同步一下再回复您～ │
 │ ──────────────────────────────────── │
-│ **花卷报错**: Payment Required       │
+│ **Agent 报错**: Payment Required       │
 │ **时间**: 2024/12/15 16:30:00        │
 │ ──────────────────────────────────── │
 │ **请关注**: @琪琪                    │
@@ -279,7 +279,7 @@ export const ALERT_RECEIVERS = {
 
 ```
 ┌──────────────────────────────────────┐
-│ 🤖 花卷出错了                  [红色] │
+│ 🤖 Agent 出错了                [红色] │
 ├──────────────────────────────────────┤
 │ **时间**: 2024/12/15 16:30:00        │
 │ **级别**: ERROR                      │

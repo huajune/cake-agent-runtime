@@ -1,0 +1,425 @@
+// MessagePartsAdapter 组件样式
+@use '@/assets/styles/variables' as *;
+
+// ==================== 动画 ====================
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// ==================== 主容器 ====================
+.messagePartsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+// ==================== 回复内容 ====================
+.replyContent {
+  font-size: $font-size-sm;
+  color: $text-primary;
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+
+// ==================== 工具调用卡片 ====================
+.toolCallItem {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: $radius-md;
+  border: 1px solid $accent-08;
+  overflow: hidden;
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: $accent-15;
+    box-shadow: 0 2px 6px $accent-06;
+  }
+
+  .toolHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: $spacing-sm $spacing-md;
+    user-select: none;
+  }
+
+  .toolHeaderClickable {
+    cursor: pointer;
+
+    &:hover {
+      background: $accent-03;
+    }
+  }
+
+  .toolHeaderRight {
+    display: flex;
+    align-items: center;
+    gap: $spacing-sm;
+  }
+
+  .toolExpandIcon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: $accent;
+  }
+
+  .toolTimer {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 11px;
+    color: $text-muted;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .toolName {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    background: linear-gradient(135deg, $accent-12 0%, rgba(236, 72, 153, 0.12) 100%);
+    color: $accent;
+    border: 1px solid $accent-15;
+    border-radius: $radius-md;
+    font-size: $font-size-xs;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: $font-weight-medium;
+  }
+
+  .toolStatus {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: $font-weight-medium;
+    padding: 3px 8px;
+    border-radius: $radius-full;
+
+    &.statusSuccess {
+      background: $success-soft;
+      color: $success;
+    }
+
+    &.statusCalling {
+      background: $warning-soft;
+      color: $warning;
+    }
+  }
+
+  .toolBody {
+    padding: 0 $spacing-md $spacing-md;
+    animation: slideDown 0.2s ease-out;
+  }
+
+  .toolSection {
+    margin-top: $spacing-sm;
+
+    .toolSectionLabel {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: $font-weight-semibold;
+      color: $text-secondary;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+
+      svg {
+        opacity: 0.7;
+      }
+    }
+  }
+
+  .toolDetail {
+    margin: 0;
+    padding: 12px;
+    background: #0f172a;
+    border-radius: $radius-md;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    color: #e2e8f0;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    line-height: 1.6;
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+
+    &::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    &::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 2px;
+    }
+  }
+
+  .toolResultMarkdown {
+    padding: 12px;
+    background: rgba(248, 250, 252, 0.8);
+    border-radius: $radius-md;
+    border: 1px solid $accent-08;
+    font-size: $font-size-xs;
+    color: $text-primary;
+    line-height: 1.8;
+    max-height: 400px;
+    overflow-y: auto;
+
+    &::-webkit-scrollbar {
+      width: 4px;
+    }
+    &::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.15);
+      border-radius: 2px;
+    }
+
+    h1, h2, h3 {
+      margin: 0.6em 0 0.3em;
+      color: $text-primary;
+      font-weight: $font-weight-semibold;
+
+      &:first-child { margin-top: 0; }
+    }
+
+    h1 { font-size: 15px; }
+    h2 { font-size: 14px; }
+    h3 { font-size: 13px; }
+
+    p {
+      margin: 0 0 0.5em;
+      &:last-child { margin-bottom: 0; }
+    }
+
+    strong {
+      font-weight: $font-weight-semibold;
+      color: $text-primary;
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid $accent-08;
+      margin: 0.6em 0;
+    }
+
+    ul, ol {
+      margin: 0.3em 0;
+      padding-left: 1.5em;
+
+      li { margin-bottom: 0.2em; }
+    }
+
+    code {
+      padding: 1px 5px;
+      background: rgba(99, 102, 241, 0.08);
+      border-radius: 3px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9em;
+      color: $primary;
+    }
+  }
+}
+
+.toolCalling {
+  border-color: $accent-20 !important;
+  background: $accent-04 !important;
+}
+
+.toolSpinnerIcon {
+  animation: spin 1s linear infinite;
+}
+
+// ==================== 思考过程卡片 ====================
+.reasoningCard {
+  border-radius: $radius-md;
+  border: 1px solid $accent-08;
+  background: rgba(255, 255, 255, 0.9);
+  overflow: hidden;
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: $accent-15;
+  }
+}
+
+.reasoningActive {
+  border-color: rgba(99, 102, 241, 0.2);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.03) 0%, rgba(139, 92, 246, 0.03) 100%);
+}
+
+.reasoningHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: $spacing-sm $spacing-md;
+  cursor: pointer;
+  user-select: none;
+  color: $text-muted;
+
+  &:hover {
+    background: $accent-03;
+    color: $primary;
+  }
+
+  > svg {
+    flex-shrink: 0;
+    opacity: 0.5;
+  }
+}
+
+.reasoningLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%);
+  color: $primary;
+  border: 1px solid rgba(99, 102, 241, 0.12);
+  border-radius: $radius-md;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-medium;
+}
+
+.reasoningBody {
+  padding: 0 $spacing-md $spacing-md;
+  font-size: $font-size-xs;
+  color: $text-secondary;
+  line-height: 1.7;
+  animation: slideDown 0.2s ease-out;
+  max-height: 300px;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 2px;
+  }
+
+  p {
+    margin: 0 0 0.5em;
+    &:last-child { margin-bottom: 0; }
+  }
+
+  strong {
+    font-weight: $font-weight-semibold;
+    color: $text-primary;
+  }
+
+  code {
+    padding: 1px 5px;
+    background: rgba(99, 102, 241, 0.08);
+    border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.9em;
+    color: $primary;
+  }
+
+  ol, ul {
+    margin: 0.3em 0;
+    padding-left: 1.5em;
+
+    li {
+      margin-bottom: 0.2em;
+    }
+  }
+
+  hr {
+    border: none;
+    border-top: 1px solid rgba(99, 102, 241, 0.08);
+    margin: 0.5em 0;
+  }
+}
+
+// ==================== 流式输出样式 ====================
+.streamCursor {
+  display: inline-block;
+  color: #ec4899;
+  font-weight: bold;
+  animation: blink 1s step-end infinite;
+  margin-left: 2px;
+}
+
+.streamingLoading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.loadingDots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+
+  span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: $accent;
+    animation: dotBounce 1.4s ease-in-out infinite;
+
+    &:nth-child(2) {
+      animation-delay: 0.16s;
+    }
+
+    &:nth-child(3) {
+      animation-delay: 0.32s;
+    }
+  }
+}
+
+@keyframes dotBounce {
+  0%, 80%, 100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.streamingWaiting {
+  color: $text-muted;
+  font-size: $font-size-xs;
+
+  &::after {
+    content: '';
+    animation: ellipsis 1.5s steps(3) infinite;
+  }
+}
+
+@keyframes ellipsis {
+  0%   { content: '.'; }
+  33%  { content: '..'; }
+  66%  { content: '...'; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.streamingPlaceholder {
+  color: $text-muted;
+  font-style: italic;
+}

@@ -1,6 +1,6 @@
 # 数据库表设计与使用说明
 
-> DuLiDay 企业微信服务 - Supabase (PostgreSQL) 数据库设计文档
+> Cake Agent Runtime - Supabase (PostgreSQL) 数据库设计文档
 
 **最后更新**：2026-03-12
 
@@ -101,7 +101,7 @@
 
 - Repository: `src/biz/message/repositories/chat-message.repository.ts`
 - Entity: `src/biz/message/entities/chat-message.entity.ts`
-- Enum: `src/wecom/message/enums/chat-message.enum.ts`
+- Enum: `src/channels/wecom/message/enums/chat-message.enum.ts`
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|

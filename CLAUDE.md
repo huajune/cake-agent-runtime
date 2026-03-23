@@ -4,14 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-DuLiDay 企业微信智能服务中间层 - NestJS-based middleware connecting WeChat Enterprise hosting platform with AI Agent services.
+Cake Agent Runtime - DuLiDay 旗下的招聘专用 AI Agent 运行时，基于 Vercel AI SDK 多 Provider 架构，通过企业微信渠道为餐饮连锁企业提供智能招聘对话服务。
 
-**Tech Stack**: NestJS 10.3 | TypeScript 5.3 | Node.js 20+ | Bull Queue | Redis (Upstash) | Winston
+**Tech Stack**: NestJS 10.3 | TypeScript 5.3 | Node.js 20+ | Vercel AI SDK | Supabase | Redis (Upstash) | Bull Queue | Winston
 
-**Core Purpose**:
-- Receive message callbacks from WeChat Enterprise hosting platform
-- Invoke AI Agent API for intelligent responses
-- Send replies back through hosting platform API
+**Core Capabilities**:
+- Agent 编排：Recall → Compose → Execute → Store 闭环，多步工具调用
+- 多模型容错：三层 Provider 架构（注册 → 重试/降级 → 角色路由）
+- 四层记忆：短期对话 → 会话事实 → 程序性阶段 → 长期用户画像
+- 渠道接入：企业微信消息管道（去重、过滤、聚合、拟人化投递）
+- 质量评估：LLM 评分的对话测试框架
 
 ## Development Commands
 
@@ -31,8 +33,8 @@ pnpm run format        # Prettier formatting
 pnpm run test          # Run tests
 pnpm run test:cov      # Test coverage
 
-# Single test file
-pnpm run test -- message.service.spec.ts
+# Single test file (tests are in tests/ directory, mirroring src/ structure)
+pnpm run test -- tests/wecom/message/message.service.spec.ts
 
 # Database Migrations (Supabase CLI)
 pnpm run db:new <name>  # Create new migration
@@ -46,8 +48,8 @@ pnpm run db:diff        # Generate diff migration
 
 ### Layered Architecture
 
-**Layer placement criteria**: 依赖业务数据（用户、消息等）→ `biz/`；可独立于业务存在 → `core/`。
-`core/` 禁止 import `biz/`、`wecom/`、`agent/`。
+**Layer placement criteria**: 依赖业务数据（用户、消息等）→ `biz/`；可独立于业务存在 → `infra/`。
+`infra/` 禁止 import `biz/`、`wecom/`、`agent/`。
 
 ```
 supabase/
@@ -56,7 +58,7 @@ supabase/
     └── 20260310000000_baseline.sql # Full schema baseline (12 tables, 19 functions)
 
 src/
-├── core/                           # Infrastructure Layer (业务无关，禁止依赖 biz/)
+├── infra/                          # Infrastructure Layer (业务无关，禁止依赖 biz/)
 │   ├── client-http/                # HTTP client factory (Bearer Token)
 │   ├── config/                     # Config management (env validation)
 │   ├── redis/                      # Redis cache (Global module)
@@ -65,44 +67,60 @@ src/
 │   ├── alert/                      # Alert system (simplified ~300 lines)
 │   └── server/response/            # Unified response (Interceptor + Filter)
 │
-├── agent/                          # AI Agent Domain
-│   ├── agent.service.ts            # Agent API invocation layer
-│   ├── agent-registry.service.ts   # Model/tool registry
-│   ├── services/                   # Agent sub-services
-│   │   ├── agent-api-client.service.ts
-│   │   ├── agent-fallback.service.ts
-│   │   ├── brand-config.service.ts
-│   │   └── agent-profile-loader.service.ts
-│   └── profiles/                   # Agent context configurations
+├── providers/                      # 多模型 Provider 层 (Vercel AI SDK)
+│   ├── registry.service.ts         # Layer 1: 纯工厂注册 (createProviderRegistry)
+│   ├── reliable.service.ts         # Layer 2: 容错层 (retry + fallback)
+│   ├── router.service.ts           # Layer 3: 角色路由 (resolveByRole)
+│   └── types.ts                    # Provider 配置与常量
+│
+├── tools/                          # 工具注册表 + 内置工具
+│   ├── tool-registry.service.ts    # 工具注册与构建
+│   └── *.tool.ts                   # 各工具实现
+│
+├── memory/                         # 四层记忆系统
+│   ├── memory.service.ts           # 统一读取 API (recallAll)
+│   ├── short-term.service.ts       # 短期：对话窗口
+│   ├── session-facts.service.ts    # 会话事实：意向/推荐记录
+│   ├── procedural.service.ts       # 程序性：阶段追踪
+│   ├── long-term.service.ts        # 长期：用户画像 (Supabase)
+│   └── settlement.service.ts       # 空闲沉淀 (Session → Profile)
+│
+├── mcp/                            # MCP 客户端 (动态工具扩展)
+├── sponge/                         # 外部数据服务
+│
+├── agent/                          # AI Agent 编排层
+│   ├── runner.service.ts           # 核心编排引擎 (invoke/stream)
+│   ├── completion.service.ts       # 简单一次性 LLM 调用
+│   ├── context/                    # 动态 Prompt 组装 (Section 体系)
+│   ├── fact-extraction.service.ts  # LLM 事实提取
+│   └── input-guard.service.ts      # 输入安全检测
 │
 ├── biz/                            # Business Layer (业务领域)
 │   ├── monitoring/                 # 业务监控 (tracking + analytics + cleanup)
-│   │   ├── monitoring.module.ts
-│   │   ├── monitoring.controller.ts
-│   │   ├── services/
-│   │   │   ├── tracking/           # 采集写入
-│   │   │   ├── analytics/          # 聚合分析
-│   │   │   └── cleanup/            # 数据清理
-│   │   ├── repositories/
-│   │   └── types/                  # 按消费者域拆分 (.types.ts)
 │   ├── user/                       # 用户管理
 │   ├── hosting-config/             # 托管配置
-│   └── message/                    # 消息业务
+│   ├── message/                    # 消息业务 (chat session + booking)
+│   ├── strategy/                   # 业务策略 (persona + redLines + stageGoals)
+│   ├── test-suite/                 # Agent 测试套件
+│   └── feishu-sync/                # 飞书多维表格双向同步
 │
-└── wecom/                          # WeChat Enterprise Domain
-    ├── message/                    # Message processing (Core business)
-    │   ├── message.service.ts      # Main coordinator (~300 lines)
-    │   └── services/               # Sub-services (SRP)
-    │       ├── message-deduplication.service.ts
-    │       ├── message-filter.service.ts
-    │       ├── message-history.service.ts
-    │       ├── message-merge.service.ts     # Smart aggregation (Bull Queue)
-    │       └── message-statistics.service.ts
-    ├── message-sender/             # Message sending
-    ├── bot/                        # Bot management
-    ├── chat/                       # Chat session
-    ├── contact/                    # Contact management
-    └── room/                       # Group chat
+├── evaluation/                     # 对话质量评估框架
+│   ├── llm-evaluation.service.ts   # LLM 评分
+│   ├── conversation-parser.service.ts  # 对话解析
+│   └── services/                   # 执行/对话/飞书同步子服务
+│
+├── channels/
+│   └── wecom/                      # WeChat Enterprise Domain
+│       ├── message/                # 消息管道 (去重/过滤/聚合/投递)
+│       │   ├── message.service.ts  # Main coordinator
+│       │   └── services/           # Sub-services (pipeline, delivery, etc.)
+│       ├── message-sender/         # Message sending
+│       ├── bot/                    # Bot management
+│       ├── chat/                   # Chat session
+│       ├── contact/                # Contact management
+│       └── room/                   # Group chat
+│
+└── observability/                  # Observer 可观测性
 ```
 
 ### Message Processing Flow
@@ -119,7 +137,7 @@ WeChat User Message
       └── Return 200 OK immediately
   → [Async Queue Processing]
       ├── Aggregate messages
-      ├── Call Agent API (AgentService.chat)
+      ├── Call Agent (OrchestratorService.run → Provider → generateText)
       ├── Split response (MessageSplitter: \n\n + ~)
       └── Send reply (with delay)
 ```
@@ -127,10 +145,10 @@ WeChat User Message
 ### Path Aliases (tsconfig.json)
 
 ```typescript
-import { HttpClientFactory } from '@core/http';
-import { AgentService } from '@agent';
-import { MessageService } from '@wecom/message';
-import { MonitoringService } from '@core/monitoring';
+import { HttpClientFactory } from '@infra/http';
+import { AgentRunnerService } from '@agent/runner.service';
+import { RouterService } from '@providers/router.service';
+import { MessageService } from '@channels/wecom/message';
 ```
 
 ## Key Design Patterns
@@ -172,8 +190,8 @@ Response format:
 
 | 变量 | 说明 | 来源 |
 |------|------|------|
-| `AGENT_API_KEY` | AI Agent API 密钥 | 花卷平台 |
-| `AGENT_API_BASE_URL` | AI Agent API 地址 | 花卷平台 |
+| `ANTHROPIC_API_KEY` | Anthropic API 密钥 | Anthropic |
+| `AGENT_CHAT_MODEL` | 主聊天模型 ID | 环境配置 |
 | `UPSTASH_REDIS_REST_URL` | Redis REST API URL | Upstash |
 | `UPSTASH_REDIS_REST_TOKEN` | Redis REST Token | Upstash |
 | `DULIDAY_API_TOKEN` | 杜力岱 API Token | 内部系统 |
@@ -189,7 +207,6 @@ Response format:
 | 变量 | 默认值 | 说明 | 使用位置 |
 |------|--------|------|----------|
 | `PORT` | `8080` | 服务端口 | main.ts |
-| `AGENT_API_TIMEOUT` | `600000` | API 超时 (10min) | agent-api-client |
 | `MAX_HISTORY_PER_CHAT` | `60` | Redis 消息数限制 | message-history |
 | `HISTORY_TTL_MS` | `7200000` | Redis 消息 TTL (2h) | message-history |
 | `INITIAL_MERGE_WINDOW_MS` | `1000` | 聚合等待时间 | message-merge |
@@ -204,7 +221,6 @@ Response format:
 |------|-----|------|
 | 告警节流窗口 | 5 分钟 | FeishuAlertService |
 | 告警最大次数 | 3 次/类型 | FeishuAlertService |
-| 健康检查间隔 | 1 小时 | AgentRegistryService |
 | Profile 缓存 TTL | 1 小时 | ProfileLoaderService |
 
 #### 配置文件说明
@@ -214,10 +230,10 @@ Response format:
 
 ```typescript
 // Layer 1: 必填，无默认值
-this.apiKey = this.configService.get<string>('AGENT_API_KEY')!;
+const model = this.router.resolveByRole('chat'); // AGENT_CHAT_MODEL
 
 // Layer 2: 可选，有默认值
-this.timeout = parseInt(this.configService.get('AGENT_API_TIMEOUT', '600000'));
+this.mergeWindow = parseInt(this.configService.get('INITIAL_MERGE_WINDOW_MS', '1000'));
 
 // Layer 3: 硬编码
 private readonly THROTTLE_WINDOW_MS = 5 * 60 * 1000;
@@ -315,8 +331,8 @@ function test(data: Data): Result { }
 
 ```bash
 # === Layer 1: 必填 ===
-AGENT_API_KEY=your-key
-AGENT_API_BASE_URL=https://huajune.duliday.com/api/v1
+ANTHROPIC_API_KEY=your-anthropic-key
+AGENT_CHAT_MODEL=anthropic/claude-sonnet-4-5-20250929
 UPSTASH_REDIS_REST_URL=https://your-redis.upstash.io
 UPSTASH_REDIS_REST_TOKEN=your-token
 DULIDAY_API_TOKEN=your-token
@@ -361,13 +377,9 @@ Key endpoints:
 - `GET /stream-api/message/history` - Message history
 - `POST /stream-api/message/send` - Send message
 
-### 2. Agent API (花卷)
-- **Official Docs**: https://docs.wolian.cc/
-
-Key endpoints:
-- `POST /api/v1/chat` - Chat with AI
-- `GET /api/v1/models` - Available models
-- `GET /api/v1/tools` - Available tools
+### 2. AI Provider
+通过 Vercel AI SDK 直连各厂商 API（Anthropic, OpenAI, DeepSeek 等），
+由 `src/providers/` 三层架构管理（Registry → Reliable → Router）。
 
 ## Testing and Debugging
 
@@ -394,13 +406,12 @@ open http://localhost:8080/monitoring.html
 
 ### Agent API Connection Failed
 ```bash
-# Check config
-echo $AGENT_API_KEY
-curl -H "Authorization: Bearer $AGENT_API_KEY" \
-  $AGENT_API_BASE_URL/models
-
-# Health check
+# Health check — 查看已注册的 Provider
 curl http://localhost:8080/agent/health
+
+# 确认 API Key 已配置
+echo $ANTHROPIC_API_KEY
+echo $AGENT_CHAT_MODEL
 ```
 
 ### Port Already in Use

@@ -5,6 +5,7 @@ import { BookingRepository } from './repositories/booking.repository';
 import { MessageController } from './message.controller';
 import { ChatSessionService } from './services/chat-session.service';
 import { MessageProcessingService } from './services/message-processing.service';
+import { BookingService } from './services/booking.service';
 
 @Module({
   controllers: [MessageController],
@@ -16,7 +17,8 @@ import { MessageProcessingService } from './services/message-processing.service'
     // services
     ChatSessionService,
     MessageProcessingService,
+    BookingService,
   ],
-  exports: [ChatSessionService, MessageProcessingService],
+  exports: [ChatSessionService, MessageProcessingService, BookingService],
 })
 export class BizMessageModule {}

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { MonitoringHourlyStatsRepository } from '../../repositories/monitoring-hourly-stats.repository';
+import { MonitoringHourlyStatsRepository } from '../../repositories/hourly-stats.repository';
 import {
   DashboardOverviewStats,
   DashboardFallbackStats,

@@ -1,0 +1,112 @@
+@use 'sass:color';
+@use '@/assets/styles/variables' as *;
+
+$_amber: #f59e0b;
+$_amber-06: rgba(245, 158, 11, 0.06);
+$_amber-10: rgba(245, 158, 11, 0.1);
+$_amber-15: rgba(245, 158, 11, 0.15);
+$_amber-25: rgba(245, 158, 11, 0.25);
+
+// ==================== 标签列表 ====================
+.tagList {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-sm;
+  margin-top: $spacing-md;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: $radius-full;
+  background: $_amber-06;
+  border: 1px solid $_amber-15;
+  color: color.adjust($_amber, $lightness: -10%);
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  transition: all $transition-fast;
+  max-width: 100%;
+
+  &:hover {
+    background: $_amber-10;
+    border-color: $_amber-25;
+  }
+}
+
+.tagInput {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  font-family: inherit;
+  padding: 0;
+  min-width: 40px;
+  width: auto;
+
+  &:focus {
+    outline: none;
+  }
+
+  &::placeholder {
+    color: $_amber;
+    opacity: 0.4;
+  }
+}
+
+.tagRemove {
+  @include flex-center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: $_amber-15;
+  border-radius: $radius-full;
+  color: $_amber;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  transition: all $transition-fast;
+
+  &:hover {
+    background: $_amber-25;
+  }
+
+  &.tagRemoveConfirm {
+    background: $danger;
+    color: #fff;
+    width: auto;
+    padding: 0 6px;
+    font-size: 10px;
+    border-radius: $radius-sm;
+  }
+}
+
+// ==================== 内联添加 ====================
+.addInput {
+  width: 120px;
+  padding: 5px 12px;
+  border: 1px dashed $_amber-25;
+  border-radius: $radius-full;
+  background: transparent;
+  font-size: $font-size-sm;
+  color: $text-primary;
+  transition: all $transition-fast;
+
+  &::placeholder {
+    color: $_amber;
+    opacity: 0.4;
+    font-size: $font-size-xs;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: $_amber;
+    border-style: solid;
+    background: #fff;
+    box-shadow: 0 0 0 2px $_amber-06;
+    width: 180px;
+  }
+}

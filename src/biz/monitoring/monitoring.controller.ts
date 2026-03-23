@@ -6,6 +6,7 @@ import { AnalyticsDashboardService } from './services/analytics/analytics-dashbo
 import { AnalyticsQueryService } from './services/analytics/analytics-query.service';
 import { AnalyticsMaintenanceService } from './services/analytics/analytics-maintenance.service';
 import { MetricsData, TimeRange } from './types/analytics.types';
+import { Public } from '@infra/server/response/decorators/api-response.decorator';
 
 /**
  * Analytics API 控制器
@@ -129,30 +130,31 @@ export class AnalyticsController {
 }
 
 /**
- * Dashboard SPA 控制器
- * 托管前端 Dashboard 静态资源
+ * Web SPA 控制器
+ * 托管前端 Web 静态资源
  */
-@Controller('dashboard')
-export class DashboardController {
+@Public()
+@Controller('web')
+export class WebController {
   @Get('*')
-  serveDashboard(@Req() req: Request, @Res() res: Response) {
-    const relativePath = req.path.replace(/^\/dashboard/, '');
-    const publicDashboardPath = join(process.cwd(), 'public', 'dashboard');
+  serveWeb(@Req() req: Request, @Res() res: Response) {
+    const relativePath = req.path.replace(/^\/web/, '');
+    const publicWebPath = join(process.cwd(), 'public', 'web');
 
     if (relativePath.includes('.') && !relativePath.endsWith('.html')) {
-      const filePath = join(publicDashboardPath, relativePath);
+      const filePath = join(publicWebPath, relativePath);
       if (existsSync(filePath)) {
         return res.sendFile(filePath);
       }
     }
 
-    const indexPath = join(publicDashboardPath, 'index.html');
+    const indexPath = join(publicWebPath, 'index.html');
     if (existsSync(indexPath)) {
       return res.sendFile(indexPath);
     } else {
       return res.status(404).send(`
-          <h1>Dashboard not found</h1>
-          <p>Please run <code>pnpm run build:dashboard</code> to build the frontend.</p>
+          <h1>Web app not found</h1>
+          <p>Please run <code>pnpm run build:web</code> to build the frontend.</p>
         `);
     }
   }
