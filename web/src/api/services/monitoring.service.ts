@@ -7,17 +7,17 @@ export type { WorkerConcurrencyResponse, GroupInfo } from '../types/monitoring.t
 // ==================== 开关控制 API ====================
 
 export async function getAiReplyStatus() {
-  const { data } = await api.get('/message/ai-reply-status');
+  const { data } = await api.get('/config/ai-reply-status');
   return unwrapResponse<{ enabled: boolean }>(data);
 }
 
 export async function toggleAiReply(enabled: boolean) {
-  const { data } = await api.post('/message/toggle-ai-reply', { enabled });
+  const { data } = await api.post('/config/toggle-ai-reply', { enabled });
   return unwrapResponse<{ enabled: boolean; message: string }>(data);
 }
 
 export async function toggleMessageMerge(enabled: boolean) {
-  const { data } = await api.post('/message/toggle-message-merge', { enabled });
+  const { data } = await api.post('/config/toggle-message-merge', { enabled });
   return unwrapResponse<{ enabled: boolean; message: string }>(data);
 }
 

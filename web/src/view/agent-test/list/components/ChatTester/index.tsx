@@ -38,7 +38,6 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
     result,
     elapsedMs,
     isLoading,
-    isStreaming,
     latestAssistantMessage,
     setHistoryText,
     setCurrentInput,
@@ -230,8 +229,8 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
               </div>
             )}
 
-            {/* 流式输出中 */}
-            {isStreaming && latestAssistantMessage && (
+            {/* 加载/流式输出中 */}
+            {isLoading && (
               <div className={styles.streamingContent}>
                 <div className={styles.replySection}>
                   <div className={styles.sectionHeader}>
@@ -246,16 +245,11 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
                       <X size={12} /> 取消
                     </button>
                   </div>
-                  <MessagePartsAdapter message={latestAssistantMessage} isStreaming={true} />
+                  <MessagePartsAdapter
+                    message={latestAssistantMessage ?? { id: 'loading', role: 'assistant' as const, parts: [] }}
+                    isStreaming={true}
+                  />
                 </div>
-              </div>
-            )}
-
-            {/* 加载中状态（仅在流式未开始时显示，start 事件到达后立即切换到流式 UI） */}
-            {isLoading && !isStreaming && (
-              <div className={styles.loadingState}>
-                <div className={styles.loadingSpinner}></div>
-                <p>正在连接 Agent API...</p>
               </div>
             )}
 

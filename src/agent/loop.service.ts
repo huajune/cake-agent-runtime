@@ -196,7 +196,8 @@ export class LoopService {
     );
 
     // 0. 空闲检测：如果超过 SESSION_TTL，触发沉淀（Session Facts → Profile + Summary）
-    await this.settlement
+    // fire-and-forget：沉淀是后台操作，不阻塞当前流的启动
+    this.settlement
       .checkAndSettle(corpId, userId, sessionId)
       .catch((err) => this.logger.warn('沉淀检测失败', err));
 

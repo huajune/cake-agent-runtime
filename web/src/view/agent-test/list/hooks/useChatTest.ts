@@ -262,6 +262,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     setIsRequesting(true);
     setLocalError(null);
     setMetrics(null);
+    setResult(null); // 在发起新请求时，立即重置测试结果
     startTimeRef.current = Date.now();
 
     const history = parseHistory(historyText);
@@ -295,7 +296,9 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     messageInputRef.current?.focus();
   }, [setMessages]);
 
-  const latestAssistantMessage = messages.filter((m: UIMessage) => m.role === 'assistant').pop();
+  const latestAssistantMessage = messages
+    .filter((m: UIMessage) => m.role === 'assistant' && !m.id.startsWith('history-'))
+    .pop();
 
   return {
     historyText,

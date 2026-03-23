@@ -12,6 +12,7 @@ import {
   Res,
   Header,
 } from '@nestjs/common';
+import { createUIMessageStream, pipeUIMessageStreamToResponse, type UIMessageChunk } from 'ai';
 import { ApiTags, ApiOperation, ApiQuery, ApiParam } from '@nestjs/swagger';
 import { Response } from 'express';
 import { TestExecutionService } from './services/test-execution.service';
@@ -115,7 +116,26 @@ export class TestSuiteController {
 
     try {
       const streamResult = await this.executionService.executeTestStreamWithMeta(testRequest);
-      streamResult.pipeUIMessageStreamToResponse(res, { sendReasoning: true });
+
+      // 包装流：在 UI Message Stream 完成后注入 token usage 自定义数据部分
+      // 前端 useChatTest.ts 的 onData 回调监听 type === 'data-tokenUsage' 来获取消耗
+      const uiStream = createUIMessageStream({
+        execute: async ({ writer }) => {
+          writer.merge(streamResult.toUIMessageStream({ sendReasoning: true }));
+          // streamResult.usage 在流完成后 resolve，确保 data-tokenUsage 在 finish 之前发出
+          const usage = await streamResult.usage;
+          writer.write({
+            type: 'data-tokenUsage',
+            data: {
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              totalTokens: usage.totalTokens,
+            },
+          } as UIMessageChunk);
+        },
+      });
+
+      pipeUIMessageStreamToResponse({ response: res, stream: uiStream });
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       if (!res.headersSent) {
