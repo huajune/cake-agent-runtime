@@ -1,8 +1,8 @@
 # 文档中心
 
-> DuLiDay 企业微信服务 - 技术文档导航
+> Cake Agent Runtime - 技术文档导航
 
-**最后更新**：2026-03-12
+**最后更新**：2026-03-23
 
 ---
 
@@ -12,23 +12,28 @@
 docs/
 ├── README.md              # 本文档（文档索引）
 ├── architecture/          # 架构设计文档
-│   ├── agent-service-architecture.md
+│   ├── agent-runtime-architecture.md
+│   ├── memory-system-architecture.md
 │   ├── message-service-architecture.md
 │   ├── monitoring-system-architecture.md
-│   └── alert-system-architecture.md
+│   ├── alert-system-architecture.md
+│   ├── test-suite-architecture.md
+│   └── security-guardrails.md
 ├── db/                    # 数据库文档
-│   └── database-schema.md
+│   ├── database-schema.md
+│   └── redis-schema.md
 ├── infrastructure/        # 基础设施文档
-│   └── redis-supabase-usage.md
+│   └── feishu-alert-system.md
 ├── guides/                # 开发指南和教程
 │   ├── development-guide.md
-│   ├── claude-code-safety-guide.md
-│   └── huajune-agent-api-guide.md
+│   └── claude-code-safety-guide.md
 ├── workflows/             # 工作流程文档
 │   ├── ai-code-review-guide.md
 │   ├── auto-version-changelog.md
 │   ├── branch-protection-guide.md
 │   ├── deploy-guide.md
+│   ├── conversation-test-workflow.md
+│   ├── scenario-test-workflow.md
 │   └── version-release-guide.md
 └── product/               # 产品相关文档
     ├── business-flows.md
@@ -40,33 +45,40 @@ docs/
 
 ## 🏗️ 架构设计 (architecture/)
 
-- **[Agent 服务架构](architecture/agent-service-architecture.md)**
-  - Agent 服务封装实现
-  - 4 个核心服务：AgentService、AgentConfigService、AgentRegistryService、AgentCacheService
-  - 17 个 HTTP API 端点
-  - 缓存策略、配置管理、错误处理
-  - **更新日期**：2025-11-04
+- **[Agent 运行时架构](architecture/agent-runtime-architecture.md)** ⭐
+  - 核心编排循环：Recall → Compose → Execute → Store
+  - 三层 Provider 架构（注册 → 容错 → 路由）
+  - Context 动态 Prompt 组装、工具系统、MCP 扩展
+  - **更新日期**：2026-03-23
+
+- **[Agent 记忆系统架构](architecture/memory-system-architecture.md)**
+  - 四层记忆模型：短期、会话事实、程序性、长期档案（基于 CoALA 框架）
+  - 固定注入 vs 工具按需检索的 Hybrid 策略
+  - 会话沉淀机制：空闲超时 → Profile + Summary
+  - **更新日期**：2026-03-19
 
 - **[消息服务架构](architecture/message-service-architecture.md)**
-  - 消息处理服务的重构架构
-  - 从 1099 行巨石服务 → 5 个专职子服务
-  - Bull Queue 智能消息聚合
-  - 去重机制、历史管理、消息发送
+  - 消息管道：去重 → 过滤 → 存储 → 聚合 → Agent → 投递
+  - 消息聚合（1s 窗口 / max 3 条）、拟人化分段发送
   - **更新日期**：2025-11-04
 
-- **[监控系统架构](architecture/monitoring-system-architecture.md)** (新增)
-  - 三层存储架构：内存 → Redis → Supabase
-  - 实时数据流与定时持久化
-  - 前端 Dashboard 调用链路
-  - 数据结构定义与故障恢复
+- **[测试套件架构](architecture/test-suite-architecture.md)**
+  - LLM 评分的对话质量评估框架
+  - 单轮测试 + 多轮对话测试 + 批量执行
+  - 飞书双向同步
+  - **更新日期**：2026-03-12
+
+- **[监控系统架构](architecture/monitoring-system-architecture.md)**
+  - 消息追踪、小时级聚合分析、Dashboard 展示
   - **更新日期**：2025-11-25
 
 - **[告警系统架构](architecture/alert-system-architecture.md)**
-  - Orchestrator 编排模式
-  - 错误告警与业务指标告警
-  - 8 个核心服务组件
-  - 飞书 Webhook 集成
+  - 飞书 Webhook 告警、业务指标告警、节流机制
   - **更新日期**：2025-11-25
+
+- **[安全护栏说明](architecture/security-guardrails.md)**
+  - API Token Guard、输入守卫、Prompt Injection 防护、输出上限
+  - **更新日期**：2026-03-19
 
 ---
 
@@ -83,12 +95,10 @@ docs/
 
 ## 🔧 基础设施 (infrastructure/)
 
-- **[Redis 与 Supabase 资源使用指南](infrastructure/redis-supabase-usage.md)**
-  - Redis (Upstash) 使用场景和 Key 规范
-  - Supabase 表结构和 API 使用量
-  - 成本估算和容量规划
-  - 监控告警和故障排查
-  - **更新日期**：2025-11-25
+- **[飞书告警系统](infrastructure/feishu-alert-system.md)**
+  - 飞书 Webhook 机器人集成
+  - 系统异常告警、话术降级告警、面试预约通知
+  - **更新日期**：2026-03-19
 
 **资源使用概览**：
 
@@ -101,24 +111,19 @@ docs/
 
 ## 📋 产品文档
 
-- **[产品定义](product/product-definition.md)** (205 行)
-  - 产品定位和核心价值
-  - 用户角色和应用场景
-  - 核心功能列表和指标
+- **[产品定义](product/product-definition.md)**
+  - 产品定位：招聘专用 AI Agent 运行时
+  - 用户角色（候选人、招募经理、店长、HR）
+  - 核心功能：私聊咨询、群聊管理、数据报告
   - **更新日期**：2025-11-04
 
-- **[业务流程详细说明](product/business-flows.md)** (497 行)
-  - 候选人招聘全流程（8个阶段）
-  - 私聊对话场景（欢迎语、岗位咨询、面试安排、提醒、跟进）
+- **[业务流程详细说明](product/business-flows.md)**
+  - 候选人招聘全流程（私聊 5 阶段）
   - 群聊管理场景（兼职群、店长群）
-  - 店长报缺流程和数据报告
   - **更新日期**：2025-11-04
 
-- **[产品规划路线图](product/product-roadmap.md)** (148 行)
-  - 版本规划（MVP/V1.0、V1.1、V2.0）
-  - 功能优先级和实施计划
-  - 技术风险与应对策略
-  - 成功标准和业务目标
+- **[产品规划路线图](product/product-roadmap.md)**
+  - 版本规划与功能优先级
   - **更新日期**：2025-11-04
 
 ---
@@ -210,14 +215,6 @@ docs: 更新文档        # 修订号 +1
   - 紧急情况处理方法
   - **更新日期**：2025-11-05
 
-- **[花卷 Agent API 使用指南](guides/huajune-agent-api-guide.md)**
-  - 花卷智能体 API 完整使用指南
-  - 认证与安全、模型选择
-  - System Prompt 配置、工具系统
-  - 上下文管理、消息剪裁
-  - 错误处理、性能优化
-  - **更新日期**：2025-11-04
-
 ---
 
 ## 🗂️ 文档命名规范
@@ -227,9 +224,8 @@ docs: 更新文档        # 修订号 +1
 ### ✅ 正确示例
 
 ```
-agent-service-architecture.md
-huajune-agent-api-guide.md
 message-service-architecture.md
+monitoring-system-architecture.md
 product-definition.md
 business-flows.md
 ```
@@ -290,4 +286,4 @@ productDefinition.md     # camelCase
 
 ---
 
-**维护者**：DuLiDay Team
+**维护者**：DuLiDay Team | **项目**：Cake Agent Runtime

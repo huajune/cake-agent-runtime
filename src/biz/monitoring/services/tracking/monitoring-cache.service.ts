@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { MonitoringGlobalCounters } from '../../types/tracking.types';
+import { MonitoringGlobalCounters } from '@shared-types/tracking.types';
 
 /**
  * 监控缓存服务

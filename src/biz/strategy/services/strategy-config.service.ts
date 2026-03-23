@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { StrategyConfigRepository } from '../repositories/strategy-config.repository';
+import { StrategyChangelogRepository } from '../repositories/strategy-changelog.repository';
 import { StrategyConfigRecord } from '../entities/strategy-config.entity';
 import { StrategyPersona, StrategyStageGoals, StrategyRedLines } from '../types/strategy.types';
-import { buildDefaultStrategyRecord } from '@agent/strategy/strategy-config.types';
+import { buildDefaultStrategyRecord } from '@shared-types/strategy-config.types';
 
 /**
  * 策略配置 Service
@@ -11,6 +12,7 @@ import { buildDefaultStrategyRecord } from '@agent/strategy/strategy-config.type
  * - L1：内存（60s TTL）
  * - L2：Supabase DB（持久化，通过 Repository 访问）
  *
+ * 每次更新自动写入 strategy_config_changelog 变更日志，支持审计与回滚。
  * 首次查询时若库中无记录，自动插入默认种子数据。
  */
 @Injectable()
@@ -23,7 +25,10 @@ export class StrategyConfigService {
   private cachedConfig: StrategyConfigRecord | null = null;
   private cacheExpiry = 0;
 
-  constructor(private readonly strategyConfigRepository: StrategyConfigRepository) {}
+  constructor(
+    private readonly strategyConfigRepository: StrategyConfigRepository,
+    private readonly changelogRepository: StrategyChangelogRepository,
+  ) {}
 
   // ==================== 读取 ====================
 
@@ -53,6 +58,7 @@ export class StrategyConfigService {
     const updated = await this.strategyConfigRepository.updateConfigField(config.id, { persona });
 
     if (updated) {
+      await this.recordChangelog(config.id, 'persona', config.persona, persona);
       this.writeCache(updated);
       this.logger.log('人格配置已更新');
       return updated;
@@ -75,6 +81,7 @@ export class StrategyConfigService {
     });
 
     if (updated) {
+      await this.recordChangelog(config.id, 'stage_goals', config.stage_goals, stageGoals);
       this.writeCache(updated);
       this.logger.log('阶段目标配置已更新');
       return updated;
@@ -97,6 +104,7 @@ export class StrategyConfigService {
     });
 
     if (updated) {
+      await this.recordChangelog(config.id, 'red_lines', config.red_lines, redLines);
       this.writeCache(updated);
       this.logger.log('红线规则已更新');
       return updated;
@@ -104,6 +112,16 @@ export class StrategyConfigService {
 
     this.logger.warn('红线规则更新未匹配到记录，返回当前缓存');
     return config;
+  }
+
+  // ==================== 变更历史 ====================
+
+  /**
+   * 查询配置变更历史
+   */
+  async getChangelog(limit = 20) {
+    const config = await this.getActiveConfig();
+    return this.changelogRepository.findByConfigId(config.id, limit);
   }
 
   // ==================== 缓存管理 ====================
@@ -133,7 +151,7 @@ export class StrategyConfigService {
       }
 
       // 首次运行：seed 默认数据
-      return this.seedDefaults();
+      return await this.seedDefaults();
     } catch (error) {
       this.logger.error('加载策略配置失败，使用降级默认值', error);
       return this.buildFallbackRecord();
@@ -164,6 +182,29 @@ export class StrategyConfigService {
     }
 
     return this.buildFallbackRecord();
+  }
+
+  /**
+   * 写入变更日志到 changelog 表（fire-and-forget，不影响主流程）
+   */
+  private async recordChangelog(
+    configId: string,
+    field: string,
+    oldValue: unknown,
+    newValue: unknown,
+  ): Promise<void> {
+    try {
+      await this.changelogRepository.insertLog({
+        config_id: configId,
+        field,
+        old_value: oldValue,
+        new_value: newValue,
+      });
+      this.logger.log(`[变更日志] ${field} 已记录`);
+    } catch (err) {
+      // 日志写入失败不阻塞主流程
+      this.logger.warn(`[变更日志] ${field} 写入失败`, err);
+    }
   }
 
   /**

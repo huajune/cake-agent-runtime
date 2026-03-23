@@ -12,7 +12,7 @@ Agent 端使用 `userId + sessionId` 作为会话级记忆的组合 key。两者
 - **sessionId**：标识"哪次对话"，同一用户可能同时有多个会话
 - **组合 key**：`userId + sessionId` 唯一确定一个会话记忆空间，不同组合互不干扰
 
-`AgentFacadeService.prepareRequestParams()` 作为最后一道防线，缺少任一字段直接抛出 400 错误。
+`OrchestratorService.run()` 作为最后一道防线，缺少任一字段直接抛出 400 错误。
 
 ### userId/sessionId 各场景来源
 
@@ -60,7 +60,7 @@ Agent 端使用 `userId + sessionId` 作为会话级记忆的组合 key。两者
 | **后端接口** | `/wecom/message` (回调) | `POST /test-suite/chat/ai-stream` | `POST /test-suite/chat` (内部调用) | 内部调用 agentFacade |
 | **流式/非流式** | 非流式 `stream: false` | **流式 `stream: true`** | 非流式 `stream: false` | 非流式 `stream: false` |
 | **Agent 调用** | `agentFacade.chatWithScenario()` | `agentFacade.chatStreamWithScenario()` | `agentFacade.chatWithScenario()` | `agentFacade.chatWithScenario()` |
-| **花卷 API** | `POST /api/v1/chat` | `POST /api/v1/chat` (stream) | `POST /api/v1/chat` | `POST /api/v1/chat` |
+| **Vercel AI SDK** | `generateText / streamText` |`POST /api/v1/chat` (stream) | `POST /api/v1/chat` | `POST /api/v1/chat` |
 | **userId** | `imContactId` (真实微信ID) | `'dashboard-test-user'` (硬编码) | `scenario-test-${batchId}` (自动生成) | `source.participant_name` (飞书数据) |
 | **sessionId** | `chatId` (微信会话ID，复用) | `crypto.randomUUID()` (清空时重置) | `test-${caseId}` (自动生成) | `source.conversation_id` (飞书数据) |
 | **thinking** | 未启用 | **启用** (budgetTokens: 10000) | **启用** (DEFAULT_TEST_THINKING) | **启用** (DEFAULT_TEST_THINKING) |
@@ -97,7 +97,7 @@ Agent 端使用 `userId + sessionId` 作为会话级记忆的组合 key。两者
                       │       → prepareRequestParams()
                       │         → context: { userId: imContactId, sessionId: chatId }
                       │       → agentService.chat() (stream: false)
-                      │         → apiClient.chat() → POST 花卷 /api/v1/chat
+                      │         → orchestrator.run() → Vercel AI SDK generateText
                       ├── deliveryService.deliverReply()
                       │     → MessageSplitter 分段
                       │     → 打字延迟
@@ -123,7 +123,7 @@ Agent 端使用 `userId + sessionId` 作为会话级记忆的组合 key。两者
       │           → context: { userId: 'dashboard-test-user', sessionId: UUID }
       │         → agentService.chatStreamWithProfile()
       │           → agentService.chatStream() (stream: true, thinking: enabled)
-      │             → apiClient.chatStream() → POST 花卷 /api/v1/chat
+      │             → orchestrator.run() → Vercel AI SDK streamText
       ├── stream.on('data') → VercelAIStreamHandler.processChunk()
       │     → 透传 chunk + 提取 tokenUsage
       └── stream.on('end') → sendUsageAndEnd()
@@ -151,7 +151,7 @@ Agent 端使用 `userId + sessionId` 作为会话级记忆的组合 key。两者
                   │     → prepareRequestParams()
                   │       → context: { userId: 'scenario-test-{batchId}', sessionId: 'test-{caseId}' }
                   │     → agentService.chat() (stream: false, thinking: enabled)
-                  │       → apiClient.chat() → POST 花卷 /api/v1/chat
+                  │       → orchestrator.run() → Vercel AI SDK generateText
                   ├── extractResult() (文本/工具/token)
                   └── 更新执行记录 (Supabase)
             → checkBatchCompletion()
@@ -175,7 +175,7 @@ Agent 端使用 `userId + sessionId` 作为会话级记忆的组合 key。两者
           │     → prepareRequestParams()
           │       → context: { userId: '张三', sessionId: 'conv-xxx' }
           │     → agentService.chat() (stream: false, thinking: enabled)
-          │       → apiClient.chat() → POST 花卷 /api/v1/chat
+          │       → orchestrator.run() → Vercel AI SDK generateText
           ├── LLM 评估相似度 (actualOutput vs expectedOutput)
           └── 保存轮次执行记录 (Supabase)
       → 更新对话源统计 (平均/最低相似度)
@@ -205,17 +205,16 @@ Agent 端使用 `userId + sessionId` 作为会话级记忆的组合 key。两者
 
 | 模块 | 路径 |
 |------|------|
-| 生产入口 | `src/wecom/message/message.controller.ts` |
-| 生产管道 | `src/wecom/message/services/message-pipeline.service.ts` |
-| 生产 Agent 网关 | `src/wecom/message/services/message-agent-gateway.service.ts` |
-| 消息聚合 | `src/wecom/message/services/simple-merge.service.ts` |
-| 消息投递 | `src/wecom/message/services/message-delivery.service.ts` |
-| 测试控制器 | `src/test-suite/test-suite.controller.ts` |
-| 测试执行 | `src/test-suite/services/test-execution.service.ts` |
-| 批次处理 | `src/test-suite/test-suite.processor.ts` |
-| 回归验证 | `src/test-suite/services/conversation-test.service.ts` |
-| Agent Facade | `src/agent/services/agent-facade.service.ts` |
-| Agent Service | `src/agent/agent.service.ts` |
-| SSE 流处理 | `src/test-suite/utils/sse-stream-handler.ts` |
-| 前端对话调试 | `dashboard/src/view/agent-test/list/hooks/useChatTest.ts` |
-| 前端测试套件 | `dashboard/src/view/test-suite/list/index.tsx` |
+| 生产入口 | `src/channels/wecom/message/message.controller.ts` |
+| 生产管道 | `src/channels/wecom/message/services/message-pipeline.service.ts` |
+| 生产 Agent 网关 | `src/channels/wecom/message/services/message-agent-gateway.service.ts` |
+| 消息聚合 | `src/channels/wecom/message/services/simple-merge.service.ts` |
+| 消息投递 | `src/channels/wecom/message/services/message-delivery.service.ts` |
+| 测试控制器 | `src/biz/test-suite/test-suite.controller.ts` |
+| 测试执行 | `src/biz/test-suite/services/test-execution.service.ts` |
+| 批次处理 | `src/biz/test-suite/test-suite.processor.ts` |
+| 回归验证 | `src/biz/test-suite/services/conversation-test.service.ts` |
+| Agent 编排 | `src/agent/services/orchestrator.service.ts` |
+| SSE 流处理 | `src/biz/test-suite/utils/sse-stream-handler.ts` |
+| 前端对话调试 | `web/src/view/agent-test/list/hooks/useChatTest.ts` |
+| 前端测试套件 | `web/src/view/test-suite/list/index.tsx` |

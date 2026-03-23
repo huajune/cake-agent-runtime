@@ -107,7 +107,7 @@ export enum FeishuTestStatus {
  * 消息角色
  * 重新导出共享枚举，保持模块接口兼容性
  */
-export { MessageRole } from '@shared/enums';
+export { MessageRole } from '@enums/message.enum';
 
 /**
  * 反馈类型

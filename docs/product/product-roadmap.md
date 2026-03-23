@@ -1,6 +1,6 @@
 # 产品规划路线图
 
-> **项目名称**: DuLiDay WeCom Service - 智能招聘助手
+> **项目名称**: Cake Agent Runtime - 智能招聘助手
 > **最后更新**: 2025-11-04
 
 ---

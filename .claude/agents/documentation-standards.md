@@ -117,7 +117,6 @@ git commit -m "feat: update default model"
 ```
 development-guide.md
 agent-service-architecture.md
-huajuan-agent-api.md
 auto-version-changelog.md
 ```
 
@@ -142,7 +141,7 @@ docs/
 ├── guides/                          # 📚 Usage and development guides
 │   ├── development-guide.md
 │   └── api-integration/            # API integration guides (optional subdirectory)
-│       └── huajuan-agent-api.md
+│       └── agent-api.md
 ├── workflows/                       # 🔄 Workflows and standards
 │   └── auto-version-changelog.md
 └── product/                         # 📦 Product documentation
@@ -264,7 +263,7 @@ Below is the detailed deduplication logic implementation... (100 words explanati
 ```markdown
 ## 2.3 MessageDeduplicationService (Deduplication)
 
-**Location**: [src/wecom/message/services/message-deduplication.service.ts](...)
+**Location**: [src/channels/wecom/message/services/message-deduplication.service.ts](...)
 
 #### Deduplication Strategy
 - **Data Structure**: `Map<messageId, timestamp>`

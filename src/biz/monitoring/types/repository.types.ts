@@ -50,4 +50,4 @@ export interface HourlyStatsRecord {
 /**
  * 错误日志应用层格式（与 MonitoringErrorLog 相同，type alias 统一为一个定义）
  */
-export type { MonitoringErrorLog as ErrorLogRecord } from './tracking.types';
+export type { MonitoringErrorLog as ErrorLogRecord } from '@shared-types/tracking.types';

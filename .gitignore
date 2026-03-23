@@ -3,9 +3,10 @@
 /node_modules
 /build
 
-# Dashboard
-/dashboard/node_modules
-/dashboard/dist
+# Web frontend
+/web/node_modules
+/web/dist
+/public/web
 /public/dashboard
 
 # Lock files (using pnpm)

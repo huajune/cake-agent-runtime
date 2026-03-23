@@ -6,15 +6,6 @@
 
 本文档说明**企业微信消息的处理流程和架构设计**。
 
-配合阅读：
-- [Agent 服务架构](agent-service-architecture.md) - 了解 Agent 服务的封装实现
-- [花卷 Agent API 使用指南](huajune-agent-api-guide.md) - 了解花卷 API 的使用方法
-
-**阅读顺序建议**:
-1. 先读花卷 Agent API 使用指南 - 理解花卷 API
-2. 再读 Agent 服务架构 - 了解 Agent 服务封装
-3. 最后读本文档 - 理解完整的消息处理流程
-
 ---
 
 ## 目录
@@ -42,7 +33,7 @@
 ### 1.2 文件结构
 
 ```
-src/wecom/message/
+src/channels/wecom/message/
 ├── message.service.ts                   # 核心协调服务（643行）
 ├── message.processor.ts                 # Bull 队列处理器
 ├── services/
@@ -60,7 +51,7 @@ src/wecom/message/
 
 ### 2.1 MessageService (协调器)
 
-**位置**: [src/wecom/message/message.service.ts](../src/wecom/message/message.service.ts)
+**位置**: [src/channels/wecom/message/message.service.ts](../src/channels/wecom/message/message.service.ts)
 **角色**: 核心协调者
 
 #### 核心职责
@@ -78,7 +69,7 @@ private async processMessages(messages: EnterpriseMessageCallbackDto[], chatId: 
 
 ### 2.2 MessageFilterService (过滤验证)
 
-**位置**: [src/wecom/message/services/message-filter.service.ts](../src/wecom/message/services/message-filter.service.ts)
+**位置**: [src/channels/wecom/message/services/message-filter.service.ts](../src/channels/wecom/message/services/message-filter.service.ts)
 
 #### 5级过滤规则
 
@@ -94,7 +85,7 @@ private async processMessages(messages: EnterpriseMessageCallbackDto[], chatId: 
 
 ### 2.3 MessageDeduplicationService (去重)
 
-**位置**: [src/wecom/message/services/message-deduplication.service.ts](../src/wecom/message/services/message-deduplication.service.ts)
+**位置**: [src/channels/wecom/message/services/message-deduplication.service.ts](../src/channels/wecom/message/services/message-deduplication.service.ts)
 
 #### 去重策略
 - **数据结构**: `Map<messageId, timestamp>`
@@ -117,7 +108,7 @@ isDuplicate(messageId: string): boolean {
 
 ### 2.4 MessageHistoryService (历史管理)
 
-**位置**: [src/wecom/message/services/message-history.service.ts](../src/wecom/message/services/message-history.service.ts)
+**位置**: [src/channels/wecom/message/services/message-history.service.ts](../src/channels/wecom/message/services/message-history.service.ts)
 
 #### 核心职责
 1. **历史存储** - 按 chatId 分组存储消息历史
@@ -149,7 +140,7 @@ getHistory(chatId: string): Message[]
 
 ### 2.5 MessageMergeService (智能聚合) ★★★
 
-**位置**: [src/wecom/message/services/message-merge.service.ts](../src/wecom/message/services/message-merge.service.ts)
+**位置**: [src/channels/wecom/message/services/message-merge.service.ts](../src/channels/wecom/message/services/message-merge.service.ts)
 **重要性**: ⭐⭐⭐⭐⭐ (最核心)
 
 #### 核心职责

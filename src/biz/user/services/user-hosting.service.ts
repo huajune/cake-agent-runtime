@@ -148,6 +148,31 @@ export class UserHostingService {
     }
   }
 
+  // ==================== 活跃记录写入 ====================
+
+  /**
+   * 更新用户活跃记录（供监控追踪服务使用）
+   */
+  async upsertActivity(data: {
+    chatId: string;
+    odId?: string;
+    odName?: string;
+    groupId?: string;
+    groupName?: string;
+    messageCount?: number;
+    totalTokens?: number;
+    activeAt?: Date;
+  }): Promise<void> {
+    return this.repository.upsertUserActivity(data);
+  }
+
+  /**
+   * 清理过期的用户活跃记录（供数据清理服务使用）
+   */
+  async cleanupActivity(retentionDays: number): Promise<number> {
+    return this.repository.cleanupUserActivity(retentionDays);
+  }
+
   // ==================== 缓存管理 ====================
 
   /**

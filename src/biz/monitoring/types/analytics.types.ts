@@ -8,7 +8,7 @@ import {
   MessageProcessingRecord,
   MonitoringErrorLog,
   MonitoringGlobalCounters,
-} from './tracking.types';
+} from '@shared-types/tracking.types';
 
 // ========================================
 // 基础类型

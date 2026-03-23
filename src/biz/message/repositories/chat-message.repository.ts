@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { BaseRepository } from '@core/supabase';
-import { SupabaseService } from '@core/supabase';
+import { BaseRepository } from '@infra/supabase/base.repository';
+import { SupabaseService } from '@infra/supabase/supabase.service';
 import {
   toStorageMessageType,
   toStorageMessageSource,
   toStorageContactType,
-} from '@wecom/message/enums';
+} from '@enums/storage-message.enum';
 import { ChatMessageRecord } from '../entities/chat-message.entity';
 import { ChatMessageInput, ChatSessionSummary } from '../types/message.types';
 

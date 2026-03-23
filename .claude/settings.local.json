@@ -445,7 +445,10 @@
       "Bash(supabase migration:*)",
       "Bash(pnpm exec:*)",
       "mcp__context7__resolve-library-id",
-      "mcp__context7__query-docs"
+      "mcp__context7__query-docs",
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "WebFetch(domain:dev.to)"
     ],
     "deny": [
       "Bash(git restore:*)",
