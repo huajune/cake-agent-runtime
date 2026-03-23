@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Body, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { Public } from '@infra/server/response/decorators/api-response.decorator';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
-import { LoopService } from './loop.service';
+import { AgentRunnerService } from './runner.service';
 import { ContextService } from './context/context.service';
 import { RouterService } from '@providers/router.service';
 import { RegistryService } from '@providers/registry.service';
@@ -11,7 +11,7 @@ export class AgentController {
   private readonly logger = new Logger(AgentController.name);
 
   constructor(
-    private readonly loop: LoopService,
+    private readonly runner: AgentRunnerService,
     private readonly context: ContextService,
     private readonly feishuAlertService: FeishuAlertService,
     private readonly router: RouterService,
@@ -65,7 +65,7 @@ export class AgentController {
     const scenario = body.scenario || 'candidate-consultation';
 
     try {
-      const result = await this.loop.invoke({
+      const result = await this.runner.invoke({
         messages: [{ role: 'user', content: body.message }],
         userId: body.userId || 'debug-user',
         corpId: 'debug',

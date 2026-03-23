@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ParsedMessage, ConversationTurn, ConversationParseResult } from './evaluation.types';
-import type { AgentRunResult } from '@agent/loop.service';
+import type { AgentRunResult } from '@agent/runner.service';
 
 /**
  * 对话解析正则表达式

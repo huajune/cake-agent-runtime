@@ -93,16 +93,16 @@ Winston Logger 配置，日志不记录 API Key、Token 等敏感值；飞书告
 
 **maxOutputTokens 上限**
 
-位置：`src/agent/loop.service.ts`、`src/agent/completion.service.ts`
+位置：`src/agent/runner.service.ts`、`src/agent/completion.service.ts`
 
 `generateText` / `streamText` 调用时统一传入 `maxOutputTokens`，防止 LLM 返回超长内容导致成本失控。
 
-- `LoopService`：从 `AGENT_MAX_OUTPUT_TOKENS` 读取，默认 4096
+- `AgentRunnerService`：从 `AGENT_MAX_OUTPUT_TOKENS` 读取，默认 4096
 - `CompletionService`：同上，调用方可通过参数覆盖单次上限
 
 **输入长度守卫**
 
-位置：`src/agent/loop.service.ts` → `trimMessages()`
+位置：`src/agent/runner.service.ts` → `trimMessages()`
 
 消息列表总字符数超过 `AGENT_MAX_INPUT_CHARS`（默认 8000）时，从最早的消息开始丢弃，保留最新的消息，直到总长度满足约束。
 
@@ -171,10 +171,10 @@ for (let i = messages.length - 1; i >= 0; i--) {
   │
   ├─[Controller 层] ValidationPipe — DTO 字段校验
   │
-  ├─[LoopService.prepare()] trimMessages()
+  ├─[AgentRunnerService.prepare()] trimMessages()
   │    └─ 总字符数 > AGENT_MAX_INPUT_CHARS → 丢弃最早消息
   │
-  ├─[LoopService.prepare()] InputGuardService.detectMessages()
+  ├─[AgentRunnerService.prepare()] InputGuardService.detectMessages()
   │    └─ 检测注入模式 → 追加 GUARD_SUFFIX 到 systemPrompt + 异步告警
   │
   ├─[generateText / streamText] maxOutputTokens 参数
@@ -228,7 +228,7 @@ curl -X POST http://localhost:8080/agent/debug-chat \
 - `src/infra/server/guards/api-token.guard.ts` — API Token Guard 实现
 - `src/infra/server/response/decorators/api-response.decorator.ts` — `@Public()` 装饰器
 - `src/agent/input-guard.service.ts` — Prompt Injection 检测
-- `src/agent/loop.service.ts` — 输入长度守卫 + 注入检测集成
+- `src/agent/runner.service.ts` — 输入长度守卫 + 注入检测集成
 - `src/agent/completion.service.ts` — maxOutputTokens 默认值
 - `src/providers/reliable.service.ts` — 重试 + 降级 + 错误分类
 - `src/providers/router.service.ts` — 角色路由 + fallback 链

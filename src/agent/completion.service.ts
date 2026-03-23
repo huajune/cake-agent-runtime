@@ -6,7 +6,7 @@
  * - 评估系统
  * - 分类判断
  *
- * 复杂场景（私聊咨询、群内咨询）请使用 LoopService。
+ * 复杂场景（私聊咨询、群内咨询）请使用 AgentRunnerService。
  */
 
 import { Injectable, Logger } from '@nestjs/common';

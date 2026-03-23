@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { LoopService } from '@agent/loop.service';
+import { AgentRunnerService } from '@agent/runner.service';
 import { ContextService } from '@agent/context/context.service';
 import { SignalDetectorService } from '@agent/signal-detector.service';
 import { FactExtractionService } from '@agent/fact-extraction.service';
@@ -23,12 +23,12 @@ jest.mock('ai', () => ({
 }));
 
 /**
- * LoopService.invoke() 测试
+ * AgentRunnerService.invoke() 测试
  *
  * 测试 invoke() 的完整流水线：stage → compose → classify → 记忆 → generateText
  */
-describe('LoopService - invoke', () => {
-  let service: LoopService;
+describe('AgentRunnerService - invoke', () => {
+  let service: AgentRunnerService;
 
   const mockContext = {
     compose: jest.fn().mockResolvedValue({
@@ -97,7 +97,7 @@ describe('LoopService - invoke', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        LoopService,
+        AgentRunnerService,
         { provide: ConfigService, useValue: mockConfigService },
         { provide: ContextService, useValue: mockContext },
         { provide: SignalDetectorService, useValue: mockClassifier },
@@ -111,7 +111,7 @@ describe('LoopService - invoke', () => {
       ],
     }).compile();
 
-    service = module.get<LoopService>(LoopService);
+    service = module.get<AgentRunnerService>(AgentRunnerService);
     jest.clearAllMocks();
 
     mockContext.compose.mockResolvedValue({ systemPrompt: 'test system prompt' });

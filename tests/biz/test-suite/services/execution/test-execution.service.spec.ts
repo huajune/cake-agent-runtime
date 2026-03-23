@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { TestExecutionService } from '@evaluation/services/execution/test-execution.service';
 import { TestExecutionRepository } from '@evaluation/repositories/test-execution.repository';
-import { LoopService } from '@agent/loop.service';
+import { AgentRunnerService } from '@agent/runner.service';
 import { ContextService } from '@agent/context/context.service';
 import { ExecutionStatus } from '@evaluation/enums/test.enum';
 import { TestChatRequestDto } from '@evaluation/dto/test-chat.dto';
@@ -10,7 +10,7 @@ import { MessageRole } from '@enums/message.enum';
 
 describe('TestExecutionService', () => {
   let service: TestExecutionService;
-  let loop: jest.Mocked<LoopService>;
+  let loop: jest.Mocked<AgentRunnerService>;
   let executionRepository: jest.Mocked<TestExecutionRepository>;
 
   const mockConfigService = {
@@ -47,14 +47,14 @@ describe('TestExecutionService', () => {
       providers: [
         TestExecutionService,
         { provide: ConfigService, useValue: mockConfigService },
-        { provide: LoopService, useValue: mockLoop },
+        { provide: AgentRunnerService, useValue: mockLoop },
         { provide: ContextService, useValue: mockContext },
         { provide: TestExecutionRepository, useValue: mockExecutionRepository },
       ],
     }).compile();
 
     service = module.get<TestExecutionService>(TestExecutionService);
-    loop = module.get(LoopService);
+    loop = module.get(AgentRunnerService);
     executionRepository = module.get(TestExecutionRepository);
 
     jest.clearAllMocks();

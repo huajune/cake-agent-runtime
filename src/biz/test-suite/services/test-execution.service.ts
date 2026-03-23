@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { streamText } from 'ai';
 import { Readable } from 'stream';
-import { LoopService, type AgentRunResult } from '@agent/loop.service';
+import { AgentRunnerService, type AgentRunResult } from '@agent/runner.service';
 import { TestChatRequestDto, TestChatResponse, VercelAIChatRequestDto } from '../dto/test-chat.dto';
 import { TestExecutionRepository } from '../repositories/test-execution.repository';
 import { TestExecution } from '../entities/test-execution.entity';
@@ -47,7 +47,7 @@ export class TestExecutionService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly loop: LoopService,
+    private readonly runner: AgentRunnerService,
     private readonly executionRepository: TestExecutionRepository,
   ) {
     this.logger.log('TestExecutionService 初始化完成');
@@ -81,7 +81,7 @@ export class TestExecutionService {
         { role: 'user' as const, content: request.message },
       ];
 
-      agentResult = await this.loop.invoke({
+      agentResult = await this.runner.invoke({
         messages,
         userId: request.userId,
         corpId: 'test',
@@ -183,7 +183,7 @@ export class TestExecutionService {
       { role: 'user' as const, content: request.message },
     ];
 
-    return this.loop.stream({
+    return this.runner.stream({
       messages,
       userId: request.userId,
       corpId: 'test',

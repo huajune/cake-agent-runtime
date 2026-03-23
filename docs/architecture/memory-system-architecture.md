@@ -635,7 +635,7 @@ await this.memory.store(corpId, userId, sessionId, {
 
 | 变更项 | 现状 | 目标 |
 |-------|------|------|
-| 短期记忆窗口裁剪 | 分散在 MessageHistoryService + LoopService.trimMessages() | 收编到 `short-term.service.ts` |
+| 短期记忆窗口裁剪 | 分散在 MessageHistoryService + AgentRunnerService.trimMessages() | 收编到 `short-term.service.ts` |
 | FACTS 中的身份字段 | 混在 Session Facts 中，Redis SESSION_TTL 后丢失 | 拆分到 Profile（Supabase 永久） |
 | 对话摘要 | 不存在 | 新增 Summary（沉淀服务生成） |
 | memory_recall 工具 | 存在，与编排层重复 | 删除 |
@@ -650,7 +650,7 @@ await this.memory.store(corpId, userId, sessionId, {
 ## 相关文件
 
 - `src/memory/` — 记忆管理模块
-- `src/agent/loop.service.ts` — Agent 编排层（记忆读写调用方）
+- `src/agent/runner.service.ts` — Agent 编排层（记忆读写调用方）
 - `src/agent/fact-extraction.service.ts` — 事实提取服务
 - `src/tools/advance-stage.tool.ts` — 阶段推进工具
 - `src/tools/memory-recall.tool.ts` — 待删除

@@ -8,7 +8,7 @@ import { BookingDetectionService } from '@wecom/message/services/booking-detecti
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
-import { LoopService } from '@agent/loop.service';
+import { AgentRunnerService } from '@agent/runner.service';
 import { EnterpriseMessageCallbackDto } from '@wecom/message/message-callback.dto';
 import { DeliveryFailureError } from '@wecom/message/message.types';
 import { MessageType, ContactType, MessageSource } from '@enums/message-callback.enum';
@@ -39,7 +39,7 @@ describe('MessagePipelineService', () => {
     handleBookingSuccessAsync: jest.fn(),
   };
 
-  const mockLoopService = {
+  const mockRunnerService = {
     invoke: jest.fn(),
   };
 
@@ -88,7 +88,7 @@ describe('MessagePipelineService', () => {
         { provide: MessageFilterService, useValue: mockFilterService },
         { provide: MessageDeliveryService, useValue: mockDeliveryService },
         { provide: BookingDetectionService, useValue: mockBookingDetectionService },
-        { provide: LoopService, useValue: mockLoopService },
+        { provide: AgentRunnerService, useValue: mockRunnerService },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: MessageTrackingService, useValue: mockMonitoringService },
         { provide: FeishuAlertService, useValue: mockFeishuAlertService },
@@ -113,7 +113,7 @@ describe('MessagePipelineService', () => {
       totalTime: 10,
     });
     mockBookingDetectionService.handleBookingSuccessAsync.mockResolvedValue(undefined);
-    mockLoopService.invoke.mockResolvedValue({
+    mockRunnerService.invoke.mockResolvedValue({
       text: 'Reply from agent',
       steps: 1,
       usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
@@ -171,7 +171,7 @@ describe('MessagePipelineService', () => {
     it('should invoke agent with tenant and user context, then mark success', async () => {
       await service.processSingleMessage(validMessageData);
 
-      expect(mockLoopService.invoke).toHaveBeenCalledWith(
+      expect(mockRunnerService.invoke).toHaveBeenCalledWith(
         expect.objectContaining({
           userMessage: 'Hello!',
           userId: 'contact-123',
@@ -201,7 +201,7 @@ describe('MessagePipelineService', () => {
         },
       });
 
-      expect(mockLoopService.invoke).toHaveBeenCalledWith(
+      expect(mockRunnerService.invoke).toHaveBeenCalledWith(
         expect.objectContaining({
           userMessage: '[位置分享] 东方明珠（浦东新区世纪大道1号）',
         }),

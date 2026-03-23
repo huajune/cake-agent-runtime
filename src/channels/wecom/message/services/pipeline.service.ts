@@ -6,7 +6,7 @@ import { AlertLevel } from '@infra/feishu/interfaces/interface';
 import { ALERT_RECEIVERS } from '@infra/feishu/constants/constants';
 import { maskApiKey } from '@infra/utils/string.util';
 import { ScenarioType } from '@enums/agent.enum';
-import { LoopService } from '@agent/loop.service';
+import { AgentRunnerService } from '@agent/runner.service';
 
 // 导入子服务
 import { MessageDeduplicationService } from './deduplication.service';
@@ -64,7 +64,7 @@ export class MessagePipelineService {
     private readonly deliveryService: MessageDeliveryService,
     private readonly bookingDetection: BookingDetectionService,
     // Agent 编排
-    private readonly loop: LoopService,
+    private readonly runner: AgentRunnerService,
     private readonly configService: ConfigService,
     // 监控和告警
     private readonly monitoringService: MessageTrackingService,
@@ -715,7 +715,7 @@ export class MessagePipelineService {
         shouldRecordAiEnd = true;
       }
 
-      const result = await this.loop.invoke({
+      const result = await this.runner.invoke({
         userMessage,
         userId,
         corpId,

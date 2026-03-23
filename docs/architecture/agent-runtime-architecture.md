@@ -50,7 +50,7 @@ DuLiDay Agent 运行时是一个**自主 AI Agent 编排引擎**，基于 Vercel
                                      ↓
                 ┌────────────────────────────────────────┐
                 │         Agent 编排层                     │
-                │  LoopService + ContextService            │
+                │  AgentRunnerService + ContextService            │
                 │  CompletionService (一次性调用)           │
                 └──┬──────────┬──────────┬───────────────┘
                    ↓          ↓          ↓
@@ -69,15 +69,15 @@ DuLiDay Agent 运行时是一个**自主 AI Agent 编排引擎**，基于 Vercel
 
 - `infra/` 禁止依赖 `biz/`、`channels/`、`agent/`
 - `agent/` 不依赖 `channels/`，通过参数接收上下文
-- `channels/` 通过 `LoopService` 接口调用 Agent
+- `channels/` 通过 `AgentRunnerService` 接口调用 Agent
 
 ---
 
 ## 3. Agent Loop — 编排引擎
 
-**入口**：[loop.service.ts](src/agent/loop.service.ts)
+**入口**：[runner.service.ts](src/agent/runner.service.ts)
 
-LoopService 是整个运行时的核心，`invoke()` 和 `stream()` 共享完整的 `prepare()` 编排流程。
+AgentRunnerService 是整个运行时的核心，`invoke()` 和 `stream()` 共享完整的 `prepare()` 编排流程。
 
 ### 3.1 执行流程
 
@@ -432,7 +432,7 @@ interface ToolBuildContext {
   │   └─ 直发路径：立即处理
   │
   ├─ processMessageCore()  ─ AI 处理
-  │   ├─ 1. LoopService.invoke()  → Agent 编排
+  │   ├─ 1. AgentRunnerService.invoke()  → Agent 编排
   │   ├─ 2. 检测降级响应 → 飞书告警
   │   ├─ 3. 预约检测（异步，不阻塞）
   │   ├─ 4. 发送回复 → DeliveryService
@@ -532,7 +532,7 @@ AppModule
 │   └── ToolRegistryService  — 工具注册 + 场景构建
 │
 ├── AgentModule
-│   ├── LoopService          — 编排引擎
+│   ├── AgentRunnerService          — 编排引擎
 │   ├── CompletionService    — 一次性调用
 │   ├── ContextService       — Prompt 组装
 │   ├── FactExtractionService — 事实提取
@@ -579,7 +579,7 @@ AppModule
    │
 4. processMessageCore()
    │
-5. LoopService.invoke()
+5. AgentRunnerService.invoke()
    │
    ├─ 5a. Settlement 检测（fire-and-forget）
    │
@@ -653,7 +653,7 @@ AppModule
 ### 12.5 新增渠道
 
 1. 在 `src/channels/` 下新建渠道模块
-2. 实现消息接收 → 调用 `LoopService.invoke()` → 消息发送
+2. 实现消息接收 → 调用 `AgentRunnerService.invoke()` → 消息发送
 3. Agent 层完全复用，无需改动
 
 ---
@@ -701,7 +701,7 @@ AppModule
 
 | 模块 | 入口文件 |
 |------|---------|
-| Agent Loop | `src/agent/loop.service.ts` |
+| Agent Loop | `src/agent/runner.service.ts` |
 | Context | `src/agent/context/context.service.ts` |
 | Providers | `src/providers/router.service.ts` |
 | Memory | `src/memory/memory.service.ts` |

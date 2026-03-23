@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConversationParserService } from '@evaluation/conversation-parser.service';
-import type { AgentRunResult } from '@agent/loop.service';
+import type { AgentRunResult } from '@agent/runner.service';
 
 describe('ConversationParserService', () => {
   let service: ConversationParserService;

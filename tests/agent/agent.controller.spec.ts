@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HttpException } from '@nestjs/common';
 import { AgentController } from '@agent/agent.controller';
-import { LoopService } from '@agent/loop.service';
+import { AgentRunnerService } from '@agent/runner.service';
 import { ContextService } from '@agent/context/context.service';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { RouterService } from '@providers/router.service';
@@ -55,7 +55,7 @@ describe('AgentController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AgentController],
       providers: [
-        { provide: LoopService, useValue: mockLoop },
+        { provide: AgentRunnerService, useValue: mockLoop },
         { provide: ContextService, useValue: mockContext },
         { provide: FeishuAlertService, useValue: mockFeishuAlertService },
         { provide: RouterService, useValue: mockRouter },
@@ -96,7 +96,7 @@ describe('AgentController', () => {
   });
 
   describe('debugChat', () => {
-    it('should call LoopService.invoke with correct parameters', async () => {
+    it('should call AgentRunnerService.invoke with correct parameters', async () => {
       mockLoop.invoke.mockResolvedValue({
         text: '你好！',
         steps: 1,
@@ -142,7 +142,7 @@ describe('AgentController', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should throw HttpException when LoopService fails', async () => {
+    it('should throw HttpException when AgentRunnerService fails', async () => {
       mockLoop.invoke.mockRejectedValue(new Error('Agent failed'));
       mockFeishuAlertService.sendAlert.mockResolvedValue(true);
 

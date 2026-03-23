@@ -1,5 +1,5 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import { LoopService, type AgentRunResult } from '@agent/loop.service';
+import { AgentRunnerService, type AgentRunResult } from '@agent/runner.service';
 import { LlmEvaluationService } from '@evaluation/llm-evaluation.service';
 import { ConversationParserService } from '@evaluation/conversation-parser.service';
 import { ConversationSnapshotRepository } from '../repositories/conversation-snapshot.repository';
@@ -40,7 +40,7 @@ export class ConversationTestService {
   private readonly logger = new Logger(ConversationTestService.name);
 
   constructor(
-    private readonly loop: LoopService,
+    private readonly runner: AgentRunnerService,
     private readonly llmEvaluationService: LlmEvaluationService,
     private readonly parserService: ConversationParserService,
     private readonly conversationSnapshotRepository: ConversationSnapshotRepository,
@@ -340,7 +340,7 @@ export class ConversationTestService {
     }
 
     try {
-      loopResult = await this.loop.invoke({
+      loopResult = await this.runner.invoke({
         messages: [
           ...turn.history.map((m) => ({
             role: m.role as 'user' | 'assistant',

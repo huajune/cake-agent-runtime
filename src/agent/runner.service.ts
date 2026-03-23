@@ -1,5 +1,5 @@
 /**
- * Agent Loop 服务
+ * Agent Runner 服务
  *
  * invoke() / stream() 共享完整编排流程：
  * 1. 一次性读取所有记忆（recallAll）
@@ -73,8 +73,8 @@ interface PreparedContext {
 }
 
 @Injectable()
-export class LoopService {
-  private readonly logger = new Logger(LoopService.name);
+export class AgentRunnerService {
+  private readonly logger = new Logger(AgentRunnerService.name);
 
   /** thinking token 预算，>0 时启用 extended thinking */
   private readonly thinkingBudgetTokens: number;
