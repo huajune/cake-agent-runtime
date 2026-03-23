@@ -2,7 +2,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { AgentRunnerService } from '@agent/runner.service';
 import { ContextService } from '@agent/context/context.service';
-import { SignalDetectorService } from '@agent/signal-detector.service';
 import { FactExtractionService } from '@agent/fact-extraction.service';
 import { InputGuardService } from '@agent/input-guard.service';
 import { RouterService } from '@providers/router.service';
@@ -34,11 +33,6 @@ describe('AgentRunnerService - invoke', () => {
     compose: jest.fn().mockResolvedValue({
       systemPrompt: 'test system prompt',
     }),
-  };
-
-  const mockClassifier = {
-    detect: jest.fn().mockReturnValue({ needs: ['none'], riskFlags: [] }),
-    formatDetectionBlock: jest.fn().mockReturnValue(''),
   };
 
   const mockSessionFacts = {
@@ -100,7 +94,6 @@ describe('AgentRunnerService - invoke', () => {
         AgentRunnerService,
         { provide: ConfigService, useValue: mockConfigService },
         { provide: ContextService, useValue: mockContext },
-        { provide: SignalDetectorService, useValue: mockClassifier },
         { provide: MemoryService, useValue: mockMemoryService },
         { provide: MemoryConfig, useValue: mockMemoryConfig },
         { provide: SettlementService, useValue: { checkAndSettle: jest.fn().mockResolvedValue(false) } },
@@ -115,8 +108,6 @@ describe('AgentRunnerService - invoke', () => {
     jest.clearAllMocks();
 
     mockContext.compose.mockResolvedValue({ systemPrompt: 'test system prompt' });
-    mockClassifier.detect.mockReturnValue({ needs: ['none'], riskFlags: [] });
-    mockClassifier.formatDetectionBlock.mockReturnValue('');
     mockMemoryService.recallAll.mockResolvedValue({
       shortTerm: [],
       longTerm: { profile: null },
@@ -150,7 +141,6 @@ describe('AgentRunnerService - invoke', () => {
     expect(mockContext.compose).toHaveBeenCalledWith(
       expect.objectContaining({ scenario: 'candidate-consultation', currentStage: undefined }),
     );
-    expect(mockClassifier.detect).toHaveBeenCalledWith(invokeParams.messages);
   });
 
   it('should pass persisted stage to compose', async () => {
@@ -181,27 +171,6 @@ describe('AgentRunnerService - invoke', () => {
     expect(mockContext.compose).toHaveBeenCalledWith(
       expect.objectContaining({ currentStage: undefined }),
     );
-  });
-
-  it('should append detection block to prompt when classifier returns results', async () => {
-    mockClassifier.formatDetectionBlock.mockReturnValue('[检测到的需求]: salary');
-
-    await service.invoke(invokeParams);
-
-    const { generateText } = require('ai');
-    const callArgs = generateText.mock.calls[0][0];
-    expect(callArgs.system).toContain('test system prompt');
-    expect(callArgs.system).toContain('[检测到的需求]: salary');
-  });
-
-  it('should not append detection block when empty', async () => {
-    mockClassifier.formatDetectionBlock.mockReturnValue('');
-
-    await service.invoke(invokeParams);
-
-    const { generateText } = require('ai');
-    const callArgs = generateText.mock.calls[0][0];
-    expect(callArgs.system).not.toContain('[检测到的需求]');
   });
 
   it('should use default scenario when none provided', async () => {
