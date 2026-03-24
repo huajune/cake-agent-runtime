@@ -38,18 +38,16 @@ export interface TextPayload {
 
 /**
  * 图片消息 Payload (messageType=6)
+ * 参考文档: https://s.apifox.cn/34adc635-40ac-4161-8abb-8cd1eea9f445/315430967e0
+ *
+ * 注意：企业级回调使用 imageUrl，小组级回调使用 url
  */
 export interface ImagePayload {
-  imageUrl: string; // 压缩图片URL
-  width: number; // 缩略图宽度
-  height: number; // 缩略图高度
-  size?: number; // 文件大小（字节）
-  artwork?: {
-    // 原图数据
-    url: string; // 原图URL
-    width: number; // 原图宽度
-    height: number; // 原图高度
-  };
+  url?: string; // 图片地址（小组级回调）
+  imageUrl?: string; // 图片地址（企业级回调）
+  size?: number; // 图片大小（字节）
+  width?: number; // 图片宽度
+  height?: number; // 图片高度
 }
 
 /**
@@ -63,12 +61,17 @@ export interface FilePayload {
 
 /**
  * 语音消息 Payload (messageType=2)
+ * 参考文档: https://s.apifox.cn/34adc635-40ac-4161-8abb-8cd1eea9f445/315430967e0
+ *
+ * 注意：企业级回调使用 voiceUrl，小组级回调使用 url
  */
 export interface VoicePayload {
-  voiceUrl: string; // 语音URL
-  duration: number; // 时长（秒）
-  text?: string; // 语音转文字结果
-  md5?: string; // 文件MD5
+  url?: string; // 语音地址（小组级回调）
+  voiceUrl?: string; // 语音地址（企业级回调）
+  wxVoiceUrl?: string; // 微信原始语音地址（silk 格式）
+  duration?: number; // 时长（秒）
+  text?: string; // STT 语音转文字结果
+  md5?: string; // 文件 MD5
 }
 
 /**
@@ -95,14 +98,25 @@ export interface LocationPayload {
 }
 
 /**
+ * 表情消息 Payload (messageType=5)
+ * 参考文档: https://s.apifox.cn/34adc635-40ac-4161-8abb-8cd1eea9f445/315430967e0
+ */
+export interface EmotionPayload {
+  imageUrl: string; // 表情图片地址
+}
+
+/**
  * 小程序消息 Payload (messageType=9)
+ * 参考文档: https://s.apifox.cn/34adc635-40ac-4161-8abb-8cd1eea9f445/315430967e0
  */
 export interface MiniProgramPayload {
-  appid: string; // 小程序appid
+  appId: string; // 小程序appid
+  username: string; // 小程序用户名
   title: string; // 标题
+  thumbUrl: string; // 缩略图URL
   pagePath?: string; // 页面路径
   description?: string; // 描述
-  thumbnailUrl?: string; // 缩略图URL
+  iconUrl?: string; // 图标URL
 }
 
 /**
@@ -210,12 +224,13 @@ export class EnterpriseMessageCallbackDto {
     | FilePayload
     | VoicePayload
     | ContactCardPayload
+    | EmotionPayload
     | LocationPayload
     | MiniProgramPayload
     | VideoPayload
     | LinkPayload
     | WecomSystemPayload
-    | any; // 消息内容（根据messageType变化）
+    | Record<string, unknown>; // 消息内容（根据messageType变化）
 
   // 群聊相关字段（仅群聊消息返回）
   imRoomId?: string; // 群聊的系统 room ID
@@ -249,50 +264,91 @@ export interface EnterpriseMessageCallbackResponse {
 /**
  * 判断 payload 是否为文本消息
  */
-export function isTextPayload(type: MessageType, payload: any): payload is TextPayload {
-  return type === MessageType.TEXT && payload && typeof payload.text === 'string';
+export function isTextPayload(type: MessageType, payload: unknown): payload is TextPayload {
+  return (
+    type === MessageType.TEXT && !!payload && typeof (payload as TextPayload).text === 'string'
+  );
 }
 
 /**
  * 判断 payload 是否为图片消息
  */
-export function isImagePayload(type: MessageType, payload: any): payload is ImagePayload {
-  return type === MessageType.IMAGE && payload && typeof payload.imageUrl === 'string';
+export function isImagePayload(type: MessageType, payload: unknown): payload is ImagePayload {
+  if (type !== MessageType.IMAGE || !payload) return false;
+  const p = payload as Record<string, unknown>;
+  return typeof p.url === 'string' || typeof p.imageUrl === 'string';
 }
 
 /**
  * 判断 payload 是否为文件消息
  */
-export function isFilePayload(type: MessageType, payload: any): payload is FilePayload {
-  return type === MessageType.FILE && payload && typeof payload.fileUrl === 'string';
+export function isFilePayload(type: MessageType, payload: unknown): payload is FilePayload {
+  return (
+    type === MessageType.FILE && !!payload && typeof (payload as FilePayload).fileUrl === 'string'
+  );
 }
 
 /**
  * 判断 payload 是否为语音消息
  */
-export function isVoicePayload(type: MessageType, payload: any): payload is VoicePayload {
-  return type === MessageType.VOICE && payload && typeof payload.voiceUrl === 'string';
+export function isVoicePayload(type: MessageType, payload: unknown): payload is VoicePayload {
+  if (type !== MessageType.VOICE || !payload) return false;
+  const p = payload as Record<string, unknown>;
+  return typeof p.url === 'string' || typeof p.voiceUrl === 'string';
+}
+
+/**
+ * 判断 payload 是否为表情消息
+ */
+export function isEmotionPayload(type: MessageType, payload: unknown): payload is EmotionPayload {
+  return (
+    type === MessageType.EMOTION &&
+    !!payload &&
+    typeof (payload as EmotionPayload).imageUrl === 'string'
+  );
+}
+
+/**
+ * 判断 payload 是否为小程序消息
+ */
+export function isMiniProgramPayload(
+  type: MessageType,
+  payload: unknown,
+): payload is MiniProgramPayload {
+  return (
+    type === MessageType.MINI_PROGRAM &&
+    !!payload &&
+    typeof (payload as MiniProgramPayload).title === 'string'
+  );
 }
 
 /**
  * 判断 payload 是否为视频消息
  */
-export function isVideoPayload(type: MessageType, payload: any): payload is VideoPayload {
-  return type === MessageType.VIDEO && payload && typeof payload.videoUrl === 'string';
+export function isVideoPayload(type: MessageType, payload: unknown): payload is VideoPayload {
+  return (
+    type === MessageType.VIDEO &&
+    !!payload &&
+    typeof (payload as VideoPayload).videoUrl === 'string'
+  );
 }
 
 /**
  * 判断 payload 是否为链接消息
  */
-export function isLinkPayload(type: MessageType, payload: any): payload is LinkPayload {
-  return type === MessageType.LINK && payload && typeof payload.url === 'string';
+export function isLinkPayload(type: MessageType, payload: unknown): payload is LinkPayload {
+  return type === MessageType.LINK && !!payload && typeof (payload as LinkPayload).url === 'string';
 }
 
 /**
  * 判断 payload 是否为位置消息
  */
-export function isLocationPayload(type: MessageType, payload: any): payload is LocationPayload {
-  return type === MessageType.LOCATION && payload && typeof payload.address === 'string';
+export function isLocationPayload(type: MessageType, payload: unknown): payload is LocationPayload {
+  return (
+    type === MessageType.LOCATION &&
+    !!payload &&
+    typeof (payload as LocationPayload).address === 'string'
+  );
 }
 
 /**
@@ -300,9 +356,13 @@ export function isLocationPayload(type: MessageType, payload: any): payload is L
  */
 export function isWecomSystemPayload(
   type: MessageType,
-  payload: any,
+  payload: unknown,
 ): payload is WecomSystemPayload {
-  return type === MessageType.WECOM_SYSTEM && payload && typeof payload.type === 'string';
+  return (
+    type === MessageType.WECOM_SYSTEM &&
+    !!payload &&
+    typeof (payload as WecomSystemPayload).type === 'string'
+  );
 }
 
 /**
@@ -353,12 +413,13 @@ export class GroupMessageCallbackDto {
     | FilePayload
     | VoicePayload
     | ContactCardPayload
+    | EmotionPayload
     | LocationPayload
     | MiniProgramPayload
     | VideoPayload
     | LinkPayload
     | WecomSystemPayload
-    | any; // 消息内容
+    | Record<string, unknown>; // 消息内容
 
   @IsNumber()
   @IsNotEmpty()

@@ -13,7 +13,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ModelMessage, generateText, streamText, stepCountIs, ToolSet } from 'ai';
 import { RouterService } from '@providers/router.service';
-import { ModelRole } from '@providers/types';
+import { ModelRole, supportsVision } from '@providers/types';
 import { ToolRegistryService } from '@tools/tool-registry.service';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { MemoryService } from '@memory/memory.service';
@@ -45,6 +45,8 @@ export interface AgentInvokeParams {
   scenario?: string;
   /** 最大工具循环步数，默认 5 */
   maxSteps?: number;
+  /** 图片 URL 列表（多模态消息，传入 Agent 做 vision 识别） */
+  imageUrls?: string[];
 }
 
 export interface AgentRunResult {
@@ -189,6 +191,7 @@ export class AgentRunnerService {
       sessionId,
       scenario = 'candidate-consultation',
       maxSteps = 5,
+      imageUrls,
     } = params;
 
     this.logger.log(
@@ -234,9 +237,15 @@ export class AgentRunnerService {
         .catch(() => {});
     }
 
-    // 6. 构建工具
+    // 6. 图片多模态：将图片 URL 注入最后一条 user message 的 content
     const typedMessages = messages as ModelMessage[];
     const chatModel = this.router.resolveByRole(ModelRole.Chat);
+    const chatModelId = this.configService.get<string>('AGENT_CHAT_MODEL') || '';
+    if (imageUrls?.length && supportsVision(chatModelId)) {
+      this.injectImageParts(typedMessages, imageUrls);
+    }
+
+    // 7. 构建工具
     const toolContext: ToolBuildContext = {
       userId,
       corpId,
@@ -293,24 +302,72 @@ export class AgentRunnerService {
     const lastUserMsg = ctx.typedMessages.filter((m) => m.role === 'user').pop();
     if (!lastUserMsg) return;
 
-    // 1. 记录交互信息
+    // 1. 记录交互信息（兼容多模态 content: 从 array 中提取 text part）
+    const lastTopic = this.extractTextFromContent(lastUserMsg.content);
     await this.memoryService.sessionFacts
       .storeInteraction(ctx.corpId, ctx.userId, ctx.sessionId, {
         lastInteraction: new Date().toISOString(),
-        lastTopic:
-          typeof lastUserMsg.content === 'string' ? lastUserMsg.content.substring(0, 100) : '',
+        lastTopic: lastTopic.substring(0, 100),
       })
       .catch((err) => this.logger.warn('记忆存储失败', err));
 
-    // 2. 事实提取（fire-and-forget）
+    // 2. 事实提取（fire-and-forget）— 将多模态 content 统一为字符串
+    const flatMessages = ctx.typedMessages.map((m) => ({
+      role: String(m.role),
+      content: this.extractTextFromContent(m.content),
+    }));
     this.factExtraction
-      .extractAndSave(
-        ctx.corpId,
-        ctx.userId,
-        ctx.sessionId,
-        ctx.typedMessages as { role: string; content: string }[],
-      )
+      .extractAndSave(ctx.corpId, ctx.userId, ctx.sessionId, flatMessages)
       .catch((err) => this.logger.warn('事实提取失败', err));
+  }
+
+  /**
+   * 从 ModelMessage.content 中提取纯文本
+   * 兼容 string（普通消息）和 array（多模态消息，提取所有 text part）
+   */
+  private extractTextFromContent(content: unknown): string {
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+      return content
+        .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
+        .map((part) => part.text)
+        .join(' ');
+    }
+    return '';
+  }
+
+  /**
+   * 将图片 URL 注入最后一条 user message，转为多模态 content array
+   * Vercel AI SDK 支持 UserContent: (TextPart | ImagePart)[]
+   */
+  private injectImageParts(messages: ModelMessage[], imageUrls: string[]): void {
+    const validUrls = imageUrls
+      .map((url) => {
+        try {
+          return new URL(url);
+        } catch {
+          this.logger.warn(`跳过无效的图片 URL: ${url}`);
+          return null;
+        }
+      })
+      .filter((url): url is URL => url !== null);
+
+    if (validUrls.length === 0) return;
+
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        const textContent = this.extractTextFromContent(messages[i].content);
+        messages[i] = {
+          role: 'user',
+          content: [
+            ...validUrls.map((url) => ({ type: 'image' as const, image: url })),
+            { type: 'text' as const, text: String(textContent) },
+          ],
+        };
+        this.logger.log(`注入 ${validUrls.length} 张图片到 user message（多模态 vision）`);
+        return;
+      }
+    }
   }
 
   /**

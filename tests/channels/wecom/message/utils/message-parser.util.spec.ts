@@ -57,10 +57,64 @@ describe('MessageParser', () => {
       expect(result.content).toBe('hello world');
     });
 
-    it('should return empty content for non-text messages', () => {
+    it('should extract content for image messages (group-level: url)', () => {
       const messageData = buildMessageData({
         messageType: MessageType.IMAGE,
-        payload: { imageUrl: 'http://example.com/img.jpg', width: 100, height: 100 },
+        payload: { url: 'http://example.com/img.jpg', size: 1024 },
+      });
+      const result = MessageParser.parse(messageData);
+      expect(result.content).toBe('[图片消息] 候选人发送了一张图片');
+    });
+
+    it('should extract content for image messages (enterprise-level: imageUrl)', () => {
+      const messageData = buildMessageData({
+        messageType: MessageType.IMAGE,
+        payload: { imageUrl: 'http://example.com/img.jpg', size: 1024, width: 118, height: 210 },
+      });
+      const result = MessageParser.parse(messageData);
+      expect(result.content).toBe('[图片消息] 候选人发送了一张图片');
+    });
+
+    it('should extract content for voice messages (group-level: url, no STT)', () => {
+      const messageData = buildMessageData({
+        messageType: MessageType.VOICE,
+        payload: { url: 'http://example.com/voice.mp3', duration: 15 },
+      });
+      const result = MessageParser.parse(messageData);
+      expect(result.content).toBe('[语音消息] 时长15秒');
+    });
+
+    it('should extract content for voice messages (enterprise-level: voiceUrl + STT)', () => {
+      const messageData = buildMessageData({
+        messageType: MessageType.VOICE,
+        payload: { voiceUrl: 'http://example.com/voice.mp3', duration: 2.268, text: '分析跟调整那。' },
+      });
+      const result = MessageParser.parse(messageData);
+      expect(result.content).toBe('[语音转文字，时长2秒] 分析跟调整那。');
+    });
+
+    it('should extract content for emotion messages', () => {
+      const messageData = buildMessageData({
+        messageType: MessageType.EMOTION,
+        payload: { imageUrl: 'http://example.com/emoji.gif' },
+      });
+      const result = MessageParser.parse(messageData);
+      expect(result.content).toBe('[表情消息]');
+    });
+
+    it('should extract content for mini program messages', () => {
+      const messageData = buildMessageData({
+        messageType: MessageType.MINI_PROGRAM,
+        payload: { appId: 'wx123', username: 'gh_xxx', title: 'Boss直聘', thumbUrl: 'http://thumb.jpg', description: '查看岗位' },
+      });
+      const result = MessageParser.parse(messageData);
+      expect(result.content).toBe('[小程序] Boss直聘 - 查看岗位');
+    });
+
+    it('should return empty content for unsupported message types', () => {
+      const messageData = buildMessageData({
+        messageType: MessageType.VIDEO,
+        payload: { videoUrl: 'http://example.com/video.mp4', duration: 30 },
       });
       const result = MessageParser.parse(messageData);
       expect(result.content).toBe('');
@@ -175,13 +229,13 @@ describe('MessageParser', () => {
         },
       });
       const result = MessageParser.extractContent(messageData);
-      expect(result).toBe('[位置分享] 上海东方明珠（上海市浦东新区世纪大道1号）');
+      expect(result).toBe('[位置分享] 上海东方明珠（上海市浦东新区世纪大道1号） [经纬度:31.2397,121.4996]');
     });
 
-    it('should return empty string for non-text, non-location messages', () => {
+    it('should return empty string for unsupported message types', () => {
       const messageData = buildMessageData({
-        messageType: MessageType.IMAGE,
-        payload: { imageUrl: 'http://example.com/img.jpg', width: 100, height: 100 },
+        messageType: MessageType.VIDEO,
+        payload: { videoUrl: 'http://example.com/video.mp4', duration: 30 },
       });
       const result = MessageParser.extractContent(messageData);
       expect(result).toBe('');
@@ -197,7 +251,7 @@ describe('MessageParser', () => {
         longitude: '121.4',
       };
       const result = MessageParser.formatLocationAsText(payload);
-      expect(result).toBe('[位置分享] 上海市');
+      expect(result).toBe('[位置分享] 上海市 [经纬度:31.2,121.4]');
     });
 
     it('should show name and address in parentheses when both are different', () => {
@@ -208,7 +262,7 @@ describe('MessageParser', () => {
         longitude: '121.4',
       };
       const result = MessageParser.formatLocationAsText(payload);
-      expect(result).toBe('[位置分享] 东方明珠（浦东新区世纪大道1号）');
+      expect(result).toBe('[位置分享] 东方明珠（浦东新区世纪大道1号） [经纬度:31.2,121.4]');
     });
 
     it('should show only address when name is empty', () => {
@@ -219,7 +273,7 @@ describe('MessageParser', () => {
         longitude: '121.4',
       };
       const result = MessageParser.formatLocationAsText(payload);
-      expect(result).toBe('[位置分享] 浦东新区世纪大道1号');
+      expect(result).toBe('[位置分享] 浦东新区世纪大道1号 [经纬度:31.2,121.4]');
     });
 
     it('should show only name when address is empty', () => {
@@ -230,11 +284,10 @@ describe('MessageParser', () => {
         longitude: '121.4',
       };
       const result = MessageParser.formatLocationAsText(payload);
-      expect(result).toBe('[位置分享] 东方明珠');
+      expect(result).toBe('[位置分享] 东方明珠 [经纬度:31.2,121.4]');
     });
 
     it('should handle when both name and address are empty strings', () => {
-      // Empty strings are falsy in JS so we need undefined/null to hit the fallback
       const payload: LocationPayload = {
         name: '',
         address: '',
@@ -242,9 +295,8 @@ describe('MessageParser', () => {
         longitude: '121.4',
       };
       const result = MessageParser.formatLocationAsText(payload);
-      // Both are empty strings - neither "name === address" branch triggers '未知位置'
-      // (empty === empty is true), so it returns '[位置分享] ' with empty address
-      expect(result).toBe('[位置分享] ');
+      // Both name and address empty → '未知位置', but coords still appended
+      expect(result).toBe('[位置分享] 未知位置 [经纬度:31.2,121.4]');
     });
   });
 

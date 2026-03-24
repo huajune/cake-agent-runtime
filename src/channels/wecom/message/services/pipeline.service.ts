@@ -13,6 +13,7 @@ import { MessageDeduplicationService } from './deduplication.service';
 import { MessageFilterService } from './filter.service';
 import { MessageDeliveryService } from './delivery.service';
 import { BookingDetectionService } from './booking-detection.service';
+import { ImageDescriptionService } from './image-description.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ChatMessageInput } from '@biz/message/types/message.types';
 
@@ -63,6 +64,7 @@ export class MessagePipelineService {
     private readonly filterService: MessageFilterService,
     private readonly deliveryService: MessageDeliveryService,
     private readonly bookingDetection: BookingDetectionService,
+    private readonly imageDescription: ImageDescriptionService,
     // Agent 编排
     private readonly runner: AgentRunnerService,
     private readonly configService: ConfigService,
@@ -118,6 +120,12 @@ export class MessagePipelineService {
 
     // step 3: 写历史（含 historyOnly 分支）
     await this.recordUserMessageToHistory(messageData, filterResult.content);
+
+    // step 3.5: 图片描述（写历史后立即触发，不受后续分支影响）
+    const imgUrl = MessageParser.extractImageUrl(messageData);
+    if (imgUrl) {
+      this.imageDescription.describeAndUpdateAsync(messageData.messageId, imgUrl);
+    }
 
     if (filterResult.historyOnly) {
       const parsed = MessageParser.parse(messageData);
@@ -374,6 +382,13 @@ export class MessagePipelineService {
     const logPrefix = isSingleMessage ? '' : '[聚合处理]';
 
     // 1. 调用 Agent（历史消息由 ShortTermService 内部读取，当前消息已在 step3 写入 DB）
+    // 提取图片 URL（如有），用于多模态传入 Agent
+    // 聚合路径：从所有消息中收集图片；单条路径：只看当前消息
+    const allMessages = batchContext?.allMessages ?? [params.primaryMessage];
+    const imageUrls = allMessages
+      .map((msg) => MessageParser.extractImageUrl(msg))
+      .filter((url): url is string => url !== null);
+
     const agentResult = await this.callAgent({
       sessionId: chatId,
       userMessage: content,
@@ -382,6 +397,7 @@ export class MessagePipelineService {
       recordMonitoring: true,
       userId: this.resolveAgentUserId(params.primaryMessage, parsed),
       corpId: this.resolveCorpId(params.primaryMessage),
+      imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
     });
 
     this.logger.log(
@@ -696,6 +712,7 @@ export class MessagePipelineService {
     recordMonitoring?: boolean;
     userId: string;
     corpId: string;
+    imageUrls?: string[];
   }): Promise<AgentInvokeResult> {
     const {
       userMessage,
@@ -721,6 +738,7 @@ export class MessagePipelineService {
         corpId,
         sessionId: params.sessionId,
         scenario,
+        imageUrls: params.imageUrls,
       });
 
       const processingTime = Date.now() - startTime;

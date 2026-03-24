@@ -80,11 +80,16 @@ function truncateLargeFields(
 /**
  * 格式化大小显示
  */
+import { renderContentWithMediaTags as renderMediaTags } from '@/utils/media-tags';
+
 function formatSize(bytes: number): string {
   if (bytes < 1000) return `${bytes} 字符`;
   if (bytes < 1000000) return `${(bytes / 1000).toFixed(1)}K`;
   return `${(bytes / 1000000).toFixed(1)}M`;
 }
+
+const renderContentWithMediaTags = (content: string) =>
+  renderMediaTags(content, styles.mediaTag);
 
 interface ChatSectionProps {
   message: MessageRecord;
@@ -118,7 +123,9 @@ export default function ChatSection({
             <span className={styles.bubbleTitle}>用户消息</span>
           </div>
           <div className={styles.bubbleContent}>
-            {message.messagePreview || '(无消息内容)'}
+            {message.messagePreview
+              ? renderContentWithMediaTags(message.messagePreview)
+              : '(无消息内容)'}
           </div>
         </div>
 

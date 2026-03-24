@@ -147,7 +147,7 @@ describe('MessageFilterService', () => {
       expect(result.reason).toBe(FilterReason.GROUP_BLACKLISTED);
     });
 
-    it('should filter out enterprise-level blocked groupId', async () => {
+    it('should filter enterprise-level messages with blocked groupId', async () => {
       const messageData = {
         ...validMessageData,
         groupId: '691d3b171535fed6bcc94f66',
@@ -160,7 +160,7 @@ describe('MessageFilterService', () => {
       expect(result.reason).toBe(FilterReason.BLOCKED_ENTERPRISE_GROUP);
     });
 
-    it('should NOT filter group-level messages with blocked enterprise groupId', async () => {
+    it('should pass group-level messages with previously blocked enterprise groupId', async () => {
       const messageData = {
         ...validMessageData,
         groupId: '691d3b171535fed6bcc94f66',
@@ -169,7 +169,6 @@ describe('MessageFilterService', () => {
 
       const result = await service.validate(messageData);
 
-      // group-level messages bypass the enterprise group filter
       expect(result.pass).toBe(true);
     });
 
@@ -188,7 +187,7 @@ describe('MessageFilterService', () => {
     it('should filter out unsupported message types', async () => {
       const messageData = {
         ...validMessageData,
-        messageType: MessageType.IMAGE,
+        messageType: MessageType.VIDEO,
       };
 
       const result = await service.validate(messageData);

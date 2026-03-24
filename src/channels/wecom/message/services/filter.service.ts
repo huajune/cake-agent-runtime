@@ -126,7 +126,7 @@ export class MessageFilterService {
       };
     }
 
-    // 3. 过滤企业级特定 groupId 的消息（仅对企业级消息生效，不影响小组级消息）
+    // 3. 过滤企业级特定 groupId 的消息
     const isEnterpriseMessage = messageData._apiType !== 'group';
     if (isEnterpriseMessage && messageData.groupId === '691d3b171535fed6bcc94f66') {
       this.logger.log(
@@ -159,8 +159,15 @@ export class MessageFilterService {
       };
     }
 
-    // 5. 只处理文本消息和位置消息
-    const supportedMessageTypes = [MessageType.TEXT, MessageType.LOCATION];
+    // 5. 只处理支持的消息类型
+    const supportedMessageTypes = [
+      MessageType.TEXT,
+      MessageType.LOCATION,
+      MessageType.VOICE,
+      MessageType.EMOTION,
+      MessageType.IMAGE,
+      MessageType.MINI_PROGRAM,
+    ];
     if (!supportedMessageTypes.includes(messageData.messageType)) {
       this.logger.log(
         `[过滤-非支持类型] 跳过不支持的消息类型 [${messageData.messageId}], messageType=${messageData.messageType}`,
