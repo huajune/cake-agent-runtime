@@ -229,3 +229,48 @@ jobs:
             # 清理旧镜像
             docker image prune -f
             echo "Deploy successful!"
+
+  # 5. 飞书通知
+  notify:
+    needs: [build-and-push, deploy]
+    runs-on: ubuntu-latest
+    if: always() && needs.deploy.result != 'skipped'
+    environment: production
+
+    steps:
+      - name: Send Feishu notification
+        env:
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_DEPLOY_WEBHOOK_URL }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+        run: |
+          if [ "$DEPLOY_RESULT" = "success" ]; then
+            TITLE="✅ 部署成功"
+            COLOR="green"
+            CONTENT="镜像 sha-${IMAGE_TAG} 已部署到生产服务器"
+          else
+            TITLE="❌ 部署失败"
+            COLOR="red"
+            CONTENT="镜像 sha-${IMAGE_TAG} 部署失败，请检查 GitHub Actions 日志"
+          fi
+
+          curl -s -X POST "$FEISHU_WEBHOOK" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"msg_type\": \"interactive\",
+              \"card\": {
+                \"header\": {
+                  \"title\": { \"tag\": \"plain_text\", \"content\": \"${TITLE}\" },
+                  \"template\": \"${COLOR}\"
+                },
+                \"elements\": [
+                  {
+                    \"tag\": \"div\",
+                    \"text\": {
+                      \"tag\": \"lark_md\",
+                      \"content\": \"**项目**: ${{ github.repository }}\n**分支**: ${{ github.ref_name }}\n**提交**: [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})\n**${CONTENT}**\n\n[查看详情](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"
+                    }
+                  }
+                ]
+              }
+            }"
