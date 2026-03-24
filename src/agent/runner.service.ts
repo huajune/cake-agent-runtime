@@ -137,6 +137,9 @@ export class AgentRunnerService {
       await this.storePostMemory(ctx);
 
       // 从 steps 中提取工具调用信息
+      // Vercel AI SDK 的 TypedToolCall/TypedToolResult 是泛型类型，绑定到 ToolSet 参数，
+      // 而 generateText 返回的 steps 使用 erasure 后的联合类型（StaticToolCall | DynamicToolCall），
+      // 导致 `input`/`output` 字段在类型层面不可直接访问，需要最小范围的类型断言。
       const toolCalls: AgentToolCall[] = [];
       for (const step of r.steps) {
         if (step.toolCalls && step.toolResults) {

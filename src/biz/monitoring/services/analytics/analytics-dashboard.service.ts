@@ -675,16 +675,15 @@ export class AnalyticsDashboardService {
     activeUsers: number,
     bookingCount: number,
   ): BusinessMetricsSnapshot {
-    // 无失败数据来源，成功率设为 0 表示未知（而非假设 100%）
-    const bookingSuccessRate = 0;
+    // 只有预约总数（attempts），无成功/失败拆分数据，故 successful/failed/successRate 均为 0
     const conversionRate = activeUsers > 0 ? (bookingCount / activeUsers) * 100 : 0;
     return {
       consultations: { total: activeUsers, new: activeUsers },
       bookings: {
         attempts: bookingCount,
-        successful: bookingCount,
+        successful: 0,
         failed: 0,
-        successRate: parseFloat(bookingSuccessRate.toFixed(2)),
+        successRate: 0,
       },
       conversion: { consultationToBooking: parseFloat(conversionRate.toFixed(2)) },
     };

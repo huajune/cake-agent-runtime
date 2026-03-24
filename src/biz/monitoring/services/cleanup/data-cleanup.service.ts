@@ -72,7 +72,7 @@ export class DataCleanupService implements OnModuleInit {
           `小时聚合永久保留)`,
       );
 
-      // 启动时清理上次服务重启遗留的卡住记录
+      // 启动时立即清理上次服务重启遗留的卡住记录（不等 cron）
       await this.timeoutStuckProcessingRecords();
     } else {
       this.logger.warn('⚠️ 数据清理服务已禁用 (Supabase 不可用)');
@@ -89,6 +89,7 @@ export class DataCleanupService implements OnModuleInit {
     }
 
     // 0. 将卡住的 processing 记录标记为 timeout（>30 分钟）
+    // 与 onModuleInit 中的调用不冲突：onModuleInit 处理启动时遗留，此处处理日间新卡住记录
     await this.timeoutStuckProcessingRecords();
 
     // 1. NULL agent_invocation（>7 天）— 释放 TOAST 空间

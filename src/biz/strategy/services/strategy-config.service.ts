@@ -77,9 +77,6 @@ export class StrategyConfigService {
    * 更新角色设定并刷新缓存
    */
   async updateRoleSetting(roleSetting: StrategyRoleSetting): Promise<StrategyConfigRecord> {
-    if (typeof roleSetting.content !== 'string') {
-      throw new Error('角色设定必须包含 content 字符串');
-    }
     const config = await this.getActiveConfig();
     const updated = await this.strategyConfigRepository.updateConfigField(config.id, {
       role_setting: roleSetting,
