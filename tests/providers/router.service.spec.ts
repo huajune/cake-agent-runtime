@@ -18,8 +18,6 @@ describe('RouterService', () => {
     const env: Record<string, string | undefined> = {
       AGENT_CHAT_MODEL: 'anthropic/claude-sonnet-4-6',
       AGENT_CHAT_FALLBACKS: 'openai/gpt-4o,deepseek/deepseek-chat',
-      AGENT_FAST_MODEL: 'deepseek/deepseek-chat',
-      AGENT_CLASSIFY_MODEL: 'openai/gpt-4o-mini',
       ...overrides,
     };
     mockConfigService.get.mockImplementation((key: string) => env[key]);
@@ -65,11 +63,11 @@ describe('RouterService', () => {
       );
     });
 
-    it('should resolve fast role with default fallbacks when no role-specific fallbacks', () => {
-      setupConfig({ AGENT_DEFAULT_FALLBACKS: 'qwen/qwen-max-latest' });
-      service.resolveByRole('fast');
+    it('should resolve extract role with default fallbacks when no role-specific fallbacks', () => {
+      setupConfig({ AGENT_EXTRACT_MODEL: 'openai/gpt-4o-mini', AGENT_DEFAULT_FALLBACKS: 'qwen/qwen-max-latest' });
+      service.resolveByRole('extract');
       expect(mockReliable.resolveWithFallback).toHaveBeenCalledWith(
-        'deepseek/deepseek-chat',
+        'openai/gpt-4o-mini',
         ['qwen/qwen-max-latest'],
       );
     });
@@ -84,9 +82,10 @@ describe('RouterService', () => {
     });
 
     it('should return undefined fallbacks when neither role-specific nor default configured', () => {
-      service.resolveByRole('fast');
+      setupConfig({ AGENT_EXTRACT_MODEL: 'openai/gpt-4o-mini' });
+      service.resolveByRole('extract');
       expect(mockReliable.resolveWithFallback).toHaveBeenCalledWith(
-        'deepseek/deepseek-chat',
+        'openai/gpt-4o-mini',
         undefined,
       );
     });
@@ -181,37 +180,32 @@ describe('RouterService', () => {
     it('should list all configured roles', () => {
       const roles = service.listRoles();
       expect(roles).toContain('chat');
-      expect(roles).toContain('fast');
-      expect(roles).toContain('classify');
-      expect(roles).not.toContain('reasoning');
-      expect(roles).not.toContain('default');
       expect(roles).not.toContain('extract');
+      expect(roles).not.toContain('vision');
     });
 
     it('should return empty when no roles configured', () => {
       setupConfig({
         AGENT_CHAT_MODEL: undefined,
-        AGENT_FAST_MODEL: undefined,
-        AGENT_CLASSIFY_MODEL: undefined,
       });
       const roles = service.listRoles();
       expect(roles).toEqual([]);
     });
 
-    it('should include reasoning when configured', () => {
-      setupConfig({ AGENT_REASONING_MODEL: 'anthropic/claude-sonnet-4-6' });
+    it('should include vision when configured', () => {
+      setupConfig({ AGENT_VISION_MODEL: 'google/gemini-2.0-flash' });
       const roles = service.listRoles();
-      expect(roles).toContain('reasoning');
+      expect(roles).toContain('vision');
     });
 
-    it('should include default and extract when configured', () => {
+    it('should include extract and evaluate when configured', () => {
       setupConfig({
-        AGENT_DEFAULT_MODEL: 'anthropic/claude-sonnet-4-6',
         AGENT_EXTRACT_MODEL: 'openai/gpt-4o-mini',
+        AGENT_EVALUATE_MODEL: 'anthropic/claude-sonnet-4-6',
       });
       const roles = service.listRoles();
-      expect(roles).toContain('default');
       expect(roles).toContain('extract');
+      expect(roles).toContain('evaluate');
     });
   });
 });

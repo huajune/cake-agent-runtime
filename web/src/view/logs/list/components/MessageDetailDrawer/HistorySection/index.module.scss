@@ -104,6 +104,20 @@
   overflow-y: auto;
 }
 
+.mediaTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 8px;
+  margin: 0 2px;
+  background: rgba($primary, 0.08);
+  color: $primary;
+  border-radius: 4px;
+  font-size: 12px;
+  font-style: italic;
+  white-space: nowrap;
+}
+
 .emptyState {
   padding: 24px;
   text-align: center;

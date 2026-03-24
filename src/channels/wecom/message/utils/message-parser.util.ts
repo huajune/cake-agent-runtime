@@ -2,8 +2,15 @@ import {
   EnterpriseMessageCallbackDto,
   isTextPayload,
   isLocationPayload,
+  isVoicePayload,
+  isEmotionPayload,
+  isImagePayload,
+  isMiniProgramPayload,
   LocationPayload,
+  VoicePayload,
+  MiniProgramPayload,
 } from '../message-callback.dto';
+import { MessageType } from '@enums/message-callback.enum';
 import { ScenarioType } from '@enums/agent.enum';
 
 /**
@@ -55,20 +62,79 @@ export class MessageParser {
 
   /**
    * 提取消息文本内容
-   * 支持文本消息和位置消息
+   * 支持：文本、位置、语音、表情、图片、小程序
    */
   static extractContent(messageData: EnterpriseMessageCallbackDto): string {
+    const { messageType, payload } = messageData;
+
     // 文本消息
-    if (isTextPayload(messageData.messageType, messageData.payload)) {
-      return messageData.payload.pureText || messageData.payload.text;
+    if (isTextPayload(messageType, payload)) {
+      return payload.pureText || payload.text;
     }
 
     // 位置消息 - 转换为自然语言描述
-    if (isLocationPayload(messageData.messageType, messageData.payload)) {
-      return this.formatLocationAsText(messageData.payload);
+    if (isLocationPayload(messageType, payload)) {
+      return this.formatLocationAsText(payload);
+    }
+
+    // 语音消息 - 文字描述 + 引导发文字
+    if (isVoicePayload(messageType, payload)) {
+      return this.formatVoiceAsText(payload);
+    }
+
+    // 表情消息
+    if (isEmotionPayload(messageType, payload)) {
+      return '[表情消息]';
+    }
+
+    // 图片消息 - 文字标记（实际图片通过 image part 传入 Agent）
+    if (isImagePayload(messageType, payload)) {
+      return '[图片消息] 候选人发送了一张图片';
+    }
+
+    // 小程序消息
+    if (isMiniProgramPayload(messageType, payload)) {
+      return this.formatMiniProgramAsText(payload);
     }
 
     return '';
+  }
+
+  /**
+   * 提取图片 URL（供 pipeline 传递给 Agent 做多模态识别）
+   */
+  static extractImageUrl(messageData: EnterpriseMessageCallbackDto): string | null {
+    if (
+      messageData.messageType === MessageType.IMAGE &&
+      isImagePayload(messageData.messageType, messageData.payload)
+    ) {
+      return messageData.payload.imageUrl || messageData.payload.url || null;
+    }
+    return null;
+  }
+
+  /**
+   * 将语音消息格式化为自然语言文本
+   */
+  static formatVoiceAsText(payload: VoicePayload): string {
+    // 优先使用 STT 转写文本
+    if (payload.text && payload.text.trim().length > 0) {
+      const duration = payload.duration ? `${Math.round(payload.duration)}秒` : '';
+      return `[语音转文字${duration ? `，时长${duration}` : ''}] ${payload.text.trim()}`;
+    }
+    const duration = payload.duration ? `${Math.round(payload.duration)}秒` : '未知时长';
+    return `[语音消息] 时长${duration}`;
+  }
+
+  /**
+   * 将小程序消息格式化为自然语言文本
+   */
+  static formatMiniProgramAsText(payload: MiniProgramPayload): string {
+    const { title, description } = payload;
+    if (description) {
+      return `[小程序] ${title} - ${description}`;
+    }
+    return `[小程序] ${title}`;
   }
 
   /**
@@ -76,29 +142,25 @@ export class MessageParser {
    * 用于发送给 AI 处理
    */
   static formatLocationAsText(payload: LocationPayload): string {
-    const { name, address } = payload;
+    const { name, address, latitude, longitude } = payload;
 
-    // 如果名称和地址相同，只显示一个
-    if (name === address) {
-      return `[位置分享] ${address}`;
+    // 构建位置描述
+    let location: string;
+    if (name && address && name !== address) {
+      location = `${name}（${address}）`;
+    } else if (address) {
+      location = address;
+    } else if (name) {
+      location = name;
+    } else {
+      location = '未知位置';
     }
 
-    // 如果有名称，显示"名称（地址）"格式
-    if (name && address) {
-      return `[位置分享] ${name}（${address}）`;
-    }
+    // 附加经纬度（供后续智能推荐使用）
+    const coords =
+      latitude !== undefined && longitude !== undefined ? ` [经纬度:${latitude},${longitude}]` : '';
 
-    // 只有地址
-    if (address) {
-      return `[位置分享] ${address}`;
-    }
-
-    // 只有名称
-    if (name) {
-      return `[位置分享] ${name}`;
-    }
-
-    return '[位置分享] 未知位置';
+    return `[位置分享] ${location}${coords}`;
   }
 
   /**

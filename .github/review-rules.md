@@ -97,3 +97,9 @@ DDD layered architecture:
 - Use `gh pr comment` for an overall summary
 - Categorize findings by severity: Critical / Should Fix / Suggestion
 - Only post GitHub comments — do not output review text as plain messages
+
+## Review Decision
+
+- If there are **Critical** issues: use `gh pr review --request-changes`
+- If there are **no Critical** issues (only Should Fix / Suggestions or no issues): use `gh pr review --approve`
+- Always include a brief summary in the review body explaining the decision

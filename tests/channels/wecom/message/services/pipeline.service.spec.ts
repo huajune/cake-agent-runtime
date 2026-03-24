@@ -5,6 +5,7 @@ import { MessageDeduplicationService } from '@wecom/message/services/deduplicati
 import { MessageFilterService } from '@wecom/message/services/filter.service';
 import { MessageDeliveryService } from '@wecom/message/services/delivery.service';
 import { BookingDetectionService } from '@wecom/message/services/booking-detection.service';
+import { ImageDescriptionService } from '@wecom/message/services/image-description.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
@@ -37,6 +38,10 @@ describe('MessagePipelineService', () => {
 
   const mockBookingDetectionService = {
     handleBookingSuccessAsync: jest.fn(),
+  };
+
+  const mockImageDescriptionService = {
+    describeAndUpdateAsync: jest.fn(),
   };
 
   const mockRunnerService = {
@@ -88,6 +93,7 @@ describe('MessagePipelineService', () => {
         { provide: MessageFilterService, useValue: mockFilterService },
         { provide: MessageDeliveryService, useValue: mockDeliveryService },
         { provide: BookingDetectionService, useValue: mockBookingDetectionService },
+        { provide: ImageDescriptionService, useValue: mockImageDescriptionService },
         { provide: AgentRunnerService, useValue: mockRunnerService },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: MessageTrackingService, useValue: mockMonitoringService },
@@ -203,7 +209,7 @@ describe('MessagePipelineService', () => {
 
       expect(mockRunnerService.invoke).toHaveBeenCalledWith(
         expect.objectContaining({
-          userMessage: '[位置分享] 东方明珠（浦东新区世纪大道1号）',
+          userMessage: '[位置分享] 东方明珠（浦东新区世纪大道1号） [经纬度:31.2,121.4]',
         }),
       );
     });

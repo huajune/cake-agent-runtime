@@ -12,8 +12,8 @@ import { ModelRole, ReliableConfig } from './types';
  * 通过环境变量配置角色映射：
  *   AGENT_CHAT_MODEL=anthropic/claude-sonnet-4-6
  *   AGENT_CHAT_FALLBACKS=openai/gpt-4o,deepseek/deepseek-chat
- *   AGENT_FAST_MODEL=deepseek/deepseek-chat
- *   AGENT_CLASSIFY_MODEL=openai/gpt-4o-mini
+ *   AGENT_EXTRACT_MODEL=openai/gpt-5-mini
+ *   AGENT_VISION_MODEL=google/gemini-2.0-flash
  */
 @Injectable()
 export class RouterService {

@@ -1,5 +1,4 @@
 packages:
-  - 'dashboard'
   - 'web'
 
 ignoredBuiltDependencies:

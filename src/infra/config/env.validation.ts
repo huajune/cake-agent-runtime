@@ -50,20 +50,16 @@ export class EnvironmentVariables {
   AGENT_CHAT_MODEL: string;
 
   @IsOptional()
-  @IsString({ message: 'AGENT_DEFAULT_MODEL 必须是字符串' })
-  AGENT_DEFAULT_MODEL?: string;
-
-  @IsOptional()
-  @IsString({ message: 'AGENT_CLASSIFY_MODEL 必须是字符串' })
-  AGENT_CLASSIFY_MODEL?: string;
-
-  @IsOptional()
   @IsString({ message: 'AGENT_EXTRACT_MODEL 必须是字符串' })
   AGENT_EXTRACT_MODEL?: string;
 
   @IsOptional()
-  @IsString({ message: 'AGENT_FAST_MODEL 必须是字符串' })
-  AGENT_FAST_MODEL?: string;
+  @IsString({ message: 'AGENT_EVALUATE_MODEL 必须是字符串' })
+  AGENT_EVALUATE_MODEL?: string;
+
+  @IsOptional()
+  @IsString({ message: 'AGENT_VISION_MODEL 必须是字符串' })
+  AGENT_VISION_MODEL?: string;
 
   // ==================== Agent 安全护栏 ====================
   @IsOptional()

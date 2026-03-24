@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import type { MessageRecord } from '@/api/types/chat.types';
+import { renderContentWithMediaTags as renderMediaTags } from '@/utils/media-tags';
 import styles from './index.module.scss';
 
 // Agent API 消息结构
@@ -68,6 +69,10 @@ function extractHistoryMessages(messages: AgentMessage[] | undefined): HistoryMe
   return history;
 }
 
+
+const renderContentWithMediaTags = (content: string) =>
+  renderMediaTags(content, styles.mediaTag);
+
 export default function HistorySection({ message }: HistorySectionProps) {
   const [expanded, setExpanded] = useState(true);
 
@@ -111,7 +116,9 @@ export default function HistorySection({ message }: HistorySectionProps) {
                   <span className={styles.roleIcon}>
                     {msg.role === 'user' ? '👤' : '🤖'}
                   </span>
-                  <div className={styles.messageContent}>{msg.content}</div>
+                  <div className={styles.messageContent}>
+                    {renderContentWithMediaTags(msg.content)}
+                  </div>
                 </div>
               ))}
             </div>
