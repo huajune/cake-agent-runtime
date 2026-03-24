@@ -57,6 +57,10 @@ export class EnvironmentVariables {
   @IsString({ message: 'AGENT_EVALUATE_MODEL 必须是字符串' })
   AGENT_EVALUATE_MODEL?: string;
 
+  @IsOptional()
+  @IsString({ message: 'AGENT_VISION_MODEL 必须是字符串' })
+  AGENT_VISION_MODEL?: string;
+
   // ==================== Agent 安全护栏 ====================
   @IsOptional()
   @IsNumber({}, { message: 'AGENT_MAX_OUTPUT_TOKENS 必须是数字' })

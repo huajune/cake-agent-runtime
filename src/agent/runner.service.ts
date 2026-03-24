@@ -329,8 +329,8 @@ export class AgentRunnerService {
     if (typeof content === 'string') return content;
     if (Array.isArray(content)) {
       return content
-        .filter((part: any) => part.type === 'text')
-        .map((part: any) => part.text)
+        .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
+        .map((part) => part.text)
         .join(' ');
     }
     return '';
@@ -341,17 +341,30 @@ export class AgentRunnerService {
    * Vercel AI SDK 支持 UserContent: (TextPart | ImagePart)[]
    */
   private injectImageParts(messages: ModelMessage[], imageUrls: string[]): void {
+    const validUrls = imageUrls
+      .map((url) => {
+        try {
+          return new URL(url);
+        } catch {
+          this.logger.warn(`跳过无效的图片 URL: ${url}`);
+          return null;
+        }
+      })
+      .filter((url): url is URL => url !== null);
+
+    if (validUrls.length === 0) return;
+
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role === 'user') {
         const textContent = typeof messages[i].content === 'string' ? messages[i].content : '';
         messages[i] = {
           role: 'user',
           content: [
-            ...imageUrls.map((url) => ({ type: 'image' as const, image: new URL(url) })),
+            ...validUrls.map((url) => ({ type: 'image' as const, image: url })),
             { type: 'text' as const, text: String(textContent) },
           ],
         };
-        this.logger.log(`注入 ${imageUrls.length} 张图片到 user message（多模态 vision）`);
+        this.logger.log(`注入 ${validUrls.length} 张图片到 user message（多模态 vision）`);
         return;
       }
     }

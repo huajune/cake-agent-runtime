@@ -127,21 +127,21 @@ export class MessageFilterService {
     }
 
     // 3. 过滤企业级特定 groupId 的消息（暂时禁用，测试多消息类型）
-    // const isEnterpriseMessage = messageData._apiType !== 'group';
-    // if (isEnterpriseMessage && messageData.groupId === '691d3b171535fed6bcc94f66') {
-    //   this.logger.log(
-    //     `[过滤-企业级分组] 跳过特定企业级分组的消息 [${messageData.messageId}], groupId=${messageData.groupId}, orgId=${messageData.orgId}`,
-    //   );
-    //   return {
-    //     pass: false,
-    //     reason: FilterReason.BLOCKED_ENTERPRISE_GROUP,
-    //     details: {
-    //       groupId: messageData.groupId,
-    //       orgId: messageData.orgId,
-    //       apiType: messageData._apiType || 'enterprise',
-    //     },
-    //   };
-    // }
+    const isEnterpriseMessage = messageData._apiType !== 'group';
+    if (isEnterpriseMessage && messageData.groupId === '691d3b171535fed6bcc94f66') {
+      this.logger.log(
+        `[过滤-企业级分组] 跳过特定企业级分组的消息 [${messageData.messageId}], groupId=${messageData.groupId}, orgId=${messageData.orgId}`,
+      );
+      return {
+        pass: false,
+        reason: FilterReason.BLOCKED_ENTERPRISE_GROUP,
+        details: {
+          groupId: messageData.groupId,
+          orgId: messageData.orgId,
+          apiType: messageData._apiType || 'enterprise',
+        },
+      };
+    }
 
     // 4. 暂时跳过群聊消息
     const isRoom = !!messageData.imRoomId;

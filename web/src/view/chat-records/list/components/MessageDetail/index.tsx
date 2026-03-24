@@ -37,7 +37,7 @@ function formatDuration(seconds: number): string {
 // ==================== 富媒体消息渲染 ====================
 
 function renderImageContent(payload: Record<string, unknown>) {
-  const imageUrl = payload.imageUrl as string | undefined;
+  const imageUrl = (payload.imageUrl || payload.url) as string | undefined;
   if (!imageUrl) return <span className={styles.mediaFallback}>[ 图片消息 ]</span>;
 
   return (
@@ -55,7 +55,7 @@ function renderImageContent(payload: Record<string, unknown>) {
 function renderVoiceContent(payload: Record<string, unknown>) {
   const duration = payload.duration as number | undefined;
   const text = payload.text as string | undefined;
-  const voiceUrl = payload.voiceUrl as string | undefined;
+  const voiceUrl = (payload.voiceUrl || payload.url) as string | undefined;
 
   return (
     <div className={styles.voiceMessage}>

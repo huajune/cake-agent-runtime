@@ -45,13 +45,21 @@ export class ImageDescriptionService {
    * 调用 vision 模型描述图片，回写到 DB
    */
   private async describeAndUpdate(messageId: string, imageUrl: string): Promise<void> {
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(imageUrl);
+    } catch {
+      this.logger.warn(`无效的图片 URL [${messageId}]: ${imageUrl}`);
+      return;
+    }
+
     const result = await this.completionService.generate({
       systemPrompt: this.SYSTEM_PROMPT,
       messages: [
         {
           role: 'user',
           content: [
-            { type: 'image' as const, image: new URL(imageUrl) },
+            { type: 'image' as const, image: parsedUrl },
             { type: 'text' as const, text: '请描述这张图片的内容。' },
           ],
         },
