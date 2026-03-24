@@ -88,6 +88,16 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
     name: 'Qwen Plus Latest',
     description: '通义千问增强版',
   },
+  'qwen/qwen-vl-plus': {
+    provider: 'qwen',
+    name: 'Qwen VL Plus',
+    description: '通义千问视觉增强版（支持图片输入）',
+  },
+  'qwen/qwen-vl-max': {
+    provider: 'qwen',
+    name: 'Qwen VL Max',
+    description: '通义千问视觉旗舰版（支持图片输入）',
+  },
 
   // ==================== MoonshotAI / Kimi ====================
   'moonshotai/kimi-k2-0905-preview': {

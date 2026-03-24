@@ -1,8 +1,7 @@
 export interface UserTrendData {
   date: string;
-  uniqueUsers: number;
+  userCount: number;
   messageCount: number;
-  tokenUsage: number;
 }
 
 export interface TodayUserData {

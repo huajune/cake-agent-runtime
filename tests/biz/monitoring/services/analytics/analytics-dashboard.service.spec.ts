@@ -571,7 +571,7 @@ describe('AnalyticsDashboardService', () => {
       expect(result.fallbackDelta.successRate).toBe(0); // 80 - 80 = 0
     });
 
-    it('should include business metrics from message records', async () => {
+    it('should include business metrics from overview stats', async () => {
       mockMessageProcessingService.getRecordsByTimestamps.mockResolvedValue({
         records: [
           buildRecord({ userId: 'user-1' }),
@@ -579,7 +579,11 @@ describe('AnalyticsDashboardService', () => {
         ],
         total: 2,
       });
-      mockHourlyStatsAggregator.mergeOverviewStats.mockReturnValue(defaultOverview);
+      // business.consultations.total 现在来自 overview 的 activeUsers（SQL 聚合），而非 records
+      mockHourlyStatsAggregator.mergeOverviewStats.mockReturnValue({
+        ...defaultOverview,
+        activeUsers: 2,
+      });
       mockHourlyStatsAggregator.mergeFallbackStats.mockReturnValue(defaultFallback);
 
       const result = await service.getDashboardOverviewAsync('today');

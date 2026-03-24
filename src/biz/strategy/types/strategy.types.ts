@@ -59,6 +59,13 @@ export interface StrategyRedLines {
   riskScenarios?: RiskScenario[];
 }
 
+// ==================== 角色设定 ====================
+
+export interface StrategyRoleSetting {
+  /** 角色定义文本（注入到系统提示词的 ## 角色 段落） */
+  content: string;
+}
+
 // ==================== 行业 Skill（预留） ====================
 
 export interface StrategyIndustrySkills {

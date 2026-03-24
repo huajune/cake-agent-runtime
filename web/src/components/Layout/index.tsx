@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from '@/components/Sidebar';
-import FestivalPendant from '@/components/FestivalPendant';
 
 export default function Layout() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -31,327 +30,246 @@ export default function Layout() {
         <span className="bg-purple"></span>
       </div>
 
-      {/* Spring Festival Garland - 2026 Year of Horse */}
-      <div className="spring-garland" style={{ gap: '6px', alignItems: 'flex-start', left: isSidebarCollapsed ? '72px' : '260px' }}>
-        <div className="garland-string" />
-
-        {/* 左侧春灯笼 */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          animation: 'swing 2.5s ease-in-out infinite',
-          transformOrigin: 'top center'
-        }}>
-          <div style={{ width: '2px', height: '10px', background: '#fbbf24' }} />
-          <svg width="36" height="50" viewBox="0 0 40 55" fill="none">
-            <defs>
-              <linearGradient id="lanternRed1" x1="20" y1="0" x2="20" y2="50" gradientUnits="userSpaceOnUse">
-                <stop offset="0" stopColor="#EF4444" />
-                <stop offset="1" stopColor="#991B1B" />
-              </linearGradient>
-            </defs>
-            <rect x="14" y="2" width="12" height="4" rx="1" fill="#F59E0B" />
-            <ellipse cx="20" cy="24" rx="16" ry="18" fill="url(#lanternRed1)" />
-            <path d="M6 18 Q20 14 34 18" stroke="#B91C1C" strokeWidth="1.5" fill="none" />
-            <path d="M4 24 Q20 20 36 24" stroke="#B91C1C" strokeWidth="1.5" fill="none" />
-            <path d="M6 30 Q20 26 34 30" stroke="#B91C1C" strokeWidth="1.5" fill="none" />
-            <text x="20" y="28" fontSize="12" fill="#FCD34D" textAnchor="middle" fontWeight="bold">春</text>
-            <rect x="14" y="40" width="12" height="4" rx="1" fill="#F59E0B" />
-            <path d="M17 44 L15 54" stroke="#F59E0B" strokeWidth="1.5" />
-            <path d="M20 44 L20 55" stroke="#F59E0B" strokeWidth="1.5" />
-            <path d="M23 44 L25 54" stroke="#F59E0B" strokeWidth="1.5" />
-          </svg>
-        </div>
-
-        {/* 左侧鞭炮串 */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          animation: 'swing 2s ease-in-out infinite',
-          transformOrigin: 'top center'
-        }}>
-          <div style={{ width: '2px', height: '8px', background: '#fbbf24' }} />
-          <svg width="38" height="85" viewBox="0 0 50 110" fill="none">
-            <defs>
-              <linearGradient id="fcOrangeL" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0" stopColor="#EA580C" />
-                <stop offset="0.3" stopColor="#F97316" />
-                <stop offset="0.5" stopColor="#FDBA74" />
-                <stop offset="0.7" stopColor="#F97316" />
-                <stop offset="1" stopColor="#C2410C" />
-              </linearGradient>
-              <linearGradient id="fcCapL" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0" stopColor="#DC2626" />
-                <stop offset="0.5" stopColor="#EF4444" />
-                <stop offset="1" stopColor="#B91C1C" />
-              </linearGradient>
-            </defs>
-            <path d="M25 5 Q28 20 22 35 Q28 50 22 65 Q28 80 25 95" stroke="#92400E" strokeWidth="1.5" fill="none" />
-            {[0, 1, 2, 3, 4, 5].map((i) => {
-              const isLeft = i % 2 === 0;
-              const cx = isLeft ? 15 : 35;
-              const cy = 12 + i * 15;
-              return (
-                <g key={i} transform={`rotate(${isLeft ? -15 : 15} ${cx} ${cy})`}>
-                  <ellipse cx={cx} cy={cy - 5} rx="6" ry="2.5" fill="url(#fcCapL)" />
-                  <rect x={cx - 6} y={cy - 5} width="12" height="14" fill="url(#fcOrangeL)" />
-                  <ellipse cx={cx} cy={cy + 9} rx="6" ry="2.5" fill="#DC2626" />
-                  <path d={`M${cx} ${cy - 7} Q${cx + (isLeft ? 3 : -3)} ${cy - 10} ${cx + (isLeft ? 5 : -5)} ${cy - 12}`} stroke="#78350F" strokeWidth="1" fill="none" />
-                </g>
-              );
-            })}
-            <circle cx="25" cy="100" r="3" fill="#FBBF24">
-              <animate attributeName="r" values="3;5;3" dur="0.3s" repeatCount="indefinite" />
-              <animate attributeName="opacity" values="1;0.6;1" dur="0.3s" repeatCount="indefinite" />
-            </circle>
-            <circle cx="20" cy="103" r="2" fill="#FCD34D">
-              <animate attributeName="opacity" values="0.8;0.3;0.8" dur="0.25s" repeatCount="indefinite" />
-            </circle>
-            <circle cx="30" cy="102" r="2" fill="#FEF3C7">
-              <animate attributeName="opacity" values="0.6;1;0.6" dur="0.35s" repeatCount="indefinite" />
-            </circle>
-          </svg>
-        </div>
-
-        {/* 金币串 */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          animation: 'swing 2.2s ease-in-out infinite',
-          transformOrigin: 'top center'
-        }}>
-          <div style={{ width: '2px', height: '6px', background: '#fbbf24' }} />
-          <svg width="16" height="72" viewBox="0 0 18 95" fill="none">
-            {[0, 1, 2, 3, 4, 5].map((i) => (
-              <g key={i}>
-                <circle cx="9" cy={8 + i * 15} r="5" fill="#FCD34D" stroke="#D97706" strokeWidth="1" />
-                <rect x="6.5" y={5.5 + i * 15} width="5" height="5" fill="#D97706" rx="1" />
-                {i < 5 && <path d={`M9 ${13 + i * 15} L9 ${15 + i * 15}`} stroke="#D97706" strokeWidth="1" />}
-              </g>
+      {/* 春日装饰 - 樱花枝 */}
+      <div className="spring-garland" style={{ gap: '0', alignItems: 'flex-start', left: isSidebarCollapsed ? '72px' : '260px', justifyContent: 'space-between', padding: '0 20px' }}>
+        {/* 左侧樱花枝 - 从左上角垂下 */}
+        <svg width="120" height="90" viewBox="0 0 150 110" fill="none" style={{ marginTop: '-10px' }}>
+          <defs>
+            <radialGradient id="bloomL" cx="50%" cy="50%">
+              <stop offset="0%" stopColor="#FDF2F8" />
+              <stop offset="50%" stopColor="#FBCFE8" />
+              <stop offset="100%" stopColor="#F9A8D4" />
+            </radialGradient>
+            <radialGradient id="bloomCenter" cx="50%" cy="50%">
+              <stop offset="0%" stopColor="#FFF" />
+              <stop offset="60%" stopColor="#FDE68A" />
+              <stop offset="100%" stopColor="#FCD34D" />
+            </radialGradient>
+          </defs>
+          {/* 主枝 */}
+          <path d="M0 5 Q30 8 60 20 Q90 35 120 30 Q135 28 145 35" stroke="#86EFAC" strokeWidth="3" fill="none" />
+          {/* 分枝 */}
+          <path d="M40 14 Q45 30 38 45" stroke="#86EFAC" strokeWidth="2" fill="none" />
+          <path d="M80 28 Q85 45 78 58" stroke="#86EFAC" strokeWidth="2" fill="none" />
+          <path d="M110 30 Q118 18 125 12" stroke="#86EFAC" strokeWidth="2" fill="none" />
+          {/* 花朵1 */}
+          <g transform="translate(38, 48)">
+            {[0, 72, 144, 216, 288].map((r) => (
+              <ellipse key={r} cx="0" cy="-6" rx="4" ry="7" fill="url(#bloomL)" transform={`rotate(${r})`} opacity="0.9" />
             ))}
-          </svg>
-        </div>
-
-        {/* 2026 连在一起 */}
-        <FestivalPendant content="2" delay="0s" ropeHeight={15} fontSize={64} />
-        <FestivalPendant content="0" delay="0.2s" ropeHeight={10} fontSize={64} />
-        <FestivalPendant content="2" delay="0.4s" ropeHeight={16} fontSize={64} />
-        <FestivalPendant content="6" delay="0.6s" ropeHeight={12} fontSize={64} />
-
-        {/* 小福袋B */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          animation: 'swing 2.2s ease-in-out infinite',
-          transformOrigin: 'top center'
-        }}>
-          <div style={{ width: '2px', height: '10px', background: '#fbbf24' }} />
-          <svg width="24" height="32" viewBox="0 0 60 70" fill="none">
-            <defs>
-              <linearGradient id="bagRedB" x1="30" y1="0" x2="30" y2="70" gradientUnits="userSpaceOnUse">
-                <stop offset="0" stopColor="#EF4444" />
-                <stop offset="0.6" stopColor="#DC2626" />
-                <stop offset="1" stopColor="#991B1B" />
-              </linearGradient>
-              <linearGradient id="bagGoldB" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stopColor="#FCD34D" />
-                <stop offset="1" stopColor="#D97706" />
-              </linearGradient>
-            </defs>
-            <path d="M12 28 C 4 38, 2 58, 14 65 Q 30 73 46 65 C 58 58, 56 38, 48 28 Q 30 22 12 28 Z" fill="url(#bagRedB)" stroke="#B91C1C" strokeWidth="1" />
-            <g transform="translate(0, -2)">
-              <path d="M20 16 Q 30 24 40 16 L 44 12 Q 30 18 16 12 Z" fill="url(#bagGoldB)" stroke="#B45309" strokeWidth="1" />
-            </g>
-            <path d="M18 24 L 14 12 C 12 8, 20 4, 30 8 C 40 4, 48 8, 46 12 L 42 24 Z" fill="#EF4444" stroke="#B91C1C" strokeWidth="1" />
-            <path d="M14 26 Q 30 30 46 26" stroke="#FCD34D" strokeWidth="4" strokeLinecap="round" />
-            <circle cx="30" cy="27" r="5" fill="url(#bagGoldB)" stroke="#B45309" strokeWidth="0.5" />
-            <text x="30" y="52" fontSize="18" fill="#FCD34D" textAnchor="middle" fontWeight="bold">福</text>
-          </svg>
-        </div>
-
-        {/* 中国结 */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          animation: 'swing 1.8s ease-in-out infinite',
-          transformOrigin: 'top center'
-        }}>
-          <div style={{ width: '2px', height: '6px', background: '#DC2626' }} />
-          <svg width="52" height="112" viewBox="0 0 60 130" fill="none">
-            <path d="M30 0 L30 12" stroke="#DC2626" strokeWidth="4" />
-            <circle cx="30" cy="14" r="4" fill="#DC2626" />
-            <path d="M30 18 L30 22" stroke="#DC2626" strokeWidth="4" />
-            <circle cx="30" cy="26" r="5" fill="none" stroke="#DC2626" strokeWidth="3.5" />
-            <g transform="translate(30, 58)">
-              <path d="M0 -22 L22 0 L0 22 L-22 0 Z" fill="none" stroke="#DC2626" strokeWidth="4" />
-              <path d="M-15 -7 L15 -7" stroke="#DC2626" strokeWidth="3.5" />
-              <path d="M-15 0 L15 0" stroke="#DC2626" strokeWidth="3.5" />
-              <path d="M-15 7 L15 7" stroke="#DC2626" strokeWidth="3.5" />
-              <path d="M-7 -15 L-7 15" stroke="#DC2626" strokeWidth="3.5" />
-              <path d="M0 -18 L0 18" stroke="#DC2626" strokeWidth="3.5" />
-              <path d="M7 -15 L7 15" stroke="#DC2626" strokeWidth="3.5" />
-              <circle cx="0" cy="-22" r="5" fill="none" stroke="#DC2626" strokeWidth="3" />
-              <circle cx="22" cy="0" r="5" fill="none" stroke="#DC2626" strokeWidth="3" />
-              <circle cx="0" cy="22" r="5" fill="none" stroke="#DC2626" strokeWidth="3" />
-              <circle cx="-22" cy="0" r="5" fill="none" stroke="#DC2626" strokeWidth="3" />
-            </g>
-            <circle cx="30" cy="84" r="4" fill="#DC2626" />
-            <path d="M30 88 L30 95" stroke="#DC2626" strokeWidth="4" />
-            <circle cx="30" cy="97" r="3" fill="#DC2626" />
-            <path d="M24 100 L24 125" stroke="#DC2626" strokeWidth="2" />
-            <path d="M26 100 L26 127" stroke="#DC2626" strokeWidth="2" />
-            <path d="M28 100 L28 128" stroke="#DC2626" strokeWidth="2" />
-            <path d="M30 100 L30 130" stroke="#DC2626" strokeWidth="2" />
-            <path d="M32 100 L32 128" stroke="#DC2626" strokeWidth="2" />
-            <path d="M34 100 L34 127" stroke="#DC2626" strokeWidth="2" />
-            <path d="M36 100 L36 125" stroke="#DC2626" strokeWidth="2" />
-          </svg>
-        </div>
-
-        {/* 马年大吉 连在一起 */}
-        <FestivalPendant content="马" delay="0.9s" ropeHeight={8} fontSize={48} />
-        <FestivalPendant content="年" delay="1.1s" ropeHeight={18} fontSize={48} />
-        <FestivalPendant content="大" delay="1.3s" ropeHeight={11} fontSize={48} />
-        <FestivalPendant content="吉" delay="1.5s" ropeHeight={13} fontSize={48} />
-
-        {/* 小福袋2 */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          animation: 'swing 2.4s ease-in-out infinite',
-          transformOrigin: 'top center'
-        }}>
-          <div style={{ width: '2px', height: '10px', background: '#fbbf24' }} />
-          <svg width="24" height="32" viewBox="0 0 60 70" fill="none">
-            <defs>
-              <linearGradient id="bagRed2" x1="30" y1="0" x2="30" y2="70" gradientUnits="userSpaceOnUse">
-                <stop offset="0" stopColor="#EF4444" />
-                <stop offset="0.6" stopColor="#DC2626" />
-                <stop offset="1" stopColor="#991B1B" />
-              </linearGradient>
-              <linearGradient id="bagGold2" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stopColor="#FCD34D" />
-                <stop offset="1" stopColor="#D97706" />
-              </linearGradient>
-            </defs>
-            <path d="M12 28 C 4 38, 2 58, 14 65 Q 30 73 46 65 C 58 58, 56 38, 48 28 Q 30 22 12 28 Z" fill="url(#bagRed2)" stroke="#B91C1C" strokeWidth="1" />
-            <g transform="translate(0, -2)">
-              <path d="M20 16 Q 30 24 40 16 L 44 12 Q 30 18 16 12 Z" fill="url(#bagGold2)" stroke="#B45309" strokeWidth="1" />
-            </g>
-            <path d="M18 24 L 14 12 C 12 8, 20 4, 30 8 C 40 4, 48 8, 46 12 L 42 24 Z" fill="#EF4444" stroke="#B91C1C" strokeWidth="1" />
-            <path d="M14 26 Q 30 30 46 26" stroke="#FCD34D" strokeWidth="4" strokeLinecap="round" />
-            <circle cx="30" cy="27" r="5" fill="url(#bagGold2)" stroke="#B45309" strokeWidth="0.5" />
-            <text x="30" y="52" fontSize="18" fill="#FCD34D" textAnchor="middle" fontWeight="bold">福</text>
-          </svg>
-        </div>
-
-        {/* 金币串2 */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          animation: 'swing 2.5s ease-in-out infinite',
-          transformOrigin: 'top center'
-        }}>
-          <div style={{ width: '2px', height: '7px', background: '#fbbf24' }} />
-          <svg width="16" height="60" viewBox="0 0 18 80" fill="none">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <g key={i}>
-                <circle cx="9" cy={8 + i * 15} r="5" fill="#FCD34D" stroke="#D97706" strokeWidth="1" />
-                <rect x="6.5" y={5.5 + i * 15} width="5" height="5" fill="#D97706" rx="1" />
-                {i < 4 && <path d={`M9 ${13 + i * 15} L9 ${15 + i * 15}`} stroke="#D97706" strokeWidth="1" />}
-              </g>
+            <circle cx="0" cy="0" r="3" fill="url(#bloomCenter)" />
+          </g>
+          {/* 花朵2 */}
+          <g transform="translate(78, 60)">
+            {[0, 72, 144, 216, 288].map((r) => (
+              <ellipse key={r} cx="0" cy="-5" rx="3.5" ry="6" fill="url(#bloomL)" transform={`rotate(${r})`} opacity="0.85" />
             ))}
-          </svg>
+            <circle cx="0" cy="0" r="2.5" fill="url(#bloomCenter)" />
+          </g>
+          {/* 花朵3 - 枝头 */}
+          <g transform="translate(125, 10)">
+            {[0, 72, 144, 216, 288].map((r) => (
+              <ellipse key={r} cx="0" cy="-5" rx="3.5" ry="6" fill="url(#bloomL)" transform={`rotate(${r})`} opacity="0.9" />
+            ))}
+            <circle cx="0" cy="0" r="2.5" fill="url(#bloomCenter)" />
+          </g>
+          {/* 花朵4 - 主枝上 */}
+          <g transform="translate(60, 18)">
+            {[0, 72, 144, 216, 288].map((r) => (
+              <ellipse key={r} cx="0" cy="-4" rx="3" ry="5" fill="url(#bloomL)" transform={`rotate(${r})`} opacity="0.8" />
+            ))}
+            <circle cx="0" cy="0" r="2" fill="url(#bloomCenter)" />
+          </g>
+          {/* 花苞 */}
+          <ellipse cx="145" cy="38" rx="3" ry="4.5" fill="#FBCFE8" />
+          <path d="M143 34 Q145 30 147 34" stroke="#86EFAC" strokeWidth="1.2" fill="#BBF7D0" />
+          <ellipse cx="100" cy="32" rx="2.5" ry="3.5" fill="#FBCFE8" />
+          {/* 叶子 */}
+          <ellipse cx="25" cy="12" rx="4" ry="8" fill="#BBF7D0" transform="rotate(60, 25, 12)" opacity="0.7" />
+          <ellipse cx="50" cy="22" rx="3" ry="6" fill="#BBF7D0" transform="rotate(40, 50, 22)" opacity="0.6" />
+          <ellipse cx="95" cy="38" rx="3" ry="6" fill="#BBF7D0" transform="rotate(-20, 95, 38)" opacity="0.7" />
+          {/* 飘落花瓣 */}
+          <ellipse cx="55" cy="75" rx="3" ry="2" fill="#FBCFE8" opacity="0.6" transform="rotate(-30, 55, 75)">
+            <animateTransform attributeName="transform" type="translate" values="0 0;5 15;10 30" dur="4s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.6;0.3;0" dur="4s" repeatCount="indefinite" />
+          </ellipse>
+          <ellipse cx="90" cy="80" rx="2.5" ry="1.8" fill="#F9A8D4" opacity="0.5" transform="rotate(20, 90, 80)">
+            <animateTransform attributeName="transform" type="translate" values="0 0;-3 12;-6 25" dur="5s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.5;0.25;0" dur="5s" repeatCount="indefinite" />
+          </ellipse>
+        </svg>
+
+        {/* 中间吊坠区 */}
+        <div style={{ display: 'flex', flex: 1, justifyContent: 'space-evenly', alignItems: 'flex-start' }}>
+          {/* 绿叶藤蔓1 */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', animation: 'swing 3.2s ease-in-out infinite', transformOrigin: 'top center' }}>
+            <div style={{ width: '1.5px', height: '10px', background: '#86EFAC' }} />
+            <svg width="28" height="50" viewBox="0 0 30 55" fill="none">
+              <path d="M15 0 Q13 15 16 30 Q14 42 15 52" stroke="#86EFAC" strokeWidth="2" fill="none" />
+              <ellipse cx="8" cy="12" rx="5" ry="8" fill="#BBF7D0" transform="rotate(-30, 8, 12)" opacity="0.8" />
+              <ellipse cx="22" cy="24" rx="5" ry="8" fill="#86EFAC" transform="rotate(25, 22, 24)" opacity="0.7" />
+              <ellipse cx="9" cy="38" rx="4" ry="7" fill="#BBF7D0" transform="rotate(-20, 9, 38)" opacity="0.75" />
+            </svg>
+          </div>
+
+          {/* 樱花+叶子 */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', animation: 'swing 3s ease-in-out infinite', transformOrigin: 'top center' }}>
+            <div style={{ width: '1.5px', height: '14px', background: 'linear-gradient(180deg, #86EFAC, #FBCFE8)' }} />
+            <svg width="40" height="44" viewBox="0 0 44 48" fill="none">
+              <path d="M22 0 Q20 12 24 24" stroke="#86EFAC" strokeWidth="2" fill="none" />
+              <ellipse cx="16" cy="10" rx="4" ry="7" fill="#BBF7D0" transform="rotate(-25, 16, 10)" opacity="0.8" />
+              <ellipse cx="30" cy="16" rx="3.5" ry="6" fill="#86EFAC" transform="rotate(20, 30, 16)" opacity="0.7" />
+              <g transform="translate(22, 30)">
+                {[0, 72, 144, 216, 288].map((r) => (
+                  <ellipse key={r} cx="0" cy="-7" rx="4.5" ry="8" fill="#FBCFE8" transform={`rotate(${r})`} opacity="0.9" />
+                ))}
+                <circle cx="0" cy="0" r="3.5" fill="#FDE68A" />
+              </g>
+            </svg>
+          </div>
+
+          {/* 蝴蝶 */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', animation: 'butterflyFloat 4s ease-in-out infinite', transformOrigin: 'top center' }}>
+            <div style={{ width: '1px', height: '10px', background: '#D8B4FE' }} />
+            <svg width="42" height="36" viewBox="0 0 36 30" fill="none">
+              <path d="M18 15 Q8 4 4 10 Q2 18 12 19 Q14 19 18 15Z" fill="#C4B5FD" opacity="0.85">
+                <animateTransform attributeName="transform" type="rotate" values="-5 18 15;10 18 15;-5 18 15" dur="0.6s" repeatCount="indefinite" />
+              </path>
+              <path d="M18 15 Q28 4 32 10 Q34 18 24 19 Q22 19 18 15Z" fill="#DDD6FE" opacity="0.85">
+                <animateTransform attributeName="transform" type="rotate" values="5 18 15;-10 18 15;5 18 15" dur="0.6s" repeatCount="indefinite" />
+              </path>
+              <path d="M18 15 Q12 22 10 25 Q14 28 18 22Z" fill="#C4B5FD" opacity="0.6" />
+              <path d="M18 15 Q24 22 26 25 Q22 28 18 22Z" fill="#DDD6FE" opacity="0.6" />
+              <ellipse cx="18" cy="17" rx="1.5" ry="5.5" fill="#7C3AED" />
+              <path d="M17 12 Q14 6 12 4" stroke="#7C3AED" strokeWidth="0.8" fill="none" />
+              <path d="M19 12 Q22 6 24 4" stroke="#7C3AED" strokeWidth="0.8" fill="none" />
+              <circle cx="12" cy="4" r="1" fill="#A78BFA" />
+              <circle cx="24" cy="4" r="1" fill="#A78BFA" />
+            </svg>
+          </div>
+
+          {/* 小鸟+树枝 */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', animation: 'butterflyFloat 3.5s ease-in-out infinite', animationDelay: '1s', transformOrigin: 'top center' }}>
+            <div style={{ width: '1.5px', height: '12px', background: '#86EFAC' }} />
+            <svg width="44" height="38" viewBox="0 0 48 40" fill="none">
+              <path d="M10 36 Q24 34 38 36" stroke="#86EFAC" strokeWidth="2.5" fill="none" />
+              <ellipse cx="8" cy="32" rx="3" ry="5" fill="#BBF7D0" transform="rotate(-40, 8, 32)" opacity="0.8" />
+              <ellipse cx="40" cy="32" rx="3" ry="5" fill="#86EFAC" transform="rotate(40, 40, 32)" opacity="0.7" />
+              <ellipse cx="24" cy="24" rx="8" ry="6" fill="#FBBF24" />
+              <circle cx="30" cy="18" r="5" fill="#FCD34D" />
+              <circle cx="32" cy="17" r="1.2" fill="#1F2937" />
+              <circle cx="32.3" cy="16.7" r="0.4" fill="#FFF" />
+              <path d="M35 18 L39 19 L35 20Z" fill="#F97316" />
+              <path d="M18 21 Q12 14 9 17 Q12 22 18 24Z" fill="#FDE68A" opacity="0.9">
+                <animateTransform attributeName="transform" type="rotate" values="0 18 22;-12 18 22;0 18 22" dur="0.8s" repeatCount="indefinite" />
+              </path>
+              <path d="M16 24 Q10 26 8 30" stroke="#F59E0B" strokeWidth="1.5" fill="none" />
+              <circle cx="28" cy="20" r="1.5" fill="#F9A8D4" opacity="0.5" />
+            </svg>
+          </div>
+
+          {/* 绿叶花朵 */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', animation: 'swing 2.8s ease-in-out infinite', animationDelay: '0.3s', transformOrigin: 'top center' }}>
+            <div style={{ width: '1.5px', height: '20px', background: 'linear-gradient(180deg, #86EFAC, #FBCFE8)' }} />
+            <svg width="38" height="42" viewBox="0 0 40 46" fill="none">
+              <path d="M20 0 Q18 14 22 28" stroke="#86EFAC" strokeWidth="2" fill="none" />
+              <ellipse cx="14" cy="8" rx="4" ry="7" fill="#86EFAC" transform="rotate(-30, 14, 8)" opacity="0.75" />
+              <ellipse cx="28" cy="18" rx="3.5" ry="6.5" fill="#BBF7D0" transform="rotate(25, 28, 18)" opacity="0.8" />
+              <g transform="translate(20, 34)">
+                {[0, 72, 144, 216, 288].map((r) => (
+                  <ellipse key={r} cx="0" cy="-6" rx="4" ry="7" fill="#F9A8D4" transform={`rotate(${r})`} opacity="0.85" />
+                ))}
+                <circle cx="0" cy="0" r="3" fill="#FDE68A" />
+              </g>
+            </svg>
+          </div>
+
+          {/* 嫩芽 */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', animation: 'swing 3.5s ease-in-out infinite', animationDelay: '0.8s', transformOrigin: 'top center' }}>
+            <div style={{ width: '1.5px', height: '16px', background: '#86EFAC' }} />
+            <svg width="26" height="44" viewBox="0 0 28 48" fill="none">
+              <path d="M14 0 Q12 16 14 32 Q13 40 14 46" stroke="#86EFAC" strokeWidth="2" fill="none" />
+              <ellipse cx="7" cy="10" rx="5" ry="8" fill="#34D399" transform="rotate(-35, 7, 10)" opacity="0.7" />
+              <ellipse cx="21" cy="22" rx="4.5" ry="7" fill="#6EE7B7" transform="rotate(30, 21, 22)" opacity="0.75" />
+              <ellipse cx="8" cy="34" rx="4" ry="6.5" fill="#86EFAC" transform="rotate(-25, 8, 34)" opacity="0.7" />
+              <ellipse cx="14" cy="45" rx="3" ry="3.5" fill="#FBCFE8" opacity="0.8" />
+            </svg>
+          </div>
+
+          {/* 蝴蝶2 */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', animation: 'butterflyFloat 4.5s ease-in-out infinite', animationDelay: '1.5s', transformOrigin: 'top center' }}>
+            <div style={{ width: '1px', height: '18px', background: '#F9A8D4' }} />
+            <svg width="38" height="32" viewBox="0 0 36 30" fill="none">
+              <path d="M18 15 Q8 3 4 10 Q2 18 12 19 Q14 19 18 15Z" fill="#FBCFE8" opacity="0.85">
+                <animateTransform attributeName="transform" type="rotate" values="-5 18 15;12 18 15;-5 18 15" dur="0.5s" repeatCount="indefinite" />
+              </path>
+              <path d="M18 15 Q28 3 32 10 Q34 18 24 19 Q22 19 18 15Z" fill="#F9A8D4" opacity="0.85">
+                <animateTransform attributeName="transform" type="rotate" values="5 18 15;-12 18 15;5 18 15" dur="0.5s" repeatCount="indefinite" />
+              </path>
+              <path d="M18 15 Q12 22 10 25 Q14 28 18 22Z" fill="#FBCFE8" opacity="0.6" />
+              <path d="M18 15 Q24 22 26 25 Q22 28 18 22Z" fill="#F9A8D4" opacity="0.6" />
+              <ellipse cx="18" cy="17" rx="1.5" ry="5.5" fill="#EC4899" />
+              <path d="M17 12 Q14 5 12 3" stroke="#EC4899" strokeWidth="0.7" fill="none" />
+              <path d="M19 12 Q22 5 24 3" stroke="#EC4899" strokeWidth="0.7" fill="none" />
+              <circle cx="12" cy="3" r="0.8" fill="#F472B6" />
+              <circle cx="24" cy="3" r="0.8" fill="#F472B6" />
+            </svg>
+          </div>
         </div>
 
-        {/* 右侧鞭炮串 */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          animation: 'swing 2s ease-in-out infinite',
-          animationDelay: '0.3s',
-          transformOrigin: 'top center'
-        }}>
-          <div style={{ width: '2px', height: '8px', background: '#fbbf24' }} />
-          <svg width="38" height="85" viewBox="0 0 50 110" fill="none">
-            <defs>
-              <linearGradient id="fcOrangeR" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0" stopColor="#EA580C" />
-                <stop offset="0.3" stopColor="#F97316" />
-                <stop offset="0.5" stopColor="#FDBA74" />
-                <stop offset="0.7" stopColor="#F97316" />
-                <stop offset="1" stopColor="#C2410C" />
-              </linearGradient>
-              <linearGradient id="fcCapR" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0" stopColor="#DC2626" />
-                <stop offset="0.5" stopColor="#EF4444" />
-                <stop offset="1" stopColor="#B91C1C" />
-              </linearGradient>
-            </defs>
-            <path d="M25 5 Q28 20 22 35 Q28 50 22 65 Q28 80 25 95" stroke="#92400E" strokeWidth="1.5" fill="none" />
-            {[0, 1, 2, 3, 4, 5].map((i) => {
-              const isLeft = i % 2 === 0;
-              const cx = isLeft ? 15 : 35;
-              const cy = 12 + i * 15;
-              return (
-                <g key={i} transform={`rotate(${isLeft ? -15 : 15} ${cx} ${cy})`}>
-                  <ellipse cx={cx} cy={cy - 5} rx="6" ry="2.5" fill="url(#fcCapR)" />
-                  <rect x={cx - 6} y={cy - 5} width="12" height="14" fill="url(#fcOrangeR)" />
-                  <ellipse cx={cx} cy={cy + 9} rx="6" ry="2.5" fill="#DC2626" />
-                  <path d={`M${cx} ${cy - 7} Q${cx + (isLeft ? 3 : -3)} ${cy - 10} ${cx + (isLeft ? 5 : -5)} ${cy - 12}`} stroke="#78350F" strokeWidth="1" fill="none" />
-                </g>
-              );
-            })}
-            <circle cx="25" cy="100" r="3" fill="#FBBF24">
-              <animate attributeName="r" values="3;5;3" dur="0.3s" repeatCount="indefinite" />
-              <animate attributeName="opacity" values="1;0.6;1" dur="0.3s" repeatCount="indefinite" />
-            </circle>
-            <circle cx="20" cy="103" r="2" fill="#FCD34D">
-              <animate attributeName="opacity" values="0.8;0.3;0.8" dur="0.25s" repeatCount="indefinite" />
-            </circle>
-            <circle cx="30" cy="102" r="2" fill="#FEF3C7">
-              <animate attributeName="opacity" values="0.6;1;0.6" dur="0.35s" repeatCount="indefinite" />
-            </circle>
-          </svg>
-        </div>
-
-        {/* 右侧春灯笼 */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          animation: 'swing 2.5s ease-in-out infinite',
-          animationDelay: '0.5s',
-          transformOrigin: 'top center'
-        }}>
-          <div style={{ width: '2px', height: '10px', background: '#fbbf24' }} />
-          <svg width="36" height="50" viewBox="0 0 40 55" fill="none">
-            <defs>
-              <linearGradient id="lanternRed2" x1="20" y1="0" x2="20" y2="50" gradientUnits="userSpaceOnUse">
-                <stop offset="0" stopColor="#EF4444" />
-                <stop offset="1" stopColor="#991B1B" />
-              </linearGradient>
-            </defs>
-            <rect x="14" y="2" width="12" height="4" rx="1" fill="#F59E0B" />
-            <ellipse cx="20" cy="24" rx="16" ry="18" fill="url(#lanternRed2)" />
-            <path d="M6 18 Q20 14 34 18" stroke="#B91C1C" strokeWidth="1.5" fill="none" />
-            <path d="M4 24 Q20 20 36 24" stroke="#B91C1C" strokeWidth="1.5" fill="none" />
-            <path d="M6 30 Q20 26 34 30" stroke="#B91C1C" strokeWidth="1.5" fill="none" />
-            <text x="20" y="28" fontSize="12" fill="#FCD34D" textAnchor="middle" fontWeight="bold">春</text>
-            <rect x="14" y="40" width="12" height="4" rx="1" fill="#F59E0B" />
-            <path d="M17 44 L15 54" stroke="#F59E0B" strokeWidth="1.5" />
-            <path d="M20 44 L20 55" stroke="#F59E0B" strokeWidth="1.5" />
-            <path d="M23 44 L25 54" stroke="#F59E0B" strokeWidth="1.5" />
-          </svg>
-        </div>
+        {/* 右侧樱花枝 - 镜像 */}
+        <svg width="120" height="90" viewBox="0 0 150 110" fill="none" style={{ marginTop: '-10px', transform: 'scaleX(-1)' }}>
+          <defs>
+            <radialGradient id="bloomR" cx="50%" cy="50%">
+              <stop offset="0%" stopColor="#FFF" />
+              <stop offset="50%" stopColor="#FBCFE8" />
+              <stop offset="100%" stopColor="#F472B6" />
+            </radialGradient>
+          </defs>
+          {/* 主枝 */}
+          <path d="M0 5 Q30 8 60 20 Q90 35 120 30 Q135 28 145 35" stroke="#86EFAC" strokeWidth="3" fill="none" />
+          <path d="M40 14 Q45 30 38 45" stroke="#86EFAC" strokeWidth="2" fill="none" />
+          <path d="M80 28 Q85 45 78 58" stroke="#86EFAC" strokeWidth="2" fill="none" />
+          <path d="M110 30 Q118 18 125 12" stroke="#86EFAC" strokeWidth="2" fill="none" />
+          {/* 花朵 */}
+          <g transform="translate(38, 48)">
+            {[0, 72, 144, 216, 288].map((r) => (
+              <ellipse key={r} cx="0" cy="-6" rx="4" ry="7" fill="url(#bloomR)" transform={`rotate(${r})`} opacity="0.9" />
+            ))}
+            <circle cx="0" cy="0" r="3" fill="url(#bloomCenter)" />
+          </g>
+          <g transform="translate(78, 60)">
+            {[0, 72, 144, 216, 288].map((r) => (
+              <ellipse key={r} cx="0" cy="-5" rx="3.5" ry="6" fill="url(#bloomR)" transform={`rotate(${r})`} opacity="0.85" />
+            ))}
+            <circle cx="0" cy="0" r="2.5" fill="url(#bloomCenter)" />
+          </g>
+          <g transform="translate(125, 10)">
+            {[0, 72, 144, 216, 288].map((r) => (
+              <ellipse key={r} cx="0" cy="-5" rx="3.5" ry="6" fill="url(#bloomR)" transform={`rotate(${r})`} opacity="0.9" />
+            ))}
+            <circle cx="0" cy="0" r="2.5" fill="url(#bloomCenter)" />
+          </g>
+          <g transform="translate(60, 18)">
+            {[0, 72, 144, 216, 288].map((r) => (
+              <ellipse key={r} cx="0" cy="-4" rx="3" ry="5" fill="url(#bloomR)" transform={`rotate(${r})`} opacity="0.8" />
+            ))}
+            <circle cx="0" cy="0" r="2" fill="url(#bloomCenter)" />
+          </g>
+          {/* 花苞 */}
+          <ellipse cx="145" cy="38" rx="3" ry="4.5" fill="#FBCFE8" />
+          <path d="M143 34 Q145 30 147 34" stroke="#86EFAC" strokeWidth="1.2" fill="#BBF7D0" />
+          <ellipse cx="100" cy="32" rx="2.5" ry="3.5" fill="#FBCFE8" />
+          {/* 叶子 */}
+          <ellipse cx="25" cy="12" rx="4" ry="8" fill="#BBF7D0" transform="rotate(60, 25, 12)" opacity="0.7" />
+          <ellipse cx="50" cy="22" rx="3" ry="6" fill="#BBF7D0" transform="rotate(40, 50, 22)" opacity="0.6" />
+          <ellipse cx="95" cy="38" rx="3" ry="6" fill="#BBF7D0" transform="rotate(-20, 95, 38)" opacity="0.7" />
+          {/* 飘落花瓣 */}
+          <ellipse cx="55" cy="75" rx="3" ry="2" fill="#FBCFE8" opacity="0.6" transform="rotate(-30, 55, 75)">
+            <animateTransform attributeName="transform" type="translate" values="0 0;5 15;10 30" dur="4.5s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.6;0.3;0" dur="4.5s" repeatCount="indefinite" />
+          </ellipse>
+        </svg>
       </div>
 
       <div className={`app-layout ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>

@@ -2,9 +2,8 @@ import { Controller, Get, Post, Body, Logger, HttpException, HttpStatus } from '
 import { Public } from '@infra/server/response/decorators/api-response.decorator';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { AgentRunnerService } from './runner.service';
-import { ContextService } from './context/context.service';
-import { RouterService } from '@providers/router.service';
 import { RegistryService } from '@providers/registry.service';
+import { AgentHealthService } from './agent-health.service';
 
 @Controller('agent')
 export class AgentController {
@@ -12,26 +11,23 @@ export class AgentController {
 
   constructor(
     private readonly runner: AgentRunnerService,
-    private readonly context: ContextService,
     private readonly feishuAlertService: FeishuAlertService,
-    private readonly router: RouterService,
     private readonly registry: RegistryService,
+    private readonly healthService: AgentHealthService,
   ) {}
 
   /**
-   * 健康检查
+   * 健康检查（真实检测）
    * GET /agent/health
+   *
+   * healthy:   Redis + Supabase 均可用
+   * degraded:  Supabase 不可用（历史/配置受影响，但消息处理仍可用）
+   * unhealthy: Redis 不可用（消息队列完全瘫痪）
    */
   @Public()
   @Get('health')
-  healthCheck() {
-    return {
-      status: 'healthy',
-      providers: this.registry.listProviders(),
-      roles: this.router.listRoleDetails(),
-      scenarios: this.context.getLoadedScenarios(),
-      message: 'Agent 服务正常',
-    };
+  async healthCheck() {
+    return this.healthService.check();
   }
 
   /**

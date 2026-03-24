@@ -21,7 +21,7 @@ export default function UserTrendChart() {
   const chartData = trendData.map(item => ({
     date: formatDate(item.date),
     fullDate: item.date,
-    用户数: item.uniqueUsers,
+    用户数: item.userCount,
     消息数: item.messageCount,
   }));
 

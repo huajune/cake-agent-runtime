@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { useSaveStatusStore } from '@/hooks/strategy/useSaveStatusStore';
 import * as strategyService from '@/api/services/strategy.service';
 import type {
+  StrategyRoleSetting,
   StrategyPersona,
   StrategyStageGoals,
   StrategyRedLines,
@@ -19,6 +20,25 @@ export function useStrategyConfig() {
     queryKey: QUERY_KEY,
     queryFn: () => strategyService.getStrategyConfig(),
     staleTime: 30000,
+  });
+}
+
+/** 更新角色设定 */
+export function useUpdateRoleSetting() {
+  const queryClient = useQueryClient();
+  const setStatus = useSaveStatusStore((s) => s.setStatus);
+  return useMutation({
+    mutationFn: (roleSetting: StrategyRoleSetting) =>
+      strategyService.updateRoleSetting(roleSetting),
+    onMutate: () => setStatus('saving'),
+    onSuccess: (result) => {
+      queryClient.setQueryData(QUERY_KEY, result.config);
+      setStatus('saved');
+    },
+    onError: () => {
+      setStatus('error');
+      toast.error('保存失败，请重试');
+    },
   });
 }
 

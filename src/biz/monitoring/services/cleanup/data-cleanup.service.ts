@@ -71,6 +71,9 @@ export class DataCleanupService implements OnModuleInit {
           `聊天消息 ${this.chatRetentionDays}天DELETE, ` +
           `小时聚合永久保留)`,
       );
+
+      // 启动时立即清理上次服务重启遗留的卡住记录（不等 cron）
+      await this.timeoutStuckProcessingRecords();
     } else {
       this.logger.warn('⚠️ 数据清理服务已禁用 (Supabase 不可用)');
     }
@@ -84,6 +87,10 @@ export class DataCleanupService implements OnModuleInit {
     if (!this.supabaseService.isAvailable()) {
       return;
     }
+
+    // 0. 将卡住的 processing 记录标记为 timeout（>30 分钟）
+    // 与 onModuleInit 中的调用不冲突：onModuleInit 处理启动时遗留，此处处理日间新卡住记录
+    await this.timeoutStuckProcessingRecords();
 
     // 1. NULL agent_invocation（>7 天）— 释放 TOAST 空间
     await this.nullAgentInvocations();
@@ -193,6 +200,22 @@ export class DataCleanupService implements OnModuleInit {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`[数据清理] 清理用户活跃记录失败: ${message}`);
+    }
+  }
+
+  /**
+   * 将卡住的 processing 记录标记为 timeout
+   * 服务重启后内存中的 pendingRecords 丢失，这些记录永远停留在 processing
+   */
+  private async timeoutStuckProcessingRecords(): Promise<void> {
+    try {
+      const updatedCount = await this.messageProcessingService.timeoutStuckRecords(30);
+      if (updatedCount > 0) {
+        this.logger.log(`[数据清理] 已将 ${updatedCount} 条卡住的 processing 记录标记为 timeout`);
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[数据清理] 标记超时记录失败: ${message}`);
     }
   }
 

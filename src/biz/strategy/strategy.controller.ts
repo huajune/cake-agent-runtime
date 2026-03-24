@@ -1,7 +1,21 @@
-import { Controller, Get, Post, Body, HttpCode, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  HttpCode,
+  HttpException,
+  HttpStatus,
+  Query,
+} from '@nestjs/common';
 import { Public } from '@infra/server/response/decorators/api-response.decorator';
 import { StrategyConfigService } from './services/strategy-config.service';
-import { StrategyPersona, StrategyStageGoals, StrategyRedLines } from './types/strategy.types';
+import {
+  StrategyPersona,
+  StrategyStageGoals,
+  StrategyRedLines,
+  StrategyRoleSetting,
+} from './types/strategy.types';
 
 /**
  * 策略配置控制器
@@ -15,6 +29,16 @@ export class StrategyController {
   @Get()
   async getActiveConfig() {
     return this.strategyConfigService.getActiveConfig();
+  }
+
+  @Post('role-setting')
+  @HttpCode(200)
+  async updateRoleSetting(@Body() body: StrategyRoleSetting) {
+    if (!body || typeof body.content !== 'string') {
+      throw new HttpException('content 必须是字符串', HttpStatus.BAD_REQUEST);
+    }
+    const config = await this.strategyConfigService.updateRoleSetting(body);
+    return { config, message: '角色设定已更新' };
   }
 
   @Post('persona')

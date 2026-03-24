@@ -21,6 +21,7 @@ import {
   useAvailableModels,
   useConfiguredTools,
 } from '@/hooks/config/useSystemConfig';
+import { useWorkerStatus } from '@/hooks/config/useWorker';
 import { formatDuration, formatMinuteLabel, formatDayLabel, formatHourLabel } from '@/utils/format';
 import { THEME_COLORS } from '@/constants';
 
@@ -33,8 +34,8 @@ import ChartCard, { ChartsRow } from './components/ChartCard';
 // 样式导入
 import styles from './styles/index.module.scss';
 
-// 新春装饰 emoji 列表
-const springDecorations = ['🧧', '🧨', '🎊', '🎉', '🪭', '🏮', '🐴', '🌺', '🥟', '❤️', '🍊', '💰', '🎆'];
+// 春日装饰 emoji 列表
+const springDecorations = ['🌿', '🍃', '🌱', '🌾', '🐦', '🐝', '🌻', '🌼', '🍀', '🌳'];
 
 // 注册 Chart.js 组件
 ChartJS.register(
@@ -59,18 +60,14 @@ export default function Dashboard() {
   const { data: aiStatus } = useAiReplyStatus();
   const toggleAiReply = useToggleAiReply();
 
-  // 详情数据（悬浮时加载）
-  const { data: modelsData } = useAvailableModels();
-  const { data: toolsData } = useConfiguredTools();
-
-  // 新春装饰效果
+  // 卡片装饰贴纸
   useEffect(() => {
     const cards = document.querySelectorAll('.metric-card, .chart-card, .insight-card');
 
     cards.forEach((card) => {
       card.querySelectorAll('.spring-sticker').forEach(s => s.remove());
 
-      if (Math.random() > 0.2) {
+      if (Math.random() > 0.6) {
         const sticker = document.createElement('div');
         sticker.className = 'spring-sticker sticker-tr';
         sticker.textContent = springDecorations[Math.floor(Math.random() * springDecorations.length)];
@@ -78,7 +75,7 @@ export default function Dashboard() {
         card.appendChild(sticker);
       }
 
-      if (Math.random() > 0.7) {
+      if (Math.random() > 0.85) {
         const sticker2 = document.createElement('div');
         sticker2.className = 'spring-sticker sticker-tl';
         sticker2.textContent = springDecorations[Math.floor(Math.random() * springDecorations.length)];
@@ -90,6 +87,12 @@ export default function Dashboard() {
       document.querySelectorAll('.spring-sticker').forEach(s => s.remove());
     };
   }, [dashboardLoading]);
+
+  // 详情数据（悬浮时加载）
+  const { data: modelsData } = useAvailableModels();
+  const { data: toolsData } = useConfiguredTools();
+  const { data: workerStatus } = useWorkerStatus();
+
 
   const overview = dashboard?.overview;
   const overviewDelta = dashboard?.overviewDelta;
@@ -104,8 +107,8 @@ export default function Dashboard() {
 
   // 健康状态
   const healthStatus = health?.status === 'healthy' &&
-    health?.models?.allConfiguredModelsAvailable &&
-    health?.tools?.allAvailable
+    health?.providers?.count > 0 &&
+    health?.tools?.total > 0
     ? 'healthy'
     : health?.status !== 'healthy' ? 'error' : 'warning';
 
@@ -273,6 +276,7 @@ export default function Dashboard() {
           health={health}
           modelsData={modelsData}
           toolsData={toolsData}
+          workerStatus={workerStatus}
         />
       </ControlPanel>
 

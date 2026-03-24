@@ -1,5 +1,6 @@
-import { Controller, Post, Body, Logger } from '@nestjs/common';
+import { Controller, Post, Get, Body, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { MessageService } from './message.service';
+import { MessageProcessor } from './message.processor';
 import { RawResponse, Public } from '@infra/server/response/decorators/api-response.decorator';
 import { MessageCallbackAdapterService } from './services/callback-adapter.service';
 import { LogSanitizer } from './utils/log-sanitizer.util';
@@ -21,6 +22,7 @@ export class MessageController {
   constructor(
     private readonly messageService: MessageService,
     private readonly callbackAdapter: MessageCallbackAdapterService,
+    private readonly messageProcessor: MessageProcessor,
   ) {}
 
   /**
@@ -72,5 +74,27 @@ export class MessageController {
   async receiveSentResultCamelCase(@Body() body: unknown) {
     this.logger.debug('接收到发送结果回调 (sentResult)');
     return this.messageService.handleSentResult(body);
+  }
+
+  // ==================== Worker 管理 API ====================
+
+  /**
+   * 获取 Worker 状态（并发数、活跃任务数等）
+   */
+  @Get('worker-status')
+  getWorkerStatus() {
+    return this.messageProcessor.getWorkerStatus();
+  }
+
+  /**
+   * 设置 Worker 并发数
+   */
+  @Post('worker-concurrency')
+  async setWorkerConcurrency(@Body() body: { concurrency: number }) {
+    const { concurrency } = body;
+    if (typeof concurrency !== 'number' || !Number.isInteger(concurrency) || concurrency < 1) {
+      throw new HttpException('concurrency 必须是正整数', HttpStatus.BAD_REQUEST);
+    }
+    return this.messageProcessor.setConcurrency(concurrency);
   }
 }

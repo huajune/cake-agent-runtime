@@ -36,6 +36,10 @@ export interface StrategyRedLines {
   riskScenarios?: RiskScenario[];
 }
 
+export interface StrategyRoleSetting {
+  content: string;
+}
+
 export interface StrategyIndustrySkills {
   skills: unknown[];
 }
@@ -43,7 +47,7 @@ export interface StrategyIndustrySkills {
 export interface StrategyChangelogRecord {
   id: string;
   config_id: string;
-  field: 'persona' | 'stage_goals' | 'red_lines';
+  field: 'role_setting' | 'persona' | 'stage_goals' | 'red_lines';
   old_value: unknown;
   new_value: unknown;
   changed_at: string;
@@ -54,6 +58,7 @@ export interface StrategyConfigRecord {
   id: string;
   name: string;
   description: string | null;
+  role_setting: StrategyRoleSetting;
   persona: StrategyPersona;
   stage_goals: StrategyStageGoals;
   red_lines: StrategyRedLines;

@@ -16,22 +16,23 @@ export default function FestivalPendant({ content, delay = '0s', ropeHeight = 15
                 alignItems: 'center',
                 zIndex: 20,
                 transformOrigin: 'top center',
-                animation: 'swing 3s ease-in-out infinite'
+                animation: 'swing 4s ease-in-out infinite'
             }}
         >
-            {/* 挂绳 */}
-            <div style={{ width: '2px', height: `${ropeHeight}px`, background: '#D97706' }} />
+            {/* 细绳 */}
+            <div style={{
+                width: '1px',
+                height: `${ropeHeight}px`,
+                background: 'linear-gradient(180deg, rgba(134,239,172,0.6), rgba(134,239,172,0.2))'
+            }} />
 
-            {/* 金色闪光艺术字 */}
+            {/* 文字 */}
             <div style={{
                 fontSize: `${fontSize}px`,
-                fontWeight: '900',
-                fontFamily: '"STZhongsong", "华文中宋", "SimSun", "宋体", serif',
-                background: 'linear-gradient(180deg, #FFFBEB 0%, #FDE68A 20%, #FCD34D 40%, #FBBF24 60%, #F59E0B 80%, #FCD34D 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-                filter: 'drop-shadow(1px 1px 0 #D97706) drop-shadow(-1px -1px 0 #D97706) drop-shadow(1px -1px 0 #D97706) drop-shadow(-1px 1px 0 #D97706) drop-shadow(0 2px 4px rgba(251, 191, 36, 0.5))',
+                fontWeight: '500',
+                fontFamily: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
+                color: '#9D174D',
+                textShadow: '0 0 8px rgba(255,255,255,0.9), 0 0 16px rgba(255,255,255,0.5), 0 1px 3px rgba(157,23,77,0.15)',
                 lineHeight: 1,
                 position: 'relative'
             }}>
