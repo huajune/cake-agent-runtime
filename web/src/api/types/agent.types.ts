@@ -21,7 +21,6 @@ export interface AgentHealthRaw {
   status: string;
   providers: string[];
   roles: Record<string, { model: string; fallbacks?: string[] }>;
-  scenarios: string[];
   tools?: {
     builtIn: string[];
     mcp: string[];

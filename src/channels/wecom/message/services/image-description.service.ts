@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CompletionService } from '@agent/completion.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
+import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { ModelRole } from '@providers/types';
 
 /**
@@ -16,6 +17,10 @@ import { ModelRole } from '@providers/types';
 export class ImageDescriptionService {
   private readonly logger = new Logger(ImageDescriptionService.name);
 
+  /** 连续失败计数，用于节流告警 */
+  private consecutiveFailures = 0;
+  private readonly ALERT_THRESHOLD = 3;
+
   private readonly SYSTEM_PROMPT = [
     '你是招聘场景的图片分析助手。候选人发来的图片大多是招聘平台截图。',
     '请提取关键信息，用简洁中文输出（2-3句话）：',
@@ -29,6 +34,7 @@ export class ImageDescriptionService {
   constructor(
     private readonly completionService: CompletionService,
     private readonly chatSession: ChatSessionService,
+    private readonly feishuAlert: FeishuAlertService,
   ) {}
 
   /**
@@ -37,7 +43,22 @@ export class ImageDescriptionService {
   describeAndUpdateAsync(messageId: string, imageUrl: string): void {
     this.logger.log(`[触发] 开始图片描述 [${messageId}], url=${imageUrl.substring(0, 80)}...`);
     this.describeAndUpdate(messageId, imageUrl).catch((error) => {
-      this.logger.error(`图片描述失败 [${messageId}]: ${error.message}`, error.stack);
+      this.consecutiveFailures++;
+      this.logger.error(
+        `图片描述失败 [${messageId}] (连续第${this.consecutiveFailures}次): ${error.message}`,
+        error.stack,
+      );
+
+      // 连续失败达到阈值时发送告警
+      if (this.consecutiveFailures === this.ALERT_THRESHOLD) {
+        this.feishuAlert
+          .sendSimpleAlert(
+            '图片描述服务连续失败',
+            `Vision 模型连续 ${this.ALERT_THRESHOLD} 次调用失败，图片消息无法被识别。\n最近错误: ${error.message}`,
+            'warning',
+          )
+          .catch(() => {});
+      }
     });
   }
 
@@ -76,6 +97,9 @@ export class ImageDescriptionService {
 
     const content = `[图片消息] ${description}`;
     await this.chatSession.updateMessageContent(messageId, content);
+
+    // 成功则重置失败计数
+    this.consecutiveFailures = 0;
 
     this.logger.log(
       `图片描述完成 [${messageId}]: "${description.substring(0, 50)}${description.length > 50 ? '...' : ''}", tokens=${result.usage.totalTokens}`,

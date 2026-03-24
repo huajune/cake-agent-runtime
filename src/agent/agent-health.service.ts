@@ -95,13 +95,9 @@ export class AgentHealthService {
       }
       const client = this.supabaseService.getSupabaseClient();
       if (!client) return { ok: false, error: '客户端为空' };
-      // 使用内置 RPC 或轻量 schema 查询，不耦合业务表
-      const { error } = await client.rpc('version').maybeSingle();
-      if (error) {
-        // fallback: 尝试简单的 schema 信息查询
-        const { error: fallbackError } = await client.from('strategy_config').select('id').limit(1);
-        if (fallbackError) return { ok: false, error: fallbackError.message };
-      }
+      // 轻量查询验证连通性
+      const { error } = await client.from('strategy_config').select('id').limit(1);
+      if (error) return { ok: false, error: error.message };
       return { ok: true };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : 'Supabase 连接失败' };

@@ -675,7 +675,8 @@ export class AnalyticsDashboardService {
     activeUsers: number,
     bookingCount: number,
   ): BusinessMetricsSnapshot {
-    const bookingSuccessRate = bookingCount > 0 ? 100 : 0;
+    // 无失败数据来源，成功率设为 0 表示未知（而非假设 100%）
+    const bookingSuccessRate = 0;
     const conversionRate = activeUsers > 0 ? (bookingCount / activeUsers) * 100 : 0;
     return {
       consultations: { total: activeUsers, new: activeUsers },
