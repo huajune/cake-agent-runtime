@@ -32,7 +32,7 @@ import { HourlyStatsAggregatorService } from './hourly-stats-aggregator.service'
 import { MessageTrackingService } from '../tracking/message-tracking.service';
 
 /** 业务指标快照（用户数 + 预约数 + 转化率） */
-interface BusinessMetricsSnapshot {
+export interface BusinessMetricsSnapshot {
   consultations: { total: number; new: number };
   bookings: { attempts: number; successful: number; failed: number; successRate: number };
   conversion: { consultationToBooking: number };
