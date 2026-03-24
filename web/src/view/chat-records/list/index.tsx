@@ -61,7 +61,7 @@ function getMonthDateRange(months: number): { startDate: string; endDate: string
 
   // 计算过去 N 个月的日期范围
   const startDate = new Date(now);
-  startDate.setDate(startDate.getDate() - (months * 30 - 1));
+  startDate.setMonth(startDate.getMonth() - months);
 
   return { startDate: getDateString(startDate), endDate };
 }

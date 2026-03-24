@@ -31,6 +31,13 @@ import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { HourlyStatsAggregatorService } from './hourly-stats-aggregator.service';
 import { MessageTrackingService } from '../tracking/message-tracking.service';
 
+/** 业务指标快照（用户数 + 预约数 + 转化率） */
+interface BusinessMetricsSnapshot {
+  consultations: { total: number; new: number };
+  bookings: { attempts: number; successful: number; failed: number; successRate: number };
+  conversion: { consultationToBooking: number };
+}
+
 /**
  * Dashboard 数据聚合服务
  * 负责仪表盘完整数据和概览数据的聚合计算
@@ -157,7 +164,7 @@ export class AnalyticsDashboardService {
     tokenTrend: { time: string; tokenUsage: number; messageCount: number }[];
     businessTrend: BusinessMetricTrendPoint[];
     responseTrend: ResponseMinuteTrendPoint[];
-    business: ReturnType<AnalyticsDashboardService['calculateBusinessMetrics']>;
+    business: BusinessMetricsSnapshot;
     businessDelta: { consultations: number; bookingAttempts: number; bookingSuccessRate: number };
     fallback: DashboardFallbackStats;
     fallbackDelta: { totalCount: number; successRate: number };
@@ -292,13 +299,25 @@ export class AnalyticsDashboardService {
         ),
       };
 
-      const businessRecords = await this.getDetailRecordsByTimeRange(timeRange);
-      const business = this.calculateBusinessMetrics(businessRecords);
-      const previousBusiness = {
-        consultations: { total: 0, new: 0 },
-        bookings: { attempts: 0, successful: 0, failed: 0, successRate: 0 },
-        conversion: { consultationToBooking: 0 },
-      };
+      const curStartDate = currentStartDate.toISOString().split('T')[0];
+      const curEndDate = currentEndDate.toISOString().split('T')[0];
+      const prevStartDate = previousStartDate.toISOString().split('T')[0];
+      const prevEndDate = previousEndDate.toISOString().split('T')[0];
+
+      // 并行查询：预约数（轻量索引查询）+ 趋势原始记录（仅当期，用于图表）
+      const [currentBookings, previousBookings, trendRecords] = await Promise.all([
+        this.getBookingCount(curStartDate, curEndDate),
+        this.getBookingCount(prevStartDate, prevEndDate),
+        this.getDetailRecordsByTimeRange(timeRange),
+      ]);
+
+      // 用户数直接复用 overview 的 activeUsers（来自 SQL COUNT DISTINCT）
+      // 注：跨小时聚合的 activeUsers 是 sum（可能重复计数），但与旧版行为一致
+      const business = this.buildBusinessFromStats(currentOverview.activeUsers, currentBookings);
+      const previousBusiness = this.buildBusinessFromStats(
+        previousOverview.activeUsers,
+        previousBookings,
+      );
       const businessDelta = this.calculateBusinessDelta(business, previousBusiness);
 
       const formattedDailyTrend: DailyStats[] = dailyTrend.map((item) => ({
@@ -345,7 +364,7 @@ export class AnalyticsDashboardService {
                   : 0,
             }));
 
-      const businessTrend = this.buildBusinessTrend(businessRecords, timeRange);
+      const businessTrend = this.buildBusinessTrend(trendRecords, timeRange);
 
       const tokenTrend =
         timeRange === 'today'
@@ -640,7 +659,7 @@ export class AnalyticsDashboardService {
     };
   }
 
-  private calculateBusinessMetrics(records: MessageProcessingRecord[]) {
+  private calculateBusinessMetrics(records: MessageProcessingRecord[]): BusinessMetricsSnapshot {
     const users = new Set(records.filter((r) => r.userId).map((r) => r.userId!));
     return {
       consultations: { total: users.size, new: users.size },
@@ -649,9 +668,43 @@ export class AnalyticsDashboardService {
     };
   }
 
+  /**
+   * 从预聚合的用户数和预约数构建业务指标（无需加载全量 records）
+   */
+  private buildBusinessFromStats(
+    activeUsers: number,
+    bookingCount: number,
+  ): BusinessMetricsSnapshot {
+    const bookingSuccessRate = bookingCount > 0 ? 100 : 0;
+    const conversionRate = activeUsers > 0 ? (bookingCount / activeUsers) * 100 : 0;
+    return {
+      consultations: { total: activeUsers, new: activeUsers },
+      bookings: {
+        attempts: bookingCount,
+        successful: bookingCount,
+        failed: 0,
+        successRate: parseFloat(bookingSuccessRate.toFixed(2)),
+      },
+      conversion: { consultationToBooking: parseFloat(conversionRate.toFixed(2)) },
+    };
+  }
+
+  /**
+   * 轻量查询：获取指定日期范围的预约总数
+   */
+  private async getBookingCount(startDate: string, endDate: string): Promise<number> {
+    try {
+      const bookingStats = await this.bookingService.getBookingStats({ startDate, endDate });
+      return bookingStats.reduce((sum, item) => sum + item.bookingCount, 0);
+    } catch (error) {
+      this.logger.warn('[业务指标] 获取预约统计失败，使用默认值 0:', error);
+      return 0;
+    }
+  }
+
   private calculateBusinessDelta(
-    current: ReturnType<typeof this.calculateBusinessMetrics>,
-    previous: ReturnType<typeof this.calculateBusinessMetrics>,
+    current: BusinessMetricsSnapshot,
+    previous: BusinessMetricsSnapshot,
   ) {
     return {
       consultations: this.calculatePercentChange(

@@ -2,7 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { StrategyConfigRepository } from '../repositories/strategy-config.repository';
 import { StrategyChangelogRepository } from '../repositories/strategy-changelog.repository';
 import { StrategyConfigRecord } from '../entities/strategy-config.entity';
-import { StrategyPersona, StrategyStageGoals, StrategyRedLines } from '../types/strategy.types';
+import {
+  StrategyPersona,
+  StrategyStageGoals,
+  StrategyRedLines,
+  StrategyRoleSetting,
+} from '../types/strategy.types';
 import { buildDefaultStrategyRecord } from '@shared-types/strategy-config.types';
 
 /**
@@ -65,6 +70,29 @@ export class StrategyConfigService {
     }
 
     this.logger.warn('人格配置更新未匹配到记录，返回当前缓存');
+    return config;
+  }
+
+  /**
+   * 更新角色设定并刷新缓存
+   */
+  async updateRoleSetting(roleSetting: StrategyRoleSetting): Promise<StrategyConfigRecord> {
+    if (typeof roleSetting.content !== 'string') {
+      throw new Error('角色设定必须包含 content 字符串');
+    }
+    const config = await this.getActiveConfig();
+    const updated = await this.strategyConfigRepository.updateConfigField(config.id, {
+      role_setting: roleSetting,
+    });
+
+    if (updated) {
+      await this.recordChangelog(config.id, 'role_setting', config.role_setting, roleSetting);
+      this.writeCache(updated);
+      this.logger.log('角色设定已更新');
+      return updated;
+    }
+
+    this.logger.warn('角色设定更新未匹配到记录，返回当前缓存');
     return config;
   }
 

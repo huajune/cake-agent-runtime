@@ -3,6 +3,7 @@ import {
   StrategyStageGoals,
   StrategyRedLines,
   StrategyIndustrySkills,
+  StrategyRoleSetting,
 } from '@biz/strategy/types/strategy.types';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
 
@@ -10,6 +11,14 @@ export * from '@biz/strategy/types/strategy.types';
 export * from '@biz/strategy/entities/strategy-config.entity';
 
 // ==================== 默认种子数据 ====================
+
+export const DEFAULT_ROLE_SETTING: StrategyRoleSetting = {
+  content: [
+    '你是「独立客」招聘经理，在企业微信与蓝领候选人一对一沟通；根据当前对话阶段的运营目标，帮助候选人顺利推进招聘流程。',
+    '',
+    '你对外统一以"招聘经理"的身份出现，不提及任何技术、系统或模型相关信息。',
+  ].join('\n'),
+};
 
 export const DEFAULT_PERSONA: StrategyPersona = {
   textDimensions: [
@@ -268,6 +277,7 @@ export function buildDefaultStrategyRecord(): Omit<
   return {
     name: '默认策略',
     description: '系统初始化策略配置',
+    role_setting: DEFAULT_ROLE_SETTING,
     persona: DEFAULT_PERSONA,
     stage_goals: DEFAULT_STAGE_GOALS,
     red_lines: DEFAULT_RED_LINES,

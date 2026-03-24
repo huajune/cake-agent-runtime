@@ -2,9 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { HttpException } from '@nestjs/common';
 import { AgentController } from '@agent/agent.controller';
 import { AgentRunnerService } from '@agent/runner.service';
-import { ContextService } from '@agent/context/context.service';
+import { AgentHealthService } from '@agent/agent-health.service';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
-import { RouterService } from '@providers/router.service';
 import { RegistryService } from '@providers/registry.service';
 
 describe('AgentController', () => {
@@ -14,21 +13,8 @@ describe('AgentController', () => {
     invoke: jest.fn(),
   };
 
-  const mockContext = {
-    getLoadedScenarios: jest.fn().mockReturnValue(['candidate-consultation', 'group-operations']),
-  };
-
   const mockFeishuAlertService = {
     sendAlert: jest.fn().mockResolvedValue(true),
-  };
-
-  const mockRouter = {
-    resolveByRole: jest.fn(),
-    listRoles: jest.fn().mockReturnValue(['chat', 'fast']),
-    listRoleDetails: jest.fn().mockReturnValue({
-      chat: { model: 'anthropic/claude-sonnet-4-6', fallbacks: ['openai/gpt-4o'] },
-      fast: { model: 'deepseek/deepseek-chat' },
-    }),
   };
 
   const mockModels = [
@@ -51,15 +37,33 @@ describe('AgentController', () => {
     listModels: jest.fn().mockReturnValue(mockModels),
   };
 
+  const mockHealthService = {
+    check: jest.fn().mockResolvedValue({
+      status: 'healthy',
+      message: 'Agent 服务正常',
+      providers: ['anthropic', 'deepseek'],
+      roles: {
+        chat: { model: 'anthropic/claude-sonnet-4-6', fallbacks: ['openai/gpt-4o'] },
+        fast: { model: 'deepseek/deepseek-chat' },
+      },
+      scenarios: ['candidate-consultation', 'group-operations'],
+      tools: {
+        builtIn: ['advance_stage', 'recall_history', 'duliday_job_list', 'duliday_interview_booking'],
+        mcp: [],
+        total: 4,
+      },
+      checks: { redis: true, supabase: true },
+    }),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AgentController],
       providers: [
         { provide: AgentRunnerService, useValue: mockLoop },
-        { provide: ContextService, useValue: mockContext },
         { provide: FeishuAlertService, useValue: mockFeishuAlertService },
-        { provide: RouterService, useValue: mockRouter },
         { provide: RegistryService, useValue: mockRegistry },
+        { provide: AgentHealthService, useValue: mockHealthService },
       ],
     }).compile();
 
@@ -72,16 +76,57 @@ describe('AgentController', () => {
   });
 
   describe('healthCheck', () => {
-    it('should return healthy status with providers, roles and scenarios', () => {
-      const result = controller.healthCheck();
+    it('should return healthy when all dependencies are available', async () => {
+      const result = await controller.healthCheck();
 
       expect(result.status).toBe('healthy');
+      expect(result.message).toBe('Agent 服务正常');
       expect(result.providers).toEqual(['anthropic', 'deepseek']);
       expect(result.roles).toEqual({
         chat: { model: 'anthropic/claude-sonnet-4-6', fallbacks: ['openai/gpt-4o'] },
         fast: { model: 'deepseek/deepseek-chat' },
       });
-      expect(result.scenarios).toEqual(['candidate-consultation', 'group-operations']);
+      expect(result.tools).toEqual({
+        builtIn: ['advance_stage', 'recall_history', 'duliday_job_list', 'duliday_interview_booking'],
+        mcp: [],
+        total: 4,
+      });
+      expect(result.checks).toEqual({ redis: true, supabase: true });
+    });
+
+    it('should return unhealthy when Redis is down', async () => {
+      mockHealthService.check.mockResolvedValueOnce({
+        status: 'unhealthy',
+        message: 'Redis 不可用: Connection refused',
+        providers: ['anthropic', 'deepseek'],
+        roles: {},
+        scenarios: [],
+        tools: { builtIn: [], mcp: [], total: 0 },
+        checks: { redis: false, supabase: true },
+      });
+
+      const result = await controller.healthCheck();
+
+      expect(result.status).toBe('unhealthy');
+      expect(result.checks.redis).toBe(false);
+    });
+
+    it('should return degraded when Supabase is down', async () => {
+      mockHealthService.check.mockResolvedValueOnce({
+        status: 'degraded',
+        message: 'Supabase 不可用: 未初始化',
+        providers: ['anthropic', 'deepseek'],
+        roles: {},
+        scenarios: [],
+        tools: { builtIn: [], mcp: [], total: 0 },
+        checks: { redis: true, supabase: false },
+      });
+
+      const result = await controller.healthCheck();
+
+      expect(result.status).toBe('degraded');
+      expect(result.checks.redis).toBe(true);
+      expect(result.checks.supabase).toBe(false);
     });
   });
 

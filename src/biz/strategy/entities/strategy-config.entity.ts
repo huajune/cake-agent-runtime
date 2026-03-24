@@ -3,6 +3,7 @@ import {
   StrategyStageGoals,
   StrategyRedLines,
   StrategyIndustrySkills,
+  StrategyRoleSetting,
 } from '../types/strategy.types';
 
 /**
@@ -13,6 +14,7 @@ export interface StrategyConfigRecord {
   id: string;
   name: string;
   description: string | null;
+  role_setting: StrategyRoleSetting;
   persona: StrategyPersona;
   stage_goals: StrategyStageGoals;
   red_lines: StrategyRedLines;

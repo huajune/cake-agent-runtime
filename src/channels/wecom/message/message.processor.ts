@@ -266,17 +266,20 @@ export class MessageProcessor implements OnModuleInit {
     }
   }
 
-  getWorkerStatus(): {
+  async getWorkerStatus(): Promise<{
     concurrency: number;
     activeJobs: number;
     minConcurrency: number;
     maxConcurrency: number;
-  } {
+    messageMergeEnabled: boolean;
+  }> {
+    const messageMergeEnabled = await this.systemConfigService.getMessageMergeEnabled();
     return {
       concurrency: this.currentConcurrency,
       activeJobs: this.activeJobs,
       minConcurrency: this.MIN_CONCURRENCY,
       maxConcurrency: this.MAX_CONCURRENCY,
+      messageMergeEnabled,
     };
   }
 

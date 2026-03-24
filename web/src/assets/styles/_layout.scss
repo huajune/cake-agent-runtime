@@ -171,10 +171,28 @@
 .sidebar-menu {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 4px;
+  padding: 4px 4px 20px;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.08);
+    border-radius: 4px;
+
+    &:hover {
+      background: rgba(0, 0, 0, 0.15);
+    }
+  }
 }
 
 .sidebar-footer {
@@ -215,7 +233,7 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 14px 18px;
+  padding: 13px 18px;
   border-radius: 16px;
   color: $text-secondary;
   text-decoration: none;
@@ -244,9 +262,9 @@
     }
   }
 
-  // Spring Festival decoration - 福袋
+  // Spring bloom decoration - 樱花
   &::after {
-    content: '🧧';
+    content: '🌸';
     position: absolute;
     right: 12px;
     top: 50%;

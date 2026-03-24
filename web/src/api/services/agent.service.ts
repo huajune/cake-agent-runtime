@@ -25,24 +25,24 @@ export async function getAvailableModels(): Promise<AvailableModelsResponse> {
 
 /**
  * 获取已配置的工具列表
- * 后端: GET /agent/health -> { scenarios: [...] }
+ * 后端: GET /agent/health -> { tools: { builtIn, mcp, total } }
  */
 export async function getConfiguredTools(): Promise<ConfiguredToolsResponse> {
   const { data } = await api.get('/agent/health');
   const raw = unwrapResponse<AgentHealthRaw>(data);
-  const tools = raw.scenarios ?? [];
+  const tools = raw.tools;
+  const allTools = [...(tools?.builtIn ?? []), ...(tools?.mcp ?? [])];
   return {
-    configuredTools: tools,
-    count: tools.length,
-    allAvailable: tools.length > 0,
+    configuredTools: allTools,
+    count: tools?.total ?? allTools.length,
+    allAvailable: allTools.length > 0,
     lastRefreshTime: new Date().toISOString(),
   };
 }
 
 /**
  * 获取健康状态
- * 后端: GET /agent/health -> { status, providers, roles, scenarios, message }
- * 适配为前端 HealthStatus 格式
+ * 后端: GET /agent/health -> { status, providers, roles, scenarios, tools, message }
  */
 export async function getHealthStatus(): Promise<HealthStatus> {
   const { data } = await api.get('/agent/health');
@@ -50,22 +50,29 @@ export async function getHealthStatus(): Promise<HealthStatus> {
 
   const providers = raw.providers ?? [];
   const roles = raw.roles ?? {};
-  const scenarios = raw.scenarios ?? [];
-  const roleCount = Object.keys(roles).length;
+  const tools = raw.tools ?? { builtIn: [], mcp: [], total: 0 };
 
   return {
     status: raw.status === 'healthy' ? 'healthy' : raw.status === 'degraded' ? 'degraded' : 'unhealthy',
     message: raw.message ?? '',
-    models: {
-      availableCount: providers.length,
-      configuredCount: roleCount,
-      configuredAvailable: roleCount > 0,
-      allConfiguredModelsAvailable: providers.length > 0 && roleCount > 0,
+    providers: {
+      count: providers.length,
+      list: providers,
+    },
+    roles: {
+      count: Object.keys(roles).length,
+      details: roles,
     },
     tools: {
-      availableCount: scenarios.length,
-      configuredCount: scenarios.length,
-      allAvailable: scenarios.length > 0,
+      builtInCount: tools.builtIn.length,
+      mcpCount: tools.mcp.length,
+      total: tools.total,
+      builtIn: tools.builtIn,
+      mcp: tools.mcp,
+    },
+    checks: {
+      redis: raw.checks?.redis ?? false,
+      supabase: raw.checks?.supabase ?? false,
     },
   };
 }

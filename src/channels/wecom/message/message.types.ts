@@ -289,6 +289,7 @@ export interface AgentInvokeResult {
   reply: AgentReply;
   isFallback: boolean;
   processingTime: number;
+  toolCalls?: Array<{ toolName: string; args: Record<string, unknown>; result?: unknown }>;
 }
 
 // ========================================

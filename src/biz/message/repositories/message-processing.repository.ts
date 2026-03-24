@@ -85,7 +85,11 @@ export class MessageProcessingRepository extends BaseRepository {
   async getMessageProcessingRecords(options: {
     startTime?: number;
     endTime?: number;
+    startDate?: Date;
+    endDate?: Date;
     status?: 'processing' | 'success' | 'failure';
+    chatId?: string;
+    userName?: string;
     limit?: number;
     offset?: number;
   }): Promise<{
@@ -100,9 +104,14 @@ export class MessageProcessingRepository extends BaseRepository {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const buildModifier = (q: any) => {
         let r = q.order('received_at', { ascending: false });
-        if (options.startTime) r = r.gte('received_at', new Date(options.startTime).toISOString());
-        if (options.endTime) r = r.lte('received_at', new Date(options.endTime).toISOString());
+        if (options.startDate) r = r.gte('received_at', options.startDate.toISOString());
+        else if (options.startTime)
+          r = r.gte('received_at', new Date(options.startTime).toISOString());
+        if (options.endDate) r = r.lte('received_at', options.endDate.toISOString());
+        else if (options.endTime) r = r.lte('received_at', new Date(options.endTime).toISOString());
         if (options.status) r = r.eq('status', options.status);
+        if (options.chatId) r = r.eq('chat_id', options.chatId);
+        if (options.userName) r = r.ilike('user_name', `%${options.userName}%`);
         if (options.limit) {
           const offset = options.offset ?? 0;
           r = r.range(offset, offset + options.limit - 1);
@@ -400,6 +409,42 @@ export class MessageProcessingRepository extends BaseRepository {
     } catch (error) {
       this.logger.error(`[消息处理记录] NULL agent_invocation 失败:`, error);
       throw error;
+    }
+  }
+
+  /**
+   * 将超时的 processing 记录标记为 timeout
+   * 服务重启后内存中的 pendingRecords 丢失，这些记录永远停留在 processing 状态
+   * @param stuckMinutes 超过多少分钟的 processing 记录视为卡住（默认 30 分钟）
+   * @returns 更新的记录数
+   */
+  async timeoutStuckRecords(stuckMinutes = 30): Promise<number> {
+    if (!this.isAvailable()) {
+      return 0;
+    }
+
+    try {
+      const cutoff = new Date(Date.now() - stuckMinutes * 60 * 1000).toISOString();
+      const client = this.getClient();
+      const { data, error } = await client
+        .from(this.tableName)
+        .update({
+          status: 'timeout',
+          error: `处理超时（超过 ${stuckMinutes} 分钟未完成）`,
+        })
+        .eq('status', 'processing')
+        .lt('received_at', cutoff)
+        .select('message_id');
+
+      if (error) {
+        this.logger.error(`[消息处理记录] 超时标记失败:`, error);
+        return 0;
+      }
+
+      return data?.length ?? 0;
+    } catch (error) {
+      this.logger.error(`[消息处理记录] 超时标记异常:`, error);
+      return 0;
     }
   }
 
