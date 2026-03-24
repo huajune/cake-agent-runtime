@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ImageDescriptionService } from '@wecom/message/services/image-description.service';
 import { CompletionService } from '@agent/completion.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
+import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { ModelRole } from '@providers/types';
 
 describe('ImageDescriptionService', () => {
@@ -15,12 +16,17 @@ describe('ImageDescriptionService', () => {
     updateMessageContent: jest.fn(),
   };
 
+  const mockFeishuAlertService = {
+    sendAlert: jest.fn().mockResolvedValue(true),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ImageDescriptionService,
         { provide: CompletionService, useValue: mockCompletionService },
         { provide: ChatSessionService, useValue: mockChatSessionService },
+        { provide: FeishuAlertService, useValue: mockFeishuAlertService },
       ],
     }).compile();
 
