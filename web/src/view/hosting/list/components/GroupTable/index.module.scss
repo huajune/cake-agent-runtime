@@ -113,10 +113,12 @@
 }
 
 .loadingCell {
-  text-align: center;
+  text-align: center !important;
   padding: $spacing-2xl !important;
   color: $text-muted;
   background: transparent !important;
+  height: 200px;
+  vertical-align: middle;
 }
 
 .toggleSwitch {

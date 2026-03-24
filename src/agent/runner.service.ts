@@ -49,11 +49,18 @@ export interface AgentInvokeParams {
   imageUrls?: string[];
 }
 
+export interface AgentToolCall {
+  toolName: string;
+  args: Record<string, unknown>;
+  result?: unknown;
+}
+
 export interface AgentRunResult {
   text: string;
   /** 模型思考过程（需启用 AGENT_THINKING_BUDGET_TOKENS） */
   reasoning?: string;
   steps: number;
+  toolCalls: AgentToolCall[];
   usage: {
     inputTokens: number;
     outputTokens: number;
@@ -129,10 +136,29 @@ export class AgentRunnerService {
 
       await this.storePostMemory(ctx);
 
+      // 从 steps 中提取工具调用信息
+      // Vercel AI SDK 的 TypedToolCall/TypedToolResult 是泛型类型，绑定到 ToolSet 参数，
+      // 而 generateText 返回的 steps 使用 erasure 后的联合类型（StaticToolCall | DynamicToolCall），
+      // 导致 `input`/`output` 字段在类型层面不可直接访问，需要最小范围的类型断言。
+      const toolCalls: AgentToolCall[] = [];
+      for (const step of r.steps) {
+        if (step.toolCalls && step.toolResults) {
+          for (const tc of step.toolCalls) {
+            const tr = step.toolResults.find((t) => t.toolCallId === tc.toolCallId);
+            toolCalls.push({
+              toolName: tc.toolName,
+              args: ((tc as { input?: unknown }).input ?? {}) as Record<string, unknown>,
+              result: (tr as { output?: unknown } | undefined)?.output,
+            });
+          }
+        }
+      }
+
       return {
         text: r.text,
         reasoning: r.reasoningText || undefined,
         steps: r.steps.length,
+        toolCalls,
         usage: {
           inputTokens: r.usage.inputTokens ?? 0,
           outputTokens: r.usage.outputTokens ?? 0,

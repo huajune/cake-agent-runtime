@@ -222,6 +222,7 @@ describe('ConversationParserService', () => {
       const result: AgentRunResult = {
         text: 'Hello World',
         steps: 1,
+        toolCalls: [],
         usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
       };
 
@@ -232,6 +233,7 @@ describe('ConversationParserService', () => {
       const result: AgentRunResult = {
         text: '',
         steps: 0,
+        toolCalls: [],
         usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
       };
 
@@ -246,6 +248,7 @@ describe('ConversationParserService', () => {
       const result: AgentRunResult = {
         text: 'Response with tools used internally',
         steps: 3,
+        toolCalls: [],
         usage: { inputTokens: 50, outputTokens: 30, totalTokens: 80 },
       };
 

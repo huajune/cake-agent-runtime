@@ -552,18 +552,18 @@ canvas {
   &.error { color: $danger; }
 }
 
-// ========== 新春主题 ==========
+// ========== 春暖花开主题 ==========
 .spring-card {
   margin-top: 16px;
-  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  background: linear-gradient(135deg, #fdf2f8 0%, #ecfdf5 100%);
   border-radius: 16px;
   padding: 16px;
   position: relative;
   overflow: hidden;
-  color: #fef3c7;
-  box-shadow: 0 4px 12px rgba(185, 28, 28, 0.25);
+  color: #1f2937;
+  box-shadow: 0 4px 12px rgba(236, 72, 153, 0.12);
   cursor: default;
-  border: 1px solid rgba(253, 224, 71, 0.3);
+  border: 1px solid rgba(251, 207, 232, 0.5);
 }
 
 .spring-floating {
@@ -585,7 +585,7 @@ canvas {
   gap: 6px;
   position: relative;
   z-index: 2;
-  color: #fef3c7;
+  color: #be185d;
 }
 
 .spring-text {
@@ -646,7 +646,7 @@ canvas {
   left: 0;
   right: 0;
   height: 20px;
-  border-bottom: 2px dashed rgba(220, 38, 38, 0.3);
+  border-bottom: 2px dashed rgba(134, 239, 172, 0.4);
   border-radius: 50%;
   z-index: -1;
 }
@@ -659,16 +659,16 @@ canvas {
   display: flex;
   align-items: center;
   justify-content: center;
-  // Festive Red Card Style
-  background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
-  border: 2px solid #fbbf24;
+  // Spring bloom card style
+  background: linear-gradient(135deg, #fdf2f8 0%, #fbcfe8 100%);
+  border: 2px solid #F9A8D4;
   border-radius: 12px;
-  // Gold Text
-  color: #fffbeb;
+  // Pink text
+  color: #be185d;
   font-weight: 800;
-  text-shadow: 0 1px 0 #7f1d1d;
-  // 3D Depth
-  box-shadow: 0 4px 0 #7f1d1d, 0 6px 8px rgba(0, 0, 0, 0.15);
+  text-shadow: 0 1px 0 rgba(190, 24, 93, 0.15);
+  // Soft depth
+  box-shadow: 0 4px 0 #F9A8D4, 0 6px 8px rgba(236, 72, 153, 0.12);
   position: relative;
   z-index: 10;
   transform-origin: top center;
@@ -683,45 +683,44 @@ canvas {
     transform: translateX(-50%);
     width: 4px;
     height: 8px;
-    background: #fbbf24;
+    background: #86EFAC;
     border-radius: 2px;
   }
 
-  // The 'Fu Dao' (Fortune Arrives) Charm
+  // Petal charm
   &::after {
-    content: '福';
+    content: '🌸';
     position: absolute;
     bottom: -10px;
     right: -6px;
     width: 20px;
     height: 20px;
-    background: #fbbf24;
-    color: #dc2626;
-    font-size: 10px;
-    font-weight: bold;
+    font-size: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-    border: 1px solid #fff;
+    border: none;
     transform: rotate(15deg);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    box-shadow: none;
+    background: none;
+    color: initial;
   }
 }
 
 .firework {
-  color: rgba(253, 224, 71, 0.5);
+  color: rgba(251, 207, 232, 0.7);
   font-size: 1em;
   font-family: Arial, sans-serif;
-  text-shadow: 0 0 5px rgba(253, 224, 71, 0.8);
+  text-shadow: 0 0 5px rgba(251, 207, 232, 0.5);
   position: absolute;
   top: -10%;
   z-index: 1;
-  animation: fireworks-rise 4s ease-out infinite, fireworks-shake 2s ease-in-out infinite;
+  animation: petal-fall 6s ease-out infinite, fireworks-shake 3s ease-in-out infinite;
 
   &:nth-of-type(1) { left: 10%; animation-delay: 0s, 0s; }
-  &:nth-of-type(2) { left: 50%; animation-delay: 1.5s, 0.5s; font-size: 1.5em; }
-  &:nth-of-type(3) { left: 80%; animation-delay: 3s, 1s; }
+  &:nth-of-type(2) { left: 50%; animation-delay: 2s, 0.5s; font-size: 1.5em; }
+  &:nth-of-type(3) { left: 80%; animation-delay: 4s, 1s; }
 }
 
 // ========== 动画 ==========
@@ -786,10 +785,23 @@ canvas {
   100% { top: -10%; opacity: 0; }
 }
 
+@keyframes petal-fall {
+  0% { top: -10%; opacity: 0; transform: rotate(0deg); }
+  20% { opacity: 0.8; }
+  100% { top: 100%; opacity: 0; transform: rotate(360deg); }
+}
+
 @keyframes fireworks-shake {
   0%, 100% { transform: translateX(0) scale(1); }
   25% { transform: translateX(-5px) scale(1.1); }
   75% { transform: translateX(5px) scale(1.1); }
+}
+
+@keyframes butterflyFloat {
+  0%, 100% { transform: translateY(0) translateX(0); }
+  25% { transform: translateY(-8px) translateX(4px); }
+  50% { transform: translateY(-4px) translateX(-3px); }
+  75% { transform: translateY(-10px) translateX(2px); }
 }
 
 // ========== 选中样式 ==========

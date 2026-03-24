@@ -10,6 +10,7 @@ import { AgentRunnerService } from './runner.service';
 import { CompletionService } from './completion.service';
 import { ContextService } from './context/context.service';
 import { AgentController } from './agent.controller';
+import { AgentHealthService } from './agent-health.service';
 import { FactExtractionService } from './fact-extraction.service';
 import { InputGuardService } from './input-guard.service';
 
@@ -27,6 +28,7 @@ import { InputGuardService } from './input-guard.service';
   providers: [
     ContextService,
     AgentRunnerService,
+    AgentHealthService,
     CompletionService,
     FactExtractionService,
     InputGuardService,
