@@ -20,7 +20,10 @@ WORKDIR /app
 # Copy source code
 COPY . .
 
-# Only build the NestJS backend
+# Build web frontend (outputs to public/web/)
+RUN pnpm run build:web
+
+# Build NestJS backend (nest-cli copies public/ into dist/)
 RUN pnpm run build
 
 # Stage 3: Runner
