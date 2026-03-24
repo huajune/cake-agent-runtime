@@ -34,6 +34,10 @@ function formatDuration(seconds: number): string {
   return mins > 0 ? `${mins}:${String(secs).padStart(2, '0')}` : `${secs}"`;
 }
 
+function isSafeUrl(url: string): boolean {
+  return url.startsWith('https://') || url.startsWith('http://');
+}
+
 // ==================== 富媒体消息渲染 ====================
 
 function renderImageContent(payload: Record<string, unknown>) {
@@ -46,7 +50,7 @@ function renderImageContent(payload: Record<string, unknown>) {
         src={imageUrl}
         alt="图片消息"
         className={styles.messageImage}
-        onClick={() => window.open(imageUrl, '_blank')}
+        onClick={() => isSafeUrl(imageUrl) && window.open(imageUrl, '_blank')}
       />
     </div>
   );
@@ -61,7 +65,7 @@ function renderVoiceContent(payload: Record<string, unknown>) {
     <div className={styles.voiceMessage}>
       <div
         className={styles.voiceBar}
-        onClick={() => voiceUrl && window.open(voiceUrl, '_blank')}
+        onClick={() => voiceUrl && isSafeUrl(voiceUrl) && window.open(voiceUrl, '_blank')}
       >
         <span className={styles.voiceIcon}>🎤</span>
         <span className={styles.voiceDuration}>
@@ -93,7 +97,7 @@ function renderLinkContent(payload: Record<string, unknown>) {
   return (
     <div
       className={styles.linkCard}
-      onClick={() => url && window.open(url, '_blank')}
+      onClick={() => url && isSafeUrl(url) && window.open(url, '_blank')}
     >
       {thumbnailUrl && (
         <img src={thumbnailUrl} alt="" className={styles.linkThumbnail} />
@@ -122,7 +126,7 @@ function renderFileContent(payload: Record<string, unknown>) {
   return (
     <div
       className={styles.fileCard}
-      onClick={() => fileUrl && window.open(fileUrl, '_blank')}
+      onClick={() => fileUrl && isSafeUrl(fileUrl) && window.open(fileUrl, '_blank')}
     >
       <span className={styles.fileIcon}>📎</span>
       <div className={styles.fileInfo}>

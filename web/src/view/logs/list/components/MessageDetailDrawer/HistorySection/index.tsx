@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import type { MessageRecord } from '@/api/types/chat.types';
+import { renderContentWithMediaTags as renderMediaTags } from '@/utils/media-tags';
 import styles from './index.module.scss';
 
 // Agent API 消息结构
@@ -68,7 +69,6 @@ function extractHistoryMessages(messages: AgentMessage[] | undefined): HistoryMe
   return history;
 }
 
-import { renderContentWithMediaTags as renderMediaTags } from '@/utils/media-tags';
 
 const renderContentWithMediaTags = (content: string) =>
   renderMediaTags(content, styles.mediaTag);

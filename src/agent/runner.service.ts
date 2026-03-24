@@ -356,7 +356,7 @@ export class AgentRunnerService {
 
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role === 'user') {
-        const textContent = typeof messages[i].content === 'string' ? messages[i].content : '';
+        const textContent = this.extractTextFromContent(messages[i].content);
         messages[i] = {
           role: 'user',
           content: [

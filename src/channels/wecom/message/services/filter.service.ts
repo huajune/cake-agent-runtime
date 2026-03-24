@@ -126,7 +126,7 @@ export class MessageFilterService {
       };
     }
 
-    // 3. 过滤企业级特定 groupId 的消息（暂时禁用，测试多消息类型）
+    // 3. 过滤企业级特定 groupId 的消息
     const isEnterpriseMessage = messageData._apiType !== 'group';
     if (isEnterpriseMessage && messageData.groupId === '691d3b171535fed6bcc94f66') {
       this.logger.log(
