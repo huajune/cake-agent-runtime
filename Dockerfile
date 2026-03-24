@@ -7,7 +7,7 @@ RUN npm install -g pnpm
 
 # Copy package files (including all workspace packages)
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY dashboard/package.json ./dashboard/
+
 COPY web/package.json ./web/
 
 # Install dependencies
@@ -20,10 +20,7 @@ WORKDIR /app
 # Copy source code
 COPY . .
 
-# Build web frontend (public/web/) and dashboard (public/dashboard/) BEFORE nest build,
-# because nest-cli.json assets config copies public/ into dist/
-RUN pnpm run build:web
-RUN pnpm run build:dashboard
+# Only build the NestJS backend
 RUN pnpm run build
 
 # Stage 3: Runner
