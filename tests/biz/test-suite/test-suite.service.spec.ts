@@ -1,12 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { TestSuiteService } from '@evaluation/test-suite.service';
-import { TestExecutionService } from '@evaluation/services/execution/test-execution.service';
-import { TestBatchService } from '@evaluation/services/execution/test-batch.service';
-import { TestImportService } from '@evaluation/services/feishu/test-import.service';
-import { TestWriteBackService } from '@evaluation/services/feishu/test-write-back.service';
-import { ConversationTestService } from '@evaluation/services/conversation/conversation-test.service';
+import { TestSuiteService } from '@biz/test-suite/test-suite.service';
+import { TestExecutionService } from '@biz/test-suite/services/test-execution.service';
+import { TestBatchService } from '@biz/test-suite/services/test-batch.service';
+import { TestImportService } from '@biz/test-suite/services/test-import.service';
+import { TestWriteBackService } from '@biz/test-suite/services/test-write-back.service';
+import { ConversationTestService } from '@biz/test-suite/services/conversation-test.service';
 import { FeishuBitableSyncService } from '@biz/feishu-sync/bitable-sync.service';
-import { TestSuiteProcessor } from '@evaluation/test-suite.processor';
+import { TestSuiteProcessor } from '@biz/test-suite/test-suite.processor';
 import {
   BatchStatus,
   ExecutionStatus,
@@ -14,9 +14,9 @@ import {
   FeishuTestStatus,
   TestType,
   FeedbackType,
-} from '@evaluation/enums/test.enum';
+} from '@biz/test-suite/enums/test.enum';
 import { MessageRole } from '@enums/message.enum';
-import { VercelAIChatRequestDto } from '@evaluation/dto/test-chat.dto';
+import { VercelAIChatRequestDto } from '@biz/test-suite/dto/test-chat.dto';
 
 describe('TestSuiteService', () => {
   let service: TestSuiteService;

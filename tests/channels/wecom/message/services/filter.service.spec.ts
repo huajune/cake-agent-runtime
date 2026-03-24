@@ -148,7 +148,7 @@ describe('MessageFilterService', () => {
     });
 
     // NOTE: enterprise groupId filter temporarily disabled for multi-message-type testing
-    it('should pass enterprise-level messages with previously blocked groupId (filter disabled)', async () => {
+    it('should filter enterprise-level messages with blocked groupId', async () => {
       const messageData = {
         ...validMessageData,
         groupId: '691d3b171535fed6bcc94f66',
@@ -157,7 +157,8 @@ describe('MessageFilterService', () => {
 
       const result = await service.validate(messageData);
 
-      expect(result.pass).toBe(true);
+      expect(result.pass).toBe(false);
+      expect(result.reason).toBe(FilterReason.BLOCKED_ENTERPRISE_GROUP);
     });
 
     it('should pass group-level messages with previously blocked enterprise groupId', async () => {

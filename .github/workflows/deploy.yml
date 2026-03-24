@@ -134,3 +134,21 @@ jobs:
             /tmp/docker-compose.yml
             .env.example
           make_latest: true
+
+  deploy:
+    needs: [build-and-push, create-release]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd /data/cake
+            docker pull ghcr.io/${{ github.repository }}:latest
+            docker compose up -d
+            docker image prune -f

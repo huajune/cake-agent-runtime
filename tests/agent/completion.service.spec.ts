@@ -82,10 +82,10 @@ describe('CompletionService', () => {
       await service.generate({
         systemPrompt: 'test',
         messages: [{ role: 'user', content: 'hi' }],
-        role: ModelRole.Fast,
+        role: ModelRole.Extract,
       });
 
-      expect(mockRouter.resolveByRole).toHaveBeenCalledWith(ModelRole.Fast);
+      expect(mockRouter.resolveByRole).toHaveBeenCalledWith(ModelRole.Extract);
     });
 
     it('should use resolve with modelId when provided (overrides role)', async () => {
@@ -179,10 +179,10 @@ describe('CompletionService', () => {
       await service.generateSimple({
         systemPrompt: 'test',
         userMessage: 'hi',
-        role: ModelRole.Classify,
+        role: ModelRole.Vision,
       });
 
-      expect(mockRouter.resolveByRole).toHaveBeenCalledWith(ModelRole.Classify);
+      expect(mockRouter.resolveByRole).toHaveBeenCalledWith(ModelRole.Vision);
     });
 
     it('should pass modelId through to generate', async () => {
