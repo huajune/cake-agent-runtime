@@ -1,24 +1,24 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { TestBatchService } from '@evaluation/services/execution/test-batch.service';
-import { TestBatchRepository } from '@evaluation/repositories/test-batch.repository';
-import { TestExecutionRepository } from '@evaluation/repositories/test-execution.repository';
-import { TestStatsService } from '@evaluation/services/execution/test-stats.service';
-import { TestWriteBackService } from '@evaluation/services/feishu/test-write-back.service';
+import { TestBatchService } from '@biz/test-suite/services/test-batch.service';
+import { TestBatchRepository } from '@biz/test-suite/repositories/test-batch.repository';
+import { TestExecutionRepository } from '@biz/test-suite/repositories/test-execution.repository';
+import { TestWriteBackService } from '@biz/test-suite/services/test-write-back.service';
+import { TestExecutionService } from '@biz/test-suite/services/test-execution.service';
+import { ConversationSnapshotRepository } from '@biz/test-suite/repositories/conversation-snapshot.repository';
 import {
   BatchStatus,
   ReviewStatus,
   FeishuTestStatus,
   BatchSource,
   TestType,
-} from '@evaluation/enums/test.enum';
-import { TestExecution } from '@evaluation/entities/test-execution.entity';
-import { TestBatch } from '@evaluation/entities/test-batch.entity';
+} from '@biz/test-suite/enums/test.enum';
+import { TestExecution } from '@biz/test-suite/entities/test-execution.entity';
+import { TestBatch } from '@biz/test-suite/entities/test-batch.entity';
 
 describe('TestBatchService', () => {
   let service: TestBatchService;
   let batchRepository: jest.Mocked<TestBatchRepository>;
   let executionRepository: jest.Mocked<TestExecutionRepository>;
-  let statsService: jest.Mocked<TestStatsService>;
   let writeBackService: jest.Mocked<TestWriteBackService>;
 
   const mockBatchRepository = {
@@ -31,20 +31,24 @@ describe('TestBatchService', () => {
 
   const mockExecutionRepository = {
     findByBatchId: jest.fn(),
+    findByBatchIdLite: jest.fn(),
     findByBatchIdForList: jest.fn(),
     findById: jest.fn(),
     updateReview: jest.fn(),
     batchUpdateReview: jest.fn(),
   };
 
-  const mockStatsService = {
-    calculateBatchStats: jest.fn(),
-    calculateCategoryStats: jest.fn(),
-    calculateFailureReasonStats: jest.fn(),
-  };
-
   const mockWriteBackService = {
     writeBackResult: jest.fn(),
+  };
+
+  const mockExecutionService = {
+    saveExecution: jest.fn(),
+  };
+
+  const mockConversationSnapshotRepository = {
+    create: jest.fn(),
+    findById: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -53,15 +57,15 @@ describe('TestBatchService', () => {
         TestBatchService,
         { provide: TestBatchRepository, useValue: mockBatchRepository },
         { provide: TestExecutionRepository, useValue: mockExecutionRepository },
-        { provide: TestStatsService, useValue: mockStatsService },
+        { provide: ConversationSnapshotRepository, useValue: mockConversationSnapshotRepository },
         { provide: TestWriteBackService, useValue: mockWriteBackService },
+        { provide: TestExecutionService, useValue: mockExecutionService },
       ],
     }).compile();
 
     service = module.get<TestBatchService>(TestBatchService);
     batchRepository = module.get(TestBatchRepository);
     executionRepository = module.get(TestExecutionRepository);
-    statsService = module.get(TestStatsService);
     writeBackService = module.get(TestWriteBackService);
 
     jest.clearAllMocks();
@@ -191,66 +195,19 @@ describe('TestBatchService', () => {
   // ========== updateBatchStats ==========
 
   describe('updateBatchStats', () => {
-    it('should calculate stats and persist them', async () => {
-      const mockStats = {
-        totalCases: 10,
-        executedCount: 8,
-        passedCount: 6,
-        failedCount: 2,
-        pendingReviewCount: 2,
-        passRate: 60,
-        avgDurationMs: 1500,
-        avgTokenUsage: 200,
-      };
-      mockStatsService.calculateBatchStats.mockResolvedValue(mockStats);
+    it('should calculate stats internally and persist them', async () => {
+      const mockExecutions = [
+        { execution_status: 'completed', review_status: 'passed', duration_ms: 1000, token_usage: 100 },
+        { execution_status: 'completed', review_status: 'failed', duration_ms: 2000, token_usage: 200 },
+      ] as unknown as TestExecution[];
+      mockExecutionRepository.findByBatchIdLite.mockResolvedValue(mockExecutions);
       mockBatchRepository.updateStats.mockResolvedValue(undefined);
 
       await service.updateBatchStats('batch-1');
 
-      expect(statsService.calculateBatchStats).toHaveBeenCalledWith('batch-1');
-      expect(batchRepository.updateStats).toHaveBeenCalledWith('batch-1', mockStats);
-    });
-  });
-
-  // ========== getBatchStats ==========
-
-  describe('getBatchStats', () => {
-    it('should delegate to statsService', async () => {
-      const mockStats = { totalCases: 5 } as any;
-      mockStatsService.calculateBatchStats.mockResolvedValue(mockStats);
-
-      const result = await service.getBatchStats('batch-1');
-
-      expect(statsService.calculateBatchStats).toHaveBeenCalledWith('batch-1');
-      expect(result).toBe(mockStats);
-    });
-  });
-
-  // ========== getCategoryStats ==========
-
-  describe('getCategoryStats', () => {
-    it('should delegate to statsService', async () => {
-      const mockCategoryStats = [{ category: 'FAQ', total: 3, passed: 2, failed: 1 }];
-      mockStatsService.calculateCategoryStats.mockResolvedValue(mockCategoryStats);
-
-      const result = await service.getCategoryStats('batch-1');
-
-      expect(statsService.calculateCategoryStats).toHaveBeenCalledWith('batch-1');
-      expect(result).toBe(mockCategoryStats);
-    });
-  });
-
-  // ========== getFailureReasonStats ==========
-
-  describe('getFailureReasonStats', () => {
-    it('should delegate to statsService', async () => {
-      const mockReasonStats = [{ reason: 'wrong_answer', count: 3, percentage: 75 }];
-      mockStatsService.calculateFailureReasonStats.mockResolvedValue(mockReasonStats);
-
-      const result = await service.getFailureReasonStats('batch-1');
-
-      expect(statsService.calculateFailureReasonStats).toHaveBeenCalledWith('batch-1');
-      expect(result).toBe(mockReasonStats);
+      expect(batchRepository.updateStats).toHaveBeenCalledWith('batch-1', expect.objectContaining({
+        totalCases: 2,
+      }));
     });
   });
 
@@ -278,7 +235,14 @@ describe('TestBatchService', () => {
     beforeEach(() => {
       mockExecutionRepository.updateReview.mockResolvedValue(undefined);
       mockExecutionRepository.findById.mockResolvedValue(mockExecution);
-      mockStatsService.calculateBatchStats.mockResolvedValue(mockStats);
+      // Mock findByBatchIdLite for internal stats calculation
+      mockExecutionRepository.findByBatchIdLite.mockResolvedValue([
+        { execution_status: 'completed', review_status: 'passed', duration_ms: 1000 },
+        { execution_status: 'completed', review_status: 'passed', duration_ms: 1000 },
+        { execution_status: 'completed', review_status: 'passed', duration_ms: 1000 },
+        { execution_status: 'completed', review_status: 'passed', duration_ms: 1000 },
+        { execution_status: 'completed', review_status: 'passed', duration_ms: 1000 },
+      ] as unknown as TestExecution[]);
       mockBatchRepository.updateStats.mockResolvedValue(undefined);
       mockBatchRepository.updateStatus.mockResolvedValue(undefined);
       mockWriteBackService.writeBackResult.mockResolvedValue({ success: true });
@@ -313,10 +277,11 @@ describe('TestBatchService', () => {
     });
 
     it('should not update batch status when pendingReviewCount > 0', async () => {
-      mockStatsService.calculateBatchStats.mockResolvedValue({
-        ...mockStats,
-        pendingReviewCount: 2,
-      });
+      mockExecutionRepository.findByBatchIdLite.mockResolvedValue([
+        { execution_status: 'completed', review_status: 'passed', duration_ms: 1000 },
+        { execution_status: 'completed', review_status: 'pending', duration_ms: 1000 },
+        { execution_status: 'completed', review_status: 'pending', duration_ms: 1000 },
+      ] as unknown as TestExecution[]);
 
       await service.updateReview('exec-1', { reviewStatus: ReviewStatus.PASSED });
 
@@ -403,16 +368,9 @@ describe('TestBatchService', () => {
         { id: 'exec-2', batch_id: 'batch-1' },
       ] as TestExecution[];
       mockExecutionRepository.batchUpdateReview.mockResolvedValue(updatedExecutions);
-      mockStatsService.calculateBatchStats.mockResolvedValue({
-        totalCases: 2,
-        executedCount: 2,
-        passedCount: 2,
-        failedCount: 0,
-        pendingReviewCount: 0,
-        passRate: 100,
-        avgDurationMs: null,
-        avgTokenUsage: null,
-      });
+      mockExecutionRepository.findByBatchIdLite.mockResolvedValue([
+        { execution_status: 'completed', review_status: 'passed' },
+      ] as unknown as TestExecution[]);
       mockBatchRepository.updateStats.mockResolvedValue(undefined);
 
       const result = await service.batchUpdateReview(['exec-1', 'exec-2'], {
@@ -432,16 +390,9 @@ describe('TestBatchService', () => {
         { id: 'exec-2', batch_id: 'batch-2' },
       ] as TestExecution[];
       mockExecutionRepository.batchUpdateReview.mockResolvedValue(updatedExecutions);
-      mockStatsService.calculateBatchStats.mockResolvedValue({
-        totalCases: 1,
-        executedCount: 1,
-        passedCount: 1,
-        failedCount: 0,
-        pendingReviewCount: 0,
-        passRate: 100,
-        avgDurationMs: null,
-        avgTokenUsage: null,
-      });
+      mockExecutionRepository.findByBatchIdLite.mockResolvedValue([
+        { execution_status: 'completed', review_status: 'passed' },
+      ] as unknown as TestExecution[]);
       mockBatchRepository.updateStats.mockResolvedValue(undefined);
 
       await service.batchUpdateReview(['exec-1', 'exec-2'], {
@@ -449,7 +400,7 @@ describe('TestBatchService', () => {
       });
 
       // Two distinct batches should each have their stats updated
-      expect(statsService.calculateBatchStats).toHaveBeenCalledTimes(2);
+      expect(batchRepository.updateStats).toHaveBeenCalledTimes(2);
     });
   });
 });
