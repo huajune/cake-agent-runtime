@@ -1,20 +1,19 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { TestImportService } from '@evaluation/services/feishu/test-import.service';
+import { TestImportService } from '@biz/test-suite/services/test-import.service';
 import { FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
-import { TestBatchService } from '@evaluation/services/execution/test-batch.service';
-import { TestExecutionService } from '@evaluation/services/execution/test-execution.service';
-import { FeishuTestSyncService } from '@evaluation/services/feishu/feishu-test-sync.service';
-import { TestWriteBackService } from '@evaluation/services/feishu/test-write-back.service';
-import { ConversationTestService } from '@evaluation/services/conversation/conversation-test.service';
-import { TestSuiteProcessor } from '@evaluation/test-suite.processor';
-import { ConversationSnapshotRepository } from '@evaluation/repositories/conversation-snapshot.repository';
-import { BatchStatus, BatchSource, ExecutionStatus, TestType } from '@evaluation/enums/test.enum';
+import { TestBatchService } from '@biz/test-suite/services/test-batch.service';
+import { TestExecutionService } from '@biz/test-suite/services/test-execution.service';
+import { TestWriteBackService } from '@biz/test-suite/services/test-write-back.service';
+import { ConversationTestService } from '@biz/test-suite/services/conversation-test.service';
+import { TestSuiteProcessor } from '@biz/test-suite/test-suite.processor';
+import { ConversationSnapshotRepository } from '@biz/test-suite/repositories/conversation-snapshot.repository';
+import { ConversationParserService } from '@evaluation/conversation-parser.service';
+import { BatchStatus, BatchSource, ExecutionStatus, TestType } from '@biz/test-suite/enums/test.enum';
 
 describe('TestImportService', () => {
   let service: TestImportService;
   let batchService: jest.Mocked<TestBatchService>;
   let executionService: jest.Mocked<TestExecutionService>;
-  let _feishuSyncService: jest.Mocked<FeishuTestSyncService>;
   let _writeBackService: jest.Mocked<TestWriteBackService>;
   let feishuBitableApi: jest.Mocked<FeishuBitableApiService>;
   let _conversationSnapshotRepository: jest.Mocked<ConversationSnapshotRepository>;
@@ -29,11 +28,6 @@ describe('TestImportService', () => {
 
   const mockExecutionService = {
     saveExecution: jest.fn(),
-  };
-
-  const mockFeishuSyncService = {
-    getTestCases: jest.fn(),
-    getConversationTestsFromDefaultTable: jest.fn(),
   };
 
   const mockWriteBackService = {
@@ -52,6 +46,11 @@ describe('TestImportService', () => {
 
   const mockConversationTestService = {
     executeConversation: jest.fn(),
+  };
+
+  const mockParserService = {
+    parseConversation: jest.fn(),
+    splitIntoTurns: jest.fn(),
   };
 
   const mockTestProcessor = {
@@ -81,11 +80,11 @@ describe('TestImportService', () => {
         TestImportService,
         { provide: TestBatchService, useValue: mockBatchService },
         { provide: TestExecutionService, useValue: mockExecutionService },
-        { provide: FeishuTestSyncService, useValue: mockFeishuSyncService },
         { provide: TestWriteBackService, useValue: mockWriteBackService },
         { provide: FeishuBitableApiService, useValue: mockFeishuBitableApi },
         { provide: ConversationSnapshotRepository, useValue: mockConversationSnapshotRepository },
         { provide: ConversationTestService, useValue: mockConversationTestService },
+        { provide: ConversationParserService, useValue: mockParserService },
         {
           provide: TestSuiteProcessor,
           useValue: mockTestProcessor,
@@ -96,15 +95,27 @@ describe('TestImportService', () => {
     service = module.get<TestImportService>(TestImportService);
     batchService = module.get(TestBatchService);
     executionService = module.get(TestExecutionService);
-    _feishuSyncService = module.get(FeishuTestSyncService);
     _writeBackService = module.get(TestWriteBackService);
     feishuBitableApi = module.get(FeishuBitableApiService);
     _conversationSnapshotRepository = module.get(ConversationSnapshotRepository);
     _conversationTestService = module.get(ConversationTestService);
     testProcessor = module.get(TestSuiteProcessor);
 
+    // Spy on service's own methods that were previously delegated to FeishuTestSyncService
+    jest.spyOn(service, 'getTestCases' as any).mockResolvedValue([]);
+    jest.spyOn(service, 'getConversationTestsFromDefaultTable' as any).mockResolvedValue({
+      appToken: '',
+      tableId: '',
+      conversations: [],
+    });
+
     jest.clearAllMocks();
   });
+
+  const mockServiceGetTestCases = () =>
+    jest.spyOn(service as any, 'getTestCases');
+  const mockServiceGetConversationTests = () =>
+    jest.spyOn(service as any, 'getConversationTestsFromDefaultTable');
 
   it('should be defined', () => {
     expect(service).toBeDefined();
@@ -114,7 +125,7 @@ describe('TestImportService', () => {
 
   describe('importFromFeishu', () => {
     it('should throw error when feishu table has no data', async () => {
-      mockFeishuSyncService.getTestCases.mockResolvedValue([]);
+      mockServiceGetTestCases().mockResolvedValue([]);
 
       await expect(
         service.importFromFeishu({
@@ -126,7 +137,7 @@ describe('TestImportService', () => {
 
     it('should create batch and save test cases', async () => {
       const cases = [makeParsedCase(1), makeParsedCase(2)];
-      mockFeishuSyncService.getTestCases.mockResolvedValue(cases);
+      mockServiceGetTestCases().mockResolvedValue(cases);
       mockBatchService.createBatch.mockResolvedValue(makeBatch());
       mockExecutionService.saveExecution.mockResolvedValue({ id: 'exec-x' } as any);
       mockBatchService.updateBatchStats.mockResolvedValue(undefined);
@@ -152,7 +163,7 @@ describe('TestImportService', () => {
 
     it('should save each case with PENDING execution status', async () => {
       const cases = [makeParsedCase(1)];
-      mockFeishuSyncService.getTestCases.mockResolvedValue(cases);
+      mockServiceGetTestCases().mockResolvedValue(cases);
       mockBatchService.createBatch.mockResolvedValue(makeBatch());
       mockExecutionService.saveExecution.mockResolvedValue({ id: 'exec-1' } as any);
       mockBatchService.updateBatchStats.mockResolvedValue(undefined);
@@ -170,7 +181,7 @@ describe('TestImportService', () => {
 
     it('should update batch stats after saving cases', async () => {
       const cases = [makeParsedCase(1)];
-      mockFeishuSyncService.getTestCases.mockResolvedValue(cases);
+      mockServiceGetTestCases().mockResolvedValue(cases);
       mockBatchService.createBatch.mockResolvedValue(makeBatch());
       mockExecutionService.saveExecution.mockResolvedValue({ id: 'exec-1' } as any);
       mockBatchService.updateBatchStats.mockResolvedValue(undefined);
@@ -182,7 +193,7 @@ describe('TestImportService', () => {
 
     it('should queue jobs when executeImmediately is true', async () => {
       const cases = [makeParsedCase(1)];
-      mockFeishuSyncService.getTestCases.mockResolvedValue(cases);
+      mockServiceGetTestCases().mockResolvedValue(cases);
       mockBatchService.createBatch.mockResolvedValue(makeBatch());
       mockExecutionService.saveExecution.mockResolvedValue({ id: 'exec-1' } as any);
       mockBatchService.updateBatchStats.mockResolvedValue(undefined);
@@ -203,7 +214,7 @@ describe('TestImportService', () => {
 
     it('should NOT queue jobs when executeImmediately is false', async () => {
       const cases = [makeParsedCase(1)];
-      mockFeishuSyncService.getTestCases.mockResolvedValue(cases);
+      mockServiceGetTestCases().mockResolvedValue(cases);
       mockBatchService.createBatch.mockResolvedValue(makeBatch());
       mockExecutionService.saveExecution.mockResolvedValue({ id: 'exec-1' } as any);
       mockBatchService.updateBatchStats.mockResolvedValue(undefined);
@@ -220,7 +231,7 @@ describe('TestImportService', () => {
 
     it('should use auto-generated batch name when batchName is not provided', async () => {
       const cases = [makeParsedCase(1)];
-      mockFeishuSyncService.getTestCases.mockResolvedValue(cases);
+      mockServiceGetTestCases().mockResolvedValue(cases);
       mockBatchService.createBatch.mockResolvedValue(makeBatch());
       mockExecutionService.saveExecution.mockResolvedValue({ id: 'exec-1' } as any);
       mockBatchService.updateBatchStats.mockResolvedValue(undefined);
@@ -240,7 +251,7 @@ describe('TestImportService', () => {
         appToken: 'test-app',
         tableId: 'test-table',
       });
-      mockFeishuSyncService.getTestCases.mockResolvedValue([makeParsedCase(1)]);
+      mockServiceGetTestCases().mockResolvedValue([makeParsedCase(1)]);
       mockBatchService.createBatch.mockResolvedValue(makeBatch());
       mockExecutionService.saveExecution.mockResolvedValue({ id: 'exec-1' } as any);
       mockBatchService.updateBatchStats.mockResolvedValue(undefined);
@@ -253,7 +264,7 @@ describe('TestImportService', () => {
     });
 
     it('should use conversation batch creation for conversation type', async () => {
-      mockFeishuSyncService.getConversationTestsFromDefaultTable.mockResolvedValue({
+      mockServiceGetConversationTests().mockResolvedValue({
         appToken: 'valid-app',
         tableId: 'valid-table',
         conversations: [
@@ -292,7 +303,7 @@ describe('TestImportService', () => {
     });
 
     it('should throw error when conversation table has no data', async () => {
-      mockFeishuSyncService.getConversationTestsFromDefaultTable.mockResolvedValue({
+      mockServiceGetConversationTests().mockResolvedValue({
         appToken: 'app',
         tableId: 'table',
         conversations: [],
@@ -308,7 +319,7 @@ describe('TestImportService', () => {
         appToken: 'app',
         tableId: 'table',
       });
-      mockFeishuSyncService.getTestCases.mockResolvedValue([makeParsedCase(1)]);
+      mockServiceGetTestCases().mockResolvedValue([makeParsedCase(1)]);
       mockBatchService.createBatch.mockResolvedValue(makeBatch());
       mockExecutionService.saveExecution.mockResolvedValue({ id: 'exec-1' } as any);
       mockBatchService.updateBatchStats.mockResolvedValue(undefined);
@@ -327,7 +338,7 @@ describe('TestImportService', () => {
         appToken: 'app',
         tableId: 'table',
       });
-      mockFeishuSyncService.getTestCases.mockResolvedValue([makeParsedCase(1)]);
+      mockServiceGetTestCases().mockResolvedValue([makeParsedCase(1)]);
       mockBatchService.createBatch.mockResolvedValue(makeBatch());
       mockExecutionService.saveExecution.mockResolvedValue({ id: 'exec-1' } as any);
       mockBatchService.updateBatchStats.mockResolvedValue(undefined);
