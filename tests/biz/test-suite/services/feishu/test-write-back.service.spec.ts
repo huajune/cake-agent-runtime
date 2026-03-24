@@ -1,8 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
+<<<<<<< HEAD:tests/biz/test-suite/services/feishu/test-write-back.service.spec.ts
 import { TestWriteBackService } from '@biz/test-suite/services/test-write-back.service';
 import { FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
 import { TestExecutionService } from '@biz/test-suite/services/test-execution.service';
 import { FeishuTestStatus } from '@biz/test-suite/enums/test.enum';
+=======
+import { TestWriteBackService } from '@evaluation/services/feishu/test-write-back.service';
+import { FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
+import { TestExecutionService } from '@evaluation/services/execution/test-execution.service';
+import { FeishuTestStatus } from '@evaluation/enums/test.enum';
+>>>>>>> origin/master:src/biz/test-suite/services/feishu/test-write-back.service.spec.ts
 
 // Mock the feishu-bitable.config constants
 jest.mock('@infra/feishu/constants/feishu-bitable.config', () => ({

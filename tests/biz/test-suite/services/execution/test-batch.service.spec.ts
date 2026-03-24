@@ -1,19 +1,33 @@
 import { Test, TestingModule } from '@nestjs/testing';
+<<<<<<< HEAD:tests/biz/test-suite/services/execution/test-batch.service.spec.ts
 import { TestBatchService } from '@biz/test-suite/services/test-batch.service';
 import { TestBatchRepository } from '@biz/test-suite/repositories/test-batch.repository';
 import { TestExecutionRepository } from '@biz/test-suite/repositories/test-execution.repository';
 import { TestWriteBackService } from '@biz/test-suite/services/test-write-back.service';
 import { TestExecutionService } from '@biz/test-suite/services/test-execution.service';
 import { ConversationSnapshotRepository } from '@biz/test-suite/repositories/conversation-snapshot.repository';
+=======
+import { TestBatchService } from '@evaluation/services/execution/test-batch.service';
+import { TestBatchRepository } from '@evaluation/repositories/test-batch.repository';
+import { TestExecutionRepository } from '@evaluation/repositories/test-execution.repository';
+import { TestStatsService } from '@evaluation/services/execution/test-stats.service';
+import { TestWriteBackService } from '@evaluation/services/feishu/test-write-back.service';
+>>>>>>> origin/master:src/biz/test-suite/services/execution/test-batch.service.spec.ts
 import {
   BatchStatus,
   ReviewStatus,
   FeishuTestStatus,
   BatchSource,
   TestType,
+<<<<<<< HEAD:tests/biz/test-suite/services/execution/test-batch.service.spec.ts
 } from '@biz/test-suite/enums/test.enum';
 import { TestExecution } from '@biz/test-suite/entities/test-execution.entity';
 import { TestBatch } from '@biz/test-suite/entities/test-batch.entity';
+=======
+} from '@evaluation/enums/test.enum';
+import { TestExecution } from '@evaluation/entities/test-execution.entity';
+import { TestBatch } from '@evaluation/entities/test-batch.entity';
+>>>>>>> origin/master:src/biz/test-suite/services/execution/test-batch.service.spec.ts
 
 describe('TestBatchService', () => {
   let service: TestBatchService;

@@ -1,7 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
+<<<<<<< HEAD:tests/biz/test-suite/repositories/conversation-snapshot.repository.spec.ts
 import { ConversationSnapshotRepository } from '@biz/test-suite/repositories/conversation-snapshot.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import { ConversationSourceStatus } from '@biz/test-suite/enums/test.enum';
+=======
+import { ConversationSnapshotRepository } from '@evaluation/repositories/conversation-snapshot.repository';
+import { SupabaseService } from '@infra/supabase/supabase.service';
+import { ConversationSourceStatus } from '@evaluation/enums/test.enum';
+>>>>>>> origin/master:src/biz/test-suite/repositories/conversation-snapshot.repository.spec.ts
 
 function makeQueryMock(result: { data?: unknown; error?: unknown; count?: number }) {
   const chainMethods = [

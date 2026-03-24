@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+<<<<<<< HEAD:tests/biz/test-suite/services/conversation/conversation-test.service.spec.ts
 import { ConversationTestService } from '@biz/test-suite/services/conversation-test.service';
 import { AgentRunnerService } from '@agent/runner.service';
 import { ContextService } from '@agent/context/context.service';
@@ -6,13 +7,27 @@ import { LlmEvaluationService } from '@evaluation/llm-evaluation.service';
 import { ConversationParserService } from '@evaluation/conversation-parser.service';
 import { ConversationSnapshotRepository } from '@biz/test-suite/repositories/conversation-snapshot.repository';
 import { TestExecutionRepository } from '@biz/test-suite/repositories/test-execution.repository';
+=======
+import { ConversationTestService } from '@evaluation/services/conversation/conversation-test.service';
+import { AgentRunnerService } from '@agent/runner.service';
+import { ContextService } from '@agent/context/context.service';
+import { LlmEvaluationService } from '@evaluation/services/conversation/llm-evaluation.service';
+import { ConversationParserService } from '@evaluation/services/conversation/conversation-parser.service';
+import { ConversationSnapshotRepository } from '@evaluation/repositories/conversation-snapshot.repository';
+import { TestExecutionRepository } from '@evaluation/repositories/test-execution.repository';
+>>>>>>> origin/master:src/biz/test-suite/services/conversation/conversation-test.service.spec.ts
 import {
   ExecutionStatus,
   ReviewStatus,
   ConversationSourceStatus,
   SimilarityRating,
+<<<<<<< HEAD:tests/biz/test-suite/services/conversation/conversation-test.service.spec.ts
 } from '@biz/test-suite/enums/test.enum';
 import { ConversationSnapshotRecord } from '@biz/test-suite/entities/conversation-snapshot.entity';
+=======
+} from '@evaluation/enums/test.enum';
+import { ConversationSnapshotRecord } from '@evaluation/entities/conversation-snapshot.entity';
+>>>>>>> origin/master:src/biz/test-suite/services/conversation/conversation-test.service.spec.ts
 
 describe('ConversationTestService', () => {
   let service: ConversationTestService;
