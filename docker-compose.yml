@@ -1,17 +1,12 @@
-version: '3.8'
-
 services:
   cake-agent:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: cake-agent-runtime:latest
+    image: ghcr.io/huajune/cake-agent-runtime:latest
     container_name: cake-agent
     restart: always
     ports:
-      - "8585:8080"
+      - "8080:8080"
     env_file:
-      - .env.prod
+      - .env
     volumes:
       - ./logs:/app/logs
     environment:
