@@ -107,9 +107,9 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
 
   // Transport（sessionId 变化时重建，确保新对话用新 sessionId）
   const transport = useMemo(() => {
-    const headers: Record<string, string> = {};
-    const apiGuardToken = import.meta.env.VITE_API_GUARD_TOKEN as string | undefined;
-    if (apiGuardToken) headers['Authorization'] = `Bearer ${apiGuardToken}`;
+    const headers: Record<string, string> = {
+      Authorization: 'Bearer duliday-guard-2026',
+    };
 
     return new DefaultChatTransport({
       api: CHAT_API_ENDPOINT,
