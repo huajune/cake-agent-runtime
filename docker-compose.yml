@@ -1,10 +1,10 @@
 services:
   cake-agent:
-    image: ghcr.io/huajune/cake-agent-runtime:latest
+    image: cake-agent-runtime:latest
     container_name: cake-agent
     restart: always
     ports:
-      - "8080:8080"
+      - "${PORT:-8080}:${PORT:-8080}"
     env_file:
       - .env
     volumes:
@@ -12,7 +12,7 @@ services:
     environment:
       - NODE_ENV=production
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:8080/agent/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch(`http://localhost:${process.env.PORT||8080}/agent/health`).then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 10s
       retries: 3

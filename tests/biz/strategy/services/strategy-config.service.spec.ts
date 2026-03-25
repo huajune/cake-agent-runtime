@@ -163,7 +163,7 @@ describe('StrategyConfigService', () => {
       );
     });
 
-    it('should return current cache when update returns null (no match)', async () => {
+    it('should throw error when update returns null (no match)', async () => {
       const initialRecord = makeRecord();
       (service as any).cachedConfig = initialRecord;
       (service as any).cacheExpiry = Date.now() + 60_000;
@@ -182,9 +182,9 @@ describe('StrategyConfigService', () => {
 
       mockStrategyConfigRepository.updateConfigField.mockResolvedValue(null);
 
-      const result = await service.updatePersona(newPersona);
-
-      expect(result).toEqual(initialRecord);
+      await expect(service.updatePersona(newPersona)).rejects.toThrow(
+        '人格配置更新失败，请刷新页面后重试',
+      );
     });
   });
 
@@ -216,16 +216,16 @@ describe('StrategyConfigService', () => {
       );
     });
 
-    it('should return current cache when update returns null', async () => {
+    it('should throw error when update returns null (no match)', async () => {
       const initialRecord = makeRecord();
       (service as any).cachedConfig = initialRecord;
       (service as any).cacheExpiry = Date.now() + 60_000;
 
       mockStrategyConfigRepository.updateConfigField.mockResolvedValue(null);
 
-      const result = await service.updateStageGoals({ stages: [] });
-
-      expect(result).toEqual(initialRecord);
+      await expect(service.updateStageGoals({ stages: [] })).rejects.toThrow(
+        '阶段目标配置更新失败，请刷新页面后重试',
+      );
     });
   });
 
@@ -263,16 +263,16 @@ describe('StrategyConfigService', () => {
       );
     });
 
-    it('should return current cache when update returns null', async () => {
+    it('should throw error when update returns null (no match)', async () => {
       const initialRecord = makeRecord();
       (service as any).cachedConfig = initialRecord;
       (service as any).cacheExpiry = Date.now() + 60_000;
 
       mockStrategyConfigRepository.updateConfigField.mockResolvedValue(null);
 
-      const result = await service.updateRedLines({ rules: ['test'] });
-
-      expect(result).toEqual(initialRecord);
+      await expect(service.updateRedLines({ rules: ['test'] })).rejects.toThrow(
+        '红线规则更新失败，请刷新页面后重试',
+      );
     });
   });
 

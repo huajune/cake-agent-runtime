@@ -83,11 +83,12 @@ jobs:
             docker compose up -d
 
             # 健康检查（最多等 60 秒）
-            echo "Waiting for health check..."
+            HEALTH_PORT=$(grep -E '^PORT=' .env 2>/dev/null | cut -d= -f2 || echo 8080)
+            echo "Waiting for health check on port ${HEALTH_PORT}..."
             HEALTHY=false
             for i in $(seq 1 12); do
               sleep 5
-              if curl -sf http://localhost:8585/agent/health | grep -q '"status":"healthy"'; then
+              if curl -sf "http://localhost:${HEALTH_PORT}/agent/health" | grep -q '"status":"healthy"'; then
                 HEALTHY=true
                 echo "Health check passed after $((i*5))s"
                 break
