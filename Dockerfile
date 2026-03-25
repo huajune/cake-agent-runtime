@@ -44,6 +44,6 @@ COPY --from=builder /app/package.json ./package.json
 # Create logs directory
 RUN mkdir -p logs
 
-EXPOSE 8585
+EXPOSE 8080
 
 CMD ["node", "dist/main"]

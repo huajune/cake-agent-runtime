@@ -206,7 +206,7 @@ Response format:
 
 | 变量 | 默认值 | 说明 | 使用位置 |
 |------|--------|------|----------|
-| `PORT` | `8585` | 服务端口 | main.ts |
+| `PORT` | `8080` | 服务端口 | main.ts |
 | `MAX_HISTORY_PER_CHAT` | `60` | Redis 消息数限制 | message-history |
 | `HISTORY_TTL_MS` | `7200000` | Redis 消息 TTL (2h) | message-history |
 | `INITIAL_MERGE_WINDOW_MS` | `1000` | 聚合等待时间 | message-merge |
@@ -385,13 +385,13 @@ Key endpoints:
 
 ```bash
 # Health check
-curl http://localhost:8585/agent/health
+curl http://localhost:8080/agent/health
 
 # View available models
-curl http://localhost:8585/agent/models
+curl http://localhost:8080/agent/models
 
 # Debug chat (complete raw response)
-curl -X POST http://localhost:8585/agent/debug-chat \
+curl -X POST http://localhost:8080/agent/debug-chat \
   -H "Content-Type: application/json" \
   -d '{"message":"你好","conversationId":"debug-001"}'
 
@@ -399,7 +399,7 @@ curl -X POST http://localhost:8585/agent/debug-chat \
 tail -f logs/combined-$(date +%Y-%m-%d).log
 
 # Monitoring dashboard
-open http://localhost:8585/monitoring.html
+open http://localhost:8080/monitoring.html
 ```
 
 ## Troubleshooting
@@ -407,7 +407,7 @@ open http://localhost:8585/monitoring.html
 ### Agent API Connection Failed
 ```bash
 # Health check — 查看已注册的 Provider
-curl http://localhost:8585/agent/health
+curl http://localhost:8080/agent/health
 
 # 确认 API Key 已配置
 echo $ANTHROPIC_API_KEY
@@ -416,7 +416,7 @@ echo $AGENT_CHAT_MODEL
 
 ### Port Already in Use
 ```bash
-lsof -i :8585
+lsof -i :8080
 kill -9 <PID>
 # Or change PORT in .env
 ```

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { StrategyConfigRepository } from '../repositories/strategy-config.repository';
 import { StrategyChangelogRepository } from '../repositories/strategy-changelog.repository';
 import { StrategyConfigRecord } from '../entities/strategy-config.entity';
@@ -64,7 +64,7 @@ export class StrategyConfigService {
 
     if (!updated) {
       this.logger.error(`人格配置更新失败，config.id=${config.id} 未匹配到记录`);
-      throw new Error('人格配置更新失败，请刷新页面后重试');
+      throw new InternalServerErrorException('人格配置更新失败，请刷新页面后重试');
     }
 
     await this.recordChangelog(config.id, 'persona', config.persona, persona);
@@ -84,7 +84,7 @@ export class StrategyConfigService {
 
     if (!updated) {
       this.logger.error(`角色设定更新失败，config.id=${config.id} 未匹配到记录`);
-      throw new Error('角色设定更新失败，请刷新页面后重试');
+      throw new InternalServerErrorException('角色设定更新失败，请刷新页面后重试');
     }
 
     await this.recordChangelog(config.id, 'role_setting', config.role_setting, roleSetting);
@@ -107,7 +107,7 @@ export class StrategyConfigService {
 
     if (!updated) {
       this.logger.error(`阶段目标配置更新失败，config.id=${config.id} 未匹配到记录`);
-      throw new Error('阶段目标配置更新失败，请刷新页面后重试');
+      throw new InternalServerErrorException('阶段目标配置更新失败，请刷新页面后重试');
     }
 
     await this.recordChangelog(config.id, 'stage_goals', config.stage_goals, stageGoals);
@@ -130,7 +130,7 @@ export class StrategyConfigService {
 
     if (!updated) {
       this.logger.error(`红线规则更新失败，config.id=${config.id} 未匹配到记录`);
-      throw new Error('红线规则更新失败，请刷新页面后重试');
+      throw new InternalServerErrorException('红线规则更新失败，请刷新页面后重试');
     }
 
     await this.recordChangelog(config.id, 'red_lines', config.red_lines, redLines);
