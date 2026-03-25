@@ -10,8 +10,8 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
 COPY web/package.json ./web/
 
-# Install dependencies
-RUN pnpm install --frozen-lockfile
+# Install dependencies (skip postinstall scripts — supabase CLI binary download not needed in Docker)
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # Stage 2: Build
 FROM deps AS builder
@@ -27,7 +27,7 @@ RUN pnpm run build:web
 RUN pnpm run build
 
 # Prune to production dependencies only (removes devDependencies in-place)
-RUN pnpm prune --prod
+RUN CI=true pnpm prune --prod
 
 # Stage 3: Runner
 FROM node:20-bookworm-slim AS runner
