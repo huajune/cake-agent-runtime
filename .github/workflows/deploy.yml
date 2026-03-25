@@ -59,7 +59,7 @@ jobs:
           passphrase: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
           command_timeout: 15m
           script: |
-            set -e
+            set -euo pipefail
             cd /data/cake
 
             # 备份当前镜像用于回滚

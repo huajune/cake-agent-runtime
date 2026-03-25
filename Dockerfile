@@ -32,10 +32,10 @@ WORKDIR /app
 
 RUN npm install -g pnpm
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY package.json pnpm-lock.yaml ./
 
-# Only install production dependencies
-RUN pnpm install --frozen-lockfile --prod
+# Only install root production dependencies (no workspace)
+RUN pnpm install --frozen-lockfile --prod --ignore-workspace
 
 # Stage 4: Runner
 FROM node:20-bookworm-slim AS runner
@@ -52,6 +52,6 @@ COPY --from=builder /app/package.json ./package.json
 # Create logs directory
 RUN mkdir -p logs
 
-EXPOSE 8080
+EXPOSE 8585
 
 CMD ["node", "dist/main"]

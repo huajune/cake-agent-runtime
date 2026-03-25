@@ -10,10 +10,14 @@ set -euo pipefail
 SSH_HOST="${1:-haimian-deploy}"
 BRANCH="${2:-master}"
 
+# 从本地 git remote 读取仓库 URL，避免硬编码
+REPO_URL=$(git remote get-url origin)
+
 echo "🚀 Deploying $BRANCH to $SSH_HOST..."
-ssh "$SSH_HOST" bash -s -- "$BRANCH" << 'REMOTE_SCRIPT'
-set -e
+ssh "$SSH_HOST" bash -s -- "$BRANCH" "$REPO_URL" << 'REMOTE_SCRIPT'
+set -euo pipefail
 BRANCH="$1"
+REPO_URL="$2"
 cd /data/cake
 
 # 备份当前镜像用于回滚
@@ -27,7 +31,7 @@ if [ -d source/.git ]; then
   cd source && git fetch --depth 1 origin "$BRANCH" && git reset --hard origin/"$BRANCH" && cd ..
 else
   rm -rf source
-  git clone --depth 1 --branch "$BRANCH" https://github.com/huajune/cake-agent-runtime.git source
+  git clone --depth 1 --branch "$BRANCH" "$REPO_URL" source
 fi
 
 # 在服务器上构建镜像
