@@ -10,6 +10,7 @@
     "build:web": "cd web && pnpm run build",
     "format": "prettier --write \"src/**/*.ts\"",
     "lint": "eslint \"src/**/*.ts\" --fix",
+    "lint:check": "eslint \"src/**/*.ts\" --max-warnings=0",
     "start:dev": "pnpm run build:web && nest start --watch",
     "start:prod": "node dist/main",
     "web:dev": "cd web && pnpm run dev",
