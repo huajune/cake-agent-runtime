@@ -115,7 +115,6 @@ jobs:
     needs: deploy
     runs-on: ubuntu-latest
     if: always()
-    environment: production
 
     steps:
       - name: Send Feishu notification
