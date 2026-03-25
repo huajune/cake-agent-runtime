@@ -26,16 +26,27 @@ RUN pnpm run build:web
 # Build NestJS backend (nest-cli copies public/ into dist/)
 RUN pnpm run build
 
-# Stage 3: Runner
+# Stage 3: Production dependencies only
+FROM node:20-bookworm-slim AS prod-deps
+WORKDIR /app
+
+RUN npm install -g pnpm
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+
+# Only install production dependencies
+RUN pnpm install --frozen-lockfile --prod
+
+# Stage 4: Runner
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Copy built artifacts and production dependencies
+# Copy built artifacts and production-only dependencies
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/node_modules ./node_modules
+COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 
 # Create logs directory

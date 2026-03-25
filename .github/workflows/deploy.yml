@@ -42,161 +42,41 @@ jobs:
       - name: Unit tests
         run: pnpm run test
 
-  # 2. 构建 Docker 镜像并推送到 GHCR
-  build-and-push:
-    needs: test
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    outputs:
-      image_tag: ${{ steps.short_sha.outputs.sha }}
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Get short SHA
-        id: short_sha
-        run: echo "sha=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata for Docker
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=raw,value=latest
-            type=sha,format=short
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # 3. 创建 GitHub Release
-  create-release:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Get version info
-        id: info
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          SHA="${{ needs.build-and-push.outputs.image_tag }}"
-          IMAGE="ghcr.io/${{ github.repository }}:sha-${SHA}"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "sha=$SHA" >> $GITHUB_OUTPUT
-          echo "image=$IMAGE" >> $GITHUB_OUTPUT
-
-      - name: Generate docker-compose.yml for release
-        run: |
-          IMAGE="${{ steps.info.outputs.image }}"
-          cat > /tmp/docker-compose.yml << 'HEREDOC'
-          services:
-            cake-agent:
-              image: IMAGE_PLACEHOLDER
-              container_name: cake-agent
-              restart: always
-              ports:
-                - "8080:8080"
-              env_file:
-                - .env.prod
-              volumes:
-                - ./logs:/app/logs
-              environment:
-                - NODE_ENV=production
-              healthcheck:
-                test: ["CMD", "node", "-e", "fetch('http://localhost:8080/agent/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"]
-                interval: 30s
-                timeout: 10s
-                retries: 3
-              networks:
-                - app-network
-          networks:
-            app-network:
-              driver: bridge
-          HEREDOC
-          sed -i "s|IMAGE_PLACEHOLDER|${IMAGE}|" /tmp/docker-compose.yml
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.info.outputs.version }}-${{ steps.info.outputs.sha }}
-          name: v${{ steps.info.outputs.version }}
-          body: |
-            ## 部署说明
-
-            ### 镜像地址
-            ```
-            ghcr.io/${{ github.repository }}:sha-${{ steps.info.outputs.sha }}
-            ```
-
-            ### 快速部署步骤
-            1. 下载 `docker-compose.yml` 和 `.env.example`
-            2. 将 `.env.example` 复制为 `.env` 并填写配置项
-            3. 执行部署：
-            ```bash
-            docker compose up -d
-            ```
-
-            ### 更新已有部署
-            ```bash
-            docker compose pull
-            docker compose up -d
-            docker image prune -f
-            ```
-
-            > `.env` 必填项见 `.env.example` 中 `Layer 1` 部分
-          files: |
-            /tmp/docker-compose.yml
-            .env.example
-          make_latest: true
-
-  # 4. SSH 部署到服务器（带健康检查和回滚）
+  # 2. 服务器上拉取源码并构建部署
   deploy:
-    needs: [build-and-push, create-release]
+    needs: test
     runs-on: ubuntu-latest
     environment: production
 
     steps:
-      - name: Deploy to server via SSH
+      - name: Deploy on server
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           port: ${{ secrets.DEPLOY_PORT }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 15m
           script: |
             set -e
             cd /data/cake
 
-            # 记录当前运行的镜像，用于回滚
-            OLD_IMAGE=$(docker compose images cake-agent --format json 2>/dev/null | jq -r '.[0].Repository + ":" + .[0].Tag' 2>/dev/null || echo "")
+            # 备份当前镜像用于回滚
+            if docker images cake-agent-runtime:latest --format '{{.ID}}' | grep -q .; then
+              docker tag cake-agent-runtime:latest cake-agent-runtime:previous
+              echo "Backed up current image as cake-agent-runtime:previous"
+            fi
 
-            # 拉取新镜像
-            docker pull ghcr.io/${{ github.repository }}:latest
+            # 拉取最新代码
+            if [ -d source/.git ]; then
+              cd source && git fetch --depth 1 origin master && git reset --hard origin/master && cd ..
+            else
+              rm -rf source
+              git clone --depth 1 --branch master https://github.com/${{ github.repository }}.git source
+            fi
+
+            # 在服务器上构建镜像
+            docker build -t cake-agent-runtime:latest ./source
 
             # 启动新容器
             docker compose up -d
@@ -206,7 +86,7 @@ jobs:
             HEALTHY=false
             for i in $(seq 1 12); do
               sleep 5
-              if docker compose exec -T cake-agent node -e "fetch('http://localhost:8080/agent/health').then(r=>{if(r.ok)process.exit(0);process.exit(1)}).catch(()=>process.exit(1))" 2>/dev/null; then
+              if curl -sf http://localhost:8585/agent/health | grep -q '"status":"healthy"'; then
                 HEALTHY=true
                 echo "Health check passed after $((i*5))s"
                 break
@@ -216,25 +96,24 @@ jobs:
 
             if [ "$HEALTHY" = false ]; then
               echo "Health check failed! Rolling back..."
-              if [ -n "$OLD_IMAGE" ] && [ "$OLD_IMAGE" != ":" ]; then
-                docker compose down
-                # 用旧镜像重新 tag 为 latest 并启动
-                docker tag "$OLD_IMAGE" ghcr.io/${{ github.repository }}:latest
+              if docker images cake-agent-runtime:previous --format '{{.ID}}' | grep -q .; then
+                docker tag cake-agent-runtime:previous cake-agent-runtime:latest
                 docker compose up -d
-                echo "Rolled back to $OLD_IMAGE"
+                echo "Rolled back to previous version"
               fi
               exit 1
             fi
 
-            # 清理旧镜像
+            # 部署成功，清理旧镜像
+            docker rmi cake-agent-runtime:previous 2>/dev/null || true
             docker image prune -f
             echo "Deploy successful!"
 
-  # 5. 飞书通知
+  # 3. 飞书通知
   notify:
-    needs: [build-and-push, deploy]
+    needs: deploy
     runs-on: ubuntu-latest
-    if: always() && needs.deploy.result != 'skipped'
+    if: always()
     environment: production
 
     steps:
@@ -242,16 +121,17 @@ jobs:
         env:
           FEISHU_WEBHOOK: ${{ secrets.FEISHU_DEPLOY_WEBHOOK_URL }}
           DEPLOY_RESULT: ${{ needs.deploy.result }}
-          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
         run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+
           if [ "$DEPLOY_RESULT" = "success" ]; then
             TITLE="✅ 部署成功"
             COLOR="green"
-            CONTENT="镜像 sha-${IMAGE_TAG} 已部署到生产服务器"
+            CONTENT="提交 ${SHORT_SHA} 已部署到生产服务器"
           else
             TITLE="❌ 部署失败"
             COLOR="red"
-            CONTENT="镜像 sha-${IMAGE_TAG} 部署失败，请检查 GitHub Actions 日志"
+            CONTENT="提交 ${SHORT_SHA} 部署失败，请检查 GitHub Actions 日志"
           fi
 
           curl -s -X POST "$FEISHU_WEBHOOK" \
@@ -268,7 +148,7 @@ jobs:
                     \"tag\": \"div\",
                     \"text\": {
                       \"tag\": \"lark_md\",
-                      \"content\": \"**项目**: ${{ github.repository }}\n**分支**: ${{ github.ref_name }}\n**提交**: [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})\n**${CONTENT}**\n\n[查看详情](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"
+                      \"content\": \"**项目**: ${{ github.repository }}\n**分支**: ${{ github.ref_name }}\n**提交**: [${SHORT_SHA}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})\n**${CONTENT}**\n\n[查看详情](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"
                     }
                   }
                 ]

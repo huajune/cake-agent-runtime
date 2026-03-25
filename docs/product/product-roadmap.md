@@ -187,8 +187,8 @@ MVP (V1.0)        V1.1 增强版        V2.0 完整版
 
 - [产品定义](product-definition.md) - 产品概述和核心功能
 - [业务流程详细说明](business-flows.md) - 完整的对话场景和流程图
-- [Agent 服务架构](../agent-service-architecture.md) - Agent 服务架构设计
-- [消息服务架构](../message-service-architecture.md) - 消息处理流程
+- [Agent 运行时架构](../architecture/agent-runtime-architecture.md) - Agent 服务架构设计
+- [消息服务架构](../architecture/message-service-architecture.md) - 消息处理流程
 
 ---
 

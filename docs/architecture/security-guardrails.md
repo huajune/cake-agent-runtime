@@ -202,19 +202,19 @@ for (let i = messages.length - 1; i >= 0; i--) {
 
 ```bash
 # 有效 token — 期望 200
-curl -H "Authorization: Bearer your-guard-token" http://localhost:8080/agent/health
+curl -H "Authorization: Bearer your-guard-token" http://localhost:8585/agent/health
 
 # 无效 token — 期望 403
-curl -H "Authorization: Bearer wrong-token" http://localhost:8080/agent/health
+curl -H "Authorization: Bearer wrong-token" http://localhost:8585/agent/health
 
 # @Public 端点 — 无需 token，期望 200
-curl http://localhost:8080/wecom/message/health
+curl http://localhost:8585/wecom/message/health
 ```
 
 验证输入长度截断（日志中应出现 WARN）：
 
 ```bash
-curl -X POST http://localhost:8080/agent/debug-chat \
+curl -X POST http://localhost:8585/agent/debug-chat \
   -H "Authorization: Bearer your-guard-token" \
   -H "Content-Type: application/json" \
   -d '{"message":"'"$(python3 -c "print('A'*9000)")"'","conversationId":"test-001"}'

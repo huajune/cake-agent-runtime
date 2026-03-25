@@ -287,8 +287,8 @@ git commit -m "feat: 完成用户模块所有功能"
 在创建 PR 到 `master` 之前，确认：
 
 - [ ] 所有测试通过
-- [ ] 代码已格式化（`npm run format`）
-- [ ] 代码已通过 Lint 检查（`npm run lint`）
+- [ ] 代码已格式化（`pnpm run format`）
+- [ ] 代码已通过 Lint 检查（`pnpm run lint`）
 - [ ] 提交消息符合规范
 - [ ] 功能已在 `develop` 分支测试
 - [ ] PR 描述清晰完整

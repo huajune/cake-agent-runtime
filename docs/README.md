@@ -168,18 +168,17 @@ docs: 更新文档        # 修订号 +1
 - ✅ 验证架构合规性和项目规范
 - ✅ 使用 Claude Code CLI 提供专业建议
 
-- **[构建与部署指南](workflows/deploy-guide.md)** (新增)
-  - 🚀 push to master 自动构建 Docker 镜像并发布 GitHub Release
-  - 对接方部署步骤（下载 Release 附件 → 配置 .env → docker compose up）
-  - 镜像更新流程和 GHCR 登录说明
-  - 常见问题排查
-  - **更新日期**：2026-03-12
+- **[构建与部署指南](workflows/deploy-guide.md)**
+  - 🚀 push to master → test → 服务器 git pull + docker build → 健康检查 → 飞书通知
+  - 本地手动部署（`pnpm run deploy`）
+  - 自动回滚机制和排查指南
+  - **更新日期**：2026-03-25
 
 **部署流程**：
 
-- ✅ 自动构建 Docker 镜像推送到 GHCR
-- ✅ 自动生成含精确镜像 tag 的 docker-compose.yml
-- ✅ 以 GitHub Release 附件形式交付部署文件
+- ✅ CI 测试通过后 SSH 到服务器拉取源码并构建
+- ✅ 健康检查失败自动回滚到上一版本
+- ✅ 飞书通知部署结果
 
 - **[分支保护规则配置指南](workflows/branch-protection-guide.md)** (新增)
   - 🔒 GitHub 分支保护规则配置步骤
