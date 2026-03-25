@@ -539,7 +539,7 @@ suggestion: 立即检查 Agent API 状态、数据库连接、网络状况
 
 ```bash
 # 添加静默规则 - 静默 agent 类型告警 1 小时
-curl -X POST http://localhost:8080/alert/silence \
+curl -X POST http://localhost:8585/alert/silence \
   -H "Content-Type: application/json" \
   -d '{
     "errorType": "agent",
@@ -548,7 +548,7 @@ curl -X POST http://localhost:8080/alert/silence \
   }'
 
 # 添加静默规则 - 静默特定场景的告警
-curl -X POST http://localhost:8080/alert/silence \
+curl -X POST http://localhost:8585/alert/silence \
   -H "Content-Type: application/json" \
   -d '{
     "errorType": "agent",
@@ -558,21 +558,21 @@ curl -X POST http://localhost:8080/alert/silence \
   }'
 
 # 查询所有静默规则（包括剩余时间）
-curl http://localhost:8080/alert/silence
+curl http://localhost:8585/alert/silence
 
 # 删除静默规则
-curl -X DELETE http://localhost:8080/alert/silence/agent
-curl -X DELETE http://localhost:8080/alert/silence/agent:candidate_consulting
+curl -X DELETE http://localhost:8585/alert/silence/agent
+curl -X DELETE http://localhost:8585/alert/silence/agent:candidate_consulting
 ```
 
 ### 测试告警 API
 
 ```bash
 # 测试业务指标告警
-curl -X POST http://localhost:8080/alert/test/metrics
+curl -X POST http://localhost:8585/alert/test/metrics
 
 # 测试错误告警
-curl -X POST http://localhost:8080/alert/test/error \
+curl -X POST http://localhost:8585/alert/test/error \
   -H "Content-Type: application/json" \
   -d '{
     "errorType": "agent",
@@ -601,7 +601,7 @@ curl -X POST http://localhost:8080/alert/test/error \
 
 3. **检查是否被静默**
    ```bash
-   curl http://localhost:8080/alert/silence
+   curl http://localhost:8585/alert/silence
    ```
 
 4. **查看日志**
@@ -643,7 +643,7 @@ curl -X POST http://localhost:8080/alert/test/error \
 
 3. **临时静默**
    ```bash
-   curl -X POST http://localhost:8080/alert/silence \
+   curl -X POST http://localhost:8585/alert/silence \
      -d '{"errorType":"agent","durationMs":3600000,"reason":"临时静默"}'
    ```
 
@@ -663,7 +663,7 @@ curl -X POST http://localhost:8080/alert/test/error \
 
 3. **检查当前指标值**
    ```bash
-   curl http://localhost:8080/monitoring/dashboard | jq '.overview'
+   curl http://localhost:8585/monitoring/dashboard | jq '.overview'
    ```
 
 4. **检查最小告警间隔**
