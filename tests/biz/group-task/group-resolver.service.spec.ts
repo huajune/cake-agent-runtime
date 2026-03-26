@@ -4,11 +4,14 @@ describe('GroupResolverService', () => {
   let service: GroupResolverService;
 
   beforeEach(() => {
+    const mockConfigService = {
+      get: jest.fn().mockReturnValue('艾酱:test-token'),
+    };
     const mockRoomService = {
       getRoomSimpleList: jest.fn(),
     };
 
-    service = new GroupResolverService(mockRoomService as any);
+    service = new GroupResolverService(mockConfigService as any, mockRoomService as any);
   });
 
   describe('parseLabels', () => {

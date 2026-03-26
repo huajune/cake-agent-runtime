@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Delete, HttpCode, Body } from '@nestjs/common';
 import { AgentReplyConfig } from './types/hosting-config.types';
 import { HostingConfigFacadeService } from './services/hosting-config-facade.service';
+import { UpdateGroupTaskConfigDto } from './dto/update-group-task-config.dto';
 
 /**
  * 系统配置控制器
@@ -57,7 +58,7 @@ export class HostingConfigController {
 
   @Post('group-task-config')
   @HttpCode(200)
-  async updateGroupTaskConfig(@Body() body: { enabled?: boolean; dryRun?: boolean }) {
+  async updateGroupTaskConfig(@Body() body: UpdateGroupTaskConfigDto) {
     const current = (await this.facade.getAgentReplyConfig()).groupTaskConfig;
     const updated = { ...current, ...body };
     await this.facade.updateGroupTaskConfig(updated);

@@ -5,10 +5,13 @@ import { GroupTaskType, GroupContext, NotificationData, TimeSlot } from '../grou
 import { buildOrderGrabMessage } from '../prompts/order-grab.prompt';
 
 /**
- * 日期格式化 YYYY-MM-DD
+ * 日期格式化 YYYY-MM-DD（Asia/Shanghai 时区安全）
  */
 function formatDate(date: Date): string {
-  return date.toISOString().split('T')[0];
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 /**

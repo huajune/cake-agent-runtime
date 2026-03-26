@@ -156,13 +156,13 @@ export class GroupTaskSchedulerService implements OnModuleInit {
       endTime: new Date(),
     };
 
-    const enabled = await this.isEnabled();
-    if (!enabled && !force) {
+    const config = await this.getConfig();
+    if (!config.enabled && !force) {
       this.logger.debug(`[${strategy.type}] 任务已禁用，跳过`);
       return result;
     }
 
-    const dryRun = await this.isDryRun();
+    const { dryRun } = config;
     this.logger.log(`[${strategy.type}] 开始执行... (dryRun=${dryRun})`);
 
     try {

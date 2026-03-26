@@ -9,13 +9,11 @@ import {
   RawBrandItem,
   InterviewScheduleParams,
   InterviewScheduleItem,
-} from './sponge.types';
-import {
   BIOrderQueryParams,
   BIOrder,
   BI_FIELD_NAMES,
   BI_FILTER_TYPES,
-} from '@biz/group-task/group-task.types';
+} from './sponge.types';
 
 const JOB_LIST_API = 'https://k8s.duliday.com/persistence/ai/api/job/list';
 const BRAND_LIST_API = 'https://k8s.duliday.com/persistence/ai/api/brand/list';

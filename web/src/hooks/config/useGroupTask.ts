@@ -26,14 +26,15 @@ export function useUpdateGroupTaskConfig() {
   return useMutation({
     mutationFn: (config: Partial<GroupTaskConfig>) =>
       configService.updateGroupTaskConfig(config),
-    onSuccess: (_data, variables) => {
+    onSuccess: (data) => {
+      const serverConfig = (data as { config?: GroupTaskConfig })?.config;
       queryClient.setQueryData<AgentReplyConfigResponse>(
         ['agent-reply-config'],
         (old) => {
           if (!old) return old;
           return {
             ...old,
-            groupTaskConfig: { ...old.groupTaskConfig, ...variables },
+            groupTaskConfig: serverConfig ?? old.groupTaskConfig,
           };
         },
       );

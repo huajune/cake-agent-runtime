@@ -5,7 +5,7 @@
  * 代码负责：数据清洗、门店数量限制、固定尾部拼接
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+import { JobDetail, JobBasicInfo } from '@sponge/sponge.types';
 
 export const PART_TIME_JOB_SYSTEM_PROMPT = `你是一个企微兼职招聘群的岗位推送助手。根据提供的真实岗位数据，生成吸引求职者的群通知消息。
 
@@ -81,7 +81,7 @@ interface PartTimeJobPromptData {
   brand: string;
   city: string;
   industry: string;
-  jobs: any[];
+  jobs: JobDetail[];
 }
 
 /**
@@ -93,13 +93,13 @@ export function buildPartTimeJobUserMessage(data: PartTimeJobPromptData): string
   const hasMore = data.jobs.length > maxDisplay;
 
   const jobList = displayJobs
-    .map((j: any, i: number) => {
-      const bi = j.basicInfo || {};
-      const store = bi.storeInfo || {};
+    .map((j: JobDetail, i: number) => {
+      const bi = j.basicInfo ?? ({} as JobBasicInfo);
+      const store = (bi.storeInfo ?? {}) as Record<string, unknown>;
       const parts: string[] = [
         `【门店${i + 1}】`,
         `区域: ${store.storeRegionName || '未知'}`,
-        `门店: ${cleanStoreName(store.storeName || '未知')}`,
+        `门店: ${cleanStoreName(String(store.storeName || '未知'))}`,
       ];
 
       // 岗位名
@@ -132,15 +132,17 @@ export function buildPartTimeJobUserMessage(data: PartTimeJobPromptData): string
   const welfareStr = extractWelfare(data.jobs[0]);
 
   // 汇总信息（岗位名、工作形式、招聘总人数）
-  const firstBi = data.jobs[0]?.basicInfo || {};
+  const firstBi = data.jobs[0]?.basicInfo ?? ({} as JobBasicInfo);
   const jobTitle = firstBi.jobNickName || firstBi.jobName || '服务员';
   const laborForm = firstBi.laborForm || '';
   const totalRequirement = data.jobs.reduce(
-    (sum: number, j: any) => sum + (j.basicInfo?.requirementNum || 0),
+    (sum: number, j: JobDetail) => sum + (j.basicInfo?.requirementNum || 0),
     0,
   );
   // 工作内容汇总（如果所有门店相同，只展示一次）
-  const allJobContents = data.jobs.map((j: any) => j.basicInfo?.jobContent || '').filter(Boolean);
+  const allJobContents = data.jobs
+    .map((j: JobDetail) => j.basicInfo?.jobContent || '')
+    .filter(Boolean);
   const uniqueContents = [...new Set(allJobContents)];
   const commonContent = uniqueContents.length === 1 ? uniqueContents[0] : '';
 
@@ -188,17 +190,18 @@ function cleanStoreName(name: string): string {
 /**
  * 提取工作时段
  */
-function extractWorkTime(job: any): string {
+function extractWorkTime(job: JobDetail): string {
   const workTime = job.workTime;
   if (!workTime) return '';
 
-  const timeList = workTime.workTimeList || workTime.timeList || [];
+  const timeList = (workTime.workTimeList as unknown[]) || (workTime.timeList as unknown[]) || [];
   if (Array.isArray(timeList) && timeList.length > 0) {
     return (
       timeList
-        .map((t: any) => {
-          const start = t.startTime || t.start || '';
-          const end = t.endTime || t.end || '';
+        .map((t: unknown) => {
+          const e = t as Record<string, string>;
+          const start = e.startTime || e.start || '';
+          const end = e.endTime || e.end || '';
           return start && end ? `${start}-${end}` : '';
         })
         .filter(Boolean)
@@ -212,20 +215,26 @@ function extractWorkTime(job: any): string {
 /**
  * 提取薪资信息（支持阶梯薪资）
  */
-function extractSalary(job: any): string {
-  const scenarios = job?.jobSalary?.salaryScenarioList;
+/** 安全读取嵌套属性 */
+function prop(obj: unknown, key: string): unknown {
+  return (obj as Record<string, unknown>)?.[key];
+}
+
+function extractSalary(job: JobDetail): string {
+  const scenarios = job?.jobSalary?.salaryScenarioList as Record<string, unknown>[] | undefined;
   if (!Array.isArray(scenarios) || scenarios.length === 0) return '';
 
   // 多个薪资方案 = 阶梯薪资
   if (scenarios.length > 1) {
     const salaries = scenarios
-      .map((s: any) => {
-        const basic = s.basicSalary;
+      .map((s) => {
+        const basic = s.basicSalary as Record<string, unknown> | undefined;
         return basic?.basicSalary ? `${basic.basicSalary}` : null;
       })
       .filter(Boolean);
     if (salaries.length > 0) {
-      const unit = scenarios[0].basicSalary?.basicSalaryUnit || '';
+      const firstBasic = scenarios[0].basicSalary as Record<string, unknown> | undefined;
+      const unit = firstBasic?.basicSalaryUnit || '';
       const min = Math.min(...salaries.map(Number));
       const max = Math.max(...salaries.map(Number));
       return min === max ? `${min}${unit}` : `${min}-${max}${unit}`;
@@ -234,12 +243,12 @@ function extractSalary(job: any): string {
 
   // 单个薪资方案
   const salary = scenarios[0];
-  const basic = salary.basicSalary;
+  const basic = salary.basicSalary as Record<string, unknown> | undefined;
   if (basic?.basicSalary) {
     return `${basic.basicSalary}${basic.basicSalaryUnit}`;
   }
 
-  const comp = salary.comprehensiveSalary;
+  const comp = salary.comprehensiveSalary as Record<string, unknown> | undefined;
   if (comp?.minComprehensiveSalary && comp?.maxComprehensiveSalary) {
     return `${comp.minComprehensiveSalary}-${comp.maxComprehensiveSalary}${comp.comprehensiveSalaryUnit || ''}`;
   }
@@ -247,63 +256,51 @@ function extractSalary(job: any): string {
   return '';
 }
 
-/**
- * 提取用人要求
- */
-function extractHiringRequirement(job: any): string {
+function extractHiringRequirement(job: JobDetail): string {
   const hr = job?.hiringRequirement;
   if (!hr) return '';
 
   const items: string[] = [];
 
-  // 年龄
-  const basic = hr.basicPersonalRequirements;
+  const basic = prop(hr, 'basicPersonalRequirements') as Record<string, unknown> | undefined;
   if (basic?.minAge && basic?.maxAge) {
     items.push(`年龄${basic.minAge}-${basic.maxAge}岁`);
   }
-
-  // 性别
   if (basic?.genderRequirement && basic.genderRequirement !== '男性,女性') {
     items.push(`${basic.genderRequirement}`);
   }
 
-  // 学历
-  const cert = hr.certificate;
+  const cert = prop(hr, 'certificate') as Record<string, unknown> | undefined;
   if (cert?.education && cert.education !== '不限') {
     items.push(`学历${cert.education}`);
   }
-
-  // 证书
   if (cert?.certificates) {
     items.push(`需${cert.certificates}`);
   }
 
-  // 备注
-  if (hr.remark) {
-    items.push(hr.remark);
-  }
+  const remark = prop(hr, 'remark') as string | undefined;
+  if (remark) items.push(remark);
 
   return items.join('、');
 }
 
-/**
- * 提取福利信息（无实际福利时返回空字符串）
- */
-function extractWelfare(job: any): string {
+function extractWelfare(job: JobDetail): string {
   const welfare = job?.welfare;
   if (!welfare) return '';
 
   const items: string[] = [];
 
-  if (welfare.catering) {
-    const val = String(welfare.catering);
+  const catering = prop(welfare, 'catering');
+  if (catering) {
+    const val = String(catering);
     if (!val.includes('无') && val !== '不包吃') {
       items.push(val === '包吃' ? '包一顿工作餐' : val);
     }
   }
 
-  if (welfare.accommodation) {
-    const val = String(welfare.accommodation);
+  const accommodation = prop(welfare, 'accommodation');
+  if (accommodation) {
+    const val = String(accommodation);
     if (!val.includes('无') && val !== '不包住') {
       items.push(val);
     }
@@ -311,5 +308,3 @@ function extractWelfare(job: any): string {
 
   return items.join('、');
 }
-
-/* eslint-enable @typescript-eslint/no-explicit-any */

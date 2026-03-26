@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { RoomService } from '@channels/wecom/room/room.service';
 import { GroupContext, ParsedGroupTag } from '../group-task.types';
 
@@ -19,14 +20,6 @@ interface SimpleRoomItem {
   memberCount?: number;
 }
 
-/** 小组名称 → token 映射（硬编码） */
-const GROUP_TOKEN_MAP: Record<string, string> = {
-  艾酱: '691d3b1c77279273a79275f5',
-  宇航: '69241d742f26ed67f01f8f2d',
-  南瓜: '69c4c344299b6af7d2cdf02e',
-  琪琪: '68f88a31d53018ed04950739',
-};
-
 /**
  * 群解析服务
  *
@@ -39,16 +32,34 @@ const GROUP_TOKEN_MAP: Record<string, string> = {
 export class GroupResolverService implements OnModuleInit {
   private readonly logger = new Logger(GroupResolverService.name);
 
+  /** 小组名称 → token 映射（从环境变量解析） */
+  private readonly groupTokenMap: Record<string, string>;
+
   /** 群列表缓存 */
   private cachedGroups: GroupContext[] = [];
   private cacheExpiry = 0;
   private readonly cacheTtlMs = 10 * 60 * 1000; // 10 分钟
 
-  constructor(private readonly roomService: RoomService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly roomService: RoomService,
+  ) {
+    // 格式: "艾酱:token1,宇航:token2,南瓜:token3"
+    const raw = this.configService.get<string>('GROUP_TASK_TOKENS', '');
+    this.groupTokenMap = {};
+    for (const pair of raw.split(',').filter(Boolean)) {
+      const [name, token] = pair.split(':');
+      if (name && token) this.groupTokenMap[name.trim()] = token.trim();
+    }
+  }
 
   async onModuleInit(): Promise<void> {
-    const names = Object.keys(GROUP_TOKEN_MAP).join('、');
-    this.logger.log(`✅ 群解析服务已启动 (小组: ${names})`);
+    const names = Object.keys(this.groupTokenMap);
+    if (names.length === 0) {
+      this.logger.warn('⚠️ GROUP_TASK_TOKENS 未配置，群任务无法获取群列表');
+      return;
+    }
+    this.logger.log(`✅ 群解析服务已启动 (小组: ${names.join('、')})`);
   }
 
   /**
@@ -96,14 +107,14 @@ export class GroupResolverService implements OnModuleInit {
       return this.cachedGroups;
     }
 
-    const tokens = Object.values(GROUP_TOKEN_MAP);
+    const tokens = Object.values(this.groupTokenMap);
     if (tokens.length === 0) {
-      this.logger.error('GROUP_TOKEN_MAP 为空');
+      this.logger.error('GROUP_TASK_TOKENS 为空，无法获取群列表');
       return [];
     }
 
     const seen = new Map<string, GroupContext>();
-    const names = Object.keys(GROUP_TOKEN_MAP);
+    const names = Object.keys(this.groupTokenMap);
 
     for (let i = 0; i < tokens.length; i++) {
       try {

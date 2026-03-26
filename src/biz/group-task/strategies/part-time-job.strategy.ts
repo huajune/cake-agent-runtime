@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SpongeService } from '@sponge/sponge.service';
+import { JobDetail } from '@sponge/sponge.types';
 import { NotificationStrategy } from './notification.strategy';
 import { BrandRotationService } from '../services/brand-rotation.service';
 import { GroupTaskType, GroupContext, NotificationData } from '../group-task.types';
@@ -49,9 +50,8 @@ export class PartTimeJobStrategy implements NotificationStrategy {
     });
 
     // 2. 按行业过滤
-    /* eslint-disable @typescript-eslint/no-explicit-any */
-    const filtered = jobs.filter((job: any) => {
-      const category: string = job.basicInfo?.jobCategoryName || '';
+    const filtered = jobs.filter((job: JobDetail) => {
+      const category = job.basicInfo?.jobCategoryName || '';
       if (context.industry === '零售') {
         return category.includes('零售');
       }
@@ -67,14 +67,13 @@ export class PartTimeJobStrategy implements NotificationStrategy {
     }
 
     // 3. 按品牌分组
-    const brandMap = new Map<string, any[]>();
+    const brandMap = new Map<string, JobDetail[]>();
     for (const job of filtered) {
-      const brand: string = job.basicInfo?.brandName;
+      const brand = job.basicInfo?.brandName;
       if (!brand) continue;
       if (!brandMap.has(brand)) brandMap.set(brand, []);
       brandMap.get(brand)!.push(job);
     }
-    /* eslint-enable @typescript-eslint/no-explicit-any */
 
     // 4. 品牌轮转
     const availableBrands = [...brandMap.keys()];
@@ -114,7 +113,7 @@ export class PartTimeJobStrategy implements NotificationStrategy {
         brand: data.payload.brand as string,
         city: context.city,
         industry: context.industry || '餐饮',
-        jobs: data.payload.jobs as unknown[],
+        jobs: data.payload.jobs as JobDetail[],
       }),
     };
   }

@@ -122,45 +122,5 @@ export interface TaskExecutionResult {
   endTime: Date;
 }
 
-/** 观远BI 订单查询参数 */
-export interface BIOrderQueryParams {
-  startDate?: string;
-  endDate?: string;
-  regionName?: string;
-  companyName?: string;
-  orderStatus?: string;
-  /** 排序字段 */
-  sortBy?: string;
-  /** 排序方向 */
-  sortOrder?: 'ASC' | 'DESC';
-  /** 是否在请求前刷新数据源（默认 false） */
-  refreshBeforeQuery?: boolean;
-}
-
-/** 观远BI 订单（行式对象） */
-export type BIOrder = Record<string, unknown>;
-
-/** 观远BI 字段名常量 */
-export const BI_FIELD_NAMES = {
-  COMPANY_NAME: '所属企业',
-  CITY: '城市',
-  ORDER_DATE: '订单归属日期',
-  ORDER_STATUS: '订单状态',
-  STORE_NAME: '订单所属门店',
-  STORE_ADDRESS: '门店地址',
-  BIG_REGION: '大区归属',
-  ORDER_REGION: '订单所属地区',
-  SERVICE_DATE: '订单计划时间',
-  SERVICE_CONTENT: '服务内容',
-  EXPECTED_REVENUE: '预计收入',
-  SHARE_LINK: '分享链接',
-  SHARE_TEXT: '分享文案',
-} as const;
-
-/** 观远BI 过滤类型 */
-export const BI_FILTER_TYPES = {
-  GREATER_EQUAL: 'GE',
-  LESS_EQUAL: 'LE',
-  EQUAL: 'EQ',
-  CONTAINS: 'CONTAINS',
-} as const;
+// BI 类型从 sponge 层导出（避免 sponge→biz 反向依赖）
+export { BIOrderQueryParams, BIOrder, BI_FIELD_NAMES, BI_FILTER_TYPES } from '@sponge/sponge.types';
