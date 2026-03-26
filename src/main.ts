@@ -98,7 +98,7 @@ async function ensurePortAvailable(port: number): Promise<void> {
 
 async function bootstrap() {
   // 先从环境变量获取端口，在创建应用前检查端口可用性
-  const port = parseInt(process.env.PORT || '8080', 10);
+  const port = parseInt(process.env.PORT || '8585', 10);
 
   // 确保端口可用（如果被占用则自动清理）
   await ensurePortAvailable(port);

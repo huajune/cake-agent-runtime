@@ -464,12 +464,19 @@ export class MessagePipelineService {
     deliveryResult: { segmentCount: number },
     scenario: ScenarioType,
   ): Record<string, unknown> {
+    // 提取工具名称列表
+    const tools =
+      agentResult.toolCalls && agentResult.toolCalls.length > 0
+        ? agentResult.toolCalls.map((tc) => tc.toolName)
+        : undefined;
+
     return {
       scenario,
       tokenUsage: agentResult.reply.usage?.totalTokens ?? 0,
       replyPreview: agentResult.reply.content,
       replySegments: deliveryResult.segmentCount,
       isFallback: agentResult.isFallback,
+      tools,
     };
   }
 
@@ -756,6 +763,7 @@ export class MessagePipelineService {
         reply: { content, usage: result.usage },
         isFallback: false,
         processingTime,
+        toolCalls: result.toolCalls,
       };
     } catch (error) {
       this.logger.error(`Agent 调用异常: ${error.message}`);

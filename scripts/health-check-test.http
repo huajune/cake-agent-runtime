@@ -1,29 +1,29 @@
 ### 1. 详细健康检查（调用 Agent API，更新缓存）
-GET http://localhost:8080/agent/health
+GET http://localhost:8585/agent/health
 Accept: application/json
 
 ### 2. 快速健康检查（从缓存读取，毫秒级）
-GET http://localhost:8080/agent/health/quick
+GET http://localhost:8585/agent/health/quick
 Accept: application/json
 
 ### 3. 获取健康检查缓存详情
-GET http://localhost:8080/agent/health/cache
+GET http://localhost:8585/agent/health/cache
 Accept: application/json
 
 ### 4. 强制刷新健康检查
-POST http://localhost:8080/agent/health/refresh
+POST http://localhost:8585/agent/health/refresh
 Content-Type: application/json
 
 ### 5. 获取可用模型列表（动态）
-GET http://localhost:8080/agent/available-models
+GET http://localhost:8585/agent/available-models
 Accept: application/json
 
 ### 6. 获取可用工具列表
-GET http://localhost:8080/agent/tools
+GET http://localhost:8585/agent/tools
 Accept: application/json
 
 ### 7. 调试聊天（完整入参+出参写入 scripts/agent-debug-response.json）
-POST http://localhost:8080/agent/debug-chat
+POST http://localhost:8585/agent/debug-chat
 Content-Type: application/json
 
 {
@@ -35,7 +35,7 @@ Content-Type: application/json
 
 ### 8. 流式聊天测试（与 Dashboard 对话调试页面调用的接口一致）
 ### 接口：POST /test-suite/chat/ai-stream（Vercel AI SDK 格式）
-POST http://localhost:8080/test-suite/chat/ai-stream
+POST http://localhost:8585/test-suite/chat/ai-stream
 Content-Type: application/json
 
 {

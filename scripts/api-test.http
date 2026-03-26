@@ -1,5 +1,5 @@
 ### 配置变量
-@baseUrl = http://localhost:8080
+@baseUrl = http://localhost:8585
 
 ### Token 配置
 @tokenGroup = 68f88a31d53018ed04950739

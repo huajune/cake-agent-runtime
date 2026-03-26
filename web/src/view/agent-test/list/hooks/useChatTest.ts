@@ -35,16 +35,46 @@ export interface UseChatTestReturn {
   replyContentRef: React.RefObject<HTMLDivElement>;
 }
 
+// ==================== localStorage 草稿缓存 ====================
+
+const DRAFT_CACHE_KEY = 'agent-test-draft';
+
+function loadDraftCache(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(DRAFT_CACHE_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveDraftCache(patch: Record<string, string>): void {
+  try {
+    const prev = loadDraftCache();
+    localStorage.setItem(DRAFT_CACHE_KEY, JSON.stringify({ ...prev, ...patch }));
+  } catch { /* noop */ }
+}
+
+function clearDraftCache(): void {
+  try { localStorage.removeItem(DRAFT_CACHE_KEY); } catch { /* noop */ }
+}
+
 /**
  * 聊天测试核心逻辑 Hook
  */
 export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseChatTestReturn {
+  const cached = useRef(loadDraftCache()).current;
+
   // 历史记录
-  const [historyText, setHistoryTextState] = useState('');
+  const [historyText, setHistoryTextState] = useState(cached.historyText ?? '');
   const [historyStatus, setHistoryStatus] = useState<'valid' | 'invalid' | 'empty'>('empty');
 
   // 当前输入
-  const [currentInput, setCurrentInput] = useState('');
+  const [currentInput, setCurrentInputState] = useState(cached.currentInput ?? '');
+  const setCurrentInput = useCallback((text: string) => {
+    setCurrentInputState(text);
+    saveDraftCache({ currentInput: text });
+  }, []);
 
   // 状态
   const [localError, setLocalError] = useState<string | null>(null);
@@ -58,8 +88,16 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
   const startTimeRef = useRef<number>(0);
 
   // 会话 ID + 用户 ID：同一对话保持一致，清空聊天时重新生成（确保 Agent API 服务端记忆完全隔离）
-  const [sessionId, setSessionId] = useState(() => generateUUID());
-  const [userId, setUserId] = useState(() => `dashboard-test-${generateUUID().slice(0, 8)}`);
+  const [sessionId, setSessionId] = useState(() => {
+    const id = cached.sessionId || generateUUID();
+    if (!cached.sessionId) saveDraftCache({ sessionId: id });
+    return id;
+  });
+  const [userId, setUserId] = useState(() => {
+    const id = cached.userId || `dashboard-test-${generateUUID().slice(0, 8)}`;
+    if (!cached.userId) saveDraftCache({ userId: id });
+    return id;
+  });
 
   // Refs
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
@@ -150,6 +188,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
       setHistoryTextState((prev) => {
         const newHistory = prev.trim() ? `${prev}\n\n${userLine}\n\n${aiLine}` : `${userLine}\n\n${aiLine}`;
         setTimeout(() => validateHistory(newHistory), 0);
+        saveDraftCache({ historyText: newHistory, currentInput: '' });
         return newHistory;
       });
 
@@ -245,11 +284,18 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     [parseHistory],
   );
 
-  // 设置历史记录（带校验）
+  // 初始化时校验已缓存的历史记录
+  useEffect(() => {
+    if (cached.historyText) validateHistory(cached.historyText);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 设置历史记录（带校验 + 缓存）
   const setHistoryText = useCallback(
     (text: string) => {
       setHistoryTextState(text);
       validateHistory(text);
+      saveDraftCache({ historyText: text });
     },
     [validateHistory],
   );
@@ -281,11 +327,11 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
   // 取消
   const handleCancel = useCallback(() => stop(), [stop]);
 
-  // 清空（重新生成 sessionId，开启新会话）
+  // 清空（重新生成 sessionId，开启新会话，清除缓存）
   const handleClear = useCallback(() => {
     setHistoryTextState('');
     setHistoryStatus('empty');
-    setCurrentInput('');
+    setCurrentInputState('');
     setMessages([]);
     setResult(null);
     setLocalError(null);
@@ -293,6 +339,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     setIsRequesting(false);
     setSessionId(generateUUID());
     setUserId(`dashboard-test-${generateUUID().slice(0, 8)}`);
+    clearDraftCache();
     messageInputRef.current?.focus();
   }, [setMessages]);
 

@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { InternalServerErrorException } from '@nestjs/common';
 import { StrategyConfigService } from '@biz/strategy/services/strategy-config.service';
 import { StrategyConfigRepository } from '@biz/strategy/repositories/strategy-config.repository';
 import { StrategyChangelogRepository } from '@biz/strategy/repositories/strategy-changelog.repository';
@@ -163,7 +164,7 @@ describe('StrategyConfigService', () => {
       );
     });
 
-    it('should return current cache when update returns null (no match)', async () => {
+    it('should throw error when update returns null (no match)', async () => {
       const initialRecord = makeRecord();
       (service as any).cachedConfig = initialRecord;
       (service as any).cacheExpiry = Date.now() + 60_000;
@@ -182,9 +183,45 @@ describe('StrategyConfigService', () => {
 
       mockStrategyConfigRepository.updateConfigField.mockResolvedValue(null);
 
-      const result = await service.updatePersona(newPersona);
+      await expect(service.updatePersona(newPersona)).rejects.toThrow(
+        InternalServerErrorException,
+      );
+    });
+  });
 
-      expect(result).toEqual(initialRecord);
+  // ==================== updateRoleSetting ====================
+
+  describe('updateRoleSetting', () => {
+    it('should update role setting and refresh cache', async () => {
+      const initialRecord = makeRecord();
+      const updatedRecord = makeRecord({ id: 'updated-role' });
+      (service as any).cachedConfig = initialRecord;
+      (service as any).cacheExpiry = Date.now() + 60_000;
+
+      const newRoleSetting = { content: '你是一名专业的招聘顾问' };
+
+      mockStrategyConfigRepository.updateConfigField.mockResolvedValue(updatedRecord);
+
+      const result = await service.updateRoleSetting(newRoleSetting);
+
+      expect(result).toEqual(updatedRecord);
+      expect(mockStrategyConfigRepository.updateConfigField).toHaveBeenCalledWith(
+        initialRecord.id,
+        { role_setting: newRoleSetting },
+      );
+      expect((service as any).cachedConfig).toEqual(updatedRecord);
+    });
+
+    it('should throw InternalServerErrorException when update returns null (no match)', async () => {
+      const initialRecord = makeRecord();
+      (service as any).cachedConfig = initialRecord;
+      (service as any).cacheExpiry = Date.now() + 60_000;
+
+      mockStrategyConfigRepository.updateConfigField.mockResolvedValue(null);
+
+      await expect(service.updateRoleSetting({ content: 'test' })).rejects.toThrow(
+        InternalServerErrorException,
+      );
     });
   });
 
@@ -216,16 +253,16 @@ describe('StrategyConfigService', () => {
       );
     });
 
-    it('should return current cache when update returns null', async () => {
+    it('should throw error when update returns null (no match)', async () => {
       const initialRecord = makeRecord();
       (service as any).cachedConfig = initialRecord;
       (service as any).cacheExpiry = Date.now() + 60_000;
 
       mockStrategyConfigRepository.updateConfigField.mockResolvedValue(null);
 
-      const result = await service.updateStageGoals({ stages: [] });
-
-      expect(result).toEqual(initialRecord);
+      await expect(service.updateStageGoals({ stages: [] })).rejects.toThrow(
+        InternalServerErrorException,
+      );
     });
   });
 
@@ -263,16 +300,16 @@ describe('StrategyConfigService', () => {
       );
     });
 
-    it('should return current cache when update returns null', async () => {
+    it('should throw error when update returns null (no match)', async () => {
       const initialRecord = makeRecord();
       (service as any).cachedConfig = initialRecord;
       (service as any).cacheExpiry = Date.now() + 60_000;
 
       mockStrategyConfigRepository.updateConfigField.mockResolvedValue(null);
 
-      const result = await service.updateRedLines({ rules: ['test'] });
-
-      expect(result).toEqual(initialRecord);
+      await expect(service.updateRedLines({ rules: ['test'] })).rejects.toThrow(
+        InternalServerErrorException,
+      );
     });
   });
 

@@ -1,6 +1,7 @@
 import type {
   StrategyConfigRecord,
   StrategyChangelogRecord,
+  StrategyRoleSetting,
   StrategyPersona,
   StrategyStageGoals,
   StrategyRedLines,
@@ -10,6 +11,11 @@ import { api, unwrapResponse } from '../client';
 export async function getStrategyConfig() {
   const { data } = await api.get('/strategy');
   return unwrapResponse<StrategyConfigRecord>(data);
+}
+
+export async function updateRoleSetting(roleSetting: StrategyRoleSetting) {
+  const { data } = await api.post('/strategy/role-setting', roleSetting);
+  return unwrapResponse<{ config: StrategyConfigRecord; message: string }>(data);
 }
 
 export async function updatePersona(persona: StrategyPersona) {
@@ -33,15 +39,16 @@ export async function getChangelog(limit = 20) {
 }
 
 export async function rollbackConfig(
-  field: 'persona' | 'stage_goals' | 'red_lines',
+  field: 'role_setting' | 'persona' | 'stage_goals' | 'red_lines',
   value: unknown,
 ) {
-  const endpoint =
-    field === 'persona'
-      ? '/strategy/persona'
-      : field === 'stage_goals'
-        ? '/strategy/stage-goals'
-        : '/strategy/red-lines';
+  const endpointMap: Record<string, string> = {
+    role_setting: '/strategy/role-setting',
+    persona: '/strategy/persona',
+    stage_goals: '/strategy/stage-goals',
+    red_lines: '/strategy/red-lines',
+  };
+  const endpoint = endpointMap[field];
   const { data } = await api.post(endpoint, value);
   return unwrapResponse<{ config: StrategyConfigRecord; message: string }>(data);
 }

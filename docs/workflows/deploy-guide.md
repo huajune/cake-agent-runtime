@@ -1,6 +1,6 @@
 # 构建与部署指南
 
-**最后更新**：2026-03-12
+**最后更新**：2026-03-25
 
 ## 概述
 
@@ -8,28 +8,100 @@
 
 ```
 push to master
-  → 构建 Docker 镜像 → 推送到 GHCR
-  → 创建 GitHub Release（附 docker-compose.yml + .env.example）
+  → test（类型检查 + 构建 + 单测）
+  → deploy（SSH 到服务器 → git pull → docker build → 健康检查 → 失败自动回滚）
+  → notify（飞书通知部署结果）
 ```
-
-对方收到 Release 附件后，按本文档执行部署。
 
 ---
 
-## 对接方部署步骤
+## CI 自动部署流程
 
-### 1. 获取部署文件
+### 触发条件
 
-进入仓库 [Releases](../../releases) 页面，下载最新 Release 的附件：
+`push to master` 分支自动触发。
 
-- `docker-compose.yml` — 已包含正确的镜像地址，开箱即用
-- `.env.example` — 环境变量配置模板
+### 执行顺序
 
-### 2. 配置环境变量
+```
+1. test
+   ├── TypeScript 类型检查
+   ├── NestJS 构建验证
+   └── 单元测试
+
+2. deploy（SSH 到生产服务器）
+   ├── 备份当前镜像为 :previous
+   ├── git fetch 拉取最新代码
+   ├── docker build 构建新镜像
+   ├── docker compose up -d 启动
+   ├── 健康检查（60s，验证 status: "healthy"）
+   ├── ✅ 成功 → 清理旧镜像
+   └── ❌ 失败 → 自动回滚到 :previous
+
+3. notify
+   └── 飞书通知部署成功/失败
+```
+
+### 回滚机制
+
+部署前自动备份当前镜像为 `cake-agent-runtime:previous`：
+- **健康检查通过**：删除 `:previous`，清理无用镜像
+- **健康检查失败**：自动将 `:previous` tag 回 `:latest` 并重启，恢复上一版本
+
+手动回滚：
 
 ```bash
-cp .env.example .env
-# 编辑 .env，填写以下必填项（Layer 1）
+ssh haimian-deploy 'cd /data/cake && docker tag cake-agent-runtime:previous cake-agent-runtime:latest && docker compose up -d'
+```
+
+---
+
+## 本地手动部署
+
+适用于不走 CI、直接从本地触发部署的场景。
+
+```bash
+# 部署 master 分支
+pnpm run deploy
+
+# 部署指定分支
+pnpm run deploy haimian-deploy develop
+```
+
+脚本流程与 CI 一致：SSH 到服务器 → git fetch → docker build → 启动 → 健康检查 → 失败回滚。
+
+> 注意：部署的是服务器上 git 仓库的代码，请确保代码已 push 到远程。
+
+---
+
+## 服务器环境要求
+
+服务器需要安装以下依赖：
+
+| 依赖 | 用途 |
+|------|------|
+| Git | 拉取源码 |
+| Docker + Docker Compose | 构建镜像和运行容器 |
+
+> Node.js、pnpm 等构建工具**不需要**安装，全部在 Docker 多阶段构建内完成。
+
+### 服务器目录结构
+
+```
+/data/cake/
+├── source/              # 源码（git clone）
+├── docker-compose.yml   # 容器编排配置
+├── .env.prod            # 生产环境变量
+└── logs/                # 应用日志（volume 挂载）
+```
+
+---
+
+## 环境变量配置
+
+```bash
+cp .env.example .env.prod
+# 编辑 .env.prod，填写必填项（Layer 1）
 ```
 
 必填配置项：
@@ -49,85 +121,19 @@ cp .env.example .env
 
 > 完整配置说明见 `.env.example` 内注释。
 
-### 3. 首次部署
+---
 
-```bash
-# 确保 docker-compose.yml 和 .env 在同一目录
-docker compose up -d
-```
-
-### 4. 验证
+## 验证部署
 
 ```bash
 # 查看容器状态
 docker compose ps
 
-# 健康检查（等待约 30s）
-curl http://localhost:8080/agent/health
+# 健康检查
+curl http://localhost:8585/agent/health
 ```
 
----
-
-## 更新部署（收到新版本）
-
-```bash
-# 拉取新镜像并重启
-docker compose pull
-docker compose up -d
-
-# 清理旧镜像
-docker image prune -f
-```
-
-> `docker-compose.yml` 中的镜像 tag 会随每次 Release 更新。如果使用 `latest` tag，`docker compose pull` 即可拉到最新版本。
-
----
-
-## 镜像信息
-
-镜像托管在 **GitHub Container Registry（GHCR）**：
-
-```
-ghcr.io/<org>/<repo>:latest         # 始终指向最新构建
-ghcr.io/<org>/<repo>:sha-<7位hash>  # 特定版本（见 Release 说明）
-```
-
-### 登录 GHCR（拉取镜像前）
-
-如果镜像仓库为私有，需要先登录：
-
-```bash
-# 用 GitHub Personal Access Token（需要 read:packages 权限）
-echo <GITHUB_PAT> | docker login ghcr.io -u <GitHub用户名> --password-stdin
-```
-
----
-
-## CI 工作流说明
-
-### 触发条件
-
-`push to master` 分支自动触发。
-
-### 执行顺序
-
-```
-build-and-push（并行）
-  ├── 构建 Docker 镜像
-  └── 推送到 ghcr.io（latest + sha-xxxxxxx 两个 tag）
-
-create-release（依赖 build-and-push 完成）
-  ├── 读取 package.json 版本号
-  ├── 生成 docker-compose.yml（写入精确的 sha tag）
-  └── 创建 GitHub Release，附上 docker-compose.yml 和 .env.example
-```
-
-### Release Tag 规则
-
-```
-v{package.json version}-{git sha 前7位}
-示例：v1.2.3-a1b2c3d
-```
+健康检查返回 `"status": "healthy"` 表示 Redis + Supabase 均正常。
 
 ---
 
@@ -137,28 +143,26 @@ v{package.json version}-{git sha 前7位}
 
 ```bash
 # 查看日志
-docker compose logs wecom-service
+docker compose logs cake-agent
 
-# 常见原因：.env 缺少必填项
+# 常见原因：.env.prod 缺少必填项
 ```
 
 ### 健康检查失败
 
 ```bash
-# 服务启动约需 10–20s，稍等后重试
-curl http://localhost:8080/agent/health
+# 服务启动约需 10-20s，稍等后重试
+curl http://localhost:8585/agent/health
 
 # 查看启动日志
-docker compose logs --tail=50 wecom-service
+docker compose logs --tail=50 cake-agent
 ```
 
-### 无法拉取镜像
+### 构建失败
 
 ```bash
-# 确认已登录 GHCR
-docker login ghcr.io
-
-# 确认镜像地址正确（见 docker-compose.yml 中的 image 字段）
+# SSH 到服务器手动构建查看详细错误
+ssh haimian-deploy 'cd /data/cake && docker build -t cake-agent-runtime:latest ./source'
 ```
 
 ---

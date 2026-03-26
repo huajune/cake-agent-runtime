@@ -1,6 +1,6 @@
 # 开发指南
 
-**最后更新**: 2025-11-05 16:40:00
+**最后更新**: 2026-03-25
 
 本文档提供完整的开发流程、最佳实践和团队协作规范。
 
@@ -20,8 +20,8 @@
 
 ### 前置要求
 
-- **Node.js**: >= 18.x
-- **pnpm**: >= 8.x
+- **Node.js**: >= 20.x
+- **pnpm**: >= 10.x
 - **Git**: >= 2.x
 
 ### 安装步骤
@@ -418,10 +418,10 @@ describe('MessageSenderService', () => {
 
 ```http
 ### 健康检查
-GET http://localhost:8080/agent/health
+GET http://localhost:8585/agent/health
 
 ### 调试聊天（完整原始响应）
-POST http://localhost:8080/agent/debug-chat
+POST http://localhost:8585/agent/debug-chat
 Content-Type: application/json
 
 {
@@ -498,7 +498,7 @@ tail -f logs/combined-*.log | grep "MessageService"
 
 ```bash
 # 查找占用端口的进程
-lsof -i :8080
+lsof -i :8585
 
 # 杀死进程
 kill -9 <PID>

@@ -20,8 +20,16 @@ export interface ConfiguredToolsResponse {
 export interface AgentHealthRaw {
   status: string;
   providers: string[];
-  roles: Record<string, { model: string }>;
-  scenarios: string[];
+  roles: Record<string, { model: string; fallbacks?: string[] }>;
+  tools?: {
+    builtIn: string[];
+    mcp: string[];
+    total: number;
+  };
+  checks?: {
+    redis: boolean;
+    supabase: boolean;
+  };
   message: string;
 }
 
@@ -29,16 +37,24 @@ export interface AgentHealthRaw {
 export interface HealthStatus {
   status: 'healthy' | 'degraded' | 'unhealthy';
   message: string;
-  models: {
-    availableCount: number;
-    configuredCount: number;
-    configuredAvailable: boolean;
-    allConfiguredModelsAvailable: boolean;
+  providers: {
+    count: number;
+    list: string[];
+  };
+  roles: {
+    count: number;
+    details: Record<string, { model: string; fallbacks?: string[] }>;
   };
   tools: {
-    availableCount: number;
-    configuredCount: number;
-    allAvailable: boolean;
+    builtInCount: number;
+    mcpCount: number;
+    total: number;
+    builtIn: string[];
+    mcp: string[];
+  };
+  checks: {
+    redis: boolean;
+    supabase: boolean;
   };
 }
 

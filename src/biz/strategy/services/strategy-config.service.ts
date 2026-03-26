@@ -1,8 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { StrategyConfigRepository } from '../repositories/strategy-config.repository';
 import { StrategyChangelogRepository } from '../repositories/strategy-changelog.repository';
 import { StrategyConfigRecord } from '../entities/strategy-config.entity';
-import { StrategyPersona, StrategyStageGoals, StrategyRedLines } from '../types/strategy.types';
+import {
+  StrategyPersona,
+  StrategyStageGoals,
+  StrategyRedLines,
+  StrategyRoleSetting,
+} from '../types/strategy.types';
 import { buildDefaultStrategyRecord } from '@shared-types/strategy-config.types';
 
 /**
@@ -57,15 +62,35 @@ export class StrategyConfigService {
     const config = await this.getActiveConfig();
     const updated = await this.strategyConfigRepository.updateConfigField(config.id, { persona });
 
-    if (updated) {
-      await this.recordChangelog(config.id, 'persona', config.persona, persona);
-      this.writeCache(updated);
-      this.logger.log('人格配置已更新');
-      return updated;
+    if (!updated) {
+      this.logger.error(`人格配置更新失败，config.id=${config.id} 未匹配到记录`);
+      throw new InternalServerErrorException('人格配置更新失败，请刷新页面后重试');
     }
 
-    this.logger.warn('人格配置更新未匹配到记录，返回当前缓存');
-    return config;
+    await this.recordChangelog(config.id, 'persona', config.persona, persona);
+    this.writeCache(updated);
+    this.logger.log('人格配置已更新');
+    return updated;
+  }
+
+  /**
+   * 更新角色设定并刷新缓存
+   */
+  async updateRoleSetting(roleSetting: StrategyRoleSetting): Promise<StrategyConfigRecord> {
+    const config = await this.getActiveConfig();
+    const updated = await this.strategyConfigRepository.updateConfigField(config.id, {
+      role_setting: roleSetting,
+    });
+
+    if (!updated) {
+      this.logger.error(`角色设定更新失败，config.id=${config.id} 未匹配到记录`);
+      throw new InternalServerErrorException('角色设定更新失败，请刷新页面后重试');
+    }
+
+    await this.recordChangelog(config.id, 'role_setting', config.role_setting, roleSetting);
+    this.writeCache(updated);
+    this.logger.log('角色设定已更新');
+    return updated;
   }
 
   /**
@@ -80,15 +105,15 @@ export class StrategyConfigService {
       stage_goals: stageGoals,
     });
 
-    if (updated) {
-      await this.recordChangelog(config.id, 'stage_goals', config.stage_goals, stageGoals);
-      this.writeCache(updated);
-      this.logger.log('阶段目标配置已更新');
-      return updated;
+    if (!updated) {
+      this.logger.error(`阶段目标配置更新失败，config.id=${config.id} 未匹配到记录`);
+      throw new InternalServerErrorException('阶段目标配置更新失败，请刷新页面后重试');
     }
 
-    this.logger.warn('阶段目标配置更新未匹配到记录，返回当前缓存');
-    return config;
+    await this.recordChangelog(config.id, 'stage_goals', config.stage_goals, stageGoals);
+    this.writeCache(updated);
+    this.logger.log('阶段目标配置已更新');
+    return updated;
   }
 
   /**
@@ -103,15 +128,15 @@ export class StrategyConfigService {
       red_lines: redLines,
     });
 
-    if (updated) {
-      await this.recordChangelog(config.id, 'red_lines', config.red_lines, redLines);
-      this.writeCache(updated);
-      this.logger.log('红线规则已更新');
-      return updated;
+    if (!updated) {
+      this.logger.error(`红线规则更新失败，config.id=${config.id} 未匹配到记录`);
+      throw new InternalServerErrorException('红线规则更新失败，请刷新页面后重试');
     }
 
-    this.logger.warn('红线规则更新未匹配到记录，返回当前缓存');
-    return config;
+    await this.recordChangelog(config.id, 'red_lines', config.red_lines, redLines);
+    this.writeCache(updated);
+    this.logger.log('红线规则已更新');
+    return updated;
   }
 
   // ==================== 变更历史 ====================

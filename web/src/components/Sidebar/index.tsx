@@ -7,7 +7,7 @@ interface SidebarProps {
   onToggle: () => void;
 }
 
-// SVG 图标组件 - 新春节日限定版
+// SVG 图标组件 - 春暖花开主题
 const DashboardIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -109,8 +109,8 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   return (
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
       {/* 背景水印装饰 */}
-      <span className="sidebar-watermark">🏮</span>
-      <span className="sidebar-watermark-2">🧧</span>
+      <span className="sidebar-watermark">🌸</span>
+      <span className="sidebar-watermark-2">🦋</span>
 
       {/* 收起/展开按钮 - 放在侧边栏右边缘 */}
       <button

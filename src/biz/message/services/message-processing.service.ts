@@ -145,6 +145,13 @@ export class MessageProcessingService {
     return this.messageProcessingRepository.cleanupMessageProcessingRecords(retentionDays);
   }
 
+  /**
+   * 将卡住的 processing 记录标记为 timeout
+   */
+  async timeoutStuckRecords(stuckMinutes = 30): Promise<number> {
+    return this.messageProcessingRepository.timeoutStuckRecords(stuckMinutes);
+  }
+
   // ==================== 内部工具方法 ====================
 
   private toStartTimestamp(dateStr?: string, defaultDaysAgo = 0): number {
