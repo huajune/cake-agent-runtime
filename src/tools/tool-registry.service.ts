@@ -15,6 +15,8 @@ import { buildAdvanceStageTool } from './advance-stage.tool';
 import { buildRecallHistoryTool } from './recall-history.tool';
 import { buildJobListTool } from './duliday-job-list.tool';
 import { buildInterviewBookingTool } from './duliday-interview-booking.tool';
+import { buildGeocodeTool } from './geocode.tool';
+import { GeocodingService } from '@infra/geocoding/geocoding.service';
 
 /**
  * 统一工具注册表
@@ -42,6 +44,7 @@ export class ToolRegistryService {
     proceduralService: ProceduralService,
     longTermService: LongTermService,
     spongeService: SpongeService,
+    geocodingService: GeocodingService,
   ) {
     this.registry = {
       // ===== 阶段工具 =====
@@ -70,6 +73,12 @@ export class ToolRegistryService {
         description: '面试预约（需要姓名、电话、性别、年龄、岗位ID、面试时间）',
         create: buildInterviewBookingTool(spongeService),
       }),
+
+      geocode: createToolDefinition({
+        name: 'geocode',
+        description: '地理编码（将地名解析为标准化地址 + 经纬度）',
+        create: buildGeocodeTool(geocodingService),
+      }),
     };
 
     this.logger.log(`内置工具已注册: ${Object.keys(this.registry).join(', ')}`);
@@ -83,6 +92,7 @@ export class ToolRegistryService {
       'recall_history',
       'duliday_job_list',
       'duliday_interview_booking',
+      'geocode',
     ],
     'group-operations': [],
     evaluation: [],

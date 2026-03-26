@@ -38,6 +38,7 @@ docker save ${IMAGE_NAME}:latest -o "$IMAGE_TAR"
 
 echo "🚀 Uploading to $SSH_HOST... ($(du -h "$IMAGE_TAR" | cut -f1))"
 scp "$IMAGE_TAR" "${SSH_HOST}:/tmp/${IMAGE_NAME}.tar"
+scp docker-compose.yml "${SSH_HOST}:/data/cake/docker-compose.yml"
 rm -f "$IMAGE_TAR"
 
 # ── Step 4: 服务器上加载镜像并部署 ──────────────────────────
@@ -62,7 +63,7 @@ rm -f /tmp/${IMAGE_NAME}.tar
 docker compose up -d
 
 # 健康检查（最多等 60 秒）
-HEALTH_PORT=$(grep -E '^PORT=' .env 2>/dev/null | cut -d= -f2 || echo 8585)
+HEALTH_PORT=$(grep -E '^PORT=' .env.prod 2>/dev/null | cut -d= -f2 || echo 8585)
 echo "Waiting for health check on port ${HEALTH_PORT}..."
 HEALTHY=false
 for i in $(seq 1 12); do

@@ -241,7 +241,7 @@ export class AgentRunnerService {
 
     // 3. 组装 systemPrompt（含阶段策略 + 风险场景，由 section 体系完成）
     const currentStage = memory.procedural.currentStage ?? undefined;
-    const { systemPrompt } = await this.context.compose({ scenario, currentStage });
+    const { systemPrompt, thresholds } = await this.context.compose({ scenario, currentStage });
 
     // 4. 注入记忆块（Profile + SessionFacts）
     let finalPrompt = systemPrompt;
@@ -277,6 +277,7 @@ export class AgentRunnerService {
       corpId,
       sessionId,
       messages: typedMessages,
+      thresholds,
       onJobsFetched: async (jobs) => {
         await this.memoryService.sessionFacts.saveLastRecommendedJobs(
           corpId,

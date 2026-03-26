@@ -79,8 +79,10 @@ export function executeTestStream(
     'Content-Type': 'application/json',
     Accept: 'text/event-stream',
   };
-  const apiGuardToken = import.meta.env.VITE_API_GUARD_TOKEN as string | undefined;
-  if (apiGuardToken) fetchHeaders['Authorization'] = `Bearer ${apiGuardToken}`;
+  const token = import.meta.env.VITE_API_GUARD_TOKEN;
+  if (token) {
+    fetchHeaders['Authorization'] = `Bearer ${token}`;
+  }
 
   fetch('/test-suite/chat/stream', {
     method: 'POST',

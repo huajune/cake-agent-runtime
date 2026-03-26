@@ -10,14 +10,18 @@ import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { StrategyConfigService as BizStrategyConfigService } from '@biz/strategy/services/strategy-config.service';
-import { StrategyConfigRecord, StageGoalConfig } from '@shared-types/strategy-config.types';
+import {
+  StrategyConfigRecord,
+  StageGoalConfig,
+  Threshold,
+} from '@shared-types/strategy-config.types';
 import { PromptSection, PromptContext } from './sections/section.interface';
 import { IdentitySection } from './sections/identity.section';
 import { RedLinesSection } from './sections/red-lines.section';
 import { DateTimeSection } from './sections/datetime.section';
 import { ChannelSection } from './sections/channel.section';
 import { StageStrategySection } from './sections/stage-strategy.section';
-import { RiskScenariosSection } from './sections/risk-scenarios.section';
+import { ThresholdsSection } from './sections/thresholds.section';
 import { SCENARIO_SECTIONS, DEFAULT_SCENARIO } from './scenarios/scenario.registry';
 
 export interface ComposeParams {
@@ -29,6 +33,7 @@ export interface ComposeParams {
 export interface ComposeResult {
   systemPrompt: string;
   stageGoals: Record<string, StageGoalConfig>;
+  thresholds: Threshold[];
 }
 
 @Injectable()
@@ -96,6 +101,7 @@ export class ContextService implements OnModuleInit {
     return {
       systemPrompt,
       stageGoals: this.buildStageGoalsMap(config),
+      thresholds: config.red_lines.thresholds ?? [],
     };
   }
 
@@ -114,7 +120,7 @@ export class ContextService implements OnModuleInit {
     const basePrompt = this.basePrompts.get('candidate-consultation') ?? '';
     this.sections.set('identity', new IdentitySection(basePrompt));
     this.sections.set('red-lines', new RedLinesSection());
-    this.sections.set('risk-scenarios', new RiskScenariosSection());
+    this.sections.set('thresholds', new ThresholdsSection());
     this.sections.set('stage-strategy', new StageStrategySection());
     this.sections.set('datetime', new DateTimeSection());
     this.sections.set('channel', new ChannelSection());
