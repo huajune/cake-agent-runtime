@@ -72,9 +72,17 @@ export class HostingConfigFacadeService {
     return { config: newConfig, message: '配置已更新' };
   }
 
-  async updateGroupTaskConfig(config: { enabled: boolean; dryRun: boolean }): Promise<void> {
-    this.logger.log(`更新群任务配置: ${JSON.stringify(config)}`);
-    await this.systemConfigService.setConfigValue('group_task_config', config, '群任务通知配置');
+  async updateGroupTaskConfig(partial: Partial<GroupTaskConfig>): Promise<GroupTaskConfig> {
+    const stored =
+      await this.systemConfigService.getConfigValue<GroupTaskConfig>('group_task_config');
+    const current: GroupTaskConfig = {
+      enabled: stored?.enabled ?? DEFAULT_GROUP_TASK_CONFIG.enabled,
+      dryRun: stored?.dryRun ?? DEFAULT_GROUP_TASK_CONFIG.dryRun,
+    };
+    const updated = { ...current, ...partial };
+    this.logger.log(`更新群任务配置: ${JSON.stringify(updated)}`);
+    await this.systemConfigService.setConfigValue('group_task_config', updated, '群任务通知配置');
+    return updated;
   }
 
   async resetAgentReplyConfig(): Promise<{ config: AgentReplyConfig; message: string }> {

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { SpongeService } from '@sponge/sponge.service';
+import { SpongeBiService } from '@sponge/sponge-bi.service';
 
 describe('SpongeService', () => {
   let service: SpongeService;
@@ -12,6 +13,10 @@ describe('SpongeService', () => {
         {
           provide: ConfigService,
           useValue: { get: jest.fn().mockReturnValue('test-token') },
+        },
+        {
+          provide: SpongeBiService,
+          useValue: { fetchBIOrders: jest.fn(), refreshBIDataSource: jest.fn() },
         },
       ],
     }).compile();

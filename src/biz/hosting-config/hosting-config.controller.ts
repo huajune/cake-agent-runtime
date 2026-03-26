@@ -64,10 +64,8 @@ export class HostingConfigController {
   @Post('group-task-config')
   @HttpCode(200)
   async updateGroupTaskConfig(@Body() body: UpdateGroupTaskConfigDto) {
-    const current = (await this.facade.getAgentReplyConfig()).groupTaskConfig;
-    const updated = { ...current, ...body };
-    await this.facade.updateGroupTaskConfig(updated);
-    return { config: updated, message: '群任务配置已更新' };
+    const config = await this.facade.updateGroupTaskConfig(body);
+    return { config, message: '群任务配置已更新' };
   }
 
   // ==================== 黑名单 ====================

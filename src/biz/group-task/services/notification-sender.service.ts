@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
 import { FeishuWebhookService } from '@infra/feishu/services/webhook.service';
 import {
@@ -8,14 +9,12 @@ import {
   GROUP_TASK_TYPE_NAMES,
 } from '../group-task.types';
 
-/** 独立客找工作小程序常量 */
-const MINIPROGRAM = {
-  APPID: 'wx0703d5b561bca48c',
-  USERNAME: 'gh_55e19c5164da',
+/** 独立客找工作小程序默认值（可通过环境变量覆盖） */
+const MINIPROGRAM_DEFAULTS = {
   TITLE: '独立客找工作',
   PAGE_PATH: 'pages/job/index',
   DESCRIPTION: '点击查看更多岗位',
-  THUMB_URL: '', // TODO: 补充封面图 URL
+  THUMB_URL: '',
 } as const;
 
 /**
@@ -28,10 +27,25 @@ const MINIPROGRAM = {
 export class NotificationSenderService {
   private readonly logger = new Logger(NotificationSenderService.name);
 
+  private readonly miniprogramAppid: string;
+  private readonly miniprogramUsername: string;
+  private readonly miniprogramThumbUrl: string;
+
   constructor(
+    private readonly configService: ConfigService,
     private readonly messageSenderService: MessageSenderService,
     private readonly webhookService: FeishuWebhookService,
-  ) {}
+  ) {
+    this.miniprogramAppid = this.configService.get<string>(
+      'MINIPROGRAM_APPID',
+      'wx0703d5b561bca48c',
+    );
+    this.miniprogramUsername = this.configService.get<string>(
+      'MINIPROGRAM_USERNAME',
+      'gh_55e19c5164da',
+    );
+    this.miniprogramThumbUrl = this.configService.get<string>('MINIPROGRAM_THUMB_URL', '');
+  }
 
   /**
    * 发送消息到目标群
@@ -66,12 +80,12 @@ export class NotificationSenderService {
         chatId: group.chatId,
         messageType: 9, // MINI_PROGRAM（企业级类型，会被转换为小组级 4）
         payload: {
-          appid: MINIPROGRAM.APPID,
-          username: MINIPROGRAM.USERNAME,
-          title: MINIPROGRAM.TITLE,
-          thumbUrl: MINIPROGRAM.THUMB_URL,
-          pagePath: MINIPROGRAM.PAGE_PATH,
-          description: MINIPROGRAM.DESCRIPTION,
+          appid: this.miniprogramAppid,
+          username: this.miniprogramUsername,
+          title: MINIPROGRAM_DEFAULTS.TITLE,
+          thumbUrl: this.miniprogramThumbUrl,
+          pagePath: MINIPROGRAM_DEFAULTS.PAGE_PATH,
+          description: MINIPROGRAM_DEFAULTS.DESCRIPTION,
         },
       });
     }
