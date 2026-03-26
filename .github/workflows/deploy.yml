@@ -76,6 +76,9 @@ jobs:
               git clone --depth 1 --branch master https://github.com/${{ github.repository }}.git source
             fi
 
+            # 同步部署配置（保持 docker-compose.yml 与代码一致）
+            cp source/docker-compose.yml docker-compose.yml
+
             # 在服务器上构建镜像
             docker build -t cake-agent-runtime:latest ./source
 
@@ -83,7 +86,7 @@ jobs:
             docker compose up -d
 
             # 健康检查（最多等 60 秒）
-            HEALTH_PORT=$(grep -E '^PORT=' .env 2>/dev/null | cut -d= -f2 || echo 8585)
+            HEALTH_PORT=$(grep -E '^PORT=' .env.prod 2>/dev/null | cut -d= -f2 || echo 8585)
             echo "Waiting for health check on port ${HEALTH_PORT}..."
             HEALTHY=false
             for i in $(seq 1 12); do

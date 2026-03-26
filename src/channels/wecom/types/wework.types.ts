@@ -219,6 +219,7 @@ export interface RecommendedJobSummary {
   laborForm: string | null;
   salaryDesc: string | null;
   jobCategoryName: string | null;
+  distanceKm?: number | null;
 }
 
 export interface WeworkSessionState {

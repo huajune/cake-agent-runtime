@@ -8,7 +8,7 @@ export const SCENARIO_SECTIONS: Record<string, string[]> = {
   'candidate-consultation': [
     'identity',
     'red-lines',
-    'risk-scenarios',
+    'thresholds',
     'stage-strategy',
     'datetime',
     'channel',

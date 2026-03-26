@@ -6,19 +6,19 @@ import { useSaveStatusStore } from '@/hooks/strategy/useSaveStatusStore';
 import PersonaSection from './components/PersonaSection';
 import StageGoalsSection from './components/StageGoalsSection';
 import RedLinesSection from './components/RedLinesSection';
-import RiskScenariosSection from './components/RiskScenariosSection';
+import ThresholdsSection from './components/ThresholdsSection';
 import IndustrySkillsSection from './components/IndustrySkillsSection';
 import { ChangelogModal } from './components/ChangelogModal';
 import styles from './styles/index.module.scss';
 
-type TabKey = 'persona' | 'stageGoals' | 'redLines' | 'riskScenarios' | 'industrySkills';
+type TabKey = 'persona' | 'stageGoals' | 'redLines' | 'thresholds' | 'industrySkills';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'persona', label: '人格设定' },
   { key: 'stageGoals', label: '阶段目标' },
   { key: 'industrySkills', label: '行业 Skills' },
   { key: 'redLines', label: '政策红线' },
-  { key: 'riskScenarios', label: '风险场景' },
+  { key: 'thresholds', label: '业务阈值' },
 ];
 
 export default function Strategy() {
@@ -82,7 +82,7 @@ export default function Strategy() {
           {activeTab === 'persona' && <PersonaSection config={config} />}
           {activeTab === 'stageGoals' && <StageGoalsSection config={config} />}
           {activeTab === 'redLines' && <RedLinesSection config={config} />}
-          {activeTab === 'riskScenarios' && <RiskScenariosSection config={config} />}
+          {activeTab === 'thresholds' && <ThresholdsSection config={config} />}
           {activeTab === 'industrySkills' && <IndustrySkillsSection />}
         </>
       )}

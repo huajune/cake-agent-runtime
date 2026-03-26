@@ -1,4 +1,5 @@
 import { Tool, ToolSet } from 'ai';
+import { Threshold } from '@biz/strategy/types/strategy.types';
 
 export type AiTool = Tool;
 export type AiToolSet = ToolSet;
@@ -20,6 +21,8 @@ export interface ToolBuildContext {
   messages: unknown[];
   /** 岗位推荐回调（job-list 用） */
   onJobsFetched?: (jobs: unknown[]) => void | Promise<void>;
+  /** 业务阈值（策略配置） */
+  thresholds?: Threshold[];
 }
 
 /**

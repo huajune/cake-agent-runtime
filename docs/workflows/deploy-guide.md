@@ -1,48 +1,129 @@
 # 构建与部署指南
 
-**最后更新**：2026-03-25
+**最后更新**：2026-03-26
 
 ## 概述
 
-代码合并到 `master` 分支后，GitHub Actions 自动完成以下流程：
-
-```
-push to master
-  → test（类型检查 + 构建 + 单测）
-  → deploy（SSH 到服务器 → git pull → docker build → 健康检查 → 失败自动回滚）
-  → notify（飞书通知部署结果）
-```
+项目提供两种部署方式：CI/CD 自动部署和本地手动部署。两者都遵循相同的核心流程：构建镜像 → 启动容器 → 健康检查 → 失败回滚。
 
 ---
 
-## CI 自动部署流程
+## 核心概念
+
+### 镜像构建（Dockerfile）
+
+Dockerfile 把源代码打包成可运行的镜像，分三个阶段：
+
+```
+阶段 1: deps（装依赖）
+  └─ 安装 pnpm → 复制 package.json → pnpm install
+
+阶段 2: builder（编译）
+  └─ 复制源代码 → 编译前端(build:web) → 编译后端(build) → 删掉 devDependencies
+
+阶段 3: runner（最终镜像，只保留运行需要的东西）
+  └─ 复制 dist/ + node_modules/ + package.json → node dist/main 启动
+```
+
+最终镜像里没有源代码，只有编译产物，体积小、安全。
+
+### 容器编排（docker-compose.yml）
+
+`docker-compose.yml` 告诉 Docker 怎么启动镜像：端口映射、环境变量、日志挂载、健康检查等。一条 `docker compose up -d` 搞定。
+
+### 两者的关系
+
+```
+Dockerfile 构建镜像            docker-compose.yml 启动容器
+源代码 → docker build → 镜像 → docker compose up → 运行中的容器
+                                  ↑ 在这里指定端口、环境变量、日志等
+```
+
+构建镜像不需要 `.env.prod`，启动容器时才需要。
+
+---
+
+## 服务器目录结构
+
+```
+/data/cake/
+├── .env.prod              ← 环境变量（密钥等，手动维护，不在 Git 里）
+├── docker-compose.yml     ← 容器启动配置（部署时自动从代码同步）
+├── logs/                  ← 容器运行日志（volume 映射出来的）
+└── source/                ← CI/CD 拉取的代码（仅用来构建镜像）
+    ├── src/
+    ├── Dockerfile
+    ├── docker-compose.yml ← 代码中的版本（部署时复制到上层目录）
+    └── ...
+```
+
+> `docker-compose.yml` 以代码仓库为唯一真相源，两种部署方式都会自动将代码中的版本同步到 `/data/cake/`。
+
+---
+
+## CI/CD 自动部署
 
 ### 触发条件
 
 `push to master` 分支自动触发。
 
-### 执行顺序
+### 完整流程
 
 ```
-1. test
-   ├── TypeScript 类型检查
-   ├── NestJS 构建验证
-   └── 单元测试
-
-2. deploy（SSH 到生产服务器）
-   ├── 备份当前镜像为 :previous
-   ├── git fetch 拉取最新代码
-   ├── docker build 构建新镜像
-   ├── docker compose up -d 启动
-   ├── 健康检查（60s，验证 status: "healthy"）
-   ├── ✅ 成功 → 清理旧镜像
-   └── ❌ 失败 → 自动回滚到 :previous
-
-3. notify
-   └── 飞书通知部署成功/失败
+GitHub Actions                        远程服务器 /data/cake/
+──────────────                        ──────────────────────
+1. test（类型检查 + 编译 + 单测）
+2. SSH 连到服务器 ──────────────────→  3. 备份当前镜像为 :previous
+                                       4. git pull 拉最新代码到 source/
+                                       5. cp source/docker-compose.yml ./（同步配置）
+                                       6. docker build ./source → 生成镜像
+                                       7. docker compose up -d 启动容器
+                                       8. 健康检查（60s 内轮询 /agent/health）
+                                       9. 成功 → 清理旧镜像
+                                          失败 → 自动回滚到 :previous
+3. 飞书通知部署结果
 ```
 
-### 回滚机制
+---
+
+## 本地手动部署
+
+适用于不走 CI、直接从本地触发部署的场景（开发调试、紧急修复）。
+
+```bash
+pnpm run deploy              # 部署到默认服务器（haimian-deploy）
+pnpm run deploy other-host   # 部署到指定服务器
+```
+
+### 完整流程
+
+```
+你的 Mac                              远程服务器 /data/cake/
+─────────                             ──────────────────────
+1. 预检（类型检查 + 编译 + 测试）
+2. docker build → 在本地生成镜像
+3. docker save → 导出 .tar 文件
+4. scp 上传 .tar + docker-compose.yml ──→  收到文件
+                                       5. 备份当前镜像为 :previous
+                                       6. docker load 加载新镜像
+                                       7. docker compose up -d 启动容器
+                                       8. 健康检查（60s 内轮询 /agent/health）
+                                       9. 成功 → 清理旧镜像
+                                          失败 → 自动回滚到 :previous
+```
+
+### 两种方式对比
+
+| | 本地部署 | CI/CD |
+|---|---|---|
+| 镜像在哪构建 | 你的 Mac | 服务器上 |
+| 代码怎么传 | 只传镜像（.tar） | 服务器 git pull |
+| 触发方式 | 手动 `pnpm run deploy` | push 到 master 自动触发 |
+| 适用场景 | 开发调试、紧急修复 | 正式发布 |
+
+---
+
+## 回滚机制
 
 部署前自动备份当前镜像为 `cake-agent-runtime:previous`：
 - **健康检查通过**：删除 `:previous`，清理无用镜像
@@ -56,52 +137,17 @@ ssh haimian-deploy 'cd /data/cake && docker tag cake-agent-runtime:previous cake
 
 ---
 
-## 本地手动部署
-
-适用于不走 CI、直接从本地触发部署的场景。
-
-```bash
-# 部署 master 分支
-pnpm run deploy
-
-# 部署指定分支
-pnpm run deploy haimian-deploy develop
-```
-
-脚本流程与 CI 一致：SSH 到服务器 → git fetch → docker build → 启动 → 健康检查 → 失败回滚。
-
-> 注意：部署的是服务器上 git 仓库的代码，请确保代码已 push 到远程。
-
----
-
-## 服务器环境要求
-
-服务器需要安装以下依赖：
-
-| 依赖 | 用途 |
-|------|------|
-| Git | 拉取源码 |
-| Docker + Docker Compose | 构建镜像和运行容器 |
-
-> Node.js、pnpm 等构建工具**不需要**安装，全部在 Docker 多阶段构建内完成。
-
-### 服务器目录结构
-
-```
-/data/cake/
-├── source/              # 源码（git clone）
-├── docker-compose.yml   # 容器编排配置
-├── .env.prod            # 生产环境变量
-└── logs/                # 应用日志（volume 挂载）
-```
-
----
-
 ## 环境变量配置
 
+服务器上的 `.env.prod` 需要手动维护（包含密钥，不提交 Git）。
+
+首次部署时创建：
+
 ```bash
-cp .env.example .env.prod
-# 编辑 .env.prod，填写必填项（Layer 1）
+ssh haimian-deploy
+cd /data/cake
+nano .env.prod
+# 参考 .env.example 填写
 ```
 
 必填配置项：
@@ -164,6 +210,17 @@ docker compose logs --tail=50 cake-agent
 # SSH 到服务器手动构建查看详细错误
 ssh haimian-deploy 'cd /data/cake && docker build -t cake-agent-runtime:latest ./source'
 ```
+
+---
+
+## 服务器环境要求
+
+| 依赖 | 用途 |
+|------|------|
+| Git | 拉取源码 |
+| Docker + Docker Compose | 构建镜像和运行容器 |
+
+> Node.js、pnpm 等构建工具**不需要**安装，全部在 Docker 多阶段构建内完成。
 
 ---
 

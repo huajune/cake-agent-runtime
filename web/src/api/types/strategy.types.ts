@@ -24,16 +24,18 @@ export interface StrategyStageGoals {
   stages: StageGoalConfig[];
 }
 
-export interface RiskScenario {
+export interface Threshold {
   flag: string;
   label: string;
-  signals: string;
-  strategy: string;
+  rule: string;
+  min?: number;
+  max?: number;
+  unit?: string;
 }
 
 export interface StrategyRedLines {
   rules: string[];
-  riskScenarios?: RiskScenario[];
+  thresholds?: Threshold[];
 }
 
 export interface StrategyRoleSetting {

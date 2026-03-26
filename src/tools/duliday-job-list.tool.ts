@@ -17,6 +17,23 @@ import { ToolBuilder } from '@shared-types/tool.types';
 
 const DEFAULT_PAGE_NUM = 1;
 const DEFAULT_PAGE_SIZE = 20;
+const EARTH_RADIUS_KM = 6371;
+
+// ==================== 距离计算 ====================
+
+function toRad(deg: number): number {
+  return (deg * Math.PI) / 180;
+}
+
+/** Haversine 公式：计算两个经纬度之间的距离（km） */
+function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 // ==================== 输入 Schema ====================
 
@@ -30,6 +47,9 @@ const inputSchema = z.object({
   projectNameList: z.array(z.string()).optional().default([]).describe('项目名称列表'),
   projectIdList: z.array(z.number().int()).optional().default([]).describe('项目ID列表'),
   jobIdList: z.array(z.number().int()).optional().default([]).describe('岗位ID列表'),
+
+  userLatitude: z.number().optional().describe('用户纬度（通过 geocode 工具或位置分享获取）'),
+  userLongitude: z.number().optional().describe('用户经度（通过 geocode 工具或位置分享获取）'),
 
   responseFormat: z
     .array(z.enum(['markdown', 'rawData']))
@@ -347,6 +367,7 @@ function formatJobToOneLine(job: any, index: number): string {
   const parts = [`${index + 1}. **${bi.brandName || ''} - ${bi.jobName || '未命名'}**`];
   if (store?.storeName) parts.push(store.storeName);
   if (store?.storeAddress) parts.push(store.storeAddress);
+  if (job._distanceKm != null) parts.push(`距离 ${job._distanceKm.toFixed(1)}km`);
   return parts.join(' | ');
 }
 
@@ -357,6 +378,7 @@ function formatBasicInfoSection(job: any): string {
   if (hasValue(bi.brandName)) addLine(lines, '品牌', bi.brandName);
   if (store?.storeName) addLine(lines, '门店', store.storeName);
   if (store?.storeAddress) addLine(lines, '地址', store.storeAddress);
+  if (job._distanceKm != null) addLine(lines, '距离', `${job._distanceKm.toFixed(1)}km`);
   if (hasValue(bi.jobCategoryName)) addLine(lines, '岗位类型', bi.jobCategoryName);
   if (hasValue(bi.laborForm)) addLine(lines, '用工形式', bi.laborForm);
   if (bi.jobContent) addLine(lines, '工作内容', bi.jobContent);
@@ -448,6 +470,7 @@ interface RecommendedJobSummary {
   laborForm: string | null;
   salaryDesc: string | null;
   jobCategoryName: string | null;
+  distanceKm: number | null;
 }
 
 function formatSalarySummary(job: any): string | null {
@@ -484,6 +507,7 @@ function mapJobsToSummaries(jobs: any[]): RecommendedJobSummary[] {
     laborForm: job.basicInfo.laborForm ?? null,
     salaryDesc: formatSalarySummary(job),
     jobCategoryName: job.basicInfo.jobCategoryName ?? null,
+    distanceKm: job._distanceKm != null ? Math.round(job._distanceKm * 10) / 10 : null,
   }));
 }
 
@@ -495,6 +519,7 @@ const logger = new Logger('duliday_job_list');
 
 const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，按需获取岗位信息。
 筛选条件：城市、区域、品牌、门店、岗位类型、岗位ID
+距离过滤：传入 userLatitude + userLongitude 后，自动计算门店距离并按业务阈值过滤，结果按距离排序
 数据开关：
 - includeBasicInfo（默认true）：品牌、门店、地址等基本信息
 - includeJobSalary：薪资信息
@@ -518,6 +543,8 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
         storeNameList = [],
         jobCategoryList = [],
         jobIdList = [],
+        userLatitude,
+        userLongitude,
         responseFormat = ['markdown'],
         includeBasicInfo = true,
         includeJobSalary = false,
@@ -566,6 +593,51 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
                 total = filtered.length;
               }
             }
+          }
+
+          // 距离计算 + 阈值过滤
+          const hasUserCoords = userLatitude != null && userLongitude != null;
+          if (hasUserCoords) {
+            /* eslint-disable @typescript-eslint/no-explicit-any */
+            for (const job of jobs as any[]) {
+              const store = job.basicInfo?.storeInfo;
+              if (store?.latitude != null && store?.longitude != null) {
+                job._distanceKm = haversineDistance(
+                  userLatitude!,
+                  userLongitude!,
+                  Number(store.latitude),
+                  Number(store.longitude),
+                );
+              }
+            }
+
+            // 从业务阈值读取距离上限
+            const distanceThreshold = context.thresholds?.find(
+              (t) => t.flag === 'max_recommend_distance_km',
+            );
+            const maxKm = distanceThreshold?.max;
+
+            if (maxKm != null) {
+              const beforeCount = jobs.length;
+              jobs = (jobs as any[]).filter(
+                (job) => job._distanceKm == null || job._distanceKm <= maxKm,
+              );
+              total = jobs.length;
+              if (beforeCount > 0 && jobs.length === 0) {
+                return {
+                  error: `附近 ${maxKm}km 内没有符合条件的岗位，可以尝试扩大搜索范围`,
+                };
+              }
+            }
+
+            // 按距离排序（有坐标的在前，无坐标的在后）
+            (jobs as any[]).sort((a, b) => {
+              if (a._distanceKm == null && b._distanceKm == null) return 0;
+              if (a._distanceKm == null) return 1;
+              if (b._distanceKm == null) return -1;
+              return a._distanceKm - b._distanceKm;
+            });
+            /* eslint-enable @typescript-eslint/no-explicit-any */
           }
 
           if (jobs.length === 0) {
