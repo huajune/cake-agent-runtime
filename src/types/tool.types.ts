@@ -1,5 +1,5 @@
 import { Tool, ToolSet } from 'ai';
-import { Threshold } from '@biz/strategy/types/strategy.types';
+import { Threshold } from './strategy-config.types';
 
 export type AiTool = Tool;
 export type AiToolSet = ToolSet;

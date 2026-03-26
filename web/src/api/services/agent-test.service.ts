@@ -79,7 +79,10 @@ export function executeTestStream(
     'Content-Type': 'application/json',
     Accept: 'text/event-stream',
   };
-  fetchHeaders['Authorization'] = 'Bearer duliday-guard-2026';
+  const token = import.meta.env.VITE_API_GUARD_TOKEN;
+  if (token) {
+    fetchHeaders['Authorization'] = `Bearer ${token}`;
+  }
 
   fetch('/test-suite/chat/stream', {
     method: 'POST',

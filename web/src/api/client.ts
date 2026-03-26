@@ -43,7 +43,10 @@ export const api = axios.create({
 // -------------------- 请求拦截器 --------------------
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  config.headers.Authorization = 'Bearer duliday-guard-2026';
+  const token = import.meta.env.VITE_API_GUARD_TOKEN;
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
   return config;
 });
 
