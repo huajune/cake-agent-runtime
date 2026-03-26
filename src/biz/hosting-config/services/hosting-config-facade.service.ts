@@ -3,6 +3,7 @@ import { AgentReplyConfig, DEFAULT_AGENT_REPLY_CONFIG } from '../types/hosting-c
 import { SystemConfigService } from './system-config.service';
 import { GroupBlacklistService } from './group-blacklist.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { GroupTaskConfig, DEFAULT_GROUP_TASK_CONFIG } from '@biz/group-task/group-task.types';
 
 /**
  * 系统配置门面服务
@@ -45,9 +46,22 @@ export class HostingConfigFacadeService {
 
   // ==================== Agent 配置 ====================
 
-  async getAgentReplyConfig(): Promise<{ config: AgentReplyConfig; defaults: AgentReplyConfig }> {
+  async getAgentReplyConfig(): Promise<{
+    config: AgentReplyConfig;
+    defaults: AgentReplyConfig;
+    groupTaskConfig: GroupTaskConfig;
+  }> {
     const config = await this.systemConfigService.getAgentReplyConfig();
-    return { config, defaults: DEFAULT_AGENT_REPLY_CONFIG };
+    const groupTask =
+      await this.systemConfigService.getConfigValue<GroupTaskConfig>('group_task_config');
+    return {
+      config,
+      defaults: DEFAULT_AGENT_REPLY_CONFIG,
+      groupTaskConfig: {
+        enabled: groupTask?.enabled ?? DEFAULT_GROUP_TASK_CONFIG.enabled,
+        dryRun: groupTask?.dryRun ?? DEFAULT_GROUP_TASK_CONFIG.dryRun,
+      },
+    };
   }
 
   async updateAgentReplyConfig(
@@ -56,6 +70,11 @@ export class HostingConfigFacadeService {
     this.logger.log(`更新 Agent 回复策略配置: ${JSON.stringify(body)}`);
     const newConfig = await this.systemConfigService.setAgentReplyConfig(body);
     return { config: newConfig, message: '配置已更新' };
+  }
+
+  async updateGroupTaskConfig(config: { enabled: boolean; dryRun: boolean }): Promise<void> {
+    this.logger.log(`更新群任务配置: ${JSON.stringify(config)}`);
+    await this.systemConfigService.setConfigValue('group_task_config', config, '群任务通知配置');
   }
 
   async resetAgentReplyConfig(): Promise<{ config: AgentReplyConfig; message: string }> {

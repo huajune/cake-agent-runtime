@@ -40,13 +40,13 @@
 
   &.active {
     background: linear-gradient(135deg, #ffffff 0%, #fefefe 100%);
-    color: #ec4899;
+    color: $accent;
     font-weight: 600;
     box-shadow:
-      0 2px 8px rgba(236, 72, 153, 0.15),
+      0 2px 8px $accent-15,
       0 1px 3px rgba(0, 0, 0, 0.1),
       inset 0 1px 0 rgba(255, 255, 255, 0.8);
-    border: 1px solid rgba(236, 72, 153, 0.1);
+    border: 1px solid $accent-10;
 
     &::before {
       content: '';
@@ -106,9 +106,9 @@
 }
 
 .tab.active .badge {
-  background: linear-gradient(135deg, #ec4899 0%, #db2777 100%);
+  background: linear-gradient(135deg, $accent 0%, $primary-dark 100%);
   box-shadow:
-    0 2px 6px rgba(236, 72, 153, 0.4),
+    0 2px 6px $accent-40,
     inset 0 1px 0 rgba(255, 255, 255, 0.3);
   animation: badgePulse 2s ease-in-out infinite;
 }
@@ -116,13 +116,13 @@
 @keyframes badgePulse {
   0%, 100% {
     box-shadow:
-      0 2px 6px rgba(236, 72, 153, 0.4),
+      0 2px 6px $accent-40,
       inset 0 1px 0 rgba(255, 255, 255, 0.3);
   }
   50% {
     box-shadow:
-      0 2px 8px rgba(236, 72, 153, 0.5),
-      0 0 0 2px rgba(236, 72, 153, 0.1),
+      0 2px 8px rgba(139, 92, 246, 0.5),
+      0 0 0 2px $accent-10,
       inset 0 1px 0 rgba(255, 255, 255, 0.3);
   }
 }

@@ -17,31 +17,31 @@
  * ❗有任何问题可随时联系沟通哦~
  */
 
-import { BIOrder, BI_FIELD_NAMES } from '../group-task.types';
+import { BIOrder, BI_FIELD_NAMES, TimeSlot } from '../group-task.types';
 
 interface OrderGrabTemplateData {
   orders: BIOrder[];
   city: string;
+  timeSlot?: TimeSlot;
 }
 
 /**
  * 生成抢单群通知消息（模板拼装）
  */
 export function buildOrderGrabMessage(data: OrderGrabTemplateData): string {
-  const { orders, city } = data;
+  const { orders, city, timeSlot } = data;
   if (orders.length === 0) return '';
 
   // 按门店去重，每个门店只保留收入最高的订单
   const bestByStore = deduplicateByStore(orders);
-  // 按收入降序排列，取前10条
+  // 根据场次选取不同订单子集，保证每次发送内容不同
   const MAX_ORDERS = 4;
-  const sorted = bestByStore.sort((a, b) => parseMoney(b) - parseMoney(a));
-  const displayOrders = sorted.slice(0, MAX_ORDERS);
+  const displayOrders = selectOrdersByTimeSlot(bestByStore, timeSlot, MAX_ORDERS);
 
   const lines: string[] = [];
 
-  // 标题（根据规则选择）
-  const title = selectTitle(displayOrders, city);
+  // 标题（根据场次和数据特征选择）
+  const title = selectTitle(displayOrders, city, timeSlot);
   lines.push(title);
   lines.push('');
 
@@ -75,7 +75,7 @@ export function buildOrderGrabMessage(data: OrderGrabTemplateData): string {
 /**
  * 根据订单特征选择标题
  */
-function selectTitle(orders: BIOrder[], city: string): string {
+function selectTitle(orders: BIOrder[], city: string, timeSlot?: TimeSlot): string {
   const now = new Date();
   const tomorrow = new Date(now);
   tomorrow.setDate(now.getDate() + 1);
@@ -98,6 +98,21 @@ function selectTitle(orders: BIOrder[], city: string): string {
   if (hasSpecificRegion) {
     return `★${[...regions][0]}订单，速来`;
   }
+
+  // 场次专属标题，确保每次通知视觉上有区别
+  if (timeSlot === TimeSlot.MORNING) {
+    if (allTomorrow) return '🍕明日订单，速来~';
+    return city ? `🍕【${city}】早间好单推荐~` : '🍕早间好单推荐~';
+  }
+  if (timeSlot === TimeSlot.AFTERNOON) {
+    if (hasWeekend) return '🍕周末订单，速来';
+    return city ? `🍕【${city}】午间新单上架~` : '🍕午间新单上架~';
+  }
+  if (timeSlot === TimeSlot.EVENING) {
+    return city ? `🍕【${city}】晚间急单速抢！` : '🍕晚间急单速抢！';
+  }
+
+  // 无场次兜底
   if (allTomorrow) {
     return '🍕明日订单，速来~';
   }
@@ -108,6 +123,55 @@ function selectTitle(orders: BIOrder[], city: string): string {
     return `🍕【${city}】专区订单，速来`;
   }
   return '🍕新订单，速来！！！';
+}
+
+/**
+ * 根据场次选取不同的订单子集
+ *
+ * - 上午场：收入最高的前 N 条
+ * - 下午场：收入排名第 N+1 ~ 2N 条（不足则取剩余）
+ * - 晚上场：按日期最近排序，取前 N 条（换维度展示）
+ * - 无场次：兜底取收入最高前 N 条
+ */
+function selectOrdersByTimeSlot(
+  orders: BIOrder[],
+  timeSlot: TimeSlot | undefined,
+  max: number,
+): BIOrder[] {
+  if (!timeSlot || orders.length <= max) {
+    // 无场次或订单不足，按收入排序取全部
+    return orders.sort((a, b) => parseMoney(b) - parseMoney(a)).slice(0, max);
+  }
+
+  switch (timeSlot) {
+    case TimeSlot.MORNING: {
+      // 收入最高的前 N 条
+      return orders.sort((a, b) => parseMoney(b) - parseMoney(a)).slice(0, max);
+    }
+    case TimeSlot.AFTERNOON: {
+      // 收入排名第 N+1 ~ 2N 条
+      const sorted = orders.sort((a, b) => parseMoney(b) - parseMoney(a));
+      const start = Math.min(max, sorted.length);
+      const slice = sorted.slice(start, start + max);
+      // 不足 N 条时，从头部补充（避免空消息）
+      return slice.length > 0 ? slice : sorted.slice(0, max);
+    }
+    case TimeSlot.EVENING: {
+      // 按日期最近排序（优先展示即将到来的订单）
+      return orders
+        .sort((a, b) => {
+          const dateA = String(a[BI_FIELD_NAMES.ORDER_DATE] || '');
+          const dateB = String(b[BI_FIELD_NAMES.ORDER_DATE] || '');
+          // 日期升序（最近的在前）
+          const dateCmp = dateA.localeCompare(dateB);
+          // 同日期按收入降序
+          return dateCmp !== 0 ? dateCmp : parseMoney(b) - parseMoney(a);
+        })
+        .slice(0, max);
+    }
+    default:
+      return orders.sort((a, b) => parseMoney(b) - parseMoney(a)).slice(0, max);
+  }
 }
 
 /**

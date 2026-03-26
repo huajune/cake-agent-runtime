@@ -2,6 +2,18 @@
  * 群任务定时通知 — 类型定义
  */
 
+/** 群任务运行时配置 */
+export interface GroupTaskConfig {
+  enabled: boolean;
+  dryRun: boolean;
+}
+
+/** 群任务配置默认值（唯一真相源） */
+export const DEFAULT_GROUP_TASK_CONFIG: GroupTaskConfig = {
+  enabled: false,
+  dryRun: true,
+};
+
 /** 群任务类型 */
 export enum GroupTaskType {
   /** 抢单群通知 */
@@ -61,6 +73,20 @@ export interface NotificationData {
   /** 日志摘要 */
   summary: string;
 }
+
+/** 场次标识（同一任务一天多次执行时区分） */
+export enum TimeSlot {
+  MORNING = 'morning',
+  AFTERNOON = 'afternoon',
+  EVENING = 'evening',
+}
+
+/** 场次中文名映射 */
+export const TIME_SLOT_NAMES: Record<TimeSlot, string> = {
+  [TimeSlot.MORNING]: '上午场',
+  [TimeSlot.AFTERNOON]: '下午场',
+  [TimeSlot.EVENING]: '晚上场',
+};
 
 /** AI 提示词输入 */
 export interface PromptInput {

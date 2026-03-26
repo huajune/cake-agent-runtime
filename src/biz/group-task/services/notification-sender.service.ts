@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
 import { FeishuWebhookService } from '@infra/feishu/services/webhook.service';
 import {
@@ -29,25 +28,25 @@ const MINIPROGRAM = {
 export class NotificationSenderService {
   private readonly logger = new Logger(NotificationSenderService.name);
 
-  private readonly dryRun: boolean;
-
   constructor(
-    private readonly configService: ConfigService,
     private readonly messageSenderService: MessageSenderService,
     private readonly webhookService: FeishuWebhookService,
-  ) {
-    this.dryRun = this.configService.get<string>('GROUP_TASK_DRY_RUN', 'true') === 'true';
-  }
+  ) {}
 
   /**
    * 发送消息到目标群
    */
-  async sendToGroup(group: GroupContext, message: string, type: GroupTaskType): Promise<void> {
+  async sendToGroup(
+    group: GroupContext,
+    message: string,
+    type: GroupTaskType,
+    dryRun: boolean,
+  ): Promise<void> {
     // 飞书群始终发一份（试运行=预览，生产=监控）
-    await this.sendFeishuPreview(group, message, type);
+    await this.sendFeishuPreview(group, message, type, dryRun);
 
     // 试运行模式：只发飞书，不发企微群
-    if (this.dryRun) return;
+    if (dryRun) return;
 
     // 1. 发送文本消息（小组级 API）
     await this.messageSenderService.sendMessage({
@@ -85,9 +84,10 @@ export class NotificationSenderService {
     group: GroupContext,
     message: string,
     type: GroupTaskType,
+    dryRun: boolean,
   ): Promise<void> {
     const typeName = GROUP_TASK_TYPE_NAMES[type] || type;
-    const modeTag = this.dryRun ? '预览' : '已发送';
+    const modeTag = dryRun ? '预览' : '已发送';
 
     const card = this.webhookService.buildCard(
       `📋 [${modeTag}] ${typeName} → ${group.groupName}`,
@@ -107,10 +107,10 @@ export class NotificationSenderService {
   /**
    * 发送任务执行结果到飞书
    */
-  async reportToFeishu(result: TaskExecutionResult): Promise<void> {
+  async reportToFeishu(result: TaskExecutionResult, dryRun: boolean): Promise<void> {
     const duration = (result.endTime.getTime() - result.startTime.getTime()) / 1000;
     const typeName = GROUP_TASK_TYPE_NAMES[result.type] || result.type;
-    const modeLabel = this.dryRun ? '[试运行] ' : '';
+    const modeLabel = dryRun ? '[试运行] ' : '';
 
     const isSuccess = result.failedCount === 0;
     const isPartialFail = result.successCount > 0 && result.failedCount > 0;

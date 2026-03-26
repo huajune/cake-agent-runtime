@@ -1,4 +1,4 @@
-import { GroupTaskType, GroupContext, NotificationData } from '../group-task.types';
+import { GroupTaskType, GroupContext, NotificationData, TimeSlot } from '../group-task.types';
 
 /**
  * 通知策略接口
@@ -21,7 +21,7 @@ export interface NotificationStrategy {
   fetchData(context: GroupContext): Promise<NotificationData>;
 
   /** 根据数据直接生成消息文本（模板策略） */
-  buildMessage?(data: NotificationData, context: GroupContext): string;
+  buildMessage?(data: NotificationData, context: GroupContext, timeSlot?: TimeSlot): string;
 
   /** 构建 AI 提示词（AI 策略） */
   buildPrompt?(

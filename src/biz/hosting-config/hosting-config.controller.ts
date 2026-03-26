@@ -53,6 +53,17 @@ export class HostingConfigController {
     return this.facade.resetAgentReplyConfig();
   }
 
+  // ==================== 群任务通知配置 ====================
+
+  @Post('group-task-config')
+  @HttpCode(200)
+  async updateGroupTaskConfig(@Body() body: { enabled?: boolean; dryRun?: boolean }) {
+    const current = (await this.facade.getAgentReplyConfig()).groupTaskConfig;
+    const updated = { ...current, ...body };
+    await this.facade.updateGroupTaskConfig(updated);
+    return { config: updated, message: '群任务配置已更新' };
+  }
+
   // ==================== 黑名单 ====================
 
   @Get('blacklist')

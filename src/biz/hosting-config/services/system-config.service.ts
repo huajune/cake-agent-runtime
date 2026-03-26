@@ -344,4 +344,20 @@ export class SystemConfigService {
       }
     }
   }
+
+  // ==================== 通用配置项（供其他模块使用）====================
+
+  /**
+   * 读取指定键的配置值
+   */
+  async getConfigValue<T>(key: string): Promise<T | null> {
+    return this.systemConfigRepository.getConfigValue<T>(key);
+  }
+
+  /**
+   * 写入指定键的配置值
+   */
+  async setConfigValue(key: string, value: unknown, description?: string): Promise<void> {
+    await this.systemConfigRepository.setConfigValue(key, value, description);
+  }
 }

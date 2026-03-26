@@ -3,9 +3,10 @@ import { GroupTaskSchedulerService } from './services/group-task-scheduler.servi
 import { GroupTaskType } from './group-task.types';
 
 /**
- * 群任务手动触发 Controller
+ * 群任务 Controller
  *
- * 用于开发调试，手动触发各类通知任务（不等 Cron）。
+ * 手动触发通知任务（调试用）。
+ * 配置管理已合并到 /config/agent-config 和 /config/group-task-config。
  */
 @Controller('group-task')
 export class GroupTaskController {

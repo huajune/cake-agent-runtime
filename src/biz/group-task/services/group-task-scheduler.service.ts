@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
+import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { CompletionService } from '@agent/completion.service';
 import { NotificationStrategy } from '../strategies/notification.strategy';
 import { GroupResolverService } from './group-resolver.service';
@@ -10,7 +11,16 @@ import { OrderGrabStrategy } from '../strategies/order-grab.strategy';
 import { PartTimeJobStrategy } from '../strategies/part-time-job.strategy';
 import { StoreManagerStrategy } from '../strategies/store-manager.strategy';
 import { WorkTipsStrategy } from '../strategies/work-tips.strategy';
-import { GroupTaskType, GroupContext, TaskExecutionResult } from '../group-task.types';
+import {
+  GroupTaskType,
+  GroupTaskConfig,
+  DEFAULT_GROUP_TASK_CONFIG,
+  GroupContext,
+  TaskExecutionResult,
+  TimeSlot,
+} from '../group-task.types';
+
+const CONFIG_KEY = 'group_task_config';
 
 /**
  * 群任务调度编排服务
@@ -23,11 +33,11 @@ import { GroupTaskType, GroupContext, TaskExecutionResult } from '../group-task.
 export class GroupTaskSchedulerService implements OnModuleInit {
   private readonly logger = new Logger(GroupTaskSchedulerService.name);
 
-  private readonly enabled: boolean;
   private readonly sendDelayMs: number;
 
   constructor(
     private readonly configService: ConfigService,
+    private readonly systemConfigService: SystemConfigService,
     private readonly completionService: CompletionService,
     private readonly groupResolver: GroupResolverService,
     private readonly notificationSender: NotificationSenderService,
@@ -37,7 +47,6 @@ export class GroupTaskSchedulerService implements OnModuleInit {
     private readonly storeManagerStrategy: StoreManagerStrategy,
     private readonly workTipsStrategy: WorkTipsStrategy,
   ) {
-    this.enabled = this.configService.get<string>('ENABLE_GROUP_TASK', 'false') === 'true';
     this.sendDelayMs = parseInt(
       this.configService.get<string>('GROUP_TASK_SEND_DELAY_MS', '2000'),
       10,
@@ -45,11 +54,44 @@ export class GroupTaskSchedulerService implements OnModuleInit {
   }
 
   async onModuleInit(): Promise<void> {
-    if (this.enabled) {
+    const enabled = await this.isEnabled();
+    if (enabled) {
       this.logger.log('✅ 群任务调度服务已启动');
     } else {
-      this.logger.log('⏸️ 群任务调度服务已禁用 (ENABLE_GROUP_TASK=false)');
+      this.logger.log('⏸️ 群任务调度服务已禁用');
     }
+  }
+
+  // ==================== 运行时配置（Supabase system_config 单 key 存储）====================
+
+  /**
+   * 读取群任务配置（一次 DB 查询）
+   */
+  async getConfig(): Promise<GroupTaskConfig> {
+    const stored = await this.systemConfigService.getConfigValue<GroupTaskConfig>(CONFIG_KEY);
+    return {
+      enabled: stored?.enabled ?? DEFAULT_GROUP_TASK_CONFIG.enabled,
+      dryRun: stored?.dryRun ?? DEFAULT_GROUP_TASK_CONFIG.dryRun,
+    };
+  }
+
+  async isEnabled(): Promise<boolean> {
+    return (await this.getConfig()).enabled;
+  }
+
+  async isDryRun(): Promise<boolean> {
+    return (await this.getConfig()).dryRun;
+  }
+
+  /**
+   * 更新群任务配置（合并写入）
+   */
+  async updateConfig(partial: Partial<GroupTaskConfig>): Promise<GroupTaskConfig> {
+    const current = await this.getConfig();
+    const updated = { ...current, ...partial };
+    await this.systemConfigService.setConfigValue(CONFIG_KEY, updated, '群任务通知配置');
+    this.logger.log(`群任务配置已更新: enabled=${updated.enabled}, dryRun=${updated.dryRun}`);
+    return updated;
   }
 
   // ==================== Cron 调度 ====================
@@ -57,13 +99,13 @@ export class GroupTaskSchedulerService implements OnModuleInit {
   /** 抢单群 — 上午场 10:00 */
   @Cron('0 10 * * *', { timeZone: 'Asia/Shanghai' })
   async cronOrderGrabMorning(): Promise<void> {
-    await this.executeTask(this.orderGrabStrategy);
+    await this.executeTask(this.orderGrabStrategy, false, TimeSlot.MORNING);
   }
 
   /** 抢单群 — 下午场 13:00 */
   @Cron('0 13 * * *', { timeZone: 'Asia/Shanghai' })
   async cronOrderGrabAfternoon(): Promise<void> {
-    await this.executeTask(this.orderGrabStrategy);
+    await this.executeTask(this.orderGrabStrategy, false, TimeSlot.AFTERNOON);
   }
 
   /** 兼职群 — 工作日 13:00 */
@@ -75,7 +117,7 @@ export class GroupTaskSchedulerService implements OnModuleInit {
   /** 抢单群 — 晚上场 17:30 */
   @Cron('30 17 * * *', { timeZone: 'Asia/Shanghai' })
   async cronOrderGrabEvening(): Promise<void> {
-    await this.executeTask(this.orderGrabStrategy);
+    await this.executeTask(this.orderGrabStrategy, false, TimeSlot.EVENING);
   }
 
   /** 店长群 — 工作日 10:30 */
@@ -97,7 +139,11 @@ export class GroupTaskSchedulerService implements OnModuleInit {
    *
    * 可由 Cron 自动触发，也可由 Controller 手动触发。
    */
-  async executeTask(strategy: NotificationStrategy, force = false): Promise<TaskExecutionResult> {
+  async executeTask(
+    strategy: NotificationStrategy,
+    force = false,
+    timeSlot?: TimeSlot,
+  ): Promise<TaskExecutionResult> {
     const result: TaskExecutionResult = {
       type: strategy.type,
       totalGroups: 0,
@@ -110,12 +156,14 @@ export class GroupTaskSchedulerService implements OnModuleInit {
       endTime: new Date(),
     };
 
-    if (!this.enabled && !force) {
+    const enabled = await this.isEnabled();
+    if (!enabled && !force) {
       this.logger.debug(`[${strategy.type}] 任务已禁用，跳过`);
       return result;
     }
 
-    this.logger.log(`[${strategy.type}] 开始执行...`);
+    const dryRun = await this.isDryRun();
+    this.logger.log(`[${strategy.type}] 开始执行... (dryRun=${dryRun})`);
 
     try {
       // 1. 获取目标群列表
@@ -125,7 +173,7 @@ export class GroupTaskSchedulerService implements OnModuleInit {
       if (groups.length === 0) {
         this.logger.warn(`[${strategy.type}] 未找到匹配群 (tagPrefix=${strategy.tagPrefix})`);
         result.endTime = new Date();
-        await this.notificationSender.reportToFeishu(result);
+        await this.notificationSender.reportToFeishu(result, dryRun);
         return result;
       }
 
@@ -170,7 +218,7 @@ export class GroupTaskSchedulerService implements OnModuleInit {
             }
           } else if (strategy.buildMessage) {
             // 纯模板
-            message = strategy.buildMessage(data, representative);
+            message = strategy.buildMessage(data, representative, timeSlot);
           } else {
             this.logger.error(`[${strategy.type}] 策略未实现 buildMessage 或 buildPrompt`);
             continue;
@@ -179,7 +227,7 @@ export class GroupTaskSchedulerService implements OnModuleInit {
           // 3c. 同组所有群发送相同消息
           for (const group of groupMembers) {
             try {
-              await this.notificationSender.sendToGroup(group, message, strategy.type);
+              await this.notificationSender.sendToGroup(group, message, strategy.type, dryRun);
               result.successCount++;
               this.logger.log(`[${strategy.type}] ✅ ${group.groupName}`);
               await this.delay(this.sendDelayMs);
@@ -235,7 +283,7 @@ export class GroupTaskSchedulerService implements OnModuleInit {
     result.endTime = new Date();
 
     // 3. 飞书通知结果
-    await this.notificationSender.reportToFeishu(result);
+    await this.notificationSender.reportToFeishu(result, dryRun);
 
     const duration = (result.endTime.getTime() - result.startTime.getTime()) / 1000;
     this.logger.log(

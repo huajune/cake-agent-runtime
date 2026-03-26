@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SpongeService } from '@sponge/sponge.service';
 import { NotificationStrategy } from './notification.strategy';
-import { GroupTaskType, GroupContext, NotificationData } from '../group-task.types';
+import { GroupTaskType, GroupContext, NotificationData, TimeSlot } from '../group-task.types';
 import { buildOrderGrabMessage } from '../prompts/order-grab.prompt';
 
 /**
@@ -49,10 +49,11 @@ export class OrderGrabStrategy implements NotificationStrategy {
     };
   }
 
-  buildMessage(data: NotificationData, context: GroupContext): string {
+  buildMessage(data: NotificationData, context: GroupContext, timeSlot?: TimeSlot): string {
     return buildOrderGrabMessage({
       orders: data.payload.orders as Record<string, unknown>[],
       city: context.city,
+      timeSlot,
     });
   }
 }

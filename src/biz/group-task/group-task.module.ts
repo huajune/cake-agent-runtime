@@ -3,6 +3,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { SpongeModule } from '@sponge/sponge.module';
 import { RoomModule } from '@channels/wecom/room/room.module';
 import { MessageSenderModule } from '@channels/wecom/message-sender/message-sender.module';
+import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
 import { CompletionService } from '@agent/completion.service';
 import { GroupTaskSchedulerService } from './services/group-task-scheduler.service';
 import { GroupResolverService } from './services/group-resolver.service';
@@ -21,7 +22,13 @@ import { GroupTaskController } from './group-task.controller';
  * 定时拉取数据 → AI生成文案 → 发送到企微群 → 飞书通知结果
  */
 @Module({
-  imports: [ScheduleModule.forRoot(), SpongeModule, RoomModule, MessageSenderModule],
+  imports: [
+    ScheduleModule.forRoot(),
+    SpongeModule,
+    RoomModule,
+    MessageSenderModule,
+    HostingConfigModule,
+  ],
   controllers: [GroupTaskController],
   providers: [
     // 核心服务（CompletionService 依赖的 RouterService 是 Global 的）
