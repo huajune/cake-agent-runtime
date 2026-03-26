@@ -17,12 +17,12 @@ export interface JobListQueryParams {
 }
 
 export interface JobListOptions {
-  includeBasicInfo: boolean;
-  includeJobSalary: boolean;
-  includeWelfare: boolean;
-  includeHiringRequirement: boolean;
-  includeWorkTime: boolean;
-  includeInterviewProcess: boolean;
+  includeBasicInfo?: boolean;
+  includeJobSalary?: boolean;
+  includeWelfare?: boolean;
+  includeHiringRequirement?: boolean;
+  includeWorkTime?: boolean;
+  includeInterviewProcess?: boolean;
 }
 
 /** 岗位查询响应 */
@@ -44,6 +44,44 @@ export interface RawBrandItem {
 export interface BrandItem {
   name: string;
   aliases: string[];
+}
+
+/** 面试名单查询参数 */
+export interface InterviewScheduleParams {
+  /** 查询日期 YYYY-MM-DD */
+  date: string;
+  /** 城市名称 */
+  cityName?: string;
+  /** 品牌名称 */
+  brandName?: string;
+  /** 门店 ID */
+  storeId?: number;
+  /** 页码，默认 1 */
+  pageNum?: number;
+  /** 每页条数，默认 100 */
+  pageSize?: number;
+}
+
+/** 面试名单响应项 */
+export interface InterviewScheduleItem {
+  /** 候选人姓名 */
+  name: string;
+  /** 候选人电话 */
+  phone: string;
+  /** 面试时间 YYYY-MM-DD HH:mm */
+  interviewTime: string;
+  /** 应聘岗位 */
+  jobName: string;
+  /** 面试门店 */
+  storeName: string;
+  /** 所属品牌 */
+  brandName: string;
+}
+
+/** 面试名单查询结果 */
+export interface InterviewScheduleResult {
+  interviews: InterviewScheduleItem[];
+  total: number;
 }
 
 /** 面试预约请求参数 */

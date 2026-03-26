@@ -4,9 +4,24 @@ import { HostingConfigModule } from './hosting-config/hosting-config.module';
 import { UserModule } from './user/user.module';
 import { BizMessageModule } from './message/message.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
+import { GroupTaskModule } from './group-task/group-task.module';
 
 @Module({
-  imports: [StrategyModule, HostingConfigModule, UserModule, BizMessageModule, MonitoringModule],
-  exports: [StrategyModule, HostingConfigModule, UserModule, BizMessageModule, MonitoringModule],
+  imports: [
+    StrategyModule,
+    HostingConfigModule,
+    UserModule,
+    BizMessageModule,
+    MonitoringModule,
+    GroupTaskModule,
+  ],
+  exports: [
+    StrategyModule,
+    HostingConfigModule,
+    UserModule,
+    BizMessageModule,
+    MonitoringModule,
+    GroupTaskModule,
+  ],
 })
 export class BizModule {}
