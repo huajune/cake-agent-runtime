@@ -1,7 +1,12 @@
 import { Controller, Get, Post, Delete, HttpCode, Body } from '@nestjs/common';
-import { AgentReplyConfig } from './types/hosting-config.types';
 import { HostingConfigFacadeService } from './services/hosting-config-facade.service';
-import { UpdateGroupTaskConfigDto } from './dto/update-group-task-config.dto';
+import {
+  ToggleDto,
+  UpdateAgentReplyConfigDto,
+  UpdateGroupTaskConfigDto,
+  AddToBlacklistDto,
+  RemoveFromBlacklistDto,
+} from './dto/hosting-config.dto';
 
 /**
  * 系统配置控制器
@@ -20,8 +25,8 @@ export class HostingConfigController {
 
   @Post('toggle-ai-reply')
   @HttpCode(200)
-  async toggleAiReply(@Body('enabled') enabled: boolean) {
-    return this.facade.toggleAiReply(enabled);
+  async toggleAiReply(@Body() body: ToggleDto) {
+    return this.facade.toggleAiReply(body.enabled);
   }
 
   @Get('message-merge-status')
@@ -31,8 +36,8 @@ export class HostingConfigController {
 
   @Post('toggle-message-merge')
   @HttpCode(200)
-  async toggleMessageMerge(@Body('enabled') enabled: boolean) {
-    return this.facade.toggleMessageMerge(enabled);
+  async toggleMessageMerge(@Body() body: ToggleDto) {
+    return this.facade.toggleMessageMerge(body.enabled);
   }
 
   // ==================== Agent 配置 ====================
@@ -44,7 +49,7 @@ export class HostingConfigController {
 
   @Post('agent-config')
   @HttpCode(200)
-  async updateAgentReplyConfig(@Body() body: Partial<AgentReplyConfig>) {
+  async updateAgentReplyConfig(@Body() body: UpdateAgentReplyConfigDto) {
     return this.facade.updateAgentReplyConfig(body);
   }
 
@@ -74,12 +79,12 @@ export class HostingConfigController {
 
   @Post('blacklist')
   @HttpCode(200)
-  async addToBlacklist(@Body() body: { id: string; type: 'chatId' | 'groupId'; reason?: string }) {
+  async addToBlacklist(@Body() body: AddToBlacklistDto) {
     return this.facade.addToBlacklist(body.id, body.type, body.reason);
   }
 
   @Delete('blacklist')
-  async removeFromBlacklist(@Body() body: { id: string; type: 'chatId' | 'groupId' }) {
+  async removeFromBlacklist(@Body() body: RemoveFromBlacklistDto) {
     return this.facade.removeFromBlacklist(body.id, body.type);
   }
 }
