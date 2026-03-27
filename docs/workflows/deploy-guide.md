@@ -39,7 +39,7 @@ Dockerfile 构建镜像            docker-compose.yml 启动容器
                                   ↑ 在这里指定端口、环境变量、日志等
 ```
 
-构建镜像不需要 `.env.prod`，启动容器时才需要。
+构建镜像不需要 `.env.production`，启动容器时才需要。
 
 ---
 
@@ -47,7 +47,7 @@ Dockerfile 构建镜像            docker-compose.yml 启动容器
 
 ```
 /data/cake/
-├── .env.prod              ← 环境变量（密钥等，手动维护，不在 Git 里）
+├── .env.production        ← 环境变量（密钥等，手动维护，不在 Git 里）
 ├── docker-compose.yml     ← 容器启动配置（部署时自动从代码同步）
 ├── logs/                  ← 容器运行日志（volume 映射出来的）
 └── source/                ← CI/CD 拉取的代码（仅用来构建镜像）
@@ -65,22 +65,20 @@ Dockerfile 构建镜像            docker-compose.yml 启动容器
 
 ### 触发条件
 
-`push to master` 分支自动触发。
+`v*` 版本 tag 自动触发。通常由 `master` 合并后的自动版本流程创建。
 
 ### 完整流程
 
 ```
 GitHub Actions                        远程服务器 /data/cake/
 ──────────────                        ──────────────────────
-1. test（类型检查 + 编译 + 单测）
-2. SSH 连到服务器 ──────────────────→  3. 备份当前镜像为 :previous
-                                       4. git pull 拉最新代码到 source/
-                                       5. cp source/docker-compose.yml ./（同步配置）
-                                       6. docker build ./source → 生成镜像
-                                       7. docker compose up -d 启动容器
-                                       8. 健康检查（60s 内轮询 /agent/health）
-                                       9. 成功 → 清理旧镜像
-                                          失败 → 自动回滚到 :previous
+1. release tag 触发 test（类型检查 + 编译 + 单测）
+2. SSH 连到服务器 ──────────────────→  3. 拉取对应 tag 的代码到 source/
+                                       4. docker build ./source → 生成版本镜像
+                                       5. docker compose up -d 启动容器
+                                       6. 健康检查（60s 内轮询 /agent/health）
+                                       7. 成功 → 保留该版本为当前版本
+                                          失败 → 自动回滚到上一版本
 3. 飞书通知部署结果
 ```
 
@@ -104,12 +102,12 @@ pnpm run deploy other-host   # 部署到指定服务器
 2. docker build → 在本地生成镜像
 3. docker save → 导出 .tar 文件
 4. scp 上传 .tar + docker-compose.yml ──→  收到文件
-                                       5. 备份当前镜像为 :previous
+                                       5. 备份当前发布配置和镜像 tag
                                        6. docker load 加载新镜像
                                        7. docker compose up -d 启动容器
                                        8. 健康检查（60s 内轮询 /agent/health）
-                                       9. 成功 → 清理旧镜像
-                                          失败 → 自动回滚到 :previous
+                                       9. 成功 → 保留新版本
+                                          失败 → 自动回滚到上一版本
 ```
 
 ### 两种方式对比
@@ -118,35 +116,38 @@ pnpm run deploy other-host   # 部署到指定服务器
 |---|---|---|
 | 镜像在哪构建 | 你的 Mac | 服务器上 |
 | 代码怎么传 | 只传镜像（.tar） | 服务器 git pull |
-| 触发方式 | 手动 `pnpm run deploy` | push 到 master 自动触发 |
+| 触发方式 | 手动 `pnpm run deploy` | push `v*` tag 自动触发 |
 | 适用场景 | 开发调试、紧急修复 | 正式发布 |
 
 ---
 
 ## 回滚机制
 
-部署前自动备份当前镜像为 `cake-agent-runtime:previous`：
-- **健康检查通过**：删除 `:previous`，清理无用镜像
-- **健康检查失败**：自动将 `:previous` tag 回 `:latest` 并重启，恢复上一版本
+部署前会自动备份：
+- 当前 `docker-compose.yml`
+- 当前 `.deploy.env`
+- 当前运行中的镜像 tag（临时标记为 `cake-agent-runtime:rollback`）
+
+如果健康检查失败，部署脚本会自动恢复上一版本的配置和镜像 tag，并重新执行 `docker compose up -d`。
 
 手动回滚：
 
 ```bash
-ssh haimian-deploy 'cd /data/cake && docker tag cake-agent-runtime:previous cake-agent-runtime:latest && docker compose up -d'
+ssh haimian-deploy 'cd /data/cake && printf "IMAGE_TAG=rollback\n" > .deploy.env && docker compose --env-file .deploy.env up -d --force-recreate'
 ```
 
 ---
 
 ## 环境变量配置
 
-服务器上的 `.env.prod` 需要手动维护（包含密钥，不提交 Git）。
+服务器上的 `.env.production` 需要手动维护（包含密钥，不提交 Git）。
 
 首次部署时创建：
 
 ```bash
 ssh haimian-deploy
 cd /data/cake
-nano .env.prod
+nano .env.production
 # 参考 .env.example 填写
 ```
 
@@ -191,7 +192,7 @@ curl http://localhost:8585/agent/health
 # 查看日志
 docker compose logs cake-agent
 
-# 常见原因：.env.prod 缺少必填项
+# 常见原因：.env.production 缺少必填项
 ```
 
 ### 健康检查失败

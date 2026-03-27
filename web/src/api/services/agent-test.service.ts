@@ -79,7 +79,7 @@ export function executeTestStream(
     'Content-Type': 'application/json',
     Accept: 'text/event-stream',
   };
-  const token = import.meta.env.VITE_API_GUARD_TOKEN;
+  const token = import.meta.env.API_GUARD_TOKEN;
   if (token) {
     fetchHeaders['Authorization'] = `Bearer ${token}`;
   }

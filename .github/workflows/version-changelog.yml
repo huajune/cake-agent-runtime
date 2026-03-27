@@ -26,6 +26,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.ref_name }}
           fetch-depth: 0 # 获取完整历史记录，用于分析 commits
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -58,80 +59,60 @@ jobs:
             echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
           fi
 
-      - name: Create update branch and push
+      - name: Commit release changes to master
         if: steps.check_changes.outputs.has_changes == 'true'
-        id: create_branch
+        id: release_commit
         run: |
           VERSION="${{ steps.check_changes.outputs.version }}"
-          TIMESTAMP=$(date +%s)
-          BRANCH_NAME="chore/update-version-$VERSION-$TIMESTAMP"
+          CURRENT_BRANCH="${{ github.ref_name }}"
+          TAG_NAME="v$VERSION"
 
-          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
-
-          # 创建新分支
-          git checkout -b "$BRANCH_NAME"
-
-          # 提交变更
           git add package.json CHANGELOG.md
-          git commit -m "chore: update version to $VERSION and changelog [skip ci]"
+          git commit -m "chore(release): bump version to $VERSION [skip ci]"
+          git push origin "HEAD:$CURRENT_BRANCH"
 
-          # 推送到远程（如果分支已存在，强制推送）
-          git push origin "$BRANCH_NAME" || git push -f origin "$BRANCH_NAME"
+          RELEASE_COMMIT=$(git rev-parse HEAD)
+          echo "release_commit=$RELEASE_COMMIT" >> $GITHUB_OUTPUT
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
 
-          echo "✅ 已创建分支: $BRANCH_NAME"
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Tag already exists: $TAG_NAME" >&2
+            exit 1
+          fi
 
-      - name: Create Pull Request
+          git tag -a "$TAG_NAME" -m "Release $TAG_NAME" "$RELEASE_COMMIT"
+          git push origin "$TAG_NAME"
+
+          echo "✅ 已推送 release commit 和 tag: $TAG_NAME"
+
+      - name: Create GitHub Release
         if: steps.check_changes.outputs.has_changes == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_BODY_TEMPLATE: >
-            ## 📦 自动版本更新
-
-            **新版本**: v${{ steps.check_changes.outputs.version }}
-
-            此PR由GitHub Actions自动创建，包含：
-            - ✅ 更新 package.json 版本号
-            - ✅ 更新 CHANGELOG.md
-
-            ### 变更来源
-            基于 `${{ github.ref_name }}` 分支的commit历史自动生成。
-
-            ### 合并后操作
-            合并此PR后，建议：
-            1. 创建git tag: `v${{ steps.check_changes.outputs.version }}`
-            2. 发布GitHub Release
-
-            ---
-            🤖 由 GitHub Actions 自动生成
         run: |
           VERSION="${{ steps.check_changes.outputs.version }}"
-          BRANCH_NAME="${{ steps.create_branch.outputs.branch_name }}"
-          CURRENT_BRANCH="${{ github.ref_name }}"
-          PR_BODY="$PR_BODY_TEMPLATE"
+          TAG_NAME="${{ steps.release_commit.outputs.tag_name }}"
 
-          # 使用gh CLI创建PR
-          gh pr create \
-            --base "$CURRENT_BRANCH" \
-            --head "$BRANCH_NAME" \
-            --title "chore: update version to $VERSION" \
-            --body "$PR_BODY" \
-            --label "automated,version-update"
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            echo "ℹ️ GitHub Release already exists: $TAG_NAME"
+            exit 0
+          fi
 
-          echo "✅ 已创建PR: $BRANCH_NAME -> $CURRENT_BRANCH"
+          gh release create "$TAG_NAME" \
+            --title "$TAG_NAME" \
+            --notes "Automated release for version $VERSION"
+
+          echo "✅ 已创建 GitHub Release: $TAG_NAME"
 
       - name: Sync version changes to develop
         if: steps.check_changes.outputs.has_changes == 'true'
         run: |
           VERSION="${{ steps.check_changes.outputs.version }}"
-          BRANCH_NAME="${{ steps.create_branch.outputs.branch_name }}"
+          RELEASE_COMMIT="${{ steps.release_commit.outputs.release_commit }}"
 
-          # 切回版本更新分支（包含 package.json + CHANGELOG.md 变更）
-          git checkout "$BRANCH_NAME"
-
-          # 合并到 develop
           git fetch origin develop
-          git checkout develop
-          git merge "$BRANCH_NAME" --no-edit -m "chore: sync version $VERSION to develop [skip ci]"
-          git push origin develop
+          git checkout -B develop-sync origin/develop
+          git cherry-pick "$RELEASE_COMMIT"
+          git push origin HEAD:develop
 
-          echo "✅ 已同步版本变更到 develop"
+          echo "✅ 已同步版本变更到 develop: $VERSION"

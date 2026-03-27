@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@infra/client-http/http.service';
 import { ApiConfigService } from '@infra/config/api-config.service';
 
@@ -6,7 +7,6 @@ import { ApiConfigService } from '@infra/config/api-config.service';
  * 小组查询参数接口
  */
 interface GroupListParams {
-  token: string;
   current?: number;
   pageSize?: number;
 }
@@ -18,6 +18,7 @@ export class GroupService {
   constructor(
     private readonly httpService: HttpService,
     private readonly apiConfig: ApiConfigService,
+    private readonly configService: ConfigService,
   ) {}
 
   /**
@@ -27,8 +28,15 @@ export class GroupService {
    */
   async getGroupList(params: GroupListParams) {
     try {
+      const token = this.configService.get<string>('STRIDE_ENTERPRISE_TOKEN');
+      if (!token) {
+        throw new InternalServerErrorException(
+          'STRIDE_ENTERPRISE_TOKEN 环境变量未配置，无法获取企业小组列表',
+        );
+      }
+
       const apiUrl = this.apiConfig.endpoints.group.list();
-      const result = await this.httpService.get(apiUrl, params);
+      const result = await this.httpService.get(apiUrl, { token, ...params });
       this.logger.log('获取小组列表成功');
       return result;
     } catch (error) {

@@ -108,7 +108,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
   // Transport（sessionId 变化时重建，确保新对话用新 sessionId）
   const transport = useMemo(() => {
     const headers: Record<string, string> = {};
-    const token = import.meta.env.VITE_API_GUARD_TOKEN;
+    const token = import.meta.env.API_GUARD_TOKEN;
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }

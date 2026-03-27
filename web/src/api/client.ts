@@ -43,7 +43,7 @@ export const api = axios.create({
 // -------------------- 请求拦截器 --------------------
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  const token = import.meta.env.VITE_API_GUARD_TOKEN;
+  const token = import.meta.env.API_GUARD_TOKEN;
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }

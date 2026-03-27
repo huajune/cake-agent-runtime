@@ -34,8 +34,7 @@ export async function setWorkerConcurrency(concurrency: number) {
 }
 
 export async function getGroupList() {
-  const token = import.meta.env.VITE_ENTERPRISE_TOKEN || '9eaebbf614104879b81c2da7c41819bd';
-  const { data } = await api.get(`/group/list?token=${token}`);
+  const { data } = await api.get('/group/list');
   const groups = unwrapResponse<GroupInfo[]>(data);
   return groups || [];
 }

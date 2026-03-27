@@ -3,6 +3,8 @@ dist
 web/node_modules
 dashboard/node_modules
 .git
+.env
+.env.*
 .env.local
 .env.*.local
 logs
