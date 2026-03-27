@@ -1,5 +1,9 @@
 /// <reference types="vite/client" />
 
+interface ImportMetaEnv {
+  readonly API_GUARD_TOKEN?: string;
+}
+
 // CSS Modules 类型声明
 declare module '*.module.scss' {
   const classes: { [key: string]: string };

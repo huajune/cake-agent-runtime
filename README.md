@@ -272,7 +272,9 @@ pnpm run lint && pnpm run format && pnpm run test
 > **版本管理**：当 develop 合并到 master 后，GitHub Actions 会自动：
 > - 分析 commits 更新版本号
 > - 生成 CHANGELOG.md
-> - 创建版本 tag（如 v1.2.3）
+> - 直接提交 release commit 到 `master`
+> - 创建版本 tag（如 `v1.2.3`）
+> - 由该 tag 触发生产部署
 >
 > 详见 [Conventional Commits](https://www.conventionalcommits.org/)。
 
@@ -330,7 +332,7 @@ curl http://localhost:8585/agent/health
 
 ### CI 自动部署
 
-代码合并到 `master` 后，GitHub Actions 自动：test → SSH 到服务器 git pull + docker build → 健康检查 → 飞书通知。
+代码合并到 `master` 后，GitHub Actions 会先自动更新版本并创建 `vX.Y.Z` tag，再由该 tag 触发生产部署。
 
 ### 本地手动部署
 

@@ -31,16 +31,14 @@ describe('GroupController', () => {
   });
 
   describe('getGroupList', () => {
-    it('should call groupService.getGroupList with token only when no pagination provided', async () => {
-      const token = 'enterprise-token';
+    it('should call groupService.getGroupList with no pagination when none provided', async () => {
       const mockResult = { data: [{ groupId: 'g-1', name: 'Group 1' }], total: 1 };
 
       mockGroupService.getGroupList.mockResolvedValue(mockResult);
 
-      const result = await controller.getGroupList(token);
+      const result = await controller.getGroupList();
 
       expect(service.getGroupList).toHaveBeenCalledWith({
-        token,
         current: undefined,
         pageSize: undefined,
       });
@@ -48,59 +46,50 @@ describe('GroupController', () => {
     });
 
     it('should parse current string to integer', async () => {
-      const token = 'enterprise-token';
       mockGroupService.getGroupList.mockResolvedValue({ data: [] });
 
-      await controller.getGroupList(token, '2');
+      await controller.getGroupList('2');
 
       expect(service.getGroupList).toHaveBeenCalledWith({
-        token,
         current: 2,
         pageSize: undefined,
       });
     });
 
     it('should parse pageSize string to integer', async () => {
-      const token = 'enterprise-token';
       mockGroupService.getGroupList.mockResolvedValue({ data: [] });
 
-      await controller.getGroupList(token, undefined, '50');
+      await controller.getGroupList(undefined, '50');
 
       expect(service.getGroupList).toHaveBeenCalledWith({
-        token,
         current: undefined,
         pageSize: 50,
       });
     });
 
     it('should parse both current and pageSize strings to integers', async () => {
-      const token = 'enterprise-token';
       mockGroupService.getGroupList.mockResolvedValue({ data: [] });
 
-      await controller.getGroupList(token, '3', '100');
+      await controller.getGroupList('3', '100');
 
       expect(service.getGroupList).toHaveBeenCalledWith({
-        token,
         current: 3,
         pageSize: 100,
       });
     });
 
-    it('should use undefined for current when empty string is passed', async () => {
-      const token = 'enterprise-token';
+    it('should use undefined for current and pageSize when not provided', async () => {
       mockGroupService.getGroupList.mockResolvedValue({ data: [] });
 
-      await controller.getGroupList(token, undefined, undefined);
+      await controller.getGroupList(undefined, undefined);
 
       expect(service.getGroupList).toHaveBeenCalledWith({
-        token,
         current: undefined,
         pageSize: undefined,
       });
     });
 
     it('should return the result from groupService', async () => {
-      const token = 'enterprise-token';
       const expectedResult = {
         data: [
           { groupId: 'g-1', name: 'Group Alpha' },
@@ -111,16 +100,15 @@ describe('GroupController', () => {
 
       mockGroupService.getGroupList.mockResolvedValue(expectedResult);
 
-      const result = await controller.getGroupList(token, '1', '20');
+      const result = await controller.getGroupList('1', '20');
 
       expect(result).toEqual(expectedResult);
     });
 
     it('should propagate errors from groupService', async () => {
-      const token = 'enterprise-token';
       mockGroupService.getGroupList.mockRejectedValue(new Error('Service error'));
 
-      await expect(controller.getGroupList(token)).rejects.toThrow('Service error');
+      await expect(controller.getGroupList()).rejects.toThrow('Service error');
     });
   });
 });

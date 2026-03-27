@@ -1,12 +1,12 @@
 services:
   cake-agent:
-    image: cake-agent-runtime:latest
+    image: cake-agent-runtime:${IMAGE_TAG:-latest}
     container_name: cake-agent
     restart: always
     ports:
       - "${PORT:-8585}:${PORT:-8585}"
     env_file:
-      - .env.prod
+      - .env.production
     volumes:
       - ./logs:/app/logs
     environment:

@@ -7,7 +7,9 @@
 ✅ 分析提交历史，计算新版本号
 ✅ 更新 `package.json` 版本号
 ✅ 生成 `CHANGELOG.md` 更新记录
+✅ 直接提交 release commit 到 `master`
 ✅ 创建 Git Tag（如 `v1.2.3`）
+✅ 使用该 tag 触发生产部署
 ✅ 自动同步到 `develop` 分支
 
 **你只需要做两件事：**
@@ -46,8 +48,8 @@ PR 审核通过后，点击 **Merge pull request** 合并到 `master` 分支。
 合并后，GitHub Actions 会自动：
 - 分析提交历史
 - 计算版本号
-- 更新文档
-- 创建 Tag
+- 提交 release commit
+- 创建 Tag 并触发部署
 - 同步到 develop
 
 大约 1-2 分钟后，你可以在以下位置查看结果：

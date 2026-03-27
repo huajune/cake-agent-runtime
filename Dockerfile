@@ -21,8 +21,8 @@ WORKDIR /app
 COPY . .
 
 # Build web frontend (outputs to public/web/)
-ARG VITE_API_GUARD_TOKEN
-ENV VITE_API_GUARD_TOKEN=$VITE_API_GUARD_TOKEN
+ARG API_GUARD_TOKEN
+ENV API_GUARD_TOKEN=$API_GUARD_TOKEN
 RUN pnpm run build:web
 
 # Build NestJS backend (nest-cli copies public/ into dist/)
