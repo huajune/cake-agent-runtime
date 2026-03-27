@@ -8,9 +8,9 @@
 ✅ 更新 `package.json` 版本号
 ✅ 生成 `CHANGELOG.md` 更新记录
 ✅ 直接提交 release commit 到 `master`
+✅ 自动同步到 `develop` 分支
 ✅ 创建 Git Tag（如 `v1.2.3`）
 ✅ 使用该 tag 触发生产部署
-✅ 自动同步到 `develop` 分支
 
 **你只需要做两件事：**
 1. 按照规范提交代码
@@ -48,9 +48,9 @@ PR 审核通过后，点击 **Merge pull request** 合并到 `master` 分支。
 合并后，GitHub Actions 会自动：
 - 分析提交历史
 - 计算版本号
-- 提交 release commit
+- 提交 release commit 到 `master`
+- 同步该 release commit 到 `develop`
 - 创建 Tag 并触发部署
-- 同步到 develop
 
 大约 1-2 分钟后，你可以在以下位置查看结果：
 - [Actions 执行日志](../../.github/workflows/version-changelog.yml)
@@ -178,8 +178,9 @@ Feature 更新：
 
 - **开发分支**：`develop`（日常开发）
 - **主分支**：`master`（生产版本）
-- ⚠️ 不要直接在 `master` 分支提交代码
+- ⚠️ 不要由开发者直接在 `master` 分支提交业务代码
 - ⚠️ 所有功能必须通过 PR 合并到 `master`
+- ℹ️ release workflow 会代表机器人推送版本提交到 `master`
 
 ### 2. 提交规范
 
