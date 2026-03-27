@@ -83,6 +83,17 @@ export class GroupTaskSchedulerService implements OnModuleInit {
     return (await this.getConfig()).dryRun;
   }
 
+  /**
+   * 更新群任务配置（read-merge-write，唯一写入点）
+   */
+  async updateConfig(partial: Partial<GroupTaskConfig>): Promise<GroupTaskConfig> {
+    const current = await this.getConfig();
+    const updated = { ...current, ...partial };
+    this.logger.log(`更新群任务配置: ${JSON.stringify(updated)}`);
+    await this.systemConfigService.setConfigValue(CONFIG_KEY, updated, '群任务通知配置');
+    return updated;
+  }
+
   // ==================== Cron 调度 ====================
 
   /** 抢单群 — 上午场 10:00 */
@@ -151,7 +162,8 @@ export class GroupTaskSchedulerService implements OnModuleInit {
       return result;
     }
 
-    const { dryRun } = config;
+    // force=true 时强制关闭 dryRun，允许手动触发真实发送
+    const dryRun = force ? false : config.dryRun;
     this.logger.log(`[${strategy.type}] 开始执行... (dryRun=${dryRun})`);
 
     try {

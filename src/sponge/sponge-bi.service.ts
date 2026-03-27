@@ -25,6 +25,7 @@ export class SpongeBiService {
   private readonly biBaseUrl: string;
   private readonly biCardId: string;
   private readonly biRefreshSourceId: string;
+  private readonly biRefreshWaitMs: number;
 
   constructor(private readonly configService: ConfigService) {
     this.biBaseUrl = this.configService.get<string>(
@@ -38,6 +39,10 @@ export class SpongeBiService {
     this.biRefreshSourceId = this.configService.get<string>(
       'GUANYUAN_BI_REFRESH_SOURCE_ID',
       'sa02db85d1ae64d699f6fd4e',
+    );
+    this.biRefreshWaitMs = parseInt(
+      this.configService.get<string>('GUANYUAN_BI_REFRESH_WAIT_MS', '35000'),
+      10,
     );
   }
 
@@ -59,7 +64,7 @@ export class SpongeBiService {
       // 0. 刷新数据源（可选）
       if (params.refreshBeforeQuery) {
         await this.refreshBIDataSource();
-        await this.delay(35_000);
+        await this.delay(this.biRefreshWaitMs);
       }
 
       // 1. 登录获取 token

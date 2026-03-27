@@ -180,6 +180,105 @@ describe('SpongeBiService', () => {
 
       await expect(service.fetchBIOrders({})).rejects.toThrow(Error);
     });
+
+    it('should paginate when hasMoreData=true', async () => {
+      const mockFetch = jest.fn();
+
+      // sign-in
+      mockFetch.mockResolvedValueOnce(makeSignInResponse() as unknown as Response);
+      // page 1 with hasMoreData
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          result: 'ok',
+          response: {
+            chartMain: {
+              column: { values: [[{ title: '城市' }]] },
+              data: [[{ v: '上海' }]],
+              hasMoreData: true,
+            },
+          },
+        }),
+      } as unknown as Response);
+      // page 2 without hasMoreData
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          result: 'ok',
+          response: {
+            chartMain: {
+              column: { values: [[{ title: '城市' }]] },
+              data: [[{ v: '北京' }]],
+              hasMoreData: false,
+            },
+          },
+        }),
+      } as unknown as Response);
+
+      global.fetch = mockFetch;
+
+      const result = await service.fetchBIOrders({});
+
+      // sign-in + 2 pages = 3 calls
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({ '城市': '上海' });
+      expect(result[1]).toEqual({ '城市': '北京' });
+    });
+
+    it('should sort orders by specified field', async () => {
+      const mockFetch = jest.fn();
+
+      mockFetch.mockResolvedValueOnce(makeSignInResponse() as unknown as Response);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          result: 'ok',
+          response: {
+            chartMain: {
+              column: { values: [[{ title: '城市' }], [{ title: '预估营收' }]] },
+              data: [
+                [{ v: '上海' }, { v: '¥1,000' }],
+                [{ v: '北京' }, { v: '¥3,000' }],
+                [{ v: '深圳' }, { v: '¥2,000' }],
+              ],
+              hasMoreData: false,
+            },
+          },
+        }),
+      } as unknown as Response);
+
+      global.fetch = mockFetch;
+
+      const result = await service.fetchBIOrders({
+        sortBy: '预估营收',
+        sortOrder: 'DESC',
+      });
+
+      expect(result).toHaveLength(3);
+      // DESC order: 3000 > 2000 > 1000
+      expect(result[0]['城市']).toBe('北京');
+      expect(result[1]['城市']).toBe('深圳');
+      expect(result[2]['城市']).toBe('上海');
+    });
+
+    it('should return empty array when chartMain has no data', async () => {
+      const mockFetch = jest.fn();
+
+      mockFetch.mockResolvedValueOnce(makeSignInResponse() as unknown as Response);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          result: 'ok',
+          response: { chartMain: { column: { values: [] }, data: [] } },
+        }),
+      } as unknown as Response);
+
+      global.fetch = mockFetch;
+
+      const result = await service.fetchBIOrders({});
+      expect(result).toEqual([]);
+    });
   });
 
   describe('refreshBIDataSource', () => {

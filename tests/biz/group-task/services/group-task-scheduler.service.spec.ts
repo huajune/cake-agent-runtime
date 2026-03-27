@@ -150,6 +150,32 @@ describe('GroupTaskSchedulerService', () => {
     });
   });
 
+  describe('updateConfig', () => {
+    it('should merge partial config with current and persist', async () => {
+      systemConfigService.getConfigValue.mockResolvedValue({ enabled: false, dryRun: true });
+      systemConfigService.setConfigValue.mockResolvedValue(undefined);
+
+      const result = await service.updateConfig({ enabled: true });
+
+      expect(result).toEqual({ enabled: true, dryRun: true });
+      expect(systemConfigService.setConfigValue).toHaveBeenCalledWith(
+        'group_task_config',
+        { enabled: true, dryRun: true },
+        '群任务通知配置',
+      );
+    });
+  });
+
+  describe('getStrategy', () => {
+    it('should return strategy for valid type', () => {
+      expect(service.getStrategy(GroupTaskType.ORDER_GRAB)).toBeDefined();
+    });
+
+    it('should return null for unknown type', () => {
+      expect(service.getStrategy('unknown' as GroupTaskType)).toBeNull();
+    });
+  });
+
   describe('executeTask', () => {
     it('should skip when disabled and not forced', async () => {
       const disabledConfig = { ...DEFAULT_GROUP_TASK_CONFIG, enabled: false };
@@ -171,7 +197,7 @@ describe('GroupTaskSchedulerService', () => {
       expect(notificationSenderService.reportToFeishu).toHaveBeenCalled();
     });
 
-    it('should pass dryRun to notificationSender methods', async () => {
+    it('should pass dryRun=false when force=true (bypasses dryRun)', async () => {
       const dryRunConfig = {
         ...DEFAULT_GROUP_TASK_CONFIG,
         enabled: true,
@@ -198,17 +224,47 @@ describe('GroupTaskSchedulerService', () => {
 
       await service.executeTask(mockStrategy, true);
 
-      // reportToFeishu 一定会被调用，验证 dryRun 参数
-      expect(notificationSenderService.reportToFeishu).toHaveBeenCalled();
-      const reportDryRunArg =
-        notificationSenderService.reportToFeishu.mock.calls[0][1];
-      expect(reportDryRunArg).toBe(true);
+      // force=true 应强制 dryRun=false
+      expect(notificationSenderService.sendToGroup).toHaveBeenCalledTimes(1);
+      expect(notificationSenderService.sendToGroup.mock.calls[0][3]).toBe(false);
 
-      // sendToGroup 也应被调用，验证第 4 个参数是 dryRun
-      expect(notificationSenderService.sendToGroup).toHaveBeenCalled();
-      const sendDryRunArg =
-        notificationSenderService.sendToGroup.mock.calls[0][3];
-      expect(sendDryRunArg).toBe(true);
+      expect(notificationSenderService.reportToFeishu).toHaveBeenCalledTimes(1);
+      expect(notificationSenderService.reportToFeishu.mock.calls[0][1]).toBe(false);
+    });
+
+    it('should pass dryRun=true when not forced and config.dryRun=true', async () => {
+      const dryRunConfig = {
+        ...DEFAULT_GROUP_TASK_CONFIG,
+        enabled: true,
+        dryRun: true,
+      };
+      systemConfigService.getConfigValue.mockResolvedValue(dryRunConfig);
+
+      const mockGroup = {
+        imRoomId: 'room-1',
+        groupName: '测试群',
+        city: '上海',
+        tag: '抢单群',
+        imBotId: 'bot-1',
+        token: 'token-1',
+        chatId: 'chat-1',
+      };
+      groupResolverService.resolveGroups.mockResolvedValue([mockGroup]);
+      (mockStrategy.fetchData as jest.Mock).mockResolvedValue({
+        hasData: true,
+        payload: { orders: [] },
+        summary: '测试',
+      });
+      (mockStrategy.buildMessage as jest.Mock).mockReturnValue('test message');
+
+      await service.executeTask(mockStrategy, false);
+
+      // force=false, config.dryRun=true → 传递 dryRun=true
+      expect(notificationSenderService.sendToGroup).toHaveBeenCalledTimes(1);
+      expect(notificationSenderService.sendToGroup.mock.calls[0][3]).toBe(true);
+
+      expect(notificationSenderService.reportToFeishu).toHaveBeenCalledTimes(1);
+      expect(notificationSenderService.reportToFeishu.mock.calls[0][1]).toBe(true);
     });
   });
 });

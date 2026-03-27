@@ -23,7 +23,10 @@ export class StoreManagerStrategy implements NotificationStrategy {
 
   async fetchData(context: GroupContext): Promise<NotificationData> {
     const today = new Date();
-    const dateStr = today.toISOString().split('T')[0];
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    const dateStr = `${y}-${m}-${d}`;
 
     const interviews = await this.spongeService.fetchInterviewSchedule({
       date: dateStr,

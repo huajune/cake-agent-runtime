@@ -1,9 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { AgentReplyConfig, DEFAULT_AGENT_REPLY_CONFIG } from '../types/hosting-config.types';
 import { SystemConfigService } from './system-config.service';
 import { GroupBlacklistService } from './group-blacklist.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
-import { GroupTaskConfig, DEFAULT_GROUP_TASK_CONFIG } from '@biz/group-task/group-task.types';
+import { GroupTaskConfig } from '@biz/group-task/group-task.types';
+import { GroupTaskSchedulerService } from '@biz/group-task/services/group-task-scheduler.service';
 
 /**
  * 系统配置门面服务
@@ -20,6 +21,8 @@ export class HostingConfigFacadeService {
     private readonly systemConfigService: SystemConfigService,
     private readonly groupBlacklistService: GroupBlacklistService,
     private readonly userHostingService: UserHostingService,
+    @Inject(forwardRef(() => GroupTaskSchedulerService))
+    private readonly groupTaskScheduler: GroupTaskSchedulerService,
   ) {}
 
   // ==================== 运行时开关 ====================
@@ -52,15 +55,11 @@ export class HostingConfigFacadeService {
     groupTaskConfig: GroupTaskConfig;
   }> {
     const config = await this.systemConfigService.getAgentReplyConfig();
-    const groupTask =
-      await this.systemConfigService.getConfigValue<GroupTaskConfig>('group_task_config');
+    const groupTaskConfig = await this.groupTaskScheduler.getConfig();
     return {
       config,
       defaults: DEFAULT_AGENT_REPLY_CONFIG,
-      groupTaskConfig: {
-        enabled: groupTask?.enabled ?? DEFAULT_GROUP_TASK_CONFIG.enabled,
-        dryRun: groupTask?.dryRun ?? DEFAULT_GROUP_TASK_CONFIG.dryRun,
-      },
+      groupTaskConfig,
     };
   }
 
@@ -73,16 +72,7 @@ export class HostingConfigFacadeService {
   }
 
   async updateGroupTaskConfig(partial: Partial<GroupTaskConfig>): Promise<GroupTaskConfig> {
-    const stored =
-      await this.systemConfigService.getConfigValue<GroupTaskConfig>('group_task_config');
-    const current: GroupTaskConfig = {
-      enabled: stored?.enabled ?? DEFAULT_GROUP_TASK_CONFIG.enabled,
-      dryRun: stored?.dryRun ?? DEFAULT_GROUP_TASK_CONFIG.dryRun,
-    };
-    const updated = { ...current, ...partial };
-    this.logger.log(`更新群任务配置: ${JSON.stringify(updated)}`);
-    await this.systemConfigService.setConfigValue('group_task_config', updated, '群任务通知配置');
-    return updated;
+    return this.groupTaskScheduler.updateConfig(partial);
   }
 
   async resetAgentReplyConfig(): Promise<{ config: AgentReplyConfig; message: string }> {

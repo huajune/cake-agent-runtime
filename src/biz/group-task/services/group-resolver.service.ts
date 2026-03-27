@@ -50,8 +50,11 @@ export class GroupResolverService implements OnModuleInit {
     const raw = this.configService.get<string>('GROUP_TASK_TOKENS', '');
     this.groupTokenMap = {};
     for (const pair of raw.split(',').filter(Boolean)) {
-      const [name, token] = pair.split(':');
-      if (name && token) this.groupTokenMap[name.trim()] = token.trim();
+      const colonIdx = pair.indexOf(':');
+      if (colonIdx === -1) continue;
+      const name = pair.slice(0, colonIdx).trim();
+      const token = pair.slice(colonIdx + 1).trim();
+      if (name && token) this.groupTokenMap[name] = token;
     }
   }
 

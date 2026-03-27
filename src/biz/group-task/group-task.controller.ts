@@ -21,8 +21,7 @@ export class GroupTaskController {
    * POST /group-task/trigger/:type
    * type: order_grab | part_time | store_manager | work_tips
    *
-   * force=true 绕过 enabled 开关（即使定时任务关闭也能执行），
-   * 但仍遵守 DB 中的 dryRun 设置（试运行时只发飞书不发企微）。
+   * force=true 绕过 enabled 开关和 dryRun 设置，直接发送真实消息。
    */
   @Post('trigger/:type')
   async trigger(@Param('type') type: string) {
