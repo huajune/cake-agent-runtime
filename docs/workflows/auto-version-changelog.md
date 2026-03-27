@@ -37,9 +37,10 @@
     - fix: → 补丁版本 +1 (1.0.0 → 1.0.1)
 4️⃣ 更新 package.json 版本号
 5️⃣ 生成 CHANGELOG.md 条目
-6️⃣ 提交更改到 master 分支
+6️⃣ 直接提交 release commit 到 master 分支
 7️⃣ 创建 Git Tag (例如 v1.2.3)
-8️⃣ 自动合并到 develop 分支
+8️⃣ 由该 tag 触发生产部署
+9️⃣ 自动同步到 develop 分支
 ```
 
 ### 关键配置

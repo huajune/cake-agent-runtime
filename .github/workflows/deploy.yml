@@ -2,8 +2,8 @@ name: Build and Deploy
 
 on:
   push:
-    branches:
-      - master
+    tags:
+      - 'v*'
 
 jobs:
   # 1. 先跑测试，防止坏代码直接上线
@@ -37,6 +37,9 @@ jobs:
         run: pnpm exec tsc --noEmit
 
       - name: Build
+        run: pnpm run build:web
+
+      - name: Build backend
         run: pnpm run build
 
       - name: Unit tests
@@ -48,9 +51,6 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
 
-    env:
-      VITE_API_GUARD_TOKEN: ${{ secrets.VITE_API_GUARD_TOKEN }}
-
     steps:
       - name: Deploy on server
         uses: appleboy/ssh-action@v1
@@ -60,65 +60,43 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           passphrase: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
-          envs: VITE_API_GUARD_TOKEN
           command_timeout: 15m
           script: |
             set -euo pipefail
+            IMAGE_NAME="cake-agent-runtime"
+            RELEASE_TAG="${{ github.ref_name }}"
+            IMAGE_TAG="$RELEASE_TAG"
             cd /data/cake
 
-            # 备份当前镜像用于回滚
-            if docker images cake-agent-runtime:latest --format '{{.ID}}' | grep -q .; then
-              docker tag cake-agent-runtime:latest cake-agent-runtime:previous
-              echo "Backed up current image as cake-agent-runtime:previous"
-            fi
-
-            # 拉取最新代码
             if [ -d source/.git ]; then
-              cd source && git fetch --depth 1 origin master && git reset --hard origin/master && cd ..
+              cd source
+              git fetch --depth 1 origin "refs/tags/${RELEASE_TAG}"
+              git checkout --detach FETCH_HEAD
+              cd ..
             else
               rm -rf source
-              git clone --depth 1 --branch master https://github.com/${{ github.repository }}.git source
+              git clone --depth 1 https://github.com/${{ github.repository }}.git source
+              cd source
+              git fetch --depth 1 origin "refs/tags/${RELEASE_TAG}"
+              git checkout --detach FETCH_HEAD
+              cd ..
             fi
 
-            # 同步部署配置（保持 docker-compose.yml 与代码一致）
-            cp source/docker-compose.yml docker-compose.yml
-
-            # 在服务器上构建镜像
-            docker build \
-              --build-arg VITE_API_GUARD_TOKEN="${VITE_API_GUARD_TOKEN}" \
-              -t cake-agent-runtime:latest ./source
-
-            # 启动新容器
-            docker compose up -d
-
-            # 健康检查（最多等 60 秒）
-            HEALTH_PORT=$(grep -E '^PORT=' .env.prod 2>/dev/null | cut -d= -f2 || echo 8585)
-            echo "Waiting for health check on port ${HEALTH_PORT}..."
-            HEALTHY=false
-            for i in $(seq 1 12); do
-              sleep 5
-              if curl -sf "http://localhost:${HEALTH_PORT}/agent/health" | grep -q '"status":"healthy"'; then
-                HEALTHY=true
-                echo "Health check passed after $((i*5))s"
-                break
-              fi
-              echo "Attempt $i/12: not healthy yet..."
-            done
-
-            if [ "$HEALTHY" = false ]; then
-              echo "Health check failed! Rolling back..."
-              if docker images cake-agent-runtime:previous --format '{{.ID}}' | grep -q .; then
-                docker tag cake-agent-runtime:previous cake-agent-runtime:latest
-                docker compose up -d
-                echo "Rolled back to previous version"
-              fi
+            API_GUARD_TOKEN="$(sed -n 's/^API_GUARD_TOKEN=//p' .env.production | head -n1)"
+            if [ -z "$API_GUARD_TOKEN" ]; then
+              echo "API_GUARD_TOKEN not found in /data/cake/.env.production"
               exit 1
             fi
 
-            # 部署成功，清理旧镜像
-            docker rmi cake-agent-runtime:previous 2>/dev/null || true
-            docker image prune -f
-            echo "Deploy successful!"
+            chmod +x source/scripts/deploy-remote.sh
+            source/scripts/deploy-remote.sh \
+              --mode build \
+              --image-name "$IMAGE_NAME" \
+              --image-tag "$IMAGE_TAG" \
+              --workdir /data/cake \
+              --compose-source /data/cake/source/docker-compose.yml \
+              --source-dir /data/cake/source \
+              --api-guard-token "$API_GUARD_TOKEN"
 
   # 3. 飞书通知
   notify:
@@ -133,15 +111,16 @@ jobs:
           DEPLOY_RESULT: ${{ needs.deploy.result }}
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          RELEASE_TAG="${{ github.ref_name }}"
 
           if [ "$DEPLOY_RESULT" = "success" ]; then
             TITLE="✅ 部署成功"
             COLOR="green"
-            CONTENT="提交 ${SHORT_SHA} 已部署到生产服务器"
+            CONTENT="版本 ${RELEASE_TAG}（${SHORT_SHA}）已部署到生产服务器"
           else
             TITLE="❌ 部署失败"
             COLOR="red"
-            CONTENT="提交 ${SHORT_SHA} 部署失败，请检查 GitHub Actions 日志"
+            CONTENT="版本 ${RELEASE_TAG}（${SHORT_SHA}）部署失败，请检查 GitHub Actions 日志"
           fi
 
           curl -s -X POST "$FEISHU_WEBHOOK" \

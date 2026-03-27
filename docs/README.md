@@ -141,7 +141,7 @@ docs/
 
 **系统特性**：
 
-- ✅ 推送到 develop/main/master 自动触发
+- ✅ 合并到 `master` 后自动更新版本并创建 release tag
 - ✅ 根据 commits 智能判断版本类型
 - ✅ 自动更新 package.json 和 CHANGELOG.md
 - ✅ 支持 Conventional Commits 规范
@@ -169,14 +169,14 @@ docs: 更新文档        # 修订号 +1
 - ✅ 使用 Claude Code CLI 提供专业建议
 
 - **[构建与部署指南](workflows/deploy-guide.md)**
-  - 🚀 push to master → test → 服务器 git pull + docker build → 健康检查 → 飞书通知
+  - 🚀 release tag → test → 服务器按 tag 构建部署 → 健康检查 → 飞书通知
   - 本地手动部署（`pnpm run deploy`）
   - 自动回滚机制和排查指南
   - **更新日期**：2026-03-25
 
 **部署流程**：
 
-- ✅ CI 测试通过后 SSH 到服务器拉取源码并构建
+- ✅ 版本 tag 触发后 SSH 到服务器拉取对应 tag 源码并构建
 - ✅ 健康检查失败自动回滚到上一版本
 - ✅ 飞书通知部署结果
 
