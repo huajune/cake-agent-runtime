@@ -19,6 +19,8 @@ export class SpongeBiService {
   /** BI token 缓存 */
   private biToken: string | null = null;
   private biTokenExpiry = 0;
+  /** 防止并发登录创建多个 session */
+  private tokenPromise: Promise<string> | null = null;
 
   private readonly biBaseUrl: string;
   private readonly biCardId: string;
@@ -258,6 +260,17 @@ export class SpongeBiService {
       return this.biToken;
     }
 
+    // 防止并发请求同时发起登录
+    if (this.tokenPromise) return this.tokenPromise;
+    this.tokenPromise = this.doGetBIToken(loginId, password);
+    try {
+      return await this.tokenPromise;
+    } finally {
+      this.tokenPromise = null;
+    }
+  }
+
+  private async doGetBIToken(loginId: string, password: string): Promise<string> {
     const resp = await fetch(`${this.biBaseUrl}/sign-in`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

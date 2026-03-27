@@ -39,6 +39,8 @@ export class GroupResolverService implements OnModuleInit {
   private cachedGroups: GroupContext[] = [];
   private cacheExpiry = 0;
   private readonly cacheTtlMs = 10 * 60 * 1000; // 10 分钟
+  /** 防止并发 fetch 导致缓存 stampede */
+  private fetchPromise: Promise<GroupContext[]> | null = null;
 
   constructor(
     private readonly configService: ConfigService,
@@ -107,6 +109,17 @@ export class GroupResolverService implements OnModuleInit {
       return this.cachedGroups;
     }
 
+    // 防止并发请求同时触发 fetch
+    if (this.fetchPromise) return this.fetchPromise;
+    this.fetchPromise = this.doFetchAllGroups();
+    try {
+      return await this.fetchPromise;
+    } finally {
+      this.fetchPromise = null;
+    }
+  }
+
+  private async doFetchAllGroups(): Promise<GroupContext[]> {
     const tokens = Object.values(this.groupTokenMap);
     if (tokens.length === 0) {
       this.logger.error('GROUP_TASK_TOKENS 为空，无法获取群列表');

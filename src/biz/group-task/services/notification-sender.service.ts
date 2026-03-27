@@ -36,14 +36,8 @@ export class NotificationSenderService {
     private readonly messageSenderService: MessageSenderService,
     private readonly webhookService: FeishuWebhookService,
   ) {
-    this.miniprogramAppid = this.configService.get<string>(
-      'MINIPROGRAM_APPID',
-      'wx0703d5b561bca48c',
-    );
-    this.miniprogramUsername = this.configService.get<string>(
-      'MINIPROGRAM_USERNAME',
-      'gh_55e19c5164da',
-    );
+    this.miniprogramAppid = this.configService.get<string>('MINIPROGRAM_APPID', '');
+    this.miniprogramUsername = this.configService.get<string>('MINIPROGRAM_USERNAME', '');
     this.miniprogramThumbUrl = this.configService.get<string>('MINIPROGRAM_THUMB_URL', '');
   }
 

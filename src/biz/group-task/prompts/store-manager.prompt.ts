@@ -23,6 +23,12 @@ interface StoreManagerTemplateData {
   date: string;
 }
 
+/** 手机号脱敏：131xxxx1162 → 131****1162 */
+function maskPhone(phone: string): string {
+  if (!phone || phone.length < 7) return phone;
+  return phone.slice(0, 3) + '****' + phone.slice(-4);
+}
+
 /**
  * 生成店长群通知消息（模板拼装）
  */
@@ -41,7 +47,7 @@ export function buildStoreManagerMessage(data: StoreManagerTemplateData): string
   for (const item of interviews) {
     lines.push('━━━━━━━━━━━━━━━━━━━━━━━━');
     lines.push(`姓名：${item.name}`);
-    lines.push(`电话：${item.phone}`);
+    lines.push(`电话：${maskPhone(item.phone)}`);
     lines.push(`面试岗位：${item.jobName}`);
     lines.push(`面试时间：${item.interviewTime}`);
   }

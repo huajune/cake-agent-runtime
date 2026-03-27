@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { NotificationStrategy } from './notification.strategy';
 import { GroupTaskType, GroupContext, NotificationData } from '../group-task.types';
 import { WORK_TIPS_SYSTEM_PROMPT, buildWorkTipsUserMessage } from '../prompts/work-tips.prompt';
@@ -23,12 +23,15 @@ function getISOWeekNumber(date: Date): number {
  */
 @Injectable()
 export class WorkTipsStrategy implements NotificationStrategy {
+  private readonly logger = new Logger(WorkTipsStrategy.name);
+
   readonly type = GroupTaskType.WORK_TIPS;
   readonly tagPrefix = '兼职群';
   readonly needsAI = true;
 
   async fetchData(context: GroupContext): Promise<NotificationData> {
     const weekNumber = getISOWeekNumber(new Date());
+    this.logger.log(`[工作小贴士] ${context.industry || '餐饮'} 第${weekNumber}周`);
     return {
       hasData: true,
       payload: { industry: context.industry || '餐饮', weekNumber },

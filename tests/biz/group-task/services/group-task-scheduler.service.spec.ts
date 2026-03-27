@@ -180,31 +180,35 @@ describe('GroupTaskSchedulerService', () => {
       systemConfigService.getConfigValue.mockResolvedValue(dryRunConfig);
 
       const mockGroup = {
-        roomId: 'room-1',
-        brandName: 'TestBrand',
-        tags: ['抢单群'],
+        imRoomId: 'room-1',
+        groupName: '测试群',
+        city: '上海',
+        tag: '抢单群',
+        imBotId: 'bot-1',
+        token: 'token-1',
+        chatId: 'chat-1',
       };
-      groupResolverService.resolveGroups.mockResolvedValue([
-        mockGroup as never,
-      ]);
-      (mockStrategy.fetchData as jest.Mock).mockResolvedValue(['data']);
-      (mockStrategy.buildMessage as jest.Mock).mockResolvedValue(
-        'test message',
-      );
+      groupResolverService.resolveGroups.mockResolvedValue([mockGroup]);
+      (mockStrategy.fetchData as jest.Mock).mockResolvedValue({
+        hasData: true,
+        payload: { orders: [] },
+        summary: '测试',
+      });
+      (mockStrategy.buildMessage as jest.Mock).mockReturnValue('test message');
 
       await service.executeTask(mockStrategy, true);
 
-      if (notificationSenderService.sendToGroup.mock.calls.length > 0) {
-        const dryRunArg =
-          notificationSenderService.sendToGroup.mock.calls[0][3];
-        expect(dryRunArg).toBe(true);
-      }
+      // reportToFeishu 一定会被调用，验证 dryRun 参数
+      expect(notificationSenderService.reportToFeishu).toHaveBeenCalled();
+      const reportDryRunArg =
+        notificationSenderService.reportToFeishu.mock.calls[0][1];
+      expect(reportDryRunArg).toBe(true);
 
-      if (notificationSenderService.reportToFeishu.mock.calls.length > 0) {
-        const reportDryRunArg =
-          notificationSenderService.reportToFeishu.mock.calls[0][1];
-        expect(reportDryRunArg).toBe(true);
-      }
+      // sendToGroup 也应被调用，验证第 4 个参数是 dryRun
+      expect(notificationSenderService.sendToGroup).toHaveBeenCalled();
+      const sendDryRunArg =
+        notificationSenderService.sendToGroup.mock.calls[0][3];
+      expect(sendDryRunArg).toBe(true);
     });
   });
 });

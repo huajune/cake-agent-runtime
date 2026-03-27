@@ -3,6 +3,7 @@ import { HttpException, HttpStatus } from '@nestjs/common';
 import { GroupTaskController } from '@biz/group-task/group-task.controller';
 import { GroupTaskSchedulerService } from '@biz/group-task/services/group-task-scheduler.service';
 import { GroupTaskType } from '@biz/group-task/group-task.types';
+import { ApiTokenGuard } from '@infra/server/guards/api-token.guard';
 
 describe('GroupTaskController', () => {
   let controller: GroupTaskController;
@@ -22,7 +23,10 @@ describe('GroupTaskController', () => {
           useValue: mockSchedulerService as unknown as GroupTaskSchedulerService,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(ApiTokenGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<GroupTaskController>(GroupTaskController);
   });

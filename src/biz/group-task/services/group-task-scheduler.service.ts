@@ -83,17 +83,6 @@ export class GroupTaskSchedulerService implements OnModuleInit {
     return (await this.getConfig()).dryRun;
   }
 
-  /**
-   * 更新群任务配置（合并写入）
-   */
-  async updateConfig(partial: Partial<GroupTaskConfig>): Promise<GroupTaskConfig> {
-    const current = await this.getConfig();
-    const updated = { ...current, ...partial };
-    await this.systemConfigService.setConfigValue(CONFIG_KEY, updated, '群任务通知配置');
-    this.logger.log(`群任务配置已更新: enabled=${updated.enabled}, dryRun=${updated.dryRun}`);
-    return updated;
-  }
-
   // ==================== Cron 调度 ====================
 
   /** 抢单群 — 上午场 10:00 */
