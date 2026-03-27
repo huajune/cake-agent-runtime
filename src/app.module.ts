@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { HttpModule } from './infra/client-http/http.module';
 import { RedisModule } from './infra/redis/redis.module';
+import { GeocodingModule } from './infra/geocoding/geocoding.module';
 import { SupabaseModule } from '@infra/supabase/supabase.module';
 import { LoggerModule } from './infra/logger/logger.module';
 import { FeishuModule } from './infra/feishu/feishu.module';
@@ -51,6 +52,7 @@ import { ApiTokenGuard } from './infra/server/guards/api-token.guard';
     // ==================== 核心层 (Core Layer) ====================
     HttpModule,
     RedisModule,
+    GeocodingModule,
     SupabaseModule,
     FeishuModule,
     LoggerModule,

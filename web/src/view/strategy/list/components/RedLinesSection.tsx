@@ -100,7 +100,7 @@ export default function RedLinesSection({ config }: Props) {
     const currentTexts = getRulesTexts(itemsRef.current);
     const dirty = currentTexts.some((r, i) => r !== savedRef.current[i]);
     if (!dirty) return;
-    updateMutation.mutate({ rules: currentTexts, riskScenarios: config.red_lines.riskScenarios });
+    updateMutation.mutate({ rules: currentTexts, thresholds: config.red_lines.thresholds });
   };
 
   const [confirmingIndex, setConfirmingIndex] = useState<number | null>(null);
@@ -123,9 +123,9 @@ export default function RedLinesSection({ config }: Props) {
       const updated = items.filter((_, i) => i !== index);
       setItems(updated);
       itemsRef.current = updated;
-      updateMutation.mutate({ rules: getRulesTexts(updated), riskScenarios: config.red_lines.riskScenarios });
+      updateMutation.mutate({ rules: getRulesTexts(updated), thresholds: config.red_lines.thresholds });
     },
-    [confirmingIndex, items, updateMutation, config.red_lines.riskScenarios],
+    [confirmingIndex, items, updateMutation, config.red_lines.thresholds],
   );
 
   const handleAdd = () => {
@@ -136,7 +136,7 @@ export default function RedLinesSection({ config }: Props) {
     setItems(updated);
     itemsRef.current = updated;
     setNewRule('');
-    updateMutation.mutate({ rules: getRulesTexts(updated), riskScenarios: config.red_lines.riskScenarios });
+    updateMutation.mutate({ rules: getRulesTexts(updated), thresholds: config.red_lines.thresholds });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -157,7 +157,7 @@ export default function RedLinesSection({ config }: Props) {
 
     setItems(reordered);
     itemsRef.current = reordered;
-    updateMutation.mutate({ rules: getRulesTexts(reordered), riskScenarios: config.red_lines.riskScenarios });
+    updateMutation.mutate({ rules: getRulesTexts(reordered), thresholds: config.red_lines.thresholds });
   };
 
   return (

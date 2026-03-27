@@ -1,0 +1,342 @@
+@use '@/assets/styles/variables' as *;
+
+// ==================== 动画 ====================
+
+@keyframes dotPulse {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes statusGlow {
+  0%, 100% { box-shadow: 0 0 0 0 currentColor; }
+  50% { box-shadow: 0 0 0 3px transparent; }
+}
+
+// ==================== 外层面板 ====================
+
+.panel {
+  padding: $spacing-md;
+  background: $bg-secondary;
+  border-radius: $radius-lg;
+  border: 1px solid $border;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+// ==================== Toggle 行 ====================
+
+.toggleRow {
+  @include flex-between;
+  gap: $spacing-md;
+  padding: $spacing-sm 0;
+}
+
+.toggleInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.toggleTitleRow {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+}
+
+.toggleLabel {
+  font-weight: $font-weight-semibold;
+  color: $text-primary;
+  font-size: $font-size-sm;
+  white-space: nowrap;
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: $radius-full;
+  font-size: 11px;
+  font-weight: $font-weight-medium;
+  transition: all $transition-normal;
+}
+
+.statusDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.statusOn {
+  color: $success;
+  background: $success-soft;
+}
+
+.statusOff {
+  color: $text-muted;
+  background: $bg-primary;
+}
+
+.statusWarning {
+  color: $warning;
+  background: $warning-soft;
+}
+
+.toggleDescription {
+  font-size: $font-size-xs;
+  color: $text-muted;
+  line-height: $line-height-relaxed;
+}
+
+// ==================== Switch 开关 ====================
+
+.switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  cursor: pointer;
+
+  input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+
+    &:checked ~ .switchTrack {
+      background: $primary;
+      border-color: $primary;
+
+      .switchThumb {
+        transform: translateX(18px);
+        box-shadow: 0 2px 6px $primary-30;
+      }
+    }
+  }
+}
+
+.switchDisabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+
+  input {
+    cursor: not-allowed;
+  }
+}
+
+.switchTrack {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  background: $border;
+  border: 1px solid $border-hover;
+  border-radius: $radius-full;
+  transition: background $transition-normal, border-color $transition-normal;
+  display: flex;
+  align-items: center;
+}
+
+.switchThumb {
+  position: absolute;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  background: $bg-primary;
+  border-radius: 50%;
+  box-shadow: $shadow-sm;
+  transition: transform $transition-normal, box-shadow $transition-normal;
+}
+
+// ==================== 分隔线 ====================
+
+.divider {
+  height: 1px;
+  background: $border;
+  margin: $spacing-xs 0;
+}
+
+// ==================== 手动触发区域 ====================
+
+.triggerSection {
+  padding-top: $spacing-sm;
+}
+
+.triggerHeader {
+  @include flex-between;
+  margin-bottom: $spacing-sm;
+}
+
+.triggerSectionLabel {
+  font-weight: $font-weight-semibold;
+  color: $text-primary;
+  font-size: $font-size-sm;
+}
+
+.triggerHint {
+  font-size: 11px;
+  color: $text-muted;
+}
+
+.triggerGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: $spacing-sm;
+}
+
+// ==================== 触发卡片按钮 ====================
+
+.triggerCard {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  padding: 10px $spacing-sm;
+  border: 1px solid $border;
+  border-radius: $radius-lg;
+  background: $bg-primary;
+  cursor: pointer;
+  transition: all $transition-normal;
+  text-align: left;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+
+  // 左侧高亮条（hover 时显示）
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 20%;
+    bottom: 20%;
+    width: 0;
+    background: $gradient-primary;
+    border-radius: 0 2px 2px 0;
+    transition: width $transition-normal;
+  }
+
+  &:hover:not(:disabled) {
+    border-color: $primary-20;
+    background: $gradient-hover;
+    box-shadow: 0 4px 12px $primary-10;
+    transform: translateY(-1px);
+
+    &::before {
+      width: 3px;
+    }
+
+    .triggerIconWrap {
+      background: $primary-10;
+      transform: scale(1.08);
+    }
+
+    .triggerName {
+      color: $primary;
+    }
+
+    .triggerArrow {
+      opacity: 1;
+      transform: translateX(2px);
+    }
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: none;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.triggerIconWrap {
+  width: 32px;
+  height: 32px;
+  border-radius: $radius-md;
+  background: $bg-secondary;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background $transition-normal, transform $transition-normal;
+}
+
+.triggerIcon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.triggerContent {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.triggerName {
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  color: $text-primary;
+  transition: color $transition-normal;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.triggerDesc {
+  font-size: 11px;
+  color: $text-muted;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.triggerArrow {
+  font-size: $font-size-base;
+  color: $text-muted;
+  opacity: 0;
+  transition: opacity $transition-normal, transform $transition-normal;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+// ==================== 加载状态 ====================
+
+.loadingState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: $spacing-sm;
+  padding: $spacing-xl;
+}
+
+.loadingDots {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+
+  span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: $primary;
+    animation: dotPulse 1.4s ease-in-out infinite;
+
+    &:nth-child(1) { animation-delay: 0s; }
+    &:nth-child(2) { animation-delay: 0.2s; }
+    &:nth-child(3) { animation-delay: 0.4s; }
+  }
+}
+
+.loadingText {
+  font-size: $font-size-xs;
+  color: $text-muted;
+}

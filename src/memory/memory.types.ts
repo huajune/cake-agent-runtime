@@ -144,6 +144,7 @@ export interface RecommendedJobSummary {
   laborForm: string | null;
   salaryDesc: string | null;
   jobCategoryName: string | null;
+  distanceKm?: number | null;
 }
 
 /** 会话记忆状态 — facts 类别的完整结构 */

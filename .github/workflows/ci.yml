@@ -54,6 +54,8 @@ jobs:
 
       - name: Build
         run: pnpm run build
+        env:
+          VITE_API_GUARD_TOKEN: ${{ secrets.VITE_API_GUARD_TOKEN }}
 
       - name: Unit tests with coverage
         run: pnpm run test:cov

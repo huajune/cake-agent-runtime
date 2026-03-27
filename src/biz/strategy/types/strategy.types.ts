@@ -42,21 +42,25 @@ export interface StrategyStageGoals {
 
 // ==================== 红线规则 ====================
 
-export interface RiskScenario {
-  /** 风险标识 */
+export interface Threshold {
+  /** 阈值标识（如 'max_recommend_distance_km'） */
   flag: string;
-  /** 显示名称 */
+  /** 显示名称（运营可见） */
   label: string;
-  /** 识别信号描述 */
-  signals: string;
-  /** 应对策略 */
-  strategy: string;
+  /** 规则描述（隐藏，注入 prompt） */
+  rule: string;
+  /** 最小值 */
+  min?: number;
+  /** 最大值 */
+  max?: number;
+  /** 单位（如 'km'、'岁'） */
+  unit?: string;
 }
 
 export interface StrategyRedLines {
   rules: string[];
-  /** 风险场景定义（运营可配） */
-  riskScenarios?: RiskScenario[];
+  /** 业务阈值定义（运营可配） */
+  thresholds?: Threshold[];
 }
 
 // ==================== 角色设定 ====================

@@ -7,11 +7,17 @@ import {
   InterviewBookingResult,
   BrandItem,
   RawBrandItem,
+  InterviewScheduleParams,
+  InterviewScheduleItem,
+  BIOrderQueryParams,
+  BIOrder,
 } from './sponge.types';
+import { SpongeBiService } from './sponge-bi.service';
 
 const JOB_LIST_API = 'https://k8s.duliday.com/persistence/ai/api/job/list';
 const BRAND_LIST_API = 'https://k8s.duliday.com/persistence/ai/api/brand/list';
 const INTERVIEW_BOOKING_API = 'https://k8s.duliday.com/persistence/a/supplier/entryUser';
+const INTERVIEW_SCHEDULE_API = 'https://k8s.duliday.com/persistence/ai/api/interview/schedule';
 
 const DEFAULT_PAGE_NUM = 1;
 const DEFAULT_PAGE_SIZE = 20;
@@ -23,13 +29,17 @@ const DEFAULT_SORT_FIELD = 'create_time';
  *
  * 负责调用海绵平台 API（岗位查询、面试预约等）。
  * Token 通过 ConfigService 内部管理，工具层无需关心认证。
+ * BI 相关功能委托给 SpongeBiService。
  */
 @Injectable()
 export class SpongeService {
   private readonly logger = new Logger(SpongeService.name);
   private readonly token: string;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly biService: SpongeBiService,
+  ) {
     this.token = this.configService.get<string>('DULIDAY_API_TOKEN', '');
   }
 
@@ -171,6 +181,69 @@ export class SpongeService {
     } catch (err) {
       this.logger.warn('品牌列表获取失败，降级为空列表', err);
       return [];
+    }
+  }
+
+  // ==================== 观远BI（委托 SpongeBiService）====================
+
+  async fetchBIOrders(params: BIOrderQueryParams): Promise<BIOrder[]> {
+    return this.biService.fetchBIOrders(params);
+  }
+
+  async refreshBIDataSource(): Promise<boolean> {
+    return this.biService.refreshBIDataSource();
+  }
+
+  // ==================== 海绵面试名单 ====================
+
+  /**
+   * 获取面试名单
+   *
+   * POST /persistence/ai/api/interview/schedule
+   * 认证方式与岗位接口一致（Duliday-Token）
+   */
+  async fetchInterviewSchedule(params: InterviewScheduleParams): Promise<InterviewScheduleItem[]> {
+    if (!this.token) {
+      this.logger.warn('缺少 DULIDAY_API_TOKEN，面试名单不可用');
+      return [];
+    }
+
+    try {
+      const requestBody: Record<string, unknown> = {
+        date: params.date,
+        pageNum: params.pageNum ?? 1,
+        pageSize: params.pageSize ?? 100,
+        queryParam: {
+          ...(params.cityName && { cityName: params.cityName }),
+          ...(params.brandName && { brandName: params.brandName }),
+          ...(params.storeId && { storeId: params.storeId }),
+        },
+      };
+
+      const response = await fetch(INTERVIEW_SCHEDULE_API, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Duliday-Token': this.token,
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API请求失败: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      if (data.code !== 0) {
+        this.logger.warn('面试名单查询返回非零: ' + (data.message || data.code));
+        return [];
+      }
+
+      return (data.data?.result as InterviewScheduleItem[]) || [];
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`获取面试名单失败: ${message}`);
+      throw new Error(`面试名单获取失败: ${message}`);
     }
   }
 }

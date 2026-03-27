@@ -11,6 +11,10 @@ describe('HostingConfigFacadeService', () => {
   const mockSystemConfigService = {
     getAgentReplyConfig: jest.fn(),
     setAgentReplyConfig: jest.fn(),
+    getGroupTaskConfig: jest.fn(),
+    updateGroupTaskConfig: jest.fn(),
+    getConfigValue: jest.fn(),
+    setConfigValue: jest.fn(),
   };
 
   const mockGroupBlacklistService = {
@@ -50,20 +54,24 @@ describe('HostingConfigFacadeService', () => {
     it('should return config and defaults', async () => {
       const mockConfig = { ...DEFAULT_AGENT_REPLY_CONFIG, maxMergedMessages: 5 };
       mockSystemConfigService.getAgentReplyConfig.mockResolvedValue(mockConfig);
+      mockSystemConfigService.getGroupTaskConfig.mockResolvedValue({ enabled: false, dryRun: true });
 
       const result = await service.getAgentReplyConfig();
 
       expect(result.config).toEqual(mockConfig);
       expect(result.defaults).toEqual(DEFAULT_AGENT_REPLY_CONFIG);
+      expect(result.groupTaskConfig).toEqual({ enabled: false, dryRun: true });
       expect(mockSystemConfigService.getAgentReplyConfig).toHaveBeenCalledTimes(1);
     });
 
-    it('should pass through the config from systemConfigService', async () => {
+    it('should pass through the group task config from systemConfigService', async () => {
       mockSystemConfigService.getAgentReplyConfig.mockResolvedValue(DEFAULT_AGENT_REPLY_CONFIG);
+      mockSystemConfigService.getGroupTaskConfig.mockResolvedValue({ enabled: true, dryRun: false });
 
       const result = await service.getAgentReplyConfig();
 
       expect(result.defaults).toBe(DEFAULT_AGENT_REPLY_CONFIG);
+      expect(result.groupTaskConfig).toEqual({ enabled: true, dryRun: false });
     });
   });
 
