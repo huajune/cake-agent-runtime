@@ -14,6 +14,7 @@ import type { AgentReplyConfig } from '@/api/types/config.types';
 import ControlBar from './components/ControlBar';
 import { NumberCard, BooleanCard, ConfigMeta } from './components/ConfigCard';
 import WorkerPanel from './components/WorkerPanel';
+import GroupTaskPanel from './components/GroupTaskPanel';
 
 // 样式导入
 import styles from './styles/index.module.scss';
@@ -141,7 +142,7 @@ export default function Config() {
     <div className={styles.page}>
       {/* 顶部控制栏 */}
       <ControlBar
-        title="消息处理配置"
+        title="通知/消息配置"
         icon="⚙️"
         hasChanges={hasChanges}
         isPending={updateConfig.isPending}
@@ -153,6 +154,11 @@ export default function Config() {
         <div className={styles.loadingText}>加载配置中...</div>
       ) : (
         <>
+          {/* 群任务通知 */}
+          <section className={styles.categorySection}>
+            <div className={styles.categoryTitle}>群任务通知</div>
+            <GroupTaskPanel config={agentConfigData?.groupTaskConfig} />
+          </section>
           {/* 所有配置项平铺 */}
           {(['merge', 'typing'] as const).map((category) => {
             const categoryItems = configMeta.filter((m) => m.category === category);

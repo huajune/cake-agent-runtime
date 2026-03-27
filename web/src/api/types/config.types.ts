@@ -35,7 +35,13 @@ export interface AgentReplyConfig {
   errorRateCritical: number;
 }
 
+export interface GroupTaskConfig {
+  enabled: boolean;
+  dryRun: boolean;
+}
+
 export interface AgentReplyConfigResponse {
   config: AgentReplyConfig;
   defaults: AgentReplyConfig;
+  groupTaskConfig: GroupTaskConfig;
 }

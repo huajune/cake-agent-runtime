@@ -2,6 +2,7 @@ import type {
   BlacklistData,
   AgentReplyConfig,
   AgentReplyConfigResponse,
+  GroupTaskConfig,
 } from '../types/config.types';
 import { api, unwrapResponse } from '../client';
 
@@ -37,4 +38,11 @@ export async function updateAgentReplyConfig(config: Partial<AgentReplyConfig>) 
 export async function resetAgentReplyConfig() {
   const { data } = await api.post('/config/agent-config/reset');
   return unwrapResponse<{ config: AgentReplyConfig; message: string }>(data);
+}
+
+// ==================== 群任务通知配置 API ====================
+
+export async function updateGroupTaskConfig(config: Partial<GroupTaskConfig>) {
+  const { data } = await api.post('/config/group-task-config', config);
+  return unwrapResponse<{ config: GroupTaskConfig; message: string }>(data);
 }

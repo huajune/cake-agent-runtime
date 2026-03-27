@@ -6,6 +6,7 @@ import {
   AgentReplyConfig,
   DEFAULT_AGENT_REPLY_CONFIG,
 } from '../types/hosting-config.types';
+import { GroupTaskConfig, DEFAULT_GROUP_TASK_CONFIG } from '@biz/group-task/group-task.types';
 
 /**
  * 系统配置服务
@@ -343,5 +344,53 @@ export class SystemConfigService {
         this.logger.error('配置变更回调执行失败', error);
       }
     }
+  }
+
+  // ==================== 群任务配置 ====================
+
+  private static readonly GROUP_TASK_CONFIG_KEY = 'group_task_config';
+
+  /**
+   * 读取群任务配置
+   */
+  async getGroupTaskConfig(): Promise<GroupTaskConfig> {
+    const stored = await this.systemConfigRepository.getConfigValue<GroupTaskConfig>(
+      SystemConfigService.GROUP_TASK_CONFIG_KEY,
+    );
+    return {
+      enabled: stored?.enabled ?? DEFAULT_GROUP_TASK_CONFIG.enabled,
+      dryRun: stored?.dryRun ?? DEFAULT_GROUP_TASK_CONFIG.dryRun,
+    };
+  }
+
+  /**
+   * 更新群任务配置（read-merge-write）
+   */
+  async updateGroupTaskConfig(partial: Partial<GroupTaskConfig>): Promise<GroupTaskConfig> {
+    const current = await this.getGroupTaskConfig();
+    const updated = { ...current, ...partial };
+    this.logger.log(`更新群任务配置: ${JSON.stringify(updated)}`);
+    await this.systemConfigRepository.setConfigValue(
+      SystemConfigService.GROUP_TASK_CONFIG_KEY,
+      updated,
+      '群任务通知配置',
+    );
+    return updated;
+  }
+
+  // ==================== 通用配置项（供其他模块使用）====================
+
+  /**
+   * 读取指定键的配置值
+   */
+  async getConfigValue<T>(key: string): Promise<T | null> {
+    return this.systemConfigRepository.getConfigValue<T>(key);
+  }
+
+  /**
+   * 写入指定键的配置值
+   */
+  async setConfigValue(key: string, value: unknown, description?: string): Promise<void> {
+    await this.systemConfigRepository.setConfigValue(key, value, description);
   }
 }
