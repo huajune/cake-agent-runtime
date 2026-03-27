@@ -10,10 +10,7 @@ export class GroupController {
    * 访问: GET http://localhost:8080/group/list
    */
   @Get('list')
-  async getGroupList(
-    @Query('current') current?: string,
-    @Query('pageSize') pageSize?: string,
-  ) {
+  async getGroupList(@Query('current') current?: string, @Query('pageSize') pageSize?: string) {
     return await this.groupService.getGroupList({
       current: current ? parseInt(current, 10) : undefined,
       pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
