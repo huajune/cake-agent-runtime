@@ -118,3 +118,20 @@ jobs:
             --label "automated,version-update"
 
           echo "✅ 已创建PR: $BRANCH_NAME -> $CURRENT_BRANCH"
+
+      - name: Sync version changes to develop
+        if: steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          VERSION="${{ steps.check_changes.outputs.version }}"
+          BRANCH_NAME="${{ steps.create_branch.outputs.branch_name }}"
+
+          # 切回版本更新分支（包含 package.json + CHANGELOG.md 变更）
+          git checkout "$BRANCH_NAME"
+
+          # 合并到 develop
+          git fetch origin develop
+          git checkout develop
+          git merge "$BRANCH_NAME" --no-edit -m "chore: sync version $VERSION to develop [skip ci]"
+          git push origin develop
+
+          echo "✅ 已同步版本变更到 develop"
