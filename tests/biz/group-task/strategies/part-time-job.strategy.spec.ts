@@ -1,5 +1,7 @@
 import { PartTimeJobStrategy } from '@biz/group-task/strategies/part-time-job.strategy';
 import { GroupContext } from '@biz/group-task/group-task.types';
+import { SpongeService } from '@sponge/sponge.service';
+import { BrandRotationService } from '@biz/group-task/services/brand-rotation.service';
 
 describe('PartTimeJobStrategy', () => {
   let strategy: PartTimeJobStrategy;
@@ -15,7 +17,10 @@ describe('PartTimeJobStrategy', () => {
       recordPushedBrand: jest.fn(),
     };
 
-    strategy = new PartTimeJobStrategy(mockSpongeService as any, mockBrandRotation as any);
+    strategy = new PartTimeJobStrategy(
+      mockSpongeService as unknown as SpongeService,
+      mockBrandRotation as unknown as BrandRotationService,
+    );
   });
 
   const makeGroup = (overrides?: Partial<GroupContext>): GroupContext => ({

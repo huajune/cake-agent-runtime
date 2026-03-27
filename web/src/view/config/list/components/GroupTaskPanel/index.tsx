@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useUpdateGroupTaskConfig, useTriggerGroupTask } from '@/hooks/config/useGroupTask';
 import type { GroupTaskConfig } from '@/api/types/config.types';
 import styles from './index.module.scss';
@@ -65,6 +65,7 @@ function ToggleRow({
 export default function GroupTaskPanel({ config }: GroupTaskPanelProps) {
   const updateConfig = useUpdateGroupTaskConfig();
   const triggerTask = useTriggerGroupTask();
+  const [loadingType, setLoadingType] = useState<string | null>(null);
 
   const handleEnabledChange = useCallback(
     (checked: boolean) => {
@@ -118,8 +119,13 @@ export default function GroupTaskPanel({ config }: GroupTaskPanelProps) {
             <button
               key={type}
               className={styles.triggerCard}
-              disabled={triggerTask.isPending}
-              onClick={() => triggerTask.mutate(type)}
+              disabled={loadingType !== null}
+              onClick={() => {
+                setLoadingType(type);
+                triggerTask.mutate(type, {
+                  onSettled: () => setLoadingType(null),
+                });
+              }}
             >
               <span className={styles.triggerIconWrap}>
                 <span className={styles.triggerIcon}>{icon}</span>
@@ -128,7 +134,9 @@ export default function GroupTaskPanel({ config }: GroupTaskPanelProps) {
                 <span className={styles.triggerName}>{name}</span>
                 <span className={styles.triggerDesc}>{desc}</span>
               </div>
-              <span className={styles.triggerArrow}>›</span>
+              <span className={styles.triggerArrow}>
+                {loadingType === type ? '...' : '›'}
+              </span>
             </button>
           ))}
         </div>

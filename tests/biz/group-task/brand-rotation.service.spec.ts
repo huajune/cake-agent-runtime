@@ -1,4 +1,5 @@
 import { BrandRotationService } from '@biz/group-task/services/brand-rotation.service';
+import { RedisService } from '@infra/redis/redis.service';
 
 describe('BrandRotationService', () => {
   let service: BrandRotationService;
@@ -20,7 +21,7 @@ describe('BrandRotationService', () => {
     // 清空 store
     Object.keys(store).forEach((k) => delete store[k]);
 
-    service = new BrandRotationService(mockRedis as any);
+    service = new BrandRotationService(mockRedis as unknown as RedisService);
   });
 
   describe('getNextBrand', () => {

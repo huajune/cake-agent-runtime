@@ -53,8 +53,23 @@ export function useTriggerGroupTask() {
   return useMutation({
     mutationFn: (type: string) =>
       import('@/api/services/group-task.service').then((m) => m.triggerGroupTask(type)),
-    onSuccess: () => {
-      toast.success('任务已触发');
+    onSuccess: (data) => {
+      const result = data as {
+        successCount?: number;
+        failedCount?: number;
+        totalGroups?: number;
+      } | null;
+      if (result?.failedCount && result.failedCount > 0) {
+        toast.error(
+          `部分失败: ${result.successCount}/${result.totalGroups} 成功，${result.failedCount} 失败`,
+        );
+      } else {
+        toast.success(
+          result?.totalGroups
+            ? `任务完成: ${result.successCount}/${result.totalGroups} 群`
+            : '任务已触发',
+        );
+      }
     },
     onError: () => {
       toast.error('任务触发失败');

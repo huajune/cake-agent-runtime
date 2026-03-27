@@ -1,4 +1,6 @@
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
+import { ConfigService } from '@nestjs/config';
+import { RoomService } from '@channels/wecom/room/room.service';
 
 describe('GroupResolverService', () => {
   let service: GroupResolverService;
@@ -11,7 +13,10 @@ describe('GroupResolverService', () => {
       getRoomSimpleList: jest.fn(),
     };
 
-    service = new GroupResolverService(mockConfigService as any, mockRoomService as any);
+    service = new GroupResolverService(
+      mockConfigService as unknown as ConfigService,
+      mockRoomService as unknown as RoomService,
+    );
   });
 
   describe('parseLabels', () => {
