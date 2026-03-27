@@ -3,7 +3,6 @@ import { HostingConfigFacadeService } from '@biz/hosting-config/services/hosting
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
-import { GroupTaskSchedulerService } from '@biz/group-task/services/group-task-scheduler.service';
 import { DEFAULT_AGENT_REPLY_CONFIG } from '@biz/hosting-config/types/hosting-config.types';
 
 describe('HostingConfigFacadeService', () => {
@@ -12,6 +11,8 @@ describe('HostingConfigFacadeService', () => {
   const mockSystemConfigService = {
     getAgentReplyConfig: jest.fn(),
     setAgentReplyConfig: jest.fn(),
+    getGroupTaskConfig: jest.fn(),
+    updateGroupTaskConfig: jest.fn(),
     getConfigValue: jest.fn(),
     setConfigValue: jest.fn(),
   };
@@ -28,11 +29,6 @@ describe('HostingConfigFacadeService', () => {
     resumeUser: jest.fn(),
   };
 
-  const mockGroupTaskScheduler = {
-    getConfig: jest.fn(),
-    updateConfig: jest.fn(),
-  };
-
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -40,7 +36,6 @@ describe('HostingConfigFacadeService', () => {
         { provide: SystemConfigService, useValue: mockSystemConfigService },
         { provide: GroupBlacklistService, useValue: mockGroupBlacklistService },
         { provide: UserHostingService, useValue: mockUserHostingService },
-        { provide: GroupTaskSchedulerService, useValue: mockGroupTaskScheduler },
       ],
     }).compile();
 
@@ -59,7 +54,7 @@ describe('HostingConfigFacadeService', () => {
     it('should return config and defaults', async () => {
       const mockConfig = { ...DEFAULT_AGENT_REPLY_CONFIG, maxMergedMessages: 5 };
       mockSystemConfigService.getAgentReplyConfig.mockResolvedValue(mockConfig);
-      mockGroupTaskScheduler.getConfig.mockResolvedValue({ enabled: false, dryRun: true });
+      mockSystemConfigService.getGroupTaskConfig.mockResolvedValue({ enabled: false, dryRun: true });
 
       const result = await service.getAgentReplyConfig();
 
@@ -69,9 +64,9 @@ describe('HostingConfigFacadeService', () => {
       expect(mockSystemConfigService.getAgentReplyConfig).toHaveBeenCalledTimes(1);
     });
 
-    it('should pass through the config from groupTaskScheduler', async () => {
+    it('should pass through the group task config from systemConfigService', async () => {
       mockSystemConfigService.getAgentReplyConfig.mockResolvedValue(DEFAULT_AGENT_REPLY_CONFIG);
-      mockGroupTaskScheduler.getConfig.mockResolvedValue({ enabled: true, dryRun: false });
+      mockSystemConfigService.getGroupTaskConfig.mockResolvedValue({ enabled: true, dryRun: false });
 
       const result = await service.getAgentReplyConfig();
 

@@ -32,7 +32,7 @@ describe('GroupTaskController', () => {
   });
 
   describe('trigger', () => {
-    it('should call scheduler.executeTask with valid type', async () => {
+    it('should call scheduler.executeTask with forceEnabled only', async () => {
       const mockStrategy = { fetchData: jest.fn(), buildMessage: jest.fn() };
       (mockSchedulerService.getStrategy as jest.Mock).mockReturnValue(
         mockStrategy,
@@ -57,7 +57,7 @@ describe('GroupTaskController', () => {
       );
       expect(mockSchedulerService.executeTask).toHaveBeenCalledWith(
         mockStrategy,
-        true,
+        { forceEnabled: true },
       );
       expect(result).toBeDefined();
     });

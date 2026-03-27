@@ -1,4 +1,12 @@
-import { Controller, Post, Param, HttpException, HttpStatus, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Param,
+  HttpException,
+  HttpStatus,
+  UseGuards,
+  ParseEnumPipe,
+} from '@nestjs/common';
 import { ApiTokenGuard } from '@infra/server/guards/api-token.guard';
 import { GroupTaskSchedulerService } from './services/group-task-scheduler.service';
 import { GroupTaskType } from './group-task.types';
@@ -21,12 +29,12 @@ export class GroupTaskController {
    * POST /group-task/trigger/:type
    * type: order_grab | part_time | store_manager | work_tips
    *
-   * force=true 绕过 enabled 开关和 dryRun 设置，直接发送真实消息。
+   * forceEnabled=true 绕过 enabled 开关（即使定时任务关闭也能执行），
+   * 但仍遵守 DB 中的 dryRun 设置（试运行时只发飞书不发企微）。
    */
   @Post('trigger/:type')
-  async trigger(@Param('type') type: string) {
-    const taskType = type as GroupTaskType;
-    const strategy = this.scheduler.getStrategy(taskType);
+  async trigger(@Param('type', new ParseEnumPipe(GroupTaskType)) type: GroupTaskType) {
+    const strategy = this.scheduler.getStrategy(type);
 
     if (!strategy) {
       throw new HttpException(
@@ -35,7 +43,7 @@ export class GroupTaskController {
       );
     }
 
-    const result = await this.scheduler.executeTask(strategy, true);
+    const result = await this.scheduler.executeTask(strategy, { forceEnabled: true });
     return {
       type: result.type,
       totalGroups: result.totalGroups,

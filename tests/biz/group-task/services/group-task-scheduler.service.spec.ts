@@ -45,6 +45,8 @@ describe('GroupTaskSchedulerService', () => {
           useValue: {
             getConfigValue: jest.fn(),
             setConfigValue: jest.fn(),
+            getGroupTaskConfig: jest.fn(),
+            updateGroupTaskConfig: jest.fn(),
           } as unknown as SystemConfigService,
         },
         {
@@ -126,43 +128,36 @@ describe('GroupTaskSchedulerService', () => {
   });
 
   describe('getConfig', () => {
-    it('should return defaults when DB has no value', async () => {
-      systemConfigService.getConfigValue.mockResolvedValue(null);
+    it('should delegate to systemConfigService.getGroupTaskConfig', async () => {
+      systemConfigService.getGroupTaskConfig.mockResolvedValue(DEFAULT_GROUP_TASK_CONFIG);
 
       const config = await service.getConfig();
 
       expect(config).toEqual(DEFAULT_GROUP_TASK_CONFIG);
+      expect(systemConfigService.getGroupTaskConfig).toHaveBeenCalledTimes(1);
     });
 
-    it('should return stored values when DB has them', async () => {
-      const storedConfig = {
-        ...DEFAULT_GROUP_TASK_CONFIG,
-        enabled: true,
-        dryRun: false,
-      };
-      systemConfigService.getConfigValue.mockResolvedValue(storedConfig);
+    it('should return stored values', async () => {
+      const storedConfig = { enabled: true, dryRun: false };
+      systemConfigService.getGroupTaskConfig.mockResolvedValue(storedConfig);
 
       const config = await service.getConfig();
 
-      expect(config).toEqual(storedConfig);
       expect(config.enabled).toBe(true);
       expect(config.dryRun).toBe(false);
     });
   });
 
   describe('updateConfig', () => {
-    it('should merge partial config with current and persist', async () => {
-      systemConfigService.getConfigValue.mockResolvedValue({ enabled: false, dryRun: true });
-      systemConfigService.setConfigValue.mockResolvedValue(undefined);
+    it('should delegate to systemConfigService.updateGroupTaskConfig', async () => {
+      const updated = { enabled: true, dryRun: true };
+      (systemConfigService as jest.Mocked<SystemConfigService>).updateGroupTaskConfig =
+        jest.fn().mockResolvedValue(updated);
 
       const result = await service.updateConfig({ enabled: true });
 
-      expect(result).toEqual({ enabled: true, dryRun: true });
-      expect(systemConfigService.setConfigValue).toHaveBeenCalledWith(
-        'group_task_config',
-        { enabled: true, dryRun: true },
-        '群任务通知配置',
-      );
+      expect(result).toEqual(updated);
+      expect(systemConfigService.updateGroupTaskConfig).toHaveBeenCalledWith({ enabled: true });
     });
   });
 
@@ -179,31 +174,31 @@ describe('GroupTaskSchedulerService', () => {
   describe('executeTask', () => {
     it('should skip when disabled and not forced', async () => {
       const disabledConfig = { ...DEFAULT_GROUP_TASK_CONFIG, enabled: false };
-      systemConfigService.getConfigValue.mockResolvedValue(disabledConfig);
+      systemConfigService.getGroupTaskConfig.mockResolvedValue(disabledConfig);
 
-      await service.executeTask(mockStrategy, false);
+      await service.executeTask(mockStrategy);
 
       expect(groupResolverService.resolveGroups).not.toHaveBeenCalled();
       expect(notificationSenderService.sendToGroup).not.toHaveBeenCalled();
     });
 
-    it('should run when forced even if disabled', async () => {
+    it('should run when forceEnabled even if disabled', async () => {
       const disabledConfig = { ...DEFAULT_GROUP_TASK_CONFIG, enabled: false };
-      systemConfigService.getConfigValue.mockResolvedValue(disabledConfig);
+      systemConfigService.getGroupTaskConfig.mockResolvedValue(disabledConfig);
       groupResolverService.resolveGroups.mockResolvedValue([]);
 
-      await service.executeTask(mockStrategy, true);
+      await service.executeTask(mockStrategy, { forceEnabled: true });
 
       expect(notificationSenderService.reportToFeishu).toHaveBeenCalled();
     });
 
-    it('should pass dryRun=false when force=true (bypasses dryRun)', async () => {
+    it('should respect config.dryRun when only forceEnabled (not forceSend)', async () => {
       const dryRunConfig = {
         ...DEFAULT_GROUP_TASK_CONFIG,
         enabled: true,
         dryRun: true,
       };
-      systemConfigService.getConfigValue.mockResolvedValue(dryRunConfig);
+      systemConfigService.getGroupTaskConfig.mockResolvedValue(dryRunConfig);
 
       const mockGroup = {
         imRoomId: 'room-1',
@@ -222,9 +217,44 @@ describe('GroupTaskSchedulerService', () => {
       });
       (mockStrategy.buildMessage as jest.Mock).mockReturnValue('test message');
 
-      await service.executeTask(mockStrategy, true);
+      await service.executeTask(mockStrategy, { forceEnabled: true });
 
-      // force=true 应强制 dryRun=false
+      // forceEnabled=true, forceSend=false → dryRun 仍遵守 config
+      expect(notificationSenderService.sendToGroup).toHaveBeenCalledTimes(1);
+      expect(notificationSenderService.sendToGroup.mock.calls[0][3]).toBe(true);
+
+      expect(notificationSenderService.reportToFeishu).toHaveBeenCalledTimes(1);
+      expect(notificationSenderService.reportToFeishu.mock.calls[0][1]).toBe(true);
+    });
+
+    it('should bypass dryRun when forceSend=true', async () => {
+      const dryRunConfig = {
+        ...DEFAULT_GROUP_TASK_CONFIG,
+        enabled: true,
+        dryRun: true,
+      };
+      systemConfigService.getGroupTaskConfig.mockResolvedValue(dryRunConfig);
+
+      const mockGroup = {
+        imRoomId: 'room-1',
+        groupName: '测试群',
+        city: '上海',
+        tag: '抢单群',
+        imBotId: 'bot-1',
+        token: 'token-1',
+        chatId: 'chat-1',
+      };
+      groupResolverService.resolveGroups.mockResolvedValue([mockGroup]);
+      (mockStrategy.fetchData as jest.Mock).mockResolvedValue({
+        hasData: true,
+        payload: { orders: [] },
+        summary: '测试',
+      });
+      (mockStrategy.buildMessage as jest.Mock).mockReturnValue('test message');
+
+      await service.executeTask(mockStrategy, { forceEnabled: true, forceSend: true });
+
+      // forceSend=true → dryRun=false
       expect(notificationSenderService.sendToGroup).toHaveBeenCalledTimes(1);
       expect(notificationSenderService.sendToGroup.mock.calls[0][3]).toBe(false);
 
@@ -232,13 +262,13 @@ describe('GroupTaskSchedulerService', () => {
       expect(notificationSenderService.reportToFeishu.mock.calls[0][1]).toBe(false);
     });
 
-    it('should pass dryRun=true when not forced and config.dryRun=true', async () => {
+    it('should pass dryRun=true when config.dryRun=true and no force flags', async () => {
       const dryRunConfig = {
         ...DEFAULT_GROUP_TASK_CONFIG,
         enabled: true,
         dryRun: true,
       };
-      systemConfigService.getConfigValue.mockResolvedValue(dryRunConfig);
+      systemConfigService.getGroupTaskConfig.mockResolvedValue(dryRunConfig);
 
       const mockGroup = {
         imRoomId: 'room-1',
@@ -257,9 +287,8 @@ describe('GroupTaskSchedulerService', () => {
       });
       (mockStrategy.buildMessage as jest.Mock).mockReturnValue('test message');
 
-      await service.executeTask(mockStrategy, false);
+      await service.executeTask(mockStrategy);
 
-      // force=false, config.dryRun=true → 传递 dryRun=true
       expect(notificationSenderService.sendToGroup).toHaveBeenCalledTimes(1);
       expect(notificationSenderService.sendToGroup.mock.calls[0][3]).toBe(true);
 

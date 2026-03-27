@@ -1,10 +1,9 @@
-import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { AgentReplyConfig, DEFAULT_AGENT_REPLY_CONFIG } from '../types/hosting-config.types';
 import { SystemConfigService } from './system-config.service';
 import { GroupBlacklistService } from './group-blacklist.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { GroupTaskConfig } from '@biz/group-task/group-task.types';
-import { GroupTaskSchedulerService } from '@biz/group-task/services/group-task-scheduler.service';
 
 /**
  * 系统配置门面服务
@@ -21,8 +20,6 @@ export class HostingConfigFacadeService {
     private readonly systemConfigService: SystemConfigService,
     private readonly groupBlacklistService: GroupBlacklistService,
     private readonly userHostingService: UserHostingService,
-    @Inject(forwardRef(() => GroupTaskSchedulerService))
-    private readonly groupTaskScheduler: GroupTaskSchedulerService,
   ) {}
 
   // ==================== 运行时开关 ====================
@@ -55,7 +52,7 @@ export class HostingConfigFacadeService {
     groupTaskConfig: GroupTaskConfig;
   }> {
     const config = await this.systemConfigService.getAgentReplyConfig();
-    const groupTaskConfig = await this.groupTaskScheduler.getConfig();
+    const groupTaskConfig = await this.systemConfigService.getGroupTaskConfig();
     return {
       config,
       defaults: DEFAULT_AGENT_REPLY_CONFIG,
@@ -72,7 +69,7 @@ export class HostingConfigFacadeService {
   }
 
   async updateGroupTaskConfig(partial: Partial<GroupTaskConfig>): Promise<GroupTaskConfig> {
-    return this.groupTaskScheduler.updateConfig(partial);
+    return this.systemConfigService.updateGroupTaskConfig(partial);
   }
 
   async resetAgentReplyConfig(): Promise<{ config: AgentReplyConfig; message: string }> {

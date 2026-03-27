@@ -14,13 +14,10 @@ import { WorkTipsStrategy } from '../strategies/work-tips.strategy';
 import {
   GroupTaskType,
   GroupTaskConfig,
-  DEFAULT_GROUP_TASK_CONFIG,
   GroupContext,
   TaskExecutionResult,
   TimeSlot,
 } from '../group-task.types';
-
-const CONFIG_KEY = 'group_task_config';
 
 /**
  * 群任务调度编排服务
@@ -68,11 +65,7 @@ export class GroupTaskSchedulerService implements OnModuleInit {
    * 读取群任务配置（一次 DB 查询）
    */
   async getConfig(): Promise<GroupTaskConfig> {
-    const stored = await this.systemConfigService.getConfigValue<GroupTaskConfig>(CONFIG_KEY);
-    return {
-      enabled: stored?.enabled ?? DEFAULT_GROUP_TASK_CONFIG.enabled,
-      dryRun: stored?.dryRun ?? DEFAULT_GROUP_TASK_CONFIG.dryRun,
-    };
+    return this.systemConfigService.getGroupTaskConfig();
   }
 
   async isEnabled(): Promise<boolean> {
@@ -87,11 +80,7 @@ export class GroupTaskSchedulerService implements OnModuleInit {
    * 更新群任务配置（read-merge-write，唯一写入点）
    */
   async updateConfig(partial: Partial<GroupTaskConfig>): Promise<GroupTaskConfig> {
-    const current = await this.getConfig();
-    const updated = { ...current, ...partial };
-    this.logger.log(`更新群任务配置: ${JSON.stringify(updated)}`);
-    await this.systemConfigService.setConfigValue(CONFIG_KEY, updated, '群任务通知配置');
-    return updated;
+    return this.systemConfigService.updateGroupTaskConfig(partial);
   }
 
   // ==================== Cron 调度 ====================
@@ -99,13 +88,13 @@ export class GroupTaskSchedulerService implements OnModuleInit {
   /** 抢单群 — 上午场 10:00 */
   @Cron('0 10 * * *', { timeZone: 'Asia/Shanghai' })
   async cronOrderGrabMorning(): Promise<void> {
-    await this.executeTask(this.orderGrabStrategy, false, TimeSlot.MORNING);
+    await this.executeTask(this.orderGrabStrategy, { timeSlot: TimeSlot.MORNING });
   }
 
   /** 抢单群 — 下午场 13:00 */
   @Cron('0 13 * * *', { timeZone: 'Asia/Shanghai' })
   async cronOrderGrabAfternoon(): Promise<void> {
-    await this.executeTask(this.orderGrabStrategy, false, TimeSlot.AFTERNOON);
+    await this.executeTask(this.orderGrabStrategy, { timeSlot: TimeSlot.AFTERNOON });
   }
 
   /** 兼职群 — 工作日 13:00 */
@@ -117,7 +106,7 @@ export class GroupTaskSchedulerService implements OnModuleInit {
   /** 抢单群 — 晚上场 17:30 */
   @Cron('30 17 * * *', { timeZone: 'Asia/Shanghai' })
   async cronOrderGrabEvening(): Promise<void> {
-    await this.executeTask(this.orderGrabStrategy, false, TimeSlot.EVENING);
+    await this.executeTask(this.orderGrabStrategy, { timeSlot: TimeSlot.EVENING });
   }
 
   /** 店长群 — 工作日 10:30 */
@@ -139,11 +128,20 @@ export class GroupTaskSchedulerService implements OnModuleInit {
    *
    * 可由 Cron 自动触发，也可由 Controller 手动触发。
    */
+  /**
+   * 执行一次通知任务
+   *
+   * @param strategy 通知策略
+   * @param options.forceEnabled 绕过 enabled 开关（即使定时任务关闭也能执行）
+   * @param options.forceSend    绕过 dryRun 设置（即使试运行模式也发真实消息）
+   * @param options.timeSlot     场次标识（同一任务一天多次执行时区分）
+   */
   async executeTask(
     strategy: NotificationStrategy,
-    force = false,
-    timeSlot?: TimeSlot,
+    options: { forceEnabled?: boolean; forceSend?: boolean; timeSlot?: TimeSlot } = {},
   ): Promise<TaskExecutionResult> {
+    const { forceEnabled = false, forceSend = false, timeSlot } = options;
+
     const result: TaskExecutionResult = {
       type: strategy.type,
       totalGroups: 0,
@@ -157,13 +155,12 @@ export class GroupTaskSchedulerService implements OnModuleInit {
     };
 
     const config = await this.getConfig();
-    if (!config.enabled && !force) {
+    if (!config.enabled && !forceEnabled) {
       this.logger.debug(`[${strategy.type}] 任务已禁用，跳过`);
       return result;
     }
 
-    // force=true 时强制关闭 dryRun，允许手动触发真实发送
-    const dryRun = force ? false : config.dryRun;
+    const dryRun = forceSend ? false : config.dryRun;
     this.logger.log(`[${strategy.type}] 开始执行... (dryRun=${dryRun})`);
 
     try {
