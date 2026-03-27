@@ -4,7 +4,6 @@ import { StrategyConfigService } from '@biz/strategy/services/strategy-config.se
 import { StrategyConfigRepository } from '@biz/strategy/repositories/strategy-config.repository';
 import { StrategyChangelogRepository } from '@biz/strategy/repositories/strategy-changelog.repository';
 import { StrategyConfigRecord } from '@biz/strategy/entities/strategy-config.entity';
-import { buildDefaultStrategyRecord } from '@shared-types/strategy-config.types';
 
 describe('StrategyConfigService', () => {
   let service: StrategyConfigService;
@@ -22,9 +21,16 @@ describe('StrategyConfigService', () => {
 
   const makeRecord = (overrides: Partial<StrategyConfigRecord> = {}): StrategyConfigRecord => ({
     id: 'config-1',
+    name: '测试策略',
+    description: '测试用策略配置',
+    role_setting: { content: '你是招聘经理' },
+    persona: { textDimensions: [{ key: 'test', label: '测试', value: '测试值', placeholder: '', group: 'style' as const }] },
+    stage_goals: { stages: [{ stage: 'trust_building', label: '建立信任', description: '', primaryGoal: '', successCriteria: [], ctaStrategy: [], disallowedActions: [] }] },
+    red_lines: { rules: ['测试规则'], thresholds: [] },
+    industry_skills: { skills: [] },
+    is_active: true,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
-    ...buildDefaultStrategyRecord(),
     ...overrides,
   });
 
@@ -74,47 +80,16 @@ describe('StrategyConfigService', () => {
       expect(mockStrategyConfigRepository.findActiveConfig).toHaveBeenCalledTimes(1);
     });
 
-    it('should seed defaults when DB returns null (first run)', async () => {
-      const insertedRecord = makeRecord({ id: 'seeded-1' });
+    it('should throw when DB returns null (no config)', async () => {
       mockStrategyConfigRepository.findActiveConfig.mockResolvedValue(null);
-      mockStrategyConfigRepository.insertConfig.mockResolvedValue(insertedRecord);
 
-      const result = await service.getActiveConfig();
-
-      expect(result).toEqual(insertedRecord);
-      expect(mockStrategyConfigRepository.insertConfig).toHaveBeenCalledTimes(1);
+      await expect(service.getActiveConfig()).rejects.toThrow(InternalServerErrorException);
     });
 
-    it('should query DB again when insert fails (concurrent conflict)', async () => {
-      const existingRecord = makeRecord({ id: 'existing-1' });
-      mockStrategyConfigRepository.findActiveConfig
-        .mockResolvedValueOnce(null) // First call returns null (triggers seed)
-        .mockResolvedValueOnce(existingRecord); // Second call returns existing
-      mockStrategyConfigRepository.insertConfig.mockResolvedValue(null); // Insert fails
-
-      const result = await service.getActiveConfig();
-
-      expect(result).toEqual(existingRecord);
-      expect(mockStrategyConfigRepository.findActiveConfig).toHaveBeenCalledTimes(2);
-    });
-
-    it('should return fallback record when DB fails', async () => {
+    it('should throw when DB fails', async () => {
       mockStrategyConfigRepository.findActiveConfig.mockRejectedValue(new Error('DB error'));
 
-      const result = await service.getActiveConfig();
-
-      expect(result.id).toBe('fallback');
-    });
-
-    it('should return fallback when insert and re-query both fail', async () => {
-      mockStrategyConfigRepository.findActiveConfig
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(null); // Re-query also returns null
-      mockStrategyConfigRepository.insertConfig.mockResolvedValue(null);
-
-      const result = await service.getActiveConfig();
-
-      expect(result.id).toBe('fallback');
+      await expect(service.getActiveConfig()).rejects.toThrow('DB error');
     });
   });
 

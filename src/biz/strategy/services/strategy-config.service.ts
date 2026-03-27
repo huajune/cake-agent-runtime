@@ -8,7 +8,6 @@ import {
   StrategyRedLines,
   StrategyRoleSetting,
 } from '../types/strategy.types';
-import { buildDefaultStrategyRecord } from '@shared-types/strategy-config.types';
 
 /**
  * 策略配置 Service
@@ -18,7 +17,6 @@ import { buildDefaultStrategyRecord } from '@shared-types/strategy-config.types'
  * - L2：Supabase DB（持久化，通过 Repository 访问）
  *
  * 每次更新自动写入 strategy_config_changelog 变更日志，支持审计与回滚。
- * 首次查询时若库中无记录，自动插入默认种子数据。
  */
 @Injectable()
 export class StrategyConfigService {
@@ -39,7 +37,7 @@ export class StrategyConfigService {
 
   /**
    * 获取当前激活的策略配置
-   * 缓存优先级：内存 → DB → 自动 seed → 降级默认值
+   * 缓存优先级：内存 → DB
    */
   async getActiveConfig(): Promise<StrategyConfigRecord> {
     // L1: 内存缓存
@@ -163,50 +161,20 @@ export class StrategyConfigService {
   // ==================== 私有方法 ====================
 
   /**
-   * 从 DB 加载，无记录时自动插入默认种子数据
+   * 从 DB 加载激活的策略配置，无记录时抛出异常
    */
   private async loadFromDb(): Promise<StrategyConfigRecord> {
-    try {
-      const record = await this.strategyConfigRepository.findActiveConfig();
+    const record = await this.strategyConfigRepository.findActiveConfig();
 
-      if (record) {
-        this.writeCache(record);
-        this.logger.log('策略配置已从数据库加载');
-        return record;
-      }
-
-      // 首次运行：seed 默认数据
-      return await this.seedDefaults();
-    } catch (error) {
-      this.logger.error('加载策略配置失败，使用降级默认值', error);
-      return this.buildFallbackRecord();
-    }
-  }
-
-  /**
-   * 首次运行时插入默认种子数据
-   * 并发冲突时回退到重新查询，仍查不到时返回降级内存值
-   */
-  private async seedDefaults(): Promise<StrategyConfigRecord> {
-    this.logger.log('首次运行，插入默认策略配置');
-
-    const defaults = buildDefaultStrategyRecord();
-    const inserted = await this.strategyConfigRepository.insertConfig(defaults);
-
-    if (inserted) {
-      this.writeCache(inserted);
-      this.logger.log('默认策略配置已插入数据库');
-      return inserted;
+    if (!record) {
+      throw new InternalServerErrorException(
+        '数据库中未找到激活的策略配置，请通过管理后台创建策略配置',
+      );
     }
 
-    // 插入失败（并发冲突），重新查询
-    const existing = await this.strategyConfigRepository.findActiveConfig();
-    if (existing) {
-      this.writeCache(existing);
-      return existing;
-    }
-
-    return this.buildFallbackRecord();
+    this.writeCache(record);
+    this.logger.log('策略配置已从数据库加载');
+    return record;
   }
 
   /**
@@ -238,18 +206,5 @@ export class StrategyConfigService {
   private writeCache(config: StrategyConfigRecord): void {
     this.cachedConfig = config;
     this.cacheExpiry = Date.now() + this.MEMORY_CACHE_TTL_MS;
-  }
-
-  /**
-   * 构建纯内存降级配置（Supabase 不可用时使用）
-   */
-  private buildFallbackRecord(): StrategyConfigRecord {
-    const defaults = buildDefaultStrategyRecord();
-    return {
-      id: 'fallback',
-      ...defaults,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
   }
 }
