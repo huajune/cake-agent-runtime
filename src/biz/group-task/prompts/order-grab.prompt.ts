@@ -18,7 +18,7 @@
  */
 
 import { BIOrder, BI_FIELD_NAMES, TimeSlot } from '../group-task.types';
-import { formatLocalDate } from '@infra/utils/date.util';
+import { getTomorrowDate } from '@infra/utils/date.util';
 
 interface OrderGrabTemplateData {
   orders: BIOrder[];
@@ -80,10 +80,7 @@ export function buildOrderGrabMessage(data: OrderGrabTemplateData): string {
  * 根据订单特征选择标题
  */
 function selectTitle(orders: BIOrder[], city: string, timeSlot?: TimeSlot): string {
-  const now = new Date();
-  const tomorrow = new Date(now);
-  tomorrow.setDate(now.getDate() + 1);
-  const tomorrowStr = formatLocalDate(tomorrow);
+  const tomorrowStr = getTomorrowDate();
 
   // 检查是否有特定地区（如崇明）
   const regions = new Set(
