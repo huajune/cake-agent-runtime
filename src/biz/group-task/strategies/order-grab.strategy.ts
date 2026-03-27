@@ -3,16 +3,7 @@ import { SpongeService } from '@sponge/sponge.service';
 import { NotificationStrategy } from './notification.strategy';
 import { GroupTaskType, GroupContext, NotificationData, TimeSlot } from '../group-task.types';
 import { buildOrderGrabMessage } from '../prompts/order-grab.prompt';
-
-/**
- * 日期格式化 YYYY-MM-DD（Asia/Shanghai 时区安全）
- */
-function formatDate(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
+import { formatLocalDate } from '@infra/utils/date.util';
 
 /**
  * 抢单群通知策略（纯模板，不需要 AI）
@@ -38,8 +29,8 @@ export class OrderGrabStrategy implements NotificationStrategy {
     sunday.setDate(today.getDate() + (dayOfWeek === 0 ? 0 : 7 - dayOfWeek));
 
     const orders = await this.spongeService.fetchBIOrders({
-      startDate: formatDate(today),
-      endDate: formatDate(sunday),
+      startDate: formatLocalDate(today),
+      endDate: formatLocalDate(sunday),
       regionName: context.city,
     });
 

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
+import { formatLocalDate } from '@infra/utils/date.util';
 import { BookingDbRecord } from '../entities/booking.entity';
 import { BookingRecordInput, BookingStats } from '../types/message.types';
 
@@ -34,7 +35,7 @@ export class BookingRepository extends BaseRepository {
     }
 
     const { brandName, storeName, chatId, userId, userName, managerId, managerName } = params;
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const today = formatLocalDate(new Date()); // YYYY-MM-DD
 
     try {
       await this.rpc('increment_booking_count', {
@@ -102,7 +103,7 @@ export class BookingRepository extends BaseRepository {
    * 获取今日预约总数
    */
   async getTodayBookingCount(): Promise<number> {
-    const today = new Date().toISOString().split('T')[0];
+    const today = formatLocalDate(new Date());
     const stats = await this.getBookingStats({ startDate: today, endDate: today });
     return stats.reduce((sum, item) => sum + item.bookingCount, 0);
   }

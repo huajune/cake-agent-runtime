@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { formatLocalDate } from '@infra/utils/date.util';
 import {
   MessageProcessingRecord,
   MonitoringErrorLog,
@@ -96,10 +97,10 @@ export class AnalyticsDashboardService {
       const previousFallback = this.calculateFallbackStats(previousRecords);
       const fallbackDelta = this.calculateFallbackDelta(fallback, previousFallback);
 
-      const currentStartDate = new Date(currentStart).toISOString().split('T')[0];
-      const currentEndDate = new Date(currentEnd).toISOString().split('T')[0];
-      const previousStartDate = new Date(previousStart).toISOString().split('T')[0];
-      const previousEndDate = new Date(previousEnd).toISOString().split('T')[0];
+      const currentStartDate = formatLocalDate(new Date(currentStart));
+      const currentEndDate = formatLocalDate(new Date(currentEnd));
+      const previousStartDate = formatLocalDate(new Date(previousStart));
+      const previousEndDate = formatLocalDate(new Date(previousEnd));
 
       const [business, previousBusiness] = await Promise.all([
         this.getBusinessMetricsFromDatabase(currentStartDate, currentEndDate, currentRecords),
@@ -299,10 +300,10 @@ export class AnalyticsDashboardService {
         ),
       };
 
-      const curStartDate = currentStartDate.toISOString().split('T')[0];
-      const curEndDate = currentEndDate.toISOString().split('T')[0];
-      const prevStartDate = previousStartDate.toISOString().split('T')[0];
-      const prevEndDate = previousEndDate.toISOString().split('T')[0];
+      const curStartDate = formatLocalDate(currentStartDate);
+      const curEndDate = formatLocalDate(currentEndDate);
+      const prevStartDate = formatLocalDate(previousStartDate);
+      const prevEndDate = formatLocalDate(previousEndDate);
 
       // 并行查询：预约数（轻量索引查询）+ 趋势原始记录（仅当期，用于图表）
       const [currentBookings, previousBookings, trendRecords] = await Promise.all([

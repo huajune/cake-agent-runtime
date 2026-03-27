@@ -18,6 +18,7 @@
  */
 
 import { BIOrder, BI_FIELD_NAMES, TimeSlot } from '../group-task.types';
+import { getTomorrowDate } from '@infra/utils/date.util';
 
 interface OrderGrabTemplateData {
   orders: BIOrder[];
@@ -49,9 +50,12 @@ export function buildOrderGrabMessage(data: OrderGrabTemplateData): string {
   for (const order of displayOrders) {
     const revenue = order[BI_FIELD_NAMES.EXPECTED_REVENUE];
     const store = order[BI_FIELD_NAMES.STORE_NAME] || '未知';
-    const content = order[BI_FIELD_NAMES.SERVICE_CONTENT] || '未知';
+    const rawContent = order[BI_FIELD_NAMES.SERVICE_CONTENT] || '未知';
+    const content = Array.isArray(rawContent) ? rawContent.join('、') : rawContent;
     const date = order[BI_FIELD_NAMES.ORDER_DATE] || '未知';
-    const time = order[BI_FIELD_NAMES.SERVICE_DATE] || '未知';
+    const rawTime = order[BI_FIELD_NAMES.SERVICE_DATE] || '未知';
+    // 去掉秒数：12:00:00~15:30:00 → 12:00~15:30
+    const time = String(rawTime).replace(/(\d{2}:\d{2}):\d{2}/g, '$1');
     const link = order[BI_FIELD_NAMES.SHARE_LINK] || '';
 
     lines.push(`预计收入：¥${revenue}`);
@@ -76,10 +80,7 @@ export function buildOrderGrabMessage(data: OrderGrabTemplateData): string {
  * 根据订单特征选择标题
  */
 function selectTitle(orders: BIOrder[], city: string, timeSlot?: TimeSlot): string {
-  const now = new Date();
-  const tomorrow = new Date(now);
-  tomorrow.setDate(now.getDate() + 1);
-  const tomorrowStr = tomorrow.toISOString().split('T')[0];
+  const tomorrowStr = getTomorrowDate();
 
   // 检查是否有特定地区（如崇明）
   const regions = new Set(
