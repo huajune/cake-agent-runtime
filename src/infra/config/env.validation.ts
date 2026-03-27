@@ -42,9 +42,11 @@ export class EnvironmentVariables {
   })
   STRIDE_ENTERPRISE_API_BASE_URL: string;
 
-  @IsOptional()
+  @IsNotEmpty({
+    message: 'STRIDE_ENTERPRISE_TOKEN 环境变量未配置，请在 .env 文件中设置',
+  })
   @IsString({ message: 'STRIDE_ENTERPRISE_TOKEN 必须是字符串' })
-  STRIDE_ENTERPRISE_TOKEN?: string;
+  STRIDE_ENTERPRISE_TOKEN: string;
 
   // ==================== 模型角色映射 ====================
   @IsString({ message: 'AGENT_CHAT_MODEL 必须是字符串' })
