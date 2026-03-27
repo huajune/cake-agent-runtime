@@ -2,7 +2,6 @@
 
 interface ImportMetaEnv {
   readonly API_GUARD_TOKEN?: string;
-  readonly VITE_ENTERPRISE_TOKEN?: string;
 }
 
 // CSS Modules 类型声明

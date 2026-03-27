@@ -36,8 +36,12 @@ jobs:
       - name: TypeScript type check
         run: pnpm exec tsc --noEmit
 
-      - name: Build
+      - name: Build frontend (validation only)
         run: pnpm run build:web
+        env:
+          # This artifact is discarded; production deploy rebuilds from the release tag
+          # with the real API_GUARD_TOKEN on the target server.
+          API_GUARD_TOKEN: ci-placeholder-token
 
       - name: Build backend
         run: pnpm run build
