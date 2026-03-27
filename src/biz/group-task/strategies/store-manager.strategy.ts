@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SpongeService } from '@sponge/sponge.service';
+import { formatLocalDate } from '@infra/utils/date.util';
 import { NotificationStrategy } from './notification.strategy';
 import { GroupTaskType, GroupContext, NotificationData } from '../group-task.types';
 import { InterviewScheduleItem } from '@sponge/sponge.types';
@@ -22,11 +23,7 @@ export class StoreManagerStrategy implements NotificationStrategy {
   constructor(private readonly spongeService: SpongeService) {}
 
   async fetchData(context: GroupContext): Promise<NotificationData> {
-    const today = new Date();
-    const y = today.getFullYear();
-    const m = String(today.getMonth() + 1).padStart(2, '0');
-    const d = String(today.getDate()).padStart(2, '0');
-    const dateStr = `${y}-${m}-${d}`;
+    const dateStr = formatLocalDate(new Date());
 
     const interviews = await this.spongeService.fetchInterviewSchedule({
       date: dateStr,

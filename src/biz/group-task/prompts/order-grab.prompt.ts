@@ -18,6 +18,7 @@
  */
 
 import { BIOrder, BI_FIELD_NAMES, TimeSlot } from '../group-task.types';
+import { formatLocalDate } from '@infra/utils/date.util';
 
 interface OrderGrabTemplateData {
   orders: BIOrder[];
@@ -82,10 +83,7 @@ function selectTitle(orders: BIOrder[], city: string, timeSlot?: TimeSlot): stri
   const now = new Date();
   const tomorrow = new Date(now);
   tomorrow.setDate(now.getDate() + 1);
-  const y = tomorrow.getFullYear();
-  const m = String(tomorrow.getMonth() + 1).padStart(2, '0');
-  const d = String(tomorrow.getDate()).padStart(2, '0');
-  const tomorrowStr = `${y}-${m}-${d}`;
+  const tomorrowStr = formatLocalDate(tomorrow);
 
   // 检查是否有特定地区（如崇明）
   const regions = new Set(

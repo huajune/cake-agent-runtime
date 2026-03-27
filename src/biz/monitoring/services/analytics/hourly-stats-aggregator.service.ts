@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { formatLocalDate } from '@infra/utils/date.util';
 import { MonitoringHourlyStatsRepository } from '../../repositories/hourly-stats.repository';
 import {
   DashboardOverviewStats,
@@ -87,7 +88,7 @@ export class HourlyStatsAggregatorService {
     // 按日期分组
     const dayMap = new Map<string, HourlyStats[]>();
     for (const row of rows) {
-      const dateKey = new Date(row.hour).toISOString().split('T')[0];
+      const dateKey = formatLocalDate(new Date(row.hour));
       if (!dayMap.has(dateKey)) {
         dayMap.set(dateKey, []);
       }

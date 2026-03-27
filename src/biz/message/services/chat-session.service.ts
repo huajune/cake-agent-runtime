@@ -1,6 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ChatMessageRepository } from '../repositories/chat-message.repository';
 import { ChatMessageInput } from '../types/message.types';
+import { formatLocalDate } from '@infra/utils/date.util';
 import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.repository';
 
 /**
@@ -22,7 +23,7 @@ export class ChatSessionService {
   async getChatMessages(dateStr?: string, page = 1, pageSize = 50) {
     const date = dateStr ? new Date(dateStr) : new Date();
     this.logger.debug(
-      `获取聊天记录: date=${date.toISOString().split('T')[0]}, page=${page}, pageSize=${pageSize}`,
+      `获取聊天记录: date=${formatLocalDate(date)}, page=${page}, pageSize=${pageSize}`,
     );
     return this.chatMessageRepository.getTodayChatMessages(date, page, pageSize);
   }
@@ -50,9 +51,7 @@ export class ChatSessionService {
   async getChatDailyStats(startDate?: string, endDate?: string) {
     const start = this.startOfDay(startDate, 30);
     const end = this.endOfDay(endDate);
-    this.logger.debug(
-      `获取每日聊天统计: ${start.toISOString().split('T')[0]} ~ ${end.toISOString().split('T')[0]}`,
-    );
+    this.logger.debug(`获取每日聊天统计: ${formatLocalDate(start)} ~ ${formatLocalDate(end)}`);
     return this.chatMessageRepository.getChatDailyStats(start, end);
   }
 
@@ -62,9 +61,7 @@ export class ChatSessionService {
   async getChatSummaryStats(startDate?: string, endDate?: string) {
     const start = this.startOfDay(startDate, 30);
     const end = this.endOfDay(endDate);
-    this.logger.debug(
-      `获取聊天汇总统计: ${start.toISOString().split('T')[0]} ~ ${end.toISOString().split('T')[0]}`,
-    );
+    this.logger.debug(`获取聊天汇总统计: ${formatLocalDate(start)} ~ ${formatLocalDate(end)}`);
     return this.chatMessageRepository.getChatSummaryStats(start, end);
   }
 
@@ -75,7 +72,7 @@ export class ChatSessionService {
     const start = this.startOfDay(startDate, 30);
     const end = this.endOfDay(endDate);
     this.logger.debug(
-      `获取聊天会话列表（优化版）: ${start.toISOString().split('T')[0]} ~ ${end.toISOString().split('T')[0]}`,
+      `获取聊天会话列表（优化版）: ${formatLocalDate(start)} ~ ${formatLocalDate(end)}`,
     );
     return this.chatMessageRepository.getChatSessionListByDateRange(start, end);
   }
