@@ -6,6 +6,7 @@ import { CompletionService } from '@agent/completion.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { NotificationSenderService } from '@biz/group-task/services/notification-sender.service';
 import { BrandRotationService } from '@biz/group-task/services/brand-rotation.service';
+import { RedisService } from '@infra/redis/redis.service';
 import { OrderGrabStrategy } from '@biz/group-task/strategies/order-grab.strategy';
 import { PartTimeJobStrategy } from '@biz/group-task/strategies/part-time-job.strategy';
 import { StoreManagerStrategy } from '@biz/group-task/strategies/store-manager.strategy';
@@ -18,6 +19,7 @@ describe('GroupTaskSchedulerService', () => {
   let systemConfigService: jest.Mocked<SystemConfigService>;
   let notificationSenderService: jest.Mocked<NotificationSenderService>;
   let groupResolverService: jest.Mocked<GroupResolverService>;
+  let redisClient: { set: jest.Mock; eval: jest.Mock };
 
   const mockStrategy: NotificationStrategy = {
     type: GroupTaskType.ORDER_GRAB,
@@ -28,6 +30,11 @@ describe('GroupTaskSchedulerService', () => {
   } as unknown as NotificationStrategy;
 
   beforeEach(async () => {
+    redisClient = {
+      set: jest.fn().mockResolvedValue('OK'),
+      eval: jest.fn().mockResolvedValue(1),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         GroupTaskSchedulerService,
@@ -54,6 +61,12 @@ describe('GroupTaskSchedulerService', () => {
           useValue: {
             generateSimple: jest.fn().mockResolvedValue('AI generated text'),
           } as unknown as CompletionService,
+        },
+        {
+          provide: RedisService,
+          useValue: {
+            getClient: jest.fn().mockReturnValue(redisClient),
+          } as unknown as RedisService,
         },
         {
           provide: GroupResolverService,
@@ -294,6 +307,54 @@ describe('GroupTaskSchedulerService', () => {
 
       expect(notificationSenderService.reportToFeishu).toHaveBeenCalledTimes(1);
       expect(notificationSenderService.reportToFeishu.mock.calls[0][1]).toBe(true);
+    });
+
+    it('should skip duplicate execution when task lock is already held', async () => {
+      const enabledConfig = { ...DEFAULT_GROUP_TASK_CONFIG, enabled: true, dryRun: true };
+      systemConfigService.getGroupTaskConfig.mockResolvedValue(enabledConfig);
+      redisClient.set.mockResolvedValue(null);
+
+      await service.executeTask(mockStrategy);
+
+      expect(groupResolverService.resolveGroups).not.toHaveBeenCalled();
+      expect(notificationSenderService.sendToGroup).not.toHaveBeenCalled();
+      expect(notificationSenderService.reportToFeishu).not.toHaveBeenCalled();
+      expect(redisClient.eval).not.toHaveBeenCalled();
+    });
+
+    it('should release task lock after execution', async () => {
+      const enabledConfig = { ...DEFAULT_GROUP_TASK_CONFIG, enabled: true, dryRun: true };
+      systemConfigService.getGroupTaskConfig.mockResolvedValue(enabledConfig);
+
+      const mockGroup = {
+        imRoomId: 'room-1',
+        groupName: '测试群',
+        city: '上海',
+        tag: '抢单群',
+        imBotId: 'bot-1',
+        token: 'token-1',
+        chatId: 'chat-1',
+      };
+      groupResolverService.resolveGroups.mockResolvedValue([mockGroup]);
+      (mockStrategy.fetchData as jest.Mock).mockResolvedValue({
+        hasData: true,
+        payload: { orders: [] },
+        summary: '测试',
+      });
+      (mockStrategy.buildMessage as jest.Mock).mockReturnValue('test message');
+
+      await service.executeTask(mockStrategy);
+
+      expect(redisClient.set).toHaveBeenCalledWith(
+        'group-task:lock:order_grab',
+        expect.any(String),
+        expect.objectContaining({ nx: true, ex: 300 }),
+      );
+      expect(redisClient.eval).toHaveBeenCalledWith(
+        expect.any(String),
+        ['group-task:lock:order_grab'],
+        [expect.any(String)],
+      );
     });
   });
 });

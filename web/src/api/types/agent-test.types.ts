@@ -1,11 +1,13 @@
 export interface SimpleMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
+  imageUrls?: string[];
 }
 
 export interface TestChatRequest {
-  message: string;
+  message?: string;
   history?: SimpleMessage[];
+  imageUrls?: string[];
   scenario?: string;
   saveExecution?: boolean;
   caseId?: string;

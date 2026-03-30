@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import TextareaAutosize from 'react-textarea-autosize';
 import {
   Trash2,
@@ -12,6 +12,7 @@ import {
   Send,
   Radio,
   FileJson,
+  ImagePlus,
 } from 'lucide-react';
 import { TestChatResponse } from '@/api/services/agent-test.service';
 import { MessagePartsAdapter } from '../MessagePartsAdapter';
@@ -39,6 +40,9 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
     elapsedMs,
     isLoading,
     latestAssistantMessage,
+    imagePreviews,
+    addImages,
+    removeImage,
     setHistoryText,
     setCurrentInput,
     setLocalError,
@@ -48,6 +52,8 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
     messageInputRef,
     replyContentRef,
   } = useChatTest({ onTestComplete });
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 使用反馈 Hook
   const feedback = useFeedback({
@@ -164,17 +170,76 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
                       handleTest();
                     }
                   }}
+                  onPaste={(e) => {
+                    const items = e.clipboardData?.items;
+                    if (!items) return;
+                    const imageFiles: File[] = [];
+                    for (const item of Array.from(items)) {
+                      if (item.type.startsWith('image/')) {
+                        const file = item.getAsFile();
+                        if (file) imageFiles.push(file);
+                      }
+                    }
+                    if (imageFiles.length > 0) {
+                      e.preventDefault();
+                      const dt = new DataTransfer();
+                      imageFiles.forEach((f) => dt.items.add(f));
+                      addImages(dt.files);
+                    }
+                  }}
                 />
-                <button
-                  className={styles.sendIconBtn}
-                  onClick={() => handleTest()}
-                  disabled={isLoading || !currentInput.trim()}
-                >
-                  <Send size={16} />
-                </button>
+                <div className={styles.messageInputActions}>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    hidden
+                    onChange={(e) => {
+                      if (e.target.files?.length) {
+                        addImages(e.target.files);
+                        e.target.value = '';
+                      }
+                    }}
+                  />
+                  <button
+                    className={styles.imageUploadBtn}
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isLoading}
+                    title="上传图片"
+                  >
+                    <ImagePlus size={16} />
+                  </button>
+                  <button
+                    className={styles.sendIconBtn}
+                    onClick={() => handleTest()}
+                    disabled={isLoading || (!currentInput.trim() && imagePreviews.length === 0)}
+                  >
+                    <Send size={16} />
+                  </button>
+                </div>
               </div>
+
+              {/* 图片预览 */}
+              {imagePreviews.length > 0 && (
+                <div className={styles.imagePreviews}>
+                  {imagePreviews.map((img) => (
+                    <div key={img.id} className={styles.imagePreviewItem}>
+                      <img src={img.dataUrl} alt={img.file.name} />
+                      <button
+                        className={styles.imageRemoveBtn}
+                        onClick={() => removeImage(img.id)}
+                        disabled={isLoading}
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className={styles.inputHint}>
-                按 <kbd>⌘</kbd> + <kbd>Enter</kbd> 快速发送
+                按 <kbd>⌘</kbd> + <kbd>Enter</kbd> 快速发送，支持粘贴图片和纯图片测试
               </div>
             </div>
           </div>

@@ -39,9 +39,12 @@ export class ImageDescriptionService {
 
   /**
    * 异步描述图片并回写 content（fire-and-forget）
+   * 适用于主模型支持 vision 的场景（当轮由 Agent 直接看图，此描述仅补充后续轮次）
    */
   describeAndUpdateAsync(messageId: string, imageUrl: string): void {
-    this.logger.log(`[触发] 开始图片描述 [${messageId}], url=${imageUrl.substring(0, 80)}...`);
+    this.logger.log(
+      `[触发] 开始图片描述(异步) [${messageId}], url=${imageUrl.substring(0, 80)}...`,
+    );
     this.describeAndUpdate(messageId, imageUrl).catch((error) => {
       this.consecutiveFailures++;
       this.logger.error(
@@ -60,6 +63,37 @@ export class ImageDescriptionService {
           .catch(() => {});
       }
     });
+  }
+
+  /**
+   * 同步描述图片并回写 content（阻塞等待结果）
+   * 适用于主模型不支持 vision 的场景 — 必须在 Agent 读历史前完成描述
+   */
+  async describeAndUpdateSync(messageId: string, imageUrl: string): Promise<void> {
+    this.logger.log(
+      `[触发] 开始图片描述(同步) [${messageId}], url=${imageUrl.substring(0, 80)}...`,
+    );
+    try {
+      await this.describeAndUpdate(messageId, imageUrl);
+    } catch (error) {
+      this.consecutiveFailures++;
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error(
+        `图片描述失败 [${messageId}] (连续第${this.consecutiveFailures}次): ${err.message}`,
+        err.stack,
+      );
+
+      if (this.consecutiveFailures === this.ALERT_THRESHOLD) {
+        this.feishuAlert
+          .sendSimpleAlert(
+            '图片描述服务连续失败',
+            `Vision 模型连续 ${this.ALERT_THRESHOLD} 次调用失败，图片消息无法被识别。\n最近错误: ${err.message}`,
+            'warning',
+          )
+          .catch(() => {});
+      }
+      // 同步路径不抛出异常，避免阻塞主流程
+    }
   }
 
   /**
