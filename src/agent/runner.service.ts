@@ -24,12 +24,21 @@ import { FactExtractionService } from './fact-extraction.service';
 import { InputGuardService } from './input-guard.service';
 import { RecommendedJobSummary } from '@memory/memory.types';
 
+export interface AgentInputMessage {
+  role: string;
+  content: string;
+  /** 该条 user message 关联的图片 URL 列表（test-suite/dashboard 路径） */
+  imageUrls?: string[];
+  /** 与 imageUrls 一一对应的图片消息 ID（wecom 路径供工具回写） */
+  imageMessageIds?: string[];
+}
+
 export interface AgentInvokeParams {
   /**
    * 对话消息列表（含历史 + 当前用户消息）
    * controller / test-suite 直接调用时使用；wecom 渠道请改用 userMessage。
    */
-  messages?: { role: string; content: string }[];
+  messages?: AgentInputMessage[];
   /**
    * 当前用户消息（wecom 渠道路径）
    * 历史消息由 ShortTermService 内部从 Supabase 读取（已含当前消息，无需重复传入）。
@@ -47,6 +56,10 @@ export interface AgentInvokeParams {
   maxSteps?: number;
   /** 图片 URL 列表（多模态消息，传入 Agent 做 vision 识别） */
   imageUrls?: string[];
+  /** 图片消息 ID 列表（供 save_image_description 工具回写 DB） */
+  imageMessageIds?: string[];
+  /** 策略来源：wecom 读 released，test 读 testing */
+  strategySource?: 'released' | 'testing';
 }
 
 export interface AgentToolCall {
@@ -218,6 +231,7 @@ export class AgentRunnerService {
       scenario = 'candidate-consultation',
       maxSteps = 5,
       imageUrls,
+      imageMessageIds,
     } = params;
 
     this.logger.log(
@@ -239,11 +253,21 @@ export class AgentRunnerService {
     const messages =
       userMessage !== undefined ? memory.shortTerm : this.trimMessages(passedMessages ?? []);
 
-    // 3. 组装 systemPrompt（含阶段策略 + 风险场景，由 section 体系完成）
-    const currentStage = memory.procedural.currentStage ?? undefined;
-    const { systemPrompt, thresholds } = await this.context.compose({ scenario, currentStage });
+    // 3. Prompt injection 检测
+    const guardResult = this.inputGuard.detectMessages(messages);
+    const chatModel = this.router.resolveByRole(ModelRole.Chat);
+    const chatModelId = this.configService.get<string>('AGENT_CHAT_MODEL') || '';
+    const typedMessages = this.toModelMessages(messages, supportsVision(chatModelId));
 
-    // 4. 注入记忆块（Profile + SessionFacts）
+    // 4. 组装 systemPrompt（含阶段策略 + 风险场景，由 section 体系完成）
+    const currentStage = memory.procedural.currentStage ?? undefined;
+    const { systemPrompt, thresholds } = await this.context.compose({
+      scenario,
+      currentStage,
+      strategySource: params.strategySource,
+    });
+
+    // 5. 注入记忆块（Profile + SessionFacts）
     let finalPrompt = systemPrompt;
     const profileBlock = this.memoryService.longTerm.formatProfileForPrompt(
       memory.longTerm.profile,
@@ -253,8 +277,7 @@ export class AgentRunnerService {
       : '';
     finalPrompt += profileBlock + factsBlock;
 
-    // 5. Prompt injection 检测
-    const guardResult = this.inputGuard.detectMessages(messages);
+    // 6. Prompt injection 检测
     if (!guardResult.safe) {
       finalPrompt += InputGuardService.GUARD_SUFFIX;
       const lastUserMsg = messages.filter((m) => m.role === 'user').pop();
@@ -263,21 +286,19 @@ export class AgentRunnerService {
         .catch(() => {});
     }
 
-    // 6. 图片多模态：将图片 URL 注入最后一条 user message 的 content
-    const typedMessages = messages as ModelMessage[];
-    const chatModel = this.router.resolveByRole(ModelRole.Chat);
-    const chatModelId = this.configService.get<string>('AGENT_CHAT_MODEL') || '';
+    // 7. 图片多模态：将图片 URL 注入最后一条 user message 的 content（wecom 路径）
     if (imageUrls?.length && supportsVision(chatModelId)) {
-      this.injectImageParts(typedMessages, imageUrls);
+      this.injectImageParts(typedMessages, imageUrls, imageMessageIds);
     }
 
-    // 7. 构建工具
+    // 8. 构建工具
     const toolContext: ToolBuildContext = {
       userId,
       corpId,
       sessionId,
       messages: typedMessages,
       thresholds,
+      imageMessageIds,
       onJobsFetched: async (jobs) => {
         await this.memoryService.sessionFacts.saveLastRecommendedJobs(
           corpId,
@@ -364,10 +385,83 @@ export class AgentRunnerService {
   }
 
   /**
+   * 将业务输入消息转换为 ModelMessage
+   */
+  private toModelMessages(messages: AgentInputMessage[], enableVision: boolean): ModelMessage[] {
+    return messages.map((message) => {
+      const textContent = this.extractTextFromContent(message.content);
+      if (message.role === 'user' && message.imageUrls?.length) {
+        if (enableVision) {
+          const imageParts = this.buildImageParts(message.imageUrls, message.imageMessageIds);
+          const textPart = textContent
+            ? [{ type: 'text' as const, text: String(textContent) }]
+            : [];
+          return {
+            role: 'user',
+            content: [...imageParts, ...textPart],
+          };
+        }
+
+        const fallbackText =
+          message.imageUrls.length === 1
+            ? '[图片消息]'
+            : `[图片消息 ${message.imageUrls.length} 张]`;
+        return {
+          role: 'user',
+          content: textContent ? `${fallbackText} ${textContent}` : fallbackText,
+        };
+      }
+
+      if (message.role === 'assistant') {
+        return {
+          role: 'assistant',
+          content: textContent,
+        };
+      }
+
+      if (message.role === 'system') {
+        return {
+          role: 'system',
+          content: textContent,
+        };
+      }
+
+      return {
+        role: 'user',
+        content: textContent,
+      };
+    });
+  }
+
+  /**
    * 将图片 URL 注入最后一条 user message，转为多模态 content array
    * Vercel AI SDK 支持 UserContent: (TextPart | ImagePart)[]
    */
-  private injectImageParts(messages: ModelMessage[], imageUrls: string[]): void {
+  private injectImageParts(
+    messages: ModelMessage[],
+    imageUrls: string[],
+    imageMessageIds?: string[],
+  ): void {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        const textContent = this.extractTextFromContent(messages[i].content);
+        const imageParts = this.buildImageParts(imageUrls, imageMessageIds);
+        if (imageParts.length === 0) return;
+        const textPart = textContent ? [{ type: 'text' as const, text: String(textContent) }] : [];
+        messages[i] = {
+          role: 'user',
+          content: [...imageParts, ...textPart],
+        };
+        this.logger.log(`注入 ${imageUrls.length} 张图片到 user message（多模态 vision）`);
+        return;
+      }
+    }
+  }
+
+  /**
+   * 构建图片 content parts，必要时在图片前注入 messageId 标签
+   */
+  private buildImageParts(imageUrls: string[], imageMessageIds?: string[]) {
     const validUrls = imageUrls
       .map((url) => {
         try {
@@ -379,30 +473,27 @@ export class AgentRunnerService {
       })
       .filter((url): url is URL => url !== null);
 
-    if (validUrls.length === 0) return;
-
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'user') {
-        const textContent = this.extractTextFromContent(messages[i].content);
-        messages[i] = {
-          role: 'user',
-          content: [
-            ...validUrls.map((url) => ({ type: 'image' as const, image: url })),
-            { type: 'text' as const, text: String(textContent) },
-          ],
-        };
-        this.logger.log(`注入 ${validUrls.length} 张图片到 user message（多模态 vision）`);
-        return;
-      }
+    if (validUrls.length === 0) return [];
+    if (imageMessageIds?.length && imageMessageIds.length !== validUrls.length) {
+      this.logger.warn(
+        `图片 URL 数量(${validUrls.length})与 messageId 数量(${imageMessageIds.length})不一致，将按现有顺序尽力注入`,
+      );
     }
+
+    return validUrls.flatMap((url, index) => {
+      const messageId = imageMessageIds?.[index];
+      const label = messageId
+        ? { type: 'text' as const, text: `[图片 messageId=${messageId}]` }
+        : null;
+      const image = { type: 'image' as const, image: url };
+      return label ? [label, image] : [image];
+    });
   }
 
   /**
    * 输入长度守卫 — 总字符数超限时从最早的消息开始丢弃（messages 路径兜底）
    */
-  private trimMessages(
-    messages: { role: string; content: string }[],
-  ): { role: string; content: string }[] {
+  private trimMessages(messages: AgentInputMessage[]): AgentInputMessage[] {
     const maxChars = this.memoryConfig.shortTermMaxChars;
     const totalChars = messages.reduce((sum, m) => sum + (m.content?.length ?? 0), 0);
     if (totalChars <= maxChars) return messages;

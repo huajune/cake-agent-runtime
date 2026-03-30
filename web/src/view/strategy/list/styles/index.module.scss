@@ -109,23 +109,63 @@ $_pp-30: rgba(167, 139, 250, 0.3);
   gap: $spacing-sm;
 }
 
-.changelogBtn {
+.publishBtn {
   @include button-base;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 12px;
+  padding: 6px 14px;
   border-radius: $radius-full;
   font-size: $font-size-xs;
-  font-weight: $font-weight-medium;
-  color: $text-secondary;
-  background: $_pp-05;
+  font-weight: $font-weight-semibold;
+  color: $_pp;
+  background: $_pp-08;
   transition: all $transition-fast;
 
   &:hover:not(:disabled) {
-    background: $_pp-10;
-    color: $_pp;
+    background: $_pp-15;
   }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.publishBtnConfirm {
+  @include button-base;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  border-radius: $radius-full;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  color: #fff;
+  background: linear-gradient(135deg, #c084fc 0%, #818cf8 100%);
+  box-shadow: 0 2px 8px $_pp-25;
+  transition: all $transition-fast;
+
+  &:hover:not(:disabled) {
+    filter: brightness(1.05);
+  }
+}
+
+.versionBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: $radius-md;
+  background: rgba(59, 130, 246, 0.06);
+  color: rgba(59, 130, 246, 0.8);
+  font-size: $font-size-xs;
+  position: relative;
+  z-index: 1;
+}
+
+.versionInfo {
+  color: $text-muted;
 }
 
 .headerTitle {

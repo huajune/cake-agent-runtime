@@ -16,7 +16,9 @@ import { buildRecallHistoryTool } from './recall-history.tool';
 import { buildJobListTool } from './duliday-job-list.tool';
 import { buildInterviewBookingTool } from './duliday-interview-booking.tool';
 import { buildGeocodeTool } from './geocode.tool';
+import { buildSaveImageDescriptionTool } from './save-image-description.tool';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
+import { ChatSessionService } from '@biz/message/services/chat-session.service';
 
 /**
  * 统一工具注册表
@@ -45,6 +47,7 @@ export class ToolRegistryService {
     longTermService: LongTermService,
     spongeService: SpongeService,
     geocodingService: GeocodingService,
+    private readonly chatSessionService: ChatSessionService,
   ) {
     this.registry = {
       // ===== 阶段工具 =====
@@ -152,6 +155,19 @@ export class ToolRegistryService {
     for (const [name, reg] of this.mcpTools) {
       if (reg.tool) tools[name] = reg.tool;
     }
+
+    // 动态注入：当前轮次有图片消息时，注册 save_image_description 工具
+    if (context.imageMessageIds?.length) {
+      const imgTool = buildSaveImageDescriptionTool(
+        this.chatSessionService,
+        context.imageMessageIds,
+      );
+      tools['save_image_description'] = imgTool(context);
+      this.logger.log(
+        `动态注入 save_image_description 工具, imageMessageIds=${context.imageMessageIds.join(',')}`,
+      );
+    }
+
     return tools;
   }
 

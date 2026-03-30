@@ -10,6 +10,8 @@ import {
  * 策略配置数据库记录
  * @table strategy_config
  */
+export type StrategyConfigStatus = 'testing' | 'released' | 'archived';
+
 export interface StrategyConfigRecord {
   id: string;
   name: string;
@@ -20,6 +22,10 @@ export interface StrategyConfigRecord {
   red_lines: StrategyRedLines;
   industry_skills: StrategyIndustrySkills;
   is_active: boolean;
+  status: StrategyConfigStatus;
+  version: number;
+  version_note: string | null;
+  released_at: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -1,14 +1,17 @@
 import { useState } from 'react';
-import { Check, Loader2, AlertCircle, History } from 'lucide-react';
+import { Check, Loader2, AlertCircle, Upload, Info } from 'lucide-react';
 import { TabSwitch } from '@/components/TabSwitch';
-import { useStrategyConfig } from '@/hooks/strategy/useStrategyConfig';
+import {
+  useStrategyConfig,
+  useReleasedConfig,
+  usePublishStrategy,
+} from '@/hooks/strategy/useStrategyConfig';
 import { useSaveStatusStore } from '@/hooks/strategy/useSaveStatusStore';
 import PersonaSection from './components/PersonaSection';
 import StageGoalsSection from './components/StageGoalsSection';
 import RedLinesSection from './components/RedLinesSection';
 import ThresholdsSection from './components/ThresholdsSection';
 import IndustrySkillsSection from './components/IndustrySkillsSection';
-import { ChangelogModal } from './components/ChangelogModal';
 import styles from './styles/index.module.scss';
 
 type TabKey = 'persona' | 'stageGoals' | 'redLines' | 'thresholds' | 'industrySkills';
@@ -23,11 +26,31 @@ const TABS: { key: TabKey; label: string }[] = [
 
 export default function Strategy() {
   const [activeTab, setActiveTab] = useState<TabKey>('persona');
-  const [changelogOpen, setChangelogOpen] = useState(false);
+  const [publishConfirm, setPublishConfirm] = useState(false);
   const { data: config, isLoading } = useStrategyConfig();
+  const { data: releasedConfig } = useReleasedConfig();
+  const publishMutation = usePublishStrategy();
   const saveStatus = useSaveStatusStore((s) => s.status);
 
-  const tabs = TABS;
+  const handlePublish = () => {
+    if (!publishConfirm) {
+      setPublishConfirm(true);
+      setTimeout(() => setPublishConfirm(false), 3000);
+      return;
+    }
+    publishMutation.mutate(undefined);
+    setPublishConfirm(false);
+  };
+
+  const releasedVersion = releasedConfig?.version ?? 0;
+  const releasedTime = releasedConfig?.released_at
+    ? new Date(releasedConfig.released_at).toLocaleString('zh-CN', {
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : null;
 
   if (isLoading) {
     return (
@@ -61,19 +84,60 @@ export default function Strategy() {
           <div className={styles.headerActions}>
             {saveStatus !== 'idle' && (
               <div className={styles.saveStatus} data-status={saveStatus}>
-                {saveStatus === 'saving' && <><Loader2 size={14} className={styles.spinIcon} /> 保存中...</>}
-                {saveStatus === 'saved' && <><Check size={14} /> 已保存</>}
-                {saveStatus === 'error' && <><AlertCircle size={14} /> 保存失败</>}
+                {saveStatus === 'saving' && (
+                  <>
+                    <Loader2 size={14} className={styles.spinIcon} /> 保存中...
+                  </>
+                )}
+                {saveStatus === 'saved' && (
+                  <>
+                    <Check size={14} /> 已保存
+                  </>
+                )}
+                {saveStatus === 'error' && (
+                  <>
+                    <AlertCircle size={14} /> 保存失败
+                  </>
+                )}
               </div>
             )}
-            <button className={styles.changelogBtn} onClick={() => setChangelogOpen(true)}>
-              <History size={14} />
-              变更记录
+            <button
+              className={
+                publishConfirm ? styles.publishBtnConfirm : styles.publishBtn
+              }
+              onClick={handlePublish}
+              disabled={publishMutation.isPending}
+            >
+              {publishMutation.isPending ? (
+                <>
+                  <Loader2 size={14} className={styles.spinIcon} /> 发布中...
+                </>
+              ) : publishConfirm ? (
+                '确认发布?'
+              ) : (
+                <>
+                  <Upload size={14} /> 发布策略
+                </>
+              )}
             </button>
           </div>
         </div>
+
+        <div className={styles.versionBar}>
+          <Info size={13} />
+          <span>
+            编辑中为测试版本，企微用户不受影响
+            {releasedTime && (
+              <span className={styles.versionInfo}>
+                {' '}
+                · 当前线上版本: v{releasedVersion} ({releasedTime})
+              </span>
+            )}
+          </span>
+        </div>
+
         <div className={styles.headerBottom}>
-          <TabSwitch tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+          <TabSwitch tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} />
         </div>
       </div>
 
@@ -86,8 +150,6 @@ export default function Strategy() {
           {activeTab === 'industrySkills' && <IndustrySkillsSection />}
         </>
       )}
-
-      <ChangelogModal isOpen={changelogOpen} onClose={() => setChangelogOpen(false)} />
     </div>
   );
 }

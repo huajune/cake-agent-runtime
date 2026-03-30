@@ -33,6 +33,16 @@ export async function updateRedLines(redLines: StrategyRedLines) {
   return unwrapResponse<{ config: StrategyConfigRecord; message: string }>(data);
 }
 
+export async function publishStrategy(versionNote?: string) {
+  const { data } = await api.post('/strategy/publish', { versionNote });
+  return unwrapResponse<{ config: StrategyConfigRecord; message: string }>(data);
+}
+
+export async function getReleasedConfig() {
+  const { data } = await api.get('/strategy', { params: { status: 'released' } });
+  return unwrapResponse<StrategyConfigRecord>(data);
+}
+
 export async function getChangelog(limit = 20) {
   const { data } = await api.get('/strategy/changelog', { params: { limit } });
   return unwrapResponse<StrategyChangelogRecord[]>(data);

@@ -28,6 +28,8 @@ export interface ComposeParams {
   scenario?: string;
   channelType?: 'private' | 'group';
   currentStage?: string;
+  /** 策略来源：wecom 读 released，test 读 testing，默认 released */
+  strategySource?: 'released' | 'testing';
 }
 
 export interface ComposeResult {
@@ -61,9 +63,14 @@ export class ContextService implements OnModuleInit {
    * 组装系统提示词 + stageGoals
    */
   async compose(params: ComposeParams = {}): Promise<ComposeResult> {
-    const { scenario = DEFAULT_SCENARIO, channelType = 'private', currentStage } = params;
+    const {
+      scenario = DEFAULT_SCENARIO,
+      channelType = 'private',
+      currentStage,
+      strategySource = 'released',
+    } = params;
 
-    const config = await this.strategyConfigService.getActiveConfig();
+    const config = await this.strategyConfigService.getActiveConfig(strategySource);
 
     const ctx: PromptContext = {
       scenario,

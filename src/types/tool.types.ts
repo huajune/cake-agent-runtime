@@ -23,6 +23,8 @@ export interface ToolBuildContext {
   onJobsFetched?: (jobs: unknown[]) => void | Promise<void>;
   /** 业务阈值（策略配置） */
   thresholds?: Threshold[];
+  /** 图片消息 ID 列表（当前轮次包含图片时传入，供 save_image_description 工具使用） */
+  imageMessageIds?: string[];
 }
 
 /**
