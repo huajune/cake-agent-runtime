@@ -8,9 +8,14 @@ describe('StrategyController', () => {
 
   const mockStrategyConfigService = {
     getActiveConfig: jest.fn(),
+    getTestingConfig: jest.fn(),
+    getReleasedConfig: jest.fn(),
     updatePersona: jest.fn(),
     updateStageGoals: jest.fn(),
     updateRedLines: jest.fn(),
+    publish: jest.fn(),
+    getVersionHistory: jest.fn(),
+    getChangelog: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -34,7 +39,7 @@ describe('StrategyController', () => {
   });
 
   describe('getActiveConfig', () => {
-    it('should return the active strategy config', async () => {
+    it('should return the testing config by default', async () => {
       const mockConfig = {
         id: 'config-1',
         persona: { textDimensions: [] },
@@ -42,16 +47,26 @@ describe('StrategyController', () => {
         redLines: { rules: [] },
       };
 
-      mockStrategyConfigService.getActiveConfig.mockResolvedValue(mockConfig);
+      mockStrategyConfigService.getTestingConfig.mockResolvedValue(mockConfig);
 
       const result = await controller.getActiveConfig();
 
-      expect(strategyConfigService.getActiveConfig).toHaveBeenCalled();
+      expect(strategyConfigService.getTestingConfig).toHaveBeenCalled();
+      expect(result).toEqual(mockConfig);
+    });
+
+    it('should return released config when status=released', async () => {
+      const mockConfig = { id: 'config-released' };
+      mockStrategyConfigService.getReleasedConfig.mockResolvedValue(mockConfig);
+
+      const result = await controller.getActiveConfig('released');
+
+      expect(strategyConfigService.getReleasedConfig).toHaveBeenCalled();
       expect(result).toEqual(mockConfig);
     });
 
     it('should propagate errors from strategyConfigService', async () => {
-      mockStrategyConfigService.getActiveConfig.mockRejectedValue(new Error('Config not found'));
+      mockStrategyConfigService.getTestingConfig.mockRejectedValue(new Error('Config not found'));
 
       await expect(controller.getActiveConfig()).rejects.toThrow('Config not found');
     });

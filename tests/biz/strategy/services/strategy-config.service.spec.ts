@@ -9,9 +9,11 @@ describe('StrategyConfigService', () => {
   let service: StrategyConfigService;
 
   const mockStrategyConfigRepository = {
-    findActiveConfig: jest.fn(),
+    findByStatus: jest.fn(),
     insertConfig: jest.fn(),
     updateConfigField: jest.fn(),
+    publishStrategy: jest.fn(),
+    findVersionHistory: jest.fn(),
   };
 
   const mockChangelogRepository = {
@@ -29,6 +31,10 @@ describe('StrategyConfigService', () => {
     red_lines: { rules: ['测试规则'], thresholds: [] },
     industry_skills: { skills: [] },
     is_active: true,
+    status: 'testing',
+    version: 1,
+    version_note: null,
+    released_at: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     ...overrides,
@@ -47,9 +53,8 @@ describe('StrategyConfigService', () => {
 
     jest.clearAllMocks();
 
-    // Reset memory cache
-    (service as any).cachedConfig = null;
-    (service as any).cacheExpiry = 0;
+    // Reset cache
+    (service as any).cache.clear();
   });
 
   it('should be defined', () => {
@@ -61,35 +66,60 @@ describe('StrategyConfigService', () => {
   describe('getActiveConfig', () => {
     it('should return memory cached config when cache is valid', async () => {
       const cached = makeRecord({ id: 'cached-1' });
-      (service as any).cachedConfig = cached;
-      (service as any).cacheExpiry = Date.now() + 60_000;
+      (service as any).cache.set('released', { config: cached, expiry: Date.now() + 60_000 });
 
       const result = await service.getActiveConfig();
 
       expect(result).toBe(cached);
-      expect(mockStrategyConfigRepository.findActiveConfig).not.toHaveBeenCalled();
+      expect(mockStrategyConfigRepository.findByStatus).not.toHaveBeenCalled();
     });
 
     it('should load from DB when memory cache is expired', async () => {
-      const dbRecord = makeRecord({ id: 'db-1' });
-      mockStrategyConfigRepository.findActiveConfig.mockResolvedValue(dbRecord);
+      const dbRecord = makeRecord({ id: 'db-1', status: 'released' });
+      mockStrategyConfigRepository.findByStatus.mockResolvedValue(dbRecord);
 
       const result = await service.getActiveConfig();
 
       expect(result).toEqual(dbRecord);
-      expect(mockStrategyConfigRepository.findActiveConfig).toHaveBeenCalledTimes(1);
+      expect(mockStrategyConfigRepository.findByStatus).toHaveBeenCalledWith('released');
     });
 
     it('should throw when DB returns null (no config)', async () => {
-      mockStrategyConfigRepository.findActiveConfig.mockResolvedValue(null);
+      mockStrategyConfigRepository.findByStatus.mockResolvedValue(null);
 
       await expect(service.getActiveConfig()).rejects.toThrow(InternalServerErrorException);
     });
 
     it('should throw when DB fails', async () => {
-      mockStrategyConfigRepository.findActiveConfig.mockRejectedValue(new Error('DB error'));
+      mockStrategyConfigRepository.findByStatus.mockRejectedValue(new Error('DB error'));
 
       await expect(service.getActiveConfig()).rejects.toThrow('DB error');
+    });
+  });
+
+  // ==================== getTestingConfig / getReleasedConfig ====================
+
+  describe('getTestingConfig', () => {
+    it('should call getActiveConfig with testing status', async () => {
+      const testingRecord = makeRecord({ id: 'testing-1', status: 'testing' });
+      mockStrategyConfigRepository.findByStatus.mockResolvedValue(testingRecord);
+
+      const result = await service.getTestingConfig();
+
+      expect(result).toEqual(testingRecord);
+      expect(mockStrategyConfigRepository.findByStatus).toHaveBeenCalledWith('testing');
+    });
+  });
+
+  describe('getReleasedConfig', () => {
+    it('should call getActiveConfig with released status', async () => {
+      const releasedRecord = makeRecord({ id: 'released-1', status: 'released' });
+      mockStrategyConfigRepository.findByStatus.mockResolvedValue(releasedRecord);
+
+      const result = await service.getReleasedConfig();
+
+      expect(result).toEqual(releasedRecord);
+      expect(mockStrategyConfigRepository.findByStatus).toHaveBeenCalledWith('released');
     });
   });
 
@@ -99,8 +129,7 @@ describe('StrategyConfigService', () => {
     it('should update persona and refresh cache', async () => {
       const initialRecord = makeRecord();
       const updatedRecord = makeRecord({ id: 'updated-1' });
-      (service as any).cachedConfig = initialRecord;
-      (service as any).cacheExpiry = Date.now() + 60_000;
+      (service as any).cache.set('testing', { config: initialRecord, expiry: Date.now() + 60_000 });
 
       const newPersona = {
         textDimensions: [
@@ -124,7 +153,7 @@ describe('StrategyConfigService', () => {
         { persona: newPersona },
       );
       // Cache should be updated
-      expect((service as any).cachedConfig).toEqual(updatedRecord);
+      expect((service as any).cache.get('testing').config).toEqual(updatedRecord);
     });
 
     it('should throw error when textDimensions is missing', async () => {
@@ -141,8 +170,7 @@ describe('StrategyConfigService', () => {
 
     it('should throw error when update returns null (no match)', async () => {
       const initialRecord = makeRecord();
-      (service as any).cachedConfig = initialRecord;
-      (service as any).cacheExpiry = Date.now() + 60_000;
+      (service as any).cache.set('testing', { config: initialRecord, expiry: Date.now() + 60_000 });
 
       const newPersona = {
         textDimensions: [
@@ -170,8 +198,7 @@ describe('StrategyConfigService', () => {
     it('should update role setting and refresh cache', async () => {
       const initialRecord = makeRecord();
       const updatedRecord = makeRecord({ id: 'updated-role' });
-      (service as any).cachedConfig = initialRecord;
-      (service as any).cacheExpiry = Date.now() + 60_000;
+      (service as any).cache.set('testing', { config: initialRecord, expiry: Date.now() + 60_000 });
 
       const newRoleSetting = { content: '你是一名专业的招聘顾问' };
 
@@ -184,13 +211,12 @@ describe('StrategyConfigService', () => {
         initialRecord.id,
         { role_setting: newRoleSetting },
       );
-      expect((service as any).cachedConfig).toEqual(updatedRecord);
+      expect((service as any).cache.get('testing').config).toEqual(updatedRecord);
     });
 
     it('should throw InternalServerErrorException when update returns null (no match)', async () => {
       const initialRecord = makeRecord();
-      (service as any).cachedConfig = initialRecord;
-      (service as any).cacheExpiry = Date.now() + 60_000;
+      (service as any).cache.set('testing', { config: initialRecord, expiry: Date.now() + 60_000 });
 
       mockStrategyConfigRepository.updateConfigField.mockResolvedValue(null);
 
@@ -206,8 +232,7 @@ describe('StrategyConfigService', () => {
     it('should update stage goals and refresh cache', async () => {
       const initialRecord = makeRecord();
       const updatedRecord = makeRecord();
-      (service as any).cachedConfig = initialRecord;
-      (service as any).cacheExpiry = Date.now() + 60_000;
+      (service as any).cache.set('testing', { config: initialRecord, expiry: Date.now() + 60_000 });
 
       const newStageGoals = { stages: [{ stage: 'trust_building', label: 'Test' } as any] };
 
@@ -230,8 +255,7 @@ describe('StrategyConfigService', () => {
 
     it('should throw error when update returns null (no match)', async () => {
       const initialRecord = makeRecord();
-      (service as any).cachedConfig = initialRecord;
-      (service as any).cacheExpiry = Date.now() + 60_000;
+      (service as any).cache.set('testing', { config: initialRecord, expiry: Date.now() + 60_000 });
 
       mockStrategyConfigRepository.updateConfigField.mockResolvedValue(null);
 
@@ -247,8 +271,7 @@ describe('StrategyConfigService', () => {
     it('should update red lines and refresh cache', async () => {
       const initialRecord = makeRecord();
       const updatedRecord = makeRecord();
-      (service as any).cachedConfig = initialRecord;
-      (service as any).cacheExpiry = Date.now() + 60_000;
+      (service as any).cache.set('testing', { config: initialRecord, expiry: Date.now() + 60_000 });
 
       const newRedLines = { rules: ['rule1', 'rule2'] };
 
@@ -277,8 +300,7 @@ describe('StrategyConfigService', () => {
 
     it('should throw error when update returns null (no match)', async () => {
       const initialRecord = makeRecord();
-      (service as any).cachedConfig = initialRecord;
-      (service as any).cacheExpiry = Date.now() + 60_000;
+      (service as any).cache.set('testing', { config: initialRecord, expiry: Date.now() + 60_000 });
 
       mockStrategyConfigRepository.updateConfigField.mockResolvedValue(null);
 
@@ -292,13 +314,12 @@ describe('StrategyConfigService', () => {
 
   describe('refreshCache', () => {
     it('should clear memory cache', async () => {
-      (service as any).cachedConfig = makeRecord();
-      (service as any).cacheExpiry = Date.now() + 60_000;
+      (service as any).cache.set('testing', { config: makeRecord(), expiry: Date.now() + 60_000 });
+      (service as any).cache.set('released', { config: makeRecord({ status: 'released' }), expiry: Date.now() + 60_000 });
 
       await service.refreshCache();
 
-      expect((service as any).cachedConfig).toBeNull();
-      expect((service as any).cacheExpiry).toBe(0);
+      expect((service as any).cache.size).toBe(0);
     });
   });
 });
