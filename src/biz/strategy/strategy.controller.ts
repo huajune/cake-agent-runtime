@@ -7,15 +7,20 @@ import {
   HttpException,
   HttpStatus,
   Query,
+  ParseIntPipe,
+  DefaultValuePipe,
 } from '@nestjs/common';
 import { Public } from '@infra/server/response/decorators/api-response.decorator';
 import { StrategyConfigService } from './services/strategy-config.service';
+import { StrategyConfigStatus } from './entities/strategy-config.entity';
 import {
   StrategyPersona,
   StrategyStageGoals,
   StrategyRedLines,
   StrategyRoleSetting,
 } from './types/strategy.types';
+
+const VALID_STATUS_VALUES: StrategyConfigStatus[] = ['testing', 'released', 'archived'];
 
 /**
  * 策略配置控制器
@@ -33,6 +38,12 @@ export class StrategyController {
    */
   @Get()
   async getActiveConfig(@Query('status') status?: string) {
+    if (status && !VALID_STATUS_VALUES.includes(status as StrategyConfigStatus)) {
+      throw new HttpException(
+        `无效的 status 值: ${status}，可选: ${VALID_STATUS_VALUES.join(', ')}`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
     if (status === 'released') {
       return this.strategyConfigService.getReleasedConfig();
     }
@@ -84,15 +95,15 @@ export class StrategyController {
    * 版本历史（released + archived）
    */
   @Get('versions')
-  async getVersionHistory(@Query('limit') limit?: number) {
-    return this.strategyConfigService.getVersionHistory(limit || 20);
+  async getVersionHistory(@Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number) {
+    return this.strategyConfigService.getVersionHistory(limit);
   }
 
   /**
    * 变更历史（兼容旧接口）
    */
   @Get('changelog')
-  async getChangelog(@Query('limit') limit?: number) {
-    return this.strategyConfigService.getChangelog(limit || 20);
+  async getChangelog(@Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number) {
+    return this.strategyConfigService.getChangelog(limit);
   }
 }

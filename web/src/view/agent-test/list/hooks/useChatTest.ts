@@ -50,6 +50,7 @@ export interface UseChatTestReturn {
 
 const DRAFT_CACHE_KEY = 'agent-test-draft';
 const HISTORY_IMAGE_CACHE_KEY = 'agent-test-history-images';
+const MAX_CACHED_IMAGES = 20;
 const IMAGE_MARKER_REGEX = /^\[图片#([^\]]+)\]$/;
 
 interface HistoryImageCacheEntry {
@@ -89,6 +90,11 @@ function loadHistoryImageCache(): Record<string, HistoryImageCacheEntry> {
 
 function saveHistoryImageCache(cache: Record<string, HistoryImageCacheEntry>): void {
   try {
+    const keys = Object.keys(cache);
+    if (keys.length > MAX_CACHED_IMAGES) {
+      const evicted = keys.slice(0, keys.length - MAX_CACHED_IMAGES);
+      for (const key of evicted) delete cache[key];
+    }
     localStorage.setItem(HISTORY_IMAGE_CACHE_KEY, JSON.stringify(cache));
   } catch { /* noop */ }
 }

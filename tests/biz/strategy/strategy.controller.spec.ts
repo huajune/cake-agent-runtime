@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { HttpException } from '@nestjs/common';
 import { StrategyController } from '@biz/strategy/strategy.controller';
 import { StrategyConfigService } from '@biz/strategy/services/strategy-config.service';
 
@@ -63,6 +64,11 @@ describe('StrategyController', () => {
 
       expect(strategyConfigService.getReleasedConfig).toHaveBeenCalled();
       expect(result).toEqual(mockConfig);
+    });
+
+    it('should throw HttpException for invalid status value', async () => {
+      await expect(controller.getActiveConfig('foo')).rejects.toThrow(HttpException);
+      await expect(controller.getActiveConfig('foo')).rejects.toThrow('无效的 status 值');
     });
 
     it('should propagate errors from strategyConfigService', async () => {
