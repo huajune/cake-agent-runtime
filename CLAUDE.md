@@ -36,12 +36,20 @@ pnpm run test:cov      # Test coverage
 # Single test file (tests are in tests/ directory, mirroring src/ structure)
 pnpm run test -- tests/wecom/message/message.service.spec.ts
 
-# Database Migrations (Supabase CLI)
-pnpm run db:new <name>  # Create new migration
-pnpm run db:push        # Apply migrations to remote
-pnpm run db:status      # List migration status
-pnpm run db:pull        # Pull remote schema changes
-pnpm run db:diff        # Generate diff migration
+# Database Migrations (Supabase CLI, 生产/测试已隔离)
+pnpm run db:new <name>       # Create new migration
+pnpm run db:push:test        # Apply migrations to TEST (gaovfitvetoojkvtalxy)
+pnpm run db:push:prod        # Apply migrations to PROD (uvmbxcilpteaiizplcyp)
+pnpm run db:status:test      # List TEST migration status
+pnpm run db:status:prod      # List PROD migration status
+pnpm run db:pull             # Pull remote schema changes
+pnpm run db:diff             # Generate diff migration
+
+# 数据变更流程：先测试 → 再生产
+# 1. pnpm run db:new add_feature
+# 2. 编写 SQL（用 IF NOT EXISTS / ON CONFLICT 保证幂等）
+# 3. pnpm run db:push:test   → 验证
+# 4. pnpm run db:push:prod   → 上线
 ```
 
 ## Architecture
