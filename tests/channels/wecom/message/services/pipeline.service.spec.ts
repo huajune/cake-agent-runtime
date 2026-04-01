@@ -4,7 +4,7 @@ import { MessagePipelineService } from '@wecom/message/services/pipeline.service
 import { MessageDeduplicationService } from '@wecom/message/services/deduplication.service';
 import { MessageFilterService } from '@wecom/message/services/filter.service';
 import { MessageDeliveryService } from '@wecom/message/services/delivery.service';
-import { BookingDetectionService } from '@wecom/message/services/booking-detection.service';
+import { BookingDetectionService } from '@biz/message/services/booking-detection.service';
 import { ImageDescriptionService } from '@wecom/message/services/image-description.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';

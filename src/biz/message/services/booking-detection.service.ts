@@ -1,10 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { FeishuBookingService } from '@infra/feishu/services/booking.service';
-import { BookingService } from '@biz/message/services/booking.service';
 import { InterviewBookingInfo } from '@infra/feishu/interfaces/interface';
-import type { AgentInvokeResult } from '@wecom/message/message.types';
+import { AgentToolCall } from '@agent/agent-run.types';
 
-type BookingToolCall = NonNullable<AgentInvokeResult['toolCalls']>[number];
+import { BookingService } from './booking.service';
+
+type BookingToolCall = AgentToolCall;
 
 /**
  * 预约结果检测服务 (Business Logic)
@@ -30,7 +31,7 @@ export class BookingDetectionService {
     userId?: string;
     managerId?: string;
     managerName?: string;
-    toolCalls?: AgentInvokeResult['toolCalls'];
+    toolCalls?: AgentToolCall[];
   }): Promise<void> {
     const { chatId, contactName, userId, managerId, managerName, toolCalls } = params;
 
@@ -64,9 +65,7 @@ export class BookingDetectionService {
     this.sendFeishuNotificationAsync(bookingInfo);
   }
 
-  private findLatestBookingToolCall(
-    toolCalls?: AgentInvokeResult['toolCalls'],
-  ): BookingToolCall | null {
+  private findLatestBookingToolCall(toolCalls?: AgentToolCall[]): BookingToolCall | null {
     if (!toolCalls?.length) return null;
 
     for (let i = toolCalls.length - 1; i >= 0; i -= 1) {

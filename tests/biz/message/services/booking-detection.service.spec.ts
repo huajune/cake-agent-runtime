@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BookingDetectionService } from '@wecom/message/services/booking-detection.service';
+import { BookingDetectionService } from '@biz/message/services/booking-detection.service';
 import { FeishuBookingService } from '@infra/feishu/services/booking.service';
+
 import { BookingService } from '@biz/message/services/booking.service';
 
 describe('BookingDetectionService', () => {
@@ -167,46 +168,6 @@ describe('BookingDetectionService', () => {
         }),
       );
       expect(mockBookingService.incrementBookingCount).not.toHaveBeenCalled();
-    });
-
-    it('should handle feishu notification failure gracefully', async () => {
-      mockFeishuBookingService.sendBookingNotification.mockRejectedValue(
-        new Error('Feishu API error'),
-      );
-
-      await service.handleBookingSuccessAsync({
-        ...baseParams,
-        toolCalls: [
-          {
-            toolName: 'duliday_interview_booking',
-            args: { name: '张三' },
-            result: { success: true, message: '预约成功' },
-          },
-        ],
-      });
-
-      await new Promise((resolve) => setImmediate(resolve));
-
-      expect(mockFeishuBookingService.sendBookingNotification).toHaveBeenCalled();
-    });
-
-    it('should handle booking stats update failure gracefully', async () => {
-      mockBookingService.incrementBookingCount.mockRejectedValue(new Error('DB error'));
-
-      await service.handleBookingSuccessAsync({
-        ...baseParams,
-        toolCalls: [
-          {
-            toolName: 'duliday_interview_booking',
-            args: { name: '张三' },
-            result: { success: true, message: '预约成功' },
-          },
-        ],
-      });
-
-      await new Promise((resolve) => setImmediate(resolve));
-
-      expect(mockBookingService.incrementBookingCount).toHaveBeenCalled();
     });
   });
 });

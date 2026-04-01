@@ -5,7 +5,7 @@ import { AgentRunnerService } from '@agent/runner.service';
 import { AgentHealthService } from '@agent/agent-health.service';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { RegistryService } from '@providers/registry.service';
-import { BookingDetectionService } from '@wecom/message/services/booking-detection.service';
+import { BookingDetectionService } from '@biz/message/services/booking-detection.service';
 
 describe('AgentController', () => {
   let controller: AgentController;
@@ -178,13 +178,7 @@ describe('AgentController', () => {
         sessionId: 'conv123',
         scenario: 'candidate-consultation',
       });
-      expect(mockBookingDetection.handleBookingSuccessAsync).toHaveBeenCalledWith(
-        expect.objectContaining({
-          chatId: 'conv123',
-          contactName: 'user-1',
-          userId: 'user-1',
-        }),
-      );
+      expect(mockBookingDetection.handleBookingSuccessAsync).not.toHaveBeenCalled();
       expect(result.success).toBe(true);
       expect(result.text).toBe('你好！');
       expect(result.usage).toEqual({ inputTokens: 10, outputTokens: 20, totalTokens: 30 });
@@ -208,6 +202,36 @@ describe('AgentController', () => {
         }),
       );
       expect(result.success).toBe(true);
+    });
+
+    it('should trigger booking detection only when notifyBooking is true', async () => {
+      mockLoop.invoke.mockResolvedValue({
+        text: 'response',
+        steps: 1,
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_booking',
+            args: { name: '张三' },
+            result: { success: true },
+          },
+        ],
+        usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
+      });
+
+      await controller.debugChat({
+        message: '测试',
+        sessionId: 'conv123',
+        userId: 'user-1',
+        notifyBooking: true,
+      });
+
+      expect(mockBookingDetection.handleBookingSuccessAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chatId: 'conv123',
+          contactName: 'user-1',
+          userId: 'user-1',
+        }),
+      );
     });
 
     it('should throw HttpException when AgentRunnerService fails', async () => {

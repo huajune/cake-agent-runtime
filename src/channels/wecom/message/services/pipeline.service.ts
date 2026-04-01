@@ -13,9 +13,9 @@ import { supportsVision } from '@providers/types';
 import { MessageDeduplicationService } from './deduplication.service';
 import { MessageFilterService } from './filter.service';
 import { MessageDeliveryService } from './delivery.service';
-import { BookingDetectionService } from './booking-detection.service';
 import { ImageDescriptionService } from './image-description.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
+import { BookingDetectionService } from '@biz/message/services/booking-detection.service';
 import { ChatMessageInput } from '@biz/message/types/message.types';
 
 // 导入工具和类型

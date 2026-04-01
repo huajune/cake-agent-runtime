@@ -13,6 +13,7 @@ import { TestImportService } from './services/test-import.service';
 import { TestWriteBackService } from './services/test-write-back.service';
 import { ConversationTestService } from './services/conversation-test.service';
 import { AgentModule } from '@agent/agent.module';
+import { BizModule } from '@biz/biz.module';
 import { FeishuSyncModule } from '@biz/feishu-sync/feishu-sync.module';
 import { EvaluationModule } from '@evaluation/evaluation.module';
 
@@ -32,6 +33,7 @@ import { EvaluationModule } from '@evaluation/evaluation.module';
     ConfigModule,
     HttpModule,
     AgentModule,
+    BizModule,
     FeishuSyncModule,
     EvaluationModule,
     BullModule.registerQueueAsync({

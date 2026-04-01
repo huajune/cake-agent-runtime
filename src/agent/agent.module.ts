@@ -12,7 +12,6 @@ import { ContextService } from './context/context.service';
 import { AgentController } from './agent.controller';
 import { AgentHealthService } from './agent-health.service';
 import { InputGuardService } from './input-guard.service';
-import { BookingDetectionService } from '@wecom/message/services/booking-detection.service';
 
 @Module({
   imports: [ConfigModule, FeishuModule, BizModule, ToolModule, MemoryModule, ObservabilityModule],
@@ -24,7 +23,6 @@ import { BookingDetectionService } from '@wecom/message/services/booking-detecti
     AgentHealthService,
     CompletionService,
     InputGuardService,
-    BookingDetectionService,
   ],
   exports: [
     ContextService,
@@ -32,7 +30,6 @@ import { BookingDetectionService } from '@wecom/message/services/booking-detecti
     AgentRunnerService,
     CompletionService,
     InputGuardService,
-    BookingDetectionService,
   ],
 })
 export class AgentModule {}

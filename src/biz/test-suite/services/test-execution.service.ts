@@ -7,7 +7,7 @@ import {
   type AgentRunResult,
   type AgentStreamResult,
 } from '@agent/runner.service';
-import { BookingDetectionService } from '@wecom/message/services/booking-detection.service';
+import { BookingDetectionService } from '@biz/message/services/booking-detection.service';
 import { TestChatRequestDto, TestChatResponse, VercelAIChatRequestDto } from '../dto/test-chat.dto';
 import { TestExecutionRepository } from '../repositories/test-execution.repository';
 import { TestExecution } from '../entities/test-execution.entity';

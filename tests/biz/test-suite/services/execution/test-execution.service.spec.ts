@@ -7,7 +7,7 @@ import { ContextService } from '@agent/context/context.service';
 import { ExecutionStatus } from '@biz/test-suite/enums/test.enum';
 import { TestChatRequestDto } from '@biz/test-suite/dto/test-chat.dto';
 import { MessageRole } from '@enums/message.enum';
-import { BookingDetectionService } from '@wecom/message/services/booking-detection.service';
+import { BookingDetectionService } from '@biz/message/services/booking-detection.service';
 
 describe('TestExecutionService', () => {
   let service: TestExecutionService;

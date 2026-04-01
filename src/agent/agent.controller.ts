@@ -4,7 +4,7 @@ import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { AgentRunnerService } from './runner.service';
 import { RegistryService } from '@providers/registry.service';
 import { AgentHealthService } from './agent-health.service';
-import { BookingDetectionService } from '@wecom/message/services/booking-detection.service';
+import { BookingDetectionService } from '@biz/message/services/booking-detection.service';
 
 @Controller('agent')
 export class AgentController {
@@ -56,6 +56,7 @@ export class AgentController {
       sessionId?: string;
       scenario?: string;
       userId?: string;
+      notifyBooking?: boolean;
     },
   ) {
     this.logger.log(`【调试模式】测试聊天: ${body.message}`);
@@ -71,14 +72,16 @@ export class AgentController {
         scenario,
       });
 
-      await this.bookingDetection.handleBookingSuccessAsync({
-        chatId: sessionId,
-        contactName: body.userId || 'debug-user',
-        userId: body.userId || 'debug-user',
-        managerId: 'debug-agent',
-        managerName: 'Agent Debug',
-        toolCalls: result.toolCalls,
-      });
+      if (body.notifyBooking === true) {
+        await this.bookingDetection.handleBookingSuccessAsync({
+          chatId: sessionId,
+          contactName: body.userId || 'debug-user',
+          userId: body.userId || 'debug-user',
+          managerId: 'debug-agent',
+          managerName: 'Agent Debug',
+          toolCalls: result.toolCalls,
+        });
+      }
 
       return {
         success: true,
