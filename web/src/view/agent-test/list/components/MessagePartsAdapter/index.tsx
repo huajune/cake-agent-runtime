@@ -16,13 +16,7 @@ import styles from './index.module.scss';
 
 // ==================== 思考过程组件（基于 AI reasoning） ====================
 
-function ReasoningBlock({
-  text,
-  isThinking,
-}: {
-  text: string;
-  isThinking: boolean;
-}) {
+function ReasoningBlock({ text, isThinking }: { text: string; isThinking: boolean }) {
   const [expanded, setExpanded] = useState(isThinking);
 
   return (
@@ -97,9 +91,13 @@ function ToolInvocation({
             className={`${styles.toolStatus} ${isCalling ? styles.statusCalling : styles.statusSuccess}`}
           >
             {isCalling ? (
-              <><Loader2 size={12} className={styles.toolSpinnerIcon} /> 调用中</>
+              <>
+                <Loader2 size={12} className={styles.toolSpinnerIcon} /> 调用中
+              </>
             ) : (
-              <><CheckCircle2 size={12} /> 完成</>
+              <>
+                <CheckCircle2 size={12} /> 完成
+              </>
             )}
           </div>
           {hasContent && (
@@ -213,10 +211,7 @@ interface MessagePartsAdapterProps {
   isStreaming?: boolean;
 }
 
-function MessagePartsAdapterComponent({
-  message,
-  isStreaming,
-}: MessagePartsAdapterProps) {
+function MessagePartsAdapterComponent({ message, isStreaming }: MessagePartsAdapterProps) {
   const parts = message.parts;
 
   if (!parts || parts.length === 0) {
@@ -226,31 +221,19 @@ function MessagePartsAdapterComponent({
           <span className={styles.streamingLoading}>
             <span className={styles.loadingDots}>
               <span />
-            <span />
-            <span />
+              <span />
+              <span />
+            </span>
+            <span className={styles.streamingPlaceholder}>思考中</span>
           </span>
-          <span className={styles.streamingPlaceholder}>思考中</span>
-        </span>
-      ) : (
-        <span className={styles.streamingPlaceholder}>等待响应...</span>
+        ) : (
+          <span className={styles.streamingPlaceholder}>等待响应...</span>
         )}
       </div>
     );
   }
 
   const segments = buildSegments(parts);
-
-  // DEBUG: 查看 parts 中是否包含多个 reasoning 块
-  if (!isStreaming && parts.some((p) => p.type === 'reasoning')) {
-    const reasoningParts = parts.filter((p) => p.type === 'reasoning');
-    const allTypes = parts.map((p) => p.type);
-    console.log('[MessageParts] parts 类型序列:', allTypes);
-    console.log('[MessageParts] reasoning 块数量:', reasoningParts.length);
-    reasoningParts.forEach((r, i) => {
-      const text = (r as unknown as { text: string }).text || '';
-      console.log(`[MessageParts] reasoning[${i}] 长度=${text.length}, 前100字: ${text.substring(0, 100)}`);
-    });
-  }
 
   const hasStreamingText = segments.some(
     (s) => s.kind === 'text' && s.texts.join('').trim().length > 0,
@@ -264,11 +247,7 @@ function MessagePartsAdapterComponent({
           const isLastReasoning =
             !!isStreaming && segments.slice(idx + 1).every((s) => s.kind !== 'reasoning');
           return (
-            <ReasoningBlock
-              key={`reasoning-${idx}`}
-              text={seg.text}
-              isThinking={isLastReasoning}
-            />
+            <ReasoningBlock key={`reasoning-${idx}`} text={seg.text} isThinking={isLastReasoning} />
           );
         }
 
