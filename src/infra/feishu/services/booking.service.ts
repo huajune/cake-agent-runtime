@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { FeishuWebhookService } from './webhook.service';
 import { InterviewBookingInfo } from '../interfaces/interface';
-import { ALERT_RECEIVERS } from '../constants/constants';
 
 /**
  * 飞书面试预约通知服务
@@ -26,65 +25,51 @@ export class FeishuBookingService {
           ? bookingInfo.toolOutput
           : undefined;
       const isFailure = toolOutput?.success === false;
+      const resultMessage = this.pickString(toolOutput?.message, toolOutput?.notice);
+      const bookingId = this.pickString(toolOutput?.booking_id);
+      const failureReason = this.pickString(toolOutput?.error);
+      const failureDetails = this.stringifyErrorList(toolOutput?.errorList);
+      const statusText = isFailure ? '失败' : '成功';
+      const summaryLine = isFailure
+        ? `候选人${bookingInfo.candidateName ? ` ${bookingInfo.candidateName}` : ''} 预约失败，请尽快跟进处理。`
+        : `候选人${bookingInfo.candidateName ? ` ${bookingInfo.candidateName}` : ''} 已完成面试预约。`;
 
-      // 构建消息字段
-      const fields: string[] = [`**通知时间**: ${time}`];
-      fields.push(`**预约状态**: ${isFailure ? '失败' : '成功'}`);
+      const sections: string[] = [];
+      sections.push(`**摘要**\n${summaryLine}`);
 
-      if (bookingInfo.candidateName) {
-        fields.push(`**候选人**: ${bookingInfo.candidateName}`);
-      }
-      if (bookingInfo.brandName) {
-        fields.push(`**品牌**: ${bookingInfo.brandName}`);
-      }
-      if (bookingInfo.storeName) {
-        fields.push(`**门店**: ${bookingInfo.storeName}`);
-      }
-      if (bookingInfo.interviewTime) {
-        fields.push(`**面试时间**: ${bookingInfo.interviewTime}`);
-      }
+      const candidateLines: string[] = [];
+      if (bookingInfo.candidateName) candidateLines.push(`候选人：${bookingInfo.candidateName}`);
       if (bookingInfo.contactInfo) {
-        fields.push(`**联系方式**: ${bookingInfo.contactInfo}`);
+        candidateLines.push(`联系方式：${this.maskPhone(bookingInfo.contactInfo)}`);
       }
-      if (bookingInfo.chatId) {
-        fields.push(`**会话 ID**: ${bookingInfo.chatId}`);
+      if (bookingInfo.managerName) candidateLines.push(`招募经理：${bookingInfo.managerName}`);
+      if (candidateLines.length > 0) {
+        sections.push(`**候选人信息**\n${candidateLines.join('\n')}`);
       }
 
-      // 如果有工具输出，展示关键信息
-      if (toolOutput) {
-        const output = toolOutput;
-        if (output.message) {
-          fields.push(`**预约结果**: ${output.message}`);
-        }
-        if (output.booking_id) {
-          fields.push(`**预约 ID**: ${output.booking_id}`);
-        }
-        if (output.error) {
-          fields.push(`**失败原因**: ${output.error}`);
-        }
-        if (Array.isArray(output.errorList) && output.errorList.length > 0) {
-          const errorList = output.errorList
-            .map((item) => {
-              if (typeof item === 'string') return item.trim();
-              try {
-                return JSON.stringify(item);
-              } catch {
-                return String(item);
-              }
-            })
-            .filter(Boolean)
-            .join('；');
-          if (errorList) {
-            fields.push(`**失败明细**: ${errorList}`);
-          }
-        }
+      const interviewLines: string[] = [];
+      if (bookingInfo.brandName) interviewLines.push(`品牌：${bookingInfo.brandName}`);
+      if (bookingInfo.storeName) interviewLines.push(`门店：${bookingInfo.storeName}`);
+      if (bookingInfo.interviewTime) interviewLines.push(`面试时间：${bookingInfo.interviewTime}`);
+      if (interviewLines.length > 0) {
+        sections.push(`**面试安排**\n${interviewLines.join('\n')}`);
       }
+
+      const resultLines: string[] = [`预约状态：${statusText}`];
+      if (resultMessage) resultLines.push(`处理结果：${resultMessage}`);
+      if (bookingId) resultLines.push(`预约编号：${bookingId}`);
+      if (failureReason) resultLines.push(`失败原因：${failureReason}`);
+      if (failureDetails) resultLines.push(`失败明细：${failureDetails}`);
+      sections.push(`**执行结果**\n${resultLines.join('\n')}`);
+
+      const metaLines: string[] = [`通知时间：${time}`];
+      if (bookingInfo.chatId) metaLines.push(`会话 ID：${bookingInfo.chatId}`);
+      if (bookingInfo.userName) metaLines.push(`候选人来源：${bookingInfo.userName}`);
+      sections.push(`**附加信息**\n${metaLines.join('\n')}`);
 
       const title = isFailure ? '⚠️ 面试预约失败' : '🎉 面试预约成功';
       const color = isFailure ? 'red' : 'green';
-      const card = this.webhookService.buildCard(title, fields.join('\n'), color, [
-        ...ALERT_RECEIVERS.INTERVIEW_BOOKING,
-      ]);
+      const card = this.webhookService.buildCardWithAtAll(title, sections.join('\n\n'), color);
 
       // 发送
       const success = await this.webhookService.sendMessage('INTERVIEW_BOOKING', card);
@@ -104,5 +89,38 @@ export class FeishuBookingService {
       this.logger.error(`面试预约通知发送异常: ${error.message}`);
       return false;
     }
+  }
+
+  private stringifyErrorList(value: unknown): string | undefined {
+    if (!Array.isArray(value) || value.length === 0) return undefined;
+
+    const text = value
+      .map((item) => {
+        if (typeof item === 'string') return item.trim();
+        try {
+          return JSON.stringify(item);
+        } catch {
+          return String(item);
+        }
+      })
+      .filter(Boolean)
+      .join('；');
+
+    return text || undefined;
+  }
+
+  private pickString(...values: unknown[]): string | undefined {
+    for (const value of values) {
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
+    }
+    return undefined;
+  }
+
+  private maskPhone(phone: string): string {
+    const trimmed = phone.trim();
+    if (!/^\d{11}$/.test(trimmed)) return trimmed;
+    return `${trimmed.slice(0, 3)}****${trimmed.slice(-4)}`;
   }
 }

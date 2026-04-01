@@ -10,6 +10,7 @@ describe('FeishuBookingService', () => {
   beforeEach(async () => {
     mockWebhookService = {
       buildCard: jest.fn(),
+      buildCardWithAtAll: jest.fn(),
       sendMessage: jest.fn(),
     } as unknown as jest.Mocked<FeishuWebhookService>;
 
@@ -42,25 +43,24 @@ describe('FeishuBookingService', () => {
   describe('sendBookingNotification', () => {
     it('should send notification and return true on success', async () => {
       const mockCard = { msg_type: 'interactive', card: {} };
-      mockWebhookService.buildCard.mockReturnValue(mockCard);
+      mockWebhookService.buildCardWithAtAll.mockReturnValue(mockCard);
       mockWebhookService.sendMessage.mockResolvedValue(true);
 
       const bookingInfo = buildBookingInfo();
       const result = await service.sendBookingNotification(bookingInfo);
 
       expect(result).toBe(true);
-      expect(mockWebhookService.buildCard).toHaveBeenCalledWith(
+      expect(mockWebhookService.buildCardWithAtAll).toHaveBeenCalledWith(
         '🎉 面试预约成功',
-        expect.stringContaining('张三'),
+        expect.stringContaining('**摘要**'),
         'green',
-        expect.any(Array),
       );
       expect(mockWebhookService.sendMessage).toHaveBeenCalledWith('INTERVIEW_BOOKING', mockCard);
     });
 
     it('should send failure notification with red card when tool output indicates failure', async () => {
       const mockCard = { msg_type: 'interactive', card: {} };
-      mockWebhookService.buildCard.mockReturnValue(mockCard);
+      mockWebhookService.buildCardWithAtAll.mockReturnValue(mockCard);
       mockWebhookService.sendMessage.mockResolvedValue(true);
 
       const bookingInfo = buildBookingInfo({
@@ -75,16 +75,15 @@ describe('FeishuBookingService', () => {
       const result = await service.sendBookingNotification(bookingInfo);
 
       expect(result).toBe(true);
-      expect(mockWebhookService.buildCard).toHaveBeenCalledWith(
+      expect(mockWebhookService.buildCardWithAtAll).toHaveBeenCalledWith(
         '⚠️ 面试预约失败',
-        expect.stringContaining('该时间段已满'),
+        expect.stringContaining('**执行结果**'),
         'red',
-        expect.any(Array),
       );
     });
 
     it('should return false when sendMessage returns false', async () => {
-      mockWebhookService.buildCard.mockReturnValue({});
+      mockWebhookService.buildCardWithAtAll.mockReturnValue({});
       mockWebhookService.sendMessage.mockResolvedValue(false);
 
       const result = await service.sendBookingNotification(buildBookingInfo());
@@ -92,7 +91,7 @@ describe('FeishuBookingService', () => {
     });
 
     it('should return false when sendMessage throws an error', async () => {
-      mockWebhookService.buildCard.mockReturnValue({});
+      mockWebhookService.buildCardWithAtAll.mockReturnValue({});
       mockWebhookService.sendMessage.mockRejectedValue(new Error('Network error'));
 
       const result = await service.sendBookingNotification(buildBookingInfo());
@@ -100,69 +99,73 @@ describe('FeishuBookingService', () => {
     });
 
     it('should include candidateName in the card content', async () => {
-      mockWebhookService.buildCard.mockReturnValue({});
+      mockWebhookService.buildCardWithAtAll.mockReturnValue({});
       mockWebhookService.sendMessage.mockResolvedValue(true);
 
       await service.sendBookingNotification(buildBookingInfo({ candidateName: '李四' }));
 
-      const cardContent = mockWebhookService.buildCard.mock.calls[0][1] as string;
+      const cardContent = mockWebhookService.buildCardWithAtAll.mock.calls[0][1] as string;
+      expect(cardContent).toContain('候选人信息');
       expect(cardContent).toContain('李四');
     });
 
     it('should include brandName in the card content', async () => {
-      mockWebhookService.buildCard.mockReturnValue({});
+      mockWebhookService.buildCardWithAtAll.mockReturnValue({});
       mockWebhookService.sendMessage.mockResolvedValue(true);
 
       await service.sendBookingNotification(buildBookingInfo({ brandName: '必胜客' }));
 
-      const cardContent = mockWebhookService.buildCard.mock.calls[0][1] as string;
+      const cardContent = mockWebhookService.buildCardWithAtAll.mock.calls[0][1] as string;
+      expect(cardContent).toContain('面试安排');
       expect(cardContent).toContain('必胜客');
     });
 
     it('should include storeName in the card content', async () => {
-      mockWebhookService.buildCard.mockReturnValue({});
+      mockWebhookService.buildCardWithAtAll.mockReturnValue({});
       mockWebhookService.sendMessage.mockResolvedValue(true);
 
       await service.sendBookingNotification(buildBookingInfo({ storeName: '南京西路店' }));
 
-      const cardContent = mockWebhookService.buildCard.mock.calls[0][1] as string;
+      const cardContent = mockWebhookService.buildCardWithAtAll.mock.calls[0][1] as string;
       expect(cardContent).toContain('南京西路店');
     });
 
     it('should include interviewTime in the card content', async () => {
-      mockWebhookService.buildCard.mockReturnValue({});
+      mockWebhookService.buildCardWithAtAll.mockReturnValue({});
       mockWebhookService.sendMessage.mockResolvedValue(true);
 
       await service.sendBookingNotification(
         buildBookingInfo({ interviewTime: '2026-03-20 10:00' }),
       );
 
-      const cardContent = mockWebhookService.buildCard.mock.calls[0][1] as string;
+      const cardContent = mockWebhookService.buildCardWithAtAll.mock.calls[0][1] as string;
       expect(cardContent).toContain('2026-03-20 10:00');
     });
 
-    it('should include contactInfo in the card content', async () => {
-      mockWebhookService.buildCard.mockReturnValue({});
+    it('should mask contactInfo in the card content', async () => {
+      mockWebhookService.buildCardWithAtAll.mockReturnValue({});
       mockWebhookService.sendMessage.mockResolvedValue(true);
 
-      await service.sendBookingNotification(buildBookingInfo({ contactInfo: '156****5678' }));
+      await service.sendBookingNotification(buildBookingInfo({ contactInfo: '15612345678' }));
 
-      const cardContent = mockWebhookService.buildCard.mock.calls[0][1] as string;
+      const cardContent = mockWebhookService.buildCardWithAtAll.mock.calls[0][1] as string;
       expect(cardContent).toContain('156****5678');
+      expect(cardContent).not.toContain('15612345678');
     });
 
     it('should include chatId in the card content', async () => {
-      mockWebhookService.buildCard.mockReturnValue({});
+      mockWebhookService.buildCardWithAtAll.mockReturnValue({});
       mockWebhookService.sendMessage.mockResolvedValue(true);
 
       await service.sendBookingNotification(buildBookingInfo({ chatId: 'chat_xyz' }));
 
-      const cardContent = mockWebhookService.buildCard.mock.calls[0][1] as string;
+      const cardContent = mockWebhookService.buildCardWithAtAll.mock.calls[0][1] as string;
+      expect(cardContent).toContain('附加信息');
       expect(cardContent).toContain('chat_xyz');
     });
 
     it('should include toolOutput info when provided', async () => {
-      mockWebhookService.buildCard.mockReturnValue({});
+      mockWebhookService.buildCardWithAtAll.mockReturnValue({});
       mockWebhookService.sendMessage.mockResolvedValue(true);
 
       const bookingInfo = buildBookingInfo({
@@ -174,13 +177,13 @@ describe('FeishuBookingService', () => {
 
       await service.sendBookingNotification(bookingInfo);
 
-      const cardContent = mockWebhookService.buildCard.mock.calls[0][1] as string;
-      expect(cardContent).toContain('预约成功！面试时间已确认');
-      expect(cardContent).toContain('booking_12345');
+      const cardContent = mockWebhookService.buildCardWithAtAll.mock.calls[0][1] as string;
+      expect(cardContent).toContain('处理结果：预约成功！面试时间已确认');
+      expect(cardContent).toContain('预约编号：booking_12345');
     });
 
     it('should include failure details when tool output indicates failure', async () => {
-      mockWebhookService.buildCard.mockReturnValue({});
+      mockWebhookService.buildCardWithAtAll.mockReturnValue({});
       mockWebhookService.sendMessage.mockResolvedValue(true);
 
       await service.sendBookingNotification(
@@ -194,16 +197,15 @@ describe('FeishuBookingService', () => {
         }),
       );
 
-      const cardContent = mockWebhookService.buildCard.mock.calls[0][1] as string;
-      expect(cardContent).toContain('预约状态');
-      expect(cardContent).toContain('失败');
-      expect(cardContent).toContain('该时间段已满');
-      expect(cardContent).toContain('请更换时间');
+      const cardContent = mockWebhookService.buildCardWithAtAll.mock.calls[0][1] as string;
+      expect(cardContent).toContain('预约状态：失败');
+      expect(cardContent).toContain('失败原因：该时间段已满');
+      expect(cardContent).toContain('失败明细：请更换时间');
       expect(cardContent).toContain('FULL');
     });
 
     it('should handle missing optional fields gracefully', async () => {
-      mockWebhookService.buildCard.mockReturnValue({});
+      mockWebhookService.buildCardWithAtAll.mockReturnValue({});
       mockWebhookService.sendMessage.mockResolvedValue(true);
 
       const minimalBookingInfo: InterviewBookingInfo = {};
@@ -214,26 +216,26 @@ describe('FeishuBookingService', () => {
     });
 
     it('should use green card color', async () => {
-      mockWebhookService.buildCard.mockReturnValue({});
+      mockWebhookService.buildCardWithAtAll.mockReturnValue({});
       mockWebhookService.sendMessage.mockResolvedValue(true);
 
       await service.sendBookingNotification(buildBookingInfo());
 
-      expect(mockWebhookService.buildCard).toHaveBeenCalledWith(
+      expect(mockWebhookService.buildCardWithAtAll).toHaveBeenCalledWith(
         expect.any(String),
         expect.any(String),
         'green',
-        expect.any(Array),
       );
     });
 
     it('should include notification time in the card content', async () => {
-      mockWebhookService.buildCard.mockReturnValue({});
+      mockWebhookService.buildCardWithAtAll.mockReturnValue({});
       mockWebhookService.sendMessage.mockResolvedValue(true);
 
       await service.sendBookingNotification(buildBookingInfo());
 
-      const cardContent = mockWebhookService.buildCard.mock.calls[0][1] as string;
+      const cardContent = mockWebhookService.buildCardWithAtAll.mock.calls[0][1] as string;
+      expect(cardContent).toContain('附加信息');
       expect(cardContent).toContain('通知时间');
     });
   });
