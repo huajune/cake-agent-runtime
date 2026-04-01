@@ -9,7 +9,7 @@
 - 自动计算版本号（主版本.次版本.补丁版本）
 - 自动生成结构化的 CHANGELOG
 - 自动创建 Git Tag
-- 自动同步版本更新到 develop 分支
+- 自动创建版本同步 PR 到 develop 分支
 
 ---
 
@@ -38,7 +38,7 @@
 4️⃣ 更新 package.json 版本号
 5️⃣ 生成 CHANGELOG.md 条目
 6️⃣ 直接提交 release commit 到 master 分支
-7️⃣ 自动同步该 release commit 到 develop 分支
+7️⃣ 自动创建同步 PR，将 release 生成的 `package.json` 和 `CHANGELOG.md` 合并回 develop
 8️⃣ 创建 Git Tag (例如 v1.2.3)
 9️⃣ 由该 tag 触发生产部署
 ```
@@ -50,7 +50,6 @@
 on:
   push:
     branches:
-      - main
       - master
 ```
 
@@ -261,14 +260,16 @@ git push origin develop
 # - 分析提交历史
 # - 更新版本号
 # - 生成 CHANGELOG
+# - 创建 develop 同步 PR
 # - 创建 Git Tag
-# - 同步到 develop
 ```
 
 **4. 查看结果**
 
 ```bash
-# 拉取最新的 develop 分支（包含版本更新）
+# 先在 GitHub 上检查并合并自动创建的 develop 同步 PR
+
+# 合并后，再拉取最新的 develop 分支（包含版本更新）
 git checkout develop
 git pull origin develop
 
@@ -309,7 +310,7 @@ git push
 
 **排查步骤**：
 
-1. 检查分支是否是 `master` 或 `main`：
+1. 检查分支是否是 `master`：
    ```bash
    git branch --show-current
    ```
@@ -370,23 +371,31 @@ git log <last-tag>..HEAD --oneline
 # commitLimit: 50 → commitLimit: 100
 ```
 
-### 问题 4: 同步到 develop 失败
+### 问题 4: develop 同步 PR 创建失败
 
-**症状**：Actions 日志显示合并冲突
+**症状**：Actions 日志显示 develop 同步 PR 创建失败，或 workflow 无法更新现有同步 PR
 
-**原因**：develop 分支有新的提交，与 master 冲突
+**原因**：workflow 会先创建同步分支，再调用 GitHub CLI 创建或更新指向 `develop` 的 PR。常见原因包括：
+
+1. `GITHUB_TOKEN` 缺少 `pull-requests: write`
+2. 机器人分支推送失败
+3. 仓库策略限制了 Actions 创建 PR
 
 **解决方法**：
 
 ```bash
-# 手动同步
+# 基于 develop 创建同步分支
 git checkout develop
 git pull origin develop
-git merge origin/master --no-ff
-# 解决冲突...
-git add .
-git commit -m "chore: sync version from master"
-git push origin develop
+git checkout -b chore/release-sync-develop-v1.2.3
+
+# 恢复 master 上 release 生成的版本文件
+git checkout origin/master -- package.json CHANGELOG.md
+git add package.json CHANGELOG.md
+git commit -m "chore(release): sync version files from master for v1.2.3"
+git push origin HEAD
+
+# 然后在 GitHub 上创建 PR: chore/release-sync-develop-v1.2.3 → develop
 ```
 
 ### 问题 5: 脚本运行错误
@@ -606,9 +615,10 @@ git checkout -b hotfix-1.2.3 v1.2.3
 
 **Q: develop 和 master 的版本号会不一致吗？**
 
-A: 不会，因为：
-- master 更新版本后会自动同步到 develop
-- 两个分支的版本号始终保持一致
+A: 可能会短暂不一致，因为：
+- master 更新版本后，workflow 会先创建一个同步 PR 指向 develop
+- 只有在这个同步 PR 合并后，develop 才会拿到同样的版本文件
+- 正常情况下差异只会持续到同步 PR 被合并
 
 ---
 
