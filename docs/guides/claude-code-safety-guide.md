@@ -201,7 +201,7 @@ git push origin develop
 ### 4. 使用分支保护主分支
 
 ```bash
-# 不要直接在master/main分支开发
+# 不要直接在 master 分支开发
 git checkout -b feature/new-feature
 
 # 开发完成后提PR合并

@@ -8,7 +8,7 @@
 ✅ 更新 `package.json` 版本号
 ✅ 生成 `CHANGELOG.md` 更新记录
 ✅ 直接提交 release commit 到 `master`
-✅ 自动同步到 `develop` 分支
+✅ 自动创建同步 PR 到 `develop` 分支
 ✅ 创建 Git Tag（如 `v1.2.3`）
 ✅ 使用该 tag 触发生产部署
 
@@ -49,11 +49,12 @@ PR 审核通过后，点击 **Merge pull request** 合并到 `master` 分支。
 - 分析提交历史
 - 计算版本号
 - 提交 release commit 到 `master`
-- 同步该 release commit 到 `develop`
+- 创建一个版本同步 PR 指向 `develop`
 - 创建 Tag 并触发部署
 
 大约 1-2 分钟后，你可以在以下位置查看结果：
 - [Actions 执行日志](../../.github/workflows/version-changelog.yml)
+- [Pull requests](https://github.com/huajune/cake-agent-runtime/pulls) 查看自动创建的 develop 同步 PR
 - [CHANGELOG.md](../../CHANGELOG.md) 查看更新记录
 - [Releases](https://github.com/huajune/cake-agent-runtime/tags) 查看版本标签
 
@@ -197,9 +198,9 @@ Feature 更新：
 
 ### 4. 版本同步
 
-- GitHub Actions 会自动将版本更新同步到 `develop` 分支
-- 开发前记得 `git pull origin develop` 拉取最新代码
-- 如果自动同步失败（有冲突），需要手动解决
+- GitHub Actions 会自动创建一个指向 `develop` 的同步 PR，内容只包含 release 生成的 `package.json` 和 `CHANGELOG.md`
+- `develop` 开启“只能通过 PR 合并”后，机器人不会再直接推送到 `develop`
+- 合并这个同步 PR 后，再执行 `git pull origin develop` 拉取最新代码
 
 ---
 
@@ -237,7 +238,8 @@ git checkout -b fix-branch v1.2.3
 
 **A:** 查看 [GitHub Actions 日志](https://github.com/huajune/cake-agent-runtime/actions)，常见原因：
 - 提交消息格式不正确
-- Git 冲突（需要手动解决）
+- GitHub Token 缺少创建 PR 的权限
+- 同步分支推送成功，但创建/更新 develop 同步 PR 失败
 - 权限问题（联系管理员）
 
 ### Q5: 我能手动修改版本号吗？

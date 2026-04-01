@@ -3,7 +3,6 @@ name: Update Version and Changelog
 on:
   push:
     branches:
-      - main
       - master
 
 # 防止并发执行导致分支名冲突
@@ -20,6 +19,7 @@ jobs:
 
     permissions:
       contents: write
+      pull-requests: write
 
     steps:
       - name: Checkout code
@@ -82,25 +82,67 @@ jobs:
 
           echo "✅ 已推送 release commit 到 ${CURRENT_BRANCH}: ${RELEASE_COMMIT}"
 
-      - name: Sync release commit to develop
+      - name: Create develop sync PR
         if: steps.check_changes.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           VERSION="${{ steps.check_changes.outputs.version }}"
           RELEASE_COMMIT="${{ steps.release_commit.outputs.release_commit }}"
+          CURRENT_BRANCH="${{ github.ref_name }}"
+          SYNC_BRANCH="chore/release-sync-develop-v$VERSION"
+          COMMIT_MESSAGE="chore(release): sync version files from $CURRENT_BRANCH for v$VERSION [skip ci]"
+          PR_TITLE="chore(release): sync version files to develop for v$VERSION"
+          PR_BODY=$(cat <<EOF
+          ## 自动同步版本文件到 develop
+
+          此 PR 由 GitHub Actions 自动创建，用于将 \`$CURRENT_BRANCH\` 上 release commit 生成的版本文件同步到 \`develop\`。
+
+          - 版本: \`v$VERSION\`
+          - 来源分支: \`$CURRENT_BRANCH\`
+          - release commit: \`$RELEASE_COMMIT\`
+          - 同步文件:
+            - \`package.json\`
+            - \`CHANGELOG.md\`
+          EOF
+          )
 
           git fetch origin develop
-          git checkout -B develop-sync origin/develop
+          git checkout -B "$SYNC_BRANCH" origin/develop
 
-          if ! git cherry-pick -x "$RELEASE_COMMIT"; then
-            git cherry-pick --abort || true
-            echo "Failed to cherry-pick release commit into develop" >&2
-            exit 1
+          # 仅同步 release 生成的版本文件，避免 develop 在这些文件上的分支差异导致 cherry-pick 冲突。
+          git restore --source="$RELEASE_COMMIT" --staged --worktree -- package.json CHANGELOG.md
+
+          if git diff --cached --quiet -- package.json CHANGELOG.md; then
+            echo "ℹ️ develop 已包含 v$VERSION 的版本文件，跳过同步 PR 创建"
+            exit 0
           fi
 
-          git push origin HEAD:develop
+          git commit -m "$COMMIT_MESSAGE"
+          git push --force-with-lease origin "HEAD:$SYNC_BRANCH"
 
-          echo "✅ 已同步版本变更到 develop: $VERSION"
+          EXISTING_PR_NUMBER=$(gh pr list \
+            --base develop \
+            --head "$SYNC_BRANCH" \
+            --state open \
+            --json number \
+            --jq '.[0].number // ""')
+
+          if [ -n "$EXISTING_PR_NUMBER" ]; then
+            gh pr edit "$EXISTING_PR_NUMBER" --title "$PR_TITLE" --body "$PR_BODY"
+            EXISTING_PR_URL=$(gh pr view "$EXISTING_PR_NUMBER" --json url --jq '.url')
+            echo "✅ 已更新 develop 同步 PR: $EXISTING_PR_URL"
+            exit 0
+          fi
+
+          PR_URL=$(gh pr create \
+            --base develop \
+            --head "$SYNC_BRANCH" \
+            --title "$PR_TITLE" \
+            --body "$PR_BODY")
+
+          echo "✅ 已创建 develop 同步 PR: $PR_URL"
 
       - name: Create and push release tag
         if: steps.check_changes.outputs.has_changes == 'true'
