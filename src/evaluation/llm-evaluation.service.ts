@@ -2,7 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { CompletionService } from '@agent/completion.service';
 import { ModelRole } from '@providers/types';
 import { randomUUID } from 'crypto';
-import { SimilarityRating, LlmEvaluationResult, EvaluationInput } from './evaluation.types';
+import {
+  SimilarityRating,
+  LlmEvaluationResult,
+  EvaluationInput,
+  EvaluationStructuredOutputSchema,
+} from './evaluation.types';
 
 export type { LlmEvaluationResult, EvaluationInput };
 
@@ -39,25 +44,16 @@ export class LlmEvaluationService {
       // 构建系统提示词（定义评估者角色和规则）和用户消息（待评估内容）
       const { systemPrompt, userMessage } = this.buildEvaluationPrompts(input);
 
-      // 调用 LLM 进行评估（通过 CompletionService 统一入口）
-      const completionResult = await this.completion.generate({
+      // 调用 LLM 进行结构化评估（通过 schema 约束输出格式）
+      const completionResult = await this.completion.generateStructured({
         systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
         role: ModelRole.Evaluate,
+        schema: EvaluationStructuredOutputSchema,
+        outputName: 'LlmEvaluationResult',
       });
 
-      // 提取响应文本
-      const responseText = completionResult.text;
-
-      // 调试日志：记录原始响应和提取结果
-      if (!responseText) {
-        this.logger.warn(`LLM 评估响应为空, evaluationId=${evaluationId}`);
-      } else {
-        this.logger.debug(`提取的文本 (${responseText.length}字): ${responseText.slice(0, 300)}`);
-      }
-
-      // 解析评估结果
-      const evaluation = this.parseEvaluationResult(responseText, evaluationId);
+      const evaluation = this.normalizeEvaluationResult(completionResult.object, evaluationId);
 
       // 添加 token 使用信息
       evaluation.tokenUsage = {
@@ -129,15 +125,12 @@ export class LlmEvaluationService {
 
 【优先级】准确性 > 完整性 > 效率 > 语气
 
-【输出格式】
-请严格按以下 JSON 格式输出，不要输出其他内容：
-{"score": 85, "passed": true, "reason": "回复正确理解了用户需求，虽然用词不同但意图一致"}
-
 注意：
 - score 为 0-100 的整数
-- passed 为 true 当且仅当 score >= 60
 - reason 用简短中文说明评估理由（不超过100字），不要使用英文双引号，用「」代替
-- "意思对"不等于"内容对"：即使语气友好，事实错误也必须严厉扣分`;
+- "意思对"不等于"内容对"：即使语气友好，事实错误也必须严厉扣分
+
+请只返回结构化评估结果，不要输出额外解释。`;
 
     // 构建对话历史上下文
     let historyContext = '';
@@ -160,96 +153,28 @@ ${expectedOutput}
 【实际回复（AI 客服）】
 ${actualOutput}
 
-请按照评分规则进行评估，直接输出 JSON 结果。`;
+请按照评分规则进行评估。`;
 
     return { systemPrompt, userMessage };
   }
 
   /**
-   * 解析评估结果 JSON
+   * 统一整理结构化评估结果。
    */
-  private parseEvaluationResult(responseText: string, evaluationId: string): LlmEvaluationResult {
-    try {
-      // 1. 清理 markdown 代码块：去掉 ```json 和 ```
-      const cleanedText = responseText
-        .replace(/```json/gi, '')
-        .replace(/```/g, '')
-        .trim();
+  private normalizeEvaluationResult(
+    result: { score: number; reason: string },
+    evaluationId: string,
+  ): LlmEvaluationResult {
+    const score = Math.round(result.score);
+    const passed = score >= PASS_THRESHOLD;
+    const reason = result.reason.slice(0, 200);
 
-      // 2. 提取 JSON 对象：找到第一个 { 和最后一个 }
-      const firstBrace = cleanedText.indexOf('{');
-      const lastBrace = cleanedText.lastIndexOf('}');
-
-      if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
-        this.logger.warn(`未找到 JSON 边界: ${responseText.slice(0, 200)}`);
-        return this.createDefaultResult(evaluationId, '无法解析评估结果：未找到JSON');
-      }
-
-      const jsonStr = cleanedText.slice(firstBrace, lastBrace + 1);
-
-      // 3. 解析 JSON
-      const parsed = JSON.parse(jsonStr) as {
-        score?: number;
-        passed?: boolean;
-        reason?: string;
-      };
-
-      // 4. 验证必需字段
-      if (
-        parsed?.score === undefined ||
-        parsed?.passed === undefined ||
-        parsed?.reason === undefined
-      ) {
-        this.logger.warn(`JSON 缺少必需字段: ${jsonStr.slice(0, 200)}`);
-        return this.createDefaultResult(evaluationId, '评估结果缺少必需字段');
-      }
-
-      // 5. 严格验证字段类型
-      if (
-        typeof parsed.score !== 'number' ||
-        typeof parsed.passed !== 'boolean' ||
-        typeof parsed.reason !== 'string'
-      ) {
-        this.logger.warn(
-          `字段类型错误: score=${typeof parsed.score}, passed=${typeof parsed.passed}, reason=${typeof parsed.reason}`,
-        );
-        this.logEvaluationFailure(evaluationId, responseText, '字段类型错误');
-        return this.createDefaultResult(evaluationId, '评估结果格式错误：字段类型不匹配');
-      }
-
-      // 6. 验证数值范围并修正
-      let score = parsed.score;
-      if (score < 0 || score > 100) {
-        this.logger.warn(`分数超出范围: ${score}，已修正到 [0, 100]`);
-        score = Math.max(0, Math.min(100, score));
-      }
-      score = Math.round(score);
-
-      // 7. 验证 passed 与 score 的一致性
-      const shouldPass = score >= PASS_THRESHOLD;
-      let passed = parsed.passed;
-      if (passed !== shouldPass) {
-        this.logger.warn(
-          `passed值不一致，score=${score}, passed=${passed}，已自动修正为 ${shouldPass}`,
-        );
-        passed = shouldPass;
-      }
-
-      // 8. 限制 reason 长度
-      const reason = parsed.reason.slice(0, 200);
-
-      return {
-        score,
-        passed,
-        reason,
-        evaluationId,
-      };
-    } catch (error: unknown) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      this.logger.error(`解析评估结果异常: ${errorMsg}, 原文: ${responseText.slice(0, 300)}`);
-      this.logEvaluationFailure(evaluationId, responseText, errorMsg);
-      return this.createDefaultResult(evaluationId, `解析失败: ${errorMsg}`);
-    }
+    return {
+      score,
+      passed,
+      reason,
+      evaluationId,
+    };
   }
 
   /**
@@ -262,15 +187,6 @@ ${actualOutput}
       reason,
       evaluationId,
     };
-  }
-
-  /**
-   * 记录评估失败日志（用于后续分析和优化）
-   */
-  private logEvaluationFailure(evaluationId: string, responseText: string, reason: string): void {
-    this.logger.error(
-      `[评估失败] ID=${evaluationId}, 原因=${reason}, 响应前200字=${responseText.slice(0, 200)}`,
-    );
   }
 
   /**

@@ -5,6 +5,7 @@ import { AgentRunnerService } from './runner.service';
 import { RegistryService } from '@providers/registry.service';
 import { AgentHealthService } from './agent-health.service';
 import { BookingDetectionService } from '@biz/message/services/booking-detection.service';
+import { DebugChatDto } from './dto/debug-chat.dto';
 
 // DEBUG-ONLY: 仅用于 /agent/debug-chat 显式开启 notifyBooking 时的占位通知人信息。
 const DEBUG_BOOKING_MANAGER = {
@@ -55,16 +56,7 @@ export class AgentController {
    * POST /agent/debug-chat
    */
   @Post('debug-chat')
-  async debugChat(
-    @Body()
-    body: {
-      message: string;
-      sessionId?: string;
-      scenario?: string;
-      userId?: string;
-      notifyBooking?: boolean;
-    },
-  ) {
+  async debugChat(@Body() body: DebugChatDto) {
     this.logger.log(`【调试模式】测试聊天: ${body.message}`);
     const sessionId = body.sessionId || `debug-${Date.now()}`;
     const scenario = body.scenario || 'candidate-consultation';

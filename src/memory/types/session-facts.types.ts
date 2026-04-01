@@ -86,6 +86,19 @@ export interface RecommendedJobSummary {
   distanceKm?: number | null;
 }
 
+export const RecommendedJobSummarySchema = z.object({
+  jobId: z.number().int(),
+  brandName: z.string().nullable(),
+  jobName: z.string().nullable(),
+  storeName: z.string().nullable(),
+  cityName: z.string().nullable(),
+  regionName: z.string().nullable(),
+  laborForm: z.string().nullable(),
+  salaryDesc: z.string().nullable(),
+  jobCategoryName: z.string().nullable(),
+  distanceKm: z.number().nullable().optional(),
+});
+
 /** 会话事实层 — 当前这次求职会话的结构化状态 */
 export interface WeworkSessionState {
   facts: EntityExtractionResult | null;
@@ -105,6 +118,14 @@ export interface WeworkSessionState {
   lastSessionActiveAt?: string;
 }
 
+export const WeworkSessionStateSchema = z.object({
+  facts: EntityExtractionResultSchema.nullable(),
+  lastCandidatePool: z.array(RecommendedJobSummarySchema).nullable(),
+  presentedJobs: z.array(RecommendedJobSummarySchema).nullable(),
+  currentFocusJob: RecommendedJobSummarySchema.nullable(),
+  lastSessionActiveAt: z.string().optional(),
+});
+
 /** 当前会话没有任何结构化记忆时的空状态。 */
 export const EMPTY_SESSION_STATE: WeworkSessionState = {
   facts: null,
@@ -117,6 +138,8 @@ export const EMPTY_SESSION_STATE: WeworkSessionState = {
 
 /** Redis 中 session-facts 层实际写入的 content 结构。 */
 export type SessionFactsRedisContent = Partial<WeworkSessionState>;
+
+export const SessionFactsRedisContentSchema = WeworkSessionStateSchema.partial();
 
 /** Redis 中 session-facts 层实际存储的 entry 结构。 */
 export type SessionFactsRedisEntry = MemoryEntry<SessionFactsRedisContent>;

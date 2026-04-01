@@ -10,6 +10,8 @@ import {
   EntityExtractionResultSchema,
   type EntityExtractionResult,
   type RecommendedJobSummary,
+  RecommendedJobSummarySchema,
+  SessionFactsRedisContentSchema,
   type WeworkSessionState,
   EMPTY_SESSION_STATE,
   FALLBACK_EXTRACTION,
@@ -55,7 +57,16 @@ export class SessionService {
     const key = this.buildKey(corpId, userId, sessionId);
     const entry = await this.redisStore.get(key);
     if (!entry) return { ...EMPTY_SESSION_STATE };
-    const content = (entry.content ?? {}) as Partial<WeworkSessionState>;
+    const parsed = SessionFactsRedisContentSchema.safeParse(entry.content ?? {});
+    if (!parsed.success) {
+      this.logger.warn(
+        `[getSessionState] Invalid session facts entry ignored: ${parsed.error.issues
+          .map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`)
+          .join('; ')}`,
+      );
+      return { ...EMPTY_SESSION_STATE };
+    }
+    const content = parsed.data as Partial<WeworkSessionState>;
 
     return {
       ...EMPTY_SESSION_STATE,
@@ -92,13 +103,13 @@ export class SessionService {
   ): Promise<void> {
     const key = this.buildKey(corpId, userId, sessionId);
     const state = await this.getSessionState(corpId, userId, sessionId);
-    const mergedFacts = state.facts
-      ? (deepMerge(state.facts, facts) as EntityExtractionResult)
-      : facts;
+    const mergedFacts = EntityExtractionResultSchema.parse(
+      state.facts ? deepMerge(state.facts, facts) : facts,
+    );
 
     await this.redisStore.set(
       key,
-      { ...state, facts: mergedFacts } as unknown as Record<string, unknown>,
+      this.serializeStateContent({ ...state, facts: mergedFacts }) as Record<string, unknown>,
       this.config.sessionTtl,
       false,
     );
@@ -112,10 +123,16 @@ export class SessionService {
   ): Promise<void> {
     const key = this.buildKey(corpId, userId, sessionId);
     const state = await this.getSessionState(corpId, userId, sessionId);
+    const validatedJobs = jobs.map(
+      (job) => RecommendedJobSummarySchema.parse(job) as RecommendedJobSummary,
+    );
 
     await this.redisStore.set(
       key,
-      { ...state, lastCandidatePool: jobs } as unknown as Record<string, unknown>,
+      this.serializeStateContent({ ...state, lastCandidatePool: validatedJobs }) as Record<
+        string,
+        unknown
+      >,
       this.config.sessionTtl,
       false,
     );
@@ -131,13 +148,19 @@ export class SessionService {
 
     const key = this.buildKey(corpId, userId, sessionId);
     const state = await this.getSessionState(corpId, userId, sessionId);
-    const merged = [...jobs, ...(state.presentedJobs ?? [])].filter(
+    const validatedJobs = jobs.map(
+      (job) => RecommendedJobSummarySchema.parse(job) as RecommendedJobSummary,
+    );
+    const merged = [...validatedJobs, ...(state.presentedJobs ?? [])].filter(
       (job, index, arr) => arr.findIndex((item) => item.jobId === job.jobId) === index,
     );
 
     await this.redisStore.set(
       key,
-      { ...state, presentedJobs: merged.slice(0, 10) } as unknown as Record<string, unknown>,
+      this.serializeStateContent({ ...state, presentedJobs: merged.slice(0, 10) }) as Record<
+        string,
+        unknown
+      >,
       this.config.sessionTtl,
       false,
     );
@@ -151,10 +174,16 @@ export class SessionService {
   ): Promise<void> {
     const key = this.buildKey(corpId, userId, sessionId);
     const state = await this.getSessionState(corpId, userId, sessionId);
+    const validatedJob = job
+      ? (RecommendedJobSummarySchema.parse(job) as RecommendedJobSummary)
+      : null;
 
     await this.redisStore.set(
       key,
-      { ...state, currentFocusJob: job } as unknown as Record<string, unknown>,
+      this.serializeStateContent({ ...state, currentFocusJob: validatedJob }) as Record<
+        string,
+        unknown
+      >,
       this.config.sessionTtl,
       false,
     );
@@ -169,7 +198,12 @@ export class SessionService {
     // 这里只写“这段会话最近一次还在继续聊的时间”，
     // 不负责判断是否应该沉淀；沉淀判断由 MemoryLifecycle + Settlement 组合完成。
     const key = this.buildKey(corpId, userId, sessionId);
-    await this.redisStore.set(key, data as Record<string, unknown>, this.config.sessionTtl, true);
+    await this.redisStore.set(
+      key,
+      this.serializeStateContent(data) as Record<string, unknown>,
+      this.config.sessionTtl,
+      true,
+    );
   }
 
   // ==================== projection ====================
@@ -292,5 +326,9 @@ export class SessionService {
 
   private buildKey(corpId: string, userId: string, sessionId: string): string {
     return `facts:${corpId}:${userId}:${sessionId}`;
+  }
+
+  private serializeStateContent(content: Partial<WeworkSessionState>): Partial<WeworkSessionState> {
+    return SessionFactsRedisContentSchema.parse(content) as Partial<WeworkSessionState>;
   }
 }

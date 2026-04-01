@@ -7,10 +7,14 @@ import {
   InterviewBookingResult,
   BrandItem,
   RawBrandItem,
+  BrandListApiResponseSchema,
+  InterviewBookingApiResponseSchema,
   InterviewScheduleParams,
   InterviewScheduleItem,
+  InterviewScheduleApiResponseSchema,
   BIOrderQueryParams,
   BIOrder,
+  JobListApiResponseSchema,
 } from './sponge.types';
 import { SpongeBiService } from './sponge-bi.service';
 
@@ -84,14 +88,24 @@ export class SpongeService {
     }
 
     const data = await response.json();
-    if (data.code !== 0) {
+    const parsed = JobListApiResponseSchema.safeParse(data);
+    if (!parsed.success) {
+      this.logger.warn(
+        `岗位查询返回结构异常: ${parsed.error.issues
+          .map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`)
+          .join('; ')}`,
+      );
+      return { jobs: [], total: 0 };
+    }
+
+    if (parsed.data.code !== 0) {
       this.logger.warn('岗位查询返回非零: ' + (data.message || data.code));
       return { jobs: [], total: 0 };
     }
 
     return {
-      jobs: data.data?.result || [],
-      total: data.data?.total || 0,
+      jobs: parsed.data.data?.result ?? [],
+      total: parsed.data.data?.total ?? 0,
     };
   }
 
@@ -127,19 +141,35 @@ export class SpongeService {
       throw new Error(`API请求失败: ${response.status} ${response.statusText}`);
     }
 
-    const data = await response.json();
-    const isSuccess = data.code === 0;
+    const rawData = await response.json();
+    const parsed = InterviewBookingApiResponseSchema.safeParse(rawData);
+    if (!parsed.success) {
+      this.logger.warn(
+        `预约接口返回结构异常: ${parsed.error.issues
+          .map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`)
+          .join('; ')}`,
+      );
+      return {
+        success: false,
+        code: -1,
+        message: '预约接口返回结构异常',
+        notice: null,
+        errorList: null,
+      };
+    }
+
+    const isSuccess = parsed.data.code === 0;
 
     if (!isSuccess) {
-      this.logger.warn('预约失败: ' + (data.message || '未知错误'));
+      this.logger.warn('预约失败: ' + (parsed.data.message || '未知错误'));
     }
 
     return {
       success: isSuccess,
-      code: data.code,
-      message: data.message,
-      notice: data.data?.notice ?? null,
-      errorList: data.data?.errorList ?? null,
+      code: parsed.data.code,
+      message: parsed.data.message,
+      notice: parsed.data.data?.notice ?? null,
+      errorList: parsed.data.data?.errorList ?? null,
     };
   }
 
@@ -179,13 +209,23 @@ export class SpongeService {
         return this.brandListCache?.data ?? [];
       }
 
-      const data = await response.json();
-      if (data.code !== 0 || !data.data?.result) {
-        this.logger.warn('品牌列表返回非零: ' + (data.message || data.code));
+      const rawData = await response.json();
+      const parsed = BrandListApiResponseSchema.safeParse(rawData);
+      if (!parsed.success) {
+        this.logger.warn(
+          `品牌列表返回结构异常: ${parsed.error.issues
+            .map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`)
+            .join('; ')}`,
+        );
         return this.brandListCache?.data ?? [];
       }
 
-      const brandList = (data.data.result as RawBrandItem[]).map((item) => ({
+      if (parsed.data.code !== 0 || !parsed.data.data?.result) {
+        this.logger.warn('品牌列表返回非零: ' + (parsed.data.message || parsed.data.code));
+        return this.brandListCache?.data ?? [];
+      }
+
+      const brandList = (parsed.data.data.result as RawBrandItem[]).map((item) => ({
         name: item.name,
         aliases: (item.aliases ?? []).filter((a: string) => a !== item.name),
       }));
@@ -251,13 +291,23 @@ export class SpongeService {
         throw new Error(`API请求失败: ${response.status} ${response.statusText}`);
       }
 
-      const data = await response.json();
-      if (data.code !== 0) {
-        this.logger.warn('面试名单查询返回非零: ' + (data.message || data.code));
+      const rawData = await response.json();
+      const parsed = InterviewScheduleApiResponseSchema.safeParse(rawData);
+      if (!parsed.success) {
+        this.logger.warn(
+          `面试名单返回结构异常: ${parsed.error.issues
+            .map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`)
+            .join('; ')}`,
+        );
         return [];
       }
 
-      return (data.data?.result as InterviewScheduleItem[]) || [];
+      if (parsed.data.code !== 0) {
+        this.logger.warn('面试名单查询返回非零: ' + (parsed.data.message || parsed.data.code));
+        return [];
+      }
+
+      return (parsed.data.data?.result as InterviewScheduleItem[]) || [];
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`获取面试名单失败: ${message}`);

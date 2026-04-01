@@ -68,6 +68,21 @@ describe('SpongeService', () => {
 
       await expect(service.fetchJobs({})).rejects.toThrow('API请求失败');
     });
+
+    it('should return empty result when API response shape is invalid', async () => {
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          code: 0,
+          data: { result: 'invalid', total: 'bad' },
+        }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      const result = await service.fetchJobs({});
+
+      expect(result).toEqual({ jobs: [], total: 0 });
+    });
   });
 
   describe('bookInterview', () => {
@@ -96,6 +111,31 @@ describe('SpongeService', () => {
       expect(result.success).toBe(true);
       expect(result.notice).toBe('预约成功');
     });
+
+    it('should return failure result when booking response shape is invalid', async () => {
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          code: '0',
+          data: 'invalid',
+        }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      const result = await service.bookInterview({
+        name: '张三',
+        phone: '13800138000',
+        age: '22',
+        genderId: 1,
+        jobId: 100,
+        interviewTime: '2026-04-01 10:00:00',
+        educationId: 5,
+        hasHealthCertificate: 1,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.message).toBe('预约接口返回结构异常');
+    });
   });
 
   describe('fetchBrandList', () => {
@@ -119,6 +159,21 @@ describe('SpongeService', () => {
       expect(first).toEqual([{ name: '来伊份', aliases: ['来一份'] }]);
       expect(second).toEqual(first);
       expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('should fall back to empty list when brand response shape is invalid', async () => {
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          code: 0,
+          data: { result: [{ aliases: ['缺少 name'] }] },
+        }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      const result = await service.fetchBrandList();
+
+      expect(result).toEqual([]);
     });
   });
 

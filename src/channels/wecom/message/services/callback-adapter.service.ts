@@ -1,10 +1,16 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import {
   EnterpriseMessageCallbackDto,
   GroupMessageCallbackDto,
-  GroupMessageCallbackWrapperDto,
   MessageSource,
 } from '../message-callback.dto';
+import {
+  EnterpriseMessageCallbackInput,
+  EnterpriseMessageCallbackInputSchema,
+  GroupMessageCallbackInput,
+  GroupMessageCallbackWrapperSchema,
+} from '../message-callback.schema';
+import { z } from 'zod';
 
 /**
  * 消息回调适配器服务
@@ -24,14 +30,26 @@ export class MessageCallbackAdapterService {
    * @param body 原始回调数据
    * @returns 'enterprise' | 'group' | 'unknown'
    */
-  detectCallbackType(body: any): 'enterprise' | 'group' | 'unknown' {
+  detectCallbackType(body: unknown): 'enterprise' | 'group' | 'unknown' {
+    if (!body || typeof body !== 'object') {
+      return 'unknown';
+    }
+
+    const obj = body as Record<string, unknown>;
+
     // 企业级回调特征：有 orgId 字段且数据在顶层
-    if (body.orgId && body.messageType !== undefined) {
+    if (typeof obj.orgId === 'string' && obj.messageType !== undefined) {
       return 'enterprise';
     }
 
     // 小组级回调特征：有 data 字段且 data 内有 type 字段
-    if (body.data && body.data.type !== undefined && body.data.messageId) {
+    const data = obj.data;
+    if (
+      data &&
+      typeof data === 'object' &&
+      (data as Record<string, unknown>).type !== undefined &&
+      typeof (data as Record<string, unknown>).messageId === 'string'
+    ) {
       return 'group';
     }
 
@@ -43,7 +61,9 @@ export class MessageCallbackAdapterService {
    * @param groupCallback 小组级回调数据
    * @returns 企业级格式的回调数据
    */
-  convertGroupToEnterprise(groupCallback: GroupMessageCallbackDto): EnterpriseMessageCallbackDto {
+  convertGroupToEnterprise(
+    groupCallback: GroupMessageCallbackDto | GroupMessageCallbackInput,
+  ): EnterpriseMessageCallbackDto {
     this.logger.debug(`转换小组级回调为企业级格式: messageId=${groupCallback.messageId}`);
 
     // 字段名称映射和转换
@@ -96,7 +116,7 @@ export class MessageCallbackAdapterService {
    * @param body 原始回调数据（可能是企业级或小组级）
    * @returns 统一的企业级格式数据
    */
-  normalizeCallback(body: any): EnterpriseMessageCallbackDto {
+  normalizeCallback(body: unknown): EnterpriseMessageCallbackDto {
     const callbackType = this.detectCallbackType(body);
 
     this.logger.log(`检测到回调类型: ${callbackType}`);
@@ -105,24 +125,29 @@ export class MessageCallbackAdapterService {
       case 'enterprise':
         // 已经是企业级格式，但需要补充可能缺失的字段
         // 注意：企业级格式没有 _apiType 字段，默认使用企业级 API
-        return this.normalizeEnterpriseCallback(body);
+        return this.normalizeEnterpriseCallback(
+          this.parseOrThrow(EnterpriseMessageCallbackInputSchema, body, callbackType),
+        );
 
       case 'group':
         // 小组级格式，需要转换
-        const wrapper = body as GroupMessageCallbackWrapperDto;
+        const wrapper = this.parseOrThrow(GroupMessageCallbackWrapperSchema, body, callbackType);
         const converted = this.convertGroupToEnterprise(wrapper.data);
         this.logger.debug(`小组级回调：设置 _apiType='group'（将使用小组级 API）`);
         return converted;
 
       case 'unknown':
-        this.logger.warn('未知的回调格式，尝试作为企业级格式处理', {
-          hasOrgId: !!body.orgId,
-          hasData: !!body.data,
-          hasMessageType: !!body.messageType,
-          hasType: !!body.type,
-        });
-        // 降级处理：假设是企业级格式
-        return this.normalizeEnterpriseCallback(body);
+        this.logger.warn('未知的回调格式，拒绝处理');
+        throw new HttpException(
+          {
+            code: 'INVALID_MESSAGE_CALLBACK',
+            message: 'Invalid message callback payload',
+            details: {
+              callbackType,
+            },
+          },
+          HttpStatus.BAD_REQUEST,
+        );
     }
   }
 
@@ -132,8 +157,13 @@ export class MessageCallbackAdapterService {
    * @param body 原始企业级回调数据
    * @returns 规范化后的企业级回调数据
    */
-  private normalizeEnterpriseCallback(body: any): EnterpriseMessageCallbackDto {
-    const normalized = body as EnterpriseMessageCallbackDto;
+  private normalizeEnterpriseCallback(
+    body: EnterpriseMessageCallbackInput,
+  ): EnterpriseMessageCallbackDto {
+    const normalized = {
+      ...body,
+      source: body.source,
+    } as EnterpriseMessageCallbackDto;
 
     // 补充缺失的 source 字段
     // 企业级回调可能不包含 source 字段，需要根据 isSelf 推断
@@ -226,5 +256,37 @@ export class MessageCallbackAdapterService {
       return '****';
     }
     return `${token.substring(0, 4)}****${token.substring(token.length - 4)}`;
+  }
+
+  private parseOrThrow<T>(
+    schema: z.ZodSchema<T>,
+    body: unknown,
+    callbackType: 'enterprise' | 'group',
+  ): T {
+    const parsed = schema.safeParse(body);
+    if (parsed.success) {
+      return parsed.data;
+    }
+
+    const issues = parsed.error.issues.map((issue) => ({
+      path: issue.path.join('.') || '<root>',
+      message: issue.message,
+    }));
+
+    this.logger.warn(
+      `回调 schema 校验失败: type=${callbackType}, issues=${JSON.stringify(issues)}`,
+    );
+
+    throw new HttpException(
+      {
+        code: 'INVALID_MESSAGE_CALLBACK',
+        message: 'Invalid message callback payload',
+        details: {
+          callbackType,
+          issues,
+        },
+      },
+      HttpStatus.BAD_REQUEST,
+    );
   }
 }

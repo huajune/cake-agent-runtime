@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 /**
  * Evaluation 模块类型定义
  *
@@ -64,6 +66,22 @@ export interface LlmEvaluationResult {
     totalTokens: number;
   };
 }
+
+/**
+ * LLM 结构化评估输出。
+ *
+ * 只保留真正需要模型判断的字段：
+ * - `score`
+ * - `reason`
+ *
+ * `passed` 由服务端根据阈值推导，避免模型返回自相矛盾的数据。
+ */
+export const EvaluationStructuredOutputSchema = z.object({
+  score: z.number().int().min(0).max(100),
+  reason: z.string().min(1).max(200),
+});
+
+export type EvaluationStructuredOutput = z.infer<typeof EvaluationStructuredOutputSchema>;
 
 /**
  * 评估输入参数
