@@ -1,10 +1,26 @@
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
-import { ProceduralService } from '@memory/procedural.service';
+import { MemoryService } from '@memory/memory.service';
 import { ToolBuilder } from '@shared-types/tool.types';
+import { StageGoalConfig } from '@shared-types/strategy-config.types';
 
 const logger = new Logger('advance_stage');
+
+function buildEffectiveStageStrategy(
+  stageConfig: StageGoalConfig | undefined,
+): StageGoalConfig | null {
+  if (!stageConfig) return null;
+  return {
+    stage: stageConfig.stage,
+    label: stageConfig.label,
+    description: stageConfig.description,
+    primaryGoal: stageConfig.primaryGoal,
+    successCriteria: [...stageConfig.successCriteria],
+    ctaStrategy: [...stageConfig.ctaStrategy],
+    disallowedActions: [...stageConfig.disallowedActions],
+  };
+}
 
 /**
  * advance_stage 构建函数
@@ -14,27 +30,77 @@ const logger = new Logger('advance_stage');
  *
  * 设计要点：
  * - 程序记忆（Procedural Memory）的唯一写入工具
- * - reason 字段用于审计，便于追溯阶段变迁
+ * - 允许跨阶段跳转，但 nextStage 必须是当前策略中的合法阶段
+ * - 允许直接从当前阶段跳到更匹配的目标阶段，不要求线性推进
+ * - advancedAt / reason 用于审计，便于追溯阶段变迁
  * - 模型跳过调用的后果：停留在当前阶段一轮 → 温和降级
  */
-export function buildAdvanceStageTool(proceduralService: ProceduralService): ToolBuilder {
+export function buildAdvanceStageTool(memoryService: MemoryService): ToolBuilder {
   return (context) => {
     return tool({
       description: '推进对话阶段。当你判断当前阶段目标已达成，调用此工具切换到下一阶段。',
       inputSchema: z.object({
         nextStage: z.string().describe('要切换到的阶段标识'),
-        reason: z.string().describe('推进原因（简要说明为什么当前阶段目标已达成）'),
+        reason: z
+          .string()
+          .describe(
+            '推进原因。必须写清触发信号，例如“当前阶段成功标准已达成”或“用户直接询问面试，因此切到 interview_scheduling”',
+          ),
       }),
       execute: async ({ nextStage, reason }) => {
-        await proceduralService.set(context.corpId, context.userId, context.sessionId, {
+        const stageGoals = context.stageGoals ?? {};
+        const availableStages =
+          context.availableStages && context.availableStages.length > 0
+            ? context.availableStages
+            : Object.keys(stageGoals);
+        const currentStage = context.currentStage ?? null;
+
+        // 只允许提交当前策略里真实存在的阶段，避免模型写入脏状态。
+        if (availableStages.length > 0 && !availableStages.includes(nextStage)) {
+          logger.warn(
+            `非法阶段推进: ${nextStage} (user=${context.userId}, allowed=${availableStages.join(',')})`,
+          );
+          return {
+            success: false,
+            errorCode: 'invalid_stage',
+            error: `非法阶段: ${nextStage}`,
+            currentStage,
+            allowedStages: availableStages,
+          };
+        }
+
+        // 如果模型把 nextStage 写成当前阶段，说明这不是“推进”，而是重复提交。
+        if (currentStage && nextStage === currentStage) {
+          logger.warn(`重复阶段推进: ${nextStage} (user=${context.userId})`);
+          return {
+            success: false,
+            errorCode: 'same_stage',
+            error: `当前已处于阶段: ${nextStage}`,
+            currentStage,
+          };
+        }
+
+        const effectiveStageStrategy = buildEffectiveStageStrategy(stageGoals[nextStage]);
+
+        // fromStage / currentStage / advancedAt / reason 一起落库，
+        // 这样后面排查“为什么跳阶段”时，能看到完整的审计链。
+        await memoryService.setStage(context.corpId, context.userId, context.sessionId, {
           currentStage: nextStage,
+          fromStage: currentStage,
           advancedAt: new Date().toISOString(),
           reason,
         });
 
-        logger.log(`阶段推进: ${nextStage} (user=${context.userId}, reason=${reason})`);
+        logger.log(
+          `阶段推进: ${currentStage ?? 'null'} -> ${nextStage} (user=${context.userId}, reason=${reason})`,
+        );
 
-        return { success: true, newStage: nextStage };
+        return {
+          success: true,
+          fromStage: currentStage,
+          newStage: nextStage,
+          effectiveStageStrategy,
+        };
       },
     });
   };

@@ -15,7 +15,7 @@ const MAX_DISPLAY_STORES = 15;
  * 兼职群通知策略（真实数据 + AI 润色 + 固定尾部）
  *
  * - 数据源：海绵在招岗位 (SpongeService.fetchJobs)
- * - 行业过滤：jobCategoryName 包含"零售" → 零售，否则 → 餐饮
+ * - 行业过滤：jobCategoryName 第一段（/分割）匹配群标签行业
  * - 品牌轮转：每次推不同品牌，避免重复
  * - AI 负责排版润色，但只能用提供的真实数据
  * - 尾部固定追加（引导语 + 小程序提示）
@@ -49,13 +49,12 @@ export class PartTimeJobStrategy implements NotificationStrategy {
       },
     });
 
-    // 2. 按行业过滤
+    // 2. 按行业过滤（jobCategoryName 格式: "餐饮/中餐/普通服务员"，第一段为行业）
     const filtered = jobs.filter((job: JobDetail) => {
       const category = job.basicInfo?.jobCategoryName || '';
-      if (context.industry === '零售') {
-        return category.includes('零售');
-      }
-      return !category.includes('零售');
+      const industry = category.split('/')[0];
+      if (!context.industry) return true;
+      return industry === context.industry;
     });
 
     if (filtered.length === 0) {

@@ -118,6 +118,11 @@ export class VercelAIChatRequestDto {
   @IsArray()
   @IsString({ each: true })
   imageUrls?: string[];
+
+  @ApiPropertyOptional({ description: '是否在手动聊天调试后触发预约飞书通知', default: false })
+  @IsOptional()
+  @IsBoolean()
+  notifyBooking?: boolean;
 }
 
 /**
@@ -200,6 +205,11 @@ export class TestChatRequestDto {
   @IsArray()
   @IsString({ each: true })
   imageUrls?: string[];
+
+  @ApiPropertyOptional({ description: '是否在手动聊天调试后触发预约飞书通知', default: false })
+  @IsOptional()
+  @IsBoolean()
+  notifyBooking?: boolean;
 }
 
 /**

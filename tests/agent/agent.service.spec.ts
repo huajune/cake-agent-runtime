@@ -1,14 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { AgentRunnerService } from '@agent/runner.service';
-import { ContextService } from '@agent/context/context.service';
-import { FactExtractionService } from '@agent/fact-extraction.service';
-import { InputGuardService } from '@agent/input-guard.service';
-import { RouterService } from '@providers/router.service';
-import { ToolRegistryService } from '@tools/tool-registry.service';
+import { AgentPreparationService } from '@agent/agent-preparation.service';
 import { MemoryService } from '@memory/memory.service';
-import { MemoryConfig } from '@memory/memory.config';
-import { SettlementService } from '@memory/settlement.service';
 
 // Mock generateText from ai SDK
 jest.mock('ai', () => ({
@@ -29,59 +23,23 @@ jest.mock('ai', () => ({
 describe('AgentRunnerService - invoke', () => {
   let service: AgentRunnerService;
 
-  const mockContext = {
-    compose: jest.fn().mockResolvedValue({
-      systemPrompt: 'test system prompt',
+  const mockPreparation = {
+    prepare: jest.fn().mockResolvedValue({
+      finalPrompt: 'test system prompt',
+      typedMessages: [{ role: 'user', content: 'Hello' }],
+      chatModel: 'mock-model',
+      tools: {},
+      corpId: 'corp-1',
+      userId: 'user-123',
+      sessionId: 'sess-1',
+      maxSteps: 5,
+      entryStage: null,
+      turnState: { candidatePool: null },
     }),
-  };
-
-  const mockSessionFacts = {
-    storeInteraction: jest.fn().mockResolvedValue(undefined),
-    formatForPrompt: jest.fn().mockReturnValue(''),
-  };
-
-  const mockLongTerm = {
-    formatProfileForPrompt: jest.fn().mockReturnValue(''),
   };
 
   const mockMemoryService = {
-    recall: jest.fn().mockResolvedValue(null),
-    store: jest.fn().mockResolvedValue(undefined),
-    getSessionState: jest.fn().mockResolvedValue(null),
-    formatSessionMemoryForPrompt: jest.fn().mockReturnValue(''),
-    recallAll: jest.fn().mockResolvedValue({
-      shortTerm: [],
-      longTerm: { profile: null },
-      procedural: { currentStage: null, advancedAt: null, reason: null },
-      sessionFacts: null,
-    }),
-    sessionFacts: mockSessionFacts,
-    longTerm: mockLongTerm,
-  };
-
-  const mockMemoryConfig = {
-    sessionTtl: 86400,
-    shortTermMaxMessages: 60,
-    shortTermMaxChars: 8000,
-    profileCacheTtl: 7200,
-  };
-
-  const mockRouter = {
-    resolveByRole: jest.fn().mockReturnValue('mock-model'),
-  };
-
-  const mockToolRegistry = {
-    buildAll: jest.fn().mockReturnValue({}),
-    buildForScenario: jest.fn().mockReturnValue({}),
-  };
-
-  const mockFactExtraction = {
-    extractAndSave: jest.fn().mockResolvedValue(undefined),
-  };
-
-  const mockInputGuard = {
-    detectMessages: jest.fn().mockReturnValue({ safe: true }),
-    alertInjection: jest.fn().mockResolvedValue(undefined),
+    onTurnEnd: jest.fn().mockResolvedValue(undefined),
   };
 
   const mockConfigService = {
@@ -93,28 +51,27 @@ describe('AgentRunnerService - invoke', () => {
       providers: [
         AgentRunnerService,
         { provide: ConfigService, useValue: mockConfigService },
-        { provide: ContextService, useValue: mockContext },
+        { provide: AgentPreparationService, useValue: mockPreparation },
         { provide: MemoryService, useValue: mockMemoryService },
-        { provide: MemoryConfig, useValue: mockMemoryConfig },
-        { provide: SettlementService, useValue: { checkAndSettle: jest.fn().mockResolvedValue(false) } },
-        { provide: RouterService, useValue: mockRouter },
-        { provide: ToolRegistryService, useValue: mockToolRegistry },
-        { provide: FactExtractionService, useValue: mockFactExtraction },
-        { provide: InputGuardService, useValue: mockInputGuard },
       ],
     }).compile();
 
     service = module.get<AgentRunnerService>(AgentRunnerService);
     jest.clearAllMocks();
 
-    mockContext.compose.mockResolvedValue({ systemPrompt: 'test system prompt' });
-    mockMemoryService.recallAll.mockResolvedValue({
-      shortTerm: [],
-      longTerm: { profile: null },
-      procedural: { currentStage: null, advancedAt: null, reason: null },
-      sessionFacts: null,
+    mockPreparation.prepare.mockResolvedValue({
+      finalPrompt: 'test system prompt',
+      typedMessages: [{ role: 'user', content: 'Hello' }],
+      chatModel: 'mock-model',
+      tools: {},
+      corpId: 'corp-1',
+      userId: 'user-123',
+      sessionId: 'sess-1',
+      maxSteps: 5,
+      entryStage: null,
+      turnState: { candidatePool: null },
     });
-    mockRouter.resolveByRole.mockReturnValue('mock-model');
+    mockMemoryService.onTurnEnd.mockResolvedValue(undefined);
 
     // Re-mock generateText for each test
     const { generateText } = require('ai');
@@ -132,60 +89,51 @@ describe('AgentRunnerService - invoke', () => {
     sessionId: 'sess-1',
   };
 
-  it('should recallAll, compose, classify, and execute', async () => {
+  it('should prepare, execute, and finish turn lifecycle', async () => {
     const result = await service.invoke(invokeParams);
 
     expect(result.text).toBe('Hello!');
     expect(result.steps).toBe(1);
-    expect(mockMemoryService.recallAll).toHaveBeenCalledWith('corp-1', 'user-123', 'sess-1');
-    expect(mockContext.compose).toHaveBeenCalledWith(
-      expect.objectContaining({ scenario: 'candidate-consultation', currentStage: undefined }),
-    );
+    expect(mockPreparation.prepare).toHaveBeenCalledWith(invokeParams, 'invoke');
   });
 
   it('should pass persisted stage to compose', async () => {
-    mockMemoryService.recallAll.mockResolvedValue({
-      shortTerm: [],
-      longTerm: { profile: null },
-      procedural: { currentStage: 'job_consultation', advancedAt: null, reason: null },
-      sessionFacts: null,
+    mockPreparation.prepare.mockResolvedValue({
+      finalPrompt: 'test system prompt',
+      typedMessages: [{ role: 'user', content: 'Hello' }],
+      chatModel: 'mock-model',
+      tools: {},
+      corpId: 'corp-1',
+      userId: 'user-123',
+      sessionId: 'sess-1',
+      maxSteps: 5,
+      entryStage: 'job_consultation',
+      turnState: { candidatePool: null },
     });
 
     await service.invoke(invokeParams);
 
-    expect(mockContext.compose).toHaveBeenCalledWith(
-      expect.objectContaining({ currentStage: 'job_consultation' }),
-    );
+    expect(mockPreparation.prepare).toHaveBeenCalledWith(invokeParams, 'invoke');
   });
 
   it('should pass undefined stage when no stage in memory', async () => {
-    mockMemoryService.recallAll.mockResolvedValue({
-      shortTerm: [],
-      longTerm: { profile: null },
-      procedural: { currentStage: null, advancedAt: null, reason: null },
-      sessionFacts: null,
-    });
-
     await service.invoke(invokeParams);
 
-    expect(mockContext.compose).toHaveBeenCalledWith(
-      expect.objectContaining({ currentStage: undefined }),
-    );
+    expect(mockPreparation.prepare).toHaveBeenCalledWith(invokeParams, 'invoke');
   });
 
   it('should use default scenario when none provided', async () => {
     await service.invoke(invokeParams);
 
-    expect(mockContext.compose).toHaveBeenCalledWith(
-      expect.objectContaining({ scenario: 'candidate-consultation' }),
-    );
+    expect(mockPreparation.prepare).toHaveBeenCalledWith(invokeParams, 'invoke');
   });
 
   it('should use custom scenario when provided', async () => {
     await service.invoke({ ...invokeParams, scenario: 'group-operations' });
 
-    expect(mockContext.compose).toHaveBeenCalledWith(
-      expect.objectContaining({ scenario: 'group-operations' }),
+    expect(mockPreparation.prepare).toHaveBeenCalledWith(
+      { ...invokeParams, scenario: 'group-operations' },
+      'invoke',
     );
   });
 
@@ -194,5 +142,48 @@ describe('AgentRunnerService - invoke', () => {
     generateText.mockRejectedValue(new Error('Network timeout'));
 
     await expect(service.invoke(invokeParams)).rejects.toThrow('Network timeout');
+  });
+
+  it('should trigger memory lifecycle after assistant turn', async () => {
+    mockPreparation.prepare.mockResolvedValue({
+      finalPrompt: 'test system prompt',
+      typedMessages: [
+        { role: 'assistant', content: '杨浦奥乐齐这边有长白这家店。' },
+        { role: 'user', content: '我想报名长白' },
+      ],
+      chatModel: 'mock-model',
+      tools: {},
+      corpId: 'corp-1',
+      userId: 'user-123',
+      sessionId: 'sess-1',
+      maxSteps: 5,
+      entryStage: null,
+      turnState: { candidatePool: [{ jobId: 519709, brandName: '奥乐齐', storeName: '长白' }] },
+    });
+
+    const { generateText } = require('ai');
+    generateText.mockResolvedValue({
+      text: '可以，我先帮你确认下长白这边的面试要求。',
+      steps: [{}],
+      usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+    });
+
+    await service.invoke({
+      ...invokeParams,
+      messages: [
+        { role: 'assistant', content: '杨浦奥乐齐这边有长白这家店。' },
+        { role: 'user', content: '我想报名长白' },
+      ],
+    });
+
+    expect(mockMemoryService.onTurnEnd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        corpId: 'corp-1',
+        userId: 'user-123',
+        sessionId: 'sess-1',
+        candidatePool: [{ jobId: 519709, brandName: '奥乐齐', storeName: '长白' }],
+      }),
+      '可以，我先帮你确认下长白这边的面试要求。',
+    );
   });
 });

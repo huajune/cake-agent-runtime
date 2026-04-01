@@ -27,6 +27,8 @@ export interface UseChatTestReturn {
   isLoading: boolean;
   isStreaming: boolean;
   latestAssistantMessage: UIMessage | undefined;
+  entryStage: string | null;
+  currentStage: string | null;
 
   // 图片
   imagePreviews: ImagePreview[];
@@ -108,6 +110,55 @@ function inferMediaType(url: string): string {
   return match?.[1] || 'image/*';
 }
 
+type ToolPartSnapshot = {
+  type: string;
+  toolName?: string;
+  input?: unknown;
+  args?: unknown;
+  output?: unknown;
+  result?: unknown;
+};
+
+function extractToolCalls(parts: UIMessage['parts']) {
+  return parts
+    .filter((part) => part.type.startsWith('tool-'))
+    .map((part) => {
+      const toolPart = part as unknown as ToolPartSnapshot;
+      return {
+        toolName: toolPart.toolName || part.type.replace(/^tool-/, ''),
+        input: toolPart.input ?? toolPart.args,
+        output: toolPart.output ?? toolPart.result,
+      };
+    });
+}
+
+function extractAdvancedStage(parts: UIMessage['parts']): string | null {
+  const toolCalls = extractToolCalls(parts);
+
+  for (let i = toolCalls.length - 1; i >= 0; i -= 1) {
+    const toolCall = toolCalls[i];
+    if (toolCall.toolName !== 'advance_stage') continue;
+
+    const output = toolCall.output;
+    if (typeof output === 'object' && output !== null) {
+      const newStage = (output as { newStage?: unknown }).newStage;
+      if (typeof newStage === 'string' && newStage.trim()) {
+        return newStage;
+      }
+    }
+
+    const input = toolCall.input;
+    if (typeof input === 'object' && input !== null) {
+      const nextStage = (input as { nextStage?: unknown }).nextStage;
+      if (typeof nextStage === 'string' && nextStage.trim()) {
+        return nextStage;
+      }
+    }
+  }
+
+  return null;
+}
+
 /**
  * 聊天测试核心逻辑 Hook
  */
@@ -175,6 +226,9 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
   const replyContentRef = useRef<HTMLDivElement>(null);
   const currentInputRef = useRef<string>('');
   const tokenUsageRef = useRef<TokenUsage | null>(null);
+  const entryStageRef = useRef<string | null>(null);
+  const [entryStage, setEntryStage] = useState<string | null>(null);
+  const [currentStage, setCurrentStage] = useState<string | null>(null);
 
   const persistHistoryImages = useCallback((images: ImagePreview[]): string[] => {
     if (images.length === 0) return [];
@@ -229,9 +283,13 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     id: sessionId,
     transport,
     onData: (dataPart: unknown) => {
-      const part = dataPart as { type?: string; data?: TokenUsage };
+      const part = dataPart as { type?: string; data?: unknown };
       if (part?.type === 'data-tokenUsage' && part.data) {
-        tokenUsageRef.current = part.data;
+        tokenUsageRef.current = part.data as TokenUsage;
+      }
+      if (part?.type === 'data-entryStage' && typeof part.data === 'string') {
+        entryStageRef.current = part.data;
+        setEntryStage(part.data);
       }
     },
     onError: (err: Error) => {
@@ -248,12 +306,9 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
       const durationMs = Date.now() - startTimeRef.current;
       const submittedImages = submittedImagesRef.current;
 
-      const toolCalls = message.parts
-        .filter((p) => p.type.startsWith('tool-'))
-        .map((p) => {
-          const toolPart = p as unknown as { toolName: string; args: unknown; result?: unknown };
-          return { toolName: toolPart.toolName || 'unknown', input: toolPart.args, output: toolPart.result };
-        });
+      const toolCalls = extractToolCalls(message.parts);
+      const advancedStage = extractAdvancedStage(message.parts);
+      const finalStage = advancedStage ?? entryStageRef.current;
 
       const textContent = message.parts
         .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
@@ -287,6 +342,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
 
       setResult(finalResult);
       onTestComplete?.(finalResult);
+      setCurrentStage(finalStage);
 
       // 回写历史记录
       const now = new Date();
@@ -435,6 +491,9 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
 
     currentInputRef.current = trimmedInput;
     submittedImagesRef.current = [...imagePreviews];
+    entryStageRef.current = null;
+    setEntryStage(null);
+    setCurrentStage(null);
     setIsRequesting(true);
     setLocalError(null);
     setMetrics(null);
@@ -486,6 +545,9 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     setMetrics(null);
     setIsRequesting(false);
     setImagePreviews([]);
+    entryStageRef.current = null;
+    setEntryStage(null);
+    setCurrentStage(null);
     submittedImagesRef.current = [];
     setSessionId(generateUUID());
     setUserId(`dashboard-test-${generateUUID().slice(0, 8)}`);
@@ -510,6 +572,8 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     isLoading,
     isStreaming,
     latestAssistantMessage,
+    entryStage,
+    currentStage,
     imagePreviews,
     addImages,
     removeImage,

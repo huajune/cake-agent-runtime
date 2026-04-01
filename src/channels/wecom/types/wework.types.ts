@@ -13,7 +13,20 @@
  */
 
 import { z } from 'zod';
-import { ModelMessage } from 'ai';
+import type { ToolBuildContext } from '@shared-types/tool.types';
+import {
+  EMPTY_SESSION_STATE,
+  EntityExtractionResultSchema,
+  InterviewInfoSchema,
+  PreferencesSchema,
+} from '@memory/types/session-facts.types';
+import type {
+  EntityExtractionResult,
+  InterviewInfo,
+  Preferences,
+  RecommendedJobSummary,
+  WeworkSessionState,
+} from '@memory/types/session-facts.types';
 
 // ==================== 漏斗阶段 (Funnel Stage) ====================
 
@@ -162,41 +175,8 @@ export interface WeworkPlanTurnOutput {
 
 // ==================== 实体提取 (Entity Extraction) ====================
 
-export const InterviewInfoSchema = z.object({
-  name: z.string().nullable().describe('姓名'),
-  phone: z.string().nullable().describe('联系方式'),
-  gender: z.string().nullable().describe('性别'),
-  age: z.string().nullable().describe('年龄（保留原话）'),
-  applied_store: z.string().nullable().describe('应聘门店'),
-  applied_position: z.string().nullable().describe('应聘岗位'),
-  interview_time: z.string().nullable().describe('面试时间'),
-  is_student: z.boolean().nullable().describe('是否是学生'),
-  education: z.string().nullable().describe('学历'),
-  has_health_certificate: z.string().nullable().describe('是否有健康证'),
-});
-
-export type InterviewInfo = z.infer<typeof InterviewInfoSchema>;
-
-export const PreferencesSchema = z.object({
-  brands: z.array(z.string()).nullable().describe('意向品牌'),
-  salary: z.string().nullable().describe('意向薪资'),
-  position: z.array(z.string()).nullable().describe('意向岗位'),
-  schedule: z.string().nullable().describe('意向班次/时间'),
-  city: z.string().nullable().describe('意向城市'),
-  district: z.array(z.string()).nullable().describe('意向区域'),
-  location: z.array(z.string()).nullable().describe('意向地点/商圈'),
-  labor_form: z.string().nullable().describe('用工形式'),
-});
-
-export type Preferences = z.infer<typeof PreferencesSchema>;
-
-export const EntityExtractionResultSchema = z.object({
-  interview_info: InterviewInfoSchema,
-  preferences: PreferencesSchema,
-  reasoning: z.string().describe('提取与推理说明'),
-});
-
-export type EntityExtractionResult = z.infer<typeof EntityExtractionResultSchema>;
+export { InterviewInfoSchema, PreferencesSchema, EntityExtractionResultSchema };
+export type { InterviewInfo, Preferences, EntityExtractionResult };
 
 // ==================== 品牌数据 ====================
 
@@ -209,46 +189,28 @@ export type BrandDataList = BrandInfo[];
 
 // ==================== 会话记忆 (Session Memory) ====================
 
-export interface RecommendedJobSummary {
-  jobId: number;
-  brandName: string | null;
-  jobName: string | null;
-  storeName: string | null;
-  cityName: string | null;
-  regionName: string | null;
-  laborForm: string | null;
-  salaryDesc: string | null;
-  jobCategoryName: string | null;
-  distanceKm?: number | null;
-}
-
-export interface WeworkSessionState {
-  facts: EntityExtractionResult | null;
-  lastRecommendedJobs: RecommendedJobSummary[] | null;
-}
-
-export const EMPTY_SESSION_STATE: WeworkSessionState = {
-  facts: null,
-  lastRecommendedJobs: null,
-};
+export { EMPTY_SESSION_STATE };
+export type { RecommendedJobSummary, WeworkSessionState };
 
 // ==================== 工具上下文 (NestJS 请求级) ====================
 
 export interface WeworkToolContext {
   /** 对话消息列表（Vercel AI SDK 格式） */
-  messages: ModelMessage[];
+  messages: ToolBuildContext['messages'];
   /** 会话记忆 */
   sessionMemory: WeworkSessionState | null;
   /** 外部用户 ID */
-  userId: string;
+  userId: ToolBuildContext['userId'];
   /** 企业 ID */
-  corpId: string;
+  corpId: ToolBuildContext['corpId'];
   /** DuLiDay API Token */
   dulidayToken: string;
   /** 渠道类型，默认 private */
   channelType: ChannelType;
+  /** 会话 ID（chatId） */
+  sessionId: ToolBuildContext['sessionId'];
   /** 岗位查询后回调（更新推荐岗位记忆） */
-  onJobsFetched?: (jobIds: RecommendedJobSummary[]) => void;
+  onJobsFetched?: ToolBuildContext['onJobsFetched'];
 }
 
 // ==================== 需求检测规则 ====================

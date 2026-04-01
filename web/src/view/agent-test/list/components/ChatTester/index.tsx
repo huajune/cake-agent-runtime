@@ -112,7 +112,7 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
               <FileJson size={18} /> 测试输入
             </h3>
             <button onClick={handleClear} className={styles.clearBtn} disabled={isLoading}>
-              <Trash2 size={14} /> 清空
+              <Trash2 size={14} /> 重置会话
             </button>
           </div>
 
@@ -333,7 +333,10 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
                       <Bot size={16} /> AI 回复
                     </h4>
                   </div>
-                  <MessagePartsAdapter message={latestAssistantMessage} isStreaming={false} />
+                  <MessagePartsAdapter
+                    message={latestAssistantMessage}
+                    isStreaming={false}
+                  />
                   {/* 反馈按钮放在右下角 */}
                   <div className={styles.feedbackBtnsRight}>
                     <FeedbackButtons

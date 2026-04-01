@@ -23,6 +23,7 @@ const DEFAULT_PAGE_NUM = 1;
 const DEFAULT_PAGE_SIZE = 20;
 const DEFAULT_SORT = 'desc';
 const DEFAULT_SORT_FIELD = 'create_time';
+const BRAND_LIST_CACHE_TTL_MS = 30 * 60 * 1000;
 
 /**
  * 海绵数据服务 — 杜力岱业务数据 HTTP 客户端
@@ -35,6 +36,7 @@ const DEFAULT_SORT_FIELD = 'create_time';
 export class SpongeService {
   private readonly logger = new Logger(SpongeService.name);
   private readonly token: string;
+  private brandListCache: { data: BrandItem[]; fetchedAt: number } | null = null;
 
   constructor(
     private readonly configService: ConfigService,
@@ -148,9 +150,18 @@ export class SpongeService {
    * API 不可用时返回空数组（graceful 降级）。
    */
   async fetchBrandList(): Promise<BrandItem[]> {
+    const now = Date.now();
+    if (
+      this.brandListCache &&
+      now - this.brandListCache.fetchedAt < BRAND_LIST_CACHE_TTL_MS &&
+      this.brandListCache.data.length > 0
+    ) {
+      return this.brandListCache.data;
+    }
+
     if (!this.token) {
       this.logger.warn('缺少 DULIDAY_API_TOKEN，品牌列表不可用');
-      return [];
+      return this.brandListCache?.data ?? [];
     }
 
     try {
@@ -165,22 +176,29 @@ export class SpongeService {
 
       if (!response.ok) {
         this.logger.warn(`品牌列表 API 返回 ${response.status}`);
-        return [];
+        return this.brandListCache?.data ?? [];
       }
 
       const data = await response.json();
       if (data.code !== 0 || !data.data?.result) {
         this.logger.warn('品牌列表返回非零: ' + (data.message || data.code));
-        return [];
+        return this.brandListCache?.data ?? [];
       }
 
-      return (data.data.result as RawBrandItem[]).map((item) => ({
+      const brandList = (data.data.result as RawBrandItem[]).map((item) => ({
         name: item.name,
         aliases: (item.aliases ?? []).filter((a: string) => a !== item.name),
       }));
+
+      this.brandListCache = {
+        data: brandList,
+        fetchedAt: now,
+      };
+
+      return brandList;
     } catch (err) {
       this.logger.warn('品牌列表获取失败，降级为空列表', err);
-      return [];
+      return this.brandListCache?.data ?? [];
     }
   }
 
@@ -210,13 +228,13 @@ export class SpongeService {
 
     try {
       const requestBody: Record<string, unknown> = {
-        date: params.date,
         pageNum: params.pageNum ?? 1,
         pageSize: params.pageSize ?? 100,
         queryParam: {
+          interviewStartTime: params.interviewStartTime,
+          interviewEndTime: params.interviewEndTime,
           ...(params.cityName && { cityName: params.cityName }),
           ...(params.brandName && { brandName: params.brandName }),
-          ...(params.storeId && { storeId: params.storeId }),
         },
       };
 

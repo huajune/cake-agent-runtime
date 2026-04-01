@@ -7,6 +7,7 @@ import { ContextService } from '@agent/context/context.service';
 import { ExecutionStatus } from '@biz/test-suite/enums/test.enum';
 import { TestChatRequestDto } from '@biz/test-suite/dto/test-chat.dto';
 import { MessageRole } from '@enums/message.enum';
+import { BookingDetectionService } from '@biz/message/services/booking-detection.service';
 
 describe('TestExecutionService', () => {
   let service: TestExecutionService;
@@ -36,6 +37,10 @@ describe('TestExecutionService', () => {
     countCompletedByBatchId: jest.fn(),
   };
 
+  const mockBookingDetection = {
+    handleBookingSuccessAsync: jest.fn().mockResolvedValue(undefined),
+  };
+
   const makeSuccessResult = (text = 'Agent reply') => ({
     text,
     steps: 1,
@@ -50,6 +55,7 @@ describe('TestExecutionService', () => {
         { provide: AgentRunnerService, useValue: mockLoop },
         { provide: ContextService, useValue: mockContext },
         { provide: TestExecutionRepository, useValue: mockExecutionRepository },
+        { provide: BookingDetectionService, useValue: mockBookingDetection },
       ],
     }).compile();
 
@@ -207,6 +213,30 @@ describe('TestExecutionService', () => {
         totalTokens: 0,
       });
     });
+
+    it('should trigger booking notification when notifyBooking is enabled', async () => {
+      mockLoop.invoke.mockResolvedValue({
+        ...makeSuccessResult(),
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_booking',
+            args: { name: '张三' },
+            result: { success: true, message: '预约成功' },
+          },
+        ],
+      });
+
+      await service.executeTest({ ...baseRequest, notifyBooking: true, sessionId: 'sess-1' });
+
+      expect(mockBookingDetection.handleBookingSuccessAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chatId: 'sess-1',
+          contactName: 'user-001',
+          userId: 'user-001',
+          toolCalls: expect.any(Array),
+        }),
+      );
+    });
   });
 
   // ========== executeTestStream ==========
@@ -226,7 +256,10 @@ describe('TestExecutionService', () => {
       const mockNodeStream = { pipe: jest.fn() } as unknown as NodeJS.ReadableStream;
       const fromWebSpy = jest.spyOn(Readable, 'fromWeb').mockReturnValue(mockNodeStream);
 
-      mockLoop.stream.mockReturnValue({ textStream: {} });
+      mockLoop.stream.mockResolvedValue({
+        streamResult: { textStream: {} },
+        entryStage: 'trust_building',
+      } as any);
 
       const result = await service.executeTestStream({
         message: 'hello',
@@ -235,6 +268,27 @@ describe('TestExecutionService', () => {
 
       expect(result).toBe(mockNodeStream);
       fromWebSpy.mockRestore();
+    });
+
+    it('should pass onFinish callback when notifyBooking is enabled', async () => {
+      mockLoop.stream.mockResolvedValue({
+        streamResult: { textStream: {} },
+        entryStage: 'trust_building',
+      } as any);
+
+      await service.executeTestStreamWithMeta({
+        message: 'hello',
+        userId: 'user-1',
+        notifyBooking: true,
+        sessionId: 'sess-stream',
+      });
+
+      expect(mockLoop.stream).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: 'sess-stream',
+          onFinish: expect.any(Function),
+        }),
+      );
     });
   });
 
