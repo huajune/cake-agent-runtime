@@ -72,7 +72,13 @@ export class TestSuiteController {
   @Post('chat')
   @ApiOperation({ summary: '执行单条测试' })
   async testChat(@Body() request: TestChatRequestDto) {
-    return { success: true, data: await this.executionService.executeTest(request) };
+    return {
+      success: true,
+      data: await this.executionService.executeTest({
+        ...request,
+        notifyBooking: request.notifyBooking ?? true,
+      }),
+    };
   }
 
   @Post('chat/stream')
@@ -86,7 +92,10 @@ export class TestSuiteController {
 
     try {
       handler.sendStart();
-      const stream = await this.executionService.executeTestStream(request);
+      const stream = await this.executionService.executeTestStream({
+        ...request,
+        notifyBooking: request.notifyBooking ?? true,
+      });
 
       stream.on('data', (chunk: Buffer) => handler.processChunk(chunk));
       stream.on('end', () => {

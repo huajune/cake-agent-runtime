@@ -71,7 +71,7 @@ export class ToolRegistryService {
 
       duliday_interview_booking: createToolDefinition({
         name: 'duliday_interview_booking',
-        description: '面试预约（需要姓名、电话、性别、年龄、岗位ID、面试时间）',
+        description: '面试预约（需要姓名、电话、性别、年龄、学历、健康证情况、岗位ID、面试时间）',
         create: buildInterviewBookingTool(spongeService),
       }),
 

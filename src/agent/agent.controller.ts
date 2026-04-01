@@ -4,6 +4,7 @@ import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { AgentRunnerService } from './runner.service';
 import { RegistryService } from '@providers/registry.service';
 import { AgentHealthService } from './agent-health.service';
+import { BookingDetectionService } from '@wecom/message/services/booking-detection.service';
 
 @Controller('agent')
 export class AgentController {
@@ -14,6 +15,7 @@ export class AgentController {
     private readonly feishuAlertService: FeishuAlertService,
     private readonly registry: RegistryService,
     private readonly healthService: AgentHealthService,
+    private readonly bookingDetection: BookingDetectionService,
   ) {}
 
   /**
@@ -67,6 +69,15 @@ export class AgentController {
         corpId: 'debug',
         sessionId,
         scenario,
+      });
+
+      await this.bookingDetection.handleBookingSuccessAsync({
+        chatId: sessionId,
+        contactName: body.userId || 'debug-user',
+        userId: body.userId || 'debug-user',
+        managerId: 'debug-agent',
+        managerName: 'Agent Debug',
+        toolCalls: result.toolCalls,
       });
 
       return {

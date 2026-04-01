@@ -7,6 +7,7 @@ import {
   type AgentRunResult,
   type AgentStreamResult,
 } from '@agent/runner.service';
+import { BookingDetectionService } from '@wecom/message/services/booking-detection.service';
 import { TestChatRequestDto, TestChatResponse, VercelAIChatRequestDto } from '../dto/test-chat.dto';
 import { TestExecutionRepository } from '../repositories/test-execution.repository';
 import { TestExecution } from '../entities/test-execution.entity';
@@ -53,6 +54,7 @@ export class TestExecutionService {
     private readonly configService: ConfigService,
     private readonly runner: AgentRunnerService,
     private readonly executionRepository: TestExecutionRepository,
+    private readonly bookingDetection: BookingDetectionService,
   ) {
     this.logger.log('TestExecutionService 初始化完成');
   }
@@ -79,6 +81,7 @@ export class TestExecutionService {
     let agentResult: AgentRunResult | null = null;
     let executionStatus: ExecutionStatus = ExecutionStatus.SUCCESS;
     let errorMessage: string | null = null;
+    const sessionId = request.sessionId ?? `test-${Date.now()}`;
 
     try {
       const historyForAgent = request.skipHistoryTrim
@@ -95,10 +98,18 @@ export class TestExecutionService {
         messages,
         userId: request.userId,
         corpId: 'test',
-        sessionId: request.sessionId ?? `test-${Date.now()}`,
+        sessionId,
         scenario,
         strategySource: 'testing',
       });
+
+      if (request.notifyBooking) {
+        await this.notifyBookingIfNeeded({
+          sessionId,
+          userId: request.userId,
+          toolCalls: agentResult.toolCalls,
+        });
+      }
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       executionStatus = errorMsg.includes('timeout')
@@ -185,6 +196,7 @@ export class TestExecutionService {
       `[Stream] 执行流式测试: ${request.caseName || this.buildInputPreview(request.message, request.imageUrls)}...`,
     );
 
+    const sessionId = request.sessionId ?? `test-${Date.now()}`;
     const historyForAgent = request.skipHistoryTrim
       ? request.history || []
       : (request.history || []).slice(0, -2);
@@ -195,10 +207,19 @@ export class TestExecutionService {
       messages,
       userId: request.userId,
       corpId: 'test',
-      sessionId: request.sessionId ?? `test-${Date.now()}`,
+      sessionId,
       scenario,
       thinking: request.thinking,
       strategySource: 'testing',
+      onFinish: request.notifyBooking
+        ? async (result) => {
+            await this.notifyBookingIfNeeded({
+              sessionId,
+              userId: request.userId,
+              toolCalls: result.toolCalls,
+            });
+          }
+        : undefined,
     });
   }
 
@@ -304,6 +325,7 @@ export class TestExecutionService {
       history,
       scenario: request.scenario || 'candidate-consultation',
       saveExecution: request.saveExecution ?? false,
+      notifyBooking: request.notifyBooking ?? true,
       skipHistoryTrim: true,
       sessionId: request.sessionId,
       userId: request.userId,
@@ -382,8 +404,27 @@ export class TestExecutionService {
 
     return {
       actualOutput: result.text || '',
-      toolCalls: [],
+      toolCalls: (result.toolCalls || []).map((toolCall) => ({
+        toolName: toolCall.toolName,
+        input: toolCall.args,
+        output: toolCall.result,
+      })),
       tokenUsage: result.usage || { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
     };
+  }
+
+  private async notifyBookingIfNeeded(params: {
+    sessionId: string;
+    userId: string;
+    toolCalls?: AgentRunResult['toolCalls'];
+  }): Promise<void> {
+    await this.bookingDetection.handleBookingSuccessAsync({
+      chatId: params.sessionId,
+      contactName: params.userId,
+      userId: params.userId,
+      managerId: 'test-suite',
+      managerName: 'Agent Test',
+      toolCalls: params.toolCalls,
+    });
   }
 }

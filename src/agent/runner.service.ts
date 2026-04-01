@@ -66,32 +66,16 @@ export class AgentRunnerService {
 
       await this.runTurnEndLifecycle(ctx, r.text);
 
-      // 从 steps 中提取工具调用结果。
-      const toolCalls: AgentToolCall[] = [];
-      for (const step of r.steps) {
-        if (step.toolCalls && step.toolResults) {
-          for (const tc of step.toolCalls) {
-            const tr = step.toolResults.find((t) => t.toolCallId === tc.toolCallId);
-            toolCalls.push({
-              toolName: tc.toolName,
-              args: ((tc as { input?: unknown }).input ?? {}) as Record<string, unknown>,
-              result: (tr as { output?: unknown } | undefined)?.output,
-            });
-          }
-        }
-      }
-
-      return {
+      return this.buildRunResult({
         text: r.text,
-        reasoning: r.reasoningText || undefined,
-        steps: r.steps.length,
-        toolCalls,
+        reasoningText: r.reasoningText,
+        steps: r.steps,
         usage: {
           inputTokens: r.usage.inputTokens ?? 0,
           outputTokens: r.usage.outputTokens ?? 0,
           totalTokens: r.usage.totalTokens,
         },
-      };
+      });
     } catch (err) {
       this.logger.error('Agent 执行失败', err);
       throw err;
@@ -102,6 +86,7 @@ export class AgentRunnerService {
   async stream(
     params: AgentInvokeParams & {
       thinking?: { type: 'enabled' | 'disabled'; budgetTokens: number };
+      onFinish?: (result: AgentRunResult) => Promise<void> | void;
     },
   ): Promise<AgentStreamResult> {
     const ctx = await this.preparation.prepare(params, 'stream');
@@ -116,9 +101,24 @@ export class AgentRunnerService {
       providerOptions: this.buildProviderOptions(params.thinking),
       onFinish: ({ usage, steps, text }) => {
         this.logger.log('流式完成, 步数: ' + steps.length + ', Tokens: ' + usage.totalTokens);
+        const result = this.buildRunResult({
+          text,
+          reasoningText: undefined,
+          steps,
+          usage: {
+            inputTokens: usage.inputTokens ?? 0,
+            outputTokens: usage.outputTokens ?? 0,
+            totalTokens: usage.totalTokens,
+          },
+        });
         this.runTurnEndLifecycle(ctx, text).catch((err) =>
           this.logger.warn('记忆生命周期执行失败', err),
         );
+        if (params.onFinish) {
+          Promise.resolve(params.onFinish(result)).catch((err) =>
+            this.logger.warn('流式完成回调执行失败', err),
+          );
+        }
       },
     });
 
@@ -167,5 +167,37 @@ export class AgentRunnerService {
       },
       assistantText,
     );
+  }
+
+  private buildRunResult(params: {
+    text: string;
+    reasoningText?: string;
+    steps: Array<{
+      toolCalls?: Array<{ toolCallId: string; toolName: string; input?: unknown }>;
+      toolResults?: Array<{ toolCallId: string; output?: unknown }>;
+    }>;
+    usage: AgentRunResult['usage'];
+  }): AgentRunResult {
+    const toolCalls: AgentToolCall[] = [];
+    for (const step of params.steps) {
+      if (step.toolCalls && step.toolResults) {
+        for (const tc of step.toolCalls) {
+          const tr = step.toolResults.find((t) => t.toolCallId === tc.toolCallId);
+          toolCalls.push({
+            toolName: tc.toolName,
+            args: ((tc as { input?: unknown }).input ?? {}) as Record<string, unknown>,
+            result: (tr as { output?: unknown } | undefined)?.output,
+          });
+        }
+      }
+    }
+
+    return {
+      text: params.text,
+      reasoning: params.reasoningText || undefined,
+      steps: params.steps.length,
+      toolCalls,
+      usage: params.usage,
+    };
   }
 }
