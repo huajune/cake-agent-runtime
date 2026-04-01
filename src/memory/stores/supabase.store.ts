@@ -3,17 +3,25 @@ import { SupabaseService } from '@infra/supabase/supabase.service';
 import { RedisService } from '@infra/redis/redis.service';
 import { MemoryConfig } from '../memory.config';
 import type {
-  AgentMemoryRow,
   UserProfile,
   SummaryData,
   SummaryEntry,
   MessageMetadata,
-  MemoryEntry,
-  MemoryStore,
-} from '../memory.types';
-import { MAX_RECENT_SUMMARIES } from '../memory.types';
+  AgentMemoryRow,
+} from '../types/long-term.types';
+import { MAX_RECENT_SUMMARIES } from '../types/long-term.types';
+import type { MemoryEntry, MemoryStore } from './store.types';
 
 const TABLE = 'agent_memories';
+
+function normalizeSummaryData(data: SummaryData | null | undefined): SummaryData | null {
+  if (!data) return null;
+  return {
+    recent: data.recent ?? [],
+    archive: data.archive ?? null,
+    lastSettledMessageAt: data.lastSettledMessageAt ?? null,
+  };
+}
 
 /**
  * Supabase 存储后端 — 长期记忆（每用户一行）
@@ -22,6 +30,10 @@ const TABLE = 'agent_memories';
  * 唯一约束 (corp_id, user_id)，每用户一行。
  * Redis 2h 缓存整行数据。
  * Supabase 不可用时 graceful 降级。
+ *
+ * 当前这套记忆结构对表结构没有新增列要求：
+ * - `summary_data` 里的 `lastSettledMessageAt` 直接放在 jsonb 中
+ * - 开发阶段允许旧 json 结构自然被新写入覆盖，不做额外迁移兼容
  */
 @Injectable()
 export class SupabaseStore implements MemoryStore {
@@ -77,7 +89,7 @@ export class SupabaseStore implements MemoryStore {
 
   async getSummaryData(corpId: string, userId: string): Promise<SummaryData | null> {
     const row = await this.getRow(corpId, userId);
-    return (row?.summary_data as SummaryData) ?? null;
+    return normalizeSummaryData((row?.summary_data as SummaryData | null) ?? null);
   }
 
   /**
@@ -89,19 +101,29 @@ export class SupabaseStore implements MemoryStore {
     corpId: string,
     userId: string,
     entry: SummaryEntry,
-    compressArchive?: (overflow: SummaryEntry[], existingArchive: string | null) => Promise<string>,
+    options?: {
+      lastSettledMessageAt?: string | null;
+      compressArchive?: (
+        overflow: SummaryEntry[],
+        existingArchive: string | null,
+      ) => Promise<string>;
+    },
   ): Promise<void> {
     const existing = await this.getSummaryData(corpId, userId);
-    const data: SummaryData = existing ?? { recent: [], archive: null };
+    const data: SummaryData = existing ?? {
+      recent: [],
+      archive: null,
+      lastSettledMessageAt: null,
+    };
 
     // 追加到头部（最新在前）
     data.recent.unshift(entry);
 
     // 分层压缩：超出上限时，移出最早的条目并压缩到 archive
-    if (data.recent.length > MAX_RECENT_SUMMARIES && compressArchive) {
+    if (data.recent.length > MAX_RECENT_SUMMARIES && options?.compressArchive) {
       const overflow = data.recent.splice(MAX_RECENT_SUMMARIES);
       try {
-        data.archive = await compressArchive(overflow, data.archive);
+        data.archive = await options.compressArchive(overflow, data.archive);
       } catch (err) {
         this.logger.warn('摘要压缩失败，保留原始条目', err);
         // 压缩失败时，把溢出的条目放回去（降级：不压缩，下次再试）
@@ -112,6 +134,26 @@ export class SupabaseStore implements MemoryStore {
       data.recent = data.recent.slice(0, MAX_RECENT_SUMMARIES);
     }
 
+    if (options?.lastSettledMessageAt !== undefined) {
+      data.lastSettledMessageAt = options.lastSettledMessageAt;
+    }
+
+    await this.upsertRow(corpId, userId, { summary_data: data });
+  }
+
+  async markLastSettledMessageAt(
+    corpId: string,
+    userId: string,
+    lastSettledMessageAt: string,
+  ): Promise<void> {
+    const existing = await this.getSummaryData(corpId, userId);
+    const data: SummaryData = existing ?? {
+      recent: [],
+      archive: null,
+      lastSettledMessageAt: null,
+    };
+
+    data.lastSettledMessageAt = lastSettledMessageAt;
     await this.upsertRow(corpId, userId, { summary_data: data });
   }
 
@@ -179,7 +221,7 @@ export class SupabaseStore implements MemoryStore {
 
     const row = data as AgentMemoryRow;
     await this.redis
-      .setex(cacheKey, this.config.profileCacheTtl, row)
+      .setex(cacheKey, this.config.longTermCacheTtl, row)
       .catch((err) => this.logger.warn('Redis 缓存回填失败', err));
 
     return row;

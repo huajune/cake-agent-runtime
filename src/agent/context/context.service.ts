@@ -22,12 +22,19 @@ import { DateTimeSection } from './sections/datetime.section';
 import { ChannelSection } from './sections/channel.section';
 import { StageStrategySection } from './sections/stage-strategy.section';
 import { ThresholdsSection } from './sections/thresholds.section';
+import { MemorySection } from './sections/memory.section';
 import { SCENARIO_SECTIONS, DEFAULT_SCENARIO } from './scenarios/scenario.registry';
+import { StaticSection } from './sections/static.section';
+import { PolicySection } from './sections/policy.section';
+import { RuntimeContextSection } from './sections/runtime-context.section';
 
 export interface ComposeParams {
   scenario?: string;
   channelType?: 'private' | 'group';
   currentStage?: string;
+  memoryBlock?: string;
+  /** 策略来源：wecom 读 released，test 读 testing，默认 released */
+  strategySource?: 'released' | 'testing';
 }
 
 export interface ComposeResult {
@@ -40,7 +47,7 @@ export interface ComposeResult {
 export class ContextService implements OnModuleInit {
   private readonly logger = new Logger(ContextService.name);
   private readonly sections = new Map<string, PromptSection>();
-  private readonly basePrompts = new Map<string, string>();
+  private readonly promptAssets = new Map<string, string>();
   private readonly promptsBasePath: string;
 
   constructor(private readonly strategyConfigService: BizStrategyConfigService) {
@@ -50,10 +57,10 @@ export class ContextService implements OnModuleInit {
   }
 
   async onModuleInit() {
-    await this.loadBasePrompts();
+    await this.loadPromptAssets();
     this.registerSections();
     this.logger.log(
-      `Context 初始化完成: ${this.sections.size} sections, ${this.basePrompts.size} prompts`,
+      `Context 初始化完成: ${this.sections.size} sections, ${this.promptAssets.size} prompts`,
     );
   }
 
@@ -61,15 +68,25 @@ export class ContextService implements OnModuleInit {
    * 组装系统提示词 + stageGoals
    */
   async compose(params: ComposeParams = {}): Promise<ComposeResult> {
-    const { scenario = DEFAULT_SCENARIO, channelType = 'private', currentStage } = params;
+    const {
+      scenario = DEFAULT_SCENARIO,
+      channelType = 'private',
+      currentStage,
+      memoryBlock,
+      strategySource = 'released',
+    } = params;
 
-    const config = await this.strategyConfigService.getActiveConfig();
+    const config = await this.strategyConfigService.getActiveConfig(strategySource);
+
+    const now = this.formatCurrentTime();
 
     const ctx: PromptContext = {
       scenario,
       channelType,
       strategyConfig: config,
       currentStage,
+      memoryBlock,
+      currentTimeText: now,
     };
 
     const sectionNames = SCENARIO_SECTIONS[scenario];
@@ -86,16 +103,6 @@ export class ContextService implements OnModuleInit {
       if (text.trim()) parts.push(text.trim());
     }
 
-    // 替换 {{CURRENT_TIME}} 占位符
-    const now = new Date().toLocaleString('zh-CN', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      weekday: 'long',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
     const systemPrompt = parts.join('\n\n').replace(/\{\{CURRENT_TIME\}\}/g, now);
 
     return {
@@ -115,27 +122,35 @@ export class ContextService implements OnModuleInit {
   // ==================== 私有方法 ====================
 
   private registerSections(): void {
-    // identity section 需要基础提示词，按场景创建不同实例
-    // 目前只注册 candidate-consultation 的 identity
-    const basePrompt = this.basePrompts.get('candidate-consultation') ?? '';
-    this.sections.set('identity', new IdentitySection(basePrompt));
+    const baseManual = this.promptAssets.get('candidate-consultation') ?? '';
+    const finalCheck = this.promptAssets.get('candidate-consultation-final-check') ?? '';
+
+    // 顶层结构（推荐用于 candidate-consultation）
+    this.sections.set('identity', new IdentitySection());
+    this.sections.set('base-manual', new StaticSection('base-manual', baseManual));
+    this.sections.set('policy', new PolicySection());
+    this.sections.set('runtime-context', new RuntimeContextSection());
+    this.sections.set('final-check', new StaticSection('final-check', finalCheck));
+
+    // 叶子 section 仍保留，便于其他场景或测试复用
     this.sections.set('red-lines', new RedLinesSection());
     this.sections.set('thresholds', new ThresholdsSection());
     this.sections.set('stage-strategy', new StageStrategySection());
+    this.sections.set('memory', new MemorySection());
     this.sections.set('datetime', new DateTimeSection());
     this.sections.set('channel', new ChannelSection());
   }
 
-  private async loadBasePrompts(): Promise<void> {
-    const scenarios = ['candidate-consultation'];
-    for (const scenario of scenarios) {
-      const filePath = join(this.promptsBasePath, `${scenario}.md`);
+  private async loadPromptAssets(): Promise<void> {
+    const assetNames = ['candidate-consultation', 'candidate-consultation-final-check'];
+    for (const assetName of assetNames) {
+      const filePath = join(this.promptsBasePath, `${assetName}.md`);
       const content = await this.readTextFile(filePath);
       if (content) {
-        this.basePrompts.set(scenario, content);
+        this.promptAssets.set(assetName, content);
       }
     }
-    this.logger.log(`基础提示词加载完成，共 ${this.basePrompts.size} 个场景`);
+    this.logger.log(`提示词资产加载完成，共 ${this.promptAssets.size} 个文件`);
   }
 
   private buildStageGoalsMap(config: StrategyConfigRecord): Record<string, StageGoalConfig> {
@@ -157,5 +172,17 @@ export class ContextService implements OnModuleInit {
       this.logger.error(`读取文本文件失败: ${filePath}`, error);
       return undefined;
     }
+  }
+
+  private formatCurrentTime(): string {
+    return new Date().toLocaleString('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      weekday: 'long',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   }
 }

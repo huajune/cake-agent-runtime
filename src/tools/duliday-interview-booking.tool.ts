@@ -37,7 +37,7 @@ export function buildInterviewBookingTool(spongeService: SpongeService): ToolBui
   return (_context) => {
     return tool({
       description:
-        '预约面试。为求职者预约指定岗位的面试，需要提供完整的个人信息包括姓名、电话、性别、年龄、岗位ID和面试时间。',
+        '预约面试。为求职者预约指定岗位的面试，需要提供完整的个人信息，包括姓名、电话、性别、年龄、学历、健康证情况、岗位ID和面试时间。',
       inputSchema: z.object({
         name: z.string().describe('求职者姓名'),
         phone: z.string().describe('联系电话'),
@@ -47,16 +47,10 @@ export function buildInterviewBookingTool(spongeService: SpongeService): ToolBui
         interviewTime: z
           .string()
           .describe('面试时间，格式：YYYY-MM-DD HH:mm:ss，例如：2025-07-22 13:00:00'),
-        education: z
-          .string()
-          .optional()
-          .default('大专')
-          .describe('学历，如：初中、高中、大专、本科等。默认为大专'),
+        education: z.string().describe('学历，如：初中、高中、大专、本科等'),
         hasHealthCertificate: z
           .number()
-          .optional()
-          .default(1)
-          .describe('是否有健康证：1=有，2=无但接受办理健康证，3=无且不接受办理健康证，默认为1'),
+          .describe('是否有健康证：1=有，2=无但接受办理健康证，3=无且不接受办理健康证'),
       }),
       execute: async ({
         name,
@@ -65,8 +59,8 @@ export function buildInterviewBookingTool(spongeService: SpongeService): ToolBui
         genderId,
         jobId,
         interviewTime,
-        education = '大专',
-        hasHealthCertificate = 1,
+        education,
+        hasHealthCertificate,
       }) => {
         logger.log(`预约面试: ${name}, jobId=${jobId}`);
 
@@ -78,6 +72,8 @@ export function buildInterviewBookingTool(spongeService: SpongeService): ToolBui
         if (!genderId) missingFields.push('性别');
         if (!jobId) missingFields.push('岗位ID');
         if (!interviewTime) missingFields.push('面试时间');
+        if (!education) missingFields.push('学历');
+        if (hasHealthCertificate == null) missingFields.push('健康证情况');
 
         if (missingFields.length > 0) {
           return { success: false, error: `缺少必填信息：${missingFields.join('、')}` };
@@ -113,7 +109,16 @@ export function buildInterviewBookingTool(spongeService: SpongeService): ToolBui
 
           return {
             ...result,
-            requestInfo: { name, phone, age, genderId, education, jobId, interviewTime },
+            requestInfo: {
+              name,
+              phone,
+              age,
+              genderId,
+              education,
+              hasHealthCertificate,
+              jobId,
+              interviewTime,
+            },
           };
         } catch (err) {
           logger.error('预约面试失败', err);

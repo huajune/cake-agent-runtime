@@ -1,4 +1,4 @@
-import { PromptSection } from './section.interface';
+import { PromptContext, PromptSection } from './section.interface';
 
 /**
  * 时间注入段落
@@ -9,9 +9,12 @@ import { PromptSection } from './section.interface';
 export class DateTimeSection implements PromptSection {
   readonly name = 'datetime';
 
-  build(): string {
-    const now = new Date();
-    const formatted = now.toLocaleString('zh-CN', {
+  build(ctx: PromptContext): string {
+    return `当前时间：${ctx.currentTimeText ?? this.formatNow()}`;
+  }
+
+  private formatNow(): string {
+    return new Date().toLocaleString('zh-CN', {
       timeZone: 'Asia/Shanghai',
       year: 'numeric',
       month: '2-digit',
@@ -20,6 +23,5 @@ export class DateTimeSection implements PromptSection {
       hour: '2-digit',
       minute: '2-digit',
     });
-    return `当前时间：${formatted}`;
   }
 }

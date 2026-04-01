@@ -12,6 +12,10 @@ export interface PromptContext {
   strategyConfig: StrategyConfigRecord;
   /** 当前对话阶段标识（从 Redis 读取，默认第一阶段） */
   currentStage?: string;
+  /** 已渲染好的记忆块；由 AgentPreparationService 提前格式化后注入。 */
+  memoryBlock?: string;
+  /** 当前时间文本；由 ContextService 统一生成，避免各 section 各算各的。 */
+  currentTimeText?: string;
 }
 
 /**

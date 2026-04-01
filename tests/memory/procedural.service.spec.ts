@@ -1,4 +1,4 @@
-import { ProceduralService } from '@memory/procedural.service';
+import { ProceduralService } from '@memory/services/procedural.service';
 
 describe('ProceduralService', () => {
   const mockRedisStore = {
@@ -22,6 +22,7 @@ describe('ProceduralService', () => {
       const state = await service.get('corp1', 'user1', 'session1');
 
       expect(state.currentStage).toBeNull();
+      expect(state.fromStage).toBeNull();
       expect(state.advancedAt).toBeNull();
       expect(state.reason).toBeNull();
     });
@@ -30,6 +31,7 @@ describe('ProceduralService', () => {
       mockRedisStore.get.mockResolvedValue({
         content: {
           currentStage: 'needs_collection',
+          fromStage: 'trust_building',
           advancedAt: '2026-03-20T10:00:00Z',
           reason: '信任建立完成',
         },
@@ -38,6 +40,7 @@ describe('ProceduralService', () => {
       const state = await service.get('corp1', 'user1', 'session1');
 
       expect(state.currentStage).toBe('needs_collection');
+      expect(state.fromStage).toBe('trust_building');
       expect(state.reason).toBe('信任建立完成');
     });
   });
@@ -46,6 +49,7 @@ describe('ProceduralService', () => {
     it('should write stage to Redis with SESSION_TTL', async () => {
       await service.set('corp1', 'user1', 'session1', {
         currentStage: 'job_recommendation',
+        fromStage: 'needs_collection',
         advancedAt: '2026-03-20T10:00:00Z',
         reason: '需求收集完成',
       });

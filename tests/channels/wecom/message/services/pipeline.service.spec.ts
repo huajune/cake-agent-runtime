@@ -4,7 +4,7 @@ import { MessagePipelineService } from '@wecom/message/services/pipeline.service
 import { MessageDeduplicationService } from '@wecom/message/services/deduplication.service';
 import { MessageFilterService } from '@wecom/message/services/filter.service';
 import { MessageDeliveryService } from '@wecom/message/services/delivery.service';
-import { BookingDetectionService } from '@wecom/message/services/booking-detection.service';
+import { BookingDetectionService } from '@biz/message/services/booking-detection.service';
 import { ImageDescriptionService } from '@wecom/message/services/image-description.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
@@ -123,6 +123,7 @@ describe('MessagePipelineService', () => {
       text: 'Reply from agent',
       steps: 1,
       usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
+      toolCalls: [],
     });
     mockFeishuAlertService.sendAlert.mockResolvedValue(undefined);
   });
@@ -193,6 +194,37 @@ describe('MessagePipelineService', () => {
         }),
       );
       expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-123');
+    });
+
+    it('should forward tool calls to booking detection', async () => {
+      mockRunnerService.invoke.mockResolvedValue({
+        text: 'Reply from agent',
+        steps: 1,
+        usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_booking',
+            args: { jobId: 100 },
+            result: { success: true, message: '预约成功' },
+          },
+        ],
+      });
+
+      await service.processSingleMessage(validMessageData);
+
+      expect(mockBookingDetectionService.handleBookingSuccessAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chatId: 'chat-123',
+          contactName: 'Alice',
+          toolCalls: [
+            {
+              toolName: 'duliday_interview_booking',
+              args: { jobId: 100 },
+              result: { success: true, message: '预约成功' },
+            },
+          ],
+        }),
+      );
     });
 
     it('should pass formatted location content to the agent', async () => {

@@ -1,8 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { streamText } from 'ai';
 import { Readable } from 'stream';
-import { AgentRunnerService, type AgentRunResult } from '@agent/runner.service';
+import {
+  AgentRunnerService,
+  type AgentInputMessage,
+  type AgentRunResult,
+  type AgentStreamResult,
+} from '@agent/runner.service';
+import { BookingDetectionService } from '@biz/message/services/booking-detection.service';
 import { TestChatRequestDto, TestChatResponse, VercelAIChatRequestDto } from '../dto/test-chat.dto';
 import { TestExecutionRepository } from '../repositories/test-execution.repository';
 import { TestExecution } from '../entities/test-execution.entity';
@@ -49,6 +54,7 @@ export class TestExecutionService {
     private readonly configService: ConfigService,
     private readonly runner: AgentRunnerService,
     private readonly executionRepository: TestExecutionRepository,
+    private readonly bookingDetection: BookingDetectionService,
   ) {
     this.logger.log('TestExecutionService 初始化完成');
   }
@@ -64,30 +70,46 @@ export class TestExecutionService {
       throw new Error('userId 是必填项，请在请求中传入 userId');
     }
 
-    this.logger.log(`执行测试: ${request.caseName || request.message.substring(0, 50)}...`);
+    if (!this.hasInputContent(request.message, request.imageUrls)) {
+      throw new Error('message 或 imageUrls 至少需要提供一个');
+    }
+
+    this.logger.log(
+      `执行测试: ${request.caseName || this.buildInputPreview(request.message, request.imageUrls)}...`,
+    );
 
     let agentResult: AgentRunResult | null = null;
     let executionStatus: ExecutionStatus = ExecutionStatus.SUCCESS;
     let errorMessage: string | null = null;
+    const sessionId = request.sessionId ?? `test-${Date.now()}`;
 
     try {
-      const historyForAgent = (request.history || []).slice(0, -2);
+      const historyForAgent = request.skipHistoryTrim
+        ? request.history || []
+        : (request.history || []).slice(0, -2);
 
-      const messages = [
-        ...historyForAgent.map((m) => ({
-          role: m.role as 'user' | 'assistant',
-          content: m.content,
-        })),
-        { role: 'user' as const, content: request.message },
-      ];
+      const messages = this.buildRunnerMessages(
+        historyForAgent,
+        request.message,
+        request.imageUrls,
+      );
 
       agentResult = await this.runner.invoke({
         messages,
         userId: request.userId,
         corpId: 'test',
-        sessionId: request.sessionId ?? `test-${Date.now()}`,
+        sessionId,
         scenario,
+        strategySource: 'testing',
       });
+
+      if (request.notifyBooking) {
+        await this.notifyBookingIfNeeded({
+          sessionId,
+          userId: request.userId,
+          toolCalls: agentResult.toolCalls,
+        });
+      }
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       executionStatus = errorMsg.includes('timeout')
@@ -106,7 +128,7 @@ export class TestExecutionService {
       request: {
         url: 'orchestrator/run',
         method: 'POST',
-        body: { scenario, message: request.message },
+        body: { scenario, message: request.message, imageUrls: request.imageUrls },
       },
       response: {
         statusCode: executionStatus === ExecutionStatus.SUCCESS ? 200 : 500,
@@ -128,6 +150,7 @@ export class TestExecutionService {
         testInput: {
           message: request.message,
           history: request.history,
+          imageUrls: request.imageUrls,
           scenario,
         },
         expectedOutput: request.expectedOutput,
@@ -151,45 +174,52 @@ export class TestExecutionService {
    * 执行流式测试（旧 SSE 格式）
    */
   async executeTestStream(request: TestChatRequestDto): Promise<NodeJS.ReadableStream> {
-    const streamResult = await this.executeTestStreamWithMeta(request);
+    const { streamResult } = await this.executeTestStreamWithMeta(request);
     return Readable.fromWeb(streamResult.textStream as Parameters<typeof Readable.fromWeb>[0]);
   }
 
   /**
-   * 执行流式测试（返回 Vercel AI SDK StreamTextResult）
+   * 执行流式测试（返回 Vercel AI SDK StreamTextResult + 元数据）
    */
-  async executeTestStreamWithMeta(
-    request: TestChatRequestDto,
-  ): Promise<ReturnType<typeof streamText>> {
+  async executeTestStreamWithMeta(request: TestChatRequestDto): Promise<AgentStreamResult> {
     const scenario = request.scenario || DEFAULT_SCENARIO;
 
     if (!request.userId) {
       throw new Error('userId 是必填项，请在请求中传入 userId');
     }
 
+    if (!this.hasInputContent(request.message, request.imageUrls)) {
+      throw new Error('message 或 imageUrls 至少需要提供一个');
+    }
+
     this.logger.log(
-      `[Stream] 执行流式测试: ${request.caseName || request.message.substring(0, 50)}...`,
+      `[Stream] 执行流式测试: ${request.caseName || this.buildInputPreview(request.message, request.imageUrls)}...`,
     );
 
+    const sessionId = request.sessionId ?? `test-${Date.now()}`;
     const historyForAgent = request.skipHistoryTrim
       ? request.history || []
       : (request.history || []).slice(0, -2);
 
-    const messages = [
-      ...historyForAgent.map((m) => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      })),
-      { role: 'user' as const, content: request.message },
-    ];
+    const messages = this.buildRunnerMessages(historyForAgent, request.message, request.imageUrls);
 
     return this.runner.stream({
       messages,
       userId: request.userId,
       corpId: 'test',
-      sessionId: request.sessionId ?? `test-${Date.now()}`,
+      sessionId,
       scenario,
       thinking: request.thinking,
+      strategySource: 'testing',
+      onFinish: request.notifyBooking
+        ? async (result) => {
+            await this.notifyBookingIfNeeded({
+              sessionId,
+              userId: request.userId,
+              toolCalls: result.toolCalls,
+            });
+          }
+        : undefined,
     });
   }
 
@@ -276,40 +306,92 @@ export class TestExecutionService {
   } {
     const userMessages = request.messages.filter((m) => m.role === 'user');
     const latestUserMessage = userMessages[userMessages.length - 1];
-
-    const messageText =
-      latestUserMessage?.parts
-        ?.filter((p) => p.type === 'text')
-        .map((p) => p.text)
-        .join('') || '';
+    const latestPayload = this.extractMessagePayload(latestUserMessage);
+    const currentImageUrls =
+      latestPayload.imageUrls.length > 0 ? latestPayload.imageUrls : request.imageUrls;
+    const messageText = latestPayload.text || (currentImageUrls?.length ? '[图片消息]' : '');
 
     const history = request.messages.slice(0, -1).map((msg) => {
-      const textContent =
-        msg.parts
-          ?.filter((p) => p.type === 'text')
-          .map((p) => p.text)
-          .join('') || '';
+      const payload = this.extractMessagePayload(msg);
       return {
         role: msg.role as MessageRole,
-        content: textContent,
+        content: payload.text || (payload.imageUrls.length > 0 ? '[图片消息]' : ''),
+        imageUrls: payload.imageUrls.length > 0 ? payload.imageUrls : undefined,
       };
     });
 
     const testRequest: TestChatRequestDto = {
-      message: messageText,
+      message: latestPayload.text,
       history,
       scenario: request.scenario || 'candidate-consultation',
       saveExecution: request.saveExecution ?? false,
+      notifyBooking: request.notifyBooking ?? true,
       skipHistoryTrim: true,
       sessionId: request.sessionId,
       userId: request.userId,
       thinking: request.thinking,
+      imageUrls: currentImageUrls,
     };
 
     return { testRequest, messageText };
   }
 
   // ========== 私有方法 ==========
+
+  private buildRunnerMessages(
+    history: Array<{ role: MessageRole; content: string; imageUrls?: string[] }>,
+    message?: string,
+    imageUrls?: string[],
+  ): AgentInputMessage[] {
+    return [
+      ...history.map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+        imageUrls: m.imageUrls,
+      })),
+      {
+        role: 'user',
+        content: message || '',
+        imageUrls,
+      },
+    ];
+  }
+
+  private extractMessagePayload(message?: {
+    parts?: Array<{
+      type: string;
+      text?: string;
+      url?: string;
+      mediaType?: string;
+    }>;
+  }): {
+    text: string;
+    imageUrls: string[];
+  } {
+    const parts = message?.parts || [];
+    const text = parts
+      .filter((part) => part.type === 'text')
+      .map((part) => part.text)
+      .join('');
+    const imageUrls = parts
+      .filter(
+        (part) =>
+          part.type === 'file' &&
+          typeof part.url === 'string' &&
+          (part.mediaType?.startsWith('image/') || part.url.startsWith('data:image/')),
+      )
+      .map((part) => part.url as string);
+    return { text, imageUrls };
+  }
+
+  private hasInputContent(message?: string, imageUrls?: string[]): boolean {
+    return Boolean(message?.trim()) || Boolean(imageUrls?.length);
+  }
+
+  private buildInputPreview(message?: string, imageUrls?: string[]): string {
+    if (message?.trim()) return message.substring(0, 50);
+    return `[图片消息${imageUrls?.length ? ` x${imageUrls.length}` : ''}]`;
+  }
 
   private extractResult(result: AgentRunResult | null): ExtractedResult {
     if (!result) {
@@ -322,8 +404,27 @@ export class TestExecutionService {
 
     return {
       actualOutput: result.text || '',
-      toolCalls: [],
+      toolCalls: (result.toolCalls || []).map((toolCall) => ({
+        toolName: toolCall.toolName,
+        input: toolCall.args,
+        output: toolCall.result,
+      })),
       tokenUsage: result.usage || { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
     };
+  }
+
+  private async notifyBookingIfNeeded(params: {
+    sessionId: string;
+    userId: string;
+    toolCalls?: AgentRunResult['toolCalls'];
+  }): Promise<void> {
+    await this.bookingDetection.handleBookingSuccessAsync({
+      chatId: params.sessionId,
+      contactName: params.userId,
+      userId: params.userId,
+      managerId: 'test-suite',
+      managerName: 'Agent Test',
+      toolCalls: params.toolCalls,
+    });
   }
 }

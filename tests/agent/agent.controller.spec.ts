@@ -5,6 +5,7 @@ import { AgentRunnerService } from '@agent/runner.service';
 import { AgentHealthService } from '@agent/agent-health.service';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { RegistryService } from '@providers/registry.service';
+import { BookingDetectionService } from '@biz/message/services/booking-detection.service';
 
 describe('AgentController', () => {
   let controller: AgentController;
@@ -48,12 +49,21 @@ describe('AgentController', () => {
       },
       scenarios: ['candidate-consultation', 'group-operations'],
       tools: {
-        builtIn: ['advance_stage', 'recall_history', 'duliday_job_list', 'duliday_interview_booking'],
+        builtIn: [
+          'advance_stage',
+          'recall_history',
+          'duliday_job_list',
+          'duliday_interview_booking',
+        ],
         mcp: [],
         total: 4,
       },
       checks: { redis: true, supabase: true },
     }),
+  };
+
+  const mockBookingDetection = {
+    handleBookingSuccessAsync: jest.fn().mockResolvedValue(undefined),
   };
 
   beforeEach(async () => {
@@ -64,6 +74,7 @@ describe('AgentController', () => {
         { provide: FeishuAlertService, useValue: mockFeishuAlertService },
         { provide: RegistryService, useValue: mockRegistry },
         { provide: AgentHealthService, useValue: mockHealthService },
+        { provide: BookingDetectionService, useValue: mockBookingDetection },
       ],
     }).compile();
 
@@ -87,7 +98,12 @@ describe('AgentController', () => {
         fast: { model: 'deepseek/deepseek-chat' },
       });
       expect(result.tools).toEqual({
-        builtIn: ['advance_stage', 'recall_history', 'duliday_job_list', 'duliday_interview_booking'],
+        builtIn: [
+          'advance_stage',
+          'recall_history',
+          'duliday_job_list',
+          'duliday_interview_booking',
+        ],
         mcp: [],
         total: 4,
       });
@@ -162,6 +178,7 @@ describe('AgentController', () => {
         sessionId: 'conv123',
         scenario: 'candidate-consultation',
       });
+      expect(mockBookingDetection.handleBookingSuccessAsync).not.toHaveBeenCalled();
       expect(result.success).toBe(true);
       expect(result.text).toBe('你好！');
       expect(result.usage).toEqual({ inputTokens: 10, outputTokens: 20, totalTokens: 30 });
@@ -185,6 +202,36 @@ describe('AgentController', () => {
         }),
       );
       expect(result.success).toBe(true);
+    });
+
+    it('should trigger booking detection only when notifyBooking is true', async () => {
+      mockLoop.invoke.mockResolvedValue({
+        text: 'response',
+        steps: 1,
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_booking',
+            args: { name: '张三' },
+            result: { success: true },
+          },
+        ],
+        usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
+      });
+
+      await controller.debugChat({
+        message: '测试',
+        sessionId: 'conv123',
+        userId: 'user-1',
+        notifyBooking: true,
+      });
+
+      expect(mockBookingDetection.handleBookingSuccessAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chatId: 'conv123',
+          contactName: 'user-1',
+          userId: 'user-1',
+        }),
+      );
     });
 
     it('should throw HttpException when AgentRunnerService fails', async () => {

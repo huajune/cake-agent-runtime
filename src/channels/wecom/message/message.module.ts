@@ -15,7 +15,6 @@ import { SimpleMergeService } from './services/simple-merge.service';
 import { MessageDeliveryService } from './services/delivery.service';
 import { MessageCallbackAdapterService } from './services/callback-adapter.service';
 import { MessagePipelineService } from './services/pipeline.service';
-import { BookingDetectionService } from './services/booking-detection.service';
 import { ImageDescriptionService } from './services/image-description.service';
 import { BizModule } from '@biz/biz.module';
 import { FeishuModule } from '@infra/feishu/feishu.module';
@@ -185,7 +184,6 @@ import { FeishuModule } from '@infra/feishu/feishu.module';
     MessageDeliveryService, // 消息发送（统一分段发送和监控）
     MessageCallbackAdapterService, // 消息回调适配器（支持小组级和企业级格式）
     MessagePipelineService, // 消息处理管线（核心处理逻辑）
-    BookingDetectionService, // 预约成功检测
     ImageDescriptionService, // 图片描述（异步 vision 识别 → 回写 content）
   ],
   exports: [MessageService, MessageFilterService, MessageProcessor],

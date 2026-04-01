@@ -1,4 +1,4 @@
-import { LongTermService } from '@memory/long-term.service';
+import { LongTermService } from '@memory/services/long-term.service';
 
 describe('LongTermService', () => {
   const mockSupabaseStore = {
@@ -6,6 +6,7 @@ describe('LongTermService', () => {
     upsertProfile: jest.fn().mockResolvedValue(undefined),
     getSummaryData: jest.fn(),
     appendSummary: jest.fn().mockResolvedValue(undefined),
+    markLastSettledMessageAt: jest.fn().mockResolvedValue(undefined),
   };
 
   let service: LongTermService;
@@ -72,8 +73,11 @@ describe('LongTermService', () => {
 
     it('should return summary data', async () => {
       const data = {
-        recent: [{ summary: 'test', sessionId: 's1', startTime: '2026-03-15', endTime: '2026-03-15' }],
+        recent: [
+          { summary: 'test', sessionId: 's1', startTime: '2026-03-15', endTime: '2026-03-15' },
+        ],
         archive: 'old stuff',
+        lastSettledMessageAt: '2026-03-15T10:00:00.000Z',
       };
       mockSupabaseStore.getSummaryData.mockResolvedValue(data);
 
@@ -81,64 +85,7 @@ describe('LongTermService', () => {
 
       expect(result?.recent).toHaveLength(1);
       expect(result?.archive).toBe('old stuff');
-    });
-  });
-
-  describe('formatProfileForPrompt', () => {
-    it('should return empty string for null profile', () => {
-      expect(service.formatProfileForPrompt(null)).toBe('');
-    });
-
-    it('should format non-null profile fields', () => {
-      const profile = {
-        name: '张三',
-        phone: '138',
-        gender: null,
-        age: '22',
-        is_student: true,
-        education: null,
-        has_health_certificate: null,
-      };
-
-      const result = service.formatProfileForPrompt(profile);
-
-      expect(result).toContain('[用户档案]');
-      expect(result).toContain('姓名: 张三');
-      expect(result).toContain('年龄: 22');
-      expect(result).toContain('是否学生: 是');
-    });
-  });
-
-  describe('formatSummaryForPrompt', () => {
-    it('should return empty string for null data', () => {
-      expect(service.formatSummaryForPrompt(null)).toBe('');
-    });
-
-    it('should format recent summaries', () => {
-      const data = {
-        recent: [
-          { summary: '找上海兼职', sessionId: 's1', startTime: '2026-03-15T09:00:00Z', endTime: '2026-03-15T11:00:00Z' },
-        ],
-        archive: null,
-      };
-
-      const result = service.formatSummaryForPrompt(data);
-
-      expect(result).toContain('[历史摘要]');
-      expect(result).toContain('找上海兼职');
-      expect(result).toContain('2026-03-15');
-    });
-
-    it('should include archive when present', () => {
-      const data = {
-        recent: [],
-        archive: '曾多次咨询上海兼职',
-      };
-
-      const result = service.formatSummaryForPrompt(data);
-
-      expect(result).toContain('历史总结');
-      expect(result).toContain('曾多次咨询上海兼职');
+      expect(result?.lastSettledMessageAt).toBe('2026-03-15T10:00:00.000Z');
     });
   });
 });

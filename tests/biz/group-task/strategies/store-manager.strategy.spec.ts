@@ -26,7 +26,7 @@ describe('StoreManagerStrategy', () => {
   });
 
   describe('fetchData', () => {
-    it('should call fetchInterviewSchedule with today date and city', async () => {
+    it('should call fetchInterviewSchedule with date range and city', async () => {
       (
         mockSpongeService.fetchInterviewSchedule as jest.Mock
       ).mockResolvedValue([]);
@@ -36,6 +36,8 @@ describe('StoreManagerStrategy', () => {
       expect(mockSpongeService.fetchInterviewSchedule).toHaveBeenCalledWith(
         expect.objectContaining({
           cityName: '上海',
+          interviewStartTime: expect.stringMatching(/^\d{4}-\d{2}-\d{2} 00:00:00$/),
+          interviewEndTime: expect.stringMatching(/^\d{4}-\d{2}-\d{2} 23:59:59$/),
         }),
       );
       expect(

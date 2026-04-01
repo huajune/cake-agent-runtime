@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import {
   MessageProcessingRecord,
   MonitoringMetadata,
@@ -23,7 +23,7 @@ import { UserHostingService } from '@biz/user/services/user-hosting.service';
  * - 保存记录到数据库
  */
 @Injectable()
-export class MessageTrackingService {
+export class MessageTrackingService implements OnModuleDestroy {
   private readonly logger = new Logger(MessageTrackingService.name);
 
   // 临时记录存储（仅保留未完成的消息，完成后写入数据库）
@@ -31,6 +31,8 @@ export class MessageTrackingService {
 
   // 定期清理超过 1 小时的临时记录（防止内存泄漏）
   private readonly PENDING_RECORD_TTL_MS = 60 * 60 * 1000; // 1 小时
+  /** 周期清理 pendingRecords 的定时器，模块销毁时需要回收。 */
+  private cleanupTimer?: NodeJS.Timeout;
 
   constructor(
     private readonly messageProcessingService: MessageProcessingService,
@@ -41,8 +43,16 @@ export class MessageTrackingService {
 
   onModuleInit(): void {
     // 定期清理超时的临时记录（每10分钟执行一次）
-    setInterval(() => this.cleanupPendingRecords(), 10 * 60 * 1000);
+    this.cleanupTimer = setInterval(() => this.cleanupPendingRecords(), 10 * 60 * 1000);
+    this.cleanupTimer.unref?.();
     this.logger.log('消息追踪服务已启动');
+  }
+
+  onModuleDestroy(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = undefined;
+    }
   }
 
   /**

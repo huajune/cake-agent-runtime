@@ -18,9 +18,12 @@
     "test": "jest",
     "test:cov": "jest --coverage",
     "db:pull": "supabase db pull",
-    "db:push": "supabase db push",
+    "db:push:test": "supabase db push --project-ref gaovfitvetoojkvtalxy",
+    "db:push:prod": "supabase db push --project-ref uvmbxcilpteaiizplcyp",
     "db:diff": "supabase db diff",
     "db:status": "supabase migration list",
+    "db:status:test": "supabase migration list --project-ref gaovfitvetoojkvtalxy",
+    "db:status:prod": "supabase migration list --project-ref uvmbxcilpteaiizplcyp",
     "db:new": "supabase migration new",
     "deploy": "bash scripts/deploy-local.sh"
   },

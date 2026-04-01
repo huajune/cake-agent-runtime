@@ -4,6 +4,13 @@ import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { AgentRunnerService } from './runner.service';
 import { RegistryService } from '@providers/registry.service';
 import { AgentHealthService } from './agent-health.service';
+import { BookingDetectionService } from '@biz/message/services/booking-detection.service';
+
+// DEBUG-ONLY: 仅用于 /agent/debug-chat 显式开启 notifyBooking 时的占位通知人信息。
+const DEBUG_BOOKING_MANAGER = {
+  id: 'debug-agent',
+  name: 'Agent Debug',
+} as const;
 
 @Controller('agent')
 export class AgentController {
@@ -14,6 +21,7 @@ export class AgentController {
     private readonly feishuAlertService: FeishuAlertService,
     private readonly registry: RegistryService,
     private readonly healthService: AgentHealthService,
+    private readonly bookingDetection: BookingDetectionService,
   ) {}
 
   /**
@@ -54,6 +62,7 @@ export class AgentController {
       sessionId?: string;
       scenario?: string;
       userId?: string;
+      notifyBooking?: boolean;
     },
   ) {
     this.logger.log(`【调试模式】测试聊天: ${body.message}`);
@@ -68,6 +77,17 @@ export class AgentController {
         sessionId,
         scenario,
       });
+
+      if (body.notifyBooking === true) {
+        await this.bookingDetection.handleBookingSuccessAsync({
+          chatId: sessionId,
+          contactName: body.userId || 'debug-user',
+          userId: body.userId || 'debug-user',
+          managerId: DEBUG_BOOKING_MANAGER.id,
+          managerName: DEBUG_BOOKING_MANAGER.name,
+          toolCalls: result.toolCalls,
+        });
+      }
 
       return {
         success: true,

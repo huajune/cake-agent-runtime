@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { CompletionService } from '@agent/completion.service';
+import { RedisService } from '@infra/redis/redis.service';
 import { NotificationStrategy } from '../strategies/notification.strategy';
 import { GroupResolverService } from './group-resolver.service';
 import { NotificationSenderService } from './notification-sender.service';
@@ -29,6 +30,7 @@ import {
 @Injectable()
 export class GroupTaskSchedulerService implements OnModuleInit {
   private readonly logger = new Logger(GroupTaskSchedulerService.name);
+  private readonly TASK_LOCK_TTL_SECONDS = 300;
 
   private readonly sendDelayMs: number;
 
@@ -36,6 +38,7 @@ export class GroupTaskSchedulerService implements OnModuleInit {
     private readonly configService: ConfigService,
     private readonly systemConfigService: SystemConfigService,
     private readonly completionService: CompletionService,
+    private readonly redisService: RedisService,
     private readonly groupResolver: GroupResolverService,
     private readonly notificationSender: NotificationSenderService,
     private readonly brandRotation: BrandRotationService,
@@ -161,134 +164,147 @@ export class GroupTaskSchedulerService implements OnModuleInit {
     }
 
     const dryRun = forceSend ? false : config.dryRun;
-    this.logger.log(`[${strategy.type}] 开始执行... (dryRun=${dryRun})`);
+    const lockKey = this.getTaskLockKey(strategy.type);
+    const lockOwner = `${strategy.type}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+
+    if (!(await this.acquireTaskLock(lockKey, lockOwner))) {
+      this.logger.warn(`[${strategy.type}] 任务已在执行中，跳过重复触发`);
+      result.endTime = new Date();
+      return result;
+    }
 
     try {
-      // 1. 获取目标群列表
-      const groups = await this.groupResolver.resolveGroups(strategy.tagPrefix);
-      result.totalGroups = groups.length;
+      this.logger.log(`[${strategy.type}] 开始执行... (dryRun=${dryRun})`);
 
-      if (groups.length === 0) {
-        this.logger.warn(`[${strategy.type}] 未找到匹配群 (tagPrefix=${strategy.tagPrefix})`);
-        result.endTime = new Date();
-        await this.notificationSender.reportToFeishu(result, dryRun);
-        return result;
-      }
+      try {
+        // 1. 获取目标群列表
+        const groups = await this.groupResolver.resolveGroups(strategy.tagPrefix);
+        result.totalGroups = groups.length;
 
-      // 2. 按 (城市+行业) 分组，同组共享数据和 AI 生成结果
-      const groupMap = this.groupByCityIndustry(groups);
-      this.logger.log(`[${strategy.type}] ${groups.length} 个群，${groupMap.size} 个分组`);
+        if (groups.length === 0) {
+          this.logger.warn(`[${strategy.type}] 未找到匹配群 (tagPrefix=${strategy.tagPrefix})`);
+          result.endTime = new Date();
+          await this.notificationSender.reportToFeishu(result, dryRun);
+          return result;
+        }
 
-      // 3. 逐分组处理
-      for (const [groupKey, groupMembers] of groupMap) {
-        try {
-          // 3a. 用分组代表拉取数据（同组数据相同，只拉一次）
-          const representative = groupMembers[0];
-          const data = await strategy.fetchData(representative);
+        // 2. 按 (城市+行业) 分组，同组共享数据和 AI 生成结果
+        const groupMap = this.groupByCityIndustry(groups);
+        this.logger.log(`[${strategy.type}] ${groups.length} 个群，${groupMap.size} 个分组`);
 
-          if (!data.hasData) {
-            result.skippedCount += groupMembers.length;
+        // 3. 逐分组处理
+        for (const [groupKey, groupMembers] of groupMap) {
+          try {
+            // 3a. 用分组代表拉取数据（同组数据相同，只拉一次）
+            const representative = groupMembers[0];
+            const data = await strategy.fetchData(representative);
+
+            if (!data.hasData) {
+              result.skippedCount += groupMembers.length;
+              result.details.push({
+                groupKey,
+                groupCount: groupMembers.length,
+                dataSummary: data.summary,
+                status: 'skipped',
+                groupNames: groupMembers.map((g) => g.groupName),
+              });
+              this.logger.log(
+                `[${strategy.type}] 跳过分组 [${groupKey}] (${groupMembers.length}群): ${data.summary}`,
+              );
+              continue;
+            }
+
+            // 3b. 生成消息（模板 or AI，同组只生成一次）
+            let message: string;
+            if (strategy.needsAI && strategy.buildPrompt) {
+              // AI 生成
+              const prompt = strategy.buildPrompt(data, representative);
+              message = await this.completionService.generateSimple({
+                systemPrompt: prompt.systemPrompt,
+                userMessage: prompt.userMessage,
+              });
+              // 追加固定尾部（如有）
+              if (strategy.appendFooter) {
+                message = strategy.appendFooter(message, data);
+              }
+            } else if (strategy.buildMessage) {
+              // 纯模板
+              message = strategy.buildMessage(data, representative, timeSlot);
+            } else {
+              this.logger.error(`[${strategy.type}] 策略未实现 buildMessage 或 buildPrompt`);
+              continue;
+            }
+
+            // 3c. 同组所有群发送相同消息
+            for (const group of groupMembers) {
+              try {
+                await this.notificationSender.sendToGroup(group, message, strategy.type, dryRun);
+                result.successCount++;
+                this.logger.log(`[${strategy.type}] ✅ ${group.groupName}`);
+                await this.delay(this.sendDelayMs);
+              } catch (error: unknown) {
+                result.failedCount++;
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                result.errors.push({ groupName: group.groupName, error: errorMsg });
+                this.logger.error(`[${strategy.type}] ❌ ${group.groupName}: ${errorMsg}`);
+              }
+            }
+
+            // 3d. 记录品牌轮转（兼职群：同城市+行业的群共享品牌轮转）
+            if (strategy.type === GroupTaskType.PART_TIME_JOB && data.payload?.brand) {
+              for (const group of groupMembers) {
+                await this.brandRotation.recordPushedBrand(
+                  group.imRoomId,
+                  data.payload.brand as string,
+                );
+              }
+            }
+
             result.details.push({
               groupKey,
               groupCount: groupMembers.length,
               dataSummary: data.summary,
-              status: 'skipped',
+              status: 'success',
               groupNames: groupMembers.map((g) => g.groupName),
             });
+
             this.logger.log(
-              `[${strategy.type}] 跳过分组 [${groupKey}] (${groupMembers.length}群): ${data.summary}`,
+              `[${strategy.type}] 分组 [${groupKey}] 完成: ${groupMembers.length}群, ${data.summary}`,
             );
-            continue;
-          }
-
-          // 3b. 生成消息（模板 or AI，同组只生成一次）
-          let message: string;
-          if (strategy.needsAI && strategy.buildPrompt) {
-            // AI 生成
-            const prompt = strategy.buildPrompt(data, representative);
-            message = await this.completionService.generateSimple({
-              systemPrompt: prompt.systemPrompt,
-              userMessage: prompt.userMessage,
+          } catch (error: unknown) {
+            result.failedCount += groupMembers.length;
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            result.errors.push({ groupName: `分组[${groupKey}]`, error: errorMsg });
+            result.details.push({
+              groupKey,
+              groupCount: groupMembers.length,
+              dataSummary: errorMsg,
+              status: 'failed',
+              groupNames: groupMembers.map((g) => g.groupName),
             });
-            // 追加固定尾部（如有）
-            if (strategy.appendFooter) {
-              message = strategy.appendFooter(message, data);
-            }
-          } else if (strategy.buildMessage) {
-            // 纯模板
-            message = strategy.buildMessage(data, representative, timeSlot);
-          } else {
-            this.logger.error(`[${strategy.type}] 策略未实现 buildMessage 或 buildPrompt`);
-            continue;
+            this.logger.error(`[${strategy.type}] ❌ 分组 [${groupKey}]: ${errorMsg}`);
           }
-
-          // 3c. 同组所有群发送相同消息
-          for (const group of groupMembers) {
-            try {
-              await this.notificationSender.sendToGroup(group, message, strategy.type, dryRun);
-              result.successCount++;
-              this.logger.log(`[${strategy.type}] ✅ ${group.groupName}`);
-              await this.delay(this.sendDelayMs);
-            } catch (error: unknown) {
-              result.failedCount++;
-              const errorMsg = error instanceof Error ? error.message : String(error);
-              result.errors.push({ groupName: group.groupName, error: errorMsg });
-              this.logger.error(`[${strategy.type}] ❌ ${group.groupName}: ${errorMsg}`);
-            }
-          }
-
-          // 3d. 记录品牌轮转（兼职群：同城市+行业的群共享品牌轮转）
-          if (strategy.type === GroupTaskType.PART_TIME_JOB && data.payload?.brand) {
-            for (const group of groupMembers) {
-              await this.brandRotation.recordPushedBrand(
-                group.imRoomId,
-                data.payload.brand as string,
-              );
-            }
-          }
-
-          result.details.push({
-            groupKey,
-            groupCount: groupMembers.length,
-            dataSummary: data.summary,
-            status: 'success',
-            groupNames: groupMembers.map((g) => g.groupName),
-          });
-
-          this.logger.log(
-            `[${strategy.type}] 分组 [${groupKey}] 完成: ${groupMembers.length}群, ${data.summary}`,
-          );
-        } catch (error: unknown) {
-          result.failedCount += groupMembers.length;
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          result.errors.push({ groupName: `分组[${groupKey}]`, error: errorMsg });
-          result.details.push({
-            groupKey,
-            groupCount: groupMembers.length,
-            dataSummary: errorMsg,
-            status: 'failed',
-            groupNames: groupMembers.map((g) => g.groupName),
-          });
-          this.logger.error(`[${strategy.type}] ❌ 分组 [${groupKey}]: ${errorMsg}`);
         }
+      } catch (error: unknown) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        this.logger.error(`[${strategy.type}] 任务整体失败: ${errorMsg}`);
+        result.errors.push({ groupName: '(整体)', error: errorMsg });
       }
-    } catch (error: unknown) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      this.logger.error(`[${strategy.type}] 任务整体失败: ${errorMsg}`);
-      result.errors.push({ groupName: '(整体)', error: errorMsg });
+
+      result.endTime = new Date();
+
+      // 3. 飞书通知结果
+      await this.notificationSender.reportToFeishu(result, dryRun);
+
+      const duration = (result.endTime.getTime() - result.startTime.getTime()) / 1000;
+      this.logger.log(
+        `[${strategy.type}] 执行完成: 成功=${result.successCount} 失败=${result.failedCount} 跳过=${result.skippedCount} 耗时=${duration.toFixed(1)}s`,
+      );
+
+      return result;
+    } finally {
+      await this.releaseTaskLock(lockKey, lockOwner);
     }
-
-    result.endTime = new Date();
-
-    // 3. 飞书通知结果
-    await this.notificationSender.reportToFeishu(result, dryRun);
-
-    const duration = (result.endTime.getTime() - result.startTime.getTime()) / 1000;
-    this.logger.log(
-      `[${strategy.type}] 执行完成: 成功=${result.successCount} 失败=${result.failedCount} 跳过=${result.skippedCount} 耗时=${duration.toFixed(1)}s`,
-    );
-
-    return result;
   }
 
   // ==================== 手动触发（供 Controller 调用）====================
@@ -322,5 +338,37 @@ export class GroupTaskSchedulerService implements OnModuleInit {
 
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private getTaskLockKey(type: GroupTaskType): string {
+    return `group-task:lock:${type}`;
+  }
+
+  private async acquireTaskLock(lockKey: string, ownerToken: string): Promise<boolean> {
+    const result = await this.redisService.getClient().set(lockKey, ownerToken, {
+      nx: true,
+      ex: this.TASK_LOCK_TTL_SECONDS,
+    });
+
+    return result === 'OK';
+  }
+
+  private async releaseTaskLock(lockKey: string, ownerToken: string): Promise<void> {
+    try {
+      await this.redisService.getClient().eval(
+        `
+          if redis.call("get", KEYS[1]) == ARGV[1] then
+            return redis.call("del", KEYS[1])
+          end
+          return 0
+        `,
+        [lockKey],
+        [ownerToken],
+      );
+    } catch (error) {
+      this.logger.warn(
+        `[${lockKey}] 释放群任务锁失败: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 }

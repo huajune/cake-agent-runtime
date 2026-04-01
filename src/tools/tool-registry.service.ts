@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ProceduralService } from '@memory/procedural.service';
-import { LongTermService } from '@memory/long-term.service';
+import { MemoryService } from '@memory/memory.service';
 import { SpongeService } from '@sponge/sponge.service';
 import {
   AiTool,
@@ -16,7 +15,9 @@ import { buildRecallHistoryTool } from './recall-history.tool';
 import { buildJobListTool } from './duliday-job-list.tool';
 import { buildInterviewBookingTool } from './duliday-interview-booking.tool';
 import { buildGeocodeTool } from './geocode.tool';
+import { buildSaveImageDescriptionTool } from './save-image-description.tool';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
+import { ChatSessionService } from '@biz/message/services/chat-session.service';
 
 /**
  * 统一工具注册表
@@ -41,24 +42,24 @@ export class ToolRegistryService {
   private readonly registry: Record<string, ToolDefinition>;
 
   constructor(
-    proceduralService: ProceduralService,
-    longTermService: LongTermService,
+    memoryService: MemoryService,
     spongeService: SpongeService,
     geocodingService: GeocodingService,
+    private readonly chatSessionService: ChatSessionService,
   ) {
     this.registry = {
       // ===== 阶段工具 =====
       advance_stage: createToolDefinition({
         name: 'advance_stage',
         description: '推进对话阶段（当前阶段目标达成后切换）',
-        create: buildAdvanceStageTool(proceduralService),
+        create: buildAdvanceStageTool(memoryService),
       }),
 
       // ===== 记忆工具（按需检索） =====
       recall_history: createToolDefinition({
         name: 'recall_history',
         description: '查询用户历史求职记录（用户提到"上次""之前"时调用）',
-        create: buildRecallHistoryTool(longTermService),
+        create: buildRecallHistoryTool(memoryService),
       }),
 
       // ===== 业务工具 =====
@@ -70,7 +71,7 @@ export class ToolRegistryService {
 
       duliday_interview_booking: createToolDefinition({
         name: 'duliday_interview_booking',
-        description: '面试预约（需要姓名、电话、性别、年龄、岗位ID、面试时间）',
+        description: '面试预约（需要姓名、电话、性别、年龄、学历、健康证情况、岗位ID、面试时间）',
         create: buildInterviewBookingTool(spongeService),
       }),
 
@@ -152,6 +153,19 @@ export class ToolRegistryService {
     for (const [name, reg] of this.mcpTools) {
       if (reg.tool) tools[name] = reg.tool;
     }
+
+    // 动态注入：当前轮次有图片消息时，注册 save_image_description 工具
+    if (context.imageMessageIds?.length) {
+      const imgTool = buildSaveImageDescriptionTool(
+        this.chatSessionService,
+        context.imageMessageIds,
+      );
+      tools['save_image_description'] = imgTool(context);
+      this.logger.log(
+        `动态注入 save_image_description 工具, imageMessageIds=${context.imageMessageIds.join(',')}`,
+      );
+    }
+
     return tools;
   }
 

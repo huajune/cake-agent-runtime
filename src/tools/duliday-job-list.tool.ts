@@ -11,7 +11,9 @@ import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
+import type { RecommendedJobSummary } from '@memory/types/session-facts.types';
 import { ToolBuilder } from '@shared-types/tool.types';
+import { formatLocalDate } from '@infra/utils/date.util';
 
 // ==================== 常量 ====================
 
@@ -99,6 +101,11 @@ function cleanText(text: string): string {
     .replace(/^；+|；+$/g, '');
 }
 
+function getCurrentMonthDay(): { month: number; day: number } {
+  const [, month, day] = formatLocalDate(new Date()).split('-').map(Number);
+  return { month, day };
+}
+
 function addLine(lines: string[], label: string, value: string | null | undefined): void {
   if (hasValue(value) && typeof value === 'string') {
     const cleaned = cleanText(value);
@@ -106,6 +113,192 @@ function addLine(lines: string[], label: string, value: string | null | undefine
   } else if (hasValue(value)) {
     lines.push(`- **${label}**: ${value}`);
   }
+}
+
+function pickKeySentences(
+  text: string | null | undefined,
+  patterns: RegExp[],
+  limit = 2,
+): string[] {
+  if (!hasValue(text) || typeof text !== 'string') return [];
+
+  const fragments = cleanText(text)
+    .split(/[；。]/)
+    .map((fragment) => fragment.trim())
+    .filter(Boolean);
+
+  const matched: string[] = [];
+  for (const fragment of fragments) {
+    if (patterns.some((pattern) => pattern.test(fragment)) && !matched.includes(fragment)) {
+      matched.push(fragment);
+    }
+    if (matched.length >= limit) break;
+  }
+  return matched;
+}
+
+function extractInterviewTimeHint(job: any): string | null {
+  const ip = job.interviewProcess;
+  if (!ip) return null;
+
+  const first = ip.firstInterview;
+  const texts = [
+    typeof first?.interviewTime === 'string' ? first.interviewTime : null,
+    typeof first?.interviewDate === 'string' ? first.interviewDate : null,
+    typeof first?.interviewDemand === 'string' ? first.interviewDemand : null,
+    typeof ip.remark === 'string' ? ip.remark : null,
+  ].filter((text): text is string => Boolean(text));
+
+  const timePatterns = [
+    /星期[一二三四五六日天]/,
+    /周[一二三四五六日天]/,
+    /\d{1,2}[:：]\d{2}/,
+    /上午|下午|晚上|中午/,
+  ];
+
+  for (const text of texts) {
+    const [fragment] = pickKeySentences(text, timePatterns, 1);
+    if (fragment) return fragment;
+  }
+
+  return null;
+}
+
+function isClearlyPastConstraint(fragment: string): boolean {
+  const currentDate = formatLocalDate(new Date());
+  const [currentYear, currentMonth, currentDay] = currentDate.split('-').map(Number);
+
+  const yearMatches = [...fragment.matchAll(/\b(20\d{2})[/-](\d{1,2})[/-]?(\d{0,2})?/g)];
+  if (yearMatches.length > 0) {
+    return yearMatches.every((match) => {
+      const year = Number(match[1]);
+      const month = Number(match[2] || 1);
+      const day = Number(match[3] || 1);
+      if (year !== currentYear) return year < currentYear;
+      if (month !== currentMonth) return month < currentMonth;
+      return day < currentDay;
+    });
+  }
+
+  const monthDayMatches = [...fragment.matchAll(/(^|[^0-9])(\d{1,2})\/(\d{1,2})(?!\d)/g)];
+  if (monthDayMatches.length === 0) return false;
+
+  return monthDayMatches.every((match) => {
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    if (month !== currentMonth) return month < currentMonth;
+    return day < currentDay;
+  });
+}
+
+function isClearlyExpiredSpringFestivalConstraint(fragment: string): boolean {
+  const { month, day } = getCurrentMonthDay();
+  // 3-9 月期间，春节相关限制大概率已明显过季；10-12 月则可能是下一轮春节要求，不直接过滤。
+  const isClearlyOutOfSeason = month > 3 && month < 10;
+  const isLateAfterFestival = month === 3 && day >= 1;
+  if (!isClearlyOutOfSeason && !isLateAfterFestival) return false;
+
+  const normalized = cleanText(fragment).replace(/\s+/g, '');
+  return [
+    /过年[^，；。]*返乡/,
+    /春节[^，；。]*返乡/,
+    /返乡[^，；。]*(过年|春节)/,
+    /(过年|春节)[^，；。]*(留岗|留年|在岗)/,
+    /过年不返乡/,
+    /春节不返乡/,
+    /过年不回家/,
+    /春节不回家/,
+    /年后返岗/,
+    /年后到岗/,
+    /(过年|春节)[^，；。]*(返岗|到岗)/,
+  ].some((pattern) => pattern.test(normalized));
+}
+
+function sanitizeConstraintText(text: string | null | undefined): string | null {
+  if (!hasValue(text) || typeof text !== 'string') return null;
+
+  const parts = cleanText(text)
+    .split(/[，；]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .filter((part) => {
+      if (isClearlyPastConstraint(part)) return false;
+      if (/过期不再办理|最后入职时间|面试完毕/.test(part)) return false;
+      if (isClearlyExpiredSpringFestivalConstraint(part)) return false;
+      return true;
+    });
+
+  const sanitized = parts.join('，').trim();
+  return sanitized || null;
+}
+
+function formatInterviewDecisionSummary(job: any): string {
+  const req = job.hiringRequirement;
+  const ip = job.interviewProcess;
+  if (!req && !ip) return '';
+
+  const lines: string[] = [];
+
+  const basic = req?.basicPersonalRequirements;
+  if (basic && (hasValue(basic.minAge) || hasValue(basic.maxAge))) {
+    addLine(lines, '年龄要求', `${basic.minAge ?? '不限'}-${basic.maxAge ?? '不限'}岁`);
+  }
+
+  const cert = req?.certificate;
+  if (cert?.healthCertificate) {
+    addLine(lines, '健康证', cert.healthCertificate);
+  }
+
+  const requirementHighlights = pickKeySentences(req?.remark, [
+    /经验/,
+    /体力/,
+    /分拣/,
+    /健康证/,
+    /学历/,
+    /学生/,
+    /夜班/,
+  ]);
+  if (requirementHighlights.length > 0) {
+    addLine(
+      lines,
+      '关键要求',
+      requirementHighlights
+        .map((fragment) => sanitizeConstraintText(fragment))
+        .filter((fragment): fragment is string => Boolean(fragment))
+        .join('；'),
+    );
+  }
+
+  const first = ip?.firstInterview;
+  if (first?.firstInterviewWay) {
+    addLine(lines, '面试形式', first.firstInterviewWay);
+  }
+
+  if (first?.interviewDemand) {
+    addLine(lines, '报名要求', sanitizeConstraintText(first.interviewDemand));
+  }
+
+  const timeHint = extractInterviewTimeHint(job);
+  if (timeHint) {
+    addLine(lines, '面试时间', timeHint);
+  }
+
+  const remarkHighlights = pickKeySentences(ip?.remark, [
+    /健康证/,
+    /最迟/,
+    /最后/,
+    /截止/,
+    /过期/,
+    /完成面试/,
+    /入职/,
+  ])
+    .map((fragment) => sanitizeConstraintText(fragment))
+    .filter((fragment): fragment is string => Boolean(fragment));
+  if (remarkHighlights.length > 0) {
+    addLine(lines, '时效限制', remarkHighlights.join('；'));
+  }
+
+  return lines.length > 0 ? '### 约面重点\n' + lines.join('\n') + '\n\n' : '';
 }
 
 // ==================== 格式化函数 ====================
@@ -276,7 +469,7 @@ function formatRequirements(job: any): string {
     if (hasValue(cert.healthCertificate)) addLine(lines, '健康证', cert.healthCertificate);
   }
 
-  if (req.remark) addLine(lines, '其他要求', req.remark);
+  if (req.remark) addLine(lines, '其他要求', sanitizeConstraintText(req.remark));
 
   return lines.length > 0 ? lines.join('\n') + '\n' : '';
 }
@@ -311,7 +504,9 @@ function formatWorkTime(job: any): string {
     addLine(lines, '排班类型', schedule.arrangementType);
   }
 
-  if (hasValue(wt.workTimeRemark)) addLine(lines, '工时备注', wt.workTimeRemark);
+  if (hasValue(wt.workTimeRemark)) {
+    addLine(lines, '工时备注', sanitizeConstraintText(wt.workTimeRemark));
+  }
 
   return lines.length > 0 ? lines.join('\n') + '\n' : '';
 }
@@ -327,7 +522,8 @@ function formatInterviewInfo(job: any): string {
   if (first) {
     if (hasValue(first.firstInterviewWay)) addLine(lines, '一面方式', first.firstInterviewWay);
     if (hasValue(first.interviewAddress)) addLine(lines, '一面地址', first.interviewAddress);
-    if (hasValue(first.interviewDemand)) addLine(lines, '面试要求', first.interviewDemand);
+    if (hasValue(first.interviewDemand))
+      addLine(lines, '面试要求', sanitizeConstraintText(first.interviewDemand));
   }
 
   const probation = ip.probationWork;
@@ -350,7 +546,7 @@ function formatInterviewInfo(job: any): string {
     if (parts.length > 0) addLine(lines, '培训', parts.join('，'));
   }
 
-  if (ip.remark) addLine(lines, '面试备注', ip.remark);
+  if (ip.remark) addLine(lines, '面试备注', sanitizeConstraintText(ip.remark));
 
   return lines.length > 0 ? lines.join('\n') + '\n' : '';
 }
@@ -403,6 +599,9 @@ function formatJobToMarkdown(job: any, index: number, flags: ProgressiveDisclosu
     titleParts.push(`(${bi.jobNickName})`);
   let md = `## ${index + 1}. ${titleParts.join(' ')}\n\n`;
 
+  if (flags.includeHiringRequirement || flags.includeInterviewProcess) {
+    md += formatInterviewDecisionSummary(job);
+  }
   if (flags.includeBasicInfo) md += formatBasicInfoSection(job);
   if (flags.includeJobSalary) {
     const s = formatSalaryInfo(job);
@@ -459,19 +658,6 @@ function formatJobsToMarkdown(
 }
 
 // ==================== 薪资摘要 ====================
-
-interface RecommendedJobSummary {
-  jobId: number;
-  brandName: string | null;
-  jobName: string | null;
-  storeName: string | null;
-  cityName: string | null;
-  regionName: string | null;
-  laborForm: string | null;
-  salaryDesc: string | null;
-  jobCategoryName: string | null;
-  distanceKm: number | null;
-}
 
 function formatSalarySummary(job: any): string | null {
   const salary = job.jobSalary;

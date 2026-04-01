@@ -20,7 +20,6 @@ jobs:
 
     permissions:
       contents: write
-      pull-requests: write
 
     steps:
       - name: Checkout code
@@ -63,9 +62,15 @@ jobs:
         if: steps.check_changes.outputs.has_changes == 'true'
         id: release_commit
         run: |
+          set -euo pipefail
           VERSION="${{ steps.check_changes.outputs.version }}"
           CURRENT_BRANCH="${{ github.ref_name }}"
           TAG_NAME="v$VERSION"
+
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Tag already exists: $TAG_NAME" >&2
+            exit 1
+          fi
 
           git add package.json CHANGELOG.md
           git commit -m "chore(release): bump version to $VERSION [skip ci]"
@@ -75,15 +80,40 @@ jobs:
           echo "release_commit=$RELEASE_COMMIT" >> $GITHUB_OUTPUT
           echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
 
-          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
-            echo "Tag already exists: $TAG_NAME" >&2
+          echo "✅ 已推送 release commit 到 ${CURRENT_BRANCH}: ${RELEASE_COMMIT}"
+
+      - name: Sync release commit to develop
+        if: steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.check_changes.outputs.version }}"
+          RELEASE_COMMIT="${{ steps.release_commit.outputs.release_commit }}"
+
+          git fetch origin develop
+          git checkout -B develop-sync origin/develop
+
+          if ! git cherry-pick -x "$RELEASE_COMMIT"; then
+            git cherry-pick --abort || true
+            echo "Failed to cherry-pick release commit into develop" >&2
             exit 1
           fi
 
+          git push origin HEAD:develop
+
+          echo "✅ 已同步版本变更到 develop: $VERSION"
+
+      - name: Create and push release tag
+        if: steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          set -euo pipefail
+          TAG_NAME="${{ steps.release_commit.outputs.tag_name }}"
+          RELEASE_COMMIT="${{ steps.release_commit.outputs.release_commit }}"
+
+          git checkout --detach "$RELEASE_COMMIT"
           git tag -a "$TAG_NAME" -m "Release $TAG_NAME" "$RELEASE_COMMIT"
           git push origin "$TAG_NAME"
 
-          echo "✅ 已推送 release commit 和 tag: $TAG_NAME"
+          echo "✅ 已推送 release tag: $TAG_NAME"
 
       - name: Create GitHub Release
         if: steps.check_changes.outputs.has_changes == 'true'
@@ -103,16 +133,3 @@ jobs:
             --notes "Automated release for version $VERSION"
 
           echo "✅ 已创建 GitHub Release: $TAG_NAME"
-
-      - name: Sync version changes to develop
-        if: steps.check_changes.outputs.has_changes == 'true'
-        run: |
-          VERSION="${{ steps.check_changes.outputs.version }}"
-          RELEASE_COMMIT="${{ steps.release_commit.outputs.release_commit }}"
-
-          git fetch origin develop
-          git checkout -B develop-sync origin/develop
-          git cherry-pick "$RELEASE_COMMIT"
-          git push origin HEAD:develop
-
-          echo "✅ 已同步版本变更到 develop: $VERSION"

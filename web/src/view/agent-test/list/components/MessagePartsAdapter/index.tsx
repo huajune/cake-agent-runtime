@@ -91,9 +91,13 @@ function ToolInvocation({
             className={`${styles.toolStatus} ${isCalling ? styles.statusCalling : styles.statusSuccess}`}
           >
             {isCalling ? (
-              <><Loader2 size={12} className={styles.toolSpinnerIcon} /> 调用中</>
+              <>
+                <Loader2 size={12} className={styles.toolSpinnerIcon} /> 调用中
+              </>
             ) : (
-              <><CheckCircle2 size={12} /> 完成</>
+              <>
+                <CheckCircle2 size={12} /> 完成
+              </>
             )}
           </div>
           {hasContent && (
@@ -144,13 +148,25 @@ interface ExtractedToolCall {
 
 type Segment =
   | { kind: 'text'; texts: string[] }
-  | { kind: 'tool'; tool: ExtractedToolCall };
+  | { kind: 'tool'; tool: ExtractedToolCall }
+  | { kind: 'reasoning'; text: string };
 
 function buildSegments(parts: UIMessage['parts']): Segment[] {
   const segments: Segment[] = [];
 
   for (const part of parts) {
-    if (part.type === 'text') {
+    if (part.type === 'reasoning') {
+      const text = (part as unknown as { text: string }).text || '';
+      if (text) {
+        // 合并相邻的 reasoning 段
+        const last = segments[segments.length - 1];
+        if (last && last.kind === 'reasoning') {
+          last.text += text;
+        } else {
+          segments.push({ kind: 'reasoning', text });
+        }
+      }
+    } else if (part.type === 'text') {
       const text = (part as { type: 'text'; text: string }).text;
       const last = segments[segments.length - 1];
       if (last && last.kind === 'text') {
@@ -223,18 +239,18 @@ function MessagePartsAdapterComponent({ message, isStreaming }: MessagePartsAdap
     (s) => s.kind === 'text' && s.texts.join('').trim().length > 0,
   );
 
-  // 提取 reasoning 文本（AI 扩展思考）— 流式和完成后都展示
-  const reasoningText = parts
-    .filter((p) => p.type === 'reasoning')
-    .map((p) => (p as unknown as { text: string }).text || '')
-    .join('');
-
   return (
     <div className={styles.messagePartsContainer}>
-      {reasoningText && (
-        <ReasoningBlock text={reasoningText} isThinking={!!isStreaming} />
-      )}
       {segments.map((seg, idx) => {
+        if (seg.kind === 'reasoning') {
+          // 最后一个 reasoning 段在流式中显示为"思考中"，其余为已完成
+          const isLastReasoning =
+            !!isStreaming && segments.slice(idx + 1).every((s) => s.kind !== 'reasoning');
+          return (
+            <ReasoningBlock key={`reasoning-${idx}`} text={seg.text} isThinking={isLastReasoning} />
+          );
+        }
+
         if (seg.kind === 'text') {
           const text = seg.texts.join('');
           if (!text && !isStreaming) return null;

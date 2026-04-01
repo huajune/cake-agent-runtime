@@ -22,6 +22,12 @@ export class SimpleMessageDto {
   @ApiProperty({ description: '消息内容' })
   @IsString()
   content: string;
+
+  @ApiPropertyOptional({ description: '该条消息关联的图片 URL 列表' })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  imageUrls?: string[];
 }
 
 /**
@@ -36,6 +42,21 @@ export class UIMessagePartDto {
   @IsOptional()
   @IsString()
   text?: string;
+
+  @ApiPropertyOptional({ description: '文件 URL / Data URL（type=file时）' })
+  @IsOptional()
+  @IsString()
+  url?: string;
+
+  @ApiPropertyOptional({ description: '文件媒体类型（type=file时）' })
+  @IsOptional()
+  @IsString()
+  mediaType?: string;
+
+  @ApiPropertyOptional({ description: '文件名（type=file时）' })
+  @IsOptional()
+  @IsString()
+  filename?: string;
 }
 
 /**
@@ -91,15 +112,27 @@ export class VercelAIChatRequestDto {
   @ApiPropertyOptional({ description: '扩展思考配置（AI SDK extended thinking）' })
   @IsOptional()
   thinking?: { type: 'enabled' | 'disabled'; budgetTokens: number };
+
+  @ApiPropertyOptional({ description: '图片 URL 列表（多模态消息，传入 Agent 做 vision 识别）' })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  imageUrls?: string[];
+
+  @ApiPropertyOptional({ description: '是否在手动聊天调试后触发预约飞书通知', default: false })
+  @IsOptional()
+  @IsBoolean()
+  notifyBooking?: boolean;
 }
 
 /**
  * 单条测试请求 DTO
  */
 export class TestChatRequestDto {
-  @ApiProperty({ description: '测试消息内容' })
+  @ApiPropertyOptional({ description: '测试消息内容（纯图片测试时可为空）' })
+  @IsOptional()
   @IsString()
-  message: string;
+  message?: string;
 
   @ApiPropertyOptional({ description: '对话历史', type: [SimpleMessageDto] })
   @IsOptional()
@@ -166,6 +199,17 @@ export class TestChatRequestDto {
   @ApiPropertyOptional({ description: '扩展思考配置（AI SDK extended thinking）' })
   @IsOptional()
   thinking?: { type: 'enabled' | 'disabled'; budgetTokens: number };
+
+  @ApiPropertyOptional({ description: '图片 URL 列表（多模态消息，传入 Agent 做 vision 识别）' })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  imageUrls?: string[];
+
+  @ApiPropertyOptional({ description: '是否在手动聊天调试后触发预约飞书通知', default: false })
+  @IsOptional()
+  @IsBoolean()
+  notifyBooking?: boolean;
 }
 
 /**

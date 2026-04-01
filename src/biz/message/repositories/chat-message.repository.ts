@@ -108,38 +108,84 @@ export class ChatMessageRepository extends BaseRepository {
 
   /**
    * 获取会话的历史消息（用于 AI 上下文）
-   * 双重限制：近 3 天 + 最多 60 条
+   * 双重限制：指定时间窗口 + 最多 limit 条
    */
   async getChatHistory(
     chatId: string,
     limit: number = 60,
-  ): Promise<Array<{ role: 'user' | 'assistant'; content: string; timestamp: number }>> {
+    options?: { startTimeInclusive?: number },
+  ): Promise<
+    Array<{ messageId: string; role: 'user' | 'assistant'; content: string; timestamp: number }>
+  > {
     if (!this.isAvailable()) {
       return [];
     }
 
     try {
-      const threeDaysAgo = new Date();
-      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+      const startTime = options?.startTimeInclusive
+        ? new Date(options.startTimeInclusive)
+        : undefined;
 
-      const results = await this.select<{ role: string; content: string; timestamp: string }>(
-        'role,content,timestamp',
-        (q) =>
-          q
-            .eq('chat_id', chatId)
-            .gte('timestamp', threeDaysAgo.toISOString())
-            .order('timestamp', { ascending: false })
-            .limit(limit),
+      const results = await this.select<{
+        message_id: string;
+        role: string;
+        content: string;
+        timestamp: string;
+      }>('message_id,role,content,timestamp', (q) =>
+        (startTime
+          ? q.eq('chat_id', chatId).gte('timestamp', startTime.toISOString())
+          : q.eq('chat_id', chatId)
+        )
+          .order('timestamp', { ascending: false })
+          .limit(limit),
       );
 
       // 返回时反转顺序（从旧到新）
       return results.reverse().map((m) => ({
+        messageId: m.message_id,
         role: m.role as 'user' | 'assistant',
         content: m.content,
         timestamp: new Date(m.timestamp).getTime(),
       }));
     } catch (error) {
       this.logger.error(`获取会话历史失败 [${chatId}]:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * 获取会话在指定时间边界内的消息。
+   */
+  async getChatHistoryInRange(
+    chatId: string,
+    options: { startTimeExclusive?: number; endTimeInclusive?: number },
+  ): Promise<Array<{ role: 'user' | 'assistant'; content: string; timestamp: number }>> {
+    if (!this.isAvailable()) {
+      return [];
+    }
+
+    try {
+      const results = await this.select<{ role: string; content: string; timestamp: string }>(
+        'role,content,timestamp',
+        (q) => {
+          let query = q.eq('chat_id', chatId).order('timestamp');
+          if (options.startTimeExclusive != null) {
+            query = query.gt('timestamp', new Date(options.startTimeExclusive).toISOString());
+          }
+          if (options.endTimeInclusive != null) {
+            query = query.lte('timestamp', new Date(options.endTimeInclusive).toISOString());
+          }
+          return query;
+        },
+      );
+
+      return results.map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+        timestamp: new Date(m.timestamp).getTime(),
+      }));
+    } catch (error) {
+      this.logger.error(`按时间范围获取会话历史失败 [${chatId}]:`, error);
       return [];
     }
   }

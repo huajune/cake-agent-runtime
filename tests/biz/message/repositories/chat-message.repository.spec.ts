@@ -295,6 +295,18 @@ describe('ChatMessageRepository', () => {
       expect(result).toEqual([]);
     });
 
+    it('should apply explicit start time when provided', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      const queryMock = makeQueryMock({ data: [], error: null });
+      mockSupabaseClient.from.mockReturnValue(queryMock);
+      const startTime = Date.UTC(2026, 2, 10, 8, 0, 0);
+
+      await repository.getChatHistory('chat_001', 10, { startTimeInclusive: startTime });
+
+      expect(queryMock.gte).toHaveBeenCalledWith('timestamp', new Date(startTime).toISOString());
+    });
+
     it('should return empty array on error', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 

@@ -284,13 +284,44 @@
   .messageInput {
     @include input-style;
     min-height: 80px;
-    padding-right: 48px;
+    padding-right: 80px;
   }
 
-  .sendIconBtn {
+  .messageInputActions {
     position: absolute;
     bottom: 12px;
     right: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .imageUploadBtn {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: $radius-md;
+    border: 1px solid $border;
+    background: $bg-primary;
+    color: $text-secondary;
+    cursor: pointer;
+    transition: all 0.2s ease;
+
+    &:hover:not(:disabled) {
+      color: $accent;
+      border-color: $accent-30;
+      background: $accent-04;
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+  }
+
+  .sendIconBtn {
     width: 32px;
     height: 32px;
     display: flex;
@@ -328,6 +359,60 @@
     &:hover:not(:disabled) svg {
       transform: translateX(2px);
     }
+  }
+}
+
+// ==================== 图片预览 ====================
+.imagePreviews {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-sm;
+  margin-top: $spacing-sm;
+}
+
+.imagePreviewItem {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: $radius-md;
+  overflow: hidden;
+  border: 1px solid $border;
+  transition: border-color 0.2s ease;
+
+  &:hover {
+    border-color: $accent-30;
+  }
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .imageRemoveBtn {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: $radius-full;
+    border: none;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+
+    &:disabled {
+      cursor: not-allowed;
+    }
+  }
+
+  &:hover .imageRemoveBtn {
+    opacity: 1;
   }
 }
 

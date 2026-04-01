@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
-import { StrategyConfigRecord } from '../entities/strategy-config.entity';
+import { StrategyConfigRecord, StrategyConfigStatus } from '../entities/strategy-config.entity';
 
 /**
  * 策略配置 Repository
@@ -18,16 +18,34 @@ export class StrategyConfigRepository extends BaseRepository {
   }
 
   /**
-   * 查询当前激活的策略配置记录
-   * SELECT * FROM strategy_config WHERE is_active = true LIMIT 1
+   * 按 status 查询激活的策略配置
+   * SELECT * FROM strategy_config WHERE status = $status AND is_active = true LIMIT 1
+   */
+  async findByStatus(status: StrategyConfigStatus): Promise<StrategyConfigRecord | null> {
+    return this.selectOne<StrategyConfigRecord>('*', (q) =>
+      q.eq('status', status).eq('is_active', true),
+    );
+  }
+
+  /**
+   * 查询当前激活的策略配置记录（兼容旧调用，默认读 released）
    */
   async findActiveConfig(): Promise<StrategyConfigRecord | null> {
-    return this.selectOne<StrategyConfigRecord>('*', (q) => q.eq('is_active', true));
+    return this.findByStatus('released');
+  }
+
+  /**
+   * 查询最大版本号
+   */
+  async findMaxVersion(): Promise<number> {
+    const result = await this.selectOne<{ version: number }>('version', (q) =>
+      q.order('version', { ascending: false }),
+    );
+    return result?.version ?? 0;
   }
 
   /**
    * 插入新的策略配置记录
-   * INSERT INTO strategy_config (...) VALUES (...)
    */
   async insertConfig(data: Record<string, unknown>): Promise<StrategyConfigRecord | null> {
     return this.insert<StrategyConfigRecord>(data);
@@ -35,7 +53,6 @@ export class StrategyConfigRepository extends BaseRepository {
 
   /**
    * 按 id 更新策略配置的指定字段
-   * UPDATE strategy_config SET ... WHERE id = $id
    */
   async updateConfigField(
     id: string,
@@ -43,5 +60,31 @@ export class StrategyConfigRepository extends BaseRepository {
   ): Promise<StrategyConfigRecord | null> {
     const results = await this.update<StrategyConfigRecord>(data, (q) => q.eq('id', id));
     return results.length > 0 ? results[0] : null;
+  }
+
+  /**
+   * 查询版本列表（released + archived，按版本号倒序）
+   */
+  async findVersionHistory(limit = 20): Promise<StrategyConfigRecord[]> {
+    return this.select<StrategyConfigRecord>(
+      'id, name, status, version, version_note, released_at, created_at, updated_at',
+      (q) =>
+        q
+          .in('status', ['released', 'archived'])
+          .order('version', { ascending: false })
+          .limit(limit),
+    );
+  }
+
+  /**
+   * 原子化发布策略（RPC，数据库事务）
+   */
+  async publishStrategy(versionNote?: string): Promise<{
+    released_id: string;
+    archived_id: string;
+    new_testing_id: string;
+    version: number;
+  }> {
+    return this.rpc('publish_strategy', { p_version_note: versionNote ?? null });
   }
 }

@@ -2,9 +2,8 @@ import { buildRecallHistoryTool } from '@tools/recall-history.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 
 describe('buildRecallHistoryTool', () => {
-  const mockLongTermService = {
+  const mockMemoryService = {
     getSummaryData: jest.fn(),
-    formatSummaryForPrompt: jest.fn(),
   };
 
   const mockContext: ToolBuildContext = {
@@ -17,15 +16,15 @@ describe('buildRecallHistoryTool', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('should build a valid tool', () => {
-    const builder = buildRecallHistoryTool(mockLongTermService as never);
+    const builder = buildRecallHistoryTool(mockMemoryService as never);
     const builtTool = builder(mockContext);
     expect(builtTool).toBeDefined();
   });
 
   it('should return not found when no summaries', async () => {
-    mockLongTermService.getSummaryData.mockResolvedValue(null);
+    mockMemoryService.getSummaryData.mockResolvedValue(null);
 
-    const builder = buildRecallHistoryTool(mockLongTermService as never);
+    const builder = buildRecallHistoryTool(mockMemoryService as never);
     const builtTool = builder(mockContext);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -35,13 +34,12 @@ describe('buildRecallHistoryTool', () => {
   });
 
   it('should return formatted summaries when available', async () => {
-    mockLongTermService.getSummaryData.mockResolvedValue({
+    mockMemoryService.getSummaryData.mockResolvedValue({
       recent: [{ summary: '找上海兼职', sessionId: 's1', startTime: '2026-03-15', endTime: '2026-03-15' }],
       archive: null,
     });
-    mockLongTermService.formatSummaryForPrompt.mockReturnValue('[历史摘要]\n...');
 
-    const builder = buildRecallHistoryTool(mockLongTermService as never);
+    const builder = buildRecallHistoryTool(mockMemoryService as never);
     const builtTool = builder(mockContext);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

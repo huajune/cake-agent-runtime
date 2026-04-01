@@ -1,12 +1,18 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport, type UIMessage } from 'ai';
+import { DefaultChatTransport, type FileUIPart, type UIMessage } from 'ai';
 import { TestChatResponse, SimpleMessage, TokenUsage } from '@/api/services/agent-test.service';
 import { CHAT_API_ENDPOINT, DEFAULT_SCENARIO } from '../constants';
 import { generateUUID } from '@/utils/uuid';
 
 export interface UseChatTestOptions {
   onTestComplete?: (result: TestChatResponse) => void;
+}
+
+export interface ImagePreview {
+  id: string;
+  file: File;
+  dataUrl: string;
 }
 
 export interface UseChatTestReturn {
@@ -21,6 +27,13 @@ export interface UseChatTestReturn {
   isLoading: boolean;
   isStreaming: boolean;
   latestAssistantMessage: UIMessage | undefined;
+  entryStage: string | null;
+  currentStage: string | null;
+
+  // 图片
+  imagePreviews: ImagePreview[];
+  addImages: (files: FileList) => void;
+  removeImage: (id: string) => void;
 
   // 操作
   setHistoryText: (text: string) => void;
@@ -38,6 +51,15 @@ export interface UseChatTestReturn {
 // ==================== localStorage 草稿缓存 ====================
 
 const DRAFT_CACHE_KEY = 'agent-test-draft';
+const HISTORY_IMAGE_CACHE_KEY = 'agent-test-history-images';
+const MAX_CACHED_IMAGES = 20;
+const IMAGE_MARKER_REGEX = /^\[图片#([^\]]+)\]$/;
+
+interface HistoryImageCacheEntry {
+  dataUrl: string;
+  filename?: string;
+  mediaType?: string;
+}
 
 function loadDraftCache(): Record<string, string> {
   try {
@@ -57,6 +79,84 @@ function saveDraftCache(patch: Record<string, string>): void {
 
 function clearDraftCache(): void {
   try { localStorage.removeItem(DRAFT_CACHE_KEY); } catch { /* noop */ }
+}
+
+function loadHistoryImageCache(): Record<string, HistoryImageCacheEntry> {
+  try {
+    const raw = localStorage.getItem(HISTORY_IMAGE_CACHE_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, HistoryImageCacheEntry>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveHistoryImageCache(cache: Record<string, HistoryImageCacheEntry>): void {
+  try {
+    const keys = Object.keys(cache);
+    if (keys.length > MAX_CACHED_IMAGES) {
+      const evicted = keys.slice(0, keys.length - MAX_CACHED_IMAGES);
+      for (const key of evicted) delete cache[key];
+    }
+    localStorage.setItem(HISTORY_IMAGE_CACHE_KEY, JSON.stringify(cache));
+  } catch { /* noop */ }
+}
+
+function clearHistoryImageCache(): void {
+  try { localStorage.removeItem(HISTORY_IMAGE_CACHE_KEY); } catch { /* noop */ }
+}
+
+function inferMediaType(url: string): string {
+  const match = url.match(/^data:([^;]+);/);
+  return match?.[1] || 'image/*';
+}
+
+type ToolPartSnapshot = {
+  type: string;
+  toolName?: string;
+  input?: unknown;
+  args?: unknown;
+  output?: unknown;
+  result?: unknown;
+};
+
+function extractToolCalls(parts: UIMessage['parts']) {
+  return parts
+    .filter((part) => part.type.startsWith('tool-'))
+    .map((part) => {
+      const toolPart = part as unknown as ToolPartSnapshot;
+      return {
+        toolName: toolPart.toolName || part.type.replace(/^tool-/, ''),
+        input: toolPart.input ?? toolPart.args,
+        output: toolPart.output ?? toolPart.result,
+      };
+    });
+}
+
+function extractAdvancedStage(parts: UIMessage['parts']): string | null {
+  const toolCalls = extractToolCalls(parts);
+
+  for (let i = toolCalls.length - 1; i >= 0; i -= 1) {
+    const toolCall = toolCalls[i];
+    if (toolCall.toolName !== 'advance_stage') continue;
+
+    const output = toolCall.output;
+    if (typeof output === 'object' && output !== null) {
+      const newStage = (output as { newStage?: unknown }).newStage;
+      if (typeof newStage === 'string' && newStage.trim()) {
+        return newStage;
+      }
+    }
+
+    const input = toolCall.input;
+    if (typeof input === 'object' && input !== null) {
+      const nextStage = (input as { nextStage?: unknown }).nextStage;
+      if (typeof nextStage === 'string' && nextStage.trim()) {
+        return nextStage;
+      }
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -99,11 +199,63 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     return id;
   });
 
+  // 图片上传
+  const [imagePreviews, setImagePreviews] = useState<ImagePreview[]>([]);
+  const historyImageCacheRef = useRef(loadHistoryImageCache());
+  const submittedImagesRef = useRef<ImagePreview[]>([]);
+
+  const addImages = useCallback((files: FileList) => {
+    Array.from(files).forEach((file) => {
+      if (!file.type.startsWith('image/')) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const id = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        setImagePreviews((prev) => [...prev, { id, file, dataUrl }]);
+      };
+      reader.readAsDataURL(file);
+    });
+  }, []);
+
+  const removeImage = useCallback((id: string) => {
+    setImagePreviews((prev) => prev.filter((p) => p.id !== id));
+  }, []);
+
   // Refs
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const replyContentRef = useRef<HTMLDivElement>(null);
   const currentInputRef = useRef<string>('');
   const tokenUsageRef = useRef<TokenUsage | null>(null);
+  const entryStageRef = useRef<string | null>(null);
+  const [entryStage, setEntryStage] = useState<string | null>(null);
+  const [currentStage, setCurrentStage] = useState<string | null>(null);
+
+  const persistHistoryImages = useCallback((images: ImagePreview[]): string[] => {
+    if (images.length === 0) return [];
+    const nextCache = { ...historyImageCacheRef.current };
+    const ids = images.map((image) => {
+      nextCache[image.id] = {
+        dataUrl: image.dataUrl,
+        filename: image.file.name,
+        mediaType: image.file.type || inferMediaType(image.dataUrl),
+      };
+      return image.id;
+    });
+    historyImageCacheRef.current = nextCache;
+    saveHistoryImageCache(nextCache);
+    return ids;
+  }, []);
+
+  const buildFileParts = useCallback(
+    (urls: string[], filenamePrefix: string): FileUIPart[] =>
+      urls.map((url, index) => ({
+        type: 'file',
+        url,
+        mediaType: inferMediaType(url),
+        filename: `${filenamePrefix}-${index + 1}`,
+      })),
+    [],
+  );
 
   // Transport（sessionId 变化时重建，确保新对话用新 sessionId）
   const transport = useMemo(() => {
@@ -131,9 +283,13 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     id: sessionId,
     transport,
     onData: (dataPart: unknown) => {
-      const part = dataPart as { type?: string; data?: TokenUsage };
+      const part = dataPart as { type?: string; data?: unknown };
       if (part?.type === 'data-tokenUsage' && part.data) {
-        tokenUsageRef.current = part.data;
+        tokenUsageRef.current = part.data as TokenUsage;
+      }
+      if (part?.type === 'data-entryStage' && typeof part.data === 'string') {
+        entryStageRef.current = part.data;
+        setEntryStage(part.data);
       }
     },
     onError: (err: Error) => {
@@ -148,13 +304,11 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     },
     onFinish: ({ message }: { message: UIMessage }) => {
       const durationMs = Date.now() - startTimeRef.current;
+      const submittedImages = submittedImagesRef.current;
 
-      const toolCalls = message.parts
-        .filter((p) => p.type.startsWith('tool-'))
-        .map((p) => {
-          const toolPart = p as unknown as { toolName: string; args: unknown; result?: unknown };
-          return { toolName: toolPart.toolName || 'unknown', input: toolPart.args, output: toolPart.result };
-        });
+      const toolCalls = extractToolCalls(message.parts);
+      const advancedStage = extractAdvancedStage(message.parts);
+      const finalStage = advancedStage ?? entryStageRef.current;
 
       const textContent = message.parts
         .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
@@ -173,28 +327,45 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
       const finalResult: TestChatResponse = {
         actualOutput: textContent,
         status: 'success',
-        request: { url: CHAT_API_ENDPOINT, method: 'POST', body: { message: currentInputRef.current, scenario: DEFAULT_SCENARIO } },
+        request: {
+          url: CHAT_API_ENDPOINT,
+          method: 'POST',
+          body: {
+            message: currentInputRef.current,
+            imageUrls: submittedImages.map((image) => image.dataUrl),
+            scenario: DEFAULT_SCENARIO,
+          },
+        },
         response: { statusCode: 200, body: { content: textContent }, toolCalls },
         metrics: { durationMs, tokenUsage: finalTokenUsage },
       };
 
       setResult(finalResult);
       onTestComplete?.(finalResult);
+      setCurrentStage(finalStage);
 
       // 回写历史记录
       const now = new Date();
       const timeStr = `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      const userLine = `[${timeStr} 候选人] ${currentInputRef.current}`;
+      const userContent = currentInputRef.current || (submittedImages.length > 0 ? '[图片消息]' : '');
+      const userLine = `[${timeStr} 候选人] ${userContent}`;
+      const imageMarkerIds = persistHistoryImages(submittedImages);
+      const imageMarkerLines = imageMarkerIds.map((id) => `[图片#${id}]`);
+      const userBlock = [userLine, ...imageMarkerLines].join('\n');
       const aiLine = `[${timeStr} 招募经理] ${textContent}`;
 
       setHistoryTextState((prev) => {
-        const newHistory = prev.trim() ? `${prev}\n\n${userLine}\n\n${aiLine}` : `${userLine}\n\n${aiLine}`;
+        const newHistory = prev.trim()
+          ? `${prev}\n\n${userBlock}\n\n${aiLine}`
+          : `${userBlock}\n\n${aiLine}`;
         setTimeout(() => validateHistory(newHistory), 0);
         saveDraftCache({ historyText: newHistory, currentInput: '' });
         return newHistory;
       });
 
       setCurrentInput('');
+      setImagePreviews([]);
+      submittedImagesRef.current = [];
       setIsRequesting(false);
     },
   });
@@ -244,6 +415,17 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     let firstUserName: string | null = null;
 
     for (const line of lines) {
+      const imageMarkerMatch = line.match(IMAGE_MARKER_REGEX);
+      if (imageMarkerMatch && parsedMessages.length > 0) {
+        const imageId = imageMarkerMatch[1].trim();
+        const cachedImage = historyImageCacheRef.current[imageId];
+        const lastMessage = parsedMessages[parsedMessages.length - 1];
+        if (cachedImage && lastMessage.role === 'user') {
+          lastMessage.imageUrls = [...(lastMessage.imageUrls || []), cachedImage.dataUrl];
+        }
+        continue;
+      }
+
       // 匹配格式: [日期时间 用户名] 消息内容
       // 例如: [12/19 11:28 自由人] 我是自由人
       const bracketMatch = line.match(/^\[[\d/]+ [\d:]+ ([^\]]+)\]\s*(.*)$/);
@@ -304,9 +486,14 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
 
   // 执行测试
   const handleTest = useCallback(async () => {
-    if (!currentInput.trim()) return;
+    const trimmedInput = currentInput.trim();
+    if (!trimmedInput && imagePreviews.length === 0) return;
 
-    currentInputRef.current = currentInput.trim();
+    currentInputRef.current = trimmedInput;
+    submittedImagesRef.current = [...imagePreviews];
+    entryStageRef.current = null;
+    setEntryStage(null);
+    setCurrentStage(null);
     setIsRequesting(true);
     setLocalError(null);
     setMetrics(null);
@@ -317,14 +504,32 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     const historyMessages: UIMessage[] = history.map((msg, idx) => ({
       id: `history-${idx}`,
       role: msg.role,
-      parts: [{ type: 'text' as const, text: msg.content }],
+      parts: [
+        ...buildFileParts(msg.imageUrls || [], `history-image-${idx + 1}`),
+        ...(msg.content ? [{ type: 'text' as const, text: msg.content }] : []),
+      ],
     }));
 
     setMessages(historyMessages);
     requestAnimationFrame(() => {
-      sendMessage({ text: currentInput.trim() });
+      const currentFiles = submittedImagesRef.current.map((image) => ({
+        type: 'file' as const,
+        url: image.dataUrl,
+        mediaType: image.file.type || inferMediaType(image.dataUrl),
+        filename: image.file.name,
+      }));
+
+      if (trimmedInput && currentFiles.length > 0) {
+        sendMessage({ text: trimmedInput, files: currentFiles });
+        return;
+      }
+      if (trimmedInput) {
+        sendMessage({ text: trimmedInput });
+        return;
+      }
+      sendMessage({ files: currentFiles });
     });
-  }, [currentInput, historyText, parseHistory, setMessages, sendMessage]);
+  }, [buildFileParts, currentInput, historyText, imagePreviews, parseHistory, sendMessage, setMessages]);
 
   // 取消
   const handleCancel = useCallback(() => stop(), [stop]);
@@ -339,9 +544,16 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     setLocalError(null);
     setMetrics(null);
     setIsRequesting(false);
+    setImagePreviews([]);
+    entryStageRef.current = null;
+    setEntryStage(null);
+    setCurrentStage(null);
+    submittedImagesRef.current = [];
     setSessionId(generateUUID());
     setUserId(`dashboard-test-${generateUUID().slice(0, 8)}`);
     clearDraftCache();
+    clearHistoryImageCache();
+    historyImageCacheRef.current = {};
     messageInputRef.current?.focus();
   }, [setMessages]);
 
@@ -360,6 +572,11 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     isLoading,
     isStreaming,
     latestAssistantMessage,
+    entryStage,
+    currentStage,
+    imagePreviews,
+    addImages,
+    removeImage,
     setHistoryText,
     setCurrentInput,
     setLocalError,

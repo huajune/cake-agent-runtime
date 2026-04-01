@@ -96,3 +96,28 @@ export function useUpdateRedLines() {
     },
   });
 }
+
+/** 获取 released 版本 */
+export function useReleasedConfig() {
+  return useQuery({
+    queryKey: ['strategy-released'],
+    queryFn: () => strategyService.getReleasedConfig(),
+    staleTime: 30000,
+  });
+}
+
+/** 发布策略 */
+export function usePublishStrategy() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (versionNote?: string) => strategyService.publishStrategy(versionNote),
+    onSuccess: (result) => {
+      queryClient.setQueryData(QUERY_KEY, result.config);
+      queryClient.invalidateQueries({ queryKey: ['strategy-released'] });
+      toast.success('策略已发布');
+    },
+    onError: () => {
+      toast.error('发布失败，请重试');
+    },
+  });
+}

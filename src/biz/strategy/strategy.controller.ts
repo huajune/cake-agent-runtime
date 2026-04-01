@@ -7,9 +7,12 @@ import {
   HttpException,
   HttpStatus,
   Query,
+  ParseIntPipe,
+  DefaultValuePipe,
 } from '@nestjs/common';
 import { Public } from '@infra/server/response/decorators/api-response.decorator';
 import { StrategyConfigService } from './services/strategy-config.service';
+import { StrategyConfigStatus } from './entities/strategy-config.entity';
 import {
   StrategyPersona,
   StrategyStageGoals,
@@ -17,18 +20,34 @@ import {
   StrategyRoleSetting,
 } from './types/strategy.types';
 
+const VALID_STATUS_VALUES: StrategyConfigStatus[] = ['testing', 'released', 'archived'];
+
 /**
  * 策略配置控制器
- * 纯委托层，不包含任何业务逻辑
+ *
+ * Web 前端读写 testing 版本，企微回调通过 ContextService 读 released 版本。
  */
 @Public()
 @Controller('strategy')
 export class StrategyController {
   constructor(private readonly strategyConfigService: StrategyConfigService) {}
 
+  /**
+   * 获取 testing 版本（Web 编辑用）
+   * 支持 ?status=released 查询 released 版本
+   */
   @Get()
-  async getActiveConfig() {
-    return this.strategyConfigService.getActiveConfig();
+  async getActiveConfig(@Query('status') status?: string) {
+    if (status && !VALID_STATUS_VALUES.includes(status as StrategyConfigStatus)) {
+      throw new HttpException(
+        `无效的 status 值: ${status}，可选: ${VALID_STATUS_VALUES.join(', ')}`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (status === 'released') {
+      return this.strategyConfigService.getReleasedConfig();
+    }
+    return this.strategyConfigService.getTestingConfig();
   }
 
   @Post('role-setting')
@@ -62,8 +81,29 @@ export class StrategyController {
     return { config, message: '红线规则已更新' };
   }
 
+  /**
+   * 发布策略：testing → released
+   */
+  @Post('publish')
+  @HttpCode(200)
+  async publish(@Body() body: { versionNote?: string }) {
+    const config = await this.strategyConfigService.publish(body?.versionNote);
+    return { config, message: '策略已发布' };
+  }
+
+  /**
+   * 版本历史（released + archived）
+   */
+  @Get('versions')
+  async getVersionHistory(@Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number) {
+    return this.strategyConfigService.getVersionHistory(limit);
+  }
+
+  /**
+   * 变更历史（兼容旧接口）
+   */
   @Get('changelog')
-  async getChangelog(@Query('limit') limit?: number) {
-    return this.strategyConfigService.getChangelog(limit || 20);
+  async getChangelog(@Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number) {
+    return this.strategyConfigService.getChangelog(limit);
   }
 }

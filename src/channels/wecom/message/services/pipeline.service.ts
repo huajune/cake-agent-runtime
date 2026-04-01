@@ -7,14 +7,15 @@ import { ALERT_RECEIVERS } from '@infra/feishu/constants/constants';
 import { maskApiKey } from '@infra/utils/string.util';
 import { ScenarioType } from '@enums/agent.enum';
 import { AgentRunnerService } from '@agent/runner.service';
+import { supportsVision } from '@providers/types';
 
 // 导入子服务
 import { MessageDeduplicationService } from './deduplication.service';
 import { MessageFilterService } from './filter.service';
 import { MessageDeliveryService } from './delivery.service';
-import { BookingDetectionService } from './booking-detection.service';
 import { ImageDescriptionService } from './image-description.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
+import { BookingDetectionService } from '@biz/message/services/booking-detection.service';
 import { ChatMessageInput } from '@biz/message/types/message.types';
 
 // 导入工具和类型
@@ -121,10 +122,16 @@ export class MessagePipelineService {
     // step 3: 写历史（含 historyOnly 分支）
     await this.recordUserMessageToHistory(messageData, filterResult.content);
 
-    // step 3.5: 图片描述（写历史后立即触发，不受后续分支影响）
+    // step 3.5: 图片描述
+    // 需要提前写入 DB 的两种情况：
+    // 1. 主模型不支持 vision：Agent 看不到图，必须先补描述
+    // 2. historyOnly：当前轮不会走 Agent，必须先补描述
     const imgUrl = MessageParser.extractImageUrl(messageData);
-    if (imgUrl) {
-      this.imageDescription.describeAndUpdateAsync(messageData.messageId, imgUrl);
+    const chatModelId = this.configService.get<string>('AGENT_CHAT_MODEL') || '';
+    const shouldDescribeBeforeAgent =
+      imgUrl !== null && (filterResult.historyOnly || !supportsVision(chatModelId));
+    if (imgUrl && shouldDescribeBeforeAgent) {
+      await this.imageDescription.describeAndUpdateSync(messageData.messageId, imgUrl);
     }
 
     if (filterResult.historyOnly) {
@@ -389,6 +396,11 @@ export class MessagePipelineService {
       .map((msg) => MessageParser.extractImageUrl(msg))
       .filter((url): url is string => url !== null);
 
+    // 收集图片消息 ID（供 save_image_description 工具回写 DB）
+    const imageMessageIds = allMessages
+      .filter((msg) => MessageParser.extractImageUrl(msg) !== null)
+      .map((msg) => msg.messageId);
+
     const agentResult = await this.callAgent({
       sessionId: chatId,
       userMessage: content,
@@ -398,6 +410,7 @@ export class MessagePipelineService {
       userId: this.resolveAgentUserId(params.primaryMessage, parsed),
       corpId: this.resolveCorpId(params.primaryMessage),
       imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+      imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
     });
 
     this.logger.log(
@@ -424,7 +437,7 @@ export class MessagePipelineService {
       userId: parsed.imContactId,
       managerId: parsed.imBotId,
       managerName: parsed.managerName,
-      replyText: agentResult.reply.content,
+      toolCalls: agentResult.toolCalls,
     });
 
     // 5. 发送回复
@@ -720,6 +733,7 @@ export class MessagePipelineService {
     userId: string;
     corpId: string;
     imageUrls?: string[];
+    imageMessageIds?: string[];
   }): Promise<AgentInvokeResult> {
     const {
       userMessage,
@@ -746,6 +760,7 @@ export class MessagePipelineService {
         sessionId: params.sessionId,
         scenario,
         imageUrls: params.imageUrls,
+        imageMessageIds: params.imageMessageIds,
       });
 
       const processingTime = Date.now() - startTime;

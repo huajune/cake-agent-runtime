@@ -44,6 +44,17 @@ describe('buildInterviewBookingTool', () => {
     expect(result.error).toContain('姓名');
   });
 
+  it('should return error when education or health certificate status is missing', async () => {
+    const result = await executeTool({
+      ...validInput,
+      education: undefined,
+      hasHealthCertificate: undefined,
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('学历');
+    expect(result.error).toContain('健康证情况');
+  });
+
   it('should return error for invalid time format', async () => {
     const result = await executeTool({ ...validInput, interviewTime: '2026/03/20 14:00' });
     expect(result.success).toBe(false);
