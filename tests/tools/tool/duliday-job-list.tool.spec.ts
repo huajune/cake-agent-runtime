@@ -59,6 +59,7 @@ describe('buildJobListTool', () => {
   };
 
   beforeEach(() => jest.clearAllMocks());
+  afterEach(() => jest.useRealTimers());
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const executeTool = async (ctx: ToolBuildContext = mockContext, input = defaultInput) => {
@@ -128,5 +129,103 @@ describe('buildJobListTool', () => {
     const result = await executeTool();
 
     expect(result.error).toContain('API timeout');
+  });
+
+  it('should prepend interview decision summary when requirement or interview flags are enabled', async () => {
+    const job = makeJobData({
+      hiringRequirement: {
+        basicPersonalRequirements: { minAge: 18, maxAge: 40 },
+        certificate: { healthCertificate: '食品健康证' },
+        remark: '有分拣经验优先，能接受体力活',
+      },
+      interviewProcess: {
+        interviewTotal: 1,
+        firstInterview: {
+          firstInterviewWay: '线下面试',
+          interviewDemand: '提交报名信息需完整齐全',
+        },
+        remark: '没有健康证的需办加急，最迟1/31完成面试',
+      },
+    });
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job], total: 1 });
+
+    const result = await executeTool(mockContext, {
+      ...defaultInput,
+      includeHiringRequirement: true,
+      includeInterviewProcess: true,
+    });
+
+    expect(result.markdown).toContain('### 约面重点');
+    expect(result.markdown).toContain('**年龄要求**: 18-40岁');
+    expect(result.markdown).toContain('**健康证**: 食品健康证');
+    expect(result.markdown).toContain('**关键要求**: 有分拣经验优先，能接受体力活');
+    expect(result.markdown).toContain('**面试形式**: 线下面试');
+    expect(result.markdown).toContain('**报名要求**: 提交报名信息需完整齐全');
+    expect(result.markdown).toContain('**时效限制**: 没有健康证的需办加急');
+  });
+
+  it('should suppress clearly expired date constraints from interview highlights', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-03-30T08:00:00.000Z'));
+
+    const job = makeJobData({
+      hiringRequirement: {
+        certificate: { healthCertificate: '食品健康证' },
+      },
+      interviewProcess: {
+        firstInterview: {
+          firstInterviewWay: '线下面试',
+          interviewDemand: '提交报名信息需完整齐全',
+        },
+        remark: '有健康的最迟1/31面试完毕，2/1最后入职时间，过期不再办理入职；没有健康证的需办加急',
+      },
+    });
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job], total: 1 });
+
+    const result = await executeTool(mockContext, {
+      ...defaultInput,
+      includeHiringRequirement: true,
+      includeInterviewProcess: true,
+    });
+
+    expect(result.markdown).toContain('### 约面重点');
+    expect(result.markdown).toContain('**时效限制**: 没有健康证的需办加急');
+    expect(result.markdown).not.toContain('**时效限制**: 有健康的最迟1/31');
+    expect(result.markdown).not.toContain('**时效限制**: 2/1最后入职时间');
+  });
+
+  it('should suppress stale spring festival constraints across requirement and work-time fields', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-01T02:00:00.000Z'));
+
+    const job = makeJobData({
+      hiringRequirement: {
+        basicPersonalRequirements: { minAge: 18, maxAge: 40 },
+        remark: '周四、六、日需要能给班，过年不返乡',
+      },
+      workTime: {
+        employmentForm: '兼职',
+        workTimeRemark: '每天8小时，过年不返乡',
+      },
+      interviewProcess: {
+        firstInterview: {
+          firstInterviewWay: '线下面试',
+          interviewDemand: '能接受排班，过年不返乡',
+        },
+        remark: '年后返岗，面试前联系店长',
+      },
+    });
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job], total: 1 });
+
+    const result = await executeTool(mockContext, {
+      ...defaultInput,
+      includeHiringRequirement: true,
+      includeWorkTime: true,
+      includeInterviewProcess: true,
+    });
+
+    expect(result.markdown).toContain('**其他要求**: 周四、六、日需要能给班');
+    expect(result.markdown).toContain('**工时备注**: 每天8小时');
+    expect(result.markdown).toContain('**面试备注**: 面试前联系店长');
+    expect(result.markdown).not.toContain('过年不返乡');
+    expect(result.markdown).not.toContain('年后返岗');
   });
 });

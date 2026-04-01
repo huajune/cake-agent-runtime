@@ -55,9 +55,9 @@ describe('PartTimeJobStrategy', () => {
     it('餐饮群应过滤掉零售岗位', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
         jobs: [
-          makeJob('必胜客', '普通服务员'),
+          makeJob('必胜客', '餐饮/中餐/普通服务员'),
           makeJob('奥乐齐', '零售/食品/导购'),
-          makeJob('大米先生', '厨师'),
+          makeJob('大米先生', '餐饮/快餐/厨师'),
         ],
         total: 3,
       });
@@ -74,7 +74,7 @@ describe('PartTimeJobStrategy', () => {
     it('零售群应只保留零售岗位', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
         jobs: [
-          makeJob('必胜客', '普通服务员'),
+          makeJob('必胜客', '餐饮/中餐/普通服务员'),
           makeJob('奥乐齐', '零售/食品/导购'),
         ],
         total: 2,
@@ -112,7 +112,7 @@ describe('PartTimeJobStrategy', () => {
   describe('buildPrompt', () => {
     it('应包含品牌名和城市', () => {
       const prompt = strategy.buildPrompt(
-        { hasData: true, payload: { brand: '必胜客', jobs: [makeJob('必胜客', '服务员')] }, summary: '' },
+        { hasData: true, payload: { brand: '必胜客', jobs: [makeJob('必胜客', '餐饮/中餐/服务员')] }, summary: '' },
         makeGroup(),
       );
 

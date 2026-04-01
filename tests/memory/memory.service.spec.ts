@@ -1,20 +1,18 @@
 import { MemoryService } from '@memory/memory.service';
 
 describe('MemoryService', () => {
-  const mockShortTerm = {
-    getMessages: jest.fn(),
-  };
-
-  const mockSessionFacts = {
-    getSessionState: jest.fn(),
-  };
-
   const mockProcedural = {
     get: jest.fn(),
+    set: jest.fn().mockResolvedValue(undefined),
   };
 
   const mockLongTerm = {
-    getProfile: jest.fn(),
+    getSummaryData: jest.fn(),
+  };
+
+  const mockLifecycle = {
+    onTurnStart: jest.fn(),
+    onTurnEnd: jest.fn().mockResolvedValue(undefined),
   };
 
   let service: MemoryService;
@@ -22,72 +20,67 @@ describe('MemoryService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     service = new MemoryService(
-      mockShortTerm as never,
-      mockSessionFacts as never,
       mockProcedural as never,
       mockLongTerm as never,
+      mockLifecycle as never,
     );
   });
 
-  describe('recallAll', () => {
-    it('should return complete memory context', async () => {
-      mockShortTerm.getMessages.mockResolvedValue([{ role: 'user', content: 'hello' }]);
-      mockSessionFacts.getSessionState.mockResolvedValue({
-        facts: { interview_info: { name: '张三' }, preferences: {}, reasoning: '' },
-        lastRecommendedJobs: null,
+  describe('turn lifecycle facade', () => {
+    it('should delegate onTurnStart to lifecycle service', async () => {
+      mockLifecycle.onTurnStart.mockResolvedValue({
+        shortTerm: { messageWindow: [{ role: 'user', content: 'hello' }] },
+        sessionMemory: null,
+        highConfidenceFacts: null,
+        procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+        longTerm: { profile: null },
       });
-      mockProcedural.get.mockResolvedValue({
-        currentStage: 'needs_collection',
-        advancedAt: null,
-        reason: null,
-      });
-      mockLongTerm.getProfile.mockResolvedValue({ name: '张三', phone: '138' });
 
-      const ctx = await service.recallAll('corp1', 'user1', 'sess1');
+      const ctx = await service.onTurnStart('corp1', 'user1', 'sess1');
 
-      expect(ctx.procedural.currentStage).toBe('needs_collection');
-      expect(ctx.longTerm.profile?.name).toBe('张三');
-      expect(ctx.sessionFacts).not.toBeNull();
-      expect(ctx.shortTerm).toEqual([{ role: 'user', content: 'hello' }]);
+      expect(mockLifecycle.onTurnStart).toHaveBeenCalledWith('corp1', 'user1', 'sess1', undefined);
+      expect(ctx.shortTerm.messageWindow).toEqual([{ role: 'user', content: 'hello' }]);
     });
 
-    it('should return null sessionFacts when no facts', async () => {
-      mockShortTerm.getMessages.mockResolvedValue([]);
-      mockSessionFacts.getSessionState.mockResolvedValue({
-        facts: null,
-        lastRecommendedJobs: null,
-      });
-      mockProcedural.get.mockResolvedValue({ currentStage: null, advancedAt: null, reason: null });
-      mockLongTerm.getProfile.mockResolvedValue(null);
+    it('should delegate onTurnEnd to lifecycle service', async () => {
+      const ctx = {
+        corpId: 'corp1',
+        userId: 'user1',
+        sessionId: 'sess1',
+        typedMessages: [{ role: 'user', content: '你好' }],
+      };
 
-      const ctx = await service.recallAll('corp1', 'user1', 'sess1');
+      await service.onTurnEnd(ctx as never, '收到');
 
-      expect(ctx.sessionFacts).toBeNull();
-      expect(ctx.longTerm.profile).toBeNull();
-      expect(ctx.procedural.currentStage).toBeNull();
-    });
-
-    it('should call all sub-services in parallel', async () => {
-      mockShortTerm.getMessages.mockResolvedValue([]);
-      mockSessionFacts.getSessionState.mockResolvedValue({ facts: null, lastRecommendedJobs: null });
-      mockProcedural.get.mockResolvedValue({ currentStage: null, advancedAt: null, reason: null });
-      mockLongTerm.getProfile.mockResolvedValue(null);
-
-      await service.recallAll('corp1', 'user1', 'sess1');
-
-      expect(mockShortTerm.getMessages).toHaveBeenCalledWith('sess1');
-      expect(mockSessionFacts.getSessionState).toHaveBeenCalledWith('corp1', 'user1', 'sess1');
-      expect(mockProcedural.get).toHaveBeenCalledWith('corp1', 'user1', 'sess1');
-      expect(mockLongTerm.getProfile).toHaveBeenCalledWith('corp1', 'user1');
+      expect(mockLifecycle.onTurnEnd).toHaveBeenCalledWith(ctx, '收到');
     });
   });
 
-  describe('sub-service access', () => {
-    it('should expose sub-services as readonly properties', () => {
-      expect(service.shortTerm).toBeDefined();
-      expect(service.sessionFacts).toBeDefined();
-      expect(service.procedural).toBeDefined();
-      expect(service.longTerm).toBeDefined();
+  describe('facade methods', () => {
+    it('should get summary data via facade', async () => {
+      mockLongTerm.getSummaryData.mockResolvedValue({
+        recent: [],
+        archive: null,
+        lastSettledMessageAt: null,
+      });
+
+      const summary = await service.getSummaryData('corp1', 'user1');
+
+      expect(summary).toEqual({ recent: [], archive: null, lastSettledMessageAt: null });
+      expect(mockLongTerm.getSummaryData).toHaveBeenCalledWith('corp1', 'user1');
+    });
+
+    it('should set stage via facade', async () => {
+      const nextStage = {
+        currentStage: 'job_consultation',
+        fromStage: 'trust_building',
+        advancedAt: '2026-03-31T00:00:00.000Z',
+        reason: '用户开始咨询岗位',
+      };
+
+      await service.setStage('corp1', 'user1', 'sess1', nextStage);
+
+      expect(mockProcedural.set).toHaveBeenCalledWith('corp1', 'user1', 'sess1', nextStage);
     });
   });
 });

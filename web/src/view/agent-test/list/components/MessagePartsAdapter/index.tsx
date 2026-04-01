@@ -16,7 +16,13 @@ import styles from './index.module.scss';
 
 // ==================== 思考过程组件（基于 AI reasoning） ====================
 
-function ReasoningBlock({ text, isThinking }: { text: string; isThinking: boolean }) {
+function ReasoningBlock({
+  text,
+  isThinking,
+}: {
+  text: string;
+  isThinking: boolean;
+}) {
   const [expanded, setExpanded] = useState(isThinking);
 
   return (
@@ -144,13 +150,25 @@ interface ExtractedToolCall {
 
 type Segment =
   | { kind: 'text'; texts: string[] }
-  | { kind: 'tool'; tool: ExtractedToolCall };
+  | { kind: 'tool'; tool: ExtractedToolCall }
+  | { kind: 'reasoning'; text: string };
 
 function buildSegments(parts: UIMessage['parts']): Segment[] {
   const segments: Segment[] = [];
 
   for (const part of parts) {
-    if (part.type === 'text') {
+    if (part.type === 'reasoning') {
+      const text = (part as unknown as { text: string }).text || '';
+      if (text) {
+        // 合并相邻的 reasoning 段
+        const last = segments[segments.length - 1];
+        if (last && last.kind === 'reasoning') {
+          last.text += text;
+        } else {
+          segments.push({ kind: 'reasoning', text });
+        }
+      }
+    } else if (part.type === 'text') {
       const text = (part as { type: 'text'; text: string }).text;
       const last = segments[segments.length - 1];
       if (last && last.kind === 'text') {
@@ -195,7 +213,10 @@ interface MessagePartsAdapterProps {
   isStreaming?: boolean;
 }
 
-function MessagePartsAdapterComponent({ message, isStreaming }: MessagePartsAdapterProps) {
+function MessagePartsAdapterComponent({
+  message,
+  isStreaming,
+}: MessagePartsAdapterProps) {
   const parts = message.parts;
 
   if (!parts || parts.length === 0) {
@@ -205,13 +226,13 @@ function MessagePartsAdapterComponent({ message, isStreaming }: MessagePartsAdap
           <span className={styles.streamingLoading}>
             <span className={styles.loadingDots}>
               <span />
-              <span />
-              <span />
-            </span>
-            <span className={styles.streamingPlaceholder}>思考中</span>
+            <span />
+            <span />
           </span>
-        ) : (
-          <span className={styles.streamingPlaceholder}>等待响应...</span>
+          <span className={styles.streamingPlaceholder}>思考中</span>
+        </span>
+      ) : (
+        <span className={styles.streamingPlaceholder}>等待响应...</span>
         )}
       </div>
     );
@@ -219,22 +240,38 @@ function MessagePartsAdapterComponent({ message, isStreaming }: MessagePartsAdap
 
   const segments = buildSegments(parts);
 
+  // DEBUG: 查看 parts 中是否包含多个 reasoning 块
+  if (!isStreaming && parts.some((p) => p.type === 'reasoning')) {
+    const reasoningParts = parts.filter((p) => p.type === 'reasoning');
+    const allTypes = parts.map((p) => p.type);
+    console.log('[MessageParts] parts 类型序列:', allTypes);
+    console.log('[MessageParts] reasoning 块数量:', reasoningParts.length);
+    reasoningParts.forEach((r, i) => {
+      const text = (r as unknown as { text: string }).text || '';
+      console.log(`[MessageParts] reasoning[${i}] 长度=${text.length}, 前100字: ${text.substring(0, 100)}`);
+    });
+  }
+
   const hasStreamingText = segments.some(
     (s) => s.kind === 'text' && s.texts.join('').trim().length > 0,
   );
 
-  // 提取 reasoning 文本（AI 扩展思考）— 流式和完成后都展示
-  const reasoningText = parts
-    .filter((p) => p.type === 'reasoning')
-    .map((p) => (p as unknown as { text: string }).text || '')
-    .join('');
-
   return (
     <div className={styles.messagePartsContainer}>
-      {reasoningText && (
-        <ReasoningBlock text={reasoningText} isThinking={!!isStreaming} />
-      )}
       {segments.map((seg, idx) => {
+        if (seg.kind === 'reasoning') {
+          // 最后一个 reasoning 段在流式中显示为"思考中"，其余为已完成
+          const isLastReasoning =
+            !!isStreaming && segments.slice(idx + 1).every((s) => s.kind !== 'reasoning');
+          return (
+            <ReasoningBlock
+              key={`reasoning-${idx}`}
+              text={seg.text}
+              isThinking={isLastReasoning}
+            />
+          );
+        }
+
         if (seg.kind === 'text') {
           const text = seg.texts.join('');
           if (!text && !isStreaming) return null;

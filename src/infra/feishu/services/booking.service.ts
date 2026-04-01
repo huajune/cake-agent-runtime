@@ -5,7 +5,7 @@ import { ALERT_RECEIVERS } from '../constants/constants';
 
 /**
  * 飞书面试预约通知服务
- * 专门处理面试预约成功的通知
+ * 处理面试预约成功/失败的通知
  */
 @Injectable()
 export class FeishuBookingService {
@@ -14,16 +14,22 @@ export class FeishuBookingService {
   constructor(private readonly webhookService: FeishuWebhookService) {}
 
   /**
-   * 发送面试预约成功通知
+   * 发送面试预约结果通知
    * @param bookingInfo 预约信息
    * @returns 是否发送成功
    */
   async sendBookingNotification(bookingInfo: InterviewBookingInfo): Promise<boolean> {
     try {
       const time = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+      const toolOutput =
+        bookingInfo.toolOutput && typeof bookingInfo.toolOutput === 'object'
+          ? bookingInfo.toolOutput
+          : undefined;
+      const isFailure = toolOutput?.success === false;
 
       // 构建消息字段
       const fields: string[] = [`**通知时间**: ${time}`];
+      fields.push(`**预约状态**: ${isFailure ? '失败' : '成功'}`);
 
       if (bookingInfo.candidateName) {
         fields.push(`**候选人**: ${bookingInfo.candidateName}`);
@@ -45,18 +51,38 @@ export class FeishuBookingService {
       }
 
       // 如果有工具输出，展示关键信息
-      if (bookingInfo.toolOutput) {
-        const output = bookingInfo.toolOutput;
+      if (toolOutput) {
+        const output = toolOutput;
         if (output.message) {
           fields.push(`**预约结果**: ${output.message}`);
         }
         if (output.booking_id) {
           fields.push(`**预约 ID**: ${output.booking_id}`);
         }
+        if (output.error) {
+          fields.push(`**失败原因**: ${output.error}`);
+        }
+        if (Array.isArray(output.errorList) && output.errorList.length > 0) {
+          const errorList = output.errorList
+            .map((item) => {
+              if (typeof item === 'string') return item.trim();
+              try {
+                return JSON.stringify(item);
+              } catch {
+                return String(item);
+              }
+            })
+            .filter(Boolean)
+            .join('；');
+          if (errorList) {
+            fields.push(`**失败明细**: ${errorList}`);
+          }
+        }
       }
 
-      // 构建卡片（@ 琪琪）
-      const card = this.webhookService.buildCard('🎉 面试预约成功', fields.join('\n'), 'green', [
+      const title = isFailure ? '⚠️ 面试预约失败' : '🎉 面试预约成功';
+      const color = isFailure ? 'red' : 'green';
+      const card = this.webhookService.buildCard(title, fields.join('\n'), color, [
         ...ALERT_RECEIVERS.INTERVIEW_BOOKING,
       ]);
 
@@ -65,10 +91,12 @@ export class FeishuBookingService {
 
       if (success) {
         this.logger.log(
-          `面试预约通知已发送: ${bookingInfo.candidateName || '未知候选人'} - ${bookingInfo.brandName || '未知品牌'}`,
+          `面试预约${isFailure ? '失败' : '成功'}通知已发送: ${
+            bookingInfo.candidateName || '未知候选人'
+          } - ${bookingInfo.brandName || '未知品牌'}`,
         );
       } else {
-        this.logger.warn(`面试预约通知发送失败`);
+        this.logger.warn(`面试预约${isFailure ? '失败' : '成功'}通知发送失败`);
       }
 
       return success;

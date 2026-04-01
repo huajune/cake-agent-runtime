@@ -1,48 +1,53 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ShortTermService } from './short-term.service';
-import { SessionFactsService } from './session-facts.service';
-import { ProceduralService } from './procedural.service';
-import { LongTermService } from './long-term.service';
-import type { AgentMemoryContext } from './memory.types';
+import { ProceduralService } from './services/procedural.service';
+import { LongTermService } from './services/long-term.service';
+import {
+  MemoryLifecycleService,
+  type MemoryTurnStartMessage,
+  type MemoryLifecycleTurnContext,
+} from './services/memory-lifecycle.service';
+import type { AgentMemoryContext } from './types/memory-runtime.types';
+import type { SummaryData } from './types/long-term.types';
+import type { ProceduralState } from './types/procedural.types';
 
-/**
- * 分层记忆服务 — 对外统一 API
- *
- * - recallAll(corpId, userId, sessionId) → AgentMemoryContext（一次性读取所有记忆）
- *
- * 子服务可通过 readonly 属性直接访问：
- * - shortTerm / sessionFacts / procedural / longTerm
- */
+/** memory 模块对外 facade，只保留真实外部入口。 */
 @Injectable()
 export class MemoryService {
   private readonly logger = new Logger(MemoryService.name);
 
   constructor(
-    readonly shortTerm: ShortTermService,
-    readonly sessionFacts: SessionFactsService,
-    readonly procedural: ProceduralService,
-    readonly longTerm: LongTermService,
+    private readonly procedural: ProceduralService,
+    private readonly longTerm: LongTermService,
+    private readonly lifecycle: MemoryLifecycleService,
   ) {}
 
-  /**
-   * 一次性读取完整记忆上下文（Agent 每轮请求前调用）
-   *
-   * 并行读取 shortTerm + sessionFacts + procedural + profile。
-   * sessionId 在 wecom 渠道中等同于 chatId。
-   */
-  async recallAll(corpId: string, userId: string, sessionId: string): Promise<AgentMemoryContext> {
-    const [shortTermMessages, sessionState, proceduralState, profile] = await Promise.all([
-      this.shortTerm.getMessages(sessionId),
-      this.sessionFacts.getSessionState(corpId, userId, sessionId),
-      this.procedural.get(corpId, userId, sessionId),
-      this.longTerm.getProfile(corpId, userId),
-    ]);
+  /** 回合开始时读取运行时记忆。 */
+  async onTurnStart(
+    corpId: string,
+    userId: string,
+    sessionId: string,
+    currentMessages?: MemoryTurnStartMessage[],
+  ): Promise<AgentMemoryContext> {
+    return await this.lifecycle.onTurnStart(corpId, userId, sessionId, currentMessages);
+  }
 
-    return {
-      shortTerm: shortTermMessages,
-      longTerm: { profile },
-      procedural: proceduralState,
-      sessionFacts: sessionState.facts ? sessionState : null,
-    };
+  /** 回合结束时触发记忆收尾。 */
+  async onTurnEnd(ctx: MemoryLifecycleTurnContext, assistantText?: string): Promise<void> {
+    await this.lifecycle.onTurnEnd(ctx, assistantText);
+  }
+
+  /** 读取历史摘要（recent + archive），供 recall_history 或沉淀逻辑使用。 */
+  async getSummaryData(corpId: string, userId: string): Promise<SummaryData | null> {
+    return await this.longTerm.getSummaryData(corpId, userId);
+  }
+
+  /** 写入当前程序阶段，供 advance_stage 等外部模块调用。 */
+  async setStage(
+    corpId: string,
+    userId: string,
+    sessionId: string,
+    state: ProceduralState,
+  ): Promise<void> {
+    await this.procedural.set(corpId, userId, sessionId, state);
   }
 }

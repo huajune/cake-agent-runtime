@@ -333,7 +333,10 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
                       <Bot size={16} /> AI 回复
                     </h4>
                   </div>
-                  <MessagePartsAdapter message={latestAssistantMessage} isStreaming={false} />
+                  <MessagePartsAdapter
+                    message={latestAssistantMessage}
+                    isStreaming={false}
+                  />
                   {/* 反馈按钮放在右下角 */}
                   <div className={styles.feedbackBtnsRight}>
                     <FeedbackButtons

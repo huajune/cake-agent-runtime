@@ -226,7 +226,10 @@ describe('TestExecutionService', () => {
       const mockNodeStream = { pipe: jest.fn() } as unknown as NodeJS.ReadableStream;
       const fromWebSpy = jest.spyOn(Readable, 'fromWeb').mockReturnValue(mockNodeStream);
 
-      mockLoop.stream.mockReturnValue({ textStream: {} });
+      mockLoop.stream.mockResolvedValue({
+        streamResult: { textStream: {} },
+        entryStage: 'trust_building',
+      } as any);
 
       const result = await service.executeTestStream({
         message: 'hello',

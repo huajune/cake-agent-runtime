@@ -1,7 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ChatMessageRepository } from '@biz/message/repositories/chat-message.repository';
 import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.repository';
+import { RedisService } from '@infra/redis/redis.service';
+import {
+  buildChatHistoryCacheKey,
+  buildChatHistoryIndexKey,
+} from '@biz/message/utils/chat-history-cache.util';
 
 describe('ChatSessionService', () => {
   let service: ChatSessionService;
@@ -14,10 +20,35 @@ describe('ChatSessionService', () => {
     getChatSummaryStats: jest.fn(),
     getChatSessionListOptimized: jest.fn(),
     getChatHistoryDetail: jest.fn(),
+    getChatHistory: jest.fn(),
+    saveChatMessage: jest.fn(),
+    saveChatMessagesBatch: jest.fn(),
+    updateContentByMessageId: jest.fn(),
+    getChatMessagesByTimeRange: jest.fn(),
+    cleanupChatMessages: jest.fn(),
   };
 
   const mockMonitoringRecordRepository = {
     getDashboardHourlyTrend: jest.fn(),
+  };
+
+  const mockRedisService = {
+    exists: jest.fn(),
+    rpush: jest.fn(),
+    ltrim: jest.fn(),
+    expire: jest.fn(),
+    setex: jest.fn(),
+    get: jest.fn(),
+    lrange: jest.fn(),
+    del: jest.fn(),
+  };
+
+  const mockConfigService = {
+    get: jest.fn((key: string, defaultValue?: string) => {
+      if (key === 'MAX_HISTORY_PER_CHAT') return '60';
+      if (key === 'MEMORY_SESSION_TTL_DAYS') return '1';
+      return defaultValue;
+    }),
   };
 
   beforeEach(async () => {
@@ -26,12 +57,69 @@ describe('ChatSessionService', () => {
         ChatSessionService,
         { provide: ChatMessageRepository, useValue: mockChatMessageRepository },
         { provide: MonitoringRecordRepository, useValue: mockMonitoringRecordRepository },
+        { provide: RedisService, useValue: mockRedisService },
+        { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
 
     service = module.get<ChatSessionService>(ChatSessionService);
 
     jest.clearAllMocks();
+  });
+
+  describe('short-term cache mirroring', () => {
+    it('should append saved messages into redis short-term cache', async () => {
+      mockChatMessageRepository.saveChatMessage.mockResolvedValue(true);
+      mockRedisService.exists.mockResolvedValue(0);
+
+      const ok = await service.saveMessage({
+        chatId: 'chat-1',
+        messageId: 'msg-1',
+        role: 'user',
+        content: '你好',
+        timestamp: 1710900000000,
+        contactType: 1,
+      });
+
+      expect(ok).toBe(true);
+      expect(mockRedisService.rpush).toHaveBeenCalledWith(
+        buildChatHistoryCacheKey('chat-1'),
+        expect.any(String),
+      );
+      expect(mockRedisService.ltrim).toHaveBeenCalledWith(
+        buildChatHistoryCacheKey('chat-1'),
+        -60,
+        -1,
+      );
+      expect(mockRedisService.setex).toHaveBeenCalledWith(
+        buildChatHistoryIndexKey('msg-1'),
+        86400,
+        { chatId: 'chat-1' },
+      );
+    });
+
+    it('should update cached message content when content changes', async () => {
+      mockChatMessageRepository.updateContentByMessageId.mockResolvedValue(true);
+      mockRedisService.get.mockResolvedValue({ chatId: 'chat-1' });
+      mockRedisService.lrange.mockResolvedValue([
+        JSON.stringify({
+          chatId: 'chat-1',
+          messageId: 'msg-1',
+          role: 'user',
+          content: '[图片消息]',
+          timestamp: 1710900000000,
+        }),
+      ]);
+
+      const ok = await service.updateMessageContent('msg-1', '[图片消息] 这是招聘海报');
+
+      expect(ok).toBe(true);
+      expect(mockRedisService.del).toHaveBeenCalledWith(buildChatHistoryCacheKey('chat-1'));
+      expect(mockRedisService.rpush).toHaveBeenCalledWith(
+        buildChatHistoryCacheKey('chat-1'),
+        expect.stringContaining('这是招聘海报'),
+      );
+    });
   });
 
   it('should be defined', () => {
@@ -235,7 +323,8 @@ describe('ChatSessionService', () => {
 
       await service.getChatTrend();
 
-      const [startDate, endDate] = mockMonitoringRecordRepository.getDashboardHourlyTrend.mock.calls[0];
+      const [startDate, endDate] =
+        mockMonitoringRecordRepository.getDashboardHourlyTrend.mock.calls[0];
       const daysDiff = Math.round(
         (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
       );

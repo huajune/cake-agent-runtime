@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '@infra/redis/redis.service';
-import type { MemoryEntry, MemoryStore } from '../memory.types';
+import type { MemoryEntry, MemoryStore } from './store.types';
 import { deepMerge } from './deep-merge.util';
 
 /**
@@ -8,6 +8,13 @@ import { deepMerge } from './deep-merge.util';
  *
  * 通用 Redis key-value 存储，支持可配置 TTL 和可选 deepMerge。
  * MemoryService 按类别（stage / facts / profile-cache）委派到此后端。
+ *
+ * 这里不关心具体业务字段名，例如：
+ * - `lastSessionActiveAt`
+ * - `currentStage / fromStage`
+ * - `presentedJobs`
+ *
+ * RedisStore 只负责把 content 按 entry 结构存进去，并附带 updatedAt。
  */
 @Injectable()
 export class RedisStore implements MemoryStore {

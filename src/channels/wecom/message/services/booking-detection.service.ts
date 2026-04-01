@@ -2,22 +2,17 @@ import { Injectable, Logger } from '@nestjs/common';
 import { FeishuBookingService } from '@infra/feishu/services/booking.service';
 import { BookingService } from '@biz/message/services/booking.service';
 import { InterviewBookingInfo } from '@infra/feishu/interfaces/interface';
+import type { AgentInvokeResult } from '@wecom/message/message.types';
+
+type BookingToolCall = NonNullable<AgentInvokeResult['toolCalls']>[number];
 
 /**
- * 预约成功检测结果
- */
-export interface BookingDetectionResult {
-  detected: boolean;
-  bookingInfo?: InterviewBookingInfo;
-}
-
-/**
- * 预约成功检测服务 (Business Logic)
+ * 预约结果检测服务 (Business Logic)
  *
  * 职责：
- * 1. 从 Agent 响应文本中检测预约成功关键词
+ * 1. 优先从工具结果识别预约成功/失败
  * 2. 异步发送飞书通知
- * 3. 更新统计数据表
+ * 3. 更新成功预约统计数据表
  */
 @Injectable()
 export class BookingDetectionService {
@@ -28,67 +23,27 @@ export class BookingDetectionService {
     private readonly bookingService: BookingService,
   ) {}
 
-  /**
-   * 从 Agent 响应文本中检测预约成功
-   */
-  detectBookingSuccess(replyText: string | undefined): BookingDetectionResult {
-    if (!replyText) {
-      return { detected: false };
-    }
-
-    if (this.isBookingSuccessful(replyText)) {
-      this.logger.log('检测到预约成功关键词');
-      return {
-        detected: true,
-        bookingInfo: this.extractBookingInfoFromText(replyText),
-      };
-    }
-
-    return { detected: false };
-  }
-
-  private isBookingSuccessful(text: string): boolean {
-    const successKeywords = ['预约成功', '面试预约已创建', 'booking_id'];
-    const failureKeywords = ['预约失败', '失败', 'error', '错误'];
-    const lowerText = text.toLowerCase();
-
-    for (const keyword of failureKeywords) {
-      if (lowerText.includes(keyword.toLowerCase())) return false;
-    }
-    for (const keyword of successKeywords) {
-      if (lowerText.includes(keyword.toLowerCase())) return true;
-    }
-    return false;
-  }
-
-  private extractBookingInfoFromText(text: string): InterviewBookingInfo {
-    // 从回复文本中尝试提取预约信息（基础实现）
-    return {
-      toolOutput: { rawText: text.substring(0, 500) },
-    };
-  }
-
-  /**
-   * 处理预约成功后的逻辑
-   */
+  /** 处理预约结果后的逻辑。 */
   async handleBookingSuccessAsync(params: {
     chatId: string;
     contactName: string;
     userId?: string;
     managerId?: string;
     managerName?: string;
-    replyText?: string;
+    toolCalls?: AgentInvokeResult['toolCalls'];
   }): Promise<void> {
-    const { chatId, contactName, userId, managerId, managerName, replyText } = params;
-    const detection = this.detectBookingSuccess(replyText);
+    const { chatId, contactName, userId, managerId, managerName, toolCalls } = params;
 
-    if (!detection.detected || !detection.bookingInfo) return;
+    const bookingToolCall = this.findLatestBookingToolCall(toolCalls);
+    if (!bookingToolCall) return;
 
-    this.logger.log(`[${contactName}] 检测到预约成功，开始异步处理`);
+    const toolResult = this.toRecord(bookingToolCall.result);
+    if (toolResult?.success !== true && toolResult?.success !== false) return;
 
+    const bookingInfoFromTool = this.extractBookingInfoFromToolCall(bookingToolCall);
     const bookingInfo: InterviewBookingInfo = {
-      ...detection.bookingInfo,
-      candidateName: detection.bookingInfo.candidateName || contactName,
+      ...bookingInfoFromTool,
+      candidateName: bookingInfoFromTool.candidateName || contactName,
       chatId,
       userId,
       userName: contactName,
@@ -96,8 +51,77 @@ export class BookingDetectionService {
       managerName,
     };
 
+    if (toolResult.success === true) {
+      this.logger.log(`[${contactName}] 检测到预约成功工具结果，开始异步处理`);
+      this.sendFeishuNotificationAsync(bookingInfo);
+      this.updateBookingStatsAsync(bookingInfo);
+      return;
+    }
+
+    this.logger.warn(
+      `[${contactName}] 面试报名失败，开始发送飞书通知: ${this.extractFailureReason(toolResult)}`,
+    );
     this.sendFeishuNotificationAsync(bookingInfo);
-    this.updateBookingStatsAsync(bookingInfo);
+  }
+
+  private findLatestBookingToolCall(
+    toolCalls?: AgentInvokeResult['toolCalls'],
+  ): BookingToolCall | null {
+    if (!toolCalls?.length) return null;
+
+    for (let i = toolCalls.length - 1; i >= 0; i -= 1) {
+      const toolCall = toolCalls[i];
+      if (toolCall.toolName === 'duliday_interview_booking') {
+        return toolCall;
+      }
+    }
+
+    return null;
+  }
+
+  private extractBookingInfoFromToolCall(toolCall: BookingToolCall): InterviewBookingInfo {
+    const args = this.toRecord(toolCall.args) ?? {};
+    const result = this.toRecord(toolCall.result) ?? {};
+    const requestInfo = this.toRecord(result.requestInfo);
+
+    return {
+      candidateName: this.pickString(args.name, requestInfo?.name),
+      interviewTime: this.pickString(args.interviewTime, requestInfo?.interviewTime),
+      contactInfo: this.pickString(args.phone, requestInfo?.phone),
+      toolOutput: result,
+    };
+  }
+
+  private extractFailureReason(result: Record<string, unknown>): string {
+    const errorList = Array.isArray(result.errorList)
+      ? result.errorList
+          .map((item) => {
+            if (typeof item === 'string') return item.trim();
+            try {
+              return JSON.stringify(item);
+            } catch {
+              return String(item);
+            }
+          })
+          .filter(Boolean)
+          .join('；')
+      : undefined;
+
+    return this.pickString(result.error, result.message, result.notice, errorList) || '未知原因';
+  }
+
+  private toRecord(value: unknown): Record<string, unknown> | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    return value as Record<string, unknown>;
+  }
+
+  private pickString(...values: unknown[]): string | undefined {
+    for (const value of values) {
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
+    }
+    return undefined;
   }
 
   private sendFeishuNotificationAsync(bookingInfo: InterviewBookingInfo): void {

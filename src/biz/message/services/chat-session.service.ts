@@ -1,8 +1,18 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { RedisService } from '@infra/redis/redis.service';
 import { ChatMessageRepository } from '../repositories/chat-message.repository';
 import { ChatMessageInput } from '../types/message.types';
 import { formatLocalDateTime } from '@infra/utils/date.util';
 import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.repository';
+import {
+  buildChatHistoryCacheKey,
+  buildChatHistoryIndexKey,
+  type CachedChatHistoryMessage,
+  type CachedChatHistoryMessageIndex,
+  parseCachedChatHistoryMessages,
+  serializeCachedChatHistoryMessage,
+} from '../utils/chat-history-cache.util';
 
 /**
  * 聊天会话服务
@@ -15,6 +25,8 @@ export class ChatSessionService {
   constructor(
     private readonly chatMessageRepository: ChatMessageRepository,
     @Optional() private readonly monitoringRecordRepository?: MonitoringRecordRepository,
+    @Optional() private readonly redisService?: RedisService,
+    @Optional() private readonly configService?: ConfigService,
   ) {}
 
   /**
@@ -129,14 +141,30 @@ export class ChatSessionService {
    * 保存单条聊天消息
    */
   async saveMessage(message: ChatMessageInput): Promise<boolean> {
-    return this.chatMessageRepository.saveChatMessage(message);
+    const saved = await this.chatMessageRepository.saveChatMessage(message);
+    if (saved) {
+      await this.appendToShortTermCache(message).catch((error) => {
+        this.logger.warn(`短期记忆缓存写入失败 [${message.messageId}]`, error);
+      });
+    }
+    return saved;
   }
 
   /**
    * 批量保存聊天消息
    */
   async saveMessagesBatch(messages: ChatMessageInput[]): Promise<number> {
-    return this.chatMessageRepository.saveChatMessagesBatch(messages);
+    const count = await this.chatMessageRepository.saveChatMessagesBatch(messages);
+    if (count > 0) {
+      await Promise.all(
+        messages.map(async (message) => {
+          await this.appendToShortTermCache(message).catch((error) => {
+            this.logger.warn(`短期记忆缓存批量写入失败 [${message.messageId}]`, error);
+          });
+        }),
+      );
+    }
+    return count;
   }
 
   /**
@@ -145,8 +173,21 @@ export class ChatSessionService {
   async getChatHistory(
     chatId: string,
     limit: number,
+    options?: { startTimeInclusive?: number },
+  ): Promise<
+    Array<{ messageId: string; role: 'user' | 'assistant'; content: string; timestamp: number }>
+  > {
+    return this.chatMessageRepository.getChatHistory(chatId, limit, options);
+  }
+
+  /**
+   * 获取会话在指定时间边界内的消息。
+   */
+  async getChatHistoryInRange(
+    chatId: string,
+    options: { startTimeExclusive?: number; endTimeInclusive?: number },
   ): Promise<Array<{ role: 'user' | 'assistant'; content: string; timestamp: number }>> {
-    return this.chatMessageRepository.getChatHistory(chatId, limit);
+    return this.chatMessageRepository.getChatHistoryInRange(chatId, options);
   }
 
   /**
@@ -162,7 +203,13 @@ export class ChatSessionService {
    * 更新消息的 content（按 messageId）
    */
   async updateMessageContent(messageId: string, content: string): Promise<boolean> {
-    return this.chatMessageRepository.updateContentByMessageId(messageId, content);
+    const updated = await this.chatMessageRepository.updateContentByMessageId(messageId, content);
+    if (updated) {
+      await this.updateShortTermCacheContent(messageId, content).catch((error) => {
+        this.logger.warn(`短期记忆缓存内容更新失败 [${messageId}]`, error);
+      });
+    }
+    return updated;
   }
 
   // ==================== 内部工具方法 ====================
@@ -177,5 +224,89 @@ export class ChatSessionService {
     const d = dateStr ? new Date(dateStr) : new Date();
     d.setHours(23, 59, 59, 999);
     return d;
+  }
+
+  private shouldMirrorToShortTermCache(message: ChatMessageInput): boolean {
+    if (message.isRoom === true) return false;
+    if (
+      message.role !== 'assistant' &&
+      message.contactType !== undefined &&
+      message.contactType !== 1
+    ) {
+      return false;
+    }
+    return Boolean(message.chatId && message.messageId && message.content);
+  }
+
+  private async appendToShortTermCache(message: ChatMessageInput): Promise<void> {
+    if (!this.redisService || !this.shouldMirrorToShortTermCache(message)) return;
+
+    const indexKey = buildChatHistoryIndexKey(message.messageId);
+    const exists = await this.redisService.exists(indexKey);
+    if (exists > 0) return;
+
+    const listKey = buildChatHistoryCacheKey(message.chatId);
+    const cacheMessage: CachedChatHistoryMessage = {
+      chatId: message.chatId,
+      messageId: message.messageId,
+      role: message.role,
+      content: message.content,
+      timestamp: message.timestamp,
+    };
+
+    await this.redisService.rpush(listKey, serializeCachedChatHistoryMessage(cacheMessage));
+    await this.redisService.ltrim(listKey, -this.shortTermCacheMaxMessages, -1);
+    await this.redisService.expire(listKey, this.shortTermCacheTtlSeconds);
+    await this.redisService.setex(indexKey, this.shortTermCacheTtlSeconds, {
+      chatId: message.chatId,
+    } satisfies CachedChatHistoryMessageIndex);
+  }
+
+  private async updateShortTermCacheContent(messageId: string, content: string): Promise<void> {
+    if (!this.redisService) return;
+
+    const index = await this.redisService.get<CachedChatHistoryMessageIndex>(
+      buildChatHistoryIndexKey(messageId),
+    );
+    const chatId = index?.chatId;
+    if (!chatId) return;
+
+    const listKey = buildChatHistoryCacheKey(chatId);
+    const rawMessages = await this.redisService.lrange<string>(listKey, 0, -1);
+    if (rawMessages.length === 0) return;
+
+    let found = false;
+    const messages = parseCachedChatHistoryMessages(rawMessages).map((message) => {
+      if (message.messageId !== messageId) return message;
+      found = true;
+      return { ...message, content };
+    });
+
+    if (!found) return;
+
+    await this.redisService.del(listKey);
+    if (messages.length > 0) {
+      await this.redisService.rpush(
+        listKey,
+        ...messages.map((message) => serializeCachedChatHistoryMessage(message)),
+      );
+      await this.redisService.expire(listKey, this.shortTermCacheTtlSeconds);
+    }
+    await this.redisService.setex(
+      buildChatHistoryIndexKey(messageId),
+      this.shortTermCacheTtlSeconds,
+      {
+        chatId,
+      } satisfies CachedChatHistoryMessageIndex,
+    );
+  }
+
+  private get shortTermCacheMaxMessages(): number {
+    return parseInt(this.configService?.get('MAX_HISTORY_PER_CHAT', '60') ?? '60', 10);
+  }
+
+  private get shortTermCacheTtlSeconds(): number {
+    const days = parseInt(this.configService?.get('MEMORY_SESSION_TTL_DAYS', '1') ?? '1', 10);
+    return days * 24 * 60 * 60;
   }
 }

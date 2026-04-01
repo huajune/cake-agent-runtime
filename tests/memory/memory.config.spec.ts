@@ -10,9 +10,9 @@ describe('MemoryConfig', () => {
     const config = createConfig();
 
     expect(config.sessionTtl).toBe(1 * 24 * 60 * 60); // 1d = 86400s
-    expect(config.shortTermMaxMessages).toBe(60);
-    expect(config.shortTermMaxChars).toBe(8000);
-    expect(config.profileCacheTtl).toBe(2 * 60 * 60); // 2h
+    expect(config.sessionWindowMaxMessages).toBe(60);
+    expect(config.sessionWindowMaxChars).toBe(8000);
+    expect(config.longTermCacheTtl).toBe(2 * 60 * 60); // 2h
     expect(config.sessionTtlDays).toBe(1);
   });
 
@@ -26,18 +26,18 @@ describe('MemoryConfig', () => {
   it('should read MAX_HISTORY_PER_CHAT from env', () => {
     const config = createConfig({ MAX_HISTORY_PER_CHAT: '30' });
 
-    expect(config.shortTermMaxMessages).toBe(30);
+    expect(config.sessionWindowMaxMessages).toBe(30);
   });
 
   it('should read AGENT_MAX_INPUT_CHARS from env', () => {
     const config = createConfig({ AGENT_MAX_INPUT_CHARS: '16000' });
 
-    expect(config.shortTermMaxChars).toBe(16000);
+    expect(config.sessionWindowMaxChars).toBe(16000);
   });
 
-  it('should keep profileCacheTtl hardcoded at 2h', () => {
+  it('should keep longTermCacheTtl hardcoded at 2h', () => {
     const config = createConfig({ MEMORY_SESSION_TTL_DAYS: '7' });
 
-    expect(config.profileCacheTtl).toBe(7200);
+    expect(config.longTermCacheTtl).toBe(7200);
   });
 });

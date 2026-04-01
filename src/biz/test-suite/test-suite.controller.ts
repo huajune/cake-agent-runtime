@@ -115,12 +115,20 @@ export class TestSuiteController {
     );
 
     try {
-      const streamResult = await this.executionService.executeTestStreamWithMeta(testRequest);
+      const { streamResult, entryStage } =
+        await this.executionService.executeTestStreamWithMeta(testRequest);
 
-      // 包装流：在 UI Message Stream 完成后注入 token usage 自定义数据部分
-      // 前端 useChatTest.ts 的 onData 回调监听 type === 'data-tokenUsage' 来获取消耗
+      // 包装流：注入元数据（入口阶段 + token usage）
       const uiStream = createUIMessageStream({
         execute: async ({ writer }) => {
+          // 在流开始前发送入口阶段信息，前端 onData 监听 type === 'data-entryStage'
+          if (entryStage) {
+            writer.write({
+              type: 'data-entryStage',
+              data: entryStage,
+            } as UIMessageChunk);
+          }
+
           writer.merge(streamResult.toUIMessageStream({ sendReasoning: true }));
           // streamResult.usage 在流完成后 resolve，确保 data-tokenUsage 在 finish 之前发出
           const usage = await streamResult.usage;

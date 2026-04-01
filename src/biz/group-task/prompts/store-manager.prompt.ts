@@ -48,6 +48,8 @@ export function buildStoreManagerMessage(data: StoreManagerTemplateData): string
     lines.push('━━━━━━━━━━━━━━━━━━━━━━━━');
     lines.push(`姓名：${item.name}`);
     lines.push(`电话：${maskPhone(item.phone)}`);
+    lines.push(`品牌：${item.brandName}`);
+    lines.push(`门店：${item.storeName}`);
     lines.push(`面试岗位：${item.jobName}`);
     lines.push(`面试时间：${item.interviewTime}`);
   }

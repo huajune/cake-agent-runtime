@@ -26,54 +26,12 @@ describe('BookingDetectionService', () => {
     service = module.get<BookingDetectionService>(BookingDetectionService);
     jest.clearAllMocks();
 
-    mockFeishuBookingService.sendBookingNotification.mockResolvedValue(undefined);
+    mockFeishuBookingService.sendBookingNotification.mockResolvedValue(true);
     mockBookingService.incrementBookingCount.mockResolvedValue(undefined);
   });
 
   it('should be defined', () => {
     expect(service).toBeDefined();
-  });
-
-  describe('detectBookingSuccess', () => {
-    it('should detect booking success keyword "预约成功"', () => {
-      const result = service.detectBookingSuccess('好的，面试预约成功，时间为明天下午2点');
-      expect(result.detected).toBe(true);
-    });
-
-    it('should detect booking success keyword "面试预约已创建"', () => {
-      const result = service.detectBookingSuccess('面试预约已创建，请准时参加');
-      expect(result.detected).toBe(true);
-    });
-
-    it('should detect booking success keyword "booking_id"', () => {
-      const result = service.detectBookingSuccess('{"booking_id":"BK-123","status":"created"}');
-      expect(result.detected).toBe(true);
-    });
-
-    it('should return detected=false for failure keywords', () => {
-      const result = service.detectBookingSuccess('预约失败，该时间段已满');
-      expect(result.detected).toBe(false);
-    });
-
-    it('should return detected=false for regular text', () => {
-      const result = service.detectBookingSuccess('您好，请问有什么可以帮您的？');
-      expect(result.detected).toBe(false);
-    });
-
-    it('should return detected=false for undefined input', () => {
-      const result = service.detectBookingSuccess(undefined);
-      expect(result.detected).toBe(false);
-    });
-
-    it('should return detected=false for empty string', () => {
-      const result = service.detectBookingSuccess('');
-      expect(result.detected).toBe(false);
-    });
-
-    it('should prioritize failure keywords over success keywords', () => {
-      const result = service.detectBookingSuccess('预约失败，预约成功的条件不满足');
-      expect(result.detected).toBe(false);
-    });
   });
 
   describe('handleBookingSuccessAsync', () => {
@@ -88,37 +46,127 @@ describe('BookingDetectionService', () => {
     it('should do nothing when no booking detected', async () => {
       await service.handleBookingSuccessAsync({
         ...baseParams,
-        replyText: '您好，有什么可以帮您的？',
       });
 
       expect(mockFeishuBookingService.sendBookingNotification).not.toHaveBeenCalled();
       expect(mockBookingService.incrementBookingCount).not.toHaveBeenCalled();
     });
 
-    it('should do nothing when replyText is undefined', async () => {
-      await service.handleBookingSuccessAsync({ ...baseParams, replyText: undefined });
-
-      expect(mockFeishuBookingService.sendBookingNotification).not.toHaveBeenCalled();
-    });
-
-    it('should trigger async notification and stats update on detected booking', async () => {
+    it('should do nothing when no interview booking tool call exists', async () => {
       await service.handleBookingSuccessAsync({
         ...baseParams,
-        replyText: '面试预约成功，时间为明天下午2点',
+        toolCalls: [
+          {
+            toolName: 'duliday_job_list',
+            args: { cityNameList: ['上海'] },
+            result: { jobs: [] },
+          },
+        ],
+      });
+
+      expect(mockFeishuBookingService.sendBookingNotification).not.toHaveBeenCalled();
+      expect(mockBookingService.incrementBookingCount).not.toHaveBeenCalled();
+    });
+
+    it('should do nothing when interview booking tool result has no explicit success field', async () => {
+      await service.handleBookingSuccessAsync({
+        ...baseParams,
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_booking',
+            args: { name: '张三' },
+            result: { message: '处理中' },
+          },
+        ],
+      });
+
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(mockFeishuBookingService.sendBookingNotification).not.toHaveBeenCalled();
+      expect(mockBookingService.incrementBookingCount).not.toHaveBeenCalled();
+    });
+
+    it('should trigger notification and stats update from interview booking tool result', async () => {
+      await service.handleBookingSuccessAsync({
+        ...baseParams,
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_booking',
+            args: {
+              name: '张三',
+              phone: '13800138000',
+              interviewTime: '2026-04-01 14:00:00',
+            },
+            result: {
+              success: true,
+              message: '预约成功',
+              booking_id: 'BK-123',
+              requestInfo: {
+                name: '张三',
+                phone: '13800138000',
+                interviewTime: '2026-04-01 14:00:00',
+              },
+            },
+          },
+        ],
       });
 
       await new Promise((resolve) => setImmediate(resolve));
 
       expect(mockFeishuBookingService.sendBookingNotification).toHaveBeenCalledWith(
         expect.objectContaining({
+          candidateName: '张三',
+          contactInfo: '13800138000',
+          interviewTime: '2026-04-01 14:00:00',
           chatId: 'chat-123',
           userId: 'user-123',
           managerId: 'manager-123',
-          managerName: 'Bob',
-          candidateName: 'Alice',
+          toolOutput: expect.objectContaining({
+            success: true,
+            message: '预约成功',
+            booking_id: 'BK-123',
+          }),
         }),
       );
       expect(mockBookingService.incrementBookingCount).toHaveBeenCalled();
+    });
+
+    it('should send feishu notification but skip stats update when interview booking tool fails', async () => {
+      await service.handleBookingSuccessAsync({
+        ...baseParams,
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_booking',
+            args: {
+              name: '张三',
+              phone: '13800138000',
+              interviewTime: '2026-04-01 14:00:00',
+            },
+            result: {
+              success: false,
+              message: '预约失败',
+              error: '该时间段已满',
+              errorList: ['请更换时间'],
+            },
+          },
+        ],
+      });
+
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(mockFeishuBookingService.sendBookingNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          candidateName: '张三',
+          contactInfo: '13800138000',
+          interviewTime: '2026-04-01 14:00:00',
+          toolOutput: expect.objectContaining({
+            success: false,
+            message: '预约失败',
+            error: '该时间段已满',
+          }),
+        }),
+      );
+      expect(mockBookingService.incrementBookingCount).not.toHaveBeenCalled();
     });
 
     it('should handle feishu notification failure gracefully', async () => {
@@ -128,7 +176,13 @@ describe('BookingDetectionService', () => {
 
       await service.handleBookingSuccessAsync({
         ...baseParams,
-        replyText: '预约成功',
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_booking',
+            args: { name: '张三' },
+            result: { success: true, message: '预约成功' },
+          },
+        ],
       });
 
       await new Promise((resolve) => setImmediate(resolve));
@@ -141,7 +195,13 @@ describe('BookingDetectionService', () => {
 
       await service.handleBookingSuccessAsync({
         ...baseParams,
-        replyText: '预约成功',
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_booking',
+            args: { name: '张三' },
+            result: { success: true, message: '预约成功' },
+          },
+        ],
       });
 
       await new Promise((resolve) => setImmediate(resolve));

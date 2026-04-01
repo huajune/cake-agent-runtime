@@ -77,14 +77,14 @@ export interface BrandItem {
 
 /** 面试名单查询参数 */
 export interface InterviewScheduleParams {
-  /** 查询日期 YYYY-MM-DD */
-  date: string;
+  /** 面试开始时间 YYYY-MM-DD HH:mm:ss */
+  interviewStartTime: string;
+  /** 面试结束时间 YYYY-MM-DD HH:mm:ss */
+  interviewEndTime: string;
   /** 城市名称 */
   cityName?: string;
   /** 品牌名称 */
   brandName?: string;
-  /** 门店 ID */
-  storeId?: number;
   /** 页码，默认 1 */
   pageNum?: number;
   /** 每页条数，默认 100 */

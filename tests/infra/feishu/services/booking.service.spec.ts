@@ -58,6 +58,31 @@ describe('FeishuBookingService', () => {
       expect(mockWebhookService.sendMessage).toHaveBeenCalledWith('INTERVIEW_BOOKING', mockCard);
     });
 
+    it('should send failure notification with red card when tool output indicates failure', async () => {
+      const mockCard = { msg_type: 'interactive', card: {} };
+      mockWebhookService.buildCard.mockReturnValue(mockCard);
+      mockWebhookService.sendMessage.mockResolvedValue(true);
+
+      const bookingInfo = buildBookingInfo({
+        toolOutput: {
+          success: false,
+          message: '预约失败',
+          error: '该时间段已满',
+          errorList: ['请更换时间'],
+        },
+      });
+
+      const result = await service.sendBookingNotification(bookingInfo);
+
+      expect(result).toBe(true);
+      expect(mockWebhookService.buildCard).toHaveBeenCalledWith(
+        '⚠️ 面试预约失败',
+        expect.stringContaining('该时间段已满'),
+        'red',
+        expect.any(Array),
+      );
+    });
+
     it('should return false when sendMessage returns false', async () => {
       mockWebhookService.buildCard.mockReturnValue({});
       mockWebhookService.sendMessage.mockResolvedValue(false);
@@ -152,6 +177,29 @@ describe('FeishuBookingService', () => {
       const cardContent = mockWebhookService.buildCard.mock.calls[0][1] as string;
       expect(cardContent).toContain('预约成功！面试时间已确认');
       expect(cardContent).toContain('booking_12345');
+    });
+
+    it('should include failure details when tool output indicates failure', async () => {
+      mockWebhookService.buildCard.mockReturnValue({});
+      mockWebhookService.sendMessage.mockResolvedValue(true);
+
+      await service.sendBookingNotification(
+        buildBookingInfo({
+          toolOutput: {
+            success: false,
+            message: '预约失败',
+            error: '该时间段已满',
+            errorList: ['请更换时间', { code: 'FULL' }],
+          },
+        }),
+      );
+
+      const cardContent = mockWebhookService.buildCard.mock.calls[0][1] as string;
+      expect(cardContent).toContain('预约状态');
+      expect(cardContent).toContain('失败');
+      expect(cardContent).toContain('该时间段已满');
+      expect(cardContent).toContain('请更换时间');
+      expect(cardContent).toContain('FULL');
     });
 
     it('should handle missing optional fields gracefully', async () => {

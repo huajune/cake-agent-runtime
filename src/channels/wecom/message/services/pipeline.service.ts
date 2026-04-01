@@ -437,7 +437,7 @@ export class MessagePipelineService {
       userId: parsed.imContactId,
       managerId: parsed.imBotId,
       managerName: parsed.managerName,
-      replyText: agentResult.reply.content,
+      toolCalls: agentResult.toolCalls,
     });
 
     // 5. 发送回复

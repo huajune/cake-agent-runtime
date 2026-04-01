@@ -1,18 +1,19 @@
+import { lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import Layout from '@/components/Layout';
 
-// View imports - 使用 view/模块/list 目录结构
-import Dashboard from '@/view/dashboard/list';
-import Logs from '@/view/logs/list';
-import ChatRecords from '@/view/chat-records/list';
-import System from '@/view/system/list';
-import Config from '@/view/config/list';
-import Hosting from '@/view/hosting/list';
-import Users from '@/view/users/list';
-import AgentTest from '@/view/agent-test/list';
-import TestSuite from '@/view/test-suite/list';
-import Strategy from '@/view/strategy/list';
+// Route-level lazy loading keeps the initial dashboard bundle smaller.
+const Dashboard = lazy(() => import('@/view/dashboard/list'));
+const Logs = lazy(() => import('@/view/logs/list'));
+const ChatRecords = lazy(() => import('@/view/chat-records/list'));
+const System = lazy(() => import('@/view/system/list'));
+const Config = lazy(() => import('@/view/config/list'));
+const Hosting = lazy(() => import('@/view/hosting/list'));
+const Users = lazy(() => import('@/view/users/list'));
+const AgentTest = lazy(() => import('@/view/agent-test/list'));
+const TestSuite = lazy(() => import('@/view/test-suite/list'));
+const Strategy = lazy(() => import('@/view/strategy/list'));
 
 function App() {
   return (
@@ -40,20 +41,22 @@ function App() {
           },
         }}
       />
-      <Routes>
-        <Route path="/" element={<Layout />}>
-          <Route index element={<Dashboard />} />
-          <Route path="users" element={<Users />} />
-          <Route path="hosting" element={<Hosting />} />
-          <Route path="config" element={<Config />} />
-          <Route path="system" element={<System />} />
-          <Route path="logs" element={<Logs />} />
-          <Route path="chat-records" element={<ChatRecords />} />
-          <Route path="agent-test" element={<AgentTest />} />
-          <Route path="test-suite" element={<TestSuite />} />
-          <Route path="strategy" element={<Strategy />} />
-        </Route>
-      </Routes>
+      <Suspense fallback={null}>
+        <Routes>
+          <Route path="/" element={<Layout />}>
+            <Route index element={<Dashboard />} />
+            <Route path="users" element={<Users />} />
+            <Route path="hosting" element={<Hosting />} />
+            <Route path="config" element={<Config />} />
+            <Route path="system" element={<System />} />
+            <Route path="logs" element={<Logs />} />
+            <Route path="chat-records" element={<ChatRecords />} />
+            <Route path="agent-test" element={<AgentTest />} />
+            <Route path="test-suite" element={<TestSuite />} />
+            <Route path="strategy" element={<Strategy />} />
+          </Route>
+        </Routes>
+      </Suspense>
     </>
   );
 }

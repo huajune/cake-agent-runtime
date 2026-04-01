@@ -98,6 +98,30 @@ describe('SpongeService', () => {
     });
   });
 
+  describe('fetchBrandList', () => {
+    it('should cache brand list results for repeated calls', async () => {
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          code: 0,
+          data: {
+            result: [{ name: '来伊份', aliases: ['来一份'], projectIdList: [1] }],
+          },
+        }),
+      };
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValue(mockResponse as unknown as Response);
+
+      const first = await service.fetchBrandList();
+      const second = await service.fetchBrandList();
+
+      expect(first).toEqual([{ name: '来伊份', aliases: ['来一份'] }]);
+      expect(second).toEqual(first);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
   afterEach(() => {
     jest.restoreAllMocks();
   });

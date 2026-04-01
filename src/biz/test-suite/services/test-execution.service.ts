@@ -1,11 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { streamText } from 'ai';
 import { Readable } from 'stream';
 import {
   AgentRunnerService,
   type AgentInputMessage,
   type AgentRunResult,
+  type AgentStreamResult,
 } from '@agent/runner.service';
 import { TestChatRequestDto, TestChatResponse, VercelAIChatRequestDto } from '../dto/test-chat.dto';
 import { TestExecutionRepository } from '../repositories/test-execution.repository';
@@ -163,16 +163,14 @@ export class TestExecutionService {
    * 执行流式测试（旧 SSE 格式）
    */
   async executeTestStream(request: TestChatRequestDto): Promise<NodeJS.ReadableStream> {
-    const streamResult = await this.executeTestStreamWithMeta(request);
+    const { streamResult } = await this.executeTestStreamWithMeta(request);
     return Readable.fromWeb(streamResult.textStream as Parameters<typeof Readable.fromWeb>[0]);
   }
 
   /**
-   * 执行流式测试（返回 Vercel AI SDK StreamTextResult）
+   * 执行流式测试（返回 Vercel AI SDK StreamTextResult + 元数据）
    */
-  async executeTestStreamWithMeta(
-    request: TestChatRequestDto,
-  ): Promise<ReturnType<typeof streamText>> {
+  async executeTestStreamWithMeta(request: TestChatRequestDto): Promise<AgentStreamResult> {
     const scenario = request.scenario || DEFAULT_SCENARIO;
 
     if (!request.userId) {
