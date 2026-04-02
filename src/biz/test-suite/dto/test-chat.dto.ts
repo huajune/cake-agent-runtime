@@ -104,11 +104,31 @@ export class ThinkingConfigDto {
  * 用于接收 DefaultChatTransport 发送的请求
  */
 export class VercelAIChatRequestDto {
+  @ApiPropertyOptional({ description: 'AI SDK 会话 ID（传输层字段，服务端仅用于兼容）' })
+  @IsOptional()
+  @IsString()
+  id?: string;
+
   @ApiProperty({ description: '消息数组（UIMessage 格式）', type: [UIMessageDto] })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => UIMessageDto)
   messages: UIMessageDto[];
+
+  @ApiPropertyOptional({
+    description: 'AI SDK 触发类型（传输层字段，服务端仅用于兼容）',
+    example: 'submit-message',
+  })
+  @IsOptional()
+  @IsString()
+  trigger?: string;
+
+  @ApiPropertyOptional({
+    description: 'AI SDK 被重试/重生成的消息 ID（传输层字段，服务端仅用于兼容）',
+  })
+  @IsOptional()
+  @IsString()
+  messageId?: string;
 
   @ApiPropertyOptional({ description: '场景配置', default: 'candidate-consultation' })
   @IsOptional()
