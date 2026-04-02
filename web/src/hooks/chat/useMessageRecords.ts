@@ -16,7 +16,8 @@ export function useMessageStats(options?: { startDate?: string; endDate?: string
   return useQuery({
     queryKey: ['message-stats', options],
     queryFn: () => chatService.getMessageStats(options),
-    refetchInterval: 5000,
+    refetchInterval: 15000,
+    staleTime: 10000,
   });
 }
 
@@ -27,11 +28,14 @@ export function useSlowestMessages(options?: {
   startDate?: string;
   endDate?: string;
   limit?: number;
+  enabled?: boolean;
 }) {
   return useQuery({
     queryKey: ['slowest-messages', options],
     queryFn: () => chatService.getSlowestMessages(options),
-    refetchInterval: 5000,
+    enabled: options?.enabled ?? true,
+    refetchInterval: options?.enabled ? 15000 : false,
+    staleTime: 10000,
   });
 }
 
@@ -41,15 +45,18 @@ export function useSlowestMessages(options?: {
 export function useMessageProcessingRecords(options?: {
   startDate?: string;
   endDate?: string;
-  status?: 'processing' | 'success' | 'failure';
+  status?: 'processing' | 'success' | 'failure' | 'timeout';
   chatId?: string;
   userName?: string;
   limit?: number;
   offset?: number;
+  enabled?: boolean;
 }) {
   return useQuery({
     queryKey: ['message-processing-records', options],
     queryFn: () => chatService.getMessageProcessingRecords(options),
+    enabled: options?.enabled ?? true,
+    staleTime: 10000,
   });
 }
 

@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
-import TextareaAutosize from 'react-textarea-autosize';
+import { memo, useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import {
   Trash2,
   Check,
@@ -16,7 +15,7 @@ import {
 } from 'lucide-react';
 import { TestChatResponse } from '@/api/services/agent-test.service';
 import { MessagePartsAdapter } from '../MessagePartsAdapter';
-import { useChatTest, useFeedback } from '../../hooks';
+import { useChatTest, useFeedback, type AgentTestThinkingMode } from '../../hooks';
 import { FeedbackModal } from '../FeedbackModal';
 import { MetricsRow } from '../MetricsRow';
 import { FeedbackButtons } from '../FeedbackButtons';
@@ -28,6 +27,249 @@ import styles from './index.module.scss';
 interface ChatTesterProps {
   onTestComplete?: (result: TestChatResponse) => void;
 }
+
+interface ChatInputPanelProps {
+  historyText: string;
+  historyStatus: 'valid' | 'invalid' | 'empty';
+  currentInput: string;
+  imagePreviews: Array<{ id: string; file: File; dataUrl: string }>;
+  isLoading: boolean;
+  thinkingMode: AgentTestThinkingMode;
+  thinkingBudgetTokens: number;
+  setHistoryText: (text: string) => void;
+  setCurrentInput: (text: string) => void;
+  setThinkingMode: (mode: AgentTestThinkingMode) => void;
+  setThinkingBudgetTokens: (tokens: number) => void;
+  addImages: (files: FileList) => void;
+  removeImage: (id: string) => void;
+  handleTest: () => Promise<void>;
+  handleClear: () => void;
+  messageInputRef: RefObject<HTMLTextAreaElement>;
+}
+
+function extractLastUserMessage(text: string): string | undefined {
+  if (!text.trim()) return undefined;
+  const lines = text.split('\n').filter((line) => line.trim());
+
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const match = lines[i].match(/^\[[\d/]+ [\d:]+ ([^\]]+)\]\s*(.*)$/);
+    if (!match) continue;
+
+    const userName = match[1].trim();
+    if (userName !== '招募经理' && userName !== '经理') {
+      return match[2];
+    }
+  }
+
+  return undefined;
+}
+
+const ChatInputPanel = memo(function ChatInputPanel({
+  historyText,
+  historyStatus,
+  currentInput,
+  imagePreviews,
+  isLoading,
+  thinkingMode,
+  thinkingBudgetTokens,
+  setHistoryText,
+  setCurrentInput,
+  setThinkingMode,
+  setThinkingBudgetTokens,
+  addImages,
+  removeImage,
+  handleTest,
+  handleClear,
+  messageInputRef,
+}: ChatInputPanelProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className={styles.inputPanel}>
+      <div className={styles.panelHeader}>
+        <h3>
+          <FileJson size={18} /> 测试输入
+        </h3>
+        <button onClick={handleClear} className={styles.clearBtn} disabled={isLoading}>
+          <Trash2 size={14} /> 重置会话
+        </button>
+      </div>
+
+      <div className={styles.inputPanelBody}>
+        <div className={styles.modeSwitchGroup}>
+          <div className={styles.inputLabel}>
+            <span className={styles.labelText}>回复模式</span>
+            <span className={styles.labelHint}>极速更快，深度会展示完整思考过程</span>
+          </div>
+          <div className={styles.modeControls}>
+            <div className={styles.modeSegment} role="tablist" aria-label="回复模式">
+              <button
+                type="button"
+                className={`${styles.modeOption} ${thinkingMode === 'fast' ? styles.modeOptionActive : ''}`}
+                onClick={() => setThinkingMode('fast')}
+                disabled={isLoading}
+              >
+                <Clock size={14} /> 极速
+              </button>
+              <button
+                type="button"
+                className={`${styles.modeOption} ${thinkingMode === 'deep' ? styles.modeOptionActive : ''}`}
+                onClick={() => setThinkingMode('deep')}
+                disabled={isLoading}
+              >
+                <Sparkles size={14} /> 深度思考
+              </button>
+            </div>
+            {thinkingMode === 'deep' && (
+              <label className={styles.budgetField}>
+                <span className={styles.budgetLabel}>预算</span>
+                <div className={styles.budgetInputWrap}>
+                  <input
+                    type="number"
+                    min={500}
+                    max={20000}
+                    step={500}
+                    value={thinkingBudgetTokens}
+                    disabled={isLoading}
+                    className={styles.budgetInput}
+                    onChange={(e) => {
+                      const nextValue = Number(e.target.value);
+                      if (!Number.isFinite(nextValue)) return;
+                      setThinkingBudgetTokens(nextValue);
+                    }}
+                  />
+                  <span className={styles.budgetSuffix}>tokens</span>
+                </div>
+              </label>
+            )}
+          </div>
+        </div>
+
+        <div className={styles.inputGroup}>
+          <div className={styles.inputLabel}>
+            <span className={styles.labelText}>历史聊天记录</span>
+            <span className={styles.labelHint}>可选，多轮对话自动回填</span>
+            {historyStatus === 'invalid' && (
+              <span className={styles.statusInvalid}>
+                <AlertTriangle size={12} /> 格式有误
+              </span>
+            )}
+            {historyStatus === 'valid' && (
+              <span className={styles.statusValid}>
+                <Check size={12} /> 格式正确
+              </span>
+            )}
+          </div>
+          <div className={styles.historyInputWrapper}>
+            <textarea
+              value={historyText}
+              onChange={(e) => setHistoryText(e.target.value)}
+              placeholder={HISTORY_PLACEHOLDER}
+              disabled={isLoading}
+              className={`${styles.historyInput} ${historyStatus === 'invalid' ? styles.inputError : ''}`}
+              rows={23}
+            />
+            <div className={styles.candidateSelectorOverlay}>
+              <CandidateSelector onSelectHistory={setHistoryText} />
+            </div>
+          </div>
+        </div>
+
+        <div className={styles.inputGroup}>
+          <div className={styles.inputLabel}>
+            <span className={styles.labelText}>当前用户消息</span>
+            <span className={styles.labelRequired}>*</span>
+          </div>
+          <div className={styles.messageInputWrapper}>
+            <textarea
+              ref={messageInputRef}
+              value={currentInput}
+              onChange={(e) => setCurrentInput(e.target.value)}
+              placeholder="输入要测试的用户消息..."
+              disabled={isLoading}
+              className={styles.messageInput}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  void handleTest();
+                }
+              }}
+              onPaste={(e) => {
+                const items = e.clipboardData?.items;
+                if (!items) return;
+
+                const imageFiles: File[] = [];
+                for (const item of Array.from(items)) {
+                  if (!item.type.startsWith('image/')) continue;
+                  const file = item.getAsFile();
+                  if (file) imageFiles.push(file);
+                }
+
+                if (imageFiles.length > 0) {
+                  e.preventDefault();
+                  const dt = new DataTransfer();
+                  imageFiles.forEach((file) => dt.items.add(file));
+                  addImages(dt.files);
+                }
+              }}
+            />
+            <div className={styles.messageInputActions}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                hidden
+                onChange={(e) => {
+                  if (e.target.files?.length) {
+                    addImages(e.target.files);
+                    e.target.value = '';
+                  }
+                }}
+              />
+              <button
+                className={styles.imageUploadBtn}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoading}
+                title="上传图片"
+              >
+                <ImagePlus size={16} />
+              </button>
+              <button
+                className={styles.sendIconBtn}
+                onClick={() => void handleTest()}
+                disabled={isLoading || (!currentInput.trim() && imagePreviews.length === 0)}
+              >
+                <Send size={16} />
+              </button>
+            </div>
+          </div>
+
+          {imagePreviews.length > 0 && (
+            <div className={styles.imagePreviews}>
+              {imagePreviews.map((img) => (
+                <div key={img.id} className={styles.imagePreviewItem}>
+                  <img src={img.dataUrl} alt={img.file.name} />
+                  <button
+                    className={styles.imageRemoveBtn}
+                    onClick={() => removeImage(img.id)}
+                    disabled={isLoading}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className={styles.inputHint}>
+            按 <kbd>⌘</kbd> + <kbd>Enter</kbd> 快速发送，支持粘贴图片和纯图片测试
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
 
 export default function ChatTester({ onTestComplete }: ChatTesterProps) {
   // 使用聊天测试 Hook
@@ -43,17 +285,19 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
     imagePreviews,
     addImages,
     removeImage,
+    thinkingMode,
+    thinkingBudgetTokens,
     setHistoryText,
     setCurrentInput,
     setLocalError,
+    setThinkingMode,
+    setThinkingBudgetTokens,
     handleTest,
     handleCancel,
     handleClear: handleChatClear,
     messageInputRef,
     replyContentRef,
   } = useChatTest({ onTestComplete });
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 使用反馈 Hook
   const feedback = useFeedback({
@@ -71,179 +315,39 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
   }, [feedback.successType]);
 
   // 清空（包括反馈状态）
-  const handleClear = () => {
+  const handleClear = useCallback(() => {
     handleChatClear();
     feedback.clearSuccess();
-  };
-
-  // 提取最后一条用户消息
-  const extractLastUserMessage = (text: string): string | undefined => {
-    if (!text.trim()) return undefined;
-    const lines = text.split('\n').filter((l) => l.trim());
-    // 从后往前找用户消息（格式: [日期时间 候选人] 消息内容）
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i];
-      const match = line.match(/^\[[\d/]+ [\d:]+ ([^\]]+)\]\s*(.*)$/);
-      if (match) {
-        const userName = match[1].trim();
-        // 招募经理是 AI 回复，其他都视为用户消息
-        if (userName !== '招募经理' && userName !== '经理') {
-          return match[2];
-        }
-      }
-    }
-    return undefined;
-  };
+  }, [feedback.clearSuccess, handleChatClear]);
 
   // 提交反馈
-  const handleSubmitFeedback = () => {
+  const handleSubmitFeedback = useCallback(() => {
     const userMessage = extractLastUserMessage(historyText);
-    feedback.submit(historyText, userMessage);
-  };
+    void feedback.submit(historyText, userMessage);
+  }, [feedback.submit, historyText]);
 
   return (
     <div className={styles.chatTester}>
       {/* 主内容区：左右分栏 */}
       <div className={styles.mainContent}>
-        {/* 左侧：输入区域 */}
-        <div className={styles.inputPanel}>
-          <div className={styles.panelHeader}>
-            <h3>
-              <FileJson size={18} /> 测试输入
-            </h3>
-            <button onClick={handleClear} className={styles.clearBtn} disabled={isLoading}>
-              <Trash2 size={14} /> 重置会话
-            </button>
-          </div>
-
-          {/* 可滚动的输入区域 */}
-          <div className={styles.inputPanelBody}>
-            {/* 历史记录输入 */}
-            <div className={styles.inputGroup}>
-              <div className={styles.inputLabel}>
-                <span className={styles.labelText}>历史聊天记录</span>
-                <span className={styles.labelHint}>可选，多轮对话自动回填</span>
-                {historyStatus === 'invalid' && (
-                  <span className={styles.statusInvalid}>
-                    <AlertTriangle size={12} /> 格式有误
-                  </span>
-                )}
-                {historyStatus === 'valid' && (
-                  <span className={styles.statusValid}>
-                    <Check size={12} /> 格式正确
-                  </span>
-                )}
-              </div>
-              <div className={styles.historyInputWrapper}>
-                <TextareaAutosize
-                  value={historyText}
-                  onChange={(e) => setHistoryText(e.target.value)}
-                  placeholder={HISTORY_PLACEHOLDER}
-                  disabled={isLoading}
-                  className={`${styles.historyInput} ${historyStatus === 'invalid' ? styles.inputError : ''}`}
-                  minRows={6}
-                  maxRows={15}
-                />
-                <div className={styles.candidateSelectorOverlay}>
-                  <CandidateSelector onSelectHistory={setHistoryText} />
-                </div>
-              </div>
-            </div>
-
-            {/* 当前消息输入 */}
-            <div className={styles.inputGroup}>
-              <div className={styles.inputLabel}>
-                <span className={styles.labelText}>当前用户消息</span>
-                <span className={styles.labelRequired}>*</span>
-              </div>
-              <div className={styles.messageInputWrapper}>
-                <textarea
-                  ref={messageInputRef}
-                  value={currentInput}
-                  onChange={(e) => setCurrentInput(e.target.value)}
-                  placeholder="输入要测试的用户消息..."
-                  disabled={isLoading}
-                  className={styles.messageInput}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                      e.preventDefault();
-                      handleTest();
-                    }
-                  }}
-                  onPaste={(e) => {
-                    const items = e.clipboardData?.items;
-                    if (!items) return;
-                    const imageFiles: File[] = [];
-                    for (const item of Array.from(items)) {
-                      if (item.type.startsWith('image/')) {
-                        const file = item.getAsFile();
-                        if (file) imageFiles.push(file);
-                      }
-                    }
-                    if (imageFiles.length > 0) {
-                      e.preventDefault();
-                      const dt = new DataTransfer();
-                      imageFiles.forEach((f) => dt.items.add(f));
-                      addImages(dt.files);
-                    }
-                  }}
-                />
-                <div className={styles.messageInputActions}>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    hidden
-                    onChange={(e) => {
-                      if (e.target.files?.length) {
-                        addImages(e.target.files);
-                        e.target.value = '';
-                      }
-                    }}
-                  />
-                  <button
-                    className={styles.imageUploadBtn}
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isLoading}
-                    title="上传图片"
-                  >
-                    <ImagePlus size={16} />
-                  </button>
-                  <button
-                    className={styles.sendIconBtn}
-                    onClick={() => handleTest()}
-                    disabled={isLoading || (!currentInput.trim() && imagePreviews.length === 0)}
-                  >
-                    <Send size={16} />
-                  </button>
-                </div>
-              </div>
-
-              {/* 图片预览 */}
-              {imagePreviews.length > 0 && (
-                <div className={styles.imagePreviews}>
-                  {imagePreviews.map((img) => (
-                    <div key={img.id} className={styles.imagePreviewItem}>
-                      <img src={img.dataUrl} alt={img.file.name} />
-                      <button
-                        className={styles.imageRemoveBtn}
-                        onClick={() => removeImage(img.id)}
-                        disabled={isLoading}
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className={styles.inputHint}>
-                按 <kbd>⌘</kbd> + <kbd>Enter</kbd> 快速发送，支持粘贴图片和纯图片测试
-              </div>
-            </div>
-          </div>
-        </div>
+        <ChatInputPanel
+          historyText={historyText}
+          historyStatus={historyStatus}
+          currentInput={currentInput}
+          imagePreviews={imagePreviews}
+          isLoading={isLoading}
+          thinkingMode={thinkingMode}
+          thinkingBudgetTokens={thinkingBudgetTokens}
+          setHistoryText={setHistoryText}
+          setCurrentInput={setCurrentInput}
+          setThinkingMode={setThinkingMode}
+          setThinkingBudgetTokens={setThinkingBudgetTokens}
+          addImages={addImages}
+          removeImage={removeImage}
+          handleTest={handleTest}
+          handleClear={handleClear}
+          messageInputRef={messageInputRef}
+        />
 
         {/* 右侧：结果区域 */}
         <div className={styles.resultPanel}>

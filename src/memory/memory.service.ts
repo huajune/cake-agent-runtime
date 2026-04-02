@@ -27,8 +27,11 @@ export class MemoryService {
     userId: string,
     sessionId: string,
     currentMessages?: MemoryTurnStartMessage[],
+    options?: {
+      includeShortTerm?: boolean;
+    },
   ): Promise<AgentMemoryContext> {
-    return await this.lifecycle.onTurnStart(corpId, userId, sessionId, currentMessages);
+    return await this.lifecycle.onTurnStart(corpId, userId, sessionId, currentMessages, options);
   }
 
   /** 回合结束时触发记忆收尾。 */

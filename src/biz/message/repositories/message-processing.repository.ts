@@ -61,9 +61,37 @@ export class MessageProcessingRepository extends BaseRepository {
     }
 
     try {
-      const results = await this.select<MessageProcessingDbRecord>('*', (q) => {
+      const selectedColumns = [
+        'message_id',
+        'chat_id',
+        'user_id',
+        'user_name',
+        'manager_name',
+        'received_at',
+        'message_preview',
+        'reply_preview',
+        'reply_segments',
+        'status',
+        'error',
+        'scenario',
+        'total_duration',
+        'queue_duration',
+        'prep_duration',
+        'ai_duration',
+        'ttft_ms:agent_invocation->response->timings->durations->>requestToFirstTextDeltaMs',
+        'send_duration',
+        'tools',
+        'token_usage',
+        'is_fallback',
+        'fallback_success',
+        'batch_id',
+        'is_primary',
+      ].join(',');
+
+      const results = await this.select<MessageProcessingDbRecord>(selectedColumns, (q) => {
         let r = q
           .eq('status', 'success')
+          .or('is_primary.eq.true,and(batch_id.is.null,is_primary.is.null)')
           .gt('ai_duration', 0)
           .order('ai_duration', { ascending: false })
           .limit(limit);
@@ -87,7 +115,7 @@ export class MessageProcessingRepository extends BaseRepository {
     endTime?: number;
     startDate?: Date;
     endDate?: Date;
-    status?: 'processing' | 'success' | 'failure';
+    status?: 'processing' | 'success' | 'failure' | 'timeout';
     chatId?: string;
     userName?: string;
     limit?: number;
@@ -101,6 +129,33 @@ export class MessageProcessingRepository extends BaseRepository {
     }
 
     try {
+      const selectedColumns = [
+        'message_id',
+        'chat_id',
+        'user_id',
+        'user_name',
+        'manager_name',
+        'received_at',
+        'message_preview',
+        'reply_preview',
+        'reply_segments',
+        'status',
+        'error',
+        'scenario',
+        'total_duration',
+        'queue_duration',
+        'prep_duration',
+        'ai_duration',
+        'ttft_ms:agent_invocation->response->timings->durations->>requestToFirstTextDeltaMs',
+        'send_duration',
+        'tools',
+        'token_usage',
+        'is_fallback',
+        'fallback_success',
+        'batch_id',
+        'is_primary',
+      ].join(',');
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const buildModifier = (q: any) => {
         let r = q.order('received_at', { ascending: false });
@@ -119,7 +174,7 @@ export class MessageProcessingRepository extends BaseRepository {
         return r;
       };
 
-      const results = await this.select<MessageProcessingDbRecord>('*', buildModifier);
+      const results = await this.select<MessageProcessingDbRecord>(selectedColumns, buildModifier);
       const total = await this.count(buildModifier);
 
       return {
@@ -164,7 +219,7 @@ export class MessageProcessingRepository extends BaseRepository {
 
   /**
    * 获取消息统计（数据库级聚合）
-   * 只统计主消息（is_primary=true 或 is_primary=null 的旧数据）
+   * 这里统计消息级事实，不做 primary 过滤。
    */
   async getMessageStats(
     startTime: number,
@@ -175,35 +230,29 @@ export class MessageProcessingRepository extends BaseRepository {
     }
 
     try {
-      const startDate = new Date(startTime).toISOString();
-      const endDate = new Date(endTime).toISOString();
+      const result = await this.rpc<
+        Array<{
+          total_messages: string | number;
+          success_count: string | number;
+          failure_count: string | number;
+          avg_duration: string | number;
+        }>
+      >('get_dashboard_overview_stats', {
+        p_start_date: new Date(startTime).toISOString(),
+        p_end_date: new Date(endTime).toISOString(),
+      });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const buildPrimaryFilter = (q: any) =>
-        q
-          .gte('received_at', startDate)
-          .lt('received_at', endDate)
-          .or('is_primary.eq.true,is_primary.is.null');
+      const row = result?.[0];
+      if (!row) {
+        return { total: 0, success: 0, failed: 0, avgDuration: 0 };
+      }
 
-      const [total, success, failed, avgDurationRecords] = await Promise.all([
-        this.count(buildPrimaryFilter),
-        this.count((q) => buildPrimaryFilter(q).eq('status', 'success')),
-        this.count((q) => buildPrimaryFilter(q).in('status', ['failure', 'failed'])),
-        this.select<{ ai_duration: number }>('ai_duration', (q) =>
-          buildPrimaryFilter(q).eq('status', 'success').gt('ai_duration', 0).limit(1000),
-        ),
-      ]);
-
-      const durations = avgDurationRecords
-        .map((r) => r.ai_duration)
-        .filter((d) => d !== null && d !== undefined && d > 0);
-
-      const avgDuration =
-        durations.length > 0
-          ? Math.round(durations.reduce((sum, d) => sum + d, 0) / durations.length)
-          : 0;
-
-      return { total, success, failed, avgDuration };
+      return {
+        total: Number(row.total_messages) || 0,
+        success: Number(row.success_count) || 0,
+        failed: Number(row.failure_count) || 0,
+        avgDuration: Math.round(Number(row.avg_duration) || 0),
+      };
     } catch (error) {
       this.logger.error('获取消息统计失败:', error);
       return { total: 0, success: 0, failed: 0, avgDuration: 0 };
@@ -344,6 +393,9 @@ export class MessageProcessingRepository extends BaseRepository {
         'token_usage',
         'is_fallback',
         'fallback_success',
+        'agent_invocation',
+        'batch_id',
+        'is_primary',
       ].join(',');
 
       const results = await this.select<MessageProcessingDbRecord>(selectedColumns, (q) =>
@@ -497,6 +549,8 @@ export class MessageProcessingRepository extends BaseRepository {
    * 从数据库记录格式转换
    */
   private fromDbRecord(record: MessageProcessingDbRecord): MessageProcessingRecordInput {
+    const ttftMs = this.extractTtftMs(record);
+
     return {
       messageId: record.message_id,
       chatId: record.chat_id,
@@ -507,7 +561,7 @@ export class MessageProcessingRepository extends BaseRepository {
       messagePreview: record.message_preview,
       replyPreview: record.reply_preview,
       replySegments: record.reply_segments,
-      status: record.status as 'processing' | 'success' | 'failure',
+      status: record.status as 'processing' | 'success' | 'failure' | 'timeout',
       error: record.error,
       scenario: record.scenario,
       totalDuration: record.total_duration,
@@ -516,6 +570,7 @@ export class MessageProcessingRepository extends BaseRepository {
       aiStartAt: record.ai_start_at,
       aiEndAt: record.ai_end_at,
       aiDuration: record.ai_duration,
+      ttftMs,
       sendDuration: record.send_duration,
       tools: record.tools,
       tokenUsage: record.token_usage,
@@ -525,5 +580,35 @@ export class MessageProcessingRepository extends BaseRepository {
       batchId: record.batch_id,
       isPrimary: record.is_primary,
     };
+  }
+
+  private extractTtftMs(record: MessageProcessingDbRecord): number | undefined {
+    const fromProjection = this.parseNumber(record.ttft_ms);
+    if (fromProjection !== undefined) return fromProjection;
+
+    const agentInvocation = record.agent_invocation as
+      | {
+          response?: {
+            timings?: {
+              durations?: {
+                requestToFirstTextDeltaMs?: unknown;
+              };
+            };
+          };
+        }
+      | undefined;
+
+    return this.parseNumber(
+      agentInvocation?.response?.timings?.durations?.requestToFirstTextDeltaMs,
+    );
+  }
+
+  private parseNumber(value: unknown): number | undefined {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim()) {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    }
+    return undefined;
   }
 }

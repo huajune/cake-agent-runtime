@@ -31,6 +31,14 @@
   }
 }
 
+.cardTitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: $text-primary;
+  margin-bottom: 8px;
+  letter-spacing: 0.02em;
+}
+
 .statLabel {
   font-size: 12px;
   color: $text-muted;
@@ -54,6 +62,72 @@
   &.compact {
     font-size: 18px;
   }
+}
+
+.monoText {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  font-size: 11px;
+}
+
+.identityGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.identityCard {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(241, 245, 249, 0.92) 100%);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.identityLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: $text-muted;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.identityValue {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  font-size: 12px;
+  color: $text-primary;
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+.factGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.factCard {
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.factLabel {
+  font-size: 11px;
+  color: $text-muted;
+  margin-bottom: 4px;
+}
+
+.factValue {
+  font-size: 12px;
+  font-weight: 600;
+  color: $text-primary;
+  line-height: 1.5;
+  word-break: break-word;
 }
 
 .statBreakdown {
@@ -145,27 +219,54 @@
 .toolSection {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-top: 10px;
+  gap: 10px;
+  margin-top: 4px;
 }
 
-.toolSectionHeader {
-  font-size: 11px;
-  margin-bottom: 6px;
-  font-weight: 500;
+.toolRow {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid $border;
+  background: rgba(255, 255, 255, 0.92);
+}
 
-  &.used {
+.toolHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.toolName {
+  font-size: 12px;
+  font-weight: 600;
+  color: $text-primary;
+  word-break: break-all;
+}
+
+.toolStatus {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+
+  &.success {
+    background: rgba(16, 185, 129, 0.12);
     color: $success;
   }
 
-  &.skipped {
+  &.failed {
+    background: rgba(239, 68, 68, 0.12);
+    color: $danger;
+  }
+
+  &.pending {
+    background: rgba(148, 163, 184, 0.16);
     color: $text-muted;
   }
-}
-
-.skippedSection {
-  padding-top: 10px;
-  border-top: 1px dashed $border;
 }
 
 // 请求参数字段指示器

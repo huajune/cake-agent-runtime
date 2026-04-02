@@ -11,15 +11,26 @@ import { OrderGrabStrategy } from '@biz/group-task/strategies/order-grab.strateg
 import { PartTimeJobStrategy } from '@biz/group-task/strategies/part-time-job.strategy';
 import { StoreManagerStrategy } from '@biz/group-task/strategies/store-manager.strategy';
 import { WorkTipsStrategy } from '@biz/group-task/strategies/work-tips.strategy';
-import { GroupTaskType, DEFAULT_GROUP_TASK_CONFIG } from '@biz/group-task/group-task.types';
+import {
+  GroupTaskType,
+  DEFAULT_GROUP_TASK_CONFIG,
+  TimeSlot,
+} from '@biz/group-task/group-task.types';
 import { NotificationStrategy } from '@biz/group-task/strategies/notification.strategy';
+import { Environment } from '@enums/environment.enum';
 
 describe('GroupTaskSchedulerService', () => {
   let service: GroupTaskSchedulerService;
+  let configService: jest.Mocked<ConfigService>;
   let systemConfigService: jest.Mocked<SystemConfigService>;
   let notificationSenderService: jest.Mocked<NotificationSenderService>;
   let groupResolverService: jest.Mocked<GroupResolverService>;
+  let orderGrabStrategy: OrderGrabStrategy;
+  let partTimeJobStrategy: PartTimeJobStrategy;
+  let storeManagerStrategy: StoreManagerStrategy;
+  let workTipsStrategy: WorkTipsStrategy;
   let redisClient: { set: jest.Mock; eval: jest.Mock };
+  let currentNodeEnv: Environment;
 
   const mockStrategy: NotificationStrategy = {
     type: GroupTaskType.ORDER_GRAB,
@@ -30,6 +41,8 @@ describe('GroupTaskSchedulerService', () => {
   } as unknown as NotificationStrategy;
 
   beforeEach(async () => {
+    currentNodeEnv = Environment.Test;
+
     redisClient = {
       set: jest.fn().mockResolvedValue('OK'),
       eval: jest.fn().mockResolvedValue(1),
@@ -43,6 +56,7 @@ describe('GroupTaskSchedulerService', () => {
           useValue: {
             get: jest.fn((key: string, defaultValue?: string) => {
               if (key === 'GROUP_TASK_SEND_DELAY_MS') return '0';
+              if (key === 'NODE_ENV') return currentNodeEnv;
               return defaultValue ?? '';
             }),
           } as unknown as ConfigService,
@@ -125,6 +139,7 @@ describe('GroupTaskSchedulerService', () => {
     }).compile();
 
     service = module.get<GroupTaskSchedulerService>(GroupTaskSchedulerService);
+    configService = module.get(ConfigService) as jest.Mocked<ConfigService>;
     systemConfigService = module.get(
       SystemConfigService,
     ) as jest.Mocked<SystemConfigService>;
@@ -134,6 +149,10 @@ describe('GroupTaskSchedulerService', () => {
     groupResolverService = module.get(
       GroupResolverService,
     ) as jest.Mocked<GroupResolverService>;
+    orderGrabStrategy = module.get(OrderGrabStrategy);
+    partTimeJobStrategy = module.get(PartTimeJobStrategy);
+    storeManagerStrategy = module.get(StoreManagerStrategy);
+    workTipsStrategy = module.get(WorkTipsStrategy);
   });
 
   it('should be defined', () => {
@@ -355,6 +374,77 @@ describe('GroupTaskSchedulerService', () => {
         ['group-task:lock:order_grab'],
         [expect.any(String)],
       );
+    });
+  });
+
+  describe('cron environment guard', () => {
+    const mockTaskResult = {
+      type: GroupTaskType.ORDER_GRAB,
+      totalGroups: 0,
+      successCount: 0,
+      failedCount: 0,
+      skippedCount: 0,
+      errors: [],
+      details: [],
+      startTime: new Date('2026-04-02T00:00:00.000Z'),
+      endTime: new Date('2026-04-02T00:00:00.000Z'),
+    };
+    const cronMethodNames = [
+      'cronOrderGrabMorning',
+      'cronOrderGrabAfternoon',
+      'cronPartTimeJob',
+      'cronOrderGrabEvening',
+      'cronStoreManager',
+      'cronWorkTips',
+    ] as const;
+    const cronCases = [
+      {
+        methodName: 'cronOrderGrabMorning' as const,
+        getExpectedArgs: () => [orderGrabStrategy, { timeSlot: TimeSlot.MORNING }] as const,
+      },
+      {
+        methodName: 'cronOrderGrabAfternoon' as const,
+        getExpectedArgs: () => [orderGrabStrategy, { timeSlot: TimeSlot.AFTERNOON }] as const,
+      },
+      {
+        methodName: 'cronPartTimeJob' as const,
+        getExpectedArgs: () => [partTimeJobStrategy] as const,
+      },
+      {
+        methodName: 'cronOrderGrabEvening' as const,
+        getExpectedArgs: () => [orderGrabStrategy, { timeSlot: TimeSlot.EVENING }] as const,
+      },
+      {
+        methodName: 'cronStoreManager' as const,
+        getExpectedArgs: () => [storeManagerStrategy] as const,
+      },
+      {
+        methodName: 'cronWorkTips' as const,
+        getExpectedArgs: () => [workTipsStrategy] as const,
+      },
+    ] as const;
+
+    it.each(cronMethodNames)('should skip %s outside production', async (methodName) => {
+      currentNodeEnv = Environment.Test;
+      const executeTaskSpy = jest
+        .spyOn(service, 'executeTask')
+        .mockResolvedValue(mockTaskResult);
+
+      await service[methodName]();
+
+      expect(configService.get).toHaveBeenCalledWith('NODE_ENV', Environment.Development);
+      expect(executeTaskSpy).not.toHaveBeenCalled();
+    });
+
+    it.each(cronCases)('should run $methodName in production', async ({ methodName, getExpectedArgs }) => {
+      currentNodeEnv = Environment.Production;
+      const executeTaskSpy = jest
+        .spyOn(service, 'executeTask')
+        .mockResolvedValue(mockTaskResult);
+
+      await service[methodName]();
+
+      expect(executeTaskSpy).toHaveBeenCalledWith(...getExpectedArgs());
     });
   });
 });

@@ -2,6 +2,22 @@ import { formatDateTime, formatDuration } from '@/utils/format';
 import type { MessageRecord } from '@/api/types/chat.types';
 import styles from './index.module.scss';
 
+function getStatusLabel(status: MessageRecord['status']): string {
+  switch (status) {
+    case 'success':
+      return '成功';
+    case 'failure':
+    case 'failed':
+      return '失败';
+    case 'timeout':
+      return '超时';
+    case 'processing':
+      return '处理中';
+    default:
+      return String(status);
+  }
+}
+
 interface LogsTableProps {
   data: MessageRecord[];
   loading?: boolean;
@@ -12,15 +28,16 @@ interface LogsTableProps {
 export default function LogsTable({ data, loading, onRowClick, variant }: LogsTableProps) {
   const tableHeaders = (
     <tr>
-      <th>时间</th>
-      <th>用户</th>
-      <th>用户消息</th>
-      <th>回复预览</th>
-      <th>回复条数</th>
-      <th>Token</th>
-      <th>{variant === 'slowest' ? '首条响应 ↓' : '首条响应'}</th>
-      <th>总耗时</th>
-      <th>状态</th>
+      <th>接收时间</th>
+      <th>会话主体</th>
+      <th>输入摘要</th>
+      <th>响应摘要</th>
+      <th>下发分段</th>
+      <th>总 Token</th>
+      <th>TTFT</th>
+      <th>{variant === 'slowest' ? 'LLM Runtime ↓' : 'LLM Runtime'}</th>
+      <th>E2E 时延</th>
+      <th>处理状态</th>
     </tr>
   );
 
@@ -32,7 +49,7 @@ export default function LogsTable({ data, loading, onRowClick, variant }: LogsTa
             <thead>{tableHeaders}</thead>
             <tbody>
               <tr>
-                <td colSpan={9} className={styles.loading}>
+                <td colSpan={10} className={styles.loading}>
                   加载中...
                 </td>
               </tr>
@@ -51,7 +68,7 @@ export default function LogsTable({ data, loading, onRowClick, variant }: LogsTa
             <thead>{tableHeaders}</thead>
             <tbody>
               <tr>
-                <td colSpan={9} className={styles.loading}>
+                <td colSpan={10} className={styles.loading}>
                   <div className={styles.emptyStateContainer}>
                     <div className={styles.emptyIconWrapper}>
                       <svg width="64" height="64" viewBox="0 0 64 64" fill="none" className={styles.emptyIcon}>
@@ -97,6 +114,9 @@ export default function LogsTable({ data, loading, onRowClick, variant }: LogsTa
                 <td className={styles.cellMono}>
                   {record.tokenUsage?.toLocaleString() || '-'}
                 </td>
+                <td className={styles.cellMono}>
+                  {record.ttftMs !== undefined ? formatDuration(record.ttftMs) : '-'}
+                </td>
                 <td className={variant === 'slowest' ? styles.cellHighlight : undefined}>
                   {record.aiDuration !== undefined ? formatDuration(record.aiDuration) : '-'}
                 </td>
@@ -106,12 +126,14 @@ export default function LogsTable({ data, loading, onRowClick, variant }: LogsTa
                     <span
                       className={`status-badge ${record.status === 'success'
                         ? 'success'
-                        : record.status === 'failure' || record.status === 'failed'
+                        : record.status === 'failure' ||
+                            record.status === 'failed' ||
+                            record.status === 'timeout'
                           ? 'danger'
-                          : 'warning'
+                        : 'warning'
                         }`}
                     >
-                      {record.status}
+                      {getStatusLabel(record.status)}
                     </span>
                     {record.isFallback && (
                       <span

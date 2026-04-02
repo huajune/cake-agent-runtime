@@ -71,6 +71,7 @@ export default function Logs() {
     userName: searchUserName || undefined,
     limit: PAGE_SIZE,
     offset: (page - 1) * PAGE_SIZE,
+    enabled: activeTab === 'realtime',
   });
 
   // 当拉取到新数据时，累加到列表中
@@ -98,6 +99,7 @@ export default function Logs() {
     startDate: dateRange.startDate,
     endDate: dateRange.endDate,
     limit: 10,
+    enabled: activeTab === 'slowest',
   });
 
   // 根据 Tab 切换数据源
@@ -177,4 +179,3 @@ export default function Logs() {
     </div>
   );
 }
-

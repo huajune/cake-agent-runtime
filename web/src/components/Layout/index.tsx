@@ -1,9 +1,63 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Suspense, useState, useEffect, useCallback, useRef } from 'react';
+import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from '@/components/Sidebar';
+import {
+  ALL_ROUTE_PATHS,
+  preloadRouteChunks,
+  type AppRoutePath,
+} from '@/routes/lazy-pages';
+import { markRouteNavigationComplete } from '@/utils/perf';
+
+function RouteContentFallback() {
+  return (
+    <div
+      style={{
+        minHeight: 'calc(100vh - 140px)',
+        display: 'grid',
+        gap: '20px',
+        alignContent: 'start',
+      }}
+    >
+      <div
+        style={{
+          height: '120px',
+          borderRadius: '24px',
+          border: '1px solid rgba(148, 163, 184, 0.16)',
+          background:
+            'linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(248,250,252,0.92) 100%)',
+          boxShadow: '0 12px 32px rgba(15, 23, 42, 0.06)',
+        }}
+      />
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: '20px',
+        }}
+      >
+        {Array.from({ length: 3 }).map((_, index) => (
+          <div
+            key={index}
+            style={{
+              height: '180px',
+              borderRadius: '24px',
+              border: '1px solid rgba(148, 163, 184, 0.16)',
+              background:
+                'linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(248,250,252,0.92) 100%)',
+              boxShadow: '0 12px 32px rgba(15, 23, 42, 0.06)',
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function Layout() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const location = useLocation();
+  const disableAmbientAnimations = location.pathname.startsWith('/agent-test');
+  const hasScheduledRouteWarmup = useRef(false);
 
   const toggleSidebar = useCallback(() => {
     setIsSidebarCollapsed((prev) => !prev);
@@ -22,18 +76,64 @@ export default function Layout() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [toggleSidebar]);
 
+  useEffect(() => {
+    markRouteNavigationComplete(location.pathname);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (hasScheduledRouteWarmup.current) return;
+    hasScheduledRouteWarmup.current = true;
+
+    const currentPath = ALL_ROUTE_PATHS.includes(location.pathname as AppRoutePath)
+      ? (location.pathname as AppRoutePath)
+      : null;
+    const pathsToWarm = currentPath
+      ? ALL_ROUTE_PATHS.filter((path) => path !== currentPath)
+      : ALL_ROUTE_PATHS;
+
+    let cancelled = false;
+    const warmRoutes = async () => {
+      if (cancelled) return;
+      await preloadRouteChunks(pathsToWarm);
+    };
+
+    const globalWindow = window;
+
+    if (typeof globalWindow.requestIdleCallback === 'function') {
+      const idleId = globalWindow.requestIdleCallback(() => {
+        void warmRoutes();
+      }, { timeout: 1500 });
+
+      return () => {
+        cancelled = true;
+        globalWindow.cancelIdleCallback(idleId);
+      };
+    }
+
+    const timer = globalThis.setTimeout(() => {
+      void warmRoutes();
+    }, 1200);
+
+    return () => {
+      cancelled = true;
+      globalThis.clearTimeout(timer);
+    };
+  }, [location.pathname]);
+
   return (
     <>
-      {/* 柔和背景动画 */}
-      <div className="background-gradients">
-        <span className="bg-blue"></span>
-        <span className="bg-purple"></span>
-      </div>
+      {!disableAmbientAnimations && (
+        <>
+          {/* 柔和背景动画 */}
+          <div className="background-gradients">
+            <span className="bg-blue"></span>
+            <span className="bg-purple"></span>
+          </div>
 
-      {/* 春日装饰 - 樱花枝 */}
-      <div className="spring-garland" style={{ gap: '0', alignItems: 'flex-start', left: isSidebarCollapsed ? '72px' : '260px', justifyContent: 'space-between', padding: '0 20px' }}>
-        {/* 左侧樱花枝 - 从左上角垂下 */}
-        <svg width="120" height="90" viewBox="0 0 150 110" fill="none" style={{ marginTop: '-10px' }}>
+          {/* 春日装饰 - 樱花枝 */}
+          <div className="spring-garland" style={{ gap: '0', alignItems: 'flex-start', left: isSidebarCollapsed ? '72px' : '260px', justifyContent: 'space-between', padding: '0 20px' }}>
+            {/* 左侧樱花枝 - 从左上角垂下 */}
+            <svg width="120" height="90" viewBox="0 0 150 110" fill="none" style={{ marginTop: '-10px' }}>
           <defs>
             <radialGradient id="bloomL" cx="50%" cy="50%">
               <stop offset="0%" stopColor="#FDF2F8" />
@@ -97,10 +197,10 @@ export default function Layout() {
             <animateTransform attributeName="transform" type="translate" values="0 0;-3 12;-6 25" dur="5s" repeatCount="indefinite" />
             <animate attributeName="opacity" values="0.5;0.25;0" dur="5s" repeatCount="indefinite" />
           </ellipse>
-        </svg>
+            </svg>
 
-        {/* 中间吊坠区 */}
-        <div style={{ display: 'flex', flex: 1, justifyContent: 'space-evenly', alignItems: 'flex-start' }}>
+            {/* 中间吊坠区 */}
+            <div style={{ display: 'flex', flex: 1, justifyContent: 'space-evenly', alignItems: 'flex-start' }}>
           {/* 绿叶藤蔓1 */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', animation: 'swing 3.2s ease-in-out infinite', transformOrigin: 'top center' }}>
             <div style={{ width: '1.5px', height: '10px', background: '#86EFAC' }} />
@@ -215,10 +315,10 @@ export default function Layout() {
               <circle cx="24" cy="3" r="0.8" fill="#F472B6" />
             </svg>
           </div>
-        </div>
+            </div>
 
-        {/* 右侧樱花枝 - 镜像 */}
-        <svg width="120" height="90" viewBox="0 0 150 110" fill="none" style={{ marginTop: '-10px', transform: 'scaleX(-1)' }}>
+            {/* 右侧樱花枝 - 镜像 */}
+            <svg width="120" height="90" viewBox="0 0 150 110" fill="none" style={{ marginTop: '-10px', transform: 'scaleX(-1)' }}>
           <defs>
             <radialGradient id="bloomR" cx="50%" cy="50%">
               <stop offset="0%" stopColor="#FFF" />
@@ -269,14 +369,18 @@ export default function Layout() {
             <animateTransform attributeName="transform" type="translate" values="0 0;5 15;10 30" dur="4.5s" repeatCount="indefinite" />
             <animate attributeName="opacity" values="0.6;0.3;0" dur="4.5s" repeatCount="indefinite" />
           </ellipse>
-        </svg>
-      </div>
+            </svg>
+          </div>
+        </>
+      )}
 
       <div className={`app-layout ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
         <Sidebar isCollapsed={isSidebarCollapsed} onToggle={toggleSidebar} />
         <main className="content">
           <div className="container">
-            <Outlet />
+            <Suspense fallback={<RouteContentFallback />}>
+              <Outlet />
+            </Suspense>
           </div>
         </main>
       </div>

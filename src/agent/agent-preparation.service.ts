@@ -73,6 +73,7 @@ export class AgentPreparationService {
     const trimmedPassedMessages =
       userMessage === undefined ? this.trimMessages(passedMessages ?? []) : undefined;
     const currentTurnMessages = this.pickCurrentTurnMessages(userMessage, trimmedPassedMessages);
+    const shouldLoadShortTerm = userMessage !== undefined || trimmedPassedMessages === undefined;
 
     // 1. 读取本轮运行时记忆。
     const memory = await this.memoryService.onTurnStart(
@@ -80,6 +81,9 @@ export class AgentPreparationService {
       userId,
       sessionId,
       currentTurnMessages,
+      {
+        includeShortTerm: shouldLoadShortTerm,
+      },
     );
 
     // 2. 决定本轮消息来源。

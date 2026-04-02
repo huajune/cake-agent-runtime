@@ -96,7 +96,7 @@ export class MessageController {
   async getMessageProcessingRecords(
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
-    @Query('status') status?: 'processing' | 'success' | 'failure',
+    @Query('status') status?: 'processing' | 'success' | 'failure' | 'timeout',
     @Query('chatId') chatId?: string,
     @Query('userName') userName?: string,
     @Query('limit') limit?: string,

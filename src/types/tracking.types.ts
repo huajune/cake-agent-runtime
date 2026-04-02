@@ -64,7 +64,7 @@ export interface MessageProcessingRecord {
   prepDuration?: number;
 
   // 状态
-  status: 'processing' | 'success' | 'failure';
+  status: 'processing' | 'success' | 'failure' | 'timeout';
   error?: string;
   isFallback?: boolean;
   fallbackSuccess?: boolean;

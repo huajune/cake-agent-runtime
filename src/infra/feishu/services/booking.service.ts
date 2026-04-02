@@ -29,13 +29,12 @@ export class FeishuBookingService {
       const bookingId = this.pickString(toolOutput?.booking_id);
       const failureReason = this.pickString(toolOutput?.error);
       const failureDetails = this.stringifyErrorList(toolOutput?.errorList);
-      const statusText = isFailure ? '失败' : '成功';
-      const summaryLine = isFailure
-        ? `候选人${bookingInfo.candidateName ? ` ${bookingInfo.candidateName}` : ''} 预约失败，请尽快跟进处理。`
-        : `候选人${bookingInfo.candidateName ? ` ${bookingInfo.candidateName}` : ''} 已完成面试预约。`;
 
       const sections: string[] = [];
-      sections.push(`**摘要**\n${summaryLine}`);
+      if (isFailure) {
+        const candidateLabel = bookingInfo.candidateName ? ` ${bookingInfo.candidateName}` : '';
+        sections.push(`候选人${candidateLabel} 预约失败，请尽快跟进处理。`);
+      }
 
       const candidateLines: string[] = [];
       if (bookingInfo.candidateName) candidateLines.push(`候选人：${bookingInfo.candidateName}`);
@@ -43,6 +42,9 @@ export class FeishuBookingService {
         candidateLines.push(`联系方式：${this.maskPhone(bookingInfo.contactInfo)}`);
       }
       if (bookingInfo.managerName) candidateLines.push(`招募经理：${bookingInfo.managerName}`);
+      if (bookingInfo.userName && bookingInfo.userName !== bookingInfo.candidateName) {
+        candidateLines.push(`消息来源：${bookingInfo.userName}`);
+      }
       if (candidateLines.length > 0) {
         sections.push(`**候选人信息**\n${candidateLines.join('\n')}`);
       }
@@ -51,21 +53,22 @@ export class FeishuBookingService {
       if (bookingInfo.brandName) interviewLines.push(`品牌：${bookingInfo.brandName}`);
       if (bookingInfo.storeName) interviewLines.push(`门店：${bookingInfo.storeName}`);
       if (bookingInfo.interviewTime) interviewLines.push(`面试时间：${bookingInfo.interviewTime}`);
+      if (bookingId) interviewLines.push(`预约编号：${bookingId}`);
       if (interviewLines.length > 0) {
         sections.push(`**面试安排**\n${interviewLines.join('\n')}`);
       }
 
-      const resultLines: string[] = [`预约状态：${statusText}`];
-      if (resultMessage) resultLines.push(`处理结果：${resultMessage}`);
-      if (bookingId) resultLines.push(`预约编号：${bookingId}`);
-      if (failureReason) resultLines.push(`失败原因：${failureReason}`);
-      if (failureDetails) resultLines.push(`失败明细：${failureDetails}`);
-      sections.push(`**执行结果**\n${resultLines.join('\n')}`);
+      if (isFailure) {
+        const resultLines: string[] = [];
+        if (failureReason) resultLines.push(`原因：${failureReason}`);
+        if (failureDetails) resultLines.push(`明细：${failureDetails}`);
+        if (resultMessage) resultLines.push(`返回信息：${resultMessage}`);
+        if (resultLines.length > 0) {
+          sections.push(`**失败详情**\n${resultLines.join('\n')}`);
+        }
+      }
 
-      const metaLines: string[] = [`通知时间：${time}`];
-      if (bookingInfo.chatId) metaLines.push(`会话 ID：${bookingInfo.chatId}`);
-      if (bookingInfo.userName) metaLines.push(`候选人来源：${bookingInfo.userName}`);
-      sections.push(`**附加信息**\n${metaLines.join('\n')}`);
+      sections.push(`通知时间：${time}`);
 
       const title = isFailure ? '⚠️ 面试预约失败' : '🎉 面试预约成功';
       const color = isFailure ? 'red' : 'green';

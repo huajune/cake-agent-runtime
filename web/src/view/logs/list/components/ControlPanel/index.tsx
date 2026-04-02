@@ -96,14 +96,10 @@ export default function ControlPanel({
             fontSize: '15px',
             fontWeight: 600,
             color: 'var(--text-primary)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
             whiteSpace: 'nowrap',
           }}
         >
-          <span style={{ fontSize: '16px' }}>💬</span>
-          消息记录
+          消息处理流水
         </h3>
 
         {/* 分隔线 */}
@@ -178,7 +174,7 @@ export default function ControlPanel({
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
           <input
             type="text"
-            placeholder="搜索用户昵称..."
+            placeholder="检索会话主体..."
             value={inputValue}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
@@ -226,19 +222,19 @@ export default function ControlPanel({
         {/* 统计数据 - 紧凑横向排列 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>总计</span>
+            <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>处理总量</span>
             <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--primary)' }}>
               {stats.total}
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>成功</span>
+            <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>成功量</span>
             <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--success)' }}>
               {stats.success}
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>失败</span>
+            <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>异常量</span>
             <span
               style={{
                 fontSize: '15px',
@@ -250,7 +246,7 @@ export default function ControlPanel({
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>首响</span>
+            <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>平均 E2E 时延</span>
             <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--warning)' }}>
               {formatDuration(stats.avgDuration)}
             </span>
@@ -284,7 +280,7 @@ export default function ControlPanel({
               boxShadow: activeTab === 'realtime' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
             }}
           >
-            实时 {realtimeCount}
+            实时流水 {realtimeCount}
           </button>
           <button
             onClick={() => onTabChange('slowest')}
@@ -301,7 +297,7 @@ export default function ControlPanel({
               boxShadow: activeTab === 'slowest' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
             }}
           >
-            最慢 Top{slowestCount}
+            高时延 Top{slowestCount}
           </button>
         </div>
       </div>

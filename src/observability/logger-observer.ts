@@ -19,6 +19,17 @@ export class LoggerObserver implements Observer {
             `tokens=${event.totalTokens}, 耗时=${event.durationMs}ms`,
         );
         break;
+      case 'agent_stream_timing':
+        this.logger.log(
+          `AI-Stream时延: trace=${event.messageId}, status=${event.status}, ` +
+            `streamReady=${event.timeToStreamReadyMs ?? -1}ms, ` +
+            `firstChunk=${event.timeToFirstChunkMs ?? -1}ms, ` +
+            `firstReasoning=${event.timeToFirstReasoningMs ?? -1}ms, ` +
+            `firstText=${event.timeToFirstTextMs ?? -1}ms, ` +
+            `stream=${event.streamDurationMs ?? -1}ms, total=${event.totalDurationMs}ms, ` +
+            `tokens=${event.totalTokens ?? 0}${event.error ? `, error=${event.error}` : ''}`,
+        );
+        break;
       case 'agent_error':
         this.logger.error(`Agent错误: userId=${event.userId}, ${event.error}`);
         break;

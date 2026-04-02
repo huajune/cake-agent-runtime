@@ -16,6 +16,7 @@ import { MessageDeliveryService } from './services/delivery.service';
 import { MessageCallbackAdapterService } from './services/callback-adapter.service';
 import { MessagePipelineService } from './services/pipeline.service';
 import { ImageDescriptionService } from './services/image-description.service';
+import { WecomMessageObservabilityService } from './services/wecom-message-observability.service';
 import { BizModule } from '@biz/biz.module';
 import { FeishuModule } from '@infra/feishu/feishu.module';
 
@@ -185,6 +186,7 @@ import { FeishuModule } from '@infra/feishu/feishu.module';
     MessageCallbackAdapterService, // 消息回调适配器（支持小组级和企业级格式）
     MessagePipelineService, // 消息处理管线（核心处理逻辑）
     ImageDescriptionService, // 图片描述（异步 vision 识别 → 回写 content）
+    WecomMessageObservabilityService, // 企微消息链路观测（阶段时延 + 结构化调试上下文）
   ],
   exports: [MessageService, MessageFilterService, MessageProcessor],
 })

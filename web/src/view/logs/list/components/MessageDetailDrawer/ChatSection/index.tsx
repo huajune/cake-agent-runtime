@@ -1,6 +1,13 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { renderContentWithMediaTags as renderMediaTags } from '@/utils/media-tags';
 import type { MessageRecord } from '@/api/types/chat.types';
+import MessagePartsAdapter from '@/view/agent-test/list/components/MessagePartsAdapter';
 import styles from './index.module.scss';
+import {
+  getAssistantRenderableMessage,
+  getFallbackSummary,
+  getRawPayloadPanels,
+} from '../utils';
 
 // 需要截断的大字段路径（仅截断 request 部分，response 完整展示）
 const TRUNCATE_PATHS = [
@@ -77,11 +84,6 @@ function truncateLargeFields(
   return obj;
 }
 
-/**
- * 格式化大小显示
- */
-import { renderContentWithMediaTags as renderMediaTags } from '@/utils/media-tags';
-
 function formatSize(bytes: number): string {
   if (bytes < 1000) return `${bytes} 字符`;
   if (bytes < 1000000) return `${(bytes / 1000).toFixed(1)}K`;
@@ -93,34 +95,41 @@ const renderContentWithMediaTags = (content: string) =>
 
 interface ChatSectionProps {
   message: MessageRecord;
-  fullAgentResponse: string;
   showRaw: boolean;
   onToggleRaw: () => void;
 }
 
 export default function ChatSection({
   message,
-  fullAgentResponse,
   showRaw,
   onToggleRaw,
 }: ChatSectionProps) {
-  // 对原始数据进行摘要处理，避免大字段占用过多空间
+  const [activePayloadKey, setActivePayloadKey] = useState<string>('request');
   const truncatedRawData = useMemo(() => {
-    const rawData = message.agentInvocation || message;
-    return truncateLargeFields(rawData);
-  }, [message]);
+    if (!showRaw) return [];
+
+    return getRawPayloadPanels(message).map((panel) => ({
+      ...panel,
+      data: panel.key === 'response' ? panel.data : truncateLargeFields(panel.data),
+    }));
+  }, [message, showRaw]);
+
+  const fallbackSummary = useMemo(() => getFallbackSummary(message), [message]);
+  const renderableMessage = useMemo(() => getAssistantRenderableMessage(message), [message]);
+  const fallbackDeliveredSegments = fallbackSummary?.deliveredSegments;
+  const activePanel =
+    truncatedRawData.find((panel) => panel.key === activePayloadKey) ?? truncatedRawData[0];
+
+  const fallbackStatusText = message.fallbackSuccess === true ? '成功' : '失败';
 
   return (
     <>
-      {/* Conversation Context */}
       <div>
-        <h4 className={styles.sectionTitle}>当前会话</h4>
+        <h4 className={styles.sectionTitle}>本次交互</h4>
 
-        {/* User Message Bubble */}
         <div className={`${styles.chatBubble} ${styles.user}`}>
           <div className={styles.bubbleHeader}>
-            <span className={styles.bubbleIcon}>👤</span>
-            <span className={styles.bubbleTitle}>用户消息</span>
+            <span className={styles.bubbleTitle}>输入摘要</span>
           </div>
           <div className={styles.bubbleContent}>
             {message.messagePreview
@@ -129,42 +138,60 @@ export default function ChatSection({
           </div>
         </div>
 
-        {/* Agent Reply Bubble */}
         <div className={`${styles.chatBubble} ${styles.agent}`}>
           <div className={styles.bubbleHeader}>
-            <span className={styles.bubbleIcon}>🤖</span>
-            <span className={styles.bubbleTitle}>Agent 响应</span>
+            <span className={styles.bubbleTitle}>响应正文</span>
             {message.replySegments && (
               <span className={styles.bubbleMeta}>
-                {message.replySegments} 条消息
+                {message.replySegments} 个下发分段
               </span>
             )}
           </div>
-          <div className={`${styles.bubbleContent} ${styles.primary}`}>
-            {fullAgentResponse}
+          <div className={`${styles.bubbleContent} ${styles.primary} ${styles.agentRenderer}`}>
+            {renderableMessage ? (
+              <MessagePartsAdapter message={renderableMessage} />
+            ) : (
+              <div className={styles.emptyResponse}>暂无可渲染的响应内容</div>
+            )}
           </div>
         </div>
 
-        {/* Fallback Box - 降级信息 */}
         {message.isFallback && (
           <div className={styles.fallbackBox}>
             <div className={styles.fallbackHeader}>
-              <span>⚡</span> 降级响应
-              <span className={`${styles.fallbackBadge} ${message.isFallback ? styles.success : styles.failed}`}>
-                {message.isFallback ? '发送降级法术' : '降级失败'}
+              <span>Fallback 回执</span>
+              <span
+                className={`${styles.fallbackBadge} ${
+                  message.fallbackSuccess ? styles.success : styles.failed
+                }`}
+              >
+                {fallbackStatusText}
               </span>
             </div>
             <div className={styles.fallbackContent}>
-              <strong>错误信息：</strong>{ }
+              {fallbackSummary?.message ? (
+                <div>
+                  <strong>Fallback 文案：</strong> {String(fallbackSummary.message)}
+                </div>
+              ) : null}
+              {fallbackSummary?.error ? (
+                <div>
+                  <strong>Fallback 错误：</strong> {String(fallbackSummary.error)}
+                </div>
+              ) : null}
+              {fallbackDeliveredSegments !== undefined ? (
+                <div>
+                  <strong>已下发分段：</strong> {String(fallbackDeliveredSegments)}
+                </div>
+              ) : null}
             </div>
           </div>
         )}
 
-        {/* Error Box */}
         {message.error && (
           <div className={styles.errorBox}>
             <div className={styles.errorHeader}>
-              <span>⚠️</span> 错误信息
+              <span>异常详情</span>
             </div>
             <div className={styles.errorContent}>
               {typeof message.error === 'string'
@@ -175,12 +202,12 @@ export default function ChatSection({
         )}
       </div>
 
-      {/* Raw JSON Section */}
       <div className={styles.rawSection}>
         <div className={styles.rawHeader}>
-          <h4 className={styles.rawTitle}>
-            原始数据结构 (JSON)
-          </h4>
+          <div>
+            <h4 className={styles.rawTitle}>调试载荷</h4>
+            <div className={styles.rawSubtitle}>按阶段查看 request、response 与回执信息</div>
+          </div>
           <button
             onClick={onToggleRaw}
             className={styles.toggleButton}
@@ -189,11 +216,41 @@ export default function ChatSection({
           </button>
         </div>
 
-        {showRaw && (
-          <pre className={styles.codeBlock}>
-            {JSON.stringify(truncatedRawData, null, 2)}
-          </pre>
-        )}
+        {showRaw &&
+          (truncatedRawData.length > 0 ? (
+            <div className={styles.payloadShell}>
+              <div className={styles.rawTabs}>
+                {truncatedRawData.map((panel) => (
+                  <button
+                    key={panel.key}
+                    type="button"
+                    onClick={() => setActivePayloadKey(panel.key)}
+                    className={`${styles.rawTabButton} ${
+                      activePanel?.key === panel.key ? styles.rawTabButtonActive : ''
+                    }`}
+                  >
+                    {panel.label}
+                  </button>
+                ))}
+              </div>
+
+              {activePanel ? (
+                <div className={styles.payloadCard}>
+                  <div className={styles.payloadHeader}>
+                    <div>
+                      <div className={styles.payloadLabel}>{activePanel.label}</div>
+                      <div className={styles.payloadDescription}>{activePanel.description}</div>
+                    </div>
+                  </div>
+                  <pre className={styles.codeBlock}>
+                    {JSON.stringify(activePanel.data, null, 2)}
+                  </pre>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className={styles.emptyResponse}>当前记录没有可展示的调试载荷</div>
+          ))}
       </div>
     </>
   );

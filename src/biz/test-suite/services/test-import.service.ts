@@ -466,32 +466,38 @@ export class TestImportService {
 
     const lines = historyText.split('\n').filter((line) => line.trim());
 
-    return lines.map((line) => {
-      const bracketMatch = line.match(/^\[[\d/]+ [\d:]+ ([^\]]+)\]\s*(.*)$/);
-      if (bracketMatch) {
-        const userName = bracketMatch[1].trim();
-        const content = bracketMatch[2];
-        const isAssistant =
-          userName === '招募经理' ||
-          userName === '经理' ||
-          userName === 'AI' ||
-          userName === 'assistant';
-        return { role: isAssistant ? MessageRole.ASSISTANT : MessageRole.USER, content };
-      }
+    return lines
+      .map((line) => {
+        const bracketMatch = line.match(/^\[[\d/]+ [\d:]+ ([^\]]+)\]\s*(.*)$/);
+        if (bracketMatch) {
+          const userName = bracketMatch[1].trim();
+          const content = bracketMatch[2];
+          const isAssistant =
+            userName === '招募经理' ||
+            userName === '经理' ||
+            userName === 'AI' ||
+            userName === 'assistant';
+          return { role: isAssistant ? MessageRole.ASSISTANT : MessageRole.USER, content };
+        }
 
-      if (line.startsWith('user:') || line.startsWith('候选人:')) {
-        return { role: MessageRole.USER, content: line.replace(/^(user|候选人):\s*/i, '') };
-      }
+        if (line.startsWith('user:') || line.startsWith('候选人:')) {
+          return { role: MessageRole.USER, content: line.replace(/^(user|候选人):\s*/i, '') };
+        }
 
-      if (line.startsWith('AI:') || line.startsWith('assistant:') || line.startsWith('招募经理:')) {
-        return {
-          role: MessageRole.ASSISTANT,
-          content: line.replace(/^(AI|assistant|招募经理):\s*/i, ''),
-        };
-      }
+        if (
+          line.startsWith('AI:') ||
+          line.startsWith('assistant:') ||
+          line.startsWith('招募经理:')
+        ) {
+          return {
+            role: MessageRole.ASSISTANT,
+            content: line.replace(/^(AI|assistant|招募经理):\s*/i, ''),
+          };
+        }
 
-      return { role: MessageRole.USER, content: line };
-    });
+        return { role: MessageRole.USER, content: line };
+      })
+      .filter((message) => message.content.trim().length > 0);
   }
 
   // ==================== 私有方法 ====================

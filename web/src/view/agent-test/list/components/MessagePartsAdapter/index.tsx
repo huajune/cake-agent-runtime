@@ -17,7 +17,7 @@ import styles from './index.module.scss';
 // ==================== 思考过程组件（基于 AI reasoning） ====================
 
 function ReasoningBlock({ text, isThinking }: { text: string; isThinking: boolean }) {
-  const [expanded, setExpanded] = useState(isThinking);
+  const [expanded, setExpanded] = useState(true);
 
   return (
     <div className={`${styles.reasoningCard} ${isThinking ? styles.reasoningActive : ''}`}>
@@ -34,7 +34,11 @@ function ReasoningBlock({ text, isThinking }: { text: string; isThinking: boolea
       </div>
       {expanded && (
         <div className={styles.reasoningBody}>
-          <Markdown>{text}</Markdown>
+          {isThinking ? (
+            <pre className={styles.reasoningPlainText}>{text}</pre>
+          ) : (
+            <Markdown>{text}</Markdown>
+          )}
         </div>
       )}
     </div>
@@ -191,7 +195,7 @@ function buildSegments(parts: UIMessage['parts']): Segment[] {
         toolPart.output !== undefined;
 
       const tool: ExtractedToolCall = {
-        toolCallId: toolPart.toolCallId || `tool-${Date.now()}-${segments.length}`,
+        toolCallId: toolPart.toolCallId || `${extractedToolName}-${segments.length}`,
         toolName: extractedToolName,
         args: toolPart.input,
         state: isCompleted ? 'result' : 'call',
@@ -281,11 +285,6 @@ function MessagePartsAdapterComponent({ message, isStreaming }: MessagePartsAdap
   );
 }
 
-export const MessagePartsAdapter = memo(MessagePartsAdapterComponent, (prevProps, nextProps) => {
-  if (nextProps.isStreaming) {
-    return false;
-  }
-  return prevProps.message.id === nextProps.message.id;
-});
+export const MessagePartsAdapter = memo(MessagePartsAdapterComponent);
 
 export default MessagePartsAdapter;

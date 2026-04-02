@@ -3,11 +3,11 @@ import { InjectQueue } from '@nestjs/bull';
 import { Queue, Job } from 'bull';
 import { EnterpriseMessageCallbackDto } from './message-callback.dto';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
-import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 
 // 导入子服务
 import { SimpleMergeService } from './services/simple-merge.service';
 import { MessageService } from './message.service';
+import { WecomMessageObservabilityService } from './services/wecom-message-observability.service';
 
 /**
  * 消息队列处理器（精简版 v2）
@@ -37,7 +37,7 @@ export class MessageProcessor implements OnModuleInit {
     private readonly messageService: MessageService,
     private readonly simpleMergeService: SimpleMergeService,
     private readonly systemConfigService: SystemConfigService,
-    private readonly monitoringService: MessageTrackingService,
+    private readonly wecomObservability: WecomMessageObservabilityService,
   ) {}
 
   async onModuleInit() {
@@ -211,7 +211,8 @@ export class MessageProcessor implements OnModuleInit {
   ): Promise<void> {
     // 记录 Worker 开始处理时间
     for (const msg of messages) {
-      this.monitoringService.recordWorkerStart(msg.messageId);
+      this.wecomObservability.updateDispatch(msg.messageId, 'merged', batchId);
+      this.wecomObservability.markWorkerStart(msg.messageId);
     }
 
     // 委托给 MessageService 处理（包含过滤、历史、Agent 调用、发送、去重标记）

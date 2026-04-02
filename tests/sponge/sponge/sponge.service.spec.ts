@@ -49,6 +49,37 @@ describe('SpongeService', () => {
       );
     });
 
+    it('should tolerate null optional fields in job list response', async () => {
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          code: 0,
+          data: {
+            result: [
+              {
+                basicInfo: {
+                  jobId: 1,
+                  jobName: '测试岗位',
+                  jobNickName: null,
+                  jobCategoryName: '餐饮/服务员',
+                  brandName: '必胜客',
+                  cityName: '上海',
+                },
+              },
+            ],
+            total: 1,
+          },
+        }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      const result = await service.fetchJobs({ cityNameList: ['上海'] });
+
+      expect(result.jobs).toHaveLength(1);
+      expect(result.total).toBe(1);
+      expect(result.jobs[0].basicInfo?.jobNickName).toBeNull();
+    });
+
     it('should return empty result on non-zero code', async () => {
       const mockResponse = {
         ok: true,

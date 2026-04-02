@@ -304,14 +304,15 @@ export class TestExecutionService {
     testRequest: TestChatRequestDto;
     messageText: string;
   } {
-    const userMessages = request.messages.filter((m) => m.role === 'user');
+    const transportMessages = Array.isArray(request.messages) ? request.messages : [];
+    const userMessages = transportMessages.filter((m) => m.role === 'user');
     const latestUserMessage = userMessages[userMessages.length - 1];
     const latestPayload = this.extractMessagePayload(latestUserMessage);
     const currentImageUrls =
       latestPayload.imageUrls.length > 0 ? latestPayload.imageUrls : request.imageUrls;
     const messageText = latestPayload.text || (currentImageUrls?.length ? '[图片消息]' : '');
 
-    const history = request.messages.slice(0, -1).map((msg) => {
+    const history = transportMessages.slice(0, -1).map((msg) => {
       const payload = this.extractMessagePayload(msg);
       return {
         role: msg.role as MessageRole,
@@ -332,6 +333,10 @@ export class TestExecutionService {
       thinking: request.thinking,
       imageUrls: currentImageUrls,
     };
+
+    if (!this.hasInputContent(testRequest.message, testRequest.imageUrls)) {
+      throw new Error('缺少可用于测试的用户输入，请填写当前用户消息或上传图片后再试');
+    }
 
     return { testRequest, messageText };
   }

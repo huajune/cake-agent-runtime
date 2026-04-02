@@ -16,6 +16,8 @@ import { AgentModule } from '@agent/agent.module';
 import { BizModule } from '@biz/biz.module';
 import { FeishuSyncModule } from '@biz/feishu-sync/feishu-sync.module';
 import { EvaluationModule } from '@evaluation/evaluation.module';
+import { ObservabilityModule } from '@observability/observability.module';
+import { AiStreamObservabilityService } from './services/ai-stream-observability.service';
 
 /**
  * 测试套件模块
@@ -36,6 +38,7 @@ import { EvaluationModule } from '@evaluation/evaluation.module';
     BizModule,
     FeishuSyncModule,
     EvaluationModule,
+    ObservabilityModule,
     BullModule.registerQueueAsync({
       name: 'test-suite',
       imports: [ConfigModule],
@@ -70,6 +73,7 @@ import { EvaluationModule } from '@evaluation/evaluation.module';
     ConversationTestService,
     TestSuiteProcessor,
     TestImportService,
+    AiStreamObservabilityService,
   ],
   exports: [
     TestExecutionService,

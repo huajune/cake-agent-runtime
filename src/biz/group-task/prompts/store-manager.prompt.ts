@@ -6,9 +6,7 @@
  *
  * ━━━━━━━━━━━━━━━━━━━━━━━━
  * 姓名：张三
- * 电话：131****1162
- * 性别：男
- * 年龄：25岁
+ * 电话：13100101162
  * 面试岗位：xxx
  * 面试时间：2026-02-06 14:00
  * ━━━━━━━━━━━━━━━━━━━━━━━━
@@ -21,12 +19,6 @@ import { InterviewScheduleItem } from '@sponge/sponge.types';
 interface StoreManagerTemplateData {
   interviews: InterviewScheduleItem[];
   date: string;
-}
-
-/** 手机号脱敏：131xxxx1162 → 131****1162 */
-function maskPhone(phone: string): string {
-  if (!phone || phone.length < 7) return phone;
-  return phone.slice(0, 3) + '****' + phone.slice(-4);
 }
 
 /**
@@ -47,7 +39,7 @@ export function buildStoreManagerMessage(data: StoreManagerTemplateData): string
   for (const item of interviews) {
     lines.push('━━━━━━━━━━━━━━━━━━━━━━━━');
     lines.push(`姓名：${item.name}`);
-    lines.push(`电话：${maskPhone(item.phone)}`);
+    lines.push(`电话：${item.phone}`);
     lines.push(`品牌：${item.brandName}`);
     lines.push(`门店：${item.storeName}`);
     lines.push(`面试岗位：${item.jobName}`);

@@ -4,6 +4,7 @@ import { useMessageProcessingRecordDetail } from '@/hooks/chat/useMessageRecords
 import HistorySection from './HistorySection';
 import ChatSection from './ChatSection';
 import TechnicalStats from './TechnicalStats';
+import { getStatusLabel, getStatusTone } from './utils';
 
 interface MessageDetailDrawerProps {
   messageId: string;
@@ -11,7 +12,7 @@ interface MessageDetailDrawerProps {
 }
 
 export default function MessageDetailDrawer({ messageId, onClose }: MessageDetailDrawerProps) {
-  const [showRaw, setShowRaw] = useState(true);
+  const [showRaw, setShowRaw] = useState(false);
 
   // 按需加载完整详情（包含 agentInvocation）
   const { data: message, isLoading } = useMessageProcessingRecordDetail(messageId);
@@ -28,7 +29,7 @@ export default function MessageDetailDrawer({ messageId, onClose }: MessageDetai
       <div className="drawer-overlay" onClick={handleOverlayClick}>
         <div className="drawer-content">
           <div className="modal-header" style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)' }}>
-            <h3 style={{ margin: 0, fontSize: '18px' }}>消息详情</h3>
+            <h3 style={{ margin: 0, fontSize: '18px' }}>处理记录详情</h3>
             <button className="modal-close" onClick={onClose}>
               &times;
             </button>
@@ -41,27 +42,7 @@ export default function MessageDetailDrawer({ messageId, onClose }: MessageDetai
     );
   }
 
-  // 从 agentInvocation.response.messages 中提取完整的 assistant 响应
-  const getFullAgentResponse = (): string => {
-    const response = message.agentInvocation?.response as { messages?: Array<{ role: string; parts?: Array<{ type: string; text?: string }> }> } | undefined;
-    const messages = response?.messages;
-    if (!messages || messages.length === 0) {
-      return message.replyPreview || '(无响应内容)';
-    }
-    const assistantMessages = messages.filter((m) => m.role === 'assistant');
-    if (assistantMessages.length === 0) {
-      return message.replyPreview || '(无响应内容)';
-    }
-    return (
-      assistantMessages
-        .flatMap((m) =>
-          (m.parts || []).filter((p) => p.type === 'text').map((p) => p.text)
-        )
-        .join('\n\n') ||
-      message.replyPreview ||
-      '(无响应内容)'
-    );
-  };
+  const statusTone = getStatusTone(message.status);
 
   return (
     <div className="drawer-overlay" onClick={handleOverlayClick}>
@@ -69,19 +50,20 @@ export default function MessageDetailDrawer({ messageId, onClose }: MessageDetai
         {/* Header */}
         <div className="modal-header" style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <h3 style={{ margin: 0, fontSize: '18px' }}>消息详情</h3>
-            <span className={`status-badge ${message.status === 'success' ? 'success' : message.status === 'failure' || message.status === 'failed' ? 'danger' : 'warning'}`}>
-              {message.status}
+            <h3 style={{ margin: 0, fontSize: '18px' }}>处理记录详情</h3>
+            <span className={`status-badge ${statusTone}`}>
+              {getStatusLabel(message.status)}
             </span>
             {message.isFallback && (
               <span className="status-badge warning">
-                {message.fallbackSuccess ? '降级成功' : '降级失败'}
+                {message.fallbackSuccess ? 'Fallback 成功' : 'Fallback 失败'}
               </span>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-            <span>🕒 {formatDateTime(message.receivedAt)}</span>
-            <span>👤 {message.userName || message.chatId}</span>
+            <span>接收时间 {formatDateTime(message.receivedAt)}</span>
+            <span>会话主体 {message.userName || message.chatId}</span>
+            {message.scenario ? <span>场景 {message.scenario}</span> : null}
             <button className="modal-close" onClick={onClose} style={{ marginLeft: '8px' }}>
               &times;
             </button>
@@ -97,7 +79,6 @@ export default function MessageDetailDrawer({ messageId, onClose }: MessageDetai
 
             <ChatSection
               message={message}
-              fullAgentResponse={getFullAgentResponse()}
               showRaw={showRaw}
               onToggleRaw={() => setShowRaw(!showRaw)}
             />

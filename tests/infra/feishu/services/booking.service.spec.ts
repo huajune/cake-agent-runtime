@@ -52,7 +52,7 @@ describe('FeishuBookingService', () => {
       expect(result).toBe(true);
       expect(mockWebhookService.buildCardWithAtAll).toHaveBeenCalledWith(
         '🎉 面试预约成功',
-        expect.stringContaining('**摘要**'),
+        expect.stringContaining('**候选人信息**'),
         'green',
       );
       expect(mockWebhookService.sendMessage).toHaveBeenCalledWith('INTERVIEW_BOOKING', mockCard);
@@ -77,7 +77,7 @@ describe('FeishuBookingService', () => {
       expect(result).toBe(true);
       expect(mockWebhookService.buildCardWithAtAll).toHaveBeenCalledWith(
         '⚠️ 面试预约失败',
-        expect.stringContaining('**执行结果**'),
+        expect.stringContaining('**失败详情**'),
         'red',
       );
     });
@@ -153,18 +153,17 @@ describe('FeishuBookingService', () => {
       expect(cardContent).not.toContain('15612345678');
     });
 
-    it('should include chatId in the card content', async () => {
+    it('should not include chatId in the card content (removed as internal debug info)', async () => {
       mockWebhookService.buildCardWithAtAll.mockReturnValue({});
       mockWebhookService.sendMessage.mockResolvedValue(true);
 
       await service.sendBookingNotification(buildBookingInfo({ chatId: 'chat_xyz' }));
 
       const cardContent = mockWebhookService.buildCardWithAtAll.mock.calls[0][1] as string;
-      expect(cardContent).toContain('附加信息');
-      expect(cardContent).toContain('chat_xyz');
+      expect(cardContent).not.toContain('chat_xyz');
     });
 
-    it('should include toolOutput info when provided', async () => {
+    it('should include bookingId in interview section when provided', async () => {
       mockWebhookService.buildCardWithAtAll.mockReturnValue({});
       mockWebhookService.sendMessage.mockResolvedValue(true);
 
@@ -178,7 +177,6 @@ describe('FeishuBookingService', () => {
       await service.sendBookingNotification(bookingInfo);
 
       const cardContent = mockWebhookService.buildCardWithAtAll.mock.calls[0][1] as string;
-      expect(cardContent).toContain('处理结果：预约成功！面试时间已确认');
       expect(cardContent).toContain('预约编号：booking_12345');
     });
 
@@ -198,9 +196,8 @@ describe('FeishuBookingService', () => {
       );
 
       const cardContent = mockWebhookService.buildCardWithAtAll.mock.calls[0][1] as string;
-      expect(cardContent).toContain('预约状态：失败');
-      expect(cardContent).toContain('失败原因：该时间段已满');
-      expect(cardContent).toContain('失败明细：请更换时间');
+      expect(cardContent).toContain('原因：该时间段已满');
+      expect(cardContent).toContain('明细：请更换时间');
       expect(cardContent).toContain('FULL');
     });
 
@@ -235,7 +232,6 @@ describe('FeishuBookingService', () => {
       await service.sendBookingNotification(buildBookingInfo());
 
       const cardContent = mockWebhookService.buildCardWithAtAll.mock.calls[0][1] as string;
-      expect(cardContent).toContain('附加信息');
       expect(cardContent).toContain('通知时间');
     });
   });

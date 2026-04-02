@@ -48,24 +48,26 @@ export interface JobBasicInfo {
 }
 
 const UnknownRecordSchema = z.object({}).catchall(z.unknown());
+const NullableOptionalStringSchema = z.string().nullish();
+const NullableOptionalNumberSchema = z.number().nullish();
 
 export const JobBasicInfoSchema = z
   .object({
     jobId: z.number().int(),
-    jobName: z.string().optional(),
-    jobNickName: z.string().optional(),
-    jobCategoryName: z.string().optional(),
-    jobContent: z.string().optional(),
-    laborForm: z.string().optional(),
-    requirementNum: z.number().optional(),
-    minAge: z.number().optional(),
-    maxAge: z.number().optional(),
-    storeName: z.string().optional(),
-    storeAddress: z.string().optional(),
-    storeInfo: UnknownRecordSchema.optional(),
-    brandName: z.string().optional(),
-    cityName: z.string().optional(),
-    regionName: z.string().optional(),
+    jobName: NullableOptionalStringSchema,
+    jobNickName: NullableOptionalStringSchema,
+    jobCategoryName: NullableOptionalStringSchema,
+    jobContent: NullableOptionalStringSchema,
+    laborForm: NullableOptionalStringSchema,
+    requirementNum: NullableOptionalNumberSchema,
+    minAge: NullableOptionalNumberSchema,
+    maxAge: NullableOptionalNumberSchema,
+    storeName: NullableOptionalStringSchema,
+    storeAddress: NullableOptionalStringSchema,
+    storeInfo: UnknownRecordSchema.nullish(),
+    brandName: NullableOptionalStringSchema,
+    cityName: NullableOptionalStringSchema,
+    regionName: NullableOptionalStringSchema,
   })
   .catchall(z.unknown());
 
@@ -82,12 +84,12 @@ export interface JobDetail {
 
 export const JobDetailSchema = z
   .object({
-    basicInfo: JobBasicInfoSchema.optional(),
-    jobSalary: UnknownRecordSchema.optional(),
-    welfare: UnknownRecordSchema.optional(),
-    hiringRequirement: UnknownRecordSchema.optional(),
-    workTime: UnknownRecordSchema.optional(),
-    interviewProcess: UnknownRecordSchema.optional(),
+    basicInfo: JobBasicInfoSchema.nullish(),
+    jobSalary: UnknownRecordSchema.nullish(),
+    welfare: UnknownRecordSchema.nullish(),
+    hiringRequirement: UnknownRecordSchema.nullish(),
+    workTime: UnknownRecordSchema.nullish(),
+    interviewProcess: UnknownRecordSchema.nullish(),
   })
   .catchall(z.unknown());
 
@@ -106,7 +108,7 @@ export const JobListApiResponseSchema = z
         result: z.array(JobDetailSchema).default([]),
         total: z.number().default(0),
       })
-      .optional(),
+      .nullish(),
   })
   .passthrough();
 
