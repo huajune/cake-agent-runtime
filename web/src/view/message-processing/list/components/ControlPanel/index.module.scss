@@ -25,11 +25,15 @@
 
 .title {
   margin: 0;
-  font-size: 18px;
-  font-weight: 700;
+  font-size: 20px;
+  font-weight: 800;
   color: var(--text-primary);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
   white-space: nowrap;
+  background: linear-gradient(135deg, #4f46e5, #6366f1, #8b5cf6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .timeRangeGroup,
@@ -47,38 +51,40 @@
 
 .timeRangeButton,
 .tabButton {
-  min-height: 42px;
+  min-height: 38px;
   padding: 0 16px;
   border: none;
-  border-radius: 12px;
+  border-radius: 10px;
   background: transparent;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   white-space: nowrap;
 }
 
 .timeRangeButton:hover,
 .tabButton:hover {
   color: var(--text-primary);
+  background: rgba(99, 102, 241, 0.04);
 }
 
 .timeRangeButtonActive {
   background: #fff;
   color: var(--primary);
-  box-shadow: 0 8px 20px rgba(91, 87, 255, 0.12);
+  box-shadow: 0 2px 8px rgba(91, 87, 255, 0.15);
 }
 
 .tabButtonActive {
   background: #fff;
   color: var(--primary);
-  box-shadow: 0 8px 20px rgba(91, 87, 255, 0.12);
+  box-shadow: 0 2px 8px rgba(91, 87, 255, 0.15);
 }
 
 .tabButtonDangerActive {
   color: var(--danger);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.12);
 }
 
 .tabCount {
@@ -137,14 +143,43 @@
 }
 
 .statCard {
+  position: relative;
   min-height: 88px;
-  padding: 14px 16px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(161, 173, 255, 0.18);
-  box-shadow: 0 14px 32px rgba(103, 80, 164, 0.08);
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(161, 173, 255, 0.16);
+  box-shadow: 0 4px 16px rgba(103, 80, 164, 0.06);
   backdrop-filter: blur(10px);
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    border-radius: 4px 0 0 4px;
+    background: var(--text-muted);
+  }
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(103, 80, 164, 0.1);
+  }
 }
+
+.statCard:nth-child(1)::before { background: var(--primary); }
+.statCard:nth-child(2)::before { background: var(--success); }
+.statCard:nth-child(3)::before { background: var(--danger); }
+.statCard:nth-child(4)::before { background: var(--warning); }
+
+.statCard:nth-child(1) { background: linear-gradient(135deg, rgba(99, 102, 241, 0.04) 0%, rgba(255, 255, 255, 0.82) 60%); }
+.statCard:nth-child(2) { background: linear-gradient(135deg, rgba(16, 185, 129, 0.04) 0%, rgba(255, 255, 255, 0.82) 60%); }
+.statCard:nth-child(3) { background: linear-gradient(135deg, rgba(239, 68, 68, 0.04) 0%, rgba(255, 255, 255, 0.82) 60%); }
+.statCard:nth-child(4) { background: linear-gradient(135deg, rgba(245, 158, 11, 0.04) 0%, rgba(255, 255, 255, 0.82) 60%); }
 
 .statLabel {
   display: block;
@@ -152,18 +187,20 @@
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   line-height: 1.4;
+  text-transform: uppercase;
 }
 
 .statValue {
   display: block;
-  font-size: 26px;
-  font-weight: 700;
+  font-size: 28px;
+  font-weight: 800;
   letter-spacing: -0.04em;
   line-height: 1;
   color: var(--text-primary);
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .statPrimary {

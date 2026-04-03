@@ -618,7 +618,9 @@ export class AiStreamTrace {
     const segments = this.contentOrder
       .filter((item) => item.kind === kind)
       .map((item) =>
-        this.getJoinedText(kind === 'text' ? this.textBlocks.get(item.id) : this.reasoningBlocks.get(item.id)),
+        this.getJoinedText(
+          kind === 'text' ? this.textBlocks.get(item.id) : this.reasoningBlocks.get(item.id),
+        ),
       )
       .filter(Boolean);
 
