@@ -56,6 +56,7 @@ interface WecomTraceTimings {
 interface WecomTraceContext {
   request: WecomTraceRequestContext;
   timings: WecomTraceTimings;
+  agentRequest?: Record<string, unknown>;
   agentResult?: AgentInvokeResult;
   deliveryResult?: DeliveryResult;
   errorMessage?: string;
@@ -136,6 +137,12 @@ export class WecomMessageObservabilityService {
     const trace = this.traces.get(messageId);
     if (!trace) return;
     trace.agentResult = agentResult;
+  }
+
+  recordAgentRequest(messageId: string, request: Record<string, unknown>): void {
+    const trace = this.traces.get(messageId);
+    if (!trace) return;
+    trace.agentRequest = request;
   }
 
   markDeliveryStart(messageId: string): void {
@@ -220,11 +227,15 @@ export class WecomMessageObservabilityService {
       agentInvocation:
         options.isPrimary && trace
           ? {
-              request: trace.request,
+              request: {
+                ...trace.request,
+                agentRequest: trace.agentRequest,
+              },
               response: {
                 status: 'success',
                 reply: {
                   content: agentResult?.reply.content,
+                  reasoning: agentResult?.reply.reasoning,
                   usage: agentResult?.reply.usage,
                 },
                 toolCalls: agentResult?.toolCalls,
@@ -298,13 +309,17 @@ export class WecomMessageObservabilityService {
       agentInvocation:
         options.isPrimary && trace
           ? {
-              request: trace.request,
+              request: {
+                ...trace.request,
+                agentRequest: trace.agentRequest,
+              },
               response: {
                 status: 'failure',
                 error: options.errorMessage,
                 errorType: options.errorType,
                 reply: {
                   content: agentResult?.reply.content,
+                  reasoning: agentResult?.reply.reasoning,
                   usage: agentResult?.reply.usage,
                 },
                 toolCalls: agentResult?.toolCalls,

@@ -202,15 +202,14 @@ export class TestExecutionService {
       : (request.history || []).slice(0, -2);
 
     const messages = this.buildRunnerMessages(historyForAgent, request.message, request.imageUrls);
-
-    return this.runner.stream({
+    const runnerParams = {
       messages,
       userId: request.userId,
       corpId: 'test',
       sessionId,
       scenario,
       thinking: request.thinking,
-      strategySource: 'testing',
+      strategySource: 'testing' as const,
       onFinish: request.notifyBooking
         ? async (result) => {
             await this.notifyBookingIfNeeded({
@@ -220,7 +219,22 @@ export class TestExecutionService {
             });
           }
         : undefined,
-    });
+    };
+
+    const runnerResult = await this.runner.stream(runnerParams);
+
+    return {
+      ...runnerResult,
+      agentRequest: {
+        messages,
+        userId: request.userId,
+        corpId: 'test',
+        sessionId,
+        scenario,
+        thinking: request.thinking,
+        strategySource: 'testing',
+      },
+    };
   }
 
   /**

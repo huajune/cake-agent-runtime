@@ -7,7 +7,7 @@ import {
   Config,
   Dashboard,
   Hosting,
-  Logs,
+  MessageProcessing,
   Strategy,
   System,
   TestSuite,
@@ -47,7 +47,7 @@ function App() {
           <Route path="hosting" element={<Hosting />} />
           <Route path="config" element={<Config />} />
           <Route path="system" element={<System />} />
-          <Route path="logs" element={<Logs />} />
+          <Route path="message-processing" element={<MessageProcessing />} />
           <Route path="chat-records" element={<ChatRecords />} />
           <Route path="agent-test" element={<AgentTest />} />
           <Route path="test-suite" element={<TestSuite />} />

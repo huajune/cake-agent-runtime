@@ -343,6 +343,10 @@
     }
   }
 
+  li > p {
+    margin: 0.12em 0;
+  }
+
   hr {
     border: none;
     border-top: 1px solid rgba(99, 102, 241, 0.08);

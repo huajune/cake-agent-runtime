@@ -873,6 +873,16 @@ export class MessagePipelineService {
     try {
       if (recordMonitoring && messageId) {
         this.wecomObservability.markAiStart(messageId);
+        this.wecomObservability.recordAgentRequest(messageId, {
+          sessionId: params.sessionId,
+          userId,
+          corpId,
+          scenario,
+          userMessage,
+          imageUrls: params.imageUrls,
+          imageMessageIds: params.imageMessageIds,
+          strategySource: 'released',
+        });
         shouldRecordAiEnd = true;
       }
 
@@ -898,7 +908,7 @@ export class MessagePipelineService {
       );
 
       const invokeResult = {
-        reply: { content, usage: result.usage },
+        reply: { content, reasoning: result.reasoning, usage: result.usage },
         isFallback: false,
         processingTime,
         toolCalls: result.toolCalls,

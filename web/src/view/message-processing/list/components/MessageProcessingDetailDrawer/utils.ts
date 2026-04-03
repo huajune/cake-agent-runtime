@@ -17,6 +17,7 @@ export interface TimingMetrics {
 export interface ToolCallInfo {
   name: string;
   status: 'success' | 'error' | 'unknown';
+  toolCallId?: string;
   input?: unknown;
   output?: unknown;
 }
@@ -46,8 +47,110 @@ function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined;
 }
 
+function buildResponsePayload(response?: AnyRecord): AnyRecord | undefined {
+  if (!response) return undefined;
+
+  const payload: AnyRecord = {};
+  const reply = asRecord(response.reply);
+  const messages = asArray(response.messages);
+  const toolCalls = asArray(response.toolCalls);
+  const hasCoreResponse = Boolean(reply) || messages.length > 0 || toolCalls.length > 0;
+
+  if (reply) payload.reply = reply;
+  if (messages.length > 0) payload.messages = messages;
+  if (toolCalls.length > 0) payload.toolCalls = toolCalls;
+
+  if (!hasCoreResponse) return undefined;
+
+  const usage = asRecord(response.usage);
+  if (usage) payload.usage = usage;
+
+  const finishReason = asString(response.finishReason);
+  if (finishReason) payload.finishReason = finishReason;
+
+  const entryStage = asString(response.entryStage);
+  if (entryStage) payload.entryStage = entryStage;
+
+  const status = asString(response.status);
+  if (status) payload.status = status;
+
+  const error = asString(response.error);
+  if (error) payload.error = error;
+
+  return Object.keys(payload).length > 0 ? payload : response;
+}
+
+function buildTracePayload(response?: AnyRecord): AnyRecord | undefined {
+  if (!response) return undefined;
+
+  const payload: AnyRecord = {};
+  const traceId = asString(response.traceId);
+  if (traceId) payload.traceId = traceId;
+
+  const timings = asRecord(response.timings);
+  if (timings) payload.timings = timings;
+
+  const chunkTypeCounts = asRecord(response.chunkTypeCounts);
+  if (chunkTypeCounts) payload.chunkTypeCounts = chunkTypeCounts;
+
+  const stepCount = asNumber(response.stepCount);
+  if (stepCount !== undefined) payload.stepCount = stepCount;
+
+  const firstChunkType = asString(response.firstChunkType);
+  if (firstChunkType) payload.firstChunkType = firstChunkType;
+
+  const hasReasoning = response.hasReasoning;
+  if (typeof hasReasoning === 'boolean') payload.hasReasoning = hasReasoning;
+
+  const hasText = response.hasText;
+  if (typeof hasText === 'boolean') payload.hasText = hasText;
+
+  return Object.keys(payload).length > 0 ? payload : undefined;
+}
+
 function buildTextPart(text: string) {
   return { type: 'text' as const, text };
+}
+
+function buildToolParts(toolCalls: AnyRecord[]): UIMessage['parts'] {
+  return toolCalls.reduce<UIMessage['parts']>((acc, toolCall, index) => {
+    const toolName =
+      asString(toolCall.toolName) ||
+      asString(toolCall.tool) ||
+      asString(toolCall.name) ||
+      `tool-${index + 1}`;
+    const errorText = asString(toolCall.errorText) || asString(toolCall.error);
+    const output = toolCall.result ?? toolCall.output ?? (errorText ? { error: errorText } : undefined);
+    const explicitState = asString(toolCall.state);
+
+    acc.push({
+      type: `tool-${toolName}`,
+      toolName,
+      toolCallId: asString(toolCall.toolCallId) || `${toolName}-${index}`,
+      input: toolCall.input ?? toolCall.args ?? toolCall.arguments,
+      output,
+      state:
+        explicitState === 'error' ||
+        explicitState === 'output-error' ||
+        explicitState === 'input-error' ||
+        explicitState === 'output-denied'
+          ? 'output-error'
+          : output !== undefined || explicitState === 'output-available'
+            ? 'output-available'
+            : 'input-available',
+      errorText,
+    } as UIMessage['parts'][number]);
+
+    return acc;
+  }, []);
+}
+
+function hasPartType(parts: UIMessage['parts'], type: 'text' | 'reasoning'): boolean {
+  return parts.some((part) => part.type === type);
+}
+
+function hasToolPart(parts: UIMessage['parts']): boolean {
+  return parts.some((part) => part.type.startsWith('tool-'));
 }
 
 function normalizeMessageParts(parts: unknown): UIMessage['parts'] {
@@ -78,7 +181,7 @@ function normalizeMessageParts(parts: unknown): UIMessage['parts'] {
         type: `tool-${toolName}`,
         toolName,
         toolCallId: asString(part.toolCallId) || `${toolName}-${index}`,
-        input: part.input,
+        input: part.input ?? part.args ?? part.arguments,
         output: part.output ?? part.result,
         state:
           part.state === 'error' || part.state === 'output-error'
@@ -96,6 +199,12 @@ function normalizeMessageParts(parts: unknown): UIMessage['parts'] {
 export function getAssistantRenderableMessage(message: MessageRecord): UIMessage | undefined {
   const response = getInvocationResponse(message);
   const responseMessages = asArray<AnyRecord>(response?.messages);
+  const directToolCalls = asArray<AnyRecord>(response?.toolCalls);
+  const directToolParts = buildToolParts(directToolCalls);
+  const reply = asRecord(response?.reply);
+  const replyReasoning = asString(reply?.reasoning) || asString(response?.reasoningPreview);
+  const replyContent =
+    asString(reply?.content) || asString(response?.replyPreview) || message.replyPreview;
 
   for (let i = responseMessages.length - 1; i >= 0; i -= 1) {
     const candidate = responseMessages[i];
@@ -103,43 +212,46 @@ export function getAssistantRenderableMessage(message: MessageRecord): UIMessage
 
     const parts = normalizeMessageParts(candidate.parts);
     if (parts.length > 0) {
+      const enrichedParts = [...parts];
+
+      if (replyReasoning && !hasPartType(enrichedParts, 'reasoning')) {
+        enrichedParts.unshift({
+          type: 'reasoning',
+          text: replyReasoning,
+        } as UIMessage['parts'][number]);
+      }
+
+      if (directToolParts.length > 0 && !hasToolPart(enrichedParts)) {
+        const firstTextIndex = enrichedParts.findIndex((part) => part.type === 'text');
+        if (firstTextIndex >= 0) {
+          enrichedParts.splice(firstTextIndex, 0, ...directToolParts);
+        } else {
+          enrichedParts.push(...directToolParts);
+        }
+      }
+
+      if (replyContent && !hasPartType(enrichedParts, 'text')) {
+        enrichedParts.push(buildTextPart(replyContent));
+      }
+
       return {
         id: asString(candidate.id) || `assistant-${message.messageId || i}`,
         role: 'assistant',
-        parts,
+        parts: enrichedParts,
       } as UIMessage;
     }
   }
 
   const syntheticParts: UIMessage['parts'] = [];
-  const reasoningPreview = asString(response?.reasoningPreview);
-  if (reasoningPreview) {
+  if (replyReasoning) {
     syntheticParts.push({
       type: 'reasoning',
-      text: reasoningPreview,
+      text: replyReasoning,
     } as UIMessage['parts'][number]);
   }
 
-  const directToolCalls = asArray<AnyRecord>(response?.toolCalls);
-  directToolCalls.forEach((toolCall, index) => {
-    const toolName = asString(toolCall.toolName) || `tool-${index + 1}`;
-    syntheticParts.push({
-      type: `tool-${toolName}`,
-      toolName,
-      toolCallId: asString(toolCall.toolCallId) || `${toolName}-${index}`,
-      input: toolCall.input,
-      output: toolCall.result ?? toolCall.output,
-      state:
-        toolCall.result !== undefined || toolCall.output !== undefined
-          ? 'output-available'
-          : toolCall.state === 'error'
-            ? 'output-error'
-            : 'input-available',
-    } as UIMessage['parts'][number]);
-  });
+  syntheticParts.push(...directToolParts);
 
-  const reply = asRecord(response?.reply);
-  const replyContent = asString(reply?.content) || asString(response?.replyPreview) || message.replyPreview;
   if (replyContent) {
     syntheticParts.push(buildTextPart(replyContent));
   }
@@ -226,21 +338,65 @@ export function getRawPayloadPanels(message: MessageRecord): RawPayloadPanel[] {
   const responseRecord = asRecord(response);
   const panels: RawPayloadPanel[] = [];
 
-  if (request) {
+  const agentRequest = asRecord(request?.agentRequest);
+  const normalizedRequest = asRecord(request?.normalizedRequest);
+  const transportRequest = asRecord(request?.transportRequest);
+  const requestPayload = agentRequest || normalizedRequest || request;
+
+  if (requestPayload) {
     panels.push({
       key: 'request',
-      label: 'Request',
-      description: '发送到 Agent 的请求体',
-      data: request,
+      label: '请求体',
+      description: agentRequest ? '实际发往 Agent 编排层的完整请求体' : '发送到 Agent 的完整业务请求',
+      data: requestPayload,
     });
   }
 
-  if (responseRecord) {
+  if (transportRequest) {
+    panels.push({
+      key: 'transport-request',
+      label: '传输请求',
+      description: '前端发送到测试接口的原始请求体',
+      data: transportRequest,
+    });
+  }
+
+  if (normalizedRequest && agentRequest) {
+    panels.push({
+      key: 'normalized-request',
+      label: '标准化请求',
+      description: '测试接口归一化后的请求体',
+      data: normalizedRequest,
+    });
+  }
+
+  const responsePayload = buildResponsePayload(responseRecord);
+  if (responsePayload) {
     panels.push({
       key: 'response',
-      label: 'Response',
-      description: 'Agent 返回的完整响应摘要',
-      data: responseRecord,
+      label: '响应体',
+      description: 'Agent 返回的完整业务响应体',
+      data: responsePayload,
+    });
+  }
+
+  const toolCalls = asArray<AnyRecord>(responseRecord?.toolCalls);
+  if (toolCalls.length > 0) {
+    panels.push({
+      key: 'tool-calls',
+      label: '工具执行',
+      description: '工具调用明细（入参 / 出参 / 状态）',
+      data: toolCalls,
+    });
+  }
+
+  const tracePayload = buildTracePayload(responseRecord);
+  if (tracePayload) {
+    panels.push({
+      key: 'trace',
+      label: 'Trace',
+      description: '流式处理观测信息与时延分解',
+      data: tracePayload,
     });
   }
 
@@ -248,7 +404,7 @@ export function getRawPayloadPanels(message: MessageRecord): RawPayloadPanel[] {
   if (delivery) {
     panels.push({
       key: 'delivery',
-      label: 'Delivery',
+      label: '回执下发',
       description: '下发回执与分段信息',
       data: delivery,
     });
@@ -315,7 +471,18 @@ export function getHistoryMessages(message: MessageRecord): Array<{
 function inferToolStatus(toolCall: AnyRecord): ToolCallInfo['status'] {
   const result = asRecord(toolCall.result) ?? asRecord(toolCall.output);
   if (result?.success === true) return 'success';
-  if (toolCall.state === 'error' || result?.success === false) return 'error';
+  if (
+    toolCall.state === 'error' ||
+    toolCall.state === 'output-error' ||
+    toolCall.state === 'input-error' ||
+    toolCall.state === 'output-denied' ||
+    result?.success === false
+  ) {
+    return 'error';
+  }
+  if (toolCall.state === 'output-available' || toolCall.output !== undefined || toolCall.result !== undefined) {
+    return 'success';
+  }
   return 'unknown';
 }
 
@@ -328,8 +495,9 @@ export function getToolCalls(message: MessageRecord): ToolCallInfo[] {
         if (!name) return acc;
         acc.push({
           name,
+          toolCallId: asString(toolCall.toolCallId),
           status: inferToolStatus(toolCall),
-          input: toolCall.input,
+          input: toolCall.input ?? toolCall.args ?? toolCall.arguments,
           output: toolCall.result ?? toolCall.output,
         });
         return acc;
@@ -339,17 +507,18 @@ export function getToolCalls(message: MessageRecord): ToolCallInfo[] {
   const responseMessages = asArray<AnyRecord>(response?.messages);
   return responseMessages.flatMap((item) =>
     asArray<AnyRecord>(item.parts)
-      .filter((part) => part.type === 'dynamic-tool')
+      .filter((part) => part.type === 'dynamic-tool' || (typeof part.type === 'string' && part.type.startsWith('tool-')))
       .map((part) => ({
-        name: asString(part.toolName) || 'unknown-tool',
+        name: asString(part.toolName) || (asString(part.type)?.replace(/^tool-/, '') || 'unknown-tool'),
+        toolCallId: asString(part.toolCallId),
         status:
           part.state === 'output-available'
             ? 'success'
-            : part.state === 'error'
+            : part.state === 'error' || part.state === 'output-error'
               ? 'error'
               : 'unknown',
-        input: part.input,
-        output: part.output,
+        input: part.input ?? part.args,
+        output: part.output ?? part.result,
       })),
   );
 }

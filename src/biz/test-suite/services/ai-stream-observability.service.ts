@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { UIMessageChunk } from 'ai';
+import type { UIMessageChunk } from 'ai';
 import { randomUUID } from 'node:crypto';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { OBSERVER, Observer } from '@observability/observer.interface';
@@ -79,6 +79,78 @@ interface AiStreamSummaryPayload {
   timings: AiStreamTimingPayload;
 }
 
+type ContentKind = 'text' | 'reasoning' | 'tool';
+
+interface ContentOrderItem {
+  kind: ContentKind;
+  id: string;
+}
+
+type ToolCallState =
+  | 'input-streaming'
+  | 'input-available'
+  | 'input-error'
+  | 'output-available'
+  | 'output-error'
+  | 'output-denied';
+
+interface CapturedToolCall {
+  toolCallId: string;
+  toolName?: string;
+  input?: unknown;
+  inputTextParts: string[];
+  output?: unknown;
+  errorText?: string;
+  state: ToolCallState;
+  providerExecuted?: boolean;
+  dynamic?: boolean;
+  title?: string;
+  preliminary?: boolean;
+}
+
+interface StoredToolCall {
+  toolCallId: string;
+  toolName: string;
+  input?: unknown;
+  inputText?: string;
+  output?: unknown;
+  errorText?: string;
+  state: ToolCallState;
+  providerExecuted?: boolean;
+  dynamic?: boolean;
+  title?: string;
+  preliminary?: boolean;
+}
+
+interface StoredUiMessagePart {
+  type: string;
+  text?: string;
+  toolName?: string;
+  toolCallId?: string;
+  input?: unknown;
+  output?: unknown;
+  state?: 'input-available' | 'output-available' | 'output-error';
+  errorText?: string;
+}
+
+interface StoredUiMessage {
+  id: string;
+  role: 'assistant';
+  parts: StoredUiMessagePart[];
+}
+
+interface StoredReplyPayload {
+  content?: string;
+  reasoning?: string;
+  usage?: StreamUsage;
+}
+
+interface StoredAiStreamResponse extends AiStreamSummaryPayload {
+  reply?: StoredReplyPayload;
+  toolCalls?: StoredToolCall[];
+  messages?: StoredUiMessage[];
+}
+
 @Injectable()
 export class AiStreamObservabilityService {
   constructor(
@@ -99,10 +171,15 @@ export class AiStreamTrace {
   private readonly toolNames = new Set<string>();
   private readonly replyPreviewParts: string[] = [];
   private readonly reasoningPreviewParts: string[] = [];
+  private readonly textBlocks = new Map<string, string[]>();
+  private readonly reasoningBlocks = new Map<string, string[]>();
+  private readonly toolCalls = new Map<string, CapturedToolCall>();
+  private readonly contentOrder: ContentOrderItem[] = [];
   private readonly marks: AiStreamTraceMarks = {
     receivedAt: Date.now(),
   };
 
+  private requestBody: Record<string, unknown>;
   private usage?: StreamUsage;
   private entryStage: string | null = null;
   private firstChunkType?: string;
@@ -118,6 +195,7 @@ export class AiStreamTrace {
   ) {
     this.traceId = `ai-stream:${options.chatId}:${randomUUID()}`;
     this.scenario = options.scenario || DEFAULT_SCENARIO;
+    this.requestBody = options.requestBody;
 
     this.messageTrackingService.recordMessageReceived(
       this.traceId,
@@ -143,6 +221,13 @@ export class AiStreamTrace {
 
   get messageId(): string {
     return this.traceId;
+  }
+
+  mergeRequestBody(partial: Record<string, unknown>): void {
+    this.requestBody = {
+      ...this.requestBody,
+      ...partial,
+    };
   }
 
   markAiStart(): void {
@@ -174,21 +259,79 @@ export class AiStreamTrace {
     switch (chunk.type) {
       case 'reasoning-start':
         this.marks.firstReasoningStartAt ??= now;
+        this.ensureReasoningBlock(chunk.id);
         break;
       case 'reasoning-delta':
         this.marks.firstReasoningDeltaAt ??= now;
+        this.ensureReasoningBlock(chunk.id).push(chunk.delta);
         this.appendPreview(this.reasoningPreviewParts, chunk.delta);
         break;
       case 'text-start':
         this.marks.firstTextStartAt ??= now;
+        this.ensureTextBlock(chunk.id);
         break;
       case 'text-delta':
         this.marks.firstTextDeltaAt ??= now;
+        this.ensureTextBlock(chunk.id).push(chunk.delta);
         this.appendPreview(this.replyPreviewParts, chunk.delta);
         break;
       case 'tool-input-start':
+        this.toolNames.add(chunk.toolName);
+        this.ensureToolCall(chunk.toolCallId, {
+          toolName: chunk.toolName,
+          providerExecuted: chunk.providerExecuted,
+          dynamic: chunk.dynamic,
+          title: chunk.title,
+          state: 'input-streaming',
+        });
+        break;
+      case 'tool-input-delta':
+        this.ensureToolCall(chunk.toolCallId).inputTextParts.push(chunk.inputTextDelta);
+        break;
       case 'tool-input-available':
         this.toolNames.add(chunk.toolName);
+        this.ensureToolCall(chunk.toolCallId, {
+          toolName: chunk.toolName,
+          input: chunk.input,
+          providerExecuted: chunk.providerExecuted,
+          dynamic: chunk.dynamic,
+          title: chunk.title,
+          state: 'input-available',
+        });
+        break;
+      case 'tool-input-error':
+        this.toolNames.add(chunk.toolName);
+        this.ensureToolCall(chunk.toolCallId, {
+          toolName: chunk.toolName,
+          input: chunk.input,
+          errorText: chunk.errorText,
+          providerExecuted: chunk.providerExecuted,
+          dynamic: chunk.dynamic,
+          title: chunk.title,
+          state: 'input-error',
+        });
+        break;
+      case 'tool-output-available':
+        this.ensureToolCall(chunk.toolCallId, {
+          output: chunk.output,
+          providerExecuted: chunk.providerExecuted,
+          dynamic: chunk.dynamic,
+          preliminary: chunk.preliminary,
+          state: 'output-available',
+        });
+        break;
+      case 'tool-output-error':
+        this.ensureToolCall(chunk.toolCallId, {
+          errorText: chunk.errorText,
+          providerExecuted: chunk.providerExecuted,
+          dynamic: chunk.dynamic,
+          state: 'output-error',
+        });
+        break;
+      case 'tool-output-denied':
+        this.ensureToolCall(chunk.toolCallId, {
+          state: 'output-denied',
+        });
         break;
       case 'start-step':
         this.stepCount += 1;
@@ -300,21 +443,37 @@ export class AiStreamTrace {
     payload: AiStreamSummaryPayload,
     errorMessage?: string,
   ): MonitoringMetadata {
+    const storedResponse = this.buildStoredResponse(payload, errorMessage);
+
     return {
       scenario: this.scenario as MonitoringMetadata['scenario'],
       tools: payload.tools.length > 0 ? payload.tools : undefined,
       tokenUsage: payload.usage?.totalTokens ?? 0,
-      replyPreview: payload.replyPreview,
+      replyPreview: storedResponse.reply?.content || payload.replyPreview,
       replySegments: this.chunkTypeCounts['text-delta'] ?? undefined,
       isFallback: false,
       agentInvocation: {
-        request: this.options.requestBody,
-        response: {
-          ...payload,
-          error: errorMessage ?? payload.error,
-        },
+        request: this.requestBody,
+        response: storedResponse,
         isFallback: false,
       },
+    };
+  }
+
+  private buildStoredResponse(
+    payload: AiStreamSummaryPayload,
+    errorMessage?: string,
+  ): StoredAiStreamResponse {
+    const toolCalls = this.buildStoredToolCalls();
+    const reply = this.buildReplyPayload();
+    const messages = this.buildAssistantMessages();
+
+    return {
+      ...payload,
+      error: errorMessage ?? payload.error,
+      reply,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      messages: messages.length > 0 ? messages : undefined,
     };
   }
 
@@ -388,6 +547,176 @@ export class AiStreamTrace {
     };
   }
 
+  private ensureContentOrder(kind: ContentKind, id: string): void {
+    if (!id) return;
+    if (this.contentOrder.some((item) => item.kind === kind && item.id === id)) return;
+    this.contentOrder.push({ kind, id });
+  }
+
+  private ensureTextBlock(id: string): string[] {
+    const existing = this.textBlocks.get(id);
+    if (existing) return existing;
+    const next: string[] = [];
+    this.textBlocks.set(id, next);
+    this.ensureContentOrder('text', id);
+    return next;
+  }
+
+  private ensureReasoningBlock(id: string): string[] {
+    const existing = this.reasoningBlocks.get(id);
+    if (existing) return existing;
+    const next: string[] = [];
+    this.reasoningBlocks.set(id, next);
+    this.ensureContentOrder('reasoning', id);
+    return next;
+  }
+
+  private ensureToolCall(
+    toolCallId: string,
+    patch?: Partial<Omit<CapturedToolCall, 'toolCallId' | 'inputTextParts'>>,
+  ): CapturedToolCall {
+    const existing = this.toolCalls.get(toolCallId);
+    if (existing) {
+      if (patch) {
+        Object.assign(existing, patch);
+      }
+      return existing;
+    }
+
+    const next: CapturedToolCall = {
+      toolCallId,
+      inputTextParts: [],
+      state: patch?.state ?? 'input-streaming',
+      toolName: patch?.toolName,
+      input: patch?.input,
+      output: patch?.output,
+      errorText: patch?.errorText,
+      providerExecuted: patch?.providerExecuted,
+      dynamic: patch?.dynamic,
+      title: patch?.title,
+      preliminary: patch?.preliminary,
+    };
+    this.toolCalls.set(toolCallId, next);
+    this.ensureContentOrder('tool', toolCallId);
+    return next;
+  }
+
+  private buildReplyPayload(): StoredReplyPayload | undefined {
+    const content = this.collectOrderedText('text', '');
+    const reasoning = this.collectOrderedText('reasoning', '\n\n');
+
+    if (!content && !reasoning && !this.usage) return undefined;
+
+    return {
+      content: content || undefined,
+      reasoning: reasoning || undefined,
+      usage: this.usage,
+    };
+  }
+
+  private collectOrderedText(kind: Extract<ContentKind, 'text' | 'reasoning'>, separator: string) {
+    const segments = this.contentOrder
+      .filter((item) => item.kind === kind)
+      .map((item) =>
+        this.getJoinedText(kind === 'text' ? this.textBlocks.get(item.id) : this.reasoningBlocks.get(item.id)),
+      )
+      .filter(Boolean);
+
+    return segments.join(separator).trim();
+  }
+
+  private buildStoredToolCalls(): StoredToolCall[] {
+    return this.contentOrder
+      .filter((item) => item.kind === 'tool')
+      .map((item) => this.toolCalls.get(item.id))
+      .filter((tool): tool is CapturedToolCall => Boolean(tool?.toolName))
+      .map((tool) => {
+        const inputText = this.getJoinedText(tool.inputTextParts);
+        return {
+          toolCallId: tool.toolCallId,
+          toolName: tool.toolName || 'unknown-tool',
+          input: tool.input ?? this.parseToolInputText(inputText),
+          inputText: inputText || undefined,
+          output: tool.output,
+          errorText: tool.errorText,
+          state: tool.state,
+          providerExecuted: tool.providerExecuted,
+          dynamic: tool.dynamic,
+          title: tool.title,
+          preliminary: tool.preliminary,
+        };
+      });
+  }
+
+  private buildAssistantMessages(): StoredUiMessage[] {
+    const parts = this.contentOrder.reduce<StoredUiMessagePart[]>((acc, item) => {
+      if (item.kind === 'text') {
+        const text = this.getJoinedText(this.textBlocks.get(item.id));
+        if (text) {
+          acc.push({ type: 'text', text });
+        }
+        return acc;
+      }
+
+      if (item.kind === 'reasoning') {
+        const text = this.getJoinedText(this.reasoningBlocks.get(item.id));
+        if (text) {
+          acc.push({ type: 'reasoning', text });
+        }
+        return acc;
+      }
+
+      const tool = this.toolCalls.get(item.id);
+      if (!tool?.toolName) return acc;
+
+      acc.push({
+        type: `tool-${tool.toolName}`,
+        toolName: tool.toolName,
+        toolCallId: tool.toolCallId,
+        input: tool.input ?? this.parseToolInputText(this.getJoinedText(tool.inputTextParts)),
+        output: tool.output ?? (tool.errorText ? { error: tool.errorText } : undefined),
+        state: this.mapToolPartState(tool.state),
+        errorText: tool.errorText,
+      });
+
+      return acc;
+    }, []);
+
+    if (parts.length === 0) return [];
+
+    return [
+      {
+        id: `assistant-${this.traceId}`,
+        role: 'assistant',
+        parts,
+      },
+    ];
+  }
+
+  private mapToolPartState(
+    state: ToolCallState,
+  ): 'input-available' | 'output-available' | 'output-error' {
+    switch (state) {
+      case 'output-available':
+        return 'output-available';
+      case 'output-error':
+      case 'output-denied':
+      case 'input-error':
+        return 'output-error';
+      default:
+        return 'input-available';
+    }
+  }
+
+  private parseToolInputText(inputText?: string): unknown {
+    if (!inputText) return undefined;
+    try {
+      return JSON.parse(inputText);
+    } catch {
+      return inputText;
+    }
+  }
+
   private appendPreview(parts: string[], delta: string): void {
     const currentLength = this.getPreviewLength(parts);
 
@@ -411,6 +740,11 @@ export class AiStreamTrace {
 
   private getPreviewLength(parts: string[]): number {
     return this.getPreview(parts)?.length ?? 0;
+  }
+
+  private getJoinedText(parts?: string[]): string {
+    if (!parts || parts.length === 0) return '';
+    return parts.join('').trim();
   }
 
   private diff(to?: number, from?: number): number | undefined {

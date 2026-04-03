@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { renderContentWithMediaTags as renderMediaTags } from '@/utils/media-tags';
 import type { MessageRecord } from '@/api/types/chat.types';
 import MessagePartsAdapter from '@/view/agent-test/list/components/MessagePartsAdapter';
@@ -7,82 +7,8 @@ import {
   getAssistantRenderableMessage,
   getFallbackSummary,
   getRawPayloadPanels,
+  getToolCalls,
 } from '../utils';
-
-// 需要截断的大字段路径（仅截断 request 部分，response 完整展示）
-const TRUNCATE_PATHS = [
-  'request.context.configData',
-  'request.systemPrompt',
-];
-
-// 截断阈值（字符数）
-const TRUNCATE_THRESHOLD = 500;
-
-/**
- * 递归处理对象，对大字段进行截断摘要
- */
-function truncateLargeFields(
-  obj: unknown,
-  currentPath = '',
-  depth = 0
-): unknown {
-  // 防止无限递归
-  // if (depth > 10) return '[深度限制]';
-
-  if (obj === null || obj === undefined) return obj;
-
-  // 处理数组
-  if (Array.isArray(obj)) {
-    // 检查是否需要截断整个数组
-    if (TRUNCATE_PATHS.includes(currentPath)) {
-      const jsonStr = JSON.stringify(obj);
-      if (jsonStr.length > TRUNCATE_THRESHOLD) {
-        return `[数组: ${obj.length} 项, ${formatSize(jsonStr.length)}] (已省略)`;
-      }
-    }
-    // 递归处理数组元素
-    return obj.map((item, i) =>
-      truncateLargeFields(item, `${currentPath}[${i}]`, depth + 1)
-    );
-  }
-
-  // 处理对象
-  if (typeof obj === 'object') {
-    const result: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(obj)) {
-      const fieldPath = currentPath ? `${currentPath}.${key}` : key;
-
-      // 检查是否需要截断
-      if (TRUNCATE_PATHS.includes(fieldPath)) {
-        const jsonStr = JSON.stringify(value);
-        if (jsonStr.length > TRUNCATE_THRESHOLD) {
-          if (Array.isArray(value)) {
-            result[key] = `[数组: ${value.length} 项, ${formatSize(jsonStr.length)}] (已省略)`;
-          } else if (typeof value === 'object' && value !== null) {
-            const keys = Object.keys(value);
-            result[key] = `[对象: ${keys.slice(0, 3).join(', ')}${keys.length > 3 ? '...' : ''}, ${formatSize(jsonStr.length)}] (已省略)`;
-          } else if (typeof value === 'string') {
-            result[key] = `${value.slice(0, 100)}... [${formatSize(jsonStr.length)}]`;
-          } else {
-            result[key] = value;
-          }
-          continue;
-        }
-      }
-
-      // 递归处理子字段
-      result[key] = truncateLargeFields(value, fieldPath, depth + 1);
-    }
-    return result;
-  }
-
-  // 处理长字符串
-  if (typeof obj === 'string' && obj.length > 1000) {
-    return `${obj.slice(0, 200)}... [共 ${obj.length} 字符]`;
-  }
-
-  return obj;
-}
 
 function formatSize(bytes: number): string {
   if (bytes < 1000) return `${bytes} 字符`;
@@ -99,28 +25,49 @@ interface ChatSectionProps {
   onToggleRaw: () => void;
 }
 
+function stringifyPayload(data: unknown): string {
+  const serialized = JSON.stringify(data, null, 2);
+  if (serialized !== undefined) return serialized;
+  return String(data);
+}
+
+function getPayloadSummary(data: unknown): string {
+  if (Array.isArray(data)) {
+    return `${data.length} 项 · ${formatSize(stringifyPayload(data).length)}`;
+  }
+  if (data && typeof data === 'object') {
+    return `${Object.keys(data as Record<string, unknown>).length} 个字段 · ${formatSize(
+      stringifyPayload(data).length,
+    )}`;
+  }
+  if (typeof data === 'string') {
+    return `${formatSize(data.length)}`;
+  }
+  return typeof data;
+}
+
 export default function ChatSection({
   message,
   showRaw,
   onToggleRaw,
 }: ChatSectionProps) {
   const [activePayloadKey, setActivePayloadKey] = useState<string>('request');
-  const truncatedRawData = useMemo(() => {
-    if (!showRaw) return [];
-
-    return getRawPayloadPanels(message).map((panel) => ({
-      ...panel,
-      data: panel.key === 'response' ? panel.data : truncateLargeFields(panel.data),
-    }));
-  }, [message, showRaw]);
-
+  const toolCalls = useMemo(() => getToolCalls(message), [message]);
+  const rawPayloadPanels = useMemo(() => getRawPayloadPanels(message), [message]);
   const fallbackSummary = useMemo(() => getFallbackSummary(message), [message]);
   const renderableMessage = useMemo(() => getAssistantRenderableMessage(message), [message]);
   const fallbackDeliveredSegments = fallbackSummary?.deliveredSegments;
   const activePanel =
-    truncatedRawData.find((panel) => panel.key === activePayloadKey) ?? truncatedRawData[0];
+    rawPayloadPanels.find((panel) => panel.key === activePayloadKey) ?? rawPayloadPanels[0];
 
   const fallbackStatusText = message.fallbackSuccess === true ? '成功' : '失败';
+
+  useEffect(() => {
+    if (!showRaw) return;
+    if (!activePanel && rawPayloadPanels.length > 0) {
+      setActivePayloadKey(rawPayloadPanels[0].key);
+    }
+  }, [activePanel, rawPayloadPanels, showRaw]);
 
   return (
     <>
@@ -141,6 +88,9 @@ export default function ChatSection({
         <div className={`${styles.chatBubble} ${styles.agent}`}>
           <div className={styles.bubbleHeader}>
             <span className={styles.bubbleTitle}>响应正文</span>
+            {toolCalls.length > 0 && (
+              <span className={styles.bubbleMeta}>{toolCalls.length} 个工具调用</span>
+            )}
             {message.replySegments && (
               <span className={styles.bubbleMeta}>
                 {message.replySegments} 个下发分段
@@ -149,7 +99,11 @@ export default function ChatSection({
           </div>
           <div className={`${styles.bubbleContent} ${styles.primary} ${styles.agentRenderer}`}>
             {renderableMessage ? (
-              <MessagePartsAdapter message={renderableMessage} />
+              <MessagePartsAdapter
+                message={renderableMessage}
+                expandToolsByDefault={false}
+                expandReasoningByDefault={false}
+              />
             ) : (
               <div className={styles.emptyResponse}>暂无可渲染的响应内容</div>
             )}
@@ -206,21 +160,24 @@ export default function ChatSection({
         <div className={styles.rawHeader}>
           <div>
             <h4 className={styles.rawTitle}>调试载荷</h4>
-            <div className={styles.rawSubtitle}>按阶段查看 request、response 与回执信息</div>
+            <div className={styles.rawSubtitle}>按业务请求、业务响应、工具执行、下发结果与异常链路查看完整载荷</div>
           </div>
-          <button
-            onClick={onToggleRaw}
-            className={styles.toggleButton}
-          >
-            {showRaw ? '收起' : '展开'}
-          </button>
+          <div className={styles.rawActions}>
+            <button
+              type="button"
+              onClick={onToggleRaw}
+              className={styles.toggleButton}
+            >
+              {showRaw ? '收起' : '展开'}
+            </button>
+          </div>
         </div>
 
         {showRaw &&
-          (truncatedRawData.length > 0 ? (
+          (rawPayloadPanels.length > 0 ? (
             <div className={styles.payloadShell}>
               <div className={styles.rawTabs}>
-                {truncatedRawData.map((panel) => (
+                {rawPayloadPanels.map((panel) => (
                   <button
                     key={panel.key}
                     type="button"
@@ -241,10 +198,13 @@ export default function ChatSection({
                       <div className={styles.payloadLabel}>{activePanel.label}</div>
                       <div className={styles.payloadDescription}>{activePanel.description}</div>
                     </div>
+                    <div className={styles.payloadMeta}>
+                      {getPayloadSummary(activePanel.data)}
+                    </div>
                   </div>
-                  <pre className={styles.codeBlock}>
-                    {JSON.stringify(activePanel.data, null, 2)}
-                  </pre>
+                  <div className={styles.codeShell}>
+                    <pre className={styles.codeBlock}>{stringifyPayload(activePanel.data)}</pre>
+                  </div>
                 </div>
               ) : null}
             </div>

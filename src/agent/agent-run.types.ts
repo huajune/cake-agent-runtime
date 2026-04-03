@@ -61,4 +61,5 @@ export interface AgentRunResult {
 export interface AgentStreamResult {
   streamResult: ReturnType<typeof streamText>;
   entryStage: string | null;
+  agentRequest?: Record<string, unknown>;
 }

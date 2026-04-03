@@ -278,6 +278,7 @@ export interface PersistableConversationState {
 
 export interface AgentReply {
   content: string;
+  reasoning?: string;
   usage?: {
     inputTokens: number;
     outputTokens: number;

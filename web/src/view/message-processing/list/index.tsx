@@ -4,13 +4,13 @@ import {
   useMessageProcessingRecords,
   useMessageStats,
   useSlowestMessages,
-} from '@/hooks/chat/useMessageRecords';
+} from '@/hooks/chat/useMessageProcessingRecords';
 import ControlPanel from './components/ControlPanel';
-import LogsTable from './components/LogsTable';
-import MessageDetailDrawer from './components/MessageDetailDrawer';
+import MessageProcessingTable from './components/MessageProcessingTable';
+import MessageProcessingDetailDrawer from './components/MessageProcessingDetailDrawer';
 import type { MessageRecord } from '@/api/types/chat.types';
 
-export default function Logs() {
+export default function MessageProcessingPage() {
   const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month'>('today');
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'realtime' | 'slowest'>('realtime');
@@ -105,9 +105,13 @@ export default function Logs() {
   // 根据 Tab 切换数据源
   const messages = activeTab === 'realtime' ? accumulatedMessages : slowestMessages || [];
   const isLoading = activeTab === 'realtime' ? realtimeLoading && page === 1 : slowestLoading;
+  const isLoadingMore = activeTab === 'realtime' && realtimeLoading && page > 1;
 
   // 是否还有更多数据（仅用于实时列表）
-  const hasMore = activeTab === 'realtime' && accumulatedMessages.length < stats.total;
+  const hasMore =
+    activeTab === 'realtime' &&
+    accumulatedMessages.length > 0 &&
+    accumulatedMessages.length < stats.total;
 
   // 加载更多
   const handleLoadMore = useCallback(() => {
@@ -121,7 +125,7 @@ export default function Logs() {
   const slowestCount = slowestMessages?.length || 0;
 
   return (
-    <div id="page-logs" className="page-section active">
+    <div id="page-message-processing" className="page-section active">
       <ControlPanel
         stats={stats}
         activeTab={activeTab}
@@ -136,7 +140,7 @@ export default function Logs() {
 
       {/* 最慢Top10不需要无限滚动 */}
       {activeTab === 'slowest' ? (
-        <LogsTable
+        <MessageProcessingTable
           data={messages}
           loading={isLoading}
           onRowClick={(message: MessageRecord) => setSelectedMessageId(message.messageId || null)}
@@ -149,9 +153,11 @@ export default function Logs() {
           next={handleLoadMore}
           hasMore={hasMore}
           loader={
-            <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
-              加载中...
-            </div>
+            isLoadingMore ? (
+              <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
+                加载中...
+              </div>
+            ) : null
           }
           endMessage={
             accumulatedMessages.length > 0 ? (
@@ -161,7 +167,7 @@ export default function Logs() {
             ) : null
           }
         >
-          <LogsTable
+          <MessageProcessingTable
             data={messages}
             loading={isLoading}
             onRowClick={(message: MessageRecord) => setSelectedMessageId(message.messageId || null)}
@@ -171,7 +177,7 @@ export default function Logs() {
       )}
 
       {selectedMessageId && (
-        <MessageDetailDrawer
+        <MessageProcessingDetailDrawer
           messageId={selectedMessageId}
           onClose={() => setSelectedMessageId(null)}
         />

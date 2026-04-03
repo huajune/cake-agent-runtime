@@ -128,22 +128,35 @@ export class TestSuiteController {
       ...testRequest,
       sessionId,
     };
-    const trace = this.aiStreamObservability.startTrace({
-      chatId: sessionId,
-      userId: normalizedRequest.userId,
-      scenario: normalizedRequest.scenario,
-      messageText,
-      requestBody: {
+    const requestBody = {
+      transportRequest: {
+        scenario: request.scenario,
+        sessionId: request.sessionId,
+        userId: request.userId,
+        thinking: request.thinking,
+        saveExecution: request.saveExecution ?? false,
+        notifyBooking: request.notifyBooking ?? true,
+        messages: transportMessages,
+      },
+      normalizedRequest: {
         scenario: normalizedRequest.scenario,
         sessionId,
         userId: normalizedRequest.userId,
         thinking: normalizedRequest.thinking,
         saveExecution: normalizedRequest.saveExecution ?? false,
         notifyBooking: normalizedRequest.notifyBooking ?? true,
-        messageCount: transportMessages.length,
-        latestMessageId: transportMessages[transportMessages.length - 1]?.id,
-        imageCount: normalizedRequest.imageUrls?.length ?? 0,
+        skipHistoryTrim: normalizedRequest.skipHistoryTrim ?? false,
+        message: normalizedRequest.message,
+        history: normalizedRequest.history,
+        imageUrls: normalizedRequest.imageUrls,
       },
+    };
+    const trace = this.aiStreamObservability.startTrace({
+      chatId: sessionId,
+      userId: normalizedRequest.userId,
+      scenario: normalizedRequest.scenario,
+      messageText,
+      requestBody,
     });
 
     this.logger.log(
@@ -152,8 +165,11 @@ export class TestSuiteController {
 
     try {
       trace.markAiStart();
-      const { streamResult, entryStage } =
+      const { streamResult, entryStage, agentRequest } =
         await this.executionService.executeTestStreamWithMeta(normalizedRequest);
+      if (agentRequest) {
+        trace.mergeRequestBody({ agentRequest });
+      }
       trace.markStreamReady(entryStage);
       res.setHeader('X-Agent-Trace-Id', trace.messageId);
 

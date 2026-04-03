@@ -43,7 +43,6 @@
 }
 
 .bubbleMeta {
-  margin-left: auto;
   font-size: 12px;
   color: $text-muted;
   background: $bg-secondary;
@@ -179,15 +178,24 @@
 }
 
 .toggleButton {
-  background: none;
-  border: none;
+  background: rgba($primary, 0.08);
+  border: 1px solid rgba($primary, 0.14);
   color: $primary;
   cursor: pointer;
   font-size: 12px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 8px 14px;
+  transition: all 0.18s ease;
 
   &:hover {
-    text-decoration: underline;
+    background: rgba($primary, 0.12);
   }
+}
+
+.rawActions {
+  display: flex;
+  align-items: center;
 }
 
 .payloadShell {
@@ -254,8 +262,22 @@
   color: $text-muted;
 }
 
-.codeBlock {
+.payloadMeta {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: $text-muted;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.codeShell {
   background: #0f172a;
+  padding: 0;
+}
+
+.codeBlock {
   color: #e2e8f0;
   padding: 16px;
   font-family: 'Menlo', 'Monaco', monospace;

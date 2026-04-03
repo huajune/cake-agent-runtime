@@ -1,17 +1,20 @@
 import { useState } from 'react';
 import { formatDateTime } from '@/utils/format';
-import { useMessageProcessingRecordDetail } from '@/hooks/chat/useMessageRecords';
+import { useMessageProcessingRecordDetail } from '@/hooks/chat/useMessageProcessingRecords';
 import HistorySection from './HistorySection';
 import ChatSection from './ChatSection';
 import TechnicalStats from './TechnicalStats';
 import { getStatusLabel, getStatusTone } from './utils';
 
-interface MessageDetailDrawerProps {
+interface MessageProcessingDetailDrawerProps {
   messageId: string;
   onClose: () => void;
 }
 
-export default function MessageDetailDrawer({ messageId, onClose }: MessageDetailDrawerProps) {
+export default function MessageProcessingDetailDrawer({
+  messageId,
+  onClose,
+}: MessageProcessingDetailDrawerProps) {
   const [showRaw, setShowRaw] = useState(false);
 
   // 按需加载完整详情（包含 agentInvocation）

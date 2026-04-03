@@ -18,14 +18,19 @@ function getStatusLabel(status: MessageRecord['status']): string {
   }
 }
 
-interface LogsTableProps {
+interface MessageProcessingTableProps {
   data: MessageRecord[];
   loading?: boolean;
   onRowClick: (message: MessageRecord) => void;
   variant: 'realtime' | 'slowest';
 }
 
-export default function LogsTable({ data, loading, onRowClick, variant }: LogsTableProps) {
+export default function MessageProcessingTable({
+  data,
+  loading,
+  onRowClick,
+  variant,
+}: MessageProcessingTableProps) {
   const tableHeaders = (
     <tr>
       <th>接收时间</th>

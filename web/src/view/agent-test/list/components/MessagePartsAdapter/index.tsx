@@ -16,8 +16,26 @@ import styles from './index.module.scss';
 
 // ==================== 思考过程组件（基于 AI reasoning） ====================
 
-function ReasoningBlock({ text, isThinking }: { text: string; isThinking: boolean }) {
-  const [expanded, setExpanded] = useState(true);
+function normalizeReasoningText(text: string): string {
+  return text
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/(^|\n)(\d+\.)\s*\n+(?=\S)/g, '$1$2 ')
+    .replace(/(^|\n)([-*])\s*\n+(?=\S)/g, '$1$2 ')
+    .trim();
+}
+
+function ReasoningBlock({
+  text,
+  isThinking,
+  defaultExpanded = true,
+}: {
+  text: string;
+  isThinking: boolean;
+  defaultExpanded?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const normalizedText = normalizeReasoningText(text);
 
   return (
     <div className={`${styles.reasoningCard} ${isThinking ? styles.reasoningActive : ''}`}>
@@ -35,9 +53,9 @@ function ReasoningBlock({ text, isThinking }: { text: string; isThinking: boolea
       {expanded && (
         <div className={styles.reasoningBody}>
           {isThinking ? (
-            <pre className={styles.reasoningPlainText}>{text}</pre>
+            <pre className={styles.reasoningPlainText}>{normalizedText}</pre>
           ) : (
-            <Markdown>{text}</Markdown>
+            <Markdown>{normalizedText}</Markdown>
           )}
         </div>
       )}
@@ -213,9 +231,16 @@ function buildSegments(parts: UIMessage['parts']): Segment[] {
 interface MessagePartsAdapterProps {
   message: UIMessage;
   isStreaming?: boolean;
+  expandToolsByDefault?: boolean;
+  expandReasoningByDefault?: boolean;
 }
 
-function MessagePartsAdapterComponent({ message, isStreaming }: MessagePartsAdapterProps) {
+function MessagePartsAdapterComponent({
+  message,
+  isStreaming,
+  expandToolsByDefault = false,
+  expandReasoningByDefault = true,
+}: MessagePartsAdapterProps) {
   const parts = message.parts;
 
   if (!parts || parts.length === 0) {
@@ -251,7 +276,12 @@ function MessagePartsAdapterComponent({ message, isStreaming }: MessagePartsAdap
           const isLastReasoning =
             !!isStreaming && segments.slice(idx + 1).every((s) => s.kind !== 'reasoning');
           return (
-            <ReasoningBlock key={`reasoning-${idx}`} text={seg.text} isThinking={isLastReasoning} />
+            <ReasoningBlock
+              key={`reasoning-${idx}`}
+              text={seg.text}
+              isThinking={isLastReasoning}
+              defaultExpanded={expandReasoningByDefault}
+            />
           );
         }
 
@@ -272,6 +302,7 @@ function MessagePartsAdapterComponent({ message, isStreaming }: MessagePartsAdap
             args={seg.tool.args}
             state={seg.tool.state}
             result={seg.tool.result}
+            defaultExpanded={expandToolsByDefault}
           />
         );
       })}

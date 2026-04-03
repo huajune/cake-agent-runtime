@@ -189,10 +189,10 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           {!isCollapsed && <span className="nav-text">今日托管</span>}
         </NavLink>
         <NavLink
-          to="/logs"
+          to="/message-processing"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
           title={isCollapsed ? '实时消息' : undefined}
-          {...bindPreload('/logs')}
+          {...bindPreload('/message-processing')}
         >
           <span className="nav-icon"><LogsIcon /></span>
           {!isCollapsed && <span className="nav-text">消息处理流水</span>}
