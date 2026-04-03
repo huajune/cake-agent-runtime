@@ -23,6 +23,10 @@ import {
 @Injectable()
 export class TestExecutionRepository extends BaseRepository {
   protected readonly tableName = 'test_executions';
+  private readonly MAX_JSON_DEPTH = 6;
+  private readonly MAX_OBJECT_KEYS = 40;
+  private readonly MAX_ARRAY_ITEMS = 20;
+  private readonly MAX_STRING_LENGTH = 2000;
 
   constructor(supabaseService: SupabaseService) {
     super(supabaseService);
@@ -53,10 +57,97 @@ export class TestExecutionRepository extends BaseRepository {
   }
 
   /**
+   * 清理 agentResponse，避免重复存储大体积 toolCalls/rawData
+   */
+  private sanitizeAgentResponse(agentResponse: unknown): unknown {
+    if (!agentResponse || typeof agentResponse !== 'object') {
+      return agentResponse;
+    }
+
+    const response = agentResponse as Record<string, unknown>;
+    const sanitized = {
+      text: typeof response.text === 'string' ? this.truncateText(response.text) : response.text,
+      steps: response.steps,
+      usage: this.sanitizeJsonValue(response.usage),
+    } as Record<string, unknown>;
+
+    if (Array.isArray(response.toolCalls)) {
+      sanitized.toolCallSummary = response.toolCalls.map((toolCall) => {
+        const item =
+          toolCall && typeof toolCall === 'object' ? (toolCall as Record<string, unknown>) : {};
+        return {
+          toolName:
+            typeof item.toolName === 'string'
+              ? item.toolName
+              : typeof item.name === 'string'
+                ? item.name
+                : 'unknown',
+        };
+      });
+    }
+
+    return this.sanitizeJsonValue(sanitized);
+  }
+
+  private sanitizeToolCalls(toolCalls: unknown): unknown[] {
+    const sanitized = this.sanitizeJsonValue(Array.isArray(toolCalls) ? toolCalls : []);
+    return Array.isArray(sanitized) ? sanitized : [sanitized];
+  }
+
+  private sanitizeJsonValue(value: unknown, depth = 0): unknown {
+    if (value == null) {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      return this.truncateText(value);
+    }
+
+    if (typeof value !== 'object') {
+      return value;
+    }
+
+    if (depth >= this.MAX_JSON_DEPTH) {
+      return '[truncated depth]';
+    }
+
+    if (Array.isArray(value)) {
+      const items = value
+        .slice(0, this.MAX_ARRAY_ITEMS)
+        .map((item) => this.sanitizeJsonValue(item, depth + 1));
+
+      if (value.length > this.MAX_ARRAY_ITEMS) {
+        items.push(`[truncated ${value.length - this.MAX_ARRAY_ITEMS} items]`);
+      }
+
+      return items;
+    }
+
+    const entries = Object.entries(value as Record<string, unknown>);
+    const sanitized: Record<string, unknown> = {};
+
+    for (const [key, entryValue] of entries.slice(0, this.MAX_OBJECT_KEYS)) {
+      sanitized[key] = this.sanitizeJsonValue(entryValue, depth + 1);
+    }
+
+    if (entries.length > this.MAX_OBJECT_KEYS) {
+      sanitized.__truncatedKeys__ = entries.length - this.MAX_OBJECT_KEYS;
+    }
+
+    return sanitized;
+  }
+
+  private truncateText(text: string): string {
+    return text.length > this.MAX_STRING_LENGTH
+      ? `${text.slice(0, this.MAX_STRING_LENGTH)}...(truncated)`
+      : text;
+  }
+
+  /**
    * 创建执行记录
    */
   async create(data: CreateExecutionData): Promise<TestExecution> {
-    return this.insert<TestExecution>({
+    const execution = await this.insert<TestExecution>({
       batch_id: data.batchId || null,
       case_id: data.caseId || null,
       case_name: data.caseName || null,
@@ -64,12 +155,12 @@ export class TestExecutionRepository extends BaseRepository {
       test_input: data.testInput,
       expected_output: data.expectedOutput || null,
       agent_request: this.sanitizeAgentRequest(data.agentRequest),
-      agent_response: data.agentResponse,
+      agent_response: this.sanitizeAgentResponse(data.agentResponse),
       actual_output: data.actualOutput,
-      tool_calls: data.toolCalls,
+      tool_calls: this.sanitizeToolCalls(data.toolCalls),
       execution_status: data.executionStatus,
       duration_ms: data.durationMs,
-      token_usage: data.tokenUsage,
+      token_usage: this.sanitizeJsonValue(data.tokenUsage),
       error_message: data.errorMessage,
       conversation_snapshot_id: data.conversationSnapshotId || null,
       turn_number: data.turnNumber || null,
@@ -78,6 +169,12 @@ export class TestExecutionRepository extends BaseRepository {
       review_status: data.reviewStatus || ReviewStatus.PENDING,
       evaluation_reason: data.evaluationReason || null,
     });
+
+    if (!execution) {
+      throw new Error('创建执行记录失败');
+    }
+
+    return execution;
   }
 
   /**
@@ -233,19 +330,23 @@ export class TestExecutionRepository extends BaseRepository {
     caseId: string,
     data: UpdateExecutionResultData,
   ): Promise<void> {
-    await this.update(
+    const updated = await this.update(
       {
         agent_request: this.sanitizeAgentRequest(data.agentRequest) || null,
-        agent_response: data.agentResponse || null,
+        agent_response: this.sanitizeAgentResponse(data.agentResponse) || null,
         actual_output: data.actualOutput || '',
-        tool_calls: data.toolCalls || [],
+        tool_calls: this.sanitizeToolCalls(data.toolCalls || []),
         execution_status: data.executionStatus,
         duration_ms: data.durationMs,
-        token_usage: data.tokenUsage || null,
+        token_usage: this.sanitizeJsonValue(data.tokenUsage) || null,
         error_message: data.errorMessage || null,
       },
       (q) => q.eq('batch_id', batchId).eq('case_id', caseId),
     );
+
+    if (updated.length === 0) {
+      throw new Error(`更新执行记录失败: batchId=${batchId}, caseId=${caseId}`);
+    }
   }
 
   /**
@@ -334,8 +435,24 @@ export class TestExecutionRepository extends BaseRepository {
     const sanitizedData =
       data.agent_request !== undefined
         ? { ...data, agent_request: this.sanitizeAgentRequest(data.agent_request) }
-        : data;
+        : { ...data };
+
+    if (sanitizedData.agent_response !== undefined) {
+      sanitizedData.agent_response = this.sanitizeAgentResponse(sanitizedData.agent_response);
+    }
+
+    if (sanitizedData.tool_calls !== undefined) {
+      sanitizedData.tool_calls = this.sanitizeToolCalls(sanitizedData.tool_calls);
+    }
+
+    if (sanitizedData.token_usage !== undefined) {
+      sanitizedData.token_usage = this.sanitizeJsonValue(sanitizedData.token_usage);
+    }
+
     const results = await this.update<TestExecution>(sanitizedData, (q) => q.eq('id', id));
+    if (!results[0]) {
+      throw new Error(`更新执行记录失败: ${id}`);
+    }
     return results[0];
   }
 }

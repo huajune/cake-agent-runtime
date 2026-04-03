@@ -21,6 +21,7 @@ import {
   ConversationSourceStatus,
   MessageRole,
 } from '../enums/test.enum';
+import { validationSetFieldNames } from '@infra/feishu/constants/feishu-bitable.config';
 
 /**
  * 解析后的测试用例（用例测试）
@@ -349,11 +350,7 @@ export class TestImportService {
         }
 
         const rawText = this.extractFieldValue(recordFields, fieldNameToId, [
-          '完整对话记录',
-          '对话记录',
-          '聊天记录',
-          'conversation',
-          'full_conversation',
+          ...validationSetFieldNames.conversation,
         ]);
 
         if (!rawText) {
@@ -362,12 +359,7 @@ export class TestImportService {
         }
 
         const participantName = this.extractFieldValue(recordFields, fieldNameToId, [
-          '候选人微信昵称',
-          '候选人姓名',
-          '参与者',
-          'participant',
-          'name',
-          '姓名',
+          ...validationSetFieldNames.participantName,
         ]);
 
         const parseResult = this.parserService.parseConversation(rawText);
@@ -624,6 +616,7 @@ export class TestImportService {
       const result = await this.writeBackService.writeBackSimilarityScore(
         source.feishu_record_id,
         avgSimilarityScore,
+        { batchId: source.batch_id || undefined },
       );
 
       if (result.success) {

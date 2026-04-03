@@ -36,6 +36,10 @@ export interface AgentInvokeParams {
   imageMessageIds?: string[];
   /** 策略来源：wecom 读 released，test 读 testing */
   strategySource?: 'released' | 'testing';
+  /** 当前与候选人聊天的托管账号企微 userId（拉群时作为 botUserId） */
+  botUserId?: string;
+  /** 当前与候选人聊天的托管账号系统 wxid（拉群时作为 imBotId） */
+  botImId?: string;
 }
 
 export interface AgentToolCall {

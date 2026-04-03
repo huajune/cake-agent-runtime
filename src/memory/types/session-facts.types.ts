@@ -99,6 +99,18 @@ export const RecommendedJobSummarySchema = z.object({
   distanceKm: z.number().nullable().optional(),
 });
 
+/** 已邀入的群记录 */
+export interface InvitedGroupRecord {
+  /** 群名称 */
+  groupName: string;
+  /** 城市 */
+  city: string;
+  /** 行业 */
+  industry?: string;
+  /** 邀请时间 */
+  invitedAt: string;
+}
+
 /** 会话事实层 — 当前这次求职会话的结构化状态 */
 export interface WeworkSessionState {
   facts: EntityExtractionResult | null;
@@ -108,6 +120,8 @@ export interface WeworkSessionState {
   presentedJobs: RecommendedJobSummary[] | null;
   /** 候选人当前明确在聊或准备报名的岗位 */
   currentFocusJob: RecommendedJobSummary | null;
+  /** 本会话中已邀入的兼职群 */
+  invitedGroups: InvitedGroupRecord[] | null;
   /**
    * 当前这段会话最后一次仍在继续聊的时间。
    *
@@ -118,11 +132,19 @@ export interface WeworkSessionState {
   lastSessionActiveAt?: string;
 }
 
+export const InvitedGroupRecordSchema = z.object({
+  groupName: z.string(),
+  city: z.string(),
+  industry: z.string().optional(),
+  invitedAt: z.string(),
+});
+
 export const WeworkSessionStateSchema = z.object({
   facts: EntityExtractionResultSchema.nullable(),
   lastCandidatePool: z.array(RecommendedJobSummarySchema).nullable(),
   presentedJobs: z.array(RecommendedJobSummarySchema).nullable(),
   currentFocusJob: RecommendedJobSummarySchema.nullable(),
+  invitedGroups: z.array(InvitedGroupRecordSchema).nullable(),
   lastSessionActiveAt: z.string().optional(),
 });
 
@@ -132,6 +154,7 @@ export const EMPTY_SESSION_STATE: WeworkSessionState = {
   lastCandidatePool: null,
   presentedJobs: null,
   currentFocusJob: null,
+  invitedGroups: null,
 };
 
 // ==================== 3. Redis 持久化结构 ====================

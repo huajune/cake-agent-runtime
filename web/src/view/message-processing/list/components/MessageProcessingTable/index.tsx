@@ -29,7 +29,6 @@ export default function MessageProcessingTable({
   data,
   loading,
   onRowClick,
-  variant,
 }: MessageProcessingTableProps) {
   const tableHeaders = (
     <tr>
@@ -40,7 +39,6 @@ export default function MessageProcessingTable({
       <th>下发分段</th>
       <th>总 Token</th>
       <th>TTFT</th>
-      <th>{variant === 'slowest' ? 'LLM Runtime ↓' : 'LLM Runtime'}</th>
       <th>E2E 时延</th>
       <th>处理状态</th>
     </tr>
@@ -76,12 +74,19 @@ export default function MessageProcessingTable({
                 <td colSpan={10} className={styles.loading}>
                   <div className={styles.emptyStateContainer}>
                     <div className={styles.emptyIconWrapper}>
-                      <svg width="64" height="64" viewBox="0 0 64 64" fill="none" className={styles.emptyIcon}>
-                        <circle cx="32" cy="32" r="31" stroke="#E6EFF5" strokeWidth="2" fill="none" />
-                        <path d="M22 20H42C44.2 20 46 21.8 46 24V44H18V24C18 21.8 19.8 20 22 20Z" fill="white" stroke="#A3AED0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                        <path d="M26 28H38" stroke="#D8E3F0" strokeWidth="2" strokeLinecap="round" />
-                        <path d="M26 34H38" stroke="#D8E3F0" strokeWidth="2" strokeLinecap="round" />
-                        <circle cx="42" cy="24" r="2.5" fill="#FF7596" />
+                      <svg width="72" height="72" viewBox="0 0 72 72" fill="none" className={styles.emptyIcon}>
+                        <circle cx="36" cy="36" r="35" stroke="url(#emptyGrad)" strokeWidth="1.5" fill="rgba(99,102,241,0.03)" />
+                        <path d="M24 22H48C50.2 22 52 23.8 52 26V50H20V26C20 23.8 21.8 22 24 22Z" fill="white" stroke="#c7d2fe" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M28 30H44" stroke="#e0e7ff" strokeWidth="2" strokeLinecap="round" />
+                        <path d="M28 36H40" stroke="#e0e7ff" strokeWidth="2" strokeLinecap="round" />
+                        <path d="M28 42H36" stroke="#e0e7ff" strokeWidth="2" strokeLinecap="round" />
+                        <circle cx="48" cy="26" r="3" fill="#818cf8" opacity="0.6" />
+                        <defs>
+                          <linearGradient id="emptyGrad" x1="0" y1="0" x2="72" y2="72">
+                            <stop offset="0%" stopColor="#c7d2fe" />
+                            <stop offset="100%" stopColor="#e0e7ff" />
+                          </linearGradient>
+                        </defs>
                       </svg>
                     </div>
                     <p>暂无数据</p>
@@ -122,9 +127,6 @@ export default function MessageProcessingTable({
                 <td className={styles.cellMono}>
                   {record.ttftMs !== undefined ? formatDuration(record.ttftMs) : '-'}
                 </td>
-                <td className={variant === 'slowest' ? styles.cellHighlight : undefined}>
-                  {record.aiDuration !== undefined ? formatDuration(record.aiDuration) : '-'}
-                </td>
                 <td>{formatDuration(record.totalDuration)}</td>
                 <td>
                   <div className={styles.statusCell}>
@@ -132,10 +134,10 @@ export default function MessageProcessingTable({
                       className={`status-badge ${record.status === 'success'
                         ? 'success'
                         : record.status === 'failure' ||
-                            record.status === 'failed' ||
-                            record.status === 'timeout'
+                          record.status === 'failed' ||
+                          record.status === 'timeout'
                           ? 'danger'
-                        : 'warning'
+                          : 'warning'
                         }`}
                     >
                       {getStatusLabel(record.status)}

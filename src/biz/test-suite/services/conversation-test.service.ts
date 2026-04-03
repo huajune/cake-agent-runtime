@@ -340,18 +340,21 @@ export class ConversationTestService {
     }
 
     try {
+      const runnerMessages = [
+        ...turn.history.map((m) => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+        })),
+        { role: 'user' as const, content: turn.userMessage },
+      ];
+
       loopResult = await this.runner.invoke({
-        messages: [
-          ...turn.history.map((m) => ({
-            role: m.role as 'user' | 'assistant',
-            content: m.content,
-          })),
-          { role: 'user' as const, content: turn.userMessage },
-        ],
+        messages: runnerMessages,
         userId,
         corpId: 'test',
         sessionId,
         scenario,
+        strategySource: 'testing',
       });
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -364,11 +367,25 @@ export class ConversationTestService {
     const durationMs = Date.now() - startTime;
 
     const actualOutput = loopResult?.text ?? '';
-    const toolCalls: unknown[] = [];
+    const toolCalls = loopResult?.toolCalls ?? [];
     const tokenUsage = loopResult?.usage ?? {
       inputTokens: 0,
       outputTokens: 0,
       totalTokens: 0,
+    };
+    const agentRequest = {
+      messages: [
+        ...turn.history.map((m) => ({
+          role: m.role,
+          content: m.content,
+        })),
+        { role: 'user' as const, content: turn.userMessage },
+      ],
+      userId,
+      corpId: 'test',
+      sessionId,
+      scenario,
+      strategySource: 'testing' as const,
     };
 
     let similarityScore: number | null = null;
@@ -398,8 +415,8 @@ export class ConversationTestService {
 
     if (existingExecution) {
       await this.executionRepository.updateExecution(existingExecution.id, {
-        agent_request: null,
-        agent_response: loopResult ? { text: loopResult.text } : null,
+        agent_request: agentRequest,
+        agent_response: loopResult,
         actual_output: actualOutput,
         tool_calls: toolCalls,
         execution_status: executionStatus,
@@ -422,8 +439,8 @@ export class ConversationTestService {
           scenario,
         },
         expectedOutput: turn.expectedOutput,
-        agentRequest: null,
-        agentResponse: loopResult ? { text: loopResult.text } : null,
+        agentRequest,
+        agentResponse: loopResult,
         actualOutput,
         toolCalls,
         executionStatus,

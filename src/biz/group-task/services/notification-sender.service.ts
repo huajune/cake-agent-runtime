@@ -65,8 +65,8 @@ export class NotificationSenderService {
       payload: { text: message },
     });
 
-    // 2. 兼职群额外发送小程序卡片
-    if (type === GroupTaskType.PART_TIME_JOB) {
+    // 2. 兼职群额外发送小程序卡片（需要 appid + username 配置）
+    if (type === GroupTaskType.PART_TIME_JOB && this.miniprogramAppid && this.miniprogramUsername) {
       await this.delay(1000);
       await this.messageSenderService.sendMessage({
         _apiType: 'group',
@@ -83,6 +83,21 @@ export class NotificationSenderService {
         },
       });
     }
+  }
+
+  /**
+   * 发送纯文本消息到目标群（跟随消息，不触发小程序卡片和飞书预览）
+   */
+  async sendTextToGroup(group: GroupContext, text: string, dryRun: boolean): Promise<void> {
+    if (dryRun) return;
+
+    await this.messageSenderService.sendMessage({
+      _apiType: 'group',
+      token: group.token,
+      chatId: group.chatId,
+      messageType: 7,
+      payload: { text },
+    });
   }
 
   /**

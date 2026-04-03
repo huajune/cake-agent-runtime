@@ -189,14 +189,16 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           {!isCollapsed && <span className="nav-text">今日托管</span>}
         </NavLink>
         <NavLink
-          to="/message-processing"
+          to="/hosting"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title={isCollapsed ? '实时消息' : undefined}
-          {...bindPreload('/message-processing')}
+          title={isCollapsed ? '托管设置' : undefined}
+          {...bindPreload('/hosting')}
         >
-          <span className="nav-icon"><LogsIcon /></span>
-          {!isCollapsed && <span className="nav-text">消息处理流水</span>}
+          <span className="nav-icon"><HostingIcon /></span>
+          {!isCollapsed && <span className="nav-text">托管开关</span>}
         </NavLink>
+
+
         <NavLink
           to="/chat-records"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
@@ -240,15 +242,7 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
 
         {/* 系统 */}
         {!isCollapsed && <div className="group-title">系统</div>}
-        <NavLink
-          to="/hosting"
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title={isCollapsed ? '托管设置' : undefined}
-          {...bindPreload('/hosting')}
-        >
-          <span className="nav-icon"><HostingIcon /></span>
-          {!isCollapsed && <span className="nav-text">托管开关</span>}
-        </NavLink>
+
         <NavLink
           to="/config"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
@@ -257,6 +251,15 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         >
           <span className="nav-icon"><ConfigIcon /></span>
           {!isCollapsed && <span className="nav-text">通知/消息</span>}
+        </NavLink>
+        <NavLink
+          to="/message-processing"
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title={isCollapsed ? '实时消息' : undefined}
+          {...bindPreload('/message-processing')}
+        >
+          <span className="nav-icon"><LogsIcon /></span>
+          {!isCollapsed && <span className="nav-text">消息处理流水</span>}
         </NavLink>
         <NavLink
           to="/system"

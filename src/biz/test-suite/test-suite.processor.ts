@@ -264,28 +264,23 @@ export class TestSuiteProcessor implements OnModuleInit {
     caseId: string,
     result: ExecutionRecordUpdate,
   ): Promise<void> {
-    try {
-      await this.executionService.updateExecutionByBatchAndCase(batchId, caseId, {
-        agentRequest: result.request.body,
-        agentResponse: result.response.body,
-        actualOutput: result.actualOutput,
-        toolCalls: result.response.toolCalls || [],
-        executionStatus: result.status,
-        durationMs: result.metrics.durationMs,
-        tokenUsage: result.metrics.tokenUsage,
-      });
-      this.logger.debug(`[TestSuite] 更新执行记录成功: ${caseId}`);
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`[TestSuite] 更新执行记录失败: ${errorMessage}`);
-    }
+    await this.executionService.updateExecutionByBatchAndCase(batchId, caseId, {
+      agentRequest: result.request.body,
+      agentResponse: result.response.body,
+      actualOutput: result.actualOutput,
+      toolCalls: result.response.toolCalls || [],
+      executionStatus: result.status,
+      durationMs: result.metrics.durationMs,
+      tokenUsage: result.metrics.tokenUsage,
+    });
+    this.logger.debug(`[TestSuite] 更新执行记录成功: ${caseId}`);
   }
 
   private async updateExecutionRecordFailed(
     batchId: string,
     caseId: string,
     errorMsg: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       await this.executionService.updateExecutionByBatchAndCase(batchId, caseId, {
         executionStatus: ExecutionStatus.FAILURE,
@@ -293,9 +288,11 @@ export class TestSuiteProcessor implements OnModuleInit {
         errorMessage: errorMsg,
       });
       this.logger.debug(`[TestSuite] 标记执行记录为失败: ${caseId}`);
+      return true;
     } catch (error: unknown) {
       const errMsg = error instanceof Error ? error.message : String(error);
       this.logger.error(`[TestSuite] 更新执行记录失败状态失败: ${errMsg}`);
+      return false;
     }
   }
 

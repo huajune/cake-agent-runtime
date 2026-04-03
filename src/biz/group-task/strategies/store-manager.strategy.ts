@@ -48,9 +48,14 @@ export class StoreManagerStrategy implements NotificationStrategy {
   }
 
   buildMessage(data: NotificationData): string {
-    return buildStoreManagerMessage({
+    const result = buildStoreManagerMessage({
       interviews: data.payload.interviews as InterviewScheduleItem[],
       date: data.payload.date as string,
     });
+    // 跟随消息存入 payload，由 scheduler 发送完主消息后单独发送
+    if (result.followUp) {
+      data.payload.followUpMessage = result.followUp;
+    }
+    return result.main;
   }
 }

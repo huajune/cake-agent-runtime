@@ -154,15 +154,46 @@ export default function MessageProcessingPage() {
           hasMore={hasMore}
           loader={
             isLoadingMore ? (
-              <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
-                加载中...
+              <div style={{
+                padding: '24px 20px',
+                textAlign: 'center',
+                color: '#94a3b8',
+                fontSize: '13px',
+                fontWeight: 500,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+              }}>
+                <span style={{
+                  display: 'inline-block',
+                  width: '16px',
+                  height: '16px',
+                  border: '2px solid rgba(99, 102, 241, 0.15)',
+                  borderTopColor: '#6366f1',
+                  borderRadius: '50%',
+                  animation: 'spin 0.6s linear infinite',
+                }} />
+                加载更多...
               </div>
             ) : null
           }
           endMessage={
             accumulatedMessages.length > 0 ? (
-              <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
+              <div style={{
+                padding: '24px 20px',
+                textAlign: 'center',
+                color: '#94a3b8',
+                fontSize: '13px',
+                fontWeight: 500,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+              }}>
+                <span style={{ color: '#c7d2fe' }}>—</span>
                 已加载全部 {stats.total} 条记录
+                <span style={{ color: '#c7d2fe' }}>—</span>
               </div>
             ) : null
           }

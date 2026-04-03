@@ -14,7 +14,7 @@ interface SimpleRoomItem {
   wxid: string;
   topic: string;
   chatId: string;
-  botInfo: { wxid: string; nickName: string };
+  botInfo: { wxid: string; weixin: string; nickName: string };
   labels?: RoomLabel[];
   deleted?: boolean;
   memberCount?: number;
@@ -187,9 +187,10 @@ export class GroupResolverService implements OnModuleInit {
           city: parsed.city,
           industry: parsed.industry,
           tag: parsed.type,
-          imBotId: room.botInfo?.wxid || '',
+          imBotId: room.botInfo?.weixin || '',
           token,
           chatId: room.chatId || '',
+          memberCount: room.memberCount,
         });
       }
 
@@ -199,6 +200,72 @@ export class GroupResolverService implements OnModuleInit {
       current++;
       hasMore = current * pageSize < total;
     }
+  }
+
+  /**
+   * 按群名搜索任意群（不要求有标签）
+   *
+   * 遍历所有小组 token 的群列表，按群名匹配（先精确，再模糊）。
+   * 用于测试端点向指定群发送消息。
+   */
+  async findGroupByName(groupName: string): Promise<GroupContext | null> {
+    const tokens = Object.values(this.groupTokenMap);
+    const allRooms: Array<{
+      token: string;
+      wxid: string;
+      topic: string;
+      chatId: string;
+      botWxid: string;
+      memberCount?: number;
+    }> = [];
+
+    for (const token of tokens) {
+      let current = 0;
+      const pageSize = 100;
+      let hasMore = true;
+
+      while (hasMore) {
+        const result = await this.roomService.getRoomSimpleList(token, current, pageSize);
+        const responseData = result?.data || result;
+        const rooms = responseData?.data || responseData || [];
+        if (!Array.isArray(rooms) || rooms.length === 0) break;
+
+        for (const room of rooms) {
+          if (room.deleted) continue;
+          allRooms.push({
+            token,
+            wxid: room.wxid,
+            topic: room.topic || '',
+            chatId: room.chatId || '',
+            botWxid: room.botInfo?.weixin || '',
+            memberCount: room.memberCount,
+          });
+        }
+
+        const page = responseData?.page || result?.page;
+        const total = page?.total || 0;
+        current++;
+        hasMore = current * pageSize < total;
+      }
+    }
+
+    // 先精确匹配，再模糊匹配
+    const match =
+      allRooms.find((r) => r.topic === groupName) ||
+      allRooms.find((r) => r.topic.includes(groupName));
+
+    if (!match) return null;
+
+    return {
+      imRoomId: match.wxid,
+      groupName: match.topic,
+      city: '测试',
+      tag: '测试',
+      imBotId: match.botWxid,
+      token: match.token,
+      chatId: match.chatId,
+      memberCount: match.memberCount,
+    };
   }
 
   /**

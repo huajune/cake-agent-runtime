@@ -4,6 +4,7 @@
 ### Token 配置
 @tokenGroup = 68f88a31d53018ed04950739
 @tokenEnterprise = 9eaebbf614104879b81c2da7c41819bd
+@guardToken = duliday-guard-2026
 
 ### ChatId 配置
 @chatIdGroup = 68e763179d6d3a463bac17d0
@@ -568,3 +569,65 @@ GET {{baseUrl}}/message/cache/stats
 ### ========================================
 ### 36. 获取消息服务状态
 GET {{baseUrl}}/message/service/status
+
+### ========================================
+### 群任务测试
+### ========================================
+
+### 37. 群任务测试发送 — 兼职群（文本 + 小程序卡片）
+# 向指定群发送模拟群任务通知（按群名搜索，不要求有标签）
+# type: order_grab | part_time | store_manager | work_tips
+# forceSend=true 直接发企微，false 只发飞书预览
+POST {{baseUrl}}/group-task/test-send
+Content-Type: application/json
+Authorization: Bearer {{guardToken}}
+
+{
+  "type": "part_time",
+  "groupName": "花卷智能回复",
+  "city": "上海",
+  "industry": "餐饮",
+  "forceSend": true
+}
+
+### 38. 群任务测试发送 — 抢单群
+POST {{baseUrl}}/group-task/test-send
+Content-Type: application/json
+Authorization: Bearer {{guardToken}}
+
+{
+  "type": "order_grab",
+  "groupName": "花卷智能回复",
+  "city": "上海",
+  "forceSend": true
+}
+
+### 39. 群任务测试发送 — 工作小贴士
+POST {{baseUrl}}/group-task/test-send
+Content-Type: application/json
+Authorization: Bearer {{guardToken}}
+
+{
+  "type": "work_tips",
+  "groupName": "花卷智能回复",
+  "city": "上海",
+  "industry": "餐饮",
+  "forceSend": true
+}
+
+### 40. 群任务测试发送 — 试运行（只发飞书预览，不发企微）
+POST {{baseUrl}}/group-task/test-send
+Content-Type: application/json
+Authorization: Bearer {{guardToken}}
+
+{
+  "type": "part_time",
+  "groupName": "花卷智能回复",
+  "city": "上海",
+  "industry": "餐饮",
+  "forceSend": false
+}
+
+### 41. 群任务手动触发（走完整流水线，发所有匹配群）
+# POST {{baseUrl}}/group-task/trigger/part_time
+# Authorization: Bearer {{guardToken}}

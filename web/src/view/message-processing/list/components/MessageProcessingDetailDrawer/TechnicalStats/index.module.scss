@@ -1,19 +1,21 @@
-// TechnicalStats 组件样式 - CSS Modules
+/* TechnicalStats — refined right panel */
 @use '@/assets/styles/variables' as *;
 
 .sectionTitle {
-  margin: 0 0 16px 0;
-  font-size: 13px;
+  margin: 0 0 12px 0;
+  font-size: 11px;
   color: $text-muted;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
+  font-weight: 700;
 }
 
+/* ── Headline metric grid (2x2) ── */
 .statsGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 8px;
+  margin-bottom: 10px;
 }
 
 .statCard {
@@ -21,18 +23,18 @@
   flex-direction: column;
   background: #fff;
   border-radius: 10px;
-  padding: 12px 14px;
-  margin-bottom: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  padding: 10px 12px;
+  margin-bottom: 0;
+  border: 1px solid rgba($border, 0.6);
 
   &.centered {
     text-align: center;
-    margin-bottom: 0;
+    align-items: center;
   }
 }
 
 .cardTitle {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   color: $text-primary;
   margin-bottom: 8px;
@@ -40,101 +42,37 @@
 }
 
 .statLabel {
-  font-size: 12px;
+  font-size: 11px;
   color: $text-muted;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   white-space: nowrap;
 }
 
 .statValue {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
+  letter-spacing: -0.03em;
   color: $text-primary;
+  font-variant-numeric: tabular-nums;
 
-  &.primary {
-    color: $primary;
-  }
-
-  &.warning {
-    color: $warning;
-  }
-
-  &.compact {
-    font-size: 18px;
-  }
+  &.primary { color: $primary; }
+  &.secondary { color: $text-secondary; }
+  &.compact { font-size: 16px; }
 }
 
-.monoText {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
-    "Courier New", monospace;
-  font-size: 11px;
-}
-
-.identityGrid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 8px;
-}
-
-.identityCard {
-  padding: 10px 12px;
+/* ── Breakdown cards (时延分解, 执行事实, etc.) ── */
+.breakdownCard {
+  background: #fff;
   border-radius: 10px;
-  background: linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(241, 245, 249, 0.92) 100%);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-}
-
-.identityLabel {
-  font-size: 11px;
-  font-weight: 700;
-  color: $text-muted;
-  margin-bottom: 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.identityValue {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
-    "Courier New", monospace;
-  font-size: 12px;
-  color: $text-primary;
-  word-break: break-all;
-  line-height: 1.5;
-}
-
-.factGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.factCard {
-  min-width: 0;
   padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(148, 163, 184, 0.16);
-}
-
-.factLabel {
-  font-size: 11px;
-  color: $text-muted;
-  margin-bottom: 4px;
-}
-
-.factValue {
-  font-size: 12px;
-  font-weight: 600;
-  color: $text-primary;
-  line-height: 1.5;
-  word-break: break-word;
+  margin-bottom: 8px;
+  border: 1px solid rgba($border, 0.6);
 }
 
 .statBreakdown {
-  margin-top: 8px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
 }
 
 .breakdownItem {
@@ -143,102 +81,115 @@
   align-items: center;
   font-size: 12px;
   color: $text-secondary;
-  min-height: 20px;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba($border, 0.4);
+
+  &:last-child {
+    border-bottom: none;
+  }
 
   > span:first-child {
     flex-shrink: 0;
+    color: $text-muted;
   }
 
   > span:last-child {
     text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
   }
 
   &.column {
     flex-direction: column;
     align-items: flex-start;
-    gap: 6px;
-  }
-
-  &.separator {
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px dashed $border;
+    gap: 4px;
   }
 }
 
-.paramYes {
-  color: $success;
-  font-weight: 500;
+/* ── Identity / Context cards ── */
+.identityGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
 }
 
-.paramNo {
+.identityCard {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba($bg-secondary, 0.8);
+  border: 1px solid rgba($border, 0.4);
+}
+
+.identityLabel {
+  font-size: 10px;
+  font-weight: 700;
   color: $text-muted;
+  margin-bottom: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
-.modelText {
-  font-size: 10px;
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chatIdText {
-  font-family: monospace;
+.identityValue {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
+  color: $text-primary;
+  word-break: break-all;
+  line-height: 1.4;
 }
 
-// 工具标签
-.toolTagsWrap {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+.factGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
 }
 
-.toolTag {
+.factCard {
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid rgba($border, 0.4);
+}
+
+.factLabel {
   font-size: 10px;
-  padding: 3px 6px;
-  background: rgba(16, 185, 129, 0.1);
-  color: $success;
-  border-radius: 4px;
-  border: 1px solid rgba(16, 185, 129, 0.2);
-  white-space: nowrap;
-
-  &.skipped {
-    background: rgba(107, 114, 128, 0.1);
-    color: $text-muted;
-    border-color: rgba(107, 114, 128, 0.2);
-    text-decoration: line-through;
-  }
-
-  &.small {
-    font-size: 9px;
-  }
+  color: $text-muted;
+  margin-bottom: 2px;
 }
 
+.factValue {
+  font-size: 11px;
+  font-weight: 600;
+  color: $text-primary;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+/* ── Tool execution section ── */
 .toolSection {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   margin-top: 4px;
 }
 
 .toolRow {
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-radius: 8px;
-  border: 1px solid $border;
-  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba($border, 0.5);
+  background: #fff;
 }
 
 .toolHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
 }
 
 .toolName {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: $text-primary;
   word-break: break-all;
@@ -246,78 +197,39 @@
 
 .toolStatus {
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
-  padding: 3px 8px;
+  padding: 2px 6px;
   border-radius: 999px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 
   &.success {
-    background: rgba(16, 185, 129, 0.12);
+    background: rgba($success, 0.1);
     color: $success;
   }
 
   &.failed {
-    background: rgba(239, 68, 68, 0.12);
+    background: rgba($danger, 0.1);
     color: $danger;
   }
 
   &.pending {
-    background: rgba(148, 163, 184, 0.16);
+    background: rgba(148, 163, 184, 0.14);
     color: $text-muted;
   }
 }
 
-// 请求参数字段指示器
-.fieldIndicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 4px;
-
-  &.present {
-    background: rgba(16, 185, 129, 0.1);
-    color: $success;
-  }
-
-  &.absent {
-    background: rgba(107, 114, 128, 0.1);
-    color: $text-muted;
-  }
-}
-
-// 大对象摘要展示
-.objectSummary {
-  font-size: 11px;
-  color: $text-muted;
-  font-family: monospace;
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.objectKeys {
-  font-size: 10px;
-  color: $text-secondary;
-  margin-top: 4px;
-}
-
-// 缩进样式（用于树状结构展示 context 子字段）
-.indentL1 {
-  padding-left: 8px;
-  color: $text-muted;
-  font-size: 11px;
-}
-
-// 摘要文本样式（用于 configData 等大对象摘要）
+/* ── Misc ── */
 .summaryText {
   font-size: 10px;
   color: $text-muted;
   font-family: monospace;
   padding-left: 8px;
   word-break: break-all;
+}
+
+.monoText {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
 }

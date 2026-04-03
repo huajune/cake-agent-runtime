@@ -9,35 +9,19 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
 import { ToolBuilder } from '@shared-types/tool.types';
+import {
+  API_BOOKING_SUBMISSION_FIELDS,
+  getAvailableEducations,
+  getEducationIdByName,
+} from '@tools/duliday/job-booking.contract';
 
 const logger = new Logger('duliday_interview_booking');
-
-// 学历映射
-const EDUCATION_MAPPING: Record<number, string> = {
-  1: '小学',
-  2: '初中',
-  3: '高中',
-  4: '中专',
-  5: '大专',
-  6: '本科',
-  7: '硕士',
-  8: '博士',
-};
-
-const EDUCATION_NAME_TO_ID: Record<string, number> = {};
-for (const [id, name] of Object.entries(EDUCATION_MAPPING)) {
-  EDUCATION_NAME_TO_ID[name] = Number(id);
-}
-
-function getEducationIdByName(name: string): number | null {
-  return EDUCATION_NAME_TO_ID[name] ?? null;
-}
 
 export function buildInterviewBookingTool(spongeService: SpongeService): ToolBuilder {
   return (_context) => {
     return tool({
       description:
-        '预约面试。为求职者预约指定岗位的面试，需要提供完整的个人信息，包括姓名、电话、性别、年龄、学历、健康证情况、岗位ID和面试时间。',
+        '预约面试。仅在候选人明确要报名/约面、且岗位与面试时间已确认时调用。这个工具只负责接口字段校验与提交，不负责解释岗位规则或决定现在该追问哪些资料。',
       inputSchema: z.object({
         name: z.string().describe('求职者姓名'),
         phone: z.string().describe('联系电话'),
@@ -46,11 +30,15 @@ export function buildInterviewBookingTool(spongeService: SpongeService): ToolBui
         jobId: z.number().describe('岗位ID，从岗位列表或岗位详情中获取'),
         interviewTime: z
           .string()
-          .describe('面试时间，格式：YYYY-MM-DD HH:mm:ss，例如：2025-07-22 13:00:00'),
-        education: z.string().describe('学历，如：初中、高中、大专、本科等'),
+          .describe('确认后的面试时间，格式：YYYY-MM-DD HH:mm:ss，例如：2025-07-22 13:00:00'),
+        education: z
+          .string()
+          .describe('学历，如：初中、高中、大专、本科等。属于预约提交字段，确认需要时再填写'),
         hasHealthCertificate: z
           .number()
-          .describe('是否有健康证：1=有，2=无但接受办理健康证，3=无且不接受办理健康证'),
+          .describe(
+            '是否有健康证：1=有，2=无但接受办理健康证，3=无且不接受办理健康证。属于预约提交字段，确认需要时再填写',
+          ),
       }),
       execute: async ({
         name,
@@ -65,18 +53,29 @@ export function buildInterviewBookingTool(spongeService: SpongeService): ToolBui
         logger.log(`预约面试: ${name}, jobId=${jobId}`);
 
         // 验证必填字段
-        const missingFields: string[] = [];
-        if (!name) missingFields.push('姓名');
-        if (!phone) missingFields.push('联系电话');
-        if (!age) missingFields.push('年龄');
-        if (!genderId) missingFields.push('性别');
+        const apiSubmissionValues = [
+          { field: '姓名', value: name },
+          { field: '联系电话', value: phone },
+          { field: '年龄', value: age },
+          { field: '性别', value: genderId },
+          { field: '面试时间', value: interviewTime },
+          { field: '学历', value: education },
+          { field: '健康证情况', value: hasHealthCertificate },
+        ];
+        const missingFields = apiSubmissionValues
+          .filter(({ value }) => value == null || value === '')
+          .map(({ field }) => field);
+
         if (!jobId) missingFields.push('岗位ID');
-        if (!interviewTime) missingFields.push('面试时间');
-        if (!education) missingFields.push('学历');
-        if (hasHealthCertificate == null) missingFields.push('健康证情况');
 
         if (missingFields.length > 0) {
-          return { success: false, error: `缺少必填信息：${missingFields.join('、')}` };
+          return {
+            success: false,
+            errorType: 'missing_fields',
+            missingFields,
+            apiSubmissionFields: [...API_BOOKING_SUBMISSION_FIELDS],
+            error: `缺少必填信息：${missingFields.join('、')}`,
+          };
         }
 
         // 验证面试时间格式
@@ -84,6 +83,7 @@ export function buildInterviewBookingTool(spongeService: SpongeService): ToolBui
         if (!timeRegex.test(interviewTime)) {
           return {
             success: false,
+            errorType: 'invalid_interview_time',
             error: '面试时间格式错误，请使用 YYYY-MM-DD HH:mm:ss 格式',
           };
         }
@@ -91,8 +91,14 @@ export function buildInterviewBookingTool(spongeService: SpongeService): ToolBui
         // 转换学历名称为 ID
         const educationId = getEducationIdByName(education);
         if (!educationId) {
-          const available = Object.values(EDUCATION_MAPPING).join('、');
-          return { success: false, error: `无效的学历：${education}，支持：${available}` };
+          const availableEducations = getAvailableEducations();
+          const available = availableEducations.join('、');
+          return {
+            success: false,
+            errorType: 'invalid_education',
+            availableEducations,
+            error: `无效的学历：${education}，支持：${available}`,
+          };
         }
 
         try {
@@ -109,6 +115,7 @@ export function buildInterviewBookingTool(spongeService: SpongeService): ToolBui
 
           return {
             ...result,
+            errorType: result.success ? null : 'booking_rejected',
             requestInfo: {
               name,
               phone,
@@ -124,6 +131,7 @@ export function buildInterviewBookingTool(spongeService: SpongeService): ToolBui
           logger.error('预约面试失败', err);
           return {
             success: false,
+            errorType: 'booking_request_failed',
             error: `预约面试失败: ${err instanceof Error ? err.message : '未知错误'}`,
           };
         }

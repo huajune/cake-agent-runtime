@@ -11,6 +11,8 @@ import {
   type EntityExtractionResult,
   type RecommendedJobSummary,
   RecommendedJobSummarySchema,
+  type InvitedGroupRecord,
+  InvitedGroupRecordSchema,
   SessionFactsRedisContentSchema,
   type WeworkSessionState,
   EMPTY_SESSION_STATE,
@@ -184,6 +186,29 @@ export class SessionService {
         string,
         unknown
       >,
+      this.config.sessionTtl,
+      false,
+    );
+  }
+
+  async saveInvitedGroup(
+    corpId: string,
+    userId: string,
+    sessionId: string,
+    record: InvitedGroupRecord,
+  ): Promise<void> {
+    const key = this.buildKey(corpId, userId, sessionId);
+    const state = await this.getSessionState(corpId, userId, sessionId);
+    const validated = InvitedGroupRecordSchema.parse(record) as InvitedGroupRecord;
+    const existing = state.invitedGroups ?? [];
+    // 按群名去重
+    const merged = [validated, ...existing].filter(
+      (g, i, arr) => arr.findIndex((item) => item.groupName === g.groupName) === i,
+    );
+
+    await this.redisStore.set(
+      key,
+      this.serializeStateContent({ ...state, invitedGroups: merged }) as Record<string, unknown>,
       this.config.sessionTtl,
       false,
     );

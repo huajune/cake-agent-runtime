@@ -36,6 +36,6 @@ import { GroupTaskController } from './group-task.controller';
     StoreManagerStrategy,
     WorkTipsStrategy,
   ],
-  exports: [GroupTaskSchedulerService],
+  exports: [GroupTaskSchedulerService, GroupResolverService],
 })
 export class GroupTaskModule {}

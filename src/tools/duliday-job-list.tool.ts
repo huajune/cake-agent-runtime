@@ -13,7 +13,12 @@ import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
 import type { RecommendedJobSummary } from '@memory/types/session-facts.types';
 import { ToolBuilder } from '@shared-types/tool.types';
-import { formatLocalDate } from '@infra/utils/date.util';
+import {
+  buildJobPolicyAnalysis,
+  cleanPolicyText,
+  sanitizeConstraintText,
+  type JobPolicyAnalysis,
+} from '@tools/duliday/job-policy-parser';
 
 // ==================== 常量 ====================
 
@@ -89,213 +94,94 @@ function joinParts(parts: (string | null | undefined)[], separator = ' '): strin
   return parts.filter((p) => hasValue(p)).join(separator);
 }
 
-function cleanText(text: string): string {
-  if (!text) return '';
-  return text
-    .replace(/辛苦跟.*?[。！？]/g, '')
-    .replace(/务必.*?[。！？]/g, '')
-    .replace(/手动输入/g, '')
-    .replace(/！{2,}/g, '！')
-    .replace(/[\n\r]+/g, '；')
-    .replace(/；{2,}/g, '；')
-    .replace(/^；+|；+$/g, '');
+function normalizeKeyword(value: string | null | undefined): string {
+  if (!value) return '';
+  return value.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
 }
 
-function getCurrentMonthDay(): { month: number; day: number } {
-  const [, month, day] = formatLocalDate(new Date()).split('-').map(Number);
-  return { month, day };
+function scoreJobAgainstRequestedCategories(job: any, jobCategoryList: string[]): number {
+  const requestedKeywords = jobCategoryList.map((item) => normalizeKeyword(item)).filter(Boolean);
+
+  if (requestedKeywords.length === 0) return 0;
+
+  const searchableFields = [
+    job.basicInfo?.jobCategoryName,
+    job.basicInfo?.jobName,
+    job.basicInfo?.jobNickName,
+    job.basicInfo?.jobContent,
+  ]
+    .map((value) => normalizeKeyword(typeof value === 'string' ? value : ''))
+    .filter(Boolean);
+
+  if (searchableFields.length === 0) return 0;
+
+  let score = 0;
+
+  for (const keyword of requestedKeywords) {
+    for (const field of searchableFields) {
+      if (field === keyword) {
+        score += 10;
+        continue;
+      }
+      if (field.includes(keyword) || keyword.includes(field)) {
+        score += 6;
+        continue;
+      }
+      if (keyword.length >= 4 && field.length >= 4) {
+        const overlap = Array.from(new Set(keyword)).filter((char) => field.includes(char)).length;
+        if (overlap >= 3) score += 2;
+      }
+    }
+  }
+
+  return score;
+}
+
+function filterJobsByRequestedCategories(jobs: any[], jobCategoryList: string[]): any[] {
+  return jobs
+    .map((job) => ({ job, score: scoreJobAgainstRequestedCategories(job, jobCategoryList) }))
+    .filter(({ score }) => score >= 6)
+    .sort((a, b) => b.score - a.score)
+    .map(({ job }) => job);
 }
 
 function addLine(lines: string[], label: string, value: string | null | undefined): void {
   if (hasValue(value) && typeof value === 'string') {
-    const cleaned = cleanText(value);
+    const cleaned = cleanPolicyText(value);
     if (cleaned) lines.push(`- **${label}**: ${cleaned}`);
   } else if (hasValue(value)) {
     lines.push(`- **${label}**: ${value}`);
   }
 }
-
-function pickKeySentences(
-  text: string | null | undefined,
-  patterns: RegExp[],
-  limit = 2,
-): string[] {
-  if (!hasValue(text) || typeof text !== 'string') return [];
-
-  const fragments = cleanText(text)
-    .split(/[；。]/)
-    .map((fragment) => fragment.trim())
-    .filter(Boolean);
-
-  const matched: string[] = [];
-  for (const fragment of fragments) {
-    if (patterns.some((pattern) => pattern.test(fragment)) && !matched.includes(fragment)) {
-      matched.push(fragment);
-    }
-    if (matched.length >= limit) break;
-  }
-  return matched;
-}
-
-function extractInterviewTimeHint(job: any): string | null {
-  const ip = job.interviewProcess;
-  if (!ip) return null;
-
-  const first = ip.firstInterview;
-  const texts = [
-    typeof first?.interviewTime === 'string' ? first.interviewTime : null,
-    typeof first?.interviewDate === 'string' ? first.interviewDate : null,
-    typeof first?.interviewDemand === 'string' ? first.interviewDemand : null,
-    typeof ip.remark === 'string' ? ip.remark : null,
-  ].filter((text): text is string => Boolean(text));
-
-  const timePatterns = [
-    /星期[一二三四五六日天]/,
-    /周[一二三四五六日天]/,
-    /\d{1,2}[:：]\d{2}/,
-    /上午|下午|晚上|中午/,
-  ];
-
-  for (const text of texts) {
-    const [fragment] = pickKeySentences(text, timePatterns, 1);
-    if (fragment) return fragment;
-  }
-
-  return null;
-}
-
-function isClearlyPastConstraint(fragment: string): boolean {
-  const currentDate = formatLocalDate(new Date());
-  const [currentYear, currentMonth, currentDay] = currentDate.split('-').map(Number);
-
-  const yearMatches = [...fragment.matchAll(/\b(20\d{2})[/-](\d{1,2})[/-]?(\d{0,2})?/g)];
-  if (yearMatches.length > 0) {
-    return yearMatches.every((match) => {
-      const year = Number(match[1]);
-      const month = Number(match[2] || 1);
-      const day = Number(match[3] || 1);
-      if (year !== currentYear) return year < currentYear;
-      if (month !== currentMonth) return month < currentMonth;
-      return day < currentDay;
-    });
-  }
-
-  const monthDayMatches = [...fragment.matchAll(/(^|[^0-9])(\d{1,2})\/(\d{1,2})(?!\d)/g)];
-  if (monthDayMatches.length === 0) return false;
-
-  return monthDayMatches.every((match) => {
-    const month = Number(match[2]);
-    const day = Number(match[3]);
-    if (month !== currentMonth) return month < currentMonth;
-    return day < currentDay;
-  });
-}
-
-function isClearlyExpiredSpringFestivalConstraint(fragment: string): boolean {
-  const { month, day } = getCurrentMonthDay();
-  // 3-9 月期间，春节相关限制大概率已明显过季；10-12 月则可能是下一轮春节要求，不直接过滤。
-  const isClearlyOutOfSeason = month > 3 && month < 10;
-  const isLateAfterFestival = month === 3 && day >= 1;
-  if (!isClearlyOutOfSeason && !isLateAfterFestival) return false;
-
-  const normalized = cleanText(fragment).replace(/\s+/g, '');
-  return [
-    /过年[^，；。]*返乡/,
-    /春节[^，；。]*返乡/,
-    /返乡[^，；。]*(过年|春节)/,
-    /(过年|春节)[^，；。]*(留岗|留年|在岗)/,
-    /过年不返乡/,
-    /春节不返乡/,
-    /过年不回家/,
-    /春节不回家/,
-    /年后返岗/,
-    /年后到岗/,
-    /(过年|春节)[^，；。]*(返岗|到岗)/,
-  ].some((pattern) => pattern.test(normalized));
-}
-
-function sanitizeConstraintText(text: string | null | undefined): string | null {
-  if (!hasValue(text) || typeof text !== 'string') return null;
-
-  const parts = cleanText(text)
-    .split(/[，；]/)
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .filter((part) => {
-      if (isClearlyPastConstraint(part)) return false;
-      if (/过期不再办理|最后入职时间|面试完毕/.test(part)) return false;
-      if (isClearlyExpiredSpringFestivalConstraint(part)) return false;
-      return true;
-    });
-
-  const sanitized = parts.join('，').trim();
-  return sanitized || null;
-}
-
-function formatInterviewDecisionSummary(job: any): string {
-  const req = job.hiringRequirement;
-  const ip = job.interviewProcess;
-  if (!req && !ip) return '';
-
+function formatInterviewDecisionSummary(policy: JobPolicyAnalysis): string {
   const lines: string[] = [];
 
-  const basic = req?.basicPersonalRequirements;
-  if (basic && (hasValue(basic.minAge) || hasValue(basic.maxAge))) {
-    addLine(lines, '年龄要求', `${basic.minAge ?? '不限'}-${basic.maxAge ?? '不限'}岁`);
+  if (policy.normalizedRequirements.ageRequirement !== '不限') {
+    addLine(lines, '年龄要求', policy.normalizedRequirements.ageRequirement);
   }
 
-  const cert = req?.certificate;
-  if (cert?.healthCertificate) {
-    addLine(lines, '健康证', cert.healthCertificate);
+  if (policy.normalizedRequirements.healthCertificateRequirement !== '未明确要求') {
+    addLine(lines, '健康证', policy.normalizedRequirements.healthCertificateRequirement);
   }
 
-  const requirementHighlights = pickKeySentences(req?.remark, [
-    /经验/,
-    /体力/,
-    /分拣/,
-    /健康证/,
-    /学历/,
-    /学生/,
-    /夜班/,
-  ]);
-  if (requirementHighlights.length > 0) {
-    addLine(
-      lines,
-      '关键要求',
-      requirementHighlights
-        .map((fragment) => sanitizeConstraintText(fragment))
-        .filter((fragment): fragment is string => Boolean(fragment))
-        .join('；'),
-    );
+  if (policy.highlights.requirementHighlights.length > 0) {
+    addLine(lines, '关键要求', policy.highlights.requirementHighlights.join('；'));
   }
 
-  const first = ip?.firstInterview;
-  if (first?.firstInterviewWay) {
-    addLine(lines, '面试形式', first.firstInterviewWay);
+  if (policy.interviewMeta.method) {
+    addLine(lines, '面试形式', policy.interviewMeta.method);
   }
 
-  if (first?.interviewDemand) {
-    addLine(lines, '报名要求', sanitizeConstraintText(first.interviewDemand));
+  if (policy.interviewMeta.demand) {
+    addLine(lines, '报名要求', policy.interviewMeta.demand);
   }
 
-  const timeHint = extractInterviewTimeHint(job);
-  if (timeHint) {
-    addLine(lines, '面试时间', timeHint);
+  if (policy.interviewMeta.timeHint) {
+    addLine(lines, '面试时间', policy.interviewMeta.timeHint);
   }
 
-  const remarkHighlights = pickKeySentences(ip?.remark, [
-    /健康证/,
-    /最迟/,
-    /最后/,
-    /截止/,
-    /过期/,
-    /完成面试/,
-    /入职/,
-  ])
-    .map((fragment) => sanitizeConstraintText(fragment))
-    .filter((fragment): fragment is string => Boolean(fragment));
-  if (remarkHighlights.length > 0) {
-    addLine(lines, '时效限制', remarkHighlights.join('；'));
+  if (policy.highlights.timingHighlights.length > 0) {
+    addLine(lines, '时效限制', policy.highlights.timingHighlights.join('；'));
   }
 
   return lines.length > 0 ? '### 约面重点\n' + lines.join('\n') + '\n\n' : '';
@@ -447,29 +333,31 @@ function formatWelfareInfo(job: any): string {
   return lines.length > 0 ? lines.join('\n') + '\n' : '';
 }
 
-function formatRequirements(job: any): string {
+function formatRequirements(job: any, policy: JobPolicyAnalysis): string {
   const req = job.hiringRequirement;
-  if (!req) return '';
+  if (!req && !policy) return '';
   const lines: string[] = [];
 
-  const basic = req.basicPersonalRequirements;
-  if (basic) {
-    if (hasValue(basic.genderRequirement) && basic.genderRequirement !== '不限') {
-      addLine(lines, '性别', basic.genderRequirement);
-    }
-    if (hasValue(basic.minAge) || hasValue(basic.maxAge)) {
-      addLine(lines, '年龄', `${basic.minAge ?? '不限'}-${basic.maxAge ?? '不限'}岁`);
-    }
+  if (
+    hasValue(policy.normalizedRequirements.genderRequirement) &&
+    policy.normalizedRequirements.genderRequirement !== '不限'
+  ) {
+    addLine(lines, '性别', policy.normalizedRequirements.genderRequirement);
   }
-
-  const cert = req.certificate;
-  if (cert) {
-    if (hasValue(cert.education) && cert.education !== '不限')
-      addLine(lines, '学历', `${cert.education}及以上`);
-    if (hasValue(cert.healthCertificate)) addLine(lines, '健康证', cert.healthCertificate);
+  if (policy.normalizedRequirements.ageRequirement !== '不限') {
+    addLine(lines, '年龄', policy.normalizedRequirements.ageRequirement);
   }
-
-  if (req.remark) addLine(lines, '其他要求', sanitizeConstraintText(req.remark));
+  if (
+    hasValue(policy.normalizedRequirements.educationRequirement) &&
+    policy.normalizedRequirements.educationRequirement !== '不限'
+  ) {
+    addLine(lines, '学历', `${policy.normalizedRequirements.educationRequirement}及以上`);
+  }
+  if (policy.normalizedRequirements.healthCertificateRequirement !== '未明确要求') {
+    addLine(lines, '健康证', policy.normalizedRequirements.healthCertificateRequirement);
+  }
+  if (policy.normalizedRequirements.remark)
+    addLine(lines, '其他要求', policy.normalizedRequirements.remark);
 
   return lines.length > 0 ? lines.join('\n') + '\n' : '';
 }
@@ -511,22 +399,18 @@ function formatWorkTime(job: any): string {
   return lines.length > 0 ? lines.join('\n') + '\n' : '';
 }
 
-function formatInterviewInfo(job: any): string {
+function formatInterviewInfo(job: any, policy: JobPolicyAnalysis): string {
   const ip = job.interviewProcess;
-  if (!ip) return '';
+  if (!ip && !policy) return '';
   const lines: string[] = [];
 
-  if (hasValue(ip.interviewTotal)) addLine(lines, '面试轮数', `${ip.interviewTotal}轮`);
+  if (hasValue(ip?.interviewTotal)) addLine(lines, '面试轮数', `${ip.interviewTotal}轮`);
 
-  const first = ip.firstInterview;
-  if (first) {
-    if (hasValue(first.firstInterviewWay)) addLine(lines, '一面方式', first.firstInterviewWay);
-    if (hasValue(first.interviewAddress)) addLine(lines, '一面地址', first.interviewAddress);
-    if (hasValue(first.interviewDemand))
-      addLine(lines, '面试要求', sanitizeConstraintText(first.interviewDemand));
-  }
+  if (policy.interviewMeta.method) addLine(lines, '一面方式', policy.interviewMeta.method);
+  if (policy.interviewMeta.address) addLine(lines, '一面地址', policy.interviewMeta.address);
+  if (policy.interviewMeta.demand) addLine(lines, '面试要求', policy.interviewMeta.demand);
 
-  const probation = ip.probationWork;
+  const probation = ip?.probationWork;
   if (probation) {
     const parts: string[] = [];
     if (hasValue(probation.probationWorkPeriod)) {
@@ -536,7 +420,7 @@ function formatInterviewInfo(job: any): string {
     if (parts.length > 0) addLine(lines, '试工', parts.join('，'));
   }
 
-  const training = ip.training;
+  const training = ip?.training;
   if (training) {
     const parts: string[] = [];
     if (hasValue(training.trainingPeriod)) {
@@ -546,7 +430,9 @@ function formatInterviewInfo(job: any): string {
     if (parts.length > 0) addLine(lines, '培训', parts.join('，'));
   }
 
-  if (ip.remark) addLine(lines, '面试备注', sanitizeConstraintText(ip.remark));
+  if (policy.normalizedRequirements.interviewRemark) {
+    addLine(lines, '面试备注', policy.normalizedRequirements.interviewRemark);
+  }
 
   return lines.length > 0 ? lines.join('\n') + '\n' : '';
 }
@@ -594,13 +480,14 @@ function isMinimalMode(flags: ProgressiveDisclosureFlags): boolean {
 
 function formatJobToMarkdown(job: any, index: number, flags: ProgressiveDisclosureFlags): string {
   const bi = job.basicInfo;
+  const policy = buildJobPolicyAnalysis(job);
   const titleParts = [bi.jobName || '未命名岗位'];
   if (hasValue(bi.jobNickName) && bi.jobNickName !== bi.jobName)
     titleParts.push(`(${bi.jobNickName})`);
   let md = `## ${index + 1}. ${titleParts.join(' ')}\n\n`;
 
   if (flags.includeHiringRequirement || flags.includeInterviewProcess) {
-    md += formatInterviewDecisionSummary(job);
+    md += formatInterviewDecisionSummary(policy);
   }
   if (flags.includeBasicInfo) md += formatBasicInfoSection(job);
   if (flags.includeJobSalary) {
@@ -612,7 +499,7 @@ function formatJobToMarkdown(job: any, index: number, flags: ProgressiveDisclosu
     if (s) md += '### 福利信息\n' + s + '\n';
   }
   if (flags.includeHiringRequirement) {
-    const s = formatRequirements(job);
+    const s = formatRequirements(job, policy);
     if (s) md += '### 招聘要求\n' + s + '\n';
   }
   if (flags.includeWorkTime) {
@@ -620,7 +507,7 @@ function formatJobToMarkdown(job: any, index: number, flags: ProgressiveDisclosu
     if (s) md += '### 工作时间\n' + s + '\n';
   }
   if (flags.includeInterviewProcess) {
-    const s = formatInterviewInfo(job);
+    const s = formatInterviewInfo(job, policy);
     if (s) md += '### 面试流程\n' + s + '\n';
   }
 
@@ -706,6 +593,7 @@ const logger = new Logger('duliday_job_list');
 const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，按需获取岗位信息。
 筛选条件：城市、区域、品牌、门店、岗位类型、岗位ID
 距离过滤：传入 userLatitude + userLongitude 后，自动计算门店距离并按业务阈值过滤，结果按距离排序
+规则摘要：会结合岗位结构化字段与备注提炼推荐阶段要点，但不负责真正提交预约
 数据开关：
 - includeBasicInfo（默认true）：品牌、门店、地址等基本信息
 - includeJobSalary：薪资信息
@@ -747,8 +635,10 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
           includeWorkTime,
           includeInterviewProcess,
         };
-
         try {
+          let storeMatchStrategy: 'api_exact' | 'local_fuzzy_match' = 'api_exact';
+          let jobCategoryMatchStrategy: 'api_exact' | 'local_keyword_match' = 'api_exact';
+
           // 首次请求
           let { jobs, total } = await spongeService.fetchJobs({
             cityNameList,
@@ -775,9 +665,36 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
               });
               /* eslint-enable @typescript-eslint/no-explicit-any */
               if (filtered.length > 0) {
+                storeMatchStrategy = 'local_fuzzy_match';
                 jobs = filtered;
                 total = filtered.length;
               }
+            }
+          }
+
+          // 岗位类型本地兜底：当 API 对岗位类型检索不稳定时，退回到同条件宽查后，
+          // 仅基于真实岗位字段做本地匹配，不依赖手写别名字典。
+          if (jobs.length === 0 && jobCategoryList.length > 0) {
+            const fallback = await spongeService.fetchJobs({
+              cityNameList,
+              regionNameList,
+              brandAliasList,
+              brandIdList,
+              projectNameList,
+              projectIdList,
+              storeNameList,
+              jobIdList,
+              options,
+            });
+
+            const filtered = filterJobsByRequestedCategories(
+              fallback.jobs as any[],
+              jobCategoryList,
+            );
+            if (filtered.length > 0) {
+              jobCategoryMatchStrategy = 'local_keyword_match';
+              jobs = filtered;
+              total = filtered.length;
             }
           }
 
@@ -854,6 +771,11 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
           if (formatSet.has('rawData')) {
             result.rawData = { result: jobs, total };
           }
+          result.queryMeta = {
+            storeMatchStrategy,
+            jobCategoryMatchStrategy,
+            usedDistanceFiltering: hasUserCoords,
+          };
 
           // 通知调用方已获取岗位数据
           if (context.onJobsFetched && jobs.length > 0) {

@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import { formatDuration } from '@/utils/format';
 import type { MessageRecord } from '@/api/types/chat.types';
 import {
-  getChunkSummary,
   getContextFacts,
   getExecutionFacts,
   getTimingMetrics,
@@ -19,7 +18,7 @@ export default function TechnicalStats({ message }: TechnicalStatsProps) {
   const executionFacts = useMemo(() => getExecutionFacts(message), [message]);
   const contextFacts = useMemo(() => getContextFacts(message), [message]);
   const toolCalls = useMemo(() => getToolCalls(message), [message]);
-  const chunkSummary = useMemo(() => getChunkSummary(message), [message]);
+  // chunkSummary removed — low signal-to-noise for end users
   const identityFacts = useMemo(
     () => contextFacts.filter((item) => item.mono),
     [contextFacts],
@@ -36,21 +35,22 @@ export default function TechnicalStats({ message }: TechnicalStatsProps) {
   const headlineMetrics: Array<{
     label: string;
     value: string;
-    tone: 'primary' | 'warning';
+    tone: 'primary' | 'secondary';
   }> = [
     { label: 'E2E', value: formatMetricDuration(timings.e2eMs ?? message.totalDuration), tone: 'primary' },
     { label: 'LLM', value: formatMetricDuration(timings.llmMs ?? message.aiDuration), tone: 'primary' },
-    { label: 'TTFT', value: formatMetricDuration(timings.ttftMs), tone: 'warning' },
-    { label: 'Token', value: tokenValue, tone: 'warning' },
+    { label: 'TTFT', value: formatMetricDuration(timings.ttftMs), tone: 'secondary' },
+    { label: 'Token', value: tokenValue, tone: 'secondary' },
   ];
 
+  // Chronological order: queue → prep → first signals → total LLM → delivery
   const latencyRows = [
     { label: 'Queue Wait', value: timings.queueWaitMs },
     { label: 'Preparation', value: timings.prepMs },
-    { label: 'LLM Runtime', value: timings.llmMs ?? message.aiDuration },
-    { label: 'TTFT', value: timings.ttftMs },
-    { label: 'TTFR', value: timings.ttfrMs },
     { label: 'First Chunk', value: timings.firstChunkMs },
+    { label: 'TTFR', value: timings.ttfrMs },
+    { label: 'TTFT', value: timings.ttftMs },
+    { label: 'LLM Runtime', value: timings.llmMs ?? message.aiDuration },
     { label: 'Delivery', value: timings.deliveryMs ?? message.sendDuration },
   ].filter((item) => item.value !== undefined);
 
@@ -70,7 +70,7 @@ export default function TechnicalStats({ message }: TechnicalStatsProps) {
       </div>
 
       {latencyRows.length > 0 && (
-        <div className={styles.statCard}>
+        <div className={styles.breakdownCard}>
           <div className={styles.cardTitle}>时延分解</div>
           <div className={styles.statBreakdown}>
             {latencyRows.map((item) => (
@@ -84,7 +84,7 @@ export default function TechnicalStats({ message }: TechnicalStatsProps) {
       )}
 
       {executionFacts.length > 0 && (
-        <div className={styles.statCard}>
+        <div className={styles.breakdownCard}>
           <div className={styles.cardTitle}>执行事实</div>
           <div className={styles.statBreakdown}>
             {executionFacts.map((item) => (
@@ -93,18 +93,12 @@ export default function TechnicalStats({ message }: TechnicalStatsProps) {
                 <span>{item.value}</span>
               </div>
             ))}
-            {chunkSummary ? (
-              <div className={`${styles.breakdownItem} ${styles.column}`}>
-                <span>Chunk 分布</span>
-                <span className={styles.summaryText}>{chunkSummary}</span>
-              </div>
-            ) : null}
           </div>
         </div>
       )}
 
       {toolCalls.length > 0 && (
-        <div className={styles.statCard}>
+        <div className={styles.breakdownCard}>
           <div className={styles.cardTitle}>工具执行</div>
           <div className={styles.toolSection}>
             {toolCalls.map((toolCall, index) => (
@@ -134,7 +128,7 @@ export default function TechnicalStats({ message }: TechnicalStatsProps) {
       )}
 
       {contextFacts.length > 0 && (
-        <div className={styles.statCard}>
+        <div className={styles.breakdownCard}>
           <div className={styles.cardTitle}>Trace Context</div>
 
           {identityFacts.length > 0 && (

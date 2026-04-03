@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { MemoryService } from '@memory/memory.service';
 import { SpongeService } from '@sponge/sponge.service';
 import {
@@ -13,11 +14,17 @@ import {
 import { buildAdvanceStageTool } from './advance-stage.tool';
 import { buildRecallHistoryTool } from './recall-history.tool';
 import { buildJobListTool } from './duliday-job-list.tool';
+import { buildInterviewPrecheckTool } from './duliday-interview-precheck.tool';
 import { buildInterviewBookingTool } from './duliday-interview-booking.tool';
 import { buildGeocodeTool } from './geocode.tool';
 import { buildSaveImageDescriptionTool } from './save-image-description.tool';
+import { buildInviteToGroupTool } from './invite-to-group.tool';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
+import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
+import { RoomService } from '@channels/wecom/room/room.service';
+import { RedisService } from '@infra/redis/redis.service';
+import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 
 /**
  * 统一工具注册表
@@ -46,7 +53,14 @@ export class ToolRegistryService {
     spongeService: SpongeService,
     geocodingService: GeocodingService,
     private readonly chatSessionService: ChatSessionService,
+    groupResolverService: GroupResolverService,
+    roomService: RoomService,
+    redisService: RedisService,
+    alertService: FeishuAlertService,
+    configService: ConfigService,
   ) {
+    const memberLimit = parseInt(configService.get('GROUP_MEMBER_LIMIT', '190'), 10);
+    const enterpriseToken = configService.get<string>('STRIDE_ENTERPRISE_TOKEN', '');
     this.registry = {
       // ===== 阶段工具 =====
       advance_stage: createToolDefinition({
@@ -65,20 +79,42 @@ export class ToolRegistryService {
       // ===== 业务工具 =====
       duliday_job_list: createToolDefinition({
         name: 'duliday_job_list',
-        description: '查询在招岗位列表（渐进式数据披露，6 个布尔开关控制返回字段）',
+        description:
+          '查询在招岗位列表（负责推荐阶段的数据查询与摘要；传入 userLatitude/userLongitude 后会按距离排序并按业务阈值过滤）',
         create: buildJobListTool(spongeService),
       }),
 
       duliday_interview_booking: createToolDefinition({
         name: 'duliday_interview_booking',
-        description: '面试预约（需要姓名、电话、性别、年龄、学历、健康证情况、岗位ID、面试时间）',
+        description: '面试预约（仅做接口字段校验与提交；仅在确认进入约面时调用）',
         create: buildInterviewBookingTool(spongeService),
+      }),
+
+      duliday_interview_precheck: createToolDefinition({
+        name: 'duliday_interview_precheck',
+        description:
+          '面试前置校验（按岗位返回可约日期/时段、备注解析后的字段建议、报名补充信息；不真正提交预约）',
+        create: buildInterviewPrecheckTool(spongeService),
       }),
 
       geocode: createToolDefinition({
         name: 'geocode',
-        description: '地理编码（将地名解析为标准化地址 + 经纬度）',
+        description: '地理编码（将地名解析为标准化地址 + 经纬度；做附近推荐或距离过滤前优先调用）',
         create: buildGeocodeTool(geocodingService),
+      }),
+
+      invite_to_group: createToolDefinition({
+        name: 'invite_to_group',
+        description: '邀请候选人加入企微兼职群（穷尽推荐无匹配/登记完成后触发）',
+        create: buildInviteToGroupTool(
+          groupResolverService,
+          roomService,
+          redisService,
+          alertService,
+          memoryService,
+          memberLimit,
+          enterpriseToken,
+        ),
       }),
     };
 
@@ -92,8 +128,10 @@ export class ToolRegistryService {
       'advance_stage',
       'recall_history',
       'duliday_job_list',
+      'duliday_interview_precheck',
       'duliday_interview_booking',
       'geocode',
+      'invite_to_group',
     ],
     'group-operations': [],
     evaluation: [],

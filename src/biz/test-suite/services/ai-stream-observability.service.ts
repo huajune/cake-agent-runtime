@@ -450,7 +450,8 @@ export class AiStreamTrace {
       tools: payload.tools.length > 0 ? payload.tools : undefined,
       tokenUsage: payload.usage?.totalTokens ?? 0,
       replyPreview: storedResponse.reply?.content || payload.replyPreview,
-      replySegments: this.chunkTypeCounts['text-delta'] ?? undefined,
+      // Test-suite streams are rendered as a single assistant reply, not real delivery segments.
+      replySegments: payload.hasText ? 1 : undefined,
       isFallback: false,
       agentInvocation: {
         request: this.requestBody,

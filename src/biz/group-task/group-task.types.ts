@@ -62,6 +62,8 @@ export interface GroupContext {
   token: string;
   /** 对话 ID（小组级发消息用） */
   chatId?: string;
+  /** 群成员数量（容量管理用） */
+  memberCount?: number;
 }
 
 /** 策略 fetchData 返回的数据 */

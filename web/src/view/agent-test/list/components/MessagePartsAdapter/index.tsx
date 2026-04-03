@@ -19,7 +19,14 @@ import styles from './index.module.scss';
 function normalizeReasoningText(text: string): string {
   return text
     .replace(/\r\n/g, '\n')
+    // Collapse 3+ newlines → 1 blank line
     .replace(/\n{3,}/g, '\n\n')
+    // Remove blank lines BEFORE any list item (numbered or bulleted)
+    .replace(/\n\n+(?=\d+\.\s)/g, '\n')
+    .replace(/\n\n+(?=[-*]\s)/g, '\n')
+    // Remove blank lines after colon-ending lines (e.g. "我需要：\n\n1.")
+    .replace(/([：:]\s*)\n\n+/g, '$1\n')
+    // Fix orphaned list markers: "1.\n\ntext" → "1. text"
     .replace(/(^|\n)(\d+\.)\s*\n+(?=\S)/g, '$1$2 ')
     .replace(/(^|\n)([-*])\s*\n+(?=\S)/g, '$1$2 ')
     .trim();

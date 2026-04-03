@@ -32,13 +32,13 @@ const RETAIL_ROLE_KEYWORDS = ['理货', '分拣', '导购', '收银'];
 const CATERING_ROLE_KEYWORDS = ['服务员', '帮厨', '后厨', '洗碗', '咖啡师', '配菜', '厨'];
 
 /**
- * 兼职群通知策略（真实数据 + AI 润色 + 固定尾部）
+ * 兼职群通知策略（真实数据 + AI 润色）
  *
  * - 数据源：海绵在招岗位 (SpongeService.fetchJobs)
- * - 行业过滤：jobCategoryName 第一段（/分割）匹配群标签行业
+ * - 行业过滤：品牌/岗位双重推断匹配群标签行业
  * - 品牌轮转：每次推不同品牌，避免重复
  * - AI 负责排版润色，但只能用提供的真实数据
- * - 尾部固定追加（引导语 + 小程序提示）
+ * - 小程序卡片由 NotificationSenderService 单独发送
  */
 @Injectable()
 export class PartTimeJobStrategy implements NotificationStrategy {

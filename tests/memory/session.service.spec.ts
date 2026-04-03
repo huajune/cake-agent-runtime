@@ -120,6 +120,7 @@ describe('SessionService', () => {
         lastCandidatePool: null,
         presentedJobs: null,
         currentFocusJob: null,
+        invitedGroups: null,
       });
     });
 

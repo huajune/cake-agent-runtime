@@ -64,6 +64,8 @@ export class AgentPreparationService {
       maxSteps = 5,
       imageUrls,
       imageMessageIds,
+      botUserId,
+      botImId,
     } = params;
 
     this.logger.log(
@@ -156,6 +158,8 @@ export class AgentPreparationService {
       onJobsFetched: async (jobs) => {
         turnState.candidatePool = jobs as RecommendedJobSummary[];
       },
+      botUserId,
+      botImId,
     };
 
     // 10. 按场景挑出本轮允许使用的工具。
@@ -304,6 +308,7 @@ export class AgentPreparationService {
       '',
       '以下内容由当前消息前置识别得到，仅用于理解本轮意图，不视为跨轮已确认的会话记忆。',
       '若与[用户档案]、[会话记忆]或候选人当前明示信息冲突，以候选人当前明示信息为准。',
+      '若识别出地点线索，做附近推荐、距离比较或 10km 内筛选前，仍需先 geocode 获取经纬度，不能直接跳过地理解析。',
       '',
       '## 当前消息识别结果',
       lines.join('\n'),

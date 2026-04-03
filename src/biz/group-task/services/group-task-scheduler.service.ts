@@ -250,9 +250,15 @@ export class GroupTaskSchedulerService implements OnModuleInit {
             }
 
             // 3c. 同组所有群发送相同消息
+            const followUpMessage = data.payload?.followUpMessage as string | undefined;
             for (const group of groupMembers) {
               try {
                 await this.notificationSender.sendToGroup(group, message, strategy.type, dryRun);
+                // 跟随消息（如店长群问候语）单独发送
+                if (followUpMessage) {
+                  await this.delay(this.sendDelayMs);
+                  await this.notificationSender.sendTextToGroup(group, followUpMessage, dryRun);
+                }
                 result.successCount++;
                 this.logger.log(`[${strategy.type}] ✅ ${group.groupName}`);
                 await this.delay(this.sendDelayMs);

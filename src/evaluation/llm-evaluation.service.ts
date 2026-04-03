@@ -7,12 +7,21 @@ import {
   LlmEvaluationResult,
   EvaluationInput,
   EvaluationStructuredOutputSchema,
+  DefaultEvaluationDimensions,
+  type EvaluationStructuredOutput,
+  type EvaluationDimensions,
 } from './evaluation.types';
 
 export type { LlmEvaluationResult, EvaluationInput };
 
 /** 通过分数阈值 */
 const PASS_THRESHOLD = 60;
+const DIMENSION_WEIGHTS = {
+  factualAccuracy: 0.4,
+  responseEfficiency: 0.2,
+  processCompliance: 0.3,
+  toneNaturalness: 0.1,
+} as const;
 
 /**
  * LLM 评估服务
@@ -78,6 +87,7 @@ export class LlmEvaluationService {
         score: 0,
         passed: false,
         reason: `评估失败: ${errorMsg}`,
+        dimensions: DefaultEvaluationDimensions,
         evaluationId,
       };
     }
@@ -95,42 +105,40 @@ export class LlmEvaluationService {
     const { userMessage: originalUserMessage, expectedOutput, actualOutput, history } = input;
 
     // 系统提示词：定义评估者角色和规则
-    const systemPrompt = `你是一个 AI 客服回复评估专家。请严格按照评分规则评估 AI 客服的回复质量。
+    const systemPrompt = `你是一个招聘对话评估专家。请按 4 个维度评估 AI 回复质量，并给出简短总结。
 
-【评分规则 - 严格执行】
+【维度定义】
+1. factualAccuracy（事实正确）
+- 是否与真人参考回复的结论一致
+- 是否编造或说错岗位、薪资、地点、时间、班次、规则
+- 一旦出现核心事实相反或强幻觉，这个维度必须低分
 
-一、一票否决项（出现即 0-20 分）：
-1. 事实性错误：给出与真人客服相反的结论（如"招人"说成"不招"，"不招"说成"招"）
-2. 关键信息完全错误：岗位要求、薪资、时间、地点等核心信息完全错误
+2. responseEfficiency（提问效率）
+- 是否优先回答用户当前问题
+- 是否有无必要的追问、拖延、绕圈
+- 如果该直接给结果却只说「我看看」「你先说下别的信息」，应扣分
 
-二、严重扣分项（每项扣 20-30 分）：
-1. 遗漏关键信息：用户明确询问的核心信息（薪资/时间/地点/岗位要求）完全未提供
-2. 逻辑矛盾：前后回复自相矛盾
-3. 未完成任务：用户明确要求预约/报名，但未收集信息或确认
+3. processCompliance（流程合规）
+- 是否符合招聘/报名/约面流程
+- 是否错误承诺能约、漏收必填、乱收无关字段、流程顺序错乱
+- 涉及约面和报名时，这个维度权重很高
 
-三、一般扣分项（每项扣 5-15 分）：
-1. 信息不完整：提供了部分信息但不够详细（缺少重要细节）
-2. 回复效率低：仅说"我查一下"等拖延回复，未提供任何有效信息
-3. 语气不当：过于生硬或过于随意
+4. toneNaturalness（话术自然）
+- 是否自然、可信、不机械
+- 是否复读昵称、语气生硬、像脚本
 
-四、加分项（满足可加分）：
-1. 主动提供替代方案（+5分）
-2. 信息完整且结构清晰（+5分）
-3. 语气友好专业（+5分）
+【打分要求】
+- 每个维度输出 0-100 整数分
+- 每个维度给一句简短中文理由，控制在 40 字内
+- summary 用 1 句中文总结整体问题或亮点，控制在 80 字内
+- 不要输出总分，系统会按权重自行计算
 
-【评分计算】
-基础分：60分
-最终分 = 60 + 加分项 - 扣分项（若触发一票否决，直接给 0-20 分）
-分数范围：0-100
+【关键原则】
+- 准确性和流程合规优先级最高
+- 「意思差不多」不代表可高分，事实错或流程错必须严厉扣分
+- 如果 AI 回复比真人更完整，但不违背事实和流程，可以给更高分
 
-【优先级】准确性 > 完整性 > 效率 > 语气
-
-注意：
-- score 为 0-100 的整数
-- reason 用简短中文说明评估理由（不超过100字），不要使用英文双引号，用「」代替
-- "意思对"不等于"内容对"：即使语气友好，事实错误也必须严厉扣分
-
-请只返回结构化评估结果，不要输出额外解释。`;
+请只返回结构化结果，不要输出额外解释。`;
 
     // 构建对话历史上下文
     let historyContext = '';
@@ -162,17 +170,19 @@ ${actualOutput}
    * 统一整理结构化评估结果。
    */
   private normalizeEvaluationResult(
-    result: { score: number; reason: string },
+    result: EvaluationStructuredOutput,
     evaluationId: string,
   ): LlmEvaluationResult {
-    const score = Math.round(result.score);
+    const dimensions = this.normalizeDimensions(result.dimensions);
+    const score = this.computeOverallScore(dimensions);
     const passed = score >= PASS_THRESHOLD;
-    const reason = result.reason.slice(0, 200);
+    const reason = this.buildEvaluationReason(dimensions, result.summary);
 
     return {
       score,
       passed,
       reason,
+      dimensions,
       evaluationId,
     };
   }
@@ -185,8 +195,52 @@ ${actualOutput}
       score: 0,
       passed: false,
       reason,
+      dimensions: DefaultEvaluationDimensions,
       evaluationId,
     };
+  }
+
+  private normalizeDimensions(
+    dimensions: EvaluationStructuredOutput['dimensions'],
+  ): EvaluationDimensions {
+    return {
+      factualAccuracy: {
+        score: Math.round(dimensions.factualAccuracy.score),
+        reason: dimensions.factualAccuracy.reason.slice(0, 80),
+      },
+      responseEfficiency: {
+        score: Math.round(dimensions.responseEfficiency.score),
+        reason: dimensions.responseEfficiency.reason.slice(0, 80),
+      },
+      processCompliance: {
+        score: Math.round(dimensions.processCompliance.score),
+        reason: dimensions.processCompliance.reason.slice(0, 80),
+      },
+      toneNaturalness: {
+        score: Math.round(dimensions.toneNaturalness.score),
+        reason: dimensions.toneNaturalness.reason.slice(0, 80),
+      },
+    };
+  }
+
+  private computeOverallScore(dimensions: EvaluationDimensions): number {
+    const score =
+      dimensions.factualAccuracy.score * DIMENSION_WEIGHTS.factualAccuracy +
+      dimensions.responseEfficiency.score * DIMENSION_WEIGHTS.responseEfficiency +
+      dimensions.processCompliance.score * DIMENSION_WEIGHTS.processCompliance +
+      dimensions.toneNaturalness.score * DIMENSION_WEIGHTS.toneNaturalness;
+
+    return Math.round(score);
+  }
+
+  private buildEvaluationReason(dimensions: EvaluationDimensions, summary: string): string {
+    const prefix =
+      `事实${dimensions.factualAccuracy.score}` +
+      ` / 效率${dimensions.responseEfficiency.score}` +
+      ` / 合规${dimensions.processCompliance.score}` +
+      ` / 话术${dimensions.toneNaturalness.score}`;
+
+    return `${prefix}：${summary}`.slice(0, 200);
   }
 
   /**

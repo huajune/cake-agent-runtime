@@ -21,8 +21,6 @@ const renderContentWithMediaTags = (content: string) =>
 
 interface ChatSectionProps {
   message: MessageRecord;
-  showRaw: boolean;
-  onToggleRaw: () => void;
 }
 
 function stringifyPayload(data: unknown): string {
@@ -48,8 +46,6 @@ function getPayloadSummary(data: unknown): string {
 
 export default function ChatSection({
   message,
-  showRaw,
-  onToggleRaw,
 }: ChatSectionProps) {
   const [activePayloadKey, setActivePayloadKey] = useState<string>('request');
   const toolCalls = useMemo(() => getToolCalls(message), [message]);
@@ -63,11 +59,10 @@ export default function ChatSection({
   const fallbackStatusText = message.fallbackSuccess === true ? '成功' : '失败';
 
   useEffect(() => {
-    if (!showRaw) return;
     if (!activePanel && rawPayloadPanels.length > 0) {
       setActivePayloadKey(rawPayloadPanels[0].key);
     }
-  }, [activePanel, rawPayloadPanels, showRaw]);
+  }, [activePanel, rawPayloadPanels]);
 
   return (
     <>
@@ -156,62 +151,44 @@ export default function ChatSection({
         )}
       </div>
 
-      <div className={styles.rawSection}>
-        <div className={styles.rawHeader}>
-          <div>
-            <h4 className={styles.rawTitle}>调试载荷</h4>
-            <div className={styles.rawSubtitle}>按业务请求、业务响应、工具执行、下发结果与异常链路查看完整载荷</div>
-          </div>
-          <div className={styles.rawActions}>
-            <button
-              type="button"
-              onClick={onToggleRaw}
-              className={styles.toggleButton}
-            >
-              {showRaw ? '收起' : '展开'}
-            </button>
-          </div>
-        </div>
+      {rawPayloadPanels.length > 0 && (
+        <div className={styles.rawSection}>
+          <h4 className={styles.rawTitle}>调试载荷</h4>
+          <div className={styles.payloadShell}>
+            <div className={styles.rawTabs}>
+              {rawPayloadPanels.map((panel) => (
+                <button
+                  key={panel.key}
+                  type="button"
+                  onClick={() => setActivePayloadKey(panel.key)}
+                  className={`${styles.rawTabButton} ${
+                    activePanel?.key === panel.key ? styles.rawTabButtonActive : ''
+                  }`}
+                >
+                  {panel.label}
+                </button>
+              ))}
+            </div>
 
-        {showRaw &&
-          (rawPayloadPanels.length > 0 ? (
-            <div className={styles.payloadShell}>
-              <div className={styles.rawTabs}>
-                {rawPayloadPanels.map((panel) => (
-                  <button
-                    key={panel.key}
-                    type="button"
-                    onClick={() => setActivePayloadKey(panel.key)}
-                    className={`${styles.rawTabButton} ${
-                      activePanel?.key === panel.key ? styles.rawTabButtonActive : ''
-                    }`}
-                  >
-                    {panel.label}
-                  </button>
-                ))}
-              </div>
-
-              {activePanel ? (
-                <div className={styles.payloadCard}>
-                  <div className={styles.payloadHeader}>
-                    <div>
-                      <div className={styles.payloadLabel}>{activePanel.label}</div>
-                      <div className={styles.payloadDescription}>{activePanel.description}</div>
-                    </div>
-                    <div className={styles.payloadMeta}>
-                      {getPayloadSummary(activePanel.data)}
-                    </div>
+            {activePanel ? (
+              <div className={styles.payloadCard}>
+                <div className={styles.payloadHeader}>
+                  <div>
+                    <div className={styles.payloadLabel}>{activePanel.label}</div>
+                    <div className={styles.payloadDescription}>{activePanel.description}</div>
                   </div>
-                  <div className={styles.codeShell}>
-                    <pre className={styles.codeBlock}>{stringifyPayload(activePanel.data)}</pre>
+                  <div className={styles.payloadMeta}>
+                    {getPayloadSummary(activePanel.data)}
                   </div>
                 </div>
-              ) : null}
-            </div>
-          ) : (
-            <div className={styles.emptyResponse}>当前记录没有可展示的调试载荷</div>
-          ))}
-      </div>
+                <div className={styles.codeShell}>
+                  <pre className={styles.codeBlock}>{stringifyPayload(activePanel.data)}</pre>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
     </>
   );
 }

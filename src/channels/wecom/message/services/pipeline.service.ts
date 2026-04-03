@@ -466,6 +466,8 @@ export class MessagePipelineService {
       corpId: this.resolveCorpId(params.primaryMessage),
       imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
       imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
+      botUserId: params.primaryMessage.botUserId,
+      botImId: params.primaryMessage.imBotId,
     });
 
     this.logger.log(
@@ -857,6 +859,8 @@ export class MessagePipelineService {
     corpId: string;
     imageUrls?: string[];
     imageMessageIds?: string[];
+    botUserId?: string;
+    botImId?: string;
   }): Promise<AgentInvokeResult> {
     const {
       userMessage,
@@ -894,6 +898,8 @@ export class MessagePipelineService {
         scenario,
         imageUrls: params.imageUrls,
         imageMessageIds: params.imageMessageIds,
+        botUserId: params.botUserId,
+        botImId: params.botImId,
       });
 
       const processingTime = Date.now() - startTime;

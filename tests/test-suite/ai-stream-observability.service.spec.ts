@@ -87,7 +87,12 @@ describe('AiStreamObservabilityService', () => {
     trace.observeChunk({
       type: 'text-delta',
       id: 'text-1',
-      delta: '杨浦这边有两家肯德基在招。',
+      delta: '杨浦这边有两家',
+    } as const);
+    trace.observeChunk({
+      type: 'text-delta',
+      id: 'text-1',
+      delta: '肯德基在招。',
     } as const);
     trace.observeChunk({
       type: 'finish',
@@ -105,6 +110,8 @@ describe('AiStreamObservabilityService', () => {
 
     const [, metadata] = mockTrackingService.recordSuccess.mock.calls[0];
     const invocation = metadata.agentInvocation;
+
+    expect(metadata.replySegments).toBe(1);
 
     expect(invocation.request).toEqual(
       expect.objectContaining({

@@ -1,20 +1,33 @@
-// LogsTable 组件样式 - CSS Modules
+// MessageProcessingTable 组件样式 - CSS Modules
 @use '@/assets/styles/variables' as *;
 
 .section {
-  background: #ffffff;
-  border-radius: 16px;
-  border: 1px solid #e2e8f0;
-  padding: 0; // Padding handled by table or wrapper? Let's use 0 and let table expand, or padding: 24px. Let's stick to padding 24
-  padding: 24px;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.01), 0 1px 2px -1px rgba(0, 0, 0, 0.01);
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 18px;
+  border: 1px solid rgba(161, 173, 255, 0.14);
+  padding: 20px;
+  box-shadow: 0 4px 20px rgba(103, 80, 164, 0.05);
+  backdrop-filter: blur(10px);
   transition: all 0.3s ease;
   margin-bottom: 24px;
 }
 
 .tableWrapper {
   overflow-x: auto;
-  border-radius: 8px; // Inner radius
+  border-radius: 12px;
+
+  &::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(99, 102, 241, 0.15);
+    border-radius: 3px;
+  }
 }
 
 .table {
@@ -24,34 +37,38 @@
   font-size: 13px;
 
   th {
-    padding: 14px 16px;
+    padding: 12px 16px;
     text-align: left;
-    background: #f8fafc;
+    background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
     color: #64748b;
-    font-weight: 500;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
     white-space: nowrap;
-    border-top: 1px solid #e2e8f0;
-    border-bottom: 1px solid #e2e8f0;
+    border-top: 1px solid rgba(161, 173, 255, 0.16);
+    border-bottom: 1px solid rgba(161, 173, 255, 0.16);
 
     &:first-child {
-      border-top-left-radius: 8px;
-      border-bottom-left-radius: 8px;
-      border-left: 1px solid #e2e8f0;
+      border-top-left-radius: 10px;
+      border-bottom-left-radius: 10px;
+      border-left: 1px solid rgba(161, 173, 255, 0.16);
     }
 
     &:last-child {
-      border-top-right-radius: 8px;
-      border-bottom-right-radius: 8px;
-      border-right: 1px solid #e2e8f0;
+      border-top-right-radius: 10px;
+      border-bottom-right-radius: 10px;
+      border-right: 1px solid rgba(161, 173, 255, 0.16);
     }
   }
 
   td {
-    padding: 16px;
-    border-bottom: 1px solid #f1f5f9;
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(241, 245, 249, 0.8);
     color: #334155;
-    transition: all 0.2s ease;
+    transition: background 0.15s ease;
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
 
   tbody tr:last-child td {
@@ -61,64 +78,76 @@
 
 .clickableRow {
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
 
   &:hover {
     td {
-      background: #f8fafc;
+      background: rgba(99, 102, 241, 0.03);
+    }
+
+    td:first-child {
+      box-shadow: inset 3px 0 0 0 $primary;
+    }
+  }
+
+  &:active {
+    td {
+      background: rgba(99, 102, 241, 0.06);
     }
   }
 }
 
-  td.loading {
-    text-align: center;
-    vertical-align: middle;
-    padding: 80px 0;
-    color: $text-muted;
-    background: transparent;
+td.loading {
+  text-align: center;
+  vertical-align: middle;
+  padding: 80px 0;
+  color: $text-muted;
+  background: transparent;
 
-    .emptyStateContainer {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
+  .emptyStateContainer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
 
-      .emptyIconWrapper {
-        width: 80px;
-        height: 80px;
-        margin-bottom: 24px;
-        animation: float 3s ease-in-out infinite;
-        
-        .emptyIcon {
-          width: 100%;
-          height: 100%;
-        }
-      }
+    .emptyIconWrapper {
+      width: 88px;
+      height: 88px;
+      margin-bottom: 20px;
+      animation: float 4s ease-in-out infinite;
+      filter: drop-shadow(0 8px 16px rgba(99, 102, 241, 0.08));
 
-      @keyframes float {
-        0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(-8px); }
-      }
-
-      p {
-        margin: 0;
-        font-size: 14px;
-        color: #64748b;
-        font-weight: 500;
+      .emptyIcon {
+        width: 100%;
+        height: 100%;
       }
     }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+
+    p {
+      margin: 0;
+      font-size: 14px;
+      color: #94a3b8;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+    }
   }
+}
 
 // 单元格样式
 .cellTruncate {
-  max-width: 180px;
+  max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .cellTruncateLarge {
-  max-width: 200px;
+  max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -130,16 +159,14 @@
 
 .cellMono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 12px;
+  font-size: 11px;
   color: #64748b;
-  background: rgba(241, 245, 249, 0.5);
-  padding: 2px 6px;
-  border-radius: 4px;
+  white-space: nowrap;
 }
 
 .cellHighlight {
   color: $danger;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 // 状态单元格
@@ -152,7 +179,7 @@
 // 降级图标
 .fallbackIcon {
   font-size: 14px;
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
 
   &.success {
     color: #f59e0b;
