@@ -8,6 +8,15 @@ interface ToolCallItemProps {
   defaultExpanded?: boolean;
 }
 
+function safeStringify(value: unknown): string {
+  try {
+    const result = JSON.stringify(value, null, 2);
+    return result ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
 /**
  * 工具调用组件
  */
@@ -18,8 +27,8 @@ export const ToolCallItem = memo(function ToolCallItem({
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const toolName = tool.name || tool.tool || tool.toolName || '未知工具';
 
-  // 兼容不同的字段命名: arguments/input, result/output
-  const inputData = tool.arguments ?? tool.input;
+  // 兼容不同的字段命名: args/arguments/input, result/output
+  const inputData = tool.args ?? tool.arguments ?? tool.input;
   const outputData = tool.result ?? tool.output;
   const hasContent = inputData !== undefined || outputData !== undefined;
 
@@ -45,7 +54,7 @@ export const ToolCallItem = memo(function ToolCallItem({
             <div className={styles.toolSection}>
               <div className={styles.toolSectionLabel}>入参</div>
               <pre className={styles.toolDetail}>
-                {typeof inputData === 'string' ? inputData : JSON.stringify(inputData, null, 2)}
+                {typeof inputData === 'string' ? inputData : safeStringify(inputData)}
               </pre>
             </div>
           )}
@@ -55,8 +64,8 @@ export const ToolCallItem = memo(function ToolCallItem({
               <pre className={styles.toolDetail}>
                 {typeof outputData === 'string'
                   ? outputData.substring(0, 500)
-                  : JSON.stringify(outputData, null, 2).substring(0, 500)}
-                {(typeof outputData === 'string' ? outputData : JSON.stringify(outputData)).length >
+                  : safeStringify(outputData).substring(0, 500)}
+                {(typeof outputData === 'string' ? outputData : safeStringify(outputData)).length >
                   500 && '...'}
               </pre>
             </div>

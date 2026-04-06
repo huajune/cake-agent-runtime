@@ -1,6 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AgentRunnerService, type AgentRunResult } from '@agent/runner.service';
 import { LlmEvaluationService } from '@evaluation/llm-evaluation.service';
+import { type EvaluationDimensions } from '@evaluation/evaluation.types';
 import { ConversationParserService } from '@evaluation/conversation-parser.service';
 import { ConversationSnapshotRepository } from '../repositories/conversation-snapshot.repository';
 import { TestExecutionRepository } from '../repositories/test-execution.repository';
@@ -89,6 +90,8 @@ export class ConversationTestService {
         similarityScore: number | null;
         rating: SimilarityRating | null;
         executionStatus: string;
+        evaluationSummary: string | null;
+        dimensions: EvaluationDimensions | null;
       }> = [];
 
       for (const turn of turns) {
@@ -106,6 +109,8 @@ export class ConversationTestService {
           : null;
 
       const minScore = validScores.length > 0 ? Math.min(...validScores) : null;
+      const dimensionScores = this.aggregateDimensionScores(turnResults);
+      const evaluationSummary = this.pickLowestScoreSummary(turnResults);
 
       await this.conversationSnapshotRepository.updateSource(sourceId, {
         status: ConversationSourceStatus.COMPLETED,
@@ -126,6 +131,8 @@ export class ConversationTestService {
         executedTurns: turnResults.length,
         avgSimilarityScore: avgScore,
         minSimilarityScore: minScore,
+        evaluationSummary,
+        dimensionScores,
         turns: turnResults,
       };
     } catch (error: unknown) {
@@ -305,6 +312,8 @@ export class ConversationTestService {
     similarityScore: number | null;
     rating: SimilarityRating | null;
     executionStatus: string;
+    evaluationSummary: string | null;
+    dimensions: EvaluationDimensions | null;
   }> {
     const startTime = Date.now();
     const scenario = DEFAULT_SCENARIO;
@@ -327,6 +336,8 @@ export class ConversationTestService {
           ? this.llmEvaluationService.getRating(existingExecution.similarity_score)
           : null,
         executionStatus: existingExecution.execution_status,
+        evaluationSummary: existingExecution.evaluation_reason ?? null,
+        dimensions: null,
       };
     }
 
@@ -391,6 +402,8 @@ export class ConversationTestService {
     let similarityScore: number | null = null;
     let rating: SimilarityRating | null = null;
     let evaluationReason: string | null = null;
+    let evaluationSummary: string | null = null;
+    let dimensions: EvaluationDimensions | null = null;
 
     if (executionStatus === ExecutionStatus.SUCCESS && turn.expectedOutput && actualOutput) {
       const evaluation = await this.llmEvaluationService.evaluate({
@@ -402,6 +415,8 @@ export class ConversationTestService {
       similarityScore = evaluation.score;
       rating = this.llmEvaluationService.getRating(evaluation.score);
       evaluationReason = evaluation.reason;
+      evaluationSummary = evaluation.summary;
+      dimensions = evaluation.dimensions;
 
       this.logger.debug(
         `LLM 评估完成: 轮次 ${turn.turnNumber}, 分数: ${evaluation.score}, 通过: ${evaluation.passed}`,
@@ -458,6 +473,54 @@ export class ConversationTestService {
       similarityScore,
       rating,
       executionStatus,
+      evaluationSummary,
+      dimensions,
     };
+  }
+
+  private aggregateDimensionScores(
+    turnResults: Array<{ dimensions: EvaluationDimensions | null }>,
+  ): ConversationExecutionResult['dimensionScores'] {
+    const validDimensions = turnResults
+      .map((turn) => turn.dimensions)
+      .filter((dimensions): dimensions is EvaluationDimensions => dimensions !== null);
+
+    if (validDimensions.length === 0) {
+      return {
+        factualAccuracy: null,
+        responseEfficiency: null,
+        processCompliance: null,
+        toneNaturalness: null,
+      };
+    }
+
+    const average = (selector: (dimensions: EvaluationDimensions) => number) =>
+      Math.round(
+        validDimensions.reduce((sum, dimensions) => sum + selector(dimensions), 0) /
+          validDimensions.length,
+      );
+
+    return {
+      factualAccuracy: average((dimensions) => dimensions.factualAccuracy.score),
+      responseEfficiency: average((dimensions) => dimensions.responseEfficiency.score),
+      processCompliance: average((dimensions) => dimensions.processCompliance.score),
+      toneNaturalness: average((dimensions) => dimensions.toneNaturalness.score),
+    };
+  }
+
+  private pickLowestScoreSummary(
+    turnResults: Array<{
+      similarityScore: number | null;
+      evaluationSummary: string | null;
+    }>,
+  ): string | null {
+    const worstTurn = turnResults
+      .filter(
+        (turn): turn is { similarityScore: number; evaluationSummary: string | null } =>
+          turn.similarityScore !== null,
+      )
+      .sort((a, b) => a.similarityScore - b.similarityScore)[0];
+
+    return worstTurn?.evaluationSummary ?? null;
   }
 }

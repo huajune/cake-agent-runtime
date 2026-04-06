@@ -245,6 +245,13 @@ export interface ConversationExecutionResult {
   executedTurns: number;
   avgSimilarityScore: number | null;
   minSimilarityScore: number | null;
+  evaluationSummary: string | null;
+  dimensionScores: {
+    factualAccuracy: number | null;
+    responseEfficiency: number | null;
+    processCompliance: number | null;
+    toneNaturalness: number | null;
+  };
   turns: Array<{
     turnNumber: number;
     similarityScore: number | null;

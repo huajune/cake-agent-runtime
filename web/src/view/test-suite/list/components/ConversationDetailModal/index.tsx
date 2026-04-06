@@ -60,10 +60,10 @@ export function ConversationDetailModal({
   const hasNext = currentTurnIndex < turns.length - 1;
 
   // 获取当前轮次的真人对话历史（候选人 + 招募经理）
-  const realHistory = currentTurn?.history || [];
+  const realHistory = Array.isArray(currentTurn?.history) ? currentTurn.history : [];
 
   // 获取工具调用（将 unknown[] 转换为 ToolCall[]）
-  const toolCalls = (currentTurn?.toolCalls || []) as ToolCall[];
+  const toolCalls = (Array.isArray(currentTurn?.toolCalls) ? currentTurn.toolCalls : []) as ToolCall[];
 
   return (
     <div className={styles.modal}>
@@ -166,7 +166,9 @@ export function ConversationDetailModal({
                       <Bot size={14} /> Agent 回复（实际）
                     </div>
                     <div className={styles.actualReply}>
-                      {currentTurn.actualOutput?.replace(/\n\n+/g, ' ') || '(无实际回复)'}
+                      {(typeof currentTurn.actualOutput === 'string'
+                        ? currentTurn.actualOutput.replace(/\n\n+/g, ' ')
+                        : '') || '(无实际回复)'}
                     </div>
                   </div>
 

@@ -577,7 +577,7 @@ export class TestImportService {
         successCount++;
         this.logger.debug(`对话 ${sourceId} 执行成功 (${successCount}/${sourceIds.length})`);
 
-        await this.writeBackConversationResult(sourceId, result.avgSimilarityScore);
+        await this.writeBackConversationResult(sourceId, result);
       } catch (error: unknown) {
         failedCount++;
         const errorMsg = error instanceof Error ? error.message : String(error);
@@ -604,7 +604,17 @@ export class TestImportService {
    */
   private async writeBackConversationResult(
     sourceId: string,
-    avgSimilarityScore: number | null,
+    resultPayload: {
+      avgSimilarityScore: number | null;
+      minSimilarityScore: number | null;
+      evaluationSummary: string | null;
+      dimensionScores: {
+        factualAccuracy: number | null;
+        responseEfficiency: number | null;
+        processCompliance: number | null;
+        toneNaturalness: number | null;
+      };
+    },
   ): Promise<void> {
     try {
       const source = await this.conversationSnapshotRepository.findById(sourceId);
@@ -615,12 +625,19 @@ export class TestImportService {
 
       const result = await this.writeBackService.writeBackSimilarityScore(
         source.feishu_record_id,
-        avgSimilarityScore,
-        { batchId: source.batch_id || undefined },
+        resultPayload.avgSimilarityScore,
+        {
+          batchId: source.batch_id || undefined,
+          minSimilarityScore: resultPayload.minSimilarityScore,
+          evaluationSummary: resultPayload.evaluationSummary,
+          dimensionScores: resultPayload.dimensionScores,
+        },
       );
 
       if (result.success) {
-        this.logger.debug(`对话 ${sourceId} 回写飞书成功，相似度=${avgSimilarityScore}`);
+        this.logger.debug(
+          `对话 ${sourceId} 回写飞书成功，相似度=${resultPayload.avgSimilarityScore}`,
+        );
       } else {
         this.logger.warn(`对话 ${sourceId} 回写飞书失败: ${result.error}`);
       }

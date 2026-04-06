@@ -43,8 +43,8 @@ export function useTurns(): UseTurnsResult {
     try {
       setLoading(true);
       const result = await getConversationTurns(sourceId);
-      setTurns(result.turns);
-      setConversationInfo(result.conversationInfo);
+      setTurns(Array.isArray(result.turns) ? result.turns : []);
+      setConversationInfo(result.conversationInfo ?? null);
       setCurrentTurnIndex(0);
     } catch (error) {
       console.error('加载轮次列表失败:', error);

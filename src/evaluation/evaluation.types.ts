@@ -69,6 +69,8 @@ export interface LlmEvaluationResult {
   score: number;
   /** 是否通过 (score >= 60) */
   passed: boolean;
+  /** 评估摘要 */
+  summary: string;
   /** 评估理由 */
   reason: string;
   /** 多维评分明细 */

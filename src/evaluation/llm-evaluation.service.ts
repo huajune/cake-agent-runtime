@@ -86,6 +86,7 @@ export class LlmEvaluationService {
       return {
         score: 0,
         passed: false,
+        summary: `评估失败: ${errorMsg}`.slice(0, 120),
         reason: `评估失败: ${errorMsg}`,
         dimensions: DefaultEvaluationDimensions,
         evaluationId,
@@ -181,6 +182,7 @@ ${actualOutput}
     return {
       score,
       passed,
+      summary: result.summary.slice(0, 120),
       reason,
       dimensions,
       evaluationId,
@@ -194,6 +196,7 @@ ${actualOutput}
     return {
       score: 0,
       passed: false,
+      summary: reason.slice(0, 120),
       reason,
       dimensions: DefaultEvaluationDimensions,
       evaluationId,

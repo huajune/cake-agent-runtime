@@ -43,6 +43,12 @@ export function useBatches(options: UseBatchesOptions = {}) {
   const [detailLoading, setDetailLoading] = useState(false);
   const [quickCreating, setQuickCreating] = useState(false);
 
+  const normalizeBatchList = (value: unknown): TestBatch[] =>
+    Array.isArray(value) ? (value as TestBatch[]) : [];
+
+  const normalizeExecutionList = (value: unknown): TestExecution[] =>
+    Array.isArray(value) ? (value as TestExecution[]) : [];
+
   // 加载批次列表（首次加载/刷新）
   const loadBatches = useCallback(async () => {
     try {
@@ -54,10 +60,11 @@ export function useBatches(options: UseBatchesOptions = {}) {
       setBatchStats(null);
       setExecutions([]);
       const result = await getBatches(PAGE_SIZE, 0, testType);
-      setBatches(result.data);
+      const batchList = normalizeBatchList(result.data);
+      setBatches(batchList);
       setTotal(result.total);
-      setHasMore(result.data.length < result.total);
-      offsetRef.current = result.data.length;
+      setHasMore(batchList.length < result.total);
+      offsetRef.current = batchList.length;
     } catch (err: unknown) {
       const error = err as { message?: string };
       toast.error(error.message || '加载批次失败');
@@ -73,9 +80,10 @@ export function useBatches(options: UseBatchesOptions = {}) {
     try {
       setLoadingMore(true);
       const result = await getBatches(PAGE_SIZE, offsetRef.current, testType);
-      setBatches((prev) => [...prev, ...result.data]);
+      const batchList = normalizeBatchList(result.data);
+      setBatches((prev) => [...prev, ...batchList]);
       setTotal(result.total);
-      offsetRef.current += result.data.length;
+      offsetRef.current += batchList.length;
       setHasMore(offsetRef.current < result.total);
     } catch (err: unknown) {
       const error = err as { message?: string };
@@ -94,7 +102,7 @@ export function useBatches(options: UseBatchesOptions = {}) {
         getBatchExecutions(batch.id),
       ]);
       setBatchStats(stats);
-      setExecutions(execs);
+      setExecutions(normalizeExecutionList(execs));
     } catch (err: unknown) {
       const error = err as { message?: string };
       toast.error(error.message || '加载数据失败');

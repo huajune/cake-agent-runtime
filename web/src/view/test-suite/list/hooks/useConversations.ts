@@ -32,6 +32,9 @@ export function useConversations(): UseConversationsResult {
   const [page] = useState(1); // Page state reserved for future pagination
   const pageSize = 20;
 
+  const normalizeConversationList = (value: unknown): ConversationSnapshot[] =>
+    Array.isArray(value) ? (value as ConversationSnapshot[]) : [];
+
   /**
    * 加载对话列表
    */
@@ -43,7 +46,7 @@ export function useConversations(): UseConversationsResult {
         page,
         pageSize,
       });
-      setConversations(result.sources);
+      setConversations(normalizeConversationList(result.sources));
       setTotal(result.total);
     } catch (error) {
       console.error('加载对话列表失败:', error);

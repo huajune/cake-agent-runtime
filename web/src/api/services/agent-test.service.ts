@@ -1,4 +1,4 @@
-import { api } from '../client';
+import { api, unwrapResponse } from '../client';
 import type {
   TestChatRequest,
   TestChatResponse,
@@ -66,7 +66,7 @@ const AGENT_TEST_TIMEOUT = 120000;
 
 export async function executeTest(request: TestChatRequest): Promise<TestChatResponse> {
   const { data } = await api.post('/test-suite/chat', request, { timeout: AGENT_TEST_TIMEOUT });
-  return data.data;
+  return unwrapResponse<TestChatResponse>(data);
 }
 
 export function executeTestStream(
@@ -186,7 +186,13 @@ export async function executeBatchTest(
     batchName,
     parallel,
   }, { timeout: AGENT_TEST_TIMEOUT });
-  return data.data;
+  return unwrapResponse<{
+    batchId: string;
+    totalCases: number;
+    successCount: number;
+    failureCount: number;
+    results: TestChatResponse[];
+  }>(data);
 }
 
 export async function createBatch(request: {
@@ -196,7 +202,7 @@ export async function createBatch(request: {
   feishuTableId?: string;
 }): Promise<TestBatch> {
   const { data } = await api.post('/test-suite/batches', request);
-  return data.data;
+  return unwrapResponse<TestBatch>(data);
 }
 
 export async function getBatches(
@@ -212,22 +218,22 @@ export async function getBatches(
 
 export async function getBatch(id: string): Promise<TestBatch> {
   const { data } = await api.get(`/test-suite/batches/${id}`);
-  return data.data;
+  return unwrapResponse<TestBatch>(data);
 }
 
 export async function getBatchStats(id: string): Promise<BatchStats> {
   const { data } = await api.get(`/test-suite/batches/${id}/stats`);
-  return data.data;
+  return unwrapResponse<BatchStats>(data);
 }
 
 export async function getCategoryStats(id: string): Promise<CategoryStats[]> {
   const { data } = await api.get(`/test-suite/batches/${id}/category-stats`);
-  return data.data;
+  return unwrapResponse<CategoryStats[]>(data);
 }
 
 export async function getFailureReasonStats(id: string): Promise<FailureReasonStats[]> {
   const { data } = await api.get(`/test-suite/batches/${id}/failure-stats`);
-  return data.data;
+  return unwrapResponse<FailureReasonStats[]>(data);
 }
 
 export async function getBatchExecutions(
@@ -241,19 +247,19 @@ export async function getBatchExecutions(
   const { data } = await api.get(`/test-suite/batches/${batchId}/executions`, {
     params: filters,
   });
-  return data.data;
+  return unwrapResponse<TestExecution[]>(data);
 }
 
 export async function getExecutions(limit = 50, offset = 0): Promise<TestExecution[]> {
   const { data } = await api.get('/test-suite/executions', {
     params: { limit, offset },
   });
-  return data.data;
+  return unwrapResponse<TestExecution[]>(data);
 }
 
 export async function getExecution(id: string): Promise<TestExecution> {
   const { data } = await api.get(`/test-suite/executions/${id}`);
-  return data.data;
+  return unwrapResponse<TestExecution>(data);
 }
 
 export async function updateReview(
@@ -261,7 +267,7 @@ export async function updateReview(
   review: UpdateReviewRequest,
 ): Promise<TestExecution> {
   const { data } = await api.patch(`/test-suite/executions/${executionId}/review`, review);
-  return data.data;
+  return unwrapResponse<TestExecution>(data);
 }
 
 export async function batchUpdateReview(
@@ -272,24 +278,24 @@ export async function batchUpdateReview(
     executionIds,
     review,
   });
-  return data.data;
+  return unwrapResponse<{ updatedCount: number }>(data);
 }
 
 export async function importFromFeishu(request: ImportFromFeishuRequest): Promise<ImportResult> {
   const { data } = await api.post('/test-suite/batches/import-from-feishu', request);
-  return data.data;
+  return unwrapResponse<ImportResult>(data);
 }
 
 export async function submitFeedback(request: SubmitFeedbackRequest): Promise<SubmitFeedbackResponse> {
   const { data } = await api.post('/test-suite/feedback', request);
-  return data.data;
+  return unwrapResponse<SubmitFeedbackResponse>(data);
 }
 
 // ==================== 一键测试 & 飞书回写 ====================
 
 export async function quickCreateBatch(request?: QuickCreateBatchRequest): Promise<ImportResult> {
   const { data } = await api.post('/test-suite/batches/quick-create', request || {}, { timeout: AGENT_TEST_TIMEOUT });
-  return data.data;
+  return unwrapResponse<ImportResult>(data);
 }
 
 export async function writeBackToFeishu(
@@ -302,14 +308,14 @@ export async function writeBackToFeishu(
     testStatus,
     failureCategory,
   });
-  return data.data;
+  return unwrapResponse<WriteBackResult>(data);
 }
 
 export async function batchWriteBackToFeishu(
   items: WriteBackFeishuRequest[],
 ): Promise<BatchWriteBackResult> {
   const { data } = await api.post('/test-suite/executions/batch-write-back', { items });
-  return data.data;
+  return unwrapResponse<BatchWriteBackResult>(data);
 }
 
 // ==================== 回归验证 API ====================
@@ -321,12 +327,12 @@ export async function getConversationSnapshots(params: {
   status?: ConversationSnapshotStatus;
 }): Promise<ConversationSnapshotListResponse> {
   const { data } = await api.get('/test-suite/conversations', { params });
-  return data.data;
+  return unwrapResponse<ConversationSnapshotListResponse>(data);
 }
 
 export async function getConversationTurns(sourceId: string): Promise<TurnListResponse> {
   const { data } = await api.get(`/test-suite/conversations/${sourceId}/turns`);
-  return data.data;
+  return unwrapResponse<TurnListResponse>(data);
 }
 
 export async function executeConversation(params: {
@@ -343,7 +349,14 @@ export async function executeConversation(params: {
   const { data } = await api.post(`/test-suite/conversations/${params.sourceId}/execute`, {
     forceRerun: params.forceRerun,
   }, { timeout: AGENT_TEST_TIMEOUT });
-  return data.data;
+  return unwrapResponse<{
+    sourceId: string;
+    conversationId: string;
+    totalTurns: number;
+    executedTurns: number;
+    avgSimilarityScore: number | null;
+    minSimilarityScore: number | null;
+  }>(data);
 }
 
 export async function executeConversationBatch(params: {
@@ -360,7 +373,12 @@ export async function executeConversationBatch(params: {
     forceRerun: params.forceRerun,
     parallel: params.parallel,
   }, { timeout: AGENT_TEST_TIMEOUT });
-  return data.data;
+  return unwrapResponse<{
+    batchId: string;
+    totalConversations: number;
+    executedConversations: number;
+    avgSimilarityScore: number | null;
+  }>(data);
 }
 
 export async function updateTurnReview(params: {
@@ -372,5 +390,5 @@ export async function updateTurnReview(params: {
     reviewStatus: params.reviewStatus,
     reviewComment: params.reviewComment,
   });
-  return data.data;
+  return unwrapResponse<ConversationTurnExecution>(data);
 }

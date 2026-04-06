@@ -31,6 +31,7 @@ export interface ToolCall {
   tool?: string;
 
   // 输入参数字段（支持多种命名）
+  args?: unknown;
   input?: unknown; // 后端回归验证返回的字段
   arguments?: unknown; // 用例测试返回的字段
 
