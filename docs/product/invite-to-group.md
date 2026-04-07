@@ -248,7 +248,7 @@ invite_to_group 工具执行
 |------|------|------|
 | `GROUP_TASK_TOKENS` | 小组级 token（群列表查询用） | 是（复用） |
 | `STRIDE_ENTERPRISE_TOKEN` | 企业级 token（拉人进群用） | 是 |
-| `GROUP_MEMBER_LIMIT` | 群人数上限阈值 | 否，默认 190 |
+| `GROUP_MEMBER_LIMIT` | 群人数上限阈值 | 否，默认 200 |
 
 ### 服务依赖
 
