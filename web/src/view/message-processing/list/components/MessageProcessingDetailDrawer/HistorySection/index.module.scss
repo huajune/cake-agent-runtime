@@ -1,4 +1,5 @@
 /* HistorySection — compact accordion */
+@use 'sass:color';
 @use '@/assets/styles/variables' as *;
 
 .container {
@@ -19,7 +20,7 @@
   user-select: none;
 
   &:hover {
-    background: darken($bg-secondary, 2%);
+    background: color.adjust($bg-secondary, $lightness: -2%);
   }
 }
 

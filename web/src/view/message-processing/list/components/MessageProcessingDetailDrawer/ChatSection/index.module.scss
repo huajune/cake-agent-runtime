@@ -1,4 +1,5 @@
 /* ChatSection — refined bubble styles */
+@use 'sass:color';
 @use '@/assets/styles/variables' as *;
 
 .sectionTitle {
@@ -193,7 +194,7 @@
   transition: all 0.15s ease;
 
   &:hover {
-    background: darken($bg-secondary, 3%);
+    background: color.adjust($bg-secondary, $lightness: -3%);
     color: $text-primary;
   }
 }
