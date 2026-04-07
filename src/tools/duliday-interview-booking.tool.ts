@@ -249,9 +249,7 @@ async function sendInterviewBookingNotification(
       logger.warn(`面试预约${isFailure ? '失败' : '成功'}通知发送失败`);
     }
   } catch (error) {
-    logger.error(
-      `面试预约通知发送异常: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    logger.error(`面试预约通知发送异常: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 

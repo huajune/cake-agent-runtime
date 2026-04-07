@@ -144,7 +144,10 @@ function resolveCandidates(cityGroups: GroupContext[], industry?: string): Group
   return industryGroups.length > 0 ? industryGroups : cityGroups;
 }
 
-function pickAvailableGroup(candidates: GroupContext[], memberLimit: number): GroupContext | undefined {
+function pickAvailableGroup(
+  candidates: GroupContext[],
+  memberLimit: number,
+): GroupContext | undefined {
   const sortedByCapacity = candidates
     .filter((group) => group.memberCount !== undefined)
     .sort((left, right) => (left.memberCount ?? 0) - (right.memberCount ?? 0));

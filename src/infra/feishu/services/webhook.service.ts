@@ -2,10 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance } from 'axios';
 import * as crypto from 'crypto';
-import {
-  FEISHU_WEBHOOK_CHANNELS,
-  type FeishuWebhookChannel,
-} from '../constants/constants';
+import { FEISHU_WEBHOOK_CHANNELS, type FeishuWebhookChannel } from '../constants/constants';
 import { FeishuApiResponse } from '../interfaces/interface';
 
 /**
@@ -30,7 +27,10 @@ export class FeishuWebhookService {
    * @param content 消息内容（飞书卡片 JSON）
    * @returns 是否发送成功
    */
-  async sendMessage(channel: FeishuWebhookChannel, content: Record<string, unknown>): Promise<boolean> {
+  async sendMessage(
+    channel: FeishuWebhookChannel,
+    content: Record<string, unknown>,
+  ): Promise<boolean> {
     try {
       // 获取配置（优先使用环境变量，否则使用硬编码）
       const config = this.getWebhookConfig(channel);
@@ -90,5 +90,4 @@ export class FeishuWebhookService {
     hmac.update(Buffer.alloc(0)); // 对空字节数组签名
     return hmac.digest('base64');
   }
-
 }

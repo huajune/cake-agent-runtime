@@ -46,7 +46,6 @@ describe('MessagePipelineService', () => {
     validate: jest.fn().mockResolvedValue({ pass: true, content: '你好' }),
   };
   const mockDeliveryService = {};
-  const mockBookingDetectionService = {};
   const mockImageDescriptionService = {
     describeAndUpdateSync: jest.fn().mockResolvedValue(undefined),
   };
@@ -84,7 +83,6 @@ describe('MessagePipelineService', () => {
       mockChatSession as never,
       mockFilterService as never,
       mockDeliveryService as never,
-      mockBookingDetectionService as never,
       mockImageDescriptionService as never,
       mockWecomObservability as never,
       mockRunnerService as never,

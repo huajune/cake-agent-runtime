@@ -161,7 +161,6 @@ export class VercelAIChatRequestDto {
   @IsArray()
   @IsString({ each: true })
   imageUrls?: string[];
-
 }
 
 /**
@@ -246,7 +245,6 @@ export class TestChatRequestDto {
   @IsArray()
   @IsString({ each: true })
   imageUrls?: string[];
-
 }
 
 /**

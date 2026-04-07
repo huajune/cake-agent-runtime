@@ -19,7 +19,9 @@ export class FeishuController {
    */
   @Post('test/alert')
   @HttpCode(200)
-  async sendTestAlert(@Body() context: AlertContext): Promise<{ success: boolean; message: string }> {
+  async sendTestAlert(
+    @Body() context: AlertContext,
+  ): Promise<{ success: boolean; message: string }> {
     this.logger.log(`发送测试告警: ${context.errorType}`);
 
     const sent = await this.alertService.sendAlert(context);
