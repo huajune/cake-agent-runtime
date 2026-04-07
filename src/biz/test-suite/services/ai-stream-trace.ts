@@ -4,9 +4,10 @@ import { randomUUID } from 'node:crypto';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { Observer } from '@observability/observer.interface';
 import { MonitoringMetadata } from '@shared-types/tracking.types';
+import { AiStreamTraceContentStore } from './ai-stream-trace-content-store';
+import { AiStreamTraceTiming } from './ai-stream-trace-timing';
 
 const DEFAULT_SCENARIO = 'candidate-consultation';
-const PREVIEW_LIMIT = 500;
 
 export interface StreamUsage {
   inputTokens: number;
@@ -14,7 +15,7 @@ export interface StreamUsage {
   totalTokens: number;
 }
 
-interface AiStreamTraceMarks {
+export interface AiStreamTraceMarks {
   receivedAt: number;
   workerStartAt?: number;
   aiStartAt?: number;
@@ -38,7 +39,7 @@ export interface AiStreamTraceOptions {
   requestBody: Record<string, unknown>;
 }
 
-interface AiStreamTimingPayload {
+export interface AiStreamTimingPayload {
   timestamps: AiStreamTraceMarks;
   durations: {
     totalMs: number;
@@ -57,6 +58,78 @@ interface AiStreamTimingPayload {
     responsePipeStartToFinishMs?: number;
     requestToUsageResolvedMs?: number;
   };
+}
+
+export type ContentKind = 'text' | 'reasoning' | 'tool';
+
+export interface ContentOrderItem {
+  kind: ContentKind;
+  id: string;
+}
+
+export type ToolCallState =
+  | 'input-streaming'
+  | 'input-available'
+  | 'input-error'
+  | 'output-available'
+  | 'output-error'
+  | 'output-denied';
+
+export interface CapturedToolCall {
+  toolCallId: string;
+  toolName?: string;
+  input?: unknown;
+  inputTextParts: string[];
+  output?: unknown;
+  errorText?: string;
+  state: ToolCallState;
+  providerExecuted?: boolean;
+  dynamic?: boolean;
+  title?: string;
+  preliminary?: boolean;
+}
+
+export interface StoredToolCall {
+  toolCallId: string;
+  toolName: string;
+  input?: unknown;
+  inputText?: string;
+  output?: unknown;
+  errorText?: string;
+  state: ToolCallState;
+  providerExecuted?: boolean;
+  dynamic?: boolean;
+  title?: string;
+  preliminary?: boolean;
+}
+
+export interface StoredUiMessagePart {
+  type: string;
+  text?: string;
+  toolName?: string;
+  toolCallId?: string;
+  input?: unknown;
+  output?: unknown;
+  state?: 'input-available' | 'output-available' | 'output-error';
+  errorText?: string;
+}
+
+export interface StoredUiMessage {
+  id: string;
+  role: 'assistant';
+  parts: StoredUiMessagePart[];
+}
+
+export interface StoredReplyPayload {
+  content?: string;
+  reasoning?: string;
+  usage?: StreamUsage;
+}
+
+export interface StoredAiStreamResponse extends AiStreamSummaryPayload {
+  reply?: StoredReplyPayload;
+  toolCalls?: StoredToolCall[];
+  messages?: StoredUiMessage[];
 }
 
 export interface AiStreamSummaryPayload {
@@ -79,101 +152,16 @@ export interface AiStreamSummaryPayload {
   timings: AiStreamTimingPayload;
 }
 
-type ContentKind = 'text' | 'reasoning' | 'tool';
-
-interface ContentOrderItem {
-  kind: ContentKind;
-  id: string;
-}
-
-type ToolCallState =
-  | 'input-streaming'
-  | 'input-available'
-  | 'input-error'
-  | 'output-available'
-  | 'output-error'
-  | 'output-denied';
-
-interface CapturedToolCall {
-  toolCallId: string;
-  toolName?: string;
-  input?: unknown;
-  inputTextParts: string[];
-  output?: unknown;
-  errorText?: string;
-  state: ToolCallState;
-  providerExecuted?: boolean;
-  dynamic?: boolean;
-  title?: string;
-  preliminary?: boolean;
-}
-
-interface StoredToolCall {
-  toolCallId: string;
-  toolName: string;
-  input?: unknown;
-  inputText?: string;
-  output?: unknown;
-  errorText?: string;
-  state: ToolCallState;
-  providerExecuted?: boolean;
-  dynamic?: boolean;
-  title?: string;
-  preliminary?: boolean;
-}
-
-interface StoredUiMessagePart {
-  type: string;
-  text?: string;
-  toolName?: string;
-  toolCallId?: string;
-  input?: unknown;
-  output?: unknown;
-  state?: 'input-available' | 'output-available' | 'output-error';
-  errorText?: string;
-}
-
-interface StoredUiMessage {
-  id: string;
-  role: 'assistant';
-  parts: StoredUiMessagePart[];
-}
-
-interface StoredReplyPayload {
-  content?: string;
-  reasoning?: string;
-  usage?: StreamUsage;
-}
-
-interface StoredAiStreamResponse extends AiStreamSummaryPayload {
-  reply?: StoredReplyPayload;
-  toolCalls?: StoredToolCall[];
-  messages?: StoredUiMessage[];
-}
-
 export class AiStreamTrace {
   private readonly logger = new Logger(AiStreamTrace.name);
   private readonly traceId: string;
   private readonly scenario: string;
-  private readonly chunkTypeCounts: Record<string, number> = {};
-  private readonly toolNames = new Set<string>();
-  private readonly replyPreviewParts: string[] = [];
-  private readonly reasoningPreviewParts: string[] = [];
-  private readonly textBlocks = new Map<string, string[]>();
-  private readonly reasoningBlocks = new Map<string, string[]>();
-  private readonly toolCalls = new Map<string, CapturedToolCall>();
-  private readonly contentOrder: ContentOrderItem[] = [];
-  private readonly marks: AiStreamTraceMarks = {
-    receivedAt: Date.now(),
-  };
+  private readonly timing = new AiStreamTraceTiming();
+  private readonly content = new AiStreamTraceContentStore();
 
   private requestBody: Record<string, unknown>;
   private usage?: StreamUsage;
   private entryStage: string | null = null;
-  private firstChunkType?: string;
-  private finishReason?: string;
-  private streamErrorText?: string;
-  private stepCount = 0;
   private finalized = false;
 
   constructor(
@@ -197,7 +185,7 @@ export class AiStreamTrace {
     );
 
     this.messageTrackingService.recordWorkerStart(this.traceId);
-    this.marks.workerStartAt = Date.now();
+    this.timing.markWorkerStart();
 
     this.observer.emit({
       type: 'agent_start',
@@ -219,117 +207,99 @@ export class AiStreamTrace {
   }
 
   markAiStart(): void {
-    if (this.marks.aiStartAt) return;
-    this.marks.aiStartAt = Date.now();
+    if (!this.timing.markAiStart()) return;
     this.messageTrackingService.recordAiStart(this.traceId);
   }
 
   markStreamReady(entryStage: string | null): void {
     this.entryStage = entryStage;
-    this.marks.streamReadyAt = Date.now();
+    this.timing.markStreamReady();
   }
 
   markResponsePipeStart(): void {
-    if (this.marks.responsePipeStartAt) return;
-    this.marks.responsePipeStartAt = Date.now();
+    if (!this.timing.markResponsePipeStart()) return;
     this.messageTrackingService.recordSendStart(this.traceId);
   }
 
   observeChunk(chunk: UIMessageChunk): void {
-    const now = Date.now();
-    this.chunkTypeCounts[chunk.type] = (this.chunkTypeCounts[chunk.type] || 0) + 1;
-
-    if (!this.firstChunkType) {
-      this.firstChunkType = chunk.type;
-      this.marks.firstChunkAt = now;
+    if (this.content.recordChunkType(chunk.type)) {
+      this.timing.markFirstChunk();
     }
 
     switch (chunk.type) {
       case 'reasoning-start':
-        this.marks.firstReasoningStartAt ??= now;
-        this.ensureReasoningBlock(chunk.id);
+        this.timing.markFirstReasoningStart();
+        this.content.startReasoningBlock(chunk.id);
         break;
       case 'reasoning-delta':
-        this.marks.firstReasoningDeltaAt ??= now;
-        this.ensureReasoningBlock(chunk.id).push(chunk.delta);
-        this.appendPreview(this.reasoningPreviewParts, chunk.delta);
+        this.timing.markFirstReasoningDelta();
+        this.content.appendReasoningDelta(chunk.id, chunk.delta);
         break;
       case 'text-start':
-        this.marks.firstTextStartAt ??= now;
-        this.ensureTextBlock(chunk.id);
+        this.timing.markFirstTextStart();
+        this.content.startTextBlock(chunk.id);
         break;
       case 'text-delta':
-        this.marks.firstTextDeltaAt ??= now;
-        this.ensureTextBlock(chunk.id).push(chunk.delta);
-        this.appendPreview(this.replyPreviewParts, chunk.delta);
+        this.timing.markFirstTextDelta();
+        this.content.appendTextDelta(chunk.id, chunk.delta);
         break;
       case 'tool-input-start':
-        this.toolNames.add(chunk.toolName);
-        this.ensureToolCall(chunk.toolCallId, {
+        this.content.beginToolInput(chunk.toolCallId, {
           toolName: chunk.toolName,
           providerExecuted: chunk.providerExecuted,
           dynamic: chunk.dynamic,
           title: chunk.title,
-          state: 'input-streaming',
         });
         break;
       case 'tool-input-delta':
-        this.ensureToolCall(chunk.toolCallId).inputTextParts.push(chunk.inputTextDelta);
+        this.content.appendToolInputDelta(chunk.toolCallId, chunk.inputTextDelta);
         break;
       case 'tool-input-available':
-        this.toolNames.add(chunk.toolName);
-        this.ensureToolCall(chunk.toolCallId, {
+        this.content.setToolInputAvailable(chunk.toolCallId, {
           toolName: chunk.toolName,
           input: chunk.input,
           providerExecuted: chunk.providerExecuted,
           dynamic: chunk.dynamic,
           title: chunk.title,
-          state: 'input-available',
         });
         break;
       case 'tool-input-error':
-        this.toolNames.add(chunk.toolName);
-        this.ensureToolCall(chunk.toolCallId, {
+        this.content.setToolInputError(chunk.toolCallId, {
           toolName: chunk.toolName,
           input: chunk.input,
           errorText: chunk.errorText,
           providerExecuted: chunk.providerExecuted,
           dynamic: chunk.dynamic,
           title: chunk.title,
-          state: 'input-error',
         });
         break;
       case 'tool-output-available':
-        this.ensureToolCall(chunk.toolCallId, {
+        this.content.setToolOutputAvailable(chunk.toolCallId, {
           output: chunk.output,
           providerExecuted: chunk.providerExecuted,
           dynamic: chunk.dynamic,
           preliminary: chunk.preliminary,
-          state: 'output-available',
         });
         break;
       case 'tool-output-error':
-        this.ensureToolCall(chunk.toolCallId, {
+        this.content.setToolOutputError(chunk.toolCallId, {
           errorText: chunk.errorText,
           providerExecuted: chunk.providerExecuted,
           dynamic: chunk.dynamic,
-          state: 'output-error',
         });
         break;
       case 'tool-output-denied':
-        this.ensureToolCall(chunk.toolCallId, {
-          state: 'output-denied',
-        });
+        this.content.setToolOutputDenied(chunk.toolCallId);
         break;
       case 'start-step':
-        this.stepCount += 1;
+        this.content.incrementStepCount();
         break;
       case 'finish':
-        this.finishReason = chunk.finishReason;
-        this.marks.finishChunkAt = now;
+        this.content.markFinish(chunk.finishReason);
+        this.timing.markFinishChunk();
         break;
       case 'error':
-        this.streamErrorText = chunk.errorText;
+        this.content.markError(chunk.errorText);
         break;
       default:
         break;
@@ -338,20 +308,20 @@ export class AiStreamTrace {
 
   recordUsage(usage: StreamUsage): void {
     this.usage = usage;
-    this.marks.usageResolvedAt = Date.now();
+    this.timing.markUsageResolved();
   }
 
   hasStreamError(): boolean {
-    return Boolean(this.streamErrorText);
+    return this.content.hasStreamError();
   }
 
   getStreamErrorMessage(): string | undefined {
-    return this.streamErrorText;
+    return this.content.getStreamErrorMessage();
   }
 
   getClientPayload(status: 'success' | 'failure', error?: string): AiStreamSummaryPayload {
-    const completedAt = this.marks.completedAt ?? Date.now();
-    const timings = this.buildTimings(completedAt);
+    const completedAt = this.timing.marks.completedAt ?? Date.now();
+    const timings = this.timing.buildTimings(completedAt);
 
     return {
       traceId: this.traceId,
@@ -359,18 +329,17 @@ export class AiStreamTrace {
       scenario: this.scenario,
       status,
       entryStage: this.entryStage,
-      firstChunkType: this.firstChunkType,
-      finishReason: this.finishReason,
+      firstChunkType: this.content.getFirstChunkType(),
+      finishReason: this.content.getFinishReason(),
       error,
       usage: this.usage,
-      chunkTypeCounts: { ...this.chunkTypeCounts },
-      stepCount: this.stepCount,
-      tools: Array.from(this.toolNames),
-      hasReasoning:
-        Boolean(this.marks.firstReasoningStartAt) || Boolean(this.marks.firstReasoningDeltaAt),
-      hasText: Boolean(this.marks.firstTextStartAt) || Boolean(this.marks.firstTextDeltaAt),
-      replyPreview: this.getPreview(this.replyPreviewParts),
-      reasoningPreview: this.getPreview(this.reasoningPreviewParts),
+      chunkTypeCounts: this.content.getChunkTypeCounts(),
+      stepCount: this.content.getStepCount(),
+      tools: this.content.getTools(),
+      hasReasoning: this.content.hasReasoning(),
+      hasText: this.content.hasText(),
+      replyPreview: this.content.getReplyPreview(),
+      reasoningPreview: this.content.getReasoningPreview(),
       timings,
     };
   }
@@ -378,14 +347,7 @@ export class AiStreamTrace {
   finalizeSuccess(): void {
     if (this.finalized) return;
     this.finalized = true;
-    this.marks.completedAt = Date.now();
-
-    if (this.marks.aiStartAt) {
-      this.messageTrackingService.recordAiEnd(this.traceId);
-    }
-    if (this.marks.responsePipeStartAt) {
-      this.messageTrackingService.recordSendEnd(this.traceId);
-    }
+    this.completeLifecycle();
 
     const payload = this.getClientPayload('success');
     const metadata = this.buildMonitoringMetadata(payload);
@@ -405,14 +367,7 @@ export class AiStreamTrace {
   finalizeFailure(error: unknown): void {
     if (this.finalized) return;
     this.finalized = true;
-    this.marks.completedAt = Date.now();
-
-    if (this.marks.aiStartAt) {
-      this.messageTrackingService.recordAiEnd(this.traceId);
-    }
-    if (this.marks.responsePipeStartAt) {
-      this.messageTrackingService.recordSendEnd(this.traceId);
-    }
+    this.completeLifecycle();
 
     const errorMessage = this.toErrorMessage(error);
     const payload = this.getClientPayload('failure', errorMessage);
@@ -431,7 +386,7 @@ export class AiStreamTrace {
     payload: AiStreamSummaryPayload,
     errorMessage?: string,
   ): MonitoringMetadata {
-    const storedResponse = this.buildStoredResponse(payload, errorMessage);
+    const storedResponse = this.content.buildStoredResponse(payload, this.traceId, errorMessage);
 
     return {
       scenario: this.scenario as MonitoringMetadata['scenario'],
@@ -446,23 +401,6 @@ export class AiStreamTrace {
         response: storedResponse,
         isFallback: false,
       },
-    };
-  }
-
-  private buildStoredResponse(
-    payload: AiStreamSummaryPayload,
-    errorMessage?: string,
-  ): StoredAiStreamResponse {
-    const toolCalls = this.buildStoredToolCalls();
-    const reply = this.buildReplyPayload();
-    const messages = this.buildAssistantMessages();
-
-    return {
-      ...payload,
-      error: errorMessage ?? payload.error,
-      reply,
-      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-      messages: messages.length > 0 ? messages : undefined,
     };
   }
 
@@ -488,262 +426,22 @@ export class AiStreamTrace {
       this.observer.emit({
         type: 'agent_end',
         userId: this.options.userId || 'unknown',
-        steps: this.stepCount,
+        steps: this.content.getStepCount(),
         totalTokens: payload.usage?.totalTokens ?? 0,
         durationMs: payload.timings.durations.totalMs,
       });
     }
   }
 
-  private buildTimings(completedAt: number): AiStreamTimingPayload {
-    return {
-      timestamps: {
-        ...this.marks,
-        completedAt,
-      },
-      durations: {
-        totalMs: completedAt - this.marks.receivedAt,
-        requestToAiStartMs: this.diff(this.marks.aiStartAt, this.marks.receivedAt),
-        requestToStreamReadyMs: this.diff(this.marks.streamReadyAt, this.marks.receivedAt),
-        requestToResponsePipeStartMs: this.diff(
-          this.marks.responsePipeStartAt,
-          this.marks.receivedAt,
-        ),
-        requestToFirstChunkMs: this.diff(this.marks.firstChunkAt, this.marks.receivedAt),
-        requestToFirstReasoningStartMs: this.diff(
-          this.marks.firstReasoningStartAt,
-          this.marks.receivedAt,
-        ),
-        requestToFirstReasoningDeltaMs: this.diff(
-          this.marks.firstReasoningDeltaAt,
-          this.marks.receivedAt,
-        ),
-        requestToFirstTextStartMs: this.diff(this.marks.firstTextStartAt, this.marks.receivedAt),
-        requestToFirstTextDeltaMs: this.diff(this.marks.firstTextDeltaAt, this.marks.receivedAt),
-        aiStartToStreamReadyMs: this.diff(this.marks.streamReadyAt, this.marks.aiStartAt),
-        streamReadyToResponsePipeStartMs: this.diff(
-          this.marks.responsePipeStartAt,
-          this.marks.streamReadyAt,
-        ),
-        responsePipeStartToFirstChunkMs: this.diff(
-          this.marks.firstChunkAt,
-          this.marks.responsePipeStartAt,
-        ),
-        firstChunkToFinishMs: this.diff(completedAt, this.marks.firstChunkAt),
-        responsePipeStartToFinishMs: this.diff(completedAt, this.marks.responsePipeStartAt),
-        requestToUsageResolvedMs: this.diff(this.marks.usageResolvedAt, this.marks.receivedAt),
-      },
-    };
-  }
+  private completeLifecycle(): void {
+    this.timing.markCompleted();
 
-  private ensureContentOrder(kind: ContentKind, id: string): void {
-    if (!id) return;
-    if (this.contentOrder.some((item) => item.kind === kind && item.id === id)) return;
-    this.contentOrder.push({ kind, id });
-  }
-
-  private ensureTextBlock(id: string): string[] {
-    const existing = this.textBlocks.get(id);
-    if (existing) return existing;
-    const next: string[] = [];
-    this.textBlocks.set(id, next);
-    this.ensureContentOrder('text', id);
-    return next;
-  }
-
-  private ensureReasoningBlock(id: string): string[] {
-    const existing = this.reasoningBlocks.get(id);
-    if (existing) return existing;
-    const next: string[] = [];
-    this.reasoningBlocks.set(id, next);
-    this.ensureContentOrder('reasoning', id);
-    return next;
-  }
-
-  private ensureToolCall(
-    toolCallId: string,
-    patch?: Partial<Omit<CapturedToolCall, 'toolCallId' | 'inputTextParts'>>,
-  ): CapturedToolCall {
-    const existing = this.toolCalls.get(toolCallId);
-    if (existing) {
-      if (patch) {
-        Object.assign(existing, patch);
-      }
-      return existing;
+    if (this.timing.marks.aiStartAt) {
+      this.messageTrackingService.recordAiEnd(this.traceId);
     }
-
-    const next: CapturedToolCall = {
-      toolCallId,
-      inputTextParts: [],
-      state: patch?.state ?? 'input-streaming',
-      toolName: patch?.toolName,
-      input: patch?.input,
-      output: patch?.output,
-      errorText: patch?.errorText,
-      providerExecuted: patch?.providerExecuted,
-      dynamic: patch?.dynamic,
-      title: patch?.title,
-      preliminary: patch?.preliminary,
-    };
-    this.toolCalls.set(toolCallId, next);
-    this.ensureContentOrder('tool', toolCallId);
-    return next;
-  }
-
-  private buildReplyPayload(): StoredReplyPayload | undefined {
-    const content = this.collectOrderedText('text', '');
-    const reasoning = this.collectOrderedText('reasoning', '\n\n');
-
-    if (!content && !reasoning && !this.usage) return undefined;
-
-    return {
-      content: content || undefined,
-      reasoning: reasoning || undefined,
-      usage: this.usage,
-    };
-  }
-
-  private collectOrderedText(
-    kind: Extract<ContentKind, 'text' | 'reasoning'>,
-    separator: string,
-  ): string {
-    const segments = this.contentOrder
-      .filter((item) => item.kind === kind)
-      .map((item) =>
-        this.getJoinedText(
-          kind === 'text' ? this.textBlocks.get(item.id) : this.reasoningBlocks.get(item.id),
-        ),
-      )
-      .filter(Boolean);
-
-    return segments.join(separator).trim();
-  }
-
-  private buildStoredToolCalls(): StoredToolCall[] {
-    return this.contentOrder
-      .filter((item) => item.kind === 'tool')
-      .map((item) => this.toolCalls.get(item.id))
-      .filter((tool): tool is CapturedToolCall => Boolean(tool?.toolName))
-      .map((tool) => {
-        const inputText = this.getJoinedText(tool.inputTextParts);
-        return {
-          toolCallId: tool.toolCallId,
-          toolName: tool.toolName || 'unknown-tool',
-          input: tool.input ?? this.parseToolInputText(inputText),
-          inputText: inputText || undefined,
-          output: tool.output,
-          errorText: tool.errorText,
-          state: tool.state,
-          providerExecuted: tool.providerExecuted,
-          dynamic: tool.dynamic,
-          title: tool.title,
-          preliminary: tool.preliminary,
-        };
-      });
-  }
-
-  private buildAssistantMessages(): StoredUiMessage[] {
-    const parts = this.contentOrder.reduce<StoredUiMessagePart[]>((acc, item) => {
-      if (item.kind === 'text') {
-        const text = this.getJoinedText(this.textBlocks.get(item.id));
-        if (text) {
-          acc.push({ type: 'text', text });
-        }
-        return acc;
-      }
-
-      if (item.kind === 'reasoning') {
-        const text = this.getJoinedText(this.reasoningBlocks.get(item.id));
-        if (text) {
-          acc.push({ type: 'reasoning', text });
-        }
-        return acc;
-      }
-
-      const tool = this.toolCalls.get(item.id);
-      if (!tool?.toolName) return acc;
-
-      acc.push({
-        type: `tool-${tool.toolName}`,
-        toolName: tool.toolName,
-        toolCallId: tool.toolCallId,
-        input: tool.input ?? this.parseToolInputText(this.getJoinedText(tool.inputTextParts)),
-        output: tool.output ?? (tool.errorText ? { error: tool.errorText } : undefined),
-        state: this.mapToolPartState(tool.state),
-        errorText: tool.errorText,
-      });
-
-      return acc;
-    }, []);
-
-    if (parts.length === 0) return [];
-
-    return [
-      {
-        id: `assistant-${this.traceId}`,
-        role: 'assistant',
-        parts,
-      },
-    ];
-  }
-
-  private mapToolPartState(
-    state: ToolCallState,
-  ): 'input-available' | 'output-available' | 'output-error' {
-    switch (state) {
-      case 'output-available':
-        return 'output-available';
-      case 'output-error':
-      case 'output-denied':
-      case 'input-error':
-        return 'output-error';
-      default:
-        return 'input-available';
+    if (this.timing.marks.responsePipeStartAt) {
+      this.messageTrackingService.recordSendEnd(this.traceId);
     }
-  }
-
-  private parseToolInputText(inputText?: string): unknown {
-    if (!inputText) return undefined;
-    try {
-      return JSON.parse(inputText);
-    } catch {
-      return inputText;
-    }
-  }
-
-  private appendPreview(parts: string[], delta: string): void {
-    const currentLength = this.getPreviewLength(parts);
-
-    if (!delta || currentLength >= PREVIEW_LIMIT) {
-      return;
-    }
-
-    const nextLength = currentLength + delta.length;
-    if (nextLength <= PREVIEW_LIMIT) {
-      parts.push(delta);
-      return;
-    }
-
-    parts.push(delta.slice(0, PREVIEW_LIMIT - currentLength));
-  }
-
-  private getPreview(parts: string[]): string | undefined {
-    const text = parts.join('').trim();
-    return text || undefined;
-  }
-
-  private getPreviewLength(parts: string[]): number {
-    return this.getPreview(parts)?.length ?? 0;
-  }
-
-  private getJoinedText(parts?: string[]): string {
-    if (!parts || parts.length === 0) return '';
-    return parts.join('').trim();
-  }
-
-  private diff(to?: number, from?: number): number | undefined {
-    if (to === undefined || from === undefined) return undefined;
-    return Math.max(to - from, 0);
   }
 
   private toErrorMessage(error: unknown): string {
