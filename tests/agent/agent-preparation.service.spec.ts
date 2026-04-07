@@ -115,9 +115,13 @@ describe('AgentPreparationService', () => {
       'invoke',
     );
 
-    expect(mockMemoryService.onTurnStart).toHaveBeenCalledWith('corp-1', 'user-1', 'sess-1', [
-      { role: 'user', content: '当前用户消息' },
-    ]);
+    expect(mockMemoryService.onTurnStart).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      'sess-1',
+      [{ role: 'user', content: '当前用户消息' }],
+      { includeShortTerm: true },
+    );
     expect(mockContext.compose).toHaveBeenCalledWith({
       scenario: 'candidate-consultation',
       currentStage: 'job_consultation',
@@ -178,9 +182,13 @@ describe('AgentPreparationService', () => {
       'invoke',
     );
 
-    expect(mockMemoryService.onTurnStart).toHaveBeenCalledWith('corp-1', 'user-1', 'sess-1', [
-      { role: 'user', content: '最后消息' },
-    ]);
+    expect(mockMemoryService.onTurnStart).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      'sess-1',
+      [{ role: 'user', content: '最后消息' }],
+      { includeShortTerm: false },
+    );
     expect(mockInputGuard.detectMessages).toHaveBeenCalledWith([
       { role: 'user', content: '最后消息' },
     ]);
@@ -211,9 +219,13 @@ describe('AgentPreparationService', () => {
       'invoke',
     );
 
-    expect(mockMemoryService.onTurnStart).toHaveBeenCalledWith('corp-1', 'user-1', 'sess-1', [
-      { role: 'user', content: '来一份' },
-    ]);
+    expect(mockMemoryService.onTurnStart).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      'sess-1',
+      [{ role: 'user', content: '来一份' }],
+      { includeShortTerm: false },
+    );
   });
 
   it('should render high-confidence facts as a separate runtime hints block', async () => {

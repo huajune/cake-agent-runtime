@@ -37,8 +37,8 @@ export const GroupMessageCallbackSchema = z
     avatar: z.string().optional(),
     roomTopic: z.string().optional(),
     roomId: z.string().optional(),
-    contactName: z.string().min(1),
-    contactId: z.string().min(1),
+    contactName: z.string().optional(),
+    contactId: z.string().optional(),
     payload: PayloadSchema,
     type: z.number().int(),
     timestamp: z.number().int(),
@@ -49,8 +49,8 @@ export const GroupMessageCallbackSchema = z
     botWxid: z.string().min(1),
     botWeixin: z.string().optional(),
     isSelf: z.boolean().optional(),
-    externalUserId: z.string().optional(),
-    roomWecomChatId: z.string().optional(),
+    externalUserId: z.string().nullish(),
+    roomWecomChatId: z.string().nullish(),
     mentionSelf: z.boolean().optional(),
   })
   .passthrough();

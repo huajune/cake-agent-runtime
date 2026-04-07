@@ -10,6 +10,7 @@ import {
   AgentReply,
 } from '@wecom/message/message.types';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
+import { WecomMessageObservabilityService } from '@wecom/message/services/wecom-message-observability.service';
 
 describe('MessageDeliveryService', () => {
   let service: MessageDeliveryService;
@@ -39,6 +40,11 @@ describe('MessageDeliveryService', () => {
     getAgentReplyConfig: jest.fn(),
   };
 
+  const mockWecomObservabilityService = {
+    markDeliveryStart: jest.fn(),
+    markDeliveryEnd: jest.fn(),
+  };
+
   const deliveryContext: DeliveryContext = {
     token: 'token-123',
     imBotId: 'wxid-bot-123',
@@ -58,6 +64,7 @@ describe('MessageDeliveryService', () => {
         { provide: ConfigService, useValue: mockConfigService },
         { provide: FeishuAlertService, useValue: mockFeishuAlertService },
         { provide: SystemConfigService, useValue: mockSystemConfigService },
+        { provide: WecomMessageObservabilityService, useValue: mockWecomObservabilityService },
       ],
     }).compile();
 

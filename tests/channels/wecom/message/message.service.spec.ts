@@ -6,6 +6,7 @@ import { MessageDeduplicationService } from '@wecom/message/services/deduplicati
 import { MessagePipelineService } from '@wecom/message/services/pipeline.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
+import { WecomMessageObservabilityService } from '@wecom/message/services/wecom-message-observability.service';
 import { EnterpriseMessageCallbackDto } from '@wecom/message/message-callback.dto';
 import { MessageType, ContactType, MessageSource } from '@enums/message-callback.enum';
 
@@ -29,6 +30,11 @@ describe('MessageService', () => {
 
   const mockMonitoringService = {
     recordSuccess: jest.fn(),
+  };
+
+  const mockWecomObservabilityService = {
+    updateDispatch: jest.fn(),
+    buildSuccessMetadata: jest.fn(),
   };
 
   const mockSystemConfigService = {
@@ -72,6 +78,7 @@ describe('MessageService', () => {
         { provide: SimpleMergeService, useValue: mockSimpleMergeService },
         { provide: MessageDeduplicationService, useValue: mockDeduplicationService },
         { provide: MessagePipelineService, useValue: mockPipelineService },
+        { provide: WecomMessageObservabilityService, useValue: mockWecomObservabilityService },
         { provide: MessageTrackingService, useValue: mockMonitoringService },
         { provide: SystemConfigService, useValue: mockSystemConfigService },
       ],
@@ -84,6 +91,11 @@ describe('MessageService', () => {
     mockSystemConfigService.getMessageMergeEnabled.mockResolvedValue(true);
     mockSystemConfigService.onAiReplyChange.mockImplementation(() => {});
     mockSystemConfigService.onMessageMergeChange.mockImplementation(() => {});
+    mockWecomObservabilityService.buildSuccessMetadata.mockReturnValue({
+      replyPreview: '[AI回复已禁用]',
+      replySegments: 0,
+      extraResponse: { disabledAiReply: true },
+    });
     mockPipelineService.execute.mockResolvedValue({
       shouldDispatch: true,
       response: { success: true, message: 'Message received' },

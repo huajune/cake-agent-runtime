@@ -415,8 +415,8 @@ export class ConversationTestService {
       similarityScore = evaluation.score;
       rating = this.llmEvaluationService.getRating(evaluation.score);
       evaluationReason = evaluation.reason;
-      evaluationSummary = evaluation.summary;
-      dimensions = evaluation.dimensions;
+      evaluationSummary = evaluation.summary ?? evaluation.reason ?? null;
+      dimensions = evaluation.dimensions ?? null;
 
       this.logger.debug(
         `LLM 评估完成: 轮次 ${turn.turnNumber}, 分数: ${evaluation.score}, 通过: ${evaluation.passed}`,

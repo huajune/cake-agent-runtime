@@ -10,6 +10,7 @@ import { MessageTrackingService } from '@biz/monitoring/services/tracking/messag
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { AgentRunnerService } from '@agent/runner.service';
+import { WecomMessageObservabilityService } from '@wecom/message/services/wecom-message-observability.service';
 import { EnterpriseMessageCallbackDto } from '@wecom/message/message-callback.dto';
 import { DeliveryFailureError } from '@wecom/message/message.types';
 import { MessageType, ContactType, MessageSource } from '@enums/message-callback.enum';
@@ -66,6 +67,32 @@ describe('MessagePipelineService', () => {
     sendAlert: jest.fn(),
   };
 
+  const mockWecomObservabilityService = {
+    startTrace: jest.fn(),
+    markHistoryStored: jest.fn(),
+    markImagePrepared: jest.fn(),
+    buildFailureMetadata: jest.fn().mockImplementation(
+      (_messageId: string, payload: { errorType?: string }) => ({
+        alertType: payload.errorType,
+      }),
+    ),
+    updateDispatch: jest.fn(),
+    markWorkerStart: jest.fn(),
+    buildSuccessMetadata: jest.fn().mockImplementation(
+      (_messageId: string, payload: { replyPreview?: string; replySegments?: number }) => ({
+        tokenUsage: 30,
+        replyPreview: payload.replyPreview,
+        replySegments: payload.replySegments,
+      }),
+    ),
+    markFallbackStart: jest.fn(),
+    markFallbackEnd: jest.fn(),
+    markAiStart: jest.fn(),
+    recordAgentRequest: jest.fn(),
+    recordAgentResult: jest.fn(),
+    markAiEnd: jest.fn(),
+  };
+
   const validMessageData: EnterpriseMessageCallbackDto = {
     orgId: 'org-123',
     token: 'token-123',
@@ -98,6 +125,7 @@ describe('MessagePipelineService', () => {
         { provide: ConfigService, useValue: mockConfigService },
         { provide: MessageTrackingService, useValue: mockMonitoringService },
         { provide: FeishuAlertService, useValue: mockFeishuAlertService },
+        { provide: WecomMessageObservabilityService, useValue: mockWecomObservabilityService },
       ],
     }).compile();
 

@@ -110,8 +110,8 @@ describe('StoreManagerStrategy', () => {
         ],
       });
 
-      expect(message).toContain('电话：13800138000');
-      expect(message).not.toContain('****');
+      expect(message.main).toContain('电话：13800138000');
+      expect(message.main).not.toContain('****');
     });
   });
 });

@@ -11,8 +11,16 @@ describe('LlmEvaluationService', () => {
     generateSimple: jest.fn(),
   };
 
-  const makeCompletionResult = (object: { score: number; reason: string }) => ({
-    object,
+  const makeCompletionResult = (summary: string, score: number) => ({
+    object: {
+      summary,
+      dimensions: {
+        factualAccuracy: { score, reason: '事实一致' },
+        responseEfficiency: { score, reason: '回复直接' },
+        processCompliance: { score, reason: '流程合规' },
+        toneNaturalness: { score, reason: '语气自然' },
+      },
+    },
     usage: { inputTokens: 50, outputTokens: 30, totalTokens: 80 },
   });
 
@@ -39,22 +47,19 @@ describe('LlmEvaluationService', () => {
     };
 
     it('should return evaluation result with correct score and passed flag', async () => {
-      mockCompletion.generateStructured.mockResolvedValue(
-        makeCompletionResult({ score: 85, reason: '回复内容基本一致' }),
-      );
+      mockCompletion.generateStructured.mockResolvedValue(makeCompletionResult('回复内容基本一致', 85));
 
       const result = await service.evaluate(input);
 
       expect(result.score).toBe(85);
       expect(result.passed).toBe(true);
-      expect(result.reason).toBe('回复内容基本一致');
+      expect(result.summary).toBe('回复内容基本一致');
+      expect(result.reason).toBe('事实85 / 效率85 / 合规85 / 话术85：回复内容基本一致');
       expect(result.evaluationId).toBeDefined();
     });
 
     it('should include token usage', async () => {
-      mockCompletion.generateStructured.mockResolvedValue(
-        makeCompletionResult({ score: 70, reason: '良好' }),
-      );
+      mockCompletion.generateStructured.mockResolvedValue(makeCompletionResult('良好', 70));
 
       const result = await service.evaluate(input);
 
@@ -76,9 +81,7 @@ describe('LlmEvaluationService', () => {
     });
 
     it('should call completion.generateStructured with systemPrompt and messages', async () => {
-      mockCompletion.generateStructured.mockResolvedValue(
-        makeCompletionResult({ score: 80, reason: 'ok' }),
-      );
+      mockCompletion.generateStructured.mockResolvedValue(makeCompletionResult('ok', 80));
 
       await service.evaluate(input);
 
@@ -92,9 +95,7 @@ describe('LlmEvaluationService', () => {
     });
 
     it('should include conversation history in the user message when provided', async () => {
-      mockCompletion.generateStructured.mockResolvedValue(
-        makeCompletionResult({ score: 80, reason: 'ok' }),
-      );
+      mockCompletion.generateStructured.mockResolvedValue(makeCompletionResult('ok', 80));
 
       const inputWithHistory = {
         ...input,
@@ -113,10 +114,8 @@ describe('LlmEvaluationService', () => {
     });
 
     it('should truncate reason to 200 characters', async () => {
-      const longReason = 'a'.repeat(300);
-      mockCompletion.generateStructured.mockResolvedValue(
-        makeCompletionResult({ score: 80, reason: longReason }),
-      );
+      const longSummary = 'a'.repeat(300);
+      mockCompletion.generateStructured.mockResolvedValue(makeCompletionResult(longSummary, 80));
 
       const result = await service.evaluate(input);
 

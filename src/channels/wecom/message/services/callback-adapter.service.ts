@@ -92,13 +92,13 @@ export class MessageCallbackAdapterService {
       avatar: groupCallback.avatar,
       contactName: groupCallback.contactName,
       isSelf: groupCallback.isSelf,
-      externalUserId: groupCallback.externalUserId,
+      externalUserId: groupCallback.externalUserId ?? undefined,
       coworker: groupCallback.coworker,
 
       // 群聊相关字段（小组级独有）
       imRoomId: groupCallback.roomId,
       roomName: groupCallback.roomTopic,
-      roomWecomChatId: groupCallback.roomWecomChatId,
+      roomWecomChatId: groupCallback.roomWecomChatId ?? undefined,
 
       // 内部标记：标识为小组级回调转换而来（用于动态 API 选择）
       _apiType: 'group',
@@ -217,7 +217,9 @@ export class MessageCallbackAdapterService {
    * - isSelf === true → AGGREGATED_CHAT_MANUAL（手动发送，避免循环回复）
    * - isSelf === false/undefined → MOBILE_PUSH（用户真实发送，触发 AI 回复）
    */
-  private inferSourceFromGroupCallback(groupCallback: GroupMessageCallbackDto): MessageSource {
+  private inferSourceFromGroupCallback(
+    groupCallback: GroupMessageCallbackDto | GroupMessageCallbackInput,
+  ): MessageSource {
     // 1. 自己发的消息 → 手动发送（不触发 AI 回复）
     if (groupCallback.isSelf === true) {
       this.logger.debug(

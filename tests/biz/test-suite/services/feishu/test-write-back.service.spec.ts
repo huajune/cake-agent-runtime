@@ -7,14 +7,14 @@ import { FeishuTestStatus } from '@biz/test-suite/enums/test.enum';
 // Mock the feishu-bitable.config constants
 jest.mock('@infra/feishu/constants/feishu-bitable.config', () => ({
   testSuiteFieldNames: {
-    testStatus: '测试状态',
-    lastTestTime: '最近测试时间',
-    testBatch: '测试批次',
-    errorReason: '错误原因',
+    testStatus: ['测试状态'],
+    lastTestTime: ['最近测试时间'],
+    testBatch: ['测试批次'],
+    errorReason: ['错误原因'],
   },
   validationSetFieldNames: {
-    similarityScore: '相似度分数',
-    lastTestTime: '最近测试时间',
+    similarityScore: ['相似度分数'],
+    lastTestTime: ['最近测试时间'],
   },
 }));
 
@@ -29,6 +29,7 @@ describe('TestWriteBackService', () => {
 
   const mockBitableApi = {
     getTableConfig: jest.fn(),
+    getFields: jest.fn(),
     updateRecord: jest.fn(),
   };
 
@@ -59,6 +60,13 @@ describe('TestWriteBackService', () => {
       appToken: 'app-token',
       tableId: 'table-id',
     });
+    mockBitableApi.getFields.mockResolvedValue([
+      { field_name: '测试状态' },
+      { field_name: '最近测试时间' },
+      { field_name: '测试批次' },
+      { field_name: '错误原因' },
+      { field_name: '相似度分数' },
+    ]);
   });
 
   it('should be defined', () => {
