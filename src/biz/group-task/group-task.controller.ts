@@ -7,18 +7,12 @@ import {
   HttpStatus,
   UseGuards,
   ParseEnumPipe,
-  Logger,
 } from '@nestjs/common';
 import { ApiTokenGuard } from '@infra/server/guards/api-token.guard';
 import { GroupTaskSchedulerService } from './services/group-task-scheduler.service';
 import { GroupResolverService } from './services/group-resolver.service';
 import { NotificationSenderService } from './services/notification-sender.service';
-import { RoomService } from '@channels/wecom/room/room.service';
-import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
-import { FeishuAlertService } from '@infra/feishu/services/alert.service';
-import { AlertLevel } from '@infra/feishu/interfaces/interface';
 import { CompletionService } from '@agent/completion.service';
-import { ConfigService } from '@nestjs/config';
 import { GroupTaskType, GroupContext } from './group-task.types';
 
 /**
@@ -31,17 +25,11 @@ import { GroupTaskType, GroupContext } from './group-task.types';
 @UseGuards(ApiTokenGuard)
 @Controller('group-task')
 export class GroupTaskController {
-  private readonly logger = new Logger(GroupTaskController.name);
-
   constructor(
     private readonly scheduler: GroupTaskSchedulerService,
     private readonly groupResolver: GroupResolverService,
     private readonly notificationSender: NotificationSenderService,
     private readonly completionService: CompletionService,
-    private readonly roomService: RoomService,
-    private readonly messageSender: MessageSenderService,
-    private readonly alertService: FeishuAlertService,
-    private readonly configService: ConfigService,
   ) {}
 
   /**
@@ -186,161 +174,5 @@ export class GroupTaskController {
       message,
       followUpMessage,
     };
-  }
-
-  /**
-   * 临时测试端点：模拟 invite_to_group 工具的完整链路
-   *
-   * POST /group-task/test-invite
-   * Body: { city, contactWxid, imBotId?, imContactId?, enterpriseToken?, industry? }
-   *
-   * 链路：GroupResolver 解析兼职群 → 按城市/行业匹配 → RoomService.addMember 拉人 → 发话术消息
-   *
-   * 发话术需要传 imBotId + imContactId + enterpriseToken（企业级 API）
-   */
-  @Post('test-invite')
-  async testInvite(
-    @Body()
-    body: {
-      city: string;
-      contactWxid: string;
-      imBotId?: string;
-      imContactId?: string;
-      enterpriseToken?: string;
-      industry?: string;
-      /** 模拟群满场景，触发飞书告警 */
-      simulateGroupFull?: boolean;
-    },
-  ) {
-    const { city, contactWxid, industry } = body;
-    if (!city || !contactWxid) {
-      throw new HttpException('city 和 contactWxid 必填', HttpStatus.BAD_REQUEST);
-    }
-
-    // Step 1: 获取兼职群列表
-    const allGroups = await this.groupResolver.resolveGroups('兼职群');
-    this.logger.log(`兼职群总数: ${allGroups.length}`);
-
-    if (allGroups.length === 0) {
-      return { success: false, error: '无兼职群数据', step: 'resolve_groups' };
-    }
-
-    // Step 2: 按城市筛选
-    const cityGroups = allGroups.filter((g) => g.city === city);
-    if (cityGroups.length === 0) {
-      const availableCities = [...new Set(allGroups.map((g) => g.city))];
-      return {
-        success: false,
-        error: `城市 ${city} 无匹配群`,
-        availableCities,
-        step: 'city_filter',
-      };
-    }
-
-    // Step 3: 按行业精筛
-    let candidates = cityGroups;
-    if (industry) {
-      const industryGroups = cityGroups.filter((g) => g.industry === industry);
-      candidates = industryGroups.length > 0 ? industryGroups : cityGroups;
-    }
-
-    // Step 3.5: 模拟群满 → 飞书告警
-    if (body.simulateGroupFull) {
-      this.logger.warn(`[模拟] 群满告警: ${city}/${industry ?? '全行业'}`);
-      const alertResult = await this.alertService.sendAlert({
-        errorType: 'group_full',
-        level: AlertLevel.WARNING,
-        title: '兼职群容量已满',
-        message: `${city}${industry ? `/${industry}` : ''} 所有兼职群已满，需要创建新群`,
-        details: {
-          city,
-          industry: industry ?? '全行业',
-          groups: candidates.map((g) => ({
-            name: g.groupName,
-            memberCount: g.memberCount,
-          })),
-          simulated: true,
-        },
-      });
-      return {
-        success: false,
-        reason: 'group_full',
-        simulated: true,
-        alertSent: alertResult,
-        groups: candidates.map((g) => ({
-          name: g.groupName,
-          memberCount: g.memberCount,
-        })),
-      };
-    }
-
-    // Step 4: 选群（人数最少的）
-    const sorted = candidates
-      .filter((g) => g.memberCount !== undefined)
-      .sort((a, b) => (a.memberCount ?? 0) - (b.memberCount ?? 0));
-    const targetGroup = (sorted.length > 0 ? sorted : candidates)[0];
-
-    this.logger.log(
-      `目标群: ${targetGroup.groupName} (room=${targetGroup.imRoomId}, bot=${targetGroup.imBotId}, members=${targetGroup.memberCount})`,
-    );
-
-    // Step 5: 企业级拉人进群
-    try {
-      const enterpriseToken = this.configService.get<string>('STRIDE_ENTERPRISE_TOKEN', '');
-      // imBotId 优先用请求参数传入的（模拟聊天 bot），回退到群所属 bot 的系统 wxid
-      const inviteBotId = body.imBotId || targetGroup.imBotId;
-      const addResult = await this.roomService.addMemberEnterprise({
-        token: enterpriseToken,
-        imBotId: inviteBotId,
-        botUserId: targetGroup.imBotId,
-        contactWxid,
-        roomWxid: targetGroup.imRoomId,
-      });
-
-      const isInviteLink = (targetGroup.memberCount ?? 0) >= 100;
-      const inviteMode = isInviteLink ? 'link' : 'direct';
-
-      // Step 6: 发送话术消息（企业级 API：需要 imBotId + imContactId + enterpriseToken）
-      let sendResult: unknown = null;
-      const {
-        imBotId: requestImBotId,
-        imContactId: requestImContactId,
-        enterpriseToken: requestEnterpriseToken,
-      } = body;
-      if (requestImBotId && requestImContactId && requestEnterpriseToken) {
-        const text =
-          inviteMode === 'direct'
-            ? `已帮你加入了${targetGroup.groupName}，里面经常有同城的好岗位，可以多留意~`
-            : `已发了入群邀请，点一下就能进群，里面经常有同城的好岗位，有新的机会可以第一时间看到~`;
-
-        sendResult = await this.messageSender.sendMessage({
-          token: requestEnterpriseToken,
-          imBotId: requestImBotId,
-          imContactId: requestImContactId,
-          messageType: 7,
-          payload: { text },
-        });
-        this.logger.log(`话术消息已发送: inviteMode=${inviteMode}`);
-      }
-
-      return {
-        success: true,
-        groupName: targetGroup.groupName,
-        city,
-        industry: industry ?? undefined,
-        inviteMode,
-        memberCount: targetGroup.memberCount,
-        addMemberResult: addResult,
-        sendResult,
-      };
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      return {
-        success: false,
-        error: message,
-        step: 'add_member',
-        targetGroup: targetGroup.groupName,
-      };
-    }
   }
 }

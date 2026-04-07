@@ -6,38 +6,27 @@ import { GroupResolverService } from '@biz/group-task/services/group-resolver.se
 import { GroupContext } from '@biz/group-task/group-task.types';
 import { RoomService } from '@channels/wecom/room/room.service';
 import { RedisService } from '@infra/redis/redis.service';
-import { FeishuAlertService } from '@infra/feishu/services/alert.service';
-import { AlertLevel } from '@infra/feishu/interfaces/interface';
 import { MemoryService } from '@memory/memory.service';
+import { FeishuWebhookService } from '@infra/feishu/services/webhook.service';
+import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
+import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
 
 const logger = new Logger('invite_to_group');
-
-/** Redis 去重 key 前缀 */
 const INVITE_KEY_PREFIX = 'invite';
-/** 去重记录 TTL：30 天 */
 const INVITE_TTL_SECONDS = 30 * 24 * 60 * 60;
 
-/**
- * invite_to_group 构建函数
- *
- * 邀请候选人加入企微兼职群。
- * 根据城市和行业匹配合适的群，执行拉人操作。
- *
- * 触发场景：
- * 1. 穷尽推荐后无匹配岗位（严格边界：多次调整推荐策略仍无匹配）
- * 2. 候选人完成登记后（面试预约/信息收集完成）
- */
 export function buildInviteToGroupTool(
   groupResolver: GroupResolverService,
   roomService: RoomService,
   redisService: RedisService,
-  alertService: FeishuAlertService,
+  webhookService: FeishuWebhookService,
+  cardBuilder: FeishuCardBuilderService,
   memoryService: MemoryService,
   memberLimit: number,
-  enterpriseToken: string,
+  enterpriseToken?: string | null,
 ): ToolBuilder {
-  return (context) => {
-    return tool({
+  return (context) =>
+    tool({
       description: `邀请候选人加入企微兼职群。根据城市和行业匹配合适的群。
 
 使用场景：
@@ -55,69 +44,51 @@ export function buildInviteToGroupTool(
       }),
       execute: async ({ city, industry }) => {
         try {
-          // 1. 获取兼职群列表（带 10 分钟缓存）
+          const normalizedEnterpriseToken = enterpriseToken?.trim();
+          if (!normalizedEnterpriseToken) {
+            logger.error(`STRIDE_ENTERPRISE_TOKEN 未配置，无法拉人进群 (user=${context.userId})`);
+            return {
+              success: false,
+              errorType: 'enterprise_token_missing',
+              error: 'STRIDE_ENTERPRISE_TOKEN 未配置，无法执行企业级拉群',
+            };
+          }
+
           const allGroups = await groupResolver.resolveGroups('兼职群');
           if (allGroups.length === 0) {
             logger.warn(`无兼职群数据 (user=${context.userId})`);
             return { success: false, error: '暂无可用群' };
           }
 
-          // 2. 按城市筛选
-          const cityGroups = allGroups.filter((g) => g.city === city);
+          const cityGroups = allGroups.filter((group) => group.city === city);
           if (cityGroups.length === 0) {
-            const availableCities = [...new Set(allGroups.map((g) => g.city))];
+            const availableCities = [...new Set(allGroups.map((group) => group.city))];
             logger.warn(`城市无匹配: ${city} (user=${context.userId})`);
             return { success: false, availableCities };
           }
 
-          // 3. 按行业精筛（可选）
-          let candidates: GroupContext[];
-          if (industry) {
-            const industryGroups = cityGroups.filter((g) => g.industry === industry);
-            // 有行业匹配用行业匹配，否则回退到城市级
-            candidates = industryGroups.length > 0 ? industryGroups : cityGroups;
-          } else {
-            candidates = cityGroups;
-          }
-
-          // 4. 容量排序 & 选群
-          const sortedByCapacity = candidates
-            .filter((g) => g.memberCount !== undefined)
-            .sort((a, b) => (a.memberCount ?? 0) - (b.memberCount ?? 0));
-
-          // 如果没有 memberCount 数据，直接用第一个
-          const withCapacity = sortedByCapacity.length > 0 ? sortedByCapacity : candidates;
-
-          const targetGroup = withCapacity.find(
-            (g) => g.memberCount === undefined || g.memberCount < memberLimit,
-          );
+          const candidates = resolveCandidates(cityGroups, industry);
+          const targetGroup = pickAvailableGroup(candidates, memberLimit);
 
           if (!targetGroup) {
-            // 全部已满 → 飞书告警，对候选人静默跳过
             logger.warn(`群已满: ${city}/${industry ?? '全行业'} (user=${context.userId})`);
-            alertService
-              .sendAlert({
-                errorType: 'group_full',
-                level: AlertLevel.WARNING,
-                title: '兼职群容量已满',
-                message: `${city}${industry ? `/${industry}` : ''} 所有兼职群已满，需要创建新群`,
-                details: {
-                  city,
-                  industry: industry ?? '全行业',
-                  groups: candidates.map((g) => ({
-                    name: g.groupName,
-                    memberCount: g.memberCount,
-                  })),
-                },
-              })
-              .catch((e: unknown) => {
-                const msg = e instanceof Error ? e.message : String(e);
-                logger.error(`飞书告警发送失败: ${msg}`);
-              });
+            void sendGroupFullAlert({
+              city,
+              industry,
+              memberLimit,
+              groups: candidates.map((group) => ({
+                name: group.groupName,
+                memberCount: group.memberCount,
+              })),
+              webhookService,
+              cardBuilder,
+            }).catch((error: unknown) => {
+              const message = error instanceof Error ? error.message : String(error);
+              logger.error(`飞书告警发送失败: ${message}`);
+            });
             return { success: false, reason: 'group_full' };
           }
 
-          // 5. 检查重复（Redis 去重）
           const redisKey = `${INVITE_KEY_PREFIX}:${context.corpId}:${context.userId}:${targetGroup.imRoomId}`;
           const alreadyInvited = await redisService.exists(redisKey);
           if (alreadyInvited) {
@@ -129,18 +100,14 @@ export function buildInviteToGroupTool(
             };
           }
 
-          // 6. 执行拉人（企业级接口，不受小组限制）
-          const imBotId = context.botImId || '';
-          const botUserId = context.botUserId || '';
           await roomService.addMemberEnterprise({
-            token: enterpriseToken,
-            imBotId,
-            botUserId,
+            token: normalizedEnterpriseToken,
+            imBotId: context.botImId || '',
+            botUserId: context.botUserId || '',
             contactWxid: context.userId,
             roomWxid: targetGroup.imRoomId,
           });
 
-          // 7. 记录 Redis（TTL 30 天）+ 写入会话记忆
           await redisService.setex(redisKey, INVITE_TTL_SECONDS, '1');
           await memoryService.saveInvitedGroup(context.corpId, context.userId, context.sessionId, {
             groupName: targetGroup.groupName,
@@ -153,7 +120,6 @@ export function buildInviteToGroupTool(
             `拉群成功: ${targetGroup.groupName} (user=${context.userId}, city=${city}, industry=${industry ?? '-'})`,
           );
 
-          // memberCount >= 100 时企微自动发邀请链接而非直接拉入
           const isInviteLink = (targetGroup.memberCount ?? 0) >= 100;
 
           return {
@@ -170,5 +136,59 @@ export function buildInviteToGroupTool(
         }
       },
     });
-  };
+}
+
+function resolveCandidates(cityGroups: GroupContext[], industry?: string): GroupContext[] {
+  if (!industry) return cityGroups;
+  const industryGroups = cityGroups.filter((group) => group.industry === industry);
+  return industryGroups.length > 0 ? industryGroups : cityGroups;
+}
+
+function pickAvailableGroup(candidates: GroupContext[], memberLimit: number): GroupContext | undefined {
+  const sortedByCapacity = candidates
+    .filter((group) => group.memberCount !== undefined)
+    .sort((left, right) => (left.memberCount ?? 0) - (right.memberCount ?? 0));
+  const withCapacity = sortedByCapacity.length > 0 ? sortedByCapacity : candidates;
+
+  return withCapacity.find(
+    (group) => group.memberCount === undefined || group.memberCount < memberLimit,
+  );
+}
+
+async function sendGroupFullAlert(params: {
+  city: string;
+  industry?: string;
+  memberLimit: number;
+  groups: Array<{ name: string; memberCount?: number }>;
+  webhookService: FeishuWebhookService;
+  cardBuilder: FeishuCardBuilderService;
+}): Promise<boolean> {
+  const { city, industry, memberLimit, groups, webhookService, cardBuilder } = params;
+  const scope = `${city}${industry ? ` / ${industry}` : ''}`;
+  const conclusion = `${city}${industry ? `/${industry}` : ''} 所有兼职群已满，需要创建新群`;
+  const numberedGroups = groups.map((group, index) => {
+    const count = group.memberCount ?? '未知';
+    return `${index + 1}. ${group.name} (${count} / ${memberLimit})`;
+  });
+
+  const content = [
+    `**时间**: ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`,
+    '**级别**: WARNING',
+    `**范围**: ${scope}`,
+    `**结论**: ${conclusion}`,
+    `**容量阈值**: ${memberLimit} 人`,
+    `**已满群数**: ${groups.length}`,
+    '',
+    '**已满群列表**',
+    ...numberedGroups,
+  ].join('\n');
+
+  const card = cardBuilder.buildMarkdownCard({
+    title: conclusion,
+    content,
+    color: 'yellow',
+    atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+  });
+
+  return webhookService.sendMessage('ALERT', card);
 }

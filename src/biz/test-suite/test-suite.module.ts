@@ -17,6 +17,7 @@ import { BizModule } from '@biz/biz.module';
 import { FeishuSyncModule } from '@biz/feishu-sync/feishu-sync.module';
 import { EvaluationModule } from '@evaluation/evaluation.module';
 import { ObservabilityModule } from '@observability/observability.module';
+import { ToolModule } from '@tools/tool.module';
 import { AiStreamObservabilityService } from './services/ai-stream-observability.service';
 
 /**
@@ -35,6 +36,7 @@ import { AiStreamObservabilityService } from './services/ai-stream-observability
     ConfigModule,
     HttpModule,
     AgentModule,
+    ToolModule,
     BizModule,
     FeishuSyncModule,
     EvaluationModule,

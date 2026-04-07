@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { AlertLevel } from '@infra/feishu/interfaces/interface';
-import { ALERT_RECEIVERS } from '@infra/feishu/constants/constants';
 import { maskApiKey } from '@infra/utils/string.util';
 import { ScenarioType } from '@enums/agent.enum';
 import { AgentRunnerService } from '@agent/runner.service';
@@ -16,7 +15,6 @@ import { MessageDeliveryService } from './delivery.service';
 import { ImageDescriptionService } from './image-description.service';
 import { WecomMessageObservabilityService } from './wecom-message-observability.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
-import { BookingDetectionService } from '@biz/message/services/booking-detection.service';
 import { ChatMessageInput } from '@biz/message/types/message.types';
 
 // 导入工具和类型
@@ -68,7 +66,6 @@ export class MessagePipelineService {
     private readonly chatSession: ChatSessionService,
     private readonly filterService: MessageFilterService,
     private readonly deliveryService: MessageDeliveryService,
-    private readonly bookingDetection: BookingDetectionService,
     private readonly imageDescription: ImageDescriptionService,
     private readonly wecomObservability: WecomMessageObservabilityService,
     // Agent 编排
@@ -76,7 +73,7 @@ export class MessagePipelineService {
     private readonly configService: ConfigService,
     // 监控和告警
     private readonly monitoringService: MessageTrackingService,
-    private readonly feishuAlertService: FeishuAlertService,
+    private readonly alertService: FeishuAlertService,
   ) {}
 
   // ========================================
@@ -487,17 +484,7 @@ export class MessagePipelineService {
       });
     }
 
-    // 4. 异步检测预约成功并处理通知（不阻塞主流程）
-    this.bookingDetection.handleBookingSuccessAsync({
-      chatId,
-      contactName,
-      userId: parsed.imContactId,
-      managerId: parsed.imBotId,
-      managerName: parsed.managerName,
-      toolCalls: agentResult.toolCalls,
-    });
-
-    // 5. 发送回复
+    // 4. 发送回复
     const deliveryContext = this.buildDeliveryContext(parsed);
     const deliveryResult = await this.deliveryService.deliverReply(
       agentResult.reply,
@@ -505,7 +492,7 @@ export class MessagePipelineService {
       true,
     );
 
-    // 6. 构建成功记录的元数据
+    // 5. 构建成功记录的元数据
     const successMetadata = this.buildSuccessMetadata(
       messageId,
       agentResult,
@@ -513,7 +500,7 @@ export class MessagePipelineService {
       scenario,
     );
 
-    // 7. 标记消息为已处理并记录成功
+    // 6. 标记消息为已处理并记录成功
     if (batchContext) {
       // 聚合路径：批量标记所有消息
       await this.markBatchMessagesSuccess(
@@ -672,7 +659,7 @@ export class MessagePipelineService {
     const maskedApiKey = maskApiKey(apiKey);
 
     if (!deliveryError) {
-      this.feishuAlertService
+      this.alertService
         .sendAlert({
           errorType,
           error: error instanceof Error ? error : new Error(errorMessage),
@@ -685,8 +672,7 @@ export class MessagePipelineService {
           level: alertLevel,
           // 添加 API Key 脱敏信息，便于排查 401 问题
           extra: maskedApiKey ? { apiKey: maskedApiKey } : undefined,
-          // 注意：此处是异常处理告警，不需要 @ 琪琪
-          // 只有 sendFallbackAlert（Agent 降级响应）才需要 @ 琪琪人工介入
+          // 注意：此处是异常处理告警，不需要 @ 人
         })
         .catch((alertError) => {
           this.logger.error(`告警发送失败: ${alertError.message}`);
@@ -762,7 +748,7 @@ export class MessagePipelineService {
       this.logger.error(`[${contactName}] 发送降级回复失败: ${sendErrorMessage}`);
 
       // 🚨 CRITICAL: 用户完全无法收到任何回复，必须立即告警
-      this.feishuAlertService
+      this.alertService
         .sendAlert({
           errorType: 'delivery',
           error: sendError instanceof Error ? sendError : new Error(sendErrorMessage),
@@ -976,20 +962,19 @@ export class MessagePipelineService {
 
     this.logger.warn(`[${contactName}] Agent 降级响应，原因: ${fallbackReason}，需要人工介入`);
 
-    this.feishuAlertService
+    this.alertService
       .sendAlert({
-        errorType: 'agent',
-        message: fallbackReason,
-        conversationId: chatId,
-        userMessage,
+        errorType: 'agent_fallback',
+        title: '需要人工介入',
+        error: new Error(fallbackReason),
         contactName,
-        apiEndpoint: '/api/v1/chat',
-        scenario,
+        userMessage,
         fallbackMessage,
-        level: AlertLevel.ERROR,
-        title: '🆘 蛋糕出错了，需人工介入',
-        // 消息降级场景 @ 琪琪，需要人工介入回复用户
-        atUsers: [...ALERT_RECEIVERS.FALLBACK],
+        scenario,
+        conversationId: chatId,
+        apiEndpoint: '/api/v1/chat',
+        level: AlertLevel.WARNING,
+        atAll: true,
       })
       .catch((alertError) => {
         this.logger.error(`降级告警发送失败: ${alertError.message}`);

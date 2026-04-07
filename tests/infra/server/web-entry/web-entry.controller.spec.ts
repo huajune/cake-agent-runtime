@@ -3,7 +3,7 @@ jest.mock('fs', () => ({
 }));
 
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { RootRedirectController, WebEntryController } from '@infra/server/web-entry/web-entry.controller';
 
 function createResponse() {
@@ -78,6 +78,21 @@ describe('WebEntryController', () => {
     const result = controller.serveWebApp(req as never, res as never);
 
     expect(res.sendFile).toHaveBeenCalledWith(indexPath);
+    expect(result).toBe(res);
+  });
+
+  it('should not serve files outside public/web even if they exist', () => {
+    const req = { path: '/web/../../secret.txt' };
+    const res = createResponse();
+    const indexPath = join(process.cwd(), 'public', 'web', 'index.html');
+    const escapedPath = resolve(process.cwd(), 'secret.txt');
+
+    existsSyncMock.mockImplementation((path) => path === escapedPath || path === indexPath);
+
+    const result = controller.serveWebApp(req as never, res as never);
+
+    expect(res.sendFile).toHaveBeenCalledWith(indexPath);
+    expect(res.sendFile).not.toHaveBeenCalledWith(escapedPath);
     expect(result).toBe(res);
   });
 

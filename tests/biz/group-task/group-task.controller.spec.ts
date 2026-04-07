@@ -4,24 +4,16 @@ import { GroupTaskController } from '@biz/group-task/group-task.controller';
 import { GroupTaskSchedulerService } from '@biz/group-task/services/group-task-scheduler.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { NotificationSenderService } from '@biz/group-task/services/notification-sender.service';
-import { RoomService } from '@channels/wecom/room/room.service';
-import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
-import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { CompletionService } from '@agent/completion.service';
-import { ConfigService } from '@nestjs/config';
 import { GroupTaskType } from '@biz/group-task/group-task.types';
 import { ApiTokenGuard } from '@infra/server/guards/api-token.guard';
 
 describe('GroupTaskController', () => {
   let controller: GroupTaskController;
   let mockSchedulerService: Partial<GroupTaskSchedulerService>;
-  const mockGroupResolverService = { findGroupByName: jest.fn(), resolveGroups: jest.fn() };
+  const mockGroupResolverService = { findGroupByName: jest.fn() };
   const mockNotificationSenderService = { sendToGroup: jest.fn(), sendTextToGroup: jest.fn() };
   const mockCompletionService = { generateSimple: jest.fn() };
-  const mockRoomService = { addMember: jest.fn() };
-  const mockMessageSenderService = { sendMessageToExternalContact: jest.fn() };
-  const mockAlertService = { sendAlert: jest.fn() };
-  const mockConfigService = { get: jest.fn() };
 
   beforeEach(async () => {
     mockSchedulerService = {
@@ -39,10 +31,6 @@ describe('GroupTaskController', () => {
         { provide: GroupResolverService, useValue: mockGroupResolverService },
         { provide: NotificationSenderService, useValue: mockNotificationSenderService },
         { provide: CompletionService, useValue: mockCompletionService },
-        { provide: RoomService, useValue: mockRoomService },
-        { provide: MessageSenderService, useValue: mockMessageSenderService },
-        { provide: FeishuAlertService, useValue: mockAlertService },
-        { provide: ConfigService, useValue: mockConfigService },
       ],
     })
       .overrideGuard(ApiTokenGuard)

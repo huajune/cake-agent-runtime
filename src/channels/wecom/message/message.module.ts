@@ -5,6 +5,7 @@ import { MessageController } from './message.controller';
 import { MessageService } from './message.service';
 import { MessageProcessor } from './message.processor';
 import { AgentModule } from '@agent/agent.module';
+import { ToolModule } from '@tools/tool.module';
 import { MessageSenderModule } from '../message-sender/message-sender.module';
 
 // 导入子服务
@@ -28,6 +29,7 @@ import { FeishuModule } from '@infra/feishu/feishu.module';
   imports: [
     ConfigModule,
     forwardRef(() => AgentModule),
+    ToolModule,
     MessageSenderModule,
     forwardRef(() => BizModule),
     FeishuModule,

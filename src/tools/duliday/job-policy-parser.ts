@@ -1,4 +1,5 @@
 import { formatLocalDate } from '@infra/utils/date.util';
+import { JobDetail } from '@sponge/sponge.types';
 import { API_BOOKING_SUBMISSION_FIELDS } from '@tools/duliday/job-booking.contract';
 
 export interface InterviewWindow {
@@ -58,11 +59,30 @@ export interface JobPolicyAnalysis {
   };
 }
 
+type UnknownRecord = Record<string, unknown>;
+
 function hasValue(value: unknown): boolean {
   if (value === null || value === undefined) return false;
   if (typeof value === 'string') return value.trim().length > 0;
   if (Array.isArray(value)) return value.length > 0;
   return true;
+}
+
+function asRecord(value: unknown): UnknownRecord | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as UnknownRecord;
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === 'number' ? value : null;
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
 }
 
 export function normalizePolicyText(value: string | null | undefined): string {
@@ -180,33 +200,43 @@ export function sanitizeConstraintText(text: string | null | undefined): string 
   return sanitized || null;
 }
 
-export function extractInterviewWindows(interviewProcess: any): InterviewWindow[] {
-  const first = interviewProcess?.firstInterview;
+export function extractInterviewWindows(
+  interviewProcess: UnknownRecord | null | undefined,
+): InterviewWindow[] {
+  const first = asRecord(interviewProcess?.firstInterview);
   if (!first) return [];
 
   const windows: InterviewWindow[] = [];
 
-  if (Array.isArray(first.periodicInterviewTimes)) {
-    for (const item of first.periodicInterviewTimes) {
-      const weekday = normalizePolicyText(item?.interviewWeekday);
-      const times = Array.isArray(item?.interviewTimes) ? item.interviewTimes : [];
-      for (const time of times) {
-        const startTime = normalizePolicyText(time?.interviewStartTime);
-        const endTime = normalizePolicyText(time?.interviewEndTime || time?.interviewStartTime);
-        if (!startTime) continue;
-        windows.push({ weekday, startTime, endTime: endTime || startTime });
-      }
+  for (const item of asArray(first.periodicInterviewTimes)) {
+    const periodic = asRecord(item);
+    if (!periodic) continue;
+
+    const weekday = normalizePolicyText(asString(periodic.interviewWeekday));
+    for (const time of asArray(periodic.interviewTimes)) {
+      const timeRecord = asRecord(time);
+      if (!timeRecord) continue;
+
+      const startTime = normalizePolicyText(asString(timeRecord.interviewStartTime));
+      const endTime = normalizePolicyText(
+        asString(timeRecord.interviewEndTime) ?? asString(timeRecord.interviewStartTime),
+      );
+      if (!startTime) continue;
+      windows.push({ weekday, startTime, endTime: endTime || startTime });
     }
   }
 
-  if (Array.isArray(first.fixedInterviewTimes)) {
-    for (const item of first.fixedInterviewTimes) {
-      const date = normalizePolicyText(item?.interviewDate);
-      const startTime = normalizePolicyText(item?.interviewStartTime);
-      const endTime = normalizePolicyText(item?.interviewEndTime || item?.interviewStartTime);
-      if (!date || !startTime) continue;
-      windows.push({ date, startTime, endTime: endTime || startTime });
-    }
+  for (const item of asArray(first.fixedInterviewTimes)) {
+    const fixed = asRecord(item);
+    if (!fixed) continue;
+
+    const date = normalizePolicyText(asString(fixed.interviewDate));
+    const startTime = normalizePolicyText(asString(fixed.interviewStartTime));
+    const endTime = normalizePolicyText(
+      asString(fixed.interviewEndTime) ?? asString(fixed.interviewStartTime),
+    );
+    if (!date || !startTime) continue;
+    windows.push({ date, startTime, endTime: endTime || startTime });
   }
 
   return windows;
@@ -224,26 +254,25 @@ function mapSupplementToField(supplement: string): string | null {
   return null;
 }
 
-function buildFieldSignals(job: any): PolicyFieldSignal[] {
+function buildFieldSignals(job: JobDetail): PolicyFieldSignal[] {
   const signals: PolicyFieldSignal[] = [];
-  const basic = job?.hiringRequirement?.basicPersonalRequirements;
-  const cert = job?.hiringRequirement?.certificate;
-  const remark = normalizePolicyText(job?.hiringRequirement?.remark);
-  const figure = normalizePolicyText(job?.hiringRequirement?.figure);
-  const supplements = Array.isArray(job?.interviewProcess?.interviewSupplement)
-    ? job.interviewProcess.interviewSupplement
-    : [];
+  const hiringRequirement = asRecord(job.hiringRequirement);
+  const basic = asRecord(hiringRequirement?.basicPersonalRequirements);
+  const cert = asRecord(hiringRequirement?.certificate);
+  const interviewProcess = asRecord(job.interviewProcess);
+  const remark = normalizePolicyText(asString(hiringRequirement?.remark));
+  const figure = normalizePolicyText(asString(hiringRequirement?.figure));
 
-  if (basic?.minAge != null || basic?.maxAge != null) {
+  if (asNumber(basic?.minAge) != null || asNumber(basic?.maxAge) != null) {
     signals.push({
       field: '年龄',
       sourceField: 'basic_personal_requirements',
-      evidence: `${basic?.minAge ?? '不限'}-${basic?.maxAge ?? '不限'}岁`,
+      evidence: `${asNumber(basic?.minAge) ?? '不限'}-${asNumber(basic?.maxAge) ?? '不限'}岁`,
       confidence: 'high',
     });
   }
 
-  const genderRequirement = normalizePolicyText(basic?.genderRequirement);
+  const genderRequirement = normalizePolicyText(asString(basic?.genderRequirement));
   if (
     genderRequirement &&
     genderRequirement !== '不限' &&
@@ -257,7 +286,7 @@ function buildFieldSignals(job: any): PolicyFieldSignal[] {
     });
   }
 
-  const educationRequirement = normalizePolicyText(cert?.education);
+  const educationRequirement = normalizePolicyText(asString(cert?.education));
   if (educationRequirement && educationRequirement !== '不限') {
     signals.push({
       field: '学历',
@@ -267,18 +296,18 @@ function buildFieldSignals(job: any): PolicyFieldSignal[] {
     });
   }
 
-  const healthRequirement = normalizePolicyText(cert?.healthCertificate);
-  if (healthRequirement || normalizePolicyText(cert?.certificates).includes('健康证')) {
+  const healthRequirement = normalizePolicyText(asString(cert?.healthCertificate));
+  if (healthRequirement || normalizePolicyText(asString(cert?.certificates)).includes('健康证')) {
     signals.push({
       field: '健康证情况',
       sourceField: 'certificate',
-      evidence: healthRequirement || normalizePolicyText(cert?.certificates),
+      evidence: healthRequirement || normalizePolicyText(asString(cert?.certificates)),
       confidence: 'high',
     });
   }
 
-  for (const item of supplements) {
-    const supplement = normalizePolicyText(item?.interviewSupplement);
+  for (const item of asArray(interviewProcess?.interviewSupplement)) {
+    const supplement = normalizePolicyText(asString(asRecord(item)?.interviewSupplement));
     const mapped = mapSupplementToField(supplement);
     if (!mapped) continue;
     signals.push({
@@ -310,7 +339,7 @@ function buildFieldSignals(job: any): PolicyFieldSignal[] {
   return signals;
 }
 
-export function buildFieldGuidance(job: any): FieldGuidance {
+export function buildFieldGuidance(job: JobDetail): FieldGuidance {
   const fieldSignals = buildFieldSignals(job);
   const screeningFields = dedupeStrings(fieldSignals.map((signal) => signal.field));
   const bookingSubmissionFields = [...API_BOOKING_SUBMISSION_FIELDS];
@@ -330,16 +359,16 @@ export function buildFieldGuidance(job: any): FieldGuidance {
   };
 }
 
-function extractInterviewTimeHint(job: any): string | null {
-  const ip = job?.interviewProcess;
-  if (!ip) return null;
+function extractInterviewTimeHint(job: JobDetail): string | null {
+  const interviewProcess = asRecord(job.interviewProcess);
+  if (!interviewProcess) return null;
 
-  const first = ip.firstInterview;
+  const first = asRecord(interviewProcess.firstInterview);
   const texts = [
-    typeof first?.interviewTime === 'string' ? first.interviewTime : null,
-    typeof first?.interviewDate === 'string' ? first.interviewDate : null,
-    typeof first?.interviewDemand === 'string' ? first.interviewDemand : null,
-    typeof ip.remark === 'string' ? ip.remark : null,
+    asString(first?.interviewTime),
+    asString(first?.interviewDate),
+    asString(first?.interviewDemand),
+    asString(interviewProcess.remark),
   ].filter((text): text is string => Boolean(text));
 
   const timePatterns = [
@@ -357,21 +386,21 @@ function extractInterviewTimeHint(job: any): string | null {
   return null;
 }
 
-export function buildJobPolicyAnalysis(job: any): JobPolicyAnalysis {
-  const basic = (job?.hiringRequirement?.basicPersonalRequirements ?? null) as any;
-  const cert = (job?.hiringRequirement?.certificate ?? null) as any;
-  const firstInterview = (job?.interviewProcess?.firstInterview ?? null) as any;
-  const interviewSupplements = Array.isArray(job?.interviewProcess?.interviewSupplement)
-    ? job.interviewProcess.interviewSupplement
-        .map((item: any) => normalizePolicyText(item?.interviewSupplement))
-        .filter(Boolean)
-    : [];
+export function buildJobPolicyAnalysis(job: JobDetail): JobPolicyAnalysis {
+  const hiringRequirement = asRecord(job.hiringRequirement);
+  const basic = asRecord(hiringRequirement?.basicPersonalRequirements);
+  const cert = asRecord(hiringRequirement?.certificate);
+  const interviewProcess = asRecord(job.interviewProcess);
+  const firstInterview = asRecord(interviewProcess?.firstInterview);
+  const interviewSupplements = asArray(interviewProcess?.interviewSupplement)
+    .map((item) => normalizePolicyText(asString(asRecord(item)?.interviewSupplement)))
+    .filter(Boolean);
 
-  const requirementRemark = sanitizeConstraintText(job?.hiringRequirement?.remark);
-  const interviewRemark = sanitizeConstraintText(job?.interviewProcess?.remark);
-  const interviewDemand = sanitizeConstraintText(firstInterview?.interviewDemand);
+  const requirementRemark = sanitizeConstraintText(asString(hiringRequirement?.remark));
+  const interviewRemark = sanitizeConstraintText(asString(interviewProcess?.remark));
+  const interviewDemand = sanitizeConstraintText(asString(firstInterview?.interviewDemand));
 
-  const requirementHighlights = pickKeySentences(job?.hiringRequirement?.remark, [
+  const requirementHighlights = pickKeySentences(asString(hiringRequirement?.remark), [
     /经验/,
     /体力/,
     /分拣/,
@@ -383,7 +412,7 @@ export function buildJobPolicyAnalysis(job: any): JobPolicyAnalysis {
     .map((fragment) => sanitizeConstraintText(fragment))
     .filter((fragment): fragment is string => Boolean(fragment));
 
-  const timingHighlights = pickKeySentences(job?.interviewProcess?.remark, [
+  const timingHighlights = pickKeySentences(asString(interviewProcess?.remark), [
     /健康证/,
     /最迟/,
     /最后/,
@@ -396,23 +425,24 @@ export function buildJobPolicyAnalysis(job: any): JobPolicyAnalysis {
     .filter((fragment): fragment is string => Boolean(fragment));
 
   return {
-    interviewWindows: extractInterviewWindows(job?.interviewProcess),
+    interviewWindows: extractInterviewWindows(interviewProcess),
     fieldGuidance: buildFieldGuidance(job),
     normalizedRequirements: {
-      genderRequirement: normalizePolicyText(basic?.genderRequirement) || '不限',
+      genderRequirement: normalizePolicyText(asString(basic?.genderRequirement)) || '不限',
       ageRequirement:
-        basic?.minAge != null || basic?.maxAge != null
-          ? `${basic?.minAge ?? '不限'}-${basic?.maxAge ?? '不限'}岁`
+        asNumber(basic?.minAge) != null || asNumber(basic?.maxAge) != null
+          ? `${asNumber(basic?.minAge) ?? '不限'}-${asNumber(basic?.maxAge) ?? '不限'}岁`
           : '不限',
-      educationRequirement: normalizePolicyText(cert?.education) || '不限',
-      healthCertificateRequirement: normalizePolicyText(cert?.healthCertificate) || '未明确要求',
+      educationRequirement: normalizePolicyText(asString(cert?.education)) || '不限',
+      healthCertificateRequirement:
+        normalizePolicyText(asString(cert?.healthCertificate)) || '未明确要求',
       remark: requirementRemark,
       interviewRemark,
       interviewSupplements,
     },
     interviewMeta: {
-      method: normalizePolicyText(firstInterview?.firstInterviewWay) || null,
-      address: normalizePolicyText(firstInterview?.interviewAddress) || null,
+      method: normalizePolicyText(asString(firstInterview?.firstInterviewWay)) || null,
+      address: normalizePolicyText(asString(firstInterview?.interviewAddress)) || null,
       demand: interviewDemand,
       timeHint: extractInterviewTimeHint(job),
     },

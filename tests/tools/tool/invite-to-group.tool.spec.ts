@@ -1,6 +1,7 @@
 import { buildInviteToGroupTool } from '@tools/invite-to-group.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { GroupContext } from '@biz/group-task/group-task.types';
+import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
 
 describe('buildInviteToGroupTool', () => {
   const mockContext: ToolBuildContext = {
@@ -24,13 +25,18 @@ describe('buildInviteToGroupTool', () => {
   });
 
   const mockGroupResolver = { resolveGroups: jest.fn() };
-  const mockRoomService = { addMember: jest.fn(), addMemberEnterprise: jest.fn() };
+  const mockRoomService = { addMemberEnterprise: jest.fn() };
   const mockRedisService = { exists: jest.fn(), setex: jest.fn() };
-  const mockAlertService = { sendAlert: jest.fn() };
+  const mockWebhookService = { sendMessage: jest.fn() };
+  const mockCardBuilder = { buildMarkdownCard: jest.fn() };
   const mockMemoryService = { saveInvitedGroup: jest.fn() };
   const MEMBER_LIMIT = 200;
 
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockCardBuilder.buildMarkdownCard.mockReturnValue({ msg_type: 'interactive' });
+    mockWebhookService.sendMessage.mockResolvedValue(true);
+  });
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const executeTool = async (input: { city: string; industry?: string }) => {
@@ -38,7 +44,8 @@ describe('buildInviteToGroupTool', () => {
       mockGroupResolver as any,
       mockRoomService as any,
       mockRedisService as any,
-      mockAlertService as any,
+      mockWebhookService as any,
+      mockCardBuilder as any,
       mockMemoryService as any,
       MEMBER_LIMIT,
       'enterprise-token-test',
@@ -127,15 +134,18 @@ describe('buildInviteToGroupTool', () => {
       makeGroup({ memberCount: MEMBER_LIMIT + 10 }),
       makeGroup({ imRoomId: 'room-2', groupName: '上海兼职群2号', memberCount: MEMBER_LIMIT + 5 }),
     ]);
-    mockAlertService.sendAlert.mockResolvedValue(undefined);
 
     const result = await executeTool({ city: '上海' });
 
     expect(result.success).toBe(false);
     expect(result.reason).toBe('group_full');
-    expect(mockAlertService.sendAlert).toHaveBeenCalledWith(
-      expect.objectContaining({ errorType: 'group_full' }),
+    expect(mockCardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+        title: '上海 所有兼职群已满，需要创建新群',
+      }),
     );
+    expect(mockWebhookService.sendMessage).toHaveBeenCalledWith('ALERT', { msg_type: 'interactive' });
   });
 
   it('should filter by industry when provided', async () => {
@@ -196,5 +206,36 @@ describe('buildInviteToGroupTool', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('WeChat API timeout');
+  });
+
+  it('should fail clearly when enterprise token is missing', async () => {
+    const builder = buildInviteToGroupTool(
+      mockGroupResolver as any,
+      mockRoomService as any,
+      mockRedisService as any,
+      mockWebhookService as any,
+      mockCardBuilder as any,
+      mockMemoryService as any,
+      MEMBER_LIMIT,
+      undefined,
+    );
+    const builtTool = builder(mockContext);
+
+    const result = await builtTool.execute(
+      { city: '上海' } as any,
+      {
+        toolCallId: 'test',
+        messages: [],
+        abortSignal: undefined as any,
+      },
+    );
+
+    expect(result).toEqual({
+      success: false,
+      errorType: 'enterprise_token_missing',
+      error: 'STRIDE_ENTERPRISE_TOKEN 未配置，无法执行企业级拉群',
+    });
+    expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
+    expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
   });
 });

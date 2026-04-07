@@ -1,4 +1,4 @@
-import { IsBoolean, IsOptional, IsString } from 'class-validator';
+import { IsOptional, IsString } from 'class-validator';
 
 export class DebugChatDto {
   @IsString()
@@ -15,8 +15,4 @@ export class DebugChatDto {
   @IsOptional()
   @IsString()
   userId?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  notifyBooking?: boolean;
 }

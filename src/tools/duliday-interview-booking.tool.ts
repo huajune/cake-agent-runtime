@@ -8,6 +8,8 @@ import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
+import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
+import { FeishuWebhookService } from '@infra/feishu/services/webhook.service';
 import { ToolBuilder } from '@shared-types/tool.types';
 import {
   API_BOOKING_SUBMISSION_FIELDS,
@@ -17,7 +19,20 @@ import {
 
 const logger = new Logger('duliday_interview_booking');
 
-export function buildInterviewBookingTool(spongeService: SpongeService): ToolBuilder {
+export interface InterviewBookingNotificationInfo {
+  candidateName: string;
+  brandName?: string;
+  storeName?: string;
+  interviewTime: string;
+  contactInfo: string;
+  toolOutput: Record<string, unknown>;
+}
+
+export function buildInterviewBookingTool(
+  spongeService: SpongeService,
+  webhookService: FeishuWebhookService,
+  cardBuilder: FeishuCardBuilderService,
+): ToolBuilder {
   return (_context) => {
     return tool({
       description:
@@ -101,6 +116,17 @@ export function buildInterviewBookingTool(spongeService: SpongeService): ToolBui
           };
         }
 
+        const requestInfo = {
+          name,
+          phone,
+          age,
+          genderId,
+          education,
+          hasHealthCertificate,
+          jobId,
+          interviewTime,
+        };
+
         try {
           const result = await spongeService.bookInterview({
             name,
@@ -112,30 +138,157 @@ export function buildInterviewBookingTool(spongeService: SpongeService): ToolBui
             educationId,
             hasHealthCertificate,
           });
+          const resultRecord = toRecord(result);
 
-          return {
+          const toolResult = {
             ...result,
             errorType: result.success ? null : 'booking_rejected',
-            requestInfo: {
-              name,
-              phone,
-              age,
-              genderId,
-              education,
-              hasHealthCertificate,
-              jobId,
-              interviewTime,
-            },
+            requestInfo,
           };
+
+          void sendInterviewBookingNotification(
+            {
+              candidateName: name,
+              contactInfo: phone,
+              interviewTime,
+              brandName: pickString(resultRecord?.brandName),
+              storeName: pickString(resultRecord?.storeName),
+              toolOutput: toolResult,
+            },
+            webhookService,
+            cardBuilder,
+          );
+
+          return toolResult;
         } catch (err) {
           logger.error('预约面试失败', err);
-          return {
+          const toolResult = {
             success: false,
             errorType: 'booking_request_failed',
             error: `预约面试失败: ${err instanceof Error ? err.message : '未知错误'}`,
+            requestInfo,
           };
+
+          void sendInterviewBookingNotification(
+            {
+              candidateName: name,
+              contactInfo: phone,
+              interviewTime,
+              toolOutput: toolResult,
+            },
+            webhookService,
+            cardBuilder,
+          );
+
+          return toolResult;
         }
       },
     });
   };
+}
+
+async function sendInterviewBookingNotification(
+  bookingInfo: InterviewBookingNotificationInfo,
+  webhookService: FeishuWebhookService,
+  cardBuilder: FeishuCardBuilderService,
+): Promise<void> {
+  try {
+    const toolOutput = bookingInfo.toolOutput;
+    const isFailure = toolOutput.success === false;
+    const resultMessage = pickString(toolOutput.message, toolOutput.notice);
+    const bookingId = pickString(toolOutput.booking_id);
+    const failureReason = pickString(toolOutput.error);
+    const failureDetails = stringifyErrorList(toolOutput.errorList);
+    const sections: string[] = [];
+
+    if (isFailure) {
+      sections.push(`候选人 ${bookingInfo.candidateName} 预约失败，请尽快跟进处理。`);
+    }
+
+    sections.push(
+      [
+        `候选人：${bookingInfo.candidateName}`,
+        `联系方式：${maskPhone(bookingInfo.contactInfo)}`,
+      ].join('\n'),
+    );
+
+    const interviewLines = [
+      bookingInfo.brandName ? `品牌：${bookingInfo.brandName}` : null,
+      bookingInfo.storeName ? `门店：${bookingInfo.storeName}` : null,
+      `面试时间：${bookingInfo.interviewTime}`,
+      bookingId ? `预约编号：${bookingId}` : null,
+    ].filter((line): line is string => Boolean(line));
+    sections.push(`**面试安排**\n${interviewLines.join('\n')}`);
+
+    if (isFailure) {
+      const resultLines = [
+        failureReason ? `原因：${failureReason}` : null,
+        failureDetails ? `明细：${failureDetails}` : null,
+        resultMessage ? `返回信息：${resultMessage}` : null,
+      ].filter((line): line is string => Boolean(line));
+      if (resultLines.length > 0) {
+        sections.push(`**失败详情**\n${resultLines.join('\n')}`);
+      }
+    } else if (resultMessage) {
+      sections.push(`结果：${resultMessage}`);
+    }
+
+    sections.push(`通知时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
+
+    const card = cardBuilder.buildMarkdownCard({
+      title: isFailure ? '⚠️ 面试预约失败' : '🎉 面试预约成功',
+      content: sections.join('\n\n'),
+      color: isFailure ? 'red' : 'green',
+      atAll: true,
+    });
+
+    const success = await webhookService.sendMessage('MESSAGE_NOTIFICATION', card);
+    if (success) {
+      logger.log(`面试预约${isFailure ? '失败' : '成功'}通知已发送: ${bookingInfo.candidateName}`);
+    } else {
+      logger.warn(`面试预约${isFailure ? '失败' : '成功'}通知发送失败`);
+    }
+  } catch (error) {
+    logger.error(
+      `面试预约通知发送异常: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+function stringifyErrorList(value: unknown): string | undefined {
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+
+  const text = value
+    .map((item) => {
+      if (typeof item === 'string') return item.trim();
+      try {
+        return JSON.stringify(item);
+      } catch {
+        return String(item);
+      }
+    })
+    .filter(Boolean)
+    .join('；');
+
+  return text || undefined;
+}
+
+function pickString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function toRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function maskPhone(phone: string): string {
+  const trimmed = phone.trim();
+  if (!/^\d{11}$/.test(trimmed)) return trimmed;
+  return `${trimmed.slice(0, 3)}****${trimmed.slice(-4)}`;
 }

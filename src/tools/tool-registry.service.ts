@@ -20,11 +20,12 @@ import { buildGeocodeTool } from './geocode.tool';
 import { buildSaveImageDescriptionTool } from './save-image-description.tool';
 import { buildInviteToGroupTool } from './invite-to-group.tool';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
+import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
+import { FeishuWebhookService } from '@infra/feishu/services/webhook.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { RoomService } from '@channels/wecom/room/room.service';
 import { RedisService } from '@infra/redis/redis.service';
-import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 
 /**
  * 统一工具注册表
@@ -52,15 +53,16 @@ export class ToolRegistryService {
     memoryService: MemoryService,
     spongeService: SpongeService,
     geocodingService: GeocodingService,
-    private readonly chatSessionService: ChatSessionService,
     groupResolverService: GroupResolverService,
     roomService: RoomService,
     redisService: RedisService,
-    alertService: FeishuAlertService,
+    webhookService: FeishuWebhookService,
+    cardBuilder: FeishuCardBuilderService,
+    private readonly chatSessionService: ChatSessionService,
     configService: ConfigService,
   ) {
     const memberLimit = parseInt(configService.get('GROUP_MEMBER_LIMIT', '200'), 10);
-    const enterpriseToken = configService.get<string>('STRIDE_ENTERPRISE_TOKEN', '');
+    const enterpriseToken = configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim();
     this.registry = {
       // ===== 阶段工具 =====
       advance_stage: createToolDefinition({
@@ -87,7 +89,7 @@ export class ToolRegistryService {
       duliday_interview_booking: createToolDefinition({
         name: 'duliday_interview_booking',
         description: '面试预约（仅做接口字段校验与提交；仅在确认进入约面时调用）',
-        create: buildInterviewBookingTool(spongeService),
+        create: buildInterviewBookingTool(spongeService, webhookService, cardBuilder),
       }),
 
       duliday_interview_precheck: createToolDefinition({
@@ -110,7 +112,8 @@ export class ToolRegistryService {
           groupResolverService,
           roomService,
           redisService,
-          alertService,
+          webhookService,
+          cardBuilder,
           memoryService,
           memberLimit,
           enterpriseToken,

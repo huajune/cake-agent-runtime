@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Readable } from 'stream';
 import {
   AgentRunnerService,
@@ -7,7 +6,6 @@ import {
   type AgentRunResult,
   type AgentStreamResult,
 } from '@agent/runner.service';
-import { BookingDetectionService } from '@biz/message/services/booking-detection.service';
 import { TestChatRequestDto, TestChatResponse, VercelAIChatRequestDto } from '../dto/test-chat.dto';
 import { TestExecutionRepository } from '../repositories/test-execution.repository';
 import { TestExecution } from '../entities/test-execution.entity';
@@ -51,10 +49,8 @@ export class TestExecutionService {
   private readonly logger = new Logger(TestExecutionService.name);
 
   constructor(
-    private readonly configService: ConfigService,
     private readonly runner: AgentRunnerService,
     private readonly executionRepository: TestExecutionRepository,
-    private readonly bookingDetection: BookingDetectionService,
   ) {
     this.logger.log('TestExecutionService 初始化完成');
   }
@@ -102,14 +98,6 @@ export class TestExecutionService {
         scenario,
         strategySource: 'testing',
       });
-
-      if (request.notifyBooking) {
-        await this.notifyBookingIfNeeded({
-          sessionId,
-          userId: request.userId,
-          toolCalls: agentResult.toolCalls,
-        });
-      }
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       executionStatus = errorMsg.includes('timeout')
@@ -210,15 +198,6 @@ export class TestExecutionService {
       scenario,
       thinking: request.thinking,
       strategySource: 'testing' as const,
-      onFinish: request.notifyBooking
-        ? async (result) => {
-            await this.notifyBookingIfNeeded({
-              sessionId,
-              userId: request.userId,
-              toolCalls: result.toolCalls,
-            });
-          }
-        : undefined,
     };
 
     const runnerResult = await this.runner.stream(runnerParams);
@@ -340,7 +319,6 @@ export class TestExecutionService {
       history,
       scenario: request.scenario || 'candidate-consultation',
       saveExecution: request.saveExecution ?? false,
-      notifyBooking: request.notifyBooking ?? true,
       skipHistoryTrim: true,
       sessionId: request.sessionId,
       userId: request.userId,
@@ -430,20 +408,5 @@ export class TestExecutionService {
       })),
       tokenUsage: result.usage || { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
     };
-  }
-
-  private async notifyBookingIfNeeded(params: {
-    sessionId: string;
-    userId: string;
-    toolCalls?: AgentRunResult['toolCalls'];
-  }): Promise<void> {
-    await this.bookingDetection.handleBookingSuccessAsync({
-      chatId: params.sessionId,
-      contactName: params.userId,
-      userId: params.userId,
-      managerId: 'test-suite',
-      managerName: 'Agent Test',
-      toolCalls: params.toolCalls,
-    });
   }
 }

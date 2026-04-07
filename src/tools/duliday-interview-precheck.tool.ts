@@ -213,14 +213,18 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
                 decisionBasis: 'date_not_provided' as const,
               };
 
-          const storeInfo = (job.basicInfo?.storeInfo ?? null) as any;
+          const storeInfo = job.basicInfo?.storeInfo ?? null;
+          const storeName =
+            storeInfo && typeof storeInfo.storeName === 'string'
+              ? normalizePolicyText(storeInfo.storeName)
+              : '';
 
           return {
             success: true,
             job: {
               jobId,
               brandName: normalizePolicyText(job.basicInfo.brandName),
-              storeName: normalizePolicyText(storeInfo?.storeName),
+              storeName,
               jobName: normalizePolicyText(job.basicInfo.jobName || job.basicInfo.jobNickName),
             },
             interview: {

@@ -167,7 +167,7 @@ const ChatInputPanel = memo(function ChatInputPanel({
               placeholder={HISTORY_PLACEHOLDER}
               disabled={isLoading}
               className={`${styles.historyInput} ${historyStatus === 'invalid' ? styles.inputError : ''}`}
-              rows={23}
+              rows={15}
             />
             <div className={styles.candidateSelectorOverlay}>
               <CandidateSelector onSelectHistory={setHistoryText} />

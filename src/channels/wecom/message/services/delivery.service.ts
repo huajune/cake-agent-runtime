@@ -10,7 +10,6 @@ import {
   AgentReply,
   DeliveryFailureError,
 } from '../message.types';
-import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { AgentReplyConfig } from '@biz/hosting-config/types/hosting-config.types';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { WecomMessageObservabilityService } from './wecom-message-observability.service';
@@ -45,7 +44,6 @@ export class MessageDeliveryService implements OnModuleInit {
     private readonly messageSenderService: MessageSenderService,
     private readonly monitoringService: MessageTrackingService,
     private readonly configService: ConfigService,
-    private readonly feishuAlertService: FeishuAlertService,
     private readonly systemConfigService: SystemConfigService,
     private readonly wecomObservability: WecomMessageObservabilityService,
   ) {
@@ -130,8 +128,6 @@ export class MessageDeliveryService implements OnModuleInit {
       }
 
       this.logger.error(`[${contactName}] 消息发送失败: ${errorMessage}`);
-      await this.sendDeliveryFailureAlert(new Error(errorMessage), context, reply.content);
-
       throw new DeliveryFailureError(errorMessage, failureResult);
     }
   }
@@ -252,24 +248,6 @@ export class MessageDeliveryService implements OnModuleInit {
 
   private async sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
-  private async sendDeliveryFailureAlert(
-    error: Error,
-    context: DeliveryContext,
-    content: string,
-  ): Promise<void> {
-    try {
-      await this.feishuAlertService.sendAlert({
-        errorType: 'delivery',
-        error,
-        conversationId: context.chatId,
-        userMessage: content.substring(0, 100),
-        apiEndpoint: '/message-sender/send',
-      });
-    } catch (alertError) {
-      this.logger.error(`发送失败告警发送失败: ${alertError.message}`);
-    }
   }
 
   private truncate(text: string, maxLength: number = 50): string {

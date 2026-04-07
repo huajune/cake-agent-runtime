@@ -1,8 +1,16 @@
 import { Controller, Get, Head, Req, Res } from '@nestjs/common';
 import { existsSync } from 'fs';
 import { Request, Response } from 'express';
-import { join } from 'path';
+import { join, resolve, sep } from 'path';
 import { Public } from '@infra/server/response/decorators/api-response.decorator';
+
+function isPathInsideRoot(rootPath: string, candidatePath: string): boolean {
+  const normalizedRoot = resolve(rootPath);
+  const normalizedCandidate = resolve(candidatePath);
+  return (
+    normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(normalizedRoot + sep)
+  );
+}
 
 /**
  * Web 后台入口控制器
@@ -27,11 +35,11 @@ export class WebEntryController {
   @Get('*')
   serveWebApp(@Req() req: Request, @Res() res: Response) {
     const relativePath = req.path.replace(/^\/web/, '');
-    const publicWebPath = join(process.cwd(), 'public', 'web');
+    const publicWebPath = resolve(process.cwd(), 'public', 'web');
 
     if (relativePath.includes('.') && !relativePath.endsWith('.html')) {
-      const filePath = join(publicWebPath, relativePath);
-      if (existsSync(filePath)) {
+      const filePath = resolve(publicWebPath, `.${relativePath}`);
+      if (isPathInsideRoot(publicWebPath, filePath) && existsSync(filePath)) {
         return res.sendFile(filePath);
       }
     }

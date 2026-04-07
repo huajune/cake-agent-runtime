@@ -6,6 +6,14 @@ describe('buildInterviewBookingTool', () => {
     bookInterview: jest.fn(),
   };
 
+  const mockWebhookService = {
+    sendMessage: jest.fn().mockResolvedValue(true),
+  };
+
+  const mockCardBuilder = {
+    buildMarkdownCard: jest.fn().mockReturnValue({ msg_type: 'interactive' }),
+  };
+
   const mockContext: ToolBuildContext = {
     userId: 'user-1',
     corpId: 'corp-1',
@@ -28,7 +36,11 @@ describe('buildInterviewBookingTool', () => {
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const executeTool = async (input: Record<string, any>) => {
-    const builder = buildInterviewBookingTool(mockSpongeService as never);
+    const builder = buildInterviewBookingTool(
+      mockSpongeService as never,
+      mockWebhookService as never,
+      mockCardBuilder as never,
+    );
     const builtTool = builder(mockContext);
     return builtTool.execute(input as any, {
       toolCallId: 'test',
@@ -42,6 +54,7 @@ describe('buildInterviewBookingTool', () => {
     const result = await executeTool({ ...validInput, name: '' });
     expect(result.success).toBe(false);
     expect(result.error).toContain('姓名');
+    expect(mockWebhookService.sendMessage).not.toHaveBeenCalled();
   });
 
   it('should return error when education or health certificate status is missing', async () => {
@@ -87,6 +100,16 @@ describe('buildInterviewBookingTool', () => {
         educationId: 5,
       }),
     );
+    expect(mockCardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: '🎉 面试预约成功',
+        atAll: true,
+      }),
+    );
+    expect(mockWebhookService.sendMessage).toHaveBeenCalledWith(
+      'MESSAGE_NOTIFICATION',
+      expect.any(Object),
+    );
   });
 
   it('should handle SpongeService error', async () => {
@@ -96,5 +119,15 @@ describe('buildInterviewBookingTool', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('Network error');
+    expect(mockCardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: '⚠️ 面试预约失败',
+        atAll: true,
+      }),
+    );
+    expect(mockWebhookService.sendMessage).toHaveBeenCalledWith(
+      'MESSAGE_NOTIFICATION',
+      expect.any(Object),
+    );
   });
 });

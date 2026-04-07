@@ -34,7 +34,7 @@ export class ImageDescriptionService {
   constructor(
     private readonly completionService: CompletionService,
     private readonly chatSession: ChatSessionService,
-    private readonly feishuAlert: FeishuAlertService,
+    private readonly alertService: FeishuAlertService,
   ) {}
 
   /**
@@ -54,7 +54,7 @@ export class ImageDescriptionService {
 
       // 连续失败达到阈值时发送告警
       if (this.consecutiveFailures === this.ALERT_THRESHOLD) {
-        this.feishuAlert
+        this.alertService
           .sendSimpleAlert(
             '图片描述服务连续失败',
             `Vision 模型连续 ${this.ALERT_THRESHOLD} 次调用失败，图片消息无法被识别。\n最近错误: ${error.message}`,
@@ -84,7 +84,7 @@ export class ImageDescriptionService {
       );
 
       if (this.consecutiveFailures === this.ALERT_THRESHOLD) {
-        this.feishuAlert
+        this.alertService
           .sendSimpleAlert(
             '图片描述服务连续失败',
             `Vision 模型连续 ${this.ALERT_THRESHOLD} 次调用失败，图片消息无法被识别。\n最近错误: ${err.message}`,

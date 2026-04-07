@@ -77,10 +77,7 @@ export class TestSuiteController {
   async testChat(@Body() request: TestChatRequestDto) {
     return {
       success: true,
-      data: await this.executionService.executeTest({
-        ...request,
-        notifyBooking: request.notifyBooking ?? true,
-      }),
+      data: await this.executionService.executeTest(request),
     };
   }
 
@@ -95,10 +92,7 @@ export class TestSuiteController {
 
     try {
       handler.sendStart();
-      const stream = await this.executionService.executeTestStream({
-        ...request,
-        notifyBooking: request.notifyBooking ?? true,
-      });
+      const stream = await this.executionService.executeTestStream(request);
 
       stream.on('data', (chunk: Buffer) => handler.processChunk(chunk));
       stream.on('end', () => {
@@ -135,7 +129,6 @@ export class TestSuiteController {
         userId: request.userId,
         thinking: request.thinking,
         saveExecution: request.saveExecution ?? false,
-        notifyBooking: request.notifyBooking ?? true,
         messages: transportMessages,
       },
       normalizedRequest: {
@@ -144,7 +137,6 @@ export class TestSuiteController {
         userId: normalizedRequest.userId,
         thinking: normalizedRequest.thinking,
         saveExecution: normalizedRequest.saveExecution ?? false,
-        notifyBooking: normalizedRequest.notifyBooking ?? true,
         skipHistoryTrim: normalizedRequest.skipHistoryTrim ?? false,
         message: normalizedRequest.message,
         history: normalizedRequest.history,
