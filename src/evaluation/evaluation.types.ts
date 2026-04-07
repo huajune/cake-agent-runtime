@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 /**
  * Evaluation 模块类型定义
  *
@@ -48,13 +50,31 @@ export interface ConversationParseResult {
 /**
  * LLM 评估结果
  */
+export interface EvaluationDimensionResult {
+  /** 维度分数 (0-100) */
+  score: number;
+  /** 维度简评 */
+  reason: string;
+}
+
+export interface EvaluationDimensions {
+  factualAccuracy: EvaluationDimensionResult;
+  responseEfficiency: EvaluationDimensionResult;
+  processCompliance: EvaluationDimensionResult;
+  toneNaturalness: EvaluationDimensionResult;
+}
+
 export interface LlmEvaluationResult {
   /** 评估分数 (0-100) */
   score: number;
   /** 是否通过 (score >= 60) */
   passed: boolean;
+  /** 评估摘要 */
+  summary: string;
   /** 评估理由 */
   reason: string;
+  /** 多维评分明细 */
+  dimensions: EvaluationDimensions;
   /** 评估 ID（用于追踪） */
   evaluationId: string;
   /** Token 消耗 */
@@ -64,6 +84,39 @@ export interface LlmEvaluationResult {
     totalTokens: number;
   };
 }
+
+/**
+ * LLM 结构化评估输出。
+ *
+ * 只保留真正需要模型判断的字段：
+ * - `summary`
+ * - `dimensions`
+ *
+ * `score` 与 `passed` 由服务端根据维度权重统一推导，避免模型返回自相矛盾的数据。
+ */
+const EvaluationDimensionSchema = z.object({
+  score: z.number().int().min(0).max(100),
+  reason: z.string().min(1).max(80),
+});
+
+export const EvaluationStructuredOutputSchema = z.object({
+  summary: z.string().min(1).max(120),
+  dimensions: z.object({
+    factualAccuracy: EvaluationDimensionSchema,
+    responseEfficiency: EvaluationDimensionSchema,
+    processCompliance: EvaluationDimensionSchema,
+    toneNaturalness: EvaluationDimensionSchema,
+  }),
+});
+
+export type EvaluationStructuredOutput = z.infer<typeof EvaluationStructuredOutputSchema>;
+
+export const DefaultEvaluationDimensions: EvaluationDimensions = {
+  factualAccuracy: { score: 0, reason: '评估失败' },
+  responseEfficiency: { score: 0, reason: '评估失败' },
+  processCompliance: { score: 0, reason: '评估失败' },
+  toneNaturalness: { score: 0, reason: '评估失败' },
+};
 
 /**
  * 评估输入参数

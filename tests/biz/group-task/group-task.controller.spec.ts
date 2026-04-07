@@ -2,12 +2,18 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { HttpException, HttpStatus } from '@nestjs/common';
 import { GroupTaskController } from '@biz/group-task/group-task.controller';
 import { GroupTaskSchedulerService } from '@biz/group-task/services/group-task-scheduler.service';
+import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
+import { NotificationSenderService } from '@biz/group-task/services/notification-sender.service';
+import { CompletionService } from '@agent/completion.service';
 import { GroupTaskType } from '@biz/group-task/group-task.types';
 import { ApiTokenGuard } from '@infra/server/guards/api-token.guard';
 
 describe('GroupTaskController', () => {
   let controller: GroupTaskController;
   let mockSchedulerService: Partial<GroupTaskSchedulerService>;
+  const mockGroupResolverService = { findGroupByName: jest.fn() };
+  const mockNotificationSenderService = { sendToGroup: jest.fn(), sendTextToGroup: jest.fn() };
+  const mockCompletionService = { generateSimple: jest.fn() };
 
   beforeEach(async () => {
     mockSchedulerService = {
@@ -22,6 +28,9 @@ describe('GroupTaskController', () => {
           provide: GroupTaskSchedulerService,
           useValue: mockSchedulerService as unknown as GroupTaskSchedulerService,
         },
+        { provide: GroupResolverService, useValue: mockGroupResolverService },
+        { provide: NotificationSenderService, useValue: mockNotificationSenderService },
+        { provide: CompletionService, useValue: mockCompletionService },
       ],
     })
       .overrideGuard(ApiTokenGuard)

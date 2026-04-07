@@ -1,32 +1,19 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConfigService } from '@nestjs/config';
 import { TestExecutionService } from '@biz/test-suite/services/test-execution.service';
 import { TestExecutionRepository } from '@biz/test-suite/repositories/test-execution.repository';
 import { AgentRunnerService } from '@agent/runner.service';
-import { ContextService } from '@agent/context/context.service';
 import { ExecutionStatus } from '@biz/test-suite/enums/test.enum';
 import { TestChatRequestDto } from '@biz/test-suite/dto/test-chat.dto';
 import { MessageRole } from '@enums/message.enum';
-import { BookingDetectionService } from '@biz/message/services/booking-detection.service';
 
 describe('TestExecutionService', () => {
   let service: TestExecutionService;
   let loop: jest.Mocked<AgentRunnerService>;
   let executionRepository: jest.Mocked<TestExecutionRepository>;
 
-  const mockConfigService = {
-    get: jest.fn().mockReturnValue('https://api.example.com'),
-  };
-
   const mockLoop = {
     invoke: jest.fn(),
     stream: jest.fn(),
-  };
-
-  const mockContext = {
-    compose: jest.fn().mockResolvedValue({
-      systemPrompt: 'test system prompt',
-    }),
   };
 
   const mockExecutionRepository = {
@@ -35,10 +22,6 @@ describe('TestExecutionService', () => {
     create: jest.fn(),
     updateByBatchAndCase: jest.fn(),
     countCompletedByBatchId: jest.fn(),
-  };
-
-  const mockBookingDetection = {
-    handleBookingSuccessAsync: jest.fn().mockResolvedValue(undefined),
   };
 
   const makeSuccessResult = (text = 'Agent reply') => ({
@@ -51,11 +34,8 @@ describe('TestExecutionService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TestExecutionService,
-        { provide: ConfigService, useValue: mockConfigService },
         { provide: AgentRunnerService, useValue: mockLoop },
-        { provide: ContextService, useValue: mockContext },
         { provide: TestExecutionRepository, useValue: mockExecutionRepository },
-        { provide: BookingDetectionService, useValue: mockBookingDetection },
       ],
     }).compile();
 
@@ -214,29 +194,6 @@ describe('TestExecutionService', () => {
       });
     });
 
-    it('should trigger booking notification when notifyBooking is enabled', async () => {
-      mockLoop.invoke.mockResolvedValue({
-        ...makeSuccessResult(),
-        toolCalls: [
-          {
-            toolName: 'duliday_interview_booking',
-            args: { name: '张三' },
-            result: { success: true, message: '预约成功' },
-          },
-        ],
-      });
-
-      await service.executeTest({ ...baseRequest, notifyBooking: true, sessionId: 'sess-1' });
-
-      expect(mockBookingDetection.handleBookingSuccessAsync).toHaveBeenCalledWith(
-        expect.objectContaining({
-          chatId: 'sess-1',
-          contactName: 'user-001',
-          userId: 'user-001',
-          toolCalls: expect.any(Array),
-        }),
-      );
-    });
   });
 
   // ========== executeTestStream ==========
@@ -270,7 +227,7 @@ describe('TestExecutionService', () => {
       fromWebSpy.mockRestore();
     });
 
-    it('should pass onFinish callback when notifyBooking is enabled', async () => {
+    it('should not attach legacy booking callback to stream params', async () => {
       mockLoop.stream.mockResolvedValue({
         streamResult: { textStream: {} },
         entryStage: 'trust_building',
@@ -279,16 +236,12 @@ describe('TestExecutionService', () => {
       await service.executeTestStreamWithMeta({
         message: 'hello',
         userId: 'user-1',
-        notifyBooking: true,
         sessionId: 'sess-stream',
       });
 
-      expect(mockLoop.stream).toHaveBeenCalledWith(
-        expect.objectContaining({
-          sessionId: 'sess-stream',
-          onFinish: expect.any(Function),
-        }),
-      );
+      const runnerParams = mockLoop.stream.mock.calls[0][0];
+      expect(runnerParams.sessionId).toBe('sess-stream');
+      expect(runnerParams).not.toHaveProperty('onFinish');
     });
   });
 

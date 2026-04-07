@@ -38,6 +38,7 @@ describe('PartTimeJobStrategy', () => {
   const makeJob = (brand: string, category: string) => ({
     basicInfo: {
       brandName: brand,
+      projectName: brand,
       jobCategoryName: category,
       jobName: `${brand}-测试岗位`,
       jobNickName: '测试',
@@ -86,6 +87,23 @@ describe('PartTimeJobStrategy', () => {
       expect(mockBrandRotation.getNextBrand).toHaveBeenCalledWith('room-1', ['奥乐齐']);
       expect(result.hasData).toBe(true);
       expect(result.payload.brand).toBe('奥乐齐');
+    });
+
+    it('应兼容真实接口里扁平化的岗位分类字段', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJob('必胜客', '普通服务员'),
+          makeJob('奥乐齐', '理货员'),
+        ],
+        total: 2,
+      });
+      mockBrandRotation.getNextBrand.mockResolvedValue('必胜客');
+
+      const result = await strategy.fetchData(makeGroup());
+
+      expect(mockBrandRotation.getNextBrand).toHaveBeenCalledWith('room-1', ['必胜客']);
+      expect(result.hasData).toBe(true);
+      expect(result.payload.brand).toBe('必胜客');
     });
 
     it('无岗位时应返回 hasData=false', async () => {

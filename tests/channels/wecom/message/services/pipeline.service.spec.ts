@@ -4,12 +4,12 @@ import { MessagePipelineService } from '@wecom/message/services/pipeline.service
 import { MessageDeduplicationService } from '@wecom/message/services/deduplication.service';
 import { MessageFilterService } from '@wecom/message/services/filter.service';
 import { MessageDeliveryService } from '@wecom/message/services/delivery.service';
-import { BookingDetectionService } from '@biz/message/services/booking-detection.service';
 import { ImageDescriptionService } from '@wecom/message/services/image-description.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { AgentRunnerService } from '@agent/runner.service';
+import { WecomMessageObservabilityService } from '@wecom/message/services/wecom-message-observability.service';
 import { EnterpriseMessageCallbackDto } from '@wecom/message/message-callback.dto';
 import { DeliveryFailureError } from '@wecom/message/message.types';
 import { MessageType, ContactType, MessageSource } from '@enums/message-callback.enum';
@@ -36,10 +36,6 @@ describe('MessagePipelineService', () => {
     deliverReply: jest.fn(),
   };
 
-  const mockBookingDetectionService = {
-    handleBookingSuccessAsync: jest.fn(),
-  };
-
   const mockImageDescriptionService = {
     describeAndUpdateAsync: jest.fn(),
   };
@@ -62,8 +58,34 @@ describe('MessagePipelineService', () => {
     recordFailure: jest.fn(),
   };
 
-  const mockFeishuAlertService = {
+  const mockAlertService = {
     sendAlert: jest.fn(),
+  };
+
+  const mockWecomObservabilityService = {
+    startTrace: jest.fn(),
+    markHistoryStored: jest.fn(),
+    markImagePrepared: jest.fn(),
+    buildFailureMetadata: jest.fn().mockImplementation(
+      (_messageId: string, payload: { errorType?: string }) => ({
+        alertType: payload.errorType,
+      }),
+    ),
+    updateDispatch: jest.fn(),
+    markWorkerStart: jest.fn(),
+    buildSuccessMetadata: jest.fn().mockImplementation(
+      (_messageId: string, payload: { replyPreview?: string; replySegments?: number }) => ({
+        tokenUsage: 30,
+        replyPreview: payload.replyPreview,
+        replySegments: payload.replySegments,
+      }),
+    ),
+    markFallbackStart: jest.fn(),
+    markFallbackEnd: jest.fn(),
+    markAiStart: jest.fn(),
+    recordAgentRequest: jest.fn(),
+    recordAgentResult: jest.fn(),
+    markAiEnd: jest.fn(),
   };
 
   const validMessageData: EnterpriseMessageCallbackDto = {
@@ -92,12 +114,12 @@ describe('MessagePipelineService', () => {
         { provide: ChatSessionService, useValue: mockChatSessionService },
         { provide: MessageFilterService, useValue: mockFilterService },
         { provide: MessageDeliveryService, useValue: mockDeliveryService },
-        { provide: BookingDetectionService, useValue: mockBookingDetectionService },
         { provide: ImageDescriptionService, useValue: mockImageDescriptionService },
         { provide: AgentRunnerService, useValue: mockRunnerService },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: MessageTrackingService, useValue: mockMonitoringService },
-        { provide: FeishuAlertService, useValue: mockFeishuAlertService },
+        { provide: FeishuAlertService, useValue: mockAlertService },
+        { provide: WecomMessageObservabilityService, useValue: mockWecomObservabilityService },
       ],
     }).compile();
 
@@ -118,14 +140,13 @@ describe('MessagePipelineService', () => {
       failedSegments: 0,
       totalTime: 10,
     });
-    mockBookingDetectionService.handleBookingSuccessAsync.mockResolvedValue(undefined);
     mockRunnerService.invoke.mockResolvedValue({
       text: 'Reply from agent',
       steps: 1,
       usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
       toolCalls: [],
     });
-    mockFeishuAlertService.sendAlert.mockResolvedValue(undefined);
+    mockAlertService.sendAlert.mockResolvedValue(undefined);
   });
 
   it('should be defined', () => {
@@ -196,7 +217,7 @@ describe('MessagePipelineService', () => {
       expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-123');
     });
 
-    it('should forward tool calls to booking detection', async () => {
+    it('should still complete message processing when booking tool is used', async () => {
       mockRunnerService.invoke.mockResolvedValue({
         text: 'Reply from agent',
         steps: 1,
@@ -212,18 +233,12 @@ describe('MessagePipelineService', () => {
 
       await service.processSingleMessage(validMessageData);
 
-      expect(mockBookingDetectionService.handleBookingSuccessAsync).toHaveBeenCalledWith(
+      expect(mockDeliveryService.deliverReply).toHaveBeenCalledWith(
         expect.objectContaining({
-          chatId: 'chat-123',
-          contactName: 'Alice',
-          toolCalls: [
-            {
-              toolName: 'duliday_interview_booking',
-              args: { jobId: 100 },
-              result: { success: true, message: '预约成功' },
-            },
-          ],
+          content: 'Reply from agent',
         }),
+        expect.anything(),
+        true,
       );
     });
 

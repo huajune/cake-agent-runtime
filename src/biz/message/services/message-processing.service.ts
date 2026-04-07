@@ -40,7 +40,7 @@ export class MessageProcessingService {
   async getMessageProcessingRecords(query: {
     startDate?: string;
     endDate?: string;
-    status?: 'processing' | 'success' | 'failure';
+    status?: 'processing' | 'success' | 'failure' | 'timeout';
     chatId?: string;
     userName?: string;
     limit?: string;
@@ -110,7 +110,7 @@ export class MessageProcessingService {
   async getRecordsByTimestamps(options: {
     startTime?: number;
     endTime?: number;
-    status?: 'processing' | 'success' | 'failure';
+    status?: 'processing' | 'success' | 'failure' | 'timeout';
     limit?: number;
     offset?: number;
   }) {

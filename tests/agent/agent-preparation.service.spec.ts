@@ -115,15 +115,25 @@ describe('AgentPreparationService', () => {
       'invoke',
     );
 
-    expect(mockMemoryService.onTurnStart).toHaveBeenCalledWith('corp-1', 'user-1', 'sess-1', [
-      { role: 'user', content: '当前用户消息' },
-    ]);
-    expect(mockContext.compose).toHaveBeenCalledWith({
-      scenario: 'candidate-consultation',
-      currentStage: 'job_consultation',
-      memoryBlock: expect.stringContaining('[用户档案]'),
-      strategySource: 'testing',
-    });
+    expect(mockMemoryService.onTurnStart).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      'sess-1',
+      [{ role: 'user', content: '当前用户消息' }],
+      { includeShortTerm: true },
+    );
+    expect(mockContext.compose).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scenario: 'candidate-consultation',
+        currentStage: 'job_consultation',
+        memoryBlock: expect.stringContaining('[用户档案]'),
+        strategySource: 'testing',
+        sessionFacts: expect.objectContaining({
+          preferences: expect.objectContaining({ city: '上海' }),
+        }),
+        highConfidenceFacts: null,
+      }),
+    );
     expect(mockContext.compose.mock.calls[0][0].memoryBlock).toContain('[会话记忆]');
     expect(result.finalPrompt).toContain('SYSTEM_PROMPT');
     expect(result.finalPrompt).toContain('[用户档案]');
@@ -178,9 +188,13 @@ describe('AgentPreparationService', () => {
       'invoke',
     );
 
-    expect(mockMemoryService.onTurnStart).toHaveBeenCalledWith('corp-1', 'user-1', 'sess-1', [
-      { role: 'user', content: '最后消息' },
-    ]);
+    expect(mockMemoryService.onTurnStart).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      'sess-1',
+      [{ role: 'user', content: '最后消息' }],
+      { includeShortTerm: false },
+    );
     expect(mockInputGuard.detectMessages).toHaveBeenCalledWith([
       { role: 'user', content: '最后消息' },
     ]);
@@ -211,68 +225,16 @@ describe('AgentPreparationService', () => {
       'invoke',
     );
 
-    expect(mockMemoryService.onTurnStart).toHaveBeenCalledWith('corp-1', 'user-1', 'sess-1', [
-      { role: 'user', content: '来一份' },
-    ]);
-  });
-
-  it('should render high-confidence facts as a separate runtime hints block', async () => {
-    mockMemoryService.onTurnStart.mockResolvedValue({
-      shortTerm: {
-        messageWindow: [{ role: 'user', content: '来一份' }],
-      },
-      sessionMemory: null,
-      highConfidenceFacts: {
-        interview_info: {
-          name: null,
-          phone: null,
-          gender: null,
-          age: null,
-          applied_store: null,
-          applied_position: null,
-          interview_time: null,
-          is_student: null,
-          education: null,
-          has_health_certificate: null,
-        },
-        preferences: {
-          brands: ['来伊份'],
-          salary: null,
-          position: null,
-          schedule: null,
-          city: null,
-          district: null,
-          location: null,
-          labor_form: null,
-        },
-        reasoning: '品牌别名识别',
-      },
-      longTerm: { profile: null },
-      procedural: {
-        currentStage: 'trust_building',
-        fromStage: null,
-        advancedAt: null,
-        reason: null,
-      },
-    });
-
-    const result = await service.prepare(
-      {
-        userMessage: '来一份',
-        userId: 'user-1',
-        corpId: 'corp-1',
-        sessionId: 'sess-1',
-      },
-      'invoke',
+    expect(mockMemoryService.onTurnStart).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      'sess-1',
+      [{ role: 'user', content: '来一份' }],
+      { includeShortTerm: false },
     );
-
-    expect(result.finalPrompt).toContain('[本轮高置信线索]');
-    expect(result.finalPrompt).toContain('仅用于理解本轮意图');
-    expect(result.finalPrompt).toContain('意向品牌: 来伊份');
-    expect(result.finalPrompt).not.toContain('[会话记忆]\n\n## 候选人已知信息\n- 意向品牌: 来伊份');
   });
 
-  it('should move conflicting high-confidence facts into pending confirmation hints', async () => {
+  it('should pass raw session and high-confidence facts to ContextService for TurnHintsSection', async () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: {
         messageWindow: [{ role: 'user', content: '我在北京，来一份有吗' }],
@@ -280,10 +242,7 @@ describe('AgentPreparationService', () => {
       sessionMemory: {
         facts: {
           ...FALLBACK_EXTRACTION,
-          preferences: {
-            ...FALLBACK_EXTRACTION.preferences,
-            city: '上海',
-          },
+          preferences: { ...FALLBACK_EXTRACTION.preferences, city: '上海' },
         },
         lastCandidatePool: null,
         presentedJobs: null,
@@ -307,7 +266,7 @@ describe('AgentPreparationService', () => {
       },
     });
 
-    const result = await service.prepare(
+    await service.prepare(
       {
         userMessage: '我在北京，来一份有吗',
         userId: 'user-1',
@@ -317,17 +276,13 @@ describe('AgentPreparationService', () => {
       'invoke',
     );
 
-    expect(result.finalPrompt).toContain('[本轮高置信线索]');
-    expect(result.finalPrompt).toContain('[本轮待确认线索]');
-    expect(result.finalPrompt).toContain('意向品牌: 来伊份');
-    expect(result.finalPrompt).toContain('意向城市: 北京');
-
-    const highConfidenceIndex = result.finalPrompt.indexOf('[本轮高置信线索]');
-    const pendingIndex = result.finalPrompt.indexOf('[本轮待确认线索]');
-    const cityIndex = result.finalPrompt.indexOf('意向城市: 北京');
-    expect(highConfidenceIndex).toBeGreaterThan(-1);
-    expect(pendingIndex).toBeGreaterThan(highConfidenceIndex);
-    expect(cityIndex).toBeGreaterThan(pendingIndex);
+    const composeArgs = mockContext.compose.mock.calls[0][0];
+    expect(composeArgs.sessionFacts.preferences.city).toBe('上海');
+    expect(composeArgs.highConfidenceFacts.preferences.city).toBe('北京');
+    expect(composeArgs.highConfidenceFacts.preferences.brands).toEqual(['来伊份']);
+    // memoryBlock 不再包含本轮线索，交由 TurnHintsSection 渲染。
+    expect(composeArgs.memoryBlock).not.toContain('[本轮高置信线索]');
+    expect(composeArgs.memoryBlock).not.toContain('[本轮待确认线索]');
   });
 
   it('should append guard suffix and alert when input is unsafe', async () => {

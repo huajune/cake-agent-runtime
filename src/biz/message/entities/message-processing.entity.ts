@@ -21,6 +21,7 @@ export interface MessageProcessingDbRecord {
   ai_start_at?: number;
   ai_end_at?: number;
   ai_duration?: number;
+  ttft_ms?: number | string;
   send_duration?: number;
   tools?: string[];
   token_usage?: number;

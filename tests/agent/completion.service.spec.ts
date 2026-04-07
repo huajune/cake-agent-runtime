@@ -8,11 +8,15 @@ import { ModelRole } from '@providers/types';
 jest.mock('ai', () => ({
   generateText: jest.fn(),
   ModelMessage: {},
+  Output: {
+    object: jest.fn().mockImplementation((opts: unknown) => opts),
+  },
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { generateText } = require('ai');
+const { generateText, Output } = require('ai');
 const mockGenerateText = generateText as jest.MockedFunction<typeof generateText>;
+const mockOutput = Output.object as jest.MockedFunction<typeof Output.object>;
 
 describe('CompletionService', () => {
   let service: CompletionService;
@@ -193,6 +197,61 @@ describe('CompletionService', () => {
       });
 
       expect(mockRouter.resolve).toHaveBeenCalledWith('openai/gpt-4o');
+    });
+  });
+
+  describe('generateStructured', () => {
+    it('should call generateText with structured output config and return parsed object', async () => {
+      mockGenerateText.mockResolvedValue({
+        output: { score: 80, reason: '结构化成功' },
+        usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
+      });
+
+      const schema = require('zod').z.object({
+        score: require('zod').z.number(),
+        reason: require('zod').z.string(),
+      });
+
+      const result = await service.generateStructured({
+        systemPrompt: 'structured test',
+        messages: [{ role: 'user', content: 'hi' }],
+        schema,
+        outputName: 'EvalResult',
+      });
+
+      expect(mockOutput).toHaveBeenCalledWith(
+        expect.objectContaining({
+          schema,
+          name: 'EvalResult',
+        }),
+      );
+      expect(mockGenerateText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          output: expect.objectContaining({
+            schema,
+            name: 'EvalResult',
+          }),
+        }),
+      );
+      expect(result.object).toEqual({ score: 80, reason: '结构化成功' });
+    });
+
+    it('should throw when structured output is missing', async () => {
+      const schema = require('zod').z.object({
+        score: require('zod').z.number(),
+      });
+      mockGenerateText.mockResolvedValue({
+        output: null,
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      });
+
+      await expect(
+        service.generateStructured({
+          systemPrompt: 'structured test',
+          messages: [{ role: 'user', content: 'hi' }],
+          schema,
+        }),
+      ).rejects.toThrow('No structured output returned');
     });
   });
 });

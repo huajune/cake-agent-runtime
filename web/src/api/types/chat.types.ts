@@ -105,17 +105,21 @@ export interface AgentInvocationRecord {
 
 export interface MessageRecord {
   messageId?: string;
-  receivedAt: string;
+  receivedAt: string | number;
+  userId?: string;
   userName?: string;
+  managerName?: string;
   chatId: string;
   messagePreview?: string;
   replyPreview?: string;
   totalDuration: number;
   aiDuration?: number;
+  ttftMs?: number;
   sendDuration?: number;
   queueDuration?: number;
+  prepDuration?: number;
   replySegments?: number;
-  status: 'success' | 'failed' | 'failure' | 'processing';
+  status: 'success' | 'failed' | 'failure' | 'processing' | 'timeout';
   error?: string;
   scenario?: string;
   tools?: string[];
@@ -123,4 +127,6 @@ export interface MessageRecord {
   isFallback?: boolean;
   fallbackSuccess?: boolean;
   agentInvocation?: AgentInvocationRecord;
+  batchId?: string;
+  isPrimary?: boolean;
 }

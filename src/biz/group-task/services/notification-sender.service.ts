@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
 import { FeishuWebhookService } from '@infra/feishu/services/webhook.service';
+import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
 import {
   GroupContext,
   GroupTaskType,
@@ -21,7 +22,7 @@ const MINIPROGRAM_DEFAULTS = {
  * 通知发送服务
  *
  * 使用小组级 API 发送消息（_apiType: 'group'，用 chatId）。
- * 飞书通知复用 FeishuWebhookService（INTERVIEW_BOOKING 类型，自带签名）。
+ * 飞书通知统一走“消息通知群”发送服务。
  */
 @Injectable()
 export class NotificationSenderService {
@@ -35,6 +36,7 @@ export class NotificationSenderService {
     private readonly configService: ConfigService,
     private readonly messageSenderService: MessageSenderService,
     private readonly webhookService: FeishuWebhookService,
+    private readonly cardBuilder: FeishuCardBuilderService,
   ) {
     this.miniprogramAppid = this.configService.get<string>('MINIPROGRAM_APPID', '');
     this.miniprogramUsername = this.configService.get<string>('MINIPROGRAM_USERNAME', '');
@@ -65,8 +67,8 @@ export class NotificationSenderService {
       payload: { text: message },
     });
 
-    // 2. 兼职群额外发送小程序卡片
-    if (type === GroupTaskType.PART_TIME_JOB) {
+    // 2. 兼职群额外发送小程序卡片（需要 appid + username 配置）
+    if (type === GroupTaskType.PART_TIME_JOB && this.miniprogramAppid && this.miniprogramUsername) {
       await this.delay(1000);
       await this.messageSenderService.sendMessage({
         _apiType: 'group',
@@ -86,6 +88,21 @@ export class NotificationSenderService {
   }
 
   /**
+   * 发送纯文本消息到目标群（跟随消息，不触发小程序卡片和飞书预览）
+   */
+  async sendTextToGroup(group: GroupContext, text: string, dryRun: boolean): Promise<void> {
+    if (dryRun) return;
+
+    await this.messageSenderService.sendMessage({
+      _apiType: 'group',
+      token: group.token,
+      chatId: group.chatId,
+      messageType: 7,
+      payload: { text },
+    });
+  }
+
+  /**
    * 发送飞书预览（试运行模式）
    */
   private async sendFeishuPreview(
@@ -97,18 +114,17 @@ export class NotificationSenderService {
     const typeName = GROUP_TASK_TYPE_NAMES[type] || type;
     const modeTag = dryRun ? '预览' : '已发送';
 
-    const card = this.webhookService.buildCard(
-      `📋 [${modeTag}] ${typeName} → ${group.groupName}`,
-      [
+    const card = this.cardBuilder.buildMarkdownCard({
+      title: `📋 [${modeTag}] ${typeName} → ${group.groupName}`,
+      content: [
         `**目标群**: ${group.groupName}`,
         `**标签**: ${group.tag} / ${group.city}${group.industry ? ` / ${group.industry}` : ''}`,
         '---',
         message,
       ].join('\n'),
-      'blue',
-    );
-
-    await this.webhookService.sendMessage('INTERVIEW_BOOKING', card);
+      color: 'blue',
+    });
+    await this.webhookService.sendMessage('MESSAGE_NOTIFICATION', card);
     this.logger.log(`[试运行] 已发送飞书预览: ${group.groupName}`);
   }
 
@@ -167,13 +183,12 @@ export class NotificationSenderService {
       }
     }
 
-    const card = this.webhookService.buildCard(
-      `📢 ${modeLabel}${typeName}通知 — ${statusText}`,
-      lines.join('\n'),
+    const card = this.cardBuilder.buildMarkdownCard({
+      title: `📢 ${modeLabel}${typeName}通知 — ${statusText}`,
+      content: lines.join('\n'),
       color,
-    );
-
-    await this.webhookService.sendMessage('INTERVIEW_BOOKING', card);
+    });
+    await this.webhookService.sendMessage('MESSAGE_NOTIFICATION', card);
   }
 
   private delay(ms: number): Promise<void> {

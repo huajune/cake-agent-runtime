@@ -15,11 +15,13 @@ import {
 import { createUIMessageStream, pipeUIMessageStreamToResponse, type UIMessageChunk } from 'ai';
 import { ApiTags, ApiOperation, ApiQuery, ApiParam } from '@nestjs/swagger';
 import { Response } from 'express';
+import { randomUUID } from 'node:crypto';
 import { TestExecutionService } from './services/test-execution.service';
 import { TestBatchService } from './services/test-batch.service';
 import { TestImportService } from './services/test-import.service';
 import { TestWriteBackService } from './services/test-write-back.service';
 import { ConversationTestService } from './services/conversation-test.service';
+import { AiStreamObservabilityService } from './services/ai-stream-observability.service';
 import { TestSuiteProcessor } from './test-suite.processor';
 import { FeishuBitableSyncService, AgentTestFeedback } from '@biz/feishu-sync/bitable-sync.service';
 import {
@@ -63,6 +65,7 @@ export class TestSuiteController {
     private readonly importService: TestImportService,
     private readonly writeBackService: TestWriteBackService,
     private readonly conversationTestService: ConversationTestService,
+    private readonly aiStreamObservability: AiStreamObservabilityService,
     private readonly testProcessor: TestSuiteProcessor,
     private readonly feishuBitableService: FeishuBitableSyncService,
   ) {}
@@ -74,10 +77,7 @@ export class TestSuiteController {
   async testChat(@Body() request: TestChatRequestDto) {
     return {
       success: true,
-      data: await this.executionService.executeTest({
-        ...request,
-        notifyBooking: request.notifyBooking ?? true,
-      }),
+      data: await this.executionService.executeTest(request),
     };
   }
 
@@ -92,10 +92,7 @@ export class TestSuiteController {
 
     try {
       handler.sendStart();
-      const stream = await this.executionService.executeTestStream({
-        ...request,
-        notifyBooking: request.notifyBooking ?? true,
-      });
+      const stream = await this.executionService.executeTestStream(request);
 
       stream.on('data', (chunk: Buffer) => handler.processChunk(chunk));
       stream.on('end', () => {
@@ -117,44 +114,131 @@ export class TestSuiteController {
   @Post('chat/ai-stream')
   @ApiOperation({ summary: '执行流式测试（Vercel AI SDK UI Message Stream 格式）' })
   async testChatAIStream(@Body() request: VercelAIChatRequestDto, @Res() res: Response) {
+    const transportMessages = Array.isArray(request.messages) ? request.messages : [];
     const { testRequest, messageText } =
       this.executionService.convertVercelAIToTestRequest(request);
+    const sessionId = testRequest.sessionId ?? `test-${randomUUID()}`;
+    const normalizedRequest = {
+      ...testRequest,
+      sessionId,
+    };
+    const requestBody = {
+      transportRequest: {
+        scenario: request.scenario,
+        sessionId: request.sessionId,
+        userId: request.userId,
+        thinking: request.thinking,
+        saveExecution: request.saveExecution ?? false,
+        messages: transportMessages,
+      },
+      normalizedRequest: {
+        scenario: normalizedRequest.scenario,
+        sessionId,
+        userId: normalizedRequest.userId,
+        thinking: normalizedRequest.thinking,
+        saveExecution: normalizedRequest.saveExecution ?? false,
+        skipHistoryTrim: normalizedRequest.skipHistoryTrim ?? false,
+        message: normalizedRequest.message,
+        history: normalizedRequest.history,
+        imageUrls: normalizedRequest.imageUrls,
+      },
+    };
+    const trace = this.aiStreamObservability.startTrace({
+      chatId: sessionId,
+      userId: normalizedRequest.userId,
+      scenario: normalizedRequest.scenario,
+      messageText,
+      requestBody,
+    });
+
     this.logger.log(
-      `[AI-Stream] 执行流式测试: ${messageText.substring(0, 50)}... (共 ${request.messages.length} 条消息)`,
+      `[AI-Stream] 执行流式测试: ${messageText.substring(0, 50)}... (共 ${transportMessages.length} 条消息)`,
     );
 
     try {
-      const { streamResult, entryStage } =
-        await this.executionService.executeTestStreamWithMeta(testRequest);
+      trace.markAiStart();
+      const { streamResult, entryStage, agentRequest } =
+        await this.executionService.executeTestStreamWithMeta(normalizedRequest);
+      if (agentRequest) {
+        trace.mergeRequestBody({ agentRequest });
+      }
+      trace.markStreamReady(entryStage);
+      res.setHeader('X-Agent-Trace-Id', trace.messageId);
 
       // 包装流：注入元数据（入口阶段 + token usage）
       const uiStream = createUIMessageStream({
         execute: async ({ writer }) => {
-          // 在流开始前发送入口阶段信息，前端 onData 监听 type === 'data-entryStage'
-          if (entryStage) {
-            writer.write({
-              type: 'data-entryStage',
-              data: entryStage,
-            } as UIMessageChunk);
-          }
+          try {
+            // 在流开始前发送入口阶段信息，前端 onData 监听 type === 'data-entryStage'
+            if (entryStage) {
+              writer.write({
+                type: 'data-entryStage',
+                data: entryStage,
+              } as UIMessageChunk);
+            }
 
-          writer.merge(streamResult.toUIMessageStream({ sendReasoning: true }));
-          // streamResult.usage 在流完成后 resolve，确保 data-tokenUsage 在 finish 之前发出
-          const usage = await streamResult.usage;
-          writer.write({
-            type: 'data-tokenUsage',
-            data: {
-              inputTokens: usage.inputTokens,
-              outputTokens: usage.outputTokens,
+            trace.markResponsePipeStart();
+
+            const reader = streamResult.toUIMessageStream({ sendReasoning: true }).getReader();
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                trace.observeChunk(value);
+                writer.write(value);
+              }
+            } finally {
+              reader.releaseLock();
+            }
+
+            if (trace.hasStreamError()) {
+              const streamError = trace.getStreamErrorMessage() || 'AI stream returned error chunk';
+              writer.write({
+                type: 'data-observability',
+                data: trace.getClientPayload('failure', streamError),
+              } as UIMessageChunk);
+              trace.finalizeFailure(streamError);
+              return;
+            }
+
+            // streamResult.usage 在流完成后 resolve，确保 data-tokenUsage 在 finish 之前发出
+            const usage = await streamResult.usage;
+            trace.recordUsage({
+              inputTokens: usage.inputTokens ?? 0,
+              outputTokens: usage.outputTokens ?? 0,
               totalTokens: usage.totalTokens,
-            },
-          } as UIMessageChunk);
+            });
+            writer.write({
+              type: 'data-tokenUsage',
+              data: {
+                inputTokens: usage.inputTokens,
+                outputTokens: usage.outputTokens,
+                totalTokens: usage.totalTokens,
+              },
+            } as UIMessageChunk);
+
+            writer.write({
+              type: 'data-observability',
+              data: trace.getClientPayload('success'),
+            } as UIMessageChunk);
+
+            trace.finalizeSuccess();
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            writer.write({
+              type: 'data-observability',
+              data: trace.getClientPayload('failure', errorMessage),
+            } as UIMessageChunk);
+            trace.finalizeFailure(error);
+            throw error;
+          }
         },
       });
 
       pipeUIMessageStreamToResponse({ response: res, stream: uiStream });
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      trace.finalizeFailure(error);
       if (!res.headersSent) {
         res.setHeader('Content-Type', 'text/event-stream');
         res.flushHeaders();

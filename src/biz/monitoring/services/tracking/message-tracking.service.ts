@@ -322,6 +322,7 @@ export class MessageTrackingService implements OnModuleDestroy {
     record.isFallback = metadata?.isFallback ?? record.isFallback;
     record.fallbackSuccess = metadata?.fallbackSuccess ?? record.fallbackSuccess;
     record.alertType = metadata?.alertType ?? record.alertType;
+    record.agentInvocation = metadata?.agentInvocation ?? record.agentInvocation;
 
     // 更新 Redis 计数器
     const counterUpdates: Partial<MonitoringGlobalCounters> = { totalFailure: 1 };

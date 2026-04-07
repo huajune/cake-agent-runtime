@@ -14,7 +14,7 @@ interface SimpleRoomItem {
   wxid: string;
   topic: string;
   chatId: string;
-  botInfo: { wxid: string; nickName: string };
+  botInfo: { wxid: string; weixin: string; nickName: string };
   labels?: RoomLabel[];
   deleted?: boolean;
   memberCount?: number;
@@ -76,7 +76,7 @@ export class GroupResolverService implements OnModuleInit {
    * 规则：第一个标签 = 群类型，第二个 = 城市，第三个 = 行业（可选）
    */
   parseLabels(labels: RoomLabel[]): ParsedGroupTag | null {
-    if (!labels || labels.length < 2) return null;
+    if (!labels || labels.length === 0) return null;
 
     const names = labels.map((l) => l.name);
     const type = names[0]; // 抢单群 | 兼职群 | 店长群
@@ -85,9 +85,12 @@ export class GroupResolverService implements OnModuleInit {
     const validTypes = ['抢单群', '兼职群', '店长群'];
     if (!validTypes.includes(type)) return null;
 
+    // 店长群只需一级标签（不按城市分组），其他类型至少需要城市标签
+    if (names.length < 2 && type !== '店长群') return null;
+
     return {
       type,
-      city: names[1],
+      city: names[1] || '全国',
       industry: names[2],
     };
   }
@@ -184,18 +187,85 @@ export class GroupResolverService implements OnModuleInit {
           city: parsed.city,
           industry: parsed.industry,
           tag: parsed.type,
-          imBotId: room.botInfo?.wxid || '',
+          imBotId: room.botInfo?.weixin || '',
           token,
           chatId: room.chatId || '',
+          memberCount: room.memberCount,
         });
       }
 
-      // 分页判断
+      // 分页判断：用 total 驱动，不依赖单页返回数量（API 可能过滤已删除记录导致实际返回数 < pageSize）
       const page = responseData?.page || result?.page;
       const total = page?.total || 0;
       current++;
-      hasMore = rooms.length >= pageSize && current * pageSize < total;
+      hasMore = current * pageSize < total;
     }
+  }
+
+  /**
+   * 按群名搜索任意群（不要求有标签）
+   *
+   * 遍历所有小组 token 的群列表，按群名匹配（先精确，再模糊）。
+   * 用于测试端点向指定群发送消息。
+   */
+  async findGroupByName(groupName: string): Promise<GroupContext | null> {
+    const tokens = Object.values(this.groupTokenMap);
+    const allRooms: Array<{
+      token: string;
+      wxid: string;
+      topic: string;
+      chatId: string;
+      botWxid: string;
+      memberCount?: number;
+    }> = [];
+
+    for (const token of tokens) {
+      let current = 0;
+      const pageSize = 100;
+      let hasMore = true;
+
+      while (hasMore) {
+        const result = await this.roomService.getRoomSimpleList(token, current, pageSize);
+        const responseData = result?.data || result;
+        const rooms = responseData?.data || responseData || [];
+        if (!Array.isArray(rooms) || rooms.length === 0) break;
+
+        for (const room of rooms) {
+          if (room.deleted) continue;
+          allRooms.push({
+            token,
+            wxid: room.wxid,
+            topic: room.topic || '',
+            chatId: room.chatId || '',
+            botWxid: room.botInfo?.weixin || '',
+            memberCount: room.memberCount,
+          });
+        }
+
+        const page = responseData?.page || result?.page;
+        const total = page?.total || 0;
+        current++;
+        hasMore = current * pageSize < total;
+      }
+    }
+
+    // 先精确匹配，再模糊匹配
+    const match =
+      allRooms.find((r) => r.topic === groupName) ||
+      allRooms.find((r) => r.topic.includes(groupName));
+
+    if (!match) return null;
+
+    return {
+      imRoomId: match.wxid,
+      groupName: match.topic,
+      city: '测试',
+      tag: '测试',
+      imBotId: match.botWxid,
+      token: match.token,
+      chatId: match.chatId,
+      memberCount: match.memberCount,
+    };
   }
 
   /**

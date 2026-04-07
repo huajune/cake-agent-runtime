@@ -105,6 +105,25 @@ describe('SessionService', () => {
       expect(state.lastSessionActiveAt).toBe('2026-03-20T00:00:00Z');
     });
 
+    it('should ignore invalid persisted session state from Redis', async () => {
+      mockRedisStore.get.mockResolvedValue({
+        content: {
+          facts: 'not-an-object',
+          presentedJobs: [{ jobId: 'bad-id' }],
+        },
+      });
+
+      const state = await service.getSessionState('corp1', 'user1', 'session1');
+
+      expect(state).toEqual({
+        facts: null,
+        lastCandidatePool: null,
+        presentedJobs: null,
+        currentFocusJob: null,
+        invitedGroups: null,
+      });
+    });
+
     it('should deepMerge with existing facts', async () => {
       const existing: EntityExtractionResult = {
         ...FALLBACK_EXTRACTION,
@@ -335,8 +354,8 @@ describe('SessionService', () => {
       mockRedisStore.get.mockResolvedValue({
         content: {
           facts: {
-            interview_info: { name: '张三' },
-            preferences: {},
+            ...FALLBACK_EXTRACTION,
+            interview_info: { ...FALLBACK_EXTRACTION.interview_info, name: '张三' },
             reasoning: 'prev',
           },
         },
@@ -417,6 +436,16 @@ describe('SessionService', () => {
         86400,
         false,
       );
+    });
+
+    it('should validate persisted candidate pool shape before saving', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+
+      await expect(
+        service.saveLastCandidatePool('corp1', 'user1', 'sess1', [
+          { jobId: 'bad-id' } as unknown as any,
+        ]),
+      ).rejects.toThrow();
     });
 
     it('should filter out system messages', async () => {

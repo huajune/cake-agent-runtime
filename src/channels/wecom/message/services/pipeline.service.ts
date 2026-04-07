@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { AlertLevel } from '@infra/feishu/interfaces/interface';
-import { ALERT_RECEIVERS } from '@infra/feishu/constants/constants';
 import { maskApiKey } from '@infra/utils/string.util';
 import { ScenarioType } from '@enums/agent.enum';
 import { AgentRunnerService } from '@agent/runner.service';
@@ -14,8 +13,8 @@ import { MessageDeduplicationService } from './deduplication.service';
 import { MessageFilterService } from './filter.service';
 import { MessageDeliveryService } from './delivery.service';
 import { ImageDescriptionService } from './image-description.service';
+import { WecomMessageObservabilityService } from './wecom-message-observability.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
-import { BookingDetectionService } from '@biz/message/services/booking-detection.service';
 import { ChatMessageInput } from '@biz/message/types/message.types';
 
 // 导入工具和类型
@@ -28,6 +27,9 @@ import {
   AgentInvokeResult,
   FallbackMessageOptions,
   DeliveryFailureError,
+  toStorageContactType,
+  toStorageMessageSource,
+  toStorageMessageType,
 } from '../message.types';
 
 /**
@@ -64,14 +66,14 @@ export class MessagePipelineService {
     private readonly chatSession: ChatSessionService,
     private readonly filterService: MessageFilterService,
     private readonly deliveryService: MessageDeliveryService,
-    private readonly bookingDetection: BookingDetectionService,
     private readonly imageDescription: ImageDescriptionService,
+    private readonly wecomObservability: WecomMessageObservabilityService,
     // Agent 编排
     private readonly runner: AgentRunnerService,
     private readonly configService: ConfigService,
     // 监控和告警
     private readonly monitoringService: MessageTrackingService,
-    private readonly feishuAlertService: FeishuAlertService,
+    private readonly alertService: FeishuAlertService,
   ) {}
 
   // ========================================
@@ -119,22 +121,8 @@ export class MessagePipelineService {
       };
     }
 
-    // step 3: 写历史（含 historyOnly 分支）
-    await this.recordUserMessageToHistory(messageData, filterResult.content);
-
-    // step 3.5: 图片描述
-    // 需要提前写入 DB 的两种情况：
-    // 1. 主模型不支持 vision：Agent 看不到图，必须先补描述
-    // 2. historyOnly：当前轮不会走 Agent，必须先补描述
-    const imgUrl = MessageParser.extractImageUrl(messageData);
-    const chatModelId = this.configService.get<string>('AGENT_CHAT_MODEL') || '';
-    const shouldDescribeBeforeAgent =
-      imgUrl !== null && (filterResult.historyOnly || !supportsVision(chatModelId));
-    if (imgUrl && shouldDescribeBeforeAgent) {
-      await this.imageDescription.describeAndUpdateSync(messageData.messageId, imgUrl);
-    }
-
     if (filterResult.historyOnly) {
+      await this.recordUserMessageToHistory(messageData, filterResult.content);
       const parsed = MessageParser.parse(messageData);
       await this.deduplicationService.markMessageAsProcessedAsync(messageData.messageId);
       this.logger.log(
@@ -147,8 +135,39 @@ export class MessagePipelineService {
       };
     }
 
-    // step 4: 监控
-    this.recordMessageReceived(messageData);
+    // step 4: 监控（仅记录会进入 AI/自动回复链路的消息）
+    this.recordMessageReceived(messageData, filterResult.content);
+
+    try {
+      // step 3: 写历史
+      await this.recordUserMessageToHistory(messageData, filterResult.content);
+      this.wecomObservability.markHistoryStored(messageData.messageId);
+
+      // step 3.5: 图片描述
+      // 需要提前写入 DB 的情况：主模型不支持 vision
+      const imgUrl = MessageParser.extractImageUrl(messageData);
+      const chatModelId = this.configService.get<string>('AGENT_CHAT_MODEL') || '';
+      const shouldDescribeBeforeAgent = imgUrl !== null && !supportsVision(chatModelId);
+      if (imgUrl && shouldDescribeBeforeAgent) {
+        await this.imageDescription.describeAndUpdateSync(messageData.messageId, imgUrl);
+        this.wecomObservability.markImagePrepared(messageData.messageId);
+      }
+    } catch (error) {
+      const parsed = MessageParser.parse(messageData);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const failureMetadata = this.wecomObservability.buildFailureMetadata(messageData.messageId, {
+        scenario: MessageParser.determineScenario(),
+        errorType: 'message',
+        errorMessage,
+        isPrimary: true,
+        extraResponse: {
+          phase: 'pre-dispatch',
+          chatId: parsed.chatId,
+        },
+      });
+      this.monitoringService.recordFailure(messageData.messageId, errorMessage, failureMetadata);
+      throw error;
+    }
 
     return {
       shouldDispatch: true,
@@ -250,18 +269,27 @@ export class MessagePipelineService {
   /**
    * step 4: 记录监控
    */
-  private recordMessageReceived(messageData: EnterpriseMessageCallbackDto): void {
+  private recordMessageReceived(
+    messageData: EnterpriseMessageCallbackDto,
+    contentFromFilter?: string,
+  ): void {
     const parsed = MessageParser.parse(messageData);
     const scenario = MessageParser.determineScenario();
-    this.monitoringService.recordMessageReceived(
-      messageData.messageId,
-      parsed.chatId,
-      parsed.imContactId,
-      parsed.contactName,
-      parsed.content,
-      { scenario },
-      parsed.managerName,
-    );
+    const content = contentFromFilter ?? parsed.content ?? '';
+    const imageUrl = MessageParser.extractImageUrl(messageData);
+    this.wecomObservability.startTrace({
+      messageId: messageData.messageId,
+      chatId: parsed.chatId,
+      userId: parsed.imContactId,
+      userName: parsed.contactName,
+      managerName: parsed.managerName,
+      scenario,
+      content,
+      imageCount: imageUrl ? 1 : 0,
+      messageType: toStorageMessageType(messageData.messageType),
+      messageSource: toStorageMessageSource(messageData.source),
+      contactType: toStorageContactType(messageData.contactType),
+    });
   }
 
   // ========================================
@@ -277,6 +305,8 @@ export class MessagePipelineService {
     const scenario = MessageParser.determineScenario();
 
     try {
+      this.wecomObservability.updateDispatch(messageId, 'direct');
+      this.wecomObservability.markWorkerStart(messageId);
       await this.processMessageCore({
         primaryMessage: messageData,
         messageId,
@@ -293,7 +323,12 @@ export class MessagePipelineService {
         : this.isDeliveryError(error)
           ? 'delivery'
           : 'message';
-      await this.handleProcessingError(error, parsed, { errorType, scenario });
+      await this.handleProcessingError(error, parsed, {
+        errorType,
+        scenario,
+        isPrimary: true,
+        dispatchMode: 'direct',
+      });
     }
   }
 
@@ -335,7 +370,13 @@ export class MessagePipelineService {
         : this.isDeliveryError(error)
           ? 'delivery'
           : 'merge';
-      await this.handleProcessingError(error, parsed, { errorType, scenario });
+      await this.handleProcessingError(error, parsed, {
+        errorType,
+        scenario,
+        isPrimary: true,
+        batchId,
+        dispatchMode: 'merged',
+      });
 
       // 标记其他消息为失败
       const handledMessageId = parsed.messageId;
@@ -344,10 +385,21 @@ export class MessagePipelineService {
           .filter((m) => m.messageId !== handledMessageId)
           .map(async (message) => {
             await this.deduplicationService.markMessageAsProcessedAsync(message.messageId);
+            const metadata = this.wecomObservability.buildFailureMetadata(message.messageId, {
+              scenario,
+              errorType,
+              errorMessage: error.message || '聚合处理失败',
+              isPrimary: false,
+              batchId,
+              extraResponse: {
+                phase: 'merged-secondary',
+                primaryMessageId: handledMessageId,
+              },
+            });
             this.monitoringService.recordFailure(
               message.messageId,
               error.message || '聚合处理失败',
-              { scenario, alertType: errorType },
+              metadata,
             );
           }),
       );
@@ -411,6 +463,8 @@ export class MessagePipelineService {
       corpId: this.resolveCorpId(params.primaryMessage),
       imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
       imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
+      botUserId: params.primaryMessage.botUserId,
+      botImId: params.primaryMessage.imBotId,
     });
 
     this.logger.log(
@@ -430,28 +484,23 @@ export class MessagePipelineService {
       });
     }
 
-    // 4. 异步检测预约成功并处理通知（不阻塞主流程）
-    this.bookingDetection.handleBookingSuccessAsync({
-      chatId,
-      contactName,
-      userId: parsed.imContactId,
-      managerId: parsed.imBotId,
-      managerName: parsed.managerName,
-      toolCalls: agentResult.toolCalls,
-    });
-
-    // 5. 发送回复
+    // 4. 发送回复
     const deliveryContext = this.buildDeliveryContext(parsed);
     const deliveryResult = await this.deliveryService.deliverReply(
       agentResult.reply,
       deliveryContext,
-      isSingleMessage,
+      true,
     );
 
-    // 6. 构建成功记录的元数据
-    const successMetadata = this.buildSuccessMetadata(agentResult, deliveryResult, scenario);
+    // 5. 构建成功记录的元数据
+    const successMetadata = this.buildSuccessMetadata(
+      messageId,
+      agentResult,
+      deliveryResult,
+      scenario,
+    );
 
-    // 7. 标记消息为已处理并记录成功
+    // 6. 标记消息为已处理并记录成功
     if (batchContext) {
       // 聚合路径：批量标记所有消息
       await this.markBatchMessagesSuccess(
@@ -473,24 +522,20 @@ export class MessagePipelineService {
    * 构建成功记录的元数据
    */
   private buildSuccessMetadata(
+    messageId: string,
     agentResult: AgentInvokeResult,
     deliveryResult: { segmentCount: number },
     scenario: ScenarioType,
   ): Record<string, unknown> {
-    // 提取工具名称列表
-    const tools =
-      agentResult.toolCalls && agentResult.toolCalls.length > 0
-        ? agentResult.toolCalls.map((tc) => tc.toolName)
-        : undefined;
-
-    return {
+    return this.wecomObservability.buildSuccessMetadata(messageId, {
       scenario,
-      tokenUsage: agentResult.reply.usage?.totalTokens ?? 0,
+      isPrimary: true,
       replyPreview: agentResult.reply.content,
       replySegments: deliveryResult.segmentCount,
-      isFallback: agentResult.isFallback,
-      tools,
-    };
+      extraResponse: {
+        processingTimeMs: agentResult.processingTime,
+      },
+    }) as Record<string, unknown>;
   }
 
   /**
@@ -515,16 +560,28 @@ export class MessagePipelineService {
 
         await this.deduplicationService.markMessageAsProcessedAsync(message.messageId);
 
-        // 所有消息都共享相同的 AI 响应元数据
-        // isPrimary 标记哪条消息实际调用了 Agent
-        this.monitoringService.recordSuccess(message.messageId, {
-          ...baseMetadata,
-          batchId,
-          isPrimary: message.messageId === primaryMessageId,
-        });
+        const isPrimary = message.messageId === primaryMessageId;
+        this.wecomObservability.updateDispatch(message.messageId, 'merged', batchId);
+        const metadata = isPrimary
+          ? {
+              ...baseMetadata,
+              batchId,
+              isPrimary: true,
+            }
+          : this.wecomObservability.buildSuccessMetadata(message.messageId, {
+              scenario: ((baseMetadata.scenario as string) ||
+                'candidate-consultation') as ScenarioType,
+              isPrimary: false,
+              batchId,
+              extraResponse: {
+                phase: 'merged-secondary',
+                primaryMessageId,
+              },
+            });
+        this.monitoringService.recordSuccess(message.messageId, metadata);
 
         this.logger.debug(
-          `[聚合处理][${chatId}] 已标记消息 ${index + 1}/${messages.length}: ${message.messageId} (isPrimary=${message.messageId === primaryMessageId})`,
+          `[聚合处理][${chatId}] 已标记消息 ${index + 1}/${messages.length}: ${message.messageId} (isPrimary=${isPrimary})`,
         );
       }),
     );
@@ -566,7 +623,13 @@ export class MessagePipelineService {
   private async handleProcessingError(
     error: unknown,
     parsed: ReturnType<typeof MessageParser.parse>,
-    options?: { errorType?: AlertErrorType; scenario?: ScenarioType },
+    options?: {
+      errorType?: AlertErrorType;
+      scenario?: ScenarioType;
+      isPrimary?: boolean;
+      batchId?: string;
+      dispatchMode?: 'direct' | 'merged';
+    },
   ): Promise<void> {
     const {
       chatId,
@@ -581,16 +644,11 @@ export class MessagePipelineService {
     } = parsed;
     const scenario = options?.scenario || MessageParser.determineScenario();
     const errorType: AlertErrorType = options?.errorType || 'message';
+    const isPrimary = options?.isPrimary ?? true;
     const errorMessage = error instanceof Error ? error.message : String(error);
     const deliveryError = this.isDeliveryError(error) ? error : null;
 
     this.logger.error(`[${contactName}] 消息处理失败 [${messageId}]: ${errorMessage}`);
-
-    // 记录失败
-    this.monitoringService.recordFailure(messageId, errorMessage, {
-      scenario,
-      alertType: errorType,
-    });
 
     // 发送告警（根据异常类型映射告警级别）
     const fallbackMessage = this.getFallbackMessage();
@@ -601,7 +659,7 @@ export class MessagePipelineService {
     const maskedApiKey = maskApiKey(apiKey);
 
     if (!deliveryError) {
-      this.feishuAlertService
+      this.alertService
         .sendAlert({
           errorType,
           error: error instanceof Error ? error : new Error(errorMessage),
@@ -614,8 +672,7 @@ export class MessagePipelineService {
           level: alertLevel,
           // 添加 API Key 脱敏信息，便于排查 401 问题
           extra: maskedApiKey ? { apiKey: maskedApiKey } : undefined,
-          // 注意：此处是异常处理告警，不需要 @ 琪琪
-          // 只有 sendFallbackAlert（Agent 降级响应）才需要 @ 琪琪人工介入
+          // 注意：此处是异常处理告警，不需要 @ 人
         })
         .catch((alertError) => {
           this.logger.error(`告警发送失败: ${alertError.message}`);
@@ -624,6 +681,19 @@ export class MessagePipelineService {
 
     if ((deliveryError?.result.deliveredSegments ?? 0) > 0) {
       this.logger.warn(`[${contactName}] 回复已部分发送，跳过降级回复 [${messageId}]`);
+      const failureMetadata = this.wecomObservability.buildFailureMetadata(messageId, {
+        scenario,
+        errorType,
+        errorMessage,
+        isPrimary,
+        batchId: options?.batchId,
+        extraResponse: {
+          phase: 'delivery-partial',
+          dispatchMode: options?.dispatchMode,
+          delivery: deliveryError?.result,
+        },
+      });
+      this.monitoringService.recordFailure(messageId, errorMessage, failureMetadata);
       return;
     }
 
@@ -640,18 +710,45 @@ export class MessagePipelineService {
         _apiType,
       };
 
+      this.wecomObservability.markFallbackStart(messageId, fallbackMessage);
       await this.deliveryService.deliverReply({ content: fallbackMessage }, deliveryContext, false);
+      this.wecomObservability.markFallbackEnd(messageId, {
+        success: true,
+        deliveredSegments: 1,
+        failedSegments: 0,
+      });
 
       this.logger.log(`[${contactName}] 已发送降级回复: "${fallbackMessage}"`);
 
       // 标记消息为已处理
       await this.deduplicationService.markMessageAsProcessedAsync(messageId);
+
+      const failureMetadata = this.wecomObservability.buildFailureMetadata(messageId, {
+        scenario,
+        errorType,
+        errorMessage,
+        isPrimary,
+        batchId: options?.batchId,
+        extraResponse: {
+          phase: 'fallback-delivered',
+          dispatchMode: options?.dispatchMode,
+        },
+      });
+      this.monitoringService.recordFailure(messageId, errorMessage, failureMetadata);
     } catch (sendError) {
       const sendErrorMessage = sendError instanceof Error ? sendError.message : String(sendError);
+      const deliveryFailure = this.isDeliveryError(sendError) ? sendError.result : undefined;
+      this.wecomObservability.markFallbackEnd(messageId, {
+        success: false,
+        totalTime: deliveryFailure?.totalTime,
+        deliveredSegments: deliveryFailure?.deliveredSegments,
+        failedSegments: deliveryFailure?.failedSegments,
+        error: sendErrorMessage,
+      });
       this.logger.error(`[${contactName}] 发送降级回复失败: ${sendErrorMessage}`);
 
       // 🚨 CRITICAL: 用户完全无法收到任何回复，必须立即告警
-      this.feishuAlertService
+      this.alertService
         .sendAlert({
           errorType: 'delivery',
           error: sendError instanceof Error ? sendError : new Error(sendErrorMessage),
@@ -671,6 +768,20 @@ export class MessagePipelineService {
         .catch((alertError: Error) => {
           this.logger.error(`CRITICAL 告警发送失败: ${alertError.message}`);
         });
+
+      const failureMetadata = this.wecomObservability.buildFailureMetadata(messageId, {
+        scenario,
+        errorType,
+        errorMessage,
+        isPrimary,
+        batchId: options?.batchId,
+        extraResponse: {
+          phase: 'fallback-failed',
+          fallbackSendError: sendErrorMessage,
+          dispatchMode: options?.dispatchMode,
+        },
+      });
+      this.monitoringService.recordFailure(messageId, errorMessage, failureMetadata);
     }
   }
 
@@ -734,6 +845,8 @@ export class MessagePipelineService {
     corpId: string;
     imageUrls?: string[];
     imageMessageIds?: string[];
+    botUserId?: string;
+    botImId?: string;
   }): Promise<AgentInvokeResult> {
     const {
       userMessage,
@@ -749,7 +862,17 @@ export class MessagePipelineService {
 
     try {
       if (recordMonitoring && messageId) {
-        this.monitoringService.recordAiStart(messageId);
+        this.wecomObservability.markAiStart(messageId);
+        this.wecomObservability.recordAgentRequest(messageId, {
+          sessionId: params.sessionId,
+          userId,
+          corpId,
+          scenario,
+          userMessage,
+          imageUrls: params.imageUrls,
+          imageMessageIds: params.imageMessageIds,
+          strategySource: 'released',
+        });
         shouldRecordAiEnd = true;
       }
 
@@ -761,6 +884,8 @@ export class MessagePipelineService {
         scenario,
         imageUrls: params.imageUrls,
         imageMessageIds: params.imageMessageIds,
+        botUserId: params.botUserId,
+        botImId: params.botImId,
       });
 
       const processingTime = Date.now() - startTime;
@@ -774,18 +899,23 @@ export class MessagePipelineService {
         `Agent 调用成功，耗时 ${processingTime}ms，tokens=${result.usage?.totalTokens || 'N/A'}`,
       );
 
-      return {
-        reply: { content, usage: result.usage },
+      const invokeResult = {
+        reply: { content, reasoning: result.reasoning, usage: result.usage },
         isFallback: false,
         processingTime,
         toolCalls: result.toolCalls,
       };
+      if (recordMonitoring && messageId) {
+        this.wecomObservability.recordAgentResult(messageId, invokeResult);
+      }
+
+      return invokeResult;
     } catch (error) {
       this.logger.error(`Agent 调用异常: ${error.message}`);
       throw error;
     } finally {
       if (shouldRecordAiEnd && messageId) {
-        this.monitoringService.recordAiEnd(messageId);
+        this.wecomObservability.markAiEnd(messageId);
       }
     }
   }
@@ -832,20 +962,19 @@ export class MessagePipelineService {
 
     this.logger.warn(`[${contactName}] Agent 降级响应，原因: ${fallbackReason}，需要人工介入`);
 
-    this.feishuAlertService
+    this.alertService
       .sendAlert({
-        errorType: 'agent',
-        message: fallbackReason,
-        conversationId: chatId,
-        userMessage,
+        errorType: 'agent_fallback',
+        title: '需要人工介入',
+        error: new Error(fallbackReason),
         contactName,
-        apiEndpoint: '/api/v1/chat',
-        scenario,
+        userMessage,
         fallbackMessage,
-        level: AlertLevel.ERROR,
-        title: '🆘 蛋糕出错了，需人工介入',
-        // 消息降级场景 @ 琪琪，需要人工介入回复用户
-        atUsers: [...ALERT_RECEIVERS.FALLBACK],
+        scenario,
+        conversationId: chatId,
+        apiEndpoint: '/api/v1/chat',
+        level: AlertLevel.WARNING,
+        atAll: true,
       })
       .catch((alertError) => {
         this.logger.error(`降级告警发送失败: ${alertError.message}`);

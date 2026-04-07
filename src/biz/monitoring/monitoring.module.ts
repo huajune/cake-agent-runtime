@@ -21,7 +21,7 @@ import { AnalyticsAlertService } from './services/analytics/analytics-alert.serv
 import { DataCleanupService } from './services/cleanup/data-cleanup.service';
 
 // Controllers
-import { AnalyticsController, WebController } from './monitoring.controller';
+import { AnalyticsController } from './monitoring.controller';
 
 // Repositories
 import { MonitoringRecordRepository } from './repositories/record.repository';
@@ -46,7 +46,7 @@ import { MonitoringErrorLogRepository } from './repositories/error-log.repositor
     UserModule,
     HostingConfigModule,
   ],
-  controllers: [AnalyticsController, WebController],
+  controllers: [AnalyticsController],
   providers: [
     // Monitoring Repositories (biz message repos come from BizMessageModule)
     MonitoringRecordRepository,

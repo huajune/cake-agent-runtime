@@ -56,9 +56,14 @@ export class MemoryLifecycleService {
     userId: string,
     sessionId: string,
     currentMessages?: MemoryTurnStartMessage[],
+    options?: {
+      includeShortTerm?: boolean;
+    },
   ): Promise<AgentMemoryContext> {
+    const includeShortTerm = options?.includeShortTerm ?? true;
+
     const [shortTermMessages, sessionState, proceduralState, profile] = await Promise.all([
-      this.shortTerm.getMessages(sessionId),
+      includeShortTerm ? this.shortTerm.getMessages(sessionId) : Promise.resolve([]),
       this.session.getSessionState(corpId, userId, sessionId),
       this.procedural.get(corpId, userId, sessionId),
       this.longTerm.getProfile(corpId, userId),

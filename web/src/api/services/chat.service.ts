@@ -98,7 +98,7 @@ export async function getSlowestMessages(options?: {
 export async function getMessageProcessingRecords(options?: {
   startDate?: string;
   endDate?: string;
-  status?: 'processing' | 'success' | 'failure';
+  status?: 'processing' | 'success' | 'failure' | 'timeout';
   chatId?: string;
   userName?: string;
   limit?: number;

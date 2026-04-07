@@ -12,6 +12,8 @@ interface UseReviewOptions {
  * 评审功能 Hook
  */
 export function useReview({ executions, onExecutionsChange, onReviewComplete }: UseReviewOptions) {
+  const safeExecutions = Array.isArray(executions) ? executions : [];
+
   // 评审状态
   const [reviewMode, setReviewMode] = useState(false);
   const [currentReviewIndex, setCurrentReviewIndex] = useState<number>(-1);
@@ -27,18 +29,18 @@ export function useReview({ executions, onExecutionsChange, onReviewComplete }: 
 
   // 当前评审的用例
   const currentExecution = useMemo(() => {
-    return currentReviewIndex >= 0 ? executions[currentReviewIndex] : null;
-  }, [currentReviewIndex, executions]);
+    return currentReviewIndex >= 0 ? safeExecutions[currentReviewIndex] : null;
+  }, [currentReviewIndex, safeExecutions]);
 
   // 待评审数量
   const pendingCount = useMemo(() => {
-    return executions.filter((e) => e.review_status === 'pending').length;
-  }, [executions]);
+    return safeExecutions.filter((e) => e.review_status === 'pending').length;
+  }, [safeExecutions]);
 
   // 按需加载执行详情
   const loadExecutionDetail = useCallback(
     async (index: number) => {
-      const exec = executions[index];
+      const exec = safeExecutions[index];
       if (!exec) return;
 
       // 如果已经加载过完整数据，跳过
@@ -54,7 +56,7 @@ export function useReview({ executions, onExecutionsChange, onReviewComplete }: 
       try {
         const fullExecution = await getExecution(exec.id);
         // 更新 executions 数组中对应的记录
-        const updated = [...executions];
+        const updated = [...safeExecutions];
         updated[index] = { ...exec, ...fullExecution };
         onExecutionsChange(updated);
         loadedDetailsRef.current.add(exec.id);
@@ -65,7 +67,7 @@ export function useReview({ executions, onExecutionsChange, onReviewComplete }: 
         setDetailLoading(false);
       }
     },
-    [executions, onExecutionsChange],
+    [safeExecutions, onExecutionsChange],
   );
 
   // 当打开弹窗或切换用例时，按需加载详情
@@ -77,7 +79,7 @@ export function useReview({ executions, onExecutionsChange, onReviewComplete }: 
 
   // 开始批量评审（通过"开始评审"按钮）
   const startReview = useCallback(() => {
-    const pendingIndex = executions.findIndex((e) => e.review_status === 'pending');
+    const pendingIndex = safeExecutions.findIndex((e) => e.review_status === 'pending');
     if (pendingIndex === -1) {
       toast('所有用例已评审完成');
       return;
@@ -85,7 +87,7 @@ export function useReview({ executions, onExecutionsChange, onReviewComplete }: 
     setCurrentReviewIndex(pendingIndex);
     setReviewMode(true);
     setIsBatchReviewMode(true);
-  }, [executions]);
+  }, [safeExecutions]);
 
   // 关闭评审
   const closeReview = useCallback(() => {
@@ -112,17 +114,18 @@ export function useReview({ executions, onExecutionsChange, onReviewComplete }: 
 
   // 导航到下一个
   const goToNext = useCallback(() => {
-    if (currentReviewIndex < executions.length - 1) {
+    if (currentReviewIndex < safeExecutions.length - 1) {
       setCurrentReviewIndex(currentReviewIndex + 1);
       setShowFailureOptions(false);
     }
-  }, [currentReviewIndex, executions.length]);
+  }, [currentReviewIndex, safeExecutions.length]);
 
   // 评审操作
   const handleReview = useCallback(
     async (status: 'passed' | 'failed', failureReason?: string) => {
       if (currentReviewIndex < 0) return;
-      const exec = executions[currentReviewIndex];
+      const exec = safeExecutions[currentReviewIndex];
+      if (!exec) return;
 
       setReviewLoading(true);
       try {
@@ -142,7 +145,7 @@ export function useReview({ executions, onExecutionsChange, onReviewComplete }: 
         }
 
         // 更新本地状态
-        const updated = [...executions];
+        const updated = [...safeExecutions];
         updated[currentReviewIndex] = {
           ...exec,
           review_status: status,
@@ -188,7 +191,14 @@ export function useReview({ executions, onExecutionsChange, onReviewComplete }: 
         setReviewLoading(false);
       }
     },
-    [currentReviewIndex, executions, onExecutionsChange, closeReview, onReviewComplete, isBatchReviewMode],
+    [
+      currentReviewIndex,
+      safeExecutions,
+      onExecutionsChange,
+      closeReview,
+      onReviewComplete,
+      isBatchReviewMode,
+    ],
   );
 
   return {

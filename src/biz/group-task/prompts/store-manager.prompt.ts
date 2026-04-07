@@ -1,18 +1,15 @@
 /**
  * 店长群通知 — 纯模板（不需要 AI）
  *
- * 格式：
+ * 主消息格式：
  * 📋 今日面试名单（共N人）
  *
- * ━━━━━━━━━━━━━━━━━━━━━━━━
  * 姓名：张三
- * 电话：131****1162
- * 性别：男
- * 年龄：25岁
+ * 电话：13100101162
  * 面试岗位：xxx
  * 面试时间：2026-02-06 14:00
- * ━━━━━━━━━━━━━━━━━━━━━━━━
  *
+ * 跟随消息（单独发送）：
  * 店长们上午好！今天的面试名单请查收~
  */
 
@@ -23,39 +20,39 @@ interface StoreManagerTemplateData {
   date: string;
 }
 
-/** 手机号脱敏：131xxxx1162 → 131****1162 */
-function maskPhone(phone: string): string {
-  if (!phone || phone.length < 7) return phone;
-  return phone.slice(0, 3) + '****' + phone.slice(-4);
+export interface StoreManagerMessageResult {
+  main: string;
+  followUp?: string;
 }
 
 /**
  * 生成店长群通知消息（模板拼装）
  */
-export function buildStoreManagerMessage(data: StoreManagerTemplateData): string {
+export function buildStoreManagerMessage(
+  data: StoreManagerTemplateData,
+): StoreManagerMessageResult {
   const { interviews, date } = data;
 
   if (interviews.length === 0) {
-    return `📋 今日面试名单（${date}）\n\n今日无面试安排`;
+    return { main: `📋 今日面试名单（${date}）\n\n今日无面试安排` };
   }
 
   const lines: string[] = [];
 
   lines.push(`📋 今日面试名单（共${interviews.length}人）`);
-  lines.push('');
 
   for (const item of interviews) {
-    lines.push('━━━━━━━━━━━━━━━━━━━━━━━━');
+    lines.push('');
     lines.push(`姓名：${item.name}`);
-    lines.push(`电话：${maskPhone(item.phone)}`);
+    lines.push(`电话：${item.phone}`);
     lines.push(`品牌：${item.brandName}`);
     lines.push(`门店：${item.storeName}`);
     lines.push(`面试岗位：${item.jobName}`);
     lines.push(`面试时间：${item.interviewTime}`);
   }
 
-  lines.push('');
-  lines.push('店长们上午好！今天的面试名单请查收~');
-
-  return lines.join('\n');
+  return {
+    main: lines.join('\n'),
+    followUp: '店长们上午好！今天的面试名单请查收~',
+  };
 }

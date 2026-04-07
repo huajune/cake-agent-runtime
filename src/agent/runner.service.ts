@@ -130,6 +130,10 @@ export class AgentRunnerService {
     type: 'enabled' | 'disabled';
     budgetTokens: number;
   }) {
+    if (requestThinking?.type === 'disabled') {
+      return undefined;
+    }
+
     const effectiveBudget =
       requestThinking?.type === 'enabled'
         ? requestThinking.budgetTokens

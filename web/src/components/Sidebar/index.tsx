@@ -1,6 +1,9 @@
+import { MouseEvent, useCallback } from 'react';
 import logoIcon from '@/assets/images/cake_recruiter_icon.png';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { preloadRouteChunk, type AppRoutePath } from '@/routes/lazy-pages';
+import { markRouteNavigationStart } from '@/utils/perf';
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -106,6 +109,38 @@ const ChatRecordsIcon = () => (
 );
 
 export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const shouldInterceptNavigation = (event: MouseEvent<HTMLAnchorElement>) => (
+    !event.defaultPrevented &&
+    event.button === 0 &&
+    !event.metaKey &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.shiftKey &&
+    !event.currentTarget.target
+  );
+
+  const bindPreload = useCallback((path: AppRoutePath) => ({
+    onMouseEnter: () => { void preloadRouteChunk(path); },
+    onFocus: () => { void preloadRouteChunk(path); },
+    onTouchStart: () => { void preloadRouteChunk(path); },
+    onClick: async (event: MouseEvent<HTMLAnchorElement>) => {
+      if (!shouldInterceptNavigation(event)) return;
+      if (location.pathname === path) return;
+
+      event.preventDefault();
+      markRouteNavigationStart(path);
+      try {
+        await preloadRouteChunk(path);
+      } catch {
+        // Fall through to route navigation even if background preload fails.
+      }
+      navigate(path);
+    },
+  }), [location.pathname, navigate]);
+
   return (
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
       {/* 背景水印装饰 */}
@@ -136,6 +171,7 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           end
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
           title={isCollapsed ? '仪表盘' : undefined}
+          {...bindPreload('/')}
         >
           <span className="nav-icon"><DashboardIcon /></span>
           {!isCollapsed && <span className="nav-text">仪表盘</span>}
@@ -147,22 +183,27 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           to="/users"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
           title={isCollapsed ? '今日托管' : undefined}
+          {...bindPreload('/users')}
         >
           <span className="nav-icon"><UsersIcon /></span>
           {!isCollapsed && <span className="nav-text">今日托管</span>}
         </NavLink>
         <NavLink
-          to="/logs"
+          to="/hosting"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title={isCollapsed ? '实时消息' : undefined}
+          title={isCollapsed ? '托管设置' : undefined}
+          {...bindPreload('/hosting')}
         >
-          <span className="nav-icon"><LogsIcon /></span>
-          {!isCollapsed && <span className="nav-text">实时消息</span>}
+          <span className="nav-icon"><HostingIcon /></span>
+          {!isCollapsed && <span className="nav-text">托管开关</span>}
         </NavLink>
+
+
         <NavLink
           to="/chat-records"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
           title={isCollapsed ? '消息总览' : undefined}
+          {...bindPreload('/chat-records')}
         >
           <span className="nav-icon"><ChatRecordsIcon /></span>
           {!isCollapsed && <span className="nav-text">聊天记录</span>}
@@ -175,6 +216,7 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           to="/strategy"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
           title={isCollapsed ? '策略配置' : undefined}
+          {...bindPreload('/strategy')}
         >
           <span className="nav-icon"><StrategyIcon /></span>
           {!isCollapsed && <span className="nav-text">策略配置</span>}
@@ -183,6 +225,7 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           to="/agent-test"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
           title={isCollapsed ? '对话调试' : undefined}
+          {...bindPreload('/agent-test')}
         >
           <span className="nav-icon"><AgentTestIcon /></span>
           {!isCollapsed && <span className="nav-text">对话调试</span>}
@@ -191,6 +234,7 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           to="/test-suite"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
           title={isCollapsed ? '飞书评测集' : undefined}
+          {...bindPreload('/test-suite')}
         >
           <span className="nav-icon"><TestSuiteIcon /></span>
           {!isCollapsed && <span className="nav-text">飞书评测集</span>}
@@ -198,26 +242,30 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
 
         {/* 系统 */}
         {!isCollapsed && <div className="group-title">系统</div>}
-        <NavLink
-          to="/hosting"
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title={isCollapsed ? '托管设置' : undefined}
-        >
-          <span className="nav-icon"><HostingIcon /></span>
-          {!isCollapsed && <span className="nav-text">托管开关</span>}
-        </NavLink>
+
         <NavLink
           to="/config"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
           title={isCollapsed ? '通知/消息' : undefined}
+          {...bindPreload('/config')}
         >
           <span className="nav-icon"><ConfigIcon /></span>
           {!isCollapsed && <span className="nav-text">通知/消息</span>}
         </NavLink>
         <NavLink
+          to="/message-processing"
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title={isCollapsed ? '实时消息' : undefined}
+          {...bindPreload('/message-processing')}
+        >
+          <span className="nav-icon"><LogsIcon /></span>
+          {!isCollapsed && <span className="nav-text">消息处理流水</span>}
+        </NavLink>
+        <NavLink
           to="/system"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
           title={isCollapsed ? '系统监控' : undefined}
+          {...bindPreload('/system')}
         >
           <span className="nav-icon"><SystemIcon /></span>
           {!isCollapsed && <span className="nav-text">系统监控</span>}

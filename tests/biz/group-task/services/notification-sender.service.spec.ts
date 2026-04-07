@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { NotificationSenderService } from '@biz/group-task/services/notification-sender.service';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
 import { FeishuWebhookService } from '@infra/feishu/services/webhook.service';
+import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
 import {
   GroupTaskType,
   GroupContext,
@@ -12,7 +13,8 @@ import {
 describe('NotificationSenderService', () => {
   let service: NotificationSenderService;
   let messageSenderService: jest.Mocked<MessageSenderService>;
-  let feishuWebhookService: jest.Mocked<FeishuWebhookService>;
+  let webhookService: jest.Mocked<FeishuWebhookService>;
+  let cardBuilder: jest.Mocked<FeishuCardBuilderService>;
 
   const mockGroup: GroupContext = {
     imRoomId: 'room-123',
@@ -57,9 +59,14 @@ describe('NotificationSenderService', () => {
         {
           provide: FeishuWebhookService,
           useValue: {
-            buildCard: jest.fn().mockReturnValue({ card: 'mock' }),
-            sendMessage: jest.fn().mockResolvedValue(undefined),
+            sendMessage: jest.fn().mockResolvedValue(true),
           } as unknown as FeishuWebhookService,
+        },
+        {
+          provide: FeishuCardBuilderService,
+          useValue: {
+            buildMarkdownCard: jest.fn().mockReturnValue({ msg_type: 'interactive' }),
+          } as unknown as FeishuCardBuilderService,
         },
       ],
     }).compile();
@@ -70,9 +77,8 @@ describe('NotificationSenderService', () => {
     messageSenderService = module.get(
       MessageSenderService,
     ) as jest.Mocked<MessageSenderService>;
-    feishuWebhookService = module.get(
-      FeishuWebhookService,
-    ) as jest.Mocked<FeishuWebhookService>;
+    webhookService = module.get(FeishuWebhookService) as jest.Mocked<FeishuWebhookService>;
+    cardBuilder = module.get(FeishuCardBuilderService) as jest.Mocked<FeishuCardBuilderService>;
   });
 
   it('should be defined', () => {
@@ -99,7 +105,10 @@ describe('NotificationSenderService', () => {
         true,
       );
 
-      expect(feishuWebhookService.sendMessage).toHaveBeenCalled();
+      expect(webhookService.sendMessage).toHaveBeenCalledWith(
+        'MESSAGE_NOTIFICATION',
+        expect.any(Object),
+      );
     });
 
     it('should call messageSenderService when dryRun is false', async () => {
@@ -121,7 +130,10 @@ describe('NotificationSenderService', () => {
         false,
       );
 
-      expect(feishuWebhookService.sendMessage).toHaveBeenCalled();
+      expect(webhookService.sendMessage).toHaveBeenCalledWith(
+        'MESSAGE_NOTIFICATION',
+        expect.any(Object),
+      );
       expect(messageSenderService.sendMessage).toHaveBeenCalled();
     });
   });
@@ -130,19 +142,21 @@ describe('NotificationSenderService', () => {
     it('should include [试运行] in title when dryRun is true', async () => {
       await service.reportToFeishu(mockResult, true);
 
-      expect(feishuWebhookService.buildCard).toHaveBeenCalled();
-      const buildCardCall = feishuWebhookService.buildCard.mock.calls[0];
-      const titleArg = JSON.stringify(buildCardCall);
-      expect(titleArg).toContain('试运行');
+      expect(cardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: expect.stringContaining('试运行'),
+        }),
+      );
     });
 
     it('should NOT include [试运行] in title when dryRun is false', async () => {
       await service.reportToFeishu(mockResult, false);
 
-      expect(feishuWebhookService.buildCard).toHaveBeenCalled();
-      const buildCardCall = feishuWebhookService.buildCard.mock.calls[0];
-      const titleArg = JSON.stringify(buildCardCall);
-      expect(titleArg).not.toContain('试运行');
+      expect(cardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: expect.not.stringContaining('试运行'),
+        }),
+      );
     });
   });
 });

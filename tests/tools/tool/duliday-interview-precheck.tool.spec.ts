@@ -1,0 +1,195 @@
+import { buildInterviewPrecheckTool } from '@tools/duliday-interview-precheck.tool';
+import { ToolBuildContext } from '@shared-types/tool.types';
+
+describe('buildInterviewPrecheckTool', () => {
+  const mockSpongeService = {
+    fetchJobs: jest.fn(),
+  };
+
+  const mockContext: ToolBuildContext = {
+    userId: 'user-1',
+    corpId: 'corp-1',
+    sessionId: 'sess-1',
+    messages: [],
+  };
+
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const makeJob = (overrides: any = {}) => ({
+    basicInfo: {
+      jobId: 100,
+      brandName: 'KFC',
+      jobName: '服务员',
+      storeInfo: {
+        storeName: '五角场店',
+      },
+      ...overrides.basicInfo,
+    },
+    hiringRequirement: {
+      basicPersonalRequirements: {
+        minAge: 18,
+        maxAge: 35,
+        genderRequirement: '不限',
+      },
+      certificate: {
+        education: '高中',
+        healthCertificate: '食品健康证',
+      },
+      remark: '有餐饮经验优先',
+      ...overrides.hiringRequirement,
+    },
+    interviewProcess: {
+      firstInterview: {
+        firstInterviewWay: '线下面试',
+        interviewAddress: '上海市杨浦区xx路',
+        interviewDemand: '请带身份证',
+        periodicInterviewTimes: [],
+        fixedInterviewTimes: [],
+        ...overrides.interviewProcess?.firstInterview,
+      },
+      interviewSupplement: [{ interviewSupplement: '带健康证原件' }],
+      remark: '没有健康证的需办加急',
+      ...overrides.interviewProcess,
+    },
+    ...overrides,
+  });
+
+  const executeTool = async (input: Record<string, any>) => {
+    const builder = buildInterviewPrecheckTool(mockSpongeService as never);
+    const builtTool = builder(mockContext);
+    return builtTool.execute(input as any, {
+      toolCallId: 'test',
+      messages: [],
+      abortSignal: undefined as any,
+    }) as any;
+  };
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useRealTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('should reject unsupported requested date strings', async () => {
+    const result = await executeTool({ jobId: 100, requestedDate: 'next week' });
+
+    expect(result).toEqual({
+      success: false,
+      errorType: 'invalid_requested_date',
+      error: '无法识别的日期：next week',
+    });
+  });
+
+  it('should return job_not_found when Sponge returns no matching job', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [] });
+
+    const result = await executeTool({ jobId: 999, requestedDate: '2026-04-08' });
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe('job_not_found');
+    expect(result.error).toContain('jobId=999');
+  });
+
+  it('should mark future fixed interview dates as available', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-04-08',
+                  interviewStartTime: '14:00',
+                  interviewEndTime: '16:00',
+                },
+              ],
+            },
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({ jobId: 100, requestedDate: '2026-04-08' });
+
+    expect(result.success).toBe(true);
+    expect(result.interview.requestedDateStatus).toBe('available');
+    expect(result.interview.canScheduleOnRequestedDate).toBe(true);
+    expect(result.interview.requestedDateDecisionBasis).toBe('future_schedule_match');
+    expect(result.interview.requestedDateMatchedWindows).toEqual([
+      expect.objectContaining({ date: '2026-04-08', startTime: '14:00', endTime: '16:00' }),
+    ]);
+    expect(result.fieldGuidance.sourceSummary).toContain('年龄 <- basic_personal_requirements');
+  });
+
+  it('should mark same-day windows as unavailable after the latest end time', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T11:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-04-07',
+                  interviewStartTime: '09:00',
+                  interviewEndTime: '18:00',
+                },
+              ],
+            },
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({ jobId: 100, requestedDate: '今天' });
+
+    expect(result.success).toBe(true);
+    expect(result.interview.requestedDateStatus).toBe('unavailable');
+    expect(result.interview.canScheduleOnRequestedDate).toBe(false);
+    expect(result.interview.requestedDateReason).toContain('18:00');
+    expect(result.interview.requestedDateDecisionBasis).toBe('same_day_after_latest_window');
+  });
+
+  it('should ask for confirmation when same-day windows still remain', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-04-07',
+                  interviewStartTime: '12:00',
+                  interviewEndTime: '17:00',
+                },
+              ],
+            },
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({ jobId: 100, requestedDate: 'today' });
+
+    expect(result.success).toBe(true);
+    expect(result.interview.requestedDateStatus).toBe('needs_confirmation');
+    expect(result.interview.canScheduleOnRequestedDate).toBeNull();
+    expect(result.interview.requestedDateDecisionBasis).toBe(
+      'same_day_window_requires_confirmation',
+    );
+  });
+
+  it('should surface Sponge errors as precheck_failed', async () => {
+    mockSpongeService.fetchJobs.mockRejectedValue(new Error('API timeout'));
+
+    const result = await executeTool({ jobId: 100 });
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe('precheck_failed');
+    expect(result.error).toContain('API timeout');
+  });
+});

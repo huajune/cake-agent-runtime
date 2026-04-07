@@ -187,10 +187,6 @@ export class UpdateTurnReviewDto {
  * 批量执行回归验证请求 DTO
  */
 export class ExecuteConversationBatchDto {
-  @ApiProperty({ description: '批次ID' })
-  @IsString()
-  batchId: string;
-
   @ApiPropertyOptional({ description: '是否强制重新执行已完成的测试', default: false })
   @IsOptional()
   forceRerun?: boolean;
@@ -200,10 +196,6 @@ export class ExecuteConversationBatchDto {
  * 执行单个回归验证请求 DTO
  */
 export class ExecuteConversationDto {
-  @ApiProperty({ description: '对话源ID' })
-  @IsString()
-  sourceId: string;
-
   @ApiPropertyOptional({ description: '是否强制重新执行', default: false })
   @IsOptional()
   forceRerun?: boolean;
@@ -253,6 +245,13 @@ export interface ConversationExecutionResult {
   executedTurns: number;
   avgSimilarityScore: number | null;
   minSimilarityScore: number | null;
+  evaluationSummary: string | null;
+  dimensionScores: {
+    factualAccuracy: number | null;
+    responseEfficiency: number | null;
+    processCompliance: number | null;
+    toneNaturalness: number | null;
+  };
   turns: Array<{
     turnNumber: number;
     similarityScore: number | null;

@@ -1,0 +1,110 @@
+/* DetailDrawer — CSS Modules */
+@use '@/assets/styles/variables' as *;
+
+/* ── Header ── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  border-bottom: 1px solid $border;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.6) 0%, #fff 100%);
+  flex-wrap: wrap;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.headerTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: $text-primary;
+}
+
+.headerMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.metaTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: rgba($primary, 0.05);
+  font-size: 11px;
+  color: $text-secondary;
+  white-space: nowrap;
+}
+
+.metaTagLabel {
+  color: $text-muted;
+}
+
+.closeBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid $border;
+  background: #fff;
+  color: $text-muted;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-left: 8px;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: $bg-secondary;
+    color: $text-primary;
+    border-color: $border-hover;
+  }
+}
+
+/* ── Body layout ── */
+.body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.leftCol {
+  flex: 1 1 0;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.rightCol {
+  flex: 0 0 340px;
+  background: $bg-secondary;
+  border-left: 1px solid $border;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+/* ── Loading state ── */
+.loadingBody {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: $text-secondary;
+  font-size: 13px;
+}

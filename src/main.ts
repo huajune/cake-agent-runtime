@@ -10,6 +10,7 @@ import { networkInterfaces } from 'os';
 import { execSync } from 'child_process';
 import * as net from 'net';
 import { CustomLoggerService } from '@infra/logger/custom-logger.service';
+import { createGlobalValidationPipe } from '@infra/server/validation/global-validation-pipe';
 
 /**
  * 获取本机局域网 IP 地址
@@ -128,6 +129,9 @@ async function bootstrap() {
 
   // 全局注册响应拦截器（统一包装所有响应）
   app.useGlobalInterceptors(new ResponseInterceptor(reflector));
+
+  // 全局注册参数校验管道（让 DTO 装饰器真正成为运行时防线）
+  app.useGlobalPipes(createGlobalValidationPipe());
 
   // 全局注册异常过滤器（统一处理所有异常）
   app.useGlobalFilters(new HttpExceptionFilter());

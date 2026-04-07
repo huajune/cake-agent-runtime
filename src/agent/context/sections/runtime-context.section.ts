@@ -2,12 +2,14 @@ import { ChannelSection } from './channel.section';
 import { DateTimeSection } from './datetime.section';
 import { MemorySection } from './memory.section';
 import { StageStrategySection } from './stage-strategy.section';
+import { TurnHintsSection } from './turn-hints.section';
 import { PromptContext, PromptSection } from './section.interface';
 
 /**
  * 运行时上下文段落
  *
- * 聚合本轮会变化的上下文：阶段策略、记忆、时间、通道规范。
+ * 聚合本轮会变化的上下文：阶段策略、跨轮记忆、本轮线索、时间、通道规范。
+ * 顺序约定：memory → turn-hints，让 LLM 先看到已确认的跨轮信息，再看到本轮新增线索。
  */
 export class RuntimeContextSection implements PromptSection {
   readonly name = 'runtime-context';
@@ -15,6 +17,7 @@ export class RuntimeContextSection implements PromptSection {
   constructor(
     private readonly stageStrategySection: PromptSection = new StageStrategySection(),
     private readonly memorySection: PromptSection = new MemorySection(),
+    private readonly turnHintsSection: PromptSection = new TurnHintsSection(),
     private readonly dateTimeSection: PromptSection = new DateTimeSection(),
     private readonly channelSection: PromptSection = new ChannelSection(),
   ) {}
@@ -25,6 +28,7 @@ export class RuntimeContextSection implements PromptSection {
     for (const section of [
       this.stageStrategySection,
       this.memorySection,
+      this.turnHintsSection,
       this.dateTimeSection,
       this.channelSection,
     ]) {
