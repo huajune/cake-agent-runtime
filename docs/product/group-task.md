@@ -148,7 +148,7 @@ Cron 定时触发 / API 手动触发
 
 - **数据源**：面试安排（`SpongeService.fetchInterviewSchedule`）
 - **生成方式**：纯模板
-- **查询范围**：当天面试列表，按城市筛选
+- **查询范围**：当天面试列表，固定品牌「成都你六姐」（硬编码于 `store-manager.strategy.ts`）
 - **特殊逻辑**：即使无面试也发送"今日无面试安排"
 
 ### 工作小贴士（WORK_TIPS）

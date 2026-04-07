@@ -113,7 +113,7 @@ POST /group-task/trigger/:type
 |----------|--------|------|
 | `GROUP_TASK_TOKENS` | - | 小组 token 映射（格式: `名称:token,名称:token`） |
 | `GROUP_TASK_SEND_DELAY_MS` | `2000` | 群间发送间隔（ms） |
-| `GROUP_MEMBER_LIMIT` | `190` | 群成员上限（invite_to_group 容量判断） |
+| `GROUP_MEMBER_LIMIT` | `200` | 群成员上限（invite_to_group 容量判断） |
 | `STRIDE_ENTERPRISE_TOKEN` | - | 企业级 API token（拉人进群用） |
 | `MINIPROGRAM_APPID` | - | 小程序 appid（兼职群卡片） |
 | `MINIPROGRAM_USERNAME` | - | 小程序 username |

@@ -59,7 +59,7 @@ export class ToolRegistryService {
     alertService: FeishuAlertService,
     configService: ConfigService,
   ) {
-    const memberLimit = parseInt(configService.get('GROUP_MEMBER_LIMIT', '190'), 10);
+    const memberLimit = parseInt(configService.get('GROUP_MEMBER_LIMIT', '200'), 10);
     const enterpriseToken = configService.get<string>('STRIDE_ENTERPRISE_TOKEN', '');
     this.registry = {
       // ===== 阶段工具 =====

@@ -1,3 +1,4 @@
+import type { EntityExtractionResult } from '@memory/types/session-facts.types';
 import { StrategyConfigRecord } from '@shared-types/strategy-config.types';
 
 /**
@@ -16,6 +17,10 @@ export interface PromptContext {
   memoryBlock?: string;
   /** 当前时间文本；由 ContextService 统一生成，避免各 section 各算各的。 */
   currentTimeText?: string;
+  /** 会话记忆中的已确认提取结果；供 TurnHintsSection 做冲突比对。 */
+  sessionFacts?: EntityExtractionResult | null;
+  /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分为普通/待确认线索后渲染。 */
+  highConfidenceFacts?: EntityExtractionResult | null;
 }
 
 /**
