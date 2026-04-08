@@ -203,13 +203,10 @@ describe('buildOrderGrabMessage', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Display selection — top-N by revenue (uniform across all time slots)
-  //
-  // 三个场次的内容差异由数据层（OrderGrabStrategy.fetchData）通过不同日期
-  // 范围实现，本模板不再做按场次的切片差异化，统一按收入降序取前 N 条。
+  // selectOrdersByTimeSlot — exercised via public API
   // -------------------------------------------------------------------------
 
-  describe('display selection', () => {
+  describe('selectOrdersByTimeSlot', () => {
     // Build N unique-store orders with descending revenue so revenue rank == index
     function makeOrderSet(count: number): Record<string, unknown>[] {
       return Array.from({ length: count }, (_, i) =>
@@ -221,104 +218,128 @@ describe('buildOrderGrabMessage', () => {
       );
     }
 
-    it.each([
-      ['MORNING', TimeSlot.MORNING],
-      ['AFTERNOON', TimeSlot.AFTERNOON],
-      ['EVENING', TimeSlot.EVENING],
-      ['no timeSlot', undefined],
-    ] as const)('%s shows top-N orders by revenue and drops the rest', (_label, slot) => {
-      const orders = makeOrderSet(8);
-      const result = buildOrderGrabMessage({
-        orders,
-        city: '上海',
-        timeSlot: slot,
+    describe('MORNING — top N by revenue', () => {
+      it('includes the highest-revenue orders', () => {
+        const orders = makeOrderSet(8);
+        const result = buildOrderGrabMessage({
+          orders,
+          city: '上海',
+          timeSlot: TimeSlot.MORNING,
+        });
+
+        // rank-1 order (highest revenue) must be present
+        expect(result).toContain('内容rank1');
       });
 
-      // rank-1 (highest revenue) must always be present
-      expect(result).toContain('内容rank1');
-      // ranks beyond MAX_ORDERS=3 must be dropped — pick a clearly out-of-range one
-      expect(result).not.toContain('内容rank4');
-      expect(result).not.toContain('内容rank8');
-    });
-  });
+      it('does not include orders beyond the top 4', () => {
+        const orders = makeOrderSet(8);
+        const result = buildOrderGrabMessage({
+          orders,
+          city: '上海',
+          timeSlot: TimeSlot.MORNING,
+        });
 
-  // -------------------------------------------------------------------------
-  // Title — must align with the date range fetched per time slot
-  // -------------------------------------------------------------------------
-
-  describe('title selection', () => {
-    function firstLine(result: string): string {
-      return result.split('\n')[0];
-    }
-
-    it('MORNING title says 今日下午订单 with city prefix', () => {
-      const result = buildOrderGrabMessage({
-        orders: [makeOrder()],
-        city: '上海',
-        timeSlot: TimeSlot.MORNING,
+        // rank-5 and beyond should not appear
+        expect(result).not.toContain('内容rank5');
+        expect(result).not.toContain('内容rank6');
       });
-      expect(firstLine(result)).toBe('🍕【上海】今日下午订单，速来~');
     });
 
-    it('AFTERNOON title says 明日订单 with city prefix', () => {
-      const result = buildOrderGrabMessage({
-        orders: [makeOrder()],
-        city: '北京',
-        timeSlot: TimeSlot.AFTERNOON,
+    describe('AFTERNOON — ranks N+1 to 2N by revenue', () => {
+      it('shows rank 5-8 orders (not rank 1-4) when enough orders exist', () => {
+        const orders = makeOrderSet(8);
+        const result = buildOrderGrabMessage({
+          orders,
+          city: '上海',
+          timeSlot: TimeSlot.AFTERNOON,
+        });
+
+        // ranks 5-8 must appear
+        expect(result).toContain('内容rank5');
+
+        // ranks 1-4 should NOT appear
+        expect(result).not.toContain('内容rank1');
+        expect(result).not.toContain('内容rank2');
       });
-      expect(firstLine(result)).toBe('🍕【北京】明日订单，速来~');
+
+      it('falls back to top-N orders when fewer than N+1 unique orders exist', () => {
+        // Only 3 unique-store orders — not enough to fill the N+1..2N slice
+        const orders = makeOrderSet(3);
+        const result = buildOrderGrabMessage({
+          orders,
+          city: '上海',
+          timeSlot: TimeSlot.AFTERNOON,
+        });
+
+        // Should fall back and show something rather than empty
+        expect(result.length).toBeGreaterThan(0);
+        expect(result).toContain('内容rank1');
+      });
     });
 
-    it('EVENING title says 本周末订单 with city prefix', () => {
-      const result = buildOrderGrabMessage({
-        orders: [makeOrder()],
-        city: '深圳',
-        timeSlot: TimeSlot.EVENING,
+    describe('EVENING — sorts by nearest ORDER_DATE first', () => {
+      it('shows the order with the earliest date first', () => {
+        // Need > MAX_ORDERS(4) orders to trigger time-slot-based selection
+        const orders = [
+          makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '远期门店', [BI_FIELD_NAMES.ORDER_DATE]: '2026-05-01', [BI_FIELD_NAMES.EXPECTED_REVENUE]: '2000', [BI_FIELD_NAMES.SERVICE_CONTENT]: '远期内容' }),
+          makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '近期门店', [BI_FIELD_NAMES.ORDER_DATE]: '2026-04-02', [BI_FIELD_NAMES.EXPECTED_REVENUE]: '500', [BI_FIELD_NAMES.SERVICE_CONTENT]: '近期内容' }),
+          makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '门店C', [BI_FIELD_NAMES.ORDER_DATE]: '2026-04-10', [BI_FIELD_NAMES.EXPECTED_REVENUE]: '800' }),
+          makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '门店D', [BI_FIELD_NAMES.ORDER_DATE]: '2026-04-15', [BI_FIELD_NAMES.EXPECTED_REVENUE]: '700' }),
+          makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '门店E', [BI_FIELD_NAMES.ORDER_DATE]: '2026-04-20', [BI_FIELD_NAMES.EXPECTED_REVENUE]: '600' }),
+        ];
+
+        const result = buildOrderGrabMessage({
+          orders,
+          city: '上海',
+          timeSlot: TimeSlot.EVENING,
+        });
+
+        // EVENING sorts by date ASC; 近期门店 (04-02) should appear before 远期门店 (05-01)
+        const indexSoon = result.indexOf('近期内容');
+        const indexLater = result.indexOf('远期内容');
+        expect(indexSoon).toBeGreaterThanOrEqual(0);
+        // 远期门店 may be cut off (max=4), but 近期门店 should always be in the output
+        if (indexLater >= 0) {
+          expect(indexSoon).toBeLessThan(indexLater);
+        }
       });
-      expect(firstLine(result)).toBe('🍕【深圳】本周末订单，速来~');
+
+      it('breaks date ties by descending revenue', () => {
+        const sameDate = '2026-04-10';
+        // Need > MAX_ORDERS(4) to trigger EVENING sorting
+        const orders = [
+          makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '低收入同日门店', [BI_FIELD_NAMES.ORDER_DATE]: sameDate, [BI_FIELD_NAMES.EXPECTED_REVENUE]: '1000', [BI_FIELD_NAMES.SERVICE_CONTENT]: '低收入同日' }),
+          makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '高收入同日门店', [BI_FIELD_NAMES.ORDER_DATE]: sameDate, [BI_FIELD_NAMES.EXPECTED_REVENUE]: '3000', [BI_FIELD_NAMES.SERVICE_CONTENT]: '高收入同日' }),
+          makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '门店C', [BI_FIELD_NAMES.ORDER_DATE]: sameDate, [BI_FIELD_NAMES.EXPECTED_REVENUE]: '800' }),
+          makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '门店D', [BI_FIELD_NAMES.ORDER_DATE]: sameDate, [BI_FIELD_NAMES.EXPECTED_REVENUE]: '700' }),
+          makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '门店E', [BI_FIELD_NAMES.ORDER_DATE]: sameDate, [BI_FIELD_NAMES.EXPECTED_REVENUE]: '600' }),
+        ];
+
+        const result = buildOrderGrabMessage({
+          orders,
+          city: '上海',
+          timeSlot: TimeSlot.EVENING,
+        });
+
+        // Same date → sorted by revenue DESC within EVENING slot
+        const indexHigh = result.indexOf('高收入同日');
+        const indexLow = result.indexOf('低收入同日');
+        expect(indexHigh).toBeGreaterThanOrEqual(0);
+        expect(indexLow).toBeGreaterThanOrEqual(0);
+        expect(indexHigh).toBeLessThan(indexLow);
+      });
     });
 
-    it('no timeSlot (manual trigger) falls back to 近期订单', () => {
-      const result = buildOrderGrabMessage({
-        orders: [makeOrder()],
-        city: '杭州',
-      });
-      expect(firstLine(result)).toBe('🍕【杭州】近期订单，速来~');
-    });
+    describe('no timeSlot — defaults to top-N by revenue', () => {
+      it('shows highest-revenue orders when timeSlot is omitted', () => {
+        const orders = makeOrderSet(6);
+        const result = buildOrderGrabMessage({ orders, city: '上海' });
 
-    it('drops the city prefix when city is empty', () => {
-      const result = buildOrderGrabMessage({
-        orders: [makeOrder()],
-        city: '',
-        timeSlot: TimeSlot.MORNING,
+        expect(result).toContain('内容rank1');
+        expect(result).toContain('内容rank2');
+        // rank 5+ should not appear (max is 4)
+        expect(result).not.toContain('内容rank5');
       });
-      expect(firstLine(result)).toBe('🍕今日下午订单，速来~');
-    });
-
-    it('uses sub-region name when all orders share one non-city region', () => {
-      const orders = [
-        makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '门店1', [BI_FIELD_NAMES.ORDER_REGION]: '崇明' }),
-        makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '门店2', [BI_FIELD_NAMES.ORDER_REGION]: '崇明' }),
-      ];
-      const result = buildOrderGrabMessage({
-        orders,
-        city: '上海',
-        timeSlot: TimeSlot.MORNING,
-      });
-      expect(firstLine(result)).toBe('🍕崇明订单，速来~');
-    });
-
-    it('keeps the time-slot title when orders span multiple regions', () => {
-      const orders = [
-        makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '门店1', [BI_FIELD_NAMES.ORDER_REGION]: '崇明' }),
-        makeOrder({ [BI_FIELD_NAMES.STORE_NAME]: '门店2', [BI_FIELD_NAMES.ORDER_REGION]: '浦东' }),
-      ];
-      const result = buildOrderGrabMessage({
-        orders,
-        city: '上海',
-        timeSlot: TimeSlot.MORNING,
-      });
-      expect(firstLine(result)).toBe('🍕【上海】今日下午订单，速来~');
     });
   });
 

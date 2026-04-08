@@ -41,49 +41,79 @@ describe('GroupTaskController', () => {
   });
 
   describe('trigger', () => {
-    it('fires executeTask with forceEnabled and returns accepted ack synchronously', () => {
+    it('should call scheduler.executeTask with forceEnabled only', async () => {
       const mockStrategy = { fetchData: jest.fn(), buildMessage: jest.fn() };
-      (mockSchedulerService.getStrategy as jest.Mock).mockReturnValue(mockStrategy);
-      // 永不 resolve：证明 controller 不会等待 executeTask 完成
-      const pending = new Promise(() => undefined);
-      (mockSchedulerService.executeTask as jest.Mock).mockReturnValue(pending);
-
-      const result = controller.trigger(GroupTaskType.ORDER_GRAB);
-
-      expect(mockSchedulerService.getStrategy).toHaveBeenCalledWith(GroupTaskType.ORDER_GRAB);
-      expect(mockSchedulerService.executeTask).toHaveBeenCalledWith(mockStrategy, {
-        forceEnabled: true,
-      });
-      expect(result).toEqual({
+      (mockSchedulerService.getStrategy as jest.Mock).mockReturnValue(
+        mockStrategy,
+      );
+      const now = new Date();
+      (mockSchedulerService.executeTask as jest.Mock).mockResolvedValue({
         type: GroupTaskType.ORDER_GRAB,
-        status: 'accepted',
-        message: expect.any(String),
+        totalGroups: 3,
+        successCount: 2,
+        failedCount: 1,
+        skippedCount: 0,
+        errors: [],
+        details: [],
+        startTime: now,
+        endTime: now,
       });
+
+      const result = await controller.trigger(GroupTaskType.ORDER_GRAB);
+
+      expect(mockSchedulerService.getStrategy).toHaveBeenCalledWith(
+        GroupTaskType.ORDER_GRAB,
+      );
+      expect(mockSchedulerService.executeTask).toHaveBeenCalledWith(
+        mockStrategy,
+        { forceEnabled: true },
+      );
+      expect(result).toBeDefined();
     });
 
-    it('throws BAD_REQUEST for unknown task type', () => {
+    it('should throw HttpException BAD_REQUEST with invalid type', async () => {
       (mockSchedulerService.getStrategy as jest.Mock).mockReturnValue(null);
 
-      expect(() => controller.trigger('invalid-type' as GroupTaskType)).toThrow(HttpException);
+      await expect(
+        controller.trigger('invalid-type' as GroupTaskType),
+      ).rejects.toThrow(HttpException);
 
       try {
-        controller.trigger('invalid-type' as GroupTaskType);
+        await controller.trigger('invalid-type' as GroupTaskType);
       } catch (error) {
-        expect((error as HttpException).getStatus()).toBe(HttpStatus.BAD_REQUEST);
+        expect((error as HttpException).getStatus()).toBe(
+          HttpStatus.BAD_REQUEST,
+        );
       }
     });
 
-    it('swallows executeTask rejection (fire-and-forget, avoids unhandled rejection)', async () => {
+    it('should return result summary from executeTask', async () => {
       const mockStrategy = { fetchData: jest.fn(), buildMessage: jest.fn() };
-      (mockSchedulerService.getStrategy as jest.Mock).mockReturnValue(mockStrategy);
-      (mockSchedulerService.executeTask as jest.Mock).mockRejectedValue(new Error('boom'));
+      const now = new Date();
+      const expectedResult = {
+        type: GroupTaskType.ORDER_GRAB,
+        totalGroups: 5,
+        successCount: 5,
+        failedCount: 0,
+        skippedCount: 0,
+        errors: [],
+        details: [],
+        startTime: now,
+        endTime: now,
+      };
 
-      // 触发后立即返回 ack，不应抛出
-      const result = controller.trigger(GroupTaskType.ORDER_GRAB);
-      expect(result.status).toBe('accepted');
+      (mockSchedulerService.getStrategy as jest.Mock).mockReturnValue(
+        mockStrategy,
+      );
+      (mockSchedulerService.executeTask as jest.Mock).mockResolvedValue(
+        expectedResult,
+      );
 
-      // 等待微任务队列排空，确认 .catch 吃掉了 rejection
-      await new Promise((resolve) => setImmediate(resolve));
+      const result = await controller.trigger(GroupTaskType.ORDER_GRAB);
+
+      expect(result.totalGroups).toBe(5);
+      expect(result.successCount).toBe(5);
+      expect(result.durationMs).toBe(0);
     });
   });
 });

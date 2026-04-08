@@ -117,7 +117,7 @@ export class NotificationSenderService {
       throw new Error('STRIDE_ENTERPRISE_TOKEN 未配置，无法发送企业级消息');
     }
     if (!group.imBotId) {
-      throw new Error(`群 ${group.groupName} 缺少 imBotId（botInfo.wxid），无法发送企业级消息`);
+      throw new Error(`群 ${group.groupName} 缺少 imBotId（botInfo.weixin），无法发送企业级消息`);
     }
     if (!group.imRoomId) {
       throw new Error(`群 ${group.groupName} 缺少 imRoomId（wxid），无法发送企业级消息`);

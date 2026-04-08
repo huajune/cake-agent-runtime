@@ -46,10 +46,7 @@ export class GroupResolverService implements OnModuleInit {
     private readonly configService: ConfigService,
     private readonly roomService: RoomService,
   ) {
-    // 格式: "小组名:token,小组名:token,..."（多个用英文逗号分隔）
-    // 注意：每个小组只能"看到"自己绑定的托管号在群里的视角，
-    // 因此 GROUP_TASK_TOKENS 应只配置「群主所在的那个小组」的 token，
-    // 否则 botInfo.wxid 可能落到非群主的托管号上，导致以错误身份发消息。
+    // 格式: "艾酱:token1,宇航:token2,南瓜:token3"
     const raw = this.configService.get<string>('GROUP_TASK_TOKENS', '');
     this.groupTokenMap = {};
     for (const pair of raw.split(',').filter(Boolean)) {
@@ -190,7 +187,7 @@ export class GroupResolverService implements OnModuleInit {
           city: parsed.city,
           industry: parsed.industry,
           tag: parsed.type,
-          imBotId: room.botInfo?.wxid || '',
+          imBotId: room.botInfo?.weixin || '',
           token,
           chatId: room.chatId || '',
           memberCount: room.memberCount,
@@ -240,7 +237,7 @@ export class GroupResolverService implements OnModuleInit {
             wxid: room.wxid,
             topic: room.topic || '',
             chatId: room.chatId || '',
-            botWxid: room.botInfo?.wxid || '',
+            botWxid: room.botInfo?.weixin || '',
             memberCount: room.memberCount,
           });
         }
