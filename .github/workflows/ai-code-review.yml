@@ -13,9 +13,6 @@ permissions:
 
 jobs:
   ai-code-review:
-    if: >
-      !startsWith(github.event.pull_request.head.ref, 'chore/release-metadata/') &&
-      !contains(format('{0}', github.event.pull_request.body), '<!-- release-metadata-pr -->')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
