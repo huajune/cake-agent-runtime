@@ -1,303 +1,165 @@
 # 版本发布指南
 
-## 📋 概述
+## 现在的发布流
 
-本项目采用**自动化版本发布**流程，当代码合并到 `master` 分支时，系统会自动完成以下操作：
+发布流程调整为：
 
-✅ 分析提交历史，计算新版本号
-✅ 更新 `package.json` 版本号
-✅ 生成 `CHANGELOG.md` 更新记录
-✅ 直接提交 release commit 到 `master`
-✅ 自动创建同步 PR 到 `develop` 分支
-✅ 创建 Git Tag（如 `v1.2.3`）
-✅ 使用该 tag 触发生产部署
+1. 日常开发通过 PR 合并到 `develop`
+2. 合并后自动创建或更新一个机器人“版本元数据 PR”到 `develop`
+3. 从 `develop` 创建 release PR 到 `master`
+4. release PR 合并后，自动创建或更新一个机器人“正式发布固化 PR”到 `master`
+5. 正式发布固化 PR 合并后自动打 tag、创建 GitHub Release，并触发生产部署
 
-**你只需要做两件事：**
-1. 按照规范提交代码
-2. 创建 PR 并合并到 `master`
+这意味着：
+
+- `develop` 负责准备待发布版本
+- `master` 负责正式发布
 
 ---
 
-## 🚀 如何发布版本
+## 日常开发怎么走
 
-### 第一步：在 develop 分支开发
+### 第一步：提交功能 PR 到 develop
+
+推荐继续使用 Conventional Commits 风格的 PR 标题，例如：
 
 ```bash
-# 确保在 develop 分支
-git checkout develop
-
-# 开发你的功能...
-# 完成后提交代码（遵循提交规范，见下文）
-git add .
-git commit -m "feat: 添加用户导出功能"
-git push origin develop
+feat(group-task): 支持群任务发布卡片
+fix(ci): 修复 UTC 环境下的日期测试失败
+chore(release): 调整版本自动化流程
 ```
 
-### 第二步：创建 Pull Request
+PR 正文请按模板填写中文说明，特别是这些部分：
 
-1. 在 GitHub 上创建 PR：`develop` → `master`
-2. 填写 PR 描述，说明本次更新内容
-3. 等待代码审核
+- `更新摘要`
+- `新功能`
+- `问题修复`
+- `优化调整`
+- `运维与流程`
+- `配置变更`
+- `验证记录`
 
-### 第三步：合并 PR
+### 第二步：PR 合并到 develop
 
-PR 审核通过后，点击 **Merge pull request** 合并到 `master` 分支。
+合并后 GitHub Actions 会自动：
 
-### 第四步：等待自动化完成
+- 计算下一版本号
+- 更新 `package.json`
+- 更新 `CHANGELOG.md` 顶部“待发布”区块
+- 创建或更新一个机器人 PR 到 `develop`
 
-合并后，GitHub Actions 会自动：
-- 分析提交历史
-- 计算版本号
-- 提交 release commit 到 `master`
-- 创建一个版本同步 PR 指向 `develop`
-- 创建 Tag 并触发部署
-
-大约 1-2 分钟后，你可以在以下位置查看结果：
-- [Actions 执行日志](../../.github/workflows/version-changelog.yml)
-- [Pull requests](https://github.com/huajune/cake-agent-runtime/pulls) 查看自动创建的 develop 同步 PR
-- [CHANGELOG.md](../../CHANGELOG.md) 查看更新记录
-- [Releases](https://github.com/huajune/cake-agent-runtime/tags) 查看版本标签
+你不需要手工改版本号，但需要把这个机器人 PR 合并进 `develop`。
 
 ---
 
-## 📝 提交规范（重要！）
+## 正式发布怎么走
 
-### 提交消息格式
+### 第一步：从 develop 创建 release PR 到 master
 
-```
-<类型>(<作用域>): <简短描述>
+当你准备发版时：
 
-[可选的详细描述]
-```
+1. 确认 `develop` 上的 `CHANGELOG.md` 待发布内容正确
+2. 创建 PR：`develop -> master`
+3. 审核本次版本说明、配置影响、验证情况
 
-### 常用提交类型
+### 第二步：合并 release PR
 
-| 类型 | 说明 | 示例 | 版本变化 |
-|------|------|------|----------|
-| `feat` | 新功能 | `feat(user): 添加用户导出功能` | 次版本 +1 |
-| `fix` | Bug 修复 | `fix(auth): 修复登录失效问题` | 补丁版本 +1 |
-| `refactor` | 重构 | `refactor(api): 优化接口响应结构` | 补丁版本 +1 |
-| `perf` | 性能优化 | `perf(query): 优化数据库查询性能` | 补丁版本 +1 |
-| `docs` | 文档更新 | `docs: 更新 API 文档` | 补丁版本 +1 |
-| `style` | 代码格式 | `style: 统一代码缩进` | 补丁版本 +1 |
-| `test` | 测试 | `test(user): 添加用户模块测试` | 补丁版本 +1 |
-| `chore` | 构建/工具 | `chore: 升级依赖版本` | 补丁版本 +1 |
+合并到 `master` 后，系统不会直接改受保护分支，而是会自动：
 
-### 提交示例
+- 创建一个机器人“正式发布固化 PR”到 `master`
 
-**✅ 好的提交：**
+这个 PR 合并后，系统才会继续：
 
-```bash
-# 带作用域的提交（推荐）
-git commit -m "feat(message): 添加消息去重功能"
-git commit -m "fix(agent): 修复 Agent 缓存失效问题"
-git commit -m "refactor(api): 简化错误处理逻辑"
-
-# 不带作用域的提交
-git commit -m "feat: 添加数据导出接口"
-git commit -m "fix: 修复内存泄漏问题"
-```
-
-**❌ 不好的提交：**
-
-```bash
-git commit -m "更新代码"           # 没有类型前缀
-git commit -m "fix bug"            # 描述不明确
-git commit -m "feat:添加功能"      # 缺少空格
-git commit -m "完成需求"           # 不符合规范
-```
+- 打 `vX.Y.Z` tag
+- 创建 GitHub Release
+- 触发部署
+- 发送飞书发布通知到消息通知群，并 `@所有人`
 
 ---
 
-## 🔢 版本号规则
+## CHANGELOG 里会记录什么
 
-本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范：
+版本管理文件使用中文，主要包括：
 
-```
-版本格式：主版本.次版本.补丁版本 (例如: 1.2.3)
-```
+- 版本号
+- 发布时间 / 最近更新时间
+- 来源分支
+- 更新摘要
+- 新功能
+- 问题修复
+- 优化调整
+- 运维与流程
+- 配置变更
+- 验证记录
 
-### 版本递增规则
+示例：
 
-| 提交类型 | 版本变化 | 示例 |
-|----------|----------|------|
-| `BREAKING CHANGE` | 主版本 +1 | `1.5.3` → `2.0.0` |
-| `feat:` | 次版本 +1 | `1.5.3` → `1.6.0` |
-| `fix:` 及其他 | 补丁版本 +1 | `1.5.3` → `1.5.4` |
+```md
+## [4.0.1] - 2026-04-08
 
-### BREAKING CHANGE 说明
+**来源分支**: `develop`
 
-如果你的更新包含**不兼容的 API 变更**，需要在提交消息中注明：
+### 更新摘要
 
-```bash
-git commit -m "feat(api): 重构用户接口
+- PR #120 调整版本和部署流
 
-BREAKING CHANGE: 用户接口返回格式变更，需要更新客户端代码
-- 移除了 `user.profile` 字段
-- 新增 `user.info` 字段
-"
+### 新功能
+
+- PR #118 支持飞书消息通知群发布卡片
+
+### 问题修复
+
+- PR #119 修复 UTC CI 下的日期断言失败
+
+### 运维与流程
+
+- PR #120 CI 覆盖 develop/master 的 PR 校验
+- PR #120 发布成功后自动发送飞书卡片并 @所有人
 ```
 
 ---
 
-## 📖 CHANGELOG 格式
+## 注意事项
 
-### 自动生成示例
+### 不要手工改这些文件
 
-```markdown
-## [1.2.3] - 2025-11-06
+- `package.json` 里的版本号
+- `.release/pending-release.json`
 
-**分支**: `master`
+除非你在改自动化本身。
 
-Bug 修复：
-- 修复 Agent 缓存失效问题 (a1b2c3d)
-- auth: 修复登录超时问题 (e4f5g6h)
+### 现在会多出两类机器人 PR
 
-Feature 更新：
-- message: 添加消息去重功能 (i7j8k9l)
-- 添加数据导出接口 (m0n1o2p)
-- 优化数据库查询性能 (q3r4s5t)
-```
+- `chore(release): 更新待发布版本信息（vX.Y.Z）`
+- `chore(release): 固化正式版本记录（vX.Y.Z）`
 
-### 格式说明
+这两类 PR 都是自动化流程的一部分，建议保留并按正常 PR 流程合并。
 
-- **Bug 修复**：所有 `fix:` 类型的提交
-- **Feature 更新**：所有其他类型的提交（feat, refactor, perf, docs, chore 等）
-- 提交格式：`作用域: 描述 (短hash)` 或 `描述 (短hash)`
+### 如果 PR 正文不按模板写，会发生什么？
 
-### 自动过滤规则
+自动化仍然会跑，但中文版本说明会退化成只记录 PR 标题，信息会明显变少。
 
-以下提交**不会**出现在 CHANGELOG 中：
-- 包含 `[skip ci]` 的提交（版本同步提交）
-- `Merge pull request` 开头的提交（PR 合并记录）
+### 如果飞书通知没发出来，要查什么？
 
----
+先检查 GitHub Secrets：
 
-## ⚠️ 注意事项
+- `MESSAGE_NOTIFICATION_WEBHOOK_URL`
+- `MESSAGE_NOTIFICATION_WEBHOOK_SECRET`
 
-### 1. 分支管理
+再检查对应的部署 workflow 日志。
 
-- **开发分支**：`develop`（日常开发）
-- **主分支**：`master`（生产版本）
-- ⚠️ 不要由开发者直接在 `master` 分支提交业务代码
-- ⚠️ 所有功能必须通过 PR 合并到 `master`
-- ℹ️ release workflow 会代表机器人推送版本提交到 `master`
+### 为什么机器人 PR 不会无限循环？
 
-### 2. 提交规范
+因为 workflow 只在“PR 被合并”时触发，而且会跳过：
 
-- ✅ 每次提交只做一件事
-- ✅ 提交消息要清晰描述改动内容
-- ✅ 使用英文冒号后加空格（`feat: `）
-- ⚠️ 不要使用中文冒号（`feat：`）
-
-### 3. PR 合并
-
-- ✅ 合并前确保 CI 检查通过
-- ✅ 合并后检查 Actions 执行状态
-- ⚠️ 如果 Actions 失败，及时处理
-
-### 4. 版本同步
-
-- GitHub Actions 会自动创建一个指向 `develop` 的同步 PR，内容只包含 release 生成的 `package.json` 和 `CHANGELOG.md`
-- `develop` 开启“只能通过 PR 合并”后，机器人不会再直接推送到 `develop`
-- 合并这个同步 PR 后，再执行 `git pull origin develop` 拉取最新代码
+- 分支名以 `chore/release-metadata/` 开头的 PR
+- 标题以 `chore(release):` 对应版本元数据模板开头的 PR
+- body 里带 `<!-- release-metadata-pr -->` 标记的 PR
 
 ---
 
-## 🔍 常见问题
+## 推荐团队习惯
 
-### Q1: 我提交了代码但版本号没变？
-
-**A:** 检查以下几点：
-1. 是否合并到了 `master` 分支（只有 `master` 触发自动化）
-2. 提交消息是否符合规范（必须有 `feat:` `fix:` 等前缀）
-3. 查看 [GitHub Actions](https://github.com/huajune/cake-agent-runtime/actions) 是否执行成功
-
-### Q2: 如何查看历史版本？
-
-**A:** 三种方式：
-1. 查看 [CHANGELOG.md](../../CHANGELOG.md)
-2. 查看 [GitHub Releases](https://github.com/huajune/cake-agent-runtime/releases)
-3. 运行 `git tag -l` 查看所有版本标签
-
-### Q3: 我想回退到某个版本怎么办？
-
-**A:** 使用 Git Tag 回退：
-```bash
-# 查看所有版本
-git tag -l
-
-# 切换到指定版本
-git checkout v1.2.3
-
-# 或基于某个版本创建分支
-git checkout -b fix-branch v1.2.3
-```
-
-### Q4: 自动化失败了怎么办？
-
-**A:** 查看 [GitHub Actions 日志](https://github.com/huajune/cake-agent-runtime/actions)，常见原因：
-- 提交消息格式不正确
-- GitHub Token 缺少创建 PR 的权限
-- 同步分支推送成功，但创建/更新 develop 同步 PR 失败
-- 权限问题（联系管理员）
-
-### Q5: 我能手动修改版本号吗？
-
-**A:** ⚠️ **不推荐**手动修改 `package.json` 中的版本号，这会导致：
-- 版本号与 CHANGELOG 不一致
-- Git Tag 混乱
-- 自动化流程出错
-
-如果确实需要手动调整，请联系项目维护者。
-
----
-
-## 📚 相关文档
-
-- [自动化版本管理技术文档](./auto-version-changelog.md) - 详细的技术实现说明
-- [Conventional Commits 规范](https://www.conventionalcommits.org/) - 提交消息规范
-- [语义化版本规范](https://semver.org/lang/zh-CN/) - 版本号规范
-- [GitHub Actions 工作流配置](../../.github/workflows/version-changelog.yml)
-
----
-
-## 💡 最佳实践
-
-### 1. 提交粒度
-
-```bash
-# ✅ 好的做法：每个功能单独提交
-git commit -m "feat(user): 添加用户导出接口"
-git commit -m "feat(user): 添加导出格式验证"
-git commit -m "test(user): 添加导出功能测试"
-
-# ❌ 不好的做法：所有改动一次提交
-git commit -m "feat: 完成用户模块所有功能"
-```
-
-### 2. 作用域使用
-
-常用作用域参考：
-- `user` - 用户相关
-- `message` - 消息相关
-- `agent` - Agent 相关
-- `api` - API 接口
-- `auth` - 认证授权
-- `db` - 数据库
-- `config` - 配置
-
-### 3. 发布前检查清单
-
-在创建 PR 到 `master` 之前，确认：
-
-- [ ] 所有测试通过
-- [ ] 代码已格式化（`pnpm run format`）
-- [ ] 代码已通过 Lint 检查（`pnpm run lint`）
-- [ ] 提交消息符合规范
-- [ ] 功能已在 `develop` 分支测试
-- [ ] PR 描述清晰完整
-
----
-
-**有问题？** 查看 [自动化版本管理技术文档](./auto-version-changelog.md) 或联系项目维护者。
+- PR 标题用规范前缀，方便自动算版本号
+- PR 正文用中文写清楚变更，方便自动生成版本说明
+- release PR 打开后，先看 `CHANGELOG.md` 再决定是否合并

@@ -21,13 +21,15 @@ const MINIPROGRAM_DEFAULTS = {
 /**
  * 通知发送服务
  *
- * 使用小组级 API 发送消息（_apiType: 'group'，用 chatId）。
+ * 使用企业级 API 发送消息（token + imBotId + imRoomId）。
+ * 小组级 API 对部分群存在 chatId 缺失/会话未建立等边界问题，主动推送统一走企业级。
  * 飞书通知统一走“消息通知群”发送服务。
  */
 @Injectable()
 export class NotificationSenderService {
   private readonly logger = new Logger(NotificationSenderService.name);
 
+  private readonly enterpriseToken: string;
   private readonly miniprogramAppid: string;
   private readonly miniprogramUsername: string;
   private readonly miniprogramThumbUrl: string;
@@ -38,6 +40,7 @@ export class NotificationSenderService {
     private readonly webhookService: FeishuWebhookService,
     private readonly cardBuilder: FeishuCardBuilderService,
   ) {
+    this.enterpriseToken = this.configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim() || '';
     this.miniprogramAppid = this.configService.get<string>('MINIPROGRAM_APPID', '');
     this.miniprogramUsername = this.configService.get<string>('MINIPROGRAM_USERNAME', '');
     this.miniprogramThumbUrl = this.configService.get<string>('MINIPROGRAM_THUMB_URL', '');
@@ -58,12 +61,14 @@ export class NotificationSenderService {
     // 试运行模式：只发飞书，不发企微群
     if (dryRun) return;
 
-    // 1. 发送文本消息（小组级 API）
+    this.assertEnterpriseSendable(group);
+
+    // 1. 发送文本消息（企业级 API）
     await this.messageSenderService.sendMessage({
-      _apiType: 'group',
-      token: group.token,
-      chatId: group.chatId,
-      messageType: 7, // TEXT（企业级类型，会被 service 转换为小组级 0）
+      token: this.enterpriseToken,
+      imBotId: group.imBotId,
+      imRoomId: group.imRoomId,
+      messageType: 7, // TEXT
       payload: { text: message },
     });
 
@@ -71,10 +76,10 @@ export class NotificationSenderService {
     if (type === GroupTaskType.PART_TIME_JOB && this.miniprogramAppid && this.miniprogramUsername) {
       await this.delay(1000);
       await this.messageSenderService.sendMessage({
-        _apiType: 'group',
-        token: group.token,
-        chatId: group.chatId,
-        messageType: 9, // MINI_PROGRAM（企业级类型，会被转换为小组级 4）
+        token: this.enterpriseToken,
+        imBotId: group.imBotId,
+        imRoomId: group.imRoomId,
+        messageType: 9, // MINI_PROGRAM
         payload: {
           appid: this.miniprogramAppid,
           username: this.miniprogramUsername,
@@ -93,13 +98,30 @@ export class NotificationSenderService {
   async sendTextToGroup(group: GroupContext, text: string, dryRun: boolean): Promise<void> {
     if (dryRun) return;
 
+    this.assertEnterpriseSendable(group);
+
     await this.messageSenderService.sendMessage({
-      _apiType: 'group',
-      token: group.token,
-      chatId: group.chatId,
+      token: this.enterpriseToken,
+      imBotId: group.imBotId,
+      imRoomId: group.imRoomId,
       messageType: 7,
       payload: { text },
     });
+  }
+
+  /**
+   * 校验企业级发送所需字段齐全，否则抛错让 scheduler 计入 errors 并走到飞书卡片
+   */
+  private assertEnterpriseSendable(group: GroupContext): void {
+    if (!this.enterpriseToken) {
+      throw new Error('STRIDE_ENTERPRISE_TOKEN 未配置，无法发送企业级消息');
+    }
+    if (!group.imBotId) {
+      throw new Error(`群 ${group.groupName} 缺少 imBotId（botInfo.weixin），无法发送企业级消息`);
+    }
+    if (!group.imRoomId) {
+      throw new Error(`群 ${group.groupName} 缺少 imRoomId（wxid），无法发送企业级消息`);
+    }
   }
 
   /**
@@ -196,6 +218,7 @@ export class NotificationSenderService {
       title: `📢 ${modeLabel}${typeName}通知 — ${statusText}`,
       content: lines.join('\n'),
       color,
+      atAll: true,
     });
     await this.webhookService.sendMessage('MESSAGE_NOTIFICATION', card);
   }

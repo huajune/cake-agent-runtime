@@ -42,6 +42,7 @@ describe('NotificationSenderService', () => {
           provide: ConfigService,
           useValue: {
             get: jest.fn((key: string, defaultValue?: string) => {
+              if (key === 'STRIDE_ENTERPRISE_TOKEN') return 'test-enterprise-token';
               return defaultValue ?? '';
             }),
           } as unknown as ConfigService,

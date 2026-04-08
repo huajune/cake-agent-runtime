@@ -109,41 +109,121 @@ jobs:
     if: always()
 
     steps:
-      - name: Send Feishu notification
-        env:
-          FEISHU_WEBHOOK: ${{ secrets.FEISHU_DEPLOY_WEBHOOK_URL }}
-          DEPLOY_RESULT: ${{ needs.deploy.result }}
-        run: |
-          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          RELEASE_TAG="${{ github.ref_name }}"
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 1
 
-          if [ "$DEPLOY_RESULT" = "success" ]; then
-            TITLE="✅ 部署成功"
-            COLOR="green"
-            CONTENT="版本 ${RELEASE_TAG}（${SHORT_SHA}）已部署到生产服务器"
-          else
-            TITLE="❌ 部署失败"
-            COLOR="red"
-            CONTENT="版本 ${RELEASE_TAG}（${SHORT_SHA}）部署失败，请检查 GitHub Actions 日志"
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Extract release notes
+        id: release_notes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          node scripts/get-release-notes.js "${VERSION}" > /tmp/release_notes.md
+          {
+            echo 'notes<<EOF'
+            cat /tmp/release_notes.md
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Send Feishu notification to message group
+        env:
+          MESSAGE_NOTIFICATION_WEBHOOK_URL: ${{ secrets.MESSAGE_NOTIFICATION_WEBHOOK_URL }}
+          MESSAGE_NOTIFICATION_WEBHOOK_SECRET: ${{ secrets.MESSAGE_NOTIFICATION_WEBHOOK_SECRET }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          RELEASE_NOTES: ${{ steps.release_notes.outputs.notes }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${MESSAGE_NOTIFICATION_WEBHOOK_URL}" ]; then
+            echo "MESSAGE_NOTIFICATION_WEBHOOK_URL is not configured" >&2
+            exit 1
           fi
 
-          curl -s -X POST "$FEISHU_WEBHOOK" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"msg_type\": \"interactive\",
-              \"card\": {
-                \"header\": {
-                  \"title\": { \"tag\": \"plain_text\", \"content\": \"${TITLE}\" },
-                  \"template\": \"${COLOR}\"
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          RELEASE_TAG="${{ github.ref_name }}"
+          export SHORT_SHA RELEASE_TAG
+
+          node <<'NODE'
+          const fs = require('fs');
+
+          const success = process.env.DEPLOY_RESULT === 'success';
+          const rawNotes = (process.env.RELEASE_NOTES || '').trim();
+          const noteLines = rawNotes.split('\n');
+          const releaseNotes =
+            noteLines[0] && noteLines[0].startsWith('## ')
+              ? noteLines.slice(2).join('\n').trim()
+              : rawNotes;
+
+          const repo = process.env.GITHUB_REPOSITORY;
+          const server = process.env.GITHUB_SERVER_URL;
+          const runId = process.env.GITHUB_RUN_ID;
+          const sha = process.env.GITHUB_SHA;
+          const shortSha = process.env.SHORT_SHA;
+          const releaseTag = process.env.RELEASE_TAG;
+
+          const title = success ? '🚀 版本发布成功' : '❌ 版本发布失败';
+          const color = success ? 'green' : 'red';
+          const statusLine = success
+            ? '**状态**: 生产部署已完成'
+            : '**状态**: 生产部署失败，请尽快处理';
+
+          let content = [
+            `**版本**: \`${releaseTag}\``,
+            '**环境**: `production`',
+            '**发布分支**: `master`',
+            `**发布提交**: [${shortSha}](${server}/${repo}/commit/${sha})`,
+            statusLine,
+            `**查看详情**: [GitHub Actions](${server}/${repo}/actions/runs/${runId})`,
+          ].join('\n');
+
+          if (releaseNotes) {
+            content += `\n\n### 版本说明\n${releaseNotes}`;
+          }
+
+          if (content.length > 3500) {
+            content = `${content.slice(0, 3500)}\n\n...`;
+          }
+
+          const payload = {
+            msg_type: 'interactive',
+            card: {
+              config: { wide_screen_mode: true },
+              header: {
+                title: { tag: 'plain_text', content: title },
+                template: color,
+              },
+              elements: [
+                {
+                  tag: 'markdown',
+                  content,
                 },
-                \"elements\": [
-                  {
-                    \"tag\": \"div\",
-                    \"text\": {
-                      \"tag\": \"lark_md\",
-                      \"content\": \"**项目**: ${{ github.repository }}\n**分支**: ${{ github.ref_name }}\n**提交**: [${SHORT_SHA}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})\n**${CONTENT}**\n\n[查看详情](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\"
-                    }
-                  }
-                ]
-              }
-            }"
+                { tag: 'hr' },
+                {
+                  tag: 'div',
+                  text: {
+                    tag: 'lark_md',
+                    content: '**请关注**: <at id=all></at>',
+                  },
+                },
+              ],
+            },
+          };
+
+          fs.writeFileSync('/tmp/feishu_payload.json', JSON.stringify(payload));
+          NODE
+
+          if [ -n "${MESSAGE_NOTIFICATION_WEBHOOK_SECRET}" ]; then
+            TIMESTAMP=$(node -e "console.log(Math.floor(Date.now() / 1000))")
+            SIGN=$(node -e 'const crypto=require("crypto"); const [timestamp, secret] = process.argv.slice(1); const hmac = crypto.createHmac("sha256", `${timestamp}\n${secret}`); hmac.update(Buffer.alloc(0)); console.log(hmac.digest("base64"));' "$TIMESTAMP" "$MESSAGE_NOTIFICATION_WEBHOOK_SECRET")
+            TIMESTAMP="$TIMESTAMP" SIGN="$SIGN" node -e 'const fs=require("fs"); const payload=JSON.parse(fs.readFileSync("/tmp/feishu_payload.json","utf8")); payload.timestamp=process.env.TIMESTAMP; payload.sign=process.env.SIGN; fs.writeFileSync("/tmp/feishu_payload.json", JSON.stringify(payload));'
+          fi
+
+          curl -sS -X POST "${MESSAGE_NOTIFICATION_WEBHOOK_URL}" \
+            -H "Content-Type: application/json" \
+            --data @/tmp/feishu_payload.json
