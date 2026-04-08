@@ -47,18 +47,16 @@ jobs:
         run: pnpm run lint:check
 
       - name: Prettier check
-        run: pnpm exec prettier --check "src/**/*.ts"
+        run: pnpm run format:check
 
       - name: TypeScript type check
-        run: pnpm exec tsc --noEmit
+        run: pnpm run typecheck
 
       - name: Build
-        run: pnpm run build:web && pnpm run build
-        env:
-          API_GUARD_TOKEN: ci-placeholder-token
+        run: pnpm run build:ci
 
       - name: Unit tests with coverage
-        run: pnpm run test:cov
+        run: pnpm run test:ci
 
       - name: Upload coverage
         if: always()

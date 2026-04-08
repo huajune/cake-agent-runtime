@@ -1,6 +1,12 @@
 import { OrderGrabStrategy } from '@biz/group-task/strategies/order-grab.strategy';
 import { SpongeService } from '@sponge/sponge.service';
-import { GroupContext } from '@biz/group-task/group-task.types';
+import { GroupContext, TimeSlot, BI_FIELD_NAMES } from '@biz/group-task/group-task.types';
+import { formatLocalDate } from '@infra/utils/date.util';
+
+function parseShanghaiDateAtNoon(date: string): Date {
+  // Use local noon to avoid timezone boundary shifts on UTC CI runners.
+  return new Date(`${date}T12:00:00+08:00`);
+}
 
 describe('OrderGrabStrategy', () => {
   let strategy: OrderGrabStrategy;
@@ -20,46 +26,85 @@ describe('OrderGrabStrategy', () => {
     mockSpongeService = {
       fetchBIOrders: jest.fn(),
     };
-    strategy = new OrderGrabStrategy(
-      mockSpongeService as unknown as SpongeService,
-    );
+    strategy = new OrderGrabStrategy(mockSpongeService as unknown as SpongeService);
   });
 
-  describe('fetchData', () => {
-    it('should call fetchBIOrders with correct date range and city', async () => {
+  describe('fetchData — 场次驱动的日期范围', () => {
+    it('上午场：使用当日日期，并按下午时段过滤订单', async () => {
+      const today = formatLocalDate(new Date());
+      const orders = [
+        { [BI_FIELD_NAMES.SERVICE_DATE]: '08:00:00~11:00:00' }, // 全上午，应过滤掉
+        { [BI_FIELD_NAMES.SERVICE_DATE]: '14:00:00~18:00:00' }, // 全下午，保留
+        { [BI_FIELD_NAMES.SERVICE_DATE]: '10:30:00~14:30:00,16:30:00~20:30:00' }, // 跨段，保留
+      ];
+      (mockSpongeService.fetchBIOrders as jest.Mock).mockResolvedValue(orders);
+
+      const result = await strategy.fetchData(mockContext, TimeSlot.MORNING);
+
+      expect(mockSpongeService.fetchBIOrders).toHaveBeenCalledWith({
+        startDate: today,
+        endDate: today,
+        regionName: '上海',
+      });
+      // 应只保留 2 条带下午时段的订单
+      expect((result.payload.orders as unknown[]).length).toBe(2);
+      expect(result.hasData).toBe(true);
+    });
+
+    it('下午场：使用次日日期，不做时段过滤', async () => {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = formatLocalDate(tomorrow);
+      const orders = [
+        { [BI_FIELD_NAMES.SERVICE_DATE]: '08:00:00~11:00:00' },
+        { [BI_FIELD_NAMES.SERVICE_DATE]: '14:00:00~18:00:00' },
+      ];
+      (mockSpongeService.fetchBIOrders as jest.Mock).mockResolvedValue(orders);
+
+      const result = await strategy.fetchData(mockContext, TimeSlot.AFTERNOON);
+
+      expect(mockSpongeService.fetchBIOrders).toHaveBeenCalledWith({
+        startDate: tomorrowStr,
+        endDate: tomorrowStr,
+        regionName: '上海',
+      });
+      expect((result.payload.orders as unknown[]).length).toBe(2);
+    });
+
+    it('晚上场：使用本周周六~周日日期范围', async () => {
+      (mockSpongeService.fetchBIOrders as jest.Mock).mockResolvedValue([]);
+
+      await strategy.fetchData(mockContext, TimeSlot.EVENING);
+
+      const call = (mockSpongeService.fetchBIOrders as jest.Mock).mock.calls[0][0];
+      expect(call.regionName).toBe('上海');
+      // 验证 startDate 是周六、endDate 是周日
+      const start = parseShanghaiDateAtNoon(call.startDate);
+      const end = parseShanghaiDateAtNoon(call.endDate);
+      expect(start.getUTCDay()).toBe(6); // Saturday
+      expect(end.getUTCDay()).toBe(0); // Sunday
+      // 周日紧跟周六的下一天
+      expect((end.getTime() - start.getTime()) / (24 * 3600 * 1000)).toBe(1);
+    });
+
+    it('无场次：兜底为今天 → 本周日（保留旧手动触发行为）', async () => {
       (mockSpongeService.fetchBIOrders as jest.Mock).mockResolvedValue([]);
 
       await strategy.fetchData(mockContext);
 
-      expect(mockSpongeService.fetchBIOrders).toHaveBeenCalledWith(
-        expect.objectContaining({
-          regionName: '上海',
-        }),
-      );
-      expect(mockSpongeService.fetchBIOrders).toHaveBeenCalledTimes(1);
+      const call = (mockSpongeService.fetchBIOrders as jest.Mock).mock.calls[0][0];
+      expect(call.startDate).toBe(formatLocalDate(new Date()));
+      // endDate 应是今天或之后的某个周日
+      const end = parseShanghaiDateAtNoon(call.endDate);
+      expect(end.getUTCDay()).toBe(0);
     });
 
-    it('should return hasData=false when no orders', async () => {
+    it('无订单时返回 hasData=false', async () => {
       (mockSpongeService.fetchBIOrders as jest.Mock).mockResolvedValue([]);
 
-      const result = await strategy.fetchData(mockContext);
+      const result = await strategy.fetchData(mockContext, TimeSlot.AFTERNOON);
 
       expect(result.hasData).toBe(false);
-    });
-
-    it('should return hasData=true with orders in payload', async () => {
-      const mockOrders = [
-        { id: 1, storeName: '门店A', orderCount: 5 },
-        { id: 2, storeName: '门店B', orderCount: 3 },
-      ];
-      (mockSpongeService.fetchBIOrders as jest.Mock).mockResolvedValue(
-        mockOrders,
-      );
-
-      const result = await strategy.fetchData(mockContext);
-
-      expect(result.hasData).toBe(true);
-      expect(result.payload).toBeDefined();
     });
   });
 
@@ -67,7 +112,7 @@ describe('OrderGrabStrategy', () => {
     it('should delegate to buildOrderGrabMessage', () => {
       const mockData = {
         hasData: true,
-        payload: { orders: [{ '订单所属门店': '门店A' }], city: '上海' },
+        payload: { orders: [{ 订单所属门店: '门店A' }], city: '上海' },
         summary: '上海: 1个订单',
       };
 

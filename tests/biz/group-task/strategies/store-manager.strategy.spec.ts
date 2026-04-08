@@ -21,16 +21,12 @@ describe('StoreManagerStrategy', () => {
     mockSpongeService = {
       fetchInterviewSchedule: jest.fn(),
     };
-    strategy = new StoreManagerStrategy(
-      mockSpongeService as unknown as SpongeService,
-    );
+    strategy = new StoreManagerStrategy(mockSpongeService as unknown as SpongeService);
   });
 
   describe('fetchData', () => {
     it('should call fetchInterviewSchedule with date range and target brand only', async () => {
-      (
-        mockSpongeService.fetchInterviewSchedule as jest.Mock
-      ).mockResolvedValue([]);
+      (mockSpongeService.fetchInterviewSchedule as jest.Mock).mockResolvedValue([]);
 
       await strategy.fetchData(mockContext);
 
@@ -41,15 +37,11 @@ describe('StoreManagerStrategy', () => {
           interviewEndTime: expect.stringMatching(/^\d{4}-\d{2}-\d{2} 23:59:59$/),
         }),
       );
-      expect(
-        mockSpongeService.fetchInterviewSchedule,
-      ).toHaveBeenCalledTimes(1);
+      expect(mockSpongeService.fetchInterviewSchedule).toHaveBeenCalledTimes(1);
     });
 
     it('should return hasData=true even when no interviews (店长群 always sends)', async () => {
-      (
-        mockSpongeService.fetchInterviewSchedule as jest.Mock
-      ).mockResolvedValue([]);
+      (mockSpongeService.fetchInterviewSchedule as jest.Mock).mockResolvedValue([]);
 
       const result = await strategy.fetchData(mockContext);
 
@@ -63,9 +55,7 @@ describe('StoreManagerStrategy', () => {
         { id: 1, candidateName: '张三', storeName: '门店A', time: '10:00' },
         { id: 2, candidateName: '李四', storeName: '门店B', time: '14:00' },
       ];
-      (
-        mockSpongeService.fetchInterviewSchedule as jest.Mock
-      ).mockResolvedValue(mockInterviews);
+      (mockSpongeService.fetchInterviewSchedule as jest.Mock).mockResolvedValue(mockInterviews);
 
       const result = await strategy.fetchData(mockContext);
 
@@ -75,9 +65,7 @@ describe('StoreManagerStrategy', () => {
     });
 
     it('should ignore city and still fetch target brand interviews', async () => {
-      (
-        mockSpongeService.fetchInterviewSchedule as jest.Mock
-      ).mockResolvedValue([]);
+      (mockSpongeService.fetchInterviewSchedule as jest.Mock).mockResolvedValue([]);
 
       const result = await strategy.fetchData({
         ...mockContext,
@@ -102,6 +90,8 @@ describe('StoreManagerStrategy', () => {
           {
             name: '张三',
             phone: '13800138000',
+            gender: '男',
+            age: 25,
             interviewTime: '2026-04-02 10:00',
             jobName: '店员',
             storeName: '春熙路店',
@@ -112,6 +102,25 @@ describe('StoreManagerStrategy', () => {
 
       expect(message.main).toContain('电话：13800138000');
       expect(message.main).not.toContain('****');
+    });
+
+    it('should render fallback text when gender and age are missing', () => {
+      const message = buildStoreManagerMessage({
+        date: '2026-04-02',
+        interviews: [
+          {
+            name: '张三',
+            phone: '13800138000',
+            interviewTime: '2026-04-02 10:00',
+            jobName: '店员',
+            storeName: '春熙路店',
+            brandName: '成都你六姐',
+          },
+        ],
+      });
+
+      expect(message.main).toContain('性别：未知');
+      expect(message.main).toContain('年龄：未知');
     });
   });
 });

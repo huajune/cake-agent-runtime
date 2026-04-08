@@ -3,22 +3,20 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
+import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
 import { GroupContext } from '@biz/group-task/group-task.types';
 import { RoomService } from '@channels/wecom/room/room.service';
-import { RedisService } from '@infra/redis/redis.service';
 import { MemoryService } from '@memory/memory.service';
 import { FeishuWebhookService } from '@infra/feishu/services/webhook.service';
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
 import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
 
 const logger = new Logger('invite_to_group');
-const INVITE_KEY_PREFIX = 'invite';
-const INVITE_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 export function buildInviteToGroupTool(
   groupResolver: GroupResolverService,
+  groupMembership: GroupMembershipService,
   roomService: RoomService,
-  redisService: RedisService,
   webhookService: FeishuWebhookService,
   cardBuilder: FeishuCardBuilderService,
   memoryService: MemoryService,
@@ -62,9 +60,9 @@ export function buildInviteToGroupTool(
 
           const cityGroups = allGroups.filter((group) => group.city === city);
           if (cityGroups.length === 0) {
-            const availableCities = [...new Set(allGroups.map((group) => group.city))];
-            logger.warn(`城市无匹配: ${city} (user=${context.userId})`);
-            return { success: false, availableCities };
+            // 该城市没有群：静默跳过，不告警、不通知候选人
+            logger.log(`城市无匹配，静默跳过: ${city} (user=${context.userId})`);
+            return { success: false, reason: 'no_group_in_city' };
           }
 
           const candidates = resolveCandidates(cityGroups, industry);
@@ -89,13 +87,18 @@ export function buildInviteToGroupTool(
             return { success: false, reason: 'group_full' };
           }
 
-          const redisKey = `${INVITE_KEY_PREFIX}:${context.corpId}:${context.userId}:${targetGroup.imRoomId}`;
-          const alreadyInvited = await redisService.exists(redisKey);
-          if (alreadyInvited) {
-            logger.log(`已拉过此群: ${targetGroup.groupName} (user=${context.userId})`);
+          // 传入所有兼职群 ID 作为白名单，避免 GroupMembershipService 缓存无关群
+          const partTimeRoomIds = allGroups.map((group) => group.imRoomId);
+          const alreadyMember = await groupMembership.isUserInRoom(
+            targetGroup.imRoomId,
+            context.userId,
+            partTimeRoomIds,
+          );
+          if (alreadyMember) {
+            logger.log(`用户已在群中，静默跳过: ${targetGroup.groupName} (user=${context.userId})`);
             return {
               success: false,
-              reason: 'already_invited',
+              reason: 'already_in_group',
               groupName: targetGroup.groupName,
             };
           }
@@ -108,7 +111,7 @@ export function buildInviteToGroupTool(
             roomWxid: targetGroup.imRoomId,
           });
 
-          await redisService.setex(redisKey, INVITE_TTL_SECONDS, '1');
+          await groupMembership.markUserInRoom(targetGroup.imRoomId, context.userId);
           await memoryService.saveInvitedGroup(context.corpId, context.userId, context.sessionId, {
             groupName: targetGroup.groupName,
             city,

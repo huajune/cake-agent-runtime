@@ -42,9 +42,17 @@ export function buildStoreManagerMessage(
   lines.push(`📋 今日面试名单（共${interviews.length}人）`);
 
   for (const item of interviews) {
+    const genderText = item.gender?.trim() || '未知';
+    const ageText =
+      typeof item.age === 'number' && Number.isFinite(item.age) && item.age > 0
+        ? `${item.age}岁`
+        : '未知';
+
     lines.push('');
     lines.push(`姓名：${item.name}`);
     lines.push(`电话：${item.phone}`);
+    lines.push(`性别：${genderText}`);
+    lines.push(`年龄：${ageText}`);
     lines.push(`品牌：${item.brandName}`);
     lines.push(`门店：${item.storeName}`);
     lines.push(`面试岗位：${item.jobName}`);

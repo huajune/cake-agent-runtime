@@ -25,8 +25,8 @@ describe('buildInviteToGroupTool', () => {
   });
 
   const mockGroupResolver = { resolveGroups: jest.fn() };
+  const mockGroupMembership = { isUserInRoom: jest.fn(), markUserInRoom: jest.fn() };
   const mockRoomService = { addMemberEnterprise: jest.fn() };
-  const mockRedisService = { exists: jest.fn(), setex: jest.fn() };
   const mockWebhookService = { sendMessage: jest.fn() };
   const mockCardBuilder = { buildMarkdownCard: jest.fn() };
   const mockMemoryService = { saveInvitedGroup: jest.fn() };
@@ -36,14 +36,17 @@ describe('buildInviteToGroupTool', () => {
     jest.clearAllMocks();
     mockCardBuilder.buildMarkdownCard.mockReturnValue({ msg_type: 'interactive' });
     mockWebhookService.sendMessage.mockResolvedValue(true);
+    // 默认用户不在群中
+    mockGroupMembership.isUserInRoom.mockResolvedValue(false);
+    mockGroupMembership.markUserInRoom.mockResolvedValue(undefined);
   });
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const executeTool = async (input: { city: string; industry?: string }) => {
     const builder = buildInviteToGroupTool(
       mockGroupResolver as any,
+      mockGroupMembership as any,
       mockRoomService as any,
-      mockRedisService as any,
       mockWebhookService as any,
       mockCardBuilder as any,
       mockMemoryService as any,
@@ -61,9 +64,7 @@ describe('buildInviteToGroupTool', () => {
 
   it('should return success with direct invite mode for small group', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup({ memberCount: 50 })]);
-    mockRedisService.exists.mockResolvedValue(false);
     mockRoomService.addMemberEnterprise.mockResolvedValue(undefined);
-    mockRedisService.setex.mockResolvedValue('OK');
     mockMemoryService.saveInvitedGroup.mockResolvedValue(undefined);
 
     const result = await executeTool({ city: '上海' });
@@ -81,14 +82,13 @@ describe('buildInviteToGroupTool', () => {
         roomWxid: 'room-1',
       }),
     );
+    expect(mockGroupMembership.markUserInRoom).toHaveBeenCalledWith('room-1', 'user-1');
     expect(mockMemoryService.saveInvitedGroup).toHaveBeenCalled();
   });
 
   it('should return link invite mode when group has 100+ members', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup({ memberCount: 120 })]);
-    mockRedisService.exists.mockResolvedValue(false);
     mockRoomService.addMemberEnterprise.mockResolvedValue(undefined);
-    mockRedisService.setex.mockResolvedValue('OK');
     mockMemoryService.saveInvitedGroup.mockResolvedValue(undefined);
 
     const result = await executeTool({ city: '上海' });
@@ -106,7 +106,7 @@ describe('buildInviteToGroupTool', () => {
     expect(result.error).toContain('暂无可用群');
   });
 
-  it('should return available cities when city has no match', async () => {
+  it('should silently skip when city has no match', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([
       makeGroup({ city: '北京' }),
       makeGroup({ city: '杭州' }),
@@ -115,18 +115,23 @@ describe('buildInviteToGroupTool', () => {
     const result = await executeTool({ city: '上海' });
 
     expect(result.success).toBe(false);
-    expect(result.availableCities).toEqual(expect.arrayContaining(['北京', '杭州']));
+    expect(result.reason).toBe('no_group_in_city');
+    expect(result.availableCities).toBeUndefined();
+    expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
   });
 
-  it('should skip already invited user', async () => {
+  it('should silently skip when user is already in the target group', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup()]);
-    mockRedisService.exists.mockResolvedValue(true);
+    mockGroupMembership.isUserInRoom.mockResolvedValue(true);
 
     const result = await executeTool({ city: '上海' });
 
     expect(result.success).toBe(false);
-    expect(result.reason).toBe('already_invited');
+    expect(result.reason).toBe('already_in_group');
+    expect(result.groupName).toBe('上海兼职群1号');
+    expect(mockGroupMembership.isUserInRoom).toHaveBeenCalledWith('room-1', 'user-1', ['room-1']);
     expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
+    expect(mockGroupMembership.markUserInRoom).not.toHaveBeenCalled();
   });
 
   it('should alert and return group_full when all groups are full', async () => {
@@ -145,7 +150,9 @@ describe('buildInviteToGroupTool', () => {
         title: '上海 所有兼职群已满，需要创建新群',
       }),
     );
-    expect(mockWebhookService.sendMessage).toHaveBeenCalledWith('ALERT', { msg_type: 'interactive' });
+    expect(mockWebhookService.sendMessage).toHaveBeenCalledWith('ALERT', {
+      msg_type: 'interactive',
+    });
   });
 
   it('should filter by industry when provided', async () => {
@@ -156,9 +163,7 @@ describe('buildInviteToGroupTool', () => {
       groupName: '上海零售兼职群',
     });
     mockGroupResolver.resolveGroups.mockResolvedValue([restaurantGroup, retailGroup]);
-    mockRedisService.exists.mockResolvedValue(false);
     mockRoomService.addMemberEnterprise.mockResolvedValue(undefined);
-    mockRedisService.setex.mockResolvedValue('OK');
     mockMemoryService.saveInvitedGroup.mockResolvedValue(undefined);
 
     const result = await executeTool({ city: '上海', industry: '餐饮' });
@@ -169,9 +174,7 @@ describe('buildInviteToGroupTool', () => {
 
   it('should fallback to city groups when industry has no match', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup({ industry: '餐饮' })]);
-    mockRedisService.exists.mockResolvedValue(false);
     mockRoomService.addMemberEnterprise.mockResolvedValue(undefined);
-    mockRedisService.setex.mockResolvedValue('OK');
     mockMemoryService.saveInvitedGroup.mockResolvedValue(undefined);
 
     const result = await executeTool({ city: '上海', industry: '零售' });
@@ -186,9 +189,7 @@ describe('buildInviteToGroupTool', () => {
       makeGroup({ imRoomId: 'room-2', groupName: '群B', memberCount: 30 }),
       makeGroup({ imRoomId: 'room-3', groupName: '群C', memberCount: 80 }),
     ]);
-    mockRedisService.exists.mockResolvedValue(false);
     mockRoomService.addMemberEnterprise.mockResolvedValue(undefined);
-    mockRedisService.setex.mockResolvedValue('OK');
     mockMemoryService.saveInvitedGroup.mockResolvedValue(undefined);
 
     const result = await executeTool({ city: '上海' });
@@ -199,7 +200,6 @@ describe('buildInviteToGroupTool', () => {
 
   it('should handle addMember failure gracefully', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup()]);
-    mockRedisService.exists.mockResolvedValue(false);
     mockRoomService.addMemberEnterprise.mockRejectedValue(new Error('WeChat API timeout'));
 
     const result = await executeTool({ city: '上海' });
@@ -211,8 +211,8 @@ describe('buildInviteToGroupTool', () => {
   it('should fail clearly when enterprise token is missing', async () => {
     const builder = buildInviteToGroupTool(
       mockGroupResolver as any,
+      mockGroupMembership as any,
       mockRoomService as any,
-      mockRedisService as any,
       mockWebhookService as any,
       mockCardBuilder as any,
       mockMemoryService as any,
