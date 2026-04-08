@@ -125,9 +125,7 @@ function parseCycleDeadlineDay(raw?: string): number | null {
 
 function normalizeDateTime(raw: string): string | null {
   const normalized = raw.replace(/\//g, '-').trim();
-  const dateTimeMatch = normalized.match(
-    /^(\d{4}-\d{2}-\d{2})\s+(\d{1,2}[:：]\d{2})(?::\d{2})?$/,
-  );
+  const dateTimeMatch = normalized.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{1,2}[:：]\d{2})(?::\d{2})?$/);
   if (!dateTimeMatch) return null;
 
   const date = dateTimeMatch[1];
