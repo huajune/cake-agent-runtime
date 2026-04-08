@@ -169,6 +169,48 @@ describe('SpongeService', () => {
     });
   });
 
+  describe('fetchInterviewSchedule', () => {
+    it('should tolerate missing gender and age fields in interview schedule response', async () => {
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          code: 0,
+          data: {
+            result: [
+              {
+                name: '张三',
+                phone: '13800138000',
+                interviewTime: '2026-04-08 10:00',
+                jobName: '店员',
+                storeName: '春熙路店',
+                brandName: '成都你六姐',
+              },
+            ],
+          },
+        }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      const result = await service.fetchInterviewSchedule({
+        interviewStartTime: '2026-04-08 00:00:00',
+        interviewEndTime: '2026-04-08 23:59:59',
+      });
+
+      expect(result).toEqual([
+        {
+          name: '张三',
+          phone: '13800138000',
+          gender: undefined,
+          age: undefined,
+          interviewTime: '2026-04-08 10:00',
+          jobName: '店员',
+          storeName: '春熙路店',
+          brandName: '成都你六姐',
+        },
+      ]);
+    });
+  });
+
   describe('fetchBrandList', () => {
     it('should cache brand list results for repeated calls', async () => {
       const mockResponse = {

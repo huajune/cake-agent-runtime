@@ -159,37 +159,38 @@ export class NotificationSenderService {
       '---',
     ];
 
+    const appendSection = (header: string, sectionLines: string[]): void => {
+      if (sectionLines.length === 0) return;
+      lines.push('', header, ...sectionLines);
+    };
+
     // 成功分组
     const successDetails = result.details.filter((d) => d.status === 'success');
-    if (successDetails.length > 0) {
-      for (const d of successDetails) {
-        lines.push(`✅ **${d.groupKey}** (${d.groupCount}群) — ${d.dataSummary}`);
-      }
-    }
+    appendSection(
+      '**✅ 成功分组**',
+      successDetails.map((d) => `✅ **${d.groupKey}** (${d.groupCount}群) — ${d.dataSummary}`),
+    );
 
     // 跳过分组
     const skippedDetails = result.details.filter((d) => d.status === 'skipped');
-    if (skippedDetails.length > 0) {
-      for (const d of skippedDetails) {
-        lines.push(`⏭️ **${d.groupKey}** (${d.groupCount}群) — ${d.dataSummary}`);
-      }
-    }
+    appendSection(
+      '**⏭️ 已跳过**',
+      skippedDetails.map((d) => `⏭️ **${d.groupKey}** (${d.groupCount}群) — ${d.dataSummary}`),
+    );
 
     // 部分失败分组
     const partialDetails = result.details.filter((d) => d.status === 'partial');
-    if (partialDetails.length > 0) {
-      for (const d of partialDetails) {
-        lines.push(`⚠️ **${d.groupKey}** (${d.groupCount}群) — ${d.dataSummary}`);
-      }
-    }
+    appendSection(
+      '**⚠️ 部分失败**',
+      partialDetails.map((d) => `⚠️ **${d.groupKey}** (${d.groupCount}群) — ${d.dataSummary}`),
+    );
 
     // 失败分组
     const failedDetails = result.details.filter((d) => d.status === 'failed');
-    if (failedDetails.length > 0) {
-      for (const d of failedDetails) {
-        lines.push(`❌ **${d.groupKey}** (${d.groupCount}群) — ${d.dataSummary}`);
-      }
-    }
+    appendSection(
+      '**❌ 失败分组**',
+      failedDetails.map((d) => `❌ **${d.groupKey}** (${d.groupCount}群) — ${d.dataSummary}`),
+    );
 
     const card = this.cardBuilder.buildMarkdownCard({
       title: `📢 ${modeLabel}${typeName}通知 — ${statusText}`,
