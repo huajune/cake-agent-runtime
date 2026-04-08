@@ -2,12 +2,40 @@
 
 所有重要的项目更改都将记录在此文件中。
 
-本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 和 [Conventional Commits](https://www.conventionalcommits.org/) 规范。
-
-版本号和 CHANGELOG 由 GitHub Actions 自动管理，详见 [自动化版本管理文档](docs/workflows/auto-version-changelog.md)。
+本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
+版本号由 GitHub Actions 自动维护，发布说明统一使用中文记录。
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.0.1`
+**最近更新**: `2026-04-08`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- [PR #63](https://github.com/huajune/cake-agent-runtime/pull/63) [codex] chore: 自动化受保护分支发布流程
+
+### 新功能
+- 无
+
+### 问题修复
+- 无
+
+### 优化调整
+- 无
+
+### 运维与流程
+- [PR #63](https://github.com/huajune/cake-agent-runtime/pull/63) [codex] chore: 自动化受保护分支发布流程
+
+### 配置变更
+- 无
+
+### 验证记录
+- 无
+<!-- release:pending:end -->
 
 ## [4.0.0] - 2026-04-01
 
@@ -738,4 +766,3 @@ Feature 更新：
 - 重置 CHANGELOG.md 等待自动生成 (c61d0ed)
 - sync version 1.0.5 from master [skip ci] (27f129c)
 - Merge pull request #6 from huajune/develop (e96d822)
-
