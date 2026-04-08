@@ -3,6 +3,11 @@ import { SpongeService } from '@sponge/sponge.service';
 import { GroupContext, TimeSlot, BI_FIELD_NAMES } from '@biz/group-task/group-task.types';
 import { formatLocalDate } from '@infra/utils/date.util';
 
+function parseShanghaiDateAtNoon(date: string): Date {
+  // Use local noon to avoid timezone boundary shifts on UTC CI runners.
+  return new Date(`${date}T12:00:00+08:00`);
+}
+
 describe('OrderGrabStrategy', () => {
   let strategy: OrderGrabStrategy;
   let mockSpongeService: Partial<SpongeService>;
@@ -74,10 +79,10 @@ describe('OrderGrabStrategy', () => {
       const call = (mockSpongeService.fetchBIOrders as jest.Mock).mock.calls[0][0];
       expect(call.regionName).toBe('上海');
       // 验证 startDate 是周六、endDate 是周日
-      const start = new Date(`${call.startDate}T00:00:00+08:00`);
-      const end = new Date(`${call.endDate}T00:00:00+08:00`);
-      expect(start.getDay()).toBe(6); // Saturday
-      expect(end.getDay()).toBe(0); // Sunday
+      const start = parseShanghaiDateAtNoon(call.startDate);
+      const end = parseShanghaiDateAtNoon(call.endDate);
+      expect(start.getUTCDay()).toBe(6); // Saturday
+      expect(end.getUTCDay()).toBe(0); // Sunday
       // 周日紧跟周六的下一天
       expect((end.getTime() - start.getTime()) / (24 * 3600 * 1000)).toBe(1);
     });
@@ -90,8 +95,8 @@ describe('OrderGrabStrategy', () => {
       const call = (mockSpongeService.fetchBIOrders as jest.Mock).mock.calls[0][0];
       expect(call.startDate).toBe(formatLocalDate(new Date()));
       // endDate 应是今天或之后的某个周日
-      const end = new Date(`${call.endDate}T00:00:00+08:00`);
-      expect(end.getDay()).toBe(0);
+      const end = parseShanghaiDateAtNoon(call.endDate);
+      expect(end.getUTCDay()).toBe(0);
     });
 
     it('无订单时返回 hasData=false', async () => {
