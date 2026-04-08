@@ -161,7 +161,7 @@ invite_to_group 工具执行
   │
   ├─ 2. 按城市筛选
   │     groups.filter(g => g.city === city)
-  │     无匹配 → 返回可用城市列表，LLM 重试或告知用户
+  │     无匹配 → 静默跳过（不告警、不通知候选人）
   │
   ├─ 3. 按行业精筛（可选）
   │     有 industry → 优先匹配，无匹配回退到城市级
@@ -170,18 +170,19 @@ invite_to_group 工具执行
   │     按 memberCount 升序，选第一个未满的
   │     全部满 → 飞书告警 + 返回 group_full 状态
   │
-  ├─ 5. 检查重复
-  │     查询 Redis 防止重复拉入同一个群
-  │     key: invite:{corpId}:{userId}:{roomWxid}
-  │     已拉过 → 返回 already_invited
+  ├─ 5. 检查用户是否已在群中
+  │     GroupMembershipService.isUserInRoom(roomWxid, userImContactId)
+  │     数据源：企业级 /api/v2/groupChat/list（memberList 字段）
+  │     Redis Set 缓存：room:members:{roomWxid}，TTL 10 分钟
+  │     已在群中 → 返回 already_in_group（静默）
   │
   ├─ 6. 执行拉人（企业级接口，不受小组限制）
   │     RoomService.addMemberEnterprise({token, imBotId, botUserId, contactWxid, roomWxid})
   │     token = STRIDE_ENTERPRISE_TOKEN（企业级）
   │     imBotId = 聊天 bot 的系统 wxid（从回调透传）
   │
-  ├─ 7. 记录 Redis + 写入会话记忆
-  │     Redis: invite:{corpId}:{userId}:{roomWxid} = 1, TTL 30天
+  ├─ 7. 更新成员缓存 + 写入会话记忆
+  │     GroupMembershipService.markUserInRoom(roomWxid, userImContactId)
   │     MemoryService.saveInvitedGroup() → 会话事实记录
   │
   └─ 8. 返回结果
@@ -197,11 +198,10 @@ invite_to_group 工具执行
 | 场景 | 处理方式 | 返回给 LLM |
 |------|---------|-----------|
 | 无兼职群数据 | 缓存为空 + token 未配置 | `{ success: false, error: "暂无可用群" }` |
-| 城市无匹配 | 返回可用城市列表 | `{ success: false, availableCities: [...] }` |
+| 城市无匹配 | 静默跳过，不告警不通知 | `{ success: false, reason: "no_group_in_city" }` |
 | 全部群满 | 飞书告警，对候选人静默跳过 | `{ success: false, reason: "group_full" }` |
-| 已拉过此群 | Redis 去重 | `{ success: false, reason: "already_invited", groupName }` |
+| 候选人已在群中 | 查企业级 memberList 判定，静默跳过 | `{ success: false, reason: "already_in_group", groupName }` |
 | addMember API 失败 | 记录日志 | `{ success: false, error: "拉人失败: ..." }` |
-| 候选人已在群中 | API 返回错误/幂等 | `{ success: false, error: "用户已在群中" }` |
 
 ---
 
@@ -233,7 +233,6 @@ invite_to_group 工具执行
     inviteMode?: 'direct' | 'link'  // 拉群方式（<100人直接拉入 / >=100人发邀请链接）
     reason?: string        // 失败原因代码
     error?: string         // 错误信息
-    availableCities?: string[]  // 城市无匹配时返回可用列表
   }
 }
 ```
@@ -255,8 +254,8 @@ invite_to_group 工具执行
 | 服务 | 用途 |
 |------|------|
 | `GroupResolverService` | 获取 & 筛选兼职群列表 |
+| `GroupMembershipService` | 判断候选人是否已在目标群（memberList 缓存） |
 | `RoomService` | 执行 addMemberEnterprise 拉人（企业级接口） |
-| `RedisService` | 去重记录（防重复拉群） |
 | `FeishuAlertService` | 群满告警 |
 | `MemoryService` | 拉群后写入会话事实记录 |
 
@@ -267,14 +266,17 @@ GROUP_TASK_TOKENS → GroupResolverService → 兼职群列表（含 memberCount
                                               ↓
 候选人 city/industry ──────────────────→ 匹配 & 选群
                                               ↓
-STRIDE_ENTERPRISE_TOKEN ───────────────→ RoomService.addMemberEnterprise()
-ToolBuildContext.botImId (imBotId) ─────→   （企业级接口，不受小组限制）
-ToolBuildContext.userId (contactWxid) ──→
+STRIDE_ENTERPRISE_TOKEN ──┬──→ GroupMembershipService.isUserInRoom()
+                          │    （缓存缺失时拉取 /groupChat/list 全量成员预热）
+                          │        ↓ 已在群中 → 静默跳过
+                          │
+                          └──→ RoomService.addMemberEnterprise()
+                               （企业级接口，不受小组限制）
                                               ↓
                                     ┌─────────┴─────────┐
                                     ▼                   ▼
-Redis invite:{corpId}:{userId}:{roomWxid}   MemoryService.saveInvitedGroup()
-           ← 去重记录 (30天)                  ← 会话事实记录
+Redis room:members:{roomWxid}       MemoryService.saveInvitedGroup()
+    ← sadd 当前用户 (TTL 10 分钟)       ← 会话事实记录
 ```
 
 ---
@@ -298,7 +300,7 @@ Redis invite:{corpId}:{userId}:{roomWxid}   MemoryService.saveInvitedGroup()
 
 - 飞书告警：群满通知
 - 日志：`invite_to_group` 工具调用日志
-- Redis：可查询 `invite:*` 了解拉群记录
+- Redis：可查询 `room:members:*` 了解成员缓存状态
 
 ---
 
@@ -310,4 +312,4 @@ Redis invite:{corpId}:{userId}:{roomWxid}   MemoryService.saveInvitedGroup()
 | P2 | 建群 API | 托管平台支持后，实现自动建群 |
 | P2 | 多群类型支持 | 扩展到抢单群、店长群等场景 |
 | P3 | 群活跃度路由 | 优先分配到活跃度高的群 |
-| P3 | 退群检测 | 检测用户退群后清理 Redis 记录 |
+| P3 | 退群回调维护 | 收到退群事件时 `srem room:members:{roomWxid}`，减少缓存漂移 |

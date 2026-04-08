@@ -142,4 +142,19 @@ export class RedisService implements OnModuleInit {
   async expire(key: string, seconds: number): Promise<number> {
     return this.redisClient.expire(key, seconds);
   }
+
+  /**
+   * 便捷方法：sadd (向 Set 添加成员)
+   */
+  async sadd(key: string, ...members: (string | number)[]): Promise<number> {
+    if (members.length === 0) return 0;
+    return this.redisClient.sadd(key, members[0], ...members.slice(1));
+  }
+
+  /**
+   * 便捷方法：sismember (判断成员是否在 Set 中)
+   */
+  async sismember(key: string, member: string | number): Promise<number> {
+    return this.redisClient.sismember(key, member);
+  }
 }
