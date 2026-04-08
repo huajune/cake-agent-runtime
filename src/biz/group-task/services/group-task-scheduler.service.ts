@@ -211,7 +211,7 @@ export class GroupTaskSchedulerService implements OnModuleInit {
           try {
             // 3a. 用分组代表拉取数据（同组数据相同，只拉一次）
             const representative = groupMembers[0];
-            const data = await strategy.fetchData(representative);
+            const data = await strategy.fetchData(representative, timeSlot);
 
             if (!data.hasData) {
               result.skippedCount += groupMembers.length;

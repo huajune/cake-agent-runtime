@@ -18,7 +18,7 @@ export interface NotificationStrategy {
   readonly needsAI: boolean;
 
   /** 从外部数据源获取该群所需数据 */
-  fetchData(context: GroupContext): Promise<NotificationData>;
+  fetchData(context: GroupContext, timeSlot?: TimeSlot): Promise<NotificationData>;
 
   /** 根据数据直接生成消息文本（模板策略） */
   buildMessage?(data: NotificationData, context: GroupContext, timeSlot?: TimeSlot): string;
