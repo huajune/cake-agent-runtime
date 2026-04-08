@@ -347,26 +347,77 @@ function normalizeProjectionScalar(value: unknown): string {
   return String(value);
 }
 
+interface ProjectionRenderOptions {
+  skipPathKeys?: Set<string>;
+  hideUnset?: boolean;
+}
+
+interface ProjectionCollectState {
+  lines: string[];
+  hiddenUnsetCount: number;
+}
+
+function formatProjectionPathKey(path: Array<string | number>): string {
+  const segments: string[] = [];
+  path.forEach((segment) => {
+    if (typeof segment === 'number') {
+      if (segments.length === 0) {
+        segments.push('[]');
+      } else {
+        segments[segments.length - 1] = `${segments[segments.length - 1]}[]`;
+      }
+      return;
+    }
+    segments.push(segment);
+  });
+  return segments.join('.');
+}
+
+function shouldSkipProjectionPath(
+  path: Array<string | number>,
+  options: ProjectionRenderOptions,
+): boolean {
+  if (!options.skipPathKeys || options.skipPathKeys.size === 0) return false;
+  return options.skipPathKeys.has(formatProjectionPathKey(path));
+}
+
 function collectProjectionLines(
   value: unknown,
   path: Array<string | number>,
-  lines: string[],
+  state: ProjectionCollectState,
+  options: ProjectionRenderOptions,
 ): void {
+  if (shouldSkipProjectionPath(path, options)) return;
+
   if (Array.isArray(value)) {
     if (value.length === 0) {
-      lines.push(`- **${formatProjectionPath(path)}**: 空`);
+      if (options.hideUnset) {
+        state.hiddenUnsetCount += 1;
+        return;
+      }
+      state.lines.push(`- **${formatProjectionPath(path)}**: 空`);
       return;
     }
 
     const allScalar = value.every((item) => !Array.isArray(item) && !isPlainObject(item));
     if (allScalar) {
-      const joined = value.map((item) => normalizeProjectionScalar(item)).join('、');
-      lines.push(`- **${formatProjectionPath(path)}**: ${joined}`);
+      const normalizedValues = value.map((item) => normalizeProjectionScalar(item));
+      const visibleValues = options.hideUnset
+        ? normalizedValues.filter((item) => item !== '未设置')
+        : normalizedValues;
+
+      if (options.hideUnset) {
+        state.hiddenUnsetCount += normalizedValues.length - visibleValues.length;
+      }
+
+      if (visibleValues.length === 0) return;
+      const joined = visibleValues.join('、');
+      state.lines.push(`- **${formatProjectionPath(path)}**: ${joined}`);
       return;
     }
 
     value.forEach((item, index) => {
-      collectProjectionLines(item, [...path, index], lines);
+      collectProjectionLines(item, [...path, index], state, options);
     });
     return;
   }
@@ -374,28 +425,93 @@ function collectProjectionLines(
   if (isPlainObject(value)) {
     const entries = Object.entries(value);
     if (entries.length === 0) {
-      lines.push(`- **${formatProjectionPath(path)}**: 空`);
+      if (options.hideUnset) {
+        state.hiddenUnsetCount += 1;
+        return;
+      }
+      state.lines.push(`- **${formatProjectionPath(path)}**: 空`);
       return;
     }
 
     entries.forEach(([key, nested]) => {
-      collectProjectionLines(nested, [...path, key], lines);
+      collectProjectionLines(nested, [...path, key], state, options);
     });
     return;
   }
 
-  lines.push(`- **${formatProjectionPath(path)}**: ${normalizeProjectionScalar(value)}`);
+  const normalized = normalizeProjectionScalar(value);
+  if (options.hideUnset && normalized === '未设置') {
+    state.hiddenUnsetCount += 1;
+    return;
+  }
+  state.lines.push(`- **${formatProjectionPath(path)}**: ${normalized}`);
 }
 
-function formatProjectedFieldBlock(title: string, payload: unknown): string {
+function formatProjectedFieldBlock(
+  title: string,
+  payload: unknown,
+  options: ProjectionRenderOptions = {},
+): string {
   if (!isPlainObject(payload)) return '';
-  const lines: string[] = [];
+  const state: ProjectionCollectState = {
+    lines: [],
+    hiddenUnsetCount: 0,
+  };
   Object.entries(payload).forEach(([key, value]) => {
-    collectProjectionLines(value, [key], lines);
+    collectProjectionLines(value, [key], state, options);
   });
-  if (lines.length === 0) return '';
-  return `#### ${title}\n${lines.join('\n')}\n\n`;
+  if (state.lines.length === 0 && state.hiddenUnsetCount === 0) return '';
+  if (state.hiddenUnsetCount > 0) {
+    state.lines.push(`- 已省略未设置字段 ${state.hiddenUnsetCount} 项`);
+  }
+  return `#### ${title}\n${state.lines.join('\n')}\n\n`;
 }
+
+const BASIC_INFO_PROJECTION_SKIP_PATHS = new Set<string>([
+  'jobId',
+  'jobName',
+  'jobNickName',
+  'brandName',
+  'storeInfo.storeName',
+  'storeInfo.storeAddress',
+  'jobCategoryName',
+  'laborForm',
+  'jobContent',
+]);
+
+const HIRING_REQUIREMENT_PROJECTION_SKIP_PATHS = new Set<string>([
+  'basicPersonalRequirements.genderRequirement',
+  'basicPersonalRequirements.minAge',
+  'basicPersonalRequirements.maxAge',
+  'certificate.education',
+  'certificate.healthCertificate',
+  'remark',
+]);
+
+const WORK_TIME_PROJECTION_SKIP_PATHS = new Set<string>([
+  'employmentForm',
+  'employmentDescription',
+  'minWorkMonths',
+  'weekWorkTime.perWeekWorkDays',
+  'weekWorkTime.perWeekRestDays',
+  'dayWorkTime.perDayMinWorkHours',
+  'dailyShiftSchedule.arrangementType',
+  'workTimeRemark',
+]);
+
+const INTERVIEW_PROCESS_PROJECTION_SKIP_PATHS = new Set<string>([
+  'interviewTotal',
+  'firstInterview.firstInterviewWay',
+  'firstInterview.interviewAddress',
+  'firstInterview.interviewDemand',
+  'probationWork.probationWorkPeriod',
+  'probationWork.probationWorkPeriodUnit',
+  'probationWork.probationWorkAssessment',
+  'training.trainingPeriod',
+  'training.trainingPeriodUnit',
+  'training.trainingDesc',
+  'remark',
+]);
 
 function formatInterviewDecisionSummary(policy: JobPolicyAnalysis): string {
   const lines: string[] = [];
@@ -739,32 +855,48 @@ function formatJobToMarkdown(job: any, index: number, flags: ProgressiveDisclosu
   }
   if (flags.includeBasicInfo) {
     md += formatBasicInfoSection(job);
-    md += formatProjectedFieldBlock('基本信息字段投影', job.basicInfo);
+    md += formatProjectedFieldBlock('基本信息字段投影', job.basicInfo, {
+      skipPathKeys: BASIC_INFO_PROJECTION_SKIP_PATHS,
+      hideUnset: true,
+    });
   }
   if (flags.includeJobSalary) {
     const s = formatSalaryInfo(job);
     if (s) md += '### 薪资信息\n' + s + '\n';
-    md += formatProjectedFieldBlock('薪资字段投影', job.jobSalary);
+    md += formatProjectedFieldBlock('薪资字段投影', job.jobSalary, {
+      hideUnset: true,
+    });
   }
   if (flags.includeWelfare) {
     const s = formatWelfareInfo(job);
     if (s) md += '### 福利信息\n' + s + '\n';
-    md += formatProjectedFieldBlock('福利字段投影', job.welfare);
+    md += formatProjectedFieldBlock('福利字段投影', job.welfare, {
+      hideUnset: true,
+    });
   }
   if (flags.includeHiringRequirement) {
     const s = formatRequirements(job, policy);
     if (s) md += '### 招聘要求\n' + s + '\n';
-    md += formatProjectedFieldBlock('招聘要求字段投影', job.hiringRequirement);
+    md += formatProjectedFieldBlock('招聘要求字段投影', job.hiringRequirement, {
+      skipPathKeys: HIRING_REQUIREMENT_PROJECTION_SKIP_PATHS,
+      hideUnset: true,
+    });
   }
   if (flags.includeWorkTime) {
     const s = formatWorkTime(job);
     if (s) md += '### 工作时间\n' + s + '\n';
-    md += formatProjectedFieldBlock('工作时间字段投影', job.workTime);
+    md += formatProjectedFieldBlock('工作时间字段投影', job.workTime, {
+      skipPathKeys: WORK_TIME_PROJECTION_SKIP_PATHS,
+      hideUnset: true,
+    });
   }
   if (flags.includeInterviewProcess) {
     const s = formatInterviewInfo(job, policy);
     if (s) md += '### 面试流程\n' + s + '\n';
-    md += formatProjectedFieldBlock('面试流程字段投影', job.interviewProcess);
+    md += formatProjectedFieldBlock('面试流程字段投影', job.interviewProcess, {
+      skipPathKeys: INTERVIEW_PROCESS_PROJECTION_SKIP_PATHS,
+      hideUnset: true,
+    });
   }
 
   md += '### 岗位标识\n';

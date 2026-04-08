@@ -236,6 +236,10 @@ describe('buildJobListTool', () => {
         minWorkMonths: 3,
         dayWorkTime: { perDayMinWorkHours: '3.0' },
         dailyShiftSchedule: { arrangementType: '固定排班制' },
+        monthWorkTime: {
+          perMonthMaxRestTime: 4,
+          perMonthMaxRestTimeUnit: '天',
+        },
       },
     });
     mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job], total: 1 });
@@ -251,9 +255,43 @@ describe('buildJobListTool', () => {
     expect(result.markdown).toContain('### 工作时间');
     expect(result.markdown).toContain('#### 基本信息字段投影');
     expect(result.markdown).toContain('#### 工作时间字段投影');
-    expect(result.markdown).toContain('**门店信息 / 门店名称**: 朝阳店');
-    expect(result.markdown).toContain('**每日工时 / 每日最少工时**: 3.0');
+    expect(result.markdown).toContain('**门店信息 / 城市**: 北京');
+    expect(result.markdown).toContain('**每月工时 / 每月最多休息时长**: 4');
+    expect(result.markdown).not.toContain('**门店信息 / 门店名称**');
+    expect(result.markdown).not.toContain('**每日工时 / 每日最少工时**: 3.0');
     expect(result.markdown).not.toContain('字段（完整）');
     expect(result.markdown).not.toContain('```json');
+  });
+
+  it('should omit unset projection fields and summarize omitted count', async () => {
+    const job = makeJobData({
+      hiringRequirement: {
+        basicPersonalRequirements: {
+          genderRequirement: '男性,女性',
+          minAge: 18,
+          maxAge: 35,
+        },
+        certificate: {
+          education: '不限',
+          healthCertificate: null,
+          certificates: null,
+        },
+        language: {
+          languages: null,
+          languageRemark: null,
+        },
+      },
+    });
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job], total: 1 });
+
+    const result = await executeTool(mockContext, {
+      ...defaultInput,
+      includeHiringRequirement: true,
+    });
+
+    expect(result.markdown).toContain('#### 招聘要求字段投影');
+    expect(result.markdown).toContain('已省略未设置字段');
+    expect(result.markdown).not.toContain('**证书 / 健康证**: 未设置');
+    expect(result.markdown).not.toContain('**语言 / 语言要求**: 未设置');
   });
 });
