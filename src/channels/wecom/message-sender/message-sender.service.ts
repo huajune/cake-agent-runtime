@@ -97,6 +97,10 @@ export class MessageSenderService {
 
       const result = await this.httpService.post(apiUrl, requestBody);
 
+      // Stride API 用业务错误码表示失败（HTTP 200 + errcode!=0），必须显式检查，
+      // 否则发送失败会被静默吞掉，上层 failedCount 仍然为 0。
+      this.assertStrideOk(result, _apiType === 'group' ? 'group' : 'enterprise');
+
       this.logger.log('发送消息成功');
       return result;
     } catch (error) {
@@ -119,12 +123,41 @@ export class MessageSenderService {
 
       const result = await this.httpService.post(apiUrl, requestBody);
 
+      this.assertStrideOk(result, 'enterprise');
+
       this.logger.log('创建群发消息成功');
       return result;
     } catch (error) {
       // 不在中间层打印日志，避免日志重复
       // 由顶层服务统一处理错误日志
       throw error;
+    }
+  }
+
+  /**
+   * 校验 Stride API 业务响应。
+   *
+   * HTTP 200 不代表业务成功：Stride 在请求头全部正确时，仍会通过 `errcode != 0`
+   * 报告业务失败（如 bot 不存在、room 无效）。不校验会导致整条发送链路静默失败。
+   *
+   * 企业级 API 形如 `{errcode, errmsg}`，小组级形如 `{code, msg, data}`。
+   */
+  private assertStrideOk(result: any, apiType: 'enterprise' | 'group'): void {
+    if (!result || typeof result !== 'object') return;
+
+    if (apiType === 'enterprise') {
+      const errcode = result.errcode;
+      if (errcode !== undefined && errcode !== 0) {
+        const errmsg = result.errmsg || 'unknown error';
+        throw new Error(`Stride 企业级 API 业务失败: errcode=${errcode}, errmsg=${errmsg}`);
+      }
+      return;
+    }
+
+    const code = result.code;
+    if (code !== undefined && code !== 0) {
+      const msg = result.msg || result.message || 'unknown error';
+      throw new Error(`Stride 小组级 API 业务失败: code=${code}, msg=${msg}`);
     }
   }
 }

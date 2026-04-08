@@ -154,40 +154,6 @@ function addLine(lines: string[], label: string, value: string | null | undefine
   }
 }
 
-function safeJsonStringify(value: unknown): string {
-  try {
-    return JSON.stringify(value ?? null, null, 2);
-  } catch {
-    return JSON.stringify(String(value));
-  }
-}
-
-function sanitizePayloadForDisplay(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => sanitizePayloadForDisplay(item));
-  }
-  if (value && typeof value === 'object') {
-    const obj = value as Record<string, unknown>;
-    const next: Record<string, unknown> = {};
-    for (const [key, item] of Object.entries(obj)) {
-      next[key] = sanitizePayloadForDisplay(item);
-    }
-    return next;
-  }
-  if (typeof value === 'string') {
-    const sanitized = sanitizeConstraintText(value);
-    if (sanitized === null) return null;
-    const cleaned = cleanPolicyText(sanitized);
-    return cleaned || null;
-  }
-  return value;
-}
-
-function formatFullFieldBlock(title: string, payload: unknown): string {
-  const sanitizedPayload = sanitizePayloadForDisplay(payload);
-  return `#### ${title}字段（完整）\n\n\`\`\`json\n${safeJsonStringify(sanitizedPayload)}\n\`\`\`\n\n`;
-}
-
 function formatInterviewDecisionSummary(policy: JobPolicyAnalysis): string {
   const lines: string[] = [];
 
@@ -528,34 +494,26 @@ function formatJobToMarkdown(job: any, index: number, flags: ProgressiveDisclosu
   if (flags.includeHiringRequirement || flags.includeInterviewProcess) {
     md += formatInterviewDecisionSummary(policy);
   }
-  if (flags.includeBasicInfo) {
-    md += formatBasicInfoSection(job);
-    md += formatFullFieldBlock('基本信息', job.basicInfo);
-  }
+  if (flags.includeBasicInfo) md += formatBasicInfoSection(job);
   if (flags.includeJobSalary) {
     const s = formatSalaryInfo(job);
     if (s) md += '### 薪资信息\n' + s + '\n';
-    md += formatFullFieldBlock('薪资信息', job.jobSalary);
   }
   if (flags.includeWelfare) {
     const s = formatWelfareInfo(job);
     if (s) md += '### 福利信息\n' + s + '\n';
-    md += formatFullFieldBlock('福利信息', job.welfare);
   }
   if (flags.includeHiringRequirement) {
     const s = formatRequirements(job, policy);
     if (s) md += '### 招聘要求\n' + s + '\n';
-    md += formatFullFieldBlock('招聘要求', job.hiringRequirement);
   }
   if (flags.includeWorkTime) {
     const s = formatWorkTime(job);
     if (s) md += '### 工作时间\n' + s + '\n';
-    md += formatFullFieldBlock('工作时间', job.workTime);
   }
   if (flags.includeInterviewProcess) {
     const s = formatInterviewInfo(job, policy);
     if (s) md += '### 面试流程\n' + s + '\n';
-    md += formatFullFieldBlock('面试流程', job.interviewProcess);
   }
 
   md += '### 岗位标识\n';

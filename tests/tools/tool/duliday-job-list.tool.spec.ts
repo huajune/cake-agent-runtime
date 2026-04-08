@@ -228,4 +228,28 @@ describe('buildJobListTool', () => {
     expect(result.markdown).not.toContain('过年不返乡');
     expect(result.markdown).not.toContain('年后返岗');
   });
+
+  it('should keep markdown output as projected text without raw json field blocks', async () => {
+    const job = makeJobData({
+      workTime: {
+        employmentForm: '长期用工',
+        minWorkMonths: 3,
+        dayWorkTime: { perDayMinWorkHours: '3.0' },
+        dailyShiftSchedule: { arrangementType: '固定排班制' },
+      },
+    });
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [job], total: 1 });
+
+    const result = await executeTool(mockContext, {
+      ...defaultInput,
+      responseFormat: ['markdown'],
+      includeBasicInfo: true,
+      includeWorkTime: true,
+    });
+
+    expect(result.markdown).toContain('### 基本信息');
+    expect(result.markdown).toContain('### 工作时间');
+    expect(result.markdown).not.toContain('字段（完整）');
+    expect(result.markdown).not.toContain('```json');
+  });
 });
