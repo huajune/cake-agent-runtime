@@ -1,32 +1,35 @@
-name: Update Version and Changelog
+name: Release Metadata Automation
 
 on:
-  push:
+  pull_request_target:
+    types: [closed]
     branches:
+      - develop
       - master
 
-# 防止并发执行导致分支名冲突
 concurrency:
-  group: version-changelog-${{ github.ref }}
+  group: release-metadata-${{ github.event.pull_request.base.ref }}
   cancel-in-progress: false
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
-  update-version-changelog:
+  prepare-develop-release:
+    if: >
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'develop' &&
+      !startsWith(github.event.pull_request.head.ref, 'chore/release-metadata/') &&
+      !startsWith(github.event.pull_request.title, 'chore(release): 更新待发布版本信息') &&
+      !contains(format('{0}', github.event.pull_request.body), '<!-- release-metadata-pr -->')
     runs-on: ubuntu-latest
-
-    # 避免无限循环：如果是 bot 提交则跳过
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
-
-    permissions:
-      contents: write
-      pull-requests: write
-
     steps:
-      - name: Checkout code
+      - name: Checkout develop
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref_name }}
-          fetch-depth: 0 # 获取完整历史记录，用于分析 commits
+          ref: develop
+          fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
@@ -39,139 +42,225 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Run version and changelog update script
-        run: node scripts/update-version-changelog.js
-        env:
-          GITHUB_REF: ${{ github.ref }}
-          GITHUB_SHA: ${{ github.sha }}
-
-      - name: Check for changes
-        id: check_changes
-        run: |
-          if git diff --quiet package.json CHANGELOG.md; then
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-            echo "version=unchanged" >> $GITHUB_OUTPUT
-          else
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-            # 读取新版本号
-            NEW_VERSION=$(node -p "require('./package.json').version")
-            echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Commit release changes to master
-        if: steps.check_changes.outputs.has_changes == 'true'
-        id: release_commit
-        run: |
-          set -euo pipefail
-          VERSION="${{ steps.check_changes.outputs.version }}"
-          CURRENT_BRANCH="${{ github.ref_name }}"
-          TAG_NAME="v$VERSION"
-
-          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
-            echo "Tag already exists: $TAG_NAME" >&2
-            exit 1
-          fi
-
-          git add package.json CHANGELOG.md
-          git commit -m "chore(release): bump version to $VERSION [skip ci]"
-          git push origin "HEAD:$CURRENT_BRANCH"
-
-          RELEASE_COMMIT=$(git rev-parse HEAD)
-          echo "release_commit=$RELEASE_COMMIT" >> $GITHUB_OUTPUT
-          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
-
-          echo "✅ 已推送 release commit 到 ${CURRENT_BRANCH}: ${RELEASE_COMMIT}"
-
-      - name: Create develop sync PR
-        if: steps.check_changes.outputs.has_changes == 'true'
+      - name: Create or update develop release metadata PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MERGED_PR_TITLE: ${{ github.event.pull_request.title }}
+          MERGED_PR_BODY: ${{ github.event.pull_request.body }}
+          MERGED_PR_NUMBER: ${{ github.event.pull_request.number }}
+          MERGED_PR_URL: ${{ github.event.pull_request.html_url }}
+          MERGED_PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          MERGED_PR_MERGED_AT: ${{ github.event.pull_request.merged_at }}
         run: |
           set -euo pipefail
-          VERSION="${{ steps.check_changes.outputs.version }}"
-          RELEASE_COMMIT="${{ steps.release_commit.outputs.release_commit }}"
-          CURRENT_BRANCH="${{ github.ref_name }}"
-          SYNC_BRANCH="chore/release-sync-develop-v$VERSION"
-          COMMIT_MESSAGE="chore(release): sync version files from $CURRENT_BRANCH for v$VERSION [skip ci]"
-          PR_TITLE="chore(release): sync version files to develop for v$VERSION"
-          PR_BODY=$(cat <<EOF
-          ## 自动同步版本文件到 develop
 
-          此 PR 由 GitHub Actions 自动创建，用于将 \`$CURRENT_BRANCH\` 上 release commit 生成的版本文件同步到 \`develop\`。
+          BASE_BRANCH="develop"
+          BOT_BRANCH="chore/release-metadata/develop"
+          SOURCE_PR_NUMBER="${{ github.event.pull_request.number }}"
 
-          - 版本: \`v$VERSION\`
-          - 来源分支: \`$CURRENT_BRANCH\`
-          - release commit: \`$RELEASE_COMMIT\`
-          - 同步文件:
-            - \`package.json\`
-            - \`CHANGELOG.md\`
-          EOF
-          )
+          git fetch origin "${BASE_BRANCH}"
+          git checkout -B "${BOT_BRANCH}" "origin/${BASE_BRANCH}"
 
-          git fetch origin develop
-          git checkout -B "$SYNC_BRANCH" origin/develop
+          node scripts/update-version-changelog.js prepare
 
-          # 仅同步 release 生成的版本文件，避免 develop 在这些文件上的分支差异导致 cherry-pick 冲突。
-          git restore --source="$RELEASE_COMMIT" --staged --worktree -- package.json CHANGELOG.md
-
-          if git diff --cached --quiet -- package.json CHANGELOG.md; then
-            echo "ℹ️ develop 已包含 v$VERSION 的版本文件，跳过同步 PR 创建"
+          if git diff --quiet package.json CHANGELOG.md .release/pending-release.json; then
+            echo "ℹ️ develop 的版本元数据无变化，跳过 PR 更新"
             exit 0
           fi
 
-          git commit -m "$COMMIT_MESSAGE"
-          git push --force-with-lease origin "HEAD:$SYNC_BRANCH"
+          VERSION=$(node -p "require('./package.json').version")
+
+          git add package.json CHANGELOG.md .release/pending-release.json
+          git commit -m "chore(release): 更新待发布版本信息 [skip ci]"
+          git push --force-with-lease origin "HEAD:${BOT_BRANCH}"
+
+          PR_TITLE="chore(release): 更新待发布版本信息（v${VERSION}）"
+          PR_BODY=$(cat <<EOF
+          <!-- release-metadata-pr -->
+          ## 说明
+
+          此 PR 由 GitHub Actions 自动创建，用于更新 \`develop\` 上的待发布版本信息。
+
+          - 触发来源: #${SOURCE_PR_NUMBER}
+          - 目标分支: \`${BASE_BRANCH}\`
+          - 预计版本: \`v${VERSION}\`
+          - 更新文件:
+            - \`package.json\`
+            - \`CHANGELOG.md\`
+            - \`.release/pending-release.json\`
+          EOF
+          )
 
           EXISTING_PR_NUMBER=$(gh pr list \
-            --base develop \
-            --head "$SYNC_BRANCH" \
+            --base "${BASE_BRANCH}" \
+            --head "${BOT_BRANCH}" \
             --state open \
             --json number \
             --jq '.[0].number // ""')
 
-          if [ -n "$EXISTING_PR_NUMBER" ]; then
-            gh pr edit "$EXISTING_PR_NUMBER" --title "$PR_TITLE" --body "$PR_BODY"
-            EXISTING_PR_URL=$(gh pr view "$EXISTING_PR_NUMBER" --json url --jq '.url')
-            echo "✅ 已更新 develop 同步 PR: $EXISTING_PR_URL"
+          if [ -n "${EXISTING_PR_NUMBER}" ]; then
+            gh pr edit "${EXISTING_PR_NUMBER}" --title "${PR_TITLE}" --body "${PR_BODY}"
+            echo "✅ 已更新 develop 版本元数据 PR: #${EXISTING_PR_NUMBER}"
             exit 0
           fi
 
-          PR_URL=$(gh pr create \
-            --base develop \
-            --head "$SYNC_BRANCH" \
-            --title "$PR_TITLE" \
-            --body "$PR_BODY")
+          gh pr create \
+            --base "${BASE_BRANCH}" \
+            --head "${BOT_BRANCH}" \
+            --title "${PR_TITLE}" \
+            --body "${PR_BODY}"
 
-          echo "✅ 已创建 develop 同步 PR: $PR_URL"
-
-      - name: Create and push release tag
-        if: steps.check_changes.outputs.has_changes == 'true'
+      - name: Reminder for branch protection
         run: |
-          set -euo pipefail
-          TAG_NAME="${{ steps.release_commit.outputs.tag_name }}"
-          RELEASE_COMMIT="${{ steps.release_commit.outputs.release_commit }}"
+          echo "ℹ️ 如果 develop 开启严格分支保护，请合并机器人创建的版本元数据 PR，而不是依赖工作流直推。"
 
-          git checkout --detach "$RELEASE_COMMIT"
-          git tag -a "$TAG_NAME" -m "Release $TAG_NAME" "$RELEASE_COMMIT"
-          git push origin "$TAG_NAME"
+  finalize-master-release:
+    if: >
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'master' &&
+      !startsWith(github.event.pull_request.head.ref, 'chore/release-metadata/') &&
+      !startsWith(github.event.pull_request.title, 'chore(release): 固化正式版本记录') &&
+      !contains(format('{0}', github.event.pull_request.body), '<!-- release-metadata-pr -->')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-          echo "✅ 已推送 release tag: $TAG_NAME"
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-      - name: Create GitHub Release
-        if: steps.check_changes.outputs.has_changes == 'true'
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create or update master release finalize PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="${{ steps.check_changes.outputs.version }}"
-          TAG_NAME="${{ steps.release_commit.outputs.tag_name }}"
+          set -euo pipefail
 
-          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            echo "ℹ️ GitHub Release already exists: $TAG_NAME"
+          BASE_BRANCH="master"
+          BOT_BRANCH="chore/release-metadata/master"
+          SOURCE_PR_NUMBER="${{ github.event.pull_request.number }}"
+
+          git fetch origin "${BASE_BRANCH}"
+          git checkout -B "${BOT_BRANCH}" "origin/${BASE_BRANCH}"
+
+          node scripts/update-version-changelog.js finalize
+
+          if git diff --quiet package.json CHANGELOG.md .release/pending-release.json; then
+            echo "ℹ️ master 的正式发布记录无变化，跳过 PR 更新"
             exit 0
           fi
 
-          gh release create "$TAG_NAME" \
-            --title "$TAG_NAME" \
-            --notes "Automated release for version $VERSION"
+          VERSION=$(node -p "require('./package.json').version")
 
-          echo "✅ 已创建 GitHub Release: $TAG_NAME"
+          git add package.json CHANGELOG.md .release/pending-release.json
+          git commit -m "chore(release): 固化正式版本记录 [skip ci]"
+          git push --force-with-lease origin "HEAD:${BOT_BRANCH}"
+
+          PR_TITLE="chore(release): 固化正式版本记录（v${VERSION}）"
+          PR_BODY=$(cat <<EOF
+          <!-- release-metadata-pr -->
+          ## 说明
+
+          此 PR 由 GitHub Actions 自动创建，用于将 \`master\` 上的待发布记录固化为正式版本。
+
+          - 触发来源: #${SOURCE_PR_NUMBER}
+          - 目标分支: \`${BASE_BRANCH}\`
+          - 发布版本: \`v${VERSION}\`
+          - 合并后动作:
+            - 创建 Git Tag
+            - 创建 GitHub Release
+            - 触发部署工作流
+          EOF
+          )
+
+          EXISTING_PR_NUMBER=$(gh pr list \
+            --base "${BASE_BRANCH}" \
+            --head "${BOT_BRANCH}" \
+            --state open \
+            --json number \
+            --jq '.[0].number // ""')
+
+          if [ -n "${EXISTING_PR_NUMBER}" ]; then
+            gh pr edit "${EXISTING_PR_NUMBER}" --title "${PR_TITLE}" --body "${PR_BODY}"
+            echo "✅ 已更新 master 发布固化 PR: #${EXISTING_PR_NUMBER}"
+            exit 0
+          fi
+
+          gh pr create \
+            --base "${BASE_BRANCH}" \
+            --head "${BOT_BRANCH}" \
+            --title "${PR_TITLE}" \
+            --body "${PR_BODY}"
+
+  publish-master-release:
+    if: >
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'master' &&
+      github.event.pull_request.head.ref == 'chore/release-metadata/master'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create and push release tag
+        id: release_tag
+        run: |
+          set -euo pipefail
+
+          VERSION=$(node -p "require('./package.json').version")
+          TAG_NAME="v${VERSION}"
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+
+          if git rev-parse "${TAG_NAME}" >/dev/null 2>&1; then
+            echo "ℹ️ Tag already exists: ${TAG_NAME}"
+            exit 0
+          fi
+
+          git tag -a "${TAG_NAME}" -m "Release ${TAG_NAME}"
+          git push origin "${TAG_NAME}"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          VERSION="${{ steps.release_tag.outputs.version }}"
+          TAG_NAME="${{ steps.release_tag.outputs.tag_name }}"
+
+          node scripts/get-release-notes.js "${VERSION}" > /tmp/release_notes.md
+
+          if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
+            echo "ℹ️ GitHub Release already exists: ${TAG_NAME}"
+            exit 0
+          fi
+
+          gh release create "${TAG_NAME}" \
+            --title "${TAG_NAME}" \
+            --notes-file /tmp/release_notes.md

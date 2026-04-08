@@ -5,11 +5,11 @@
  * 🍕{标题}
  *
  * 预计收入：¥{收入}
- * 📍 地点：{门店}
- * 📝 内容：{内容}
- * 📅 日期：{日期}
- * ⏰ 时间：{时段}
- * 🔗 {报名链接}
+ * 地点：{门店}
+ * 内容：{内容}
+ * 日期：{日期}
+ * 时间：{时段}
+ * 报名链接：{报名链接}
  *
  * ...更多订单...
  *
@@ -54,17 +54,19 @@ export function buildOrderGrabMessage(data: OrderGrabTemplateData): string {
     const content = Array.isArray(rawContent) ? rawContent.join('、') : rawContent;
     const date = order[BI_FIELD_NAMES.ORDER_DATE] || '未知';
     const rawTime = order[BI_FIELD_NAMES.SERVICE_DATE] || '未知';
-    // 去掉秒数：12:00:00~15:30:00 → 12:00~15:30
-    const time = String(rawTime).replace(/(\d{2}:\d{2}):\d{2}/g, '$1');
+    // 去掉秒数并在 ~ 两侧补空格：12:00:00~15:30:00 → 12:00 ~ 15:30
+    const time = String(rawTime)
+      .replace(/(\d{2}:\d{2}):\d{2}/g, '$1')
+      .replace(/\s*~\s*/g, ' ~ ');
     const link = order[BI_FIELD_NAMES.SHARE_LINK] || '';
 
     lines.push(`预计收入：¥${revenue}`);
-    lines.push(`📍 地点：${store}`);
-    lines.push(`📝 内容：${content}`);
-    lines.push(`📅 日期：${date}`);
-    lines.push(`⏰ 时间：${time}`);
+    lines.push(`地点：${store}`);
+    lines.push(`内容：${content}`);
+    lines.push(`日期：${date}`);
+    lines.push(`时间：${time}`);
     if (link) {
-      lines.push(`🔗 ${link}`);
+      lines.push(`报名链接：${link}`);
     }
     lines.push('');
   }
@@ -102,7 +104,7 @@ function selectTitle(orders: BIOrder[], city: string, timeSlot?: TimeSlot): stri
 
   // 场次专属标题，确保每次通知视觉上有区别
   if (timeSlot === TimeSlot.MORNING) {
-    if (allTomorrow) return '🍕明日订单，速来~';
+    if (allTomorrow) return '🍕明日新订单，速来~';
     return city ? `🍕【${city}】早间好单推荐~` : '🍕早间好单推荐~';
   }
   if (timeSlot === TimeSlot.AFTERNOON) {
@@ -115,7 +117,7 @@ function selectTitle(orders: BIOrder[], city: string, timeSlot?: TimeSlot): stri
 
   // 无场次兜底
   if (allTomorrow) {
-    return '🍕明日订单，速来~';
+    return '🍕明日新订单，速来~';
   }
   if (hasWeekend) {
     return '🍕周末订单，速来';
