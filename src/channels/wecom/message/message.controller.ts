@@ -1,9 +1,10 @@
-import { Controller, Post, Get, Body, Logger, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Body, Logger } from '@nestjs/common';
 import { MessageService } from './message.service';
 import { MessageProcessor } from './message.processor';
 import { RawResponse, Public } from '@infra/server/response/decorators/api-response.decorator';
 import { MessageCallbackAdapterService } from './services/callback-adapter.service';
 import { LogSanitizer } from './utils/log-sanitizer.util';
+import { SetWorkerConcurrencyDto } from './dto/set-worker-concurrency.dto';
 
 /**
  * 企微消息回调控制器
@@ -90,11 +91,8 @@ export class MessageController {
    * 设置 Worker 并发数
    */
   @Post('worker-concurrency')
-  async setWorkerConcurrency(@Body() body: { concurrency: number }) {
+  async setWorkerConcurrency(@Body() body: SetWorkerConcurrencyDto) {
     const { concurrency } = body;
-    if (typeof concurrency !== 'number' || !Number.isInteger(concurrency) || concurrency < 1) {
-      throw new HttpException('concurrency 必须是正整数', HttpStatus.BAD_REQUEST);
-    }
     return this.messageProcessor.setConcurrency(concurrency);
   }
 }

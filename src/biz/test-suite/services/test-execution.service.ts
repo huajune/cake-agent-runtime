@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Readable } from 'stream';
 import {
   AgentRunnerService,
@@ -7,7 +6,6 @@ import {
   type AgentRunResult,
   type AgentStreamResult,
 } from '@agent/runner.service';
-import { BookingDetectionService } from '@biz/message/services/booking-detection.service';
 import { TestChatRequestDto, TestChatResponse, VercelAIChatRequestDto } from '../dto/test-chat.dto';
 import { TestExecutionRepository } from '../repositories/test-execution.repository';
 import { TestExecution } from '../entities/test-execution.entity';
@@ -51,10 +49,8 @@ export class TestExecutionService {
   private readonly logger = new Logger(TestExecutionService.name);
 
   constructor(
-    private readonly configService: ConfigService,
     private readonly runner: AgentRunnerService,
     private readonly executionRepository: TestExecutionRepository,
-    private readonly bookingDetection: BookingDetectionService,
   ) {
     this.logger.log('TestExecutionService 初始化完成');
   }
@@ -102,14 +98,6 @@ export class TestExecutionService {
         scenario,
         strategySource: 'testing',
       });
-
-      if (request.notifyBooking) {
-        await this.notifyBookingIfNeeded({
-          sessionId,
-          userId: request.userId,
-          toolCalls: agentResult.toolCalls,
-        });
-      }
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       executionStatus = errorMsg.includes('timeout')
@@ -202,25 +190,30 @@ export class TestExecutionService {
       : (request.history || []).slice(0, -2);
 
     const messages = this.buildRunnerMessages(historyForAgent, request.message, request.imageUrls);
-
-    return this.runner.stream({
+    const runnerParams = {
       messages,
       userId: request.userId,
       corpId: 'test',
       sessionId,
       scenario,
       thinking: request.thinking,
-      strategySource: 'testing',
-      onFinish: request.notifyBooking
-        ? async (result) => {
-            await this.notifyBookingIfNeeded({
-              sessionId,
-              userId: request.userId,
-              toolCalls: result.toolCalls,
-            });
-          }
-        : undefined,
-    });
+      strategySource: 'testing' as const,
+    };
+
+    const runnerResult = await this.runner.stream(runnerParams);
+
+    return {
+      ...runnerResult,
+      agentRequest: {
+        messages,
+        userId: request.userId,
+        corpId: 'test',
+        sessionId,
+        scenario,
+        thinking: request.thinking,
+        strategySource: 'testing',
+      },
+    };
   }
 
   /**
@@ -304,14 +297,15 @@ export class TestExecutionService {
     testRequest: TestChatRequestDto;
     messageText: string;
   } {
-    const userMessages = request.messages.filter((m) => m.role === 'user');
+    const transportMessages = Array.isArray(request.messages) ? request.messages : [];
+    const userMessages = transportMessages.filter((m) => m.role === 'user');
     const latestUserMessage = userMessages[userMessages.length - 1];
     const latestPayload = this.extractMessagePayload(latestUserMessage);
     const currentImageUrls =
       latestPayload.imageUrls.length > 0 ? latestPayload.imageUrls : request.imageUrls;
     const messageText = latestPayload.text || (currentImageUrls?.length ? '[图片消息]' : '');
 
-    const history = request.messages.slice(0, -1).map((msg) => {
+    const history = transportMessages.slice(0, -1).map((msg) => {
       const payload = this.extractMessagePayload(msg);
       return {
         role: msg.role as MessageRole,
@@ -325,13 +319,16 @@ export class TestExecutionService {
       history,
       scenario: request.scenario || 'candidate-consultation',
       saveExecution: request.saveExecution ?? false,
-      notifyBooking: request.notifyBooking ?? true,
       skipHistoryTrim: true,
       sessionId: request.sessionId,
       userId: request.userId,
       thinking: request.thinking,
       imageUrls: currentImageUrls,
     };
+
+    if (!this.hasInputContent(testRequest.message, testRequest.imageUrls)) {
+      throw new Error('缺少可用于测试的用户输入，请填写当前用户消息或上传图片后再试');
+    }
 
     return { testRequest, messageText };
   }
@@ -411,20 +408,5 @@ export class TestExecutionService {
       })),
       tokenUsage: result.usage || { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
     };
-  }
-
-  private async notifyBookingIfNeeded(params: {
-    sessionId: string;
-    userId: string;
-    toolCalls?: AgentRunResult['toolCalls'];
-  }): Promise<void> {
-    await this.bookingDetection.handleBookingSuccessAsync({
-      chatId: params.sessionId,
-      contactName: params.userId,
-      userId: params.userId,
-      managerId: 'test-suite',
-      managerName: 'Agent Test',
-      toolCalls: params.toolCalls,
-    });
   }
 }

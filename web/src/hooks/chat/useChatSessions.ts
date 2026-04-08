@@ -35,10 +35,11 @@ export function useChatSummaryStats(startDate: string, endDate: string) {
   });
 }
 
-export function useChatSessionsOptimized(startDate: string, endDate: string) {
+export function useChatSessionsOptimized(startDate: string, endDate: string, enabled = true) {
   return useQuery({
     queryKey: ['chat-sessions-optimized', startDate, endDate],
     queryFn: () => chatService.getChatSessionsOptimized(startDate, endDate),
+    enabled,
   });
 }
 

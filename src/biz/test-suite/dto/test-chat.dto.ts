@@ -1,4 +1,14 @@
-import { IsString, IsOptional, IsArray, IsBoolean, ValidateNested, IsEnum } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsArray,
+  IsBoolean,
+  ValidateNested,
+  IsEnum,
+  IsIn,
+  IsInt,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
@@ -78,16 +88,47 @@ export class UIMessageDto {
   parts: UIMessagePartDto[];
 }
 
+export class ThinkingConfigDto {
+  @ApiProperty({ description: '是否启用扩展思考', enum: ['enabled', 'disabled'] })
+  @IsIn(['enabled', 'disabled'])
+  type: 'enabled' | 'disabled';
+
+  @ApiProperty({ description: '思考预算 token 数', example: 1024 })
+  @IsInt()
+  @Min(0)
+  budgetTokens: number;
+}
+
 /**
  * Vercel AI SDK useChat 请求格式
  * 用于接收 DefaultChatTransport 发送的请求
  */
 export class VercelAIChatRequestDto {
+  @ApiPropertyOptional({ description: 'AI SDK 会话 ID（传输层字段，服务端仅用于兼容）' })
+  @IsOptional()
+  @IsString()
+  id?: string;
+
   @ApiProperty({ description: '消息数组（UIMessage 格式）', type: [UIMessageDto] })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => UIMessageDto)
   messages: UIMessageDto[];
+
+  @ApiPropertyOptional({
+    description: 'AI SDK 触发类型（传输层字段，服务端仅用于兼容）',
+    example: 'submit-message',
+  })
+  @IsOptional()
+  @IsString()
+  trigger?: string;
+
+  @ApiPropertyOptional({
+    description: 'AI SDK 被重试/重生成的消息 ID（传输层字段，服务端仅用于兼容）',
+  })
+  @IsOptional()
+  @IsString()
+  messageId?: string;
 
   @ApiPropertyOptional({ description: '场景配置', default: 'candidate-consultation' })
   @IsOptional()
@@ -111,18 +152,15 @@ export class VercelAIChatRequestDto {
 
   @ApiPropertyOptional({ description: '扩展思考配置（AI SDK extended thinking）' })
   @IsOptional()
-  thinking?: { type: 'enabled' | 'disabled'; budgetTokens: number };
+  @ValidateNested()
+  @Type(() => ThinkingConfigDto)
+  thinking?: ThinkingConfigDto;
 
   @ApiPropertyOptional({ description: '图片 URL 列表（多模态消息，传入 Agent 做 vision 识别）' })
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
   imageUrls?: string[];
-
-  @ApiPropertyOptional({ description: '是否在手动聊天调试后触发预约飞书通知', default: false })
-  @IsOptional()
-  @IsBoolean()
-  notifyBooking?: boolean;
 }
 
 /**
@@ -198,18 +236,15 @@ export class TestChatRequestDto {
 
   @ApiPropertyOptional({ description: '扩展思考配置（AI SDK extended thinking）' })
   @IsOptional()
-  thinking?: { type: 'enabled' | 'disabled'; budgetTokens: number };
+  @ValidateNested()
+  @Type(() => ThinkingConfigDto)
+  thinking?: ThinkingConfigDto;
 
   @ApiPropertyOptional({ description: '图片 URL 列表（多模态消息，传入 Agent 做 vision 识别）' })
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
   imageUrls?: string[];
-
-  @ApiPropertyOptional({ description: '是否在手动聊天调试后触发预约飞书通知', default: false })
-  @IsOptional()
-  @IsBoolean()
-  notifyBooking?: boolean;
 }
 
 /**

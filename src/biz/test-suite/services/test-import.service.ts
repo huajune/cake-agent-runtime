@@ -21,6 +21,7 @@ import {
   ConversationSourceStatus,
   MessageRole,
 } from '../enums/test.enum';
+import { validationSetFieldNames } from '@infra/feishu/constants/feishu-bitable.config';
 
 /**
  * 解析后的测试用例（用例测试）
@@ -349,11 +350,7 @@ export class TestImportService {
         }
 
         const rawText = this.extractFieldValue(recordFields, fieldNameToId, [
-          '完整对话记录',
-          '对话记录',
-          '聊天记录',
-          'conversation',
-          'full_conversation',
+          ...validationSetFieldNames.conversation,
         ]);
 
         if (!rawText) {
@@ -362,12 +359,7 @@ export class TestImportService {
         }
 
         const participantName = this.extractFieldValue(recordFields, fieldNameToId, [
-          '候选人微信昵称',
-          '候选人姓名',
-          '参与者',
-          'participant',
-          'name',
-          '姓名',
+          ...validationSetFieldNames.participantName,
         ]);
 
         const parseResult = this.parserService.parseConversation(rawText);
@@ -466,32 +458,38 @@ export class TestImportService {
 
     const lines = historyText.split('\n').filter((line) => line.trim());
 
-    return lines.map((line) => {
-      const bracketMatch = line.match(/^\[[\d/]+ [\d:]+ ([^\]]+)\]\s*(.*)$/);
-      if (bracketMatch) {
-        const userName = bracketMatch[1].trim();
-        const content = bracketMatch[2];
-        const isAssistant =
-          userName === '招募经理' ||
-          userName === '经理' ||
-          userName === 'AI' ||
-          userName === 'assistant';
-        return { role: isAssistant ? MessageRole.ASSISTANT : MessageRole.USER, content };
-      }
+    return lines
+      .map((line) => {
+        const bracketMatch = line.match(/^\[[\d/]+ [\d:]+ ([^\]]+)\]\s*(.*)$/);
+        if (bracketMatch) {
+          const userName = bracketMatch[1].trim();
+          const content = bracketMatch[2];
+          const isAssistant =
+            userName === '招募经理' ||
+            userName === '经理' ||
+            userName === 'AI' ||
+            userName === 'assistant';
+          return { role: isAssistant ? MessageRole.ASSISTANT : MessageRole.USER, content };
+        }
 
-      if (line.startsWith('user:') || line.startsWith('候选人:')) {
-        return { role: MessageRole.USER, content: line.replace(/^(user|候选人):\s*/i, '') };
-      }
+        if (line.startsWith('user:') || line.startsWith('候选人:')) {
+          return { role: MessageRole.USER, content: line.replace(/^(user|候选人):\s*/i, '') };
+        }
 
-      if (line.startsWith('AI:') || line.startsWith('assistant:') || line.startsWith('招募经理:')) {
-        return {
-          role: MessageRole.ASSISTANT,
-          content: line.replace(/^(AI|assistant|招募经理):\s*/i, ''),
-        };
-      }
+        if (
+          line.startsWith('AI:') ||
+          line.startsWith('assistant:') ||
+          line.startsWith('招募经理:')
+        ) {
+          return {
+            role: MessageRole.ASSISTANT,
+            content: line.replace(/^(AI|assistant|招募经理):\s*/i, ''),
+          };
+        }
 
-      return { role: MessageRole.USER, content: line };
-    });
+        return { role: MessageRole.USER, content: line };
+      })
+      .filter((message) => message.content.trim().length > 0);
   }
 
   // ==================== 私有方法 ====================
@@ -579,7 +577,7 @@ export class TestImportService {
         successCount++;
         this.logger.debug(`对话 ${sourceId} 执行成功 (${successCount}/${sourceIds.length})`);
 
-        await this.writeBackConversationResult(sourceId, result.avgSimilarityScore);
+        await this.writeBackConversationResult(sourceId, result);
       } catch (error: unknown) {
         failedCount++;
         const errorMsg = error instanceof Error ? error.message : String(error);
@@ -606,7 +604,17 @@ export class TestImportService {
    */
   private async writeBackConversationResult(
     sourceId: string,
-    avgSimilarityScore: number | null,
+    resultPayload: {
+      avgSimilarityScore: number | null;
+      minSimilarityScore: number | null;
+      evaluationSummary: string | null;
+      dimensionScores: {
+        factualAccuracy: number | null;
+        responseEfficiency: number | null;
+        processCompliance: number | null;
+        toneNaturalness: number | null;
+      };
+    },
   ): Promise<void> {
     try {
       const source = await this.conversationSnapshotRepository.findById(sourceId);
@@ -617,11 +625,19 @@ export class TestImportService {
 
       const result = await this.writeBackService.writeBackSimilarityScore(
         source.feishu_record_id,
-        avgSimilarityScore,
+        resultPayload.avgSimilarityScore,
+        {
+          batchId: source.batch_id || undefined,
+          minSimilarityScore: resultPayload.minSimilarityScore,
+          evaluationSummary: resultPayload.evaluationSummary,
+          dimensionScores: resultPayload.dimensionScores,
+        },
       );
 
       if (result.success) {
-        this.logger.debug(`对话 ${sourceId} 回写飞书成功，相似度=${avgSimilarityScore}`);
+        this.logger.debug(
+          `对话 ${sourceId} 回写飞书成功，相似度=${resultPayload.avgSimilarityScore}`,
+        );
       } else {
         this.logger.warn(`对话 ${sourceId} 回写飞书失败: ${result.error}`);
       }

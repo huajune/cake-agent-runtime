@@ -3,16 +3,14 @@ import { ConfigService } from '@nestjs/config';
 import { NotificationSenderService } from '@biz/group-task/services/notification-sender.service';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
 import { FeishuWebhookService } from '@infra/feishu/services/webhook.service';
-import {
-  GroupTaskType,
-  GroupContext,
-  TaskExecutionResult,
-} from '@biz/group-task/group-task.types';
+import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
+import { GroupTaskType, GroupContext, TaskExecutionResult } from '@biz/group-task/group-task.types';
 
 describe('NotificationSenderService', () => {
   let service: NotificationSenderService;
   let messageSenderService: jest.Mocked<MessageSenderService>;
-  let feishuWebhookService: jest.Mocked<FeishuWebhookService>;
+  let webhookService: jest.Mocked<FeishuWebhookService>;
+  let cardBuilder: jest.Mocked<FeishuCardBuilderService>;
 
   const mockGroup: GroupContext = {
     imRoomId: 'room-123',
@@ -57,22 +55,22 @@ describe('NotificationSenderService', () => {
         {
           provide: FeishuWebhookService,
           useValue: {
-            buildCard: jest.fn().mockReturnValue({ card: 'mock' }),
-            sendMessage: jest.fn().mockResolvedValue(undefined),
+            sendMessage: jest.fn().mockResolvedValue(true),
           } as unknown as FeishuWebhookService,
+        },
+        {
+          provide: FeishuCardBuilderService,
+          useValue: {
+            buildMarkdownCard: jest.fn().mockReturnValue({ msg_type: 'interactive' }),
+          } as unknown as FeishuCardBuilderService,
         },
       ],
     }).compile();
 
-    service = module.get<NotificationSenderService>(
-      NotificationSenderService,
-    );
-    messageSenderService = module.get(
-      MessageSenderService,
-    ) as jest.Mocked<MessageSenderService>;
-    feishuWebhookService = module.get(
-      FeishuWebhookService,
-    ) as jest.Mocked<FeishuWebhookService>;
+    service = module.get<NotificationSenderService>(NotificationSenderService);
+    messageSenderService = module.get(MessageSenderService) as jest.Mocked<MessageSenderService>;
+    webhookService = module.get(FeishuWebhookService) as jest.Mocked<FeishuWebhookService>;
+    cardBuilder = module.get(FeishuCardBuilderService) as jest.Mocked<FeishuCardBuilderService>;
   });
 
   it('should be defined', () => {
@@ -81,47 +79,33 @@ describe('NotificationSenderService', () => {
 
   describe('sendToGroup', () => {
     it('should NOT call messageSenderService when dryRun is true', async () => {
-      await service.sendToGroup(
-        mockGroup,
-        'Hello group',
-        GroupTaskType.ORDER_GRAB,
-        true,
-      );
+      await service.sendToGroup(mockGroup, 'Hello group', GroupTaskType.ORDER_GRAB, true);
 
       expect(messageSenderService.sendMessage).not.toHaveBeenCalled();
     });
 
     it('should call feishu preview when dryRun is true', async () => {
-      await service.sendToGroup(
-        mockGroup,
-        'Hello group',
-        GroupTaskType.ORDER_GRAB,
-        true,
-      );
+      await service.sendToGroup(mockGroup, 'Hello group', GroupTaskType.ORDER_GRAB, true);
 
-      expect(feishuWebhookService.sendMessage).toHaveBeenCalled();
+      expect(webhookService.sendMessage).toHaveBeenCalledWith(
+        'MESSAGE_NOTIFICATION',
+        expect.any(Object),
+      );
     });
 
     it('should call messageSenderService when dryRun is false', async () => {
-      await service.sendToGroup(
-        mockGroup,
-        'Hello group',
-        GroupTaskType.ORDER_GRAB,
-        false,
-      );
+      await service.sendToGroup(mockGroup, 'Hello group', GroupTaskType.ORDER_GRAB, false);
 
       expect(messageSenderService.sendMessage).toHaveBeenCalled();
     });
 
     it('should call both feishu preview and messageSenderService when dryRun is false', async () => {
-      await service.sendToGroup(
-        mockGroup,
-        'Hello group',
-        GroupTaskType.ORDER_GRAB,
-        false,
-      );
+      await service.sendToGroup(mockGroup, 'Hello group', GroupTaskType.ORDER_GRAB, false);
 
-      expect(feishuWebhookService.sendMessage).toHaveBeenCalled();
+      expect(webhookService.sendMessage).toHaveBeenCalledWith(
+        'MESSAGE_NOTIFICATION',
+        expect.any(Object),
+      );
       expect(messageSenderService.sendMessage).toHaveBeenCalled();
     });
   });
@@ -130,19 +114,61 @@ describe('NotificationSenderService', () => {
     it('should include [试运行] in title when dryRun is true', async () => {
       await service.reportToFeishu(mockResult, true);
 
-      expect(feishuWebhookService.buildCard).toHaveBeenCalled();
-      const buildCardCall = feishuWebhookService.buildCard.mock.calls[0];
-      const titleArg = JSON.stringify(buildCardCall);
-      expect(titleArg).toContain('试运行');
+      expect(cardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: expect.stringContaining('试运行'),
+        }),
+      );
     });
 
     it('should NOT include [试运行] in title when dryRun is false', async () => {
       await service.reportToFeishu(mockResult, false);
 
-      expect(feishuWebhookService.buildCard).toHaveBeenCalled();
-      const buildCardCall = feishuWebhookService.buildCard.mock.calls[0];
-      const titleArg = JSON.stringify(buildCardCall);
-      expect(titleArg).not.toContain('试运行');
+      expect(cardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: expect.not.stringContaining('试运行'),
+        }),
+      );
+    });
+
+    it('should include a partial failure section header when partial details exist', async () => {
+      const partialResult: TaskExecutionResult = {
+        ...mockResult,
+        successCount: 2,
+        failedCount: 1,
+        skippedCount: 0,
+        details: [
+          {
+            groupKey: '上海',
+            groupCount: 2,
+            dataSummary: '2条已发送',
+            status: 'success',
+            groupNames: ['群A', '群B'],
+          },
+          {
+            groupKey: '成都',
+            groupCount: 1,
+            dataSummary: '1群成功，1群失败',
+            status: 'partial',
+            groupNames: ['群C'],
+          },
+          {
+            groupKey: '武汉',
+            groupCount: 1,
+            dataSummary: '接口异常',
+            status: 'failed',
+            groupNames: ['群D'],
+          },
+        ],
+      };
+
+      await service.reportToFeishu(partialResult, false);
+
+      expect(cardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: expect.stringContaining('**⚠️ 部分失败**'),
+        }),
+      );
     });
   });
 });

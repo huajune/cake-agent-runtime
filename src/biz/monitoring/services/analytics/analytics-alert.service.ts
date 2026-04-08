@@ -31,7 +31,7 @@ export class AnalyticsAlertService implements OnModuleInit {
 
   constructor(
     private readonly analyticsDashboardService: AnalyticsDashboardService,
-    private readonly feishuAlertService: FeishuAlertService,
+    private readonly alertService: FeishuAlertService,
     private readonly systemConfigService: SystemConfigService,
   ) {
     this.systemConfigService.onAgentReplyConfigChange((config) => {
@@ -104,7 +104,7 @@ export class AnalyticsAlertService implements OnModuleInit {
 
     if (currentValue < critical) {
       if (this.shouldSendAlert(key)) {
-        await this.feishuAlertService.sendSimpleAlert(
+        await this.alertService.sendSimpleAlert(
           '成功率严重下降',
           `当前成功率: ${currentValue.toFixed(1)}%\n阈值: ${critical}%\n今日消息数: ${totalMessages}`,
           'critical',
@@ -113,7 +113,7 @@ export class AnalyticsAlertService implements OnModuleInit {
       }
     } else if (currentValue < warning) {
       if (this.shouldSendAlert(key)) {
-        await this.feishuAlertService.sendSimpleAlert(
+        await this.alertService.sendSimpleAlert(
           '成功率下降',
           `当前成功率: ${currentValue.toFixed(1)}%\n阈值: ${warning}%\n今日消息数: ${totalMessages}`,
           'warning',
@@ -132,7 +132,7 @@ export class AnalyticsAlertService implements OnModuleInit {
 
     if (currentValue > critical) {
       if (this.shouldSendAlert(key)) {
-        await this.feishuAlertService.sendSimpleAlert(
+        await this.alertService.sendSimpleAlert(
           '响应时间过长',
           `当前平均响应: ${(currentValue / 1000).toFixed(1)}s\n阈值: ${critical / 1000}s\n今日消息数: ${totalMessages}`,
           'critical',
@@ -141,7 +141,7 @@ export class AnalyticsAlertService implements OnModuleInit {
       }
     } else if (currentValue > warning) {
       if (this.shouldSendAlert(key)) {
-        await this.feishuAlertService.sendSimpleAlert(
+        await this.alertService.sendSimpleAlert(
           '响应时间偏高',
           `当前平均响应: ${(currentValue / 1000).toFixed(1)}s\n阈值: ${warning / 1000}s\n今日消息数: ${totalMessages}`,
           'warning',
@@ -158,7 +158,7 @@ export class AnalyticsAlertService implements OnModuleInit {
 
     if (currentValue > critical) {
       if (this.shouldSendAlert(key)) {
-        await this.feishuAlertService.sendSimpleAlert(
+        await this.alertService.sendSimpleAlert(
           '队列严重积压',
           `当前队列深度: ${currentValue}条\n阈值: ${critical}条`,
           'critical',
@@ -167,7 +167,7 @@ export class AnalyticsAlertService implements OnModuleInit {
       }
     } else if (currentValue > warning) {
       if (this.shouldSendAlert(key)) {
-        await this.feishuAlertService.sendSimpleAlert(
+        await this.alertService.sendSimpleAlert(
           '队列积压',
           `当前队列深度: ${currentValue}条\n阈值: ${warning}条`,
           'warning',
@@ -185,7 +185,7 @@ export class AnalyticsAlertService implements OnModuleInit {
 
     if (hourlyRate > critical) {
       if (this.shouldSendAlert(key)) {
-        await this.feishuAlertService.sendSimpleAlert(
+        await this.alertService.sendSimpleAlert(
           '错误率过高',
           `24h错误数: ${errorCount}\n平均: ${hourlyRate.toFixed(1)}/h\n阈值: ${critical}/h`,
           'critical',
@@ -194,7 +194,7 @@ export class AnalyticsAlertService implements OnModuleInit {
       }
     } else if (hourlyRate > warning) {
       if (this.shouldSendAlert(key)) {
-        await this.feishuAlertService.sendSimpleAlert(
+        await this.alertService.sendSimpleAlert(
           '错误率偏高',
           `24h错误数: ${errorCount}\n平均: ${hourlyRate.toFixed(1)}/h\n阈值: ${warning}/h`,
           'warning',

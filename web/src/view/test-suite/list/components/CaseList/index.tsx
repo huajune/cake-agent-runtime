@@ -116,17 +116,19 @@ const CaseItem = memo(function CaseItem({ exec, index, isReviewing, onSelect }: 
  * 用例列表组件
  */
 export function CaseList({ executions, currentReviewIndex, reviewMode, onSelect }: CaseListProps) {
+  const safeExecutions = Array.isArray(executions) ? executions : [];
+
   return (
     <>
       <div className={styles.caseListHeader}>
         <h4>
           <Activity size={16} /> 测试用例
         </h4>
-        <span className={styles.caseCount}>共 {executions.length} 条</span>
+        <span className={styles.caseCount}>共 {safeExecutions.length} 条</span>
       </div>
 
       <div className={styles.caseList}>
-        {executions.map((exec, index) => (
+        {safeExecutions.map((exec, index) => (
           <CaseItem
             key={exec.id}
             exec={exec}

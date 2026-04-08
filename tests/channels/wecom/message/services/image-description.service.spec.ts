@@ -16,8 +16,8 @@ describe('ImageDescriptionService', () => {
     updateMessageContent: jest.fn(),
   };
 
-  const mockFeishuAlertService = {
-    sendAlert: jest.fn().mockResolvedValue(true),
+  const mockAlertService = {
+    sendSimpleAlert: jest.fn().mockResolvedValue(true),
   };
 
   beforeEach(async () => {
@@ -26,7 +26,7 @@ describe('ImageDescriptionService', () => {
         ImageDescriptionService,
         { provide: CompletionService, useValue: mockCompletionService },
         { provide: ChatSessionService, useValue: mockChatSessionService },
-        { provide: FeishuAlertService, useValue: mockFeishuAlertService },
+        { provide: FeishuAlertService, useValue: mockAlertService },
       ],
     }).compile();
 

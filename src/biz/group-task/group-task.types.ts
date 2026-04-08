@@ -62,6 +62,8 @@ export interface GroupContext {
   token: string;
   /** 对话 ID（小组级发消息用） */
   chatId?: string;
+  /** 群成员数量（容量管理用） */
+  memberCount?: number;
 }
 
 /** 策略 fetchData 返回的数据 */
@@ -103,7 +105,7 @@ export interface GroupExecutionDetail {
   /** 数据摘要（如 "塔可贝尔: 2个岗位"） */
   dataSummary: string;
   /** 执行状态 */
-  status: 'success' | 'skipped' | 'failed';
+  status: 'success' | 'skipped' | 'failed' | 'partial';
   /** 群名列表 */
   groupNames: string[];
 }

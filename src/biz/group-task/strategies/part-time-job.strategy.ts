@@ -10,15 +10,35 @@ import {
 } from '../prompts/part-time-job.prompt';
 
 const MAX_DISPLAY_STORES = 15;
+const RETAIL_BRAND_KEYWORDS = ['奥乐齐', '山姆', '来伊份', '盒马', '全家', '罗森', '便利蜂'];
+const CATERING_BRAND_KEYWORDS = [
+  '必胜客',
+  '肯德基',
+  '麦当劳',
+  '塔可贝尔',
+  '成都你六姐',
+  '西贝',
+  '大米先生',
+  '瑞幸',
+  '霸王茶姬',
+  '沪上阿姨',
+  '茶百道',
+  '喜茶',
+  '奈雪',
+  '蜜雪冰城',
+  '星巴克',
+];
+const RETAIL_ROLE_KEYWORDS = ['理货', '分拣', '导购', '收银'];
+const CATERING_ROLE_KEYWORDS = ['服务员', '帮厨', '后厨', '洗碗', '咖啡师', '配菜', '厨'];
 
 /**
- * 兼职群通知策略（真实数据 + AI 润色 + 固定尾部）
+ * 兼职群通知策略（真实数据 + AI 润色）
  *
  * - 数据源：海绵在招岗位 (SpongeService.fetchJobs)
- * - 行业过滤：jobCategoryName 第一段（/分割）匹配群标签行业
+ * - 行业过滤：品牌/岗位双重推断匹配群标签行业
  * - 品牌轮转：每次推不同品牌，避免重复
  * - AI 负责排版润色，但只能用提供的真实数据
- * - 尾部固定追加（引导语 + 小程序提示）
+ * - 小程序卡片由 NotificationSenderService 单独发送
  */
 @Injectable()
 export class PartTimeJobStrategy implements NotificationStrategy {
@@ -49,12 +69,11 @@ export class PartTimeJobStrategy implements NotificationStrategy {
       },
     });
 
-    // 2. 按行业过滤（jobCategoryName 格式: "餐饮/中餐/普通服务员"，第一段为行业）
+    // 2. 按行业过滤。海绵当前返回的 jobCategoryName 多为岗位名本身，
+    // 不能再假设它是“餐饮/中餐/服务员”这种层级结构，因此改为品牌/岗位双重推断。
     const filtered = jobs.filter((job: JobDetail) => {
-      const category = job.basicInfo?.jobCategoryName || '';
-      const industry = category.split('/')[0];
       if (!context.industry) return true;
-      return industry === context.industry;
+      return this.inferIndustry(job) === context.industry;
     });
 
     if (filtered.length === 0) {
@@ -115,5 +134,37 @@ export class PartTimeJobStrategy implements NotificationStrategy {
         jobs: data.payload.jobs as JobDetail[],
       }),
     };
+  }
+
+  private inferIndustry(job: JobDetail): '餐饮' | '零售' | null {
+    const basicInfo = job.basicInfo;
+    const brandSignals = [
+      basicInfo?.brandName,
+      (basicInfo as Record<string, unknown> | undefined)?.projectName,
+    ]
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .join(' ');
+
+    if (RETAIL_BRAND_KEYWORDS.some((keyword) => brandSignals.includes(keyword))) {
+      return '零售';
+    }
+
+    if (CATERING_BRAND_KEYWORDS.some((keyword) => brandSignals.includes(keyword))) {
+      return '餐饮';
+    }
+
+    const roleSignals = [basicInfo?.jobCategoryName, basicInfo?.jobNickName, basicInfo?.jobName]
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .join(' ');
+
+    if (RETAIL_ROLE_KEYWORDS.some((keyword) => roleSignals.includes(keyword))) {
+      return '零售';
+    }
+
+    if (CATERING_ROLE_KEYWORDS.some((keyword) => roleSignals.includes(keyword))) {
+      return '餐饮';
+    }
+
+    return null;
   }
 }

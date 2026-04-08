@@ -8,4 +8,7 @@ if [ "$current_branch" = "master" ] || [ "$current_branch" = "develop" ]; then
   exit 1
 fi
 
+echo "🔍 Running CI checks before push..."
+pnpm run ci:check || exit 1
+
 echo "✅ Pre-push check passed!"

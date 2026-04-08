@@ -1,12 +1,8 @@
-import { Controller, Get, Logger, Query, Post, HttpCode, Res, Req } from '@nestjs/common';
-import { Response, Request } from 'express';
-import { join } from 'path';
-import { existsSync } from 'fs';
+import { Controller, Get, Logger, Query, Post, HttpCode } from '@nestjs/common';
 import { AnalyticsDashboardService } from './services/analytics/analytics-dashboard.service';
 import { AnalyticsQueryService } from './services/analytics/analytics-query.service';
 import { AnalyticsMaintenanceService } from './services/analytics/analytics-maintenance.service';
 import { MetricsData, TimeRange } from './types/analytics.types';
-import { Public } from '@infra/server/response/decorators/api-response.decorator';
 
 /**
  * Analytics API 控制器
@@ -126,36 +122,5 @@ export class AnalyticsController {
     this.logger.log(`手动触发清除缓存: ${cacheType}`);
     await this.maintenanceService.clearCacheAsync(cacheType);
     return { success: true, message: `缓存 [${cacheType}] 已清除` };
-  }
-}
-
-/**
- * Web SPA 控制器
- * 托管前端 Web 静态资源
- */
-@Public()
-@Controller('web')
-export class WebController {
-  @Get('*')
-  serveWeb(@Req() req: Request, @Res() res: Response) {
-    const relativePath = req.path.replace(/^\/web/, '');
-    const publicWebPath = join(process.cwd(), 'public', 'web');
-
-    if (relativePath.includes('.') && !relativePath.endsWith('.html')) {
-      const filePath = join(publicWebPath, relativePath);
-      if (existsSync(filePath)) {
-        return res.sendFile(filePath);
-      }
-    }
-
-    const indexPath = join(publicWebPath, 'index.html');
-    if (existsSync(indexPath)) {
-      return res.sendFile(indexPath);
-    } else {
-      return res.status(404).send(`
-          <h1>Web app not found</h1>
-          <p>Please run <code>pnpm run build:web</code> to build the frontend.</p>
-        `);
-    }
   }
 }

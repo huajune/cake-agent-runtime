@@ -4,6 +4,18 @@ import { DefaultChatTransport, type FileUIPart, type UIMessage } from 'ai';
 import { TestChatResponse, SimpleMessage, TokenUsage } from '@/api/services/agent-test.service';
 import { CHAT_API_ENDPOINT, DEFAULT_SCENARIO } from '../constants';
 import { generateUUID } from '@/utils/uuid';
+import {
+  markAgentTestStreamEnd,
+  markAgentTestStreamStart,
+} from '@/utils/perf';
+import {
+  clearHistoryImageCache,
+  loadAgentTestDraftCache,
+  loadHistoryImageCache,
+  saveAgentTestDraftCache,
+  saveHistoryImageCache,
+  type HistoryImageCacheEntry,
+} from '../utils/cache';
 
 export interface UseChatTestOptions {
   onTestComplete?: (result: TestChatResponse) => void;
@@ -15,13 +27,20 @@ export interface ImagePreview {
   dataUrl: string;
 }
 
+export interface TestResultSummary {
+  status: TestChatResponse['status'];
+  metrics: TestChatResponse['metrics'];
+}
+
+export type AgentTestThinkingMode = 'fast' | 'deep';
+
 export interface UseChatTestReturn {
   // 状态
   historyText: string;
   historyStatus: 'valid' | 'invalid' | 'empty';
   currentInput: string;
   localError: string | null;
-  result: TestChatResponse | null;
+  result: TestResultSummary | null;
   metrics: { durationMs: number; tokenUsage: TokenUsage } | null;
   elapsedMs: number;
   isLoading: boolean;
@@ -34,11 +53,15 @@ export interface UseChatTestReturn {
   imagePreviews: ImagePreview[];
   addImages: (files: FileList) => void;
   removeImage: (id: string) => void;
+  thinkingMode: AgentTestThinkingMode;
+  thinkingBudgetTokens: number;
 
   // 操作
   setHistoryText: (text: string) => void;
   setCurrentInput: (text: string) => void;
   setLocalError: (error: string | null) => void;
+  setThinkingMode: (mode: AgentTestThinkingMode) => void;
+  setThinkingBudgetTokens: (tokens: number) => void;
   handleTest: () => Promise<void>;
   handleCancel: () => void;
   handleClear: () => void;
@@ -48,61 +71,24 @@ export interface UseChatTestReturn {
   replyContentRef: React.RefObject<HTMLDivElement>;
 }
 
-// ==================== localStorage 草稿缓存 ====================
+// ==================== IndexedDB 草稿缓存 ====================
 
-const DRAFT_CACHE_KEY = 'agent-test-draft';
-const HISTORY_IMAGE_CACHE_KEY = 'agent-test-history-images';
-const MAX_CACHED_IMAGES = 20;
 const IMAGE_MARKER_REGEX = /^\[图片#([^\]]+)\]$/;
+const STREAM_UPDATE_THROTTLE_MS = 100;
+const ELAPSED_TIMER_INTERVAL_MS = 500;
+const DRAFT_PERSIST_DEBOUNCE_MS = 400;
+const DEFAULT_DEEP_THINKING_BUDGET_TOKENS = 4000;
+const MIN_DEEP_THINKING_BUDGET_TOKENS = 500;
+const MAX_DEEP_THINKING_BUDGET_TOKENS = 20000;
+const DEFAULT_THINKING_MODE: AgentTestThinkingMode = 'fast';
 
-interface HistoryImageCacheEntry {
-  dataUrl: string;
-  filename?: string;
-  mediaType?: string;
-}
+function clampThinkingBudgetTokens(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_DEEP_THINKING_BUDGET_TOKENS;
 
-function loadDraftCache(): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(DRAFT_CACHE_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveDraftCache(patch: Record<string, string>): void {
-  try {
-    const prev = loadDraftCache();
-    localStorage.setItem(DRAFT_CACHE_KEY, JSON.stringify({ ...prev, ...patch }));
-  } catch { /* noop */ }
-}
-
-function clearDraftCache(): void {
-  try { localStorage.removeItem(DRAFT_CACHE_KEY); } catch { /* noop */ }
-}
-
-function loadHistoryImageCache(): Record<string, HistoryImageCacheEntry> {
-  try {
-    const raw = localStorage.getItem(HISTORY_IMAGE_CACHE_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, HistoryImageCacheEntry>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveHistoryImageCache(cache: Record<string, HistoryImageCacheEntry>): void {
-  try {
-    const keys = Object.keys(cache);
-    if (keys.length > MAX_CACHED_IMAGES) {
-      const evicted = keys.slice(0, keys.length - MAX_CACHED_IMAGES);
-      for (const key of evicted) delete cache[key];
-    }
-    localStorage.setItem(HISTORY_IMAGE_CACHE_KEY, JSON.stringify(cache));
-  } catch { /* noop */ }
-}
-
-function clearHistoryImageCache(): void {
-  try { localStorage.removeItem(HISTORY_IMAGE_CACHE_KEY); } catch { /* noop */ }
+  return Math.min(
+    MAX_DEEP_THINKING_BUDGET_TOKENS,
+    Math.max(MIN_DEEP_THINKING_BUDGET_TOKENS, Math.round(value)),
+  );
 }
 
 function inferMediaType(url: string): string {
@@ -118,6 +104,10 @@ type ToolPartSnapshot = {
   output?: unknown;
   result?: unknown;
 };
+
+function hasMessageContent(message: Pick<SimpleMessage, 'content' | 'imageUrls'>): boolean {
+  return message.content.trim().length > 0 || (message.imageUrls?.length ?? 0) > 0;
+}
 
 function extractToolCalls(parts: UIMessage['parts']) {
   return parts
@@ -163,22 +153,26 @@ function extractAdvancedStage(parts: UIMessage['parts']): string | null {
  * 聊天测试核心逻辑 Hook
  */
 export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseChatTestReturn {
-  const cached = useRef(loadDraftCache()).current;
-
   // 历史记录
-  const [historyText, setHistoryTextState] = useState(cached.historyText ?? '');
+  const [historyText, setHistoryTextState] = useState('');
   const [historyStatus, setHistoryStatus] = useState<'valid' | 'invalid' | 'empty'>('empty');
 
   // 当前输入
-  const [currentInput, setCurrentInputState] = useState(cached.currentInput ?? '');
+  const [currentInput, setCurrentInputState] = useState('');
   const setCurrentInput = useCallback((text: string) => {
     setCurrentInputState(text);
-    saveDraftCache({ currentInput: text });
+  }, []);
+  const [thinkingMode, setThinkingMode] = useState<AgentTestThinkingMode>(DEFAULT_THINKING_MODE);
+  const [thinkingBudgetTokens, setThinkingBudgetTokensState] = useState(
+    DEFAULT_DEEP_THINKING_BUDGET_TOKENS,
+  );
+  const setThinkingBudgetTokens = useCallback((tokens: number) => {
+    setThinkingBudgetTokensState(clampThinkingBudgetTokens(tokens));
   }, []);
 
   // 状态
   const [localError, setLocalError] = useState<string | null>(null);
-  const [result, setResult] = useState<TestChatResponse | null>(null);
+  const [result, setResult] = useState<TestResultSummary | null>(null);
   const [isRequesting, setIsRequesting] = useState(false);
 
   // 指标
@@ -186,22 +180,15 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     null,
   );
   const startTimeRef = useRef<number>(0);
+  const isCacheHydratedRef = useRef(false);
 
   // 会话 ID + 用户 ID：同一对话保持一致，清空聊天时重新生成（确保 Agent API 服务端记忆完全隔离）
-  const [sessionId, setSessionId] = useState(() => {
-    const id = cached.sessionId || generateUUID();
-    if (!cached.sessionId) saveDraftCache({ sessionId: id });
-    return id;
-  });
-  const [userId, setUserId] = useState(() => {
-    const id = cached.userId || `dashboard-test-${generateUUID().slice(0, 8)}`;
-    if (!cached.userId) saveDraftCache({ userId: id });
-    return id;
-  });
+  const [sessionId, setSessionId] = useState(() => generateUUID());
+  const [userId, setUserId] = useState(() => `dashboard-test-${generateUUID().slice(0, 8)}`);
 
   // 图片上传
   const [imagePreviews, setImagePreviews] = useState<ImagePreview[]>([]);
-  const historyImageCacheRef = useRef(loadHistoryImageCache());
+  const historyImageCacheRef = useRef<Record<string, HistoryImageCacheEntry>>({});
   const submittedImagesRef = useRef<ImagePreview[]>([]);
 
   const addImages = useCallback((files: FileList) => {
@@ -242,7 +229,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
       return image.id;
     });
     historyImageCacheRef.current = nextCache;
-    saveHistoryImageCache(nextCache);
+    void saveHistoryImageCache(nextCache);
     return ids;
   }, []);
 
@@ -257,7 +244,26 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     [],
   );
 
-  // Transport（sessionId 变化时重建，确保新对话用新 sessionId）
+  const thinkingConfig = useMemo(
+    () =>
+      thinkingMode === 'deep'
+        ? { type: 'enabled' as const, budgetTokens: thinkingBudgetTokens }
+        : { type: 'disabled' as const, budgetTokens: 0 },
+    [thinkingBudgetTokens, thinkingMode],
+  );
+
+  const requestBody = useMemo(
+    () => ({
+      scenario: DEFAULT_SCENARIO,
+      saveExecution: false,
+      sessionId,
+      userId,
+      thinking: thinkingConfig,
+    }),
+    [sessionId, thinkingConfig, userId],
+  );
+
+  // Transport 只保留静态配置，动态请求参数在 sendMessage 时传入
   const transport = useMemo(() => {
     const headers: Record<string, string> = {};
     const token = import.meta.env.API_GUARD_TOKEN;
@@ -268,20 +274,14 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     return new DefaultChatTransport({
       api: CHAT_API_ENDPOINT,
       headers,
-      body: {
-        scenario: DEFAULT_SCENARIO,
-        saveExecution: false,
-        sessionId,
-        userId,
-        thinking: { type: 'enabled', budgetTokens: 10000 },
-      },
     });
-  }, [sessionId, userId]);
+  }, []);
 
   // useChat hook
   const { messages, sendMessage, status, stop, setMessages, error: chatError } = useChat({
     id: sessionId,
     transport,
+    experimental_throttle: STREAM_UPDATE_THROTTLE_MS,
     onData: (dataPart: unknown) => {
       const part = dataPart as { type?: string; data?: unknown };
       if (part?.type === 'data-tokenUsage' && part.data) {
@@ -293,6 +293,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
       }
     },
     onError: (err: Error) => {
+      markAgentTestStreamEnd('error');
       let displayError = err.message || '流式测试执行失败';
       if (displayError.includes('500') || displayError.includes('Internal Server Error')) {
         displayError = '服务暂时不可用 (500)。请确认后端服务已启动';
@@ -303,6 +304,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
       setIsRequesting(false);
     },
     onFinish: ({ message }: { message: UIMessage }) => {
+      markAgentTestStreamEnd('finish');
       const durationMs = Date.now() - startTimeRef.current;
       const submittedImages = submittedImagesRef.current;
 
@@ -331,16 +333,19 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
           url: CHAT_API_ENDPOINT,
           method: 'POST',
           body: {
+            ...requestBody,
             message: currentInputRef.current,
             imageUrls: submittedImages.map((image) => image.dataUrl),
-            scenario: DEFAULT_SCENARIO,
           },
         },
         response: { statusCode: 200, body: { content: textContent }, toolCalls },
         metrics: { durationMs, tokenUsage: finalTokenUsage },
       };
 
-      setResult(finalResult);
+      setResult({
+        status: finalResult.status,
+        metrics: finalResult.metrics,
+      });
       onTestComplete?.(finalResult);
       setCurrentStage(finalStage);
 
@@ -359,7 +364,6 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
           ? `${prev}\n\n${userBlock}\n\n${aiLine}`
           : `${userBlock}\n\n${aiLine}`;
         setTimeout(() => validateHistory(newHistory), 0);
-        saveDraftCache({ historyText: newHistory, currentInput: '' });
         return newHistory;
       });
 
@@ -394,7 +398,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     }
     const interval = setInterval(() => {
       setElapsedMs(Date.now() - startTimeRef.current);
-    }, 100);
+    }, ELAPSED_TIMER_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [isStreaming]);
 
@@ -452,7 +456,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
         parsedMessages[parsedMessages.length - 1].content += '\n' + line;
       }
     }
-    return parsedMessages;
+    return parsedMessages.filter(hasMessageContent);
   }, []);
 
   // 校验历史记录
@@ -468,21 +472,94 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     [parseHistory],
   );
 
-  // 初始化时校验已缓存的历史记录
-  useEffect(() => {
-    if (cached.historyText) validateHistory(cached.historyText);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // 设置历史记录（带校验 + 缓存）
   const setHistoryText = useCallback(
     (text: string) => {
       setHistoryTextState(text);
       validateHistory(text);
-      saveDraftCache({ historyText: text });
     },
     [validateHistory],
   );
+
+  const parsedHistory = useMemo(() => parseHistory(historyText), [historyText, parseHistory]);
+
+  const historyMessages = useMemo<UIMessage[]>(
+    () =>
+      parsedHistory
+        .map((msg, idx) => ({
+          id: `history-${idx}`,
+          role: msg.role,
+          parts: [
+            ...buildFileParts(msg.imageUrls || [], `history-image-${idx + 1}`),
+            ...(msg.content.trim() ? [{ type: 'text' as const, text: msg.content }] : []),
+          ],
+        }))
+        .filter((message) => message.parts.length > 0),
+    [buildFileParts, parsedHistory],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrateCache = async () => {
+      try {
+        const [draftCache, historyImageCache] = await Promise.all([
+          loadAgentTestDraftCache(),
+          loadHistoryImageCache(),
+        ]);
+
+        if (cancelled) return;
+
+        historyImageCacheRef.current = historyImageCache;
+
+        const nextHistoryText = draftCache.historyText ?? '';
+        const nextCurrentInput = draftCache.currentInput ?? '';
+        const nextSessionId = draftCache.sessionId || generateUUID();
+        const nextUserId = draftCache.userId || `dashboard-test-${generateUUID().slice(0, 8)}`;
+        const nextThinkingMode = draftCache.thinkingMode ?? DEFAULT_THINKING_MODE;
+        const nextThinkingBudgetTokens = clampThinkingBudgetTokens(
+          draftCache.thinkingBudgetTokens ?? DEFAULT_DEEP_THINKING_BUDGET_TOKENS,
+        );
+
+        setHistoryTextState(nextHistoryText);
+        setCurrentInputState(nextCurrentInput);
+        setSessionId(nextSessionId);
+        setUserId(nextUserId);
+        setThinkingMode(nextThinkingMode);
+        setThinkingBudgetTokensState(nextThinkingBudgetTokens);
+        validateHistory(nextHistoryText);
+      } catch {
+        if (cancelled) return;
+      } finally {
+        if (!cancelled) {
+          isCacheHydratedRef.current = true;
+        }
+      }
+    };
+
+    void hydrateCache();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [validateHistory]);
+
+  useEffect(() => {
+    if (!isCacheHydratedRef.current) return;
+
+    const timer = window.setTimeout(() => {
+      void saveAgentTestDraftCache({
+        historyText,
+        currentInput,
+        sessionId,
+        userId,
+        thinkingMode,
+        thinkingBudgetTokens,
+      });
+    }, DRAFT_PERSIST_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [currentInput, historyText, sessionId, thinkingBudgetTokens, thinkingMode, userId]);
 
   // 执行测试
   const handleTest = useCallback(async () => {
@@ -499,16 +576,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     setMetrics(null);
     setResult(null); // 在发起新请求时，立即重置测试结果
     startTimeRef.current = Date.now();
-
-    const history = parseHistory(historyText);
-    const historyMessages: UIMessage[] = history.map((msg, idx) => ({
-      id: `history-${idx}`,
-      role: msg.role,
-      parts: [
-        ...buildFileParts(msg.imageUrls || [], `history-image-${idx + 1}`),
-        ...(msg.content ? [{ type: 'text' as const, text: msg.content }] : []),
-      ],
-    }));
+    markAgentTestStreamStart();
 
     setMessages(historyMessages);
     requestAnimationFrame(() => {
@@ -520,22 +588,28 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
       }));
 
       if (trimmedInput && currentFiles.length > 0) {
-        sendMessage({ text: trimmedInput, files: currentFiles });
+        sendMessage({ text: trimmedInput, files: currentFiles }, { body: requestBody });
         return;
       }
       if (trimmedInput) {
-        sendMessage({ text: trimmedInput });
+        sendMessage({ text: trimmedInput }, { body: requestBody });
         return;
       }
-      sendMessage({ files: currentFiles });
+      sendMessage({ files: currentFiles }, { body: requestBody });
     });
-  }, [buildFileParts, currentInput, historyText, imagePreviews, parseHistory, sendMessage, setMessages]);
+  }, [currentInput, historyMessages, imagePreviews, requestBody, sendMessage, setMessages]);
 
   // 取消
-  const handleCancel = useCallback(() => stop(), [stop]);
+  const handleCancel = useCallback(() => {
+    markAgentTestStreamEnd('cancel');
+    stop();
+  }, [stop]);
 
   // 清空（重新生成 sessionId，开启新会话，清除缓存）
   const handleClear = useCallback(() => {
+    const nextSessionId = generateUUID();
+    const nextUserId = `dashboard-test-${generateUUID().slice(0, 8)}`;
+
     setHistoryTextState('');
     setHistoryStatus('empty');
     setCurrentInputState('');
@@ -549,13 +623,20 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     setEntryStage(null);
     setCurrentStage(null);
     submittedImagesRef.current = [];
-    setSessionId(generateUUID());
-    setUserId(`dashboard-test-${generateUUID().slice(0, 8)}`);
-    clearDraftCache();
-    clearHistoryImageCache();
+    setSessionId(nextSessionId);
+    setUserId(nextUserId);
+    void saveAgentTestDraftCache({
+      historyText: '',
+      currentInput: '',
+      sessionId: nextSessionId,
+      userId: nextUserId,
+      thinkingMode,
+      thinkingBudgetTokens,
+    });
+    void clearHistoryImageCache();
     historyImageCacheRef.current = {};
     messageInputRef.current?.focus();
-  }, [setMessages]);
+  }, [setMessages, thinkingBudgetTokens, thinkingMode]);
 
   const latestAssistantMessage = messages
     .filter((m: UIMessage) => m.role === 'assistant' && !m.id.startsWith('history-'))
@@ -577,9 +658,13 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     imagePreviews,
     addImages,
     removeImage,
+    thinkingMode,
+    thinkingBudgetTokens,
     setHistoryText,
     setCurrentInput,
     setLocalError,
+    setThinkingMode,
+    setThinkingBudgetTokens,
     handleTest,
     handleCancel,
     handleClear,

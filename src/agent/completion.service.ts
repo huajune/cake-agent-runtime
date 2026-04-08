@@ -11,9 +11,10 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ModelMessage, generateText } from 'ai';
+import { ModelMessage, Output, generateText } from 'ai';
 import { RouterService } from '@providers/router.service';
 import { ModelRole } from '@providers/types';
+import { z } from 'zod';
 
 export interface CompletionParams {
   /** 系统提示词 */
@@ -32,6 +33,34 @@ export interface CompletionParams {
 
 export interface CompletionResult {
   text: string;
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  };
+}
+
+export interface StructuredCompletionParams<TSchema extends z.ZodTypeAny> {
+  /** 系统提示词 */
+  systemPrompt: string;
+  /** 对话消息列表 */
+  messages: ModelMessage[];
+  /** 输出 schema */
+  schema: TSchema;
+  /** Structured Output 名称 */
+  outputName?: string;
+  /** 模型角色（默认 'chat'），映射到 AGENT_{ROLE}_MODEL */
+  role?: ModelRole;
+  /** 精确指定模型 ID（优先于 role） */
+  modelId?: string;
+  /** 温度参数 */
+  temperature?: number;
+  /** 最大输出 token 数 */
+  maxOutputTokens?: number;
+}
+
+export interface StructuredCompletionResult<TOutput> {
+  object: TOutput;
   usage: {
     inputTokens: number;
     outputTokens: number;
@@ -81,6 +110,53 @@ export class CompletionService {
 
     return {
       text: result.text,
+      usage: {
+        inputTokens: result.usage.inputTokens ?? 0,
+        outputTokens: result.usage.outputTokens ?? 0,
+        totalTokens: result.usage.totalTokens,
+      },
+    };
+  }
+
+  /**
+   * 执行一次结构化 LLM 调用。
+   */
+  async generateStructured<TSchema extends z.ZodTypeAny>(
+    params: StructuredCompletionParams<TSchema>,
+  ): Promise<StructuredCompletionResult<z.infer<TSchema>>> {
+    const {
+      systemPrompt,
+      messages,
+      schema,
+      outputName = 'StructuredOutput',
+      role = 'chat',
+      modelId,
+      temperature,
+      maxOutputTokens = this.defaultMaxOutputTokens,
+    } = params;
+
+    const model = modelId ? this.router.resolve(modelId) : this.router.resolveByRole(role);
+
+    const result = await generateText({
+      model,
+      system: systemPrompt,
+      messages,
+      temperature,
+      maxOutputTokens,
+      output: Output.object({
+        schema,
+        name: outputName,
+      }),
+    });
+
+    if (!result.output) {
+      throw new Error('No structured output returned');
+    }
+
+    this.logger.debug(`Structured completion 完成: tokens=${result.usage.totalTokens}`);
+
+    return {
+      object: result.output as z.infer<TSchema>,
       usage: {
         inputTokens: result.usage.inputTokens ?? 0,
         outputTokens: result.usage.outputTokens ?? 0,

@@ -35,6 +35,7 @@ function formatTimestamp(timestamp: number): string {
 // 将消息列表转换为历史记录文本格式
 function formatMessagesToHistory(messages: ChatMessage[], session: ChatSession): string {
   return messages
+    .filter((msg) => typeof msg.content === 'string' && msg.content.trim().length > 0)
     .map((msg) => {
       const time = formatTimestamp(msg.timestamp);
       const name = msg.role === 'user' ? (session.candidateName || '候选人') : (session.managerName || '招募经理');
@@ -81,7 +82,11 @@ export function CandidateSelector({ onSelectHistory }: CandidateSelectorProps) {
 
   // 获取近7天会话列表
   const { startDate, endDate } = getLast7DaysRange();
-  const { data: sessionsData, isLoading: sessionsLoading } = useChatSessionsOptimized(startDate, endDate);
+  const { data: sessionsData, isLoading: sessionsLoading } = useChatSessionsOptimized(
+    startDate,
+    endDate,
+    isOpen,
+  );
 
   // 获取选中会话的消息
   const { data: messagesData, isLoading: messagesLoading } = useChatSessionMessages(selectedChatId);

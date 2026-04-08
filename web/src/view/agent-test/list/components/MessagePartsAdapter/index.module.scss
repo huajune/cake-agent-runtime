@@ -302,7 +302,7 @@
   padding: 0 $spacing-md $spacing-md;
   font-size: $font-size-xs;
   color: $text-secondary;
-  line-height: 1.7;
+  line-height: 1.6;
   animation: slideDown 0.2s ease-out;
   max-height: 300px;
   overflow-y: auto;
@@ -316,7 +316,7 @@
   }
 
   p {
-    margin: 0 0 0.5em;
+    margin: 0 0 0.3em;
     &:last-child { margin-bottom: 0; }
   }
 
@@ -335,19 +335,37 @@
   }
 
   ol, ul {
-    margin: 0.3em 0;
+    margin: 0;
     padding-left: 1.5em;
 
     li {
-      margin-bottom: 0.2em;
+      margin-bottom: 0;
     }
+  }
+
+  // Prevent loose list items (Markdown wraps with <p>) from adding spacing
+  li > p {
+    margin: 0;
+  }
+
+  // Tighten gap between paragraph and following list
+  p + ol, p + ul {
+    margin-top: -0.1em;
   }
 
   hr {
     border: none;
     border-top: 1px solid rgba(99, 102, 241, 0.08);
-    margin: 0.5em 0;
+    margin: 0.3em 0;
   }
+}
+
+.reasoningPlainText {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  color: $text-secondary;
 }
 
 // ==================== 流式输出样式 ====================

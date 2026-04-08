@@ -6,6 +6,7 @@ import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
 import { CompletionService } from '@agent/completion.service';
 import { GroupTaskSchedulerService } from './services/group-task-scheduler.service';
 import { GroupResolverService } from './services/group-resolver.service';
+import { GroupMembershipService } from './services/group-membership.service';
 import { NotificationSenderService } from './services/notification-sender.service';
 import { BrandRotationService } from './services/brand-rotation.service';
 import { OrderGrabStrategy } from './strategies/order-grab.strategy';
@@ -28,6 +29,7 @@ import { GroupTaskController } from './group-task.controller';
     CompletionService,
     GroupTaskSchedulerService,
     GroupResolverService,
+    GroupMembershipService,
     NotificationSenderService,
     BrandRotationService,
     // 四种策略
@@ -36,6 +38,6 @@ import { GroupTaskController } from './group-task.controller';
     StoreManagerStrategy,
     WorkTipsStrategy,
   ],
-  exports: [GroupTaskSchedulerService],
+  exports: [GroupTaskSchedulerService, GroupResolverService, GroupMembershipService],
 })
 export class GroupTaskModule {}

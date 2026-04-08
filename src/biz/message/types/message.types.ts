@@ -78,7 +78,7 @@ export interface MessageProcessingRecordInput {
   messagePreview?: string;
   replyPreview?: string;
   replySegments?: number;
-  status: 'processing' | 'success' | 'failure';
+  status: 'processing' | 'success' | 'failure' | 'timeout';
   error?: string;
   scenario?: string;
   totalDuration?: number;
@@ -87,6 +87,7 @@ export interface MessageProcessingRecordInput {
   aiStartAt?: number;
   aiEndAt?: number;
   aiDuration?: number;
+  ttftMs?: number;
   sendDuration?: number;
   tools?: string[];
   tokenUsage?: number;

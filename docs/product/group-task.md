@@ -2,6 +2,8 @@
 
 群任务模块负责定时向企业微信群推送业务通知，涵盖抢单、兼职岗位、面试名单、工作小贴士四种场景。
 
+> 架构细节参见 [群任务通知流水线](../architecture/group-task-pipeline.md)
+
 ---
 
 ## 目录
@@ -71,12 +73,15 @@ src/biz/group-task/
 ```
 Cron 定时触发 / API 手动触发
         ↓
-1. 检查 enabled 开关
+1. 前置检查
+   ├── enabled 开关（Supabase system_config）
+   ├── Redis 分布式锁（防多实例重复，TTL 5分钟）
+   └── 环境隔离（非生产环境跳过 Cron，仅支持手动触发）
         ↓
 2. GroupResolverService 获取群列表
-   ├── 调用小组级 API 拉取带标签的群
-   ├── 按标签前缀过滤目标群
-   └── 10 分钟内存缓存（避免频繁调用 API）
+   ├── 遍历所有小组 token，调用 /stream-api/room/simpleList
+   ├── 解析 labels 标签，按 tagPrefix 过滤目标群
+   └── 10 分钟内存缓存 + stampede 防护
         ↓
 3. 按 (城市 + 行业) 分组
    └── 同组群共享数据和文案，减少 API 和 AI 调用
@@ -86,8 +91,9 @@ Cron 定时触发 / API 手动触发
    ├── 判断是否有数据（无数据 → 跳过）
    ├── 生成消息
    │   ├── 模板策略 → buildMessage()
-   │   └── AI 策略 → buildPrompt() → CompletionService → appendFooter()
-   └── 同组所有群发送相同消息（群间间隔 2s）
+   │   └── AI 策略 → buildPrompt() → CompletionService → appendFooter()（可选，当前无策略实现）
+   ├── 同组所有群发送相同消息（群间间隔 2s）
+   └── 兼职群额外发小程序卡片（NotificationSenderService）
         ↓
 5. 飞书通知执行结果
    ├── 🟢 全部成功
@@ -131,7 +137,7 @@ Cron 定时触发 / API 手动触发
 - **生成方式**：真实数据 + AI 排版润色
 - **品牌轮转**：同一群 7 天内不推相同品牌（Redis 记录推送历史）
 - **行业过滤**：根据群标签区分餐饮/零售
-- **附加内容**：消息末尾固定追加报名指引 + 小程序卡片
+- **附加内容**：文本消息发送后，`NotificationSenderService` 额外发送小程序卡片（独立客找工作）
 
 **AI 排版规则**：
 - 根据门店数量自动选择展示模式（独立展示 / 统一薪资 / 区域分组）
@@ -142,7 +148,7 @@ Cron 定时触发 / API 手动触发
 
 - **数据源**：面试安排（`SpongeService.fetchInterviewSchedule`）
 - **生成方式**：纯模板
-- **查询范围**：当天面试列表，按城市筛选
+- **查询范围**：当天面试列表，固定品牌「成都你六姐」（硬编码于 `store-manager.strategy.ts`）
 - **特殊逻辑**：即使无面试也发送"今日无面试安排"
 
 ### 工作小贴士（WORK_TIPS）
@@ -188,17 +194,9 @@ Cron 定时触发 / API 手动触发
 
 ## 配置管理
 
-### 环境变量
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `ENABLE_GROUP_TASK` | `false` | 总开关，开启后 Cron 任务才会执行 |
-| `GROUP_TASK_DRY_RUN` | `true` | 试运行模式，消息只发飞书预览 |
-| `GROUP_TASK_SEND_DELAY_MS` | `2000` | 群间发送间隔（毫秒） |
-
 ### 运行时配置（Supabase）
 
-配置存储在 `system_config` 表，key 为 `group_task_config`：
+配置存储在 `system_config` 表，key 为 `group_task_config`，由 `SystemConfigService` 管理：
 
 ```json
 {
@@ -207,7 +205,17 @@ Cron 定时触发 / API 手动触发
 }
 ```
 
-**优先级**：Supabase 存储值 > 环境变量默认值 > 代码默认值
+代码默认值（`DEFAULT_GROUP_TASK_CONFIG`）：`enabled: false, dryRun: true`
+
+### 环境变量
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `GROUP_TASK_TOKENS` | - | 小组 token 映射（格式: `名称:token,名称:token`） |
+| `GROUP_TASK_SEND_DELAY_MS` | `2000` | 群间发送间隔（毫秒） |
+| `MINIPROGRAM_APPID` | - | 小程序 appid（兼职群卡片） |
+| `MINIPROGRAM_USERNAME` | - | 小程序 username |
+| `MINIPROGRAM_THUMB_URL` | - | 小程序封面图 URL |
 
 ### 前端管理面板
 
@@ -224,16 +232,16 @@ Cron 定时触发 / API 手动触发
 
 ```bash
 # 触发抢单群通知
-curl -X POST http://localhost:8080/group-task/trigger/order_grab
+curl -X POST http://localhost:8585/group-task/trigger/order_grab
 
 # 触发兼职群通知
-curl -X POST http://localhost:8080/group-task/trigger/part_time
+curl -X POST http://localhost:8585/group-task/trigger/part_time
 
 # 触发店长群通知
-curl -X POST http://localhost:8080/group-task/trigger/store_manager
+curl -X POST http://localhost:8585/group-task/trigger/store_manager
 
 # 触发工作小贴士
-curl -X POST http://localhost:8080/group-task/trigger/work_tips
+curl -X POST http://localhost:8585/group-task/trigger/work_tips
 ```
 
 ### 配置切换
@@ -243,7 +251,7 @@ curl -X POST http://localhost:8080/group-task/trigger/work_tips
 # 配置页面 → 群任务通知 → 切换开关
 
 # 通过 API
-curl -X POST http://localhost:8080/config/group-task-config \
+curl -X POST http://localhost:8585/config/group-task-config \
   -H "Content-Type: application/json" \
   -d '{"enabled": true, "dryRun": false}'
 ```
@@ -293,8 +301,8 @@ curl -X POST http://localhost:8080/config/group-task-config \
 |------|------|------|
 | **SpongeService** | 拉取 BI 订单、兼职岗位、面试安排 | `@sponge` |
 | **CompletionService** | AI 文案生成 | `@agent` |
-| **MessageSenderService** | 企微群消息发送（小组级 API） | `@channels/wecom` |
+| **MessageSenderService** | 企微群消息发送（小组级 API + 小程序卡片） | `@channels/wecom` |
 | **FeishuWebhookService** | 飞书通知（预览 + 结果报告） | `@infra/feishu` |
 | **RoomService** | 企微群列表获取 | `@channels/wecom/room` |
-| **Redis** | 品牌轮转历史（7 天 TTL） | `@infra/redis` |
-| **Supabase** | 运行时配置持久化 | `@infra/supabase` |
+| **RedisService** | 分布式锁 + 品牌轮转历史（7 天 TTL） | `@infra/redis` |
+| **SystemConfigService** | 运行时配置持久化（enabled/dryRun） | `@biz/hosting-config` |

@@ -10,6 +10,7 @@ import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { StrategyConfigService as BizStrategyConfigService } from '@biz/strategy/services/strategy-config.service';
+import type { EntityExtractionResult } from '@memory/types/session-facts.types';
 import {
   StrategyConfigRecord,
   StageGoalConfig,
@@ -23,6 +24,7 @@ import { ChannelSection } from './sections/channel.section';
 import { StageStrategySection } from './sections/stage-strategy.section';
 import { ThresholdsSection } from './sections/thresholds.section';
 import { MemorySection } from './sections/memory.section';
+import { TurnHintsSection } from './sections/turn-hints.section';
 import { SCENARIO_SECTIONS, DEFAULT_SCENARIO } from './scenarios/scenario.registry';
 import { StaticSection } from './sections/static.section';
 import { PolicySection } from './sections/policy.section';
@@ -33,6 +35,10 @@ export interface ComposeParams {
   channelType?: 'private' | 'group';
   currentStage?: string;
   memoryBlock?: string;
+  /** 会话记忆中的已确认提取结果；供 TurnHintsSection 做冲突比对。 */
+  sessionFacts?: EntityExtractionResult | null;
+  /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分/渲染。 */
+  highConfidenceFacts?: EntityExtractionResult | null;
   /** 策略来源：wecom 读 released，test 读 testing，默认 released */
   strategySource?: 'released' | 'testing';
 }
@@ -73,6 +79,8 @@ export class ContextService implements OnModuleInit {
       channelType = 'private',
       currentStage,
       memoryBlock,
+      sessionFacts,
+      highConfidenceFacts,
       strategySource = 'released',
     } = params;
 
@@ -86,6 +94,8 @@ export class ContextService implements OnModuleInit {
       strategyConfig: config,
       currentStage,
       memoryBlock,
+      sessionFacts,
+      highConfidenceFacts,
       currentTimeText: now,
     };
 
@@ -137,6 +147,7 @@ export class ContextService implements OnModuleInit {
     this.sections.set('thresholds', new ThresholdsSection());
     this.sections.set('stage-strategy', new StageStrategySection());
     this.sections.set('memory', new MemorySection());
+    this.sections.set('turn-hints', new TurnHintsSection());
     this.sections.set('datetime', new DateTimeSection());
     this.sections.set('channel', new ChannelSection());
   }

@@ -7,6 +7,24 @@ import {
 } from '../types/session-facts.types';
 
 const MUNICIPALITIES = ['北京', '上海', '天津', '重庆'] as const;
+const SHANGHAI_DISTRICT_ALIASES: Record<string, string> = {
+  黄浦: '黄浦',
+  徐汇: '徐汇',
+  长宁: '长宁',
+  静安: '静安',
+  普陀: '普陀',
+  虹口: '虹口',
+  杨浦: '杨浦',
+  闵行: '闵行',
+  宝山: '宝山',
+  嘉定: '嘉定',
+  浦东: '浦东',
+  松江: '松江',
+  青浦: '青浦',
+  奉贤: '奉贤',
+  金山: '金山',
+  崇明: '崇明',
+};
 const LABOR_FORM_KEYWORDS = ['兼职', '全职', '小时工', '寒假工', '暑假工', '临时工'] as const;
 const POSITION_KEYWORDS = [
   '服务员',
@@ -392,6 +410,11 @@ function extractLocation(message: string): {
     return cityWithDistrict;
   }
 
+  const knownShanghaiLocation = extractKnownShanghaiLocation(message);
+  if (knownShanghaiLocation) {
+    return knownShanghaiLocation;
+  }
+
   const explicitCity = extractExplicitCity(message);
   const explicitDistricts = extractExplicitDistricts(message);
   const explicitLocations = extractExplicitLocations(message, explicitCity, explicitDistricts);
@@ -401,6 +424,26 @@ function extractLocation(message: string): {
     district: explicitDistricts,
     location: explicitLocations,
   };
+}
+
+function extractKnownShanghaiLocation(message: string): {
+  city: string | null;
+  district: string[];
+  location: string[];
+} | null {
+  const normalized = normalizeLocationCandidate(message);
+  if (!normalized) return null;
+
+  const district = SHANGHAI_DISTRICT_ALIASES[normalized];
+  if (district) {
+    return {
+      city: '上海',
+      district: [district],
+      location: [],
+    };
+  }
+
+  return null;
 }
 
 function extractMunicipalityCompactLocation(message: string): {
@@ -484,6 +527,15 @@ function normalizeDistrict(rawDistrict: string): string {
   if (rawDistrict.endsWith('开发区') || rawDistrict.endsWith('新区')) return rawDistrict;
   if (rawDistrict.endsWith('街道')) return rawDistrict.replace(/街道$/, '');
   return rawDistrict.replace(/[区县镇乡]$/, '');
+}
+
+function normalizeLocationCandidate(message: string): string {
+  return message
+    .replace(/\s+/g, '')
+    .split(/[，,。；;]/)[0]
+    .replace(/(有店招吗|有岗位吗|附近有吗|有没有|有吗|招吗|在招吗|行吗|呢|呀|哈|吧)$/g, '')
+    .replace(/(找工作|工作|岗位|门店|店招)$/g, '')
+    .trim();
 }
 
 function buildBrandCandidates(brandData: BrandItem[]): BrandCandidate[] {

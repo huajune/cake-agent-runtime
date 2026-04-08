@@ -1,0 +1,149 @@
+/* HistorySection — compact accordion */
+@use 'sass:color';
+@use '@/assets/styles/variables' as *;
+
+.container {
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid $border;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: $bg-secondary;
+  border-bottom: 1px solid $border;
+  cursor: pointer;
+  user-select: none;
+
+  &:hover {
+    background: color.adjust($bg-secondary, $lightness: -2%);
+  }
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: $text-primary;
+}
+
+.badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  background: rgba($primary, 0.08);
+  color: $primary;
+  border-radius: 99px;
+}
+
+.toggleIcon {
+  font-size: 10px;
+  color: $text-muted;
+  transition: transform 0.2s ease;
+
+  &.expanded {
+    transform: rotate(180deg);
+  }
+}
+
+.content {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 8px 10px;
+}
+
+.messageList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.messageItem {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+
+  &.user {
+    background: rgba($primary, 0.04);
+    border-left: 2px solid rgba($primary, 0.4);
+  }
+
+  &.assistant {
+    background: rgba($success, 0.04);
+    border-left: 2px solid rgba($success, 0.4);
+  }
+}
+
+.roleBadge {
+  flex-shrink: 0;
+  min-width: 68px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  border-radius: 999px;
+  background: rgba($text-primary, 0.05);
+  color: $text-muted;
+}
+
+.messageContent {
+  flex: 1;
+  min-width: 0;
+  color: $text-secondary;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 80px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+.mediaTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  margin: 0 2px;
+  background: rgba($primary, 0.07);
+  color: $primary;
+  border-radius: 4px;
+  font-size: 11px;
+  font-style: italic;
+  white-space: nowrap;
+}
+
+.emptyState {
+  padding: 20px;
+  text-align: center;
+  color: $text-muted;
+  font-size: 12px;
+}
+
+/* Scrollbar */
+.content::-webkit-scrollbar {
+  width: 4px;
+}
+
+.content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.content::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 2px;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.15);
+  }
+}

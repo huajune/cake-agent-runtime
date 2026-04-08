@@ -16,8 +16,33 @@ import styles from './index.module.scss';
 
 // ==================== 思考过程组件（基于 AI reasoning） ====================
 
-function ReasoningBlock({ text, isThinking }: { text: string; isThinking: boolean }) {
-  const [expanded, setExpanded] = useState(isThinking);
+function normalizeReasoningText(text: string): string {
+  return text
+    .replace(/\r\n/g, '\n')
+    // Collapse 3+ newlines → 1 blank line
+    .replace(/\n{3,}/g, '\n\n')
+    // Remove blank lines BEFORE any list item (numbered or bulleted)
+    .replace(/\n\n+(?=\d+\.\s)/g, '\n')
+    .replace(/\n\n+(?=[-*]\s)/g, '\n')
+    // Remove blank lines after colon-ending lines (e.g. "我需要：\n\n1.")
+    .replace(/([：:]\s*)\n\n+/g, '$1\n')
+    // Fix orphaned list markers: "1.\n\ntext" → "1. text"
+    .replace(/(^|\n)(\d+\.)\s*\n+(?=\S)/g, '$1$2 ')
+    .replace(/(^|\n)([-*])\s*\n+(?=\S)/g, '$1$2 ')
+    .trim();
+}
+
+function ReasoningBlock({
+  text,
+  isThinking,
+  defaultExpanded = true,
+}: {
+  text: string;
+  isThinking: boolean;
+  defaultExpanded?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const normalizedText = normalizeReasoningText(text);
 
   return (
     <div className={`${styles.reasoningCard} ${isThinking ? styles.reasoningActive : ''}`}>
@@ -34,7 +59,11 @@ function ReasoningBlock({ text, isThinking }: { text: string; isThinking: boolea
       </div>
       {expanded && (
         <div className={styles.reasoningBody}>
-          <Markdown>{text}</Markdown>
+          {isThinking ? (
+            <pre className={styles.reasoningPlainText}>{normalizedText}</pre>
+          ) : (
+            <Markdown>{normalizedText}</Markdown>
+          )}
         </div>
       )}
     </div>
@@ -191,7 +220,7 @@ function buildSegments(parts: UIMessage['parts']): Segment[] {
         toolPart.output !== undefined;
 
       const tool: ExtractedToolCall = {
-        toolCallId: toolPart.toolCallId || `tool-${Date.now()}-${segments.length}`,
+        toolCallId: toolPart.toolCallId || `${extractedToolName}-${segments.length}`,
         toolName: extractedToolName,
         args: toolPart.input,
         state: isCompleted ? 'result' : 'call',
@@ -209,9 +238,16 @@ function buildSegments(parts: UIMessage['parts']): Segment[] {
 interface MessagePartsAdapterProps {
   message: UIMessage;
   isStreaming?: boolean;
+  expandToolsByDefault?: boolean;
+  expandReasoningByDefault?: boolean;
 }
 
-function MessagePartsAdapterComponent({ message, isStreaming }: MessagePartsAdapterProps) {
+function MessagePartsAdapterComponent({
+  message,
+  isStreaming,
+  expandToolsByDefault = false,
+  expandReasoningByDefault = true,
+}: MessagePartsAdapterProps) {
   const parts = message.parts;
 
   if (!parts || parts.length === 0) {
@@ -247,7 +283,12 @@ function MessagePartsAdapterComponent({ message, isStreaming }: MessagePartsAdap
           const isLastReasoning =
             !!isStreaming && segments.slice(idx + 1).every((s) => s.kind !== 'reasoning');
           return (
-            <ReasoningBlock key={`reasoning-${idx}`} text={seg.text} isThinking={isLastReasoning} />
+            <ReasoningBlock
+              key={`reasoning-${idx}`}
+              text={seg.text}
+              isThinking={isLastReasoning}
+              defaultExpanded={expandReasoningByDefault}
+            />
           );
         }
 
@@ -268,6 +309,7 @@ function MessagePartsAdapterComponent({ message, isStreaming }: MessagePartsAdap
             args={seg.tool.args}
             state={seg.tool.state}
             result={seg.tool.result}
+            defaultExpanded={expandToolsByDefault}
           />
         );
       })}
@@ -281,11 +323,6 @@ function MessagePartsAdapterComponent({ message, isStreaming }: MessagePartsAdap
   );
 }
 
-export const MessagePartsAdapter = memo(MessagePartsAdapterComponent, (prevProps, nextProps) => {
-  if (nextProps.isStreaming) {
-    return false;
-  }
-  return prevProps.message.id === nextProps.message.id;
-});
+export const MessagePartsAdapter = memo(MessagePartsAdapterComponent);
 
 export default MessagePartsAdapter;

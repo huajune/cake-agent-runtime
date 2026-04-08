@@ -3,13 +3,13 @@ import { ConfigService } from '@nestjs/config';
 import { MessageDeliveryService } from '@wecom/message/services/delivery.service';
 import { MessageSenderService } from '@wecom/message-sender/message-sender.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
-import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import {
   DeliveryContext,
   DeliveryFailureError,
   AgentReply,
 } from '@wecom/message/message.types';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
+import { WecomMessageObservabilityService } from '@wecom/message/services/wecom-message-observability.service';
 
 describe('MessageDeliveryService', () => {
   let service: MessageDeliveryService;
@@ -30,13 +30,14 @@ describe('MessageDeliveryService', () => {
     }),
   };
 
-  const mockFeishuAlertService = {
-    sendAlert: jest.fn(),
-  };
-
   const mockSystemConfigService = {
     onAgentReplyConfigChange: jest.fn(),
     getAgentReplyConfig: jest.fn(),
+  };
+
+  const mockWecomObservabilityService = {
+    markDeliveryStart: jest.fn(),
+    markDeliveryEnd: jest.fn(),
   };
 
   const deliveryContext: DeliveryContext = {
@@ -56,8 +57,8 @@ describe('MessageDeliveryService', () => {
         { provide: MessageSenderService, useValue: mockMessageSenderService },
         { provide: MessageTrackingService, useValue: mockMonitoringService },
         { provide: ConfigService, useValue: mockConfigService },
-        { provide: FeishuAlertService, useValue: mockFeishuAlertService },
         { provide: SystemConfigService, useValue: mockSystemConfigService },
+        { provide: WecomMessageObservabilityService, useValue: mockWecomObservabilityService },
       ],
     }).compile();
 
@@ -67,7 +68,6 @@ describe('MessageDeliveryService', () => {
     mockMessageSenderService.sendMessage.mockResolvedValue({ success: true });
     mockMonitoringService.recordSendStart.mockReturnValue(undefined);
     mockMonitoringService.recordSendEnd.mockReturnValue(undefined);
-    mockFeishuAlertService.sendAlert.mockResolvedValue(undefined);
     mockSystemConfigService.onAgentReplyConfigChange.mockImplementation(() => {});
     mockSystemConfigService.getAgentReplyConfig.mockResolvedValue({
       typingSpeedCharsPerSec: 8,
@@ -125,10 +125,6 @@ describe('MessageDeliveryService', () => {
       await expect(service.deliverReply({ content: 'Hello' }, deliveryContext, true)).rejects.toBeInstanceOf(
         DeliveryFailureError,
       );
-
-      expect(mockFeishuAlertService.sendAlert).toHaveBeenCalledWith(
-        expect.objectContaining({ errorType: 'delivery' }),
-      );
     });
 
     it('should expose delivered segment count for partial failures', async () => {
@@ -152,9 +148,6 @@ describe('MessageDeliveryService', () => {
       expect(error?.result.segmentCount).toBe(3);
       expect(error?.result.failedSegments).toBe(1);
       expect(error?.result.deliveredSegments).toBe(2);
-      expect(mockFeishuAlertService.sendAlert).toHaveBeenCalledWith(
-        expect.objectContaining({ errorType: 'delivery' }),
-      );
     });
   });
 });

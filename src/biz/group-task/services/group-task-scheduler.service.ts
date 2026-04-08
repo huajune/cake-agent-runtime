@@ -12,6 +12,7 @@ import { OrderGrabStrategy } from '../strategies/order-grab.strategy';
 import { PartTimeJobStrategy } from '../strategies/part-time-job.strategy';
 import { StoreManagerStrategy } from '../strategies/store-manager.strategy';
 import { WorkTipsStrategy } from '../strategies/work-tips.strategy';
+import { Environment } from '@enums/environment.enum';
 import {
   GroupTaskType,
   GroupTaskConfig,
@@ -54,6 +55,13 @@ export class GroupTaskSchedulerService implements OnModuleInit {
   }
 
   async onModuleInit(): Promise<void> {
+    if (!this.isProductionEnvironment()) {
+      this.logger.log(
+        `🧪 当前环境=${this.getCurrentEnvironment()}，群任务 Cron 自动触发已禁用，仅支持手动触发`,
+      );
+      return;
+    }
+
     const enabled = await this.isEnabled();
     if (enabled) {
       this.logger.log('✅ 群任务调度服务已启动');
@@ -91,36 +99,42 @@ export class GroupTaskSchedulerService implements OnModuleInit {
   /** 抢单群 — 上午场 10:00 */
   @Cron('0 10 * * *', { timeZone: 'Asia/Shanghai' })
   async cronOrderGrabMorning(): Promise<void> {
+    if (!this.shouldRunScheduledTask(this.orderGrabStrategy.type)) return;
     await this.executeTask(this.orderGrabStrategy, { timeSlot: TimeSlot.MORNING });
   }
 
   /** 抢单群 — 下午场 13:00 */
   @Cron('0 13 * * *', { timeZone: 'Asia/Shanghai' })
   async cronOrderGrabAfternoon(): Promise<void> {
+    if (!this.shouldRunScheduledTask(this.orderGrabStrategy.type)) return;
     await this.executeTask(this.orderGrabStrategy, { timeSlot: TimeSlot.AFTERNOON });
   }
 
   /** 兼职群 — 工作日 13:00 */
   @Cron('0 13 * * 1-5', { timeZone: 'Asia/Shanghai' })
   async cronPartTimeJob(): Promise<void> {
+    if (!this.shouldRunScheduledTask(this.partTimeJobStrategy.type)) return;
     await this.executeTask(this.partTimeJobStrategy);
   }
 
   /** 抢单群 — 晚上场 17:30 */
   @Cron('30 17 * * *', { timeZone: 'Asia/Shanghai' })
   async cronOrderGrabEvening(): Promise<void> {
+    if (!this.shouldRunScheduledTask(this.orderGrabStrategy.type)) return;
     await this.executeTask(this.orderGrabStrategy, { timeSlot: TimeSlot.EVENING });
   }
 
   /** 店长群 — 工作日 10:30 */
   @Cron('30 10 * * 1-5', { timeZone: 'Asia/Shanghai' })
   async cronStoreManager(): Promise<void> {
+    if (!this.shouldRunScheduledTask(this.storeManagerStrategy.type)) return;
     await this.executeTask(this.storeManagerStrategy);
   }
 
   /** 工作小贴士 — 周六 15:00 */
   @Cron('0 15 * * 6', { timeZone: 'Asia/Shanghai' })
   async cronWorkTips(): Promise<void> {
+    if (!this.shouldRunScheduledTask(this.workTipsStrategy.type)) return;
     await this.executeTask(this.workTipsStrategy);
   }
 
@@ -197,7 +211,7 @@ export class GroupTaskSchedulerService implements OnModuleInit {
           try {
             // 3a. 用分组代表拉取数据（同组数据相同，只拉一次）
             const representative = groupMembers[0];
-            const data = await strategy.fetchData(representative);
+            const data = await strategy.fetchData(representative, timeSlot);
 
             if (!data.hasData) {
               result.skippedCount += groupMembers.length;
@@ -236,10 +250,18 @@ export class GroupTaskSchedulerService implements OnModuleInit {
             }
 
             // 3c. 同组所有群发送相同消息
+            const followUpMessage = data.payload?.followUpMessage as string | undefined;
+            const successGroups: GroupContext[] = [];
             for (const group of groupMembers) {
               try {
                 await this.notificationSender.sendToGroup(group, message, strategy.type, dryRun);
+                // 跟随消息（如店长群问候语）单独发送
+                if (followUpMessage) {
+                  await this.delay(this.sendDelayMs);
+                  await this.notificationSender.sendTextToGroup(group, followUpMessage, dryRun);
+                }
                 result.successCount++;
+                successGroups.push(group);
                 this.logger.log(`[${strategy.type}] ✅ ${group.groupName}`);
                 await this.delay(this.sendDelayMs);
               } catch (error: unknown) {
@@ -251,8 +273,9 @@ export class GroupTaskSchedulerService implements OnModuleInit {
             }
 
             // 3d. 记录品牌轮转（兼职群：同城市+行业的群共享品牌轮转）
+            // 仅对发送成功的群记录品牌轮转，避免发送失败导致浪费当前品牌甚至跳过
             if (strategy.type === GroupTaskType.PART_TIME_JOB && data.payload?.brand) {
-              for (const group of groupMembers) {
+              for (const group of successGroups) {
                 await this.brandRotation.recordPushedBrand(
                   group.imRoomId,
                   data.payload.brand as string,
@@ -260,11 +283,18 @@ export class GroupTaskSchedulerService implements OnModuleInit {
               }
             }
 
+            const status =
+              successGroups.length === groupMembers.length
+                ? 'success'
+                : successGroups.length > 0
+                  ? 'partial'
+                  : 'failed';
+
             result.details.push({
               groupKey,
               groupCount: groupMembers.length,
               dataSummary: data.summary,
-              status: 'success',
+              status,
               groupNames: groupMembers.map((g) => g.groupName),
             });
 
@@ -338,6 +368,25 @@ export class GroupTaskSchedulerService implements OnModuleInit {
 
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private shouldRunScheduledTask(type: GroupTaskType): boolean {
+    if (this.isProductionEnvironment()) {
+      return true;
+    }
+
+    this.logger.debug(
+      `[${type}] 当前环境=${this.getCurrentEnvironment()}，跳过 Cron 自动触发，仅允许手动触发`,
+    );
+    return false;
+  }
+
+  private isProductionEnvironment(): boolean {
+    return this.getCurrentEnvironment() === Environment.Production;
+  }
+
+  private getCurrentEnvironment(): Environment {
+    return this.configService.get<Environment>('NODE_ENV', Environment.Development);
   }
 
   private getTaskLockKey(type: GroupTaskType): string {

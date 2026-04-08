@@ -6,6 +6,8 @@ import { GroupTaskType, GroupContext, NotificationData } from '../group-task.typ
 import { InterviewScheduleItem } from '@sponge/sponge.types';
 import { buildStoreManagerMessage } from '../prompts/store-manager.prompt';
 
+const STORE_MANAGER_TARGET_BRAND = '成都你六姐';
+
 /**
  * 店长群通知策略（纯模板，不需要 AI）
  *
@@ -30,23 +32,30 @@ export class StoreManagerStrategy implements NotificationStrategy {
     const interviews = await this.spongeService.fetchInterviewSchedule({
       interviewStartTime: startTime,
       interviewEndTime: endTime,
-      cityName: context.city,
+      brandName: STORE_MANAGER_TARGET_BRAND,
     });
 
-    this.logger.log(`[店长群] ${context.city} 今日面试: ${interviews.length}人`);
+    this.logger.log(
+      `[店长群] ${context.groupName} → ${STORE_MANAGER_TARGET_BRAND} 今日面试: ${interviews.length}人`,
+    );
 
     // 即使无面试也发通知（"今日无面试安排"）
     return {
       hasData: true,
       payload: { interviews, date: dateStr },
-      summary: `${context.city}: ${interviews.length}人面试`,
+      summary: `${STORE_MANAGER_TARGET_BRAND}: ${interviews.length}人面试`,
     };
   }
 
   buildMessage(data: NotificationData): string {
-    return buildStoreManagerMessage({
+    const result = buildStoreManagerMessage({
       interviews: data.payload.interviews as InterviewScheduleItem[],
       date: data.payload.date as string,
     });
+    // 跟随消息存入 payload，由 scheduler 发送完主消息后单独发送
+    if (result.followUp) {
+      data.payload.followUpMessage = result.followUp;
+    }
+    return result.main;
   }
 }

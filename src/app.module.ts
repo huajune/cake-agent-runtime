@@ -7,6 +7,7 @@ import { RedisModule } from './infra/redis/redis.module';
 import { GeocodingModule } from './infra/geocoding/geocoding.module';
 import { SupabaseModule } from '@infra/supabase/supabase.module';
 import { LoggerModule } from './infra/logger/logger.module';
+import { WebEntryModule } from '@infra/server/web-entry/web-entry.module';
 import { FeishuModule } from './infra/feishu/feishu.module';
 import { ProvidersModule } from '@providers/providers.module';
 import { ToolModule } from '@tools/tool.module';
@@ -56,6 +57,7 @@ import { ApiTokenGuard } from './infra/server/guards/api-token.guard';
     SupabaseModule,
     FeishuModule,
     LoggerModule,
+    WebEntryModule,
 
     // ==================== 业务逻辑层 (Business Logic Layer) ====================
     BizModule,

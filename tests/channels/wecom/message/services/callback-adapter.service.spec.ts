@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { HttpException } from '@nestjs/common';
 import { MessageCallbackAdapterService } from '@wecom/message/services/callback-adapter.service';
 import {
-  EnterpriseMessageCallbackDto,
   GroupMessageCallbackDto,
 } from '@wecom/message/message-callback.dto';
 import { MessageSource, MessageType, ContactType } from '@enums/message-callback.enum';
@@ -184,12 +184,30 @@ describe('MessageCallbackAdapterService', () => {
       expect(result.messageType).toBe(MessageType.TEXT);
     });
 
-    it('should treat unknown format as enterprise callback', () => {
+    it('should reject unknown callback format', () => {
       const unknownBody = { someField: 'value' };
 
-      const result = service.normalizeCallback(unknownBody);
+      expect(() => service.normalizeCallback(unknownBody)).toThrow(HttpException);
+    });
 
-      expect(result).toBeDefined();
+    it('should reject invalid enterprise callback payloads', () => {
+      const invalidEnterpriseBody = {
+        ...validEnterpriseBody,
+        payload: 'not-an-object',
+      };
+
+      expect(() => service.normalizeCallback(invalidEnterpriseBody)).toThrow(HttpException);
+    });
+
+    it('should reject invalid group callback payloads', () => {
+      const invalidGroupWrapper = {
+        data: {
+          ...validGroupCallback,
+          timestamp: '1700000000000',
+        },
+      };
+
+      expect(() => service.normalizeCallback(invalidGroupWrapper)).toThrow(HttpException);
     });
   });
 });

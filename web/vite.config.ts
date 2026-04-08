@@ -1,15 +1,31 @@
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import fs from 'fs';
 import path from 'path';
 
 const repoRoot = path.resolve(__dirname, '..');
 
+function readRootEnvValue(mode: string, key: string): string {
+  const envFiles = [`.env.local`, `.env.${mode}`, `.env`];
+
+  for (const envFile of envFiles) {
+    const envPath = path.resolve(repoRoot, envFile);
+    if (!fs.existsSync(envPath)) continue;
+
+    const content = fs.readFileSync(envPath, 'utf8');
+    const match = content.match(new RegExp(`^${key}=(.*)$`, 'm'));
+    if (!match) continue;
+
+    return match[1].trim().replace(/^['"]|['"]$/g, '');
+  }
+
+  return '';
+}
+
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, repoRoot, '');
-  const apiGuardToken = process.env.API_GUARD_TOKEN || env.API_GUARD_TOKEN || '';
+  const apiGuardToken = process.env.API_GUARD_TOKEN || readRootEnvValue(mode, 'API_GUARD_TOKEN');
 
   return {
-    envDir: repoRoot,
     plugins: [react()],
     define: {
       'import.meta.env.API_GUARD_TOKEN': JSON.stringify(apiGuardToken),

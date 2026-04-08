@@ -7,6 +7,7 @@ import { SystemConfigService } from '@biz/hosting-config/services/system-config.
 import { SimpleMergeService } from './services/simple-merge.service';
 import { MessageDeduplicationService } from './services/deduplication.service';
 import { MessagePipelineService } from './services/pipeline.service';
+import { WecomMessageObservabilityService } from './services/wecom-message-observability.service';
 
 // 导入工具和类型
 import { MessageParser } from './utils/message-parser.util';
@@ -40,6 +41,7 @@ export class MessageService implements OnModuleInit {
     private readonly simpleMergeService: SimpleMergeService,
     private readonly deduplicationService: MessageDeduplicationService,
     private readonly pipelineService: MessagePipelineService,
+    private readonly wecomObservability: WecomMessageObservabilityService,
     // 监控
     private readonly monitoringService: MessageTrackingService,
     // Repository
@@ -98,14 +100,19 @@ export class MessageService implements OnModuleInit {
     // 步骤 5: 全局 AI 开关
     if (!this.enableAiReply) {
       const parsed = MessageParser.parse(messageData);
+      this.wecomObservability.updateDispatch(messageData.messageId, 'disabled');
+      const successMetadata = this.wecomObservability.buildSuccessMetadata(messageData.messageId, {
+        scenario: MessageParser.determineScenario(),
+        isPrimary: true,
+        replyPreview: '[AI回复已禁用]',
+        replySegments: 0,
+        extraResponse: { disabledAiReply: true },
+      });
       this.logger.log(
         `[AI回复已禁用] 消息已记录到历史 [${messageData.messageId}]` +
           (parsed.chatId ? `, chatId=${parsed.chatId}` : ''),
       );
-      this.monitoringService.recordSuccess(messageData.messageId, {
-        scenario: MessageParser.determineScenario(),
-        replyPreview: '[AI回复已禁用]',
-      });
+      this.monitoringService.recordSuccess(messageData.messageId, successMetadata);
       await this.deduplicationService.markMessageAsProcessedAsync(messageData.messageId);
       return { success: true, message: 'AI reply disabled, message recorded to history' };
     }

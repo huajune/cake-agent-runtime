@@ -86,6 +86,31 @@ export interface RecommendedJobSummary {
   distanceKm?: number | null;
 }
 
+export const RecommendedJobSummarySchema = z.object({
+  jobId: z.number().int(),
+  brandName: z.string().nullable(),
+  jobName: z.string().nullable(),
+  storeName: z.string().nullable(),
+  cityName: z.string().nullable(),
+  regionName: z.string().nullable(),
+  laborForm: z.string().nullable(),
+  salaryDesc: z.string().nullable(),
+  jobCategoryName: z.string().nullable(),
+  distanceKm: z.number().nullable().optional(),
+});
+
+/** 已邀入的群记录 */
+export interface InvitedGroupRecord {
+  /** 群名称 */
+  groupName: string;
+  /** 城市 */
+  city: string;
+  /** 行业 */
+  industry?: string;
+  /** 邀请时间 */
+  invitedAt: string;
+}
+
 /** 会话事实层 — 当前这次求职会话的结构化状态 */
 export interface WeworkSessionState {
   facts: EntityExtractionResult | null;
@@ -95,6 +120,8 @@ export interface WeworkSessionState {
   presentedJobs: RecommendedJobSummary[] | null;
   /** 候选人当前明确在聊或准备报名的岗位 */
   currentFocusJob: RecommendedJobSummary | null;
+  /** 本会话中已邀入的兼职群 */
+  invitedGroups: InvitedGroupRecord[] | null;
   /**
    * 当前这段会话最后一次仍在继续聊的时间。
    *
@@ -105,18 +132,37 @@ export interface WeworkSessionState {
   lastSessionActiveAt?: string;
 }
 
+export const InvitedGroupRecordSchema = z.object({
+  groupName: z.string(),
+  city: z.string(),
+  industry: z.string().optional(),
+  invitedAt: z.string(),
+});
+
+export const WeworkSessionStateSchema = z.object({
+  facts: EntityExtractionResultSchema.nullable(),
+  lastCandidatePool: z.array(RecommendedJobSummarySchema).nullable(),
+  presentedJobs: z.array(RecommendedJobSummarySchema).nullable(),
+  currentFocusJob: RecommendedJobSummarySchema.nullable(),
+  invitedGroups: z.array(InvitedGroupRecordSchema).nullable(),
+  lastSessionActiveAt: z.string().optional(),
+});
+
 /** 当前会话没有任何结构化记忆时的空状态。 */
 export const EMPTY_SESSION_STATE: WeworkSessionState = {
   facts: null,
   lastCandidatePool: null,
   presentedJobs: null,
   currentFocusJob: null,
+  invitedGroups: null,
 };
 
 // ==================== 3. Redis 持久化结构 ====================
 
 /** Redis 中 session-facts 层实际写入的 content 结构。 */
 export type SessionFactsRedisContent = Partial<WeworkSessionState>;
+
+export const SessionFactsRedisContentSchema = WeworkSessionStateSchema.partial();
 
 /** Redis 中 session-facts 层实际存储的 entry 结构。 */
 export type SessionFactsRedisEntry = MemoryEntry<SessionFactsRedisContent>;

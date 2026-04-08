@@ -598,16 +598,27 @@ export class AnalyticsQueryService {
 
       if (record.userId) bucket.users.add(record.userId);
 
-      const chatResponse = record.agentInvocation?.response;
-      if (chatResponse?.messages) {
-        for (const message of chatResponse.messages) {
-          if (!message.parts) continue;
-          for (const part of message.parts) {
-            if (part.type === 'dynamic-tool' && part.toolName === 'duliday_interview_booking') {
-              bucket.bookingAttempts += 1;
-              if (part.state === 'output-available' && part.output) {
-                if (this.checkBookingOutputSuccess(part.output)) {
-                  bucket.successfulBookings += 1;
+      const toolCalls = record.agentInvocation?.response?.toolCalls;
+      if (Array.isArray(toolCalls)) {
+        for (const toolCall of toolCalls) {
+          if (toolCall?.toolName !== 'duliday_interview_booking') continue;
+          bucket.bookingAttempts += 1;
+          if (this.checkBookingOutputSuccess(toolCall.result)) {
+            bucket.successfulBookings += 1;
+          }
+        }
+      } else {
+        const chatResponse = record.agentInvocation?.response;
+        if (chatResponse?.messages) {
+          for (const message of chatResponse.messages) {
+            if (!message.parts) continue;
+            for (const part of message.parts) {
+              if (part.type === 'dynamic-tool' && part.toolName === 'duliday_interview_booking') {
+                bucket.bookingAttempts += 1;
+                if (part.state === 'output-available' && part.output) {
+                  if (this.checkBookingOutputSuccess(part.output)) {
+                    bucket.successfulBookings += 1;
+                  }
                 }
               }
             }
@@ -658,13 +669,20 @@ export class AnalyticsQueryService {
       .sort((a, b) => b.count - a.count);
   }
 
-  private checkBookingOutputSuccess(output: Record<string, unknown>): boolean {
-    if (output.type === 'object' && output.object) {
+  private checkBookingOutputSuccess(output: unknown): boolean {
+    if (!output || typeof output !== 'object') {
+      return false;
+    }
+
+    if (
+      (output as Record<string, unknown>).type === 'object' &&
+      (output as Record<string, unknown>).object
+    ) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const obj = output.object as any;
+      const obj = (output as Record<string, unknown>).object as any;
       return obj.success === true;
     }
-    return false;
+    return (output as Record<string, unknown>).success === true;
   }
 
   // ========================================

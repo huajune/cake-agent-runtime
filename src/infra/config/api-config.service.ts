@@ -48,12 +48,14 @@ export class ApiConfigService {
    */
   buildApiUrl(
     endpoint: string,
-    version: 'stream-api' | 'v2' | 'enterprise-v2' = 'stream-api',
+    version: 'stream-api' | 'v2' | 'enterprise-v2' | 'enterprise-v1' = 'stream-api',
   ): string {
     let baseUrl: string;
 
     if (version === 'enterprise-v2') {
       baseUrl = this.getStrideEnterpriseApiV2BaseUrl();
+    } else if (version === 'enterprise-v1') {
+      baseUrl = `${this.strideEnterpriseBaseUrl}/api/v1`;
     } else if (version === 'v2') {
       baseUrl = this.getStrideApiV2BaseUrl();
     } else {
@@ -95,6 +97,7 @@ export class ApiConfigService {
     // 群聊相关（企业级接口）
     groupChat: {
       list: () => this.buildApiUrl('/groupChat/list', 'enterprise-v2'), // 企业级群列表
+      addMember: () => this.buildApiUrl('/instantReply/addFromRoom', 'enterprise-v1'), // 企业级拉人进群
     },
     // 用户相关
     user: {

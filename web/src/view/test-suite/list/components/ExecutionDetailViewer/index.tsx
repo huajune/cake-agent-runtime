@@ -169,17 +169,25 @@ export function ExecutionDetailViewer({ execution, showHistory = true }: Executi
   const [showToolCalls, setShowToolCalls] = useState(false);
   const [showHistoryPanel, setShowHistoryPanel] = useState(true);
 
-  const toolCalls: ToolCall[] = execution.tool_calls || [];
-  const history: HistoryMessage[] = execution.test_input?.history || [];
-  const inputMessage = execution.input_message || execution.test_input?.message || '';
+  const testInput =
+    execution.test_input && typeof execution.test_input === 'object' ? execution.test_input : null;
+  const toolCalls: ToolCall[] = Array.isArray(execution.tool_calls) ? execution.tool_calls : [];
+  const history = Array.isArray(testInput?.history) ? (testInput.history as HistoryMessage[]) : [];
+  const inputMessage =
+    execution.input_message ||
+    (testInput && typeof testInput.message === 'string' ? testInput.message : '') ||
+    '';
 
   // 指标数据
   const durationMs = execution.duration_ms || 0;
-  const tokenUsage: TokenUsage = execution.token_usage || {
-    totalTokens: 0,
-    inputTokens: 0,
-    outputTokens: 0,
-  };
+  const tokenUsage: TokenUsage =
+    execution.token_usage && typeof execution.token_usage === 'object'
+      ? execution.token_usage
+      : {
+          totalTokens: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+        };
 
   return (
     <div className={styles.detailViewer}>

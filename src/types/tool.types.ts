@@ -31,6 +31,10 @@ export interface ToolBuildContext {
   availableStages?: string[];
   /** 当前策略的完整阶段配置；供 advance_stage 返回目标阶段的策略快照。 */
   stageGoals?: Record<string, StageGoalConfig>;
+  /** 当前与候选人聊天的托管账号企微 userId（企业级 addMember 的 botUserId） */
+  botUserId?: string;
+  /** 当前与候选人聊天的托管账号系统 wxid（企业级 addMember 的 imBotId） */
+  botImId?: string;
 }
 
 /** 工具构建函数。 */

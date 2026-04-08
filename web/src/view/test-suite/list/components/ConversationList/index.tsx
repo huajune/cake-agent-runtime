@@ -35,7 +35,9 @@ export function ConversationList({
   onExecute,
   executing,
 }: ConversationListProps) {
-  if (loading && conversations.length === 0) {
+  const safeConversations = Array.isArray(conversations) ? conversations : [];
+
+  if (loading && safeConversations.length === 0) {
     return (
       <>
         <div className={styles.listHeader}>
@@ -51,7 +53,7 @@ export function ConversationList({
     );
   }
 
-  if (conversations.length === 0) {
+  if (safeConversations.length === 0) {
     return (
       <>
         <div className={styles.listHeader}>
@@ -76,11 +78,11 @@ export function ConversationList({
         <h4>
           <MessageSquare size={16} /> 回归验证
         </h4>
-        <span className={styles.itemCount}>共 {conversations.length} 条</span>
+        <span className={styles.itemCount}>共 {safeConversations.length} 条</span>
       </div>
 
       <div className={styles.list}>
-        {conversations.map((conversation, index) => {
+        {safeConversations.map((conversation, index) => {
           const statusConfig = getStatusConfig(conversation.status);
           const StatusIcon = statusConfig.icon;
           const isSelected = selectedConversation?.id === conversation.id;

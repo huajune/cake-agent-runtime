@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 /** 岗位查询请求参数 */
 export interface JobListQueryParams {
   cityNameList?: string[];
@@ -45,6 +47,30 @@ export interface JobBasicInfo {
   [key: string]: unknown;
 }
 
+const UnknownRecordSchema = z.object({}).catchall(z.unknown());
+const NullableOptionalStringSchema = z.string().nullish();
+const NullableOptionalNumberSchema = z.number().nullish();
+
+export const JobBasicInfoSchema = z
+  .object({
+    jobId: z.number().int(),
+    jobName: NullableOptionalStringSchema,
+    jobNickName: NullableOptionalStringSchema,
+    jobCategoryName: NullableOptionalStringSchema,
+    jobContent: NullableOptionalStringSchema,
+    laborForm: NullableOptionalStringSchema,
+    requirementNum: NullableOptionalNumberSchema,
+    minAge: NullableOptionalNumberSchema,
+    maxAge: NullableOptionalNumberSchema,
+    storeName: NullableOptionalStringSchema,
+    storeAddress: NullableOptionalStringSchema,
+    storeInfo: UnknownRecordSchema.nullish(),
+    brandName: NullableOptionalStringSchema,
+    cityName: NullableOptionalStringSchema,
+    regionName: NullableOptionalStringSchema,
+  })
+  .catchall(z.unknown());
+
 /** 岗位详情（包含薪资、福利等可选信息） */
 export interface JobDetail {
   basicInfo?: JobBasicInfo;
@@ -56,11 +82,35 @@ export interface JobDetail {
   [key: string]: unknown;
 }
 
+export const JobDetailSchema = z
+  .object({
+    basicInfo: JobBasicInfoSchema.nullish(),
+    jobSalary: UnknownRecordSchema.nullish(),
+    welfare: UnknownRecordSchema.nullish(),
+    hiringRequirement: UnknownRecordSchema.nullish(),
+    workTime: UnknownRecordSchema.nullish(),
+    interviewProcess: UnknownRecordSchema.nullish(),
+  })
+  .catchall(z.unknown());
+
 /** 岗位查询响应 */
 export interface JobListResult {
   jobs: JobDetail[];
   total: number;
 }
+
+export const JobListApiResponseSchema = z
+  .object({
+    code: z.number(),
+    message: z.string().optional(),
+    data: z
+      .object({
+        result: z.array(JobDetailSchema).default([]),
+        total: z.number().default(0),
+      })
+      .nullish(),
+  })
+  .passthrough();
 
 /** 品牌列表 API 原始响应项 */
 export interface RawBrandItem {
@@ -69,11 +119,29 @@ export interface RawBrandItem {
   projectIdList: number[];
 }
 
+export const RawBrandItemSchema = z.object({
+  name: z.string().min(1),
+  aliases: z.array(z.string()).default([]),
+  projectIdList: z.array(z.number()).default([]),
+});
+
 /** 品牌（精简，供事实提取使用） */
 export interface BrandItem {
   name: string;
   aliases: string[];
 }
+
+export const BrandListApiResponseSchema = z
+  .object({
+    code: z.number(),
+    message: z.string().optional(),
+    data: z
+      .object({
+        result: z.array(RawBrandItemSchema).default([]),
+      })
+      .optional(),
+  })
+  .passthrough();
 
 /** 面试名单查询参数 */
 export interface InterviewScheduleParams {
@@ -97,6 +165,10 @@ export interface InterviewScheduleItem {
   name: string;
   /** 候选人电话 */
   phone: string;
+  /** 候选人性别（"男"/"女"），上游缺失时为空 */
+  gender?: string;
+  /** 候选人年龄，上游缺失时为空 */
+  age?: number;
   /** 面试时间 YYYY-MM-DD HH:mm */
   interviewTime: string;
   /** 应聘岗位 */
@@ -106,6 +178,23 @@ export interface InterviewScheduleItem {
   /** 所属品牌 */
   brandName: string;
 }
+
+export const InterviewScheduleItemSchema = z.object({
+  name: z.string().min(1),
+  phone: z.string().min(1),
+  gender: z
+    .string()
+    .nullish()
+    .transform((value) => value ?? undefined),
+  age: z
+    .number()
+    .nullish()
+    .transform((value) => value ?? undefined),
+  interviewTime: z.string().min(1),
+  jobName: z.string().min(1),
+  storeName: z.string().min(1),
+  brandName: z.string().min(1),
+});
 
 /** 面试名单查询结果 */
 export interface InterviewScheduleResult {
@@ -133,6 +222,31 @@ export interface InterviewBookingResult {
   notice?: string | null;
   errorList?: unknown[] | null;
 }
+
+export const InterviewBookingApiResponseSchema = z
+  .object({
+    code: z.number(),
+    message: z.string().optional(),
+    data: z
+      .object({
+        notice: z.string().nullable().optional(),
+        errorList: z.array(z.unknown()).nullable().optional(),
+      })
+      .optional(),
+  })
+  .passthrough();
+
+export const InterviewScheduleApiResponseSchema = z
+  .object({
+    code: z.number(),
+    message: z.string().optional(),
+    data: z
+      .object({
+        result: z.array(InterviewScheduleItemSchema).default([]),
+      })
+      .optional(),
+  })
+  .passthrough();
 
 // ==================== 观远BI 类型 ====================
 

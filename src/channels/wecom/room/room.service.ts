@@ -145,6 +145,35 @@ export class RoomService {
   }
 
   /**
+   * 企业级拉人进群
+   * 不受小组限制，任何 bot 都可以操作。
+   * @param data - 企业级拉群参数
+   * @returns 拉群结果
+   */
+  async addMemberEnterprise(data: {
+    token: string;
+    imBotId: string;
+    botUserId: string;
+    contactWxid: string;
+    roomWxid: string;
+  }) {
+    try {
+      const apiUrl = `${this.apiConfig.endpoints.groupChat.addMember()}?token=${data.token}`;
+      const result = await this.httpService.post(apiUrl, {
+        imBotId: data.imBotId,
+        botUserId: data.botUserId,
+        contactWxid: data.contactWxid,
+        roomWxid: data.roomWxid,
+      });
+      this.logger.log('企业级拉人进群请求成功');
+      return result;
+    } catch (error) {
+      this.logger.error('企业级拉人进群请求失败:', error);
+      throw error;
+    }
+  }
+
+  /**
    * 群聊加好友
    * @param data - 加好友参数
    * @returns 加好友结果

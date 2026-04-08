@@ -1,0 +1,235 @@
+/* TechnicalStats — refined right panel */
+@use '@/assets/styles/variables' as *;
+
+.sectionTitle {
+  margin: 0 0 12px 0;
+  font-size: 11px;
+  color: $text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+
+/* ── Headline metric grid (2x2) ── */
+.statsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.statCard {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 0;
+  border: 1px solid rgba($border, 0.6);
+
+  &.centered {
+    text-align: center;
+    align-items: center;
+  }
+}
+
+.cardTitle {
+  font-size: 11px;
+  font-weight: 700;
+  color: $text-primary;
+  margin-bottom: 8px;
+  letter-spacing: 0.02em;
+}
+
+.statLabel {
+  font-size: 11px;
+  color: $text-muted;
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
+
+.statValue {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: $text-primary;
+  font-variant-numeric: tabular-nums;
+
+  &.primary { color: $primary; }
+  &.secondary { color: $text-secondary; }
+  &.compact { font-size: 16px; }
+}
+
+/* ── Breakdown cards (时延分解, 执行事实, etc.) ── */
+.breakdownCard {
+  background: #fff;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px solid rgba($border, 0.6);
+}
+
+.statBreakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.breakdownItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: $text-secondary;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba($border, 0.4);
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  > span:first-child {
+    flex-shrink: 0;
+    color: $text-muted;
+  }
+
+  > span:last-child {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+  }
+
+  &.column {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+}
+
+/* ── Identity / Context cards ── */
+.identityGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.identityCard {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba($bg-secondary, 0.8);
+  border: 1px solid rgba($border, 0.4);
+}
+
+.identityLabel {
+  font-size: 10px;
+  font-weight: 700;
+  color: $text-muted;
+  margin-bottom: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.identityValue {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  color: $text-primary;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+.factGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.factCard {
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid rgba($border, 0.4);
+}
+
+.factLabel {
+  font-size: 10px;
+  color: $text-muted;
+  margin-bottom: 2px;
+}
+
+.factValue {
+  font-size: 11px;
+  font-weight: 600;
+  color: $text-primary;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+/* ── Tool execution section ── */
+.toolSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.toolRow {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba($border, 0.5);
+  background: #fff;
+}
+
+.toolHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.toolName {
+  font-size: 11px;
+  font-weight: 600;
+  color: $text-primary;
+  word-break: break-all;
+}
+
+.toolStatus {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+
+  &.success {
+    background: rgba($success, 0.1);
+    color: $success;
+  }
+
+  &.failed {
+    background: rgba($danger, 0.1);
+    color: $danger;
+  }
+
+  &.pending {
+    background: rgba(148, 163, 184, 0.14);
+    color: $text-muted;
+  }
+}
+
+/* ── Misc ── */
+.summaryText {
+  font-size: 10px;
+  color: $text-muted;
+  font-family: monospace;
+  padding-left: 8px;
+  word-break: break-all;
+}
+
+.monoText {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+}

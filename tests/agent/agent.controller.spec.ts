@@ -5,7 +5,6 @@ import { AgentRunnerService } from '@agent/runner.service';
 import { AgentHealthService } from '@agent/agent-health.service';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { RegistryService } from '@providers/registry.service';
-import { BookingDetectionService } from '@biz/message/services/booking-detection.service';
 
 describe('AgentController', () => {
   let controller: AgentController;
@@ -14,7 +13,7 @@ describe('AgentController', () => {
     invoke: jest.fn(),
   };
 
-  const mockFeishuAlertService = {
+  const mockAlertService = {
     sendAlert: jest.fn().mockResolvedValue(true),
   };
 
@@ -62,19 +61,14 @@ describe('AgentController', () => {
     }),
   };
 
-  const mockBookingDetection = {
-    handleBookingSuccessAsync: jest.fn().mockResolvedValue(undefined),
-  };
-
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AgentController],
       providers: [
         { provide: AgentRunnerService, useValue: mockLoop },
-        { provide: FeishuAlertService, useValue: mockFeishuAlertService },
+        { provide: FeishuAlertService, useValue: mockAlertService },
         { provide: RegistryService, useValue: mockRegistry },
         { provide: AgentHealthService, useValue: mockHealthService },
-        { provide: BookingDetectionService, useValue: mockBookingDetection },
       ],
     }).compile();
 
@@ -178,7 +172,6 @@ describe('AgentController', () => {
         sessionId: 'conv123',
         scenario: 'candidate-consultation',
       });
-      expect(mockBookingDetection.handleBookingSuccessAsync).not.toHaveBeenCalled();
       expect(result.success).toBe(true);
       expect(result.text).toBe('你好！');
       expect(result.usage).toEqual({ inputTokens: 10, outputTokens: 20, totalTokens: 30 });
@@ -204,39 +197,9 @@ describe('AgentController', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should trigger booking detection only when notifyBooking is true', async () => {
-      mockLoop.invoke.mockResolvedValue({
-        text: 'response',
-        steps: 1,
-        toolCalls: [
-          {
-            toolName: 'duliday_interview_booking',
-            args: { name: '张三' },
-            result: { success: true },
-          },
-        ],
-        usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
-      });
-
-      await controller.debugChat({
-        message: '测试',
-        sessionId: 'conv123',
-        userId: 'user-1',
-        notifyBooking: true,
-      });
-
-      expect(mockBookingDetection.handleBookingSuccessAsync).toHaveBeenCalledWith(
-        expect.objectContaining({
-          chatId: 'conv123',
-          contactName: 'user-1',
-          userId: 'user-1',
-        }),
-      );
-    });
-
     it('should throw HttpException when AgentRunnerService fails', async () => {
       mockLoop.invoke.mockRejectedValue(new Error('Agent failed'));
-      mockFeishuAlertService.sendAlert.mockResolvedValue(true);
+      mockAlertService.sendAlert.mockResolvedValue(true);
 
       await expect(controller.debugChat({ message: '测试' })).rejects.toThrow(HttpException);
     });
