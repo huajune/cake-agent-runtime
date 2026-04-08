@@ -165,6 +165,10 @@ export interface InterviewScheduleItem {
   name: string;
   /** 候选人电话 */
   phone: string;
+  /** 候选人性别（"男"/"女"） */
+  gender: string;
+  /** 候选人年龄 */
+  age: number;
   /** 面试时间 YYYY-MM-DD HH:mm */
   interviewTime: string;
   /** 应聘岗位 */
@@ -178,6 +182,8 @@ export interface InterviewScheduleItem {
 export const InterviewScheduleItemSchema = z.object({
   name: z.string().min(1),
   phone: z.string().min(1),
+  gender: z.string(),
+  age: z.number(),
   interviewTime: z.string().min(1),
   jobName: z.string().min(1),
   storeName: z.string().min(1),

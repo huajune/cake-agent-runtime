@@ -102,6 +102,8 @@ describe('StoreManagerStrategy', () => {
           {
             name: '张三',
             phone: '13800138000',
+            gender: '男',
+            age: 25,
             interviewTime: '2026-04-02 10:00',
             jobName: '店员',
             storeName: '春熙路店',

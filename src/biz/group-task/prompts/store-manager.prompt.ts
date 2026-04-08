@@ -45,6 +45,8 @@ export function buildStoreManagerMessage(
     lines.push('');
     lines.push(`姓名：${item.name}`);
     lines.push(`电话：${item.phone}`);
+    lines.push(`性别：${item.gender}`);
+    lines.push(`年龄：${item.age}岁`);
     lines.push(`品牌：${item.brandName}`);
     lines.push(`门店：${item.storeName}`);
     lines.push(`面试岗位：${item.jobName}`);
