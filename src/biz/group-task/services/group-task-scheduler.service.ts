@@ -251,6 +251,7 @@ export class GroupTaskSchedulerService implements OnModuleInit {
 
             // 3c. 同组所有群发送相同消息
             const followUpMessage = data.payload?.followUpMessage as string | undefined;
+            const successGroups: GroupContext[] = [];
             for (const group of groupMembers) {
               try {
                 await this.notificationSender.sendToGroup(group, message, strategy.type, dryRun);
@@ -260,6 +261,7 @@ export class GroupTaskSchedulerService implements OnModuleInit {
                   await this.notificationSender.sendTextToGroup(group, followUpMessage, dryRun);
                 }
                 result.successCount++;
+                successGroups.push(group);
                 this.logger.log(`[${strategy.type}] ✅ ${group.groupName}`);
                 await this.delay(this.sendDelayMs);
               } catch (error: unknown) {
@@ -271,8 +273,9 @@ export class GroupTaskSchedulerService implements OnModuleInit {
             }
 
             // 3d. 记录品牌轮转（兼职群：同城市+行业的群共享品牌轮转）
+            // 仅对发送成功的群记录品牌轮转，避免发送失败导致浪费当前品牌甚至跳过
             if (strategy.type === GroupTaskType.PART_TIME_JOB && data.payload?.brand) {
-              for (const group of groupMembers) {
+              for (const group of successGroups) {
                 await this.brandRotation.recordPushedBrand(
                   group.imRoomId,
                   data.payload.brand as string,
@@ -280,11 +283,18 @@ export class GroupTaskSchedulerService implements OnModuleInit {
               }
             }
 
+            const status =
+              successGroups.length === groupMembers.length
+                ? 'success'
+                : successGroups.length > 0
+                  ? 'partial'
+                  : 'failed';
+
             result.details.push({
               groupKey,
               groupCount: groupMembers.length,
               dataSummary: data.summary,
-              status: 'success',
+              status,
               groupNames: groupMembers.map((g) => g.groupName),
             });
 

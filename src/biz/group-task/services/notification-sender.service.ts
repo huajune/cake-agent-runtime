@@ -175,6 +175,14 @@ export class NotificationSenderService {
       }
     }
 
+    // 部分失败分组
+    const partialDetails = result.details.filter((d) => d.status === 'partial');
+    if (partialDetails.length > 0) {
+      for (const d of partialDetails) {
+        lines.push(`⚠️ **${d.groupKey}** (${d.groupCount}群) — ${d.dataSummary}`);
+      }
+    }
+
     // 失败分组
     const failedDetails = result.details.filter((d) => d.status === 'failed');
     if (failedDetails.length > 0) {
