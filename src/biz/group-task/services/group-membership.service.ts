@@ -85,7 +85,7 @@ export class GroupMembershipService {
     try {
       const exists = await this.redisService.exists(key);
       if (exists === 0) {
-        await this.hydrateCache(whitelist);
+        await this.hydrateCache(whitelist, imRoomId);
       }
 
       const isMember = await this.redisService.sismember(key, userImContactId);
@@ -120,15 +120,20 @@ export class GroupMembershipService {
   /**
    * 预热企业级群成员缓存：一次 API 调用填充白名单内所有群的 Set
    */
-  private async hydrateCache(relevantRoomIds: Set<string>): Promise<void> {
+  private async hydrateCache(relevantRoomIds: Set<string>, missingRoomId?: string): Promise<void> {
     if (!this.enterpriseToken) {
       this.logger.warn('STRIDE_ENTERPRISE_TOKEN 未配置，跳过群成员缓存预热');
       return;
     }
 
-    // 10 分钟内已经 hydrate 过，直接返回（防止 sismember 之间的无意义重试）
+    if (this.hydratePromise) return this.hydratePromise;
+
+    // 最近刚 hydrate 过时，仅在目标 key 仍存在的情况下跳过，避免 Redis 提前过期造成误判。
     if (Date.now() - this.lastHydratedAt < GroupMembershipService.CACHE_TTL_SECONDS * 1000) {
-      return;
+      if (!missingRoomId) return;
+
+      const targetExists = await this.redisService.exists(this.buildKey(missingRoomId));
+      if (targetExists !== 0) return;
     }
 
     if (this.hydratePromise) return this.hydratePromise;
