@@ -101,7 +101,7 @@ describe('buildInterviewPrecheckTool', () => {
             firstInterview: {
               fixedInterviewTimes: [
                 {
-                  interviewDate: '2026-04-08',
+                  interviewDate: '2030-01-01',
                   interviewStartTime: '14:00',
                   interviewEndTime: '16:00',
                 },
@@ -112,14 +112,14 @@ describe('buildInterviewPrecheckTool', () => {
       ],
     });
 
-    const result = await executeTool({ jobId: 100, requestedDate: '2026-04-08' });
+    const result = await executeTool({ jobId: 100, requestedDate: '2030-01-01' });
 
     expect(result.success).toBe(true);
     expect(result.interview.requestedDateStatus).toBe('available');
     expect(result.interview.canScheduleOnRequestedDate).toBe(true);
     expect(result.interview.requestedDateDecisionBasis).toBe('future_schedule_match');
     expect(result.interview.requestedDateMatchedWindows).toEqual([
-      expect.objectContaining({ date: '2026-04-08', startTime: '14:00', endTime: '16:00' }),
+      expect.objectContaining({ date: '2030-01-01', startTime: '14:00', endTime: '16:00' }),
     ]);
     expect(result.fieldGuidance.sourceSummary).toContain('年龄 <- basic_personal_requirements');
   });
