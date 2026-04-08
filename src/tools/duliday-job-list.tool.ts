@@ -154,6 +154,249 @@ function addLine(lines: string[], label: string, value: string | null | undefine
   }
 }
 
+const FIELD_LABEL_MAP: Record<string, string> = {
+  basicInfo: '基本信息',
+  jobSalary: '薪资信息',
+  welfare: '福利信息',
+  hiringRequirement: '招聘要求',
+  workTime: '工作时间',
+  interviewProcess: '面试流程',
+  jobId: '岗位ID',
+  jobName: '岗位名称',
+  jobNickName: '岗位简称',
+  jobCategoryName: '岗位类型',
+  jobContent: '工作内容',
+  laborForm: '用工形式',
+  storeInfo: '门店信息',
+  storeId: '门店ID',
+  storeName: '门店名称',
+  storeCityName: '城市',
+  storeRegionName: '区域',
+  storeAddress: '门店地址',
+  longitude: '经度',
+  latitude: '纬度',
+  brandName: '品牌',
+  brandId: '品牌ID',
+  projectId: '项目ID',
+  projectName: '项目名称',
+  createTime: '创建时间',
+  needProbationWork: '是否需要试工',
+  needTraining: '是否需要培训',
+  haveProbation: '是否有试用',
+  employmentForm: '就业形式',
+  employmentDescription: '就业形式说明',
+  minWorkMonths: '最少工作月数',
+  temporaryEmployment: '短期用工',
+  temporaryEmploymentStartTime: '短期用工开始时间',
+  temporaryEmploymentEndTime: '短期用工结束时间',
+  weekWorkTime: '每周工时',
+  weekWorkTimeRequirement: '每周工时要求',
+  perWeekWorkDays: '每周工作天数',
+  perWeekRestDays: '每周休息天数',
+  perWeekNeedWorkDays: '每周需出勤天数',
+  workSingleDouble: '单双休',
+  customnWorkTimeList: '自定义每周工时配置',
+  customMinWorkDays: '最少出勤天数',
+  customMaxWorkDays: '最多出勤天数',
+  customWorkWeekdays: '可出勤星期',
+  monthWorkTime: '每月工时',
+  perMonthMinWorkTime: '每月最少工时',
+  perMonthMinWorkTimeUnit: '每月最少工时单位',
+  monthWorkTimeRequirement: '每月工时要求',
+  perMonthMaxRestTime: '每月最多休息时长',
+  perMonthMaxRestTimeUnit: '每月最多休息时长单位',
+  dayWorkTime: '每日工时',
+  perDayMinWorkHours: '每日最少工时',
+  dayWorkTimeRequirement: '每日工时要求',
+  dailyShiftSchedule: '排班信息',
+  arrangementType: '排班类型',
+  fixedScheduleList: '固定班次',
+  fixedShiftStartTime: '班次开始时间',
+  fixedShiftEndTime: '班次结束时间',
+  combinedArrangement: '组合排班',
+  fixedTime: '固定时间段',
+  goToWorkStartTime: '上班开始时间',
+  goToWorkEndTime: '上班结束时间',
+  goOffWorkStartTime: '下班开始时间',
+  goOffWorkEndTime: '下班结束时间',
+  restTimeDesc: '休息说明',
+  workTimeRemark: '工时备注',
+  salaryScenarioList: '薪资方案',
+  salaryType: '薪资类型',
+  salaryPeriod: '结算周期',
+  payday: '发薪日',
+  hasStairSalary: '是否阶梯薪资',
+  basicSalary: '基础薪资',
+  basicSalaryUnit: '基础薪资单位',
+  stairSalaries: '阶梯薪资配置',
+  description: '说明',
+  perTimeUnit: '统计周期',
+  fullWorkTime: '阈值工时',
+  fullWorkTimeUnit: '阈值工时单位',
+  salary: '薪资',
+  salaryUnit: '薪资单位',
+  comprehensiveSalary: '综合薪资',
+  minComprehensiveSalary: '综合薪资下限',
+  maxComprehensiveSalary: '综合薪资上限',
+  comprehensiveSalaryUnit: '综合薪资单位',
+  holidaySalary: '节假日薪资',
+  holidaySalaryType: '节假日薪资类型',
+  holidaySalaryMultiple: '节假日薪资倍数',
+  holidayFixedSalary: '节假日固定薪资',
+  holidayFixedSalaryUnit: '节假日固定薪资单位',
+  holidaySalaryDesc: '节假日薪资说明',
+  overtimeSalary: '加班薪资',
+  overtimeSalaryType: '加班薪资类型',
+  overtimeSalaryMultiple: '加班薪资倍数',
+  overtimeFixedSalary: '加班固定薪资',
+  overtimeFixedSalaryUnit: '加班固定薪资单位',
+  overtimeSalaryDesc: '加班薪资说明',
+  otherSalary: '其他薪资',
+  commission: '提成',
+  attendanceSalary: '全勤奖',
+  attendanceSalaryUnit: '全勤奖单位',
+  performance: '绩效',
+  customSalaries: '自定义薪资',
+  probationSalary: '试工薪资',
+  salaryDescription: '薪资说明',
+  haveInsurance: '保险',
+  accommodation: '住宿',
+  accommodationAllowance: '住宿补贴',
+  accommodationAllowanceUnit: '住宿补贴单位',
+  probationAccommodationAllowanceReceive: '试工期住宿补贴领取',
+  catering: '餐饮',
+  cateringSalary: '餐补',
+  cateringSalaryUnit: '餐补单位',
+  trafficAllowanceSalary: '交通补贴',
+  trafficAllowanceSalaryUnit: '交通补贴单位',
+  promotionWelfare: '晋升福利',
+  otherWelfare: '其他福利',
+  memo: '备注',
+  interviewTotal: '面试轮数',
+  firstInterview: '一轮面试',
+  firstInterviewWay: '一面方式',
+  interviewAddress: '面试地址',
+  interviewDemand: '面试要求',
+  firstInterviewDesc: '一面说明',
+  interviewTimeMode: '面试时间模式',
+  fixedInterviewTimes: '固定面试时间',
+  interviewDate: '面试日期',
+  interviewTimes: '面试时间段',
+  interviewStartTime: '面试开始时间',
+  interviewEndTime: '面试结束时间',
+  fixedDeadline: '固定报名截止时间',
+  periodicInterviewTimes: '周期面试时间',
+  interviewWeekday: '面试星期',
+  cycleDeadlineDay: '周期报名截止日',
+  cycleDeadlineEnd: '周期报名截止时间',
+  secondInterview: '二轮面试',
+  secondInterviewDemand: '二面要求',
+  secondInterviewWay: '二面方式',
+  secondInterviewAddress: '二面地址',
+  thirdInterview: '三轮面试',
+  thirdInterviewDemand: '三面要求',
+  thirdInterviewWay: '三面方式',
+  thirdInterviewAddress: '三面地址',
+  interviewSupplement: '面试补充项',
+  interviewSupplementId: '面试补充项ID',
+  probationWork: '试工信息',
+  probationWorkPeriod: '试工周期',
+  probationWorkPeriodUnit: '试工周期单位',
+  probationWorkAddress: '试工地址',
+  probationWorkAssessment: '试工考核方式',
+  probationWorkAssessmentText: '试工考核说明',
+  training: '培训信息',
+  trainingAddress: '培训地址',
+  trainingPeriod: '培训周期',
+  trainingPeriodUnit: '培训周期单位',
+  trainingDesc: '培训说明',
+  processDesc: '流程说明',
+  remark: '备注',
+};
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function formatProjectionLabel(segment: string): string {
+  return FIELD_LABEL_MAP[segment] ?? segment;
+}
+
+function formatProjectionPath(path: Array<string | number>): string {
+  let rendered = '';
+  for (const segment of path) {
+    if (typeof segment === 'number') {
+      rendered += `（第${segment + 1}项）`;
+      continue;
+    }
+    const label = formatProjectionLabel(segment);
+    rendered = rendered ? `${rendered} / ${label}` : label;
+  }
+  return rendered;
+}
+
+function normalizeProjectionScalar(value: unknown): string {
+  if (value === null || value === undefined) return '未设置';
+  if (typeof value === 'boolean') return value ? '是' : '否';
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'string') {
+    const cleaned = cleanPolicyText(value);
+    const sanitized = sanitizeConstraintText(cleaned);
+    return sanitized ?? '未设置';
+  }
+  return String(value);
+}
+
+function collectProjectionLines(
+  value: unknown,
+  path: Array<string | number>,
+  lines: string[],
+): void {
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      lines.push(`- **${formatProjectionPath(path)}**: 空`);
+      return;
+    }
+
+    const allScalar = value.every((item) => !Array.isArray(item) && !isPlainObject(item));
+    if (allScalar) {
+      const joined = value.map((item) => normalizeProjectionScalar(item)).join('、');
+      lines.push(`- **${formatProjectionPath(path)}**: ${joined}`);
+      return;
+    }
+
+    value.forEach((item, index) => {
+      collectProjectionLines(item, [...path, index], lines);
+    });
+    return;
+  }
+
+  if (isPlainObject(value)) {
+    const entries = Object.entries(value);
+    if (entries.length === 0) {
+      lines.push(`- **${formatProjectionPath(path)}**: 空`);
+      return;
+    }
+
+    entries.forEach(([key, nested]) => {
+      collectProjectionLines(nested, [...path, key], lines);
+    });
+    return;
+  }
+
+  lines.push(`- **${formatProjectionPath(path)}**: ${normalizeProjectionScalar(value)}`);
+}
+
+function formatProjectedFieldBlock(title: string, payload: unknown): string {
+  if (!isPlainObject(payload)) return '';
+  const lines: string[] = [];
+  Object.entries(payload).forEach(([key, value]) => {
+    collectProjectionLines(value, [key], lines);
+  });
+  if (lines.length === 0) return '';
+  return `#### ${title}\n${lines.join('\n')}\n\n`;
+}
+
 function formatInterviewDecisionSummary(policy: JobPolicyAnalysis): string {
   const lines: string[] = [];
 
@@ -494,26 +737,34 @@ function formatJobToMarkdown(job: any, index: number, flags: ProgressiveDisclosu
   if (flags.includeHiringRequirement || flags.includeInterviewProcess) {
     md += formatInterviewDecisionSummary(policy);
   }
-  if (flags.includeBasicInfo) md += formatBasicInfoSection(job);
+  if (flags.includeBasicInfo) {
+    md += formatBasicInfoSection(job);
+    md += formatProjectedFieldBlock('基本信息字段投影', job.basicInfo);
+  }
   if (flags.includeJobSalary) {
     const s = formatSalaryInfo(job);
     if (s) md += '### 薪资信息\n' + s + '\n';
+    md += formatProjectedFieldBlock('薪资字段投影', job.jobSalary);
   }
   if (flags.includeWelfare) {
     const s = formatWelfareInfo(job);
     if (s) md += '### 福利信息\n' + s + '\n';
+    md += formatProjectedFieldBlock('福利字段投影', job.welfare);
   }
   if (flags.includeHiringRequirement) {
     const s = formatRequirements(job, policy);
     if (s) md += '### 招聘要求\n' + s + '\n';
+    md += formatProjectedFieldBlock('招聘要求字段投影', job.hiringRequirement);
   }
   if (flags.includeWorkTime) {
     const s = formatWorkTime(job);
     if (s) md += '### 工作时间\n' + s + '\n';
+    md += formatProjectedFieldBlock('工作时间字段投影', job.workTime);
   }
   if (flags.includeInterviewProcess) {
     const s = formatInterviewInfo(job, policy);
     if (s) md += '### 面试流程\n' + s + '\n';
+    md += formatProjectedFieldBlock('面试流程字段投影', job.interviewProcess);
   }
 
   md += '### 岗位标识\n';

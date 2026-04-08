@@ -249,6 +249,10 @@ describe('buildJobListTool', () => {
 
     expect(result.markdown).toContain('### 基本信息');
     expect(result.markdown).toContain('### 工作时间');
+    expect(result.markdown).toContain('#### 基本信息字段投影');
+    expect(result.markdown).toContain('#### 工作时间字段投影');
+    expect(result.markdown).toContain('**门店信息 / 门店名称**: 朝阳店');
+    expect(result.markdown).toContain('**每日工时 / 每日最少工时**: 3.0');
     expect(result.markdown).not.toContain('字段（完整）');
     expect(result.markdown).not.toContain('```json');
   });
