@@ -1,7 +1,26 @@
 {
   "baseVersion": "5.0.0",
-  "nextVersion": "5.0.0",
+  "nextVersion": "5.0.1",
   "updatedAt": "2026-04-08",
   "sourceBranch": "develop",
-  "entries": []
+  "entries": [
+    {
+      "number": "63",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/63",
+      "title": "[codex] chore: 自动化受保护分支发布流程",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-08",
+      "summary": [
+        "[codex] chore: 自动化受保护分支发布流程"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "[codex] chore: 自动化受保护分支发布流程"
+      ],
+      "config": [],
+      "verification": []
+    }
+  ]
 }
