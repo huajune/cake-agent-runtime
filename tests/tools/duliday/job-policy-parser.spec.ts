@@ -66,6 +66,54 @@ describe('job-policy-parser', () => {
     ]);
   });
 
+  it('should extract booking deadlines from the new interview-time contract', () => {
+    const windows = extractInterviewWindows({
+      firstInterview: {
+        periodicInterviewTimes: [
+          {
+            interviewWeekday: '每周三',
+            interviewTimes: [
+              {
+                interviewStartTime: '13:30',
+                interviewEndTime: '16:30',
+                cycleDeadlineDay: '前一天',
+                cycleDeadlineEnd: '12:00',
+              },
+            ],
+          },
+        ],
+        fixedInterviewTimes: [
+          {
+            interviewDate: '2026-04-08',
+            interviewTimes: [
+              {
+                interviewStartTime: '10:00',
+                interviewEndTime: '11:00',
+                fixedDeadline: '2026-04-07 18:00',
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(windows).toEqual([
+      {
+        weekday: '每周三',
+        startTime: '13:30',
+        endTime: '16:30',
+        cycleDeadlineDay: '前一天',
+        cycleDeadlineEnd: '12:00',
+      },
+      {
+        date: '2026-04-08',
+        startTime: '10:00',
+        endTime: '11:00',
+        fixedDeadline: '2026-04-07 18:00',
+      },
+    ]);
+  });
+
   it('should build field guidance from requirements, remarks, figure and supplements', () => {
     const guidance = buildFieldGuidance({
       hiringRequirement: {
@@ -143,11 +191,27 @@ describe('job-policy-parser', () => {
         method: '线下面试',
         address: '上海市杨浦区xx路',
         timeHint: '周三下午14:00到店面试',
+        registrationDeadlineHint: null,
       }),
     );
     expect(analysis.highlights.requirementHighlights).toContain('有夜班经验优先，能接受体力活');
     expect(analysis.highlights.timingHighlights).toEqual(
       expect.arrayContaining([expect.stringContaining('没有健康证的需办加急')]),
     );
+  });
+
+  it('should split interview time hint and registration deadline from mixed interview text', () => {
+    const analysis = buildJobPolicyAnalysis({
+      interviewProcess: {
+        firstInterview: {
+          interviewTime:
+            '每周都可以安排面试\n周一：13:30 下午-16:30 下午，提交面试名单截止时间为: 当天12:00 中午',
+        },
+      },
+    });
+
+    expect(analysis.interviewMeta.timeHint).toBe('周一：13:30 下午-16:30 下午');
+    expect(analysis.interviewMeta.registrationDeadlineHint).toContain('提交面试名单截止时间');
+    expect(analysis.interviewMeta.registrationDeadlineHint).toContain('当天12:00 中午');
   });
 });

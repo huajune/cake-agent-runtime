@@ -48,6 +48,15 @@ function formatShanghaiTime(date: Date): string {
   }).format(date);
 }
 
+function formatShanghaiDate(date: Date): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
 function getShanghaiWeekday(dateStr: string): string {
   const label = new Intl.DateTimeFormat('zh-CN', {
     timeZone: 'Asia/Shanghai',
@@ -78,6 +87,75 @@ function compareTime(a: string, b: string): number {
   return a.localeCompare(b);
 }
 
+function shiftDate(dateStr: string, offsetDays: number): string {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const utcMillis = Date.UTC(year, month - 1, day) + offsetDays * 24 * 60 * 60 * 1000;
+  const shifted = new Date(utcMillis);
+  const y = shifted.getUTCFullYear();
+  const m = String(shifted.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(shifted.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function normalizeHm(value?: string): string | null {
+  if (!value) return null;
+  const match = value.match(/(\d{1,2})[:：](\d{2})/);
+  if (!match) return null;
+  const hh = Number(match[1]);
+  const mm = Number(match[2]);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) {
+    return null;
+  }
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
+function parseCycleDeadlineDay(raw?: string): number | null {
+  if (!raw) return null;
+  const normalized = raw.trim();
+  if (!normalized) return null;
+
+  if (/^-?\d+$/.test(normalized)) return Number(normalized);
+
+  if (normalized === '当天' || normalized === '当日') return 0;
+  if (normalized === '前一天' || normalized === '前1天') return -1;
+  if (normalized === '前两天' || normalized === '前2天') return -2;
+
+  return null;
+}
+
+function normalizeDateTime(raw: string): string | null {
+  const normalized = raw.replace(/\//g, '-').trim();
+  const dateTimeMatch = normalized.match(
+    /^(\d{4}-\d{2}-\d{2})\s+(\d{1,2}[:：]\d{2})(?::\d{2})?$/,
+  );
+  if (!dateTimeMatch) return null;
+
+  const date = dateTimeMatch[1];
+  const hm = normalizeHm(dateTimeMatch[2]);
+  if (!hm) return null;
+  return `${date} ${hm}`;
+}
+
+function resolveBookingDeadlineDateTime(
+  interviewDate: string,
+  window: InterviewWindow,
+): string | null {
+  if (window.fixedDeadline) {
+    const fixed = normalizeDateTime(window.fixedDeadline);
+    if (fixed) return fixed;
+
+    const hm = normalizeHm(window.fixedDeadline);
+    if (hm) return `${interviewDate} ${hm}`;
+  }
+
+  const dayOffset = parseCycleDeadlineDay(window.cycleDeadlineDay);
+  const endHm = normalizeHm(window.cycleDeadlineEnd);
+  if (dayOffset === null || !endHm) return null;
+
+  const deadlineDate = shiftDate(interviewDate, dayOffset);
+  return `${deadlineDate} ${endHm}`;
+}
+
 function dedupeStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
 }
@@ -94,14 +172,17 @@ function evaluateRequestedDate(params: {
   policyNotes: string[];
   decisionBasis:
     | 'no_matching_schedule'
+    | 'after_booking_deadline'
     | 'future_schedule_match'
     | 'same_day_after_latest_window'
     | 'same_day_window_requires_confirmation';
 } {
   const { date, windows, basePolicyNotes = [] } = params;
   const weekday = getShanghaiWeekday(date);
-  const today = formatLocalDate(new Date());
-  const nowTime = formatShanghaiTime(new Date());
+  const now = new Date();
+  const today = formatShanghaiDate(now);
+  const nowTime = formatShanghaiTime(now);
+  const nowDateTime = `${today} ${nowTime}`;
   const matchedWindows = windows.filter((window) => {
     if (window.date) return window.date === date;
     if (window.weekday) return window.weekday === weekday;
@@ -113,24 +194,53 @@ function evaluateRequestedDate(params: {
       status: 'unavailable',
       canSchedule: false,
       matchedWindows: [],
-      reason: `${date} 不在当前岗位的可约面试时段内`,
+      reason: `${date} 没有可预约的面试时段`,
       policyNotes: [...basePolicyNotes],
       decisionBasis: 'no_matching_schedule',
     };
   }
 
+  const deadlineChecks = matchedWindows.map((window) => {
+    const deadlineDateTime = resolveBookingDeadlineDateTime(date, window);
+    const expired = deadlineDateTime ? nowDateTime.localeCompare(deadlineDateTime) > 0 : false;
+    return { window, deadlineDateTime, expired };
+  });
+  const hasExplicitDeadlines = deadlineChecks.some((item) => Boolean(item.deadlineDateTime));
+  const validDeadlineWindows = deadlineChecks
+    .filter((item) => !item.deadlineDateTime || !item.expired)
+    .map((item) => item.window);
+  const expiredDeadlines = deadlineChecks
+    .filter((item) => item.deadlineDateTime && item.expired)
+    .map((item) => item.deadlineDateTime as string);
+
+  if (hasExplicitDeadlines && validDeadlineWindows.length === 0) {
+    const latestDeadline = expiredDeadlines.sort((a, b) => a.localeCompare(b)).pop();
+    return {
+      status: 'unavailable',
+      canSchedule: false,
+      matchedWindows: [],
+      reason: latestDeadline
+        ? `已超过报名截止时间（最晚截止：${latestDeadline}）`
+        : '已超过报名截止时间',
+      policyNotes: [...basePolicyNotes],
+      decisionBasis: 'after_booking_deadline',
+    };
+  }
+
+  const effectiveWindows = validDeadlineWindows.length > 0 ? validDeadlineWindows : matchedWindows;
+
   if (date !== today) {
     return {
       status: 'available',
       canSchedule: true,
-      matchedWindows,
-      reason: `${date} 命中岗位配置的面试时段`,
+      matchedWindows: effectiveWindows,
+      reason: `${date} 有可预约的面试时段`,
       policyNotes: [...basePolicyNotes],
       decisionBasis: 'future_schedule_match',
     };
   }
 
-  const latestEnd = matchedWindows
+  const latestEnd = effectiveWindows
     .map((window) => window.endTime || window.startTime)
     .sort((a, b) => compareTime(a, b))
     .pop();
@@ -139,8 +249,8 @@ function evaluateRequestedDate(params: {
     return {
       status: 'unavailable',
       canSchedule: false,
-      matchedWindows,
-      reason: `当前已超过今天的最晚面试时段 ${latestEnd}`,
+      matchedWindows: effectiveWindows,
+      reason: `今天的面试时段已结束（最晚到 ${latestEnd}）`,
       policyNotes: [...basePolicyNotes],
       decisionBasis: 'same_day_after_latest_window',
     };
@@ -149,8 +259,8 @@ function evaluateRequestedDate(params: {
   return {
     status: 'needs_confirmation',
     canSchedule: null,
-    matchedWindows,
-    reason: '当前岗位有今天的面试时段，但需要继续调用预约工具确认今天是否还能约上',
+    matchedWindows: effectiveWindows,
+    reason: '今天有面试时段，是否还能预约需以预约接口结果为准',
     policyNotes: [...basePolicyNotes],
     decisionBasis: 'same_day_window_requires_confirmation',
   };
@@ -160,7 +270,7 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
   return () =>
     tool({
       description:
-        '面试前置校验。根据岗位 ID 读取真实招聘要求和面试流程，返回：今天/指定日期能不能约、可约时段、备注解析后的字段建议与规则重点。这个工具负责解释岗位规则，不负责真正提交预约。',
+        '面试前置校验。根据岗位 ID 读取真实招聘要求和面试流程，返回：今天/指定日期能不能约、可约时段、报名截止时间是否已过、备注解析后的字段建议与规则重点。这个工具负责解释岗位规则，不负责真正提交预约。',
       inputSchema,
       execute: async ({ jobId, requestedDate }) => {
         logger.log(`面试前置校验: jobId=${jobId}, requestedDate=${requestedDate ?? 'none'}`);
@@ -208,7 +318,7 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
                 status: 'needs_confirmation' as const,
                 canSchedule: null,
                 matchedWindows: windows,
-                reason: '未指定日期，本次只返回岗位面试规则与字段建议',
+                reason: '未指定日期，仅返回岗位面试规则与字段建议',
                 policyNotes: [...analysis.highlights.timingHighlights],
                 decisionBasis: 'date_not_provided' as const,
               };
@@ -231,6 +341,8 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
               method: analysis.interviewMeta.method,
               address: analysis.interviewMeta.address,
               demand: analysis.interviewMeta.demand,
+              timeHint: analysis.interviewMeta.timeHint,
+              registrationDeadlineHint: analysis.interviewMeta.registrationDeadlineHint,
               scheduleWindows: windows,
               requestedDate: normalizedDate.date,
               requestedDateStatus: requestedDateCheck.status,

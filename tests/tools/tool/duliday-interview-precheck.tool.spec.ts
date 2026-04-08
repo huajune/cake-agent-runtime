@@ -121,7 +121,31 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.interview.requestedDateMatchedWindows).toEqual([
       expect.objectContaining({ date: '2030-01-01', startTime: '14:00', endTime: '16:00' }),
     ]);
+    expect(result.interview.timeHint).toBeNull();
+    expect(result.interview.registrationDeadlineHint).toBeNull();
     expect(result.fieldGuidance.sourceSummary).toContain('年龄 <- basic_personal_requirements');
+  });
+
+  it('should expose interview time hint and registration deadline hint separately', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            firstInterview: {
+              interviewTime:
+                '每周都可以安排面试\n周一：13:30 下午-16:30 下午，提交面试名单截止时间为: 当天12:00 中午',
+            },
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({ jobId: 100 });
+
+    expect(result.success).toBe(true);
+    expect(result.interview.timeHint).toBe('周一：13:30 下午-16:30 下午');
+    expect(result.interview.registrationDeadlineHint).toContain('提交面试名单截止时间');
+    expect(result.interview.registrationDeadlineHint).toContain('当天12:00 中午');
   });
 
   it('should mark same-day windows as unavailable after the latest end time', async () => {
@@ -181,6 +205,76 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.interview.requestedDateDecisionBasis).toBe(
       'same_day_window_requires_confirmation',
     );
+  });
+
+  it('should block requested date when fixed booking deadline has passed', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T05:00:00.000Z')); // 上海时间 13:00
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-04-08',
+                  interviewTimes: [
+                    {
+                      interviewStartTime: '13:30',
+                      interviewEndTime: '16:30',
+                      fixedDeadline: '2026-04-07 12:00',
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({ jobId: 100, requestedDate: '2026-04-08' });
+
+    expect(result.success).toBe(true);
+    expect(result.interview.requestedDateStatus).toBe('unavailable');
+    expect(result.interview.canScheduleOnRequestedDate).toBe(false);
+    expect(result.interview.requestedDateDecisionBasis).toBe('after_booking_deadline');
+    expect(result.interview.requestedDateReason).toContain('报名截止时间');
+  });
+
+  it('should block requested date when periodic booking deadline has passed', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-08T05:00:00.000Z')); // 上海时间 13:00
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            firstInterview: {
+              periodicInterviewTimes: [
+                {
+                  interviewWeekday: '每周三',
+                  interviewTimes: [
+                    {
+                      interviewStartTime: '13:30',
+                      interviewEndTime: '16:30',
+                      cycleDeadlineDay: '当天',
+                      cycleDeadlineEnd: '12:00',
+                    },
+                  ],
+                },
+              ],
+              fixedInterviewTimes: [],
+            },
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({ jobId: 100, requestedDate: '2026-04-08' });
+
+    expect(result.success).toBe(true);
+    expect(result.interview.requestedDateStatus).toBe('unavailable');
+    expect(result.interview.canScheduleOnRequestedDate).toBe(false);
+    expect(result.interview.requestedDateDecisionBasis).toBe('after_booking_deadline');
+    expect(result.interview.requestedDateReason).toContain('报名截止时间');
   });
 
   it('should surface Sponge errors as precheck_failed', async () => {
