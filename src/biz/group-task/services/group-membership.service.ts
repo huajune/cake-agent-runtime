@@ -21,24 +21,6 @@ interface EnterpriseRoomItem {
 }
 
 /**
- * 小组级 room/list 接口返回的成员项
- */
-interface RoomListMember {
-  imContactId?: string;
-  wxid?: string;
-  contactWxid?: string;
-}
-
-/**
- * 小组级 room/list 接口返回的群项
- */
-interface RoomListItem {
-  imRoomId?: string;
-  wxid?: string;
-  memberList?: RoomListMember[];
-}
-
-/**
  * 群成员关系服务
  *
  * 职责：判断候选人是否已经在目标企微群内，避免重复拉人。
@@ -62,8 +44,6 @@ export class GroupMembershipService {
 
   /** 防止并发 hydrate 重复请求 API */
   private hydratePromise: Promise<void> | null = null;
-  /** 防止并发刷新同一个群的缓存 */
-  private readonly roomRefreshPromises = new Map<string, Promise<void>>();
   /** 最近一次 hydrate 完成时间，用于快速判断是否已预热 */
   private lastHydratedAt = 0;
 
@@ -152,32 +132,6 @@ export class GroupMembershipService {
   }
 
   /**
-   * 用小组级 room/list 接口刷新单个群的成员缓存。
-   *
-   * 这是 invite-to-group 的快速路径：我们只关心目标群是否包含该候选人，
-   * 没必要为一次确认去扫描全量企业群成员列表。
-   */
-  async refreshRoomCacheByToken(imRoomId: string, roomToken?: string | null): Promise<void> {
-    const normalizedRoomToken = roomToken?.trim();
-    if (!imRoomId || !normalizedRoomToken) return;
-
-    const promiseKey = `${normalizedRoomToken}:${imRoomId}`;
-    const inFlight = this.roomRefreshPromises.get(promiseKey);
-    if (inFlight) {
-      await inFlight;
-      return;
-    }
-
-    const refreshPromise = this.doRefreshRoomCacheByToken(imRoomId, normalizedRoomToken).finally(
-      () => {
-        this.roomRefreshPromises.delete(promiseKey);
-      },
-    );
-    this.roomRefreshPromises.set(promiseKey, refreshPromise);
-    await refreshPromise;
-  }
-
-  /**
    * 预热企业级群成员缓存：一次 API 调用填充白名单内所有群的 Set
    */
   private async hydrateCache(relevantRoomIds: Set<string>, missingRoomId?: string): Promise<void> {
@@ -257,48 +211,6 @@ export class GroupMembershipService {
       `群成员缓存已预热: ${totalRooms}/${relevantRoomIds.size} 相关群 / ${totalMembers} 成员`,
     );
   }
-
-  private async doRefreshRoomCacheByToken(imRoomId: string, roomToken: string): Promise<void> {
-    const key = this.buildKey(imRoomId);
-
-    try {
-      const result = await this.roomService.getRoomList(roomToken, 0, 1, imRoomId);
-      const rooms = this.extractRoomsFromRoomList(result);
-      const targetRoom =
-        rooms.find((room) => (room.imRoomId || room.wxid) === imRoomId) ?? rooms[0] ?? null;
-      const members = (targetRoom?.memberList || [])
-        .map((member) => member.imContactId || member.contactWxid || member.wxid)
-        .filter((member): member is string => Boolean(member));
-
-      await this.redisService.del(key);
-      if (members.length > 0) {
-        await this.redisService.sadd(key, ...members);
-      }
-      await this.redisService.expire(key, GroupMembershipService.CACHE_TTL_SECONDS);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.warn(`按群刷新成员缓存失败 (room=${imRoomId}): ${message}`);
-    }
-  }
-
-  private extractRoomsFromRoomList(result: unknown): RoomListItem[] {
-    if (!result || typeof result !== 'object') return [];
-
-    const outerData = (result as { data?: unknown }).data ?? result;
-    if (Array.isArray(outerData)) return outerData as RoomListItem[];
-
-    if (!outerData || typeof outerData !== 'object') return [];
-
-    const innerData = (outerData as { data?: unknown }).data;
-    if (Array.isArray(innerData)) return innerData as RoomListItem[];
-
-    if (innerData && typeof innerData === 'object') {
-      return [innerData as RoomListItem];
-    }
-
-    return [outerData as RoomListItem];
-  }
-
   private buildKey(imRoomId: string): string {
     return `${GroupMembershipService.CACHE_KEY_PREFIX}:${imRoomId}`;
   }

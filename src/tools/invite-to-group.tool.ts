@@ -3,7 +3,6 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
-import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
 import { GroupContext } from '@biz/group-task/group-task.types';
 import { RoomService } from '@channels/wecom/room/room.service';
 import { MemoryService } from '@memory/memory.service';
@@ -12,12 +11,9 @@ import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.se
 import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
 
 const logger = new Logger('invite_to_group');
-const INVITE_CONFIRM_ATTEMPTS = 3;
-const INVITE_CONFIRM_RETRY_DELAY_MS = 1200;
 
 export function buildInviteToGroupTool(
   groupResolver: GroupResolverService,
-  groupMembership: GroupMembershipService,
   roomService: RoomService,
   webhookService: FeishuWebhookService,
   cardBuilder: FeishuCardBuilderService,
@@ -36,8 +32,8 @@ export function buildInviteToGroupTool(
 调用前必须已知候选人所在城市。
 
 返回结果中 inviteMode 表示拉群方式：
-- "direct"：已直接拉入群，告知候选人"已帮你加入了XX群"
-- "link"：已发送入群邀请链接，告知候选人"已发了入群邀请，点一下就能进群"`,
+- "direct"：已直接拉入群（群<40人），告知候选人"已帮你加入了XX群"
+- "link"：已发送入群邀请卡片（群>=40人），告知候选人"已发了入群邀请，点一下就能进群"`,
       inputSchema: z.object({
         city: z.string().describe('候选人所在城市（必填）'),
         industry: z.string().optional().describe('行业偏好（可选，如：餐饮、零售）'),
@@ -108,21 +104,7 @@ export function buildInviteToGroupTool(
             return { success: false, reason: 'group_full' };
           }
 
-          await groupMembership.refreshRoomCacheByToken(targetGroup.imRoomId, targetGroup.token);
-          const alreadyMember = await groupMembership.isUserInRoom(
-            targetGroup.imRoomId,
-            context.userId,
-            [targetGroup.imRoomId],
-          );
-          if (alreadyMember) {
-            logger.log(`用户已在群中，静默跳过: ${targetGroup.groupName} (user=${context.userId})`);
-            return {
-              success: false,
-              reason: 'already_in_group',
-              groupName: targetGroup.groupName,
-            };
-          }
-
+          const isDirectAdd = (targetGroup.memberCount ?? 0) < 40;
           const addResult = await roomService.addMemberEnterprise({
             token: normalizedEnterpriseToken,
             imBotId: context.botImId,
@@ -130,45 +112,57 @@ export function buildInviteToGroupTool(
             contactWxid: context.userId,
             roomWxid: targetGroup.imRoomId,
           });
-          const addError = extractInviteApiError(addResult);
-          if (addError) {
+          const inviteApiResult = parseInviteApiResult(addResult);
+          if (!inviteApiResult.accepted) {
+            if (inviteApiResult.code === -9) {
+              logger.log(
+                `用户已在群中，静默跳过: ${targetGroup.groupName} (user=${context.userId})`,
+              );
+              return {
+                success: false,
+                reason: 'already_in_group',
+                groupName: targetGroup.groupName,
+              };
+            }
+
+            if (inviteApiResult.code === -10) {
+              logger.warn(`接口返回群已满: ${targetGroup.groupName} (user=${context.userId})`);
+              void sendGroupFullAlert({
+                city,
+                industry,
+                memberLimit,
+                groups: [
+                  {
+                    name: targetGroup.groupName,
+                    memberCount: targetGroup.memberCount,
+                  },
+                ],
+                webhookService,
+                cardBuilder,
+              }).catch((error: unknown) => {
+                const message = error instanceof Error ? error.message : String(error);
+                logger.error(`飞书告警发送失败: ${message}`);
+              });
+              return {
+                success: false,
+                reason: 'group_full',
+                groupName: targetGroup.groupName,
+              };
+            }
+
             logger.warn(
-              `企业级拉群接口拒绝: ${targetGroup.groupName} (user=${context.userId}, error=${addError})`,
+              `企业级拉群接口拒绝: ${targetGroup.groupName} (user=${context.userId}, error=${inviteApiResult.error})`,
             );
             return {
               success: false,
               reason: 'invite_api_rejected',
-              error: addError,
+              error: inviteApiResult.error,
               groupName: targetGroup.groupName,
               city,
               industry: industry ?? undefined,
             };
           }
 
-          const isInviteLink = (targetGroup.memberCount ?? 0) >= 100;
-          const joinConfirmed = await confirmInviteJoined({
-            groupMembership,
-            roomId: targetGroup.imRoomId,
-            userId: context.userId,
-            roomToken: targetGroup.token,
-          });
-          if (!joinConfirmed) {
-            logger.warn(
-              `拉群请求已提交但未确认入群: ${targetGroup.groupName} (user=${context.userId}, mode=${
-                isInviteLink ? 'link' : 'direct'
-              })`,
-            );
-            return {
-              success: false,
-              reason: 'invite_not_confirmed',
-              groupName: targetGroup.groupName,
-              city,
-              industry: industry ?? undefined,
-              inviteMode: isInviteLink ? 'link' : 'direct',
-            };
-          }
-
-          await groupMembership.markUserInRoom(targetGroup.imRoomId, context.userId);
           await memoryService.saveInvitedGroup(context.corpId, context.userId, context.sessionId, {
             groupName: targetGroup.groupName,
             city,
@@ -185,7 +179,7 @@ export function buildInviteToGroupTool(
             groupName: targetGroup.groupName,
             city,
             industry: industry ?? undefined,
-            inviteMode: isInviteLink ? 'link' : 'direct',
+            inviteMode: isDirectAdd ? 'direct' : 'link',
           };
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
@@ -196,51 +190,47 @@ export function buildInviteToGroupTool(
     });
 }
 
-async function confirmInviteJoined(params: {
-  groupMembership: GroupMembershipService;
-  roomId: string;
-  userId: string;
-  roomToken?: string;
-}): Promise<boolean> {
-  const { groupMembership, roomId, userId, roomToken } = params;
-
-  for (let attempt = 1; attempt <= INVITE_CONFIRM_ATTEMPTS; attempt += 1) {
-    await groupMembership.refreshRoomCacheByToken(roomId, roomToken);
-    const joined = await groupMembership.isUserInRoom(roomId, userId, [roomId]);
-    if (joined) return true;
-
-    if (attempt < INVITE_CONFIRM_ATTEMPTS) {
-      await sleep(INVITE_CONFIRM_RETRY_DELAY_MS);
-    }
+function parseInviteApiResult(result: unknown): {
+  accepted: boolean;
+  code: number | null;
+  error?: string;
+} {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    return { accepted: true, code: null };
   }
 
-  return false;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function extractInviteApiError(result: unknown): string | null {
-  if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
   const record = result as Record<string, unknown>;
 
   const errcode = typeof record.errcode === 'number' ? record.errcode : null;
-  if (errcode != null && errcode !== 0) {
+  if (errcode != null) {
+    if (errcode === 0) {
+      return { accepted: true, code: 0 };
+    }
     const message =
       typeof record.errmsg === 'string' && record.errmsg.trim()
         ? record.errmsg.trim()
         : 'unknown error';
-    return `errcode=${errcode}, errmsg=${message}`;
+    return {
+      accepted: false,
+      code: errcode,
+      error: `errcode=${errcode}, errmsg=${message}`,
+    };
   }
 
   const code = typeof record.code === 'number' ? record.code : null;
-  if (code != null && code !== 0) {
+  if (code != null) {
+    if (code === 0) {
+      return { accepted: true, code: 0 };
+    }
     const message =
       typeof record.message === 'string' && record.message.trim()
         ? record.message.trim()
         : 'unknown error';
-    return `code=${code}, message=${message}`;
+    return {
+      accepted: false,
+      code,
+      error: `code=${code}, message=${message}`,
+    };
   }
 
   if (record.success === false) {
@@ -248,10 +238,14 @@ function extractInviteApiError(result: unknown): string | null {
       typeof record.message === 'string' && record.message.trim()
         ? record.message.trim()
         : 'unknown error';
-    return `success=false, message=${message}`;
+    return {
+      accepted: false,
+      code: null,
+      error: `success=false, message=${message}`,
+    };
   }
 
-  return null;
+  return { accepted: true, code: null };
 }
 
 function resolveCandidates(cityGroups: GroupContext[], industry?: string): GroupContext[] {

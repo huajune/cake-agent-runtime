@@ -4,12 +4,12 @@
  * 格式：
  * 🍕{标题}
  *
- * 预计收入：¥{收入}
- * 地点：{门店}
- * 内容：{内容}
- * 日期：{日期}
- * 时间：{时段}
- * 报名链接：{报名链接}
+ * 💰预计收入：¥{收入}
+ * 📍地点：{门店}
+ * 📋内容：{内容}
+ * 📅日期：{日期}
+ * ⏰时间：{时段}
+ * 🔗报名链接：{报名链接}
  *
  * ...更多订单...
  *
@@ -60,13 +60,13 @@ export function buildOrderGrabMessage(data: OrderGrabTemplateData): string {
       .replace(/\s*~\s*/g, ' ~ ');
     const link = order[BI_FIELD_NAMES.SHARE_LINK] || '';
 
-    lines.push(`预计收入：¥${revenue}`);
-    lines.push(`地点：${store}`);
-    lines.push(`内容：${content}`);
-    lines.push(`日期：${date}`);
-    lines.push(`时间：${time}`);
+    lines.push(`💰预计收入：¥${revenue}`);
+    lines.push(`📍地点：${store}`);
+    lines.push(`📋内容：${content}`);
+    lines.push(`📅日期：${date}`);
+    lines.push(`⏰时间：${time}`);
     if (link) {
-      lines.push(`报名链接：${link}`);
+      lines.push(`🔗报名链接：${link}`);
     }
     lines.push('');
   }

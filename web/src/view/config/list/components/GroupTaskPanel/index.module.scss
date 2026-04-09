@@ -84,8 +84,12 @@
 }
 
 .statusWarning {
-  color: $warning;
-  background: $warning-soft;
+  color: $danger;
+  background: $danger-soft;
+
+  .statusDot {
+    animation: dotPulse 1.4s ease-in-out infinite;
+  }
 }
 
 .toggleDescription {
