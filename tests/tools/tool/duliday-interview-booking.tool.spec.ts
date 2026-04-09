@@ -4,7 +4,6 @@ import { ToolBuildContext } from '@shared-types/tool.types';
 describe('buildInterviewBookingTool', () => {
   const mockSpongeService = {
     bookInterview: jest.fn(),
-    fetchJobs: jest.fn(),
   };
 
   const mockWebhookService = {
@@ -86,20 +85,6 @@ describe('buildInterviewBookingTool', () => {
   });
 
   it('should call SpongeService and return success', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [
-        {
-          basicInfo: {
-            brandName: '成都你六姐',
-            jobName: '成都你六姐-上海浦江城市生活广场店-后厨-小时工',
-            storeInfo: {
-              storeName: '上海浦江城市生活广场店',
-            },
-          },
-        },
-      ],
-      total: 1,
-    });
     mockSpongeService.bookInterview.mockResolvedValue({
       success: true,
       code: 0,
@@ -108,7 +93,12 @@ describe('buildInterviewBookingTool', () => {
       errorList: null,
     });
 
-    const result = await executeTool(validInput);
+    const result = await executeTool({
+      ...validInput,
+      brandName: '成都你六姐',
+      storeName: '上海浦江城市生活广场店',
+      jobName: '成都你六姐-上海浦江城市生活广场店-后厨-小时工',
+    });
     await flushAsyncEvents();
 
     expect(result.success).toBe(true);
@@ -118,11 +108,6 @@ describe('buildInterviewBookingTool', () => {
         name: '张三',
         jobId: 100,
         educationId: 5,
-      }),
-    );
-    expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
-      expect.objectContaining({
-        jobIdList: [100],
       }),
     );
     expect(mockCardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
@@ -175,7 +160,6 @@ describe('buildInterviewBookingTool', () => {
   });
 
   it('should handle SpongeService error', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
     mockSpongeService.bookInterview.mockRejectedValue(new Error('Network error'));
 
     const result = await executeTool(validInput);
