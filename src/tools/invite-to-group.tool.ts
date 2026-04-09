@@ -12,6 +12,8 @@ import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.se
 import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
 
 const logger = new Logger('invite_to_group');
+const INVITE_CONFIRM_ATTEMPTS = 3;
+const INVITE_CONFIRM_RETRY_DELAY_MS = 1200;
 
 export function buildInviteToGroupTool(
   groupResolver: GroupResolverService,
@@ -42,6 +44,16 @@ export function buildInviteToGroupTool(
       }),
       execute: async ({ city, industry }) => {
         try {
+          if (context.strategySource === 'testing') {
+            logger.log(`testing 链路禁用真实拉群: city=${city}, user=${context.userId}`);
+            return {
+              success: false,
+              reason: 'side_effect_disabled_in_testing',
+              errorType: 'side_effect_disabled',
+              error: 'testing 链路默认禁用真实拉群，请在真实企微链路联调',
+            };
+          }
+
           const normalizedEnterpriseToken = enterpriseToken?.trim();
           if (!normalizedEnterpriseToken) {
             logger.error(`STRIDE_ENTERPRISE_TOKEN 未配置，无法拉人进群 (user=${context.userId})`);
@@ -49,6 +61,15 @@ export function buildInviteToGroupTool(
               success: false,
               errorType: 'enterprise_token_missing',
               error: 'STRIDE_ENTERPRISE_TOKEN 未配置，无法执行企业级拉群',
+            };
+          }
+          if (!context.botImId || !context.botUserId) {
+            logger.warn(`缺少 bot 身份信息，无法拉群 (user=${context.userId})`);
+            return {
+              success: false,
+              reason: 'missing_bot_identity',
+              errorType: 'missing_bot_identity',
+              error: '缺少 botImId / botUserId，无法执行企业级拉群',
             };
           }
 
@@ -103,13 +124,50 @@ export function buildInviteToGroupTool(
             };
           }
 
-          await roomService.addMemberEnterprise({
+          const addResult = await roomService.addMemberEnterprise({
             token: normalizedEnterpriseToken,
-            imBotId: context.botImId || '',
-            botUserId: context.botUserId || '',
+            imBotId: context.botImId,
+            botUserId: context.botUserId,
             contactWxid: context.userId,
             roomWxid: targetGroup.imRoomId,
           });
+          const addError = extractInviteApiError(addResult);
+          if (addError) {
+            logger.warn(
+              `企业级拉群接口拒绝: ${targetGroup.groupName} (user=${context.userId}, error=${addError})`,
+            );
+            return {
+              success: false,
+              reason: 'invite_api_rejected',
+              error: addError,
+              groupName: targetGroup.groupName,
+              city,
+              industry: industry ?? undefined,
+            };
+          }
+
+          const isInviteLink = (targetGroup.memberCount ?? 0) >= 100;
+          const joinConfirmed = await confirmInviteJoined({
+            groupMembership,
+            roomId: targetGroup.imRoomId,
+            userId: context.userId,
+            relevantRoomIds: partTimeRoomIds,
+          });
+          if (!joinConfirmed) {
+            logger.warn(
+              `拉群请求已提交但未确认入群: ${targetGroup.groupName} (user=${context.userId}, mode=${
+                isInviteLink ? 'link' : 'direct'
+              })`,
+            );
+            return {
+              success: false,
+              reason: 'invite_not_confirmed',
+              groupName: targetGroup.groupName,
+              city,
+              industry: industry ?? undefined,
+              inviteMode: isInviteLink ? 'link' : 'direct',
+            };
+          }
 
           await groupMembership.markUserInRoom(targetGroup.imRoomId, context.userId);
           await memoryService.saveInvitedGroup(context.corpId, context.userId, context.sessionId, {
@@ -122,8 +180,6 @@ export function buildInviteToGroupTool(
           logger.log(
             `拉群成功: ${targetGroup.groupName} (user=${context.userId}, city=${city}, industry=${industry ?? '-'})`,
           );
-
-          const isInviteLink = (targetGroup.memberCount ?? 0) >= 100;
 
           return {
             success: true,
@@ -139,6 +195,64 @@ export function buildInviteToGroupTool(
         }
       },
     });
+}
+
+async function confirmInviteJoined(params: {
+  groupMembership: GroupMembershipService;
+  roomId: string;
+  userId: string;
+  relevantRoomIds: string[];
+}): Promise<boolean> {
+  const { groupMembership, roomId, userId, relevantRoomIds } = params;
+
+  for (let attempt = 1; attempt <= INVITE_CONFIRM_ATTEMPTS; attempt += 1) {
+    await groupMembership.invalidateRoomCache(roomId);
+    const joined = await groupMembership.isUserInRoom(roomId, userId, relevantRoomIds);
+    if (joined) return true;
+
+    if (attempt < INVITE_CONFIRM_ATTEMPTS) {
+      await sleep(INVITE_CONFIRM_RETRY_DELAY_MS);
+    }
+  }
+
+  return false;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function extractInviteApiError(result: unknown): string | null {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
+  const record = result as Record<string, unknown>;
+
+  const errcode = typeof record.errcode === 'number' ? record.errcode : null;
+  if (errcode != null && errcode !== 0) {
+    const message =
+      typeof record.errmsg === 'string' && record.errmsg.trim()
+        ? record.errmsg.trim()
+        : 'unknown error';
+    return `errcode=${errcode}, errmsg=${message}`;
+  }
+
+  const code = typeof record.code === 'number' ? record.code : null;
+  if (code != null && code !== 0) {
+    const message =
+      typeof record.message === 'string' && record.message.trim()
+        ? record.message.trim()
+        : 'unknown error';
+    return `code=${code}, message=${message}`;
+  }
+
+  if (record.success === false) {
+    const message =
+      typeof record.message === 'string' && record.message.trim()
+        ? record.message.trim()
+        : 'unknown error';
+    return `success=false, message=${message}`;
+  }
+
+  return null;
 }
 
 function resolveCandidates(cityGroups: GroupContext[], industry?: string): GroupContext[] {

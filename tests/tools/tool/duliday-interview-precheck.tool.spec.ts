@@ -53,7 +53,10 @@ describe('buildInterviewPrecheckTool', () => {
     ...overrides,
   });
 
-  const executeTool = async (input: Record<string, any>, contextOverride: Partial<ToolBuildContext> = {}) => {
+  const executeTool = async (
+    input: Record<string, any>,
+    contextOverride: Partial<ToolBuildContext> = {},
+  ) => {
     const builder = buildInterviewPrecheckTool(mockSpongeService as never);
     const builtTool = builder({
       ...mockContext,
@@ -97,6 +100,7 @@ describe('buildInterviewPrecheckTool', () => {
   });
 
   it('should mark future fixed interview dates as available', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2029-12-01T02:00:00.000Z'));
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [
         makeJob({
@@ -118,40 +122,114 @@ describe('buildInterviewPrecheckTool', () => {
     const result = await executeTool({ jobId: 100, requestedDate: '2030-01-01' });
 
     expect(result.success).toBe(true);
-    expect(result.interview.requestedDateStatus).toBe('available');
-    expect(result.interview.canScheduleOnRequestedDate).toBe(true);
-    expect(result.interview.requestedDateDecisionBasis).toBe('future_schedule_match');
-    expect(result.interview.requestedDateMatchedWindows).toEqual([
-      expect.objectContaining({ date: '2030-01-01', startTime: '14:00', endTime: '16:00' }),
-    ]);
-    expect(result.interview.normalizedRequestedDate).toBe('2030-01-01');
-    expect(result.interview.candidateTimeOptions).toEqual([
-      expect.objectContaining({
-        date: '2030-01-01',
-        startTime: '14:00',
-        endTime: '16:00',
-      }),
-    ]);
+    expect(result.interview.requestedDate).toEqual({
+      value: '2030-01-01',
+      status: 'available',
+      reason: expect.stringContaining('2030-01-01'),
+    });
+    // stripNullish 会移除空数组/空字符串字段；固定日期窗口在未来没有生成可约示例（因为当前时间较早），
+    // 也不会产生周期性 scheduleRule。
+    expect(result.interview.upcomingTimeOptions).toBeUndefined();
+    expect(result.interview.scheduleRule).toBeUndefined();
     expect(result.nextAction).toBe('collect_fields');
-    expect(result.interview.timeHint).toBeNull();
-    expect(result.interview.registrationDeadlineHint).toBeNull();
-    expect(result.fieldGuidance.sourceSummary).toContain('年龄 <- basic_personal_requirements');
-    expect(result.fieldGuidance.enumHints.genderId).toEqual([
-      { id: 1, label: '男' },
-      { id: 2, label: '女' },
+    // 被砍掉的字段不应出现
+    expect(result.interview.scheduleWindows).toBeUndefined();
+    expect(result.interview.candidateTimeOptions).toBeUndefined();
+    expect(result.interview.requestedDateStatus).toBeUndefined();
+    expect(result.interview.normalizedRequestedDate).toBeUndefined();
+    expect(result.fieldGuidance).toBeUndefined();
+    expect(result.policyHighlights).toBeUndefined();
+    expect(result.requirements).toBeUndefined();
+    expect(result.bookingChecklist.knownFieldMap).toBeUndefined();
+    expect(result.bookingChecklist.requiredFields).toBeUndefined();
+    expect(result.bookingChecklist.displayOrder).toBeUndefined();
+    // enumHints 应包含缺失字段涉及的枚举
+    expect(result.bookingChecklist.enumHints.gender).toEqual(['男', '女']);
+    expect(result.bookingChecklist.enumHints.healthCertificate).toEqual([
+      '有',
+      '无但接受办理健康证',
+      '无且不接受办理健康证',
     ]);
-    expect(result.bookingChecklist.requiredFields).toContain('姓名');
+    expect(result.bookingChecklist.enumHints.education).toContain('高中');
+    // screeningCriteria 应包含岗位硬性门槛
+    expect(result.screeningCriteria).toEqual(
+      expect.objectContaining({
+        age: '18-35岁',
+        education: '高中',
+        healthCertificate: '食品健康证',
+      }),
+    );
+    // 不限性别不应出现
+    expect(result.screeningCriteria.gender).toBeUndefined();
     expect(result.bookingChecklist.missingFields).toContain('姓名');
+    expect(result.bookingChecklist.templateText).toContain('姓名：');
   });
 
-  it('should expose interview time hint and registration deadline hint separately', async () => {
+  it('should compress periodic windows into scheduleRule and generate upcoming options', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z')); // 2026-04-07 10:30 上海时间（周二）
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [
         makeJob({
           interviewProcess: {
             firstInterview: {
-              interviewTime:
-                '每周都可以安排面试\n周一：13:30 下午-16:30 下午，提交面试名单截止时间为: 当天12:00 中午',
+              periodicInterviewTimes: [
+                {
+                  interviewWeekday: '每周一',
+                  interviewTimes: [
+                    {
+                      interviewStartTime: '13:30',
+                      interviewEndTime: '16:30',
+                      cycleDeadlineDay: '当天',
+                      cycleDeadlineEnd: '12:00',
+                    },
+                  ],
+                },
+                {
+                  interviewWeekday: '每周二',
+                  interviewTimes: [
+                    {
+                      interviewStartTime: '13:30',
+                      interviewEndTime: '16:30',
+                      cycleDeadlineDay: '当天',
+                      cycleDeadlineEnd: '12:00',
+                    },
+                  ],
+                },
+                {
+                  interviewWeekday: '每周三',
+                  interviewTimes: [
+                    {
+                      interviewStartTime: '13:30',
+                      interviewEndTime: '16:30',
+                      cycleDeadlineDay: '当天',
+                      cycleDeadlineEnd: '12:00',
+                    },
+                  ],
+                },
+                {
+                  interviewWeekday: '每周四',
+                  interviewTimes: [
+                    {
+                      interviewStartTime: '13:30',
+                      interviewEndTime: '16:30',
+                      cycleDeadlineDay: '当天',
+                      cycleDeadlineEnd: '12:00',
+                    },
+                  ],
+                },
+                {
+                  interviewWeekday: '每周五',
+                  interviewTimes: [
+                    {
+                      interviewStartTime: '13:30',
+                      interviewEndTime: '16:30',
+                      cycleDeadlineDay: '当天',
+                      cycleDeadlineEnd: '12:00',
+                    },
+                  ],
+                },
+              ],
+              fixedInterviewTimes: [],
             },
           },
         }),
@@ -161,14 +239,60 @@ describe('buildInterviewPrecheckTool', () => {
     const result = await executeTool({ jobId: 100 });
 
     expect(result.success).toBe(true);
-    expect(result.interview.timeHint).toBe('周一：13:30 下午-16:30 下午');
-    expect(result.interview.registrationDeadlineHint).toContain('提交面试名单截止时间');
-    expect(result.interview.registrationDeadlineHint).toContain('当天12:00 中午');
-    expect(Array.isArray(result.interview.candidateTimeOptions)).toBe(true);
+    expect(result.interview.scheduleRule).toBe('周一至周五 13:30-16:30，当天 12:00 前报名');
+    // upcomingTimeOptions 应该覆盖未来 7 天内的周一到周五（今天周二 10:30 还没过 12:00）
+    expect(result.interview.upcomingTimeOptions.length).toBeGreaterThanOrEqual(4);
+    // 今日那条应带上"今日"标记
+    const todayOption = result.interview.upcomingTimeOptions.find((label: string) =>
+      label.includes('今日'),
+    );
+    expect(todayOption).toBeDefined();
+    // 未指定 requestedDate 时该字段不应出现
+    expect(result.interview.requestedDate).toBeUndefined();
   });
 
-  it('should parse 后天 / 本周X / 下周X / 4月12日 to normalized dates', async () => {
-    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z')); // 上海时间 2026-04-07 10:30（周二）
+  it('should compress non-consecutive weekdays as list form', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            firstInterview: {
+              periodicInterviewTimes: [
+                {
+                  interviewWeekday: '每周一',
+                  interviewTimes: [
+                    { interviewStartTime: '14:00', interviewEndTime: '16:00' },
+                  ],
+                },
+                {
+                  interviewWeekday: '每周三',
+                  interviewTimes: [
+                    { interviewStartTime: '14:00', interviewEndTime: '16:00' },
+                  ],
+                },
+                {
+                  interviewWeekday: '每周五',
+                  interviewTimes: [
+                    { interviewStartTime: '14:00', interviewEndTime: '16:00' },
+                  ],
+                },
+              ],
+              fixedInterviewTimes: [],
+            },
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({ jobId: 100 });
+
+    expect(result.success).toBe(true);
+    expect(result.interview.scheduleRule).toBe('周一、三、五 14:00-16:00');
+  });
+
+  it('should parse 后天 / 本周X / 下周X / 4月12日 to normalized requested dates', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z')); // 2026-04-07 周二
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [
         makeJob({
@@ -203,23 +327,19 @@ describe('buildInterviewPrecheckTool', () => {
     });
 
     const dayAfterTomorrow = await executeTool({ jobId: 100, requestedDate: '后天' });
-    expect(dayAfterTomorrow.success).toBe(true);
-    expect(dayAfterTomorrow.interview.normalizedRequestedDate).toBe('2026-04-09');
+    expect(dayAfterTomorrow.interview.requestedDate.value).toBe('2026-04-09');
 
     const thisWeekFriday = await executeTool({ jobId: 100, requestedDate: '本周五' });
-    expect(thisWeekFriday.success).toBe(true);
-    expect(thisWeekFriday.interview.normalizedRequestedDate).toBe('2026-04-10');
+    expect(thisWeekFriday.interview.requestedDate.value).toBe('2026-04-10');
 
     const nextWeekWednesday = await executeTool({ jobId: 100, requestedDate: '下周三' });
-    expect(nextWeekWednesday.success).toBe(true);
-    expect(nextWeekWednesday.interview.normalizedRequestedDate).toBe('2026-04-15');
+    expect(nextWeekWednesday.interview.requestedDate.value).toBe('2026-04-15');
 
     const monthDay = await executeTool({ jobId: 100, requestedDate: '4月12日' });
-    expect(monthDay.success).toBe(true);
-    expect(monthDay.interview.normalizedRequestedDate).toBe('2026-04-12');
+    expect(monthDay.interview.requestedDate.value).toBe('2026-04-12');
   });
 
-  it('should build booking checklist with known fields auto-filled from context', async () => {
+  it('should auto-fill known fields into templateText from context', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [
@@ -280,27 +400,44 @@ describe('buildInterviewPrecheckTool', () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.bookingChecklist.knownFieldMap).toEqual(
-      expect.objectContaining({
-        姓名: '张三',
-        联系电话: '13800138000',
-        性别: '男',
-        年龄: '30',
-        学历: '本科',
-        健康证情况: '有',
-        应聘门店: '五角场店',
-        应聘岗位: '服务员',
-      }),
-    );
-    expect(result.bookingChecklist.missingFields).toContain('面试时间');
     expect(result.bookingChecklist.templateText).toContain('姓名：张三');
     expect(result.bookingChecklist.templateText).toContain('联系方式：13800138000');
     expect(result.bookingChecklist.templateText).toContain('应聘门店：五角场店');
+    expect(result.bookingChecklist.missingFields).toContain('面试时间');
+    // 已知字段不应再出现在 missingFields 里
+    expect(result.bookingChecklist.missingFields).not.toContain('姓名');
+    expect(result.bookingChecklist.missingFields).not.toContain('联系电话');
+    // 已知字段涉及的枚举不应再返回；当所有相关枚举均无需提示时，整个 enumHints 会被 stripNullish 移除
+    expect(result.bookingChecklist.enumHints).toBeUndefined();
     expect(result.nextAction).toBe('collect_fields');
   });
 
-  it('should mark same-day windows as unavailable after the latest end time', async () => {
-    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T11:30:00.000Z'));
+  it('should render interview template in fixed checklist format with core fields first', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [makeJob()],
+    });
+
+    const result = await executeTool({ jobId: 100 });
+
+    const text = result.bookingChecklist.templateText as string;
+    expect(text).toContain('面试模版：');
+    expect(text).toContain('面试要求：先将以下资料补充下发给我，我来帮你约面试');
+
+    const idxName = text.indexOf('姓名：');
+    const idxPhone = text.indexOf('联系方式：');
+    const idxGender = text.indexOf('性别：');
+    const idxAge = text.indexOf('年龄：');
+    const idxStore = text.indexOf('应聘门店：');
+
+    expect(idxName).toBeGreaterThan(-1);
+    expect(idxPhone).toBeGreaterThan(idxName);
+    expect(idxGender).toBeGreaterThan(idxPhone);
+    expect(idxAge).toBeGreaterThan(idxGender);
+    expect(idxStore).toBeGreaterThan(idxAge);
+  });
+
+  it('should mark same-day as unavailable after the latest end time', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T11:30:00.000Z')); // 19:30 上海时间
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [
         makeJob({
@@ -322,14 +459,16 @@ describe('buildInterviewPrecheckTool', () => {
     const result = await executeTool({ jobId: 100, requestedDate: '今天' });
 
     expect(result.success).toBe(true);
-    expect(result.interview.requestedDateStatus).toBe('unavailable');
-    expect(result.interview.canScheduleOnRequestedDate).toBe(false);
-    expect(result.interview.requestedDateReason).toContain('18:00');
-    expect(result.interview.requestedDateDecisionBasis).toBe('same_day_after_latest_window');
+    expect(result.interview.requestedDate).toEqual({
+      value: '2026-04-07',
+      status: 'unavailable',
+      reason: expect.stringContaining('18:00'),
+    });
+    expect(result.nextAction).toBe('date_unavailable');
   });
 
-  it('should ask for confirmation when same-day windows still remain', async () => {
-    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+  it('should mark same-day as available when now is before earliest window start and deadline not passed', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z')); // 10:30 上海时间
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [
         makeJob({
@@ -351,15 +490,38 @@ describe('buildInterviewPrecheckTool', () => {
     const result = await executeTool({ jobId: 100, requestedDate: 'today' });
 
     expect(result.success).toBe(true);
-    expect(result.interview.requestedDateStatus).toBe('needs_confirmation');
-    expect(result.interview.canScheduleOnRequestedDate).toBeNull();
-    expect(result.interview.requestedDateDecisionBasis).toBe(
-      'same_day_window_requires_confirmation',
-    );
+    expect(result.interview.requestedDate.status).toBe('available');
+    expect(result.interview.requestedDate.reason).toContain('12:00');
+  });
+
+  it('should mark same-day as needs_confirmation when now is within an ongoing window', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T05:30:00.000Z')); // 13:30 上海时间
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-04-07',
+                  interviewStartTime: '12:00',
+                  interviewEndTime: '17:00',
+                },
+              ],
+            },
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({ jobId: 100, requestedDate: 'today' });
+
+    expect(result.success).toBe(true);
+    expect(result.interview.requestedDate.status).toBe('needs_confirmation');
   });
 
   it('should block requested date when fixed booking deadline has passed', async () => {
-    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T05:00:00.000Z')); // 上海时间 13:00
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T05:00:00.000Z')); // 13:00 上海时间
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [
         makeJob({
@@ -386,14 +548,13 @@ describe('buildInterviewPrecheckTool', () => {
     const result = await executeTool({ jobId: 100, requestedDate: '2026-04-08' });
 
     expect(result.success).toBe(true);
-    expect(result.interview.requestedDateStatus).toBe('unavailable');
-    expect(result.interview.canScheduleOnRequestedDate).toBe(false);
-    expect(result.interview.requestedDateDecisionBasis).toBe('after_booking_deadline');
-    expect(result.interview.requestedDateReason).toContain('报名截止时间');
+    expect(result.interview.requestedDate.status).toBe('unavailable');
+    expect(result.interview.requestedDate.reason).toContain('报名截止时间');
+    expect(result.nextAction).toBe('date_unavailable');
   });
 
   it('should block requested date when periodic booking deadline has passed', async () => {
-    jest.useFakeTimers().setSystemTime(new Date('2026-04-08T05:00:00.000Z')); // 上海时间 13:00
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-08T05:00:00.000Z')); // 13:00 上海时间
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [
         makeJob({
@@ -422,10 +583,8 @@ describe('buildInterviewPrecheckTool', () => {
     const result = await executeTool({ jobId: 100, requestedDate: '2026-04-08' });
 
     expect(result.success).toBe(true);
-    expect(result.interview.requestedDateStatus).toBe('unavailable');
-    expect(result.interview.canScheduleOnRequestedDate).toBe(false);
-    expect(result.interview.requestedDateDecisionBasis).toBe('after_booking_deadline');
-    expect(result.interview.requestedDateReason).toContain('报名截止时间');
+    expect(result.interview.requestedDate.status).toBe('unavailable');
+    expect(result.interview.requestedDate.reason).toContain('报名截止时间');
   });
 
   it('should surface Sponge errors as precheck_failed', async () => {

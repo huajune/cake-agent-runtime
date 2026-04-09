@@ -99,4 +99,16 @@ export class LongTermService {
       this.logger.warn('更新沉淀边界失败', error);
     }
   }
+
+  /**
+   * 清理指定用户的长期记忆（profile + summary）
+   */
+  async clearUserMemory(corpId: string, userId: string): Promise<boolean> {
+    try {
+      return await this.supabaseStore.del(`profile:${corpId}:${userId}`);
+    } catch (error) {
+      this.logger.warn('清理长期记忆失败', error);
+      return false;
+    }
+  }
 }

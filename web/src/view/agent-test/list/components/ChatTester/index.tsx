@@ -12,6 +12,9 @@ import {
   Radio,
   FileJson,
   ImagePlus,
+  IdCard,
+  ChevronDown,
+  Settings2,
 } from 'lucide-react';
 import { TestChatResponse } from '@/api/services/agent-test.service';
 import { MessagePartsAdapter } from '../MessagePartsAdapter';
@@ -20,6 +23,7 @@ import { FeedbackModal } from '../FeedbackModal';
 import { MetricsRow } from '../MetricsRow';
 import { FeedbackButtons } from '../FeedbackButtons';
 import { CandidateSelector } from '../CandidateSelector';
+import { GroupInviteIdModal } from '../GroupInviteIdModal';
 import { HISTORY_PLACEHOLDER } from '../../constants';
 import RedPacketRain from '@/components/RedPacketRain';
 import styles from './index.module.scss';
@@ -36,10 +40,14 @@ interface ChatInputPanelProps {
   isLoading: boolean;
   thinkingMode: AgentTestThinkingMode;
   thinkingBudgetTokens: number;
+  modelId: string;
+  availableModels: string[];
+  setModelId: (modelId: string) => void;
   setHistoryText: (text: string) => void;
   setCurrentInput: (text: string) => void;
   setThinkingMode: (mode: AgentTestThinkingMode) => void;
   setThinkingBudgetTokens: (tokens: number) => void;
+  onOpenIdModal: () => void;
   addImages: (files: FileList) => void;
   removeImage: (id: string) => void;
   handleTest: () => Promise<void>;
@@ -72,10 +80,14 @@ const ChatInputPanel = memo(function ChatInputPanel({
   isLoading,
   thinkingMode,
   thinkingBudgetTokens,
+  modelId,
+  availableModels,
+  setModelId,
   setHistoryText,
   setCurrentInput,
   setThinkingMode,
   setThinkingBudgetTokens,
+  onOpenIdModal,
   addImages,
   removeImage,
   handleTest,
@@ -83,6 +95,7 @@ const ChatInputPanel = memo(function ChatInputPanel({
   messageInputRef,
 }: ChatInputPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
   return (
     <div className={styles.inputPanel}>
@@ -90,59 +103,110 @@ const ChatInputPanel = memo(function ChatInputPanel({
         <h3>
           <FileJson size={18} /> 测试输入
         </h3>
-        <button onClick={handleClear} className={styles.clearBtn} disabled={isLoading}>
-          <Trash2 size={14} /> 重置会话
-        </button>
+        <div className={styles.headerActions}>
+          <button onClick={onOpenIdModal} className={styles.idConfigBtn} disabled={isLoading}>
+            <IdCard size={14} /> 拉群ID
+          </button>
+          <button onClick={handleClear} className={styles.clearBtn} disabled={isLoading}>
+            <Trash2 size={14} /> 重置会话
+          </button>
+        </div>
       </div>
 
       <div className={styles.inputPanelBody}>
-        <div className={styles.modeSwitchGroup}>
-          <div className={styles.inputLabel}>
-            <span className={styles.labelText}>回复模式</span>
-            <span className={styles.labelHint}>极速更快，深度会展示完整思考过程</span>
-          </div>
-          <div className={styles.modeControls}>
-            <div className={styles.modeSegment} role="tablist" aria-label="回复模式">
-              <button
-                type="button"
-                className={`${styles.modeOption} ${thinkingMode === 'fast' ? styles.modeOptionActive : ''}`}
-                onClick={() => setThinkingMode('fast')}
-                disabled={isLoading}
-              >
-                <Clock size={14} /> 极速
-              </button>
-              <button
-                type="button"
-                className={`${styles.modeOption} ${thinkingMode === 'deep' ? styles.modeOptionActive : ''}`}
-                onClick={() => setThinkingMode('deep')}
-                disabled={isLoading}
-              >
-                <Sparkles size={14} /> 深度思考
-              </button>
-            </div>
-            {thinkingMode === 'deep' && (
-              <label className={styles.budgetField}>
-                <span className={styles.budgetLabel}>预算</span>
-                <div className={styles.budgetInputWrap}>
-                  <input
-                    type="number"
-                    min={500}
-                    max={20000}
-                    step={500}
-                    value={thinkingBudgetTokens}
-                    disabled={isLoading}
-                    className={styles.budgetInput}
-                    onChange={(e) => {
-                      const nextValue = Number(e.target.value);
-                      if (!Number.isFinite(nextValue)) return;
-                      setThinkingBudgetTokens(nextValue);
-                    }}
-                  />
-                  <span className={styles.budgetSuffix}>tokens</span>
+        <div className={styles.advancedSection}>
+          <button
+            type="button"
+            className={styles.advancedToggle}
+            onClick={() => setIsAdvancedOpen((prev) => !prev)}
+            aria-expanded={isAdvancedOpen}
+          >
+            <span className={styles.advancedToggleLabel}>
+              <Settings2 size={14} /> 高级设置
+            </span>
+            <span className={styles.advancedSummary}>
+              {modelId || '默认模型'} · {thinkingMode === 'deep' ? '深度思考' : '极速'}
+            </span>
+            <ChevronDown
+              size={16}
+              className={`${styles.advancedChevron} ${isAdvancedOpen ? styles.advancedChevronOpen : ''}`}
+            />
+          </button>
+
+          {isAdvancedOpen && (
+            <div className={styles.advancedBody}>
+              <div className={styles.modeSwitchGroup}>
+                <div className={styles.inputLabel}>
+                  <span className={styles.labelText}>聊天模型</span>
+                  <span className={styles.labelHint}>留空使用后端默认角色路由</span>
                 </div>
-              </label>
-            )}
-          </div>
+                <div className={styles.modeControls}>
+                  <select
+                    className={styles.modelSelect}
+                    value={modelId}
+                    disabled={isLoading}
+                    onChange={(e) => setModelId(e.target.value)}
+                  >
+                    <option value="">默认（角色路由）</option>
+                    {availableModels.map((id) => (
+                      <option key={id} value={id}>
+                        {id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className={styles.modeSwitchGroup}>
+                <div className={styles.inputLabel}>
+                  <span className={styles.labelText}>回复模式</span>
+                  <span className={styles.labelHint}>极速更快，深度会展示完整思考过程</span>
+                </div>
+                <div className={styles.modeControls}>
+                  <div className={styles.modeSegment} role="tablist" aria-label="回复模式">
+                    <button
+                      type="button"
+                      className={`${styles.modeOption} ${thinkingMode === 'fast' ? styles.modeOptionActive : ''}`}
+                      onClick={() => setThinkingMode('fast')}
+                      disabled={isLoading}
+                    >
+                      <Clock size={14} /> 极速
+                    </button>
+                    <button
+                      type="button"
+                      className={`${styles.modeOption} ${thinkingMode === 'deep' ? styles.modeOptionActive : ''}`}
+                      onClick={() => setThinkingMode('deep')}
+                      disabled={isLoading}
+                    >
+                      <Sparkles size={14} /> 深度思考
+                    </button>
+                  </div>
+                  {thinkingMode === 'deep' && (
+                    <label className={styles.budgetField}>
+                      <span className={styles.budgetLabel}>预算</span>
+                      <div className={styles.budgetInputWrap}>
+                        <input
+                          type="number"
+                          min={500}
+                          max={20000}
+                          step={500}
+                          value={thinkingBudgetTokens}
+                          disabled={isLoading}
+                          className={styles.budgetInput}
+                          onChange={(e) => {
+                            const nextValue = Number(e.target.value);
+                            if (!Number.isFinite(nextValue)) return;
+                            setThinkingBudgetTokens(nextValue);
+                          }}
+                        />
+                        <span className={styles.budgetSuffix}>tokens</span>
+                      </div>
+                    </label>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className={styles.inputGroup}>
@@ -285,8 +349,17 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
     imagePreviews,
     addImages,
     removeImage,
+    userId,
+    botUserId,
+    botImId,
+    setUserId,
+    setBotUserId,
+    setBotImId,
     thinkingMode,
     thinkingBudgetTokens,
+    modelId,
+    availableModels,
+    setModelId,
     setHistoryText,
     setCurrentInput,
     setLocalError,
@@ -306,6 +379,7 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
 
   // 红包雨状态
   const [showRedPacketRain, setShowRedPacketRain] = useState(false);
+  const [isIdModalOpen, setIsIdModalOpen] = useState(false);
 
   // 监听反馈成功，触发红包雨
   useEffect(() => {
@@ -336,8 +410,12 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
           currentInput={currentInput}
           imagePreviews={imagePreviews}
           isLoading={isLoading}
+          onOpenIdModal={() => setIsIdModalOpen(true)}
           thinkingMode={thinkingMode}
           thinkingBudgetTokens={thinkingBudgetTokens}
+          modelId={modelId}
+          availableModels={availableModels}
+          setModelId={setModelId}
           setHistoryText={setHistoryText}
           setCurrentInput={setCurrentInput}
           setThinkingMode={setThinkingMode}
@@ -470,6 +548,17 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
         onScenarioTypeChange={feedback.setScenarioType}
         onRemarkChange={feedback.setRemark}
         onSubmit={handleSubmitFeedback}
+      />
+
+      <GroupInviteIdModal
+        isOpen={isIdModalOpen}
+        value={{ userId, botUserId, botImId }}
+        onClose={() => setIsIdModalOpen(false)}
+        onSave={(nextValue) => {
+          setUserId(nextValue.userId);
+          setBotUserId(nextValue.botUserId);
+          setBotImId(nextValue.botImId);
+        }}
       />
 
       {/* 红包雨特效 - 反馈成功时触发 */}

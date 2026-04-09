@@ -118,6 +118,20 @@ export class GroupMembershipService {
   }
 
   /**
+   * 主动清理某个群的成员缓存，用于拉群后强制重新校验成员关系。
+   */
+  async invalidateRoomCache(imRoomId: string): Promise<void> {
+    if (!imRoomId) return;
+    const key = this.buildKey(imRoomId);
+    try {
+      await this.redisService.del(key);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`清理群成员缓存失败 (room=${imRoomId}): ${message}`);
+    }
+  }
+
+  /**
    * 预热企业级群成员缓存：一次 API 调用填充白名单内所有群的 Set
    */
   private async hydrateCache(relevantRoomIds: Set<string>, missingRoomId?: string): Promise<void> {

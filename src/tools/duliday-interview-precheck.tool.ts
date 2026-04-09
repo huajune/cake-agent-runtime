@@ -4,10 +4,12 @@ import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { formatLocalDate, getTomorrowDate } from '@infra/utils/date.util';
+import { stripNullish } from '@infra/utils/object.util';
 import { getAvailableEducations } from '@tools/duliday/job-booking.contract';
 import {
   buildJobPolicyAnalysis,
   InterviewWindow,
+  JobPolicyAnalysis,
   normalizePolicyText,
 } from '@tools/duliday/job-policy-parser';
 
@@ -19,7 +21,8 @@ const inputSchema = z.object({
     .string()
     .optional()
     .describe(
-      '候选人想约的日期。支持 today、tomorrow、今天、明天、后天、本周X、下周X、4月12日、YYYY-MM-DD',
+      '仅当候选人在对话中明确说出想约的具体日期时才传入。候选人只是泛泛询问"什么时候能面试"时不要传。' +
+        '支持 today、tomorrow、今天、明天、后天、本周X、下周X、4月12日、YYYY-MM-DD。',
     ),
 });
 
@@ -37,21 +40,18 @@ const FIELD_ORDER = [
   '应聘岗位',
 ];
 
+const TEMPLATE_CORE_FIELDS = ['姓名', '联系电话', '性别', '年龄', '应聘门店'];
+
 const FIELD_LABELS: Record<string, string> = {
   联系电话: '联系方式',
   健康证情况: '健康证',
 };
 
-const GENDER_ENUM_HINTS = [
-  { id: 1, label: '男' },
-  { id: 2, label: '女' },
-];
+const GENDER_ENUM_HINTS = ['男', '女'];
 
-const HEALTH_CERT_ENUM_HINTS = [
-  { id: 1, label: '有' },
-  { id: 2, label: '无但接受办理健康证' },
-  { id: 3, label: '无且不接受办理健康证' },
-];
+const HEALTH_CERT_ENUM_HINTS = ['有', '无但接受办理健康证', '无且不接受办理健康证'];
+
+const SHORT_WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
 
 function normalizeRequestedDate(input?: string): {
   date: string | null;
@@ -441,24 +441,18 @@ function formatTemplateFieldLabel(field: string): string {
 function buildChecklistTemplate(params: {
   requiredFields: string[];
   knownFieldMap: Record<string, string>;
-  storeName?: string;
-  jobName?: string;
 }): { displayOrder: string[]; missingFields: string[]; templateText: string } {
   const requiredFields = dedupeStrings(params.requiredFields);
   const requiredDisplayOrder = orderFields(requiredFields);
+  const dynamicFields = orderFields(
+    requiredDisplayOrder.filter((field) => !TEMPLATE_CORE_FIELDS.includes(field)),
+  );
+  const displayOrder = [...TEMPLATE_CORE_FIELDS, ...dynamicFields];
 
-  const contextFields = ['应聘门店', '应聘岗位'].filter((field) => {
-    if (requiredDisplayOrder.includes(field)) return false;
-    if (field === '应聘门店') return Boolean(normalizePolicyText(params.storeName));
-    if (field === '应聘岗位') return Boolean(normalizePolicyText(params.jobName));
-    return false;
-  });
-  const displayOrder = [...requiredDisplayOrder, ...contextFields];
-
-  const missingFields = requiredDisplayOrder.filter((field) => !params.knownFieldMap[field]);
+  const missingFields = displayOrder.filter((field) => !params.knownFieldMap[field]);
 
   const lines = [
-    '面试模板：',
+    '面试模版：',
     '面试要求：先将以下资料补充下发给我，我来帮你约面试',
     ...displayOrder.map((field) => {
       const value = params.knownFieldMap[field] ?? '';
@@ -473,113 +467,195 @@ function buildChecklistTemplate(params: {
   };
 }
 
-function buildTimeOption(
-  date: string,
-  window: InterviewWindow,
-): {
-  date: string;
-  weekday: string;
-  startTime: string;
-  endTime: string;
-  bookingDeadline: string | null;
-  label: string;
-} {
-  const weekday = getShanghaiWeekday(date).replace('每周', '周');
-  const bookingDeadline = resolveBookingDeadlineDateTime(date, window);
-  const label = bookingDeadline
-    ? `${date} ${weekday} ${window.startTime}-${window.endTime}（报名截止 ${bookingDeadline}）`
-    : `${date} ${weekday} ${window.startTime}-${window.endTime}`;
+/**
+ * 生成未来 horizonDays 天内实际可约的面试时段（扁平 label 数组），不受 requestedDate 影响。
+ * - 过滤已过报名截止的时段
+ * - 今日时段会标注"今日"
+ * - 上限 maxOptions 条
+ */
+function buildUpcomingTimeOptions(
+  windows: InterviewWindow[],
+  horizonDays = 7,
+  maxOptions = 10,
+): string[] {
+  if (windows.length === 0) return [];
 
-  return {
-    date,
-    weekday,
-    startTime: window.startTime,
-    endTime: window.endTime,
-    bookingDeadline,
-    label,
+  const now = new Date();
+  const today = formatLocalDate(now);
+  const nowTime = formatShanghaiTime(now);
+  const nowDateTime = `${today} ${nowTime}`;
+
+  type Option = {
+    date: string;
+    startTime: string;
+    endTime: string;
+    deadline: string | null;
+    label: string;
   };
-}
-
-function buildCandidateTimeOptions(params: {
-  windows: InterviewWindow[];
-  requestedDate: string | null;
-  horizonDays?: number;
-  maxOptions?: number;
-}): Array<{
-  date: string;
-  weekday: string;
-  startTime: string;
-  endTime: string;
-  bookingDeadline: string | null;
-  label: string;
-}> {
-  const { windows, requestedDate, horizonDays = 14, maxOptions = 12 } = params;
-  const today = formatLocalDate(new Date());
-  const options: Array<{
-    date: string;
-    weekday: string;
-    startTime: string;
-    endTime: string;
-    bookingDeadline: string | null;
-    label: string;
-  }> = [];
-
-  if (requestedDate) {
-    for (const window of windows) {
-      if (window.date && window.date !== requestedDate) continue;
-      if (window.weekday && window.weekday !== getShanghaiWeekday(requestedDate)) continue;
-      options.push(buildTimeOption(requestedDate, window));
-    }
-    return dedupeTimeOptions(options);
-  }
-
-  for (const window of windows) {
-    if (window.date && window.date >= today) {
-      options.push(buildTimeOption(window.date, window));
-      continue;
-    }
-
-    if (!window.weekday) continue;
-    for (let i = 0; i <= horizonDays; i += 1) {
-      const candidateDate = shiftDate(today, i);
-      if (window.weekday !== getShanghaiWeekday(candidateDate)) continue;
-      options.push(buildTimeOption(candidateDate, window));
-    }
-  }
-
-  return dedupeTimeOptions(options)
-    .sort((a, b) =>
-      a.date === b.date ? compareTime(a.startTime, b.startTime) : a.date.localeCompare(b.date),
-    )
-    .slice(0, maxOptions);
-}
-
-function dedupeTimeOptions(
-  options: Array<{
-    date: string;
-    weekday: string;
-    startTime: string;
-    endTime: string;
-    bookingDeadline: string | null;
-    label: string;
-  }>,
-): Array<{
-  date: string;
-  weekday: string;
-  startTime: string;
-  endTime: string;
-  bookingDeadline: string | null;
-  label: string;
-}> {
+  const options: Option[] = [];
   const seen = new Set<string>();
-  const result: typeof options = [];
-  for (const option of options) {
-    const key = `${option.date}|${option.startTime}|${option.endTime}|${option.bookingDeadline ?? ''}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push(option);
+
+  for (let i = 0; i < horizonDays; i += 1) {
+    const date = shiftDate(today, i);
+    const weekday = getShanghaiWeekday(date);
+
+    for (const window of windows) {
+      if (window.date && window.date !== date) continue;
+      if (!window.date && window.weekday && window.weekday !== weekday) continue;
+      if (!window.date && !window.weekday) continue;
+
+      const deadline = resolveBookingDeadlineDateTime(date, window);
+      if (deadline && nowDateTime.localeCompare(deadline) > 0) continue;
+
+      const key = `${date}|${window.startTime}|${window.endTime}|${deadline ?? ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const weekdayShort = weekday.replace('每周', '周');
+      const isToday = date === today;
+      const deadlineText = deadline
+        ? isToday
+          ? `报名截止 ${deadline.slice(11)}` // 今日只保留 HH:mm
+          : `报名截止 ${deadline}`
+        : '';
+      const todayTag = isToday ? '今日' : '';
+      const suffixParts = [todayTag, deadlineText].filter(Boolean);
+      const suffix = suffixParts.length > 0 ? `（${suffixParts.join('，')}）` : '';
+
+      options.push({
+        date,
+        startTime: window.startTime,
+        endTime: window.endTime,
+        deadline,
+        label: `${date} ${weekdayShort} ${window.startTime}-${window.endTime}${suffix}`,
+      });
+    }
   }
+
+  options.sort((a, b) =>
+    a.date === b.date ? compareTime(a.startTime, b.startTime) : a.date.localeCompare(b.date),
+  );
+
+  return options.slice(0, maxOptions).map((option) => option.label);
+}
+
+/**
+ * 将周期性面试窗口压缩为人类可读的规则总结。
+ * - 同 startTime/endTime/deadline 的窗口按 weekday 合并
+ * - 连续 3 天以上用"周一至周五"表示，否则用"周一、三、五"
+ * - 固定日期窗口不纳入规则总结（由 upcomingTimeOptions 表达）
+ * - 没有任何周期性窗口时返回空字符串
+ */
+function buildScheduleRule(windows: InterviewWindow[]): string {
+  const periodic = windows.filter((window) => window.weekday);
+  if (periodic.length === 0) return '';
+
+  const groups = new Map<
+    string,
+    { windows: InterviewWindow[]; startTime: string; endTime: string }
+  >();
+  for (const window of periodic) {
+    const key = [
+      window.startTime,
+      window.endTime,
+      window.fixedDeadline ?? '',
+      window.cycleDeadlineDay ?? '',
+      window.cycleDeadlineEnd ?? '',
+    ].join('|');
+    if (!groups.has(key)) {
+      groups.set(key, { windows: [], startTime: window.startTime, endTime: window.endTime });
+    }
+    groups.get(key)!.windows.push(window);
+  }
+
+  const parts: string[] = [];
+  for (const group of groups.values()) {
+    const weekdayStr = formatWeekdayList(group.windows.map((window) => window.weekday || ''));
+    if (!weekdayStr) continue;
+    const timeStr = `${group.startTime}-${group.endTime}`;
+    const deadlineClause = formatDeadlineClause(group.windows[0]);
+    parts.push(
+      deadlineClause ? `${weekdayStr} ${timeStr}，${deadlineClause}` : `${weekdayStr} ${timeStr}`,
+    );
+  }
+
+  return parts.join('；');
+}
+
+function formatWeekdayList(weekdays: string[]): string {
+  const indices = Array.from(
+    new Set(
+      weekdays
+        .map((weekday) => {
+          const match = weekday.match(/[一二三四五六日天]/);
+          if (!match) return -1;
+          const char = match[0] === '天' ? '日' : match[0];
+          return SHORT_WEEKDAYS.indexOf(char);
+        })
+        .filter((index) => index >= 0),
+    ),
+  ).sort((a, b) => a - b);
+
+  if (indices.length === 0) return '';
+
+  const isConsecutive = indices.every((value, i) => i === 0 || value === indices[i - 1] + 1);
+  if (indices.length >= 3 && isConsecutive) {
+    return `周${SHORT_WEEKDAYS[indices[0]]}至周${SHORT_WEEKDAYS[indices[indices.length - 1]]}`;
+  }
+
+  return `周${indices.map((index) => SHORT_WEEKDAYS[index]).join('、')}`;
+}
+
+function formatDeadlineClause(window: InterviewWindow): string {
+  if (window.fixedDeadline) return `截止 ${window.fixedDeadline}`;
+  const dayLabel = normalizePolicyText(window.cycleDeadlineDay);
+  const endTime = normalizePolicyText(window.cycleDeadlineEnd);
+  if (dayLabel && endTime) return `${dayLabel} ${endTime} 前报名`;
+  return '';
+}
+
+/**
+ * 从岗位分析结果构造岗位硬性筛选条件，只保留有值的字段。
+ */
+function buildScreeningCriteria(analysis: JobPolicyAnalysis): Record<string, string> {
+  const req = analysis.normalizedRequirements;
+  const result: Record<string, string> = {};
+
+  if (req.genderRequirement && req.genderRequirement !== '不限') {
+    result.gender = req.genderRequirement;
+  }
+  if (req.ageRequirement && req.ageRequirement !== '不限') {
+    result.age = req.ageRequirement;
+  }
+  if (req.educationRequirement && req.educationRequirement !== '不限') {
+    result.education = req.educationRequirement;
+  }
+  if (req.healthCertificateRequirement && req.healthCertificateRequirement !== '未明确要求') {
+    result.healthCertificate = req.healthCertificateRequirement;
+  }
+
+  const studentSignal = analysis.fieldGuidance.fieldSignals.find(
+    (signal) => signal.field === '是否学生',
+  );
+  if (studentSignal?.evidence) {
+    result.isStudent = studentSignal.evidence;
+  }
+
+  if (req.remark) result.remark = req.remark;
+  if (req.interviewRemark) result.interviewRemark = req.interviewRemark;
+
   return result;
+}
+
+/**
+ * 只返回 missingFields 里涉及字段的枚举提示，避免 LLM 已知时还要看全量枚举。
+ */
+function buildEnumHintsForMissing(missingFields: string[]): Record<string, string[]> {
+  const hints: Record<string, string[]> = {};
+  if (missingFields.includes('性别')) hints.gender = [...GENDER_ENUM_HINTS];
+  if (missingFields.includes('健康证情况')) hints.healthCertificate = [...HEALTH_CERT_ENUM_HINTS];
+  if (missingFields.includes('学历')) hints.education = getAvailableEducations();
+  return hints;
 }
 
 function evaluateRequestedDate(params: {
@@ -596,6 +672,7 @@ function evaluateRequestedDate(params: {
     | 'no_matching_schedule'
     | 'after_booking_deadline'
     | 'future_schedule_match'
+    | 'same_day_before_window'
     | 'same_day_after_latest_window'
     | 'same_day_window_requires_confirmation';
 } {
@@ -678,6 +755,24 @@ function evaluateRequestedDate(params: {
     };
   }
 
+  // 如果所有有效窗口都尚未开始（now < 最早 startTime），且之前已通过报名截止检查，
+  // 则今日仍可预约，直接返回 available，不让 LLM 生成暧昧话术。
+  const earliestStart = effectiveWindows
+    .map((window) => window.startTime)
+    .filter(Boolean)
+    .sort((a, b) => compareTime(a, b))[0];
+
+  if (earliestStart && compareTime(nowTime, earliestStart) < 0) {
+    return {
+      status: 'available',
+      canSchedule: true,
+      matchedWindows: effectiveWindows,
+      reason: `今天还可以预约面试（最早时段 ${earliestStart} 开始）`,
+      policyNotes: [...basePolicyNotes],
+      decisionBasis: 'same_day_before_window',
+    };
+  }
+
   return {
     status: 'needs_confirmation',
     canSchedule: null,
@@ -692,7 +787,7 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
   return (context) =>
     tool({
       description:
-        '面试前置校验。根据岗位 ID 读取真实招聘要求和面试流程，返回：今天/指定日期能不能约、可约时段、报名截止时间是否已过、备注解析后的字段建议与规则重点。这个工具负责解释岗位规则，不负责真正提交预约。',
+        '面试前置校验。返回岗位的面试周期规则（scheduleRule）、未来一周可约时段示例（upcomingTimeOptions）、岗位硬性筛选条件（screeningCriteria）、预约所需字段清单和可直接发送的话术模板（bookingChecklist）。如果候选人已经明确提出想约某一天，可以额外传入 requestedDate 让工具单独判定那一天是否可约，但不会影响 upcomingTimeOptions 的内容。这个工具负责解释岗位规则，不负责真正提交预约。',
       inputSchema,
       execute: async ({ jobId, requestedDate }) => {
         logger.log(`面试前置校验: jobId=${jobId}, requestedDate=${requestedDate ?? 'none'}`);
@@ -733,16 +828,8 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
             ? evaluateRequestedDate({
                 date: normalizedDate.date,
                 windows,
-                basePolicyNotes: analysis.highlights.timingHighlights,
               })
-            : {
-                status: 'needs_confirmation' as const,
-                canSchedule: null,
-                matchedWindows: windows,
-                reason: '未指定日期，仅返回岗位面试规则与字段建议',
-                policyNotes: [...analysis.highlights.timingHighlights],
-                decisionBasis: 'date_not_provided' as const,
-              };
+            : null;
 
           const storeInfo = job.basicInfo?.storeInfo ?? null;
           const storeName =
@@ -764,30 +851,39 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
           const checklist = buildChecklistTemplate({
             requiredFields,
             knownFieldMap,
-            storeName,
-            jobName,
           });
 
-          const candidateTimeOptions = buildCandidateTimeOptions({
-            windows,
-            requestedDate: normalizedDate.date,
-          });
+          const upcomingTimeOptions = buildUpcomingTimeOptions(windows);
+          const scheduleRule = buildScheduleRule(windows);
+          const screeningCriteria = buildScreeningCriteria(analysis);
+          const enumHints = buildEnumHintsForMissing(checklist.missingFields);
 
           const nextAction:
             | 'collect_fields'
             | 'confirm_date'
             | 'date_unavailable'
             | 'ready_to_book' =
-            requestedDateCheck.status === 'unavailable'
+            requestedDateCheck?.status === 'unavailable'
               ? 'date_unavailable'
               : checklist.missingFields.length > 0
                 ? 'collect_fields'
-                : !normalizedDate.date || requestedDateCheck.status === 'needs_confirmation'
+                : !requestedDateCheck || requestedDateCheck.status === 'needs_confirmation'
                   ? 'confirm_date'
                   : 'ready_to_book';
 
-          return {
+          // 内部中间态仅写入 debug 日志，不回传给 LLM
+          logger.debug(
+            JSON.stringify({
+              jobId,
+              scheduleWindows: windows,
+              fieldSignals: analysis.fieldGuidance.fieldSignals,
+              requestedDateDecisionBasis: requestedDateCheck?.decisionBasis ?? null,
+            }),
+          );
+
+          return stripNullish({
             success: true,
+            nextAction,
             job: {
               jobId,
               brandName: normalizePolicyText(job.basicInfo.brandName),
@@ -797,49 +893,23 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
             interview: {
               method: analysis.interviewMeta.method,
               address: analysis.interviewMeta.address,
-              demand: analysis.interviewMeta.demand,
-              timeHint: analysis.interviewMeta.timeHint,
-              registrationDeadlineHint: analysis.interviewMeta.registrationDeadlineHint,
-              scheduleWindows: windows,
-              candidateTimeOptions,
-              requestedDateInput: requestedDate ?? null,
-              normalizedRequestedDate: normalizedDate.date,
-              requestedDate: normalizedDate.date,
-              requestedDateStatus: requestedDateCheck.status,
-              canScheduleOnRequestedDate: requestedDateCheck.canSchedule,
-              requestedDateReason: requestedDateCheck.reason,
-              requestedDateMatchedWindows: requestedDateCheck.matchedWindows,
-              requestedDateDecisionBasis: requestedDateCheck.decisionBasis,
-              policyNotes: requestedDateCheck.policyNotes,
+              scheduleRule,
+              upcomingTimeOptions,
+              requestedDate: requestedDateCheck
+                ? {
+                    value: normalizedDate.date,
+                    status: requestedDateCheck.status,
+                    reason: requestedDateCheck.reason,
+                  }
+                : null,
             },
-            nextAction,
-            requirements: analysis.normalizedRequirements,
-            policyHighlights: {
-              requirementHighlights: analysis.highlights.requirementHighlights,
-              timingHighlights: analysis.highlights.timingHighlights,
-            },
-            fieldGuidance: {
-              ...analysis.fieldGuidance,
-              fieldSignals: analysis.fieldGuidance.fieldSignals,
-              enumHints: {
-                genderId: GENDER_ENUM_HINTS,
-                hasHealthCertificate: HEALTH_CERT_ENUM_HINTS,
-                education: getAvailableEducations(),
-              },
-              sourceSummary: dedupeStrings(
-                analysis.fieldGuidance.fieldSignals.map(
-                  (signal) => `${signal.field} <- ${signal.sourceField}`,
-                ),
-              ),
-            },
+            screeningCriteria,
             bookingChecklist: {
-              requiredFields,
               missingFields: checklist.missingFields,
-              displayOrder: checklist.displayOrder,
-              knownFieldMap,
               templateText: checklist.templateText,
+              enumHints,
             },
-          };
+          });
         } catch (err) {
           logger.error('面试前置校验失败', err);
           return {

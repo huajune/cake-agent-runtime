@@ -40,6 +40,11 @@ export interface AgentInvokeParams {
   botUserId?: string;
   /** 当前与候选人聊天的托管账号系统 wxid（拉群时作为 imBotId） */
   botImId?: string;
+  /**
+   * 覆盖本次调用使用的聊天模型 ID（provider/model 格式）
+   * 为空时回退到 AGENT_CHAT_MODEL 角色路由。
+   */
+  modelId?: string;
 }
 
 export interface AgentToolCall {

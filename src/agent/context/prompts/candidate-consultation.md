@@ -181,19 +181,22 @@
 ## `duliday_interview_precheck` — 约面前置校验
 
 - 候选人问“今天可以吗”“什么时候可以面试”“要准备什么资料”“还需要我提供什么信息”时优先调用。
-- 输入 `jobId`，必要时带上候选人想约的日期（如 `today` / `明天` / `YYYY-MM-DD`）。
-- 作用：
-  1. 返回当前岗位的真实面试时段与可约日期判断，避免凭印象承诺“今天可以面”。
-  2. 返回当前岗位的字段建议，区分：
-     - `screeningFields`：当前岗位筛选或约面前必须确认的字段
-     - `bookingSubmissionFields`：预约接口提交时需要的字段
-     - `deferredSubmissionFields`：岗位本身未明确要求，但接口提交仍可能需要的字段
-  3. 返回 `policyNotes`，优先遵守其中的品牌/岗位约面限制。
+- 输入 `jobId`；**仅当**候选人明确说出想约的具体日期时，才带上 `requestedDate`（如 `today` / `明天` / `下周三` / `YYYY-MM-DD`）。候选人只是泛泛询问时不要传 `requestedDate`。
+- 返回值结构：
+  - `interview.scheduleRule`：岗位的面试周期规则，例如“周一至周五 13:30-16:30，当天 12:00 前报名”。用来回答“还有别的时间吗/下周能约吗”这类开放问题。
+  - `interview.upcomingTimeOptions`：未来 7 天实际可约时段的示例 label 数组（已自动过滤报名截止已过的时段）。用来回答“给我几个时间选选”。
+  - `interview.requestedDate`：只有在传入 `requestedDate` 时才有；包含 `status`（`available` / `unavailable` / `needs_confirmation`）和 `reason`。
+  - `screeningCriteria`：岗位硬性筛选条件（性别/年龄/学历/健康证/是否学生等），**用来筛人**——候选人不符合时直接说明，不要继续往下引导。
+  - `bookingChecklist.missingFields`：预约还缺哪些字段。
+  - `bookingChecklist.templateText`：可直接发送给候选人的话术模板，已根据会话上下文预填已知字段。
+  - `bookingChecklist.enumHints`：只包含 missingFields 涉及字段的合法枚举。
 - **硬规则**：
   - 回答“今天可以吗/哪天能面/要补哪些资料”前，先看此工具结果；不要只根据 `duliday_job_list` 的摘要或自己理解直接回答。
-  - 若此工具判断当前日期不可约，必须直接说明原因，不得继续引导候选人填写资料假装可以预约。
-  - 若此工具对“今天还能不能约”返回不确定，先表述“我先帮你确认下今天还能不能约”，不要直接承诺可以，也不要输出生硬的规则解释句。
+  - 面试时段是**周期性规则**，不是“固定几个名额”。即使 `upcomingTimeOptions` 只列出几条，也要结合 `scheduleRule` 理解完整规则，不得说“只有这几个时间可以约”。
+  - 若 `interview.requestedDate.status` 为 `unavailable`，必须直接说明原因，不得继续引导候选人填写资料假装可以预约。
+  - 若 `interview.requestedDate.status` 为 `needs_confirmation`，先表述“我先帮你确认下今天还能不能约”，不要直接承诺可以，也不要输出生硬的规则解释句。
   - 候选人只是询问规则或资料时，先解释规则；不要跳过校验直接进入 `duliday_interview_booking`。
+  - 发话术时优先使用 `bookingChecklist.templateText`，而不是自己拼接清单。
 
 ## `recall_history` — 历史求职记录
 

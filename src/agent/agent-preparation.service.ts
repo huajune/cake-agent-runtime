@@ -61,6 +61,7 @@ export class AgentPreparationService {
       imageMessageIds,
       botUserId,
       botImId,
+      modelId: overrideModelId,
     } = params;
 
     this.logger.log(
@@ -89,8 +90,15 @@ export class AgentPreparationService {
 
     // 3. 安全检查，并统一转换成 ModelMessage。
     const guardResult = this.inputGuard.detectMessages(messages);
-    const chatModel = this.router.resolveByRole(ModelRole.Chat);
-    const chatModelId = this.configService.get<string>('AGENT_CHAT_MODEL') || '';
+    const trimmedOverrideModelId = overrideModelId?.trim();
+    const chatModel = trimmedOverrideModelId
+      ? this.router.resolve(trimmedOverrideModelId)
+      : this.router.resolveByRole(ModelRole.Chat);
+    const chatModelId =
+      trimmedOverrideModelId ?? this.configService.get<string>('AGENT_CHAT_MODEL') ?? '';
+    if (trimmedOverrideModelId) {
+      this.logger.log(`使用用户指定模型: ${trimmedOverrideModelId}`);
+    }
     const typedMessages = this.toModelMessages(messages, supportsVision(chatModelId));
 
     // 4. 先把长期记忆和会话记忆渲染成统一记忆块。
@@ -150,6 +158,9 @@ export class AgentPreparationService {
       },
       botUserId,
       botImId,
+      strategySource:
+        params.strategySource ??
+        (corpId === 'test' || corpId === 'debug' ? ('testing' as const) : undefined),
       profile: memory.longTerm.profile,
       sessionFacts: memory.sessionMemory?.facts ?? null,
     };
@@ -213,53 +224,64 @@ export class AgentPreparationService {
     }
 
     if (state.lastCandidatePool?.length) {
-      const jobLines = state.lastCandidatePool.map((j, i) => {
-        const parts = [
-          `${i + 1}. [jobId:${j.jobId}]`,
-          `品牌:${j.brandName ?? ''} - 岗位:${j.jobName ?? ''}`,
-        ];
-        if (j.storeName) parts.push(`门店:${j.storeName}`);
-        if (j.cityName || j.regionName) {
-          parts.push(`地区:${[j.cityName, j.regionName].filter(Boolean).join('')}`);
-        }
-        if (j.laborForm) parts.push(`用工:${j.laborForm}`);
-        if (j.salaryDesc) parts.push(`薪资:${j.salaryDesc}`);
-        return parts.join(' | ');
-      });
+      const jobLines = state.lastCandidatePool.map((j, i) => this.formatJobMemoryLine(j, i + 1));
       sections.push(`## 上轮候选岗位池\n${jobLines.join('\n')}`);
     }
 
     if (state.presentedJobs?.length) {
-      const jobLines = state.presentedJobs.map((j, i) => {
-        const parts = [
-          `${i + 1}. [jobId:${j.jobId}]`,
-          `品牌:${j.brandName ?? ''} - 岗位:${j.jobName ?? ''}`,
-        ];
-        if (j.storeName) parts.push(`门店:${j.storeName}`);
-        if (j.cityName || j.regionName) {
-          parts.push(`地区:${[j.cityName, j.regionName].filter(Boolean).join('')}`);
-        }
-        if (j.laborForm) parts.push(`用工:${j.laborForm}`);
-        if (j.salaryDesc) parts.push(`薪资:${j.salaryDesc}`);
-        return parts.join(' | ');
-      });
+      const jobLines = state.presentedJobs.map((j, i) => this.formatJobMemoryLine(j, i + 1));
       sections.push(`## 最近已展示岗位\n${jobLines.join('\n')}`);
     }
 
     if (state.currentFocusJob) {
-      const j = state.currentFocusJob;
-      const parts = [`[jobId:${j.jobId}]`, `品牌:${j.brandName ?? ''} - 岗位:${j.jobName ?? ''}`];
-      if (j.storeName) parts.push(`门店:${j.storeName}`);
-      if (j.cityName || j.regionName) {
-        parts.push(`地区:${[j.cityName, j.regionName].filter(Boolean).join('')}`);
-      }
-      if (j.laborForm) parts.push(`用工:${j.laborForm}`);
-      if (j.salaryDesc) parts.push(`薪资:${j.salaryDesc}`);
-      sections.push(`## 当前焦点岗位\n${parts.join(' | ')}`);
+      sections.push(`## 当前焦点岗位\n${this.formatJobMemoryLine(state.currentFocusJob)}`);
     }
 
     if (sections.length === 0) return '';
     return `\n\n[会话记忆]\n\n${sections.join('\n\n')}`;
+  }
+
+  private formatJobMemoryLine(job: RecommendedJobSummary, index?: number): string {
+    const head = index ? `${index}. [jobId:${job.jobId}]` : `[jobId:${job.jobId}]`;
+    const parts = [head, `品牌:${job.brandName ?? ''} - 岗位:${job.jobName ?? ''}`];
+
+    if (job.storeName) parts.push(`门店:${job.storeName}`);
+    if (job.storeAddress) parts.push(`地址:${job.storeAddress}`);
+    if (job.cityName || job.regionName) {
+      parts.push(`地区:${[job.cityName, job.regionName].filter(Boolean).join('')}`);
+    }
+    if (job.distanceKm != null) parts.push(`距离:${job.distanceKm.toFixed(1)}km`);
+    if (job.laborForm) parts.push(`用工:${job.laborForm}`);
+    if (job.salaryDesc) parts.push(`薪资:${job.salaryDesc}`);
+
+    const bookingConstraint = this.formatBookingConstraint(job);
+    if (bookingConstraint) parts.push(`约面要求:${bookingConstraint}`);
+
+    return parts.join(' | ');
+  }
+
+  private formatBookingConstraint(job: RecommendedJobSummary): string | null {
+    const constraints: string[] = [];
+
+    if (job.ageRequirement && job.ageRequirement !== '不限') {
+      constraints.push(`年龄${job.ageRequirement}`);
+    }
+    if (job.educationRequirement && job.educationRequirement !== '不限') {
+      constraints.push(`学历${job.educationRequirement}`);
+    }
+    if (
+      job.healthCertificateRequirement &&
+      job.healthCertificateRequirement !== '未明确要求' &&
+      job.healthCertificateRequirement !== '不限'
+    ) {
+      constraints.push(`健康证${job.healthCertificateRequirement}`);
+    }
+    if (job.studentRequirement) {
+      constraints.push(`学生${job.studentRequirement}`);
+    }
+
+    if (constraints.length === 0) return null;
+    return constraints.join('，');
   }
 
   /** 转成 AI SDK 的 ModelMessage，并兼容图片回退文本。 */

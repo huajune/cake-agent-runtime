@@ -150,6 +150,16 @@ export class VercelAIChatRequestDto {
   @IsString()
   userId?: string;
 
+  @ApiPropertyOptional({ description: '托管账号企微 userId（拉群时作为 botUserId）' })
+  @IsOptional()
+  @IsString()
+  botUserId?: string;
+
+  @ApiPropertyOptional({ description: '托管账号系统 wxid（拉群时作为 imBotId）' })
+  @IsOptional()
+  @IsString()
+  botImId?: string;
+
   @ApiPropertyOptional({ description: '扩展思考配置（AI SDK extended thinking）' })
   @IsOptional()
   @ValidateNested()
@@ -161,6 +171,13 @@ export class VercelAIChatRequestDto {
   @IsArray()
   @IsString({ each: true })
   imageUrls?: string[];
+
+  @ApiPropertyOptional({
+    description: '覆盖聊天模型 ID（provider/model 格式），缺省走角色路由',
+  })
+  @IsOptional()
+  @IsString()
+  modelId?: string;
 }
 
 /**
@@ -234,6 +251,16 @@ export class TestChatRequestDto {
   @IsString()
   userId?: string;
 
+  @ApiPropertyOptional({ description: '托管账号企微 userId（拉群时作为 botUserId）' })
+  @IsOptional()
+  @IsString()
+  botUserId?: string;
+
+  @ApiPropertyOptional({ description: '托管账号系统 wxid（拉群时作为 imBotId）' })
+  @IsOptional()
+  @IsString()
+  botImId?: string;
+
   @ApiPropertyOptional({ description: '扩展思考配置（AI SDK extended thinking）' })
   @IsOptional()
   @ValidateNested()
@@ -245,6 +272,30 @@ export class TestChatRequestDto {
   @IsArray()
   @IsString({ each: true })
   imageUrls?: string[];
+
+  @ApiPropertyOptional({
+    description: '覆盖聊天模型 ID（provider/model 格式），缺省走角色路由',
+  })
+  @IsOptional()
+  @IsString()
+  modelId?: string;
+}
+
+/**
+ * 重置会话请求 DTO（用于 agent-test 清理长期记忆）
+ */
+export class ResetChatSessionRequestDto {
+  @ApiProperty({ description: '当前测试会话使用的 userId（用于定位长期画像）' })
+  @IsString()
+  userId: string;
+
+  @ApiPropertyOptional({
+    description: '企业 ID，缺省使用 test',
+    default: 'test',
+  })
+  @IsOptional()
+  @IsString()
+  corpId?: string;
 }
 
 /**

@@ -164,6 +164,65 @@ describe('AgentPreparationService', () => {
     ]);
   });
 
+  it('should include enriched job memory fields in prompt block', async () => {
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      shortTerm: {
+        messageWindow: [{ role: 'user', content: '我想约面' }],
+      },
+      sessionMemory: {
+        facts: {
+          ...FALLBACK_EXTRACTION,
+          preferences: { ...FALLBACK_EXTRACTION.preferences, city: '上海' },
+        },
+        lastCandidatePool: [
+          {
+            jobId: 527349,
+            brandName: '瑞幸',
+            jobName: '店员',
+            storeName: '陆家嘴店',
+            storeAddress: '上海市浦东新区世纪大道100号',
+            cityName: '上海',
+            regionName: '浦东新区',
+            laborForm: '兼职',
+            salaryDesc: '25元/小时',
+            jobCategoryName: '餐饮',
+            distanceKm: 1.3,
+            ageRequirement: '18-35岁',
+            educationRequirement: '高中及以上',
+            healthCertificateRequirement: '需健康证',
+            studentRequirement: '不接受学生',
+          },
+        ],
+        presentedJobs: null,
+        currentFocusJob: null,
+      },
+      highConfidenceFacts: null,
+      longTerm: { profile: { name: '张三' } },
+      procedural: {
+        currentStage: 'job_consultation',
+        fromStage: null,
+        advancedAt: null,
+        reason: null,
+      },
+    });
+
+    const result = await service.prepare(
+      {
+        userMessage: '我想约面',
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    expect(result.finalPrompt).toContain('距离:1.3km');
+    expect(result.finalPrompt).toContain('地址:上海市浦东新区世纪大道100号');
+    expect(result.finalPrompt).toContain(
+      '约面要求:年龄18-35岁，学历高中及以上，健康证需健康证，学生不接受学生',
+    );
+  });
+
   it('should trim passed messages when they exceed max chars', async () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: {

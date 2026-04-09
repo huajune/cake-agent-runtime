@@ -37,6 +37,8 @@ export interface ToolBuildContext {
   botUserId?: string;
   /** 当前与候选人聊天的托管账号系统 wxid（企业级 addMember 的 imBotId） */
   botImId?: string;
+  /** 策略来源：testing 链路默认禁用外部副作用工具（如真实拉群）。 */
+  strategySource?: 'released' | 'testing';
   /** 长期记忆中的用户档案（姓名/电话/性别/年龄/学历/健康证） */
   profile?: UserProfile | null;
   /** 当前会话已提取事实（用于工具判断已知/缺失字段） */

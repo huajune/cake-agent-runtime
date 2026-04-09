@@ -21,11 +21,21 @@ const logger = new Logger('duliday_interview_booking');
 
 export interface InterviewBookingNotificationInfo {
   candidateName: string;
+  phone: string;
+  genderLabel?: string;
+  ageText?: string;
   brandName?: string;
   storeName?: string;
+  jobName?: string;
+  jobId?: number;
   interviewTime: string;
-  contactInfo: string;
   toolOutput: Record<string, unknown>;
+}
+
+interface BookingJobSnapshot {
+  brandName?: string;
+  storeName?: string;
+  jobName?: string;
 }
 
 export function buildInterviewBookingTool(
@@ -126,6 +136,10 @@ export function buildInterviewBookingTool(
           jobId,
           interviewTime,
         };
+        const genderLabel = toGenderLabel(genderId);
+        const ageText = normalizeAgeText(age);
+
+        const jobSnapshotPromise = fetchBookingJobSnapshot(spongeService, jobId);
 
         try {
           const result = await spongeService.bookInterview({
@@ -146,17 +160,23 @@ export function buildInterviewBookingTool(
             requestInfo,
           };
 
-          void sendInterviewBookingNotification(
-            {
-              candidateName: name,
-              contactInfo: phone,
-              interviewTime,
-              brandName: pickString(resultRecord?.brandName),
-              storeName: pickString(resultRecord?.storeName),
-              toolOutput: toolResult,
-            },
-            webhookService,
-            cardBuilder,
+          void jobSnapshotPromise.then((jobSnapshot) =>
+            sendInterviewBookingNotification(
+              {
+                candidateName: name,
+                phone,
+                genderLabel,
+                ageText,
+                interviewTime,
+                brandName: pickString(jobSnapshot?.brandName, resultRecord?.brandName),
+                storeName: pickString(jobSnapshot?.storeName, resultRecord?.storeName),
+                jobName: pickString(jobSnapshot?.jobName, resultRecord?.jobName),
+                jobId,
+                toolOutput: toolResult,
+              },
+              webhookService,
+              cardBuilder,
+            ),
           );
 
           return toolResult;
@@ -169,15 +189,23 @@ export function buildInterviewBookingTool(
             requestInfo,
           };
 
-          void sendInterviewBookingNotification(
-            {
-              candidateName: name,
-              contactInfo: phone,
-              interviewTime,
-              toolOutput: toolResult,
-            },
-            webhookService,
-            cardBuilder,
+          void jobSnapshotPromise.then((jobSnapshot) =>
+            sendInterviewBookingNotification(
+              {
+                candidateName: name,
+                phone,
+                genderLabel,
+                ageText,
+                interviewTime,
+                brandName: jobSnapshot?.brandName,
+                storeName: jobSnapshot?.storeName,
+                jobName: jobSnapshot?.jobName,
+                jobId,
+                toolOutput: toolResult,
+              },
+              webhookService,
+              cardBuilder,
+            ),
           );
 
           return toolResult;
@@ -205,20 +233,23 @@ async function sendInterviewBookingNotification(
       sections.push(`候选人 ${bookingInfo.candidateName} 预约失败，请尽快跟进处理。`);
     }
 
-    sections.push(
-      [
-        `候选人：${bookingInfo.candidateName}`,
-        `联系方式：${maskPhone(bookingInfo.contactInfo)}`,
-      ].join('\n'),
-    );
+    const candidateLines = [
+      `姓名：${bookingInfo.candidateName}`,
+      `电话：${bookingInfo.phone}`,
+      bookingInfo.genderLabel ? `性别：${bookingInfo.genderLabel}` : null,
+      bookingInfo.ageText ? `年龄：${bookingInfo.ageText}` : null,
+    ].filter((line): line is string => Boolean(line));
+    sections.push(`**候选人信息**\n${candidateLines.join('\n')}`);
 
     const interviewLines = [
       bookingInfo.brandName ? `品牌：${bookingInfo.brandName}` : null,
       bookingInfo.storeName ? `门店：${bookingInfo.storeName}` : null,
-      `面试时间：${bookingInfo.interviewTime}`,
+      bookingInfo.jobName ? `面试岗位：${bookingInfo.jobName}` : null,
+      `面试时间：${formatInterviewTimeForDisplay(bookingInfo.interviewTime)}`,
+      bookingInfo.jobId ? `岗位ID：${bookingInfo.jobId}` : null,
       bookingId ? `预约编号：${bookingId}` : null,
     ].filter((line): line is string => Boolean(line));
-    sections.push(`**面试安排**\n${interviewLines.join('\n')}`);
+    sections.push(`**岗位信息**\n${interviewLines.join('\n')}`);
 
     if (isFailure) {
       const resultLines = [
@@ -285,8 +316,52 @@ function toRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
-function maskPhone(phone: string): string {
-  const trimmed = phone.trim();
-  if (!/^\d{11}$/.test(trimmed)) return trimmed;
-  return `${trimmed.slice(0, 3)}****${trimmed.slice(-4)}`;
+function toGenderLabel(genderId: number): string | undefined {
+  if (genderId === 1) return '男';
+  if (genderId === 2) return '女';
+  return undefined;
+}
+
+function normalizeAgeText(age: string): string {
+  const text = age.trim();
+  return /岁$/.test(text) ? text : `${text}岁`;
+}
+
+function formatInterviewTimeForDisplay(value: string): string {
+  const normalized = value.trim();
+  const withSeconds = normalized.match(/^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}):\d{2}$/);
+  if (withSeconds) return withSeconds[1];
+  return normalized;
+}
+
+async function fetchBookingJobSnapshot(
+  spongeService: SpongeService,
+  jobId: number,
+): Promise<BookingJobSnapshot | null> {
+  try {
+    const { jobs } = await spongeService.fetchJobs({
+      jobIdList: [jobId],
+      pageNum: 1,
+      pageSize: 1,
+      options: {
+        includeBasicInfo: true,
+      },
+    });
+    const job = jobs[0];
+    if (!job?.basicInfo) return null;
+
+    const storeInfo = toRecord(job.basicInfo.storeInfo);
+    return {
+      brandName: pickString(job.basicInfo.brandName),
+      storeName: pickString(storeInfo?.storeName, job.basicInfo.storeName),
+      jobName: pickString(job.basicInfo.jobName, job.basicInfo.jobNickName),
+    };
+  } catch (error) {
+    logger.warn(
+      `预约通知补充岗位信息失败(jobId=${jobId}): ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return null;
+  }
 }

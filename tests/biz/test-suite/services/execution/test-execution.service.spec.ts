@@ -139,6 +139,24 @@ describe('TestExecutionService', () => {
       );
     });
 
+    it('should switch to released strategy when bot ids are provided', async () => {
+      mockLoop.invoke.mockResolvedValue(makeSuccessResult());
+
+      await service.executeTest({
+        ...baseRequest,
+        botUserId: 'bot-user-1',
+        botImId: 'im-bot-1',
+      });
+
+      expect(loop.invoke).toHaveBeenCalledWith(
+        expect.objectContaining({
+          strategySource: 'released',
+          botUserId: 'bot-user-1',
+          botImId: 'im-bot-1',
+        }),
+      );
+    });
+
     it('should use default scenario when none is provided', async () => {
       mockLoop.invoke.mockResolvedValue(makeSuccessResult());
 
@@ -242,6 +260,29 @@ describe('TestExecutionService', () => {
       const runnerParams = mockLoop.stream.mock.calls[0][0];
       expect(runnerParams.sessionId).toBe('sess-stream');
       expect(runnerParams).not.toHaveProperty('onFinish');
+    });
+
+    it('should switch stream strategy to released when bot ids are provided', async () => {
+      mockLoop.stream.mockResolvedValue({
+        streamResult: { textStream: {} },
+        entryStage: 'trust_building',
+      } as any);
+
+      await service.executeTestStreamWithMeta({
+        message: 'hello',
+        userId: 'user-1',
+        botUserId: 'bot-user-1',
+        botImId: 'im-bot-1',
+      });
+
+      const runnerParams = mockLoop.stream.mock.calls[0][0];
+      expect(runnerParams).toEqual(
+        expect.objectContaining({
+          strategySource: 'released',
+          botUserId: 'bot-user-1',
+          botImId: 'im-bot-1',
+        }),
+      );
     });
   });
 

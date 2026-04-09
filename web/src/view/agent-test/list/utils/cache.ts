@@ -3,8 +3,11 @@ export interface AgentTestDraftCache {
   currentInput?: string;
   sessionId?: string;
   userId?: string;
+  botUserId?: string;
+  botImId?: string;
   thinkingMode?: 'fast' | 'deep';
   thinkingBudgetTokens?: number;
+  modelId?: string;
 }
 
 export interface HistoryImageCacheEntry {

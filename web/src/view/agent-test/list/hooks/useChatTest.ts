@@ -1,8 +1,14 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type FileUIPart, type UIMessage } from 'ai';
-import { TestChatResponse, SimpleMessage, TokenUsage } from '@/api/services/agent-test.service';
-import { CHAT_API_ENDPOINT, DEFAULT_SCENARIO } from '../constants';
+import {
+  TestChatResponse,
+  SimpleMessage,
+  TokenUsage,
+  resetChatSessionMemory,
+} from '@/api/services/agent-test.service';
+import { getAvailableModels } from '@/api/services/agent.service';
+import { CHAT_API_ENDPOINT, DEFAULT_GROUP_INVITE_IDS, DEFAULT_SCENARIO } from '../constants';
 import { generateUUID } from '@/utils/uuid';
 import {
   markAgentTestStreamEnd,
@@ -48,6 +54,9 @@ export interface UseChatTestReturn {
   latestAssistantMessage: UIMessage | undefined;
   entryStage: string | null;
   currentStage: string | null;
+  userId: string;
+  botUserId: string;
+  botImId: string;
 
   // 图片
   imagePreviews: ImagePreview[];
@@ -56,10 +65,18 @@ export interface UseChatTestReturn {
   thinkingMode: AgentTestThinkingMode;
   thinkingBudgetTokens: number;
 
+  // 模型选择
+  modelId: string;
+  availableModels: string[];
+  setModelId: (modelId: string) => void;
+
   // 操作
   setHistoryText: (text: string) => void;
   setCurrentInput: (text: string) => void;
   setLocalError: (error: string | null) => void;
+  setUserId: (value: string) => void;
+  setBotUserId: (value: string) => void;
+  setBotImId: (value: string) => void;
   setThinkingMode: (mode: AgentTestThinkingMode) => void;
   setThinkingBudgetTokens: (tokens: number) => void;
   handleTest: () => Promise<void>;
@@ -166,6 +183,10 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
   const [thinkingBudgetTokens, setThinkingBudgetTokensState] = useState(
     DEFAULT_DEEP_THINKING_BUDGET_TOKENS,
   );
+
+  // 模型选择（空字符串表示使用后端默认角色路由）
+  const [modelId, setModelId] = useState('');
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
   const setThinkingBudgetTokens = useCallback((tokens: number) => {
     setThinkingBudgetTokensState(clampThinkingBudgetTokens(tokens));
   }, []);
@@ -184,7 +205,9 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
 
   // 会话 ID + 用户 ID：同一对话保持一致，清空聊天时重新生成（确保 Agent API 服务端记忆完全隔离）
   const [sessionId, setSessionId] = useState(() => generateUUID());
-  const [userId, setUserId] = useState(() => `dashboard-test-${generateUUID().slice(0, 8)}`);
+  const [userId, setUserId] = useState<string>(() => DEFAULT_GROUP_INVITE_IDS.userId);
+  const [botUserId, setBotUserId] = useState<string>(() => DEFAULT_GROUP_INVITE_IDS.botUserId);
+  const [botImId, setBotImId] = useState<string>(() => DEFAULT_GROUP_INVITE_IDS.botImId);
 
   // 图片上传
   const [imagePreviews, setImagePreviews] = useState<ImagePreview[]>([]);
@@ -258,9 +281,12 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
       saveExecution: false,
       sessionId,
       userId,
+      botUserId: botUserId.trim() || undefined,
+      botImId: botImId.trim() || undefined,
       thinking: thinkingConfig,
+      modelId: modelId.trim() || undefined,
     }),
-    [sessionId, thinkingConfig, userId],
+    [botImId, botUserId, modelId, sessionId, thinkingConfig, userId],
   );
 
   // Transport 只保留静态配置，动态请求参数在 sendMessage 时传入
@@ -407,6 +433,22 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     if (isStreaming) setResult(null);
   }, [isStreaming]);
 
+  // 加载可用模型列表
+  useEffect(() => {
+    let cancelled = false;
+    getAvailableModels()
+      .then((resp) => {
+        if (cancelled) return;
+        setAvailableModels(resp.availableModels);
+      })
+      .catch(() => {
+        if (!cancelled) setAvailableModels([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // 解析历史记录
   // 格式: [MM/DD HH:mm 用户名] 消息内容
   // 用户名可以是任意字符（候选人、招募经理、或真实姓名如 "自由人"、"LiHanTing"）
@@ -515,18 +557,24 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
         const nextHistoryText = draftCache.historyText ?? '';
         const nextCurrentInput = draftCache.currentInput ?? '';
         const nextSessionId = draftCache.sessionId || generateUUID();
-        const nextUserId = draftCache.userId || `dashboard-test-${generateUUID().slice(0, 8)}`;
+        const nextUserId = draftCache.userId || DEFAULT_GROUP_INVITE_IDS.userId;
+        const nextBotUserId = draftCache.botUserId || DEFAULT_GROUP_INVITE_IDS.botUserId;
+        const nextBotImId = draftCache.botImId || DEFAULT_GROUP_INVITE_IDS.botImId;
         const nextThinkingMode = draftCache.thinkingMode ?? DEFAULT_THINKING_MODE;
         const nextThinkingBudgetTokens = clampThinkingBudgetTokens(
           draftCache.thinkingBudgetTokens ?? DEFAULT_DEEP_THINKING_BUDGET_TOKENS,
         );
+        const nextModelId = draftCache.modelId ?? '';
 
         setHistoryTextState(nextHistoryText);
         setCurrentInputState(nextCurrentInput);
         setSessionId(nextSessionId);
         setUserId(nextUserId);
+        setBotUserId(nextBotUserId);
+        setBotImId(nextBotImId);
         setThinkingMode(nextThinkingMode);
         setThinkingBudgetTokensState(nextThinkingBudgetTokens);
+        setModelId(nextModelId);
         validateHistory(nextHistoryText);
       } catch {
         if (cancelled) return;
@@ -553,13 +601,16 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
         currentInput,
         sessionId,
         userId,
+        botUserId,
+        botImId,
         thinkingMode,
         thinkingBudgetTokens,
+        modelId,
       });
     }, DRAFT_PERSIST_DEBOUNCE_MS);
 
     return () => window.clearTimeout(timer);
-  }, [currentInput, historyText, sessionId, thinkingBudgetTokens, thinkingMode, userId]);
+  }, [botImId, botUserId, currentInput, historyText, modelId, sessionId, thinkingBudgetTokens, thinkingMode, userId]);
 
   // 执行测试
   const handleTest = useCallback(async () => {
@@ -605,8 +656,16 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     stop();
   }, [stop]);
 
-  // 清空（重新生成 sessionId，开启新会话，清除缓存）
+  // 清空（重新生成 sessionId + userId 开启新会话；保留 bot ID 配置）
   const handleClear = useCallback(() => {
+    const currentUserId = userId.trim();
+    if (currentUserId) {
+      void resetChatSessionMemory({ userId: currentUserId, corpId: 'test' }).catch((error) => {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.warn(`[agent-test] 清理长期画像失败: ${errorMessage}`);
+      });
+    }
+
     const nextSessionId = generateUUID();
     const nextUserId = `dashboard-test-${generateUUID().slice(0, 8)}`;
 
@@ -630,13 +689,16 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
       currentInput: '',
       sessionId: nextSessionId,
       userId: nextUserId,
+      botUserId,
+      botImId,
       thinkingMode,
       thinkingBudgetTokens,
+      modelId,
     });
     void clearHistoryImageCache();
     historyImageCacheRef.current = {};
     messageInputRef.current?.focus();
-  }, [setMessages, thinkingBudgetTokens, thinkingMode]);
+  }, [botImId, botUserId, modelId, setMessages, thinkingBudgetTokens, thinkingMode, userId]);
 
   const latestAssistantMessage = messages
     .filter((m: UIMessage) => m.role === 'assistant' && !m.id.startsWith('history-'))
@@ -655,14 +717,23 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     latestAssistantMessage,
     entryStage,
     currentStage,
+    userId,
+    botUserId,
+    botImId,
     imagePreviews,
     addImages,
     removeImage,
     thinkingMode,
     thinkingBudgetTokens,
+    modelId,
+    availableModels,
+    setModelId,
     setHistoryText,
     setCurrentInput,
     setLocalError,
+    setUserId,
+    setBotUserId,
+    setBotImId,
     setThinkingMode,
     setThinkingBudgetTokens,
     handleTest,

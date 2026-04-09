@@ -4,6 +4,7 @@ import { ToolBuildContext } from '@shared-types/tool.types';
 describe('buildInterviewBookingTool', () => {
   const mockSpongeService = {
     bookInterview: jest.fn(),
+    fetchJobs: jest.fn(),
   };
 
   const mockWebhookService = {
@@ -33,6 +34,10 @@ describe('buildInterviewBookingTool', () => {
   };
 
   beforeEach(() => jest.clearAllMocks());
+
+  const flushAsyncEvents = async () => {
+    await new Promise((resolve) => setImmediate(resolve));
+  };
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const executeTool = async (input: Record<string, any>) => {
@@ -81,6 +86,20 @@ describe('buildInterviewBookingTool', () => {
   });
 
   it('should call SpongeService and return success', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        {
+          basicInfo: {
+            brandName: '成都你六姐',
+            jobName: '成都你六姐-上海浦江城市生活广场店-后厨-小时工',
+            storeInfo: {
+              storeName: '上海浦江城市生活广场店',
+            },
+          },
+        },
+      ],
+      total: 1,
+    });
     mockSpongeService.bookInterview.mockResolvedValue({
       success: true,
       code: 0,
@@ -90,6 +109,7 @@ describe('buildInterviewBookingTool', () => {
     });
 
     const result = await executeTool(validInput);
+    await flushAsyncEvents();
 
     expect(result.success).toBe(true);
     expect(result.notice).toBe('请准时到达');
@@ -100,9 +120,51 @@ describe('buildInterviewBookingTool', () => {
         educationId: 5,
       }),
     );
+    expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobIdList: [100],
+      }),
+    );
     expect(mockCardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
       expect.objectContaining({
         title: '🎉 面试预约成功',
+        content: expect.stringContaining('姓名：张三'),
+        atAll: true,
+      }),
+    );
+    expect(mockCardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('电话：13800138000'),
+      }),
+    );
+    expect(mockCardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('性别：男'),
+      }),
+    );
+    expect(mockCardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('年龄：25岁'),
+      }),
+    );
+    expect(mockCardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('品牌：成都你六姐'),
+      }),
+    );
+    expect(mockCardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('门店：上海浦江城市生活广场店'),
+      }),
+    );
+    expect(mockCardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('面试岗位：成都你六姐-上海浦江城市生活广场店-后厨-小时工'),
+      }),
+    );
+    expect(mockCardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('面试时间：2026-03-20 14:00'),
         atAll: true,
       }),
     );
@@ -113,9 +175,11 @@ describe('buildInterviewBookingTool', () => {
   });
 
   it('should handle SpongeService error', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
     mockSpongeService.bookInterview.mockRejectedValue(new Error('Network error'));
 
     const result = await executeTool(validInput);
+    await flushAsyncEvents();
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('Network error');
