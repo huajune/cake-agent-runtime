@@ -47,6 +47,11 @@ export class MemoryService {
     return await this.longTerm.getSummaryData(corpId, userId);
   }
 
+  /** 清理指定用户的长期记忆（profile + summary） */
+  async clearLongTermMemory(corpId: string, userId: string): Promise<boolean> {
+    return await this.longTerm.clearUserMemory(corpId, userId);
+  }
+
   /** 记录已邀入的兼职群，供 invite_to_group 工具调用。 */
   async saveInvitedGroup(
     corpId: string,

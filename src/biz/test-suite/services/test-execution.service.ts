@@ -96,7 +96,10 @@ export class TestExecutionService {
         corpId: 'test',
         sessionId,
         scenario,
-        strategySource: 'testing',
+        botUserId: request.botUserId,
+        botImId: request.botImId,
+        strategySource: this.resolveStrategySource(request),
+        modelId: request.modelId,
       });
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -116,7 +119,15 @@ export class TestExecutionService {
       request: {
         url: 'orchestrator/run',
         method: 'POST',
-        body: { scenario, message: request.message, imageUrls: request.imageUrls },
+        body: {
+          scenario,
+          message: request.message,
+          imageUrls: request.imageUrls,
+          userId: request.userId,
+          botUserId: request.botUserId,
+          botImId: request.botImId,
+          strategySource: this.resolveStrategySource(request),
+        },
       },
       response: {
         statusCode: executionStatus === ExecutionStatus.SUCCESS ? 200 : 500,
@@ -197,7 +208,10 @@ export class TestExecutionService {
       sessionId,
       scenario,
       thinking: request.thinking,
-      strategySource: 'testing' as const,
+      strategySource: this.resolveStrategySource(request),
+      botUserId: request.botUserId,
+      botImId: request.botImId,
+      modelId: request.modelId,
     };
 
     const runnerResult = await this.runner.stream(runnerParams);
@@ -211,7 +225,10 @@ export class TestExecutionService {
         sessionId,
         scenario,
         thinking: request.thinking,
-        strategySource: 'testing',
+        strategySource: this.resolveStrategySource(request),
+        botUserId: request.botUserId,
+        botImId: request.botImId,
+        modelId: request.modelId,
       },
     };
   }
@@ -322,8 +339,11 @@ export class TestExecutionService {
       skipHistoryTrim: true,
       sessionId: request.sessionId,
       userId: request.userId,
+      botUserId: request.botUserId,
+      botImId: request.botImId,
       thinking: request.thinking,
       imageUrls: currentImageUrls,
+      modelId: request.modelId,
     };
 
     if (!this.hasInputContent(testRequest.message, testRequest.imageUrls)) {
@@ -331,6 +351,16 @@ export class TestExecutionService {
     }
 
     return { testRequest, messageText };
+  }
+
+  private resolveStrategySource(
+    request: Pick<TestChatRequestDto, 'botUserId' | 'botImId'>,
+  ): 'testing' | 'released' {
+    // agent-test 默认 testing；只要录入了拉群所需 bot 标识，就自动切到 released 联调链路
+    if (request.botUserId?.trim() && request.botImId?.trim()) {
+      return 'released';
+    }
+    return 'testing';
   }
 
   // ========== 私有方法 ==========

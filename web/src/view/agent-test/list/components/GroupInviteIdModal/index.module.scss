@@ -1,0 +1,126 @@
+@use '@/assets/styles/variables' as *;
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  background: rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.modal {
+  width: min(560px, 100%);
+  border-radius: 16px;
+  background: $bg-primary;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 25px 45px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+
+  h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: $text-primary;
+  }
+}
+
+.closeBtn {
+  border: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.04);
+  color: $text-muted;
+  cursor: pointer;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.08);
+    color: $text-primary;
+  }
+}
+
+.body {
+  padding: 16px 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+
+  span {
+    font-size: 12px;
+    color: $text-secondary;
+    font-weight: 500;
+  }
+
+  input {
+    width: 100%;
+    border: 1px solid $border;
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 13px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    color: $text-primary;
+    background: $bg-primary;
+
+    &:focus {
+      outline: none;
+      border-color: $primary;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+    }
+  }
+}
+
+.hint {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: $text-muted;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px 16px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.cancelBtn,
+.saveBtn {
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.cancelBtn {
+  border: 1px solid $border;
+  color: $text-secondary;
+  background: $bg-primary;
+}
+
+.saveBtn {
+  border: none;
+  color: $text-on-primary;
+  background: linear-gradient(135deg, $accent 0%, #ec4899 100%);
+}

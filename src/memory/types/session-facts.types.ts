@@ -78,11 +78,16 @@ export interface RecommendedJobSummary {
   brandName: string | null;
   jobName: string | null;
   storeName: string | null;
+  storeAddress?: string | null;
   cityName: string | null;
   regionName: string | null;
   laborForm: string | null;
   salaryDesc: string | null;
   jobCategoryName: string | null;
+  ageRequirement?: string | null;
+  educationRequirement?: string | null;
+  healthCertificateRequirement?: string | null;
+  studentRequirement?: string | null;
   distanceKm?: number | null;
 }
 
@@ -91,11 +96,16 @@ export const RecommendedJobSummarySchema = z.object({
   brandName: z.string().nullable(),
   jobName: z.string().nullable(),
   storeName: z.string().nullable(),
+  storeAddress: z.string().nullable().optional(),
   cityName: z.string().nullable(),
   regionName: z.string().nullable(),
   laborForm: z.string().nullable(),
   salaryDesc: z.string().nullable(),
   jobCategoryName: z.string().nullable(),
+  ageRequirement: z.string().nullable().optional(),
+  educationRequirement: z.string().nullable().optional(),
+  healthCertificateRequirement: z.string().nullable().optional(),
+  studentRequirement: z.string().nullable().optional(),
   distanceKm: z.number().nullable().optional(),
 });
 

@@ -19,6 +19,7 @@ import { EvaluationModule } from '@evaluation/evaluation.module';
 import { ObservabilityModule } from '@observability/observability.module';
 import { ToolModule } from '@tools/tool.module';
 import { AiStreamObservabilityService } from './services/ai-stream-observability.service';
+import { MemoryModule } from '@memory/memory.module';
 
 /**
  * 测试套件模块
@@ -41,6 +42,7 @@ import { AiStreamObservabilityService } from './services/ai-stream-observability
     FeishuSyncModule,
     EvaluationModule,
     ObservabilityModule,
+    MemoryModule,
     BullModule.registerQueueAsync({
       name: 'test-suite',
       imports: [ConfigModule],

@@ -21,10 +21,14 @@ const logger = new Logger('duliday_interview_booking');
 
 export interface InterviewBookingNotificationInfo {
   candidateName: string;
+  phone: string;
+  genderLabel?: string;
+  ageText?: string;
   brandName?: string;
   storeName?: string;
+  jobName?: string;
+  jobId?: number;
   interviewTime: string;
-  contactInfo: string;
   toolOutput: Record<string, unknown>;
 }
 
@@ -33,7 +37,7 @@ export function buildInterviewBookingTool(
   webhookService: FeishuWebhookService,
   cardBuilder: FeishuCardBuilderService,
 ): ToolBuilder {
-  return (_context) => {
+  return (context) => {
     return tool({
       description:
         '预约面试。仅在候选人明确要报名/约面、且岗位与面试时间已确认时调用。这个工具只负责接口字段校验与提交，不负责解释岗位规则或决定现在该追问哪些资料。',
@@ -54,6 +58,9 @@ export function buildInterviewBookingTool(
           .describe(
             '是否有健康证：1=有，2=无但接受办理健康证，3=无且不接受办理健康证。属于预约提交字段，确认需要时再填写',
           ),
+        brandName: z.string().optional().describe('品牌名称，从岗位列表结果中获取，用于通知展示'),
+        storeName: z.string().optional().describe('门店名称，从岗位列表结果中获取，用于通知展示'),
+        jobName: z.string().optional().describe('岗位名称，从岗位列表结果中获取，用于通知展示'),
       }),
       execute: async ({
         name,
@@ -64,6 +71,9 @@ export function buildInterviewBookingTool(
         interviewTime,
         education,
         hasHealthCertificate,
+        brandName: inputBrandName,
+        storeName: inputStoreName,
+        jobName: inputJobName,
       }) => {
         logger.log(`预约面试: ${name}, jobId=${jobId}`);
 
@@ -126,6 +136,8 @@ export function buildInterviewBookingTool(
           jobId,
           interviewTime,
         };
+        const genderLabel = toGenderLabel(genderId);
+        const ageText = normalizeAgeText(age);
 
         try {
           const result = await spongeService.bookInterview({
@@ -138,21 +150,34 @@ export function buildInterviewBookingTool(
             educationId,
             hasHealthCertificate,
           });
-          const resultRecord = toRecord(result);
+
+          context.bookingSucceeded = result.success;
 
           const toolResult = {
             ...result,
             errorType: result.success ? null : 'booking_rejected',
             requestInfo,
+            ...(result.success
+              ? { _outcome: '预约成功，可以告知候选人面试安排' }
+              : {
+                  _outcome: '预约失败',
+                  _fixedReply: '我这边预约遇到点小状况，我去找同事确认一下，稍等。',
+                  _replyRule:
+                    '必须原样输出 _fixedReply 的内容作为回复，禁止添加、修改或补充任何文字',
+                }),
           };
 
           void sendInterviewBookingNotification(
             {
               candidateName: name,
-              contactInfo: phone,
+              phone,
+              genderLabel,
+              ageText,
               interviewTime,
-              brandName: pickString(resultRecord?.brandName),
-              storeName: pickString(resultRecord?.storeName),
+              brandName: inputBrandName,
+              storeName: inputStoreName,
+              jobName: inputJobName,
+              jobId,
               toolOutput: toolResult,
             },
             webhookService,
@@ -162,18 +187,28 @@ export function buildInterviewBookingTool(
           return toolResult;
         } catch (err) {
           logger.error('预约面试失败', err);
+          context.bookingSucceeded = false;
           const toolResult = {
             success: false,
             errorType: 'booking_request_failed',
             error: `预约面试失败: ${err instanceof Error ? err.message : '未知错误'}`,
             requestInfo,
+            _outcome: '预约失败',
+            _fixedReply: '我这边预约遇到点小状况，我去找同事确认一下，稍等。',
+            _replyRule: '必须原样输出 _fixedReply 的内容作为回复，禁止添加、修改或补充任何文字',
           };
 
           void sendInterviewBookingNotification(
             {
               candidateName: name,
-              contactInfo: phone,
+              phone,
+              genderLabel,
+              ageText,
               interviewTime,
+              brandName: inputBrandName,
+              storeName: inputStoreName,
+              jobName: inputJobName,
+              jobId,
               toolOutput: toolResult,
             },
             webhookService,
@@ -205,20 +240,23 @@ async function sendInterviewBookingNotification(
       sections.push(`候选人 ${bookingInfo.candidateName} 预约失败，请尽快跟进处理。`);
     }
 
-    sections.push(
-      [
-        `候选人：${bookingInfo.candidateName}`,
-        `联系方式：${maskPhone(bookingInfo.contactInfo)}`,
-      ].join('\n'),
-    );
+    const candidateLines = [
+      `姓名：${bookingInfo.candidateName}`,
+      `电话：${bookingInfo.phone}`,
+      bookingInfo.genderLabel ? `性别：${bookingInfo.genderLabel}` : null,
+      bookingInfo.ageText ? `年龄：${bookingInfo.ageText}` : null,
+    ].filter((line): line is string => Boolean(line));
+    sections.push(`**候选人信息**\n${candidateLines.join('\n')}`);
 
     const interviewLines = [
       bookingInfo.brandName ? `品牌：${bookingInfo.brandName}` : null,
       bookingInfo.storeName ? `门店：${bookingInfo.storeName}` : null,
-      `面试时间：${bookingInfo.interviewTime}`,
+      bookingInfo.jobName ? `面试岗位：${bookingInfo.jobName}` : null,
+      `面试时间：${formatInterviewTimeForDisplay(bookingInfo.interviewTime)}`,
+      bookingInfo.jobId ? `岗位ID：${bookingInfo.jobId}` : null,
       bookingId ? `预约编号：${bookingId}` : null,
     ].filter((line): line is string => Boolean(line));
-    sections.push(`**面试安排**\n${interviewLines.join('\n')}`);
+    sections.push(`**岗位信息**\n${interviewLines.join('\n')}`);
 
     if (isFailure) {
       const resultLines = [
@@ -280,13 +318,20 @@ function pickString(...values: unknown[]): string | undefined {
   return undefined;
 }
 
-function toRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
+function toGenderLabel(genderId: number): string | undefined {
+  if (genderId === 1) return '男';
+  if (genderId === 2) return '女';
+  return undefined;
 }
 
-function maskPhone(phone: string): string {
-  const trimmed = phone.trim();
-  if (!/^\d{11}$/.test(trimmed)) return trimmed;
-  return `${trimmed.slice(0, 3)}****${trimmed.slice(-4)}`;
+function normalizeAgeText(age: string): string {
+  const text = age.trim();
+  return /岁$/.test(text) ? text : `${text}岁`;
+}
+
+function formatInterviewTimeForDisplay(value: string): string {
+  const normalized = value.trim();
+  const withSeconds = normalized.match(/^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}):\d{2}$/);
+  if (withSeconds) return withSeconds[1];
+  return normalized;
 }

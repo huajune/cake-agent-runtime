@@ -30,6 +30,7 @@
     "react-router-dom": "^6.28.0",
     "react-textarea-autosize": "^8.5.9",
     "recharts": "^3.5.1",
+    "remark-breaks": "^4.0.0",
     "socket.io-client": "^4.8.1",
     "zustand": "^5.0.1"
   },

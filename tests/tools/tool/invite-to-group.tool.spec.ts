@@ -25,7 +25,12 @@ describe('buildInviteToGroupTool', () => {
   });
 
   const mockGroupResolver = { resolveGroups: jest.fn() };
-  const mockGroupMembership = { isUserInRoom: jest.fn(), markUserInRoom: jest.fn() };
+  const mockGroupMembership = {
+    isUserInRoom: jest.fn(),
+    markUserInRoom: jest.fn(),
+    invalidateRoomCache: jest.fn(),
+    refreshRoomCacheByToken: jest.fn(),
+  };
   const mockRoomService = { addMemberEnterprise: jest.fn() };
   const mockWebhookService = { sendMessage: jest.fn() };
   const mockCardBuilder = { buildMarkdownCard: jest.fn() };
@@ -39,10 +44,15 @@ describe('buildInviteToGroupTool', () => {
     // 默认用户不在群中
     mockGroupMembership.isUserInRoom.mockResolvedValue(false);
     mockGroupMembership.markUserInRoom.mockResolvedValue(undefined);
+    mockGroupMembership.invalidateRoomCache.mockResolvedValue(undefined);
+    mockGroupMembership.refreshRoomCacheByToken.mockResolvedValue(undefined);
   });
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
-  const executeTool = async (input: { city: string; industry?: string }) => {
+  const executeTool = async (
+    input: { city: string; industry?: string },
+    overrideContext?: Partial<ToolBuildContext>,
+  ) => {
     const builder = buildInviteToGroupTool(
       mockGroupResolver as any,
       mockGroupMembership as any,
@@ -53,7 +63,7 @@ describe('buildInviteToGroupTool', () => {
       MEMBER_LIMIT,
       'enterprise-token-test',
     );
-    const builtTool = builder(mockContext);
+    const builtTool = builder({ ...mockContext, ...overrideContext });
     return builtTool.execute(input as any, {
       toolCallId: 'test',
       messages: [],
@@ -64,7 +74,10 @@ describe('buildInviteToGroupTool', () => {
 
   it('should return success with direct invite mode for small group', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup({ memberCount: 50 })]);
-    mockRoomService.addMemberEnterprise.mockResolvedValue(undefined);
+    mockGroupMembership.isUserInRoom
+      .mockResolvedValueOnce(false) // pre-check
+      .mockResolvedValueOnce(true); // confirm after invite
+    mockRoomService.addMemberEnterprise.mockResolvedValue({ errcode: 0, errmsg: 'ok' });
     mockMemoryService.saveInvitedGroup.mockResolvedValue(undefined);
 
     const result = await executeTool({ city: '上海' });
@@ -88,7 +101,10 @@ describe('buildInviteToGroupTool', () => {
 
   it('should return link invite mode when group has 100+ members', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup({ memberCount: 120 })]);
-    mockRoomService.addMemberEnterprise.mockResolvedValue(undefined);
+    mockGroupMembership.isUserInRoom
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    mockRoomService.addMemberEnterprise.mockResolvedValue({ errcode: 0, errmsg: 'ok' });
     mockMemoryService.saveInvitedGroup.mockResolvedValue(undefined);
 
     const result = await executeTool({ city: '上海' });
@@ -104,6 +120,20 @@ describe('buildInviteToGroupTool', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('暂无可用群');
+  });
+
+  it('should block invite when booking failed in same turn', async () => {
+    const result = await executeTool(
+      { city: '上海' },
+      {
+        bookingSucceeded: false,
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.reason).toBe('booking_not_succeeded');
+    expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
+    expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
   });
 
   it('should silently skip when city has no match', async () => {
@@ -129,6 +159,7 @@ describe('buildInviteToGroupTool', () => {
     expect(result.success).toBe(false);
     expect(result.reason).toBe('already_in_group');
     expect(result.groupName).toBe('上海兼职群1号');
+    expect(mockGroupMembership.refreshRoomCacheByToken).toHaveBeenCalledWith('room-1', 'token-1');
     expect(mockGroupMembership.isUserInRoom).toHaveBeenCalledWith('room-1', 'user-1', ['room-1']);
     expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
     expect(mockGroupMembership.markUserInRoom).not.toHaveBeenCalled();
@@ -163,7 +194,10 @@ describe('buildInviteToGroupTool', () => {
       groupName: '上海零售兼职群',
     });
     mockGroupResolver.resolveGroups.mockResolvedValue([restaurantGroup, retailGroup]);
-    mockRoomService.addMemberEnterprise.mockResolvedValue(undefined);
+    mockGroupMembership.isUserInRoom
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    mockRoomService.addMemberEnterprise.mockResolvedValue({ errcode: 0, errmsg: 'ok' });
     mockMemoryService.saveInvitedGroup.mockResolvedValue(undefined);
 
     const result = await executeTool({ city: '上海', industry: '餐饮' });
@@ -174,7 +208,10 @@ describe('buildInviteToGroupTool', () => {
 
   it('should fallback to city groups when industry has no match', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup({ industry: '餐饮' })]);
-    mockRoomService.addMemberEnterprise.mockResolvedValue(undefined);
+    mockGroupMembership.isUserInRoom
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    mockRoomService.addMemberEnterprise.mockResolvedValue({ errcode: 0, errmsg: 'ok' });
     mockMemoryService.saveInvitedGroup.mockResolvedValue(undefined);
 
     const result = await executeTool({ city: '上海', industry: '零售' });
@@ -189,7 +226,10 @@ describe('buildInviteToGroupTool', () => {
       makeGroup({ imRoomId: 'room-2', groupName: '群B', memberCount: 30 }),
       makeGroup({ imRoomId: 'room-3', groupName: '群C', memberCount: 80 }),
     ]);
-    mockRoomService.addMemberEnterprise.mockResolvedValue(undefined);
+    mockGroupMembership.isUserInRoom
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    mockRoomService.addMemberEnterprise.mockResolvedValue({ errcode: 0, errmsg: 'ok' });
     mockMemoryService.saveInvitedGroup.mockResolvedValue(undefined);
 
     const result = await executeTool({ city: '上海' });
@@ -200,12 +240,40 @@ describe('buildInviteToGroupTool', () => {
 
   it('should handle addMember failure gracefully', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup()]);
+    mockGroupMembership.isUserInRoom.mockResolvedValueOnce(false);
     mockRoomService.addMemberEnterprise.mockRejectedValue(new Error('WeChat API timeout'));
 
     const result = await executeTool({ city: '上海' });
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('WeChat API timeout');
+  });
+
+  it('should return invite_not_confirmed when join cannot be verified', async () => {
+    mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup()]);
+    mockGroupMembership.isUserInRoom.mockResolvedValue(false);
+    mockRoomService.addMemberEnterprise.mockResolvedValue({ errcode: 0, errmsg: 'ok' });
+
+    const result = await executeTool({ city: '上海' });
+
+    expect(result.success).toBe(false);
+    expect(result.reason).toBe('invite_not_confirmed');
+    expect(result.groupName).toBe('上海兼职群1号');
+    expect(mockGroupMembership.markUserInRoom).not.toHaveBeenCalled();
+    expect(mockMemoryService.saveInvitedGroup).not.toHaveBeenCalled();
+  });
+
+  it('should return invite_api_rejected when enterprise API returns non-zero errcode', async () => {
+    mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup()]);
+    mockGroupMembership.isUserInRoom.mockResolvedValueOnce(false);
+    mockRoomService.addMemberEnterprise.mockResolvedValue({ errcode: 40003, errmsg: 'forbidden' });
+
+    const result = await executeTool({ city: '上海' });
+
+    expect(result.success).toBe(false);
+    expect(result.reason).toBe('invite_api_rejected');
+    expect(result.error).toContain('errcode=40003');
+    expect(mockGroupMembership.markUserInRoom).not.toHaveBeenCalled();
   });
 
   it('should fail clearly when enterprise token is missing', async () => {
@@ -235,6 +303,21 @@ describe('buildInviteToGroupTool', () => {
       errorType: 'enterprise_token_missing',
       error: 'STRIDE_ENTERPRISE_TOKEN 未配置，无法执行企业级拉群',
     });
+    expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
+    expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
+  });
+
+  it('should fail clearly when bot identity is missing', async () => {
+    const result = await executeTool(
+      { city: '上海' },
+      {
+        botImId: undefined,
+        botUserId: undefined,
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.reason).toBe('missing_bot_identity');
     expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
     expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
   });

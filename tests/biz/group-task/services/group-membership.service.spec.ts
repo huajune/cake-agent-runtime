@@ -34,6 +34,7 @@ describe('GroupMembershipService', () => {
   const createRoomServiceMock = (): jest.Mocked<RoomService> =>
     ({
       getEnterpriseGroupChatList: jest.fn(),
+      getRoomList: jest.fn(),
     } as unknown as jest.Mocked<RoomService>);
 
   beforeEach(() => {
@@ -150,6 +151,46 @@ describe('GroupMembershipService', () => {
       expect(setStore.get('room:members:room-1')).toEqual(new Set(['user-1']));
       expect(redisService.sadd).toHaveBeenCalledWith('room:members:room-1', 'user-1');
       expect(redisService.expire).toHaveBeenCalledWith('room:members:room-1', 600);
+    });
+  });
+
+  describe('refreshRoomCacheByToken', () => {
+    it('should refresh a single room cache from room/list', async () => {
+      roomService.getRoomList.mockResolvedValue({
+        data: [
+          {
+            wxid: 'room-1',
+            memberList: [{ imContactId: 'user-1' }, { contactWxid: 'user-2' }],
+          },
+        ],
+      });
+
+      await service.refreshRoomCacheByToken('room-1', 'group-token');
+
+      expect(roomService.getRoomList).toHaveBeenCalledWith('group-token', 0, 1, 'room-1');
+      expect(setStore.get('room:members:room-1')).toEqual(new Set(['user-1', 'user-2']));
+      expect(redisService.expire).toHaveBeenCalledWith('room:members:room-1', 600);
+    });
+
+    it('should dedupe concurrent single-room refreshes', async () => {
+      roomService.getRoomList.mockImplementation(async () => {
+        await Promise.resolve();
+        return {
+          data: [
+            {
+              wxid: 'room-1',
+              memberList: [{ imContactId: 'user-1' }],
+            },
+          ],
+        };
+      });
+
+      await Promise.all([
+        service.refreshRoomCacheByToken('room-1', 'group-token'),
+        service.refreshRoomCacheByToken('room-1', 'group-token'),
+      ]);
+
+      expect(roomService.getRoomList).toHaveBeenCalledTimes(1);
     });
   });
 });

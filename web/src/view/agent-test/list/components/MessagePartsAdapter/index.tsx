@@ -1,6 +1,7 @@
 import { memo, useState } from 'react';
 import type { UIMessage } from 'ai';
 import Markdown from 'react-markdown';
+import remarkBreaks from 'remark-breaks';
 import {
   Zap,
   CheckCircle2,
@@ -62,7 +63,7 @@ function ReasoningBlock({
           {isThinking ? (
             <pre className={styles.reasoningPlainText}>{normalizedText}</pre>
           ) : (
-            <Markdown>{normalizedText}</Markdown>
+            <Markdown remarkPlugins={[remarkBreaks]}>{normalizedText}</Markdown>
           )}
         </div>
       )}
@@ -153,7 +154,7 @@ function ToolInvocation({
               </div>
               {extractMarkdown(result) ? (
                 <div className={styles.toolResultMarkdown}>
-                  <Markdown>{extractMarkdown(result)!}</Markdown>
+                  <Markdown remarkPlugins={[remarkBreaks]}>{extractMarkdown(result)!}</Markdown>
                 </div>
               ) : (
                 <pre className={styles.toolDetail}>{formatToolResult(result)}</pre>
@@ -240,6 +241,7 @@ interface MessagePartsAdapterProps {
   isStreaming?: boolean;
   expandToolsByDefault?: boolean;
   expandReasoningByDefault?: boolean;
+  renderTextAsMarkdown?: boolean;
 }
 
 function MessagePartsAdapterComponent({
@@ -247,6 +249,7 @@ function MessagePartsAdapterComponent({
   isStreaming,
   expandToolsByDefault = false,
   expandReasoningByDefault = true,
+  renderTextAsMarkdown = false,
 }: MessagePartsAdapterProps) {
   const parts = message.parts;
 
@@ -297,7 +300,17 @@ function MessagePartsAdapterComponent({
           if (!text && !isStreaming) return null;
           return (
             <div key={`text-${idx}`} className={styles.replyContent}>
-              {text || <span className={styles.streamingPlaceholder}>等待响应...</span>}
+              {text ? (
+                renderTextAsMarkdown ? (
+                  <div className={styles.replyMarkdown}>
+                    <Markdown remarkPlugins={[remarkBreaks]}>{text}</Markdown>
+                  </div>
+                ) : (
+                  text
+                )
+              ) : (
+                <span className={styles.streamingPlaceholder}>等待响应...</span>
+              )}
             </div>
           );
         }

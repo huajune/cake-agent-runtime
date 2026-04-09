@@ -7,6 +7,9 @@ export interface InterviewWindow {
   date?: string;
   startTime: string;
   endTime: string;
+  fixedDeadline?: string;
+  cycleDeadlineDay?: string;
+  cycleDeadlineEnd?: string;
 }
 
 export type PolicySignalConfidence = 'high' | 'medium';
@@ -52,6 +55,7 @@ export interface JobPolicyAnalysis {
     address: string | null;
     demand: string | null;
     timeHint: string | null;
+    registrationDeadlineHint: string | null;
   };
   highlights: {
     requirementHighlights: string[];
@@ -222,7 +226,17 @@ export function extractInterviewWindows(
         asString(timeRecord.interviewEndTime) ?? asString(timeRecord.interviewStartTime),
       );
       if (!startTime) continue;
-      windows.push({ weekday, startTime, endTime: endTime || startTime });
+      const cycleDeadlineDay = normalizePolicyText(asString(timeRecord.cycleDeadlineDay));
+      const cycleDeadlineEnd = normalizePolicyText(asString(timeRecord.cycleDeadlineEnd));
+
+      const window: InterviewWindow = {
+        weekday,
+        startTime,
+        endTime: endTime || startTime,
+      };
+      if (cycleDeadlineDay) window.cycleDeadlineDay = cycleDeadlineDay;
+      if (cycleDeadlineEnd) window.cycleDeadlineEnd = cycleDeadlineEnd;
+      windows.push(window);
     }
   }
 
@@ -231,12 +245,56 @@ export function extractInterviewWindows(
     if (!fixed) continue;
 
     const date = normalizePolicyText(asString(fixed.interviewDate));
+    if (!date) continue;
+
+    // 新契约：fixedInterviewTimes[].interviewTimes[]
+    // 兼容旧契约：fixedInterviewTimes[].interviewStartTime / interviewEndTime
+    const nestedTimes = asArray(fixed.interviewTimes);
+    if (nestedTimes.length > 0) {
+      for (const time of nestedTimes) {
+        const timeRecord = asRecord(time);
+        if (!timeRecord) continue;
+
+        const startTime = normalizePolicyText(asString(timeRecord.interviewStartTime));
+        const endTime = normalizePolicyText(
+          asString(timeRecord.interviewEndTime) ?? asString(timeRecord.interviewStartTime),
+        );
+        if (!startTime) continue;
+
+        const fixedDeadline = normalizePolicyText(
+          asString(timeRecord.fixedDeadline) ??
+            asString(fixed.fixedDeadline) ??
+            asString(first.fixedDeadline),
+        );
+
+        const window: InterviewWindow = {
+          date,
+          startTime,
+          endTime: endTime || startTime,
+        };
+        if (fixedDeadline) window.fixedDeadline = fixedDeadline;
+        windows.push(window);
+      }
+      continue;
+    }
+
     const startTime = normalizePolicyText(asString(fixed.interviewStartTime));
     const endTime = normalizePolicyText(
       asString(fixed.interviewEndTime) ?? asString(fixed.interviewStartTime),
     );
-    if (!date || !startTime) continue;
-    windows.push({ date, startTime, endTime: endTime || startTime });
+    if (!startTime) continue;
+
+    const fixedDeadline = normalizePolicyText(
+      asString(fixed.fixedDeadline) ?? asString(first.fixedDeadline),
+    );
+
+    const window: InterviewWindow = {
+      date,
+      startTime,
+      endTime: endTime || startTime,
+    };
+    if (fixedDeadline) window.fixedDeadline = fixedDeadline;
+    windows.push(window);
   }
 
   return windows;
@@ -369,21 +427,102 @@ function extractInterviewTimeHint(job: JobDetail): string | null {
     asString(first?.interviewDate),
     asString(first?.interviewDemand),
     asString(interviewProcess.remark),
-  ].filter((text): text is string => Boolean(text));
+  ];
+  const fragments = collectPolicyFragments(texts);
 
-  const timePatterns = [
+  for (const fragment of fragments) {
+    if (!containsTimeInfo(fragment)) continue;
+    const cleaned = stripRegistrationDeadline(fragment);
+    if (cleaned && containsTimeInfo(cleaned)) {
+      return cleaned;
+    }
+  }
+
+  return null;
+}
+
+function extractRegistrationDeadlineHint(job: JobDetail): string | null {
+  const interviewProcess = asRecord(job.interviewProcess);
+  if (!interviewProcess) return null;
+
+  const first = asRecord(interviewProcess.firstInterview);
+  const fragments = collectPolicyFragments([
+    asString(first?.interviewTime),
+    asString(first?.interviewDemand),
+    asString(interviewProcess.remark),
+  ]);
+
+  const deadlines = dedupeStrings(
+    fragments
+      .map((fragment) => extractRegistrationDeadline(fragment))
+      .filter((fragment): fragment is string => Boolean(fragment)),
+  );
+
+  if (deadlines.length === 0) return null;
+  return deadlines.join('；');
+}
+
+function collectPolicyFragments(texts: Array<string | null | undefined>): string[] {
+  return texts
+    .filter((text): text is string => Boolean(text))
+    .flatMap((text) =>
+      cleanPolicyText(text)
+        .split(/[；。]/)
+        .map((fragment) => fragment.trim())
+        .filter(Boolean),
+    );
+}
+
+function containsTimeInfo(fragment: string): boolean {
+  return [
     /星期[一二三四五六日天]/,
     /周[一二三四五六日天]/,
     /\d{1,2}[:：]\d{2}/,
     /上午|下午|晚上|中午/,
+  ].some((pattern) => pattern.test(fragment));
+}
+
+function containsRegistrationDeadlineSignal(fragment: string): boolean {
+  const normalized = fragment.replace(/\s+/g, '');
+  return [
+    /截止时间/,
+    /(提交|报名|名单|报备|预约).{0,8}(截止|最迟|前|之前)/,
+    /(截止|最迟).{0,12}(名单|报名|提交|报备|预约)/,
+  ].some((pattern) => pattern.test(normalized));
+}
+
+function stripRegistrationDeadline(fragment: string): string {
+  let cleaned = fragment.trim();
+  const deadlineTailPatterns = [
+    /[，,]\s*提交[^，；。]*(截止时间|截止|最迟)[^，；。]*$/i,
+    /[，,]\s*报名[^，；。]*(截止时间|截止|最迟)[^，；。]*$/i,
+    /[，,]\s*名单[^，；。]*(截止时间|截止|最迟)[^，；。]*$/i,
+    /[，,]\s*截止时间[^，；。]*$/i,
+    /[，,]\s*最迟[^，；。]*$/i,
   ];
 
-  for (const text of texts) {
-    const [fragment] = pickKeySentences(text, timePatterns, 1);
-    if (fragment) return fragment;
+  for (const pattern of deadlineTailPatterns) {
+    cleaned = cleaned.replace(pattern, '').trim();
   }
+  return cleaned;
+}
 
-  return null;
+function extractRegistrationDeadline(fragment: string): string | null {
+  if (!containsRegistrationDeadlineSignal(fragment)) return null;
+
+  const normalized = fragment.trim();
+  const patterns = [
+    /(提交[^，；。]*(截止时间|截止|最迟)[^，；。]*)/i,
+    /(报名[^，；。]*(截止时间|截止|最迟)[^，；。]*)/i,
+    /(名单[^，；。]*(截止时间|截止|最迟)[^，；。]*)/i,
+    /((截止时间|截止|最迟)[^，；。]*(名单|报名|提交|报备|预约)?[^，；。]*)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (match?.[1]) return match[1].trim();
+  }
+  return normalized;
 }
 
 export function buildJobPolicyAnalysis(job: JobDetail): JobPolicyAnalysis {
@@ -445,6 +584,7 @@ export function buildJobPolicyAnalysis(job: JobDetail): JobPolicyAnalysis {
       address: normalizePolicyText(asString(firstInterview?.interviewAddress)) || null,
       demand: interviewDemand,
       timeHint: extractInterviewTimeHint(job),
+      registrationDeadlineHint: extractRegistrationDeadlineHint(job),
     },
     highlights: {
       requirementHighlights,

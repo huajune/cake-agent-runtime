@@ -37,6 +37,56 @@
   white-space: pre-wrap;
 }
 
+.replyMarkdown {
+  word-break: break-word;
+
+  p {
+    margin: 0 0 0.5em;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  strong {
+    font-weight: $font-weight-semibold;
+    color: $text-primary;
+  }
+
+  ul,
+  ol {
+    margin: 0.3em 0;
+    padding-left: 1.5em;
+
+    li {
+      margin-bottom: 0.2em;
+    }
+  }
+
+  li > p {
+    margin: 0;
+  }
+
+  p + ol,
+  p + ul {
+    margin-top: -0.1em;
+  }
+
+  code {
+    padding: 1px 5px;
+    background: rgba(99, 102, 241, 0.08);
+    border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.9em;
+    color: $primary;
+  }
+
+  pre {
+    margin: 0.4em 0;
+    white-space: pre-wrap;
+  }
+}
+
 // ==================== 工具调用卡片 ====================
 .toolCallItem {
   background: rgba(255, 255, 255, 0.9);
