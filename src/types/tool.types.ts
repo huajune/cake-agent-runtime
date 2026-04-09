@@ -1,5 +1,7 @@
 import { Tool, ToolSet } from 'ai';
 import { StageGoalConfig, Threshold } from './strategy-config.types';
+import type { EntityExtractionResult } from '@memory/types/session-facts.types';
+import type { UserProfile } from '@memory/types/long-term.types';
 
 export type AiTool = Tool;
 export type AiToolSet = ToolSet;
@@ -35,6 +37,10 @@ export interface ToolBuildContext {
   botUserId?: string;
   /** 当前与候选人聊天的托管账号系统 wxid（企业级 addMember 的 imBotId） */
   botImId?: string;
+  /** 长期记忆中的用户档案（姓名/电话/性别/年龄/学历/健康证） */
+  profile?: UserProfile | null;
+  /** 当前会话已提取事实（用于工具判断已知/缺失字段） */
+  sessionFacts?: EntityExtractionResult | null;
 }
 
 /** 工具构建函数。 */

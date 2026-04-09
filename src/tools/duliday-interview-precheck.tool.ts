@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { formatLocalDate, getTomorrowDate } from '@infra/utils/date.util';
+import { getAvailableEducations } from '@tools/duliday/job-booking.contract';
 import {
   buildJobPolicyAnalysis,
   InterviewWindow,
@@ -17,26 +18,187 @@ const inputSchema = z.object({
   requestedDate: z
     .string()
     .optional()
-    .describe('候选人想约的日期。支持 today、tomorrow、今天、明天、YYYY-MM-DD'),
+    .describe(
+      '候选人想约的日期。支持 today、tomorrow、今天、明天、后天、本周X、下周X、4月12日、YYYY-MM-DD',
+    ),
 });
 
-function normalizeRequestedDate(input?: string): { date: string | null; error?: string } {
-  const raw = normalizePolicyText(input);
-  if (!raw) return { date: null };
+const FIELD_ORDER = [
+  '姓名',
+  '联系电话',
+  '性别',
+  '年龄',
+  '学历',
+  '健康证情况',
+  '是否学生',
+  '过往公司+岗位+年限',
+  '面试时间',
+  '应聘门店',
+  '应聘岗位',
+];
 
-  if (raw === 'today' || raw === '今天') {
-    return { date: formatLocalDate(new Date()) };
+const FIELD_LABELS: Record<string, string> = {
+  联系电话: '联系方式',
+  健康证情况: '健康证',
+};
+
+const GENDER_ENUM_HINTS = [
+  { id: 1, label: '男' },
+  { id: 2, label: '女' },
+];
+
+const HEALTH_CERT_ENUM_HINTS = [
+  { id: 1, label: '有' },
+  { id: 2, label: '无但接受办理健康证' },
+  { id: 3, label: '无且不接受办理健康证' },
+];
+
+function normalizeRequestedDate(
+  input?: string,
+): { date: string | null; normalizedInput: string | null; error?: string } {
+  const raw = normalizePolicyText(input);
+  if (!raw) return { date: null, normalizedInput: null };
+  const normalizedInput = raw.toLowerCase();
+  const today = formatLocalDate(new Date());
+
+  if (normalizedInput === 'today' || raw === '今天') {
+    return { date: today, normalizedInput };
   }
-  if (raw === 'tomorrow' || raw === '明天') {
-    return { date: getTomorrowDate() };
+  if (normalizedInput === 'tomorrow' || raw === '明天') {
+    return { date: getTomorrowDate(), normalizedInput };
+  }
+  if (raw === '后天') {
+    return { date: shiftDate(today, 2), normalizedInput };
+  }
+
+  const weeklyDate = resolveWeeklyDateExpression(raw, today);
+  if (weeklyDate) {
+    return { date: weeklyDate, normalizedInput };
+  }
+
+  const monthDay = raw.match(/^(\d{1,2})月(\d{1,2})日$/);
+  if (monthDay) {
+    const resolved = resolveMonthDayToNearestFutureDate(Number(monthDay[1]), Number(monthDay[2]), today);
+    if (!resolved) {
+      return { date: null, normalizedInput, error: `无法识别的日期：${raw}` };
+    }
+    return { date: resolved, normalizedInput };
+  }
+
+  const fullDate = raw.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (fullDate) {
+    const formatted = toDateString(Number(fullDate[1]), Number(fullDate[2]), Number(fullDate[3]));
+    if (!formatted) {
+      return { date: null, normalizedInput, error: `无法识别的日期：${raw}` };
+    }
+    return { date: formatted, normalizedInput };
   }
 
   const normalized = raw.replace(/\//g, '-');
   if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
-    return { date: normalized };
+    return { date: normalized, normalizedInput };
   }
 
-  return { date: null, error: `无法识别的日期：${raw}` };
+  return { date: null, normalizedInput, error: `无法识别的日期：${raw}` };
+}
+
+function getWeekdayIndexFromChinese(token: string): number | null {
+  const map: Record<string, number> = {
+    一: 1,
+    二: 2,
+    三: 3,
+    四: 4,
+    五: 5,
+    六: 6,
+    日: 7,
+    天: 7,
+    1: 1,
+    2: 2,
+    3: 3,
+    4: 4,
+    5: 5,
+    6: 6,
+    7: 7,
+  };
+  return map[token] ?? null;
+}
+
+function getWeekdayIndexByDate(dateStr: string): number {
+  const weekday = getShanghaiWeekday(dateStr);
+  const map: Record<string, number> = {
+    每周一: 1,
+    每周二: 2,
+    每周三: 3,
+    每周四: 4,
+    每周五: 5,
+    每周六: 6,
+    每周日: 7,
+  };
+  return map[weekday] ?? 1;
+}
+
+function resolveWeeklyDateExpression(raw: string, today: string): string | null {
+  const thisWeekMatch = raw.match(/^(本周|这周|本星期|这星期)([一二三四五六日天1-7])$/);
+  if (thisWeekMatch) {
+    return resolveDateFromWeekday(today, thisWeekMatch[2], { weekOffset: 0, keepPastInCurrentWeek: true });
+  }
+
+  const nextWeekMatch = raw.match(/^(下周|下星期)([一二三四五六日天1-7])$/);
+  if (nextWeekMatch) {
+    return resolveDateFromWeekday(today, nextWeekMatch[2], { weekOffset: 1, keepPastInCurrentWeek: true });
+  }
+
+  const plainWeekMatch = raw.match(/^(周|星期)([一二三四五六日天1-7])$/);
+  if (plainWeekMatch) {
+    return resolveDateFromWeekday(today, plainWeekMatch[2], {
+      weekOffset: 0,
+      keepPastInCurrentWeek: false,
+    });
+  }
+
+  return null;
+}
+
+function resolveDateFromWeekday(
+  today: string,
+  weekdayToken: string,
+  options: { weekOffset: number; keepPastInCurrentWeek: boolean },
+): string | null {
+  const targetWeekday = getWeekdayIndexFromChinese(weekdayToken);
+  if (!targetWeekday) return null;
+
+  const currentWeekday = getWeekdayIndexByDate(today);
+  const monday = shiftDate(today, -(currentWeekday - 1));
+  let target = shiftDate(monday, (targetWeekday - 1) + options.weekOffset * 7);
+
+  if (!options.keepPastInCurrentWeek && target < today) {
+    target = shiftDate(target, 7);
+  }
+
+  return target;
+}
+
+function toDateString(year: number, month: number, day: number): string | null {
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  if (
+    utc.getUTCFullYear() !== year ||
+    utc.getUTCMonth() + 1 !== month ||
+    utc.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function resolveMonthDayToNearestFutureDate(month: number, day: number, today: string): string | null {
+  const currentYear = Number(today.slice(0, 4));
+  const thisYear = toDateString(currentYear, month, day);
+  if (thisYear && thisYear >= today) return thisYear;
+  return toDateString(currentYear + 1, month, day);
 }
 
 function formatShanghaiTime(date: Date): string {
@@ -158,6 +320,251 @@ function dedupeStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
+function normalizeGenderValue(value: string | null | undefined): string | null {
+  const text = normalizePolicyText(value);
+  if (!text) return null;
+  if (/(^|[^女])男/.test(text)) return '男';
+  if (/女/.test(text)) return '女';
+  return text;
+}
+
+function normalizeHealthCertificateValue(value: string | null | undefined): string | null {
+  const text = normalizePolicyText(value);
+  if (!text) return null;
+  if (/^有$|有健康证/.test(text)) return '有';
+  if (/无但接受办理健康证|可以办健康证|可办健康证|接受办健康证/.test(text)) {
+    return '无但接受办理健康证';
+  }
+  if (/无且不接受办理健康证|不办健康证|不接受办健康证/.test(text)) {
+    return '无且不接受办理健康证';
+  }
+  if (/^无$|没健康证|没有健康证|无健康证/.test(text)) return '无';
+  return text;
+}
+
+function normalizeEducationValue(value: string | null | undefined): string | null {
+  const text = normalizePolicyText(value);
+  if (!text) return null;
+  const supported = getAvailableEducations();
+  if (supported.includes(text)) return text;
+  return text;
+}
+
+function buildKnownFieldMap(params: {
+  contextProfile?: {
+    name?: string | null;
+    phone?: string | null;
+    gender?: string | null;
+    age?: string | null;
+    is_student?: boolean | null;
+    education?: string | null;
+    has_health_certificate?: string | null;
+  } | null;
+  sessionInterviewInfo?: {
+    name?: string | null;
+    phone?: string | null;
+    gender?: string | null;
+    age?: string | null;
+    interview_time?: string | null;
+    is_student?: boolean | null;
+    education?: string | null;
+    has_health_certificate?: string | null;
+    applied_store?: string | null;
+    applied_position?: string | null;
+  } | null;
+  storeName?: string | null;
+  jobName?: string | null;
+}): Record<string, string> {
+  const info = params.sessionInterviewInfo;
+  const profile = params.contextProfile;
+
+  const map: Record<string, string | null> = {
+    姓名: normalizePolicyText(info?.name) || normalizePolicyText(profile?.name),
+    联系电话: normalizePolicyText(info?.phone) || normalizePolicyText(profile?.phone),
+    性别: normalizeGenderValue(info?.gender) || normalizeGenderValue(profile?.gender),
+    年龄: normalizePolicyText(info?.age) || normalizePolicyText(profile?.age),
+    面试时间: normalizePolicyText(info?.interview_time),
+    学历: normalizeEducationValue(info?.education) || normalizeEducationValue(profile?.education),
+    健康证情况:
+      normalizeHealthCertificateValue(info?.has_health_certificate) ||
+      normalizeHealthCertificateValue(profile?.has_health_certificate),
+    是否学生:
+      info?.is_student != null
+        ? info.is_student
+          ? '是'
+          : '否'
+        : profile?.is_student != null
+          ? profile.is_student
+            ? '是'
+            : '否'
+          : null,
+    应聘门店:
+      normalizePolicyText(info?.applied_store) ||
+      normalizePolicyText(params.storeName) ||
+      null,
+    应聘岗位:
+      normalizePolicyText(info?.applied_position) ||
+      normalizePolicyText(params.jobName) ||
+      null,
+  };
+
+  const result: Record<string, string> = {};
+  for (const [field, value] of Object.entries(map)) {
+    if (value) result[field] = value;
+  }
+  return result;
+}
+
+function orderFields(fields: string[]): string[] {
+  const uniqueFields = dedupeStrings(fields);
+  const ordered = FIELD_ORDER.filter((field) => uniqueFields.includes(field));
+  const rest = uniqueFields.filter((field) => !FIELD_ORDER.includes(field)).sort();
+  return [...ordered, ...rest];
+}
+
+function formatTemplateFieldLabel(field: string): string {
+  return FIELD_LABELS[field] ?? field;
+}
+
+function buildChecklistTemplate(params: {
+  requiredFields: string[];
+  knownFieldMap: Record<string, string>;
+  storeName?: string;
+  jobName?: string;
+}): { displayOrder: string[]; missingFields: string[]; templateText: string } {
+  const requiredFields = dedupeStrings(params.requiredFields);
+  const requiredDisplayOrder = orderFields(requiredFields);
+
+  const contextFields = ['应聘门店', '应聘岗位'].filter((field) => {
+    if (requiredDisplayOrder.includes(field)) return false;
+    if (field === '应聘门店') return Boolean(normalizePolicyText(params.storeName));
+    if (field === '应聘岗位') return Boolean(normalizePolicyText(params.jobName));
+    return false;
+  });
+  const displayOrder = [...requiredDisplayOrder, ...contextFields];
+
+  const missingFields = requiredDisplayOrder.filter((field) => !params.knownFieldMap[field]);
+
+  const lines = [
+    '面试模板：',
+    '面试要求：先将以下资料补充下发给我，我来帮你约面试',
+    ...displayOrder.map((field) => {
+      const value = params.knownFieldMap[field] ?? '';
+      return `${formatTemplateFieldLabel(field)}：${value}`;
+    }),
+  ];
+
+  return {
+    displayOrder,
+    missingFields,
+    templateText: lines.join('\n'),
+  };
+}
+
+function buildTimeOption(date: string, window: InterviewWindow): {
+  date: string;
+  weekday: string;
+  startTime: string;
+  endTime: string;
+  bookingDeadline: string | null;
+  label: string;
+} {
+  const weekday = getShanghaiWeekday(date).replace('每周', '周');
+  const bookingDeadline = resolveBookingDeadlineDateTime(date, window);
+  const label = bookingDeadline
+    ? `${date} ${weekday} ${window.startTime}-${window.endTime}（报名截止 ${bookingDeadline}）`
+    : `${date} ${weekday} ${window.startTime}-${window.endTime}`;
+
+  return {
+    date,
+    weekday,
+    startTime: window.startTime,
+    endTime: window.endTime,
+    bookingDeadline,
+    label,
+  };
+}
+
+function buildCandidateTimeOptions(params: {
+  windows: InterviewWindow[];
+  requestedDate: string | null;
+  horizonDays?: number;
+  maxOptions?: number;
+}): Array<{
+  date: string;
+  weekday: string;
+  startTime: string;
+  endTime: string;
+  bookingDeadline: string | null;
+  label: string;
+}> {
+  const { windows, requestedDate, horizonDays = 14, maxOptions = 12 } = params;
+  const today = formatLocalDate(new Date());
+  const options: Array<{
+    date: string;
+    weekday: string;
+    startTime: string;
+    endTime: string;
+    bookingDeadline: string | null;
+    label: string;
+  }> = [];
+
+  if (requestedDate) {
+    for (const window of windows) {
+      if (window.date && window.date !== requestedDate) continue;
+      if (window.weekday && window.weekday !== getShanghaiWeekday(requestedDate)) continue;
+      options.push(buildTimeOption(requestedDate, window));
+    }
+    return dedupeTimeOptions(options);
+  }
+
+  for (const window of windows) {
+    if (window.date && window.date >= today) {
+      options.push(buildTimeOption(window.date, window));
+      continue;
+    }
+
+    if (!window.weekday) continue;
+    for (let i = 0; i <= horizonDays; i += 1) {
+      const candidateDate = shiftDate(today, i);
+      if (window.weekday !== getShanghaiWeekday(candidateDate)) continue;
+      options.push(buildTimeOption(candidateDate, window));
+    }
+  }
+
+  return dedupeTimeOptions(options)
+    .sort((a, b) => (a.date === b.date ? compareTime(a.startTime, b.startTime) : a.date.localeCompare(b.date)))
+    .slice(0, maxOptions);
+}
+
+function dedupeTimeOptions(
+  options: Array<{
+    date: string;
+    weekday: string;
+    startTime: string;
+    endTime: string;
+    bookingDeadline: string | null;
+    label: string;
+  }>,
+): Array<{
+  date: string;
+  weekday: string;
+  startTime: string;
+  endTime: string;
+  bookingDeadline: string | null;
+  label: string;
+}> {
+  const seen = new Set<string>();
+  const result: typeof options = [];
+  for (const option of options) {
+    const key = `${option.date}|${option.startTime}|${option.endTime}|${option.bookingDeadline ?? ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(option);
+  }
+  return result;
+}
+
 function evaluateRequestedDate(params: {
   date: string;
   windows: InterviewWindow[];
@@ -265,7 +672,7 @@ function evaluateRequestedDate(params: {
 }
 
 export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBuilder {
-  return () =>
+  return (context) =>
     tool({
       description:
         '面试前置校验。根据岗位 ID 读取真实招聘要求和面试流程，返回：今天/指定日期能不能约、可约时段、报名截止时间是否已过、备注解析后的字段建议与规则重点。这个工具负责解释岗位规则，不负责真正提交预约。',
@@ -291,7 +698,6 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
               includeBasicInfo: true,
               includeHiringRequirement: true,
               includeInterviewProcess: true,
-              includeWorkTime: true,
             },
           });
 
@@ -326,6 +732,38 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
             storeInfo && typeof storeInfo.storeName === 'string'
               ? normalizePolicyText(storeInfo.storeName)
               : '';
+          const jobName = normalizePolicyText(job.basicInfo.jobName || job.basicInfo.jobNickName);
+          const knownFieldMap = buildKnownFieldMap({
+            contextProfile: context.profile ?? null,
+            sessionInterviewInfo: context.sessionFacts?.interview_info ?? null,
+            storeName,
+            jobName,
+          });
+
+          const requiredFields = dedupeStrings([
+            ...analysis.fieldGuidance.bookingSubmissionFields,
+            ...analysis.fieldGuidance.screeningFields,
+          ]);
+          const checklist = buildChecklistTemplate({
+            requiredFields,
+            knownFieldMap,
+            storeName,
+            jobName,
+          });
+
+          const candidateTimeOptions = buildCandidateTimeOptions({
+            windows,
+            requestedDate: normalizedDate.date,
+          });
+
+          const nextAction: 'collect_fields' | 'confirm_date' | 'date_unavailable' | 'ready_to_book' =
+            requestedDateCheck.status === 'unavailable'
+              ? 'date_unavailable'
+              : checklist.missingFields.length > 0
+                ? 'collect_fields'
+                : !normalizedDate.date || requestedDateCheck.status === 'needs_confirmation'
+                  ? 'confirm_date'
+                  : 'ready_to_book';
 
           return {
             success: true,
@@ -333,7 +771,7 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
               jobId,
               brandName: normalizePolicyText(job.basicInfo.brandName),
               storeName,
-              jobName: normalizePolicyText(job.basicInfo.jobName || job.basicInfo.jobNickName),
+              jobName,
             },
             interview: {
               method: analysis.interviewMeta.method,
@@ -342,6 +780,9 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
               timeHint: analysis.interviewMeta.timeHint,
               registrationDeadlineHint: analysis.interviewMeta.registrationDeadlineHint,
               scheduleWindows: windows,
+              candidateTimeOptions,
+              requestedDateInput: requestedDate ?? null,
+              normalizedRequestedDate: normalizedDate.date,
               requestedDate: normalizedDate.date,
               requestedDateStatus: requestedDateCheck.status,
               canScheduleOnRequestedDate: requestedDateCheck.canSchedule,
@@ -350,6 +791,7 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
               requestedDateDecisionBasis: requestedDateCheck.decisionBasis,
               policyNotes: requestedDateCheck.policyNotes,
             },
+            nextAction,
             requirements: analysis.normalizedRequirements,
             policyHighlights: {
               requirementHighlights: analysis.highlights.requirementHighlights,
@@ -358,11 +800,23 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
             fieldGuidance: {
               ...analysis.fieldGuidance,
               fieldSignals: analysis.fieldGuidance.fieldSignals,
+              enumHints: {
+                genderId: GENDER_ENUM_HINTS,
+                hasHealthCertificate: HEALTH_CERT_ENUM_HINTS,
+                education: getAvailableEducations(),
+              },
               sourceSummary: dedupeStrings(
                 analysis.fieldGuidance.fieldSignals.map(
                   (signal) => `${signal.field} <- ${signal.sourceField}`,
                 ),
               ),
+            },
+            bookingChecklist: {
+              requiredFields,
+              missingFields: checklist.missingFields,
+              displayOrder: checklist.displayOrder,
+              knownFieldMap,
+              templateText: checklist.templateText,
             },
           };
         } catch (err) {

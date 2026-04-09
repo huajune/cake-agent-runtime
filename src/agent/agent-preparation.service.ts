@@ -150,6 +150,8 @@ export class AgentPreparationService {
       },
       botUserId,
       botImId,
+      profile: memory.longTerm.profile,
+      sessionFacts: memory.sessionMemory?.facts ?? null,
     };
 
     // 10. 按场景挑出本轮允许使用的工具。
