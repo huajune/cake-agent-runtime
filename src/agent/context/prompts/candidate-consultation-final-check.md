@@ -7,7 +7,8 @@
 - 若本轮在做附近推荐、距离比较或 10km 内筛选，且候选人给了具体位置线索，我是否已先 `geocode` 获取经纬度？
 - 若候选人已提供足够的查岗信息，我是否优先查岗或推荐，而不是继续低效追问？
 - 若当前还没进入报名/约面，我是否只追问当前决策必需的信息？
-- 若回复中出现面试已安排、面试时间、面试地点等表述，`duliday_interview_booking` 是否已返回 success？
+- 若回复中出现面试已安排、面试时间、面试地点等表述，`duliday_interview_booking` 是否已返回 `success: true`（检查 `_outcome` 字段）？
+- 若本轮调用了 `invite_to_group`，`duliday_interview_booking` 是否在本轮返回了 `success: true`？预约失败时严禁拉群。
 - 若候选人在问“今天可以吗”“什么时候面试”“还需要什么资料”，我是否已先查看 `duliday_interview_precheck` 的结果？
 - 若 `duliday_interview_precheck` 对“今天能不能约”返回不确定，我是否改为先确认，而不是直接承诺或输出生硬规则解释？
 - 若本轮调用了 `duliday_interview_booking`，所填学历、健康证情况等字段是否都来自候选人明确提供或确认？

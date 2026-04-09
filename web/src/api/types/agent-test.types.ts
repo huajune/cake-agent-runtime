@@ -10,11 +10,15 @@ export interface TestChatRequest {
   imageUrls?: string[];
   scenario?: string;
   saveExecution?: boolean;
+  userId?: string;
+  botUserId?: string;
+  botImId?: string;
   caseId?: string;
   caseName?: string;
   category?: string;
   expectedOutput?: string;
   batchId?: string;
+  modelId?: string;
 }
 
 export interface TokenUsage {
@@ -212,6 +216,12 @@ export interface WriteBackFeishuRequest {
 export interface WriteBackResult {
   success: boolean;
   error?: string;
+}
+
+export interface ResetChatSessionResponse {
+  userId: string;
+  corpId: string;
+  cleared: boolean;
 }
 
 export interface BatchWriteBackResult {

@@ -232,6 +232,7 @@ export const InterviewBookingApiResponseSchema = z
         notice: z.string().nullable().optional(),
         errorList: z.array(z.unknown()).nullable().optional(),
       })
+      .nullable()
       .optional(),
   })
   .passthrough();

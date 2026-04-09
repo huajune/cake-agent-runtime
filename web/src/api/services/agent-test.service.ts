@@ -18,6 +18,7 @@ import type {
   QuickCreateBatchRequest,
   WriteBackFeishuRequest,
   WriteBackResult,
+  ResetChatSessionResponse,
   BatchWriteBackResult,
   ConversationSnapshotStatus,
   ConversationSnapshotListResponse,
@@ -50,6 +51,7 @@ export type {
   QuickCreateBatchRequest,
   WriteBackFeishuRequest,
   WriteBackResult,
+  ResetChatSessionResponse,
   BatchWriteBackResult,
   ConversationSnapshotStatus,
   ParsedMessage,
@@ -67,6 +69,16 @@ const AGENT_TEST_TIMEOUT = 120000;
 export async function executeTest(request: TestChatRequest): Promise<TestChatResponse> {
   const { data } = await api.post('/test-suite/chat', request, { timeout: AGENT_TEST_TIMEOUT });
   return unwrapResponse<TestChatResponse>(data);
+}
+
+export async function resetChatSessionMemory(params: {
+  userId: string;
+  corpId?: string;
+}): Promise<ResetChatSessionResponse> {
+  const { data } = await api.post('/test-suite/chat/reset-session', params, {
+    timeout: AGENT_TEST_TIMEOUT,
+  });
+  return unwrapResponse<ResetChatSessionResponse>(data);
 }
 
 export function executeTestStream(

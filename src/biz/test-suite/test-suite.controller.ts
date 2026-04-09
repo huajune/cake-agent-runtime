@@ -24,6 +24,7 @@ import { ConversationTestService } from './services/conversation-test.service';
 import { AiStreamObservabilityService } from './services/ai-stream-observability.service';
 import { TestSuiteProcessor } from './test-suite.processor';
 import { FeishuBitableSyncService, AgentTestFeedback } from '@biz/feishu-sync/bitable-sync.service';
+import { MemoryService } from '@memory/memory.service';
 import {
   TestChatRequestDto,
   BatchTestRequestDto,
@@ -34,6 +35,7 @@ import {
   SubmitFeedbackRequestDto,
   QuickCreateBatchRequestDto,
   WriteBackFeishuRequestDto,
+  ResetChatSessionRequestDto,
 } from './dto/test-chat.dto';
 import {
   GetConversationSourcesDto,
@@ -68,6 +70,7 @@ export class TestSuiteController {
     private readonly aiStreamObservability: AiStreamObservabilityService,
     private readonly testProcessor: TestSuiteProcessor,
     private readonly feishuBitableService: FeishuBitableSyncService,
+    private readonly memoryService: MemoryService,
   ) {}
 
   // ==================== 单条测试 ====================
@@ -127,20 +130,26 @@ export class TestSuiteController {
         scenario: request.scenario,
         sessionId: request.sessionId,
         userId: request.userId,
+        botUserId: request.botUserId,
+        botImId: request.botImId,
         thinking: request.thinking,
         saveExecution: request.saveExecution ?? false,
         messages: transportMessages,
+        modelId: request.modelId,
       },
       normalizedRequest: {
         scenario: normalizedRequest.scenario,
         sessionId,
         userId: normalizedRequest.userId,
+        botUserId: normalizedRequest.botUserId,
+        botImId: normalizedRequest.botImId,
         thinking: normalizedRequest.thinking,
         saveExecution: normalizedRequest.saveExecution ?? false,
         skipHistoryTrim: normalizedRequest.skipHistoryTrim ?? false,
         message: normalizedRequest.message,
         history: normalizedRequest.history,
         imageUrls: normalizedRequest.imageUrls,
+        modelId: normalizedRequest.modelId,
       },
     };
     const trace = this.aiStreamObservability.startTrace({
@@ -246,6 +255,27 @@ export class TestSuiteController {
       res.write(`data: ${JSON.stringify({ type: 'error', error: errorMessage })}\n\n`);
       res.end();
     }
+  }
+
+  @Post('chat/reset-session')
+  @ApiOperation({ summary: '重置测试会话并清理长期画像' })
+  async resetChatSession(@Body() request: ResetChatSessionRequestDto) {
+    const userId = request.userId?.trim();
+    if (!userId) {
+      throw new HttpException('userId 不能为空', HttpStatus.BAD_REQUEST);
+    }
+
+    const corpId = request.corpId?.trim() || 'test';
+    const cleared = await this.memoryService.clearLongTermMemory(corpId, userId);
+
+    return {
+      success: true,
+      data: {
+        userId,
+        corpId,
+        cleared,
+      },
+    };
   }
 
   // ==================== 批量测试 ====================

@@ -13,3 +13,14 @@ export const HISTORY_PLACEHOLDER = `粘贴对话记录，格式如：
 // API 配置
 export const CHAT_API_ENDPOINT = '/test-suite/chat/ai-stream';
 export const DEFAULT_SCENARIO = 'candidate-consultation';
+
+// 拉群链路默认 ID（来源：Ariel 历史会话）
+export const DEFAULT_GROUP_INVITE_IDS: {
+  userId: string;
+  botUserId: string;
+  botImId: string;
+} = {
+  userId: '7881300085910772',
+  botUserId: 'ZhuJie',
+  botImId: '1688854747775509',
+};
