@@ -32,18 +32,12 @@ export interface InterviewBookingNotificationInfo {
   toolOutput: Record<string, unknown>;
 }
 
-interface BookingJobSnapshot {
-  brandName?: string;
-  storeName?: string;
-  jobName?: string;
-}
-
 export function buildInterviewBookingTool(
   spongeService: SpongeService,
   webhookService: FeishuWebhookService,
   cardBuilder: FeishuCardBuilderService,
 ): ToolBuilder {
-  return (_context) => {
+  return (context) => {
     return tool({
       description:
         '预约面试。仅在候选人明确要报名/约面、且岗位与面试时间已确认时调用。这个工具只负责接口字段校验与提交，不负责解释岗位规则或决定现在该追问哪些资料。',
@@ -64,6 +58,9 @@ export function buildInterviewBookingTool(
           .describe(
             '是否有健康证：1=有，2=无但接受办理健康证，3=无且不接受办理健康证。属于预约提交字段，确认需要时再填写',
           ),
+        brandName: z.string().optional().describe('品牌名称，从岗位列表结果中获取，用于通知展示'),
+        storeName: z.string().optional().describe('门店名称，从岗位列表结果中获取，用于通知展示'),
+        jobName: z.string().optional().describe('岗位名称，从岗位列表结果中获取，用于通知展示'),
       }),
       execute: async ({
         name,
@@ -74,6 +71,9 @@ export function buildInterviewBookingTool(
         interviewTime,
         education,
         hasHealthCertificate,
+        brandName: inputBrandName,
+        storeName: inputStoreName,
+        jobName: inputJobName,
       }) => {
         logger.log(`预约面试: ${name}, jobId=${jobId}`);
 
@@ -139,8 +139,6 @@ export function buildInterviewBookingTool(
         const genderLabel = toGenderLabel(genderId);
         const ageText = normalizeAgeText(age);
 
-        const jobSnapshotPromise = fetchBookingJobSnapshot(spongeService, jobId);
-
         try {
           const result = await spongeService.bookInterview({
             name,
@@ -152,60 +150,69 @@ export function buildInterviewBookingTool(
             educationId,
             hasHealthCertificate,
           });
-          const resultRecord = toRecord(result);
+
+          context.bookingSucceeded = result.success;
 
           const toolResult = {
             ...result,
             errorType: result.success ? null : 'booking_rejected',
             requestInfo,
+            ...(result.success
+              ? { _outcome: '预约成功，可以告知候选人面试安排' }
+              : {
+                  _outcome: '预约失败',
+                  _fixedReply: '我这边预约遇到点小状况，我去找同事确认一下，稍等。',
+                  _replyRule:
+                    '必须原样输出 _fixedReply 的内容作为回复，禁止添加、修改或补充任何文字',
+                }),
           };
 
-          void jobSnapshotPromise.then((jobSnapshot) =>
-            sendInterviewBookingNotification(
-              {
-                candidateName: name,
-                phone,
-                genderLabel,
-                ageText,
-                interviewTime,
-                brandName: pickString(jobSnapshot?.brandName, resultRecord?.brandName),
-                storeName: pickString(jobSnapshot?.storeName, resultRecord?.storeName),
-                jobName: pickString(jobSnapshot?.jobName, resultRecord?.jobName),
-                jobId,
-                toolOutput: toolResult,
-              },
-              webhookService,
-              cardBuilder,
-            ),
+          void sendInterviewBookingNotification(
+            {
+              candidateName: name,
+              phone,
+              genderLabel,
+              ageText,
+              interviewTime,
+              brandName: inputBrandName,
+              storeName: inputStoreName,
+              jobName: inputJobName,
+              jobId,
+              toolOutput: toolResult,
+            },
+            webhookService,
+            cardBuilder,
           );
 
           return toolResult;
         } catch (err) {
           logger.error('预约面试失败', err);
+          context.bookingSucceeded = false;
           const toolResult = {
             success: false,
             errorType: 'booking_request_failed',
             error: `预约面试失败: ${err instanceof Error ? err.message : '未知错误'}`,
             requestInfo,
+            _outcome: '预约失败',
+            _fixedReply: '我这边预约遇到点小状况，我去找同事确认一下，稍等。',
+            _replyRule: '必须原样输出 _fixedReply 的内容作为回复，禁止添加、修改或补充任何文字',
           };
 
-          void jobSnapshotPromise.then((jobSnapshot) =>
-            sendInterviewBookingNotification(
-              {
-                candidateName: name,
-                phone,
-                genderLabel,
-                ageText,
-                interviewTime,
-                brandName: jobSnapshot?.brandName,
-                storeName: jobSnapshot?.storeName,
-                jobName: jobSnapshot?.jobName,
-                jobId,
-                toolOutput: toolResult,
-              },
-              webhookService,
-              cardBuilder,
-            ),
+          void sendInterviewBookingNotification(
+            {
+              candidateName: name,
+              phone,
+              genderLabel,
+              ageText,
+              interviewTime,
+              brandName: inputBrandName,
+              storeName: inputStoreName,
+              jobName: inputJobName,
+              jobId,
+              toolOutput: toolResult,
+            },
+            webhookService,
+            cardBuilder,
           );
 
           return toolResult;
@@ -311,11 +318,6 @@ function pickString(...values: unknown[]): string | undefined {
   return undefined;
 }
 
-function toRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
-}
-
 function toGenderLabel(genderId: number): string | undefined {
   if (genderId === 1) return '男';
   if (genderId === 2) return '女';
@@ -332,36 +334,4 @@ function formatInterviewTimeForDisplay(value: string): string {
   const withSeconds = normalized.match(/^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}):\d{2}$/);
   if (withSeconds) return withSeconds[1];
   return normalized;
-}
-
-async function fetchBookingJobSnapshot(
-  spongeService: SpongeService,
-  jobId: number,
-): Promise<BookingJobSnapshot | null> {
-  try {
-    const { jobs } = await spongeService.fetchJobs({
-      jobIdList: [jobId],
-      pageNum: 1,
-      pageSize: 1,
-      options: {
-        includeBasicInfo: true,
-      },
-    });
-    const job = jobs[0];
-    if (!job?.basicInfo) return null;
-
-    const storeInfo = toRecord(job.basicInfo.storeInfo);
-    return {
-      brandName: pickString(job.basicInfo.brandName),
-      storeName: pickString(storeInfo?.storeName, job.basicInfo.storeName),
-      jobName: pickString(job.basicInfo.jobName, job.basicInfo.jobNickName),
-    };
-  } catch (error) {
-    logger.warn(
-      `预约通知补充岗位信息失败(jobId=${jobId}): ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    return null;
-  }
 }

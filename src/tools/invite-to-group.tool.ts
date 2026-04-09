@@ -44,13 +44,13 @@ export function buildInviteToGroupTool(
       }),
       execute: async ({ city, industry }) => {
         try {
-          if (context.strategySource === 'testing') {
-            logger.log(`testing 链路禁用真实拉群: city=${city}, user=${context.userId}`);
+          // 硬规则：本轮 booking 失败则禁止拉群（穷尽推荐场景 bookingSucceeded 为 undefined，不拦截）
+          if (context.bookingSucceeded === false) {
+            logger.log(`本轮预约失败，跳过拉群: city=${city}, user=${context.userId}`);
             return {
               success: false,
-              reason: 'side_effect_disabled_in_testing',
-              errorType: 'side_effect_disabled',
-              error: 'testing 链路默认禁用真实拉群，请在真实企微链路联调',
+              reason: 'booking_not_succeeded',
+              error: '本轮面试预约未成功，不执行拉群',
             };
           }
 

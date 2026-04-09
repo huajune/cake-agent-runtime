@@ -120,16 +120,16 @@ describe('buildInviteToGroupTool', () => {
     expect(result.error).toContain('暂无可用群');
   });
 
-  it('should skip side-effect in testing strategy source', async () => {
+  it('should block invite when booking failed in same turn', async () => {
     const result = await executeTool(
       { city: '上海' },
       {
-        strategySource: 'testing',
+        bookingSucceeded: false,
       },
     );
 
     expect(result.success).toBe(false);
-    expect(result.reason).toBe('side_effect_disabled_in_testing');
+    expect(result.reason).toBe('booking_not_succeeded');
     expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
     expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
   });

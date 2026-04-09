@@ -98,6 +98,7 @@ const DEFAULT_DEEP_THINKING_BUDGET_TOKENS = 4000;
 const MIN_DEEP_THINKING_BUDGET_TOKENS = 500;
 const MAX_DEEP_THINKING_BUDGET_TOKENS = 20000;
 const DEFAULT_THINKING_MODE: AgentTestThinkingMode = 'fast';
+const DASHBOARD_TEST_USER_ID_PREFIX = 'dashboard-test-';
 
 function clampThinkingBudgetTokens(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_DEEP_THINKING_BUDGET_TOKENS;
@@ -111,6 +112,14 @@ function clampThinkingBudgetTokens(value: number): number {
 function inferMediaType(url: string): string {
   const match = url.match(/^data:([^;]+);/);
   return match?.[1] || 'image/*';
+}
+
+function normalizeAgentTestUserId(value?: string): string {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed.startsWith(DASHBOARD_TEST_USER_ID_PREFIX)) {
+    return DEFAULT_GROUP_INVITE_IDS.userId;
+  }
+  return trimmed;
 }
 
 type ToolPartSnapshot = {
@@ -557,7 +566,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
         const nextHistoryText = draftCache.historyText ?? '';
         const nextCurrentInput = draftCache.currentInput ?? '';
         const nextSessionId = draftCache.sessionId || generateUUID();
-        const nextUserId = draftCache.userId || DEFAULT_GROUP_INVITE_IDS.userId;
+        const nextUserId = normalizeAgentTestUserId(draftCache.userId);
         const nextBotUserId = draftCache.botUserId || DEFAULT_GROUP_INVITE_IDS.botUserId;
         const nextBotImId = draftCache.botImId || DEFAULT_GROUP_INVITE_IDS.botImId;
         const nextThinkingMode = draftCache.thinkingMode ?? DEFAULT_THINKING_MODE;
@@ -656,9 +665,9 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     stop();
   }, [stop]);
 
-  // 清空（重新生成 sessionId + userId 开启新会话；保留 bot ID 配置）
+  // 清空（重新生成 sessionId 开启新会话；userId 仍使用候选人 imContactId）
   const handleClear = useCallback(() => {
-    const currentUserId = userId.trim();
+    const currentUserId = normalizeAgentTestUserId(userId);
     if (currentUserId) {
       void resetChatSessionMemory({ userId: currentUserId, corpId: 'test' }).catch((error) => {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -667,7 +676,6 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     }
 
     const nextSessionId = generateUUID();
-    const nextUserId = `dashboard-test-${generateUUID().slice(0, 8)}`;
 
     setHistoryTextState('');
     setHistoryStatus('empty');
@@ -683,12 +691,12 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     setCurrentStage(null);
     submittedImagesRef.current = [];
     setSessionId(nextSessionId);
-    setUserId(nextUserId);
+    setUserId(currentUserId || DEFAULT_GROUP_INVITE_IDS.userId);
     void saveAgentTestDraftCache({
       historyText: '',
       currentInput: '',
       sessionId: nextSessionId,
-      userId: nextUserId,
+      userId: currentUserId || DEFAULT_GROUP_INVITE_IDS.userId,
       botUserId,
       botImId,
       thinkingMode,

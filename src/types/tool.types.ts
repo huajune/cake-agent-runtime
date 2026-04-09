@@ -23,6 +23,8 @@ export interface ToolBuildContext {
   messages: unknown[];
   /** 记录本轮工具查到的岗位候选池；回合结束后再统一写入会话记忆。 */
   onJobsFetched?: (jobs: unknown[]) => void | Promise<void>;
+  /** 本轮面试预约是否成功；由 duliday_interview_booking 写入，invite_to_group 读取做硬拦截。 */
+  bookingSucceeded?: boolean;
   /** 业务阈值（策略配置） */
   thresholds?: Threshold[];
   /** 图片消息 ID 列表（当前轮次包含图片时传入，供 save_image_description 工具使用） */
