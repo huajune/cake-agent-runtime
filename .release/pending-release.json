@@ -1,7 +1,7 @@
 {
   "baseVersion": "5.0.0",
-  "nextVersion": "5.0.1",
-  "updatedAt": "2026-04-08",
+  "nextVersion": "5.1.0",
+  "updatedAt": "2026-04-09",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -19,6 +19,24 @@
       "ops": [
         "[codex] chore: 自动化受保护分支发布流程"
       ],
+      "config": [],
+      "verification": []
+    },
+    {
+      "number": "66",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/66",
+      "title": "interview precheck deadline parsing + job list prompt guidance",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-09",
+      "summary": [
+        "interview precheck deadline parsing + job list prompt guidance"
+      ],
+      "features": [
+        "interview precheck deadline parsing + job list prompt guidance"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [],
       "config": [],
       "verification": []
     }
