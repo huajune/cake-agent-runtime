@@ -29,6 +29,7 @@ describe('buildInviteToGroupTool', () => {
     isUserInRoom: jest.fn(),
     markUserInRoom: jest.fn(),
     invalidateRoomCache: jest.fn(),
+    refreshRoomCacheByToken: jest.fn(),
   };
   const mockRoomService = { addMemberEnterprise: jest.fn() };
   const mockWebhookService = { sendMessage: jest.fn() };
@@ -44,6 +45,7 @@ describe('buildInviteToGroupTool', () => {
     mockGroupMembership.isUserInRoom.mockResolvedValue(false);
     mockGroupMembership.markUserInRoom.mockResolvedValue(undefined);
     mockGroupMembership.invalidateRoomCache.mockResolvedValue(undefined);
+    mockGroupMembership.refreshRoomCacheByToken.mockResolvedValue(undefined);
   });
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -157,6 +159,7 @@ describe('buildInviteToGroupTool', () => {
     expect(result.success).toBe(false);
     expect(result.reason).toBe('already_in_group');
     expect(result.groupName).toBe('上海兼职群1号');
+    expect(mockGroupMembership.refreshRoomCacheByToken).toHaveBeenCalledWith('room-1', 'token-1');
     expect(mockGroupMembership.isUserInRoom).toHaveBeenCalledWith('room-1', 'user-1', ['room-1']);
     expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
     expect(mockGroupMembership.markUserInRoom).not.toHaveBeenCalled();

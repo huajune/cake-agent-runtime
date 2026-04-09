@@ -495,6 +495,7 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
                   <MessagePartsAdapter
                     message={latestAssistantMessage ?? { id: 'loading', role: 'assistant' as const, parts: [] }}
                     isStreaming={true}
+                    renderTextAsMarkdown={true}
                   />
                 </div>
               </div>
@@ -518,6 +519,7 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
                   <MessagePartsAdapter
                     message={latestAssistantMessage}
                     isStreaming={false}
+                    renderTextAsMarkdown={true}
                   />
                   {/* 反馈按钮放在右下角 */}
                   <div className={styles.feedbackBtnsRight}>

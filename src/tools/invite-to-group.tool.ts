@@ -108,12 +108,11 @@ export function buildInviteToGroupTool(
             return { success: false, reason: 'group_full' };
           }
 
-          // 传入所有兼职群 ID 作为白名单，避免 GroupMembershipService 缓存无关群
-          const partTimeRoomIds = allGroups.map((group) => group.imRoomId);
+          await groupMembership.refreshRoomCacheByToken(targetGroup.imRoomId, targetGroup.token);
           const alreadyMember = await groupMembership.isUserInRoom(
             targetGroup.imRoomId,
             context.userId,
-            partTimeRoomIds,
+            [targetGroup.imRoomId],
           );
           if (alreadyMember) {
             logger.log(`用户已在群中，静默跳过: ${targetGroup.groupName} (user=${context.userId})`);
@@ -151,7 +150,7 @@ export function buildInviteToGroupTool(
             groupMembership,
             roomId: targetGroup.imRoomId,
             userId: context.userId,
-            relevantRoomIds: partTimeRoomIds,
+            roomToken: targetGroup.token,
           });
           if (!joinConfirmed) {
             logger.warn(
@@ -201,13 +200,13 @@ async function confirmInviteJoined(params: {
   groupMembership: GroupMembershipService;
   roomId: string;
   userId: string;
-  relevantRoomIds: string[];
+  roomToken?: string;
 }): Promise<boolean> {
-  const { groupMembership, roomId, userId, relevantRoomIds } = params;
+  const { groupMembership, roomId, userId, roomToken } = params;
 
   for (let attempt = 1; attempt <= INVITE_CONFIRM_ATTEMPTS; attempt += 1) {
-    await groupMembership.invalidateRoomCache(roomId);
-    const joined = await groupMembership.isUserInRoom(roomId, userId, relevantRoomIds);
+    await groupMembership.refreshRoomCacheByToken(roomId, roomToken);
+    const joined = await groupMembership.isUserInRoom(roomId, userId, [roomId]);
     if (joined) return true;
 
     if (attempt < INVITE_CONFIRM_ATTEMPTS) {
