@@ -76,7 +76,7 @@ export default function GroupTaskPanel({ config }: GroupTaskPanelProps) {
 
   const handleDryRunChange = useCallback(
     (checked: boolean) => {
-      updateConfig.mutate({ dryRun: checked });
+      updateConfig.mutate({ dryRun: !checked });
     },
     [updateConfig],
   );
@@ -95,12 +95,12 @@ export default function GroupTaskPanel({ config }: GroupTaskPanelProps) {
 
       <div className={styles.divider} />
 
-      {/* 试运行模式 */}
+      {/* 正式推送开关 */}
       <ToggleRow
-        label="试运行模式"
-        description="开启时只发飞书预览，关闭后正式发到企微群"
-        checked={config?.dryRun ?? true}
-        statusLabel={config?.dryRun ? '预览模式' : '正式推送'}
+        label="正式推送"
+        description="开启后消息将发送到企微群，关闭时仅发飞书预览"
+        checked={!(config?.dryRun ?? true)}
+        statusLabel={config?.dryRun === false ? '已上线' : '飞书预览'}
         disabled={updateConfig.isPending}
         onChange={handleDryRunChange}
         variant="warning"

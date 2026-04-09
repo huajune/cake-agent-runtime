@@ -187,7 +187,7 @@ export class GroupResolverService implements OnModuleInit {
           city: parsed.city,
           industry: parsed.industry,
           tag: parsed.type,
-          imBotId: room.botInfo?.weixin || '',
+          imBotId: room.botInfo?.wxid || '',
           token,
           chatId: room.chatId || '',
           memberCount: room.memberCount,
@@ -237,7 +237,7 @@ export class GroupResolverService implements OnModuleInit {
             wxid: room.wxid,
             topic: room.topic || '',
             chatId: room.chatId || '',
-            botWxid: room.botInfo?.weixin || '',
+            botWxid: room.botInfo?.wxid || '',
             memberCount: room.memberCount,
           });
         }

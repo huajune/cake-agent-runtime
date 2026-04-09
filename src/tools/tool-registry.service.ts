@@ -24,7 +24,6 @@ import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.se
 import { FeishuWebhookService } from '@infra/feishu/services/webhook.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
-import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
 import { RoomService } from '@channels/wecom/room/room.service';
 
 /**
@@ -54,7 +53,6 @@ export class ToolRegistryService {
     spongeService: SpongeService,
     geocodingService: GeocodingService,
     groupResolverService: GroupResolverService,
-    groupMembershipService: GroupMembershipService,
     roomService: RoomService,
     webhookService: FeishuWebhookService,
     cardBuilder: FeishuCardBuilderService,
@@ -110,7 +108,6 @@ export class ToolRegistryService {
         description: '邀请候选人加入企微兼职群（穷尽推荐无匹配/登记完成后触发）',
         create: buildInviteToGroupTool(
           groupResolverService,
-          groupMembershipService,
           roomService,
           webhookService,
           cardBuilder,

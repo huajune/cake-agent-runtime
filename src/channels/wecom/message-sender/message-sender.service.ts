@@ -97,6 +97,13 @@ export class MessageSenderService {
 
       const result = await this.httpService.post(apiUrl, requestBody);
 
+      // 校验业务状态码（Stride API 返回 HTTP 200 但 errcode !== 0 表示业务失败）
+      if (result && typeof result.errcode === 'number' && result.errcode !== 0) {
+        throw new Error(
+          `消息发送业务失败: errcode=${result.errcode}, errmsg=${result.errmsg || '未知'}`,
+        );
+      }
+
       this.logger.log('发送消息成功');
       return result;
     } catch (error) {
