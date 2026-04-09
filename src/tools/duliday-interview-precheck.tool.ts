@@ -53,9 +53,11 @@ const HEALTH_CERT_ENUM_HINTS = [
   { id: 3, label: '无且不接受办理健康证' },
 ];
 
-function normalizeRequestedDate(
-  input?: string,
-): { date: string | null; normalizedInput: string | null; error?: string } {
+function normalizeRequestedDate(input?: string): {
+  date: string | null;
+  normalizedInput: string | null;
+  error?: string;
+} {
   const raw = normalizePolicyText(input);
   if (!raw) return { date: null, normalizedInput: null };
   const normalizedInput = raw.toLowerCase();
@@ -78,7 +80,11 @@ function normalizeRequestedDate(
 
   const monthDay = raw.match(/^(\d{1,2})月(\d{1,2})日$/);
   if (monthDay) {
-    const resolved = resolveMonthDayToNearestFutureDate(Number(monthDay[1]), Number(monthDay[2]), today);
+    const resolved = resolveMonthDayToNearestFutureDate(
+      Number(monthDay[1]),
+      Number(monthDay[2]),
+      today,
+    );
     if (!resolved) {
       return { date: null, normalizedInput, error: `无法识别的日期：${raw}` };
     }
@@ -140,12 +146,18 @@ function getWeekdayIndexByDate(dateStr: string): number {
 function resolveWeeklyDateExpression(raw: string, today: string): string | null {
   const thisWeekMatch = raw.match(/^(本周|这周|本星期|这星期)([一二三四五六日天1-7])$/);
   if (thisWeekMatch) {
-    return resolveDateFromWeekday(today, thisWeekMatch[2], { weekOffset: 0, keepPastInCurrentWeek: true });
+    return resolveDateFromWeekday(today, thisWeekMatch[2], {
+      weekOffset: 0,
+      keepPastInCurrentWeek: true,
+    });
   }
 
   const nextWeekMatch = raw.match(/^(下周|下星期)([一二三四五六日天1-7])$/);
   if (nextWeekMatch) {
-    return resolveDateFromWeekday(today, nextWeekMatch[2], { weekOffset: 1, keepPastInCurrentWeek: true });
+    return resolveDateFromWeekday(today, nextWeekMatch[2], {
+      weekOffset: 1,
+      keepPastInCurrentWeek: true,
+    });
   }
 
   const plainWeekMatch = raw.match(/^(周|星期)([一二三四五六日天1-7])$/);
@@ -169,7 +181,7 @@ function resolveDateFromWeekday(
 
   const currentWeekday = getWeekdayIndexByDate(today);
   const monday = shiftDate(today, -(currentWeekday - 1));
-  let target = shiftDate(monday, (targetWeekday - 1) + options.weekOffset * 7);
+  let target = shiftDate(monday, targetWeekday - 1 + options.weekOffset * 7);
 
   if (!options.keepPastInCurrentWeek && target < today) {
     target = shiftDate(target, 7);
@@ -194,7 +206,11 @@ function toDateString(year: number, month: number, day: number): string | null {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-function resolveMonthDayToNearestFutureDate(month: number, day: number, today: string): string | null {
+function resolveMonthDayToNearestFutureDate(
+  month: number,
+  day: number,
+  today: string,
+): string | null {
   const currentYear = Number(today.slice(0, 4));
   const thisYear = toDateString(currentYear, month, day);
   if (thisYear && thisYear >= today) return thisYear;
@@ -399,13 +415,9 @@ function buildKnownFieldMap(params: {
             : '否'
           : null,
     应聘门店:
-      normalizePolicyText(info?.applied_store) ||
-      normalizePolicyText(params.storeName) ||
-      null,
+      normalizePolicyText(info?.applied_store) || normalizePolicyText(params.storeName) || null,
     应聘岗位:
-      normalizePolicyText(info?.applied_position) ||
-      normalizePolicyText(params.jobName) ||
-      null,
+      normalizePolicyText(info?.applied_position) || normalizePolicyText(params.jobName) || null,
   };
 
   const result: Record<string, string> = {};
@@ -461,7 +473,10 @@ function buildChecklistTemplate(params: {
   };
 }
 
-function buildTimeOption(date: string, window: InterviewWindow): {
+function buildTimeOption(
+  date: string,
+  window: InterviewWindow,
+): {
   date: string;
   weekday: string;
   startTime: string;
@@ -533,7 +548,9 @@ function buildCandidateTimeOptions(params: {
   }
 
   return dedupeTimeOptions(options)
-    .sort((a, b) => (a.date === b.date ? compareTime(a.startTime, b.startTime) : a.date.localeCompare(b.date)))
+    .sort((a, b) =>
+      a.date === b.date ? compareTime(a.startTime, b.startTime) : a.date.localeCompare(b.date),
+    )
     .slice(0, maxOptions);
 }
 
@@ -756,7 +773,11 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
             requestedDate: normalizedDate.date,
           });
 
-          const nextAction: 'collect_fields' | 'confirm_date' | 'date_unavailable' | 'ready_to_book' =
+          const nextAction:
+            | 'collect_fields'
+            | 'confirm_date'
+            | 'date_unavailable'
+            | 'ready_to_book' =
             requestedDateCheck.status === 'unavailable'
               ? 'date_unavailable'
               : checklist.missingFields.length > 0
