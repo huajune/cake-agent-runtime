@@ -7,13 +7,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.1.0] - 2026-04-09
 
-**预计版本**: `v5.1.0`
-**最近更新**: `2026-04-09`
 **来源分支**: `develop`
-**累计 PR**: 2
 
 ### 更新摘要
 - [PR #63](https://github.com/huajune/cake-agent-runtime/pull/63) [codex] chore: 自动化受保护分支发布流程
@@ -36,7 +32,6 @@
 
 ### 验证记录
 - 无
-<!-- release:pending:end -->
 
 ## [4.0.0] - 2026-04-01
 
