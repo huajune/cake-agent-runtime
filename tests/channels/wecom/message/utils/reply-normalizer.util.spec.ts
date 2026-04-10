@@ -17,7 +17,7 @@ describe('ReplyNormalizer', () => {
       expect(result).toBe(expected);
     });
 
-    it('应该保留双换行作为段落分隔并合并为单行', () => {
+    it('应该保留双换行作为段落分隔，合并段落内单换行', () => {
       const input = `我看了下哈，黄兴大道发
 这家店暂时没在招。
 
@@ -26,14 +26,16 @@ describe('ReplyNormalizer', () => {
 
       const result = ReplyNormalizer.normalize(input);
 
-      // 验证结果中没有换行符（所有段落合并为一行）
-      expect(result).not.toContain('\n');
-      // 验证两个段落都被合并
+      // 段落内单换行被合并
       expect(result).toContain('我看了下哈，黄兴大道发这家店暂时没在招。');
       expect(result).toContain('不过附近你六姐其他店在招服务员和后厨。');
+      // 段落间双换行保留，供下游 MessageSplitter 拆分
+      expect(result).toBe(
+        '我看了下哈，黄兴大道发这家店暂时没在招。\n\n不过附近你六姐其他店在招服务员和后厨。',
+      );
     });
 
-    it('应该去除多余空格和换行', () => {
+    it('应该去除多余空格，保留段落分隔', () => {
       const input = `  我看了下哈
 
   黄兴大道发这家店暂时
@@ -41,10 +43,8 @@ describe('ReplyNormalizer', () => {
 
       const result = ReplyNormalizer.normalize(input);
 
-      // 验证没有换行符
-      expect(result).not.toContain('\n');
-      // 验证没有多余的空格（trim后）
-      expect(result).toBe(result.trim());
+      // 段落间保留双换行
+      expect(result).toBe('我看了下哈\n\n黄兴大道发这家店暂时没在招');
     });
   });
 
@@ -194,7 +194,7 @@ describe('ReplyNormalizer', () => {
       expect(result).toBe('');
     });
 
-    it('应该处理混合段落(列表+普通段落)', () => {
+    it('应该处理混合段落(列表+普通段落)，保留段落分隔', () => {
       const input = `第一段是普通文本
 
 有以下岗位：
@@ -208,7 +208,9 @@ describe('ReplyNormalizer', () => {
       expect(result).toContain('第一段是普通文本');
       expect(result).toContain('有服务员、后厨可以选');
       expect(result).toContain('第三段也是普通文本');
-      expect(result).not.toContain('\n');
+      // 段落间保留双换行
+      const paragraphs = result.split('\n\n');
+      expect(paragraphs).toHaveLength(3);
     });
 
     it('应该处理列表后的空段落', () => {
@@ -222,7 +224,6 @@ describe('ReplyNormalizer', () => {
       const result = ReplyNormalizer.normalize(input);
 
       expect(result).toContain('有服务员、后厨可以选');
-      expect(result).not.toContain('\n');
     });
 
     it('应该处理尾随文本以"哈"结尾的情况', () => {

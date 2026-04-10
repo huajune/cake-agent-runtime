@@ -50,7 +50,7 @@ export class ReplyNormalizer {
         if (cleaned) result.push(cleaned);
       }
     }
-    return result.join('');
+    return result.join('\n\n');
   }
 
   private static processListParagraph(paragraph: string): string {
@@ -125,16 +125,18 @@ export class ReplyNormalizer {
     // 2. 按双换行符分割段落
     const paragraphs = cleaned.split(/\n\n/);
 
-    // 3. 对每个段落：移除内部的单换行符，合并为一行
+    // 3. 对每个段落：按行 trim 后合并为一行
     const processedParagraphs = paragraphs
       .map((paragraph) => {
-        // 移除段落内部的所有换行符，将多行文本合并为一行
-        return paragraph.replace(/\n/g, '').trim();
+        return paragraph
+          .split('\n')
+          .map((line) => line.trim())
+          .join('');
       })
       .filter((p) => p.length > 0); // 过滤空段落
 
-    // 4. 用空字符串连接段落（不保留段落间的换行）
-    return processedParagraphs.join('');
+    // 4. 用双换行连接段落，保留段落分隔供下游 MessageSplitter 拆分
+    return processedParagraphs.join('\n\n');
   }
 
   static needsNormalization(text: string): boolean {
