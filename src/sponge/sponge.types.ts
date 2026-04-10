@@ -257,7 +257,7 @@ export interface BIOrderQueryParams {
   endDate?: string;
   regionName?: string;
   companyName?: string;
-  orderStatus?: string;
+  orderStatus?: BIOrderStatusCode;
   sortBy?: string;
   sortOrder?: 'ASC' | 'DESC';
   refreshBeforeQuery?: boolean;
@@ -281,6 +281,30 @@ export const BI_FIELD_NAMES = {
   EXPECTED_REVENUE: '预计收入',
   SHARE_LINK: '分享链接',
   SHARE_TEXT: '分享文案',
+} as const;
+
+/** 观远BI 订单状态码 */
+export const BI_ORDER_STATUS = {
+  PENDING_ACCEPTANCE: '0',
+  IN_PROGRESS: '1',
+  PENDING_INSPECTION: '2',
+  INSPECTED: '3',
+  CONFIRMED: '4',
+  REJECTED: '5',
+  CANCELED: '6',
+} as const;
+
+export type BIOrderStatusCode = (typeof BI_ORDER_STATUS)[keyof typeof BI_ORDER_STATUS];
+
+/** 观远BI 订单状态文案 */
+export const BI_ORDER_STATUS_LABELS: Record<BIOrderStatusCode, string> = {
+  [BI_ORDER_STATUS.PENDING_ACCEPTANCE]: '待接受',
+  [BI_ORDER_STATUS.IN_PROGRESS]: '进行中',
+  [BI_ORDER_STATUS.PENDING_INSPECTION]: '待验收',
+  [BI_ORDER_STATUS.INSPECTED]: '已验收',
+  [BI_ORDER_STATUS.CONFIRMED]: '已确认',
+  [BI_ORDER_STATUS.REJECTED]: '已拒绝',
+  [BI_ORDER_STATUS.CANCELED]: '已取消',
 } as const;
 
 /** 观远BI 过滤类型 */

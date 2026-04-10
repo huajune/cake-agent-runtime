@@ -5,6 +5,11 @@ import { SpongeBiService } from '@sponge/sponge-bi.service';
 
 describe('SpongeService', () => {
   let service: SpongeService;
+  let biService: {
+    fetchBIOrders: jest.Mock;
+    refreshBIDataSource: jest.Mock;
+    refreshBIDataSourceAndWait: jest.Mock;
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -16,12 +21,17 @@ describe('SpongeService', () => {
         },
         {
           provide: SpongeBiService,
-          useValue: { fetchBIOrders: jest.fn(), refreshBIDataSource: jest.fn() },
+          useValue: {
+            fetchBIOrders: jest.fn(),
+            refreshBIDataSource: jest.fn(),
+            refreshBIDataSourceAndWait: jest.fn(),
+          },
         },
       ],
     }).compile();
 
     service = module.get<SpongeService>(SpongeService);
+    biService = module.get(SpongeBiService);
   });
 
   it('should be defined', () => {
@@ -247,6 +257,17 @@ describe('SpongeService', () => {
       const result = await service.fetchBrandList();
 
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('refreshBIDataSourceAndWait', () => {
+    it('should delegate to SpongeBiService.refreshBIDataSourceAndWait', async () => {
+      biService.refreshBIDataSourceAndWait.mockResolvedValue(true);
+
+      const result = await service.refreshBIDataSourceAndWait();
+
+      expect(result).toBe(true);
+      expect(biService.refreshBIDataSourceAndWait).toHaveBeenCalledTimes(1);
     });
   });
 

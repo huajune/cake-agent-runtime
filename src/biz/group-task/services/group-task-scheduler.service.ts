@@ -202,6 +202,10 @@ export class GroupTaskSchedulerService implements OnModuleInit {
           return result;
         }
 
+        if (strategy.prepareTask) {
+          await strategy.prepareTask({ timeSlot });
+        }
+
         // 2. 按 (城市+行业) 分组，同组共享数据和 AI 生成结果
         const groupMap = this.groupByCityIndustry(groups);
         this.logger.log(`[${strategy.type}] ${groups.length} 个群，${groupMap.size} 个分组`);

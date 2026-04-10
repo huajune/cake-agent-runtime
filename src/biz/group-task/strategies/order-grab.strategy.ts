@@ -8,6 +8,7 @@ import {
   TimeSlot,
   BIOrder,
   BI_FIELD_NAMES,
+  BI_ORDER_STATUS,
 } from '../group-task.types';
 import { buildOrderGrabMessage } from '../prompts/order-grab.prompt';
 import { formatLocalDate } from '@infra/utils/date.util';
@@ -17,7 +18,7 @@ import { formatLocalDate } from '@infra/utils/date.util';
  *
  * - 数据源：观远BI (SpongeService.fetchBIOrders)
  * - 三个场次按时间维度筛选不同日期的订单：
- *   - 上午场 10:00 → 当日订单（再按"下午时段"过滤计划时间 ≥12:00）
+ *   - 上午场 10:00 → 当日订单（再按最早开始时间过滤，只保留计划时间 ≥10:30 的订单）
  *   - 下午场 13:00 → 次日订单
  *   - 晚上场 17:30 → 本周周六/周日订单（周一作为周首）
  * - 无场次时回退到"今天 → 本周日"，保留原行为兼容手动触发
@@ -25,12 +26,23 @@ import { formatLocalDate } from '@infra/utils/date.util';
 @Injectable()
 export class OrderGrabStrategy implements NotificationStrategy {
   private readonly logger = new Logger(OrderGrabStrategy.name);
+  private readonly morningOrderStartCutoffMinutes = 10 * 60 + 30;
 
   readonly type = GroupTaskType.ORDER_GRAB;
   readonly tagPrefix = '抢单群';
   readonly needsAI = false;
 
   constructor(private readonly spongeService: SpongeService) {}
+
+  async prepareTask(): Promise<void> {
+    const refreshed = await this.spongeService.refreshBIDataSourceAndWait();
+    if (refreshed) {
+      this.logger.log('[抢单群] BI 数据源已刷新，本轮任务将复用该结果');
+      return;
+    }
+
+    this.logger.warn('[抢单群] BI 数据源刷新失败，继续使用当前可用数据');
+  }
 
   async fetchData(context: GroupContext, timeSlot?: TimeSlot): Promise<NotificationData> {
     const { startDate, endDate, label } = this.resolveDateRange(timeSlot);
@@ -39,11 +51,14 @@ export class OrderGrabStrategy implements NotificationStrategy {
       startDate,
       endDate,
       regionName: context.city,
+      orderStatus: BI_ORDER_STATUS.PENDING_ACCEPTANCE,
     });
 
-    // 上午场只发"当日下午"的订单：本地按订单计划时间二次过滤
+    // 上午场只发最早开工时间不早于 10:30 的订单
     if (timeSlot === TimeSlot.MORNING) {
-      orders = orders.filter((order) => this.hasAfternoonSlot(order));
+      orders = orders.filter((order) =>
+        this.startsAtOrAfter(order, this.morningOrderStartCutoffMinutes),
+      );
     }
 
     this.logger.log(
@@ -77,7 +92,7 @@ export class OrderGrabStrategy implements NotificationStrategy {
 
     if (timeSlot === TimeSlot.MORNING) {
       const date = formatLocalDate(today);
-      return { startDate: date, endDate: date, label: '上午场[当日下午]' };
+      return { startDate: date, endDate: date, label: '上午场[10:30后]' };
     }
 
     if (timeSlot === TimeSlot.AFTERNOON) {
@@ -127,22 +142,31 @@ export class OrderGrabStrategy implements NotificationStrategy {
   }
 
   /**
-   * 判断订单的"订单计划时间"是否包含下午时段（开始时间 ≥ 12:00）
+   * 判断订单的最早开始时间是否不早于指定阈值
    *
    * 字段格式示例：
    * - "16:00:00~20:00:00"
    * - "10:30:00~14:30:00,16:30:00~20:30:00"（多段，逗号分隔）
    */
-  private hasAfternoonSlot(order: BIOrder): boolean {
+  private startsAtOrAfter(order: BIOrder, cutoffMinutes: number): boolean {
     const raw = order[BI_FIELD_NAMES.SERVICE_DATE];
     if (raw == null) return false;
-    const segments = String(raw).split(',');
-    for (const seg of segments) {
-      const match = seg.trim().match(/^(\d{1,2}):(\d{2})/);
-      if (!match) continue;
-      const hour = parseInt(match[1], 10);
-      if (hour >= 12) return true;
-    }
-    return false;
+
+    const startMinutes = String(raw)
+      .split(',')
+      .map((segment) => this.extractSegmentStartMinutes(segment))
+      .filter((minutes): minutes is number => minutes != null);
+
+    if (startMinutes.length === 0) return false;
+    return Math.min(...startMinutes) >= cutoffMinutes;
+  }
+
+  private extractSegmentStartMinutes(segment: string): number | null {
+    const match = segment.trim().match(/^(\d{1,2}):(\d{2})/);
+    if (!match) return null;
+
+    const hour = parseInt(match[1], 10);
+    const minute = parseInt(match[2], 10);
+    return hour * 60 + minute;
   }
 }

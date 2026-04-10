@@ -263,6 +263,10 @@ export class SpongeService {
     return this.biService.refreshBIDataSource();
   }
 
+  async refreshBIDataSourceAndWait(): Promise<boolean> {
+    return this.biService.refreshBIDataSourceAndWait();
+  }
+
   // ==================== 海绵面试名单 ====================
 
   /**
