@@ -150,9 +150,9 @@ describe('buildPartTimeJobUserMessage', () => {
       expect(result).toContain('立白店');
     });
 
-    it('should include laborForm when present', () => {
+    it('should omit laborForm from the prompt payload', () => {
       const result = buildPartTimeJobUserMessage(makeData([makeJob()]));
-      expect(result).toContain('小时工');
+      expect(result).not.toContain('小时工');
     });
 
     it('should include requirementNum per job when present', () => {
@@ -162,13 +162,15 @@ describe('buildPartTimeJobUserMessage', () => {
       expect(result).toContain('5人');
     });
 
-    it('should include age range when both minAge and maxAge are present', () => {
+    it('should ignore basicInfo age fields in per-job listing', () => {
       const job = makeJob({
         basicInfo: { jobId: 1, minAge: 18, maxAge: 45, storeInfo: {} },
+        hiringRequirement: undefined,
       });
       const result = buildPartTimeJobUserMessage(makeData([job]));
 
-      expect(result).toContain('18-45岁');
+      expect(result).not.toContain('18-45岁');
+      expect(result).not.toMatch(/用人要求:/);
     });
   });
 
@@ -455,7 +457,7 @@ describe('buildPartTimeJobUserMessage', () => {
       expect(result).toContain('女性');
     });
 
-    it('should omit gender when requirement is 男性,女性 (no restriction)', () => {
+    it('should keep broad age copy when gender has no restriction', () => {
       const job = makeJob({
         hiringRequirement: {
           basicPersonalRequirements: { genderRequirement: '男性,女性' },
@@ -467,7 +469,7 @@ describe('buildPartTimeJobUserMessage', () => {
       // may still contain characters; check the specific line.
       const lines = result.split('\n');
       const reqLine = lines.find((l) => l.startsWith('用人要求:'));
-      expect(reqLine).toBeUndefined();
+      expect(reqLine).toBe('用人要求: 年龄18-50岁');
     });
 
     it('should include education when it is not 不限', () => {
@@ -481,7 +483,7 @@ describe('buildPartTimeJobUserMessage', () => {
       expect(result).toContain('学历高中及以上');
     });
 
-    it('should omit education when it is 不限', () => {
+    it('should keep broad age copy when education is 不限', () => {
       const job = makeJob({
         hiringRequirement: {
           certificate: { education: '不限' },
@@ -491,7 +493,7 @@ describe('buildPartTimeJobUserMessage', () => {
 
       const lines = result.split('\n');
       const reqLine = lines.find((l) => l.startsWith('用人要求:'));
-      expect(reqLine).toBeUndefined();
+      expect(reqLine).toBe('用人要求: 年龄18-50岁');
     });
 
     it('should include certificates when present', () => {
@@ -516,7 +518,7 @@ describe('buildPartTimeJobUserMessage', () => {
       expect(result).toContain('需要能接受夜班');
     });
 
-    it('should join multiple requirement items with 、', () => {
+    it('should join multiple requirement items with 、 after broad age copy', () => {
       const job = makeJob({
         hiringRequirement: {
           basicPersonalRequirements: { minAge: 20, maxAge: 40, genderRequirement: '女性' },
@@ -525,7 +527,7 @@ describe('buildPartTimeJobUserMessage', () => {
       });
       const result = buildPartTimeJobUserMessage(makeData([job]));
 
-      expect(result).toContain('年龄20-40岁、女性、学历高中及以上');
+      expect(result).toContain('年龄18-50岁、女性、学历高中及以上');
     });
 
     it('should omit 用人要求 line when hiringRequirement is absent', () => {
