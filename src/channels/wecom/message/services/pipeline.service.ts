@@ -371,39 +371,33 @@ export class MessagePipelineService {
         : this.isDeliveryError(error)
           ? 'delivery'
           : 'merge';
-      await this.handleProcessingError(error, parsed, {
-        errorType,
-        scenario,
-        isPrimary: true,
-        batchId,
-        dispatchMode: 'merged',
-      });
 
-      // 标记其他消息为失败
-      const handledMessageId = parsed.messageId;
-      await Promise.all(
-        messages
-          .filter((m) => m.messageId !== handledMessageId)
-          .map(async (message) => {
-            await this.deduplicationService.markMessageAsProcessedAsync(message.messageId);
-            const metadata = this.wecomObservability.buildFailureMetadata(message.messageId, {
+      // 降级回复与状态标记并行：两个独立关注点，互不阻塞
+      const primaryMessageId = parsed.messageId;
+
+      await Promise.allSettled([
+        // 主消息：降级回复 + 告警
+        this.handleProcessingError(error, parsed, {
+          errorType,
+          scenario,
+          isPrimary: true,
+          batchId,
+          dispatchMode: 'merged',
+        }),
+
+        // 副消息：标记失败 + 去重
+        ...messages
+          .filter((m) => m.messageId !== primaryMessageId)
+          .map((message) =>
+            this.markSecondaryMessageFailure(message, {
               scenario,
               errorType,
               errorMessage: error.message || '聚合处理失败',
-              isPrimary: false,
               batchId,
-              extraResponse: {
-                phase: 'merged-secondary',
-                primaryMessageId: handledMessageId,
-              },
-            });
-            this.monitoringService.recordFailure(
-              message.messageId,
-              error.message || '聚合处理失败',
-              metadata,
-            );
-          }),
-      );
+              primaryMessageId,
+            }),
+          ),
+      ]);
 
       throw error;
     }
@@ -591,6 +585,39 @@ export class MessagePipelineService {
     this.logger.debug(
       `[聚合处理][${chatId}] 已标记 ${messages.length} 条消息为已处理 (batchId=${batchId})`,
     );
+  }
+
+  /**
+   * 标记副消息失败（独立处理，不抛异常）
+   */
+  private async markSecondaryMessageFailure(
+    message: EnterpriseMessageCallbackDto,
+    context: {
+      scenario: ScenarioType;
+      errorType: AlertErrorType;
+      errorMessage: string;
+      batchId: string;
+      primaryMessageId: string;
+    },
+  ): Promise<void> {
+    await this.deduplicationService
+      .markMessageAsProcessedAsync(message.messageId)
+      .catch((err) =>
+        this.logger.warn(`[聚合处理] 去重标记失败 [${message.messageId}]: ${err.message}`),
+      );
+
+    const metadata = this.wecomObservability.buildFailureMetadata(message.messageId, {
+      scenario: context.scenario,
+      errorType: context.errorType,
+      errorMessage: context.errorMessage,
+      isPrimary: false,
+      batchId: context.batchId,
+      extraResponse: {
+        phase: 'merged-secondary',
+        primaryMessageId: context.primaryMessageId,
+      },
+    });
+    this.monitoringService.recordFailure(message.messageId, context.errorMessage, metadata);
   }
 
   // ========================================

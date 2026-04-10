@@ -158,7 +158,10 @@ export class MessageProcessingRepository extends BaseRepository {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const buildModifier = (q: any) => {
-        let r = q.order('received_at', { ascending: false });
+        // 只展示主消息 + 非聚合的独立消息（副消息是内部概念，不在流水中展示）
+        let r = q
+          .order('received_at', { ascending: false })
+          .or('is_primary.eq.true,and(batch_id.is.null,is_primary.is.null)');
         if (options.startDate) r = r.gte('received_at', options.startDate.toISOString());
         else if (options.startTime)
           r = r.gte('received_at', new Date(options.startTime).toISOString());
