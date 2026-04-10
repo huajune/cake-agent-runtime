@@ -43,6 +43,9 @@ describe('NotificationSenderService', () => {
           useValue: {
             get: jest.fn((key: string, defaultValue?: string) => {
               if (key === 'STRIDE_ENTERPRISE_TOKEN') return 'test-enterprise-token';
+              if (key === 'MINIPROGRAM_APPID') return 'wx-test-appid';
+              if (key === 'MINIPROGRAM_USERNAME') return 'gh_test_username';
+              if (key === 'MINIPROGRAM_THUMB_URL') return 'https://example.com/thumb.png';
               return defaultValue ?? '';
             }),
           } as unknown as ConfigService,
@@ -109,6 +112,36 @@ describe('NotificationSenderService', () => {
       );
       expect(messageSenderService.sendMessage).toHaveBeenCalled();
     });
+
+    it('should send mini program card via enterprise API for part-time job notifications', async () => {
+      await service.sendToGroup(mockGroup, '兼职岗位通知', GroupTaskType.PART_TIME_JOB, false);
+
+      expect(messageSenderService.sendMessage).toHaveBeenCalledTimes(2);
+      expect(messageSenderService.sendMessage).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          token: 'test-enterprise-token',
+          imBotId: 'bot-1',
+          imRoomId: 'room-123',
+          messageType: 9,
+          payload: expect.objectContaining({
+            appid: 'wx-test-appid',
+            username: 'gh_test_username',
+            title: '独立客找工作',
+          }),
+        }),
+      );
+    });
+
+    it('should surface enterprise API errors for mini program card sending', async () => {
+      messageSenderService.sendMessage
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('enterprise api failed'));
+
+      await expect(
+        service.sendToGroup(mockGroup, '兼职岗位通知', GroupTaskType.PART_TIME_JOB, false),
+      ).rejects.toThrow('[兼职群] 小程序卡片发送失败 (测试群): enterprise api failed');
+    });
   });
 
   describe('reportToFeishu', () => {
@@ -138,6 +171,7 @@ describe('NotificationSenderService', () => {
         successCount: 2,
         failedCount: 1,
         skippedCount: 0,
+        errors: [{ groupName: '群C', error: '小程序卡片发送失败: errcode=500' }],
         details: [
           {
             groupKey: '上海',
@@ -168,6 +202,43 @@ describe('NotificationSenderService', () => {
       expect(cardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
         expect.objectContaining({
           content: expect.stringContaining('**⚠️ 部分失败**'),
+        }),
+      );
+    });
+
+    it('should include concrete error details when result.errors is not empty', async () => {
+      const failedResult: TaskExecutionResult = {
+        ...mockResult,
+        successCount: 0,
+        failedCount: 1,
+        skippedCount: 0,
+        errors: [{ groupName: '测试群', error: '小程序卡片发送失败 (测试群): errcode=500' }],
+        details: [
+          {
+            groupKey: '上海',
+            groupCount: 1,
+            dataSummary: '发送失败',
+            status: 'failed',
+            groupNames: ['测试群'],
+          },
+        ],
+      };
+
+      await service.reportToFeishu(failedResult, false);
+
+      expect(cardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: expect.stringContaining('**🚨 错误明细**'),
+        }),
+      );
+      expect(cardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: expect.stringContaining('**测试群**'),
+        }),
+      );
+      expect(cardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: expect.stringContaining('小程序卡片发送失败'),
         }),
       );
     });

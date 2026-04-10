@@ -1,298 +1,153 @@
-# 飞书告警系统设计文档
+# 飞书通知系统
 
 ## 概述
 
-本项目使用飞书 Webhook 机器人实现告警通知，支持：
-- 系统异常告警（Agent API 错误、消息处理失败等）
-- 话术降级告警（需要人工介入）
-- 面试预约成功通知
+通过飞书 Webhook 机器人实现三类通知：系统异常告警、群运营通知、私聊监控通知。
+支持 @指定负责人（按托管账号自动映射）和 @all。
 
 ## 飞书群组
 
-| 群组 | 用途 | Webhook 类型 |
-|------|------|--------------|
-| 飞书告警群 | 系统告警 + 话术降级 | `ALERT` |
-| 面试报名通知群 | 面试预约成功通知 | `INTERVIEW_BOOKING` |
+| 群名 | Channel Key | 用途 | 环境变量 |
+|------|-------------|------|----------|
+| 蛋糕异常告警群 | `ALERT` | 系统异常、投递失败、Prompt注入、业务指标告警 | `FEISHU_ALERT_WEBHOOK_URL` / `FEISHU_ALERT_SECRET` |
+| 蛋糕群运营通知群 | `MESSAGE_NOTIFICATION` | 群满员、群任务预览/汇总 | `MESSAGE_NOTIFICATION_WEBHOOK_URL` / `MESSAGE_NOTIFICATION_WEBHOOK_SECRET` |
+| 蛋糕私聊监控群 | `PRIVATE_CHAT_MONITOR` | 面试预约成功/失败 | `PRIVATE_CHAT_MONITOR_WEBHOOK_URL` / `PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET` |
 
-## 告警触发场景
+配置文件：`src/infra/feishu/constants/constants.ts`
 
-### 1. 话术降级告警（@ 琪琪）
+## 通知分布
 
-**触发条件**：Agent API 返回降级响应（`isFallback: true`）
+### 蛋糕异常告警群（ALERT）
 
-**触发路径**：
-```
-用户发消息
-  → MessagePipelineService.processSingleMessage() / processMergedMessages()
-  → agentGateway.invoke()
-  → Agent 返回 isFallback: true
-  → sendFallbackAlert() ← 触发告警，@ 琪琪
-  → 正常发送降级消息给用户
-```
+| 通知类型 | @人 | 触发场景 | 代码位置 |
+|----------|-----|----------|----------|
+| 降级兜底响应 | @对应负责人（fallback @all） | Agent 返回降级响应 | `pipeline.service.ts` → `sendFallbackAlert()` |
+| 投递彻底失败 | @all | 用户完全收不到回复（CRITICAL） | `pipeline.service.ts` → 降级发送失败的 catch |
+| Agent 调试报错 | 无 | `/agent/debug-chat` 异常 | `agent.controller.ts` |
+| Prompt 注入检测 | 无 | 用户消息命中注入模式 | `input-guard.service.ts` |
+| 消息处理异常 | 无 | Agent/消息处理失败（投递前） | `pipeline.service.ts` → `handleProcessingError()` |
+| 图片识别失败 | 无 | Vision 模型连续 3 次失败 | `image-description.service.ts` |
+| 成功率告警 | 无 | 成功率低于 80% | `analytics-alert.service.ts` |
+| 响应时间告警 | 无 | 平均响应 >60s | `analytics-alert.service.ts` |
+| 队列深度告警 | 无 | 队列积压 >20 | `analytics-alert.service.ts` |
+| 错误率告警 | 无 | 每小时错误 >10 | `analytics-alert.service.ts` |
 
-**典型场景**：
-- Agent API 调用失败（401 认证错误、500 服务器错误）
-- Agent 内部处理异常后返回降级响应
-- 服务启动时 `REGISTRY_INIT_FAILED` 后用户发消息
+### 蛋糕群运营通知群（MESSAGE_NOTIFICATION）
 
-**告警内容**：
-```
-标题：🆘 小蛋糕出错了，需人工介入
----
-用户昵称：xxx
-用户消息：xxx
-小蛋糕已回复：收到，我需要跟同事同步一下再回复您～
----
-Agent 报错：Agent 调用失败
-时间：2024-12-15 16:30:00
----
-请关注：@琪琪
-```
+| 通知类型 | @人 | 触发场景 | 代码位置 |
+|----------|-----|----------|----------|
+| 群满员告警 | @高雅琪 | 群成员 >=40 或 API 返回 -10 | `invite-to-group.tool.ts` |
+| 群任务预览 | 无 | 群发前 dry-run | `notification-sender.service.ts` → `sendFeishuPreview()` |
+| 群任务执行汇总 | @高雅琪 | 群发完成后 | `notification-sender.service.ts` → `reportToFeishu()` |
 
-### 2. 异常处理告警（不 @ 人）
+### 蛋糕私聊监控群（PRIVATE_CHAT_MONITOR）
 
-**触发条件**：`processSingleMessage()` / `processMergedMessages()` 的 `catch` 块捕获到异常
+| 通知类型 | @人 | 触发场景 | 代码位置 |
+|----------|-----|----------|----------|
+| 面试预约成功 | @对应负责人（fallback @all） | 预约 API 返回成功 | `duliday-interview-booking.tool.ts` |
+| 面试预约失败 | @对应负责人（fallback @all） | 预约 API 失败或异常 | `duliday-interview-booking.tool.ts` |
 
-**触发路径**：
-```
-用户发消息
-  → MessagePipelineService.processSingleMessage()
-  → 某个步骤抛出异常
-  → catch 块
-  → handleProcessingError() ← 触发告警，不 @ 人
-  → 发送降级消息给用户
-```
+## @人处理流程
 
-**典型场景**：
-- Agent 配置验证失败
-- 历史消息获取失败
-- 其他未预期的运行时异常
+### 托管账号 → 飞书负责人映射
 
-**告警内容**：
-```
-标题：🤖 Agent 出错了（根据 errorType 动态选择）
----
-时间：2024-12-15 16:30:00
-级别：ERROR
-类型：agent
-消息：xxx
-会话 ID：xxx
-用户消息：xxx
-用户昵称：xxx
-...
-```
-
-### 3. 消息发送失败告警（CRITICAL 级别，不 @ 人）
-
-**触发条件**：降级消息发送也失败（用户完全无响应）
-
-**触发路径**：
-```
-handleProcessingError()
-  → deliveryService.deliverReply() 失败
-  → 发送 CRITICAL 告警
-```
-
-### 4. 服务初始化告警（不 @ 人）
-
-**触发条件**：服务启动时初始化失败
-
-| 告警类型 | 触发时机 |
-|----------|----------|
-| `REGISTRY_INIT_FAILED` | 服务启动时初始化失败 |
-| `REGISTRY_AUTO_REFRESH_FAILED` | 定时刷新（每小时）时失败 |
-
-### 5. 面试预约成功通知（@ 琪琪）
-
-**触发条件**：用户成功预约面试
-
-**触发路径**：
-```
-Agent 调用 zhipin_book_interview 工具
-  → ToolResultHandler 检测到预约成功
-  → FeishuBookingService.notifyInterviewBooked()
-  → 发送到「面试报名通知群」
-```
-
-## 告警流程图
+通过 `BOT_TO_RECEIVER` 映射表，根据消息来源的托管账号 wxid（`imBotId`）自动找到对应的飞书负责人：
 
 ```
-                                  ┌─────────────────────────────────┐
-                                  │     MessagePipelineService      │
-                                  └─────────────────────────────────┘
-                                               │
-                         ┌─────────────────────┼─────────────────────┐
-                         │                     │                     │
-                         ▼                     ▼                     ▼
-                 ┌───────────────┐    ┌───────────────┐    ┌───────────────┐
-                 │ try 块成功    │    │ try 块异常    │    │ 发送消息失败  │
-                 │ isFallback?   │    │ catch 块      │    │ (二次异常)    │
-                 └───────────────┘    └───────────────┘    └───────────────┘
-                         │                     │                     │
-              ┌──────────┴──────────┐          │                     │
-              │                     │          │                     │
-              ▼                     ▼          ▼                     ▼
-       ┌─────────────┐      ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-       │ 正常响应    │      │ 降级响应    │  │ 异常处理    │  │ CRITICAL    │
-       │ 无告警      │      │ @ 琪琪      │  │ 不 @ 人     │  │ 不 @ 人     │
-       └─────────────┘      └─────────────┘  └─────────────┘  └─────────────┘
-                                  │                │                │
-                                  ▼                ▼                ▼
-                            sendFallbackAlert  handleProcessingError
-                                  │                │
-                                  └────────┬───────┘
-                                           ▼
-                                  ┌─────────────────┐
-                                  │ FeishuAlertService │
-                                  │   节流检查       │
-                                  │   (5分钟/3次)    │
-                                  └─────────────────┘
-                                           │
-                                           ▼
-                                  ┌─────────────────┐
-                                  │ 飞书告警群      │
-                                  └─────────────────┘
+消息到达 → 携带 imBotId（托管账号 wxid）
+                ↓
+        BOT_TO_RECEIVER[imBotId]
+                ↓
+    ┌───────────┴───────────┐
+    ↓                       ↓
+  找到映射                 未找到
+    ↓                       ↓
+ atUsers: [receiver]     atAll: true（兜底）
 ```
 
-## @ 人规则
+### 映射表
 
-### 当前生效的规则
+配置文件：`src/infra/feishu/constants/receivers.ts`
 
-| 场景 | @ 谁 | 原因 | 代码位置 |
-|------|------|------|----------|
-| 话术降级（`sendFallbackAlert`） | @ 琪琪 | 需要人工介入回复用户 | `message-pipeline.service.ts` |
-| 面试预约成功 | @ 琪琪 | 业务通知，需要跟进 | `feishu-booking.service.ts` |
-| 异常处理（`handleProcessingError`） | 不 @ | 技术问题，开发自行关注 | `message-pipeline.service.ts` |
-| 消息发送失败（CRITICAL） | 不 @ | 技术问题，开发自行关注 | `message-pipeline.service.ts` |
-| 服务初始化失败 | 不 @ | 技术问题，开发自行关注 | 各模块 `onModuleInit()` |
-| @ 所有人 | **无此场景** | 功能已实现但未启用 | - |
+| bot wxid | 小组 | bot 昵称 | @飞书用户 |
+|----------|------|----------|-----------|
+| `1688855974513959` | 琪琪组 | 高雅琪 | GAO_YAQI |
+| `1688854747775509` | 艾酱组 | 朱洁 | AI_JIANG |
+| `1688855171908166` | 宇航组 | 李宇杭 | LI_YUHANG |
 
-### @ 功能说明
+> 南瓜组暂无托管 bot，添加后在 `BOT_TO_RECEIVER` 补一行即可。
 
-1. **@ 特定用户**：通过 `atUsers` 参数指定，使用 `open_id`
-2. **@ 所有人**：通过 `atAll: true` 参数，调用 `buildCardWithAtAll()` 方法
-3. **优先级**：`atUsers` > `atAll` > 无 @
+### 使用此映射的场景
 
-### @ 所有人功能（预留）
+- **降级兜底响应**：`imBotId` 来自 `params.primaryMessage.imBotId`
+- **面试预约通知**：`imBotId` 来自 tool 的 `context.botImId`
 
-`atAll` 功能已实现但当前未启用，可用于未来的紧急场景：
-- 服务完全不可用
-- 数据库连接全部失败
-- 其他需要全员关注的 CRITICAL 级别事件
+### 固定 @人的场景
 
-启用方法：在 `sendAlert()` 调用时设置 `atAll: true`
+- **群满员告警**：固定 @高雅琪
+- **群任务执行汇总**：固定 @高雅琪
+
+### @功能优先级
+
+`atUsers` > `atAll` > 无@
+
+## 飞书接收人配置
+
+配置文件：`src/infra/feishu/constants/receivers.ts`
+
+| Key | open_id | 姓名 |
+|-----|---------|------|
+| `AI_JIANG` | `ou_72e8d17db5dab36e4feeddfccaa6568d` | 艾酱 |
+| `GAO_YAQI` | `ou_54b8b053840d689ae42d3ab6b61800d8` | 高雅琪 |
+| `NAN_GUA` | `ou_954fb7341fd7fdd320de2d419d26df19` | 南瓜 |
+| `LI_YUHANG` | `ou_e6868065cb0baa3c0304441a6a8c16e7` | 李宇航 |
+
+### 获取 open_id
+
+通过飞书 API 用手机号查询：
+
+```bash
+# 1. 获取 tenant_access_token
+curl -X POST 'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal' \
+  -H 'Content-Type: application/json' \
+  -d '{"app_id":"$FEISHU_APP_ID","app_secret":"$FEISHU_APP_SECRET"}'
+
+# 2. 用手机号查 open_id
+curl -X POST 'https://open.feishu.cn/open-apis/contact/v3/users/batch_get_id?user_id_type=open_id' \
+  -H "Authorization: Bearer <tenant_access_token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"mobiles":["手机号"]}'
+```
+
+> `open_id` 是应用维度的，同一用户在不同飞书应用下 open_id 不同。
 
 ## 节流机制
 
-为防止告警刷屏，实现了节流控制：
+防止告警刷屏，对 ALERT 通道的告警做节流控制：
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
 | `ALERT_THROTTLE.WINDOW_MS` | 5 分钟 | 节流窗口时长 |
 | `ALERT_THROTTLE.MAX_COUNT` | 3 次 | 窗口内最大发送次数 |
 
-**节流键**：`${errorType}:${scenario}`
+**节流键**：`${errorType}:${scenario}`，例如同一个 `agent_fallback:candidate-consultation` 类型的告警，5 分钟内最多发送 3 次。
 
-例如：同一个 `agent:CANDIDATE_CONSULTATION` 类型的告警，5 分钟内最多发送 3 次。
-
-节流配置支持通过 Supabase `agent_reply_config` 表动态调整。
-
-## 配置说明
-
-### 环境变量
-
-| 变量 | 说明 | 必填 |
-|------|------|------|
-| `FEISHU_ALERT_WEBHOOK_URL` | 告警群 Webhook URL | 否（有默认值） |
-| `FEISHU_ALERT_SECRET` | 告警群签名密钥 | 否（有默认值） |
-| `INTERVIEW_BOOKING_WEBHOOK_URL` | 面试通知群 Webhook URL | 否（有默认值） |
-| `INTERVIEW_BOOKING_WEBHOOK_SECRET` | 面试通知群签名密钥 | 否（有默认值） |
-
-### 接收人配置
-
-接收人在 `src/infra/feishu/constants/feishu.constants.ts` 中配置：
-
-```typescript
-export const ALERT_RECEIVERS = {
-  // 默认告警接收人（预留，当前未使用）
-  DEFAULT: [{ openId: 'ou_72e8d17db5dab36e4feeddfccaa6568d', name: '艾酱' }],
-
-  // 话术降级告警接收人（当前使用）
-  FALLBACK: [{ openId: 'ou_54b8b053840d689ae42d3ab6b61800d8', name: '琪琪' }],
-
-  // 严重告警接收人（预留，当前未使用）
-  CRITICAL: [{ openId: 'ou_72e8d17db5dab36e4feeddfccaa6568d', name: '艾酱' }],
-
-  // 面试预约通知接收人（当前使用）
-  INTERVIEW_BOOKING: [{ openId: 'ou_54b8b053840d689ae42d3ab6b61800d8', name: '琪琪' }],
-};
-```
-
-**使用状态**：
-| 配置项 | 状态 | 用途 |
-|--------|------|------|
-| `FALLBACK` | ✅ 使用中 | 话术降级告警 @ 琪琪 |
-| `INTERVIEW_BOOKING` | ✅ 使用中 | 面试预约通知 @ 琪琪 |
-| `DEFAULT` | ⏸️ 预留 | 普通告警（当前不 @ 人） |
-| `CRITICAL` | ⏸️ 预留 | 严重告警（当前不 @ 人） |
-
-**获取 open_id 方法**：
-1. 在飞书群里 @ 某人，复制消息链接，链接中包含 open_id
-2. 通过飞书开放平台 API 获取用户信息
-3. 飞书管理后台 → 通讯录 → 成员详情页查看
+配置文件：`src/infra/feishu/constants/constants.ts` → `ALERT_THROTTLE`
 
 ## 相关代码
 
 | 文件 | 职责 |
 |------|------|
-| `src/infra/feishu/services/feishu-alert.service.ts` | 告警发送、节流控制、消息格式化 |
-| `src/infra/feishu/services/feishu-webhook.service.ts` | Webhook 签名、HTTP 发送、卡片构建 |
-| `src/infra/feishu/services/feishu-booking.service.ts` | 面试预约通知 |
-| `src/infra/feishu/constants/feishu.constants.ts` | Webhook URL、接收人配置 |
-| `src/channels/wecom/message/services/message-pipeline.service.ts` | 告警触发点（`sendFallbackAlert`、`handleProcessingError`） |
-
-## 告警卡片样式
-
-### 话术降级卡片（@ 人）
-
-```
-┌──────────────────────────────────────┐
-│ 🆘 小蛋糕出错了，需人工介入    [红色] │
-├──────────────────────────────────────┤
-│ **用户昵称**                         │
-│ 张三                                 │
-│                                      │
-│ **用户消息**                         │
-│ 请问你们公司的地址在哪里？           │
-│                                      │
-│ **小蛋糕已回复**                     │
-│ 收到，我需要跟同事同步一下再回复您～ │
-│ ──────────────────────────────────── │
-│ **Agent 报错**: Payment Required       │
-│ **时间**: 2024/12/15 16:30:00        │
-│ ──────────────────────────────────── │
-│ **请关注**: @琪琪                    │
-└──────────────────────────────────────┘
-```
-
-### 普通告警卡片（不 @ 人）
-
-```
-┌──────────────────────────────────────┐
-│ 🤖 Agent 出错了                [红色] │
-├──────────────────────────────────────┤
-│ **时间**: 2024/12/15 16:30:00        │
-│ **级别**: ERROR                      │
-│ **类型**: agent                      │
-│ **消息**: Request timeout            │
-│ **会话 ID**: chat_xxx                │
-│ **用户消息**: 你好                   │
-│ **用户昵称**: 张三                   │
-│ **API 端点**: /api/v1/chat           │
-│ **场景**: CANDIDATE_CONSULTATION     │
-│ **降级消息**: 收到，我需要跟同事...  │
-└──────────────────────────────────────┘
-```
+| `src/infra/feishu/constants/constants.ts` | Webhook 群通道配置、节流配置 |
+| `src/infra/feishu/constants/receivers.ts` | 接收人配置、BOT_TO_RECEIVER 映射 |
+| `src/infra/feishu/services/alert.service.ts` | 告警发送、节流控制 |
+| `src/infra/feishu/services/webhook.service.ts` | Webhook 签名、HTTP 发送 |
+| `src/infra/feishu/services/card-builder.service.ts` | 飞书卡片构建（Markdown、@人） |
+| `src/channels/wecom/message/services/pipeline.service.ts` | 降级告警、投递失败告警触发点 |
+| `src/tools/duliday-interview-booking.tool.ts` | 面试预约通知 |
+| `src/tools/invite-to-group.tool.ts` | 群满员告警 |
+| `src/biz/group-task/services/notification-sender.service.ts` | 群任务预览/汇总通知 |
+| `src/biz/monitoring/services/analytics/analytics-alert.service.ts` | 业务指标告警 |
 
 ## 故障排查
 
@@ -302,13 +157,13 @@ export const ALERT_RECEIVERS = {
 2. **检查 Webhook**：确认 Webhook URL 和 Secret 配置正确
 3. **检查网络**：确认服务器能访问 `open.feishu.cn`
 
-### @ 人无效
+### @人无效
 
 1. 确认 `open_id` 正确（飞书自定义机器人只支持 open_id）
-2. 确认被 @ 的人在该群中
-3. 检查机器人是否有 @ 人权限
+2. 确认被 @的人在该群中
+3. 检查 `BOT_TO_RECEIVER` 映射是否包含对应 `imBotId`
 
-### 告警刷屏
+### 新增托管账号
 
-1. 调整 `ALERT_THROTTLE` 配置
-2. 通过 Supabase `agent_reply_config` 表动态调整节流参数
+1. 在 `receivers.ts` 的 `FEISHU_RECEIVER_USERS` 添加飞书用户（需 open_id）
+2. 在 `BOT_TO_RECEIVER` 添加 `'bot wxid': FEISHU_RECEIVER_USERS.XXX`

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { AlertLevel } from '@infra/feishu/interfaces/interface';
+import { BOT_TO_RECEIVER } from '@infra/feishu/constants/receivers';
 import { maskApiKey } from '@infra/utils/string.util';
 import { ScenarioType } from '@enums/agent.enum';
 import { AgentRunnerService } from '@agent/runner.service';
@@ -481,6 +482,7 @@ export class MessagePipelineService {
         fallbackReason: 'Agent 返回降级响应',
         scenario,
         chatId,
+        imBotId: params.primaryMessage.imBotId,
       });
     }
 
@@ -658,6 +660,8 @@ export class MessagePipelineService {
     const apiKey = (error as any)?.apiKey;
     const maskedApiKey = maskApiKey(apiKey);
 
+    const errorReceiver = imBotId ? BOT_TO_RECEIVER[imBotId] : undefined;
+
     if (!deliveryError) {
       this.alertService
         .sendAlert({
@@ -672,7 +676,7 @@ export class MessagePipelineService {
           level: alertLevel,
           // 添加 API Key 脱敏信息，便于排查 401 问题
           extra: maskedApiKey ? { apiKey: maskedApiKey } : undefined,
-          // 注意：此处是异常处理告警，不需要 @ 人
+          ...(errorReceiver ? { atUsers: [errorReceiver] } : {}),
         })
         .catch((alertError) => {
           this.logger.error(`告警发送失败: ${alertError.message}`);
@@ -957,10 +961,14 @@ export class MessagePipelineService {
     fallbackReason: string;
     scenario: ScenarioType;
     chatId: string;
+    imBotId?: string;
   }): void {
-    const { contactName, userMessage, fallbackMessage, fallbackReason, scenario, chatId } = params;
+    const { contactName, userMessage, fallbackMessage, fallbackReason, scenario, chatId, imBotId } =
+      params;
 
     this.logger.warn(`[${contactName}] Agent 降级响应，原因: ${fallbackReason}，需要人工介入`);
+
+    const receiver = imBotId ? BOT_TO_RECEIVER[imBotId] : undefined;
 
     this.alertService
       .sendAlert({
@@ -974,7 +982,7 @@ export class MessagePipelineService {
         conversationId: chatId,
         apiEndpoint: '/api/v1/chat',
         level: AlertLevel.WARNING,
-        atAll: true,
+        ...(receiver ? { atUsers: [receiver] } : { atAll: true }),
       })
       .catch((alertError) => {
         this.logger.error(`降级告警发送失败: ${alertError.message}`);
