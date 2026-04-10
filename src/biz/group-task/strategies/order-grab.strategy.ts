@@ -47,12 +47,7 @@ export class OrderGrabStrategy implements NotificationStrategy {
   async fetchData(context: GroupContext, timeSlot?: TimeSlot): Promise<NotificationData> {
     const { startDate, endDate, label } = this.resolveDateRange(timeSlot);
 
-    let orders = await this.spongeService.fetchBIOrders({
-      startDate,
-      endDate,
-      regionName: context.city,
-      orderStatus: BI_ORDER_STATUS.PENDING_ACCEPTANCE,
-    });
+    let orders = await this.fetchOrdersWithFallback(context.city, startDate, endDate);
 
     // 上午场只发最早开工时间不早于 10:30 的订单
     if (timeSlot === TimeSlot.MORNING) {
@@ -61,14 +56,24 @@ export class OrderGrabStrategy implements NotificationStrategy {
       );
     }
 
+    // 下午场无数据时，往后逐天顺延到本周日
+    let actualLabel = label;
+    if (orders.length === 0 && timeSlot === TimeSlot.AFTERNOON) {
+      const result = await this.lookaheadOrders(context.city, startDate);
+      if (result) {
+        orders = result.orders;
+        actualLabel = result.label;
+      }
+    }
+
     this.logger.log(
-      `[抢单群] ${context.city} ${label} (${startDate}~${endDate}): ${orders.length}个订单`,
+      `[抢单群] ${context.city} ${actualLabel} (${startDate}~${endDate}): ${orders.length}个订单`,
     );
 
     return {
       hasData: orders.length > 0,
       payload: { orders, city: context.city },
-      summary: `${context.city} ${label}: ${orders.length}个订单`,
+      summary: `${context.city} ${actualLabel}: ${orders.length}个订单`,
     };
   }
 
@@ -139,6 +144,92 @@ export class OrderGrabStrategy implements NotificationStrategy {
     const sunday = new Date(today);
     sunday.setDate(today.getDate() + offsetToSun);
     return { saturday, sunday };
+  }
+
+  /**
+   * 城市 → 所属企业精确映射。
+   * BI 部分订单的城市字段为空，需要通过所属企业名匹配。
+   * 注意：公司名和城市不是简单包含关系（如宁波隶属"上海必胜客有限公司宁波分公司"）。
+   */
+  private readonly CITY_COMPANY_MAP: Record<string, string> = {
+    上海: '上海必胜客有限公司',
+    宁波: '上海必胜客有限公司宁波分公司',
+    北京: '北京必胜客比萨饼有限公司',
+    武汉: '百胜餐饮（武汉）有限公司',
+  };
+
+  /**
+   * 查订单：先按城市字段查，无结果时 fallback 到所属企业精确匹配。
+   */
+  private async fetchOrdersWithFallback(
+    city: string,
+    startDate: string,
+    endDate: string,
+  ): Promise<BIOrder[]> {
+    const orders = await this.spongeService.fetchBIOrders({
+      startDate,
+      endDate,
+      regionName: city,
+      orderStatus: BI_ORDER_STATUS.PENDING_ACCEPTANCE,
+    });
+
+    if (orders.length > 0) return orders;
+
+    // 城市字段无结果，用所属企业精确匹配兜底
+    const companyName = this.CITY_COMPANY_MAP[city];
+    if (!companyName) return [];
+
+    const fallbackOrders = await this.spongeService.fetchBIOrders({
+      startDate,
+      endDate,
+      companyName,
+      orderStatus: BI_ORDER_STATUS.PENDING_ACCEPTANCE,
+    });
+
+    if (fallbackOrders.length > 0) {
+      this.logger.log(
+        `[抢单群] ${city} 城市字段无数据，通过所属企业「${companyName}」匹配到 ${fallbackOrders.length} 个订单`,
+      );
+    }
+
+    return fallbackOrders;
+  }
+
+  /**
+   * 下午场无数据时，往后逐天查找到本周日，找到最近有订单的日期。
+   * 本周内都没有才放弃。
+   */
+  private async lookaheadOrders(
+    city: string,
+    baseDate: string,
+  ): Promise<{ orders: BIOrder[]; label: string } | null> {
+    const base = new Date(baseDate);
+    const sunday = this.getEndOfWeek(base);
+    const maxDays = Math.max(0, Math.round((sunday.getTime() - base.getTime()) / 86_400_000));
+
+    for (let i = 1; i <= maxDays; i++) {
+      const d = new Date(base);
+      d.setDate(base.getDate() + i);
+      const date = formatLocalDate(d);
+
+      const orders = await this.fetchOrdersWithFallback(city, date, date);
+
+      if (orders.length > 0) {
+        this.logger.log(`[抢单群] ${city} 次日无单，顺延到 ${date} 找到 ${orders.length} 个订单`);
+        return { orders, label: `下午场[${date}]` };
+      }
+    }
+
+    this.logger.log(`[抢单群] ${city} 本周内无订单，跳过`);
+    return null;
+  }
+
+  /** 获取 date 所在周的周日 */
+  private getEndOfWeek(date: Date): Date {
+    const d = new Date(date);
+    const dow = d.getDay(); // 0=Sun
+    d.setDate(d.getDate() + (dow === 0 ? 0 : 7 - dow));
+    return d;
   }
 
   /**

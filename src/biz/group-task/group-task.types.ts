@@ -131,6 +131,5 @@ export {
   BI_FIELD_NAMES,
   BI_FILTER_TYPES,
   BI_ORDER_STATUS,
-  BI_ORDER_STATUS_LABELS,
   BIOrderStatusCode,
 } from '@sponge/sponge.types';

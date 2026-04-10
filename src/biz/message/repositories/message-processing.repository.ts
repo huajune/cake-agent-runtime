@@ -501,6 +501,60 @@ export class MessageProcessingRepository extends BaseRepository {
   }
 
   /**
+   * 按 message_id 直接更新状态（不依赖完整记录）
+   * 用于 pendingRecords 丢失后的降级更新
+   */
+  async updateStatusByMessageId(
+    messageId: string,
+    updates: {
+      status: 'success' | 'failure';
+      error?: string;
+      scenario?: string;
+      tokenUsage?: number;
+      replyPreview?: string;
+      replySegments?: number;
+      isFallback?: boolean;
+      fallbackSuccess?: boolean;
+      batchId?: string;
+      isPrimary?: boolean;
+    },
+  ): Promise<boolean> {
+    if (!this.isAvailable()) {
+      return false;
+    }
+
+    try {
+      const dbUpdates: Record<string, unknown> = { status: updates.status };
+      if (updates.error !== undefined) dbUpdates.error = updates.error;
+      if (updates.scenario !== undefined) dbUpdates.scenario = updates.scenario;
+      if (updates.tokenUsage !== undefined) dbUpdates.token_usage = updates.tokenUsage;
+      if (updates.replyPreview !== undefined) dbUpdates.reply_preview = updates.replyPreview;
+      if (updates.replySegments !== undefined) dbUpdates.reply_segments = updates.replySegments;
+      if (updates.isFallback !== undefined) dbUpdates.is_fallback = updates.isFallback;
+      if (updates.fallbackSuccess !== undefined)
+        dbUpdates.fallback_success = updates.fallbackSuccess;
+      if (updates.batchId !== undefined) dbUpdates.batch_id = updates.batchId;
+      if (updates.isPrimary !== undefined) dbUpdates.is_primary = updates.isPrimary;
+
+      const { error } = await this.getClient()
+        .from(this.tableName)
+        .update(dbUpdates)
+        .eq('message_id', messageId)
+        .eq('status', 'processing');
+
+      if (error) {
+        this.logger.error(`[消息处理记录] 直接更新状态失败 [${messageId}]:`, error);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      this.logger.error(`[消息处理记录] 直接更新状态异常 [${messageId}]:`, error);
+      return false;
+    }
+  }
+
+  /**
    * 清空所有消息处理记录（危险操作）
    */
   async clearAllRecords(): Promise<void> {

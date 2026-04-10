@@ -24,11 +24,15 @@ function readRootEnvValue(mode: string, key: string): string {
 
 export default defineConfig(({ mode }) => {
   const apiGuardToken = process.env.API_GUARD_TOKEN || readRootEnvValue(mode, 'API_GUARD_TOKEN');
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || readRootEnvValue(mode, 'NEXT_PUBLIC_SUPABASE_URL');
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || readRootEnvValue(mode, 'NEXT_PUBLIC_SUPABASE_ANON_KEY');
 
   return {
     plugins: [react()],
     define: {
       'import.meta.env.API_GUARD_TOKEN': JSON.stringify(apiGuardToken),
+      'import.meta.env.SUPABASE_URL': JSON.stringify(supabaseUrl),
+      'import.meta.env.SUPABASE_ANON_KEY': JSON.stringify(supabaseAnonKey),
     },
     resolve: {
       alias: {

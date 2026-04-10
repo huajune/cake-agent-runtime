@@ -48,6 +48,10 @@ export class AgentRunnerService {
   async invoke(params: AgentInvokeParams): Promise<AgentRunResult> {
     const ctx = await this.preparation.prepare(params, 'invoke');
 
+    if (ctx.typedMessages.length === 0) {
+      throw new Error('messages must not be empty: 短期记忆和 userMessage 均为空');
+    }
+
     try {
       const r = await generateText({
         model: ctx.chatModel,
@@ -90,6 +94,10 @@ export class AgentRunnerService {
     },
   ): Promise<AgentStreamResult> {
     const ctx = await this.preparation.prepare(params, 'stream');
+
+    if (ctx.typedMessages.length === 0) {
+      throw new Error('messages must not be empty: 短期记忆和 userMessage 均为空');
+    }
 
     const streamResult = streamText({
       model: ctx.chatModel,

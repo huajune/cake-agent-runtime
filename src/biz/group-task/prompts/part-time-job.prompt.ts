@@ -16,7 +16,7 @@ export const PART_TIME_JOB_SYSTEM_PROMPT = `你是一个企微兼职招聘群的
 ### 结构模板：
 🍲【品牌·城市】N家门店招聘啦！
 
-💰 薪资待遇：XX元/时 | 工作形式
+💰 薪资待遇：XX元/时
 👤 招聘对象：年龄、学历等要求
 📋 必备条件：证件、稳定性等要求（如有）
 ⏰ 工作时间：时段信息（如有）
@@ -64,7 +64,8 @@ export const PART_TIME_JOB_SYSTEM_PROMPT = `你是一个企微兼职招聘群的
 - ❌ 编造"时薪日结"、"0经验可上岗"、"节假日有补贴"、"积累服务经验"、"提升沟通能力"等未提供的信息
 - ❌ 给每个门店编造不同的工作内容（如果数据里工作内容相同）
 - ❌ 禁止添加"岗位优势"板块，除非数据中明确提供了福利信息
-- ❌ 使用"姐妹"、"兄弟"等性别化称呼`;
+- ❌ 使用"姐妹"、"兄弟"等性别化称呼
+- ❌ 出现"全职"、"兼职"等工作形式字样，薪资待遇后面不要加工作形式`;
 
 interface PartTimeJobPromptData {
   brand: string;
@@ -101,29 +102,22 @@ export function buildPartTimeJobUserMessage(data: PartTimeJobPromptData): string
       const workTime = extractWorkTime(j);
       if (workTime) parts.push(`时段: ${workTime}`);
 
-      // 工作形式
-      if (bi.laborForm) parts.push(`形式: ${bi.laborForm}`);
-
       // 招聘人数
       if (bi.requirementNum) parts.push(`招聘人数: ${bi.requirementNum}人`);
-
-      // 年龄要求
-      if (bi.minAge && bi.maxAge) parts.push(`年龄: ${bi.minAge}-${bi.maxAge}岁`);
 
       return parts.join('\n');
     })
     .join('\n\n');
 
-  // 薪资（取第一个岗位）
-  const salaryStr = extractSalary(data.jobs[0]);
+  // 薪资（汇总所有岗位，取最高值展示更有吸引力的范围）
+  const salaryStr = extractBestSalary(data.jobs);
 
   // 福利
   const welfareStr = extractWelfare(data.jobs[0]);
 
-  // 汇总信息（岗位名、工作形式、招聘总人数）
+  // 汇总信息（岗位名、招聘总人数）
   const firstBi = data.jobs[0]?.basicInfo ?? ({} as JobBasicInfo);
   const jobTitle = firstBi.jobNickName || firstBi.jobName || '服务员';
-  const laborForm = firstBi.laborForm || '';
   const totalRequirement = data.jobs.reduce(
     (sum: number, j: JobDetail) => sum + (j.basicInfo?.requirementNum || 0),
     0,
@@ -142,7 +136,7 @@ export function buildPartTimeJobUserMessage(data: PartTimeJobPromptData): string
     `品牌: ${data.brand}`,
     `城市: ${data.city}`,
     `在招门店数: ${data.jobs.length}家`,
-    `岗位: ${jobTitle}（${laborForm}）`,
+    `岗位: ${jobTitle}`,
     salaryStr ? `薪资: ${salaryStr}` : '',
     welfareStr ? `福利: ${welfareStr}` : '',
     totalRequirement > 0 ? `总招聘人数: ${totalRequirement}人` : '',
@@ -209,6 +203,45 @@ function prop(obj: unknown, key: string): unknown {
   return (obj as Record<string, unknown>)?.[key];
 }
 
+/**
+ * 汇总所有岗位薪资，取最大值展示更有吸引力的范围
+ */
+function extractBestSalary(jobs: JobDetail[]): string {
+  let globalMax = 0;
+  let unit = '';
+
+  for (const job of jobs) {
+    const scenarios = job?.jobSalary?.salaryScenarioList as Record<string, unknown>[] | undefined;
+    if (!Array.isArray(scenarios)) continue;
+
+    for (const s of scenarios) {
+      const basic = s.basicSalary as Record<string, unknown> | undefined;
+      if (basic?.basicSalary) {
+        const val = Number(basic.basicSalary);
+        if (val > globalMax) {
+          globalMax = val;
+          unit = String(basic.basicSalaryUnit || '');
+        }
+      }
+      const comp = s.comprehensiveSalary as Record<string, unknown> | undefined;
+      const compMax = Number(comp?.maxComprehensiveSalary || 0);
+      if (compMax > globalMax) {
+        globalMax = compMax;
+        unit = String(comp?.comprehensiveSalaryUnit || '');
+      }
+    }
+  }
+
+  if (globalMax <= 0) return '';
+
+  // 用第一个岗位的最低值作为下限
+  const firstSalary = extractSalary(jobs[0]);
+  const minMatch = firstSalary.match(/^([\d.]+)/);
+  const minVal = minMatch ? Number(minMatch[1]) : globalMax;
+
+  return minVal < globalMax ? `${minVal}-${globalMax}${unit}` : `${globalMax}${unit}`;
+}
+
 function extractSalary(job: JobDetail): string {
   const scenarios = job?.jobSalary?.salaryScenarioList as Record<string, unknown>[] | undefined;
   if (!Array.isArray(scenarios) || scenarios.length === 0) return '';
@@ -251,10 +284,10 @@ function extractHiringRequirement(job: JobDetail): string {
 
   const items: string[] = [];
 
+  // 年龄范围统一写宽泛，避免劝退求职者
+  items.push('年龄18-50岁');
+
   const basic = prop(hr, 'basicPersonalRequirements') as Record<string, unknown> | undefined;
-  if (basic?.minAge && basic?.maxAge) {
-    items.push(`年龄${basic.minAge}-${basic.maxAge}岁`);
-  }
   if (basic?.genderRequirement && basic.genderRequirement !== '男性,女性') {
     items.push(`${basic.genderRequirement}`);
   }
