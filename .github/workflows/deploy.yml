@@ -87,8 +87,21 @@ jobs:
             fi
 
             API_GUARD_TOKEN="$(sed -n 's/^API_GUARD_TOKEN=//p' .env.production | head -n1)"
+            NEXT_PUBLIC_SUPABASE_URL="$(sed -n 's/^NEXT_PUBLIC_SUPABASE_URL=//p' .env.production | head -n1)"
+            NEXT_PUBLIC_SUPABASE_ANON_KEY="$(sed -n 's/^NEXT_PUBLIC_SUPABASE_ANON_KEY=//p' .env.production | head -n1)"
+
             if [ -z "$API_GUARD_TOKEN" ]; then
               echo "API_GUARD_TOKEN not found in /data/cake/.env.production"
+              exit 1
+            fi
+
+            if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ]; then
+              echo "NEXT_PUBLIC_SUPABASE_URL not found in /data/cake/.env.production"
+              exit 1
+            fi
+
+            if [ -z "$NEXT_PUBLIC_SUPABASE_ANON_KEY" ]; then
+              echo "NEXT_PUBLIC_SUPABASE_ANON_KEY not found in /data/cake/.env.production"
               exit 1
             fi
 
@@ -100,7 +113,9 @@ jobs:
               --workdir /data/cake \
               --compose-source /data/cake/source/docker-compose.yml \
               --source-dir /data/cake/source \
-              --api-guard-token "$API_GUARD_TOKEN"
+              --api-guard-token "$API_GUARD_TOKEN" \
+              --supabase-url "$NEXT_PUBLIC_SUPABASE_URL" \
+              --supabase-anon-key "$NEXT_PUBLIC_SUPABASE_ANON_KEY"
 
   # 3. 飞书通知
   notify:

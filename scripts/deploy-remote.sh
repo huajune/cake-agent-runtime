@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  deploy-remote.sh --mode build --image-tag TAG --compose-source PATH --source-dir PATH --api-guard-token TOKEN [options]
+  deploy-remote.sh --mode build --image-tag TAG --compose-source PATH --source-dir PATH --api-guard-token TOKEN --supabase-url URL --supabase-anon-key KEY [options]
   deploy-remote.sh --mode load  --image-tag TAG --compose-source PATH --image-tar PATH [options]
 
 Options:
@@ -16,6 +16,8 @@ Options:
   --source-dir      Source directory for docker build (required in build mode)
   --image-tar       Docker tarball to load (required in load mode)
   --api-guard-token API guard token injected into the frontend build (required in build mode)
+  --supabase-url    Supabase URL injected into the frontend build (required in build mode)
+  --supabase-anon-key Supabase anon key injected into the frontend build (required in build mode)
 EOF
 }
 
@@ -38,6 +40,8 @@ COMPOSE_SOURCE=""
 SOURCE_DIR=""
 IMAGE_TAR=""
 API_GUARD_TOKEN=""
+SUPABASE_URL=""
+SUPABASE_ANON_KEY=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -73,6 +77,14 @@ while [[ $# -gt 0 ]]; do
       API_GUARD_TOKEN="$2"
       shift 2
       ;;
+    --supabase-url)
+      SUPABASE_URL="$2"
+      shift 2
+      ;;
+    --supabase-anon-key)
+      SUPABASE_ANON_KEY="$2"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -96,8 +108,8 @@ if [[ "$MODE" != "build" && "$MODE" != "load" ]]; then
 fi
 
 if [[ "$MODE" == "build" ]]; then
-  if [[ -z "$SOURCE_DIR" || -z "$API_GUARD_TOKEN" ]]; then
-    echo "build mode requires --source-dir and --api-guard-token" >&2
+  if [[ -z "$SOURCE_DIR" || -z "$API_GUARD_TOKEN" || -z "$SUPABASE_URL" || -z "$SUPABASE_ANON_KEY" ]]; then
+    echo "build mode requires --source-dir, --api-guard-token, --supabase-url, and --supabase-anon-key" >&2
     exit 1
   fi
 fi
@@ -203,6 +215,8 @@ build_or_load_image() {
     echo "Building ${IMAGE_NAME}:${IMAGE_TAG} from ${SOURCE_DIR}..."
     docker build \
       --build-arg API_GUARD_TOKEN="${API_GUARD_TOKEN}" \
+      --build-arg NEXT_PUBLIC_SUPABASE_URL="${SUPABASE_URL}" \
+      --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY}" \
       -t "${IMAGE_NAME}:${IMAGE_TAG}" \
       "$SOURCE_DIR" || return 1
     return

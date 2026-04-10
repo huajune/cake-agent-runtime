@@ -39,7 +39,7 @@ Dockerfile 构建镜像            docker-compose.yml 启动容器
                                   ↑ 在这里指定端口、环境变量、日志等
 ```
 
-构建镜像不需要 `.env.production`，启动容器时才需要。
+容器启动时需要 `.env.production`，而镜像构建阶段也会从中读取前端构建必需的变量（如 `API_GUARD_TOKEN`、`NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`）并注入到 `docker build`。
 
 ---
 
@@ -164,6 +164,7 @@ nano .env.production
 | `FEISHU_ALERT_WEBHOOK_URL` | 飞书告警 Webhook | 飞书机器人 |
 | `FEISHU_ALERT_SECRET` | 飞书签名密钥 | 飞书机器人 |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase URL | Supabase |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase 前端匿名密钥 | Supabase |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase 密钥 | Supabase |
 
 > 完整配置说明见 `.env.example` 内注释。
@@ -209,7 +210,11 @@ docker compose logs --tail=50 cake-agent
 
 ```bash
 # SSH 到服务器手动构建查看详细错误
-ssh haimian-deploy 'cd /data/cake && docker build -t cake-agent-runtime:latest ./source'
+ssh haimian-deploy 'cd /data/cake && docker build \
+  --build-arg API_GUARD_TOKEN="$(sed -n "s/^API_GUARD_TOKEN=//p" .env.production | head -n1)" \
+  --build-arg NEXT_PUBLIC_SUPABASE_URL="$(sed -n "s/^NEXT_PUBLIC_SUPABASE_URL=//p" .env.production | head -n1)" \
+  --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$(sed -n "s/^NEXT_PUBLIC_SUPABASE_ANON_KEY=//p" .env.production | head -n1)" \
+  -t cake-agent-runtime:latest ./source'
 ```
 
 ---
