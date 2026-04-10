@@ -13,17 +13,18 @@
 **预计版本**: `v5.1.0`
 **最近更新**: `2026-04-09`
 **来源分支**: `develop`
-**累计 PR**: 2
+**累计 PR**: 3
 
 ### 更新摘要
 - [PR #63](https://github.com/huajune/cake-agent-runtime/pull/63) [codex] chore: 自动化受保护分支发布流程
 - [PR #66](https://github.com/huajune/cake-agent-runtime/pull/66) interview precheck deadline parsing + job list prompt guidance
+- [PR #70](https://github.com/huajune/cake-agent-runtime/pull/70) 修复企微群消息发送失败 + 模板优化
 
 ### 新功能
 - [PR #66](https://github.com/huajune/cake-agent-runtime/pull/66) interview precheck deadline parsing + job list prompt guidance
 
 ### 问题修复
-- 无
+- [PR #70](https://github.com/huajune/cake-agent-runtime/pull/70) 修复企微群消息发送失败 + 模板优化
 
 ### 优化调整
 - 无

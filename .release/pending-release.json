@@ -39,6 +39,24 @@
       "ops": [],
       "config": [],
       "verification": []
+    },
+    {
+      "number": "70",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/70",
+      "title": "修复企微群消息发送失败 + 模板优化",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-09",
+      "summary": [
+        "修复企微群消息发送失败 + 模板优化"
+      ],
+      "features": [],
+      "fixes": [
+        "修复企微群消息发送失败 + 模板优化"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "verification": []
     }
   ]
 }
