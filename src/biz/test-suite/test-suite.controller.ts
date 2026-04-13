@@ -528,6 +528,8 @@ export class TestSuiteController {
       errorType: request.errorType,
       remark: request.remark,
       chatId: request.chatId,
+      candidateName: request.candidateName,
+      managerName: request.managerName,
     };
 
     const result = await this.feishuBitableService.writeAgentTestFeedback(feedback);

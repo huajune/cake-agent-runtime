@@ -5,6 +5,7 @@ import { MessageProcessingService } from '@biz/message/services/message-processi
 import { MonitoringHourlyStatsRepository } from '@biz/monitoring/repositories/hourly-stats.repository';
 import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error-log.repository';
 import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.repository';
+import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -44,6 +45,7 @@ describe('AnalyticsMaintenanceService', () => {
   let errorLogRepository: jest.Mocked<MonitoringErrorLogRepository>;
   let cacheService: jest.Mocked<MonitoringCacheService>;
   let monitoringRepository: jest.Mocked<MonitoringRecordRepository>;
+  let exceptionNotifier: jest.Mocked<IncidentReporterService>;
 
   const mockMessageProcessingRepository = {
     clearAllRecords: jest.fn(),
@@ -66,6 +68,10 @@ describe('AnalyticsMaintenanceService', () => {
 
   const mockMonitoringRecordRepository = {
     aggregateHourlyStats: jest.fn(),
+  };
+
+  const mockIncidentReporterService = {
+    notifyAsync: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -92,6 +98,10 @@ describe('AnalyticsMaintenanceService', () => {
           provide: MonitoringRecordRepository,
           useValue: mockMonitoringRecordRepository,
         },
+        {
+          provide: IncidentReporterService,
+          useValue: mockIncidentReporterService,
+        },
       ],
     }).compile();
 
@@ -101,6 +111,7 @@ describe('AnalyticsMaintenanceService', () => {
     errorLogRepository = module.get(MonitoringErrorLogRepository);
     cacheService = module.get(MonitoringCacheService);
     monitoringRepository = module.get(MonitoringRecordRepository);
+    exceptionNotifier = module.get(IncidentReporterService);
 
     jest.clearAllMocks();
 
@@ -114,6 +125,7 @@ describe('AnalyticsMaintenanceService', () => {
     mockErrorLogRepository.clearAllRecords.mockResolvedValue(undefined);
     mockCacheService.resetCounters.mockResolvedValue(undefined);
     mockCacheService.clearAll.mockResolvedValue(undefined);
+    mockIncidentReporterService.notifyAsync.mockReset();
   });
 
   it('should be defined', () => {
@@ -458,6 +470,24 @@ describe('AnalyticsMaintenanceService', () => {
 
       expect(monitoringRepository.aggregateHourlyStats).not.toHaveBeenCalled();
       expect(hourlyStatsRepository.saveHourlyStats).not.toHaveBeenCalled();
+    });
+
+    it('should report startup failures with the correct trigger', async () => {
+      const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
+      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+        buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - HOUR_MS)),
+      ]);
+      mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue(null);
+
+      await expect((service as any).catchUpHourlyStats('startup')).resolves.not.toThrow();
+
+      expect(exceptionNotifier.notifyAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source: expect.objectContaining({
+            trigger: 'startup',
+          }),
+        }),
+      );
     });
   });
 });

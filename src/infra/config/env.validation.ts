@@ -133,6 +133,10 @@ export class EnvironmentVariables {
   ALERT_ENABLED?: string;
 
   @IsOptional()
+  @IsString({ message: 'FEISHU_ALERT_ALLOW_NON_PROD 必须是字符串' })
+  FEISHU_ALERT_ALLOW_NON_PROD?: string;
+
+  @IsOptional()
   @IsNumber({}, { message: 'ALERT_SUCCESS_RATE_WARNING 必须是数字' })
   @Min(0, { message: 'ALERT_SUCCESS_RATE_WARNING 必须大于等于 0' })
   ALERT_SUCCESS_RATE_WARNING?: number;

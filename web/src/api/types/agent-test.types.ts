@@ -187,6 +187,8 @@ export interface SubmitFeedbackRequest {
   errorType?: string;
   remark?: string;
   chatId?: string;
+  candidateName?: string;
+  managerName?: string;
 }
 
 export interface SubmitFeedbackResponse {

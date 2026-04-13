@@ -450,12 +450,8 @@ export function getHistoryMessages(message: MessageRecord): Array<{
   if (requestMessages.length === 0) return [];
 
   return requestMessages
-    .map((item, index, arr) => {
+    .map((item) => {
       if (item.role === 'system') return null;
-
-      const isLastUserMessage =
-        item.role === 'user' && arr.slice(index + 1).every((candidate) => candidate.role !== 'user');
-      if (isLastUserMessage) return null;
 
       const content = extractTextFromParts(item.parts);
       if (!content.trim()) return null;
@@ -551,16 +547,6 @@ export function getExecutionFacts(message: MessageRecord): Array<{ label: string
   const scenario = message.scenario || asString(request?.scenario);
   if (scenario) facts.push({ label: '场景', value: scenario });
 
-  const dispatchMode = asString(request?.dispatchMode);
-  if (dispatchMode) facts.push({ label: '分派模式', value: dispatchMode });
-
-  const batchId = message.batchId || asString(request?.batchId);
-  if (batchId) facts.push({ label: '批次 ID', value: batchId });
-
-  if (message.isPrimary !== undefined) {
-    facts.push({ label: '批次角色', value: message.isPrimary ? 'Primary' : 'Secondary' });
-  }
-
   if (message.replySegments !== undefined) {
     facts.push({ label: '下发分段', value: String(message.replySegments) });
   }
@@ -570,9 +556,6 @@ export function getExecutionFacts(message: MessageRecord): Array<{ label: string
 
   const finishReason = asString(response?.finishReason);
   if (finishReason) facts.push({ label: '结束原因', value: finishReason });
-
-  const firstChunkType = asString(response?.firstChunkType);
-  if (firstChunkType) facts.push({ label: '首个 Chunk', value: firstChunkType });
 
   const stepCount = asNumber(response?.stepCount);
   if (stepCount !== undefined) facts.push({ label: '执行步数', value: String(stepCount) });

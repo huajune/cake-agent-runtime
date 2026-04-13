@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { renderContentWithMediaTags as renderMediaTags } from '@/utils/media-tags';
 import type { MessageRecord } from '@/api/types/chat.types';
 import MessagePartsAdapter from '@/view/agent-test/list/components/MessagePartsAdapter';
 import styles from './index.module.scss';
@@ -15,9 +14,6 @@ function formatSize(bytes: number): string {
   if (bytes < 1000000) return `${(bytes / 1000).toFixed(1)}K`;
   return `${(bytes / 1000000).toFixed(1)}M`;
 }
-
-const renderContentWithMediaTags = (content: string) =>
-  renderMediaTags(content, styles.mediaTag);
 
 interface ChatSectionProps {
   message: MessageRecord;
@@ -67,22 +63,11 @@ export default function ChatSection({
   return (
     <>
       <div>
-        <h4 className={styles.sectionTitle}>本次交互</h4>
+        <h4 className={styles.sectionTitle}>Agent 响应</h4>
 
-        <div className={`${styles.chatBubble} ${styles.user}`}>
-          <div className={styles.bubbleHeader}>
-            <span className={styles.bubbleTitle}>输入摘要</span>
-          </div>
-          <div className={styles.bubbleContent}>
-            {message.messagePreview
-              ? renderContentWithMediaTags(message.messagePreview)
-              : '(无消息内容)'}
-          </div>
-        </div>
-
-        <div className={`${styles.chatBubble} ${styles.agent}`}>
-          <div className={styles.bubbleHeader}>
-            <span className={styles.bubbleTitle}>响应正文</span>
+        <div className={styles.responseCard}>
+          <div className={styles.responseHeader}>
+            <span className={`${styles.roleTag} ${styles.agentTag}`}>AGENT</span>
             {toolCalls.length > 0 && (
               <span className={styles.bubbleMeta}>{toolCalls.length} 个工具调用</span>
             )}
@@ -92,7 +77,7 @@ export default function ChatSection({
               </span>
             )}
           </div>
-          <div className={`${styles.bubbleContent} ${styles.primary} ${styles.agentRenderer}`}>
+          <div className={`${styles.responseBody} ${styles.agentRenderer}`}>
             {renderableMessage ? (
               <MessagePartsAdapter
                 message={renderableMessage}

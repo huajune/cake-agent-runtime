@@ -1,3 +1,4 @@
+import { Environment } from '@enums/environment.enum';
 import { AlertLevel } from '@enums/alert.enum';
 import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
 import { AlertCardRenderer } from '@notification/renderers/alert-card.renderer';
@@ -12,14 +13,21 @@ describe('AlertNotifierService', () => {
   const mockCardBuilder = {
     buildMarkdownCard: jest.fn().mockImplementation((payload) => payload),
   };
+  const mockConfigService = {
+    get: jest.fn(),
+  };
 
   let service: AlertNotifierService;
 
   beforeEach(() => {
     jest.clearAllMocks();
     mockAlertChannel.send.mockResolvedValue(true);
+    mockConfigService.get.mockImplementation((key: string, defaultValue?: unknown) => {
+      if (key === 'NODE_ENV') return Environment.Production;
+      return defaultValue;
+    });
     const renderer = new AlertCardRenderer(mockCardBuilder as never);
-    service = new AlertNotifierService(mockAlertChannel as never, renderer);
+    service = new AlertNotifierService(mockAlertChannel as never, renderer, mockConfigService as never);
   });
 
   it('should render urgent alerts with inline structured diagnostics', async () => {
@@ -189,5 +197,56 @@ describe('AlertNotifierService', () => {
 
     const payload = mockCardBuilder.buildMarkdownCard.mock.calls[0][0];
     expect(payload.title).toBe('需要人工介入');
+  });
+
+  it('should suppress Feishu delivery in non-production by default', async () => {
+    mockConfigService.get.mockImplementation((key: string, defaultValue?: unknown) => {
+      if (key === 'NODE_ENV') return Environment.Development;
+      return defaultValue;
+    });
+
+    const success = await service.sendAlert({
+      code: 'system.exception',
+      summary: '开发环境异常',
+      severity: AlertLevel.ERROR,
+      source: {
+        subsystem: 'monitoring',
+        component: 'AnalyticsMaintenanceService',
+        action: 'aggregateHourlyStats',
+        trigger: 'startup',
+      },
+      diagnostics: {
+        errorMessage: 'dev only',
+      },
+    });
+
+    expect(success).toBe(false);
+    expect(mockAlertChannel.send).not.toHaveBeenCalled();
+  });
+
+  it('should allow Feishu delivery in non-production when explicitly enabled', async () => {
+    mockConfigService.get.mockImplementation((key: string, defaultValue?: unknown) => {
+      if (key === 'NODE_ENV') return Environment.Development;
+      if (key === 'FEISHU_ALERT_ALLOW_NON_PROD') return 'true';
+      return defaultValue;
+    });
+
+    const success = await service.sendAlert({
+      code: 'system.exception',
+      summary: '开发环境异常',
+      severity: AlertLevel.ERROR,
+      source: {
+        subsystem: 'monitoring',
+        component: 'AnalyticsMaintenanceService',
+        action: 'aggregateHourlyStats',
+        trigger: 'startup',
+      },
+      diagnostics: {
+        errorMessage: 'dev only',
+      },
+    });
+
+    expect(success).toBe(true);
+    expect(mockAlertChannel.send).toHaveBeenCalledTimes(1);
   });
 });

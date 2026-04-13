@@ -17,7 +17,9 @@ import { IncidentReporterService } from '@observability/incidents/incident-repor
 export class AnalyticsMaintenanceService implements OnModuleInit {
   private readonly logger = new Logger(AnalyticsMaintenanceService.name);
   private readonly HOUR_MS = 60 * 60 * 1000;
-  private readonly MAX_BACKFILL_HOURS = 24 * 14;
+  /** cron 触发：最多回填 14 天；startup 触发：只补最近 3 小时 */
+  private readonly MAX_BACKFILL_HOURS_CRON = 24 * 14;
+  private readonly MAX_BACKFILL_HOURS_STARTUP = 3;
 
   constructor(
     private readonly messageProcessingService: MessageProcessingService,
@@ -102,7 +104,9 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
 
       const now = new Date();
       const latestStored = await this.hourlyStatsRepository.getRecentHourlyStats(1);
-      const window = this.resolveBackfillWindow(now, latestStored[0]?.hour);
+      const maxHours =
+        trigger === 'startup' ? this.MAX_BACKFILL_HOURS_STARTUP : this.MAX_BACKFILL_HOURS_CRON;
+      const window = this.resolveBackfillWindow(now, latestStored[0]?.hour, maxHours);
 
       if (!window) {
         this.logger.debug(`[小时聚合] 无需补齐，投影已是最新状态 trigger=${trigger}`);
@@ -142,7 +146,7 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
           subsystem: 'monitoring',
           component: 'AnalyticsMaintenanceService',
           action: 'aggregateHourlyStats',
-          trigger: 'cron',
+          trigger,
         },
         code: 'cron.job_failed',
         summary: '小时统计聚合任务失败',
@@ -154,7 +158,7 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
 
   private async aggregateSingleHour(hourStart: Date, hourEnd: Date): Promise<boolean> {
     const hourKey = hourStart.toISOString();
-    this.logger.debug(`聚合时间范围: ${hourKey} ~ ${hourEnd.toISOString()}`);
+    this.logger.verbose(`聚合时间范围: ${hourKey} ~ ${hourEnd.toISOString()}`);
 
     const aggregated = await this.monitoringRepository.aggregateHourlyStats(hourStart, hourEnd);
 
@@ -163,7 +167,6 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
     }
 
     if (aggregated.messageCount === 0) {
-      this.logger.debug(`该小时无数据记录,跳过聚合: ${hourKey}`);
       return false;
     }
 
@@ -197,21 +200,22 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
   private resolveBackfillWindow(
     now: Date,
     latestStoredHour?: string,
+    maxHours: number = this.MAX_BACKFILL_HOURS_CRON,
   ): { firstHourStart: Date; lastHourStart: Date } | null {
     const currentHourStart = this.getHourStart(now);
     const lastHourStart = new Date(currentHourStart.getTime() - this.HOUR_MS);
 
     let firstHourStart = latestStoredHour
       ? new Date(new Date(latestStoredHour).getTime() + this.HOUR_MS)
-      : new Date(lastHourStart.getTime() - (this.MAX_BACKFILL_HOURS - 1) * this.HOUR_MS);
+      : new Date(lastHourStart.getTime() - (maxHours - 1) * this.HOUR_MS);
 
     const earliestAllowedHour = new Date(
-      lastHourStart.getTime() - (this.MAX_BACKFILL_HOURS - 1) * this.HOUR_MS,
+      lastHourStart.getTime() - (maxHours - 1) * this.HOUR_MS,
     );
 
     if (firstHourStart.getTime() < earliestAllowedHour.getTime()) {
       this.logger.warn(
-        `[小时聚合] 检测到投影断更时间过长，回填窗口裁剪为最近 ${this.MAX_BACKFILL_HOURS} 小时`,
+        `[小时聚合] 回填窗口裁剪为最近 ${maxHours} 小时`,
       );
       firstHourStart = earliestAllowedHour;
     }
