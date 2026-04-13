@@ -4,32 +4,32 @@ import { IncidentReporterService } from '@observability/incidents/incident-repor
 
 @Injectable()
 export class ProcessExceptionMonitorService implements OnModuleInit, OnModuleDestroy {
-  private static listenersRegistered = false;
+  private listenersRegistered = false;
 
   private readonly logger = new Logger(ProcessExceptionMonitorService.name);
 
   constructor(private readonly incidentReporter: IncidentReporterService) {}
 
   onModuleInit(): void {
-    if (ProcessExceptionMonitorService.listenersRegistered) {
+    if (this.listenersRegistered) {
       return;
     }
 
     process.on('uncaughtException', this.handleUncaughtException);
     process.on('unhandledRejection', this.handleUnhandledRejection);
-    ProcessExceptionMonitorService.listenersRegistered = true;
+    this.listenersRegistered = true;
 
     this.logger.log('进程级异常监控已注册');
   }
 
   onModuleDestroy(): void {
-    if (!ProcessExceptionMonitorService.listenersRegistered) {
+    if (!this.listenersRegistered) {
       return;
     }
 
     process.off('uncaughtException', this.handleUncaughtException);
     process.off('unhandledRejection', this.handleUnhandledRejection);
-    ProcessExceptionMonitorService.listenersRegistered = false;
+    this.listenersRegistered = false;
   }
 
   private readonly handleUncaughtException = (error: Error): void => {

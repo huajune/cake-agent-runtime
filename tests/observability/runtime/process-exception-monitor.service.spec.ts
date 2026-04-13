@@ -7,7 +7,6 @@ describe('ProcessExceptionMonitorService', () => {
   let incidentReporter: jest.Mocked<IncidentReporterService>;
 
   beforeEach(() => {
-    (ProcessExceptionMonitorService as unknown as { listenersRegistered: boolean }).listenersRegistered = false;
     incidentReporter = {
       notifyAsync: jest.fn(),
     } as unknown as jest.Mocked<IncidentReporterService>;
@@ -32,7 +31,6 @@ describe('ProcessExceptionMonitorService', () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
-    (ProcessExceptionMonitorService as unknown as { listenersRegistered: boolean }).listenersRegistered = false;
   });
 
   it('should register process listeners only once', () => {
@@ -54,8 +52,28 @@ describe('ProcessExceptionMonitorService', () => {
     service.onModuleDestroy();
 
     expect(offSpy).toHaveBeenCalledTimes(2);
-    expect(offSpy).toHaveBeenNthCalledWith(1, 'uncaughtException', expect.any(Function));
-    expect(offSpy).toHaveBeenNthCalledWith(2, 'unhandledRejection', expect.any(Function));
+    expect(offSpy).toHaveBeenNthCalledWith(
+      1,
+      'uncaughtException',
+      (service as unknown as { handleUncaughtException: (err: Error) => void }).handleUncaughtException,
+    );
+    expect(offSpy).toHaveBeenNthCalledWith(
+      2,
+      'unhandledRejection',
+      (service as unknown as { handleUnhandledRejection: (reason: unknown) => void })
+        .handleUnhandledRejection,
+    );
+  });
+
+  it('should not try to unregister listeners from a different instance', () => {
+    jest.spyOn(process, 'on').mockImplementation(() => process);
+    const offSpy = jest.spyOn(process, 'off').mockImplementation(() => process);
+    const anotherService = new ProcessExceptionMonitorService(incidentReporter);
+
+    service.onModuleInit();
+    anotherService.onModuleDestroy();
+
+    expect(offSpy).not.toHaveBeenCalled();
   });
 
   it('should report uncaught exceptions as critical incidents', () => {
