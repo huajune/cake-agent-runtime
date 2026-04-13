@@ -1,6 +1,17 @@
 import { Controller, Post, Body, HttpCode, Logger } from '@nestjs/common';
 import { Public } from '@infra/server/response/decorators/api-response.decorator';
-import { AlertContext, FeishuAlertService } from './services/alert.service';
+import { FeishuCardColor } from './interfaces/interface';
+import { FeishuCardBuilderService } from './services/card-builder.service';
+import { FeishuWebhookChannel } from './constants/constants';
+import { FeishuWebhookService } from './services/webhook.service';
+
+interface FeishuTestMessageBody {
+  channel?: FeishuWebhookChannel;
+  title: string;
+  content: string;
+  color?: FeishuCardColor;
+  atAll?: boolean;
+}
 
 /**
  * 飞书基础设施控制器
@@ -11,7 +22,10 @@ import { AlertContext, FeishuAlertService } from './services/alert.service';
 export class FeishuController {
   private readonly logger = new Logger(FeishuController.name);
 
-  constructor(private readonly alertService: FeishuAlertService) {}
+  constructor(
+    private readonly webhookService: FeishuWebhookService,
+    private readonly cardBuilder: FeishuCardBuilderService,
+  ) {}
 
   /**
    * 发送测试告警
@@ -20,15 +34,22 @@ export class FeishuController {
   @Post('test/alert')
   @HttpCode(200)
   async sendTestAlert(
-    @Body() context: AlertContext,
+    @Body() body: FeishuTestMessageBody,
   ): Promise<{ success: boolean; message: string }> {
-    this.logger.log(`发送测试告警: ${context.errorType}`);
+    const channel = body.channel || 'ALERT';
+    this.logger.log(`发送测试飞书消息: ${channel}`);
 
-    const sent = await this.alertService.sendAlert(context);
+    const card = this.cardBuilder.buildMarkdownCard({
+      title: body.title,
+      content: body.content,
+      color: body.color || 'blue',
+      atAll: body.atAll,
+    });
+    const sent = await this.webhookService.sendMessage(channel, card);
 
     return {
       success: sent,
-      message: sent ? '告警已发送到飞书' : '告警发送失败或被节流',
+      message: sent ? '测试消息已发送到飞书' : '测试消息发送失败',
     };
   }
 }

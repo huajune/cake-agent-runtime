@@ -1,22 +1,33 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { InputGuardService } from '@agent/input-guard.service';
-import { FeishuAlertService } from '@infra/feishu/services/alert.service';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 
 describe('InputGuardService', () => {
   let service: InputGuardService;
-  let mockAlertService: { sendAlert: jest.Mock };
+  let mockAlertService: { sendAlert: jest.Mock; createPromptInjectionAlert: jest.Mock };
 
   beforeEach(async () => {
     jest.clearAllMocks();
 
     mockAlertService = {
       sendAlert: jest.fn().mockResolvedValue(undefined),
+      createPromptInjectionAlert: jest.fn((params) => ({
+        errorType: 'prompt_injection',
+        error: new Error(`Prompt injection: ${params.reason}`),
+        apiEndpoint: 'agent/invoke',
+        scenario: 'security',
+        extra: {
+          userId: params.userId,
+          reason: params.reason,
+          contentPreview: params.contentPreview.substring(0, 200),
+        },
+      })),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         InputGuardService,
-        { provide: FeishuAlertService, useValue: mockAlertService },
+        { provide: AlertNotifierService, useValue: mockAlertService },
       ],
     }).compile();
 

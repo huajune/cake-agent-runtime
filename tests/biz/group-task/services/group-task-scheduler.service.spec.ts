@@ -433,6 +433,36 @@ describe('GroupTaskSchedulerService', () => {
 
       expect(mockStrategy.prepareTask).not.toHaveBeenCalled();
     });
+
+    it('should keep returning result when final feishu report fails', async () => {
+      const enabledConfig = { ...DEFAULT_GROUP_TASK_CONFIG, enabled: true, dryRun: false };
+      systemConfigService.getGroupTaskConfig.mockResolvedValue(enabledConfig);
+
+      const mockGroup = {
+        imRoomId: 'room-1',
+        groupName: '测试群',
+        city: '上海',
+        tag: '抢单群',
+        imBotId: 'bot-1',
+        token: 'token-1',
+        chatId: 'chat-1',
+      };
+      groupResolverService.resolveGroups.mockResolvedValue([mockGroup]);
+      (mockStrategy.fetchData as jest.Mock).mockResolvedValue({
+        hasData: true,
+        payload: { orders: [] },
+        summary: '测试',
+      });
+      (mockStrategy.buildMessage as jest.Mock).mockReturnValue('test message');
+      notificationSenderService.reportToFeishu.mockRejectedValueOnce(new Error('report failed'));
+
+      const result = await service.executeTask(mockStrategy);
+
+      expect(result.successCount).toBe(1);
+      expect(result.errors).toEqual(
+        expect.arrayContaining([{ groupName: '(飞书通知群)', error: 'report failed' }]),
+      );
+    });
   });
 
   describe('cron environment guard', () => {

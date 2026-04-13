@@ -85,6 +85,7 @@ describe('ShortTermService', () => {
     const result = await service.getMessages('chat_1');
 
     expect(result).toEqual([]);
+    expect(service.lastLoadError).toBe('db error');
   });
 
   it('should prefer redis cache over db history', async () => {
@@ -104,5 +105,16 @@ describe('ShortTermService', () => {
     expect(mockRepo.getChatHistory).not.toHaveBeenCalled();
     expect(result).toHaveLength(1);
     expect(result[0].content).toContain('缓存消息');
+  });
+
+  it('should clear lastLoadError after a successful reload', async () => {
+    mockRedis.lrange.mockResolvedValue([]);
+    mockRepo.getChatHistory.mockRejectedValueOnce(new Error('db error')).mockResolvedValueOnce([]);
+
+    await service.getMessages('chat_1');
+    expect(service.lastLoadError).toBe('db error');
+
+    await service.getMessages('chat_1');
+    expect(service.lastLoadError).toBeNull();
   });
 });

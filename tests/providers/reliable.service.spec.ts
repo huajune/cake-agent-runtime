@@ -215,6 +215,30 @@ describe('ReliableService', () => {
       ).rejects.toThrow('所有模型均失败');
     });
 
+    it('should attach structured agent metadata when all models fail', async () => {
+      mockGenerateText
+        .mockRejectedValueOnce(new Error('HTTP 429 Too Many Requests'))
+        .mockRejectedValueOnce(new Error('HTTP 429 Too Many Requests'));
+
+      const error = await service
+        .generateText(
+          'anthropic/claude-sonnet-4-6',
+          baseParams,
+          ['openai/gpt-4o'],
+          { maxRetries: 1, baseBackoffMs: 1, maxBackoffMs: 10 },
+        )
+        .catch((err) => err);
+
+      expect(error).toMatchObject({
+        isAgentError: true,
+        agentMeta: expect.objectContaining({
+          modelsAttempted: ['anthropic/claude-sonnet-4-6', 'openai/gpt-4o'],
+          totalAttempts: 2,
+          lastCategory: 'rate_limited',
+        }),
+      });
+    });
+
     it('should skip unregistered models in chain', async () => {
       mockGenerateText.mockResolvedValueOnce({ text: 'ok' });
 

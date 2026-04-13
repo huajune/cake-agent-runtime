@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { LanguageModel, generateText, streamText } from 'ai';
 import { RegistryService } from './registry.service';
 import { DEFAULT_RELIABLE_CONFIG, ErrorCategory, ReliableConfig } from './types';
+import type { AgentError } from '@shared-types/agent-error.types';
 
 /**
  * 容错模型服务 — Layer 2: retry + fallback + 模型降级
@@ -36,6 +37,8 @@ export class ReliableService {
     const cfg = { ...DEFAULT_RELIABLE_CONFIG, ...config };
     const modelChain = [modelId, ...(fallbacks ?? [])];
     const attempts: string[] = [];
+    let lastRawError: unknown = null;
+    let lastCategory: ErrorCategory = 'retryable';
 
     for (const currentModelId of modelChain) {
       let model: LanguageModel;
@@ -51,6 +54,8 @@ export class ReliableService {
           return await generateText({ ...params, model } as Parameters<typeof generateText>[0]);
         } catch (err) {
           const category = this.classifyError(err);
+          lastRawError = err;
+          lastCategory = category;
           const msg = err instanceof Error ? err.message : String(err);
           attempts.push(
             `${currentModelId} attempt ${attempt}/${cfg.maxRetries}: ${category}; ${msg}`,
@@ -70,7 +75,16 @@ export class ReliableService {
     }
 
     const trail = attempts.join('\n  ');
-    throw new Error(`所有模型均失败:\n  ${trail}`);
+    const error = new Error(`所有模型均失败:\n  ${trail}`) as AgentError;
+    error.isAgentError = true;
+    error.agentMeta = {
+      ...(this.getExistingAgentMeta(lastRawError) ?? {}),
+      modelsAttempted: modelChain,
+      totalAttempts: attempts.length,
+      lastCategory,
+    };
+    error.apiKey = this.getApiKey(lastRawError);
+    throw error;
   }
 
   /**
@@ -156,5 +170,18 @@ export class ReliableService {
 
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private getExistingAgentMeta(error: unknown): AgentError['agentMeta'] | undefined {
+    if (typeof error !== 'object' || error === null) return undefined;
+    const meta = (error as AgentError).agentMeta;
+    return meta ? { ...meta } : undefined;
+  }
+
+  private getApiKey(error: unknown): string | undefined {
+    if (typeof error !== 'object' || error === null) return undefined;
+    return typeof (error as AgentError).apiKey === 'string'
+      ? (error as AgentError).apiKey
+      : undefined;
   }
 }

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { MessageProcessingRecord } from '@shared-types/tracking.types';
@@ -6,6 +6,8 @@ import {
   FeishuBitableApiService,
   BatchCreateRequest,
 } from '@infra/feishu/services/bitable-api.service';
+import { AlertLevel } from '@enums/alert.enum';
+import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
 
 /**
  * Agent 测试反馈数据
@@ -33,6 +35,8 @@ export class FeishuBitableSyncService {
   constructor(
     private readonly messageProcessingService: MessageProcessingService,
     private readonly bitableApi: FeishuBitableApiService,
+    @Optional()
+    private readonly exceptionNotifier?: IncidentReporterService,
   ) {}
 
   /**
@@ -80,6 +84,13 @@ export class FeishuBitableSyncService {
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(`[FeishuSync] 同步失败: ${errorMessage}`);
+      this.exceptionNotifier?.notifyAsync({
+        source: 'cron:feishu-bitable-sync',
+        errorType: 'cron_job_failed',
+        title: '飞书多维表格同步失败',
+        error,
+        level: AlertLevel.ERROR,
+      });
     }
   }
 

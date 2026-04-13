@@ -19,7 +19,7 @@ import { MessagePipelineService } from './services/pipeline.service';
 import { ImageDescriptionService } from './services/image-description.service';
 import { WecomMessageObservabilityService } from './services/wecom-message-observability.service';
 import { BizModule } from '@biz/biz.module';
-import { FeishuModule } from '@infra/feishu/feishu.module';
+import { NotificationModule } from '@notification/notification.module';
 
 /**
  * 消息处理模块
@@ -32,7 +32,7 @@ import { FeishuModule } from '@infra/feishu/feishu.module';
     ToolModule,
     MessageSenderModule,
     forwardRef(() => BizModule),
-    FeishuModule,
+    NotificationModule,
     // 配置 Bull 队列根模块
     BullModule.forRootAsync({
       imports: [ConfigModule],

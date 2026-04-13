@@ -5,7 +5,6 @@ import { FeishuApiService } from './services/api.service';
 import { FeishuBitableApiService } from './services/bitable-api.service';
 import { FeishuWebhookService } from './services/webhook.service';
 import { FeishuCardBuilderService } from './services/card-builder.service';
-import { FeishuAlertService } from './services/alert.service';
 import { FeishuController } from './feishu.controller';
 
 /**
@@ -15,7 +14,6 @@ import { FeishuController } from './feishu.controller';
  * - 基础 API 服务（FeishuApiService）：Token 管理、HTTP 请求
  * - 多维表格 API（FeishuBitableApiService）：Bitable CRUD 操作
  * - Webhook 基础能力（FeishuWebhookService / FeishuCardBuilderService）
- * - 通用系统告警（FeishuAlertService）
  *
  * 注意：数据同步服务（聊天记录→飞书 BiTable）在 biz/feishu-sync 模块中。
  */
@@ -28,14 +26,12 @@ import { FeishuController } from './feishu.controller';
     FeishuBitableApiService,
     FeishuWebhookService,
     FeishuCardBuilderService,
-    FeishuAlertService,
   ],
   exports: [
     FeishuApiService,
     FeishuBitableApiService,
     FeishuWebhookService,
     FeishuCardBuilderService,
-    FeishuAlertService,
   ],
 })
 export class FeishuModule {}

@@ -22,6 +22,7 @@ import {
 @Injectable()
 export class ShortTermService {
   private readonly logger = new Logger(ShortTermService.name);
+  public lastLoadError: string | null = null;
 
   constructor(
     private readonly chatSession: ChatSessionService,
@@ -37,6 +38,8 @@ export class ShortTermService {
    * 3. 按字符上限裁剪
    */
   async getMessages(chatId: string): Promise<ShortTermMessage[]> {
+    this.lastLoadError = null;
+
     try {
       const cachedHistory = await this.getCachedHistory(chatId);
       if (cachedHistory.length > 0) {
@@ -54,6 +57,7 @@ export class ShortTermService {
 
       return this.trimByChars(this.injectTimeContext(rawHistory));
     } catch (error) {
+      this.lastLoadError = error instanceof Error ? error.message : String(error);
       this.logger.error(`获取短期记忆失败 [${chatId}]:`, error);
       return [];
     }

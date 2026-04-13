@@ -17,6 +17,7 @@ import { type AgentInputMessage, type AgentInvokeParams } from './agent-run.type
 export interface PreparedAgentContext {
   finalPrompt: string;
   typedMessages: ModelMessage[];
+  memoryLoadWarning?: string;
   chatModel: ReturnType<RouterService['resolveByRole']>;
   tools: ToolSet;
   corpId: string;
@@ -83,6 +84,7 @@ export class AgentPreparationService {
         includeShortTerm: shouldLoadShortTerm,
       },
     );
+    const memoryLoadWarning = memory._warnings?.join('; ') || undefined;
 
     // 2. 决定本轮消息来源。
     //    当 userMessage 存在但短期记忆为空时（DB/缓存瞬时故障），用 userMessage 兜底，
@@ -190,6 +192,7 @@ export class AgentPreparationService {
     return {
       finalPrompt,
       typedMessages,
+      memoryLoadWarning,
       chatModel,
       tools,
       corpId,

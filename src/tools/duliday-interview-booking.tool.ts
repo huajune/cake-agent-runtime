@@ -8,16 +8,14 @@ import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
-import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
-import { FeishuWebhookService } from '@infra/feishu/services/webhook.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { ToolBuilder } from '@shared-types/tool.types';
 import {
   API_BOOKING_SUBMISSION_FIELDS,
   getAvailableEducations,
   getEducationIdByName,
 } from '@tools/duliday/job-booking.contract';
-import { BOT_TO_RECEIVER } from '@infra/feishu/constants/receivers';
 
 const logger = new Logger('duliday_interview_booking');
 
@@ -37,8 +35,7 @@ export interface InterviewBookingNotificationInfo {
 
 export function buildInterviewBookingTool(
   spongeService: SpongeService,
-  webhookService: FeishuWebhookService,
-  cardBuilder: FeishuCardBuilderService,
+  privateChatNotifier: PrivateChatMonitorNotifierService,
   userHostingService: UserHostingService,
 ): ToolBuilder {
   return (context) => {
@@ -192,8 +189,7 @@ export function buildInterviewBookingTool(
               toolOutput: toolResult,
               botImId: context.botImId,
             },
-            webhookService,
-            cardBuilder,
+            privateChatNotifier,
           );
 
           return toolResult;
@@ -230,8 +226,7 @@ export function buildInterviewBookingTool(
               toolOutput: toolResult,
               botImId: context.botImId,
             },
-            webhookService,
-            cardBuilder,
+            privateChatNotifier,
           );
 
           return toolResult;
@@ -243,102 +238,13 @@ export function buildInterviewBookingTool(
 
 async function sendInterviewBookingNotification(
   bookingInfo: InterviewBookingNotificationInfo,
-  webhookService: FeishuWebhookService,
-  cardBuilder: FeishuCardBuilderService,
+  privateChatNotifier: PrivateChatMonitorNotifierService,
 ): Promise<void> {
   try {
-    const toolOutput = bookingInfo.toolOutput;
-    const isFailure = toolOutput.success === false;
-    const resultMessage = pickString(toolOutput.message, toolOutput.notice);
-    const bookingId = pickString(toolOutput.booking_id);
-    const failureReason = pickString(toolOutput.error);
-    const failureDetails = stringifyErrorList(toolOutput.errorList);
-    const sections: string[] = [];
-
-    if (isFailure) {
-      sections.push(
-        `候选人 ${bookingInfo.candidateName} 预约失败，请尽快跟进处理。\n⚠️ 该用户已暂停托管`,
-      );
-    }
-
-    const candidateLines = [
-      `姓名：${bookingInfo.candidateName}`,
-      `电话：${bookingInfo.phone}`,
-      bookingInfo.genderLabel ? `性别：${bookingInfo.genderLabel}` : null,
-      bookingInfo.ageText ? `年龄：${bookingInfo.ageText}` : null,
-    ].filter((line): line is string => Boolean(line));
-    sections.push(`**候选人信息**\n${candidateLines.join('\n')}`);
-
-    const interviewLines = [
-      bookingInfo.brandName ? `品牌：${bookingInfo.brandName}` : null,
-      bookingInfo.storeName ? `门店：${bookingInfo.storeName}` : null,
-      bookingInfo.jobName ? `面试岗位：${bookingInfo.jobName}` : null,
-      `面试时间：${formatInterviewTimeForDisplay(bookingInfo.interviewTime)}`,
-      bookingInfo.jobId ? `岗位ID：${bookingInfo.jobId}` : null,
-      bookingId ? `预约编号：${bookingId}` : null,
-    ].filter((line): line is string => Boolean(line));
-    sections.push(`**岗位信息**\n${interviewLines.join('\n')}`);
-
-    if (isFailure) {
-      const resultLines = [
-        failureReason ? `原因：${failureReason}` : null,
-        failureDetails ? `明细：${failureDetails}` : null,
-        resultMessage ? `返回信息：${resultMessage}` : null,
-      ].filter((line): line is string => Boolean(line));
-      if (resultLines.length > 0) {
-        sections.push(`**失败详情**\n${resultLines.join('\n')}`);
-      }
-    } else if (resultMessage) {
-      sections.push(`结果：${resultMessage}`);
-    }
-
-    sections.push(`通知时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
-
-    const receiver = bookingInfo.botImId ? BOT_TO_RECEIVER[bookingInfo.botImId] : undefined;
-
-    const card = cardBuilder.buildMarkdownCard({
-      title: isFailure ? '⚠️ 面试预约失败' : '🎉 面试预约成功',
-      content: sections.join('\n\n'),
-      color: isFailure ? 'red' : 'green',
-      ...(receiver ? { atUsers: [receiver] } : { atAll: true }),
-    });
-
-    const success = await webhookService.sendMessage('PRIVATE_CHAT_MONITOR', card);
-    if (success) {
-      logger.log(`面试预约${isFailure ? '失败' : '成功'}通知已发送: ${bookingInfo.candidateName}`);
-    } else {
-      logger.warn(`面试预约${isFailure ? '失败' : '成功'}通知发送失败`);
-    }
+    await privateChatNotifier.notifyInterviewBookingResult(bookingInfo);
   } catch (error) {
     logger.error(`面试预约通知发送异常: ${error instanceof Error ? error.message : String(error)}`);
   }
-}
-
-function stringifyErrorList(value: unknown): string | undefined {
-  if (!Array.isArray(value) || value.length === 0) return undefined;
-
-  const text = value
-    .map((item) => {
-      if (typeof item === 'string') return item.trim();
-      try {
-        return JSON.stringify(item);
-      } catch {
-        return String(item);
-      }
-    })
-    .filter(Boolean)
-    .join('；');
-
-  return text || undefined;
-}
-
-function pickString(...values: unknown[]): string | undefined {
-  for (const value of values) {
-    if (typeof value === 'string' && value.trim()) {
-      return value.trim();
-    }
-  }
-  return undefined;
 }
 
 function toGenderLabel(genderId: number): string | undefined {
@@ -350,11 +256,4 @@ function toGenderLabel(genderId: number): string | undefined {
 function normalizeAgeText(age: string): string {
   const text = age.trim();
   return /岁$/.test(text) ? text : `${text}岁`;
-}
-
-function formatInterviewTimeForDisplay(value: string): string {
-  const normalized = value.trim();
-  const withSeconds = normalized.match(/^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}):\d{2}$/);
-  if (withSeconds) return withSeconds[1];
-  return normalized;
 }

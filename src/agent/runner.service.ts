@@ -4,7 +4,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { generateText, streamText, stepCountIs } from 'ai';
 import { MemoryService } from '@memory/memory.service';
-import { AgentPreparationService } from './agent-preparation.service';
+import { AgentPreparationService, type PreparedAgentContext } from './agent-preparation.service';
+import type { AgentError } from '@shared-types/agent-error.types';
 import type {
   AgentInvokeParams,
   AgentRunResult,
@@ -49,7 +50,7 @@ export class AgentRunnerService {
     const ctx = await this.preparation.prepare(params, 'invoke');
 
     if (ctx.typedMessages.length === 0) {
-      throw new Error('messages must not be empty: 短期记忆和 userMessage 均为空');
+      throw this.createEmptyMessagesError(ctx);
     }
 
     try {
@@ -81,8 +82,9 @@ export class AgentRunnerService {
         },
       });
     } catch (err) {
-      this.logger.error('Agent 执行失败', err);
-      throw err;
+      const agentError = this.enrichAgentError(err, ctx);
+      this.logger.error('Agent 执行失败', agentError);
+      throw agentError;
     }
   }
 
@@ -96,41 +98,47 @@ export class AgentRunnerService {
     const ctx = await this.preparation.prepare(params, 'stream');
 
     if (ctx.typedMessages.length === 0) {
-      throw new Error('messages must not be empty: 短期记忆和 userMessage 均为空');
+      throw this.createEmptyMessagesError(ctx);
     }
 
-    const streamResult = streamText({
-      model: ctx.chatModel,
-      system: ctx.finalPrompt,
-      messages: ctx.typedMessages,
-      tools: ctx.tools,
-      maxOutputTokens: this.maxOutputTokens,
-      stopWhen: stepCountIs(ctx.maxSteps),
-      providerOptions: this.buildProviderOptions(params.thinking),
-      onFinish: ({ usage, steps, text }) => {
-        this.logger.log('流式完成, 步数: ' + steps.length + ', Tokens: ' + usage.totalTokens);
-        const result = this.buildRunResult({
-          text,
-          reasoningText: undefined,
-          steps,
-          usage: {
-            inputTokens: usage.inputTokens ?? 0,
-            outputTokens: usage.outputTokens ?? 0,
-            totalTokens: usage.totalTokens,
-          },
-        });
-        this.runTurnEndLifecycle(ctx, text).catch((err) =>
-          this.logger.warn('记忆生命周期执行失败', err),
-        );
-        if (params.onFinish) {
-          Promise.resolve(params.onFinish(result)).catch((err) =>
-            this.logger.warn('流式完成回调执行失败', err),
+    try {
+      const streamResult = streamText({
+        model: ctx.chatModel,
+        system: ctx.finalPrompt,
+        messages: ctx.typedMessages,
+        tools: ctx.tools,
+        maxOutputTokens: this.maxOutputTokens,
+        stopWhen: stepCountIs(ctx.maxSteps),
+        providerOptions: this.buildProviderOptions(params.thinking),
+        onFinish: ({ usage, steps, text }) => {
+          this.logger.log('流式完成, 步数: ' + steps.length + ', Tokens: ' + usage.totalTokens);
+          const result = this.buildRunResult({
+            text,
+            reasoningText: undefined,
+            steps,
+            usage: {
+              inputTokens: usage.inputTokens ?? 0,
+              outputTokens: usage.outputTokens ?? 0,
+              totalTokens: usage.totalTokens,
+            },
+          });
+          this.runTurnEndLifecycle(ctx, text).catch((err) =>
+            this.logger.warn('记忆生命周期执行失败', err),
           );
-        }
-      },
-    });
+          if (params.onFinish) {
+            Promise.resolve(params.onFinish(result)).catch((err) =>
+              this.logger.warn('流式完成回调执行失败', err),
+            );
+          }
+        },
+      });
 
-    return { streamResult, entryStage: ctx.entryStage };
+      return { streamResult, entryStage: ctx.entryStage };
+    } catch (err) {
+      const agentError = this.enrichAgentError(err, ctx);
+      this.logger.error('Agent 流式执行失败', agentError);
+      throw agentError;
+    }
   }
 
   /** 构建 provider thinking 配置。 */
@@ -211,5 +219,36 @@ export class AgentRunnerService {
       toolCalls,
       usage: params.usage,
     };
+  }
+
+  private createEmptyMessagesError(
+    ctx: Pick<PreparedAgentContext, 'sessionId' | 'userId' | 'typedMessages' | 'memoryLoadWarning'>,
+  ): AgentError {
+    return this.enrichAgentError(
+      new Error(
+        `messages 为空，无法调用 LLM | sessionId=${ctx.sessionId}` +
+          ` | memoryWarning=${ctx.memoryLoadWarning ?? 'none'}`,
+      ),
+      ctx,
+    );
+  }
+
+  private enrichAgentError(
+    err: unknown,
+    ctx: Pick<PreparedAgentContext, 'sessionId' | 'userId' | 'typedMessages' | 'memoryLoadWarning'>,
+  ): AgentError {
+    const error =
+      err instanceof Error ? (err as AgentError) : (new Error(String(err)) as AgentError);
+
+    error.isAgentError = true;
+    error.agentMeta = {
+      ...(error.agentMeta ?? {}),
+      sessionId: ctx.sessionId,
+      userId: ctx.userId,
+      messageCount: ctx.typedMessages.length,
+      memoryLoadWarning: ctx.memoryLoadWarning,
+    };
+
+    return error;
   }
 }

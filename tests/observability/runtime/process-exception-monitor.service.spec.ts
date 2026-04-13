@@ -1,0 +1,93 @@
+import { AlertLevel } from '@enums/alert.enum';
+import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
+import { ProcessExceptionMonitorService } from '@observability/runtime/process-exception-monitor.service';
+
+describe('ProcessExceptionMonitorService', () => {
+  let service: ProcessExceptionMonitorService;
+  let incidentReporter: jest.Mocked<IncidentReporterService>;
+
+  beforeEach(() => {
+    (ProcessExceptionMonitorService as unknown as { listenersRegistered: boolean }).listenersRegistered = false;
+    incidentReporter = {
+      notifyAsync: jest.fn(),
+    } as unknown as jest.Mocked<IncidentReporterService>;
+    service = new ProcessExceptionMonitorService(incidentReporter);
+    jest
+      .spyOn(
+        ((service as unknown as {
+          logger: { error: (...args: unknown[]) => void; log: (...args: unknown[]) => void };
+        }).logger),
+        'error',
+      )
+      .mockImplementation();
+    jest
+      .spyOn(
+        ((service as unknown as {
+          logger: { error: (...args: unknown[]) => void; log: (...args: unknown[]) => void };
+        }).logger),
+        'log',
+      )
+      .mockImplementation();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    (ProcessExceptionMonitorService as unknown as { listenersRegistered: boolean }).listenersRegistered = false;
+  });
+
+  it('should register process listeners only once', () => {
+    const onSpy = jest.spyOn(process, 'on').mockImplementation(() => process);
+
+    service.onModuleInit();
+    service.onModuleInit();
+
+    expect(onSpy).toHaveBeenCalledTimes(2);
+    expect(onSpy).toHaveBeenNthCalledWith(1, 'uncaughtException', expect.any(Function));
+    expect(onSpy).toHaveBeenNthCalledWith(2, 'unhandledRejection', expect.any(Function));
+  });
+
+  it('should unregister listeners on module destroy', () => {
+    jest.spyOn(process, 'on').mockImplementation(() => process);
+    const offSpy = jest.spyOn(process, 'off').mockImplementation(() => process);
+
+    service.onModuleInit();
+    service.onModuleDestroy();
+
+    expect(offSpy).toHaveBeenCalledTimes(2);
+    expect(offSpy).toHaveBeenNthCalledWith(1, 'uncaughtException', expect.any(Function));
+    expect(offSpy).toHaveBeenNthCalledWith(2, 'unhandledRejection', expect.any(Function));
+  });
+
+  it('should report uncaught exceptions as critical incidents', () => {
+    const error = new Error('boom');
+
+    (service as unknown as { handleUncaughtException: (err: Error) => void }).handleUncaughtException(error);
+
+    expect(incidentReporter.notifyAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'process:uncaughtException',
+        errorType: 'uncaught_exception',
+        title: '未捕获进程异常',
+        error,
+        level: AlertLevel.CRITICAL,
+        extra: expect.objectContaining({ pid: process.pid }),
+      }),
+    );
+  });
+
+  it('should wrap non-Error rejection reasons before reporting', () => {
+    (service as unknown as { handleUnhandledRejection: (reason: unknown) => void }).handleUnhandledRejection('promise failed');
+
+    expect(incidentReporter.notifyAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'process:unhandledRejection',
+        errorType: 'unhandled_rejection',
+        title: '未处理 Promise 拒绝',
+        error: expect.objectContaining({
+          message: 'promise failed',
+        }),
+        level: AlertLevel.CRITICAL,
+      }),
+    );
+  });
+});

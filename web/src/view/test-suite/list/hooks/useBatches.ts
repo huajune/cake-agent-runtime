@@ -136,7 +136,7 @@ export function useBatches(options: UseBatchesOptions = {}) {
       if (typeof errMsg !== 'string') {
         try {
           errMsg = JSON.stringify(errMsg);
-        } catch (e) {
+        } catch {
           errMsg = '创建失败（未知错误）';
         }
       }

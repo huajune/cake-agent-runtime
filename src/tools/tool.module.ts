@@ -5,10 +5,19 @@ import { BizMessageModule } from '@biz/message/message.module';
 import { GroupTaskModule } from '@biz/group-task/group-task.module';
 import { RoomModule } from '@channels/wecom/room/room.module';
 import { UserModule } from '@biz/user/user.module';
+import { NotificationModule } from '@notification/notification.module';
 import { ToolRegistryService } from './tool-registry.service';
 
 @Module({
-  imports: [MemoryModule, SpongeModule, BizMessageModule, GroupTaskModule, RoomModule, UserModule],
+  imports: [
+    MemoryModule,
+    SpongeModule,
+    BizMessageModule,
+    GroupTaskModule,
+    RoomModule,
+    UserModule,
+    NotificationModule,
+  ],
   providers: [ToolRegistryService],
   exports: [ToolRegistryService],
 })

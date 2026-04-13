@@ -144,6 +144,52 @@ describe('AgentRunnerService - invoke', () => {
     await expect(service.invoke(invokeParams)).rejects.toThrow('Network timeout');
   });
 
+  it('should enrich thrown model errors with agent metadata', async () => {
+    const { generateText } = require('ai');
+    generateText.mockRejectedValue(new Error('Network timeout'));
+
+    const error = await service.invoke(invokeParams).catch((err) => err);
+
+    expect(error).toMatchObject({
+      isAgentError: true,
+      agentMeta: expect.objectContaining({
+        sessionId: 'sess-1',
+        userId: 'user-123',
+        messageCount: 1,
+      }),
+    });
+  });
+
+  it('should include memory warning when messages are empty', async () => {
+    mockPreparation.prepare.mockResolvedValue({
+      finalPrompt: 'test system prompt',
+      typedMessages: [],
+      memoryLoadWarning: 'shortTerm: Connection timeout',
+      chatModel: 'mock-model',
+      tools: {},
+      corpId: 'corp-1',
+      userId: 'user-123',
+      sessionId: 'sess-1',
+      maxSteps: 5,
+      entryStage: null,
+      turnState: { candidatePool: null },
+    });
+
+    const error = await service.invoke(invokeParams).catch((err) => err);
+
+    expect(error.message).toContain('sessionId=sess-1');
+    expect(error.message).toContain('memoryWarning=shortTerm: Connection timeout');
+    expect(error).toMatchObject({
+      isAgentError: true,
+      agentMeta: expect.objectContaining({
+        sessionId: 'sess-1',
+        userId: 'user-123',
+        messageCount: 0,
+        memoryLoadWarning: 'shortTerm: Connection timeout',
+      }),
+    });
+  });
+
   it('should trigger memory lifecycle after assistant turn', async () => {
     mockPreparation.prepare.mockResolvedValue({
       finalPrompt: 'test system prompt',
@@ -185,5 +231,24 @@ describe('AgentRunnerService - invoke', () => {
       }),
       '可以，我先帮你确认下长白这边的面试要求。',
     );
+  });
+
+  it('should enrich stream setup failures with agent metadata', async () => {
+    const { streamText } = require('ai');
+    streamText.mockImplementation(() => {
+      throw new Error('stream init failed');
+    });
+
+    const error = await service.stream(invokeParams).catch((err) => err);
+
+    expect(error).toMatchObject({
+      message: 'stream init failed',
+      isAgentError: true,
+      agentMeta: expect.objectContaining({
+        sessionId: 'sess-1',
+        userId: 'user-123',
+        messageCount: 1,
+      }),
+    });
   });
 });

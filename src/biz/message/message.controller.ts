@@ -1,7 +1,7 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ChatSessionService } from './services/chat-session.service';
 import { MessageProcessingService } from './services/message-processing.service';
-import { AnalyticsQueryService } from '@biz/monitoring/services/analytics/analytics-query.service';
+import { AnalyticsQueryService } from '@biz/monitoring/services/dashboard/analytics-query.service';
 
 /**
  * 消息查询控制器

@@ -4,6 +4,7 @@ import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
 describe('MemoryLifecycleService', () => {
   const mockShortTerm = {
     getMessages: jest.fn(),
+    lastLoadError: null as string | null,
   };
 
   const mockSessionService = {
@@ -38,6 +39,7 @@ describe('MemoryLifecycleService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockShortTerm.lastLoadError = null;
     mockSessionService.getSessionState.mockResolvedValue({
       facts: null,
       lastCandidatePool: null,
@@ -82,6 +84,22 @@ describe('MemoryLifecycleService', () => {
     expect(ctx.sessionMemory).not.toBeNull();
     expect(ctx.highConfidenceFacts).toBeNull();
     expect(ctx.shortTerm.messageWindow).toEqual([{ role: 'user', content: 'hello' }]);
+  });
+
+  it('should propagate short-term load warnings into runtime memory context', async () => {
+    mockShortTerm.getMessages.mockResolvedValue([]);
+    mockShortTerm.lastLoadError = 'Connection timeout';
+    mockProcedural.get.mockResolvedValue({
+      currentStage: 'trust_building',
+      fromStage: null,
+      advancedAt: null,
+      reason: null,
+    });
+    mockLongTerm.getProfile.mockResolvedValue(null);
+
+    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1');
+
+    expect(ctx._warnings).toEqual(['shortTerm: Connection timeout']);
   });
 
   it('should expose high-confidence facts separately on turn start', async () => {

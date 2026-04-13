@@ -150,4 +150,32 @@ describe('MessageDeliveryService', () => {
       expect(error?.result.deliveredSegments).toBe(2);
     });
   });
+
+  describe('calculateDelay', () => {
+    it('should keep first segment delay at 0 even when paragraphGapMs is configured', async () => {
+      (service as any).calculateDelay.mockRestore();
+      mockSystemConfigService.getAgentReplyConfig.mockResolvedValue({
+        typingSpeedCharsPerSec: 8,
+        paragraphGapMs: 2500,
+      });
+      jest.spyOn(Math, 'random').mockReturnValue(0.5);
+
+      await service.onModuleInit();
+
+      expect((service as any).calculateDelay('第一段消息', true)).toBe(0);
+    });
+
+    it('should respect paragraphGapMs as the minimum delay for non-first segments', async () => {
+      (service as any).calculateDelay.mockRestore();
+      mockSystemConfigService.getAgentReplyConfig.mockResolvedValue({
+        typingSpeedCharsPerSec: 8,
+        paragraphGapMs: 2500,
+      });
+      jest.spyOn(Math, 'random').mockReturnValue(0.5);
+
+      await service.onModuleInit();
+
+      expect((service as any).calculateDelay('短句', false)).toBe(2500);
+    });
+  });
 });

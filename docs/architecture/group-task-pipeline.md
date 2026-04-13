@@ -46,9 +46,10 @@
               │
               ├─ ③ 同组所有群发送相同消息
               │     NotificationSenderService.sendToGroup()
-              │       → 小组级 API (/stream-api) + chatId
+              │       → 企业级 API (imBotId + imRoomId)
               │       → 兼职群额外发小程序卡片
-              │       → 每群间隔 2s (GROUP_TASK_SEND_DELAY_MS)
+              │       → 发送前做人类化随机延时
+              │       → 群与群之间继续做人类化间隔
               │
               └─ ④ 兼职群记录品牌轮转 (BrandRotationService)
                              │
@@ -112,7 +113,7 @@ POST /group-task/trigger/:type
 | 环境变量 | 默认值 | 说明 |
 |----------|--------|------|
 | `GROUP_TASK_TOKENS` | - | 小组 token 映射（格式: `名称:token,名称:token`） |
-| `GROUP_TASK_SEND_DELAY_MS` | `2000` | 群间发送间隔（ms） |
+| `GROUP_TASK_SEND_DELAY_MS` | `60000` | 群任务发送基础间隔（ms，实际会做人类化随机抖动） |
 | `GROUP_MEMBER_LIMIT` | `200` | 群成员上限（invite_to_group 容量判断） |
 | `STRIDE_ENTERPRISE_TOKEN` | - | 企业级 API token（拉人进群用） |
 | `MINIPROGRAM_APPID` | - | 小程序 appid（兼职群卡片） |

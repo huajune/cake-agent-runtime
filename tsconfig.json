@@ -73,6 +73,12 @@
       "@observability/*": [
         "src/observability/*"
       ],
+      "@notification/*": [
+        "src/notification/*"
+      ],
+      "@analytics/*": [
+        "src/analytics/*"
+      ],
       "@shared-types/*": [
         "src/types/*"
       ],

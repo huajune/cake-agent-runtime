@@ -1,7 +1,7 @@
 import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
-import { FeishuAlertService } from '@infra/feishu/services/alert.service';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { AlertLevel } from '@infra/feishu/interfaces/interface';
 import { BOT_TO_RECEIVER } from '@infra/feishu/constants/receivers';
 import { maskApiKey } from '@infra/utils/string.util';
@@ -32,6 +32,7 @@ import {
   toStorageMessageSource,
   toStorageMessageType,
 } from '../message.types';
+import type { AgentError } from '@shared-types/agent-error.types';
 
 /**
  * 消息处理管线服务
@@ -74,7 +75,7 @@ export class MessagePipelineService {
     private readonly configService: ConfigService,
     // 监控和告警
     private readonly monitoringService: MessageTrackingService,
-    private readonly alertService: FeishuAlertService,
+    private readonly alertService: AlertNotifierService,
   ) {}
 
   // ========================================
@@ -628,7 +629,8 @@ export class MessagePipelineService {
    * 判断错误是否为 Agent API 错误
    */
   private isAgentError(error: unknown): boolean {
-    return Boolean((error as { isAgentError?: boolean })?.isAgentError);
+    const agentError = error as AgentError | null;
+    return Boolean(agentError?.isAgentError || agentError?.agentMeta);
   }
 
   private isDeliveryError(error: unknown): error is DeliveryFailureError {
@@ -642,6 +644,9 @@ export class MessagePipelineService {
     if (error instanceof HttpException) {
       const status = error.getStatus();
       if (status === HttpStatus.TOO_MANY_REQUESTS) return AlertLevel.WARNING;
+    }
+    if ((error as AgentError | null)?.agentMeta?.lastCategory === 'rate_limited') {
+      return AlertLevel.WARNING;
     }
     return AlertLevel.ERROR;
   }
@@ -684,8 +689,20 @@ export class MessagePipelineService {
     const alertLevel = this.getAlertLevelFromError(error);
 
     // 从 error 对象中提取调试信息（由 Agent 服务附加）
-    const apiKey = (error as any)?.apiKey;
+    const agentError = error as AgentError | null;
+    const agentMeta = agentError?.agentMeta;
+    const apiKey = agentError?.apiKey;
     const maskedApiKey = maskApiKey(apiKey);
+    const extraInfo: Record<string, unknown> = {};
+    if (maskedApiKey) extraInfo.apiKey = maskedApiKey;
+    if (options?.batchId) extraInfo.batchId = options.batchId;
+    if (options?.dispatchMode) extraInfo.dispatchMode = options.dispatchMode;
+    if (agentMeta?.modelsAttempted?.length) extraInfo.modelsAttempted = agentMeta.modelsAttempted;
+    if (agentMeta?.lastCategory) extraInfo.errorCategory = agentMeta.lastCategory;
+    if (agentMeta?.totalAttempts != null) extraInfo.totalAttempts = agentMeta.totalAttempts;
+    if (agentMeta?.messageCount != null) extraInfo.messageCount = agentMeta.messageCount;
+    if (agentMeta?.sessionId) extraInfo.sessionId = agentMeta.sessionId;
+    if (agentMeta?.memoryLoadWarning) extraInfo.memoryWarning = agentMeta.memoryLoadWarning;
 
     const errorReceiver = imBotId ? BOT_TO_RECEIVER[imBotId] : undefined;
 
@@ -701,8 +718,7 @@ export class MessagePipelineService {
           scenario,
           fallbackMessage,
           level: alertLevel,
-          // 添加 API Key 脱敏信息，便于排查 401 问题
-          extra: maskedApiKey ? { apiKey: maskedApiKey } : undefined,
+          extra: Object.keys(extraInfo).length > 0 ? extraInfo : undefined,
           ...(errorReceiver ? { atUsers: [errorReceiver] } : {}),
         })
         .catch((alertError) => {
@@ -923,7 +939,14 @@ export class MessagePipelineService {
 
       const content = this.normalizeContent(result.text);
       if (!content) {
-        throw new Error('Agent 返回空响应');
+        const emptyResponseError = new Error('Agent 返回空响应') as AgentError;
+        emptyResponseError.isAgentError = true;
+        emptyResponseError.agentMeta = {
+          sessionId: params.sessionId,
+          userId,
+          messageCount: 1,
+        };
+        throw emptyResponseError;
       }
 
       this.logger.log(
@@ -942,7 +965,8 @@ export class MessagePipelineService {
 
       return invokeResult;
     } catch (error) {
-      this.logger.error(`Agent 调用异常: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Agent 调用异常: ${errorMessage}`);
       throw error;
     } finally {
       if (shouldRecordAiEnd && messageId) {
