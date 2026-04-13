@@ -158,7 +158,11 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
 
     const aggregated = await this.monitoringRepository.aggregateHourlyStats(hourStart, hourEnd);
 
-    if (!aggregated || aggregated.messageCount === 0) {
+    if (!aggregated) {
+      throw new Error(`aggregate_hourly_stats returned null for hour ${hourKey}`);
+    }
+
+    if (aggregated.messageCount === 0) {
       this.logger.debug(`该小时无数据记录,跳过聚合: ${hourKey}`);
       return false;
     }

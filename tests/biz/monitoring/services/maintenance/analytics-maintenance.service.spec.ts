@@ -349,6 +349,19 @@ describe('AnalyticsMaintenanceService', () => {
       await expect(service.aggregateHourlyStats()).resolves.not.toThrow();
     });
 
+    it('should stop backfill when aggregate rpc returns null', async () => {
+      const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
+      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+        buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - 2 * HOUR_MS)),
+      ]);
+      mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue(null);
+
+      await expect(service.aggregateHourlyStats()).resolves.not.toThrow();
+
+      expect(monitoringRepository.aggregateHourlyStats).toHaveBeenCalledTimes(1);
+      expect(hourlyStatsRepository.saveHourlyStats).not.toHaveBeenCalled();
+    });
+
     it('should aggregate the correct time range (last full hour)', async () => {
       const mockAggregated = {
         messageCount: 20,
