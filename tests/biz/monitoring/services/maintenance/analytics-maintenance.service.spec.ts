@@ -6,6 +6,37 @@ import { MonitoringHourlyStatsRepository } from '@biz/monitoring/repositories/ho
 import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error-log.repository';
 import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.repository';
 
+const HOUR_MS = 60 * 60 * 1000;
+
+const getHourStart = (date: Date) => {
+  const hourStart = new Date(date);
+  hourStart.setMinutes(0, 0, 0);
+  return hourStart;
+};
+
+const buildHourlyStatsRow = (hour: Date) => ({
+  hour: hour.toISOString(),
+  messageCount: 0,
+  successCount: 0,
+  failureCount: 0,
+  successRate: 0,
+  avgDuration: 0,
+  minDuration: 0,
+  maxDuration: 0,
+  p50Duration: 0,
+  p95Duration: 0,
+  p99Duration: 0,
+  avgAiDuration: 0,
+  avgSendDuration: 0,
+  activeUsers: 0,
+  activeChats: 0,
+  totalTokenUsage: 0,
+  fallbackCount: 0,
+  fallbackSuccessCount: 0,
+  scenarioStats: {},
+  toolStats: {},
+});
+
 describe('AnalyticsMaintenanceService', () => {
   let service: AnalyticsMaintenanceService;
   let messageProcessingRepository: jest.Mocked<MessageProcessingService>;
@@ -20,6 +51,7 @@ describe('AnalyticsMaintenanceService', () => {
 
   const mockHourlyStatsRepository = {
     clearAllRecords: jest.fn(),
+    getRecentHourlyStats: jest.fn(),
     saveHourlyStats: jest.fn(),
   };
 
@@ -74,6 +106,10 @@ describe('AnalyticsMaintenanceService', () => {
 
     mockMessageProcessingRepository.clearAllRecords.mockResolvedValue(undefined);
     mockHourlyStatsRepository.clearAllRecords.mockResolvedValue(undefined);
+    const lastCompletedHour = new Date(getHourStart(new Date()).getTime() - HOUR_MS);
+    mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+      buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - HOUR_MS)),
+    ]);
     mockHourlyStatsRepository.saveHourlyStats.mockResolvedValue(undefined);
     mockErrorLogRepository.clearAllRecords.mockResolvedValue(undefined);
     mockCacheService.resetCounters.mockResolvedValue(undefined);
@@ -164,6 +200,14 @@ describe('AnalyticsMaintenanceService', () => {
   // ========================================
 
   describe('aggregateHourlyStats', () => {
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-04-13T15:41:00.000Z'));
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
     it('should aggregate last hour stats and save to repository', async () => {
       const mockAggregated = {
         messageCount: 50,
@@ -186,6 +230,10 @@ describe('AnalyticsMaintenanceService', () => {
         scenarioStats: { job_consulting: { count: 30, successCount: 28, avgDuration: 5000 } },
         toolStats: { booking: 5 },
       };
+      const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
+      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+        buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - HOUR_MS)),
+      ]);
       mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue(mockAggregated);
 
       await service.aggregateHourlyStats();
@@ -232,6 +280,10 @@ describe('AnalyticsMaintenanceService', () => {
         scenarioStats: {},
         toolStats: {},
       };
+      const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
+      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+        buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - HOUR_MS)),
+      ]);
       mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue(mockAggregated);
 
       await service.aggregateHourlyStats();
@@ -244,6 +296,10 @@ describe('AnalyticsMaintenanceService', () => {
     });
 
     it('should skip saving when aggregated data has zero messages', async () => {
+      const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
+      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+        buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - HOUR_MS)),
+      ]);
       mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue({
         messageCount: 0,
         successCount: 0,
@@ -272,6 +328,10 @@ describe('AnalyticsMaintenanceService', () => {
     });
 
     it('should skip saving when aggregated data is null', async () => {
+      const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
+      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+        buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - HOUR_MS)),
+      ]);
       mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue(null);
 
       await service.aggregateHourlyStats();
@@ -280,6 +340,10 @@ describe('AnalyticsMaintenanceService', () => {
     });
 
     it('should not throw when aggregation fails', async () => {
+      const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
+      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+        buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - HOUR_MS)),
+      ]);
       mockMonitoringRecordRepository.aggregateHourlyStats.mockRejectedValue(new Error('DB error'));
 
       await expect(service.aggregateHourlyStats()).resolves.not.toThrow();
@@ -307,6 +371,10 @@ describe('AnalyticsMaintenanceService', () => {
         scenarioStats: {},
         toolStats: {},
       };
+      const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
+      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+        buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - HOUR_MS)),
+      ]);
       mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue(mockAggregated);
 
       await service.aggregateHourlyStats();
@@ -320,7 +388,63 @@ describe('AnalyticsMaintenanceService', () => {
       expect(endArg.getMilliseconds()).toBe(0);
 
       // Start time should be exactly 1 hour before end
-      expect(startArg.getTime()).toBe(endArg.getTime() - 60 * 60 * 1000);
+      expect(startArg.getTime()).toBe(endArg.getTime() - HOUR_MS);
+      expect(startArg.toISOString()).toBe('2026-04-13T14:00:00.000Z');
+      expect(endArg.toISOString()).toBe('2026-04-13T15:00:00.000Z');
+    });
+
+    it('should catch up multiple missing hours when projection is stale', async () => {
+      const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
+      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+        buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - 2 * HOUR_MS)),
+      ]);
+      mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue({
+        messageCount: 20,
+        successCount: 18,
+        failureCount: 2,
+        successRate: 90,
+        avgDuration: 4000,
+        minDuration: 500,
+        maxDuration: 20000,
+        p50Duration: 3500,
+        p95Duration: 15000,
+        p99Duration: 19000,
+        avgAiDuration: 2500,
+        avgSendDuration: 1000,
+        activeUsers: 8,
+        activeChats: 6,
+        totalTokenUsage: 1500,
+        fallbackCount: 1,
+        fallbackSuccessCount: 1,
+        scenarioStats: {},
+        toolStats: {},
+      });
+
+      await service.aggregateHourlyStats();
+
+      expect(monitoringRepository.aggregateHourlyStats).toHaveBeenCalledTimes(2);
+      expect(monitoringRepository.aggregateHourlyStats).toHaveBeenNthCalledWith(
+        1,
+        new Date('2026-04-13T13:00:00.000Z'),
+        new Date('2026-04-13T14:00:00.000Z'),
+      );
+      expect(monitoringRepository.aggregateHourlyStats).toHaveBeenNthCalledWith(
+        2,
+        new Date('2026-04-13T14:00:00.000Z'),
+        new Date('2026-04-13T15:00:00.000Z'),
+      );
+      expect(hourlyStatsRepository.saveHourlyStats).toHaveBeenCalledTimes(2);
+    });
+
+    it('should skip aggregation when projection is already up to date', async () => {
+      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+        buildHourlyStatsRow(new Date('2026-04-13T14:00:00.000Z')),
+      ]);
+
+      await service.aggregateHourlyStats();
+
+      expect(monitoringRepository.aggregateHourlyStats).not.toHaveBeenCalled();
+      expect(hourlyStatsRepository.saveHourlyStats).not.toHaveBeenCalled();
     });
   });
 });

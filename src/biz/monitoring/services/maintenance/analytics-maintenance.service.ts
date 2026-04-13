@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { HourlyStats } from '../../types/analytics.types';
 import { MonitoringCacheService } from '../tracking/monitoring-cache.service';
@@ -14,8 +14,10 @@ import { IncidentReporterService } from '@observability/incidents/incident-repor
  * 负责清空历史数据、缓存清除以及每小时统计聚合定时任务
  */
 @Injectable()
-export class AnalyticsMaintenanceService {
+export class AnalyticsMaintenanceService implements OnModuleInit {
   private readonly logger = new Logger(AnalyticsMaintenanceService.name);
+  private readonly HOUR_MS = 60 * 60 * 1000;
+  private readonly MAX_BACKFILL_HOURS = 24 * 14;
 
   constructor(
     private readonly messageProcessingService: MessageProcessingService,
@@ -26,6 +28,11 @@ export class AnalyticsMaintenanceService {
     @Optional()
     private readonly exceptionNotifier?: IncidentReporterService,
   ) {}
+
+  onModuleInit(): void {
+    // 启动后异步补齐缺失小时，避免因单次漏跑导致投影长期断更。
+    void this.catchUpHourlyStats('startup');
+  }
 
   // ========================================
   // 系统管理接口
@@ -85,68 +92,48 @@ export class AnalyticsMaintenanceService {
     timeZone: 'Asia/Shanghai',
   })
   async aggregateHourlyStats(): Promise<void> {
+    await this.catchUpHourlyStats('cron');
+  }
+
+  private async catchUpHourlyStats(trigger: 'startup' | 'cron'): Promise<void> {
     try {
       const startTime = Date.now();
-      this.logger.log('开始执行小时统计聚合任务...');
+      this.logger.log(`开始执行小时统计聚合任务... trigger=${trigger}`);
 
       const now = new Date();
-      const lastHourEnd = new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate(),
-        now.getHours(),
-        0,
-        0,
-        0,
-      );
-      const lastHourStart = new Date(lastHourEnd.getTime() - 60 * 60 * 1000);
-      const hourKey = lastHourStart.toISOString();
+      const latestStored = await this.hourlyStatsRepository.getRecentHourlyStats(1);
+      const window = this.resolveBackfillWindow(now, latestStored[0]?.hour);
 
-      this.logger.log(
-        `聚合时间范围: ${lastHourStart.toISOString()} ~ ${lastHourEnd.toISOString()}`,
-      );
-
-      const aggregated = await this.monitoringRepository.aggregateHourlyStats(
-        lastHourStart,
-        lastHourEnd,
-      );
-
-      if (!aggregated || aggregated.messageCount === 0) {
-        this.logger.warn(`该小时无数据记录,跳过聚合: ${hourKey}`);
+      if (!window) {
+        this.logger.debug(`[小时聚合] 无需补齐，投影已是最新状态 trigger=${trigger}`);
         return;
       }
 
-      const hourlyStats: HourlyStats = {
-        hour: hourKey,
-        messageCount: aggregated.messageCount,
-        successCount: aggregated.successCount,
-        failureCount: aggregated.failureCount,
-        successRate: aggregated.successRate,
-        avgDuration: aggregated.avgDuration,
-        minDuration: aggregated.minDuration,
-        maxDuration: aggregated.maxDuration,
-        p50Duration: aggregated.p50Duration,
-        p95Duration: aggregated.p95Duration,
-        p99Duration: aggregated.p99Duration,
-        avgAiDuration: aggregated.avgAiDuration,
-        avgSendDuration: aggregated.avgSendDuration,
-        activeUsers: aggregated.activeUsers,
-        activeChats: aggregated.activeChats,
-        totalTokenUsage: aggregated.totalTokenUsage,
-        fallbackCount: aggregated.fallbackCount,
-        fallbackSuccessCount: aggregated.fallbackSuccessCount,
-        scenarioStats: aggregated.scenarioStats,
-        toolStats: aggregated.toolStats,
-      };
+      let processedHours = 0;
+      let savedHours = 0;
+      let emptyHours = 0;
 
-      await this.hourlyStatsRepository.saveHourlyStats(hourlyStats);
+      for (
+        let hourStart = new Date(window.firstHourStart);
+        hourStart.getTime() <= window.lastHourStart.getTime();
+        hourStart = new Date(hourStart.getTime() + this.HOUR_MS)
+      ) {
+        processedHours += 1;
+        const hourEnd = new Date(hourStart.getTime() + this.HOUR_MS);
+        const saved = await this.aggregateSingleHour(hourStart, hourEnd);
+
+        if (saved) {
+          savedHours += 1;
+        } else {
+          emptyHours += 1;
+        }
+      }
 
       const elapsed = Date.now() - startTime;
       this.logger.log(
-        `小时统计聚合完成: ${hourKey}, ` +
-          `消息数=${aggregated.messageCount}, 成功率=${aggregated.successRate}%, ` +
-          `活跃用户=${aggregated.activeUsers}, 活跃会话=${aggregated.activeChats}, ` +
-          `Token=${aggregated.totalTokenUsage}, 耗时=${elapsed}ms`,
+        `小时统计聚合完成: trigger=${trigger}, ` +
+          `范围=${window.firstHourStart.toISOString()} ~ ${window.lastHourStart.toISOString()}, ` +
+          `处理=${processedHours}h, 写入=${savedHours}h, 空窗=${emptyHours}h, 耗时=${elapsed}ms`,
       );
     } catch (error) {
       this.logger.error('小时统计聚合任务失败:', error);
@@ -163,5 +150,78 @@ export class AnalyticsMaintenanceService {
         severity: AlertLevel.ERROR,
       });
     }
+  }
+
+  private async aggregateSingleHour(hourStart: Date, hourEnd: Date): Promise<boolean> {
+    const hourKey = hourStart.toISOString();
+    this.logger.debug(`聚合时间范围: ${hourKey} ~ ${hourEnd.toISOString()}`);
+
+    const aggregated = await this.monitoringRepository.aggregateHourlyStats(hourStart, hourEnd);
+
+    if (!aggregated || aggregated.messageCount === 0) {
+      this.logger.debug(`该小时无数据记录,跳过聚合: ${hourKey}`);
+      return false;
+    }
+
+    const hourlyStats: HourlyStats = {
+      hour: hourKey,
+      messageCount: aggregated.messageCount,
+      successCount: aggregated.successCount,
+      failureCount: aggregated.failureCount,
+      successRate: aggregated.successRate,
+      avgDuration: aggregated.avgDuration,
+      minDuration: aggregated.minDuration,
+      maxDuration: aggregated.maxDuration,
+      p50Duration: aggregated.p50Duration,
+      p95Duration: aggregated.p95Duration,
+      p99Duration: aggregated.p99Duration,
+      avgAiDuration: aggregated.avgAiDuration,
+      avgSendDuration: aggregated.avgSendDuration,
+      activeUsers: aggregated.activeUsers,
+      activeChats: aggregated.activeChats,
+      totalTokenUsage: aggregated.totalTokenUsage,
+      fallbackCount: aggregated.fallbackCount,
+      fallbackSuccessCount: aggregated.fallbackSuccessCount,
+      scenarioStats: aggregated.scenarioStats,
+      toolStats: aggregated.toolStats,
+    };
+
+    await this.hourlyStatsRepository.saveHourlyStats(hourlyStats);
+    return true;
+  }
+
+  private resolveBackfillWindow(
+    now: Date,
+    latestStoredHour?: string,
+  ): { firstHourStart: Date; lastHourStart: Date } | null {
+    const currentHourStart = this.getHourStart(now);
+    const lastHourStart = new Date(currentHourStart.getTime() - this.HOUR_MS);
+
+    let firstHourStart = latestStoredHour
+      ? new Date(new Date(latestStoredHour).getTime() + this.HOUR_MS)
+      : new Date(lastHourStart.getTime() - (this.MAX_BACKFILL_HOURS - 1) * this.HOUR_MS);
+
+    const earliestAllowedHour = new Date(
+      lastHourStart.getTime() - (this.MAX_BACKFILL_HOURS - 1) * this.HOUR_MS,
+    );
+
+    if (firstHourStart.getTime() < earliestAllowedHour.getTime()) {
+      this.logger.warn(
+        `[小时聚合] 检测到投影断更时间过长，回填窗口裁剪为最近 ${this.MAX_BACKFILL_HOURS} 小时`,
+      );
+      firstHourStart = earliestAllowedHour;
+    }
+
+    if (firstHourStart.getTime() > lastHourStart.getTime()) {
+      return null;
+    }
+
+    return { firstHourStart, lastHourStart };
+  }
+
+  private getHourStart(date: Date): Date {
+    const hourStart = new Date(date);
+    hourStart.setMinutes(0, 0, 0);
+    return hourStart;
   }
 }
