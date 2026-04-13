@@ -723,8 +723,8 @@ export class MessagePipelineService {
           impact: {
             userMessage: content,
             fallbackMessage,
-            userVisible: false,
-            deliveryState: 'none',
+            userVisible: true,
+            deliveryState: 'fallback_sent',
             requiresHumanIntervention: true,
           },
           diagnostics: {

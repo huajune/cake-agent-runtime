@@ -146,7 +146,15 @@ export class AgentRunnerService {
     }
   }
 
-  /** 构建 provider thinking 配置。 */
+  /**
+   * 构建 provider thinking 配置。
+   *
+   * 不同厂商的思考模式传参方式不同：
+   * - Anthropic: providerOptions.anthropic.thinking
+   * - 千问/OpenAI-compatible: providerOptions.qwen.enable_thinking（AI SDK 会透传到请求 body）
+   *
+   * 这里同时传两套参数，各厂商只识别自己的 key，互不干扰。
+   */
   private buildProviderOptions(requestThinking?: {
     type: 'enabled' | 'disabled';
     budgetTokens: number;
@@ -160,9 +168,12 @@ export class AgentRunnerService {
         ? requestThinking.budgetTokens
         : this.thinkingBudgetTokens;
 
-    return effectiveBudget > 0
-      ? { anthropic: { thinking: { type: 'enabled', budgetTokens: effectiveBudget } } }
-      : undefined;
+    if (effectiveBudget <= 0) return undefined;
+
+    return {
+      anthropic: { thinking: { type: 'enabled', budgetTokens: effectiveBudget } },
+      qwen: { enable_thinking: true },
+    };
   }
 
   /**

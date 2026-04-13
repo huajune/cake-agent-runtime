@@ -304,7 +304,9 @@ export class WecomMessageObservabilityService {
       tools: options.isPrimary
         ? agentResult?.toolCalls?.map((toolCall) => toolCall.toolName)
         : undefined,
-      isFallback: options.isPrimary ? (agentResult?.isFallback ?? false) : false,
+      isFallback: options.isPrimary
+        ? (agentResult?.isFallback ?? Boolean(trace?.fallbackDelivery))
+        : false,
       fallbackSuccess: trace?.fallbackDelivery?.success,
       agentInvocation:
         options.isPrimary && trace
@@ -328,7 +330,7 @@ export class WecomMessageObservabilityService {
                 timings: this.buildTimingSummary(trace, completedAt),
                 ...options.extraResponse,
               },
-              isFallback: agentResult?.isFallback ?? false,
+              isFallback: agentResult?.isFallback ?? Boolean(trace.fallbackDelivery),
             }
           : undefined,
     };

@@ -56,7 +56,7 @@ describe('AlertCardRenderer', () => {
     expect(payload.atUsers).toEqual([FEISHU_RECEIVER_USERS.GAO_YAQI]);
     expect(payload.content).toContain('**用户昵称**: Alice');
     expect(payload.content).toContain('**用户消息**: 你好，我想找兼职');
-    expect(payload.content).toContain('**蛋糕已回复**: 我确认下哈，马上回你~');
+    expect(payload.content).toContain('**蛋糕已回复（降级）**: 我确认下哈，马上回你~');
     expect(payload.content).toContain('**异常消息**: 所有模型均失败');
     expect(payload.content).toContain('**会话 ID**: chat-123');
     expect(payload.content).toContain('**来源**: wecom/MessagePipelineService.handleProcessingFailure [http]');

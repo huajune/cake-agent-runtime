@@ -107,7 +107,7 @@ export class AlertCardRenderer {
         fields.push(`**用户消息**: ${this.truncate(impact.userMessage, 200)}`);
       }
       if (impact?.fallbackMessage) {
-        fields.push(`**蛋糕已回复**: ${impact.fallbackMessage}`);
+        fields.push(`**蛋糕已回复（降级）**: ${impact.fallbackMessage}`);
       }
       fields.push('---');
       if (errorMessage) {
