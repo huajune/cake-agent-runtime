@@ -1,6 +1,11 @@
 import { OrderGrabStrategy } from '@biz/group-task/strategies/order-grab.strategy';
 import { SpongeService } from '@sponge/sponge.service';
-import { GroupContext, TimeSlot, BI_FIELD_NAMES } from '@biz/group-task/group-task.types';
+import {
+  GroupContext,
+  TimeSlot,
+  BI_FIELD_NAMES,
+  BI_ORDER_STATUS,
+} from '@biz/group-task/group-task.types';
 import { formatLocalDate } from '@infra/utils/date.util';
 
 function parseShanghaiDateAtNoon(date: string): Date {
@@ -25,17 +30,27 @@ describe('OrderGrabStrategy', () => {
   beforeEach(() => {
     mockSpongeService = {
       fetchBIOrders: jest.fn(),
+      refreshBIDataSourceAndWait: jest.fn().mockResolvedValue(true),
     };
     strategy = new OrderGrabStrategy(mockSpongeService as unknown as SpongeService);
   });
 
+  describe('prepareTask', () => {
+    it('should refresh BI data source once before the task starts', async () => {
+      await strategy.prepareTask();
+
+      expect(mockSpongeService.refreshBIDataSourceAndWait).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('fetchData — 场次驱动的日期范围', () => {
-    it('上午场：使用当日日期，并按下午时段过滤订单', async () => {
+    it('上午场：使用当日日期，并只保留最早开始时间不早于 10:30 的订单', async () => {
       const today = formatLocalDate(new Date());
       const orders = [
-        { [BI_FIELD_NAMES.SERVICE_DATE]: '08:00:00~11:00:00' }, // 全上午，应过滤掉
-        { [BI_FIELD_NAMES.SERVICE_DATE]: '14:00:00~18:00:00' }, // 全下午，保留
-        { [BI_FIELD_NAMES.SERVICE_DATE]: '10:30:00~14:30:00,16:30:00~20:30:00' }, // 跨段，保留
+        { [BI_FIELD_NAMES.SERVICE_DATE]: '08:00:00~13:30:00,17:00:00~22:30:00' }, // 首段早于 10:30，应过滤
+        { [BI_FIELD_NAMES.SERVICE_DATE]: '10:00:00~15:00:00,16:00:00~20:30:00' }, // 首段早于 10:30，应过滤
+        { [BI_FIELD_NAMES.SERVICE_DATE]: '10:30:00~14:30:00,16:30:00~20:30:00' }, // 边界值，保留
+        { [BI_FIELD_NAMES.SERVICE_DATE]: '11:00:00~18:00:00' }, // 保留
       ];
       (mockSpongeService.fetchBIOrders as jest.Mock).mockResolvedValue(orders);
 
@@ -45,9 +60,11 @@ describe('OrderGrabStrategy', () => {
         startDate: today,
         endDate: today,
         regionName: '上海',
+        orderStatus: BI_ORDER_STATUS.PENDING_ACCEPTANCE,
       });
-      // 应只保留 2 条带下午时段的订单
+      // 应只保留 2 条最早开始时间不早于 10:30 的订单
       expect((result.payload.orders as unknown[]).length).toBe(2);
+      expect(result.payload.orders).toEqual([orders[2], orders[3]]);
       expect(result.hasData).toBe(true);
     });
 
@@ -67,6 +84,7 @@ describe('OrderGrabStrategy', () => {
         startDate: tomorrowStr,
         endDate: tomorrowStr,
         regionName: '上海',
+        orderStatus: BI_ORDER_STATUS.PENDING_ACCEPTANCE,
       });
       expect((result.payload.orders as unknown[]).length).toBe(2);
     });

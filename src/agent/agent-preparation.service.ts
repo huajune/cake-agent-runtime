@@ -85,8 +85,27 @@ export class AgentPreparationService {
     );
 
     // 2. 决定本轮消息来源。
-    const messages =
-      userMessage !== undefined ? memory.shortTerm.messageWindow : (trimmedPassedMessages ?? []);
+    //    当 userMessage 存在但短期记忆为空时（DB/缓存瞬时故障），用 userMessage 兜底，
+    //    避免 messages 为空导致 AI SDK 抛出 "Invalid prompt: messages must not be empty"。
+    let messages: AgentInputMessage[];
+    if (userMessage !== undefined) {
+      const shortTermMessages = memory.shortTerm.messageWindow;
+      if (shortTermMessages.length > 0) {
+        messages = shortTermMessages;
+      } else {
+        const trimmed = userMessage.trim();
+        if (trimmed) {
+          this.logger.warn(
+            `短期记忆为空，使用 userMessage 兜底: sessionId=${sessionId}, len=${trimmed.length}`,
+          );
+          messages = [{ role: 'user', content: trimmed }];
+        } else {
+          messages = [];
+        }
+      }
+    } else {
+      messages = trimmedPassedMessages ?? [];
+    }
 
     // 3. 安全检查，并统一转换成 ModelMessage。
     const guardResult = this.inputGuard.detectMessages(messages);

@@ -303,5 +303,5 @@ async function sendGroupFullAlert(params: {
     atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
   });
 
-  return webhookService.sendMessage('ALERT', card);
+  return webhookService.sendMessage('MESSAGE_NOTIFICATION', card);
 }

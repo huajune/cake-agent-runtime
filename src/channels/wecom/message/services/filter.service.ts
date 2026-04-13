@@ -90,19 +90,26 @@ export class MessageFilterService {
     }
 
     // 2.6 检查用户是否被暂停托管
-    // 使用 imContactId 作为用户标识（私聊场景）
-    const userId = messageData.imContactId || messageData.externalUserId;
-    if (userId && (await this.userHostingService.isUserPaused(userId))) {
-      this.logger.log(
-        `[过滤-暂停托管] 跳过暂停托管用户的消息 [${messageData.messageId}], userId=${userId}`,
-      );
-      return {
-        pass: false,
-        reason: FilterReason.USER_PAUSED,
-        details: {
-          userId,
-        },
-      };
+    // 暂停以 chatId 为主键存储，同时兼容 imContactId / externalUserId
+    const pauseCheckIds = [
+      messageData.chatId,
+      messageData.imContactId,
+      messageData.externalUserId,
+    ].filter(Boolean) as string[];
+
+    for (const id of pauseCheckIds) {
+      if (await this.userHostingService.isUserPaused(id)) {
+        this.logger.log(
+          `[过滤-暂停托管] 跳过暂停托管用户的消息 [${messageData.messageId}], matchedId=${id}`,
+        );
+        return {
+          pass: false,
+          reason: FilterReason.USER_PAUSED,
+          details: {
+            userId: id,
+          },
+        };
+      }
     }
 
     // 2.7 检查小组是否在黑名单中（仅记录历史，不触发AI回复）

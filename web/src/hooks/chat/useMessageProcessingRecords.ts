@@ -16,7 +16,6 @@ export function useMessageStats(options?: { startDate?: string; endDate?: string
   return useQuery({
     queryKey: ['message-stats', options],
     queryFn: () => chatService.getMessageStats(options),
-    refetchInterval: 15000,
     staleTime: 10000,
   });
 }
@@ -34,7 +33,6 @@ export function useSlowestMessages(options?: {
     queryKey: ['slowest-messages', options],
     queryFn: () => chatService.getSlowestMessages(options),
     enabled: options?.enabled ?? true,
-    refetchInterval: options?.enabled ? 15000 : false,
     staleTime: 10000,
   });
 }

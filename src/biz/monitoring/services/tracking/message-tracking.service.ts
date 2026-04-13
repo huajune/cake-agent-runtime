@@ -219,10 +219,13 @@ export class MessageTrackingService implements OnModuleDestroy {
     const record = this.pendingRecords.get(messageId);
 
     if (!record) {
-      this.logger.error(
-        `[recordSuccess] ❌ 临时记录未找到 [${messageId}]，无法更新状态为 success。` +
-          ` 当前 pendingRecords 包含: [${Array.from(this.pendingRecords.keys()).join(', ')}]`,
+      this.logger.warn(
+        `[recordSuccess] 临时记录未找到 [${messageId}]（可能因服务重启丢失），直接更新数据库`,
       );
+      // 降级：直接更新数据库，避免记录永远卡在 processing 状态
+      this.directUpdateStatus(messageId, 'success', metadata).catch((err) => {
+        this.logger.error(`[recordSuccess] 直接更新数据库失败 [${messageId}]:`, err);
+      });
       return;
     }
 
@@ -304,10 +307,14 @@ export class MessageTrackingService implements OnModuleDestroy {
     const record = this.pendingRecords.get(messageId);
 
     if (!record) {
-      this.logger.error(
-        `[recordFailure] ❌ 临时记录未找到 [${messageId}]，无法更新状态为 failure。`,
+      this.logger.warn(
+        `[recordFailure] 临时记录未找到 [${messageId}]（可能因服务重启丢失），直接更新数据库`,
       );
       this.saveErrorLog(messageId, error, metadata?.alertType);
+      // 降级：直接更新数据库，避免记录永远卡在 processing 状态
+      this.directUpdateStatus(messageId, 'failure', metadata, error).catch((err) => {
+        this.logger.error(`[recordFailure] 直接更新数据库失败 [${messageId}]:`, err);
+      });
       return;
     }
 
@@ -360,6 +367,33 @@ export class MessageTrackingService implements OnModuleDestroy {
   }
 
   // ========== 私有方法 ==========
+
+  /**
+   * 降级路径：pendingRecords 丢失时，直接按 message_id 更新 DB 状态
+   * 解决服务重启后 in-memory pendingRecords 丢失导致记录永远卡在 processing 的问题
+   */
+  private async directUpdateStatus(
+    messageId: string,
+    status: 'success' | 'failure',
+    metadata?: MonitoringMetadata & { fallbackSuccess?: boolean },
+    error?: string,
+  ): Promise<void> {
+    await this.withRetry(() =>
+      this.messageProcessingService.updateStatusByMessageId(messageId, {
+        status,
+        error,
+        scenario: metadata?.scenario,
+        tokenUsage: metadata?.tokenUsage,
+        replyPreview: metadata?.replyPreview,
+        replySegments: metadata?.replySegments,
+        isFallback: metadata?.isFallback,
+        fallbackSuccess: metadata?.fallbackSuccess,
+        batchId: metadata?.batchId,
+        isPrimary: metadata?.isPrimary,
+      }),
+    );
+    this.logger.log(`[directUpdateStatus] 已直接更新数据库 [${messageId}] → ${status}`);
+  }
 
   /**
    * 带指数退避重试的包装器（最多 retries 次，初始延迟 delayMs）

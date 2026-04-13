@@ -9,6 +9,7 @@ import {
   TaskExecutionResult,
   GROUP_TASK_TYPE_NAMES,
 } from '../group-task.types';
+import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
 
 /** 独立客找工作小程序默认值（可通过环境变量覆盖） */
 const MINIPROGRAM_DEFAULTS = {
@@ -73,22 +74,9 @@ export class NotificationSenderService {
     });
 
     // 2. 兼职群额外发送小程序卡片（需要 appid + username 配置）
-    if (type === GroupTaskType.PART_TIME_JOB && this.miniprogramAppid && this.miniprogramUsername) {
+    if (type === GroupTaskType.PART_TIME_JOB) {
       await this.delay(1000);
-      await this.messageSenderService.sendMessage({
-        token: this.enterpriseToken,
-        imBotId: group.imBotId,
-        imRoomId: group.imRoomId,
-        messageType: 9, // MINI_PROGRAM
-        payload: {
-          appid: this.miniprogramAppid,
-          username: this.miniprogramUsername,
-          title: MINIPROGRAM_DEFAULTS.TITLE,
-          thumbUrl: this.miniprogramThumbUrl,
-          pagePath: MINIPROGRAM_DEFAULTS.PAGE_PATH,
-          description: MINIPROGRAM_DEFAULTS.DESCRIPTION,
-        },
-      });
+      await this.sendPartTimeMiniProgramCard(group);
     }
   }
 
@@ -148,6 +136,37 @@ export class NotificationSenderService {
     });
     await this.webhookService.sendMessage('MESSAGE_NOTIFICATION', card);
     this.logger.log(`[试运行] 已发送飞书预览: ${group.groupName}`);
+  }
+
+  private async sendPartTimeMiniProgramCard(group: GroupContext): Promise<void> {
+    if (!this.miniprogramAppid || !this.miniprogramUsername) {
+      this.logger.warn('[兼职群] 未配置 MINIPROGRAM_APPID 或 MINIPROGRAM_USERNAME，跳过小程序卡片');
+      return;
+    }
+
+    const payload = {
+      appid: this.miniprogramAppid,
+      username: this.miniprogramUsername,
+      title: MINIPROGRAM_DEFAULTS.TITLE,
+      thumbUrl: this.miniprogramThumbUrl,
+      pagePath: MINIPROGRAM_DEFAULTS.PAGE_PATH,
+      description: MINIPROGRAM_DEFAULTS.DESCRIPTION,
+    };
+
+    try {
+      await this.messageSenderService.sendMessage({
+        token: this.enterpriseToken,
+        imBotId: group.imBotId,
+        imRoomId: group.imRoomId,
+        messageType: 9, // MINI_PROGRAM
+        payload,
+      });
+      this.logger.log(`[兼职群] 小程序卡片已通过企业级 API 发送: ${group.groupName}`);
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`[兼职群] 小程序卡片发送失败 (${group.groupName}): ${message}`);
+    }
   }
 
   /**
@@ -214,11 +233,16 @@ export class NotificationSenderService {
       failedDetails.map((d) => `❌ **${d.groupKey}** (${d.groupCount}群) — ${d.dataSummary}`),
     );
 
+    appendSection(
+      '**🚨 错误明细**',
+      result.errors.map((item) => `- **${item.groupName}** — ${item.error}`),
+    );
+
     const card = this.cardBuilder.buildMarkdownCard({
       title: `📢 ${modeLabel}${typeName}通知 — ${statusText}`,
       content: lines.join('\n'),
       color,
-      atAll: true,
+      atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
     });
     await this.webhookService.sendMessage('MESSAGE_NOTIFICATION', card);
   }

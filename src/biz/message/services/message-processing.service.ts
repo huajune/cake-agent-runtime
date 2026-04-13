@@ -125,6 +125,16 @@ export class MessageProcessingService {
   }
 
   /**
+   * 按 message_id 直接更新状态（pendingRecords 丢失时的降级路径）
+   */
+  async updateStatusByMessageId(
+    messageId: string,
+    updates: Parameters<MessageProcessingRepository['updateStatusByMessageId']>[1],
+  ): Promise<boolean> {
+    return this.messageProcessingRepository.updateStatusByMessageId(messageId, updates);
+  }
+
+  /**
    * 将过期的 agent_invocation 字段置为 NULL（释放 TOAST 空间）
    */
   async nullAgentInvocations(daysOld: number): Promise<number> {

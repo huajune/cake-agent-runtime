@@ -10,12 +10,14 @@ import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
 import { FeishuWebhookService } from '@infra/feishu/services/webhook.service';
+import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { ToolBuilder } from '@shared-types/tool.types';
 import {
   API_BOOKING_SUBMISSION_FIELDS,
   getAvailableEducations,
   getEducationIdByName,
 } from '@tools/duliday/job-booking.contract';
+import { BOT_TO_RECEIVER } from '@infra/feishu/constants/receivers';
 
 const logger = new Logger('duliday_interview_booking');
 
@@ -30,12 +32,14 @@ export interface InterviewBookingNotificationInfo {
   jobId?: number;
   interviewTime: string;
   toolOutput: Record<string, unknown>;
+  botImId?: string;
 }
 
 export function buildInterviewBookingTool(
   spongeService: SpongeService,
   webhookService: FeishuWebhookService,
   cardBuilder: FeishuCardBuilderService,
+  userHostingService: UserHostingService,
 ): ToolBuilder {
   return (context) => {
     return tool({
@@ -153,6 +157,13 @@ export function buildInterviewBookingTool(
 
           context.bookingSucceeded = result.success;
 
+          // 预约失败：自动暂停托管，避免继续自动回复
+          if (!result.success) {
+            void userHostingService.pauseUser(context.sessionId).then(() => {
+              logger.log(`[自动暂停] 预约失败，已暂停托管: chatId=${context.sessionId}`);
+            });
+          }
+
           const toolResult = {
             ...result,
             errorType: result.success ? null : 'booking_rejected',
@@ -179,6 +190,7 @@ export function buildInterviewBookingTool(
               jobName: inputJobName,
               jobId,
               toolOutput: toolResult,
+              botImId: context.botImId,
             },
             webhookService,
             cardBuilder,
@@ -188,6 +200,12 @@ export function buildInterviewBookingTool(
         } catch (err) {
           logger.error('预约面试失败', err);
           context.bookingSucceeded = false;
+
+          // 预约异常：自动暂停托管，避免继续自动回复
+          void userHostingService.pauseUser(context.sessionId).then(() => {
+            logger.log(`[自动暂停] 预约异常，已暂停托管: chatId=${context.sessionId}`);
+          });
+
           const toolResult = {
             success: false,
             errorType: 'booking_request_failed',
@@ -210,6 +228,7 @@ export function buildInterviewBookingTool(
               jobName: inputJobName,
               jobId,
               toolOutput: toolResult,
+              botImId: context.botImId,
             },
             webhookService,
             cardBuilder,
@@ -237,7 +256,9 @@ async function sendInterviewBookingNotification(
     const sections: string[] = [];
 
     if (isFailure) {
-      sections.push(`候选人 ${bookingInfo.candidateName} 预约失败，请尽快跟进处理。`);
+      sections.push(
+        `候选人 ${bookingInfo.candidateName} 预约失败，请尽快跟进处理。\n⚠️ 该用户已暂停托管`,
+      );
     }
 
     const candidateLines = [
@@ -273,14 +294,16 @@ async function sendInterviewBookingNotification(
 
     sections.push(`通知时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
 
+    const receiver = bookingInfo.botImId ? BOT_TO_RECEIVER[bookingInfo.botImId] : undefined;
+
     const card = cardBuilder.buildMarkdownCard({
       title: isFailure ? '⚠️ 面试预约失败' : '🎉 面试预约成功',
       content: sections.join('\n\n'),
       color: isFailure ? 'red' : 'green',
-      atAll: true,
+      ...(receiver ? { atUsers: [receiver] } : { atAll: true }),
     });
 
-    const success = await webhookService.sendMessage('MESSAGE_NOTIFICATION', card);
+    const success = await webhookService.sendMessage('PRIVATE_CHAT_MONITOR', card);
     if (success) {
       logger.log(`面试预约${isFailure ? '失败' : '成功'}通知已发送: ${bookingInfo.candidateName}`);
     } else {

@@ -63,8 +63,7 @@ export class SpongeBiService {
     try {
       // 0. 刷新数据源（可选）
       if (params.refreshBeforeQuery) {
-        await this.refreshBIDataSource();
-        await this.delay(this.biRefreshWaitMs);
+        await this.refreshBIDataSourceAndWait();
       }
 
       // 1. 登录获取 token
@@ -123,6 +122,17 @@ export class SpongeBiService {
       this.logger.error(`BI 数据源刷新异常: ${message}`);
       return false;
     }
+  }
+
+  /**
+   * 刷新 BI 数据源并等待刷新结果落地
+   */
+  async refreshBIDataSourceAndWait(): Promise<boolean> {
+    const refreshed = await this.refreshBIDataSource();
+    if (!refreshed) return false;
+
+    await this.delay(this.biRefreshWaitMs);
+    return true;
   }
 
   private buildBIFilters(

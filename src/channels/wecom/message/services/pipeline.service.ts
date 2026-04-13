@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { FeishuAlertService } from '@infra/feishu/services/alert.service';
 import { AlertLevel } from '@infra/feishu/interfaces/interface';
+import { BOT_TO_RECEIVER } from '@infra/feishu/constants/receivers';
 import { maskApiKey } from '@infra/utils/string.util';
 import { ScenarioType } from '@enums/agent.enum';
 import { AgentRunnerService } from '@agent/runner.service';
@@ -370,39 +371,33 @@ export class MessagePipelineService {
         : this.isDeliveryError(error)
           ? 'delivery'
           : 'merge';
-      await this.handleProcessingError(error, parsed, {
-        errorType,
-        scenario,
-        isPrimary: true,
-        batchId,
-        dispatchMode: 'merged',
-      });
 
-      // 标记其他消息为失败
-      const handledMessageId = parsed.messageId;
-      await Promise.all(
-        messages
-          .filter((m) => m.messageId !== handledMessageId)
-          .map(async (message) => {
-            await this.deduplicationService.markMessageAsProcessedAsync(message.messageId);
-            const metadata = this.wecomObservability.buildFailureMetadata(message.messageId, {
+      // 降级回复与状态标记并行：两个独立关注点，互不阻塞
+      const primaryMessageId = parsed.messageId;
+
+      await Promise.allSettled([
+        // 主消息：降级回复 + 告警
+        this.handleProcessingError(error, parsed, {
+          errorType,
+          scenario,
+          isPrimary: true,
+          batchId,
+          dispatchMode: 'merged',
+        }),
+
+        // 副消息：标记失败 + 去重
+        ...messages
+          .filter((m) => m.messageId !== primaryMessageId)
+          .map((message) =>
+            this.markSecondaryMessageFailure(message, {
               scenario,
               errorType,
               errorMessage: error.message || '聚合处理失败',
-              isPrimary: false,
               batchId,
-              extraResponse: {
-                phase: 'merged-secondary',
-                primaryMessageId: handledMessageId,
-              },
-            });
-            this.monitoringService.recordFailure(
-              message.messageId,
-              error.message || '聚合处理失败',
-              metadata,
-            );
-          }),
-      );
+              primaryMessageId,
+            }),
+          ),
+      ]);
 
       throw error;
     }
@@ -481,6 +476,7 @@ export class MessagePipelineService {
         fallbackReason: 'Agent 返回降级响应',
         scenario,
         chatId,
+        imBotId: params.primaryMessage.imBotId,
       });
     }
 
@@ -591,6 +587,39 @@ export class MessagePipelineService {
     );
   }
 
+  /**
+   * 标记副消息失败（独立处理，不抛异常）
+   */
+  private async markSecondaryMessageFailure(
+    message: EnterpriseMessageCallbackDto,
+    context: {
+      scenario: ScenarioType;
+      errorType: AlertErrorType;
+      errorMessage: string;
+      batchId: string;
+      primaryMessageId: string;
+    },
+  ): Promise<void> {
+    await this.deduplicationService
+      .markMessageAsProcessedAsync(message.messageId)
+      .catch((err) =>
+        this.logger.warn(`[聚合处理] 去重标记失败 [${message.messageId}]: ${err.message}`),
+      );
+
+    const metadata = this.wecomObservability.buildFailureMetadata(message.messageId, {
+      scenario: context.scenario,
+      errorType: context.errorType,
+      errorMessage: context.errorMessage,
+      isPrimary: false,
+      batchId: context.batchId,
+      extraResponse: {
+        phase: 'merged-secondary',
+        primaryMessageId: context.primaryMessageId,
+      },
+    });
+    this.monitoringService.recordFailure(message.messageId, context.errorMessage, metadata);
+  }
+
   // ========================================
   // 辅助方法
   // ========================================
@@ -658,6 +687,8 @@ export class MessagePipelineService {
     const apiKey = (error as any)?.apiKey;
     const maskedApiKey = maskApiKey(apiKey);
 
+    const errorReceiver = imBotId ? BOT_TO_RECEIVER[imBotId] : undefined;
+
     if (!deliveryError) {
       this.alertService
         .sendAlert({
@@ -672,7 +703,7 @@ export class MessagePipelineService {
           level: alertLevel,
           // 添加 API Key 脱敏信息，便于排查 401 问题
           extra: maskedApiKey ? { apiKey: maskedApiKey } : undefined,
-          // 注意：此处是异常处理告警，不需要 @ 人
+          ...(errorReceiver ? { atUsers: [errorReceiver] } : {}),
         })
         .catch((alertError) => {
           this.logger.error(`告警发送失败: ${alertError.message}`);
@@ -957,10 +988,14 @@ export class MessagePipelineService {
     fallbackReason: string;
     scenario: ScenarioType;
     chatId: string;
+    imBotId?: string;
   }): void {
-    const { contactName, userMessage, fallbackMessage, fallbackReason, scenario, chatId } = params;
+    const { contactName, userMessage, fallbackMessage, fallbackReason, scenario, chatId, imBotId } =
+      params;
 
     this.logger.warn(`[${contactName}] Agent 降级响应，原因: ${fallbackReason}，需要人工介入`);
+
+    const receiver = imBotId ? BOT_TO_RECEIVER[imBotId] : undefined;
 
     this.alertService
       .sendAlert({
@@ -974,7 +1009,7 @@ export class MessagePipelineService {
         conversationId: chatId,
         apiEndpoint: '/api/v1/chat',
         level: AlertLevel.WARNING,
-        atAll: true,
+        ...(receiver ? { atUsers: [receiver] } : { atAll: true }),
       })
       .catch((alertError) => {
         this.logger.error(`降级告警发送失败: ${alertError.message}`);

@@ -17,6 +17,9 @@ export interface NotificationStrategy {
   /** 是否需要 AI 生成（false = 纯模板，true = 需要调用 CompletionService） */
   readonly needsAI: boolean;
 
+  /** 整轮任务开始前的一次性准备（可选），例如刷新外部数据源 */
+  prepareTask?(options?: { timeSlot?: TimeSlot }): Promise<void>;
+
   /** 从外部数据源获取该群所需数据 */
   fetchData(context: GroupContext, timeSlot?: TimeSlot): Promise<NotificationData>;
 

@@ -14,6 +14,10 @@ describe('buildInterviewBookingTool', () => {
     buildMarkdownCard: jest.fn().mockReturnValue({ msg_type: 'interactive' }),
   };
 
+  const mockUserHostingService = {
+    pauseUser: jest.fn().mockResolvedValue(undefined),
+  };
+
   const mockContext: ToolBuildContext = {
     userId: 'user-1',
     corpId: 'corp-1',
@@ -44,6 +48,7 @@ describe('buildInterviewBookingTool', () => {
       mockSpongeService as never,
       mockWebhookService as never,
       mockCardBuilder as never,
+      mockUserHostingService as never,
     );
     const builtTool = builder(mockContext);
     return builtTool.execute(input as any, {
@@ -154,9 +159,10 @@ describe('buildInterviewBookingTool', () => {
       }),
     );
     expect(mockWebhookService.sendMessage).toHaveBeenCalledWith(
-      'MESSAGE_NOTIFICATION',
+      'PRIVATE_CHAT_MONITOR',
       expect.any(Object),
     );
+    expect(mockUserHostingService.pauseUser).not.toHaveBeenCalled();
   });
 
   it('should handle SpongeService error', async () => {
@@ -174,8 +180,9 @@ describe('buildInterviewBookingTool', () => {
       }),
     );
     expect(mockWebhookService.sendMessage).toHaveBeenCalledWith(
-      'MESSAGE_NOTIFICATION',
+      'PRIVATE_CHAT_MONITOR',
       expect.any(Object),
     );
+    expect(mockUserHostingService.pauseUser).toHaveBeenCalledWith('sess-1');
   });
 });

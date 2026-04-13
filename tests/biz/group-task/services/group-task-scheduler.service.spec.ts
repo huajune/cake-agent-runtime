@@ -36,12 +36,17 @@ describe('GroupTaskSchedulerService', () => {
     type: GroupTaskType.ORDER_GRAB,
     tagPrefix: '抢单群',
     needsAI: false,
+    prepareTask: jest.fn().mockResolvedValue(undefined),
     fetchData: jest.fn().mockResolvedValue([]),
     buildMessage: jest.fn().mockResolvedValue('test message'),
   } as unknown as NotificationStrategy;
 
   beforeEach(async () => {
     currentNodeEnv = Environment.Test;
+
+    (mockStrategy.prepareTask as jest.Mock).mockReset().mockResolvedValue(undefined);
+    (mockStrategy.fetchData as jest.Mock).mockReset().mockResolvedValue([]);
+    (mockStrategy.buildMessage as jest.Mock).mockReset().mockReturnValue('test message');
 
     redisClient = {
       set: jest.fn().mockResolvedValue('OK'),
@@ -251,6 +256,7 @@ describe('GroupTaskSchedulerService', () => {
 
       await service.executeTask(mockStrategy, { forceEnabled: true });
 
+      expect(mockStrategy.prepareTask).toHaveBeenCalledTimes(1);
       // forceEnabled=true, forceSend=false → dryRun 仍遵守 config
       expect(notificationSenderService.sendToGroup).toHaveBeenCalledTimes(1);
       expect(notificationSenderService.sendToGroup.mock.calls[0][3]).toBe(true);
@@ -286,6 +292,7 @@ describe('GroupTaskSchedulerService', () => {
 
       await service.executeTask(mockStrategy, { forceEnabled: true, forceSend: true });
 
+      expect(mockStrategy.prepareTask).toHaveBeenCalledTimes(1);
       // forceSend=true → dryRun=false
       expect(notificationSenderService.sendToGroup).toHaveBeenCalledTimes(1);
       expect(notificationSenderService.sendToGroup.mock.calls[0][3]).toBe(false);
@@ -321,6 +328,7 @@ describe('GroupTaskSchedulerService', () => {
 
       await service.executeTask(mockStrategy);
 
+      expect(mockStrategy.prepareTask).toHaveBeenCalledTimes(1);
       expect(notificationSenderService.sendToGroup).toHaveBeenCalledTimes(1);
       expect(notificationSenderService.sendToGroup.mock.calls[0][3]).toBe(true);
 
@@ -364,6 +372,7 @@ describe('GroupTaskSchedulerService', () => {
 
       await service.executeTask(mockStrategy);
 
+      expect(mockStrategy.prepareTask).toHaveBeenCalledTimes(1);
       expect(redisClient.set).toHaveBeenCalledWith(
         'group-task:lock:order_grab',
         expect.any(String),
@@ -374,6 +383,55 @@ describe('GroupTaskSchedulerService', () => {
         ['group-task:lock:order_grab'],
         [expect.any(String)],
       );
+    });
+
+    it('should run prepareTask only once before processing all groups', async () => {
+      const enabledConfig = { ...DEFAULT_GROUP_TASK_CONFIG, enabled: true, dryRun: true };
+      systemConfigService.getGroupTaskConfig.mockResolvedValue(enabledConfig);
+
+      const groups = [
+        {
+          imRoomId: 'room-1',
+          groupName: '测试群1',
+          city: '上海',
+          tag: '抢单群',
+          imBotId: 'bot-1',
+          token: 'token-1',
+          chatId: 'chat-1',
+        },
+        {
+          imRoomId: 'room-2',
+          groupName: '测试群2',
+          city: '北京',
+          tag: '抢单群',
+          imBotId: 'bot-1',
+          token: 'token-1',
+          chatId: 'chat-2',
+        },
+      ];
+      groupResolverService.resolveGroups.mockResolvedValue(groups);
+      (mockStrategy.fetchData as jest.Mock).mockResolvedValue({
+        hasData: true,
+        payload: { orders: [] },
+        summary: '测试',
+      });
+      (mockStrategy.buildMessage as jest.Mock).mockReturnValue('test message');
+
+      await service.executeTask(mockStrategy, { timeSlot: TimeSlot.MORNING });
+
+      expect(mockStrategy.prepareTask).toHaveBeenCalledTimes(1);
+      expect(mockStrategy.prepareTask).toHaveBeenCalledWith({ timeSlot: TimeSlot.MORNING });
+      expect(mockStrategy.fetchData).toHaveBeenCalledTimes(2);
+    });
+
+    it('should not run prepareTask when no target groups are resolved', async () => {
+      const enabledConfig = { ...DEFAULT_GROUP_TASK_CONFIG, enabled: true, dryRun: true };
+      systemConfigService.getGroupTaskConfig.mockResolvedValue(enabledConfig);
+      groupResolverService.resolveGroups.mockResolvedValue([]);
+
+      await service.executeTask(mockStrategy);
+
+      expect(mockStrategy.prepareTask).not.toHaveBeenCalled();
     });
   });
 

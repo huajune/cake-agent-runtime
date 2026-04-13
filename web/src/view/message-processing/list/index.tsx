@@ -5,12 +5,16 @@ import {
   useMessageStats,
   useSlowestMessages,
 } from '@/hooks/chat/useMessageProcessingRecords';
+import { useRealtimeMessageProcessing } from '@/hooks/chat/useRealtimeMessageProcessing';
 import ControlPanel from './components/ControlPanel';
 import MessageProcessingTable from './components/MessageProcessingTable';
 import MessageProcessingDetailDrawer from './components/MessageProcessingDetailDrawer';
 import type { MessageRecord } from '@/api/types/chat.types';
 
 export default function MessageProcessingPage() {
+  // 订阅 Supabase Realtime，自动刷新数据
+  useRealtimeMessageProcessing();
+
   const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month'>('today');
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'realtime' | 'slowest'>('realtime');

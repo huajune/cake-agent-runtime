@@ -71,3 +71,4 @@ user_token_cache.json
 # Supabase
 supabase/.temp/
 supabase/.env
+.claude/worktrees/

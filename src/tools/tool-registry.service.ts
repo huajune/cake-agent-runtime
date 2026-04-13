@@ -25,6 +25,7 @@ import { FeishuWebhookService } from '@infra/feishu/services/webhook.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { RoomService } from '@channels/wecom/room/room.service';
+import { UserHostingService } from '@biz/user/services/user-hosting.service';
 
 /**
  * 统一工具注册表
@@ -57,6 +58,7 @@ export class ToolRegistryService {
     webhookService: FeishuWebhookService,
     cardBuilder: FeishuCardBuilderService,
     private readonly chatSessionService: ChatSessionService,
+    userHostingService: UserHostingService,
     configService: ConfigService,
   ) {
     const memberLimit = parseInt(configService.get('GROUP_MEMBER_LIMIT', '200'), 10);
@@ -87,7 +89,12 @@ export class ToolRegistryService {
       duliday_interview_booking: createToolDefinition({
         name: 'duliday_interview_booking',
         description: '面试预约（仅做接口字段校验与提交；仅在确认进入约面时调用）',
-        create: buildInterviewBookingTool(spongeService, webhookService, cardBuilder),
+        create: buildInterviewBookingTool(
+          spongeService,
+          webhookService,
+          cardBuilder,
+          userHostingService,
+        ),
       }),
 
       duliday_interview_precheck: createToolDefinition({

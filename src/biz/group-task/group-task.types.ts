@@ -125,4 +125,11 @@ export interface TaskExecutionResult {
 }
 
 // BI 类型从 sponge 层导出（避免 sponge→biz 反向依赖）
-export { BIOrderQueryParams, BIOrder, BI_FIELD_NAMES, BI_FILTER_TYPES } from '@sponge/sponge.types';
+export {
+  BIOrderQueryParams,
+  BIOrder,
+  BI_FIELD_NAMES,
+  BI_FILTER_TYPES,
+  BI_ORDER_STATUS,
+  BIOrderStatusCode,
+} from '@sponge/sponge.types';

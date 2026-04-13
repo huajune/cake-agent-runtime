@@ -106,13 +106,15 @@ describe('MessageFilterService', () => {
 
       expect(result.pass).toBe(false);
       expect(result.reason).toBe(FilterReason.USER_PAUSED);
-      expect(mockUserHostingService.isUserPaused).toHaveBeenCalledWith('contact-123');
+      expect(mockUserHostingService.isUserPaused).toHaveBeenCalledWith('chat-123');
+      expect(mockUserHostingService.isUserPaused).toHaveBeenCalledTimes(1);
     });
 
-    it('should use externalUserId when imContactId is not available', async () => {
+    it('should use externalUserId when chatId and imContactId are not available', async () => {
       mockUserHostingService.isUserPaused.mockResolvedValue(true);
       const messageData = {
         ...validMessageData,
+        chatId: undefined,
         imContactId: undefined,
         externalUserId: 'ext-user-123',
       };
@@ -126,6 +128,7 @@ describe('MessageFilterService', () => {
     it('should allow message through when no userId for pause check', async () => {
       const messageData = {
         ...validMessageData,
+        chatId: undefined,
         imContactId: undefined,
         externalUserId: undefined,
       };

@@ -112,7 +112,7 @@ function selectTitle(orders: BIOrder[], city: string, timeSlot?: TimeSlot): stri
     return city ? `🍕【${city}】午间新单上架~` : '🍕午间新单上架~';
   }
   if (timeSlot === TimeSlot.EVENING) {
-    return city ? `🍕【${city}】晚间急单速抢！` : '🍕晚间急单速抢！';
+    return city ? `🍕【${city}】周末订单速抢！` : '🍕周末订单速抢！';
   }
 
   // 无场次兜底

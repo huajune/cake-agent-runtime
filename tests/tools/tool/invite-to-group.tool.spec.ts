@@ -159,7 +159,7 @@ describe('buildInviteToGroupTool', () => {
         title: '上海 所有兼职群已满，需要创建新群',
       }),
     );
-    expect(mockWebhookService.sendMessage).toHaveBeenCalledWith('ALERT', {
+    expect(mockWebhookService.sendMessage).toHaveBeenCalledWith('MESSAGE_NOTIFICATION', {
       msg_type: 'interactive',
     });
   });
