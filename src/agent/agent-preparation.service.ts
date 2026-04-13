@@ -19,6 +19,8 @@ export interface PreparedAgentContext {
   typedMessages: ModelMessage[];
   memoryLoadWarning?: string;
   chatModel: ReturnType<RouterService['resolveByRole']>;
+  chatModelId: string;
+  chatFallbacks?: string[];
   tools: ToolSet;
   corpId: string;
   userId: string;
@@ -117,6 +119,9 @@ export class AgentPreparationService {
       : this.router.resolveByRole(ModelRole.Chat);
     const chatModelId =
       trimmedOverrideModelId ?? this.configService.get<string>('AGENT_CHAT_MODEL') ?? '';
+    const chatFallbacks = trimmedOverrideModelId
+      ? undefined
+      : this.router.getFallbacks(ModelRole.Chat);
     if (trimmedOverrideModelId) {
       this.logger.log(`使用用户指定模型: ${trimmedOverrideModelId}`);
     }
@@ -194,6 +199,8 @@ export class AgentPreparationService {
       typedMessages,
       memoryLoadWarning,
       chatModel,
+      chatModelId,
+      chatFallbacks,
       tools,
       corpId,
       userId,

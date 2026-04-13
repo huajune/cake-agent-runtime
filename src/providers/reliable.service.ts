@@ -51,7 +51,11 @@ export class ReliableService {
 
       for (let attempt = 1; attempt <= cfg.maxRetries; attempt++) {
         try {
-          return await generateText({ ...params, model } as Parameters<typeof generateText>[0]);
+          return await generateText({
+            ...params,
+            model,
+            maxRetries: 0, // 禁用 AI SDK 内置重试（默认 2 会导致叠加）；设 0 后只调 1 次，失败抛原始错误供 classifyError 精确分类
+          } as Parameters<typeof generateText>[0]);
         } catch (err) {
           const category = this.classifyError(err);
           lastRawError = err;

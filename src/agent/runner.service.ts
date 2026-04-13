@@ -2,8 +2,9 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { generateText, streamText, stepCountIs } from 'ai';
+import { streamText, stepCountIs } from 'ai';
 import { MemoryService } from '@memory/memory.service';
+import { ReliableService } from '@providers/reliable.service';
 import { AgentPreparationService, type PreparedAgentContext } from './agent-preparation.service';
 import type { AgentError } from '@shared-types/agent-error.types';
 import type {
@@ -33,6 +34,7 @@ export class AgentRunnerService {
     private readonly configService: ConfigService,
     private readonly preparation: AgentPreparationService,
     private readonly memoryService: MemoryService,
+    private readonly reliable: ReliableService,
   ) {
     this.thinkingBudgetTokens = parseInt(
       this.configService.get('AGENT_THINKING_BUDGET_TOKENS', '0'),
@@ -54,15 +56,18 @@ export class AgentRunnerService {
     }
 
     try {
-      const r = await generateText({
-        model: ctx.chatModel,
-        system: ctx.finalPrompt,
-        messages: ctx.typedMessages,
-        tools: ctx.tools,
-        maxOutputTokens: this.maxOutputTokens,
-        stopWhen: stepCountIs(ctx.maxSteps),
-        providerOptions: this.buildProviderOptions(),
-      });
+      const r = await this.reliable.generateText(
+        ctx.chatModelId,
+        {
+          system: ctx.finalPrompt,
+          messages: ctx.typedMessages,
+          tools: ctx.tools,
+          maxOutputTokens: this.maxOutputTokens,
+          stopWhen: stepCountIs(ctx.maxSteps),
+          providerOptions: this.buildProviderOptions(),
+        },
+        ctx.chatFallbacks,
+      );
 
       if (r.reasoningText) {
         this.logger.debug(`Thinking: ${r.reasoningText.substring(0, 200)}...`);
@@ -222,7 +227,15 @@ export class AgentRunnerService {
   }
 
   private createEmptyMessagesError(
-    ctx: Pick<PreparedAgentContext, 'sessionId' | 'userId' | 'typedMessages' | 'memoryLoadWarning'>,
+    ctx: Pick<
+      PreparedAgentContext,
+      | 'sessionId'
+      | 'userId'
+      | 'typedMessages'
+      | 'memoryLoadWarning'
+      | 'chatModelId'
+      | 'chatFallbacks'
+    >,
   ): AgentError {
     return this.enrichAgentError(
       new Error(
@@ -235,7 +248,15 @@ export class AgentRunnerService {
 
   private enrichAgentError(
     err: unknown,
-    ctx: Pick<PreparedAgentContext, 'sessionId' | 'userId' | 'typedMessages' | 'memoryLoadWarning'>,
+    ctx: Pick<
+      PreparedAgentContext,
+      | 'sessionId'
+      | 'userId'
+      | 'typedMessages'
+      | 'memoryLoadWarning'
+      | 'chatModelId'
+      | 'chatFallbacks'
+    >,
   ): AgentError {
     const error =
       err instanceof Error ? (err as AgentError) : (new Error(String(err)) as AgentError);
@@ -247,6 +268,12 @@ export class AgentRunnerService {
       userId: ctx.userId,
       messageCount: ctx.typedMessages.length,
       memoryLoadWarning: ctx.memoryLoadWarning,
+      // 补充模型链信息，供告警卡片展示
+      modelsAttempted: error.agentMeta?.modelsAttempted ?? [
+        ctx.chatModelId,
+        ...(ctx.chatFallbacks ?? []),
+      ],
+      lastCategory: error.agentMeta?.lastCategory,
     };
 
     return error;

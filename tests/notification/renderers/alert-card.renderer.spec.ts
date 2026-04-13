@@ -17,18 +17,32 @@ describe('AlertCardRenderer', () => {
 
   it('should decorate manual intervention alerts and render inline diagnostics', () => {
     renderer.buildAlertCard({
-      errorType: 'agent',
-      error: new Error('所有模型均失败'),
-      conversationId: 'chat-123',
-      userMessage: '你好，我想找兼职',
-      contactName: 'Alice',
-      fallbackMessage: '我确认下哈，马上回你~',
-      scenario: 'candidate-consultation',
-      level: AlertLevel.WARNING,
-      atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
-      extra: {
-        errorCategory: 'retryable',
-        modelsAttempted: ['anthropic/claude-sonnet-4', 'openai/gpt-4o'],
+      code: 'agent.invoke_failed',
+      severity: AlertLevel.WARNING,
+      source: {
+        subsystem: 'wecom',
+        component: 'MessagePipelineService',
+        action: 'handleProcessingFailure',
+        trigger: 'http',
+      },
+      scope: {
+        chatId: 'chat-123',
+        contactName: 'Alice',
+        scenario: 'candidate-consultation',
+      },
+      impact: {
+        userMessage: '你好，我想找兼职',
+        fallbackMessage: '我确认下哈，马上回你~',
+        deliveryState: 'none',
+        requiresHumanIntervention: true,
+      },
+      routing: {
+        atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+      },
+      diagnostics: {
+        error: new Error('所有模型均失败'),
+        category: 'retryable',
+        modelChain: ['anthropic/claude-sonnet-4', 'openai/gpt-4o'],
         totalAttempts: 2,
         memoryWarning: 'shortTerm timeout',
         dispatchMode: 'merged',
@@ -43,8 +57,10 @@ describe('AlertCardRenderer', () => {
     expect(payload.content).toContain('**用户昵称**: Alice');
     expect(payload.content).toContain('**用户消息**: 你好，我想找兼职');
     expect(payload.content).toContain('**蛋糕已回复**: 我确认下哈，马上回你~');
-    expect(payload.content).toContain('**Agent 报错**: 所有模型均失败');
+    expect(payload.content).toContain('**异常消息**: 所有模型均失败');
     expect(payload.content).toContain('**会话 ID**: chat-123');
+    expect(payload.content).toContain('**来源**: wecom/MessagePipelineService.handleProcessingFailure [http]');
+    expect(payload.content).toContain('**投递状态**: none');
     expect(payload.content).toContain('📎 错误分类: retryable');
     expect(payload.content).toContain('模型链: anthropic/claude-sonnet-4 -> openai/gpt-4o');
     expect(payload.content).toContain('重试次数: 2');
@@ -55,27 +71,37 @@ describe('AlertCardRenderer', () => {
 
   it('should render structured extras, details, and omit duplicate session id', () => {
     renderer.buildAlertCard({
-      errorType: 'system_exception',
-      error: {
-        response: {
-          data: {
-            details: 'gateway timeout',
-          },
-          status: 504,
-        },
+      code: 'system.exception',
+      source: {
+        subsystem: 'observability',
+        component: 'ProcessExceptionMonitorService',
+        action: 'uncaughtException',
+        trigger: 'process',
       },
-      conversationId: 'chat-456',
-      apiEndpoint: '/api/v1/chat',
-      scenario: 'process:uncaughtException',
-      level: AlertLevel.CRITICAL,
-      details: { name: 'Error', stack: 'line1\nline2' },
-      extra: {
+      scope: {
+        chatId: 'chat-456',
         sessionId: 'chat-456',
         batchId: 'batch-123',
-        apiKey: 'sk-***',
-        unknownField: 'leftover',
+        scenario: 'process:uncaughtException',
       },
-      timestamp: '2026/04/13 14:52:00',
+      severity: AlertLevel.CRITICAL,
+      diagnostics: {
+        error: {
+          response: {
+            data: {
+              details: 'gateway timeout',
+            },
+            status: 504,
+          },
+        },
+        errorName: 'Error',
+        stack: 'line1\nline2',
+        payload: {
+          apiKey: 'sk-***',
+          unknownField: 'leftover',
+        },
+      },
+      occurredAt: '2026/04/13 14:52:00',
     });
 
     const payload = cardBuilder.buildMarkdownCard.mock.calls[0][0];
@@ -83,14 +109,17 @@ describe('AlertCardRenderer', () => {
     expect(payload.color).toBe('red');
     expect(payload.content).toContain('**时间**: 2026/04/13 14:52:00');
     expect(payload.content).toContain('**级别**: CRITICAL');
-    expect(payload.content).toContain('**类型**: system_exception');
-    expect(payload.content).toContain('**消息**: gateway timeout (HTTP 504)');
+    expect(payload.content).toContain('**告警码**: system.exception');
+    expect(payload.content).toContain(
+      '**来源**: observability/ProcessExceptionMonitorService.uncaughtException [process]',
+    );
+    expect(payload.content).toContain('**异常消息**: gateway timeout (HTTP 504)');
     expect(payload.content).toContain('**会话 ID**: chat-456');
-    expect(payload.content).toContain('**API 端点**: /api/v1/chat');
     expect(payload.content).toContain('**场景**: process:uncaughtException');
-    expect(payload.content).toContain('**详情**:');
     expect(payload.content).toContain('**批次 ID**: batch-123');
-    expect(payload.content).toContain('**API Key**: sk-***');
+    expect(payload.content).toContain('**错误名称**: Error');
+    expect(payload.content).toContain('**堆栈**:');
+    expect(payload.content).toContain('"apiKey": "sk-***"');
     expect(payload.content).toContain('"unknownField": "leftover"');
     expect((payload.content as string).match(/\*\*会话 ID\*\*/g)).toHaveLength(1);
   });
@@ -98,13 +127,34 @@ describe('AlertCardRenderer', () => {
   it('should expose helper constructors for fallback and prompt injection alerts', () => {
     expect(
       renderer.createFallbackMentionAlert({
-        errorType: 'agent_fallback',
-        title: '需要人工介入',
+        code: 'agent.fallback_required',
+        summary: '需要人工介入',
+        source: {
+          subsystem: 'wecom',
+          component: 'MessagePipelineService',
+          action: 'sendFallbackAlert',
+          trigger: 'http',
+        },
+        impact: {
+          deliveryState: 'fallback_sent',
+        },
       }),
     ).toEqual({
-      errorType: 'agent_fallback',
-      title: '需要人工介入',
-      atAll: true,
+      code: 'agent.fallback_required',
+      summary: '需要人工介入',
+      source: {
+        subsystem: 'wecom',
+        component: 'MessagePipelineService',
+        action: 'sendFallbackAlert',
+        trigger: 'http',
+      },
+      impact: {
+        deliveryState: 'fallback_sent',
+        requiresHumanIntervention: true,
+      },
+      routing: {
+        atAll: true,
+      },
     });
 
     const promptAlert = renderer.createPromptInjectionAlert({
@@ -113,15 +163,29 @@ describe('AlertCardRenderer', () => {
       contentPreview: 'x'.repeat(260),
     });
 
-    expect(promptAlert.errorType).toBe('prompt_injection');
-    expect(promptAlert.error).toBeInstanceOf(Error);
-    expect((promptAlert.error as Error).message).toBe('Prompt injection: contains jailbreak');
-    expect(promptAlert.apiEndpoint).toBe('agent/invoke');
-    expect(promptAlert.scenario).toBe('security');
-    expect(promptAlert.extra).toEqual({
+    expect(promptAlert.code).toBe('security.prompt_injection_detected');
+    expect(promptAlert.summary).toBe('Prompt Injection 告警');
+    expect(promptAlert.severity).toBe(AlertLevel.WARNING);
+    expect(promptAlert.source).toEqual({
+      subsystem: 'security',
+      component: 'InputGuardService',
+      action: 'alertInjection',
+      trigger: 'http',
+    });
+    expect(promptAlert.scope).toEqual({
       userId: 'user-1',
+      scenario: 'security',
+    });
+    expect(promptAlert.diagnostics?.error).toBeInstanceOf(Error);
+    expect((promptAlert.diagnostics?.error as Error).message).toBe(
+      'Prompt injection: contains jailbreak',
+    );
+    expect(promptAlert.diagnostics?.payload).toEqual({
       reason: 'contains jailbreak',
       contentPreview: 'x'.repeat(200),
+    });
+    expect(promptAlert.dedupe).toEqual({
+      key: 'security.prompt_injection_detected:user-1',
     });
     expect(renderer.createGroupFullMentionUsers()).toEqual([FEISHU_RECEIVER_USERS.GAO_YAQI]);
   });

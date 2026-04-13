@@ -3,34 +3,41 @@ import { AlertLevel } from '@enums/alert.enum';
 import { FeishuCardColor } from '@infra/feishu/interfaces/interface';
 import { FeishuReceiver, FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
-import { AlertContext } from '../types/alert.types';
+import { AlertContext, AlertDiagnostics, AlertScope } from '../types/alert.types';
 
 @Injectable()
 export class AlertCardRenderer {
   constructor(private readonly cardBuilder: FeishuCardBuilderService) {}
 
   buildAlertCard(context: AlertContext): Record<string, unknown> {
-    const level = context.level || AlertLevel.ERROR;
+    const level = context.severity || AlertLevel.ERROR;
     const title = this.decorateTitle(
-      context.title || this.getDefaultTitle(context.errorType),
+      context.summary || this.getDefaultTitle(context.code),
       context,
     );
-    const errorMessage = context.message || this.extractErrorMessage(context.error);
+    const errorMessage =
+      context.diagnostics?.errorMessage || this.extractErrorMessage(context.diagnostics?.error);
     const content = this.buildContent(context, level, errorMessage);
 
     return this.cardBuilder.buildMarkdownCard({
       title,
       content,
       color: this.getLevelColor(level),
-      atAll: context.atAll,
-      atUsers: context.atUsers,
+      atAll: context.routing?.atAll,
+      atUsers: context.routing?.atUsers,
     });
   }
 
-  createFallbackMentionAlert(context: Omit<AlertContext, 'atAll' | 'atUsers'>): AlertContext {
+  createFallbackMentionAlert(context: Omit<AlertContext, 'routing'>): AlertContext {
     return {
       ...context,
-      atAll: true,
+      impact: {
+        ...context.impact,
+        requiresHumanIntervention: true,
+      },
+      routing: {
+        atAll: true,
+      },
     };
   }
 
@@ -52,14 +59,30 @@ export class AlertCardRenderer {
     contentPreview: string;
   }): AlertContext {
     return {
-      errorType: 'prompt_injection',
-      error: new Error(`Prompt injection: ${params.reason}`),
-      apiEndpoint: 'agent/invoke',
-      scenario: 'security',
-      extra: {
+      code: 'security.prompt_injection_detected',
+      summary: 'Prompt Injection 告警',
+      severity: AlertLevel.WARNING,
+      source: {
+        subsystem: 'security',
+        component: 'InputGuardService',
+        action: 'alertInjection',
+        trigger: 'http',
+      },
+      scope: {
         userId: params.userId,
-        reason: params.reason,
-        contentPreview: params.contentPreview.substring(0, 200),
+        scenario: 'security',
+      },
+      diagnostics: {
+        error: new Error(`Prompt injection: ${params.reason}`),
+        errorMessage: `Prompt injection: ${params.reason}`,
+        category: 'prompt_injection',
+        payload: {
+          reason: params.reason,
+          contentPreview: params.contentPreview.substring(0, 200),
+        },
+      },
+      dedupe: {
+        key: `security.prompt_injection_detected:${params.userId}`,
       },
     };
   }
@@ -70,100 +93,89 @@ export class AlertCardRenderer {
 
   private buildContent(context: AlertContext, level: AlertLevel, errorMessage: string): string {
     const time =
-      context.timestamp || new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+      context.occurredAt || new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
     const fields: string[] = [];
     const requiresImmediateAttention = this.requiresManualIntervention(context);
+    const scope = context.scope;
+    const impact = context.impact;
 
     if (requiresImmediateAttention) {
-      if (context.contactName) {
-        fields.push(`**用户昵称**: ${context.contactName}`);
+      if (scope?.contactName) {
+        fields.push(`**用户昵称**: ${scope.contactName}`);
       }
-      if (context.userMessage) {
-        fields.push(`**用户消息**: ${this.truncate(context.userMessage, 200)}`);
+      if (impact?.userMessage) {
+        fields.push(`**用户消息**: ${this.truncate(impact.userMessage, 200)}`);
       }
-      if (context.fallbackMessage) {
-        fields.push(`**蛋糕已回复**: ${context.fallbackMessage}`);
+      if (impact?.fallbackMessage) {
+        fields.push(`**蛋糕已回复**: ${impact.fallbackMessage}`);
       }
       fields.push('---');
       if (errorMessage) {
-        fields.push(`**Agent 报错**: ${errorMessage}`);
+        fields.push(`**异常消息**: ${errorMessage}`);
       }
-      if (context.conversationId) {
-        fields.push(`**会话 ID**: ${context.conversationId}`);
-      }
+      fields.push(`**告警码**: ${context.code}`);
       fields.push(`**时间**: ${time}`);
-      if (context.scenario) {
-        fields.push(`**场景**: ${context.scenario}`);
+      fields.push(`**来源**: ${this.formatSource(context)}`);
+      this.pushScopeFields(fields, scope, { skipContactName: true });
+      if (impact?.deliveryState) {
+        fields.push(`**投递状态**: ${impact.deliveryState}`);
       }
-      const inlineExtra = this.formatInlineExtra(context.extra);
-      if (inlineExtra.length > 0) {
-        fields.push(`📎 ${inlineExtra.join(' | ')}`);
+      const inlineDiagnostics = this.formatInlineDiagnostics(context.diagnostics);
+      if (inlineDiagnostics.length > 0) {
+        fields.push(`📎 ${inlineDiagnostics.join(' | ')}`);
+      }
+      const payload = this.getRemainingPayload(context.diagnostics);
+      if (Object.keys(payload).length > 0) {
+        fields.push(`**诊断载荷**:\n\`\`\`json\n${JSON.stringify(payload, null, 2)}\n\`\`\``);
       }
       return fields.join('\n');
     }
 
     fields.push(`**时间**: ${time}`);
     fields.push(`**级别**: ${level.toUpperCase()}`);
-    fields.push(`**类型**: ${context.errorType}`);
+    fields.push(`**告警码**: ${context.code}`);
+    fields.push(`**来源**: ${this.formatSource(context)}`);
 
     if (errorMessage) {
-      fields.push(`**消息**: ${errorMessage}`);
+      fields.push(`**异常消息**: ${errorMessage}`);
     }
-    if (context.conversationId) {
-      fields.push(`**会话 ID**: ${context.conversationId}`);
-    }
-    if (context.userMessage) {
-      fields.push(`**用户消息**: ${this.truncate(context.userMessage, 100)}`);
-    }
-    if (context.contactName) {
-      fields.push(`**用户昵称**: ${context.contactName}`);
-    }
-    if (context.apiEndpoint) {
-      fields.push(`**API 端点**: ${context.apiEndpoint}`);
-    }
-    if (context.scenario) {
-      fields.push(`**场景**: ${context.scenario}`);
-    }
-    if (context.fallbackMessage) {
-      fields.push(`**降级消息**: ${context.fallbackMessage}`);
-    }
-    if (context.details) {
-      fields.push(`**详情**:\n\`\`\`json\n${JSON.stringify(context.details, null, 2)}\n\`\`\``);
-    }
-    if (context.extra) {
-      const extra = { ...context.extra };
-      if (context.conversationId && extra.sessionId === context.conversationId) {
-        delete extra.sessionId;
-      }
+    this.pushScopeFields(fields, scope);
+    this.pushImpactFields(fields, impact);
 
-      const { formattedLines, remaining } = this.formatStructuredExtra(extra);
+    if (context.diagnostics) {
+      const { formattedLines, remaining } = this.formatStructuredDiagnostics(context.diagnostics);
       if (formattedLines.length > 0) {
         fields.push('---\n' + formattedLines.join('\n'));
       }
       if (Object.keys(remaining).length > 0) {
-        fields.push(`**其他**:\n\`\`\`json\n${JSON.stringify(remaining, null, 2)}\n\`\`\``);
+        fields.push(`**诊断载荷**:\n\`\`\`json\n${JSON.stringify(remaining, null, 2)}\n\`\`\``);
       }
     }
 
     return fields.join('\n');
   }
 
-  private getDefaultTitle(errorType: string): string {
+  private getDefaultTitle(code: string): string {
     const titleMap: Record<string, string> = {
-      agent: 'Agent 调用异常',
-      agent_fallback: 'Agent 降级提醒',
-      delivery: '消息发送异常',
-      prompt_injection: 'Prompt Injection 告警',
-      http_exception: 'HTTP 异常',
-      system_exception: '系统异常',
-      custom: '系统通知',
+      'agent.invoke_failed': 'Agent 调用异常',
+      'agent.debug_chat_failed': 'Agent 调试调用异常',
+      'agent.fallback_required': 'Agent 降级提醒',
+      'message.processing_failed': '消息处理异常',
+      'message.delivery_failed': '消息发送异常',
+      'security.prompt_injection_detected': 'Prompt Injection 告警',
+      'server.http_exception': 'HTTP 异常',
+      'system.exception': '系统异常',
+      'system.process_uncaught_exception': '未捕获进程异常',
+      'system.process_unhandled_rejection': '未处理 Promise 拒绝',
+      'system.notice': '系统通知',
+      'cron.job_failed': '定时任务异常',
     };
 
-    return titleMap[errorType] || `系统异常: ${errorType}`;
+    return titleMap[code] || `系统异常: ${code}`;
   }
 
   private requiresManualIntervention(context: AlertContext): boolean {
-    return context.atAll === true || (context.atUsers?.length ?? 0) > 0;
+    return context.impact?.requiresHumanIntervention === true;
   }
 
   private getLevelColor(level: AlertLevel): FeishuCardColor {
@@ -223,54 +235,120 @@ export class AlertCardRenderer {
     return `${text.slice(0, maxLength)}...`;
   }
 
-  private formatInlineExtra(extra?: Record<string, unknown>): string[] {
-    if (!extra) return [];
+  private pushScopeFields(
+    fields: string[],
+    scope?: AlertScope,
+    options?: { skipContactName?: boolean },
+  ): void {
+    if (!scope) return;
 
-    const inlineKeys: Record<string, string> = {
-      errorCategory: '错误分类',
-      modelsAttempted: '模型链',
-      totalAttempts: '重试次数',
-      memoryWarning: '记忆告警',
-      dispatchMode: '调度模式',
-      messageCount: '消息条数',
-    };
-
-    const parts: string[] = [];
-    for (const [key, label] of Object.entries(inlineKeys)) {
-      if (extra[key] != null) {
-        parts.push(`${label}: ${this.formatExtraValue(extra[key])}`);
-      }
+    if (scope.scenario) {
+      fields.push(`**场景**: ${scope.scenario}`);
     }
-
-    return parts;
+    if (!options?.skipContactName && scope.contactName) {
+      fields.push(`**用户昵称**: ${scope.contactName}`);
+    }
+    if (scope.chatId) {
+      fields.push(`**会话 ID**: ${scope.chatId}`);
+    }
+    if (scope.sessionId && scope.sessionId !== scope.chatId) {
+      fields.push(`**Session ID**: ${scope.sessionId}`);
+    }
+    if (scope.messageId) {
+      fields.push(`**消息 ID**: ${scope.messageId}`);
+    }
+    if (scope.batchId) {
+      fields.push(`**批次 ID**: ${scope.batchId}`);
+    }
+    if (scope.userId) {
+      fields.push(`**用户 ID**: ${scope.userId}`);
+    }
+    if (scope.corpId) {
+      fields.push(`**企业 ID**: ${scope.corpId}`);
+    }
   }
 
-  private formatStructuredExtra(extra: Record<string, unknown>): {
+  private pushImpactFields(fields: string[], impact?: AlertContext['impact']): void {
+    if (!impact) return;
+
+    if (impact.userMessage) {
+      fields.push(`**用户消息**: ${this.truncate(impact.userMessage, 100)}`);
+    }
+    if (impact.fallbackMessage) {
+      fields.push(`**降级消息**: ${impact.fallbackMessage}`);
+    }
+    if (impact.deliveryState) {
+      fields.push(`**投递状态**: ${impact.deliveryState}`);
+    }
+    if (impact.userVisible != null) {
+      fields.push(`**用户可见**: ${impact.userVisible ? '是' : '否'}`);
+    }
+    if (impact.requiresHumanIntervention) {
+      fields.push('**人工介入**: 是');
+    }
+  }
+
+  private formatInlineDiagnostics(diagnostics?: AlertDiagnostics): string[] {
+    if (!diagnostics) return [];
+
+    return [
+      diagnostics.category ? `错误分类: ${this.formatExtraValue(diagnostics.category)}` : undefined,
+      diagnostics.modelChain
+        ? `模型链: ${this.formatExtraValue(diagnostics.modelChain)}`
+        : undefined,
+      diagnostics.totalAttempts != null
+        ? `重试次数: ${this.formatExtraValue(diagnostics.totalAttempts)}`
+        : undefined,
+      diagnostics.memoryWarning
+        ? `记忆告警: ${this.formatExtraValue(diagnostics.memoryWarning)}`
+        : undefined,
+      diagnostics.dispatchMode
+        ? `调度模式: ${this.formatExtraValue(diagnostics.dispatchMode)}`
+        : undefined,
+      diagnostics.messageCount != null
+        ? `消息条数: ${this.formatExtraValue(diagnostics.messageCount)}`
+        : undefined,
+    ].filter((value): value is string => Boolean(value));
+  }
+
+  private formatStructuredDiagnostics(diagnostics: AlertDiagnostics): {
     formattedLines: string[];
     remaining: Record<string, unknown>;
   } {
-    const knownKeys: Record<string, string> = {
-      modelsAttempted: '模型链',
-      errorCategory: '错误分类',
-      totalAttempts: '重试次数',
-      messageCount: '消息条数',
-      batchId: '批次 ID',
-      dispatchMode: '调度模式',
-      apiKey: 'API Key',
-      memoryWarning: '记忆告警',
-      sessionId: '会话 ID',
+    const formattedLines: string[] = [];
+    const remaining: Record<string, unknown> = {
+      ...(diagnostics.payload || {}),
     };
 
-    const formattedLines: string[] = [];
-    const remaining: Record<string, unknown> = { ...extra };
+    const knownLines: Array<[string, unknown]> = [
+      ['错误名称', diagnostics.errorName],
+      ['错误分类', diagnostics.category],
+      ['模型链', diagnostics.modelChain],
+      ['重试次数', diagnostics.totalAttempts],
+      ['消息条数', diagnostics.messageCount],
+      ['调度模式', diagnostics.dispatchMode],
+      ['记忆告警', diagnostics.memoryWarning],
+    ];
 
-    for (const [key, label] of Object.entries(knownKeys)) {
-      if (extra[key] == null) continue;
-      formattedLines.push(`**${label}**: ${this.formatExtraValue(extra[key])}`);
-      delete remaining[key];
+    for (const [label, value] of knownLines) {
+      if (value == null) continue;
+      formattedLines.push(`**${label}**: ${this.formatExtraValue(value)}`);
+    }
+
+    if (diagnostics.stack) {
+      formattedLines.push(`**堆栈**:\n\`\`\`\n${diagnostics.stack}\n\`\`\``);
     }
 
     return { formattedLines, remaining };
+  }
+
+  private getRemainingPayload(diagnostics?: AlertDiagnostics): Record<string, unknown> {
+    return diagnostics?.payload ? { ...diagnostics.payload } : {};
+  }
+
+  private formatSource(context: AlertContext): string {
+    const { subsystem, component, action, trigger } = context.source;
+    return `${subsystem}/${component}.${action}${trigger ? ` [${trigger}]` : ''}`;
   }
 
   private formatExtraValue(value: unknown): string {

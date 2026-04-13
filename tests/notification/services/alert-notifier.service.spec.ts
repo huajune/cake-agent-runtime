@@ -2,6 +2,7 @@ import { AlertLevel } from '@enums/alert.enum';
 import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
 import { AlertCardRenderer } from '@notification/renderers/alert-card.renderer';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
+import { AlertContext } from '@notification/types/alert.types';
 
 describe('AlertNotifierService', () => {
   const mockAlertChannel = {
@@ -23,18 +24,31 @@ describe('AlertNotifierService', () => {
 
   it('should render urgent alerts with inline structured diagnostics', async () => {
     await service.sendAlert({
-      errorType: 'agent',
-      error: new Error('messages 为空，无法调用 LLM'),
-      conversationId: 'chat-123',
-      userMessage: '你好',
-      contactName: 'Alice',
-      fallbackMessage: '我确认下哈，马上回你~',
-      scenario: 'candidate-consultation',
-      level: AlertLevel.WARNING,
-      atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
-      extra: {
-        errorCategory: 'retryable',
-        modelsAttempted: ['anthropic/claude-sonnet-4', 'openai/gpt-4o'],
+      code: 'agent.invoke_failed',
+      severity: AlertLevel.WARNING,
+      source: {
+        subsystem: 'wecom',
+        component: 'MessagePipelineService',
+        action: 'handleProcessingFailure',
+        trigger: 'http',
+      },
+      scope: {
+        chatId: 'chat-123',
+        contactName: 'Alice',
+        scenario: 'candidate-consultation',
+      },
+      impact: {
+        userMessage: '你好',
+        fallbackMessage: '我确认下哈，马上回你~',
+        requiresHumanIntervention: true,
+      },
+      routing: {
+        atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+      },
+      diagnostics: {
+        error: new Error('messages 为空，无法调用 LLM'),
+        category: 'retryable',
+        modelChain: ['anthropic/claude-sonnet-4', 'openai/gpt-4o'],
         totalAttempts: 2,
         memoryWarning: 'shortTerm: Connection timeout',
         dispatchMode: 'merged',
@@ -51,24 +65,35 @@ describe('AlertNotifierService', () => {
 
   it('should render known extra fields structurally and keep unknown fields in JSON', async () => {
     await service.sendAlert({
-      errorType: 'agent',
-      error: new Error('所有模型均失败'),
-      conversationId: 'chat-123',
-      userMessage: '明天7点半~10点半',
-      contactName: 'Alice',
-      apiEndpoint: '/api/v1/chat',
-      scenario: 'candidate-consultation',
-      fallbackMessage: '我这边查一下，稍等~',
-      level: AlertLevel.WARNING,
-      extra: {
-        modelsAttempted: ['anthropic/claude-sonnet-4', 'openai/gpt-4o'],
-        errorCategory: 'rate_limited',
+      code: 'agent.invoke_failed',
+      severity: AlertLevel.WARNING,
+      source: {
+        subsystem: 'wecom',
+        component: 'MessagePipelineService',
+        action: 'handleProcessingFailure',
+        trigger: 'http',
+      },
+      scope: {
+        chatId: 'chat-123',
+        sessionId: 'chat-123',
+        batchId: 'batch-123',
+        contactName: 'Alice',
+        scenario: 'candidate-consultation',
+      },
+      impact: {
+        userMessage: '明天7点半~10点半',
+        fallbackMessage: '我这边查一下，稍等~',
+      },
+      diagnostics: {
+        error: new Error('所有模型均失败'),
+        modelChain: ['anthropic/claude-sonnet-4', 'openai/gpt-4o'],
+        category: 'rate_limited',
         totalAttempts: 2,
         messageCount: 8,
-        batchId: 'batch-123',
         dispatchMode: 'merged',
-        sessionId: 'chat-123',
-        unknownField: 'bar',
+        payload: {
+          unknownField: 'bar',
+        },
       },
     });
 
@@ -79,16 +104,29 @@ describe('AlertNotifierService', () => {
     expect(payload.content).toContain('**调度模式**: merged');
     expect(payload.content).toContain('"unknownField": "bar"');
     expect(payload.content.match(/\*\*会话 ID\*\*/g)).toHaveLength(1);
-    expect(payload.content).not.toContain('**额外信息**');
+    expect(payload.content).not.toContain('**其他**');
   });
 
   it('should throttle repeated alerts within the configured window', async () => {
-    const context = {
-      errorType: 'agent' as const,
-      scenario: 'candidate-consultation',
-      title: '模型失败',
-      message: '所有模型都挂了',
-      level: AlertLevel.ERROR,
+    const context: AlertContext = {
+      code: 'agent.invoke_failed',
+      summary: '模型失败',
+      severity: AlertLevel.ERROR,
+      source: {
+        subsystem: 'wecom',
+        component: 'MessagePipelineService',
+        action: 'handleProcessingFailure',
+        trigger: 'http',
+      },
+      scope: {
+        scenario: 'candidate-consultation',
+      },
+      diagnostics: {
+        errorMessage: '所有模型都挂了',
+      },
+      dedupe: {
+        key: 'agent.invoke_failed:candidate-consultation',
+      },
     };
 
     await service.sendAlert(context);
@@ -104,11 +142,21 @@ describe('AlertNotifierService', () => {
     mockAlertChannel.send.mockRejectedValueOnce(new Error('network boom'));
 
     const success = await service.sendAlert({
-      errorType: 'system',
-      scenario: 'cron:data-cleanup',
-      title: '发送失败',
-      message: 'cleanup failed',
-      level: AlertLevel.ERROR,
+      code: 'system.exception',
+      summary: '发送失败',
+      severity: AlertLevel.ERROR,
+      source: {
+        subsystem: 'monitoring',
+        component: 'DataCleanupService',
+        action: 'cleanup',
+        trigger: 'cron',
+      },
+      scope: {
+        scenario: 'cron:data-cleanup',
+      },
+      diagnostics: {
+        errorMessage: 'cleanup failed',
+      },
     });
 
     expect(success).toBe(false);
@@ -116,12 +164,27 @@ describe('AlertNotifierService', () => {
 
   it('should not duplicate manual intervention wording when title already contains it', async () => {
     await service.sendAlert({
-      errorType: 'agent_fallback',
-      title: '需要人工介入',
-      error: new Error('fallback'),
-      scenario: 'candidate-consultation',
-      level: AlertLevel.WARNING,
-      atAll: true,
+      code: 'agent.fallback_required',
+      summary: '需要人工介入',
+      severity: AlertLevel.WARNING,
+      source: {
+        subsystem: 'wecom',
+        component: 'MessagePipelineService',
+        action: 'sendFallbackAlert',
+        trigger: 'http',
+      },
+      scope: {
+        scenario: 'candidate-consultation',
+      },
+      impact: {
+        requiresHumanIntervention: true,
+      },
+      diagnostics: {
+        error: new Error('fallback'),
+      },
+      routing: {
+        atAll: true,
+      },
     });
 
     const payload = mockCardBuilder.buildMarkdownCard.mock.calls[0][0];

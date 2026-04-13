@@ -216,18 +216,28 @@ export class NotificationSenderService {
       });
     } catch (error) {
       this.exceptionNotifier?.notifyAsync({
-        source: 'group-task:report-to-feishu',
-        errorType: 'group_task_feishu_report_failed',
-        title: `${typeName} 执行汇总发送失败`,
+        source: {
+          subsystem: 'group-task',
+          component: 'NotificationSenderService',
+          action: 'reportToFeishu',
+          trigger: 'manual',
+        },
+        code: 'group_task.feishu_report_failed',
+        summary: `${typeName} 执行汇总发送失败`,
         error,
-        level: AlertLevel.ERROR,
-        extra: {
-          type: result.type,
-          dryRun,
-          totalGroups: result.totalGroups,
-          successCount: result.successCount,
-          failedCount: result.failedCount,
-          skippedCount: result.skippedCount,
+        severity: AlertLevel.ERROR,
+        scope: {
+          scenario: result.type,
+        },
+        diagnostics: {
+          payload: {
+            type: result.type,
+            dryRun,
+            totalGroups: result.totalGroups,
+            successCount: result.successCount,
+            failedCount: result.failedCount,
+            skippedCount: result.skippedCount,
+          },
         },
       });
       throw error;
@@ -268,17 +278,24 @@ export class NotificationSenderService {
     dryRun: boolean,
   ): void {
     this.exceptionNotifier?.notifyAsync({
-      source: 'group-task:feishu-preview',
-      errorType: 'group_task_feishu_preview_failed',
-      title: `${typeName} 飞书预览发送失败`,
+      source: {
+        subsystem: 'group-task',
+        component: 'NotificationSenderService',
+        action: 'sendEnterpriseGroupMessage',
+        trigger: 'manual',
+      },
+      code: 'group_task.feishu_preview_failed',
+      summary: `${typeName} 飞书预览发送失败`,
       error,
-      level: AlertLevel.ERROR,
-      extra: {
-        groupName: group.groupName,
-        tag: group.tag,
-        city: group.city,
-        industry: group.industry,
-        dryRun,
+      severity: AlertLevel.ERROR,
+      diagnostics: {
+        payload: {
+          groupName: group.groupName,
+          tag: group.tag,
+          city: group.city,
+          industry: group.industry,
+          dryRun,
+        },
       },
     });
   }

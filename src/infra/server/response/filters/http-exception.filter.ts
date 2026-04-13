@@ -83,17 +83,23 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
       this.exceptionNotifier?.notifyAsync({
-        source: 'http:internal-server-error',
-        errorType: 'http_exception',
-        title: `HTTP ${status} 异常`,
+        source: {
+          subsystem: 'server',
+          component: 'HttpExceptionFilter',
+          action: `${request.method} ${request.url}`,
+          trigger: 'http',
+        },
+        code: 'server.http_exception',
+        summary: `HTTP ${status} 异常`,
         error: exception,
-        level: AlertLevel.ERROR,
-        apiEndpoint: `${request.method} ${request.url}`,
-        extra: {
-          status,
-          code,
-          method: request.method,
-          url: request.url,
+        severity: AlertLevel.ERROR,
+        diagnostics: {
+          payload: {
+            status,
+            code,
+            method: request.method,
+            url: request.url,
+          },
         },
       });
     }

@@ -25,9 +25,7 @@ export class AlertNotifierService {
   ) {}
 
   async sendAlert(context: AlertContext): Promise<boolean> {
-    const throttleKey = context.scenario
-      ? `${context.errorType}:${context.scenario}`
-      : context.errorType;
+    const throttleKey = context.dedupe?.key || context.code;
 
     if (!this.shouldSend(throttleKey)) {
       this.logger.warn(`告警被节流: ${throttleKey}`);
@@ -52,14 +50,22 @@ export class AlertNotifierService {
     level: 'info' | 'warning' | 'error' | 'critical' = 'error',
   ): Promise<boolean> {
     return this.sendAlert({
-      errorType: 'custom',
-      title,
-      message,
-      level: level as AlertLevel,
+      code: 'system.notice',
+      summary: title,
+      severity: level as AlertLevel,
+      source: {
+        subsystem: 'notification',
+        component: 'AlertNotifierService',
+        action: 'sendSimpleAlert',
+        trigger: 'manual',
+      },
+      diagnostics: {
+        errorMessage: message,
+      },
     });
   }
 
-  createFallbackMentionAlert(context: Omit<AlertContext, 'atAll' | 'atUsers'>): AlertContext {
+  createFallbackMentionAlert(context: Omit<AlertContext, 'routing'>): AlertContext {
     return this.alertCardRenderer.createFallbackMentionAlert(context);
   }
 

@@ -76,10 +76,23 @@ export class AgentController {
 
       this.alertService
         .sendAlert({
-          errorType: 'agent',
-          error,
-          apiEndpoint: '/agent/debug-chat',
-          scenario,
+          code: 'agent.debug_chat_failed',
+          summary: 'Agent 调试聊天失败',
+          source: {
+            subsystem: 'agent',
+            component: 'AgentController',
+            action: 'debugChat',
+            trigger: 'http',
+          },
+          scope: {
+            scenario,
+          },
+          diagnostics: {
+            error,
+          },
+          dedupe: {
+            key: `agent.debug_chat_failed:${scenario}`,
+          },
         })
         .catch((alertError: Error) => {
           this.logger.error(`飞书告警发送失败: ${alertError.message}`);

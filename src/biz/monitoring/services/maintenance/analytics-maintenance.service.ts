@@ -151,11 +151,16 @@ export class AnalyticsMaintenanceService {
     } catch (error) {
       this.logger.error('小时统计聚合任务失败:', error);
       this.exceptionNotifier?.notifyAsync({
-        source: 'cron:aggregate-hourly-stats',
-        errorType: 'cron_job_failed',
-        title: '小时统计聚合任务失败',
+        source: {
+          subsystem: 'monitoring',
+          component: 'AnalyticsMaintenanceService',
+          action: 'aggregateHourlyStats',
+          trigger: 'cron',
+        },
+        code: 'cron.job_failed',
+        summary: '小时统计聚合任务失败',
         error,
-        level: AlertLevel.ERROR,
+        severity: AlertLevel.ERROR,
       });
     }
   }

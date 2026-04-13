@@ -306,17 +306,29 @@ describe('MessagePipelineService', () => {
 
       expect(mockAlertService.sendAlert).toHaveBeenCalledWith(
         expect.objectContaining({
-          errorType: 'agent',
-          level: AlertLevel.WARNING,
-          extra: expect.objectContaining({
-            modelsAttempted: ['anthropic/claude-sonnet-4', 'openai/gpt-4o'],
-            errorCategory: 'rate_limited',
+          code: 'agent.invoke_failed',
+          severity: AlertLevel.WARNING,
+          scope: expect.objectContaining({
+            chatId: 'chat-123',
+            sessionId: 'chat-123',
+            messageId: 'msg-123',
+            contactName: 'Alice',
+            scenario: 'candidate-consultation',
+          }),
+          impact: expect.objectContaining({
+            userMessage: 'Hello!',
+            requiresHumanIntervention: true,
+          }),
+          diagnostics: expect.objectContaining({
+            modelChain: ['anthropic/claude-sonnet-4', 'openai/gpt-4o'],
+            category: 'rate_limited',
             totalAttempts: 2,
             messageCount: 8,
-            sessionId: 'chat-123',
             memoryWarning: 'shortTerm: Connection timeout',
             dispatchMode: 'direct',
-            apiKey: expect.stringContaining('sk-tes'),
+            payload: expect.objectContaining({
+              apiKey: expect.stringContaining('sk-tes'),
+            }),
           }),
         }),
       );

@@ -107,11 +107,16 @@ export class AnalyticsAlertService implements OnModuleInit {
     } catch (error) {
       this.logger.error(`业务指标检查失败: ${error.message}`);
       this.exceptionNotifier?.notifyAsync({
-        source: 'cron:analytics-alert',
-        errorType: 'cron_job_failed',
-        title: '业务指标告警任务失败',
+        source: {
+          subsystem: 'monitoring',
+          component: 'AnalyticsAlertService',
+          action: 'checkBusinessMetrics',
+          trigger: 'cron',
+        },
+        code: 'cron.job_failed',
+        summary: '业务指标告警任务失败',
         error,
-        level: AlertLevel.ERROR,
+        severity: AlertLevel.ERROR,
       });
     }
   }

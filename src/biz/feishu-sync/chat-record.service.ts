@@ -105,11 +105,16 @@ export class ChatRecordSyncService {
       const err = error as { message?: string; stack?: string };
       this.logger.error(`[ChatRecordSync] ✗ 同步失败: ${err?.message ?? error}`, err?.stack);
       this.exceptionNotifier?.notifyAsync({
-        source: 'cron:chat-record-sync',
-        errorType: 'cron_job_failed',
-        title: '聊天记录飞书同步失败',
+        source: {
+          subsystem: 'feishu-sync',
+          component: 'ChatRecordService',
+          action: 'syncYesterdayChatRecords',
+          trigger: 'cron',
+        },
+        code: 'cron.job_failed',
+        summary: '聊天记录飞书同步失败',
         error,
-        level: AlertLevel.ERROR,
+        severity: AlertLevel.ERROR,
       });
     }
   }

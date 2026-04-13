@@ -297,11 +297,16 @@ export class DataCleanupService implements OnModuleInit {
 
   private notifyCleanupFailure(source: string, title: string, error: unknown): void {
     this.exceptionNotifier?.notifyAsync({
-      source: `cron:data-cleanup:${source}`,
-      errorType: 'cron_job_failed',
-      title,
+      source: {
+        subsystem: 'monitoring',
+        component: 'DataCleanupService',
+        action: source,
+        trigger: 'cron',
+      },
+      code: 'cron.job_failed',
+      summary: title,
       error,
-      level: AlertLevel.ERROR,
+      severity: AlertLevel.ERROR,
     });
   }
 }

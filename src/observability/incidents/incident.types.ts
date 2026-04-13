@@ -1,11 +1,19 @@
-import { AlertLevel } from '@enums/alert.enum';
+import {
+  AlertContext,
+  AlertDiagnostics,
+  AlertImpact,
+  AlertScope,
+  AlertSource,
+} from '@notification/types/alert.types';
 
 export interface IncidentNotification {
-  source: string;
+  source: AlertSource;
   error: unknown;
-  title?: string;
-  errorType?: string;
-  level?: AlertLevel;
-  apiEndpoint?: string;
-  extra?: Record<string, unknown>;
+  code?: string;
+  summary?: string;
+  severity?: AlertContext['severity'];
+  scope?: AlertScope;
+  impact?: AlertImpact;
+  diagnostics?: Omit<AlertDiagnostics, 'error'>;
+  dedupe?: AlertContext['dedupe'];
 }

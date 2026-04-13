@@ -85,11 +85,16 @@ export class FeishuBitableSyncService {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(`[FeishuSync] 同步失败: ${errorMessage}`);
       this.exceptionNotifier?.notifyAsync({
-        source: 'cron:feishu-bitable-sync',
-        errorType: 'cron_job_failed',
-        title: '飞书多维表格同步失败',
+        source: {
+          subsystem: 'feishu-sync',
+          component: 'BitableSyncService',
+          action: 'syncPreviousDayFeedback',
+          trigger: 'cron',
+        },
+        code: 'cron.job_failed',
+        summary: '飞书多维表格同步失败',
         error,
-        level: AlertLevel.ERROR,
+        severity: AlertLevel.ERROR,
       });
     }
   }

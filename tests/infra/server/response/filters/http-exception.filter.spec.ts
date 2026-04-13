@@ -34,15 +34,21 @@ describe('HttpExceptionFilter', () => {
 
     expect(notifier.notifyAsync).toHaveBeenCalledWith(
       expect.objectContaining({
-        source: 'http:internal-server-error',
-        errorType: 'http_exception',
-        title: 'HTTP 500 异常',
-        apiEndpoint: 'GET /api/test',
-        extra: expect.objectContaining({
-          status: 500,
-          code: 'INTERNAL_SERVER_ERROR',
-          method: 'GET',
-          url: '/api/test',
+        source: expect.objectContaining({
+          subsystem: 'server',
+          component: 'HttpExceptionFilter',
+          action: 'GET /api/test',
+          trigger: 'http',
+        }),
+        code: 'server.http_exception',
+        summary: 'HTTP 500 异常',
+        diagnostics: expect.objectContaining({
+          payload: expect.objectContaining({
+            status: 500,
+            code: 'INTERNAL_SERVER_ERROR',
+            method: 'GET',
+            url: '/api/test',
+          }),
         }),
       }),
     );

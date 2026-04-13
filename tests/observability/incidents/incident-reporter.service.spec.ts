@@ -14,64 +14,96 @@ describe('IncidentReporterService', () => {
     service = new IncidentReporterService(alertNotifier);
   });
 
-  it('should forward system exception context to AlertNotifierService', async () => {
+  it('should forward structured incident context to AlertNotifierService', async () => {
     const error = new Error('db unavailable');
 
     await service.notify({
-      source: 'cron:data-cleanup',
+      source: {
+        subsystem: 'monitoring',
+        component: 'DataCleanupService',
+        action: 'cleanupExpiredData',
+        trigger: 'cron',
+      },
       error,
-      title: '数据清理失败',
-      errorType: 'cron_job_failed',
-      level: AlertLevel.ERROR,
-      apiEndpoint: 'POST /cleanup',
-      extra: {
-        dryRun: false,
+      summary: '数据清理失败',
+      code: 'cron.job_failed',
+      severity: AlertLevel.ERROR,
+      scope: {
+        scenario: 'cron:data-cleanup',
+      },
+      diagnostics: {
+        payload: {
+          dryRun: false,
+        },
       },
     });
 
     expect(alertNotifier.sendAlert).toHaveBeenCalledWith(
       expect.objectContaining({
-        errorType: 'cron_job_failed',
-        title: '数据清理失败',
-        error,
-        level: AlertLevel.ERROR,
-        scenario: 'cron:data-cleanup',
-        apiEndpoint: 'POST /cleanup',
-        extra: expect.objectContaining({
-          source: 'cron:data-cleanup',
-          dryRun: false,
+        code: 'cron.job_failed',
+        summary: '数据清理失败',
+        severity: AlertLevel.ERROR,
+        source: expect.objectContaining({
+          subsystem: 'monitoring',
+          component: 'DataCleanupService',
+          action: 'cleanupExpiredData',
         }),
-        details: expect.objectContaining({
-          name: 'Error',
+        scope: expect.objectContaining({
+          scenario: 'cron:data-cleanup',
+        }),
+        diagnostics: expect.objectContaining({
+          error,
+          errorMessage: 'db unavailable',
+          errorName: 'Error',
           stack: expect.stringContaining('db unavailable'),
+          payload: expect.objectContaining({
+            dryRun: false,
+          }),
+        }),
+        dedupe: expect.objectContaining({
+          key: 'cron.job_failed:monitoring:DataCleanupService:cleanupExpiredData',
         }),
       }),
     );
   });
 
-  it('should default title and level when omitted', async () => {
+  it('should default summary and severity when omitted', async () => {
     await service.notify({
-      source: 'process:unhandledRejection',
+      source: {
+        subsystem: 'observability',
+        component: 'ProcessExceptionMonitorService',
+        action: 'unhandledRejection',
+        trigger: 'process',
+      },
       error: new Error('boom'),
     });
 
     expect(alertNotifier.sendAlert).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: '系统异常: process:unhandledRejection',
-        level: AlertLevel.ERROR,
+        summary: '系统异常: ProcessExceptionMonitorService.unhandledRejection',
+        severity: AlertLevel.ERROR,
       }),
     );
   });
 
-  it('should omit details for non-Error values', async () => {
+  it('should omit stack for non-Error values', async () => {
     await service.notify({
-      source: 'process:unhandledRejection',
+      source: {
+        subsystem: 'observability',
+        component: 'ProcessExceptionMonitorService',
+        action: 'unhandledRejection',
+        trigger: 'process',
+      },
       error: 'string failure',
     });
 
     expect(alertNotifier.sendAlert).toHaveBeenCalledWith(
       expect.objectContaining({
-        details: undefined,
+        diagnostics: expect.objectContaining({
+          error: 'string failure',
+          errorMessage: 'string failure',
+          stack: undefined,
+        }),
       }),
     );
   });
@@ -86,7 +118,12 @@ describe('IncidentReporterService', () => {
     alertNotifier.sendAlert.mockRejectedValueOnce(new Error('webhook rejected'));
 
     service.notifyAsync({
-      source: 'process:uncaughtException',
+      source: {
+        subsystem: 'observability',
+        component: 'ProcessExceptionMonitorService',
+        action: 'uncaughtException',
+        trigger: 'process',
+      },
       error: new Error('boom'),
     });
 

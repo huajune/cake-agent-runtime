@@ -83,12 +83,19 @@ describe('ProcessExceptionMonitorService', () => {
 
     expect(incidentReporter.notifyAsync).toHaveBeenCalledWith(
       expect.objectContaining({
-        source: 'process:uncaughtException',
-        errorType: 'uncaught_exception',
-        title: '未捕获进程异常',
+        source: expect.objectContaining({
+          subsystem: 'observability',
+          component: 'ProcessExceptionMonitorService',
+          action: 'uncaughtException',
+          trigger: 'process',
+        }),
+        code: 'system.process_uncaught_exception',
+        summary: '未捕获进程异常',
         error,
-        level: AlertLevel.CRITICAL,
-        extra: expect.objectContaining({ pid: process.pid }),
+        severity: AlertLevel.CRITICAL,
+        diagnostics: expect.objectContaining({
+          payload: expect.objectContaining({ pid: process.pid }),
+        }),
       }),
     );
   });
@@ -98,13 +105,18 @@ describe('ProcessExceptionMonitorService', () => {
 
     expect(incidentReporter.notifyAsync).toHaveBeenCalledWith(
       expect.objectContaining({
-        source: 'process:unhandledRejection',
-        errorType: 'unhandled_rejection',
-        title: '未处理 Promise 拒绝',
+        source: expect.objectContaining({
+          subsystem: 'observability',
+          component: 'ProcessExceptionMonitorService',
+          action: 'unhandledRejection',
+          trigger: 'process',
+        }),
+        code: 'system.process_unhandled_rejection',
+        summary: '未处理 Promise 拒绝',
         error: expect.objectContaining({
           message: 'promise failed',
         }),
-        level: AlertLevel.CRITICAL,
+        severity: AlertLevel.CRITICAL,
       }),
     );
   });

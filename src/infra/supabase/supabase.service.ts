@@ -100,11 +100,16 @@ export class SupabaseService implements OnModuleInit {
     } catch (error) {
       this.logger.warn('Supabase keep-alive ping 失败');
       this.exceptionNotifier?.notifyAsync({
-        source: 'cron:supabase-keepalive',
-        errorType: 'cron_job_failed',
-        title: 'Supabase keep-alive 失败',
+        source: {
+          subsystem: 'infra',
+          component: 'SupabaseService',
+          action: 'keepAlive',
+          trigger: 'cron',
+        },
+        code: 'cron.job_failed',
+        summary: 'Supabase keep-alive 失败',
         error,
-        level: AlertLevel.WARNING,
+        severity: AlertLevel.WARNING,
       });
     }
   }

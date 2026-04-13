@@ -35,13 +35,20 @@ export class ProcessExceptionMonitorService implements OnModuleInit, OnModuleDes
   private readonly handleUncaughtException = (error: Error): void => {
     this.logger.error(`捕获到未处理异常: ${error.message}`, error.stack);
     this.incidentReporter.notifyAsync({
-      source: 'process:uncaughtException',
-      errorType: 'uncaught_exception',
-      title: '未捕获进程异常',
+      source: {
+        subsystem: 'observability',
+        component: 'ProcessExceptionMonitorService',
+        action: 'uncaughtException',
+        trigger: 'process',
+      },
+      code: 'system.process_uncaught_exception',
+      summary: '未捕获进程异常',
       error,
-      level: AlertLevel.CRITICAL,
-      extra: {
-        pid: process.pid,
+      severity: AlertLevel.CRITICAL,
+      diagnostics: {
+        payload: {
+          pid: process.pid,
+        },
       },
     });
   };
@@ -50,13 +57,20 @@ export class ProcessExceptionMonitorService implements OnModuleInit, OnModuleDes
     const error = reason instanceof Error ? reason : new Error(String(reason));
     this.logger.error(`捕获到未处理 Promise 拒绝: ${error.message}`, error.stack);
     this.incidentReporter.notifyAsync({
-      source: 'process:unhandledRejection',
-      errorType: 'unhandled_rejection',
-      title: '未处理 Promise 拒绝',
+      source: {
+        subsystem: 'observability',
+        component: 'ProcessExceptionMonitorService',
+        action: 'unhandledRejection',
+        trigger: 'process',
+      },
+      code: 'system.process_unhandled_rejection',
+      summary: '未处理 Promise 拒绝',
       error,
-      level: AlertLevel.CRITICAL,
-      extra: {
-        pid: process.pid,
+      severity: AlertLevel.CRITICAL,
+      diagnostics: {
+        payload: {
+          pid: process.pid,
+        },
       },
     });
   };

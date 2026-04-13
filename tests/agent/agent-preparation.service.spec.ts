@@ -12,6 +12,7 @@ describe('AgentPreparationService', () => {
 
   const mockRouter = {
     resolveByRole: jest.fn().mockReturnValue('mock-chat-model'),
+    getFallbacks: jest.fn().mockReturnValue(['mock-fallback-model']),
   };
 
   const mockToolRegistry = {
@@ -55,6 +56,7 @@ describe('AgentPreparationService', () => {
       return defaultValue;
     });
     mockRouter.resolveByRole.mockReturnValue('mock-chat-model');
+    mockRouter.getFallbacks.mockReturnValue(['mock-fallback-model']);
     mockToolRegistry.buildForScenario.mockReturnValue({ duliday_job_list: {} });
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: {

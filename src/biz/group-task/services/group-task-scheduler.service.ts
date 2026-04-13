@@ -331,14 +331,24 @@ export class GroupTaskSchedulerService implements OnModuleInit {
         this.logger.error(`[${strategy.type}] 任务整体失败: ${errorMsg}`);
         result.errors.push({ groupName: '(整体)', error: errorMsg });
         this.exceptionNotifier?.notifyAsync({
-          source: `group-task:${strategy.type}`,
-          errorType: 'group_task_execution_failed',
-          title: `${strategy.type} 群任务执行失败`,
+          source: {
+            subsystem: 'group-task',
+            component: 'GroupTaskSchedulerService',
+            action: 'executeTask',
+            trigger: 'manual',
+          },
+          code: 'group_task.execution_failed',
+          summary: `${strategy.type} 群任务执行失败`,
           error,
-          level: AlertLevel.ERROR,
-          extra: {
-            dryRun,
-            timeSlot,
+          severity: AlertLevel.ERROR,
+          scope: {
+            scenario: strategy.type,
+          },
+          diagnostics: {
+            payload: {
+              dryRun,
+              timeSlot,
+            },
           },
         });
       }

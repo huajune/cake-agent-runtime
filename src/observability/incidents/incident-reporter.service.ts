@@ -12,24 +12,37 @@ export class IncidentReporterService {
   async notify({
     source,
     error,
-    title,
-    errorType = 'system_exception',
-    level = AlertLevel.ERROR,
-    apiEndpoint,
-    extra,
+    summary,
+    code = 'system.exception',
+    severity = AlertLevel.ERROR,
+    scope,
+    impact,
+    diagnostics,
+    dedupe,
   }: IncidentNotification): Promise<boolean> {
     return this.alertNotifier.sendAlert({
-      errorType,
-      title: title || `系统异常: ${source}`,
-      error,
-      level,
-      scenario: source,
-      apiEndpoint,
-      extra: {
-        source,
-        ...extra,
+      code,
+      summary: summary || `系统异常: ${source.component}.${source.action}`,
+      severity,
+      source,
+      scope,
+      impact,
+      diagnostics: {
+        error,
+        errorMessage: diagnostics?.errorMessage || this.extractErrorMessage(error),
+        errorName: diagnostics?.errorName || (error instanceof Error ? error.name : undefined),
+        stack: diagnostics?.stack || this.buildErrorStack(error),
+        category: diagnostics?.category,
+        modelChain: diagnostics?.modelChain,
+        totalAttempts: diagnostics?.totalAttempts,
+        messageCount: diagnostics?.messageCount,
+        memoryWarning: diagnostics?.memoryWarning,
+        dispatchMode: diagnostics?.dispatchMode,
+        payload: diagnostics?.payload,
       },
-      details: this.buildErrorDetails(error),
+      dedupe: dedupe || {
+        key: `${code}:${source.subsystem}:${source.component}:${source.action}`,
+      },
     });
   }
 
@@ -40,14 +53,24 @@ export class IncidentReporterService {
     });
   }
 
-  private buildErrorDetails(error: unknown): Record<string, unknown> | undefined {
+  private extractErrorMessage(error: unknown): string | undefined {
+    if (error instanceof Error) {
+      return error.message;
+    }
+    if (typeof error === 'string') {
+      return error;
+    }
+    if (error == null) {
+      return undefined;
+    }
+    return String(error);
+  }
+
+  private buildErrorStack(error: unknown): string | undefined {
     if (!(error instanceof Error)) {
       return undefined;
     }
 
-    return {
-      name: error.name,
-      stack: error.stack?.split('\n').slice(0, 20).join('\n'),
-    };
+    return error.stack?.split('\n').slice(0, 20).join('\n');
   }
 }
