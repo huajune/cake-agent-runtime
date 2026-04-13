@@ -46,6 +46,30 @@ const defaultFallback = {
   affectedUsers: 0,
 };
 
+const buildHourlyStatsRow = (overrides = {}) => ({
+  hour: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+  messageCount: 0,
+  successCount: 0,
+  failureCount: 0,
+  successRate: 0,
+  avgDuration: 0,
+  minDuration: 0,
+  maxDuration: 0,
+  p50Duration: 0,
+  p95Duration: 0,
+  p99Duration: 0,
+  avgAiDuration: 0,
+  avgSendDuration: 0,
+  activeUsers: 0,
+  activeChats: 0,
+  totalTokenUsage: 0,
+  fallbackCount: 0,
+  fallbackSuccessCount: 0,
+  scenarioStats: {},
+  toolStats: {},
+  ...overrides,
+});
+
 describe('AnalyticsDashboardService', () => {
   let service: AnalyticsDashboardService;
   let _messageProcessingService: jest.Mocked<MessageProcessingService>;
@@ -83,6 +107,7 @@ describe('AnalyticsDashboardService', () => {
   const mockMonitoringRecordRepository = {
     getDashboardOverviewStats: jest.fn(),
     getDashboardFallbackStats: jest.fn(),
+    getDashboardDailyTrend: jest.fn(),
     getDashboardMinuteTrend: jest.fn(),
     getDashboardHourlyTrend: jest.fn(),
   };
@@ -169,7 +194,7 @@ describe('AnalyticsDashboardService', () => {
       total: 0,
     });
     mockMessageProcessingService.getActiveUsers.mockResolvedValue([]);
-    mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([]);
+    mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([buildHourlyStatsRow()]);
     mockErrorLogRepository.getErrorLogsSince.mockResolvedValue([]);
     mockCacheService.getCounters.mockResolvedValue({
       totalMessages: 0,
@@ -190,6 +215,7 @@ describe('AnalyticsDashboardService', () => {
     mockHourlyStatsAggregator.mergeFallbackStats.mockReturnValue(defaultFallback);
     mockMonitoringRecordRepository.getDashboardOverviewStats.mockResolvedValue(defaultOverview);
     mockMonitoringRecordRepository.getDashboardFallbackStats.mockResolvedValue(defaultFallback);
+    mockMonitoringRecordRepository.getDashboardDailyTrend.mockResolvedValue([]);
     mockMonitoringRecordRepository.getDashboardMinuteTrend.mockResolvedValue([]);
     mockMonitoringRecordRepository.getDashboardHourlyTrend.mockResolvedValue([]);
     mockMessageTrackingService.getPendingCount.mockReturnValue(0);
@@ -455,6 +481,104 @@ describe('AnalyticsDashboardService', () => {
       // For week range, should not call monitoringRepository real-time methods
       expect(monitoringRepository.getDashboardOverviewStats).not.toHaveBeenCalled();
       expect(result.overview.totalMessages).toBe(500);
+    });
+
+    it('should fall back to raw repository queries when hourly projection is stale for today', async () => {
+      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+        buildHourlyStatsRow({
+          hour: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+        }),
+      ]);
+
+      mockMonitoringRecordRepository.getDashboardOverviewStats
+        .mockResolvedValueOnce({
+          ...defaultOverview,
+          totalMessages: 12,
+          successCount: 10,
+          failureCount: 2,
+          successRate: 83.33,
+          activeUsers: 4,
+          activeChats: 3,
+        })
+        .mockResolvedValueOnce({
+          ...defaultOverview,
+          totalMessages: 6,
+          successCount: 5,
+          failureCount: 1,
+          successRate: 83.33,
+          activeUsers: 2,
+          activeChats: 2,
+        });
+
+      mockMonitoringRecordRepository.getDashboardFallbackStats
+        .mockResolvedValueOnce({
+          ...defaultFallback,
+          totalCount: 3,
+          successCount: 2,
+          successRate: 66.67,
+          affectedUsers: 2,
+        })
+        .mockResolvedValueOnce(defaultFallback);
+
+      const result = await service.getDashboardOverviewAsync('today');
+
+      expect(hourlyStatsAggregator.mergeOverviewStats).not.toHaveBeenCalled();
+      expect(monitoringRepository.getDashboardOverviewStats).toHaveBeenCalledTimes(2);
+      expect(result.overview.totalMessages).toBe(12);
+      expect(result.fallback.totalCount).toBe(3);
+    });
+
+    it('should fall back to raw repository queries when hourly projection is stale for week', async () => {
+      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+        buildHourlyStatsRow({
+          hour: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+        }),
+      ]);
+
+      mockMonitoringRecordRepository.getDashboardOverviewStats
+        .mockResolvedValueOnce({
+          ...defaultOverview,
+          totalMessages: 42,
+          successCount: 40,
+          failureCount: 2,
+          successRate: 95.24,
+          activeUsers: 8,
+          activeChats: 6,
+        })
+        .mockResolvedValueOnce(defaultOverview);
+
+      mockMonitoringRecordRepository.getDashboardDailyTrend
+        .mockResolvedValueOnce([
+          {
+            date: '2026-04-10',
+            messageCount: 10,
+            successCount: 9,
+            avgDuration: 3000,
+            tokenUsage: 1000,
+            uniqueUsers: 3,
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            date: '2026-04-13',
+            messageCount: 42,
+            successCount: 40,
+            avgDuration: 3500,
+            tokenUsage: 5000,
+            uniqueUsers: 8,
+          },
+        ]);
+
+      const result = await service.getDashboardOverviewAsync('week');
+
+      expect(hourlyStatsAggregator.getOverviewFromHourly).not.toHaveBeenCalled();
+      expect(monitoringRepository.getDashboardOverviewStats).toHaveBeenCalledTimes(2);
+      expect(result.overview.totalMessages).toBe(42);
+      expect(result.responseTrend[0]).toMatchObject({
+        minute: '2026-04-13',
+        messageCount: 42,
+        successRate: 95.24,
+      });
     });
 
     it('should calculate overviewDelta as percent change', async () => {
