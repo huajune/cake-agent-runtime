@@ -10,10 +10,36 @@
 <!-- release:pending:start -->
 ## 待发布
 
-**预计版本**: `v5.1.0`
-**最近更新**: `2026-04-09`
+**预计版本**: `v5.2.0`
+**最近更新**: `2026-04-13`
 **来源分支**: `develop`
-**累计 PR**: 3
+**累计 PR**: 1
+
+### 更新摘要
+- [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) [codex] 完善通知链路并修复群任务与消息处理后续问题
+
+### 新功能
+- 无
+
+### 问题修复
+- [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) [codex] 完善通知链路并修复群任务与消息处理后续问题
+
+### 优化调整
+- 无
+
+### 运维与流程
+- 无
+
+### 配置变更
+- 无
+
+### 验证记录
+- 无
+<!-- release:pending:end -->
+
+## [5.1.0] - 2026-04-09
+
+**来源分支**: `develop`
 
 ### 更新摘要
 - [PR #63](https://github.com/huajune/cake-agent-runtime/pull/63) [codex] chore: 自动化受保护分支发布流程
@@ -37,7 +63,6 @@
 
 ### 验证记录
 - 无
-<!-- release:pending:end -->
 
 ## [4.0.0] - 2026-04-01
 
