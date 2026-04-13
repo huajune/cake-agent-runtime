@@ -1,7 +1,7 @@
 import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
-import { FeishuAlertService } from '@infra/feishu/services/alert.service';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { AlertLevel } from '@infra/feishu/interfaces/interface';
 import { BOT_TO_RECEIVER } from '@infra/feishu/constants/receivers';
 import { maskApiKey } from '@infra/utils/string.util';
@@ -32,6 +32,7 @@ import {
   toStorageMessageSource,
   toStorageMessageType,
 } from '../message.types';
+import type { AgentError } from '@shared-types/agent-error.types';
 
 /**
  * 消息处理管线服务
@@ -74,7 +75,7 @@ export class MessagePipelineService {
     private readonly configService: ConfigService,
     // 监控和告警
     private readonly monitoringService: MessageTrackingService,
-    private readonly alertService: FeishuAlertService,
+    private readonly alertService: AlertNotifierService,
   ) {}
 
   // ========================================
@@ -628,7 +629,8 @@ export class MessagePipelineService {
    * 判断错误是否为 Agent API 错误
    */
   private isAgentError(error: unknown): boolean {
-    return Boolean((error as { isAgentError?: boolean })?.isAgentError);
+    const agentError = error as AgentError | null;
+    return Boolean(agentError?.isAgentError || agentError?.agentMeta);
   }
 
   private isDeliveryError(error: unknown): error is DeliveryFailureError {
@@ -642,6 +644,9 @@ export class MessagePipelineService {
     if (error instanceof HttpException) {
       const status = error.getStatus();
       if (status === HttpStatus.TOO_MANY_REQUESTS) return AlertLevel.WARNING;
+    }
+    if ((error as AgentError | null)?.agentMeta?.lastCategory === 'rate_limited') {
+      return AlertLevel.WARNING;
     }
     return AlertLevel.ERROR;
   }
@@ -676,6 +681,7 @@ export class MessagePipelineService {
     const isPrimary = options?.isPrimary ?? true;
     const errorMessage = error instanceof Error ? error.message : String(error);
     const deliveryError = this.isDeliveryError(error) ? error : null;
+    const alertCode = errorType === 'agent' ? 'agent.invoke_failed' : 'message.processing_failed';
 
     this.logger.error(`[${contactName}] 消息处理失败 [${messageId}]: ${errorMessage}`);
 
@@ -684,26 +690,57 @@ export class MessagePipelineService {
     const alertLevel = this.getAlertLevelFromError(error);
 
     // 从 error 对象中提取调试信息（由 Agent 服务附加）
-    const apiKey = (error as any)?.apiKey;
+    const agentError = error as AgentError | null;
+    const agentMeta = agentError?.agentMeta;
+    const apiKey = agentError?.apiKey;
     const maskedApiKey = maskApiKey(apiKey);
+    const diagnosticPayload: Record<string, unknown> = {};
+    if (maskedApiKey) diagnosticPayload.apiKey = maskedApiKey;
 
     const errorReceiver = imBotId ? BOT_TO_RECEIVER[imBotId] : undefined;
 
     if (!deliveryError) {
       this.alertService
         .sendAlert({
-          errorType,
-          error: error instanceof Error ? error : new Error(errorMessage),
-          conversationId: chatId,
-          userMessage: content,
-          contactName,
-          apiEndpoint: '/api/v1/chat',
-          scenario,
-          fallbackMessage,
-          level: alertLevel,
-          // 添加 API Key 脱敏信息，便于排查 401 问题
-          extra: maskedApiKey ? { apiKey: maskedApiKey } : undefined,
-          ...(errorReceiver ? { atUsers: [errorReceiver] } : {}),
+          code: alertCode,
+          severity: alertLevel,
+          source: {
+            subsystem: 'wecom',
+            component: 'MessagePipelineService',
+            action: 'handleProcessingFailure',
+            trigger: 'http',
+          },
+          scope: {
+            scenario,
+            contactName,
+            chatId,
+            sessionId: agentMeta?.sessionId,
+            messageId,
+            batchId: options?.batchId,
+            userId: imContactId,
+            corpId: parsed.orgId,
+          },
+          impact: {
+            userMessage: content,
+            fallbackMessage,
+            userVisible: true,
+            deliveryState: 'fallback_sent',
+            requiresHumanIntervention: true,
+          },
+          diagnostics: {
+            error: error instanceof Error ? error : new Error(errorMessage),
+            category: agentMeta?.lastCategory,
+            modelChain: agentMeta?.modelsAttempted,
+            totalAttempts: agentMeta?.totalAttempts,
+            messageCount: agentMeta?.messageCount,
+            memoryWarning: agentMeta?.memoryLoadWarning,
+            dispatchMode: options?.dispatchMode,
+            payload: Object.keys(diagnosticPayload).length > 0 ? diagnosticPayload : undefined,
+          },
+          routing: errorReceiver ? { atUsers: [errorReceiver] } : undefined,
+          dedupe: {
+            key: `${alertCode}:${scenario}`,
+          },
         })
         .catch((alertError) => {
           this.logger.error(`告警发送失败: ${alertError.message}`);
@@ -781,19 +818,39 @@ export class MessagePipelineService {
       // 🚨 CRITICAL: 用户完全无法收到任何回复，必须立即告警
       this.alertService
         .sendAlert({
-          errorType: 'delivery',
-          error: sendError instanceof Error ? sendError : new Error(sendErrorMessage),
-          conversationId: chatId,
-          userMessage: content,
-          contactName, // 用户昵称，便于人工查找用户回复
-          apiEndpoint: 'message-sender',
-          scenario,
-          level: AlertLevel.CRITICAL,
-          title: '🚨 消息发送失败 - 用户无响应',
-          extra: {
-            originalError: errorMessage,
-            fallbackMessage,
+          code: 'message.delivery_failed',
+          summary: '消息发送失败 - 用户无响应',
+          severity: AlertLevel.CRITICAL,
+          source: {
+            subsystem: 'wecom',
+            component: 'MessagePipelineService',
+            action: 'deliverFallbackReply',
+            trigger: 'http',
+          },
+          scope: {
+            scenario,
+            contactName,
+            chatId,
             messageId,
+            batchId: options?.batchId,
+            userId: imContactId,
+            corpId: parsed.orgId,
+          },
+          impact: {
+            userMessage: content,
+            fallbackMessage,
+            userVisible: false,
+            deliveryState: 'failed',
+            requiresHumanIntervention: true,
+          },
+          diagnostics: {
+            error: sendError instanceof Error ? sendError : new Error(sendErrorMessage),
+            payload: {
+              originalError: errorMessage,
+            },
+          },
+          dedupe: {
+            key: `message.delivery_failed:${scenario}`,
           },
         })
         .catch((alertError: Error) => {
@@ -923,7 +980,14 @@ export class MessagePipelineService {
 
       const content = this.normalizeContent(result.text);
       if (!content) {
-        throw new Error('Agent 返回空响应');
+        const emptyResponseError = new Error('Agent 返回空响应') as AgentError;
+        emptyResponseError.isAgentError = true;
+        emptyResponseError.agentMeta = {
+          sessionId: params.sessionId,
+          userId,
+          messageCount: 1,
+        };
+        throw emptyResponseError;
       }
 
       this.logger.log(
@@ -942,7 +1006,8 @@ export class MessagePipelineService {
 
       return invokeResult;
     } catch (error) {
-      this.logger.error(`Agent 调用异常: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Agent 调用异常: ${errorMessage}`);
       throw error;
     } finally {
       if (shouldRecordAiEnd && messageId) {
@@ -999,17 +1064,34 @@ export class MessagePipelineService {
 
     this.alertService
       .sendAlert({
-        errorType: 'agent_fallback',
-        title: '需要人工介入',
-        error: new Error(fallbackReason),
-        contactName,
-        userMessage,
-        fallbackMessage,
-        scenario,
-        conversationId: chatId,
-        apiEndpoint: '/api/v1/chat',
-        level: AlertLevel.WARNING,
-        ...(receiver ? { atUsers: [receiver] } : { atAll: true }),
+        code: 'agent.fallback_required',
+        summary: '需要人工介入',
+        severity: AlertLevel.WARNING,
+        source: {
+          subsystem: 'wecom',
+          component: 'MessagePipelineService',
+          action: 'sendFallbackAlert',
+          trigger: 'http',
+        },
+        scope: {
+          scenario,
+          contactName,
+          chatId,
+        },
+        impact: {
+          userMessage,
+          fallbackMessage,
+          userVisible: true,
+          deliveryState: 'fallback_sent',
+          requiresHumanIntervention: true,
+        },
+        diagnostics: {
+          error: new Error(fallbackReason),
+        },
+        routing: receiver ? { atUsers: [receiver] } : { atAll: true },
+        dedupe: {
+          key: `agent.fallback_required:${scenario}`,
+        },
       })
       .catch((alertError) => {
         this.logger.error(`降级告警发送失败: ${alertError.message}`);

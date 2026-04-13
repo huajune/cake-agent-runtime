@@ -522,6 +522,16 @@ export class SubmitFeedbackRequestDto {
   @IsOptional()
   @IsString()
   chatId?: string;
+
+  @ApiPropertyOptional({ description: '候选人微信昵称' })
+  @IsOptional()
+  @IsString()
+  candidateName?: string;
+
+  @ApiPropertyOptional({ description: '招募经理姓名' })
+  @IsOptional()
+  @IsString()
+  managerName?: string;
 }
 
 /**

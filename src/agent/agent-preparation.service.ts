@@ -17,7 +17,10 @@ import { type AgentInputMessage, type AgentInvokeParams } from './agent-run.type
 export interface PreparedAgentContext {
   finalPrompt: string;
   typedMessages: ModelMessage[];
+  memoryLoadWarning?: string;
   chatModel: ReturnType<RouterService['resolveByRole']>;
+  chatModelId: string;
+  chatFallbacks?: string[];
   tools: ToolSet;
   corpId: string;
   userId: string;
@@ -83,6 +86,7 @@ export class AgentPreparationService {
         includeShortTerm: shouldLoadShortTerm,
       },
     );
+    const memoryLoadWarning = memory._warnings?.join('; ') || undefined;
 
     // 2. 决定本轮消息来源。
     //    当 userMessage 存在但短期记忆为空时（DB/缓存瞬时故障），用 userMessage 兜底，
@@ -115,6 +119,9 @@ export class AgentPreparationService {
       : this.router.resolveByRole(ModelRole.Chat);
     const chatModelId =
       trimmedOverrideModelId ?? this.configService.get<string>('AGENT_CHAT_MODEL') ?? '';
+    const chatFallbacks = trimmedOverrideModelId
+      ? undefined
+      : this.router.getFallbacks(ModelRole.Chat);
     if (trimmedOverrideModelId) {
       this.logger.log(`使用用户指定模型: ${trimmedOverrideModelId}`);
     }
@@ -190,7 +197,10 @@ export class AgentPreparationService {
     return {
       finalPrompt,
       typedMessages,
+      memoryLoadWarning,
       chatModel,
+      chatModelId,
+      chatFallbacks,
       tools,
       corpId,
       userId,

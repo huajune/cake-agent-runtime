@@ -20,12 +20,12 @@ import { buildGeocodeTool } from './geocode.tool';
 import { buildSaveImageDescriptionTool } from './save-image-description.tool';
 import { buildInviteToGroupTool } from './invite-to-group.tool';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
-import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
-import { FeishuWebhookService } from '@infra/feishu/services/webhook.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { RoomService } from '@channels/wecom/room/room.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { OpsNotifierService } from '@notification/services/ops-notifier.service';
+import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 
 /**
  * 统一工具注册表
@@ -55,8 +55,8 @@ export class ToolRegistryService {
     geocodingService: GeocodingService,
     groupResolverService: GroupResolverService,
     roomService: RoomService,
-    webhookService: FeishuWebhookService,
-    cardBuilder: FeishuCardBuilderService,
+    opsNotifier: OpsNotifierService,
+    privateChatMonitorNotifier: PrivateChatMonitorNotifierService,
     private readonly chatSessionService: ChatSessionService,
     userHostingService: UserHostingService,
     configService: ConfigService,
@@ -91,8 +91,7 @@ export class ToolRegistryService {
         description: '面试预约（仅做接口字段校验与提交；仅在确认进入约面时调用）',
         create: buildInterviewBookingTool(
           spongeService,
-          webhookService,
-          cardBuilder,
+          privateChatMonitorNotifier,
           userHostingService,
         ),
       }),
@@ -116,8 +115,7 @@ export class ToolRegistryService {
         create: buildInviteToGroupTool(
           groupResolverService,
           roomService,
-          webhookService,
-          cardBuilder,
+          opsNotifier,
           memoryService,
           memberLimit,
           enterpriseToken,

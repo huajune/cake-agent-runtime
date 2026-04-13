@@ -17,6 +17,16 @@ describe('FeishuBitableSyncService', () => {
   beforeEach(async () => {
     mockBitableApi = {
       getTableConfig: jest.fn(),
+      getFields: jest.fn().mockResolvedValue([
+        { field_name: '候选人微信昵称' },
+        { field_name: '招募经理姓名' },
+        { field_name: '咨询时间' },
+        { field_name: '聊天记录' },
+        { field_name: '用户消息' },
+        { field_name: '用例名称' },
+        { field_name: '分类' },
+        { field_name: '备注' },
+      ]),
       batchCreateRecords: jest.fn(),
       createRecord: jest.fn(),
       truncateText: jest.fn((text: string, max = 2000) =>
@@ -208,6 +218,8 @@ describe('FeishuBitableSyncService', () => {
         userMessage: '我想找工作',
         chatId: 'chat_002',
         remark: '回复质量很好',
+        candidateName: '真实候选人',
+        managerName: '真实经理',
       };
 
       await service.writeAgentTestFeedback(feedback);
@@ -215,8 +227,10 @@ describe('FeishuBitableSyncService', () => {
       const callArgs = mockBitableApi.createRecord.mock.calls[0];
       const fields = callArgs[2];
       expect(fields['用户消息']).toBeDefined();
-      expect(fields.chatId).toBe('chat_002');
-      expect(fields['备注']).toBe('回复质量很好');
+      expect(fields.chatId).toBeUndefined();
+      expect(fields['备注']).toBe('回复质量很好\nchatId: chat_002');
+      expect(fields['候选人微信昵称']).toBe('真实候选人');
+      expect(fields['招募经理姓名']).toBe('真实经理');
     });
 
     it('should generate a random case ID', async () => {

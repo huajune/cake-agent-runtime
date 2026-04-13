@@ -78,6 +78,16 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
   },
 
   // ==================== 通义千问 (Qwen) ====================
+  'qwen/qwen3.6-plus': {
+    provider: 'qwen',
+    name: 'Qwen3.6 Plus',
+    description: '通义千问3.6增强版（支持文本/图像/视频，支持思考模式）',
+  },
+  'qwen/qwen3.5-plus': {
+    provider: 'qwen',
+    name: 'Qwen3.5 Plus',
+    description: '通义千问3.5增强版（支持文本/图像/视频，支持思考模式）',
+  },
   'qwen/qwen-max-latest': {
     provider: 'qwen',
     name: 'Qwen Max Latest',
@@ -87,16 +97,6 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
     provider: 'qwen',
     name: 'Qwen Plus Latest',
     description: '通义千问增强版',
-  },
-  'qwen/qwen-vl-plus': {
-    provider: 'qwen',
-    name: 'Qwen VL Plus',
-    description: '通义千问视觉增强版（支持图片输入）',
-  },
-  'qwen/qwen-vl-max': {
-    provider: 'qwen',
-    name: 'Qwen VL Max',
-    description: '通义千问视觉旗舰版（支持图片输入）',
   },
 
   // ==================== MoonshotAI / Kimi ====================

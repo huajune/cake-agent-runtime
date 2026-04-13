@@ -70,11 +70,16 @@ export class MemoryLifecycleService {
     ]);
 
     const highConfidenceFacts = await this.detectHighConfidenceFacts(currentMessages);
+    const warnings: string[] = [];
+    if (includeShortTerm && this.shortTerm.lastLoadError) {
+      warnings.push(`shortTerm: ${this.shortTerm.lastLoadError}`);
+    }
 
     return {
       shortTerm: {
         messageWindow: shortTermMessages,
       },
+      ...(warnings.length > 0 ? { _warnings: warnings } : {}),
       sessionMemory: this.hasStructuredSessionMemoryState(sessionState) ? sessionState : null,
       highConfidenceFacts,
       procedural: proceduralState,

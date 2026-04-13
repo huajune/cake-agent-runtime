@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { memo, useCallback, useRef, useState, type RefObject } from 'react';
 import {
   Trash2,
   Check,
@@ -25,7 +25,6 @@ import { FeedbackButtons } from '../FeedbackButtons';
 import { CandidateSelector } from '../CandidateSelector';
 import { GroupInviteIdModal } from '../GroupInviteIdModal';
 import { HISTORY_PLACEHOLDER } from '../../constants';
-import RedPacketRain from '@/components/RedPacketRain';
 import styles from './index.module.scss';
 
 interface ChatTesterProps {
@@ -377,16 +376,7 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
     onError: (error) => setLocalError(error),
   });
 
-  // 红包雨状态
-  const [showRedPacketRain, setShowRedPacketRain] = useState(false);
   const [isIdModalOpen, setIsIdModalOpen] = useState(false);
-
-  // 监听反馈成功，触发红包雨
-  useEffect(() => {
-    if (feedback.successType) {
-      setShowRedPacketRain(true);
-    }
-  }, [feedback.successType]);
 
   // 清空（包括反馈状态）
   const handleClear = useCallback(() => {
@@ -397,7 +387,10 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
   // 提交反馈
   const handleSubmitFeedback = useCallback(() => {
     const userMessage = extractLastUserMessage(historyText);
-    void feedback.submit(historyText, userMessage);
+    void feedback.submit({
+      chatHistory: historyText,
+      userMessage,
+    });
   }, [feedback.submit, historyText]);
 
   return (
@@ -561,14 +554,6 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
           setBotUserId(nextValue.botUserId);
           setBotImId(nextValue.botImId);
         }}
-      />
-
-      {/* 红包雨特效 - 反馈成功时触发 */}
-      <RedPacketRain
-        active={showRedPacketRain}
-        duration={3000}
-        density={30}
-        onComplete={() => setShowRedPacketRain(false)}
       />
     </div>
   );

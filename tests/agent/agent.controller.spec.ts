@@ -3,7 +3,7 @@ import { HttpException } from '@nestjs/common';
 import { AgentController } from '@agent/agent.controller';
 import { AgentRunnerService } from '@agent/runner.service';
 import { AgentHealthService } from '@agent/agent-health.service';
-import { FeishuAlertService } from '@infra/feishu/services/alert.service';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { RegistryService } from '@providers/registry.service';
 
 describe('AgentController', () => {
@@ -66,7 +66,7 @@ describe('AgentController', () => {
       controllers: [AgentController],
       providers: [
         { provide: AgentRunnerService, useValue: mockLoop },
-        { provide: FeishuAlertService, useValue: mockAlertService },
+        { provide: AlertNotifierService, useValue: mockAlertService },
         { provide: RegistryService, useValue: mockRegistry },
         { provide: AgentHealthService, useValue: mockHealthService },
       ],

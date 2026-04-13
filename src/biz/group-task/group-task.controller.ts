@@ -159,7 +159,6 @@ export class GroupTaskController {
     // 6. 跟随消息（如店长群问候语）单独发送
     const followUpMessage = data.payload?.followUpMessage as string | undefined;
     if (followUpMessage) {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
       await this.notificationSender.sendTextToGroup(targetGroup, followUpMessage, dryRun);
     }
 

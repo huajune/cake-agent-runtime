@@ -1,10 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import {
   FeishuBitableApiService,
   BatchCreateRequest,
 } from '@infra/feishu/services/bitable-api.service';
+import { AlertLevel } from '@enums/alert.enum';
+import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
 
 /**
  * 增强的消息历史记录项（用于飞书同步）
@@ -33,6 +35,8 @@ export class ChatRecordSyncService {
   constructor(
     private readonly chatSessionService: ChatSessionService,
     private readonly bitableApi: FeishuBitableApiService,
+    @Optional()
+    private readonly exceptionNotifier?: IncidentReporterService,
   ) {}
 
   /**
@@ -100,6 +104,18 @@ export class ChatRecordSyncService {
     } catch (error: unknown) {
       const err = error as { message?: string; stack?: string };
       this.logger.error(`[ChatRecordSync] ✗ 同步失败: ${err?.message ?? error}`, err?.stack);
+      this.exceptionNotifier?.notifyAsync({
+        source: {
+          subsystem: 'feishu-sync',
+          component: 'ChatRecordService',
+          action: 'syncYesterdayChatRecords',
+          trigger: 'cron',
+        },
+        code: 'cron.job_failed',
+        summary: '聊天记录飞书同步失败',
+        error,
+        severity: AlertLevel.ERROR,
+      });
     }
   }
 

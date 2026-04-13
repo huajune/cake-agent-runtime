@@ -12,6 +12,7 @@ describe('AgentPreparationService', () => {
 
   const mockRouter = {
     resolveByRole: jest.fn().mockReturnValue('mock-chat-model'),
+    getFallbacks: jest.fn().mockReturnValue(['mock-fallback-model']),
   };
 
   const mockToolRegistry = {
@@ -55,6 +56,7 @@ describe('AgentPreparationService', () => {
       return defaultValue;
     });
     mockRouter.resolveByRole.mockReturnValue('mock-chat-model');
+    mockRouter.getFallbacks.mockReturnValue(['mock-fallback-model']);
     mockToolRegistry.buildForScenario.mockReturnValue({ duliday_job_list: {} });
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: {
@@ -397,5 +399,30 @@ describe('AgentPreparationService', () => {
         { type: 'text', text: '帮我看看这张图' },
       ],
     });
+  });
+
+  it('should expose memory load warning from memory lifecycle', async () => {
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      shortTerm: {
+        messageWindow: [{ role: 'user', content: '当前用户消息' }],
+      },
+      _warnings: ['shortTerm: Connection timeout'],
+      sessionMemory: null,
+      highConfidenceFacts: null,
+      longTerm: { profile: null },
+      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+    });
+
+    const result = await service.prepare(
+      {
+        userMessage: '当前用户消息',
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    expect(result.memoryLoadWarning).toBe('shortTerm: Connection timeout');
   });
 });

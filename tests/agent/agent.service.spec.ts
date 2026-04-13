@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { AgentRunnerService } from '@agent/runner.service';
 import { AgentPreparationService } from '@agent/agent-preparation.service';
 import { MemoryService } from '@memory/memory.service';
+import { ReliableService } from '@providers/reliable.service';
 
 // Mock generateText from ai SDK
 jest.mock('ai', () => ({
@@ -28,6 +29,8 @@ describe('AgentRunnerService - invoke', () => {
       finalPrompt: 'test system prompt',
       typedMessages: [{ role: 'user', content: 'Hello' }],
       chatModel: 'mock-model',
+      chatModelId: 'mock-model-id',
+      chatFallbacks: ['mock-fallback-model'],
       tools: {},
       corpId: 'corp-1',
       userId: 'user-123',
@@ -42,6 +45,10 @@ describe('AgentRunnerService - invoke', () => {
     onTurnEnd: jest.fn().mockResolvedValue(undefined),
   };
 
+  const mockReliableService = {
+    generateText: jest.fn(),
+  };
+
   const mockConfigService = {
     get: jest.fn().mockImplementation((key: string, defaultValue?: string) => defaultValue),
   };
@@ -53,6 +60,7 @@ describe('AgentRunnerService - invoke', () => {
         { provide: ConfigService, useValue: mockConfigService },
         { provide: AgentPreparationService, useValue: mockPreparation },
         { provide: MemoryService, useValue: mockMemoryService },
+        { provide: ReliableService, useValue: mockReliableService },
       ],
     }).compile();
 
@@ -63,6 +71,8 @@ describe('AgentRunnerService - invoke', () => {
       finalPrompt: 'test system prompt',
       typedMessages: [{ role: 'user', content: 'Hello' }],
       chatModel: 'mock-model',
+      chatModelId: 'mock-model-id',
+      chatFallbacks: ['mock-fallback-model'],
       tools: {},
       corpId: 'corp-1',
       userId: 'user-123',
@@ -72,14 +82,15 @@ describe('AgentRunnerService - invoke', () => {
       turnState: { candidatePool: null },
     });
     mockMemoryService.onTurnEnd.mockResolvedValue(undefined);
-
-    // Re-mock generateText for each test
-    const { generateText } = require('ai');
-    generateText.mockResolvedValue({
+    mockReliableService.generateText.mockResolvedValue({
       text: 'Hello!',
       steps: [{}],
       usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
     });
+
+    // Re-mock streamText for each test
+    const { streamText } = require('ai');
+    streamText.mockReset();
   });
 
   const invokeParams = {
@@ -102,6 +113,8 @@ describe('AgentRunnerService - invoke', () => {
       finalPrompt: 'test system prompt',
       typedMessages: [{ role: 'user', content: 'Hello' }],
       chatModel: 'mock-model',
+      chatModelId: 'mock-model-id',
+      chatFallbacks: ['mock-fallback-model'],
       tools: {},
       corpId: 'corp-1',
       userId: 'user-123',
@@ -138,10 +151,56 @@ describe('AgentRunnerService - invoke', () => {
   });
 
   it('should rethrow error when generateText throws', async () => {
-    const { generateText } = require('ai');
-    generateText.mockRejectedValue(new Error('Network timeout'));
+    mockReliableService.generateText.mockRejectedValue(new Error('Network timeout'));
 
     await expect(service.invoke(invokeParams)).rejects.toThrow('Network timeout');
+  });
+
+  it('should enrich thrown model errors with agent metadata', async () => {
+    mockReliableService.generateText.mockRejectedValue(new Error('Network timeout'));
+
+    const error = await service.invoke(invokeParams).catch((err) => err);
+
+    expect(error).toMatchObject({
+      isAgentError: true,
+      agentMeta: expect.objectContaining({
+        sessionId: 'sess-1',
+        userId: 'user-123',
+        messageCount: 1,
+      }),
+    });
+  });
+
+  it('should include memory warning when messages are empty', async () => {
+    mockPreparation.prepare.mockResolvedValue({
+      finalPrompt: 'test system prompt',
+      typedMessages: [],
+      memoryLoadWarning: 'shortTerm: Connection timeout',
+      chatModel: 'mock-model',
+      chatModelId: 'mock-model-id',
+      chatFallbacks: ['mock-fallback-model'],
+      tools: {},
+      corpId: 'corp-1',
+      userId: 'user-123',
+      sessionId: 'sess-1',
+      maxSteps: 5,
+      entryStage: null,
+      turnState: { candidatePool: null },
+    });
+
+    const error = await service.invoke(invokeParams).catch((err) => err);
+
+    expect(error.message).toContain('sessionId=sess-1');
+    expect(error.message).toContain('memoryWarning=shortTerm: Connection timeout');
+    expect(error).toMatchObject({
+      isAgentError: true,
+      agentMeta: expect.objectContaining({
+        sessionId: 'sess-1',
+        userId: 'user-123',
+        messageCount: 0,
+        memoryLoadWarning: 'shortTerm: Connection timeout',
+      }),
+    });
   });
 
   it('should trigger memory lifecycle after assistant turn', async () => {
@@ -152,6 +211,8 @@ describe('AgentRunnerService - invoke', () => {
         { role: 'user', content: '我想报名长白' },
       ],
       chatModel: 'mock-model',
+      chatModelId: 'mock-model-id',
+      chatFallbacks: ['mock-fallback-model'],
       tools: {},
       corpId: 'corp-1',
       userId: 'user-123',
@@ -161,8 +222,7 @@ describe('AgentRunnerService - invoke', () => {
       turnState: { candidatePool: [{ jobId: 519709, brandName: '奥乐齐', storeName: '长白' }] },
     });
 
-    const { generateText } = require('ai');
-    generateText.mockResolvedValue({
+    mockReliableService.generateText.mockResolvedValue({
       text: '可以，我先帮你确认下长白这边的面试要求。',
       steps: [{}],
       usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
@@ -185,5 +245,24 @@ describe('AgentRunnerService - invoke', () => {
       }),
       '可以，我先帮你确认下长白这边的面试要求。',
     );
+  });
+
+  it('should enrich stream setup failures with agent metadata', async () => {
+    const { streamText } = require('ai');
+    streamText.mockImplementation(() => {
+      throw new Error('stream init failed');
+    });
+
+    const error = await service.stream(invokeParams).catch((err) => err);
+
+    expect(error).toMatchObject({
+      message: 'stream init failed',
+      isAgentError: true,
+      agentMeta: expect.objectContaining({
+        sessionId: 'sess-1',
+        userId: 'user-123',
+        messageCount: 1,
+      }),
+    });
   });
 });

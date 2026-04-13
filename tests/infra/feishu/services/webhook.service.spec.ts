@@ -109,6 +109,27 @@ describe('FeishuWebhookService', () => {
       expect(calledPayload).toHaveProperty('sign');
     });
 
+    it('should honor an explicitly empty secret instead of falling back to the default secret', async () => {
+      mockConfigService.get.mockImplementation((key: string, defaultValue?: string) => {
+        if (key === 'MESSAGE_NOTIFICATION_WEBHOOK_URL') {
+          return 'https://open.feishu.cn/hook/booking';
+        }
+        if (key === 'MESSAGE_NOTIFICATION_WEBHOOK_SECRET') {
+          return '';
+        }
+        return defaultValue;
+      });
+
+      const httpClientSpy = jest
+        .spyOn(service['httpClient'], 'post')
+        .mockResolvedValue({ data: { code: 0 } } as any);
+
+      await service.sendMessage('MESSAGE_NOTIFICATION', { msg_type: 'interactive' });
+
+      const calledPayload = httpClientSpy.mock.calls[0][1] as Record<string, unknown>;
+      expect(calledPayload).not.toHaveProperty('sign');
+    });
+
     it('should not include signature when secret is empty', async () => {
       mockConfigService.get.mockImplementation((key: string, defaultValue?: string) => {
         if (key === 'FEISHU_ALERT_WEBHOOK_URL') return 'https://open.feishu.cn/hook/test';
@@ -160,6 +181,24 @@ describe('FeishuWebhookService', () => {
       // Should have called post with the default URL from FEISHU_WEBHOOKS.ALERT.URL
       const calledUrl = httpClientSpy.mock.calls[0][0] as string;
       expect(calledUrl).toContain('feishu.cn');
+    });
+  });
+
+  describe('sendMessageOrThrow', () => {
+    it('should throw when feishu API returns a non-zero code', async () => {
+      mockConfigService.get.mockImplementation((key: string, defaultValue?: string) => {
+        if (key === 'MESSAGE_NOTIFICATION_WEBHOOK_URL') return 'https://open.feishu.cn/hook/test';
+        if (key === 'MESSAGE_NOTIFICATION_WEBHOOK_SECRET') return '';
+        return defaultValue;
+      });
+
+      jest
+        .spyOn(service['httpClient'], 'post')
+        .mockResolvedValue({ data: { code: 19001, msg: 'sign error' } } as any);
+
+      await expect(
+        service.sendMessageOrThrow('MESSAGE_NOTIFICATION', { msg_type: 'interactive' }),
+      ).rejects.toThrow('飞书 API 返回错误');
     });
   });
 

@@ -6,17 +6,14 @@ import { GroupResolverService } from '@biz/group-task/services/group-resolver.se
 import { GroupContext } from '@biz/group-task/group-task.types';
 import { RoomService } from '@channels/wecom/room/room.service';
 import { MemoryService } from '@memory/memory.service';
-import { FeishuWebhookService } from '@infra/feishu/services/webhook.service';
-import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
-import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
+import { OpsNotifierService } from '@notification/services/ops-notifier.service';
 
 const logger = new Logger('invite_to_group');
 
 export function buildInviteToGroupTool(
   groupResolver: GroupResolverService,
   roomService: RoomService,
-  webhookService: FeishuWebhookService,
-  cardBuilder: FeishuCardBuilderService,
+  opsNotifier: OpsNotifierService,
   memoryService: MemoryService,
   memberLimit: number,
   enterpriseToken?: string | null,
@@ -95,8 +92,7 @@ export function buildInviteToGroupTool(
                 name: group.groupName,
                 memberCount: group.memberCount,
               })),
-              webhookService,
-              cardBuilder,
+              opsNotifier,
             }).catch((error: unknown) => {
               const message = error instanceof Error ? error.message : String(error);
               logger.error(`飞书告警发送失败: ${message}`);
@@ -137,8 +133,7 @@ export function buildInviteToGroupTool(
                     memberCount: targetGroup.memberCount,
                   },
                 ],
-                webhookService,
-                cardBuilder,
+                opsNotifier,
               }).catch((error: unknown) => {
                 const message = error instanceof Error ? error.message : String(error);
                 logger.error(`飞书告警发送失败: ${message}`);
@@ -273,35 +268,7 @@ async function sendGroupFullAlert(params: {
   industry?: string;
   memberLimit: number;
   groups: Array<{ name: string; memberCount?: number }>;
-  webhookService: FeishuWebhookService;
-  cardBuilder: FeishuCardBuilderService;
+  opsNotifier: OpsNotifierService;
 }): Promise<boolean> {
-  const { city, industry, memberLimit, groups, webhookService, cardBuilder } = params;
-  const scope = `${city}${industry ? ` / ${industry}` : ''}`;
-  const conclusion = `${city}${industry ? `/${industry}` : ''} 所有兼职群已满，需要创建新群`;
-  const numberedGroups = groups.map((group, index) => {
-    const count = group.memberCount ?? '未知';
-    return `${index + 1}. ${group.name} (${count} / ${memberLimit})`;
-  });
-
-  const content = [
-    `**时间**: ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`,
-    '**级别**: WARNING',
-    `**范围**: ${scope}`,
-    `**结论**: ${conclusion}`,
-    `**容量阈值**: ${memberLimit} 人`,
-    `**已满群数**: ${groups.length}`,
-    '',
-    '**已满群列表**',
-    ...numberedGroups,
-  ].join('\n');
-
-  const card = cardBuilder.buildMarkdownCard({
-    title: conclusion,
-    content,
-    color: 'yellow',
-    atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
-  });
-
-  return webhookService.sendMessage('MESSAGE_NOTIFICATION', card);
+  return params.opsNotifier.sendGroupFullAlert(params);
 }

@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { FeishuModule } from '@infra/feishu/feishu.module';
 import { BizModule } from '@biz/biz.module';
 import { ToolModule } from '@tools/tool.module';
 import { MemoryModule } from '@memory/memory.module';
+import { NotificationModule } from '@notification/notification.module';
 import { ObservabilityModule } from '@/observability/observability.module';
 import { AgentRunnerService } from './runner.service';
 import { CompletionService } from './completion.service';
@@ -14,7 +14,14 @@ import { AgentHealthService } from './agent-health.service';
 import { InputGuardService } from './input-guard.service';
 
 @Module({
-  imports: [ConfigModule, FeishuModule, BizModule, ToolModule, MemoryModule, ObservabilityModule],
+  imports: [
+    ConfigModule,
+    BizModule,
+    ToolModule,
+    MemoryModule,
+    NotificationModule,
+    ObservabilityModule,
+  ],
   controllers: [AgentController],
   providers: [
     ContextService,

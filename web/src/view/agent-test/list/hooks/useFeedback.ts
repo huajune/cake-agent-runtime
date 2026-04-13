@@ -20,7 +20,13 @@ export interface UseFeedbackReturn {
   closeModal: () => void;
   setScenarioType: (type: string) => void;
   setRemark: (remark: string) => void;
-  submit: (chatHistory: string, userMessage?: string) => Promise<boolean>;
+  submit: (payload: {
+    chatHistory: string;
+    userMessage?: string;
+    chatId?: string;
+    candidateName?: string;
+    managerName?: string;
+  }) => Promise<boolean>;
   clearSuccess: () => void;
 }
 
@@ -53,7 +59,19 @@ export function useFeedback({ onError }: UseFeedbackOptions = {}): UseFeedbackRe
   }, []);
 
   const submit = useCallback(
-    async (chatHistory: string, userMessage?: string): Promise<boolean> => {
+    async ({
+      chatHistory,
+      userMessage,
+      chatId,
+      candidateName,
+      managerName,
+    }: {
+      chatHistory: string;
+      userMessage?: string;
+      chatId?: string;
+      candidateName?: string;
+      managerName?: string;
+    }): Promise<boolean> => {
       if (!feedbackType || !chatHistory.trim()) return false;
 
       setIsSubmitting(true);
@@ -65,6 +83,9 @@ export function useFeedback({ onError }: UseFeedbackOptions = {}): UseFeedbackRe
           userMessage: userMessage?.trim() || undefined,
           errorType: scenarioType || undefined, // 场景分类提交到 errorType 字段
           remark: remark || undefined,
+          chatId,
+          candidateName: candidateName?.trim() || undefined,
+          managerName: managerName?.trim() || undefined,
         });
         setSuccessType(feedbackType);
         closeModal();

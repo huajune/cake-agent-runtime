@@ -33,6 +33,26 @@
   padding: 24px;
 }
 
+.actionBar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: $spacing-sm;
+  padding: 16px 20px;
+  border-top: 1px solid rgba(99, 102, 241, 0.1);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.75) 0%, rgba(255, 255, 255, 0.96) 100%),
+    radial-gradient(circle at top left, rgba(99, 102, 241, 0.06), transparent 55%);
+  box-shadow: 0 -10px 24px rgba(15, 23, 42, 0.03);
+}
+
+.feedbackGroup {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: $spacing-xs;
+}
+
 .messageGroup {
   margin-bottom: $spacing-lg;
 }
@@ -153,6 +173,10 @@
 @include respond-to(lg) {
   .messagesContainer {
     padding: 16px;
+  }
+
+  .actionBar {
+    padding: 14px 16px;
   }
 
   .avatar {

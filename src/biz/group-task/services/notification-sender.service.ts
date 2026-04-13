@@ -1,8 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
-import { FeishuWebhookService } from '@infra/feishu/services/webhook.service';
-import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
+import { AlertLevel } from '@enums/alert.enum';
 import {
   GroupContext,
   GroupTaskType,
@@ -10,6 +9,9 @@ import {
   GROUP_TASK_TYPE_NAMES,
 } from '../group-task.types';
 import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
+import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
+import { OpsNotifierService } from '@notification/services/ops-notifier.service';
+import { resolveHumanizedDelayMs } from '../utils/humanized-delay.util';
 
 /** 独立客找工作小程序默认值（可通过环境变量覆盖） */
 const MINIPROGRAM_DEFAULTS = {
@@ -31,6 +33,7 @@ export class NotificationSenderService {
   private readonly logger = new Logger(NotificationSenderService.name);
 
   private readonly enterpriseToken: string;
+  private readonly sendDelayMs: number;
   private readonly miniprogramAppid: string;
   private readonly miniprogramUsername: string;
   private readonly miniprogramThumbUrl: string;
@@ -38,10 +41,15 @@ export class NotificationSenderService {
   constructor(
     private readonly configService: ConfigService,
     private readonly messageSenderService: MessageSenderService,
-    private readonly webhookService: FeishuWebhookService,
-    private readonly cardBuilder: FeishuCardBuilderService,
+    private readonly opsNotifier: OpsNotifierService,
+    @Optional()
+    private readonly exceptionNotifier?: IncidentReporterService,
   ) {
     this.enterpriseToken = this.configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim() || '';
+    this.sendDelayMs = parseInt(
+      this.configService.get<string>('GROUP_TASK_SEND_DELAY_MS', '60000'),
+      10,
+    );
     this.miniprogramAppid = this.configService.get<string>('MINIPROGRAM_APPID', '');
     this.miniprogramUsername = this.configService.get<string>('MINIPROGRAM_USERNAME', '');
     this.miniprogramThumbUrl = this.configService.get<string>('MINIPROGRAM_THUMB_URL', '');
@@ -65,17 +73,15 @@ export class NotificationSenderService {
     this.assertEnterpriseSendable(group);
 
     // 1. 发送文本消息（企业级 API）
-    await this.messageSenderService.sendMessage({
-      token: this.enterpriseToken,
-      imBotId: group.imBotId,
-      imRoomId: group.imRoomId,
-      messageType: 7, // TEXT
-      payload: { text: message },
-    });
+    await this.sendEnterpriseGroupMessage(
+      group,
+      7, // TEXT
+      { text: message },
+      '主消息',
+    );
 
     // 2. 兼职群额外发送小程序卡片（需要 appid + username 配置）
     if (type === GroupTaskType.PART_TIME_JOB) {
-      await this.delay(1000);
       await this.sendPartTimeMiniProgramCard(group);
     }
   }
@@ -88,13 +94,7 @@ export class NotificationSenderService {
 
     this.assertEnterpriseSendable(group);
 
-    await this.messageSenderService.sendMessage({
-      token: this.enterpriseToken,
-      imBotId: group.imBotId,
-      imRoomId: group.imRoomId,
-      messageType: 7,
-      payload: { text },
-    });
+    await this.sendEnterpriseGroupMessage(group, 7, { text }, '跟随文本');
   }
 
   /**
@@ -122,20 +122,45 @@ export class NotificationSenderService {
     dryRun: boolean,
   ): Promise<void> {
     const typeName = GROUP_TASK_TYPE_NAMES[type] || type;
-    const modeTag = dryRun ? '预览' : '已发送';
 
-    const card = this.cardBuilder.buildMarkdownCard({
-      title: `📋 [${modeTag}] ${typeName} → ${group.groupName}`,
-      content: [
-        `**目标群**: ${group.groupName}`,
-        `**标签**: ${group.tag} / ${group.city}${group.industry ? ` / ${group.industry}` : ''}`,
-        '---',
-        message,
-      ].join('\n'),
-      color: 'blue',
+    if (dryRun) {
+      try {
+        await this.opsNotifier.sendGroupTaskPreview({
+          groupName: group.groupName,
+          tag: group.tag,
+          city: group.city,
+          industry: group.industry,
+          typeName,
+          message,
+          dryRun,
+        });
+        this.logger.log(`[试运行] 已发送飞书预览: ${group.groupName}`);
+        return;
+      } catch (error) {
+        this.notifyFeishuSendFailure(typeName, group, error, true);
+        throw error;
+      }
+    }
+
+    const sent = await this.opsNotifier.sendGroupTaskPreview({
+      groupName: group.groupName,
+      tag: group.tag,
+      city: group.city,
+      industry: group.industry,
+      typeName,
+      message,
+      dryRun,
     });
-    await this.webhookService.sendMessage('MESSAGE_NOTIFICATION', card);
-    this.logger.log(`[试运行] 已发送飞书预览: ${group.groupName}`);
+    if (!sent) {
+      const error = new Error(
+        `飞书通知群预览发送失败: ${typeName} -> ${group.groupName}，请检查 MESSAGE_NOTIFICATION_WEBHOOK_URL / MESSAGE_NOTIFICATION_WEBHOOK_SECRET 或默认 webhook 配置`,
+      );
+      this.logger.error(`[群任务] ${error.message}`);
+      this.notifyFeishuSendFailure(typeName, group, error, false);
+      return;
+    }
+
+    this.logger.log(`[生产] 已发送飞书监控卡片: ${group.groupName}`);
   }
 
   private async sendPartTimeMiniProgramCard(group: GroupContext): Promise<void> {
@@ -154,13 +179,12 @@ export class NotificationSenderService {
     };
 
     try {
-      await this.messageSenderService.sendMessage({
-        token: this.enterpriseToken,
-        imBotId: group.imBotId,
-        imRoomId: group.imRoomId,
-        messageType: 9, // MINI_PROGRAM
+      await this.sendEnterpriseGroupMessage(
+        group,
+        9, // MINI_PROGRAM
         payload,
-      });
+        '兼职小程序卡片',
+      );
       this.logger.log(`[兼职群] 小程序卡片已通过企业级 API 发送: ${group.groupName}`);
       return;
     } catch (error) {
@@ -177,77 +201,102 @@ export class NotificationSenderService {
     const typeName = GROUP_TASK_TYPE_NAMES[result.type] || result.type;
     const modeLabel = dryRun ? '[试运行] ' : '';
 
-    const isSuccess = result.failedCount === 0;
-    const isPartialFail = result.successCount > 0 && result.failedCount > 0;
-
-    let statusText: string;
-    let color: 'blue' | 'green' | 'yellow' | 'red';
-    if (isSuccess) {
-      statusText = '全部成功';
-      color = 'green';
-    } else if (isPartialFail) {
-      statusText = '部分失败';
-      color = 'yellow';
-    } else {
-      statusText = '全部失败';
-      color = 'red';
+    try {
+      await this.opsNotifier.sendGroupTaskReport({
+        typeName: `${modeLabel}${typeName}`,
+        dryRun,
+        totalGroups: result.totalGroups,
+        successCount: result.successCount,
+        failedCount: result.failedCount,
+        skippedCount: result.skippedCount,
+        durationSeconds: duration,
+        details: result.details,
+        errors: result.errors,
+        atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+      });
+    } catch (error) {
+      this.exceptionNotifier?.notifyAsync({
+        source: {
+          subsystem: 'group-task',
+          component: 'NotificationSenderService',
+          action: 'reportToFeishu',
+          trigger: 'manual',
+        },
+        code: 'group_task.feishu_report_failed',
+        summary: `${typeName} 执行汇总发送失败`,
+        error,
+        severity: AlertLevel.ERROR,
+        scope: {
+          scenario: result.type,
+        },
+        diagnostics: {
+          payload: {
+            type: result.type,
+            dryRun,
+            totalGroups: result.totalGroups,
+            successCount: result.successCount,
+            failedCount: result.failedCount,
+            skippedCount: result.skippedCount,
+          },
+        },
+      });
+      throw error;
     }
-
-    // 构建分组详情
-    const lines: string[] = [
-      `**总群数**: ${result.totalGroups} | **分组**: ${result.details.length}`,
-      `**成功**: ${result.successCount} | **失败**: ${result.failedCount} | **跳过**: ${result.skippedCount} | **耗时**: ${duration.toFixed(1)}s`,
-      '---',
-    ];
-
-    const appendSection = (header: string, sectionLines: string[]): void => {
-      if (sectionLines.length === 0) return;
-      lines.push('', header, ...sectionLines);
-    };
-
-    // 成功分组
-    const successDetails = result.details.filter((d) => d.status === 'success');
-    appendSection(
-      '**✅ 成功分组**',
-      successDetails.map((d) => `✅ **${d.groupKey}** (${d.groupCount}群) — ${d.dataSummary}`),
-    );
-
-    // 跳过分组
-    const skippedDetails = result.details.filter((d) => d.status === 'skipped');
-    appendSection(
-      '**⏭️ 已跳过**',
-      skippedDetails.map((d) => `⏭️ **${d.groupKey}** (${d.groupCount}群) — ${d.dataSummary}`),
-    );
-
-    // 部分失败分组
-    const partialDetails = result.details.filter((d) => d.status === 'partial');
-    appendSection(
-      '**⚠️ 部分失败**',
-      partialDetails.map((d) => `⚠️ **${d.groupKey}** (${d.groupCount}群) — ${d.dataSummary}`),
-    );
-
-    // 失败分组
-    const failedDetails = result.details.filter((d) => d.status === 'failed');
-    appendSection(
-      '**❌ 失败分组**',
-      failedDetails.map((d) => `❌ **${d.groupKey}** (${d.groupCount}群) — ${d.dataSummary}`),
-    );
-
-    appendSection(
-      '**🚨 错误明细**',
-      result.errors.map((item) => `- **${item.groupName}** — ${item.error}`),
-    );
-
-    const card = this.cardBuilder.buildMarkdownCard({
-      title: `📢 ${modeLabel}${typeName}通知 — ${statusText}`,
-      content: lines.join('\n'),
-      color,
-      atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
-    });
-    await this.webhookService.sendMessage('MESSAGE_NOTIFICATION', card);
   }
 
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private async sendEnterpriseGroupMessage(
+    group: GroupContext,
+    messageType: number,
+    payload: Record<string, unknown>,
+    label: string,
+  ): Promise<void> {
+    const delayMs = resolveHumanizedDelayMs(this.sendDelayMs);
+    if (delayMs > 0) {
+      this.logger.debug(
+        `[群任务] ${group.groupName} ${label}前等待 ${delayMs}ms，模拟人工发送节奏`,
+      );
+      await this.delay(delayMs);
+    }
+
+    await this.messageSenderService.sendMessage({
+      token: this.enterpriseToken,
+      imBotId: group.imBotId,
+      imRoomId: group.imRoomId,
+      messageType,
+      payload,
+    });
+  }
+
+  private notifyFeishuSendFailure(
+    typeName: string,
+    group: GroupContext,
+    error: unknown,
+    dryRun: boolean,
+  ): void {
+    this.exceptionNotifier?.notifyAsync({
+      source: {
+        subsystem: 'group-task',
+        component: 'NotificationSenderService',
+        action: 'sendEnterpriseGroupMessage',
+        trigger: 'manual',
+      },
+      code: 'group_task.feishu_preview_failed',
+      summary: `${typeName} 飞书预览发送失败`,
+      error,
+      severity: AlertLevel.ERROR,
+      diagnostics: {
+        payload: {
+          groupName: group.groupName,
+          tag: group.tag,
+          city: group.city,
+          industry: group.industry,
+          dryRun,
+        },
+      },
+    });
   }
 }

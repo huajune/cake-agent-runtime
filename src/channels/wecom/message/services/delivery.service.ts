@@ -36,6 +36,7 @@ export class MessageDeliveryService implements OnModuleInit {
 
   // 打字延迟配置（支持动态更新）
   private baseTypingSpeed: number = 8; // 字符/秒
+  private paragraphGapMs: number = 2000;
   private readonly minDelay: number = TYPING_MIN_DELAY_MS;
   private readonly maxDelay: number = TYPING_MAX_DELAY_MS;
   private readonly randomVariation: number = TYPING_RANDOM_VARIATION;
@@ -70,6 +71,10 @@ export class MessageDeliveryService implements OnModuleInit {
       this.baseTypingSpeed = config.typingSpeedCharsPerSec;
     } else if (config.typingDelayPerCharMs) {
       this.baseTypingSpeed = Math.round(1000 / config.typingDelayPerCharMs);
+    }
+
+    if (typeof config.paragraphGapMs === 'number' && config.paragraphGapMs >= 0) {
+      this.paragraphGapMs = config.paragraphGapMs;
     }
   }
 
@@ -238,10 +243,11 @@ export class MessageDeliveryService implements OnModuleInit {
 
     if (!isFirstSegment && delay > 0) {
       delay = Math.max(this.minDelay, Math.min(this.maxDelay, delay));
+      delay = Math.max(this.paragraphGapMs, delay);
     }
 
     this.logger.debug(
-      `计算延迟: 文本长度=${text.length}, 基础延迟=${Math.round(baseDelay)}ms, 实际延迟=${Math.round(delay)}ms`,
+      `计算延迟: 文本长度=${text.length}, 基础延迟=${Math.round(baseDelay)}ms, 段落间隔=${this.paragraphGapMs}ms, 实际延迟=${Math.round(delay)}ms`,
     );
     return Math.round(delay);
   }
