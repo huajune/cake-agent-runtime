@@ -6,12 +6,8 @@ describe('buildInterviewBookingTool', () => {
     bookInterview: jest.fn(),
   };
 
-  const mockWebhookService = {
-    sendMessage: jest.fn().mockResolvedValue(true),
-  };
-
-  const mockCardBuilder = {
-    buildMarkdownCard: jest.fn().mockReturnValue({ msg_type: 'interactive' }),
+  const mockPrivateChatNotifier = {
+    notifyInterviewBookingResult: jest.fn().mockResolvedValue(true),
   };
 
   const mockUserHostingService = {
@@ -46,8 +42,7 @@ describe('buildInterviewBookingTool', () => {
   const executeTool = async (input: Record<string, any>) => {
     const builder = buildInterviewBookingTool(
       mockSpongeService as never,
-      mockWebhookService as never,
-      mockCardBuilder as never,
+      mockPrivateChatNotifier as never,
       mockUserHostingService as never,
     );
     const builtTool = builder(mockContext);
@@ -63,7 +58,7 @@ describe('buildInterviewBookingTool', () => {
     const result = await executeTool({ ...validInput, name: '' });
     expect(result.success).toBe(false);
     expect(result.error).toContain('姓名');
-    expect(mockWebhookService.sendMessage).not.toHaveBeenCalled();
+    expect(mockPrivateChatNotifier.notifyInterviewBookingResult).not.toHaveBeenCalled();
   });
 
   it('should return error when education or health certificate status is missing', async () => {
@@ -115,52 +110,22 @@ describe('buildInterviewBookingTool', () => {
         educationId: 5,
       }),
     );
-    expect(mockCardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
+    expect(mockPrivateChatNotifier.notifyInterviewBookingResult).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: '🎉 面试预约成功',
-        content: expect.stringContaining('姓名：张三'),
-        atAll: true,
+        candidateName: '张三',
+        phone: '13800138000',
+        genderLabel: '男',
+        ageText: '25岁',
+        brandName: '成都你六姐',
+        storeName: '上海浦江城市生活广场店',
+        jobName: '成都你六姐-上海浦江城市生活广场店-后厨-小时工',
+        jobId: 100,
+        interviewTime: '2026-03-20 14:00:00',
+        toolOutput: expect.objectContaining({
+          success: true,
+          notice: '请准时到达',
+        }),
       }),
-    );
-    expect(mockCardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: expect.stringContaining('电话：13800138000'),
-      }),
-    );
-    expect(mockCardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: expect.stringContaining('性别：男'),
-      }),
-    );
-    expect(mockCardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: expect.stringContaining('年龄：25岁'),
-      }),
-    );
-    expect(mockCardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: expect.stringContaining('品牌：成都你六姐'),
-      }),
-    );
-    expect(mockCardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: expect.stringContaining('门店：上海浦江城市生活广场店'),
-      }),
-    );
-    expect(mockCardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: expect.stringContaining('面试岗位：成都你六姐-上海浦江城市生活广场店-后厨-小时工'),
-      }),
-    );
-    expect(mockCardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: expect.stringContaining('面试时间：2026-03-20 14:00'),
-        atAll: true,
-      }),
-    );
-    expect(mockWebhookService.sendMessage).toHaveBeenCalledWith(
-      'PRIVATE_CHAT_MONITOR',
-      expect.any(Object),
     );
     expect(mockUserHostingService.pauseUser).not.toHaveBeenCalled();
   });
@@ -173,15 +138,18 @@ describe('buildInterviewBookingTool', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('Network error');
-    expect(mockCardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
+    expect(mockPrivateChatNotifier.notifyInterviewBookingResult).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: '⚠️ 面试预约失败',
-        atAll: true,
+        candidateName: '张三',
+        phone: '13800138000',
+        genderLabel: '男',
+        ageText: '25岁',
+        interviewTime: '2026-03-20 14:00:00',
+        toolOutput: expect.objectContaining({
+          success: false,
+          errorType: 'booking_request_failed',
+        }),
       }),
-    );
-    expect(mockWebhookService.sendMessage).toHaveBeenCalledWith(
-      'PRIVATE_CHAT_MONITOR',
-      expect.any(Object),
     );
     expect(mockUserHostingService.pauseUser).toHaveBeenCalledWith('sess-1');
   });
