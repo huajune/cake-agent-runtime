@@ -1,57 +1,21 @@
 {
-  "baseVersion": "5.0.0",
-  "nextVersion": "5.1.0",
-  "updatedAt": "2026-04-09",
+  "baseVersion": "5.1.0",
+  "nextVersion": "5.2.0",
+  "updatedAt": "2026-04-13",
   "sourceBranch": "develop",
   "entries": [
     {
-      "number": "63",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/63",
-      "title": "[codex] chore: 自动化受保护分支发布流程",
-      "author": "ArielZhu",
-      "mergedAt": "2026-04-08",
+      "number": "72",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/72",
+      "title": "[codex] 完善通知链路并修复群任务与消息处理后续问题",
+      "author": "huajune",
+      "mergedAt": "2026-04-13",
       "summary": [
-        "[codex] chore: 自动化受保护分支发布流程"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "[codex] chore: 自动化受保护分支发布流程"
-      ],
-      "config": [],
-      "verification": []
-    },
-    {
-      "number": "66",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/66",
-      "title": "interview precheck deadline parsing + job list prompt guidance",
-      "author": "ArielZhu",
-      "mergedAt": "2026-04-09",
-      "summary": [
-        "interview precheck deadline parsing + job list prompt guidance"
-      ],
-      "features": [
-        "interview precheck deadline parsing + job list prompt guidance"
-      ],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [],
-      "config": [],
-      "verification": []
-    },
-    {
-      "number": "70",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/70",
-      "title": "修复企微群消息发送失败 + 模板优化",
-      "author": "ArielZhu",
-      "mergedAt": "2026-04-09",
-      "summary": [
-        "修复企微群消息发送失败 + 模板优化"
+        "[codex] 完善通知链路并修复群任务与消息处理后续问题"
       ],
       "features": [],
       "fixes": [
-        "修复企微群消息发送失败 + 模板优化"
+        "[codex] 完善通知链路并修复群任务与消息处理后续问题"
       ],
       "optimizations": [],
       "ops": [],
