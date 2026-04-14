@@ -168,6 +168,36 @@ $_pp-30: rgba(167, 139, 250, 0.3);
   color: $text-muted;
 }
 
+.configBoundary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+  position: relative;
+  z-index: 1;
+
+  @include respond-to(lg) {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+}
+
+.configBoundaryTitle {
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  color: $text-primary;
+}
+
+.configBoundaryDesc {
+  margin: 0;
+  color: $text-muted;
+  font-size: $font-size-xs;
+  line-height: 1.5;
+  min-width: 0;
+}
+
 .headerTitle {
   font-size: $font-size-lg;
   font-weight: $font-weight-semibold;

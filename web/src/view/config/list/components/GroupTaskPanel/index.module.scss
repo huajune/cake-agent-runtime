@@ -15,10 +15,11 @@
 // ==================== 外层面板 ====================
 
 .panel {
-  padding: $spacing-md;
-  background: $bg-secondary;
-  border-radius: $radius-lg;
+  padding: $spacing-lg $spacing-xl;
+  background: $bg-card;
+  border-radius: 20px;
   border: 1px solid $border;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -29,7 +30,7 @@
 .toggleRow {
   @include flex-between;
   gap: $spacing-md;
-  padding: $spacing-sm 0;
+  padding: 14px 0;
 }
 
 .toggleInfo {
@@ -95,7 +96,7 @@
 .toggleDescription {
   font-size: $font-size-xs;
   color: $text-muted;
-  line-height: $line-height-relaxed;
+  line-height: 1.6;
 }
 
 // ==================== Switch 开关 ====================

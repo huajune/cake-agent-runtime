@@ -128,5 +128,4 @@ export interface MessageRecord {
   fallbackSuccess?: boolean;
   agentInvocation?: AgentInvocationRecord;
   batchId?: string;
-  isPrimary?: boolean;
 }

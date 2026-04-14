@@ -260,54 +260,72 @@ export class MonitoringRecordRepository extends BaseRepository {
       return null;
     }
 
-    try {
-      const result = await this.rpc<Array<Record<string, unknown>>>('aggregate_hourly_stats', {
-        p_hour_start: hourStart.toISOString(),
-        p_hour_end: hourEnd.toISOString(),
-      });
+    for (let attempt = 1; attempt <= this.maxReadAttempts; attempt += 1) {
+      try {
+        const { data, error } = await this.getClient().rpc('aggregate_hourly_stats', {
+          p_hour_start: hourStart.toISOString(),
+          p_hour_end: hourEnd.toISOString(),
+        });
 
-      if (!result) {
+        if (error) {
+          if (this.isNotFoundError(error)) {
+            this.logger.warn('RPC 函数 aggregate_hourly_stats 不存在，请检查数据库迁移');
+            return null;
+          }
+          if (this.shouldRetryReadError('RPC:aggregate_hourly_stats', error, attempt)) {
+            continue;
+          }
+          this.handleError('RPC:aggregate_hourly_stats', error);
+          return null;
+        }
+
+        const result = data as Array<Record<string, unknown>> | null;
+
+        if (!result || result.length === 0) {
+          return { ...EMPTY_HOURLY_AGGREGATE };
+        }
+
+        const row = result[0];
+        const numericFields = this.mapRpcRow<{
+          messageCount: number;
+          successCount: number;
+          failureCount: number;
+          successRate: number;
+          avgDuration: number;
+          minDuration: number;
+          maxDuration: number;
+          p50Duration: number;
+          p95Duration: number;
+          p99Duration: number;
+          avgAiDuration: number;
+          avgSendDuration: number;
+          activeUsers: number;
+          activeChats: number;
+          totalTokenUsage: number;
+          fallbackCount: number;
+          fallbackSuccessCount: number;
+        }>(row, HOURLY_AGG_MAPPING);
+
+        return {
+          ...numericFields,
+          scenarioStats:
+            (row.scenario_stats as Record<
+              string,
+              { count: number; successCount: number; avgDuration: number }
+            >) ?? {},
+          toolStats: (row.tool_stats as Record<string, number>) ?? {},
+        };
+      } catch (error) {
+        if (this.shouldRetryReadError('RPC:aggregate_hourly_stats', error, attempt)) {
+          continue;
+        }
+
+        this.handleError('RPC:aggregate_hourly_stats', error);
         return null;
       }
-
-      if (result.length === 0) {
-        return { ...EMPTY_HOURLY_AGGREGATE };
-      }
-
-      const row = result[0];
-      const numericFields = this.mapRpcRow<{
-        messageCount: number;
-        successCount: number;
-        failureCount: number;
-        successRate: number;
-        avgDuration: number;
-        minDuration: number;
-        maxDuration: number;
-        p50Duration: number;
-        p95Duration: number;
-        p99Duration: number;
-        avgAiDuration: number;
-        avgSendDuration: number;
-        activeUsers: number;
-        activeChats: number;
-        totalTokenUsage: number;
-        fallbackCount: number;
-        fallbackSuccessCount: number;
-      }>(row, HOURLY_AGG_MAPPING);
-
-      return {
-        ...numericFields,
-        scenarioStats:
-          (row.scenario_stats as Record<
-            string,
-            { count: number; successCount: number; avgDuration: number }
-          >) ?? {},
-        toolStats: (row.tool_stats as Record<string, number>) ?? {},
-      };
-    } catch (error) {
-      this.logger.error('调用 aggregate_hourly_stats RPC 失败:', error);
-      return null;
     }
+
+    return null;
   }
 
   // ==================== 私有辅助 ====================

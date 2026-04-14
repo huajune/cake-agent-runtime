@@ -115,8 +115,8 @@ export class GroupTaskSchedulerService implements OnModuleInit {
     await this.executeTask(this.orderGrabStrategy, { timeSlot: TimeSlot.AFTERNOON });
   }
 
-  /** 兼职群 — 工作日 13:00 */
-  @Cron('0 13 * * 1-5', { timeZone: 'Asia/Shanghai' })
+  /** 兼职群 — 工作日 13:30 */
+  @Cron('30 13 * * 1-5', { timeZone: 'Asia/Shanghai' })
   async cronPartTimeJob(): Promise<void> {
     if (!this.shouldRunScheduledTask(this.partTimeJobStrategy.type)) return;
     await this.executeTask(this.partTimeJobStrategy);

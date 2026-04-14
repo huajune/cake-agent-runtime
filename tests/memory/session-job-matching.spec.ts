@@ -14,7 +14,7 @@ describe('session-job-matching', () => {
     regionName: '东城区',
     laborForm: '兼职',
     salaryDesc: '20元/小时',
-    jobCategoryName: '餐饮',
+    jobCategoryName: '餐饮/中餐/普通服务员',
   };
 
   const dongdanJob: RecommendedJobSummary = {
@@ -26,7 +26,19 @@ describe('session-job-matching', () => {
     regionName: '东城区',
     laborForm: '兼职',
     salaryDesc: '20元/小时',
-    jobCategoryName: '餐饮',
+    jobCategoryName: '餐饮/中餐/普通服务员',
+  };
+
+  const retailJob: RecommendedJobSummary = {
+    jobId: 526628,
+    brandName: '全家',
+    jobName: '门店岗位',
+    storeName: '建国门店',
+    cityName: '北京',
+    regionName: '东城区',
+    laborForm: '兼职',
+    salaryDesc: '18元/小时',
+    jobCategoryName: '零售/便利店/店员',
   };
 
   it('should extract presented jobs from assistant reply', () => {
@@ -51,5 +63,11 @@ describe('session-job-matching', () => {
 
   it('should select the only presented job when focus intent is generic', () => {
     expect(resolveCurrentFocusJob('就这家吧', [chaoneiJob], [], [])).toEqual(chaoneiJob);
+  });
+
+  it('should match hierarchical jobCategoryName segments when user describes a role', () => {
+    expect(resolveCurrentFocusJob('我想去零售店员那个岗位', [], [], [chaoneiJob, retailJob])).toEqual(
+      retailJob,
+    );
   });
 });

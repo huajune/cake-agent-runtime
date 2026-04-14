@@ -30,11 +30,15 @@ describe('MessageService', () => {
 
   const mockMonitoringService = {
     recordSuccess: jest.fn(),
+    recordFailure: jest.fn(),
   };
 
   const mockWecomObservabilityService = {
+    hasTrace: jest.fn().mockReturnValue(false),
+    startTrace: jest.fn(),
     updateDispatch: jest.fn(),
     buildSuccessMetadata: jest.fn(),
+    buildFailureMetadata: jest.fn(),
   };
 
   const mockSystemConfigService = {
@@ -96,6 +100,9 @@ describe('MessageService', () => {
       replySegments: 0,
       extraResponse: { disabledAiReply: true },
     });
+    mockWecomObservabilityService.buildFailureMetadata.mockReturnValue({
+      alertType: 'merge',
+    });
     mockPipelineService.execute.mockResolvedValue({
       shouldDispatch: true,
       response: { success: true, message: 'Message received' },
@@ -148,6 +155,12 @@ describe('MessageService', () => {
         success: true,
         message: 'AI reply disabled, message recorded to history',
       });
+      expect(mockWecomObservabilityService.startTrace).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messageId: 'msg-123',
+          chatId: 'chat-123',
+        }),
+      );
       expect(mockMonitoringService.recordSuccess).toHaveBeenCalledWith(
         'msg-123',
         expect.objectContaining({ replyPreview: '[AI回复已禁用]' }),
@@ -162,6 +175,35 @@ describe('MessageService', () => {
       await new Promise((resolve) => setImmediate(resolve));
       expect(mockSimpleMergeService.addMessage).toHaveBeenCalledWith(validMessageData);
       expect(mockPipelineService.processSingleMessage).not.toHaveBeenCalled();
+    });
+
+    it('should record failure when merge enqueue fails', async () => {
+      mockSimpleMergeService.addMessage.mockRejectedValue(new Error('redis down'));
+
+      const result = await service.handleMessage(validMessageData);
+
+      expect(result).toEqual({ success: true, message: 'Message received' });
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(mockWecomObservabilityService.startTrace).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messageId: 'msg-123',
+          chatId: 'chat-123',
+        }),
+      );
+      expect(mockWecomObservabilityService.updateDispatch).toHaveBeenCalledWith('msg-123', 'merged');
+      expect(mockWecomObservabilityService.buildFailureMetadata).toHaveBeenCalledWith(
+        'msg-123',
+        expect.objectContaining({
+          errorType: 'merge',
+          errorMessage: 'redis down',
+        }),
+      );
+      expect(mockMonitoringService.recordFailure).toHaveBeenCalledWith(
+        'msg-123',
+        'redis down',
+        expect.anything(),
+      );
+      expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-123');
     });
 
     it('should process message immediately when merge is disabled', async () => {

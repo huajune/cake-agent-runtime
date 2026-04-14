@@ -460,7 +460,6 @@ describe('MessageTrackingService', () => {
         replyPreview: 'Hello!',
         replySegments: 2,
         batchId: 'batch-1',
-        isPrimary: true,
       });
 
       jest.useRealTimers();
@@ -474,7 +473,6 @@ describe('MessageTrackingService', () => {
           replyPreview: 'Hello!',
           replySegments: 2,
           batchId: 'batch-1',
-          isPrimary: true,
         }),
       );
     });

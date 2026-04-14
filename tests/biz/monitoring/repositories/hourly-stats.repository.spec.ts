@@ -274,6 +274,61 @@ describe('MonitoringHourlyStatsRepository', () => {
     });
   });
 
+  // ==================== getLatestHourlyStat ====================
+
+  describe('getLatestHourlyStat', () => {
+    it('should return the latest hourly stat without a cutoff window', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      const dbRow = {
+        hour: '2026-03-10T11:00:00Z',
+        message_count: 50,
+        success_count: 48,
+        failure_count: 2,
+        success_rate: 0.96,
+        avg_duration: 1100,
+        min_duration: 700,
+        max_duration: 2800,
+        p50_duration: 1000,
+        p95_duration: 2400,
+        p99_duration: 2700,
+        avg_ai_duration: 900,
+        avg_send_duration: 200,
+        active_users: 18,
+        active_chats: 14,
+        total_token_usage: 6000,
+        fallback_count: 2,
+        fallback_success_count: 2,
+        scenario_stats: {},
+        tool_stats: {},
+      };
+
+      const queryMock = makeQueryMock({ data: [dbRow], error: null });
+      mockSupabaseClient.from.mockReturnValue(queryMock);
+
+      const result = await repository.getLatestHourlyStat();
+
+      expect(result).toMatchObject({
+        hour: '2026-03-10T11:00:00Z',
+        messageCount: 50,
+        successCount: 48,
+      });
+      expect(queryMock.order).toHaveBeenCalledWith('hour', { ascending: false });
+      expect(queryMock.limit).toHaveBeenCalledWith(1);
+    });
+
+    it('should return null when no hourly stats exist', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      const queryMock = makeQueryMock({ data: [], error: null });
+      mockSupabaseClient.from.mockReturnValue(queryMock);
+
+      const result = await repository.getLatestHourlyStat();
+
+      expect(result).toBeNull();
+    });
+  });
+
   // ==================== getHourlyStatsByDateRange ====================
 
   describe('getHourlyStatsByDateRange', () => {

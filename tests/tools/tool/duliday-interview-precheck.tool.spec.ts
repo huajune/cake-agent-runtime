@@ -14,44 +14,55 @@ describe('buildInterviewPrecheckTool', () => {
   };
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
-  const makeJob = (overrides: any = {}) => ({
-    basicInfo: {
-      jobId: 100,
-      brandName: 'KFC',
-      jobName: '服务员',
-      storeInfo: {
-        storeName: '五角场店',
+  const makeJob = (overrides: any = {}) => {
+    const {
+      basicInfo: basicInfoOverrides = {},
+      hiringRequirement: hiringRequirementOverrides = {},
+      interviewProcess: interviewProcessOverrides = {},
+      ...restOverrides
+    } = overrides;
+    const { firstInterview: firstInterviewOverrides = {}, ...restInterviewProcessOverrides } =
+      interviewProcessOverrides;
+
+    return {
+      basicInfo: {
+        jobId: 100,
+        brandName: 'KFC',
+        jobName: '服务员',
+        storeInfo: {
+          storeName: '五角场店',
+        },
+        ...basicInfoOverrides,
       },
-      ...overrides.basicInfo,
-    },
-    hiringRequirement: {
-      basicPersonalRequirements: {
-        minAge: 18,
-        maxAge: 35,
-        genderRequirement: '不限',
+      hiringRequirement: {
+        basicPersonalRequirements: {
+          minAge: 18,
+          maxAge: 35,
+          genderRequirement: '不限',
+        },
+        certificate: {
+          education: '高中',
+          healthCertificate: '食品健康证',
+        },
+        remark: '有餐饮经验优先',
+        ...hiringRequirementOverrides,
       },
-      certificate: {
-        education: '高中',
-        healthCertificate: '食品健康证',
+      interviewProcess: {
+        firstInterview: {
+          firstInterviewWay: '线下面试',
+          interviewAddress: '上海市杨浦区xx路',
+          interviewDemand: '请带身份证',
+          periodicInterviewTimes: [],
+          fixedInterviewTimes: [],
+          ...firstInterviewOverrides,
+        },
+        interviewSupplement: [{ interviewSupplementId: 999, interviewSupplement: '带健康证原件' }],
+        remark: '没有健康证的需办加急',
+        ...restInterviewProcessOverrides,
       },
-      remark: '有餐饮经验优先',
-      ...overrides.hiringRequirement,
-    },
-    interviewProcess: {
-      firstInterview: {
-        firstInterviewWay: '线下面试',
-        interviewAddress: '上海市杨浦区xx路',
-        interviewDemand: '请带身份证',
-        periodicInterviewTimes: [],
-        fixedInterviewTimes: [],
-        ...overrides.interviewProcess?.firstInterview,
-      },
-      interviewSupplement: [{ interviewSupplement: '带健康证原件' }],
-      remark: '没有健康证的需办加急',
-      ...overrides.interviewProcess,
-    },
-    ...overrides,
-  });
+      ...restOverrides,
+    };
+  };
 
   const executeTool = async (
     input: Record<string, any>,
@@ -141,8 +152,49 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.policyHighlights).toBeUndefined();
     expect(result.requirements).toBeUndefined();
     expect(result.bookingChecklist.knownFieldMap).toBeUndefined();
-    expect(result.bookingChecklist.requiredFields).toBeUndefined();
-    expect(result.bookingChecklist.displayOrder).toBeUndefined();
+    expect(result.bookingChecklist.requiredFields).toEqual(
+      expect.arrayContaining([
+        '姓名',
+        '联系电话',
+        '性别',
+        '年龄',
+        '面试时间',
+        '学历',
+        '健康证情况',
+      ]),
+    );
+    expect(result.bookingChecklist.displayOrder).toEqual(
+      expect.arrayContaining(['姓名', '联系电话', '性别', '年龄', '面试时间']),
+    );
+    expect(result.bookingChecklist.apiPayloadGuide).toEqual(
+      expect.objectContaining({
+        requiredFields: expect.arrayContaining([
+          'jobId',
+          'interviewTime',
+          'name',
+          'phone',
+          'age',
+          'genderId',
+          'operateType',
+        ]),
+        optionalFields: expect.arrayContaining([
+          'educationId',
+          'hasHealthCertificate',
+          'healthCertificateTypes',
+        ]),
+        fixedValues: {
+          jobId: 100,
+          operateType: 6,
+        },
+      }),
+    );
+    expect(result.bookingChecklist.apiPayloadGuide.customerLabelDefinitions).toEqual([
+      {
+        labelId: 999,
+        labelName: '带健康证原件',
+        name: '带健康证原件',
+      },
+    ]);
     // enumHints 应包含缺失字段涉及的枚举
     expect(result.bookingChecklist.enumHints.gender).toEqual(['男', '女']);
     expect(result.bookingChecklist.enumHints.healthCertificate).toEqual([
@@ -162,7 +214,10 @@ describe('buildInterviewPrecheckTool', () => {
     // 不限性别不应出现
     expect(result.screeningCriteria.gender).toBeUndefined();
     expect(result.bookingChecklist.missingFields).toContain('姓名');
+    expect(result.bookingChecklist.missingFields).toContain('带健康证原件');
     expect(result.bookingChecklist.templateText).toContain('姓名：');
+    expect(result._fixedReply).toBe(result.bookingChecklist.templateText);
+    expect(result._replyRule).toContain('必须原样输出 _fixedReply');
   });
 
   it('should compress periodic windows into scheduleRule and generate upcoming options', async () => {
@@ -261,21 +316,15 @@ describe('buildInterviewPrecheckTool', () => {
               periodicInterviewTimes: [
                 {
                   interviewWeekday: '每周一',
-                  interviewTimes: [
-                    { interviewStartTime: '14:00', interviewEndTime: '16:00' },
-                  ],
+                  interviewTimes: [{ interviewStartTime: '14:00', interviewEndTime: '16:00' }],
                 },
                 {
                   interviewWeekday: '每周三',
-                  interviewTimes: [
-                    { interviewStartTime: '14:00', interviewEndTime: '16:00' },
-                  ],
+                  interviewTimes: [{ interviewStartTime: '14:00', interviewEndTime: '16:00' }],
                 },
                 {
                   interviewWeekday: '每周五',
-                  interviewTimes: [
-                    { interviewStartTime: '14:00', interviewEndTime: '16:00' },
-                  ],
+                  interviewTimes: [{ interviewStartTime: '14:00', interviewEndTime: '16:00' }],
                 },
               ],
               fixedInterviewTimes: [],
@@ -377,8 +426,8 @@ describe('buildInterviewPrecheckTool', () => {
             phone: '13800138000',
             gender: '男',
             age: '30',
-            applied_store: null,
-            applied_position: null,
+            applied_store: '旧门店',
+            applied_position: '旧岗位',
             interview_time: null,
             is_student: false,
             education: '本科',
@@ -402,7 +451,11 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.success).toBe(true);
     expect(result.bookingChecklist.templateText).toContain('姓名：张三');
     expect(result.bookingChecklist.templateText).toContain('联系方式：13800138000');
+    expect(result.bookingChecklist.templateText).toContain('面试时间：');
     expect(result.bookingChecklist.templateText).toContain('应聘门店：五角场店');
+    expect(result.bookingChecklist.templateText).toContain('应聘岗位：服务员');
+    expect(result.bookingChecklist.templateText).not.toContain('应聘门店：旧门店');
+    expect(result.bookingChecklist.templateText).not.toContain('应聘岗位：旧岗位');
     expect(result.bookingChecklist.missingFields).toContain('面试时间');
     // 已知字段不应再出现在 missingFields 里
     expect(result.bookingChecklist.missingFields).not.toContain('姓名');
@@ -410,6 +463,7 @@ describe('buildInterviewPrecheckTool', () => {
     // 已知字段涉及的枚举不应再返回；当所有相关枚举均无需提示时，整个 enumHints 会被 stripNullish 移除
     expect(result.bookingChecklist.enumHints).toBeUndefined();
     expect(result.nextAction).toBe('collect_fields');
+    expect(result._fixedReply).toBe(result.bookingChecklist.templateText);
   });
 
   it('should render interview template in fixed checklist format with core fields first', async () => {
@@ -427,13 +481,139 @@ describe('buildInterviewPrecheckTool', () => {
     const idxPhone = text.indexOf('联系方式：');
     const idxGender = text.indexOf('性别：');
     const idxAge = text.indexOf('年龄：');
+    const idxInterviewTime = text.indexOf('面试时间：');
     const idxStore = text.indexOf('应聘门店：');
 
     expect(idxName).toBeGreaterThan(-1);
     expect(idxPhone).toBeGreaterThan(idxName);
     expect(idxGender).toBeGreaterThan(idxPhone);
     expect(idxAge).toBeGreaterThan(idxGender);
-    expect(idxStore).toBeGreaterThan(idxAge);
+    expect(idxInterviewTime).toBeGreaterThan(idxAge);
+    expect(idxStore).toBeGreaterThan(idxInterviewTime);
+  });
+
+  it('should expose latest API payload guide and extra collection hints for supplier contract', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: {
+            remark: '需提供上海户籍、身高170以上、体重不超过70kg，并上传简历',
+          },
+          interviewProcess: {
+            interviewSupplement: [
+              { interviewSupplementId: 501, interviewSupplement: '健康证类型' },
+              { interviewSupplementId: 502, interviewSupplement: '过往公司+岗位+年限' },
+            ],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({ jobId: 100 });
+
+    expect(result.success).toBe(true);
+    expect(result.screeningCriteria).toEqual(
+      expect.objectContaining({
+        householdRegisterProvince: expect.stringContaining('上海户籍'),
+        height: expect.stringContaining('身高170以上'),
+        weight: expect.stringContaining('体重不超过70kg'),
+        resume: expect.stringContaining('上传简历'),
+      }),
+    );
+    expect(result.screeningCriteria.experience).toBeUndefined();
+    expect(result.bookingChecklist.missingFields).toEqual(
+      expect.arrayContaining([
+        '健康证类型',
+        '户籍省份',
+        '身高',
+        '体重',
+        '简历附件',
+        '过往公司+岗位+年限',
+      ]),
+    );
+    expect(result.bookingChecklist.enumHints.healthCertificateTypes).toEqual([
+      '食品健康证',
+      '零售健康证',
+      '其他健康证',
+    ]);
+    expect(result.bookingChecklist.enumHints.education).not.toContain('不限');
+    expect(result.bookingChecklist.apiPayloadGuide.enumMappings).toEqual(
+      expect.objectContaining({
+        genderId: expect.objectContaining({ 1: '男', 2: '女' }),
+        hasHealthCertificate: expect.objectContaining({ 1: '有', 2: '无但接受办理健康证' }),
+        healthCertificateTypes: expect.objectContaining({ 1: '食品健康证' }),
+        educationId: expect.objectContaining({ 2: '本科' }),
+        operateType: { 6: 'ai导入' },
+      }),
+    );
+    expect(result.bookingChecklist.apiPayloadGuide.enumMappings.educationId[1]).toBeUndefined();
+    expect(result.bookingChecklist.customerLabelDefinitions).toEqual([
+      { labelId: 501, labelName: '健康证类型', name: '健康证类型' },
+      { labelId: 502, labelName: '过往公司+岗位+年限', name: '过往公司+岗位+年限' },
+    ]);
+  });
+
+  it('should canonicalize overlapping fields and avoid treating pure supplements as screening thresholds', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: {
+            basicPersonalRequirements: {
+              minAge: 18,
+              maxAge: 50,
+              genderRequirement: '男性,女性',
+            },
+            certificate: {
+              education: '中专\\技校\\职高',
+              healthCertificate: '食品健康证',
+            },
+            remark: null,
+          },
+          interviewProcess: {
+            interviewSupplement: [
+              { interviewSupplementId: 4, interviewSupplement: '身高' },
+              { interviewSupplementId: 50, interviewSupplement: '体重' },
+              { interviewSupplementId: 13, interviewSupplement: '有无健康证' },
+              { interviewSupplementId: 3, interviewSupplement: '籍贯' },
+              { interviewSupplementId: 320, interviewSupplement: '联系方式' },
+            ],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({ jobId: 100 });
+
+    expect(result.success).toBe(true);
+    expect(result.screeningCriteria).toEqual(
+      expect.objectContaining({
+        age: '18-50岁',
+        education: '中专、技校、职高',
+        healthCertificate: '食品健康证',
+      }),
+    );
+    expect(result.screeningCriteria.gender).toBeUndefined();
+    expect(result.screeningCriteria.height).toBeUndefined();
+    expect(result.screeningCriteria.weight).toBeUndefined();
+    expect(result.screeningCriteria.householdRegisterProvince).toBeUndefined();
+
+    expect(result.bookingChecklist.requiredFields).toEqual(
+      expect.arrayContaining([
+        '联系电话',
+        '健康证情况',
+        '户籍省份',
+        '身高',
+        '体重',
+      ]),
+    );
+    expect(result.bookingChecklist.requiredFields).not.toContain('联系方式');
+    expect(result.bookingChecklist.requiredFields).not.toContain('有无健康证');
+    expect(result.bookingChecklist.requiredFields).not.toContain('籍贯');
+    expect(result.bookingChecklist.missingFields.filter((field: string) => field === '健康证情况')).toHaveLength(1);
+    expect(result.bookingChecklist.templateText).toContain('联系方式：');
+    expect(result.bookingChecklist.templateText).toContain('籍贯/户籍：');
+
+    expect(result.bookingChecklist.apiPayloadGuide.candidateCollectFields).toBeUndefined();
   });
 
   it('should mark same-day as unavailable after the latest end time', async () => {
@@ -465,6 +645,7 @@ describe('buildInterviewPrecheckTool', () => {
       reason: expect.stringContaining('18:00'),
     });
     expect(result.nextAction).toBe('date_unavailable');
+    expect(result._fixedReply).toBeUndefined();
   });
 
   it('should mark same-day as available when now is before earliest window start and deadline not passed', async () => {

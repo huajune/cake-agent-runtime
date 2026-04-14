@@ -105,7 +105,7 @@ export default function StageGoalsSection({ config }: Props) {
       <div className={styles.sectionHeader}>
         <h2 className={styles.sectionTitle}>阶段目标</h2>
         <p className={styles.sectionDesc}>
-          定义候选人生命周期的 5 个阶段，每个阶段的目标和策略将作为工具上下文传递给 AI
+          只定义阶段目标、切换信号和 CTA 偏好。不要在这里重复主体提示词中已经稳定定义的查岗、地理解析、预约成功判定等全局规则
         </p>
       </div>
 

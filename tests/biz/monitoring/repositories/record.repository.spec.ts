@@ -404,6 +404,36 @@ describe('MonitoringRecordRepository', () => {
       });
     });
 
+    it('should return zero aggregate when RPC returns null data without error', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      mockSupabaseClient.rpc.mockResolvedValue({ data: null, error: null });
+
+      const result = await repository.aggregateHourlyStats(new Date(), new Date());
+
+      expect(result).toEqual({
+        messageCount: 0,
+        successCount: 0,
+        failureCount: 0,
+        successRate: 0,
+        avgDuration: 0,
+        minDuration: 0,
+        maxDuration: 0,
+        p50Duration: 0,
+        p95Duration: 0,
+        p99Duration: 0,
+        avgAiDuration: 0,
+        avgSendDuration: 0,
+        activeUsers: 0,
+        activeChats: 0,
+        totalTokenUsage: 0,
+        fallbackCount: 0,
+        fallbackSuccessCount: 0,
+        scenarioStats: {},
+        toolStats: {},
+      });
+    });
+
     it('should return mapped aggregated stats', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 

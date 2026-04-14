@@ -61,8 +61,14 @@ const inputSchema = z.object({
   projectIdList: z.array(z.number().int()).optional().default([]).describe('项目ID列表'),
   jobIdList: z.array(z.number().int()).optional().default([]).describe('岗位ID列表'),
 
-  userLatitude: z.number().optional().describe('用户纬度（通过 geocode 工具或位置分享获取）'),
-  userLongitude: z.number().optional().describe('用户经度（通过 geocode 工具或位置分享获取）'),
+  location: z
+    .object({
+      longitude: z.number().optional().describe('经度（通过 geocode 工具或位置分享获取）'),
+      latitude: z.number().optional().describe('纬度（通过 geocode 工具或位置分享获取）'),
+      range: z.number().int().optional().describe('位置筛选范围，单位米'),
+    })
+    .optional()
+    .describe('位置筛选条件'),
 
   responseFormat: z
     .array(z.enum(['markdown', 'rawData']))
@@ -1159,7 +1165,7 @@ const logger = new Logger('duliday_job_list');
 
 const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，按需获取岗位信息。
 筛选条件：城市、区域、品牌、门店、岗位类型、岗位ID
-距离过滤：传入 userLatitude + userLongitude 后，自动计算门店距离并按业务阈值过滤，结果按距离排序
+位置筛选：传入 location.longitude / location.latitude / location.range 后，可启用位置筛选；若提供经纬度，工具会继续展示距离并按业务阈值过滤、排序
 规则摘要：会结合岗位结构化字段与备注提炼推荐阶段要点，但不负责真正提交预约
 数据开关：
 - includeBasicInfo（默认true）：品牌、门店、地址等基本信息
@@ -1184,8 +1190,7 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
         storeNameList = [],
         jobCategoryList = [],
         jobIdList = [],
-        userLatitude,
-        userLongitude,
+        location,
         responseFormat = ['markdown'],
         includeBasicInfo = true,
         includeJobSalary = false,
@@ -1212,6 +1217,7 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
           storeNameList,
           jobCategoryList,
           jobIdList,
+          location,
           options,
         };
         try {
@@ -1271,7 +1277,9 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
           }
 
           // 距离计算 + 阈值过滤
-          const hasUserCoords = userLatitude != null && userLongitude != null;
+          const locationLatitude = location?.latitude;
+          const locationLongitude = location?.longitude;
+          const hasUserCoords = locationLatitude != null && locationLongitude != null;
           const distanceThreshold = context.thresholds?.find(
             (t) => t.flag === 'max_recommend_distance_km',
           );
@@ -1321,8 +1329,8 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
               const store = job.basicInfo?.storeInfo;
               if (store?.latitude != null && store?.longitude != null) {
                 job._distanceKm = haversineDistance(
-                  userLatitude!,
-                  userLongitude!,
+                  locationLatitude!,
+                  locationLongitude!,
                   Number(store.latitude),
                   Number(store.longitude),
                 );

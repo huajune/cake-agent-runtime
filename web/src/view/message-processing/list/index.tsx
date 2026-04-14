@@ -196,7 +196,7 @@ export default function MessageProcessingPage() {
                 gap: '6px',
               }}>
                 <span style={{ color: '#c7d2fe' }}>—</span>
-                已加载全部 {stats.total} 条记录
+                已加载全部 {stats.total} 条请求
                 <span style={{ color: '#c7d2fe' }}>—</span>
               </div>
             ) : null

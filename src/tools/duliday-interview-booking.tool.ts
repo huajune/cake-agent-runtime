@@ -1,23 +1,42 @@
 /**
  * DuLiDay 面试预约工具
  *
- * 为求职者预约面试，需要提供完整的个人信息和岗位信息。
+ * 为求职者预约面试，需要提供与海绵 supplier/entryUser 契约一致的字段。
  */
 
 import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
+import type { InterviewBookingCustomerLabel, JobDetail } from '@sponge/sponge.types';
+import {
+  getSpongeEducationLabelById,
+  getSpongeGenderLabelById,
+  getSpongeHealthCertificateLabelById,
+  getSpongeHealthCertificateTypeLabels,
+  getSpongeProvinceNameById,
+  SPONGE_EDUCATION_MAPPING,
+  SPONGE_GENDER_MAPPING,
+  SPONGE_HEALTH_CERTIFICATE_MAPPING,
+  SPONGE_HEALTH_CERTIFICATE_TYPE_MAPPING,
+  SPONGE_OPERATE_TYPE_MAPPING,
+} from '@sponge/sponge.enums';
+import {
+  extractInterviewSupplementDefinitions,
+  SpongeInterviewSupplementDefinition,
+} from '@sponge/sponge-job.util';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
-import { ToolBuilder } from '@shared-types/tool.types';
-import {
-  API_BOOKING_SUBMISSION_FIELDS,
-  getAvailableEducations,
-  getEducationIdByName,
-} from '@tools/duliday/job-booking.contract';
+import { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
+import { API_BOOKING_REQUIRED_PAYLOAD_FIELDS } from '@tools/duliday/job-booking.contract';
 
 const logger = new Logger('duliday_interview_booking');
+const INTERVIEW_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+
+const supplementAnswersSchema = z
+  .record(z.string(), z.string())
+  .optional()
+  .describe('岗位补充标签回答，key 必须是标签名，例如 爱好、身份。标准字段对应标签会自动回填');
 
 export interface InterviewBookingNotificationInfo {
   candidateName: string;
@@ -41,120 +60,282 @@ export function buildInterviewBookingTool(
   return (context) => {
     return tool({
       description:
-        '预约面试。仅在候选人明确要报名/约面、且岗位与面试时间已确认时调用。这个工具只负责接口字段校验与提交，不负责解释岗位规则或决定现在该追问哪些资料。',
+        '预约面试。仅在候选人明确要报名/约面、岗位已确认、并且预约接口所需字段已收集齐时调用。入参必须与 supplier/entryUser 契约保持一致。',
       inputSchema: z.object({
-        name: z.string().describe('求职者姓名'),
-        phone: z.string().describe('联系电话'),
-        age: z.string().describe('年龄，以字符串形式提供'),
-        genderId: z.number().describe('性别ID：1=男，2=女'),
-        jobId: z.number().describe('岗位ID，从岗位列表或岗位详情中获取'),
+        jobId: z.number().int().describe('岗位ID'),
         interviewTime: z
           .string()
-          .describe('确认后的面试时间，格式：YYYY-MM-DD HH:mm:ss，例如：2025-07-22 13:00:00'),
-        education: z
-          .string()
-          .describe('学历，如：初中、高中、大专、本科等。属于预约提交字段，确认需要时再填写'),
+          .describe('面试时间，格式必须为 YYYY-MM-DD HH:mm:ss，例如 2026-04-20 14:00:00'),
+        name: z.string().describe('姓名'),
+        phone: z.string().describe('手机号'),
+        age: z.number().int().describe('年龄，整数，范围 10-100'),
+        genderId: z.number().int().describe('性别ID：1=男，2=女'),
+        operateType: z
+          .number()
+          .int()
+          .describe(
+            '页面来源：1=用户名单新建，2=用户名单批量导入，3=在招岗位列表预约，4=岗位详情页预约，5=条件匹配列表页，6=ai导入',
+          ),
+        avatar: z.string().optional().describe('头像 URL'),
+        householdRegisterProvinceId: z.number().int().optional().describe('户籍省 ID'),
+        height: z.number().optional().describe('身高，单位 cm'),
+        weight: z.number().optional().describe('体重，单位 kg'),
         hasHealthCertificate: z
           .number()
+          .int()
+          .optional()
+          .describe('是否有健康证：1=有，2=无但接受办理，3=无且不接受办理'),
+        healthCertificateTypes: z
+          .array(z.number().int())
+          .optional()
+          .describe('健康证类型数组：1=食品健康证，2=零售健康证，3=其他健康证'),
+        educationId: z
+          .number()
+          .int()
+          .optional()
           .describe(
-            '是否有健康证：1=有，2=无但接受办理健康证，3=无且不接受办理健康证。属于预约提交字段，确认需要时再填写',
+            '学历ID：1=不限，2=本科，3=大专，4=高中，5=初中，6=硕士，7=博士，8=中专技校职高，9=初中以下，10=高职',
           ),
-        brandName: z.string().optional().describe('品牌名称，从岗位列表结果中获取，用于通知展示'),
-        storeName: z.string().optional().describe('门店名称，从岗位列表结果中获取，用于通知展示'),
-        jobName: z.string().optional().describe('岗位名称，从岗位列表结果中获取，用于通知展示'),
+        uploadResume: z.string().optional().describe('简历附件 URL'),
+        supplementAnswers: supplementAnswersSchema,
+        logId: z.number().int().optional().describe('智能识别日志 ID'),
+        brandName: z.string().optional().describe('品牌名称，仅用于通知展示'),
+        storeName: z.string().optional().describe('门店名称，仅用于通知展示'),
+        jobName: z.string().optional().describe('岗位名称，仅用于通知展示'),
       }),
       execute: async ({
+        jobId,
+        interviewTime,
         name,
         phone,
         age,
         genderId,
-        jobId,
-        interviewTime,
-        education,
+        operateType,
+        avatar,
+        householdRegisterProvinceId,
+        height,
+        weight,
         hasHealthCertificate,
-        brandName: inputBrandName,
-        storeName: inputStoreName,
-        jobName: inputJobName,
+        healthCertificateTypes,
+        educationId,
+        uploadResume,
+        supplementAnswers,
+        logId,
+        brandName,
+        storeName,
+        jobName,
       }) => {
         logger.log(`预约面试: ${name}, jobId=${jobId}`);
 
-        // 验证必填字段
-        const apiSubmissionValues = [
-          { field: '姓名', value: name },
-          { field: '联系电话', value: phone },
-          { field: '年龄', value: age },
-          { field: '性别', value: genderId },
-          { field: '面试时间', value: interviewTime },
-          { field: '学历', value: education },
-          { field: '健康证情况', value: hasHealthCertificate },
-        ];
-        const missingFields = apiSubmissionValues
+        const missingFields = [
+          { field: 'jobId', value: jobId },
+          { field: 'interviewTime', value: interviewTime },
+          { field: 'name', value: name },
+          { field: 'phone', value: phone },
+          { field: 'age', value: age },
+          { field: 'genderId', value: genderId },
+          { field: 'operateType', value: operateType },
+        ]
           .filter(({ value }) => value == null || value === '')
           .map(({ field }) => field);
-
-        if (!jobId) missingFields.push('岗位ID');
 
         if (missingFields.length > 0) {
           return {
             success: false,
             errorType: 'missing_fields',
             missingFields,
-            apiSubmissionFields: [...API_BOOKING_SUBMISSION_FIELDS],
-            error: `缺少必填信息：${missingFields.join('、')}`,
+            requiredPayloadFields: [...API_BOOKING_REQUIRED_PAYLOAD_FIELDS],
+            error: `缺少预约接口必填字段：${missingFields.join('、')}`,
           };
         }
 
-        // 验证面试时间格式
-        const timeRegex = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
-        if (!timeRegex.test(interviewTime)) {
+        if (!INTERVIEW_TIME_REGEX.test(interviewTime)) {
           return {
             success: false,
             errorType: 'invalid_interview_time',
-            error: '面试时间格式错误，请使用 YYYY-MM-DD HH:mm:ss 格式',
+            error: 'interviewTime 格式错误，请使用 YYYY-MM-DD HH:mm:ss',
           };
         }
 
-        // 转换学历名称为 ID
-        const educationId = getEducationIdByName(education);
-        if (!educationId) {
-          const availableEducations = getAvailableEducations();
-          const available = availableEducations.join('、');
+        if (!Number.isInteger(age) || age < 10 || age > 100) {
           return {
             success: false,
-            errorType: 'invalid_education',
-            availableEducations,
-            error: `无效的学历：${education}，支持：${available}`,
+            errorType: 'invalid_age',
+            error: 'age 必须是 10-100 之间的整数',
           };
         }
 
-        const requestInfo = {
+        if (!(genderId in SPONGE_GENDER_MAPPING)) {
+          return {
+            success: false,
+            errorType: 'invalid_gender_id',
+            error: 'genderId 仅支持 1=男、2=女',
+          };
+        }
+
+        if (!(operateType in SPONGE_OPERATE_TYPE_MAPPING)) {
+          return {
+            success: false,
+            errorType: 'invalid_operate_type',
+            error: 'operateType 仅支持 1-6，ai导入请传 6',
+          };
+        }
+
+        if (educationId != null && !(educationId in SPONGE_EDUCATION_MAPPING)) {
+          return {
+            success: false,
+            errorType: 'invalid_education_id',
+            availableEducationIds: SPONGE_EDUCATION_MAPPING,
+            error: `educationId 无效：${educationId}`,
+          };
+        }
+
+        if (
+          hasHealthCertificate != null &&
+          !(hasHealthCertificate in SPONGE_HEALTH_CERTIFICATE_MAPPING)
+        ) {
+          return {
+            success: false,
+            errorType: 'invalid_health_certificate',
+            error: 'hasHealthCertificate 仅支持 1=有、2=无但接受办理、3=无且不接受办理',
+          };
+        }
+
+        if (
+          healthCertificateTypes?.some(
+            (value) =>
+              !Number.isInteger(value) || !(value in SPONGE_HEALTH_CERTIFICATE_TYPE_MAPPING),
+          )
+        ) {
+          return {
+            success: false,
+            errorType: 'invalid_health_certificate_types',
+            error: 'healthCertificateTypes 仅支持 1=食品健康证、2=零售健康证、3=其他健康证',
+          };
+        }
+
+        const genderLabel = getSpongeGenderLabelById(genderId) ?? undefined;
+        const ageText = normalizeAgeText(age);
+        let requestInfo: Record<string, unknown> = {
+          jobId,
+          interviewTime,
           name,
           phone,
           age,
           genderId,
-          education,
+          operateType,
+          avatar,
+          householdRegisterProvinceId,
+          height,
+          weight,
           hasHealthCertificate,
-          jobId,
-          interviewTime,
+          healthCertificateTypes,
+          educationId,
+          uploadResume,
+          supplementAnswers,
+          logId,
         };
-        const genderLabel = toGenderLabel(genderId);
-        const ageText = normalizeAgeText(age);
 
         try {
-          const result = await spongeService.bookInterview({
+          const { jobs } = await spongeService.fetchJobs({
+            jobIdList: [jobId],
+            pageNum: 1,
+            pageSize: 1,
+            options: {
+              includeBasicInfo: true,
+              includeInterviewProcess: true,
+            },
+          });
+
+          const job = jobs[0];
+          if (!job?.basicInfo) {
+            return {
+              success: false,
+              errorType: 'job_not_found',
+              error: `未找到 jobId=${jobId} 对应的岗位，无法回填 customerLabelList`,
+            };
+          }
+
+          const customerLabelResolution = buildCustomerLabelList({
+            supplementDefinitions: extractInterviewSupplementDefinitions(job),
+            context,
             name,
             phone,
             age,
             genderId,
+            interviewTime,
+            householdRegisterProvinceId,
+            height,
+            weight,
+            hasHealthCertificate,
+            healthCertificateTypes,
+            educationId,
+            uploadResume,
+            supplementAnswers,
+          });
+
+          if (customerLabelResolution.success === false) {
+            return {
+              success: false,
+              errorType: customerLabelResolution.errorType,
+              error: customerLabelResolution.error,
+              missingSupplementLabels: customerLabelResolution.missingSupplementLabels,
+              invalidSupplementLabels: customerLabelResolution.invalidSupplementLabels,
+              customerLabelDefinitions: customerLabelResolution.customerLabelDefinitions,
+            };
+          }
+
+          const resolvedBrandName =
+            brandName || normalizeText(job.basicInfo.brandName) || undefined;
+          const resolvedStoreName = storeName || resolveStoreName(job) || undefined;
+          const resolvedJobName =
+            jobName ||
+            normalizeText(job.basicInfo.jobName) ||
+            normalizeText(job.basicInfo.jobNickName) ||
+            undefined;
+          requestInfo = {
             jobId,
             interviewTime,
-            educationId,
+            name,
+            phone,
+            age,
+            genderId,
+            operateType,
+            avatar,
+            householdRegisterProvinceId,
+            height,
+            weight,
             hasHealthCertificate,
+            healthCertificateTypes,
+            educationId,
+            uploadResume,
+            customerLabelList: customerLabelResolution.customerLabelList,
+            supplementAnswers,
+            logId,
+          };
+
+          const result = await spongeService.bookInterview({
+            jobId,
+            interviewTime,
+            name,
+            phone,
+            age,
+            genderId,
+            operateType,
+            avatar,
+            householdRegisterProvinceId,
+            height,
+            weight,
+            hasHealthCertificate,
+            healthCertificateTypes,
+            educationId,
+            uploadResume,
+            customerLabelList: customerLabelResolution.customerLabelList,
+            logId,
           });
 
           context.bookingSucceeded = result.success;
 
-          // 预约失败：自动暂停托管，避免继续自动回复
           if (!result.success) {
             void userHostingService.pauseUser(context.sessionId).then(() => {
               logger.log(`[自动暂停] 预约失败，已暂停托管: chatId=${context.sessionId}`);
@@ -182,9 +363,9 @@ export function buildInterviewBookingTool(
               genderLabel,
               ageText,
               interviewTime,
-              brandName: inputBrandName,
-              storeName: inputStoreName,
-              jobName: inputJobName,
+              brandName: resolvedBrandName,
+              storeName: resolvedStoreName,
+              jobName: resolvedJobName,
               jobId,
               toolOutput: toolResult,
               botImId: context.botImId,
@@ -197,7 +378,6 @@ export function buildInterviewBookingTool(
           logger.error('预约面试失败', err);
           context.bookingSucceeded = false;
 
-          // 预约异常：自动暂停托管，避免继续自动回复
           void userHostingService.pauseUser(context.sessionId).then(() => {
             logger.log(`[自动暂停] 预约异常，已暂停托管: chatId=${context.sessionId}`);
           });
@@ -219,9 +399,9 @@ export function buildInterviewBookingTool(
               genderLabel,
               ageText,
               interviewTime,
-              brandName: inputBrandName,
-              storeName: inputStoreName,
-              jobName: inputJobName,
+              brandName,
+              storeName,
+              jobName,
               jobId,
               toolOutput: toolResult,
               botImId: context.botImId,
@@ -236,6 +416,195 @@ export function buildInterviewBookingTool(
   };
 }
 
+interface BuildCustomerLabelListParams {
+  supplementDefinitions: SpongeInterviewSupplementDefinition[];
+  context: ToolBuildContext;
+  name: string;
+  phone: string;
+  age: number;
+  genderId: number;
+  interviewTime: string;
+  householdRegisterProvinceId?: number;
+  height?: number;
+  weight?: number;
+  hasHealthCertificate?: number;
+  healthCertificateTypes?: number[];
+  educationId?: number;
+  uploadResume?: string;
+  supplementAnswers?: Record<string, string>;
+}
+
+type BuildCustomerLabelListResult =
+  | {
+      success: true;
+      customerLabelList: InterviewBookingCustomerLabel[];
+      customerLabelDefinitions: SpongeInterviewSupplementDefinition[];
+    }
+  | {
+      success: false;
+      errorType: 'missing_customer_label_values' | 'invalid_customer_label_values';
+      error: string;
+      missingSupplementLabels?: string[];
+      invalidSupplementLabels?: string[];
+      customerLabelDefinitions: SpongeInterviewSupplementDefinition[];
+    };
+
+function buildCustomerLabelList(
+  params: BuildCustomerLabelListParams,
+): BuildCustomerLabelListResult {
+  const definitions = params.supplementDefinitions;
+  if (definitions.length === 0) {
+    return {
+      success: true,
+      customerLabelList: [],
+      customerLabelDefinitions: [],
+    };
+  }
+
+  const customerLabelList: InterviewBookingCustomerLabel[] = [];
+  const missingSupplementLabels: string[] = [];
+  const invalidSupplementLabels: string[] = [];
+
+  for (const definition of definitions) {
+    const value = resolveCustomerLabelValue(definition.labelName, params);
+    if (!value) {
+      missingSupplementLabels.push(definition.labelName);
+      continue;
+    }
+    if (value.length > 51) {
+      invalidSupplementLabels.push(definition.labelName);
+      continue;
+    }
+
+    customerLabelList.push({
+      labelId: definition.labelId,
+      labelName: definition.labelName,
+      name: definition.labelName,
+      value,
+    });
+  }
+
+  if (missingSupplementLabels.length > 0) {
+    return {
+      success: false,
+      errorType: 'missing_customer_label_values',
+      error: `岗位补充标签缺少取值：${missingSupplementLabels.join('、')}`,
+      missingSupplementLabels,
+      customerLabelDefinitions: definitions,
+    };
+  }
+
+  if (invalidSupplementLabels.length > 0) {
+    return {
+      success: false,
+      errorType: 'invalid_customer_label_values',
+      error: `岗位补充标签取值超过 51 字符：${invalidSupplementLabels.join('、')}`,
+      invalidSupplementLabels,
+      customerLabelDefinitions: definitions,
+    };
+  }
+
+  return {
+    success: true,
+    customerLabelList,
+    customerLabelDefinitions: definitions,
+  };
+}
+
+function resolveCustomerLabelValue(
+  labelName: string,
+  params: BuildCustomerLabelListParams,
+): string | null {
+  const directAnswer = getSupplementAnswerValue(params.supplementAnswers, labelName);
+  if (directAnswer) return directAnswer;
+
+  if (/学历/.test(labelName)) {
+    return params.educationId != null ? getSpongeEducationLabelById(params.educationId) : null;
+  }
+
+  if (/(籍贯|户籍)/.test(labelName)) {
+    return params.householdRegisterProvinceId != null
+      ? getSpongeProvinceNameById(params.householdRegisterProvinceId)
+      : null;
+  }
+
+  if (/身高/.test(labelName)) return formatNumericValue(params.height);
+  if (/体重/.test(labelName)) return formatNumericValue(params.weight);
+
+  if (/健康证情况/.test(labelName)) {
+    return params.hasHealthCertificate != null
+      ? getSpongeHealthCertificateLabelById(params.hasHealthCertificate)
+      : null;
+  }
+
+  if (/健康证类型/.test(labelName)) {
+    const labels = getSpongeHealthCertificateTypeLabels(params.healthCertificateTypes);
+    return labels.length > 0 ? labels.join('、') : null;
+  }
+
+  if (/身份/.test(labelName)) {
+    return resolveIdentityLabel(params.context);
+  }
+
+  if (/姓名/.test(labelName)) return normalizeText(params.name);
+  if (/电话|联系方式/.test(labelName)) return normalizeText(params.phone);
+  if (/性别/.test(labelName)) return getSpongeGenderLabelById(params.genderId);
+  if (/年龄/.test(labelName)) return String(params.age);
+  if (/面试时间/.test(labelName)) return normalizeText(params.interviewTime);
+  if (/简历/.test(labelName)) return normalizeText(params.uploadResume);
+
+  return null;
+}
+
+function getSupplementAnswerValue(
+  supplementAnswers: Record<string, string> | undefined,
+  labelName: string,
+): string | null {
+  if (!supplementAnswers) return null;
+
+  const candidateKeys = [labelName, ...getSupplementAnswerAliases(labelName)];
+  for (const key of candidateKeys) {
+    const value = normalizeText(supplementAnswers[key]);
+    if (value) return value;
+  }
+  return null;
+}
+
+function getSupplementAnswerAliases(labelName: string): string[] {
+  if (/(籍贯|户籍)/.test(labelName)) return ['籍贯', '户籍', '户籍省份'];
+  if (/身份/.test(labelName)) return ['身份', '是否学生'];
+  if (/健康证情况/.test(labelName)) return ['健康证情况', '健康证'];
+  if (/健康证类型/.test(labelName)) return ['健康证类型'];
+  return [];
+}
+
+function resolveIdentityLabel(context: ToolBuildContext): string | null {
+  const interviewInfo = context.sessionFacts?.interview_info;
+  if (interviewInfo?.is_student != null) {
+    return interviewInfo.is_student ? '学生' : '社会人士';
+  }
+  if (context.profile?.is_student != null) {
+    return context.profile.is_student ? '学生' : '社会人士';
+  }
+  return null;
+}
+
+function resolveStoreName(job: JobDetail): string | null {
+  const storeInfo =
+    job.basicInfo?.storeInfo && typeof job.basicInfo.storeInfo === 'object'
+      ? (job.basicInfo.storeInfo as Record<string, unknown>)
+      : null;
+  return normalizeText(storeInfo?.storeName) || normalizeText(job.basicInfo?.storeName);
+}
+
+function normalizeText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function formatNumericValue(value: number | undefined): string | null {
+  return typeof value === 'number' && Number.isFinite(value) ? String(value) : null;
+}
+
 async function sendInterviewBookingNotification(
   bookingInfo: InterviewBookingNotificationInfo,
   privateChatNotifier: PrivateChatMonitorNotifierService,
@@ -247,13 +616,6 @@ async function sendInterviewBookingNotification(
   }
 }
 
-function toGenderLabel(genderId: number): string | undefined {
-  if (genderId === 1) return '男';
-  if (genderId === 2) return '女';
-  return undefined;
-}
-
-function normalizeAgeText(age: string): string {
-  const text = age.trim();
-  return /岁$/.test(text) ? text : `${text}岁`;
+function normalizeAgeText(age: number): string {
+  return `${age}岁`;
 }

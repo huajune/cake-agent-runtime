@@ -15,11 +15,12 @@ describe('SimpleMergeService', () => {
   };
 
   const mockMessageQueue = {
-    getJob: jest.fn(),
     add: jest.fn(),
   };
 
   const mockRedisService = {
+    setex: jest.fn(),
+    get: jest.fn(),
     rpush: jest.fn(),
     expire: jest.fn(),
     llen: jest.fn(),
@@ -68,8 +69,9 @@ describe('SimpleMergeService', () => {
     mockSystemConfigService.onAgentReplyConfigChange.mockImplementation(() => {});
     mockSystemConfigService.getAgentReplyConfig.mockResolvedValue({
       initialMergeWindowMs: 2000,
-      maxMergedMessages: 5,
     });
+    mockRedisService.setex.mockResolvedValue(undefined);
+    mockRedisService.get.mockResolvedValue(String(Date.now() - 3000));
     mockRedisService.rpush.mockResolvedValue(1);
     mockRedisService.expire.mockResolvedValue(1);
     mockRedisService.llen.mockResolvedValue(1);
@@ -78,7 +80,6 @@ describe('SimpleMergeService', () => {
       set: jest.fn().mockResolvedValue('OK'),
       eval: jest.fn().mockResolvedValue(1),
     });
-    mockMessageQueue.getJob.mockResolvedValue(null);
     mockMessageQueue.add.mockResolvedValue({ id: 'job-123' });
   });
 
@@ -90,7 +91,6 @@ describe('SimpleMergeService', () => {
     it('should load config from Supabase on init', async () => {
       mockSystemConfigService.getAgentReplyConfig.mockResolvedValue({
         initialMergeWindowMs: 3000,
-        maxMergedMessages: 8,
       });
 
       await service.onModuleInit();
@@ -109,78 +109,49 @@ describe('SimpleMergeService', () => {
 
   describe('addMessage', () => {
     it('should push message to Redis and create delayed job', async () => {
-      mockMessageQueue.getJob.mockResolvedValue(null);
       mockRedisService.llen.mockResolvedValue(1);
 
       await service.addMessage(validMessageData);
 
       expect(mockRedisService.rpush).toHaveBeenCalled();
       expect(mockRedisService.expire).toHaveBeenCalled();
+      expect(mockRedisService.setex).toHaveBeenCalledWith(
+        'wecom:message:last-message-at:chat-123',
+        300,
+        expect.any(String),
+      );
       expect(mockMessageQueue.add).toHaveBeenCalledWith(
         'process',
         { chatId: 'chat-123' },
         expect.objectContaining({
-          delay: expect.any(Number),
+          delay: 2000,
+          jobId: 'chat-123:msg-123',
         }),
       );
     });
 
-    it('should remove waiting job and create new one for fresh delay', async () => {
-      mockJob.getState.mockResolvedValue('waiting');
-      mockJob.remove.mockResolvedValue(undefined);
-      mockMessageQueue.getJob.mockResolvedValue(mockJob);
-      mockRedisService.llen.mockResolvedValue(1);
-
-      await service.addMessage(validMessageData);
-
-      expect(mockJob.remove).toHaveBeenCalled();
-      expect(mockMessageQueue.add).toHaveBeenCalled();
-    });
-
-    it('should remove delayed job and create new one', async () => {
-      mockJob.getState.mockResolvedValue('delayed');
-      mockJob.remove.mockResolvedValue(undefined);
-      mockMessageQueue.getJob.mockResolvedValue(mockJob);
+    it('should create independent delayed checks for each new message', async () => {
       mockRedisService.llen.mockResolvedValue(2);
 
       await service.addMessage(validMessageData);
+      await service.addMessage({ ...validMessageData, messageId: 'msg-456' });
 
-      expect(mockJob.remove).toHaveBeenCalled();
-    });
-
-    it('should create new job with unique ID when existing job is active', async () => {
-      mockJob.getState.mockResolvedValue('active');
-      mockMessageQueue.getJob.mockResolvedValue(mockJob);
-      mockRedisService.llen.mockResolvedValue(1);
-
-      await service.addMessage(validMessageData);
-
-      expect(mockMessageQueue.add).toHaveBeenCalledWith(
+      expect(mockMessageQueue.add).toHaveBeenNthCalledWith(
+        1,
         'process',
         { chatId: 'chat-123' },
-        expect.objectContaining({
-          jobId: expect.stringContaining('chat-123:pending:'),
-        }),
+        expect.objectContaining({ jobId: 'chat-123:msg-123', delay: 2000 }),
       );
-    });
-
-    it('should set delay=0 when queue is full', async () => {
-      mockMessageQueue.getJob.mockResolvedValue(null);
-      mockRedisService.llen.mockResolvedValue(5); // maxMergedMessages default is 5
-
-      await service.onModuleInit(); // Initialize config
-
-      await service.addMessage(validMessageData);
-
-      expect(mockMessageQueue.add).toHaveBeenCalledWith(
+      expect(mockMessageQueue.add).toHaveBeenNthCalledWith(
+        2,
         'process',
-        expect.any(Object),
-        expect.objectContaining({ delay: 0 }),
+        { chatId: 'chat-123' },
+        expect.objectContaining({ jobId: 'chat-123:msg-456', delay: 2000 }),
       );
     });
 
     it('should handle job creation failure gracefully', async () => {
-      mockMessageQueue.getJob.mockRejectedValue(new Error('Queue error'));
+      mockMessageQueue.add.mockRejectedValue(new Error('Queue error'));
 
       await expect(service.addMessage(validMessageData)).resolves.not.toThrow();
     });
@@ -236,8 +207,9 @@ describe('SimpleMergeService', () => {
   });
 
   describe('checkAndProcessNewMessages', () => {
-    it('should create immediate job when pending messages exist', async () => {
+    it('should create follow-up job using remaining quiet window', async () => {
       mockRedisService.llen.mockResolvedValue(3);
+      mockRedisService.get.mockResolvedValue(String(Date.now() - 500));
       mockMessageQueue.add.mockResolvedValue({ id: 'retry-job' });
 
       const result = await service.checkAndProcessNewMessages('chat-123');
@@ -247,8 +219,8 @@ describe('SimpleMergeService', () => {
         'process',
         { chatId: 'chat-123' },
         expect.objectContaining({
-          delay: 0,
-          jobId: expect.stringContaining('chat-123:retry:'),
+          delay: expect.any(Number),
+          jobId: expect.stringContaining('chat-123:followup:'),
         }),
       );
     });
@@ -272,13 +244,30 @@ describe('SimpleMergeService', () => {
     });
   });
 
+  describe('isQuietWindowElapsed', () => {
+    it('should return false when the last message is still within quiet window', async () => {
+      mockRedisService.get.mockResolvedValue(String(Date.now() - 500));
+
+      const result = await service.isQuietWindowElapsed('chat-123');
+
+      expect(result).toBe(false);
+    });
+
+    it('should return true when the quiet window has elapsed', async () => {
+      mockRedisService.get.mockResolvedValue(String(Date.now() - 3000));
+
+      const result = await service.isQuietWindowElapsed('chat-123');
+
+      expect(result).toBe(true);
+    });
+  });
+
   describe('getStats', () => {
     it('should return current merge configuration stats', () => {
       const stats = service.getStats();
 
       expect(stats).toMatchObject({
         mergeDelayMs: expect.any(Number),
-        maxMergedMessages: expect.any(Number),
       });
     });
   });

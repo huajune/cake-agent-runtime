@@ -14,11 +14,13 @@ IMAGE_NAME="cake-agent-runtime"
 GIT_SHORT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo local)"
 TIMESTAMP="$(date +%Y%m%d%H%M%S)"
 IMAGE_TAG="${IMAGE_TAG:-${GIT_SHORT_SHA}-${TIMESTAMP}}"
-IMAGE_TAR="/tmp/${IMAGE_NAME}-${IMAGE_TAG}.tar"
-REMOTE_IMAGE_TAR="/tmp/${IMAGE_NAME}-${IMAGE_TAG}.tar"
+IMAGE_TAR="/tmp/${IMAGE_NAME}-${IMAGE_TAG}.tar.gz"
+REMOTE_IMAGE_TAR="/tmp/${IMAGE_NAME}-${IMAGE_TAG}.tar.gz"
 REMOTE_COMPOSE="/tmp/${IMAGE_NAME}-docker-compose.yml"
 REMOTE_SCRIPT="/tmp/${IMAGE_NAME}-deploy-remote.sh"
 RUNTIME_ENV_FILE=".env.production"
+GZIP_LEVEL="${DEPLOY_GZIP_LEVEL:-1}"
+RUN_TESTS="${DEPLOY_RUN_TESTS:-true}"
 
 read_env_value() {
   local key="$1"
@@ -54,17 +56,14 @@ echo "🔍 Running pre-deploy checks..."
 echo "  TypeScript type check..."
 pnpm exec tsc --noEmit
 
-echo "  Building web frontend..."
-API_GUARD_TOKEN="$API_GUARD_TOKEN" \
-NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
-NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
-pnpm run build:web
+echo "  Skipping duplicate local build steps (Docker build will compile frontend and backend)..."
 
-echo "  Building..."
-pnpm run build
-
-echo "  Running tests..."
-pnpm run test
+if [[ "$RUN_TESTS" == "true" ]]; then
+  echo "  Running tests..."
+  pnpm run test
+else
+  echo "  Skipping tests (DEPLOY_RUN_TESTS=${RUN_TESTS})"
+fi
 
 echo "✅ Pre-deploy checks passed."
 
@@ -80,13 +79,13 @@ docker build \
   .
 
 # ── Step 3: 导出并传输到服务器 ──────────────────────────────
-echo "📦 Exporting image..."
-docker save "${IMAGE_NAME}:${IMAGE_TAG}" -o "$IMAGE_TAR"
+echo "📦 Exporting image (gzip -${GZIP_LEVEL})..."
+docker save "${IMAGE_NAME}:${IMAGE_TAG}" | gzip -"${GZIP_LEVEL}" > "$IMAGE_TAR"
 
 echo "🚀 Uploading to $SSH_HOST... ($(du -h "$IMAGE_TAR" | cut -f1))"
-scp "$IMAGE_TAR" "${SSH_HOST}:${REMOTE_IMAGE_TAR}"
-scp docker-compose.yml "${SSH_HOST}:${REMOTE_COMPOSE}"
-scp scripts/deploy-remote.sh "${SSH_HOST}:${REMOTE_SCRIPT}"
+scp -C "$IMAGE_TAR" "${SSH_HOST}:${REMOTE_IMAGE_TAR}"
+scp -C docker-compose.yml "${SSH_HOST}:${REMOTE_COMPOSE}"
+scp -C scripts/deploy-remote.sh "${SSH_HOST}:${REMOTE_SCRIPT}"
 rm -f "$IMAGE_TAR"
 
 # ── Step 4: 服务器上加载镜像并部署 ──────────────────────────

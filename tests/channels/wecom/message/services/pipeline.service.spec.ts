@@ -15,6 +15,7 @@ import { DeliveryFailureError } from '@wecom/message/message.types';
 import { MessageType, ContactType, MessageSource } from '@enums/message-callback.enum';
 import { AlertLevel } from '@enums/alert.enum';
 import { FilterReason } from '@wecom/message/services/filter.service';
+import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 
 describe('MessagePipelineService', () => {
   let service: MessagePipelineService;
@@ -38,7 +39,7 @@ describe('MessagePipelineService', () => {
   };
 
   const mockImageDescriptionService = {
-    describeAndUpdateAsync: jest.fn(),
+    describeAndUpdateSync: jest.fn(),
   };
 
   const mockRunnerService = {
@@ -47,6 +48,15 @@ describe('MessagePipelineService', () => {
 
   const mockConfigService = {
     get: jest.fn().mockReturnValue(''),
+  };
+
+  const mockSystemConfigService = {
+    getSystemConfig: jest.fn().mockResolvedValue(undefined),
+    getAiReplyEnabled: jest.fn().mockResolvedValue(true),
+    getMessageMergeEnabled: jest.fn().mockResolvedValue(true),
+    getAgentReplyConfig: jest.fn().mockResolvedValue({}),
+    onAiReplyChange: jest.fn(),
+    onMessageMergeChange: jest.fn(),
   };
 
   const mockMonitoringService = {
@@ -64,6 +74,7 @@ describe('MessagePipelineService', () => {
   };
 
   const mockWecomObservabilityService = {
+    hasTrace: jest.fn().mockReturnValue(false),
     startTrace: jest.fn(),
     markHistoryStored: jest.fn(),
     markImagePrepared: jest.fn(),
@@ -118,6 +129,7 @@ describe('MessagePipelineService', () => {
         { provide: ImageDescriptionService, useValue: mockImageDescriptionService },
         { provide: AgentRunnerService, useValue: mockRunnerService },
         { provide: ConfigService, useValue: mockConfigService },
+        { provide: SystemConfigService, useValue: mockSystemConfigService },
         { provide: MessageTrackingService, useValue: mockMonitoringService },
         { provide: AlertNotifierService, useValue: mockAlertService },
         { provide: WecomMessageObservabilityService, useValue: mockWecomObservabilityService },
@@ -283,7 +295,7 @@ describe('MessagePipelineService', () => {
       );
       expect(mockDeliveryService.deliverReply).toHaveBeenCalledTimes(1);
       expect(mockMonitoringService.recordSuccess).not.toHaveBeenCalled();
-      expect(mockDeduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalled();
+      expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-123');
     });
 
     it('should classify agentMeta-only errors as agent alerts and include structured diagnostics', async () => {

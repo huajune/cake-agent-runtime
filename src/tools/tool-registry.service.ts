@@ -19,6 +19,7 @@ import { buildInterviewBookingTool } from './duliday-interview-booking.tool';
 import { buildGeocodeTool } from './geocode.tool';
 import { buildSaveImageDescriptionTool } from './save-image-description.tool';
 import { buildInviteToGroupTool } from './invite-to-group.tool';
+import { buildSendStoreLocationTool } from './send-store-location.tool';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
@@ -26,6 +27,7 @@ import { RoomService } from '@channels/wecom/room/room.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
+import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
 
 /**
  * 统一工具注册表
@@ -55,6 +57,7 @@ export class ToolRegistryService {
     geocodingService: GeocodingService,
     groupResolverService: GroupResolverService,
     roomService: RoomService,
+    messageSenderService: MessageSenderService,
     opsNotifier: OpsNotifierService,
     privateChatMonitorNotifier: PrivateChatMonitorNotifierService,
     private readonly chatSessionService: ChatSessionService,
@@ -82,7 +85,7 @@ export class ToolRegistryService {
       duliday_job_list: createToolDefinition({
         name: 'duliday_job_list',
         description:
-          '查询在招岗位列表（负责推荐阶段的数据查询与摘要；传入 userLatitude/userLongitude 后会按距离排序并按业务阈值过滤）',
+          '查询在招岗位列表（负责推荐阶段的数据查询与摘要；传入 location 后会做位置筛选，并基于经纬度按距离排序和按业务阈值过滤）',
         create: buildJobListTool(spongeService),
       }),
 
@@ -107,6 +110,12 @@ export class ToolRegistryService {
         name: 'geocode',
         description: '地理编码（将地名解析为标准化地址 + 经纬度；做附近推荐或距离过滤前优先调用）',
         create: buildGeocodeTool(geocodingService),
+      }),
+
+      send_store_location: createToolDefinition({
+        name: 'send_store_location',
+        description: '向候选人发送当前门店的企微位置消息（问地址/定位/导航时使用）',
+        create: buildSendStoreLocationTool(spongeService, messageSenderService),
       }),
 
       invite_to_group: createToolDefinition({
@@ -136,6 +145,7 @@ export class ToolRegistryService {
       'duliday_interview_precheck',
       'duliday_interview_booking',
       'geocode',
+      'send_store_location',
       'invite_to_group',
     ],
     'group-operations': [],

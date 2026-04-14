@@ -95,5 +95,4 @@ export interface MessageProcessingRecordInput {
   fallbackSuccess?: boolean;
   agentInvocation?: unknown;
   batchId?: string;
-  isPrimary?: boolean;
 }

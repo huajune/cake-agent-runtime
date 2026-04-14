@@ -1,6 +1,8 @@
 import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
+import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
+import { MonitoringMetadata } from '@shared-types/tracking.types';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { AlertLevel } from '@infra/feishu/interfaces/interface';
 import { BOT_TO_RECEIVER } from '@infra/feishu/constants/receivers';
@@ -73,6 +75,7 @@ export class MessagePipelineService {
     // Agent 编排
     private readonly runner: AgentRunnerService,
     private readonly configService: ConfigService,
+    private readonly systemConfigService: SystemConfigService,
     // 监控和告警
     private readonly monitoringService: MessageTrackingService,
     private readonly alertService: AlertNotifierService,
@@ -137,19 +140,19 @@ export class MessagePipelineService {
       };
     }
 
-    // step 4: 监控（仅记录会进入 AI/自动回复链路的消息）
-    this.recordMessageReceived(messageData, filterResult.content);
+    let historyStored = false;
 
     try {
       // step 3: 写历史
       await this.recordUserMessageToHistory(messageData, filterResult.content);
+      historyStored = true;
       this.wecomObservability.markHistoryStored(messageData.messageId);
 
       // step 3.5: 图片描述
       // 需要提前写入 DB 的情况：主模型不支持 vision
       const imgUrl = MessageParser.extractImageUrl(messageData);
-      const chatModelId = this.configService.get<string>('AGENT_CHAT_MODEL') || '';
-      const shouldDescribeBeforeAgent = imgUrl !== null && !supportsVision(chatModelId);
+      const { effectiveModelId } = await this.resolveWecomChatModelSelection();
+      const shouldDescribeBeforeAgent = imgUrl !== null && !supportsVision(effectiveModelId);
       if (imgUrl && shouldDescribeBeforeAgent) {
         await this.imageDescription.describeAndUpdateSync(messageData.messageId, imgUrl);
         this.wecomObservability.markImagePrepared(messageData.messageId);
@@ -157,11 +160,21 @@ export class MessagePipelineService {
     } catch (error) {
       const parsed = MessageParser.parse(messageData);
       const errorMessage = error instanceof Error ? error.message : String(error);
+      if (!this.wecomObservability.hasTrace(messageData.messageId)) {
+        this.startRequestTrace({
+          traceId: messageData.messageId,
+          primaryMessage: messageData,
+          scenario: MessageParser.determineScenario(),
+          content: filterResult.content ?? parsed.content,
+        });
+        if (historyStored) {
+          this.wecomObservability.markHistoryStored(messageData.messageId);
+        }
+      }
       const failureMetadata = this.wecomObservability.buildFailureMetadata(messageData.messageId, {
         scenario: MessageParser.determineScenario(),
         errorType: 'message',
         errorMessage,
-        isPrimary: true,
         extraResponse: {
           phase: 'pre-dispatch',
           chatId: parsed.chatId,
@@ -268,30 +281,65 @@ export class MessagePipelineService {
     await this.chatSession.saveMessage(userMsg);
   }
 
-  /**
-   * step 4: 记录监控
-   */
-  private recordMessageReceived(
-    messageData: EnterpriseMessageCallbackDto,
-    contentFromFilter?: string,
-  ): void {
-    const parsed = MessageParser.parse(messageData);
-    const scenario = MessageParser.determineScenario();
-    const content = contentFromFilter ?? parsed.content ?? '';
-    const imageUrl = MessageParser.extractImageUrl(messageData);
+  private startRequestTrace(params: {
+    traceId: string;
+    primaryMessage: EnterpriseMessageCallbackDto;
+    scenario: ScenarioType;
+    content: string;
+    batchId?: string;
+    allMessages?: EnterpriseMessageCallbackDto[];
+  }): void {
+    const { traceId, primaryMessage, scenario, content, batchId, allMessages } = params;
+    const parsed = MessageParser.parse(primaryMessage);
+    const messages = allMessages ?? [primaryMessage];
+    const imageCount = messages.filter((message) => MessageParser.extractImageUrl(message)).length;
+    const acceptedAt = this.resolveAcceptedAt(messages);
+
     this.wecomObservability.startTrace({
-      messageId: messageData.messageId,
+      messageId: traceId,
       chatId: parsed.chatId,
       userId: parsed.imContactId,
       userName: parsed.contactName,
       managerName: parsed.managerName,
       scenario,
       content,
-      imageCount: imageUrl ? 1 : 0,
-      messageType: toStorageMessageType(messageData.messageType),
-      messageSource: toStorageMessageSource(messageData.source),
-      contactType: toStorageContactType(messageData.contactType),
+      imageCount,
+      messageType: toStorageMessageType(primaryMessage.messageType),
+      messageSource: toStorageMessageSource(primaryMessage.source),
+      contactType: toStorageContactType(primaryMessage.contactType),
+      batchId,
+      acceptedAt,
+      sourceMessageIds: messages.map((message) => message.messageId),
+      sourceMessageCount: messages.length,
     });
+  }
+
+  private buildMergedRequestContent(messages: EnterpriseMessageCallbackDto[]): string {
+    const parts = messages
+      .map((message) => MessageParser.extractContent(message)?.trim())
+      .filter((content): content is string => Boolean(content));
+
+    if (parts.length === 0) {
+      return '[聚合消息]';
+    }
+
+    if (parts.length === 1) {
+      return parts[0];
+    }
+
+    return parts.join('\n');
+  }
+
+  private resolveAcceptedAt(messages: EnterpriseMessageCallbackDto[]): number {
+    const candidates = messages
+      .map((message) => message._receivedAtMs)
+      .filter((value): value is number => Number.isFinite(value) && value > 0);
+
+    if (candidates.length === 0) {
+      return Date.now();
+    }
+
+    return Math.min(...candidates);
   }
 
   // ========================================
@@ -305,13 +353,20 @@ export class MessagePipelineService {
     const parsed = MessageParser.parse(messageData);
     const { chatId, content, contactName, messageId } = parsed;
     const scenario = MessageParser.determineScenario();
+    const traceId = messageId;
 
     try {
-      this.wecomObservability.updateDispatch(messageId, 'direct');
-      this.wecomObservability.markWorkerStart(messageId);
+      this.startRequestTrace({
+        traceId,
+        primaryMessage: messageData,
+        scenario,
+        content,
+      });
+      this.wecomObservability.updateDispatch(traceId, 'direct');
+      this.wecomObservability.markWorkerStart(traceId);
       await this.processMessageCore({
         primaryMessage: messageData,
-        messageId,
+        traceId,
         chatId,
         content,
         contactName,
@@ -328,8 +383,9 @@ export class MessagePipelineService {
       await this.handleProcessingError(error, parsed, {
         errorType,
         scenario,
-        isPrimary: true,
+        traceId,
         dispatchMode: 'direct',
+        processedMessageIds: [messageData.messageId],
       });
     }
   }
@@ -348,14 +404,25 @@ export class MessagePipelineService {
     const lastMessage = messages[messages.length - 1];
     const parsed = MessageParser.parse(lastMessage);
     const { chatId, contactName } = parsed;
-    const content = MessageParser.extractContent(lastMessage);
+    const content = this.buildMergedRequestContent(messages);
+    const traceId = batchId;
 
     this.logger.log(`[聚合处理][${chatId}] 处理 ${messages.length} 条消息`);
 
     try {
+      this.startRequestTrace({
+        traceId,
+        primaryMessage: lastMessage,
+        scenario,
+        content,
+        batchId,
+        allMessages: messages,
+      });
+      this.wecomObservability.updateDispatch(traceId, 'merged', batchId);
+      this.wecomObservability.markWorkerStart(traceId);
       await this.processMessageCore({
         primaryMessage: lastMessage,
-        messageId: lastMessage.messageId,
+        traceId,
         chatId,
         content,
         contactName,
@@ -373,32 +440,14 @@ export class MessagePipelineService {
           ? 'delivery'
           : 'merge';
 
-      // 降级回复与状态标记并行：两个独立关注点，互不阻塞
-      const primaryMessageId = parsed.messageId;
-
-      await Promise.allSettled([
-        // 主消息：降级回复 + 告警
-        this.handleProcessingError(error, parsed, {
-          errorType,
-          scenario,
-          isPrimary: true,
-          batchId,
-          dispatchMode: 'merged',
-        }),
-
-        // 副消息：标记失败 + 去重
-        ...messages
-          .filter((m) => m.messageId !== primaryMessageId)
-          .map((message) =>
-            this.markSecondaryMessageFailure(message, {
-              scenario,
-              errorType,
-              errorMessage: error.message || '聚合处理失败',
-              batchId,
-              primaryMessageId,
-            }),
-          ),
-      ]);
+      await this.handleProcessingError(error, parsed, {
+        errorType,
+        scenario,
+        traceId,
+        batchId,
+        dispatchMode: 'merged',
+        processedMessageIds: messages.map((message) => message.messageId),
+      });
 
       throw error;
     }
@@ -414,7 +463,7 @@ export class MessagePipelineService {
    */
   private async processMessageCore(params: {
     primaryMessage: EnterpriseMessageCallbackDto;
-    messageId: string;
+    traceId: string;
     chatId: string;
     content: string;
     contactName: string;
@@ -424,7 +473,7 @@ export class MessagePipelineService {
     batchContext?: { batchId: string; allMessages: EnterpriseMessageCallbackDto[] };
   }): Promise<void> {
     const {
-      messageId,
+      traceId,
       chatId,
       content,
       contactName,
@@ -449,11 +498,13 @@ export class MessagePipelineService {
       .filter((msg) => MessageParser.extractImageUrl(msg) !== null)
       .map((msg) => msg.messageId);
 
+    const { overrideModelId, effectiveModelId } = await this.resolveWecomChatModelSelection();
+
     const agentResult = await this.callAgent({
       sessionId: chatId,
       userMessage: content,
       scenario,
-      messageId,
+      messageId: traceId,
       recordMonitoring: true,
       userId: this.resolveAgentUserId(params.primaryMessage, parsed),
       corpId: this.resolveCorpId(params.primaryMessage),
@@ -461,6 +512,12 @@ export class MessagePipelineService {
       imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
       botUserId: params.primaryMessage.botUserId,
       botImId: params.primaryMessage.imBotId,
+      token: parsed.token,
+      imContactId: parsed.imContactId,
+      imRoomId: parsed.imRoomId,
+      apiType: parsed._apiType,
+      modelId: overrideModelId,
+      effectiveModelId,
     });
 
     this.logger.log(
@@ -482,7 +539,7 @@ export class MessagePipelineService {
     }
 
     // 4. 发送回复
-    const deliveryContext = this.buildDeliveryContext(parsed);
+    const deliveryContext = this.buildDeliveryContext(parsed, traceId);
     const deliveryResult = await this.deliveryService.deliverReply(
       agentResult.reply,
       deliveryContext,
@@ -491,27 +548,24 @@ export class MessagePipelineService {
 
     // 5. 构建成功记录的元数据
     const successMetadata = this.buildSuccessMetadata(
-      messageId,
+      traceId,
       agentResult,
       deliveryResult,
       scenario,
+      batchContext?.batchId,
     );
 
     // 6. 标记消息为已处理并记录成功
     if (batchContext) {
-      // 聚合路径：批量标记所有消息
-      await this.markBatchMessagesSuccess(
-        batchContext.allMessages,
-        messageId,
-        chatId,
-        batchContext.batchId,
-        successMetadata,
+      this.monitoringService.recordSuccess(traceId, successMetadata);
+      await this.markMessagesAsProcessed(
+        batchContext.allMessages.map((message) => message.messageId),
       );
     } else {
       // 单条路径：只标记当前消息
-      this.monitoringService.recordSuccess(messageId, successMetadata);
-      await this.deduplicationService.markMessageAsProcessedAsync(messageId);
-      this.logger.debug(`[${contactName}] 消息 [${messageId}] 已标记为已处理`);
+      this.monitoringService.recordSuccess(traceId, successMetadata);
+      await this.markMessagesAsProcessed([params.primaryMessage.messageId]);
+      this.logger.debug(`[${contactName}] 请求流水 [${traceId}] 已标记为已处理`);
     }
   }
 
@@ -519,106 +573,31 @@ export class MessagePipelineService {
    * 构建成功记录的元数据
    */
   private buildSuccessMetadata(
-    messageId: string,
+    traceId: string,
     agentResult: AgentInvokeResult,
     deliveryResult: { segmentCount: number },
     scenario: ScenarioType,
-  ): Record<string, unknown> {
-    return this.wecomObservability.buildSuccessMetadata(messageId, {
+    batchId?: string,
+  ): MonitoringMetadata & { fallbackSuccess?: boolean; batchId?: string } {
+    return this.wecomObservability.buildSuccessMetadata(traceId, {
       scenario,
-      isPrimary: true,
+      batchId,
       replyPreview: agentResult.reply.content,
       replySegments: deliveryResult.segmentCount,
       extraResponse: {
         processingTimeMs: agentResult.processingTime,
       },
-    }) as Record<string, unknown>;
+    });
   }
 
-  /**
-   * 批量标记聚合消息为成功
-   */
-  private async markBatchMessagesSuccess(
-    messages: EnterpriseMessageCallbackDto[],
-    primaryMessageId: string,
-    chatId: string,
-    batchId: string,
-    baseMetadata: Record<string, unknown>,
-  ): Promise<void> {
-    this.logger.debug(
-      `[聚合处理][${chatId}] 开始标记 ${messages.length} 条消息为 success (batchId=${batchId}): [${messages.map((m) => m.messageId).join(', ')}]`,
-    );
-
+  private async markMessagesAsProcessed(messageIds: string[]): Promise<void> {
     await Promise.all(
-      messages.map(async (message, index) => {
-        this.logger.debug(
-          `[聚合处理][${chatId}] 正在标记消息 ${index + 1}/${messages.length}: ${message.messageId}`,
-        );
-
-        await this.deduplicationService.markMessageAsProcessedAsync(message.messageId);
-
-        const isPrimary = message.messageId === primaryMessageId;
-        this.wecomObservability.updateDispatch(message.messageId, 'merged', batchId);
-        const metadata = isPrimary
-          ? {
-              ...baseMetadata,
-              batchId,
-              isPrimary: true,
-            }
-          : this.wecomObservability.buildSuccessMetadata(message.messageId, {
-              scenario: ((baseMetadata.scenario as string) ||
-                'candidate-consultation') as ScenarioType,
-              isPrimary: false,
-              batchId,
-              extraResponse: {
-                phase: 'merged-secondary',
-                primaryMessageId,
-              },
-            });
-        this.monitoringService.recordSuccess(message.messageId, metadata);
-
-        this.logger.debug(
-          `[聚合处理][${chatId}] 已标记消息 ${index + 1}/${messages.length}: ${message.messageId} (isPrimary=${isPrimary})`,
-        );
+      messageIds.map(async (messageId) => {
+        await this.deduplicationService.markMessageAsProcessedAsync(messageId).catch((err) => {
+          this.logger.warn(`[请求流水] 去重标记失败 [${messageId}]: ${err.message}`);
+        });
       }),
     );
-
-    this.logger.debug(
-      `[聚合处理][${chatId}] 已标记 ${messages.length} 条消息为已处理 (batchId=${batchId})`,
-    );
-  }
-
-  /**
-   * 标记副消息失败（独立处理，不抛异常）
-   */
-  private async markSecondaryMessageFailure(
-    message: EnterpriseMessageCallbackDto,
-    context: {
-      scenario: ScenarioType;
-      errorType: AlertErrorType;
-      errorMessage: string;
-      batchId: string;
-      primaryMessageId: string;
-    },
-  ): Promise<void> {
-    await this.deduplicationService
-      .markMessageAsProcessedAsync(message.messageId)
-      .catch((err) =>
-        this.logger.warn(`[聚合处理] 去重标记失败 [${message.messageId}]: ${err.message}`),
-      );
-
-    const metadata = this.wecomObservability.buildFailureMetadata(message.messageId, {
-      scenario: context.scenario,
-      errorType: context.errorType,
-      errorMessage: context.errorMessage,
-      isPrimary: false,
-      batchId: context.batchId,
-      extraResponse: {
-        phase: 'merged-secondary',
-        primaryMessageId: context.primaryMessageId,
-      },
-    });
-    this.monitoringService.recordFailure(message.messageId, context.errorMessage, metadata);
   }
 
   // ========================================
@@ -660,9 +639,10 @@ export class MessagePipelineService {
     options?: {
       errorType?: AlertErrorType;
       scenario?: ScenarioType;
-      isPrimary?: boolean;
+      traceId?: string;
       batchId?: string;
       dispatchMode?: 'direct' | 'merged';
+      processedMessageIds?: string[];
     },
   ): Promise<void> {
     const {
@@ -678,12 +658,13 @@ export class MessagePipelineService {
     } = parsed;
     const scenario = options?.scenario || MessageParser.determineScenario();
     const errorType: AlertErrorType = options?.errorType || 'message';
-    const isPrimary = options?.isPrimary ?? true;
+    const traceId = options?.traceId ?? messageId;
+    const processedMessageIds = options?.processedMessageIds ?? [messageId];
     const errorMessage = error instanceof Error ? error.message : String(error);
     const deliveryError = this.isDeliveryError(error) ? error : null;
     const alertCode = errorType === 'agent' ? 'agent.invoke_failed' : 'message.processing_failed';
 
-    this.logger.error(`[${contactName}] 消息处理失败 [${messageId}]: ${errorMessage}`);
+    this.logger.error(`[${contactName}] 请求处理失败 [${traceId}]: ${errorMessage}`);
 
     // 发送告警（根据异常类型映射告警级别）
     const fallbackMessage = this.getFallbackMessage();
@@ -715,7 +696,7 @@ export class MessagePipelineService {
             contactName,
             chatId,
             sessionId: agentMeta?.sessionId,
-            messageId,
+            messageId: traceId,
             batchId: options?.batchId,
             userId: imContactId,
             corpId: parsed.orgId,
@@ -748,12 +729,11 @@ export class MessagePipelineService {
     }
 
     if ((deliveryError?.result.deliveredSegments ?? 0) > 0) {
-      this.logger.warn(`[${contactName}] 回复已部分发送，跳过降级回复 [${messageId}]`);
-      const failureMetadata = this.wecomObservability.buildFailureMetadata(messageId, {
+      this.logger.warn(`[${contactName}] 回复已部分发送，跳过降级回复 [${traceId}]`);
+      const failureMetadata = this.wecomObservability.buildFailureMetadata(traceId, {
         scenario,
         errorType,
         errorMessage,
-        isPrimary,
         batchId: options?.batchId,
         extraResponse: {
           phase: 'delivery-partial',
@@ -761,7 +741,8 @@ export class MessagePipelineService {
           delivery: deliveryError?.result,
         },
       });
-      this.monitoringService.recordFailure(messageId, errorMessage, failureMetadata);
+      this.monitoringService.recordFailure(traceId, errorMessage, failureMetadata);
+      await this.markMessagesAsProcessed(processedMessageIds);
       return;
     }
 
@@ -773,14 +754,14 @@ export class MessagePipelineService {
         imContactId,
         imRoomId,
         contactName,
-        messageId,
+        messageId: traceId,
         chatId,
         _apiType,
       };
 
-      this.wecomObservability.markFallbackStart(messageId, fallbackMessage);
+      this.wecomObservability.markFallbackStart(traceId, fallbackMessage);
       await this.deliveryService.deliverReply({ content: fallbackMessage }, deliveryContext, false);
-      this.wecomObservability.markFallbackEnd(messageId, {
+      this.wecomObservability.markFallbackEnd(traceId, {
         success: true,
         deliveredSegments: 1,
         failedSegments: 0,
@@ -789,24 +770,23 @@ export class MessagePipelineService {
       this.logger.log(`[${contactName}] 已发送降级回复: "${fallbackMessage}"`);
 
       // 标记消息为已处理
-      await this.deduplicationService.markMessageAsProcessedAsync(messageId);
+      await this.markMessagesAsProcessed(processedMessageIds);
 
-      const failureMetadata = this.wecomObservability.buildFailureMetadata(messageId, {
+      const failureMetadata = this.wecomObservability.buildFailureMetadata(traceId, {
         scenario,
         errorType,
         errorMessage,
-        isPrimary,
         batchId: options?.batchId,
         extraResponse: {
           phase: 'fallback-delivered',
           dispatchMode: options?.dispatchMode,
         },
       });
-      this.monitoringService.recordFailure(messageId, errorMessage, failureMetadata);
+      this.monitoringService.recordFailure(traceId, errorMessage, failureMetadata);
     } catch (sendError) {
       const sendErrorMessage = sendError instanceof Error ? sendError.message : String(sendError);
       const deliveryFailure = this.isDeliveryError(sendError) ? sendError.result : undefined;
-      this.wecomObservability.markFallbackEnd(messageId, {
+      this.wecomObservability.markFallbackEnd(traceId, {
         success: false,
         totalTime: deliveryFailure?.totalTime,
         deliveredSegments: deliveryFailure?.deliveredSegments,
@@ -831,7 +811,7 @@ export class MessagePipelineService {
             scenario,
             contactName,
             chatId,
-            messageId,
+            messageId: traceId,
             batchId: options?.batchId,
             userId: imContactId,
             corpId: parsed.orgId,
@@ -857,11 +837,10 @@ export class MessagePipelineService {
           this.logger.error(`CRITICAL 告警发送失败: ${alertError.message}`);
         });
 
-      const failureMetadata = this.wecomObservability.buildFailureMetadata(messageId, {
+      const failureMetadata = this.wecomObservability.buildFailureMetadata(traceId, {
         scenario,
         errorType,
         errorMessage,
-        isPrimary,
         batchId: options?.batchId,
         extraResponse: {
           phase: 'fallback-failed',
@@ -869,21 +848,25 @@ export class MessagePipelineService {
           dispatchMode: options?.dispatchMode,
         },
       });
-      this.monitoringService.recordFailure(messageId, errorMessage, failureMetadata);
+      this.monitoringService.recordFailure(traceId, errorMessage, failureMetadata);
+      await this.markMessagesAsProcessed(processedMessageIds);
     }
   }
 
   /**
    * 构建发送上下文
    */
-  private buildDeliveryContext(parsed: ReturnType<typeof MessageParser.parse>): DeliveryContext {
+  private buildDeliveryContext(
+    parsed: ReturnType<typeof MessageParser.parse>,
+    traceId?: string,
+  ): DeliveryContext {
     return {
       token: parsed.token,
       imBotId: parsed.imBotId,
       imContactId: parsed.imContactId,
       imRoomId: parsed.imRoomId,
       contactName: parsed.contactName || '客户',
-      messageId: parsed.messageId,
+      messageId: traceId ?? parsed.messageId,
       chatId: parsed.chatId,
       _apiType: parsed._apiType,
     };
@@ -935,6 +918,12 @@ export class MessagePipelineService {
     imageMessageIds?: string[];
     botUserId?: string;
     botImId?: string;
+    token?: string;
+    imContactId?: string;
+    imRoomId?: string;
+    apiType?: 'enterprise' | 'group';
+    modelId?: string;
+    effectiveModelId?: string;
   }): Promise<AgentInvokeResult> {
     const {
       userMessage,
@@ -960,6 +949,8 @@ export class MessagePipelineService {
           imageUrls: params.imageUrls,
           imageMessageIds: params.imageMessageIds,
           strategySource: 'released',
+          modelId: params.effectiveModelId,
+          modelIdSource: params.modelId ? 'runtime_config' : 'default_route',
         });
         shouldRecordAiEnd = true;
       }
@@ -974,6 +965,11 @@ export class MessagePipelineService {
         imageMessageIds: params.imageMessageIds,
         botUserId: params.botUserId,
         botImId: params.botImId,
+        token: params.token,
+        imContactId: params.imContactId,
+        imRoomId: params.imRoomId,
+        apiType: params.apiType,
+        modelId: params.modelId,
       });
 
       const processingTime = Date.now() - startTime;
@@ -1014,6 +1010,21 @@ export class MessagePipelineService {
         this.wecomObservability.markAiEnd(messageId);
       }
     }
+  }
+
+  private async resolveWecomChatModelSelection(): Promise<{
+    overrideModelId?: string;
+    effectiveModelId: string;
+  }> {
+    const runtimeConfig = await this.systemConfigService.getAgentReplyConfig();
+    const overrideModelId = runtimeConfig.wecomCallbackModelId?.trim() || undefined;
+    const effectiveModelId =
+      overrideModelId ?? this.configService.get<string>('AGENT_CHAT_MODEL') ?? '';
+
+    return {
+      overrideModelId,
+      effectiveModelId,
+    };
   }
 
   private normalizeContent(rawContent: string): string {

@@ -50,6 +50,7 @@ describe('MessagePipelineService', () => {
     describeAndUpdateSync: jest.fn().mockResolvedValue(undefined),
   };
   const mockWecomObservability = {
+    hasTrace: jest.fn().mockReturnValue(false),
     startTrace: jest.fn(),
     markHistoryStored: jest.fn(),
     markImagePrepared: jest.fn(),
@@ -87,29 +88,20 @@ describe('MessagePipelineService', () => {
       mockWecomObservability as never,
       mockRunnerService as never,
       mockConfigService,
+      { getSystemConfig: jest.fn(), getAgentReplyConfig: jest.fn().mockResolvedValue({}) } as never,
       mockMonitoringService as never,
       mockAlertNotifierService as never,
     );
   });
 
-  it('should start trace and record user message when callback passes validation', async () => {
+  it('should only record history when callback passes validation', async () => {
     const message = createEnterpriseMessage();
 
     const result = await service.execute(message);
 
     expect(result.shouldDispatch).toBe(true);
     expect(result.content).toBe('你好');
-    expect(mockWecomObservability.startTrace).toHaveBeenCalledWith(
-      expect.objectContaining({
-        messageId: message.messageId,
-        chatId: message.chatId,
-        userId: message.imContactId,
-        userName: message.contactName,
-        managerName: message.botUserId,
-        content: '你好',
-        imageCount: 0,
-      }),
-    );
+    expect(mockWecomObservability.startTrace).not.toHaveBeenCalled();
     expect(mockChatSession.saveMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         messageId: message.messageId,
@@ -147,13 +139,18 @@ describe('MessagePipelineService', () => {
 
     await expect(service.execute(message)).rejects.toThrow('save history failed');
 
+    expect(mockWecomObservability.startTrace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: message.messageId,
+        chatId: message.chatId,
+      }),
+    );
     expect(mockWecomObservability.buildFailureMetadata).toHaveBeenCalledWith(
       message.messageId,
       expect.objectContaining({
         scenario: 'candidate-consultation',
         errorType: 'message',
         errorMessage: 'save history failed',
-        isPrimary: true,
       }),
     );
     expect(mockMonitoringService.recordFailure).toHaveBeenCalledWith(

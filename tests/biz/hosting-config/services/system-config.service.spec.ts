@@ -172,7 +172,7 @@ describe('SystemConfigService', () => {
 
   describe('getAgentReplyConfig', () => {
     it('should return memory cached config when cache is valid', async () => {
-      const cachedConfig = { ...DEFAULT_AGENT_REPLY_CONFIG, maxMergedMessages: 5 };
+      const cachedConfig = { ...DEFAULT_AGENT_REPLY_CONFIG, initialMergeWindowMs: 5000 };
       (service as any).agentReplyConfig = cachedConfig;
       (service as any).agentReplyConfigExpiry = Date.now() + 60_000;
 
@@ -203,7 +203,7 @@ describe('SystemConfigService', () => {
       expect(mockSystemConfigRepository.setConfigValue).toHaveBeenCalledWith(
         'agent_reply_config',
         DEFAULT_AGENT_REPLY_CONFIG,
-        'Agent 回复策略配置（消息聚合、打字延迟、告警节流）',
+        'Agent 运行时配置（模型、消息聚合、打字延迟、告警节流）',
       );
     });
 
@@ -226,10 +226,10 @@ describe('SystemConfigService', () => {
       (service as any).agentReplyConfig = { ...DEFAULT_AGENT_REPLY_CONFIG };
       mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
 
-      const partial = { maxMergedMessages: 10 };
+      const partial = { initialMergeWindowMs: 10_000 };
       const result = await service.setAgentReplyConfig(partial);
 
-      expect(result.maxMergedMessages).toBe(10);
+      expect(result.initialMergeWindowMs).toBe(10_000);
       // Other fields should remain from DEFAULT
       expect(result.paragraphGapMs).toBe(DEFAULT_AGENT_REPLY_CONFIG.paragraphGapMs);
     });
@@ -238,10 +238,10 @@ describe('SystemConfigService', () => {
       (service as any).agentReplyConfig = null;
       mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
 
-      const partial = { maxMergedMessages: 7 };
+      const partial = { initialMergeWindowMs: 7000 };
       const result = await service.setAgentReplyConfig(partial);
 
-      expect(result.maxMergedMessages).toBe(7);
+      expect(result.initialMergeWindowMs).toBe(7000);
       expect(result.paragraphGapMs).toBe(DEFAULT_AGENT_REPLY_CONFIG.paragraphGapMs);
     });
 
@@ -249,12 +249,12 @@ describe('SystemConfigService', () => {
       (service as any).agentReplyConfig = { ...DEFAULT_AGENT_REPLY_CONFIG };
       mockSystemConfigRepository.setConfigValue.mockResolvedValue(undefined);
 
-      await service.setAgentReplyConfig({ maxMergedMessages: 5 });
+      await service.setAgentReplyConfig({ initialMergeWindowMs: 5000 });
 
       expect(mockSystemConfigRepository.setConfigValue).toHaveBeenCalledWith(
         'agent_reply_config',
-        expect.objectContaining({ maxMergedMessages: 5 }),
-        'Agent 回复策略配置（消息聚合、打字延迟、告警节流）',
+        expect.objectContaining({ initialMergeWindowMs: 5000 }),
+        'Agent 运行时配置（模型、消息聚合、打字延迟、告警节流）',
       );
     });
 
@@ -265,9 +265,11 @@ describe('SystemConfigService', () => {
       const callback = jest.fn();
       service.onAgentReplyConfigChange(callback);
 
-      await service.setAgentReplyConfig({ maxMergedMessages: 5 });
+      await service.setAgentReplyConfig({ initialMergeWindowMs: 5000 });
 
-      expect(callback).toHaveBeenCalledWith(expect.objectContaining({ maxMergedMessages: 5 }));
+      expect(callback).toHaveBeenCalledWith(
+        expect.objectContaining({ initialMergeWindowMs: 5000 }),
+      );
     });
 
     it('should handle callback errors gracefully', async () => {

@@ -1,41 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SpongeService } from '@sponge/sponge.service';
 import { JobDetail } from '@sponge/sponge.types';
+import { getPrimaryJobIndustry } from '@sponge/job-category.util';
 import { NotificationStrategy } from './notification.strategy';
 import { BrandRotationService } from '../services/brand-rotation.service';
 import { GroupTaskType, GroupContext, NotificationData } from '../group-task.types';
 import {
   PART_TIME_JOB_SYSTEM_PROMPT,
   buildPartTimeJobUserMessage,
+  enforcePartTimeSalaryLine,
 } from '../prompts/part-time-job.prompt';
 
 const MAX_DISPLAY_STORES = 15;
-const RETAIL_BRAND_KEYWORDS = ['奥乐齐', '山姆', '来伊份', '盒马', '全家', '罗森', '便利蜂'];
-const CATERING_BRAND_KEYWORDS = [
-  '必胜客',
-  '肯德基',
-  '麦当劳',
-  '塔可贝尔',
-  '成都你六姐',
-  '西贝',
-  '大米先生',
-  '瑞幸',
-  '霸王茶姬',
-  '沪上阿姨',
-  '茶百道',
-  '喜茶',
-  '奈雪',
-  '蜜雪冰城',
-  '星巴克',
-];
-const RETAIL_ROLE_KEYWORDS = ['理货', '分拣', '导购', '收银'];
-const CATERING_ROLE_KEYWORDS = ['服务员', '帮厨', '后厨', '洗碗', '咖啡师', '配菜', '厨'];
 
 /**
  * 兼职群通知策略（真实数据 + AI 润色）
  *
  * - 数据源：海绵在招岗位 (SpongeService.fetchJobs)
- * - 行业过滤：品牌/岗位双重推断匹配群标签行业
+ * - 行业过滤：按 jobCategoryName 契约解析一级类目（如 餐饮/中餐/普通服务员）
  * - 品牌轮转：每次推不同品牌，避免重复
  * - AI 负责排版润色，但只能用提供的真实数据
  * - 小程序卡片由 NotificationSenderService 单独发送
@@ -69,8 +51,8 @@ export class PartTimeJobStrategy implements NotificationStrategy {
       },
     });
 
-    // 2. 按行业过滤。海绵当前返回的 jobCategoryName 多为岗位名本身，
-    // 不能再假设它是“餐饮/中餐/服务员”这种层级结构，因此改为品牌/岗位双重推断。
+    // 2. 按行业过滤。当前契约要求 jobCategoryName 返回层级类目，
+    // 例如“餐饮/中餐/普通服务员”或“零售/食品/导购”，这里按一级类目解析。
     const filtered = jobs.filter((job: JobDetail) => {
       if (!context.industry) return true;
       return this.inferIndustry(job) === context.industry;
@@ -136,35 +118,11 @@ export class PartTimeJobStrategy implements NotificationStrategy {
     };
   }
 
+  appendFooter(aiMessage: string, data: NotificationData): string {
+    return enforcePartTimeSalaryLine(aiMessage, data.payload.jobs as JobDetail[]);
+  }
+
   private inferIndustry(job: JobDetail): '餐饮' | '零售' | null {
-    const basicInfo = job.basicInfo;
-    const brandSignals = [
-      basicInfo?.brandName,
-      (basicInfo as Record<string, unknown> | undefined)?.projectName,
-    ]
-      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-      .join(' ');
-
-    if (RETAIL_BRAND_KEYWORDS.some((keyword) => brandSignals.includes(keyword))) {
-      return '零售';
-    }
-
-    if (CATERING_BRAND_KEYWORDS.some((keyword) => brandSignals.includes(keyword))) {
-      return '餐饮';
-    }
-
-    const roleSignals = [basicInfo?.jobCategoryName, basicInfo?.jobNickName, basicInfo?.jobName]
-      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-      .join(' ');
-
-    if (RETAIL_ROLE_KEYWORDS.some((keyword) => roleSignals.includes(keyword))) {
-      return '零售';
-    }
-
-    if (CATERING_ROLE_KEYWORDS.some((keyword) => roleSignals.includes(keyword))) {
-      return '餐饮';
-    }
-
-    return null;
+    return getPrimaryJobIndustry(job.basicInfo?.jobCategoryName);
   }
 }

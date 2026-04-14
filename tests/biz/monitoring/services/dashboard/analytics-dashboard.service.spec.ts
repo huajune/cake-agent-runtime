@@ -90,6 +90,7 @@ describe('AnalyticsDashboardService', () => {
 
   const mockHourlyStatsRepository = {
     getRecentHourlyStats: jest.fn(),
+    getLatestHourlyStat: jest.fn(),
   };
 
   const mockErrorLogRepository = {
@@ -195,6 +196,7 @@ describe('AnalyticsDashboardService', () => {
     });
     mockMessageProcessingService.getActiveUsers.mockResolvedValue([]);
     mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([buildHourlyStatsRow()]);
+    mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(buildHourlyStatsRow());
     mockErrorLogRepository.getErrorLogsSince.mockResolvedValue([]);
     mockCacheService.getCounters.mockResolvedValue({
       totalMessages: 0,
@@ -373,7 +375,7 @@ describe('AnalyticsDashboardService', () => {
         totalFallback: 0,
         totalFallbackSuccess: 0,
       });
-      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([]);
+      mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(null);
       mockBookingService.getBookingStats.mockResolvedValue([]);
 
       const resultWeek = await service.getDashboardDataAsync('week');
@@ -484,11 +486,11 @@ describe('AnalyticsDashboardService', () => {
     });
 
     it('should fall back to raw repository queries when hourly projection is stale for today', async () => {
-      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+      mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
         buildHourlyStatsRow({
           hour: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
         }),
-      ]);
+      );
 
       mockMonitoringRecordRepository.getDashboardOverviewStats
         .mockResolvedValueOnce({
@@ -529,11 +531,11 @@ describe('AnalyticsDashboardService', () => {
     });
 
     it('should fall back to raw repository queries when hourly projection is stale for week', async () => {
-      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+      mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
         buildHourlyStatsRow({
           hour: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
         }),
-      ]);
+      );
 
       mockMonitoringRecordRepository.getDashboardOverviewStats
         .mockResolvedValueOnce({

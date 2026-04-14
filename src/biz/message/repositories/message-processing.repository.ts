@@ -8,9 +8,9 @@ import { MessageProcessingRecordInput } from '../types/message.types';
  * 消息处理记录 Repository
  *
  * 负责管理 message_processing_records 表：
- * - 保存消息处理记录
- * - 查询消息处理统计
- * - 获取最慢消息
+ * - 保存请求级处理流水
+ * - 查询请求处理统计
+ * - 获取最慢请求
  */
 @Injectable()
 export class MessageProcessingRepository extends BaseRepository {
@@ -48,7 +48,7 @@ export class MessageProcessingRepository extends BaseRepository {
   }
 
   /**
-   * 获取最慢的消息（按 AI 处理耗时降序）
+   * 获取最慢的处理请求（按 AI 处理耗时降序）
    */
   async getSlowestMessages(
     startTime?: number,
@@ -85,13 +85,11 @@ export class MessageProcessingRepository extends BaseRepository {
         'is_fallback',
         'fallback_success',
         'batch_id',
-        'is_primary',
       ].join(',');
 
       const results = await this.select<MessageProcessingDbRecord>(selectedColumns, (q) => {
         let r = q
           .eq('status', 'success')
-          .or('is_primary.eq.true,batch_id.is.null')
           .gt('ai_duration', 0)
           .order('ai_duration', { ascending: false })
           .limit(limit);
@@ -153,15 +151,11 @@ export class MessageProcessingRepository extends BaseRepository {
         'is_fallback',
         'fallback_success',
         'batch_id',
-        'is_primary',
       ].join(',');
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const buildModifier = (q: any) => {
-        // 只展示主消息 + 非聚合的独立消息（副消息是内部概念，不在流水中展示）
-        let r = q
-          .order('received_at', { ascending: false })
-          .or('is_primary.eq.true,batch_id.is.null');
+        let r = q.order('received_at', { ascending: false });
         if (options.startDate) r = r.gte('received_at', options.startDate.toISOString());
         else if (options.startTime)
           r = r.gte('received_at', new Date(options.startTime).toISOString());
@@ -221,8 +215,7 @@ export class MessageProcessingRepository extends BaseRepository {
   // ==================== 聚合查询 ====================
 
   /**
-   * 获取消息统计（数据库级聚合）
-   * 这里统计消息级事实，不做 primary 过滤。
+   * 获取请求统计（数据库级聚合）
    */
   async getMessageStats(
     startTime: number,
@@ -364,7 +357,7 @@ export class MessageProcessingRepository extends BaseRepository {
   }
 
   /**
-   * 按时间范围查询消息记录（轻量版，只查询 Dashboard 需要的字段）
+   * 按时间范围查询处理请求记录（轻量版，只查询 Dashboard 需要的字段）
    */
   async getRecordsByTimeRange(
     startTime: number,
@@ -398,7 +391,6 @@ export class MessageProcessingRepository extends BaseRepository {
         'fallback_success',
         'agent_invocation',
         'batch_id',
-        'is_primary',
       ].join(',');
 
       const results = await this.select<MessageProcessingDbRecord>(selectedColumns, (q) =>
@@ -519,7 +511,6 @@ export class MessageProcessingRepository extends BaseRepository {
       isFallback?: boolean;
       fallbackSuccess?: boolean;
       batchId?: string;
-      isPrimary?: boolean;
     },
   ): Promise<boolean> {
     if (!this.isAvailable()) {
@@ -537,7 +528,6 @@ export class MessageProcessingRepository extends BaseRepository {
       if (updates.fallbackSuccess !== undefined)
         dbUpdates.fallback_success = updates.fallbackSuccess;
       if (updates.batchId !== undefined) dbUpdates.batch_id = updates.batchId;
-      if (updates.isPrimary !== undefined) dbUpdates.is_primary = updates.isPrimary;
 
       const { error } = await this.getClient()
         .from(this.tableName)
@@ -598,7 +588,6 @@ export class MessageProcessingRepository extends BaseRepository {
       fallback_success: record.fallbackSuccess,
       agent_invocation: record.agentInvocation,
       batch_id: record.batchId,
-      is_primary: record.isPrimary,
     };
   }
 
@@ -635,7 +624,6 @@ export class MessageProcessingRepository extends BaseRepository {
       fallbackSuccess: record.fallback_success,
       agentInvocation: record.agent_invocation,
       batchId: record.batch_id,
-      isPrimary: record.is_primary,
     };
   }
 

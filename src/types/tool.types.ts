@@ -1,6 +1,9 @@
 import { Tool, ToolSet } from 'ai';
 import { StageGoalConfig, Threshold } from './strategy-config.types';
-import type { EntityExtractionResult } from '@memory/types/session-facts.types';
+import type {
+  EntityExtractionResult,
+  RecommendedJobSummary,
+} from '@memory/types/session-facts.types';
 import type { UserProfile } from '@memory/types/long-term.types';
 
 export type AiTool = Tool;
@@ -45,6 +48,18 @@ export interface ToolBuildContext {
   profile?: UserProfile | null;
   /** 当前会话已提取事实（用于工具判断已知/缺失字段） */
   sessionFacts?: EntityExtractionResult | null;
+  /** 当前会话聚焦岗位快照（用于无参复用 jobId 等上下文） */
+  currentFocusJob?: RecommendedJobSummary | null;
+  /** 当前聊天会话的企业级 token（供需要主动发消息的工具使用） */
+  token?: string;
+  /** 当前聊天对象的系统 wxid（私聊时使用） */
+  imContactId?: string;
+  /** 当前群聊的系统 wxid（群聊时使用） */
+  imRoomId?: string;
+  /** 当前聊天会话 ID；wecom 场景下与 sessionId 相同，但保留单独字段便于工具直接发送消息 */
+  chatId?: string;
+  /** 当前消息发送链路使用的 API 类型 */
+  apiType?: 'enterprise' | 'group';
 }
 
 /** 工具构建函数。 */

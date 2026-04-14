@@ -59,6 +59,40 @@ describe('SpongeService', () => {
       );
     });
 
+    it('should pass location filter in job list request body', async () => {
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          code: 0,
+          data: { result: [], total: 0 },
+        }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      await service.fetchJobs({
+        cityNameList: ['上海'],
+        location: {
+          longitude: 121.4996,
+          latitude: 31.2397,
+          range: 10000,
+        },
+      });
+
+      const [, requestInit] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+      const body = JSON.parse(String(requestInit.body));
+
+      expect(body.queryParam).toEqual(
+        expect.objectContaining({
+          cityNameList: ['上海'],
+          location: {
+            longitude: 121.4996,
+            latitude: 31.2397,
+            range: 10000,
+          },
+        }),
+      );
+    });
+
     it('should tolerate null optional fields in job list response', async () => {
       const mockResponse = {
         ok: true,
@@ -141,16 +175,38 @@ describe('SpongeService', () => {
       const result = await service.bookInterview({
         name: '张三',
         phone: '13800138000',
-        age: '22',
+        age: 22,
         genderId: 1,
         jobId: 100,
         interviewTime: '2026-04-01 10:00:00',
+        operateType: 6,
         educationId: 5,
         hasHealthCertificate: 1,
       });
 
       expect(result.success).toBe(true);
       expect(result.notice).toBe('预约成功');
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/a/supplier/entryUser'),
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'Content-Type': 'application/json',
+            'Duliday-Token': 'test-token',
+          }),
+          body: JSON.stringify({
+            jobId: 100,
+            interviewTime: '2026-04-01 10:00:00',
+            name: '张三',
+            phone: '13800138000',
+            age: 22,
+            genderId: 1,
+            hasHealthCertificate: 1,
+            educationId: 5,
+            operateType: 6,
+          }),
+        }),
+      );
     });
 
     it('should return failure result when booking response shape is invalid', async () => {
@@ -166,10 +222,11 @@ describe('SpongeService', () => {
       const result = await service.bookInterview({
         name: '张三',
         phone: '13800138000',
-        age: '22',
+        age: 22,
         genderId: 1,
         jobId: 100,
         interviewTime: '2026-04-01 10:00:00',
+        operateType: 6,
         educationId: 5,
         hasHealthCertificate: 1,
       });

@@ -475,7 +475,7 @@ export class AnalyticsDashboardService {
 
   private async isHourlyProjectionFresh(currentEndDate: Date): Promise<boolean> {
     try {
-      const [latestHourly] = await this.hourlyStatsRepository.getRecentHourlyStats(1);
+      const latestHourly = await this.hourlyStatsRepository.getLatestHourlyStat();
 
       if (!latestHourly?.hour) {
         return false;

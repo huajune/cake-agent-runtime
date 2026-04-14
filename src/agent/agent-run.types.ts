@@ -40,6 +40,14 @@ export interface AgentInvokeParams {
   botUserId?: string;
   /** 当前与候选人聊天的托管账号系统 wxid（拉群时作为 imBotId） */
   botImId?: string;
+  /** 当前消息发送链路 token（供主动发送富消息的工具使用） */
+  token?: string;
+  /** 当前私聊对象系统 wxid */
+  imContactId?: string;
+  /** 当前群聊系统 wxid */
+  imRoomId?: string;
+  /** 当前发送链路 API 类型 */
+  apiType?: 'enterprise' | 'group';
   /**
    * 覆盖本次调用使用的聊天模型 ID（provider/model 格式）
    * 为空时回退到 AGENT_CHAT_MODEL 角色路由。

@@ -283,9 +283,9 @@ export default function Dashboard() {
       {/* 核心指标 */}
       <MetricGrid>
         <MetricCard
-          label="消息总量"
+          label="处理请求数"
           value={dashboardLoading ? '-' : (overview?.totalMessages ?? 0)}
-          subtitle="成功 + 失败"
+          subtitle="成功 + 异常"
           delta={overviewDelta?.totalMessages}
           variant="primary"
           timeRangeBadge={timeRangeBadge}

@@ -1,8 +1,8 @@
-// Config List 页面样式
 @use '@/assets/styles/variables' as *;
 
 .page {
   padding: $spacing-md;
+  padding-bottom: 104px;
 }
 
 .loadingText {
@@ -12,22 +12,375 @@
   font-size: $font-size-sm;
 }
 
-.categorySection {
-  margin-bottom: $spacing-lg;
+.moduleSection {
+  margin-bottom: $spacing-xl;
 }
 
-.categoryTitle {
-  font-size: $font-size-xs;
-  font-weight: $font-weight-semibold;
-  color: $text-muted;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: $spacing-sm;
-  padding-left: $spacing-xs;
+.moduleHeader {
+  margin-bottom: $spacing-md;
 }
 
-.cardGrid {
+.moduleTitle {
+  margin: 0 0 6px 0;
+  font-size: $font-size-xl;
+  font-weight: $font-weight-bold;
+  letter-spacing: -0.02em;
+  color: $text-primary;
+}
+
+.moduleDescription {
+  margin: 0;
+  max-width: 68ch;
+  font-size: $font-size-sm;
+  line-height: $line-height-relaxed;
+  color: $text-secondary;
+}
+
+.settingsPanel {
+  padding: $spacing-lg $spacing-xl;
+  border-radius: 20px;
+  border: 1px solid $border;
+  background: $bg-card;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.settingsPanel {
+  display: flex;
+  flex-direction: column;
+}
+
+.subPanel {
+  margin-top: $spacing-sm;
+}
+
+.settingRow {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 380px);
+  gap: $spacing-lg;
+  align-items: center;
+  padding: 20px 0;
+  border-bottom: 1px solid $border;
+}
+
+.settingRow:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.settingRow:first-child {
+  padding-top: 0;
+}
+
+.settingRowModified {
+  position: relative;
+}
+
+.settingBody {
+  min-width: 0;
+}
+
+.settingHeading {
+  display: flex;
+  align-items: center;
   gap: $spacing-sm;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.settingLabel {
+  font-size: $font-size-base;
+  font-weight: $font-weight-semibold;
+  letter-spacing: -0.01em;
+  color: $text-primary;
+}
+
+.modifiedBadge {
+  padding: 3px 8px;
+  border-radius: $radius-full;
+  background: $primary-soft;
+  color: $primary;
+  font-size: 11px;
+  font-weight: $font-weight-semibold;
+}
+
+.statusBadge {
+  padding: 3px 8px;
+  border-radius: $radius-full;
+  font-size: 11px;
+  font-weight: $font-weight-semibold;
+}
+
+.statusOn {
+  background: $success-soft;
+  color: $success;
+}
+
+.statusOff {
+  background: $bg-secondary;
+  color: $text-muted;
+}
+
+.settingDescription {
+  margin: 0;
+  font-size: $font-size-sm;
+  line-height: 1.65;
+  color: $text-secondary;
+}
+
+.settingMeta {
+  display: flex;
+  align-items: center;
+  gap: $spacing-md;
+  flex-wrap: wrap;
+  margin-top: $spacing-sm;
+  font-size: 11px;
+  color: $text-muted;
+
+  span {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: $radius-full;
+    background: $bg-secondary;
+  }
+}
+
+.controlBlock,
+.toggleControl {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: $spacing-sm;
+}
+
+.toggleControl {
+  align-items: flex-end;
+}
+
+.controlValue {
+  align-self: flex-end;
+  display: inline-flex;
+  max-width: 100%;
+  padding: 6px 10px;
+  border-radius: $radius-full;
+  background: $primary-soft;
+  font-size: 12px;
+  font-weight: $font-weight-semibold;
+  color: $primary;
+  word-break: break-word;
+}
+
+.sliderControl {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.slider {
+  flex: 1;
+  height: 6px;
+  accent-color: $primary;
+  cursor: pointer;
+}
+
+.numberInput {
+  width: 84px;
+  padding: $spacing-xs $spacing-sm;
+  border: 1px solid $border;
+  border-radius: $radius-md;
+  background: $bg-primary;
+  color: $text-primary;
+  text-align: right;
+  font-size: $font-size-xs;
+  transition: border-color $transition-fast, box-shadow $transition-fast, background $transition-fast;
+
+  &:hover {
+    background: $bg-card;
+    border-color: $border-hover;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: $primary;
+    box-shadow: 0 0 0 3px $primary-12;
+  }
+}
+
+.selectInput {
+  width: 100%;
+  min-height: 44px;
+  padding: $spacing-sm $spacing-md;
+  border: 1px solid $border;
+  border-radius: $radius-md;
+  background: $bg-primary;
+  color: $text-primary;
+  font-size: $font-size-sm;
+  transition: border-color $transition-fast, box-shadow $transition-fast, background $transition-fast;
+
+  &:hover {
+    background: $bg-card;
+    border-color: $border-hover;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: $primary;
+    box-shadow: 0 0 0 3px $primary-12;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+}
+
+.switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  cursor: pointer;
+
+  input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+
+    &:checked ~ .switchTrack {
+      background: $primary;
+      border-color: $primary;
+    }
+
+    &:checked ~ .switchTrack .switchThumb {
+      transform: translateX(18px);
+      box-shadow: 0 2px 6px $primary-30;
+    }
+
+    &:disabled ~ .switchTrack {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+}
+
+.switchTrack {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  background: $border;
+  border: 1px solid $border-hover;
+  border-radius: $radius-full;
+  transition: background $transition-normal, border-color $transition-normal;
+  display: flex;
+  align-items: center;
+}
+
+.switchThumb {
+  position: absolute;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  background: $bg-primary;
+  border-radius: 50%;
+  box-shadow: $shadow-sm;
+  transition: transform $transition-normal, box-shadow $transition-normal;
+}
+
+.saveDock {
+  position: fixed;
+  left: 280px;
+  right: $spacing-lg;
+  bottom: $spacing-lg;
+  z-index: $z-sticky;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-lg;
+  padding: $spacing-md $spacing-lg;
+  border-radius: $radius-xl;
+  border: 1px solid $border;
+  background: $bg-card;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.1);
+}
+
+.saveDockInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.saveDockTitle {
+  font-size: $font-size-base;
+  font-weight: $font-weight-bold;
+  color: $text-primary;
+}
+
+.saveDockText {
+  font-size: 12px;
+  color: $text-secondary;
+}
+
+.saveDockActions {
+  display: flex;
+  gap: $spacing-sm;
+}
+
+.btnGhost {
+  @include button-secondary;
+  min-height: 40px;
+  padding: 0 14px;
+}
+
+.btnPrimary {
+  @include button-primary;
+  min-height: 40px;
+  padding: 0 16px;
+}
+
+@include respond-to(lg) {
+  .saveDock {
+    left: $spacing-lg;
+  }
+}
+
+@include respond-to(md) {
+  .page {
+    padding: $spacing-sm;
+    padding-bottom: 132px;
+  }
+
+  .settingsPanel,
+  .settingsPanel {
+    padding: $spacing-md;
+  }
+
+  .settingRow {
+    grid-template-columns: 1fr;
+    gap: $spacing-md;
+  }
+
+  .controlValue,
+  .toggleControl {
+    text-align: left;
+    align-items: flex-start;
+  }
+
+  .sliderControl {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .saveDock {
+    left: $spacing-sm;
+    right: $spacing-sm;
+    bottom: $spacing-sm;
+    padding: $spacing-sm $spacing-md;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .saveDockActions {
+    justify-content: flex-end;
+  }
 }

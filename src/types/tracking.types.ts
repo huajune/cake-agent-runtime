@@ -22,7 +22,6 @@ export interface MonitoringMetadata {
   isFallback?: boolean;
   alertType?: AlertErrorType;
   batchId?: string;
-  isPrimary?: boolean;
   /** Agent 调用记录（完整的请求/响应，用于排障） */
   agentInvocation?: AgentInvocationRecord;
 }
@@ -79,7 +78,6 @@ export interface MessageProcessingRecord {
 
   // 聚合关系
   batchId?: string;
-  isPrimary?: boolean;
 
   /** Agent 调用记录 */
   agentInvocation?: AgentInvocationRecord;

@@ -10,10 +10,10 @@ import { ModelRole, ReliableConfig } from './types';
  * 对标 ZeroClaw src/providers/router.rs 的 RouterProvider。
  *
  * 通过环境变量配置角色映射：
- *   AGENT_CHAT_MODEL=anthropic/claude-sonnet-4-6
- *   AGENT_CHAT_FALLBACKS=openai/gpt-4o,deepseek/deepseek-chat
+ *   AGENT_CHAT_MODEL=qwen/qwen3.6-plus
+ *   AGENT_CHAT_FALLBACKS=deepseek/deepseek-chat,anthropic/claude-sonnet-4-6
  *   AGENT_EXTRACT_MODEL=openai/gpt-5-mini
- *   AGENT_VISION_MODEL=google/gemini-2.0-flash
+ *   AGENT_VISION_MODEL=qwen/qwen3.6-plus
  */
 @Injectable()
 export class RouterService {

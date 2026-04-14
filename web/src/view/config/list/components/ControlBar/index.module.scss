@@ -2,41 +2,93 @@
 @use '@/assets/styles/variables' as *;
 
 .controlBar {
-  @include flex-between;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   margin-bottom: $spacing-lg;
-  padding: $spacing-md $spacing-lg;
-  background: $bg-card;
-  border-radius: $radius-lg;
-  box-shadow: $shadow-sm;
+}
+
+.titleBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+  flex-wrap: wrap;
 }
 
 .title {
   margin: 0;
-  font-size: $font-size-lg;
-  font-weight: $font-weight-semibold;
+  font-size: 28px;
+  font-weight: $font-weight-bold;
+  letter-spacing: -0.03em;
   color: $text-primary;
+}
+
+.subtitle {
+  margin: 0;
+  max-width: 820px;
+  font-size: $font-size-sm;
+  line-height: 1.6;
+  color: $text-secondary;
+}
+
+.hintList {
   display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-md;
+}
+
+.hintItem {
+  display: inline-flex;
   align-items: center;
-  gap: $spacing-sm;
+  font-size: 11px;
+  font-weight: $font-weight-semibold;
+  color: $text-secondary;
+
+  &::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    margin-right: 8px;
+    border-radius: 50%;
+    background: $primary-30;
+  }
 }
 
-.icon {
-  font-size: $font-size-lg;
+.statusText {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: $radius-full;
+  background: $warning-soft;
+  font-size: 11px;
+  font-weight: $font-weight-semibold;
+  color: $warning;
 }
 
-.actions {
-  display: flex;
-  gap: $spacing-sm;
-}
+@include respond-to(md) {
+  .controlBar {
+    margin-bottom: $spacing-md;
+  }
 
-.btnGhost {
-  @include button-secondary;
-  padding: 6px 14px;
-  font-size: $font-size-sm;
-}
+  .title {
+    font-size: $font-size-xl;
+  }
 
-.btnPrimary {
-  @include button-primary;
-  padding: 6px 14px;
-  font-size: $font-size-sm;
+  .subtitle {
+    font-size: $font-size-xs;
+  }
+
+  .hintList {
+    gap: 6px;
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }

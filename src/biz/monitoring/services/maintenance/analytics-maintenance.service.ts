@@ -103,10 +103,10 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
       this.logger.log(`开始执行小时统计聚合任务... trigger=${trigger}`);
 
       const now = new Date();
-      const latestStored = await this.hourlyStatsRepository.getRecentHourlyStats(1);
+      const latestStored = await this.hourlyStatsRepository.getLatestHourlyStat();
       const maxHours =
         trigger === 'startup' ? this.MAX_BACKFILL_HOURS_STARTUP : this.MAX_BACKFILL_HOURS_CRON;
-      const window = this.resolveBackfillWindow(now, latestStored[0]?.hour, maxHours);
+      const window = this.resolveBackfillWindow(now, latestStored?.hour, maxHours);
 
       if (!window) {
         this.logger.debug(`[小时聚合] 无需补齐，投影已是最新状态 trigger=${trigger}`);
