@@ -1,5 +1,8 @@
 import {
   buildPartTimeJobUserMessage,
+  buildPartTimeSalaryLine,
+  enforcePartTimeSalaryLine,
+  extractPartTimeHourlySalary,
   PART_TIME_JOB_SYSTEM_PROMPT,
 } from '@biz/group-task/prompts/part-time-job.prompt';
 import { JobDetail } from '@sponge/sponge.types';
@@ -77,7 +80,8 @@ describe('buildPartTimeJobUserMessage', () => {
     it('should include salary when present', () => {
       const result = buildPartTimeJobUserMessage(makeData([makeJob()]));
 
-      expect(result).toContain('20元/小时');
+      expect(result).toContain('20元/时');
+      expect(result).toContain('固定薪资行（必须原样输出）: 💰 薪资待遇：20元/时');
     });
 
     it('should omit salary line when no salary data', () => {
@@ -314,10 +318,10 @@ describe('buildPartTimeJobUserMessage', () => {
       });
       const result = buildPartTimeJobUserMessage(makeData([job]));
 
-      expect(result).toContain('15.5元/小时');
+      expect(result).toContain('15.5元/时');
     });
 
-    it('should display comprehensiveSalary range when basicSalary is absent', () => {
+    it('should omit salary line when only monthly comprehensiveSalary is present', () => {
       const job = makeJob({
         jobSalary: {
           salaryScenarioList: [
@@ -333,7 +337,8 @@ describe('buildPartTimeJobUserMessage', () => {
       });
       const result = buildPartTimeJobUserMessage(makeData([job]));
 
-      expect(result).toContain('3000-5000元/月');
+      expect(result).not.toMatch(/薪资:/);
+      expect(result).not.toContain('元/月');
     });
 
     it('should display min-max range for multi-scenario salary', () => {
@@ -348,7 +353,7 @@ describe('buildPartTimeJobUserMessage', () => {
       });
       const result = buildPartTimeJobUserMessage(makeData([job]));
 
-      expect(result).toContain('14-18元/小时');
+      expect(result).toContain('14-18元/时');
     });
 
     it('should display single value when all multi-scenario salaries are equal', () => {
@@ -362,8 +367,83 @@ describe('buildPartTimeJobUserMessage', () => {
       });
       const result = buildPartTimeJobUserMessage(makeData([job]));
 
-      expect(result).toContain('16元/小时');
+      expect(result).toContain('16元/时');
       expect(result).not.toContain('16-16');
+    });
+
+    it('should ignore monthly max salary when hourly salary also exists', () => {
+      const jobs = [
+        makeJob({
+          jobSalary: {
+            salaryScenarioList: [
+              { basicSalary: { basicSalary: 14.8, basicSalaryUnit: '元/小时' } },
+              {
+                comprehensiveSalary: {
+                  minComprehensiveSalary: 3500,
+                  maxComprehensiveSalary: 4300,
+                  comprehensiveSalaryUnit: '元/月',
+                },
+              },
+            ],
+          },
+        }),
+        makeJob({
+          basicInfo: { jobId: 2, storeInfo: {} },
+          jobSalary: {
+            salaryScenarioList: [
+              { basicSalary: { basicSalary: 18, basicSalaryUnit: '元/小时' } },
+            ],
+          },
+        }),
+      ];
+      const result = buildPartTimeJobUserMessage(makeData(jobs));
+
+      expect(result).toContain('14.8-18元/时');
+      expect(result).not.toContain('4300');
+      expect(result).not.toContain('元/月');
+    });
+
+    it('should derive exact hourly range from base salary and stair salaries', () => {
+      const job = makeJob({
+        jobSalary: {
+          salaryScenarioList: [
+            {
+              basicSalary: { basicSalary: 14.8, basicSalaryUnit: '元/时' },
+              stairSalaries: [
+                { salary: 15.4, salaryUnit: '元/时' },
+                { salary: 19.1, salaryUnit: '元/时' },
+              ],
+              comprehensiveSalary: {
+                minComprehensiveSalary: 1500,
+                maxComprehensiveSalary: 3500,
+                comprehensiveSalaryUnit: '元/月',
+              },
+            },
+          ],
+        },
+      });
+
+      expect(extractPartTimeHourlySalary([job])).toBe('14.8-19.1元/时');
+    });
+
+    it('should ignore holiday and overtime salary when deriving hourly range', () => {
+      const job = makeJob({
+        jobSalary: {
+          salaryScenarioList: [
+            {
+              basicSalary: { basicSalary: 20, basicSalaryUnit: '元/时' },
+              stairSalaries: [
+                { salary: 22, salaryUnit: '元/时' },
+                { salary: 24, salaryUnit: '元/时' },
+              ],
+              holidaySalary: { holidaySalary: 38, holidaySalaryUnit: '元/时' },
+              overtimeSalary: { overtimeSalary: 57, overtimeSalaryUnit: '元/时' },
+            },
+          ],
+        },
+      });
+
+      expect(extractPartTimeHourlySalary([job])).toBe('20-24元/时');
     });
 
     it('should omit salary line when salaryScenarioList is empty', () => {
@@ -371,6 +451,57 @@ describe('buildPartTimeJobUserMessage', () => {
       const result = buildPartTimeJobUserMessage(makeData([job]));
 
       expect(result).not.toMatch(/薪资:/);
+    });
+  });
+
+  describe('code-enforced salary line', () => {
+    it('should build exact salary line from real hourly range', () => {
+      const job = makeJob({
+        jobSalary: {
+          salaryScenarioList: [
+            {
+              basicSalary: { basicSalary: 19, basicSalaryUnit: '元/时' },
+              stairSalaries: [
+                { salary: 22, salaryUnit: '元/时' },
+                { salary: 24, salaryUnit: '元/时' },
+              ],
+            },
+          ],
+        },
+      });
+
+      expect(buildPartTimeSalaryLine([job])).toBe('💰 薪资待遇：19-24元/时');
+    });
+
+    it('should replace ai-generated salary block with the exact computed salary line', () => {
+      const aiMessage = `🍕【必胜客·北京】69家门店招聘啦！
+
+💰 薪资待遇：
+- 时薪范围：19-22元/时
+- 工作类型：小时工（灵活时间制）
+👤 招聘对象：18-50岁
+📝 工作内容：
+• 点餐收银`;
+      const job = makeJob({
+        jobSalary: {
+          salaryScenarioList: [
+            {
+              basicSalary: { basicSalary: 19, basicSalaryUnit: '元/时' },
+              stairSalaries: [
+                { salary: 22, salaryUnit: '元/时' },
+                { salary: 24, salaryUnit: '元/时' },
+              ],
+            },
+          ],
+        },
+      });
+
+      const result = enforcePartTimeSalaryLine(aiMessage, [job]);
+
+      expect(result).toContain('💰 薪资待遇：19-24元/时');
+      expect(result).not.toContain('19-22元/时');
+      expect(result).not.toContain('工作类型');
+      expect(result).toContain('👤 招聘对象：18-50岁');
     });
   });
 
@@ -516,6 +647,23 @@ describe('buildPartTimeJobUserMessage', () => {
       const result = buildPartTimeJobUserMessage(makeData([job]));
 
       expect(result).toContain('需要能接受夜班');
+    });
+
+    it('should filter student, settlement, and social security remarks', () => {
+      const job = makeJob({
+        hiringRequirement: {
+          remark: '需持有效健康证；坚决不接受学生（违规不予结算，已发亦追回扣除）；员工名下不能有社保',
+        },
+      });
+      const result = buildPartTimeJobUserMessage(makeData([job]));
+
+      const lines = result.split('\n');
+      const reqLine = lines.find((l) => l.startsWith('用人要求:'));
+      expect(reqLine).toBe('用人要求: 年龄18-50岁、需持有效健康证');
+      expect(result).toContain('需持有效健康证');
+      expect(result).not.toContain('不接受学生');
+      expect(result).not.toContain('不予结算');
+      expect(result).not.toContain('社保');
     });
 
     it('should join multiple requirement items with 、 after broad age copy', () => {

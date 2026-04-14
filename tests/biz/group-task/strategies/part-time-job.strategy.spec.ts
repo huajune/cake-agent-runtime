@@ -138,5 +138,41 @@ describe('PartTimeJobStrategy', () => {
       expect(prompt.userMessage).toContain('上海');
       expect(prompt.systemPrompt).toContain('兼职招聘群');
     });
+
+    it('应在 AI 生成后用代码强制替换薪资行', () => {
+      const message = `🍕【必胜客·北京】69家门店招聘啦！
+
+💰 薪资待遇：
+- 时薪范围：19-22元/时
+- 工作类型：小时工（灵活时间制）
+👤 招聘对象：18-50岁`;
+
+      const result = strategy.appendFooter!(message, {
+        hasData: true,
+        payload: {
+          jobs: [
+            {
+              basicInfo: { brandName: '必胜客' },
+              jobSalary: {
+                salaryScenarioList: [
+                  {
+                    basicSalary: { basicSalary: 19, basicSalaryUnit: '元/时' },
+                    stairSalaries: [
+                      { salary: 22, salaryUnit: '元/时' },
+                      { salary: 24, salaryUnit: '元/时' },
+                    ],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        summary: '',
+      });
+
+      expect(result).toContain('💰 薪资待遇：19-24元/时');
+      expect(result).not.toContain('19-22元/时');
+      expect(result).not.toContain('工作类型');
+    });
   });
 });

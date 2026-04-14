@@ -14,6 +14,11 @@ import { MessageParser } from './utils/message-parser.util';
 import { LogSanitizer } from './utils/log-sanitizer.util';
 import { EnterpriseMessageCallbackDto } from './message-callback.dto';
 import { getMessageSourceDescription } from '@enums/message-callback.enum';
+import {
+  toStorageContactType,
+  toStorageMessageSource,
+  toStorageMessageType,
+} from './message.types';
 
 /**
  * 消息处理服务（重构版 v4 - 协调器模式）
@@ -82,6 +87,8 @@ export class MessageService implements OnModuleInit {
    * 步骤 5（AI 开关）和步骤 6（分派）由本服务控制
    */
   async handleMessage(messageData: EnterpriseMessageCallbackDto) {
+    messageData._receivedAtMs = messageData._receivedAtMs ?? Date.now();
+
     const sanitized = LogSanitizer.sanitizeMessageCallback(messageData);
     this.logger.debug('=== [回调消息数据(已脱敏)] ===');
     this.logger.debug(JSON.stringify(sanitized, null, 2));
@@ -100,10 +107,10 @@ export class MessageService implements OnModuleInit {
     // 步骤 5: 全局 AI 开关
     if (!this.enableAiReply) {
       const parsed = MessageParser.parse(messageData);
+      this.ensureRequestTrace(messageData, pipelineResult.content ?? parsed.content);
       this.wecomObservability.updateDispatch(messageData.messageId, 'disabled');
       const successMetadata = this.wecomObservability.buildSuccessMetadata(messageData.messageId, {
         scenario: MessageParser.determineScenario(),
-        isPrimary: true,
         replyPreview: '[AI回复已禁用]',
         replySegments: 0,
         extraResponse: { disabledAiReply: true },
@@ -137,6 +144,7 @@ export class MessageService implements OnModuleInit {
         const errorMessage = error instanceof Error ? error.message : String(error);
 
         this.logger.error(`[聚合调度] 处理消息 [${messageData.messageId}] 失败: ${errorMessage}`);
+        this.ensureRequestTrace(messageData, parsed.content);
         this.wecomObservability.updateDispatch(messageData.messageId, 'merged');
         const failureMetadata = this.wecomObservability.buildFailureMetadata(
           messageData.messageId,
@@ -144,7 +152,6 @@ export class MessageService implements OnModuleInit {
             scenario: MessageParser.determineScenario(),
             errorType: 'merge',
             errorMessage,
-            isPrimary: true,
             extraResponse: {
               phase: 'enqueue',
               chatId: parsed.chatId,
@@ -213,5 +220,35 @@ export class MessageService implements OnModuleInit {
     if (opts.mergeQueues) cleared.mergeQueues = true; // Redis TTL 自动处理
 
     return { timestamp: new Date().toISOString(), cleared };
+  }
+
+  private ensureRequestTrace(
+    messageData: EnterpriseMessageCallbackDto,
+    content: string,
+    batchId?: string,
+  ): void {
+    if (this.wecomObservability.hasTrace(messageData.messageId)) {
+      return;
+    }
+
+    const parsed = MessageParser.parse(messageData);
+
+    this.wecomObservability.startTrace({
+      messageId: messageData.messageId,
+      chatId: parsed.chatId,
+      userId: parsed.imContactId,
+      userName: parsed.contactName,
+      managerName: parsed.managerName,
+      scenario: MessageParser.determineScenario(),
+      content,
+      imageCount: MessageParser.extractImageUrl(messageData) ? 1 : 0,
+      messageType: toStorageMessageType(messageData.messageType),
+      messageSource: toStorageMessageSource(messageData.source),
+      contactType: toStorageContactType(messageData.contactType),
+      batchId,
+      acceptedAt: messageData._receivedAtMs,
+      sourceMessageIds: [messageData.messageId],
+      sourceMessageCount: 1,
+    });
   }
 }

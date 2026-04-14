@@ -20,11 +20,6 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
     name: 'Claude Sonnet 4.6',
     description: 'Anthropic Claude Sonnet 4.6 (最新)',
   },
-  'anthropic/claude-sonnet-4-5-20250929': {
-    provider: 'anthropic',
-    name: 'Claude Sonnet 4.5',
-    description: 'Anthropic Claude Sonnet 4.5',
-  },
   'anthropic/claude-haiku-4-5': {
     provider: 'anthropic',
     name: 'Claude Haiku 4.5',
@@ -47,22 +42,12 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
     name: 'GPT-5 Mini',
     description: 'OpenAI GPT-5 Mini',
   },
-  'openai/gpt-4o': {
-    provider: 'openai',
-    name: 'GPT-4o',
-    description: 'OpenAI GPT-4o',
-  },
 
   // ==================== Google ====================
   'google/gemini-3-pro-preview': {
     provider: 'google',
     name: 'Gemini 3 Pro Preview',
     description: 'Google Gemini 3 Pro 预览版',
-  },
-  'google/gemini-2.5-pro-preview-05-06': {
-    provider: 'google',
-    name: 'Gemini 2.5 Pro Preview',
-    description: 'Google Gemini 2.5 Pro',
   },
   'google/gemini-2.5-flash-preview-04-17': {
     provider: 'google',
@@ -83,81 +68,12 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
     name: 'Qwen3.6 Plus',
     description: '通义千问3.6增强版（支持文本/图像/视频，支持思考模式）',
   },
-  'qwen/qwen3.5-plus': {
-    provider: 'qwen',
-    name: 'Qwen3.5 Plus',
-    description: '通义千问3.5增强版（支持文本/图像/视频，支持思考模式）',
-  },
-  'qwen/qwen-max-latest': {
-    provider: 'qwen',
-    name: 'Qwen Max Latest',
-    description: '通义千问旗舰版',
-  },
-  'qwen/qwen-plus-latest': {
-    provider: 'qwen',
-    name: 'Qwen Plus Latest',
-    description: '通义千问增强版',
-  },
 
   // ==================== MoonshotAI / Kimi ====================
-  'moonshotai/kimi-k2-0905-preview': {
-    provider: 'moonshotai',
-    name: 'Kimi K2 0905 Preview',
-    description: 'Kimi K2 0905 预览版',
-  },
   'moonshotai/kimi-k2-thinking-turbo': {
     provider: 'moonshotai',
     name: 'Kimi K2 Thinking Turbo',
     description: 'Kimi K2 思考加速版',
-  },
-
-  // ==================== OpenRouter ====================
-  'openrouter/qwen/qwen3-235b-a22b': {
-    provider: 'openrouter',
-    name: 'Qwen3 235B (OpenRouter)',
-    description: '通过 OpenRouter 访问 Qwen3 235B',
-  },
-  'openrouter/qwen/qwen-max': {
-    provider: 'openrouter',
-    name: 'Qwen Max (OpenRouter)',
-    description: '通过 OpenRouter 访问 Qwen Max',
-  },
-  'openrouter/moonshotai/kimi-k2-0905': {
-    provider: 'openrouter',
-    name: 'Kimi K2 0905 (OpenRouter)',
-    description: '通过 OpenRouter 访问 Kimi K2',
-  },
-  'openrouter/anthropic/claude-3.7-sonnet': {
-    provider: 'openrouter',
-    name: 'Claude 3.7 Sonnet (OpenRouter)',
-    description: '通过 OpenRouter 访问 Claude 3.7 Sonnet',
-  },
-  'openrouter/anthropic/claude-sonnet-4': {
-    provider: 'openrouter',
-    name: 'Claude Sonnet 4 (OpenRouter)',
-    description: '通过 OpenRouter 访问 Claude Sonnet 4',
-  },
-  'openrouter/openai/gpt-4.1': {
-    provider: 'openrouter',
-    name: 'GPT-4.1 (OpenRouter)',
-    description: '通过 OpenRouter 访问 GPT-4.1',
-  },
-  'openrouter/openai/gpt-4o': {
-    provider: 'openrouter',
-    name: 'GPT-4o (OpenRouter)',
-    description: '通过 OpenRouter 访问 GPT-4o',
-  },
-
-  // ==================== OhMyGPT (代理) ====================
-  'ohmygpt/gemini-2.5-pro-preview-06-05': {
-    provider: 'ohmygpt',
-    name: 'Gemini 2.5 Pro Preview (OhMyGPT)',
-    description: '通过 OhMyGPT 访问 Gemini 2.5 Pro',
-  },
-  'ohmygpt/gemini-2.5-flash-preview-05-20': {
-    provider: 'ohmygpt',
-    name: 'Gemini 2.5 Flash Preview (OhMyGPT)',
-    description: '通过 OhMyGPT 访问 Gemini 2.5 Flash',
   },
 };
 

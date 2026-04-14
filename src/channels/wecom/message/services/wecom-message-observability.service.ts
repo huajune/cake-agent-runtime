@@ -37,6 +37,9 @@ interface WecomTraceRequestContext {
   contactType?: StorageContactType;
   dispatchMode?: DispatchMode;
   batchId?: string;
+  acceptedAt?: number;
+  sourceMessageIds?: string[];
+  sourceMessageCount?: number;
 }
 
 interface WecomTraceTimings {
@@ -72,10 +75,10 @@ export class WecomMessageObservabilityService {
   constructor(private readonly trackingService: MessageTrackingService) {}
 
   startTrace(context: WecomTraceRequestContext): void {
-    const now = Date.now();
+    const acceptedAt = context.acceptedAt ?? Date.now();
     this.traces.set(context.messageId, {
       request: context,
-      timings: { acceptedAt: now },
+      timings: { acceptedAt },
     });
 
     this.trackingService.recordMessageReceived(
@@ -86,6 +89,7 @@ export class WecomMessageObservabilityService {
       context.content,
       { scenario: context.scenario },
       context.managerName,
+      acceptedAt,
     );
   }
 
@@ -196,68 +200,52 @@ export class WecomMessageObservabilityService {
     messageId: string,
     options: {
       scenario: ScenarioType;
-      isPrimary: boolean;
       batchId?: string;
       replySegments?: number;
       replyPreview?: string;
       extraResponse?: Record<string, unknown>;
     },
-  ): MonitoringMetadata & { fallbackSuccess?: boolean; batchId?: string; isPrimary?: boolean } {
+  ): MonitoringMetadata & { fallbackSuccess?: boolean; batchId?: string } {
     const trace = this.traces.get(messageId);
     const completedAt = Date.now();
     const agentResult = trace?.agentResult;
-    const tools = options.isPrimary
-      ? agentResult?.toolCalls?.map((toolCall) => toolCall.toolName)
-      : undefined;
+    const tools = agentResult?.toolCalls?.map((toolCall) => toolCall.toolName);
 
     const metadata: MonitoringMetadata & {
       fallbackSuccess?: boolean;
       batchId?: string;
-      isPrimary?: boolean;
     } = {
       scenario: options.scenario,
       batchId: options.batchId,
-      isPrimary: options.isPrimary,
-      replyPreview: options.isPrimary ? options.replyPreview : undefined,
-      replySegments: options.isPrimary ? options.replySegments : undefined,
-      tokenUsage: options.isPrimary ? (agentResult?.reply.usage?.totalTokens ?? 0) : undefined,
+      replyPreview: options.replyPreview,
+      replySegments: options.replySegments,
+      tokenUsage: agentResult?.reply.usage?.totalTokens ?? 0,
       tools,
-      isFallback: options.isPrimary ? (agentResult?.isFallback ?? false) : false,
-      fallbackSuccess: options.isPrimary && agentResult?.isFallback ? true : undefined,
-      agentInvocation:
-        options.isPrimary && trace
-          ? {
-              request: {
-                ...trace.request,
-                agentRequest: trace.agentRequest,
+      isFallback: agentResult?.isFallback ?? false,
+      fallbackSuccess: agentResult?.isFallback ? true : undefined,
+      agentInvocation: trace
+        ? {
+            request: {
+              ...trace.request,
+              agentRequest: trace.agentRequest,
+            },
+            response: {
+              status: 'success',
+              reply: {
+                content: agentResult?.reply.content,
+                reasoning: agentResult?.reply.reasoning,
+                usage: agentResult?.reply.usage,
               },
-              response: {
-                status: 'success',
-                reply: {
-                  content: agentResult?.reply.content,
-                  reasoning: agentResult?.reply.reasoning,
-                  usage: agentResult?.reply.usage,
-                },
-                toolCalls: agentResult?.toolCalls,
-                delivery: trace.deliveryResult,
-                fallback: trace.fallbackDelivery,
-                timings: this.buildTimingSummary(trace, completedAt),
-                ...options.extraResponse,
-              },
-              isFallback: agentResult?.isFallback ?? false,
-            }
-          : undefined,
+              toolCalls: agentResult?.toolCalls,
+              delivery: trace.deliveryResult,
+              fallback: trace.fallbackDelivery,
+              timings: this.buildTimingSummary(trace, completedAt),
+              ...options.extraResponse,
+            },
+            isFallback: agentResult?.isFallback ?? false,
+          }
+        : undefined,
     };
-
-    if (!options.isPrimary) {
-      metadata.tokenUsage = undefined;
-      metadata.tools = undefined;
-      metadata.replyPreview = undefined;
-      metadata.replySegments = undefined;
-      metadata.agentInvocation = undefined;
-      metadata.isFallback = false;
-      metadata.fallbackSuccess = undefined;
-    }
 
     this.cleanup(messageId);
     return metadata;
@@ -269,7 +257,6 @@ export class WecomMessageObservabilityService {
       scenario: ScenarioType;
       errorType: AlertErrorType;
       errorMessage: string;
-      isPrimary: boolean;
       batchId?: string;
       extraResponse?: Record<string, unknown>;
     },
@@ -277,7 +264,6 @@ export class WecomMessageObservabilityService {
     alertType?: AlertErrorType;
     fallbackSuccess?: boolean;
     batchId?: string;
-    isPrimary?: boolean;
   } {
     const trace = this.traces.get(messageId);
     const completedAt = Date.now();
@@ -292,58 +278,41 @@ export class WecomMessageObservabilityService {
       alertType?: AlertErrorType;
       fallbackSuccess?: boolean;
       batchId?: string;
-      isPrimary?: boolean;
     } = {
       scenario: options.scenario,
       alertType: options.errorType,
       batchId: options.batchId,
-      isPrimary: options.isPrimary,
-      replyPreview: options.isPrimary ? agentResult?.reply.content : undefined,
-      replySegments: options.isPrimary ? trace?.deliveryResult?.segmentCount : undefined,
-      tokenUsage: options.isPrimary ? (agentResult?.reply.usage?.totalTokens ?? 0) : undefined,
-      tools: options.isPrimary
-        ? agentResult?.toolCalls?.map((toolCall) => toolCall.toolName)
-        : undefined,
-      isFallback: options.isPrimary
-        ? (agentResult?.isFallback ?? Boolean(trace?.fallbackDelivery))
-        : false,
+      replyPreview: agentResult?.reply.content,
+      replySegments: trace?.deliveryResult?.segmentCount,
+      tokenUsage: agentResult?.reply.usage?.totalTokens ?? 0,
+      tools: agentResult?.toolCalls?.map((toolCall) => toolCall.toolName),
+      isFallback: agentResult?.isFallback ?? Boolean(trace?.fallbackDelivery),
       fallbackSuccess: trace?.fallbackDelivery?.success,
-      agentInvocation:
-        options.isPrimary && trace
-          ? {
-              request: {
-                ...trace.request,
-                agentRequest: trace.agentRequest,
+      agentInvocation: trace
+        ? {
+            request: {
+              ...trace.request,
+              agentRequest: trace.agentRequest,
+            },
+            response: {
+              status: 'failure',
+              error: options.errorMessage,
+              errorType: options.errorType,
+              reply: {
+                content: agentResult?.reply.content,
+                reasoning: agentResult?.reply.reasoning,
+                usage: agentResult?.reply.usage,
               },
-              response: {
-                status: 'failure',
-                error: options.errorMessage,
-                errorType: options.errorType,
-                reply: {
-                  content: agentResult?.reply.content,
-                  reasoning: agentResult?.reply.reasoning,
-                  usage: agentResult?.reply.usage,
-                },
-                toolCalls: agentResult?.toolCalls,
-                delivery: trace.deliveryResult,
-                fallback: trace.fallbackDelivery,
-                timings: this.buildTimingSummary(trace, completedAt),
-                ...options.extraResponse,
-              },
-              isFallback: agentResult?.isFallback ?? Boolean(trace.fallbackDelivery),
-            }
-          : undefined,
+              toolCalls: agentResult?.toolCalls,
+              delivery: trace.deliveryResult,
+              fallback: trace.fallbackDelivery,
+              timings: this.buildTimingSummary(trace, completedAt),
+              ...options.extraResponse,
+            },
+            isFallback: agentResult?.isFallback ?? Boolean(trace.fallbackDelivery),
+          }
+        : undefined,
     };
-
-    if (!options.isPrimary) {
-      metadata.tokenUsage = undefined;
-      metadata.tools = undefined;
-      metadata.replyPreview = undefined;
-      metadata.replySegments = undefined;
-      metadata.agentInvocation = undefined;
-      metadata.isFallback = false;
-      metadata.fallbackSuccess = undefined;
-    }
 
     this.cleanup(messageId);
     return metadata;

@@ -160,7 +160,6 @@ describe('MessageProcessingRepository', () => {
           fallback_success: null,
           agent_invocation: null,
           batch_id: null,
-          is_primary: true,
         },
       ];
 
@@ -228,7 +227,6 @@ describe('MessageProcessingRepository', () => {
         fallback_success: null,
         agent_invocation: null,
         batch_id: null,
-        is_primary: null,
       };
 
       const queryMock = makeQueryMock({ data: [dbRow], error: null, count: 1 });
@@ -304,7 +302,6 @@ describe('MessageProcessingRepository', () => {
         fallback_success: null,
         agent_invocation: null,
         batch_id: 'batch_001',
-        is_primary: true,
       };
 
       const queryMock = makeQueryMock({ data: [dbRow], error: null });
@@ -478,7 +475,6 @@ describe('MessageProcessingRepository', () => {
         fallback_success: null,
         agent_invocation: null,
         batch_id: null,
-        is_primary: null,
       };
 
       const queryMock = makeQueryMock({ data: [dbRow], error: null });

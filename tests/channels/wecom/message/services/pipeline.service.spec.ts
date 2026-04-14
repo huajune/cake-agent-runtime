@@ -39,7 +39,7 @@ describe('MessagePipelineService', () => {
   };
 
   const mockImageDescriptionService = {
-    describeAndUpdateAsync: jest.fn(),
+    describeAndUpdateSync: jest.fn(),
   };
 
   const mockRunnerService = {
@@ -74,6 +74,7 @@ describe('MessagePipelineService', () => {
   };
 
   const mockWecomObservabilityService = {
+    hasTrace: jest.fn().mockReturnValue(false),
     startTrace: jest.fn(),
     markHistoryStored: jest.fn(),
     markImagePrepared: jest.fn(),
@@ -294,7 +295,7 @@ describe('MessagePipelineService', () => {
       );
       expect(mockDeliveryService.deliverReply).toHaveBeenCalledTimes(1);
       expect(mockMonitoringService.recordSuccess).not.toHaveBeenCalled();
-      expect(mockDeduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalled();
+      expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-123');
     });
 
     it('should classify agentMeta-only errors as agent alerts and include structured diagnostics', async () => {

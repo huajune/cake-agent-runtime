@@ -29,5 +29,4 @@ export interface MessageProcessingDbRecord {
   fallback_success?: boolean;
   agent_invocation?: unknown;
   batch_id?: string;
-  is_primary?: boolean;
 }

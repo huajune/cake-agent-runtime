@@ -16,7 +16,7 @@ export const PART_TIME_JOB_SYSTEM_PROMPT = `你是一个企微兼职招聘群的
 ### 结构模板：
 🍲【品牌·城市】N家门店招聘啦！
 
-💰 薪资待遇：XX元/时
+💰 薪资待遇：XX-XX元/时
 👤 招聘对象：年龄、学历等要求
 📋 必备条件：证件、稳定性等要求（如有）
 ⏰ 工作时间：时段信息（如有）
@@ -58,6 +58,9 @@ export const PART_TIME_JOB_SYSTEM_PROMPT = `你是一个企微兼职招聘群的
 9. 适合手机阅读，不超过500字
 10. 直接输出消息文案
 11. 称呼用"小伙伴、朋友"，不要用"姐妹"等有性别倾向的称呼
+12. 薪资只允许展示时薪范围，禁止出现月薪、综合薪资、全职薪资等字段；如果没有明确时薪，就不要写薪资
+13. 不要提及不结算、不缴社保/五险一金、试工/培训无薪、辞退无薪、不接受学生等敏感政策
+14. 如果输入中提供了"固定薪资行（必须原样输出）"，必须原样保留，禁止改写、取整、压缩区间或补充"工作类型"
 
 ## 禁止事项（Bad Case）
 - ❌ 把所有门店按区域逐一列出形成大段文字墙
@@ -65,7 +68,8 @@ export const PART_TIME_JOB_SYSTEM_PROMPT = `你是一个企微兼职招聘群的
 - ❌ 给每个门店编造不同的工作内容（如果数据里工作内容相同）
 - ❌ 禁止添加"岗位优势"板块，除非数据中明确提供了福利信息
 - ❌ 使用"姐妹"、"兄弟"等性别化称呼
-- ❌ 出现"全职"、"兼职"等工作形式字样，薪资待遇后面不要加工作形式`;
+- ❌ 出现"全职"、"兼职"等工作形式字样，薪资待遇后面不要加工作形式
+- ❌ 出现"元/月"、"月薪"、"综合薪资"、"不结算"、"不缴社保"、"无薪资"、"不接受学生"等敏感或误导性表述`;
 
 interface PartTimeJobPromptData {
   brand: string;
@@ -95,8 +99,12 @@ export function buildPartTimeJobUserMessage(data: PartTimeJobPromptData): string
       // 岗位名
       if (bi.jobNickName) parts.push(`岗位: ${bi.jobNickName}`);
 
+      const hourlySalary = extractHourlySalaryFromJob(j);
+      if (hourlySalary) parts.push(`时薪: ${hourlySalary}`);
+
       // 工作内容
-      if (bi.jobContent) parts.push(`工作内容: ${bi.jobContent}`);
+      const jobContent = sanitizePublicText(bi.jobContent);
+      if (jobContent) parts.push(`工作内容: ${jobContent}`);
 
       // 工作时段
       const workTime = extractWorkTime(j);
@@ -109,8 +117,9 @@ export function buildPartTimeJobUserMessage(data: PartTimeJobPromptData): string
     })
     .join('\n\n');
 
-  // 薪资（汇总所有岗位，取最高值展示更有吸引力的范围）
-  const salaryStr = extractBestSalary(data.jobs);
+  // 薪资（仅保留时薪范围，避免月薪/综合薪资）
+  const salaryStr = extractPartTimeHourlySalary(data.jobs);
+  const fixedSalaryLine = buildPartTimeSalaryLine(data.jobs);
 
   // 福利
   const welfareStr = extractWelfare(data.jobs[0]);
@@ -124,7 +133,7 @@ export function buildPartTimeJobUserMessage(data: PartTimeJobPromptData): string
   );
   // 工作内容汇总（如果所有门店相同，只展示一次）
   const allJobContents = data.jobs
-    .map((j: JobDetail) => j.basicInfo?.jobContent || '')
+    .map((j: JobDetail) => sanitizePublicText(j.basicInfo?.jobContent))
     .filter(Boolean);
   const uniqueContents = [...new Set(allJobContents)];
   const commonContent = uniqueContents.length === 1 ? uniqueContents[0] : '';
@@ -137,7 +146,8 @@ export function buildPartTimeJobUserMessage(data: PartTimeJobPromptData): string
     `城市: ${data.city}`,
     `在招门店数: ${data.jobs.length}家`,
     `岗位: ${jobTitle}`,
-    salaryStr ? `薪资: ${salaryStr}` : '',
+    fixedSalaryLine ? `固定薪资行（必须原样输出）: ${fixedSalaryLine}` : '',
+    salaryStr ? `汇总时薪范围: ${salaryStr}` : '',
     welfareStr ? `福利: ${welfareStr}` : '',
     totalRequirement > 0 ? `总招聘人数: ${totalRequirement}人` : '',
     hiringReq ? `用人要求: ${hiringReq}` : '',
@@ -170,6 +180,58 @@ function cleanStoreName(name: string): string {
   );
 }
 
+const HOURLY_SALARY_UNITS = ['元/时', '元/小时', '/时', '/小时', '时薪'];
+const SENSITIVE_PUBLIC_COPY_PATTERNS = [
+  /不(?:予|给)?结算/,
+  /(?:已发|发放).{0,8}(?:追回|扣除)/,
+  /(?:不|无)(?:薪资|工资|薪酬|工钱)/,
+  /(?:不|无)(?:缴|交|买|购买|缴纳)?(?:社保|五险一金)/,
+  /(?:社保|五险一金).{0,6}(?:不缴|不交|不买|不购买|无)/,
+  /(?:名下|个人).{0,4}(?:不能有|不可有|不得有).{0,4}(?:社保|五险一金)/,
+  /(?:不能有|不可有|不得有).{0,4}(?:社保|五险一金)/,
+  /(?:不接受|谢绝|勿扰|不招|不要).{0,4}学生/,
+  /学生.{0,4}(?:勿扰|不考虑|不接受|不招)/,
+  /(?:培训|试工|试岗|试用).{0,12}(?:无薪|无工资|无薪资|不结算|不计薪)/,
+  /(?:主动放弃|商家辞退|辞退|离职|自离).{0,12}(?:无薪|无工资|无薪资|不结算|不计薪)/,
+];
+
+function isHourlySalaryUnit(unit: unknown): boolean {
+  if (typeof unit !== 'string') {
+    return false;
+  }
+
+  return HOURLY_SALARY_UNITS.some((keyword) => unit.includes(keyword));
+}
+
+function formatHourlySalary(value: number): string {
+  return Number.isInteger(value) ? String(value) : Number(value.toFixed(2)).toString();
+}
+
+function containsSensitivePublicCopy(text: string): boolean {
+  const normalized = text.replace(/\s+/g, '');
+  return SENSITIVE_PUBLIC_COPY_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function sanitizePublicText(text: unknown): string {
+  if (typeof text !== 'string' || text.trim().length === 0) {
+    return '';
+  }
+
+  const withoutSensitiveParentheses = text.replace(/[（(][^）)]*[）)]/g, (segment) =>
+    containsSensitivePublicCopy(segment) ? '' : segment,
+  );
+
+  return withoutSensitiveParentheses
+    .split(/[，,；;。！!\n]/)
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .filter((segment) => !containsSensitivePublicCopy(segment))
+    .join('、')
+    .replace(/、{2,}/g, '、')
+    .replace(/^、|、$/g, '')
+    .trim();
+}
+
 /**
  * 提取工作时段
  */
@@ -195,87 +257,153 @@ function extractWorkTime(job: JobDetail): string {
   return '';
 }
 
-/**
- * 提取薪资信息（支持阶梯薪资）
- */
 /** 安全读取嵌套属性 */
 function prop(obj: unknown, key: string): unknown {
   return (obj as Record<string, unknown>)?.[key];
 }
 
 /**
- * 汇总所有岗位薪资，取最大值展示更有吸引力的范围
+ * 提取单个岗位的真实时薪区间：
+ * - 下限取基础时薪
+ * - 上限取基础时薪和阶梯时薪中的最高值
+ * - 忽略月薪、综合薪资、节假日薪资、加班薪资、补贴
  */
-function extractBestSalary(jobs: JobDetail[]): string {
-  let globalMax = 0;
-  let unit = '';
+function extractHourlySalaryFromJob(job: JobDetail): string {
+  const hourlySalaries = collectJobHourlySalaries(job);
+  if (hourlySalaries.length === 0) return '';
 
-  for (const job of jobs) {
-    const scenarios = job?.jobSalary?.salaryScenarioList as Record<string, unknown>[] | undefined;
-    if (!Array.isArray(scenarios)) continue;
-
-    for (const s of scenarios) {
-      const basic = s.basicSalary as Record<string, unknown> | undefined;
-      if (basic?.basicSalary) {
-        const val = Number(basic.basicSalary);
-        if (val > globalMax) {
-          globalMax = val;
-          unit = String(basic.basicSalaryUnit || '');
-        }
-      }
-      const comp = s.comprehensiveSalary as Record<string, unknown> | undefined;
-      const compMax = Number(comp?.maxComprehensiveSalary || 0);
-      if (compMax > globalMax) {
-        globalMax = compMax;
-        unit = String(comp?.comprehensiveSalaryUnit || '');
-      }
-    }
-  }
-
-  if (globalMax <= 0) return '';
-
-  // 用第一个岗位的最低值作为下限
-  const firstSalary = extractSalary(jobs[0]);
-  const minMatch = firstSalary.match(/^([\d.]+)/);
-  const minVal = minMatch ? Number(minMatch[1]) : globalMax;
-
-  return minVal < globalMax ? `${minVal}-${globalMax}${unit}` : `${globalMax}${unit}`;
+  return formatHourlySalaryRange({
+    min: Math.min(...hourlySalaries),
+    max: Math.max(...hourlySalaries),
+  });
 }
 
-function extractSalary(job: JobDetail): string {
-  const scenarios = job?.jobSalary?.salaryScenarioList as Record<string, unknown>[] | undefined;
-  if (!Array.isArray(scenarios) || scenarios.length === 0) return '';
+function collectJobHourlySalaries(job: JobDetail): number[] {
+  const hourlySalaries: number[] = [];
 
-  // 多个薪资方案 = 阶梯薪资
-  if (scenarios.length > 1) {
-    const salaries = scenarios
-      .map((s) => {
-        const basic = s.basicSalary as Record<string, unknown> | undefined;
-        return basic?.basicSalary ? `${basic.basicSalary}` : null;
-      })
-      .filter(Boolean);
-    if (salaries.length > 0) {
-      const firstBasic = scenarios[0].basicSalary as Record<string, unknown> | undefined;
-      const unit = firstBasic?.basicSalaryUnit || '';
-      const min = Math.min(...salaries.map(Number));
-      const max = Math.max(...salaries.map(Number));
-      return min === max ? `${min}${unit}` : `${min}-${max}${unit}`;
+  const scenarios = job?.jobSalary?.salaryScenarioList as Record<string, unknown>[] | undefined;
+  if (!Array.isArray(scenarios)) return hourlySalaries;
+
+  for (const scenario of scenarios) {
+    const basic = scenario.basicSalary as Record<string, unknown> | undefined;
+    const basicSalary = parsePositiveNumber(basic?.basicSalary);
+    if (basicSalary !== null && isHourlySalaryUnit(basic?.basicSalaryUnit)) {
+      hourlySalaries.push(basicSalary);
+    }
+
+    const stairSalaries = scenario.stairSalaries as Record<string, unknown>[] | undefined;
+    if (!Array.isArray(stairSalaries)) continue;
+
+    for (const stair of stairSalaries) {
+      const stairSalary = parsePositiveNumber(stair.salary);
+      if (stairSalary !== null && isHourlySalaryUnit(stair.salaryUnit)) {
+        hourlySalaries.push(stairSalary);
+      }
     }
   }
 
-  // 单个薪资方案
-  const salary = scenarios[0];
-  const basic = salary.basicSalary as Record<string, unknown> | undefined;
-  if (basic?.basicSalary) {
-    return `${basic.basicSalary}${basic.basicSalaryUnit}`;
+  return hourlySalaries;
+}
+
+function parsePositiveNumber(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function formatHourlySalaryRange(range: { min: number; max: number }): string {
+  const minStr = formatHourlySalary(range.min);
+  const maxStr = formatHourlySalary(range.max);
+  return range.min === range.max ? `${minStr}元/时` : `${minStr}-${maxStr}元/时`;
+}
+
+/**
+ * 汇总所有岗位的真实时薪区间
+ */
+export function extractPartTimeHourlySalary(jobs: JobDetail[]): string {
+  const ranges = jobs
+    .map((job) => {
+      const hourlySalaries = collectJobHourlySalaries(job);
+      if (hourlySalaries.length === 0) return null;
+      return {
+        min: Math.min(...hourlySalaries),
+        max: Math.max(...hourlySalaries),
+      };
+    })
+    .filter((range): range is { min: number; max: number } => range !== null);
+
+  if (ranges.length === 0) return '';
+
+  return formatHourlySalaryRange({
+    min: Math.min(...ranges.map((range) => range.min)),
+    max: Math.max(...ranges.map((range) => range.max)),
+  });
+}
+
+export function buildPartTimeSalaryLine(jobs: JobDetail[]): string {
+  const salary = extractPartTimeHourlySalary(jobs);
+  return salary ? `💰 薪资待遇：${salary}` : '';
+}
+
+export function enforcePartTimeSalaryLine(message: string, jobs: JobDetail[]): string {
+  const salaryLine = buildPartTimeSalaryLine(jobs);
+  const rawLines = message
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+$/g, ''));
+  const resultLines: string[] = [];
+  let insertedSalary = false;
+  let skippingSalaryBlock = false;
+
+  for (const line of rawLines) {
+    const trimmed = line.trim();
+    const isEmpty = trimmed.length === 0;
+    const isSalaryHeader =
+      /^(?:💰\s*)?(?:薪资待遇|薪资范围|时薪范围|薪资说明)[:：]?$/.test(trimmed) ||
+      (/^💰/.test(trimmed) && /薪资|时薪/.test(trimmed));
+    const isSalaryBullet =
+      /^[-•]/.test(trimmed) &&
+      /薪资|时薪|月薪|综合薪资|工作类型|灵活时间制/.test(trimmed);
+    const startsNewSection =
+      /^(?:👤|👥|📋|⏰|📝|🏪|📍|💬|📞|🏆|📣|📌)/.test(trimmed) ||
+      /^(?:招聘对象|招聘条件|必备条件|工作时间|工作内容|在招门店|覆盖|如何报名|联系我们|主要职责)/.test(
+        trimmed,
+      );
+
+    if (skippingSalaryBlock) {
+      if (startsNewSection) {
+        skippingSalaryBlock = false;
+      } else if (isEmpty || isSalaryBullet) {
+        continue;
+      } else {
+        continue;
+      }
+    }
+
+    if (isSalaryHeader || isSalaryBullet) {
+      if (salaryLine && !insertedSalary) {
+        resultLines.push(salaryLine);
+        insertedSalary = true;
+      }
+      skippingSalaryBlock = true;
+      continue;
+    }
+
+    resultLines.push(line);
+
+    if (!insertedSalary && salaryLine && trimmed.length > 0) {
+      resultLines.push('');
+      resultLines.push(salaryLine);
+      insertedSalary = true;
+    }
   }
 
-  const comp = salary.comprehensiveSalary as Record<string, unknown> | undefined;
-  if (comp?.minComprehensiveSalary && comp?.maxComprehensiveSalary) {
-    return `${comp.minComprehensiveSalary}-${comp.maxComprehensiveSalary}${comp.comprehensiveSalaryUnit || ''}`;
+  if (salaryLine && !insertedSalary) {
+    if (resultLines.length > 0 && resultLines[resultLines.length - 1].trim() !== '') {
+      resultLines.push('');
+    }
+    resultLines.push(salaryLine);
   }
 
-  return '';
+  return resultLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function extractHiringRequirement(job: JobDetail): string {
@@ -300,7 +428,7 @@ function extractHiringRequirement(job: JobDetail): string {
     items.push(`需${cert.certificates}`);
   }
 
-  const remark = prop(hr, 'remark') as string | undefined;
+  const remark = sanitizePublicText(prop(hr, 'remark'));
   if (remark) items.push(remark);
 
   return items.join('、');

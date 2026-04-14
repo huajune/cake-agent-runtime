@@ -7,6 +7,7 @@ import { GroupTaskType, GroupContext, NotificationData } from '../group-task.typ
 import {
   PART_TIME_JOB_SYSTEM_PROMPT,
   buildPartTimeJobUserMessage,
+  enforcePartTimeSalaryLine,
 } from '../prompts/part-time-job.prompt';
 
 const MAX_DISPLAY_STORES = 15;
@@ -134,6 +135,10 @@ export class PartTimeJobStrategy implements NotificationStrategy {
         jobs: data.payload.jobs as JobDetail[],
       }),
     };
+  }
+
+  appendFooter(aiMessage: string, data: NotificationData): string {
+    return enforcePartTimeSalaryLine(aiMessage, data.payload.jobs as JobDetail[]);
   }
 
   private inferIndustry(job: JobDetail): '餐饮' | '零售' | null {

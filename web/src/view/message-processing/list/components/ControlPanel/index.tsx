@@ -28,7 +28,7 @@ const TIME_RANGE_OPTIONS = [
 ];
 
 const TAB_OPTIONS = [
-  { key: 'realtime' as const, label: '实时流水' },
+  { key: 'realtime' as const, label: '实时请求' },
   { key: 'slowest' as const, label: '高时延 Top' },
 ];
 
@@ -75,7 +75,7 @@ export default function ControlPanel({
   }, [onSearchUserNameChange]);
 
   const statBadges = [
-    { label: '总量', value: String(stats.total), toneClass: styles.badgePrimary },
+    { label: '请求数', value: String(stats.total), toneClass: styles.badgePrimary },
     { label: '成功', value: String(stats.success), toneClass: styles.badgeSuccess },
     { label: '异常', value: String(stats.failed), toneClass: stats.failed > 0 ? styles.badgeDanger : '' },
     { label: 'E2E', value: formatDuration(stats.avgDuration), toneClass: styles.badgeWarning },
@@ -84,7 +84,7 @@ export default function ControlPanel({
   return (
     <section className={`control-panel ${styles.panel}`}>
       <div className={styles.row}>
-        <h3 className={styles.title}>消息处理流水</h3>
+        <h3 className={styles.title}>处理请求流水</h3>
 
         <div className={styles.timeRangeGroup}>
           {TIME_RANGE_OPTIONS.map((option) => (

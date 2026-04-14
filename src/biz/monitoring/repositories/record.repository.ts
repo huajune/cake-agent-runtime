@@ -266,21 +266,20 @@ export class MonitoringRecordRepository extends BaseRepository {
           p_hour_start: hourStart.toISOString(),
           p_hour_end: hourEnd.toISOString(),
         });
-        const result = data as Array<Record<string, unknown>> | null;
 
         if (error) {
           if (this.isNotFoundError(error)) {
             this.logger.warn('RPC 函数 aggregate_hourly_stats 不存在，请检查数据库迁移');
             return null;
           }
-
           if (this.shouldRetryReadError('RPC:aggregate_hourly_stats', error, attempt)) {
             continue;
           }
-
           this.handleError('RPC:aggregate_hourly_stats', error);
           return null;
         }
+
+        const result = data as Array<Record<string, unknown>> | null;
 
         if (!result || result.length === 0) {
           return { ...EMPTY_HOURLY_AGGREGATE };
@@ -321,7 +320,7 @@ export class MonitoringRecordRepository extends BaseRepository {
           continue;
         }
 
-        this.logger.error('调用 aggregate_hourly_stats RPC 失败:', error);
+        this.handleError('RPC:aggregate_hourly_stats', error);
         return null;
       }
     }

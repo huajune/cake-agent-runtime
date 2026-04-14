@@ -34,6 +34,8 @@ describe('MessageService', () => {
   };
 
   const mockWecomObservabilityService = {
+    hasTrace: jest.fn().mockReturnValue(false),
+    startTrace: jest.fn(),
     updateDispatch: jest.fn(),
     buildSuccessMetadata: jest.fn(),
     buildFailureMetadata: jest.fn(),
@@ -153,6 +155,12 @@ describe('MessageService', () => {
         success: true,
         message: 'AI reply disabled, message recorded to history',
       });
+      expect(mockWecomObservabilityService.startTrace).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messageId: 'msg-123',
+          chatId: 'chat-123',
+        }),
+      );
       expect(mockMonitoringService.recordSuccess).toHaveBeenCalledWith(
         'msg-123',
         expect.objectContaining({ replyPreview: '[AI回复已禁用]' }),
@@ -176,13 +184,18 @@ describe('MessageService', () => {
 
       expect(result).toEqual({ success: true, message: 'Message received' });
       await new Promise((resolve) => setImmediate(resolve));
+      expect(mockWecomObservabilityService.startTrace).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messageId: 'msg-123',
+          chatId: 'chat-123',
+        }),
+      );
       expect(mockWecomObservabilityService.updateDispatch).toHaveBeenCalledWith('msg-123', 'merged');
       expect(mockWecomObservabilityService.buildFailureMetadata).toHaveBeenCalledWith(
         'msg-123',
         expect.objectContaining({
           errorType: 'merge',
           errorMessage: 'redis down',
-          isPrimary: true,
         }),
       );
       expect(mockMonitoringService.recordFailure).toHaveBeenCalledWith(

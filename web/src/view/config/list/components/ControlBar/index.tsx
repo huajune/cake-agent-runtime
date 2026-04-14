@@ -1,39 +1,44 @@
 import styles from './index.module.scss';
 
+interface ControlHint {
+  label: string;
+}
+
 interface ControlBarProps {
   title: string;
-  icon?: string;
+  subtitle?: string;
+  hints?: ControlHint[];
   hasChanges: boolean;
   isPending: boolean;
-  onSave: () => void;
-  onCancel: () => void;
 }
 
 export default function ControlBar({
   title,
-  icon = '⚙️',
+  subtitle,
+  hints,
   hasChanges,
   isPending,
-  onSave,
-  onCancel,
 }: ControlBarProps) {
   return (
     <div className={styles.controlBar}>
-      <h3 className={styles.title}>
-        <span className={styles.icon}>{icon}</span>
-        {title}
-      </h3>
-
-      {hasChanges && (
-        <div className={styles.actions}>
-          <button className={styles.btnGhost} onClick={onCancel}>
-            取消
-          </button>
-          <button className={styles.btnPrimary} onClick={onSave} disabled={isPending}>
-            {isPending ? '保存中...' : '保存更改'}
-          </button>
+      <div className={styles.titleBlock}>
+        <div className={styles.titleRow}>
+          <h1 className={styles.title}>{title}</h1>
+          {hasChanges && (
+            <span className={styles.statusText}>{isPending ? '保存中...' : '有未保存更改'}</span>
+          )}
         </div>
-      )}
+        {subtitle ? <p className={styles.subtitle}>{subtitle}</p> : null}
+        {hints?.length ? (
+          <div className={styles.hintList}>
+            {hints.map((hint) => (
+              <span key={hint.label} className={styles.hintItem}>
+                {hint.label}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

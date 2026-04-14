@@ -2,107 +2,11 @@
 @use '@/assets/styles/variables' as *;
 
 .panel {
-  padding: $spacing-md;
-  background: $bg-secondary;
-  border-radius: $radius-lg;
+  padding: $spacing-lg $spacing-xl;
+  background: $bg-card;
+  border-radius: 20px;
   border: 1px solid $border;
-}
-
-// 消息聚合开关区域
-.toggleSection {
-  margin-bottom: $spacing-sm;
-}
-
-.toggleHeader {
-  @include flex-between;
-  margin-bottom: $spacing-xs;
-}
-
-.toggleInfo {
-  display: flex;
-  align-items: center;
-  gap: $spacing-sm;
-}
-
-.toggleLabel {
-  font-weight: $font-weight-semibold;
-  color: $text-primary;
-  font-size: $font-size-sm;
-}
-
-.toggleStatus {
-  font-size: 11px;
-  color: $text-muted;
-  padding: 2px 6px;
-  background: $bg-primary;
-  border-radius: $radius-sm;
-}
-
-.toggleDescription {
-  font-size: $font-size-xs;
-  color: $text-muted;
-  margin: 0;
-  line-height: $line-height-relaxed;
-}
-
-// Toggle Switch 样式
-.switch {
-  position: relative;
-  display: inline-block;
-  width: 40px;
-  height: 22px;
-  flex-shrink: 0;
-
-  input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-
-    &:checked + .switchSlider {
-      background-color: $primary;
-    }
-
-    &:checked + .switchSlider::before {
-      transform: translateX(18px);
-    }
-
-    &:disabled + .switchSlider {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-  }
-}
-
-.switchSlider {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: $border;
-  transition: $transition-fast;
-  border-radius: 22px;
-
-  &::before {
-    position: absolute;
-    content: '';
-    height: 18px;
-    width: 18px;
-    left: 2px;
-    bottom: 2px;
-    background-color: white;
-    transition: $transition-fast;
-    border-radius: 50%;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  }
-}
-
-// 分隔线
-.divider {
-  height: 1px;
-  background: $border;
-  margin: $spacing-sm 0;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
 }
 
 .header {
@@ -119,35 +23,40 @@
 .label {
   font-weight: $font-weight-semibold;
   color: $text-primary;
-  font-size: $font-size-sm;
+  font-size: $font-size-base;
 }
 
 .activeJobs {
   font-size: 11px;
   color: $success;
+  padding: 4px 8px;
+  background: $success-soft;
+  border-radius: $radius-full;
 }
 
 .value {
-  font-size: $font-size-lg;
+  font-size: 24px;
   font-weight: $font-weight-bold;
   color: $primary;
+  letter-spacing: -0.02em;
 }
 
 .description {
-  font-size: $font-size-xs;
+  font-size: $font-size-sm;
   color: $text-muted;
   margin: 0 0 $spacing-sm 0;
-  line-height: $line-height-relaxed;
+  line-height: 1.6;
 }
 
 // 吞吐量计算公式
 .formula {
   font-size: 11px;
   color: $text-muted;
-  padding: $spacing-sm $spacing-sm;
-  background: $bg-primary;
-  border-radius: $radius-md;
-  margin-bottom: $spacing-sm;
+  padding: $spacing-sm $spacing-md;
+  background: $bg-secondary;
+  border: 1px solid $border;
+  border-radius: $radius-lg;
+  margin-bottom: $spacing-md;
   line-height: $line-height-normal;
   font-family: $font-family-mono;
 }
@@ -166,7 +75,7 @@
 .sliderRow {
   display: flex;
   align-items: center;
-  gap: $spacing-sm;
+  gap: $spacing-md;
 }
 
 .slider {
@@ -177,7 +86,7 @@
 }
 
 .numberInput {
-  width: 50px;
+  width: 72px;
   padding: $spacing-xs $spacing-sm;
   border: 1px solid $border;
   border-radius: $radius-md;
@@ -196,12 +105,18 @@
 // 底部区域
 .footer {
   @include flex-between;
-  margin-top: $spacing-sm;
+  margin-top: $spacing-md;
+  gap: $spacing-md;
 }
 
 .rangeHint {
   font-size: 11px;
   color: $text-muted;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: $radius-full;
+  background: $bg-secondary;
 }
 
 .actions {
@@ -211,13 +126,13 @@
 
 .btnGhost {
   @include button-secondary;
-  padding: 4px 10px;
+  padding: 6px 12px;
   font-size: 11px;
 }
 
 .btnPrimary {
   @include button-primary;
-  padding: 4px 10px;
+  padding: 6px 12px;
   font-size: 11px;
 }
 
@@ -232,4 +147,26 @@
 .errorText {
   color: $text-muted;
   font-size: $font-size-sm;
+}
+
+@include respond-to(md) {
+  .panel {
+    padding: $spacing-md;
+  }
+
+  .header {
+    align-items: flex-start;
+    gap: $spacing-sm;
+    flex-direction: column;
+  }
+
+  .sliderRow,
+  .footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .actions {
+    justify-content: flex-end;
+  }
 }

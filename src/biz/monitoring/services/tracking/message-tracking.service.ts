@@ -73,8 +73,9 @@ export class MessageTrackingService implements OnModuleDestroy {
     messageContent?: string,
     metadata?: MonitoringMetadata,
     managerName?: string,
+    receivedAt?: number,
   ): void {
-    const now = Date.now();
+    const now = receivedAt && Number.isFinite(receivedAt) ? receivedAt : Date.now();
     const record: MessageProcessingRecord = {
       messageId,
       chatId,
@@ -241,7 +242,6 @@ export class MessageTrackingService implements OnModuleDestroy {
     record.fallbackSuccess = metadata?.fallbackSuccess ?? record.fallbackSuccess;
     record.agentInvocation = metadata?.agentInvocation ?? record.agentInvocation;
     record.batchId = metadata?.batchId ?? record.batchId;
-    record.isPrimary = metadata?.isPrimary ?? record.isPrimary;
 
     // 更新 Redis 计数器
     const counterUpdates: Partial<MonitoringGlobalCounters> = { totalSuccess: 1 };
@@ -303,7 +303,6 @@ export class MessageTrackingService implements OnModuleDestroy {
     metadata?: MonitoringMetadata & {
       fallbackSuccess?: boolean;
       batchId?: string;
-      isPrimary?: boolean;
     },
   ): void {
     this.logger.debug(`[recordFailure] 开始处理 [${messageId}]`);
@@ -335,7 +334,6 @@ export class MessageTrackingService implements OnModuleDestroy {
     record.alertType = metadata?.alertType ?? record.alertType;
     record.agentInvocation = metadata?.agentInvocation ?? record.agentInvocation;
     record.batchId = metadata?.batchId ?? record.batchId;
-    record.isPrimary = metadata?.isPrimary ?? record.isPrimary;
 
     // 更新 Redis 计数器
     const counterUpdates: Partial<MonitoringGlobalCounters> = { totalFailure: 1 };
@@ -395,7 +393,6 @@ export class MessageTrackingService implements OnModuleDestroy {
         isFallback: metadata?.isFallback,
         fallbackSuccess: metadata?.fallbackSuccess,
         batchId: metadata?.batchId,
-        isPrimary: metadata?.isPrimary,
       }),
     );
     this.logger.log(`[directUpdateStatus] 已直接更新数据库 [${messageId}] → ${status}`);
@@ -449,7 +446,6 @@ export class MessageTrackingService implements OnModuleDestroy {
         fallbackSuccess: record.fallbackSuccess,
         agentInvocation: record.agentInvocation,
         batchId: record.batchId,
-        isPrimary: record.isPrimary,
       }),
     );
     this.logger.debug(`已保存消息处理记录到数据库 [${record.messageId}]`);

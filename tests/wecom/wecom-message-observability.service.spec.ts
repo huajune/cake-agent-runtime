@@ -69,7 +69,6 @@ describe('WecomMessageObservabilityService', () => {
 
     const metadata = service.buildSuccessMetadata(messageId, {
       scenario: ScenarioType.CANDIDATE_CONSULTATION,
-      isPrimary: true,
       replySegments: 1,
       replyPreview: '已帮你安排面试',
     });
@@ -89,8 +88,8 @@ describe('WecomMessageObservabilityService', () => {
     expect(service.hasTrace(messageId)).toBe(false);
   });
 
-  it('should strip heavy invocation fields for merged secondary messages', () => {
-    const messageId = 'msg_secondary_1';
+  it('should keep batch-level invocation metadata for merged request traces', () => {
+    const messageId = 'batch_1';
     service.startTrace({
       messageId,
       chatId: 'chat_2',
@@ -103,23 +102,23 @@ describe('WecomMessageObservabilityService', () => {
       messageType: StorageMessageType.TEXT,
       messageSource: StorageMessageSource.MOBILE_PUSH,
       contactType: StorageContactType.PERSONAL_WECHAT,
+      batchId: 'batch_1',
+      acceptedAt: 1710000000000,
+      sourceMessageIds: ['msg_a', 'msg_b'],
+      sourceMessageCount: 2,
     });
 
     const metadata = service.buildSuccessMetadata(messageId, {
       scenario: ScenarioType.CANDIDATE_CONSULTATION,
-      isPrimary: false,
       batchId: 'batch_1',
       extraResponse: {
-        phase: 'merged-secondary',
+        phase: 'merged-request',
       },
     });
 
     expect(metadata.batchId).toBe('batch_1');
-    expect(metadata.isPrimary).toBe(false);
-    expect(metadata.agentInvocation).toBeUndefined();
-    expect(metadata.tokenUsage).toBeUndefined();
-    expect(metadata.replyPreview).toBeUndefined();
-    expect(metadata.tools).toBeUndefined();
-    expect(metadata.isFallback).toBe(false);
+    expect(metadata.agentInvocation).toBeDefined();
+    expect(metadata.agentInvocation?.request?.sourceMessageIds).toEqual(['msg_a', 'msg_b']);
+    expect(metadata.agentInvocation?.request?.sourceMessageCount).toBe(2);
   });
 });
