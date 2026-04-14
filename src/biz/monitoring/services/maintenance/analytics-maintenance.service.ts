@@ -209,14 +209,10 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
       ? new Date(new Date(latestStoredHour).getTime() + this.HOUR_MS)
       : new Date(lastHourStart.getTime() - (maxHours - 1) * this.HOUR_MS);
 
-    const earliestAllowedHour = new Date(
-      lastHourStart.getTime() - (maxHours - 1) * this.HOUR_MS,
-    );
+    const earliestAllowedHour = new Date(lastHourStart.getTime() - (maxHours - 1) * this.HOUR_MS);
 
     if (firstHourStart.getTime() < earliestAllowedHour.getTime()) {
-      this.logger.warn(
-        `[小时聚合] 回填窗口裁剪为最近 ${maxHours} 小时`,
-      );
+      this.logger.warn(`[小时聚合] 回填窗口裁剪为最近 ${maxHours} 小时`);
       firstHourStart = earliestAllowedHour;
     }
 
