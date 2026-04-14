@@ -64,6 +64,10 @@ export class AgentPreparationService {
       imageMessageIds,
       botUserId,
       botImId,
+      token,
+      imContactId,
+      imRoomId,
+      apiType,
       modelId: overrideModelId,
     } = params;
 
@@ -189,6 +193,12 @@ export class AgentPreparationService {
         (corpId === 'test' || corpId === 'debug' ? ('testing' as const) : undefined),
       profile: memory.longTerm.profile,
       sessionFacts: memory.sessionMemory?.facts ?? null,
+      currentFocusJob: memory.sessionMemory?.currentFocusJob ?? null,
+      token,
+      imContactId,
+      imRoomId,
+      chatId: sessionId,
+      apiType,
     };
 
     // 10. 按场景挑出本轮允许使用的工具。

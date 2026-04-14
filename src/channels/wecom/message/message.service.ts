@@ -130,9 +130,30 @@ export class MessageService implements OnModuleInit {
    */
   private async dispatchMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
     if (this.enableMessageMerge) {
-      this.simpleMergeService.addMessage(messageData).catch((error) => {
-        this.logger.error(`[聚合调度] 处理消息 [${messageData.messageId}] 失败: ${error.message}`);
-      });
+      try {
+        await this.simpleMergeService.addMessage(messageData);
+      } catch (error) {
+        const parsed = MessageParser.parse(messageData);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
+        this.logger.error(`[聚合调度] 处理消息 [${messageData.messageId}] 失败: ${errorMessage}`);
+        this.wecomObservability.updateDispatch(messageData.messageId, 'merged');
+        const failureMetadata = this.wecomObservability.buildFailureMetadata(
+          messageData.messageId,
+          {
+            scenario: MessageParser.determineScenario(),
+            errorType: 'merge',
+            errorMessage,
+            isPrimary: true,
+            extraResponse: {
+              phase: 'enqueue',
+              chatId: parsed.chatId,
+            },
+          },
+        );
+        this.monitoringService.recordFailure(messageData.messageId, errorMessage, failureMetadata);
+        await this.deduplicationService.markMessageAsProcessedAsync(messageData.messageId);
+      }
       return;
     }
 

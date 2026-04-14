@@ -2,10 +2,27 @@ import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
+import { extractInterviewSupplementDefinitions } from '@sponge/sponge-job.util';
+import {
+  getAvailableSpongeEducations,
+  getAvailableSpongeProvinces,
+  SPONGE_COLLECTABLE_EDUCATION_MAPPING,
+  SPONGE_GENDER_MAPPING,
+  SPONGE_HEALTH_CERTIFICATE_MAPPING,
+  SPONGE_HEALTH_CERTIFICATE_TYPE_MAPPING,
+  SPONGE_OPERATE_TYPE_AI_IMPORT,
+  SPONGE_OPERATE_TYPE_MAPPING,
+  SPONGE_PROVINCE_MAPPING,
+} from '@sponge/sponge.enums';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { formatLocalDate, getTomorrowDate } from '@infra/utils/date.util';
 import { stripNullish } from '@infra/utils/object.util';
-import { getAvailableEducations } from '@tools/duliday/job-booking.contract';
+import {
+  API_BOOKING_OPTIONAL_PAYLOAD_FIELDS,
+  API_BOOKING_REQUIRED_PAYLOAD_FIELDS,
+  API_BOOKING_USER_OPTIONAL_FIELDS,
+  API_BOOKING_USER_REQUIRED_FIELDS,
+} from '@tools/duliday/job-booking.contract';
 import {
   buildJobPolicyAnalysis,
   InterviewWindow,
@@ -31,27 +48,83 @@ const FIELD_ORDER = [
   '联系电话',
   '性别',
   '年龄',
+  '面试时间',
   '学历',
   '健康证情况',
-  '是否学生',
+  '健康证类型',
+  '身份',
+  '户籍省份',
+  '身高',
+  '体重',
+  '简历附件',
   '过往公司+岗位+年限',
-  '面试时间',
   '应聘门店',
   '应聘岗位',
 ];
 
-const TEMPLATE_CORE_FIELDS = ['姓名', '联系电话', '性别', '年龄', '应聘门店'];
+const TEMPLATE_CORE_FIELDS = ['姓名', '联系电话', '性别', '年龄', '面试时间', '应聘门店'];
 
 const FIELD_LABELS: Record<string, string> = {
   联系电话: '联系方式',
   健康证情况: '健康证',
+  户籍省份: '籍贯/户籍',
+  简历附件: '简历',
 };
 
-const GENDER_ENUM_HINTS = ['男', '女'];
+const GENDER_ENUM_HINTS = Object.values(SPONGE_GENDER_MAPPING);
 
-const HEALTH_CERT_ENUM_HINTS = ['有', '无但接受办理健康证', '无且不接受办理健康证'];
+const HEALTH_CERT_ENUM_HINTS = Object.values(SPONGE_HEALTH_CERTIFICATE_MAPPING);
+
+const HEALTH_CERT_TYPE_ENUM_HINTS = Object.values(SPONGE_HEALTH_CERTIFICATE_TYPE_MAPPING);
 
 const SHORT_WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
+
+function normalizeChecklistField(field: string | null | undefined): string {
+  const normalized = normalizePolicyText(field);
+  if (!normalized) return '';
+
+  if (['联系电话', '联系方式', '电话'].includes(normalized)) return '联系电话';
+  if (normalized === '健康证' || normalized === '健康证情况' || normalized === '有无健康证') {
+    return '健康证情况';
+  }
+  if (normalized === '籍贯' || normalized === '户籍' || normalized === '户籍省份') {
+    return '户籍省份';
+  }
+  if (normalized === '身份' || normalized === '是否学生') return '身份';
+  if (normalized === '简历' || normalized === '简历附件') return '简历附件';
+  if (normalized === '过往公司+岗位+年限' || /工作经历|工作经验|过往公司/.test(normalized)) {
+    return '过往公司+岗位+年限';
+  }
+  if (normalized === '面试日期') return '面试时间';
+
+  return normalized;
+}
+
+function canonicalizeChecklistFields(fields: string[]): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+
+  for (const field of fields) {
+    const canonical = normalizeChecklistField(field);
+    if (!canonical || seen.has(canonical)) continue;
+    seen.add(canonical);
+    result.push(canonical);
+  }
+
+  return result;
+}
+
+function isUnrestrictedGenderRequirement(value: string | null | undefined): boolean {
+  const normalized = normalizePolicyText(value).replace(/\s+/g, '');
+  if (!normalized || normalized === '不限') return true;
+  return /男.*女|女.*男/.test(normalized);
+}
+
+function formatConstraintText(value: string | null | undefined): string | null {
+  const normalized = normalizePolicyText(value);
+  if (!normalized) return null;
+  return normalized.replace(/[\\/｜|]+/g, '、');
+}
 
 function normalizeRequestedDate(input?: string): {
   date: string | null;
@@ -361,9 +434,30 @@ function normalizeHealthCertificateValue(value: string | null | undefined): stri
 function normalizeEducationValue(value: string | null | undefined): string | null {
   const text = normalizePolicyText(value);
   if (!text) return null;
-  const supported = getAvailableEducations();
+  const supported = getAvailableSpongeEducations();
   if (supported.includes(text)) return text;
   return text;
+}
+
+function normalizeIdentityText(value: boolean | null | undefined): string | null {
+  if (value == null) return null;
+  return value ? '学生' : '社会人士';
+}
+
+function normalizeTextValue(value: unknown): string | null {
+  return typeof value === 'string' ? normalizePolicyText(value) || null : null;
+}
+
+function normalizeNumberText(value: unknown): string | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'string') return normalizePolicyText(value) || null;
+  return null;
+}
+
+function normalizeArrayText(value: unknown): string | null {
+  if (!Array.isArray(value)) return null;
+  const items = value.map((item) => normalizeTextValue(item)).filter(Boolean);
+  return items.length > 0 ? items.join('、') : null;
 }
 
 function buildKnownFieldMap(params: {
@@ -375,6 +469,12 @@ function buildKnownFieldMap(params: {
     is_student?: boolean | null;
     education?: string | null;
     has_health_certificate?: string | null;
+    household_register_province?: string | null;
+    height?: string | number | null;
+    weight?: string | number | null;
+    upload_resume?: string | null;
+    health_certificate_types?: string[] | null;
+    experience?: string | null;
   } | null;
   sessionInterviewInfo?: {
     name?: string | null;
@@ -387,12 +487,24 @@ function buildKnownFieldMap(params: {
     has_health_certificate?: string | null;
     applied_store?: string | null;
     applied_position?: string | null;
+    household_register_province?: string | null;
+    height?: string | number | null;
+    weight?: string | number | null;
+    upload_resume?: string | null;
+    health_certificate_types?: string[] | null;
+    experience?: string | null;
   } | null;
   storeName?: string | null;
   jobName?: string | null;
 }): Record<string, string> {
   const info = params.sessionInterviewInfo;
   const profile = params.contextProfile;
+  const householdRegisterProvince =
+    normalizePolicyText(info?.household_register_province) ||
+    normalizePolicyText(profile?.household_register_province) ||
+    null;
+  const identityLabel =
+    normalizeIdentityText(info?.is_student) || normalizeIdentityText(profile?.is_student);
 
   const map: Record<string, string | null> = {
     姓名: normalizePolicyText(info?.name) || normalizePolicyText(profile?.name),
@@ -404,20 +516,20 @@ function buildKnownFieldMap(params: {
     健康证情况:
       normalizeHealthCertificateValue(info?.has_health_certificate) ||
       normalizeHealthCertificateValue(profile?.has_health_certificate),
-    是否学生:
-      info?.is_student != null
-        ? info.is_student
-          ? '是'
-          : '否'
-        : profile?.is_student != null
-          ? profile.is_student
-            ? '是'
-            : '否'
-          : null,
+    健康证类型:
+      normalizeArrayText(info?.health_certificate_types) ||
+      normalizeArrayText(profile?.health_certificate_types),
+    身份: identityLabel,
+    户籍省份: householdRegisterProvince,
+    身高: normalizeNumberText(info?.height) || normalizeNumberText(profile?.height),
+    体重: normalizeNumberText(info?.weight) || normalizeNumberText(profile?.weight),
+    简历附件: normalizeTextValue(info?.upload_resume) || normalizeTextValue(profile?.upload_resume),
+    '过往公司+岗位+年限':
+      normalizeTextValue(info?.experience) || normalizeTextValue(profile?.experience),
     应聘门店:
-      normalizePolicyText(info?.applied_store) || normalizePolicyText(params.storeName) || null,
+      normalizePolicyText(params.storeName) || normalizePolicyText(info?.applied_store) || null,
     应聘岗位:
-      normalizePolicyText(info?.applied_position) || normalizePolicyText(params.jobName) || null,
+      normalizePolicyText(params.jobName) || normalizePolicyText(info?.applied_position) || null,
   };
 
   const result: Record<string, string> = {};
@@ -441,13 +553,22 @@ function formatTemplateFieldLabel(field: string): string {
 function buildChecklistTemplate(params: {
   requiredFields: string[];
   knownFieldMap: Record<string, string>;
-}): { displayOrder: string[]; missingFields: string[]; templateText: string } {
-  const requiredFields = dedupeStrings(params.requiredFields);
-  const requiredDisplayOrder = orderFields(requiredFields);
-  const dynamicFields = orderFields(
-    requiredDisplayOrder.filter((field) => !TEMPLATE_CORE_FIELDS.includes(field)),
+}): {
+  requiredFields: string[];
+  displayOrder: string[];
+  missingFields: string[];
+  templateText: string;
+} {
+  const requiredFields = canonicalizeChecklistFields(params.requiredFields);
+  const knownOptionalFields = Object.keys(params.knownFieldMap).filter(
+    (field) =>
+      !requiredFields.includes(field) &&
+      (API_BOOKING_USER_OPTIONAL_FIELDS as readonly string[]).includes(field),
   );
-  const displayOrder = [...TEMPLATE_CORE_FIELDS, ...dynamicFields];
+  const orderedFields = orderFields([...requiredFields, ...knownOptionalFields]);
+  const coreFields = TEMPLATE_CORE_FIELDS.filter((field) => orderedFields.includes(field));
+  const dynamicFields = orderedFields.filter((field) => !TEMPLATE_CORE_FIELDS.includes(field));
+  const displayOrder = [...coreFields, ...dynamicFields];
 
   const missingFields = displayOrder.filter((field) => !params.knownFieldMap[field]);
 
@@ -461,6 +582,7 @@ function buildChecklistTemplate(params: {
   ];
 
   return {
+    requiredFields,
     displayOrder,
     missingFields,
     templateText: lines.join('\n'),
@@ -620,29 +742,61 @@ function formatDeadlineClause(window: InterviewWindow): string {
 function buildScreeningCriteria(analysis: JobPolicyAnalysis): Record<string, string> {
   const req = analysis.normalizedRequirements;
   const result: Record<string, string> = {};
+  const getNonSupplementSignal = (field: string) =>
+    analysis.fieldGuidance.fieldSignals.find(
+      (signal) => signal.field === field && signal.sourceField !== 'interview_supplement',
+    );
 
-  if (req.genderRequirement && req.genderRequirement !== '不限') {
-    result.gender = req.genderRequirement;
+  if (!isUnrestrictedGenderRequirement(req.genderRequirement)) {
+    result.gender = formatConstraintText(req.genderRequirement) ?? req.genderRequirement;
   }
   if (req.ageRequirement && req.ageRequirement !== '不限') {
-    result.age = req.ageRequirement;
+    result.age = formatConstraintText(req.ageRequirement) ?? req.ageRequirement;
   }
   if (req.educationRequirement && req.educationRequirement !== '不限') {
-    result.education = req.educationRequirement;
+    result.education = formatConstraintText(req.educationRequirement) ?? req.educationRequirement;
   }
   if (req.healthCertificateRequirement && req.healthCertificateRequirement !== '未明确要求') {
-    result.healthCertificate = req.healthCertificateRequirement;
+    result.healthCertificate =
+      formatConstraintText(req.healthCertificateRequirement) ?? req.healthCertificateRequirement;
   }
 
-  const studentSignal = analysis.fieldGuidance.fieldSignals.find(
-    (signal) => signal.field === '是否学生',
-  );
+  const studentSignal = getNonSupplementSignal('是否学生');
   if (studentSignal?.evidence) {
-    result.isStudent = studentSignal.evidence;
+    result.isStudent = formatConstraintText(studentSignal.evidence) ?? studentSignal.evidence;
   }
 
-  if (req.remark) result.remark = req.remark;
-  if (req.interviewRemark) result.interviewRemark = req.interviewRemark;
+  const experienceSignal = getNonSupplementSignal('过往公司+岗位+年限');
+  if (experienceSignal?.evidence) {
+    result.experience =
+      formatConstraintText(experienceSignal.evidence) ?? experienceSignal.evidence;
+  }
+
+  const householdSignal = getNonSupplementSignal('户籍省份');
+  if (householdSignal?.evidence) {
+    result.householdRegisterProvince =
+      formatConstraintText(householdSignal.evidence) ?? householdSignal.evidence;
+  }
+
+  const heightSignal = getNonSupplementSignal('身高');
+  if (heightSignal?.evidence) {
+    result.height = formatConstraintText(heightSignal.evidence) ?? heightSignal.evidence;
+  }
+
+  const weightSignal = getNonSupplementSignal('体重');
+  if (weightSignal?.evidence) {
+    result.weight = formatConstraintText(weightSignal.evidence) ?? weightSignal.evidence;
+  }
+
+  const resumeSignal = getNonSupplementSignal('简历附件');
+  if (resumeSignal?.evidence) {
+    result.resume = formatConstraintText(resumeSignal.evidence) ?? resumeSignal.evidence;
+  }
+
+  if (req.remark) result.remark = formatConstraintText(req.remark) ?? req.remark;
+  if (req.interviewRemark) {
+    result.interviewRemark = formatConstraintText(req.interviewRemark) ?? req.interviewRemark;
+  }
 
   return result;
 }
@@ -654,8 +808,42 @@ function buildEnumHintsForMissing(missingFields: string[]): Record<string, strin
   const hints: Record<string, string[]> = {};
   if (missingFields.includes('性别')) hints.gender = [...GENDER_ENUM_HINTS];
   if (missingFields.includes('健康证情况')) hints.healthCertificate = [...HEALTH_CERT_ENUM_HINTS];
-  if (missingFields.includes('学历')) hints.education = getAvailableEducations();
+  if (missingFields.includes('健康证类型')) {
+    hints.healthCertificateTypes = [...HEALTH_CERT_TYPE_ENUM_HINTS];
+  }
+  if (missingFields.includes('学历')) hints.education = getAvailableSpongeEducations();
+  if (missingFields.some((field) => ['籍贯', '户籍', '户籍省份'].includes(field))) {
+    hints.householdRegisterProvince = getAvailableSpongeProvinces();
+  }
+  if (missingFields.includes('身份')) {
+    hints.identity = ['学生', '社会人士'];
+  }
   return hints;
+}
+
+function buildApiPayloadGuide(
+  jobId: number,
+  customerLabelDefinitions: Array<{ labelId: number; labelName: string; name: string }>,
+) {
+  return {
+    requiredFields: [...API_BOOKING_REQUIRED_PAYLOAD_FIELDS],
+    optionalFields: [...API_BOOKING_OPTIONAL_PAYLOAD_FIELDS],
+    fixedValues: {
+      jobId,
+      operateType: SPONGE_OPERATE_TYPE_AI_IMPORT,
+    },
+    customerLabelDefinitions,
+    enumMappings: {
+      genderId: { ...SPONGE_GENDER_MAPPING },
+      hasHealthCertificate: { ...SPONGE_HEALTH_CERTIFICATE_MAPPING },
+      healthCertificateTypes: { ...SPONGE_HEALTH_CERTIFICATE_TYPE_MAPPING },
+      educationId: { ...SPONGE_COLLECTABLE_EDUCATION_MAPPING },
+      householdRegisterProvinceId: { ...SPONGE_PROVINCE_MAPPING },
+      operateType: {
+        [SPONGE_OPERATE_TYPE_AI_IMPORT]: SPONGE_OPERATE_TYPE_MAPPING[SPONGE_OPERATE_TYPE_AI_IMPORT],
+      },
+    },
+  };
 }
 
 function evaluateRequestedDate(params: {
@@ -787,7 +975,7 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
   return (context) =>
     tool({
       description:
-        '面试前置校验。返回岗位的面试周期规则（scheduleRule）、未来一周可约时段示例（upcomingTimeOptions）、岗位硬性筛选条件（screeningCriteria）、预约所需字段清单和可直接发送的话术模板（bookingChecklist）。如果候选人已经明确提出想约某一天，可以额外传入 requestedDate 让工具单独判定那一天是否可约，但不会影响 upcomingTimeOptions 的内容。这个工具负责解释岗位规则，不负责真正提交预约。',
+        '面试前置校验。返回岗位的面试周期规则（scheduleRule）、未来一周可约时段示例（upcomingTimeOptions）、岗位硬性筛选条件（screeningCriteria）、预约所需字段清单、最新 supplier/entryUser 契约入参指引（apiPayloadGuide）和可直接发送的话术模板（bookingChecklist）。如果候选人已经明确提出想约某一天，可以额外传入 requestedDate 让工具单独判定那一天是否可约，但不会影响 upcomingTimeOptions 的内容。这个工具负责解释岗位规则，不负责真正提交预约。',
       inputSchema,
       execute: async ({ jobId, requestedDate }) => {
         logger.log(`面试前置校验: jobId=${jobId}, requestedDate=${requestedDate ?? 'none'}`);
@@ -837,6 +1025,7 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
               ? normalizePolicyText(storeInfo.storeName)
               : '';
           const jobName = normalizePolicyText(job.basicInfo.jobName || job.basicInfo.jobNickName);
+          const customerLabelDefinitions = extractInterviewSupplementDefinitions(job);
           const knownFieldMap = buildKnownFieldMap({
             contextProfile: context.profile ?? null,
             sessionInterviewInfo: context.sessionFacts?.interview_info ?? null,
@@ -844,10 +1033,11 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
             jobName,
           });
 
-          const requiredFields = dedupeStrings([
-            ...analysis.fieldGuidance.bookingSubmissionFields,
+          const requiredFields = [
+            ...API_BOOKING_USER_REQUIRED_FIELDS,
             ...analysis.fieldGuidance.screeningFields,
-          ]);
+            ...customerLabelDefinitions.map((definition) => definition.name),
+          ];
           const checklist = buildChecklistTemplate({
             requiredFields,
             knownFieldMap,
@@ -884,6 +1074,11 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
           return stripNullish({
             success: true,
             nextAction,
+            _fixedReply: nextAction === 'collect_fields' ? checklist.templateText : undefined,
+            _replyRule:
+              nextAction === 'collect_fields'
+                ? '当 nextAction=collect_fields 且返回 _fixedReply 时，必须原样输出 _fixedReply 的内容作为本轮完整回复，禁止改写、压缩、重排或补充字段清单'
+                : undefined,
             job: {
               jobId,
               brandName: normalizePolicyText(job.basicInfo.brandName),
@@ -905,9 +1100,13 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
             },
             screeningCriteria,
             bookingChecklist: {
+              requiredFields: checklist.requiredFields,
+              displayOrder: checklist.displayOrder,
               missingFields: checklist.missingFields,
               templateText: checklist.templateText,
               enumHints,
+              customerLabelDefinitions,
+              apiPayloadGuide: buildApiPayloadGuide(jobId, customerLabelDefinitions),
             },
           });
         } catch (err) {

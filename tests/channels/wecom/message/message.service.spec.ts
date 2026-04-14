@@ -30,11 +30,13 @@ describe('MessageService', () => {
 
   const mockMonitoringService = {
     recordSuccess: jest.fn(),
+    recordFailure: jest.fn(),
   };
 
   const mockWecomObservabilityService = {
     updateDispatch: jest.fn(),
     buildSuccessMetadata: jest.fn(),
+    buildFailureMetadata: jest.fn(),
   };
 
   const mockSystemConfigService = {
@@ -95,6 +97,9 @@ describe('MessageService', () => {
       replyPreview: '[AI回复已禁用]',
       replySegments: 0,
       extraResponse: { disabledAiReply: true },
+    });
+    mockWecomObservabilityService.buildFailureMetadata.mockReturnValue({
+      alertType: 'merge',
     });
     mockPipelineService.execute.mockResolvedValue({
       shouldDispatch: true,
@@ -162,6 +167,30 @@ describe('MessageService', () => {
       await new Promise((resolve) => setImmediate(resolve));
       expect(mockSimpleMergeService.addMessage).toHaveBeenCalledWith(validMessageData);
       expect(mockPipelineService.processSingleMessage).not.toHaveBeenCalled();
+    });
+
+    it('should record failure when merge enqueue fails', async () => {
+      mockSimpleMergeService.addMessage.mockRejectedValue(new Error('redis down'));
+
+      const result = await service.handleMessage(validMessageData);
+
+      expect(result).toEqual({ success: true, message: 'Message received' });
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(mockWecomObservabilityService.updateDispatch).toHaveBeenCalledWith('msg-123', 'merged');
+      expect(mockWecomObservabilityService.buildFailureMetadata).toHaveBeenCalledWith(
+        'msg-123',
+        expect.objectContaining({
+          errorType: 'merge',
+          errorMessage: 'redis down',
+          isPrimary: true,
+        }),
+      );
+      expect(mockMonitoringService.recordFailure).toHaveBeenCalledWith(
+        'msg-123',
+        'redis down',
+        expect.anything(),
+      );
+      expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-123');
     });
 
     it('should process message immediately when merge is disabled', async () => {

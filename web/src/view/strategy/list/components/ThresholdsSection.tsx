@@ -26,7 +26,7 @@ export default function ThresholdsSection({ config }: Props) {
           <span className={styles.rulesCount}>({thresholds.length})</span>
         </h2>
         <p className={styles.sectionDesc}>
-          业务约束的数值阈值，工具层将自动执行过滤，同时注入系统提示词
+          只放数值型业务硬约束，工具层会自动执行过滤，同时注入系统提示词。不要把纯文字规则放进阈值
         </p>
       </div>
 

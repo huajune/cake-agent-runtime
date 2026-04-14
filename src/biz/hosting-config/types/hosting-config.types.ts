@@ -9,9 +9,11 @@ export interface SystemConfig {
  * Agent 回复策略配置
  */
 export interface AgentReplyConfig {
+  // 模型配置
+  wecomCallbackModelId: string; // 企微消息回调使用的聊天模型 ID；空字符串表示走默认角色路由
+
   // 消息聚合配置
-  initialMergeWindowMs: number; // 首次聚合等待时间（毫秒）
-  maxMergedMessages: number; // 最多聚合消息数
+  initialMergeWindowMs: number; // 距离最后一条用户消息静默多久后触发一次 Agent 请求（毫秒）
 
   // 打字延迟配置
   typingDelayPerCharMs: number; // 每字符延迟（毫秒）- 已废弃，使用 typingSpeedCharsPerSec
@@ -38,8 +40,8 @@ export interface AgentReplyConfig {
  * Agent 回复策略配置默认值
  */
 export const DEFAULT_AGENT_REPLY_CONFIG: AgentReplyConfig = {
+  wecomCallbackModelId: '',
   initialMergeWindowMs: 3000, // 默认 3000ms
-  maxMergedMessages: 3, // 默认 3 条
   typingDelayPerCharMs: 125, // 兼容旧字段 (1000/8)
   typingSpeedCharsPerSec: 8, // 默认 8 字符/秒
   paragraphGapMs: 2000,

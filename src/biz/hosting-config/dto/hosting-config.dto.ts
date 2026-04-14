@@ -11,15 +11,13 @@ export class ToggleDto {
 
 export class UpdateAgentReplyConfigDto {
   @IsOptional()
-  @IsNumber()
-  @Min(0)
-  initialMergeWindowMs?: number;
+  @IsString()
+  wecomCallbackModelId?: string;
 
   @IsOptional()
   @IsNumber()
-  @Min(1)
-  @Max(10)
-  maxMergedMessages?: number;
+  @Min(0)
+  initialMergeWindowMs?: number;
 
   @IsOptional()
   @IsNumber()

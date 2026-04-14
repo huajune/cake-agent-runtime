@@ -1,6 +1,7 @@
 import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
+import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { AlertLevel } from '@infra/feishu/interfaces/interface';
 import { BOT_TO_RECEIVER } from '@infra/feishu/constants/receivers';
@@ -73,6 +74,7 @@ export class MessagePipelineService {
     // Agent 编排
     private readonly runner: AgentRunnerService,
     private readonly configService: ConfigService,
+    private readonly systemConfigService: SystemConfigService,
     // 监控和告警
     private readonly monitoringService: MessageTrackingService,
     private readonly alertService: AlertNotifierService,
@@ -148,8 +150,8 @@ export class MessagePipelineService {
       // step 3.5: 图片描述
       // 需要提前写入 DB 的情况：主模型不支持 vision
       const imgUrl = MessageParser.extractImageUrl(messageData);
-      const chatModelId = this.configService.get<string>('AGENT_CHAT_MODEL') || '';
-      const shouldDescribeBeforeAgent = imgUrl !== null && !supportsVision(chatModelId);
+      const { effectiveModelId } = await this.resolveWecomChatModelSelection();
+      const shouldDescribeBeforeAgent = imgUrl !== null && !supportsVision(effectiveModelId);
       if (imgUrl && shouldDescribeBeforeAgent) {
         await this.imageDescription.describeAndUpdateSync(messageData.messageId, imgUrl);
         this.wecomObservability.markImagePrepared(messageData.messageId);
@@ -449,6 +451,8 @@ export class MessagePipelineService {
       .filter((msg) => MessageParser.extractImageUrl(msg) !== null)
       .map((msg) => msg.messageId);
 
+    const { overrideModelId, effectiveModelId } = await this.resolveWecomChatModelSelection();
+
     const agentResult = await this.callAgent({
       sessionId: chatId,
       userMessage: content,
@@ -461,6 +465,12 @@ export class MessagePipelineService {
       imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
       botUserId: params.primaryMessage.botUserId,
       botImId: params.primaryMessage.imBotId,
+      token: parsed.token,
+      imContactId: parsed.imContactId,
+      imRoomId: parsed.imRoomId,
+      apiType: parsed._apiType,
+      modelId: overrideModelId,
+      effectiveModelId,
     });
 
     this.logger.log(
@@ -935,6 +945,12 @@ export class MessagePipelineService {
     imageMessageIds?: string[];
     botUserId?: string;
     botImId?: string;
+    token?: string;
+    imContactId?: string;
+    imRoomId?: string;
+    apiType?: 'enterprise' | 'group';
+    modelId?: string;
+    effectiveModelId?: string;
   }): Promise<AgentInvokeResult> {
     const {
       userMessage,
@@ -960,6 +976,8 @@ export class MessagePipelineService {
           imageUrls: params.imageUrls,
           imageMessageIds: params.imageMessageIds,
           strategySource: 'released',
+          modelId: params.effectiveModelId,
+          modelIdSource: params.modelId ? 'runtime_config' : 'default_route',
         });
         shouldRecordAiEnd = true;
       }
@@ -974,6 +992,11 @@ export class MessagePipelineService {
         imageMessageIds: params.imageMessageIds,
         botUserId: params.botUserId,
         botImId: params.botImId,
+        token: params.token,
+        imContactId: params.imContactId,
+        imRoomId: params.imRoomId,
+        apiType: params.apiType,
+        modelId: params.modelId,
       });
 
       const processingTime = Date.now() - startTime;
@@ -1014,6 +1037,21 @@ export class MessagePipelineService {
         this.wecomObservability.markAiEnd(messageId);
       }
     }
+  }
+
+  private async resolveWecomChatModelSelection(): Promise<{
+    overrideModelId?: string;
+    effectiveModelId: string;
+  }> {
+    const runtimeConfig = await this.systemConfigService.getAgentReplyConfig();
+    const overrideModelId = runtimeConfig.wecomCallbackModelId?.trim() || undefined;
+    const effectiveModelId =
+      overrideModelId ?? this.configService.get<string>('AGENT_CHAT_MODEL') ?? '';
+
+    return {
+      overrideModelId,
+      effectiveModelId,
+    };
   }
 
   private normalizeContent(rawContent: string): string {

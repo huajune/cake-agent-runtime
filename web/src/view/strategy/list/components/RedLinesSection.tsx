@@ -168,7 +168,7 @@ export default function RedLinesSection({ config }: Props) {
           <span className={styles.rulesCount}>({items.length})</span>
         </h2>
         <p className={styles.sectionDesc}>
-          AI 绝对不可违反的底线规则，将作为强制约束注入到系统提示词中
+          只写动态业务底线和当前运营口径，将作为强制约束注入系统提示词。不要重复主体提示词中已经固定的通用红线
         </p>
       </div>
 

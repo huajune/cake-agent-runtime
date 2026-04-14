@@ -25,7 +25,9 @@ describe('job-policy-parser', () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-03-30T08:00:00.000Z'));
 
     expect(
-      sanitizeConstraintText('最迟1/31面试完毕，2/1最后入职时间，过期不再办理入职，没有健康证的需办加急'),
+      sanitizeConstraintText(
+        '最迟1/31面试完毕，2/1最后入职时间，过期不再办理入职，没有健康证的需办加急',
+      ),
     ).toBe('没有健康证的需办加急');
   });
 
@@ -126,19 +128,32 @@ describe('job-policy-parser', () => {
           education: '高中',
           healthCertificate: '食品健康证',
         },
-        remark: '有分拣经验优先，学生慎投',
+        remark: '有分拣经验优先，学生慎投，需上传简历，身高170以上',
         figure: '仅限社会人士',
       },
       interviewProcess: {
         interviewSupplement: [
           { interviewSupplement: '请带学历证明' },
           { interviewSupplement: '说明过往公司、岗位和年限' },
+          { interviewSupplement: '请补充健康证类型' },
+          { interviewSupplement: '请说明户籍省份' },
         ],
       },
     });
 
     expect(guidance.screeningFields).toEqual(
-      expect.arrayContaining(['年龄', '性别', '学历', '健康证情况', '过往公司+岗位+年限', '是否学生']),
+      expect.arrayContaining([
+        '年龄',
+        '性别',
+        '学历',
+        '健康证情况',
+        '健康证类型',
+        '户籍省份',
+        '身高',
+        '简历附件',
+        '过往公司+岗位+年限',
+        '是否学生',
+      ]),
     );
     expect(guidance.bookingSubmissionFields).toContain('面试时间');
     expect(guidance.recommendedAskNowFields).toEqual(
@@ -149,6 +164,9 @@ describe('job-policy-parser', () => {
         expect.objectContaining({ field: '年龄', sourceField: 'basic_personal_requirements' }),
         expect.objectContaining({ field: '学历', sourceField: 'certificate' }),
         expect.objectContaining({ field: '是否学生', sourceField: 'figure' }),
+        expect.objectContaining({ field: '健康证类型', sourceField: 'interview_supplement' }),
+        expect.objectContaining({ field: '身高', sourceField: 'hiring_remark' }),
+        expect.objectContaining({ field: '简历附件', sourceField: 'hiring_remark' }),
       ]),
     );
   });

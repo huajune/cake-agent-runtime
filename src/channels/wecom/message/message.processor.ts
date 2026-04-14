@@ -173,6 +173,12 @@ export class MessageProcessor implements OnModuleInit {
 
       this.logger.log(`[Bull] 开始处理任务 ${job.id}, chatId: ${chatId}`);
 
+      const quietWindowElapsed = await this.simpleMergeService.isQuietWindowElapsed(chatId);
+      if (!quietWindowElapsed) {
+        this.logger.debug(`[Bull] chatId=${chatId} 静默窗口未结束，跳过当前检查任务 ${job.id}`);
+        return;
+      }
+
       // 从 Redis 获取待处理消息
       const { messages, batchId } =
         await this.simpleMergeService.getAndClearPendingMessages(chatId);
@@ -185,7 +191,7 @@ export class MessageProcessor implements OnModuleInit {
       // 处理消息
       await this.processMessages(chatId, messages, batchId);
 
-      // 处理完后检查是否有新消息
+      // 处理完后若又收到了新消息，则按“最后一条消息后的静默窗口”补建下一轮检查任务
       await this.simpleMergeService.checkAndProcessNewMessages(chatId);
     } catch (error) {
       this.logger.error(`[Bull] 任务 ${job.id} 处理失败: ${error.message}`);

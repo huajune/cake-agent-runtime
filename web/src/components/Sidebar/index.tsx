@@ -246,11 +246,11 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         <NavLink
           to="/config"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title={isCollapsed ? '通知/消息' : undefined}
+          title={isCollapsed ? '运行时配置' : undefined}
           {...bindPreload('/config')}
         >
           <span className="nav-icon"><ConfigIcon /></span>
-          {!isCollapsed && <span className="nav-text">通知/消息</span>}
+          {!isCollapsed && <span className="nav-text">运行时配置</span>}
         </NavLink>
         <NavLink
           to="/message-processing"

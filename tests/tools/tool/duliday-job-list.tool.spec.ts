@@ -49,8 +49,13 @@ describe('buildJobListTool', () => {
     projectNameList: [],
     projectIdList: [],
     jobIdList: [],
-    userLatitude: undefined as number | undefined,
-    userLongitude: undefined as number | undefined,
+    location: undefined as
+      | {
+          longitude?: number;
+          latitude?: number;
+          range?: number;
+        }
+      | undefined,
     responseFormat: ['markdown'] as ('markdown' | 'rawData')[],
     includeBasicInfo: true,
     includeJobSalary: false,
@@ -162,8 +167,10 @@ describe('buildJobListTool', () => {
 
     await executeTool(contextWithCallback, {
       ...defaultInput,
-      userLatitude: 39.93,
-      userLongitude: 116.47,
+      location: {
+        latitude: 39.93,
+        longitude: 116.47,
+      },
     });
 
     expect(onJobsFetched).toHaveBeenCalledWith([
@@ -536,8 +543,10 @@ describe('buildJobListTool', () => {
 
     const result = await executeTool(contextWithThresholds, {
       ...defaultInput,
-      userLatitude: 31.185104,
-      userLongitude: 121.697948,
+      location: {
+        latitude: 31.185104,
+        longitude: 121.697948,
+      },
       responseFormat: ['rawData'],
     });
 

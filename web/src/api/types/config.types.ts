@@ -10,9 +10,11 @@ export interface BlacklistData {
 }
 
 export interface AgentReplyConfig {
+  // 模型配置
+  wecomCallbackModelId: string;
+
   // 消息聚合配置
   initialMergeWindowMs: number;
-  maxMergedMessages: number;
 
   // 打字延迟配置
   typingDelayPerCharMs: number;

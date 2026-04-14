@@ -42,6 +42,69 @@ export class SystemConfigService {
     private readonly configService: ConfigService,
   ) {}
 
+  private normalizeAgentReplyConfig(
+    config: Partial<AgentReplyConfig> | null | undefined,
+  ): AgentReplyConfig {
+    return {
+      wecomCallbackModelId:
+        typeof config?.wecomCallbackModelId === 'string'
+          ? config.wecomCallbackModelId.trim()
+          : DEFAULT_AGENT_REPLY_CONFIG.wecomCallbackModelId,
+      initialMergeWindowMs:
+        typeof config?.initialMergeWindowMs === 'number'
+          ? config.initialMergeWindowMs
+          : DEFAULT_AGENT_REPLY_CONFIG.initialMergeWindowMs,
+      typingDelayPerCharMs:
+        typeof config?.typingDelayPerCharMs === 'number'
+          ? config.typingDelayPerCharMs
+          : DEFAULT_AGENT_REPLY_CONFIG.typingDelayPerCharMs,
+      typingSpeedCharsPerSec:
+        typeof config?.typingSpeedCharsPerSec === 'number'
+          ? config.typingSpeedCharsPerSec
+          : DEFAULT_AGENT_REPLY_CONFIG.typingSpeedCharsPerSec,
+      paragraphGapMs:
+        typeof config?.paragraphGapMs === 'number'
+          ? config.paragraphGapMs
+          : DEFAULT_AGENT_REPLY_CONFIG.paragraphGapMs,
+      alertThrottleWindowMs:
+        typeof config?.alertThrottleWindowMs === 'number'
+          ? config.alertThrottleWindowMs
+          : DEFAULT_AGENT_REPLY_CONFIG.alertThrottleWindowMs,
+      alertThrottleMaxCount:
+        typeof config?.alertThrottleMaxCount === 'number'
+          ? config.alertThrottleMaxCount
+          : DEFAULT_AGENT_REPLY_CONFIG.alertThrottleMaxCount,
+      businessAlertEnabled:
+        typeof config?.businessAlertEnabled === 'boolean'
+          ? config.businessAlertEnabled
+          : DEFAULT_AGENT_REPLY_CONFIG.businessAlertEnabled,
+      minSamplesForAlert:
+        typeof config?.minSamplesForAlert === 'number'
+          ? config.minSamplesForAlert
+          : DEFAULT_AGENT_REPLY_CONFIG.minSamplesForAlert,
+      alertIntervalMinutes:
+        typeof config?.alertIntervalMinutes === 'number'
+          ? config.alertIntervalMinutes
+          : DEFAULT_AGENT_REPLY_CONFIG.alertIntervalMinutes,
+      successRateCritical:
+        typeof config?.successRateCritical === 'number'
+          ? config.successRateCritical
+          : DEFAULT_AGENT_REPLY_CONFIG.successRateCritical,
+      avgDurationCritical:
+        typeof config?.avgDurationCritical === 'number'
+          ? config.avgDurationCritical
+          : DEFAULT_AGENT_REPLY_CONFIG.avgDurationCritical,
+      queueDepthCritical:
+        typeof config?.queueDepthCritical === 'number'
+          ? config.queueDepthCritical
+          : DEFAULT_AGENT_REPLY_CONFIG.queueDepthCritical,
+      errorRateCritical:
+        typeof config?.errorRateCritical === 'number'
+          ? config.errorRateCritical
+          : DEFAULT_AGENT_REPLY_CONFIG.errorRateCritical,
+    };
+  }
+
   // ==================== AI 回复开关 ====================
 
   /**
@@ -153,10 +216,10 @@ export class SystemConfigService {
    * 更新 Agent 回复策略配置
    */
   async setAgentReplyConfig(config: Partial<AgentReplyConfig>): Promise<AgentReplyConfig> {
-    const newConfig: AgentReplyConfig = {
+    const newConfig = this.normalizeAgentReplyConfig({
       ...(this.agentReplyConfig || DEFAULT_AGENT_REPLY_CONFIG),
       ...config,
-    };
+    });
 
     this.agentReplyConfig = newConfig;
     this.agentReplyConfigExpiry = Date.now() + this.AGENT_CONFIG_CACHE_TTL * 1000;
@@ -165,7 +228,7 @@ export class SystemConfigService {
       await this.systemConfigRepository.setConfigValue(
         'agent_reply_config',
         newConfig,
-        'Agent 回复策略配置（消息聚合、打字延迟、告警节流）',
+        'Agent 运行时配置（模型、消息聚合、打字延迟、告警节流）',
       );
       this.logger.log('Agent 回复策略配置已更新');
     } catch (error) {
@@ -312,13 +375,13 @@ export class SystemConfigService {
         );
 
       if (result !== null) {
-        this.agentReplyConfig = { ...DEFAULT_AGENT_REPLY_CONFIG, ...result };
+        this.agentReplyConfig = this.normalizeAgentReplyConfig(result);
       } else {
-        this.agentReplyConfig = { ...DEFAULT_AGENT_REPLY_CONFIG };
+        this.agentReplyConfig = this.normalizeAgentReplyConfig(DEFAULT_AGENT_REPLY_CONFIG);
         await this.systemConfigRepository.setConfigValue(
           'agent_reply_config',
           DEFAULT_AGENT_REPLY_CONFIG,
-          'Agent 回复策略配置（消息聚合、打字延迟、告警节流）',
+          'Agent 运行时配置（模型、消息聚合、打字延迟、告警节流）',
         );
       }
 
@@ -327,7 +390,7 @@ export class SystemConfigService {
       return this.agentReplyConfig;
     } catch (error) {
       this.logger.error('加载 Agent 回复策略配置失败，使用默认值', error);
-      this.agentReplyConfig = { ...DEFAULT_AGENT_REPLY_CONFIG };
+      this.agentReplyConfig = this.normalizeAgentReplyConfig(DEFAULT_AGENT_REPLY_CONFIG);
       this.agentReplyConfigExpiry = Date.now() + 30000; // 30 秒后重试
       return this.agentReplyConfig;
     }

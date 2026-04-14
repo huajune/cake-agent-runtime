@@ -17,6 +17,7 @@ import {
   JobListApiResponseSchema,
 } from './sponge.types';
 import { SpongeBiService } from './sponge-bi.service';
+import { stripNullish } from '@infra/utils/object.util';
 
 const JOB_LIST_API = 'https://k8s.duliday.com/persistence/ai/api/job/list';
 const BRAND_LIST_API = 'https://k8s.duliday.com/persistence/ai/api/brand/list';
@@ -71,6 +72,15 @@ export class SpongeService {
         ...(params.storeNameList?.length && { storeNameList: params.storeNameList }),
         ...(params.jobCategoryList?.length && { jobCategoryList: params.jobCategoryList }),
         ...(params.jobIdList?.length && { jobIdList: params.jobIdList }),
+        ...((params.location?.longitude != null ||
+          params.location?.latitude != null ||
+          params.location?.range != null) && {
+          location: {
+            ...(params.location?.longitude != null && { longitude: params.location.longitude }),
+            ...(params.location?.latitude != null && { latitude: params.location.latitude }),
+            ...(params.location?.range != null && { range: params.location.range }),
+          },
+        }),
       },
       options: params.options ?? { includeBasicInfo: true },
     };
@@ -118,24 +128,33 @@ export class SpongeService {
 
     this.logger.log(`预约面试: ${params.name}, jobId=${params.jobId}`);
 
+    const payload = stripNullish({
+      jobId: params.jobId,
+      interviewTime: params.interviewTime,
+      name: params.name,
+      phone: params.phone,
+      age: params.age,
+      genderId: params.genderId,
+      avatar: params.avatar,
+      householdRegisterProvinceId: params.householdRegisterProvinceId,
+      height: params.height,
+      weight: params.weight,
+      hasHealthCertificate: params.hasHealthCertificate,
+      healthCertificateTypes: params.healthCertificateTypes,
+      educationId: params.educationId,
+      uploadResume: params.uploadResume,
+      customerLabelList: params.customerLabelList ?? [],
+      logId: params.logId,
+      operateType: params.operateType,
+    });
+
     const response = await fetch(INTERVIEW_BOOKING_API, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'duliday-token': this.token,
+        'Duliday-Token': this.token,
       },
-      body: JSON.stringify({
-        name: params.name,
-        age: params.age,
-        phone: params.phone,
-        genderId: params.genderId,
-        educationId: params.educationId,
-        hasHealthCertificate: params.hasHealthCertificate,
-        interviewTime: params.interviewTime,
-        customerLabelList: [],
-        jobId: params.jobId,
-        operateType: 6,
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {

@@ -101,3 +101,59 @@ export function BooleanCard({ meta, currentValue, defaultValue, onChange }: Bool
     </div>
   );
 }
+
+interface SelectCardProps {
+  label: string;
+  description: string;
+  fieldKey: string;
+  currentValue: string;
+  defaultValue: string;
+  options: string[];
+  placeholder: string;
+  onChange: (key: string, value: string) => void;
+  disabled?: boolean;
+}
+
+export function SelectCard({
+  label,
+  description,
+  fieldKey,
+  currentValue,
+  defaultValue,
+  options,
+  placeholder,
+  onChange,
+  disabled = false,
+}: SelectCardProps) {
+  const isModified = currentValue !== defaultValue;
+  const displayValue = currentValue || placeholder;
+
+  return (
+    <div className={`${styles.card} ${isModified ? styles.modified : ''}`}>
+      <div className={styles.header}>
+        <span className={styles.label}>{label}</span>
+        <span className={styles.valueText}>{displayValue}</span>
+      </div>
+      <p className={styles.description}>{description}</p>
+      <div className={styles.selectRow}>
+        <select
+          className={styles.selectInput}
+          value={currentValue}
+          onChange={(e) => onChange(fieldKey, e.target.value)}
+          disabled={disabled}
+        >
+          <option value="">{placeholder}</option>
+          {options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className={styles.footer}>
+        <span>留空时走默认角色路由</span>
+        <span>默认: {defaultValue || placeholder}</span>
+      </div>
+    </div>
+  );
+}

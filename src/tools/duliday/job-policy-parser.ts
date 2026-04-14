@@ -301,7 +301,12 @@ export function extractInterviewWindows(
 }
 
 function mapSupplementToField(supplement: string): string | null {
+  if (/健康证类型|食品健康证|零售健康证|其他健康证/.test(supplement)) return '健康证类型';
   if (/健康证/.test(supplement)) return '健康证情况';
+  if (/户籍|籍贯/.test(supplement)) return '户籍省份';
+  if (/身高/.test(supplement)) return '身高';
+  if (/体重/.test(supplement)) return '体重';
+  if (/简历/.test(supplement)) return '简历附件';
   if (/过往公司|岗位|年限|工作经历|经验/.test(supplement)) return '过往公司+岗位+年限';
   if (/学历/.test(supplement)) return '学历';
   if (/学生/.test(supplement)) return '是否学生';
@@ -310,6 +315,16 @@ function mapSupplementToField(supplement: string): string | null {
   if (/年龄/.test(supplement)) return '年龄';
   if (/性别/.test(supplement)) return '性别';
   return null;
+}
+
+function dedupeFieldSignals(signals: PolicyFieldSignal[]): PolicyFieldSignal[] {
+  const seen = new Set<string>();
+  return signals.filter((signal) => {
+    const key = [signal.field, signal.sourceField, signal.evidence, signal.confidence].join('|');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function buildFieldSignals(job: JobDetail): PolicyFieldSignal[] {
@@ -394,7 +409,24 @@ function buildFieldSignals(job: JobDetail): PolicyFieldSignal[] {
     });
   }
 
-  return signals;
+  const remarkSignalMappings: Array<{ field: string; pattern: RegExp }> = [
+    { field: '户籍省份', pattern: /户籍|籍贯/ },
+    { field: '身高', pattern: /身高/ },
+    { field: '体重', pattern: /体重/ },
+    { field: '简历附件', pattern: /简历/ },
+  ];
+
+  for (const mapping of remarkSignalMappings) {
+    if (!mapping.pattern.test(remark)) continue;
+    signals.push({
+      field: mapping.field,
+      sourceField: 'hiring_remark',
+      evidence: remark,
+      confidence: 'medium',
+    });
+  }
+
+  return dedupeFieldSignals(signals);
 }
 
 export function buildFieldGuidance(job: JobDetail): FieldGuidance {

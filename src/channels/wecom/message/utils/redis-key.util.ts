@@ -35,6 +35,16 @@ export class RedisKeyBuilder {
   }
 
   /**
+   * 会话最后一条消息到达时间 Key
+   * 用于基于“最后一条消息后的静默窗口”决定是否触发本轮聚合处理
+   *
+   * 格式: wecom:message:last-message-at:{chatId}
+   */
+  static lastMessageAt(chatId: string): string {
+    return `${this.APP_PREFIX}:${this.MODULE}:last-message-at:${chatId}`;
+  }
+
+  /**
    * 消息历史缓存 Key（预留）
    * 用于缓存会话历史记录
    *
@@ -60,7 +70,7 @@ export class RedisKeyBuilder {
    * @param type Key 类型
    * @returns 匹配模式字符串
    */
-  static pattern(type: 'dedup' | 'pending' | 'history' | 'lock'): string {
+  static pattern(type: 'dedup' | 'pending' | 'history' | 'lock' | 'last-message-at'): string {
     return `${this.APP_PREFIX}:${this.MODULE}:${type}:*`;
   }
 

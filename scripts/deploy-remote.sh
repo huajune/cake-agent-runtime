@@ -223,7 +223,14 @@ build_or_load_image() {
   fi
 
   echo "Loading ${IMAGE_NAME}:${IMAGE_TAG} from ${IMAGE_TAR}..."
-  docker load -i "$IMAGE_TAR" || return 1
+  case "$IMAGE_TAR" in
+    *.tar.gz|*.tgz)
+      gzip -dc "$IMAGE_TAR" | docker load || return 1
+      ;;
+    *)
+      docker load -i "$IMAGE_TAR" || return 1
+      ;;
+  esac
   rm -f "$IMAGE_TAR"
 }
 

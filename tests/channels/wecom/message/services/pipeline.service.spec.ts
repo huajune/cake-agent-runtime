@@ -15,6 +15,7 @@ import { DeliveryFailureError } from '@wecom/message/message.types';
 import { MessageType, ContactType, MessageSource } from '@enums/message-callback.enum';
 import { AlertLevel } from '@enums/alert.enum';
 import { FilterReason } from '@wecom/message/services/filter.service';
+import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 
 describe('MessagePipelineService', () => {
   let service: MessagePipelineService;
@@ -47,6 +48,15 @@ describe('MessagePipelineService', () => {
 
   const mockConfigService = {
     get: jest.fn().mockReturnValue(''),
+  };
+
+  const mockSystemConfigService = {
+    getSystemConfig: jest.fn().mockResolvedValue(undefined),
+    getAiReplyEnabled: jest.fn().mockResolvedValue(true),
+    getMessageMergeEnabled: jest.fn().mockResolvedValue(true),
+    getAgentReplyConfig: jest.fn().mockResolvedValue({}),
+    onAiReplyChange: jest.fn(),
+    onMessageMergeChange: jest.fn(),
   };
 
   const mockMonitoringService = {
@@ -118,6 +128,7 @@ describe('MessagePipelineService', () => {
         { provide: ImageDescriptionService, useValue: mockImageDescriptionService },
         { provide: AgentRunnerService, useValue: mockRunnerService },
         { provide: ConfigService, useValue: mockConfigService },
+        { provide: SystemConfigService, useValue: mockSystemConfigService },
         { provide: MessageTrackingService, useValue: mockMonitoringService },
         { provide: AlertNotifierService, useValue: mockAlertService },
         { provide: WecomMessageObservabilityService, useValue: mockWecomObservabilityService },

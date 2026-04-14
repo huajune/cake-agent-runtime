@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 # Stage 1: Dependency Installation
 FROM node:20-bookworm-slim AS deps
 WORKDIR /app
@@ -11,7 +13,9 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY web/package.json ./web/
 
 # Install dependencies (skip postinstall scripts — supabase CLI binary download not needed in Docker)
-RUN pnpm install --frozen-lockfile --ignore-scripts
+RUN --mount=type=cache,id=cake-agent-runtime-pnpm-store,target=/pnpm/store \
+  pnpm config set store-dir /pnpm/store \
+  && pnpm install --frozen-lockfile --ignore-scripts
 
 # Stage 2: Build
 FROM deps AS builder

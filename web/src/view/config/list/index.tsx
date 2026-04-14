@@ -3,6 +3,7 @@ import {
   useAgentReplyConfig,
   useUpdateAgentReplyConfig,
   useToggleMessageMerge,
+  useAvailableModels,
 } from '@/hooks/config/useSystemConfig';
 import {
   useWorkerStatus,
@@ -12,7 +13,7 @@ import type { AgentReplyConfig } from '@/api/types/config.types';
 
 // 组件导入
 import ControlBar from './components/ControlBar';
-import { NumberCard, BooleanCard, ConfigMeta } from './components/ConfigCard';
+import { NumberCard, BooleanCard, SelectCard, ConfigMeta } from './components/ConfigCard';
 import WorkerPanel from './components/WorkerPanel';
 import GroupTaskPanel from './components/GroupTaskPanel';
 
@@ -26,23 +27,12 @@ const configMeta: ConfigMeta[] = [
   // 消息聚合配置
   {
     key: 'initialMergeWindowMs',
-    label: '消息聚合等待时间',
-    description: '收到第一条消息后等待多久再处理（聚合连续消息）',
+    label: '消息静默触发时间',
+    description: '距离用户最后一条消息过去多久仍无新消息，就把这一轮消息聚合成一次 Agent 请求',
     unit: 'ms',
     min: 0,
     max: 30000,
     step: 100,
-    category: 'merge',
-    type: 'number',
-  },
-  {
-    key: 'maxMergedMessages',
-    label: '最大聚合消息数',
-    description: '单次最多聚合多少条消息',
-    unit: '条',
-    min: 1,
-    max: 10,
-    step: 1,
     category: 'merge',
     type: 'number',
   },
@@ -75,7 +65,7 @@ const configMeta: ConfigMeta[] = [
 const categoryTitles: Record<string, { title: string; description: string }> = {
   merge: {
     title: '消息聚合',
-    description: '配置连续消息的合并策略，适合处理用户快速发送多条消息的场景',
+    description: '基于“最后一条消息后的静默窗口”触发新一轮 Agent 请求，避免复杂状态机带来的线上抖动',
   },
   typing: {
     title: '打字延迟',
@@ -92,6 +82,7 @@ export default function Config() {
   // Agent 回复策略配置
   const { data: agentConfigData, isLoading: isLoadingConfig } = useAgentReplyConfig();
   const updateConfig = useUpdateAgentReplyConfig();
+  const { data: availableModelsData, isLoading: isLoadingModels } = useAvailableModels();
 
   // Worker 状态
   const { data: workerStatus, isLoading: isLoadingWorker } = useWorkerStatus();
@@ -107,7 +98,7 @@ export default function Config() {
   }, [agentConfigData]);
 
   // 更新配置
-  const handleConfigChange = (key: string, value: number | boolean) => {
+  const handleConfigChange = (key: string, value: number | boolean | string) => {
     setEditingConfig((prev) => ({ ...prev, [key]: value }));
     setHasChanges(true);
   };
@@ -142,7 +133,7 @@ export default function Config() {
     <div className={styles.page}>
       {/* 顶部控制栏 */}
       <ControlBar
-        title="通知/消息配置"
+        title="运行时配置"
         icon="⚙️"
         hasChanges={hasChanges}
         isPending={updateConfig.isPending}
@@ -154,6 +145,25 @@ export default function Config() {
         <div className={styles.loadingText}>加载配置中...</div>
       ) : (
         <>
+          <section className={styles.categorySection}>
+            <div className={styles.categoryTitle}>模型配置</div>
+            <div className={styles.cardGrid}>
+              <SelectCard
+                label="企微回调聊天模型"
+                description="控制企业微信消息回调进入 Agent 时使用的聊天模型。留空时继续走默认角色路由（AGENT_CHAT_MODEL）。"
+                fieldKey="wecomCallbackModelId"
+                currentValue={String(editingConfig.wecomCallbackModelId ?? '')}
+                defaultValue={agentConfigData?.defaults.wecomCallbackModelId ?? ''}
+                options={availableModelsData?.availableModels ?? []}
+                placeholder={
+                  isLoadingModels ? '加载模型列表中...' : '默认角色路由（AGENT_CHAT_MODEL）'
+                }
+                onChange={handleConfigChange}
+                disabled={isLoadingModels}
+              />
+            </div>
+          </section>
+
           {/* 群任务通知 */}
           <section className={styles.categorySection}>
             <div className={styles.categoryTitle}>群任务通知</div>

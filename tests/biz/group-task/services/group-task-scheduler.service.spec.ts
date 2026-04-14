@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { SCHEDULE_CRON_OPTIONS } from '@nestjs/schedule/dist/schedule.constants';
 import { GroupTaskSchedulerService } from '@biz/group-task/services/group-task-scheduler.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { CompletionService } from '@agent/completion.service';
@@ -533,6 +534,20 @@ describe('GroupTaskSchedulerService', () => {
       await service[methodName]();
 
       expect(executeTaskSpy).toHaveBeenCalledWith(...getExpectedArgs());
+    });
+  });
+
+  describe('cron metadata', () => {
+    it('should schedule part-time group task at 13:30 on weekdays', () => {
+      const metadata = Reflect.getMetadata(
+        SCHEDULE_CRON_OPTIONS,
+        GroupTaskSchedulerService.prototype.cronPartTimeJob,
+      );
+
+      expect(metadata).toEqual({
+        cronTime: '30 13 * * 1-5',
+        timeZone: 'Asia/Shanghai',
+      });
     });
   });
 });

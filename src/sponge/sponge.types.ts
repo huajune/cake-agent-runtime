@@ -15,7 +15,14 @@ export interface JobListQueryParams {
   pageSize?: number;
   sort?: string;
   sortField?: string;
+  location?: JobListLocation;
   options?: JobListOptions;
+}
+
+export interface JobListLocation {
+  longitude?: number;
+  latitude?: number;
+  range?: number;
 }
 
 export interface JobListOptions {
@@ -72,15 +79,43 @@ export const JobBasicInfoSchema = z
   .catchall(z.unknown());
 
 /** 岗位详情（包含薪资、福利等可选信息） */
+export interface JobInterviewSupplementItem {
+  interviewSupplementId?: number | null;
+  interviewSupplement?: string | null;
+  InterviewSupplementId?: number | null;
+  InterviewSupplement?: string | null;
+  [key: string]: unknown;
+}
+
+export interface JobInterviewProcess {
+  interviewSupplement?: JobInterviewSupplementItem[] | null;
+  [key: string]: unknown;
+}
+
 export interface JobDetail {
   basicInfo?: JobBasicInfo;
   jobSalary?: Record<string, unknown>;
   welfare?: Record<string, unknown>;
   hiringRequirement?: Record<string, unknown>;
   workTime?: Record<string, unknown>;
-  interviewProcess?: Record<string, unknown>;
+  interviewProcess?: JobInterviewProcess | Record<string, unknown>;
   [key: string]: unknown;
 }
+
+const JobInterviewSupplementItemSchema = z
+  .object({
+    interviewSupplementId: z.number().nullish(),
+    interviewSupplement: z.string().nullish(),
+    InterviewSupplementId: z.number().nullish(),
+    InterviewSupplement: z.string().nullish(),
+  })
+  .catchall(z.unknown());
+
+const JobInterviewProcessSchema = z
+  .object({
+    interviewSupplement: z.array(JobInterviewSupplementItemSchema).nullish(),
+  })
+  .catchall(z.unknown());
 
 export const JobDetailSchema = z
   .object({
@@ -89,7 +124,7 @@ export const JobDetailSchema = z
     welfare: UnknownRecordSchema.nullish(),
     hiringRequirement: UnknownRecordSchema.nullish(),
     workTime: UnknownRecordSchema.nullish(),
-    interviewProcess: UnknownRecordSchema.nullish(),
+    interviewProcess: JobInterviewProcessSchema.nullish(),
   })
   .catchall(z.unknown());
 
@@ -204,14 +239,35 @@ export interface InterviewScheduleResult {
 
 /** 面试预约请求参数 */
 export interface InterviewBookingParams {
-  name: string;
-  phone: string;
-  age: string;
-  genderId: number;
   jobId: number;
   interviewTime: string;
-  educationId: number;
-  hasHealthCertificate: number;
+  name: string;
+  phone: string;
+  age: number;
+  genderId: number;
+  operateType: number;
+  avatar?: string;
+  householdRegisterProvinceId?: number;
+  height?: number;
+  weight?: number;
+  hasHealthCertificate?: number;
+  healthCertificateTypes?: number[];
+  educationId?: number;
+  uploadResume?: string;
+  customerLabelList?: InterviewBookingCustomerLabel[];
+  logId?: number;
+}
+
+export interface InterviewBookingCustomerLabel {
+  labelId: number;
+  labelName: string;
+  name: string;
+  value?: string;
+}
+
+export interface InterviewBookingErrorItem {
+  field: string;
+  msg: string;
 }
 
 /** 面试预约响应 */
@@ -220,8 +276,20 @@ export interface InterviewBookingResult {
   code?: number;
   message?: string;
   notice?: string | null;
-  errorList?: unknown[] | null;
+  errorList?: InterviewBookingErrorItem[] | null;
 }
+
+export const InterviewBookingCustomerLabelSchema = z.object({
+  labelId: z.number().int(),
+  labelName: z.string().min(1),
+  name: z.string().min(1),
+  value: z.string().max(51).optional(),
+});
+
+export const InterviewBookingErrorItemSchema = z.object({
+  field: z.string().min(1),
+  msg: z.string().min(1),
+});
 
 export const InterviewBookingApiResponseSchema = z
   .object({
@@ -230,7 +298,7 @@ export const InterviewBookingApiResponseSchema = z
     data: z
       .object({
         notice: z.string().nullable().optional(),
-        errorList: z.array(z.unknown()).nullable().optional(),
+        errorList: z.array(InterviewBookingErrorItemSchema).nullable().optional(),
       })
       .nullable()
       .optional(),

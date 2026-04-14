@@ -35,8 +35,8 @@ describe('HostingConfigController', () => {
   describe('getAgentReplyConfig', () => {
     it('should return agent reply config from facade', async () => {
       const mockConfig = {
-        config: { initialMergeWindowMs: 1000, maxMergedMessages: 3 },
-        defaults: { initialMergeWindowMs: 1000, maxMergedMessages: 3 },
+        config: { initialMergeWindowMs: 1000 },
+        defaults: { initialMergeWindowMs: 1000 },
       };
 
       mockFacadeService.getAgentReplyConfig.mockResolvedValue(mockConfig);

@@ -139,6 +139,13 @@ export default function Strategy() {
         <div className={styles.headerBottom}>
           <TabSwitch tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} />
         </div>
+
+        <div className={styles.configBoundary}>
+          <span className={styles.configBoundaryTitle}>配置边界</span>
+          <p className={styles.configBoundaryDesc}>
+            主体提示词负责全局规则与工具手册；阶段目标只写阶段目标、切换信号和 CTA；政策红线只写动态业务底线与运营口径；业务阈值只写数值型约束。
+          </p>
+        </div>
       </div>
 
       {config && (

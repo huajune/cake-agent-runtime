@@ -52,7 +52,7 @@ describe('HostingConfigFacadeService', () => {
 
   describe('getAgentReplyConfig', () => {
     it('should return config and defaults', async () => {
-      const mockConfig = { ...DEFAULT_AGENT_REPLY_CONFIG, maxMergedMessages: 5 };
+      const mockConfig = { ...DEFAULT_AGENT_REPLY_CONFIG, initialMergeWindowMs: 5000 };
       mockSystemConfigService.getAgentReplyConfig.mockResolvedValue(mockConfig);
       mockSystemConfigService.getGroupTaskConfig.mockResolvedValue({ enabled: false, dryRun: true });
 
@@ -79,7 +79,7 @@ describe('HostingConfigFacadeService', () => {
 
   describe('updateAgentReplyConfig', () => {
     it('should update config and return success message', async () => {
-      const partial = { maxMergedMessages: 5 };
+      const partial = { initialMergeWindowMs: 5000 };
       const updatedConfig = { ...DEFAULT_AGENT_REPLY_CONFIG, ...partial };
       mockSystemConfigService.setAgentReplyConfig.mockResolvedValue(updatedConfig);
 
