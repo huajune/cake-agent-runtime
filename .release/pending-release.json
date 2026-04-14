@@ -1,7 +1,7 @@
 {
   "baseVersion": "5.1.0",
   "nextVersion": "5.2.0",
-  "updatedAt": "2026-04-13",
+  "updatedAt": "2026-04-14",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -19,6 +19,24 @@
       ],
       "optimizations": [],
       "ops": [],
+      "config": [],
+      "verification": []
+    },
+    {
+      "number": "74",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/74",
+      "title": "[codex] Refactor observability and notification flow",
+      "author": "huajune",
+      "mergedAt": "2026-04-14",
+      "summary": [
+        "[codex] Refactor observability and notification flow"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "[codex] Refactor observability and notification flow"
+      ],
       "config": [],
       "verification": []
     }
