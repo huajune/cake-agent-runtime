@@ -89,21 +89,37 @@ describe('PartTimeJobStrategy', () => {
       expect(result.payload.brand).toBe('奥乐齐');
     });
 
-    it('应兼容真实接口里扁平化的岗位分类字段', async () => {
+    it('应按 jobCategoryName 一级类目过滤岗位', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJob('必胜客', '餐饮/中餐/普通服务员'),
+          makeJob('奥乐齐', '零售/食品/理货员'),
+          makeJob('全家', '零售/便利店/店员'),
+        ],
+        total: 3,
+      });
+      mockBrandRotation.getNextBrand.mockResolvedValue('奥乐齐');
+
+      const result = await strategy.fetchData(makeGroup({ industry: '零售', tag: '兼职群_上海_零售' }));
+
+      expect(mockBrandRotation.getNextBrand).toHaveBeenCalledWith('room-1', ['奥乐齐', '全家']);
+      expect(result.hasData).toBe(true);
+      expect(result.payload.brand).toBe('奥乐齐');
+    });
+
+    it('不符合层级契约的 jobCategoryName 应被忽略', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
         jobs: [
           makeJob('必胜客', '普通服务员'),
-          makeJob('奥乐齐', '理货员'),
+          makeJob('奥乐齐', '导购'),
         ],
         total: 2,
       });
-      mockBrandRotation.getNextBrand.mockResolvedValue('必胜客');
 
       const result = await strategy.fetchData(makeGroup());
 
-      expect(mockBrandRotation.getNextBrand).toHaveBeenCalledWith('room-1', ['必胜客']);
-      expect(result.hasData).toBe(true);
-      expect(result.payload.brand).toBe('必胜客');
+      expect(result.hasData).toBe(false);
+      expect(result.summary).toContain('无岗位');
     });
 
     it('无岗位时应返回 hasData=false', async () => {

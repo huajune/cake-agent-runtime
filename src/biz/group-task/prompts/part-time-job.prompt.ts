@@ -346,9 +346,7 @@ export function buildPartTimeSalaryLine(jobs: JobDetail[]): string {
 
 export function enforcePartTimeSalaryLine(message: string, jobs: JobDetail[]): string {
   const salaryLine = buildPartTimeSalaryLine(jobs);
-  const rawLines = message
-    .split(/\r?\n/)
-    .map((line) => line.replace(/\s+$/g, ''));
+  const rawLines = message.split(/\r?\n/).map((line) => line.replace(/\s+$/g, ''));
   const resultLines: string[] = [];
   let insertedSalary = false;
   let skippingSalaryBlock = false;
@@ -360,8 +358,7 @@ export function enforcePartTimeSalaryLine(message: string, jobs: JobDetail[]): s
       /^(?:💰\s*)?(?:薪资待遇|薪资范围|时薪范围|薪资说明)[:：]?$/.test(trimmed) ||
       (/^💰/.test(trimmed) && /薪资|时薪/.test(trimmed));
     const isSalaryBullet =
-      /^[-•]/.test(trimmed) &&
-      /薪资|时薪|月薪|综合薪资|工作类型|灵活时间制/.test(trimmed);
+      /^[-•]/.test(trimmed) && /薪资|时薪|月薪|综合薪资|工作类型|灵活时间制/.test(trimmed);
     const startsNewSection =
       /^(?:👤|👥|📋|⏰|📝|🏪|📍|💬|📞|🏆|📣|📌)/.test(trimmed) ||
       /^(?:招聘对象|招聘条件|必备条件|工作时间|工作内容|在招门店|覆盖|如何报名|联系我们|主要职责)/.test(
@@ -403,7 +400,10 @@ export function enforcePartTimeSalaryLine(message: string, jobs: JobDetail[]): s
     resultLines.push(salaryLine);
   }
 
-  return resultLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return resultLines
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function extractHiringRequirement(job: JobDetail): string {
