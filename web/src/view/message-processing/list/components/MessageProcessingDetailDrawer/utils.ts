@@ -311,6 +311,59 @@ function extractTextFromParts(parts: unknown): string {
     .join('\n');
 }
 
+function extractTextFromContent(content: unknown): string {
+  if (typeof content === 'string') {
+    return content;
+  }
+
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === 'string') {
+          return part;
+        }
+
+        const record = asRecord(part);
+        if (!record) {
+          return '';
+        }
+
+        if (record.type === 'text' && typeof record.text === 'string') {
+          return record.text;
+        }
+
+        if (typeof record.content === 'string') {
+          return record.content;
+        }
+
+        return '';
+      })
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  return '';
+}
+
+function extractMessageContent(item: AnyRecord): string {
+  const partsText = extractTextFromParts(item.parts);
+  if (partsText.trim()) {
+    return partsText;
+  }
+
+  const contentText = extractTextFromContent(item.content);
+  if (contentText.trim()) {
+    return contentText;
+  }
+
+  const text = asString(item.text);
+  if (text) {
+    return text;
+  }
+
+  return '';
+}
+
 export function getResponseText(message: MessageRecord): string {
   const response = getInvocationResponse(message);
   const reply = asRecord(response?.reply);
@@ -446,26 +499,90 @@ export function getHistoryMessages(message: MessageRecord): Array<{
   content: string;
 }> {
   const request = getInvocationRequest(message);
-  const requestMessages = asArray<AnyRecord>(request?.messages);
-  if (requestMessages.length === 0) return [];
+  const requestCandidates = [
+    asRecord(request?.agentRequest),
+    asRecord(request?.normalizedRequest),
+    asRecord(request?.transportRequest),
+    request,
+  ].filter((candidate): candidate is AnyRecord => Boolean(candidate));
 
-  return requestMessages
-    .map((item, index, arr) => {
-      if (item.role === 'system') return null;
+  const normalizeConversationMessages = (
+    items: AnyRecord[],
+  ): Array<{ role: 'user' | 'assistant'; content: string }> =>
+    items
+      .map((item) => {
+        if (item.role === 'system') return null;
 
-      const isLastUserMessage =
-        item.role === 'user' && arr.slice(index + 1).every((candidate) => candidate.role !== 'user');
-      if (isLastUserMessage) return null;
+        const content = extractMessageContent(item);
+        if (!content.trim()) return null;
 
-      const content = extractTextFromParts(item.parts);
-      if (!content.trim()) return null;
+        return {
+          role: item.role === 'assistant' ? 'assistant' : 'user',
+          content,
+        };
+      })
+      .filter((item): item is { role: 'user' | 'assistant'; content: string } => Boolean(item));
 
-      return {
-        role: item.role === 'assistant' ? 'assistant' : 'user',
-        content,
-      };
-    })
-    .filter((item): item is { role: 'user' | 'assistant'; content: string } => Boolean(item));
+  for (const candidate of requestCandidates) {
+    const requestMessages = asArray<AnyRecord>(candidate.messages);
+    const historyMessages = asArray<AnyRecord>(candidate.history);
+
+    if (requestMessages.length > 0) {
+      const normalizedMessages = normalizeConversationMessages(requestMessages);
+      if (normalizedMessages.length > 0) {
+        return normalizedMessages;
+      }
+    }
+
+    if (historyMessages.length > 0) {
+      const normalizedMessages = normalizeConversationMessages(historyMessages);
+      const currentUserMessage =
+        asString(candidate.message) ||
+        asString(candidate.userMessage) ||
+        asString(candidate.content);
+
+      if (currentUserMessage?.trim()) {
+        const lastMessage = normalizedMessages[normalizedMessages.length - 1];
+        if (
+          !lastMessage ||
+          lastMessage.role !== 'user' ||
+          lastMessage.content.trim() !== currentUserMessage.trim()
+        ) {
+          normalizedMessages.push({
+            role: 'user',
+            content: currentUserMessage,
+          });
+        }
+      }
+
+      if (normalizedMessages.length > 0) {
+        return normalizedMessages;
+      }
+    }
+  }
+
+  const reconstructedMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  const currentUserMessage =
+    requestCandidates
+      .map((candidate) => asString(candidate.userMessage) || asString(candidate.content))
+      .find(Boolean) || message.messagePreview;
+
+  if (currentUserMessage?.trim()) {
+    reconstructedMessages.push({
+      role: 'user',
+      content: currentUserMessage,
+    });
+  }
+
+  const assistantReply = getResponseText(message);
+  if (assistantReply && assistantReply !== '(无响应内容)') {
+    reconstructedMessages.push({
+      role: 'assistant',
+      content: assistantReply,
+    });
+  }
+
+  return reconstructedMessages;
 }
 
 function inferToolStatus(toolCall: AnyRecord): ToolCallInfo['status'] {
@@ -551,16 +668,6 @@ export function getExecutionFacts(message: MessageRecord): Array<{ label: string
   const scenario = message.scenario || asString(request?.scenario);
   if (scenario) facts.push({ label: '场景', value: scenario });
 
-  const dispatchMode = asString(request?.dispatchMode);
-  if (dispatchMode) facts.push({ label: '分派模式', value: dispatchMode });
-
-  const batchId = message.batchId || asString(request?.batchId);
-  if (batchId) facts.push({ label: '批次 ID', value: batchId });
-
-  if (message.isPrimary !== undefined) {
-    facts.push({ label: '批次角色', value: message.isPrimary ? 'Primary' : 'Secondary' });
-  }
-
   if (message.replySegments !== undefined) {
     facts.push({ label: '下发分段', value: String(message.replySegments) });
   }
@@ -570,9 +677,6 @@ export function getExecutionFacts(message: MessageRecord): Array<{ label: string
 
   const finishReason = asString(response?.finishReason);
   if (finishReason) facts.push({ label: '结束原因', value: finishReason });
-
-  const firstChunkType = asString(response?.firstChunkType);
-  if (firstChunkType) facts.push({ label: '首个 Chunk', value: firstChunkType });
 
   const stepCount = asNumber(response?.stepCount);
   if (stepCount !== undefined) facts.push({ label: '执行步数', value: String(stepCount) });

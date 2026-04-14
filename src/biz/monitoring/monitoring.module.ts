@@ -2,7 +2,9 @@ import { Module, Global, forwardRef } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { MessageModule } from '@wecom/message/message.module';
 import { BizMessageModule } from '@biz/message/message.module';
-import { FeishuModule } from '@/infra/feishu/feishu.module';
+import { AnalyticsModule } from '@analytics/analytics.module';
+import { NotificationModule } from '@notification/notification.module';
+import { ObservabilityModule } from '@observability/observability.module';
 import { UserModule } from '../user/user.module';
 import { HostingConfigModule } from '../hosting-config/hosting-config.module';
 
@@ -10,12 +12,12 @@ import { HostingConfigModule } from '../hosting-config/hosting-config.module';
 import { MessageTrackingService } from './services/tracking/message-tracking.service';
 import { MonitoringCacheService } from './services/tracking/monitoring-cache.service';
 
-// Analytics (聚合分析)
-import { AnalyticsDashboardService } from './services/analytics/analytics-dashboard.service';
-import { AnalyticsQueryService } from './services/analytics/analytics-query.service';
-import { AnalyticsMaintenanceService } from './services/analytics/analytics-maintenance.service';
-import { HourlyStatsAggregatorService } from './services/analytics/hourly-stats-aggregator.service';
-import { AnalyticsAlertService } from './services/analytics/analytics-alert.service';
+// Dashboard / Alerts / Maintenance / Projections (应用编排)
+import { AnalyticsDashboardService } from './services/dashboard/analytics-dashboard.service';
+import { AnalyticsQueryService } from './services/dashboard/analytics-query.service';
+import { AnalyticsMaintenanceService } from './services/maintenance/analytics-maintenance.service';
+import { HourlyStatsAggregatorService } from './services/projections/hourly-stats-aggregator.service';
+import { AnalyticsAlertService } from './services/alerts/analytics-alert.service';
 
 // Cleanup (数据清理)
 import { DataCleanupService } from './services/cleanup/data-cleanup.service';
@@ -33,7 +35,10 @@ import { MonitoringErrorLogRepository } from './repositories/error-log.repositor
  *
  * 统一管理消息处理全链路的监控体系：
  * - services/tracking/     采集写入：消息生命周期追踪、Redis 实时计数
- * - services/analytics/    聚合分析：Dashboard 数据、趋势计算、业务告警
+ * - services/dashboard/    Dashboard 查询与系统监控接口编排
+ * - services/alerts/       业务指标告警编排
+ * - services/projections/  小时聚合数据重建与投影
+ * - services/maintenance/  聚合维护与后台管理操作
  * - services/cleanup/      数据清理：定时清理过期记录
  */
 @Global()
@@ -42,7 +47,9 @@ import { MonitoringErrorLogRepository } from './repositories/error-log.repositor
     ScheduleModule.forRoot(),
     forwardRef(() => MessageModule),
     BizMessageModule,
-    FeishuModule,
+    AnalyticsModule,
+    NotificationModule,
+    ObservabilityModule,
     UserModule,
     HostingConfigModule,
   ],
@@ -55,7 +62,7 @@ import { MonitoringErrorLogRepository } from './repositories/error-log.repositor
     // Tracking
     MonitoringCacheService,
     MessageTrackingService,
-    // Analytics
+    // Dashboard / Alerts / Maintenance / Projections
     AnalyticsDashboardService,
     AnalyticsQueryService,
     AnalyticsMaintenanceService,

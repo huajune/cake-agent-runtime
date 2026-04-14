@@ -300,7 +300,11 @@ export class MessageTrackingService implements OnModuleDestroy {
   recordFailure(
     messageId: string,
     error: string,
-    metadata?: MonitoringMetadata & { fallbackSuccess?: boolean },
+    metadata?: MonitoringMetadata & {
+      fallbackSuccess?: boolean;
+      batchId?: string;
+      isPrimary?: boolean;
+    },
   ): void {
     this.logger.debug(`[recordFailure] 开始处理 [${messageId}]`);
 
@@ -330,6 +334,8 @@ export class MessageTrackingService implements OnModuleDestroy {
     record.fallbackSuccess = metadata?.fallbackSuccess ?? record.fallbackSuccess;
     record.alertType = metadata?.alertType ?? record.alertType;
     record.agentInvocation = metadata?.agentInvocation ?? record.agentInvocation;
+    record.batchId = metadata?.batchId ?? record.batchId;
+    record.isPrimary = metadata?.isPrimary ?? record.isPrimary;
 
     // 更新 Redis 计数器
     const counterUpdates: Partial<MonitoringGlobalCounters> = { totalFailure: 1 };

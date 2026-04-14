@@ -98,6 +98,11 @@ export class RouterService {
     return details;
   }
 
+  /** 获取指定角色的 fallback 模型列表 */
+  getFallbacks(role: ModelRole | string): string[] | undefined {
+    return this.parseFallbacks(role);
+  }
+
   private parseFallbacks(role: ModelRole | string): string[] | undefined {
     const raw =
       this.config.get<string>(`AGENT_${role.toUpperCase()}_FALLBACKS`) ||

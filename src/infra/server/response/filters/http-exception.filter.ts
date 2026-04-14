@@ -5,9 +5,12 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { createErrorResponse } from '../dto/response.dto';
+import { AlertLevel } from '@enums/alert.enum';
+import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
 
 /**
  * HTTP 异常过滤器
@@ -24,6 +27,11 @@ import { createErrorResponse } from '../dto/response.dto';
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpExceptionFilter.name);
+
+  constructor(
+    @Optional()
+    private readonly exceptionNotifier?: IncidentReporterService,
+  ) {}
 
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
@@ -72,6 +80,29 @@ export class HttpExceptionFilter implements ExceptionFilter {
       `[${request.method}] ${request.url} - ${status} ${code}: ${message}`,
       exception instanceof Error ? exception.stack : undefined,
     );
+
+    if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
+      this.exceptionNotifier?.notifyAsync({
+        source: {
+          subsystem: 'server',
+          component: 'HttpExceptionFilter',
+          action: `${request.method} ${request.url}`,
+          trigger: 'http',
+        },
+        code: 'server.http_exception',
+        summary: `HTTP ${status} 异常`,
+        error: exception,
+        severity: AlertLevel.ERROR,
+        diagnostics: {
+          payload: {
+            status,
+            code,
+            method: request.method,
+            url: request.url,
+          },
+        },
+      });
+    }
 
     // 返回标准错误响应
     const errorResponse = createErrorResponse(code, message, details, request.url);

@@ -1,8 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AnalyticsController } from '@biz/monitoring/monitoring.controller';
-import { AnalyticsDashboardService } from '@biz/monitoring/services/analytics/analytics-dashboard.service';
-import { AnalyticsQueryService } from '@biz/monitoring/services/analytics/analytics-query.service';
-import { AnalyticsMaintenanceService } from '@biz/monitoring/services/analytics/analytics-maintenance.service';
+import { AnalyticsDashboardService } from '@biz/monitoring/services/dashboard/analytics-dashboard.service';
+import { AnalyticsQueryService } from '@biz/monitoring/services/dashboard/analytics-query.service';
+import { AnalyticsMaintenanceService } from '@biz/monitoring/services/maintenance/analytics-maintenance.service';
 
 describe('AnalyticsController', () => {
   let controller: AnalyticsController;

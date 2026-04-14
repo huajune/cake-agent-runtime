@@ -29,6 +29,8 @@ const config: JestConfigWithTsJest = {
             '@mcp/*': ['src/mcp/*'],
             '@sponge/*': ['src/sponge/*'],
             '@observability/*': ['src/observability/*'],
+            '@notification/*': ['src/notification/*'],
+            '@analytics/*': ['src/analytics/*'],
             '@shared-types/*': ['src/types/*'],
           },
         },
@@ -57,6 +59,8 @@ const config: JestConfigWithTsJest = {
     '^@mcp/(.*)$': '<rootDir>/src/mcp/$1',
     '^@sponge/(.*)$': '<rootDir>/src/sponge/$1',
     '^@observability/(.*)$': '<rootDir>/src/observability/$1',
+    '^@notification/(.*)$': '<rootDir>/src/notification/$1',
+    '^@analytics/(.*)$': '<rootDir>/src/analytics/$1',
     '^@shared-types/(.*)$': '<rootDir>/src/types/$1',
   },
 };

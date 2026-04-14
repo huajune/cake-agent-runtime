@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { MessageController } from '@biz/message/message.controller';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
-import { AnalyticsQueryService } from '@biz/monitoring/services/analytics/analytics-query.service';
+import { AnalyticsQueryService } from '@biz/monitoring/services/dashboard/analytics-query.service';
 
 describe('MessageController (biz/message)', () => {
   let controller: MessageController;

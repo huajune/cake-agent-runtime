@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CompletionService } from '@agent/completion.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
-import { FeishuAlertService } from '@infra/feishu/services/alert.service';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { ModelRole } from '@providers/types';
 
 /**
@@ -34,7 +34,7 @@ export class ImageDescriptionService {
   constructor(
     private readonly completionService: CompletionService,
     private readonly chatSession: ChatSessionService,
-    private readonly alertService: FeishuAlertService,
+    private readonly alertService: AlertNotifierService,
   ) {}
 
   /**

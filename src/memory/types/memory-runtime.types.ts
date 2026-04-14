@@ -21,6 +21,8 @@ export interface MemoryRecallContext {
   shortTerm: {
     messageWindow: ShortTermMessage[];
   };
+  /** 记忆子系统的诊断警告（非用户可见）。 */
+  _warnings?: string[];
   sessionMemory: WeworkSessionState | null;
   /** 仅对当前轮生效的前置高置信识别结果，不属于持久化会话记忆。 */
   highConfidenceFacts: EntityExtractionResult | null;

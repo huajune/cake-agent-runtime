@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { Public } from '@infra/server/response/decorators/api-response.decorator';
-import { FeishuAlertService } from '@infra/feishu/services/alert.service';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { AgentRunnerService } from './runner.service';
 import { RegistryService } from '@providers/registry.service';
 import { AgentHealthService } from './agent-health.service';
@@ -12,7 +12,7 @@ export class AgentController {
 
   constructor(
     private readonly runner: AgentRunnerService,
-    private readonly alertService: FeishuAlertService,
+    private readonly alertService: AlertNotifierService,
     private readonly registry: RegistryService,
     private readonly healthService: AgentHealthService,
   ) {}
@@ -76,10 +76,23 @@ export class AgentController {
 
       this.alertService
         .sendAlert({
-          errorType: 'agent',
-          error,
-          apiEndpoint: '/agent/debug-chat',
-          scenario,
+          code: 'agent.debug_chat_failed',
+          summary: 'Agent 调试聊天失败',
+          source: {
+            subsystem: 'agent',
+            component: 'AgentController',
+            action: 'debugChat',
+            trigger: 'http',
+          },
+          scope: {
+            scenario,
+          },
+          diagnostics: {
+            error,
+          },
+          dedupe: {
+            key: `agent.debug_chat_failed:${scenario}`,
+          },
         })
         .catch((alertError: Error) => {
           this.logger.error(`飞书告警发送失败: ${alertError.message}`);

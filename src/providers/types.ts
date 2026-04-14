@@ -70,7 +70,10 @@ export const DEFAULT_RELIABLE_CONFIG: ReliableConfig = {
 const VISION_CAPABLE_KEYWORDS = ['anthropic/', 'openai/', 'google/', 'gemini'];
 
 /** 已知不支持 vision 的厂商关键词 */
-const VISION_INCAPABLE_KEYWORDS = ['deepseek/', 'moonshotai/', 'qwen/'];
+const VISION_INCAPABLE_KEYWORDS = ['deepseek/', 'moonshotai/'];
+
+/** Qwen 中支持多模态的模型关键词（qwen3.5-plus / qwen3.6-plus / qwen-vl 系列） */
+const QWEN_VISION_KEYWORDS = ['qwen3.5-plus', 'qwen3.6-plus', 'qwen-vl', 'qwen3-vl'];
 
 /**
  * 检测模型是否支持多模态 vision（图片输入）
@@ -81,6 +84,8 @@ export function supportsVision(modelId: string): boolean {
   const id = modelId.toLowerCase();
   // 先排除已知不支持的
   if (VISION_INCAPABLE_KEYWORDS.some((k) => id.includes(k))) return false;
+  // Qwen 按模型粒度判断：仅 qwen3.5-plus / qwen3.6-plus / qwen-vl 系列支持
+  if (id.includes('qwen/')) return QWEN_VISION_KEYWORDS.some((k) => id.includes(k));
   // 再匹配已知支持的
   return VISION_CAPABLE_KEYWORDS.some((k) => id.includes(k));
 }

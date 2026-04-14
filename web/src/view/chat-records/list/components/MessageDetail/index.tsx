@@ -1,4 +1,8 @@
+import { useCallback, useEffect, useMemo } from 'react';
 import type { ChatMessage, ChatSession } from '@/hooks/chat/useChatSessions';
+import { FeedbackButtons } from '@/view/agent-test/list/components/FeedbackButtons';
+import { FeedbackModal } from '@/view/agent-test/list/components/FeedbackModal';
+import { useFeedback } from '@/view/agent-test/list/hooks/useFeedback';
 import styles from './index.module.scss';
 
 // 格式化时间戳
@@ -55,6 +59,23 @@ export default function MessageDetail({
   currentSession,
   isLoading,
 }: MessageDetailProps) {
+  const feedback = useFeedback();
+  const {
+    clearSuccess,
+    closeModal,
+    feedbackType,
+    isOpen,
+    isSubmitting,
+    openModal,
+    remark,
+    scenarioType,
+    setRemark,
+    setScenarioType,
+    submit,
+    submitError,
+    successType,
+  } = feedback;
+
   // 按日期分组消息
   const groupedMessages: { date: string; messages: ChatMessage[] }[] = [];
   let currentDate = '';
@@ -67,41 +88,71 @@ export default function MessageDetail({
     groupedMessages[groupedMessages.length - 1].messages.push(msg);
   });
 
+  const chatHistoryPreview = useMemo(
+    () =>
+      messages
+        .map((msg) => {
+          const displayName =
+            msg.role === 'assistant'
+              ? msg.managerName || currentSession?.managerName || '招募经理'
+              : msg.candidateName || currentSession?.candidateName || '候选人';
+          return `[${formatTime(msg.timestamp)} ${displayName}] ${msg.content}`;
+        })
+        .join('\n'),
+    [currentSession?.candidateName, currentSession?.managerName, messages],
+  );
+
+  const lastUserMessage = useMemo(
+    () => [...messages].reverse().find((msg) => msg.role === 'user' && msg.content.trim())?.content,
+    [messages],
+  );
+
+  const handleSubmitFeedback = useCallback(() => {
+    void submit({
+      chatHistory: chatHistoryPreview,
+      userMessage: lastUserMessage,
+      chatId: selectedChatId || undefined,
+      candidateName: currentSession?.candidateName,
+      managerName: currentSession?.managerName,
+    });
+  }, [
+    chatHistoryPreview,
+    currentSession?.candidateName,
+    currentSession?.managerName,
+    lastUserMessage,
+    selectedChatId,
+    submit,
+  ]);
+
+  useEffect(() => {
+    clearSuccess();
+  }, [clearSuccess, selectedChatId]);
+
+  let content: React.ReactNode;
+
   if (!selectedChatId) {
-    return (
-      <div className={styles.panel}>
-        <div className={styles.stateContainer}>
-          <div className={styles.stateIcon}>💬</div>
-          <div>选择一个会话查看消息</div>
-        </div>
+    content = (
+      <div className={styles.stateContainer}>
+        <div className={styles.stateIcon}>💬</div>
+        <div>选择一个会话查看消息</div>
       </div>
     );
-  }
-
-  if (isLoading) {
-    return (
-      <div className={styles.panel}>
-        <div className={styles.stateContainer}>
-          <div className="loading-spinner"></div>
-          加载消息中...
-        </div>
+  } else if (isLoading) {
+    content = (
+      <div className={styles.stateContainer}>
+        <div className="loading-spinner"></div>
+        加载消息中...
       </div>
     );
-  }
-
-  if (messages.length === 0) {
-    return (
-      <div className={styles.panel}>
-        <div className={styles.stateContainer}>
-          <div className={styles.stateIcon}>📭</div>
-          <div>该会话暂无消息</div>
-        </div>
+  } else if (messages.length === 0) {
+    content = (
+      <div className={styles.stateContainer}>
+        <div className={styles.stateIcon}>📭</div>
+        <div>该会话暂无消息</div>
       </div>
     );
-  }
-
-  return (
-    <div className={styles.panel}>
+  } else {
+    content = (
       <div className={styles.messagesContainer}>
         {groupedMessages.map((group) => (
           <div key={group.date} className={styles.messageGroup}>
@@ -164,6 +215,37 @@ export default function MessageDetail({
           </div>
         ))}
       </div>
+    );
+  }
+
+  return (
+    <div className={styles.panel}>
+      {content}
+      {selectedChatId && messages.length > 0 && (
+        <div className={styles.actionBar}>
+          <div className={styles.feedbackGroup}>
+            <FeedbackButtons
+              successType={successType}
+              disabled={isLoading || !chatHistoryPreview.trim()}
+              onGoodCase={() => openModal('goodcase')}
+              onBadCase={() => openModal('badcase')}
+            />
+          </div>
+        </div>
+      )}
+      <FeedbackModal
+        isOpen={isOpen}
+        feedbackType={feedbackType}
+        scenarioType={scenarioType}
+        remark={remark}
+        isSubmitting={isSubmitting}
+        chatHistoryPreview={chatHistoryPreview}
+        submitError={submitError}
+        onClose={closeModal}
+        onScenarioTypeChange={setScenarioType}
+        onRemarkChange={setRemark}
+        onSubmit={handleSubmitFeedback}
+      />
     </div>
   );
 }

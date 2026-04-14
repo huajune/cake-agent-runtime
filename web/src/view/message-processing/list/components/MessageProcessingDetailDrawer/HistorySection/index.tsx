@@ -16,7 +16,6 @@ export default function HistorySection({ message }: HistorySectionProps) {
 
   const historyMessages = useMemo(() => getHistoryMessages(message), [message]);
 
-  // 如果没有历史消息，不显示此区域
   if (historyMessages.length === 0) {
     return null;
   }
@@ -25,8 +24,8 @@ export default function HistorySection({ message }: HistorySectionProps) {
     <div className={styles.container}>
       <div className={styles.header} onClick={() => setExpanded(!expanded)}>
         <div className={styles.title}>
-          <span>会话上下文</span>
-          <span className={styles.badge}>{historyMessages.length} 条</span>
+          <span>对话记录</span>
+          <span className={styles.badge}>{historyMessages.length} 轮</span>
         </div>
         <span className={`${styles.toggleIcon} ${expanded ? styles.expanded : ''}`}>
           ▼

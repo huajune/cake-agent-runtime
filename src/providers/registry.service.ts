@@ -82,7 +82,7 @@ export class RegistryService implements OnModuleInit {
       if (!apiKey) continue;
 
       const baseURL = this.config.get<string>(cfg.baseUrlEnvKey ?? '') ?? cfg.defaultBaseURL;
-      providers[name] = createOpenAICompatible({ name, apiKey, baseURL });
+      providers[name] = createOpenAICompatible({ name, apiKey, baseURL, includeUsage: true });
       this.registeredProviders.push(name);
       this.logger.log(`Provider 已注册: ${name} (${cfg.displayName})`);
     }

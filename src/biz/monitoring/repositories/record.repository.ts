@@ -56,6 +56,28 @@ const HOURLY_AGG_MAPPING = {
   fallbackSuccessCount: { field: 'fallback_success_count', type: 'int' as const },
 };
 
+const EMPTY_HOURLY_AGGREGATE = {
+  messageCount: 0,
+  successCount: 0,
+  failureCount: 0,
+  successRate: 0,
+  avgDuration: 0,
+  minDuration: 0,
+  maxDuration: 0,
+  p50Duration: 0,
+  p95Duration: 0,
+  p99Duration: 0,
+  avgAiDuration: 0,
+  avgSendDuration: 0,
+  activeUsers: 0,
+  activeChats: 0,
+  totalTokenUsage: 0,
+  fallbackCount: 0,
+  fallbackSuccessCount: 0,
+  scenarioStats: {} as Record<string, { count: number; successCount: number; avgDuration: number }>,
+  toolStats: {} as Record<string, number>,
+};
+
 /**
  * 监控数据 Repository
  *
@@ -244,8 +266,12 @@ export class MonitoringRecordRepository extends BaseRepository {
         p_hour_end: hourEnd.toISOString(),
       });
 
-      if (!result || result.length === 0) {
+      if (!result) {
         return null;
+      }
+
+      if (result.length === 0) {
+        return { ...EMPTY_HOURLY_AGGREGATE };
       }
 
       const row = result[0];

@@ -1,7 +1,6 @@
 import { buildInviteToGroupTool } from '@tools/invite-to-group.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { GroupContext } from '@biz/group-task/group-task.types';
-import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
 
 describe('buildInviteToGroupTool', () => {
   const mockContext: ToolBuildContext = {
@@ -26,16 +25,18 @@ describe('buildInviteToGroupTool', () => {
 
   const mockGroupResolver = { resolveGroups: jest.fn() };
   const mockRoomService = { addMemberEnterprise: jest.fn() };
-  const mockWebhookService = { sendMessage: jest.fn() };
-  const mockCardBuilder = { buildMarkdownCard: jest.fn() };
+  const mockOpsNotifier = { sendGroupFullAlert: jest.fn() };
   const mockMemoryService = { saveInvitedGroup: jest.fn() };
   const MEMBER_LIMIT = 200;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockCardBuilder.buildMarkdownCard.mockReturnValue({ msg_type: 'interactive' });
-    mockWebhookService.sendMessage.mockResolvedValue(true);
+    mockOpsNotifier.sendGroupFullAlert.mockResolvedValue(true);
   });
+
+  const flushAsyncEvents = async () => {
+    await new Promise((resolve) => setImmediate(resolve));
+  };
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const executeTool = async (
@@ -45,8 +46,7 @@ describe('buildInviteToGroupTool', () => {
     const builder = buildInviteToGroupTool(
       mockGroupResolver as any,
       mockRoomService as any,
-      mockWebhookService as any,
-      mockCardBuilder as any,
+      mockOpsNotifier as any,
       mockMemoryService as any,
       MEMBER_LIMIT,
       'enterprise-token-test',
@@ -150,18 +150,20 @@ describe('buildInviteToGroupTool', () => {
     ]);
 
     const result = await executeTool({ city: '上海' });
+    await flushAsyncEvents();
 
     expect(result.success).toBe(false);
     expect(result.reason).toBe('group_full');
-    expect(mockCardBuilder.buildMarkdownCard).toHaveBeenCalledWith(
+    expect(mockOpsNotifier.sendGroupFullAlert).toHaveBeenCalledWith(
       expect.objectContaining({
-        atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
-        title: '上海 所有兼职群已满，需要创建新群',
+        city: '上海',
+        memberLimit: MEMBER_LIMIT,
+        groups: [
+          { name: '上海兼职群1号', memberCount: MEMBER_LIMIT + 10 },
+          { name: '上海兼职群2号', memberCount: MEMBER_LIMIT + 5 },
+        ],
       }),
     );
-    expect(mockWebhookService.sendMessage).toHaveBeenCalledWith('MESSAGE_NOTIFICATION', {
-      msg_type: 'interactive',
-    });
   });
 
   it('should filter by industry when provided', async () => {
@@ -234,18 +236,25 @@ describe('buildInviteToGroupTool', () => {
     mockRoomService.addMemberEnterprise.mockResolvedValue({ errcode: -10, errmsg: '群人数达到上限(500)' });
 
     const result = await executeTool({ city: '上海' });
+    await flushAsyncEvents();
 
     expect(result.success).toBe(false);
     expect(result.reason).toBe('group_full');
     expect(result.groupName).toBe('上海兼职群1号');
+    expect(mockOpsNotifier.sendGroupFullAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        city: '上海',
+        memberLimit: MEMBER_LIMIT,
+        groups: [{ name: '上海兼职群1号', memberCount: 199 }],
+      }),
+    );
   });
 
   it('should fail clearly when enterprise token is missing', async () => {
     const builder = buildInviteToGroupTool(
       mockGroupResolver as any,
       mockRoomService as any,
-      mockWebhookService as any,
-      mockCardBuilder as any,
+      mockOpsNotifier as any,
       mockMemoryService as any,
       MEMBER_LIMIT,
       undefined,

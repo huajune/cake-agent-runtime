@@ -62,7 +62,7 @@ describe('MessagePipelineService', () => {
   const mockMonitoringService = {
     recordFailure: jest.fn(),
   };
-  const mockFeishuAlertService = {};
+  const mockAlertNotifierService = {};
 
   let service: MessagePipelineService;
 
@@ -88,7 +88,7 @@ describe('MessagePipelineService', () => {
       mockRunnerService as never,
       mockConfigService,
       mockMonitoringService as never,
-      mockFeishuAlertService as never,
+      mockAlertNotifierService as never,
     );
   });
 

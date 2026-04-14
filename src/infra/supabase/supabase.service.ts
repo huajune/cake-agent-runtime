@@ -1,7 +1,9 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { AlertLevel } from '@enums/alert.enum';
+import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
 
 /**
  * Supabase 基础服务
@@ -18,7 +20,11 @@ export class SupabaseService implements OnModuleInit {
   // 配置
   private isInitialized = false;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    @Optional()
+    private readonly exceptionNotifier?: IncidentReporterService,
+  ) {
     this.initClient();
   }
 
@@ -91,8 +97,20 @@ export class SupabaseService implements OnModuleInit {
     try {
       await this.supabaseClient.from('strategy_config').select('id').limit(1);
       this.logger.debug('Supabase keep-alive ping 成功');
-    } catch {
+    } catch (error) {
       this.logger.warn('Supabase keep-alive ping 失败');
+      this.exceptionNotifier?.notifyAsync({
+        source: {
+          subsystem: 'infra',
+          component: 'SupabaseService',
+          action: 'keepAlive',
+          trigger: 'cron',
+        },
+        code: 'cron.job_failed',
+        summary: 'Supabase keep-alive 失败',
+        error,
+        severity: AlertLevel.WARNING,
+      });
     }
   }
 }

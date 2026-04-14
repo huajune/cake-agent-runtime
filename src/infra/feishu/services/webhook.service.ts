@@ -13,6 +13,7 @@ import { FeishuApiResponse } from '../interfaces/interface';
 export class FeishuWebhookService {
   private readonly logger = new Logger(FeishuWebhookService.name);
   private readonly httpClient: AxiosInstance;
+  private readonly fallbackWarnedChannels = new Set<FeishuWebhookChannel>();
 
   constructor(private readonly configService: ConfigService) {
     this.httpClient = axios.create({
@@ -32,35 +33,38 @@ export class FeishuWebhookService {
     content: Record<string, unknown>,
   ): Promise<boolean> {
     try {
-      // 获取配置（优先使用环境变量，否则使用硬编码）
-      const config = this.getWebhookConfig(channel);
-
-      if (!config.url) {
-        this.logger.warn(`未配置 ${channel} Webhook URL`);
-        return false;
-      }
-
-      // 添加签名
-      let payload = content;
-      if (config.secret) {
-        const timestamp = Math.floor(Date.now() / 1000).toString();
-        const sign = this.generateSign(timestamp, config.secret);
-        payload = { ...content, timestamp, sign };
-      }
-
-      // 发送请求
-      const response = await this.httpClient.post<FeishuApiResponse>(config.url, payload);
-
-      if (response.data?.code !== 0) {
-        throw new Error(`飞书 API 返回错误: ${JSON.stringify(response.data)}`);
-      }
-
-      this.logger.log(`飞书消息发送成功 [${channel}]`);
+      await this.sendMessageOrThrow(channel, content);
       return true;
     } catch (error) {
       this.logger.error(`飞书消息发送失败 [${channel}]: ${error.message}`, error.stack);
       return false;
     }
+  }
+
+  async sendMessageOrThrow(
+    channel: FeishuWebhookChannel,
+    content: Record<string, unknown>,
+  ): Promise<void> {
+    const config = this.getWebhookConfig(channel);
+
+    if (!config.url) {
+      throw new Error(`未配置 ${channel} Webhook URL`);
+    }
+
+    let payload = content;
+    if (config.secret) {
+      const timestamp = Math.floor(Date.now() / 1000).toString();
+      const sign = this.generateSign(timestamp, config.secret);
+      payload = { ...content, timestamp, sign };
+    }
+
+    const response = await this.httpClient.post<FeishuApiResponse>(config.url, payload);
+
+    if (response.data?.code !== 0) {
+      throw new Error(`飞书 API 返回错误: ${JSON.stringify(response.data)}`);
+    }
+
+    this.logger.log(`飞书消息发送成功 [${channel}]`);
   }
 
   /**
@@ -72,10 +76,27 @@ export class FeishuWebhookService {
     secret: string;
   } {
     const defaultConfig = FEISHU_WEBHOOK_CHANNELS[channel];
+    const envUrl = this.configService.get<string>(defaultConfig.ENV_URL_KEY);
+    const envSecret = this.configService.get<string>(defaultConfig.ENV_SECRET_KEY);
+    const missingKeys: string[] = [];
+
+    if (envUrl === undefined && defaultConfig.URL) {
+      missingKeys.push(defaultConfig.ENV_URL_KEY);
+    }
+    if (envSecret === undefined && defaultConfig.SECRET) {
+      missingKeys.push(defaultConfig.ENV_SECRET_KEY);
+    }
+
+    if (missingKeys.length > 0 && !this.fallbackWarnedChannels.has(channel)) {
+      this.logger.warn(
+        `[${channel}] 未配置 ${missingKeys.join(' / ')}，回退到代码默认 Webhook 配置`,
+      );
+      this.fallbackWarnedChannels.add(channel);
+    }
 
     return {
-      url: this.configService.get<string>(defaultConfig.ENV_URL_KEY, defaultConfig.URL),
-      secret: this.configService.get<string>(defaultConfig.ENV_SECRET_KEY, defaultConfig.SECRET),
+      url: envUrl ?? defaultConfig.URL,
+      secret: envSecret ?? defaultConfig.SECRET,
     };
   }
 

@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '@infra/supabase/supabase.service';
@@ -6,6 +6,8 @@ import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { MonitoringErrorLogRepository } from '../../repositories/error-log.repository';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { AlertLevel } from '@enums/alert.enum';
+import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
 
 /**
  * 数据清理服务（分层存储策略）
@@ -43,6 +45,8 @@ export class DataCleanupService implements OnModuleInit {
     private readonly messageProcessingService: MessageProcessingService,
     private readonly userHostingService: UserHostingService,
     private readonly errorLogRepository: MonitoringErrorLogRepository,
+    @Optional()
+    private readonly exceptionNotifier?: IncidentReporterService,
   ) {
     this.agentInvocationRetentionDays = parseInt(
       this.configService.get('DATA_CLEANUP_AGENT_INVOCATION_DAYS', '7'),
@@ -124,6 +128,7 @@ export class DataCleanupService implements OnModuleInit {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`[数据清理] 清理 agent_invocation 失败: ${message}`);
+      this.notifyCleanupFailure('null-agent-invocations', '清理 agent_invocation 失败', error);
     }
   }
 
@@ -143,6 +148,7 @@ export class DataCleanupService implements OnModuleInit {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`[数据清理] 清理聊天消息失败: ${message}`);
+      this.notifyCleanupFailure('cleanup-chat-messages', '清理聊天消息失败', error);
     }
   }
 
@@ -162,6 +168,11 @@ export class DataCleanupService implements OnModuleInit {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`[数据清理] 清理消息处理记录失败: ${message}`);
+      this.notifyCleanupFailure(
+        'cleanup-message-processing-records',
+        '清理消息处理记录失败',
+        error,
+      );
     }
   }
 
@@ -181,6 +192,7 @@ export class DataCleanupService implements OnModuleInit {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`[数据清理] 清理错误日志失败: ${message}`);
+      this.notifyCleanupFailure('cleanup-error-logs', '清理错误日志失败', error);
     }
   }
 
@@ -200,6 +212,7 @@ export class DataCleanupService implements OnModuleInit {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`[数据清理] 清理用户活跃记录失败: ${message}`);
+      this.notifyCleanupFailure('cleanup-user-activity', '清理用户活跃记录失败', error);
     }
   }
 
@@ -216,6 +229,7 @@ export class DataCleanupService implements OnModuleInit {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`[数据清理] 标记超时记录失败: ${message}`);
+      this.notifyCleanupFailure('timeout-stuck-processing-records', '标记超时记录失败', error);
     }
   }
 
@@ -279,5 +293,20 @@ export class DataCleanupService implements OnModuleInit {
     );
 
     return { agentInvocations, chatMessages, processingRecords, userActivity, errorLogs };
+  }
+
+  private notifyCleanupFailure(source: string, title: string, error: unknown): void {
+    this.exceptionNotifier?.notifyAsync({
+      source: {
+        subsystem: 'monitoring',
+        component: 'DataCleanupService',
+        action: source,
+        trigger: 'cron',
+      },
+      code: 'cron.job_failed',
+      summary: title,
+      error,
+      severity: AlertLevel.ERROR,
+    });
   }
 }

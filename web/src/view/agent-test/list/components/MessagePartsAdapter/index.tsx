@@ -17,7 +17,7 @@ import styles from './index.module.scss';
 
 // ==================== 思考过程组件（基于 AI reasoning） ====================
 
-function normalizeReasoningText(text: string): string {
+function normalizeMarkdownText(text: string): string {
   return text
     .replace(/\r\n/g, '\n')
     // Collapse 3+ newlines → 1 blank line
@@ -43,7 +43,7 @@ function ReasoningBlock({
   defaultExpanded?: boolean;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const normalizedText = normalizeReasoningText(text);
+  const normalizedText = normalizeMarkdownText(text);
 
   return (
     <div className={`${styles.reasoningCard} ${isThinking ? styles.reasoningActive : ''}`}>
@@ -154,7 +154,9 @@ function ToolInvocation({
               </div>
               {extractMarkdown(result) ? (
                 <div className={styles.toolResultMarkdown}>
-                  <Markdown remarkPlugins={[remarkBreaks]}>{extractMarkdown(result)!}</Markdown>
+                  <Markdown remarkPlugins={[remarkBreaks]}>
+                    {normalizeMarkdownText(extractMarkdown(result)!)}
+                  </Markdown>
                 </div>
               ) : (
                 <pre className={styles.toolDetail}>{formatToolResult(result)}</pre>
@@ -298,15 +300,16 @@ function MessagePartsAdapterComponent({
         if (seg.kind === 'text') {
           const text = seg.texts.join('');
           if (!text && !isStreaming) return null;
+          const normalizedText = renderTextAsMarkdown ? normalizeMarkdownText(text) : text;
           return (
             <div key={`text-${idx}`} className={styles.replyContent}>
-              {text ? (
+              {normalizedText ? (
                 renderTextAsMarkdown ? (
                   <div className={styles.replyMarkdown}>
-                    <Markdown remarkPlugins={[remarkBreaks]}>{text}</Markdown>
+                    <Markdown remarkPlugins={[remarkBreaks]}>{normalizedText}</Markdown>
                   </div>
                 ) : (
-                  text
+                  normalizedText
                 )
               ) : (
                 <span className={styles.streamingPlaceholder}>等待响应...</span>

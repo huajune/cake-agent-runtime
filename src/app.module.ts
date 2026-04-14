@@ -6,7 +6,6 @@ import { HttpModule } from './infra/client-http/http.module';
 import { RedisModule } from './infra/redis/redis.module';
 import { GeocodingModule } from './infra/geocoding/geocoding.module';
 import { SupabaseModule } from '@infra/supabase/supabase.module';
-import { LoggerModule } from './infra/logger/logger.module';
 import { WebEntryModule } from '@infra/server/web-entry/web-entry.module';
 import { FeishuModule } from './infra/feishu/feishu.module';
 import { ProvidersModule } from '@providers/providers.module';
@@ -14,6 +13,8 @@ import { ToolModule } from '@tools/tool.module';
 import { McpModule } from '@mcp/mcp.module';
 import { MemoryModule } from '@memory/memory.module';
 import { SpongeModule } from '@sponge/sponge.module';
+import { AnalyticsModule } from '@analytics/analytics.module';
+import { NotificationModule } from '@notification/notification.module';
 import { ObservabilityModule } from '@/observability/observability.module';
 import { AgentModule } from './agent/agent.module';
 import { WecomModule } from '@channels/wecom/wecom.module';
@@ -22,6 +23,7 @@ import { TestSuiteModule } from '@biz/test-suite/test-suite.module';
 import { EvaluationModule } from './evaluation/evaluation.module';
 import { validate } from './infra/config/env.validation';
 import { ApiTokenGuard } from './infra/server/guards/api-token.guard';
+import { HttpExceptionFilter } from '@infra/server/response/filters/http-exception.filter';
 
 /**
  * 应用根模块
@@ -56,7 +58,6 @@ import { ApiTokenGuard } from './infra/server/guards/api-token.guard';
     GeocodingModule,
     SupabaseModule,
     FeishuModule,
-    LoggerModule,
     WebEntryModule,
 
     // ==================== 业务逻辑层 (Business Logic Layer) ====================
@@ -69,6 +70,8 @@ import { ApiTokenGuard } from './infra/server/guards/api-token.guard';
     MemoryModule, // 记忆服务（Redis-backed）
     SpongeModule, // 海绵数据服务（岗位/面试 HTTP）
     EvaluationModule, // Agent 评估（LLM 评分 + 对话解析）
+    AnalyticsModule, // 纯分析内核（规则、趋势、指标计算）
+    NotificationModule, // 面向人的通知编排
     ObservabilityModule, // Observer 可观测性
 
     // ==================== 业务域 (Business Domains) ====================
@@ -76,6 +79,6 @@ import { ApiTokenGuard } from './infra/server/guards/api-token.guard';
     WecomModule, // 企业微信渠道
     TestSuiteModule, // Agent 测试套件（独立于 BizModule，避免循环依赖）
   ],
-  providers: [{ provide: APP_GUARD, useClass: ApiTokenGuard }],
+  providers: [HttpExceptionFilter, { provide: APP_GUARD, useClass: ApiTokenGuard }],
 })
 export class AppModule {}

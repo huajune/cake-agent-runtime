@@ -4,12 +4,10 @@ import { ConfigService } from '@nestjs/config';
 import { ResponseInterceptor } from '@infra/server/response/interceptors/response.interceptor';
 import { HttpExceptionFilter } from '@infra/server/response/filters/http-exception.filter';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { IoAdapter } from '@nestjs/platform-socket.io';
 import { join } from 'path';
 import { networkInterfaces } from 'os';
 import { execSync } from 'child_process';
 import * as net from 'net';
-import { CustomLoggerService } from '@infra/logger/custom-logger.service';
 import { createGlobalValidationPipe } from '@infra/server/validation/global-validation-pipe';
 
 /**
@@ -104,17 +102,7 @@ async function bootstrap() {
   // 确保端口可用（如果被占用则自动清理）
   await ensurePortAvailable(port);
 
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
-    bufferLogs: true, // 缓冲日志直到 Logger 设置完成
-  });
-
-  // 启用 WebSocket 支持（用于实时日志推送到 Dashboard）
-  app.useWebSocketAdapter(new IoAdapter(app));
-
-  // 设置自定义 Logger（推送到 Dashboard 控制台）
-  // 注意：CustomLoggerService 使用 TRANSIENT 作用域，需要用 resolve() 而非 get()
-  const customLogger = await app.resolve(CustomLoggerService);
-  app.useLogger(customLogger);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // 启用 CORS
   app.enableCors();
@@ -134,7 +122,7 @@ async function bootstrap() {
   app.useGlobalPipes(createGlobalValidationPipe());
 
   // 全局注册异常过滤器（统一处理所有异常）
-  app.useGlobalFilters(new HttpExceptionFilter());
+  app.useGlobalFilters(app.get(HttpExceptionFilter));
 
   // 从配置服务获取端口和环境
   const configService = app.get(ConfigService);

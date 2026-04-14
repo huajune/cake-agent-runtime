@@ -1,9 +1,10 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { CompletionService } from '@agent/completion.service';
 import { RedisService } from '@infra/redis/redis.service';
+import { AlertLevel } from '@enums/alert.enum';
 import { NotificationStrategy } from '../strategies/notification.strategy';
 import { GroupResolverService } from './group-resolver.service';
 import { NotificationSenderService } from './notification-sender.service';
@@ -20,6 +21,8 @@ import {
   TaskExecutionResult,
   TimeSlot,
 } from '../group-task.types';
+import { resolveHumanizedDelayMs } from '../utils/humanized-delay.util';
+import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
 
 /**
  * 群任务调度编排服务
@@ -47,9 +50,11 @@ export class GroupTaskSchedulerService implements OnModuleInit {
     private readonly partTimeJobStrategy: PartTimeJobStrategy,
     private readonly storeManagerStrategy: StoreManagerStrategy,
     private readonly workTipsStrategy: WorkTipsStrategy,
+    @Optional()
+    private readonly exceptionNotifier?: IncidentReporterService,
   ) {
     this.sendDelayMs = parseInt(
-      this.configService.get<string>('GROUP_TASK_SEND_DELAY_MS', '2000'),
+      this.configService.get<string>('GROUP_TASK_SEND_DELAY_MS', '60000'),
       10,
     );
   }
@@ -256,23 +261,25 @@ export class GroupTaskSchedulerService implements OnModuleInit {
             // 3c. 同组所有群发送相同消息
             const followUpMessage = data.payload?.followUpMessage as string | undefined;
             const successGroups: GroupContext[] = [];
-            for (const group of groupMembers) {
+            for (const [index, group] of groupMembers.entries()) {
               try {
                 await this.notificationSender.sendToGroup(group, message, strategy.type, dryRun);
                 // 跟随消息（如店长群问候语）单独发送
                 if (followUpMessage) {
-                  await this.delay(this.sendDelayMs);
                   await this.notificationSender.sendTextToGroup(group, followUpMessage, dryRun);
                 }
                 result.successCount++;
                 successGroups.push(group);
                 this.logger.log(`[${strategy.type}] ✅ ${group.groupName}`);
-                await this.delay(this.sendDelayMs);
               } catch (error: unknown) {
                 result.failedCount++;
                 const errorMsg = error instanceof Error ? error.message : String(error);
                 result.errors.push({ groupName: group.groupName, error: errorMsg });
                 this.logger.error(`[${strategy.type}] ❌ ${group.groupName}: ${errorMsg}`);
+              } finally {
+                if (index < groupMembers.length - 1) {
+                  await this.pauseBetweenGroups(group.groupName);
+                }
               }
             }
 
@@ -323,12 +330,39 @@ export class GroupTaskSchedulerService implements OnModuleInit {
         const errorMsg = error instanceof Error ? error.message : String(error);
         this.logger.error(`[${strategy.type}] 任务整体失败: ${errorMsg}`);
         result.errors.push({ groupName: '(整体)', error: errorMsg });
+        this.exceptionNotifier?.notifyAsync({
+          source: {
+            subsystem: 'group-task',
+            component: 'GroupTaskSchedulerService',
+            action: 'executeTask',
+            trigger: 'manual',
+          },
+          code: 'group_task.execution_failed',
+          summary: `${strategy.type} 群任务执行失败`,
+          error,
+          severity: AlertLevel.ERROR,
+          scope: {
+            scenario: strategy.type,
+          },
+          diagnostics: {
+            payload: {
+              dryRun,
+              timeSlot,
+            },
+          },
+        });
       }
 
       result.endTime = new Date();
 
       // 3. 飞书通知结果
-      await this.notificationSender.reportToFeishu(result, dryRun);
+      try {
+        await this.notificationSender.reportToFeishu(result, dryRun);
+      } catch (error: unknown) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        result.errors.push({ groupName: '(飞书通知群)', error: errorMsg });
+        this.logger.error(`[${strategy.type}] 飞书通知发送失败: ${errorMsg}`);
+      }
 
       const duration = (result.endTime.getTime() - result.startTime.getTime()) / 1000;
       this.logger.log(
@@ -372,6 +406,14 @@ export class GroupTaskSchedulerService implements OnModuleInit {
 
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private async pauseBetweenGroups(groupName: string): Promise<void> {
+    const delayMs = resolveHumanizedDelayMs(this.sendDelayMs);
+    if (delayMs <= 0) return;
+
+    this.logger.debug(`[群任务] ${groupName} 发送完成后等待 ${delayMs}ms，再继续下一个群`);
+    await this.delay(delayMs);
   }
 
   private shouldRunScheduledTask(type: GroupTaskType): boolean {

@@ -91,7 +91,7 @@ export class MessageProcessingRepository extends BaseRepository {
       const results = await this.select<MessageProcessingDbRecord>(selectedColumns, (q) => {
         let r = q
           .eq('status', 'success')
-          .or('is_primary.eq.true,and(batch_id.is.null,is_primary.is.null)')
+          .or('is_primary.eq.true,batch_id.is.null')
           .gt('ai_duration', 0)
           .order('ai_duration', { ascending: false })
           .limit(limit);
@@ -161,7 +161,7 @@ export class MessageProcessingRepository extends BaseRepository {
         // 只展示主消息 + 非聚合的独立消息（副消息是内部概念，不在流水中展示）
         let r = q
           .order('received_at', { ascending: false })
-          .or('is_primary.eq.true,and(batch_id.is.null,is_primary.is.null)');
+          .or('is_primary.eq.true,batch_id.is.null');
         if (options.startDate) r = r.gte('received_at', options.startDate.toISOString());
         else if (options.startTime)
           r = r.gte('received_at', new Date(options.startTime).toISOString());

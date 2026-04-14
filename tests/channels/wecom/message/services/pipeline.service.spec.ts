@@ -6,13 +6,14 @@ import { MessageFilterService } from '@wecom/message/services/filter.service';
 import { MessageDeliveryService } from '@wecom/message/services/delivery.service';
 import { ImageDescriptionService } from '@wecom/message/services/image-description.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
-import { FeishuAlertService } from '@infra/feishu/services/alert.service';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { AgentRunnerService } from '@agent/runner.service';
 import { WecomMessageObservabilityService } from '@wecom/message/services/wecom-message-observability.service';
 import { EnterpriseMessageCallbackDto } from '@wecom/message/message-callback.dto';
 import { DeliveryFailureError } from '@wecom/message/message.types';
 import { MessageType, ContactType, MessageSource } from '@enums/message-callback.enum';
+import { AlertLevel } from '@enums/alert.enum';
 import { FilterReason } from '@wecom/message/services/filter.service';
 
 describe('MessagePipelineService', () => {
@@ -118,7 +119,7 @@ describe('MessagePipelineService', () => {
         { provide: AgentRunnerService, useValue: mockRunnerService },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: MessageTrackingService, useValue: mockMonitoringService },
-        { provide: FeishuAlertService, useValue: mockAlertService },
+        { provide: AlertNotifierService, useValue: mockAlertService },
         { provide: WecomMessageObservabilityService, useValue: mockWecomObservabilityService },
       ],
     }).compile();
@@ -283,6 +284,54 @@ describe('MessagePipelineService', () => {
       expect(mockDeliveryService.deliverReply).toHaveBeenCalledTimes(1);
       expect(mockMonitoringService.recordSuccess).not.toHaveBeenCalled();
       expect(mockDeduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalled();
+    });
+
+    it('should classify agentMeta-only errors as agent alerts and include structured diagnostics', async () => {
+      const error = new Error('All models failed') as Error & {
+        agentMeta?: Record<string, unknown>;
+        apiKey?: string;
+      };
+      error.agentMeta = {
+        modelsAttempted: ['anthropic/claude-sonnet-4', 'openai/gpt-4o'],
+        lastCategory: 'rate_limited',
+        totalAttempts: 2,
+        messageCount: 8,
+        sessionId: 'chat-123',
+        memoryLoadWarning: 'shortTerm: Connection timeout',
+      };
+      error.apiKey = 'sk-test-1234567890abcdef';
+      mockRunnerService.invoke.mockRejectedValue(error);
+
+      await service.processSingleMessage(validMessageData);
+
+      expect(mockAlertService.sendAlert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'agent.invoke_failed',
+          severity: AlertLevel.WARNING,
+          scope: expect.objectContaining({
+            chatId: 'chat-123',
+            sessionId: 'chat-123',
+            messageId: 'msg-123',
+            contactName: 'Alice',
+            scenario: 'candidate-consultation',
+          }),
+          impact: expect.objectContaining({
+            userMessage: 'Hello!',
+            requiresHumanIntervention: true,
+          }),
+          diagnostics: expect.objectContaining({
+            modelChain: ['anthropic/claude-sonnet-4', 'openai/gpt-4o'],
+            category: 'rate_limited',
+            totalAttempts: 2,
+            messageCount: 8,
+            memoryWarning: 'shortTerm: Connection timeout',
+            dispatchMode: 'direct',
+            payload: expect.objectContaining({
+              apiKey: expect.stringContaining('sk-tes'),
+            }),
+          }),
+        }),
+      );
     });
   });
 });

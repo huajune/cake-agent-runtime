@@ -1,7 +1,7 @@
 import { Controller, Get, Logger, Query, Post, HttpCode } from '@nestjs/common';
-import { AnalyticsDashboardService } from './services/analytics/analytics-dashboard.service';
-import { AnalyticsQueryService } from './services/analytics/analytics-query.service';
-import { AnalyticsMaintenanceService } from './services/analytics/analytics-maintenance.service';
+import { AnalyticsDashboardService } from './services/dashboard/analytics-dashboard.service';
+import { AnalyticsQueryService } from './services/dashboard/analytics-query.service';
+import { AnalyticsMaintenanceService } from './services/maintenance/analytics-maintenance.service';
 import { MetricsData, TimeRange } from './types/analytics.types';
 
 /**
