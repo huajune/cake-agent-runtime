@@ -1,4 +1,5 @@
 import type { RecommendedJobSummary } from '../types/session-facts.types';
+import { splitJobCategorySegments } from '@sponge/job-category.util';
 
 /** 从助手回复里找出本轮真正展示过的岗位。 */
 export function extractPresentedJobs(
@@ -58,18 +59,35 @@ function scoreJobReference(job: RecommendedJobSummary, normalizedText: string): 
   const storeName = normalizeForMatch(job.storeName);
   const jobName = normalizeForMatch(job.jobName);
   const brandName = normalizeForMatch(job.brandName);
-  const jobCategoryName = normalizeForMatch(job.jobCategoryName);
   const laborForm = normalizeForMatch(job.laborForm);
   const salaryDesc = normalizeForMatch(job.salaryDesc);
 
   if (storeName && normalizedText.includes(storeName)) score += 5;
   if (jobName && normalizedText.includes(jobName)) score += 4;
-  if (jobCategoryName && normalizedText.includes(jobCategoryName)) score += 2;
+  score += scoreJobCategoryReference(job.jobCategoryName, normalizedText);
   if (brandName && normalizedText.includes(brandName)) score += 1;
   if (laborForm && normalizedText.includes(laborForm)) score += 1;
   if (salaryDesc && salaryDesc.length >= 4 && normalizedText.includes(salaryDesc)) score += 1;
 
   return score;
+}
+
+function scoreJobCategoryReference(
+  jobCategoryName: string | null | undefined,
+  normalizedText: string,
+): number {
+  const normalizedFullCategory = normalizeForMatch(jobCategoryName);
+  if (normalizedFullCategory && normalizedText.includes(normalizedFullCategory)) {
+    return 4;
+  }
+
+  const matchedSegments = splitJobCategorySegments(jobCategoryName)
+    .map((segment) => normalizeForMatch(segment))
+    .filter(Boolean)
+    .filter((segment, index, arr) => arr.indexOf(segment) === index)
+    .filter((segment) => normalizedText.includes(segment)).length;
+
+  return Math.min(matchedSegments * 2, 4);
 }
 
 function pickBestReferencedJob(

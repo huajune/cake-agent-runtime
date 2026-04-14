@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SpongeService } from '@sponge/sponge.service';
 import { JobDetail } from '@sponge/sponge.types';
+import { getPrimaryJobIndustry } from '@sponge/job-category.util';
 import { NotificationStrategy } from './notification.strategy';
 import { BrandRotationService } from '../services/brand-rotation.service';
 import { GroupTaskType, GroupContext, NotificationData } from '../group-task.types';
@@ -122,19 +123,6 @@ export class PartTimeJobStrategy implements NotificationStrategy {
   }
 
   private inferIndustry(job: JobDetail): '餐饮' | '零售' | null {
-    const categoryName = job.basicInfo?.jobCategoryName;
-    if (typeof categoryName !== 'string' || categoryName.trim().length === 0) {
-      return null;
-    }
-
-    const primaryCategory = categoryName
-      .split('/')
-      .map((segment) => segment.trim())
-      .find(Boolean);
-
-    if (primaryCategory === '餐饮') return '餐饮';
-    if (primaryCategory === '零售') return '零售';
-
-    return null;
+    return getPrimaryJobIndustry(job.basicInfo?.jobCategoryName);
   }
 }
