@@ -11,6 +11,68 @@
   font-weight: 700;
 }
 
+/* ── History card ── */
+.historyCard {
+  border: 1px solid rgba($border, 0.75);
+  border-radius: 10px;
+  background: #fff;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.historyList {
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.historyItem {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba($border, 0.5);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.historyUser {
+  background: #fff;
+}
+
+.historyAssistant {
+  background: rgba($bg-secondary, 0.45);
+}
+
+.historyRole {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  color: $text-muted;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.historyContent {
+  flex: 1;
+  min-width: 0;
+  color: $text-primary;
+  font-size: 12px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.historyEmpty {
+  padding: 14px;
+  background: rgba($bg-secondary, 0.5);
+  color: $text-muted;
+  font-size: 12px;
+}
+
 /* ── Response card ── */
 .responseCard {
   border: 1px solid $border;

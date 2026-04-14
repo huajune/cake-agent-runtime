@@ -5,6 +5,7 @@ import styles from './index.module.scss';
 import {
   getAssistantRenderableMessage,
   getFallbackSummary,
+  getHistoryMessages,
   getRawPayloadPanels,
   getToolCalls,
 } from '../utils';
@@ -45,6 +46,7 @@ export default function ChatSection({
 }: ChatSectionProps) {
   const [activePayloadKey, setActivePayloadKey] = useState<string>('request');
   const toolCalls = useMemo(() => getToolCalls(message), [message]);
+  const historyMessages = useMemo(() => getHistoryMessages(message), [message]);
   const rawPayloadPanels = useMemo(() => getRawPayloadPanels(message), [message]);
   const fallbackSummary = useMemo(() => getFallbackSummary(message), [message]);
   const renderableMessage = useMemo(() => getAssistantRenderableMessage(message), [message]);
@@ -63,6 +65,32 @@ export default function ChatSection({
   return (
     <>
       <div>
+        <h4 className={styles.sectionTitle}>聊天记录</h4>
+
+        <div className={styles.historyCard}>
+          {historyMessages.length > 0 ? (
+            <div className={styles.historyList}>
+              {historyMessages.map((historyMessage, index) => (
+                <div
+                  key={`${historyMessage.role}-${index}`}
+                  className={`${styles.historyItem} ${
+                    historyMessage.role === 'assistant' ? styles.historyAssistant : styles.historyUser
+                  }`}
+                >
+                  <span className={styles.historyRole}>
+                    {historyMessage.role === 'assistant' ? 'Agent' : '用户'}
+                  </span>
+                  <div className={styles.historyContent}>{historyMessage.content}</div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className={styles.historyEmpty}>
+              未从请求体提取到聊天记录，可在下方“请求体”查看原始 messages
+            </div>
+          )}
+        </div>
+
         <h4 className={styles.sectionTitle}>Agent 响应</h4>
 
         <div className={styles.responseCard}>

@@ -40,6 +40,7 @@ export interface UpsertOptions {
  */
 export abstract class BaseRepository {
   protected readonly logger: Logger;
+  private readonly maxReadAttempts = 2;
 
   /**
    * 数据库表名（子类必须实现）
@@ -84,21 +85,31 @@ export abstract class BaseRepository {
       return [];
     }
 
-    try {
-      let query = this.getClient().from(this.tableName).select(columns);
-      if (modifier) query = modifier(query);
+    for (let attempt = 1; attempt <= this.maxReadAttempts; attempt += 1) {
+      try {
+        let query = this.getClient().from(this.tableName).select(columns);
+        if (modifier) query = modifier(query);
 
-      const { data, error } = await query;
-      if (error) {
+        const { data, error } = await query;
+        if (error) {
+          if (this.shouldRetryReadError('SELECT', error, attempt)) {
+            continue;
+          }
+          this.handleError('SELECT', error);
+          return [];
+        }
+
+        return (data as T[]) ?? [];
+      } catch (error) {
+        if (this.shouldRetryReadError('SELECT', error, attempt)) {
+          continue;
+        }
         this.handleError('SELECT', error);
         return [];
       }
-
-      return (data as T[]) ?? [];
-    } catch (error) {
-      this.handleError('SELECT', error);
-      return [];
     }
+
+    return [];
   }
 
   /**
@@ -331,23 +342,33 @@ export abstract class BaseRepository {
       return null;
     }
 
-    try {
-      const { data, error } = await this.getClient().rpc(functionName, params);
+    for (let attempt = 1; attempt <= this.maxReadAttempts; attempt += 1) {
+      try {
+        const { data, error } = await this.getClient().rpc(functionName, params);
 
-      if (error) {
-        if (this.isNotFoundError(error)) {
-          this.logger.warn(`RPC 函数 ${functionName} 不存在，请检查数据库迁移`);
+        if (error) {
+          if (this.isNotFoundError(error)) {
+            this.logger.warn(`RPC 函数 ${functionName} 不存在，请检查数据库迁移`);
+            return null;
+          }
+          if (this.shouldRetryReadError(`RPC:${functionName}`, error, attempt)) {
+            continue;
+          }
+          this.handleError(`RPC:${functionName}`, error);
           return null;
+        }
+
+        return data as T;
+      } catch (error) {
+        if (this.shouldRetryReadError(`RPC:${functionName}`, error, attempt)) {
+          continue;
         }
         this.handleError(`RPC:${functionName}`, error);
         return null;
       }
-
-      return data as T;
-    } catch (error) {
-      this.handleError(`RPC:${functionName}`, error);
-      return null;
     }
+
+    return null;
   }
 
   /**
@@ -359,21 +380,33 @@ export abstract class BaseRepository {
       return 0;
     }
 
-    try {
-      let query = this.getClient().from(this.tableName).select('*', { count: 'exact', head: true });
-      if (modifier) query = modifier(query);
+    for (let attempt = 1; attempt <= this.maxReadAttempts; attempt += 1) {
+      try {
+        let query = this.getClient()
+          .from(this.tableName)
+          .select('*', { count: 'exact', head: true });
+        if (modifier) query = modifier(query);
 
-      const { count, error } = await query;
-      if (error) {
+        const { count, error } = await query;
+        if (error) {
+          if (this.shouldRetryReadError('COUNT', error, attempt)) {
+            continue;
+          }
+          this.handleError('COUNT', error);
+          return 0;
+        }
+
+        return count ?? 0;
+      } catch (error) {
+        if (this.shouldRetryReadError('COUNT', error, attempt)) {
+          continue;
+        }
         this.handleError('COUNT', error);
         return 0;
       }
-
-      return count ?? 0;
-    } catch (error) {
-      this.handleError('COUNT', error);
-      return 0;
     }
+
+    return 0;
   }
 
   // ==================== RPC 结果转换 ====================
@@ -426,5 +459,32 @@ export abstract class BaseRepository {
   protected isNotFoundError(error: unknown): boolean {
     const code = (error as { code?: string }).code;
     return code === 'PGRST116' || code === '42883';
+  }
+
+  private shouldRetryReadError(operation: string, error: unknown, attempt: number): boolean {
+    if (attempt >= this.maxReadAttempts || !this.isTransientReadError(error)) {
+      return false;
+    }
+
+    this.logger.warn(
+      `[${this.tableName}] ${operation} 命中瞬时网关异常，准备重试 (${attempt}/${this.maxReadAttempts})`,
+    );
+    return true;
+  }
+
+  private isTransientReadError(error: unknown): boolean {
+    const message = ((error as { message?: string })?.message || String(error)).toLowerCase();
+
+    return (
+      message.includes('502 bad gateway') ||
+      message.includes('503 service unavailable') ||
+      message.includes('504 gateway timeout') ||
+      message.includes('cloudflare') ||
+      message.includes('fetch failed') ||
+      message.includes('network error') ||
+      message.includes('etimedout') ||
+      message.includes('econnreset') ||
+      message.includes('socket hang up')
+    );
   }
 }

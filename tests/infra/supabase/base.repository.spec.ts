@@ -239,6 +239,29 @@ describe('BaseRepository', () => {
       const result = await repository.testSelect('*');
       expect(result).toEqual([]);
     });
+
+    it('should retry once on transient gateway error and then return data', async () => {
+      const records = [{ id: '1', name: 'retry-success' }];
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+      mockFrom
+        .mockReturnValueOnce({
+          select: jest.fn().mockResolvedValue({
+            data: null,
+            error: {
+              message:
+                '<html><head><title>502 Bad Gateway</title></head><body><center><h1>502 Bad Gateway</h1></center><hr><center>cloudflare</center></body></html>',
+            },
+          }),
+        })
+        .mockReturnValueOnce({
+          select: jest.fn().mockResolvedValue({ data: records, error: null }),
+        });
+
+      const result = await repository.testSelect('*');
+
+      expect(result).toEqual(records);
+      expect(mockFrom).toHaveBeenCalledTimes(2);
+    });
   });
 
   // ==================== isConflictError ====================
@@ -269,6 +292,31 @@ describe('BaseRepository', () => {
     it('should return false for other error codes', () => {
       expect(repository.testIsNotFoundError({ code: '23505' })).toBe(false);
       expect(repository.testIsNotFoundError({})).toBe(false);
+    });
+  });
+
+  // ==================== rpc ====================
+
+  describe('rpc', () => {
+    it('should retry once on transient gateway error and then return data', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+      mockRpc
+        .mockResolvedValueOnce({
+          data: null,
+          error: {
+            message:
+              '<html><head><title>502 Bad Gateway</title></head><body><center><h1>502 Bad Gateway</h1></center><hr><center>cloudflare</center></body></html>',
+          },
+        })
+        .mockResolvedValueOnce({
+          data: [{ ok: true }],
+          error: null,
+        });
+
+      const result = await repository.testRpc<Array<{ ok: boolean }>>('test_fn');
+
+      expect(result).toEqual([{ ok: true }]);
+      expect(mockRpc).toHaveBeenCalledTimes(2);
     });
   });
 
