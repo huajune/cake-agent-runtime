@@ -40,7 +40,7 @@ export interface UpsertOptions {
  */
 export abstract class BaseRepository {
   protected readonly logger: Logger;
-  private readonly maxReadAttempts = 2;
+  protected readonly maxReadAttempts = 2;
 
   /**
    * 数据库表名（子类必须实现）
@@ -461,7 +461,7 @@ export abstract class BaseRepository {
     return code === 'PGRST116' || code === '42883';
   }
 
-  private shouldRetryReadError(operation: string, error: unknown, attempt: number): boolean {
+  protected shouldRetryReadError(operation: string, error: unknown, attempt: number): boolean {
     if (attempt >= this.maxReadAttempts || !this.isTransientReadError(error)) {
       return false;
     }
@@ -472,7 +472,7 @@ export abstract class BaseRepository {
     return true;
   }
 
-  private isTransientReadError(error: unknown): boolean {
+  protected isTransientReadError(error: unknown): boolean {
     const message = ((error as { message?: string })?.message || String(error)).toLowerCase();
 
     return (

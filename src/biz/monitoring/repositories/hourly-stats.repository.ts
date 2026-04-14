@@ -55,6 +55,17 @@ export class MonitoringHourlyStatsRepository extends BaseRepository {
   }
 
   /**
+   * 查询最新一条小时统计，不限制时间窗口
+   */
+  async getLatestHourlyStat(): Promise<HourlyStatsRecord | null> {
+    const result = await this.selectOne<HourlyStatsDbRecord>('*', (q) =>
+      q.order('hour', { ascending: false }),
+    );
+
+    return result ? this.fromDbRecord(result) : null;
+  }
+
+  /**
    * 按日期范围查询小时统计
    */
   async getHourlyStatsByDateRange(startDate: Date, endDate: Date): Promise<HourlyStatsRecord[]> {

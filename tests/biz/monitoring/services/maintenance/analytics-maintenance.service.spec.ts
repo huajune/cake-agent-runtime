@@ -53,7 +53,7 @@ describe('AnalyticsMaintenanceService', () => {
 
   const mockHourlyStatsRepository = {
     clearAllRecords: jest.fn(),
-    getRecentHourlyStats: jest.fn(),
+    getLatestHourlyStat: jest.fn(),
     saveHourlyStats: jest.fn(),
   };
 
@@ -118,9 +118,9 @@ describe('AnalyticsMaintenanceService', () => {
     mockMessageProcessingRepository.clearAllRecords.mockResolvedValue(undefined);
     mockHourlyStatsRepository.clearAllRecords.mockResolvedValue(undefined);
     const lastCompletedHour = new Date(getHourStart(new Date()).getTime() - HOUR_MS);
-    mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+    mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
       buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - HOUR_MS)),
-    ]);
+    );
     mockHourlyStatsRepository.saveHourlyStats.mockResolvedValue(undefined);
     mockErrorLogRepository.clearAllRecords.mockResolvedValue(undefined);
     mockCacheService.resetCounters.mockResolvedValue(undefined);
@@ -243,9 +243,9 @@ describe('AnalyticsMaintenanceService', () => {
         toolStats: { booking: 5 },
       };
       const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
-      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+      mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
         buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - HOUR_MS)),
-      ]);
+      );
       mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue(mockAggregated);
 
       await service.aggregateHourlyStats();
@@ -293,9 +293,9 @@ describe('AnalyticsMaintenanceService', () => {
         toolStats: {},
       };
       const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
-      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+      mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
         buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - HOUR_MS)),
-      ]);
+      );
       mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue(mockAggregated);
 
       await service.aggregateHourlyStats();
@@ -309,9 +309,9 @@ describe('AnalyticsMaintenanceService', () => {
 
     it('should skip saving when aggregated data has zero messages', async () => {
       const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
-      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+      mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
         buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - HOUR_MS)),
-      ]);
+      );
       mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue({
         messageCount: 0,
         successCount: 0,
@@ -341,9 +341,9 @@ describe('AnalyticsMaintenanceService', () => {
 
     it('should skip saving when aggregated data is null', async () => {
       const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
-      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+      mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
         buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - HOUR_MS)),
-      ]);
+      );
       mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue(null);
 
       await service.aggregateHourlyStats();
@@ -353,9 +353,9 @@ describe('AnalyticsMaintenanceService', () => {
 
     it('should not throw when aggregation fails', async () => {
       const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
-      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+      mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
         buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - HOUR_MS)),
-      ]);
+      );
       mockMonitoringRecordRepository.aggregateHourlyStats.mockRejectedValue(new Error('DB error'));
 
       await expect(service.aggregateHourlyStats()).resolves.not.toThrow();
@@ -363,9 +363,9 @@ describe('AnalyticsMaintenanceService', () => {
 
     it('should stop backfill when aggregate rpc returns null', async () => {
       const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
-      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+      mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
         buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - 2 * HOUR_MS)),
-      ]);
+      );
       mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue(null);
 
       await expect(service.aggregateHourlyStats()).resolves.not.toThrow();
@@ -397,9 +397,9 @@ describe('AnalyticsMaintenanceService', () => {
         toolStats: {},
       };
       const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
-      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+      mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
         buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - HOUR_MS)),
-      ]);
+      );
       mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue(mockAggregated);
 
       await service.aggregateHourlyStats();
@@ -420,9 +420,9 @@ describe('AnalyticsMaintenanceService', () => {
 
     it('should catch up multiple missing hours when projection is stale', async () => {
       const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
-      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+      mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
         buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - 2 * HOUR_MS)),
-      ]);
+      );
       mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue({
         messageCount: 20,
         successCount: 18,
@@ -461,10 +461,45 @@ describe('AnalyticsMaintenanceService', () => {
       expect(hourlyStatsRepository.saveHourlyStats).toHaveBeenCalledTimes(2);
     });
 
+    it('should resume from the latest stored hour even when it is older than one hour', async () => {
+      mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
+        buildHourlyStatsRow(new Date('2026-04-12T10:00:00.000Z')),
+      );
+      mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue({
+        messageCount: 0,
+        successCount: 0,
+        failureCount: 0,
+        successRate: 0,
+        avgDuration: 0,
+        minDuration: 0,
+        maxDuration: 0,
+        p50Duration: 0,
+        p95Duration: 0,
+        p99Duration: 0,
+        avgAiDuration: 0,
+        avgSendDuration: 0,
+        activeUsers: 0,
+        activeChats: 0,
+        totalTokenUsage: 0,
+        fallbackCount: 0,
+        fallbackSuccessCount: 0,
+        scenarioStats: {},
+        toolStats: {},
+      });
+
+      await service.aggregateHourlyStats();
+
+      expect(monitoringRepository.aggregateHourlyStats).toHaveBeenNthCalledWith(
+        1,
+        new Date('2026-04-12T11:00:00.000Z'),
+        new Date('2026-04-12T12:00:00.000Z'),
+      );
+    });
+
     it('should skip aggregation when projection is already up to date', async () => {
-      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+      mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
         buildHourlyStatsRow(new Date('2026-04-13T14:00:00.000Z')),
-      ]);
+      );
 
       await service.aggregateHourlyStats();
 
@@ -474,9 +509,9 @@ describe('AnalyticsMaintenanceService', () => {
 
     it('should report startup failures with the correct trigger', async () => {
       const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
-      mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([
+      mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
         buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - HOUR_MS)),
-      ]);
+      );
       mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue(null);
 
       await expect((service as any).catchUpHourlyStats('startup')).resolves.not.toThrow();
