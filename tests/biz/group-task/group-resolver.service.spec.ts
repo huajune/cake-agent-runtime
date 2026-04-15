@@ -37,6 +37,15 @@ describe('GroupResolverService', () => {
       expect(result).toEqual({ type: '抢单群', city: '武汉', industry: undefined });
     });
 
+    it('抢单群的第三个标签不应被当成行业', () => {
+      const result = service.parseLabels([
+        { id: '1', name: '抢单群' },
+        { id: '2', name: '景德镇' },
+        { id: '3', name: '上饶' },
+      ]);
+      expect(result).toEqual({ type: '抢单群', city: '景德镇', industry: undefined });
+    });
+
     it('应解析零售行业标签', () => {
       const result = service.parseLabels([
         { id: '1', name: '兼职群' },

@@ -59,7 +59,8 @@ describe('OrderGrabStrategy', () => {
       expect(mockSpongeService.fetchBIOrders).toHaveBeenCalledWith({
         startDate: today,
         endDate: today,
-        regionName: '上海',
+        cityName: '上海',
+        companyName: '上海必胜客有限公司',
         orderStatus: BI_ORDER_STATUS.PENDING_ACCEPTANCE,
       });
       // 应只保留 2 条最早开始时间不早于 10:30 的订单
@@ -83,7 +84,8 @@ describe('OrderGrabStrategy', () => {
       expect(mockSpongeService.fetchBIOrders).toHaveBeenCalledWith({
         startDate: tomorrowStr,
         endDate: tomorrowStr,
-        regionName: '上海',
+        cityName: '上海',
+        companyName: '上海必胜客有限公司',
         orderStatus: BI_ORDER_STATUS.PENDING_ACCEPTANCE,
       });
       expect((result.payload.orders as unknown[]).length).toBe(2);
@@ -95,7 +97,8 @@ describe('OrderGrabStrategy', () => {
       await strategy.fetchData(mockContext, TimeSlot.EVENING);
 
       const call = (mockSpongeService.fetchBIOrders as jest.Mock).mock.calls[0][0];
-      expect(call.regionName).toBe('上海');
+      expect(call.cityName).toBe('上海');
+      expect(call.companyName).toBe('上海必胜客有限公司');
       // 验证 startDate 是周六、endDate 是周日
       const start = parseShanghaiDateAtNoon(call.startDate);
       const end = parseShanghaiDateAtNoon(call.endDate);
@@ -123,6 +126,195 @@ describe('OrderGrabStrategy', () => {
       const result = await strategy.fetchData(mockContext, TimeSlot.AFTERNOON);
 
       expect(result.hasData).toBe(false);
+    });
+
+    it.each([
+      ['景德镇', '景德镇'],
+      ['宜昌', '宜昌'],
+      ['荆州', '荆州'],
+      ['江西地区', '江西'],
+      ['武汉地区', '武汉'],
+    ])('普通城市群应按城市+所属企业联合查询 %s', async (city, expectedCityName) => {
+      const today = formatLocalDate(new Date());
+      const orders = [{ [BI_FIELD_NAMES.SERVICE_DATE]: '11:00:00~18:00:00' }];
+
+      (mockSpongeService.fetchBIOrders as jest.Mock).mockResolvedValue(orders);
+
+      const result = await strategy.fetchData({ ...mockContext, city }, TimeSlot.MORNING);
+
+      expect(mockSpongeService.fetchBIOrders).toHaveBeenCalledTimes(1);
+      expect(mockSpongeService.fetchBIOrders).toHaveBeenCalledWith({
+        startDate: today,
+        endDate: today,
+        cityName: expectedCityName,
+        companyName: '百胜餐饮（武汉）有限公司',
+        orderStatus: BI_ORDER_STATUS.PENDING_ACCEPTANCE,
+      });
+      expect(result.hasData).toBe(true);
+      expect(result.payload.orders).toEqual(orders);
+    });
+
+    it('应从群标签解析地区，并按公司+地区精确查询武汉归属群', async () => {
+      const today = formatLocalDate(new Date());
+      const orders = [{ [BI_FIELD_NAMES.SERVICE_DATE]: '11:00:00~18:00:00' }];
+
+      (mockSpongeService.fetchBIOrders as jest.Mock).mockResolvedValue(orders);
+
+      const result = await strategy.fetchData(
+        {
+          ...mockContext,
+          city: '武汉',
+          groupName: '随便什么群名',
+          labels: ['抢单群', '荆州'],
+        },
+        TimeSlot.MORNING,
+      );
+
+      expect(mockSpongeService.fetchBIOrders).toHaveBeenCalledTimes(1);
+      expect(mockSpongeService.fetchBIOrders).toHaveBeenCalledWith({
+        startDate: today,
+        endDate: today,
+        cityName: '荆州',
+        companyName: '百胜餐饮（武汉）有限公司',
+        orderStatus: BI_ORDER_STATUS.PENDING_ACCEPTANCE,
+      });
+      expect(result.payload.city).toBe('荆州');
+      expect(strategy.resolveOrderGrabGroupKey({
+        ...mockContext,
+        city: '武汉',
+        groupName: '随便什么群名',
+        labels: ['抢单群', '荆州'],
+      })).toBe('荆州');
+    });
+
+    it('应支持从群标签解析多地区并分别查询', async () => {
+      const today = formatLocalDate(new Date());
+      const jingdezhenOrders = [
+        {
+          [BI_FIELD_NAMES.STORE_NAME]: '景德镇门店',
+          [BI_FIELD_NAMES.SERVICE_DATE]: '11:00:00~18:00:00',
+        },
+      ];
+      const shangraoOrders = [
+        {
+          [BI_FIELD_NAMES.STORE_NAME]: '上饶门店',
+          [BI_FIELD_NAMES.SERVICE_DATE]: '12:00:00~19:00:00',
+        },
+      ];
+
+      (mockSpongeService.fetchBIOrders as jest.Mock)
+        .mockResolvedValueOnce(jingdezhenOrders)
+        .mockResolvedValueOnce(shangraoOrders);
+
+      const result = await strategy.fetchData(
+        {
+          ...mockContext,
+          city: '江西',
+          groupName: '总群名不重要',
+          labels: ['抢单群', '景德镇', '上饶'],
+        },
+        TimeSlot.MORNING,
+      );
+
+      expect(mockSpongeService.fetchBIOrders).toHaveBeenNthCalledWith(1, {
+        startDate: today,
+        endDate: today,
+        cityName: '景德镇',
+        companyName: '百胜餐饮（武汉）有限公司',
+        orderStatus: BI_ORDER_STATUS.PENDING_ACCEPTANCE,
+      });
+      expect(mockSpongeService.fetchBIOrders).toHaveBeenNthCalledWith(2, {
+        startDate: today,
+        endDate: today,
+        cityName: '上饶',
+        companyName: '百胜餐饮（武汉）有限公司',
+        orderStatus: BI_ORDER_STATUS.PENDING_ACCEPTANCE,
+      });
+      expect(result.payload.city).toBe('景德镇&上饶');
+      expect(result.payload.orders).toEqual([...jingdezhenOrders, ...shangraoOrders]);
+      expect(
+        strategy.resolveOrderGrabGroupKey({
+          ...mockContext,
+          city: '江西',
+          groupName: '总群名不重要',
+          labels: ['抢单群', '景德镇', '上饶'],
+        }),
+      ).toBe('景德镇&上饶');
+    });
+
+    it('多标签总群应按标签里的具体地区逐个查询，而不是按 city 字段查询', async () => {
+      const order = {
+        [BI_FIELD_NAMES.STORE_NAME]: '南昌门店',
+        [BI_FIELD_NAMES.SERVICE_DATE]: '11:00:00~18:00:00',
+      };
+
+      (mockSpongeService.fetchBIOrders as jest.Mock).mockImplementation(async (params) => {
+        if (params.cityName === '南昌') return [order];
+        return [];
+      });
+
+      const result = await strategy.fetchData(
+        {
+          ...mockContext,
+          city: '江西',
+          groupName: '江西总群',
+          labels: ['抢单群', '南昌', '景德镇', '上饶'],
+        },
+        TimeSlot.MORNING,
+      );
+
+      const queriedRegions = (mockSpongeService.fetchBIOrders as jest.Mock).mock.calls.map(
+        ([params]) => params.cityName,
+      );
+
+      expect(queriedRegions).toContain('南昌');
+      expect(queriedRegions).toContain('景德镇');
+      expect(queriedRegions).toContain('上饶');
+      expect(queriedRegions).not.toContain('江西');
+      expect(result.payload.city).toBe('南昌&景德镇&上饶');
+      expect(result.hasData).toBe(true);
+    });
+
+    it('江西总群应按标签展开成江西各城市查询，而不是直接查询江西', async () => {
+      const queriedCities: string[] = [];
+      (mockSpongeService.fetchBIOrders as jest.Mock).mockImplementation(async (params) => {
+        queriedCities.push(params.cityName);
+        return [];
+      });
+
+      const result = await strategy.fetchData(
+        {
+          ...mockContext,
+          city: '江西',
+          groupName: '江西必胜客-短时班次兼职群',
+          labels: ['抢单群', '江西'],
+        },
+        TimeSlot.MORNING,
+      );
+
+      expect(queriedCities).toEqual([
+        '南昌',
+        '景德镇',
+        '萍乡',
+        '九江',
+        '新余',
+        '鹰潭',
+        '赣州',
+        '吉安',
+        '宜春',
+        '抚州',
+        '上饶',
+      ]);
+      expect(queriedCities).not.toContain('江西');
+      expect(result.payload.city).toBe('江西');
+      expect(
+        strategy.resolveOrderGrabGroupKey({
+          ...mockContext,
+          city: '江西',
+          groupName: '江西必胜客-短时班次兼职群',
+          labels: ['抢单群', '江西'],
+        }),
+      ).toBe('江西');
     });
   });
 

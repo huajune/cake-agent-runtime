@@ -13,6 +13,77 @@ import {
 import { buildOrderGrabMessage } from '../prompts/order-grab.prompt';
 import { formatLocalDate } from '@infra/utils/date.util';
 
+const WUHAN_COMPANY_NAME = '百胜餐饮（武汉）有限公司';
+const HUBEI_CITY_KEYS = [
+  '武汉',
+  '武汉地区',
+  '湖北',
+  '湖北地区',
+  '黄石',
+  '十堰',
+  '宜昌',
+  '襄阳',
+  '襄樊',
+  '鄂州',
+  '荆门',
+  '孝感',
+  '荆州',
+  '黄冈',
+  '咸宁',
+  '随州',
+  '恩施',
+  '恩施州',
+  '仙桃',
+  '潜江',
+  '天门',
+  '神农架',
+  '神农架林区',
+] as const;
+
+const JIANGXI_CITY_KEYS = [
+  '江西',
+  '江西地区',
+  '南昌',
+  '景德镇',
+  '萍乡',
+  '九江',
+  '新余',
+  '鹰潭',
+  '赣州',
+  '吉安',
+  '宜春',
+  '抚州',
+  '上饶',
+] as const;
+
+const WUHAN_CITY_KEYS = [...HUBEI_CITY_KEYS, ...JIANGXI_CITY_KEYS] as const;
+const JIANGXI_GROUP_CITIES = JIANGXI_CITY_KEYS.filter(
+  (city) => city !== '江西' && city !== '江西地区',
+);
+const LABEL_CITY_EXPANSIONS: Record<string, readonly string[]> = {
+  江西: JIANGXI_GROUP_CITIES,
+  江西地区: JIANGXI_GROUP_CITIES,
+};
+
+const CITY_COMPANY_MAP: Record<string, string> = {
+  上海: '上海必胜客有限公司',
+  宁波: '上海必胜客有限公司宁波分公司',
+  北京: '北京必胜客比萨饼有限公司',
+  ...Object.fromEntries(WUHAN_CITY_KEYS.map((city) => [city, WUHAN_COMPANY_NAME])),
+};
+
+interface OrderGrabQueryScope {
+  displayCity: string;
+  groupKey: string;
+  cityNames: string[];
+  companyName?: string;
+}
+
+interface LabelScope {
+  displayLabels: string[];
+  cityNames: string[];
+}
+
 /**
  * 抢单群通知策略（纯模板，不需要 AI）
  *
@@ -46,8 +117,9 @@ export class OrderGrabStrategy implements NotificationStrategy {
 
   async fetchData(context: GroupContext, timeSlot?: TimeSlot): Promise<NotificationData> {
     const { startDate, endDate, label } = this.resolveDateRange(timeSlot);
+    const scope = this.resolveOrderGrabScope(context);
 
-    let orders = await this.fetchOrdersWithFallback(context.city, startDate, endDate);
+    let orders = await this.fetchOrdersForScope(scope, startDate, endDate);
 
     // 上午场只发最早开工时间不早于 10:30 的订单
     if (timeSlot === TimeSlot.MORNING) {
@@ -59,7 +131,7 @@ export class OrderGrabStrategy implements NotificationStrategy {
     // 下午场无数据时，往后逐天顺延到本周日
     let actualLabel = label;
     if (orders.length === 0 && timeSlot === TimeSlot.AFTERNOON) {
-      const result = await this.lookaheadOrders(context.city, startDate);
+      const result = await this.lookaheadOrders(scope, startDate);
       if (result) {
         orders = result.orders;
         actualLabel = result.label;
@@ -67,20 +139,24 @@ export class OrderGrabStrategy implements NotificationStrategy {
     }
 
     this.logger.log(
-      `[抢单群] ${context.city} ${actualLabel} (${startDate}~${endDate}): ${orders.length}个订单`,
+      `[抢单群] ${scope.displayCity} ${actualLabel} (${startDate}~${endDate}): ${orders.length}个订单`,
     );
 
     return {
       hasData: orders.length > 0,
-      payload: { orders, city: context.city },
-      summary: `${context.city} ${actualLabel}: ${orders.length}个订单`,
+      payload: { orders, city: scope.displayCity },
+      summary: `${scope.displayCity} ${actualLabel}: ${orders.length}个订单`,
     };
+  }
+
+  resolveOrderGrabGroupKey(context: GroupContext): string {
+    return this.resolveOrderGrabScope(context).groupKey;
   }
 
   buildMessage(data: NotificationData, context: GroupContext, timeSlot?: TimeSlot): string {
     return buildOrderGrabMessage({
       orders: data.payload.orders as Record<string, unknown>[],
-      city: context.city,
+      city: String(data.payload.city || context.city),
       timeSlot,
     });
   }
@@ -146,53 +222,49 @@ export class OrderGrabStrategy implements NotificationStrategy {
     return { saturday, sunday };
   }
 
-  /**
-   * 城市 → 所属企业精确映射。
-   * BI 部分订单的城市字段为空，需要通过所属企业名匹配。
-   * 注意：公司名和城市不是简单包含关系（如宁波隶属"上海必胜客有限公司宁波分公司"）。
-   */
-  private readonly CITY_COMPANY_MAP: Record<string, string> = {
-    上海: '上海必胜客有限公司',
-    宁波: '上海必胜客有限公司宁波分公司',
-    北京: '北京必胜客比萨饼有限公司',
-    武汉: '百胜餐饮（武汉）有限公司',
-  };
+  private normalizeCityName(city: string): string {
+    return city.trim().replace(/(?:市|地区)$/, '');
+  }
 
   /**
-   * 查订单：先按城市字段查，无结果时 fallback 到所属企业精确匹配。
+   * 抢单群统一按“实际城市 + 所属企业”查。
+   * 不再退化到“只按公司查”，避免把同公司的其他城市订单串进来。
    */
-  private async fetchOrdersWithFallback(
-    city: string,
+  private async fetchOrdersForScope(
+    scope: OrderGrabQueryScope,
     startDate: string,
     endDate: string,
   ): Promise<BIOrder[]> {
-    const orders = await this.spongeService.fetchBIOrders({
-      startDate,
-      endDate,
-      regionName: city,
-      orderStatus: BI_ORDER_STATUS.PENDING_ACCEPTANCE,
-    });
+    return this.fetchOrdersByCities(scope.cityNames, startDate, endDate, scope.companyName);
+  }
 
-    if (orders.length > 0) return orders;
+  private async fetchOrdersByCities(
+    cityNames: string[],
+    startDate: string,
+    endDate: string,
+    companyName?: string,
+  ): Promise<BIOrder[]> {
+    const uniqueOrders: BIOrder[] = [];
+    const seen = new Set<string>();
 
-    // 城市字段无结果，用所属企业精确匹配兜底
-    const companyName = this.CITY_COMPANY_MAP[city];
-    if (!companyName) return [];
+    for (const cityName of [...new Set(cityNames)]) {
+      const orders = await this.spongeService.fetchBIOrders({
+        startDate,
+        endDate,
+        cityName,
+        companyName,
+        orderStatus: BI_ORDER_STATUS.PENDING_ACCEPTANCE,
+      });
 
-    const fallbackOrders = await this.spongeService.fetchBIOrders({
-      startDate,
-      endDate,
-      companyName,
-      orderStatus: BI_ORDER_STATUS.PENDING_ACCEPTANCE,
-    });
-
-    if (fallbackOrders.length > 0) {
-      this.logger.log(
-        `[抢单群] ${city} 城市字段无数据，通过所属企业「${companyName}」匹配到 ${fallbackOrders.length} 个订单`,
-      );
+      for (const order of orders) {
+        const dedupeKey = this.buildOrderDedupeKey(order, cityName);
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+        uniqueOrders.push(order);
+      }
     }
 
-    return fallbackOrders;
+    return uniqueOrders;
   }
 
   /**
@@ -200,7 +272,7 @@ export class OrderGrabStrategy implements NotificationStrategy {
    * 本周内都没有才放弃。
    */
   private async lookaheadOrders(
-    city: string,
+    scope: OrderGrabQueryScope,
     baseDate: string,
   ): Promise<{ orders: BIOrder[]; label: string } | null> {
     const base = new Date(baseDate);
@@ -212,15 +284,17 @@ export class OrderGrabStrategy implements NotificationStrategy {
       d.setDate(base.getDate() + i);
       const date = formatLocalDate(d);
 
-      const orders = await this.fetchOrdersWithFallback(city, date, date);
+      const orders = await this.fetchOrdersForScope(scope, date, date);
 
       if (orders.length > 0) {
-        this.logger.log(`[抢单群] ${city} 次日无单，顺延到 ${date} 找到 ${orders.length} 个订单`);
+        this.logger.log(
+          `[抢单群] ${scope.displayCity} 次日无单，顺延到 ${date} 找到 ${orders.length} 个订单`,
+        );
         return { orders, label: `下午场[${date}]` };
       }
     }
 
-    this.logger.log(`[抢单群] ${city} 本周内无订单，跳过`);
+    this.logger.log(`[抢单群] ${scope.displayCity} 本周内无订单，跳过`);
     return null;
   }
 
@@ -259,5 +333,57 @@ export class OrderGrabStrategy implements NotificationStrategy {
     const hour = parseInt(match[1], 10);
     const minute = parseInt(match[2], 10);
     return hour * 60 + minute;
+  }
+
+  private resolveOrderGrabScope(context: GroupContext): OrderGrabQueryScope {
+    const labelScope = this.parseLabelScope(context.labels || []);
+    if (labelScope.cityNames.length > 0) {
+      const displayCity = labelScope.displayLabels.join('&');
+      const companyName = this.resolveCompanyNameForCities(labelScope.cityNames);
+      return {
+        displayCity,
+        groupKey: displayCity,
+        cityNames: labelScope.cityNames,
+        companyName,
+      };
+    }
+
+    const normalizedCity = this.normalizeCityName(context.city);
+    const companyName = CITY_COMPANY_MAP[normalizedCity] ?? CITY_COMPANY_MAP[context.city];
+
+    return {
+      displayCity: normalizedCity,
+      groupKey: normalizedCity,
+      cityNames: [normalizedCity],
+      companyName,
+    };
+  }
+
+  private parseLabelScope(labels: string[]): LabelScope {
+    const displayLabels = labels
+      .filter((label) => label && label !== this.tagPrefix)
+      .map((label) => this.normalizeCityName(label))
+      .filter(Boolean);
+
+    const cityNames = [...new Set(
+      displayLabels.flatMap((label) => LABEL_CITY_EXPANSIONS[label] ?? [label]),
+    )];
+
+    return { displayLabels, cityNames };
+  }
+
+  private resolveCompanyNameForCities(cities: string[]): string | undefined {
+    const companyNames = [...new Set(cities.map((city) => CITY_COMPANY_MAP[city]).filter(Boolean))];
+    return companyNames.length === 1 ? companyNames[0] : undefined;
+  }
+
+  private buildOrderDedupeKey(order: BIOrder, fallbackCity: string): string {
+    const shareLink = String(order[BI_FIELD_NAMES.SHARE_LINK] || '').trim();
+    if (shareLink) return shareLink;
+
+    const store = String(order[BI_FIELD_NAMES.STORE_NAME] || '').trim();
+    const date = String(order[BI_FIELD_NAMES.ORDER_DATE] || '').trim();
+    const time = String(order[BI_FIELD_NAMES.SERVICE_DATE] || '').trim();
+    return [fallbackCity, store, date, time].join('|');
   }
 }

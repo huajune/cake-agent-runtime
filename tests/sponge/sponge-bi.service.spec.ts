@@ -279,6 +279,38 @@ describe('SpongeBiService', () => {
       const result = await service.fetchBIOrders({});
       expect(result).toEqual([]);
     });
+
+    it('should map cityName to BI 城市 filter', async () => {
+      const mockFetch = jest.fn();
+
+      mockFetch.mockResolvedValueOnce(makeSignInResponse() as unknown as Response);
+      mockFetch.mockResolvedValueOnce(makeCardDataResponse() as unknown as Response);
+
+      global.fetch = mockFetch;
+
+      await service.fetchBIOrders({
+        cityName: '荆州',
+        companyName: '百胜餐饮（武汉）有限公司',
+      });
+
+      const [, request] = mockFetch.mock.calls[1] as [string, RequestInit];
+      const body = JSON.parse(String(request.body));
+
+      expect(body.filters).toEqual(
+        expect.arrayContaining([
+          {
+            name: '城市',
+            filterType: 'CONTAINS',
+            filterValue: ['荆州'],
+          },
+          {
+            name: '所属企业',
+            filterType: 'CONTAINS',
+            filterValue: ['百胜餐饮（武汉）有限公司'],
+          },
+        ]),
+      );
+    });
   });
 
   describe('refreshBIDataSource', () => {

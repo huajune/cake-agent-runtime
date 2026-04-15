@@ -212,7 +212,10 @@ export class GroupTaskSchedulerService implements OnModuleInit {
         }
 
         // 2. 按 (城市+行业) 分组，同组共享数据和 AI 生成结果
-        const groupMap = this.groupByCityIndustry(groups);
+        const groupMap =
+          strategy.type === GroupTaskType.ORDER_GRAB
+            ? this.groupOrderGrabGroups(groups)
+            : this.groupByCityIndustry(groups);
         this.logger.log(`[${strategy.type}] ${groups.length} 个群，${groupMap.size} 个分组`);
 
         // 3. 逐分组处理
@@ -402,6 +405,27 @@ export class GroupTaskSchedulerService implements OnModuleInit {
       map.get(key)!.push(group);
     }
     return map;
+  }
+
+  /**
+   * 抢单群按“实际取数地区”分组，而不是按群标签里的归属城市分组。
+   * 例：标签都挂在武汉名下的荆州/宜昌群，也必须各自单独拉数和发消息。
+   */
+  private groupOrderGrabGroups(groups: GroupContext[]): Map<string, GroupContext[]> {
+    const map = new Map<string, GroupContext[]>();
+    for (const group of groups) {
+      const key = this.resolveOrderGrabGroupKey(group);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(group);
+    }
+    return map;
+  }
+
+  private resolveOrderGrabGroupKey(group: GroupContext): string {
+    const strategy = this.orderGrabStrategy as OrderGrabStrategy & {
+      resolveOrderGrabGroupKey?: (context: GroupContext) => string;
+    };
+    return strategy.resolveOrderGrabGroupKey?.(group) ?? group.city;
   }
 
   private delay(ms: number): Promise<void> {
