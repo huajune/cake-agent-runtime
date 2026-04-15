@@ -1,31 +1,25 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
-import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 
 // 导入子服务
-import { SimpleMergeService } from './services/simple-merge.service';
-import { MessageDeduplicationService } from './services/deduplication.service';
-import { MessagePipelineService } from './services/pipeline.service';
-import { WecomMessageObservabilityService } from './services/wecom-message-observability.service';
+import { SimpleMergeService } from './runtime/simple-merge.service';
+import { MessageDeduplicationService } from './runtime/deduplication.service';
+import { MessagePipelineService } from './application/pipeline.service';
+import { WecomMessageObservabilityService } from './telemetry/wecom-message-observability.service';
+import { MessageRuntimeConfigService } from './runtime/message-runtime-config.service';
 
 // 导入工具和类型
 import { MessageParser } from './utils/message-parser.util';
 import { LogSanitizer } from './utils/log-sanitizer.util';
-import { EnterpriseMessageCallbackDto } from './message-callback.dto';
+import { EnterpriseMessageCallbackDto } from './ingress/message-callback.dto';
 import { getMessageSourceDescription } from '@enums/message-callback.enum';
-import {
-  toStorageContactType,
-  toStorageMessageSource,
-  toStorageMessageType,
-} from './message.types';
 
 /**
  * 消息处理服务（重构版 v4 - 协调器模式）
  *
  * 职责：
  * 1. 消息入口和分派
- * 2. 开关状态管理（AI 回复、消息聚合）
+ * 2. 基于运行时配置决定分派策略
  * 3. 统计和缓存 API
  *
  * 处理逻辑委托给 MessagePipelineService
@@ -34,14 +28,11 @@ import {
 @Injectable()
 export class MessageService implements OnModuleInit {
   private readonly logger = new Logger(MessageService.name);
-  private enableAiReply: boolean;
-  private enableMessageMerge: boolean;
 
   // 监控统计：跟踪正在处理的消息数
   private processingCount: number = 0;
 
   constructor(
-    private readonly configService: ConfigService,
     // 子服务
     private readonly simpleMergeService: SimpleMergeService,
     private readonly deduplicationService: MessageDeduplicationService,
@@ -49,36 +40,19 @@ export class MessageService implements OnModuleInit {
     private readonly wecomObservability: WecomMessageObservabilityService,
     // 监控
     private readonly monitoringService: MessageTrackingService,
-    // Repository
-    private readonly systemConfigService: SystemConfigService,
-  ) {
-    this.enableAiReply = this.configService.get<string>('ENABLE_AI_REPLY', 'true') === 'true';
-    this.enableMessageMerge =
-      this.configService.get<string>('ENABLE_MESSAGE_MERGE', 'true') === 'true';
-
-    this.logger.log(`消息聚合功能: ${this.enableMessageMerge ? '已启用' : '已禁用'}`);
-  }
+    private readonly runtimeConfig: MessageRuntimeConfigService,
+  ) {}
 
   /**
-   * 模块初始化 - 从 Supabase 加载开关状态，并订阅变更
+   * 模块初始化 - 记录当前运行时配置快照
    */
   async onModuleInit() {
-    this.enableAiReply = await this.systemConfigService.getAiReplyEnabled();
-    this.enableMessageMerge = await this.systemConfigService.getMessageMergeEnabled();
-    this.logger.log(`AI 自动回复功能: ${this.enableAiReply ? '已启用' : '已禁用'} (来自 Supabase)`);
     this.logger.log(
-      `消息聚合功能: ${this.enableMessageMerge ? '已启用' : '已禁用'} (来自 Supabase)`,
+      `AI 自动回复功能: ${this.runtimeConfig.isAiReplyEnabled() ? '已启用' : '已禁用'} (来自运行时配置)`,
     );
-
-    // 订阅开关变更，确保 hosting-config 层的切换能实时生效
-    this.systemConfigService.onAiReplyChange((enabled) => {
-      this.enableAiReply = enabled;
-      this.logger.log(`AI 自动回复功能已${enabled ? '启用' : '禁用'} (来自配置变更)`);
-    });
-    this.systemConfigService.onMessageMergeChange((enabled) => {
-      this.enableMessageMerge = enabled;
-      this.logger.log(`消息聚合功能已${enabled ? '启用' : '禁用'} (来自配置变更)`);
-    });
+    this.logger.log(
+      `消息聚合功能: ${this.runtimeConfig.isMessageMergeEnabled() ? '已启用' : '已禁用'} (来自运行时配置)`,
+    );
   }
 
   /**
@@ -105,16 +79,19 @@ export class MessageService implements OnModuleInit {
     }
 
     // 步骤 5: 全局 AI 开关
-    if (!this.enableAiReply) {
+    if (!this.runtimeConfig.isAiReplyEnabled()) {
       const parsed = MessageParser.parse(messageData);
-      this.ensureRequestTrace(messageData, pipelineResult.content ?? parsed.content);
-      this.wecomObservability.updateDispatch(messageData.messageId, 'disabled');
-      const successMetadata = this.wecomObservability.buildSuccessMetadata(messageData.messageId, {
+      await this.ensureRequestTrace(messageData, pipelineResult.content ?? parsed.content);
+      await this.wecomObservability.updateDispatch(messageData.messageId, 'disabled');
+      const successMetadata = await this.wecomObservability.buildSuccessMetadata(
+        messageData.messageId,
+        {
         scenario: MessageParser.determineScenario(),
         replyPreview: '[AI回复已禁用]',
         replySegments: 0,
         extraResponse: { disabledAiReply: true },
-      });
+        },
+      );
       this.logger.log(
         `[AI回复已禁用] 消息已记录到历史 [${messageData.messageId}]` +
           (parsed.chatId ? `, chatId=${parsed.chatId}` : ''),
@@ -136,7 +113,7 @@ export class MessageService implements OnModuleInit {
    * 分派消息（聚合 or 直接处理）
    */
   private async dispatchMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
-    if (this.enableMessageMerge) {
+    if (this.runtimeConfig.isMessageMergeEnabled()) {
       try {
         await this.simpleMergeService.addMessage(messageData);
       } catch (error) {
@@ -144,9 +121,9 @@ export class MessageService implements OnModuleInit {
         const errorMessage = error instanceof Error ? error.message : String(error);
 
         this.logger.error(`[聚合调度] 处理消息 [${messageData.messageId}] 失败: ${errorMessage}`);
-        this.ensureRequestTrace(messageData, parsed.content);
-        this.wecomObservability.updateDispatch(messageData.messageId, 'merged');
-        const failureMetadata = this.wecomObservability.buildFailureMetadata(
+        await this.ensureRequestTrace(messageData, parsed.content);
+        await this.wecomObservability.updateDispatch(messageData.messageId, 'merged');
+        const failureMetadata = await this.wecomObservability.buildFailureMetadata(
           messageData.messageId,
           {
             scenario: MessageParser.determineScenario(),
@@ -222,33 +199,21 @@ export class MessageService implements OnModuleInit {
     return { timestamp: new Date().toISOString(), cleared };
   }
 
-  private ensureRequestTrace(
+  private async ensureRequestTrace(
     messageData: EnterpriseMessageCallbackDto,
     content: string,
     batchId?: string,
-  ): void {
-    if (this.wecomObservability.hasTrace(messageData.messageId)) {
+  ): Promise<void> {
+    if (await this.wecomObservability.hasTrace(messageData.messageId)) {
       return;
     }
 
-    const parsed = MessageParser.parse(messageData);
-
-    this.wecomObservability.startTrace({
-      messageId: messageData.messageId,
-      chatId: parsed.chatId,
-      userId: parsed.imContactId,
-      userName: parsed.contactName,
-      managerName: parsed.managerName,
+    await this.wecomObservability.startRequestTrace({
+      traceId: messageData.messageId,
+      primaryMessage: messageData,
       scenario: MessageParser.determineScenario(),
       content,
-      imageCount: MessageParser.extractImageUrl(messageData) ? 1 : 0,
-      messageType: toStorageMessageType(messageData.messageType),
-      messageSource: toStorageMessageSource(messageData.source),
-      contactType: toStorageContactType(messageData.contactType),
       batchId,
-      acceptedAt: messageData._receivedAtMs,
-      sourceMessageIds: [messageData.messageId],
-      sourceMessageCount: 1,
     });
   }
 }

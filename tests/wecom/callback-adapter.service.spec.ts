@@ -1,10 +1,10 @@
 import { HttpException, HttpStatus } from '@nestjs/common';
-import { MessageCallbackAdapterService } from '@wecom/message/services/callback-adapter.service';
+import { MessageCallbackAdapterService } from '@wecom/message/ingress/callback-adapter.service';
 import {
   ContactType,
   MessageSource,
   MessageType,
-} from '@wecom/message/message-callback.dto';
+} from '@wecom/message/ingress/message-callback.dto';
 
 describe('MessageCallbackAdapterService', () => {
   let service: MessageCallbackAdapterService;

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AgentReplyConfig, DEFAULT_AGENT_REPLY_CONFIG } from '../types/hosting-config.types';
 import { SystemConfigService } from './system-config.service';
 import { GroupBlacklistService } from './group-blacklist.service';
+import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { GroupTaskConfig } from '@biz/group-task/group-task.types';
 
@@ -20,6 +21,7 @@ export class HostingConfigFacadeService {
     private readonly systemConfigService: SystemConfigService,
     private readonly groupBlacklistService: GroupBlacklistService,
     private readonly userHostingService: UserHostingService,
+    private readonly recruitmentCaseService: RecruitmentCaseService,
   ) {}
 
   // ==================== 运行时开关 ====================
@@ -110,6 +112,7 @@ export class HostingConfigFacadeService {
   async removeFromBlacklist(id: string, type: 'chatId' | 'groupId'): Promise<{ message: string }> {
     if (type === 'chatId') {
       await this.userHostingService.resumeUser(id);
+      await this.recruitmentCaseService.closeLatestHandoffCase(id);
       return { message: `用户 ${id} 已从黑名单移除` };
     } else {
       await this.groupBlacklistService.removeGroupFromBlacklist(id);

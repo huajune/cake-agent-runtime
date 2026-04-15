@@ -1,21 +1,27 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { MessagePipelineService } from '@wecom/message/services/pipeline.service';
-import { MessageDeduplicationService } from '@wecom/message/services/deduplication.service';
-import { MessageFilterService } from '@wecom/message/services/filter.service';
-import { MessageDeliveryService } from '@wecom/message/services/delivery.service';
-import { ImageDescriptionService } from '@wecom/message/services/image-description.service';
+import { MessagePipelineService } from '@wecom/message/application/pipeline.service';
+import { AcceptInboundMessageService } from '@wecom/message/application/accept-inbound-message.service';
+import { ReplyWorkflowService } from '@wecom/message/application/reply-workflow.service';
+import { MessageProcessingFailureService } from '@wecom/message/application/message-processing-failure.service';
+import { MessageDeduplicationService } from '@wecom/message/runtime/deduplication.service';
+import { MessageRuntimeConfigService } from '@wecom/message/runtime/message-runtime-config.service';
+import { MessageFilterService } from '@wecom/message/application/filter.service';
+import { MessageDeliveryService } from '@wecom/message/delivery/delivery.service';
+import { ImageDescriptionService } from '@wecom/message/application/image-description.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { AgentRunnerService } from '@agent/runner.service';
-import { WecomMessageObservabilityService } from '@wecom/message/services/wecom-message-observability.service';
-import { EnterpriseMessageCallbackDto } from '@wecom/message/message-callback.dto';
-import { DeliveryFailureError } from '@wecom/message/message.types';
+import { WecomMessageObservabilityService } from '@wecom/message/telemetry/wecom-message-observability.service';
+import { EnterpriseMessageCallbackDto } from '@wecom/message/ingress/message-callback.dto';
+import { DeliveryFailureError } from '@wecom/message/types';
 import { MessageType, ContactType, MessageSource } from '@enums/message-callback.enum';
 import { AlertLevel } from '@enums/alert.enum';
-import { FilterReason } from '@wecom/message/services/filter.service';
+import { FilterReason } from '@wecom/message/application/filter.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
+import { ConversationRiskService } from '@/conversation-risk/services/conversation-risk.service';
+import { OnboardFollowupMonitorService } from '@biz/recruitment-case/services/onboard-followup-monitor.service';
 
 describe('MessagePipelineService', () => {
   let service: MessagePipelineService;
@@ -59,6 +65,13 @@ describe('MessagePipelineService', () => {
     onMessageMergeChange: jest.fn(),
   };
 
+  const mockRuntimeConfigService = {
+    resolveWecomChatModelSelection: jest.fn().mockResolvedValue({
+      overrideModelId: undefined,
+      effectiveModelId: '',
+    }),
+  };
+
   const mockMonitoringService = {
     recordMessageReceived: jest.fn(),
     recordAiStart: jest.fn(),
@@ -75,6 +88,7 @@ describe('MessagePipelineService', () => {
 
   const mockWecomObservabilityService = {
     hasTrace: jest.fn().mockReturnValue(false),
+    startRequestTrace: jest.fn(),
     startTrace: jest.fn(),
     markHistoryStored: jest.fn(),
     markImagePrepared: jest.fn(),
@@ -98,6 +112,24 @@ describe('MessagePipelineService', () => {
     recordAgentRequest: jest.fn(),
     recordAgentResult: jest.fn(),
     markAiEnd: jest.fn(),
+    buildMergedRequestContent: jest
+      .fn()
+      .mockImplementation((messages: EnterpriseMessageCallbackDto[]) =>
+        messages
+          .map((message) =>
+            'text' in message.payload ? (message.payload as { text?: string }).text ?? '' : '',
+          )
+          .filter(Boolean)
+          .join('\n'),
+      ),
+  };
+
+  const mockConversationRiskService = {
+    checkAndHandle: jest.fn(),
+  };
+
+  const mockOnboardFollowupMonitorService = {
+    checkAndHandle: jest.fn(),
   };
 
   const validMessageData: EnterpriseMessageCallbackDto = {
@@ -122,7 +154,11 @@ describe('MessagePipelineService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MessagePipelineService,
+        AcceptInboundMessageService,
+        ReplyWorkflowService,
+        MessageProcessingFailureService,
         { provide: MessageDeduplicationService, useValue: mockDeduplicationService },
+        { provide: MessageRuntimeConfigService, useValue: mockRuntimeConfigService },
         { provide: ChatSessionService, useValue: mockChatSessionService },
         { provide: MessageFilterService, useValue: mockFilterService },
         { provide: MessageDeliveryService, useValue: mockDeliveryService },
@@ -133,6 +169,8 @@ describe('MessagePipelineService', () => {
         { provide: MessageTrackingService, useValue: mockMonitoringService },
         { provide: AlertNotifierService, useValue: mockAlertService },
         { provide: WecomMessageObservabilityService, useValue: mockWecomObservabilityService },
+        { provide: ConversationRiskService, useValue: mockConversationRiskService },
+        { provide: OnboardFollowupMonitorService, useValue: mockOnboardFollowupMonitorService },
       ],
     }).compile();
 
@@ -146,6 +184,16 @@ describe('MessagePipelineService', () => {
       messages: [{ role: 'user', candidateName: 'Alice' }],
     });
     mockFilterService.validate.mockResolvedValue({ pass: true, content: 'Hello!' });
+    mockConversationRiskService.checkAndHandle.mockResolvedValue({
+      hit: false,
+      paused: false,
+      alerted: false,
+    });
+    mockOnboardFollowupMonitorService.checkAndHandle.mockResolvedValue({
+      hit: false,
+      paused: false,
+      alerted: false,
+    });
     mockDeliveryService.deliverReply.mockResolvedValue({
       success: true,
       segmentCount: 1,
@@ -205,6 +253,32 @@ describe('MessagePipelineService', () => {
         }),
       );
       expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-123');
+    });
+
+    it('should trigger async conversation risk checks without blocking dispatch', async () => {
+      mockConversationRiskService.checkAndHandle.mockResolvedValue({
+        hit: true,
+        paused: true,
+        alerted: true,
+      });
+
+      const result = await service.execute(validMessageData);
+
+      expect(result).toEqual({
+        shouldDispatch: true,
+        response: { success: true, message: 'Message received' },
+        content: 'Hello!',
+      });
+      expect(mockConversationRiskService.checkAndHandle).toHaveBeenCalledWith({
+        messageData: validMessageData,
+        content: 'Hello!',
+      });
+      expect(mockOnboardFollowupMonitorService.checkAndHandle).toHaveBeenCalledWith({
+        messageData: validMessageData,
+        content: 'Hello!',
+      });
+      expect(mockImageDescriptionService.describeAndUpdateSync).not.toHaveBeenCalled();
+      expect(mockRunnerService.invoke).not.toHaveBeenCalled();
     });
   });
 
@@ -344,6 +418,35 @@ describe('MessagePipelineService', () => {
           }),
         }),
       );
+    });
+
+    it('should process merged messages and mark all source messages as processed', async () => {
+      await service.processMergedMessages(
+        [
+          validMessageData,
+          {
+            ...validMessageData,
+            messageId: 'msg-456',
+            payload: { text: 'Second message' },
+          },
+        ],
+        'batch-001',
+      );
+
+      expect(mockRunnerService.invoke).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userMessage: 'Hello!\nSecond message',
+          sessionId: 'chat-123',
+        }),
+      );
+      expect(mockMonitoringService.recordSuccess).toHaveBeenCalledWith(
+        'batch-001',
+        expect.objectContaining({
+          replyPreview: 'Reply from agent',
+        }),
+      );
+      expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-123');
+      expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-456');
     });
   });
 });

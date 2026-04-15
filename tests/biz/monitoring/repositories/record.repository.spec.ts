@@ -477,14 +477,14 @@ describe('MonitoringRecordRepository', () => {
       expect(result!.toolStats).toEqual({ search: 10 });
     });
 
-    it('should return null on RPC error', async () => {
+    it('should throw the underlying RPC error details', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
       mockSupabaseClient.rpc.mockRejectedValue(new Error('RPC error'));
 
-      const result = await repository.aggregateHourlyStats(new Date(), new Date());
-
-      expect(result).toBeNull();
+      await expect(repository.aggregateHourlyStats(new Date(), new Date())).rejects.toThrow(
+        'aggregate_hourly_stats RPC failed: RPC error',
+      );
     });
 
     it('should pass correct date params to RPC', async () => {

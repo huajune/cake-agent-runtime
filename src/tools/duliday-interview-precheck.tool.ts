@@ -573,7 +573,6 @@ function buildChecklistTemplate(params: {
   const missingFields = displayOrder.filter((field) => !params.knownFieldMap[field]);
 
   const lines = [
-    '面试模版：',
     '面试要求：先将以下资料补充下发给我，我来帮你约面试',
     ...displayOrder.map((field) => {
       const value = params.knownFieldMap[field] ?? '';

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosInstance, isAxiosError } from 'axios';
 import * as crypto from 'crypto';
 import { FEISHU_WEBHOOK_CHANNELS, type FeishuWebhookChannel } from '../constants/constants';
 import { FeishuApiResponse } from '../interfaces/interface';
@@ -36,7 +36,9 @@ export class FeishuWebhookService {
       await this.sendMessageOrThrow(channel, content);
       return true;
     } catch (error) {
-      this.logger.error(`飞书消息发送失败 [${channel}]: ${error.message}`, error.stack);
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
+      this.logger.error(`飞书消息发送失败 [${channel}]: ${message}`, stack);
       return false;
     }
   }
@@ -58,13 +60,21 @@ export class FeishuWebhookService {
       payload = { ...content, timestamp, sign };
     }
 
-    const response = await this.httpClient.post<FeishuApiResponse>(config.url, payload);
-
-    if (response.data?.code !== 0) {
-      throw new Error(`飞书 API 返回错误: ${JSON.stringify(response.data)}`);
+    try {
+      const response = await this.httpClient.post<FeishuApiResponse>(config.url, payload);
+      if (response.data?.code !== 0) {
+        throw new Error(`飞书 API 返回错误: ${JSON.stringify(response.data)}`);
+      }
+      this.logger.log(`飞书消息发送成功 [${channel}]`);
+    } catch (error) {
+      if (isAxiosError(error)) {
+        const status = error.response?.status;
+        const data = error.response?.data;
+        const detail = data ? JSON.stringify(data) : error.message;
+        throw new Error(`飞书 HTTP 请求失败 [status=${status ?? 'n/a'}]: ${detail}`);
+      }
+      throw error;
     }
-
-    this.logger.log(`飞书消息发送成功 [${channel}]`);
   }
 
   /**

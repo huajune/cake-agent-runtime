@@ -1,10 +1,10 @@
-import { MessageController } from '@wecom/message/message.controller';
+import { MessageIngressController } from '@wecom/message/ingress/message-ingress.controller';
 import {
   ContactType,
   EnterpriseMessageCallbackDto,
   MessageSource,
   MessageType,
-} from '@wecom/message/message-callback.dto';
+} from '@wecom/message/ingress/message-callback.dto';
 
 function createEnterpriseMessage(
   overrides: Partial<EnterpriseMessageCallbackDto> = {},
@@ -42,12 +42,7 @@ describe('MessageController', () => {
     detectCallbackType: jest.fn().mockReturnValue('enterprise'),
     normalizeCallback: jest.fn().mockReturnValue(normalizedMessage),
   };
-  const mockMessageProcessor = {
-    getWorkerStatus: jest.fn().mockReturnValue({ active: 0 }),
-    setConcurrency: jest.fn().mockResolvedValue({ success: true }),
-  };
-
-  let controller: MessageController;
+  let ingressController: MessageIngressController;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -57,16 +52,15 @@ describe('MessageController', () => {
       success: true,
       message: 'Message received',
     });
-    controller = new MessageController(
+    ingressController = new MessageIngressController(
       mockMessageService as never,
       mockCallbackAdapter as never,
-      mockMessageProcessor as never,
     );
   });
 
   it('should normalize callback then forward it to message service', async () => {
     const rawBody = createEnterpriseMessage({ source: undefined as unknown as MessageSource });
-    const result = await controller.receiveMessage(rawBody);
+    const result = await ingressController.receiveMessage(rawBody);
 
     expect(mockCallbackAdapter.detectCallbackType).toHaveBeenCalledWith(rawBody);
     expect(mockCallbackAdapter.normalizeCallback).toHaveBeenCalledWith(rawBody);
@@ -75,7 +69,7 @@ describe('MessageController', () => {
   });
 
   it('should forward sent-result callback to message service', async () => {
-    const result = await controller.receiveSentResult({ requestId: 'req_1' });
+    const result = await ingressController.receiveSentResult({ requestId: 'req_1' });
 
     expect(mockMessageService.handleSentResult).toHaveBeenCalledWith({ requestId: 'req_1' });
     expect(result).toEqual({ success: true });

@@ -6,6 +6,7 @@ import { GroupTaskModule } from '@biz/group-task/group-task.module';
 import { RoomModule } from '@channels/wecom/room/room.module';
 import { MessageSenderModule } from '@channels/wecom/message-sender/message-sender.module';
 import { UserModule } from '@biz/user/user.module';
+import { RecruitmentCaseModule } from '@biz/recruitment-case/recruitment-case.module';
 import { NotificationModule } from '@notification/notification.module';
 import { ToolRegistryService } from './tool-registry.service';
 
@@ -18,6 +19,7 @@ import { ToolRegistryService } from './tool-registry.service';
     RoomModule,
     MessageSenderModule,
     UserModule,
+    RecruitmentCaseModule,
     NotificationModule,
   ],
   providers: [ToolRegistryService],

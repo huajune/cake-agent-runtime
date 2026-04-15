@@ -1,14 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConfigService } from '@nestjs/config';
 import { MessageService } from '@wecom/message/message.service';
-import { SimpleMergeService } from '@wecom/message/services/simple-merge.service';
-import { MessageDeduplicationService } from '@wecom/message/services/deduplication.service';
-import { MessagePipelineService } from '@wecom/message/services/pipeline.service';
+import { SimpleMergeService } from '@wecom/message/runtime/simple-merge.service';
+import { MessageDeduplicationService } from '@wecom/message/runtime/deduplication.service';
+import { MessagePipelineService } from '@wecom/message/application/pipeline.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
-import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
-import { WecomMessageObservabilityService } from '@wecom/message/services/wecom-message-observability.service';
-import { EnterpriseMessageCallbackDto } from '@wecom/message/message-callback.dto';
+import { WecomMessageObservabilityService } from '@wecom/message/telemetry/wecom-message-observability.service';
+import { EnterpriseMessageCallbackDto } from '@wecom/message/ingress/message-callback.dto';
 import { MessageType, ContactType, MessageSource } from '@enums/message-callback.enum';
+import { MessageRuntimeConfigService } from '@wecom/message/runtime/message-runtime-config.service';
 
 describe('MessageService', () => {
   let service: MessageService;
@@ -36,24 +35,15 @@ describe('MessageService', () => {
   const mockWecomObservabilityService = {
     hasTrace: jest.fn().mockReturnValue(false),
     startTrace: jest.fn(),
+    startRequestTrace: jest.fn(),
     updateDispatch: jest.fn(),
     buildSuccessMetadata: jest.fn(),
     buildFailureMetadata: jest.fn(),
   };
 
-  const mockSystemConfigService = {
-    getAiReplyEnabled: jest.fn(),
-    getMessageMergeEnabled: jest.fn(),
-    onAiReplyChange: jest.fn(),
-    onMessageMergeChange: jest.fn(),
-  };
-
-  const mockConfigService = {
-    get: jest.fn().mockImplementation((key: string, defaultValue?: string) => {
-      if (key === 'ENABLE_AI_REPLY') return 'true';
-      if (key === 'ENABLE_MESSAGE_MERGE') return 'true';
-      return defaultValue;
-    }),
+  const mockRuntimeConfigService = {
+    isAiReplyEnabled: jest.fn(),
+    isMessageMergeEnabled: jest.fn(),
   };
 
   const validMessageData: EnterpriseMessageCallbackDto = {
@@ -78,23 +68,20 @@ describe('MessageService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MessageService,
-        { provide: ConfigService, useValue: mockConfigService },
         { provide: SimpleMergeService, useValue: mockSimpleMergeService },
         { provide: MessageDeduplicationService, useValue: mockDeduplicationService },
         { provide: MessagePipelineService, useValue: mockPipelineService },
         { provide: WecomMessageObservabilityService, useValue: mockWecomObservabilityService },
         { provide: MessageTrackingService, useValue: mockMonitoringService },
-        { provide: SystemConfigService, useValue: mockSystemConfigService },
+        { provide: MessageRuntimeConfigService, useValue: mockRuntimeConfigService },
       ],
     }).compile();
 
     service = module.get<MessageService>(MessageService);
     jest.clearAllMocks();
 
-    mockSystemConfigService.getAiReplyEnabled.mockResolvedValue(true);
-    mockSystemConfigService.getMessageMergeEnabled.mockResolvedValue(true);
-    mockSystemConfigService.onAiReplyChange.mockImplementation(() => {});
-    mockSystemConfigService.onMessageMergeChange.mockImplementation(() => {});
+    mockRuntimeConfigService.isAiReplyEnabled.mockReturnValue(true);
+    mockRuntimeConfigService.isMessageMergeEnabled.mockReturnValue(true);
     mockWecomObservabilityService.buildSuccessMetadata.mockReturnValue({
       replyPreview: '[AI回复已禁用]',
       replySegments: 0,
@@ -118,13 +105,11 @@ describe('MessageService', () => {
   });
 
   describe('onModuleInit', () => {
-    it('should load toggle states from SystemConfigService', async () => {
+    it('should read current toggle states from runtime config', async () => {
       await service.onModuleInit();
 
-      expect(mockSystemConfigService.getAiReplyEnabled).toHaveBeenCalled();
-      expect(mockSystemConfigService.getMessageMergeEnabled).toHaveBeenCalled();
-      expect(mockSystemConfigService.onAiReplyChange).toHaveBeenCalled();
-      expect(mockSystemConfigService.onMessageMergeChange).toHaveBeenCalled();
+      expect(mockRuntimeConfigService.isAiReplyEnabled).toHaveBeenCalled();
+      expect(mockRuntimeConfigService.isMessageMergeEnabled).toHaveBeenCalled();
     });
   });
 
@@ -146,8 +131,7 @@ describe('MessageService', () => {
     });
 
     it('should mark message processed when AI reply is disabled', async () => {
-      mockSystemConfigService.getAiReplyEnabled.mockResolvedValue(false);
-      await service.onModuleInit();
+      mockRuntimeConfigService.isAiReplyEnabled.mockReturnValue(false);
 
       const result = await service.handleMessage(validMessageData);
 
@@ -155,10 +139,9 @@ describe('MessageService', () => {
         success: true,
         message: 'AI reply disabled, message recorded to history',
       });
-      expect(mockWecomObservabilityService.startTrace).toHaveBeenCalledWith(
+      expect(mockWecomObservabilityService.startRequestTrace).toHaveBeenCalledWith(
         expect.objectContaining({
-          messageId: 'msg-123',
-          chatId: 'chat-123',
+          traceId: 'msg-123',
         }),
       );
       expect(mockMonitoringService.recordSuccess).toHaveBeenCalledWith(
@@ -184,10 +167,9 @@ describe('MessageService', () => {
 
       expect(result).toEqual({ success: true, message: 'Message received' });
       await new Promise((resolve) => setImmediate(resolve));
-      expect(mockWecomObservabilityService.startTrace).toHaveBeenCalledWith(
+      expect(mockWecomObservabilityService.startRequestTrace).toHaveBeenCalledWith(
         expect.objectContaining({
-          messageId: 'msg-123',
-          chatId: 'chat-123',
+          traceId: 'msg-123',
         }),
       );
       expect(mockWecomObservabilityService.updateDispatch).toHaveBeenCalledWith('msg-123', 'merged');
@@ -207,8 +189,7 @@ describe('MessageService', () => {
     });
 
     it('should process message immediately when merge is disabled', async () => {
-      mockSystemConfigService.getMessageMergeEnabled.mockResolvedValue(false);
-      await service.onModuleInit();
+      mockRuntimeConfigService.isMessageMergeEnabled.mockReturnValue(false);
 
       const result = await service.handleMessage(validMessageData);
 

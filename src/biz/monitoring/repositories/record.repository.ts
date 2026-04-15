@@ -260,6 +260,8 @@ export class MonitoringRecordRepository extends BaseRepository {
       return null;
     }
 
+    const rpcErrorPrefix = 'aggregate_hourly_stats RPC';
+
     for (let attempt = 1; attempt <= this.maxReadAttempts; attempt += 1) {
       try {
         const { data, error } = await this.getClient().rpc('aggregate_hourly_stats', {
@@ -268,15 +270,18 @@ export class MonitoringRecordRepository extends BaseRepository {
         });
 
         if (error) {
+          const code = (error as { code?: string }).code ?? 'unknown';
+          const message = (error as { message?: string }).message ?? 'unknown error';
+
           if (this.isNotFoundError(error)) {
             this.logger.warn('RPC 函数 aggregate_hourly_stats 不存在，请检查数据库迁移');
-            return null;
+            throw new Error(`${rpcErrorPrefix} missing (${code}): ${message}`);
           }
           if (this.shouldRetryReadError('RPC:aggregate_hourly_stats', error, attempt)) {
             continue;
           }
           this.handleError('RPC:aggregate_hourly_stats', error);
-          return null;
+          throw new Error(`${rpcErrorPrefix} failed (${code}): ${message}`);
         }
 
         const result = data as Array<Record<string, unknown>> | null;
@@ -316,16 +321,21 @@ export class MonitoringRecordRepository extends BaseRepository {
           toolStats: (row.tool_stats as Record<string, number>) ?? {},
         };
       } catch (error) {
+        if (error instanceof Error && error.message.startsWith(rpcErrorPrefix)) {
+          throw error;
+        }
+
         if (this.shouldRetryReadError('RPC:aggregate_hourly_stats', error, attempt)) {
           continue;
         }
 
         this.handleError('RPC:aggregate_hourly_stats', error);
-        return null;
+        const message = (error as { message?: string }).message ?? String(error);
+        throw new Error(`${rpcErrorPrefix} failed: ${message}`);
       }
     }
 
-    return null;
+    throw new Error(`${rpcErrorPrefix} failed after ${this.maxReadAttempts} attempts`);
   }
 
   // ==================== 私有辅助 ====================

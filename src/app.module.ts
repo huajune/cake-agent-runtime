@@ -5,6 +5,7 @@ import { ConfigModule } from '@nestjs/config';
 import { HttpModule } from './infra/client-http/http.module';
 import { RedisModule } from './infra/redis/redis.module';
 import { GeocodingModule } from './infra/geocoding/geocoding.module';
+import { BullQueueModule } from '@infra/queue/bull.module';
 import { SupabaseModule } from '@infra/supabase/supabase.module';
 import { WebEntryModule } from '@infra/server/web-entry/web-entry.module';
 import { FeishuModule } from './infra/feishu/feishu.module';
@@ -56,6 +57,7 @@ import { HttpExceptionFilter } from '@infra/server/response/filters/http-excepti
     HttpModule,
     RedisModule,
     GeocodingModule,
+    BullQueueModule,
     SupabaseModule,
     FeishuModule,
     WebEntryModule,

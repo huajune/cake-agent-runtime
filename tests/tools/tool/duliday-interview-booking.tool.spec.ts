@@ -15,6 +15,10 @@ describe('buildInterviewBookingTool', () => {
     pauseUser: jest.fn().mockResolvedValue(undefined),
   };
 
+  const mockRecruitmentCaseService = {
+    openOnBookingSuccess: jest.fn().mockResolvedValue(undefined),
+  };
+
   const mockContext: ToolBuildContext = {
     userId: 'user-1',
     corpId: 'corp-1',
@@ -77,6 +81,7 @@ describe('buildInterviewBookingTool', () => {
       mockSpongeService as never,
       mockPrivateChatNotifier as never,
       mockUserHostingService as never,
+      mockRecruitmentCaseService as never,
     );
     const builtTool = builder({
       ...mockContext,
@@ -296,6 +301,21 @@ describe('buildInterviewBookingTool', () => {
       }),
     );
     expect(mockUserHostingService.pauseUser).not.toHaveBeenCalled();
+    expect(mockRecruitmentCaseService.openOnBookingSuccess).toHaveBeenCalledWith({
+      corpId: 'corp-1',
+      chatId: 'sess-1',
+      userId: 'user-1',
+      snapshot: expect.objectContaining({
+        bookingId: null,
+        interviewTime: '2026-03-20 14:00:00',
+        jobId: 100,
+        jobName: '后厨-小时工',
+        brandName: '成都你六姐',
+        storeName: '上海浦江城市生活广场店',
+        botImId: undefined,
+        metadata: { tool: 'duliday_interview_booking' },
+      }),
+    });
   });
 
   it('should return missing_customer_label_values when supplements require unknown answers', async () => {
@@ -377,5 +397,6 @@ describe('buildInterviewBookingTool', () => {
       }),
     );
     expect(mockUserHostingService.pauseUser).toHaveBeenCalledWith('sess-1');
+    expect(mockRecruitmentCaseService.openOnBookingSuccess).not.toHaveBeenCalled();
   });
 });

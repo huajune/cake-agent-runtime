@@ -26,6 +26,7 @@ import {
   SpongeInterviewSupplementDefinition,
 } from '@sponge/sponge-job.util';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import { API_BOOKING_REQUIRED_PAYLOAD_FIELDS } from '@tools/duliday/job-booking.contract';
@@ -56,6 +57,7 @@ export function buildInterviewBookingTool(
   spongeService: SpongeService,
   privateChatNotifier: PrivateChatMonitorNotifierService,
   userHostingService: UserHostingService,
+  recruitmentCaseService: RecruitmentCaseService,
 ): ToolBuilder {
   return (context) => {
     return tool({
@@ -340,6 +342,35 @@ export function buildInterviewBookingTool(
             void userHostingService.pauseUser(context.sessionId).then(() => {
               logger.log(`[自动暂停] 预约失败，已暂停托管: chatId=${context.sessionId}`);
             });
+          } else {
+            const resultRecord = result as unknown as Record<string, unknown>;
+            const bookingId =
+              typeof resultRecord.booking_id === 'string' && resultRecord.booking_id.trim()
+                ? resultRecord.booking_id.trim()
+                : null;
+
+            void recruitmentCaseService
+              .openOnBookingSuccess({
+                corpId: context.corpId,
+                chatId: context.sessionId,
+                userId: context.userId,
+                snapshot: {
+                  bookingId,
+                  bookedAt: new Date().toISOString(),
+                  interviewTime,
+                  jobId,
+                  jobName: resolvedJobName,
+                  brandName: resolvedBrandName,
+                  storeName: resolvedStoreName,
+                  botImId: context.botImId,
+                  metadata: {
+                    tool: 'duliday_interview_booking',
+                  },
+                },
+              })
+              .catch((caseError) => {
+                logger.error('写入 recruitmentCase 失败', caseError);
+              });
           }
 
           const toolResult = {

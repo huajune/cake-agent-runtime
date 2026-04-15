@@ -1,9 +1,20 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { MessageFilterService, FilterReason } from '@wecom/message/services/filter.service';
+import { MessageFilterService, FilterReason } from '@wecom/message/application/filter.service';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
-import { EnterpriseMessageCallbackDto } from '@wecom/message/message-callback.dto';
+import { EnterpriseMessageCallbackDto } from '@wecom/message/ingress/message-callback.dto';
 import { MessageSource, MessageType, ContactType } from '@enums/message-callback.enum';
+import {
+  ContactTypeFilterRule,
+  EmptyContentFilterRule,
+  EnterpriseGroupFilterRule,
+  GroupBlacklistFilterRule,
+  PausedUserFilterRule,
+  RoomMessageFilterRule,
+  SelfMessageFilterRule,
+  SourceMessageFilterRule,
+  SupportedMessageTypeFilterRule,
+} from '@wecom/message/application/filter-rules/message-filter.rules';
 
 describe('MessageFilterService', () => {
   let service: MessageFilterService;
@@ -36,6 +47,15 @@ describe('MessageFilterService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MessageFilterService,
+        SelfMessageFilterRule,
+        SourceMessageFilterRule,
+        ContactTypeFilterRule,
+        PausedUserFilterRule,
+        GroupBlacklistFilterRule,
+        EnterpriseGroupFilterRule,
+        RoomMessageFilterRule,
+        SupportedMessageTypeFilterRule,
+        EmptyContentFilterRule,
         { provide: UserHostingService, useValue: mockUserHostingService },
         { provide: GroupBlacklistService, useValue: mockGroupBlacklistService },
       ],
@@ -99,12 +119,14 @@ describe('MessageFilterService', () => {
       expect(result.reason).toBe(FilterReason.NON_PERSONAL_WECHAT);
     });
 
-    it('should filter out paused user messages', async () => {
+    it('should store paused user messages as historyOnly', async () => {
       mockUserHostingService.isUserPaused.mockResolvedValue(true);
 
       const result = await service.validate(validMessageData);
 
-      expect(result.pass).toBe(false);
+      expect(result.pass).toBe(true);
+      expect(result.historyOnly).toBe(true);
+      expect(result.content).toBe('Hello, world!');
       expect(result.reason).toBe(FilterReason.USER_PAUSED);
       expect(mockUserHostingService.isUserPaused).toHaveBeenCalledWith('chat-123');
       expect(mockUserHostingService.isUserPaused).toHaveBeenCalledTimes(1);
@@ -121,6 +143,8 @@ describe('MessageFilterService', () => {
 
       const result = await service.validate(messageData);
 
+      expect(result.pass).toBe(true);
+      expect(result.historyOnly).toBe(true);
       expect(mockUserHostingService.isUserPaused).toHaveBeenCalledWith('ext-user-123');
       expect(result.reason).toBe(FilterReason.USER_PAUSED);
     });

@@ -1,10 +1,10 @@
 import { ScenarioType } from '@enums/agent.enum';
-import { WecomMessageObservabilityService } from '@wecom/message/services/wecom-message-observability.service';
+import { WecomMessageObservabilityService } from '@wecom/message/telemetry/wecom-message-observability.service';
 import {
   StorageContactType,
   StorageMessageSource,
   StorageMessageType,
-} from '@wecom/message/message.types';
+} from '@wecom/message/types';
 
 describe('WecomMessageObservabilityService', () => {
   const mockTrackingService = {
@@ -14,16 +14,31 @@ describe('WecomMessageObservabilityService', () => {
     recordAiEnd: jest.fn(),
   };
 
+  const traceState = new Map<string, unknown>();
+  const mockTraceStore = {
+    get: jest.fn(async (messageId: string) => traceState.get(messageId)),
+    set: jest.fn(async (messageId: string, trace: unknown) => {
+      traceState.set(messageId, trace);
+    }),
+    delete: jest.fn(async (messageId: string) => {
+      traceState.delete(messageId);
+    }),
+  };
+
   let service: WecomMessageObservabilityService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new WecomMessageObservabilityService(mockTrackingService as never);
+    traceState.clear();
+    service = new WecomMessageObservabilityService(
+      mockTrackingService as never,
+      mockTraceStore as never,
+    );
   });
 
-  it('should build structured success metadata for primary message', () => {
+  it('should build structured success metadata for primary message', async () => {
     const messageId = 'msg_primary_1';
-    service.startTrace({
+    await service.startTrace({
       messageId,
       chatId: 'chat_1',
       userId: 'contact_1',
@@ -36,9 +51,9 @@ describe('WecomMessageObservabilityService', () => {
       messageSource: StorageMessageSource.MOBILE_PUSH,
       contactType: StorageContactType.PERSONAL_WECHAT,
     });
-    service.markWorkerStart(messageId);
-    service.markAiStart(messageId);
-    service.recordAgentResult(messageId, {
+    await service.markWorkerStart(messageId);
+    await service.markAiStart(messageId);
+    await service.recordAgentResult(messageId, {
       reply: {
         content: '已帮你安排面试',
         usage: {
@@ -57,9 +72,9 @@ describe('WecomMessageObservabilityService', () => {
         },
       ],
     });
-    service.markAiEnd(messageId);
-    service.markDeliveryStart(messageId);
-    service.markDeliveryEnd(messageId, {
+    await service.markAiEnd(messageId);
+    await service.markDeliveryStart(messageId);
+    await service.markDeliveryEnd(messageId, {
       success: true,
       segmentCount: 1,
       failedSegments: 0,
@@ -67,7 +82,7 @@ describe('WecomMessageObservabilityService', () => {
       totalTime: 180,
     });
 
-    const metadata = service.buildSuccessMetadata(messageId, {
+    const metadata = await service.buildSuccessMetadata(messageId, {
       scenario: ScenarioType.CANDIDATE_CONSULTATION,
       replySegments: 1,
       replyPreview: '已帮你安排面试',
@@ -85,12 +100,12 @@ describe('WecomMessageObservabilityService', () => {
         segmentCount: 1,
       }),
     );
-    expect(service.hasTrace(messageId)).toBe(false);
+    await expect(service.hasTrace(messageId)).resolves.toBe(false);
   });
 
-  it('should keep batch-level invocation metadata for merged request traces', () => {
+  it('should keep batch-level invocation metadata for merged request traces', async () => {
     const messageId = 'batch_1';
-    service.startTrace({
+    await service.startTrace({
       messageId,
       chatId: 'chat_2',
       userId: 'contact_2',
@@ -108,7 +123,7 @@ describe('WecomMessageObservabilityService', () => {
       sourceMessageCount: 2,
     });
 
-    const metadata = service.buildSuccessMetadata(messageId, {
+    const metadata = await service.buildSuccessMetadata(messageId, {
       scenario: ScenarioType.CANDIDATE_CONSULTATION,
       batchId: 'batch_1',
       extraResponse: {
