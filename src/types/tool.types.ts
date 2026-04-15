@@ -5,6 +5,7 @@ import type {
   RecommendedJobSummary,
 } from '@memory/types/session-facts.types';
 import type { UserProfile } from '@memory/types/long-term.types';
+import type { ResolvedCity } from '@agent/services/location-city-resolver.service';
 
 export type AiTool = Tool;
 export type AiToolSet = ToolSet;
@@ -60,6 +61,8 @@ export interface ToolBuildContext {
   chatId?: string;
   /** 当前消息发送链路使用的 API 类型 */
   apiType?: 'enterprise' | 'group';
+  /** 系统已解析出的本轮高置信城市，可供 geocode 等工具复用。 */
+  resolvedCity?: ResolvedCity | null;
 }
 
 /** 工具构建函数。 */

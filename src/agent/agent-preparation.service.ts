@@ -16,6 +16,7 @@ import type { RecommendedJobSummary, WeworkSessionState } from '@memory/types/se
 import { ContextService } from './context/context.service';
 import { InputGuardService } from './input-guard.service';
 import { type AgentInputMessage, type AgentInvokeParams } from './agent-run.types';
+import { LocationCityResolverService } from './services/location-city-resolver.service';
 
 export interface PreparedAgentContext {
   finalPrompt: string;
@@ -51,6 +52,7 @@ export class AgentPreparationService {
     private readonly memoryConfig: MemoryConfig,
     private readonly context: ContextService,
     private readonly inputGuard: InputGuardService,
+    private readonly locationCityResolver: LocationCityResolverService,
   ) {}
 
   async prepare(
@@ -154,12 +156,18 @@ export class AgentPreparationService {
         recruitmentCase: activeRecruitmentCase,
         currentMessageContent: this.pickLatestUserContent(messages) ?? userMessage ?? '',
       }) ?? undefined;
+    const resolvedCity = this.locationCityResolver.resolve({
+      currentMessageContent: this.pickLatestUserContent(messages) ?? userMessage ?? '',
+      sessionFacts: memory.sessionMemory?.facts ?? null,
+      highConfidenceFacts: memory.highConfidenceFacts,
+    });
     const { systemPrompt, stageGoals, thresholds } = await this.context.compose({
       scenario,
       currentStage: resolvedStage,
       memoryBlock,
       sessionFacts: memory.sessionMemory?.facts ?? null,
       highConfidenceFacts: memory.highConfidenceFacts,
+      resolvedCity,
       strategySource: params.strategySource,
     });
     const entryStage = resolvedStage ?? Object.keys(stageGoals)[0] ?? null;
@@ -214,6 +222,7 @@ export class AgentPreparationService {
       imRoomId,
       chatId: sessionId,
       apiType,
+      resolvedCity,
     };
 
     // 10. 按场景挑出本轮允许使用的工具。

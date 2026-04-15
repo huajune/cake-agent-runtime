@@ -55,6 +55,10 @@ describe('AgentPreparationService', () => {
     alertInjection: jest.fn().mockResolvedValue(undefined),
   };
 
+  const mockLocationCityResolver = {
+    resolve: jest.fn(),
+  };
+
   let service: AgentPreparationService;
 
   beforeEach(() => {
@@ -105,6 +109,7 @@ describe('AgentPreparationService', () => {
       thresholds: [{ name: 'salary', max: 1 }],
     }));
     mockInputGuard.detectMessages.mockReturnValue({ safe: true });
+    mockLocationCityResolver.resolve.mockReturnValue(null);
 
     service = new AgentPreparationService(
       mockConfigService as never,
@@ -116,6 +121,7 @@ describe('AgentPreparationService', () => {
       mockMemoryConfig as never,
       mockContext as never,
       mockInputGuard as never,
+      mockLocationCityResolver as never,
     );
   });
 
@@ -148,6 +154,7 @@ describe('AgentPreparationService', () => {
           preferences: expect.objectContaining({ city: '上海' }),
         }),
         highConfidenceFacts: null,
+        resolvedCity: null,
       }),
     );
     expect(mockRecruitmentCaseService.getActiveOnboardFollowupCase).toHaveBeenCalledWith({
@@ -158,6 +165,13 @@ describe('AgentPreparationService', () => {
       proceduralStage: 'job_consultation',
       recruitmentCase: null,
       currentMessageContent: '短期里的当前消息',
+    });
+    expect(mockLocationCityResolver.resolve).toHaveBeenCalledWith({
+      currentMessageContent: '短期里的当前消息',
+      sessionFacts: expect.objectContaining({
+        preferences: expect.objectContaining({ city: '上海' }),
+      }),
+      highConfidenceFacts: null,
     });
     expect(mockContext.compose.mock.calls[0][0].memoryBlock).toContain('[会话记忆]');
     expect(result.finalPrompt).toContain('SYSTEM_PROMPT');
@@ -171,6 +185,7 @@ describe('AgentPreparationService', () => {
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
     expect(toolContext.currentStage).toBe('job_consultation');
     expect(toolContext.availableStages).toEqual(['trust_building', 'job_consultation']);
+    expect(toolContext.resolvedCity).toBeNull();
     expect(toolContext.stageGoals).toEqual({
       trust_building: { stage: 'trust_building' },
       job_consultation: { stage: 'job_consultation' },
@@ -408,9 +423,42 @@ describe('AgentPreparationService', () => {
     expect(composeArgs.sessionFacts.preferences.city).toBe('上海');
     expect(composeArgs.highConfidenceFacts.preferences.city).toBe('北京');
     expect(composeArgs.highConfidenceFacts.preferences.brands).toEqual(['来伊份']);
+    expect(composeArgs.resolvedCity).toBeNull();
     // memoryBlock 不再包含本轮线索，交由 TurnHintsSection 渲染。
     expect(composeArgs.memoryBlock).not.toContain('[本轮高置信线索]');
     expect(composeArgs.memoryBlock).not.toContain('[本轮待确认线索]');
+  });
+
+  it('should pass resolvedCity into prompt compose and tool context', async () => {
+    mockLocationCityResolver.resolve.mockReturnValue({
+      city: '上海',
+      confidence: 'high',
+      evidence: 'unique_district_alias',
+    });
+
+    await service.prepare(
+      {
+        userMessage: '浦东附近有店吗',
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    const composeArgs = mockContext.compose.mock.calls[0][0];
+    expect(composeArgs.resolvedCity).toEqual({
+      city: '上海',
+      confidence: 'high',
+      evidence: 'unique_district_alias',
+    });
+
+    const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
+    expect(toolContext.resolvedCity).toEqual({
+      city: '上海',
+      confidence: 'high',
+      evidence: 'unique_district_alias',
+    });
   });
 
   it('should append guard suffix and alert when input is unsafe', async () => {

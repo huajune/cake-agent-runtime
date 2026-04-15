@@ -4,6 +4,7 @@ import type {
   InterviewInfo,
   Preferences,
 } from '@memory/types/session-facts.types';
+import type { ResolvedCityEvidence } from '@agent/services/location-city-resolver.service';
 import { PromptContext, PromptSection } from './section.interface';
 
 /**
@@ -27,9 +28,24 @@ export class TurnHintsSection implements PromptSection {
     );
 
     const parts: string[] = [];
+    const resolvedCityBlock = this.renderResolvedCity(ctx);
+    if (resolvedCityBlock) parts.push(resolvedCityBlock);
     if (normalHints) parts.push(this.renderHighConfidence(normalHints));
     if (pendingHints) parts.push(this.renderPendingConfirmation(pendingHints));
     return parts.join('\n\n');
+  }
+
+  private renderResolvedCity(ctx: PromptContext): string {
+    const resolvedCity = ctx.resolvedCity;
+    if (!resolvedCity?.city || resolvedCity.confidence !== 'high') return '';
+
+    return [
+      '[位置解析提示]',
+      '',
+      `- 系统已为本轮位置线索解析出高置信城市：${resolvedCity.city}`,
+      `- 证据来源：${this.getResolvedCityEvidenceText(resolvedCity.evidence)}`,
+      '- 若本轮准备调用 geocode，可直接把该城市填入 city 参数；只有当前消息出现明显冲突时才追问城市。',
+    ].join('\n');
   }
 
   /** 把本轮前置高置信识别渲染成单独的 runtime hints。 */
@@ -64,6 +80,25 @@ export class TurnHintsSection implements PromptSection {
       '## 当前消息待确认结果',
       lines.join('\n'),
     ].join('\n');
+  }
+
+  private getResolvedCityEvidenceText(evidence: ResolvedCityEvidence): string {
+    switch (evidence) {
+      case 'municipality_compact':
+        return '直辖市紧凑表达';
+      case 'explicit_city':
+        return '当前消息明确提到城市';
+      case 'unique_district_alias':
+        return '区域可唯一映射到城市';
+      case 'hotspot_alias':
+        return '热门地点/商圈可唯一映射到城市';
+      case 'memory_carry_over':
+        return '会话记忆中的稳定城市 + 本轮位置线索';
+      case 'conflict':
+        return '城市线索冲突';
+      default:
+        return '未知';
+    }
   }
 
   /** 把当前轮高置信识别拆成“普通线索”和“待确认线索”。 */

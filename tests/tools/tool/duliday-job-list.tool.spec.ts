@@ -100,6 +100,17 @@ describe('buildJobListTool', () => {
     expect(result.error).toContain('未找到');
   });
 
+  it('should block region-only queries when city is missing', async () => {
+    const result = await executeTool(mockContext, {
+      ...defaultInput,
+      cityNameList: [],
+      regionNameList: ['徐汇'],
+    });
+
+    expect(result).toEqual({ error: '需要城市信息，只有区，无法查询' });
+    expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+  });
+
   it('should call onJobsFetched callback', async () => {
     const job = makeJobData({
       jobSalary: {

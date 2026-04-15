@@ -171,6 +171,42 @@ describe('job-policy-parser', () => {
     );
   });
 
+  it('should not map 意向岗位 to work-experience field', () => {
+    const guidance = buildFieldGuidance({
+      hiringRequirement: {
+        basicPersonalRequirements: {
+          minAge: 18,
+          maxAge: 40,
+        },
+        certificate: {
+          healthCertificate: '食品健康证',
+        },
+        remark: '早班5人，中班10人，晚班5人',
+      },
+      interviewProcess: {
+        interviewSupplement: [
+          { interviewSupplement: '有无健康证' },
+          { interviewSupplement: '通勤时间' },
+          { interviewSupplement: '能做多久' },
+          { interviewSupplement: '意向班次' },
+          { interviewSupplement: '意向岗位' },
+        ],
+      },
+    });
+
+    expect(guidance.screeningFields).toEqual(expect.arrayContaining(['年龄', '健康证情况']));
+    expect(guidance.screeningFields).not.toContain('过往公司+岗位+年限');
+    expect(guidance.fieldSignals).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: '过往公司+岗位+年限',
+          sourceField: 'interview_supplement',
+          evidence: '意向岗位',
+        }),
+      ]),
+    );
+  });
+
   it('should build normalized analysis with highlights and time hints', () => {
     const analysis = buildJobPolicyAnalysis({
       hiringRequirement: {

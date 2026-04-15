@@ -1199,6 +1199,15 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
         includeWorkTime = false,
         includeInterviewProcess = false,
       }) => {
+        const normalizedCityNameList = cityNameList.map((city) => city.trim()).filter(Boolean);
+        const normalizedRegionNameList = regionNameList
+          .map((region) => region.trim())
+          .filter(Boolean);
+
+        if (normalizedRegionNameList.length > 0 && normalizedCityNameList.length === 0) {
+          return { error: '需要城市信息，只有区，无法查询' };
+        }
+
         const options = {
           includeBasicInfo,
           includeJobSalary,
@@ -1208,8 +1217,8 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
           includeInterviewProcess,
         };
         const fetchBaseParams = {
-          cityNameList,
-          regionNameList,
+          cityNameList: normalizedCityNameList,
+          regionNameList: normalizedRegionNameList,
           brandAliasList,
           brandIdList,
           projectNameList,
@@ -1252,8 +1261,8 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
           // 仅基于真实岗位字段做本地匹配，不依赖手写别名字典。
           if (jobs.length === 0 && jobCategoryList.length > 0) {
             const fallback = await spongeService.fetchJobs({
-              cityNameList,
-              regionNameList,
+              cityNameList: normalizedCityNameList,
+              regionNameList: normalizedRegionNameList,
               brandAliasList,
               brandIdList,
               projectNameList,

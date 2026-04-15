@@ -30,6 +30,34 @@ describe('TurnHintsSection', () => {
     expect(output).not.toContain('[本轮待确认线索]');
   });
 
+  it('should render resolved city hint when system has high-confidence city', () => {
+    const output = section.build({
+      ...baseCtx,
+      resolvedCity: {
+        city: '上海',
+        confidence: 'high',
+        evidence: 'unique_district_alias',
+      },
+    });
+
+    expect(output).toContain('[位置解析提示]');
+    expect(output).toContain('系统已为本轮位置线索解析出高置信城市：上海');
+    expect(output).toContain('区域可唯一映射到城市');
+  });
+
+  it('should render hotspot evidence text for resolved city', () => {
+    const output = section.build({
+      ...baseCtx,
+      resolvedCity: {
+        city: '上海',
+        confidence: 'high',
+        evidence: 'hotspot_alias',
+      },
+    });
+
+    expect(output).toContain('热门地点/商圈可唯一映射到城市');
+  });
+
   it('should move conflicting fields into pending confirmation hints and keep new fields in normal hints', () => {
     const output = section.build({
       ...baseCtx,

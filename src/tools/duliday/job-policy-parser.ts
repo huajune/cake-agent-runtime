@@ -307,7 +307,7 @@ function mapSupplementToField(supplement: string): string | null {
   if (/身高/.test(supplement)) return '身高';
   if (/体重/.test(supplement)) return '体重';
   if (/简历/.test(supplement)) return '简历附件';
-  if (/过往公司|岗位|年限|工作经历|经验/.test(supplement)) return '过往公司+岗位+年限';
+  if (/过往公司|年限|工作经历|工作经验|经验/.test(supplement)) return '过往公司+岗位+年限';
   if (/学历/.test(supplement)) return '学历';
   if (/学生/.test(supplement)) return '是否学生';
   if (/姓名/.test(supplement)) return '姓名';
