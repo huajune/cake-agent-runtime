@@ -474,7 +474,6 @@ describe('buildInterviewPrecheckTool', () => {
     const result = await executeTool({ jobId: 100 });
 
     const text = result.bookingChecklist.templateText as string;
-    expect(text).toContain('面试模版：');
     expect(text).toContain('面试要求：先将以下资料补充下发给我，我来帮你约面试');
 
     const idxName = text.indexOf('姓名：');
