@@ -39,7 +39,10 @@ function makeJob(overrides: Partial<JobDetail> = {}): JobDetail {
   };
 }
 
-function makeData(jobs: JobDetail[], overrides: { brand?: string; city?: string; industry?: string } = {}) {
+function makeData(
+  jobs: JobDetail[],
+  overrides: { brand?: string; city?: string; industry?: string } = {},
+) {
   return {
     brand: overrides.brand ?? '肯德基',
     city: overrides.city ?? '广州',
@@ -311,9 +314,7 @@ describe('buildPartTimeJobUserMessage', () => {
     it('should display single-scenario basicSalary with unit', () => {
       const job = makeJob({
         jobSalary: {
-          salaryScenarioList: [
-            { basicSalary: { basicSalary: 15.5, basicSalaryUnit: '元/小时' } },
-          ],
+          salaryScenarioList: [{ basicSalary: { basicSalary: 15.5, basicSalaryUnit: '元/小时' } }],
         },
       });
       const result = buildPartTimeJobUserMessage(makeData([job]));
@@ -321,7 +322,7 @@ describe('buildPartTimeJobUserMessage', () => {
       expect(result).toContain('15.5元/时');
     });
 
-    it('should omit salary line when only monthly comprehensiveSalary is present', () => {
+    it('should display monthly salary when only monthly comprehensiveSalary is present', () => {
       const job = makeJob({
         jobSalary: {
           salaryScenarioList: [
@@ -337,8 +338,8 @@ describe('buildPartTimeJobUserMessage', () => {
       });
       const result = buildPartTimeJobUserMessage(makeData([job]));
 
-      expect(result).not.toMatch(/薪资:/);
-      expect(result).not.toContain('元/月');
+      expect(result).toContain('薪资: 3000-5000元/月');
+      expect(result).toContain('固定薪资行（必须原样输出）: 💰 薪资待遇：3000-5000元/月');
     });
 
     it('should display min-max range for multi-scenario salary', () => {
@@ -390,9 +391,7 @@ describe('buildPartTimeJobUserMessage', () => {
         makeJob({
           basicInfo: { jobId: 2, storeInfo: {} },
           jobSalary: {
-            salaryScenarioList: [
-              { basicSalary: { basicSalary: 18, basicSalaryUnit: '元/小时' } },
-            ],
+            salaryScenarioList: [{ basicSalary: { basicSalary: 18, basicSalaryUnit: '元/小时' } }],
           },
         }),
       ];
@@ -473,6 +472,24 @@ describe('buildPartTimeJobUserMessage', () => {
       expect(buildPartTimeSalaryLine([job])).toBe('💰 薪资待遇：19-24元/时');
     });
 
+    it('should fallback to monthly salary line when hourly salary is absent', () => {
+      const job = makeJob({
+        jobSalary: {
+          salaryScenarioList: [
+            {
+              comprehensiveSalary: {
+                minComprehensiveSalary: 6000,
+                maxComprehensiveSalary: 9000,
+                comprehensiveSalaryUnit: '元/月',
+              },
+            },
+          ],
+        },
+      });
+
+      expect(buildPartTimeSalaryLine([job])).toBe('💰 薪资待遇：6000-9000元/月');
+    });
+
     it('should replace ai-generated salary block with the exact computed salary line', () => {
       const aiMessage = `🍕【必胜客·北京】69家门店招聘啦！
 
@@ -501,6 +518,32 @@ describe('buildPartTimeJobUserMessage', () => {
       expect(result).toContain('💰 薪资待遇：19-24元/时');
       expect(result).not.toContain('19-22元/时');
       expect(result).not.toContain('工作类型');
+      expect(result).toContain('👤 招聘对象：18-50岁');
+    });
+
+    it('should insert computed monthly salary line when AI omits the salary module', () => {
+      const aiMessage = `🥗【李维斯·上海】1家门店招聘啦！
+
+👤 招聘对象：18-50岁
+📝 工作内容：
+• 商品推荐`;
+      const job = makeJob({
+        jobSalary: {
+          salaryScenarioList: [
+            {
+              comprehensiveSalary: {
+                minComprehensiveSalary: 6000,
+                maxComprehensiveSalary: 9000,
+                comprehensiveSalaryUnit: '元/月',
+              },
+            },
+          ],
+        },
+      });
+
+      const result = enforcePartTimeSalaryLine(aiMessage, [job]);
+
+      expect(result).toContain('💰 薪资待遇：6000-9000元/月');
       expect(result).toContain('👤 招聘对象：18-50岁');
     });
   });
@@ -652,7 +695,8 @@ describe('buildPartTimeJobUserMessage', () => {
     it('should filter student, settlement, and social security remarks', () => {
       const job = makeJob({
         hiringRequirement: {
-          remark: '需持有效健康证；坚决不接受学生（违规不予结算，已发亦追回扣除）；员工名下不能有社保',
+          remark:
+            '需持有效健康证；坚决不接受学生（违规不予结算，已发亦追回扣除）；员工名下不能有社保',
         },
       });
       const result = buildPartTimeJobUserMessage(makeData([job]));

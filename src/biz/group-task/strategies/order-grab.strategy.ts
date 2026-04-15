@@ -365,9 +365,9 @@ export class OrderGrabStrategy implements NotificationStrategy {
       .map((label) => this.normalizeCityName(label))
       .filter(Boolean);
 
-    const cityNames = [...new Set(
-      displayLabels.flatMap((label) => LABEL_CITY_EXPANSIONS[label] ?? [label]),
-    )];
+    const cityNames = [
+      ...new Set(displayLabels.flatMap((label) => LABEL_CITY_EXPANSIONS[label] ?? [label])),
+    ];
 
     return { displayLabels, cityNames };
   }

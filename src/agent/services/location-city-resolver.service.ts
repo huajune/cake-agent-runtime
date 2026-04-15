@@ -366,9 +366,7 @@ export class LocationCityResolverService {
     return null;
   }
 
-  private resolveCityFromNormalizedCandidate(
-    message: string,
-  ): DirectResolvedCityCandidate | null {
+  private resolveCityFromNormalizedCandidate(message: string): DirectResolvedCityCandidate | null {
     const candidate = this.normalizeLocationCandidate(message);
     if (!candidate) return null;
 
@@ -465,9 +463,7 @@ export class LocationCityResolverService {
     if (!values?.length) return [];
     return Array.from(
       new Set(
-        values
-          .map((value) => value?.trim())
-          .filter((value): value is string => Boolean(value)),
+        values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)),
       ),
     );
   }

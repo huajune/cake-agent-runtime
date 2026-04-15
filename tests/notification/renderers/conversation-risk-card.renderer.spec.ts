@@ -73,15 +73,64 @@ describe('ConversationRiskCardRenderer', () => {
 
     expect(card).toEqual(
       expect.objectContaining({
-        title: '交流异常',
+        title: '交流异常 · 人工介入',
         color: 'red',
         atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
       }),
     );
     expect((card.content as string)).toContain('系统已自动暂停托管');
     expect((card.content as string)).toContain('风险类型：投诉/举报风险');
+    expect((card.content as string)).toContain('风险摘要：候选人出现明确投诉风险');
     expect((card.content as string)).toContain('昵称：Alice');
     expect((card.content as string)).toContain('品牌：蜀地源');
     expect((card.content as string)).toContain('AI 已停止回复');
+    expect((card.content as string)).not.toContain('暂停ID：');
+  });
+
+  it('should avoid rendering noisy nickname and empty job section', () => {
+    const card = renderer.buildConversationRiskCard({
+      riskLabel: '投诉/举报风险',
+      summary: '候选人明确表示要举报',
+      reason: '命中关键词：举报',
+      contactName: '7881300085910772',
+      chatId: 'chat-123',
+      pausedUserId: 'chat-123',
+      currentMessageContent: '我要举报',
+      recentMessages: [{ role: 'user', content: '我要举报', timestamp: 1712044860000 }],
+      sessionState: {
+        facts: {
+          interview_info: {
+            name: null,
+            phone: null,
+            gender: null,
+            age: null,
+            applied_store: null,
+            applied_position: null,
+            interview_time: null,
+            is_student: null,
+            education: null,
+            has_health_certificate: null,
+          },
+          preferences: {
+            brands: null,
+            salary: null,
+            position: null,
+            schedule: null,
+            city: null,
+            district: null,
+            location: null,
+            labor_form: null,
+          },
+          reasoning: 'test',
+        },
+        lastCandidatePool: null,
+        presentedJobs: null,
+        currentFocusJob: null,
+        invitedGroups: null,
+      },
+    });
+
+    expect((card.content as string)).not.toContain('昵称：7881300085910772');
+    expect((card.content as string)).not.toContain('**岗位信息**');
   });
 });

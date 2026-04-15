@@ -1,11 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Readable } from 'stream';
+import { createHash } from 'node:crypto';
 import {
   AgentRunnerService,
   type AgentInputMessage,
   type AgentRunResult,
   type AgentStreamResult,
 } from '@agent/runner.service';
+import { ChatSessionService } from '@biz/message/services/chat-session.service';
+import { ChatMessageInput } from '@biz/message/types/message.types';
+import { OnboardFollowupMonitorService } from '@biz/recruitment-case/services/onboard-followup-monitor.service';
+import { ConversationRiskService } from '@/conversation-risk/services/conversation-risk.service';
+import {
+  EnterpriseMessageCallbackDto,
+  MessageSource,
+  MessageType,
+  ContactType,
+} from '@wecom/message/ingress/message-callback.dto';
+import { MessageParser } from '@wecom/message/utils/message-parser.util';
 import { TestChatRequestDto, TestChatResponse, VercelAIChatRequestDto } from '../dto/test-chat.dto';
 import { TestExecutionRepository } from '../repositories/test-execution.repository';
 import { TestExecution } from '../entities/test-execution.entity';
@@ -13,6 +25,8 @@ import { ExecutionStatus, MessageRole } from '../enums/test.enum';
 
 /** 默认场景 */
 const DEFAULT_SCENARIO = 'candidate-consultation';
+const TEST_CORP_ID = 'test';
+const TEST_BOT_ID = 'agent-test-bot';
 
 /**
  * 测试执行结果提取接口
@@ -51,6 +65,9 @@ export class TestExecutionService {
   constructor(
     private readonly runner: AgentRunnerService,
     private readonly executionRepository: TestExecutionRepository,
+    private readonly chatSessionService: ChatSessionService,
+    private readonly conversationRiskService: ConversationRiskService,
+    private readonly onboardFollowupMonitorService: OnboardFollowupMonitorService,
   ) {
     this.logger.log('TestExecutionService 初始化完成');
   }
@@ -78,11 +95,15 @@ export class TestExecutionService {
     let executionStatus: ExecutionStatus = ExecutionStatus.SUCCESS;
     let errorMessage: string | null = null;
     const sessionId = request.sessionId ?? `test-${Date.now()}`;
+    const historyForAgent = this.resolveHistoryForAgent(request);
+    const strategySource = this.resolveStrategySource(request);
 
     try {
-      const historyForAgent = request.skipHistoryTrim
-        ? request.history || []
-        : (request.history || []).slice(0, -2);
+      await this.prepareMonitoringContext({
+        request,
+        sessionId,
+        historyForAgent,
+      });
 
       const messages = this.buildRunnerMessages(
         historyForAgent,
@@ -93,12 +114,12 @@ export class TestExecutionService {
       agentResult = await this.runner.invoke({
         messages,
         userId: request.userId,
-        corpId: 'test',
+        corpId: TEST_CORP_ID,
         sessionId,
         scenario,
         botUserId: request.botUserId,
         botImId: request.botImId,
-        strategySource: this.resolveStrategySource(request),
+        strategySource,
         modelId: request.modelId,
       });
     } catch (error: unknown) {
@@ -121,12 +142,12 @@ export class TestExecutionService {
         method: 'POST',
         body: {
           scenario,
-          message: request.message,
+          message: request.message ?? '',
           imageUrls: request.imageUrls,
           userId: request.userId,
           botUserId: request.botUserId,
           botImId: request.botImId,
-          strategySource: this.resolveStrategySource(request),
+          strategySource,
         },
       },
       response: {
@@ -196,19 +217,23 @@ export class TestExecutionService {
     );
 
     const sessionId = request.sessionId ?? `test-${Date.now()}`;
-    const historyForAgent = request.skipHistoryTrim
-      ? request.history || []
-      : (request.history || []).slice(0, -2);
+    const historyForAgent = this.resolveHistoryForAgent(request);
+    const strategySource = this.resolveStrategySource(request);
+    await this.prepareMonitoringContext({
+      request,
+      sessionId,
+      historyForAgent,
+    });
 
     const messages = this.buildRunnerMessages(historyForAgent, request.message, request.imageUrls);
     const runnerParams = {
       messages,
       userId: request.userId,
-      corpId: 'test',
+      corpId: TEST_CORP_ID,
       sessionId,
       scenario,
       thinking: request.thinking,
-      strategySource: this.resolveStrategySource(request),
+      strategySource,
       botUserId: request.botUserId,
       botImId: request.botImId,
       modelId: request.modelId,
@@ -221,11 +246,11 @@ export class TestExecutionService {
       agentRequest: {
         messages,
         userId: request.userId,
-        corpId: 'test',
+        corpId: TEST_CORP_ID,
         sessionId,
         scenario,
         thinking: request.thinking,
-        strategySource: this.resolveStrategySource(request),
+        strategySource,
         botUserId: request.botUserId,
         botImId: request.botImId,
         modelId: request.modelId,
@@ -364,6 +389,198 @@ export class TestExecutionService {
   }
 
   // ========== 私有方法 ==========
+
+  private resolveHistoryForAgent(
+    request: Pick<TestChatRequestDto, 'history' | 'skipHistoryTrim'>,
+  ): Array<{ role: MessageRole; content: string; imageUrls?: string[] }> {
+    return request.skipHistoryTrim ? request.history || [] : (request.history || []).slice(0, -2);
+  }
+
+  private async prepareMonitoringContext(params: {
+    request: TestChatRequestDto;
+    sessionId: string;
+    historyForAgent: Array<{ role: MessageRole; content: string; imageUrls?: string[] }>;
+  }): Promise<void> {
+    const { request, sessionId, historyForAgent } = params;
+
+    await this.syncHistoryToProductionChat(request, sessionId, historyForAgent);
+
+    const syntheticMessage = this.buildSyntheticInboundMessage(request, sessionId);
+    await this.chatSessionService.saveMessage(
+      this.toCurrentUserChatMessage(request, sessionId, syntheticMessage),
+    );
+    this.triggerMonitoringHooks(syntheticMessage, MessageParser.extractContent(syntheticMessage));
+  }
+
+  private async syncHistoryToProductionChat(
+    request: TestChatRequestDto,
+    sessionId: string,
+    history: Array<{ role: MessageRole; content: string; imageUrls?: string[] }>,
+  ): Promise<void> {
+    if (history.length === 0) {
+      return;
+    }
+
+    const baseTimestamp = Date.now() - (history.length + 1) * 1000;
+    const messages: ChatMessageInput[] = history.map((message, index) =>
+      this.toChatHistoryMessage({
+        request,
+        sessionId,
+        historyIndex: index,
+        message,
+        timestamp: baseTimestamp + index * 1000,
+      }),
+    );
+
+    await this.chatSessionService.saveMessagesBatch(messages);
+  }
+
+  private toChatHistoryMessage(params: {
+    request: TestChatRequestDto;
+    sessionId: string;
+    historyIndex: number;
+    message: { role: MessageRole; content: string; imageUrls?: string[] };
+    timestamp: number;
+  }): ChatMessageInput {
+    const { request, sessionId, historyIndex, message, timestamp } = params;
+    const trimmedContent = message.content.trim();
+    const hasImages = (message.imageUrls?.length ?? 0) > 0;
+    const role = message.role === MessageRole.ASSISTANT ? 'assistant' : 'user';
+    const messageType = hasImages && !trimmedContent ? MessageType.IMAGE : MessageType.TEXT;
+    const source = role === 'assistant' ? MessageSource.AI_REPLY : MessageSource.MOBILE_PUSH;
+
+    return {
+      chatId: sessionId,
+      messageId: this.buildHistoryMessageId(sessionId, historyIndex, message),
+      role,
+      content:
+        trimmedContent ||
+        (hasImages
+          ? role === 'assistant'
+            ? '[图片消息] 招募经理发送了一张图片'
+            : '[图片消息] 候选人发送了一张图片'
+          : ''),
+      timestamp,
+      candidateName: request.userId,
+      managerName: request.botUserId,
+      orgId: TEST_CORP_ID,
+      botId: TEST_BOT_ID,
+      messageType,
+      source,
+      isRoom: false,
+      imBotId: request.botImId,
+      imContactId: request.userId,
+      contactType: ContactType.PERSONAL_WECHAT,
+      isSelf: role === 'assistant',
+      payload:
+        messageType === MessageType.IMAGE
+          ? { imageUrl: message.imageUrls?.[0] }
+          : { text: trimmedContent, pureText: trimmedContent },
+      externalUserId: request.userId,
+    };
+  }
+
+  private buildSyntheticInboundMessage(
+    request: TestChatRequestDto,
+    sessionId: string,
+  ): EnterpriseMessageCallbackDto {
+    const trimmedMessage = request.message?.trim();
+    const imageUrl = request.imageUrls?.[0];
+    const messageType = trimmedMessage || !imageUrl ? MessageType.TEXT : MessageType.IMAGE;
+    const payload =
+      messageType === MessageType.IMAGE
+        ? { imageUrl }
+        : { text: trimmedMessage || '', pureText: trimmedMessage || '' };
+
+    return {
+      orgId: TEST_CORP_ID,
+      token: 'test-suite',
+      botId: TEST_BOT_ID,
+      botUserId: request.botUserId,
+      imBotId: request.botImId || TEST_BOT_ID,
+      chatId: sessionId,
+      imContactId: request.userId!,
+      messageType,
+      messageId: this.buildLiveMessageId(sessionId),
+      timestamp: Date.now().toString(),
+      isSelf: false,
+      source: MessageSource.MOBILE_PUSH,
+      contactType: ContactType.PERSONAL_WECHAT,
+      payload,
+      contactName: request.userId,
+      externalUserId: request.userId,
+      _apiType: 'enterprise',
+      _receivedAtMs: Date.now(),
+    };
+  }
+
+  private buildHistoryMessageId(
+    sessionId: string,
+    historyIndex: number,
+    message: { role: MessageRole; content: string; imageUrls?: string[] },
+  ): string {
+    const hash = createHash('sha1')
+      .update(
+        JSON.stringify({
+          role: message.role,
+          content: message.content,
+          imageUrls: message.imageUrls || [],
+        }),
+      )
+      .digest('hex')
+      .slice(0, 12);
+
+    return `agent-test-history:${sessionId}:${historyIndex}:${hash}`;
+  }
+
+  private buildLiveMessageId(sessionId: string): string {
+    return `agent-test-live:${sessionId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  private toCurrentUserChatMessage(
+    request: TestChatRequestDto,
+    sessionId: string,
+    messageData: EnterpriseMessageCallbackDto,
+  ): ChatMessageInput {
+    return {
+      chatId: sessionId,
+      messageId: messageData.messageId,
+      role: 'user',
+      content: MessageParser.extractContent(messageData),
+      timestamp: Number(messageData.timestamp),
+      candidateName: request.userId,
+      managerName: request.botUserId,
+      orgId: TEST_CORP_ID,
+      botId: TEST_BOT_ID,
+      messageType: messageData.messageType,
+      source: messageData.source,
+      isRoom: false,
+      imBotId: messageData.imBotId,
+      imContactId: request.userId,
+      contactType: ContactType.PERSONAL_WECHAT,
+      isSelf: false,
+      payload: messageData.payload as Record<string, unknown>,
+      externalUserId: request.userId,
+    };
+  }
+
+  private triggerMonitoringHooks(messageData: EnterpriseMessageCallbackDto, content: string): void {
+    void this.conversationRiskService.checkAndHandle({ messageData, content }).catch((error) => {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `[AgentTest][交流异常检测] 触发失败 [${messageData.messageId}]: ${errorMessage}`,
+      );
+    });
+
+    void this.onboardFollowupMonitorService
+      .checkAndHandle({ messageData, content })
+      .catch((error) => {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.error(
+          `[AgentTest][上岗跟进监控] 触发失败 [${messageData.messageId}]: ${errorMessage}`,
+        );
+      });
+  }
 
   private buildRunnerMessages(
     history: Array<{ role: MessageRole; content: string; imageUrls?: string[] }>,
