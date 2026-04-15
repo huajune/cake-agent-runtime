@@ -1,7 +1,7 @@
 {
   "baseVersion": "5.1.0",
   "nextVersion": "5.2.0",
-  "updatedAt": "2026-04-14",
+  "updatedAt": "2026-04-15",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -36,6 +36,24 @@
       "optimizations": [],
       "ops": [
         "[codex] Refactor observability and notification flow"
+      ],
+      "config": [],
+      "verification": []
+    },
+    {
+      "number": "78",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/78",
+      "title": "[codex] add conversation risk and onboarding handoff monitoring",
+      "author": "huajune",
+      "mergedAt": "2026-04-15",
+      "summary": [
+        "[codex] add conversation risk and onboarding handoff monitoring"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "[codex] add conversation risk and onboarding handoff monitoring"
       ],
       "config": [],
       "verification": []
