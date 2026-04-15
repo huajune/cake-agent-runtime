@@ -217,7 +217,8 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.bookingChecklist.missingFields).toContain('带健康证原件');
     expect(result.bookingChecklist.templateText).toContain('姓名：');
     expect(result._fixedReply).toBe(result.bookingChecklist.templateText);
-    expect(result._replyRule).toContain('必须原样输出 _fixedReply');
+    expect(result._replyRule).toContain('正常收资场景下必须原样输出 _fixedReply');
+    expect(result._replyRule).toContain('不要继续机械复读字段模板');
   });
 
   it('should compress periodic windows into scheduleRule and generate upcoming options', async () => {

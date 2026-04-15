@@ -15,10 +15,7 @@ export class ConversationRiskCardRenderer {
       this.buildSection('聊天上下文（最近10条）', this.formatRecentMessages(payload)),
       this.buildSection('候选人信息', this.formatCandidateInfo(payload)),
       this.buildSection('岗位信息', this.formatJobInfo(payload)),
-      this.buildSection(
-        '系统动作',
-        ['- 已暂停托管', '- AI 已停止回复', '- 处理完成后请手动恢复托管'].join('\n'),
-      ),
+      '请处理完成后手动恢复托管。',
       `通知时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`,
     ].filter((section): section is string => Boolean(section));
 
@@ -32,18 +29,14 @@ export class ConversationRiskCardRenderer {
   }
 
   private formatOverview(payload: ConversationRiskNotificationPayload): string {
-    const lines = ['系统已自动暂停托管，请人工介入处理。', `风险类型：${payload.riskLabel}`];
+    const lines = [`风险类型：${payload.riskLabel}`];
 
-    if (
-      payload.summary &&
-      payload.summary.trim() &&
-      payload.summary.trim() !== payload.reason.trim()
-    ) {
+    if (this.shouldRenderSummary(payload)) {
       lines.push(`风险摘要：${payload.summary.trim()}`);
     }
 
     lines.push(`命中原因：${payload.reason}`);
-    lines.push(`当前消息：${this.formatQuotedText(payload.currentMessageContent)}`);
+    lines.push(`当前消息：\n${this.formatQuotedText(payload.currentMessageContent)}`);
 
     return lines.join('\n');
   }
@@ -83,7 +76,7 @@ export class ConversationRiskCardRenderer {
         : null,
       interviewInfo?.phone ? `电话：${interviewInfo.phone}` : null,
       interviewInfo?.gender ? `性别：${interviewInfo.gender}` : null,
-      interviewInfo?.age ? `年龄：${interviewInfo.age}` : null,
+      this.isLikelyCandidateAge(interviewInfo?.age) ? `年龄：${interviewInfo?.age}` : null,
       preferences?.city ? `城市：${preferences.city}` : null,
       preferences?.district?.length ? `区域：${preferences.district.join('、')}` : null,
       preferences?.position?.length ? `意向岗位：${preferences.position.join('、')}` : null,
@@ -143,5 +136,40 @@ export class ConversationRiskCardRenderer {
       return normalized;
     }
     return `${normalized.slice(0, maxLength)}...`;
+  }
+
+  private isLikelyCandidateAge(age?: string | null): boolean {
+    if (!age?.trim()) {
+      return false;
+    }
+
+    const normalized = age.trim();
+    if (/[到至~-]|[一二三四五六七八九十]+岁/.test(normalized)) {
+      return false;
+    }
+
+    return /^\d{1,2}(岁)?$/.test(normalized);
+  }
+
+  private shouldRenderSummary(payload: ConversationRiskNotificationPayload): boolean {
+    const summary = payload.summary?.trim();
+    if (!summary || summary === payload.reason.trim()) {
+      return false;
+    }
+
+    return !this.isGenericSummary(payload.riskLabel, summary);
+  }
+
+  private isGenericSummary(riskLabel: string, summary: string): boolean {
+    const genericSummariesByLabel: Record<string, string[]> = {
+      '辱骂/攻击': ['候选人出现明显辱骂或攻击性表达'],
+      '投诉/举报风险': ['候选人出现明确投诉、举报或欺骗风险表达', '候选人出现明确投诉风险'],
+      '连续质问/情绪升级': [
+        '候选人近期连续追问，情绪有明显升级趋势',
+        '候选人出现明显负面情绪，需要结合上下文做复判',
+      ],
+    };
+
+    return (genericSummariesByLabel[riskLabel] ?? []).includes(summary);
   }
 }

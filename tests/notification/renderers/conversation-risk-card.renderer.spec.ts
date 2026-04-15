@@ -78,12 +78,12 @@ describe('ConversationRiskCardRenderer', () => {
         atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
       }),
     );
-    expect((card.content as string)).toContain('系统已自动暂停托管');
     expect((card.content as string)).toContain('风险类型：投诉/举报风险');
-    expect((card.content as string)).toContain('风险摘要：候选人出现明确投诉风险');
+    expect((card.content as string)).not.toContain('风险摘要：候选人出现明确投诉风险');
+    expect((card.content as string)).toContain('当前消息：\n> 你们是不是骗子，我要投诉');
     expect((card.content as string)).toContain('昵称：Alice');
     expect((card.content as string)).toContain('品牌：蜀地源');
-    expect((card.content as string)).toContain('AI 已停止回复');
+    expect((card.content as string)).toContain('请处理完成后手动恢复托管。');
     expect((card.content as string)).not.toContain('暂停ID：');
   });
 
@@ -132,5 +132,102 @@ describe('ConversationRiskCardRenderer', () => {
 
     expect((card.content as string)).not.toContain('昵称：7881300085910772');
     expect((card.content as string)).not.toContain('**岗位信息**');
+  });
+
+  it('should hide age ranges that look like job requirements', () => {
+    const card = renderer.buildConversationRiskCard({
+      riskLabel: '辱骂/攻击',
+      summary: '候选人出现明显辱骂或攻击性表达',
+      reason: '命中关键词：滚',
+      contactName: '候选人A',
+      chatId: 'chat-123',
+      pausedUserId: 'chat-123',
+      currentMessageContent: '滚犊子，要我这么多信息',
+      recentMessages: [{ role: 'user', content: '滚犊子，要我这么多信息', timestamp: 1712044860000 }],
+      sessionState: {
+        facts: {
+          interview_info: {
+            name: null,
+            phone: null,
+            gender: null,
+            age: '18到35岁',
+            applied_store: null,
+            applied_position: null,
+            interview_time: null,
+            is_student: null,
+            education: null,
+            has_health_certificate: null,
+          },
+          preferences: {
+            brands: null,
+            salary: null,
+            position: ['小时工', '日结小时工'],
+            schedule: null,
+            city: '上海',
+            district: ['杨浦'],
+            location: null,
+            labor_form: null,
+          },
+          reasoning: 'test',
+        },
+        lastCandidatePool: null,
+        presentedJobs: null,
+        currentFocusJob: null,
+        invitedGroups: null,
+      },
+    });
+
+    expect((card.content as string)).not.toContain('年龄：18到35岁');
+    expect((card.content as string)).toContain('城市：上海');
+    expect((card.content as string)).toContain('区域：杨浦');
+  });
+
+  it('should hide generic summary and duplicated system action block', () => {
+    const card = renderer.buildConversationRiskCard({
+      riskLabel: '辱骂/攻击',
+      summary: '候选人出现明显辱骂或攻击性表达',
+      reason: '命中关键词：滚',
+      contactName: '候选人A',
+      chatId: 'chat-123',
+      pausedUserId: 'chat-123',
+      currentMessageContent: '滚犊子，要我这么多信息',
+      recentMessages: [{ role: 'user', content: '滚犊子，要我这么多信息', timestamp: 1712044860000 }],
+      sessionState: {
+        facts: {
+          interview_info: {
+            name: null,
+            phone: null,
+            gender: null,
+            age: null,
+            applied_store: null,
+            applied_position: null,
+            interview_time: null,
+            is_student: null,
+            education: null,
+            has_health_certificate: null,
+          },
+          preferences: {
+            brands: null,
+            salary: null,
+            position: null,
+            schedule: null,
+            city: null,
+            district: null,
+            location: null,
+            labor_form: null,
+          },
+          reasoning: 'test',
+        },
+        lastCandidatePool: null,
+        presentedJobs: null,
+        currentFocusJob: null,
+        invitedGroups: null,
+      },
+    });
+
+    expect((card.content as string)).toContain('风险类型：辱骂/攻击');
+    expect((card.content as string)).not.toContain('风险摘要：候选人出现明显辱骂或攻击性表达');
+    expect((card.content as string)).not.toContain('**系统动作**');
+    expect((card.content as string)).not.toContain('AI 已停止回复');
   });
 });
