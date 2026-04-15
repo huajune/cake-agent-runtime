@@ -23,7 +23,11 @@ import {
   SESSION_EXTRACTION_SYSTEM_PROMPT,
 } from './session-extraction.prompt';
 import { detectBrandAliasHints, mergeDetectedBrands } from './high-confidence-facts';
-import { extractPresentedJobs, resolveCurrentFocusJob } from './session-job-matching';
+import {
+  extractPresentedJobs,
+  resolveAssistantAnchoredFocusJob,
+  resolveCurrentFocusJob,
+} from './session-job-matching';
 
 /**
  * 会话记忆服务
@@ -262,6 +266,18 @@ export class SessionService {
 
     if (focusJob !== undefined) {
       await this.saveCurrentFocusJob(corpId, userId, sessionId, focusJob);
+      return;
+    }
+
+    const assistantAnchoredFocusJob = resolveAssistantAnchoredFocusJob(
+      assistantText,
+      state.presentedJobs ?? [],
+      presentedJobs,
+      state.lastCandidatePool ?? [],
+    );
+
+    if (assistantAnchoredFocusJob) {
+      await this.saveCurrentFocusJob(corpId, userId, sessionId, assistantAnchoredFocusJob);
     }
   }
 

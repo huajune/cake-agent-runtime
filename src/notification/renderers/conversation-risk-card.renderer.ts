@@ -65,21 +65,16 @@ export class ConversationRiskCardRenderer {
     const interviewInfo = payload.sessionState?.facts?.interview_info;
     const preferences = payload.sessionState?.facts?.preferences;
     const normalizedContactName = payload.contactName?.trim();
-    const hasReadableNickname =
-      normalizedContactName &&
-      !/^[0-9]{8,}$/.test(normalizedContactName) &&
-      !/^[0-9a-f-]{24,}$/i.test(normalizedContactName);
     const lines = [
-      hasReadableNickname ? `昵称：${normalizedContactName}` : null,
-      interviewInfo?.name && interviewInfo.name !== normalizedContactName
-        ? `姓名：${interviewInfo.name}`
-        : null,
+      normalizedContactName ? `微信昵称：${normalizedContactName}` : null,
+      interviewInfo?.name ? `姓名：${interviewInfo.name}` : null,
       interviewInfo?.phone ? `电话：${interviewInfo.phone}` : null,
       interviewInfo?.gender ? `性别：${interviewInfo.gender}` : null,
       this.isLikelyCandidateAge(interviewInfo?.age) ? `年龄：${interviewInfo?.age}` : null,
       preferences?.city ? `城市：${preferences.city}` : null,
       preferences?.district?.length ? `区域：${preferences.district.join('、')}` : null,
       preferences?.position?.length ? `意向岗位：${preferences.position.join('、')}` : null,
+      payload.botUserName?.trim() ? `托管账号：${payload.botUserName.trim()}` : null,
       `会话ID：${payload.chatId}`,
       payload.pausedUserId !== payload.chatId ? `暂停目标ID：${payload.pausedUserId}` : null,
     ].filter((line): line is string => Boolean(line));

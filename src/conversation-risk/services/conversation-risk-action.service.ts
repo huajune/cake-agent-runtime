@@ -60,6 +60,7 @@ export class ConversationRiskActionService {
       summary: detection.summary || '候选人对话出现异常风险',
       reason: detection.reason || '命中交流异常规则',
       contactName: context.contactName,
+      botUserName: context.botUserName,
       chatId: context.chatId,
       pausedUserId: context.pauseTargetId,
       currentMessageContent: context.currentMessageContent,

@@ -20,6 +20,7 @@ describe('ConversationRiskCardRenderer', () => {
       summary: '候选人出现明确投诉风险',
       reason: '命中关键词：投诉、骗子',
       contactName: 'Alice',
+      botUserName: '招募经理A',
       chatId: 'chat-123',
       pausedUserId: 'chat-123',
       currentMessageContent: '你们是不是骗子，我要投诉',
@@ -81,13 +82,15 @@ describe('ConversationRiskCardRenderer', () => {
     expect((card.content as string)).toContain('风险类型：投诉/举报风险');
     expect((card.content as string)).not.toContain('风险摘要：候选人出现明确投诉风险');
     expect((card.content as string)).toContain('当前消息：\n> 你们是不是骗子，我要投诉');
-    expect((card.content as string)).toContain('昵称：Alice');
+    expect((card.content as string)).toContain('微信昵称：Alice');
+    expect((card.content as string)).toContain('姓名：Alice');
+    expect((card.content as string)).toContain('托管账号：招募经理A');
     expect((card.content as string)).toContain('品牌：蜀地源');
     expect((card.content as string)).toContain('请处理完成后手动恢复托管。');
     expect((card.content as string)).not.toContain('暂停ID：');
   });
 
-  it('should avoid rendering noisy nickname and empty job section', () => {
+  it('should render contactName as wechat nickname and hide empty job section', () => {
     const card = renderer.buildConversationRiskCard({
       riskLabel: '投诉/举报风险',
       summary: '候选人明确表示要举报',
@@ -130,7 +133,7 @@ describe('ConversationRiskCardRenderer', () => {
       },
     });
 
-    expect((card.content as string)).not.toContain('昵称：7881300085910772');
+    expect((card.content as string)).toContain('微信昵称：7881300085910772');
     expect((card.content as string)).not.toContain('**岗位信息**');
   });
 

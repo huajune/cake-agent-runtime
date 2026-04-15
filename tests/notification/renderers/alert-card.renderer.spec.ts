@@ -28,6 +28,7 @@ describe('AlertCardRenderer', () => {
       scope: {
         chatId: 'chat-123',
         contactName: 'Alice',
+        managerName: '招募经理A',
         scenario: 'candidate-consultation',
       },
       impact: {
@@ -54,7 +55,8 @@ describe('AlertCardRenderer', () => {
     expect(payload.title).toBe('【需人工介入】Agent 调用异常');
     expect(payload.color).toBe('yellow');
     expect(payload.atUsers).toEqual([FEISHU_RECEIVER_USERS.GAO_YAQI]);
-    expect(payload.content).toContain('**用户昵称**: Alice');
+    expect(payload.content).toContain('**微信昵称**: Alice');
+    expect(payload.content).toContain('**托管账号**: 招募经理A');
     expect(payload.content).toContain('**用户消息**: 你好，我想找兼职');
     expect(payload.content).toContain('**蛋糕已回复（降级）**: 我确认下哈，马上回你~');
     expect(payload.content).toContain('**异常消息**: 所有模型均失败');

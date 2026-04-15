@@ -40,10 +40,12 @@ const supplementAnswersSchema = z
   .describe('岗位补充标签回答，key 必须是标签名，例如 爱好、身份。标准字段对应标签会自动回填');
 
 export interface InterviewBookingNotificationInfo {
+  contactName?: string;
   candidateName: string;
   phone: string;
   genderLabel?: string;
   ageText?: string;
+  botUserName?: string;
   brandName?: string;
   storeName?: string;
   jobName?: string;
@@ -390,6 +392,7 @@ export function buildInterviewBookingTool(
           void sendInterviewBookingNotification(
             {
               candidateName: name,
+              contactName: context.contactName,
               phone,
               genderLabel,
               ageText,
@@ -398,6 +401,7 @@ export function buildInterviewBookingTool(
               storeName: resolvedStoreName,
               jobName: resolvedJobName,
               jobId,
+              botUserName: context.botUserId,
               toolOutput: toolResult,
               botImId: context.botImId,
             },
@@ -425,18 +429,20 @@ export function buildInterviewBookingTool(
 
           void sendInterviewBookingNotification(
             {
-              candidateName: name,
-              phone,
-              genderLabel,
-              ageText,
+            candidateName: name,
+            contactName: context.contactName,
+            phone,
+            genderLabel,
+            ageText,
               interviewTime,
               brandName,
               storeName,
               jobName,
-              jobId,
-              toolOutput: toolResult,
-              botImId: context.botImId,
-            },
+            jobId,
+            botUserName: context.botUserId,
+            toolOutput: toolResult,
+            botImId: context.botImId,
+          },
             privateChatNotifier,
           );
 

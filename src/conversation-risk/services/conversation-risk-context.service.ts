@@ -18,6 +18,7 @@ export class ConversationRiskContextService {
     messageId: string;
     contactName?: string;
     botImId?: string;
+    botUserName?: string;
     currentMessageContent: string;
   }): Promise<ConversationRiskContext> {
     const [recentMessages, sessionState] = await Promise.all([

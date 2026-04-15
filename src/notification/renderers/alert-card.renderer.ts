@@ -101,7 +101,10 @@ export class AlertCardRenderer {
 
     if (requiresImmediateAttention) {
       if (scope?.contactName) {
-        fields.push(`**用户昵称**: ${scope.contactName}`);
+        fields.push(`**微信昵称**: ${scope.contactName}`);
+      }
+      if (scope?.managerName) {
+        fields.push(`**托管账号**: ${scope.managerName}`);
       }
       if (impact?.userMessage) {
         fields.push(`**用户消息**: ${this.truncate(impact.userMessage, 200)}`);
@@ -116,7 +119,7 @@ export class AlertCardRenderer {
       fields.push(`**告警码**: ${context.code}`);
       fields.push(`**时间**: ${time}`);
       fields.push(`**来源**: ${this.formatSource(context)}`);
-      this.pushScopeFields(fields, scope, { skipContactName: true });
+      this.pushScopeFields(fields, scope, { skipContactName: true, skipManagerName: true });
       if (impact?.deliveryState) {
         fields.push(`**投递状态**: ${impact.deliveryState}`);
       }
@@ -238,7 +241,7 @@ export class AlertCardRenderer {
   private pushScopeFields(
     fields: string[],
     scope?: AlertScope,
-    options?: { skipContactName?: boolean },
+    options?: { skipContactName?: boolean; skipManagerName?: boolean },
   ): void {
     if (!scope) return;
 
@@ -246,7 +249,10 @@ export class AlertCardRenderer {
       fields.push(`**场景**: ${scope.scenario}`);
     }
     if (!options?.skipContactName && scope.contactName) {
-      fields.push(`**用户昵称**: ${scope.contactName}`);
+      fields.push(`**微信昵称**: ${scope.contactName}`);
+    }
+    if (!options?.skipManagerName && scope.managerName) {
+      fields.push(`**托管账号**: ${scope.managerName}`);
     }
     if (scope.chatId) {
       fields.push(`**会话 ID**: ${scope.chatId}`);

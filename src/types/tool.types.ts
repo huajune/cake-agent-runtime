@@ -41,6 +41,8 @@ export interface ToolBuildContext {
   stageGoals?: Record<string, StageGoalConfig>;
   /** 当前与候选人聊天的托管账号企微 userId（企业级 addMember 的 botUserId） */
   botUserId?: string;
+  /** 当前候选人微信昵称（企微回调中的 contactName） */
+  contactName?: string;
   /** 当前与候选人聊天的托管账号系统 wxid（企业级 addMember 的 imBotId） */
   botImId?: string;
   /** 策略来源：testing 链路默认禁用外部副作用工具（如真实拉群）。 */

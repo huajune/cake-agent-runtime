@@ -111,6 +111,7 @@ export class MessageProcessingFailureService {
           scope: {
             scenario,
             contactName,
+            managerName: parsed.managerName,
             chatId,
             sessionId: agentMeta?.sessionId,
             messageId: traceId,
@@ -225,6 +226,7 @@ export class MessageProcessingFailureService {
           scope: {
             scenario,
             contactName,
+            managerName: parsed.managerName,
             chatId,
             messageId: traceId,
             batchId: options?.batchId,
@@ -272,6 +274,7 @@ export class MessageProcessingFailureService {
 
   sendFallbackAlert(params: {
     contactName: string;
+    botUserName?: string;
     userMessage: string;
     fallbackMessage: string;
     fallbackReason: string;
@@ -279,7 +282,16 @@ export class MessageProcessingFailureService {
     chatId: string;
     imBotId?: string;
   }): void {
-    const { contactName, userMessage, fallbackMessage, fallbackReason, scenario, chatId, imBotId } =
+    const {
+      contactName,
+      botUserName,
+      userMessage,
+      fallbackMessage,
+      fallbackReason,
+      scenario,
+      chatId,
+      imBotId,
+    } =
       params;
 
     this.logger.warn(`[${contactName}] Agent 降级响应，原因: ${fallbackReason}，需要人工介入`);
@@ -300,6 +312,7 @@ export class MessageProcessingFailureService {
         scope: {
           scenario,
           contactName,
+          managerName: botUserName,
           chatId,
         },
         impact: {

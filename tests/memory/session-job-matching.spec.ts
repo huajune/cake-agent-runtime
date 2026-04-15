@@ -1,5 +1,6 @@
 import {
   extractPresentedJobs,
+  resolveAssistantAnchoredFocusJob,
   resolveCurrentFocusJob,
 } from '@memory/services/session-job-matching';
 import { RecommendedJobSummary } from '@memory/types/session-facts.types';
@@ -69,5 +70,55 @@ describe('session-job-matching', () => {
     expect(resolveCurrentFocusJob('我想去零售店员那个岗位', [], [], [chaoneiJob, retailJob])).toEqual(
       retailJob,
     );
+  });
+
+  it('should derive focus job from assistant template when one job is clearly dominant', () => {
+    const jiangwanDailyJob: RecommendedJobSummary = {
+      jobId: 527487,
+      brandName: '肯德基',
+      jobName: '肯德基-江湾字节T4-日结-小时工',
+      storeName: '江湾字节T4',
+      cityName: '上海',
+      regionName: '杨浦',
+      laborForm: '兼职',
+      salaryDesc: '24元/小时',
+      jobCategoryName: '日结小时工',
+    };
+
+    const jiangwanHybridJob: RecommendedJobSummary = {
+      jobId: 527488,
+      brandName: '肯德基',
+      jobName: '肯德基-江湾字节T4-兼职+-全职',
+      storeName: '江湾字节T4',
+      cityName: '上海',
+      regionName: '杨浦',
+      laborForm: '兼职',
+      salaryDesc: '17元/小时起',
+      jobCategoryName: '兼职+全职',
+    };
+
+    const youfangDailyJob: RecommendedJobSummary = {
+      jobId: 527489,
+      brandName: '肯德基',
+      jobName: '肯德基-杨浦悠方-日结-小时工',
+      storeName: '杨浦悠方',
+      cityName: '上海',
+      regionName: '杨浦',
+      laborForm: '兼职',
+      salaryDesc: '24元/小时',
+      jobCategoryName: '日结小时工',
+    };
+
+    const assistantTemplate =
+      '面试要求：先将以下资料补充下发给我，我来帮你约面试 姓名： 联系方式： 性别： 年龄： 面试时间： 应聘门店：江湾字节T4 应聘岗位：肯德基-江湾字节T4-日结-小时工';
+
+    expect(
+      resolveAssistantAnchoredFocusJob(
+        assistantTemplate,
+        [jiangwanDailyJob, jiangwanHybridJob],
+        [],
+        [jiangwanDailyJob, jiangwanHybridJob, youfangDailyJob],
+      ),
+    ).toEqual(jiangwanDailyJob);
   });
 });

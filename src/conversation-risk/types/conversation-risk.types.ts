@@ -16,6 +16,7 @@ export interface ConversationRiskContext {
   messageId: string;
   contactName?: string;
   botImId?: string;
+  botUserName?: string;
   currentMessageContent: string;
   recentMessages: ConversationRiskMessage[];
   sessionState: WeworkSessionState | null;

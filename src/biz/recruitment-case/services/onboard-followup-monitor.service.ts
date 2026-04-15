@@ -105,6 +105,7 @@ export class OnboardFollowupMonitorService {
       chatId,
       pausedUserId: pauseTargetId,
       contactName: parsed.contactName,
+      botUserName: parsed.managerName,
       currentMessageContent: content,
       recentMessages: recentMessages.map((message) => ({
         role: message.role,

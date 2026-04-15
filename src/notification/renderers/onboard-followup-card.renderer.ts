@@ -54,10 +54,11 @@ export class OnboardFollowupCardRenderer {
   private formatCandidateInfo(payload: OnboardFollowupNotificationPayload): string {
     const interviewInfo = payload.sessionState?.facts?.interview_info;
     const lines = [
-      payload.contactName ? `昵称：${payload.contactName}` : null,
+      payload.contactName ? `微信昵称：${payload.contactName}` : null,
       interviewInfo?.name ? `姓名：${interviewInfo.name}` : null,
       interviewInfo?.phone ? `电话：${interviewInfo.phone}` : null,
       interviewInfo?.age ? `年龄：${interviewInfo.age}` : null,
+      payload.botUserName?.trim() ? `托管账号：${payload.botUserName.trim()}` : null,
       `会话ID：${payload.chatId}`,
       `暂停ID：${payload.pausedUserId}`,
     ].filter((line): line is string => Boolean(line));

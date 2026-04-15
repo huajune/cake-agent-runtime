@@ -11,6 +11,7 @@ export interface ConversationRiskNotificationPayload {
   summary: string;
   reason: string;
   botImId?: string;
+  botUserName?: string;
   contactName?: string;
   chatId: string;
   pausedUserId: string;

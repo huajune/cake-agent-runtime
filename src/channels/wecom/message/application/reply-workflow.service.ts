@@ -165,6 +165,7 @@ export class ReplyWorkflowService {
       imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
       imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
       botUserId: params.primaryMessage.botUserId,
+      contactName: parsed.contactName,
       botImId: params.primaryMessage.imBotId,
       token: parsed.token,
       imContactId: parsed.imContactId,
@@ -182,6 +183,7 @@ export class ReplyWorkflowService {
     if (agentResult.isFallback) {
       this.processingFailureService.sendFallbackAlert({
         contactName,
+        botUserName: parsed.managerName,
         userMessage: content,
         fallbackMessage: agentResult.reply.content,
         fallbackReason: 'Agent 返回降级响应',
@@ -258,6 +260,7 @@ export class ReplyWorkflowService {
     imageUrls?: string[];
     imageMessageIds?: string[];
     botUserId?: string;
+    contactName?: string;
     botImId?: string;
     token?: string;
     imContactId?: string;
@@ -302,6 +305,7 @@ export class ReplyWorkflowService {
         corpId,
         sessionId: params.sessionId,
         scenario,
+        contactName: params.contactName,
         imageUrls: params.imageUrls,
         imageMessageIds: params.imageMessageIds,
         botUserId: params.botUserId,

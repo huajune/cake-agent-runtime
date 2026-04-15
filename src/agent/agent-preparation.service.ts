@@ -210,6 +210,7 @@ export class AgentPreparationService {
         turnState.candidatePool = jobs as RecommendedJobSummary[];
       },
       botUserId,
+      contactName: params.contactName,
       botImId,
       strategySource:
         params.strategySource ??

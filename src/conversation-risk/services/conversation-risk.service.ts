@@ -41,6 +41,7 @@ export class ConversationRiskService {
       messageId: parsed.messageId,
       contactName: parsed.contactName,
       botImId: parsed.imBotId,
+      botUserName: parsed.managerName,
       currentMessageContent: content,
     });
 
