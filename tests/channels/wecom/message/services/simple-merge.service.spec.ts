@@ -1,18 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bull';
-import { SimpleMergeService } from '@wecom/message/services/simple-merge.service';
+import { SimpleMergeService } from '@wecom/message/runtime/simple-merge.service';
 import { RedisService } from '@infra/redis/redis.service';
-import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
-import { EnterpriseMessageCallbackDto } from '@wecom/message/message-callback.dto';
+import { EnterpriseMessageCallbackDto } from '@wecom/message/ingress/message-callback.dto';
 import { MessageType, ContactType, MessageSource } from '@enums/message-callback.enum';
+import { MessageRuntimeConfigService } from '@wecom/message/runtime/message-runtime-config.service';
 
 describe('SimpleMergeService', () => {
   let service: SimpleMergeService;
-
-  const mockJob = {
-    getState: jest.fn(),
-    remove: jest.fn(),
-  };
 
   const mockMessageQueue = {
     add: jest.fn(),
@@ -29,9 +24,8 @@ describe('SimpleMergeService', () => {
     getClient: jest.fn(),
   };
 
-  const mockSystemConfigService = {
-    onAgentReplyConfigChange: jest.fn(),
-    getAgentReplyConfig: jest.fn(),
+  const mockRuntimeConfigService = {
+    getMergeDelayMs: jest.fn(),
   };
 
   const validMessageData: EnterpriseMessageCallbackDto = {
@@ -54,7 +48,7 @@ describe('SimpleMergeService', () => {
       providers: [
         SimpleMergeService,
         { provide: RedisService, useValue: mockRedisService },
-        { provide: SystemConfigService, useValue: mockSystemConfigService },
+        { provide: MessageRuntimeConfigService, useValue: mockRuntimeConfigService },
         {
           provide: getQueueToken('message-merge'),
           useValue: mockMessageQueue,
@@ -66,10 +60,7 @@ describe('SimpleMergeService', () => {
     jest.clearAllMocks();
 
     // Default setup
-    mockSystemConfigService.onAgentReplyConfigChange.mockImplementation(() => {});
-    mockSystemConfigService.getAgentReplyConfig.mockResolvedValue({
-      initialMergeWindowMs: 2000,
-    });
+    mockRuntimeConfigService.getMergeDelayMs.mockReturnValue(2000);
     mockRedisService.setex.mockResolvedValue(undefined);
     mockRedisService.get.mockResolvedValue(String(Date.now() - 3000));
     mockRedisService.rpush.mockResolvedValue(1);
@@ -88,22 +79,12 @@ describe('SimpleMergeService', () => {
   });
 
   describe('onModuleInit', () => {
-    it('should load config from Supabase on init', async () => {
-      mockSystemConfigService.getAgentReplyConfig.mockResolvedValue({
-        initialMergeWindowMs: 3000,
-      });
+    it('should read merge delay from runtime config on init', async () => {
+      mockRuntimeConfigService.getMergeDelayMs.mockReturnValue(3000);
 
       await service.onModuleInit();
 
-      expect(mockSystemConfigService.getAgentReplyConfig).toHaveBeenCalled();
-    });
-
-    it('should use default values when config load fails', async () => {
-      mockSystemConfigService.getAgentReplyConfig.mockRejectedValue(
-        new Error('Config load failed'),
-      );
-
-      await expect(service.onModuleInit()).resolves.not.toThrow();
+      expect(mockRuntimeConfigService.getMergeDelayMs).toHaveBeenCalled();
     });
   });
 

@@ -16,10 +16,12 @@ describe('BookingCardRenderer', () => {
 
   it('should render success booking cards with normalized interview time', () => {
     const result = renderer.buildInterviewBookingCard({
+      contactName: 'wx_alice',
       candidateName: 'Alice',
       phone: '13800138000',
       genderLabel: '女',
       ageText: '23岁',
+      botUserName: '招募经理A',
       brandName: '来伊份',
       storeName: '五角场店',
       jobName: '店员',
@@ -42,8 +44,10 @@ describe('BookingCardRenderer', () => {
       }),
     );
     expect((result.card.content as string)).toContain('**候选人信息**');
+    expect((result.card.content as string)).toContain('微信昵称：wx_alice');
     expect((result.card.content as string)).toContain('姓名：Alice');
     expect((result.card.content as string)).toContain('电话：13800138000');
+    expect((result.card.content as string)).toContain('托管账号：招募经理A');
     expect((result.card.content as string)).toContain('面试时间：2026-04-13 07:30');
     expect((result.card.content as string)).toContain('预约编号：BK-1001');
     expect((result.card.content as string)).toContain('结果：预约成功');
@@ -51,8 +55,10 @@ describe('BookingCardRenderer', () => {
 
   it('should render failure booking cards with fallback result details', () => {
     const result = renderer.buildInterviewBookingCard({
+      contactName: 'wx_bob',
       candidateName: 'Bob',
       phone: '13900139000',
+      botUserName: '招募经理B',
       interviewTime: '2026-04-13 19:00',
       toolOutput: {
         success: false,
@@ -73,6 +79,8 @@ describe('BookingCardRenderer', () => {
     );
     expect((result.card.content as string)).toContain('预约失败，请尽快跟进处理');
     expect((result.card.content as string)).toContain('⚠️ 该用户已暂停托管');
+    expect((result.card.content as string)).toContain('微信昵称：wx_bob');
+    expect((result.card.content as string)).toContain('托管账号：招募经理B');
     expect((result.card.content as string)).toContain('原因：名额已满');
     expect((result.card.content as string)).toContain('返回信息：请人工跟进');
     expect((result.card.content as string)).toContain('门店无可约时间');

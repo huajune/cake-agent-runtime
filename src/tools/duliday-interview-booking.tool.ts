@@ -26,6 +26,7 @@ import {
   SpongeInterviewSupplementDefinition,
 } from '@sponge/sponge-job.util';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import { API_BOOKING_REQUIRED_PAYLOAD_FIELDS } from '@tools/duliday/job-booking.contract';
@@ -39,10 +40,12 @@ const supplementAnswersSchema = z
   .describe('岗位补充标签回答，key 必须是标签名，例如 爱好、身份。标准字段对应标签会自动回填');
 
 export interface InterviewBookingNotificationInfo {
+  contactName?: string;
   candidateName: string;
   phone: string;
   genderLabel?: string;
   ageText?: string;
+  botUserName?: string;
   brandName?: string;
   storeName?: string;
   jobName?: string;
@@ -56,6 +59,7 @@ export function buildInterviewBookingTool(
   spongeService: SpongeService,
   privateChatNotifier: PrivateChatMonitorNotifierService,
   userHostingService: UserHostingService,
+  recruitmentCaseService: RecruitmentCaseService,
 ): ToolBuilder {
   return (context) => {
     return tool({
@@ -340,6 +344,35 @@ export function buildInterviewBookingTool(
             void userHostingService.pauseUser(context.sessionId).then(() => {
               logger.log(`[自动暂停] 预约失败，已暂停托管: chatId=${context.sessionId}`);
             });
+          } else {
+            const resultRecord = result as unknown as Record<string, unknown>;
+            const bookingId =
+              typeof resultRecord.booking_id === 'string' && resultRecord.booking_id.trim()
+                ? resultRecord.booking_id.trim()
+                : null;
+
+            void recruitmentCaseService
+              .openOnBookingSuccess({
+                corpId: context.corpId,
+                chatId: context.sessionId,
+                userId: context.userId,
+                snapshot: {
+                  bookingId,
+                  bookedAt: new Date().toISOString(),
+                  interviewTime,
+                  jobId,
+                  jobName: resolvedJobName,
+                  brandName: resolvedBrandName,
+                  storeName: resolvedStoreName,
+                  botImId: context.botImId,
+                  metadata: {
+                    tool: 'duliday_interview_booking',
+                  },
+                },
+              })
+              .catch((caseError) => {
+                logger.error('写入 recruitmentCase 失败', caseError);
+              });
           }
 
           const toolResult = {
@@ -359,6 +392,7 @@ export function buildInterviewBookingTool(
           void sendInterviewBookingNotification(
             {
               candidateName: name,
+              contactName: context.contactName,
               phone,
               genderLabel,
               ageText,
@@ -367,6 +401,7 @@ export function buildInterviewBookingTool(
               storeName: resolvedStoreName,
               jobName: resolvedJobName,
               jobId,
+              botUserName: context.botUserId,
               toolOutput: toolResult,
               botImId: context.botImId,
             },
@@ -395,6 +430,7 @@ export function buildInterviewBookingTool(
           void sendInterviewBookingNotification(
             {
               candidateName: name,
+              contactName: context.contactName,
               phone,
               genderLabel,
               ageText,
@@ -403,6 +439,7 @@ export function buildInterviewBookingTool(
               storeName,
               jobName,
               jobId,
+              botUserName: context.botUserId,
               toolOutput: toolResult,
               botImId: context.botImId,
             },

@@ -216,8 +216,15 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.bookingChecklist.missingFields).toContain('姓名');
     expect(result.bookingChecklist.missingFields).toContain('带健康证原件');
     expect(result.bookingChecklist.templateText).toContain('姓名：');
-    expect(result._fixedReply).toBe(result.bookingChecklist.templateText);
-    expect(result._replyRule).toContain('必须原样输出 _fixedReply');
+    expect(result._fixedReply).toBeUndefined();
+    expect(result._replyRule).toBeUndefined();
+    expect(result.bookingChecklist.collectionStrategy).toEqual(
+      expect.objectContaining({
+        candidateResistanceDetected: false,
+        recommendedMode: 'full_template',
+        starterFields: expect.arrayContaining(['姓名', '联系电话', '性别', '年龄', '面试时间']),
+      }),
+    );
   });
 
   it('should compress periodic windows into scheduleRule and generate upcoming options', async () => {
@@ -463,7 +470,46 @@ describe('buildInterviewPrecheckTool', () => {
     // 已知字段涉及的枚举不应再返回；当所有相关枚举均无需提示时，整个 enumHints 会被 stripNullish 移除
     expect(result.bookingChecklist.enumHints).toBeUndefined();
     expect(result.nextAction).toBe('collect_fields');
-    expect(result._fixedReply).toBe(result.bookingChecklist.templateText);
+    expect(result._fixedReply).toBeUndefined();
+    expect(result.bookingChecklist.collectionStrategy).toEqual(
+      expect.objectContaining({
+        candidateResistanceDetected: false,
+        recommendedMode: 'full_template',
+        starterFields: ['面试时间'],
+      }),
+    );
+  });
+
+  it('should switch to progressive collection guidance when candidate resists filling many fields', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [makeJob()],
+    });
+
+    const result = await executeTool(
+      { jobId: 100 },
+      {
+        messages: [
+          { role: 'assistant', content: '面试要求：先将以下资料补充下发给我，我来帮你约面试' },
+          { role: 'user', content: '滚犊子，这么多信息，太麻烦了' },
+        ],
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.nextAction).toBe('collect_fields');
+    expect(result._fixedReply).toBeUndefined();
+    expect(result.bookingChecklist.collectionStrategy).toEqual(
+      expect.objectContaining({
+        candidateResistanceDetected: true,
+        recommendedMode: 'progressive',
+        matchedSignals: expect.arrayContaining(['滚犊子', '这么多信息', '太麻烦']),
+        latestUserMessage: '滚犊子，这么多信息，太麻烦了',
+      }),
+    );
+    expect(result.bookingChecklist.collectionStrategy.starterFields).toEqual(
+      expect.arrayContaining(['姓名', '联系电话', '性别', '年龄', '面试时间']),
+    );
+    expect(result.bookingChecklist.collectionStrategy.reason).toContain('先共情解释');
   });
 
   it('should render interview template in fixed checklist format with core fields first', async () => {
@@ -474,7 +520,6 @@ describe('buildInterviewPrecheckTool', () => {
     const result = await executeTool({ jobId: 100 });
 
     const text = result.bookingChecklist.templateText as string;
-    expect(text).toContain('面试模版：');
     expect(text).toContain('面试要求：先将以下资料补充下发给我，我来帮你约面试');
 
     const idxName = text.indexOf('姓名：');

@@ -1,14 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { MessageController } from '@wecom/message/message.controller';
+import { MessageIngressController } from '@wecom/message/ingress/message-ingress.controller';
 import { MessageService } from '@wecom/message/message.service';
-import { MessageProcessor } from '@wecom/message/message.processor';
 import { MessageType, ContactType, MessageSource } from '@enums/message-callback.enum';
-import { MessageCallbackAdapterService } from '@wecom/message/services/callback-adapter.service';
-import { MessageFilterService } from '@wecom/message/services/filter.service';
-import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
+import { MessageCallbackAdapterService } from '@wecom/message/ingress/callback-adapter.service';
 
 describe('MessageController', () => {
-  let controller: MessageController;
+  let ingressController: MessageIngressController;
   let service: MessageService;
 
   const mockMessageService = {
@@ -21,43 +18,9 @@ describe('MessageController', () => {
     normalizeCallback: jest.fn().mockImplementation((body) => body),
   };
 
-  const mockFilterService = {
-    shouldFilter: jest.fn().mockReturnValue(false),
-    getFilterReason: jest.fn().mockReturnValue(null),
-  };
-
-  const mockGroupBlacklistService = {
-    getGroupBlacklist: jest.fn().mockResolvedValue([]),
-    addGroupToBlacklist: jest.fn().mockResolvedValue(undefined),
-    removeGroupFromBlacklist: jest.fn().mockResolvedValue(true),
-    isGroupBlacklisted: jest.fn().mockResolvedValue(false),
-  };
-
-  const mockMessageProcessor = {
-    getQueueStatus: jest.fn().mockResolvedValue({
-      waiting: 0,
-      active: 0,
-      completed: 0,
-      failed: 0,
-      delayed: 0,
-      paused: 0,
-    }),
-    getWorkerStatus: jest.fn().mockReturnValue({
-      concurrency: 1,
-      activeJobs: 0,
-      minConcurrency: 1,
-      maxConcurrency: 20,
-    }),
-    cleanStuckJobs: jest.fn().mockResolvedValue({
-      success: true,
-      cleaned: { active: 0, failed: 0, completed: 0, delayed: 0 },
-      message: 'Cleaned 0 jobs',
-    }),
-  };
-
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      controllers: [MessageController],
+      controllers: [MessageIngressController],
       providers: [
         {
           provide: MessageService,
@@ -67,22 +30,10 @@ describe('MessageController', () => {
           provide: MessageCallbackAdapterService,
           useValue: mockCallbackAdapterService,
         },
-        {
-          provide: MessageFilterService,
-          useValue: mockFilterService,
-        },
-        {
-          provide: GroupBlacklistService,
-          useValue: mockGroupBlacklistService,
-        },
-        {
-          provide: MessageProcessor,
-          useValue: mockMessageProcessor,
-        },
       ],
     }).compile();
 
-    controller = module.get<MessageController>(MessageController);
+    ingressController = module.get<MessageIngressController>(MessageIngressController);
     service = module.get<MessageService>(MessageService);
   });
 
@@ -91,7 +42,7 @@ describe('MessageController', () => {
   });
 
   it('should be defined', () => {
-    expect(controller).toBeDefined();
+    expect(ingressController).toBeDefined();
   });
 
   describe('receiveMessage', () => {
@@ -116,7 +67,7 @@ describe('MessageController', () => {
 
       mockMessageService.handleMessage.mockResolvedValue(mockResult);
 
-      const result = await controller.receiveMessage(mockBody as any);
+      const result = await ingressController.receiveMessage(mockBody as any);
 
       expect(service.handleMessage).toHaveBeenCalledWith(mockBody);
       expect(result).toEqual(mockResult);
@@ -144,7 +95,7 @@ describe('MessageController', () => {
 
       mockMessageService.handleMessage.mockResolvedValue(mockResult);
 
-      const result = await controller.receiveMessage(mockBody as any);
+      const result = await ingressController.receiveMessage(mockBody as any);
 
       expect(service.handleMessage).toHaveBeenCalledWith(mockBody);
       expect(result).toEqual(mockResult);
@@ -169,7 +120,7 @@ describe('MessageController', () => {
 
       mockMessageService.handleMessage.mockRejectedValue(error);
 
-      await expect(controller.receiveMessage(mockBody as any)).rejects.toThrow('Service error');
+      await expect(ingressController.receiveMessage(mockBody as any)).rejects.toThrow('Service error');
     });
   });
 
@@ -184,7 +135,7 @@ describe('MessageController', () => {
 
       mockMessageService.handleSentResult.mockResolvedValue(mockResult);
 
-      const result = await controller.receiveSentResult(mockBody);
+      const result = await ingressController.receiveSentResult(mockBody);
 
       expect(service.handleSentResult).toHaveBeenCalledWith(mockBody);
       expect(result).toEqual(mockResult);
@@ -200,7 +151,7 @@ describe('MessageController', () => {
 
       mockMessageService.handleSentResult.mockResolvedValue(mockResult);
 
-      const result = await controller.receiveSentResult(mockBody);
+      const result = await ingressController.receiveSentResult(mockBody);
 
       expect(service.handleSentResult).toHaveBeenCalledWith(mockBody);
       expect(result).toEqual(mockResult);
@@ -212,7 +163,7 @@ describe('MessageController', () => {
 
       mockMessageService.handleSentResult.mockRejectedValue(error);
 
-      await expect(controller.receiveSentResult(mockBody)).rejects.toThrow('Service error');
+      await expect(ingressController.receiveSentResult(mockBody)).rejects.toThrow('Service error');
     });
   });
 });

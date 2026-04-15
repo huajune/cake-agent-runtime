@@ -15,6 +15,7 @@ export interface AlertScope {
   corpId?: string;
   userId?: string;
   contactName?: string;
+  managerName?: string;
   chatId?: string;
   sessionId?: string;
   messageId?: string;

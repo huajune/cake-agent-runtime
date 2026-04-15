@@ -154,11 +154,11 @@ export class SpongeBiService {
         filterValue: [params.endDate],
       });
     }
-    if (params.regionName) {
+    if (params.cityName) {
       filters.push({
         name: BI_FIELD_NAMES.CITY,
         filterType: BI_FILTER_TYPES.CONTAINS,
-        filterValue: [params.regionName],
+        filterValue: [params.cityName],
       });
     }
     if (params.companyName) {

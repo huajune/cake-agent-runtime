@@ -38,6 +38,8 @@ export interface AgentInvokeParams {
   strategySource?: 'released' | 'testing';
   /** 当前与候选人聊天的托管账号企微 userId（拉群时作为 botUserId） */
   botUserId?: string;
+  /** 候选人微信昵称（企微回调中的 contactName） */
+  contactName?: string;
   /** 当前与候选人聊天的托管账号系统 wxid（拉群时作为 imBotId） */
   botImId?: string;
   /** 当前消息发送链路 token（供主动发送富消息的工具使用） */

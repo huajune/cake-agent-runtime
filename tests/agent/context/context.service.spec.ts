@@ -101,6 +101,8 @@ describe('ContextService', () => {
 
     expect(prompt).toContain('[用户档案]');
     expect(prompt).toContain('姓名: 张三');
+    expect(prompt).toContain('先接情绪，再解释用途');
+    expect(prompt).toContain('bookingChecklist.collectionStrategy');
   });
 
   it('should keep runtime time injection to a single rendered current time line', async () => {

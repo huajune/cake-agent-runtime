@@ -70,10 +70,15 @@ export class GroupResolverService implements OnModuleInit {
   /**
    * 从 labels 数组解析群标签
    *
-   * labels 结构: [{ name: '抢单群' }, { name: '武汉' }]
-   * 或: [{ name: '兼职群' }, { name: '上海' }, { name: '餐饮' }]
+   * labels 结构:
+   * - 抢单群: [{ name: '抢单群' }, { name: '荆州' }]
+   * - 多地区抢单群: [{ name: '抢单群' }, { name: '景德镇' }, { name: '上饶' }]
+   * - 兼职群: [{ name: '兼职群' }, { name: '上海' }, { name: '餐饮' }]
    *
-   * 规则：第一个标签 = 群类型，第二个 = 城市，第三个 = 行业（可选）
+   * 规则：
+   * - 第一个标签 = 群类型
+   * - 第二个标签 = 城市/主地区
+   * - 第三个标签仅对兼职群视为行业
    */
   parseLabels(labels: RoomLabel[]): ParsedGroupTag | null {
     if (!labels || labels.length === 0) return null;
@@ -91,7 +96,7 @@ export class GroupResolverService implements OnModuleInit {
     return {
       type,
       city: names[1] || '全国',
-      industry: names[2],
+      industry: type === '兼职群' ? names[2] : undefined,
     };
   }
 
@@ -187,6 +192,7 @@ export class GroupResolverService implements OnModuleInit {
           city: parsed.city,
           industry: parsed.industry,
           tag: parsed.type,
+          labels: (room.labels || []).map((label) => label.name),
           imBotId: room.botInfo?.wxid || '',
           token,
           chatId: room.chatId || '',

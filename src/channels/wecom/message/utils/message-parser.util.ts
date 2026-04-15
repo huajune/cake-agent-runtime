@@ -9,7 +9,7 @@ import {
   LocationPayload,
   VoicePayload,
   MiniProgramPayload,
-} from '../message-callback.dto';
+} from '../ingress/message-callback.dto';
 import { MessageType } from '@enums/message-callback.enum';
 import { ScenarioType } from '@enums/agent.enum';
 

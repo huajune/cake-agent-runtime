@@ -5,6 +5,7 @@ import { UserModule } from './user/user.module';
 import { BizMessageModule } from './message/message.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { GroupTaskModule } from './group-task/group-task.module';
+import { RecruitmentCaseModule } from './recruitment-case/recruitment-case.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { GroupTaskModule } from './group-task/group-task.module';
     BizMessageModule,
     MonitoringModule,
     GroupTaskModule,
+    RecruitmentCaseModule,
   ],
   exports: [
     StrategyModule,
@@ -22,6 +24,7 @@ import { GroupTaskModule } from './group-task/group-task.module';
     BizMessageModule,
     MonitoringModule,
     GroupTaskModule,
+    RecruitmentCaseModule,
   ],
 })
 export class BizModule {}

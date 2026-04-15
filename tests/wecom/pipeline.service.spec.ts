@@ -1,11 +1,12 @@
-import { ConfigService } from '@nestjs/config';
-import { MessagePipelineService } from '@wecom/message/services/pipeline.service';
+import { MessagePipelineService } from '@wecom/message/application/pipeline.service';
+import { AcceptInboundMessageService } from '@wecom/message/application/accept-inbound-message.service';
+import { ReplyWorkflowService } from '@wecom/message/application/reply-workflow.service';
 import {
   ContactType,
   EnterpriseMessageCallbackDto,
   MessageSource,
   MessageType,
-} from '@wecom/message/message-callback.dto';
+} from '@wecom/message/ingress/message-callback.dto';
 
 function createEnterpriseMessage(
   overrides: Partial<EnterpriseMessageCallbackDto> = {},
@@ -34,129 +35,59 @@ function createEnterpriseMessage(
 }
 
 describe('MessagePipelineService', () => {
-  const mockDeduplicationService = {
-    isMessageProcessedAsync: jest.fn().mockResolvedValue(false),
-    markMessageAsProcessedAsync: jest.fn().mockResolvedValue(undefined),
+  const mockAcceptInboundMessage = {
+    execute: jest.fn(),
   };
-  const mockChatSession = {
-    saveMessage: jest.fn().mockResolvedValue(undefined),
-    getChatSessionMessages: jest.fn().mockResolvedValue({ messages: [] }),
+
+  const mockReplyWorkflow = {
+    processSingleMessage: jest.fn(),
+    processMergedMessages: jest.fn(),
   };
-  const mockFilterService = {
-    validate: jest.fn().mockResolvedValue({ pass: true, content: '你好' }),
-  };
-  const mockDeliveryService = {};
-  const mockImageDescriptionService = {
-    describeAndUpdateSync: jest.fn().mockResolvedValue(undefined),
-  };
-  const mockWecomObservability = {
-    hasTrace: jest.fn().mockReturnValue(false),
-    startTrace: jest.fn(),
-    markHistoryStored: jest.fn(),
-    markImagePrepared: jest.fn(),
-    buildFailureMetadata: jest.fn().mockReturnValue({ scenario: 'candidate-consultation' }),
-  };
-  const mockRunnerService = {};
-  const mockConfigService = {
-    get: jest.fn().mockReturnValue(''),
-  } as unknown as ConfigService;
-  const mockMonitoringService = {
-    recordFailure: jest.fn(),
-  };
-  const mockAlertNotifierService = {};
 
   let service: MessagePipelineService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockDeduplicationService.isMessageProcessedAsync.mockResolvedValue(false);
-    mockDeduplicationService.markMessageAsProcessedAsync.mockResolvedValue(undefined);
-    mockChatSession.saveMessage.mockResolvedValue(undefined);
-    mockChatSession.getChatSessionMessages.mockResolvedValue({ messages: [] });
-    mockFilterService.validate.mockResolvedValue({ pass: true, content: '你好' });
-    mockImageDescriptionService.describeAndUpdateSync.mockResolvedValue(undefined);
-    mockWecomObservability.buildFailureMetadata.mockReturnValue({
-      scenario: 'candidate-consultation',
+    mockAcceptInboundMessage.execute.mockResolvedValue({
+      shouldDispatch: true,
+      response: { success: true, message: 'Message received' },
+      content: '你好',
     });
+    mockReplyWorkflow.processSingleMessage.mockResolvedValue(undefined);
+    mockReplyWorkflow.processMergedMessages.mockResolvedValue(undefined);
 
     service = new MessagePipelineService(
-      mockDeduplicationService as never,
-      mockChatSession as never,
-      mockFilterService as never,
-      mockDeliveryService as never,
-      mockImageDescriptionService as never,
-      mockWecomObservability as never,
-      mockRunnerService as never,
-      mockConfigService,
-      { getSystemConfig: jest.fn(), getAgentReplyConfig: jest.fn().mockResolvedValue({}) } as never,
-      mockMonitoringService as never,
-      mockAlertNotifierService as never,
+      mockAcceptInboundMessage as unknown as AcceptInboundMessageService,
+      mockReplyWorkflow as unknown as ReplyWorkflowService,
     );
   });
 
-  it('should only record history when callback passes validation', async () => {
+  it('should delegate inbound handling to AcceptInboundMessageService', async () => {
     const message = createEnterpriseMessage();
 
     const result = await service.execute(message);
 
-    expect(result.shouldDispatch).toBe(true);
-    expect(result.content).toBe('你好');
-    expect(mockWecomObservability.startTrace).not.toHaveBeenCalled();
-    expect(mockChatSession.saveMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        messageId: message.messageId,
-        role: 'user',
-        content: '你好',
-      }),
-    );
-    expect(mockWecomObservability.markHistoryStored).toHaveBeenCalledWith(message.messageId);
-  });
-
-  it('should record history only messages without entering ai dispatch trace', async () => {
-    const message = createEnterpriseMessage({ groupId: 'group_1' });
-    mockFilterService.validate.mockResolvedValue({
-      pass: true,
+    expect(mockAcceptInboundMessage.execute).toHaveBeenCalledWith(message);
+    expect(result).toEqual({
+      shouldDispatch: true,
+      response: { success: true, message: 'Message received' },
       content: '你好',
-      historyOnly: true,
-      reason: 'GROUP_BLACKLISTED',
     });
-
-    const result = await service.execute(message);
-
-    expect(result.shouldDispatch).toBe(false);
-    expect(result.response.message).toBe('Message recorded to history only');
-    expect(mockChatSession.saveMessage).toHaveBeenCalledTimes(1);
-    expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith(
-      message.messageId,
-    );
-    expect(mockWecomObservability.startTrace).not.toHaveBeenCalled();
   });
 
-  it('should build failure metadata when pre-dispatch history storage fails', async () => {
+  it('should forward single-message processing to ReplyWorkflowService', async () => {
     const message = createEnterpriseMessage();
-    const historyError = new Error('save history failed');
-    mockChatSession.saveMessage.mockRejectedValueOnce(historyError);
 
-    await expect(service.execute(message)).rejects.toThrow('save history failed');
+    await service.processSingleMessage(message);
 
-    expect(mockWecomObservability.startTrace).toHaveBeenCalledWith(
-      expect.objectContaining({
-        messageId: message.messageId,
-        chatId: message.chatId,
-      }),
-    );
-    expect(mockWecomObservability.buildFailureMetadata).toHaveBeenCalledWith(
-      message.messageId,
-      expect.objectContaining({
-        scenario: 'candidate-consultation',
-        errorType: 'message',
-        errorMessage: 'save history failed',
-      }),
-    );
-    expect(mockMonitoringService.recordFailure).toHaveBeenCalledWith(
-      message.messageId,
-      'save history failed',
-      expect.any(Object),
-    );
+    expect(mockReplyWorkflow.processSingleMessage).toHaveBeenCalledWith(message);
+  });
+
+  it('should forward merged-message processing to ReplyWorkflowService', async () => {
+    const messages = [createEnterpriseMessage(), createEnterpriseMessage({ messageId: 'msg_2' })];
+
+    await service.processMergedMessages(messages, 'batch_1');
+
+    expect(mockReplyWorkflow.processMergedMessages).toHaveBeenCalledWith(messages, 'batch_1');
   });
 });

@@ -4,6 +4,9 @@ import { ModelMessage, ToolSet } from 'ai';
 import { RouterService } from '@providers/router.service';
 import { ModelRole, supportsVision } from '@providers/types';
 import { ToolRegistryService } from '@tools/tool-registry.service';
+import { RecruitmentCaseRecord } from '@biz/recruitment-case/entities/recruitment-case.entity';
+import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
+import { RecruitmentStageResolverService } from '@biz/recruitment-case/services/recruitment-stage-resolver.service';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { formatExtractionFactLines } from '@memory/formatters/fact-lines.formatter';
 import { MemoryService } from '@memory/memory.service';
@@ -13,6 +16,7 @@ import type { RecommendedJobSummary, WeworkSessionState } from '@memory/types/se
 import { ContextService } from './context/context.service';
 import { InputGuardService } from './input-guard.service';
 import { type AgentInputMessage, type AgentInvokeParams } from './agent-run.types';
+import { LocationCityResolverService } from './services/location-city-resolver.service';
 
 export interface PreparedAgentContext {
   finalPrompt: string;
@@ -26,7 +30,7 @@ export interface PreparedAgentContext {
   userId: string;
   sessionId: string;
   maxSteps: number;
-  /** 本轮入口阶段；来自程序记忆中的持久化 currentStage。 */
+  /** 本轮入口阶段；由 recruitmentCase + procedural currentStage 共同解析出的 effectiveStage。 */
   entryStage: string | null;
   /** 本轮临时状态；回合结束时统一交给 memory lifecycle。 */
   turnState: {
@@ -42,10 +46,13 @@ export class AgentPreparationService {
     private readonly configService: ConfigService,
     private readonly router: RouterService,
     private readonly toolRegistry: ToolRegistryService,
+    private readonly recruitmentCaseService: RecruitmentCaseService,
+    private readonly recruitmentStageResolver: RecruitmentStageResolverService,
     private readonly memoryService: MemoryService,
     private readonly memoryConfig: MemoryConfig,
     private readonly context: ContextService,
     private readonly inputGuard: InputGuardService,
+    private readonly locationCityResolver: LocationCityResolverService,
   ) {}
 
   async prepare(
@@ -91,6 +98,10 @@ export class AgentPreparationService {
       },
     );
     const memoryLoadWarning = memory._warnings?.join('; ') || undefined;
+    const activeRecruitmentCase = await this.recruitmentCaseService.getActiveOnboardFollowupCase({
+      corpId,
+      chatId: sessionId,
+    });
 
     // 2. 决定本轮消息来源。
     //    当 userMessage 存在但短期记忆为空时（DB/缓存瞬时故障），用 userMessage 兜底，
@@ -135,19 +146,31 @@ export class AgentPreparationService {
     //    本轮高置信 / 待确认线索的 partition + 渲染由 TurnHintsSection 负责，这里只传原始数据。
     const profileBlock = this.formatProfile(memory.longTerm.profile);
     const factsBlock = memory.sessionMemory ? this.formatSessionFacts(memory.sessionMemory) : '';
-    const memoryBlock = profileBlock + factsBlock;
+    const recruitmentCaseBlock = this.formatRecruitmentCase(activeRecruitmentCase);
+    const memoryBlock = profileBlock + factsBlock + recruitmentCaseBlock;
 
     // 5. 读取当前阶段，并按场景组装 prompt。
-    const rawStage = memory.procedural.currentStage ?? undefined;
+    const resolvedStage =
+      this.recruitmentStageResolver.resolve({
+        proceduralStage: memory.procedural.currentStage ?? undefined,
+        recruitmentCase: activeRecruitmentCase,
+        currentMessageContent: this.pickLatestUserContent(messages) ?? userMessage ?? '',
+      }) ?? undefined;
+    const resolvedCity = this.locationCityResolver.resolve({
+      currentMessageContent: this.pickLatestUserContent(messages) ?? userMessage ?? '',
+      sessionFacts: memory.sessionMemory?.facts ?? null,
+      highConfidenceFacts: memory.highConfidenceFacts,
+    });
     const { systemPrompt, stageGoals, thresholds } = await this.context.compose({
       scenario,
-      currentStage: rawStage,
+      currentStage: resolvedStage,
       memoryBlock,
       sessionFacts: memory.sessionMemory?.facts ?? null,
       highConfidenceFacts: memory.highConfidenceFacts,
+      resolvedCity,
       strategySource: params.strategySource,
     });
-    const entryStage = rawStage ?? Object.keys(stageGoals)[0] ?? null;
+    const entryStage = resolvedStage ?? Object.keys(stageGoals)[0] ?? null;
 
     const turnState: PreparedAgentContext['turnState'] = {
       candidatePool: null,
@@ -187,6 +210,7 @@ export class AgentPreparationService {
         turnState.candidatePool = jobs as RecommendedJobSummary[];
       },
       botUserId,
+      contactName: params.contactName,
       botImId,
       strategySource:
         params.strategySource ??
@@ -199,6 +223,7 @@ export class AgentPreparationService {
       imRoomId,
       chatId: sessionId,
       apiType,
+      resolvedCity,
     };
 
     // 10. 按场景挑出本轮允许使用的工具。
@@ -278,6 +303,22 @@ export class AgentPreparationService {
 
     if (sections.length === 0) return '';
     return `\n\n[会话记忆]\n\n${sections.join('\n\n')}`;
+  }
+
+  private formatRecruitmentCase(recruitmentCase: RecruitmentCaseRecord | null): string {
+    if (!recruitmentCase) return '';
+
+    const lines = [
+      '当前存在一个仍在进行中的面试/上岗跟进 case。',
+      recruitmentCase.brand_name ? `品牌: ${recruitmentCase.brand_name}` : null,
+      recruitmentCase.store_name ? `门店: ${recruitmentCase.store_name}` : null,
+      recruitmentCase.job_name ? `岗位: ${recruitmentCase.job_name}` : null,
+      recruitmentCase.interview_time ? `面试时间: ${recruitmentCase.interview_time}` : null,
+      recruitmentCase.booking_id ? `预约编号: ${recruitmentCase.booking_id}` : null,
+    ].filter((line): line is string => Boolean(line));
+
+    if (lines.length === 0) return '';
+    return `\n\n[当前预约信息]\n\n${lines.join('\n')}`;
   }
 
   private formatJobMemoryLine(job: RecommendedJobSummary, index?: number): string {
@@ -462,5 +503,15 @@ export class AgentPreparationService {
     }
 
     return undefined;
+  }
+
+  private pickLatestUserContent(messages: AgentInputMessage[]): string | null {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (messages[i].role !== 'user') continue;
+      const content = this.extractTextFromContent(messages[i].content).trim();
+      if (content) return content;
+    }
+
+    return null;
   }
 }

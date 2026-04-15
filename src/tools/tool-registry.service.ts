@@ -25,6 +25,7 @@ import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { RoomService } from '@channels/wecom/room/room.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
@@ -62,6 +63,7 @@ export class ToolRegistryService {
     privateChatMonitorNotifier: PrivateChatMonitorNotifierService,
     private readonly chatSessionService: ChatSessionService,
     userHostingService: UserHostingService,
+    recruitmentCaseService: RecruitmentCaseService,
     configService: ConfigService,
   ) {
     const memberLimit = parseInt(configService.get('GROUP_MEMBER_LIMIT', '200'), 10);
@@ -96,6 +98,7 @@ export class ToolRegistryService {
           spongeService,
           privateChatMonitorNotifier,
           userHostingService,
+          recruitmentCaseService,
         ),
       }),
 

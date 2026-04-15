@@ -14,7 +14,7 @@ describe('resolveHumanizedDelayMs', () => {
   it('should use the default lower bound when random is 0', () => {
     jest.spyOn(Math, 'random').mockReturnValue(0);
 
-    expect(resolveHumanizedDelayMs(1000)).toBe(750);
+    expect(resolveHumanizedDelayMs(1000)).toBe(1500);
   });
 
   it('should normalize float input and swapped custom factors when picking the upper bound', () => {

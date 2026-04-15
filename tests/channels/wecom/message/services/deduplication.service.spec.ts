@@ -1,8 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { MessageDeduplicationService } from '@wecom/message/services/deduplication.service';
+import { MessageDeduplicationService } from '@wecom/message/runtime/deduplication.service';
 import { RedisService } from '@infra/redis/redis.service';
-import { RedisKeyBuilder } from '@wecom/message/utils/redis-key.util';
+import { RedisKeyBuilder } from '@wecom/message/runtime/redis-key.util';
 
 describe('MessageDeduplicationService', () => {
   let service: MessageDeduplicationService;

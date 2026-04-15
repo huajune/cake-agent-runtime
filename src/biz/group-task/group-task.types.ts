@@ -56,6 +56,8 @@ export interface GroupContext {
   industry?: string;
   /** 群类型标签（如 '抢单群'） */
   tag: string;
+  /** 群原始标签名列表（保留原始顺序） */
+  labels?: string[];
   /** 托管账号 wxid（发消息用） */
   imBotId: string;
   /** 小组级 token（发消息用） */

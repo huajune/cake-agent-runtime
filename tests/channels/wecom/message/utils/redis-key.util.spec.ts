@@ -1,4 +1,4 @@
-import { RedisKeyBuilder } from '@wecom/message/utils/redis-key.util';
+import { RedisKeyBuilder } from '@wecom/message/runtime/redis-key.util';
 
 describe('RedisKeyBuilder', () => {
   describe('dedup', () => {

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UserController } from '@biz/user/user.controller';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
 
 describe('UserController (biz/user)', () => {
   let controller: UserController;
@@ -13,6 +14,10 @@ describe('UserController (biz/user)', () => {
     isUserPaused: jest.fn(),
   };
 
+  const mockRecruitmentCaseService = {
+    closeLatestHandoffCase: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [UserController],
@@ -20,6 +25,10 @@ describe('UserController (biz/user)', () => {
         {
           provide: UserHostingService,
           useValue: mockUserHostingService,
+        },
+        {
+          provide: RecruitmentCaseService,
+          useValue: mockRecruitmentCaseService,
         },
       ],
     }).compile();
@@ -72,6 +81,7 @@ describe('UserController (biz/user)', () => {
       const result = await controller.resumeUserHosting(userId);
 
       expect(userHostingService.resumeUser).toHaveBeenCalledWith(userId);
+      expect(mockRecruitmentCaseService.closeLatestHandoffCase).toHaveBeenCalledWith(userId);
       expect(result).toEqual({
         userId,
         isPaused: false,
@@ -159,6 +169,7 @@ describe('UserController (biz/user)', () => {
       const result = await controller.toggleUserHosting(chatId, true);
 
       expect(userHostingService.resumeUser).toHaveBeenCalledWith(chatId);
+      expect(mockRecruitmentCaseService.closeLatestHandoffCase).toHaveBeenCalledWith(chatId);
       expect(userHostingService.pauseUser).not.toHaveBeenCalled();
       expect(result).toEqual({
         chatId,
@@ -174,6 +185,7 @@ describe('UserController (biz/user)', () => {
       const result = await controller.toggleUserHosting(chatId, false);
 
       expect(userHostingService.pauseUser).toHaveBeenCalledWith(chatId);
+      expect(mockRecruitmentCaseService.closeLatestHandoffCase).not.toHaveBeenCalled();
       expect(userHostingService.resumeUser).not.toHaveBeenCalled();
       expect(result).toEqual({
         chatId,

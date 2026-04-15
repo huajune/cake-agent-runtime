@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { HostingConfigFacadeService } from '@biz/hosting-config/services/hosting-config-facade.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
+import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { DEFAULT_AGENT_REPLY_CONFIG } from '@biz/hosting-config/types/hosting-config.types';
 
@@ -29,6 +30,10 @@ describe('HostingConfigFacadeService', () => {
     resumeUser: jest.fn(),
   };
 
+  const mockRecruitmentCaseService = {
+    closeLatestHandoffCase: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -36,6 +41,7 @@ describe('HostingConfigFacadeService', () => {
         { provide: SystemConfigService, useValue: mockSystemConfigService },
         { provide: GroupBlacklistService, useValue: mockGroupBlacklistService },
         { provide: UserHostingService, useValue: mockUserHostingService },
+        { provide: RecruitmentCaseService, useValue: mockRecruitmentCaseService },
       ],
     }).compile();
 
@@ -204,6 +210,7 @@ describe('HostingConfigFacadeService', () => {
 
       expect(result.message).toBe('用户 user1 已从黑名单移除');
       expect(mockUserHostingService.resumeUser).toHaveBeenCalledWith('user1');
+      expect(mockRecruitmentCaseService.closeLatestHandoffCase).toHaveBeenCalledWith('user1');
       expect(mockGroupBlacklistService.removeGroupFromBlacklist).not.toHaveBeenCalled();
     });
 
@@ -215,6 +222,7 @@ describe('HostingConfigFacadeService', () => {
       expect(result.message).toBe('小组 group1 已从黑名单移除');
       expect(mockGroupBlacklistService.removeGroupFromBlacklist).toHaveBeenCalledWith('group1');
       expect(mockUserHostingService.resumeUser).not.toHaveBeenCalled();
+      expect(mockRecruitmentCaseService.closeLatestHandoffCase).not.toHaveBeenCalled();
     });
   });
 });

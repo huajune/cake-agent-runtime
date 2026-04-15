@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ImageDescriptionService } from '@wecom/message/services/image-description.service';
+import { ImageDescriptionService } from '@wecom/message/application/image-description.service';
 import { CompletionService } from '@agent/completion.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';

@@ -425,6 +425,57 @@ describe('GroupTaskSchedulerService', () => {
       expect(mockStrategy.fetchData).toHaveBeenCalledTimes(2);
     });
 
+    it('should group order grab groups by parsed region key', async () => {
+      const enabledConfig = { ...DEFAULT_GROUP_TASK_CONFIG, enabled: true, dryRun: true };
+      systemConfigService.getGroupTaskConfig.mockResolvedValue(enabledConfig);
+
+      const groups = [
+        {
+          imRoomId: 'room-1',
+          groupName: '荆州地区&短期班次兼职抢单群',
+          city: '武汉',
+          tag: '抢单群',
+          imBotId: 'bot-1',
+          token: 'token-1',
+          chatId: 'chat-1',
+        },
+        {
+          imRoomId: 'room-2',
+          groupName: '宜昌地区&短期班次兼职抢单群',
+          city: '武汉',
+          tag: '抢单群',
+          imBotId: 'bot-1',
+          token: 'token-1',
+          chatId: 'chat-2',
+        },
+      ];
+      groupResolverService.resolveGroups.mockResolvedValue(groups);
+      (
+        mockStrategy as NotificationStrategy & {
+          resolveOrderGrabGroupKey: jest.Mock;
+        }
+      ).resolveOrderGrabGroupKey = jest
+        .fn()
+        .mockImplementation((group) => group.groupName);
+      (mockStrategy.fetchData as jest.Mock).mockResolvedValue({
+        hasData: true,
+        payload: { orders: [] },
+        summary: '测试',
+      });
+      (mockStrategy.buildMessage as jest.Mock).mockReturnValue('test message');
+
+      await service.executeTask(mockStrategy);
+
+      expect(
+        (
+          mockStrategy as NotificationStrategy & {
+            resolveOrderGrabGroupKey: jest.Mock;
+          }
+        ).resolveOrderGrabGroupKey,
+      ).toHaveBeenCalledTimes(2);
+      expect(mockStrategy.fetchData).toHaveBeenCalledTimes(2);
+    });
+
     it('should not run prepareTask when no target groups are resolved', async () => {
       const enabledConfig = { ...DEFAULT_GROUP_TASK_CONFIG, enabled: true, dryRun: true };
       systemConfigService.getGroupTaskConfig.mockResolvedValue(enabledConfig);

@@ -3,10 +3,12 @@ import { FeishuReceiver } from '@infra/feishu/constants/receivers';
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
 
 export interface InterviewBookingNotificationPayload {
+  contactName?: string;
   candidateName: string;
   phone: string;
   genderLabel?: string;
   ageText?: string;
+  botUserName?: string;
   brandName?: string;
   storeName?: string;
   jobName?: string;
@@ -40,10 +42,12 @@ export class BookingCardRenderer {
     }
 
     const candidateLines = [
+      payload.contactName ? `微信昵称：${payload.contactName}` : null,
       `姓名：${payload.candidateName}`,
       `电话：${payload.phone}`,
       payload.genderLabel ? `性别：${payload.genderLabel}` : null,
       payload.ageText ? `年龄：${payload.ageText}` : null,
+      payload.botUserName ? `托管账号：${payload.botUserName}` : null,
     ].filter((line): line is string => Boolean(line));
     sections.push(`**候选人信息**\n${candidateLines.join('\n')}`);
 

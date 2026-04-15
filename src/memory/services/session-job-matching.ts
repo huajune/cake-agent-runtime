@@ -53,6 +53,29 @@ export function resolveCurrentFocusJob(
   return undefined;
 }
 
+/**
+ * 当用户最新一句话没有明确锁定岗位时，允许根据助手本轮回复中的强指向内容补锁一次焦点岗位。
+ *
+ * 典型场景：
+ * - 助手发出预约资料模板，明确写出了“应聘门店/应聘岗位”
+ * - 用户上一句只是“可以/好的”等弱确认，不足以靠 userText 锁定岗位
+ *
+ * 只有当助手文本对某个岗位的引用明显强于其他岗位时才返回，避免在多岗位并列介绍时误锁。
+ */
+export function resolveAssistantAnchoredFocusJob(
+  assistantText: string,
+  previousPresentedJobs: RecommendedJobSummary[],
+  newlyPresentedJobs: RecommendedJobSummary[],
+  candidatePool: RecommendedJobSummary[],
+): RecommendedJobSummary | null {
+  const normalizedAssistantText = normalizeForMatch(assistantText);
+  if (!normalizedAssistantText) return null;
+
+  const presented = dedupeJobsById([...newlyPresentedJobs, ...previousPresentedJobs]);
+  const knownJobs = dedupeJobsById([...presented, ...candidatePool]);
+  return pickDominantReferencedJob(knownJobs, normalizedAssistantText);
+}
+
 function scoreJobReference(job: RecommendedJobSummary, normalizedText: string): number {
   let score = 0;
 
@@ -104,6 +127,26 @@ function pickBestReferencedJob(
 
   const runnerUp = scored[1];
   if (runnerUp && runnerUp.score === best.score) {
+    return null;
+  }
+
+  return best.job;
+}
+
+function pickDominantReferencedJob(
+  jobs: RecommendedJobSummary[],
+  normalizedText: string,
+): RecommendedJobSummary | null {
+  const scored = jobs
+    .map((job) => ({ job, score: scoreJobReference(job, normalizedText) }))
+    .filter(({ score }) => score >= 8)
+    .sort((a, b) => b.score - a.score);
+
+  const best = scored[0];
+  if (!best) return null;
+
+  const runnerUp = scored[1];
+  if (runnerUp && best.score - runnerUp.score < 3) {
     return null;
   }
 

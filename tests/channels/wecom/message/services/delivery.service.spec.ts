@@ -1,15 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConfigService } from '@nestjs/config';
-import { MessageDeliveryService } from '@wecom/message/services/delivery.service';
+import { MessageDeliveryService } from '@wecom/message/delivery/delivery.service';
 import { MessageSenderService } from '@wecom/message-sender/message-sender.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import {
   DeliveryContext,
   DeliveryFailureError,
   AgentReply,
-} from '@wecom/message/message.types';
-import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
-import { WecomMessageObservabilityService } from '@wecom/message/services/wecom-message-observability.service';
+} from '@wecom/message/types';
+import { WecomMessageObservabilityService } from '@wecom/message/telemetry/wecom-message-observability.service';
+import { TypingPolicyService } from '@wecom/message/delivery/typing-policy.service';
 
 describe('MessageDeliveryService', () => {
   let service: MessageDeliveryService;
@@ -23,16 +22,10 @@ describe('MessageDeliveryService', () => {
     recordSendEnd: jest.fn(),
   };
 
-  const mockConfigService = {
-    get: jest.fn().mockImplementation((key: string, defaultValue?: string) => {
-      if (key === 'ENABLE_MESSAGE_SPLIT_SEND') return 'true';
-      return defaultValue;
-    }),
-  };
-
-  const mockSystemConfigService = {
-    onAgentReplyConfigChange: jest.fn(),
-    getAgentReplyConfig: jest.fn(),
+  const mockTypingPolicyService = {
+    shouldSplit: jest.fn(),
+    getSnapshot: jest.fn(),
+    calculateDelay: jest.fn(),
   };
 
   const mockWecomObservabilityService = {
@@ -56,8 +49,7 @@ describe('MessageDeliveryService', () => {
         MessageDeliveryService,
         { provide: MessageSenderService, useValue: mockMessageSenderService },
         { provide: MessageTrackingService, useValue: mockMonitoringService },
-        { provide: ConfigService, useValue: mockConfigService },
-        { provide: SystemConfigService, useValue: mockSystemConfigService },
+        { provide: TypingPolicyService, useValue: mockTypingPolicyService },
         { provide: WecomMessageObservabilityService, useValue: mockWecomObservabilityService },
       ],
     }).compile();
@@ -68,13 +60,17 @@ describe('MessageDeliveryService', () => {
     mockMessageSenderService.sendMessage.mockResolvedValue({ success: true });
     mockMonitoringService.recordSendStart.mockReturnValue(undefined);
     mockMonitoringService.recordSendEnd.mockReturnValue(undefined);
-    mockSystemConfigService.onAgentReplyConfigChange.mockImplementation(() => {});
-    mockSystemConfigService.getAgentReplyConfig.mockResolvedValue({
+    mockTypingPolicyService.shouldSplit.mockImplementation((content: string) =>
+      content.includes('\n\n'),
+    );
+    mockTypingPolicyService.getSnapshot.mockReturnValue({
+      splitSend: true,
       typingSpeedCharsPerSec: 8,
+      paragraphGapMs: 2000,
     });
+    mockTypingPolicyService.calculateDelay.mockReturnValue(0);
 
     jest.spyOn(service as any, 'sleep').mockImplementation(async () => undefined);
-    jest.spyOn(service as any, 'calculateDelay').mockImplementation(() => 0);
   });
 
   afterEach(() => {
@@ -153,12 +149,14 @@ describe('MessageDeliveryService', () => {
 
   describe('calculateDelay', () => {
     it('should keep first segment delay at 0 even when paragraphGapMs is configured', async () => {
-      (service as any).calculateDelay.mockRestore();
-      mockSystemConfigService.getAgentReplyConfig.mockResolvedValue({
+      mockTypingPolicyService.getSnapshot.mockReturnValue({
+        splitSend: true,
         typingSpeedCharsPerSec: 8,
         paragraphGapMs: 2500,
       });
-      jest.spyOn(Math, 'random').mockReturnValue(0.5);
+      mockTypingPolicyService.calculateDelay.mockImplementation((_: string, isFirstSegment = false) =>
+        isFirstSegment ? 0 : 2500,
+      );
 
       await service.onModuleInit();
 
@@ -166,12 +164,12 @@ describe('MessageDeliveryService', () => {
     });
 
     it('should respect paragraphGapMs as the minimum delay for non-first segments', async () => {
-      (service as any).calculateDelay.mockRestore();
-      mockSystemConfigService.getAgentReplyConfig.mockResolvedValue({
+      mockTypingPolicyService.getSnapshot.mockReturnValue({
+        splitSend: true,
         typingSpeedCharsPerSec: 8,
         paragraphGapMs: 2500,
       });
-      jest.spyOn(Math, 'random').mockReturnValue(0.5);
+      mockTypingPolicyService.calculateDelay.mockReturnValue(2500);
 
       await service.onModuleInit();
 

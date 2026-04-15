@@ -323,7 +323,8 @@ export const InterviewScheduleApiResponseSchema = z
 export interface BIOrderQueryParams {
   startDate?: string;
   endDate?: string;
-  regionName?: string;
+  /** BI 的“城市”字段，不是“订单所属地区”字段 */
+  cityName?: string;
   companyName?: string;
   orderStatus?: BIOrderStatusCode;
   sortBy?: string;

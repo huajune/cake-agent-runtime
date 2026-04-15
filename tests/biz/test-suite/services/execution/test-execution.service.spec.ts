@@ -2,6 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { TestExecutionService } from '@biz/test-suite/services/test-execution.service';
 import { TestExecutionRepository } from '@biz/test-suite/repositories/test-execution.repository';
 import { AgentRunnerService } from '@agent/runner.service';
+import { ChatSessionService } from '@biz/message/services/chat-session.service';
+import { ConversationRiskService } from '@/conversation-risk/services/conversation-risk.service';
+import { OnboardFollowupMonitorService } from '@biz/recruitment-case/services/onboard-followup-monitor.service';
 import { ExecutionStatus } from '@biz/test-suite/enums/test.enum';
 import { TestChatRequestDto } from '@biz/test-suite/dto/test-chat.dto';
 import { MessageRole } from '@enums/message.enum';
@@ -24,6 +27,19 @@ describe('TestExecutionService', () => {
     countCompletedByBatchId: jest.fn(),
   };
 
+  const mockChatSessionService = {
+    saveMessagesBatch: jest.fn(),
+    saveMessage: jest.fn(),
+  };
+
+  const mockConversationRiskService = {
+    checkAndHandle: jest.fn(),
+  };
+
+  const mockOnboardFollowupMonitorService = {
+    checkAndHandle: jest.fn(),
+  };
+
   const makeSuccessResult = (text = 'Agent reply') => ({
     text,
     steps: 1,
@@ -36,6 +52,9 @@ describe('TestExecutionService', () => {
         TestExecutionService,
         { provide: AgentRunnerService, useValue: mockLoop },
         { provide: TestExecutionRepository, useValue: mockExecutionRepository },
+        { provide: ChatSessionService, useValue: mockChatSessionService },
+        { provide: ConversationRiskService, useValue: mockConversationRiskService },
+        { provide: OnboardFollowupMonitorService, useValue: mockOnboardFollowupMonitorService },
       ],
     }).compile();
 
@@ -44,6 +63,18 @@ describe('TestExecutionService', () => {
     executionRepository = module.get(TestExecutionRepository);
 
     jest.clearAllMocks();
+    mockChatSessionService.saveMessagesBatch.mockResolvedValue(0);
+    mockChatSessionService.saveMessage.mockResolvedValue(true);
+    mockConversationRiskService.checkAndHandle.mockResolvedValue({
+      hit: false,
+      paused: false,
+      alerted: false,
+    });
+    mockOnboardFollowupMonitorService.checkAndHandle.mockResolvedValue({
+      hit: false,
+      paused: false,
+      alerted: false,
+    });
   });
 
   it('should be defined', () => {
@@ -77,6 +108,75 @@ describe('TestExecutionService', () => {
       expect(result.actualOutput).toBe('AI回复');
       expect(result.metrics.durationMs).toBeGreaterThanOrEqual(0);
       expect(result.response.statusCode).toBe(200);
+    });
+
+    it('should trigger conversation risk and onboard followup monitors before invoking the agent', async () => {
+      mockLoop.invoke.mockResolvedValue(makeSuccessResult('AI回复'));
+
+      await service.executeTest(baseRequest);
+
+      expect(mockConversationRiskService.checkAndHandle).toHaveBeenCalledTimes(1);
+      expect(mockConversationRiskService.checkAndHandle).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: '你好，请问还在招人吗',
+          messageData: expect.objectContaining({
+            orgId: 'test',
+            chatId: expect.stringContaining('test-'),
+            imContactId: 'user-001',
+            source: 0,
+            contactType: 1,
+            isSelf: false,
+          }),
+        }),
+      );
+      expect(mockOnboardFollowupMonitorService.checkAndHandle).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: '你好，请问还在招人吗',
+          messageData: expect.objectContaining({
+            chatId: expect.stringContaining('test-'),
+          }),
+        }),
+      );
+    });
+
+    it('should persist prior history into production chat storage before preprocessing', async () => {
+      mockLoop.invoke.mockResolvedValue(makeSuccessResult('AI回复'));
+
+      await service.executeTest({
+        ...baseRequest,
+        history: [
+          { role: MessageRole.USER, content: '你好' },
+          { role: MessageRole.ASSISTANT, content: '在的' },
+        ],
+        skipHistoryTrim: true,
+      });
+
+      expect(mockChatSessionService.saveMessagesBatch).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ role: 'user', content: '你好', chatId: expect.any(String) }),
+          expect.objectContaining({ role: 'assistant', content: '在的', chatId: expect.any(String) }),
+        ]),
+      );
+      expect(mockChatSessionService.saveMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: 'user',
+          content: '你好，请问还在招人吗',
+          chatId: expect.any(String),
+        }),
+      );
+    });
+
+    it('should continue invoking the agent even if monitoring returns a hit', async () => {
+      mockConversationRiskService.checkAndHandle.mockResolvedValue({
+        hit: true,
+        paused: true,
+        alerted: true,
+      });
+
+      const result = await service.executeTest(baseRequest);
+
+      expect(loop.invoke).toHaveBeenCalled();
+      expect(result.status).toBe(ExecutionStatus.SUCCESS);
     });
 
     it('should return TIMEOUT status when timeout error is thrown', async () => {
@@ -243,6 +343,28 @@ describe('TestExecutionService', () => {
 
       expect(result).toBe(mockNodeStream);
       fromWebSpy.mockRestore();
+    });
+
+    it('should trigger monitoring hooks before stream execution', async () => {
+      mockLoop.stream.mockResolvedValue({
+        streamResult: { textStream: {} },
+        entryStage: 'trust_building',
+      } as any);
+
+      await service.executeTestStreamWithMeta({
+        message: 'hello',
+        userId: 'user-1',
+      });
+
+      expect(mockChatSessionService.saveMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: 'user',
+          content: 'hello',
+        }),
+      );
+      expect(mockConversationRiskService.checkAndHandle).toHaveBeenCalled();
+      expect(mockOnboardFollowupMonitorService.checkAndHandle).toHaveBeenCalled();
+      expect(loop.stream).toHaveBeenCalled();
     });
 
     it('should not attach legacy booking callback to stream params', async () => {

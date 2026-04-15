@@ -79,6 +79,17 @@ const HEALTH_CERT_TYPE_ENUM_HINTS = Object.values(SPONGE_HEALTH_CERTIFICATE_TYPE
 
 const SHORT_WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
 
+const COLLECTION_RESISTANCE_PATTERNS = [
+  { label: '这么多信息', pattern: /这么多(信息|资料|内容|东西|问题)/ },
+  { label: '问/填这么多', pattern: /(问|填|提供|发|写).{0,4}这么多/ },
+  { label: '太麻烦', pattern: /(太|好)?麻烦(了)?/ },
+  { label: '不想填', pattern: /不想(填|提供|发|写)/ },
+  { label: '不填了', pattern: /不(填|发|给)了/ },
+  { label: '懒得填', pattern: /懒得(填|发|写)/ },
+  { label: '烦死了', pattern: /烦死了|烦得很/ },
+  { label: '滚犊子', pattern: /滚犊子|滚蛋/ },
+] as const;
+
 function normalizeChecklistField(field: string | null | undefined): string {
   const normalized = normalizePolicyText(field);
   if (!normalized) return '';
@@ -573,7 +584,6 @@ function buildChecklistTemplate(params: {
   const missingFields = displayOrder.filter((field) => !params.knownFieldMap[field]);
 
   const lines = [
-    '面试模版：',
     '面试要求：先将以下资料补充下发给我，我来帮你约面试',
     ...displayOrder.map((field) => {
       const value = params.knownFieldMap[field] ?? '';
@@ -586,6 +596,105 @@ function buildChecklistTemplate(params: {
     displayOrder,
     missingFields,
     templateText: lines.join('\n'),
+  };
+}
+
+function extractMessageText(content: unknown): string {
+  if (typeof content === 'string') return content;
+
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => extractMessageText(item))
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+  }
+
+  if (content && typeof content === 'object') {
+    const record = content as Record<string, unknown>;
+    if (typeof record.text === 'string') return record.text;
+    if (typeof record.content === 'string') return record.content;
+  }
+
+  return '';
+}
+
+function getRecentUserMessages(messages: unknown[], limit = 3): string[] {
+  const texts = messages
+    .map((message) => {
+      if (!message || typeof message !== 'object') return null;
+      const record = message as Record<string, unknown>;
+      if (record.role !== 'user') return null;
+      const text = normalizePolicyText(extractMessageText(record.content));
+      return text || null;
+    })
+    .filter((text): text is string => Boolean(text));
+
+  return texts.slice(-limit);
+}
+
+function detectCollectionResistance(messages: unknown[]): {
+  detected: boolean;
+  matchedSignals: string[];
+  latestUserMessage: string | null;
+} {
+  const recentUserMessages = getRecentUserMessages(messages);
+  const latestUserMessage = recentUserMessages[recentUserMessages.length - 1] ?? null;
+
+  if (!latestUserMessage) {
+    return {
+      detected: false,
+      matchedSignals: [],
+      latestUserMessage: null,
+    };
+  }
+
+  const matchedSignals = dedupeStrings(
+    recentUserMessages.flatMap((message) =>
+      COLLECTION_RESISTANCE_PATTERNS.filter(({ pattern }) => pattern.test(message)).map(
+        ({ label }) => label,
+      ),
+    ),
+  );
+
+  return {
+    detected: matchedSignals.length > 0,
+    matchedSignals,
+    latestUserMessage,
+  };
+}
+
+function buildCollectionStrategy(params: {
+  missingFields: string[];
+  resistanceSignals: string[];
+}): {
+  candidateResistanceDetected: boolean;
+  recommendedMode: 'full_template' | 'progressive';
+  reason: string;
+  starterFields: string[];
+  remainingFields: string[];
+} {
+  const orderedMissingFields = orderFields(params.missingFields);
+  const coreMissingFields = orderFields(
+    orderedMissingFields.filter((field) =>
+      (API_BOOKING_USER_REQUIRED_FIELDS as readonly string[]).includes(field),
+    ),
+  );
+  const starterFields =
+    coreMissingFields.length > 0
+      ? coreMissingFields
+      : orderedMissingFields.slice(0, Math.min(2, orderedMissingFields.length));
+  const remainingFields = orderedMissingFields.filter((field) => !starterFields.includes(field));
+  const candidateResistanceDetected = params.resistanceSignals.length > 0;
+
+  return {
+    candidateResistanceDetected,
+    recommendedMode: candidateResistanceDetected ? 'progressive' : 'full_template',
+    reason: candidateResistanceDetected
+      ? `候选人当前对收资有抗拒或不耐烦信号（${params.resistanceSignals.join('、')}），先共情解释，再从 starterFields 开始逐步收集`
+      : '候选人当前没有明显收资阻力，正常场景可直接参考 templateText 一次性收集当前岗位需要的信息',
+    starterFields,
+    remainingFields,
   };
 }
 
@@ -975,7 +1084,7 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
   return (context) =>
     tool({
       description:
-        '面试前置校验。返回岗位的面试周期规则（scheduleRule）、未来一周可约时段示例（upcomingTimeOptions）、岗位硬性筛选条件（screeningCriteria）、预约所需字段清单、最新 supplier/entryUser 契约入参指引（apiPayloadGuide）和可直接发送的话术模板（bookingChecklist）。如果候选人已经明确提出想约某一天，可以额外传入 requestedDate 让工具单独判定那一天是否可约，但不会影响 upcomingTimeOptions 的内容。这个工具负责解释岗位规则，不负责真正提交预约。',
+        '面试前置校验。返回岗位的面试周期规则（scheduleRule）、未来一周可约时段示例（upcomingTimeOptions）、岗位硬性筛选条件（screeningCriteria）、预约所需字段清单、可直接参考的话术模板与收资策略（bookingChecklist），以及最新 supplier/entryUser 契约入参指引（apiPayloadGuide）。如果候选人已经明确提出想约某一天，可以额外传入 requestedDate 让工具单独判定那一天是否可约，但不会影响 upcomingTimeOptions 的内容。这个工具负责解释岗位规则，不负责真正提交预约。',
       inputSchema,
       execute: async ({ jobId, requestedDate }) => {
         logger.log(`面试前置校验: jobId=${jobId}, requestedDate=${requestedDate ?? 'none'}`);
@@ -1047,6 +1156,14 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
           const scheduleRule = buildScheduleRule(windows);
           const screeningCriteria = buildScreeningCriteria(analysis);
           const enumHints = buildEnumHintsForMissing(checklist.missingFields);
+          const collectionResistance = detectCollectionResistance(context.messages);
+          const collectionStrategy =
+            checklist.missingFields.length > 0
+              ? buildCollectionStrategy({
+                  missingFields: checklist.missingFields,
+                  resistanceSignals: collectionResistance.matchedSignals,
+                })
+              : null;
 
           const nextAction:
             | 'collect_fields'
@@ -1068,17 +1185,14 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
               scheduleWindows: windows,
               fieldSignals: analysis.fieldGuidance.fieldSignals,
               requestedDateDecisionBasis: requestedDateCheck?.decisionBasis ?? null,
+              collectionResistanceDetected: collectionResistance.detected,
+              collectionResistanceSignals: collectionResistance.matchedSignals,
             }),
           );
 
           return stripNullish({
             success: true,
             nextAction,
-            _fixedReply: nextAction === 'collect_fields' ? checklist.templateText : undefined,
-            _replyRule:
-              nextAction === 'collect_fields'
-                ? '当 nextAction=collect_fields 且返回 _fixedReply 时，必须原样输出 _fixedReply 的内容作为本轮完整回复，禁止改写、压缩、重排或补充字段清单'
-                : undefined,
             job: {
               jobId,
               brandName: normalizePolicyText(job.basicInfo.brandName),
@@ -1105,6 +1219,17 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
               missingFields: checklist.missingFields,
               templateText: checklist.templateText,
               enumHints,
+              collectionStrategy: collectionStrategy
+                ? {
+                    ...collectionStrategy,
+                    latestUserMessage: collectionResistance.detected
+                      ? collectionResistance.latestUserMessage
+                      : undefined,
+                    matchedSignals: collectionResistance.detected
+                      ? collectionResistance.matchedSignals
+                      : undefined,
+                  }
+                : undefined,
               customerLabelDefinitions,
               apiPayloadGuide: buildApiPayloadGuide(jobId, customerLabelDefinitions),
             },
