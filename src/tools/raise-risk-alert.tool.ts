@@ -5,6 +5,7 @@ import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { SessionService } from '@memory/services/session.service';
 import { InterventionService } from '@notification/intervention/intervention.service';
 import { ToolBuilder } from '@shared-types/tool.types';
+import { extractLatestUserMessage } from './utils/chat-history.util';
 
 const logger = new Logger('raise_risk_alert');
 
@@ -95,9 +96,4 @@ export function buildRaiseRiskAlertTool(
       },
     });
   };
-}
-
-function extractLatestUserMessage(messages: Array<{ role: string; content: string }>): string {
-  const lastUser = [...messages].reverse().find((m) => m.role === 'user');
-  return lastUser?.content ?? '';
 }

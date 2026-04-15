@@ -144,7 +144,7 @@ export class ToolRegistryService {
       raise_risk_alert: createToolDefinition({
         name: 'raise_risk_alert',
         description:
-          '候选人出现辱骂/投诉/情绪升级时调用，同步触发人工介入（暂停托管+飞书告警），随后按返回的 suggestedReply 向候选人回复安抚话术',
+          '候选人出现辱骂/投诉/情绪升级时调用，同步触发人工介入（暂停托管+飞书告警）。调用后请以招募者身份自主组织共情/安抚话术，不使用预设模板，也不得暴露机器人/托管/系统等字眼。',
         create: buildRaiseRiskAlertTool(
           interventionService,
           this.chatSessionService,

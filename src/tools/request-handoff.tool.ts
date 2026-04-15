@@ -6,6 +6,7 @@ import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitme
 import { SessionService } from '@memory/services/session.service';
 import { InterventionService } from '@notification/intervention/intervention.service';
 import { ToolBuilder } from '@shared-types/tool.types';
+import { extractLatestUserMessage } from './utils/chat-history.util';
 
 const logger = new Logger('request_handoff');
 
@@ -119,9 +120,4 @@ export function buildRequestHandoffTool(
       },
     });
   };
-}
-
-function extractLatestUserMessage(messages: Array<{ role: string; content: string }>): string {
-  const lastUser = [...messages].reverse().find((m) => m.role === 'user');
-  return lastUser?.content ?? '';
 }
