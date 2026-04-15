@@ -429,20 +429,20 @@ export function buildInterviewBookingTool(
 
           void sendInterviewBookingNotification(
             {
-            candidateName: name,
-            contactName: context.contactName,
-            phone,
-            genderLabel,
-            ageText,
+              candidateName: name,
+              contactName: context.contactName,
+              phone,
+              genderLabel,
+              ageText,
               interviewTime,
               brandName,
               storeName,
               jobName,
-            jobId,
-            botUserName: context.botUserId,
-            toolOutput: toolResult,
-            botImId: context.botImId,
-          },
+              jobId,
+              botUserName: context.botUserId,
+              toolOutput: toolResult,
+              botImId: context.botImId,
+            },
             privateChatNotifier,
           );
 

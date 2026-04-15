@@ -291,8 +291,7 @@ export class MessageProcessingFailureService {
       scenario,
       chatId,
       imBotId,
-    } =
-      params;
+    } = params;
 
     this.logger.warn(`[${contactName}] Agent 降级响应，原因: ${fallbackReason}，需要人工介入`);
 
