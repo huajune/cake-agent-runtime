@@ -33,4 +33,3 @@ export class OnboardFollowupNotifierService {
     return success;
   }
 }
-

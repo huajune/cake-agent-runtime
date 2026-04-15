@@ -40,17 +40,17 @@ export class RecruitmentStageResolverService {
   }): string | undefined {
     const content = params.currentMessageContent?.trim() ?? '';
 
-    if (params.recruitmentCase && this.isRelevantToOnboardFollowup(content, params.recruitmentCase)) {
+    if (
+      params.recruitmentCase &&
+      this.isRelevantToOnboardFollowup(content, params.recruitmentCase)
+    ) {
       return 'onboard_followup';
     }
 
     return params.proceduralStage ?? undefined;
   }
 
-  isRelevantToOnboardFollowup(
-    content: string,
-    recruitmentCase: RecruitmentCaseRecord,
-  ): boolean {
+  isRelevantToOnboardFollowup(content: string, recruitmentCase: RecruitmentCaseRecord): boolean {
     const normalized = this.normalize(content);
     if (!normalized) return true;
 
@@ -82,4 +82,3 @@ export class RecruitmentStageResolverService {
     return value.toLowerCase().replace(/\s+/g, '');
   }
 }
-

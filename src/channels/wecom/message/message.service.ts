@@ -86,10 +86,10 @@ export class MessageService implements OnModuleInit {
       const successMetadata = await this.wecomObservability.buildSuccessMetadata(
         messageData.messageId,
         {
-        scenario: MessageParser.determineScenario(),
-        replyPreview: '[AI回复已禁用]',
-        replySegments: 0,
-        extraResponse: { disabledAiReply: true },
+          scenario: MessageParser.determineScenario(),
+          replyPreview: '[AI回复已禁用]',
+          replySegments: 0,
+          extraResponse: { disabledAiReply: true },
         },
       );
       this.logger.log(

@@ -110,4 +110,3 @@ export class RecruitmentCaseRepository extends BaseRepository {
     return rows[0] ?? null;
   }
 }
-

@@ -19,4 +19,3 @@ export interface OnboardFollowupNotificationPayload {
   sessionState: WeworkSessionState | null;
   recruitmentCase: RecruitmentCaseRecord;
 }
-

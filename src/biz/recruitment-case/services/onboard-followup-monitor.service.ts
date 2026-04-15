@@ -140,4 +140,3 @@ export class OnboardFollowupMonitorService {
     return value.toLowerCase().replace(/\s+/g, '');
   }
 }
-

@@ -74,13 +74,15 @@ export class OnboardFollowupCardRenderer {
       recruitmentCase.interview_time ? `面试时间：${recruitmentCase.interview_time}` : null,
       recruitmentCase.booking_id ? `预约编号：${recruitmentCase.booking_id}` : null,
       recruitmentCase.followup_window_ends_at
-        ? `跟进窗口截止：${new Date(recruitmentCase.followup_window_ends_at).toLocaleString('zh-CN', {
-            timeZone: 'Asia/Shanghai',
-          })}`
+        ? `跟进窗口截止：${new Date(recruitmentCase.followup_window_ends_at).toLocaleString(
+            'zh-CN',
+            {
+              timeZone: 'Asia/Shanghai',
+            },
+          )}`
         : null,
     ].filter((line): line is string => Boolean(line));
 
     return lines.join('\n');
   }
 }
-

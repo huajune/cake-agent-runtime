@@ -3,12 +3,7 @@ import { MessageSenderService } from '../../message-sender/message-sender.servic
 import { SendMessageType } from '../../message-sender/dto/send-message.dto';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { MessageSplitter } from '../utils/message-splitter.util';
-import {
-  DeliveryContext,
-  DeliveryResult,
-  AgentReply,
-  DeliveryFailureError,
-} from '../types';
+import { DeliveryContext, DeliveryResult, AgentReply, DeliveryFailureError } from '../types';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
 import { TypingPolicyService } from './typing-policy.service';
 

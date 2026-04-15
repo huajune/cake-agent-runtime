@@ -13,7 +13,9 @@ import { FilterReason } from '@enums/message-filter.enum';
 import { FilterResult } from '../../types';
 
 export interface MessageFilterRule {
-  evaluate(messageData: EnterpriseMessageCallbackDto): Promise<FilterResult | null> | FilterResult | null;
+  evaluate(
+    messageData: EnterpriseMessageCallbackDto,
+  ): Promise<FilterResult | null> | FilterResult | null;
 }
 
 @Injectable()
@@ -155,10 +157,7 @@ export class EnterpriseGroupFilterRule implements MessageFilterRule {
 
   evaluate(messageData: EnterpriseMessageCallbackDto): FilterResult | null {
     const isEnterpriseMessage = messageData._apiType !== 'group';
-    if (
-      !isEnterpriseMessage ||
-      messageData.groupId !== this.blockedEnterpriseGroupId
-    ) {
+    if (!isEnterpriseMessage || messageData.groupId !== this.blockedEnterpriseGroupId) {
       return null;
     }
 

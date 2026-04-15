@@ -23,11 +23,6 @@ import { OnboardFollowupMonitorService } from './services/onboard-followup-monit
     RecruitmentStageResolverService,
     OnboardFollowupMonitorService,
   ],
-  exports: [
-    RecruitmentCaseService,
-    RecruitmentStageResolverService,
-    OnboardFollowupMonitorService,
-  ],
+  exports: [RecruitmentCaseService, RecruitmentStageResolverService, OnboardFollowupMonitorService],
 })
 export class RecruitmentCaseModule {}
-

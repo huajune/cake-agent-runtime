@@ -113,4 +113,3 @@ export class RecruitmentCaseService {
     return new Date(record.followup_window_ends_at).getTime() < Date.now();
   }
 }
-

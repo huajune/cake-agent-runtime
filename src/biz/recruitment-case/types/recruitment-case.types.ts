@@ -1,12 +1,7 @@
 export const RECRUITMENT_CASE_TYPES = ['onboard_followup'] as const;
 export type RecruitmentCaseType = (typeof RECRUITMENT_CASE_TYPES)[number];
 
-export const RECRUITMENT_CASE_STATUSES = [
-  'active',
-  'handoff',
-  'closed',
-  'expired',
-] as const;
+export const RECRUITMENT_CASE_STATUSES = ['active', 'handoff', 'closed', 'expired'] as const;
 export type RecruitmentCaseStatus = (typeof RECRUITMENT_CASE_STATUSES)[number];
 
 export interface RecruitmentCaseSnapshot {
@@ -21,4 +16,3 @@ export interface RecruitmentCaseSnapshot {
   followupWindowEndsAt?: string | null;
   metadata?: Record<string, unknown> | null;
 }
-

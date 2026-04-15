@@ -1,7 +1,4 @@
-import type {
-  RecruitmentCaseStatus,
-  RecruitmentCaseType,
-} from '../types/recruitment-case.types';
+import type { RecruitmentCaseStatus, RecruitmentCaseType } from '../types/recruitment-case.types';
 
 /**
  * 招聘流程 Case
@@ -28,4 +25,3 @@ export interface RecruitmentCaseRecord {
   created_at: string;
   updated_at: string;
 }
-

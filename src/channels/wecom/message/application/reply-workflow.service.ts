@@ -6,10 +6,7 @@ import { MessageTrackingService } from '@biz/monitoring/services/tracking/messag
 import { ReplyNormalizer } from '../utils/reply-normalizer.util';
 import { MessageParser } from '../utils/message-parser.util';
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
-import {
-  DeliveryContext,
-  AgentInvokeResult,
-} from '../types';
+import { DeliveryContext, AgentInvokeResult } from '../types';
 import type { AgentError } from '@shared-types/agent-error.types';
 import { MessageDeduplicationService } from '../runtime/deduplication.service';
 import { MessageRuntimeConfigService } from '../runtime/message-runtime-config.service';

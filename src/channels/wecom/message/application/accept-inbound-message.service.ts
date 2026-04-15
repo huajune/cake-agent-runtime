@@ -8,10 +8,7 @@ import { ChatMessageInput } from '@biz/message/types/message.types';
 import { ConversationRiskService } from '@/conversation-risk/services/conversation-risk.service';
 import { MessageDeduplicationService } from '../runtime/deduplication.service';
 import { MessageRuntimeConfigService } from '../runtime/message-runtime-config.service';
-import {
-  FilterResult,
-  MessageFilterService,
-} from './filter.service';
+import { FilterResult, MessageFilterService } from './filter.service';
 import { ImageDescriptionService } from './image-description.service';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
@@ -154,13 +151,13 @@ export class AcceptInboundMessageService {
       const failureMetadata = await this.wecomObservability.buildFailureMetadata(
         messageData.messageId,
         {
-        scenario,
-        errorType: 'message',
-        errorMessage,
-        extraResponse: {
-          phase: 'pre-dispatch',
-          chatId: parsed.chatId,
-        },
+          scenario,
+          errorType: 'message',
+          errorMessage,
+          extraResponse: {
+            phase: 'pre-dispatch',
+            chatId: parsed.chatId,
+          },
         },
       );
       this.monitoringService.recordFailure(messageData.messageId, errorMessage, failureMetadata);
@@ -272,7 +269,9 @@ export class AcceptInboundMessageService {
       if (!detail?.messages) {
         return undefined;
       }
-      const userMessage = detail.messages.find((message) => message.role === 'user' && message.candidateName);
+      const userMessage = detail.messages.find(
+        (message) => message.role === 'user' && message.candidateName,
+      );
       return userMessage?.candidateName;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

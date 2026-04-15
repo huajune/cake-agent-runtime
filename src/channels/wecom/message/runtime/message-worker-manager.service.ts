@@ -118,10 +118,7 @@ export class MessageWorkerManagerService {
   }
 
   private drainExecutionResolvers(): void {
-    while (
-      this.activeJobs < this.currentConcurrency &&
-      this.pendingExecutionResolvers.length > 0
-    ) {
+    while (this.activeJobs < this.currentConcurrency && this.pendingExecutionResolvers.length > 0) {
       const next = this.pendingExecutionResolvers.shift();
       next?.();
     }
