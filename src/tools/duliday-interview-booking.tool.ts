@@ -383,9 +383,8 @@ export function buildInterviewBookingTool(
               ? { _outcome: '预约成功，可以告知候选人面试安排' }
               : {
                   _outcome: '预约失败',
-                  _fixedReply: '我这边预约遇到点小状况，我去找同事确认一下，稍等。',
-                  _replyRule:
-                    '必须原样输出 _fixedReply 的内容作为回复，禁止添加、修改或补充任何文字',
+                  _replyInstruction:
+                    '预约未成功。请以真人招募者口吻用一句话向候选人说明“我让同事确认一下，稍等”之类的衔接语，自主组织措辞；不要透露具体报错或接口细节，不要提及机器人/托管/系统/自动等字眼，也不要继续推进其他任务。',
                 }),
           };
 
@@ -423,8 +422,8 @@ export function buildInterviewBookingTool(
             error: `预约面试失败: ${err instanceof Error ? err.message : '未知错误'}`,
             requestInfo,
             _outcome: '预约失败',
-            _fixedReply: '我这边预约遇到点小状况，我去找同事确认一下，稍等。',
-            _replyRule: '必须原样输出 _fixedReply 的内容作为回复，禁止添加、修改或补充任何文字',
+            _replyInstruction:
+              '预约未成功。请以真人招募者口吻用一句话向候选人说明“我让同事确认一下，稍等”之类的衔接语，自主组织措辞；不要透露具体报错或接口细节，不要提及机器人/托管/系统/自动等字眼，也不要继续推进其他任务。',
           };
 
           void sendInterviewBookingNotification(

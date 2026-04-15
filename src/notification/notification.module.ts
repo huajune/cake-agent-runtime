@@ -1,5 +1,7 @@
-import { Global, Module } from '@nestjs/common';
+import { Global, Module, forwardRef } from '@nestjs/common';
 import { FeishuModule } from '@infra/feishu/feishu.module';
+import { UserModule } from '@biz/user/user.module';
+import { RecruitmentCaseModule } from '@biz/recruitment-case/recruitment-case.module';
 import { FeishuAlertChannel } from './channels/feishu-alert.channel';
 import { FeishuOpsChannel } from './channels/feishu-ops.channel';
 import { FeishuPrivateChatChannel } from './channels/feishu-private-chat.channel';
@@ -13,10 +15,11 @@ import { ConversationRiskNotifierService } from './services/conversation-risk-no
 import { OnboardFollowupNotifierService } from './services/onboard-followup-notifier.service';
 import { OpsNotifierService } from './services/ops-notifier.service';
 import { PrivateChatMonitorNotifierService } from './services/private-chat-monitor-notifier.service';
+import { InterventionService } from './intervention/intervention.service';
 
 @Global()
 @Module({
-  imports: [FeishuModule],
+  imports: [FeishuModule, forwardRef(() => UserModule), forwardRef(() => RecruitmentCaseModule)],
   providers: [
     FeishuAlertChannel,
     FeishuOpsChannel,
@@ -31,6 +34,7 @@ import { PrivateChatMonitorNotifierService } from './services/private-chat-monit
     OnboardFollowupNotifierService,
     OpsNotifierService,
     PrivateChatMonitorNotifierService,
+    InterventionService,
   ],
   exports: [
     AlertNotifierService,
@@ -38,6 +42,7 @@ import { PrivateChatMonitorNotifierService } from './services/private-chat-monit
     OnboardFollowupNotifierService,
     OpsNotifierService,
     PrivateChatMonitorNotifierService,
+    InterventionService,
   ],
 })
 export class NotificationModule {}
