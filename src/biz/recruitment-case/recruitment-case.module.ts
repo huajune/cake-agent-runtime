@@ -7,7 +7,6 @@ import { NotificationModule } from '@notification/notification.module';
 import { RecruitmentCaseRepository } from './repositories/recruitment-case.repository';
 import { RecruitmentCaseService } from './services/recruitment-case.service';
 import { RecruitmentStageResolverService } from './services/recruitment-stage-resolver.service';
-import { OnboardFollowupMonitorService } from './services/onboard-followup-monitor.service';
 
 @Module({
   imports: [
@@ -17,12 +16,7 @@ import { OnboardFollowupMonitorService } from './services/onboard-followup-monit
     NotificationModule,
     forwardRef(() => UserModule),
   ],
-  providers: [
-    RecruitmentCaseRepository,
-    RecruitmentCaseService,
-    RecruitmentStageResolverService,
-    OnboardFollowupMonitorService,
-  ],
-  exports: [RecruitmentCaseService, RecruitmentStageResolverService, OnboardFollowupMonitorService],
+  providers: [RecruitmentCaseRepository, RecruitmentCaseService, RecruitmentStageResolverService],
+  exports: [RecruitmentCaseService, RecruitmentStageResolverService],
 })
 export class RecruitmentCaseModule {}

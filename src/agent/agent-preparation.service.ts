@@ -318,6 +318,9 @@ export class AgentPreparationService {
     ].filter((line): line is string => Boolean(line));
 
     if (lines.length === 0) return '';
+    lines.push(
+      '当该 case 出现无法推进的阻塞（找不到门店/到店无人接待/预约信息冲突/入职办理异常等）时，必须调用 request_handoff 工具触发人工介入。',
+    );
     return `\n\n[当前预约信息]\n\n${lines.join('\n')}`;
   }
 

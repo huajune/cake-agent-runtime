@@ -9,8 +9,6 @@ import {
 } from '@agent/runner.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ChatMessageInput } from '@biz/message/types/message.types';
-import { OnboardFollowupMonitorService } from '@biz/recruitment-case/services/onboard-followup-monitor.service';
-import { ConversationRiskService } from '@/conversation-risk/services/conversation-risk.service';
 import {
   EnterpriseMessageCallbackDto,
   MessageSource,
@@ -66,8 +64,6 @@ export class TestExecutionService {
     private readonly runner: AgentRunnerService,
     private readonly executionRepository: TestExecutionRepository,
     private readonly chatSessionService: ChatSessionService,
-    private readonly conversationRiskService: ConversationRiskService,
-    private readonly onboardFollowupMonitorService: OnboardFollowupMonitorService,
   ) {
     this.logger.log('TestExecutionService 初始化完成');
   }
@@ -409,7 +405,6 @@ export class TestExecutionService {
     await this.chatSessionService.saveMessage(
       this.toCurrentUserChatMessage(request, sessionId, syntheticMessage),
     );
-    this.triggerMonitoringHooks(syntheticMessage, MessageParser.extractContent(syntheticMessage));
   }
 
   private async syncHistoryToProductionChat(
@@ -562,24 +557,6 @@ export class TestExecutionService {
       payload: messageData.payload as Record<string, unknown>,
       externalUserId: request.userId,
     };
-  }
-
-  private triggerMonitoringHooks(messageData: EnterpriseMessageCallbackDto, content: string): void {
-    void this.conversationRiskService.checkAndHandle({ messageData, content }).catch((error) => {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        `[AgentTest][交流异常检测] 触发失败 [${messageData.messageId}]: ${errorMessage}`,
-      );
-    });
-
-    void this.onboardFollowupMonitorService
-      .checkAndHandle({ messageData, content })
-      .catch((error) => {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        this.logger.error(
-          `[AgentTest][上岗跟进监控] 触发失败 [${messageData.messageId}]: ${errorMessage}`,
-        );
-      });
   }
 
   private buildRunnerMessages(

@@ -3,9 +3,7 @@ import { supportsVision } from '@providers/types';
 import { ScenarioType } from '@enums/agent.enum';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
-import { OnboardFollowupMonitorService } from '@biz/recruitment-case/services/onboard-followup-monitor.service';
 import { ChatMessageInput } from '@biz/message/types/message.types';
-import { ConversationRiskService } from '@/conversation-risk/services/conversation-risk.service';
 import { MessageDeduplicationService } from '../runtime/deduplication.service';
 import { MessageRuntimeConfigService } from '../runtime/message-runtime-config.service';
 import { FilterResult, MessageFilterService } from './filter.service';
@@ -31,8 +29,6 @@ export class AcceptInboundMessageService {
     private readonly imageDescription: ImageDescriptionService,
     private readonly wecomObservability: WecomMessageObservabilityService,
     private readonly monitoringService: MessageTrackingService,
-    private readonly conversationRiskService: ConversationRiskService,
-    private readonly onboardFollowupMonitorService: OnboardFollowupMonitorService,
     private readonly runtimeConfig: MessageRuntimeConfigService,
   ) {}
 
@@ -93,46 +89,6 @@ export class AcceptInboundMessageService {
       await this.recordUserMessageToHistory(messageData, filterResult.content);
       historyStored = true;
       await this.wecomObservability.markHistoryStored(messageData.messageId);
-
-      void this.conversationRiskService
-        .checkAndHandle({
-          messageData,
-          content: requestContent,
-        })
-        .then((riskResult) => {
-          if (riskResult.hit) {
-            this.logger.warn(
-              `[交流异常检测] 已异步暂停托管 [${messageData.messageId}], chatId=${parsed.chatId}, alerted=${riskResult.alerted}`,
-            );
-          }
-        })
-        .catch((riskError) => {
-          const riskErrorMessage =
-            riskError instanceof Error ? riskError.message : String(riskError);
-          this.logger.error(
-            `[交流异常检测] 异步检测失败 [${messageData.messageId}]: ${riskErrorMessage}`,
-          );
-        });
-
-      void this.onboardFollowupMonitorService
-        .checkAndHandle({
-          messageData,
-          content: requestContent,
-        })
-        .then((monitorResult) => {
-          if (monitorResult.hit) {
-            this.logger.warn(
-              `[面试及上岗对接] 已异步暂停托管 [${messageData.messageId}], chatId=${parsed.chatId}, alerted=${monitorResult.alerted}`,
-            );
-          }
-        })
-        .catch((monitorError) => {
-          const monitorErrorMessage =
-            monitorError instanceof Error ? monitorError.message : String(monitorError);
-          this.logger.error(
-            `[面试及上岗对接] 异步检测失败 [${messageData.messageId}]: ${monitorErrorMessage}`,
-          );
-        });
 
       await this.prepareImageIfNeeded(messageData);
     } catch (error) {

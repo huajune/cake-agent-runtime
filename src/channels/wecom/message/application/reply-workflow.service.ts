@@ -13,6 +13,7 @@ import { MessageRuntimeConfigService } from '../runtime/message-runtime-config.s
 import { MessageDeliveryService } from '../delivery/delivery.service';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
 import { MessageProcessingFailureService } from './message-processing-failure.service';
+import { PreAgentRiskInterceptService } from './pre-agent-risk-intercept.service';
 
 @Injectable()
 export class ReplyWorkflowService {
@@ -26,6 +27,7 @@ export class ReplyWorkflowService {
     private readonly wecomObservability: WecomMessageObservabilityService,
     private readonly runtimeConfig: MessageRuntimeConfigService,
     private readonly processingFailureService: MessageProcessingFailureService,
+    private readonly preAgentRiskIntercept: PreAgentRiskInterceptService,
   ) {}
 
   async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
@@ -153,6 +155,19 @@ export class ReplyWorkflowService {
 
     const { overrideModelId, effectiveModelId } =
       await this.runtimeConfig.resolveWecomChatModelSelection();
+
+    // 前置风险同步预检：命中高置信度关键词即同步执行暂停+告警，
+    // 但不短路 Agent——本轮安抚回复仍由 Agent 以招募者身份自主生成，
+    // 避免任何预设话术暴露机器人/托管身份。
+    const precheckResult = await this.preAgentRiskIntercept.precheck({
+      messageData: params.primaryMessage,
+      content,
+    });
+    if (precheckResult.hit) {
+      this.logger.warn(
+        `${logPrefix}[${contactName}] 前置风险预检命中: label=${precheckResult.label}, chatId=${chatId}`,
+      );
+    }
 
     const agentResult = await this.callAgent({
       sessionId: chatId,

@@ -1,30 +1,21 @@
-import { Module, forwardRef } from '@nestjs/common';
-import { AgentModule } from '@agent/agent.module';
-import { BizMessageModule } from '@biz/message/message.module';
-import { UserModule } from '@biz/user/user.module';
-import { MemoryModule } from '@memory/memory.module';
-import { NotificationModule } from '../notification/notification.module';
-import { ConversationRiskActionService } from './services/conversation-risk-action.service';
+import { Module } from '@nestjs/common';
 import { ConversationRiskContextService } from './services/conversation-risk-context.service';
 import { ConversationRiskDetectorService } from './services/conversation-risk-detector.service';
-import { ConversationRiskLlmAnalyzerService } from './services/conversation-risk-llm-analyzer.service';
-import { ConversationRiskService } from './services/conversation-risk.service';
+import { BizMessageModule } from '@biz/message/message.module';
+import { MemoryModule } from '@memory/memory.module';
 
+/**
+ * 交流风险模块（精简版）
+ *
+ * 仅保留规则层检测与上下文构建。
+ * - 高置信度关键词 → Pre-Agent 同步拦截（见 PreAgentRiskInterceptService）
+ * - 语义/情绪判断 → Agent 主动调用 raise_risk_alert 工具
+ *
+ * 已移除：LLM 复判、异步火发忘记触发、内存节流 Map。
+ */
 @Module({
-  imports: [
-    forwardRef(() => AgentModule),
-    BizMessageModule,
-    UserModule,
-    MemoryModule,
-    NotificationModule,
-  ],
-  providers: [
-    ConversationRiskService,
-    ConversationRiskContextService,
-    ConversationRiskDetectorService,
-    ConversationRiskLlmAnalyzerService,
-    ConversationRiskActionService,
-  ],
-  exports: [ConversationRiskService],
+  imports: [BizMessageModule, MemoryModule],
+  providers: [ConversationRiskContextService, ConversationRiskDetectorService],
+  exports: [ConversationRiskContextService, ConversationRiskDetectorService],
 })
 export class ConversationRiskModule {}
