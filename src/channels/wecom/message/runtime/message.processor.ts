@@ -70,7 +70,11 @@ export class MessageProcessor implements OnModuleInit {
   }
 
   private async waitForBclientReady(): Promise<void> {
-    const queue = this.messageQueue as any;
+    const queue = this.messageQueue as Queue & {
+      bclient?: {
+        status?: string;
+      };
+    };
     const maxWaitTime = 30000;
     const checkInterval = 100;
     const startTime = Date.now();
@@ -170,12 +174,14 @@ export class MessageProcessor implements OnModuleInit {
       // 处理完后若又收到了新消息，则按“最后一条消息后的静默窗口”补建下一轮检查任务
       await this.simpleMergeService.checkAndProcessNewMessages(chatId);
     } catch (error) {
-      this.logger.error(`[Bull] 任务 ${job.id} 处理失败: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[Bull] 任务 ${job.id} 处理失败: ${errorMessage}`);
       throw error;
     } finally {
       if (lockAcquired) {
         await this.simpleMergeService.releaseProcessingLock(chatId, lockOwner).catch((error) => {
-          this.logger.warn(`[Bull] 释放 chatId=${chatId} 处理锁失败: ${error.message}`);
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          this.logger.warn(`[Bull] 释放 chatId=${chatId} 处理锁失败: ${errorMessage}`);
         });
       }
       this.workerManager.releaseExecutionSlot();
@@ -275,10 +281,11 @@ export class MessageProcessor implements OnModuleInit {
         message: totalCleaned > 0 ? `已清理 ${totalCleaned} 个任务` : '没有需要清理的任务',
       };
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       return {
         success: false,
         cleaned,
-        message: `清理失败: ${error.message}`,
+        message: `清理失败: ${errorMessage}`,
       };
     }
   }

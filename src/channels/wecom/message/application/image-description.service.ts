@@ -47,9 +47,10 @@ export class ImageDescriptionService {
     );
     this.describeAndUpdate(messageId, imageUrl).catch((error) => {
       this.consecutiveFailures++;
+      const err = error instanceof Error ? error : new Error(String(error));
       this.logger.error(
-        `图片描述失败 [${messageId}] (连续第${this.consecutiveFailures}次): ${error.message}`,
-        error.stack,
+        `图片描述失败 [${messageId}] (连续第${this.consecutiveFailures}次): ${err.message}`,
+        err.stack,
       );
 
       // 连续失败达到阈值时发送告警
@@ -57,7 +58,7 @@ export class ImageDescriptionService {
         this.alertService
           .sendSimpleAlert(
             '图片描述服务连续失败',
-            `Vision 模型连续 ${this.ALERT_THRESHOLD} 次调用失败，图片消息无法被识别。\n最近错误: ${error.message}`,
+            `Vision 模型连续 ${this.ALERT_THRESHOLD} 次调用失败，图片消息无法被识别。\n最近错误: ${err.message}`,
             'warning',
           )
           .catch(() => {});

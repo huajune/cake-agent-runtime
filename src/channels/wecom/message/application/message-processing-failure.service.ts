@@ -141,7 +141,9 @@ export class MessageProcessingFailureService {
           },
         })
         .catch((alertError) => {
-          this.logger.error(`告警发送失败: ${alertError.message}`);
+          const alertErrorMessage =
+            alertError instanceof Error ? alertError.message : String(alertError);
+          this.logger.error(`告警发送失败: ${alertErrorMessage}`);
         });
     }
 
@@ -246,8 +248,10 @@ export class MessageProcessingFailureService {
             key: `message.delivery_failed:${scenario}`,
           },
         })
-        .catch((alertError: Error) => {
-          this.logger.error(`CRITICAL 告警发送失败: ${alertError.message}`);
+        .catch((alertError) => {
+          const alertErrorMessage =
+            alertError instanceof Error ? alertError.message : String(alertError);
+          this.logger.error(`CRITICAL 告警发送失败: ${alertErrorMessage}`);
         });
 
       const failureMetadata = await this.wecomObservability.buildFailureMetadata(traceId, {
@@ -314,7 +318,9 @@ export class MessageProcessingFailureService {
         },
       })
       .catch((alertError) => {
-        this.logger.error(`降级告警发送失败: ${alertError.message}`);
+        const alertErrorMessage =
+          alertError instanceof Error ? alertError.message : String(alertError);
+        this.logger.error(`降级告警发送失败: ${alertErrorMessage}`);
       });
   }
 
@@ -334,7 +340,8 @@ export class MessageProcessingFailureService {
     await Promise.all(
       messageIds.map(async (messageId) => {
         await this.deduplicationService.markMessageAsProcessedAsync(messageId).catch((err) => {
-          this.logger.warn(`[请求流水] 去重标记失败 [${messageId}]: ${err.message}`);
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          this.logger.warn(`[请求流水] 去重标记失败 [${messageId}]: ${errorMessage}`);
         });
       }),
     );

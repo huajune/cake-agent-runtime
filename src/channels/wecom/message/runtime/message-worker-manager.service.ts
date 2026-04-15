@@ -21,7 +21,8 @@ export class MessageWorkerManagerService {
         this.logger.log(`从配置加载 Worker 并发数: ${this.currentConcurrency}`);
       }
     } catch (error) {
-      this.logger.warn(`加载并发数配置失败，使用默认值: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`加载并发数配置失败，使用默认值: ${errorMessage}`);
     }
   }
 
@@ -90,9 +91,10 @@ export class MessageWorkerManagerService {
         currentConcurrency: newConcurrency,
       };
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       return {
         success: false,
-        message: `修改失败: ${error.message}`,
+        message: `修改失败: ${errorMessage}`,
         previousConcurrency,
         currentConcurrency: this.currentConcurrency,
       };

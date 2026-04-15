@@ -103,7 +103,8 @@ export class ReplyWorkflowService {
         batchContext: { batchId, allMessages: messages },
       });
     } catch (error) {
-      this.logger.error(`聚合消息处理失败:`, error.message);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`聚合消息处理失败:`, errorMessage);
 
       const errorType = this.processingFailureService.inferErrorType(error, 'merge');
       await this.processingFailureService.handleProcessingError(error, parsed, {
@@ -239,7 +240,8 @@ export class ReplyWorkflowService {
     await Promise.all(
       messageIds.map(async (messageId) => {
         await this.deduplicationService.markMessageAsProcessedAsync(messageId).catch((err) => {
-          this.logger.warn(`[请求流水] 去重标记失败 [${messageId}]: ${err.message}`);
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          this.logger.warn(`[请求流水] 去重标记失败 [${messageId}]: ${errorMessage}`);
         });
       }),
     );

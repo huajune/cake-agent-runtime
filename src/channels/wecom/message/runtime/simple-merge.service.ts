@@ -86,7 +86,8 @@ export class SimpleMergeService implements OnModuleInit {
         `[${chatId}] 静默窗口检查任务已创建，jobId=${chatId}:${messageData.messageId}, delay=${mergeDelayMs}ms`,
       );
     } catch (error) {
-      this.logger.error(`[${chatId}] 创建延迟任务失败: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[${chatId}] 创建延迟任务失败: ${errorMessage}`);
       // 即使任务创建失败，消息已经在 Redis 中，不会丢失；下一条消息会再次创建检查任务
     }
   }
@@ -119,7 +120,8 @@ export class SimpleMergeService implements OnModuleInit {
         const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
         messages.push(parsed as EnterpriseMessageCallbackDto);
       } catch (error) {
-        this.logger.error(`[${chatId}] 解析消息失败: ${error.message}`);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.error(`[${chatId}] 解析消息失败: ${errorMessage}`);
       }
     }
 
@@ -193,7 +195,8 @@ export class SimpleMergeService implements OnModuleInit {
       );
       return true;
     } catch (error) {
-      this.logger.error(`[${chatId}] 创建重试任务失败: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[${chatId}] 创建重试任务失败: ${errorMessage}`);
       return false;
     }
   }

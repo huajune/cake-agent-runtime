@@ -103,7 +103,8 @@ export class MessageService implements OnModuleInit {
 
     // 步骤 6: 分派（聚合 or 直发）
     this.dispatchMessage(messageData).catch((error) => {
-      this.logger.error(`[分派异常] 消息 [${messageData.messageId}] 分派失败: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[分派异常] 消息 [${messageData.messageId}] 分派失败: ${errorMessage}`);
     });
 
     return { success: true, message: 'Message received' };
@@ -146,7 +147,8 @@ export class MessageService implements OnModuleInit {
     this.pipelineService
       .processSingleMessage(messageData)
       .catch((error) => {
-        this.logger.error(`异步处理消息失败 [${messageData.messageId}]:`, error.message);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.error(`异步处理消息失败 [${messageData.messageId}]:`, errorMessage);
       })
       .finally(() => {
         this.processingCount--;

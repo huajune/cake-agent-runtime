@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
-import { MessageType } from '@enums/message-callback.enum';
+import { EnterpriseMessageCallbackDto, isTextPayload } from '../ingress/message-callback.dto';
 import { MessageParser } from '../utils/message-parser.util';
 import { FilterResult } from '../types';
 import {
@@ -80,18 +79,18 @@ export class MessageFilterService {
    */
   checkMentioned(messageData: EnterpriseMessageCallbackDto, botWxid: string): boolean {
     // 只有文本消息才支持 @（位置消息不支持）
-    if (messageData.messageType !== MessageType.TEXT) {
+    if (!isTextPayload(messageData.messageType, messageData.payload)) {
       return false;
     }
 
-    const payload = messageData.payload as any;
-
     // 检查 payload 中是否有 mention 字段
-    if (!payload.mention || !Array.isArray(payload.mention)) {
+    if (!Array.isArray(messageData.payload.mention)) {
       return false;
     }
 
     // 检查 mention 列表中是否包含机器人的 wxid 或者是否 @all
-    return payload.mention.includes(botWxid) || payload.mention.includes('@all');
+    return (
+      messageData.payload.mention.includes(botWxid) || messageData.payload.mention.includes('@all')
+    );
   }
 }

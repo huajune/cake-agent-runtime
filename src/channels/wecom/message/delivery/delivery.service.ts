@@ -118,7 +118,8 @@ export class MessageDeliveryService implements OnModuleInit {
         totalTime: 0,
       };
     } catch (error) {
-      this.logger.error(`[${contactName}] 单条消息发送失败: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[${contactName}] 单条消息发送失败: ${errorMessage}`);
       throw error;
     }
   }
@@ -167,8 +168,9 @@ export class MessageDeliveryService implements OnModuleInit {
         successCount++;
       } catch (error) {
         failedCount++;
+        const errorMessage = error instanceof Error ? error.message : String(error);
         this.logger.error(
-          `[${contactName}] 第 ${i + 1}/${segments.length} 条消息发送失败: ${error.message}`,
+          `[${contactName}] 第 ${i + 1}/${segments.length} 条消息发送失败: ${errorMessage}`,
         );
       }
     }
