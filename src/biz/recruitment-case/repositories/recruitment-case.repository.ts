@@ -38,13 +38,15 @@ export class RecruitmentCaseRepository extends BaseRepository {
   }
 
   async findLatestHandoffByTarget(targetId: string): Promise<RecruitmentCaseRecord | null> {
-    return this.selectOne<RecruitmentCaseRecord>('*', (q) =>
-      q
-        .eq('case_type', 'onboard_followup')
-        .eq('status', 'handoff')
-        .or(`chat_id.eq.${targetId},user_id.eq.${targetId}`)
-        .order('updated_at', { ascending: false }),
-    );
+    const [chatCase, userCase] = await Promise.all([
+      this.findLatestHandoffByColumn('chat_id', targetId),
+      this.findLatestHandoffByColumn('user_id', targetId),
+    ]);
+
+    if (!chatCase) return userCase;
+    if (!userCase) return chatCase;
+
+    return this.getMostRecentlyUpdated(chatCase, userCase);
   }
 
   async closeOpenCases(params: {
@@ -108,5 +110,31 @@ export class RecruitmentCaseRepository extends BaseRepository {
     );
 
     return rows[0] ?? null;
+  }
+
+  private async findLatestHandoffByColumn(
+    column: 'chat_id' | 'user_id',
+    targetId: string,
+  ): Promise<RecruitmentCaseRecord | null> {
+    return this.selectOne<RecruitmentCaseRecord>('*', (q) =>
+      q
+        .eq('case_type', 'onboard_followup')
+        .eq('status', 'handoff')
+        .eq(column, targetId)
+        .order('updated_at', { ascending: false }),
+    );
+  }
+
+  private getMostRecentlyUpdated(
+    left: RecruitmentCaseRecord,
+    right: RecruitmentCaseRecord,
+  ): RecruitmentCaseRecord {
+    const leftUpdatedAt = Date.parse(left.updated_at);
+    const rightUpdatedAt = Date.parse(right.updated_at);
+
+    if (Number.isNaN(leftUpdatedAt)) return right;
+    if (Number.isNaN(rightUpdatedAt)) return left;
+
+    return leftUpdatedAt >= rightUpdatedAt ? left : right;
   }
 }

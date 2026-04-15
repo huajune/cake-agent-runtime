@@ -80,8 +80,8 @@ export class MessageWorkerManagerService {
     }
 
     try {
-      this.currentConcurrency = newConcurrency;
       await this.systemConfigService.updateSystemConfig({ workerConcurrency: newConcurrency });
+      this.currentConcurrency = newConcurrency;
       this.drainExecutionResolvers();
 
       return {
