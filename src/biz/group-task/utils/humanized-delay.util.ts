@@ -12,8 +12,8 @@ export function resolveHumanizedDelayMs(
     Number.isFinite(baseDelayMs) && baseDelayMs > 0 ? Math.floor(baseDelayMs) : 0;
   if (normalizedBase <= 0) return 0;
 
-  const minFactor = options?.minFactor ?? 0.75;
-  const maxFactor = options?.maxFactor ?? 1.5;
+  const minFactor = options?.minFactor ?? 1.5;
+  const maxFactor = options?.maxFactor ?? 3;
   const lower = Math.min(minFactor, maxFactor);
   const upper = Math.max(minFactor, maxFactor);
 

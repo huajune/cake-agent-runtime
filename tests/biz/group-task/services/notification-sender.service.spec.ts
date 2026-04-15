@@ -180,7 +180,7 @@ describe('NotificationSenderService', () => {
 
       await delayedService.sendTextToGroup(mockGroup, 'Hello group', false);
 
-      expect(delaySpy).toHaveBeenCalledWith(2250);
+      expect(delaySpy).toHaveBeenCalledWith(4500);
       expect(messageSenderService.sendMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           token: 'test-enterprise-token',
