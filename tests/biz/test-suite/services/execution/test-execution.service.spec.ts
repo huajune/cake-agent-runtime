@@ -3,8 +3,6 @@ import { TestExecutionService } from '@biz/test-suite/services/test-execution.se
 import { TestExecutionRepository } from '@biz/test-suite/repositories/test-execution.repository';
 import { AgentRunnerService } from '@agent/runner.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
-import { ConversationRiskService } from '@/conversation-risk/services/conversation-risk.service';
-import { OnboardFollowupMonitorService } from '@biz/recruitment-case/services/onboard-followup-monitor.service';
 import { ExecutionStatus } from '@biz/test-suite/enums/test.enum';
 import { TestChatRequestDto } from '@biz/test-suite/dto/test-chat.dto';
 import { MessageRole } from '@enums/message.enum';
@@ -32,14 +30,6 @@ describe('TestExecutionService', () => {
     saveMessage: jest.fn(),
   };
 
-  const mockConversationRiskService = {
-    checkAndHandle: jest.fn(),
-  };
-
-  const mockOnboardFollowupMonitorService = {
-    checkAndHandle: jest.fn(),
-  };
-
   const makeSuccessResult = (text = 'Agent reply') => ({
     text,
     steps: 1,
@@ -53,8 +43,6 @@ describe('TestExecutionService', () => {
         { provide: AgentRunnerService, useValue: mockLoop },
         { provide: TestExecutionRepository, useValue: mockExecutionRepository },
         { provide: ChatSessionService, useValue: mockChatSessionService },
-        { provide: ConversationRiskService, useValue: mockConversationRiskService },
-        { provide: OnboardFollowupMonitorService, useValue: mockOnboardFollowupMonitorService },
       ],
     }).compile();
 
@@ -65,16 +53,6 @@ describe('TestExecutionService', () => {
     jest.clearAllMocks();
     mockChatSessionService.saveMessagesBatch.mockResolvedValue(0);
     mockChatSessionService.saveMessage.mockResolvedValue(true);
-    mockConversationRiskService.checkAndHandle.mockResolvedValue({
-      hit: false,
-      paused: false,
-      alerted: false,
-    });
-    mockOnboardFollowupMonitorService.checkAndHandle.mockResolvedValue({
-      hit: false,
-      paused: false,
-      alerted: false,
-    });
   });
 
   it('should be defined', () => {
@@ -110,35 +88,6 @@ describe('TestExecutionService', () => {
       expect(result.response.statusCode).toBe(200);
     });
 
-    it('should trigger conversation risk and onboard followup monitors before invoking the agent', async () => {
-      mockLoop.invoke.mockResolvedValue(makeSuccessResult('AI回复'));
-
-      await service.executeTest(baseRequest);
-
-      expect(mockConversationRiskService.checkAndHandle).toHaveBeenCalledTimes(1);
-      expect(mockConversationRiskService.checkAndHandle).toHaveBeenCalledWith(
-        expect.objectContaining({
-          content: '你好，请问还在招人吗',
-          messageData: expect.objectContaining({
-            orgId: 'test',
-            chatId: expect.stringContaining('test-'),
-            imContactId: 'user-001',
-            source: 0,
-            contactType: 1,
-            isSelf: false,
-          }),
-        }),
-      );
-      expect(mockOnboardFollowupMonitorService.checkAndHandle).toHaveBeenCalledWith(
-        expect.objectContaining({
-          content: '你好，请问还在招人吗',
-          messageData: expect.objectContaining({
-            chatId: expect.stringContaining('test-'),
-          }),
-        }),
-      );
-    });
-
     it('should persist prior history into production chat storage before preprocessing', async () => {
       mockLoop.invoke.mockResolvedValue(makeSuccessResult('AI回复'));
 
@@ -164,19 +113,6 @@ describe('TestExecutionService', () => {
           chatId: expect.any(String),
         }),
       );
-    });
-
-    it('should continue invoking the agent even if monitoring returns a hit', async () => {
-      mockConversationRiskService.checkAndHandle.mockResolvedValue({
-        hit: true,
-        paused: true,
-        alerted: true,
-      });
-
-      const result = await service.executeTest(baseRequest);
-
-      expect(loop.invoke).toHaveBeenCalled();
-      expect(result.status).toBe(ExecutionStatus.SUCCESS);
     });
 
     it('should return TIMEOUT status when timeout error is thrown', async () => {
@@ -362,8 +298,6 @@ describe('TestExecutionService', () => {
           content: 'hello',
         }),
       );
-      expect(mockConversationRiskService.checkAndHandle).toHaveBeenCalled();
-      expect(mockOnboardFollowupMonitorService.checkAndHandle).toHaveBeenCalled();
       expect(loop.stream).toHaveBeenCalled();
     });
 

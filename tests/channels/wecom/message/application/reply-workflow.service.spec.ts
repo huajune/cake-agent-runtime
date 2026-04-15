@@ -34,6 +34,9 @@ describe('ReplyWorkflowService', () => {
     handleProcessingError: jest.fn(),
     sendFallbackAlert: jest.fn(),
   };
+  const preAgentRiskIntercept = {
+    precheck: jest.fn(),
+  };
 
   let service: ReplyWorkflowService;
 
@@ -70,6 +73,7 @@ describe('ReplyWorkflowService', () => {
     });
     processingFailureService.inferErrorType.mockReturnValue('message');
     processingFailureService.handleProcessingError.mockResolvedValue(undefined);
+    preAgentRiskIntercept.precheck.mockResolvedValue({ hit: false });
 
     service = new ReplyWorkflowService(
       deduplicationService as never,
@@ -79,6 +83,7 @@ describe('ReplyWorkflowService', () => {
       wecomObservability as never,
       runtimeConfig as never,
       processingFailureService as never,
+      preAgentRiskIntercept as never,
     );
   });
 
