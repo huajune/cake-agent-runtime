@@ -30,7 +30,11 @@ export class AnalyticsMetricsService {
 
   calculateQueueMetrics(
     records: MessageProcessingRecord[],
-    currentProcessing: number,
+    realtime: {
+      activeRequests: number;
+      peakActiveRequests: number;
+      queueWaitingJobs: number;
+    },
   ): QueueMetrics {
     const queueDurations = records
       .filter((record) => record.queueDuration)
@@ -41,8 +45,9 @@ export class AnalyticsMetricsService {
         : 0;
 
     return {
-      currentProcessing,
-      peakProcessing: Math.max(...queueDurations, 0),
+      activeRequests: realtime.activeRequests,
+      peakActiveRequests: realtime.peakActiveRequests,
+      queueWaitingJobs: realtime.queueWaitingJobs,
       avgQueueDuration: parseFloat(avgQueueDuration.toFixed(0)),
     };
   }

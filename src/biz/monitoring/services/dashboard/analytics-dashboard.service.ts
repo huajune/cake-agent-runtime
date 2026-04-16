@@ -33,6 +33,7 @@ import { MonitoringRecordRepository } from '../../repositories/record.repository
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { HourlyStatsAggregatorService } from '../projections/hourly-stats-aggregator.service';
 import { MessageTrackingService } from '../tracking/message-tracking.service';
+import { MessageProcessor } from '@wecom/message/runtime/message.processor';
 
 /** 业务指标快照（用户数 + 预约数 + 转化率） */
 export interface BusinessMetricsSnapshot {
@@ -60,6 +61,7 @@ export class AnalyticsDashboardService {
     private readonly bookingService: BookingService,
     private readonly hourlyStatsAggregator: HourlyStatsAggregatorService,
     private readonly messageTrackingService: MessageTrackingService,
+    private readonly messageProcessor: MessageProcessor,
     private readonly analyticsMetricsService: AnalyticsMetricsService,
     private readonly analyticsTrendBuilder: AnalyticsTrendBuilderService,
   ) {}
@@ -77,13 +79,25 @@ export class AnalyticsDashboardService {
       const timeRanges = this.calculateTimeRanges(timeRange);
       const { currentStart, currentEnd, previousStart, previousEnd } = timeRanges;
 
-      const [currentRecords, previousRecords, recentMessages, errorLogs, todayUsers] =
+      const [
+        currentRecords,
+        previousRecords,
+        recentMessages,
+        errorLogs,
+        todayUsers,
+        activeRequests,
+        peakActiveRequests,
+        queueStatus,
+      ] =
         await Promise.all([
           this.getRecordsByTimeRange(currentStart, currentEnd),
           this.getRecordsByTimeRange(previousStart, previousEnd),
           this.getRecentDetailRecords(50),
           this.getErrorLogsByTimeRange(timeRange),
           timeRange === 'today' ? this.getTodayUsersFromDatabase() : Promise.resolve([]),
+          this.messageTrackingService.getActiveRequests(),
+          this.messageTrackingService.getPeakActiveRequests(),
+          this.messageProcessor.getQueueStatus(),
         ]);
 
       const overview = this.calculateOverview(currentRecords);
@@ -112,7 +126,11 @@ export class AnalyticsDashboardService {
 
       const queue = this.analyticsMetricsService.calculateQueueMetrics(
         currentRecords,
-        this.messageTrackingService.getPendingCount(),
+        {
+          activeRequests,
+          peakActiveRequests,
+          queueWaitingJobs: queueStatus.waiting,
+        },
       );
       const alertsSummary = this.analyticsMetricsService.calculateAlertsSummary(errorLogs);
       const trends = await this.calculateTrends(timeRange);
@@ -146,7 +164,7 @@ export class AnalyticsDashboardService {
         recentMessages,
         recentErrors: errorLogs,
         realtime: {
-          processingCount: this.messageTrackingService.getPendingCount(),
+          activeRequests,
         },
       };
     } catch (error) {
@@ -821,8 +839,9 @@ export class AnalyticsDashboardService {
         : 0;
 
     return {
-      currentProcessing: this.messageTrackingService.getPendingCount(),
-      peakProcessing: Math.max(...queueDurations, 0),
+      activeRequests: 0,
+      peakActiveRequests: 0,
+      queueWaitingJobs: 0,
       avgQueueDuration: parseFloat(avgQueueDuration.toFixed(0)),
     };
   }
@@ -1102,7 +1121,7 @@ export class AnalyticsDashboardService {
       },
       businessDelta: { consultations: 0, bookingAttempts: 0, bookingSuccessRate: 0 },
       usage: { tools: [], scenarios: [] },
-      queue: { currentProcessing: 0, peakProcessing: 0, avgQueueDuration: 0 },
+      queue: { activeRequests: 0, peakActiveRequests: 0, queueWaitingJobs: 0, avgQueueDuration: 0 },
       alertsSummary: { total: 0, lastHour: 0, last24Hours: 0, byType: [] },
       trends: { hourly: [] },
       responseTrend: [],
@@ -1111,7 +1130,7 @@ export class AnalyticsDashboardService {
       todayUsers: [],
       recentMessages: [],
       recentErrors: [],
-      realtime: { processingCount: 0 },
+      realtime: { activeRequests: 0 },
     };
   }
 }

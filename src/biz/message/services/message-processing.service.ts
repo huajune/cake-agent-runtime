@@ -125,7 +125,7 @@ export class MessageProcessingService {
   }
 
   /**
-   * 按 message_id 直接更新状态（pendingRecords 丢失时的降级路径）
+   * 按 message_id 直接更新状态（兜底降级路径）
    */
   async updateStatusByMessageId(
     messageId: string,

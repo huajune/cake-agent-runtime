@@ -210,8 +210,9 @@ export interface DashboardData {
   };
 
   queue: {
-    currentProcessing: number;
-    peakProcessing: number;
+    activeRequests: number;
+    peakActiveRequests: number;
+    queueWaitingJobs: number;
     avgQueueDuration: number;
   };
 
@@ -233,7 +234,7 @@ export interface DashboardData {
   recentErrors: MonitoringErrorLog[];
 
   realtime: {
-    processingCount: number;
+    activeRequests: number;
     lastMessageTime?: number;
   };
 }

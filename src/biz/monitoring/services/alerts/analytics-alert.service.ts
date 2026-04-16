@@ -92,7 +92,7 @@ export class AnalyticsAlertService implements OnModuleInit {
           totalMessages: dashboard.overview.totalMessages,
           successRate: dashboard.overview.successRate,
           avgDuration: dashboard.overview.avgDuration,
-          currentProcessing: dashboard.queue.currentProcessing,
+          activeRequests: dashboard.queue.activeRequests,
           errorCountLast24Hours: dashboard.alertsSummary.last24Hours,
         },
         minSamples: this.minSamples,

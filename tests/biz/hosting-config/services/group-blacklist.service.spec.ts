@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
 import { GroupBlacklistRepository } from '@biz/hosting-config/repositories/group-blacklist.repository';
 import { GroupBlacklistItem } from '@biz/hosting-config/entities/group-blacklist.entity';
+import { RedisService } from '@infra/redis/redis.service';
 
 describe('GroupBlacklistService', () => {
   let service: GroupBlacklistService;
@@ -9,6 +10,11 @@ describe('GroupBlacklistService', () => {
   const mockGroupBlacklistRepository = {
     loadBlacklistFromDb: jest.fn(),
     saveBlacklistToDb: jest.fn(),
+  };
+
+  const mockRedisService = {
+    get: jest.fn(),
+    set: jest.fn(),
   };
 
   const sampleBlacklistItems: GroupBlacklistItem[] = [
@@ -21,12 +27,15 @@ describe('GroupBlacklistService', () => {
       providers: [
         GroupBlacklistService,
         { provide: GroupBlacklistRepository, useValue: mockGroupBlacklistRepository },
+        { provide: RedisService, useValue: mockRedisService },
       ],
     }).compile();
 
     service = module.get<GroupBlacklistService>(GroupBlacklistService);
 
     jest.clearAllMocks();
+    mockRedisService.get.mockResolvedValue(null);
+    mockRedisService.set.mockResolvedValue(undefined);
 
     // Force cache to expire so tests start fresh
     (service as any).memoryCacheExpiry = 0;

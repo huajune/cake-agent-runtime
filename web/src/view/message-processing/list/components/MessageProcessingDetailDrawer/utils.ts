@@ -5,6 +5,7 @@ type AnyRecord = Record<string, unknown>;
 
 export interface TimingMetrics {
   e2eMs?: number;
+  quietWindowWaitMs?: number;
   queueWaitMs?: number;
   prepMs?: number;
   llmMs?: number;
@@ -106,6 +107,13 @@ function buildTracePayload(response?: AnyRecord): AnyRecord | undefined {
   if (typeof hasText === 'boolean') payload.hasText = hasText;
 
   return Object.keys(payload).length > 0 ? payload : undefined;
+}
+
+function buildDebugRequestContext(request?: AnyRecord): AnyRecord | undefined {
+  if (!request) return undefined;
+
+  const { agentRequest: _agentRequest, normalizedRequest: _normalizedRequest, transportRequest: _transportRequest, ...rest } = request;
+  return Object.keys(rest).length > 0 ? rest : undefined;
 }
 
 function buildTextPart(text: string) {
@@ -392,6 +400,7 @@ export function getRawPayloadPanels(message: MessageRecord): RawPayloadPanel[] {
   const panels: RawPayloadPanel[] = [];
 
   const agentRequest = asRecord(request?.agentRequest);
+  const debugRequestContext = buildDebugRequestContext(request);
   const normalizedRequest = asRecord(request?.normalizedRequest);
   const transportRequest = asRecord(request?.transportRequest);
   const requestPayload = agentRequest || normalizedRequest || request;
@@ -399,9 +408,18 @@ export function getRawPayloadPanels(message: MessageRecord): RawPayloadPanel[] {
   if (requestPayload) {
     panels.push({
       key: 'request',
-      label: '请求体',
-      description: agentRequest ? '实际发往 Agent 编排层的完整请求体' : '发送到 Agent 的完整业务请求',
+      label: agentRequest ? 'LLM 请求' : '请求体',
+      description: agentRequest ? '实际发往大模型的请求快照' : '发送到 Agent 的完整业务请求',
       data: requestPayload,
+    });
+  }
+
+  if (debugRequestContext) {
+    panels.push({
+      key: 'debug-context',
+      label: '排障上下文',
+      description: '处理记录里的链路标识、会话信息与调度上下文',
+      data: debugRequestContext,
     });
   }
 
@@ -647,7 +665,11 @@ export function getTimingMetrics(message: MessageRecord): TimingMetrics {
 
   return {
     e2eMs: message.totalDuration ?? asNumber(durations?.totalMs),
-    queueWaitMs: message.queueDuration ?? asNumber(durations?.acceptedToWorkerStartMs),
+    quietWindowWaitMs: asNumber(durations?.quietWindowWaitMs),
+    queueWaitMs:
+      asNumber(durations?.queueWaitMs) ??
+      message.queueDuration ??
+      asNumber(durations?.acceptedToWorkerStartMs),
     prepMs: message.prepDuration ?? asNumber(durations?.workerStartToAiStartMs),
     llmMs: message.aiDuration ?? asNumber(durations?.aiStartToAiEndMs),
     deliveryMs:
@@ -731,6 +753,20 @@ export function getContextFacts(message: MessageRecord): Array<{
 
   const traceId = asString(response?.traceId);
   if (traceId) facts.push({ label: 'Trace ID', value: traceId, mono: true });
+
+  const batchId = asString(request?.batchId);
+  if (batchId) facts.push({ label: 'Batch ID', value: batchId, mono: true });
+
+  const sourceMessageIds = asArray<string>(request?.sourceMessageIds).filter(
+    (value): value is string => typeof value === 'string' && value.trim().length > 0,
+  );
+  if (sourceMessageIds.length > 0) {
+    facts.push({
+      label: 'Source Msg IDs',
+      value: sourceMessageIds.join(', '),
+      mono: true,
+    });
+  }
 
   return facts;
 }

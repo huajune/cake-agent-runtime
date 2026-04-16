@@ -64,6 +64,21 @@ describe('ConversationRiskDetectorService', () => {
     expect(result.reason).toContain('投诉');
   });
 
+  it('should ignore historical risk keywords outside the current unresponded turn', () => {
+    const result = service.detect({
+      ...baseContext,
+      currentMessageContent: '好的我知道了',
+      recentMessages: [
+        { role: 'assistant', content: '您好，有什么可以帮您？', timestamp: 1712044800000 },
+        { role: 'user', content: '我要投诉你们', timestamp: 1712044860000 },
+        { role: 'assistant', content: '抱歉给您带来困扰', timestamp: 1712044920000 },
+        { role: 'user', content: '好的我知道了', timestamp: 1712044980000 },
+      ],
+    });
+
+    expect(result).toEqual({ hit: false });
+  });
+
   it('should build llm review signal for repeated escalation messages', () => {
     const context: ConversationRiskContext = {
       ...baseContext,

@@ -26,6 +26,7 @@ describe('SimpleMergeService', () => {
 
   const mockRuntimeConfigService = {
     getMergeDelayMs: jest.fn(),
+    syncSnapshot: jest.fn().mockResolvedValue(undefined),
   };
 
   const validMessageData: EnterpriseMessageCallbackDto = {

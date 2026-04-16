@@ -14,6 +14,8 @@ import * as configService from '@/api/services/config.service';
 
 export type { AvailableModelsResponse, ConfiguredToolsResponse } from '@/api/services/agent.service';
 
+const LIVE_CONFIG_REFETCH_INTERVAL_MS = 3000;
+
 // ==================== Query Hooks ====================
 
 /**
@@ -45,6 +47,8 @@ export function useAiReplyStatus() {
   return useQuery({
     queryKey: ['ai-reply-status'],
     queryFn: () => monitoringService.getAiReplyStatus(),
+    staleTime: 1000,
+    refetchInterval: LIVE_CONFIG_REFETCH_INTERVAL_MS,
   });
 }
 
@@ -55,6 +59,8 @@ export function useBlacklist() {
   return useQuery({
     queryKey: ['blacklist'],
     queryFn: () => configService.getBlacklist(),
+    staleTime: 1000,
+    refetchInterval: LIVE_CONFIG_REFETCH_INTERVAL_MS,
   });
 }
 
@@ -65,6 +71,8 @@ export function useAgentReplyConfig() {
   return useQuery({
     queryKey: ['agent-reply-config'],
     queryFn: () => configService.getAgentReplyConfig(),
+    staleTime: 1000,
+    refetchInterval: LIVE_CONFIG_REFETCH_INTERVAL_MS,
   });
 }
 

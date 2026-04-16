@@ -12,7 +12,7 @@ export interface BusinessMetricSnapshot {
   totalMessages: number;
   successRate: number;
   avgDuration: number;
-  currentProcessing: number;
+  activeRequests: number;
   errorCountLast24Hours: number;
 }
 
@@ -42,7 +42,7 @@ export class BusinessMetricRuleEngine {
       );
     }
 
-    alerts.push(...this.checkQueueDepth(snapshot.currentProcessing, thresholds));
+    alerts.push(...this.checkQueueDepth(snapshot.activeRequests, thresholds));
     alerts.push(...this.checkErrorRate(snapshot.errorCountLast24Hours, thresholds));
 
     return alerts;
@@ -129,8 +129,8 @@ export class BusinessMetricRuleEngine {
       return [
         {
           key: 'queue-depth',
-          title: '队列严重积压',
-          message: `当前队列深度: ${currentValue}条\n阈值: ${critical}条`,
+          title: '在途请求严重积压',
+          message: `当前在途请求: ${currentValue}条\n阈值: ${critical}条`,
           level: AlertLevel.CRITICAL,
         },
       ];
@@ -140,8 +140,8 @@ export class BusinessMetricRuleEngine {
       return [
         {
           key: 'queue-depth',
-          title: '队列积压',
-          message: `当前队列深度: ${currentValue}条\n阈值: ${warning}条`,
+          title: '在途请求积压',
+          message: `当前在途请求: ${currentValue}条\n阈值: ${warning}条`,
           level: AlertLevel.WARNING,
         },
       ];

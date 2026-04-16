@@ -51,7 +51,7 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
         this.hourlyStatsRepository.clearAllRecords(),
         this.errorLogRepository.clearAllRecords(),
       ]);
-      await this.cacheService.resetCounters();
+      await this.cacheService.clearAll();
     } catch (error) {
       this.logger.error('清空监控数据失败:', error);
       throw error;

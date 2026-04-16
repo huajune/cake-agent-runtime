@@ -46,6 +46,8 @@ interface WecomTraceRequestContext {
   acceptedAt?: number;
   sourceMessageIds?: string[];
   sourceMessageCount?: number;
+  sourceMessageLastAcceptedAt?: number;
+  quietWindowEligibleAt?: number;
 }
 
 interface WecomTraceTimings {
@@ -80,6 +82,7 @@ interface StartMessageTraceParams {
   content: string;
   batchId?: string;
   allMessages?: EnterpriseMessageCallbackDto[];
+  mergeWindowMs?: number;
 }
 
 @Injectable()
@@ -111,11 +114,19 @@ export class WecomMessageObservabilityService {
   }
 
   async startRequestTrace(params: StartMessageTraceParams): Promise<void> {
-    const { traceId, primaryMessage, scenario, content, batchId, allMessages } = params;
+    const { traceId, primaryMessage, scenario, content, batchId, allMessages, mergeWindowMs } =
+      params;
     const parsed = MessageParser.parse(primaryMessage);
     const messages = allMessages ?? [primaryMessage];
     const imageCount = messages.filter((message) => MessageParser.extractImageUrl(message)).length;
     const acceptedAt = this.resolveAcceptedAt(messages);
+    const sourceMessageLastAcceptedAt = this.resolveLatestAcceptedAt(messages);
+    const quietWindowEligibleAt =
+      sourceMessageLastAcceptedAt !== undefined &&
+      mergeWindowMs !== undefined &&
+      Number.isFinite(mergeWindowMs)
+        ? sourceMessageLastAcceptedAt + Math.max(mergeWindowMs, 0)
+        : undefined;
 
     await this.startTrace({
       messageId: traceId,
@@ -133,6 +144,8 @@ export class WecomMessageObservabilityService {
       acceptedAt,
       sourceMessageIds: messages.map((message) => message.messageId),
       sourceMessageCount: messages.length,
+      sourceMessageLastAcceptedAt,
+      quietWindowEligibleAt,
     });
   }
 
@@ -407,18 +420,42 @@ export class WecomMessageObservabilityService {
     return Math.min(...candidates);
   }
 
+  private resolveLatestAcceptedAt(messages: EnterpriseMessageCallbackDto[]): number | undefined {
+    const candidates = messages
+      .map((message) => message._receivedAtMs)
+      .filter((value): value is number => Number.isFinite(value) && value > 0);
+
+    if (candidates.length === 0) {
+      return undefined;
+    }
+
+    return Math.max(...candidates);
+  }
+
   private buildTimingSummary(trace: WecomTraceContext, completedAt: number) {
     const timings = {
       ...trace.timings,
       completedAt,
     };
+    const acceptedToWorkerStartMs = this.diff(timings.workerStartAt, timings.acceptedAt);
+    const quietWindowWaitMs = this.computeQuietWindowWaitMs(
+      trace.request.quietWindowEligibleAt,
+      timings.acceptedAt,
+      timings.workerStartAt,
+    );
+    const queueWaitMs =
+      acceptedToWorkerStartMs !== undefined
+        ? Math.max(acceptedToWorkerStartMs - (quietWindowWaitMs ?? 0), 0)
+        : undefined;
 
     return {
       timestamps: timings,
       durations: {
         acceptedToHistoryStoredMs: this.diff(timings.historyStoredAt, timings.acceptedAt),
         acceptedToImagePreparedMs: this.diff(timings.imagePreparedAt, timings.acceptedAt),
-        acceptedToWorkerStartMs: this.diff(timings.workerStartAt, timings.acceptedAt),
+        acceptedToWorkerStartMs,
+        quietWindowWaitMs,
+        queueWaitMs,
         acceptedToAiStartMs: this.diff(timings.aiStartAt, timings.acceptedAt),
         acceptedToAiEndMs: this.diff(timings.aiEndAt, timings.acceptedAt),
         acceptedToDeliveryStartMs: this.diff(timings.deliveryStartAt, timings.acceptedAt),
@@ -431,6 +468,23 @@ export class WecomMessageObservabilityService {
         totalMs: this.diff(completedAt, timings.acceptedAt) ?? 0,
       },
     };
+  }
+
+  private computeQuietWindowWaitMs(
+    quietWindowEligibleAt?: number,
+    acceptedAt?: number,
+    workerStartAt?: number,
+  ): number | undefined {
+    if (
+      quietWindowEligibleAt === undefined ||
+      acceptedAt === undefined ||
+      workerStartAt === undefined
+    ) {
+      return undefined;
+    }
+
+    const effectiveQuietWindowEnd = Math.min(quietWindowEligibleAt, workerStartAt);
+    return Math.max(effectiveQuietWindowEnd - acceptedAt, 0);
   }
 
   private diff(to?: number, from?: number): number | undefined {

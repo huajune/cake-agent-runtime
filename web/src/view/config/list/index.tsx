@@ -6,6 +6,7 @@ import {
   useAvailableModels,
 } from '@/hooks/config/useSystemConfig';
 import { useWorkerStatus, useSetWorkerConcurrency } from '@/hooks/config/useWorker';
+import { useMessageProcessingRecords } from '@/hooks/chat/useMessageProcessingRecords';
 import type { AgentReplyConfig } from '@/api/types/config.types';
 
 import ControlBar from './components/ControlBar';
@@ -69,6 +70,10 @@ export default function Config() {
   const { data: workerStatus, isLoading: isLoadingWorker } = useWorkerStatus();
   const setConcurrency = useSetWorkerConcurrency();
   const toggleMessageMerge = useToggleMessageMerge();
+  const { data: recentMessageRecords } = useMessageProcessingRecords({
+    status: 'success',
+    limit: 50,
+  });
 
   useEffect(() => {
     if (agentConfigData?.config) {
@@ -169,6 +174,14 @@ export default function Config() {
   const modelValue = String(getCurrentValue('wecomCallbackModelId') ?? '');
   const modelDefaultValue = String(getDefaultValue('wecomCallbackModelId') ?? '');
   const currentMergeWindow = Number(getCurrentValue('initialMergeWindowMs') ?? 0);
+  const e2eSamples =
+    recentMessageRecords?.filter(
+      (record) => Number.isFinite(record.totalDuration) && record.totalDuration > 0,
+    ) ?? [];
+  const averageE2EMs =
+    e2eSamples.length > 0
+      ? e2eSamples.reduce((sum, record) => sum + record.totalDuration, 0) / e2eSamples.length
+      : null;
 
   return (
     <div className={styles.page}>
@@ -295,15 +308,17 @@ export default function Config() {
             </div>
 
             <div className={styles.subPanel}>
-              <WorkerPanel
-                isLoading={isLoadingWorker}
-                workerStatus={workerStatus}
-                editingConcurrency={editingConcurrency}
-                isPending={setConcurrency.isPending}
-                onConcurrencyChange={setEditingConcurrency}
-                onApply={handleApplyConcurrency}
-                onCancel={() => setEditingConcurrency(null)}
-              />
+                <WorkerPanel
+                  isLoading={isLoadingWorker}
+                  workerStatus={workerStatus}
+                  editingConcurrency={editingConcurrency}
+                  isPending={setConcurrency.isPending}
+                  averageE2EMs={averageE2EMs}
+                  e2eSampleCount={e2eSamples.length}
+                  onConcurrencyChange={setEditingConcurrency}
+                  onApply={handleApplyConcurrency}
+                  onCancel={() => setEditingConcurrency(null)}
+                />
             </div>
           </section>
 

@@ -76,7 +76,7 @@ export class DataCleanupService implements OnModuleInit {
           `小时聚合永久保留)`,
       );
 
-      // 启动时立即清理上次服务重启遗留的卡住记录（不等 cron）
+      // 启动时立即清理上次运行遗留的卡住记录（不等 cron）
       await this.timeoutStuckProcessingRecords();
     } else {
       this.logger.warn('⚠️ 数据清理服务已禁用 (Supabase 不可用)');
@@ -218,7 +218,7 @@ export class DataCleanupService implements OnModuleInit {
 
   /**
    * 将卡住的 processing 记录标记为 timeout
-   * 服务重启后内存中的 pendingRecords 丢失，这些记录永远停留在 processing
+   * 用于兜底修正长期未终态化的请求记录
    */
   private async timeoutStuckProcessingRecords(): Promise<void> {
     try {

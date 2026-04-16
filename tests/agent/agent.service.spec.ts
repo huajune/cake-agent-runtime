@@ -108,6 +108,33 @@ describe('AgentRunnerService - invoke', () => {
     expect(mockPreparation.prepare).toHaveBeenCalledWith(invokeParams, 'invoke');
   });
 
+  it('should expose actual llm request snapshot', async () => {
+    const onPreparedRequest = jest.fn();
+
+    const result = await service.invoke({ ...invokeParams, onPreparedRequest });
+
+    expect(onPreparedRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelId: 'mock-model-id',
+        system: 'test system prompt',
+        messages: [{ role: 'user', content: 'Hello' }],
+        fallbackModelIds: ['mock-fallback-model'],
+        maxOutputTokens: 4096,
+        maxSteps: 5,
+      }),
+    );
+    expect(result.agentRequest).toEqual(
+      expect.objectContaining({
+        modelId: 'mock-model-id',
+        system: 'test system prompt',
+        messages: [{ role: 'user', content: 'Hello' }],
+        fallbackModelIds: ['mock-fallback-model'],
+        maxOutputTokens: 4096,
+        maxSteps: 5,
+      }),
+    );
+  });
+
   it('should pass persisted stage to compose', async () => {
     mockPreparation.prepare.mockResolvedValue({
       finalPrompt: 'test system prompt',
@@ -244,6 +271,17 @@ describe('AgentRunnerService - invoke', () => {
         candidatePool: [{ jobId: 519709, brandName: '奥乐齐', storeName: '长白' }],
       }),
       '可以，我先帮你确认下长白这边的面试要求。',
+    );
+  });
+
+  it('should not fail invoke when turn-end lifecycle fails', async () => {
+    mockMemoryService.onTurnEnd.mockRejectedValue(new Error('memory lifecycle failed'));
+
+    await expect(service.invoke(invokeParams)).resolves.toEqual(
+      expect.objectContaining({
+        text: 'Hello!',
+        steps: 1,
+      }),
     );
   });
 

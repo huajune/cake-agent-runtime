@@ -10,6 +10,7 @@ import { MonitoringHourlyStatsRepository } from '@biz/monitoring/repositories/ho
 import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error-log.repository';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
+import { MessageProcessor } from '@wecom/message/runtime/message.processor';
 
 const buildRecord = (overrides = {}) => ({
   messageId: 'msg-1',
@@ -42,6 +43,7 @@ describe('AnalyticsQueryService', () => {
   let _userHostingService: jest.Mocked<UserHostingService>;
   let _cacheService: jest.Mocked<MonitoringCacheService>;
   let _messageTrackingService: jest.Mocked<MessageTrackingService>;
+  let _messageProcessor: jest.Mocked<MessageProcessor>;
 
   const recordsByTimestampsMock = jest.fn();
   const messageStatsByTimestampsMock = jest.fn();
@@ -78,7 +80,19 @@ describe('AnalyticsQueryService', () => {
   };
 
   const mockMessageTrackingService = {
-    getPendingCount: jest.fn().mockReturnValue(0),
+    getActiveRequests: jest.fn().mockResolvedValue(0),
+    getPeakActiveRequests: jest.fn().mockResolvedValue(0),
+  };
+
+  const mockMessageProcessor = {
+    getQueueStatus: jest.fn().mockResolvedValue({
+      waiting: 0,
+      active: 0,
+      completed: 0,
+      failed: 0,
+      delayed: 0,
+      paused: 0,
+    }),
   };
 
   beforeEach(async () => {
@@ -113,6 +127,10 @@ describe('AnalyticsQueryService', () => {
           provide: MessageTrackingService,
           useValue: mockMessageTrackingService,
         },
+        {
+          provide: MessageProcessor,
+          useValue: mockMessageProcessor,
+        },
         AnalyticsMetricsService,
         AnalyticsTrendBuilderService,
       ],
@@ -126,6 +144,7 @@ describe('AnalyticsQueryService', () => {
     _userHostingService = module.get(UserHostingService);
     _cacheService = module.get(MonitoringCacheService);
     _messageTrackingService = module.get(MessageTrackingService);
+    _messageProcessor = module.get(MessageProcessor);
 
     jest.clearAllMocks();
 
@@ -157,7 +176,16 @@ describe('AnalyticsQueryService', () => {
       totalFallbackSuccess: 0,
     });
     mockUserHostingService.getUserHostingStatus.mockResolvedValue({ isPaused: false });
-    mockMessageTrackingService.getPendingCount.mockReturnValue(0);
+    mockMessageTrackingService.getActiveRequests.mockResolvedValue(0);
+    mockMessageTrackingService.getPeakActiveRequests.mockResolvedValue(0);
+    mockMessageProcessor.getQueueStatus.mockResolvedValue({
+      waiting: 0,
+      active: 0,
+      completed: 0,
+      failed: 0,
+      delayed: 0,
+      paused: 0,
+    });
   });
 
   it('should be defined', () => {
@@ -185,7 +213,7 @@ describe('AnalyticsQueryService', () => {
       expect(result).toHaveProperty('queue');
       expect(result).toHaveProperty('alertsSummary');
       expect(result).toHaveProperty('alertTrend');
-      expect(result.queue.currentProcessing).toBe(0);
+      expect(result.queue.activeRequests).toBe(0);
       expect(result.alertsSummary.total).toBe(2);
     });
 

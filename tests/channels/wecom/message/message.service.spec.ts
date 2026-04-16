@@ -44,6 +44,7 @@ describe('MessageService', () => {
   const mockRuntimeConfigService = {
     isAiReplyEnabled: jest.fn(),
     isMessageMergeEnabled: jest.fn(),
+    syncSnapshot: jest.fn().mockResolvedValue(undefined),
   };
 
   const validMessageData: EnterpriseMessageCallbackDto = {

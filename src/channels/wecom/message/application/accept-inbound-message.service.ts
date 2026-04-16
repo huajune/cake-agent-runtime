@@ -11,6 +11,7 @@ import { ImageDescriptionService } from './image-description.service';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
 import { MessageParser } from '../utils/message-parser.util';
+import { MessageSource, getMessageSourceDescription } from '@enums/message-callback.enum';
 
 export interface AcceptInboundMessageResult {
   shouldDispatch: boolean;
@@ -149,6 +150,13 @@ export class AcceptInboundMessageService {
     if (!content || content.trim().length === 0) {
       this.logger.debug(`[自发消息] 消息内容为空，跳过存储 [${messageData.messageId}]`);
       return;
+    }
+
+    if (messageData.source === MessageSource.MOBILE_PUSH) {
+      this.logger.warn(
+        `[自发消息-异常来源] isSelf=true 但 source=${messageData.source}(${getMessageSourceDescription(messageData.source)}), ` +
+          `messageId=${messageData.messageId}, chatId=${chatId}, botId=${messageData.botId}, botUserId=${messageData.botUserId}`,
+      );
     }
 
     const candidateName = await this.getCandidateNameFromHistory(chatId);

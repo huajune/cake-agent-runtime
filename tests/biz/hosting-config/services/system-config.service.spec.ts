@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { SystemConfigRepository } from '@biz/hosting-config/repositories/system-config.repository';
 import { DEFAULT_AGENT_REPLY_CONFIG } from '@biz/hosting-config/types/hosting-config.types';
+import { RedisService } from '@infra/redis/redis.service';
 
 describe('SystemConfigService', () => {
   let service: SystemConfigService;
@@ -22,12 +23,18 @@ describe('SystemConfigService', () => {
     }),
   };
 
+  const mockRedisService = {
+    get: jest.fn(),
+    set: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SystemConfigService,
         { provide: SystemConfigRepository, useValue: mockSystemConfigRepository },
         { provide: ConfigService, useValue: mockConfigService },
+        { provide: RedisService, useValue: mockRedisService },
       ],
     }).compile();
 
@@ -37,10 +44,14 @@ describe('SystemConfigService', () => {
 
     // Reset memory cache state
     (service as any).aiReplyEnabled = null;
+    (service as any).aiReplyEnabledExpiry = 0;
     (service as any).messageMergeEnabled = null;
+    (service as any).messageMergeEnabledExpiry = 0;
     (service as any).agentReplyConfig = null;
     (service as any).agentReplyConfigExpiry = 0;
     (service as any).configChangeCallbacks = [];
+    mockRedisService.get.mockResolvedValue(null);
+    mockRedisService.set.mockResolvedValue(undefined);
   });
 
   it('should be defined', () => {
@@ -52,6 +63,7 @@ describe('SystemConfigService', () => {
   describe('getAiReplyEnabled', () => {
     it('should return memory cached value when available', async () => {
       (service as any).aiReplyEnabled = true;
+      (service as any).aiReplyEnabledExpiry = Date.now() + 1000;
 
       const result = await service.getAiReplyEnabled();
 
@@ -123,6 +135,7 @@ describe('SystemConfigService', () => {
   describe('getMessageMergeEnabled', () => {
     it('should return memory cached value when available', async () => {
       (service as any).messageMergeEnabled = false;
+      (service as any).messageMergeEnabledExpiry = Date.now() + 1000;
 
       const result = await service.getMessageMergeEnabled();
 

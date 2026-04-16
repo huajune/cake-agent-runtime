@@ -12,6 +12,8 @@ interface WorkerPanelProps {
   workerStatus?: WorkerStatus;
   editingConcurrency: number | null;
   isPending: boolean;
+  averageE2EMs: number | null;
+  e2eSampleCount: number;
   onConcurrencyChange: (value: number) => void;
   onApply: () => void;
   onCancel: () => void;
@@ -22,6 +24,8 @@ export default function WorkerPanel({
   workerStatus,
   editingConcurrency,
   isPending,
+  averageE2EMs,
+  e2eSampleCount,
   onConcurrencyChange,
   onApply,
   onCancel,
@@ -36,6 +40,10 @@ export default function WorkerPanel({
 
   const currentValue = editingConcurrency ?? workerStatus.concurrency;
   const hasChanges = editingConcurrency !== null && editingConcurrency !== workerStatus.concurrency;
+  const averageE2ESeconds = averageE2EMs !== null ? averageE2EMs / 1000 : null;
+  const throughputPerMinute =
+    averageE2ESeconds && averageE2ESeconds > 0 ? (currentValue * 60) / averageE2ESeconds : null;
+  const throughputPerHour = throughputPerMinute !== null ? throughputPerMinute * 60 : null;
 
   return (
     <div className={styles.panel}>
@@ -54,12 +62,18 @@ export default function WorkerPanel({
       </p>
 
       <div className={styles.formula}>
-        <div>理论吞吐量 = 并发数 × (时间 / 平均首响时间)</div>
-        <div className={styles.formulaExample}>
-          例: {currentValue} 并发 × (60s / 10s首响) ≈{' '}
-          <strong className={styles.highlight}>{(currentValue * 6).toLocaleString()}</strong> 条/分钟 ≈{' '}
-          <strong className={styles.highlight}>{(currentValue * 360).toLocaleString()}</strong> 条/小时
-        </div>
+        <div>理论吞吐量 = 并发数 × (时间 / 平均 E2E 时延)</div>
+        {averageE2ESeconds !== null && throughputPerMinute !== null && throughputPerHour !== null ? (
+          <div className={styles.formulaExample}>
+            基于最近 {e2eSampleCount} 条成功请求的平均 E2E{' '}
+            <strong className={styles.highlight}>{averageE2ESeconds.toFixed(1)}s</strong>：
+            {currentValue} 并发 × (60s / {averageE2ESeconds.toFixed(1)}s) ≈{' '}
+            <strong className={styles.highlight}>{throughputPerMinute.toFixed(1)}</strong> 条/分钟 ≈{' '}
+            <strong className={styles.highlight}>{throughputPerHour.toFixed(0)}</strong> 条/小时
+          </div>
+        ) : (
+          <div className={styles.formulaExample}>暂无可用的 E2E 生产数据，暂时无法估算真实吞吐。</div>
+        )}
       </div>
 
       {/* 滑块控制 */}

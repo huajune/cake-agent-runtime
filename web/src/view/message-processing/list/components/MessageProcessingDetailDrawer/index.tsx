@@ -21,6 +21,7 @@ export default function MessageProcessingDetailDrawer({
   const latencyRows = useMemo(
     () =>
       [
+        { label: 'Quiet Window', value: timings.quietWindowWaitMs },
         { label: 'Queue', value: timings.queueWaitMs },
         { label: 'Preparation', value: timings.prepMs },
         { label: 'LLM', value: timings.llmMs ?? message?.aiDuration },

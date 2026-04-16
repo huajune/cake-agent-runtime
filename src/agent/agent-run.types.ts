@@ -55,6 +55,11 @@ export interface AgentInvokeParams {
    * 为空时回退到 AGENT_CHAT_MODEL 角色路由。
    */
   modelId?: string;
+  /**
+   * 在真正调用模型前，暴露一份“实际 LLM 请求快照”给调用方做观测。
+   * 仅用于埋点/调试，不参与模型请求语义。
+   */
+  onPreparedRequest?: (request: Record<string, unknown>) => Promise<void> | void;
 }
 
 export interface AgentToolCall {
@@ -74,6 +79,7 @@ export interface AgentRunResult {
     outputTokens: number;
     totalTokens: number;
   };
+  agentRequest?: Record<string, unknown>;
 }
 
 /** stream() 返回结果：流 + 元数据 */

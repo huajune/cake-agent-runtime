@@ -1,24 +1,48 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { MonitoringCacheService } from '@biz/monitoring/services/tracking/monitoring-cache.service';
+import { RedisService } from '@infra/redis/redis.service';
 
 describe('MonitoringCacheService', () => {
   let service: MonitoringCacheService;
 
+  const redisStore = new Map<string, number>();
+
+  const mockRedisClient = {
+    incrby: jest.fn(async (key: string, delta: number) => {
+      const next = (redisStore.get(key) ?? 0) + delta;
+      redisStore.set(key, next);
+      return next;
+    }),
+  };
+
+  const mockRedisService = {
+    getClient: jest.fn(() => mockRedisClient),
+    get: jest.fn(async (key: string) => (redisStore.has(key) ? redisStore.get(key)! : null)),
+    set: jest.fn(async (key: string, value: number) => {
+      redisStore.set(key, value);
+    }),
+  };
+
   beforeEach(async () => {
+    redisStore.clear();
+
     const module: TestingModule = await Test.createTestingModule({
-      providers: [MonitoringCacheService],
+      providers: [
+        MonitoringCacheService,
+        {
+          provide: RedisService,
+          useValue: mockRedisService,
+        },
+      ],
     }).compile();
 
     service = module.get<MonitoringCacheService>(MonitoringCacheService);
+    jest.clearAllMocks();
   });
 
   it('should be defined', () => {
     expect(service).toBeDefined();
   });
-
-  // ========================================
-  // incrementCounter
-  // ========================================
 
   describe('incrementCounter', () => {
     it('should increment the specified counter field', async () => {
@@ -41,10 +65,6 @@ describe('MonitoringCacheService', () => {
     });
   });
 
-  // ========================================
-  // incrementCounters
-  // ========================================
-
   describe('incrementCounters', () => {
     it('should increment multiple fields at once', async () => {
       await service.incrementCounters({ totalSuccess: 1, totalFallback: 2 });
@@ -60,10 +80,6 @@ describe('MonitoringCacheService', () => {
       expect(counters.totalFailure).toBe(0);
     });
   });
-
-  // ========================================
-  // getCounters
-  // ========================================
 
   describe('getCounters', () => {
     it('should return all zeroes by default', async () => {
@@ -87,10 +103,6 @@ describe('MonitoringCacheService', () => {
     });
   });
 
-  // ========================================
-  // resetCounters
-  // ========================================
-
   describe('resetCounters', () => {
     it('should reset all counters to zero', async () => {
       await service.incrementCounter('totalMessages', 10);
@@ -111,10 +123,6 @@ describe('MonitoringCacheService', () => {
     });
   });
 
-  // ========================================
-  // setCounters
-  // ========================================
-
   describe('setCounters', () => {
     it('should replace all counters with provided values', async () => {
       const counters = {
@@ -134,100 +142,62 @@ describe('MonitoringCacheService', () => {
     });
   });
 
-  // ========================================
-  // setCurrentProcessing / getCurrentProcessing
-  // ========================================
+  describe('active request counters', () => {
+    it('should set and get active requests', async () => {
+      await service.setActiveRequests(5);
+      expect(await service.getActiveRequests()).toBe(5);
+    });
 
-  describe('setCurrentProcessing', () => {
-    it('should set current processing count', async () => {
-      await service.setCurrentProcessing(5);
-      const result = await service.getCurrentProcessing();
-      expect(result).toBe(5);
+    it('should increment and return the new active request count', async () => {
+      expect(await service.incrementActiveRequests()).toBe(1);
+      expect(await service.incrementActiveRequests(2)).toBe(3);
+      expect(await service.getActiveRequests()).toBe(3);
+    });
+
+    it('should clamp decrements below zero', async () => {
+      expect(await service.incrementActiveRequests(-1)).toBe(0);
+      expect(await service.getActiveRequests()).toBe(0);
     });
   });
 
-  describe('getCurrentProcessing', () => {
+  describe('peak active requests', () => {
     it('should return 0 by default', async () => {
-      const result = await service.getCurrentProcessing();
-      expect(result).toBe(0);
+      expect(await service.getPeakActiveRequests()).toBe(0);
+    });
+
+    it('should update peak when active requests grows', async () => {
+      await service.incrementActiveRequests(3);
+      await service.incrementActiveRequests(2);
+
+      expect(await service.getPeakActiveRequests()).toBe(5);
+    });
+
+    it('should not lower peak after active requests decreases', async () => {
+      await service.setPeakActiveRequests(8);
+      await service.incrementActiveRequests(3);
+      await service.incrementActiveRequests(-2);
+
+      expect(await service.getPeakActiveRequests()).toBe(8);
+    });
+
+    it('should update peak directly', async () => {
+      await service.setPeakActiveRequests(25);
+      expect(await service.getPeakActiveRequests()).toBe(25);
     });
   });
-
-  // ========================================
-  // incrementCurrentProcessing
-  // ========================================
-
-  describe('incrementCurrentProcessing', () => {
-    it('should increment and return new value', async () => {
-      const result = await service.incrementCurrentProcessing(1);
-      expect(result).toBe(1);
-    });
-
-    it('should support negative delta for decrement', async () => {
-      await service.incrementCurrentProcessing(3);
-      const result = await service.incrementCurrentProcessing(-1);
-      expect(result).toBe(2);
-    });
-
-    it('should use default delta of 1', async () => {
-      const result = await service.incrementCurrentProcessing();
-      expect(result).toBe(1);
-    });
-  });
-
-  // ========================================
-  // updatePeakProcessing / getPeakProcessing
-  // ========================================
-
-  describe('getPeakProcessing', () => {
-    it('should return 0 by default', async () => {
-      const result = await service.getPeakProcessing();
-      expect(result).toBe(0);
-    });
-  });
-
-  describe('updatePeakProcessing', () => {
-    it('should update peak when new count is greater than current', async () => {
-      await service.updatePeakProcessing(10);
-      expect(await service.getPeakProcessing()).toBe(10);
-    });
-
-    it('should not update peak when new count is less than current', async () => {
-      await service.setPeakProcessing(20);
-      await service.updatePeakProcessing(10);
-      expect(await service.getPeakProcessing()).toBe(20);
-    });
-
-    it('should not update peak when new count equals current', async () => {
-      await service.setPeakProcessing(10);
-      await service.updatePeakProcessing(10);
-      expect(await service.getPeakProcessing()).toBe(10);
-    });
-  });
-
-  describe('setPeakProcessing', () => {
-    it('should set peak processing directly', async () => {
-      await service.setPeakProcessing(25);
-      expect(await service.getPeakProcessing()).toBe(25);
-    });
-  });
-
-  // ========================================
-  // clearAll
-  // ========================================
 
   describe('clearAll', () => {
-    it('should reset counters, currentProcessing, and peakProcessing', async () => {
+    it('should reset counters and realtime request metrics', async () => {
       await service.incrementCounter('totalMessages', 10);
-      await service.setCurrentProcessing(5);
-      await service.setPeakProcessing(15);
+      await service.setActiveRequests(5);
+      await service.setPeakActiveRequests(15);
 
       await service.clearAll();
 
       const counters = await service.getCounters();
       expect(counters.totalMessages).toBe(0);
-      expect(await service.getCurrentProcessing()).toBe(0);
-      expect(await service.getPeakProcessing()).toBe(0);
+      expect(await service.getActiveRequests()).toBe(0);
+      expect(await service.getPeakActiveRequests()).toBe(0);
     });
   });
 });

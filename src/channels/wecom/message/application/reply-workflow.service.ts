@@ -90,6 +90,7 @@ export class ReplyWorkflowService {
         content,
         batchId,
         allMessages: messages,
+        mergeWindowMs: this.runtimeConfig.getMergeDelayMs(),
       });
       await this.wecomObservability.updateDispatch(traceId, 'merged', batchId);
       await this.wecomObservability.markWorkerStart(traceId);
@@ -299,18 +300,6 @@ export class ReplyWorkflowService {
     try {
       if (recordMonitoring && messageId) {
         await this.wecomObservability.markAiStart(messageId);
-        await this.wecomObservability.recordAgentRequest(messageId, {
-          sessionId: params.sessionId,
-          userId,
-          corpId,
-          scenario,
-          userMessage,
-          imageUrls: params.imageUrls,
-          imageMessageIds: params.imageMessageIds,
-          strategySource: 'released',
-          modelId: params.effectiveModelId,
-          modelIdSource: params.modelId ? 'runtime_config' : 'default_route',
-        });
         shouldRecordAiEnd = true;
       }
 
@@ -330,6 +319,10 @@ export class ReplyWorkflowService {
         imRoomId: params.imRoomId,
         apiType: params.apiType,
         modelId: params.modelId,
+        onPreparedRequest:
+          recordMonitoring && messageId
+            ? (agentRequest) => this.wecomObservability.recordAgentRequest(messageId, agentRequest)
+            : undefined,
       });
 
       const processingTime = Date.now() - startTime;

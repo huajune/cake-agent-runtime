@@ -1,13 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { MonitoringGlobalCounters } from '@shared-types/tracking.types';
+import { RedisService } from '@infra/redis/redis.service';
 
 /**
  * 监控缓存服务
- * 使用进程内内存存储高频更新的实时指标（单实例部署）
+ * - 全局累计计数器：进程内内存
+ * - 实时请求数 / 峰值：Redis 共享计数，多实例一致
  */
 @Injectable()
 export class MonitoringCacheService {
   private readonly logger = new Logger(MonitoringCacheService.name);
+  private readonly activeRequestsKey = 'monitoring:active_requests';
+  private readonly peakActiveRequestsKey = 'monitoring:peak_active_requests';
 
   private counters: MonitoringGlobalCounters = {
     totalMessages: 0,
@@ -19,8 +23,7 @@ export class MonitoringCacheService {
     totalFallbackSuccess: 0,
   };
 
-  private currentProcessing = 0;
-  private peakProcessing = 0;
+  constructor(private readonly redisService: RedisService) {}
 
   // ========================================
   // 全局计数器
@@ -61,34 +64,49 @@ export class MonitoringCacheService {
   }
 
   // ========================================
-  // 实时并发统计
+  // 实时请求统计（Redis 共享）
   // ========================================
 
-  async setCurrentProcessing(count: number): Promise<void> {
-    this.currentProcessing = count;
+  async setActiveRequests(count: number): Promise<void> {
+    await this.redisService.set(this.activeRequestsKey, this.normalizeCount(count));
   }
 
-  async getCurrentProcessing(): Promise<number> {
-    return this.currentProcessing;
+  async getActiveRequests(): Promise<number> {
+    return this.readCount(this.activeRequestsKey);
   }
 
-  async incrementCurrentProcessing(delta: number = 1): Promise<number> {
-    this.currentProcessing += delta;
-    return this.currentProcessing;
+  async incrementActiveRequests(delta: number = 1): Promise<number> {
+    const nextCount = Number(
+      await this.redisService.getClient().incrby(this.activeRequestsKey, delta),
+    );
+
+    if (!Number.isFinite(nextCount) || nextCount < 0) {
+      await this.setActiveRequests(0);
+      return 0;
+    }
+
+    if (delta > 0) {
+      await this.updatePeakActiveRequests(nextCount);
+    }
+
+    return nextCount;
   }
 
-  async updatePeakProcessing(count: number): Promise<void> {
-    if (count > this.peakProcessing) {
-      this.peakProcessing = count;
+  async updatePeakActiveRequests(count: number): Promise<void> {
+    const normalizedCount = this.normalizeCount(count);
+    const currentPeak = await this.getPeakActiveRequests();
+
+    if (normalizedCount > currentPeak) {
+      await this.redisService.set(this.peakActiveRequestsKey, normalizedCount);
     }
   }
 
-  async getPeakProcessing(): Promise<number> {
-    return this.peakProcessing;
+  async getPeakActiveRequests(): Promise<number> {
+    return this.readCount(this.peakActiveRequestsKey);
   }
 
-  async setPeakProcessing(count: number): Promise<void> {
-    this.peakProcessing = count;
+  async setPeakActiveRequests(count: number): Promise<void> {
+    await this.redisService.set(this.peakActiveRequestsKey, this.normalizeCount(count));
   }
 
   // ========================================
@@ -97,8 +115,17 @@ export class MonitoringCacheService {
 
   async clearAll(): Promise<void> {
     await this.resetCounters();
-    this.currentProcessing = 0;
-    this.peakProcessing = 0;
+    await Promise.all([this.setActiveRequests(0), this.setPeakActiveRequests(0)]);
     this.logger.log('所有监控缓存数据已清空');
+  }
+
+  private async readCount(key: string): Promise<number> {
+    const value = await this.redisService.get<number | string>(key);
+    const parsed = typeof value === 'string' ? Number(value) : value;
+    return this.normalizeCount(parsed);
+  }
+
+  private normalizeCount(value: unknown): number {
+    return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
   }
 }

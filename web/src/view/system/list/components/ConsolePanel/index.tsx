@@ -65,7 +65,7 @@ export default function ConsolePanel({
               </button>
             </div>
             <p className={styles.controlBoxDesc}>
-              每5分钟检查业务指标，超过阈值时发送飞书告警（与下方错误统计无关）。
+              每 5 分钟检查一次成功率、全流程耗时、在途请求和错误率，超过阈值时发送飞书告警。
             </p>
           </div>
 
@@ -137,10 +137,10 @@ export default function ConsolePanel({
               <p className={styles.thresholdDesc}>低于此值触发严重告警</p>
             </div>
 
-            {/* 响应时间阈值 */}
+            {/* 总耗时阈值 */}
             <div className={styles.thresholdBox}>
               <div className={styles.thresholdBoxHeader}>
-                <span className={styles.thresholdLabel}>响应时间阈值</span>
+                <span className={styles.thresholdLabel}>总耗时阈值</span>
                 <span className={styles.thresholdValue}>{alertConfig.avgDurationCritical / 1000}s</span>
               </div>
               <input
@@ -152,13 +152,13 @@ export default function ConsolePanel({
                 onChange={(e) => onConfigChange('avgDurationCritical', Number(e.target.value))}
                 className={styles.slider}
               />
-              <p className={styles.thresholdDesc}>高于此值触发严重告警</p>
+              <p className={styles.thresholdDesc}>平均全流程耗时高于此值时触发严重告警</p>
             </div>
 
-            {/* 队列深度阈值 */}
+            {/* 在途请求阈值 */}
             <div className={styles.thresholdBox}>
               <div className={styles.thresholdBoxHeader}>
-                <span className={styles.thresholdLabel}>队列深度阈值</span>
+                <span className={styles.thresholdLabel}>在途请求阈值</span>
                 <span className={styles.thresholdValue}>{alertConfig.queueDepthCritical}条</span>
               </div>
               <input
@@ -170,7 +170,7 @@ export default function ConsolePanel({
                 onChange={(e) => onConfigChange('queueDepthCritical', Number(e.target.value))}
                 className={styles.slider}
               />
-              <p className={styles.thresholdDesc}>高于此值触发严重告警</p>
+              <p className={styles.thresholdDesc}>当前尚未完成的请求数高于此值时触发严重告警</p>
             </div>
 
             {/* 错误率阈值 */}

@@ -24,6 +24,7 @@ import { MonitoringHourlyStatsRepository } from '../../repositories/hourly-stats
 import { MonitoringErrorLogRepository } from '../../repositories/error-log.repository';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { MessageTrackingService } from '../tracking/message-tracking.service';
+import { MessageProcessor } from '@wecom/message/runtime/message.processor';
 import * as os from 'os';
 
 /**
@@ -44,6 +45,7 @@ export class AnalyticsQueryService {
     private readonly userHostingService: UserHostingService,
     private readonly cacheService: MonitoringCacheService,
     private readonly messageTrackingService: MessageTrackingService,
+    private readonly messageProcessor: MessageProcessor,
     private readonly analyticsMetricsService: AnalyticsMetricsService,
     private readonly analyticsTrendBuilder: AnalyticsTrendBuilderService,
   ) {}
@@ -56,7 +58,12 @@ export class AnalyticsQueryService {
    * 获取 System 监控数据（轻量级）
    */
   async getSystemMonitoringAsync(): Promise<{
-    queue: { currentProcessing: number; peakProcessing: number; avgQueueDuration: number };
+    queue: {
+      activeRequests: number;
+      peakActiveRequests: number;
+      queueWaitingJobs: number;
+      avgQueueDuration: number;
+    };
     alertsSummary: {
       total: number;
       lastHour: number;
@@ -66,14 +73,22 @@ export class AnalyticsQueryService {
     alertTrend: AlertTrendPoint[];
   }> {
     try {
-      const [currentRecords, errorLogs] = await Promise.all([
+      const [currentRecords, errorLogs, activeRequests, peakActiveRequests, queueStatus] =
+        await Promise.all([
         this.getRecordsByTimeRange(Date.now() - 24 * 60 * 60 * 1000, Date.now()),
         this.getErrorLogsByTimeRange('today'),
+        this.messageTrackingService.getActiveRequests(),
+        this.messageTrackingService.getPeakActiveRequests(),
+        this.messageProcessor.getQueueStatus(),
       ]);
 
       const queue = this.analyticsMetricsService.calculateQueueMetrics(
         currentRecords,
-        this.messageTrackingService.getPendingCount(),
+        {
+          activeRequests,
+          peakActiveRequests,
+          queueWaitingJobs: queueStatus.waiting,
+        },
       );
       const alertsSummary = this.analyticsMetricsService.calculateAlertsSummary(errorLogs);
       const alertTrend = this.analyticsTrendBuilder.buildAlertTrend(errorLogs, 'today');
@@ -494,8 +509,9 @@ export class AnalyticsQueryService {
         : 0;
 
     return {
-      currentProcessing: this.messageTrackingService.getPendingCount(),
-      peakProcessing: Math.max(...queueDurations, 0),
+      activeRequests: 0,
+      peakActiveRequests: 0,
+      queueWaitingJobs: 0,
       avgQueueDuration: parseFloat(avgQueueDuration.toFixed(0)),
     };
   }

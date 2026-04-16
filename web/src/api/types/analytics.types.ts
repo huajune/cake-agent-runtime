@@ -19,8 +19,9 @@ export interface OverviewDelta {
 }
 
 export interface QueueInfo {
-  currentProcessing: number;
-  peakProcessing: number;
+  activeRequests: number;
+  peakActiveRequests: number;
+  queueWaitingJobs: number;
   avgQueueDuration: number;
 }
 
@@ -141,7 +142,7 @@ export interface DashboardOverviewData {
 }
 
 export interface SystemMonitoringData {
-  queue: any;
+  queue: QueueInfo;
   alertsSummary: any;
   alertTrend: any[];
 }

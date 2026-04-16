@@ -24,12 +24,17 @@ describe('AnalyticsMetricsService', () => {
         { queueDuration: 300 } as never,
         { queueDuration: undefined } as never,
       ],
-      4,
+      {
+        activeRequests: 4,
+        peakActiveRequests: 9,
+        queueWaitingJobs: 2,
+      },
     );
 
     expect(metrics).toEqual({
-      currentProcessing: 4,
-      peakProcessing: 300,
+      activeRequests: 4,
+      peakActiveRequests: 9,
+      queueWaitingJobs: 2,
       avgQueueDuration: 200,
     });
   });

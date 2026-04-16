@@ -12,6 +12,7 @@ import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { HourlyStatsAggregatorService } from '@biz/monitoring/services/projections/hourly-stats-aggregator.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
+import { MessageProcessor } from '@wecom/message/runtime/message.processor';
 
 const buildRecord = (overrides = {}) => ({
   messageId: 'msg-1',
@@ -81,6 +82,7 @@ describe('AnalyticsDashboardService', () => {
   let _bookingService: jest.Mocked<BookingService>;
   let hourlyStatsAggregator: jest.Mocked<HourlyStatsAggregatorService>;
   let _messageTrackingService: jest.Mocked<MessageTrackingService>;
+  let _messageProcessor: jest.Mocked<MessageProcessor>;
 
   const mockMessageProcessingService = {
     getRecordsByTimeRange: jest.fn(),
@@ -127,7 +129,19 @@ describe('AnalyticsDashboardService', () => {
   };
 
   const mockMessageTrackingService = {
-    getPendingCount: jest.fn().mockReturnValue(0),
+    getActiveRequests: jest.fn().mockResolvedValue(0),
+    getPeakActiveRequests: jest.fn().mockResolvedValue(0),
+  };
+
+  const mockMessageProcessor = {
+    getQueueStatus: jest.fn().mockResolvedValue({
+      waiting: 0,
+      active: 0,
+      completed: 0,
+      failed: 0,
+      delayed: 0,
+      paused: 0,
+    }),
   };
 
   beforeEach(async () => {
@@ -170,6 +184,10 @@ describe('AnalyticsDashboardService', () => {
           provide: MessageTrackingService,
           useValue: mockMessageTrackingService,
         },
+        {
+          provide: MessageProcessor,
+          useValue: mockMessageProcessor,
+        },
         AnalyticsMetricsService,
         AnalyticsTrendBuilderService,
       ],
@@ -185,6 +203,7 @@ describe('AnalyticsDashboardService', () => {
     _bookingService = module.get(BookingService);
     hourlyStatsAggregator = module.get(HourlyStatsAggregatorService);
     _messageTrackingService = module.get(MessageTrackingService);
+    _messageProcessor = module.get(MessageProcessor);
 
     jest.clearAllMocks();
 
@@ -220,7 +239,16 @@ describe('AnalyticsDashboardService', () => {
     mockMonitoringRecordRepository.getDashboardDailyTrend.mockResolvedValue([]);
     mockMonitoringRecordRepository.getDashboardMinuteTrend.mockResolvedValue([]);
     mockMonitoringRecordRepository.getDashboardHourlyTrend.mockResolvedValue([]);
-    mockMessageTrackingService.getPendingCount.mockReturnValue(0);
+    mockMessageTrackingService.getActiveRequests.mockResolvedValue(0);
+    mockMessageTrackingService.getPeakActiveRequests.mockResolvedValue(0);
+    mockMessageProcessor.getQueueStatus.mockResolvedValue({
+      waiting: 0,
+      active: 0,
+      completed: 0,
+      failed: 0,
+      delayed: 0,
+      paused: 0,
+    });
   });
 
   it('should be defined', () => {
@@ -255,12 +283,12 @@ describe('AnalyticsDashboardService', () => {
       expect(result).toHaveProperty('realtime');
     });
 
-    it('should include processingCount from messageTrackingService in realtime', async () => {
-      mockMessageTrackingService.getPendingCount.mockReturnValue(5);
+    it('should include activeRequests from messageTrackingService in realtime', async () => {
+      mockMessageTrackingService.getActiveRequests.mockResolvedValue(5);
 
       const result = await service.getDashboardDataAsync('today');
 
-      expect(result.realtime.processingCount).toBe(5);
+      expect(result.realtime.activeRequests).toBe(5);
     });
 
     it('should calculate overview from current records', async () => {
