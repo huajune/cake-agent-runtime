@@ -12,7 +12,6 @@ import { ContextService } from './context/context.service';
 import { AgentController } from './agent.controller';
 import { AgentHealthService } from './agent-health.service';
 import { InputGuardService } from './input-guard.service';
-import { LocationCityResolverService } from './services/location-city-resolver.service';
 
 @Module({
   imports: [
@@ -31,7 +30,6 @@ import { LocationCityResolverService } from './services/location-city-resolver.s
     AgentHealthService,
     CompletionService,
     InputGuardService,
-    LocationCityResolverService,
   ],
   exports: [
     ContextService,
@@ -39,7 +37,6 @@ import { LocationCityResolverService } from './services/location-city-resolver.s
     AgentRunnerService,
     CompletionService,
     InputGuardService,
-    LocationCityResolverService,
   ],
 })
 export class AgentModule {}

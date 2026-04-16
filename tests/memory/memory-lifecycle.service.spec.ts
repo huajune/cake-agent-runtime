@@ -159,7 +159,11 @@ describe('MemoryLifecycleService', () => {
 
     expect(ctx.sessionMemory?.facts?.preferences.brands).toEqual(['来伊份']);
     expect(ctx.sessionMemory?.facts?.preferences.city).toBeNull();
-    expect(ctx.highConfidenceFacts?.preferences.city).toBe('上海');
+    expect(ctx.highConfidenceFacts?.preferences.city).toEqual({
+      value: '上海',
+      confidence: 'high',
+      evidence: 'municipality_compact',
+    });
     expect(ctx.highConfidenceFacts?.preferences.district).toEqual(['杨浦']);
     expect(ctx.highConfidenceFacts?.interview_info.gender).toBe('男');
     expect(ctx.highConfidenceFacts?.interview_info.age).toBe('25');

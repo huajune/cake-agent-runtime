@@ -1,5 +1,5 @@
 import type { BrandItem } from '@/sponge/sponge.types';
-import type { BrandAliasHint } from './high-confidence-facts';
+import type { BrandAliasHint } from '../facts/high-confidence-facts';
 
 /** 结构化事实提取的系统提示词。 */
 export const SESSION_EXTRACTION_SYSTEM_PROMPT = `你是结构化事实提取引擎，从招募经理与候选人的对话历史中提取结构化事实信息。

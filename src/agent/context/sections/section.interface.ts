@@ -1,6 +1,5 @@
 import type { EntityExtractionResult } from '@memory/types/session-facts.types';
 import { StrategyConfigRecord } from '@shared-types/strategy-config.types';
-import type { ResolvedCity } from '@agent/services/location-city-resolver.service';
 
 /**
  * 提示词组装上下文 — 所有 section 共享
@@ -22,8 +21,6 @@ export interface PromptContext {
   sessionFacts?: EntityExtractionResult | null;
   /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分为普通/待确认线索后渲染。 */
   highConfidenceFacts?: EntityExtractionResult | null;
-  /** 系统根据本轮地点线索解析出的高置信城市，仅用于 geocode 等运行时决策。 */
-  resolvedCity?: ResolvedCity | null;
 }
 
 /**
