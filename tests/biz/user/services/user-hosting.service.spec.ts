@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { UserHostingRepository } from '@biz/user/repositories/user-hosting.repository';
+import { RedisService } from '@infra/redis/redis.service';
 
 describe('UserHostingService', () => {
   let service: UserHostingService;
@@ -12,17 +13,25 @@ describe('UserHostingService', () => {
     findUserProfiles: jest.fn(),
   };
 
+  const mockRedisService = {
+    get: jest.fn(),
+    set: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UserHostingService,
         { provide: UserHostingRepository, useValue: mockUserHostingRepository },
+        { provide: RedisService, useValue: mockRedisService },
       ],
     }).compile();
 
     service = module.get<UserHostingService>(UserHostingService);
 
     jest.clearAllMocks();
+    mockRedisService.get.mockResolvedValue(null);
+    mockRedisService.set.mockResolvedValue(undefined);
 
     // Reset cache
     (service as any).pausedUsersCache.clear();

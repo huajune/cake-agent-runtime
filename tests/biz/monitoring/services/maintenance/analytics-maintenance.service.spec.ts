@@ -137,13 +137,13 @@ describe('AnalyticsMaintenanceService', () => {
   // ========================================
 
   describe('clearAllDataAsync', () => {
-    it('should clear all three repositories in parallel and reset cache counters', async () => {
+    it('should clear all three repositories in parallel and clear cache state', async () => {
       await service.clearAllDataAsync();
 
       expect(messageProcessingRepository.clearAllRecords).toHaveBeenCalledTimes(1);
       expect(hourlyStatsRepository.clearAllRecords).toHaveBeenCalledTimes(1);
       expect(errorLogRepository.clearAllRecords).toHaveBeenCalledTimes(1);
-      expect(cacheService.resetCounters).toHaveBeenCalledTimes(1);
+      expect(cacheService.clearAll).toHaveBeenCalledTimes(1);
     });
 
     it('should throw when a repository fails', async () => {
@@ -152,11 +152,11 @@ describe('AnalyticsMaintenanceService', () => {
       await expect(service.clearAllDataAsync()).rejects.toThrow('DB error');
     });
 
-    it('should not call resetCounters when a repository throws', async () => {
+    it('should not clear cache when a repository throws', async () => {
       mockHourlyStatsRepository.clearAllRecords.mockRejectedValue(new Error('DB error'));
 
       await expect(service.clearAllDataAsync()).rejects.toThrow();
-      expect(cacheService.resetCounters).not.toHaveBeenCalled();
+      expect(cacheService.clearAll).not.toHaveBeenCalled();
     });
   });
 

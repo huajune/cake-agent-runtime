@@ -10,7 +10,7 @@ const buildMockDashboard = (
     totalMessages?: number;
     successRate?: number;
     avgDuration?: number;
-    currentProcessing?: number;
+    activeRequests?: number;
     last24Hours?: number;
   } = {},
 ) => ({
@@ -23,8 +23,9 @@ const buildMockDashboard = (
     activeChats: 20,
   },
   queue: {
-    currentProcessing: overrides.currentProcessing ?? 2,
-    peakProcessing: 5,
+    activeRequests: overrides.activeRequests ?? 2,
+    peakActiveRequests: 5,
+    queueWaitingJobs: 1,
     avgQueueDuration: 200,
   },
   alertsSummary: {
@@ -127,15 +128,15 @@ describe('AnalyticsAlertService', () => {
 
   it('sends a warning when queue depth is high but not critical', async () => {
     mockAnalyticsDashboardService.getDashboardDataAsync.mockResolvedValue(
-      buildMockDashboard({ currentProcessing: 11 }),
+      buildMockDashboard({ activeRequests: 11 }),
     );
 
     await service.onModuleInit();
     await service.checkBusinessMetrics();
 
     expect(mockAlertService.sendSimpleAlert).toHaveBeenCalledWith(
-      '队列积压',
-      expect.stringContaining('当前队列深度: 11条'),
+      '在途请求积压',
+      expect.stringContaining('当前在途请求: 11条'),
       'warning',
     );
   });

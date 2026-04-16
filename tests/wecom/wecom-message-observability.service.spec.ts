@@ -105,35 +105,94 @@ describe('WecomMessageObservabilityService', () => {
 
   it('should keep batch-level invocation metadata for merged request traces', async () => {
     const messageId = 'batch_1';
-    await service.startTrace({
-      messageId,
-      chatId: 'chat_2',
-      userId: 'contact_2',
-      userName: '候选人B',
-      managerName: 'Agent Test',
-      scenario: ScenarioType.CANDIDATE_CONSULTATION,
-      content: '还有别的岗位吗',
-      imageCount: 0,
-      messageType: StorageMessageType.TEXT,
-      messageSource: StorageMessageSource.MOBILE_PUSH,
-      contactType: StorageContactType.PERSONAL_WECHAT,
-      batchId: 'batch_1',
-      acceptedAt: 1710000000000,
-      sourceMessageIds: ['msg_a', 'msg_b'],
-      sourceMessageCount: 2,
-    });
+    const acceptedAt = 1710000000000;
+    const clock = jest.spyOn(Date, 'now');
+    try {
+      await service.startRequestTrace({
+        traceId: messageId,
+        primaryMessage: {
+          orgId: 'org_1',
+          token: 'token_1',
+          botId: 'bot_1',
+          imBotId: 'im_bot_1',
+          chatId: 'chat_2',
+          messageType: 7,
+          messageId: 'msg_b',
+          timestamp: String(acceptedAt + 1500),
+          isSelf: false,
+          source: 0,
+          contactType: 1,
+          payload: { text: '还有别的岗位吗' },
+          imContactId: 'contact_2',
+          contactName: '候选人B',
+          botUserId: 'Agent Test',
+          _receivedAtMs: acceptedAt + 1500,
+        } as never,
+        scenario: ScenarioType.CANDIDATE_CONSULTATION,
+        content: '还有别的岗位吗',
+        batchId: 'batch_1',
+        mergeWindowMs: 2000,
+        allMessages: [
+          {
+            orgId: 'org_1',
+            token: 'token_1',
+            botId: 'bot_1',
+            imBotId: 'im_bot_1',
+            chatId: 'chat_2',
+            messageType: 7,
+            messageId: 'msg_a',
+            timestamp: String(acceptedAt),
+            isSelf: false,
+            source: 0,
+            contactType: 1,
+            payload: { text: '你好' },
+            imContactId: 'contact_2',
+            contactName: '候选人B',
+            botUserId: 'Agent Test',
+            _receivedAtMs: acceptedAt,
+          },
+          {
+            orgId: 'org_1',
+            token: 'token_1',
+            botId: 'bot_1',
+            imBotId: 'im_bot_1',
+            chatId: 'chat_2',
+            messageType: 7,
+            messageId: 'msg_b',
+            timestamp: String(acceptedAt + 1500),
+            isSelf: false,
+            source: 0,
+            contactType: 1,
+            payload: { text: '还有别的岗位吗' },
+            imContactId: 'contact_2',
+            contactName: '候选人B',
+            botUserId: 'Agent Test',
+            _receivedAtMs: acceptedAt + 1500,
+          },
+        ] as never,
+      });
+      clock.mockReturnValue(acceptedAt + 4200);
+      await service.markWorkerStart(messageId);
+      clock.mockReturnValue(acceptedAt + 4300);
 
-    const metadata = await service.buildSuccessMetadata(messageId, {
-      scenario: ScenarioType.CANDIDATE_CONSULTATION,
-      batchId: 'batch_1',
-      extraResponse: {
-        phase: 'merged-request',
-      },
-    });
+      const metadata = await service.buildSuccessMetadata(messageId, {
+        scenario: ScenarioType.CANDIDATE_CONSULTATION,
+        batchId: 'batch_1',
+        extraResponse: {
+          phase: 'merged-request',
+        },
+      });
 
-    expect(metadata.batchId).toBe('batch_1');
-    expect(metadata.agentInvocation).toBeDefined();
-    expect(metadata.agentInvocation?.request?.sourceMessageIds).toEqual(['msg_a', 'msg_b']);
-    expect(metadata.agentInvocation?.request?.sourceMessageCount).toBe(2);
+      expect(metadata.batchId).toBe('batch_1');
+      expect(metadata.agentInvocation).toBeDefined();
+      expect(metadata.agentInvocation?.request?.sourceMessageIds).toEqual(['msg_a', 'msg_b']);
+      expect(metadata.agentInvocation?.request?.sourceMessageCount).toBe(2);
+      expect(metadata.agentInvocation?.response?.timings?.durations?.quietWindowWaitMs).toBe(
+        3500,
+      );
+      expect(metadata.agentInvocation?.response?.timings?.durations?.queueWaitMs).toBe(700);
+    } finally {
+      clock.mockRestore();
+    }
   });
 });

@@ -461,7 +461,7 @@ export class MessageProcessingRepository extends BaseRepository {
 
   /**
    * 将超时的 processing 记录标记为 timeout
-   * 服务重启后内存中的 pendingRecords 丢失，这些记录永远停留在 processing 状态
+   * 用于兜底清理长期停留在 processing 状态的请求记录
    * @param stuckMinutes 超过多少分钟的 processing 记录视为卡住（默认 30 分钟）
    * @returns 更新的记录数
    */
@@ -497,7 +497,7 @@ export class MessageProcessingRepository extends BaseRepository {
 
   /**
    * 按 message_id 直接更新状态（不依赖完整记录）
-   * 用于 pendingRecords 丢失后的降级更新
+   * 用于极端情况下的最小状态修正
    */
   async updateStatusByMessageId(
     messageId: string,

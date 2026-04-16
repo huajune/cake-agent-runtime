@@ -46,6 +46,8 @@ export class SimpleMergeService implements OnModuleInit {
    * 这是外部调用的主入口
    */
   async addMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
+    await this.runtimeConfig.syncSnapshot();
+
     const chatId = messageData.chatId;
     const pendingKey = RedisKeyBuilder.pending(chatId);
     const lastMessageAt = Date.now();
@@ -207,6 +209,8 @@ export class SimpleMergeService implements OnModuleInit {
   }
 
   private async getRemainingQuietWindowMs(chatId: string): Promise<number> {
+    await this.runtimeConfig.syncSnapshot();
+
     const rawValue = await this.redisService.get<string>(RedisKeyBuilder.lastMessageAt(chatId));
     const lastMessageAt = Number(rawValue);
     const mergeDelayMs = this.runtimeConfig.getMergeDelayMs();

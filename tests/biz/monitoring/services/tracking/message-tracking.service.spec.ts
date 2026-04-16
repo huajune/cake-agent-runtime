@@ -6,52 +6,45 @@ import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { ScenarioType } from '@enums/agent.enum';
 
-/** Flush all pending microtasks/promise chains */
 const flushPromises = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 describe('MessageTrackingService', () => {
   let service: MessageTrackingService;
-  let messageProcessingRepository: jest.Mocked<MessageProcessingService> & {
-    saveMessageProcessingRecord: jest.Mock;
-  };
+  let messageProcessingService: jest.Mocked<MessageProcessingService>;
   let errorLogRepository: jest.Mocked<MonitoringErrorLogRepository>;
-  let userHostingRepository: jest.Mocked<UserHostingService> & {
-    upsertUserActivity: jest.Mock;
-  };
+  let userHostingService: jest.Mocked<UserHostingService>;
   let cacheService: jest.Mocked<MonitoringCacheService>;
+  let activeRequests = 0;
+  let peakActiveRequests = 0;
 
-  const saveRecordMock = jest.fn().mockResolvedValue(undefined);
-  const mockMessageProcessingRepository = {
-    saveRecord: saveRecordMock,
-    saveMessageProcessingRecord: saveRecordMock,
+  const mockMessageProcessingService = {
+    saveRecord: jest.fn().mockResolvedValue(true),
+    getMessageProcessingRecordById: jest.fn().mockResolvedValue(null),
   };
 
   const mockErrorLogRepository = {
     saveErrorLog: jest.fn().mockResolvedValue(undefined),
   };
 
-  const upsertActivityMock = jest.fn().mockResolvedValue(undefined);
-  const mockUserHostingRepository = {
-    upsertActivity: upsertActivityMock,
-    upsertUserActivity: upsertActivityMock,
+  const mockUserHostingService = {
+    upsertActivity: jest.fn().mockResolvedValue(undefined),
   };
 
   const mockCacheService = {
     incrementCounter: jest.fn().mockResolvedValue(undefined),
     incrementCounters: jest.fn().mockResolvedValue(undefined),
-    incrementCurrentProcessing: jest.fn().mockResolvedValue(1),
-    updatePeakProcessing: jest.fn().mockResolvedValue(undefined),
+    incrementActiveRequests: jest.fn(),
+    getActiveRequests: jest.fn(),
+    getPeakActiveRequests: jest.fn(),
   };
 
   beforeEach(async () => {
-    jest.useFakeTimers();
-
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MessageTrackingService,
         {
           provide: MessageProcessingService,
-          useValue: mockMessageProcessingRepository,
+          useValue: mockMessageProcessingService,
         },
         {
           provide: MonitoringErrorLogRepository,
@@ -59,7 +52,7 @@ describe('MessageTrackingService', () => {
         },
         {
           provide: UserHostingService,
-          useValue: mockUserHostingRepository,
+          useValue: mockUserHostingService,
         },
         {
           provide: MonitoringCacheService,
@@ -68,565 +61,293 @@ describe('MessageTrackingService', () => {
       ],
     }).compile();
 
-    service = module.get<MessageTrackingService>(MessageTrackingService);
-    messageProcessingRepository = module.get(MessageProcessingService) as typeof messageProcessingRepository;
+    service = module.get(MessageTrackingService);
+    messageProcessingService = module.get(MessageProcessingService);
     errorLogRepository = module.get(MonitoringErrorLogRepository);
-    userHostingRepository = module.get(UserHostingService) as typeof userHostingRepository;
+    userHostingService = module.get(UserHostingService);
     cacheService = module.get(MonitoringCacheService);
 
     jest.clearAllMocks();
-    // Reset mock defaults after clearAllMocks
-    mockCacheService.incrementCurrentProcessing.mockResolvedValue(1);
-    mockCacheService.updatePeakProcessing.mockResolvedValue(undefined);
-    mockMessageProcessingRepository.saveRecord.mockResolvedValue(undefined);
+    activeRequests = 0;
+    peakActiveRequests = 0;
+    mockMessageProcessingService.saveRecord.mockResolvedValue(true);
+    mockMessageProcessingService.getMessageProcessingRecordById.mockResolvedValue(null);
     mockErrorLogRepository.saveErrorLog.mockResolvedValue(undefined);
-    mockUserHostingRepository.upsertActivity.mockResolvedValue(undefined);
-  });
-
-  afterEach(() => {
-    jest.useRealTimers();
+    mockUserHostingService.upsertActivity.mockResolvedValue(undefined);
+    mockCacheService.incrementCounter.mockResolvedValue(undefined);
+    mockCacheService.incrementCounters.mockResolvedValue(undefined);
+    mockCacheService.incrementActiveRequests.mockImplementation(async (delta: number = 1) => {
+      activeRequests = Math.max(activeRequests + delta, 0);
+      peakActiveRequests = Math.max(peakActiveRequests, activeRequests);
+      return activeRequests;
+    });
+    mockCacheService.getActiveRequests.mockImplementation(async () => activeRequests);
+    mockCacheService.getPeakActiveRequests.mockImplementation(async () => peakActiveRequests);
   });
 
   it('should be defined', () => {
     expect(service).toBeDefined();
   });
 
-  // ========================================
-  // getPendingCount
-  // ========================================
+  it('should save a processing record immediately on message received', async () => {
+    service.recordMessageReceived('msg-1', 'chat-1', 'user-1', 'User One', 'Hello World');
 
-  describe('getPendingCount', () => {
-    it('should return 0 initially', () => {
-      expect(service.getPendingCount()).toBe(0);
-    });
+    await flushPromises();
 
-    it('should increment after recording a message received', () => {
-      service.recordMessageReceived('msg-1', 'chat-1', 'user-1');
-      expect(service.getPendingCount()).toBe(1);
-    });
-
-    it('should count multiple pending messages', () => {
-      service.recordMessageReceived('msg-1', 'chat-1', 'user-1');
-      service.recordMessageReceived('msg-2', 'chat-2', 'user-2');
-      expect(service.getPendingCount()).toBe(2);
-    });
+    expect(await service.getActiveRequests()).toBe(1);
+    expect(messageProcessingService.saveRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: 'msg-1',
+        chatId: 'chat-1',
+        userId: 'user-1',
+        userName: 'User One',
+        status: 'processing',
+        messagePreview: 'Hello World',
+      }),
+    );
+    expect(cacheService.incrementCounter).toHaveBeenCalledWith('totalMessages', 1);
+    expect(cacheService.incrementActiveRequests).toHaveBeenCalledWith(1);
+    expect(userHostingService.upsertActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chatId: 'chat-1',
+        odId: 'user-1',
+        odName: 'User One',
+        messageCount: 1,
+        totalTokens: 0,
+      }),
+    );
   });
 
-  // ========================================
-  // recordMessageReceived
-  // ========================================
+  it('should rebuild a success record from agentInvocation timings instead of pending in-memory state', async () => {
+    service.recordMessageReceived('msg-1', 'chat-1', 'user-1', 'User One', '上海杨浦肯德基');
+    await flushPromises();
+    jest.clearAllMocks();
 
-  describe('recordMessageReceived', () => {
-    it('should create a pending record and save to database', async () => {
-      service.recordMessageReceived('msg-1', 'chat-1', 'user-1', 'User One', 'Hello World');
+    mockMessageProcessingService.getMessageProcessingRecordById.mockResolvedValue({
+      messageId: 'msg-1',
+      chatId: 'chat-1',
+      userId: 'user-1',
+      userName: 'User One',
+      receivedAt: 1000,
+      status: 'processing',
+      messagePreview: '上海杨浦肯德基',
+    });
 
-      expect(service.getPendingCount()).toBe(1);
-
-      jest.useRealTimers();
-      await flushPromises();
-
-      expect(messageProcessingRepository.saveMessageProcessingRecord).toHaveBeenCalledWith(
-        expect.objectContaining({
+    service.recordSuccess('msg-1', {
+      scenario: ScenarioType.CANDIDATE_CONSULTATION,
+      tokenUsage: 200,
+      replyPreview: '杨浦这边有两家门店在招。',
+      replySegments: 2,
+      tools: ['duliday_job_list'],
+      agentInvocation: {
+        request: {
           messageId: 'msg-1',
           chatId: 'chat-1',
           userId: 'user-1',
           userName: 'User One',
-          status: 'processing',
-          messagePreview: 'Hello World',
-        }),
-      );
+          managerName: 'bot-1',
+          scenario: 'candidate-consultation',
+          content: '上海杨浦肯德基',
+          acceptedAt: 1000,
+          batchId: 'batch-1',
+          agentRequest: {
+            messages: [{ role: 'user', content: '上海杨浦肯德基' }],
+          },
+        },
+        response: {
+          timings: {
+            timestamps: {
+              acceptedAt: 1000,
+              aiStartAt: 3000,
+              aiEndAt: 7000,
+            },
+            durations: {
+              acceptedToWorkerStartMs: 1500,
+              workerStartToAiStartMs: 500,
+              aiStartToAiEndMs: 4000,
+              deliveryDurationMs: 1200,
+              totalMs: 8500,
+            },
+          },
+          reply: {
+            content: '杨浦这边有两家门店在招。',
+            usage: { totalTokens: 200 },
+          },
+        },
+        isFallback: false,
+      },
     });
 
-    it('should truncate messagePreview to 50 characters', async () => {
-      const longMessage = 'A'.repeat(100);
-      service.recordMessageReceived('msg-1', 'chat-1', undefined, undefined, longMessage);
+    await flushPromises();
 
-      jest.useRealTimers();
-      await flushPromises();
-
-      expect(messageProcessingRepository.saveMessageProcessingRecord).toHaveBeenCalledWith(
-        expect.objectContaining({
-          messagePreview: 'A'.repeat(50),
-        }),
-      );
-    });
-
-    it('should increment totalMessages counter in Redis', () => {
-      service.recordMessageReceived('msg-1', 'chat-1');
-
-      expect(cacheService.incrementCounter).toHaveBeenCalledWith('totalMessages', 1);
-    });
-
-    it('should increment current processing and update peak', async () => {
-      mockCacheService.incrementCurrentProcessing.mockResolvedValue(5);
-
-      service.recordMessageReceived('msg-1', 'chat-1');
-
-      jest.useRealTimers();
-      await flushPromises();
-
-      expect(cacheService.incrementCurrentProcessing).toHaveBeenCalledWith(1);
-    });
-
-    it('should set scenario from metadata', async () => {
-      service.recordMessageReceived('msg-1', 'chat-1', undefined, undefined, undefined, {
+    expect(messageProcessingService.saveRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: 'msg-1',
+        chatId: 'chat-1',
+        status: 'success',
         scenario: ScenarioType.CANDIDATE_CONSULTATION,
-      });
-
-      jest.useRealTimers();
-      await flushPromises();
-
-      expect(messageProcessingRepository.saveMessageProcessingRecord).toHaveBeenCalledWith(
-        expect.objectContaining({
-          scenario: ScenarioType.CANDIDATE_CONSULTATION,
-        }),
-      );
-    });
-
-    it('should save user activity immediately', async () => {
-      service.recordMessageReceived('msg-1', 'chat-1', 'user-1', 'User One');
-
-      jest.useRealTimers();
-      await flushPromises();
-
-      expect(userHostingRepository.upsertUserActivity).toHaveBeenCalledWith(
-        expect.objectContaining({
-          chatId: 'chat-1',
-          odId: 'user-1',
-          odName: 'User One',
-          messageCount: 1,
-          totalTokens: 0,
-        }),
-      );
-    });
-
-    it('should handle database save error gracefully', async () => {
-      mockMessageProcessingRepository.saveMessageProcessingRecord.mockRejectedValue(
-        new Error('DB error'),
-      );
-
-      expect(() => {
-        service.recordMessageReceived('msg-1', 'chat-1');
-      }).not.toThrow();
-    });
-  });
-
-  // ========================================
-  // recordWorkerStart
-  // ========================================
-
-  describe('recordWorkerStart', () => {
-    it('should set queueDuration on existing pending record', () => {
-      service.recordMessageReceived('msg-1', 'chat-1');
-      service.recordWorkerStart('msg-1');
-      // The record should have queueDuration set
-    });
-
-    it('should do nothing when record does not exist', () => {
-      expect(() => service.recordWorkerStart('non-existent')).not.toThrow();
-    });
-  });
-
-  // ========================================
-  // recordAiStart
-  // ========================================
-
-  describe('recordAiStart', () => {
-    it('should set aiStartAt and calculate prepDuration when queueDuration is set', () => {
-      service.recordMessageReceived('msg-1', 'chat-1');
-      service.recordWorkerStart('msg-1');
-      service.recordAiStart('msg-1');
-    });
-
-    it('should set queueDuration (legacy) when queueDuration is not set', () => {
-      service.recordMessageReceived('msg-1', 'chat-1');
-      // Skip recordWorkerStart, call recordAiStart directly (legacy path)
-      service.recordAiStart('msg-1');
-    });
-
-    it('should do nothing when record does not exist', () => {
-      expect(() => service.recordAiStart('non-existent')).not.toThrow();
-    });
-  });
-
-  // ========================================
-  // recordAiEnd
-  // ========================================
-
-  describe('recordAiEnd', () => {
-    it('should set aiEndAt, aiDuration, and update Redis counter', () => {
-      jest.setSystemTime(1000);
-      service.recordMessageReceived('msg-1', 'chat-1');
-
-      jest.setSystemTime(2000);
-      service.recordAiStart('msg-1');
-
-      jest.setSystemTime(5000);
-      service.recordAiEnd('msg-1');
-
-      expect(cacheService.incrementCounter).toHaveBeenCalledWith('totalAiDuration', 3000);
-    });
-
-    it('should do nothing when record has no aiStartAt', () => {
-      service.recordMessageReceived('msg-1', 'chat-1');
-      service.recordAiEnd('msg-1'); // aiStartAt not set
-
-      const aiDurationCalls = (cacheService.incrementCounter as jest.Mock).mock.calls.filter(
-        ([field]) => field === 'totalAiDuration',
-      );
-      expect(aiDurationCalls).toHaveLength(0);
-    });
-
-    it('should do nothing when record does not exist', () => {
-      expect(() => service.recordAiEnd('non-existent')).not.toThrow();
-    });
-
-    it('should handle Redis counter error gracefully', () => {
-      mockCacheService.incrementCounter.mockRejectedValue(new Error('Redis error'));
-
-      service.recordMessageReceived('msg-1', 'chat-1');
-      service.recordAiStart('msg-1');
-
-      expect(() => service.recordAiEnd('msg-1')).not.toThrow();
-    });
-  });
-
-  // ========================================
-  // recordSendStart / recordSendEnd
-  // ========================================
-
-  describe('recordSendStart', () => {
-    it('should set sendStartAt on the record', () => {
-      service.recordMessageReceived('msg-1', 'chat-1');
-      service.recordSendStart('msg-1');
-    });
-
-    it('should do nothing when record does not exist', () => {
-      expect(() => service.recordSendStart('non-existent')).not.toThrow();
-    });
-  });
-
-  describe('recordSendEnd', () => {
-    it('should set sendEndAt, sendDuration, and update Redis counter', () => {
-      jest.setSystemTime(1000);
-      service.recordMessageReceived('msg-1', 'chat-1');
-
-      jest.setSystemTime(2000);
-      service.recordSendStart('msg-1');
-
-      jest.setSystemTime(4000);
-      service.recordSendEnd('msg-1');
-
-      expect(cacheService.incrementCounter).toHaveBeenCalledWith('totalSendDuration', 2000);
-    });
-
-    it('should do nothing when sendStartAt is not set', () => {
-      service.recordMessageReceived('msg-1', 'chat-1');
-      service.recordSendEnd('msg-1'); // sendStartAt not set
-
-      const sendDurationCalls = (cacheService.incrementCounter as jest.Mock).mock.calls.filter(
-        ([field]) => field === 'totalSendDuration',
-      );
-      expect(sendDurationCalls).toHaveLength(0);
-    });
-
-    it('should do nothing when record does not exist', () => {
-      expect(() => service.recordSendEnd('non-existent')).not.toThrow();
-    });
-  });
-
-  // ========================================
-  // recordSuccess
-  // ========================================
-
-  describe('recordSuccess', () => {
-    it('should update record status to success and remove from pending', async () => {
-      service.recordMessageReceived('msg-1', 'chat-1', 'user-1');
-      expect(service.getPendingCount()).toBe(1);
-
-      service.recordSuccess('msg-1');
-
-      jest.useRealTimers();
-      await flushPromises();
-
-      expect(service.getPendingCount()).toBe(0);
-    });
-
-    it('should increment totalSuccess counter', () => {
-      service.recordMessageReceived('msg-1', 'chat-1');
-      service.recordSuccess('msg-1');
-
-      expect(cacheService.incrementCounters).toHaveBeenCalledWith(
-        expect.objectContaining({ totalSuccess: 1 }),
-      );
-    });
-
-    it('should also increment totalFallback when isFallback is true', () => {
-      service.recordMessageReceived('msg-1', 'chat-1');
-      service.recordSuccess('msg-1', { isFallback: true, fallbackSuccess: true });
-
-      expect(cacheService.incrementCounters).toHaveBeenCalledWith(
-        expect.objectContaining({
-          totalSuccess: 1,
-          totalFallback: 1,
-          totalFallbackSuccess: 1,
-        }),
-      );
-    });
-
-    it('should increment totalFallback without totalFallbackSuccess when fallback failed', () => {
-      service.recordMessageReceived('msg-1', 'chat-1');
-      service.recordSuccess('msg-1', { isFallback: true, fallbackSuccess: false });
-
-      const calls = (cacheService.incrementCounters as jest.Mock).mock.calls[0][0];
-      expect(calls.totalFallback).toBe(1);
-      expect(calls.totalFallbackSuccess).toBeUndefined();
-    });
-
-    it('should decrement current processing count', () => {
-      service.recordMessageReceived('msg-1', 'chat-1');
-      service.recordSuccess('msg-1');
-
-      expect(cacheService.incrementCurrentProcessing).toHaveBeenCalledWith(-1);
-    });
-
-    it('should save record to database with success status', async () => {
-      service.recordMessageReceived('msg-1', 'chat-1', 'user-1');
-      service.recordSuccess('msg-1', {
-        scenario: ScenarioType.CANDIDATE_CONSULTATION,
-        tokenUsage: 500,
-      });
-
-      jest.useRealTimers();
-      await flushPromises();
-
-      expect(messageProcessingRepository.saveMessageProcessingRecord).toHaveBeenCalledWith(
-        expect.objectContaining({
-          messageId: 'msg-1',
-          status: 'success',
-        }),
-      );
-    });
-
-    it('should save user activity when tokenUsage is positive', async () => {
-      service.recordMessageReceived('msg-1', 'chat-1', 'user-1', 'User One');
-      jest.clearAllMocks();
-      mockMessageProcessingRepository.saveMessageProcessingRecord.mockResolvedValue(undefined);
-      mockUserHostingRepository.upsertUserActivity.mockResolvedValue(undefined);
-      mockCacheService.incrementCounters.mockResolvedValue(undefined);
-      mockCacheService.incrementCurrentProcessing.mockResolvedValue(0);
-
-      service.recordSuccess('msg-1', { tokenUsage: 300 });
-
-      jest.useRealTimers();
-      await flushPromises();
-
-      expect(userHostingRepository.upsertUserActivity).toHaveBeenCalledWith(
-        expect.objectContaining({
-          chatId: 'chat-1',
-          totalTokens: 300,
-        }),
-      );
-    });
-
-    it('should not save user activity when tokenUsage is 0', async () => {
-      service.recordMessageReceived('msg-1', 'chat-1', 'user-1');
-      jest.clearAllMocks();
-      mockMessageProcessingRepository.saveMessageProcessingRecord.mockResolvedValue(undefined);
-      mockCacheService.incrementCounters.mockResolvedValue(undefined);
-      mockCacheService.incrementCurrentProcessing.mockResolvedValue(0);
-
-      service.recordSuccess('msg-1', { tokenUsage: 0 });
-
-      jest.useRealTimers();
-      await flushPromises();
-
-      expect(userHostingRepository.upsertUserActivity).not.toHaveBeenCalled();
-    });
-
-    it('should log error and return early when record is not found', () => {
-      service.recordSuccess('non-existent-msg');
-
-      expect(cacheService.incrementCounters).not.toHaveBeenCalled();
-      expect(messageProcessingRepository.saveMessageProcessingRecord).not.toHaveBeenCalled();
-    });
-
-    it('should update metadata fields from parameter', async () => {
-      service.recordMessageReceived('msg-1', 'chat-1');
-      service.recordSuccess('msg-1', {
-        scenario: ScenarioType.CANDIDATE_CONSULTATION,
-        tools: ['tool-a', 'tool-b'],
-        tokenUsage: 250,
-        replyPreview: 'Hello!',
+        totalDuration: 8500,
+        queueDuration: 1500,
+        prepDuration: 500,
+        aiStartAt: 3000,
+        aiEndAt: 7000,
+        aiDuration: 4000,
+        sendDuration: 1200,
+        tokenUsage: 200,
+        tools: ['duliday_job_list'],
+        replyPreview: '杨浦这边有两家门店在招。',
         replySegments: 2,
         batchId: 'batch-1',
-      });
+      }),
+    );
+    expect(cacheService.incrementCounters).toHaveBeenCalledWith(
+      expect.objectContaining({ totalSuccess: 1 }),
+    );
+    expect(cacheService.incrementCounter).toHaveBeenCalledWith('totalAiDuration', 4000);
+    expect(cacheService.incrementCounter).toHaveBeenCalledWith('totalSendDuration', 1200);
+    expect(cacheService.incrementActiveRequests).toHaveBeenLastCalledWith(-1);
+    expect(await service.getActiveRequests()).toBe(0);
+    expect(userHostingService.upsertActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chatId: 'chat-1',
+        totalTokens: 200,
+      }),
+    );
+  });
 
-      jest.useRealTimers();
-      await flushPromises();
-
-      expect(messageProcessingRepository.saveMessageProcessingRecord).toHaveBeenCalledWith(
-        expect.objectContaining({
-          scenario: ScenarioType.CANDIDATE_CONSULTATION,
-          tools: ['tool-a', 'tool-b'],
-          tokenUsage: 250,
-          replyPreview: 'Hello!',
-          replySegments: 2,
+  it('should still finalize a success record when only agentInvocation has the request context', async () => {
+    service.recordSuccess('batch-1', {
+      scenario: ScenarioType.CANDIDATE_CONSULTATION,
+      agentInvocation: {
+        request: {
+          messageId: 'batch-1',
+          chatId: 'chat-merged',
+          userId: 'user-merged',
+          userName: 'Merged User',
+          content: '第一句\n第二句',
+          acceptedAt: 2000,
           batchId: 'batch-1',
-        }),
-      );
+        },
+        response: {
+          timings: {
+            timestamps: {
+              acceptedAt: 2000,
+            },
+            durations: {
+              totalMs: 6000,
+            },
+          },
+          reply: {
+            content: '我看到了，你继续说。',
+          },
+        },
+        isFallback: false,
+      },
     });
+
+    await flushPromises();
+
+    expect(messageProcessingService.saveRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: 'batch-1',
+        chatId: 'chat-merged',
+        status: 'success',
+        messagePreview: '第一句\n第二句',
+        totalDuration: 6000,
+      }),
+    );
   });
 
-  // ========================================
-  // recordFailure
-  // ========================================
+  it('should write failure records from agentInvocation and save an error log', async () => {
+    service.recordMessageReceived('msg-2', 'chat-2', 'user-2', 'User Two', '我不满意');
+    await flushPromises();
+    jest.clearAllMocks();
 
-  describe('recordFailure', () => {
-    it('should update record status to failure and remove from pending', async () => {
-      service.recordMessageReceived('msg-1', 'chat-1');
-      expect(service.getPendingCount()).toBe(1);
-
-      service.recordFailure('msg-1', 'Something went wrong');
-
-      jest.useRealTimers();
-      await flushPromises();
-
-      expect(service.getPendingCount()).toBe(0);
+    mockMessageProcessingService.getMessageProcessingRecordById.mockResolvedValue({
+      messageId: 'msg-2',
+      chatId: 'chat-2',
+      userId: 'user-2',
+      userName: 'User Two',
+      receivedAt: 5000,
+      status: 'processing',
+      messagePreview: '我不满意',
     });
 
-    it('should increment totalFailure counter', () => {
-      service.recordMessageReceived('msg-1', 'chat-1');
-      service.recordFailure('msg-1', 'Error message');
-
-      expect(cacheService.incrementCounters).toHaveBeenCalledWith(
-        expect.objectContaining({ totalFailure: 1 }),
-      );
+    service.recordFailure('msg-2', 'Agent 调用失败', {
+      alertType: 'agent',
+      scenario: ScenarioType.CANDIDATE_CONSULTATION,
+      isFallback: true,
+      fallbackSuccess: true,
+      agentInvocation: {
+        request: {
+          messageId: 'msg-2',
+          chatId: 'chat-2',
+          userId: 'user-2',
+          userName: 'User Two',
+          acceptedAt: 5000,
+          content: '我不满意',
+        },
+        response: {
+          error: 'Agent 调用失败',
+          fallback: { success: true },
+          timings: {
+            timestamps: {
+              acceptedAt: 5000,
+              aiStartAt: 6000,
+              aiEndAt: 9000,
+            },
+            durations: {
+              acceptedToWorkerStartMs: 400,
+              workerStartToAiStartMs: 600,
+              aiStartToAiEndMs: 3000,
+              deliveryDurationMs: 800,
+              totalMs: 5200,
+            },
+          },
+        },
+        isFallback: true,
+      },
     });
 
-    it('should also increment totalFallback when isFallback is true', () => {
-      service.recordMessageReceived('msg-1', 'chat-1');
-      service.recordFailure('msg-1', 'Error', { isFallback: true, fallbackSuccess: true });
+    await flushPromises();
 
-      expect(cacheService.incrementCounters).toHaveBeenCalledWith(
-        expect.objectContaining({
-          totalFailure: 1,
-          totalFallback: 1,
-          totalFallbackSuccess: 1,
-        }),
-      );
-    });
-
-    it('should decrement current processing count', () => {
-      service.recordMessageReceived('msg-1', 'chat-1');
-      service.recordFailure('msg-1', 'Error');
-
-      expect(cacheService.incrementCurrentProcessing).toHaveBeenCalledWith(-1);
-    });
-
-    it('should save error log', async () => {
-      service.recordMessageReceived('msg-1', 'chat-1');
-      service.recordFailure('msg-1', 'Critical error', { alertType: 'agent' });
-
-      jest.useRealTimers();
-      await flushPromises();
-
-      expect(errorLogRepository.saveErrorLog).toHaveBeenCalledWith(
-        expect.objectContaining({
-          messageId: 'msg-1',
-          error: 'Critical error',
-          alertType: 'agent',
-        }),
-      );
-    });
-
-    it('should save record to database with failure status', async () => {
-      service.recordMessageReceived('msg-1', 'chat-1');
-      service.recordFailure('msg-1', 'Timeout error');
-
-      jest.useRealTimers();
-      await flushPromises();
-
-      expect(messageProcessingRepository.saveMessageProcessingRecord).toHaveBeenCalledWith(
-        expect.objectContaining({
-          messageId: 'msg-1',
-          status: 'failure',
-          error: 'Timeout error',
-        }),
-      );
-    });
-
-    it('should save error log and return early when record is not found', () => {
-      service.recordFailure('non-existent-msg', 'Error', { alertType: 'system' });
-
-      expect(cacheService.incrementCounters).not.toHaveBeenCalled();
-      expect(errorLogRepository.saveErrorLog).toHaveBeenCalledWith(
-        expect.objectContaining({
-          messageId: 'non-existent-msg',
-          error: 'Error',
-          alertType: 'system',
-        }),
-      );
-    });
-
-    it('should use "unknown" as alertType when not specified and record is missing', () => {
-      service.recordFailure('non-existent-msg', 'Error');
-
-      expect(errorLogRepository.saveErrorLog).toHaveBeenCalledWith(
-        expect.objectContaining({
-          alertType: 'unknown',
-        }),
-      );
-    });
+    expect(errorLogRepository.saveErrorLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: 'msg-2',
+        error: 'Agent 调用失败',
+        alertType: 'agent',
+      }),
+    );
+    expect(messageProcessingService.saveRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: 'msg-2',
+        chatId: 'chat-2',
+        status: 'failure',
+        error: 'Agent 调用失败',
+        totalDuration: 5200,
+        aiDuration: 3000,
+        sendDuration: 800,
+        isFallback: true,
+        fallbackSuccess: true,
+      }),
+    );
+    expect(cacheService.incrementCounters).toHaveBeenCalledWith(
+      expect.objectContaining({
+        totalFailure: 1,
+        totalFallback: 1,
+        totalFallbackSuccess: 1,
+      }),
+    );
+    expect(await service.getActiveRequests()).toBe(0);
   });
 
-  // ========================================
-  // Cleanup of stale pending records
-  // ========================================
+  it('should skip terminal persistence when neither DB row nor agentInvocation request context exists', async () => {
+    service.recordSuccess('missing-msg');
 
-  describe('cleanup of stale pending records', () => {
-    it('should save stale records as failed and remove them when cleanup runs', async () => {
-      jest.useRealTimers();
+    await flushPromises();
 
-      service.recordMessageReceived('stale-msg', 'chat-1');
-
-      // Manually set the receivedAt to simulate a 2-hour-old record
-      const pendingRecords = (
-        service as unknown as { pendingRecords: Map<string, { receivedAt: number }> }
-      ).pendingRecords;
-      const record = pendingRecords.get('stale-msg');
-      if (record) {
-        record.receivedAt = Date.now() - 2 * 60 * 60 * 1000;
-      }
-
-      expect(service.getPendingCount()).toBe(1);
-
-      // Directly invoke the private cleanup method
-      (service as unknown as { cleanupPendingRecords: () => void }).cleanupPendingRecords();
-      await flushPromises();
-
-      expect(service.getPendingCount()).toBe(0);
-      expect(messageProcessingRepository.saveMessageProcessingRecord).toHaveBeenCalledWith(
-        expect.objectContaining({
-          messageId: 'stale-msg',
-          status: 'failure',
-          error: '超时未完成（1小时）',
-        }),
-      );
-    });
-
-    it('should not remove records that are within TTL when cleanup runs', async () => {
-      jest.useRealTimers();
-
-      service.recordMessageReceived('fresh-msg', 'chat-1');
-      // Record receivedAt is now (well within the 1-hour TTL)
-
-      // Directly invoke the private cleanup method
-      (service as unknown as { cleanupPendingRecords: () => void }).cleanupPendingRecords();
-      await flushPromises();
-
-      // Fresh record should still be pending
-      expect(service.getPendingCount()).toBe(1);
-    });
+    expect(messageProcessingService.saveRecord).not.toHaveBeenCalled();
+    expect(cacheService.incrementCounters).not.toHaveBeenCalled();
+    expect(await service.getActiveRequests()).toBe(0);
   });
 });

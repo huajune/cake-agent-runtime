@@ -28,6 +28,7 @@ describe('ReplyWorkflowService', () => {
   };
   const runtimeConfig = {
     resolveWecomChatModelSelection: jest.fn(),
+    getMergeDelayMs: jest.fn(),
   };
   const processingFailureService = {
     inferErrorType: jest.fn(),
@@ -71,6 +72,7 @@ describe('ReplyWorkflowService', () => {
       overrideModelId: 'gpt-runtime',
       effectiveModelId: 'gpt-runtime',
     });
+    runtimeConfig.getMergeDelayMs.mockReturnValue(3500);
     processingFailureService.inferErrorType.mockReturnValue('message');
     processingFailureService.handleProcessingError.mockResolvedValue(undefined);
     preAgentRiskIntercept.precheck.mockResolvedValue({ hit: false });

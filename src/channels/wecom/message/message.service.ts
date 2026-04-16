@@ -62,6 +62,7 @@ export class MessageService implements OnModuleInit {
    */
   async handleMessage(messageData: EnterpriseMessageCallbackDto) {
     messageData._receivedAtMs = messageData._receivedAtMs ?? Date.now();
+    await this.runtimeConfig.syncSnapshot();
 
     const sanitized = LogSanitizer.sanitizeMessageCallback(messageData);
     this.logger.debug('=== [回调消息数据(已脱敏)] ===');

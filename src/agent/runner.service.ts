@@ -56,6 +56,12 @@ export class AgentRunnerService {
     }
 
     try {
+      const providerOptions = this.buildProviderOptions();
+      const agentRequest = this.buildObservedAgentRequest(ctx, providerOptions);
+      if (params.onPreparedRequest) {
+        await Promise.resolve(params.onPreparedRequest(agentRequest));
+      }
+
       const r = await this.reliable.generateText(
         ctx.chatModelId,
         {
@@ -64,7 +70,7 @@ export class AgentRunnerService {
           tools: ctx.tools,
           maxOutputTokens: this.maxOutputTokens,
           stopWhen: stepCountIs(ctx.maxSteps),
-          providerOptions: this.buildProviderOptions(),
+          providerOptions,
         },
         ctx.chatFallbacks,
       );
@@ -74,7 +80,7 @@ export class AgentRunnerService {
       }
       this.logger.log(`Loop 完成: steps=${r.steps.length}, tokens=${r.usage.totalTokens}`);
 
-      await this.runTurnEndLifecycle(ctx, r.text);
+      this.dispatchTurnEndLifecycle(ctx, r.text);
 
       return this.buildRunResult({
         text: r.text,
@@ -85,6 +91,7 @@ export class AgentRunnerService {
           outputTokens: r.usage.outputTokens ?? 0,
           totalTokens: r.usage.totalTokens,
         },
+        agentRequest,
       });
     } catch (err) {
       const agentError = this.enrichAgentError(err, ctx);
@@ -107,6 +114,12 @@ export class AgentRunnerService {
     }
 
     try {
+      const providerOptions = this.buildProviderOptions(params.thinking);
+      const agentRequest = this.buildObservedAgentRequest(ctx, providerOptions);
+      if (params.onPreparedRequest) {
+        await Promise.resolve(params.onPreparedRequest(agentRequest));
+      }
+
       const streamResult = streamText({
         model: ctx.chatModel,
         system: ctx.finalPrompt,
@@ -114,7 +127,7 @@ export class AgentRunnerService {
         tools: ctx.tools,
         maxOutputTokens: this.maxOutputTokens,
         stopWhen: stepCountIs(ctx.maxSteps),
-        providerOptions: this.buildProviderOptions(params.thinking),
+        providerOptions,
         onFinish: ({ usage, steps, text }) => {
           this.logger.log('流式完成, 步数: ' + steps.length + ', Tokens: ' + usage.totalTokens);
           const result = this.buildRunResult({
@@ -126,10 +139,9 @@ export class AgentRunnerService {
               outputTokens: usage.outputTokens ?? 0,
               totalTokens: usage.totalTokens,
             },
+            agentRequest,
           });
-          this.runTurnEndLifecycle(ctx, text).catch((err) =>
-            this.logger.warn('记忆生命周期执行失败', err),
-          );
+          this.dispatchTurnEndLifecycle(ctx, text);
           if (params.onFinish) {
             Promise.resolve(params.onFinish(result)).catch((err) =>
               this.logger.warn('流式完成回调执行失败', err),
@@ -138,7 +150,7 @@ export class AgentRunnerService {
         },
       });
 
-      return { streamResult, entryStage: ctx.entryStage };
+      return { streamResult, entryStage: ctx.entryStage, agentRequest };
     } catch (err) {
       const agentError = this.enrichAgentError(err, ctx);
       this.logger.error('Agent 流式执行失败', agentError);
@@ -179,8 +191,7 @@ export class AgentRunnerService {
   /**
    * 统一触发回合结束收尾。
    *
-   * `invoke` 会等待这一步完成，确保关键会话状态已更新；
-   * `stream` 则在 `onFinish` 中触发，不影响文本流展示。
+   * 记忆收尾不阻塞主响应；失败只记日志，避免把模型成功回复拖慢或放大成整轮失败。
    */
   private async runTurnEndLifecycle(
     ctx: Pick<
@@ -205,6 +216,22 @@ export class AgentRunnerService {
     );
   }
 
+  private dispatchTurnEndLifecycle(
+    ctx: Pick<
+      Parameters<MemoryService['onTurnEnd']>[0],
+      'corpId' | 'userId' | 'sessionId' | 'typedMessages'
+    > & {
+      turnState: {
+        candidatePool: Parameters<MemoryService['onTurnEnd']>[0]['candidatePool'];
+      };
+    },
+    assistantText?: string,
+  ): void {
+    void this.runTurnEndLifecycle(ctx, assistantText).catch((err) =>
+      this.logger.warn('记忆生命周期执行失败', err),
+    );
+  }
+
   private buildRunResult(params: {
     text: string;
     reasoningText?: string;
@@ -213,6 +240,7 @@ export class AgentRunnerService {
       toolResults?: Array<{ toolCallId: string; output?: unknown }>;
     }>;
     usage: AgentRunResult['usage'];
+    agentRequest?: Record<string, unknown>;
   }): AgentRunResult {
     const toolCalls: AgentToolCall[] = [];
     for (const step of params.steps) {
@@ -234,7 +262,39 @@ export class AgentRunnerService {
       steps: params.steps.length,
       toolCalls,
       usage: params.usage,
+      agentRequest: params.agentRequest,
     };
+  }
+
+  private buildObservedAgentRequest(
+    ctx: Pick<
+      PreparedAgentContext,
+      'chatModelId' | 'chatFallbacks' | 'finalPrompt' | 'typedMessages' | 'tools' | 'maxSteps'
+    >,
+    providerOptions?: ReturnType<AgentRunnerService['buildProviderOptions']>,
+  ): Record<string, unknown> {
+    const request: Record<string, unknown> = {
+      modelId: ctx.chatModelId,
+      system: ctx.finalPrompt,
+      messages: ctx.typedMessages,
+      maxOutputTokens: this.maxOutputTokens,
+      maxSteps: ctx.maxSteps,
+    };
+
+    if (ctx.chatFallbacks && ctx.chatFallbacks.length > 0) {
+      request.fallbackModelIds = ctx.chatFallbacks;
+    }
+
+    const toolNames = Object.keys(ctx.tools ?? {});
+    if (toolNames.length > 0) {
+      request.toolNames = toolNames;
+    }
+
+    if (providerOptions) {
+      request.providerOptions = providerOptions;
+    }
+
+    return request;
   }
 
   private createEmptyMessagesError(

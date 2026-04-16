@@ -11,7 +11,7 @@ export default function UserTable({ users, isLoading, onToggleHosting, isPausedT
         <thead>
           <tr>
             <th>用户</th>
-            <th>会话</th>
+            <th>会话ID</th>
             {!isPausedTab && <th>消息数</th>}
             {!isPausedTab && <th>Token 消耗</th>}
             {!isPausedTab && <th>首次活跃</th>}

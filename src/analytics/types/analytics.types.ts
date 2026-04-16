@@ -41,8 +41,9 @@ export interface AlertsSummary {
 }
 
 export interface QueueMetrics {
-  currentProcessing: number;
-  peakProcessing: number;
+  activeRequests: number;
+  peakActiveRequests: number;
+  queueWaitingJobs: number;
   avgQueueDuration: number;
 }
 

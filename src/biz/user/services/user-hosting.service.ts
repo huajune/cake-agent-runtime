@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { RedisService } from '@infra/redis/redis.service';
 import { UserHostingRepository } from '../repositories/user-hosting.repository';
 
 /**
@@ -13,7 +14,7 @@ interface PausedUserCacheEntry {
  * 用户托管 Service
  *
  * 职责：
- * - 维护暂停用户的内存缓存（60s TTL）
+ * - 维护暂停用户的本地热缓存（1 秒 TTL）与 Redis 共享快照
  * - 编排暂停/恢复托管的缓存写入与数据库持久化
  * - 跨表联合查询：将暂停用户列表与 user_activity 资料合并
  * - 暴露缓存刷新接口供运维使用
@@ -24,24 +25,27 @@ interface PausedUserCacheEntry {
 export class UserHostingService {
   private readonly logger = new Logger(UserHostingService.name);
 
-  private readonly CACHE_TTL_MS = 60_000; // 60 秒
+  private static readonly SHARED_CACHE_KEY = 'hosting:paused-users:v1';
+
+  private readonly CACHE_TTL_MS = 1_000; // 1 秒本地热缓存
 
   private pausedUsersCache = new Map<string, PausedUserCacheEntry>();
   private cacheExpiry = 0;
 
-  constructor(private readonly repository: UserHostingRepository) {}
+  constructor(
+    private readonly repository: UserHostingRepository,
+    private readonly redisService: RedisService,
+  ) {}
 
   // ==================== 托管状态查询 ====================
 
   /**
    * 检查指定用户是否处于暂停托管状态
    *
-   * 优先读取内存缓存；缓存过期时自动从数据库刷新。
+   * 优先读取本地热缓存；过期后优先回源 Redis，共享缓存未命中再读数据库。
    */
   async isUserPaused(userId: string): Promise<boolean> {
-    if (Date.now() > this.cacheExpiry) {
-      await this.loadPausedUsers();
-    }
+    await this.ensureFreshPausedUsers();
 
     const entry = this.pausedUsersCache.get(userId);
     return entry !== undefined && entry.isPaused;
@@ -64,9 +68,12 @@ export class UserHostingService {
    * 数据库写入失败不影响缓存，调用方仍可继续运行。
    */
   async pauseUser(userId: string): Promise<void> {
+    await this.ensureFreshPausedUsers();
+
     const now = Date.now();
 
     this.pausedUsersCache.set(userId, { isPaused: true, pausedAt: now });
+    this.cacheExpiry = Date.now() + this.CACHE_TTL_MS;
 
     try {
       await this.repository.upsertPause(userId, new Date(now).toISOString());
@@ -74,6 +81,8 @@ export class UserHostingService {
     } catch (error) {
       this.logger.error(`暂停用户 ${userId} 托管失败`, error);
     }
+
+    await this.persistSharedCache();
   }
 
   /**
@@ -83,7 +92,10 @@ export class UserHostingService {
    * 数据库写入失败不影响缓存状态。
    */
   async resumeUser(userId: string): Promise<void> {
+    await this.ensureFreshPausedUsers();
+
     this.pausedUsersCache.delete(userId);
+    this.cacheExpiry = Date.now() + this.CACHE_TTL_MS;
 
     try {
       await this.repository.updateResume(userId);
@@ -91,6 +103,8 @@ export class UserHostingService {
     } catch (error) {
       this.logger.error(`恢复用户 ${userId} 托管失败`, error);
     }
+
+    await this.persistSharedCache();
   }
 
   // ==================== 暂停用户列表 ====================
@@ -109,9 +123,7 @@ export class UserHostingService {
   async getPausedUsersWithProfiles(): Promise<
     { userId: string; pausedAt: number; odName?: string; groupName?: string }[]
   > {
-    if (Date.now() > this.cacheExpiry) {
-      await this.loadPausedUsers();
-    }
+    await this.ensureFreshPausedUsers();
 
     const pausedEntries = Array.from(this.pausedUsersCache.entries())
       .filter(([, entry]) => entry.isPaused)
@@ -191,7 +203,7 @@ export class UserHostingService {
   /**
    * 从数据库加载所有暂停用户并填充内存缓存
    *
-   * 加载成功后缓存有效期为 60s；失败时延长 30s 后重试，保留现有缓存数据。
+   * 加载成功后本地热缓存有效期为 1 秒；失败时延长 30 秒后重试，保留现有缓存数据。
    */
   private async loadPausedUsers(): Promise<void> {
     try {
@@ -206,10 +218,73 @@ export class UserHostingService {
       }
 
       this.cacheExpiry = Date.now() + this.CACHE_TTL_MS;
+      await this.persistSharedCache();
       this.logger.debug(`已加载 ${this.pausedUsersCache.size} 个暂停托管的用户`);
     } catch (error) {
       this.logger.error('加载暂停用户列表失败', error);
       this.cacheExpiry = Date.now() + 30_000;
+    }
+  }
+
+  private async ensureFreshPausedUsers(): Promise<void> {
+    if (Date.now() <= this.cacheExpiry) {
+      return;
+    }
+
+    const sharedEntries = await this.readSharedCache();
+    if (sharedEntries) {
+      this.populatePausedUsersCache(sharedEntries);
+      return;
+    }
+
+    await this.loadPausedUsers();
+  }
+
+  private populatePausedUsersCache(entries: Array<{ userId: string; pausedAt: number }>): void {
+    this.pausedUsersCache.clear();
+    for (const entry of entries) {
+      this.pausedUsersCache.set(entry.userId, {
+        isPaused: true,
+        pausedAt: entry.pausedAt,
+      });
+    }
+    this.cacheExpiry = Date.now() + this.CACHE_TTL_MS;
+  }
+
+  private async readSharedCache(): Promise<Array<{ userId: string; pausedAt: number }> | null> {
+    try {
+      const cached = await this.redisService.get<
+        | Array<{ userId: string; pausedAt: number }>
+        | { users: Array<{ userId: string; pausedAt: number }> }
+      >(UserHostingService.SHARED_CACHE_KEY);
+      if (!cached) {
+        return null;
+      }
+
+      if (Array.isArray(cached)) {
+        return cached;
+      }
+
+      return Array.isArray(cached.users) ? cached.users : null;
+    } catch (error) {
+      this.logger.warn('读取 Redis 暂停托管缓存失败', error);
+      return null;
+    }
+  }
+
+  private async persistSharedCache(): Promise<void> {
+    try {
+      await this.redisService.set(UserHostingService.SHARED_CACHE_KEY, {
+        users: Array.from(this.pausedUsersCache.entries())
+          .filter(([, entry]) => entry.isPaused)
+          .map(([userId, entry]) => ({
+            userId,
+            pausedAt: entry.pausedAt,
+          })),
+        updatedAt: Date.now(),
+      });
+    } catch (error) {
+      this.logger.warn('写入 Redis 暂停托管缓存失败', error);
     }
   }
 }

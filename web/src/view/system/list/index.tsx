@@ -177,20 +177,24 @@ export default function System() {
         <KpiCard
           icon="⚡️"
           variant="primary"
-          label="实时处理"
-          value={queue?.currentProcessing ?? '-'}
+          label="在途请求"
+          value={queue?.activeRequests ?? '-'}
           valueVariant="primary"
-          trend={{ direction: 'flat', value: '实时', label: '当前队列' }}
-          title="当前正在处理的消息数量"
+          trend={{
+            direction: 'flat',
+            value: `${queue?.peakActiveRequests ?? '-'}`,
+            label: '运行期峰值',
+          }}
+          title="当前尚未完成的请求数量"
         />
         <KpiCard
           icon="⏱️"
           variant="warning"
-          label="P95 延迟"
+          label="P95 总耗时"
           value={percentiles?.p95 ? formatDuration(percentiles.p95) : '-'}
           valueVariant="warning"
-          trend={{ direction: 'flat', value: '实时', label: '响应时间' }}
-          title="95% 的请求在此时间内完成"
+          trend={{ direction: 'flat', value: 'E2E', label: '全流程' }}
+          title="95% 的请求会在这个总耗时内完成（从接收到全部处理完成）"
         />
         <KpiCard
           icon="🚨"
@@ -208,10 +212,14 @@ export default function System() {
         <KpiCard
           icon="🌊"
           variant="info"
-          label="峰值队列"
-          value={queue?.peakProcessing ?? '-'}
-          trend={{ direction: 'flat', value: '今日', label: '最大积压' }}
-          title="今日队列积压的最大数量"
+          label="排队任务"
+          value={queue?.queueWaitingJobs ?? '-'}
+          trend={{
+            direction: (queue?.queueWaitingJobs ?? 0) > 0 ? 'up' : 'flat',
+            value: '实时',
+            label: '等待队列',
+          }}
+          title="当前在 Bull 队列中等待 worker 开始处理的任务数量"
         />
       </KpiGrid>
 

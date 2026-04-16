@@ -61,9 +61,9 @@ export class ConversationRiskDetectorService {
     riskLabel: string,
     summary: string,
   ): ConversationRiskDetectionResult {
-    const evidenceMessages = context.recentMessages
-      .filter((message) => message.role === 'user')
-      .filter((message) => this.findMatchedKeywords(message.content, keywords).length > 0);
+    const evidenceMessages = this.getCurrentTurnUserMessages(context).filter(
+      (message) => this.findMatchedKeywords(message.content, keywords).length > 0,
+    );
 
     if (evidenceMessages.length === 0) {
       return { hit: false };
@@ -85,6 +85,35 @@ export class ConversationRiskDetectorService {
       evidenceMessages: evidenceMessages.slice(-3),
       analysisMode: 'rules',
     };
+  }
+
+  private getCurrentTurnUserMessages(context: ConversationRiskContext): ConversationRiskMessage[] {
+    const currentTurnMessages: ConversationRiskMessage[] = [];
+
+    for (let index = context.recentMessages.length - 1; index >= 0; index--) {
+      const message = context.recentMessages[index];
+      if (message.role !== 'user') {
+        break;
+      }
+      currentTurnMessages.push(message);
+    }
+
+    if (currentTurnMessages.length > 0) {
+      return currentTurnMessages.reverse();
+    }
+
+    const currentContent = context.currentMessageContent.trim();
+    if (!currentContent) {
+      return [];
+    }
+
+    return [
+      {
+        role: 'user',
+        content: currentContent,
+        timestamp: context.recentMessages.at(-1)?.timestamp ?? 0,
+      },
+    ];
   }
 
   private detectEscalationSignal(
