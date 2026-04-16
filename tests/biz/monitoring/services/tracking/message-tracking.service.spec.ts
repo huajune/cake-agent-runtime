@@ -257,7 +257,6 @@ describe('MessageTrackingService', () => {
       }),
     );
   });
-
   it('should still finalize a success record when only agentInvocation has the request context', async () => {
     service.recordSuccess('batch-1', {
       scenario: ScenarioType.CANDIDATE_CONSULTATION,
