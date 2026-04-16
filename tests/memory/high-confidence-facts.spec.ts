@@ -1,4 +1,4 @@
-import { extractHighConfidenceFacts } from '@memory/services/high-confidence-facts';
+import { extractHighConfidenceFacts } from '@memory/facts/high-confidence-facts';
 
 describe('extractHighConfidenceFacts', () => {
   const brandData = [
@@ -24,7 +24,11 @@ describe('extractHighConfidenceFacts', () => {
       brandData,
     );
 
-    expect(result?.preferences.city).toBe('上海');
+    expect(result?.preferences.city).toEqual({
+      value: '上海',
+      confidence: 'high',
+      evidence: 'municipality_compact',
+    });
     expect(result?.preferences.district).toEqual(['杨浦']);
     expect(result?.preferences.labor_form).toBe('兼职');
     expect(result?.preferences.position).toEqual(['服务员']);

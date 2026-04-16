@@ -6,7 +6,7 @@ import { ProceduralService } from './procedural.service';
 import { SettlementService } from './settlement.service';
 import { SessionService } from './session.service';
 import { ShortTermService } from './short-term.service';
-import { extractHighConfidenceFacts } from './high-confidence-facts';
+import { extractHighConfidenceFacts } from '../facts/high-confidence-facts';
 import type { AgentMemoryContext } from '../types/memory-runtime.types';
 import {
   type EntityExtractionResult,

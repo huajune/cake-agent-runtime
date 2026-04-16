@@ -17,22 +17,97 @@ export const InterviewInfoSchema = z.object({
   has_health_certificate: z.string().nullable().describe('健康证'),
 });
 
-/** 意向偏好 schema */
+/**
+ * 城市事实（带置信度与证据来源）
+ *
+ * - evidence 表示城市是如何推导出来的
+ * - confidence 目前规则抽取均为 'high'；保留 'low' 给未来扩展
+ * - 这里有意只保留当前规则抽取会直接产出的 evidence；
+ *   历史上的 conflict / memory_carry_over 属于旧链路或跨轮合成结果，不再由当前 extractor 输出
+ */
+export const CityFactEvidenceSchema = z.enum([
+  'municipality_compact',
+  'explicit_city',
+  'unique_district_alias',
+  'hotspot_alias',
+]);
+
+export const CityFactSchema = z.object({
+  value: z.string(),
+  confidence: z.enum(['high', 'low']),
+  evidence: CityFactEvidenceSchema,
+});
+
+export type CityFact = z.infer<typeof CityFactSchema>;
+export type CityFactEvidence = z.infer<typeof CityFactEvidenceSchema>;
+
+/**
+ * 兼容旧数据的 city 字段解析：
+ * - 字符串（旧 Redis 数据、LLM 原始输出）→ 归一化为 `{ value, confidence: 'high', evidence: 'explicit_city' }`
+ * - 对象 → 直接校验为 CityFact
+ * - null/空串 → null
+ */
+const NullableCityFactSchema = z
+  .union([CityFactSchema, z.string(), z.null()])
+  .transform((value): CityFact | null => {
+    if (value === null) return null;
+    if (typeof value === 'string') {
+      const trimmed = value.trim().replace(/市$/, '');
+      return trimmed ? { value: trimmed, confidence: 'high', evidence: 'explicit_city' } : null;
+    }
+    return value;
+  });
+
+/**
+ * 意向偏好 schema — 存储态（Redis/记忆）
+ *
+ * city 字段为 CityFact 对象（含 confidence/evidence），
+ * 但解析时接受旧的字符串数据做自动归一化，保证 Redis 兼容。
+ */
 export const PreferencesSchema = z.object({
   brands: z.array(z.string()).nullable().describe('意向品牌'),
   salary: z.string().nullable().describe('意向薪资'),
   position: z.array(z.string()).nullable().describe('意向岗位'),
   schedule: z.string().nullable().describe('意向班次'),
-  city: z.string().nullable().describe('意向城市'),
+  city: NullableCityFactSchema.describe(
+    '意向城市（对象：{ value, confidence, evidence }；兼容旧字符串输入，将自动归一化）',
+  ),
   district: z.array(z.string()).nullable().describe('意向区域'),
   location: z.array(z.string()).nullable().describe('意向地点/商圈'),
   labor_form: z.string().nullable().describe('用工形式'),
 });
 
-/** 实体提取结果 schema — LLM generateObject 的输出结构 */
+/**
+ * LLM 结构化输出的 Preferences schema。
+ *
+ * 与 PreferencesSchema 的唯一区别：city 用简单 `string | null`，
+ * 避免 Zod union/transform 在生成 JSON schema 时产生 oneOf 让 LLM 误解结构。
+ * LLM 返回后，service 层再通过 EntityExtractionResultSchema.parse 归一化为 CityFact。
+ */
+export const LLMPreferencesSchema = z.object({
+  brands: z.array(z.string()).nullable().describe('意向品牌'),
+  salary: z.string().nullable().describe('意向薪资'),
+  position: z.array(z.string()).nullable().describe('意向岗位'),
+  schedule: z.string().nullable().describe('意向班次'),
+  city: z.string().nullable().describe('意向城市（输出为字符串，不带"市"后缀）'),
+  district: z.array(z.string()).nullable().describe('意向区域'),
+  location: z.array(z.string()).nullable().describe('意向地点/商圈'),
+  labor_form: z.string().nullable().describe('用工形式'),
+});
+
+/** 实体提取结果 schema — 存储态（包含 CityFact） */
 export const EntityExtractionResultSchema = z.object({
   interview_info: InterviewInfoSchema,
   preferences: PreferencesSchema,
+  reasoning: z
+    .string()
+    .describe('提取与推理说明：列出每个字段的来源（直接提取/推理得出），推理字段需说明推理链'),
+});
+
+/** LLM 结构化输出 schema — city 字段为字符串 */
+export const LLMEntityExtractionResultSchema = z.object({
+  interview_info: InterviewInfoSchema,
+  preferences: LLMPreferencesSchema,
   reasoning: z
     .string()
     .describe('提取与推理说明：列出每个字段的来源（直接提取/推理得出），推理字段需说明推理链'),

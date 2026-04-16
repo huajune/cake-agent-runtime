@@ -1,30 +1,20 @@
 import type { BrandItem } from '@/sponge/sponge.types';
 import {
   FALLBACK_EXTRACTION,
+  type CityFact,
   type EntityExtractionResult,
-  type Preferences,
   type InterviewInfo,
+  type Preferences,
 } from '../types/session-facts.types';
+import {
+  DISTRICT_TO_CITY,
+  LOCATION_TO_CITY,
+  MUNICIPALITIES,
+  SUPPORTED_CITY_PREFIXES,
+  normalizeCityName,
+  normalizeDistrictForLookup,
+} from './geo-mappings';
 
-const MUNICIPALITIES = ['北京', '上海', '天津', '重庆'] as const;
-const SHANGHAI_DISTRICT_ALIASES: Record<string, string> = {
-  黄浦: '黄浦',
-  徐汇: '徐汇',
-  长宁: '长宁',
-  静安: '静安',
-  普陀: '普陀',
-  虹口: '虹口',
-  杨浦: '杨浦',
-  闵行: '闵行',
-  宝山: '宝山',
-  嘉定: '嘉定',
-  浦东: '浦东',
-  松江: '松江',
-  青浦: '青浦',
-  奉贤: '奉贤',
-  金山: '金山',
-  崇明: '崇明',
-};
 const LABOR_FORM_KEYWORDS = ['兼职', '全职', '小时工', '寒假工', '暑假工', '临时工'] as const;
 const POSITION_KEYWORDS = [
   '服务员',
@@ -118,6 +108,12 @@ interface BrandCandidate {
   normalized: string;
 }
 
+interface LocationSignals {
+  city: CityFact | null;
+  district: string[];
+  location: string[];
+}
+
 export function extractHighConfidenceFacts(
   userMessages: string[],
   brandData: BrandItem[],
@@ -134,7 +130,7 @@ export function extractHighConfidenceFacts(
     reasons.push(
       ...aliasHints.map(
         (hint) =>
-          `品牌别名识别：用户原话“${hint.sourceText}”命中“${hint.matchedAlias}” => “${hint.brandName}”`,
+          `品牌别名识别：用户原话"${hint.sourceText}"命中"${hint.matchedAlias}" => "${hint.brandName}"`,
       ),
     );
   }
@@ -209,7 +205,9 @@ export function extractHighConfidenceFacts(
     const location = extractLocation(message);
     if (location.city) {
       facts.preferences.city = location.city;
-      reasons.push(`城市识别：${location.city}`);
+      reasons.push(
+        `城市识别：${location.city.value}（证据：${location.city.evidence}，置信：${location.city.confidence}）`,
+      );
     }
     if (location.district.length > 0) {
       facts.preferences.district = Array.from(
@@ -282,7 +280,7 @@ export function mergeDetectedBrands(
     .filter((hint) => addedBrands.includes(hint.brandName))
     .map(
       (hint) =>
-        `根据用户原话“${hint.sourceText}”，将别名“${hint.matchedAlias}”归一化为标准品牌“${hint.brandName}”`,
+        `根据用户原话"${hint.sourceText}"，将别名"${hint.matchedAlias}"归一化为标准品牌"${hint.brandName}"`,
     )
     .join('；');
 
@@ -310,8 +308,10 @@ function hasAnyExtractedFact(facts: EntityExtractionResult): boolean {
 
 function hasAnyValue(record: InterviewInfo | Preferences): boolean {
   return Object.values(record).some((value) => {
+    if (value === null || value === undefined) return false;
     if (Array.isArray(value)) return value.length > 0;
-    return value !== null && value !== undefined && value !== '';
+    if (typeof value === 'object') return true; // CityFact object
+    return value !== '';
   });
 }
 
@@ -400,57 +400,65 @@ function extractSchedule(message: string): string | null {
   return matched.length > 0 ? Array.from(new Set(matched)).join('、') : null;
 }
 
-function extractLocation(message: string): {
-  city: string | null;
-  district: string[];
-  location: string[];
-} {
-  const cityWithDistrict = extractMunicipalityCompactLocation(message);
-  if (cityWithDistrict) {
-    return cityWithDistrict;
-  }
-
-  const knownShanghaiLocation = extractKnownShanghaiLocation(message);
-  if (knownShanghaiLocation) {
-    return knownShanghaiLocation;
-  }
+/**
+ * 抽取地点相关字段（含高置信城市推导）。
+ *
+ * 依次尝试：
+ *   1. 直辖市紧凑表达（"上海浦东"）→ city + district
+ *   2. 显式城市（"北京/上海/武汉…"）→ city
+ *   3. 区名唯一映射（"徐汇"→上海）→ city（+ district）
+ *   4. 热门地点/商圈映射（"陆家嘴"→上海）→ city（+ location）
+ *   5. 区名兜底（显式"XX区"但映射表没覆盖）→ district 列表
+ *   6. 地标兜底（"XX附近"）→ location 列表
+ *
+ * city 一定输出 CityFact 对象（含 evidence）。
+ */
+function extractLocation(message: string): LocationSignals {
+  const compact = extractMunicipalityCompact(message);
+  if (compact) return compact;
 
   const explicitCity = extractExplicitCity(message);
+  if (explicitCity) {
+    return {
+      city: { value: explicitCity, confidence: 'high', evidence: 'explicit_city' },
+      district: [],
+      location: [],
+    };
+  }
+
+  const candidate = normalizeLocationCandidate(message);
+  if (candidate) {
+    const districtCity = resolveCityFromDistrict(candidate);
+    if (districtCity) {
+      return {
+        city: { value: districtCity, confidence: 'high', evidence: 'unique_district_alias' },
+        district: [candidate],
+        location: [],
+      };
+    }
+
+    const hotspotCity = resolveCityFromLocation(candidate);
+    if (hotspotCity) {
+      return {
+        city: { value: hotspotCity, confidence: 'high', evidence: 'hotspot_alias' },
+        district: [],
+        location: [candidate],
+      };
+    }
+  }
+
   const explicitDistricts = extractExplicitDistricts(message);
-  const explicitLocations = extractExplicitLocations(message, explicitCity, explicitDistricts);
+  const explicitLocations = extractExplicitLocations(message, explicitDistricts);
+  const inferredCity = resolveCityFromAny(explicitDistricts, explicitLocations);
 
   return {
-    city: explicitCity,
+    city: inferredCity,
     district: explicitDistricts,
     location: explicitLocations,
   };
 }
 
-function extractKnownShanghaiLocation(message: string): {
-  city: string | null;
-  district: string[];
-  location: string[];
-} | null {
-  const normalized = normalizeLocationCandidate(message);
-  if (!normalized) return null;
-
-  const district = SHANGHAI_DISTRICT_ALIASES[normalized];
-  if (district) {
-    return {
-      city: '上海',
-      district: [district],
-      location: [],
-    };
-  }
-
-  return null;
-}
-
-function extractMunicipalityCompactLocation(message: string): {
-  city: string | null;
-  district: string[];
-  location: string[];
-} | null {
+function extractMunicipalityCompact(message: string): LocationSignals | null {
   const normalized = message.replace(/\s+/g, '');
   const firstSegment = normalized.split(/[，,。；;]/)[0] ?? normalized;
 
@@ -459,14 +467,18 @@ function extractMunicipalityCompactLocation(message: string): {
 
     const remainder = firstSegment.slice(city.length);
     if (!remainder) {
-      return { city, district: [], location: [] };
+      return {
+        city: { value: city, confidence: 'high', evidence: 'municipality_compact' },
+        district: [],
+        location: [],
+      };
     }
 
     const compactDistrict = remainder.match(/^([\u4e00-\u9fa5]{2,6})(区|县|镇)?$/);
     if (compactDistrict) {
       return {
-        city,
-        district: [normalizeDistrict(compactDistrict[1])],
+        city: { value: city, confidence: 'high', evidence: 'municipality_compact' },
+        district: [normalizeDistrictForLookup(compactDistrict[1])],
         location: [],
       };
     }
@@ -476,24 +488,35 @@ function extractMunicipalityCompactLocation(message: string): {
     );
     if (explicitDistrict) {
       return {
-        city,
-        district: [normalizeDistrict(explicitDistrict[1])],
+        city: { value: city, confidence: 'high', evidence: 'municipality_compact' },
+        district: [normalizeDistrictForLookup(explicitDistrict[1])],
         location: [],
       };
     }
 
-    return { city, district: [], location: [] };
+    return {
+      city: { value: city, confidence: 'high', evidence: 'municipality_compact' },
+      district: [],
+      location: [],
+    };
   }
 
   return null;
 }
 
 function extractExplicitCity(message: string): string | null {
+  const normalized = message.replace(/\s+/g, '');
+  const firstSegment = normalized.split(/[，,。；;]/)[0] ?? normalized;
+
+  for (const city of SUPPORTED_CITY_PREFIXES) {
+    if (firstSegment.startsWith(city)) return city;
+  }
+
   const municipalityMatch = message.match(/(北京|上海|天津|重庆)(?:市)?/);
   if (municipalityMatch) return municipalityMatch[1];
 
   const genericCityMatch = message.match(/([\u4e00-\u9fa5]{2,8})市/);
-  if (genericCityMatch) return genericCityMatch[1];
+  if (genericCityMatch?.[1]) return normalizeCityName(genericCityMatch[1]);
 
   return null;
 }
@@ -501,16 +524,12 @@ function extractExplicitCity(message: string): string | null {
 function extractExplicitDistricts(message: string): string[] {
   const districts = Array.from(
     message.matchAll(/([\u4e00-\u9fa5]{2,10}(?:区|县|镇|街道|新区|开发区))/g),
-  ).map((match) => normalizeDistrict(match[1]));
+  ).map((match) => normalizeDistrictForLookup(match[1]));
 
   return Array.from(new Set(districts.filter(Boolean)));
 }
 
-function extractExplicitLocations(
-  message: string,
-  city: string | null,
-  districts: string[],
-): string[] {
+function extractExplicitLocations(message: string, districts: string[]): string[] {
   const nearbyMatch = message.match(
     /(?:我在|人在|在|住在)?([\u4e00-\u9fa5A-Za-z0-9]{2,20})(?:附近|旁边)/,
   );
@@ -518,22 +537,43 @@ function extractExplicitLocations(
 
   const location = nearbyMatch[1].trim();
   if (!location) return [];
-  if (city && location.includes(city)) return [];
   if (districts.some((district) => location.includes(district))) return [];
   return [location];
 }
 
-function normalizeDistrict(rawDistrict: string): string {
-  if (rawDistrict.endsWith('开发区') || rawDistrict.endsWith('新区')) return rawDistrict;
-  if (rawDistrict.endsWith('街道')) return rawDistrict.replace(/街道$/, '');
-  return rawDistrict.replace(/[区县镇乡]$/, '');
+function resolveCityFromDistrict(candidate: string): string | null {
+  const normalized = normalizeDistrictForLookup(candidate);
+  return DISTRICT_TO_CITY[candidate] ?? DISTRICT_TO_CITY[normalized] ?? null;
+}
+
+function resolveCityFromLocation(candidate: string): string | null {
+  const normalized = candidate.replace(/\s+/g, '');
+  return LOCATION_TO_CITY[candidate] ?? LOCATION_TO_CITY[normalized] ?? null;
+}
+
+function resolveCityFromAny(districts: string[], locations: string[]): CityFact | null {
+  for (const district of districts) {
+    const city = resolveCityFromDistrict(district);
+    if (city) {
+      return { value: city, confidence: 'high', evidence: 'unique_district_alias' };
+    }
+  }
+  for (const location of locations) {
+    const city = resolveCityFromLocation(location);
+    if (city) {
+      return { value: city, confidence: 'high', evidence: 'hotspot_alias' };
+    }
+  }
+  return null;
 }
 
 function normalizeLocationCandidate(message: string): string {
   return message
     .replace(/\s+/g, '')
     .split(/[，,。；;]/)[0]
-    .replace(/(有店招吗|有岗位吗|附近有吗|有没有|有吗|招吗|在招吗|行吗|呢|呀|哈|吧)$/g, '')
+    .replace(/^(我在|人在|在|住在)/, '')
+    .replace(/(有店招吗|有岗位吗|有店吗|有没有|有吗|招吗|在招吗|行吗|呢|呀|哈|吧)$/g, '')
+    .replace(/(附近|旁边|这边|那边|周边)$/g, '')
     .replace(/(找工作|工作|岗位|门店|店招)$/g, '')
     .trim();
 }

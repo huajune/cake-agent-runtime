@@ -15,7 +15,7 @@ describe('formatExtractionFactLines', () => {
       preferences: {
         ...FALLBACK_EXTRACTION.preferences,
         brands: ['来伊份', '奥乐齐'],
-        city: '上海',
+        city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
         district: ['杨浦区'],
       },
     });
@@ -26,7 +26,7 @@ describe('formatExtractionFactLines', () => {
       '- 年龄: 25',
       '- 是否学生: 否',
       '- 意向品牌: 来伊份、奥乐齐',
-      '- 意向城市: 上海',
+      '- 意向城市: 上海（置信度: high，证据: explicit_city）',
       '- 意向区域: 杨浦区',
     ]);
   });

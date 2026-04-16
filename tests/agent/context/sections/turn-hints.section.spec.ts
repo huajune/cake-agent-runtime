@@ -30,47 +30,37 @@ describe('TurnHintsSection', () => {
     expect(output).not.toContain('[本轮待确认线索]');
   });
 
-  it('should render resolved city hint when system has high-confidence city', () => {
+  it('should render city confidence and evidence inline in high-confidence hints block', () => {
     const output = section.build({
       ...baseCtx,
-      resolvedCity: {
-        city: '上海',
-        confidence: 'high',
-        evidence: 'unique_district_alias',
+      sessionFacts: null,
+      highConfidenceFacts: {
+        ...FALLBACK_EXTRACTION,
+        preferences: {
+          ...FALLBACK_EXTRACTION.preferences,
+          city: { value: '上海', confidence: 'high', evidence: 'unique_district_alias' },
+        },
+        reasoning: '区映射识别',
       },
     });
 
-    expect(output).toContain('[位置解析提示]');
-    expect(output).toContain('系统已为本轮位置线索解析出高置信城市：上海');
-    expect(output).toContain('区域可唯一映射到城市');
+    expect(output).toContain('[本轮高置信线索]');
+    expect(output).toContain('意向城市: 上海（置信度: high，证据: unique_district_alias）');
   });
 
-  it('should render hotspot evidence text for resolved city', () => {
-    const output = section.build({
-      ...baseCtx,
-      resolvedCity: {
-        city: '上海',
-        confidence: 'high',
-        evidence: 'hotspot_alias',
-      },
-    });
-
-    expect(output).toContain('热门地点/商圈可唯一映射到城市');
-  });
-
-  it('should move conflicting fields into pending confirmation hints and keep new fields in normal hints', () => {
+it('should move conflicting fields into pending confirmation hints and keep new fields in normal hints', () => {
     const output = section.build({
       ...baseCtx,
       sessionFacts: {
         ...FALLBACK_EXTRACTION,
-        preferences: { ...FALLBACK_EXTRACTION.preferences, city: '上海' },
+        preferences: { ...FALLBACK_EXTRACTION.preferences, city: { value: '上海', confidence: 'high', evidence: 'explicit_city' } },
       },
       highConfidenceFacts: {
         ...FALLBACK_EXTRACTION,
         preferences: {
           ...FALLBACK_EXTRACTION.preferences,
           brands: ['来伊份'],
-          city: '北京',
+          city: { value: '北京', confidence: 'high', evidence: 'explicit_city' },
         },
         reasoning: '品牌别名识别，城市识别',
       },
@@ -93,11 +83,11 @@ describe('TurnHintsSection', () => {
       ...baseCtx,
       sessionFacts: {
         ...FALLBACK_EXTRACTION,
-        preferences: { ...FALLBACK_EXTRACTION.preferences, city: '上海' },
+        preferences: { ...FALLBACK_EXTRACTION.preferences, city: { value: '上海', confidence: 'high', evidence: 'explicit_city' } },
       },
       highConfidenceFacts: {
         ...FALLBACK_EXTRACTION,
-        preferences: { ...FALLBACK_EXTRACTION.preferences, city: '上海' },
+        preferences: { ...FALLBACK_EXTRACTION.preferences, city: { value: '上海', confidence: 'high', evidence: 'explicit_city' } },
         reasoning: '同值',
       },
     });

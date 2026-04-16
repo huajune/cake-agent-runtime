@@ -8,6 +8,7 @@ import { MemoryConfig } from '../memory.config';
 import { deepMerge } from '../stores/deep-merge.util';
 import {
   EntityExtractionResultSchema,
+  LLMEntityExtractionResultSchema,
   type EntityExtractionResult,
   type RecommendedJobSummary,
   RecommendedJobSummarySchema,
@@ -22,7 +23,7 @@ import {
   buildSessionExtractionPrompt,
   SESSION_EXTRACTION_SYSTEM_PROMPT,
 } from './session-extraction.prompt';
-import { detectBrandAliasHints, mergeDetectedBrands } from './high-confidence-facts';
+import { detectBrandAliasHints, mergeDetectedBrands } from '../facts/high-confidence-facts';
 import {
   extractPresentedJobs,
   resolveAssistantAnchoredFocusJob,
@@ -345,8 +346,10 @@ export class SessionService {
 
       const result = await generateText({
         model,
+        // LLM 输出使用简单 schema（city 为 string），避免 Zod union/transform 产生
+        // 的复杂 JSON schema 让 LLM 误解结构；service 层再归一化为 CityFact。
         output: Output.object({
-          schema: EntityExtractionResultSchema,
+          schema: LLMEntityExtractionResultSchema,
           name: 'WeworkCandidateFacts',
         }),
         system: SESSION_EXTRACTION_SYSTEM_PROMPT,
@@ -358,7 +361,8 @@ export class SessionService {
         return FALLBACK_EXTRACTION;
       }
 
-      return result.output;
+      // 归一化：LLM 输出的 city 字符串经 EntityExtractionResultSchema 转为 CityFact 对象
+      return EntityExtractionResultSchema.parse(result.output);
     } catch (err) {
       this.logger.warn('[extractFacts] LLM extraction failed, using fallback', err);
       return FALLBACK_EXTRACTION;

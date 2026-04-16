@@ -71,7 +71,7 @@ export class ConversationRiskCardRenderer {
       interviewInfo?.phone ? `电话：${interviewInfo.phone}` : null,
       interviewInfo?.gender ? `性别：${interviewInfo.gender}` : null,
       this.isLikelyCandidateAge(interviewInfo?.age) ? `年龄：${interviewInfo?.age}` : null,
-      preferences?.city ? `城市：${preferences.city}` : null,
+      preferences?.city?.value ? `城市：${preferences.city.value}` : null,
       preferences?.district?.length ? `区域：${preferences.district.join('、')}` : null,
       preferences?.position?.length ? `意向岗位：${preferences.position.join('、')}` : null,
       payload.botUserName?.trim() ? `托管账号：${payload.botUserName.trim()}` : null,

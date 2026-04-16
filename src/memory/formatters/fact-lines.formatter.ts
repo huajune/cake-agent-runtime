@@ -25,7 +25,11 @@ export function formatExtractionFactLines(facts: EntityExtractionResult): string
   if (pref.salary) lines.push(`- 意向薪资: ${pref.salary}`);
   if (pref.position?.length) lines.push(`- 意向岗位: ${pref.position.join('、')}`);
   if (pref.schedule) lines.push(`- 意向班次: ${pref.schedule}`);
-  if (pref.city) lines.push(`- 意向城市: ${pref.city}`);
+  if (pref.city?.value) {
+    lines.push(
+      `- 意向城市: ${pref.city.value}（置信度: ${pref.city.confidence}，证据: ${pref.city.evidence}）`,
+    );
+  }
   if (pref.district?.length) lines.push(`- 意向区域: ${pref.district.join('、')}`);
   if (pref.location?.length) lines.push(`- 意向地点: ${pref.location.join('、')}`);
 

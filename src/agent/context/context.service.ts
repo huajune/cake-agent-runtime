@@ -17,7 +17,6 @@ import {
   Threshold,
 } from '@shared-types/strategy-config.types';
 import { PromptSection, PromptContext } from './sections/section.interface';
-import type { ResolvedCity } from '@agent/services/location-city-resolver.service';
 import { IdentitySection } from './sections/identity.section';
 import { RedLinesSection } from './sections/red-lines.section';
 import { DateTimeSection } from './sections/datetime.section';
@@ -40,8 +39,6 @@ export interface ComposeParams {
   sessionFacts?: EntityExtractionResult | null;
   /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分/渲染。 */
   highConfidenceFacts?: EntityExtractionResult | null;
-  /** 系统解析出的高置信城市，可供 geocode 等工具决策使用。 */
-  resolvedCity?: ResolvedCity | null;
   /** 策略来源：wecom 读 released，test 读 testing，默认 released */
   strategySource?: 'released' | 'testing';
 }
@@ -84,7 +81,6 @@ export class ContextService implements OnModuleInit {
       memoryBlock,
       sessionFacts,
       highConfidenceFacts,
-      resolvedCity,
       strategySource = 'released',
     } = params;
 
@@ -100,7 +96,6 @@ export class ContextService implements OnModuleInit {
       memoryBlock,
       sessionFacts,
       highConfidenceFacts,
-      resolvedCity,
       currentTimeText: now,
     };
 
