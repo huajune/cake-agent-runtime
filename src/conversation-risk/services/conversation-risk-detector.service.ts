@@ -61,8 +61,9 @@ export class ConversationRiskDetectorService {
     riskLabel: string,
     summary: string,
   ): ConversationRiskDetectionResult {
-    const evidenceMessages = this.getCurrentTurnUserMessages(context)
-      .filter((message) => this.findMatchedKeywords(message.content, keywords).length > 0);
+    const evidenceMessages = this.getCurrentTurnUserMessages(context).filter(
+      (message) => this.findMatchedKeywords(message.content, keywords).length > 0,
+    );
 
     if (evidenceMessages.length === 0) {
       return { hit: false };

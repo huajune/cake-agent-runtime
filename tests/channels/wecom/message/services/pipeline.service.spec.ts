@@ -69,6 +69,7 @@ describe('MessagePipelineService', () => {
       overrideModelId: undefined,
       effectiveModelId: '',
     }),
+    getMergeDelayMs: jest.fn().mockReturnValue(2000),
   };
 
   const mockMonitoringService = {

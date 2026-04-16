@@ -165,9 +165,9 @@ export class GroupBlacklistService {
 
   private async readSharedCache(): Promise<GroupBlacklistItem[] | null> {
     try {
-      const cached = await this.redisService.get<GroupBlacklistItem[] | { items: GroupBlacklistItem[] }>(
-        GroupBlacklistService.SHARED_CACHE_KEY,
-      );
+      const cached = await this.redisService.get<
+        GroupBlacklistItem[] | { items: GroupBlacklistItem[] }
+      >(GroupBlacklistService.SHARED_CACHE_KEY);
       if (!cached) {
         return null;
       }

@@ -378,7 +378,9 @@ export class SystemConfigService {
   /**
    * 从数据库加载消息聚合开关状态，缺失时写入默认值
    */
-  private async loadMessageMergeStatus(options?: { bypassSharedCache?: boolean }): Promise<boolean> {
+  private async loadMessageMergeStatus(options?: {
+    bypassSharedCache?: boolean;
+  }): Promise<boolean> {
     const defaultValue = this.configService.get<string>('ENABLE_MESSAGE_MERGE', 'true') === 'true';
 
     try {
@@ -422,7 +424,9 @@ export class SystemConfigService {
   /**
    * 从数据库加载 Agent 回复策略配置，缺失时写入默认值
    */
-  private async loadAgentReplyConfig(options?: { bypassSharedCache?: boolean }): Promise<AgentReplyConfig> {
+  private async loadAgentReplyConfig(options?: {
+    bypassSharedCache?: boolean;
+  }): Promise<AgentReplyConfig> {
     try {
       if (!options?.bypassSharedCache) {
         const sharedValue = await this.readSharedAgentReplyConfigCache();
@@ -440,9 +444,7 @@ export class SystemConfigService {
       if (result !== null) {
         this.setAgentReplyConfigCache(this.normalizeAgentReplyConfig(result));
       } else {
-        this.setAgentReplyConfigCache(
-          this.normalizeAgentReplyConfig(DEFAULT_AGENT_REPLY_CONFIG),
-        );
+        this.setAgentReplyConfigCache(this.normalizeAgentReplyConfig(DEFAULT_AGENT_REPLY_CONFIG));
         await this.systemConfigRepository.setConfigValue(
           'agent_reply_config',
           DEFAULT_AGENT_REPLY_CONFIG,

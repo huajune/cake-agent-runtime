@@ -88,17 +88,16 @@ export class AnalyticsDashboardService {
         activeRequests,
         peakActiveRequests,
         queueStatus,
-      ] =
-        await Promise.all([
-          this.getRecordsByTimeRange(currentStart, currentEnd),
-          this.getRecordsByTimeRange(previousStart, previousEnd),
-          this.getRecentDetailRecords(50),
-          this.getErrorLogsByTimeRange(timeRange),
-          timeRange === 'today' ? this.getTodayUsersFromDatabase() : Promise.resolve([]),
-          this.messageTrackingService.getActiveRequests(),
-          this.messageTrackingService.getPeakActiveRequests(),
-          this.messageProcessor.getQueueStatus(),
-        ]);
+      ] = await Promise.all([
+        this.getRecordsByTimeRange(currentStart, currentEnd),
+        this.getRecordsByTimeRange(previousStart, previousEnd),
+        this.getRecentDetailRecords(50),
+        this.getErrorLogsByTimeRange(timeRange),
+        timeRange === 'today' ? this.getTodayUsersFromDatabase() : Promise.resolve([]),
+        this.messageTrackingService.getActiveRequests(),
+        this.messageTrackingService.getPeakActiveRequests(),
+        this.messageProcessor.getQueueStatus(),
+      ]);
 
       const overview = this.calculateOverview(currentRecords);
       const previousOverview = this.calculateOverview(previousRecords);
@@ -124,14 +123,11 @@ export class AnalyticsDashboardService {
         scenarios: this.buildScenarioUsageMetrics(currentRecords),
       };
 
-      const queue = this.analyticsMetricsService.calculateQueueMetrics(
-        currentRecords,
-        {
-          activeRequests,
-          peakActiveRequests,
-          queueWaitingJobs: queueStatus.waiting,
-        },
-      );
+      const queue = this.analyticsMetricsService.calculateQueueMetrics(currentRecords, {
+        activeRequests,
+        peakActiveRequests,
+        queueWaitingJobs: queueStatus.waiting,
+      });
       const alertsSummary = this.analyticsMetricsService.calculateAlertsSummary(errorLogs);
       const trends = await this.calculateTrends(timeRange);
       const responseTrend = this.analyticsTrendBuilder.buildResponseTrend(

@@ -188,8 +188,9 @@ export class MessageTrackingService {
     error?: string;
   }): Promise<void> {
     try {
-      const existingRecord =
-        await this.messageProcessingService.getMessageProcessingRecordById(params.messageId);
+      const existingRecord = await this.messageProcessingService.getMessageProcessingRecordById(
+        params.messageId,
+      );
       const finalRecord = this.buildTerminalRecord({
         messageId: params.messageId,
         status: params.status,
@@ -261,9 +262,11 @@ export class MessageTrackingService {
 
     if (record.sendDuration && record.sendDuration > 0) {
       updates.push(
-        this.cacheService.incrementCounter('totalSendDuration', record.sendDuration).catch((err) => {
-          this.logger.warn('更新 totalSendDuration 计数器失败:', err);
-        }),
+        this.cacheService
+          .incrementCounter('totalSendDuration', record.sendDuration)
+          .catch((err) => {
+            this.logger.warn('更新 totalSendDuration 计数器失败:', err);
+          }),
       );
     }
 
@@ -277,7 +280,9 @@ export class MessageTrackingService {
     error?: string;
     existingRecord?: MessageProcessingRecordInput | null;
   }): MessageProcessingRecordInput | null {
-    const invocation = this.asInvocation(params.metadata?.agentInvocation ?? params.existingRecord?.agentInvocation);
+    const invocation = this.asInvocation(
+      params.metadata?.agentInvocation ?? params.existingRecord?.agentInvocation,
+    );
     const request = this.asRecord(invocation?.request);
     const response = this.asRecord(invocation?.response);
     const reply = this.asRecord(response?.reply);
@@ -326,21 +331,21 @@ export class MessageTrackingService {
       // 顶层 queueDuration 继续保留旧语义：accepted -> workerStart 的整体等待
       queueDuration:
         timings.durations.acceptedToWorkerStartMs ?? params.existingRecord?.queueDuration,
-      prepDuration:
-        timings.durations.workerStartToAiStartMs ?? params.existingRecord?.prepDuration,
+      prepDuration: timings.durations.workerStartToAiStartMs ?? params.existingRecord?.prepDuration,
       aiStartAt: timings.timestamps.aiStartAt ?? params.existingRecord?.aiStartAt,
       aiEndAt: timings.timestamps.aiEndAt ?? params.existingRecord?.aiEndAt,
       aiDuration: timings.durations.aiStartToAiEndMs ?? params.existingRecord?.aiDuration,
       sendDuration: timings.durations.deliveryDurationMs ?? params.existingRecord?.sendDuration,
-      tools: params.metadata?.tools ?? this.extractToolNames(response?.toolCalls) ?? params.existingRecord?.tools,
+      tools:
+        params.metadata?.tools ??
+        this.extractToolNames(response?.toolCalls) ??
+        params.existingRecord?.tools,
       tokenUsage:
         params.metadata?.tokenUsage ??
         this.asNumber(this.asRecord(reply?.usage)?.totalTokens) ??
         params.existingRecord?.tokenUsage,
       isFallback:
-        params.metadata?.isFallback ??
-        invocation?.isFallback ??
-        params.existingRecord?.isFallback,
+        params.metadata?.isFallback ?? invocation?.isFallback ?? params.existingRecord?.isFallback,
       fallbackSuccess:
         params.metadata?.fallbackSuccess ??
         this.asBoolean(fallback?.success) ??

@@ -75,21 +75,18 @@ export class AnalyticsQueryService {
     try {
       const [currentRecords, errorLogs, activeRequests, peakActiveRequests, queueStatus] =
         await Promise.all([
-        this.getRecordsByTimeRange(Date.now() - 24 * 60 * 60 * 1000, Date.now()),
-        this.getErrorLogsByTimeRange('today'),
-        this.messageTrackingService.getActiveRequests(),
-        this.messageTrackingService.getPeakActiveRequests(),
-        this.messageProcessor.getQueueStatus(),
-      ]);
+          this.getRecordsByTimeRange(Date.now() - 24 * 60 * 60 * 1000, Date.now()),
+          this.getErrorLogsByTimeRange('today'),
+          this.messageTrackingService.getActiveRequests(),
+          this.messageTrackingService.getPeakActiveRequests(),
+          this.messageProcessor.getQueueStatus(),
+        ]);
 
-      const queue = this.analyticsMetricsService.calculateQueueMetrics(
-        currentRecords,
-        {
-          activeRequests,
-          peakActiveRequests,
-          queueWaitingJobs: queueStatus.waiting,
-        },
-      );
+      const queue = this.analyticsMetricsService.calculateQueueMetrics(currentRecords, {
+        activeRequests,
+        peakActiveRequests,
+        queueWaitingJobs: queueStatus.waiting,
+      });
       const alertsSummary = this.analyticsMetricsService.calculateAlertsSummary(errorLogs);
       const alertTrend = this.analyticsTrendBuilder.buildAlertTrend(errorLogs, 'today');
 
