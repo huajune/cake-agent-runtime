@@ -73,6 +73,7 @@ export class MessageProcessingRepository extends BaseRepository {
         'reply_segments',
         'status',
         'error',
+        'alert_type',
         'scenario',
         'total_duration',
         'queue_duration',
@@ -139,6 +140,7 @@ export class MessageProcessingRepository extends BaseRepository {
         'reply_segments',
         'status',
         'error',
+        'alert_type',
         'scenario',
         'total_duration',
         'queue_duration',
@@ -382,6 +384,7 @@ export class MessageProcessingRepository extends BaseRepository {
         'message_preview',
         'reply_preview',
         'status',
+        'alert_type',
         'ai_duration',
         'total_duration',
         'scenario',
@@ -504,6 +507,7 @@ export class MessageProcessingRepository extends BaseRepository {
     updates: {
       status: 'success' | 'failure';
       error?: string;
+      alertType?: MessageProcessingRecordInput['alertType'];
       scenario?: string;
       tokenUsage?: number;
       replyPreview?: string;
@@ -520,6 +524,7 @@ export class MessageProcessingRepository extends BaseRepository {
     try {
       const dbUpdates: Record<string, unknown> = { status: updates.status };
       if (updates.error !== undefined) dbUpdates.error = updates.error;
+      if (updates.alertType !== undefined) dbUpdates.alert_type = updates.alertType;
       if (updates.scenario !== undefined) dbUpdates.scenario = updates.scenario;
       if (updates.tokenUsage !== undefined) dbUpdates.token_usage = updates.tokenUsage;
       if (updates.replyPreview !== undefined) dbUpdates.reply_preview = updates.replyPreview;
@@ -574,6 +579,7 @@ export class MessageProcessingRepository extends BaseRepository {
       reply_segments: record.replySegments,
       status: record.status,
       error: record.error,
+      alert_type: record.alertType,
       scenario: record.scenario,
       total_duration: record.totalDuration,
       queue_duration: record.queueDuration,
@@ -609,6 +615,7 @@ export class MessageProcessingRepository extends BaseRepository {
       replySegments: record.reply_segments,
       status: record.status as 'processing' | 'success' | 'failure' | 'timeout',
       error: record.error,
+      alertType: record.alert_type as MessageProcessingRecordInput['alertType'],
       scenario: record.scenario,
       totalDuration: record.total_duration,
       queueDuration: record.queue_duration,

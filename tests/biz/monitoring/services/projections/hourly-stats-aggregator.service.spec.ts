@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HourlyStatsAggregatorService } from '@biz/monitoring/services/projections/hourly-stats-aggregator.service';
 import { MonitoringHourlyStatsRepository } from '@biz/monitoring/repositories/hourly-stats.repository';
+import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.repository';
 import { HourlyStats } from '@biz/monitoring/types/analytics.types';
 
 const buildHourlyStats = (overrides: Partial<HourlyStats> = {}): HourlyStats => ({
@@ -8,6 +9,7 @@ const buildHourlyStats = (overrides: Partial<HourlyStats> = {}): HourlyStats => 
   messageCount: 100,
   successCount: 90,
   failureCount: 10,
+  timeoutCount: 0,
   successRate: 90,
   avgDuration: 5000,
   minDuration: 1000,
@@ -15,6 +17,8 @@ const buildHourlyStats = (overrides: Partial<HourlyStats> = {}): HourlyStats => 
   p50Duration: 4000,
   p95Duration: 20000,
   p99Duration: 50000,
+  avgQueueDuration: 500,
+  avgPrepDuration: 400,
   avgAiDuration: 3000,
   avgSendDuration: 1000,
   activeUsers: 20,
@@ -22,6 +26,7 @@ const buildHourlyStats = (overrides: Partial<HourlyStats> = {}): HourlyStats => 
   totalTokenUsage: 5000,
   fallbackCount: 5,
   fallbackSuccessCount: 3,
+  errorTypeStats: {},
   scenarioStats: {},
   toolStats: {},
   ...overrides,
@@ -30,9 +35,16 @@ const buildHourlyStats = (overrides: Partial<HourlyStats> = {}): HourlyStats => 
 describe('HourlyStatsAggregatorService', () => {
   let service: HourlyStatsAggregatorService;
   let _hourlyStatsRepository: jest.Mocked<MonitoringHourlyStatsRepository>;
+  let monitoringRecordRepository: jest.Mocked<MonitoringRecordRepository>;
 
   const mockHourlyStatsRepository = {
     getHourlyStatsByDateRange: jest.fn(),
+  };
+
+  const mockMonitoringRecordRepository = {
+    getDashboardOverviewStats: jest.fn(),
+    getDashboardFallbackStats: jest.fn(),
+    getDashboardDailyTrend: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -43,13 +55,35 @@ describe('HourlyStatsAggregatorService', () => {
           provide: MonitoringHourlyStatsRepository,
           useValue: mockHourlyStatsRepository,
         },
+        {
+          provide: MonitoringRecordRepository,
+          useValue: mockMonitoringRecordRepository,
+        },
       ],
     }).compile();
 
     service = module.get<HourlyStatsAggregatorService>(HourlyStatsAggregatorService);
     _hourlyStatsRepository = module.get(MonitoringHourlyStatsRepository);
+    monitoringRecordRepository = module.get(MonitoringRecordRepository);
 
     jest.clearAllMocks();
+    mockMonitoringRecordRepository.getDashboardOverviewStats.mockResolvedValue({
+      totalMessages: 0,
+      successCount: 0,
+      failureCount: 0,
+      successRate: 0,
+      avgDuration: 0,
+      activeUsers: 0,
+      activeChats: 0,
+      totalTokenUsage: 0,
+    });
+    mockMonitoringRecordRepository.getDashboardFallbackStats.mockResolvedValue({
+      totalCount: 0,
+      successCount: 0,
+      successRate: 0,
+      affectedUsers: 0,
+    });
+    mockMonitoringRecordRepository.getDashboardDailyTrend.mockResolvedValue([]);
   });
 
   it('should be defined', () => {
@@ -83,6 +117,16 @@ describe('HourlyStatsAggregatorService', () => {
         }),
       ];
       mockHourlyStatsRepository.getHourlyStatsByDateRange.mockResolvedValue(rows);
+      mockMonitoringRecordRepository.getDashboardOverviewStats.mockResolvedValue({
+        totalMessages: 150,
+        successCount: 135,
+        failureCount: 15,
+        successRate: 90,
+        avgDuration: 4667,
+        activeUsers: 21,
+        activeChats: 16,
+        totalTokenUsage: 5000,
+      });
 
       const result = await service.getOverviewFromHourly(
         new Date('2026-03-11'),
@@ -93,8 +137,8 @@ describe('HourlyStatsAggregatorService', () => {
       expect(result.successCount).toBe(135);
       expect(result.failureCount).toBe(15);
       expect(result.successRate).toBe(90);
-      expect(result.activeUsers).toBe(30);
-      expect(result.activeChats).toBe(23);
+      expect(result.activeUsers).toBe(21);
+      expect(result.activeChats).toBe(16);
       expect(result.totalTokenUsage).toBe(5000);
       // Weighted avg: (5000 * 90 + 4000 * 45) / (90 + 45) = (450000 + 180000) / 135 = 4666.67 ≈ 4667
       expect(result.avgDuration).toBe(4667);
@@ -102,6 +146,16 @@ describe('HourlyStatsAggregatorService', () => {
 
     it('should return default zero stats when no rows exist', async () => {
       mockHourlyStatsRepository.getHourlyStatsByDateRange.mockResolvedValue([]);
+      mockMonitoringRecordRepository.getDashboardOverviewStats.mockResolvedValue({
+        totalMessages: 0,
+        successCount: 0,
+        failureCount: 0,
+        successRate: 0,
+        avgDuration: 0,
+        activeUsers: 0,
+        activeChats: 0,
+        totalTokenUsage: 0,
+      });
 
       const result = await service.getOverviewFromHourly(
         new Date('2026-03-11'),
@@ -123,6 +177,16 @@ describe('HourlyStatsAggregatorService', () => {
     it('should calculate successRate correctly', async () => {
       const rows = [buildHourlyStats({ messageCount: 200, successCount: 160, failureCount: 40 })];
       mockHourlyStatsRepository.getHourlyStatsByDateRange.mockResolvedValue(rows);
+      mockMonitoringRecordRepository.getDashboardOverviewStats.mockResolvedValue({
+        totalMessages: 200,
+        successCount: 160,
+        failureCount: 40,
+        successRate: 80,
+        avgDuration: 5000,
+        activeUsers: 10,
+        activeChats: 8,
+        totalTokenUsage: 5000,
+      });
 
       const result = await service.getOverviewFromHourly(
         new Date('2026-03-11'),
@@ -142,6 +206,16 @@ describe('HourlyStatsAggregatorService', () => {
         }),
       ];
       mockHourlyStatsRepository.getHourlyStatsByDateRange.mockResolvedValue(rows);
+      mockMonitoringRecordRepository.getDashboardOverviewStats.mockResolvedValue({
+        totalMessages: 10,
+        successCount: 0,
+        failureCount: 10,
+        successRate: 0,
+        avgDuration: 0,
+        activeUsers: 2,
+        activeChats: 1,
+        totalTokenUsage: 5000,
+      });
 
       const result = await service.getOverviewFromHourly(
         new Date('2026-03-11'),
@@ -163,6 +237,12 @@ describe('HourlyStatsAggregatorService', () => {
         buildHourlyStats({ fallbackCount: 5, fallbackSuccessCount: 4 }),
       ];
       mockHourlyStatsRepository.getHourlyStatsByDateRange.mockResolvedValue(rows);
+      mockMonitoringRecordRepository.getDashboardFallbackStats.mockResolvedValue({
+        totalCount: 15,
+        successCount: 11,
+        successRate: Math.round((11 / 15) * 100 * 100) / 100,
+        affectedUsers: 6,
+      });
 
       const result = await service.getFallbackFromHourly(
         new Date('2026-03-11'),
@@ -172,13 +252,19 @@ describe('HourlyStatsAggregatorService', () => {
       expect(result.totalCount).toBe(15);
       expect(result.successCount).toBe(11);
       expect(result.successRate).toBe(Math.round((11 / 15) * 100 * 100) / 100);
-      expect(result.affectedUsers).toBe(0); // always 0 in hourly aggregation
+      expect(result.affectedUsers).toBe(6);
     });
 
     it('should return zero successRate when totalCount is 0', async () => {
       mockHourlyStatsRepository.getHourlyStatsByDateRange.mockResolvedValue([
         buildHourlyStats({ fallbackCount: 0, fallbackSuccessCount: 0 }),
       ]);
+      mockMonitoringRecordRepository.getDashboardFallbackStats.mockResolvedValue({
+        totalCount: 0,
+        successCount: 0,
+        successRate: 0,
+        affectedUsers: 0,
+      });
 
       const result = await service.getFallbackFromHourly(
         new Date('2026-03-11'),
@@ -190,6 +276,12 @@ describe('HourlyStatsAggregatorService', () => {
 
     it('should handle empty rows', async () => {
       mockHourlyStatsRepository.getHourlyStatsByDateRange.mockResolvedValue([]);
+      mockMonitoringRecordRepository.getDashboardFallbackStats.mockResolvedValue({
+        totalCount: 0,
+        successCount: 0,
+        successRate: 0,
+        affectedUsers: 0,
+      });
 
       const result = await service.getFallbackFromHourly(
         new Date('2026-03-11'),
@@ -210,34 +302,25 @@ describe('HourlyStatsAggregatorService', () => {
   // ========================================
 
   describe('getDailyTrendFromHourly', () => {
-    it('should group hourly rows by date and aggregate per day', async () => {
-      const rows = [
-        buildHourlyStats({
-          hour: '2026-03-11T00:00:00.000Z',
-          messageCount: 50,
-          successCount: 45,
-          avgDuration: 4000,
-          totalTokenUsage: 1000,
-          activeUsers: 10,
-        }),
-        buildHourlyStats({
-          hour: '2026-03-11T01:00:00.000Z',
-          messageCount: 60,
-          successCount: 55,
-          avgDuration: 5000,
-          totalTokenUsage: 1500,
-          activeUsers: 12,
-        }),
-        buildHourlyStats({
-          hour: '2026-03-12T00:00:00.000Z',
+    it('should use exact daily trend query instead of summing hourly unique users', async () => {
+      mockMonitoringRecordRepository.getDashboardDailyTrend.mockResolvedValue([
+        {
+          date: '2026-03-11',
+          messageCount: 110,
+          successCount: 100,
+          avgDuration: 4500,
+          tokenUsage: 2500,
+          uniqueUsers: 12,
+        },
+        {
+          date: '2026-03-12',
           messageCount: 80,
           successCount: 70,
           avgDuration: 6000,
-          totalTokenUsage: 2000,
-          activeUsers: 20,
-        }),
-      ];
-      mockHourlyStatsRepository.getHourlyStatsByDateRange.mockResolvedValue(rows);
+          tokenUsage: 2000,
+          uniqueUsers: 20,
+        },
+      ]);
 
       const result = await service.getDailyTrendFromHourly(
         new Date('2026-03-11'),
@@ -249,19 +332,39 @@ describe('HourlyStatsAggregatorService', () => {
       expect(result[0].messageCount).toBe(110);
       expect(result[0].successCount).toBe(100);
       expect(result[0].tokenUsage).toBe(2500);
-      expect(result[0].uniqueUsers).toBe(22);
+      expect(result[0].uniqueUsers).toBe(12);
 
       expect(result[1].date).toBe('2026-03-12');
       expect(result[1].messageCount).toBe(80);
     });
 
     it('should return results sorted by date ascending', async () => {
-      const rows = [
-        buildHourlyStats({ hour: '2026-03-13T00:00:00.000Z', messageCount: 30 }),
-        buildHourlyStats({ hour: '2026-03-11T00:00:00.000Z', messageCount: 50 }),
-        buildHourlyStats({ hour: '2026-03-12T00:00:00.000Z', messageCount: 40 }),
-      ];
-      mockHourlyStatsRepository.getHourlyStatsByDateRange.mockResolvedValue(rows);
+      mockMonitoringRecordRepository.getDashboardDailyTrend.mockResolvedValue([
+        {
+          date: '2026-03-11',
+          messageCount: 50,
+          successCount: 45,
+          avgDuration: 4000,
+          tokenUsage: 1000,
+          uniqueUsers: 8,
+        },
+        {
+          date: '2026-03-12',
+          messageCount: 40,
+          successCount: 35,
+          avgDuration: 4200,
+          tokenUsage: 900,
+          uniqueUsers: 7,
+        },
+        {
+          date: '2026-03-13',
+          messageCount: 30,
+          successCount: 28,
+          avgDuration: 4300,
+          tokenUsage: 800,
+          uniqueUsers: 6,
+        },
+      ]);
 
       const result = await service.getDailyTrendFromHourly(
         new Date('2026-03-11'),
@@ -274,7 +377,7 @@ describe('HourlyStatsAggregatorService', () => {
     });
 
     it('should return empty array when no rows exist', async () => {
-      mockHourlyStatsRepository.getHourlyStatsByDateRange.mockResolvedValue([]);
+      mockMonitoringRecordRepository.getDashboardDailyTrend.mockResolvedValue([]);
 
       const result = await service.getDailyTrendFromHourly(
         new Date('2026-03-11'),

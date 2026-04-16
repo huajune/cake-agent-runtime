@@ -215,6 +215,49 @@ describe('MessageTrackingService', () => {
     );
   });
 
+  it('should persist alertType on failure terminal records', async () => {
+    mockMessageProcessingService.getMessageProcessingRecordById.mockResolvedValue({
+      messageId: 'msg-failure',
+      chatId: 'chat-1',
+      receivedAt: 1000,
+      status: 'processing',
+    });
+
+    service.recordFailure('msg-failure', 'agent failed', {
+      alertType: 'agent',
+      scenario: ScenarioType.CANDIDATE_CONSULTATION,
+      agentInvocation: {
+        request: {
+          messageId: 'msg-failure',
+          chatId: 'chat-1',
+          acceptedAt: 1000,
+        },
+        response: {
+          error: 'agent failed',
+          timings: {
+            timestamps: {
+              acceptedAt: 1000,
+            },
+            durations: {
+              totalMs: 3000,
+            },
+          },
+        },
+        isFallback: false,
+      },
+    });
+
+    await flushPromises();
+
+    expect(messageProcessingService.saveRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: 'msg-failure',
+        status: 'failure',
+        alertType: 'agent',
+      }),
+    );
+  });
+
   it('should still finalize a success record when only agentInvocation has the request context', async () => {
     service.recordSuccess('batch-1', {
       scenario: ScenarioType.CANDIDATE_CONSULTATION,

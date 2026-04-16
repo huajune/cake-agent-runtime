@@ -14,6 +14,7 @@ export interface MessageProcessingDbRecord {
   reply_segments?: number;
   status: string;
   error?: string;
+  alert_type?: string;
   scenario?: string;
   total_duration?: number;
   queue_duration?: number;

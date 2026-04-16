@@ -6,10 +6,12 @@ import { AnalyticsDashboardService } from '@biz/monitoring/services/dashboard/an
 import { MonitoringCacheService } from '@biz/monitoring/services/tracking/monitoring-cache.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { BookingService } from '@biz/message/services/booking.service';
+import { MonitoringDailyStatsRepository } from '@biz/monitoring/repositories/daily-stats.repository';
 import { MonitoringHourlyStatsRepository } from '@biz/monitoring/repositories/hourly-stats.repository';
 import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error-log.repository';
 import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.repository';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { DailyStatsAggregatorService } from '@biz/monitoring/services/projections/daily-stats-aggregator.service';
 import { HourlyStatsAggregatorService } from '@biz/monitoring/services/projections/hourly-stats-aggregator.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { MessageProcessor } from '@wecom/message/runtime/message.processor';
@@ -52,6 +54,7 @@ const buildHourlyStatsRow = (overrides = {}) => ({
   messageCount: 0,
   successCount: 0,
   failureCount: 0,
+  timeoutCount: 0,
   successRate: 0,
   avgDuration: 0,
   minDuration: 0,
@@ -59,6 +62,8 @@ const buildHourlyStatsRow = (overrides = {}) => ({
   p50Duration: 0,
   p95Duration: 0,
   p99Duration: 0,
+  avgQueueDuration: 0,
+  avgPrepDuration: 0,
   avgAiDuration: 0,
   avgSendDuration: 0,
   activeUsers: 0,
@@ -66,6 +71,7 @@ const buildHourlyStatsRow = (overrides = {}) => ({
   totalTokenUsage: 0,
   fallbackCount: 0,
   fallbackSuccessCount: 0,
+  errorTypeStats: {},
   scenarioStats: {},
   toolStats: {},
   ...overrides,
@@ -74,12 +80,14 @@ const buildHourlyStatsRow = (overrides = {}) => ({
 describe('AnalyticsDashboardService', () => {
   let service: AnalyticsDashboardService;
   let _messageProcessingService: jest.Mocked<MessageProcessingService>;
+  let _dailyStatsRepository: jest.Mocked<MonitoringDailyStatsRepository>;
   let _hourlyStatsRepository: jest.Mocked<MonitoringHourlyStatsRepository>;
   let _errorLogRepository: jest.Mocked<MonitoringErrorLogRepository>;
   let _userHostingService: jest.Mocked<UserHostingService>;
   let _cacheService: jest.Mocked<MonitoringCacheService>;
   let monitoringRepository: jest.Mocked<MonitoringRecordRepository>;
   let _bookingService: jest.Mocked<BookingService>;
+  let dailyStatsAggregator: jest.Mocked<DailyStatsAggregatorService>;
   let hourlyStatsAggregator: jest.Mocked<HourlyStatsAggregatorService>;
   let _messageTrackingService: jest.Mocked<MessageTrackingService>;
   let _messageProcessor: jest.Mocked<MessageProcessor>;
@@ -93,6 +101,10 @@ describe('AnalyticsDashboardService', () => {
   const mockHourlyStatsRepository = {
     getRecentHourlyStats: jest.fn(),
     getLatestHourlyStat: jest.fn(),
+  };
+
+  const mockDailyStatsRepository = {
+    getLatestDailyStat: jest.fn(),
   };
 
   const mockErrorLogRepository = {
@@ -128,6 +140,10 @@ describe('AnalyticsDashboardService', () => {
     mergeFallbackStats: jest.fn(),
   };
 
+  const mockDailyStatsAggregator = {
+    getDailyTrendFromDaily: jest.fn(),
+  };
+
   const mockMessageTrackingService = {
     getActiveRequests: jest.fn().mockResolvedValue(0),
     getPeakActiveRequests: jest.fn().mockResolvedValue(0),
@@ -151,6 +167,10 @@ describe('AnalyticsDashboardService', () => {
         {
           provide: MessageProcessingService,
           useValue: mockMessageProcessingService,
+        },
+        {
+          provide: MonitoringDailyStatsRepository,
+          useValue: mockDailyStatsRepository,
         },
         {
           provide: MonitoringHourlyStatsRepository,
@@ -177,6 +197,10 @@ describe('AnalyticsDashboardService', () => {
           useValue: mockBookingService,
         },
         {
+          provide: DailyStatsAggregatorService,
+          useValue: mockDailyStatsAggregator,
+        },
+        {
           provide: HourlyStatsAggregatorService,
           useValue: mockHourlyStatsAggregator,
         },
@@ -195,12 +219,14 @@ describe('AnalyticsDashboardService', () => {
 
     service = module.get<AnalyticsDashboardService>(AnalyticsDashboardService);
     _messageProcessingService = module.get(MessageProcessingService);
+    _dailyStatsRepository = module.get(MonitoringDailyStatsRepository);
     _hourlyStatsRepository = module.get(MonitoringHourlyStatsRepository);
     _errorLogRepository = module.get(MonitoringErrorLogRepository);
     _userHostingService = module.get(UserHostingService);
     _cacheService = module.get(MonitoringCacheService);
     monitoringRepository = module.get(MonitoringRecordRepository);
     _bookingService = module.get(BookingService);
+    dailyStatsAggregator = module.get(DailyStatsAggregatorService);
     hourlyStatsAggregator = module.get(HourlyStatsAggregatorService);
     _messageTrackingService = module.get(MessageTrackingService);
     _messageProcessor = module.get(MessageProcessor);
@@ -214,6 +240,8 @@ describe('AnalyticsDashboardService', () => {
       total: 0,
     });
     mockMessageProcessingService.getActiveUsers.mockResolvedValue([]);
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    mockDailyStatsRepository.getLatestDailyStat.mockResolvedValue({ date: yesterday });
     mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([buildHourlyStatsRow()]);
     mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(buildHourlyStatsRow());
     mockErrorLogRepository.getErrorLogsSince.mockResolvedValue([]);
@@ -228,6 +256,7 @@ describe('AnalyticsDashboardService', () => {
     });
     mockUserHostingService.getUserHostingStatus.mockResolvedValue({ isPaused: false });
     mockBookingService.getBookingStats.mockResolvedValue([]);
+    mockDailyStatsAggregator.getDailyTrendFromDaily.mockResolvedValue([]);
     mockHourlyStatsAggregator.getOverviewFromHourly.mockResolvedValue(defaultOverview);
     mockHourlyStatsAggregator.getFallbackFromHourly.mockResolvedValue(defaultFallback);
     mockHourlyStatsAggregator.getDailyTrendFromHourly.mockResolvedValue([]);
@@ -447,16 +476,6 @@ describe('AnalyticsDashboardService', () => {
 
   describe('getDashboardOverviewAsync', () => {
     it('should return overview data structure for today range', async () => {
-      mockHourlyStatsAggregator.mergeOverviewStats.mockReturnValue({
-        ...defaultOverview,
-        totalMessages: 100,
-        successCount: 90,
-        successRate: 90,
-        avgDuration: 5000,
-        activeUsers: 20,
-        activeChats: 15,
-      });
-
       const result = await service.getDashboardOverviewAsync('today');
 
       expect(result).toHaveProperty('timeRange', 'today');
@@ -472,48 +491,49 @@ describe('AnalyticsDashboardService', () => {
       expect(result).toHaveProperty('fallbackDelta');
     });
 
-    it('should merge historical and realtime overview for today range', async () => {
-      const historicalOverview = { ...defaultOverview, totalMessages: 80, successCount: 72 };
-      const realtimeOverview = { ...defaultOverview, totalMessages: 20, successCount: 18 };
-      const mergedOverview = {
-        ...defaultOverview,
-        totalMessages: 100,
-        successCount: 90,
-        successRate: 90,
-        avgDuration: 5000,
-        activeUsers: 20,
-        activeChats: 15,
-      };
-
-      mockHourlyStatsAggregator.getOverviewFromHourly.mockResolvedValueOnce(historicalOverview);
-      mockMonitoringRecordRepository.getDashboardOverviewStats.mockResolvedValueOnce(realtimeOverview);
-      mockHourlyStatsAggregator.mergeOverviewStats.mockReturnValue(mergedOverview);
+    it('should always use raw overview and fallback queries for exact range-level counts', async () => {
+      mockMonitoringRecordRepository.getDashboardOverviewStats
+        .mockResolvedValueOnce({
+          ...defaultOverview,
+          totalMessages: 20,
+          successCount: 18,
+          failureCount: 2,
+          successRate: 90,
+          avgDuration: 3200,
+          activeUsers: 7,
+          activeChats: 5,
+          totalTokenUsage: 2000,
+        })
+        .mockResolvedValueOnce({
+          ...defaultOverview,
+          totalMessages: 10,
+          successCount: 8,
+          failureCount: 2,
+          successRate: 80,
+          avgDuration: 4000,
+          activeUsers: 4,
+          activeChats: 3,
+          totalTokenUsage: 1000,
+        });
+      mockMonitoringRecordRepository.getDashboardFallbackStats
+        .mockResolvedValueOnce({
+          ...defaultFallback,
+          totalCount: 4,
+          successCount: 3,
+          successRate: 75,
+          affectedUsers: 2,
+        })
+        .mockResolvedValueOnce(defaultFallback);
 
       const result = await service.getDashboardOverviewAsync('today');
 
-      expect(hourlyStatsAggregator.mergeOverviewStats).toHaveBeenCalledWith(
-        historicalOverview,
-        realtimeOverview,
-      );
-      expect(result.overview.totalMessages).toBe(100);
+      expect(monitoringRepository.getDashboardOverviewStats).toHaveBeenCalledTimes(2);
+      expect(monitoringRepository.getDashboardFallbackStats).toHaveBeenCalledTimes(2);
+      expect(result.overview.activeUsers).toBe(7);
+      expect(result.fallback.affectedUsers).toBe(2);
     });
 
-    it('should use hourly stats aggregator for week range (no real-time merge)', async () => {
-      mockHourlyStatsAggregator.getOverviewFromHourly.mockResolvedValue({
-        ...defaultOverview,
-        totalMessages: 500,
-        successRate: 88,
-      });
-      mockHourlyStatsAggregator.getFallbackFromHourly.mockResolvedValue(defaultFallback);
-
-      const result = await service.getDashboardOverviewAsync('week');
-
-      // For week range, should not call monitoringRepository real-time methods
-      expect(monitoringRepository.getDashboardOverviewStats).not.toHaveBeenCalled();
-      expect(result.overview.totalMessages).toBe(500);
-    });
-
-    it('should fall back to raw repository queries when hourly projection is stale for today', async () => {
+    it('should fall back to raw hourly trend when hourly projection is stale for today', async () => {
       mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
         buildHourlyStatsRow({
           hour: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
@@ -552,19 +572,14 @@ describe('AnalyticsDashboardService', () => {
 
       const result = await service.getDashboardOverviewAsync('today');
 
-      expect(hourlyStatsAggregator.mergeOverviewStats).not.toHaveBeenCalled();
-      expect(monitoringRepository.getDashboardOverviewStats).toHaveBeenCalledTimes(2);
+      expect(hourlyStatsAggregator.getHourlyTrendFromHourly).not.toHaveBeenCalled();
+      expect(monitoringRepository.getDashboardHourlyTrend).toHaveBeenCalledTimes(1);
       expect(result.overview.totalMessages).toBe(12);
       expect(result.fallback.totalCount).toBe(3);
     });
 
-    it('should fall back to raw repository queries when hourly projection is stale for week', async () => {
-      mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
-        buildHourlyStatsRow({
-          hour: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-        }),
-      );
-
+    it('should fall back to raw daily trend when daily projection is stale for week', async () => {
+      mockDailyStatsRepository.getLatestDailyStat.mockResolvedValue({ date: '2026-04-01' });
       mockMonitoringRecordRepository.getDashboardOverviewStats
         .mockResolvedValueOnce({
           ...defaultOverview,
@@ -601,8 +616,8 @@ describe('AnalyticsDashboardService', () => {
 
       const result = await service.getDashboardOverviewAsync('week');
 
-      expect(hourlyStatsAggregator.getOverviewFromHourly).not.toHaveBeenCalled();
-      expect(monitoringRepository.getDashboardOverviewStats).toHaveBeenCalledTimes(2);
+      expect(dailyStatsAggregator.getDailyTrendFromDaily).not.toHaveBeenCalled();
+      expect(monitoringRepository.getDashboardDailyTrend).toHaveBeenCalledTimes(2);
       expect(result.overview.totalMessages).toBe(42);
       expect(result.responseTrend[0]).toMatchObject({
         minute: '2026-04-13',
@@ -627,12 +642,9 @@ describe('AnalyticsDashboardService', () => {
         activeUsers: 10,
       };
 
-      mockHourlyStatsAggregator.getOverviewFromHourly
-        .mockResolvedValueOnce(currentOverview) // historical (today)
-        .mockResolvedValueOnce(previousOverview); // previous period
-
-      mockHourlyStatsAggregator.mergeOverviewStats.mockReturnValue(currentOverview);
-      mockMonitoringRecordRepository.getDashboardOverviewStats.mockResolvedValue(defaultOverview);
+      mockMonitoringRecordRepository.getDashboardOverviewStats
+        .mockResolvedValueOnce(currentOverview)
+        .mockResolvedValueOnce(previousOverview);
 
       const result = await service.getDashboardOverviewAsync('today');
 
@@ -640,8 +652,8 @@ describe('AnalyticsDashboardService', () => {
       expect(result.overviewDelta.successRate).toBe(10); // 90 - 80 = 10 percentage points
     });
 
-    it('should format daily trend from hourly aggregator', async () => {
-      mockHourlyStatsAggregator.getDailyTrendFromHourly.mockResolvedValue([
+    it('should format daily trend from daily projection', async () => {
+      mockDailyStatsAggregator.getDailyTrendFromDaily.mockResolvedValue([
         {
           date: '2026-03-11',
           messageCount: 100,
@@ -651,7 +663,6 @@ describe('AnalyticsDashboardService', () => {
           uniqueUsers: 20,
         },
       ]);
-      mockHourlyStatsAggregator.mergeOverviewStats.mockReturnValue(defaultOverview);
 
       const result = await service.getDashboardOverviewAsync('today');
 
@@ -670,8 +681,6 @@ describe('AnalyticsDashboardService', () => {
       mockMonitoringRecordRepository.getDashboardMinuteTrend.mockResolvedValue([
         { minute: '2026-03-11 10:00', avgDuration: 4000, messageCount: 10, successCount: 9 },
       ]);
-      mockHourlyStatsAggregator.mergeOverviewStats.mockReturnValue(defaultOverview);
-      mockHourlyStatsAggregator.mergeFallbackStats.mockReturnValue(defaultFallback);
 
       const result = await service.getDashboardOverviewAsync('today');
 
@@ -684,15 +693,12 @@ describe('AnalyticsDashboardService', () => {
       });
     });
 
-    it('should format response trend from daily trend for week range', async () => {
-      mockHourlyStatsAggregator.getDailyTrendFromHourly
+    it('should format response trend from daily projection for week range', async () => {
+      mockDailyStatsAggregator.getDailyTrendFromDaily
         .mockResolvedValueOnce([]) // 7-day trend
         .mockResolvedValueOnce([
           { date: '2026-03-11', avgDuration: 5000, messageCount: 50, successCount: 45 },
         ]); // current period
-
-      mockHourlyStatsAggregator.getOverviewFromHourly.mockResolvedValue(defaultOverview);
-      mockHourlyStatsAggregator.getFallbackFromHourly.mockResolvedValue(defaultFallback);
 
       const result = await service.getDashboardOverviewAsync('week');
 
@@ -715,13 +721,9 @@ describe('AnalyticsDashboardService', () => {
         affectedUsers: 3,
       };
 
-      mockHourlyStatsAggregator.getFallbackFromHourly
-        .mockResolvedValueOnce(currentFallback) // historical
-        .mockResolvedValueOnce(previousFallback); // previous period
-
-      mockHourlyStatsAggregator.mergeFallbackStats.mockReturnValue(currentFallback);
-      mockHourlyStatsAggregator.mergeOverviewStats.mockReturnValue(defaultOverview);
-      mockMonitoringRecordRepository.getDashboardFallbackStats.mockResolvedValue(defaultFallback);
+      mockMonitoringRecordRepository.getDashboardFallbackStats
+        .mockResolvedValueOnce(currentFallback)
+        .mockResolvedValueOnce(previousFallback);
 
       const result = await service.getDashboardOverviewAsync('today');
 
@@ -737,12 +739,12 @@ describe('AnalyticsDashboardService', () => {
         ],
         total: 2,
       });
-      // business.consultations.total 现在来自 overview 的 activeUsers（SQL 聚合），而非 records
-      mockHourlyStatsAggregator.mergeOverviewStats.mockReturnValue({
+      mockMonitoringRecordRepository.getDashboardOverviewStats
+        .mockResolvedValueOnce({
         ...defaultOverview,
         activeUsers: 2,
-      });
-      mockHourlyStatsAggregator.mergeFallbackStats.mockReturnValue(defaultFallback);
+      })
+        .mockResolvedValueOnce(defaultOverview);
 
       const result = await service.getDashboardOverviewAsync('today');
 
@@ -750,7 +752,7 @@ describe('AnalyticsDashboardService', () => {
     });
 
     it('should throw on error without catching', async () => {
-      mockHourlyStatsAggregator.getOverviewFromHourly.mockRejectedValue(
+      mockMonitoringRecordRepository.getDashboardOverviewStats.mockRejectedValue(
         new Error('Aggregator error'),
       );
 

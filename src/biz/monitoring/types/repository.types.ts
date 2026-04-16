@@ -8,6 +8,7 @@ import {
   DashboardFallbackStats,
   DailyTrendData,
   HourlyTrendData,
+  DailyProjectionStats,
 } from './analytics.types';
 
 // Re-export analytics types used by repositories
@@ -15,6 +16,7 @@ export type { DashboardOverviewStats, DashboardFallbackStats, DailyTrendData, Ho
 
 // Re-export entity types for backward compatibility
 export type { HourlyStatsDbRecord } from '../entities/hourly-stats.entity';
+export type { DailyStatsDbRecord } from '../entities/daily-stats.entity';
 export type { ErrorLogDbRecord } from '../entities/error-log.entity';
 
 // ========================================
@@ -29,6 +31,7 @@ export interface HourlyStatsRecord {
   messageCount: number;
   successCount: number;
   failureCount: number;
+  timeoutCount: number;
   successRate: number;
   avgDuration: number;
   minDuration: number;
@@ -36,6 +39,8 @@ export interface HourlyStatsRecord {
   p50Duration: number;
   p95Duration: number;
   p99Duration: number;
+  avgQueueDuration: number;
+  avgPrepDuration: number;
   avgAiDuration: number;
   avgSendDuration: number;
   activeUsers: number;
@@ -43,9 +48,15 @@ export interface HourlyStatsRecord {
   totalTokenUsage: number;
   fallbackCount: number;
   fallbackSuccessCount: number;
+  errorTypeStats: Record<string, number>;
   scenarioStats: Record<string, { count: number; successCount: number; avgDuration: number }>;
   toolStats: Record<string, number>;
 }
+
+/**
+ * 日统计应用层格式
+ */
+export interface DailyStatsRecord extends DailyProjectionStats {}
 
 /**
  * 错误日志应用层格式（与 MonitoringErrorLog 相同，type alias 统一为一个定义）

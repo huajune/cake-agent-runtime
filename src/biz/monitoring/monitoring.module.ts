@@ -16,6 +16,7 @@ import { MonitoringCacheService } from './services/tracking/monitoring-cache.ser
 import { AnalyticsDashboardService } from './services/dashboard/analytics-dashboard.service';
 import { AnalyticsQueryService } from './services/dashboard/analytics-query.service';
 import { AnalyticsMaintenanceService } from './services/maintenance/analytics-maintenance.service';
+import { DailyStatsAggregatorService } from './services/projections/daily-stats-aggregator.service';
 import { HourlyStatsAggregatorService } from './services/projections/hourly-stats-aggregator.service';
 import { AnalyticsAlertService } from './services/alerts/analytics-alert.service';
 
@@ -27,6 +28,7 @@ import { AnalyticsController } from './monitoring.controller';
 
 // Repositories
 import { MonitoringRecordRepository } from './repositories/record.repository';
+import { MonitoringDailyStatsRepository } from './repositories/daily-stats.repository';
 import { MonitoringHourlyStatsRepository } from './repositories/hourly-stats.repository';
 import { MonitoringErrorLogRepository } from './repositories/error-log.repository';
 
@@ -57,6 +59,7 @@ import { MonitoringErrorLogRepository } from './repositories/error-log.repositor
   providers: [
     // Monitoring Repositories (biz message repos come from BizMessageModule)
     MonitoringRecordRepository,
+    MonitoringDailyStatsRepository,
     MonitoringHourlyStatsRepository,
     MonitoringErrorLogRepository,
     // Tracking
@@ -66,6 +69,7 @@ import { MonitoringErrorLogRepository } from './repositories/error-log.repositor
     AnalyticsDashboardService,
     AnalyticsQueryService,
     AnalyticsMaintenanceService,
+    DailyStatsAggregatorService,
     HourlyStatsAggregatorService,
     AnalyticsAlertService,
     // Cleanup
@@ -77,6 +81,7 @@ import { MonitoringErrorLogRepository } from './repositories/error-log.repositor
     AnalyticsDashboardService,
     AnalyticsQueryService,
     AnalyticsMaintenanceService,
+    DailyStatsAggregatorService,
     HourlyStatsAggregatorService,
     AnalyticsAlertService,
     DataCleanupService,

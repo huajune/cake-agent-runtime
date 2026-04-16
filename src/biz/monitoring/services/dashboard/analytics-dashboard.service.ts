@@ -28,9 +28,11 @@ import { MonitoringCacheService } from '../tracking/monitoring-cache.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { BookingService } from '@biz/message/services/booking.service';
 import { MonitoringHourlyStatsRepository } from '../../repositories/hourly-stats.repository';
+import { MonitoringDailyStatsRepository } from '../../repositories/daily-stats.repository';
 import { MonitoringErrorLogRepository } from '../../repositories/error-log.repository';
 import { MonitoringRecordRepository } from '../../repositories/record.repository';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { DailyStatsAggregatorService } from '../projections/daily-stats-aggregator.service';
 import { HourlyStatsAggregatorService } from '../projections/hourly-stats-aggregator.service';
 import { MessageTrackingService } from '../tracking/message-tracking.service';
 import { MessageProcessor } from '@wecom/message/runtime/message.processor';
@@ -53,12 +55,14 @@ export class AnalyticsDashboardService {
 
   constructor(
     private readonly messageProcessingService: MessageProcessingService,
+    private readonly dailyStatsRepository: MonitoringDailyStatsRepository,
     private readonly hourlyStatsRepository: MonitoringHourlyStatsRepository,
     private readonly errorLogRepository: MonitoringErrorLogRepository,
     private readonly userHostingService: UserHostingService,
     private readonly cacheService: MonitoringCacheService,
     private readonly monitoringRepository: MonitoringRecordRepository,
     private readonly bookingService: BookingService,
+    private readonly dailyStatsAggregator: DailyStatsAggregatorService,
     private readonly hourlyStatsAggregator: HourlyStatsAggregatorService,
     private readonly messageTrackingService: MessageTrackingService,
     private readonly messageProcessor: MessageProcessor,
@@ -204,132 +208,76 @@ export class AnalyticsDashboardService {
       sevenDaysAgo.setHours(0, 0, 0, 0);
       const currentHourStart = this.getHourStart(currentEndDate);
       const hourlyProjectionFresh = await this.isHourlyProjectionFresh(currentEndDate);
+      const dailyProjectionFresh = await this.isDailyProjectionFresh(currentEndDate);
 
-      let currentOverview: DashboardOverviewStats;
-      let previousOverview: DashboardOverviewStats;
-      let currentFallback: DashboardFallbackStats;
-      let previousFallback: DashboardFallbackStats;
+      const [currentOverview, previousOverview, currentFallback, previousFallback] =
+        await Promise.all([
+          this.monitoringRepository.getDashboardOverviewStats(currentStartDate, currentEndDate),
+          this.monitoringRepository.getDashboardOverviewStats(previousStartDate, previousEndDate),
+          this.monitoringRepository.getDashboardFallbackStats(currentStartDate, currentEndDate),
+          this.monitoringRepository.getDashboardFallbackStats(previousStartDate, previousEndDate),
+        ]);
+
       let dailyTrend: DailyTrendData[];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let minuteTrend: any[];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let tokenTrendData: any[];
 
-      if (!hourlyProjectionFresh) {
-        this.logger.warn(
-          `[Dashboard] 小时聚合数据断更，回退到原始记录查询: range=${timeRange}, currentEnd=${currentEndDate.toISOString()}`,
+      if (timeRange === 'today') {
+        dailyTrend = dailyProjectionFresh
+          ? await this.getDailyTrendFromProjectionRange(sevenDaysAgo, currentEndDate)
+          : await this.monitoringRepository.getDashboardDailyTrend(sevenDaysAgo, currentEndDate);
+
+        minuteTrend = await this.monitoringRepository.getDashboardMinuteTrend(
+          currentStartDate,
+          currentEndDate,
+          5,
         );
 
-        if (timeRange === 'today') {
-          const [curOverview, prevOverview, curFallback, prevFallback, daily, minute, tokenTrend] =
-            await Promise.all([
-              this.monitoringRepository.getDashboardOverviewStats(currentStartDate, currentEndDate),
-              this.monitoringRepository.getDashboardOverviewStats(
-                previousStartDate,
-                previousEndDate,
-              ),
-              this.monitoringRepository.getDashboardFallbackStats(currentStartDate, currentEndDate),
-              this.monitoringRepository.getDashboardFallbackStats(
-                previousStartDate,
-                previousEndDate,
-              ),
-              this.monitoringRepository.getDashboardDailyTrend(sevenDaysAgo, currentEndDate),
-              this.monitoringRepository.getDashboardMinuteTrend(
-                currentStartDate,
-                currentEndDate,
-                5,
-              ),
-              this.monitoringRepository.getDashboardHourlyTrend(currentStartDate, currentEndDate),
-            ]);
-
-          currentOverview = curOverview;
-          previousOverview = prevOverview;
-          currentFallback = curFallback;
-          previousFallback = prevFallback;
-          dailyTrend = daily;
-          minuteTrend = minute;
-          tokenTrendData = tokenTrend;
+        if (!hourlyProjectionFresh) {
+          this.logger.warn(
+            `[Dashboard] 小时聚合数据断更，回退到原始记录查询: range=${timeRange}, currentEnd=${currentEndDate.toISOString()}`,
+          );
+          tokenTrendData = await this.monitoringRepository.getDashboardHourlyTrend(
+            currentStartDate,
+            currentEndDate,
+          );
         } else {
-          const [curOverview, prevOverview, curFallback, prevFallback, daily, currentPeriodDaily] =
-            await Promise.all([
-              this.monitoringRepository.getDashboardOverviewStats(currentStartDate, currentEndDate),
-              this.monitoringRepository.getDashboardOverviewStats(
-                previousStartDate,
-                previousEndDate,
-              ),
-              this.monitoringRepository.getDashboardFallbackStats(currentStartDate, currentEndDate),
-              this.monitoringRepository.getDashboardFallbackStats(
-                previousStartDate,
-                previousEndDate,
-              ),
-              this.monitoringRepository.getDashboardDailyTrend(sevenDaysAgo, currentEndDate),
-              this.monitoringRepository.getDashboardDailyTrend(currentStartDate, currentEndDate),
-            ]);
-
-          currentOverview = curOverview;
-          previousOverview = prevOverview;
-          currentFallback = curFallback;
-          previousFallback = prevFallback;
-          dailyTrend = daily;
-          minuteTrend = currentPeriodDaily;
-          tokenTrendData = currentPeriodDaily;
+          const [historicalTokenTrend, realtimeTokenTrend] = await Promise.all([
+            this.hourlyStatsAggregator.getHourlyTrendFromHourly(currentStartDate, currentHourStart),
+            this.monitoringRepository.getDashboardHourlyTrend(currentHourStart, currentEndDate),
+          ]);
+          tokenTrendData = [...historicalTokenTrend, ...realtimeTokenTrend];
         }
-      } else if (timeRange === 'today') {
-        const [
-          historicalOverview,
-          realtimeOverview,
-          historicalFallback,
-          realtimeFallback,
-          prevOverview,
-          prevFallback,
-          daily,
-          minute,
-          historicalTokenTrend,
-          realtimeTokenTrend,
-        ] = await Promise.all([
-          this.hourlyStatsAggregator.getOverviewFromHourly(currentStartDate, currentHourStart),
-          this.monitoringRepository.getDashboardOverviewStats(currentHourStart, currentEndDate),
-          this.hourlyStatsAggregator.getFallbackFromHourly(currentStartDate, currentHourStart),
-          this.monitoringRepository.getDashboardFallbackStats(currentHourStart, currentEndDate),
-          this.hourlyStatsAggregator.getOverviewFromHourly(previousStartDate, previousEndDate),
-          this.hourlyStatsAggregator.getFallbackFromHourly(previousStartDate, previousEndDate),
-          this.hourlyStatsAggregator.getDailyTrendFromHourly(sevenDaysAgo, currentEndDate),
-          this.monitoringRepository.getDashboardMinuteTrend(currentStartDate, currentEndDate, 5),
-          this.hourlyStatsAggregator.getHourlyTrendFromHourly(currentStartDate, currentHourStart),
-          this.monitoringRepository.getDashboardHourlyTrend(currentHourStart, currentEndDate),
+      } else if (!dailyProjectionFresh) {
+        this.logger.warn(
+          `[Dashboard] 日聚合数据断更，回退到原始记录查询: range=${timeRange}, currentEnd=${currentEndDate.toISOString()}`,
+        );
+
+        const [daily, currentPeriodDaily] = await Promise.all([
+          this.monitoringRepository.getDashboardDailyTrend(sevenDaysAgo, currentEndDate),
+          this.monitoringRepository.getDashboardDailyTrend(currentStartDate, currentEndDate),
         ]);
 
-        currentOverview = this.hourlyStatsAggregator.mergeOverviewStats(
-          historicalOverview,
-          realtimeOverview,
-        );
-        currentFallback = this.hourlyStatsAggregator.mergeFallbackStats(
-          historicalFallback,
-          realtimeFallback,
-        );
-        previousOverview = prevOverview;
-        previousFallback = prevFallback;
-        dailyTrend = daily;
-        minuteTrend = minute;
-        tokenTrendData = [...historicalTokenTrend, ...realtimeTokenTrend];
-      } else {
-        const [curOverview, prevOverview, curFallback, prevFallback, daily, currentPeriodDaily] =
-          await Promise.all([
-            this.hourlyStatsAggregator.getOverviewFromHourly(currentStartDate, currentEndDate),
-            this.hourlyStatsAggregator.getOverviewFromHourly(previousStartDate, previousEndDate),
-            this.hourlyStatsAggregator.getFallbackFromHourly(currentStartDate, currentEndDate),
-            this.hourlyStatsAggregator.getFallbackFromHourly(previousStartDate, previousEndDate),
-            this.hourlyStatsAggregator.getDailyTrendFromHourly(sevenDaysAgo, currentEndDate),
-            this.hourlyStatsAggregator.getDailyTrendFromHourly(currentStartDate, currentEndDate),
-          ]);
-
-        currentOverview = curOverview;
-        previousOverview = prevOverview;
-        currentFallback = curFallback;
-        previousFallback = prevFallback;
         dailyTrend = daily;
         minuteTrend = currentPeriodDaily;
         tokenTrendData = currentPeriodDaily;
+      } else {
+        const [daily, currentPeriodDaily] = await Promise.all([
+          this.getDailyTrendFromProjectionRange(sevenDaysAgo, currentEndDate),
+          this.getDailyTrendFromProjectionRange(currentStartDate, currentEndDate),
+        ]);
+
+        dailyTrend = daily;
+        minuteTrend = currentPeriodDaily;
+        tokenTrendData = currentPeriodDaily;
+      }
+
+      if (!hourlyProjectionFresh && timeRange !== 'today') {
+        this.logger.warn(
+          `[Dashboard] 小时聚合数据断更，回退到原始记录查询: range=${timeRange}, currentEnd=${currentEndDate.toISOString()}`,
+        );
       }
 
       const overview = {
@@ -390,8 +338,6 @@ export class AnalyticsDashboardService {
         this.getDetailRecordsByTimeRange(timeRange),
       ]);
 
-      // 用户数直接复用 overview 的 activeUsers（来自 SQL COUNT DISTINCT）
-      // 注：跨小时聚合的 activeUsers 是 sum（可能重复计数），但与旧版行为一致
       const business = this.buildBusinessFromStats(currentOverview.activeUsers, currentBookings);
       const previousBusiness = this.buildBusinessFromStats(
         previousOverview.activeUsers,
@@ -487,6 +433,12 @@ export class AnalyticsDashboardService {
     return hourStart;
   }
 
+  private getDayStart(date: Date): Date {
+    const dayStart = new Date(date);
+    dayStart.setHours(0, 0, 0, 0);
+    return dayStart;
+  }
+
   private async isHourlyProjectionFresh(currentEndDate: Date): Promise<boolean> {
     try {
       const latestHourly = await this.hourlyStatsRepository.getLatestHourlyStat();
@@ -503,6 +455,83 @@ export class AnalyticsDashboardService {
       this.logger.warn('[Dashboard] 检查小时聚合新鲜度失败，回退到原始记录查询:', error);
       return false;
     }
+  }
+
+  private async isDailyProjectionFresh(currentEndDate: Date): Promise<boolean> {
+    try {
+      const latestDaily = await this.dailyStatsRepository.getLatestDailyStat();
+
+      if (!latestDaily?.date) {
+        return false;
+      }
+
+      const expectedLatestCompletedDay = this.getDayStart(currentEndDate);
+      expectedLatestCompletedDay.setDate(expectedLatestCompletedDay.getDate() - 1);
+
+      return latestDaily.date >= formatLocalDate(expectedLatestCompletedDay);
+    } catch (error) {
+      this.logger.warn('[Dashboard] 检查日聚合新鲜度失败，回退到原始记录查询:', error);
+      return false;
+    }
+  }
+
+  private async getDailyTrendFromProjectionRange(
+    startDate: Date,
+    endDate: Date,
+  ): Promise<DailyTrendData[]> {
+    const currentDayStart = this.getDayStart(endDate);
+
+    if (endDate.getTime() <= currentDayStart.getTime()) {
+      return this.dailyStatsAggregator.getDailyTrendFromDaily(startDate, endDate);
+    }
+
+    if (startDate.getTime() >= currentDayStart.getTime()) {
+      return this.monitoringRepository.getDashboardDailyTrend(startDate, endDate);
+    }
+
+    const [historical, realtime] = await Promise.all([
+      this.dailyStatsAggregator.getDailyTrendFromDaily(startDate, currentDayStart),
+      this.monitoringRepository.getDashboardDailyTrend(currentDayStart, endDate),
+    ]);
+
+    return this.mergeDailyTrendData(historical, realtime);
+  }
+
+  private mergeDailyTrendData(
+    historical: DailyTrendData[],
+    realtime: DailyTrendData[],
+  ): DailyTrendData[] {
+    const byDate = new Map<string, DailyTrendData>();
+
+    for (const row of [...historical, ...realtime]) {
+      const existing = byDate.get(row.date);
+      if (!existing) {
+        byDate.set(row.date, { ...row });
+        continue;
+      }
+
+      const messageCount = existing.messageCount + row.messageCount;
+      const successCount = existing.successCount + row.successCount;
+      const tokenUsage = existing.tokenUsage + row.tokenUsage;
+      const avgDuration =
+        successCount > 0
+          ? Math.round(
+              (existing.avgDuration * existing.successCount + row.avgDuration * row.successCount) /
+                successCount,
+            )
+          : 0;
+
+      byDate.set(row.date, {
+        date: row.date,
+        messageCount,
+        successCount,
+        avgDuration,
+        tokenUsage,
+        uniqueUsers: existing.uniqueUsers + row.uniqueUsers,
+      });
+    }
+
+    return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
   }
 
   // ========================================
