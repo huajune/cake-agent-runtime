@@ -1,7 +1,7 @@
 {
   "baseVersion": "5.1.0",
   "nextVersion": "5.2.0",
-  "updatedAt": "2026-04-15",
+  "updatedAt": "2026-04-16",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -55,6 +55,24 @@
       "ops": [
         "[codex] add conversation risk and onboarding handoff monitoring"
       ],
+      "config": [],
+      "verification": []
+    },
+    {
+      "number": "81",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/81",
+      "title": "consolidate fact extraction and drop LocationCityResolver",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-16",
+      "summary": [
+        "consolidate fact extraction and drop LocationCityResolver"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [
+        "consolidate fact extraction and drop LocationCityResolver"
+      ],
+      "ops": [],
       "config": [],
       "verification": []
     }
