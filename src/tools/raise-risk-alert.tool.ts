@@ -71,6 +71,7 @@ export function buildRaiseRiskAlertTool(
           userId: context.userId,
           pauseTargetId,
           botImId: context.botImId,
+          botUserName: context.botUserId,
           contactName: context.contactName,
           currentMessageContent: extractLatestUserMessage(recentMessages),
           recentMessages: recentMessages.map((m) => ({

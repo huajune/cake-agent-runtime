@@ -13,6 +13,7 @@ describe('buildRequestHandoffTool', () => {
     sessionId: 'sess-1',
     chatId: 'chat-1',
     messages: [],
+    botUserId: 'mgr-bob',
     botImId: 'bot-im-1',
     contactName: 'Alice',
   };
@@ -109,6 +110,7 @@ describe('buildRequestHandoffTool', () => {
         chatId: 'chat-1',
         pauseTargetId: 'chat-1',
         botImId: 'bot-im-1',
+        botUserName: 'mgr-bob',
         recruitmentCase: expect.objectContaining({ id: 'case-9' }),
         currentMessageContent: '找不到门店啊',
       }),

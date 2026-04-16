@@ -83,24 +83,31 @@ export class PreAgentRiskInterceptService {
       `[PreAgentRiskPrecheck] 命中规则: chatId=${chatId}, type=${detection.riskType}, reason=${detection.reason}`,
     );
 
-    await this.interventionService.dispatch({
-      kind: 'conversation_risk',
-      source: 'regex_intercept',
-      riskType: detection.riskType ?? 'abuse',
-      riskLabel: detection.riskLabel ?? '交流异常',
-      summary: detection.summary ?? '候选人消息命中高置信度风险关键词',
-      reason: detection.reason ?? '命中规则',
-      chatId,
-      corpId,
-      userId,
-      pauseTargetId: context.pauseTargetId,
-      botImId: parsed.imBotId,
-      botUserName: parsed.managerName,
-      contactName: parsed.contactName,
-      currentMessageContent: content,
-      recentMessages: context.recentMessages,
-      sessionState,
-    });
+    try {
+      await this.interventionService.dispatch({
+        kind: 'conversation_risk',
+        source: 'regex_intercept',
+        riskType: detection.riskType ?? 'abuse',
+        riskLabel: detection.riskLabel ?? '交流异常',
+        summary: detection.summary ?? '候选人消息命中高置信度风险关键词',
+        reason: detection.reason ?? '命中规则',
+        chatId,
+        corpId,
+        userId,
+        pauseTargetId: context.pauseTargetId,
+        botImId: parsed.imBotId,
+        botUserName: parsed.managerName,
+        contactName: parsed.contactName,
+        currentMessageContent: content,
+        recentMessages: context.recentMessages,
+        sessionState,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `[PreAgentRiskPrecheck] intervention dispatch failed: chatId=${chatId}, reason=${errorMessage}`,
+      );
+    }
 
     return {
       hit: true,

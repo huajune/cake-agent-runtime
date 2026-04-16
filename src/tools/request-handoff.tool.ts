@@ -93,6 +93,7 @@ export function buildRequestHandoffTool(
           userId: context.userId,
           pauseTargetId,
           botImId: context.botImId ?? activeCase.bot_im_id ?? undefined,
+          botUserName: context.botUserId,
           contactName: context.contactName,
           currentMessageContent: extractLatestUserMessage(recentMessages),
           recentMessages: recentMessages.map((m) => ({

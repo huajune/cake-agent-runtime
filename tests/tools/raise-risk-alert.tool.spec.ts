@@ -12,6 +12,7 @@ describe('buildRaiseRiskAlertTool', () => {
     sessionId: 'sess-1',
     chatId: 'chat-1',
     messages: [],
+    botUserId: 'mgr-bob',
     botImId: 'bot-im-1',
     contactName: 'Alice',
   };
@@ -67,6 +68,7 @@ describe('buildRaiseRiskAlertTool', () => {
         chatId: 'chat-1',
         pauseTargetId: 'chat-1',
         botImId: 'bot-im-1',
+        botUserName: 'mgr-bob',
         contactName: 'Alice',
         currentMessageContent: '你说啥呢',
       }),

@@ -110,6 +110,24 @@ describe('PreAgentRiskInterceptService', () => {
     });
   });
 
+  it('swallows dispatch failures so agent reply path can continue', async () => {
+    detector.detect.mockReturnValue({
+      hit: true,
+      riskType: 'abuse',
+      riskLabel: '辱骂/攻击',
+      summary: '辱骂',
+      reason: '命中辱骂关键词',
+    });
+    interventionService.dispatch.mockRejectedValue(new Error('redis down'));
+
+    await expect(service.precheck({ messageData: message, content: '滚' })).resolves.toEqual({
+      hit: true,
+      riskType: 'abuse',
+      reason: '命中辱骂关键词',
+      label: '辱骂/攻击',
+    });
+  });
+
   it('continues when chat history / session state lookups throw', async () => {
     chatSessionService.getChatHistory.mockRejectedValue(new Error('redis down'));
     sessionService.getSessionState.mockRejectedValue(new Error('db down'));
