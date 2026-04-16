@@ -30,7 +30,7 @@ import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
-import { InterventionService } from '@notification/intervention/intervention.service';
+import { InterventionService } from '@biz/intervention/intervention.service';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
 import { SessionService } from '@memory/services/session.service';
 

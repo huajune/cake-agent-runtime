@@ -1,8 +1,8 @@
-import { InterventionService } from '@notification/intervention/intervention.service';
+import { InterventionService } from '@biz/intervention/intervention.service';
 import type {
   HandoffInterventionPayload,
   RiskInterventionPayload,
-} from '@notification/intervention/intervention.service';
+} from '@biz/intervention/intervention.service';
 
 describe('InterventionService', () => {
   const userHostingService = {

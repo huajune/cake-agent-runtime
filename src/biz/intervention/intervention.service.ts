@@ -90,14 +90,14 @@ export class InterventionService {
 
     await this.userHostingService.pauseUser(payload.pauseTargetId);
 
+    if (payload.kind === 'onboard_handoff') {
+      await this.recruitmentCaseService.markHandoff(payload.caseId);
+    }
+
     const alerted =
       payload.kind === 'conversation_risk'
         ? await this.notifyRisk(payload)
         : await this.notifyHandoff(payload);
-
-    if (payload.kind === 'onboard_handoff') {
-      await this.recruitmentCaseService.markHandoff(payload.caseId);
-    }
 
     this.logger.warn(
       `[Intervention] kind=${payload.kind} source=${payload.source} chatId=${payload.chatId} alerted=${alerted}`,

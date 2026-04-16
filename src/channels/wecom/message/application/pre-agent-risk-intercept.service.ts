@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { SessionService } from '@memory/services/session.service';
-import { InterventionService } from '@notification/intervention/intervention.service';
+import { InterventionService } from '@biz/intervention/intervention.service';
 import { ConversationRiskDetectorService } from '@/conversation-risk/services/conversation-risk-detector.service';
 import type { ConversationRiskContext } from '@/conversation-risk/types/conversation-risk.types';
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';

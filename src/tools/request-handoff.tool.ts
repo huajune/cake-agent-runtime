@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
 import { SessionService } from '@memory/services/session.service';
-import { InterventionService } from '@notification/intervention/intervention.service';
+import { InterventionService } from '@biz/intervention/intervention.service';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { extractLatestUserMessage } from './utils/chat-history.util';
 
