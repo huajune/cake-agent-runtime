@@ -48,7 +48,7 @@ describe('TurnHintsSection', () => {
     expect(output).toContain('意向城市: 上海（置信度: high，证据: unique_district_alias）');
   });
 
-  it('should move conflicting fields into pending confirmation hints and keep new fields in normal hints', () => {
+it('should move conflicting fields into pending confirmation hints and keep new fields in normal hints', () => {
     const output = section.build({
       ...baseCtx,
       sessionFacts: {

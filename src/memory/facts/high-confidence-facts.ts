@@ -478,7 +478,7 @@ function extractMunicipalityCompact(message: string): LocationSignals | null {
     if (compactDistrict) {
       return {
         city: { value: city, confidence: 'high', evidence: 'municipality_compact' },
-        district: [normalizeDistrict(compactDistrict[1])],
+        district: [normalizeDistrictForLookup(compactDistrict[1])],
         location: [],
       };
     }
@@ -489,7 +489,7 @@ function extractMunicipalityCompact(message: string): LocationSignals | null {
     if (explicitDistrict) {
       return {
         city: { value: city, confidence: 'high', evidence: 'municipality_compact' },
-        district: [normalizeDistrict(explicitDistrict[1])],
+        district: [normalizeDistrictForLookup(explicitDistrict[1])],
         location: [],
       };
     }
@@ -524,7 +524,7 @@ function extractExplicitCity(message: string): string | null {
 function extractExplicitDistricts(message: string): string[] {
   const districts = Array.from(
     message.matchAll(/([\u4e00-\u9fa5]{2,10}(?:区|县|镇|街道|新区|开发区))/g),
-  ).map((match) => normalizeDistrict(match[1]));
+  ).map((match) => normalizeDistrictForLookup(match[1]));
 
   return Array.from(new Set(districts.filter(Boolean)));
 }
@@ -565,12 +565,6 @@ function resolveCityFromAny(districts: string[], locations: string[]): CityFact 
     }
   }
   return null;
-}
-
-function normalizeDistrict(rawDistrict: string): string {
-  if (rawDistrict.endsWith('开发区') || rawDistrict.endsWith('新区')) return rawDistrict;
-  if (rawDistrict.endsWith('街道')) return rawDistrict.replace(/街道$/, '');
-  return rawDistrict.replace(/[区县镇乡]$/, '');
 }
 
 function normalizeLocationCandidate(message: string): string {

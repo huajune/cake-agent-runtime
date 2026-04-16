@@ -77,7 +77,10 @@ describe('AgentPreparationService', () => {
       sessionMemory: {
         facts: {
           ...FALLBACK_EXTRACTION,
-          preferences: { ...FALLBACK_EXTRACTION.preferences, city: { value: '上海', confidence: 'high', evidence: 'explicit_city' } },
+          preferences: {
+            ...FALLBACK_EXTRACTION.preferences,
+            city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
+          },
         },
         lastCandidatePool: null,
         presentedJobs: null,
@@ -145,7 +148,9 @@ describe('AgentPreparationService', () => {
         memoryBlock: expect.stringContaining('[用户档案]'),
         strategySource: 'testing',
         sessionFacts: expect.objectContaining({
-          preferences: expect.objectContaining({ city: { value: '上海', confidence: 'high', evidence: 'explicit_city' } }),
+          preferences: expect.objectContaining({
+            city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
+          }),
         }),
         highConfidenceFacts: null,
       }),
@@ -197,7 +202,10 @@ describe('AgentPreparationService', () => {
       sessionMemory: {
         facts: {
           ...FALLBACK_EXTRACTION,
-          preferences: { ...FALLBACK_EXTRACTION.preferences, city: { value: '上海', confidence: 'high', evidence: 'explicit_city' } },
+          preferences: {
+            ...FALLBACK_EXTRACTION.preferences,
+            city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
+          },
         },
         lastCandidatePool: [
           {
@@ -370,7 +378,10 @@ describe('AgentPreparationService', () => {
       sessionMemory: {
         facts: {
           ...FALLBACK_EXTRACTION,
-          preferences: { ...FALLBACK_EXTRACTION.preferences, city: { value: '上海', confidence: 'high', evidence: 'explicit_city' } },
+          preferences: {
+            ...FALLBACK_EXTRACTION.preferences,
+            city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
+          },
         },
         lastCandidatePool: null,
         presentedJobs: null,
@@ -381,7 +392,7 @@ describe('AgentPreparationService', () => {
         preferences: {
           ...FALLBACK_EXTRACTION.preferences,
           brands: ['来伊份'],
-          city: '北京',
+          city: { value: '北京', confidence: 'high', evidence: 'explicit_city' },
         },
         reasoning: '品牌别名识别，城市识别',
       },
@@ -410,7 +421,11 @@ describe('AgentPreparationService', () => {
       confidence: 'high',
       evidence: 'explicit_city',
     });
-    expect(composeArgs.highConfidenceFacts.preferences.city).toBe('北京');
+    expect(composeArgs.highConfidenceFacts.preferences.city).toEqual({
+      value: '北京',
+      confidence: 'high',
+      evidence: 'explicit_city',
+    });
     expect(composeArgs.highConfidenceFacts.preferences.brands).toEqual(['来伊份']);
     // memoryBlock 不再包含本轮线索，交由 TurnHintsSection 渲染。
     expect(composeArgs.memoryBlock).not.toContain('[本轮高置信线索]');

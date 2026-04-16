@@ -169,7 +169,7 @@ describe('MemoryLifecycleService', () => {
     expect(ctx.highConfidenceFacts?.interview_info.age).toBe('25');
   });
 
-  it('should not fallback to short-term history when current turn messages are absent', async () => {
+it('should not fallback to short-term history when current turn messages are absent', async () => {
     mockShortTerm.getMessages.mockResolvedValue([{ role: 'user', content: '来一份' }]);
     mockProcedural.get.mockResolvedValue({
       currentStage: 'trust_building',

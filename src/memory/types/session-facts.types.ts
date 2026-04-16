@@ -22,6 +22,8 @@ export const InterviewInfoSchema = z.object({
  *
  * - evidence 表示城市是如何推导出来的
  * - confidence 目前规则抽取均为 'high'；保留 'low' 给未来扩展
+ * - 这里有意只保留当前规则抽取会直接产出的 evidence；
+ *   历史上的 conflict / memory_carry_over 属于旧链路或跨轮合成结果，不再由当前 extractor 输出
  */
 export const CityFactEvidenceSchema = z.enum([
   'municipality_compact',
