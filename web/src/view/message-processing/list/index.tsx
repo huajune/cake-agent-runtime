@@ -66,7 +66,7 @@ export default function MessageProcessingPage() {
     endDate: dateRange.endDate,
   });
 
-  const stats = statsData || { total: 0, success: 0, failed: 0, avgDuration: 0 };
+  const stats = statsData || { total: 0, success: 0, failed: 0, avgDuration: 0, avgTtft: 0 };
 
   // 实时列表：支持分页（后端已排序）
   const { data: realtimeMessages, isLoading: realtimeLoading } = useMessageProcessingRecords({

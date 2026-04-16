@@ -712,61 +712,11 @@ export function getContextFacts(message: MessageRecord): Array<{
   mono?: boolean;
 }> {
   const request = getInvocationRequest(message);
-  const response = getInvocationResponse(message);
   const facts: Array<{ label: string; value: string; mono?: boolean }> = [];
+  const batchId = message.batchId || asString(request?.batchId);
 
   if (message.chatId) facts.push({ label: 'Chat ID', value: message.chatId, mono: true });
-  if (message.messageId) facts.push({ label: '消息 ID', value: message.messageId, mono: true });
-  if (message.userId && message.userId !== message.userName) {
-    facts.push({ label: 'User ID', value: message.userId, mono: true });
-  }
-  if (message.managerName) facts.push({ label: 'Owner', value: message.managerName });
-
-  const messageType = asString(request?.messageType);
-  if (messageType) facts.push({ label: 'Message Type', value: messageType });
-
-  const messageSource = asString(request?.messageSource);
-  if (messageSource) facts.push({ label: 'Source', value: messageSource });
-
-  const contactType = asString(request?.contactType);
-  if (contactType) facts.push({ label: 'Contact Type', value: contactType });
-
-  const imageCount = asNumber(request?.imageCount);
-  if (imageCount !== undefined && imageCount > 0) {
-    facts.push({ label: 'Image Count', value: String(imageCount) });
-  }
-
-  const sessionId = asString(request?.sessionId);
-  if (sessionId && sessionId !== message.chatId) {
-    facts.push({ label: 'Session ID', value: sessionId, mono: true });
-  }
-
-  const thinking = asRecord(request?.thinking);
-  if (thinking?.type === 'enabled') {
-    const mode = 'Deep Thinking';
-    facts.push({ label: 'Reasoning Profile', value: mode });
-    const budgetTokens = asNumber(thinking.budgetTokens);
-    if (budgetTokens !== undefined && budgetTokens > 0) {
-      facts.push({ label: 'Budget Tokens', value: `${budgetTokens.toLocaleString()} tokens` });
-    }
-  }
-
-  const traceId = asString(response?.traceId);
-  if (traceId) facts.push({ label: 'Trace ID', value: traceId, mono: true });
-
-  const batchId = asString(request?.batchId);
   if (batchId) facts.push({ label: 'Batch ID', value: batchId, mono: true });
-
-  const sourceMessageIds = asArray<string>(request?.sourceMessageIds).filter(
-    (value): value is string => typeof value === 'string' && value.trim().length > 0,
-  );
-  if (sourceMessageIds.length > 0) {
-    facts.push({
-      label: 'Source Msg IDs',
-      value: sourceMessageIds.join(', '),
-      mono: true,
-    });
-  }
 
   return facts;
 }

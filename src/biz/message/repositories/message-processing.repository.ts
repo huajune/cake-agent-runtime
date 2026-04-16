@@ -222,9 +222,9 @@ export class MessageProcessingRepository extends BaseRepository {
   async getMessageStats(
     startTime: number,
     endTime: number,
-  ): Promise<{ total: number; success: number; failed: number; avgDuration: number }> {
+  ): Promise<{ total: number; success: number; failed: number; avgDuration: number; avgTtft: number }> {
     if (!this.isAvailable()) {
-      return { total: 0, success: 0, failed: 0, avgDuration: 0 };
+      return { total: 0, success: 0, failed: 0, avgDuration: 0, avgTtft: 0 };
     }
 
     try {
@@ -234,6 +234,7 @@ export class MessageProcessingRepository extends BaseRepository {
           success_count: string | number;
           failure_count: string | number;
           avg_duration: string | number;
+          avg_ttft?: string | number | null;
         }>
       >('get_dashboard_overview_stats', {
         p_start_date: new Date(startTime).toISOString(),
@@ -242,7 +243,7 @@ export class MessageProcessingRepository extends BaseRepository {
 
       const row = result?.[0];
       if (!row) {
-        return { total: 0, success: 0, failed: 0, avgDuration: 0 };
+        return { total: 0, success: 0, failed: 0, avgDuration: 0, avgTtft: 0 };
       }
 
       return {
@@ -250,10 +251,11 @@ export class MessageProcessingRepository extends BaseRepository {
         success: Number(row.success_count) || 0,
         failed: Number(row.failure_count) || 0,
         avgDuration: Math.round(Number(row.avg_duration) || 0),
+        avgTtft: Math.round(Number(row.avg_ttft) || 0),
       };
     } catch (error) {
       this.logger.error('获取消息统计失败:', error);
-      return { total: 0, success: 0, failed: 0, avgDuration: 0 };
+      return { total: 0, success: 0, failed: 0, avgDuration: 0, avgTtft: 0 };
     }
   }
 

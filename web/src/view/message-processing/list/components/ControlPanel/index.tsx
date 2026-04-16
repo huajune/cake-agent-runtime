@@ -7,6 +7,7 @@ interface Stats {
   success: number;
   failed: number;
   avgDuration: number;
+  avgTtft?: number;
 }
 
 interface ControlPanelProps {
@@ -78,7 +79,7 @@ export default function ControlPanel({
     { label: '请求数', value: String(stats.total), toneClass: styles.badgePrimary },
     { label: '成功', value: String(stats.success), toneClass: styles.badgeSuccess },
     { label: '异常', value: String(stats.failed), toneClass: stats.failed > 0 ? styles.badgeDanger : '' },
-    { label: 'E2E', value: formatDuration(stats.avgDuration), toneClass: styles.badgeWarning },
+    { label: 'TTFT', value: formatDuration(stats.avgTtft ?? 0), toneClass: styles.badgeWarning },
   ];
 
   return (

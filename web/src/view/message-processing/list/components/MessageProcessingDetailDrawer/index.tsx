@@ -2,12 +2,27 @@ import { useEffect, useMemo, useRef } from 'react';
 import { formatDuration } from '@/utils/format';
 import { useMessageProcessingRecordDetail } from '@/hooks/chat/useMessageProcessingRecords';
 import ChatSection from './ChatSection';
-import { getStatusLabel, getStatusTone, getTimingMetrics, getExecutionFacts } from './utils';
+import {
+  getStatusLabel,
+  getStatusTone,
+  getTimingMetrics,
+  getExecutionFacts,
+  getContextFacts,
+} from './utils';
 import styles from './index.module.scss';
 
 interface MessageProcessingDetailDrawerProps {
   messageId: string;
   onClose: () => void;
+}
+
+function withFallback<T>(factory: () => T, fallback: T): T {
+  try {
+    return factory();
+  } catch (error) {
+    console.warn('[MessageProcessingDetailDrawer] derived data fallback', error);
+    return fallback;
+  }
 }
 
 export default function MessageProcessingDetailDrawer({
@@ -16,8 +31,18 @@ export default function MessageProcessingDetailDrawer({
 }: MessageProcessingDetailDrawerProps) {
   const { data: message, isLoading } = useMessageProcessingRecordDetail(messageId);
   const leftColRef = useRef<HTMLDivElement | null>(null);
-  const timings = useMemo(() => (message ? getTimingMetrics(message) : {}), [message]);
-  const executionFacts = useMemo(() => (message ? getExecutionFacts(message) : []), [message]);
+  const timings = useMemo(
+    () => (message ? withFallback(() => getTimingMetrics(message), {}) : {}),
+    [message],
+  );
+  const executionFacts = useMemo(
+    () => (message ? withFallback(() => getExecutionFacts(message), []) : []),
+    [message],
+  );
+  const contextFacts = useMemo(
+    () => (message ? withFallback(() => getContextFacts(message), []) : []),
+    [message],
+  );
   const latencyRows = useMemo(
     () =>
       [
@@ -126,6 +151,25 @@ export default function MessageProcessingDetailDrawer({
                     <div key={r.label} className={styles.latencyRow}>
                       <span className={styles.latencyLabel}>{r.label}</span>
                       <span className={styles.latencyValue}>{formatDuration(r.value)}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Context facts */}
+            {contextFacts.length > 0 && (
+              <>
+                <div className={styles.sideTitle}>排障上下文</div>
+                <div className={styles.latencyList}>
+                  {contextFacts.map((f) => (
+                    <div key={f.label} className={styles.latencyRow}>
+                      <span className={styles.latencyLabel}>{f.label}</span>
+                      <span
+                        className={`${styles.latencyValue} ${f.mono ? styles.monoValue : ''}`}
+                      >
+                        {f.value}
+                      </span>
                     </div>
                   ))}
                 </div>

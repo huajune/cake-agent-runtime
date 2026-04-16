@@ -59,6 +59,7 @@ export interface MessageStats {
   success: number;
   failed: number;
   avgDuration: number;
+  avgTtft?: number;
 }
 
 // ==================== Agent 响应类型 ====================

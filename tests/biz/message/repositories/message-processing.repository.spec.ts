@@ -325,24 +325,42 @@ describe('MessageProcessingRepository', () => {
 
       const result = await repository.getMessageStats(0, Date.now());
 
-      expect(result).toEqual({ total: 0, success: 0, failed: 0, avgDuration: 0 });
+      expect(result).toEqual({ total: 0, success: 0, failed: 0, avgDuration: 0, avgTtft: 0 });
     });
 
     it('should return aggregated stats', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
-      // Mock count queries and select query for durations
-      const queryMock = makeQueryMock({
-        data: [{ ai_duration: 1000 }, { ai_duration: 2000 }],
+      const rpcResult = {
+        data: [
+          {
+            total_messages: 10,
+            success_count: 8,
+            failure_count: 2,
+            avg_duration: 1500,
+            avg_ttft: 420,
+          },
+        ],
         error: null,
-        count: 10,
-      });
-      mockSupabaseClient.from.mockReturnValue(queryMock);
+      };
+      mockSupabaseClient.rpc.mockReturnValue(Promise.resolve(rpcResult));
 
       const result = await repository.getMessageStats(Date.now() - 3600000, Date.now());
 
-      expect(result).toBeDefined();
-      expect(typeof result.total).toBe('number');
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledWith(
+        'get_dashboard_overview_stats',
+        expect.objectContaining({
+          p_start_date: expect.any(String),
+          p_end_date: expect.any(String),
+        }),
+      );
+      expect(result).toEqual({
+        total: 10,
+        success: 8,
+        failed: 2,
+        avgDuration: 1500,
+        avgTtft: 420,
+      });
     });
   });
 
