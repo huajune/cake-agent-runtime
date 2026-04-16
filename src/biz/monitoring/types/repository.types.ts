@@ -56,7 +56,7 @@ export interface HourlyStatsRecord {
 /**
  * 日统计应用层格式
  */
-export interface DailyStatsRecord extends DailyProjectionStats {}
+export type DailyStatsRecord = DailyProjectionStats;
 
 /**
  * 错误日志应用层格式（与 MonitoringErrorLog 相同，type alias 统一为一个定义）

@@ -2,8 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import { formatLocalDate } from '@infra/utils/date.util';
-import { DailyStatsDbRecord } from '../types/repository.types';
-import { DailyStatsRecord } from '../types/repository.types';
+import type { DailyStatsDbRecord, DailyStatsRecord } from '../types/repository.types';
 
 /**
  * 监控日统计 Repository
