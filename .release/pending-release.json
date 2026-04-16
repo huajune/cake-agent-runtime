@@ -75,6 +75,24 @@
       "ops": [],
       "config": [],
       "verification": []
+    },
+    {
+      "number": "82",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/82",
+      "title": "[codex] improve monitoring visibility and runtime config consistency",
+      "author": "huajune",
+      "mergedAt": "2026-04-16",
+      "summary": [
+        "[codex] improve monitoring visibility and runtime config consistency"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "[codex] improve monitoring visibility and runtime config consistency"
+      ],
+      "config": [],
+      "verification": []
     }
   ]
 }
