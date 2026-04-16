@@ -20,8 +20,7 @@ import { MessageType, ContactType, MessageSource } from '@enums/message-callback
 import { AlertLevel } from '@enums/alert.enum';
 import { FilterReason } from '@wecom/message/application/filter.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
-import { ConversationRiskService } from '@/conversation-risk/services/conversation-risk.service';
-import { OnboardFollowupMonitorService } from '@biz/recruitment-case/services/onboard-followup-monitor.service';
+import { PreAgentRiskInterceptService } from '@wecom/message/application/pre-agent-risk-intercept.service';
 
 describe('MessagePipelineService', () => {
   let service: MessagePipelineService;
@@ -124,12 +123,8 @@ describe('MessagePipelineService', () => {
       ),
   };
 
-  const mockConversationRiskService = {
-    checkAndHandle: jest.fn(),
-  };
-
-  const mockOnboardFollowupMonitorService = {
-    checkAndHandle: jest.fn(),
+  const mockPreAgentRiskIntercept = {
+    precheck: jest.fn(),
   };
 
   const validMessageData: EnterpriseMessageCallbackDto = {
@@ -169,8 +164,7 @@ describe('MessagePipelineService', () => {
         { provide: MessageTrackingService, useValue: mockMonitoringService },
         { provide: AlertNotifierService, useValue: mockAlertService },
         { provide: WecomMessageObservabilityService, useValue: mockWecomObservabilityService },
-        { provide: ConversationRiskService, useValue: mockConversationRiskService },
-        { provide: OnboardFollowupMonitorService, useValue: mockOnboardFollowupMonitorService },
+        { provide: PreAgentRiskInterceptService, useValue: mockPreAgentRiskIntercept },
       ],
     }).compile();
 
@@ -184,16 +178,7 @@ describe('MessagePipelineService', () => {
       messages: [{ role: 'user', candidateName: 'Alice' }],
     });
     mockFilterService.validate.mockResolvedValue({ pass: true, content: 'Hello!' });
-    mockConversationRiskService.checkAndHandle.mockResolvedValue({
-      hit: false,
-      paused: false,
-      alerted: false,
-    });
-    mockOnboardFollowupMonitorService.checkAndHandle.mockResolvedValue({
-      hit: false,
-      paused: false,
-      alerted: false,
-    });
+    mockPreAgentRiskIntercept.precheck.mockResolvedValue({ hit: false });
     mockDeliveryService.deliverReply.mockResolvedValue({
       success: true,
       segmentCount: 1,
@@ -255,13 +240,7 @@ describe('MessagePipelineService', () => {
       expect(mockDeduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-123');
     });
 
-    it('should trigger async conversation risk checks without blocking dispatch', async () => {
-      mockConversationRiskService.checkAndHandle.mockResolvedValue({
-        hit: true,
-        paused: true,
-        alerted: true,
-      });
-
+    it('should return dispatch result without running pre-Agent intercept during execute()', async () => {
       const result = await service.execute(validMessageData);
 
       expect(result).toEqual({
@@ -269,14 +248,8 @@ describe('MessagePipelineService', () => {
         response: { success: true, message: 'Message received' },
         content: 'Hello!',
       });
-      expect(mockConversationRiskService.checkAndHandle).toHaveBeenCalledWith({
-        messageData: validMessageData,
-        content: 'Hello!',
-      });
-      expect(mockOnboardFollowupMonitorService.checkAndHandle).toHaveBeenCalledWith({
-        messageData: validMessageData,
-        content: 'Hello!',
-      });
+      // Pre-Agent 风险预检位于 ReplyWorkflow 内部，execute() 阶段不触发
+      expect(mockPreAgentRiskIntercept.precheck).not.toHaveBeenCalled();
       expect(mockImageDescriptionService.describeAndUpdateSync).not.toHaveBeenCalled();
       expect(mockRunnerService.invoke).not.toHaveBeenCalled();
     });

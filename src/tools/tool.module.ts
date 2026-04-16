@@ -8,6 +8,7 @@ import { MessageSenderModule } from '@channels/wecom/message-sender/message-send
 import { UserModule } from '@biz/user/user.module';
 import { RecruitmentCaseModule } from '@biz/recruitment-case/recruitment-case.module';
 import { NotificationModule } from '@notification/notification.module';
+import { InterventionModule } from '@biz/intervention/intervention.module';
 import { ToolRegistryService } from './tool-registry.service';
 
 @Module({
@@ -21,6 +22,7 @@ import { ToolRegistryService } from './tool-registry.service';
     UserModule,
     RecruitmentCaseModule,
     NotificationModule,
+    InterventionModule,
   ],
   providers: [ToolRegistryService],
   exports: [ToolRegistryService],

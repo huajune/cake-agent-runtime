@@ -12,6 +12,8 @@ import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
 import { UserModule } from '@biz/user/user.module';
 import { MonitoringModule } from '@biz/monitoring/monitoring.module';
 import { RecruitmentCaseModule } from '@biz/recruitment-case/recruitment-case.module';
+import { InterventionModule } from '@biz/intervention/intervention.module';
+import { MemoryModule } from '@memory/memory.module';
 
 // 导入子服务
 import { MessageDeduplicationService } from './runtime/deduplication.service';
@@ -31,6 +33,7 @@ import { MessageWorkerManagerService } from './runtime/message-worker-manager.se
 import { AcceptInboundMessageService } from './application/accept-inbound-message.service';
 import { ReplyWorkflowService } from './application/reply-workflow.service';
 import { MessageProcessingFailureService } from './application/message-processing-failure.service';
+import { PreAgentRiskInterceptService } from './application/pre-agent-risk-intercept.service';
 import { TypingPolicyService } from './delivery/typing-policy.service';
 import {
   ContactTypeFilterRule,
@@ -59,6 +62,8 @@ import {
     RecruitmentCaseModule,
     forwardRef(() => MonitoringModule),
     NotificationModule,
+    InterventionModule,
+    MemoryModule,
     ConversationRiskModule,
     // 注册消息聚合队列
     BullModule.registerQueue({
@@ -103,6 +108,7 @@ import {
     WecomMessageObservabilityService, // 企微消息链路观测（阶段时延 + 结构化调试上下文）
     AcceptInboundMessageService, // 入站预处理（过滤、去重、写历史）
     ReplyWorkflowService, // 回复工作流（调用 Agent → 发送回复）
+    PreAgentRiskInterceptService, // Agent 前置风险同步拦截
     MessageProcessingFailureService, // 失败兜底（告警、降级回复）
   ],
   exports: [MessageService, MessageFilterService, MessageProcessor],

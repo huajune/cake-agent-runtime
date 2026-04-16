@@ -28,12 +28,6 @@ describe('AcceptInboundMessageService', () => {
   const monitoringService = {
     recordFailure: jest.fn(),
   };
-  const conversationRiskService = {
-    checkAndHandle: jest.fn(),
-  };
-  const onboardFollowupMonitorService = {
-    checkAndHandle: jest.fn(),
-  };
   const runtimeConfig = {
     resolveWecomChatModelSelection: jest.fn(),
   };
@@ -57,12 +51,6 @@ describe('AcceptInboundMessageService', () => {
     runtimeConfig.resolveWecomChatModelSelection.mockResolvedValue({
       effectiveModelId: 'gpt-test',
     });
-    conversationRiskService.checkAndHandle.mockResolvedValue({ hit: false, alerted: false });
-    onboardFollowupMonitorService.checkAndHandle.mockResolvedValue({
-      hit: false,
-      alerted: false,
-    });
-
     service = new AcceptInboundMessageService(
       deduplicationService as never,
       chatSession as never,
@@ -70,8 +58,6 @@ describe('AcceptInboundMessageService', () => {
       imageDescription as never,
       wecomObservability as never,
       monitoringService as never,
-      conversationRiskService as never,
-      onboardFollowupMonitorService as never,
       runtimeConfig as never,
     );
   });

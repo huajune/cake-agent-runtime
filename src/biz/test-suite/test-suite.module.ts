@@ -20,7 +20,6 @@ import { ObservabilityModule } from '@observability/observability.module';
 import { ToolModule } from '@tools/tool.module';
 import { AiStreamObservabilityService } from './services/ai-stream-observability.service';
 import { MemoryModule } from '@memory/memory.module';
-import { ConversationRiskModule } from '@/conversation-risk/conversation-risk.module';
 
 /**
  * 测试套件模块
@@ -44,7 +43,6 @@ import { ConversationRiskModule } from '@/conversation-risk/conversation-risk.mo
     EvaluationModule,
     ObservabilityModule,
     MemoryModule,
-    ConversationRiskModule,
     BullModule.registerQueueAsync({
       name: 'test-suite',
       imports: [ConfigModule],

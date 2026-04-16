@@ -20,6 +20,8 @@ import { buildGeocodeTool } from './geocode.tool';
 import { buildSaveImageDescriptionTool } from './save-image-description.tool';
 import { buildInviteToGroupTool } from './invite-to-group.tool';
 import { buildSendStoreLocationTool } from './send-store-location.tool';
+import { buildRaiseRiskAlertTool } from './raise-risk-alert.tool';
+import { buildRequestHandoffTool } from './request-handoff.tool';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
@@ -28,7 +30,9 @@ import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
+import { InterventionService } from '@biz/intervention/intervention.service';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
+import { SessionService } from '@memory/services/session.service';
 
 /**
  * 统一工具注册表
@@ -65,6 +69,8 @@ export class ToolRegistryService {
     userHostingService: UserHostingService,
     recruitmentCaseService: RecruitmentCaseService,
     configService: ConfigService,
+    interventionService: InterventionService,
+    sessionService: SessionService,
   ) {
     const memberLimit = parseInt(configService.get('GROUP_MEMBER_LIMIT', '200'), 10);
     const enterpriseToken = configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim();
@@ -133,6 +139,30 @@ export class ToolRegistryService {
           enterpriseToken,
         ),
       }),
+
+      // ===== 人工介入工具 =====
+      raise_risk_alert: createToolDefinition({
+        name: 'raise_risk_alert',
+        description:
+          '候选人出现辱骂/投诉/情绪升级时调用，同步触发人工介入（暂停托管+飞书告警）。调用后请以招募者身份自主组织共情/安抚话术，不使用预设模板，也不得暴露机器人/托管/系统等字眼。',
+        create: buildRaiseRiskAlertTool(
+          interventionService,
+          this.chatSessionService,
+          sessionService,
+        ),
+      }),
+
+      request_handoff: createToolDefinition({
+        name: 'request_handoff',
+        description:
+          '面试/入职跟进阶段遇到需要人工处理的问题（找不到门店、无人接待、预约冲突、办理入职等）时调用，同步触发人工介入并标记 case 为 handoff',
+        create: buildRequestHandoffTool(
+          interventionService,
+          recruitmentCaseService,
+          this.chatSessionService,
+          sessionService,
+        ),
+      }),
     };
 
     this.logger.log(`内置工具已注册: ${Object.keys(this.registry).join(', ')}`);
@@ -150,6 +180,8 @@ export class ToolRegistryService {
       'geocode',
       'send_store_location',
       'invite_to_group',
+      'raise_risk_alert',
+      'request_handoff',
     ],
     'group-operations': [],
     evaluation: [],
