@@ -11,14 +11,15 @@
 ## 待发布
 
 **预计版本**: `v5.2.0`
-**最近更新**: `2026-04-15`
+**最近更新**: `2026-04-16`
 **来源分支**: `develop`
-**累计 PR**: 3
+**累计 PR**: 4
 
 ### 更新摘要
 - [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) [codex] 完善通知链路并修复群任务与消息处理后续问题
 - [PR #74](https://github.com/huajune/cake-agent-runtime/pull/74) [codex] Refactor observability and notification flow
 - [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) [codex] add conversation risk and onboarding handoff monitoring
+- [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) consolidate fact extraction and drop LocationCityResolver
 
 ### 新功能
 - 无
@@ -27,7 +28,7 @@
 - [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) [codex] 完善通知链路并修复群任务与消息处理后续问题
 
 ### 优化调整
-- 无
+- [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) consolidate fact extraction and drop LocationCityResolver
 
 ### 运维与流程
 - [PR #74](https://github.com/huajune/cake-agent-runtime/pull/74) [codex] Refactor observability and notification flow
