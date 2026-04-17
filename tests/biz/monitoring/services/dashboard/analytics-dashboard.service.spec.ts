@@ -26,7 +26,7 @@ const buildRecord = (overrides = {}) => ({
   totalDuration: 5000,
   queueDuration: 500,
   scenario: ScenarioType.CANDIDATE_CONSULTATION,
-  tools: ['tool-a'],
+  toolCalls: [{ toolName: 'tool-a', args: {} }],
   isFallback: false,
   ...overrides,
 });
@@ -371,9 +371,17 @@ describe('AnalyticsDashboardService', () => {
 
     it('should build tool usage metrics from records', async () => {
       const records = [
-        buildRecord({ tools: ['booking', 'search'] }),
-        buildRecord({ messageId: 'msg-2', tools: ['booking'] }),
-        buildRecord({ messageId: 'msg-3', tools: [] }),
+        buildRecord({
+          toolCalls: [
+            { toolName: 'booking', args: {} },
+            { toolName: 'search', args: {} },
+          ],
+        }),
+        buildRecord({
+          messageId: 'msg-2',
+          toolCalls: [{ toolName: 'booking', args: {} }],
+        }),
+        buildRecord({ messageId: 'msg-3', toolCalls: [] }),
       ];
       mockMessageProcessingService.getRecordsByTimeRange.mockResolvedValue(records);
 

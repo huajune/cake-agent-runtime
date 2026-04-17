@@ -4,6 +4,7 @@
  */
 
 import { ScenarioType } from '@enums/agent.enum';
+import type { AgentMemorySnapshot, AgentStepDetail, AgentToolCall } from '@agent/agent-run.types';
 
 /**
  * 告警错误类型
@@ -11,17 +12,40 @@ import { ScenarioType } from '@enums/agent.enum';
 export type AlertErrorType = 'agent' | 'message' | 'delivery' | 'system' | 'merge' | 'unknown';
 
 /**
+ * 异常信号标签（写入时计算，供巡检/周报 SQL 直接过滤）
+ *
+ * - tool_loop: 同一工具被调用 ≥ 3 次（Case 1: duliday_job_list × 4）
+ * - tool_empty_result: 有工具调用 resultCount = 0
+ * - tool_narrow_result: 有工具调用 resultCount = 1（Case 2: 仅 1 条就收尾）
+ * - tool_chain_overlong: 工具链总长 ≥ 5
+ * - no_tool_called: 本轮没有调用任何工具（暂不自动打标，留给业务规则）
+ */
+export type AnomalyFlag =
+  | 'tool_loop'
+  | 'tool_empty_result'
+  | 'tool_narrow_result'
+  | 'tool_chain_overlong'
+  | 'no_tool_called';
+
+/**
  * 监控元数据（随消息传递的追踪信息）
  */
 export interface MonitoringMetadata {
   scenario?: ScenarioType;
-  tools?: string[];
   tokenUsage?: number;
   replyPreview?: string;
   replySegments?: number;
   isFallback?: boolean;
   alertType?: AlertErrorType;
   batchId?: string;
+  /** 工具调用详情（写入 message_processing_records.tool_calls 列） */
+  toolCalls?: AgentToolCall[];
+  /** 每步循环快照（写入 message_processing_records.agent_steps 列） */
+  agentSteps?: AgentStepDetail[];
+  /** 本轮记忆上下文快照（写入 message_processing_records.memory_snapshot 列） */
+  memorySnapshot?: AgentMemorySnapshot;
+  /** 异常信号标签（tracking 层根据 toolCalls 自动计算，调用方无需传） */
+  anomalyFlags?: AnomalyFlag[];
   /** Agent 调用记录（完整的请求/响应，用于排障） */
   agentInvocation?: AgentInvocationRecord;
 }
@@ -72,9 +96,14 @@ export interface MessageProcessingRecord {
   messagePreview?: string;
   replyPreview?: string;
   tokenUsage?: number;
-  tools?: string[];
   replySegments?: number;
   alertType?: AlertErrorType;
+
+  // 工具与记忆可观测性
+  toolCalls?: AgentToolCall[];
+  agentSteps?: AgentStepDetail[];
+  anomalyFlags?: AnomalyFlag[];
+  memorySnapshot?: AgentMemorySnapshot;
 
   // 聚合关系
   batchId?: string;

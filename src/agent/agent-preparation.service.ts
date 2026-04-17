@@ -15,7 +15,11 @@ import type { UserProfile } from '@memory/types/long-term.types';
 import type { RecommendedJobSummary, WeworkSessionState } from '@memory/types/session-facts.types';
 import { ContextService } from './context/context.service';
 import { InputGuardService } from './input-guard.service';
-import { type AgentInputMessage, type AgentInvokeParams } from './agent-run.types';
+import {
+  type AgentInputMessage,
+  type AgentInvokeParams,
+  type AgentMemorySnapshot,
+} from './agent-run.types';
 
 export interface PreparedAgentContext {
   finalPrompt: string;
@@ -35,6 +39,8 @@ export interface PreparedAgentContext {
   turnState: {
     candidatePool: RecommendedJobSummary[] | null;
   };
+  /** 本轮触发时的记忆上下文快照（写入 message_processing_records.memory_snapshot 用于排障） */
+  memorySnapshot?: AgentMemorySnapshot;
 }
 
 @Injectable()
@@ -220,6 +226,9 @@ export class AgentPreparationService {
     // 10. 按场景挑出本轮允许使用的工具。
     const tools = this.toolRegistry.buildForScenario(scenario, toolContext) as ToolSet;
 
+    // 11. 记忆快照（供 observability 落入 message_processing_records.memory_snapshot）。
+    const memorySnapshot = this.buildMemorySnapshot(memory, entryStage);
+
     return {
       finalPrompt,
       typedMessages,
@@ -234,7 +243,67 @@ export class AgentPreparationService {
       maxSteps,
       entryStage,
       turnState,
+      memorySnapshot,
     };
+  }
+
+  /**
+   * 基于 memory recall 构造 memory_snapshot。
+   *
+   * 字段设计：
+   * - currentStage: 本轮入口阶段，用于判定"阶段机器是否走到预期位置"
+   * - presentedJobIds / recommendedJobIds: 让排障能看出"模型本轮是否遗忘了上轮推荐过的岗位"
+   * - sessionFacts: 扁平化的硬约束（时间/性别/区域等）——Case 2 排障的关键
+   * - profileKeys: 长期档案已填字段（不落值避免 PII）
+   */
+  private buildMemorySnapshot(
+    memory: Awaited<ReturnType<MemoryService['onTurnStart']>>,
+    entryStage: string | null,
+  ): AgentMemorySnapshot {
+    const session = memory.sessionMemory;
+    const presentedJobIds =
+      session?.presentedJobs?.map((j) => j.jobId).filter((id): id is number => id != null) ?? null;
+    const recommendedJobIds =
+      session?.lastCandidatePool?.map((j) => j.jobId).filter((id): id is number => id != null) ??
+      null;
+
+    const sessionFacts = this.flattenSessionFacts(session?.facts ?? null);
+
+    const profile = memory.longTerm.profile;
+    const profileKeys = profile
+      ? Object.entries(profile)
+          .filter(([, value]) => value !== null && value !== undefined && value !== '')
+          .map(([key]) => key)
+      : null;
+
+    return {
+      currentStage: entryStage,
+      presentedJobIds: presentedJobIds && presentedJobIds.length > 0 ? presentedJobIds : null,
+      recommendedJobIds:
+        recommendedJobIds && recommendedJobIds.length > 0 ? recommendedJobIds : null,
+      sessionFacts,
+      profileKeys: profileKeys && profileKeys.length > 0 ? profileKeys : null,
+    };
+  }
+
+  /** 扁平化 facts.interview_info + facts.preferences，只保留非空字段。 */
+  private flattenSessionFacts(
+    facts: WeworkSessionState['facts'] | null,
+  ): Record<string, unknown> | null {
+    if (!facts) return null;
+    const flat: Record<string, unknown> = {};
+    const collect = (group: Record<string, unknown> | null | undefined, prefix: string) => {
+      if (!group) return;
+      for (const [key, value] of Object.entries(group)) {
+        if (value === null || value === undefined) continue;
+        if (typeof value === 'string' && value.trim() === '') continue;
+        if (Array.isArray(value) && value.length === 0) continue;
+        flat[`${prefix}.${key}`] = value;
+      }
+    };
+    collect(facts.interview_info as unknown as Record<string, unknown>, 'interview');
+    collect(facts.preferences as unknown as Record<string, unknown>, 'pref');
+    return Object.keys(flat).length > 0 ? flat : null;
   }
 
   /** 把消息内容扁平化成纯文本。 */

@@ -123,7 +123,7 @@ describe('WecomMessageObservabilityService', () => {
     });
 
     expect(metadata.tokenUsage).toBe(384);
-    expect(metadata.tools).toEqual(['book_interview']);
+    expect(metadata.toolCalls?.map((call) => call.toolName)).toEqual(['book_interview']);
     expect(metadata.agentInvocation).toBeDefined();
     expect(metadata.agentInvocation?.response?.timings?.durations?.totalMs).toBeGreaterThanOrEqual(
       0,

@@ -360,6 +360,8 @@ export class ReplyWorkflowService {
         isFallback: false,
         processingTime,
         toolCalls: result.toolCalls,
+        agentSteps: result.agentSteps,
+        memorySnapshot: result.memorySnapshot,
         responseMessages: result.responseMessages,
       };
       if (recordMonitoring && messageId) {

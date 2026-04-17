@@ -138,7 +138,14 @@ describe('MessageTrackingService', () => {
       tokenUsage: 200,
       replyPreview: '杨浦这边有两家门店在招。',
       replySegments: 2,
-      tools: ['duliday_job_list'],
+      toolCalls: [
+        {
+          toolName: 'duliday_job_list',
+          args: {},
+          resultCount: 7,
+          status: 'ok',
+        },
+      ],
       agentInvocation: {
         request: {
           messageId: 'msg-1',
@@ -194,7 +201,9 @@ describe('MessageTrackingService', () => {
         aiDuration: 4000,
         sendDuration: 1200,
         tokenUsage: 200,
-        tools: ['duliday_job_list'],
+        toolCalls: [
+          expect.objectContaining({ toolName: 'duliday_job_list', resultCount: 7, status: 'ok' }),
+        ],
         replyPreview: '杨浦这边有两家门店在招。',
         replySegments: 2,
         batchId: 'batch-1',

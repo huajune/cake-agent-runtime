@@ -1,10 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { MessageProcessingRecordInput } from '@biz/message/types/message.types';
+import type { AgentMemorySnapshot, AgentStepDetail, AgentToolCall } from '@agent/agent-run.types';
 import {
   MonitoringMetadata,
   MonitoringErrorLog,
   MonitoringGlobalCounters,
   AlertErrorType,
+  AnomalyFlag,
 } from '@shared-types/tracking.types';
 import { MonitoringCacheService } from './monitoring-cache.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
@@ -337,10 +339,23 @@ export class MessageTrackingService {
       aiEndAt: timings.timestamps.aiEndAt ?? params.existingRecord?.aiEndAt,
       aiDuration: timings.durations.aiStartToAiEndMs ?? params.existingRecord?.aiDuration,
       sendDuration: timings.durations.deliveryDurationMs ?? params.existingRecord?.sendDuration,
-      tools:
-        params.metadata?.tools ??
-        this.extractToolNames(response?.toolCalls) ??
-        params.existingRecord?.tools,
+      toolCalls:
+        params.metadata?.toolCalls ??
+        this.extractToolCalls(response?.toolCalls) ??
+        params.existingRecord?.toolCalls,
+      agentSteps:
+        params.metadata?.agentSteps ??
+        this.extractAgentSteps(response?.agentSteps) ??
+        params.existingRecord?.agentSteps,
+      memorySnapshot:
+        params.metadata?.memorySnapshot ??
+        this.extractMemorySnapshot(response?.memorySnapshot) ??
+        params.existingRecord?.memorySnapshot,
+      anomalyFlags: this.computeAnomalyFlags(
+        params.metadata?.toolCalls ??
+          this.extractToolCalls(response?.toolCalls) ??
+          params.existingRecord?.toolCalls,
+      ),
       tokenUsage:
         params.metadata?.tokenUsage ??
         this.asNumber(this.asRecord(reply?.usage)?.totalTokens) ??
@@ -467,12 +482,68 @@ export class MessageTrackingService {
     return values.find((value) => value !== undefined);
   }
 
-  private extractToolNames(toolCalls: unknown): string[] | undefined {
+  /**
+   * 从 invocation snapshot 中还原工具调用详情。
+   *
+   * 仅在 metadata.toolCalls 缺失（历史记录/老数据）时作为兜底使用。
+   * 正常链路下 wecom-observability 会直接把结构化 toolCalls 填进 metadata。
+   */
+  private extractToolCalls(toolCalls: unknown): AgentToolCall[] | undefined {
     if (!Array.isArray(toolCalls) || toolCalls.length === 0) return undefined;
-    const toolNames = toolCalls
-      .map((toolCall) => this.asString(this.asRecord(toolCall)?.toolName))
-      .filter((toolName): toolName is string => Boolean(toolName));
-    return toolNames.length > 0 ? toolNames : undefined;
+    const calls = toolCalls
+      .map((toolCall) => {
+        const record = this.asRecord(toolCall);
+        if (!record) return null;
+        const toolName = this.asString(record.toolName);
+        if (!toolName) return null;
+        const call: AgentToolCall = {
+          toolName,
+          args: (record.args ?? {}) as Record<string, unknown>,
+          result: record.result,
+          resultCount: this.asNumber(record.resultCount),
+          status: record.status as AgentToolCall['status'],
+          durationMs: this.asNumber(record.durationMs),
+        };
+        return call;
+      })
+      .filter((call): call is AgentToolCall => call !== null);
+    return calls.length > 0 ? calls : undefined;
+  }
+
+  private extractAgentSteps(agentSteps: unknown): AgentStepDetail[] | undefined {
+    if (!Array.isArray(agentSteps) || agentSteps.length === 0) return undefined;
+    return agentSteps as AgentStepDetail[];
+  }
+
+  private extractMemorySnapshot(value: unknown): AgentMemorySnapshot | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    return value as AgentMemorySnapshot;
+  }
+
+  /**
+   * 根据工具调用序列计算异常信号标签。
+   *
+   * - tool_loop: 同一工具被调用 ≥ 3 次
+   * - tool_empty_result: 有调用返回 0 条
+   * - tool_narrow_result: 有调用返回 1 条
+   * - tool_chain_overlong: 本轮工具链总长 ≥ 5
+   */
+  private computeAnomalyFlags(toolCalls: AgentToolCall[] | undefined): AnomalyFlag[] | undefined {
+    if (!toolCalls || toolCalls.length === 0) return undefined;
+
+    const flags = new Set<AnomalyFlag>();
+
+    const counts = new Map<string, number>();
+    for (const tc of toolCalls) {
+      counts.set(tc.toolName, (counts.get(tc.toolName) ?? 0) + 1);
+    }
+    if ([...counts.values()].some((count) => count >= 3)) flags.add('tool_loop');
+
+    if (toolCalls.some((tc) => tc.status === 'empty')) flags.add('tool_empty_result');
+    if (toolCalls.some((tc) => tc.status === 'narrow')) flags.add('tool_narrow_result');
+    if (toolCalls.length >= 5) flags.add('tool_chain_overlong');
+
+    return flags.size > 0 ? [...flags] : undefined;
   }
 
   private extractTimingSummary(value: unknown): InvocationTimingSummary {

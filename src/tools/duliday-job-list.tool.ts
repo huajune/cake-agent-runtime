@@ -1164,9 +1164,28 @@ function mapJobsToSummaries(jobs: any[]): RecommendedJobSummary[] {
 const logger = new Logger('duliday_job_list');
 
 const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，按需获取岗位信息。
+
+⚠️ 检索机制说明（重要）：
+本接口为后端关键字精确匹配，不做语义理解、不做模糊改写、不做拼写纠正。
+传入的字段值必须命中数据库里的真实字符串，否则直接返回 0 条。
+"上海大宁音乐广场店" 这种带城市前缀的口语化门店名很可能匹配不上真实门店名。
+
+筛选字段稳定性分级（**调用前必看**）：
+- 高稳定（首选）：jobIdList、brandIdList、projectIdList（数字主键，命中率最高）
+- 中稳定：cityNameList、regionNameList（标准行政区划）
+- 低稳定（易踩坑）：storeNameList、projectNameList、brandAliasList（用户口语 vs 数据库实名常对不上）
+
+调用规则：
+1. 已知 jobId → 必须用 jobIdList，**不要再叠加其他过滤**
+2. 知道大致区域 → 用 cityNameList + regionNameList，**不要用 storeNameList 当首选**
+3. 用户给的门店名包含 "上海/北京/XX店" 等口语前缀 → 不要直接传 storeNameList，先用 regionNameList 拿候选集再在结果里识别门店
+4. 单次调用结果数 = 0：禁止用同一组 filter 直接重试，必须换字段或扩面
+5. **同一轮内本工具调用次数 ≤ 3**；超过即由系统硬截断，不再允许调用本工具
+
 筛选条件：城市、区域、品牌、门店、岗位类型、岗位ID
-位置筛选：传入 location.longitude / location.latitude / location.range 后，可启用位置筛选；若提供经纬度，工具会继续展示距离并按业务阈值过滤、排序
+位置筛选：传入 location.longitude / location.latitude / location.range 后启用位置筛选；工具会展示距离并按业务阈值过滤、排序
 规则摘要：会结合岗位结构化字段与备注提炼推荐阶段要点，但不负责真正提交预约
+
 数据开关：
 - includeBasicInfo（默认true）：品牌、门店、地址等基本信息
 - includeJobSalary：薪资信息

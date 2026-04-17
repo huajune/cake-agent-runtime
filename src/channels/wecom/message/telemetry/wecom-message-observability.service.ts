@@ -358,7 +358,6 @@ export class WecomMessageObservabilityService {
     const trace = await this.traceStore.get<WecomTraceContext>(messageId);
     const completedAt = Date.now();
     const agentResult = trace?.agentResult;
-    const tools = agentResult?.toolCalls?.map((toolCall) => toolCall.toolName);
 
     const metadata: MonitoringMetadata & {
       fallbackSuccess?: boolean;
@@ -369,7 +368,9 @@ export class WecomMessageObservabilityService {
       replyPreview: options.replyPreview,
       replySegments: options.replySegments,
       tokenUsage: agentResult?.reply.usage?.totalTokens ?? 0,
-      tools,
+      toolCalls: agentResult?.toolCalls,
+      agentSteps: agentResult?.agentSteps,
+      memorySnapshot: agentResult?.memorySnapshot,
       isFallback: agentResult?.isFallback ?? false,
       fallbackSuccess: agentResult?.isFallback ? true : undefined,
       agentInvocation: trace
@@ -387,6 +388,8 @@ export class WecomMessageObservabilityService {
               },
               messages: agentResult?.responseMessages,
               toolCalls: agentResult?.toolCalls,
+              agentSteps: agentResult?.agentSteps,
+              memorySnapshot: agentResult?.memorySnapshot,
               delivery: trace.deliveryResult,
               fallback: trace.fallbackDelivery,
               timings: this.buildTimingSummary(trace, completedAt),
@@ -437,7 +440,9 @@ export class WecomMessageObservabilityService {
       replyPreview: agentResult?.reply.content,
       replySegments: trace?.deliveryResult?.segmentCount,
       tokenUsage: agentResult?.reply.usage?.totalTokens ?? 0,
-      tools: agentResult?.toolCalls?.map((toolCall) => toolCall.toolName),
+      toolCalls: agentResult?.toolCalls,
+      agentSteps: agentResult?.agentSteps,
+      memorySnapshot: agentResult?.memorySnapshot,
       isFallback: agentResult?.isFallback ?? Boolean(trace?.fallbackDelivery),
       fallbackSuccess: trace?.fallbackDelivery?.success,
       agentInvocation: trace
@@ -457,6 +462,8 @@ export class WecomMessageObservabilityService {
               },
               messages: agentResult?.responseMessages,
               toolCalls: agentResult?.toolCalls,
+              agentSteps: agentResult?.agentSteps,
+              memorySnapshot: agentResult?.memorySnapshot,
               delivery: trace.deliveryResult,
               fallback: trace.fallbackDelivery,
               timings: this.buildTimingSummary(trace, completedAt),

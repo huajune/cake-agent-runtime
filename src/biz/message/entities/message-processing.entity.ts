@@ -24,10 +24,17 @@ export interface MessageProcessingDbRecord {
   ai_duration?: number;
   ttft_ms?: number | string;
   send_duration?: number;
-  tools?: string[];
   token_usage?: number;
   is_fallback?: boolean;
   fallback_success?: boolean;
   agent_invocation?: unknown;
   batch_id?: string;
+  /** 工具调用详情 JSONB */
+  tool_calls?: unknown;
+  /** 每步循环快照 JSONB */
+  agent_steps?: unknown;
+  /** 异常信号数组 */
+  anomaly_flags?: string[];
+  /** 记忆上下文快照 JSONB */
+  memory_snapshot?: unknown;
 }
