@@ -67,8 +67,8 @@ describe('tool-call-analysis', () => {
       expect(computeToolCallStatus({ items: [{}, {}] }, 2)).toBe('ok');
     });
 
-    it('returns ok when resultCount cannot be inferred', () => {
-      expect(computeToolCallStatus({ message: 'fine' }, undefined)).toBe('ok');
+    it('returns unknown when resultCount cannot be inferred', () => {
+      expect(computeToolCallStatus({ message: 'fine' }, undefined)).toBe('unknown');
     });
   });
 
