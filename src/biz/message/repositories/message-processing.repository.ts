@@ -16,7 +16,8 @@ import { MessageProcessingRecordInput } from '../types/message.types';
 export class MessageProcessingRepository extends BaseRepository {
   protected readonly tableName = 'message_processing_records';
 
-  private readonly currentDetailSelectedColumns = [
+  // 列表/聚合查询用的精简投影（不拉 agent_invocation 这个 jsonb 大字段）
+  private readonly currentListSelectedColumns = [
     'message_id',
     'chat_id',
     'user_id',
@@ -46,7 +47,7 @@ export class MessageProcessingRepository extends BaseRepository {
     'batch_id',
   ].join(',');
 
-  private readonly legacyDetailSelectedColumns = [
+  private readonly legacyListSelectedColumns = [
     'message_id',
     'chat_id',
     'user_id',
@@ -72,6 +73,11 @@ export class MessageProcessingRepository extends BaseRepository {
     'fallback_success',
     'batch_id',
   ].join(',');
+
+  // 详情接口投影：在列表列基础上多带 agent_invocation，前端详情抽屉的时延分解、
+  // 工具执行、Trace、Delivery、Fallback 等富字段全部依赖该 jsonb。
+  private readonly currentDetailSelectedColumns = `${this.currentListSelectedColumns},agent_invocation`;
+  private readonly legacyDetailSelectedColumns = `${this.legacyListSelectedColumns},agent_invocation`;
 
   constructor(supabaseService: SupabaseService) {
     super(supabaseService);
@@ -207,6 +213,10 @@ export class MessageProcessingRepository extends BaseRepository {
       const results = await this.selectWithLegacyFallback(
         (q) => q.eq('message_id', messageId).limit(1),
         'getMessageProcessingRecordById',
+        {
+          current: this.currentDetailSelectedColumns,
+          legacy: this.legacyDetailSelectedColumns,
+        },
       );
 
       if (results.length === 0) {
@@ -640,19 +650,17 @@ export class MessageProcessingRepository extends BaseRepository {
   private async selectWithLegacyFallback(
     modifier: Parameters<BaseRepository['select']>[1],
     context: string,
+    columns: { current: string; legacy: string } = {
+      current: this.currentListSelectedColumns,
+      legacy: this.legacyListSelectedColumns,
+    },
   ): Promise<MessageProcessingDbRecord[]> {
-    const results = await this.select<MessageProcessingDbRecord>(
-      this.currentDetailSelectedColumns,
-      modifier,
-    );
+    const results = await this.select<MessageProcessingDbRecord>(columns.current, modifier);
     if (results.length > 0) {
       return results;
     }
 
-    const legacyResults = await this.select<MessageProcessingDbRecord>(
-      this.legacyDetailSelectedColumns,
-      modifier,
-    );
+    const legacyResults = await this.select<MessageProcessingDbRecord>(columns.legacy, modifier);
     if (legacyResults.length > 0) {
       this.logger.warn(`[${context}] 当前明细列查询为空，已回退到 legacy schema`);
     }

@@ -10,6 +10,18 @@ import { OpsNotifierService } from '@notification/services/ops-notifier.service'
 
 const logger = new Logger('invite_to_group');
 
+interface CitySnapshotIndustry {
+  industry: string;
+  groupCount: number;
+  availableCount: number;
+}
+
+interface CitySnapshot {
+  totalGroups: number;
+  memberLimit: number;
+  byIndustry: CitySnapshotIndustry[];
+}
+
 export function buildInviteToGroupTool(
   groupResolver: GroupResolverService,
   roomService: RoomService,
@@ -20,24 +32,25 @@ export function buildInviteToGroupTool(
 ): ToolBuilder {
   return (context) =>
     tool({
-      description: `邀请候选人加入企微兼职群。根据城市和行业匹配合适的群。
+      description: `邀请候选人加入企微兼职群。
 
 使用场景（满足任一即可）：
-1. 判断当前意向下已无匹配可能 — 候选人明确的意向（品牌/岗位类型/城市/区域/班次/薪资等）已超出当前可推范围，或继续检索已无新进展。由你自行判断时机，不设固定轮数门槛；但必须先做过实际检索（至少一次 duliday_job_list）、已告知候选人当前没有合适岗位，再调用本工具。严禁为了凑推荐继续硬推不符合候选人意向的替代岗位。
+1. 判断当前意向下已无匹配可能 — 必须先做过实际检索（至少一次 duliday_job_list）、已告知候选人当前没有合适岗位，再调用本工具。严禁为了凑推荐继续硬推不符合候选人意向的替代岗位。
 2. 面试预约成功后 — 面试预约/信息收集完成，邀请入群获取更多机会。
 
-调用前必须已知候选人所在城市。
-
-返回结果中 inviteMode 表示拉群方式：
-- "direct"：已直接拉入群（群<40人），告知候选人"已帮你加入了XX群"
-- "link"：已发送入群邀请卡片（群>=40人），告知候选人"已发了入群邀请，点一下就能进群"`,
+返回字段：
+- inviteMode："direct"（群<40人，直接拉入，告知"已帮你加入了XX群"）/"link"（群>=40人，发邀请卡片，告知"已发了入群邀请，点一下就能进群"）
+- matchedIndustry：实际命中群的行业；与入参 industry 不一致即触发了回退
+- fallbackUsed / selectionReason / citySnapshot：供你向候选人解释群选择依据`,
       inputSchema: z.object({
-        city: z.string().describe('候选人所在城市（必填）'),
-        industry: z.string().optional().describe('行业偏好（可选，如：餐饮、零售）'),
+        city: z.string().describe('候选人所在城市'),
+        industry: z
+          .string()
+          .optional()
+          .describe('候选人求职意向行业（餐饮/零售等）；意向明确时必须传，详见兼职群资源段指引'),
       }),
       execute: async ({ city, industry }) => {
         try {
-          // 硬规则：本轮 booking 失败则禁止拉群（穷尽推荐场景 bookingSucceeded 为 undefined，不拦截）
           if (context.bookingSucceeded === false) {
             logger.log(`本轮预约失败，跳过拉群: city=${city}, user=${context.userId}`);
             return {
@@ -74,12 +87,13 @@ export function buildInviteToGroupTool(
 
           const cityGroups = allGroups.filter((group) => group.city === city);
           if (cityGroups.length === 0) {
-            // 该城市没有群：静默跳过，不告警、不通知候选人
             logger.log(`城市无匹配，静默跳过: ${city} (user=${context.userId})`);
             return { success: false, reason: 'no_group_in_city' };
           }
 
-          const candidates = resolveCandidates(cityGroups, industry);
+          const citySnapshot = buildCitySnapshot(cityGroups, memberLimit);
+
+          const { candidates, fallbackUsed } = resolveCandidates(cityGroups, industry);
           const targetGroup = pickAvailableGroup(candidates, memberLimit);
 
           if (!targetGroup) {
@@ -97,10 +111,17 @@ export function buildInviteToGroupTool(
               const message = error instanceof Error ? error.message : String(error);
               logger.error(`飞书告警发送失败: ${message}`);
             });
-            return { success: false, reason: 'group_full' };
+            return {
+              success: false,
+              reason: 'group_full',
+              citySnapshot,
+            };
           }
 
           const isDirectAdd = (targetGroup.memberCount ?? 0) < 40;
+          const selectionReason: 'lowest_member_count' | 'only_option' =
+            candidates.length === 1 ? 'only_option' : 'lowest_member_count';
+
           const addResult = await roomService.addMemberEnterprise({
             token: normalizedEnterpriseToken,
             imBotId: context.botImId,
@@ -142,6 +163,7 @@ export function buildInviteToGroupTool(
                 success: false,
                 reason: 'group_full',
                 groupName: targetGroup.groupName,
+                citySnapshot,
               };
             }
 
@@ -166,7 +188,7 @@ export function buildInviteToGroupTool(
           });
 
           logger.log(
-            `拉群成功: ${targetGroup.groupName} (user=${context.userId}, city=${city}, industry=${industry ?? '-'})`,
+            `拉群成功: ${targetGroup.groupName} (user=${context.userId}, city=${city}, industry=${industry ?? '-'}, matched=${targetGroup.industry ?? '-'}, fallback=${fallbackUsed})`,
           );
 
           return {
@@ -175,6 +197,10 @@ export function buildInviteToGroupTool(
             city,
             industry: industry ?? undefined,
             inviteMode: isDirectAdd ? 'direct' : 'link',
+            matchedIndustry: targetGroup.industry,
+            fallbackUsed,
+            selectionReason,
+            citySnapshot,
           };
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
@@ -243,10 +269,18 @@ function parseInviteApiResult(result: unknown): {
   return { accepted: true, code: null };
 }
 
-function resolveCandidates(cityGroups: GroupContext[], industry?: string): GroupContext[] {
-  if (!industry) return cityGroups;
+function resolveCandidates(
+  cityGroups: GroupContext[],
+  industry?: string,
+): { candidates: GroupContext[]; fallbackUsed: boolean } {
+  if (!industry) {
+    return { candidates: cityGroups, fallbackUsed: false };
+  }
   const industryGroups = cityGroups.filter((group) => group.industry === industry);
-  return industryGroups.length > 0 ? industryGroups : cityGroups;
+  if (industryGroups.length > 0) {
+    return { candidates: industryGroups, fallbackUsed: false };
+  }
+  return { candidates: cityGroups, fallbackUsed: true };
 }
 
 function pickAvailableGroup(
@@ -261,6 +295,27 @@ function pickAvailableGroup(
   return withCapacity.find(
     (group) => group.memberCount === undefined || group.memberCount < memberLimit,
   );
+}
+
+function buildCitySnapshot(cityGroups: GroupContext[], memberLimit: number): CitySnapshot {
+  const byIndustry = new Map<string, { groupCount: number; availableCount: number }>();
+
+  for (const group of cityGroups) {
+    const industry = group.industry ?? '未分类';
+    const entry = byIndustry.get(industry) ?? { groupCount: 0, availableCount: 0 };
+    entry.groupCount += 1;
+    const hasCapacity = group.memberCount === undefined || group.memberCount < memberLimit;
+    if (hasCapacity) entry.availableCount += 1;
+    byIndustry.set(industry, entry);
+  }
+
+  return {
+    totalGroups: cityGroups.length,
+    memberLimit,
+    byIndustry: Array.from(byIndustry.entries())
+      .map(([industry, stats]) => ({ industry, ...stats }))
+      .sort((left, right) => right.groupCount - left.groupCount),
+  };
 }
 
 async function sendGroupFullAlert(params: {

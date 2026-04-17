@@ -89,7 +89,7 @@ export default function MessageProcessingDetailDrawer({
   const statusTone = getStatusTone(message.status);
 
   const tokenValue =
-    message.tokenUsage !== undefined && message.tokenUsage !== 0
+    message.tokenUsage != null && message.tokenUsage !== 0
       ? message.tokenUsage.toLocaleString()
       : '-';
 

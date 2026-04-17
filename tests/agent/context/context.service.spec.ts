@@ -68,12 +68,25 @@ describe('ContextService', () => {
     getActiveConfig: jest.fn().mockResolvedValue(makeConfig()),
   };
 
+  const mockGroupResolver = {
+    resolveGroups: jest.fn().mockResolvedValue([]),
+  };
+
+  const mockConfigService = {
+    get: jest.fn((key: string, defaultValue?: string) => defaultValue),
+  };
+
   let service: ContextService;
 
   beforeEach(async () => {
     jest.clearAllMocks();
     mockStrategyConfigService.getActiveConfig.mockResolvedValue(makeConfig());
-    service = new ContextService(mockStrategyConfigService as never);
+    mockGroupResolver.resolveGroups.mockResolvedValue([]);
+    service = new ContextService(
+      mockStrategyConfigService as never,
+      mockGroupResolver as never,
+      mockConfigService as never,
+    );
     await service.onModuleInit();
   });
 
@@ -125,5 +138,86 @@ describe('ContextService', () => {
 
     expect(systemPrompt).not.toContain('\n---\n');
     expect(systemPrompt).not.toContain('<!--');
+  });
+
+  it('should inject group inventory block when sessionFacts carries a city', async () => {
+    mockGroupResolver.resolveGroups.mockResolvedValue([
+      {
+        imRoomId: 'r1',
+        groupName: '上海餐饮兼职①群',
+        city: '上海',
+        industry: '餐饮',
+        tag: '兼职群',
+        imBotId: 'bot',
+        token: 'tok',
+        memberCount: 156,
+      },
+      {
+        imRoomId: 'r2',
+        groupName: '上海零售兼职③群',
+        city: '上海',
+        industry: '零售',
+        tag: '兼职群',
+        imBotId: 'bot',
+        token: 'tok',
+        memberCount: 15,
+      },
+      {
+        imRoomId: 'r3',
+        groupName: '北京餐饮兼职群',
+        city: '北京',
+        industry: '餐饮',
+        tag: '兼职群',
+        imBotId: 'bot',
+        token: 'tok',
+        memberCount: 50,
+      },
+    ]);
+
+    const { systemPrompt } = await service.compose({
+      scenario: 'candidate-consultation',
+      strategySource: 'testing',
+      sessionFacts: {
+        interview_info: {
+          name: null,
+          phone: null,
+          gender: null,
+          age: null,
+          applied_store: null,
+          applied_position: null,
+          interview_time: null,
+          is_student: null,
+          education: null,
+          has_health_certificate: null,
+        },
+        preferences: {
+          brands: null,
+          salary: null,
+          position: null,
+          schedule: null,
+          city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
+          district: null,
+          location: null,
+          labor_form: null,
+        },
+        reasoning: '',
+      },
+    });
+
+    expect(systemPrompt).toContain('## 兼职群资源（上海）');
+    expect(systemPrompt).toContain('- 餐饮：1 个群');
+    expect(systemPrompt).toContain('- 零售：1 个群');
+    expect(systemPrompt).not.toContain('北京');
+    expect(systemPrompt).toContain('必须传对应 industry 参数');
+  });
+
+  it('should skip group inventory block when no city is known', async () => {
+    const { systemPrompt } = await service.compose({
+      scenario: 'candidate-consultation',
+      strategySource: 'testing',
+    });
+
+    expect(systemPrompt).not.toContain('## 兼职群资源');
+    expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
   });
 });

@@ -5,7 +5,14 @@
  * ContextService 按此顺序拼接各 section 的输出。
  */
 export const SCENARIO_SECTIONS: Record<string, string[]> = {
-  'candidate-consultation': ['identity', 'base-manual', 'policy', 'runtime-context', 'final-check'],
+  'candidate-consultation': [
+    'identity',
+    'base-manual',
+    'policy',
+    'runtime-context',
+    'group-inventory',
+    'final-check',
+  ],
   'group-operations': ['identity', 'datetime', 'channel'],
   evaluation: ['identity'],
 };
