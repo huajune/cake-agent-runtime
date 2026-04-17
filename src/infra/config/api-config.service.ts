@@ -114,6 +114,7 @@ export class ApiConfigService {
     // 客户相关（使用 v2 API）
     customer: {
       list: () => this.buildApiUrl('/customer/list', 'v2'),
+      detail: () => this.buildApiUrl('/customer/detail', 'enterprise-v2'),
     },
   };
 }

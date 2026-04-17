@@ -2,6 +2,24 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@infra/client-http/http.service';
 import { ApiConfigService } from '@infra/config/api-config.service';
 
+export interface CustomerDetailRequest {
+  token: string;
+  imBotId?: string;
+  imContactId?: string;
+  wecomUserId?: string;
+  externalUserId?: string;
+}
+
+export interface CustomerDetailResponse {
+  errcode?: number;
+  errmsg?: string;
+  data?: {
+    gender?: number | string | null;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
 /**
  * 客户管理服务
  * 专注于客户关系管理（CRM）功能
@@ -50,6 +68,47 @@ export class CustomerService {
       return result;
     } catch (error) {
       this.logger.error('获取客户列表 v2 失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 查询客户详情 v2（企业级）
+   *
+   * 优先使用系统定位信息（imBotId + imContactId），
+   * 若调用方同时提供企微侧标识（wecomUserId + externalUserId），也一并透传给上游做兜底匹配。
+   */
+  async getCustomerDetailV2(params: CustomerDetailRequest): Promise<CustomerDetailResponse> {
+    const { token, imBotId, imContactId, wecomUserId, externalUserId } = params;
+
+    try {
+      const apiUrl = `${this.apiConfig.endpoints.customer.detail()}?token=${encodeURIComponent(token)}`;
+      const body: Record<string, unknown> = {};
+
+      if (imBotId && imContactId) {
+        body.systemData = {
+          imBotId,
+          imContactId,
+        };
+      }
+
+      if (wecomUserId && externalUserId) {
+        body.wecomData = {
+          wecomUserId,
+          externalUserId,
+        };
+      }
+
+      if (Object.keys(body).length === 0) {
+        throw new Error('查询客户详情缺少定位参数');
+      }
+
+      const result = await this.httpService.post(apiUrl, body);
+
+      this.logger.log('查询客户详情 v2 成功');
+      return result as CustomerDetailResponse;
+    } catch (error) {
+      this.logger.error('查询客户详情 v2 失败:', error);
       throw error;
     }
   }

@@ -29,6 +29,7 @@ describe('AgentPreparationService', () => {
 
   const mockMemoryService = {
     onTurnStart: jest.fn(),
+    saveProfile: jest.fn(),
   };
 
   const mockMemoryConfig = {
@@ -53,6 +54,10 @@ describe('AgentPreparationService', () => {
   const mockInputGuard = {
     detectMessages: jest.fn().mockReturnValue({ safe: true }),
     alertInjection: jest.fn().mockResolvedValue(undefined),
+  };
+
+  const mockCustomerService = {
+    getCustomerDetailV2: jest.fn(),
   };
 
   let service: AgentPreparationService;
@@ -95,6 +100,7 @@ describe('AgentPreparationService', () => {
         reason: null,
       },
     });
+    mockMemoryService.saveProfile.mockResolvedValue(undefined);
     mockContext.compose.mockImplementation(async (params?: { memoryBlock?: string }) => ({
       systemPrompt: ['SYSTEM_PROMPT', params?.memoryBlock].filter(Boolean).join('\n\n'),
       stageGoals: {
@@ -108,6 +114,7 @@ describe('AgentPreparationService', () => {
       thresholds: [{ name: 'salary', max: 1 }],
     }));
     mockInputGuard.detectMessages.mockReturnValue({ safe: true });
+    mockCustomerService.getCustomerDetailV2.mockResolvedValue(null);
 
     service = new AgentPreparationService(
       mockConfigService as never,
@@ -117,6 +124,7 @@ describe('AgentPreparationService', () => {
       mockRecruitmentStageResolver as never,
       mockMemoryService as never,
       mockMemoryConfig as never,
+      mockCustomerService as never,
       mockContext as never,
       mockInputGuard as never,
     );
@@ -510,5 +518,62 @@ describe('AgentPreparationService', () => {
     );
 
     expect(result.memoryLoadWarning).toBe('shortTerm: Connection timeout');
+  });
+
+  it('should supplement gender from customer detail when memory has no gender', async () => {
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      shortTerm: {
+        messageWindow: [{ role: 'user', content: '帮我看看兼职' }],
+      },
+      sessionMemory: null,
+      highConfidenceFacts: null,
+      longTerm: { profile: null },
+      procedural: {
+        currentStage: 'trust_building',
+        fromStage: null,
+        advancedAt: null,
+        reason: null,
+      },
+    });
+    mockCustomerService.getCustomerDetailV2.mockResolvedValue({
+      errcode: 0,
+      errmsg: 'ok',
+      data: { gender: 1 },
+    });
+
+    await service.prepare(
+      {
+        userMessage: '帮我看看兼职',
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+        token: 'token-1',
+        botUserId: 'manager-1',
+        botImId: 'im-bot-1',
+        imContactId: 'im-contact-1',
+        externalUserId: 'external-user-1',
+      },
+      'invoke',
+    );
+
+    expect(mockCustomerService.getCustomerDetailV2).toHaveBeenCalledWith({
+      token: 'token-1',
+      imBotId: 'im-bot-1',
+      imContactId: 'im-contact-1',
+      wecomUserId: 'manager-1',
+      externalUserId: 'external-user-1',
+    });
+    expect(mockMemoryService.saveProfile).toHaveBeenCalledWith('corp-1', 'user-1', {
+      gender: '男',
+    });
+    expect(mockContext.compose).toHaveBeenCalledWith(
+      expect.objectContaining({
+        highConfidenceFacts: expect.objectContaining({
+          interview_info: expect.objectContaining({
+            gender: '男',
+          }),
+        }),
+      }),
+    );
   });
 });
