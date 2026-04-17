@@ -69,6 +69,7 @@ export class SystemConfigService {
         typeof config?.wecomCallbackModelId === 'string'
           ? config.wecomCallbackModelId.trim()
           : DEFAULT_AGENT_REPLY_CONFIG.wecomCallbackModelId,
+      wecomCallbackThinkingMode: config?.wecomCallbackThinkingMode === 'deep' ? 'deep' : 'fast',
       initialMergeWindowMs:
         typeof config?.initialMergeWindowMs === 'number'
           ? config.initialMergeWindowMs

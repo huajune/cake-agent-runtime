@@ -30,6 +30,7 @@ describe('MessageDeliveryService', () => {
 
   const mockWecomObservabilityService = {
     markDeliveryStart: jest.fn(),
+    markFirstSegmentSent: jest.fn(),
     markDeliveryEnd: jest.fn(),
   };
 
@@ -93,6 +94,7 @@ describe('MessageDeliveryService', () => {
       expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(1);
       expect(mockMonitoringService.recordSendStart).toHaveBeenCalledWith('msg-123');
       expect(mockMonitoringService.recordSendEnd).toHaveBeenCalledWith('msg-123');
+      expect(mockWecomObservabilityService.markFirstSegmentSent).toHaveBeenCalledWith('msg-123');
     });
 
     it('should split and send multiple messages when content contains double newlines', async () => {
@@ -106,6 +108,7 @@ describe('MessageDeliveryService', () => {
       expect(result.segmentCount).toBe(3);
       expect(result.deliveredSegments).toBe(3);
       expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(3);
+      expect(mockWecomObservabilityService.markFirstSegmentSent).toHaveBeenCalledTimes(1);
     });
 
     it('should skip monitoring when recordMonitoring=false', async () => {
@@ -113,6 +116,7 @@ describe('MessageDeliveryService', () => {
 
       expect(mockMonitoringService.recordSendStart).not.toHaveBeenCalled();
       expect(mockMonitoringService.recordSendEnd).not.toHaveBeenCalled();
+      expect(mockWecomObservabilityService.markFirstSegmentSent).toHaveBeenCalledWith('msg-123');
     });
 
     it('should throw DeliveryFailureError when single send fails', async () => {

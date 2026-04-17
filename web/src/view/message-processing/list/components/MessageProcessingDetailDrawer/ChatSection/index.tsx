@@ -16,43 +16,72 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1000000).toFixed(1)}M`;
 }
 
+function withFallback<T>(factory: () => T, fallback: T): T {
+  try {
+    return factory();
+  } catch (error) {
+    console.warn('[MessageProcessingDetailDrawer][ChatSection] payload render fallback', error);
+    return fallback;
+  }
+}
+
 interface ChatSectionProps {
   message: MessageRecord;
 }
 
 function stringifyPayload(data: unknown): string {
-  const serialized = JSON.stringify(data, null, 2);
-  if (serialized !== undefined) return serialized;
+  try {
+    const serialized = JSON.stringify(data, null, 2);
+    if (serialized !== undefined) return serialized;
+  } catch {
+    // 某些处理中记录可能包含暂时不可序列化的片段，降级为字符串避免整页崩溃。
+  }
+
+  if (typeof data === 'string') return data;
+  if (data === undefined) return 'undefined';
+  if (data === null) return 'null';
   return String(data);
 }
 
 function getPayloadSummary(data: unknown): string {
-  if (Array.isArray(data)) {
-    return `${data.length} 项 · ${formatSize(stringifyPayload(data).length)}`;
-  }
-  if (data && typeof data === 'object') {
-    return `${Object.keys(data as Record<string, unknown>).length} 个字段 · ${formatSize(
-      stringifyPayload(data).length,
-    )}`;
-  }
-  if (typeof data === 'string') {
-    return `${formatSize(data.length)}`;
-  }
-  return typeof data;
+  return withFallback(() => {
+    if (Array.isArray(data)) {
+      return `${data.length} 项 · ${formatSize(stringifyPayload(data).length)}`;
+    }
+    if (data && typeof data === 'object') {
+      return `${Object.keys(data as Record<string, unknown>).length} 个字段 · ${formatSize(
+        stringifyPayload(data).length,
+      )}`;
+    }
+    if (typeof data === 'string') {
+      return `${formatSize(data.length)}`;
+    }
+    return typeof data;
+  }, '暂无法预览');
 }
 
 export default function ChatSection({
   message,
 }: ChatSectionProps) {
   const [activePayloadKey, setActivePayloadKey] = useState<string>('request');
-  const toolCalls = useMemo(() => getToolCalls(message), [message]);
-  const historyMessages = useMemo(() => getHistoryMessages(message), [message]);
-  const rawPayloadPanels = useMemo(() => getRawPayloadPanels(message), [message]);
-  const fallbackSummary = useMemo(() => getFallbackSummary(message), [message]);
-  const renderableMessage = useMemo(() => getAssistantRenderableMessage(message), [message]);
+  const toolCalls = useMemo(() => withFallback(() => getToolCalls(message), []), [message]);
+  const historyMessages = useMemo(() => withFallback(() => getHistoryMessages(message), []), [message]);
+  const rawPayloadPanels = useMemo(
+    () => withFallback(() => getRawPayloadPanels(message), []),
+    [message],
+  );
+  const fallbackSummary = useMemo(
+    () => withFallback(() => getFallbackSummary(message), undefined),
+    [message],
+  );
+  const renderableMessage = useMemo(
+    () => withFallback(() => getAssistantRenderableMessage(message), undefined),
+    [message],
+  );
   const fallbackDeliveredSegments = fallbackSummary?.deliveredSegments;
   const activePanel =
     rawPayloadPanels.find((panel) => panel.key === activePayloadKey) ?? rawPayloadPanels[0];
+  const isProcessing = message.status === 'processing';
 
   const fallbackStatusText = message.fallbackSuccess === true ? '成功' : '失败';
 
@@ -113,7 +142,9 @@ export default function ChatSection({
                 expandReasoningByDefault={false}
               />
             ) : (
-              <div className={styles.emptyResponse}>暂无可渲染的响应内容</div>
+              <div className={styles.emptyResponse}>
+                {isProcessing ? '请求仍在处理中，尚未生成可渲染的响应内容' : '暂无可渲染的响应内容'}
+              </div>
             )}
           </div>
         </div>
@@ -158,7 +189,7 @@ export default function ChatSection({
             <div className={styles.errorContent}>
               {typeof message.error === 'string'
                 ? message.error
-                : JSON.stringify(message.error, null, 2)}
+                : stringifyPayload(message.error)}
             </div>
           </div>
         )}

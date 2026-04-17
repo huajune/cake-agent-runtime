@@ -112,6 +112,25 @@ export interface DailyStats {
   avgDuration: number;
 }
 
+export interface DailyProjectionStats {
+  date: string;
+  messageCount: number;
+  successCount: number;
+  failureCount: number;
+  timeoutCount: number;
+  successRate: number;
+  avgDuration: number;
+  tokenUsage: number;
+  uniqueUsers: number;
+  uniqueChats: number;
+  fallbackCount: number;
+  fallbackSuccessCount: number;
+  fallbackAffectedUsers: number;
+  avgQueueDuration: number;
+  avgPrepDuration: number;
+  errorTypeStats: Record<string, number>;
+}
+
 export interface TodayUser {
   odId: string;
   odName: string;
@@ -134,6 +153,7 @@ export interface HourlyStats {
   messageCount: number;
   successCount: number;
   failureCount: number;
+  timeoutCount: number;
   successRate: number;
   avgDuration: number;
   minDuration: number;
@@ -141,6 +161,8 @@ export interface HourlyStats {
   p50Duration: number;
   p95Duration: number;
   p99Duration: number;
+  avgQueueDuration: number;
+  avgPrepDuration: number;
   avgAiDuration: number;
   avgSendDuration: number;
   activeUsers: number;
@@ -148,6 +170,7 @@ export interface HourlyStats {
   totalTokenUsage: number;
   fallbackCount: number;
   fallbackSuccessCount: number;
+  errorTypeStats: Record<string, number>;
   scenarioStats: Record<string, { count: number; successCount: number; avgDuration: number }>;
   toolStats: Record<string, number>;
 }

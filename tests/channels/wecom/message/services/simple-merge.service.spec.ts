@@ -5,6 +5,7 @@ import { RedisService } from '@infra/redis/redis.service';
 import { EnterpriseMessageCallbackDto } from '@wecom/message/ingress/message-callback.dto';
 import { MessageType, ContactType, MessageSource } from '@enums/message-callback.enum';
 import { MessageRuntimeConfigService } from '@wecom/message/runtime/message-runtime-config.service';
+import { WecomMessageObservabilityService } from '@wecom/message/telemetry/wecom-message-observability.service';
 
 describe('SimpleMergeService', () => {
   let service: SimpleMergeService;
@@ -29,6 +30,10 @@ describe('SimpleMergeService', () => {
     syncSnapshot: jest.fn().mockResolvedValue(undefined),
   };
 
+  const mockWecomObservability = {
+    markQueueAdd: jest.fn().mockResolvedValue(undefined),
+  };
+
   const validMessageData: EnterpriseMessageCallbackDto = {
     orgId: 'org-123',
     token: 'token-123',
@@ -50,6 +55,7 @@ describe('SimpleMergeService', () => {
         SimpleMergeService,
         { provide: RedisService, useValue: mockRedisService },
         { provide: MessageRuntimeConfigService, useValue: mockRuntimeConfigService },
+        { provide: WecomMessageObservabilityService, useValue: mockWecomObservability },
         {
           provide: getQueueToken('message-merge'),
           useValue: mockMessageQueue,

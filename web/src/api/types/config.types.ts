@@ -1,3 +1,5 @@
+export type AgentReplyThinkingMode = 'fast' | 'deep';
+
 export interface BlacklistItem {
   groupId: string;
   reason?: string;
@@ -12,6 +14,7 @@ export interface BlacklistData {
 export interface AgentReplyConfig {
   // 模型配置
   wecomCallbackModelId: string;
+  wecomCallbackThinkingMode: AgentReplyThinkingMode;
 
   // 消息聚合配置
   initialMergeWindowMs: number;

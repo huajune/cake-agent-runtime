@@ -73,6 +73,7 @@ export class MessageProcessingRepository extends BaseRepository {
         'reply_segments',
         'status',
         'error',
+        'alert_type',
         'scenario',
         'total_duration',
         'queue_duration',
@@ -139,6 +140,7 @@ export class MessageProcessingRepository extends BaseRepository {
         'reply_segments',
         'status',
         'error',
+        'alert_type',
         'scenario',
         'total_duration',
         'queue_duration',
@@ -220,9 +222,15 @@ export class MessageProcessingRepository extends BaseRepository {
   async getMessageStats(
     startTime: number,
     endTime: number,
-  ): Promise<{ total: number; success: number; failed: number; avgDuration: number }> {
+  ): Promise<{
+    total: number;
+    success: number;
+    failed: number;
+    avgDuration: number;
+    avgTtft: number;
+  }> {
     if (!this.isAvailable()) {
-      return { total: 0, success: 0, failed: 0, avgDuration: 0 };
+      return { total: 0, success: 0, failed: 0, avgDuration: 0, avgTtft: 0 };
     }
 
     try {
@@ -232,6 +240,7 @@ export class MessageProcessingRepository extends BaseRepository {
           success_count: string | number;
           failure_count: string | number;
           avg_duration: string | number;
+          avg_ttft?: string | number | null;
         }>
       >('get_dashboard_overview_stats', {
         p_start_date: new Date(startTime).toISOString(),
@@ -240,7 +249,7 @@ export class MessageProcessingRepository extends BaseRepository {
 
       const row = result?.[0];
       if (!row) {
-        return { total: 0, success: 0, failed: 0, avgDuration: 0 };
+        return { total: 0, success: 0, failed: 0, avgDuration: 0, avgTtft: 0 };
       }
 
       return {
@@ -248,10 +257,11 @@ export class MessageProcessingRepository extends BaseRepository {
         success: Number(row.success_count) || 0,
         failed: Number(row.failure_count) || 0,
         avgDuration: Math.round(Number(row.avg_duration) || 0),
+        avgTtft: Math.round(Number(row.avg_ttft) || 0),
       };
     } catch (error) {
       this.logger.error('获取消息统计失败:', error);
-      return { total: 0, success: 0, failed: 0, avgDuration: 0 };
+      return { total: 0, success: 0, failed: 0, avgDuration: 0, avgTtft: 0 };
     }
   }
 
@@ -382,6 +392,7 @@ export class MessageProcessingRepository extends BaseRepository {
         'message_preview',
         'reply_preview',
         'status',
+        'alert_type',
         'ai_duration',
         'total_duration',
         'scenario',
@@ -504,6 +515,7 @@ export class MessageProcessingRepository extends BaseRepository {
     updates: {
       status: 'success' | 'failure';
       error?: string;
+      alertType?: MessageProcessingRecordInput['alertType'];
       scenario?: string;
       tokenUsage?: number;
       replyPreview?: string;
@@ -520,6 +532,7 @@ export class MessageProcessingRepository extends BaseRepository {
     try {
       const dbUpdates: Record<string, unknown> = { status: updates.status };
       if (updates.error !== undefined) dbUpdates.error = updates.error;
+      if (updates.alertType !== undefined) dbUpdates.alert_type = updates.alertType;
       if (updates.scenario !== undefined) dbUpdates.scenario = updates.scenario;
       if (updates.tokenUsage !== undefined) dbUpdates.token_usage = updates.tokenUsage;
       if (updates.replyPreview !== undefined) dbUpdates.reply_preview = updates.replyPreview;
@@ -574,6 +587,7 @@ export class MessageProcessingRepository extends BaseRepository {
       reply_segments: record.replySegments,
       status: record.status,
       error: record.error,
+      alert_type: record.alertType,
       scenario: record.scenario,
       total_duration: record.totalDuration,
       queue_duration: record.queueDuration,
@@ -609,6 +623,7 @@ export class MessageProcessingRepository extends BaseRepository {
       replySegments: record.reply_segments,
       status: record.status as 'processing' | 'success' | 'failure' | 'timeout',
       error: record.error,
+      alertType: record.alert_type as MessageProcessingRecordInput['alertType'],
       scenario: record.scenario,
       totalDuration: record.total_duration,
       queueDuration: record.queue_duration,

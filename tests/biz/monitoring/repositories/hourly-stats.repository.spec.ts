@@ -35,6 +35,7 @@ const sampleStats: HourlyStatsRecord = {
   messageCount: 42,
   successCount: 40,
   failureCount: 2,
+  timeoutCount: 0,
   successRate: 0.952,
   avgDuration: 1200,
   minDuration: 800,
@@ -42,6 +43,8 @@ const sampleStats: HourlyStatsRecord = {
   p50Duration: 1100,
   p95Duration: 2500,
   p99Duration: 2900,
+  avgQueueDuration: 300,
+  avgPrepDuration: 200,
   avgAiDuration: 1000,
   avgSendDuration: 200,
   activeUsers: 15,
@@ -49,6 +52,7 @@ const sampleStats: HourlyStatsRecord = {
   totalTokenUsage: 5000,
   fallbackCount: 1,
   fallbackSuccessCount: 1,
+  errorTypeStats: { agent: 1 },
   scenarioStats: { interview: { count: 30, successCount: 28, avgDuration: 1100 } },
   toolStats: { search: 10, calendar: 5 },
 };
@@ -125,6 +129,7 @@ describe('MonitoringHourlyStatsRepository', () => {
         totalTokenUsage: undefined,
         fallbackCount: undefined,
         fallbackSuccessCount: undefined,
+        errorTypeStats: undefined,
         scenarioStats: undefined,
         toolStats: undefined,
       };

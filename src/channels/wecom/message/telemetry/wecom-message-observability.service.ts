@@ -54,10 +54,12 @@ interface WecomTraceTimings {
   acceptedAt: number;
   historyStoredAt?: number;
   imagePreparedAt?: number;
+  queueAddAt?: number;
   workerStartAt?: number;
   aiStartAt?: number;
   aiEndAt?: number;
   deliveryStartAt?: number;
+  firstSegmentSentAt?: number;
   deliveryEndAt?: number;
   fallbackStartAt?: number;
   fallbackEndAt?: number;
@@ -195,12 +197,64 @@ export class WecomMessageObservabilityService {
     await this.traceStore.set(messageId, trace);
   }
 
+  async markQueueAdd(messageId: string): Promise<void> {
+    const trace = await this.traceStore.get<WecomTraceContext>(messageId);
+    if (!trace || trace.timings.queueAddAt) return;
+    trace.timings.queueAddAt = Date.now();
+    await this.traceStore.set(messageId, trace);
+  }
+
   async markWorkerStart(messageId: string): Promise<void> {
     const trace = await this.traceStore.get<WecomTraceContext>(messageId);
     if (!trace || trace.timings.workerStartAt) return;
     trace.timings.workerStartAt = Date.now();
     await this.traceStore.set(messageId, trace);
     this.trackingService.recordWorkerStart(messageId);
+  }
+
+  /**
+   * 合并多条源消息 trace 的前置埋点到目标 trace（常用于 batch 场景）
+   * - historyStoredAt 取最大值（批内最后一条完成写历史的时间）
+   * - imagePreparedAt 取最大值
+   * - queueAddAt 取最大值（最后入队那次）
+   */
+  async mergePrepTimingsFromSources(
+    targetTraceId: string,
+    sourceMessageIds: string[],
+  ): Promise<void> {
+    if (!sourceMessageIds.length) return;
+    const target = await this.traceStore.get<WecomTraceContext>(targetTraceId);
+    if (!target) return;
+
+    const sources = await Promise.all(
+      sourceMessageIds.map((id) => this.traceStore.get<WecomTraceContext>(id)),
+    );
+
+    const maxOf = (
+      field: 'historyStoredAt' | 'imagePreparedAt' | 'queueAddAt',
+    ): number | undefined => {
+      const values = sources
+        .map((trace) => trace?.timings[field])
+        .filter((value): value is number => Number.isFinite(value ?? NaN));
+      return values.length ? Math.max(...values) : undefined;
+    };
+
+    const historyStoredAt = maxOf('historyStoredAt');
+    const imagePreparedAt = maxOf('imagePreparedAt');
+    const queueAddAt = maxOf('queueAddAt');
+
+    if (historyStoredAt !== undefined) target.timings.historyStoredAt = historyStoredAt;
+    if (imagePreparedAt !== undefined) target.timings.imagePreparedAt = imagePreparedAt;
+    if (queueAddAt !== undefined) target.timings.queueAddAt = queueAddAt;
+
+    await this.traceStore.set(targetTraceId, target);
+
+    // 源 trace 已贡献完前置埋点，清理掉避免 Redis 积压
+    await Promise.all(
+      sourceMessageIds
+        .filter((id) => id !== targetTraceId)
+        .map((id) => this.traceStore.delete(id).catch(() => undefined)),
+    );
   }
 
   async markAiStart(messageId: string): Promise<void> {
@@ -237,6 +291,13 @@ export class WecomMessageObservabilityService {
     const trace = await this.traceStore.get<WecomTraceContext>(messageId);
     if (!trace || trace.timings.deliveryStartAt) return;
     trace.timings.deliveryStartAt = Date.now();
+    await this.traceStore.set(messageId, trace);
+  }
+
+  async markFirstSegmentSent(messageId: string): Promise<void> {
+    const trace = await this.traceStore.get<WecomTraceContext>(messageId);
+    if (!trace || trace.timings.firstSegmentSentAt) return;
+    trace.timings.firstSegmentSentAt = Date.now();
     await this.traceStore.set(messageId, trace);
   }
 
@@ -324,6 +385,7 @@ export class WecomMessageObservabilityService {
                 reasoning: agentResult?.reply.reasoning,
                 usage: agentResult?.reply.usage,
               },
+              messages: agentResult?.responseMessages,
               toolCalls: agentResult?.toolCalls,
               delivery: trace.deliveryResult,
               fallback: trace.fallbackDelivery,
@@ -393,6 +455,7 @@ export class WecomMessageObservabilityService {
                 reasoning: agentResult?.reply.reasoning,
                 usage: agentResult?.reply.usage,
               },
+              messages: agentResult?.responseMessages,
               toolCalls: agentResult?.toolCalls,
               delivery: trace.deliveryResult,
               fallback: trace.fallbackDelivery,
@@ -437,12 +500,23 @@ export class WecomMessageObservabilityService {
       ...trace.timings,
       completedAt,
     };
+    const acceptedToFirstSegmentSentMs = this.diff(timings.firstSegmentSentAt, timings.acceptedAt);
     const acceptedToWorkerStartMs = this.diff(timings.workerStartAt, timings.acceptedAt);
     const quietWindowWaitMs = this.computeQuietWindowWaitMs(
       trace.request.quietWindowEligibleAt,
       timings.acceptedAt,
       timings.workerStartAt,
     );
+    const acceptedToQueueAddMs = this.diff(timings.queueAddAt, timings.acceptedAt);
+    const queueAddToWorkerStartMs = this.diff(timings.workerStartAt, timings.queueAddAt);
+    const prepMs = acceptedToQueueAddMs;
+    const queueMs =
+      queueAddToWorkerStartMs !== undefined && quietWindowWaitMs !== undefined
+        ? Math.max(
+            queueAddToWorkerStartMs - Math.max(quietWindowWaitMs - (acceptedToQueueAddMs ?? 0), 0),
+            0,
+          )
+        : queueAddToWorkerStartMs;
     const queueWaitMs =
       acceptedToWorkerStartMs !== undefined
         ? Math.max(acceptedToWorkerStartMs - (quietWindowWaitMs ?? 0), 0)
@@ -453,16 +527,22 @@ export class WecomMessageObservabilityService {
       durations: {
         acceptedToHistoryStoredMs: this.diff(timings.historyStoredAt, timings.acceptedAt),
         acceptedToImagePreparedMs: this.diff(timings.imagePreparedAt, timings.acceptedAt),
+        acceptedToQueueAddMs,
+        queueAddToWorkerStartMs,
         acceptedToWorkerStartMs,
         quietWindowWaitMs,
+        prepMs,
+        queueMs,
         queueWaitMs,
         acceptedToAiStartMs: this.diff(timings.aiStartAt, timings.acceptedAt),
         acceptedToAiEndMs: this.diff(timings.aiEndAt, timings.acceptedAt),
+        acceptedToFirstSegmentSentMs,
         acceptedToDeliveryStartMs: this.diff(timings.deliveryStartAt, timings.acceptedAt),
         acceptedToDeliveryEndMs: this.diff(timings.deliveryEndAt, timings.acceptedAt),
         workerStartToAiStartMs: this.diff(timings.aiStartAt, timings.workerStartAt),
         aiStartToAiEndMs: this.diff(timings.aiEndAt, timings.aiStartAt),
         aiEndToDeliveryStartMs: this.diff(timings.deliveryStartAt, timings.aiEndAt),
+        requestToFirstTextDeltaMs: acceptedToFirstSegmentSentMs,
         deliveryDurationMs: this.diff(timings.deliveryEndAt, timings.deliveryStartAt),
         fallbackDurationMs: this.diff(timings.fallbackEndAt, timings.fallbackStartAt),
         totalMs: this.diff(completedAt, timings.acceptedAt) ?? 0,

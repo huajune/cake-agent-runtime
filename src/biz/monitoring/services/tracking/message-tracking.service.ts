@@ -323,6 +323,7 @@ export class MessageTrackingService {
         params.existingRecord?.replySegments,
       status: params.status,
       error: params.error ?? this.asString(response?.error) ?? params.existingRecord?.error,
+      alertType: params.metadata?.alertType ?? params.existingRecord?.alertType,
       scenario:
         params.metadata?.scenario ??
         this.asString(request?.scenario) ??

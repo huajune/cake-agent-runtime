@@ -13,6 +13,9 @@ describe('MessageRuntimeConfigService', () => {
       if (key === 'AGENT_CHAT_MODEL') {
         return 'gpt-env-default';
       }
+      if (key === 'AGENT_THINKING_BUDGET_TOKENS') {
+        return '0';
+      }
       return defaultValue;
     }),
   };
@@ -24,9 +27,11 @@ describe('MessageRuntimeConfigService', () => {
     onMessageMergeChange: jest.fn((callback: (enabled: boolean) => void) => {
       configCallbacks.messageMerge = callback;
     }),
-    onAgentReplyConfigChange: jest.fn((callback: (config: typeof DEFAULT_AGENT_REPLY_CONFIG) => void) => {
-      configCallbacks.agentReply = callback;
-    }),
+    onAgentReplyConfigChange: jest.fn(
+      (callback: (config: typeof DEFAULT_AGENT_REPLY_CONFIG) => void) => {
+        configCallbacks.agentReply = callback;
+      },
+    ),
     getAiReplyEnabled: jest.fn(),
     getMessageMergeEnabled: jest.fn(),
     getAgentReplyConfig: jest.fn(),
@@ -48,6 +53,7 @@ describe('MessageRuntimeConfigService', () => {
     systemConfigService.getAgentReplyConfig.mockResolvedValue({
       ...DEFAULT_AGENT_REPLY_CONFIG,
       wecomCallbackModelId: 'gpt-runtime',
+      wecomCallbackThinkingMode: 'deep',
       initialMergeWindowMs: 4500,
       typingSpeedCharsPerSec: 12,
       paragraphGapMs: 1500,
@@ -70,6 +76,7 @@ describe('MessageRuntimeConfigService', () => {
     configCallbacks.agentReply?.({
       ...DEFAULT_AGENT_REPLY_CONFIG,
       initialMergeWindowMs: 5200,
+      wecomCallbackThinkingMode: 'deep',
       typingSpeedCharsPerSec: 9,
       paragraphGapMs: 800,
     });
@@ -92,16 +99,27 @@ describe('MessageRuntimeConfigService', () => {
     await expect(service.resolveWecomChatModelSelection()).resolves.toEqual({
       overrideModelId: 'gpt-runtime',
       effectiveModelId: 'gpt-runtime',
+      thinkingMode: 'fast',
+      thinking: {
+        type: 'disabled',
+        budgetTokens: 0,
+      },
     });
 
     systemConfigService.getAgentReplyConfig.mockResolvedValueOnce({
       ...DEFAULT_AGENT_REPLY_CONFIG,
       wecomCallbackModelId: '',
+      wecomCallbackThinkingMode: 'deep',
     });
 
     await expect(service.resolveWecomChatModelSelection()).resolves.toEqual({
       overrideModelId: undefined,
       effectiveModelId: 'gpt-env-default',
+      thinkingMode: 'deep',
+      thinking: {
+        type: 'enabled',
+        budgetTokens: 4000,
+      },
     });
   });
 });

@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AnalyticsMaintenanceService } from '@biz/monitoring/services/maintenance/analytics-maintenance.service';
 import { MonitoringCacheService } from '@biz/monitoring/services/tracking/monitoring-cache.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
+import { MonitoringDailyStatsRepository } from '@biz/monitoring/repositories/daily-stats.repository';
 import { MonitoringHourlyStatsRepository } from '@biz/monitoring/repositories/hourly-stats.repository';
 import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error-log.repository';
 import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.repository';
@@ -20,6 +21,7 @@ const buildHourlyStatsRow = (hour: Date) => ({
   messageCount: 0,
   successCount: 0,
   failureCount: 0,
+  timeoutCount: 0,
   successRate: 0,
   avgDuration: 0,
   minDuration: 0,
@@ -27,6 +29,8 @@ const buildHourlyStatsRow = (hour: Date) => ({
   p50Duration: 0,
   p95Duration: 0,
   p99Duration: 0,
+  avgQueueDuration: 0,
+  avgPrepDuration: 0,
   avgAiDuration: 0,
   avgSendDuration: 0,
   activeUsers: 0,
@@ -34,13 +38,42 @@ const buildHourlyStatsRow = (hour: Date) => ({
   totalTokenUsage: 0,
   fallbackCount: 0,
   fallbackSuccessCount: 0,
+  errorTypeStats: {},
   scenarioStats: {},
   toolStats: {},
+});
+
+const buildHourlyAggregate = (overrides = {}) => ({
+  messageCount: 0,
+  successCount: 0,
+  failureCount: 0,
+  timeoutCount: 0,
+  successRate: 0,
+  avgDuration: 0,
+  minDuration: 0,
+  maxDuration: 0,
+  p50Duration: 0,
+  p95Duration: 0,
+  p99Duration: 0,
+  avgQueueDuration: 0,
+  avgPrepDuration: 0,
+  avgAiDuration: 0,
+  avgSendDuration: 0,
+  activeUsers: 0,
+  activeChats: 0,
+  totalTokenUsage: 0,
+  fallbackCount: 0,
+  fallbackSuccessCount: 0,
+  errorTypeStats: {},
+  scenarioStats: {},
+  toolStats: {},
+  ...overrides,
 });
 
 describe('AnalyticsMaintenanceService', () => {
   let service: AnalyticsMaintenanceService;
   let messageProcessingRepository: jest.Mocked<MessageProcessingService>;
+  let dailyStatsRepository: jest.Mocked<MonitoringDailyStatsRepository>;
   let hourlyStatsRepository: jest.Mocked<MonitoringHourlyStatsRepository>;
   let errorLogRepository: jest.Mocked<MonitoringErrorLogRepository>;
   let cacheService: jest.Mocked<MonitoringCacheService>;
@@ -57,6 +90,12 @@ describe('AnalyticsMaintenanceService', () => {
     saveHourlyStats: jest.fn(),
   };
 
+  const mockDailyStatsRepository = {
+    clearAllRecords: jest.fn(),
+    getLatestDailyStat: jest.fn(),
+    saveDailyStats: jest.fn(),
+  };
+
   const mockErrorLogRepository = {
     clearAllRecords: jest.fn(),
   };
@@ -68,6 +107,7 @@ describe('AnalyticsMaintenanceService', () => {
 
   const mockMonitoringRecordRepository = {
     aggregateHourlyStats: jest.fn(),
+    aggregateDailyStats: jest.fn(),
   };
 
   const mockIncidentReporterService = {
@@ -81,6 +121,10 @@ describe('AnalyticsMaintenanceService', () => {
         {
           provide: MessageProcessingService,
           useValue: mockMessageProcessingRepository,
+        },
+        {
+          provide: MonitoringDailyStatsRepository,
+          useValue: mockDailyStatsRepository,
         },
         {
           provide: MonitoringHourlyStatsRepository,
@@ -107,6 +151,7 @@ describe('AnalyticsMaintenanceService', () => {
 
     service = module.get<AnalyticsMaintenanceService>(AnalyticsMaintenanceService);
     messageProcessingRepository = module.get(MessageProcessingService);
+    dailyStatsRepository = module.get(MonitoringDailyStatsRepository);
     hourlyStatsRepository = module.get(MonitoringHourlyStatsRepository);
     errorLogRepository = module.get(MonitoringErrorLogRepository);
     cacheService = module.get(MonitoringCacheService);
@@ -116,6 +161,9 @@ describe('AnalyticsMaintenanceService', () => {
     jest.clearAllMocks();
 
     mockMessageProcessingRepository.clearAllRecords.mockResolvedValue(undefined);
+    mockDailyStatsRepository.clearAllRecords.mockResolvedValue(undefined);
+    mockDailyStatsRepository.getLatestDailyStat.mockResolvedValue({ date: '2026-04-12' });
+    mockDailyStatsRepository.saveDailyStats.mockResolvedValue(undefined);
     mockHourlyStatsRepository.clearAllRecords.mockResolvedValue(undefined);
     const lastCompletedHour = new Date(getHourStart(new Date()).getTime() - HOUR_MS);
     mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
@@ -141,6 +189,7 @@ describe('AnalyticsMaintenanceService', () => {
       await service.clearAllDataAsync();
 
       expect(messageProcessingRepository.clearAllRecords).toHaveBeenCalledTimes(1);
+      expect(dailyStatsRepository.clearAllRecords).toHaveBeenCalledTimes(1);
       expect(hourlyStatsRepository.clearAllRecords).toHaveBeenCalledTimes(1);
       expect(errorLogRepository.clearAllRecords).toHaveBeenCalledTimes(1);
       expect(cacheService.clearAll).toHaveBeenCalledTimes(1);
@@ -221,7 +270,7 @@ describe('AnalyticsMaintenanceService', () => {
     });
 
     it('should aggregate last hour stats and save to repository', async () => {
-      const mockAggregated = {
+      const mockAggregated = buildHourlyAggregate({
         messageCount: 50,
         successCount: 45,
         failureCount: 5,
@@ -232,6 +281,8 @@ describe('AnalyticsMaintenanceService', () => {
         p50Duration: 4000,
         p95Duration: 20000,
         p99Duration: 28000,
+        avgQueueDuration: 1200,
+        avgPrepDuration: 800,
         avgAiDuration: 3000,
         avgSendDuration: 1500,
         activeUsers: 10,
@@ -239,9 +290,10 @@ describe('AnalyticsMaintenanceService', () => {
         totalTokenUsage: 2500,
         fallbackCount: 2,
         fallbackSuccessCount: 1,
+        errorTypeStats: { agent: 1 },
         scenarioStats: { job_consulting: { count: 30, successCount: 28, avgDuration: 5000 } },
         toolStats: { booking: 5 },
-      };
+      });
       const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
       mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
         buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - HOUR_MS)),
@@ -259,19 +311,23 @@ describe('AnalyticsMaintenanceService', () => {
           messageCount: 50,
           successCount: 45,
           failureCount: 5,
+          timeoutCount: 0,
           successRate: 90,
           avgDuration: 5000,
+          avgQueueDuration: 1200,
+          avgPrepDuration: 800,
           activeUsers: 10,
           activeChats: 8,
           totalTokenUsage: 2500,
           fallbackCount: 2,
           fallbackSuccessCount: 1,
+          errorTypeStats: { agent: 1 },
         }),
       );
     });
 
     it('should include ISO hour key in saved stats', async () => {
-      const mockAggregated = {
+      const mockAggregated = buildHourlyAggregate({
         messageCount: 10,
         successCount: 9,
         failureCount: 1,
@@ -289,9 +345,7 @@ describe('AnalyticsMaintenanceService', () => {
         totalTokenUsage: 1000,
         fallbackCount: 0,
         fallbackSuccessCount: 0,
-        scenarioStats: {},
-        toolStats: {},
-      };
+      });
       const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
       mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
         buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - HOUR_MS)),
@@ -313,25 +367,7 @@ describe('AnalyticsMaintenanceService', () => {
         buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - HOUR_MS)),
       );
       mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue({
-        messageCount: 0,
-        successCount: 0,
-        failureCount: 0,
-        successRate: 0,
-        avgDuration: 0,
-        minDuration: 0,
-        maxDuration: 0,
-        p50Duration: 0,
-        p95Duration: 0,
-        p99Duration: 0,
-        avgAiDuration: 0,
-        avgSendDuration: 0,
-        activeUsers: 0,
-        activeChats: 0,
-        totalTokenUsage: 0,
-        fallbackCount: 0,
-        fallbackSuccessCount: 0,
-        scenarioStats: {},
-        toolStats: {},
+        ...buildHourlyAggregate(),
       });
 
       await service.aggregateHourlyStats();
@@ -375,7 +411,7 @@ describe('AnalyticsMaintenanceService', () => {
     });
 
     it('should aggregate the correct time range (last full hour)', async () => {
-      const mockAggregated = {
+      const mockAggregated = buildHourlyAggregate({
         messageCount: 20,
         successCount: 18,
         failureCount: 2,
@@ -393,9 +429,7 @@ describe('AnalyticsMaintenanceService', () => {
         totalTokenUsage: 1500,
         fallbackCount: 1,
         fallbackSuccessCount: 1,
-        scenarioStats: {},
-        toolStats: {},
-      };
+      });
       const lastCompletedHour = new Date('2026-04-13T14:00:00.000Z');
       mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
         buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - HOUR_MS)),
@@ -423,7 +457,7 @@ describe('AnalyticsMaintenanceService', () => {
       mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
         buildHourlyStatsRow(new Date(lastCompletedHour.getTime() - 2 * HOUR_MS)),
       );
-      mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue({
+      mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue(buildHourlyAggregate({
         messageCount: 20,
         successCount: 18,
         failureCount: 2,
@@ -441,9 +475,7 @@ describe('AnalyticsMaintenanceService', () => {
         totalTokenUsage: 1500,
         fallbackCount: 1,
         fallbackSuccessCount: 1,
-        scenarioStats: {},
-        toolStats: {},
-      });
+      }));
 
       await service.aggregateHourlyStats();
 
@@ -465,27 +497,7 @@ describe('AnalyticsMaintenanceService', () => {
       mockHourlyStatsRepository.getLatestHourlyStat.mockResolvedValue(
         buildHourlyStatsRow(new Date('2026-04-12T10:00:00.000Z')),
       );
-      mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue({
-        messageCount: 0,
-        successCount: 0,
-        failureCount: 0,
-        successRate: 0,
-        avgDuration: 0,
-        minDuration: 0,
-        maxDuration: 0,
-        p50Duration: 0,
-        p95Duration: 0,
-        p99Duration: 0,
-        avgAiDuration: 0,
-        avgSendDuration: 0,
-        activeUsers: 0,
-        activeChats: 0,
-        totalTokenUsage: 0,
-        fallbackCount: 0,
-        fallbackSuccessCount: 0,
-        scenarioStats: {},
-        toolStats: {},
-      });
+      mockMonitoringRecordRepository.aggregateHourlyStats.mockResolvedValue(buildHourlyAggregate());
 
       await service.aggregateHourlyStats();
 
@@ -521,6 +533,55 @@ describe('AnalyticsMaintenanceService', () => {
           source: expect.objectContaining({
             trigger: 'startup',
           }),
+        }),
+      );
+    });
+  });
+
+  describe('aggregateDailyStats', () => {
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-04-16T02:00:00.000Z'));
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('should aggregate the latest completed day and save to daily repository', async () => {
+      mockDailyStatsRepository.getLatestDailyStat.mockResolvedValue({ date: '2026-04-14' });
+      mockMonitoringRecordRepository.aggregateDailyStats.mockResolvedValue({
+        messageCount: 80,
+        successCount: 72,
+        failureCount: 8,
+        timeoutCount: 2,
+        successRate: 90,
+        avgDuration: 4200,
+        tokenUsage: 3600,
+        uniqueUsers: 18,
+        uniqueChats: 14,
+        fallbackCount: 3,
+        fallbackSuccessCount: 2,
+        fallbackAffectedUsers: 2,
+        avgQueueDuration: 900,
+        avgPrepDuration: 500,
+        errorTypeStats: { delivery: 1, timeout: 2 },
+      });
+
+      await service.aggregateDailyStats();
+
+      expect(monitoringRepository.aggregateDailyStats).toHaveBeenCalledWith(
+        expect.any(Date),
+        expect.any(Date),
+      );
+      expect(dailyStatsRepository.saveDailyStats).toHaveBeenCalledWith(
+        expect.objectContaining({
+          date: '2026-04-15',
+          messageCount: 80,
+          successCount: 72,
+          timeoutCount: 2,
+          uniqueUsers: 18,
+          fallbackAffectedUsers: 2,
+          errorTypeStats: { delivery: 1, timeout: 2 },
         }),
       );
     });

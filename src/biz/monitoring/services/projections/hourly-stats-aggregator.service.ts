@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { formatLocalDate } from '@infra/utils/date.util';
 import { MonitoringHourlyStatsRepository } from '../../repositories/hourly-stats.repository';
+import { MonitoringRecordRepository } from '../../repositories/record.repository';
 import {
   DashboardOverviewStats,
   DashboardFallbackStats,
@@ -19,25 +19,22 @@ import { HourlyStats } from '../../types/analytics.types';
 export class HourlyStatsAggregatorService {
   private readonly logger = new Logger(HourlyStatsAggregatorService.name);
 
-  constructor(private readonly hourlyStatsRepository: MonitoringHourlyStatsRepository) {}
+  constructor(
+    private readonly hourlyStatsRepository: MonitoringHourlyStatsRepository,
+    private readonly monitoringRepository: MonitoringRecordRepository,
+  ) {}
 
   /**
    * 从小时统计聚合概览数据
    */
   async getOverviewFromHourly(startDate: Date, endDate: Date): Promise<DashboardOverviewStats> {
-    const rows = await this.hourlyStatsRepository.getHourlyStatsByDateRange(startDate, endDate);
+    const [rows, exactOverview] = await Promise.all([
+      this.hourlyStatsRepository.getHourlyStatsByDateRange(startDate, endDate),
+      this.monitoringRepository.getDashboardOverviewStats(startDate, endDate),
+    ]);
 
     if (rows.length === 0) {
-      return {
-        totalMessages: 0,
-        successCount: 0,
-        failureCount: 0,
-        successRate: 0,
-        avgDuration: 0,
-        activeUsers: 0,
-        activeChats: 0,
-        totalTokenUsage: 0,
-      };
+      return exactOverview;
     }
 
     const totalMessages = this.sumField(rows, 'messageCount');
@@ -45,8 +42,8 @@ export class HourlyStatsAggregatorService {
     const failureCount = this.sumField(rows, 'failureCount');
     const successRate = totalMessages > 0 ? (successCount / totalMessages) * 100 : 0;
     const avgDuration = this.weightedAvg(rows, 'avgDuration', 'successCount');
-    const activeUsers = this.sumField(rows, 'activeUsers');
-    const activeChats = this.sumField(rows, 'activeChats');
+    const activeUsers = exactOverview.activeUsers;
+    const activeChats = exactOverview.activeChats;
     const totalTokenUsage = this.sumField(rows, 'totalTokenUsage');
 
     return {
@@ -65,7 +62,14 @@ export class HourlyStatsAggregatorService {
    * 从小时统计聚合降级数据
    */
   async getFallbackFromHourly(startDate: Date, endDate: Date): Promise<DashboardFallbackStats> {
-    const rows = await this.hourlyStatsRepository.getHourlyStatsByDateRange(startDate, endDate);
+    const [rows, exactFallback] = await Promise.all([
+      this.hourlyStatsRepository.getHourlyStatsByDateRange(startDate, endDate),
+      this.monitoringRepository.getDashboardFallbackStats(startDate, endDate),
+    ]);
+
+    if (rows.length === 0) {
+      return exactFallback;
+    }
 
     const totalCount = this.sumField(rows, 'fallbackCount');
     const successCount = this.sumField(rows, 'fallbackSuccessCount');
@@ -75,7 +79,7 @@ export class HourlyStatsAggregatorService {
       totalCount,
       successCount,
       successRate: Math.round(successRate * 100) / 100,
-      affectedUsers: 0, // 小时聚合无法精确去重，返回 0
+      affectedUsers: exactFallback.affectedUsers,
     };
   }
 
@@ -83,32 +87,7 @@ export class HourlyStatsAggregatorService {
    * 从小时统计聚合每日趋势
    */
   async getDailyTrendFromHourly(startDate: Date, endDate: Date): Promise<DailyTrendData[]> {
-    const rows = await this.hourlyStatsRepository.getHourlyStatsByDateRange(startDate, endDate);
-
-    // 按日期分组
-    const dayMap = new Map<string, HourlyStats[]>();
-    for (const row of rows) {
-      const dateKey = formatLocalDate(new Date(row.hour));
-      if (!dayMap.has(dateKey)) {
-        dayMap.set(dateKey, []);
-      }
-      dayMap.get(dateKey)!.push(row as unknown as HourlyStats);
-    }
-
-    // 聚合每日数据
-    const result: DailyTrendData[] = [];
-    for (const [date, dayRows] of dayMap) {
-      result.push({
-        date,
-        messageCount: this.sumField(dayRows, 'messageCount'),
-        successCount: this.sumField(dayRows, 'successCount'),
-        avgDuration: Math.round(this.weightedAvg(dayRows, 'avgDuration', 'successCount')),
-        tokenUsage: this.sumField(dayRows, 'totalTokenUsage'),
-        uniqueUsers: this.sumField(dayRows, 'activeUsers'),
-      });
-    }
-
-    return result.sort((a, b) => a.date.localeCompare(b.date));
+    return this.monitoringRepository.getDashboardDailyTrend(startDate, endDate);
   }
 
   /**

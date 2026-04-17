@@ -1,3 +1,5 @@
+import type { AlertErrorType } from '@shared-types/tracking.types';
+
 /**
  * 聊天消息输入格式
  */
@@ -80,6 +82,7 @@ export interface MessageProcessingRecordInput {
   replySegments?: number;
   status: 'processing' | 'success' | 'failure' | 'timeout';
   error?: string;
+  alertType?: AlertErrorType;
   scenario?: string;
   totalDuration?: number;
   queueDuration?: number;

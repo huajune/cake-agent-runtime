@@ -14,6 +14,7 @@ import { MessageDeliveryService } from '../delivery/delivery.service';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
 import { MessageProcessingFailureService } from './message-processing-failure.service';
 import { PreAgentRiskInterceptService } from './pre-agent-risk-intercept.service';
+import type { AgentThinkingConfig } from '@agent/agent-run.types';
 
 @Injectable()
 export class ReplyWorkflowService {
@@ -37,12 +38,16 @@ export class ReplyWorkflowService {
     const traceId = messageId;
 
     try {
-      await this.wecomObservability.startRequestTrace({
-        traceId,
-        primaryMessage: messageData,
-        scenario,
-        content,
-      });
+      // trace 通常已在入口 acceptInboundMessage.prepareForDispatch 创建。
+      // 若仍不存在（异常兜底），此处补建。
+      if (!(await this.wecomObservability.hasTrace(traceId))) {
+        await this.wecomObservability.startRequestTrace({
+          traceId,
+          primaryMessage: messageData,
+          scenario,
+          content,
+        });
+      }
       await this.wecomObservability.updateDispatch(traceId, 'direct');
       await this.wecomObservability.markWorkerStart(traceId);
       await this.processMessageCore({
@@ -92,6 +97,11 @@ export class ReplyWorkflowService {
         allMessages: messages,
         mergeWindowMs: this.runtimeConfig.getMergeDelayMs(),
       });
+      // 把各条源消息 trace 里的前置埋点合并到 batch trace，避免 Queue 把前置耗时吞掉
+      await this.wecomObservability.mergePrepTimingsFromSources(
+        traceId,
+        messages.map((message) => message.messageId),
+      );
       await this.wecomObservability.updateDispatch(traceId, 'merged', batchId);
       await this.wecomObservability.markWorkerStart(traceId);
       await this.processMessageCore({
@@ -154,7 +164,7 @@ export class ReplyWorkflowService {
       .filter((message) => MessageParser.extractImageUrl(message) !== null)
       .map((message) => message.messageId);
 
-    const { overrideModelId, effectiveModelId } =
+    const { overrideModelId, effectiveModelId, thinking } =
       await this.runtimeConfig.resolveWecomChatModelSelection();
 
     // 前置风险同步预检：命中高置信度关键词即同步执行暂停+告警，
@@ -188,6 +198,7 @@ export class ReplyWorkflowService {
       imRoomId: parsed.imRoomId,
       apiType: parsed._apiType,
       modelId: overrideModelId,
+      thinking,
       effectiveModelId,
     });
 
@@ -283,6 +294,7 @@ export class ReplyWorkflowService {
     imRoomId?: string;
     apiType?: 'enterprise' | 'group';
     modelId?: string;
+    thinking?: AgentThinkingConfig;
     effectiveModelId?: string;
   }): Promise<AgentInvokeResult> {
     const {
@@ -319,6 +331,7 @@ export class ReplyWorkflowService {
         imRoomId: params.imRoomId,
         apiType: params.apiType,
         modelId: params.modelId,
+        thinking: params.thinking,
         onPreparedRequest:
           recordMonitoring && messageId
             ? (agentRequest) => this.wecomObservability.recordAgentRequest(messageId, agentRequest)
@@ -347,6 +360,7 @@ export class ReplyWorkflowService {
         isFallback: false,
         processingTime,
         toolCalls: result.toolCalls,
+        responseMessages: result.responseMessages,
       };
       if (recordMonitoring && messageId) {
         await this.wecomObservability.recordAgentResult(messageId, invokeResult);

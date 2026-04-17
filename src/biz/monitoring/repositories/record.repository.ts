@@ -40,6 +40,7 @@ const HOURLY_AGG_MAPPING = {
   messageCount: { field: 'message_count', type: 'int' as const },
   successCount: { field: 'success_count', type: 'int' as const },
   failureCount: { field: 'failure_count', type: 'int' as const },
+  timeoutCount: { field: 'timeout_count', type: 'int' as const },
   successRate: { field: 'success_rate', type: 'float' as const },
   avgDuration: { field: 'avg_duration', type: 'float' as const },
   minDuration: { field: 'min_duration', type: 'float' as const },
@@ -47,6 +48,8 @@ const HOURLY_AGG_MAPPING = {
   p50Duration: { field: 'p50_duration', type: 'float' as const },
   p95Duration: { field: 'p95_duration', type: 'float' as const },
   p99Duration: { field: 'p99_duration', type: 'float' as const },
+  avgQueueDuration: { field: 'avg_queue_duration', type: 'float' as const },
+  avgPrepDuration: { field: 'avg_prep_duration', type: 'float' as const },
   avgAiDuration: { field: 'avg_ai_duration', type: 'float' as const },
   avgSendDuration: { field: 'avg_send_duration', type: 'float' as const },
   activeUsers: { field: 'active_users', type: 'int' as const },
@@ -60,6 +63,7 @@ const EMPTY_HOURLY_AGGREGATE = {
   messageCount: 0,
   successCount: 0,
   failureCount: 0,
+  timeoutCount: 0,
   successRate: 0,
   avgDuration: 0,
   minDuration: 0,
@@ -67,6 +71,8 @@ const EMPTY_HOURLY_AGGREGATE = {
   p50Duration: 0,
   p95Duration: 0,
   p99Duration: 0,
+  avgQueueDuration: 0,
+  avgPrepDuration: 0,
   avgAiDuration: 0,
   avgSendDuration: 0,
   activeUsers: 0,
@@ -74,8 +80,44 @@ const EMPTY_HOURLY_AGGREGATE = {
   totalTokenUsage: 0,
   fallbackCount: 0,
   fallbackSuccessCount: 0,
+  errorTypeStats: {} as Record<string, number>,
   scenarioStats: {} as Record<string, { count: number; successCount: number; avgDuration: number }>,
   toolStats: {} as Record<string, number>,
+};
+
+const DAILY_AGG_MAPPING = {
+  messageCount: { field: 'message_count', type: 'int' as const },
+  successCount: { field: 'success_count', type: 'int' as const },
+  failureCount: { field: 'failure_count', type: 'int' as const },
+  timeoutCount: { field: 'timeout_count', type: 'int' as const },
+  successRate: { field: 'success_rate', type: 'float' as const },
+  avgDuration: { field: 'avg_duration', type: 'float' as const },
+  tokenUsage: { field: 'total_token_usage', type: 'int' as const },
+  uniqueUsers: { field: 'unique_users', type: 'int' as const },
+  uniqueChats: { field: 'unique_chats', type: 'int' as const },
+  fallbackCount: { field: 'fallback_count', type: 'int' as const },
+  fallbackSuccessCount: { field: 'fallback_success_count', type: 'int' as const },
+  fallbackAffectedUsers: { field: 'fallback_affected_users', type: 'int' as const },
+  avgQueueDuration: { field: 'avg_queue_duration', type: 'float' as const },
+  avgPrepDuration: { field: 'avg_prep_duration', type: 'float' as const },
+};
+
+const EMPTY_DAILY_AGGREGATE = {
+  messageCount: 0,
+  successCount: 0,
+  failureCount: 0,
+  timeoutCount: 0,
+  successRate: 0,
+  avgDuration: 0,
+  tokenUsage: 0,
+  uniqueUsers: 0,
+  uniqueChats: 0,
+  fallbackCount: 0,
+  fallbackSuccessCount: 0,
+  fallbackAffectedUsers: 0,
+  avgQueueDuration: 0,
+  avgPrepDuration: 0,
+  errorTypeStats: {} as Record<string, number>,
 };
 
 /**
@@ -239,6 +281,7 @@ export class MonitoringRecordRepository extends BaseRepository {
     messageCount: number;
     successCount: number;
     failureCount: number;
+    timeoutCount: number;
     successRate: number;
     avgDuration: number;
     minDuration: number;
@@ -246,6 +289,8 @@ export class MonitoringRecordRepository extends BaseRepository {
     p50Duration: number;
     p95Duration: number;
     p99Duration: number;
+    avgQueueDuration: number;
+    avgPrepDuration: number;
     avgAiDuration: number;
     avgSendDuration: number;
     activeUsers: number;
@@ -253,6 +298,7 @@ export class MonitoringRecordRepository extends BaseRepository {
     totalTokenUsage: number;
     fallbackCount: number;
     fallbackSuccessCount: number;
+    errorTypeStats: Record<string, number>;
     scenarioStats: Record<string, { count: number; successCount: number; avgDuration: number }>;
     toolStats: Record<string, number>;
   } | null> {
@@ -295,6 +341,7 @@ export class MonitoringRecordRepository extends BaseRepository {
           messageCount: number;
           successCount: number;
           failureCount: number;
+          timeoutCount: number;
           successRate: number;
           avgDuration: number;
           minDuration: number;
@@ -302,6 +349,8 @@ export class MonitoringRecordRepository extends BaseRepository {
           p50Duration: number;
           p95Duration: number;
           p99Duration: number;
+          avgQueueDuration: number;
+          avgPrepDuration: number;
           avgAiDuration: number;
           avgSendDuration: number;
           activeUsers: number;
@@ -313,6 +362,7 @@ export class MonitoringRecordRepository extends BaseRepository {
 
         return {
           ...numericFields,
+          errorTypeStats: (row.error_type_stats as Record<string, number>) ?? {},
           scenarioStats:
             (row.scenario_stats as Record<
               string,
@@ -330,6 +380,100 @@ export class MonitoringRecordRepository extends BaseRepository {
         }
 
         this.handleError('RPC:aggregate_hourly_stats', error);
+        const message = (error as { message?: string }).message ?? String(error);
+        throw new Error(`${rpcErrorPrefix} failed: ${message}`);
+      }
+    }
+
+    throw new Error(`${rpcErrorPrefix} failed after ${this.maxReadAttempts} attempts`);
+  }
+
+  async aggregateDailyStats(
+    dayStart: Date,
+    dayEnd: Date,
+  ): Promise<{
+    messageCount: number;
+    successCount: number;
+    failureCount: number;
+    timeoutCount: number;
+    successRate: number;
+    avgDuration: number;
+    tokenUsage: number;
+    uniqueUsers: number;
+    uniqueChats: number;
+    fallbackCount: number;
+    fallbackSuccessCount: number;
+    fallbackAffectedUsers: number;
+    avgQueueDuration: number;
+    avgPrepDuration: number;
+    errorTypeStats: Record<string, number>;
+  } | null> {
+    if (!this.isAvailable()) {
+      return null;
+    }
+
+    const rpcErrorPrefix = 'aggregate_daily_stats RPC';
+
+    for (let attempt = 1; attempt <= this.maxReadAttempts; attempt += 1) {
+      try {
+        const { data, error } = await this.getClient().rpc('aggregate_daily_stats', {
+          p_day_start: dayStart.toISOString(),
+          p_day_end: dayEnd.toISOString(),
+        });
+
+        if (error) {
+          const code = (error as { code?: string }).code ?? 'unknown';
+          const message = (error as { message?: string }).message ?? 'unknown error';
+
+          if (this.isNotFoundError(error)) {
+            this.logger.warn('RPC 函数 aggregate_daily_stats 不存在，请检查数据库迁移');
+            throw new Error(`${rpcErrorPrefix} missing (${code}): ${message}`);
+          }
+          if (this.shouldRetryReadError('RPC:aggregate_daily_stats', error, attempt)) {
+            continue;
+          }
+          this.handleError('RPC:aggregate_daily_stats', error);
+          throw new Error(`${rpcErrorPrefix} failed (${code}): ${message}`);
+        }
+
+        const result = data as Array<Record<string, unknown>> | null;
+
+        if (!result || result.length === 0) {
+          return { ...EMPTY_DAILY_AGGREGATE };
+        }
+
+        const row = result[0];
+        const numericFields = this.mapRpcRow<{
+          messageCount: number;
+          successCount: number;
+          failureCount: number;
+          timeoutCount: number;
+          successRate: number;
+          avgDuration: number;
+          tokenUsage: number;
+          uniqueUsers: number;
+          uniqueChats: number;
+          fallbackCount: number;
+          fallbackSuccessCount: number;
+          fallbackAffectedUsers: number;
+          avgQueueDuration: number;
+          avgPrepDuration: number;
+        }>(row, DAILY_AGG_MAPPING);
+
+        return {
+          ...numericFields,
+          errorTypeStats: (row.error_type_stats as Record<string, number>) ?? {},
+        };
+      } catch (error) {
+        if (error instanceof Error && error.message.startsWith(rpcErrorPrefix)) {
+          throw error;
+        }
+
+        if (this.shouldRetryReadError('RPC:aggregate_daily_stats', error, attempt)) {
+          continue;
+        }
+
+        this.handleError('RPC:aggregate_daily_stats', error);
         const message = (error as { message?: string }).message ?? String(error);
         throw new Error(`${rpcErrorPrefix} failed: ${message}`);
       }

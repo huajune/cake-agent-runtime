@@ -385,6 +385,7 @@ describe('MonitoringRecordRepository', () => {
         messageCount: 0,
         successCount: 0,
         failureCount: 0,
+        timeoutCount: 0,
         successRate: 0,
         avgDuration: 0,
         minDuration: 0,
@@ -392,6 +393,8 @@ describe('MonitoringRecordRepository', () => {
         p50Duration: 0,
         p95Duration: 0,
         p99Duration: 0,
+        avgQueueDuration: 0,
+        avgPrepDuration: 0,
         avgAiDuration: 0,
         avgSendDuration: 0,
         activeUsers: 0,
@@ -399,6 +402,7 @@ describe('MonitoringRecordRepository', () => {
         totalTokenUsage: 0,
         fallbackCount: 0,
         fallbackSuccessCount: 0,
+        errorTypeStats: {},
         scenarioStats: {},
         toolStats: {},
       });
@@ -415,6 +419,7 @@ describe('MonitoringRecordRepository', () => {
         messageCount: 0,
         successCount: 0,
         failureCount: 0,
+        timeoutCount: 0,
         successRate: 0,
         avgDuration: 0,
         minDuration: 0,
@@ -422,6 +427,8 @@ describe('MonitoringRecordRepository', () => {
         p50Duration: 0,
         p95Duration: 0,
         p99Duration: 0,
+        avgQueueDuration: 0,
+        avgPrepDuration: 0,
         avgAiDuration: 0,
         avgSendDuration: 0,
         activeUsers: 0,
@@ -429,6 +436,7 @@ describe('MonitoringRecordRepository', () => {
         totalTokenUsage: 0,
         fallbackCount: 0,
         fallbackSuccessCount: 0,
+        errorTypeStats: {},
         scenarioStats: {},
         toolStats: {},
       });
@@ -443,6 +451,7 @@ describe('MonitoringRecordRepository', () => {
             message_count: '42',
             success_count: '40',
             failure_count: '2',
+            timeout_count: '1',
             success_rate: '0.952',
             avg_duration: '1200.0',
             min_duration: '800.0',
@@ -450,6 +459,8 @@ describe('MonitoringRecordRepository', () => {
             p50_duration: '1100.0',
             p95_duration: '2500.0',
             p99_duration: '2900.0',
+            avg_queue_duration: '300.0',
+            avg_prep_duration: '200.0',
             avg_ai_duration: '1000.0',
             avg_send_duration: '200.0',
             active_users: '15',
@@ -457,6 +468,7 @@ describe('MonitoringRecordRepository', () => {
             total_token_usage: '5000',
             fallback_count: '1',
             fallback_success_count: '1',
+            error_type_stats: { agent: 1, timeout: 1 },
             scenario_stats: { interview: { count: 30 } },
             tool_stats: { search: 10 },
           },
@@ -470,9 +482,13 @@ describe('MonitoringRecordRepository', () => {
       expect(result!.messageCount).toBe(42);
       expect(result!.successCount).toBe(40);
       expect(result!.failureCount).toBe(2);
+      expect(result!.timeoutCount).toBe(1);
       expect(result!.successRate).toBeCloseTo(0.952);
+      expect(result!.avgQueueDuration).toBe(300);
+      expect(result!.avgPrepDuration).toBe(200);
       expect(result!.activeUsers).toBe(15);
       expect(result!.fallbackCount).toBe(1);
+      expect(result!.errorTypeStats).toEqual({ agent: 1, timeout: 1 });
       expect(result!.scenarioStats).toEqual({ interview: { count: 30 } });
       expect(result!.toolStats).toEqual({ search: 10 });
     });
@@ -499,6 +515,69 @@ describe('MonitoringRecordRepository', () => {
       expect(mockSupabaseClient.rpc).toHaveBeenCalledWith('aggregate_hourly_stats', {
         p_hour_start: hourStart.toISOString(),
         p_hour_end: hourEnd.toISOString(),
+      });
+    });
+  });
+
+  describe('aggregateDailyStats', () => {
+    it('should return mapped daily aggregate stats', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      mockSupabaseClient.rpc.mockResolvedValue({
+        data: [
+          {
+            message_count: '42',
+            success_count: '40',
+            failure_count: '2',
+            timeout_count: '1',
+            success_rate: '95.24',
+            avg_duration: '1200.0',
+            total_token_usage: '5000',
+            unique_users: '15',
+            unique_chats: '12',
+            fallback_count: '3',
+            fallback_success_count: '2',
+            fallback_affected_users: '2',
+            avg_queue_duration: '300.0',
+            avg_prep_duration: '200.0',
+            error_type_stats: { agent: 1, timeout: 1 },
+          },
+        ],
+        error: null,
+      });
+
+      const result = await repository.aggregateDailyStats(new Date(), new Date());
+
+      expect(result).toEqual({
+        messageCount: 42,
+        successCount: 40,
+        failureCount: 2,
+        timeoutCount: 1,
+        successRate: 95.24,
+        avgDuration: 1200,
+        tokenUsage: 5000,
+        uniqueUsers: 15,
+        uniqueChats: 12,
+        fallbackCount: 3,
+        fallbackSuccessCount: 2,
+        fallbackAffectedUsers: 2,
+        avgQueueDuration: 300,
+        avgPrepDuration: 200,
+        errorTypeStats: { agent: 1, timeout: 1 },
+      });
+    });
+
+    it('should pass correct date params to daily RPC', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+      mockSupabaseClient.rpc.mockResolvedValue({ data: [], error: null });
+
+      const dayStart = new Date('2026-03-10T00:00:00Z');
+      const dayEnd = new Date('2026-03-11T00:00:00Z');
+      await repository.aggregateDailyStats(dayStart, dayEnd);
+
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledWith('aggregate_daily_stats', {
+        p_day_start: dayStart.toISOString(),
+        p_day_end: dayEnd.toISOString(),
       });
     });
   });

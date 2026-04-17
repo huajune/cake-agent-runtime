@@ -16,7 +16,9 @@ describe('ReplyWorkflowService', () => {
     recordSuccess: jest.fn(),
   };
   const wecomObservability = {
+    hasTrace: jest.fn(),
     startRequestTrace: jest.fn(),
+    mergePrepTimingsFromSources: jest.fn(),
     updateDispatch: jest.fn(),
     markWorkerStart: jest.fn(),
     markAiStart: jest.fn(),
@@ -53,13 +55,24 @@ describe('ReplyWorkflowService', () => {
     runner.invoke.mockResolvedValue({
       text: '我来帮你看一下',
       reasoning: 'checked',
+      responseMessages: [
+        {
+          role: 'assistant',
+          content: [
+            { type: 'reasoning', text: 'checked' },
+            { type: 'text', text: '我来帮你看一下' },
+          ],
+        },
+      ],
       usage: {
         inputTokens: 10,
         outputTokens: 20,
         totalTokens: 30,
       },
     });
+    wecomObservability.hasTrace.mockResolvedValue(false);
     wecomObservability.startRequestTrace.mockResolvedValue(undefined);
+    wecomObservability.mergePrepTimingsFromSources.mockResolvedValue(undefined);
     wecomObservability.updateDispatch.mockResolvedValue(undefined);
     wecomObservability.markWorkerStart.mockResolvedValue(undefined);
     wecomObservability.markAiStart.mockResolvedValue(undefined);
@@ -71,6 +84,11 @@ describe('ReplyWorkflowService', () => {
     runtimeConfig.resolveWecomChatModelSelection.mockResolvedValue({
       overrideModelId: 'gpt-runtime',
       effectiveModelId: 'gpt-runtime',
+      thinkingMode: 'deep',
+      thinking: {
+        type: 'enabled',
+        budgetTokens: 4000,
+      },
     });
     runtimeConfig.getMergeDelayMs.mockReturnValue(3500);
     processingFailureService.inferErrorType.mockReturnValue('message');
@@ -106,6 +124,10 @@ describe('ReplyWorkflowService', () => {
         userId: 'im-contact-1',
         corpId: 'corp-1',
         modelId: 'gpt-runtime',
+        thinking: {
+          type: 'enabled',
+          budgetTokens: 4000,
+        },
       }),
     );
     expect(deliveryService.deliverReply).toHaveBeenCalledWith(
@@ -117,6 +139,16 @@ describe('ReplyWorkflowService', () => {
         messageId: 'msg-1',
       }),
       true,
+    );
+    expect(wecomObservability.recordAgentResult).toHaveBeenCalledWith(
+      'msg-1',
+      expect.objectContaining({
+        responseMessages: [
+          expect.objectContaining({
+            role: 'assistant',
+          }),
+        ],
+      }),
     );
     expect(monitoringService.recordSuccess).toHaveBeenCalledWith('msg-1', { ok: true });
     expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');

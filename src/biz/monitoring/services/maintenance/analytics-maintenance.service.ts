@@ -1,8 +1,11 @@
 import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { formatLocalDate } from '@infra/utils/date.util';
 import { HourlyStats } from '../../types/analytics.types';
+import { DailyProjectionStats } from '../../types/analytics.types';
 import { MonitoringCacheService } from '../tracking/monitoring-cache.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
+import { MonitoringDailyStatsRepository } from '../../repositories/daily-stats.repository';
 import { MonitoringHourlyStatsRepository } from '../../repositories/hourly-stats.repository';
 import { MonitoringErrorLogRepository } from '../../repositories/error-log.repository';
 import { MonitoringRecordRepository } from '../../repositories/record.repository';
@@ -17,12 +20,17 @@ import { IncidentReporterService } from '@observability/incidents/incident-repor
 export class AnalyticsMaintenanceService implements OnModuleInit {
   private readonly logger = new Logger(AnalyticsMaintenanceService.name);
   private readonly HOUR_MS = 60 * 60 * 1000;
+  private readonly DAY_MS = 24 * this.HOUR_MS;
   /** cron 触发：最多回填 14 天；startup 触发：只补最近 3 小时 */
   private readonly MAX_BACKFILL_HOURS_CRON = 24 * 14;
   private readonly MAX_BACKFILL_HOURS_STARTUP = 3;
+  /** cron 触发：最多回填 30 天；startup 触发：只补最近 7 天 */
+  private readonly MAX_BACKFILL_DAYS_CRON = 30;
+  private readonly MAX_BACKFILL_DAYS_STARTUP = 7;
 
   constructor(
     private readonly messageProcessingService: MessageProcessingService,
+    private readonly dailyStatsRepository: MonitoringDailyStatsRepository,
     private readonly hourlyStatsRepository: MonitoringHourlyStatsRepository,
     private readonly errorLogRepository: MonitoringErrorLogRepository,
     private readonly cacheService: MonitoringCacheService,
@@ -34,6 +42,7 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
   onModuleInit(): void {
     // 启动后异步补齐缺失小时，避免因单次漏跑导致投影长期断更。
     void this.catchUpHourlyStats('startup');
+    void this.catchUpDailyStats('startup');
   }
 
   // ========================================
@@ -48,6 +57,7 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
       this.logger.warn('执行大规模数据清理: Monitoring stats & Message processing records');
       await Promise.all([
         this.messageProcessingService.clearAllRecords(),
+        this.dailyStatsRepository.clearAllRecords(),
         this.hourlyStatsRepository.clearAllRecords(),
         this.errorLogRepository.clearAllRecords(),
       ]);
@@ -95,6 +105,18 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
   })
   async aggregateHourlyStats(): Promise<void> {
     await this.catchUpHourlyStats('cron');
+  }
+
+  /**
+   * 日统计聚合定时任务
+   * 每天 00:10 执行
+   */
+  @Cron('10 0 * * *', {
+    name: 'aggregateDailyStats',
+    timeZone: 'Asia/Shanghai',
+  })
+  async aggregateDailyStats(): Promise<void> {
+    await this.catchUpDailyStats('cron');
   }
 
   private async catchUpHourlyStats(trigger: 'startup' | 'cron'): Promise<void> {
@@ -175,6 +197,7 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
       messageCount: aggregated.messageCount,
       successCount: aggregated.successCount,
       failureCount: aggregated.failureCount,
+      timeoutCount: aggregated.timeoutCount,
       successRate: aggregated.successRate,
       avgDuration: aggregated.avgDuration,
       minDuration: aggregated.minDuration,
@@ -182,6 +205,8 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
       p50Duration: aggregated.p50Duration,
       p95Duration: aggregated.p95Duration,
       p99Duration: aggregated.p99Duration,
+      avgQueueDuration: aggregated.avgQueueDuration,
+      avgPrepDuration: aggregated.avgPrepDuration,
       avgAiDuration: aggregated.avgAiDuration,
       avgSendDuration: aggregated.avgSendDuration,
       activeUsers: aggregated.activeUsers,
@@ -189,6 +214,7 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
       totalTokenUsage: aggregated.totalTokenUsage,
       fallbackCount: aggregated.fallbackCount,
       fallbackSuccessCount: aggregated.fallbackSuccessCount,
+      errorTypeStats: aggregated.errorTypeStats,
       scenarioStats: aggregated.scenarioStats,
       toolStats: aggregated.toolStats,
     };
@@ -227,5 +253,144 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
     const hourStart = new Date(date);
     hourStart.setMinutes(0, 0, 0);
     return hourStart;
+  }
+
+  private async catchUpDailyStats(trigger: 'startup' | 'cron'): Promise<void> {
+    try {
+      const startTime = Date.now();
+      this.logger.log(`开始执行日统计聚合任务... trigger=${trigger}`);
+
+      const now = new Date();
+      const latestStored = await this.dailyStatsRepository.getLatestDailyStat();
+      const maxDays =
+        trigger === 'startup' ? this.MAX_BACKFILL_DAYS_STARTUP : this.MAX_BACKFILL_DAYS_CRON;
+      const window = this.resolveBackfillDayWindow(now, latestStored?.date, maxDays);
+
+      if (!window) {
+        this.logger.debug(`[日聚合] 无需补齐，投影已是最新状态 trigger=${trigger}`);
+        return;
+      }
+
+      let processedDays = 0;
+      let savedDays = 0;
+      let emptyDays = 0;
+
+      for (
+        let dayStart = new Date(window.firstDayStart);
+        dayStart.getTime() <= window.lastDayStart.getTime();
+        dayStart = new Date(dayStart.getTime() + this.DAY_MS)
+      ) {
+        processedDays += 1;
+        const dayEnd = new Date(dayStart.getTime() + this.DAY_MS);
+        const saved = await this.aggregateSingleDay(dayStart, dayEnd);
+
+        if (saved) {
+          savedDays += 1;
+        } else {
+          emptyDays += 1;
+        }
+      }
+
+      const elapsed = Date.now() - startTime;
+      this.logger.log(
+        `日统计聚合完成: trigger=${trigger}, ` +
+          `范围=${window.firstDayStart.toISOString()} ~ ${window.lastDayStart.toISOString()}, ` +
+          `处理=${processedDays}d, 写入=${savedDays}d, 空窗=${emptyDays}d, 耗时=${elapsed}ms`,
+      );
+    } catch (error) {
+      this.logger.error('日统计聚合任务失败:', error);
+      this.exceptionNotifier?.notifyAsync({
+        source: {
+          subsystem: 'monitoring',
+          component: 'AnalyticsMaintenanceService',
+          action: 'aggregateDailyStats',
+          trigger,
+        },
+        code: 'cron.job_failed',
+        summary: '日统计聚合任务失败',
+        error,
+        severity: AlertLevel.ERROR,
+      });
+    }
+  }
+
+  private async aggregateSingleDay(dayStart: Date, dayEnd: Date): Promise<boolean> {
+    const dayKey = formatLocalDate(dayStart);
+    this.logger.verbose(`聚合日期范围: ${dayKey} ~ ${dayEnd.toISOString()}`);
+
+    const aggregated = await this.monitoringRepository.aggregateDailyStats(dayStart, dayEnd);
+
+    if (!aggregated) {
+      throw new Error(`aggregate_daily_stats returned null for day ${dayKey}`);
+    }
+
+    if (aggregated.messageCount === 0) {
+      return false;
+    }
+
+    const dailyStats: DailyProjectionStats = {
+      date: dayKey,
+      messageCount: aggregated.messageCount,
+      successCount: aggregated.successCount,
+      failureCount: aggregated.failureCount,
+      timeoutCount: aggregated.timeoutCount,
+      successRate: aggregated.successRate,
+      avgDuration: aggregated.avgDuration,
+      tokenUsage: aggregated.tokenUsage,
+      uniqueUsers: aggregated.uniqueUsers,
+      uniqueChats: aggregated.uniqueChats,
+      fallbackCount: aggregated.fallbackCount,
+      fallbackSuccessCount: aggregated.fallbackSuccessCount,
+      fallbackAffectedUsers: aggregated.fallbackAffectedUsers,
+      avgQueueDuration: aggregated.avgQueueDuration,
+      avgPrepDuration: aggregated.avgPrepDuration,
+      errorTypeStats: aggregated.errorTypeStats,
+    };
+
+    await this.dailyStatsRepository.saveDailyStats(dailyStats);
+    return true;
+  }
+
+  private resolveBackfillDayWindow(
+    now: Date,
+    latestStoredDate?: string,
+    maxDays: number = this.MAX_BACKFILL_DAYS_CRON,
+  ): { firstDayStart: Date; lastDayStart: Date } | null {
+    const currentDayStart = this.getDayStart(now);
+    const lastCompletedDayStart = new Date(currentDayStart.getTime() - this.DAY_MS);
+
+    let firstDayStart = latestStoredDate
+      ? this.parseLocalDateStart(latestStoredDate)
+      : new Date(lastCompletedDayStart.getTime() - (maxDays - 1) * this.DAY_MS);
+
+    if (latestStoredDate) {
+      firstDayStart = new Date(firstDayStart.getTime() + this.DAY_MS);
+    }
+
+    const earliestAllowedDay = new Date(
+      lastCompletedDayStart.getTime() - (maxDays - 1) * this.DAY_MS,
+    );
+
+    if (firstDayStart.getTime() < earliestAllowedDay.getTime()) {
+      this.logger.warn(`[日聚合] 回填窗口裁剪为最近 ${maxDays} 天`);
+      firstDayStart = earliestAllowedDay;
+    }
+
+    if (firstDayStart.getTime() > lastCompletedDayStart.getTime()) {
+      return null;
+    }
+
+    return { firstDayStart, lastDayStart: lastCompletedDayStart };
+  }
+
+  private getDayStart(date: Date): Date {
+    const dayStart = new Date(date);
+    dayStart.setHours(0, 0, 0, 0);
+    return dayStart;
+  }
+
+  private parseLocalDateStart(date: string): Date {
+    const [year, month, day] = date.split('-').map(Number);
+    return new Date(year, month - 1, day, 0, 0, 0, 0);
   }
 }
