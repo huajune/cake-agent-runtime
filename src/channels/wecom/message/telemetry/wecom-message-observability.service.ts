@@ -248,6 +248,13 @@ export class WecomMessageObservabilityService {
     if (queueAddAt !== undefined) target.timings.queueAddAt = queueAddAt;
 
     await this.traceStore.set(targetTraceId, target);
+
+    // 源 trace 已贡献完前置埋点，清理掉避免 Redis 积压
+    await Promise.all(
+      sourceMessageIds
+        .filter((id) => id !== targetTraceId)
+        .map((id) => this.traceStore.delete(id).catch(() => undefined)),
+    );
   }
 
   async markAiStart(messageId: string): Promise<void> {

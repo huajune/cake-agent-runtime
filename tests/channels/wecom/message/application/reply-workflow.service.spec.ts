@@ -16,7 +16,9 @@ describe('ReplyWorkflowService', () => {
     recordSuccess: jest.fn(),
   };
   const wecomObservability = {
+    hasTrace: jest.fn(),
     startRequestTrace: jest.fn(),
+    mergePrepTimingsFromSources: jest.fn(),
     updateDispatch: jest.fn(),
     markWorkerStart: jest.fn(),
     markAiStart: jest.fn(),
@@ -68,7 +70,9 @@ describe('ReplyWorkflowService', () => {
         totalTokens: 30,
       },
     });
+    wecomObservability.hasTrace.mockResolvedValue(false);
     wecomObservability.startRequestTrace.mockResolvedValue(undefined);
+    wecomObservability.mergePrepTimingsFromSources.mockResolvedValue(undefined);
     wecomObservability.updateDispatch.mockResolvedValue(undefined);
     wecomObservability.markWorkerStart.mockResolvedValue(undefined);
     wecomObservability.markAiStart.mockResolvedValue(undefined);

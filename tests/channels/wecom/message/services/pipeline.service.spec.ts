@@ -92,6 +92,8 @@ describe('MessagePipelineService', () => {
     startTrace: jest.fn(),
     markHistoryStored: jest.fn(),
     markImagePrepared: jest.fn(),
+    markQueueAdd: jest.fn(),
+    mergePrepTimingsFromSources: jest.fn(),
     buildFailureMetadata: jest.fn().mockImplementation(
       (_messageId: string, payload: { errorType?: string }) => ({
         alertType: payload.errorType,

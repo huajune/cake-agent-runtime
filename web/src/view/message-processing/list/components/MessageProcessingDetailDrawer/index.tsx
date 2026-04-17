@@ -47,6 +47,7 @@ export default function MessageProcessingDetailDrawer({
     () =>
       [
         { label: 'Quiet Window', value: timings.quietWindowWaitMs },
+        { label: 'PreDispatch', value: timings.preDispatchMs },
         { label: 'Queue', value: timings.queueWaitMs },
         { label: 'Preparation', value: timings.prepMs },
         { label: 'LLM', value: timings.llmMs ?? message?.aiDuration },

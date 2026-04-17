@@ -74,6 +74,8 @@ function createBullQueueOptions(configService: ConfigService) {
           lockDuration: 60000,
           lockRenewTime: 15000,
           maxStalledCount: 2,
+          // delayed job 激活轮询间隔，默认 5s → 压到 1s，降低单条消息排队抖动
+          guardInterval: 1000,
         },
       };
     }

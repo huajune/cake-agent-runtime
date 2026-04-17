@@ -6,6 +6,7 @@ type AnyRecord = Record<string, unknown>;
 export interface TimingMetrics {
   e2eMs?: number;
   quietWindowWaitMs?: number;
+  preDispatchMs?: number;
   queueWaitMs?: number;
   prepMs?: number;
   llmMs?: number;
@@ -826,7 +827,9 @@ export function getTimingMetrics(message: MessageRecord): TimingMetrics {
   return {
     e2eMs: message.totalDuration ?? asNumber(durations?.totalMs),
     quietWindowWaitMs: asNumber(durations?.quietWindowWaitMs),
+    preDispatchMs: asNumber(durations?.acceptedToQueueAddMs),
     queueWaitMs:
+      asNumber(durations?.queueMs) ??
       asNumber(durations?.queueWaitMs) ??
       message.queueDuration ??
       asNumber(durations?.acceptedToWorkerStartMs),

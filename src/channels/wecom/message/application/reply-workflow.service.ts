@@ -38,12 +38,16 @@ export class ReplyWorkflowService {
     const traceId = messageId;
 
     try {
-      await this.wecomObservability.startRequestTrace({
-        traceId,
-        primaryMessage: messageData,
-        scenario,
-        content,
-      });
+      // trace 通常已在入口 acceptInboundMessage.prepareForDispatch 创建。
+      // 若仍不存在（异常兜底），此处补建。
+      if (!(await this.wecomObservability.hasTrace(traceId))) {
+        await this.wecomObservability.startRequestTrace({
+          traceId,
+          primaryMessage: messageData,
+          scenario,
+          content,
+        });
+      }
       await this.wecomObservability.updateDispatch(traceId, 'direct');
       await this.wecomObservability.markWorkerStart(traceId);
       await this.processMessageCore({
@@ -93,6 +97,11 @@ export class ReplyWorkflowService {
         allMessages: messages,
         mergeWindowMs: this.runtimeConfig.getMergeDelayMs(),
       });
+      // 把各条源消息 trace 里的前置埋点合并到 batch trace，避免 Queue 把前置耗时吞掉
+      await this.wecomObservability.mergePrepTimingsFromSources(
+        traceId,
+        messages.map((message) => message.messageId),
+      );
       await this.wecomObservability.updateDispatch(traceId, 'merged', batchId);
       await this.wecomObservability.markWorkerStart(traceId);
       await this.processMessageCore({
