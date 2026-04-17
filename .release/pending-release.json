@@ -1,7 +1,7 @@
 {
   "baseVersion": "5.1.0",
   "nextVersion": "5.2.0",
-  "updatedAt": "2026-04-16",
+  "updatedAt": "2026-04-17",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -91,6 +91,24 @@
       "ops": [
         "[codex] improve monitoring visibility and runtime config consistency"
       ],
+      "config": [],
+      "verification": []
+    },
+    {
+      "number": "86",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/86",
+      "title": "cap same-tool calls per turn and enrich processing trace",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-17",
+      "summary": [
+        "cap same-tool calls per turn and enrich processing trace"
+      ],
+      "features": [],
+      "fixes": [
+        "cap same-tool calls per turn and enrich processing trace"
+      ],
+      "optimizations": [],
+      "ops": [],
       "config": [],
       "verification": []
     }
