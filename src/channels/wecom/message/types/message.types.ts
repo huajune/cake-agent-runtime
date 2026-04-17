@@ -1,3 +1,5 @@
+import type { AgentMemorySnapshot, AgentStepDetail, AgentToolCall } from '@agent/agent-run.types';
+
 export { AlertErrorType } from '@shared-types/tracking.types';
 
 export interface FilterResult {
@@ -37,7 +39,12 @@ export interface AgentInvokeResult {
   reply: AgentReply;
   isFallback: boolean;
   processingTime: number;
-  toolCalls?: Array<{ toolName: string; args: Record<string, unknown>; result?: unknown }>;
+  /** 扁平化的工具调用序列（含 resultCount/status/durationMs） */
+  toolCalls?: AgentToolCall[];
+  /** 每步循环快照 */
+  agentSteps?: AgentStepDetail[];
+  /** 本轮触发时的记忆上下文快照 */
+  memorySnapshot?: AgentMemorySnapshot;
   responseMessages?: Array<Record<string, unknown>>;
 }
 

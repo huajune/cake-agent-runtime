@@ -1032,9 +1032,10 @@ export class AnalyticsDashboardService {
   private buildToolUsageMetrics(records: MessageProcessingRecord[]): ToolUsageMetric[] {
     const toolMap = new Map<string, number>();
     for (const record of records) {
-      if (!record.tools || record.tools.length === 0) continue;
-      for (const tool of record.tools) {
-        toolMap.set(tool, (toolMap.get(tool) || 0) + 1);
+      if (!record.toolCalls || record.toolCalls.length === 0) continue;
+      for (const call of record.toolCalls) {
+        if (!call.toolName) continue;
+        toolMap.set(call.toolName, (toolMap.get(call.toolName) || 0) + 1);
       }
     }
     const total = Array.from(toolMap.values()).reduce((acc, val) => acc + val, 0);

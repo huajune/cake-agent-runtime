@@ -65,7 +65,7 @@
 
 .rightCol {
   flex: 0 0 280px;
-  background: $bg-secondary;
+  background: linear-gradient(180deg, #f7fbfd 0%, #f9fafb 100%);
   border-left: 1px solid $border;
   padding: 16px;
   overflow-y: auto;
@@ -75,7 +75,7 @@
 .sideTitle {
   font-size: 11px;
   font-weight: 700;
-  color: $text-muted;
+  color: #5c7487;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 10px;
@@ -121,8 +121,8 @@
 .latencyList {
   display: flex;
   flex-direction: column;
-  background: #fff;
-  border: 1px solid rgba($border, 0.6);
+  background: linear-gradient(180deg, rgba(250, 253, 255, 0.96) 0%, #ffffff 100%);
+  border: 1px solid rgba(120, 171, 194, 0.22);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -132,7 +132,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 7px 12px;
-  border-bottom: 1px solid rgba($border, 0.3);
+  border-bottom: 1px solid rgba(120, 171, 194, 0.14);
 
   &:last-child {
     border-bottom: none;
@@ -141,13 +141,13 @@
 
 .latencyLabel {
   font-size: 12px;
-  color: $text-muted;
+  color: #5c7487;
 }
 
 .latencyValue {
   font-size: 12px;
-  font-weight: 600;
-  color: $text-secondary;
+  font-weight: 400;
+  color: #56788d;
   font-variant-numeric: tabular-nums;
   text-align: right;
   word-break: break-all;

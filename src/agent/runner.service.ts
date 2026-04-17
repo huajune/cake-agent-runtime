@@ -2,15 +2,26 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { streamText, stepCountIs } from 'ai';
+import { streamText, stepCountIs, type generateText } from 'ai';
 import { MemoryService } from '@memory/memory.service';
 import { ReliableService } from '@providers/reliable.service';
 import { AgentPreparationService, type PreparedAgentContext } from './agent-preparation.service';
 import type { AgentError } from '@shared-types/agent-error.types';
+import {
+  buildToolCallLimitNotice,
+  computeResultCount,
+  computeToolCallStatus,
+  findToolsExceedingLimit,
+  MAX_SAME_TOOL_CALLS_PER_TURN,
+} from './tool-call-analysis';
+
+/** prepareStep 函数类型（沿用 ai SDK，本地不必锁死 TOOLS 泛型）。 */
+type PrepareStepFn = NonNullable<Parameters<typeof generateText>[0]['prepareStep']>;
 import type {
   AgentThinkingConfig,
   AgentInvokeParams,
   AgentRunResult,
+  AgentStepDetail,
   AgentStreamResult,
   AgentToolCall,
 } from './agent-run.types';
@@ -18,8 +29,10 @@ export type {
   AgentInputMessage,
   AgentInvokeParams,
   AgentRunResult,
+  AgentStepDetail,
   AgentStreamResult,
   AgentToolCall,
+  AgentToolCallStatus,
 } from './agent-run.types';
 
 @Injectable()
@@ -71,6 +84,7 @@ export class AgentRunnerService {
           tools: ctx.tools,
           maxOutputTokens: this.maxOutputTokens,
           stopWhen: stepCountIs(ctx.maxSteps),
+          prepareStep: this.buildPrepareStep(ctx),
           providerOptions,
         },
         ctx.chatFallbacks,
@@ -94,6 +108,7 @@ export class AgentRunnerService {
           totalTokens: r.usage.totalTokens,
         },
         agentRequest,
+        memorySnapshot: ctx.memorySnapshot,
       });
     } catch (err) {
       const agentError = this.enrichAgentError(err, ctx);
@@ -126,6 +141,7 @@ export class AgentRunnerService {
         tools: ctx.tools,
         maxOutputTokens: this.maxOutputTokens,
         stopWhen: stepCountIs(ctx.maxSteps),
+        prepareStep: this.buildPrepareStep(ctx),
         providerOptions,
         onFinish: ({ usage, steps, text }) => {
           this.logger.log('流式完成, 步数: ' + steps.length + ', Tokens: ' + usage.totalTokens);
@@ -139,6 +155,7 @@ export class AgentRunnerService {
               totalTokens: usage.totalTokens,
             },
             agentRequest,
+            memorySnapshot: ctx.memorySnapshot,
           });
           this.dispatchTurnEndLifecycle(ctx, text);
           if (params.onFinish) {
@@ -239,6 +256,44 @@ export class AgentRunnerService {
   }
 
   /**
+   * 构造 prepareStep 钩子：单轮内同名工具调用 ≥ MAX_SAME_TOOL_CALLS_PER_TURN 时动态屏蔽。
+   *
+   * 触发场景：模型在一轮内反复调用同一工具试探不同 filter（典型如 duliday_job_list 用
+   * 不稳定字段查询失败后无限扩面）。屏蔽方式 = 通过 activeTools 白名单移除超限工具，
+   * 同时在 system 末尾追加一段拦截提示，告知模型为什么这个工具消失了，应基于已有结果收敛。
+   *
+   * 备选方案 stopWhen 会直接结束整轮，可能导致没有最终回复输出；prepareStep 让模型仍能
+   * 用其他工具或文本完成本轮。
+   */
+  private buildPrepareStep(ctx: PreparedAgentContext): PrepareStepFn | undefined {
+    const baseTools = Object.keys(ctx.tools ?? {});
+    if (baseTools.length === 0) return undefined;
+    const baseSystem = ctx.finalPrompt;
+    const sessionId = ctx.sessionId;
+    const logger = this.logger;
+
+    return ({ steps }) => {
+      const blocked = findToolsExceedingLimit(steps, MAX_SAME_TOOL_CALLS_PER_TURN);
+      if (blocked.length === 0) return {};
+
+      const activeTools = baseTools.filter((name) => !blocked.includes(name));
+      const notice = buildToolCallLimitNotice(blocked, MAX_SAME_TOOL_CALLS_PER_TURN);
+      const system = notice ? `${baseSystem}\n\n${notice}` : baseSystem;
+
+      logger.warn(
+        `工具调用硬截断: blocked=${blocked.join(',')} stepCount=${steps.length} sessionId=${sessionId}`,
+      );
+
+      // activeTools 在 SDK 内部要求是 keyof TOOLS；这里 TOOLS 是 ToolSet 索引签名，
+      // 直接用 string[] 在运行时一致，仅做类型 cast。
+      return {
+        activeTools: activeTools as Array<string | number | symbol>,
+        system,
+      };
+    };
+  }
+
+  /**
    * 统一触发回合结束收尾。
    *
    * 记忆收尾不阻塞主响应；失败只记日志，避免把模型成功回复拖慢或放大成整轮失败。
@@ -287,35 +342,101 @@ export class AgentRunnerService {
     reasoningText?: string;
     responseMessages?: Array<Record<string, unknown>>;
     steps: Array<{
+      text?: string;
+      reasoningText?: string;
+      finishReason?: string;
+      usage?: {
+        inputTokens?: number;
+        outputTokens?: number;
+        totalTokens?: number;
+      };
+      response?: { timestamp?: Date | string | number };
       toolCalls?: Array<{ toolCallId: string; toolName: string; input?: unknown }>;
       toolResults?: Array<{ toolCallId: string; output?: unknown }>;
     }>;
     usage: AgentRunResult['usage'];
     agentRequest?: Record<string, unknown>;
+    memorySnapshot?: AgentRunResult['memorySnapshot'];
   }): AgentRunResult {
+    const agentSteps: AgentStepDetail[] = [];
     const toolCalls: AgentToolCall[] = [];
-    for (const step of params.steps) {
-      if (step.toolCalls && step.toolResults) {
+
+    let prevStepEndMs: number | undefined;
+    params.steps.forEach((step, stepIndex) => {
+      const stepEndMs = this.extractTimestampMs(step.response?.timestamp);
+      const stepDurationMs =
+        prevStepEndMs !== undefined && stepEndMs !== undefined
+          ? Math.max(stepEndMs - prevStepEndMs, 0)
+          : undefined;
+
+      const stepToolCalls: AgentToolCall[] = [];
+      if (step.toolCalls) {
         for (const tc of step.toolCalls) {
-          const tr = step.toolResults.find((t) => t.toolCallId === tc.toolCallId);
-          toolCalls.push({
+          const tr = step.toolResults?.find((t) => t.toolCallId === tc.toolCallId);
+          const result = (tr as { output?: unknown } | undefined)?.output;
+          const resultCount = computeResultCount(result);
+          const status = computeToolCallStatus(result, resultCount);
+          // 单步中只有一个工具时，把 stepDurationMs 归给这个工具
+          const durationMs =
+            stepDurationMs !== undefined && step.toolCalls.length === 1
+              ? stepDurationMs
+              : undefined;
+
+          const call: AgentToolCall = {
             toolName: tc.toolName,
             args: ((tc as { input?: unknown }).input ?? {}) as Record<string, unknown>,
-            result: (tr as { output?: unknown } | undefined)?.output,
-          });
+            result,
+            resultCount,
+            status,
+            durationMs,
+          };
+          stepToolCalls.push(call);
+          toolCalls.push(call);
         }
       }
-    }
+
+      agentSteps.push({
+        stepIndex,
+        text: step.text || undefined,
+        reasoning: step.reasoningText || undefined,
+        toolCalls: stepToolCalls,
+        usage:
+          step.usage && step.usage.totalTokens !== undefined
+            ? {
+                inputTokens: step.usage.inputTokens ?? 0,
+                outputTokens: step.usage.outputTokens ?? 0,
+                totalTokens: step.usage.totalTokens,
+              }
+            : undefined,
+        durationMs: stepDurationMs,
+        finishReason: step.finishReason,
+      });
+
+      if (stepEndMs !== undefined) prevStepEndMs = stepEndMs;
+    });
 
     return {
       text: params.text,
       reasoning: params.reasoningText || undefined,
       responseMessages: params.responseMessages,
       steps: params.steps.length,
+      agentSteps,
       toolCalls,
       usage: params.usage,
       agentRequest: params.agentRequest,
+      memorySnapshot: params.memorySnapshot,
     };
+  }
+
+  private extractTimestampMs(value: unknown): number | undefined {
+    if (!value) return undefined;
+    if (value instanceof Date) return value.getTime();
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string') {
+      const parsed = Date.parse(value);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    }
+    return undefined;
   }
 
   private buildObservedAgentRequest(

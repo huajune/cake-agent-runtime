@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { Observer } from '@observability/observer.interface';
 import { MonitoringMetadata } from '@shared-types/tracking.types';
+import { computeResultCount, computeToolCallStatus } from '@agent/tool-call-analysis';
 import { AiStreamTraceContentStore } from './ai-stream-trace-content-store';
 import { AiStreamTraceTiming } from './ai-stream-trace-timing';
 
@@ -387,10 +388,11 @@ export class AiStreamTrace {
     errorMessage?: string,
   ): MonitoringMetadata {
     const storedResponse = this.content.buildStoredResponse(payload, this.traceId, errorMessage);
+    const toolCalls = this.toAgentToolCalls(storedResponse.toolCalls);
 
     return {
       scenario: this.scenario as MonitoringMetadata['scenario'],
-      tools: payload.tools.length > 0 ? payload.tools : undefined,
+      toolCalls: toolCalls && toolCalls.length > 0 ? toolCalls : undefined,
       tokenUsage: payload.usage?.totalTokens ?? 0,
       replyPreview: storedResponse.reply?.content || payload.replyPreview,
       // Test-suite streams are rendered as a single assistant reply, not real delivery segments.
@@ -402,6 +404,30 @@ export class AiStreamTrace {
         isFallback: false,
       },
     };
+  }
+
+  /**
+   * 把 stream 路径捕获的 StoredToolCall 转成 AgentToolCall，供 tracking 层落入 tool_calls jsonb。
+   *
+   * stream 路径没有 generateText steps 那样精细的 per-step 时序，durationMs 留空；
+   * resultCount/status 仍按 output 推断，用于异常标签计算。
+   */
+  private toAgentToolCalls(
+    stored: StoredToolCall[] | undefined,
+  ): MonitoringMetadata['toolCalls'] | undefined {
+    if (!stored || stored.length === 0) return undefined;
+    return stored
+      .filter((tool) => Boolean(tool.toolName))
+      .map((tool) => {
+        const resultCount = computeResultCount(tool.output);
+        return {
+          toolName: tool.toolName,
+          args: (tool.input ?? {}) as Record<string, unknown>,
+          result: tool.output,
+          resultCount,
+          status: computeToolCallStatus(tool.output, resultCount, tool.errorText, tool.state),
+        };
+      });
   }
 
   private emitObserverSummary(payload: AiStreamSummaryPayload): void {

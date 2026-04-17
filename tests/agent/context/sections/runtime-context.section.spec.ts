@@ -12,16 +12,20 @@ describe('RuntimeContextSection', () => {
     const section = new RuntimeContextSection(
       { name: 'stage', build: () => '[阶段]' },
       { name: 'memory', build: () => '[记忆]' },
+      { name: 'turn-hints', build: () => '' },
+      { name: 'hard-constraints', build: () => '[本轮查询硬约束]\n- 性别: 男' },
       { name: 'time', build: () => '当前时间：2026-04-01' },
       { name: 'channel', build: () => '' },
     );
 
-    await expect(section.build(baseCtx)).resolves.toBe('[阶段]\n\n[记忆]\n\n当前时间：2026-04-01');
+    await expect(section.build(baseCtx)).resolves.toBe(
+      '[阶段]\n\n[记忆]\n\n[本轮查询硬约束]\n- 性别: 男\n\n当前时间：2026-04-01',
+    );
   });
 
   it('should skip empty child sections', async () => {
     const empty: PromptSection = { name: 'empty', build: () => '   ' };
-    const section = new RuntimeContextSection(empty, empty, empty, empty);
+    const section = new RuntimeContextSection(empty, empty, empty, empty, empty, empty);
 
     await expect(section.build(baseCtx)).resolves.toBe('');
   });

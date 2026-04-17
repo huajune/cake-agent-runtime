@@ -193,6 +193,7 @@ export class ReplyWorkflowService {
       botUserId: params.primaryMessage.botUserId,
       contactName: parsed.contactName,
       botImId: params.primaryMessage.imBotId,
+      externalUserId: parsed.externalUserId,
       token: parsed.token,
       imContactId: parsed.imContactId,
       imRoomId: parsed.imRoomId,
@@ -289,6 +290,7 @@ export class ReplyWorkflowService {
     botUserId?: string;
     contactName?: string;
     botImId?: string;
+    externalUserId?: string;
     token?: string;
     imContactId?: string;
     imRoomId?: string;
@@ -326,6 +328,7 @@ export class ReplyWorkflowService {
         imageMessageIds: params.imageMessageIds,
         botUserId: params.botUserId,
         botImId: params.botImId,
+        externalUserId: params.externalUserId,
         token: params.token,
         imContactId: params.imContactId,
         imRoomId: params.imRoomId,
@@ -360,6 +363,8 @@ export class ReplyWorkflowService {
         isFallback: false,
         processingTime,
         toolCalls: result.toolCalls,
+        agentSteps: result.agentSteps,
+        memorySnapshot: result.memorySnapshot,
         responseMessages: result.responseMessages,
       };
       if (recordMonitoring && messageId) {

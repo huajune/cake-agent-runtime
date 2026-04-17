@@ -12,10 +12,20 @@ import { formatExtractionFactLines } from '@memory/formatters/fact-lines.formatt
 import { MemoryService } from '@memory/memory.service';
 import { MemoryConfig } from '@memory/memory.config';
 import type { UserProfile } from '@memory/types/long-term.types';
-import type { RecommendedJobSummary, WeworkSessionState } from '@memory/types/session-facts.types';
+import {
+  FALLBACK_EXTRACTION,
+  type EntityExtractionResult,
+  type RecommendedJobSummary,
+  type WeworkSessionState,
+} from '@memory/types/session-facts.types';
+import { CustomerService } from '@wecom/customer/customer.service';
 import { ContextService } from './context/context.service';
 import { InputGuardService } from './input-guard.service';
-import { type AgentInputMessage, type AgentInvokeParams } from './agent-run.types';
+import {
+  type AgentInputMessage,
+  type AgentInvokeParams,
+  type AgentMemorySnapshot,
+} from './agent-run.types';
 
 export interface PreparedAgentContext {
   finalPrompt: string;
@@ -35,6 +45,8 @@ export interface PreparedAgentContext {
   turnState: {
     candidatePool: RecommendedJobSummary[] | null;
   };
+  /** 本轮触发时的记忆上下文快照（写入 message_processing_records.memory_snapshot 用于排障） */
+  memorySnapshot?: AgentMemorySnapshot;
 }
 
 @Injectable()
@@ -49,6 +61,7 @@ export class AgentPreparationService {
     private readonly recruitmentStageResolver: RecruitmentStageResolverService,
     private readonly memoryService: MemoryService,
     private readonly memoryConfig: MemoryConfig,
+    private readonly customerService: CustomerService,
     private readonly context: ContextService,
     private readonly inputGuard: InputGuardService,
   ) {}
@@ -68,6 +81,7 @@ export class AgentPreparationService {
       imageUrls,
       imageMessageIds,
       botUserId,
+      externalUserId,
       botImId,
       token,
       imContactId,
@@ -96,6 +110,19 @@ export class AgentPreparationService {
       },
     );
     const memoryLoadWarning = memory._warnings?.join('; ') || undefined;
+
+    if (scenario === 'candidate-consultation') {
+      await this.supplementGenderFromCustomerDetailIfNeeded(memory, {
+        corpId,
+        userId,
+        token,
+        imBotId: botImId,
+        imContactId,
+        wecomUserId: botUserId,
+        externalUserId,
+      });
+    }
+
     const activeRecruitmentCase = await this.recruitmentCaseService.getActiveOnboardFollowupCase({
       corpId,
       chatId: sessionId,
@@ -220,6 +247,9 @@ export class AgentPreparationService {
     // 10. 按场景挑出本轮允许使用的工具。
     const tools = this.toolRegistry.buildForScenario(scenario, toolContext) as ToolSet;
 
+    // 11. 记忆快照（供 observability 落入 message_processing_records.memory_snapshot）。
+    const memorySnapshot = this.buildMemorySnapshot(memory, entryStage);
+
     return {
       finalPrompt,
       typedMessages,
@@ -234,7 +264,67 @@ export class AgentPreparationService {
       maxSteps,
       entryStage,
       turnState,
+      memorySnapshot,
     };
+  }
+
+  /**
+   * 基于 memory recall 构造 memory_snapshot。
+   *
+   * 字段设计：
+   * - currentStage: 本轮入口阶段，用于判定"阶段机器是否走到预期位置"
+   * - presentedJobIds / recommendedJobIds: 让排障能看出"模型本轮是否遗忘了上轮推荐过的岗位"
+   * - sessionFacts: 扁平化的硬约束（时间/性别/区域等）——Case 2 排障的关键
+   * - profileKeys: 长期档案已填字段（不落值避免 PII）
+   */
+  private buildMemorySnapshot(
+    memory: Awaited<ReturnType<MemoryService['onTurnStart']>>,
+    entryStage: string | null,
+  ): AgentMemorySnapshot {
+    const session = memory.sessionMemory;
+    const presentedJobIds =
+      session?.presentedJobs?.map((j) => j.jobId).filter((id): id is number => id != null) ?? null;
+    const recommendedJobIds =
+      session?.lastCandidatePool?.map((j) => j.jobId).filter((id): id is number => id != null) ??
+      null;
+
+    const sessionFacts = this.flattenSessionFacts(session?.facts ?? null);
+
+    const profile = memory.longTerm.profile;
+    const profileKeys = profile
+      ? Object.entries(profile)
+          .filter(([, value]) => value !== null && value !== undefined && value !== '')
+          .map(([key]) => key)
+      : null;
+
+    return {
+      currentStage: entryStage,
+      presentedJobIds: presentedJobIds && presentedJobIds.length > 0 ? presentedJobIds : null,
+      recommendedJobIds:
+        recommendedJobIds && recommendedJobIds.length > 0 ? recommendedJobIds : null,
+      sessionFacts,
+      profileKeys: profileKeys && profileKeys.length > 0 ? profileKeys : null,
+    };
+  }
+
+  /** 扁平化 facts.interview_info + facts.preferences，只保留非空字段。 */
+  private flattenSessionFacts(
+    facts: WeworkSessionState['facts'] | null,
+  ): Record<string, unknown> | null {
+    if (!facts) return null;
+    const flat: Record<string, unknown> = {};
+    const collect = (group: Record<string, unknown> | null | undefined, prefix: string) => {
+      if (!group) return;
+      for (const [key, value] of Object.entries(group)) {
+        if (value === null || value === undefined) continue;
+        if (typeof value === 'string' && value.trim() === '') continue;
+        if (Array.isArray(value) && value.length === 0) continue;
+        flat[`${prefix}.${key}`] = value;
+      }
+    };
+    collect(facts.interview_info as unknown as Record<string, unknown>, 'interview');
+    collect(facts.preferences as unknown as Record<string, unknown>, 'pref');
+    return Object.keys(flat).length > 0 ? flat : null;
   }
 
   /** 把消息内容扁平化成纯文本。 */
@@ -507,5 +597,116 @@ export class AgentPreparationService {
     }
 
     return null;
+  }
+
+  private async supplementGenderFromCustomerDetailIfNeeded(
+    memory: Awaited<ReturnType<MemoryService['onTurnStart']>>,
+    params: {
+      corpId: string;
+      userId: string;
+      token?: string;
+      imBotId?: string;
+      imContactId?: string;
+      wecomUserId?: string;
+      externalUserId?: string;
+    },
+  ): Promise<void> {
+    if (this.resolveKnownGender(memory)) {
+      return;
+    }
+
+    const token = params.token?.trim();
+    const imBotId = params.imBotId?.trim();
+    const imContactId = params.imContactId?.trim();
+    const wecomUserId = params.wecomUserId?.trim();
+    const externalUserId = params.externalUserId?.trim();
+    const hasSystemLocator = Boolean(imBotId && imContactId);
+    const hasWecomLocator = Boolean(wecomUserId && externalUserId);
+
+    if (!token || (!hasSystemLocator && !hasWecomLocator)) {
+      return;
+    }
+
+    try {
+      const detail = await this.customerService.getCustomerDetailV2({
+        token,
+        imBotId,
+        imContactId,
+        wecomUserId,
+        externalUserId,
+      });
+      const gender = this.normalizeGenderValue(detail?.data?.gender);
+
+      if (!gender) {
+        return;
+      }
+
+      await this.memoryService.saveProfile(params.corpId, params.userId, { gender });
+      memory.highConfidenceFacts = this.mergeSupplementalGenderFact(
+        memory.highConfidenceFacts,
+        gender,
+      );
+
+      this.logger.log(`客户详情补充性别成功: userId=${params.userId}, gender=${gender}`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`客户详情补充性别失败: userId=${params.userId}, error=${errorMessage}`);
+    }
+  }
+
+  private resolveKnownGender(
+    memory: Awaited<ReturnType<MemoryService['onTurnStart']>>,
+  ): string | null {
+    return (
+      this.normalizeGenderValue(memory.longTerm.profile?.gender) ??
+      this.normalizeGenderValue(memory.sessionMemory?.facts?.interview_info.gender) ??
+      this.normalizeGenderValue(memory.highConfidenceFacts?.interview_info.gender)
+    );
+  }
+
+  private normalizeGenderValue(value: unknown): '男' | '女' | null {
+    if (typeof value === 'number') {
+      if (value === 1) return '男';
+      if (value === 2) return '女';
+      return null;
+    }
+
+    if (typeof value !== 'string') {
+      return null;
+    }
+
+    const text = value.trim();
+    if (!text) return null;
+    if (text === '1') return '男';
+    if (text === '2') return '女';
+    if (/^(male|man)$/i.test(text)) return '男';
+    if (/^(female|woman)$/i.test(text)) return '女';
+    if (/(^|[^女])男/.test(text)) return '男';
+    if (/女/.test(text)) return '女';
+    return null;
+  }
+
+  private mergeSupplementalGenderFact(
+    existing: EntityExtractionResult | null,
+    gender: '男' | '女',
+  ): EntityExtractionResult {
+    const base: EntityExtractionResult = existing
+      ? {
+          ...existing,
+          interview_info: { ...existing.interview_info },
+          preferences: { ...existing.preferences },
+        }
+      : {
+          ...FALLBACK_EXTRACTION,
+          interview_info: { ...FALLBACK_EXTRACTION.interview_info },
+          preferences: { ...FALLBACK_EXTRACTION.preferences },
+        };
+
+    base.interview_info.gender = gender;
+    base.reasoning = [base.reasoning?.trim(), `客户详情接口补充性别：${gender}`]
+      .filter(Boolean)
+      .join('；');
+
+    return base;
   }
 }

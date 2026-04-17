@@ -104,6 +104,47 @@ export interface AgentInvocationRecord {
 
 // ==================== 消息处理记录 ====================
 
+export type MessageRecordToolCallStatus = 'ok' | 'empty' | 'narrow' | 'error';
+
+export interface MessageRecordToolCall {
+  toolName: string;
+  args: Record<string, unknown>;
+  result?: unknown;
+  /** 结果条数：数组 length 或 items/data/total/count 推断；无法推断时省略 */
+  resultCount?: number;
+  status?: MessageRecordToolCallStatus;
+  durationMs?: number;
+}
+
+export interface MessageRecordAgentStep {
+  stepIndex: number;
+  text?: string;
+  reasoning?: string;
+  toolCalls: MessageRecordToolCall[];
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  };
+  durationMs?: number;
+  finishReason?: string;
+}
+
+export type MessageRecordAnomalyFlag =
+  | 'tool_loop'
+  | 'tool_empty_result'
+  | 'tool_narrow_result'
+  | 'tool_chain_overlong'
+  | 'no_tool_called';
+
+export interface MessageRecordMemorySnapshot {
+  currentStage: string | null;
+  presentedJobIds: number[] | null;
+  recommendedJobIds: number[] | null;
+  sessionFacts: Record<string, unknown> | null;
+  profileKeys: string[] | null;
+}
+
 export interface MessageRecord {
   messageId?: string;
   receivedAt: string | number;
@@ -123,10 +164,17 @@ export interface MessageRecord {
   status: 'success' | 'failed' | 'failure' | 'processing' | 'timeout';
   error?: string;
   scenario?: string;
-  tools?: string[];
   tokenUsage?: number;
   isFallback?: boolean;
   fallbackSuccess?: boolean;
   agentInvocation?: AgentInvocationRecord;
   batchId?: string;
+  /** 工具调用详情（取代旧的 tools string[]） */
+  toolCalls?: MessageRecordToolCall[];
+  /** 每步循环快照（text/reasoning/toolCalls/usage） */
+  agentSteps?: MessageRecordAgentStep[];
+  /** 异常信号标签，用于周报/巡检过滤 */
+  anomalyFlags?: MessageRecordAnomalyFlag[];
+  /** 本轮触发时的记忆上下文快照 */
+  memorySnapshot?: MessageRecordMemorySnapshot;
 }

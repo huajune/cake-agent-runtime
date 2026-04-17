@@ -8,12 +8,14 @@ describe('CustomerService', () => {
 
   const mockHttpService = {
     get: jest.fn(),
+    post: jest.fn(),
   };
 
   const mockApiConfig = {
     endpoints: {
       customer: {
         list: jest.fn().mockReturnValue('https://api.example.com/customer/list'),
+        detail: jest.fn().mockReturnValue('https://api.example.com/hub-api/api/v2/customer/detail'),
       },
     },
   };
@@ -187,6 +189,61 @@ describe('CustomerService', () => {
       mockHttpService.get.mockRejectedValue(originalError);
 
       await expect(service.getCustomerListV2(token)).rejects.toBe(originalError);
+    });
+  });
+
+  describe('getCustomerDetailV2', () => {
+    it('should query customer detail with both systemData and wecomData', async () => {
+      mockHttpService.post.mockResolvedValue({ errcode: 0, errmsg: 'ok', data: { gender: 1 } });
+
+      const result = await service.getCustomerDetailV2({
+        token: 'enterprise-token',
+        imBotId: 'im-bot-1',
+        imContactId: 'im-contact-1',
+        wecomUserId: 'manager-1',
+        externalUserId: 'external-user-1',
+      });
+
+      expect(mockApiConfig.endpoints.customer.detail).toHaveBeenCalled();
+      expect(mockHttpService.post).toHaveBeenCalledWith(
+        'https://api.example.com/hub-api/api/v2/customer/detail?token=enterprise-token',
+        {
+          systemData: {
+            imBotId: 'im-bot-1',
+            imContactId: 'im-contact-1',
+          },
+          wecomData: {
+            wecomUserId: 'manager-1',
+            externalUserId: 'external-user-1',
+          },
+        },
+      );
+      expect(result).toEqual({ errcode: 0, errmsg: 'ok', data: { gender: 1 } });
+    });
+
+    it('should allow querying with only systemData', async () => {
+      mockHttpService.post.mockResolvedValue({ errcode: 0, errmsg: 'ok', data: { gender: 2 } });
+
+      await service.getCustomerDetailV2({
+        token: 'enterprise-token',
+        imBotId: 'im-bot-1',
+        imContactId: 'im-contact-1',
+      });
+
+      expect(mockHttpService.post).toHaveBeenCalledWith(expect.any(String), {
+        systemData: {
+          imBotId: 'im-bot-1',
+          imContactId: 'im-contact-1',
+        },
+      });
+    });
+
+    it('should throw when no locator is provided', async () => {
+      await expect(
+        service.getCustomerDetailV2({
+          token: 'enterprise-token',
+        }),
+      ).rejects.toThrow('查询客户详情缺少定位参数');
     });
   });
 });

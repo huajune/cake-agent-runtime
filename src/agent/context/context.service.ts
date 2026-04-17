@@ -25,6 +25,7 @@ import { StageStrategySection } from './sections/stage-strategy.section';
 import { ThresholdsSection } from './sections/thresholds.section';
 import { MemorySection } from './sections/memory.section';
 import { TurnHintsSection } from './sections/turn-hints.section';
+import { HardConstraintsSection } from './sections/hard-constraints.section';
 import { SCENARIO_SECTIONS, DEFAULT_SCENARIO } from './scenarios/scenario.registry';
 import { StaticSection } from './sections/static.section';
 import { PolicySection } from './sections/policy.section';
@@ -148,6 +149,7 @@ export class ContextService implements OnModuleInit {
     this.sections.set('stage-strategy', new StageStrategySection());
     this.sections.set('memory', new MemorySection());
     this.sections.set('turn-hints', new TurnHintsSection());
+    this.sections.set('hard-constraints', new HardConstraintsSection());
     this.sections.set('datetime', new DateTimeSection());
     this.sections.set('channel', new ChannelSection());
   }

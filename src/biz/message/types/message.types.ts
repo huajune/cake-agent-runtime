@@ -1,4 +1,5 @@
-import type { AlertErrorType } from '@shared-types/tracking.types';
+import type { AgentMemorySnapshot, AgentStepDetail, AgentToolCall } from '@agent/agent-run.types';
+import type { AlertErrorType, AnomalyFlag } from '@shared-types/tracking.types';
 
 /**
  * 聊天消息输入格式
@@ -92,10 +93,17 @@ export interface MessageProcessingRecordInput {
   aiDuration?: number;
   ttftMs?: number;
   sendDuration?: number;
-  tools?: string[];
   tokenUsage?: number;
   isFallback?: boolean;
   fallbackSuccess?: boolean;
   agentInvocation?: unknown;
   batchId?: string;
+  /** 工具调用详情：[{ name, args, result, resultCount, status, durationMs }, ...] */
+  toolCalls?: AgentToolCall[];
+  /** 每步循环快照 */
+  agentSteps?: AgentStepDetail[];
+  /** 异常信号标签（由 tracking 自动计算） */
+  anomalyFlags?: AnomalyFlag[];
+  /** 本轮触发时的记忆上下文快照 */
+  memorySnapshot?: AgentMemorySnapshot;
 }

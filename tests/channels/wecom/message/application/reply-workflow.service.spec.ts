@@ -123,6 +123,7 @@ describe('ReplyWorkflowService', () => {
         sessionId: 'chat-1',
         userId: 'im-contact-1',
         corpId: 'corp-1',
+        externalUserId: 'external-user-1',
         modelId: 'gpt-runtime',
         thinking: {
           type: 'enabled',
@@ -210,6 +211,7 @@ function createMessage(
       pureText: '你好',
     },
     contactName: '张三',
+    externalUserId: 'external-user-1',
     _apiType: 'enterprise',
     ...overrides,
   } as EnterpriseMessageCallbackDto;
