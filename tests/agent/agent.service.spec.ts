@@ -135,6 +135,113 @@ describe('AgentRunnerService - invoke', () => {
     );
   });
 
+  it('should expose response messages from generateText for downstream observability', async () => {
+    mockReliableService.generateText.mockResolvedValueOnce({
+      text: 'Hello!',
+      response: {
+        messages: [
+          {
+            role: 'assistant',
+            content: [
+              { type: 'reasoning', text: '先思考一下' },
+              { type: 'text', text: 'Hello!' },
+            ],
+          },
+        ],
+      },
+      steps: [{}],
+      usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+    });
+
+    const result = await service.invoke(invokeParams);
+
+    expect(result.responseMessages).toEqual([
+      {
+        role: 'assistant',
+        content: [
+          { type: 'reasoning', text: '先思考一下' },
+          { type: 'text', text: 'Hello!' },
+        ],
+      },
+    ]);
+  });
+
+  it('should map deep thinking to provider-specific options for invoke', async () => {
+    mockPreparation.prepare.mockResolvedValueOnce({
+      finalPrompt: 'test system prompt',
+      typedMessages: [{ role: 'user', content: 'Hello' }],
+      chatModel: 'mock-model',
+      chatModelId: 'openai/gpt-5.1',
+      chatFallbacks: ['mock-fallback-model'],
+      tools: {},
+      corpId: 'corp-1',
+      userId: 'user-123',
+      sessionId: 'sess-1',
+      maxSteps: 5,
+      entryStage: null,
+      turnState: { candidatePool: null },
+    });
+
+    await service.invoke({
+      ...invokeParams,
+      thinking: {
+        type: 'enabled',
+        budgetTokens: 4000,
+      },
+    });
+
+    expect(mockReliableService.generateText).toHaveBeenCalledWith(
+      'openai/gpt-5.1',
+      expect.objectContaining({
+        providerOptions: {
+          openai: {
+            reasoningEffort: 'high',
+          },
+        },
+      }),
+      ['mock-fallback-model'],
+    );
+  });
+
+  it('should honor explicit fast mode and disable deep thinking overrides', async () => {
+    mockPreparation.prepare.mockResolvedValueOnce({
+      finalPrompt: 'test system prompt',
+      typedMessages: [{ role: 'user', content: 'Hello' }],
+      chatModel: 'mock-model',
+      chatModelId: 'deepseek/deepseek-chat',
+      chatFallbacks: ['mock-fallback-model'],
+      tools: {},
+      corpId: 'corp-1',
+      userId: 'user-123',
+      sessionId: 'sess-1',
+      maxSteps: 5,
+      entryStage: null,
+      turnState: { candidatePool: null },
+    });
+
+    await service.invoke({
+      ...invokeParams,
+      thinking: {
+        type: 'disabled',
+        budgetTokens: 0,
+      },
+    });
+
+    expect(mockReliableService.generateText).toHaveBeenCalledWith(
+      'deepseek/deepseek-chat',
+      expect.objectContaining({
+        providerOptions: {
+          deepseek: {
+            thinking: {
+              type: 'disabled',
+            },
+          },
+        },
+      }),
+      ['mock-fallback-model'],
+    );
+  });
+
   it('should pass persisted stage to compose', async () => {
     mockPreparation.prepare.mockResolvedValue({
       finalPrompt: 'test system prompt',

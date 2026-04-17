@@ -1,10 +1,6 @@
 import { ScenarioType } from '@enums/agent.enum';
 import { WecomMessageObservabilityService } from '@wecom/message/telemetry/wecom-message-observability.service';
-import {
-  StorageContactType,
-  StorageMessageSource,
-  StorageMessageType,
-} from '@wecom/message/types';
+import { StorageContactType, StorageMessageSource, StorageMessageType } from '@wecom/message/types';
 
 describe('WecomMessageObservabilityService', () => {
   const mockTrackingService = {
@@ -64,6 +60,43 @@ describe('WecomMessageObservabilityService', () => {
       },
       isFallback: false,
       processingTime: 920,
+      responseMessages: [
+        {
+          role: 'assistant',
+          content: [
+            {
+              type: 'reasoning',
+              text: '先确认候选人时间，再安排面试',
+            },
+            {
+              type: 'tool-call',
+              toolCallId: 'call-1',
+              toolName: 'book_interview',
+              input: { time: '2026-04-03 15:00:00' },
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          content: [
+            {
+              type: 'tool-result',
+              toolCallId: 'call-1',
+              toolName: 'book_interview',
+              output: { success: true },
+            },
+          ],
+        },
+        {
+          role: 'assistant',
+          content: [
+            {
+              type: 'text',
+              text: '已帮你安排面试',
+            },
+          ],
+        },
+      ],
       toolCalls: [
         {
           toolName: 'book_interview',
@@ -74,6 +107,7 @@ describe('WecomMessageObservabilityService', () => {
     });
     await service.markAiEnd(messageId);
     await service.markDeliveryStart(messageId);
+    await service.markFirstSegmentSent(messageId);
     await service.markDeliveryEnd(messageId, {
       success: true,
       segmentCount: 1,
@@ -94,11 +128,37 @@ describe('WecomMessageObservabilityService', () => {
     expect(metadata.agentInvocation?.response?.timings?.durations?.totalMs).toBeGreaterThanOrEqual(
       0,
     );
+    expect(
+      metadata.agentInvocation?.response?.timings?.durations?.requestToFirstTextDeltaMs,
+    ).toBeGreaterThanOrEqual(0);
     expect(metadata.agentInvocation?.response?.delivery).toEqual(
       expect.objectContaining({
         success: true,
         segmentCount: 1,
       }),
+    );
+    expect(metadata.agentInvocation?.response?.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: 'assistant',
+          content: expect.arrayContaining([
+            expect.objectContaining({
+              type: 'reasoning',
+              text: '先确认候选人时间，再安排面试',
+            }),
+          ]),
+        }),
+        expect.objectContaining({
+          role: 'tool',
+          content: expect.arrayContaining([
+            expect.objectContaining({
+              type: 'tool-result',
+              toolCallId: 'call-1',
+              toolName: 'book_interview',
+            }),
+          ]),
+        }),
+      ]),
     );
     await expect(service.hasTrace(messageId)).resolves.toBe(false);
   });
@@ -187,10 +247,50 @@ describe('WecomMessageObservabilityService', () => {
       expect(metadata.agentInvocation).toBeDefined();
       expect(metadata.agentInvocation?.request?.sourceMessageIds).toEqual(['msg_a', 'msg_b']);
       expect(metadata.agentInvocation?.request?.sourceMessageCount).toBe(2);
-      expect(metadata.agentInvocation?.response?.timings?.durations?.quietWindowWaitMs).toBe(
-        3500,
-      );
+      expect(metadata.agentInvocation?.response?.timings?.durations?.quietWindowWaitMs).toBe(3500);
       expect(metadata.agentInvocation?.response?.timings?.durations?.queueWaitMs).toBe(700);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it('should treat first sent segment latency as ttft for wecom traces', async () => {
+    const messageId = 'msg_ttft_1';
+    const acceptedAt = 1710000000000;
+    const clock = jest.spyOn(Date, 'now');
+
+    try {
+      await service.startTrace({
+        messageId,
+        chatId: 'chat_ttft',
+        userId: 'contact_ttft',
+        userName: '候选人TTFT',
+        managerName: 'Agent Test',
+        scenario: ScenarioType.CANDIDATE_CONSULTATION,
+        content: '在吗',
+        imageCount: 0,
+        acceptedAt,
+        messageType: StorageMessageType.TEXT,
+        messageSource: StorageMessageSource.MOBILE_PUSH,
+        contactType: StorageContactType.PERSONAL_WECHAT,
+      });
+
+      clock.mockReturnValue(acceptedAt + 2600);
+      await service.markFirstSegmentSent(messageId);
+
+      clock.mockReturnValue(acceptedAt + 3200);
+      const metadata = await service.buildSuccessMetadata(messageId, {
+        scenario: ScenarioType.CANDIDATE_CONSULTATION,
+        replySegments: 1,
+        replyPreview: '我在呢',
+      });
+
+      expect(metadata.agentInvocation?.response?.timings?.durations).toEqual(
+        expect.objectContaining({
+          acceptedToFirstSegmentSentMs: 2600,
+          requestToFirstTextDeltaMs: 2600,
+        }),
+      );
     } finally {
       clock.mockRestore();
     }

@@ -81,30 +81,28 @@ export class AcceptInboundMessageService {
       };
     }
 
-    let historyStored = false;
     const parsed = MessageParser.parse(messageData);
     const scenario: ScenarioType = MessageParser.determineScenario();
     const requestContent = filterResult.content ?? parsed.content;
 
+    // 前置打点：trace 在回调入口就建立，后续 markHistoryStored/markImagePrepared/markQueueAdd
+    // 都能真实落盘，不再被静默塞进 Queue 时间里。
+    if (!(await this.wecomObservability.hasTrace(messageData.messageId))) {
+      await this.wecomObservability.startRequestTrace({
+        traceId: messageData.messageId,
+        primaryMessage: messageData,
+        scenario,
+        content: requestContent,
+      });
+    }
+
     try {
       await this.recordUserMessageToHistory(messageData, filterResult.content);
-      historyStored = true;
       await this.wecomObservability.markHistoryStored(messageData.messageId);
 
       await this.prepareImageIfNeeded(messageData);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      if (!(await this.wecomObservability.hasTrace(messageData.messageId))) {
-        await this.wecomObservability.startRequestTrace({
-          traceId: messageData.messageId,
-          primaryMessage: messageData,
-          scenario,
-          content: requestContent,
-        });
-        if (historyStored) {
-          await this.wecomObservability.markHistoryStored(messageData.messageId);
-        }
-      }
       const failureMetadata = await this.wecomObservability.buildFailureMetadata(
         messageData.messageId,
         {

@@ -14,6 +14,7 @@ import { MessageDeliveryService } from '../delivery/delivery.service';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
 import { MessageProcessingFailureService } from './message-processing-failure.service';
 import { PreAgentRiskInterceptService } from './pre-agent-risk-intercept.service';
+import type { AgentThinkingConfig } from '@agent/agent-run.types';
 
 @Injectable()
 export class ReplyWorkflowService {
@@ -154,7 +155,7 @@ export class ReplyWorkflowService {
       .filter((message) => MessageParser.extractImageUrl(message) !== null)
       .map((message) => message.messageId);
 
-    const { overrideModelId, effectiveModelId } =
+    const { overrideModelId, effectiveModelId, thinking } =
       await this.runtimeConfig.resolveWecomChatModelSelection();
 
     // 前置风险同步预检：命中高置信度关键词即同步执行暂停+告警，
@@ -188,6 +189,7 @@ export class ReplyWorkflowService {
       imRoomId: parsed.imRoomId,
       apiType: parsed._apiType,
       modelId: overrideModelId,
+      thinking,
       effectiveModelId,
     });
 
@@ -283,6 +285,7 @@ export class ReplyWorkflowService {
     imRoomId?: string;
     apiType?: 'enterprise' | 'group';
     modelId?: string;
+    thinking?: AgentThinkingConfig;
     effectiveModelId?: string;
   }): Promise<AgentInvokeResult> {
     const {
@@ -319,6 +322,7 @@ export class ReplyWorkflowService {
         imRoomId: params.imRoomId,
         apiType: params.apiType,
         modelId: params.modelId,
+        thinking: params.thinking,
         onPreparedRequest:
           recordMonitoring && messageId
             ? (agentRequest) => this.wecomObservability.recordAgentRequest(messageId, agentRequest)
@@ -347,6 +351,7 @@ export class ReplyWorkflowService {
         isFallback: false,
         processingTime,
         toolCalls: result.toolCalls,
+        responseMessages: result.responseMessages,
       };
       if (recordMonitoring && messageId) {
         await this.wecomObservability.recordAgentResult(messageId, invokeResult);

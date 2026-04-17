@@ -15,6 +15,10 @@ export class UpdateAgentReplyConfigDto {
   wecomCallbackModelId?: string;
 
   @IsOptional()
+  @IsIn(['fast', 'deep'])
+  wecomCallbackThinkingMode?: 'fast' | 'deep';
+
+  @IsOptional()
   @IsNumber()
   @Min(0)
   initialMergeWindowMs?: number;

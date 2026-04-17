@@ -112,12 +112,41 @@ function buildTracePayload(response?: AnyRecord): AnyRecord | undefined {
 function buildDebugRequestContext(request?: AnyRecord): AnyRecord | undefined {
   if (!request) return undefined;
 
-  const { agentRequest: _agentRequest, normalizedRequest: _normalizedRequest, transportRequest: _transportRequest, ...rest } = request;
+  const {
+    agentRequest: _agentRequest,
+    normalizedRequest: _normalizedRequest,
+    transportRequest: _transportRequest,
+    ...rest
+  } = request;
   return Object.keys(rest).length > 0 ? rest : undefined;
 }
 
 function buildTextPart(text: string) {
   return { type: 'text' as const, text };
+}
+
+function buildToolPart(params: {
+  toolName: string;
+  toolCallId: string;
+  input?: unknown;
+  output?: unknown;
+  errorText?: string;
+  state?: 'input-available' | 'output-available' | 'output-error';
+}) {
+  const { toolName, toolCallId, input, output, errorText } = params;
+  const state =
+    params.state ??
+    (errorText ? 'output-error' : output !== undefined ? 'output-available' : 'input-available');
+
+  return {
+    type: `tool-${toolName}`,
+    toolName,
+    toolCallId,
+    input,
+    output,
+    state,
+    errorText,
+  } as UIMessage['parts'][number];
 }
 
 function buildToolParts(toolCalls: AnyRecord[]): UIMessage['parts'] {
@@ -128,26 +157,28 @@ function buildToolParts(toolCalls: AnyRecord[]): UIMessage['parts'] {
       asString(toolCall.name) ||
       `tool-${index + 1}`;
     const errorText = asString(toolCall.errorText) || asString(toolCall.error);
-    const output = toolCall.result ?? toolCall.output ?? (errorText ? { error: errorText } : undefined);
+    const output =
+      toolCall.result ?? toolCall.output ?? (errorText ? { error: errorText } : undefined);
     const explicitState = asString(toolCall.state);
 
-    acc.push({
-      type: `tool-${toolName}`,
-      toolName,
-      toolCallId: asString(toolCall.toolCallId) || `${toolName}-${index}`,
-      input: toolCall.input ?? toolCall.args ?? toolCall.arguments,
-      output,
-      state:
-        explicitState === 'error' ||
-        explicitState === 'output-error' ||
-        explicitState === 'input-error' ||
-        explicitState === 'output-denied'
-          ? 'output-error'
-          : output !== undefined || explicitState === 'output-available'
-            ? 'output-available'
-            : 'input-available',
-      errorText,
-    } as UIMessage['parts'][number]);
+    acc.push(
+      buildToolPart({
+        toolName,
+        toolCallId: asString(toolCall.toolCallId) || `${toolName}-${index}`,
+        input: toolCall.input ?? toolCall.args ?? toolCall.arguments,
+        output,
+        errorText,
+        state:
+          explicitState === 'error' ||
+          explicitState === 'output-error' ||
+          explicitState === 'input-error' ||
+          explicitState === 'output-denied'
+            ? 'output-error'
+            : output !== undefined || explicitState === 'output-available'
+              ? 'output-available'
+              : 'input-available',
+      }),
+    );
 
     return acc;
   }, []);
@@ -185,23 +216,150 @@ function normalizeMessageParts(parts: unknown): UIMessage['parts'] {
 
     if (partType === 'dynamic-tool' || partType.startsWith('tool-')) {
       const toolName = asString(part.toolName) || partType.replace(/^tool-/, '') || 'unknown-tool';
-      acc.push({
-        type: `tool-${toolName}`,
-        toolName,
-        toolCallId: asString(part.toolCallId) || `${toolName}-${index}`,
-        input: part.input ?? part.args ?? part.arguments,
-        output: part.output ?? part.result,
-        state:
-          part.state === 'error' || part.state === 'output-error'
-            ? 'output-error'
-            : part.output !== undefined || part.result !== undefined || part.state === 'output-available'
-              ? 'output-available'
-              : 'input-available',
-      } as UIMessage['parts'][number]);
+      acc.push(
+        buildToolPart({
+          toolName,
+          toolCallId: asString(part.toolCallId) || `${toolName}-${index}`,
+          input: part.input ?? part.args ?? part.arguments,
+          output: part.output ?? part.result,
+          errorText: asString(part.errorText) || asString(part.error),
+          state:
+            part.state === 'error' || part.state === 'output-error'
+              ? 'output-error'
+              : part.output !== undefined ||
+                  part.result !== undefined ||
+                  part.state === 'output-available'
+                ? 'output-available'
+                : 'input-available',
+        }),
+      );
     }
 
     return acc;
   }, []);
+}
+
+function buildRenderablePartsFromResponseMessages(
+  responseMessages: AnyRecord[],
+): UIMessage['parts'] {
+  const parts: UIMessage['parts'] = [];
+  const toolPartIndexById = new Map<string, number>();
+  type ToolLikePart = UIMessage['parts'][number] & {
+    toolCallId?: string;
+    input?: unknown;
+    output?: unknown;
+    errorText?: string;
+    state?: unknown;
+  };
+
+  const rememberToolPart = (part: UIMessage['parts'][number], index: number) => {
+    const toolCallId = (part as { toolCallId?: string }).toolCallId;
+    if (part.type.startsWith('tool-') && toolCallId) {
+      toolPartIndexById.set(toolCallId, index);
+    }
+  };
+
+  const pushPart = (part: UIMessage['parts'][number]) => {
+    parts.push(part);
+    rememberToolPart(part, parts.length - 1);
+  };
+
+  const mergeToolUpdate = (contentPart: AnyRecord, index: number) => {
+    const toolName =
+      asString(contentPart.toolName) ||
+      asString(contentPart.tool) ||
+      asString(contentPart.name) ||
+      `tool-${index + 1}`;
+    const toolCallId = asString(contentPart.toolCallId) || `${toolName}-${index}`;
+    const errorText = asString(contentPart.errorText) || asString(contentPart.error) || undefined;
+    const output =
+      contentPart.output ?? contentPart.result ?? (errorText ? { error: errorText } : undefined);
+    const nextPart = buildToolPart({
+      toolName,
+      toolCallId,
+      input: contentPart.input ?? contentPart.args ?? contentPart.arguments,
+      output,
+      errorText,
+      state:
+        errorText || contentPart.type === 'tool-error'
+          ? 'output-error'
+          : output !== undefined
+            ? 'output-available'
+            : 'input-available',
+    }) as ToolLikePart;
+
+    const existingIndex = toolPartIndexById.get(toolCallId);
+    if (existingIndex !== undefined) {
+      const existing = parts[existingIndex] as ToolLikePart;
+      parts[existingIndex] = {
+        ...existing,
+        input: existing.input ?? nextPart.input,
+        output: nextPart.output,
+        errorText: nextPart.errorText,
+        state: nextPart.state,
+      } as UIMessage['parts'][number];
+      rememberToolPart(parts[existingIndex], existingIndex);
+      return;
+    }
+
+    pushPart(nextPart);
+  };
+
+  responseMessages.forEach((message, messageIndex) => {
+    const uiParts = normalizeMessageParts(message.parts);
+    if (uiParts.length > 0) {
+      uiParts.forEach((part) => pushPart(part));
+      return;
+    }
+
+    const content = asArray<AnyRecord>(message.content);
+    if (content.length === 0) return;
+
+    content.forEach((contentPart, contentIndex) => {
+      const partType = asString(contentPart.type);
+      if (!partType) return;
+
+      if (partType === 'text') {
+        const text = asString(contentPart.text);
+        if (text) pushPart(buildTextPart(text));
+        return;
+      }
+
+      if (partType === 'reasoning') {
+        const text = asString(contentPart.text);
+        if (text) {
+          pushPart({
+            type: 'reasoning',
+            text,
+          } as UIMessage['parts'][number]);
+        }
+        return;
+      }
+
+      if (partType === 'tool-call') {
+        const toolName =
+          asString(contentPart.toolName) ||
+          asString(contentPart.tool) ||
+          asString(contentPart.name) ||
+          `tool-${messageIndex + 1}-${contentIndex + 1}`;
+        pushPart(
+          buildToolPart({
+            toolName,
+            toolCallId:
+              asString(contentPart.toolCallId) || `${toolName}-${messageIndex}-${contentIndex}`,
+            input: contentPart.input ?? contentPart.args ?? contentPart.arguments,
+          }),
+        );
+        return;
+      }
+
+      if (partType === 'tool-result' || partType === 'tool-error') {
+        mergeToolUpdate(contentPart, messageIndex * 100 + contentIndex);
+      }
+    });
+  });
+
+  return parts;
 }
 
 export function getAssistantRenderableMessage(message: MessageRecord): UIMessage | undefined {
@@ -213,41 +371,36 @@ export function getAssistantRenderableMessage(message: MessageRecord): UIMessage
   const replyReasoning = asString(reply?.reasoning) || asString(response?.reasoningPreview);
   const replyContent =
     asString(reply?.content) || asString(response?.replyPreview) || message.replyPreview;
+  const renderableParts = buildRenderablePartsFromResponseMessages(responseMessages);
 
-  for (let i = responseMessages.length - 1; i >= 0; i -= 1) {
-    const candidate = responseMessages[i];
-    if (candidate.role !== 'assistant') continue;
+  if (renderableParts.length > 0) {
+    const enrichedParts = [...renderableParts];
 
-    const parts = normalizeMessageParts(candidate.parts);
-    if (parts.length > 0) {
-      const enrichedParts = [...parts];
-
-      if (replyReasoning && !hasPartType(enrichedParts, 'reasoning')) {
-        enrichedParts.unshift({
-          type: 'reasoning',
-          text: replyReasoning,
-        } as UIMessage['parts'][number]);
-      }
-
-      if (directToolParts.length > 0 && !hasToolPart(enrichedParts)) {
-        const firstTextIndex = enrichedParts.findIndex((part) => part.type === 'text');
-        if (firstTextIndex >= 0) {
-          enrichedParts.splice(firstTextIndex, 0, ...directToolParts);
-        } else {
-          enrichedParts.push(...directToolParts);
-        }
-      }
-
-      if (replyContent && !hasPartType(enrichedParts, 'text')) {
-        enrichedParts.push(buildTextPart(replyContent));
-      }
-
-      return {
-        id: asString(candidate.id) || `assistant-${message.messageId || i}`,
-        role: 'assistant',
-        parts: enrichedParts,
-      } as UIMessage;
+    if (replyReasoning && !hasPartType(enrichedParts, 'reasoning')) {
+      enrichedParts.unshift({
+        type: 'reasoning',
+        text: replyReasoning,
+      } as UIMessage['parts'][number]);
     }
+
+    if (directToolParts.length > 0 && !hasToolPart(enrichedParts)) {
+      const firstTextIndex = enrichedParts.findIndex((part) => part.type === 'text');
+      if (firstTextIndex >= 0) {
+        enrichedParts.splice(firstTextIndex, 0, ...directToolParts);
+      } else {
+        enrichedParts.push(...directToolParts);
+      }
+    }
+
+    if (replyContent && !hasPartType(enrichedParts, 'text')) {
+      enrichedParts.push(buildTextPart(replyContent));
+    }
+
+    return {
+      id: `assistant-renderable-${message.messageId || message.chatId}`,
+      role: 'assistant',
+      parts: enrichedParts,
+    } as UIMessage;
   }
 
   const syntheticParts: UIMessage['parts'] = [];
@@ -289,9 +442,7 @@ export function getStatusLabel(status: MessageRecord['status']): string {
   }
 }
 
-export function getStatusTone(
-  status: MessageRecord['status'],
-): 'success' | 'danger' | 'warning' {
+export function getStatusTone(status: MessageRecord['status']): 'success' | 'danger' | 'warning' {
   switch (status) {
     case 'success':
       return 'success';
@@ -615,7 +766,11 @@ function inferToolStatus(toolCall: AnyRecord): ToolCallInfo['status'] {
   ) {
     return 'error';
   }
-  if (toolCall.state === 'output-available' || toolCall.output !== undefined || toolCall.result !== undefined) {
+  if (
+    toolCall.state === 'output-available' ||
+    toolCall.output !== undefined ||
+    toolCall.result !== undefined
+  ) {
     return 'success';
   }
   return 'unknown';
@@ -626,25 +781,30 @@ export function getToolCalls(message: MessageRecord): ToolCallInfo[] {
   const directToolCalls = asArray<AnyRecord>(response?.toolCalls);
   if (directToolCalls.length > 0) {
     return directToolCalls.reduce<ToolCallInfo[]>((acc, toolCall) => {
-        const name = asString(toolCall.toolName);
-        if (!name) return acc;
-        acc.push({
-          name,
-          toolCallId: asString(toolCall.toolCallId),
-          status: inferToolStatus(toolCall),
-          input: toolCall.input ?? toolCall.args ?? toolCall.arguments,
-          output: toolCall.result ?? toolCall.output,
-        });
-        return acc;
-      }, []);
+      const name = asString(toolCall.toolName);
+      if (!name) return acc;
+      acc.push({
+        name,
+        toolCallId: asString(toolCall.toolCallId),
+        status: inferToolStatus(toolCall),
+        input: toolCall.input ?? toolCall.args ?? toolCall.arguments,
+        output: toolCall.result ?? toolCall.output,
+      });
+      return acc;
+    }, []);
   }
 
   const responseMessages = asArray<AnyRecord>(response?.messages);
   return responseMessages.flatMap((item) =>
     asArray<AnyRecord>(item.parts)
-      .filter((part) => part.type === 'dynamic-tool' || (typeof part.type === 'string' && part.type.startsWith('tool-')))
+      .filter(
+        (part) =>
+          part.type === 'dynamic-tool' ||
+          (typeof part.type === 'string' && part.type.startsWith('tool-')),
+      )
       .map((part) => ({
-        name: asString(part.toolName) || (asString(part.type)?.replace(/^tool-/, '') || 'unknown-tool'),
+        name:
+          asString(part.toolName) || asString(part.type)?.replace(/^tool-/, '') || 'unknown-tool',
         toolCallId: asString(part.toolCallId),
         status:
           part.state === 'output-available'

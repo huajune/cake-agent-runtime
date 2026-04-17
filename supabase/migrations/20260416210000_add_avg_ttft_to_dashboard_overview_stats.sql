@@ -4,7 +4,12 @@
 --
 -- 消息处理页顶部主指标已切换为 TTFT，需要在概览 RPC 中直接返回
 -- 聚合后的平均 TTFT，避免前端继续错误复用 avg_duration(E2E)。
+--
+-- 注：OUT 列增加 avg_ttft，返回类型发生变化，CREATE OR REPLACE 不允许
+-- 改返回类型，需先 DROP 再重建。
 -- ============================================================
+
+DROP FUNCTION IF EXISTS get_dashboard_overview_stats(timestamp with time zone, timestamp with time zone);
 
 CREATE OR REPLACE FUNCTION get_dashboard_overview_stats(
   p_start_date timestamp with time zone,

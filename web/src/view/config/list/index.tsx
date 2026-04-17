@@ -7,7 +7,7 @@ import {
 } from '@/hooks/config/useSystemConfig';
 import { useWorkerStatus, useSetWorkerConcurrency } from '@/hooks/config/useWorker';
 import { useMessageProcessingRecords } from '@/hooks/chat/useMessageProcessingRecords';
-import type { AgentReplyConfig } from '@/api/types/config.types';
+import type { AgentReplyConfig, AgentReplyThinkingMode } from '@/api/types/config.types';
 
 import ControlBar from './components/ControlBar';
 import { formatConfigValue } from './components/ConfigCard';
@@ -57,6 +57,23 @@ const numberConfigMeta: Record<NumberConfigKey, NumberConfigMeta> = {
     step: 100,
   },
 };
+
+const thinkingModeOptions: Array<{ value: AgentReplyThinkingMode; label: string; hint: string }> = [
+  {
+    value: 'fast',
+    label: '极速模式',
+    hint: '优先响应速度，适合大多数常规咨询。',
+  },
+  {
+    value: 'deep',
+    label: '深度思考',
+    hint: '优先推理质量，支持的模型会启用更强思考。',
+  },
+];
+
+function getThinkingModeLabel(value?: string): string {
+  return thinkingModeOptions.find((option) => option.value === value)?.label ?? '极速模式';
+}
 
 export default function Config() {
   const [editingConfig, setEditingConfig] = useState<Partial<AgentReplyConfig>>({});
@@ -173,6 +190,12 @@ export default function Config() {
 
   const modelValue = String(getCurrentValue('wecomCallbackModelId') ?? '');
   const modelDefaultValue = String(getDefaultValue('wecomCallbackModelId') ?? '');
+  const thinkingModeValue = String(
+    getCurrentValue('wecomCallbackThinkingMode') ?? 'fast',
+  ) as AgentReplyThinkingMode;
+  const thinkingModeDefaultValue = String(
+    getDefaultValue('wecomCallbackThinkingMode') ?? 'fast',
+  ) as AgentReplyThinkingMode;
   const currentMergeWindow = Number(getCurrentValue('initialMergeWindowMs') ?? 0);
   const e2eSamples =
     recentMessageRecords?.filter(
@@ -188,10 +211,7 @@ export default function Config() {
       <ControlBar
         title="运行时配置"
         subtitle="统一管理企微回调模型、消息节奏和运行开关。这里只放真正影响当前系统运行方式的配置。"
-        hints={[
-          { label: '表单项需要保存' },
-          { label: '运行开关即时生效' },
-        ]}
+        hints={[{ label: '表单项需要保存' }, { label: '运行开关即时生效' }]}
         hasChanges={hasChanges}
         isPending={updateConfig.isPending}
       />
@@ -243,6 +263,48 @@ export default function Config() {
                     {(availableModelsData?.availableModels ?? []).map((option) => (
                       <option key={option} value={option}>
                         {option}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div
+                className={`${styles.settingRow} ${isModified('wecomCallbackThinkingMode') ? styles.settingRowModified : ''}`}
+              >
+                <div className={styles.settingBody}>
+                  <div className={styles.settingHeading}>
+                    <span className={styles.settingLabel}>企微回调回复模式</span>
+                    {isModified('wecomCallbackThinkingMode') ? (
+                      <span className={styles.modifiedBadge}>已修改</span>
+                    ) : null}
+                  </div>
+                  <p className={styles.settingDescription}>
+                    控制企微回调进入 Agent
+                    时更偏向极速回复，还是偏向深度推理。对不支持推理模式的模型，会自动忽略这项设置。
+                  </p>
+                  <div className={styles.settingMeta}>
+                    <span>适用于新的企微回调请求</span>
+                    <span>默认: {getThinkingModeLabel(thinkingModeDefaultValue)}</span>
+                  </div>
+                </div>
+                <div className={styles.controlBlock}>
+                  <span className={styles.controlValue}>
+                    {getThinkingModeLabel(thinkingModeValue)}
+                  </span>
+                  <select
+                    className={styles.selectInput}
+                    value={thinkingModeValue}
+                    onChange={(e) =>
+                      handleConfigChange(
+                        'wecomCallbackThinkingMode',
+                        e.target.value as AgentReplyThinkingMode,
+                      )
+                    }
+                  >
+                    {thinkingModeOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label} · {option.hint}
                       </option>
                     ))}
                   </select>
@@ -308,17 +370,17 @@ export default function Config() {
             </div>
 
             <div className={styles.subPanel}>
-                <WorkerPanel
-                  isLoading={isLoadingWorker}
-                  workerStatus={workerStatus}
-                  editingConcurrency={editingConcurrency}
-                  isPending={setConcurrency.isPending}
-                  averageE2EMs={averageE2EMs}
-                  e2eSampleCount={e2eSamples.length}
-                  onConcurrencyChange={setEditingConcurrency}
-                  onApply={handleApplyConcurrency}
-                  onCancel={() => setEditingConcurrency(null)}
-                />
+              <WorkerPanel
+                isLoading={isLoadingWorker}
+                workerStatus={workerStatus}
+                editingConcurrency={editingConcurrency}
+                isPending={setConcurrency.isPending}
+                averageE2EMs={averageE2EMs}
+                e2eSampleCount={e2eSamples.length}
+                onConcurrencyChange={setEditingConcurrency}
+                onApply={handleApplyConcurrency}
+                onCancel={() => setEditingConcurrency(null)}
+              />
             </div>
           </section>
 

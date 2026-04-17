@@ -1,5 +1,10 @@
 import { streamText } from 'ai';
 
+export interface AgentThinkingConfig {
+  type: 'enabled' | 'disabled';
+  budgetTokens: number;
+}
+
 export interface AgentInputMessage {
   role: string;
   content: string;
@@ -55,6 +60,8 @@ export interface AgentInvokeParams {
    * 为空时回退到 AGENT_CHAT_MODEL 角色路由。
    */
   modelId?: string;
+  /** 覆盖本次调用使用的思考模式 */
+  thinking?: AgentThinkingConfig;
   /**
    * 在真正调用模型前，暴露一份“实际 LLM 请求快照”给调用方做观测。
    * 仅用于埋点/调试，不参与模型请求语义。
@@ -72,6 +79,8 @@ export interface AgentRunResult {
   text: string;
   /** 模型思考过程（需启用 AGENT_THINKING_BUDGET_TOKENS） */
   reasoning?: string;
+  /** AI SDK generateText 返回的完整响应消息（assistant/tool） */
+  responseMessages?: Array<Record<string, unknown>>;
   steps: number;
   toolCalls: AgentToolCall[];
   usage: {

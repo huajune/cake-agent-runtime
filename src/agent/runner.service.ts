@@ -8,6 +8,7 @@ import { ReliableService } from '@providers/reliable.service';
 import { AgentPreparationService, type PreparedAgentContext } from './agent-preparation.service';
 import type { AgentError } from '@shared-types/agent-error.types';
 import type {
+  AgentThinkingConfig,
   AgentInvokeParams,
   AgentRunResult,
   AgentStreamResult,
@@ -56,7 +57,7 @@ export class AgentRunnerService {
     }
 
     try {
-      const providerOptions = this.buildProviderOptions();
+      const providerOptions = this.buildProviderOptions(ctx.chatModelId, params.thinking);
       const agentRequest = this.buildObservedAgentRequest(ctx, providerOptions);
       if (params.onPreparedRequest) {
         await Promise.resolve(params.onPreparedRequest(agentRequest));
@@ -85,6 +86,7 @@ export class AgentRunnerService {
       return this.buildRunResult({
         text: r.text,
         reasoningText: r.reasoningText,
+        responseMessages: r.response?.messages as Array<Record<string, unknown>> | undefined,
         steps: r.steps,
         usage: {
           inputTokens: r.usage.inputTokens ?? 0,
@@ -102,10 +104,7 @@ export class AgentRunnerService {
 
   /** 流式执行入口。 */
   async stream(
-    params: AgentInvokeParams & {
-      thinking?: { type: 'enabled' | 'disabled'; budgetTokens: number };
-      onFinish?: (result: AgentRunResult) => Promise<void> | void;
-    },
+    params: AgentInvokeParams & { onFinish?: (result: AgentRunResult) => Promise<void> | void },
   ): Promise<AgentStreamResult> {
     const ctx = await this.preparation.prepare(params, 'stream');
 
@@ -114,7 +113,7 @@ export class AgentRunnerService {
     }
 
     try {
-      const providerOptions = this.buildProviderOptions(params.thinking);
+      const providerOptions = this.buildProviderOptions(ctx.chatModelId, params.thinking);
       const agentRequest = this.buildObservedAgentRequest(ctx, providerOptions);
       if (params.onPreparedRequest) {
         await Promise.resolve(params.onPreparedRequest(agentRequest));
@@ -167,12 +166,9 @@ export class AgentRunnerService {
    *
    * 这里同时传两套参数，各厂商只识别自己的 key，互不干扰。
    */
-  private buildProviderOptions(requestThinking?: {
-    type: 'enabled' | 'disabled';
-    budgetTokens: number;
-  }) {
-    if (requestThinking?.type === 'disabled') {
-      return undefined;
+  private buildProviderOptions(modelId: string, requestThinking?: AgentThinkingConfig) {
+    if (requestThinking) {
+      return this.buildExplicitThinkingOptions(modelId, requestThinking);
     }
 
     const effectiveBudget =
@@ -186,6 +182,60 @@ export class AgentRunnerService {
       anthropic: { thinking: { type: 'enabled', budgetTokens: effectiveBudget } },
       qwen: { enable_thinking: true },
     };
+  }
+
+  private buildExplicitThinkingOptions(modelId: string, thinking: AgentThinkingConfig) {
+    const [provider] = modelId.split('/');
+    const isDeepMode = thinking.type === 'enabled';
+
+    if (!provider) {
+      return undefined;
+    }
+
+    if (!isDeepMode) {
+      switch (provider) {
+        case 'deepseek':
+          return { deepseek: { thinking: { type: 'disabled' } } };
+        case 'google':
+          return { google: { thinkingConfig: { thinkingLevel: 'minimal' } } };
+        case 'openai':
+          return { openai: { reasoningEffort: 'minimal' } };
+        case 'qwen':
+          return { qwen: { enable_thinking: false } };
+        default:
+          return undefined;
+      }
+    }
+
+    const budgetTokens =
+      thinking.budgetTokens > 0 ? thinking.budgetTokens : this.thinkingBudgetTokens;
+    const safeBudgetTokens = budgetTokens > 0 ? budgetTokens : 1024;
+
+    switch (provider) {
+      case 'anthropic':
+        return { anthropic: { thinking: { type: 'enabled', budgetTokens: safeBudgetTokens } } };
+      case 'deepseek':
+        return { deepseek: { thinking: { type: 'enabled' } } };
+      case 'google':
+        return {
+          google: {
+            thinkingConfig: {
+              thinkingBudget: safeBudgetTokens,
+              thinkingLevel: 'high',
+            },
+          },
+        };
+      case 'openai':
+        return { openai: { reasoningEffort: 'high' } };
+      case 'qwen':
+        return { qwen: { enable_thinking: true, reasoningEffort: 'high' } };
+      case 'moonshotai':
+      case 'ohmygpt':
+      case 'gateway':
+        return { [provider]: { reasoningEffort: 'high' } };
+      default:
+        return undefined;
+    }
   }
 
   /**
@@ -235,6 +285,7 @@ export class AgentRunnerService {
   private buildRunResult(params: {
     text: string;
     reasoningText?: string;
+    responseMessages?: Array<Record<string, unknown>>;
     steps: Array<{
       toolCalls?: Array<{ toolCallId: string; toolName: string; input?: unknown }>;
       toolResults?: Array<{ toolCallId: string; output?: unknown }>;
@@ -259,6 +310,7 @@ export class AgentRunnerService {
     return {
       text: params.text,
       reasoning: params.reasoningText || undefined,
+      responseMessages: params.responseMessages,
       steps: params.steps.length,
       toolCalls,
       usage: params.usage,

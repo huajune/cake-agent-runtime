@@ -38,6 +38,7 @@ export interface AgentInvokeResult {
   isFallback: boolean;
   processingTime: number;
   toolCalls?: Array<{ toolName: string; args: Record<string, unknown>; result?: unknown }>;
+  responseMessages?: Array<Record<string, unknown>>;
 }
 
 export interface DeliveryContext {

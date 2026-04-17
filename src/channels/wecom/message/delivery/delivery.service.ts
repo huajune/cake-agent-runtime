@@ -108,6 +108,7 @@ export class MessageDeliveryService implements OnModuleInit {
         payload: { text: content },
         _apiType,
       });
+      await this.wecomObservability.markFirstSegmentSent(context.messageId);
 
       this.logger.log(`[${contactName}] 单条消息发送成功: "${this.truncate(content)}"`);
       return {
@@ -139,6 +140,7 @@ export class MessageDeliveryService implements OnModuleInit {
 
     let successCount = 0;
     let failedCount = 0;
+    let firstSegmentSent = false;
 
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i];
@@ -166,6 +168,10 @@ export class MessageDeliveryService implements OnModuleInit {
           _apiType,
         });
         successCount++;
+        if (!firstSegmentSent) {
+          firstSegmentSent = true;
+          await this.wecomObservability.markFirstSegmentSent(context.messageId);
+        }
       } catch (error) {
         failedCount++;
         const errorMessage = error instanceof Error ? error.message : String(error);

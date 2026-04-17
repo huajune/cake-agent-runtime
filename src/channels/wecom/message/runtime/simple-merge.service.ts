@@ -5,6 +5,7 @@ import { RedisService } from '@infra/redis/redis.service';
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
 import { RedisKeyBuilder } from './redis-key.util';
 import { MessageRuntimeConfigService } from './message-runtime-config.service';
+import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
 
 /**
  * 简化版消息聚合服务
@@ -32,6 +33,7 @@ export class SimpleMergeService implements OnModuleInit {
   constructor(
     private readonly redisService: RedisService,
     private readonly runtimeConfig: MessageRuntimeConfigService,
+    private readonly wecomObservability: WecomMessageObservabilityService,
     @InjectQueue('message-merge') private readonly messageQueue: Queue,
   ) {}
 
@@ -87,6 +89,7 @@ export class SimpleMergeService implements OnModuleInit {
       this.logger.debug(
         `[${chatId}] 静默窗口检查任务已创建，jobId=${chatId}:${messageData.messageId}, delay=${mergeDelayMs}ms`,
       );
+      await this.wecomObservability.markQueueAdd(messageData.messageId);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(`[${chatId}] 创建延迟任务失败: ${errorMessage}`);

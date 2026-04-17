@@ -1,17 +1,29 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
-import { AgentReplyConfig } from '@biz/hosting-config/types/hosting-config.types';
+import {
+  AgentReplyConfig,
+  AgentThinkingMode,
+} from '@biz/hosting-config/types/hosting-config.types';
+import type { AgentThinkingConfig } from '@agent/agent-run.types';
 
 export interface MessageTypingConfig {
   typingSpeedCharsPerSec: number;
   paragraphGapMs: number;
 }
 
+interface WecomChatSelection {
+  overrideModelId?: string;
+  effectiveModelId: string;
+  thinkingMode: AgentThinkingMode;
+  thinking: AgentThinkingConfig;
+}
+
 @Injectable()
 export class MessageRuntimeConfigService implements OnModuleInit {
   private readonly logger = new Logger(MessageRuntimeConfigService.name);
   private readonly SNAPSHOT_SYNC_INTERVAL_MS = 1_000;
+  private readonly DEFAULT_WECOM_DEEP_THINKING_BUDGET_TOKENS = 4000;
 
   private aiReplyEnabled: boolean;
   private messageMergeEnabled: boolean;
@@ -19,6 +31,8 @@ export class MessageRuntimeConfigService implements OnModuleInit {
   private mergeDelayMs: number;
   private typingConfig: MessageTypingConfig;
   private overrideModelId?: string;
+  private wecomThinkingMode: AgentThinkingMode;
+  private readonly wecomDeepThinkingBudgetTokens: number;
   private lastSyncedAt = 0;
   private syncPromise?: Promise<void>;
 
@@ -34,6 +48,8 @@ export class MessageRuntimeConfigService implements OnModuleInit {
       typingSpeedCharsPerSec: 8,
       paragraphGapMs: 2000,
     };
+    this.wecomThinkingMode = 'fast';
+    this.wecomDeepThinkingBudgetTokens = this.resolveWecomDeepThinkingBudgetTokens();
 
     this.systemConfigService.onAiReplyChange((enabled) => {
       this.aiReplyEnabled = enabled;
@@ -109,23 +125,33 @@ export class MessageRuntimeConfigService implements OnModuleInit {
     return this.syncPromise;
   }
 
-  async resolveWecomChatModelSelection(): Promise<{
-    overrideModelId?: string;
-    effectiveModelId: string;
-  }> {
+  async resolveWecomChatModelSelection(): Promise<WecomChatSelection> {
     await this.syncSnapshot(true);
     const overrideModelId = this.overrideModelId?.trim() || undefined;
     const effectiveModelId =
       overrideModelId ?? this.configService.get<string>('AGENT_CHAT_MODEL') ?? '';
+    const thinkingMode = this.wecomThinkingMode;
 
     return {
       overrideModelId,
       effectiveModelId,
+      thinkingMode,
+      thinking:
+        thinkingMode === 'deep'
+          ? {
+              type: 'enabled',
+              budgetTokens: this.wecomDeepThinkingBudgetTokens,
+            }
+          : {
+              type: 'disabled',
+              budgetTokens: 0,
+            },
     };
   }
 
   private applyAgentReplyConfig(config: AgentReplyConfig): void {
     this.overrideModelId = config.wecomCallbackModelId?.trim() || undefined;
+    this.wecomThinkingMode = config.wecomCallbackThinkingMode === 'deep' ? 'deep' : 'fast';
     const nextMergeDelayMs = config.initialMergeWindowMs || 2000;
     const nextTypingSpeed =
       config.typingSpeedCharsPerSec ||
@@ -144,5 +170,15 @@ export class MessageRuntimeConfigService implements OnModuleInit {
 
   private readBooleanEnv(key: string, defaultValue: boolean): boolean {
     return this.configService.get<string>(key, defaultValue ? 'true' : 'false') === 'true';
+  }
+
+  private resolveWecomDeepThinkingBudgetTokens(): number {
+    const configuredValue = Number(this.configService.get('AGENT_THINKING_BUDGET_TOKENS', '0'));
+
+    if (Number.isFinite(configuredValue) && configuredValue > 0) {
+      return configuredValue;
+    }
+
+    return this.DEFAULT_WECOM_DEEP_THINKING_BUDGET_TOKENS;
   }
 }

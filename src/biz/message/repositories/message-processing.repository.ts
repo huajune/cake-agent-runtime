@@ -222,7 +222,13 @@ export class MessageProcessingRepository extends BaseRepository {
   async getMessageStats(
     startTime: number,
     endTime: number,
-  ): Promise<{ total: number; success: number; failed: number; avgDuration: number; avgTtft: number }> {
+  ): Promise<{
+    total: number;
+    success: number;
+    failed: number;
+    avgDuration: number;
+    avgTtft: number;
+  }> {
     if (!this.isAvailable()) {
       return { total: 0, success: 0, failed: 0, avgDuration: 0, avgTtft: 0 };
     }
