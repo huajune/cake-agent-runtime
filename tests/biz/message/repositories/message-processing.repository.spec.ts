@@ -248,6 +248,55 @@ describe('MessageProcessingRepository', () => {
 
       expect(result.records).toEqual([]);
     });
+
+    it('should fallback to legacy tools schema when current detail columns return empty', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      const now = Date.now();
+      const legacyRow = {
+        message_id: 'msg_legacy',
+        chat_id: 'chat_legacy',
+        user_id: 'user_legacy',
+        user_name: 'Alice',
+        manager_name: 'Bob',
+        received_at: new Date(now).toISOString(),
+        message_preview: 'Hello',
+        reply_preview: 'Hi',
+        reply_segments: 1,
+        status: 'success',
+        error: null,
+        scenario: null,
+        total_duration: 1500,
+        queue_duration: null,
+        prep_duration: null,
+        ai_start_at: null,
+        ai_end_at: null,
+        ai_duration: 1200,
+        send_duration: null,
+        tools: ['duliday_job_list'],
+        token_usage: 80,
+        is_fallback: false,
+        fallback_success: null,
+        agent_invocation: null,
+        batch_id: null,
+      };
+
+      mockSupabaseClient.from
+        .mockReturnValueOnce(makeQueryMock({ data: [], error: null }))
+        .mockReturnValueOnce(makeQueryMock({ data: [legacyRow], error: null }))
+        .mockReturnValueOnce(makeQueryMock({ data: null, error: null, count: 1 }));
+
+      const result = await repository.getMessageProcessingRecords({ limit: 10 });
+
+      expect(result.records).toHaveLength(1);
+      expect(result.records[0].messageId).toBe('msg_legacy');
+      expect(result.records[0].toolCalls).toEqual([
+        {
+          toolName: 'duliday_job_list',
+          args: {},
+        },
+      ]);
+    });
   });
 
   // ==================== getMessageProcessingRecordById ====================

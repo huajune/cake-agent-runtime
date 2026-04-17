@@ -24,6 +24,8 @@ export interface MessageProcessingDbRecord {
   ai_duration?: number;
   ttft_ms?: number | string;
   send_duration?: number;
+  /** 旧 schema 的工具名数组（兼容老环境读取） */
+  tools?: string[];
   token_usage?: number;
   is_fallback?: boolean;
   fallback_success?: boolean;

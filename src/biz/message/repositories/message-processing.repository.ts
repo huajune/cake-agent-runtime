@@ -16,6 +16,63 @@ import { MessageProcessingRecordInput } from '../types/message.types';
 export class MessageProcessingRepository extends BaseRepository {
   protected readonly tableName = 'message_processing_records';
 
+  private readonly currentDetailSelectedColumns = [
+    'message_id',
+    'chat_id',
+    'user_id',
+    'user_name',
+    'manager_name',
+    'received_at',
+    'message_preview',
+    'reply_preview',
+    'reply_segments',
+    'status',
+    'error',
+    'alert_type',
+    'scenario',
+    'total_duration',
+    'queue_duration',
+    'prep_duration',
+    'ai_duration',
+    'ttft_ms:agent_invocation->response->timings->durations->>requestToFirstTextDeltaMs',
+    'send_duration',
+    'tool_calls',
+    'agent_steps',
+    'anomaly_flags',
+    'memory_snapshot',
+    'token_usage',
+    'is_fallback',
+    'fallback_success',
+    'batch_id',
+  ].join(',');
+
+  private readonly legacyDetailSelectedColumns = [
+    'message_id',
+    'chat_id',
+    'user_id',
+    'user_name',
+    'manager_name',
+    'received_at',
+    'message_preview',
+    'reply_preview',
+    'reply_segments',
+    'status',
+    'error',
+    'alert_type',
+    'scenario',
+    'total_duration',
+    'queue_duration',
+    'prep_duration',
+    'ai_duration',
+    'ttft_ms:agent_invocation->response->timings->durations->>requestToFirstTextDeltaMs',
+    'send_duration',
+    'tools',
+    'token_usage',
+    'is_fallback',
+    'fallback_success',
+    'batch_id',
+  ].join(',');
+
   constructor(supabaseService: SupabaseService) {
     super(supabaseService);
   }
@@ -61,37 +118,7 @@ export class MessageProcessingRepository extends BaseRepository {
     }
 
     try {
-      const selectedColumns = [
-        'message_id',
-        'chat_id',
-        'user_id',
-        'user_name',
-        'manager_name',
-        'received_at',
-        'message_preview',
-        'reply_preview',
-        'reply_segments',
-        'status',
-        'error',
-        'alert_type',
-        'scenario',
-        'total_duration',
-        'queue_duration',
-        'prep_duration',
-        'ai_duration',
-        'ttft_ms:agent_invocation->response->timings->durations->>requestToFirstTextDeltaMs',
-        'send_duration',
-        'tool_calls',
-        'agent_steps',
-        'anomaly_flags',
-        'memory_snapshot',
-        'token_usage',
-        'is_fallback',
-        'fallback_success',
-        'batch_id',
-      ].join(',');
-
-      const results = await this.select<MessageProcessingDbRecord>(selectedColumns, (q) => {
+      const results = await this.selectWithLegacyFallback((q) => {
         let r = q
           .eq('status', 'success')
           .gt('ai_duration', 0)
@@ -100,7 +127,7 @@ export class MessageProcessingRepository extends BaseRepository {
         if (startTime) r = r.gte('received_at', new Date(startTime).toISOString());
         if (endTime) r = r.lte('received_at', new Date(endTime).toISOString());
         return r;
-      });
+      }, 'getSlowestMessages');
 
       return results.map((r) => this.fromDbRecord(r));
     } catch (error) {
@@ -131,36 +158,6 @@ export class MessageProcessingRepository extends BaseRepository {
     }
 
     try {
-      const selectedColumns = [
-        'message_id',
-        'chat_id',
-        'user_id',
-        'user_name',
-        'manager_name',
-        'received_at',
-        'message_preview',
-        'reply_preview',
-        'reply_segments',
-        'status',
-        'error',
-        'alert_type',
-        'scenario',
-        'total_duration',
-        'queue_duration',
-        'prep_duration',
-        'ai_duration',
-        'ttft_ms:agent_invocation->response->timings->durations->>requestToFirstTextDeltaMs',
-        'send_duration',
-        'tool_calls',
-        'agent_steps',
-        'anomaly_flags',
-        'memory_snapshot',
-        'token_usage',
-        'is_fallback',
-        'fallback_success',
-        'batch_id',
-      ].join(',');
-
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const buildModifier = (q: any) => {
         let r = q.order('received_at', { ascending: false });
@@ -179,7 +176,10 @@ export class MessageProcessingRepository extends BaseRepository {
         return r;
       };
 
-      const results = await this.select<MessageProcessingDbRecord>(selectedColumns, buildModifier);
+      const results = await this.selectWithLegacyFallback(
+        buildModifier,
+        'getMessageProcessingRecords',
+      );
       const total = await this.count(buildModifier);
 
       return {
@@ -204,8 +204,9 @@ export class MessageProcessingRepository extends BaseRepository {
     }
 
     try {
-      const results = await this.select<MessageProcessingDbRecord>('*', (q) =>
-        q.eq('message_id', messageId).limit(1),
+      const results = await this.selectWithLegacyFallback(
+        (q) => q.eq('message_id', messageId).limit(1),
+        'getMessageProcessingRecordById',
       );
 
       if (results.length === 0) {
@@ -388,34 +389,14 @@ export class MessageProcessingRepository extends BaseRepository {
       const startDate = new Date(startTime).toISOString();
       const endDate = new Date(endTime).toISOString();
 
-      const selectedColumns = [
-        'message_id',
-        'chat_id',
-        'user_id',
-        'user_name',
-        'manager_name',
-        'received_at',
-        'message_preview',
-        'reply_preview',
-        'status',
-        'alert_type',
-        'ai_duration',
-        'total_duration',
-        'scenario',
-        'tools',
-        'token_usage',
-        'is_fallback',
-        'fallback_success',
-        'agent_invocation',
-        'batch_id',
-      ].join(',');
-
-      const results = await this.select<MessageProcessingDbRecord>(selectedColumns, (q) =>
-        q
-          .gte('received_at', startDate)
-          .lt('received_at', endDate)
-          .order('received_at', { ascending: false })
-          .limit(limit),
+      const results = await this.selectWithLegacyFallback(
+        (q) =>
+          q
+            .gte('received_at', startDate)
+            .lt('received_at', endDate)
+            .order('received_at', { ascending: false })
+            .limit(limit),
+        'getRecordsByTimeRange',
       );
 
       return results.map((r) => this.fromDbRecord(r));
@@ -647,11 +628,35 @@ export class MessageProcessingRepository extends BaseRepository {
       fallbackSuccess: record.fallback_success,
       agentInvocation: record.agent_invocation,
       batchId: record.batch_id,
-      toolCalls: record.tool_calls as MessageProcessingRecordInput['toolCalls'],
+      toolCalls:
+        (record.tool_calls as MessageProcessingRecordInput['toolCalls']) ??
+        this.mapLegacyTools(record.tools),
       agentSteps: record.agent_steps as MessageProcessingRecordInput['agentSteps'],
       anomalyFlags: record.anomaly_flags as MessageProcessingRecordInput['anomalyFlags'],
       memorySnapshot: record.memory_snapshot as MessageProcessingRecordInput['memorySnapshot'],
     };
+  }
+
+  private async selectWithLegacyFallback(
+    modifier: Parameters<BaseRepository['select']>[1],
+    context: string,
+  ): Promise<MessageProcessingDbRecord[]> {
+    const results = await this.select<MessageProcessingDbRecord>(
+      this.currentDetailSelectedColumns,
+      modifier,
+    );
+    if (results.length > 0) {
+      return results;
+    }
+
+    const legacyResults = await this.select<MessageProcessingDbRecord>(
+      this.legacyDetailSelectedColumns,
+      modifier,
+    );
+    if (legacyResults.length > 0) {
+      this.logger.warn(`[${context}] 当前明细列查询为空，已回退到 legacy schema`);
+    }
+    return legacyResults;
   }
 
   private extractTtftMs(record: MessageProcessingDbRecord): number | undefined {
@@ -682,5 +687,18 @@ export class MessageProcessingRepository extends BaseRepository {
       return Number.isFinite(parsed) ? parsed : undefined;
     }
     return undefined;
+  }
+
+  private mapLegacyTools(tools: string[] | undefined): MessageProcessingRecordInput['toolCalls'] {
+    if (!Array.isArray(tools) || tools.length === 0) {
+      return undefined;
+    }
+
+    return tools
+      .filter((toolName): toolName is string => typeof toolName === 'string' && toolName.length > 0)
+      .map((toolName) => ({
+        toolName,
+        args: {},
+      }));
   }
 }
