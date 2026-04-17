@@ -510,9 +510,24 @@ export class MessageTrackingService {
     return calls.length > 0 ? calls : undefined;
   }
 
+  /**
+   * 还原 agent_steps JSON：仅保留满足最小结构（数字 stepIndex + 数组 toolCalls）的条目。
+   *
+   * 历史/老数据可能没有 agent_steps，或字段缺失；不校验直接 cast 会让坏数据流到 UI。
+   * 这里只做轻量字段断言，不做深度 schema 校验——下游消费方仍按 AgentStepDetail 处理。
+   */
   private extractAgentSteps(agentSteps: unknown): AgentStepDetail[] | undefined {
     if (!Array.isArray(agentSteps) || agentSteps.length === 0) return undefined;
-    return agentSteps as AgentStepDetail[];
+
+    const valid = agentSteps.filter((step): step is AgentStepDetail => {
+      if (!step || typeof step !== 'object' || Array.isArray(step)) return false;
+      const record = step as Record<string, unknown>;
+      if (typeof record.stepIndex !== 'number') return false;
+      if (record.toolCalls !== undefined && !Array.isArray(record.toolCalls)) return false;
+      return true;
+    });
+
+    return valid.length > 0 ? valid : undefined;
   }
 
   private extractMemorySnapshot(value: unknown): AgentMemorySnapshot | undefined {

@@ -7,14 +7,14 @@
 --
 -- 本次变更：
 --   1. 丢弃 tools text[]，用 tool_calls jsonb 保存每次调用详情
---      ([{ name, args, result, resultCount, status, durationMs }, ...])
+--      ([{ toolName, args, result, resultCount, status, durationMs }, ...])
 --   2. 新增 agent_steps jsonb 保存每步模型思考/工具调用
 --      ([{ stepIndex, text, reasoning, toolCalls, usage, durationMs }, ...])
 --   3. 新增 anomaly_flags text[] 写入时打标
 --      (tool_loop / tool_empty_result / tool_narrow_result / tool_chain_overlong / no_tool_called)
 --   4. 新增 memory_snapshot jsonb 记录本轮触发时的记忆上下文
 --      ({ currentStage, presentedJobIds, recommendedJobIds, sessionFacts, profileKeys })
---   5. 重写 aggregate_hourly_stats.tool_agg: 从 tool_calls jsonb 取 name 而非 unnest(tools)
+--   5. 重写 aggregate_hourly_stats.tool_agg: 从 tool_calls jsonb 取 toolName 而非 unnest(tools)
 
 -- 1. 移除旧列，新增 4 列
 ALTER TABLE message_processing_records
@@ -25,7 +25,7 @@ ALTER TABLE message_processing_records
   ADD COLUMN IF NOT EXISTS memory_snapshot jsonb;
 
 COMMENT ON COLUMN message_processing_records.tool_calls IS
-  '工具调用详情 JSONB：[{ name, args, result, resultCount, status, durationMs }, ...]';
+  '工具调用详情 JSONB：[{ toolName, args, result, resultCount, status, durationMs }, ...]';
 COMMENT ON COLUMN message_processing_records.agent_steps IS
   '多步循环每步快照 JSONB：[{ stepIndex, text, reasoning, toolCalls, usage, durationMs }, ...]';
 COMMENT ON COLUMN message_processing_records.anomaly_flags IS
@@ -139,15 +139,15 @@ BEGIN
     ) AS stats
     FROM (
       SELECT
-        call_entry->>'name' AS tool_name,
+        call_entry->>'toolName' AS tool_name,
         COUNT(*)::int AS tool_count
       FROM request_base,
            jsonb_array_elements(tool_calls) AS call_entry
       WHERE tool_calls IS NOT NULL
         AND jsonb_typeof(tool_calls) = 'array'
         AND jsonb_array_length(tool_calls) > 0
-        AND call_entry->>'name' IS NOT NULL
-      GROUP BY call_entry->>'name'
+        AND call_entry->>'toolName' IS NOT NULL
+      GROUP BY call_entry->>'toolName'
     ) sub
   )
   SELECT
@@ -204,7 +204,7 @@ AS $$
 BEGIN
   RETURN QUERY
   SELECT
-    (call_entry->>'name')::text AS tool_name,
+    (call_entry->>'toolName')::text AS tool_name,
     COUNT(*)::bigint AS use_count
   FROM message_processing_records m,
        jsonb_array_elements(m.tool_calls) AS call_entry
@@ -213,8 +213,8 @@ BEGIN
     AND m.tool_calls IS NOT NULL
     AND jsonb_typeof(m.tool_calls) = 'array'
     AND jsonb_array_length(m.tool_calls) > 0
-    AND call_entry->>'name' IS NOT NULL
-  GROUP BY call_entry->>'name'
+    AND call_entry->>'toolName' IS NOT NULL
+  GROUP BY call_entry->>'toolName'
   ORDER BY use_count DESC;
 END;
 $$;

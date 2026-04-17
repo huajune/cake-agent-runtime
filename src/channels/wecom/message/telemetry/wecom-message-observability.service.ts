@@ -388,8 +388,8 @@ export class WecomMessageObservabilityService {
               },
               messages: agentResult?.responseMessages,
               toolCalls: agentResult?.toolCalls,
-              agentSteps: agentResult?.agentSteps,
-              memorySnapshot: agentResult?.memorySnapshot,
+              // agentSteps / memorySnapshot 已作为顶层 metadata 字段写入独立列，
+              // 不再嵌入 agent_invocation.response 避免每行 jsonb 体积翻倍。
               delivery: trace.deliveryResult,
               fallback: trace.fallbackDelivery,
               timings: this.buildTimingSummary(trace, completedAt),
@@ -462,8 +462,7 @@ export class WecomMessageObservabilityService {
               },
               messages: agentResult?.responseMessages,
               toolCalls: agentResult?.toolCalls,
-              agentSteps: agentResult?.agentSteps,
-              memorySnapshot: agentResult?.memorySnapshot,
+              // agentSteps / memorySnapshot 作为顶层字段写入独立列，不再嵌入。
               delivery: trace.deliveryResult,
               fallback: trace.fallbackDelivery,
               timings: this.buildTimingSummary(trace, completedAt),
