@@ -1,4 +1,8 @@
-import type { AgentMemorySnapshot, AgentStepDetail, AgentToolCall } from '@agent/agent-run.types';
+import type {
+  AgentMemorySnapshot,
+  AgentStepDetail,
+  AgentToolCall,
+} from '@shared-types/agent-telemetry.types';
 
 export { AlertErrorType } from '@shared-types/tracking.types';
 

@@ -4,7 +4,11 @@
  */
 
 import { ScenarioType } from '@enums/agent.enum';
-import type { AgentMemorySnapshot, AgentStepDetail, AgentToolCall } from '@agent/agent-run.types';
+import type {
+  AgentMemorySnapshot,
+  AgentStepDetail,
+  AgentToolCall,
+} from '@shared-types/agent-telemetry.types';
 
 /**
  * 告警错误类型

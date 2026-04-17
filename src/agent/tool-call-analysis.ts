@@ -5,7 +5,7 @@
  * 保证 tool_calls jsonb 的 resultCount / status 语义一致。
  */
 
-import type { AgentToolCallStatus } from './agent-run.types';
+import type { AgentToolCallStatus } from '@shared-types/agent-telemetry.types';
 
 /**
  * 单轮内同名工具调用上限。
@@ -46,7 +46,8 @@ export function computeResultCount(result: unknown): number | undefined {
  * - error: result 对象含 error 字段，或外部 errorText/state 指示失败
  * - empty: resultCount === 0
  * - narrow: resultCount === 1
- * - ok: 其他（包含无法推断条数的情况）
+ * - unknown: 返回成功但无法推断结果条数
+ * - ok: 其他（结果条数 >= 2）
  */
 export function computeToolCallStatus(
   result: unknown,
@@ -60,7 +61,7 @@ export function computeToolCallStatus(
     const errorField = (result as Record<string, unknown>).error;
     if (errorField !== null && errorField !== undefined && errorField !== false) return 'error';
   }
-  if (resultCount === undefined) return 'ok';
+  if (resultCount === undefined) return 'unknown';
   if (resultCount === 0) return 'empty';
   if (resultCount === 1) return 'narrow';
   return 'ok';

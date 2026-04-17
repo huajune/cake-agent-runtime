@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { MessageProcessingRecordInput } from '@biz/message/types/message.types';
-import type { AgentMemorySnapshot, AgentStepDetail, AgentToolCall } from '@agent/agent-run.types';
+import type {
+  AgentMemorySnapshot,
+  AgentStepDetail,
+  AgentToolCall,
+} from '@shared-types/agent-telemetry.types';
 import {
   MonitoringMetadata,
   MonitoringErrorLog,
