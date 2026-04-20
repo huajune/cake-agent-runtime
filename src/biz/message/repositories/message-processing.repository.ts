@@ -17,7 +17,7 @@ export class MessageProcessingRepository extends BaseRepository {
   protected readonly tableName = 'message_processing_records';
 
   // 列表/聚合查询用的精简投影（不拉 agent_invocation 这个 jsonb 大字段）
-  private readonly currentListSelectedColumns = [
+  private readonly listSelectedColumns = [
     'message_id',
     'chat_id',
     'user_id',
@@ -47,37 +47,9 @@ export class MessageProcessingRepository extends BaseRepository {
     'batch_id',
   ].join(',');
 
-  private readonly legacyListSelectedColumns = [
-    'message_id',
-    'chat_id',
-    'user_id',
-    'user_name',
-    'manager_name',
-    'received_at',
-    'message_preview',
-    'reply_preview',
-    'reply_segments',
-    'status',
-    'error',
-    'alert_type',
-    'scenario',
-    'total_duration',
-    'queue_duration',
-    'prep_duration',
-    'ai_duration',
-    'ttft_ms:agent_invocation->response->timings->durations->>requestToFirstTextDeltaMs',
-    'send_duration',
-    'tools',
-    'token_usage',
-    'is_fallback',
-    'fallback_success',
-    'batch_id',
-  ].join(',');
-
   // 详情接口投影：在列表列基础上多带 agent_invocation，前端详情抽屉的时延分解、
   // 工具执行、Trace、Delivery、Fallback 等富字段全部依赖该 jsonb。
-  private readonly currentDetailSelectedColumns = `${this.currentListSelectedColumns},agent_invocation`;
-  private readonly legacyDetailSelectedColumns = `${this.legacyListSelectedColumns},agent_invocation`;
+  private readonly detailSelectedColumns = `${this.listSelectedColumns},agent_invocation`;
 
   constructor(supabaseService: SupabaseService) {
     super(supabaseService);
@@ -124,16 +96,19 @@ export class MessageProcessingRepository extends BaseRepository {
     }
 
     try {
-      const results = await this.selectWithLegacyFallback((q) => {
-        let r = q
-          .eq('status', 'success')
-          .gt('ai_duration', 0)
-          .order('ai_duration', { ascending: false })
-          .limit(limit);
-        if (startTime) r = r.gte('received_at', new Date(startTime).toISOString());
-        if (endTime) r = r.lte('received_at', new Date(endTime).toISOString());
-        return r;
-      }, 'getSlowestMessages');
+      const results = await this.select<MessageProcessingDbRecord>(
+        this.listSelectedColumns,
+        (q) => {
+          let r = q
+            .eq('status', 'success')
+            .gt('ai_duration', 0)
+            .order('ai_duration', { ascending: false })
+            .limit(limit);
+          if (startTime) r = r.gte('received_at', new Date(startTime).toISOString());
+          if (endTime) r = r.lte('received_at', new Date(endTime).toISOString());
+          return r;
+        },
+      );
 
       return results.map((r) => this.fromDbRecord(r));
     } catch (error) {
@@ -182,9 +157,9 @@ export class MessageProcessingRepository extends BaseRepository {
         return r;
       };
 
-      const results = await this.selectWithLegacyFallback(
+      const results = await this.select<MessageProcessingDbRecord>(
+        this.listSelectedColumns,
         buildModifier,
-        'getMessageProcessingRecords',
       );
       const total = await this.count(buildModifier);
 
@@ -210,13 +185,9 @@ export class MessageProcessingRepository extends BaseRepository {
     }
 
     try {
-      const results = await this.selectWithLegacyFallback(
+      const results = await this.select<MessageProcessingDbRecord>(
+        this.detailSelectedColumns,
         (q) => q.eq('message_id', messageId).limit(1),
-        'getMessageProcessingRecordById',
-        {
-          current: this.currentDetailSelectedColumns,
-          legacy: this.legacyDetailSelectedColumns,
-        },
       );
 
       if (results.length === 0) {
@@ -399,14 +370,12 @@ export class MessageProcessingRepository extends BaseRepository {
       const startDate = new Date(startTime).toISOString();
       const endDate = new Date(endTime).toISOString();
 
-      const results = await this.selectWithLegacyFallback(
-        (q) =>
-          q
-            .gte('received_at', startDate)
-            .lt('received_at', endDate)
-            .order('received_at', { ascending: false })
-            .limit(limit),
-        'getRecordsByTimeRange',
+      const results = await this.select<MessageProcessingDbRecord>(this.listSelectedColumns, (q) =>
+        q
+          .gte('received_at', startDate)
+          .lt('received_at', endDate)
+          .order('received_at', { ascending: false })
+          .limit(limit),
       );
 
       return results.map((r) => this.fromDbRecord(r));
@@ -638,33 +607,11 @@ export class MessageProcessingRepository extends BaseRepository {
       fallbackSuccess: record.fallback_success,
       agentInvocation: record.agent_invocation,
       batchId: record.batch_id,
-      toolCalls:
-        (record.tool_calls as MessageProcessingRecordInput['toolCalls']) ??
-        this.mapLegacyTools(record.tools),
+      toolCalls: record.tool_calls as MessageProcessingRecordInput['toolCalls'],
       agentSteps: record.agent_steps as MessageProcessingRecordInput['agentSteps'],
       anomalyFlags: record.anomaly_flags as MessageProcessingRecordInput['anomalyFlags'],
       memorySnapshot: record.memory_snapshot as MessageProcessingRecordInput['memorySnapshot'],
     };
-  }
-
-  private async selectWithLegacyFallback(
-    modifier: Parameters<BaseRepository['select']>[1],
-    context: string,
-    columns: { current: string; legacy: string } = {
-      current: this.currentListSelectedColumns,
-      legacy: this.legacyListSelectedColumns,
-    },
-  ): Promise<MessageProcessingDbRecord[]> {
-    const results = await this.select<MessageProcessingDbRecord>(columns.current, modifier);
-    if (results.length > 0) {
-      return results;
-    }
-
-    const legacyResults = await this.select<MessageProcessingDbRecord>(columns.legacy, modifier);
-    if (legacyResults.length > 0) {
-      this.logger.warn(`[${context}] 当前明细列查询为空，已回退到 legacy schema`);
-    }
-    return legacyResults;
   }
 
   private extractTtftMs(record: MessageProcessingDbRecord): number | undefined {
@@ -695,18 +642,5 @@ export class MessageProcessingRepository extends BaseRepository {
       return Number.isFinite(parsed) ? parsed : undefined;
     }
     return undefined;
-  }
-
-  private mapLegacyTools(tools: string[] | undefined): MessageProcessingRecordInput['toolCalls'] {
-    if (!Array.isArray(tools) || tools.length === 0) {
-      return undefined;
-    }
-
-    return tools
-      .filter((toolName): toolName is string => typeof toolName === 'string' && toolName.length > 0)
-      .map((toolName) => ({
-        toolName,
-        args: {},
-      }));
   }
 }
