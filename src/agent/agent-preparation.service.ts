@@ -628,7 +628,6 @@ export class AgentPreparationService {
         return;
       }
 
-      await this.memoryService.saveProfile(params.corpId, params.userId, { gender });
       memory.highConfidenceFacts = this.mergeSupplementalGenderFact(
         memory.highConfidenceFacts,
         gender,

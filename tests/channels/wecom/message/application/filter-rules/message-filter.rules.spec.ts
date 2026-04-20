@@ -1,7 +1,6 @@
 import {
   ContactTypeFilterRule,
   EmptyContentFilterRule,
-  EnterpriseGroupFilterRule,
   GroupBlacklistFilterRule,
   PausedUserFilterRule,
   RoomMessageFilterRule,
@@ -94,24 +93,6 @@ describe('MessageFilterRules', () => {
         orgId: 'corp-1',
       },
     });
-  });
-
-  it('EnterpriseGroupFilterRule should reject the blocked enterprise group', () => {
-    const rule = new EnterpriseGroupFilterRule();
-
-    expect(
-      rule.evaluate(
-        createMessage({
-          groupId: '691d3b171535fed6bcc94f66',
-          _apiType: 'enterprise',
-        }),
-      ),
-    ).toEqual(
-      expect.objectContaining({
-        pass: false,
-        reason: FilterReason.BLOCKED_ENTERPRISE_GROUP,
-      }),
-    );
   });
 
   it('RoomMessageFilterRule should reject room messages', () => {

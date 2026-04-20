@@ -29,7 +29,6 @@ describe('AgentPreparationService', () => {
 
   const mockMemoryService = {
     onTurnStart: jest.fn(),
-    saveProfile: jest.fn(),
   };
 
   const mockMemoryConfig = {
@@ -100,7 +99,6 @@ describe('AgentPreparationService', () => {
         reason: null,
       },
     });
-    mockMemoryService.saveProfile.mockResolvedValue(undefined);
     mockContext.compose.mockImplementation(async (params?: { memoryBlock?: string }) => ({
       systemPrompt: ['SYSTEM_PROMPT', params?.memoryBlock].filter(Boolean).join('\n\n'),
       stageGoals: {
@@ -560,9 +558,6 @@ describe('AgentPreparationService', () => {
       imContactId: 'im-contact-1',
       wecomUserId: 'manager-1',
       externalUserId: 'external-user-1',
-    });
-    expect(mockMemoryService.saveProfile).toHaveBeenCalledWith('corp-1', 'user-1', {
-      gender: '男',
     });
     expect(mockContext.compose).toHaveBeenCalledWith(
       expect.objectContaining({

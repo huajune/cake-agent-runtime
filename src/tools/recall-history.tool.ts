@@ -38,8 +38,22 @@ function formatSummaryForTool(data: SummaryData | null): string {
 export function buildRecallHistoryTool(memoryService: MemoryService): ToolBuilder {
   return (context) => {
     return tool({
-      description:
-        '查询用户的历史求职记录。当用户提到"上次"、"之前面试"、"以前聊过"等内容时调用此工具，了解用户过往求职经历。',
+      description: `查询用户的历史求职记录。追溯本次会话之外更早期的求职历史。
+
+## 两种情况必须调用
+1. 对话开始时，若 [用户档案] 非空，说明是回访用户
+2. 用户提到"上次"、"之前面试"、"以前聊过"等内容
+
+## 参数
+- 无参数，直接调用
+
+## 返回
+- recent：近期详细摘要（数组）
+- archive：更早期压缩总结（字符串）
+
+## 用途边界
+- [用户档案] 和 [会话记忆] 中已有的信息属于本次会话上下文，不要重复调用本工具来获取
+- 本工具专用于追溯更早的历史会话`,
       inputSchema: z.object({}),
       execute: async () => {
         const summaryData = await memoryService.getSummaryData(context.corpId, context.userId);

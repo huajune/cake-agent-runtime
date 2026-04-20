@@ -99,9 +99,6 @@ export class HardConstraintsSection implements PromptSection {
         `- 班次/工时偏好: ${pref.schedule}（结合 includeWorkTime 校验，结果集中无匹配班次的岗位不要推荐）`,
       );
     }
-    if (pref.labor_form) {
-      lines.push(`- 用工形式: ${pref.labor_form}（用 jobCategoryList 区分兼职/全职）`);
-    }
     if (pref.salary) {
       lines.push(`- 意向薪资: ${pref.salary}（开 includeJobSalary，结果中明显低于此预期的不要推）`);
     }

@@ -6,24 +6,28 @@ import { Redis } from '@upstash/redis';
  * Redis 服务（基于 Upstash）
  * 提供统一的 Redis 客户端，供所有模块使用
  *
- * 优势：
- * 1. 单例模式，所有模块共享同一个 Redis 连接
- * 2. 配置集中管理
- * 3. 便于测试（可注入 mock）
- * 4. 符合 NestJS 依赖注入模式
+ * 环境隔离：
+ * - 所有 key 在内部统一加 `{RUNTIME_ENV|NODE_ENV}:` 前缀
+ * - 多个环境共用同一个 Upstash Redis 时，key 物理隔离
+ * - 调用方传入的 key 不需要包含环境段
  */
 @Injectable()
 export class RedisService implements OnModuleInit {
   private readonly logger = new Logger(RedisService.name);
   private redisClient: Redis;
+  private readonly env: string;
+  private readonly keyPrefix: string;
 
   constructor(private readonly configService: ConfigService) {
+    this.env = (
+      this.configService.get<string>('RUNTIME_ENV') ||
+      this.configService.get<string>('NODE_ENV') ||
+      'development'
+    ).trim();
+    this.keyPrefix = `${this.env}:`;
     this.initializeClient();
   }
 
-  /**
-   * 初始化 Redis 客户端
-   */
   private initializeClient() {
     const redisUrl = this.configService.get<string>('UPSTASH_REDIS_REST_URL');
     const redisToken = this.configService.get<string>('UPSTASH_REDIS_REST_TOKEN');
@@ -33,12 +37,9 @@ export class RedisService implements OnModuleInit {
       token: redisToken,
     });
 
-    this.logger.log('Redis 客户端已初始化');
+    this.logger.log(`Redis 客户端已初始化（key 前缀: "${this.keyPrefix}"）`);
   }
 
-  /**
-   * 模块初始化：测试连接
-   */
   async onModuleInit() {
     try {
       await this.redisClient.ping();
@@ -49,112 +50,134 @@ export class RedisService implements OnModuleInit {
     }
   }
 
+  /** 给 key 加环境前缀 */
+  private withPrefix(key: string): string {
+    return `${this.keyPrefix}${key}`;
+  }
+
+  /** 批量给 key 加环境前缀 */
+  private withPrefixAll(keys: string[]): string[] {
+    return keys.map((key) => this.withPrefix(key));
+  }
+
   /**
-   * 获取 Redis 客户端实例
+   * 获取 Redis 原始客户端（不推荐直接使用）
+   *
+   * 警告：直接使用原始客户端会绕过环境前缀，可能导致跨环境数据污染。
+   * 优先使用本服务暴露的方法（get/set/setNx/eval/incrby 等）。
    */
   getClient(): Redis {
     return this.redisClient;
   }
 
-  /**
-   * 便捷方法：get
-   */
-  async get<T = any>(key: string): Promise<T | null> {
-    return this.redisClient.get<T>(key);
+  /** 当前环境标识，用于诊断 */
+  getEnvironment(): string {
+    return this.env;
+  }
+
+  // ==================== 通用 KV ====================
+
+  async get<T = unknown>(key: string): Promise<T | null> {
+    return this.redisClient.get<T>(this.withPrefix(key));
+  }
+
+  async set(key: string, value: unknown): Promise<void> {
+    await this.redisClient.set(this.withPrefix(key), value);
+  }
+
+  async setex(key: string, seconds: number, value: unknown): Promise<void> {
+    await this.redisClient.setex(this.withPrefix(key), seconds, value);
   }
 
   /**
-   * 便捷方法：set
+   * 原子 SET NX EX：仅当 key 不存在时设置，并附带 TTL。
+   * 用于分布式锁、去重等场景。
+   *
+   * @returns true = 设置成功（首次写入）；false = key 已存在（被其他进程占据）
    */
-  async set(key: string, value: any): Promise<void> {
-    await this.redisClient.set(key, value);
+  async setNx(key: string, value: unknown, ttlSeconds: number): Promise<boolean> {
+    const result = await this.redisClient.set(this.withPrefix(key), value, {
+      nx: true,
+      ex: ttlSeconds,
+    });
+    return result === 'OK';
   }
 
-  /**
-   * 便捷方法：setex (带过期时间)
-   */
-  async setex(key: string, seconds: number, value: any): Promise<void> {
-    await this.redisClient.setex(key, seconds, value);
-  }
-
-  /**
-   * 便捷方法：del
-   */
   async del(...keys: string[]): Promise<number> {
-    return this.redisClient.del(...keys);
+    return this.redisClient.del(...this.withPrefixAll(keys));
   }
 
-  /**
-   * 便捷方法：exists
-   */
   async exists(...keys: string[]): Promise<number> {
-    return this.redisClient.exists(...keys);
+    return this.redisClient.exists(...this.withPrefixAll(keys));
+  }
+
+  async expire(key: string, seconds: number): Promise<number> {
+    return this.redisClient.expire(this.withPrefix(key), seconds);
+  }
+
+  async incrby(key: string, delta: number): Promise<number> {
+    return this.redisClient.incrby(this.withPrefix(key), delta);
   }
 
   /**
-   * 便捷方法：scan
+   * 执行 Lua 脚本，自动给 keys 数组加前缀。
+   * args 不会被加前缀，按原样传给脚本。
+   */
+  async eval(script: string, keys: string[], args: (string | number)[]): Promise<unknown> {
+    return this.redisClient.eval(script, this.withPrefixAll(keys), args);
+  }
+
+  // ==================== List ====================
+
+  async rpush(key: string, ...values: unknown[]): Promise<number> {
+    return this.redisClient.rpush(this.withPrefix(key), ...values);
+  }
+
+  async lrange<T = unknown>(key: string, start: number, stop: number): Promise<T[]> {
+    return this.redisClient.lrange<T>(this.withPrefix(key), start, stop);
+  }
+
+  async ltrim(key: string, start: number, stop: number): Promise<void> {
+    await this.redisClient.ltrim(this.withPrefix(key), start, stop);
+  }
+
+  async llen(key: string): Promise<number> {
+    return this.redisClient.llen(this.withPrefix(key));
+  }
+
+  // ==================== Set ====================
+
+  async sadd(key: string, ...members: (string | number)[]): Promise<number> {
+    if (members.length === 0) return 0;
+    return this.redisClient.sadd(this.withPrefix(key), members[0], ...members.slice(1));
+  }
+
+  async sismember(key: string, member: string | number): Promise<number> {
+    return this.redisClient.sismember(this.withPrefix(key), member);
+  }
+
+  // ==================== 扫描与连通性 ====================
+
+  /**
+   * 扫描键。match 模式会自动加环境前缀，count 透传。
+   * 返回的 key 列表也会去掉前缀，保持调用方视角的纯净。
    */
   async scan(
     cursor: string | number,
     options?: { match?: string; count?: number },
   ): Promise<[string | number, string[]]> {
-    return this.redisClient.scan(cursor, options);
+    const prefixedMatch = options?.match ? this.withPrefix(options.match) : undefined;
+    const [next, keys] = await this.redisClient.scan(cursor, {
+      match: prefixedMatch,
+      count: options?.count,
+    });
+    const stripped = keys.map((key) =>
+      key.startsWith(this.keyPrefix) ? key.slice(this.keyPrefix.length) : key,
+    );
+    return [next, stripped];
   }
 
-  /**
-   * 便捷方法：ping
-   */
   async ping(): Promise<string> {
     return this.redisClient.ping();
-  }
-
-  /**
-   * 便捷方法：rpush (向列表末尾添加元素)
-   */
-  async rpush(key: string, ...values: any[]): Promise<number> {
-    return this.redisClient.rpush(key, ...values);
-  }
-
-  /**
-   * 便捷方法：lrange (获取列表指定范围的元素)
-   */
-  async lrange<T = any>(key: string, start: number, stop: number): Promise<T[]> {
-    return this.redisClient.lrange<T>(key, start, stop);
-  }
-
-  /**
-   * 便捷方法：ltrim (保留列表指定范围的元素)
-   */
-  async ltrim(key: string, start: number, stop: number): Promise<void> {
-    await this.redisClient.ltrim(key, start, stop);
-  }
-
-  /**
-   * 便捷方法：llen (获取列表长度)
-   */
-  async llen(key: string): Promise<number> {
-    return this.redisClient.llen(key);
-  }
-
-  /**
-   * 便捷方法：expire (设置过期时间)
-   */
-  async expire(key: string, seconds: number): Promise<number> {
-    return this.redisClient.expire(key, seconds);
-  }
-
-  /**
-   * 便捷方法：sadd (向 Set 添加成员)
-   */
-  async sadd(key: string, ...members: (string | number)[]): Promise<number> {
-    if (members.length === 0) return 0;
-    return this.redisClient.sadd(key, members[0], ...members.slice(1));
-  }
-
-  /**
-   * 便捷方法：sismember (判断成员是否在 Set 中)
-   */
-  async sismember(key: string, member: string | number): Promise<number> {
-    return this.redisClient.sismember(key, member);
   }
 }

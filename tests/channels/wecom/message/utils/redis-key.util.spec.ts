@@ -1,128 +1,102 @@
 import { RedisKeyBuilder } from '@wecom/message/runtime/redis-key.util';
 
+// 环境隔离由 RedisService.withPrefix 负责，本工具产出无 env 段
+const SCOPE = 'wecom:message';
+
 describe('RedisKeyBuilder', () => {
   describe('dedup', () => {
     it('should return correct dedup key format', () => {
-      const result = RedisKeyBuilder.dedup('msg_123456');
-      expect(result).toBe('wecom:message:dedup:msg_123456');
+      expect(RedisKeyBuilder.dedup('msg_123456')).toBe(`${SCOPE}:dedup:msg_123456`);
     });
 
     it('should handle empty messageId', () => {
-      const result = RedisKeyBuilder.dedup('');
-      expect(result).toBe('wecom:message:dedup:');
+      expect(RedisKeyBuilder.dedup('')).toBe(`${SCOPE}:dedup:`);
     });
 
     it('should handle messageId with special characters', () => {
-      const result = RedisKeyBuilder.dedup('msg-abc_123:xyz');
-      expect(result).toBe('wecom:message:dedup:msg-abc_123:xyz');
+      expect(RedisKeyBuilder.dedup('msg-abc_123:xyz')).toBe(`${SCOPE}:dedup:msg-abc_123:xyz`);
     });
 
-    it('should prefix with correct app and module prefix', () => {
-      const result = RedisKeyBuilder.dedup('test');
-      expect(result).toMatch(/^wecom:message:dedup:/);
+    it('should not include any env segment (handled by RedisService)', () => {
+      expect(RedisKeyBuilder.dedup('test')).toBe(`${SCOPE}:dedup:test`);
     });
   });
 
   describe('pending', () => {
     it('should return correct pending key format', () => {
-      const result = RedisKeyBuilder.pending('chat_abc');
-      expect(result).toBe('wecom:message:pending:chat_abc');
+      expect(RedisKeyBuilder.pending('chat_abc')).toBe(`${SCOPE}:pending:chat_abc`);
     });
 
     it('should handle empty chatId', () => {
-      const result = RedisKeyBuilder.pending('');
-      expect(result).toBe('wecom:message:pending:');
+      expect(RedisKeyBuilder.pending('')).toBe(`${SCOPE}:pending:`);
     });
 
     it('should handle chatId with various formats', () => {
-      const result = RedisKeyBuilder.pending('wxid_abc123def456');
-      expect(result).toBe('wecom:message:pending:wxid_abc123def456');
+      expect(RedisKeyBuilder.pending('wxid_abc123def456')).toBe(
+        `${SCOPE}:pending:wxid_abc123def456`,
+      );
     });
   });
 
   describe('history', () => {
     it('should return correct history key format', () => {
-      const result = RedisKeyBuilder.history('chat_abc');
-      expect(result).toBe('wecom:message:history:chat_abc');
+      expect(RedisKeyBuilder.history('chat_abc')).toBe(`${SCOPE}:history:chat_abc`);
     });
 
     it('should handle empty chatId', () => {
-      const result = RedisKeyBuilder.history('');
-      expect(result).toBe('wecom:message:history:');
+      expect(RedisKeyBuilder.history('')).toBe(`${SCOPE}:history:`);
     });
 
     it('should handle chatId with numbers and letters', () => {
-      const result = RedisKeyBuilder.history('room_12345');
-      expect(result).toBe('wecom:message:history:room_12345');
+      expect(RedisKeyBuilder.history('room_12345')).toBe(`${SCOPE}:history:room_12345`);
     });
   });
 
   describe('lock', () => {
     it('should return correct lock key format', () => {
-      const result = RedisKeyBuilder.lock('chat_abc');
-      expect(result).toBe('wecom:message:lock:chat_abc');
+      expect(RedisKeyBuilder.lock('chat_abc')).toBe(`${SCOPE}:lock:chat_abc`);
     });
 
     it('should handle empty chatId', () => {
-      const result = RedisKeyBuilder.lock('');
-      expect(result).toBe('wecom:message:lock:');
+      expect(RedisKeyBuilder.lock('')).toBe(`${SCOPE}:lock:`);
     });
   });
 
   describe('pattern', () => {
-    it('should return correct dedup pattern', () => {
-      const result = RedisKeyBuilder.pattern('dedup');
-      expect(result).toBe('wecom:message:dedup:*');
-    });
-
-    it('should return correct pending pattern', () => {
-      const result = RedisKeyBuilder.pattern('pending');
-      expect(result).toBe('wecom:message:pending:*');
-    });
-
-    it('should return correct history pattern', () => {
-      const result = RedisKeyBuilder.pattern('history');
-      expect(result).toBe('wecom:message:history:*');
-    });
-
-    it('should return correct lock pattern', () => {
-      const result = RedisKeyBuilder.pattern('lock');
-      expect(result).toBe('wecom:message:lock:*');
-    });
+    it.each(['dedup', 'pending', 'history', 'lock'] as const)(
+      'should return correct %s pattern',
+      (type) => {
+        expect(RedisKeyBuilder.pattern(type)).toBe(`${SCOPE}:${type}:*`);
+      },
+    );
   });
 
   describe('modulePrefix', () => {
-    it('should return correct module prefix', () => {
-      const result = RedisKeyBuilder.modulePrefix;
-      expect(result).toBe('wecom:message:');
+    it('should return module prefix', () => {
+      expect(RedisKeyBuilder.modulePrefix).toBe(`${SCOPE}:`);
     });
 
     it('should end with a colon', () => {
-      const result = RedisKeyBuilder.modulePrefix;
-      expect(result).toMatch(/:$/);
+      expect(RedisKeyBuilder.modulePrefix).toMatch(/:$/);
     });
   });
 
   describe('key uniqueness', () => {
     it('different key types should produce different keys for the same id', () => {
       const id = 'same_id';
-      const dedupKey = RedisKeyBuilder.dedup(id);
-      const pendingKey = RedisKeyBuilder.pending(id);
-      const historyKey = RedisKeyBuilder.history(id);
-      const lockKey = RedisKeyBuilder.lock(id);
-
-      const keys = [dedupKey, pendingKey, historyKey, lockKey];
-      const uniqueKeys = new Set(keys);
-      expect(uniqueKeys.size).toBe(4);
+      const keys = [
+        RedisKeyBuilder.dedup(id),
+        RedisKeyBuilder.pending(id),
+        RedisKeyBuilder.history(id),
+        RedisKeyBuilder.lock(id),
+      ];
+      expect(new Set(keys).size).toBe(4);
     });
 
     it('pattern should match keys generated by corresponding method', () => {
       const chatId = 'chat_001';
       const historyKey = RedisKeyBuilder.history(chatId);
-      const pattern = RedisKeyBuilder.pattern('history');
-
-      // Pattern should be a prefix match (strip the * and check)
-      const patternPrefix = pattern.replace('*', '');
+      const patternPrefix = RedisKeyBuilder.pattern('history').replace('*', '');
       expect(historyKey.startsWith(patternPrefix)).toBe(true);
     });
   });

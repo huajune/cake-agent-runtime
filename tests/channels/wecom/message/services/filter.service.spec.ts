@@ -7,7 +7,6 @@ import { MessageSource, MessageType, ContactType } from '@enums/message-callback
 import {
   ContactTypeFilterRule,
   EmptyContentFilterRule,
-  EnterpriseGroupFilterRule,
   GroupBlacklistFilterRule,
   PausedUserFilterRule,
   RoomMessageFilterRule,
@@ -52,7 +51,6 @@ describe('MessageFilterService', () => {
         ContactTypeFilterRule,
         PausedUserFilterRule,
         GroupBlacklistFilterRule,
-        EnterpriseGroupFilterRule,
         RoomMessageFilterRule,
         SupportedMessageTypeFilterRule,
         EmptyContentFilterRule,
@@ -172,31 +170,6 @@ describe('MessageFilterService', () => {
       expect(result.pass).toBe(true);
       expect(result.historyOnly).toBe(true);
       expect(result.reason).toBe(FilterReason.GROUP_BLACKLISTED);
-    });
-
-    it('should filter enterprise-level messages with blocked groupId', async () => {
-      const messageData = {
-        ...validMessageData,
-        groupId: '691d3b171535fed6bcc94f66',
-        _apiType: undefined, // enterprise message (not group)
-      };
-
-      const result = await service.validate(messageData);
-
-      expect(result.pass).toBe(false);
-      expect(result.reason).toBe(FilterReason.BLOCKED_ENTERPRISE_GROUP);
-    });
-
-    it('should pass group-level messages with previously blocked enterprise groupId', async () => {
-      const messageData = {
-        ...validMessageData,
-        groupId: '691d3b171535fed6bcc94f66',
-        _apiType: 'group' as const,
-      };
-
-      const result = await service.validate(messageData);
-
-      expect(result.pass).toBe(true);
     });
 
     it('should filter out room messages', async () => {

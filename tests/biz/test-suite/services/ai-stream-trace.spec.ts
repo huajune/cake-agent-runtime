@@ -120,4 +120,40 @@ describe('AiStreamTrace', () => {
       }),
     );
   });
+
+  it('should skip tracking service writes when source is "testing"', () => {
+    const trace = new AiStreamTrace(mockTrackingService as never, mockObserver as never, {
+      chatId: 'session-test',
+      userId: 'tester-1',
+      requestBody: {
+        normalizedRequest: { message: 'hello' },
+      },
+      source: 'testing',
+    });
+
+    trace.markAiStart();
+    trace.markStreamReady('trust_building');
+    trace.markResponsePipeStart();
+    trace.observeChunk({ type: 'text-start', id: 'text-1' } as const);
+    trace.observeChunk({ type: 'text-delta', id: 'text-1', delta: 'ok' } as const);
+    trace.observeChunk({ type: 'finish', finishReason: 'stop' } as const);
+    trace.recordUsage({ inputTokens: 1, outputTokens: 1, totalTokens: 2 });
+    trace.finalizeSuccess();
+
+    expect(mockTrackingService.recordMessageReceived).not.toHaveBeenCalled();
+    expect(mockTrackingService.recordWorkerStart).not.toHaveBeenCalled();
+    expect(mockTrackingService.recordAiStart).not.toHaveBeenCalled();
+    expect(mockTrackingService.recordAiEnd).not.toHaveBeenCalled();
+    expect(mockTrackingService.recordSendStart).not.toHaveBeenCalled();
+    expect(mockTrackingService.recordSendEnd).not.toHaveBeenCalled();
+    expect(mockTrackingService.recordSuccess).not.toHaveBeenCalled();
+
+    // Observer 事件仍应照常下发，供 agent-test UI / 实时调试链路消费
+    expect(mockObserver.emit).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'agent_start', userId: 'tester-1' }),
+    );
+    expect(mockObserver.emit).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'agent_stream_timing', status: 'success' }),
+    );
+  });
 });

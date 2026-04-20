@@ -20,8 +20,23 @@ function parseRedisUrl(redisUrl: string): {
   };
 }
 
+/**
+ * 获取 Bull 队列前缀，确保多环境共用同一个 Upstash Redis 时队列物理隔离。
+ * 优先 RUNTIME_ENV，其次 NODE_ENV，缺省 development。
+ */
+function resolveBullPrefix(configService: ConfigService): string {
+  const env = (
+    configService.get<string>('RUNTIME_ENV') ||
+    configService.get<string>('NODE_ENV') ||
+    'development'
+  ).trim();
+  return `bull:${env}`;
+}
+
 function createBullQueueOptions(configService: ConfigService) {
   const logger = new Logger(BullQueueModule.name);
+  const prefix = resolveBullPrefix(configService);
+  logger.log(`Bull 队列前缀: ${prefix}`);
   let upstashTcpUrl = configService.get<string>('UPSTASH_REDIS_TCP_URL');
 
   if (upstashTcpUrl && !upstashTcpUrl.startsWith('redis')) {
@@ -53,6 +68,7 @@ function createBullQueueOptions(configService: ConfigService) {
       const sharedSubscriber = new Redis(baseRedisOpts);
 
       return {
+        prefix,
         createClient: (type: 'client' | 'subscriber' | 'bclient') => {
           switch (type) {
             case 'client':
@@ -90,6 +106,7 @@ function createBullQueueOptions(configService: ConfigService) {
       const { protocol, password, host, port } = parsed;
       logger.log(`使用通用 Redis 队列连接: ${host}:${port}`);
       return {
+        prefix,
         redis: {
           host,
           port,
@@ -108,6 +125,7 @@ function createBullQueueOptions(configService: ConfigService) {
 
   logger.warn('未检测到远端 Redis 队列配置，回退到本地 Redis');
   return {
+    prefix,
     redis: {
       host: configService.get<string>('REDIS_HOST', 'localhost'),
       port: parseInt(configService.get<string>('REDIS_PORT', '6379'), 10),

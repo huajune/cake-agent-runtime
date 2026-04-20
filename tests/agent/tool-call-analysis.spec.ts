@@ -1,11 +1,4 @@
-import {
-  buildToolCallLimitNotice,
-  computeResultCount,
-  computeToolCallStatus,
-  countToolCallsByName,
-  findToolsExceedingLimit,
-  MAX_SAME_TOOL_CALLS_PER_TURN,
-} from '@agent/tool-call-analysis';
+import { computeResultCount, computeToolCallStatus } from '@agent/tool-call-analysis';
 
 describe('tool-call-analysis', () => {
   describe('computeResultCount', () => {
@@ -69,87 +62,6 @@ describe('tool-call-analysis', () => {
 
     it('returns unknown when resultCount cannot be inferred', () => {
       expect(computeToolCallStatus({ message: 'fine' }, undefined)).toBe('unknown');
-    });
-  });
-
-  describe('countToolCallsByName', () => {
-    it('returns empty map when steps array is empty', () => {
-      expect(countToolCallsByName([])).toEqual(new Map());
-    });
-
-    it('skips steps without toolCalls or with non-array toolCalls', () => {
-      const steps = [
-        {},
-        { toolCalls: undefined },
-        { toolCalls: 'not-an-array' as unknown as Array<{ toolName: string }> },
-      ];
-      expect(countToolCallsByName(steps)).toEqual(new Map());
-    });
-
-    it('aggregates counts across steps and skips invalid entries', () => {
-      const steps = [
-        { toolCalls: [{ toolName: 'duliday_job_list' }, { toolName: 'geocode' }] },
-        { toolCalls: [{ toolName: 'duliday_job_list' }] },
-        // invalid entries: missing toolName, empty string, wrong type
-        { toolCalls: [{} as unknown as { toolName: string }] },
-        { toolCalls: [{ toolName: '' }] },
-        { toolCalls: [{ toolName: 42 as unknown as string }] },
-      ];
-
-      const counts = countToolCallsByName(steps);
-      expect(counts.get('duliday_job_list')).toBe(2);
-      expect(counts.get('geocode')).toBe(1);
-      expect(counts.size).toBe(2);
-    });
-  });
-
-  describe('findToolsExceedingLimit', () => {
-    const callStep = (name: string) => ({ toolCalls: [{ toolName: name }] });
-
-    it('returns empty when no tool reaches the limit', () => {
-      const steps = [callStep('a'), callStep('a'), callStep('b')];
-      expect(findToolsExceedingLimit(steps, MAX_SAME_TOOL_CALLS_PER_TURN)).toEqual([]);
-    });
-
-    it('returns names that meet or exceed the limit', () => {
-      const steps = [
-        callStep('a'),
-        callStep('a'),
-        callStep('a'), // a == 3
-        callStep('b'),
-      ];
-      expect(findToolsExceedingLimit(steps, 3).sort()).toEqual(['a']);
-    });
-
-    it('respects custom limit override', () => {
-      const steps = [callStep('a'), callStep('a')];
-      expect(findToolsExceedingLimit(steps, 2)).toEqual(['a']);
-      expect(findToolsExceedingLimit(steps, 3)).toEqual([]);
-    });
-
-    it('defaults to MAX_SAME_TOOL_CALLS_PER_TURN', () => {
-      const steps = Array.from({ length: MAX_SAME_TOOL_CALLS_PER_TURN }, () => callStep('x'));
-      expect(findToolsExceedingLimit(steps)).toEqual(['x']);
-    });
-  });
-
-  describe('buildToolCallLimitNotice', () => {
-    it('returns empty string when no tools blocked', () => {
-      expect(buildToolCallLimitNotice([])).toBe('');
-    });
-
-    it('renders one line per blocked tool with the limit number', () => {
-      const notice = buildToolCallLimitNotice(['duliday_job_list', 'geocode'], 3);
-      const lines = notice.split('\n');
-      expect(lines).toHaveLength(2);
-      expect(lines[0]).toContain('duliday_job_list');
-      expect(lines[0]).toContain('3');
-      expect(lines[1]).toContain('geocode');
-    });
-
-    it('uses default limit when not provided', () => {
-      const notice = buildToolCallLimitNotice(['a']);
-      expect(notice).toContain(String(MAX_SAME_TOOL_CALLS_PER_TURN));
     });
   });
 });

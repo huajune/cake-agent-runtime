@@ -103,7 +103,7 @@ describe('ContextService', () => {
     expect(prompt.indexOf('# 角色')).toBeGreaterThanOrEqual(0);
     expect(prompt.indexOf('# 全局工作原则')).toBeGreaterThan(prompt.indexOf('# 人格设定'));
     expect(prompt.indexOf('# 红线规则（以下行为绝对禁止）')).toBeGreaterThan(
-      prompt.indexOf('# 工具手册'),
+      prompt.indexOf('# 回合 SOP'),
     );
     expect(prompt.lastIndexOf('[当前阶段策略]')).toBeGreaterThan(
       prompt.indexOf('# 业务阈值'),
@@ -115,7 +115,10 @@ describe('ContextService', () => {
     expect(prompt).toContain('[用户档案]');
     expect(prompt).toContain('姓名: 张三');
     expect(prompt).toContain('先接情绪，再解释用途');
-    expect(prompt).toContain('bookingChecklist.collectionStrategy');
+    // 工具专属规则（如 bookingChecklist.collectionStrategy）已迁移到各工具的 description 字段，
+    // 不再出现在主 system prompt 中。
+    expect(prompt).not.toContain('# 工具手册');
+    expect(prompt).not.toContain('bookingChecklist.collectionStrategy');
   });
 
   it('should keep runtime time injection to a single rendered current time line', async () => {

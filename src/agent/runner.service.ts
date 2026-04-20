@@ -2,21 +2,12 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { streamText, stepCountIs, type generateText } from 'ai';
+import { streamText, stepCountIs } from 'ai';
 import { MemoryService } from '@memory/memory.service';
 import { ReliableService } from '@providers/reliable.service';
 import { AgentPreparationService, type PreparedAgentContext } from './agent-preparation.service';
 import type { AgentError } from '@shared-types/agent-error.types';
-import {
-  buildToolCallLimitNotice,
-  computeResultCount,
-  computeToolCallStatus,
-  findToolsExceedingLimit,
-  MAX_SAME_TOOL_CALLS_PER_TURN,
-} from './tool-call-analysis';
-
-/** prepareStep 函数类型（沿用 ai SDK，本地不必锁死 TOOLS 泛型）。 */
-type PrepareStepFn = NonNullable<Parameters<typeof generateText>[0]['prepareStep']>;
+import { computeResultCount, computeToolCallStatus } from './tool-call-analysis';
 import type {
   AgentThinkingConfig,
   AgentInvokeParams,
@@ -84,7 +75,6 @@ export class AgentRunnerService {
           tools: ctx.tools,
           maxOutputTokens: this.maxOutputTokens,
           stopWhen: stepCountIs(ctx.maxSteps),
-          prepareStep: this.buildPrepareStep(ctx),
           providerOptions,
         },
         ctx.chatFallbacks,
@@ -141,7 +131,6 @@ export class AgentRunnerService {
         tools: ctx.tools,
         maxOutputTokens: this.maxOutputTokens,
         stopWhen: stepCountIs(ctx.maxSteps),
-        prepareStep: this.buildPrepareStep(ctx),
         providerOptions,
         onFinish: ({ usage, steps, text }) => {
           this.logger.log('流式完成, 步数: ' + steps.length + ', Tokens: ' + usage.totalTokens);
@@ -253,44 +242,6 @@ export class AgentRunnerService {
       default:
         return undefined;
     }
-  }
-
-  /**
-   * 构造 prepareStep 钩子：单轮内同名工具调用 ≥ MAX_SAME_TOOL_CALLS_PER_TURN 时动态屏蔽。
-   *
-   * 触发场景：模型在一轮内反复调用同一工具试探不同 filter（典型如 duliday_job_list 用
-   * 不稳定字段查询失败后无限扩面）。屏蔽方式 = 通过 activeTools 白名单移除超限工具，
-   * 同时在 system 末尾追加一段拦截提示，告知模型为什么这个工具消失了，应基于已有结果收敛。
-   *
-   * 备选方案 stopWhen 会直接结束整轮，可能导致没有最终回复输出；prepareStep 让模型仍能
-   * 用其他工具或文本完成本轮。
-   */
-  private buildPrepareStep(ctx: PreparedAgentContext): PrepareStepFn | undefined {
-    const baseTools = Object.keys(ctx.tools ?? {});
-    if (baseTools.length === 0) return undefined;
-    const baseSystem = ctx.finalPrompt;
-    const sessionId = ctx.sessionId;
-    const logger = this.logger;
-
-    return ({ steps }) => {
-      const blocked = findToolsExceedingLimit(steps, MAX_SAME_TOOL_CALLS_PER_TURN);
-      if (blocked.length === 0) return {};
-
-      const activeTools = baseTools.filter((name) => !blocked.includes(name));
-      const notice = buildToolCallLimitNotice(blocked, MAX_SAME_TOOL_CALLS_PER_TURN);
-      const system = notice ? `${baseSystem}\n\n${notice}` : baseSystem;
-
-      logger.warn(
-        `工具调用硬截断: blocked=${blocked.join(',')} stepCount=${steps.length} sessionId=${sessionId}`,
-      );
-
-      // activeTools 在 SDK 内部要求是 keyof TOOLS；这里 TOOLS 是 ToolSet 索引签名，
-      // 直接用 string[] 在运行时一致，仅做类型 cast。
-      return {
-        activeTools: activeTools as Array<string | number | symbol>,
-        system,
-      };
-    };
   }
 
   /**
