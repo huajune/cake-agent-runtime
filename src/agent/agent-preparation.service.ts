@@ -4,6 +4,7 @@ import { ModelMessage, ToolSet } from 'ai';
 import { RouterService } from '@providers/router.service';
 import { ModelRole, supportsVision } from '@providers/types';
 import { ToolRegistryService } from '@tools/tool-registry.service';
+import { CandidateProfileEnrichmentService } from '@biz/user/services/candidate-profile-enrichment.service';
 import { RecruitmentCaseRecord } from '@biz/recruitment-case/entities/recruitment-case.entity';
 import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
 import { RecruitmentStageResolverService } from '@biz/recruitment-case/services/recruitment-stage-resolver.service';
@@ -18,7 +19,6 @@ import {
   type RecommendedJobSummary,
   type WeworkSessionState,
 } from '@memory/types/session-facts.types';
-import { CustomerService } from '@wecom/customer/customer.service';
 import { ContextService } from './context/context.service';
 import { InputGuardService } from './input-guard.service';
 import {
@@ -61,7 +61,7 @@ export class AgentPreparationService {
     private readonly recruitmentStageResolver: RecruitmentStageResolverService,
     private readonly memoryService: MemoryService,
     private readonly memoryConfig: MemoryConfig,
-    private readonly customerService: CustomerService,
+    private readonly candidateProfileEnrichmentService: CandidateProfileEnrichmentService,
     private readonly context: ContextService,
     private readonly inputGuard: InputGuardService,
   ) {}
@@ -615,33 +615,19 @@ export class AgentPreparationService {
       return;
     }
 
-    const token = params.token?.trim();
-    const imBotId = params.imBotId?.trim();
-    const imContactId = params.imContactId?.trim();
-    const wecomUserId = params.wecomUserId?.trim();
-    const externalUserId = params.externalUserId?.trim();
-    const hasSystemLocator = Boolean(imBotId && imContactId);
-    const hasWecomLocator = Boolean(wecomUserId && externalUserId);
-
-    if (!token || (!hasSystemLocator && !hasWecomLocator)) {
-      return;
-    }
-
     try {
-      const detail = await this.customerService.getCustomerDetailV2({
-        token,
-        imBotId,
-        imContactId,
-        wecomUserId,
-        externalUserId,
+      const gender = await this.candidateProfileEnrichmentService.lookupGenderFromCustomerDetail({
+        token: params.token,
+        imBotId: params.imBotId,
+        imContactId: params.imContactId,
+        wecomUserId: params.wecomUserId,
+        externalUserId: params.externalUserId,
       });
-      const gender = this.normalizeGenderValue(detail?.data?.gender);
 
       if (!gender) {
         return;
       }
 
-      await this.memoryService.saveProfile(params.corpId, params.userId, { gender });
       memory.highConfidenceFacts = this.mergeSupplementalGenderFact(
         memory.highConfidenceFacts,
         gender,

@@ -158,6 +158,9 @@ export class TestSuiteController {
       scenario: normalizedRequest.scenario,
       messageText,
       requestBody,
+      // agent-test UI 发起的调试流量不能污染生产观测（message_processing_records /
+      // user_activity / 今日托管看板）；SSE 仍通过 data-observability 把 trace 送回前端。
+      source: 'testing',
     });
 
     this.logger.log(

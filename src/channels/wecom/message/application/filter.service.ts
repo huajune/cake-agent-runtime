@@ -5,7 +5,6 @@ import { FilterResult } from '../types';
 import {
   ContactTypeFilterRule,
   EmptyContentFilterRule,
-  EnterpriseGroupFilterRule,
   GroupBlacklistFilterRule,
   MessageFilterRule,
   PausedUserFilterRule,
@@ -22,10 +21,6 @@ export type { FilterResult } from '../types';
  * 消息过滤服务
  * 负责对接收到的消息进行各种过滤检查
  * 只处理：私聊、用户发送、手机推送、文本消息、非空内容
- *
- * 黑名单规则：
- * - 企业级消息：排除特定 groupId (691d3b171535fed6bcc94f66)
- * - 小组级消息：不应用 groupId 黑名单，允许通过
  */
 @Injectable()
 export class MessageFilterService {
@@ -37,7 +32,6 @@ export class MessageFilterService {
     contactTypeFilterRule: ContactTypeFilterRule,
     pausedUserFilterRule: PausedUserFilterRule,
     groupBlacklistFilterRule: GroupBlacklistFilterRule,
-    enterpriseGroupFilterRule: EnterpriseGroupFilterRule,
     roomMessageFilterRule: RoomMessageFilterRule,
     supportedMessageTypeFilterRule: SupportedMessageTypeFilterRule,
     emptyContentFilterRule: EmptyContentFilterRule,
@@ -48,7 +42,6 @@ export class MessageFilterService {
       contactTypeFilterRule,
       pausedUserFilterRule,
       groupBlacklistFilterRule,
-      enterpriseGroupFilterRule,
       roomMessageFilterRule,
       supportedMessageTypeFilterRule,
       emptyContentFilterRule,

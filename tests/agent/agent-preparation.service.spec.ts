@@ -56,8 +56,8 @@ describe('AgentPreparationService', () => {
     alertInjection: jest.fn().mockResolvedValue(undefined),
   };
 
-  const mockCustomerService = {
-    getCustomerDetailV2: jest.fn(),
+  const mockCandidateProfileEnrichmentService = {
+    lookupGenderFromCustomerDetail: jest.fn(),
   };
 
   let service: AgentPreparationService;
@@ -114,7 +114,7 @@ describe('AgentPreparationService', () => {
       thresholds: [{ name: 'salary', max: 1 }],
     }));
     mockInputGuard.detectMessages.mockReturnValue({ safe: true });
-    mockCustomerService.getCustomerDetailV2.mockResolvedValue(null);
+    mockCandidateProfileEnrichmentService.lookupGenderFromCustomerDetail.mockResolvedValue(null);
 
     service = new AgentPreparationService(
       mockConfigService as never,
@@ -124,7 +124,7 @@ describe('AgentPreparationService', () => {
       mockRecruitmentStageResolver as never,
       mockMemoryService as never,
       mockMemoryConfig as never,
-      mockCustomerService as never,
+      mockCandidateProfileEnrichmentService as never,
       mockContext as never,
       mockInputGuard as never,
     );
@@ -535,11 +535,7 @@ describe('AgentPreparationService', () => {
         reason: null,
       },
     });
-    mockCustomerService.getCustomerDetailV2.mockResolvedValue({
-      errcode: 0,
-      errmsg: 'ok',
-      data: { gender: 1 },
-    });
+    mockCandidateProfileEnrichmentService.lookupGenderFromCustomerDetail.mockResolvedValue('男');
 
     await service.prepare(
       {
@@ -556,15 +552,14 @@ describe('AgentPreparationService', () => {
       'invoke',
     );
 
-    expect(mockCustomerService.getCustomerDetailV2).toHaveBeenCalledWith({
+    expect(
+      mockCandidateProfileEnrichmentService.lookupGenderFromCustomerDetail,
+    ).toHaveBeenCalledWith({
       token: 'token-1',
       imBotId: 'im-bot-1',
       imContactId: 'im-contact-1',
       wecomUserId: 'manager-1',
       externalUserId: 'external-user-1',
-    });
-    expect(mockMemoryService.saveProfile).toHaveBeenCalledWith('corp-1', 'user-1', {
-      gender: '男',
     });
     expect(mockContext.compose).toHaveBeenCalledWith(
       expect.objectContaining({

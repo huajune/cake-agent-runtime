@@ -154,7 +154,6 @@ describe('MessageProcessingRepository', () => {
           ai_end_at: null,
           ai_duration: 1800,
           send_duration: null,
-          tools: [],
           token_usage: 100,
           is_fallback: false,
           fallback_success: null,
@@ -221,7 +220,6 @@ describe('MessageProcessingRepository', () => {
         ai_end_at: null,
         ai_duration: 1200,
         send_duration: null,
-        tools: [],
         token_usage: 80,
         is_fallback: false,
         fallback_success: null,
@@ -248,6 +246,7 @@ describe('MessageProcessingRepository', () => {
 
       expect(result.records).toEqual([]);
     });
+
   });
 
   // ==================== getMessageProcessingRecordById ====================
@@ -296,7 +295,6 @@ describe('MessageProcessingRepository', () => {
         ai_end_at: null,
         ai_duration: 1200,
         send_duration: null,
-        tools: ['tool_a'],
         token_usage: 100,
         is_fallback: false,
         fallback_success: null,
@@ -487,7 +485,6 @@ describe('MessageProcessingRepository', () => {
         ai_end_at: null,
         ai_duration: 1200,
         send_duration: null,
-        tools: [],
         token_usage: 80,
         is_fallback: false,
         fallback_success: null,

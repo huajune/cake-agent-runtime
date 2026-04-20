@@ -7,15 +7,11 @@ import { RedisKeyBuilder } from '@wecom/message/runtime/redis-key.util';
 describe('MessageDeduplicationService', () => {
   let service: MessageDeduplicationService;
 
-  const mockRedisClient = {
-    set: jest.fn(),
-  };
-
   const mockRedisService = {
     exists: jest.fn(),
     scan: jest.fn(),
     del: jest.fn(),
-    getClient: jest.fn(() => mockRedisClient),
+    setNx: jest.fn(),
   };
 
   const mockConfigService = {
@@ -70,20 +66,20 @@ describe('MessageDeduplicationService', () => {
 
   describe('markMessageAsProcessedAsync', () => {
     it('should return true and set key when message not yet processed', async () => {
-      mockRedisClient.set.mockResolvedValue('OK');
+      mockRedisService.setNx.mockResolvedValue(true);
 
       const result = await service.markMessageAsProcessedAsync('msg-123');
 
       expect(result).toBe(true);
-      expect(mockRedisClient.set).toHaveBeenCalledWith(
+      expect(mockRedisService.setNx).toHaveBeenCalledWith(
         RedisKeyBuilder.dedup('msg-123'),
         expect.any(String),
-        { nx: true, ex: 300 },
+        300,
       );
     });
 
     it('should return false when message already processed by another process', async () => {
-      mockRedisClient.set.mockResolvedValue(null);
+      mockRedisService.setNx.mockResolvedValue(false);
 
       const result = await service.markMessageAsProcessedAsync('msg-123');
 

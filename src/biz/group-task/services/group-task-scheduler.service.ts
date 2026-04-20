@@ -464,17 +464,12 @@ export class GroupTaskSchedulerService implements OnModuleInit {
   }
 
   private async acquireTaskLock(lockKey: string, ownerToken: string): Promise<boolean> {
-    const result = await this.redisService.getClient().set(lockKey, ownerToken, {
-      nx: true,
-      ex: this.TASK_LOCK_TTL_SECONDS,
-    });
-
-    return result === 'OK';
+    return this.redisService.setNx(lockKey, ownerToken, this.TASK_LOCK_TTL_SECONDS);
   }
 
   private async releaseTaskLock(lockKey: string, ownerToken: string): Promise<void> {
     try {
-      await this.redisService.getClient().eval(
+      await this.redisService.eval(
         `
           if redis.call("get", KEYS[1]) == ARGV[1] then
             return redis.call("del", KEYS[1])

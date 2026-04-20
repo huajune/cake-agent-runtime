@@ -38,6 +38,11 @@ export interface AiStreamTraceOptions {
   scenario?: string;
   messageText?: string;
   requestBody: Record<string, unknown>;
+  /**
+   * 数据归属。`testing` 源的 trace 不会写入生产观测表（message_processing_records、
+   * user_activity、Redis 计数器），避免污染"今日托管"等生产看板；省略等同 `production`。
+   */
+  source?: 'production' | 'testing';
 }
 
 export interface AiStreamTimingPayload {
@@ -159,6 +164,8 @@ export class AiStreamTrace {
   private readonly scenario: string;
   private readonly timing = new AiStreamTraceTiming();
   private readonly content = new AiStreamTraceContentStore();
+  /** true 时跳过生产观测表写入（只保留 observer 事件与 SSE 元数据）。 */
+  private readonly skipTrackingPersistence: boolean;
 
   private requestBody: Record<string, unknown>;
   private usage?: StreamUsage;
@@ -173,19 +180,22 @@ export class AiStreamTrace {
     this.traceId = `ai-stream:${options.chatId}:${randomUUID()}`;
     this.scenario = options.scenario || DEFAULT_SCENARIO;
     this.requestBody = options.requestBody;
+    this.skipTrackingPersistence = options.source === 'testing';
 
-    this.messageTrackingService.recordMessageReceived(
-      this.traceId,
-      options.chatId,
-      options.userId,
-      options.userId,
-      options.messageText,
-      {
-        scenario: this.scenario as MonitoringMetadata['scenario'],
-      },
-    );
+    if (!this.skipTrackingPersistence) {
+      this.messageTrackingService.recordMessageReceived(
+        this.traceId,
+        options.chatId,
+        options.userId,
+        options.userId,
+        options.messageText,
+        {
+          scenario: this.scenario as MonitoringMetadata['scenario'],
+        },
+      );
 
-    this.messageTrackingService.recordWorkerStart(this.traceId);
+      this.messageTrackingService.recordWorkerStart(this.traceId);
+    }
     this.timing.markWorkerStart();
 
     this.observer.emit({
@@ -209,7 +219,9 @@ export class AiStreamTrace {
 
   markAiStart(): void {
     if (!this.timing.markAiStart()) return;
-    this.messageTrackingService.recordAiStart(this.traceId);
+    if (!this.skipTrackingPersistence) {
+      this.messageTrackingService.recordAiStart(this.traceId);
+    }
   }
 
   markStreamReady(entryStage: string | null): void {
@@ -219,7 +231,9 @@ export class AiStreamTrace {
 
   markResponsePipeStart(): void {
     if (!this.timing.markResponsePipeStart()) return;
-    this.messageTrackingService.recordSendStart(this.traceId);
+    if (!this.skipTrackingPersistence) {
+      this.messageTrackingService.recordSendStart(this.traceId);
+    }
   }
 
   observeChunk(chunk: UIMessageChunk): void {
@@ -353,7 +367,9 @@ export class AiStreamTrace {
     const payload = this.getClientPayload('success');
     const metadata = this.buildMonitoringMetadata(payload);
 
-    this.messageTrackingService.recordSuccess(this.traceId, metadata);
+    if (!this.skipTrackingPersistence) {
+      this.messageTrackingService.recordSuccess(this.traceId, metadata);
+    }
     this.emitObserverSummary(payload);
 
     this.logger.log(
@@ -374,7 +390,9 @@ export class AiStreamTrace {
     const payload = this.getClientPayload('failure', errorMessage);
     const metadata = this.buildMonitoringMetadata(payload, errorMessage);
 
-    this.messageTrackingService.recordFailure(this.traceId, errorMessage, metadata);
+    if (!this.skipTrackingPersistence) {
+      this.messageTrackingService.recordFailure(this.traceId, errorMessage, metadata);
+    }
     this.observer.emit({
       type: 'agent_error',
       userId: this.options.userId || 'unknown',
@@ -461,6 +479,8 @@ export class AiStreamTrace {
 
   private completeLifecycle(): void {
     this.timing.markCompleted();
+
+    if (this.skipTrackingPersistence) return;
 
     if (this.timing.marks.aiStartAt) {
       this.messageTrackingService.recordAiEnd(this.traceId);

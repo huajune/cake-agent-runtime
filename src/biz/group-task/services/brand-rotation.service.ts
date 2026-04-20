@@ -68,7 +68,7 @@ export class BrandRotationService {
   private async getHistory(groupId: string): Promise<string[]> {
     const key = `${KEY_PREFIX}:${groupId}`;
     try {
-      const raw = await this.redis.get(key);
+      const raw = await this.redis.get<string>(key);
       if (!raw) return [];
       return JSON.parse(raw) as string[];
     } catch {

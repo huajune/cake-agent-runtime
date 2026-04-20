@@ -151,32 +151,6 @@ export class GroupBlacklistFilterRule implements MessageFilterRule {
 }
 
 @Injectable()
-export class EnterpriseGroupFilterRule implements MessageFilterRule {
-  private readonly logger = new Logger(EnterpriseGroupFilterRule.name);
-  private readonly blockedEnterpriseGroupId = '691d3b171535fed6bcc94f66';
-
-  evaluate(messageData: EnterpriseMessageCallbackDto): FilterResult | null {
-    const isEnterpriseMessage = messageData._apiType !== 'group';
-    if (!isEnterpriseMessage || messageData.groupId !== this.blockedEnterpriseGroupId) {
-      return null;
-    }
-
-    this.logger.log(
-      `[过滤-企业级分组] 跳过特定企业级分组的消息 [${messageData.messageId}], groupId=${messageData.groupId}, orgId=${messageData.orgId}`,
-    );
-    return {
-      pass: false,
-      reason: FilterReason.BLOCKED_ENTERPRISE_GROUP,
-      details: {
-        groupId: messageData.groupId,
-        orgId: messageData.orgId,
-        apiType: messageData._apiType || 'enterprise',
-      },
-    };
-  }
-}
-
-@Injectable()
 export class RoomMessageFilterRule implements MessageFilterRule {
   private readonly logger = new Logger(RoomMessageFilterRule.name);
 

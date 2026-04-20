@@ -37,8 +37,34 @@ export function buildRequestHandoffTool(
 ): ToolBuilder {
   return (context) => {
     return tool({
-      description:
-        '面试/入职跟进阶段遇到需人工处理的场景（找不到门店、到店无人接待、预约冲突、办理入职等）时调用，同步触发人工介入。调用后请以招募者身份自然地告诉候选人“我让同事跟进一下”之类的衔接话，不要暴露机器人/托管/系统。',
+      description: `面试/入职跟进阶段遇到需人工处理的场景时调用，同步触发人工介入。
+
+## 前置条件
+- 仅在 [当前预约信息] 存在（即存在 active 的 onboard_followup case）时才允许调用
+- 无 case 时工具会返回 no_active_case，禁止调用
+
+## 触发场景（出现任一即调用）
+1. cannot_find_store：候选人反馈找不到门店、导航错、门店地址错等定位问题，且 send_store_location 仍无法解决
+2. no_reception：候选人到店后联系不上负责人、店长不在、无人接待、电话打不通
+3. booking_conflict：门店反馈查不到预约、与系统记录冲突、现场说没有你预约的岗位
+4. onboarding_paperwork：候选人进入入职/上岗对接、办理手续、报到流程等你无法处理的环节
+5. other：明显需要人工介入但不属于以上四类的面试/入职阶段阻塞
+
+## 何时不调用
+- 如果候选人只是常规询问门店位置/路线，先用 send_store_location 处理，不要直接转人工
+
+## 执行效果
+- 同步执行「暂停托管 + case 状态改为 handoff + 飞书告警」
+
+## 参数
+- reasonCode：五个枚举之一
+- reason：结合候选人原话描述阻塞点
+- summary（可选）：一句话概括当前信息状态
+
+## 硬规则
+- 本轮回复必须先调用本工具，再以招募者口吻做一次自然衔接（例如"我让同事跟进一下这边"），措辞自定
+- 严禁在本轮继续推进其他任务（换岗位、改约时间、收资料等）
+- 严禁话术中提及"机器人"、"托管"、"系统"、"自动"等字眼`,
       inputSchema: z.object({
         reasonCode: z
           .enum([

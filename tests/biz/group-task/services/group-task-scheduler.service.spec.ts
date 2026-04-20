@@ -30,7 +30,7 @@ describe('GroupTaskSchedulerService', () => {
   let partTimeJobStrategy: PartTimeJobStrategy;
   let storeManagerStrategy: StoreManagerStrategy;
   let workTipsStrategy: WorkTipsStrategy;
-  let redisClient: { set: jest.Mock; eval: jest.Mock };
+  let redisMock: { setNx: jest.Mock; eval: jest.Mock };
   let currentNodeEnv: Environment;
 
   const mockStrategy: NotificationStrategy = {
@@ -49,8 +49,8 @@ describe('GroupTaskSchedulerService', () => {
     (mockStrategy.fetchData as jest.Mock).mockReset().mockResolvedValue([]);
     (mockStrategy.buildMessage as jest.Mock).mockReset().mockReturnValue('test message');
 
-    redisClient = {
-      set: jest.fn().mockResolvedValue('OK'),
+    redisMock = {
+      setNx: jest.fn().mockResolvedValue(true),
       eval: jest.fn().mockResolvedValue(1),
     };
 
@@ -84,9 +84,7 @@ describe('GroupTaskSchedulerService', () => {
         },
         {
           provide: RedisService,
-          useValue: {
-            getClient: jest.fn().mockReturnValue(redisClient),
-          } as unknown as RedisService,
+          useValue: redisMock as unknown as RedisService,
         },
         {
           provide: GroupResolverService,
@@ -340,14 +338,14 @@ describe('GroupTaskSchedulerService', () => {
     it('should skip duplicate execution when task lock is already held', async () => {
       const enabledConfig = { ...DEFAULT_GROUP_TASK_CONFIG, enabled: true, dryRun: true };
       systemConfigService.getGroupTaskConfig.mockResolvedValue(enabledConfig);
-      redisClient.set.mockResolvedValue(null);
+      redisMock.setNx.mockResolvedValue(false);
 
       await service.executeTask(mockStrategy);
 
       expect(groupResolverService.resolveGroups).not.toHaveBeenCalled();
       expect(notificationSenderService.sendToGroup).not.toHaveBeenCalled();
       expect(notificationSenderService.reportToFeishu).not.toHaveBeenCalled();
-      expect(redisClient.eval).not.toHaveBeenCalled();
+      expect(redisMock.eval).not.toHaveBeenCalled();
     });
 
     it('should release task lock after execution', async () => {
@@ -374,12 +372,12 @@ describe('GroupTaskSchedulerService', () => {
       await service.executeTask(mockStrategy);
 
       expect(mockStrategy.prepareTask).toHaveBeenCalledTimes(1);
-      expect(redisClient.set).toHaveBeenCalledWith(
+      expect(redisMock.setNx).toHaveBeenCalledWith(
         'group-task:lock:order_grab',
         expect.any(String),
-        expect.objectContaining({ nx: true, ex: 300 }),
+        300,
       );
-      expect(redisClient.eval).toHaveBeenCalledWith(
+      expect(redisMock.eval).toHaveBeenCalledWith(
         expect.any(String),
         ['group-task:lock:order_grab'],
         [expect.any(String)],

@@ -7,19 +7,15 @@ describe('MonitoringCacheService', () => {
 
   const redisStore = new Map<string, number>();
 
-  const mockRedisClient = {
+  const mockRedisService = {
+    get: jest.fn(async (key: string) => (redisStore.has(key) ? redisStore.get(key)! : null)),
+    set: jest.fn(async (key: string, value: number) => {
+      redisStore.set(key, value);
+    }),
     incrby: jest.fn(async (key: string, delta: number) => {
       const next = (redisStore.get(key) ?? 0) + delta;
       redisStore.set(key, next);
       return next;
-    }),
-  };
-
-  const mockRedisService = {
-    getClient: jest.fn(() => mockRedisClient),
-    get: jest.fn(async (key: string) => (redisStore.has(key) ? redisStore.get(key)! : null)),
-    set: jest.fn(async (key: string, value: number) => {
-      redisStore.set(key, value);
     }),
   };
 

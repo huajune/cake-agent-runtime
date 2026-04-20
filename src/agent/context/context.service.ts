@@ -6,10 +6,13 @@
  */
 
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { StrategyConfigService as BizStrategyConfigService } from '@biz/strategy/services/strategy-config.service';
+import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
+import { GroupContext } from '@biz/group-task/group-task.types';
 import type { EntityExtractionResult } from '@memory/types/session-facts.types';
 import {
   StrategyConfigRecord,
@@ -26,6 +29,7 @@ import { ThresholdsSection } from './sections/thresholds.section';
 import { MemorySection } from './sections/memory.section';
 import { TurnHintsSection } from './sections/turn-hints.section';
 import { HardConstraintsSection } from './sections/hard-constraints.section';
+import { GroupInventorySection } from './sections/group-inventory.section';
 import { SCENARIO_SECTIONS, DEFAULT_SCENARIO } from './scenarios/scenario.registry';
 import { StaticSection } from './sections/static.section';
 import { PolicySection } from './sections/policy.section';
@@ -56,11 +60,20 @@ export class ContextService implements OnModuleInit {
   private readonly sections = new Map<string, PromptSection>();
   private readonly promptAssets = new Map<string, string>();
   private readonly promptsBasePath: string;
+  private readonly groupMemberLimit: number;
 
-  constructor(private readonly strategyConfigService: BizStrategyConfigService) {
+  constructor(
+    private readonly strategyConfigService: BizStrategyConfigService,
+    private readonly groupResolver: GroupResolverService,
+    private readonly configService: ConfigService,
+  ) {
     const devPath = join(__dirname, 'prompts');
     const prodPath = join(__dirname, '..', '..', 'agent', 'context', 'prompts');
     this.promptsBasePath = existsSync(devPath) ? devPath : prodPath;
+    this.groupMemberLimit = parseInt(
+      this.configService.get<string>('GROUP_MEMBER_LIMIT', '200'),
+      10,
+    );
   }
 
   async onModuleInit() {
@@ -89,6 +102,8 @@ export class ContextService implements OnModuleInit {
 
     const now = this.formatCurrentTime();
 
+    const groupInventoryBlock = await this.renderGroupInventoryBlock(sessionFacts);
+
     const ctx: PromptContext = {
       scenario,
       channelType,
@@ -98,6 +113,7 @@ export class ContextService implements OnModuleInit {
       sessionFacts,
       highConfidenceFacts,
       currentTimeText: now,
+      groupInventoryBlock,
     };
 
     const sectionNames = SCENARIO_SECTIONS[scenario];
@@ -152,6 +168,60 @@ export class ContextService implements OnModuleInit {
     this.sections.set('hard-constraints', new HardConstraintsSection());
     this.sections.set('datetime', new DateTimeSection());
     this.sections.set('channel', new ChannelSection());
+    this.sections.set('group-inventory', new GroupInventorySection());
+  }
+
+  /**
+   * 根据 sessionFacts 中候选人意向城市，预渲染该城市兼职群资源概览。
+   *
+   * - 目的：让 Agent 在调用 invite_to_group 前对该城市群库有"上帝视角"
+   * - 行为：无城市/无群数据/查询失败时返回空串，不影响 prompt 组装
+   */
+  private async renderGroupInventoryBlock(
+    sessionFacts?: EntityExtractionResult | null,
+  ): Promise<string> {
+    const city = sessionFacts?.preferences?.city?.value?.trim();
+    if (!city) return '';
+
+    let cityGroups: GroupContext[];
+    try {
+      const allGroups = await this.groupResolver.resolveGroups('兼职群');
+      cityGroups = allGroups.filter((group) => group.city === city);
+    } catch (error) {
+      this.logger.warn(`预渲染兼职群资源失败 (city=${city}): ${(error as Error).message}`);
+      return '';
+    }
+
+    if (cityGroups.length === 0) return '';
+
+    const byIndustry = new Map<string, { groupCount: number; availableCount: number }>();
+    for (const group of cityGroups) {
+      const industry = group.industry ?? '未分类';
+      const entry = byIndustry.get(industry) ?? { groupCount: 0, availableCount: 0 };
+      entry.groupCount += 1;
+      const hasCapacity =
+        group.memberCount === undefined || group.memberCount < this.groupMemberLimit;
+      if (hasCapacity) entry.availableCount += 1;
+      byIndustry.set(industry, entry);
+    }
+
+    const lines = Array.from(byIndustry.entries())
+      .sort((left, right) => right[1].groupCount - left[1].groupCount)
+      .map(([industry, stats]) => {
+        const capacity =
+          stats.availableCount === stats.groupCount
+            ? '均有空位'
+            : `可用 ${stats.availableCount}/${stats.groupCount}`;
+        return `- ${industry}：${stats.groupCount} 个群（${capacity}）`;
+      });
+
+    return [
+      `## 兼职群资源（${city}）`,
+      ...lines,
+      '',
+      '调用 invite_to_group 时，若候选人求职意向明确（如餐饮/零售），必须传对应 industry 参数。',
+      '否则工具会按"人数最少"兜底，可能选到不匹配行业的群引起候选人疑问。',
+    ].join('\n');
   }
 
   private async loadPromptAssets(): Promise<void> {

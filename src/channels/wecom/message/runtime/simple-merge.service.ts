@@ -138,18 +138,15 @@ export class SimpleMergeService implements OnModuleInit {
   }
 
   async acquireProcessingLock(chatId: string, ownerToken: string): Promise<boolean> {
-    const result = await this.redisService
-      .getClient()
-      .set(RedisKeyBuilder.lock(chatId), ownerToken, {
-        nx: true,
-        ex: this.PROCESSING_LOCK_TTL_SECONDS,
-      });
-
-    return result === 'OK';
+    return this.redisService.setNx(
+      RedisKeyBuilder.lock(chatId),
+      ownerToken,
+      this.PROCESSING_LOCK_TTL_SECONDS,
+    );
   }
 
   async releaseProcessingLock(chatId: string, ownerToken: string): Promise<void> {
-    await this.redisService.getClient().eval(
+    await this.redisService.eval(
       `
           if redis.call("get", KEYS[1]) == ARGV[1] then
             return redis.call("del", KEYS[1])

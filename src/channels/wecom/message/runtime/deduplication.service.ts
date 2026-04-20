@@ -56,15 +56,14 @@ export class MessageDeduplicationService implements OnModuleInit {
     const key = RedisKeyBuilder.dedup(messageId);
 
     // 原子操作：SET key value NX EX ttl
-    // 返回 "OK" 表示成功设置（第一个处理者）
-    // 返回 null 表示 key 已存在（已被其他进程处理）
-    const client = this.redisService.getClient();
-    const result = await client.set(key, Date.now().toString(), {
-      nx: true,
-      ex: this.dedupeTTLSeconds,
-    });
+    // 返回 true 表示成功设置（第一个处理者）；false 表示 key 已存在（已被其他进程处理）
+    const acquired = await this.redisService.setNx(
+      key,
+      Date.now().toString(),
+      this.dedupeTTLSeconds,
+    );
 
-    if (result === null) {
+    if (!acquired) {
       this.logger.debug(`[去重] 消息 [${messageId}] 已被其他进程处理`);
       return false;
     }

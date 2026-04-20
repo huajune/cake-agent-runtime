@@ -38,7 +38,6 @@ import { TypingPolicyService } from './delivery/typing-policy.service';
 import {
   ContactTypeFilterRule,
   EmptyContentFilterRule,
-  EnterpriseGroupFilterRule,
   GroupBlacklistFilterRule,
   PausedUserFilterRule,
   RoomMessageFilterRule,
@@ -95,7 +94,6 @@ import {
     ContactTypeFilterRule,
     PausedUserFilterRule,
     GroupBlacklistFilterRule,
-    EnterpriseGroupFilterRule,
     RoomMessageFilterRule,
     SupportedMessageTypeFilterRule,
     EmptyContentFilterRule,

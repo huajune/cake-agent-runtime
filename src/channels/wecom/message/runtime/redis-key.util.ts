@@ -1,95 +1,59 @@
 /**
  * Redis Key 构建器
- * 统一管理所有 Redis Key 的前缀和格式
  *
  * 命名规范: {app}:{module}:{type}:{id}
  * 示例: wecom:message:dedup:msg_123456
+ *
+ * 环境隔离不在此处处理：所有 Redis 调用都会经过 RedisService.withPrefix
+ * 注入 `{RUNTIME_ENV|NODE_ENV}:` 前缀，避免双重前缀。
  */
 export class RedisKeyBuilder {
-  // 应用前缀，避免多应用共用 Redis 时冲突
   private static readonly APP_PREFIX = 'wecom';
-
-  // 模块前缀
   private static readonly MODULE = 'message';
 
-  /**
-   * 消息去重 Key
-   * 用于防止同一消息被重复处理
-   *
-   * 格式: wecom:message:dedup:{messageId}
-   * TTL: 由 DeduplicationService 控制（默认 2 小时）
-   */
+  private static get scope(): string {
+    return `${this.APP_PREFIX}:${this.MODULE}`;
+  }
+
+  /** 消息去重 Key（TTL 由 DeduplicationService 控制，默认 2 小时） */
   static dedup(messageId: string): string {
-    return `${this.APP_PREFIX}:${this.MODULE}:dedup:${messageId}`;
+    return `${this.scope}:dedup:${messageId}`;
   }
 
-  /**
-   * 消息聚合队列 Key
-   * 用于存储待聚合的消息列表
-   *
-   * 格式: wecom:message:pending:{chatId}
-   * TTL: 由 SimpleMergeService 控制（默认 5 分钟）
-   */
+  /** 消息聚合队列 Key（TTL 由 SimpleMergeService 控制，默认 5 分钟） */
   static pending(chatId: string): string {
-    return `${this.APP_PREFIX}:${this.MODULE}:pending:${chatId}`;
+    return `${this.scope}:pending:${chatId}`;
   }
 
-  /**
-   * 会话最后一条消息到达时间 Key
-   * 用于基于“最后一条消息后的静默窗口”决定是否触发本轮聚合处理
-   *
-   * 格式: wecom:message:last-message-at:{chatId}
-   */
+  /** 会话最后一条消息到达时间 Key */
   static lastMessageAt(chatId: string): string {
-    return `${this.APP_PREFIX}:${this.MODULE}:last-message-at:${chatId}`;
+    return `${this.scope}:last-message-at:${chatId}`;
   }
 
-  /**
-   * 消息历史缓存 Key（预留）
-   * 用于缓存会话历史记录
-   *
-   * 格式: wecom:message:history:{chatId}
-   */
+  /** 消息历史缓存 Key（预留） */
   static history(chatId: string): string {
-    return `${this.APP_PREFIX}:${this.MODULE}:history:${chatId}`;
+    return `${this.scope}:history:${chatId}`;
   }
 
-  /**
-   * 处理状态锁 Key（预留）
-   * 用于分布式锁，防止同一会话并发处理
-   *
-   * 格式: wecom:message:lock:{chatId}
-   */
+  /** 处理状态锁 Key */
   static lock(chatId: string): string {
-    return `${this.APP_PREFIX}:${this.MODULE}:lock:${chatId}`;
+    return `${this.scope}:lock:${chatId}`;
   }
 
-  /**
-   * 企微消息 trace 上下文 Key
-   *
-   * 格式: wecom:message:trace:{messageId}
-   */
+  /** 企微消息 trace 上下文 Key */
   static trace(messageId: string): string {
-    return `${this.APP_PREFIX}:${this.MODULE}:trace:${messageId}`;
+    return `${this.scope}:trace:${messageId}`;
   }
 
-  /**
-   * 批量匹配模式（用于 SCAN 操作）
-   *
-   * @param type Key 类型
-   * @returns 匹配模式字符串
-   */
+  /** 批量匹配模式（用于 SCAN 操作） */
   static pattern(
     type: 'dedup' | 'pending' | 'history' | 'lock' | 'last-message-at' | 'trace',
   ): string {
-    return `${this.APP_PREFIX}:${this.MODULE}:${type}:*`;
+    return `${this.scope}:${type}:*`;
   }
 
-  /**
-   * 获取完整前缀
-   * 用于清理所有消息模块的 Redis 数据
-   */
+  /** 获取模块前缀；与 RedisService 的 env 前缀拼接后用于清理本模块 Redis 数据 */
   static get modulePrefix(): string {
-    return `${this.APP_PREFIX}:${this.MODULE}:`;
+    return `${this.scope}:`;
   }
 }

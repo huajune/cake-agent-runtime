@@ -16,6 +16,41 @@ import { MessageProcessingRecordInput } from '../types/message.types';
 export class MessageProcessingRepository extends BaseRepository {
   protected readonly tableName = 'message_processing_records';
 
+  // 列表/聚合查询用的精简投影（不拉 agent_invocation 这个 jsonb 大字段）
+  private readonly listSelectedColumns = [
+    'message_id',
+    'chat_id',
+    'user_id',
+    'user_name',
+    'manager_name',
+    'received_at',
+    'message_preview',
+    'reply_preview',
+    'reply_segments',
+    'status',
+    'error',
+    'alert_type',
+    'scenario',
+    'total_duration',
+    'queue_duration',
+    'prep_duration',
+    'ai_duration',
+    'ttft_ms:agent_invocation->response->timings->durations->>requestToFirstTextDeltaMs',
+    'send_duration',
+    'tool_calls',
+    'agent_steps',
+    'anomaly_flags',
+    'memory_snapshot',
+    'token_usage',
+    'is_fallback',
+    'fallback_success',
+    'batch_id',
+  ].join(',');
+
+  // 详情接口投影：在列表列基础上多带 agent_invocation，前端详情抽屉的时延分解、
+  // 工具执行、Trace、Delivery、Fallback 等富字段全部依赖该 jsonb。
+  private readonly detailSelectedColumns = `${this.listSelectedColumns},agent_invocation`;
+
   constructor(supabaseService: SupabaseService) {
     super(supabaseService);
   }
@@ -61,46 +96,19 @@ export class MessageProcessingRepository extends BaseRepository {
     }
 
     try {
-      const selectedColumns = [
-        'message_id',
-        'chat_id',
-        'user_id',
-        'user_name',
-        'manager_name',
-        'received_at',
-        'message_preview',
-        'reply_preview',
-        'reply_segments',
-        'status',
-        'error',
-        'alert_type',
-        'scenario',
-        'total_duration',
-        'queue_duration',
-        'prep_duration',
-        'ai_duration',
-        'ttft_ms:agent_invocation->response->timings->durations->>requestToFirstTextDeltaMs',
-        'send_duration',
-        'tool_calls',
-        'agent_steps',
-        'anomaly_flags',
-        'memory_snapshot',
-        'token_usage',
-        'is_fallback',
-        'fallback_success',
-        'batch_id',
-      ].join(',');
-
-      const results = await this.select<MessageProcessingDbRecord>(selectedColumns, (q) => {
-        let r = q
-          .eq('status', 'success')
-          .gt('ai_duration', 0)
-          .order('ai_duration', { ascending: false })
-          .limit(limit);
-        if (startTime) r = r.gte('received_at', new Date(startTime).toISOString());
-        if (endTime) r = r.lte('received_at', new Date(endTime).toISOString());
-        return r;
-      });
+      const results = await this.select<MessageProcessingDbRecord>(
+        this.listSelectedColumns,
+        (q) => {
+          let r = q
+            .eq('status', 'success')
+            .gt('ai_duration', 0)
+            .order('ai_duration', { ascending: false })
+            .limit(limit);
+          if (startTime) r = r.gte('received_at', new Date(startTime).toISOString());
+          if (endTime) r = r.lte('received_at', new Date(endTime).toISOString());
+          return r;
+        },
+      );
 
       return results.map((r) => this.fromDbRecord(r));
     } catch (error) {
@@ -131,36 +139,6 @@ export class MessageProcessingRepository extends BaseRepository {
     }
 
     try {
-      const selectedColumns = [
-        'message_id',
-        'chat_id',
-        'user_id',
-        'user_name',
-        'manager_name',
-        'received_at',
-        'message_preview',
-        'reply_preview',
-        'reply_segments',
-        'status',
-        'error',
-        'alert_type',
-        'scenario',
-        'total_duration',
-        'queue_duration',
-        'prep_duration',
-        'ai_duration',
-        'ttft_ms:agent_invocation->response->timings->durations->>requestToFirstTextDeltaMs',
-        'send_duration',
-        'tool_calls',
-        'agent_steps',
-        'anomaly_flags',
-        'memory_snapshot',
-        'token_usage',
-        'is_fallback',
-        'fallback_success',
-        'batch_id',
-      ].join(',');
-
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const buildModifier = (q: any) => {
         let r = q.order('received_at', { ascending: false });
@@ -179,7 +157,10 @@ export class MessageProcessingRepository extends BaseRepository {
         return r;
       };
 
-      const results = await this.select<MessageProcessingDbRecord>(selectedColumns, buildModifier);
+      const results = await this.select<MessageProcessingDbRecord>(
+        this.listSelectedColumns,
+        buildModifier,
+      );
       const total = await this.count(buildModifier);
 
       return {
@@ -204,8 +185,9 @@ export class MessageProcessingRepository extends BaseRepository {
     }
 
     try {
-      const results = await this.select<MessageProcessingDbRecord>('*', (q) =>
-        q.eq('message_id', messageId).limit(1),
+      const results = await this.select<MessageProcessingDbRecord>(
+        this.detailSelectedColumns,
+        (q) => q.eq('message_id', messageId).limit(1),
       );
 
       if (results.length === 0) {
@@ -388,29 +370,7 @@ export class MessageProcessingRepository extends BaseRepository {
       const startDate = new Date(startTime).toISOString();
       const endDate = new Date(endTime).toISOString();
 
-      const selectedColumns = [
-        'message_id',
-        'chat_id',
-        'user_id',
-        'user_name',
-        'manager_name',
-        'received_at',
-        'message_preview',
-        'reply_preview',
-        'status',
-        'alert_type',
-        'ai_duration',
-        'total_duration',
-        'scenario',
-        'tools',
-        'token_usage',
-        'is_fallback',
-        'fallback_success',
-        'agent_invocation',
-        'batch_id',
-      ].join(',');
-
-      const results = await this.select<MessageProcessingDbRecord>(selectedColumns, (q) =>
+      const results = await this.select<MessageProcessingDbRecord>(this.listSelectedColumns, (q) =>
         q
           .gte('received_at', startDate)
           .lt('received_at', endDate)

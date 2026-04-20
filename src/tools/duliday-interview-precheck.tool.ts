@@ -1083,8 +1083,35 @@ function evaluateRequestedDate(params: {
 export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBuilder {
   return (context) =>
     tool({
-      description:
-        '面试前置校验。返回岗位的面试周期规则（scheduleRule）、未来一周可约时段示例（upcomingTimeOptions）、岗位硬性筛选条件（screeningCriteria）、预约所需字段清单、可直接参考的话术模板与收资策略（bookingChecklist），以及最新 supplier/entryUser 契约入参指引（apiPayloadGuide）。如果候选人已经明确提出想约某一天，可以额外传入 requestedDate 让工具单独判定那一天是否可约，但不会影响 upcomingTimeOptions 的内容。这个工具负责解释岗位规则，不负责真正提交预约。',
+      description: `面试前置校验。本工具负责解释岗位规则、返回筛选条件和收资策略，**不负责真正提交预约**（真正提交用 duliday_interview_booking）。
+
+## 何时调用
+- 候选人问"今天可以吗"、"什么时候可以面试"、"要准备什么资料"、"还需要我提供什么信息"时优先调用
+- 回答"今天可以吗/哪天能面/要补哪些资料"前，先看此工具结果；不要只根据 duliday_job_list 的摘要或自己理解直接回答
+
+## 参数
+- jobId：岗位 ID（必填）
+- requestedDate：**仅当**候选人明确说出想约的具体日期时才传入（如 today / 明天 / 下周三 / YYYY-MM-DD）。候选人只是泛泛询问时不要传
+
+## 返回字段
+- interview.scheduleRule：岗位的面试周期规则，例如"周一至周五 13:30-16:30，当天 12:00 前报名"。用来回答"还有别的时间吗/下周能约吗"这类开放问题
+- interview.upcomingTimeOptions：未来 7 天实际可约时段的示例 label 数组（已自动过滤报名截止已过的时段）。用来回答"给我几个时间选选"
+- interview.requestedDate：只有在传入 requestedDate 时才有；包含 status（available / unavailable / needs_confirmation）和 reason
+- screeningCriteria：岗位硬性筛选条件（性别/年龄/学历/健康证/是否学生等），**用来筛人**——候选人不符合时直接说明，不要继续往下引导
+- bookingChecklist.missingFields：预约还缺哪些字段
+- bookingChecklist.templateText：正常收资场景下可直接参考的话术模板，已根据会话上下文预填已知字段
+- bookingChecklist.enumHints：只包含 missingFields 涉及字段的合法枚举
+- bookingChecklist.collectionStrategy：当前更适合一次性收资还是渐进式收资；若候选人已表现出抗拒，会返回 starterFields 供你先降负担推进
+- apiPayloadGuide：最新 supplier/entryUser 契约入参指引
+
+## 硬规则
+- 面试时段是**周期性规则**，不是"固定几个名额"。即使 upcomingTimeOptions 只列出几条，也要结合 scheduleRule 理解完整规则，不得说"只有这几个时间可以约"
+- 若 interview.requestedDate.status 为 unavailable，必须直接说明原因，不得继续引导候选人填写资料假装可以预约
+- 若 interview.requestedDate.status 为 needs_confirmation，先表述"我先帮你确认下今天还能不能约"，不要直接承诺可以，也不要输出生硬的规则解释句
+- 候选人只是询问规则或资料时，先解释规则；不要跳过校验直接进入 duliday_interview_booking
+- 当 nextAction = collect_fields 时，bookingChecklist.templateText 只是默认模板，不是必须逐字复读的指令；正常收资场景优先参考它一次性收集资料，但不要为了守模板而忽略候选人当前情绪
+- 若候选人当轮出现抗拒、不耐烦、拒绝填写、嫌麻烦或辱骂，立即暂停模板化收资；先共情并解释用途，再按 bookingChecklist.collectionStrategy 里的 starterFields 降负担推进，不要继续追整张字段清单
+- 只有在候选人恢复配合、且没有明显情绪阻力时，才恢复完整字段清单或继续进入预约`,
       inputSchema,
       execute: async ({ jobId, requestedDate }) => {
         logger.log(`面试前置校验: jobId=${jobId}, requestedDate=${requestedDate ?? 'none'}`);

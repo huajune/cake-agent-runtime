@@ -76,9 +76,7 @@ export class MonitoringCacheService {
   }
 
   async incrementActiveRequests(delta: number = 1): Promise<number> {
-    const nextCount = Number(
-      await this.redisService.getClient().incrby(this.activeRequestsKey, delta),
-    );
+    const nextCount = Number(await this.redisService.incrby(this.activeRequestsKey, delta));
 
     if (!Number.isFinite(nextCount) || nextCount < 0) {
       await this.setActiveRequests(0);

@@ -55,7 +55,13 @@ const inputSchema = z.object({
   regionNameList: z.array(z.string()).optional().default([]).describe('区域列表'),
   brandAliasList: z.array(z.string()).optional().default([]).describe('品牌别名列表'),
   storeNameList: z.array(z.string()).optional().default([]).describe('门店名称列表（模糊匹配）'),
-  jobCategoryList: z.array(z.string()).optional().default([]).describe('岗位类型列表'),
+  jobCategoryList: z
+    .array(z.string())
+    .optional()
+    .default([])
+    .describe(
+      '岗位工种/职位类目，描述这份岗位具体做什么工作。例如：["咖啡师"]、["服务员"]、["理货员"]、["分拣员"]、["收银员"]、["骑手"]。',
+    ),
   brandIdList: z.array(z.number().int()).optional().default([]).describe('品牌ID列表'),
   projectNameList: z.array(z.string()).optional().default([]).describe('项目名称列表'),
   projectIdList: z.array(z.number().int()).optional().default([]).describe('项目ID列表'),
@@ -1165,34 +1171,67 @@ const logger = new Logger('duliday_job_list');
 
 const DESCRIPTION = `查询在招岗位列表。支持渐进式数据返回，按需获取岗位信息。
 
-⚠️ 检索机制说明（重要）：
-本接口为后端关键字精确匹配，不做语义理解、不做模糊改写、不做拼写纠正。
-传入的字段值必须命中数据库里的真实字符串，否则直接返回 0 条。
-"上海大宁音乐广场店" 这种带城市前缀的口语化门店名很可能匹配不上真实门店名。
+## 适用场景
+- 候选人在问品牌、岗位、门店、距离、工资、排班、要求、福利、面试流程
+- 你需要校验候选人刚提到的品牌、门店或岗位是否真实在招
+- 你要回答"某品牌在某城市/区域有岗、没岗、最近在哪个区有岗"这类分布判断
 
-筛选字段稳定性分级（**调用前必看**）：
-- 高稳定（首选）：jobIdList、brandIdList、projectIdList（数字主键，命中率最高）
-- 中稳定：cityNameList、regionNameList（标准行政区划）
-- 低稳定（易踩坑）：storeNameList、projectNameList、brandAliasList（用户口语 vs 数据库实名常对不上）
+## 检索机制（必读）
+- 后端只做关键字精确匹配，**不做语义理解、不做拼写纠正、不做模糊改写**
+- 传入的字段值必须命中数据库真实字符串，否则直接返回 0 条；与"该候选人意向不存在"完全不是一回事
+- "上海大宁音乐广场店" 这种带城市前缀的口语化门店名很可能匹配不上真实门店名
 
-调用规则：
-1. 已知 jobId → 必须用 jobIdList，**不要再叠加其他过滤**
-2. 知道大致区域 → 用 cityNameList + regionNameList，**不要用 storeNameList 当首选**
-3. 用户给的门店名包含 "上海/北京/XX店" 等口语前缀 → 不要直接传 storeNameList，先用 regionNameList 拿候选集再在结果里识别门店
-4. 单次调用结果数 = 0：禁止用同一组 filter 直接重试，必须换字段或扩面
-5. **同一轮内本工具调用次数 ≤ 3**；超过即由系统硬截断，不再允许调用本工具
+## 筛选字段稳定性分级（决定该选哪个 filter）
+- **高稳定（首选）**：jobIdList / brandIdList / projectIdList（数字主键，命中率最高）
+- **中稳定**：cityNameList / regionNameList（标准行政区划，几乎不会拼错）
+- **低稳定（易踩坑）**：storeNameList / projectNameList / brandAliasList（用户口语 vs 数据库实名常对不上）
+- 选 filter 时 **从高稳定到低稳定**：能用 jobIdList 就不用 storeNameList；能用 regionNameList 拿候选集再筛门店，就不要直接 storeNameList
 
-筛选条件：城市、区域、品牌、门店、岗位类型、岗位ID
-位置筛选：传入 location.longitude / location.latitude / location.range 后启用位置筛选；工具会展示距离并按业务阈值过滤、排序
-规则摘要：会结合岗位结构化字段与备注提炼推荐阶段要点，但不负责真正提交预约
+## 查询路径模板（覆盖 90% 场景）
 
-数据开关：
-- includeBasicInfo（默认true）：品牌、门店、地址等基本信息
-- includeJobSalary：薪资信息
-- includeWelfare：福利信息
-- includeHiringRequirement：招聘要求
-- includeWorkTime：工作时间/班次
-- includeInterviewProcess：面试流程`;
+| 用户场景 | 标准查询路径 |
+| --- | --- |
+| 问某具体岗位详情 | 优先 jobIdList 直查，不叠加其他 filter |
+| 问"某区域有什么" | cityNameList + regionNameList，按需补 jobCategoryList / brandIdList |
+| 问"附近有什么" / 给了商圈/地标 | 先 geocode 拿坐标 → 传 location 半径；若结果 ≤ 1 条**必须**去掉 location 重查全市 |
+| 用户接受了某门店但要换条件 | **先在 [会话记忆] 里查这门店所在的 region**，用 regionNameList 重查；不要直接拿口语门店名传 storeNameList |
+| 用户问"还有别的品牌吗" | **不带 brandIdList 重查**当前区域，对比之前已展示的 brand 集合，告诉用户除了已推过的还有什么 |
+
+## 结果数处理（必须遵守）
+- **0 条**：本次查询失败。检查是否用了 storeNameList / brandAliasList 等低稳定字段；若是，立即换成 regionNameList / brandIdList 重试一次；若已经是稳定字段且仍为 0，**如实告知候选人"暂时没找到"**，不要再换条件硬试
+- **1 条** 且候选人在问"还有别的吗 / 什么品牌 / 其他选择"：把这视为反常信号，**必须再放宽 1 个维度重查**——去掉 location，或扩大半径到全市，或去掉某个 brand/category filter。直接用 1 条结果回答"暂时没空缺"是错误的
+- **≥ 2 条**：可以基于结果回复，无需扩面
+- **同一轮内本工具调用次数硬上限 = 3**：第 4 次系统会直接拒绝。第 3 次仍未拿到可用数据时，应基于已有结果如实告知候选人，不要再继续猜 filter
+
+## 必须考虑的硬约束
+- 本轮 system prompt 中若出现 [本轮查询硬约束] 段落，列出的字段都要在本轮查询里体现——要么作为 filter 参数，要么打开对应 include 开关后在结果集中自行排除
+- 硬约束清单里每一项会注明如何处理（例如「填到 cityNameList」「开 includeHiringRequirement」等），以该注释为准；注释里没说"填到 XxxList"的字段不要硬塞进 filter
+- 缺少任一硬约束的查询结果不得用于"该候选人场景下无空缺"的结论
+
+## 参数要点
+- 至少提供一个有效筛选条件：城市、区域、品牌、门店、岗位类型、项目ID、岗位ID。根据 [会话记忆] 中候选人意向填入
+- responseFormat 只能用 ["markdown"]，禁止 rawData
+- 传 regionNameList 时必须同时传 cityNameList；系统已有高置信城市时直接使用，否则先追问城市
+- 行政区域（静安区/浦东新区等）可直接查岗；商圈/地标/街道/详细地址（人民广场/陆家嘴/XX路123号等）**不得**直接当 regionNameList，需先 geocode 或使用位置分享坐标
+
+## 按候选人当前问题精确开启数据开关（不要全部打开）
+
+| 候选人当前在问什么                   | 开启的开关                                                                    |
+| ------------------------------------ | ----------------------------------------------------------------------------- |
+| 哪些门店、哪里近、位置方便吗         | 先 geocode，再把城市/区域/品牌连同 location.longitude / location.latitude 一起传；需要 10km / 5km 内筛选时补 location.range |
+| 工资多少、薪资怎么样                 | includeJobSalary                                                              |
+| 怎么排班、上班时间、能不能兼职       | includeWorkTime                                                               |
+| 有什么要求、我符不符合、要不要健康证 | includeHiringRequirement                                                      |
+| 福利待遇、包吃住、补贴政策           | includeWelfare                                                                |
+| 怎么面试、什么时候面试、面试流程     | includeInterviewProcess                                                       |
+
+## 硬规则
+- **品牌/区域分布判断必须基于本工具结果**：候选人说出品牌不得用"XX是吧"直接确认，需先在当前已知范围验证在招；"杨浦没岗、虹口有岗"这类分布结论也必须先查。未查前只能说"我先帮你查下"
+- **具体岗位/门店推荐必须带位置**：候选人给了商圈/地标/街道/详细地址等具体位置线索、且本轮要输出具体岗位或门店推荐时，必须先 geocode 再调用本工具；不要因对方没明说"附近/离我近"就跳过
+- **推荐距离是硬约束**：只要本轮在推荐具体岗位/门店，结果必须满足业务距离阈值；超出阈值即使其他条件匹配也不得推荐。无有效 location 时只能回答在招情况或区域分布，不得输出具体推荐
+- **首次推荐必须开 includeHiringRequirement**，把关键要求随岗位信息一起告知让候选人自行判断；严禁推完岗位再逐个追问个人条件去做比对
+- **无岗时的动作链**：当前区域/品牌无岗时，查到明确替代方向可推荐替代；没有明确替代时直接告知没有并按 invite_to_group 拉群，不要先给希望再反转
+- **面试相关字段**：推进面试时优先读工具结果中的「约面重点」；工具没明确时间不得编造；相对当前时间已过期的日期限制视为历史备注，不得当作当前规则输出`;
 
 export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
   return (context) => {

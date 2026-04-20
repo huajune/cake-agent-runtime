@@ -71,6 +71,13 @@ describe('buildInviteToGroupTool', () => {
     expect(result.inviteMode).toBe('direct');
     expect(result.groupName).toBe('上海兼职群1号');
     expect(result.city).toBe('上海');
+    expect(result.selectionReason).toBe('only_option');
+    expect(result.fallbackUsed).toBe(false);
+    expect(result.citySnapshot).toEqual({
+      totalGroups: 1,
+      memberLimit: MEMBER_LIMIT,
+      byIndustry: [{ industry: '未分类', groupCount: 1, availableCount: 1 }],
+    });
     expect(mockRoomService.addMemberEnterprise).toHaveBeenCalledWith(
       expect.objectContaining({
         token: 'enterprise-token-test',
@@ -154,6 +161,11 @@ describe('buildInviteToGroupTool', () => {
 
     expect(result.success).toBe(false);
     expect(result.reason).toBe('group_full');
+    expect(result.citySnapshot).toEqual({
+      totalGroups: 2,
+      memberLimit: MEMBER_LIMIT,
+      byIndustry: [{ industry: '未分类', groupCount: 2, availableCount: 0 }],
+    });
     expect(mockOpsNotifier.sendGroupFullAlert).toHaveBeenCalledWith(
       expect.objectContaining({
         city: '上海',
@@ -181,6 +193,15 @@ describe('buildInviteToGroupTool', () => {
 
     expect(result.success).toBe(true);
     expect(result.groupName).toBe('上海餐饮兼职群');
+    expect(result.matchedIndustry).toBe('餐饮');
+    expect(result.fallbackUsed).toBe(false);
+    expect(result.selectionReason).toBe('only_option');
+    expect(result.citySnapshot.byIndustry).toEqual(
+      expect.arrayContaining([
+        { industry: '餐饮', groupCount: 1, availableCount: 1 },
+        { industry: '零售', groupCount: 1, availableCount: 1 },
+      ]),
+    );
   });
 
   it('should fallback to city groups when industry has no match', async () => {
@@ -192,6 +213,8 @@ describe('buildInviteToGroupTool', () => {
 
     expect(result.success).toBe(true);
     expect(result.groupName).toBe('上海兼职群1号');
+    expect(result.matchedIndustry).toBe('餐饮');
+    expect(result.fallbackUsed).toBe(true);
   });
 
   it('should pick group with lowest member count', async () => {
@@ -207,6 +230,40 @@ describe('buildInviteToGroupTool', () => {
 
     expect(result.success).toBe(true);
     expect(result.groupName).toBe('群B');
+    expect(result.selectionReason).toBe('lowest_member_count');
+  });
+
+  it('should expose citySnapshot reproducing 零售 fallback when industry is missing', async () => {
+    // 还原真实 badcase：上海餐饮 6 群 + 零售 3 群，不传 industry 时按人数兜底选中零售小群
+    mockGroupResolver.resolveGroups.mockResolvedValue([
+      makeGroup({ imRoomId: 'r1', groupName: '上海餐饮①', industry: '餐饮', memberCount: 156 }),
+      makeGroup({ imRoomId: 'r2', groupName: '上海餐饮②', industry: '餐饮', memberCount: 196 }),
+      makeGroup({ imRoomId: 'r3', groupName: '上海餐饮③', industry: '餐饮', memberCount: 169 }),
+      makeGroup({ imRoomId: 'r4', groupName: '上海餐饮④', industry: '餐饮', memberCount: 198 }),
+      makeGroup({ imRoomId: 'r5', groupName: '上海餐饮⑤', industry: '餐饮', memberCount: 199 }),
+      makeGroup({ imRoomId: 'r6', groupName: '上海餐饮⑥', industry: '餐饮', memberCount: 124 }),
+      makeGroup({ imRoomId: 'r7', groupName: '上海零售①', industry: '零售', memberCount: 198 }),
+      makeGroup({ imRoomId: 'r8', groupName: '上海零售②', industry: '零售', memberCount: 198 }),
+      makeGroup({ imRoomId: 'r9', groupName: '上海零售③', industry: '零售', memberCount: 15 }),
+    ]);
+    mockRoomService.addMemberEnterprise.mockResolvedValue({ errcode: 0, errmsg: 'ok' });
+    mockMemoryService.saveInvitedGroup.mockResolvedValue(undefined);
+
+    const result = await executeTool({ city: '上海' });
+
+    expect(result.success).toBe(true);
+    expect(result.groupName).toBe('上海零售③');
+    expect(result.matchedIndustry).toBe('零售');
+    expect(result.fallbackUsed).toBe(false);
+    expect(result.inviteMode).toBe('direct');
+    expect(result.citySnapshot).toEqual({
+      totalGroups: 9,
+      memberLimit: MEMBER_LIMIT,
+      byIndustry: expect.arrayContaining([
+        { industry: '餐饮', groupCount: 6, availableCount: 6 },
+        { industry: '零售', groupCount: 3, availableCount: 3 },
+      ]),
+    });
   });
 
   it('should handle addMember failure gracefully', async () => {
@@ -241,6 +298,7 @@ describe('buildInviteToGroupTool', () => {
     expect(result.success).toBe(false);
     expect(result.reason).toBe('group_full');
     expect(result.groupName).toBe('上海兼职群1号');
+    expect(result.citySnapshot.totalGroups).toBe(1);
     expect(mockOpsNotifier.sendGroupFullAlert).toHaveBeenCalledWith(
       expect.objectContaining({
         city: '上海',
