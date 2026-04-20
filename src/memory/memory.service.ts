@@ -8,7 +8,7 @@ import {
   type MemoryLifecycleTurnContext,
 } from './services/memory-lifecycle.service';
 import type { AgentMemoryContext } from './types/memory-runtime.types';
-import type { SummaryData } from './types/long-term.types';
+import type { MessageMetadata, SummaryData, UserProfile } from './types/long-term.types';
 import type { InvitedGroupRecord } from './types/session-facts.types';
 import type { ProceduralState } from './types/procedural.types';
 
@@ -45,6 +45,16 @@ export class MemoryService {
   /** 读取历史摘要（recent + archive），供 recall_history 或沉淀逻辑使用。 */
   async getSummaryData(corpId: string, userId: string): Promise<SummaryData | null> {
     return await this.longTerm.getSummaryData(corpId, userId);
+  }
+
+  /** 写入长期档案的外部高置信字段（如外部系统补充的性别）。 */
+  async saveProfile(
+    corpId: string,
+    userId: string,
+    profile: Partial<UserProfile>,
+    metadata?: MessageMetadata,
+  ): Promise<void> {
+    await this.longTerm.saveProfile(corpId, userId, profile, metadata);
   }
 
   /** 清理指定用户的长期记忆（profile + summary） */

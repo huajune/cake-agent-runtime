@@ -29,6 +29,7 @@ describe('AgentPreparationService', () => {
 
   const mockMemoryService = {
     onTurnStart: jest.fn(),
+    saveProfile: jest.fn(),
   };
 
   const mockMemoryConfig = {
@@ -99,6 +100,7 @@ describe('AgentPreparationService', () => {
         reason: null,
       },
     });
+    mockMemoryService.saveProfile.mockResolvedValue(undefined);
     mockContext.compose.mockImplementation(async (params?: { memoryBlock?: string }) => ({
       systemPrompt: ['SYSTEM_PROMPT', params?.memoryBlock].filter(Boolean).join('\n\n'),
       stageGoals: {
