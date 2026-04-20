@@ -279,6 +279,14 @@ describe('MessageSplitter', () => {
       expect(MessageSplitter.needsSplit('要不要看看？或者你喜欢哪个？')).toBe(true);
     });
 
+    it('"。"后面跟换行再跟中文时应该返回 true', () => {
+      expect(MessageSplitter.needsSplit('好的。\n我帮您查一下')).toBe(true);
+    });
+
+    it('"？"后面跟换行再跟中文时应该返回 true', () => {
+      expect(MessageSplitter.needsSplit('是学生吗？\n顺便问下年龄')).toBe(true);
+    });
+
     it('问号在末尾时应该返回 false（不需要拆分）', () => {
       expect(MessageSplitter.needsSplit('要不要看看？')).toBe(false);
     });
@@ -320,10 +328,10 @@ describe('MessageSplitter', () => {
       expect(result).toEqual(['请问你是？（请选择身份）']); // 问号后面是括号，不拆分
     });
 
-    it('问号后面是空格或标点时不拆分', () => {
+    it('问号后面是空格再跟中文时应该拆分', () => {
       const text = '你好？ 我是小助手';
       const result = MessageSplitter.split(text);
-      expect(result).toEqual(['你好？ 我是小助手']); // 问号后面是空格，不拆分
+      expect(result).toEqual(['你好？', '我是小助手']);
     });
 
     it('问号在末尾时不拆分', () => {
@@ -401,6 +409,29 @@ describe('MessageSplitter', () => {
         '明白了。',
         '这边暂时没在招，要不要看看其他的？',
         '或者您对哪个品牌比较感兴趣？',
+      ]);
+    });
+
+    it('句号后面跟单换行再跟中文应该拆分', () => {
+      const text = '好的。\n我帮您查一下';
+      const result = MessageSplitter.split(text);
+      expect(result).toEqual(['好的。', '我帮您查一下']);
+    });
+
+    it('问号后面跟单换行再跟中文应该拆分', () => {
+      const text = '是学生吗？\n顺便说一下年龄';
+      const result = MessageSplitter.split(text);
+      expect(result).toEqual(['是学生吗？', '顺便说一下年龄']);
+    });
+
+    it('实际场景：三段通知消息（单换行分隔）', () => {
+      const text =
+        '明天下午 2 点到 5 点是可以的，不过需要在今天下午 6 点前把资料交上去，我帮你录入系统。\n麻烦发一下这几项：姓名、电话、年龄、有没有健康证、是学生还是社会人？\n顺便提一下之前做咖啡的店名和大概做了多久。';
+      const result = MessageSplitter.split(text);
+      expect(result).toEqual([
+        '明天下午 2 点到 5 点是可以的，不过需要在今天下午 6 点前把资料交上去，我帮你录入系统。',
+        '麻烦发一下这几项：姓名、电话、年龄、有没有健康证、是学生还是社会人？',
+        '顺便提一下之前做咖啡的店名和大概做了多久。',
       ]);
     });
 

@@ -6,7 +6,6 @@ import { MemoryConfig } from '../memory.config';
 import type { ShortTermMessage } from '../types/short-term.types';
 import {
   buildChatHistoryCacheKey,
-  buildChatHistoryIndexKey,
   parseCachedChatHistoryMessages,
   serializeCachedChatHistoryMessage,
 } from '@biz/message/utils/chat-history-cache.util';
@@ -115,17 +114,6 @@ export class ShortTermService {
     await this.redisService.rpush(listKey, ...serializedMessages);
     await this.redisService.expire(listKey, this.config.sessionTtl);
     await this.redisService.ltrim(listKey, -this.config.sessionWindowMaxMessages, -1);
-    await Promise.all(
-      messages.map((message) =>
-        this.redisService!.setex(
-          buildChatHistoryIndexKey(message.messageId),
-          this.config.sessionTtl,
-          {
-            chatId,
-          },
-        ),
-      ),
-    );
   }
 
   /**

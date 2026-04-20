@@ -24,6 +24,7 @@ import {
   SESSION_EXTRACTION_SYSTEM_PROMPT,
 } from './session-extraction.prompt';
 import { detectBrandAliasHints, mergeDetectedBrands } from '../facts/high-confidence-facts';
+import { sanitizeInterviewName } from '../facts/name-guard';
 import {
   extractPresentedJobs,
   resolveAssistantAnchoredFocusJob,
@@ -335,7 +336,13 @@ export class SessionService {
       messagesToProcess,
       aliasHints,
     );
-    const newFacts = mergeDetectedBrands(await this.callLLM(prompt), aliasHints);
+    const llmFacts = mergeDetectedBrands(await this.callLLM(prompt), aliasHints);
+    const { sanitized: newFacts, droppedName } = sanitizeInterviewName(llmFacts, userMessages);
+    if (droppedName) {
+      this.logger.log(
+        `[extractFacts] 丢弃来自"我是xx"打招呼语的昵称"${droppedName}"，不写入 interview_info.name`,
+      );
+    }
 
     await this.saveFacts(corpId, userId, sessionId, newFacts);
   }

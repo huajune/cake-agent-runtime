@@ -119,31 +119,34 @@ describe('MessageService', () => {
       await service.onModuleInit();
     });
 
-    it('should return pipeline response when dispatch is not needed', async () => {
+    const flushAsync = () => new Promise((resolve) => setImmediate(resolve));
+
+    it('always ACKs immediately with "Message received" regardless of pipeline branch', async () => {
+      // 托管平台只要求 HTTP 200；此前根据 filter/dup/disabled 返回不同文案属于过度约定。
+      // 统一响应后，后续写入、监控都在微任务里完成，不会再拖慢回调返回。
       mockPipelineService.execute.mockResolvedValue({
         shouldDispatch: false,
         response: { success: true, message: 'Duplicate message ignored' },
       });
 
-      const result = await service.handleMessage(validMessageData);
+      const result = service.handleMessage(validMessageData);
 
-      expect(result).toEqual({ success: true, message: 'Duplicate message ignored' });
+      expect(result).toEqual({ success: true, message: 'Message received' });
+      await flushAsync();
       expect(mockSimpleMergeService.addMessage).not.toHaveBeenCalled();
     });
 
-    it('should mark message processed when AI reply is disabled', async () => {
+    it('should mark message processed when AI reply is disabled (async side-effects)', async () => {
       mockRuntimeConfigService.isAiReplyEnabled.mockReturnValue(false);
 
-      const result = await service.handleMessage(validMessageData);
+      const result = service.handleMessage(validMessageData);
+      expect(result).toEqual({ success: true, message: 'Message received' });
 
-      expect(result).toEqual({
-        success: true,
-        message: 'AI reply disabled, message recorded to history',
-      });
+      // 异步处理需要经过多个 await（syncSnapshot + pipeline + observability），多次 flush 才能结算完。
+      for (let i = 0; i < 10; i += 1) await flushAsync();
+
       expect(mockWecomObservabilityService.startRequestTrace).toHaveBeenCalledWith(
-        expect.objectContaining({
-          traceId: 'msg-123',
-        }),
+        expect.objectContaining({ traceId: 'msg-123' }),
       );
       expect(mockMonitoringService.recordSuccess).toHaveBeenCalledWith(
         'msg-123',
@@ -153,10 +156,10 @@ describe('MessageService', () => {
     });
 
     it('should enqueue messages when merge is enabled', async () => {
-      const result = await service.handleMessage(validMessageData);
+      const result = service.handleMessage(validMessageData);
 
       expect(result).toEqual({ success: true, message: 'Message received' });
-      await new Promise((resolve) => setImmediate(resolve));
+      for (let i = 0; i < 10; i += 1) await flushAsync();
       expect(mockSimpleMergeService.addMessage).toHaveBeenCalledWith(validMessageData);
       expect(mockPipelineService.processSingleMessage).not.toHaveBeenCalled();
     });
@@ -164,22 +167,17 @@ describe('MessageService', () => {
     it('should record failure when merge enqueue fails', async () => {
       mockSimpleMergeService.addMessage.mockRejectedValue(new Error('redis down'));
 
-      const result = await service.handleMessage(validMessageData);
+      const result = service.handleMessage(validMessageData);
 
       expect(result).toEqual({ success: true, message: 'Message received' });
-      await new Promise((resolve) => setImmediate(resolve));
+      for (let i = 0; i < 10; i += 1) await flushAsync();
       expect(mockWecomObservabilityService.startRequestTrace).toHaveBeenCalledWith(
-        expect.objectContaining({
-          traceId: 'msg-123',
-        }),
+        expect.objectContaining({ traceId: 'msg-123' }),
       );
       expect(mockWecomObservabilityService.updateDispatch).toHaveBeenCalledWith('msg-123', 'merged');
       expect(mockWecomObservabilityService.buildFailureMetadata).toHaveBeenCalledWith(
         'msg-123',
-        expect.objectContaining({
-          errorType: 'merge',
-          errorMessage: 'redis down',
-        }),
+        expect.objectContaining({ errorType: 'merge', errorMessage: 'redis down' }),
       );
       expect(mockMonitoringService.recordFailure).toHaveBeenCalledWith(
         'msg-123',
@@ -192,12 +190,32 @@ describe('MessageService', () => {
     it('should process message immediately when merge is disabled', async () => {
       mockRuntimeConfigService.isMessageMergeEnabled.mockReturnValue(false);
 
-      const result = await service.handleMessage(validMessageData);
+      const result = service.handleMessage(validMessageData);
 
       expect(result).toEqual({ success: true, message: 'Message received' });
-      await new Promise((resolve) => setImmediate(resolve));
+      for (let i = 0; i < 10; i += 1) await flushAsync();
       expect(mockPipelineService.processSingleMessage).toHaveBeenCalledWith(validMessageData);
       expect(mockSimpleMergeService.addMessage).not.toHaveBeenCalled();
+    });
+
+    it('returns synchronously without waiting on pipeline/runtimeConfig awaits', async () => {
+      // 关键回归：即便 pipeline.execute 永远 pending，handleMessage 也必须已返回 200。
+      let pipelineResolve: (value: unknown) => void = () => undefined;
+      mockPipelineService.execute.mockReturnValueOnce(
+        new Promise((resolve) => {
+          pipelineResolve = resolve;
+        }),
+      );
+
+      const result = service.handleMessage(validMessageData);
+
+      expect(result).toEqual({ success: true, message: 'Message received' });
+      // 清理：避免遗留的 pending Promise 拖住测试进程
+      pipelineResolve({
+        shouldDispatch: false,
+        response: { success: true, message: 'Message received' },
+      });
+      await flushAsync();
     });
   });
 

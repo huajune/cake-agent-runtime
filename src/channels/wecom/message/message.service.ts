@@ -57,11 +57,30 @@ export class MessageService implements OnModuleInit {
 
   /**
    * 处理接收到的消息（主入口）
-   * 步骤 0-4 由 pipeline.execute() 统一执行
-   * 步骤 5（AI 开关）和步骤 6（分派）由本服务控制
+   *
+   * 立即 ACK 语义：托管平台若 callback 未尽快返回 200，会按"超时"规则补发同内容消息
+   * （此前出现过同一"六姐"被补发 3 次的流水）。为避免补发，本方法只做同步打点，
+   * 随后把 runtimeConfig.syncSnapshot → pipeline 过滤 → 分派 全部放到微任务队列里执行，
+   * HTTP 响应永远在 ms 级返回。
    */
-  async handleMessage(messageData: EnterpriseMessageCallbackDto) {
+  handleMessage(messageData: EnterpriseMessageCallbackDto) {
     messageData._receivedAtMs = messageData._receivedAtMs ?? Date.now();
+
+    void this.processMessageAsync(messageData).catch((error) => {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[异步消息处理] messageId=${messageData.messageId} 失败: ${errorMessage}`);
+    });
+
+    return { success: true, message: 'Message received' };
+  }
+
+  /**
+   * 异步消息处理主体
+   *
+   * 所有会命中 Supabase / Redis / 外部依赖的逻辑都在这里。任何抛错都被
+   * handleMessage 的 .catch 兜底，不会影响已经返回给托管平台的 200。
+   */
+  private async processMessageAsync(messageData: EnterpriseMessageCallbackDto): Promise<void> {
     await this.runtimeConfig.syncSnapshot();
 
     const sanitized = LogSanitizer.sanitizeMessageCallback(messageData);
@@ -76,7 +95,7 @@ export class MessageService implements OnModuleInit {
     const pipelineResult = await this.pipelineService.execute(messageData);
 
     if (!pipelineResult.shouldDispatch) {
-      return pipelineResult.response;
+      return;
     }
 
     // 步骤 5: 全局 AI 开关
@@ -99,16 +118,14 @@ export class MessageService implements OnModuleInit {
       );
       this.monitoringService.recordSuccess(messageData.messageId, successMetadata);
       await this.deduplicationService.markMessageAsProcessedAsync(messageData.messageId);
-      return { success: true, message: 'AI reply disabled, message recorded to history' };
+      return;
     }
 
     // 步骤 6: 分派（聚合 or 直发）
-    this.dispatchMessage(messageData).catch((error) => {
+    await this.dispatchMessage(messageData).catch((error) => {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(`[分派异常] 消息 [${messageData.messageId}] 分派失败: ${errorMessage}`);
     });
-
-    return { success: true, message: 'Message received' };
   }
 
   /**

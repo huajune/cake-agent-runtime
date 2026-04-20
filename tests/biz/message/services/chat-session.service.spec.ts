@@ -4,10 +4,7 @@ import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ChatMessageRepository } from '@biz/message/repositories/chat-message.repository';
 import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.repository';
 import { RedisService } from '@infra/redis/redis.service';
-import {
-  buildChatHistoryCacheKey,
-  buildChatHistoryIndexKey,
-} from '@biz/message/utils/chat-history-cache.util';
+import { buildChatHistoryCacheKey } from '@biz/message/utils/chat-history-cache.util';
 
 describe('ChatSessionService', () => {
   let service: ChatSessionService;
@@ -68,9 +65,8 @@ describe('ChatSessionService', () => {
   });
 
   describe('short-term cache mirroring', () => {
-    it('should append saved messages into redis short-term cache', async () => {
-      mockChatMessageRepository.saveChatMessage.mockResolvedValue(true);
-      mockRedisService.exists.mockResolvedValue(0);
+    it('should append saved message into redis short-term cache when DB truly inserted a new row', async () => {
+      mockChatMessageRepository.saveChatMessage.mockResolvedValue({ inserted: true });
 
       const ok = await service.saveMessage({
         chatId: 'chat-1',
@@ -91,34 +87,51 @@ describe('ChatSessionService', () => {
         -60,
         -1,
       );
-      expect(mockRedisService.setex).toHaveBeenCalledWith(
-        buildChatHistoryIndexKey('msg-1'),
+      expect(mockRedisService.expire).toHaveBeenCalledWith(
+        buildChatHistoryCacheKey('chat-1'),
         86400,
-        { chatId: 'chat-1' },
       );
+      // Index key is gone — dedup delegated to DB UNIQUE(message_id)
+      expect(mockRedisService.setex).not.toHaveBeenCalled();
+      expect(mockRedisService.exists).not.toHaveBeenCalled();
     });
 
-    it('should update cached message content when content changes', async () => {
-      mockChatMessageRepository.updateContentByMessageId.mockResolvedValue(true);
-      mockRedisService.get.mockResolvedValue({ chatId: 'chat-1' });
-      mockRedisService.lrange.mockResolvedValue([
-        JSON.stringify({
-          chatId: 'chat-1',
-          messageId: 'msg-1',
-          role: 'user',
-          content: '[图片消息]',
-          timestamp: 1710900000000,
-        }),
-      ]);
+    it('should skip cache mirror when DB reports the row already existed (UNIQUE conflict)', async () => {
+      mockChatMessageRepository.saveChatMessage.mockResolvedValue({ inserted: false });
+
+      const ok = await service.saveMessage({
+        chatId: 'chat-1',
+        messageId: 'msg-1',
+        role: 'user',
+        content: '你好',
+        timestamp: 1710900000000,
+        contactType: 1,
+      });
+
+      expect(ok).toBe(false);
+      expect(mockRedisService.rpush).not.toHaveBeenCalled();
+    });
+
+    it('should invalidate cached list when message content is updated', async () => {
+      mockChatMessageRepository.updateContentByMessageId.mockResolvedValue({ chatId: 'chat-1' });
+      mockRedisService.del.mockResolvedValue(1);
 
       const ok = await service.updateMessageContent('msg-1', '[图片消息] 这是招聘海报');
 
       expect(ok).toBe(true);
+      // 直接作废 list，下次读取 cache miss 触发 DB backfill
       expect(mockRedisService.del).toHaveBeenCalledWith(buildChatHistoryCacheKey('chat-1'));
-      expect(mockRedisService.rpush).toHaveBeenCalledWith(
-        buildChatHistoryCacheKey('chat-1'),
-        expect.stringContaining('这是招聘海报'),
-      );
+      expect(mockRedisService.lrange).not.toHaveBeenCalled();
+      expect(mockRedisService.rpush).not.toHaveBeenCalled();
+    });
+
+    it('should not touch redis when messageId does not exist in DB', async () => {
+      mockChatMessageRepository.updateContentByMessageId.mockResolvedValue({ chatId: null });
+
+      const ok = await service.updateMessageContent('msg-missing', 'x');
+
+      expect(ok).toBe(false);
+      expect(mockRedisService.del).not.toHaveBeenCalled();
     });
   });
 

@@ -6,19 +6,10 @@ export interface CachedChatHistoryMessage {
   timestamp: number;
 }
 
-export interface CachedChatHistoryMessageIndex {
-  chatId: string;
-}
-
 const CHAT_HISTORY_CACHE_PREFIX = 'memory:short_term:chat';
-const CHAT_HISTORY_INDEX_PREFIX = 'memory:short_term:message';
 
 export function buildChatHistoryCacheKey(chatId: string): string {
   return `${CHAT_HISTORY_CACHE_PREFIX}:${chatId}`;
-}
-
-export function buildChatHistoryIndexKey(messageId: string): string {
-  return `${CHAT_HISTORY_INDEX_PREFIX}:${messageId}`;
 }
 
 export function serializeCachedChatHistoryMessage(message: CachedChatHistoryMessage): string {

@@ -98,14 +98,57 @@ export class GroupTaskProcessor implements OnModuleInit {
 
   private setupQueueEventListeners(): void {
     this.queue.on('failed', (job: Job, error: Error) => {
+      const attempts = job.opts.attempts ?? 1;
       this.logger.error(
-        `[群任务队列] ❌ ${job.name} job=${job.id} 失败 (attempts=${job.attemptsMade}/${job.opts.attempts ?? 1}): ${error.message}`,
+        `[群任务队列] ❌ ${job.name} job=${job.id} 失败 (attempts=${job.attemptsMade}/${attempts}): ${error.message}`,
       );
+
+      // 只在最终失败（重试耗尽）时触发告警，中间重试噪音靠 logger 即可。
+      // 不加这条，prod 此前一周有多天全员静默失败都没人感知 —— 必须补。
+      if (job.attemptsMade >= attempts) {
+        this.notifyJobExhausted(job, error);
+      }
     });
     this.queue.on('stalled', (job: Job) => {
       this.logger.warn(
         `[群任务队列] ⚠️ ${job.name} job=${job.id} 被标记 stalled，将由 Bull 重新派发`,
       );
+    });
+  }
+
+  private notifyJobExhausted(job: Job, error: Error): void {
+    if (!this.exceptionNotifier) return;
+
+    const data = job.data as
+      | { execId?: string; type?: GroupTaskType; group?: { groupName?: string } }
+      | undefined;
+    const trigger = (job.data as { trigger?: 'cron' | 'manual' } | undefined)?.trigger ?? 'cron';
+
+    this.exceptionNotifier.notifyAsync({
+      source: {
+        subsystem: 'group-task',
+        component: 'GroupTaskProcessor',
+        action: `queue:${job.name}`,
+        trigger,
+      },
+      code: `group_task.${job.name}_exhausted`,
+      summary: `群任务 ${job.name} 重试耗尽 (${job.attemptsMade}/${job.opts.attempts ?? 1}) exec=${data?.execId ?? 'n/a'}`,
+      error,
+      severity: AlertLevel.ERROR,
+      scope: { scenario: data?.type },
+      diagnostics: {
+        payload: {
+          jobId: String(job.id),
+          jobName: job.name,
+          execId: data?.execId,
+          group: data?.group?.groupName,
+          attempts: job.opts.attempts ?? 1,
+          attemptsMade: job.attemptsMade,
+        },
+      },
+      dedupe: {
+        key: `group_task.${job.name}_exhausted:${data?.execId ?? job.id}:${data?.group?.groupName ?? 'n/a'}`,
+      },
     });
   }
 
@@ -145,6 +188,23 @@ export class GroupTaskProcessor implements OnModuleInit {
     const groups = await this.groupResolver.resolveGroups(strategy.tagPrefix);
     if (groups.length === 0) {
       this.logger.warn(`[plan] 未找到匹配群 (tagPrefix=${strategy.tagPrefix})`);
+      // 线上有过"群一个都取不到"但一直没被发现的情况：通常是 GROUP_TASK_TOKENS
+      // 某一段 token 失效、room label 被抹掉、或缓存污染。必须告警出来。
+      this.exceptionNotifier?.notifyAsync({
+        source: {
+          subsystem: 'group-task',
+          component: 'GroupTaskProcessor',
+          action: 'plan',
+          trigger,
+        },
+        code: 'group_task.no_groups_resolved',
+        summary: `${type} 未找到任何目标群 (tagPrefix=${strategy.tagPrefix}) exec=${execId}`,
+        error: new Error('resolveGroups returned empty'),
+        severity: AlertLevel.ERROR,
+        scope: { scenario: type },
+        diagnostics: { payload: { execId, tagPrefix: strategy.tagPrefix, trigger } },
+        dedupe: { key: `group_task.no_groups_resolved:${type}:${timeSlot ?? 'default'}` },
+      });
       const emptyMeta: GroupTaskMetaSnapshot = {
         execId,
         type,
@@ -218,9 +278,15 @@ export class GroupTaskProcessor implements OnModuleInit {
       });
     }
 
-    // 预估整次 exec 耗时：最后一个 send 的 delay + 单群发送耗时 + 安全缓冲
-    const tailSendDelayMs = Math.max(0, groups.length - 1) * sendDelayMs;
-    const summarizeDelayMs = tailSendDelayMs + sendDelayMs * 5 + 30_000;
+    // 预估整次 exec 耗时：
+    //   send worker concurrency=1 → N 个 send 任务全部串行；
+    //   每个 send 在内部还会被 resolveHumanizedDelayMs 额外 sleep 1.5-3x sendDelayMs
+    //   （见 notification-sender.service.ts::sendEnterpriseGroupMessage）。
+    // 必须按最坏情况 (3x) 估计整体完成时间，否则 summarize 在发送中途就开跑，
+    // 会把还没写结果快照的群误报成 "未收到发送结果" 并写入幂等失败结果。
+    const HUMANIZED_MAX_FACTOR = 3;
+    const serializedSendMs = groups.length * sendDelayMs * HUMANIZED_MAX_FACTOR;
+    const summarizeDelayMs = serializedSendMs + sendDelayMs * 2 + 30_000;
     await this.enqueueSummarize(meta, summarizeDelayMs);
 
     this.logger.log(
@@ -455,6 +521,42 @@ export class GroupTaskProcessor implements OnModuleInit {
         diagnostics: { payload: { execId, dryRun, timeSlot } },
       });
       throw error;
+    }
+
+    // 整次 exec 零成功（不管是全失败还是全跳过）必须硬告警。
+    // 之前线上一周里有多天全员 hasData:false 或发送失败，只发一张"全部失败"汇总卡，
+    // 如果飞书 webhook 那一跳再挂就完全无感知 —— 这里的告警是第二重保险。
+    if (result.totalGroups > 0 && result.successCount === 0 && !dryRun) {
+      const allSkipped = result.skippedCount === result.totalGroups;
+      this.exceptionNotifier?.notifyAsync({
+        source: {
+          subsystem: 'group-task',
+          component: 'GroupTaskProcessor',
+          action: 'summarize',
+          trigger: 'cron',
+        },
+        code: allSkipped ? 'group_task.all_skipped' : 'group_task.total_failure',
+        summary: `${type} 执行 ${result.totalGroups} 个群零成功 (失败=${result.failedCount} 跳过=${result.skippedCount}) exec=${execId}`,
+        error: new Error(`group-task ${type} zero success`),
+        severity: AlertLevel.ERROR,
+        scope: { scenario: type },
+        diagnostics: {
+          payload: {
+            execId,
+            type,
+            totalGroups: result.totalGroups,
+            failedCount: result.failedCount,
+            skippedCount: result.skippedCount,
+            errors: result.errors.slice(0, 5),
+            skippedReasons: result.details
+              .filter((detail) => detail.status === 'skipped')
+              .slice(0, 10)
+              .map((detail) => ({ groupKey: detail.groupKey, reason: detail.dataSummary })),
+          },
+        },
+        // 同一 exec 的零成功只应该告一次
+        dedupe: { key: `group_task.zero_success:${execId}` },
+      });
     }
 
     this.logger.log(

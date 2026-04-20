@@ -7,10 +7,7 @@ import { formatLocalDateTime } from '@infra/utils/date.util';
 import { MonitoringRecordRepository } from '@biz/monitoring/repositories/record.repository';
 import {
   buildChatHistoryCacheKey,
-  buildChatHistoryIndexKey,
   type CachedChatHistoryMessage,
-  type CachedChatHistoryMessageIndex,
-  parseCachedChatHistoryMessages,
   serializeCachedChatHistoryMessage,
 } from '../utils/chat-history-cache.util';
 
@@ -139,32 +136,39 @@ export class ChatSessionService {
 
   /**
    * 保存单条聊天消息
+   *
+   * 返回值：DB 真正新插入了行 → true；否则（被过滤、UNIQUE 冲突、写入失败）→ false。
+   * 只有真正新插入时才镜像到短期记忆缓存，消除"重复 messageId 写两遍 list"的竞态。
    */
   async saveMessage(message: ChatMessageInput): Promise<boolean> {
-    const saved = await this.chatMessageRepository.saveChatMessage(message);
-    if (saved) {
+    const { inserted } = await this.chatMessageRepository.saveChatMessage(message);
+    if (inserted) {
       await this.appendToShortTermCache(message).catch((error) => {
         this.logger.warn(`短期记忆缓存写入失败 [${message.messageId}]`, error);
       });
     }
-    return saved;
+    return inserted;
   }
 
   /**
    * 批量保存聊天消息
+   *
+   * 只把 DB 真正新插入的那部分镜像到短期记忆缓存（由 UNIQUE 约束兜底去重）。
    */
   async saveMessagesBatch(messages: ChatMessageInput[]): Promise<number> {
-    const count = await this.chatMessageRepository.saveChatMessagesBatch(messages);
-    if (count > 0) {
-      await Promise.all(
-        messages.map(async (message) => {
+    const { insertedIds } = await this.chatMessageRepository.saveChatMessagesBatch(messages);
+    if (insertedIds.size === 0) return 0;
+
+    await Promise.all(
+      messages
+        .filter((m) => insertedIds.has(m.messageId))
+        .map(async (message) => {
           await this.appendToShortTermCache(message).catch((error) => {
             this.logger.warn(`短期记忆缓存批量写入失败 [${message.messageId}]`, error);
           });
         }),
-      );
-    }
-    return count;
+    );
+    return insertedIds.size;
   }
 
   /**
@@ -201,15 +205,21 @@ export class ChatSessionService {
 
   /**
    * 更新消息的 content（按 messageId）
+   *
+   * DB 更新成功后直接作废该会话的短期记忆 list 缓存；下次读取 cache miss 会从 DB
+   * 重新 backfill。这比原先的「lrange → parse → 改内容 → del → 全量 rpush」更简单且原子。
    */
   async updateMessageContent(messageId: string, content: string): Promise<boolean> {
-    const updated = await this.chatMessageRepository.updateContentByMessageId(messageId, content);
-    if (updated) {
-      await this.updateShortTermCacheContent(messageId, content).catch((error) => {
-        this.logger.warn(`短期记忆缓存内容更新失败 [${messageId}]`, error);
+    const { chatId } = await this.chatMessageRepository.updateContentByMessageId(
+      messageId,
+      content,
+    );
+    if (chatId && this.redisService) {
+      await this.redisService.del(buildChatHistoryCacheKey(chatId)).catch((error) => {
+        this.logger.warn(`短期记忆缓存失效失败 [${messageId}/${chatId}]`, error);
       });
     }
-    return updated;
+    return chatId !== null;
   }
 
   // ==================== 内部工具方法 ====================
@@ -238,12 +248,14 @@ export class ChatSessionService {
     return Boolean(message.chatId && message.messageId && message.content);
   }
 
+  /**
+   * 将消息追加到短期记忆 list 缓存。
+   *
+   * 幂等性由 DB 的 `chat_messages.message_id` UNIQUE 约束兜底：调用方只在
+   * `saveChatMessage` 返回 `inserted=true` 时才调这里，所以不需要额外去重 key。
+   */
   private async appendToShortTermCache(message: ChatMessageInput): Promise<void> {
     if (!this.redisService || !this.shouldMirrorToShortTermCache(message)) return;
-
-    const indexKey = buildChatHistoryIndexKey(message.messageId);
-    const exists = await this.redisService.exists(indexKey);
-    if (exists > 0) return;
 
     const listKey = buildChatHistoryCacheKey(message.chatId);
     const cacheMessage: CachedChatHistoryMessage = {
@@ -257,48 +269,6 @@ export class ChatSessionService {
     await this.redisService.rpush(listKey, serializeCachedChatHistoryMessage(cacheMessage));
     await this.redisService.ltrim(listKey, -this.shortTermCacheMaxMessages, -1);
     await this.redisService.expire(listKey, this.shortTermCacheTtlSeconds);
-    await this.redisService.setex(indexKey, this.shortTermCacheTtlSeconds, {
-      chatId: message.chatId,
-    } satisfies CachedChatHistoryMessageIndex);
-  }
-
-  private async updateShortTermCacheContent(messageId: string, content: string): Promise<void> {
-    if (!this.redisService) return;
-
-    const index = await this.redisService.get<CachedChatHistoryMessageIndex>(
-      buildChatHistoryIndexKey(messageId),
-    );
-    const chatId = index?.chatId;
-    if (!chatId) return;
-
-    const listKey = buildChatHistoryCacheKey(chatId);
-    const rawMessages = await this.redisService.lrange<string>(listKey, 0, -1);
-    if (rawMessages.length === 0) return;
-
-    let found = false;
-    const messages = parseCachedChatHistoryMessages(rawMessages).map((message) => {
-      if (message.messageId !== messageId) return message;
-      found = true;
-      return { ...message, content };
-    });
-
-    if (!found) return;
-
-    await this.redisService.del(listKey);
-    if (messages.length > 0) {
-      await this.redisService.rpush(
-        listKey,
-        ...messages.map((message) => serializeCachedChatHistoryMessage(message)),
-      );
-      await this.redisService.expire(listKey, this.shortTermCacheTtlSeconds);
-    }
-    await this.redisService.setex(
-      buildChatHistoryIndexKey(messageId),
-      this.shortTermCacheTtlSeconds,
-      {
-        chatId,
-      } satisfies CachedChatHistoryMessageIndex,
-    );
   }
 
   private get shortTermCacheMaxMessages(): number {
