@@ -452,17 +452,20 @@ interface ToolBuildContext {
 处理用户快速连发多条消息的场景：
 
 ```
-用户消息 1 → [1s 缓冲窗口]
-用户消息 2 → [合并]
-用户消息 3 → 触发聚合处理（达到上限 3 条）
+用户消息 1 (t=0ms)    → 存入 Redis List，注册 delay=3s 的 job A
+用户消息 2 (t=1500ms) → 追加 List，注册 delay=3s 的 job B
+用户消息 3 (t=2800ms) → 追加 List，注册 delay=3s 的 job C
 
-聚合后 Agent 一次性看到所有消息的上下文
+t=3000ms  job A 触发 → 距最后消息仅 200ms，未静默够 → 跳过
+t=4500ms  job B 触发 → 距最后消息仅 1700ms，未静默够 → 跳过
+t=5800ms  job C 触发 → 距最后消息 3000ms，静默够了 → 取出全部消息交给 Agent
 ```
 
-| 配置 | 默认值 | 环境变量 |
+| 配置 | 默认值 | 配置位置 |
 |------|--------|---------|
-| 聚合窗口 | 1000ms | `INITIAL_MERGE_WINDOW_MS` |
-| 最大聚合数 | 3 条 | `MAX_MERGED_MESSAGES` |
+| 静默窗口 (`initialMergeWindowMs`) | 3000ms | Supabase `hosting_config` (Dashboard 动态调整) |
+
+> 机制是 **debounce（防抖）**，不是固定窗口聚合。只要用户一直在打字，就会不断推迟处理；只有停够 `initialMergeWindowMs` 才触发一次 Agent。因此不需要"最大聚合数"上限。
 
 ### 8.2 降级策略
 
@@ -682,9 +685,9 @@ AppModule
 | `MEMORY_SESSION_TTL_DAYS` | 1 | 会话记忆 TTL（天） |
 | `AGENT_CHAT_FALLBACKS` | — | 对话模型降级链 |
 | `AGENT_FAST_MODEL` | — | 快速模型 |
-| `ENABLE_MESSAGE_MERGE` | true | 消息聚合开关 |
-| `INITIAL_MERGE_WINDOW_MS` | 1000 | 聚合窗口 |
-| `MAX_MERGED_MESSAGES` | 3 | 最大聚合条数 |
+| `ENABLE_MESSAGE_MERGE` | true | 消息聚合开关（硬编码） |
+
+> 消息聚合的静默窗口 `initialMergeWindowMs`（默认 3000ms）已从环境变量迁移到 Supabase `hosting_config` 表，通过 Dashboard 动态调整。旧的 `INITIAL_MERGE_WINDOW_MS` / `MAX_MERGED_MESSAGES` 已废弃。
 
 ---
 

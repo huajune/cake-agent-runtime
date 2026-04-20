@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '@infra/redis/redis.service';
 import { UserHostingRepository } from '../repositories/user-hosting.repository';
+import { UserActivityAggregate } from '../types/user.types';
 
 /**
  * 缓存中单个用户的暂停状态
@@ -160,7 +161,19 @@ export class UserHostingService {
     }
   }
 
-  // ==================== 活跃记录写入 ====================
+  // ==================== 活跃记录读写 ====================
+
+  /**
+   * 按日期范围查询活跃用户（从 user_activity 聚合）
+   *
+   * 供 monitoring 今日托管 / 指定日期托管面板使用。
+   */
+  async getActiveUsersByDateRange(
+    startDate: Date,
+    endDate: Date,
+  ): Promise<UserActivityAggregate[]> {
+    return this.repository.findActiveUsersByDateRange(startDate, endDate);
+  }
 
   /**
    * 更新用户活跃记录（供监控追踪服务使用）

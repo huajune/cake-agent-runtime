@@ -89,8 +89,9 @@ vim .env.local
 | Layer | 说明 | 示例 |
 |-------|------|------|
 | **Layer 1** | 必填密钥/URL（无默认值） | `ANTHROPIC_API_KEY`, `FEISHU_ALERT_WEBHOOK_URL` |
-| **Layer 2** | 可选参数（有默认值） | `INITIAL_MERGE_WINDOW_MS=1000` |
+| **Layer 2** | 可选参数（有默认值） | `PARAGRAPH_GAP_MS=2000` |
 | **Layer 3** | 硬编码默认值 | 告警节流 5 分钟 |
+| **托管配置** | Dashboard 动态调整 | `initialMergeWindowMs` (消息静默窗口, 默认 3000ms) |
 
 **最小配置示例**（只需填写 Layer 1）：
 
@@ -115,9 +116,11 @@ NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-key
 
 # === Layer 2: 按需覆盖（都有默认值）===
-# INITIAL_MERGE_WINDOW_MS=3000   # 消息聚合等待时间，默认 1000ms
-# MAX_MERGED_MESSAGES=5          # 最大聚合条数，默认 3
+# PARAGRAPH_GAP_MS=2500          # 段落间隔，默认 2000ms
+# TYPING_DELAY_PER_CHAR_MS=120   # 打字延迟/字符，默认 100ms
 ```
+
+> 💡 消息聚合的静默窗口 (`initialMergeWindowMs`, 默认 3000ms) 通过 Dashboard 托管配置动态调整，不再是环境变量。
 
 **获取配置的地方**：
 | 配置项 | 获取方式 |
@@ -179,10 +182,13 @@ curl -X POST http://localhost:8585/agent/debug-chat \
 | `PORT` | `8585` | 服务端口 | main.ts |
 | `MAX_HISTORY_PER_CHAT` | `60` | Redis 消息数限制 | message-history |
 | `HISTORY_TTL_MS` | `7200000` | Redis 消息 TTL (2h) | message-history |
-| `INITIAL_MERGE_WINDOW_MS` | `1000` | 聚合等待时间 | message-merge |
-| `MAX_MERGED_MESSAGES` | `3` | 最大聚合条数 | message-merge |
 | `TYPING_DELAY_PER_CHAR_MS` | `100` | 打字延迟/字符 | message-sender |
 | `PARAGRAPH_GAP_MS` | `2000` | 段落间隔 | message-sender |
+
+> **消息聚合参数已下沉到托管配置 (`hosting_config` 表)**：
+> - `initialMergeWindowMs` — 默认 `3000`，语义：距离最后一条用户消息静默多久后才触发 Agent（debounce 窗口）
+> - 通过 Dashboard 动态修改，即时生效
+> - 旧的 `INITIAL_MERGE_WINDOW_MS` / `MAX_MERGED_MESSAGES` 环境变量已废弃
 
 ### Layer 3: 硬编码默认值（无需配置）
 

@@ -1,41 +1,34 @@
 import { ReplyNormalizer } from '@wecom/message/utils/reply-normalizer.util';
 
 describe('ReplyNormalizer', () => {
-  describe('normalize - 段落内换行合并', () => {
-    it('应该合并段落内部的单换行符', () => {
-      const input = `我看了下哈，黄兴大道发这家店暂时没在招，不过附近你六姐其他店在
-招服务员和后厨，时薪都是24元，也是中午班和晚班，要不要我帮你
-看看附近的？`;
-
-      const expected = `我看了下哈，黄兴大道发这家店暂时没在招，不过附近你六姐其他店在招服务员和后厨，时薪都是24元，也是中午班和晚班，要不要我帮你看看附近的？`;
-
-      const result = ReplyNormalizer.normalize(input);
-
-      // 验证结果中没有换行符
-      expect(result).not.toContain('\n');
-      // 验证结果是完整合并的文本
-      expect(result).toBe(expected);
-    });
-
-    it('应该保留双换行作为段落分隔，合并段落内单换行', () => {
-      const input = `我看了下哈，黄兴大道发
-这家店暂时没在招。
-
-不过附近你六姐其他店在
-招服务员和后厨。`;
+  describe('normalize - 换行规则（双换行拆消息，单换行保留）', () => {
+    it('段落内单换行应保留，作为同一条消息内的换行', () => {
+      const input = `线下面试，时间是周一到周五的中午13点。
+帮我发下资料好帮你约：
+姓名、电话、年龄
+性别
+有没有健康证`;
 
       const result = ReplyNormalizer.normalize(input);
 
-      // 段落内单换行被合并
-      expect(result).toContain('我看了下哈，黄兴大道发这家店暂时没在招。');
-      expect(result).toContain('不过附近你六姐其他店在招服务员和后厨。');
-      // 段落间双换行保留，供下游 MessageSplitter 拆分
-      expect(result).toBe(
-        '我看了下哈，黄兴大道发这家店暂时没在招。\n\n不过附近你六姐其他店在招服务员和后厨。',
-      );
+      expect(result).toBe(input);
     });
 
-    it('应该去除多余空格，保留段落分隔', () => {
+    it('双换行作为段落分隔，段内单换行原样保留', () => {
+      const input = `第一段第一行
+第一段第二行
+
+第二段第一行
+第二段第二行`;
+
+      const result = ReplyNormalizer.normalize(input);
+
+      expect(result).toBe('第一段第一行\n第一段第二行\n\n第二段第一行\n第二段第二行');
+      // 段落间单一双换行供 MessageSplitter 拆分
+      expect(result.split('\n\n')).toHaveLength(2);
+    });
+
+    it('应去除每行首尾空格，保留换行结构', () => {
       const input = `  我看了下哈
 
   黄兴大道发这家店暂时
@@ -43,23 +36,34 @@ describe('ReplyNormalizer', () => {
 
       const result = ReplyNormalizer.normalize(input);
 
-      // 段落间保留双换行
-      expect(result).toBe('我看了下哈\n\n黄兴大道发这家店暂时没在招');
+      expect(result).toBe('我看了下哈\n\n黄兴大道发这家店暂时\n没在招');
+    });
+
+    it('3+ 连续换行应规约为双换行', () => {
+      const input = `第一段
+
+
+第二段`;
+
+      const result = ReplyNormalizer.normalize(input);
+
+      expect(result).toBe('第一段\n\n第二段');
     });
   });
 
-  describe('needsNormalization - 检测单换行', () => {
-    it('应该检测到段落内的单换行符', () => {
-      const input = `我看了下哈，黄兴大道发这家店暂时没在招，不过附近你六姐其他店在
-招服务员和后厨，时薪都是24元`;
+  describe('needsNormalization', () => {
+    it('仅含单换行无需规范化', () => {
+      const input = `第一行
+第二行`;
 
-      expect(ReplyNormalizer.needsNormalization(input)).toBe(true);
+      expect(ReplyNormalizer.needsNormalization(input)).toBe(false);
     });
 
-    it('应该检测到多行短文本', () => {
-      const input = `我看了下哈
-黄兴大道
-暂时没在招`;
+    it('含 3+ 连续换行需要规范化', () => {
+      const input = `第一段
+
+
+第二段`;
 
       expect(ReplyNormalizer.needsNormalization(input)).toBe(true);
     });

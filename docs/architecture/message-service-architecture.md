@@ -194,12 +194,13 @@ interface ConversationState {
 
 #### 配置参数
 
-| 参数 | 环境变量 | 默认值 | 说明 |
+| 参数 | 配置位置 | 默认值 | 说明 |
 |------|---------|--------|------|
-| **首次等待时间** | `INITIAL_MERGE_WINDOW_MS` | `1000` | 首次聚合窗口（毫秒） |
-| **最大聚合数** | `MAX_MERGED_MESSAGES` | `3` | 最多聚合的消息数 |
-| **最大重试次数** | `MAX_RETRY_COUNT` | `1` | Agent 响应后最多重试次数 |
-| **最小消息长度** | `MIN_MESSAGE_LENGTH_TO_RETRY` | `2` | 触发重试的最小消息长度 |
+| **静默窗口** | Supabase `hosting_config.initialMergeWindowMs` | `3000` | 距最后一条消息静默多久后才触发 Agent（debounce 窗口，毫秒） |
+| **最大重试次数** | `MAX_RETRY_COUNT`（硬编码） | `1` | Agent 响应后最多重试次数 |
+| **最小消息长度** | `MIN_MESSAGE_LENGTH_TO_RETRY`（硬编码） | `2` | 触发重试的最小消息长度 |
+
+> 早期设计使用「首次等待窗口 + 最大聚合数」的固定窗口方案；现已改为 debounce：每条消息注册 `delay=静默窗口` 的 Bull job，Worker 触发时校验"距最后一条消息是否静默够久"——不够则跳过，让后续消息注册的 job 接力。用户持续打字则持续推迟处理，不再需要条数上限。
 
 #### 重试策略
 

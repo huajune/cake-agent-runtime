@@ -603,22 +603,25 @@ export class AnalyticsDashboardService {
     try {
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
-      const dbUsers = await this.messageProcessingService.getActiveUsers(todayStart, new Date());
+      const dbUsers = await this.userHostingService.getActiveUsersByDateRange(
+        todayStart,
+        new Date(),
+      );
 
-      const chatIds = dbUsers.map((u) => u.chatId);
       const pausedSet = new Set<string>();
-
-      for (const chatId of chatIds) {
-        const status = await this.userHostingService.getUserHostingStatus(chatId);
+      for (const user of dbUsers) {
+        const status = await this.userHostingService.getUserHostingStatus(user.chatId);
         if (status.isPaused) {
-          pausedSet.add(chatId);
+          pausedSet.add(user.chatId);
         }
       }
 
       return dbUsers.map((user) => ({
         chatId: user.chatId,
-        odId: user.userId || user.chatId,
-        odName: user.userName || user.chatId,
+        odId: user.odId || user.chatId,
+        odName: user.odName || user.chatId,
+        groupId: user.groupId,
+        groupName: user.groupName,
         messageCount: user.messageCount,
         tokenUsage: user.tokenUsage,
         firstActiveAt: user.firstActiveAt,

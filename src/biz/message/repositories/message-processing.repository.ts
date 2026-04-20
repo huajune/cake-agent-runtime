@@ -535,6 +535,16 @@ export class MessageProcessingRepository extends BaseRepository {
     this.logger.warn('[消息处理记录] 已清空所有数据库记录');
   }
 
+  /**
+   * 按 message_id 批量删除（用于聚合时回收源消息流水）
+   * @returns 实际尝试删除的条数（Supabase 不返回受影响行数，按入参长度估算）
+   */
+  async deleteByMessageIds(messageIds: string[]): Promise<number> {
+    if (!this.isAvailable() || messageIds.length === 0) return 0;
+    await this.delete((q) => q.in('message_id', messageIds));
+    return messageIds.length;
+  }
+
   // ==================== 私有方法 ====================
 
   /**

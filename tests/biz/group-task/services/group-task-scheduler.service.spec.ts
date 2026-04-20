@@ -1,13 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { getQueueToken } from '@nestjs/bull';
 import { SCHEDULE_CRON_OPTIONS } from '@nestjs/schedule/dist/schedule.constants';
 import { GroupTaskSchedulerService } from '@biz/group-task/services/group-task-scheduler.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
-import { CompletionService } from '@agent/completion.service';
-import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
-import { NotificationSenderService } from '@biz/group-task/services/notification-sender.service';
-import { BrandRotationService } from '@biz/group-task/services/brand-rotation.service';
-import { RedisService } from '@infra/redis/redis.service';
 import { OrderGrabStrategy } from '@biz/group-task/strategies/order-grab.strategy';
 import { PartTimeJobStrategy } from '@biz/group-task/strategies/part-time-job.strategy';
 import { StoreManagerStrategy } from '@biz/group-task/strategies/store-manager.strategy';
@@ -18,19 +14,26 @@ import {
   TimeSlot,
 } from '@biz/group-task/group-task.types';
 import { NotificationStrategy } from '@biz/group-task/strategies/notification.strategy';
+import {
+  GROUP_TASK_QUEUE_NAME,
+  GroupTaskJobName,
+  PlanJobData,
+} from '@biz/group-task/queue/group-task-queue.constants';
 import { Environment } from '@enums/environment.enum';
 
+/**
+ * 群任务调度器（Bull 化后）：职责压缩到「配置闸门 + plan job 入队」。
+ * 发送、飞书汇总等逻辑已迁移到 GroupTaskProcessor，对应测试由 processor.spec 负责。
+ */
 describe('GroupTaskSchedulerService', () => {
   let service: GroupTaskSchedulerService;
   let configService: jest.Mocked<ConfigService>;
   let systemConfigService: jest.Mocked<SystemConfigService>;
-  let notificationSenderService: jest.Mocked<NotificationSenderService>;
-  let groupResolverService: jest.Mocked<GroupResolverService>;
+  let queueMock: { add: jest.Mock };
   let orderGrabStrategy: OrderGrabStrategy;
   let partTimeJobStrategy: PartTimeJobStrategy;
   let storeManagerStrategy: StoreManagerStrategy;
   let workTipsStrategy: WorkTipsStrategy;
-  let redisMock: { setNx: jest.Mock; eval: jest.Mock };
   let currentNodeEnv: Environment;
 
   const mockStrategy: NotificationStrategy = {
@@ -45,13 +48,12 @@ describe('GroupTaskSchedulerService', () => {
   beforeEach(async () => {
     currentNodeEnv = Environment.Test;
 
-    (mockStrategy.prepareTask as jest.Mock).mockReset().mockResolvedValue(undefined);
-    (mockStrategy.fetchData as jest.Mock).mockReset().mockResolvedValue([]);
-    (mockStrategy.buildMessage as jest.Mock).mockReset().mockReturnValue('test message');
-
-    redisMock = {
-      setNx: jest.fn().mockResolvedValue(true),
-      eval: jest.fn().mockResolvedValue(1),
+    queueMock = {
+      add: jest.fn().mockImplementation(async (_name, data: PlanJobData) => ({
+        id: 'plan-job-1',
+        name: GroupTaskJobName.PLAN,
+        data,
+      })),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -70,53 +72,21 @@ describe('GroupTaskSchedulerService', () => {
         {
           provide: SystemConfigService,
           useValue: {
-            getConfigValue: jest.fn(),
-            setConfigValue: jest.fn(),
             getGroupTaskConfig: jest.fn(),
             updateGroupTaskConfig: jest.fn(),
           } as unknown as SystemConfigService,
         },
         {
-          provide: CompletionService,
-          useValue: {
-            generateSimple: jest.fn().mockResolvedValue('AI generated text'),
-          } as unknown as CompletionService,
+          provide: getQueueToken(GROUP_TASK_QUEUE_NAME),
+          useValue: queueMock,
         },
-        {
-          provide: RedisService,
-          useValue: redisMock as unknown as RedisService,
-        },
-        {
-          provide: GroupResolverService,
-          useValue: {
-            resolveGroups: jest.fn().mockResolvedValue([]),
-          } as unknown as GroupResolverService,
-        },
-        {
-          provide: NotificationSenderService,
-          useValue: {
-            sendToGroup: jest.fn().mockResolvedValue(undefined),
-            reportToFeishu: jest.fn().mockResolvedValue(undefined),
-          } as unknown as NotificationSenderService,
-        },
-        {
-          provide: BrandRotationService,
-          useValue: {
-            recordPushedBrand: jest.fn(),
-          } as unknown as BrandRotationService,
-        },
-        {
-          provide: OrderGrabStrategy,
-          useValue: mockStrategy as unknown as OrderGrabStrategy,
-        },
+        { provide: OrderGrabStrategy, useValue: mockStrategy as unknown as OrderGrabStrategy },
         {
           provide: PartTimeJobStrategy,
           useValue: {
             type: GroupTaskType.PART_TIME_JOB,
             tagPrefix: '兼职群',
             needsAI: false,
-            fetchData: jest.fn().mockResolvedValue([]),
-            buildMessage: jest.fn().mockResolvedValue('part time message'),
           } as unknown as PartTimeJobStrategy,
         },
         {
@@ -125,8 +95,6 @@ describe('GroupTaskSchedulerService', () => {
             type: GroupTaskType.STORE_MANAGER,
             tagPrefix: '店长群',
             needsAI: false,
-            fetchData: jest.fn().mockResolvedValue([]),
-            buildMessage: jest.fn().mockResolvedValue('store manager message'),
           } as unknown as StoreManagerStrategy,
         },
         {
@@ -135,8 +103,6 @@ describe('GroupTaskSchedulerService', () => {
             type: GroupTaskType.WORK_TIPS,
             tagPrefix: '工作群',
             needsAI: true,
-            fetchData: jest.fn().mockResolvedValue([]),
-            buildMessage: jest.fn().mockResolvedValue('work tips message'),
           } as unknown as WorkTipsStrategy,
         },
       ],
@@ -144,15 +110,7 @@ describe('GroupTaskSchedulerService', () => {
 
     service = module.get<GroupTaskSchedulerService>(GroupTaskSchedulerService);
     configService = module.get(ConfigService) as jest.Mocked<ConfigService>;
-    systemConfigService = module.get(
-      SystemConfigService,
-    ) as jest.Mocked<SystemConfigService>;
-    notificationSenderService = module.get(
-      NotificationSenderService,
-    ) as jest.Mocked<NotificationSenderService>;
-    groupResolverService = module.get(
-      GroupResolverService,
-    ) as jest.Mocked<GroupResolverService>;
+    systemConfigService = module.get(SystemConfigService) as jest.Mocked<SystemConfigService>;
     orderGrabStrategy = module.get(OrderGrabStrategy);
     partTimeJobStrategy = module.get(PartTimeJobStrategy);
     storeManagerStrategy = module.get(StoreManagerStrategy);
@@ -170,25 +128,13 @@ describe('GroupTaskSchedulerService', () => {
       const config = await service.getConfig();
 
       expect(config).toEqual(DEFAULT_GROUP_TASK_CONFIG);
-      expect(systemConfigService.getGroupTaskConfig).toHaveBeenCalledTimes(1);
-    });
-
-    it('should return stored values', async () => {
-      const storedConfig = { enabled: true, dryRun: false };
-      systemConfigService.getGroupTaskConfig.mockResolvedValue(storedConfig);
-
-      const config = await service.getConfig();
-
-      expect(config.enabled).toBe(true);
-      expect(config.dryRun).toBe(false);
     });
   });
 
   describe('updateConfig', () => {
     it('should delegate to systemConfigService.updateGroupTaskConfig', async () => {
       const updated = { enabled: true, dryRun: true };
-      (systemConfigService as jest.Mocked<SystemConfigService>).updateGroupTaskConfig =
-        jest.fn().mockResolvedValue(updated);
+      (systemConfigService.updateGroupTaskConfig as jest.Mock).mockResolvedValue(updated);
 
       const result = await service.updateConfig({ enabled: true });
 
@@ -207,326 +153,102 @@ describe('GroupTaskSchedulerService', () => {
     });
   });
 
-  describe('executeTask', () => {
-    it('should skip when disabled and not forced', async () => {
-      const disabledConfig = { ...DEFAULT_GROUP_TASK_CONFIG, enabled: false };
-      systemConfigService.getGroupTaskConfig.mockResolvedValue(disabledConfig);
-
-      await service.executeTask(mockStrategy);
-
-      expect(groupResolverService.resolveGroups).not.toHaveBeenCalled();
-      expect(notificationSenderService.sendToGroup).not.toHaveBeenCalled();
-    });
-
-    it('should run when forceEnabled even if disabled', async () => {
-      const disabledConfig = { ...DEFAULT_GROUP_TASK_CONFIG, enabled: false };
-      systemConfigService.getGroupTaskConfig.mockResolvedValue(disabledConfig);
-      groupResolverService.resolveGroups.mockResolvedValue([]);
-
-      await service.executeTask(mockStrategy, { forceEnabled: true });
-
-      expect(notificationSenderService.reportToFeishu).toHaveBeenCalled();
-    });
-
-    it('should respect config.dryRun when only forceEnabled (not forceSend)', async () => {
-      const dryRunConfig = {
+  describe('executeTask — 入队闸门', () => {
+    it('should skip enqueueing when disabled and not forced', async () => {
+      systemConfigService.getGroupTaskConfig.mockResolvedValue({
         ...DEFAULT_GROUP_TASK_CONFIG,
-        enabled: true,
-        dryRun: true,
-      };
-      systemConfigService.getGroupTaskConfig.mockResolvedValue(dryRunConfig);
-
-      const mockGroup = {
-        imRoomId: 'room-1',
-        groupName: '测试群',
-        city: '上海',
-        tag: '抢单群',
-        imBotId: 'bot-1',
-        token: 'token-1',
-        chatId: 'chat-1',
-      };
-      groupResolverService.resolveGroups.mockResolvedValue([mockGroup]);
-      (mockStrategy.fetchData as jest.Mock).mockResolvedValue({
-        hasData: true,
-        payload: { orders: [] },
-        summary: '测试',
+        enabled: false,
       });
-      (mockStrategy.buildMessage as jest.Mock).mockReturnValue('test message');
-
-      await service.executeTask(mockStrategy, { forceEnabled: true });
-
-      expect(mockStrategy.prepareTask).toHaveBeenCalledTimes(1);
-      // forceEnabled=true, forceSend=false → dryRun 仍遵守 config
-      expect(notificationSenderService.sendToGroup).toHaveBeenCalledTimes(1);
-      expect(notificationSenderService.sendToGroup.mock.calls[0][3]).toBe(true);
-
-      expect(notificationSenderService.reportToFeishu).toHaveBeenCalledTimes(1);
-      expect(notificationSenderService.reportToFeishu.mock.calls[0][1]).toBe(true);
-    });
-
-    it('should bypass dryRun when forceSend=true', async () => {
-      const dryRunConfig = {
-        ...DEFAULT_GROUP_TASK_CONFIG,
-        enabled: true,
-        dryRun: true,
-      };
-      systemConfigService.getGroupTaskConfig.mockResolvedValue(dryRunConfig);
-
-      const mockGroup = {
-        imRoomId: 'room-1',
-        groupName: '测试群',
-        city: '上海',
-        tag: '抢单群',
-        imBotId: 'bot-1',
-        token: 'token-1',
-        chatId: 'chat-1',
-      };
-      groupResolverService.resolveGroups.mockResolvedValue([mockGroup]);
-      (mockStrategy.fetchData as jest.Mock).mockResolvedValue({
-        hasData: true,
-        payload: { orders: [] },
-        summary: '测试',
-      });
-      (mockStrategy.buildMessage as jest.Mock).mockReturnValue('test message');
-
-      await service.executeTask(mockStrategy, { forceEnabled: true, forceSend: true });
-
-      expect(mockStrategy.prepareTask).toHaveBeenCalledTimes(1);
-      // forceSend=true → dryRun=false
-      expect(notificationSenderService.sendToGroup).toHaveBeenCalledTimes(1);
-      expect(notificationSenderService.sendToGroup.mock.calls[0][3]).toBe(false);
-
-      expect(notificationSenderService.reportToFeishu).toHaveBeenCalledTimes(1);
-      expect(notificationSenderService.reportToFeishu.mock.calls[0][1]).toBe(false);
-    });
-
-    it('should pass dryRun=true when config.dryRun=true and no force flags', async () => {
-      const dryRunConfig = {
-        ...DEFAULT_GROUP_TASK_CONFIG,
-        enabled: true,
-        dryRun: true,
-      };
-      systemConfigService.getGroupTaskConfig.mockResolvedValue(dryRunConfig);
-
-      const mockGroup = {
-        imRoomId: 'room-1',
-        groupName: '测试群',
-        city: '上海',
-        tag: '抢单群',
-        imBotId: 'bot-1',
-        token: 'token-1',
-        chatId: 'chat-1',
-      };
-      groupResolverService.resolveGroups.mockResolvedValue([mockGroup]);
-      (mockStrategy.fetchData as jest.Mock).mockResolvedValue({
-        hasData: true,
-        payload: { orders: [] },
-        summary: '测试',
-      });
-      (mockStrategy.buildMessage as jest.Mock).mockReturnValue('test message');
-
-      await service.executeTask(mockStrategy);
-
-      expect(mockStrategy.prepareTask).toHaveBeenCalledTimes(1);
-      expect(notificationSenderService.sendToGroup).toHaveBeenCalledTimes(1);
-      expect(notificationSenderService.sendToGroup.mock.calls[0][3]).toBe(true);
-
-      expect(notificationSenderService.reportToFeishu).toHaveBeenCalledTimes(1);
-      expect(notificationSenderService.reportToFeishu.mock.calls[0][1]).toBe(true);
-    });
-
-    it('should skip duplicate execution when task lock is already held', async () => {
-      const enabledConfig = { ...DEFAULT_GROUP_TASK_CONFIG, enabled: true, dryRun: true };
-      systemConfigService.getGroupTaskConfig.mockResolvedValue(enabledConfig);
-      redisMock.setNx.mockResolvedValue(false);
-
-      await service.executeTask(mockStrategy);
-
-      expect(groupResolverService.resolveGroups).not.toHaveBeenCalled();
-      expect(notificationSenderService.sendToGroup).not.toHaveBeenCalled();
-      expect(notificationSenderService.reportToFeishu).not.toHaveBeenCalled();
-      expect(redisMock.eval).not.toHaveBeenCalled();
-    });
-
-    it('should release task lock after execution', async () => {
-      const enabledConfig = { ...DEFAULT_GROUP_TASK_CONFIG, enabled: true, dryRun: true };
-      systemConfigService.getGroupTaskConfig.mockResolvedValue(enabledConfig);
-
-      const mockGroup = {
-        imRoomId: 'room-1',
-        groupName: '测试群',
-        city: '上海',
-        tag: '抢单群',
-        imBotId: 'bot-1',
-        token: 'token-1',
-        chatId: 'chat-1',
-      };
-      groupResolverService.resolveGroups.mockResolvedValue([mockGroup]);
-      (mockStrategy.fetchData as jest.Mock).mockResolvedValue({
-        hasData: true,
-        payload: { orders: [] },
-        summary: '测试',
-      });
-      (mockStrategy.buildMessage as jest.Mock).mockReturnValue('test message');
-
-      await service.executeTask(mockStrategy);
-
-      expect(mockStrategy.prepareTask).toHaveBeenCalledTimes(1);
-      expect(redisMock.setNx).toHaveBeenCalledWith(
-        'group-task:lock:order_grab',
-        expect.any(String),
-        300,
-      );
-      expect(redisMock.eval).toHaveBeenCalledWith(
-        expect.any(String),
-        ['group-task:lock:order_grab'],
-        [expect.any(String)],
-      );
-    });
-
-    it('should run prepareTask only once before processing all groups', async () => {
-      const enabledConfig = { ...DEFAULT_GROUP_TASK_CONFIG, enabled: true, dryRun: true };
-      systemConfigService.getGroupTaskConfig.mockResolvedValue(enabledConfig);
-
-      const groups = [
-        {
-          imRoomId: 'room-1',
-          groupName: '测试群1',
-          city: '上海',
-          tag: '抢单群',
-          imBotId: 'bot-1',
-          token: 'token-1',
-          chatId: 'chat-1',
-        },
-        {
-          imRoomId: 'room-2',
-          groupName: '测试群2',
-          city: '北京',
-          tag: '抢单群',
-          imBotId: 'bot-1',
-          token: 'token-1',
-          chatId: 'chat-2',
-        },
-      ];
-      groupResolverService.resolveGroups.mockResolvedValue(groups);
-      (mockStrategy.fetchData as jest.Mock).mockResolvedValue({
-        hasData: true,
-        payload: { orders: [] },
-        summary: '测试',
-      });
-      (mockStrategy.buildMessage as jest.Mock).mockReturnValue('test message');
-
-      await service.executeTask(mockStrategy, { timeSlot: TimeSlot.MORNING });
-
-      expect(mockStrategy.prepareTask).toHaveBeenCalledTimes(1);
-      expect(mockStrategy.prepareTask).toHaveBeenCalledWith({ timeSlot: TimeSlot.MORNING });
-      expect(mockStrategy.fetchData).toHaveBeenCalledTimes(2);
-    });
-
-    it('should group order grab groups by parsed region key', async () => {
-      const enabledConfig = { ...DEFAULT_GROUP_TASK_CONFIG, enabled: true, dryRun: true };
-      systemConfigService.getGroupTaskConfig.mockResolvedValue(enabledConfig);
-
-      const groups = [
-        {
-          imRoomId: 'room-1',
-          groupName: '荆州地区&短期班次兼职抢单群',
-          city: '武汉',
-          tag: '抢单群',
-          imBotId: 'bot-1',
-          token: 'token-1',
-          chatId: 'chat-1',
-        },
-        {
-          imRoomId: 'room-2',
-          groupName: '宜昌地区&短期班次兼职抢单群',
-          city: '武汉',
-          tag: '抢单群',
-          imBotId: 'bot-1',
-          token: 'token-1',
-          chatId: 'chat-2',
-        },
-      ];
-      groupResolverService.resolveGroups.mockResolvedValue(groups);
-      (
-        mockStrategy as NotificationStrategy & {
-          resolveOrderGrabGroupKey: jest.Mock;
-        }
-      ).resolveOrderGrabGroupKey = jest
-        .fn()
-        .mockImplementation((group) => group.groupName);
-      (mockStrategy.fetchData as jest.Mock).mockResolvedValue({
-        hasData: true,
-        payload: { orders: [] },
-        summary: '测试',
-      });
-      (mockStrategy.buildMessage as jest.Mock).mockReturnValue('test message');
-
-      await service.executeTask(mockStrategy);
-
-      expect(
-        (
-          mockStrategy as NotificationStrategy & {
-            resolveOrderGrabGroupKey: jest.Mock;
-          }
-        ).resolveOrderGrabGroupKey,
-      ).toHaveBeenCalledTimes(2);
-      expect(mockStrategy.fetchData).toHaveBeenCalledTimes(2);
-    });
-
-    it('should not run prepareTask when no target groups are resolved', async () => {
-      const enabledConfig = { ...DEFAULT_GROUP_TASK_CONFIG, enabled: true, dryRun: true };
-      systemConfigService.getGroupTaskConfig.mockResolvedValue(enabledConfig);
-      groupResolverService.resolveGroups.mockResolvedValue([]);
-
-      await service.executeTask(mockStrategy);
-
-      expect(mockStrategy.prepareTask).not.toHaveBeenCalled();
-    });
-
-    it('should keep returning result when final feishu report fails', async () => {
-      const enabledConfig = { ...DEFAULT_GROUP_TASK_CONFIG, enabled: true, dryRun: false };
-      systemConfigService.getGroupTaskConfig.mockResolvedValue(enabledConfig);
-
-      const mockGroup = {
-        imRoomId: 'room-1',
-        groupName: '测试群',
-        city: '上海',
-        tag: '抢单群',
-        imBotId: 'bot-1',
-        token: 'token-1',
-        chatId: 'chat-1',
-      };
-      groupResolverService.resolveGroups.mockResolvedValue([mockGroup]);
-      (mockStrategy.fetchData as jest.Mock).mockResolvedValue({
-        hasData: true,
-        payload: { orders: [] },
-        summary: '测试',
-      });
-      (mockStrategy.buildMessage as jest.Mock).mockReturnValue('test message');
-      notificationSenderService.reportToFeishu.mockRejectedValueOnce(new Error('report failed'));
 
       const result = await service.executeTask(mockStrategy);
 
-      expect(result.successCount).toBe(1);
-      expect(result.errors).toEqual(
-        expect.arrayContaining([{ groupName: '(飞书通知群)', error: 'report failed' }]),
-      );
+      expect(result).toEqual({ execId: null, skipped: 'disabled' });
+      expect(queueMock.add).not.toHaveBeenCalled();
+    });
+
+    it('should enqueue plan job when forceEnabled=true even if disabled', async () => {
+      systemConfigService.getGroupTaskConfig.mockResolvedValue({
+        ...DEFAULT_GROUP_TASK_CONFIG,
+        enabled: false,
+        dryRun: false,
+      });
+
+      const result = await service.executeTask(mockStrategy, { forceEnabled: true });
+
+      expect(result.execId).toBeTruthy();
+      expect(queueMock.add).toHaveBeenCalledTimes(1);
+      const [name, data, opts] = queueMock.add.mock.calls[0];
+      expect(name).toBe(GroupTaskJobName.PLAN);
+      expect(data).toMatchObject({
+        execId: result.execId,
+        type: GroupTaskType.ORDER_GRAB,
+        trigger: 'manual',
+      });
+      // jobId 前缀按 trigger 区分，便于排障
+      expect(opts.jobId).toContain('plan:manual:order_grab:');
+    });
+
+    it('should freeze dryRun=config.dryRun into plan job when no force flags', async () => {
+      systemConfigService.getGroupTaskConfig.mockResolvedValue({
+        enabled: true,
+        dryRun: true,
+      });
+
+      await service.executeTask(mockStrategy);
+
+      const [, data] = queueMock.add.mock.calls[0];
+      expect(data.dryRun).toBe(true);
+    });
+
+    it('should flip dryRun to false when forceSend=true even if config.dryRun=true', async () => {
+      systemConfigService.getGroupTaskConfig.mockResolvedValue({
+        enabled: true,
+        dryRun: true,
+      });
+
+      await service.executeTask(mockStrategy, { forceEnabled: true, forceSend: true });
+
+      const [, data] = queueMock.add.mock.calls[0];
+      expect(data.dryRun).toBe(false);
+    });
+
+    it('should carry timeSlot through to plan job data', async () => {
+      systemConfigService.getGroupTaskConfig.mockResolvedValue({
+        enabled: true,
+        dryRun: false,
+      });
+
+      await service.executeTask(mockStrategy, { timeSlot: TimeSlot.MORNING, trigger: 'cron' });
+
+      const [, data, opts] = queueMock.add.mock.calls[0];
+      expect(data.timeSlot).toBe(TimeSlot.MORNING);
+      expect(data.trigger).toBe('cron');
+      // cron 的 jobId 带 minute 粒度，便于同分钟重复触发去重
+      expect(opts.jobId).toContain('plan:cron:order_grab:');
+      expect(opts.jobId).toContain(':morning');
+    });
+
+    it('should detect duplicate jobId and mark skipped=duplicate', async () => {
+      systemConfigService.getGroupTaskConfig.mockResolvedValue({
+        enabled: true,
+        dryRun: true,
+      });
+      queueMock.add.mockResolvedValueOnce({
+        id: 'existing-plan',
+        name: GroupTaskJobName.PLAN,
+        data: { execId: 'existing-exec-id', type: GroupTaskType.ORDER_GRAB } as PlanJobData,
+      });
+
+      const result = await service.executeTask(mockStrategy, { trigger: 'cron' });
+
+      expect(result).toEqual({
+        execId: 'existing-exec-id',
+        skipped: 'duplicate',
+      });
     });
   });
 
   describe('cron environment guard', () => {
-    const mockTaskResult = {
-      type: GroupTaskType.ORDER_GRAB,
-      totalGroups: 0,
-      successCount: 0,
-      failedCount: 0,
-      skippedCount: 0,
-      errors: [],
-      details: [],
-      startTime: new Date('2026-04-02T00:00:00.000Z'),
-      endTime: new Date('2026-04-02T00:00:00.000Z'),
-    };
     const cronMethodNames = [
       'cronOrderGrabMorning',
       'cronOrderGrabAfternoon',
@@ -538,27 +260,30 @@ describe('GroupTaskSchedulerService', () => {
     const cronCases = [
       {
         methodName: 'cronOrderGrabMorning' as const,
-        getExpectedArgs: () => [orderGrabStrategy, { timeSlot: TimeSlot.MORNING }] as const,
+        getExpectedArgs: () =>
+          [orderGrabStrategy, { timeSlot: TimeSlot.MORNING, trigger: 'cron' }] as const,
       },
       {
         methodName: 'cronOrderGrabAfternoon' as const,
-        getExpectedArgs: () => [orderGrabStrategy, { timeSlot: TimeSlot.AFTERNOON }] as const,
+        getExpectedArgs: () =>
+          [orderGrabStrategy, { timeSlot: TimeSlot.AFTERNOON, trigger: 'cron' }] as const,
       },
       {
         methodName: 'cronPartTimeJob' as const,
-        getExpectedArgs: () => [partTimeJobStrategy] as const,
+        getExpectedArgs: () => [partTimeJobStrategy, { trigger: 'cron' }] as const,
       },
       {
         methodName: 'cronOrderGrabEvening' as const,
-        getExpectedArgs: () => [orderGrabStrategy, { timeSlot: TimeSlot.EVENING }] as const,
+        getExpectedArgs: () =>
+          [orderGrabStrategy, { timeSlot: TimeSlot.EVENING, trigger: 'cron' }] as const,
       },
       {
         methodName: 'cronStoreManager' as const,
-        getExpectedArgs: () => [storeManagerStrategy] as const,
+        getExpectedArgs: () => [storeManagerStrategy, { trigger: 'cron' }] as const,
       },
       {
         methodName: 'cronWorkTips' as const,
-        getExpectedArgs: () => [workTipsStrategy] as const,
+        getExpectedArgs: () => [workTipsStrategy, { trigger: 'cron' }] as const,
       },
     ] as const;
 
@@ -566,7 +291,7 @@ describe('GroupTaskSchedulerService', () => {
       currentNodeEnv = Environment.Test;
       const executeTaskSpy = jest
         .spyOn(service, 'executeTask')
-        .mockResolvedValue(mockTaskResult);
+        .mockResolvedValue({ execId: 'x' });
 
       await service[methodName]();
 
@@ -574,16 +299,19 @@ describe('GroupTaskSchedulerService', () => {
       expect(executeTaskSpy).not.toHaveBeenCalled();
     });
 
-    it.each(cronCases)('should run $methodName in production', async ({ methodName, getExpectedArgs }) => {
-      currentNodeEnv = Environment.Production;
-      const executeTaskSpy = jest
-        .spyOn(service, 'executeTask')
-        .mockResolvedValue(mockTaskResult);
+    it.each(cronCases)(
+      'should run $methodName in production',
+      async ({ methodName, getExpectedArgs }) => {
+        currentNodeEnv = Environment.Production;
+        const executeTaskSpy = jest
+          .spyOn(service, 'executeTask')
+          .mockResolvedValue({ execId: 'x' });
 
-      await service[methodName]();
+        await service[methodName]();
 
-      expect(executeTaskSpy).toHaveBeenCalledWith(...getExpectedArgs());
-    });
+        expect(executeTaskSpy).toHaveBeenCalledWith(...getExpectedArgs());
+      },
+    );
   });
 
   describe('cron metadata', () => {

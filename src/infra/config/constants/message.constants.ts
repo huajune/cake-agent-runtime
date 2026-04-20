@@ -5,9 +5,10 @@
 
 // ==================== 消息聚合配置（部分硬编码） ====================
 
-// 注意：以下配置支持 Dashboard 动态调整，默认值在 SupabaseService 中定义
-// - INITIAL_MERGE_WINDOW_MS: 距离最后一条消息的静默窗口（默认 3000ms）
-// - MAX_MERGED_MESSAGES: 旧版最大聚合条数（已废弃，仅兼容存量配置）
+// 注意：消息聚合采用 debounce 机制，只有一个动态参数：
+// - initialMergeWindowMs: 距离最后一条消息的静默窗口（默认 3000ms）
+//   存储于 Supabase hosting_config 表，通过 Dashboard 动态调整
+//   （旧的环境变量 INITIAL_MERGE_WINDOW_MS / MAX_MERGED_MESSAGES 已废弃）
 
 // 以下配置为硬编码，不支持动态调整
 export const ENABLE_MESSAGE_MERGE = true; // 启用消息聚合

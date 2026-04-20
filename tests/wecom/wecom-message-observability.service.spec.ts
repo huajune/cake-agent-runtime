@@ -8,6 +8,7 @@ describe('WecomMessageObservabilityService', () => {
     recordWorkerStart: jest.fn(),
     recordAiStart: jest.fn(),
     recordAiEnd: jest.fn(),
+    dropMergedSourceRecords: jest.fn(),
   };
 
   const traceState = new Map<string, unknown>();

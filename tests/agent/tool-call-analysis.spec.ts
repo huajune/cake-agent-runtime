@@ -1,5 +1,6 @@
 import {
   buildToolCallLimitNotice,
+  collectCalledToolNames,
   computeResultCount,
   computeToolCallStatus,
   countToolCallsByName,
@@ -100,6 +101,28 @@ describe('tool-call-analysis', () => {
       expect(counts.get('duliday_job_list')).toBe(2);
       expect(counts.get('geocode')).toBe(1);
       expect(counts.size).toBe(2);
+    });
+  });
+
+  describe('collectCalledToolNames', () => {
+    it('returns empty set when no steps', () => {
+      expect(collectCalledToolNames([])).toEqual(new Set());
+    });
+
+    it('dedupes tool names across steps', () => {
+      const steps = [
+        { toolCalls: [{ toolName: 'duliday_job_list' }, { toolName: 'geocode' }] },
+        { toolCalls: [{ toolName: 'duliday_job_list' }] },
+      ];
+      expect(collectCalledToolNames(steps)).toEqual(new Set(['duliday_job_list', 'geocode']));
+    });
+
+    it('ignores steps without toolCalls and invalid entries', () => {
+      const steps = [
+        {},
+        { toolCalls: [{ toolName: '' }, { toolName: 'skip_reply' }] },
+      ];
+      expect(collectCalledToolNames(steps)).toEqual(new Set(['skip_reply']));
     });
   });
 
