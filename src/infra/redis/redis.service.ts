@@ -61,10 +61,11 @@ export class RedisService implements OnModuleInit {
   }
 
   /**
-   * 获取 Redis 原始客户端（不推荐直接使用）
+   * 获取 Redis 原始客户端
    *
-   * 警告：直接使用原始客户端会绕过环境前缀，可能导致跨环境数据污染。
-   * 优先使用本服务暴露的方法（get/set/setNx/eval/incrby 等）。
+   * @deprecated 直接使用原始客户端会绕过环境前缀（RUNTIME_ENV），可能导致跨环境数据污染。
+   *   新代码请使用本服务暴露的方法（get/set/setNx/eval/incrby 等）；仅在对接 BullMQ
+   *   这类要求传入 ioredis 实例的三方库时使用，且调用点需要自行维护 key 前缀隔离。
    */
   getClient(): Redis {
     return this.redisClient;

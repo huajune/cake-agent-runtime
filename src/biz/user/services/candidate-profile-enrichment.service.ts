@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { CustomerService } from '@wecom/customer/customer.service';
 
 export interface CandidateGenderLookupParams {
@@ -11,6 +11,8 @@ export interface CandidateGenderLookupParams {
 
 @Injectable()
 export class CandidateProfileEnrichmentService {
+  private readonly logger = new Logger(CandidateProfileEnrichmentService.name);
+
   constructor(private readonly customerService: CustomerService) {}
 
   async lookupGenderFromCustomerDetail(
@@ -28,15 +30,22 @@ export class CandidateProfileEnrichmentService {
       return null;
     }
 
-    const detail = await this.customerService.getCustomerDetailV2({
-      token,
-      imBotId,
-      imContactId,
-      wecomUserId,
-      externalUserId,
-    });
-
-    return this.normalizeGenderValue(detail?.data?.gender);
+    try {
+      const detail = await this.customerService.getCustomerDetailV2({
+        token,
+        imBotId,
+        imContactId,
+        wecomUserId,
+        externalUserId,
+      });
+      return this.normalizeGenderValue(detail?.data?.gender);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `getCustomerDetailV2 失败，跳过性别补全: ${message} (imBotId=${imBotId ?? '-'}, wecomUserId=${wecomUserId ?? '-'})`,
+      );
+      return null;
+    }
   }
 
   private normalizeGenderValue(value: unknown): '男' | '女' | null {
