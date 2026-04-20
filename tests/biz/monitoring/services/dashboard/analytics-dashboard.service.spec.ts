@@ -113,6 +113,7 @@ describe('AnalyticsDashboardService', () => {
 
   const mockUserHostingService = {
     getUserHostingStatus: jest.fn(),
+    getActiveUsersByDateRange: jest.fn(),
   };
 
   const mockCacheService = {
@@ -240,6 +241,7 @@ describe('AnalyticsDashboardService', () => {
       total: 0,
     });
     mockMessageProcessingService.getActiveUsers.mockResolvedValue([]);
+    mockUserHostingService.getActiveUsersByDateRange.mockResolvedValue([]);
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     mockDailyStatsRepository.getLatestDailyStat.mockResolvedValue({ date: yesterday });
     mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([buildHourlyStatsRow()]);
@@ -409,11 +411,11 @@ describe('AnalyticsDashboardService', () => {
     });
 
     it('should fetch todayUsers only for today range', async () => {
-      mockMessageProcessingService.getActiveUsers.mockResolvedValue([
+      mockUserHostingService.getActiveUsersByDateRange.mockResolvedValue([
         {
           chatId: 'chat-1',
-          userId: 'user-1',
-          userName: 'User One',
+          odId: 'user-1',
+          odName: 'User One',
           messageCount: 3,
           tokenUsage: 100,
           firstActiveAt: Date.now(),

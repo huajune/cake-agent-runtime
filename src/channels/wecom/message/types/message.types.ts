@@ -42,6 +42,8 @@ export interface AgentReply {
 export interface AgentInvokeResult {
   reply: AgentReply;
   isFallback: boolean;
+  /** Agent 本轮主动沉默（调用了 skip_reply 工具），reply.content 可能为空 */
+  isSkipped?: boolean;
   processingTime: number;
   /** 扁平化的工具调用序列（含 resultCount/status/durationMs） */
   toolCalls?: AgentToolCall[];

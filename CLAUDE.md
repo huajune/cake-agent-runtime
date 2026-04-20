@@ -141,10 +141,11 @@ WeChat User Message
       ├── Deduplication check
       ├── Message filtering
       ├── Save to history
-      ├── Smart merge (if enabled, 1s window / max 3 messages)
+      ├── Debounce merge (每条消息注册一个 delay=静默窗口 的 Bull job，
+      │                  Worker 触发时若距最后一条消息静默足够久才处理)
       └── Return 200 OK immediately
   → [Async Queue Processing]
-      ├── Aggregate messages
+      ├── 取出静默窗口内累积的全部消息并合并
       ├── Call Agent (OrchestratorService.run → Provider → generateText)
       ├── Split response (MessageSplitter: \n\n + ~)
       └── Send reply (with delay)
@@ -217,10 +218,13 @@ Response format:
 | `PORT` | `8585` | 服务端口 | main.ts |
 | `MAX_HISTORY_PER_CHAT` | `60` | Redis 消息数限制 | message-history |
 | `HISTORY_TTL_MS` | `7200000` | Redis 消息 TTL (2h) | message-history |
-| `INITIAL_MERGE_WINDOW_MS` | `1000` | 聚合等待时间 | message-merge |
-| `MAX_MERGED_MESSAGES` | `3` | 最大聚合条数 | message-merge |
 | `TYPING_DELAY_PER_CHAR_MS` | `100` | 打字延迟/字符 | message-sender |
 | `PARAGRAPH_GAP_MS` | `2000` | 段落间隔 | message-sender |
+
+> **消息聚合参数已下沉到托管配置（hosting-config）**：
+> - `initialMergeWindowMs`（默认 `3000`）— 距离最后一条用户消息静默多久后才触发 Agent（debounce 窗口）
+> - 通过 Dashboard / Supabase `hosting_config` 表动态调整，不再走环境变量
+> - 旧的 `INITIAL_MERGE_WINDOW_MS` / `MAX_MERGED_MESSAGES` 已废弃（`MAX_MERGED_MESSAGES` 因改用 debounce 不再需要上限）
 
 #### Layer 3: 硬编码默认值（无需配置）
 **特点**：内置于代码，极少需要修改
@@ -241,10 +245,13 @@ Response format:
 const model = this.router.resolveByRole('chat'); // AGENT_CHAT_MODEL
 
 // Layer 2: 可选，有默认值
-this.mergeWindow = parseInt(this.configService.get('INITIAL_MERGE_WINDOW_MS', '1000'));
+const paragraphGap = parseInt(this.configService.get('PARAGRAPH_GAP_MS', '2000'));
 
 // Layer 3: 硬编码
 private readonly THROTTLE_WINDOW_MS = 5 * 60 * 1000;
+
+// 托管配置（Supabase hosting_config 动态读取）
+const mergeDelayMs = this.runtimeConfig.getMergeDelayMs(); // initialMergeWindowMs
 ```
 
 ## Code Standards
@@ -351,9 +358,11 @@ NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-key
 
 # === Layer 2: 按需覆盖 ===
-# INITIAL_MERGE_WINDOW_MS=3000  # 默认 1000
-# MAX_MERGED_MESSAGES=5         # 默认 3
+# PARAGRAPH_GAP_MS=2500          # 段落间隔，默认 2000
+# TYPING_DELAY_PER_CHAR_MS=120   # 打字延迟/字符，默认 100
 ```
+
+> 消息聚合的 `initialMergeWindowMs`（debounce 静默窗口）已改为通过 Dashboard 的托管配置调整，不再是环境变量。
 
 完整配置项见 `.env.example`。
 

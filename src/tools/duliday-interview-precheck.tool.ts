@@ -73,7 +73,17 @@ const FIELD_LABELS: Record<string, string> = {
 
 const GENDER_ENUM_HINTS = Object.values(SPONGE_GENDER_MAPPING);
 
-const HEALTH_CERT_ENUM_HINTS = Object.values(SPONGE_HEALTH_CERTIFICATE_MAPPING);
+/**
+ * 健康证首次询问时只暴露"有 / 无"两个选项给模型，让模型以最自然的方式问候选人。
+ *
+ * 业务背景：badcase `ub4vrq3v` —— "无但接受办理健康证" 等中间态选项会让候选人困惑，
+ * 且现实中拒办的候选人通常不会来报名，默认按"无但接受办理健康证"收敛即可；只有候选人
+ * 主动说"不接受办理"时才标记为"无且不接受办理健康证"。
+ *
+ * 枚举的完整三值（有 / 无但接受办理 / 无且不接受办理）仍保留在 SPONGE_HEALTH_CERTIFICATE_MAPPING
+ * 用于 API 提交，不在此处展示。
+ */
+const HEALTH_CERT_ENUM_HINTS = ['有', '无'];
 
 const HEALTH_CERT_TYPE_ENUM_HINTS = Object.values(SPONGE_HEALTH_CERTIFICATE_TYPE_MAPPING);
 
@@ -432,13 +442,16 @@ function normalizeHealthCertificateValue(value: string | null | undefined): stri
   const text = normalizePolicyText(value);
   if (!text) return null;
   if (/^有$|有健康证/.test(text)) return '有';
-  if (/无但接受办理健康证|可以办健康证|可办健康证|接受办健康证/.test(text)) {
-    return '无但接受办理健康证';
-  }
-  if (/无且不接受办理健康证|不办健康证|不接受办健康证/.test(text)) {
+  // 显式拒办优先识别，避免被下方"无但接受办理"模式误吞
+  if (/无且不接受办理健康证|不办健康证|不接受办健康证|不接受办理/.test(text)) {
     return '无且不接受办理健康证';
   }
-  if (/^无$|没健康证|没有健康证|无健康证/.test(text)) return '无';
+  if (/无但接受办理健康证|可以办健康证|可办健康证|接受办健康证|接受办理/.test(text)) {
+    return '无但接受办理健康证';
+  }
+  // 候选人直接答"无/没有"等，按两步问法默认视为"无但接受办理健康证"
+  // （现实中拒办的候选人通常不会来报名，业务侧已达成共识；后续若追加拒办信号会覆盖）。
+  if (/^无$|没健康证|没有健康证|无健康证/.test(text)) return '无但接受办理健康证';
   return text;
 }
 
@@ -453,6 +466,24 @@ function normalizeEducationValue(value: string | null | undefined): string | nul
 function normalizeIdentityText(value: boolean | null | undefined): string | null {
   if (value == null) return null;
   return value ? '学生' : '社会人士';
+}
+
+/**
+ * 当已知年龄 ≥ 25 时，默认候选人为社会人士，不再询问"是否学生"。
+ *
+ * 业务背景：badcase `2j20ew2z` —— 候选人 30 岁还被问"是不是学生"。
+ * 25 岁是保守分界（硕士毕业通常 24~25 岁），避免误判个别超龄学生。
+ *
+ * 返回 null 表示无法判定（候选人自报/档案里显式 is_student 仍以原始值为准）。
+ */
+function inferIdentityFromAge(ageText: string | null | undefined): string | null {
+  if (!ageText) return null;
+  const match = ageText.match(/\d+/);
+  if (!match) return null;
+  const age = parseInt(match[0], 10);
+  if (!Number.isFinite(age)) return null;
+  if (age >= 25) return '社会人士';
+  return null;
 }
 
 function normalizeTextValue(value: unknown): string | null {
@@ -514,14 +545,17 @@ function buildKnownFieldMap(params: {
     normalizePolicyText(info?.household_register_province) ||
     normalizePolicyText(profile?.household_register_province) ||
     null;
+  const ageText = normalizePolicyText(info?.age) || normalizePolicyText(profile?.age) || null;
   const identityLabel =
-    normalizeIdentityText(info?.is_student) || normalizeIdentityText(profile?.is_student);
+    normalizeIdentityText(info?.is_student) ||
+    normalizeIdentityText(profile?.is_student) ||
+    inferIdentityFromAge(ageText);
 
   const map: Record<string, string | null> = {
     姓名: normalizePolicyText(info?.name) || normalizePolicyText(profile?.name),
     联系电话: normalizePolicyText(info?.phone) || normalizePolicyText(profile?.phone),
     性别: normalizeGenderValue(info?.gender) || normalizeGenderValue(profile?.gender),
-    年龄: normalizePolicyText(info?.age) || normalizePolicyText(profile?.age),
+    年龄: ageText,
     面试时间: normalizePolicyText(info?.interview_time),
     学历: normalizeEducationValue(info?.education) || normalizeEducationValue(profile?.education),
     健康证情况:

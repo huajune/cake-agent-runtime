@@ -72,6 +72,21 @@ interface StepLike {
   toolCalls?: Array<{ toolName: string }>;
 }
 
+/** 本轮 prior steps 已调用过的所有工具名（去重）。 */
+export function collectCalledToolNames(steps: StepLike[]): Set<string> {
+  const names = new Set<string>();
+  for (const step of steps) {
+    const calls = step.toolCalls;
+    if (!Array.isArray(calls)) continue;
+    for (const call of calls) {
+      if (typeof call.toolName === 'string' && call.toolName.length > 0) {
+        names.add(call.toolName);
+      }
+    }
+  }
+  return names;
+}
+
 /** 统计已执行 steps 中各工具的累计调用次数。 */
 export function countToolCallsByName(steps: StepLike[]): Map<string, number> {
   const counts = new Map<string, number>();

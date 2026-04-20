@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import { UserHostingStatus } from '../entities/user-hosting-status.entity';
-import { UserProfile } from '../types/user.types';
+import { UserActivityAggregate, UserProfile } from '../types/user.types';
 
 /**
  * 用户托管状态 Repository
@@ -84,6 +84,56 @@ export class UserHostingRepository extends BaseRepository {
       odName: row.od_name,
       groupName: row.group_name,
     }));
+  }
+
+  /**
+   * 按日期范围聚合查询活跃用户（通过 RPC get_active_users_from_user_activity_by_range）
+   *
+   * 数据源为 user_activity（按天聚合表），时区口径与写入侧对齐（Asia/Shanghai）。
+   */
+  async findActiveUsersByDateRange(
+    startDate: Date,
+    endDate: Date,
+  ): Promise<UserActivityAggregate[]> {
+    if (!this.isAvailable()) {
+      return [];
+    }
+
+    try {
+      const result = await this.rpc<
+        Array<{
+          chat_id: string;
+          od_id: string | null;
+          od_name: string | null;
+          group_id: string | null;
+          group_name: string | null;
+          message_count: string;
+          token_usage: string;
+          first_active_at: string;
+          last_active_at: string;
+        }>
+      >('get_active_users_from_user_activity_by_range', {
+        p_start_date: startDate.toISOString(),
+        p_end_date: endDate.toISOString(),
+      });
+
+      if (!result) return [];
+
+      return result.map((row) => ({
+        chatId: row.chat_id,
+        odId: row.od_id ?? undefined,
+        odName: row.od_name ?? undefined,
+        groupId: row.group_id ?? undefined,
+        groupName: row.group_name ?? undefined,
+        messageCount: parseInt(row.message_count, 10),
+        tokenUsage: parseInt(row.token_usage, 10),
+        firstActiveAt: new Date(row.first_active_at).getTime(),
+        lastActiveAt: new Date(row.last_active_at).getTime(),
+      }));
+    } catch (error) {
+      this.logger.error('查询 user_activity 活跃用户失败', error);
+      return [];
+    }
   }
 
   /**

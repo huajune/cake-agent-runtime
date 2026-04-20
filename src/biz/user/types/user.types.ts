@@ -6,3 +6,18 @@ export interface UserProfile {
   odName?: string;
   groupName?: string;
 }
+
+/**
+ * user_activity 聚合查询结果（按日期范围）
+ */
+export interface UserActivityAggregate {
+  chatId: string;
+  odId?: string;
+  odName?: string;
+  groupId?: string;
+  groupName?: string;
+  messageCount: number;
+  tokenUsage: number;
+  firstActiveAt: number;
+  lastActiveAt: number;
+}

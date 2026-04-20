@@ -22,6 +22,7 @@ import { buildInviteToGroupTool } from './invite-to-group.tool';
 import { buildSendStoreLocationTool } from './send-store-location.tool';
 import { buildRaiseRiskAlertTool } from './raise-risk-alert.tool';
 import { buildRequestHandoffTool } from './request-handoff.tool';
+import { buildSkipReplyTool } from './skip-reply.tool';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
@@ -163,6 +164,14 @@ export class ToolRegistryService {
           sessionService,
         ),
       }),
+
+      // ===== 沉默工具 =====
+      skip_reply: createToolDefinition({
+        name: 'skip_reply',
+        description:
+          '主动跳过本轮回复：候选人仅发纯确认词（好的/谢谢/嗯）且上轮已完成推进时调用，调用后本轮不再对外发送任何消息。',
+        create: buildSkipReplyTool(),
+      }),
     };
 
     this.logger.log(`内置工具已注册: ${Object.keys(this.registry).join(', ')}`);
@@ -182,6 +191,7 @@ export class ToolRegistryService {
       'invite_to_group',
       'raise_risk_alert',
       'request_handoff',
+      'skip_reply',
     ],
     'group-operations': [],
     evaluation: [],

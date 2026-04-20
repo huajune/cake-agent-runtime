@@ -164,6 +164,32 @@ export class MessageTrackingService {
   }
 
   /**
+   * 聚合时回收源消息的 processing 流水
+   *
+   * 聚合路径下，每条入站消息在 intake 时已写入一条 processing 行（recordMessageReceived），
+   * 但终态只会回写到 batchId 那一行，源 messageId 行会永远停在 'processing'。
+   * 该方法在聚合 trace 创建时同步回收：删除源行 + 扣减 activeRequests 计数。
+   */
+  async dropMergedSourceRecords(sourceMessageIds: string[], batchId: string): Promise<void> {
+    if (sourceMessageIds.length === 0) return;
+    try {
+      await this.messageProcessingService.deleteByMessageIds(sourceMessageIds);
+    } catch (err) {
+      this.logger.warn(
+        `[聚合回收] 删除源消息处理记录失败 batchId=${batchId}, sources=${sourceMessageIds.join(',')}:`,
+        err,
+      );
+      return;
+    }
+
+    try {
+      await this.cacheService.incrementActiveRequests(-sourceMessageIds.length);
+    } catch (err) {
+      this.logger.warn(`[聚合回收] activeRequests 扣减失败 batchId=${batchId}:`, err);
+    }
+  }
+
+  /**
    * 记录消息处理失败
    */
   recordFailure(

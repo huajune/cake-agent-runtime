@@ -221,6 +221,26 @@ export class ReplyWorkflowService {
       });
     }
 
+    // Agent 主动沉默：跳过 WeCom 发送，但仍完成本轮流水与观测。
+    if (agentResult.isSkipped) {
+      this.logger.log(`${logPrefix}[${contactName}] Agent 主动沉默，跳过消息发送`);
+      await this.wecomObservability.markReplySkipped(traceId);
+      const skippedMetadata = await this.buildSuccessMetadata(
+        traceId,
+        agentResult,
+        { segmentCount: 0 },
+        scenario,
+        batchContext?.batchId,
+      );
+      this.monitoringService.recordSuccess(traceId, skippedMetadata);
+      await this.markMessagesAsProcessed(
+        batchContext
+          ? batchContext.allMessages.map((message) => message.messageId)
+          : [params.primaryMessage.messageId],
+      );
+      return;
+    }
+
     const deliveryContext = this.buildDeliveryContext(parsed, traceId);
     const deliveryResult = await this.deliveryService.deliverReply(
       agentResult.reply,
@@ -255,15 +275,24 @@ export class ReplyWorkflowService {
     scenario: ScenarioType,
     batchId?: string,
   ): Promise<MonitoringMetadata & { fallbackSuccess?: boolean; batchId?: string }> {
+    const replyPreview = agentResult.isSkipped
+      ? `[主动沉默] ${this.extractSkipReason(agentResult) || '本轮无需回复'}`
+      : agentResult.reply.content;
     return this.wecomObservability.buildSuccessMetadata(traceId, {
       scenario,
       batchId,
-      replyPreview: agentResult.reply.content,
+      replyPreview,
       replySegments: deliveryResult.segmentCount,
       extraResponse: {
         processingTimeMs: agentResult.processingTime,
       },
     });
+  }
+
+  private extractSkipReason(agentResult: AgentInvokeResult): string | undefined {
+    const call = agentResult.toolCalls?.find((tc) => tc.toolName === 'skip_reply');
+    const reason = (call?.args as { reason?: unknown } | undefined)?.reason;
+    return typeof reason === 'string' && reason.trim().length > 0 ? reason.trim() : undefined;
   }
 
   private async markMessagesAsProcessed(messageIds: string[]): Promise<void> {
@@ -343,7 +372,8 @@ export class ReplyWorkflowService {
 
       const processingTime = Date.now() - startTime;
       const content = this.normalizeContent(result.text);
-      if (!content) {
+      const isSkipped = result.toolCalls?.some((call) => call.toolName === 'skip_reply') ?? false;
+      if (!content && !isSkipped) {
         const emptyResponseError = new Error('Agent 返回空响应') as AgentError;
         emptyResponseError.isAgentError = true;
         emptyResponseError.agentMeta = {
@@ -355,12 +385,15 @@ export class ReplyWorkflowService {
       }
 
       this.logger.log(
-        `Agent 调用成功，耗时 ${processingTime}ms，tokens=${result.usage?.totalTokens || 'N/A'}`,
+        `Agent 调用成功，耗时 ${processingTime}ms，tokens=${result.usage?.totalTokens || 'N/A'}${
+          isSkipped ? '，本轮主动沉默' : ''
+        }`,
       );
 
       const invokeResult = {
         reply: { content, reasoning: result.reasoning, usage: result.usage },
         isFallback: false,
+        isSkipped,
         processingTime,
         toolCalls: result.toolCalls,
         agentSteps: result.agentSteps,

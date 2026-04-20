@@ -197,11 +197,9 @@ describe('buildInterviewPrecheckTool', () => {
     ]);
     // enumHints 应包含缺失字段涉及的枚举
     expect(result.bookingChecklist.enumHints.gender).toEqual(['男', '女']);
-    expect(result.bookingChecklist.enumHints.healthCertificate).toEqual([
-      '有',
-      '无但接受办理健康证',
-      '无且不接受办理健康证',
-    ]);
+    // 健康证首次询问只暴露 有/无 两个选项，避免中间态让候选人困惑；
+    // 详见 badcase ub4vrq3v + duliday-interview-precheck.tool.ts 的 HEALTH_CERT_ENUM_HINTS
+    expect(result.bookingChecklist.enumHints.healthCertificate).toEqual(['有', '无']);
     expect(result.bookingChecklist.enumHints.education).toContain('高中');
     // screeningCriteria 应包含岗位硬性门槛
     expect(result.screeningCriteria).toEqual(
@@ -478,6 +476,147 @@ describe('buildInterviewPrecheckTool', () => {
         starterFields: ['面试时间'],
       }),
     );
+  });
+
+  it('should default identity to 社会人士 when age >= 25 (skip is_student question)', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-04-08',
+                  interviewStartTime: '13:30',
+                  interviewEndTime: '16:30',
+                },
+              ],
+            },
+            interviewSupplement: [{ interviewSupplementId: 501, interviewSupplement: '身份' }],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      { jobId: 100, requestedDate: '2026-04-08' },
+      {
+        // 年龄已知 30 岁，is_student 未明确，按派生规则应默认社会人士
+        profile: {
+          name: null,
+          phone: null,
+          gender: null,
+          age: '30',
+          is_student: null,
+          education: null,
+          has_health_certificate: null,
+        },
+        sessionFacts: {
+          interview_info: { age: '30' },
+          preferences: {},
+          reasoning: 'test',
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.bookingChecklist.missingFields).not.toContain('身份');
+    expect(result.bookingChecklist.templateText).toContain('身份：社会人士');
+    // 年龄 < 25 的情况下，identity 应仍然缺失 —— 对照用例见下
+  });
+
+  it('should still ask identity when age < 25 and is_student unknown', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-04-08',
+                  interviewStartTime: '13:30',
+                  interviewEndTime: '16:30',
+                },
+              ],
+            },
+            interviewSupplement: [{ interviewSupplementId: 501, interviewSupplement: '身份' }],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      { jobId: 100, requestedDate: '2026-04-08' },
+      {
+        profile: {
+          name: null,
+          phone: null,
+          gender: null,
+          age: '20',
+          is_student: null,
+          education: null,
+          has_health_certificate: null,
+        },
+        sessionFacts: {
+          interview_info: { age: '20' },
+          preferences: {},
+          reasoning: 'test',
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.bookingChecklist.missingFields).toContain('身份');
+    expect(result.bookingChecklist.enumHints.identity).toEqual(['学生', '社会人士']);
+  });
+
+  it('should normalize bare "无" to "无但接受办理健康证" (two-step ask default)', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-04-08',
+                  interviewStartTime: '13:30',
+                  interviewEndTime: '16:30',
+                },
+              ],
+            },
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      { jobId: 100, requestedDate: '2026-04-08' },
+      {
+        profile: {
+          name: null,
+          phone: null,
+          gender: null,
+          age: null,
+          is_student: null,
+          education: null,
+          has_health_certificate: null,
+        },
+        sessionFacts: {
+          interview_info: { has_health_certificate: '无' },
+          preferences: {},
+          reasoning: 'test',
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    // 候选人仅答"无"，现实默认视作"无但接受办理健康证"，不再询问；
+    // 仅在候选人主动表达"不接受办理"时才标记为"无且不接受办理健康证"。
+    expect(result.bookingChecklist.missingFields).not.toContain('健康证情况');
+    expect(result.bookingChecklist.templateText).toContain('健康证：无但接受办理健康证');
   });
 
   it('should switch to progressive collection guidance when candidate resists filling many fields', async () => {

@@ -2,18 +2,28 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { streamText, stepCountIs, type generateText } from 'ai';
+import { streamText, stepCountIs, hasToolCall, type generateText } from 'ai';
 import { MemoryService } from '@memory/memory.service';
 import { ReliableService } from '@providers/reliable.service';
 import { AgentPreparationService, type PreparedAgentContext } from './agent-preparation.service';
 import type { AgentError } from '@shared-types/agent-error.types';
 import {
   buildToolCallLimitNotice,
+  collectCalledToolNames,
   computeResultCount,
   computeToolCallStatus,
   findToolsExceedingLimit,
   MAX_SAME_TOOL_CALLS_PER_TURN,
 } from './tool-call-analysis';
+
+/**
+ * 跳过本轮回复的沉默工具名。
+ *
+ * 约束：
+ * - 只能在本轮尚未发生任何其它工具调用时使用
+ * - 一旦被调用，stopWhen 立即结束本轮 loop，不再进入下一步
+ */
+const SKIP_REPLY_TOOL_NAME = 'skip_reply';
 
 /** prepareStep 函数类型（沿用 ai SDK，本地不必锁死 TOOLS 泛型）。 */
 type PrepareStepFn = NonNullable<Parameters<typeof generateText>[0]['prepareStep']>;
@@ -83,7 +93,7 @@ export class AgentRunnerService {
           messages: ctx.typedMessages,
           tools: ctx.tools,
           maxOutputTokens: this.maxOutputTokens,
-          stopWhen: stepCountIs(ctx.maxSteps),
+          stopWhen: [stepCountIs(ctx.maxSteps), hasToolCall(SKIP_REPLY_TOOL_NAME)],
           prepareStep: this.buildPrepareStep(ctx),
           providerOptions,
         },
@@ -140,7 +150,7 @@ export class AgentRunnerService {
         messages: ctx.typedMessages,
         tools: ctx.tools,
         maxOutputTokens: this.maxOutputTokens,
-        stopWhen: stepCountIs(ctx.maxSteps),
+        stopWhen: [stepCountIs(ctx.maxSteps), hasToolCall(SKIP_REPLY_TOOL_NAME)],
         prepareStep: this.buildPrepareStep(ctx),
         providerOptions,
         onFinish: ({ usage, steps, text }) => {
@@ -256,14 +266,17 @@ export class AgentRunnerService {
   }
 
   /**
-   * 构造 prepareStep 钩子：单轮内同名工具调用 ≥ MAX_SAME_TOOL_CALLS_PER_TURN 时动态屏蔽。
+   * 构造 prepareStep 钩子：动态屏蔽工具以收敛本轮行为。
    *
-   * 触发场景：模型在一轮内反复调用同一工具试探不同 filter（典型如 duliday_job_list 用
-   * 不稳定字段查询失败后无限扩面）。屏蔽方式 = 通过 activeTools 白名单移除超限工具，
-   * 同时在 system 末尾追加一段拦截提示，告知模型为什么这个工具消失了，应基于已有结果收敛。
+   * 两类屏蔽规则：
+   * 1. **同名工具调用超限**：单轮同一工具 ≥ MAX_SAME_TOOL_CALLS_PER_TURN 次时屏蔽
+   *    （典型如 duliday_job_list 用不稳定字段反复扩面）。
+   * 2. **skip_reply 互斥**：本轮只要已经调用过任何其它工具，禁止再调 skip_reply——
+   *    沉默只能发生在完全没有业务动作的轮次，已有动作后的沉默属于误用。
    *
-   * 备选方案 stopWhen 会直接结束整轮，可能导致没有最终回复输出；prepareStep 让模型仍能
-   * 用其他工具或文本完成本轮。
+   * 屏蔽方式 = activeTools 白名单移除 + system 末尾拼拦截说明。备选方案 stopWhen
+   * 会直接结束整轮，可能导致没有最终回复输出；prepareStep 让模型仍能用其他工具或
+   * 文本完成本轮。
    */
   private buildPrepareStep(ctx: PreparedAgentContext): PrepareStepFn | undefined {
     const baseTools = Object.keys(ctx.tools ?? {});
@@ -273,12 +286,28 @@ export class AgentRunnerService {
     const logger = this.logger;
 
     return ({ steps }) => {
-      const blocked = findToolsExceedingLimit(steps, MAX_SAME_TOOL_CALLS_PER_TURN);
+      const overused = findToolsExceedingLimit(steps, MAX_SAME_TOOL_CALLS_PER_TURN);
+
+      // 本轮已调用过业务工具（非 skip_reply 自身）→ 屏蔽 skip_reply
+      const called = collectCalledToolNames(steps);
+      const hasBusinessAction = [...called].some((name) => name !== SKIP_REPLY_TOOL_NAME);
+      const skipReplyBlocked =
+        hasBusinessAction && baseTools.includes(SKIP_REPLY_TOOL_NAME) ? [SKIP_REPLY_TOOL_NAME] : [];
+
+      const blocked = Array.from(new Set([...overused, ...skipReplyBlocked]));
       if (blocked.length === 0) return {};
 
       const activeTools = baseTools.filter((name) => !blocked.includes(name));
-      const notice = buildToolCallLimitNotice(blocked, MAX_SAME_TOOL_CALLS_PER_TURN);
-      const system = notice ? `${baseSystem}\n\n${notice}` : baseSystem;
+      const noticeParts: string[] = [];
+      const overuseNotice = buildToolCallLimitNotice(overused, MAX_SAME_TOOL_CALLS_PER_TURN);
+      if (overuseNotice) noticeParts.push(overuseNotice);
+      if (skipReplyBlocked.length > 0) {
+        noticeParts.push(
+          `⚠️ 系统拦截：本轮已发生业务工具调用，不可再调用 \`${SKIP_REPLY_TOOL_NAME}\`。沉默仅适用于本轮完全无业务动作且候选人仅发确认词的场景。`,
+        );
+      }
+      const system =
+        noticeParts.length > 0 ? `${baseSystem}\n\n${noticeParts.join('\n')}` : baseSystem;
 
       logger.warn(
         `工具调用硬截断: blocked=${blocked.join(',')} stepCount=${steps.length} sessionId=${sessionId}`,

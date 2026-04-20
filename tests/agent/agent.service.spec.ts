@@ -14,6 +14,7 @@ jest.mock('ai', () => ({
   }),
   streamText: jest.fn(),
   stepCountIs: jest.fn().mockReturnValue(() => false),
+  hasToolCall: jest.fn().mockReturnValue(() => false),
 }));
 
 /**

@@ -63,6 +63,8 @@ interface WecomTraceTimings {
   deliveryEndAt?: number;
   fallbackStartAt?: number;
   fallbackEndAt?: number;
+  /** Agent 主动沉默时间戳（调用 skip_reply 工具 → 跳过投递） */
+  replySkippedAt?: number;
   completedAt?: number;
 }
 
@@ -249,12 +251,23 @@ export class WecomMessageObservabilityService {
 
     await this.traceStore.set(targetTraceId, target);
 
+    const recyclableSourceIds = sourceMessageIds.filter((id) => id !== targetTraceId);
+
     // 源 trace 已贡献完前置埋点，清理掉避免 Redis 积压
     await Promise.all(
-      sourceMessageIds
-        .filter((id) => id !== targetTraceId)
-        .map((id) => this.traceStore.delete(id).catch(() => undefined)),
+      recyclableSourceIds.map((id) => this.traceStore.delete(id).catch(() => undefined)),
     );
+
+    // 源 messageId 在 intake 时已落了一条 processing 流水，聚合 trace 接手后这些源行
+    // 不会再走到终态。异步删掉避免在监控页留下永远「处理中」的孤儿。
+    // Fire-and-forget: 源记录清理不在回复关键路径上，Supabase DELETE 的延迟
+    // 不应阻塞 workerStartAt 和后续 Agent 调用。
+    this.trackingService
+      .dropMergedSourceRecords(recyclableSourceIds, targetTraceId)
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`[聚合回收] 异步清理源记录失败 batchId=${targetTraceId}: ${message}`);
+      });
   }
 
   async markAiStart(messageId: string): Promise<void> {
@@ -306,6 +319,28 @@ export class WecomMessageObservabilityService {
     if (!trace) return;
     trace.timings.deliveryEndAt = Date.now();
     trace.deliveryResult = deliveryResult;
+    await this.traceStore.set(messageId, trace);
+  }
+
+  /**
+   * 标记本轮为主动沉默：skip_reply 工具被调用，不发送任何消息。
+   *
+   * 仍写入 delivery 时间戳与零片段 deliveryResult，确保耗时统计与流水结构完整。
+   */
+  async markReplySkipped(messageId: string): Promise<void> {
+    const trace = await this.traceStore.get<WecomTraceContext>(messageId);
+    if (!trace) return;
+    const now = Date.now();
+    trace.timings.replySkippedAt = now;
+    trace.timings.deliveryStartAt = trace.timings.deliveryStartAt ?? now;
+    trace.timings.deliveryEndAt = trace.timings.deliveryEndAt ?? now;
+    trace.deliveryResult = {
+      success: true,
+      segmentCount: 0,
+      failedSegments: 0,
+      deliveredSegments: 0,
+      totalTime: 0,
+    };
     await this.traceStore.set(messageId, trace);
   }
 

@@ -221,28 +221,7 @@ export class AnalyticsQueryService {
   async getTodayUsersFromDatabase(): Promise<TodayUser[]> {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
-    const dbUsers = await this.messageProcessingService.getActiveUsers(todayStart, new Date());
-
-    const chatIds = dbUsers.map((u) => u.chatId);
-    const pausedSet = new Set<string>();
-
-    for (const chatId of chatIds) {
-      const status = await this.userHostingService.getUserHostingStatus(chatId);
-      if (status.isPaused) {
-        pausedSet.add(chatId);
-      }
-    }
-
-    return dbUsers.map((user) => ({
-      chatId: user.chatId,
-      odId: user.userId || user.chatId,
-      odName: user.userName || user.chatId,
-      messageCount: user.messageCount,
-      tokenUsage: user.tokenUsage,
-      firstActiveAt: user.firstActiveAt,
-      lastActiveAt: user.lastActiveAt,
-      isPaused: pausedSet.has(user.chatId),
-    }));
+    return this.buildTodayUsers(todayStart, new Date());
   }
 
   // ========================================
@@ -280,22 +259,29 @@ export class AnalyticsQueryService {
     const endDate = new Date(date);
     endDate.setHours(23, 59, 59, 999);
 
-    const dbUsers = await this.messageProcessingService.getActiveUsers(startDate, endDate);
+    return this.buildTodayUsers(startDate, endDate);
+  }
 
-    const chatIds = dbUsers.map((u) => u.chatId);
+  /**
+   * 从 user_activity 聚合构建 TodayUser 列表，并叠加暂停托管状态。
+   */
+  private async buildTodayUsers(startDate: Date, endDate: Date): Promise<TodayUser[]> {
+    const dbUsers = await this.userHostingService.getActiveUsersByDateRange(startDate, endDate);
+
     const pausedSet = new Set<string>();
-
-    for (const chatId of chatIds) {
-      const status = await this.userHostingService.getUserHostingStatus(chatId);
+    for (const user of dbUsers) {
+      const status = await this.userHostingService.getUserHostingStatus(user.chatId);
       if (status.isPaused) {
-        pausedSet.add(chatId);
+        pausedSet.add(user.chatId);
       }
     }
 
     return dbUsers.map((user) => ({
       chatId: user.chatId,
-      odId: user.userId || user.chatId,
-      odName: user.userName || user.chatId,
+      odId: user.odId || user.chatId,
+      odName: user.odName || user.chatId,
+      groupId: user.groupId,
+      groupName: user.groupName,
       messageCount: user.messageCount,
       tokenUsage: user.tokenUsage,
       firstActiveAt: user.firstActiveAt,

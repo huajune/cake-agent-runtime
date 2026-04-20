@@ -73,6 +73,7 @@ describe('AnalyticsQueryService', () => {
 
   const mockUserHostingService = {
     getUserHostingStatus: jest.fn(),
+    getActiveUsersByDateRange: jest.fn(),
   };
 
   const mockCacheService = {
@@ -162,6 +163,7 @@ describe('AnalyticsQueryService', () => {
     });
     mockMessageProcessingService.getActiveUsers.mockResolvedValue([]);
     mockMessageProcessingService.getDailyUserStats.mockResolvedValue([]);
+    mockUserHostingService.getActiveUsersByDateRange.mockResolvedValue([]);
     mockMonitoringRecordRepository.getDashboardHourlyTrend.mockResolvedValue([]);
     mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([]);
     mockErrorLogRepository.getErrorLogsSince.mockResolvedValue([]);
@@ -421,11 +423,11 @@ describe('AnalyticsQueryService', () => {
 
   describe('getTodayUsers', () => {
     it('should return users from database on first call', async () => {
-      mockMessageProcessingService.getActiveUsers.mockResolvedValue([
+      mockUserHostingService.getActiveUsersByDateRange.mockResolvedValue([
         {
           chatId: 'chat-1',
-          userId: 'user-1',
-          userName: 'User One',
+          odId: 'user-1',
+          odName: 'User One',
           messageCount: 3,
           tokenUsage: 150,
           firstActiveAt: Date.now(),
@@ -442,11 +444,11 @@ describe('AnalyticsQueryService', () => {
     });
 
     it('should return in-memory cached users on second call', async () => {
-      mockMessageProcessingService.getActiveUsers.mockResolvedValue([
+      mockUserHostingService.getActiveUsersByDateRange.mockResolvedValue([
         {
           chatId: 'chat-1',
-          userId: 'user-1',
-          userName: 'User One',
+          odId: 'user-1',
+          odName: 'User One',
           messageCount: 3,
           tokenUsage: 150,
           firstActiveAt: Date.now(),
@@ -458,16 +460,16 @@ describe('AnalyticsQueryService', () => {
       await service.getTodayUsers();
       await service.getTodayUsers();
 
-      expect(messageProcessingService.getActiveUsers).toHaveBeenCalledTimes(1);
+      expect(mockUserHostingService.getActiveUsersByDateRange).toHaveBeenCalledTimes(1);
     });
 
     it('should not cache empty user list', async () => {
-      mockMessageProcessingService.getActiveUsers.mockResolvedValue([]);
+      mockUserHostingService.getActiveUsersByDateRange.mockResolvedValue([]);
 
       await service.getTodayUsers();
       await service.getTodayUsers();
 
-      expect(messageProcessingService.getActiveUsers).toHaveBeenCalledTimes(2);
+      expect(mockUserHostingService.getActiveUsersByDateRange).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -477,11 +479,13 @@ describe('AnalyticsQueryService', () => {
 
   describe('getTodayUsersFromDatabase', () => {
     it('should map database users to TodayUser format', async () => {
-      mockMessageProcessingService.getActiveUsers.mockResolvedValue([
+      mockUserHostingService.getActiveUsersByDateRange.mockResolvedValue([
         {
           chatId: 'chat-1',
-          userId: 'user-1',
-          userName: 'User One',
+          odId: 'user-1',
+          odName: 'User One',
+          groupId: 'group-1',
+          groupName: 'Group One',
           messageCount: 5,
           tokenUsage: 200,
           firstActiveAt: 1000,
@@ -497,18 +501,20 @@ describe('AnalyticsQueryService', () => {
         chatId: 'chat-1',
         odId: 'user-1',
         odName: 'User One',
+        groupId: 'group-1',
+        groupName: 'Group One',
         messageCount: 5,
         tokenUsage: 200,
         isPaused: true,
       });
     });
 
-    it('should fallback to chatId for missing userId and userName', async () => {
-      mockMessageProcessingService.getActiveUsers.mockResolvedValue([
+    it('should fallback to chatId for missing odId and odName', async () => {
+      mockUserHostingService.getActiveUsersByDateRange.mockResolvedValue([
         {
           chatId: 'chat-1',
-          userId: null,
-          userName: null,
+          odId: undefined,
+          odName: undefined,
           messageCount: 1,
           tokenUsage: 0,
           firstActiveAt: 1000,
@@ -549,11 +555,11 @@ describe('AnalyticsQueryService', () => {
 
   describe('getUsersByDate', () => {
     it('should return users for a valid date string', async () => {
-      mockMessageProcessingService.getActiveUsers.mockResolvedValue([
+      mockUserHostingService.getActiveUsersByDateRange.mockResolvedValue([
         {
           chatId: 'chat-1',
-          userId: 'user-1',
-          userName: 'User One',
+          odId: 'user-1',
+          odName: 'User One',
           messageCount: 3,
           tokenUsage: 100,
           firstActiveAt: 1000,
@@ -572,16 +578,15 @@ describe('AnalyticsQueryService', () => {
       const result = await service.getUsersByDate('invalid-date');
 
       expect(result).toEqual([]);
-      expect(messageProcessingService.getActiveUsers).not.toHaveBeenCalled();
+      expect(mockUserHostingService.getActiveUsersByDateRange).not.toHaveBeenCalled();
     });
 
     it('should query the correct date range for given date', async () => {
-      mockMessageProcessingService.getActiveUsers.mockResolvedValue([]);
+      mockUserHostingService.getActiveUsersByDateRange.mockResolvedValue([]);
 
       await service.getUsersByDate('2026-03-11');
 
-      const [startDate, endDate] = (messageProcessingService.getActiveUsers as jest.Mock).mock
-        .calls[0];
+      const [startDate, endDate] = mockUserHostingService.getActiveUsersByDateRange.mock.calls[0];
 
       expect(startDate.getHours()).toBe(0);
       expect(startDate.getMinutes()).toBe(0);

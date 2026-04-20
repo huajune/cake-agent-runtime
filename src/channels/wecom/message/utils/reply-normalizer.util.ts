@@ -119,48 +119,37 @@ export class ReplyNormalizer {
   }
 
   private static cleanWhitespace(text: string): string {
-    // 1. 首先将 3 个及以上的连续换行符统一为双换行（段落分隔）
+    // 拆分规则：双换行 → 拆成不同消息（交给下游 MessageSplitter）；单换行 → 保留在同一条消息内。
+    // 1. 将 3 个及以上的连续换行规约为双换行
     const cleaned = text.replace(/\n{3,}/g, '\n\n');
 
-    // 2. 按双换行符分割段落
+    // 2. 按双换行分段
     const paragraphs = cleaned.split(/\n\n/);
 
-    // 3. 对每个段落：按行 trim 后合并为一行
+    // 3. 段内每行 trim 后用单换行拼回，保留候选人可见的换行展示
     const processedParagraphs = paragraphs
       .map((paragraph) => {
         return paragraph
           .split('\n')
           .map((line) => line.trim())
-          .join('');
+          .filter((line) => line.length > 0)
+          .join('\n');
       })
-      .filter((p) => p.length > 0); // 过滤空段落
+      .filter((p) => p.length > 0);
 
-    // 4. 用双换行连接段落，保留段落分隔供下游 MessageSplitter 拆分
+    // 4. 段间用双换行连接，供 MessageSplitter 拆分多条消息
     return processedParagraphs.join('\n\n');
   }
 
   static needsNormalization(text: string): boolean {
     if (!text) return false;
-    // 检测时间标记（需要清理）
+    // 时间标记需要清理
     if (this.TIME_MARKER_PATTERN.test(text)) return true;
-    // 检测列表符号
+    // 列表符号需要转自然语言
     if (/^\s*[-*•]\s+/m.test(text)) return true;
     if (/^\s*\d+[\.\)]\s+/m.test(text)) return true;
-
-    // 检测是否包含单换行符（需要合并的段落内换行）
-    // 如果文本中只包含单换行而没有双换行，说明是段落内断行
-    const hasSingleNewline = /[^\n]\n[^\n]/.test(text);
-    if (hasSingleNewline) {
-      return true;
-    }
-
-    // 检测短行（可能是格式化导致的断行）
-    const lines = text.split('\n').filter((l) => l.trim());
-    if (lines.length > 2) {
-      const avgLength = lines.reduce((sum, l) => sum + l.length, 0) / lines.length;
-      if (avgLength < 30) return true;
-    }
-
+    // 3+ 连续换行需要规约为双换行
+    if (/\n{3,}/.test(text)) return true;
     return false;
   }
 }

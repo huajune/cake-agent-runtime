@@ -96,10 +96,17 @@ export class AcceptInboundMessageService {
       });
     }
 
-    try {
-      await this.recordUserMessageToHistory(messageData, filterResult.content);
-      await this.wecomObservability.markHistoryStored(messageData.messageId);
+    // 历史记录异步化：chat_messages INSERT（Supabase）+ short-term cache（Redis）总计
+    // 约 500ms-2s，阻塞了 PreDispatch。Agent 在 ≥10s 静默窗口后才读历史，
+    // 异步写入有充裕时间完成。失败降级：下一轮看不到本轮 user 消息。
+    void this.recordUserMessageToHistory(messageData, filterResult.content)
+      .then(() => this.wecomObservability.markHistoryStored(messageData.messageId))
+      .catch((error) => {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`[异步历史记录] 写入失败 [${messageData.messageId}]: ${errorMessage}`);
+      });
 
+    try {
       await this.prepareImageIfNeeded(messageData);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

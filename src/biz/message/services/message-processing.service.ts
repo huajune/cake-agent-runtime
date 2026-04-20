@@ -149,6 +149,13 @@ export class MessageProcessingService {
   }
 
   /**
+   * 按 message_id 批量删除处理记录（聚合路径回收源消息流水使用）
+   */
+  async deleteByMessageIds(messageIds: string[]): Promise<number> {
+    return this.messageProcessingRepository.deleteByMessageIds(messageIds);
+  }
+
+  /**
    * 清理过期消息处理记录
    */
   async cleanupRecords(retentionDays: number): Promise<number> {
