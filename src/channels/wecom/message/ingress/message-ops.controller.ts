@@ -17,6 +17,11 @@ export class MessageOpsController {
     return this.messageProcessor.getWorkerStatus();
   }
 
+  @Get('queue-status')
+  getQueueStatus() {
+    return this.messageProcessor.getQueueStatus();
+  }
+
   @Post('worker-concurrency')
   async setWorkerConcurrency(@Body() body: SetWorkerConcurrencyDto) {
     return this.messageProcessor.setConcurrency(body.concurrency);

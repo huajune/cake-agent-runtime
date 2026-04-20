@@ -22,7 +22,10 @@ interface WecomChatSelection {
 @Injectable()
 export class MessageRuntimeConfigService implements OnModuleInit {
   private readonly logger = new Logger(MessageRuntimeConfigService.name);
-  private readonly SNAPSHOT_SYNC_INTERVAL_MS = 1_000;
+  // 运营配置（AI 开关/聚合开关/模型选择）由 Dashboard 手动切换，
+  // 30s 的传播延迟完全可接受；1s 过期会导致每条消息在生产者 + 消费者
+  // 两端各触发一次 Supabase 3 并发查询，约 0.5-2s 阻塞关键路径。
+  private readonly SNAPSHOT_SYNC_INTERVAL_MS = 30_000;
   private readonly DEFAULT_WECOM_DEEP_THINKING_BUDGET_TOKENS = 4000;
 
   private aiReplyEnabled: boolean;

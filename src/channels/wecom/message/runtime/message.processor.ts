@@ -33,7 +33,9 @@ export class MessageProcessor implements OnModuleInit {
     await this.workerManager.initialize();
     this.setupQueueEventListeners();
     await this.waitForQueueReady();
-    this.registerWorkers(this.workerManager.getRegistrationConcurrency());
+    // 使用 currentConcurrency 注册，避免 Bull 拉起的 job 数超过 semaphore 容量后
+    // 空转 job 占住 lockDuration（60s），阻塞后续 delayed job 的调度。
+    this.registerWorkers(this.workerManager.getCurrentConcurrency());
     await this.waitForBclientReady();
 
     this.logger.log(
