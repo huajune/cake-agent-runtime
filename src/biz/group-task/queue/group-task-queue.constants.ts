@@ -83,6 +83,8 @@ export interface PrepareJobData {
   sendDelayMs: number;
   /** 日内幂等键的日期段（YYYYMMDD，Asia/Shanghai，源自 plan.startedAt） */
   execDate: string;
+  /** 触发源：'manual' 时 send 阶段将绕过日内幂等，允许人工补发覆盖 */
+  trigger: 'cron' | 'manual';
 }
 
 export interface SendJobData {
@@ -99,6 +101,8 @@ export interface SendJobData {
   execDate: string;
   /** 整次 exec 的群总数 */
   totalGroups: number;
+  /** 触发源：'manual' 时跳过幂等检查（人工补发），'cron' 时遵守日内幂等 */
+  trigger: 'cron' | 'manual';
 }
 
 export interface SummarizeJobData {

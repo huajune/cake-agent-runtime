@@ -253,6 +253,7 @@ export class GroupTaskProcessor implements OnModuleInit {
         totalGroups: groups.length,
         sendDelayMs,
         execDate,
+        trigger,
       });
     }
 
@@ -327,6 +328,7 @@ export class GroupTaskProcessor implements OnModuleInit {
       totalGroups,
       sendDelayMs,
       execDate,
+      trigger,
     } = job.data;
     const strategy = this.strategies[type];
     if (!strategy) {
@@ -392,6 +394,7 @@ export class GroupTaskProcessor implements OnModuleInit {
         msgRedisKey,
         execDate,
         totalGroups,
+        trigger,
       };
       await this.queue.add(GroupTaskJobName.SEND, sendJob, {
         jobId: `${execId}:send:${group.imRoomId}`,
@@ -411,21 +414,26 @@ export class GroupTaskProcessor implements OnModuleInit {
   // ==================== Send ====================
 
   private async handleSend(job: Job<SendJobData>): Promise<void> {
-    const { execId, type, dryRun, group, groupKey, msgRedisKey, execDate, timeSlot } = job.data;
+    const { execId, type, dryRun, group, groupKey, msgRedisKey, execDate, timeSlot, trigger } =
+      job.data;
 
     // 幂等守护：跨 exec、跨重试共享。只在"成功后"写入，失败留白可重试。
+    // manual 触发是人工明确要求补发（比如上游数据晚到），必须绕过幂等，否则
+    // "手动触发却没发消息"形同虚设。cron/retry 仍然受幂等保护，防止重复轰炸群。
     const dailyKey = groupTaskDailySentKey(type, execDate, timeSlot, group.imRoomId);
-    const alreadySent = await this.redisService.exists(dailyKey);
-    if (alreadySent) {
-      this.logger.log(`[send] 已发送，跳过: ${group.groupName}`);
-      await this.writeGroupResult(execId, group.imRoomId, {
-        groupKey,
-        groupName: group.groupName,
-        status: 'skipped',
-        summary: '今日已发送（幂等跳过）',
-        updatedAt: Date.now(),
-      });
-      return;
+    if (trigger !== 'manual') {
+      const alreadySent = await this.redisService.exists(dailyKey);
+      if (alreadySent) {
+        this.logger.log(`[send] 已发送，跳过: ${group.groupName}`);
+        await this.writeGroupResult(execId, group.imRoomId, {
+          groupKey,
+          groupName: group.groupName,
+          status: 'skipped',
+          summary: '今日已发送（幂等跳过）',
+          updatedAt: Date.now(),
+        });
+        return;
+      }
     }
 
     const cache = await this.redisService.get<GroupTaskMessageCache>(msgRedisKey);

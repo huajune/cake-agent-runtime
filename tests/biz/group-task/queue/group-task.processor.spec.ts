@@ -236,6 +236,7 @@ describe('GroupTaskProcessor', () => {
         totalGroups: 2,
         sendDelayMs: 0,
         execDate: '20260420',
+        trigger: 'cron',
       };
 
       await invokeHandler(GroupTaskJobName.PREPARE, prepareData);
@@ -275,6 +276,7 @@ describe('GroupTaskProcessor', () => {
         totalGroups: 2,
         sendDelayMs: 60_000,
         execDate: '20260420',
+        trigger: 'cron',
       };
 
       await invokeHandler(GroupTaskJobName.PREPARE, prepareData);
@@ -317,6 +319,7 @@ describe('GroupTaskProcessor', () => {
       msgRedisKey: groupTaskMsgKey('exec-1', '上海_餐饮'),
       execDate: '20260420',
       totalGroups: 1,
+      trigger: 'cron',
     };
 
     it('should short-circuit when daily idempotency key already exists', async () => {
