@@ -8,6 +8,7 @@ export interface ModelOption {
   name: string;
   description: string;
   capabilities: ModelCapability[];
+  releasedAt?: string;
 }
 
 export interface AvailableModelsResponse {
