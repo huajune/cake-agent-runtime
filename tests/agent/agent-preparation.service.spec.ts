@@ -5,7 +5,7 @@ import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
 describe('AgentPreparationService', () => {
   const mockConfigService = {
     get: jest.fn((key: string, defaultValue?: string) => {
-      if (key === 'AGENT_CHAT_MODEL') return 'openrouter/anthropic/claude-sonnet-4';
+      if (key === 'AGENT_CHAT_MODEL') return 'openrouter/anthropic/claude-sonnet-4-6';
       return defaultValue;
     }),
   };
@@ -65,7 +65,7 @@ describe('AgentPreparationService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockConfigService.get.mockImplementation((key: string, defaultValue?: string) => {
-      if (key === 'AGENT_CHAT_MODEL') return 'openrouter/anthropic/claude-sonnet-4';
+      if (key === 'AGENT_CHAT_MODEL') return 'openrouter/anthropic/claude-sonnet-4-6';
       return defaultValue;
     });
     mockRouter.resolveByRole.mockReturnValue('mock-chat-model');
