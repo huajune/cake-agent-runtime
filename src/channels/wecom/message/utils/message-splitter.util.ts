@@ -77,13 +77,13 @@ export class MessageSplitter {
       const trimmedSegment = segment.trim();
       if (!trimmedSegment) continue;
 
-      // 按句号拆分（句号后面跟着中文）
-      const parts = trimmedSegment.split(/(?<=。)(?=[\u4e00-\u9fa5])/);
+      // 按句号拆分（句号后面跟着中文，中间允许空白/换行）
+      const parts = trimmedSegment.split(/(?<=。)\s*(?=[\u4e00-\u9fa5])/);
 
-      // 按问号拆分（问号后面跟着中文）
+      // 按问号拆分（问号后面跟着中文，中间允许空白/换行）
       const finalParts: string[] = [];
       for (const part of parts) {
-        const subParts = part.split(/(?<=？)(?=[\u4e00-\u9fa5])/);
+        const subParts = part.split(/(?<=？)\s*(?=[\u4e00-\u9fa5])/);
         finalParts.push(...subParts);
       }
       sentenceSegments.push(...finalParts);
@@ -145,7 +145,7 @@ export class MessageSplitter {
     // 4. 句子结束符（"。"或"？"）后面跟着中文
 
     // 基本规则检查
-    if (/(?:\r?\n){2,}|～|[。？][\u4e00-\u9fa5]/.test(text)) {
+    if (/(?:\r?\n){2,}|～|[。？]\s*[\u4e00-\u9fa5]/.test(text)) {
       return true;
     }
 

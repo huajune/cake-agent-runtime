@@ -1,14 +1,12 @@
 import {
   buildChatHistoryCacheKey,
-  buildChatHistoryIndexKey,
   parseCachedChatHistoryMessages,
   serializeCachedChatHistoryMessage,
 } from '@biz/message/utils/chat-history-cache.util';
 
 describe('chat-history-cache.util', () => {
-  it('should build cache and index keys', () => {
+  it('should build cache key', () => {
     expect(buildChatHistoryCacheKey('chat-1')).toBe('memory:short_term:chat:chat-1');
-    expect(buildChatHistoryIndexKey('msg-1')).toBe('memory:short_term:message:msg-1');
   });
 
   it('should serialize and parse cached messages', () => {

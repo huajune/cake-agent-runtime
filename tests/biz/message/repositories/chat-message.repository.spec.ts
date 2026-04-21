@@ -77,20 +77,20 @@ describe('ChatMessageRepository', () => {
       isRoom: false,
     };
 
-    it('should return false when supabase is not available', async () => {
+    it('should report not-inserted when supabase is not available', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(false);
 
       const result = await repository.saveChatMessage(userMessage);
 
-      expect(result).toBe(false);
+      expect(result).toEqual({ inserted: false });
     });
 
-    it('should skip and return true for room messages', async () => {
+    it('should skip room messages without touching supabase', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
       const result = await repository.saveChatMessage({ ...userMessage, isRoom: true });
 
-      expect(result).toBe(true);
+      expect(result).toEqual({ inserted: false });
       expect(mockSupabaseClient.from).not.toHaveBeenCalled();
     });
 
@@ -104,26 +104,45 @@ describe('ChatMessageRepository', () => {
         isRoom: false,
       });
 
-      expect(result).toBe(true);
+      expect(result).toEqual({ inserted: false });
       expect(mockSupabaseClient.from).not.toHaveBeenCalled();
     });
 
-    it('should save personal user message (contactType === 1)', async () => {
+    it('should report inserted=true when DB returns the new row', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
-      const upsertResult = makeQueryMock({ data: null, error: null });
+      // upsert + .select() returns the newly inserted row
+      const upsertResult = makeQueryMock({
+        data: [{ message_id: userMessage.messageId }],
+        error: null,
+      });
       mockSupabaseClient.from.mockReturnValue(upsertResult);
 
       const result = await repository.saveChatMessage(userMessage);
 
-      expect(result).toBe(true);
+      expect(result).toEqual({ inserted: true });
       expect(mockSupabaseClient.from).toHaveBeenCalledWith('chat_messages');
+    });
+
+    it('should report inserted=false when message_id conflicts (ignoreDuplicates)', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      // ignoreDuplicates=true makes PostgREST return empty rows on conflict
+      const upsertResult = makeQueryMock({ data: [], error: null });
+      mockSupabaseClient.from.mockReturnValue(upsertResult);
+
+      const result = await repository.saveChatMessage(userMessage);
+
+      expect(result).toEqual({ inserted: false });
     });
 
     it('should save assistant messages regardless of contactType', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
-      const upsertResult = makeQueryMock({ data: null, error: null });
+      const upsertResult = makeQueryMock({
+        data: [{ message_id: userMessage.messageId }],
+        error: null,
+      });
       mockSupabaseClient.from.mockReturnValue(upsertResult);
 
       const result = await repository.saveChatMessage({
@@ -132,14 +151,13 @@ describe('ChatMessageRepository', () => {
         contactType: undefined,
       });
 
-      expect(result).toBe(true);
+      expect(result).toEqual({ inserted: true });
     });
 
-    it('should return true even when underlying upsert encounters a db error (error is swallowed by BaseRepository.upsert)', async () => {
+    it('should report inserted=false when underlying upsert encounters a db error', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
-      // BaseRepository.upsert() catches all errors internally via handleError() and returns null,
-      // so saveChatMessage() does not see any thrown error and returns true.
+      // BaseRepository.upsert() swallows errors and returns null → inserted=false
       const errorResult = makeQueryMock({
         data: null,
         error: { message: 'DB error', code: '42P01' },
@@ -148,30 +166,30 @@ describe('ChatMessageRepository', () => {
 
       const result = await repository.saveChatMessage(userMessage);
 
-      expect(result).toBe(true);
+      expect(result).toEqual({ inserted: false });
     });
   });
 
   // ==================== saveChatMessagesBatch ====================
 
   describe('saveChatMessagesBatch', () => {
-    it('should return 0 when supabase is not available', async () => {
+    it('should return empty set when supabase is not available', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(false);
 
       const result = await repository.saveChatMessagesBatch([]);
 
-      expect(result).toBe(0);
+      expect(result.insertedIds.size).toBe(0);
     });
 
-    it('should return 0 for empty array', async () => {
+    it('should return empty set for empty array', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
       const result = await repository.saveChatMessagesBatch([]);
 
-      expect(result).toBe(0);
+      expect(result.insertedIds.size).toBe(0);
     });
 
-    it('should skip all room messages and return 0', async () => {
+    it('should skip all room messages and return empty set', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
       const result = await repository.saveChatMessagesBatch([
@@ -193,14 +211,18 @@ describe('ChatMessageRepository', () => {
         },
       ]);
 
-      expect(result).toBe(0);
+      expect(result.insertedIds.size).toBe(0);
       expect(mockSupabaseClient.from).not.toHaveBeenCalled();
     });
 
-    it('should save non-room messages and return count', async () => {
+    it('should return only actually-inserted message ids', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
-      const upsertResult = makeQueryMock({ data: null, error: null });
+      // PostgREST 在 ignoreDuplicates=true 时只返回真正新插入的行；msg_002 视为冲突被忽略。
+      const upsertResult = makeQueryMock({
+        data: [{ message_id: 'msg_001' }],
+        error: null,
+      });
       mockSupabaseClient.from.mockReturnValue(upsertResult);
 
       const messages = [
@@ -225,10 +247,10 @@ describe('ChatMessageRepository', () => {
 
       const result = await repository.saveChatMessagesBatch(messages);
 
-      expect(result).toBe(2);
+      expect(Array.from(result.insertedIds)).toEqual(['msg_001']);
     });
 
-    it('should return 0 on batch save error', async () => {
+    it('should return empty set on batch save error', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
       mockSupabaseClient.from.mockImplementation(() => {
@@ -249,7 +271,7 @@ describe('ChatMessageRepository', () => {
 
       const result = await repository.saveChatMessagesBatch(messages);
 
-      expect(result).toBe(0);
+      expect(result.insertedIds.size).toBe(0);
     });
   });
 

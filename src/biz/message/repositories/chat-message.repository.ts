@@ -31,17 +31,20 @@ export class ChatMessageRepository extends BaseRepository {
   /**
    * 保存聊天消息到 Supabase
    * 注意：只存储个微私聊消息，群聊消息和非个微用户消息会被过滤
+   *
+   * 返回 `inserted: true` 仅当 DB 真正插入了新行（message_id UNIQUE 冲突会返回
+   * `false`），上层可据此决定是否把消息镜像到短期记忆缓存，避免重复写入。
    */
-  async saveChatMessage(message: ChatMessageInput): Promise<boolean> {
+  async saveChatMessage(message: ChatMessageInput): Promise<{ inserted: boolean }> {
     if (!this.isAvailable()) {
       this.logger.warn('Supabase 未初始化，跳过聊天消息保存');
-      return false;
+      return { inserted: false };
     }
 
     // 过滤群聊消息
     if (message.isRoom === true) {
       this.logger.debug(`跳过群聊消息存储: ${message.messageId}`);
-      return true;
+      return { inserted: false };
     }
 
     // 只存储个微用户的消息（contactType === 1）
@@ -53,31 +56,35 @@ export class ChatMessageRepository extends BaseRepository {
       this.logger.debug(
         `跳过非个微用户消息存储: ${message.messageId}, contactType=${message.contactType}`,
       );
-      return true;
+      return { inserted: false };
     }
 
     try {
       const record = this.toDbRecord(message);
 
-      await this.upsert(record, {
+      const row = await this.upsert<ChatMessageRecord>(record, {
         onConflict: 'message_id',
         ignoreDuplicates: true,
-        returnData: false,
+        returnData: true,
       });
 
-      return true;
+      return { inserted: row !== null };
     } catch (error) {
       this.logger.error('保存聊天消息失败', error);
-      return false;
+      return { inserted: false };
     }
   }
 
   /**
    * 批量保存聊天消息
+   *
+   * 返回实际新插入的 message_id 集合（message_id UNIQUE 冲突的消息不在其中）。
+   * 上层可据此镜像短期记忆缓存，保证 list 中不会出现重复条目。
    */
-  async saveChatMessagesBatch(messages: ChatMessageInput[]): Promise<number> {
+  async saveChatMessagesBatch(messages: ChatMessageInput[]): Promise<{ insertedIds: Set<string> }> {
+    const empty = { insertedIds: new Set<string>() };
     if (!this.isAvailable() || messages.length === 0) {
-      return 0;
+      return empty;
     }
 
     // 过滤群聊消息
@@ -85,22 +92,36 @@ export class ChatMessageRepository extends BaseRepository {
 
     if (privateMessages.length === 0) {
       this.logger.debug('批量写入：所有消息均为群聊，跳过');
-      return 0;
+      return empty;
     }
 
     try {
       const records = privateMessages.map((m) => this.toDbRecord(m));
 
-      const count = await this.upsertBatch(records, {
-        onConflict: 'message_id',
-        ignoreDuplicates: true,
-      });
+      // 绕开 BaseRepository.upsertBatch：它不 select，拿不到被插入的行。
+      // 这里直接走原生 upsert + select('message_id')，PostgREST 在
+      // ignoreDuplicates=true 时只返回真正新插入的行，冲突行不在结果中。
+      const { data, error } = await this.getClient()
+        .from(this.tableName)
+        .upsert(records as unknown as Record<string, unknown>[], {
+          onConflict: 'message_id',
+          ignoreDuplicates: true,
+        })
+        .select('message_id');
 
-      this.logger.debug(`批量保存 ${count} 条聊天消息成功`);
-      return count;
+      if (error) {
+        this.handleError('UPSERT_BATCH', error);
+        return empty;
+      }
+
+      const insertedIds = new Set<string>(
+        (data as Array<{ message_id: string }> | null)?.map((row) => row.message_id) ?? [],
+      );
+      this.logger.debug(`批量保存 ${insertedIds.size}/${privateMessages.length} 条新聊天消息`);
+      return { insertedIds };
     } catch (error) {
       this.logger.error('批量保存聊天消息失败', error);
-      return 0;
+      return empty;
     }
   }
 
@@ -592,18 +613,25 @@ export class ChatMessageRepository extends BaseRepository {
 
   /**
    * 更新消息的 content 字段（按 message_id）
+   *
+   * 返回被更新行的 chat_id，供上层失效短期记忆缓存；messageId 不存在或失败返回 null。
    */
-  async updateContentByMessageId(messageId: string, content: string): Promise<boolean> {
+  async updateContentByMessageId(
+    messageId: string,
+    content: string,
+  ): Promise<{ chatId: string | null }> {
     if (!this.isAvailable()) {
-      return false;
+      return { chatId: null };
     }
 
     try {
-      await this.update({ content }, (q) => q.eq('message_id', messageId));
-      return true;
+      const rows = await this.update<ChatMessageRecord>({ content }, (q) =>
+        q.eq('message_id', messageId),
+      );
+      return { chatId: rows[0]?.chat_id ?? null };
     } catch (error) {
       this.logger.error(`更新消息 content 失败 [${messageId}]:`, error);
-      return false;
+      return { chatId: null };
     }
   }
 

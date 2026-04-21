@@ -1,0 +1,102 @@
+import {
+  extractAutoGreetingName,
+  isFromAutoGreeting,
+  sanitizeInterviewName,
+} from '@/memory/facts/name-guard';
+import {
+  FALLBACK_EXTRACTION,
+  type EntityExtractionResult,
+} from '@/memory/types/session-facts.types';
+
+describe('name-guard', () => {
+  describe('extractAutoGreetingName', () => {
+    it.each([
+      ['我是执子之魂', '执子之魂'],
+      ['我是张三', '张三'],
+      ['你好，我是李四', '李四'],
+      ['你好我是王五', '王五'],
+      ['您好，我是赵六。', '赵六'],
+      ['Hello，我是Alice', 'Alice'],
+      ['  我是 孙七  ', null], // 中间含空格，不视为纯打招呼句式
+    ])('parses "我是xx" greeting from %s', (input, expected) => {
+      expect(extractAutoGreetingName(input)).toBe(expected);
+    });
+
+    it.each([
+      '我叫张三', // 显式自我介绍
+      '我是张三，想了解下岗位', // 带后续内容
+      '张三', // 单名字
+      '', // 空
+      '健康证有的', // 不相关
+    ])('does not match non-greeting message %s', (input) => {
+      expect(extractAutoGreetingName(input)).toBeNull();
+    });
+  });
+
+  describe('isFromAutoGreeting', () => {
+    it('matches when name appears as xx in any "我是xx" message', () => {
+      expect(isFromAutoGreeting('执子之魂', ['我是执子之魂', '健康证有的'])).toBe(true);
+    });
+
+    it('does not match when name never appears as greeting xx', () => {
+      expect(isFromAutoGreeting('张三', ['我叫张三', '我是小明'])).toBe(false);
+    });
+
+    it('does not match when name string differs from greeting xx', () => {
+      expect(isFromAutoGreeting('张三', ['我是李四'])).toBe(false);
+    });
+  });
+
+  describe('sanitizeInterviewName', () => {
+    const buildFacts = (name: string | null): EntityExtractionResult => ({
+      ...FALLBACK_EXTRACTION,
+      interview_info: { ...FALLBACK_EXTRACTION.interview_info, name },
+    });
+
+    it('keeps name when no auto-greeting in messages', () => {
+      const facts = buildFacts('张三');
+      const result = sanitizeInterviewName(facts, ['我叫张三', '来面试的']);
+      expect(result.droppedName).toBeNull();
+      expect(result.sanitized.interview_info.name).toBe('张三');
+      expect(result.sanitized).toBe(facts);
+    });
+
+    it('drops name sourced from 我是xx auto-greeting', () => {
+      const facts = buildFacts('执子之魂');
+      const result = sanitizeInterviewName(facts, ['我是执子之魂', '健康证有的']);
+      expect(result.droppedName).toBe('执子之魂');
+      expect(result.sanitized.interview_info.name).toBeNull();
+      expect(result.sanitized).not.toBe(facts);
+    });
+
+    it('no-op when name is null', () => {
+      const facts = buildFacts(null);
+      const result = sanitizeInterviewName(facts, ['我是小明']);
+      expect(result.droppedName).toBeNull();
+      expect(result.sanitized.interview_info.name).toBeNull();
+    });
+
+    it('keeps name even if it looks like nickname but was not sourced from greeting', () => {
+      const facts = buildFacts('执子之魂');
+      const result = sanitizeInterviewName(facts, ['健康证有的', '要面试吗']);
+      expect(result.droppedName).toBeNull();
+      expect(result.sanitized.interview_info.name).toBe('执子之魂');
+    });
+
+    it('preserves other interview_info fields when sanitizing', () => {
+      const facts: EntityExtractionResult = {
+        ...FALLBACK_EXTRACTION,
+        interview_info: {
+          ...FALLBACK_EXTRACTION.interview_info,
+          name: '执子之魂',
+          phone: '13800138000',
+          age: '28',
+        },
+      };
+      const result = sanitizeInterviewName(facts, ['我是执子之魂']);
+      expect(result.sanitized.interview_info.name).toBeNull();
+      expect(result.sanitized.interview_info.phone).toBe('13800138000');
+      expect(result.sanitized.interview_info.age).toBe('28');
+    });
+  });
+});

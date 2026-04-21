@@ -86,6 +86,7 @@ echo "🚀 Uploading to $SSH_HOST... ($(du -h "$IMAGE_TAR" | cut -f1))"
 scp -C "$IMAGE_TAR" "${SSH_HOST}:${REMOTE_IMAGE_TAR}"
 scp -C docker-compose.yml "${SSH_HOST}:${REMOTE_COMPOSE}"
 scp -C scripts/deploy-remote.sh "${SSH_HOST}:${REMOTE_SCRIPT}"
+scp -C "$RUNTIME_ENV_FILE" "${SSH_HOST}:/data/cake/${RUNTIME_ENV_FILE}"
 rm -f "$IMAGE_TAR"
 
 # ── Step 4: 服务器上加载镜像并部署 ──────────────────────────

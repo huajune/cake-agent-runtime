@@ -16,7 +16,9 @@ export class MessageIngressController {
 
   @RawResponse()
   @Post()
-  async receiveMessage(@Body() body: unknown) {
+  receiveMessage(@Body() body: unknown) {
+    // 尽量让这条路径接近"同步 ACK"：托管平台超时会补发同内容消息（曾出现同一"六姐"被补发 3 次）。
+    // handleMessage 内部已改成立即返回 + 异步处理，这里只再做一层同步打点。
     const callbackType = this.callbackAdapter.detectCallbackType(body);
     const rawData = (body as Record<string, unknown>).data || body;
     const messageId =
@@ -34,10 +36,7 @@ export class MessageIngressController {
         `isSelf=${normalizedCallback.isSelf}, source=${normalizedCallback.source}`,
     );
 
-    const result = await this.messageService.handleMessage(normalizedCallback);
-
-    this.logger.log(`[处理完成] messageId=${normalizedCallback.messageId}`);
-    return result;
+    return this.messageService.handleMessage(normalizedCallback);
   }
 
   @RawResponse()

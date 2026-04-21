@@ -472,7 +472,7 @@ export function buildInterviewBookingTool(
   };
 }
 
-interface BuildCustomerLabelListParams {
+export interface BuildCustomerLabelListParams {
   supplementDefinitions: SpongeInterviewSupplementDefinition[];
   context: ToolBuildContext;
   name: string;
@@ -490,7 +490,7 @@ interface BuildCustomerLabelListParams {
   supplementAnswers?: Record<string, string>;
 }
 
-type BuildCustomerLabelListResult =
+export type BuildCustomerLabelListResult =
   | {
       success: true;
       customerLabelList: InterviewBookingCustomerLabel[];
@@ -505,7 +505,7 @@ type BuildCustomerLabelListResult =
       customerLabelDefinitions: SpongeInterviewSupplementDefinition[];
     };
 
-function buildCustomerLabelList(
+export function buildCustomerLabelList(
   params: BuildCustomerLabelListParams,
 ): BuildCustomerLabelListResult {
   const definitions = params.supplementDefinitions;
@@ -587,15 +587,17 @@ function resolveCustomerLabelValue(
   if (/身高/.test(labelName)) return formatNumericValue(params.height);
   if (/体重/.test(labelName)) return formatNumericValue(params.weight);
 
-  if (/健康证情况/.test(labelName)) {
-    return params.hasHealthCertificate != null
-      ? getSpongeHealthCertificateLabelById(params.hasHealthCertificate)
-      : null;
-  }
-
   if (/健康证类型/.test(labelName)) {
     const labels = getSpongeHealthCertificateTypeLabels(params.healthCertificateTypes);
     return labels.length > 0 ? labels.join('、') : null;
+  }
+
+  // 覆盖「健康证情况」「有无健康证」「是否有健康证」「健康证」等常见别名；
+  // 只要包含"健康证"三字且不是前面的"健康证类型"，都走 hasHealthCertificate 回填
+  if (/健康证/.test(labelName)) {
+    return params.hasHealthCertificate != null
+      ? getSpongeHealthCertificateLabelById(params.hasHealthCertificate)
+      : null;
   }
 
   if (/身份/.test(labelName)) {
@@ -629,8 +631,8 @@ function getSupplementAnswerValue(
 function getSupplementAnswerAliases(labelName: string): string[] {
   if (/(籍贯|户籍)/.test(labelName)) return ['籍贯', '户籍', '户籍省份'];
   if (/身份/.test(labelName)) return ['身份', '是否学生'];
-  if (/健康证情况/.test(labelName)) return ['健康证情况', '健康证'];
   if (/健康证类型/.test(labelName)) return ['健康证类型'];
+  if (/健康证/.test(labelName)) return ['健康证情况', '有无健康证', '是否有健康证', '健康证'];
   return [];
 }
 
