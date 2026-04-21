@@ -11,9 +11,9 @@
 ## 待发布
 
 **预计版本**: `v5.2.0`
-**最近更新**: `2026-04-17`
+**最近更新**: `2026-04-21`
 **来源分支**: `develop`
-**累计 PR**: 6
+**累计 PR**: 7
 
 ### 更新摘要
 - [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) [codex] 完善通知链路并修复群任务与消息处理后续问题
@@ -22,6 +22,7 @@
 - [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) consolidate fact extraction and drop LocationCityResolver
 - [PR #82](https://github.com/huajune/cake-agent-runtime/pull/82) [codex] improve monitoring visibility and runtime config consistency
 - [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) cap same-tool calls per turn and enrich processing trace
+- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) 消息回调立即 ACK + 队列/缓存降延 + 健康证等若干修复
 
 ### 新功能
 - 无
@@ -29,6 +30,7 @@
 ### 问题修复
 - [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) [codex] 完善通知链路并修复群任务与消息处理后续问题
 - [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) cap same-tool calls per turn and enrich processing trace
+- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) 消息回调立即 ACK + 队列/缓存降延 + 健康证等若干修复
 
 ### 优化调整
 - [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) consolidate fact extraction and drop LocationCityResolver
