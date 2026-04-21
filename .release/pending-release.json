@@ -129,6 +129,24 @@
       "ops": [],
       "config": [],
       "verification": []
+    },
+    {
+      "number": "91",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/91",
+      "title": "能力标签 + 发布时间展示",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-21",
+      "summary": [
+        "能力标签 + 发布时间展示"
+      ],
+      "features": [
+        "能力标签 + 发布时间展示"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "verification": []
     }
   ]
 }
