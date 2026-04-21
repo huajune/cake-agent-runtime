@@ -1,7 +1,7 @@
 {
   "baseVersion": "5.1.0",
   "nextVersion": "5.2.0",
-  "updatedAt": "2026-04-17",
+  "updatedAt": "2026-04-21",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -106,6 +106,24 @@
       "features": [],
       "fixes": [
         "cap same-tool calls per turn and enrich processing trace"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "verification": []
+    },
+    {
+      "number": "90",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/90",
+      "title": "消息回调立即 ACK + 队列/缓存降延 + 健康证等若干修复",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-21",
+      "summary": [
+        "消息回调立即 ACK + 队列/缓存降延 + 健康证等若干修复"
+      ],
+      "features": [],
+      "fixes": [
+        "消息回调立即 ACK + 队列/缓存降延 + 健康证等若干修复"
       ],
       "optimizations": [],
       "ops": [],
