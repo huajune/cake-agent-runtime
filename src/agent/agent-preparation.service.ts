@@ -1,21 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ModelMessage, ToolSet } from 'ai';
+import { CallerKind } from '@/enums/agent.enum';
 import { RouterService } from '@providers/router.service';
-import { ModelRole, supportsVision } from '@providers/types';
+import { supportsVision } from '@providers/types';
 import { ToolRegistryService } from '@tools/tool-registry.service';
-import { CandidateProfileEnrichmentService } from '@biz/user/services/candidate-profile-enrichment.service';
 import { RecruitmentCaseRecord } from '@biz/recruitment-case/entities/recruitment-case.entity';
 import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
 import { RecruitmentStageResolverService } from '@biz/recruitment-case/services/recruitment-stage-resolver.service';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { formatExtractionFactLines } from '@memory/formatters/fact-lines.formatter';
-import { MemoryService } from '@memory/memory.service';
+import { MemoryService, type CandidateIdentityHint } from '@memory/memory.service';
 import { MemoryConfig } from '@memory/memory.config';
 import type { UserProfile } from '@memory/types/long-term.types';
 import {
-  FALLBACK_EXTRACTION,
-  type EntityExtractionResult,
   type RecommendedJobSummary,
   type WeworkSessionState,
 } from '@memory/types/session-facts.types';
@@ -61,7 +59,6 @@ export class AgentPreparationService {
     private readonly recruitmentStageResolver: RecruitmentStageResolverService,
     private readonly memoryService: MemoryService,
     private readonly memoryConfig: MemoryConfig,
-    private readonly candidateProfileEnrichmentService: CandidateProfileEnrichmentService,
     private readonly context: ContextService,
     private readonly inputGuard: InputGuardService,
   ) {}
@@ -71,6 +68,7 @@ export class AgentPreparationService {
     mode: 'invoke' | 'stream',
   ): Promise<PreparedAgentContext> {
     const {
+      callerKind,
       messages: passedMessages,
       userMessage,
       userId,
@@ -92,82 +90,63 @@ export class AgentPreparationService {
     } = params;
 
     this.logger.log(
-      `Agent ${mode}: userId=${userId}, corpId=${corpId}, sessionId=${sessionId}, scenario=${scenario}`,
+      `Agent ${mode}: callerKind=${callerKind}, userId=${userId}, corpId=${corpId}, sessionId=${sessionId}, scenario=${scenario}`,
     );
 
-    const trimmedPassedMessages =
-      userMessage === undefined ? this.trimMessages(passedMessages ?? []) : undefined;
-    const currentTurnMessages = this.pickCurrentTurnMessages(userMessage, trimmedPassedMessages);
-    const shouldLoadShortTerm = userMessage !== undefined || trimmedPassedMessages === undefined;
+    // 1. 依据 callerKind 统一推导本轮输入：
+    //    - WECOM: 只有本轮 userMessage，历史由 memory 加载
+    //    - TEST_SUITE / DEBUG: 完整 messages[] 直传，memory 不重复加载
+    const isChannelSource = callerKind === CallerKind.WECOM;
+    const trimmedPassedMessages = isChannelSource
+      ? undefined
+      : this.trimMessages(passedMessages ?? []);
+    const currentUserMessage = isChannelSource
+      ? userMessage
+      : (this.pickLatestUserContent(trimmedPassedMessages ?? []) ?? undefined);
 
-    // 1. 读取本轮运行时记忆。
+    // 2. 读取本轮运行时记忆。
+    //    - scenario 需要候选人画像补全时，传入 identity 让 memory 层统一富化快照
+    const enrichmentIdentity: CandidateIdentityHint | undefined =
+      scenario === 'candidate-consultation' && token
+        ? {
+            token,
+            imBotId: botImId,
+            imContactId,
+            wecomUserId: botUserId,
+            externalUserId,
+          }
+        : undefined;
     const memory = await this.memoryService.onTurnStart(
       corpId,
       userId,
       sessionId,
-      currentTurnMessages,
+      currentUserMessage,
       {
-        includeShortTerm: shouldLoadShortTerm,
+        includeShortTerm: isChannelSource,
+        enrichmentIdentity,
       },
     );
     const memoryLoadWarning = memory._warnings?.join('; ') || undefined;
-
-    if (scenario === 'candidate-consultation') {
-      await this.supplementGenderFromCustomerDetailIfNeeded(memory, {
-        corpId,
-        userId,
-        token,
-        imBotId: botImId,
-        imContactId,
-        wecomUserId: botUserId,
-        externalUserId,
-      });
-    }
 
     const activeRecruitmentCase = await this.recruitmentCaseService.getActiveOnboardFollowupCase({
       corpId,
       chatId: sessionId,
     });
 
-    // 2. 决定本轮消息来源。
-    //    当 userMessage 存在但短期记忆为空时（DB/缓存瞬时故障），用 userMessage 兜底，
-    //    避免 messages 为空导致 AI SDK 抛出 "Invalid prompt: messages must not be empty"。
-    let messages: AgentInputMessage[];
-    if (userMessage !== undefined) {
-      const shortTermMessages = memory.shortTerm.messageWindow;
-      if (shortTermMessages.length > 0) {
-        messages = shortTermMessages;
-      } else {
-        const trimmed = userMessage.trim();
-        if (trimmed) {
-          this.logger.warn(
-            `短期记忆为空，使用 userMessage 兜底: sessionId=${sessionId}, len=${trimmed.length}`,
-          );
-          messages = [{ role: 'user', content: trimmed }];
-        } else {
-          messages = [];
-        }
-      }
-    } else {
-      messages = trimmedPassedMessages ?? [];
-    }
+    // 3. 决定本轮消息来源。WECOM 路径完全依赖 memory.shortTerm（已含兜底），
+    //    TEST_SUITE / DEBUG 直传 messages。
+    const messages: AgentInputMessage[] = isChannelSource
+      ? memory.shortTerm.messageWindow
+      : (trimmedPassedMessages ?? []);
 
     // 3. 安全检查，并统一转换成 ModelMessage。
     const guardResult = this.inputGuard.detectMessages(messages);
-    const trimmedOverrideModelId = overrideModelId?.trim();
-    const chatModel = trimmedOverrideModelId
-      ? this.router.resolve(trimmedOverrideModelId)
-      : this.router.resolveByRole(ModelRole.Chat);
-    const chatModelId =
-      trimmedOverrideModelId ?? this.configService.get<string>('AGENT_CHAT_MODEL') ?? '';
-    // 默认总是带上 chat 角色的 fallback 链（即便 override 了 primary），
-    // 只有测试保真场景（disableFallbacks=true）才清空降级链。
-    const chatFallbacks = disableFallbacks ? undefined : this.router.getFallbacks(ModelRole.Chat);
-    if (trimmedOverrideModelId) {
-      this.logger.log(
-        `使用指定模型: ${trimmedOverrideModelId}${disableFallbacks ? ' (禁用降级)' : ''}`,
-      );
-    }
+    const {
+      model: chatModel,
+      modelId: chatModelId,
+      fallbacks: chatFallbacks,
+    } = this.router.resolveForTurn({ overrideModelId, disableFallbacks });
+
     const typedMessages = this.toModelMessages(messages, supportsVision(chatModelId));
 
     // 4. 先把长期记忆和会话记忆渲染成统一记忆块。
@@ -234,9 +213,7 @@ export class AgentPreparationService {
       botUserId,
       contactName: params.contactName,
       botImId,
-      strategySource:
-        params.strategySource ??
-        (corpId === 'test' || corpId === 'debug' ? ('testing' as const) : undefined),
+      strategySource: params.strategySource,
       profile: memory.longTerm.profile,
       sessionFacts: memory.sessionMemory?.facts ?? null,
       currentFocusJob: memory.sessionMemory?.currentFocusJob ?? null,
@@ -571,27 +548,6 @@ export class AgentPreparationService {
     return kept;
   }
 
-  /** 只取本轮最新的 user 输入，供前置高置信识别使用。 */
-  private pickCurrentTurnMessages(
-    userMessage?: string,
-    messages?: AgentInputMessage[],
-  ): AgentInputMessage[] | undefined {
-    if (userMessage !== undefined) {
-      const content = userMessage.trim();
-      return content ? [{ role: 'user', content }] : undefined;
-    }
-
-    if (!messages?.length) return undefined;
-
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role !== 'user') continue;
-      const content = this.extractTextFromContent(messages[i].content).trim();
-      return content ? [{ role: 'user', content }] : undefined;
-    }
-
-    return undefined;
-  }
-
   private pickLatestUserContent(messages: AgentInputMessage[]): string | null {
     for (let i = messages.length - 1; i >= 0; i -= 1) {
       if (messages[i].role !== 'user') continue;
@@ -600,102 +556,5 @@ export class AgentPreparationService {
     }
 
     return null;
-  }
-
-  private async supplementGenderFromCustomerDetailIfNeeded(
-    memory: Awaited<ReturnType<MemoryService['onTurnStart']>>,
-    params: {
-      corpId: string;
-      userId: string;
-      token?: string;
-      imBotId?: string;
-      imContactId?: string;
-      wecomUserId?: string;
-      externalUserId?: string;
-    },
-  ): Promise<void> {
-    if (this.resolveKnownGender(memory)) {
-      return;
-    }
-
-    try {
-      const gender = await this.candidateProfileEnrichmentService.lookupGenderFromCustomerDetail({
-        token: params.token,
-        imBotId: params.imBotId,
-        imContactId: params.imContactId,
-        wecomUserId: params.wecomUserId,
-        externalUserId: params.externalUserId,
-      });
-
-      if (!gender) {
-        return;
-      }
-
-      memory.highConfidenceFacts = this.mergeSupplementalGenderFact(
-        memory.highConfidenceFacts,
-        gender,
-      );
-
-      this.logger.log(`客户详情补充性别成功: userId=${params.userId}, gender=${gender}`);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.warn(`客户详情补充性别失败: userId=${params.userId}, error=${errorMessage}`);
-    }
-  }
-
-  private resolveKnownGender(
-    memory: Awaited<ReturnType<MemoryService['onTurnStart']>>,
-  ): string | null {
-    return (
-      this.normalizeGenderValue(memory.longTerm.profile?.gender) ??
-      this.normalizeGenderValue(memory.sessionMemory?.facts?.interview_info.gender) ??
-      this.normalizeGenderValue(memory.highConfidenceFacts?.interview_info.gender)
-    );
-  }
-
-  private normalizeGenderValue(value: unknown): '男' | '女' | null {
-    if (typeof value === 'number') {
-      if (value === 1) return '男';
-      if (value === 2) return '女';
-      return null;
-    }
-
-    if (typeof value !== 'string') {
-      return null;
-    }
-
-    const text = value.trim();
-    if (!text) return null;
-    if (text === '1') return '男';
-    if (text === '2') return '女';
-    if (/^(male|man)$/i.test(text)) return '男';
-    if (/^(female|woman)$/i.test(text)) return '女';
-    if (/(^|[^女])男/.test(text)) return '男';
-    if (/女/.test(text)) return '女';
-    return null;
-  }
-
-  private mergeSupplementalGenderFact(
-    existing: EntityExtractionResult | null,
-    gender: '男' | '女',
-  ): EntityExtractionResult {
-    const base: EntityExtractionResult = existing
-      ? {
-          ...existing,
-          interview_info: { ...existing.interview_info },
-          preferences: { ...existing.preferences },
-        }
-      : {
-          ...FALLBACK_EXTRACTION,
-          interview_info: { ...FALLBACK_EXTRACTION.interview_info },
-          preferences: { ...FALLBACK_EXTRACTION.preferences },
-        };
-
-    base.interview_info.gender = gender;
-    base.reasoning = [base.reasoning?.trim(), `客户详情接口补充性别：${gender}`]
-      .filter(Boolean)
-      .join('；');
-
-    return base;
   }
 }

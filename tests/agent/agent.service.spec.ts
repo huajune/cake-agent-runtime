@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { AgentRunnerService } from '@agent/runner.service';
 import { AgentPreparationService } from '@agent/agent-preparation.service';
+import { CallerKind } from '@enums/agent.enum';
 import { MemoryService } from '@memory/memory.service';
 import { ReliableService } from '@providers/reliable.service';
 
@@ -95,6 +96,7 @@ describe('AgentRunnerService - invoke', () => {
   });
 
   const invokeParams = {
+    callerKind: CallerKind.TEST_SUITE,
     messages: [{ role: 'user', content: 'Hello' }],
     userId: 'user-123',
     corpId: 'corp-1',

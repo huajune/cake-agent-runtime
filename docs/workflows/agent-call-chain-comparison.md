@@ -4,6 +4,18 @@
 
 ## 核心设计要点
 
+### callerKind：调用方身份的显式声明
+
+`AgentInvokeParams.callerKind`（`CallerKind` 枚举，必填）用于替代早期基于 `userMessage !== undefined` / `corpId === 'test' | 'debug'` 的隐式分叉。agent / memory 层据此决定是否加载短期记忆、默认 strategySource 等行为。
+
+| callerKind | 含义 | 对应本文场景 |
+|---|---|---|
+| `WECOM` | 企微生产链路，只传本轮 userMessage，历史由 memory 加载 | 生产链路 |
+| `DEBUG` | Controller 调试端点（`/agent/debug-chat`），直传 messages[]，默认 `strategySource: 'testing'` | 对话调试 |
+| `TEST_SUITE` | 测试套件链路，直传 messages[]，`strategySource` 可由调用方指定（`testing` 或 `released` 联调） | 用例测试 / 回归验证 |
+
+`callerKind` 与 `strategySource` **正交**：test-suite 可通过 `strategySource: 'released'` 跑联调模式。
+
 ### userId + sessionId：会话记忆的组合 key
 
 Agent 端使用 `userId + sessionId` 作为会话级记忆的组合 key。两者**缺一不可**，否则 Agent 无法正确管理上下文记忆。
@@ -55,6 +67,7 @@ Agent 端使用 `userId + sessionId` 作为会话级记忆的组合 key。两者
 
 | 维度 | 生产链路 (WeChat) | 对话调试 (agent-test) | 用例测试 (test-suite Tab1) | 回归验证 (test-suite Tab2) |
 |------|-------------------|----------------------|--------------------------|--------------------------|
+| **callerKind** | `WECOM` | `DEBUG` | `TEST_SUITE` | `TEST_SUITE` |
 | **触发方式** | 微信用户发消息 | 手动输入 + 发送 | quick-create → Bull Queue | conversations/:id/execute |
 | **调度机制** | SimpleMergeService (2s聚合) | 无，直接请求 | TestSuiteProcessor (并发3) | 同步逐轮执行 |
 | **后端接口** | `/wecom/message` (回调) | `POST /test-suite/chat/ai-stream` | `POST /test-suite/chat` (内部调用) | 内部调用 agentFacade |

@@ -2,12 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ModelMessage } from 'ai';
 import { SpongeService } from '@sponge/sponge.service';
 import { LongTermService } from './long-term.service';
+import { MemoryEnrichmentService, type CandidateIdentityHint } from './memory-enrichment.service';
 import { ProceduralService } from './procedural.service';
 import { SettlementService } from './settlement.service';
 import { SessionService } from './session.service';
 import { ShortTermService } from './short-term.service';
 import { extractHighConfidenceFacts } from '../facts/high-confidence-facts';
 import type { AgentMemoryContext } from '../types/memory-runtime.types';
+import type { ShortTermMessage } from '../types/short-term.types';
 import {
   type EntityExtractionResult,
   type RecommendedJobSummary,
@@ -20,11 +22,6 @@ export interface MemoryLifecycleTurnContext {
   typedMessages: ModelMessage[];
   /** 本轮工具查到的候选池；回合结束时统一写入会话记忆。 */
   candidatePool?: RecommendedJobSummary[] | null;
-}
-
-export interface MemoryTurnStartMessage {
-  role: string;
-  content: string;
 }
 
 /**
@@ -49,33 +46,50 @@ export class MemoryLifecycleService {
     private readonly settlement: SettlementService,
     private readonly session: SessionService,
     private readonly sponge: SpongeService,
+    private readonly enrichment: MemoryEnrichmentService,
   ) {}
 
+  /**
+   * @param currentUserMessage 本轮 user 的最新文本。同时服务于两件事：
+   *   - 前置高置信识别（品牌/城市/年龄等规则抽取）
+   *   - 短期窗口空兜底（includeShortTerm=true 但 DB/Redis 无数据时兜上）
+   */
   async onTurnStart(
     corpId: string,
     userId: string,
     sessionId: string,
-    currentMessages?: MemoryTurnStartMessage[],
+    currentUserMessage?: string,
     options?: {
       includeShortTerm?: boolean;
+      /**
+       * 外部身份定位，用于向外部系统补全快照中缺失的画像字段（如性别）。
+       * 提供时触发 MemoryEnrichmentService。
+       */
+      enrichmentIdentity?: CandidateIdentityHint;
     },
   ): Promise<AgentMemoryContext> {
     const includeShortTerm = options?.includeShortTerm ?? true;
 
-    const [shortTermMessages, sessionState, proceduralState, profile] = await Promise.all([
+    const [rawShortTermMessages, sessionState, proceduralState, profile] = await Promise.all([
       includeShortTerm ? this.shortTerm.getMessages(sessionId) : Promise.resolve([]),
       this.session.getSessionState(corpId, userId, sessionId),
       this.procedural.get(corpId, userId, sessionId),
       this.longTerm.getProfile(corpId, userId),
     ]);
 
-    const highConfidenceFacts = await this.detectHighConfidenceFacts(currentMessages);
+    const shortTermMessages = this.applyShortTermFallback(
+      rawShortTermMessages,
+      includeShortTerm ? currentUserMessage : undefined,
+      sessionId,
+    );
+
+    const highConfidenceFacts = await this.detectHighConfidenceFacts(currentUserMessage);
     const warnings: string[] = [];
     if (includeShortTerm && this.shortTerm.lastLoadError) {
       warnings.push(`shortTerm: ${this.shortTerm.lastLoadError}`);
     }
 
-    return {
+    const snapshot: AgentMemoryContext = {
       shortTerm: {
         messageWindow: shortTermMessages,
       },
@@ -85,6 +99,33 @@ export class MemoryLifecycleService {
       procedural: proceduralState,
       longTerm: { profile },
     };
+
+    if (options?.enrichmentIdentity) {
+      return await this.enrichment.enrich(snapshot, options.enrichmentIdentity);
+    }
+
+    return snapshot;
+  }
+
+  /**
+   * 当短期窗口为空时，用调用方提供的 user 消息兜底。
+   *
+   * 这是 wecom 链路的瞬时故障兜底：当前轮消息刚写入 DB/Redis 但读回为空，
+   * 模型至少拿到"这一轮 user 说了什么"而不会因为 messages=[] 直接抛错。
+   */
+  private applyShortTermFallback(
+    messages: ShortTermMessage[],
+    fallbackUserMessage: string | undefined,
+    sessionId: string,
+  ): ShortTermMessage[] {
+    if (messages.length > 0) return messages;
+    const trimmed = fallbackUserMessage?.trim();
+    if (!trimmed) return messages;
+
+    this.logger.warn(
+      `短期记忆为空，使用 fallback 消息兜底: sessionId=${sessionId}, len=${trimmed.length}`,
+    );
+    return [{ role: 'user', content: trimmed }];
   }
 
   async onTurnEnd(ctx: MemoryLifecycleTurnContext, assistantText?: string): Promise<void> {
@@ -174,19 +215,13 @@ export class MemoryLifecycleService {
   }
 
   private async detectHighConfidenceFacts(
-    messages?: MemoryTurnStartMessage[],
+    currentUserMessage?: string,
   ): Promise<EntityExtractionResult | null> {
-    if (!messages?.length) return null;
-
-    const userMessages = messages
-      .filter((message) => message.role === 'user')
-      .map((message) => message.content)
-      .filter((content) => content.trim().length > 0);
-
-    if (userMessages.length === 0) return null;
+    const trimmed = currentUserMessage?.trim();
+    if (!trimmed) return null;
 
     const brandData = await this.sponge.fetchBrandList();
-    const highConfidenceFacts = extractHighConfidenceFacts(userMessages, brandData);
+    const highConfidenceFacts = extractHighConfidenceFacts([trimmed], brandData);
     if (!highConfidenceFacts) return null;
 
     this.logger.debug(`前置高置信识别命中: ${highConfidenceFacts.reasoning}`);

@@ -1,4 +1,5 @@
 import { streamText } from 'ai';
+import { CallerKind } from '@/enums/agent.enum';
 import type {
   AgentMemorySnapshot,
   AgentStepDetail,
@@ -27,13 +28,15 @@ export interface AgentInputMessage {
 }
 
 export interface AgentInvokeParams {
+  /** 调用方身份；决定是否加载短期记忆、默认 strategySource 等运行时行为。 */
+  callerKind: CallerKind;
   /**
    * 对话消息列表（含历史 + 当前用户消息）
-   * controller / test-suite 直接调用时使用；wecom 渠道请改用 userMessage。
+   * callerKind='test-suite' / 'debug' 使用。
    */
   messages?: AgentInputMessage[];
   /**
-   * 当前用户消息（wecom 渠道路径）
+   * 当前用户消息（callerKind='wecom'）
    * 历史消息由 ShortTermService 内部从 Supabase 读取（已含当前消息，无需重复传入）。
    */
   userMessage?: string;

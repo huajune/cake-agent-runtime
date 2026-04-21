@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ScenarioType } from '@enums/agent.enum';
+import { CallerKind, ScenarioType } from '@enums/agent.enum';
 import { MonitoringMetadata } from '@shared-types/tracking.types';
 import { AgentRunnerService } from '@agent/runner.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
@@ -347,6 +347,7 @@ export class ReplyWorkflowService {
       }
 
       const result = await this.runner.invoke({
+        callerKind: CallerKind.WECOM,
         userMessage,
         userId,
         corpId,

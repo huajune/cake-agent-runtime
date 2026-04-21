@@ -264,6 +264,61 @@ export function detectBrandAliasHints(
   return hints;
 }
 
+/**
+ * 把外部数据源（如客户详情接口）补充来的性别值归一化为 '男' | '女'。
+ *
+ * 接受数字/字符串/英文/中文短语等常见输入形态，并保留若干边界特性：
+ * - /(^|[^女])男/ 要求 '男' 前是起始或非 '女'，避免 "不男"/"非男" 被误判
+ * - 结果是 "处女男" 会先命中 '女' 分支（已在测试里 pin 住行为）
+ */
+export function normalizeGenderValue(value: unknown): '男' | '女' | null {
+  if (typeof value === 'number') {
+    if (value === 1) return '男';
+    if (value === 2) return '女';
+    return null;
+  }
+
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const text = value.trim();
+  if (!text) return null;
+  if (text === '1') return '男';
+  if (text === '2') return '女';
+  if (/^(male|man)$/i.test(text)) return '男';
+  if (/^(female|woman)$/i.test(text)) return '女';
+  if (/(^|[^女])男/.test(text)) return '男';
+  if (/女/.test(text)) return '女';
+  return null;
+}
+
+/**
+ * 把外部补充的性别合并进高置信事实对象。
+ *
+ * 使用浅拷贝保证不污染入参引用，并把来源标签追加到 reasoning 里，便于排障溯源。
+ * 与 mergeDetectedBrands 同构，都是"补充字段→不可变合并"的合并器。
+ */
+export function mergeSupplementalGenderFact(
+  existing: EntityExtractionResult | null,
+  gender: '男' | '女',
+  sourceLabel: string,
+): EntityExtractionResult {
+  const base: EntityExtractionResult = existing
+    ? {
+        ...existing,
+        interview_info: { ...existing.interview_info },
+        preferences: { ...existing.preferences },
+      }
+    : cloneFallbackExtraction();
+
+  base.interview_info.gender = gender;
+  const suffix = `${sourceLabel}补充性别：${gender}`;
+  base.reasoning = [base.reasoning?.trim(), suffix].filter(Boolean).join('；');
+
+  return base;
+}
+
 export function mergeDetectedBrands(
   facts: EntityExtractionResult,
   aliasHints: BrandAliasHint[],

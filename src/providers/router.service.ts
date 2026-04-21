@@ -103,6 +103,42 @@ export class RouterService {
     return this.parseFallbacks(role);
   }
 
+  /** 获取指定角色当前映射到的 modelId（直接读 AGENT_{ROLE}_MODEL 环境变量）。 */
+  getModelIdByRole(role: ModelRole | string): string {
+    return this.config.get<string>(`AGENT_${role.toUpperCase()}_MODEL`) ?? '';
+  }
+
+  /**
+   * 解析本轮要用的 chat 模型，返回 model + modelId + fallbacks 三件套。
+   *
+   * - 指定 overrideModelId 时用精确模型；否则走 chat 角色路由
+   * - 除非 disableFallbacks=true，否则始终带 chat 角色的 fallback 链（即便 override 了 primary）
+   *   这样测试之外的调用天然带降级，测试保真场景（test-suite）才能显式清空
+   */
+  resolveForTurn(options: { overrideModelId?: string; disableFallbacks?: boolean }): {
+    model: LanguageModel;
+    modelId: string;
+    fallbacks: string[] | undefined;
+  } {
+    const trimmed = options.overrideModelId?.trim();
+    const fallbacks = options.disableFallbacks ? undefined : this.getFallbacks(ModelRole.Chat);
+
+    if (trimmed) {
+      this.logger.log(`使用指定模型: ${trimmed}${options.disableFallbacks ? ' (禁用降级)' : ''}`);
+      return {
+        model: this.resolve(trimmed),
+        modelId: trimmed,
+        fallbacks,
+      };
+    }
+
+    return {
+      model: this.resolveByRole(ModelRole.Chat),
+      modelId: this.getModelIdByRole(ModelRole.Chat),
+      fallbacks,
+    };
+  }
+
   private parseFallbacks(role: ModelRole | string): string[] | undefined {
     const raw =
       this.config.get<string>(`AGENT_${role.toUpperCase()}_FALLBACKS`) ||

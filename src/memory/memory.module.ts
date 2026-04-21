@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { BizMessageModule } from '@biz/message/message.module';
+import { UserModule } from '@biz/user/user.module';
 import { SpongeModule } from '@sponge/sponge.module';
 import { MemoryConfig } from './memory.config';
 import { MemoryService } from './memory.service';
@@ -10,6 +11,7 @@ import { SessionService } from './services/session.service';
 import { ProceduralService } from './services/procedural.service';
 import { LongTermService } from './services/long-term.service';
 import { SettlementService } from './services/settlement.service';
+import { MemoryEnrichmentService } from './services/memory-enrichment.service';
 import { MemoryLifecycleService } from './services/memory-lifecycle.service';
 
 /**
@@ -17,11 +19,11 @@ import { MemoryLifecycleService } from './services/memory-lifecycle.service';
  *
  * 分为三层：
  * - facade: MemoryService
- * - domain services: services/ 下的 short-term / long-term / procedural / settlement / session / memory-lifecycle
+ * - domain services: services/ 下的 short-term / long-term / procedural / settlement / session / enrichment / lifecycle
  * - stores: Redis / Supabase 基础设施
  */
 @Module({
-  imports: [BizMessageModule, SpongeModule],
+  imports: [BizMessageModule, SpongeModule, UserModule],
   providers: [
     MemoryConfig,
     RedisStore,
@@ -31,6 +33,7 @@ import { MemoryLifecycleService } from './services/memory-lifecycle.service';
     ProceduralService,
     LongTermService,
     SettlementService,
+    MemoryEnrichmentService,
     MemoryLifecycleService,
     MemoryService,
   ],

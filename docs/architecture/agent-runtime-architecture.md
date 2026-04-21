@@ -95,9 +95,9 @@ invoke(params) / stream(params)
   │   │   ├─ procedural:    Redis → 当前流程阶段
   │   │   └─ longTerm:      Supabase/Redis → 用户档案
   │   │
-  │   ├─ 2. 消息选择
-  │   │   ├─ userMessage 路径（WeChat）：ShortTermService 内部读取历史
-  │   │   └─ messages 路径（API/测试）：直接使用传入列表，字符上限裁剪
+  │   ├─ 2. 消息选择（依据 callerKind 分叉）
+  │   │   ├─ WECOM：ShortTermService 内部读取历史（空窗口时用 userMessage 兜底）
+  │   │   └─ TEST_SUITE / DEBUG：直接使用传入 messages[]，trimMessages 字符上限裁剪
   │   │
   │   ├─ 3. Compose — ContextService.compose()
   │   │   └─ 按场景组合 section → systemPrompt
@@ -126,14 +126,22 @@ invoke(params) / stream(params)
 ### 3.2 公开接口
 
 ```typescript
+enum CallerKind {
+  WECOM = 'wecom',           // 企微生产链路
+  TEST_SUITE = 'test-suite', // 测试套件
+  DEBUG = 'debug',           // controller 调试端点
+}
+
 interface AgentInvokeParams {
-  messages?: { role: string; content: string }[];  // API/测试 路径
-  userMessage?: string;                             // WeChat 渠道路径
+  callerKind: CallerKind;                           // 必填：调用方身份
+  messages?: { role: string; content: string }[];  // test-suite / debug 路径
+  userMessage?: string;                             // wecom 路径
   userId: string;
   corpId: string;
   sessionId: string;
   scenario?: string;     // 默认 'candidate-consultation'
   maxSteps?: number;     // 默认 5
+  strategySource?: 'released' | 'testing';  // 策略配置版本，与 callerKind 正交
 }
 
 interface AgentRunResult {
@@ -144,12 +152,17 @@ interface AgentRunResult {
 }
 ```
 
-### 3.3 两条执行路径
+### 3.3 三条执行路径
 
-| 路径 | 入参 | 历史消息来源 | 调用方 |
-|------|------|------------|--------|
-| WeChat 渠道 | `userMessage` | ShortTermService 从 Supabase 读取 | MessagePipelineService |
-| API / 测试 | `messages[]` | 直接传入，trimMessages 裁剪 | Controller、TestSuite |
+`callerKind` 作为调用方身份的**显式声明**，替代了历史上分散的 `userMessage !== undefined` / `corpId === 'test'` 推导。
+
+| callerKind | 入参 | 历史消息来源 | 短期记忆加载 | 调用方 |
+|---|---|---|---|---|
+| `WECOM` | `userMessage` | ShortTermService 从 Redis/DB 读取 | 是 | ReplyWorkflowService |
+| `TEST_SUITE` | `messages[]` | 调用方直传，trimMessages 裁剪 | 否 | TestExecutionService / ConversationTestService |
+| `DEBUG` | `messages[]` | 调用方直传 | 否 | AgentController.debugChat |
+
+`callerKind` 与 `strategySource` 正交：test-suite 可通过 `strategySource: 'released'` 跑联调；debug 默认 `testing` 但也可覆盖。
 
 ### 3.4 CompletionService — 一次性 LLM 调用
 

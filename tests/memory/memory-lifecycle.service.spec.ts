@@ -35,6 +35,10 @@ describe('MemoryLifecycleService', () => {
     ]),
   };
 
+  const mockEnrichment = {
+    enrich: jest.fn(),
+  };
+
   let service: MemoryLifecycleService;
 
   beforeEach(() => {
@@ -47,6 +51,7 @@ describe('MemoryLifecycleService', () => {
       currentFocusJob: null,
       lastSessionActiveAt: null,
     });
+    mockEnrichment.enrich.mockImplementation(async (snapshot) => snapshot);
 
     service = new MemoryLifecycleService(
       mockShortTerm as never,
@@ -55,6 +60,7 @@ describe('MemoryLifecycleService', () => {
       mockSettlement as never,
       mockSessionService as never,
       mockSponge as never,
+      mockEnrichment as never,
     );
   });
 
@@ -119,9 +125,7 @@ describe('MemoryLifecycleService', () => {
     });
     mockLongTerm.getProfile.mockResolvedValue(null);
 
-    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', [
-      { role: 'user', content: '来一份' },
-    ]);
+    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', '来一份');
 
     expect(mockSponge.fetchBrandList).toHaveBeenCalled();
     expect(ctx.sessionMemory).toBeNull();
@@ -153,9 +157,12 @@ describe('MemoryLifecycleService', () => {
     });
     mockLongTerm.getProfile.mockResolvedValue(null);
 
-    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', [
-      { role: 'user', content: '上海杨浦，我是男生，25岁，有健康证，想找兼职服务员，周末有空' },
-    ]);
+    const ctx = await service.onTurnStart(
+      'corp-1',
+      'user-1',
+      'sess-1',
+      '上海杨浦，我是男生，25岁，有健康证，想找兼职服务员，周末有空',
+    );
 
     expect(ctx.sessionMemory?.facts?.preferences.brands).toEqual(['来伊份']);
     expect(ctx.sessionMemory?.facts?.preferences.city).toBeNull();
@@ -167,6 +174,78 @@ describe('MemoryLifecycleService', () => {
     expect(ctx.highConfidenceFacts?.preferences.district).toEqual(['杨浦']);
     expect(ctx.highConfidenceFacts?.interview_info.gender).toBe('男');
     expect(ctx.highConfidenceFacts?.interview_info.age).toBe('25');
+  });
+
+  it('should fallback to current user message when short-term window is empty', async () => {
+    mockShortTerm.getMessages.mockResolvedValue([]);
+    mockProcedural.get.mockResolvedValue({
+      currentStage: 'trust_building',
+      fromStage: null,
+      advancedAt: null,
+      reason: null,
+    });
+    mockLongTerm.getProfile.mockResolvedValue(null);
+
+    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', '救急消息');
+
+    expect(ctx.shortTerm.messageWindow).toEqual([{ role: 'user', content: '救急消息' }]);
+  });
+
+  it('should not apply fallback when short-term window is non-empty', async () => {
+    mockShortTerm.getMessages.mockResolvedValue([{ role: 'user', content: '历史消息' }]);
+    mockProcedural.get.mockResolvedValue({
+      currentStage: 'trust_building',
+      fromStage: null,
+      advancedAt: null,
+      reason: null,
+    });
+    mockLongTerm.getProfile.mockResolvedValue(null);
+
+    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', '救急消息');
+
+    expect(ctx.shortTerm.messageWindow).toEqual([{ role: 'user', content: '历史消息' }]);
+  });
+
+  it('should invoke enrichment when identity is provided', async () => {
+    mockShortTerm.getMessages.mockResolvedValue([{ role: 'user', content: 'hi' }]);
+    mockProcedural.get.mockResolvedValue({
+      currentStage: 'trust_building',
+      fromStage: null,
+      advancedAt: null,
+      reason: null,
+    });
+    mockLongTerm.getProfile.mockResolvedValue(null);
+    mockEnrichment.enrich.mockImplementation(async (snapshot) => ({
+      ...snapshot,
+      highConfidenceFacts: {
+        ...FALLBACK_EXTRACTION,
+        interview_info: { ...FALLBACK_EXTRACTION.interview_info, gender: '男' },
+        reasoning: 'enriched',
+      },
+    }));
+
+    const identity = { token: 't', imBotId: 'b', imContactId: 'c' };
+    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', undefined, {
+      enrichmentIdentity: identity,
+    });
+
+    expect(mockEnrichment.enrich).toHaveBeenCalledWith(expect.any(Object), identity);
+    expect(ctx.highConfidenceFacts?.interview_info.gender).toBe('男');
+  });
+
+  it('should skip enrichment when identity is not provided', async () => {
+    mockShortTerm.getMessages.mockResolvedValue([{ role: 'user', content: 'hi' }]);
+    mockProcedural.get.mockResolvedValue({
+      currentStage: 'trust_building',
+      fromStage: null,
+      advancedAt: null,
+      reason: null,
+    });
+    mockLongTerm.getProfile.mockResolvedValue(null);
+
+    await service.onTurnStart('corp-1', 'user-1', 'sess-1');
+
+    expect(mockEnrichment.enrich).not.toHaveBeenCalled();
   });
 
 it('should not fallback to short-term history when current turn messages are absent', async () => {
