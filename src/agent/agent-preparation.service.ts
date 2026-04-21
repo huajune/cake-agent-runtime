@@ -88,6 +88,7 @@ export class AgentPreparationService {
       imRoomId,
       apiType,
       modelId: overrideModelId,
+      disableFallbacks = false,
     } = params;
 
     this.logger.log(
@@ -159,11 +160,13 @@ export class AgentPreparationService {
       : this.router.resolveByRole(ModelRole.Chat);
     const chatModelId =
       trimmedOverrideModelId ?? this.configService.get<string>('AGENT_CHAT_MODEL') ?? '';
-    const chatFallbacks = trimmedOverrideModelId
-      ? undefined
-      : this.router.getFallbacks(ModelRole.Chat);
+    // 默认总是带上 chat 角色的 fallback 链（即便 override 了 primary），
+    // 只有测试保真场景（disableFallbacks=true）才清空降级链。
+    const chatFallbacks = disableFallbacks ? undefined : this.router.getFallbacks(ModelRole.Chat);
     if (trimmedOverrideModelId) {
-      this.logger.log(`使用用户指定模型: ${trimmedOverrideModelId}`);
+      this.logger.log(
+        `使用指定模型: ${trimmedOverrideModelId}${disableFallbacks ? ' (禁用降级)' : ''}`,
+      );
     }
     const typedMessages = this.toModelMessages(messages, supportsVision(chatModelId));
 

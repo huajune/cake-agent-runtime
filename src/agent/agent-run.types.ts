@@ -74,6 +74,12 @@ export interface AgentInvokeParams {
    * 为空时回退到 AGENT_CHAT_MODEL 角色路由。
    */
   modelId?: string;
+  /**
+   * 是否在本次调用中禁用模型降级链（fallbacks）。
+   * 默认 false：即便指定了 modelId，仍使用 chat 角色的 fallback 链兜底。
+   * 仅在测试保真场景（test-suite）下应置为 true，确保跑的就是指定模型。
+   */
+  disableFallbacks?: boolean;
   /** 覆盖本次调用使用的思考模式 */
   thinking?: AgentThinkingConfig;
   /**

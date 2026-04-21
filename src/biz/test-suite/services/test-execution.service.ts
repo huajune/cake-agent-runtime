@@ -117,6 +117,7 @@ export class TestExecutionService {
         botImId: request.botImId,
         strategySource,
         modelId: request.modelId,
+        disableFallbacks: true,
       });
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -233,6 +234,7 @@ export class TestExecutionService {
       botUserId: request.botUserId,
       botImId: request.botImId,
       modelId: request.modelId,
+      disableFallbacks: true,
     };
 
     const runnerResult = await this.runner.stream(runnerParams);
