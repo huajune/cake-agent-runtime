@@ -34,18 +34,62 @@ const CHANGELOG_HEADER = [
 const PENDING_START = '<!-- release:pending:start -->';
 const PENDING_END = '<!-- release:pending:end -->';
 
+// 标题别名按类别归一化。
+// - `summary` 下的 bullet 会被再次分发到具体类别（见 categorizeBullet），
+//   因此 Summary/Changes/What changed 等概览段落都可以落在这里。
 const SECTION_ALIASES = new Map([
+  // 中文
   ['更新摘要', 'summary'],
   ['本次更新摘要', 'summary'],
   ['发布摘要', 'summary'],
+  ['摘要', 'summary'],
+  ['改动', 'summary'],
+  ['变更', 'summary'],
+  ['说明', 'summary'],
+  ['影响说明', 'summary'],
   ['新功能', 'features'],
+  ['新增功能', 'features'],
   ['问题修复', 'fixes'],
+  ['缺陷修复', 'fixes'],
   ['优化调整', 'optimizations'],
+  ['性能优化', 'optimizations'],
+  ['重构', 'optimizations'],
   ['运维与流程', 'ops'],
+  ['运维', 'ops'],
   ['配置变更', 'config'],
+  ['配置', 'config'],
   ['验证记录', 'verification'],
   ['验证情况', 'verification'],
-  ['影响说明', 'verification'],
+  ['测试计划', 'verification'],
+  ['测试', 'verification'],
+  ['验证', 'verification'],
+  // 英文
+  ['Summary', 'summary'],
+  ['Changes', 'summary'],
+  ['Whatchanged', 'summary'],
+  ['Overview', 'summary'],
+  ['Description', 'summary'],
+  ['Impact', 'summary'],
+  ['Features', 'features'],
+  ['Newfeatures', 'features'],
+  ['BugFixes', 'fixes'],
+  ['Bugfixes', 'fixes'],
+  ['Fixes', 'fixes'],
+  ['Refactor', 'optimizations'],
+  ['Refactoring', 'optimizations'],
+  ['Performance', 'optimizations'],
+  ['Improvements', 'optimizations'],
+  ['Optimizations', 'optimizations'],
+  ['Ops', 'ops'],
+  ['Chore', 'ops'],
+  ['CI', 'ops'],
+  ['Config', 'config'],
+  ['Configuration', 'config'],
+  ['Testplan', 'verification'],
+  ['Tests', 'verification'],
+  ['Testing', 'verification'],
+  ['Validation', 'verification'],
+  ['Verification', 'verification'],
 ]);
 
 const MODE = process.argv[2] || 'prepare';
@@ -353,18 +397,27 @@ function parsePullRequestEntry() {
 
   const title = normalizeTitle(rawTitle || `更新 ${rawNumber}` || '未命名更新');
   const sections = parseBodySections(rawBody);
-  if (sections.summary.length === 0) {
-    sections.summary.push(title);
+  const fallbackKey = inferPrimaryCategory(rawTitle || title);
+
+  // 更新摘要一律只挂 PR 标题；`## Summary / Changes / What changed` 这类概览段落里的 bullet
+  // 按关键词分发到具体类别，保证 `### 新功能 / 问题修复` 等栏目里是真实变更描述而不是 PR 标题复读。
+  const summaryBullets = sections.summary;
+  sections.summary = [];
+  for (const bullet of summaryBullets) {
+    const key = categorizeBullet(bullet, fallbackKey);
+    sections[key].push(bullet);
   }
 
-  if (
-    sections.features.length === 0 &&
-    sections.fixes.length === 0 &&
-    sections.optimizations.length === 0 &&
-    sections.ops.length === 0
-  ) {
-    const inferredKey = inferPrimaryCategory(rawTitle || title);
-    sections[inferredKey].push(title);
+  const hasCategoryBullet =
+    sections.features.length +
+      sections.fixes.length +
+      sections.optimizations.length +
+      sections.ops.length +
+      sections.config.length >
+    0;
+
+  if (!hasCategoryBullet) {
+    sections[fallbackKey].push(title);
   }
 
   return {
@@ -373,7 +426,7 @@ function parsePullRequestEntry() {
     title,
     author: rawAuthor,
     mergedAt: rawMergedAt ? rawMergedAt.slice(0, 10) : formatShanghaiDate(),
-    summary: uniqueList(sections.summary),
+    summary: [title],
     features: uniqueList(sections.features),
     fixes: uniqueList(sections.fixes),
     optimizations: uniqueList(sections.optimizations),
@@ -420,12 +473,17 @@ function parseBodySections(body) {
 
   if (!body) return sections;
 
+  // H2 是类别边界；H3+ 是同一类别下的子标题，不重置 currentKey，
+  // 这样 `## Summary` 下的 `### 消息回调 / ### Agent 侧修复` 子段里的 bullet 依然能被捕获。
   let currentKey = null;
   for (const rawLine of body.split('\n')) {
-    const headingMatch = rawLine.match(/^#{2,6}\s*(.+?)\s*$/);
+    const headingMatch = rawLine.match(/^(#{2,6})\s*(.+?)\s*$/);
     if (headingMatch) {
-      const normalizedHeading = headingMatch[1].replace(/\s+/g, '');
-      currentKey = SECTION_ALIASES.get(normalizedHeading) || null;
+      const level = headingMatch[1].length;
+      if (level === 2) {
+        const normalizedHeading = headingMatch[2].replace(/\s+/g, '');
+        currentKey = SECTION_ALIASES.get(normalizedHeading) || null;
+      }
       continue;
     }
 
@@ -439,24 +497,53 @@ function parseBodySections(body) {
   return sections;
 }
 
+// 把落在 `summary` 池的 bullet 按关键词分发到具体类别；缺乏信号时回落到 PR 标题推断的类别。
+function categorizeBullet(text, fallbackKey) {
+  const hasFix = /修复|修正|解决|漏判|误判|堵住|兜底|fix(?:ed|es)?\b|bug\b|resolve[ds]?\b|hotfix/i.test(
+    text,
+  );
+  const hasFeat =
+    /新功能|新增|添加|支持|接入|打通|feat(?:ure)?\b|introduce|support\b|enable\b/i.test(text);
+  const hasOpt =
+    /优化|重构|简化|降延|原子化|消除|彻底|提升|加速|归一|抽取|合并|拆分|refactor|perf(?:ormance)?\b|improve|optimi[sz]e|consolidate|unify|extract|split/i.test(
+      text,
+    );
+  const hasOps =
+    /部署|流水线|ci\b|cd\b|workflow|pipeline|通知路由|告警路由|release|deploy|chore\b|migration/i.test(
+      text,
+    );
+
+  // 强信号优先：fix > feat > opt > ops；再回落到 fallback。
+  if (hasFix && !hasFeat && !hasOpt) return 'fixes';
+  if (hasFeat && !hasFix && !hasOpt) return 'features';
+  if (hasOpt && !hasFix && !hasFeat) return 'optimizations';
+  if (hasOps && !hasFix && !hasFeat && !hasOpt) return 'ops';
+  // 有 fix 信号时优先修复（即便混杂了 新增/优化 动词）
+  if (hasFix) return 'fixes';
+  if (hasFeat) return 'features';
+  if (hasOpt) return 'optimizations';
+  if (hasOps) return 'ops';
+  return fallbackKey;
+}
+
 function normalizeBodyLine(line) {
-  let text = line.trim();
+  const text = line.trim();
   if (!text) return '';
   if (text.startsWith('<!--')) return '';
 
-  text = text.replace(/^[-*+]\s+\[[ xX]\]\s+/, '');
-  text = text.replace(/^\d+\.\s+/, '');
-  text = text.replace(/^[-*+]\s+/, '');
-  text = text.trim();
+  // 只接受 bullet / 编号列表，跳过 Summary 里的叙述性段落，避免散文落进类别列表。
+  const bulletMatch = text.match(/^(?:[-*+]\s+|\d+\.\s+)(.+)$/);
+  if (!bulletMatch) return '';
 
-  if (!text) return '';
+  let content = bulletMatch[1].replace(/^\[[ xX]\]\s+/, '').trim();
+  if (!content) return '';
 
-  const lower = text.toLowerCase();
+  const lower = content.toLowerCase();
   if (['无', '暂无', 'none', 'n/a', '待补充'].includes(lower)) {
     return '';
   }
 
-  return text;
+  return content;
 }
 
 function uniqueList(values) {
