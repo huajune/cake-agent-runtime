@@ -3,21 +3,45 @@ import type {
   AgentHealthRaw,
   AvailableModelsResponse,
   ConfiguredToolsResponse,
+  ModelOption,
+  ModelCapability,
 } from '../types/agent.types';
 import { api, unwrapResponse } from '../client';
 
-export type { AvailableModelsResponse, ConfiguredToolsResponse } from '../types/agent.types';
+export type {
+  AvailableModelsResponse,
+  ConfiguredToolsResponse,
+  ModelOption,
+  ModelCapability,
+} from '../types/agent.types';
+
+interface RawModelEntry {
+  id: string;
+  provider?: string;
+  name?: string;
+  description?: string;
+  capabilities?: ModelCapability[];
+}
 
 /**
  * 获取可用模型列表
- * 后端: GET /agent/models -> { models: [{id, provider, name}], total }
+ * 后端: GET /agent/models -> { models: [{id, provider, name, description, capabilities}], total }
  */
 export async function getAvailableModels(): Promise<AvailableModelsResponse> {
   const { data } = await api.get('/agent/models');
-  const raw = unwrapResponse<{ models: { id: string }[]; total: number }>(data);
+  const raw = unwrapResponse<{ models: RawModelEntry[]; total: number }>(data);
+  const models: ModelOption[] =
+    raw.models?.map((m) => ({
+      id: m.id,
+      provider: m.provider ?? '',
+      name: m.name ?? m.id,
+      description: m.description ?? '',
+      capabilities: m.capabilities ?? [],
+    })) ?? [];
   return {
-    availableModels: raw.models?.map((m) => m.id) ?? [],
-    defaultModel: raw.models?.[0]?.id ?? '',
+    availableModels: models.map((m) => m.id),
+    models,
+    defaultModel: models[0]?.id ?? '',
     defaultModelAvailable: (raw.total ?? 0) > 0,
     lastRefreshTime: new Date().toISOString(),
   };

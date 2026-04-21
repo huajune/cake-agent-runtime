@@ -1,7 +1,18 @@
 // ==================== Agent 注册信息 ====================
 
+export type ModelCapability = 'thinking' | 'tool-use' | 'multimodal' | 'long-context';
+
+export interface ModelOption {
+  id: string;
+  provider: string;
+  name: string;
+  description: string;
+  capabilities: ModelCapability[];
+}
+
 export interface AvailableModelsResponse {
   availableModels: string[];
+  models: ModelOption[];
   defaultModel: string;
   defaultModelAvailable: boolean;
   lastRefreshTime: string;

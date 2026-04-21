@@ -66,28 +66,18 @@ export const DEFAULT_RELIABLE_CONFIG: ReliableConfig = {
  */
 // ==================== Vision 能力检测 ====================
 
-/** 已知支持多模态 vision 的厂商关键词（匹配模型 ID 中任意位置） */
-const VISION_CAPABLE_KEYWORDS = ['anthropic/', 'openai/', 'google/', 'gemini'];
-
-/** 已知不支持 vision 的厂商关键词 */
-const VISION_INCAPABLE_KEYWORDS = ['deepseek/', 'moonshotai/'];
-
-/** Qwen 中支持多模态的模型关键词（qwen3.5-plus / qwen3.6-plus / qwen-vl 系列） */
-const QWEN_VISION_KEYWORDS = ['qwen3.5-plus', 'qwen3.6-plus', 'qwen-vl', 'qwen3-vl'];
+import { modelHasCapability } from './models';
 
 /**
  * 检测模型是否支持多模态 vision（图片输入）
+ *
+ * 以 MODEL_DICTIONARY.capabilities 中的 'multimodal' 标签为单一来源。
  * 支持嵌套路由格式如 openrouter/anthropic/claude-sonnet-4、ohmygpt/gemini-2.5-pro
- * 不支持时应降级为纯文字描述
+ * （resolveModelCapabilities 会按后缀逐级回退查找）。
+ * 未登记的模型保守返回 false，上层据此降级为文字描述。
  */
 export function supportsVision(modelId: string): boolean {
-  const id = modelId.toLowerCase();
-  // 先排除已知不支持的
-  if (VISION_INCAPABLE_KEYWORDS.some((k) => id.includes(k))) return false;
-  // Qwen 按模型粒度判断：仅 qwen3.5-plus / qwen3.6-plus / qwen-vl 系列支持
-  if (id.includes('qwen/')) return QWEN_VISION_KEYWORDS.some((k) => id.includes(k));
-  // 再匹配已知支持的
-  return VISION_CAPABLE_KEYWORDS.some((k) => id.includes(k));
+  return modelHasCapability(modelId, 'multimodal');
 }
 
 // ==================== Provider 默认配置 ====================

@@ -9,6 +9,7 @@ import { useWorkerStatus, useSetWorkerConcurrency } from '@/hooks/config/useWork
 import { useMessageProcessingRecords } from '@/hooks/chat/useMessageProcessingRecords';
 import type { AgentReplyConfig, AgentReplyThinkingMode } from '@/api/types/config.types';
 
+import { ModelSelector } from '@/components/ModelSelector';
 import ControlBar from './components/ControlBar';
 import { formatConfigValue } from './components/ConfigCard';
 import WorkerPanel from './components/WorkerPanel';
@@ -190,6 +191,11 @@ export default function Config() {
 
   const modelValue = String(getCurrentValue('wecomCallbackModelId') ?? '');
   const modelDefaultValue = String(getDefaultValue('wecomCallbackModelId') ?? '');
+  const modelOptions = availableModelsData?.models ?? [];
+  const modelDefaultOption = modelOptions.find((o) => o.id === modelDefaultValue);
+  const modelDefaultLabel = modelDefaultOption
+    ? modelDefaultOption.name || modelDefaultOption.id
+    : modelDefaultValue || '默认角色路由';
   const thinkingModeValue = String(
     getCurrentValue('wecomCallbackThinkingMode') ?? 'fast',
   ) as AgentReplyThinkingMode;
@@ -246,26 +252,19 @@ export default function Config() {
                   </p>
                   <div className={styles.settingMeta}>
                     <span>适用于新的企微回调请求</span>
-                    <span>默认: {modelDefaultValue || '默认角色路由'}</span>
+                    <span>默认: {modelDefaultLabel}</span>
                   </div>
                 </div>
                 <div className={styles.controlBlock}>
-                  <span className={styles.controlValue}>{modelValue || '默认角色路由'}</span>
-                  <select
-                    className={styles.selectInput}
+                  <ModelSelector
                     value={modelValue}
-                    onChange={(e) => handleConfigChange('wecomCallbackModelId', e.target.value)}
+                    options={modelOptions}
+                    onChange={(next) => handleConfigChange('wecomCallbackModelId', next)}
                     disabled={isLoadingModels}
-                  >
-                    <option value="">
-                      {isLoadingModels ? '加载模型列表中...' : '默认角色路由（AGENT_CHAT_MODEL）'}
-                    </option>
-                    {(availableModelsData?.availableModels ?? []).map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder={isLoadingModels ? '加载模型列表中...' : '默认角色路由'}
+                    defaultOptionLabel="默认角色路由"
+                    defaultOptionDesc="留空则走后端 AGENT_CHAT_MODEL 角色路由"
+                  />
                 </div>
               </div>
 
