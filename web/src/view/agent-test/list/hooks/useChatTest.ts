@@ -7,7 +7,7 @@ import {
   TokenUsage,
   resetChatSessionMemory,
 } from '@/api/services/agent-test.service';
-import { getAvailableModels } from '@/api/services/agent.service';
+import { getAvailableModels, type ModelOption } from '@/api/services/agent.service';
 import { CHAT_API_ENDPOINT, DEFAULT_GROUP_INVITE_IDS, DEFAULT_SCENARIO } from '../constants';
 import { generateUUID } from '@/utils/uuid';
 import {
@@ -68,6 +68,7 @@ export interface UseChatTestReturn {
   // 模型选择
   modelId: string;
   availableModels: string[];
+  availableModelOptions: ModelOption[];
   setModelId: (modelId: string) => void;
 
   // 操作
@@ -196,6 +197,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
   // 模型选择（空字符串表示使用后端默认角色路由）
   const [modelId, setModelId] = useState('');
   const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [availableModelOptions, setAvailableModelOptions] = useState<ModelOption[]>([]);
   const setThinkingBudgetTokens = useCallback((tokens: number) => {
     setThinkingBudgetTokensState(clampThinkingBudgetTokens(tokens));
   }, []);
@@ -449,9 +451,13 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
       .then((resp) => {
         if (cancelled) return;
         setAvailableModels(resp.availableModels);
+        setAvailableModelOptions(resp.models);
       })
       .catch(() => {
-        if (!cancelled) setAvailableModels([]);
+        if (!cancelled) {
+          setAvailableModels([]);
+          setAvailableModelOptions([]);
+        }
       });
     return () => {
       cancelled = true;
@@ -735,6 +741,7 @@ export function useChatTest({ onTestComplete }: UseChatTestOptions = {}): UseCha
     thinkingBudgetTokens,
     modelId,
     availableModels,
+    availableModelOptions,
     setModelId,
     setHistoryText,
     setCurrentInput,

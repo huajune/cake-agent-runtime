@@ -17,6 +17,7 @@ import {
   Settings2,
 } from 'lucide-react';
 import { TestChatResponse } from '@/api/services/agent-test.service';
+import type { ModelOption } from '@/api/services/agent.service';
 import { MessagePartsAdapter } from '../MessagePartsAdapter';
 import { useChatTest, useFeedback, type AgentTestThinkingMode } from '../../hooks';
 import { FeedbackModal } from '../FeedbackModal';
@@ -24,6 +25,7 @@ import { MetricsRow } from '../MetricsRow';
 import { FeedbackButtons } from '../FeedbackButtons';
 import { CandidateSelector } from '../CandidateSelector';
 import { GroupInviteIdModal } from '../GroupInviteIdModal';
+import { ModelSelector } from '@/components/ModelSelector';
 import { HISTORY_PLACEHOLDER } from '../../constants';
 import styles from './index.module.scss';
 
@@ -40,7 +42,7 @@ interface ChatInputPanelProps {
   thinkingMode: AgentTestThinkingMode;
   thinkingBudgetTokens: number;
   modelId: string;
-  availableModels: string[];
+  availableModelOptions: ModelOption[];
   setModelId: (modelId: string) => void;
   setHistoryText: (text: string) => void;
   setCurrentInput: (text: string) => void;
@@ -80,7 +82,7 @@ const ChatInputPanel = memo(function ChatInputPanel({
   thinkingMode,
   thinkingBudgetTokens,
   modelId,
-  availableModels,
+  availableModelOptions,
   setModelId,
   setHistoryText,
   setCurrentInput,
@@ -95,6 +97,10 @@ const ChatInputPanel = memo(function ChatInputPanel({
 }: ChatInputPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+  const selectedModelOption = availableModelOptions.find((o) => o.id === modelId);
+  const advancedModelSummary = modelId
+    ? selectedModelOption?.name || modelId
+    : '默认模型';
 
   return (
     <div className={styles.inputPanel}>
@@ -124,7 +130,7 @@ const ChatInputPanel = memo(function ChatInputPanel({
               <Settings2 size={14} /> 高级设置
             </span>
             <span className={styles.advancedSummary}>
-              {modelId || '默认模型'} · {thinkingMode === 'deep' ? '深度思考' : '极速'}
+              {advancedModelSummary} · {thinkingMode === 'deep' ? '深度思考' : '极速'}
             </span>
             <ChevronDown
               size={16}
@@ -140,19 +146,12 @@ const ChatInputPanel = memo(function ChatInputPanel({
                   <span className={styles.labelHint}>留空使用后端默认角色路由</span>
                 </div>
                 <div className={styles.modeControls}>
-                  <select
-                    className={styles.modelSelect}
+                  <ModelSelector
                     value={modelId}
+                    options={availableModelOptions}
+                    onChange={setModelId}
                     disabled={isLoading}
-                    onChange={(e) => setModelId(e.target.value)}
-                  >
-                    <option value="">默认（角色路由）</option>
-                    {availableModels.map((id) => (
-                      <option key={id} value={id}>
-                        {id}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
               </div>
 
@@ -357,7 +356,7 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
     thinkingMode,
     thinkingBudgetTokens,
     modelId,
-    availableModels,
+    availableModelOptions,
     setModelId,
     setHistoryText,
     setCurrentInput,
@@ -407,7 +406,7 @@ export default function ChatTester({ onTestComplete }: ChatTesterProps) {
           thinkingMode={thinkingMode}
           thinkingBudgetTokens={thinkingBudgetTokens}
           modelId={modelId}
-          availableModels={availableModels}
+          availableModelOptions={availableModelOptions}
           setModelId={setModelId}
           setHistoryText={setHistoryText}
           setCurrentInput={setCurrentInput}
