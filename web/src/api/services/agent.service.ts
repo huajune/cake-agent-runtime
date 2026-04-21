@@ -21,6 +21,7 @@ interface RawModelEntry {
   name?: string;
   description?: string;
   capabilities?: ModelCapability[];
+  releasedAt?: string;
 }
 
 /**
@@ -37,6 +38,7 @@ export async function getAvailableModels(): Promise<AvailableModelsResponse> {
       name: m.name ?? m.id,
       description: m.description ?? '',
       capabilities: m.capabilities ?? [],
+      releasedAt: m.releasedAt,
     })) ?? [];
   return {
     availableModels: models.map((m) => m.id),

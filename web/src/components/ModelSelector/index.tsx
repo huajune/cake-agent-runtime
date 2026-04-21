@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Brain,
+  Calendar,
   Check,
   ChevronDown,
   Image as ImageIcon,
@@ -191,7 +192,12 @@ export function ModelSelector({
                   <div className={styles.optionMain}>
                     <div className={styles.optionTitleRow}>
                       <span className={styles.optionTitle}>{option.name || option.id}</span>
-                      <span className={styles.optionId}>{option.id}</span>
+                      {option.releasedAt && (
+                        <span className={styles.optionDate} title={`发布时间 ${option.releasedAt}`}>
+                          <Calendar size={11} />
+                          {option.releasedAt}
+                        </span>
+                      )}
                       {isSelected && <Check size={14} className={styles.optionCheck} />}
                     </div>
                     {option.description && (

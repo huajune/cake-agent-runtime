@@ -207,6 +207,23 @@
   max-width: 100%;
 }
 
+.optionDate {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: $text-muted;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 1px 6px;
+  border-radius: $radius-sm;
+  background: rgba(148, 163, 184, 0.08);
+  white-space: nowrap;
+
+  svg {
+    opacity: 0.7;
+  }
+}
+
 .optionCheck {
   margin-left: auto;
   color: $accent;
