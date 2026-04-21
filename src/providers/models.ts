@@ -68,6 +68,11 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
     name: 'Qwen3.6 Plus',
     description: '通义千问3.6增强版（支持文本/图像/视频，支持思考模式）',
   },
+  'qwen/qwen3.6-max-preview': {
+    provider: 'qwen',
+    name: 'Qwen3.6 Max Preview',
+    description: '通义千问3.6旗舰预览版',
+  },
 
   // ==================== MoonshotAI / Kimi ====================
   'moonshotai/kimi-k2-thinking-turbo': {
