@@ -290,6 +290,100 @@ describe('ReplyWorkflowService', () => {
       expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
     });
 
+    it.each([
+      ['advance_stage'],
+      ['invite_to_group'],
+      ['duliday_interview_booking'],
+    ])(
+      'Case E: 首次调用命中不可逆工具 [%s] 时跳过 replay，不 drain pending，直接投递首次回复',
+      async (blockingToolName) => {
+        const primary = createMessage();
+        // 即便 pending 有新消息，也不应该被 drain；这里故意准备新消息来验证 skip 语义
+        simpleMergeService.getAndClearPendingMessages.mockResolvedValue({
+          messages: [
+            createMessage({
+              messageId: 'msg-late-irrev',
+              payload: { text: '后补一句', pureText: '后补一句' },
+            }),
+          ],
+          batchId: 'batch-late',
+        });
+
+        const firstRunTurnEnd = jest.fn().mockResolvedValue(undefined);
+        runner.invoke.mockResolvedValueOnce({
+          text: '首次回复（必须投递）',
+          reasoning: undefined,
+          responseMessages: [],
+          toolCalls: [{ toolName: blockingToolName, args: {} }],
+          usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+          runTurnEnd: firstRunTurnEnd,
+        });
+
+        await service.processSingleMessage(primary);
+
+        // 不 drain pending：新消息留给 MessageProcessor 的 checkAndProcessNewMessages 发起 follow-up job
+        expect(simpleMergeService.getAndClearPendingMessages).not.toHaveBeenCalled();
+        // 只调用一次 Agent；首次结果直接投递
+        expect(runner.invoke).toHaveBeenCalledTimes(1);
+        expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
+        expect(deliveryService.deliverReply).toHaveBeenCalledWith(
+          expect.objectContaining({ content: '首次回复（必须投递）' }),
+          expect.anything(),
+          true,
+        );
+        // 首次结果被采纳：必须显式触发 turn-end 生命周期（deferTurnEnd=true 的配套动作）
+        expect(firstRunTurnEnd).toHaveBeenCalledTimes(1);
+        // 只标记主消息已处理——后补的消息交给下一轮，不在本次 processedMessageIds 里
+        expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');
+        expect(deduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalledWith(
+          'msg-late-irrev',
+        );
+      },
+    );
+
+    it('Case F: 首次命中不可逆工具 + 无副作用的其他工具，仍然按 skip 处理', async () => {
+      const primary = createMessage();
+      runner.invoke.mockResolvedValueOnce({
+        text: '已为你安排预约',
+        reasoning: undefined,
+        responseMessages: [],
+        toolCalls: [
+          { toolName: 'duliday_job_list', args: {} },
+          { toolName: 'duliday_interview_booking', args: {} },
+        ],
+        usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+        runTurnEnd: jest.fn().mockResolvedValue(undefined),
+      });
+
+      await service.processSingleMessage(primary);
+
+      expect(simpleMergeService.getAndClearPendingMessages).not.toHaveBeenCalled();
+      expect(runner.invoke).toHaveBeenCalledTimes(1);
+      expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
+    });
+
+    it('Case G: 首次只调用无副作用的工具 → 按常规路径检查 pending，无新消息则直接投递首次', async () => {
+      const primary = createMessage();
+      const firstRunTurnEnd = jest.fn().mockResolvedValue(undefined);
+      runner.invoke.mockResolvedValueOnce({
+        text: '先问下你意向',
+        reasoning: undefined,
+        responseMessages: [],
+        toolCalls: [
+          { toolName: 'duliday_job_list', args: {} },
+          { toolName: 'save_image_description', args: {} },
+        ],
+        usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+        runTurnEnd: firstRunTurnEnd,
+      });
+
+      await service.processSingleMessage(primary);
+
+      expect(simpleMergeService.getAndClearPendingMessages).toHaveBeenCalledTimes(1);
+      expect(runner.invoke).toHaveBeenCalledTimes(1);
+      expect(firstRunTurnEnd).toHaveBeenCalledTimes(1);
+    });
+
     it('Case D: 首次 skip_reply 但重跑产生真实回复 → 正常投递，不进主动沉默分支', async () => {
       const primary = createMessage();
       const late1 = createMessage({

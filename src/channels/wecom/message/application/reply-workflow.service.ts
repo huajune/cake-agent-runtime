@@ -18,6 +18,41 @@ import { MessageProcessingFailureService } from './message-processing-failure.se
 import { PreAgentRiskInterceptService } from './pre-agent-risk-intercept.service';
 import type { AgentThinkingConfig } from '@agent/agent-run.types';
 
+/**
+ * 触发后会产生不可逆副作用的工具集合。
+ *
+ * 首次 Agent 调用若命中其中任一工具（无论 result.success 如何），
+ * 视为"本轮副作用已固化"，直接投递首次回复，跳过 replay 检测：
+ * - `advance_stage`   procedural memory DB 直写 currentStage
+ * - `invite_to_group` 企业级 addMember 外部 API + session facts 直写 invitedGroups
+ * - `duliday_interview_booking` 杜力岱预约外部 API + recruitment_cases 建行 + 失败侧暂停托管
+ *
+ * 若 replay 丢弃首次回复，上述副作用已落地但用户未收到回复，会造成严重错乱：
+ * - 阶段错位（procedural 被推进但 Agent 二次生成以为还在前一阶段）
+ * - 群邀请已发但无解释
+ * - 面试已预约但 Agent 二次生成重复尝试
+ *
+ * Agent 生成期间到达的新消息会留在 Redis pending list 里，
+ * 由 MessageProcessor.handleProcessJob 末尾的 `checkAndProcessNewMessages`
+ * 补建 follow-up job 在下一轮独立处理。
+ */
+const REPLAY_BLOCKING_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'advance_stage',
+  'invite_to_group',
+  'duliday_interview_booking',
+]);
+
+function collectBlockingTools(toolCalls: AgentInvokeResult['toolCalls']): string[] {
+  if (!toolCalls || toolCalls.length === 0) return [];
+  const hit = new Set<string>();
+  for (const call of toolCalls) {
+    if (REPLAY_BLOCKING_TOOL_NAMES.has(call.toolName)) {
+      hit.add(call.toolName);
+    }
+  }
+  return Array.from(hit);
+}
+
 @Injectable()
 export class ReplyWorkflowService {
   private readonly logger = new Logger(ReplyWorkflowService.name);
@@ -211,51 +246,75 @@ export class ReplyWorkflowService {
         `tokens=${agentResult.reply.usage?.totalTokens || 'N/A'}`,
     );
 
-    // 投递前重跑：Agent 生成期间若用户又发了新消息，丢弃本次回复，合并新消息重跑一次。
-    // 只允许一次重跑——第二次生成期间到的新消息交给投递后的 follow-up job 处理，避免无限重跑。
-    const newMessages = await this.fetchPendingSinceAgentStart(chatId);
-    if (newMessages.length > 0) {
+    // 副作用工具短路：首次调用若命中 advance_stage / invite_to_group /
+    // duliday_interview_booking 中任一个，就视为本轮已经在外部系统留下了
+    // 不可撤销的痕迹——不去 drain pending，直接投递首次回复。
+    // Agent 生成期间到达的新消息仍留在 Redis pending list 里，由
+    // MessageProcessor 末尾的 checkAndProcessNewMessages 补建 follow-up
+    // job 在下一轮独立处理。
+    const blockingTools = collectBlockingTools(agentResult.toolCalls);
+    const replayBlocked = blockingTools.length > 0;
+
+    if (replayBlocked) {
       this.logger.warn(
-        `${logPrefix}[${contactName}][Replay] 检测到 ${newMessages.length} 条新消息，丢弃首次回复并重新调用 Agent (chatId=${chatId})`,
+        `${logPrefix}[${contactName}][Replay-Skip] 首次调用命中不可逆工具 [${blockingTools.join(
+          ',',
+        )}]，跳过 replay 检测，直接投递首次回复 (chatId=${chatId})`,
       );
-      // 丢弃首次的 runTurnEnd——它承载了将首次回复写入 session 记忆的副作用。
-      // 下面第二次 callAgent 使用默认 deferTurnEnd=false，runner 内部会 fire-and-forget 触发。
-      agentResult.runTurnEnd = undefined;
+      if (agentResult.runTurnEnd) {
+        void agentResult.runTurnEnd().catch((err) => {
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          this.logger.warn(`[${contactName}] turn-end lifecycle 执行失败: ${errorMessage}`);
+        });
+        agentResult.runTurnEnd = undefined;
+      }
+    } else {
+      // 投递前重跑：Agent 生成期间若用户又发了新消息，丢弃本次回复，合并新消息重跑一次。
+      // 只允许一次重跑——第二次生成期间到的新消息交给投递后的 follow-up job 处理，避免无限重跑。
+      const newMessages = await this.fetchPendingSinceAgentStart(chatId);
+      if (newMessages.length > 0) {
+        this.logger.warn(
+          `${logPrefix}[${contactName}][Replay] 检测到 ${newMessages.length} 条新消息，丢弃首次回复并重新调用 Agent (chatId=${chatId})`,
+        );
+        // 丢弃首次的 runTurnEnd——它承载了将首次回复写入 session 记忆的副作用。
+        // 下面第二次 callAgent 使用默认 deferTurnEnd=false，runner 内部会 fire-and-forget 触发。
+        agentResult.runTurnEnd = undefined;
 
-      allMessages = [...allMessages, ...newMessages];
-      content = this.wecomObservability.buildMergedRequestContent(allMessages);
-      imageUrls = this.collectImageUrls(allMessages);
-      imageMessageIds = this.collectImageMessageIds(allMessages);
-      visualMessageTypes = this.buildVisualMessageTypes(allMessages);
+        allMessages = [...allMessages, ...newMessages];
+        content = this.wecomObservability.buildMergedRequestContent(allMessages);
+        imageUrls = this.collectImageUrls(allMessages);
+        imageMessageIds = this.collectImageMessageIds(allMessages);
+        visualMessageTypes = this.buildVisualMessageTypes(allMessages);
 
-      // Replay 合入的新消息在 intake 时已写了一条 processing 流水，本轮的终态只会
-      // 回写到 traceId 那一行。若不在这里回收，这些源记录会一直停在「处理中」，
-      // 只能等 30 分钟的 timeoutStuckRecords 兜底清理。
-      await this.wecomObservability.mergePrepTimingsFromSources(
-        traceId,
-        newMessages.map((message) => message.messageId),
-      );
+        // Replay 合入的新消息在 intake 时已写了一条 processing 流水，本轮的终态只会
+        // 回写到 traceId 那一行。若不在这里回收，这些源记录会一直停在「处理中」，
+        // 只能等 30 分钟的 timeoutStuckRecords 兜底清理。
+        await this.wecomObservability.mergePrepTimingsFromSources(
+          traceId,
+          newMessages.map((message) => message.messageId),
+        );
 
-      agentResult = await this.callAgent({
-        ...agentCallParams,
-        userMessage: content,
-        imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
-        imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
-        visualMessageTypes:
-          Object.keys(visualMessageTypes).length > 0 ? visualMessageTypes : undefined,
-      });
+        agentResult = await this.callAgent({
+          ...agentCallParams,
+          userMessage: content,
+          imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+          imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
+          visualMessageTypes:
+            Object.keys(visualMessageTypes).length > 0 ? visualMessageTypes : undefined,
+        });
 
-      this.logger.log(
-        `${logPrefix}[${contactName}][Replay] 重跑 Agent 完成，耗时 ${agentResult.processingTime}ms，` +
-          `tokens=${agentResult.reply.usage?.totalTokens || 'N/A'}`,
-      );
-    } else if (agentResult.runTurnEnd) {
-      // 首次结果被最终采纳，显式触发 turn-end lifecycle（与默认路径语义对齐：fire-and-forget）。
-      void agentResult.runTurnEnd().catch((err) => {
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        this.logger.warn(`[${contactName}] turn-end lifecycle 执行失败: ${errorMessage}`);
-      });
-      agentResult.runTurnEnd = undefined;
+        this.logger.log(
+          `${logPrefix}[${contactName}][Replay] 重跑 Agent 完成，耗时 ${agentResult.processingTime}ms，` +
+            `tokens=${agentResult.reply.usage?.totalTokens || 'N/A'}`,
+        );
+      } else if (agentResult.runTurnEnd) {
+        // 首次结果被最终采纳，显式触发 turn-end lifecycle（与默认路径语义对齐：fire-and-forget）。
+        void agentResult.runTurnEnd().catch((err) => {
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          this.logger.warn(`[${contactName}] turn-end lifecycle 执行失败: ${errorMessage}`);
+        });
+        agentResult.runTurnEnd = undefined;
+      }
     }
 
     if (agentResult.isFallback) {
