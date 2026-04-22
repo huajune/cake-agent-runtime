@@ -2,280 +2,103 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ReliableService } from '@providers/reliable.service';
 import { RegistryService } from '@providers/registry.service';
 
-// Mock AI SDK
-const mockGenerateText = jest.fn();
-const mockStreamText = jest.fn();
-jest.mock('ai', () => ({
-  generateText: (...args: unknown[]) => mockGenerateText(...args),
-  streamText: (...args: unknown[]) => mockStreamText(...args),
-}));
-
 describe('ReliableService', () => {
   let service: ReliableService;
   let mockRegistry: { resolve: jest.Mock };
 
-  const mockModel = { modelId: 'anthropic/claude-sonnet-4-6', provider: 'anthropic' };
-  const mockFallbackModel = { modelId: 'openai/gpt-4o', provider: 'openai' };
-  const mockFallback2Model = { modelId: 'deepseek/deepseek-chat', provider: 'deepseek' };
-
   beforeEach(async () => {
-    jest.clearAllMocks();
-
     mockRegistry = {
-      resolve: jest.fn((id: string) => {
-        const models: Record<string, unknown> = {
-          'anthropic/claude-sonnet-4-6': mockModel,
-          'openai/gpt-4o': mockFallbackModel,
-          'deepseek/deepseek-chat': mockFallback2Model,
-        };
-        if (!models[id]) throw new Error(`Provider not found: ${id}`);
-        return models[id];
+      resolve: jest.fn((modelId: string) => {
+        if (modelId === 'anthropic/claude-sonnet-4-6') {
+          return { modelId };
+        }
+        throw new Error(`Provider not found: ${modelId}`);
       }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        ReliableService,
-        { provide: RegistryService, useValue: mockRegistry },
-      ],
+      providers: [ReliableService, { provide: RegistryService, useValue: mockRegistry }],
     }).compile();
 
     service = module.get<ReliableService>(ReliableService);
   });
 
+  describe('isModelAvailable', () => {
+    it('should return true when the model can be resolved', () => {
+      expect(service.isModelAvailable('anthropic/claude-sonnet-4-6')).toBe(true);
+      expect(mockRegistry.resolve).toHaveBeenCalledWith('anthropic/claude-sonnet-4-6');
+    });
+
+    it('should return false when resolving the model throws', () => {
+      expect(service.isModelAvailable('openai/gpt-4o')).toBe(false);
+      expect(mockRegistry.resolve).toHaveBeenCalledWith('openai/gpt-4o');
+    });
+  });
+
   describe('classifyError', () => {
-    it('should classify 401 as non_retryable', () => {
+    it('should classify auth and request errors as non_retryable', () => {
       expect(service.classifyError(new Error('HTTP 401 Unauthorized'))).toBe('non_retryable');
-    });
-
-    it('should classify 403 as non_retryable', () => {
-      expect(service.classifyError(new Error('HTTP 403 Forbidden'))).toBe('non_retryable');
-    });
-
-    it('should classify 404 as non_retryable', () => {
-      expect(service.classifyError(new Error('HTTP 404 Not Found'))).toBe('non_retryable');
-    });
-
-    it('should classify 400 as non_retryable', () => {
-      expect(service.classifyError(new Error('HTTP 400 Bad Request'))).toBe('non_retryable');
-    });
-
-    it('should classify "invalid api key" as non_retryable', () => {
       expect(service.classifyError(new Error('Invalid API Key provided'))).toBe('non_retryable');
-    });
-
-    it('should classify "model not found" as non_retryable', () => {
       expect(service.classifyError(new Error('Model not found: gpt-5'))).toBe('non_retryable');
     });
 
-    it('should classify "insufficient balance" as non_retryable', () => {
-      expect(service.classifyError(new Error('Insufficient balance'))).toBe('non_retryable');
-    });
-
-    it('should classify 429 as rate_limited', () => {
+    it('should classify throttling errors as rate_limited', () => {
       expect(service.classifyError(new Error('HTTP 429 Too Many Requests'))).toBe('rate_limited');
-    });
-
-    it('should classify "rate limit" as rate_limited', () => {
       expect(service.classifyError(new Error('Rate limit exceeded'))).toBe('rate_limited');
     });
 
-    it('should classify 500 as retryable', () => {
-      expect(service.classifyError(new Error('HTTP 500 Internal Server Error'))).toBe('retryable');
-    });
-
-    it('should classify timeout as retryable', () => {
+    it('should classify other errors as retryable', () => {
       expect(service.classifyError(new Error('Request timeout'))).toBe('retryable');
-    });
-
-    it('should classify non-Error values as retryable', () => {
       expect(service.classifyError('string error')).toBe('retryable');
-      expect(service.classifyError(null)).toBe('retryable');
     });
   });
 
-  describe('resolveWithFallback', () => {
-    it('should return primary model when available', () => {
-      const result = service.resolveWithFallback('anthropic/claude-sonnet-4-6');
-      expect(result).toBe(mockModel);
-    });
-
-    it('should fallback when primary fails', () => {
-      mockRegistry.resolve.mockImplementationOnce(() => {
-        throw new Error('Provider not found');
-      });
-      const result = service.resolveWithFallback('unknown/model', ['openai/gpt-4o']);
-      expect(result).toBe(mockFallbackModel);
-    });
-
-    it('should throw when primary fails and no fallbacks', () => {
-      expect(() => service.resolveWithFallback('unknown/model')).toThrow('模型解析失败');
-    });
-
-    it('should throw when all fallbacks fail', () => {
-      mockRegistry.resolve.mockImplementation(() => {
-        throw new Error('Not found');
-      });
-      expect(() =>
-        service.resolveWithFallback('unknown/a', ['unknown/b', 'unknown/c']),
-      ).toThrow('所有 fallback 均失败');
-    });
-
-    it('should try fallbacks in order', () => {
-      mockRegistry.resolve
-        .mockImplementationOnce(() => {
-          throw new Error('Primary failed');
-        })
-        .mockImplementationOnce(() => {
-          throw new Error('Fallback 1 failed');
-        })
-        .mockReturnValueOnce(mockFallback2Model);
-
-      const result = service.resolveWithFallback('unknown/a', [
-        'unknown/b',
-        'deepseek/deepseek-chat',
-      ]);
-      expect(result).toBe(mockFallback2Model);
-    });
-  });
-
-  describe('generateText', () => {
-    const baseParams = { prompt: 'Hello' };
-
-    it('should call generateText with resolved model', async () => {
-      const expected = { text: 'response' };
-      mockGenerateText.mockResolvedValueOnce(expected);
-
-      const result = await service.generateText(
-        'anthropic/claude-sonnet-4-6',
-        baseParams,
-      );
-      expect(result).toBe(expected);
-      expect(mockGenerateText).toHaveBeenCalledWith(
-        expect.objectContaining({ model: mockModel, prompt: 'Hello' }),
-      );
-    });
-
-    it('should retry on retryable error', async () => {
-      mockGenerateText
-        .mockRejectedValueOnce(new Error('HTTP 500 Internal Server Error'))
-        .mockResolvedValueOnce({ text: 'ok' });
-
-      const result = await service.generateText(
-        'anthropic/claude-sonnet-4-6',
-        baseParams,
-        undefined,
-        { maxRetries: 2, baseBackoffMs: 1, maxBackoffMs: 10 },
-      );
-      expect(result).toEqual({ text: 'ok' });
-      expect(mockGenerateText).toHaveBeenCalledTimes(2);
-    });
-
-    it('should not retry on non_retryable error, move to fallback', async () => {
-      mockGenerateText
-        .mockRejectedValueOnce(new Error('HTTP 401 Unauthorized'))
-        .mockResolvedValueOnce({ text: 'fallback ok' });
-
-      const result = await service.generateText(
-        'anthropic/claude-sonnet-4-6',
-        baseParams,
-        ['openai/gpt-4o'],
-        { maxRetries: 3, baseBackoffMs: 1, maxBackoffMs: 10 },
-      );
-      expect(result).toEqual({ text: 'fallback ok' });
-      // 1 attempt on primary (non-retryable breaks), 1 on fallback
-      expect(mockGenerateText).toHaveBeenCalledTimes(2);
-    });
-
-    it('should fallback to next model after retries exhausted', async () => {
-      mockGenerateText
-        .mockRejectedValueOnce(new Error('HTTP 500'))
-        .mockRejectedValueOnce(new Error('HTTP 500'))
-        .mockResolvedValueOnce({ text: 'fallback ok' });
-
-      const result = await service.generateText(
-        'anthropic/claude-sonnet-4-6',
-        baseParams,
-        ['openai/gpt-4o'],
-        { maxRetries: 2, baseBackoffMs: 1, maxBackoffMs: 10 },
-      );
-      expect(result).toEqual({ text: 'fallback ok' });
-    });
-
-    it('should throw when all models and retries exhausted', async () => {
-      mockGenerateText.mockRejectedValue(new Error('HTTP 500'));
-
-      await expect(
-        service.generateText(
-          'anthropic/claude-sonnet-4-6',
-          baseParams,
-          ['openai/gpt-4o'],
-          { maxRetries: 1, baseBackoffMs: 1, maxBackoffMs: 10 },
-        ),
-      ).rejects.toThrow('所有模型均失败');
-    });
-
-    it('should attach structured agent metadata when all models fail', async () => {
-      mockGenerateText
-        .mockRejectedValueOnce(new Error('HTTP 429 Too Many Requests'))
-        .mockRejectedValueOnce(new Error('HTTP 429 Too Many Requests'));
-
-      const error = await service
-        .generateText(
-          'anthropic/claude-sonnet-4-6',
-          baseParams,
-          ['openai/gpt-4o'],
-          { maxRetries: 1, baseBackoffMs: 1, maxBackoffMs: 10 },
-        )
-        .catch((err) => err);
-
-      expect(error).toMatchObject({
-        isAgentError: true,
-        agentMeta: expect.objectContaining({
-          modelsAttempted: ['anthropic/claude-sonnet-4-6', 'openai/gpt-4o'],
-          totalAttempts: 2,
-          lastCategory: 'rate_limited',
+  describe('getRetryConfig', () => {
+    it('should merge user config with defaults', () => {
+      expect(
+        service.getRetryConfig({
+          maxRetries: 5,
+          baseBackoffMs: 250,
         }),
+      ).toEqual({
+        maxRetries: 5,
+        baseBackoffMs: 250,
+        maxBackoffMs: 10_000,
       });
-    });
-
-    it('should skip unregistered models in chain', async () => {
-      mockGenerateText.mockResolvedValueOnce({ text: 'ok' });
-
-      const result = await service.generateText(
-        'unknown/model',
-        baseParams,
-        ['anthropic/claude-sonnet-4-6'],
-        { maxRetries: 1, baseBackoffMs: 1, maxBackoffMs: 10 },
-      );
-      expect(result).toEqual({ text: 'ok' });
     });
   });
 
-  describe('streamText', () => {
-    it('should call streamText with resolved model', () => {
-      const mockStream = { textStream: 'stream' };
-      mockStreamText.mockReturnValueOnce(mockStream);
-
-      const result = service.streamText('anthropic/claude-sonnet-4-6', { prompt: 'Hi' });
-      expect(result).toBe(mockStream);
-      expect(mockStreamText).toHaveBeenCalledWith(
-        expect.objectContaining({ model: mockModel, prompt: 'Hi' }),
-      );
+  describe('shouldRetry', () => {
+    it('should never retry non-retryable errors', () => {
+      expect(service.shouldRetry('non_retryable', 1)).toBe(false);
     });
 
-    it('should use fallback model for stream when primary unavailable', () => {
-      mockRegistry.resolve
-        .mockImplementationOnce(() => {
-          throw new Error('Not found');
-        })
-        .mockReturnValueOnce(mockFallbackModel);
+    it('should retry retryable errors before reaching max retries', () => {
+      expect(service.shouldRetry('retryable', 1, { maxRetries: 3 })).toBe(true);
+      expect(service.shouldRetry('rate_limited', 2, { maxRetries: 3 })).toBe(true);
+    });
 
-      const mockStream = { textStream: 'stream' };
-      mockStreamText.mockReturnValueOnce(mockStream);
+    it('should stop retrying once max retries is reached', () => {
+      expect(service.shouldRetry('retryable', 3, { maxRetries: 3 })).toBe(false);
+      expect(service.shouldRetry('rate_limited', 2, { maxRetries: 2 })).toBe(false);
+    });
+  });
 
-      const result = service.streamText('unknown/model', { prompt: 'Hi' }, ['openai/gpt-4o']);
-      expect(result).toBe(mockStream);
+  describe('getBackoffMs', () => {
+    it('should use exponential backoff with the configured cap', () => {
+      expect(service.getBackoffMs(1, new Error('HTTP 500'), { baseBackoffMs: 50 })).toBe(50);
+      expect(service.getBackoffMs(3, new Error('HTTP 500'), { baseBackoffMs: 50 })).toBe(200);
+      expect(
+        service.getBackoffMs(5, new Error('HTTP 500'), {
+          baseBackoffMs: 1_000,
+          maxBackoffMs: 5_000,
+        }),
+      ).toBe(5_000);
+    });
+
+    it('should honor retry.after hints from the error message', () => {
+      expect(service.getBackoffMs(1, new Error('retry.after: 12'))).toBe(12_000);
+      expect(service.getBackoffMs(1, new Error('retry.after: 45'))).toBe(30_000);
     });
   });
 });

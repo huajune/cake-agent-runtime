@@ -1,49 +1,25 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { RouterService } from '@providers/router.service';
-import { ReliableService } from '@providers/reliable.service';
+import { ModelRole } from '@providers/types';
 
 describe('RouterService', () => {
   let service: RouterService;
-  let mockReliable: {
-    resolveWithFallback: jest.Mock;
-    generateText: jest.Mock;
-    streamText: jest.Mock;
-  };
+  let env: Record<string, string | undefined>;
   let mockConfigService: { get: jest.Mock };
 
-  const mockModel = { modelId: 'anthropic/claude-sonnet-4-6' };
-
-  function setupConfig(overrides: Record<string, string | undefined> = {}) {
-    const env: Record<string, string | undefined> = {
-      AGENT_CHAT_MODEL: 'anthropic/claude-sonnet-4-6',
-      AGENT_CHAT_FALLBACKS: 'openai/gpt-4o,deepseek/deepseek-chat',
-      ...overrides,
-    };
-    mockConfigService.get.mockImplementation((key: string) => env[key]);
-  }
-
   beforeEach(async () => {
-    jest.clearAllMocks();
-
-    mockReliable = {
-      resolveWithFallback: jest.fn().mockReturnValue(mockModel),
-      generateText: jest.fn().mockResolvedValue({ text: 'response' }),
-      streamText: jest.fn().mockReturnValue({ textStream: 'stream' }),
+    env = {
+      AGENT_CHAT_MODEL: 'anthropic/claude-sonnet-4-6',
+      AGENT_CHAT_FALLBACKS: 'openai/gpt-4o, deepseek/deepseek-chat',
     };
 
     mockConfigService = {
-      get: jest.fn(),
+      get: jest.fn((key: string) => env[key]),
     };
 
-    setupConfig();
-
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        RouterService,
-        { provide: ReliableService, useValue: mockReliable },
-        { provide: ConfigService, useValue: mockConfigService },
-      ],
+      providers: [RouterService, { provide: ConfigService, useValue: mockConfigService }],
     }).compile();
 
     service = module.get<RouterService>(RouterService);
@@ -53,159 +29,159 @@ describe('RouterService', () => {
     expect(service).toBeDefined();
   });
 
-  describe('resolveByRole', () => {
-    it('should resolve chat role to configured model with fallbacks', () => {
-      const result = service.resolveByRole('chat');
-      expect(result).toBe(mockModel);
-      expect(mockReliable.resolveWithFallback).toHaveBeenCalledWith(
-        'anthropic/claude-sonnet-4-6',
-        ['openai/gpt-4o', 'deepseek/deepseek-chat'],
-      );
-    });
-
-    it('should resolve extract role with default fallbacks when no role-specific fallbacks', () => {
-      setupConfig({ AGENT_EXTRACT_MODEL: 'openai/gpt-4o-mini', AGENT_DEFAULT_FALLBACKS: 'qwen/qwen-max-latest' });
-      service.resolveByRole('extract');
-      expect(mockReliable.resolveWithFallback).toHaveBeenCalledWith(
-        'openai/gpt-4o-mini',
-        ['qwen/qwen-max-latest'],
-      );
-    });
-
-    it('should use role-specific fallbacks over default fallbacks', () => {
-      setupConfig({ AGENT_DEFAULT_FALLBACKS: 'qwen/qwen-max-latest' });
-      service.resolveByRole('chat');
-      expect(mockReliable.resolveWithFallback).toHaveBeenCalledWith(
-        'anthropic/claude-sonnet-4-6',
-        ['openai/gpt-4o', 'deepseek/deepseek-chat'],
-      );
-    });
-
-    it('should return undefined fallbacks when neither role-specific nor default configured', () => {
-      setupConfig({ AGENT_EXTRACT_MODEL: 'openai/gpt-4o-mini' });
-      service.resolveByRole('extract');
-      expect(mockReliable.resolveWithFallback).toHaveBeenCalledWith(
-        'openai/gpt-4o-mini',
-        undefined,
-      );
-    });
-
-    it('should throw when role is not configured', () => {
-      expect(() => service.resolveByRole('unknown')).toThrow(
-        '角色 "unknown" 未配置模型',
-      );
-    });
-
-    it('should be case-insensitive for role names', () => {
-      service.resolveByRole('CHAT');
-      expect(mockReliable.resolveWithFallback).toHaveBeenCalledWith(
-        'anthropic/claude-sonnet-4-6',
-        ['openai/gpt-4o', 'deepseek/deepseek-chat'],
-      );
-    });
-  });
-
-  describe('resolve', () => {
-    it('should delegate to reliable.resolveWithFallback', () => {
-      const result = service.resolve('anthropic/claude-sonnet-4-6', ['openai/gpt-4o']);
-      expect(result).toBe(mockModel);
-      expect(mockReliable.resolveWithFallback).toHaveBeenCalledWith(
-        'anthropic/claude-sonnet-4-6',
-        ['openai/gpt-4o'],
-      );
-    });
-
-    it('should work without fallbacks', () => {
-      service.resolve('deepseek/deepseek-chat');
-      expect(mockReliable.resolveWithFallback).toHaveBeenCalledWith(
-        'deepseek/deepseek-chat',
-        undefined,
-      );
-    });
-  });
-
-  describe('generateTextByRole', () => {
-    it('should call reliable.generateText with role model and fallbacks', async () => {
-      const params = { prompt: 'Hello' };
-      await service.generateTextByRole('chat', params);
-
-      expect(mockReliable.generateText).toHaveBeenCalledWith(
-        'anthropic/claude-sonnet-4-6',
-        params,
-        ['openai/gpt-4o', 'deepseek/deepseek-chat'],
-        undefined,
-      );
-    });
-
-    it('should pass custom config through', async () => {
-      const params = { prompt: 'Hello' };
-      const config = { maxRetries: 5 };
-      await service.generateTextByRole('chat', params, config);
-
-      expect(mockReliable.generateText).toHaveBeenCalledWith(
-        'anthropic/claude-sonnet-4-6',
-        params,
-        ['openai/gpt-4o', 'deepseek/deepseek-chat'],
-        config,
-      );
-    });
-
-    it('should throw when role is not configured', async () => {
-      await expect(
-        service.generateTextByRole('unknown', { prompt: 'Hi' }),
-      ).rejects.toThrow('角色 "unknown" 未配置模型');
-    });
-  });
-
-  describe('streamTextByRole', () => {
-    it('should call reliable.streamText with role model and fallbacks', () => {
-      const params = { prompt: 'Hello' };
-      service.streamTextByRole('chat', params);
-
-      expect(mockReliable.streamText).toHaveBeenCalledWith(
-        'anthropic/claude-sonnet-4-6',
-        params,
-        ['openai/gpt-4o', 'deepseek/deepseek-chat'],
-      );
-    });
-
-    it('should throw when role is not configured', () => {
-      expect(() =>
-        service.streamTextByRole('unknown', { prompt: 'Hi' }),
-      ).toThrow('角色 "unknown" 未配置模型');
-    });
-  });
-
   describe('listRoles', () => {
-    it('should list all configured roles', () => {
-      const roles = service.listRoles();
-      expect(roles).toContain('chat');
-      expect(roles).not.toContain('extract');
-      expect(roles).not.toContain('vision');
+    it('should list only configured roles', () => {
+      env.AGENT_VISION_MODEL = 'google/gemini-2.0-flash';
+      env.AGENT_EVALUATE_MODEL = 'openai/gpt-4o-mini';
+
+      expect(service.listRoles()).toEqual([ModelRole.Chat, ModelRole.Vision, ModelRole.Evaluate]);
     });
 
-    it('should return empty when no roles configured', () => {
-      setupConfig({
-        AGENT_CHAT_MODEL: undefined,
+    it('should return empty when no roles are configured', () => {
+      env = {};
+
+      expect(service.listRoles()).toEqual([]);
+    });
+  });
+
+  describe('listRoleDetails', () => {
+    it('should expose configured models with parsed fallbacks', () => {
+      env.AGENT_VISION_MODEL = 'google/gemini-2.0-flash';
+      env.AGENT_DEFAULT_FALLBACKS = 'openai/gpt-4o-mini';
+
+      expect(service.listRoleDetails()).toEqual({
+        chat: {
+          model: 'anthropic/claude-sonnet-4-6',
+          fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-chat'],
+        },
+        vision: {
+          model: 'google/gemini-2.0-flash',
+          fallbacks: ['openai/gpt-4o-mini'],
+        },
       });
-      const roles = service.listRoles();
-      expect(roles).toEqual([]);
+    });
+  });
+
+  describe('getFallbacks', () => {
+    it('should prefer role-specific fallbacks over defaults', () => {
+      env.AGENT_DEFAULT_FALLBACKS = 'qwen/qwen-max-latest';
+
+      expect(service.getFallbacks(ModelRole.Chat)).toEqual([
+        'openai/gpt-4o',
+        'deepseek/deepseek-chat',
+      ]);
     });
 
-    it('should include vision when configured', () => {
-      setupConfig({ AGENT_VISION_MODEL: 'google/gemini-2.0-flash' });
-      const roles = service.listRoles();
-      expect(roles).toContain('vision');
+    it('should fall back to default fallbacks when role-specific fallbacks are missing', () => {
+      env.AGENT_EXTRACT_MODEL = 'openai/gpt-4o-mini';
+      env.AGENT_DEFAULT_FALLBACKS = 'qwen/qwen-max-latest, google/gemini-2.5-flash';
+
+      expect(service.getFallbacks(ModelRole.Extract)).toEqual([
+        'qwen/qwen-max-latest',
+        'google/gemini-2.5-flash',
+      ]);
     });
 
-    it('should include extract and evaluate when configured', () => {
-      setupConfig({
-        AGENT_EXTRACT_MODEL: 'openai/gpt-4o-mini',
-        AGENT_EVALUATE_MODEL: 'anthropic/claude-sonnet-4-6',
+    it('should return undefined when no fallbacks are configured', () => {
+      expect(service.getFallbacks(ModelRole.Vision)).toBeUndefined();
+    });
+  });
+
+  describe('getModelIdByRole', () => {
+    it('should return the configured model id', () => {
+      expect(service.getModelIdByRole(ModelRole.Chat)).toBe('anthropic/claude-sonnet-4-6');
+    });
+
+    it('should return an empty string when the role is not configured', () => {
+      expect(service.getModelIdByRole(ModelRole.Vision)).toBe('');
+    });
+  });
+
+  describe('getRouteByRole', () => {
+    it('should return the route for a configured role', () => {
+      expect(service.getRouteByRole(ModelRole.Chat)).toEqual({
+        modelId: 'anthropic/claude-sonnet-4-6',
+        fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-chat'],
       });
-      const roles = service.listRoles();
-      expect(roles).toContain('extract');
-      expect(roles).toContain('evaluate');
+    });
+
+    it('should treat role strings case-insensitively', () => {
+      expect(service.getRouteByRole('CHAT')).toEqual({
+        modelId: 'anthropic/claude-sonnet-4-6',
+        fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-chat'],
+      });
+    });
+
+    it('should throw when the role is not configured', () => {
+      expect(() => service.getRouteByRole('extract')).toThrow(
+        '角色 "extract" 未配置模型 (AGENT_EXTRACT_MODEL)',
+      );
+    });
+  });
+
+  describe('resolveRoute', () => {
+    it('should resolve the configured route when no override is provided', () => {
+      expect(service.resolveRoute({ role: ModelRole.Chat })).toEqual({
+        modelId: 'anthropic/claude-sonnet-4-6',
+        fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-chat'],
+      });
+    });
+
+    it('should use explicit fallbacks over configured ones', () => {
+      expect(
+        service.resolveRoute({
+          role: ModelRole.Chat,
+          fallbacks: ['google/gemini-2.5-flash'],
+        }),
+      ).toEqual({
+        modelId: 'anthropic/claude-sonnet-4-6',
+        fallbacks: ['google/gemini-2.5-flash'],
+      });
+    });
+
+    it('should trim override model ids and keep fallbacks by default', () => {
+      expect(
+        service.resolveRoute({
+          role: ModelRole.Chat,
+          overrideModelId: ' openai/gpt-4o-mini ',
+        }),
+      ).toEqual({
+        modelId: 'openai/gpt-4o-mini',
+        fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-chat'],
+      });
+    });
+
+    it('should disable fallbacks when requested', () => {
+      expect(
+        service.resolveRoute({
+          role: ModelRole.Chat,
+          overrideModelId: 'openai/gpt-4o-mini',
+          disableFallbacks: true,
+        }),
+      ).toEqual({
+        modelId: 'openai/gpt-4o-mini',
+        fallbacks: undefined,
+      });
+    });
+  });
+
+  describe('resolveForTurn', () => {
+    it('should default to the chat route', () => {
+      expect(service.resolveForTurn({})).toEqual({
+        modelId: 'anthropic/claude-sonnet-4-6',
+        fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-chat'],
+      });
+    });
+
+    it('should honor explicit fallbacks for a chat turn', () => {
+      expect(
+        service.resolveForTurn({
+          fallbacks: ['google/gemini-2.5-flash'],
+        }),
+      ).toEqual({
+        modelId: 'anthropic/claude-sonnet-4-6',
+        fallbacks: ['google/gemini-2.5-flash'],
+      });
     });
   });
 });
