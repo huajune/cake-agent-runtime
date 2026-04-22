@@ -154,8 +154,21 @@ export function buildInviteToGroupTool(
           const inviteApiResult = parseInviteApiResult(addResult);
           if (!inviteApiResult.accepted) {
             if (inviteApiResult.code === -9) {
+              // 外部接口返回 user 已在群：写入 invitedGroups 记忆，避免同会话后续
+              // 再触发 invite_to_group 重复调用这个慢接口（实测每次 20-30s）。
+              await memoryService
+                .saveInvitedGroup(context.corpId, context.userId, context.sessionId, {
+                  groupName: targetGroup.groupName,
+                  city,
+                  industry: industry ?? undefined,
+                  invitedAt: new Date().toISOString(),
+                })
+                .catch((err: unknown) => {
+                  const msg = err instanceof Error ? err.message : String(err);
+                  logger.warn(`写入 invitedGroups 失败（忽略）: ${msg}`);
+                });
               logger.log(
-                `用户已在群中，静默跳过: ${targetGroup.groupName} (user=${context.userId})`,
+                `用户已在群中，记入记忆并静默跳过: ${targetGroup.groupName} (user=${context.userId})`,
               );
               return {
                 success: false,

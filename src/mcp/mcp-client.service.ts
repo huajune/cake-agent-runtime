@@ -1,8 +1,8 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
-import { Client } from '@modelcontextprotocol/sdk/client';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { tool, jsonSchema } from 'ai';
 import { ToolRegistryService } from '@tools/tool-registry.service';
 import { AiTool } from '@shared-types/tool.types';
