@@ -1,7 +1,7 @@
 {
   "baseVersion": "5.1.0",
   "nextVersion": "5.2.0",
-  "updatedAt": "2026-04-21",
+  "updatedAt": "2026-04-22",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -215,6 +215,54 @@
       "ops": [],
       "config": [],
       "verification": []
+    },
+    {
+      "number": "93",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/93",
+      "title": "changelog 脚本化 + 群任务年龄读岗位数据 + test-suite 禁降级",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-22",
+      "summary": [
+        "changelog 脚本化 + 群任务年龄读岗位数据 + test-suite 禁降级"
+      ],
+      "features": [
+        "兼职群任务 \"招聘对象\" 年龄由硬编码的 \"18-50 岁\" 改为优先读 hiringRequirement.basicPersonalRequirements.minAge/maxAge，支持两端/单端/缺失回退三种格式",
+        "test-suite 执行指定模型评估时新增 disableFallbacks=true，避免被 chat 角色的 fallback 链静默切换到其他模型导致结果失真",
+        "src/agent/agent-run.types.ts：AgentInvokeParams 新增 \\`disableFallbacks?: boolean\\`"
+      ],
+      "fixes": [
+        "重写 changelog 生成脚本，让 PR body 的 Summary/Changes/What changed 里的 bullet 能按关键词分发到具体类别（修复/新增/优化/运维），不再只是 PR 标题复读；同步手工补齐 v5.2.0 待发布 7 条 PR 的 rich 变更条目",
+        "SECTION_ALIASES 扩展英文标题：Summary / Changes / What changed / Impact / Features / Bug Fixes / Refactor / Validation 等",
+        "parseBodySections 只让 H2 重置类别边界，H3+ 作为子标题继承，保证 \\`## Summary\\` 下 \\`### 消息回调 / ### Agent 侧修复\\` 子段 bullet 不丢",
+        "新增 categorizeBullet：按关键词（fix/修复、feat/新增、refactor/perf/优化、ops/CI）把 Summary 池的 bullet 分发到类别列表，缺信号时回落到 PR 标题推断类别",
+        "CHANGELOG.md：重新生成，待发布段落现有 5 新功能 / 15 修复 / 20 优化 / 2 运维 / 15 验证记录",
+        "两端都缺 → 回退到宽泛的 \\`年龄18-50岁\\` 文案（原有兜底意图保留）",
+        "新增 4 条测试用例（真实年龄 / minAge-only / maxAge-only / 两端缺失回退），修正一条老断言"
+      ],
+      "optimizations": [
+        "extractHiringRequirement 的 \\`items.push('年龄18-50岁')\\` 改为按数据渲染："
+      ],
+      "ops": [
+        "合入告警持久化统一方案的设计 todo",
+        "scripts/update-version-changelog.js",
+        "normalizeBodyLine 收紧为只认 bullet/编号列表，散文叙述不会误落入类别",
+        "更新摘要栏目固定只挂 PR 标题",
+        ".release/pending-release.json：手工补齐 7 条待发布 PR（#72/#74/#78/#81/#82/#86/#90）的 rich 变更条目",
+        "src/biz/group-task/prompts/part-time-job.prompt.ts",
+        "两端都有 → \\`年龄{min}-{max}岁\\`",
+        "仅 minAge → \\`年龄{min}岁以上\\`",
+        "仅 maxAge → \\`年龄{max}岁以下\\`",
+        "字段路径与 duliday-job-list.tool.ts / job-policy-parser.ts 对齐",
+        "src/agent/agent-preparation.service.ts：\\`disableFallbacks=true\\` 时清空 chatFallbacks",
+        "src/biz/test-suite/services/test-execution.service.ts：test-suite 两处调用点均传 \\`disableFallbacks: true\\`",
+        "docs/todo/alert-persistence-unification.md：设计稿"
+      ],
+      "config": [],
+      "verification": [
+        "\\`pnpm exec jest\\` 全量 207 suites / 2424 tests green（pre-push hook 全过）",
+        "\\`pnpm run lint\\` + \\`pnpm run format\\`：pre-commit hook 全过",
+        "本地用脚本 dry-run 验证解析：\\`## Summary\\` + H3 子标题能正确提取并分发"
+      ]
     }
   ]
 }

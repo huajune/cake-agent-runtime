@@ -11,7 +11,7 @@
 ## 待发布
 
 **预计版本**: `v5.2.0`
-**最近更新**: `2026-04-21`
+**最近更新**: `2026-04-22`
 **来源分支**: `develop`
 **累计 PR**: 9
 
@@ -24,6 +24,7 @@
 - [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) fix(agent): cap same-tool calls per turn and enrich processing trace
 - [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) perf(wecom): 消息回调立即 ACK + 队列/缓存降延 + 健康证等若干修复
 - [PR #91](https://github.com/huajune/cake-agent-runtime/pull/91) 能力标签 + 发布时间展示
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) changelog 脚本化 + 群任务年龄读岗位数据 + test-suite 禁降级
 
 ### 新功能
 - [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) 新增飞书通知路由（bot 到接收人映射）
@@ -31,6 +32,10 @@
 - [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) 新增 recruitment_cases 表，跨天持久化 onboard_followup 预约上下文
 - [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) 新增入职交接检测：自动暂停托管、告警运营并标记 case 为 handoff
 - [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) 打通 Web 端手动恢复流程，关闭最近一次入职交接 case
+- [PR #91](https://github.com/huajune/cake-agent-runtime/pull/91) 能力标签 + 发布时间展示
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 兼职群任务 "招聘对象" 年龄由硬编码的 "18-50 岁" 改为优先读 hiringRequirement.basicPersonalRequirements.minAge/maxAge，支持两端/单端/缺失回退三种格式
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) test-suite 执行指定模型评估时新增 disableFallbacks=true，避免被 chat 角色的 fallback 链静默切换到其他模型导致结果失真
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) src/agent/agent-run.types.ts：AgentInvokeParams 新增 \`disableFallbacks?: boolean\`
 
 ### 问题修复
 - [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) 修复企业级群任务发送与后续 BI 查询问题
@@ -48,6 +53,13 @@
 - [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) Session 事实抽取过滤 我是xx / 你好我是xx 打招呼语误提取为真实 name，新增 name-guard.ts 工具与测试
 - [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) GroupTaskProcessor 任务重试耗尽与 未找到任何目标群 走 exceptionNotifier，堵住线上静默失败黑洞
 - [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) message-splitter 句号/问号后接中文的断句识别容忍中间空白与换行，不再把 。\n中文 漏判
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 重写 changelog 生成脚本，让 PR body 的 Summary/Changes/What changed 里的 bullet 能按关键词分发到具体类别（修复/新增/优化/运维），不再只是 PR 标题复读；同步手工补齐 v5.2.0 待发布 7 条 PR 的 rich 变更条目
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) SECTION_ALIASES 扩展英文标题：Summary / Changes / What changed / Impact / Features / Bug Fixes / Refactor / Validation 等
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) parseBodySections 只让 H2 重置类别边界，H3+ 作为子标题继承，保证 \`## Summary\` 下 \`### 消息回调 / ### Agent 侧修复\` 子段 bullet 不丢
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 新增 categorizeBullet：按关键词（fix/修复、feat/新增、refactor/perf/优化、ops/CI）把 Summary 池的 bullet 分发到类别列表，缺信号时回落到 PR 标题推断类别
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) CHANGELOG.md：重新生成，待发布段落现有 5 新功能 / 15 修复 / 20 优化 / 2 运维 / 15 验证记录
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 两端都缺 → 回退到宽泛的 \`年龄18-50岁\` 文案（原有兜底意图保留）
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 新增 4 条测试用例（真实年龄 / minAge-only / maxAge-only / 两端缺失回退），修正一条老断言
 
 ### 优化调整
 - [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) 优化抢单 prompt/过滤与通知发送行为
@@ -71,10 +83,24 @@
 - [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) 删除 memory:short_term:message: 反查索引 key，避免双写去重
 - [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) Queue/PreDispatch 消除聚合窗口 + 前置准备的双重串行 await，改写成基于静默窗口的 debounce 模型
 - [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) Agent prompt 最前面加入显式优先级栈（红线 > 硬约束 > 全局 > 阶段 > 风格）与发送前两条自检
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) extractHiringRequirement 的 \`items.push('年龄18-50岁')\` 改为按数据渲染：
 
 ### 运维与流程
 - [PR #74](https://github.com/huajune/cake-agent-runtime/pull/74) uncaughtException 与 unhandledRejection 统一走 incident pipeline 上报
 - [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) 新增 hourly stats 聚合修复与 recruitment_cases 的 DB migrations
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 合入告警持久化统一方案的设计 todo
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) scripts/update-version-changelog.js
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) normalizeBodyLine 收紧为只认 bullet/编号列表，散文叙述不会误落入类别
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 更新摘要栏目固定只挂 PR 标题
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) .release/pending-release.json：手工补齐 7 条待发布 PR（#72/#74/#78/#81/#82/#86/#90）的 rich 变更条目
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) src/biz/group-task/prompts/part-time-job.prompt.ts
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 两端都有 → \`年龄{min}-{max}岁\`
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 仅 minAge → \`年龄{min}岁以上\`
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 仅 maxAge → \`年龄{max}岁以下\`
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 字段路径与 duliday-job-list.tool.ts / job-policy-parser.ts 对齐
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) src/agent/agent-preparation.service.ts：\`disableFallbacks=true\` 时清空 chatFallbacks
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) src/biz/test-suite/services/test-execution.service.ts：test-suite 两处调用点均传 \`disableFallbacks: true\`
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) docs/todo/alert-persistence-unification.md：设计稿
 
 ### 配置变更
 - 无
@@ -96,6 +122,9 @@
 - [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) duliday-interview-booking 7 条覆盖四种健康证 labelName + 别名 supplementAnswers + 未传报 missing + 健康证类型 不被截胡
 - [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) name-guard 覆盖常见打招呼句式
 - [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) 待上线后 24h 观察：托管补发率、duliday 缺字段率、企微回调 p99（目标 <50ms）
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) \`pnpm exec jest\` 全量 207 suites / 2424 tests green（pre-push hook 全过）
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) \`pnpm run lint\` + \`pnpm run format\`：pre-commit hook 全过
+- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 本地用脚本 dry-run 验证解析：\`## Summary\` + H3 子标题能正确提取并分发
 <!-- release:pending:end -->
 
 ## [5.1.0] - 2026-04-09
