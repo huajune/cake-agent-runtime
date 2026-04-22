@@ -125,7 +125,9 @@ describe('UserHostingRepository', () => {
     it('should skip when supabase is not available', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(false);
 
-      await repository.upsertPause('user_001', new Date().toISOString());
+      const pausedAt = new Date().toISOString();
+      const pauseExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+      await repository.upsertPause('user_001', pausedAt, pauseExpiresAt);
 
       expect(mockSupabaseClient.from).not.toHaveBeenCalled();
     });
@@ -137,7 +139,8 @@ describe('UserHostingRepository', () => {
       mockSupabaseClient.from.mockReturnValue(upsertResult);
 
       const pausedAt = new Date().toISOString();
-      await repository.upsertPause('user_001', pausedAt);
+      const pauseExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+      await repository.upsertPause('user_001', pausedAt, pauseExpiresAt);
 
       expect(mockSupabaseClient.from).toHaveBeenCalledWith('user_hosting_status');
     });
@@ -151,8 +154,10 @@ describe('UserHostingRepository', () => {
       });
       mockSupabaseClient.from.mockReturnValue(errorResult);
 
+      const pausedAt = new Date().toISOString();
+      const pauseExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
       await expect(
-        repository.upsertPause('user_001', new Date().toISOString()),
+        repository.upsertPause('user_001', pausedAt, pauseExpiresAt),
       ).resolves.not.toThrow();
     });
   });
