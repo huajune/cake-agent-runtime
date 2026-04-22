@@ -194,6 +194,8 @@ export class ReplyWorkflowService {
       thinking,
     } as const;
 
+    // 首次调用延迟 turn-end：若随后检测到新消息会走 replay 丢弃本次回复，
+    // 记忆投影/事实提取也必须一同被丢弃，否则会把「未发出的回复」污染到 session 记忆里。
     let agentResult = await this.callAgent({
       ...agentCallParams,
       userMessage: content,
@@ -201,6 +203,7 @@ export class ReplyWorkflowService {
       imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
       visualMessageTypes:
         Object.keys(visualMessageTypes).length > 0 ? visualMessageTypes : undefined,
+      deferTurnEnd: true,
     });
 
     this.logger.log(
@@ -215,11 +218,23 @@ export class ReplyWorkflowService {
       this.logger.warn(
         `${logPrefix}[${contactName}][Replay] 检测到 ${newMessages.length} 条新消息，丢弃首次回复并重新调用 Agent (chatId=${chatId})`,
       );
+      // 丢弃首次的 runTurnEnd——它承载了将首次回复写入 session 记忆的副作用。
+      // 下面第二次 callAgent 使用默认 deferTurnEnd=false，runner 内部会 fire-and-forget 触发。
+      agentResult.runTurnEnd = undefined;
+
       allMessages = [...allMessages, ...newMessages];
       content = this.wecomObservability.buildMergedRequestContent(allMessages);
       imageUrls = this.collectImageUrls(allMessages);
       imageMessageIds = this.collectImageMessageIds(allMessages);
       visualMessageTypes = this.buildVisualMessageTypes(allMessages);
+
+      // Replay 合入的新消息在 intake 时已写了一条 processing 流水，本轮的终态只会
+      // 回写到 traceId 那一行。若不在这里回收，这些源记录会一直停在「处理中」，
+      // 只能等 30 分钟的 timeoutStuckRecords 兜底清理。
+      await this.wecomObservability.mergePrepTimingsFromSources(
+        traceId,
+        newMessages.map((message) => message.messageId),
+      );
 
       agentResult = await this.callAgent({
         ...agentCallParams,
@@ -234,6 +249,13 @@ export class ReplyWorkflowService {
         `${logPrefix}[${contactName}][Replay] 重跑 Agent 完成，耗时 ${agentResult.processingTime}ms，` +
           `tokens=${agentResult.reply.usage?.totalTokens || 'N/A'}`,
       );
+    } else if (agentResult.runTurnEnd) {
+      // 首次结果被最终采纳，显式触发 turn-end lifecycle（与默认路径语义对齐：fire-and-forget）。
+      void agentResult.runTurnEnd().catch((err) => {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`[${contactName}] turn-end lifecycle 执行失败: ${errorMessage}`);
+      });
+      agentResult.runTurnEnd = undefined;
     }
 
     if (agentResult.isFallback) {
@@ -349,6 +371,8 @@ export class ReplyWorkflowService {
     apiType?: 'enterprise' | 'group';
     modelId?: string;
     thinking?: AgentThinkingConfig;
+    /** 延迟 turn-end 生命周期触发；replay 首次调用置 true 以便被丢弃时不污染记忆 */
+    deferTurnEnd?: boolean;
   }): Promise<AgentInvokeResult> {
     const {
       userMessage,
@@ -357,6 +381,7 @@ export class ReplyWorkflowService {
       recordMonitoring = true,
       userId,
       corpId,
+      deferTurnEnd,
     } = params;
 
     const startTime = Date.now();
@@ -389,6 +414,7 @@ export class ReplyWorkflowService {
         apiType: params.apiType,
         modelId: params.modelId,
         thinking: params.thinking,
+        deferTurnEnd,
         onPreparedRequest:
           recordMonitoring && messageId
             ? (agentRequest) => this.wecomObservability.recordAgentRequest(messageId, agentRequest)
@@ -415,7 +441,7 @@ export class ReplyWorkflowService {
         }`,
       );
 
-      const invokeResult = {
+      const invokeResult: AgentInvokeResult = {
         reply: { content, reasoning: result.reasoning, usage: result.usage },
         isFallback: false,
         isSkipped,
@@ -424,6 +450,7 @@ export class ReplyWorkflowService {
         agentSteps: result.agentSteps,
         memorySnapshot: result.memorySnapshot,
         responseMessages: result.responseMessages,
+        runTurnEnd: result.runTurnEnd,
       };
       if (recordMonitoring && messageId) {
         await this.wecomObservability.recordAgentResult(messageId, invokeResult);

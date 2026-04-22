@@ -74,9 +74,11 @@ export class AgentPreparationService {
       `Agent ${mode}: callerKind=${callerKind}, userId=${userId}, corpId=${corpId}, sessionId=${sessionId}, scenario=${scenario}`,
     );
 
-    // 入参归一化：只认 messages[]，本轮的 user 文本是最后一条 user content。
+    // 入参归一化：只认 messages[]。本轮的 user 文本 = 末尾连续的 user 块（上一条 assistant 之后的所有 user）。
+    // 这样不管上层是否已把多条消息合并成单条 user，都能覆盖本轮全部用户输入——
+    // 合并场景（WeCom replay、test-suite 多条连发）下后续事实提取/阶段推断才不会漏内容。
     const truncatedMessages = this.truncateToCharBudget(params.messages);
-    const currentUserMessage = this.latestUserContent(truncatedMessages);
+    const currentUserMessage = this.trailingUserContent(truncatedMessages);
 
     // 并行拉取本轮依赖：四类记忆快照 + 仍在跟进的招聘 case。
     const [memory, activeRecruitmentCase] = await Promise.all([
@@ -155,15 +157,24 @@ export class AgentPreparationService {
   }
 
   /**
-   * 取最后一条 user 消息的文本内容。入参已是 AgentInputMessage[]（content 纯字符串）。
+   * 取本轮用户输入：末尾连续的 user 块（到上一条 assistant 为止），以换行合并。
+   *
+   * 为什么不只取最后一条：合并请求（WeCom replay、test-suite 多条连发）下，
+   * 末尾可能连续多条 user 且尚未有 assistant 打断。只取最后一条会让下游的
+   * 高置信事实提取、阶段推断、guard 告警文本漏掉前面几条的内容。
    */
-  private latestUserContent(messages: AgentInputMessage[]): string | undefined {
+  private trailingUserContent(messages: AgentInputMessage[]): string | undefined {
+    const collected: string[] = [];
     for (let i = messages.length - 1; i >= 0; i -= 1) {
-      if (messages[i].role !== 'user') continue;
-      const content = messages[i].content?.trim();
-      if (content) return content;
+      const role = messages[i].role;
+      if (role === 'user') {
+        const content = messages[i].content?.trim();
+        if (content) collected.unshift(content);
+        continue;
+      }
+      if (role === 'assistant') break;
     }
-    return undefined;
+    return collected.length > 0 ? collected.join('\n') : undefined;
   }
 
   /**

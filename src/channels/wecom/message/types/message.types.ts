@@ -52,6 +52,11 @@ export interface AgentInvokeResult {
   /** 本轮触发时的记忆上下文快照 */
   memorySnapshot?: AgentMemorySnapshot;
   responseMessages?: Array<Record<string, unknown>>;
+  /**
+   * 调用方延迟触发 turn-end 生命周期的开关（仅在启用 replay 时暴露）。
+   * 采纳本次结果 → 必须 await 一次；被 replay 丢弃 → 忽略即可。
+   */
+  runTurnEnd?: () => Promise<void>;
 }
 
 export interface DeliveryContext {

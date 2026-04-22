@@ -358,6 +358,41 @@ describe('AgentPreparationService', () => {
     );
   });
 
+  it('should join trailing consecutive user messages (merge/replay scenario) for high-confidence detection', async () => {
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      shortTerm: { messageWindow: [] },
+      sessionMemory: null,
+      highConfidenceFacts: null,
+      longTerm: { profile: null },
+      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+    });
+
+    await service.prepare(
+      {
+        callerKind: CallerKind.TEST_SUITE,
+        messages: [
+          { role: 'user', content: '第一句' },
+          { role: 'assistant', content: '回复一下' },
+          { role: 'user', content: '来一份' },
+          { role: 'user', content: '在北京' },
+          { role: 'user', content: '有岗位吗' },
+        ],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    expect(mockMemoryService.onTurnStart).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      'sess-1',
+      '来一份\n在北京\n有岗位吗',
+      expect.objectContaining({ includeShortTerm: false }),
+    );
+  });
+
   it('should pass raw session and high-confidence facts to ContextService for TurnHintsSection', async () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: {
