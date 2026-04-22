@@ -197,6 +197,24 @@
         "name-guard 覆盖常见打招呼句式",
         "待上线后 24h 观察：托管补发率、duliday 缺字段率、企微回调 p99（目标 <50ms）"
       ]
+    },
+    {
+      "number": "91",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/91",
+      "title": "能力标签 + 发布时间展示",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-21",
+      "summary": [
+        "能力标签 + 发布时间展示"
+      ],
+      "features": [
+        "能力标签 + 发布时间展示"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "verification": []
     }
   ]
 }
