@@ -87,6 +87,8 @@ export class AgentRunnerService {
 
     try {
       let agentRequest: Record<string, unknown> | undefined;
+      const stepStartMs = Date.now();
+      const stepEndWallclocks: number[] = [];
       const r = await this.llm.generate({
         role: ModelRole.Chat,
         modelId: params.modelId,
@@ -98,6 +100,9 @@ export class AgentRunnerService {
         maxOutputTokens: this.maxOutputTokens,
         stopWhen: [stepCountIs(ctx.maxSteps), hasToolCall(SKIP_REPLY_TOOL_NAME)],
         prepareStep: this.buildPrepareStep(ctx),
+        onStepFinish: () => {
+          stepEndWallclocks.push(Date.now());
+        },
         onPreparedRequest: async (request) => {
           agentRequest = request;
           if (params.onPreparedRequest) {
@@ -125,6 +130,8 @@ export class AgentRunnerService {
         },
         agentRequest,
         memorySnapshot: ctx.memorySnapshot,
+        stepStartMs,
+        stepEndWallclocks,
       });
     } catch (err) {
       const agentError = this.enrichAgentError(err, ctx);
@@ -150,6 +157,8 @@ export class AgentRunnerService {
 
     try {
       let agentRequest: Record<string, unknown> | undefined;
+      const stepStartMs = Date.now();
+      const stepEndWallclocks: number[] = [];
       const streamResult = await this.llm.stream({
         role: ModelRole.Chat,
         modelId: params.modelId,
@@ -161,6 +170,9 @@ export class AgentRunnerService {
         maxOutputTokens: this.maxOutputTokens,
         stopWhen: [stepCountIs(ctx.maxSteps), hasToolCall(SKIP_REPLY_TOOL_NAME)],
         prepareStep: this.buildPrepareStep(ctx),
+        onStepFinish: () => {
+          stepEndWallclocks.push(Date.now());
+        },
         onPreparedRequest: async (request) => {
           agentRequest = request;
           if (params.onPreparedRequest) {
@@ -180,6 +192,8 @@ export class AgentRunnerService {
             },
             agentRequest,
             memorySnapshot: ctx.memorySnapshot,
+            stepStartMs,
+            stepEndWallclocks,
           });
           this.dispatchTurnEndLifecycle({ ...ctx, messageId: params.messageId }, text);
           if (params.onFinish) {
@@ -329,13 +343,25 @@ export class AgentRunnerService {
     usage: AgentRunResult['usage'];
     agentRequest?: Record<string, unknown>;
     memorySnapshot?: AgentRunResult['memorySnapshot'];
+    /**
+     * 本轮 generate/stream 开始的 wallclock 时间（`Date.now()`）。
+     * 作为第 0 步的"上一步结束时间"锚点。
+     */
+    stepStartMs?: number;
+    /**
+     * 每个 step 结束的 wallclock 时间（通过 Vercel AI SDK `onStepFinish` 记录）。
+     * 提供毫秒级精度；若不提供，回退到 `step.response.timestamp`（可能是秒级精度，
+     * 导致 durationMs 出现 1000ms 整数倍的假象）。
+     */
+    stepEndWallclocks?: number[];
   }): AgentRunResult {
     const agentSteps: AgentStepDetail[] = [];
     const toolCalls: AgentToolCall[] = [];
 
-    let prevStepEndMs: number | undefined;
+    let prevStepEndMs: number | undefined = params.stepStartMs;
     params.steps.forEach((step, stepIndex) => {
-      const stepEndMs = this.extractTimestampMs(step.response?.timestamp);
+      const wallclockEnd = params.stepEndWallclocks?.[stepIndex];
+      const stepEndMs = wallclockEnd ?? this.extractTimestampMs(step.response?.timestamp);
       const stepDurationMs =
         prevStepEndMs !== undefined && stepEndMs !== undefined
           ? Math.max(stepEndMs - prevStepEndMs, 0)
