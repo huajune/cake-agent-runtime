@@ -38,19 +38,7 @@
       "@observability/*": ["src/observability/*"],
       "@notification/*": ["src/notification/*"],
       "@analytics/*": ["src/analytics/*"],
-      "@shared-types/*": ["src/types/*"],
-      "@modelcontextprotocol/sdk/client": [
-        "./node_modules/@modelcontextprotocol/sdk/dist/cjs/client/index"
-      ],
-      "@modelcontextprotocol/sdk/client/stdio": [
-        "./node_modules/@modelcontextprotocol/sdk/dist/cjs/client/stdio"
-      ],
-      "@modelcontextprotocol/sdk/client/sse": [
-        "./node_modules/@modelcontextprotocol/sdk/dist/cjs/client/sse"
-      ],
-      "@modelcontextprotocol/sdk/client/streamableHttp": [
-        "./node_modules/@modelcontextprotocol/sdk/dist/cjs/client/streamableHttp"
-      ]
+      "@shared-types/*": ["src/types/*"]
     }
   },
   "include": ["src/**/*", "jest.config.ts"],
