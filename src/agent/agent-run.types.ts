@@ -1,5 +1,6 @@
 import { streamText } from 'ai';
 import { CallerKind } from '@/enums/agent.enum';
+import type { LlmThinkingConfig } from '@/llm/llm.types';
 import type {
   AgentMemorySnapshot,
   AgentStepDetail,
@@ -13,10 +14,7 @@ export type {
   AgentToolCallStatus,
 } from '@shared-types/agent-telemetry.types';
 
-export interface AgentThinkingConfig {
-  type: 'enabled' | 'disabled';
-  budgetTokens: number;
-}
+export type AgentThinkingConfig = LlmThinkingConfig;
 
 export interface AgentInputMessage {
   role: string;

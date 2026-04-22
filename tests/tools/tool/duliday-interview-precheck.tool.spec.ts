@@ -526,6 +526,52 @@ describe('buildInterviewPrecheckTool', () => {
     // 年龄 < 25 的情况下，identity 应仍然缺失 —— 对照用例见下
   });
 
+  it('should keep ambiguous gender text unfilled instead of coercing it to 女', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [makeJob()],
+    });
+
+    const result = await executeTool(
+      { jobId: 100 },
+      {
+        profile: {
+          name: '张三',
+          phone: '13800138000',
+          gender: '男女不限',
+          age: null,
+          is_student: null,
+          education: null,
+          has_health_certificate: null,
+        },
+        sessionFacts: {
+          interview_info: {
+            name: '张三',
+            phone: '13800138000',
+            gender: '男女不限',
+          },
+          preferences: {
+            brands: null,
+            salary: null,
+            position: null,
+            schedule: null,
+            city: null,
+            district: null,
+            location: null,
+            labor_form: null,
+          },
+          reasoning: 'test',
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.bookingChecklist.templateText).toContain('性别：');
+    expect(result.bookingChecklist.templateText).not.toContain('性别：女');
+    expect(result.bookingChecklist.templateText).not.toContain('性别：男女不限');
+    expect(result.bookingChecklist.missingFields).toContain('性别');
+  });
+
   it('should still ask identity when age < 25 and is_student unknown', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
     mockSpongeService.fetchJobs.mockResolvedValue({
@@ -782,18 +828,14 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.screeningCriteria.householdRegisterProvince).toBeUndefined();
 
     expect(result.bookingChecklist.requiredFields).toEqual(
-      expect.arrayContaining([
-        '联系电话',
-        '健康证情况',
-        '户籍省份',
-        '身高',
-        '体重',
-      ]),
+      expect.arrayContaining(['联系电话', '健康证情况', '户籍省份', '身高', '体重']),
     );
     expect(result.bookingChecklist.requiredFields).not.toContain('联系方式');
     expect(result.bookingChecklist.requiredFields).not.toContain('有无健康证');
     expect(result.bookingChecklist.requiredFields).not.toContain('籍贯');
-    expect(result.bookingChecklist.missingFields.filter((field: string) => field === '健康证情况')).toHaveLength(1);
+    expect(
+      result.bookingChecklist.missingFields.filter((field: string) => field === '健康证情况'),
+    ).toHaveLength(1);
     expect(result.bookingChecklist.templateText).toContain('联系方式：');
     expect(result.bookingChecklist.templateText).toContain('籍贯/户籍：');
 

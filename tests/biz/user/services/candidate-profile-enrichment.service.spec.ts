@@ -92,12 +92,12 @@ describe('CandidateProfileEnrichmentService', () => {
       ['chinese 女', '女', '女'],
       ['chinese 女生', '女生', '女'],
       ['chinese 女性', '女性', '女'],
-      ['chinese 男女 (男 comes first)', '男女', '男'],
+      ['chinese 男女 is ambiguous', '男女', null],
+      ['chinese 男女不限 is ambiguous', '男女不限', null],
+      ['chinese 男女皆可 is ambiguous', '男女皆可', null],
       ['chinese 女士 with 男 absent', '女士', '女'],
-      // 当前实现：/(^|[^女])男/ 要求 男 前必须是起始或非女；这是为了避免 "非男/不男"
-      // 之类的否定表达被误判为男。副作用是 "处女男" 会先落到 女 规则。若有业务需求
-      // 反向修正，需要把这条 case 挪到前置分支或改用更完整的否定词词典。
-      ['edge: 处女男 falls to 女 branch due to 女+男 guard', '处女男', '女'],
+      // 混合表达不应被强行压成某一侧性别，否则会把“男女不限/男女皆可”等自由文本误判。
+      ['edge: 处女男 remains ambiguous', '处女男', null],
       ['null', null, null],
       ['undefined', undefined, null],
       ['empty string', '', null],
