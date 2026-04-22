@@ -17,11 +17,18 @@ export async function getTodayUsers() {
 export async function getPausedUsers() {
   const { data } = await api.get('/user/users/paused');
   const response = unwrapResponse<{
-    users: Array<{ userId: string; pausedAt: number; odName?: string; groupName?: string }>;
+    users: Array<{
+      userId: string;
+      pausedAt: number;
+      pauseExpiresAt: number;
+      odName?: string;
+      groupName?: string;
+    }>;
   }>(data);
   return response.users.map((user) => ({
     chatId: user.userId,
     pausedAt: user.pausedAt,
+    pauseExpiresAt: user.pauseExpiresAt,
     odName: user.odName,
     groupName: user.groupName,
   }));

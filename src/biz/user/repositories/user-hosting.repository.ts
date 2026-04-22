@@ -24,23 +24,34 @@ export class UserHostingRepository extends BaseRepository {
   // ==================== user_hosting_status 操作 ====================
 
   /**
-   * 查询所有处于暂停状态的用户 ID 及暂停时间
+   * 查询所有未过期的暂停用户 ID、暂停时间与解禁时间
+   *
+   * 只返回 pause_expires_at > now() 的记录；过期记录由 expirePausedUsers 回写恢复。
    */
-  async findPausedUserIds(): Promise<{ user_id: string; paused_at: string }[]> {
-    return this.select<{ user_id: string; paused_at: string }>('user_id,paused_at', (q) =>
-      q.eq('is_paused', true).order('paused_at', { ascending: false }),
+  async findPausedUserIds(): Promise<
+    { user_id: string; paused_at: string; pause_expires_at: string | null }[]
+  > {
+    const nowIso = new Date().toISOString();
+    return this.select<{ user_id: string; paused_at: string; pause_expires_at: string | null }>(
+      'user_id,paused_at,pause_expires_at',
+      (q) =>
+        q
+          .eq('is_paused', true)
+          .gt('pause_expires_at', nowIso)
+          .order('paused_at', { ascending: false }),
     );
   }
 
   /**
-   * UPSERT 暂停状态（按 user_id 冲突时更新）
+   * UPSERT 暂停状态（按 user_id 冲突时更新），同时写入解禁时间
    */
-  async upsertPause(userId: string, pausedAt: string): Promise<void> {
+  async upsertPause(userId: string, pausedAt: string, pauseExpiresAt: string): Promise<void> {
     await this.upsert(
       {
         user_id: userId,
         is_paused: true,
         paused_at: pausedAt,
+        pause_expires_at: pauseExpiresAt,
         pause_count: 1,
       },
       { onConflict: 'user_id', returnData: false },
@@ -48,13 +59,42 @@ export class UserHostingRepository extends BaseRepository {
   }
 
   /**
-   * 更新用户为恢复托管状态
+   * 更新用户为恢复托管状态（清空解禁时间）
    */
   async updateResume(userId: string): Promise<void> {
     await this.update<UserHostingStatus>(
-      { is_paused: false, resumed_at: new Date().toISOString() },
+      {
+        is_paused: false,
+        resumed_at: new Date().toISOString(),
+        pause_expires_at: null,
+      },
       (q) => q.eq('user_id', userId),
     );
+  }
+
+  /**
+   * 批量将已过期（pause_expires_at <= now()）的暂停记录回写为恢复状态
+   * 返回被回写的 user_id 列表，供调用方做日志或缓存清理。
+   */
+  async expirePausedUsers(): Promise<string[]> {
+    const nowIso = new Date().toISOString();
+    const { data, error } = await this.getClient()
+      .from(this.tableName)
+      .update({
+        is_paused: false,
+        resumed_at: nowIso,
+        pause_expires_at: null,
+      })
+      .eq('is_paused', true)
+      .lte('pause_expires_at', nowIso)
+      .select('user_id');
+
+    if (error) {
+      this.handleError('EXPIRE_PAUSED', error);
+      return [];
+    }
+
+    return ((data as { user_id: string }[]) ?? []).map((row) => row.user_id);
   }
 
   // ==================== user_activity 操作 ====================

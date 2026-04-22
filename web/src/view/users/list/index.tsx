@@ -44,6 +44,13 @@ export default function Users() {
           onTabChange={setActiveTab}
         />
 
+        {activeTab === 'paused' && (
+          <div className={styles.tabHint}>
+            <span className={styles.tabHintIcon}>ℹ️</span>
+            <span>禁止托管后，系统将在 3 天后自动恢复托管；如需提前恢复，请手动切换上方"托管状态"开关。</span>
+          </div>
+        )}
+
         {/* 用户表格 */}
         <UserTable
           users={displayUsers}

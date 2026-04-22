@@ -17,13 +17,14 @@ export default function UserTable({ users, isLoading, onToggleHosting, isPausedT
             {!isPausedTab && <th>首次活跃</th>}
             {!isPausedTab && <th>最后活跃</th>}
             {isPausedTab && <th>禁止时间</th>}
+            {isPausedTab && <th>解禁时间</th>}
             <th>托管状态</th>
           </tr>
         </thead>
         <tbody>
           {isLoading ? (
             <tr>
-              <td colSpan={isPausedTab ? 4 : 7} className={styles.loadingCell}>
+              <td colSpan={isPausedTab ? 5 : 7} className={styles.loadingCell}>
                 <div className={styles.emptyStateContainer}>
                   <div className={styles.spinner} />
                   <p>加载中...</p>
@@ -32,7 +33,7 @@ export default function UserTable({ users, isLoading, onToggleHosting, isPausedT
             </tr>
           ) : users.length === 0 ? (
             <tr>
-              <td colSpan={isPausedTab ? 4 : 7} className={styles.loadingCell}>
+              <td colSpan={isPausedTab ? 5 : 7} className={styles.loadingCell}>
                 <div className={styles.emptyStateContainer}>
                   <div className={styles.emptyIconWrapper}>
                     <svg width="64" height="64" viewBox="0 0 64 64" fill="none" className={styles.emptyIcon}>
@@ -68,6 +69,9 @@ export default function UserTable({ users, isLoading, onToggleHosting, isPausedT
                 {!isPausedTab && <td>{formatTime(user.firstActiveAt)}</td>}
                 {!isPausedTab && <td>{formatTime(user.lastActiveAt)}</td>}
                 {isPausedTab && <td>{formatDateTime(user.firstActiveAt)}</td>}
+                {isPausedTab && (
+                  <td>{user.pauseExpiresAt ? formatDateTime(user.pauseExpiresAt) : '-'}</td>
+                )}
                 <td>
                   <label className={styles.toggleSwitch}>
                     <input
