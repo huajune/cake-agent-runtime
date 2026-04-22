@@ -115,7 +115,7 @@ export default function TestSuite() {
       <div className={styles.pageHeader}>
         <div className={styles.headerLeft}>
           <h1>飞书测试/验证集</h1>
-          <p className={styles.subtitle}>从飞书多维表格导入测试用例,执行自动化测试并进行评审</p>
+          <p className={styles.subtitle}>消费正式测试资产,执行自动化测试并进行评审</p>
         </div>
         <div className={styles.headerActions}>
           <button

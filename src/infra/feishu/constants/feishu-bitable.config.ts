@@ -27,6 +27,7 @@ export interface FeishuBitableConfig {
     goodcase: FeishuBitableTableConfig;
     testSuite: FeishuBitableTableConfig;
     validationSet: FeishuBitableTableConfig;
+    assetRelation: FeishuBitableTableConfig;
   };
 }
 
@@ -57,6 +58,11 @@ export const feishuBitableConfig: FeishuBitableConfig = {
       // 注意：与 testSuite 在同一个多维表格文档中，只是不同的 sheet
       appToken: 'C0Y0bTzEga4dFQsmwlycaWvrn3c',
       tableId: 'tbleJIWf910JDTDn',
+    },
+    assetRelation: {
+      // 正式资产血缘/关联表
+      appToken: 'C0Y0bTzEga4dFQsmwlycaWvrn3c',
+      tableId: 'tbl9FV9CHRrg3fGy',
     },
   },
 };

@@ -55,6 +55,11 @@ describe('FeishuBitableApiService', () => {
       const config = service.getTableConfig('validationSet');
       expect(config).toBeDefined();
     });
+
+    it('should return assetRelation table config', () => {
+      const config = service.getTableConfig('assetRelation');
+      expect(config).toBeDefined();
+    });
   });
 
   describe('getFields', () => {

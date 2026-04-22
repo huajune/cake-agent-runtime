@@ -239,6 +239,11 @@ export class TestImportService {
       try {
         const recordFields = record.fields;
 
+        if (!this.isRecordEnabled(recordFields, fieldNameToId)) {
+          this.logger.debug(`跳过记录 ${record.record_id}: 已禁用`);
+          continue;
+        }
+
         const testTypeStr = this.extractFieldValue(recordFields, fieldNameToId, [
           '测试类型',
           'test_type',
@@ -298,6 +303,7 @@ export class TestImportService {
 
         const expectedOutput = this.extractFieldValue(recordFields, fieldNameToId, [
           '预期输出',
+          '核心检查点',
           '预期答案',
           'expected',
           'expected_output',
@@ -337,6 +343,11 @@ export class TestImportService {
     for (const record of records) {
       try {
         const recordFields = record.fields;
+
+        if (!this.isRecordEnabled(recordFields, fieldNameToId)) {
+          this.logger.debug(`跳过对话记录 ${record.record_id}: 已禁用`);
+          continue;
+        }
 
         const testTypeStr = this.extractFieldValue(recordFields, fieldNameToId, [
           '测试类型',
@@ -400,6 +411,11 @@ export class TestImportService {
     for (const record of records) {
       try {
         const recordFields = record.fields;
+
+        if (!this.isRecordEnabled(recordFields, fieldNameToId)) {
+          this.logger.debug(`跳过验证集记录 ${record.record_id}: 已禁用`);
+          continue;
+        }
 
         const rawText = this.extractFieldValue(recordFields, fieldNameToId, [
           '完整对话记录',
@@ -655,16 +671,63 @@ export class TestImportService {
     fieldNameToId: Record<string, string>,
     candidateNames: string[],
   ): string | undefined {
+    const rawValue = this.extractRawFieldValue(recordFields, fieldNameToId, candidateNames);
+    if (rawValue === undefined) {
+      return undefined;
+    }
+
+    return this.normalizeFieldValue(rawValue);
+  }
+
+  private extractRawFieldValue(
+    recordFields: Record<string, unknown>,
+    fieldNameToId: Record<string, string>,
+    candidateNames: string[],
+  ): unknown {
     for (const name of candidateNames) {
       const fieldId = fieldNameToId[name];
-      if (fieldId && recordFields[fieldId]) {
-        return this.normalizeFieldValue(recordFields[fieldId]);
+      if (fieldId && recordFields[fieldId] !== undefined && recordFields[fieldId] !== null) {
+        return recordFields[fieldId];
       }
-      if (recordFields[name]) {
-        return this.normalizeFieldValue(recordFields[name]);
+
+      if (recordFields[name] !== undefined && recordFields[name] !== null) {
+        return recordFields[name];
       }
     }
+
     return undefined;
+  }
+
+  private isRecordEnabled(
+    recordFields: Record<string, unknown>,
+    fieldNameToId: Record<string, string>,
+  ): boolean {
+    const value = this.extractRawFieldValue(recordFields, fieldNameToId, [
+      '是否启用',
+      '启用',
+      'enabled',
+      'is_enabled',
+    ]);
+
+    if (value === undefined) {
+      return true;
+    }
+
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    if (typeof value === 'number') {
+      return value !== 0;
+    }
+
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (!normalized) return true;
+      return !['false', '0', '否', '禁用', 'disabled', 'off'].includes(normalized);
+    }
+
+    return true;
   }
 
   /**

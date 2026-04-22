@@ -36,6 +36,15 @@ describe('TestImportService', () => {
 
   const mockFeishuBitableApi = {
     getTableConfig: jest.fn(),
+    buildFieldNameToIdMap: jest.fn((fields) =>
+      fields.reduce(
+        (acc: Record<string, string>, field: { field_name: string; field_id: string }) => {
+          acc[field.field_name] = field.field_id;
+          return acc;
+        },
+        {},
+      ),
+    ),
   };
 
   const mockConversationSnapshotRepository = {
@@ -349,6 +358,101 @@ describe('TestImportService', () => {
 
       // Should use testSuite (scenario) table
       expect(feishuBitableApi.getTableConfig).toHaveBeenCalledWith('testSuite');
+    });
+  });
+
+  describe('parseRecords', () => {
+    it('should skip disabled records and use 核心检查点 as expected output fallback', () => {
+      const fields = [
+        { field_id: 'fld_name', field_name: '用例名称', type: 1 },
+        { field_id: 'fld_message', field_name: '用户消息', type: 1 },
+        { field_id: 'fld_category', field_name: '分类', type: 1 },
+        { field_id: 'fld_enabled', field_name: '是否启用', type: 7 },
+        { field_id: 'fld_checkpoint', field_name: '核心检查点', type: 1 },
+      ];
+
+      const records = [
+        {
+          record_id: 'rec-disabled',
+          fields: {
+            fld_name: 'disabled-case',
+            fld_message: '不要导入我',
+            fld_enabled: false,
+            fld_checkpoint: '不会被解析',
+          },
+        },
+        {
+          record_id: 'rec-enabled',
+          fields: {
+            fld_name: 'enabled-case',
+            fld_message: '请帮我找兼职',
+            fld_category: '3-岗位推荐问题',
+            fld_enabled: true,
+            fld_checkpoint: '应先问具体地址，再推荐岗位',
+          },
+        },
+      ] as any;
+
+      const cases = service.parseRecords(records, fields as any);
+
+      expect(cases).toHaveLength(1);
+      expect(cases[0]).toEqual(
+        expect.objectContaining({
+          caseId: 'rec-enabled',
+          caseName: 'enabled-case',
+          category: '3-岗位推荐问题',
+          message: '请帮我找兼职',
+          expectedOutput: '应先问具体地址，再推荐岗位',
+        }),
+      );
+    });
+  });
+
+  describe('parseValidationSetRecords', () => {
+    it('should skip disabled validation records', () => {
+      mockParserService.parseConversation.mockReturnValue({
+        success: true,
+        messages: [],
+        totalTurns: 1,
+      });
+
+      const fields = [
+        { field_id: 'fld_name', field_name: '候选人微信昵称', type: 1 },
+        { field_id: 'fld_conversation', field_name: '完整对话记录', type: 1 },
+        { field_id: 'fld_enabled', field_name: '是否启用', type: 7 },
+      ];
+
+      const conversations = service.parseValidationSetRecords(
+        [
+          {
+            record_id: 'rec-disabled',
+            fields: {
+              fld_name: '候选人A',
+              fld_conversation: '[04/22 10:00 候选人] 你好',
+              fld_enabled: false,
+            },
+          },
+          {
+            record_id: 'rec-enabled',
+            fields: {
+              fld_name: '候选人B',
+              fld_conversation: '[04/22 10:00 候选人] 在吗',
+              fld_enabled: true,
+            },
+          },
+        ] as any,
+        fields as any,
+      );
+
+      expect(conversations).toHaveLength(1);
+      expect(conversations[0]).toEqual(
+        expect.objectContaining({
+          recordId: 'rec-enabled',
+          participantName: '候选人B',
+          rawText: '[04/22 10:00 候选人] 在吗',
+        }),
+      );
+      expect(mockParserService.parseConversation).toHaveBeenCalledTimes(1);
     });
   });
 });

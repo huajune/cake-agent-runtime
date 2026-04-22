@@ -18,6 +18,15 @@ describe('FeishuBitableSyncService', () => {
     mockBitableApi = {
       getTableConfig: jest.fn(),
       getFields: jest.fn().mockResolvedValue([
+        { field_name: '多行文本' },
+        { field_name: '问题ID' },
+        { field_name: '样本ID' },
+        { field_name: '标题' },
+        { field_name: '状态' },
+        { field_name: '优先级' },
+        { field_name: '来源' },
+        { field_name: '亮点类型' },
+        { field_name: '是否可复用' },
         { field_name: '候选人微信昵称' },
         { field_name: '招募经理姓名' },
         { field_name: '咨询时间' },
@@ -26,6 +35,7 @@ describe('FeishuBitableSyncService', () => {
         { field_name: '用例名称' },
         { field_name: '分类' },
         { field_name: '备注' },
+        { field_name: 'chatId' },
       ]),
       batchCreateRecords: jest.fn(),
       createRecord: jest.fn(),
@@ -173,6 +183,19 @@ describe('FeishuBitableSyncService', () => {
 
       expect(result.success).toBe(true);
       expect(result.recordId).toBe('rec_new');
+      expect(mockBitableApi.createRecord).toHaveBeenCalledWith(
+        badcaseTableConfig.appToken,
+        badcaseTableConfig.tableId,
+        expect.objectContaining({
+          多行文本: '薪资数据不准确',
+          标题: '薪资数据不准确',
+          状态: '待分析',
+          优先级: 'P2',
+          来源: 'AgentTest',
+          分类: '信息错误',
+          chatId: 'chat_001',
+        }),
+      );
     });
 
     it('should return failure when config is incomplete', async () => {
@@ -210,6 +233,22 @@ describe('FeishuBitableSyncService', () => {
         tableId: 'tblmI0UBzhknkIOm',
       };
       mockBitableApi.getTableConfig.mockReturnValue(goodcaseConfig);
+      mockBitableApi.getFields.mockResolvedValueOnce([
+        { field_name: '多行文本' },
+        { field_name: '样本ID' },
+        { field_name: '标题' },
+        { field_name: '候选人微信昵称' },
+        { field_name: '招募经理姓名' },
+        { field_name: '咨询时间' },
+        { field_name: '聊天记录' },
+        { field_name: '用户消息' },
+        { field_name: '用例名称' },
+        { field_name: '备注' },
+        { field_name: '来源' },
+        { field_name: '亮点类型' },
+        { field_name: '是否可复用' },
+        { field_name: '是否纳入验证集' },
+      ] as any);
       mockBitableApi.createRecord.mockResolvedValue({ recordId: 'rec_good' });
 
       const feedback: AgentTestFeedback = {
@@ -231,9 +270,12 @@ describe('FeishuBitableSyncService', () => {
       expect(fields['备注']).toBe('回复质量很好\nchatId: chat_002');
       expect(fields['候选人微信昵称']).toBe('真实候选人');
       expect(fields['招募经理姓名']).toBe('真实经理');
+      expect(fields['来源']).toBe('AgentTest');
+      expect(fields['亮点类型']).toBe('其他');
+      expect(fields['是否可复用']).toBe(true);
     });
 
-    it('should generate a random case ID', async () => {
+    it('should generate a random case ID and issue ID', async () => {
       mockBitableApi.getTableConfig.mockReturnValue(badcaseTableConfig);
       mockBitableApi.createRecord.mockResolvedValue({ recordId: 'rec_001' });
 
@@ -247,8 +289,10 @@ describe('FeishuBitableSyncService', () => {
       const callArgs = mockBitableApi.createRecord.mock.calls[0];
       const fields = callArgs[2];
       expect(fields['用例名称']).toBeDefined();
+      expect(fields['问题ID']).toBeDefined();
       expect(typeof fields['用例名称']).toBe('string');
       expect((fields['用例名称'] as string).length).toBeGreaterThan(0);
+      expect(fields['用例名称']).toBe(fields['问题ID']);
     });
   });
 });

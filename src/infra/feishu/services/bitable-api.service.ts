@@ -64,7 +64,7 @@ export class FeishuBitableApiService {
    * 获取预配置的表格信息
    */
   getTableConfig(
-    tableName: 'chat' | 'badcase' | 'goodcase' | 'testSuite' | 'validationSet',
+    tableName: 'chat' | 'badcase' | 'goodcase' | 'testSuite' | 'validationSet' | 'assetRelation',
   ): FeishuBitableTableConfig {
     return feishuBitableConfig.tables[tableName];
   }
