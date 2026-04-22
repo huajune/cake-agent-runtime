@@ -1,11 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { MessagePipelineService } from '@wecom/message/application/pipeline.service';
 import { AcceptInboundMessageService } from '@wecom/message/application/accept-inbound-message.service';
 import { ReplyWorkflowService } from '@wecom/message/application/reply-workflow.service';
 import { MessageProcessingFailureService } from '@wecom/message/application/message-processing-failure.service';
 import { MessageDeduplicationService } from '@wecom/message/runtime/deduplication.service';
 import { MessageRuntimeConfigService } from '@wecom/message/runtime/message-runtime-config.service';
+import { SimpleMergeService } from '@wecom/message/runtime/simple-merge.service';
 import { MessageFilterService } from '@wecom/message/application/filter.service';
 import { MessageDeliveryService } from '@wecom/message/delivery/delivery.service';
 import { ImageDescriptionService } from '@wecom/message/application/image-description.service';
@@ -47,6 +49,10 @@ describe('MessagePipelineService', () => {
     describeAndUpdateSync: jest.fn(),
   };
 
+  const mockLlmService = {
+    supportsVisionInput: jest.fn().mockReturnValue(true),
+  };
+
   const mockRunnerService = {
     invoke: jest.fn(),
   };
@@ -67,7 +73,6 @@ describe('MessagePipelineService', () => {
   const mockRuntimeConfigService = {
     resolveWecomChatModelSelection: jest.fn().mockResolvedValue({
       overrideModelId: undefined,
-      effectiveModelId: '',
     }),
     getMergeDelayMs: jest.fn().mockReturnValue(2000),
   };
@@ -130,6 +135,10 @@ describe('MessagePipelineService', () => {
     precheck: jest.fn(),
   };
 
+  const mockSimpleMergeService = {
+    getAndClearPendingMessages: jest.fn().mockResolvedValue({ messages: [], batchId: '' }),
+  };
+
   const validMessageData: EnterpriseMessageCallbackDto = {
     orgId: 'org-123',
     token: 'token-123',
@@ -161,6 +170,8 @@ describe('MessagePipelineService', () => {
         { provide: MessageFilterService, useValue: mockFilterService },
         { provide: MessageDeliveryService, useValue: mockDeliveryService },
         { provide: ImageDescriptionService, useValue: mockImageDescriptionService },
+        { provide: LlmExecutorService, useValue: mockLlmService },
+        { provide: SimpleMergeService, useValue: mockSimpleMergeService },
         { provide: AgentRunnerService, useValue: mockRunnerService },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: SystemConfigService, useValue: mockSystemConfigService },
@@ -264,7 +275,7 @@ describe('MessagePipelineService', () => {
 
       expect(mockRunnerService.invoke).toHaveBeenCalledWith(
         expect.objectContaining({
-          userMessage: 'Hello!',
+          messages: [{ role: 'user', content: 'Hello!' }],
           userId: 'contact-123',
           corpId: 'org-123',
           sessionId: 'chat-123',
@@ -319,7 +330,12 @@ describe('MessagePipelineService', () => {
 
       expect(mockRunnerService.invoke).toHaveBeenCalledWith(
         expect.objectContaining({
-          userMessage: '[位置分享] 东方明珠（浦东新区世纪大道1号） [经纬度:31.2,121.4]',
+          messages: [
+            {
+              role: 'user',
+              content: '[位置分享] 东方明珠（浦东新区世纪大道1号） [经纬度:31.2,121.4]',
+            },
+          ],
         }),
       );
     });
@@ -411,7 +427,7 @@ describe('MessagePipelineService', () => {
 
       expect(mockRunnerService.invoke).toHaveBeenCalledWith(
         expect.objectContaining({
-          userMessage: 'Hello!\nSecond message',
+          messages: [{ role: 'user', content: 'Hello!\nSecond message' }],
           sessionId: 'chat-123',
         }),
       );

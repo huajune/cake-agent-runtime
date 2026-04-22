@@ -2,9 +2,10 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { streamText, stepCountIs, hasToolCall, type generateText } from 'ai';
+import { hasToolCall, stepCountIs, type generateText } from 'ai';
+import { LlmExecutorService } from '@/llm/llm-executor.service';
+import { ModelRole } from '@/llm/llm.types';
 import { MemoryService } from '@memory/memory.service';
-import { ReliableService } from '@providers/reliable.service';
 import { AgentPreparationService, type PreparedAgentContext } from './agent-preparation.service';
 import type { AgentError } from '@shared-types/agent-error.types';
 import {
@@ -58,7 +59,7 @@ export class AgentRunnerService {
     private readonly configService: ConfigService,
     private readonly preparation: AgentPreparationService,
     private readonly memoryService: MemoryService,
-    private readonly reliable: ReliableService,
+    private readonly llm: LlmExecutorService,
   ) {
     this.thinkingBudgetTokens = parseInt(
       this.configService.get('AGENT_THINKING_BUDGET_TOKENS', '0'),
@@ -73,39 +74,44 @@ export class AgentRunnerService {
 
   /** 非流式执行入口。 */
   async invoke(params: AgentInvokeParams): Promise<AgentRunResult> {
-    const ctx = await this.preparation.prepare(params, 'invoke');
+    const enableVision = this.llm.supportsVisionInput({
+      role: ModelRole.Chat,
+      modelId: params.modelId,
+      disableFallbacks: params.disableFallbacks,
+    });
+    const ctx = await this.preparation.prepare(params, 'invoke', { enableVision });
 
-    if (ctx.typedMessages.length === 0) {
+    if (ctx.normalizedMessages.length === 0) {
       throw this.createEmptyMessagesError(ctx);
     }
 
     try {
-      const providerOptions = this.buildProviderOptions(ctx.chatModelId, params.thinking);
-      const agentRequest = this.buildObservedAgentRequest(ctx, providerOptions);
-      if (params.onPreparedRequest) {
-        await Promise.resolve(params.onPreparedRequest(agentRequest));
-      }
-
-      const r = await this.reliable.generateText(
-        ctx.chatModelId,
-        {
-          system: ctx.finalPrompt,
-          messages: ctx.typedMessages,
-          tools: ctx.tools,
-          maxOutputTokens: this.maxOutputTokens,
-          stopWhen: [stepCountIs(ctx.maxSteps), hasToolCall(SKIP_REPLY_TOOL_NAME)],
-          prepareStep: this.buildPrepareStep(ctx),
-          providerOptions,
+      let agentRequest: Record<string, unknown> | undefined;
+      const r = await this.llm.generate({
+        role: ModelRole.Chat,
+        modelId: params.modelId,
+        disableFallbacks: params.disableFallbacks,
+        thinking: this.resolveThinkingConfig(params.thinking),
+        system: ctx.finalPrompt,
+        messages: ctx.normalizedMessages,
+        tools: ctx.tools,
+        maxOutputTokens: this.maxOutputTokens,
+        stopWhen: [stepCountIs(ctx.maxSteps), hasToolCall(SKIP_REPLY_TOOL_NAME)],
+        prepareStep: this.buildPrepareStep(ctx),
+        onPreparedRequest: async (request) => {
+          agentRequest = request;
+          if (params.onPreparedRequest) {
+            await Promise.resolve(params.onPreparedRequest(request));
+          }
         },
-        ctx.chatFallbacks,
-      );
+      });
 
       if (r.reasoningText) {
         this.logger.debug(`Thinking: ${r.reasoningText.substring(0, 200)}...`);
       }
       this.logger.log(`Loop 完成: steps=${r.steps.length}, tokens=${r.usage.totalTokens}`);
 
-      this.dispatchTurnEndLifecycle(ctx, r.text);
+      this.dispatchTurnEndLifecycle({ ...ctx, messageId: params.messageId }, r.text);
 
       return this.buildRunResult({
         text: r.text,
@@ -131,28 +137,36 @@ export class AgentRunnerService {
   async stream(
     params: AgentInvokeParams & { onFinish?: (result: AgentRunResult) => Promise<void> | void },
   ): Promise<AgentStreamResult> {
-    const ctx = await this.preparation.prepare(params, 'stream');
+    const enableVision = this.llm.supportsVisionInput({
+      role: ModelRole.Chat,
+      modelId: params.modelId,
+      disableFallbacks: params.disableFallbacks,
+    });
+    const ctx = await this.preparation.prepare(params, 'stream', { enableVision });
 
-    if (ctx.typedMessages.length === 0) {
+    if (ctx.normalizedMessages.length === 0) {
       throw this.createEmptyMessagesError(ctx);
     }
 
     try {
-      const providerOptions = this.buildProviderOptions(ctx.chatModelId, params.thinking);
-      const agentRequest = this.buildObservedAgentRequest(ctx, providerOptions);
-      if (params.onPreparedRequest) {
-        await Promise.resolve(params.onPreparedRequest(agentRequest));
-      }
-
-      const streamResult = streamText({
-        model: ctx.chatModel,
+      let agentRequest: Record<string, unknown> | undefined;
+      const streamResult = await this.llm.stream({
+        role: ModelRole.Chat,
+        modelId: params.modelId,
+        disableFallbacks: params.disableFallbacks,
+        thinking: this.resolveThinkingConfig(params.thinking),
         system: ctx.finalPrompt,
-        messages: ctx.typedMessages,
+        messages: ctx.normalizedMessages,
         tools: ctx.tools,
         maxOutputTokens: this.maxOutputTokens,
         stopWhen: [stepCountIs(ctx.maxSteps), hasToolCall(SKIP_REPLY_TOOL_NAME)],
         prepareStep: this.buildPrepareStep(ctx),
-        providerOptions,
+        onPreparedRequest: async (request) => {
+          agentRequest = request;
+          if (params.onPreparedRequest) {
+            await Promise.resolve(params.onPreparedRequest(request));
+          }
+        },
         onFinish: ({ usage, steps, text }) => {
           this.logger.log('流式完成, 步数: ' + steps.length + ', Tokens: ' + usage.totalTokens);
           const result = this.buildRunResult({
@@ -167,7 +181,7 @@ export class AgentRunnerService {
             agentRequest,
             memorySnapshot: ctx.memorySnapshot,
           });
-          this.dispatchTurnEndLifecycle(ctx, text);
+          this.dispatchTurnEndLifecycle({ ...ctx, messageId: params.messageId }, text);
           if (params.onFinish) {
             Promise.resolve(params.onFinish(result)).catch((err) =>
               this.logger.warn('流式完成回调执行失败', err),
@@ -184,85 +198,13 @@ export class AgentRunnerService {
     }
   }
 
-  /**
-   * 构建 provider thinking 配置。
-   *
-   * 不同厂商的思考模式传参方式不同：
-   * - Anthropic: providerOptions.anthropic.thinking
-   * - 千问/OpenAI-compatible: providerOptions.qwen.enable_thinking（AI SDK 会透传到请求 body）
-   *
-   * 这里同时传两套参数，各厂商只识别自己的 key，互不干扰。
-   */
-  private buildProviderOptions(modelId: string, requestThinking?: AgentThinkingConfig) {
-    if (requestThinking) {
-      return this.buildExplicitThinkingOptions(modelId, requestThinking);
-    }
-
-    const effectiveBudget =
-      requestThinking?.type === 'enabled'
-        ? requestThinking.budgetTokens
-        : this.thinkingBudgetTokens;
-
-    if (effectiveBudget <= 0) return undefined;
-
+  private resolveThinkingConfig(requestThinking?: AgentThinkingConfig) {
+    if (requestThinking) return requestThinking;
+    if (this.thinkingBudgetTokens <= 0) return undefined;
     return {
-      anthropic: { thinking: { type: 'enabled', budgetTokens: effectiveBudget } },
-      qwen: { enable_thinking: true },
+      type: 'enabled' as const,
+      budgetTokens: this.thinkingBudgetTokens,
     };
-  }
-
-  private buildExplicitThinkingOptions(modelId: string, thinking: AgentThinkingConfig) {
-    const [provider] = modelId.split('/');
-    const isDeepMode = thinking.type === 'enabled';
-
-    if (!provider) {
-      return undefined;
-    }
-
-    if (!isDeepMode) {
-      switch (provider) {
-        case 'deepseek':
-          return { deepseek: { thinking: { type: 'disabled' } } };
-        case 'google':
-          return { google: { thinkingConfig: { thinkingLevel: 'minimal' } } };
-        case 'openai':
-          return { openai: { reasoningEffort: 'minimal' } };
-        case 'qwen':
-          return { qwen: { enable_thinking: false } };
-        default:
-          return undefined;
-      }
-    }
-
-    const budgetTokens =
-      thinking.budgetTokens > 0 ? thinking.budgetTokens : this.thinkingBudgetTokens;
-    const safeBudgetTokens = budgetTokens > 0 ? budgetTokens : 1024;
-
-    switch (provider) {
-      case 'anthropic':
-        return { anthropic: { thinking: { type: 'enabled', budgetTokens: safeBudgetTokens } } };
-      case 'deepseek':
-        return { deepseek: { thinking: { type: 'enabled' } } };
-      case 'google':
-        return {
-          google: {
-            thinkingConfig: {
-              thinkingBudget: safeBudgetTokens,
-              thinkingLevel: 'high',
-            },
-          },
-        };
-      case 'openai':
-        return { openai: { reasoningEffort: 'high' } };
-      case 'qwen':
-        return { qwen: { enable_thinking: true, reasoningEffort: 'high' } };
-      case 'moonshotai':
-      case 'ohmygpt':
-      case 'gateway':
-        return { [provider]: { reasoningEffort: 'high' } };
-      default:
-        return undefined;
-    }
   }
 
   /**
@@ -330,7 +272,7 @@ export class AgentRunnerService {
   private async runTurnEndLifecycle(
     ctx: Pick<
       Parameters<MemoryService['onTurnEnd']>[0],
-      'corpId' | 'userId' | 'sessionId' | 'typedMessages'
+      'corpId' | 'userId' | 'sessionId' | 'messageId' | 'normalizedMessages'
     > & {
       turnState: {
         candidatePool: Parameters<MemoryService['onTurnEnd']>[0]['candidatePool'];
@@ -343,7 +285,8 @@ export class AgentRunnerService {
         corpId: ctx.corpId,
         userId: ctx.userId,
         sessionId: ctx.sessionId,
-        typedMessages: ctx.typedMessages,
+        messageId: ctx.messageId,
+        normalizedMessages: ctx.normalizedMessages,
         candidatePool: ctx.turnState.candidatePool,
       },
       assistantText,
@@ -353,7 +296,7 @@ export class AgentRunnerService {
   private dispatchTurnEndLifecycle(
     ctx: Pick<
       Parameters<MemoryService['onTurnEnd']>[0],
-      'corpId' | 'userId' | 'sessionId' | 'typedMessages'
+      'corpId' | 'userId' | 'sessionId' | 'messageId' | 'normalizedMessages'
     > & {
       turnState: {
         candidatePool: Parameters<MemoryService['onTurnEnd']>[0]['candidatePool'];
@@ -468,46 +411,10 @@ export class AgentRunnerService {
     return undefined;
   }
 
-  private buildObservedAgentRequest(
-    ctx: Pick<
-      PreparedAgentContext,
-      'chatModelId' | 'chatFallbacks' | 'finalPrompt' | 'typedMessages' | 'tools' | 'maxSteps'
-    >,
-    providerOptions?: ReturnType<AgentRunnerService['buildProviderOptions']>,
-  ): Record<string, unknown> {
-    const request: Record<string, unknown> = {
-      modelId: ctx.chatModelId,
-      system: ctx.finalPrompt,
-      messages: ctx.typedMessages,
-      maxOutputTokens: this.maxOutputTokens,
-      maxSteps: ctx.maxSteps,
-    };
-
-    if (ctx.chatFallbacks && ctx.chatFallbacks.length > 0) {
-      request.fallbackModelIds = ctx.chatFallbacks;
-    }
-
-    const toolNames = Object.keys(ctx.tools ?? {});
-    if (toolNames.length > 0) {
-      request.toolNames = toolNames;
-    }
-
-    if (providerOptions) {
-      request.providerOptions = providerOptions;
-    }
-
-    return request;
-  }
-
   private createEmptyMessagesError(
     ctx: Pick<
       PreparedAgentContext,
-      | 'sessionId'
-      | 'userId'
-      | 'typedMessages'
-      | 'memoryLoadWarning'
-      | 'chatModelId'
-      | 'chatFallbacks'
+      'sessionId' | 'userId' | 'normalizedMessages' | 'memoryLoadWarning'
     >,
   ): AgentError {
     return this.enrichAgentError(
@@ -523,12 +430,7 @@ export class AgentRunnerService {
     err: unknown,
     ctx: Pick<
       PreparedAgentContext,
-      | 'sessionId'
-      | 'userId'
-      | 'typedMessages'
-      | 'memoryLoadWarning'
-      | 'chatModelId'
-      | 'chatFallbacks'
+      'sessionId' | 'userId' | 'normalizedMessages' | 'memoryLoadWarning'
     >,
   ): AgentError {
     const error =
@@ -539,13 +441,9 @@ export class AgentRunnerService {
       ...(error.agentMeta ?? {}),
       sessionId: ctx.sessionId,
       userId: ctx.userId,
-      messageCount: ctx.typedMessages.length,
+      messageCount: ctx.normalizedMessages.length,
       memoryLoadWarning: ctx.memoryLoadWarning,
-      // 补充模型链信息，供告警卡片展示
-      modelsAttempted: error.agentMeta?.modelsAttempted ?? [
-        ctx.chatModelId,
-        ...(ctx.chatFallbacks ?? []),
-      ],
+      modelsAttempted: error.agentMeta?.modelsAttempted,
       lastCategory: error.agentMeta?.lastCategory,
     };
 

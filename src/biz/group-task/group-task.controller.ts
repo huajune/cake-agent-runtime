@@ -11,11 +11,11 @@ import {
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Job, Queue } from 'bull';
+import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ApiTokenGuard } from '@infra/server/guards/api-token.guard';
 import { GroupTaskSchedulerService } from './services/group-task-scheduler.service';
 import { GroupResolverService } from './services/group-resolver.service';
 import { NotificationSenderService } from './services/notification-sender.service';
-import { CompletionService } from '@agent/completion.service';
 import { GroupTaskType, GroupContext } from './group-task.types';
 import {
   GROUP_TASK_QUEUE_NAME,
@@ -46,7 +46,7 @@ export class GroupTaskController {
     private readonly scheduler: GroupTaskSchedulerService,
     private readonly groupResolver: GroupResolverService,
     private readonly notificationSender: NotificationSenderService,
-    private readonly completionService: CompletionService,
+    private readonly llm: LlmExecutorService,
     @InjectQueue(GROUP_TASK_QUEUE_NAME) private readonly groupTaskQueue: Queue,
   ) {}
 
@@ -237,7 +237,7 @@ export class GroupTaskController {
     let message: string;
     if (strategy.needsAI && strategy.buildPrompt) {
       const prompt = strategy.buildPrompt(data, testContext);
-      message = await this.completionService.generateSimple({
+      message = await this.llm.generateSimple({
         systemPrompt: prompt.systemPrompt,
         userMessage: prompt.userMessage,
       });

@@ -14,8 +14,8 @@ describe('SettlementService', () => {
     getChatHistoryInRange: jest.fn(),
   };
 
-  const mockRouter = {
-    resolveByRole: jest.fn().mockReturnValue('mock-model'),
+  const mockLlm = {
+    generate: jest.fn(),
   };
 
   let service: SettlementService;
@@ -26,7 +26,7 @@ describe('SettlementService', () => {
       mockConfig as never,
       mockLongTermService as never,
       mockChatSession as never,
-      mockRouter as never,
+      mockLlm as never,
     );
     mockLongTermService.getSummaryData.mockResolvedValue({
       recent: [],
@@ -54,8 +54,28 @@ describe('SettlementService', () => {
     await service.settle('corp1', 'user1', 'sess1', {
       lastSessionActiveAt: new Date(Date.now() - 2 * 86400 * 1000).toISOString(),
       facts: {
-        interview_info: { name: '张三', phone: '138', gender: null, age: null, applied_store: null, applied_position: null, interview_time: null, is_student: null, education: null, has_health_certificate: null },
-        preferences: { brands: null, salary: null, position: null, schedule: null, city: null, district: null, location: null, labor_form: null },
+        interview_info: {
+          name: '张三',
+          phone: '138',
+          gender: null,
+          age: null,
+          applied_store: null,
+          applied_position: null,
+          interview_time: null,
+          is_student: null,
+          education: null,
+          has_health_certificate: null,
+        },
+        preferences: {
+          brands: null,
+          salary: null,
+          position: null,
+          schedule: null,
+          city: null,
+          district: null,
+          location: null,
+          labor_form: null,
+        },
         reasoning: 'test',
       },
     });

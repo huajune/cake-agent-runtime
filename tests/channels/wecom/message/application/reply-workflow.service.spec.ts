@@ -25,6 +25,7 @@ describe('ReplyWorkflowService', () => {
     recordAgentRequest: jest.fn(),
     recordAgentResult: jest.fn(),
     markAiEnd: jest.fn(),
+    markReplySkipped: jest.fn(),
     buildSuccessMetadata: jest.fn(),
     buildMergedRequestContent: jest.fn(),
   };
@@ -39,6 +40,9 @@ describe('ReplyWorkflowService', () => {
   };
   const preAgentRiskIntercept = {
     precheck: jest.fn(),
+  };
+  const simpleMergeService = {
+    getAndClearPendingMessages: jest.fn(),
   };
 
   let service: ReplyWorkflowService;
@@ -79,11 +83,23 @@ describe('ReplyWorkflowService', () => {
     wecomObservability.recordAgentRequest.mockResolvedValue(undefined);
     wecomObservability.recordAgentResult.mockResolvedValue(undefined);
     wecomObservability.markAiEnd.mockResolvedValue(undefined);
+    wecomObservability.markReplySkipped.mockResolvedValue(undefined);
     wecomObservability.buildSuccessMetadata.mockResolvedValue({ ok: true });
-    wecomObservability.buildMergedRequestContent.mockReturnValue('合并后的消息');
+    wecomObservability.buildMergedRequestContent.mockImplementation(
+      (messages: EnterpriseMessageCallbackDto[]) =>
+        messages
+          .map((m) => {
+            const payload = m.payload as { text?: string; pureText?: string } | undefined;
+            return payload?.pureText ?? payload?.text ?? '';
+          })
+          .join('\n'),
+    );
+    simpleMergeService.getAndClearPendingMessages.mockResolvedValue({
+      messages: [],
+      batchId: '',
+    });
     runtimeConfig.resolveWecomChatModelSelection.mockResolvedValue({
       overrideModelId: 'gpt-runtime',
-      effectiveModelId: 'gpt-runtime',
       thinkingMode: 'deep',
       thinking: {
         type: 'enabled',
@@ -104,6 +120,7 @@ describe('ReplyWorkflowService', () => {
       runtimeConfig as never,
       processingFailureService as never,
       preAgentRiskIntercept as never,
+      simpleMergeService as never,
     );
   });
 
@@ -153,6 +170,133 @@ describe('ReplyWorkflowService', () => {
     );
     expect(monitoringService.recordSuccess).toHaveBeenCalledWith('msg-1', { ok: true });
     expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');
+  });
+
+  describe('投递前重跑（replay）', () => {
+    it('Case A: pending list 为空时不触发重跑，直接投递首次回复', async () => {
+      const message = createMessage();
+
+      await service.processSingleMessage(message);
+
+      expect(simpleMergeService.getAndClearPendingMessages).toHaveBeenCalledTimes(1);
+      expect(simpleMergeService.getAndClearPendingMessages).toHaveBeenCalledWith('chat-1');
+      expect(runner.invoke).toHaveBeenCalledTimes(1);
+      expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
+    });
+
+    it('Case B: 首次 Agent 完成后发现新消息，合并后重跑一次并投递第二次回复', async () => {
+      const primary = createMessage();
+      const late1 = createMessage({
+        messageId: 'msg-late-1',
+        payload: { text: '补充一句', pureText: '补充一句' },
+      });
+      const late2 = createMessage({
+        messageId: 'msg-late-2',
+        payload: { text: '再补一句', pureText: '再补一句' },
+      });
+      simpleMergeService.getAndClearPendingMessages.mockResolvedValueOnce({
+        messages: [late1, late2],
+        batchId: 'batch-late',
+      });
+      runner.invoke
+        .mockResolvedValueOnce({
+          text: '首次回复（会被丢弃）',
+          reasoning: undefined,
+          responseMessages: [],
+          usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+        })
+        .mockResolvedValueOnce({
+          text: '合并后的最终回复',
+          reasoning: undefined,
+          responseMessages: [],
+          usage: { inputTokens: 4, outputTokens: 5, totalTokens: 9 },
+        });
+
+      await service.processSingleMessage(primary);
+
+      expect(runner.invoke).toHaveBeenCalledTimes(2);
+      expect(runner.invoke.mock.calls[1][0]).toEqual(
+        expect.objectContaining({
+          // 第二次 invoke 的 userMessage 应当是合并后的新内容
+          messages: [
+            expect.objectContaining({
+              role: 'user',
+              content: '你好\n补充一句\n再补一句',
+            }),
+          ],
+        }),
+      );
+      expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
+      expect(deliveryService.deliverReply).toHaveBeenCalledWith(
+        expect.objectContaining({ content: '合并后的最终回复' }),
+        expect.anything(),
+        true,
+      );
+      expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');
+      expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-late-1');
+      expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-late-2');
+    });
+
+    it('Case C: 重跑只允许一次——第二次 Agent 生成期间又有新消息也不再重跑', async () => {
+      const primary = createMessage();
+      const late1 = createMessage({
+        messageId: 'msg-late-1',
+        payload: { text: '第二条', pureText: '第二条' },
+      });
+      const late2 = createMessage({
+        messageId: 'msg-late-2',
+        payload: { text: '第三条', pureText: '第三条' },
+      });
+
+      simpleMergeService.getAndClearPendingMessages.mockResolvedValue({
+        messages: [late1, late2],
+        batchId: 'batch-late',
+      });
+
+      await service.processSingleMessage(primary);
+
+      // 只检查一次 pending：首次 Agent 完成后
+      expect(simpleMergeService.getAndClearPendingMessages).toHaveBeenCalledTimes(1);
+      // 恰好重跑一次
+      expect(runner.invoke).toHaveBeenCalledTimes(2);
+      expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
+    });
+
+    it('Case D: 首次 skip_reply 但重跑产生真实回复 → 正常投递，不进主动沉默分支', async () => {
+      const primary = createMessage();
+      const late1 = createMessage({
+        messageId: 'msg-late-1',
+        payload: { text: '再问一下', pureText: '再问一下' },
+      });
+      simpleMergeService.getAndClearPendingMessages.mockResolvedValueOnce({
+        messages: [late1],
+        batchId: 'batch-late',
+      });
+      runner.invoke
+        .mockResolvedValueOnce({
+          text: '',
+          reasoning: undefined,
+          responseMessages: [],
+          toolCalls: [{ toolName: 'skip_reply', args: { reason: '候选人仅确认' } }],
+          usage: { inputTokens: 1, outputTokens: 0, totalTokens: 1 },
+        })
+        .mockResolvedValueOnce({
+          text: '重跑后的真实回复',
+          reasoning: undefined,
+          responseMessages: [],
+          usage: { inputTokens: 2, outputTokens: 4, totalTokens: 6 },
+        });
+
+      await service.processSingleMessage(primary);
+
+      expect(wecomObservability.markReplySkipped).not.toHaveBeenCalled();
+      expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
+      expect(deliveryService.deliverReply).toHaveBeenCalledWith(
+        expect.objectContaining({ content: '重跑后的真实回复' }),
+        expect.anything(),
+        true,
+      );
+    });
   });
 
   it('should delegate merged-message failures and rethrow the original error', async () => {

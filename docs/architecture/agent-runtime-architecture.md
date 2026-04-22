@@ -1,6 +1,6 @@
 # Agent 运行时架构
 
-**最后更新**：2026-03-23
+**最后更新**：2026-04-22
 
 ---
 
@@ -26,13 +26,13 @@ Cake Agent Runtime 是一个**自主 AI Agent 编排引擎**，基于 Vercel AI 
 
 **技术选型**：
 
-| 组件 | 技术 | 说明 |
-|------|------|------|
-| 运行时框架 | NestJS 10.3 | 依赖注入、模块化 |
-| AI SDK | Vercel AI SDK | generateText / streamText / tool calling |
-| 模型接入 | 多 Provider | Anthropic、OpenAI、DeepSeek、Qwen 等 |
-| 会话存储 | Redis (Upstash) | 会话事实、程序记忆 |
-| 持久存储 | Supabase (PostgreSQL) | 对话历史、用户档案 |
+| 组件       | 技术                  | 说明                                     |
+| ---------- | --------------------- | ---------------------------------------- |
+| 运行时框架 | NestJS 10.3           | 依赖注入、模块化                         |
+| AI SDK     | Vercel AI SDK         | generateText / streamText / tool calling |
+| 模型接入   | 多 Provider           | Anthropic、OpenAI、DeepSeek、Qwen 等     |
+| 会话存储   | Redis (Upstash)       | 会话事实、程序记忆                       |
+| 持久存储   | Supabase (PostgreSQL) | 对话历史、用户档案                       |
 
 ---
 
@@ -50,14 +50,19 @@ Cake Agent Runtime 是一个**自主 AI Agent 编排引擎**，基于 Vercel AI 
                                      ↓
                 ┌────────────────────────────────────────┐
                 │         Agent 编排层                     │
-                │  AgentRunnerService + ContextService            │
-                │  CompletionService (一次性调用)           │
+                │  AgentRunnerService + ContextService    │
+                │  一次性调用也统一走 LlmExecutorService   │
                 └──┬──────────┬──────────┬───────────────┘
                    ↓          ↓          ↓
           ┌────────────┐ ┌────────┐ ┌─────────┐
-          │ Providers  │ │ Memory │ │  Tools  │
-          │ 模型层      │ │ 记忆层  │ │ 工具层   │
-          └────────────┘ └────────┘ └─────────┘
+          │LLM Executor│ │ Memory │ │  Tools  │
+          │ 共享执行入口 │ │ 记忆层  │ │ 工具层   │
+          └─────┬──────┘ └────────┘ └─────────┘
+                ↓
+          ┌────────────┐
+          │ Providers  │
+          │ 模型基础设施 │
+          └────────────┘
                    ↓          ↓          ↓
           ┌────────────────────────────────────────┐
           │         Infrastructure 基础设施层         │
@@ -70,6 +75,9 @@ Cake Agent Runtime 是一个**自主 AI Agent 编排引擎**，基于 Vercel AI 
 - `infra/` 禁止依赖 `biz/`、`channels/`、`agent/`
 - `agent/` 不依赖 `channels/`，通过参数接收上下文
 - `channels/` 通过 `AgentRunnerService` 接口调用 Agent
+- `agent/`、`memory/` 通过 `llm/` 使用模型能力，不直接依赖 providers 内部实现
+
+更聚焦的调用关系图见：[LLM Executor 调用关系图](./llm-executor-dependency-diagram.md)
 
 ---
 
@@ -96,7 +104,7 @@ invoke(params) / stream(params)
   │   │   └─ longTerm:      Supabase/Redis → 用户档案
   │   │
   │   ├─ 2. 消息选择（依据 callerKind 分叉）
-  │   │   ├─ WECOM：ShortTermService 内部读取历史（空窗口时用 userMessage 兜底）
+  │   │   ├─ WECOM：ShortTermService 内部读取历史（空窗口时用 messages[最后一条] 兜底）
   │   │   └─ TEST_SUITE / DEBUG：直接使用传入 messages[]，trimMessages 字符上限裁剪
   │   │
   │   ├─ 3. Compose — ContextService.compose()
@@ -110,13 +118,13 @@ invoke(params) / stream(params)
   │   │
   │   └─ 6. 构建工具 → ToolRegistryService.buildForScenario()
   │
-  ├─ Execute — generateText / streamText
-  │   ├─ model:      RouterService.resolveByRole('chat')
+  ├─ Execute — LlmExecutorService.generate() / stream()
+  │   ├─ route:      chat role / override + fallback 由 executor 内部解析
   │   ├─ system:     finalPrompt
-  │   ├─ messages:   typedMessages
+  │   ├─ messages:   normalizedMessages
   │   ├─ tools:      scenario 工具集
   │   ├─ stopWhen:   stepCountIs(maxSteps)  [默认 5]
-  │   └─ providerOptions: extended thinking（可选）
+  │   └─ thinking:   extended thinking（由 executor 翻译成 providerOptions）
   │
   └─ Store — storePostMemory()  [异步]
       ├─ 更新 lastInteraction / lastTopic
@@ -127,26 +135,25 @@ invoke(params) / stream(params)
 
 ```typescript
 enum CallerKind {
-  WECOM = 'wecom',           // 企微生产链路
+  WECOM = 'wecom', // 企微生产链路
   TEST_SUITE = 'test-suite', // 测试套件
-  DEBUG = 'debug',           // controller 调试端点
+  DEBUG = 'debug', // controller 调试端点
 }
 
 interface AgentInvokeParams {
-  callerKind: CallerKind;                           // 必填：调用方身份
-  messages?: { role: string; content: string }[];  // test-suite / debug 路径
-  userMessage?: string;                             // wecom 路径
+  callerKind: CallerKind; // 必填：调用方身份
+  messages: { role: string; content: string }[];
   userId: string;
   corpId: string;
   sessionId: string;
-  scenario?: string;     // 默认 'candidate-consultation'
-  maxSteps?: number;     // 默认 5
-  strategySource?: 'released' | 'testing';  // 策略配置版本，与 callerKind 正交
+  scenario?: string; // 默认 'candidate-consultation'
+  maxSteps?: number; // 默认 5
+  strategySource?: 'released' | 'testing'; // 策略配置版本，与 callerKind 正交
 }
 
 interface AgentRunResult {
   text: string;
-  reasoning?: string;    // 需启用 AGENT_THINKING_BUDGET_TOKENS
+  reasoning?: string; // 需启用 AGENT_THINKING_BUDGET_TOKENS
   steps: number;
   usage: { inputTokens: number; outputTokens: number; totalTokens: number };
 }
@@ -154,19 +161,19 @@ interface AgentRunResult {
 
 ### 3.3 三条执行路径
 
-`callerKind` 作为调用方身份的**显式声明**，替代了历史上分散的 `userMessage !== undefined` / `corpId === 'test'` 推导。
+`callerKind` 作为调用方身份的**显式声明**，替代了历史上分散的入口分支推导。
 
-| callerKind | 入参 | 历史消息来源 | 短期记忆加载 | 调用方 |
-|---|---|---|---|---|
-| `WECOM` | `userMessage` | ShortTermService 从 Redis/DB 读取 | 是 | ReplyWorkflowService |
-| `TEST_SUITE` | `messages[]` | 调用方直传，trimMessages 裁剪 | 否 | TestExecutionService / ConversationTestService |
-| `DEBUG` | `messages[]` | 调用方直传 | 否 | AgentController.debugChat |
+| callerKind   | 入参                             | 历史消息来源                              | 短期记忆加载 | 调用方                                         |
+| ------------ | -------------------------------- | ----------------------------------------- | ------------ | ---------------------------------------------- |
+| `WECOM`      | `messages[]`（仅当前 user 消息） | ShortTermService 从 Redis/DB 读取完整历史 | 是           | ReplyWorkflowService                           |
+| `TEST_SUITE` | `messages[]`                     | 调用方直传，trimMessages 裁剪             | 否           | TestExecutionService / ConversationTestService |
+| `DEBUG`      | `messages[]`                     | 调用方直传                                | 否           | AgentController.debugChat                      |
 
 `callerKind` 与 `strategySource` 正交：test-suite 可通过 `strategySource: 'released'` 跑联调；debug 默认 `testing` 但也可覆盖。
 
-### 3.4 CompletionService — 一次性 LLM 调用
+### 3.4 LlmExecutorService — 共享 LLM 入口
 
-[completion.service.ts](src/agent/completion.service.ts) 用于不需要记忆/工具/循环的简单场景：
+一次性调用和 Agent 对话都统一走 [`src/llm/llm-executor.service.ts`](src/llm/llm-executor.service.ts)：
 
 - 事实提取（FactExtractionService）
 - LLM 评估（LlmEvaluationService）
@@ -174,8 +181,9 @@ interface AgentRunResult {
 - 群消息生成
 
 ```typescript
-async generate(params: CompletionParams): Promise<CompletionResult>
-async generateSimple(systemPrompt: string, userMessage: string): Promise<string>
+async generate(options: LlmGenerateOptions)
+async generateStructured(options: LlmGenerateStructuredOptions)
+async generateSimple(params: { systemPrompt: string; userMessage: string })
 ```
 
 ---
@@ -197,14 +205,14 @@ interface PromptSection {
 
 **已注册 Section**：
 
-| Section | 内容 | 数据来源 |
-|---------|------|---------|
-| `identity` | 角色定义、沟通风格、工作流程 | `candidate-consultation.md` 文件 |
-| `red-lines` | 禁止行为、合规约束 | StrategyConfigRecord |
-| `risk-scenarios` | 敏感场景处理指南 | StrategyConfigRecord |
+| Section          | 内容                             | 数据来源                            |
+| ---------------- | -------------------------------- | ----------------------------------- |
+| `identity`       | 角色定义、沟通风格、工作流程     | `candidate-consultation.md` 文件    |
+| `red-lines`      | 禁止行为、合规约束               | StrategyConfigRecord                |
+| `risk-scenarios` | 敏感场景处理指南                 | StrategyConfigRecord                |
 | `stage-strategy` | 当前阶段目标、CTA 策略、成功标准 | StrategyConfigRecord + currentStage |
-| `datetime` | 当前时间（Asia/Shanghai） | 系统时钟 |
-| `channel` | 私聊/群聊上下文 | channelType 参数 |
+| `datetime`       | 当前时间（Asia/Shanghai）        | 系统时钟                            |
+| `channel`        | 私聊/群聊上下文                  | channelType 参数                    |
 
 ### 4.2 场景注册表
 
@@ -212,10 +220,16 @@ interface PromptSection {
 
 ```typescript
 const SCENARIO_SECTIONS = {
-  'candidate-consultation': ['identity', 'red-lines', 'risk-scenarios',
-                             'stage-strategy', 'datetime', 'channel'],
-  'group-operations':       ['identity', 'datetime', 'channel'],
-  'evaluation':             ['identity'],
+  'candidate-consultation': [
+    'identity',
+    'red-lines',
+    'risk-scenarios',
+    'stage-strategy',
+    'datetime',
+    'channel',
+  ],
+  'group-operations': ['identity', 'datetime', 'channel'],
+  evaluation: ['identity'],
 };
 ```
 
@@ -266,16 +280,16 @@ const SCENARIO_SECTIONS = {
 
 启动时根据环境变量中的 API Key 按需注册 Provider：
 
-| 分类 | Provider | SDK | 注册条件 |
-|------|----------|-----|---------|
-| 原生 SDK | `anthropic` | @ai-sdk/anthropic | ANTHROPIC_API_KEY |
-| 原生 SDK | `google` | @ai-sdk/google | GEMINI_API_KEY |
-| 原生 SDK | `deepseek` | @ai-sdk/deepseek | DEEPSEEK_API_KEY |
-| 自定义 | `openai` | custom-openai.provider | ANTHROPIC_API_KEY（代理） |
-| 自定义 | `openrouter` | custom-openrouter.provider | OPENROUTER_API_KEY |
-| OAI-compatible | `qwen` | @ai-sdk/openai-compatible | DASHSCOPE_API_KEY |
-| OAI-compatible | `moonshotai` | @ai-sdk/openai-compatible | MOONSHOT_API_KEY |
-| OAI-compatible | `gateway` | @ai-sdk/openai-compatible | GATEWAY_API_KEY + URL |
+| 分类           | Provider     | SDK                        | 注册条件                  |
+| -------------- | ------------ | -------------------------- | ------------------------- |
+| 原生 SDK       | `anthropic`  | @ai-sdk/anthropic          | ANTHROPIC_API_KEY         |
+| 原生 SDK       | `google`     | @ai-sdk/google             | GEMINI_API_KEY            |
+| 原生 SDK       | `deepseek`   | @ai-sdk/deepseek           | DEEPSEEK_API_KEY          |
+| 自定义         | `openai`     | custom-openai.provider     | ANTHROPIC_API_KEY（代理） |
+| 自定义         | `openrouter` | custom-openrouter.provider | OPENROUTER_API_KEY        |
+| OAI-compatible | `qwen`       | @ai-sdk/openai-compatible  | DASHSCOPE_API_KEY         |
+| OAI-compatible | `moonshotai` | @ai-sdk/openai-compatible  | MOONSHOT_API_KEY          |
+| OAI-compatible | `gateway`    | @ai-sdk/openai-compatible  | GATEWAY_API_KEY + URL     |
 
 ```typescript
 resolve(modelId: string): LanguageModel  // "anthropic/claude-sonnet-4-6" → LanguageModel
@@ -291,11 +305,11 @@ resolve(modelId: string): LanguageModel  // "anthropic/claude-sonnet-4-6" → La
 
 **错误分类**：
 
-| 类别 | 触发条件 | 行为 |
-|------|---------|------|
-| `non_retryable` | 401/403/404、invalid API key、余额不足 | 跳过重试，直接降级 |
-| `rate_limited` | 429、rate limit | 指数退避重试，尊重 Retry-After |
-| `retryable` | 5xx、timeout、网络错误 | 标准指数退避重试 |
+| 类别            | 触发条件                               | 行为                           |
+| --------------- | -------------------------------------- | ------------------------------ |
+| `non_retryable` | 401/403/404、invalid API key、余额不足 | 跳过重试，直接降级             |
+| `rate_limited`  | 429、rate limit                        | 指数退避重试，尊重 Retry-After |
+| `retryable`     | 5xx、timeout、网络错误                 | 标准指数退避重试               |
 
 **退避策略**：`backoff = min(100ms × 2^(attempt-1), 10s)`
 
@@ -307,10 +321,10 @@ resolve(modelId: string): LanguageModel  // "anthropic/claude-sonnet-4-6" → La
 
 ```typescript
 enum ModelRole {
-  Chat = 'chat',         // 主对话 — AGENT_CHAT_MODEL
-  Fast = 'fast',         // 快速响应 — AGENT_FAST_MODEL
+  Chat = 'chat', // 主对话 — AGENT_CHAT_MODEL
+  Fast = 'fast', // 快速响应 — AGENT_FAST_MODEL
   Classify = 'classify', // 分类 — AGENT_CLASSIFY_MODEL
-  Extract = 'extract',   // 提取 — AGENT_EXTRACT_MODEL
+  Extract = 'extract', // 提取 — AGENT_EXTRACT_MODEL
   Reasoning = 'reasoning', // 推理 — AGENT_REASONING_MODEL
 }
 ```
@@ -347,23 +361,23 @@ enum ModelRole {
 const memory = await this.memoryService.recallAll(corpId, userId, sessionId);
 
 interface AgentMemoryContext {
-  shortTerm: SimpleMessage[];                        // 对话窗口
-  longTerm: { profile: UserProfile | null };         // 用户档案
-  procedural: { currentStage, advancedAt, reason };  // 流程阶段
-  sessionFacts: SessionFacts | null;                 // 求职意向
+  shortTerm: SimpleMessage[]; // 对话窗口
+  longTerm: { profile: UserProfile | null }; // 用户档案
+  procedural: { currentStage; advancedAt; reason }; // 流程阶段
+  sessionFacts: SessionFacts | null; // 求职意向
 }
 ```
 
 ### 6.3 读写时序
 
-| 时机 | 操作 | 执行方式 |
-|------|------|---------|
-| Agent 请求前 | `recallAll()` — 一次性并行读取 | 同步等待 |
-| Agent 完成后 | `storeInteraction()` — 更新交互时间 | 异步 |
-| Agent 完成后 | `extractAndSave()` — LLM 事实提取 | fire-and-forget |
-| LLM 调用工具 | `advance_stage` — 推进流程阶段 | 工具内同步 |
-| LLM 调用工具 | `recall_history` — 检索历史摘要 | 工具内同步 |
-| 空闲超时 | Settlement — 沉淀到 Profile + Summary | fire-and-forget |
+| 时机         | 操作                                  | 执行方式        |
+| ------------ | ------------------------------------- | --------------- |
+| Agent 请求前 | `recallAll()` — 一次性并行读取        | 同步等待        |
+| Agent 完成后 | `storeInteraction()` — 更新交互时间   | 异步            |
+| Agent 完成后 | `extractAndSave()` — LLM 事实提取     | fire-and-forget |
+| LLM 调用工具 | `advance_stage` — 推进流程阶段        | 工具内同步      |
+| LLM 调用工具 | `recall_history` — 检索历史摘要       | 工具内同步      |
+| 空闲超时     | Settlement — 沉淀到 Profile + Summary | fire-and-forget |
 
 ### 6.4 设计原则
 
@@ -379,29 +393,33 @@ interface AgentMemoryContext {
 
 ### 7.1 内置工具
 
-| 工具 | 功能 | 记忆交互 |
-|------|------|---------|
-| `advance_stage` | 推进招聘流程阶段 | 写入程序记忆 |
-| `recall_history` | 查询用户历史求职记录 | 读取长期记忆 |
-| `duliday_job_list` | 查询在招岗位（6 个布尔开关控制返回字段） | 通过 `onJobsFetched` 回调保存推荐岗位 |
-| `duliday_interview_booking` | 面试预约 | — |
+| 工具                        | 功能                                     | 记忆交互                              |
+| --------------------------- | ---------------------------------------- | ------------------------------------- |
+| `advance_stage`             | 推进招聘流程阶段                         | 写入程序记忆                          |
+| `recall_history`            | 查询用户历史求职记录                     | 读取长期记忆                          |
+| `duliday_job_list`          | 查询在招岗位（6 个布尔开关控制返回字段） | 通过 `onJobsFetched` 回调保存推荐岗位 |
+| `duliday_interview_booking` | 面试预约                                 | —                                     |
 
 ### 7.2 场景工具映射
 
 ```typescript
 const scenarioToolMap = {
-  'candidate-consultation': ['advance_stage', 'recall_history',
-                             'duliday_job_list', 'duliday_interview_booking'],
+  'candidate-consultation': [
+    'advance_stage',
+    'recall_history',
+    'duliday_job_list',
+    'duliday_interview_booking',
+  ],
   'group-operations': [],
-  'evaluation': [],
+  evaluation: [],
 };
 ```
 
 ### 7.3 MCP 动态扩展
 
 ```typescript
-registerMcpTool(name, tool, mcpServer)   // 运行时注册
-removeByMcpServer(serverName)            // 按 server 批量移除
+registerMcpTool(name, tool, mcpServer); // 运行时注册
+removeByMcpServer(serverName); // 按 server 批量移除
 ```
 
 MCP 工具自动叠加到所有场景的工具集中。
@@ -474,8 +492,8 @@ t=4500ms  job B 触发 → 距最后消息仅 1700ms，未静默够 → 跳过
 t=5800ms  job C 触发 → 距最后消息 3000ms，静默够了 → 取出全部消息交给 Agent
 ```
 
-| 配置 | 默认值 | 配置位置 |
-|------|--------|---------|
+| 配置                              | 默认值 | 配置位置                                       |
+| --------------------------------- | ------ | ---------------------------------------------- |
 | 静默窗口 (`initialMergeWindowMs`) | 3000ms | Supabase `hosting_config` (Dashboard 动态调整) |
 
 > 机制是 **debounce（防抖）**，不是固定窗口聚合。只要用户一直在打字，就会不断推迟处理；只有停够 `initialMergeWindowMs` 才触发一次 Agent。因此不需要"最大聚合数"上限。
@@ -549,10 +567,11 @@ AppModule
 │
 ├── AgentModule
 │   ├── AgentRunnerService          — 编排引擎
-│   ├── CompletionService    — 一次性调用
 │   ├── ContextService       — Prompt 组装
-│   ├── FactExtractionService — 事实提取
 │   └── InputGuardService    — 注入检测
+│
+├── LlmModule
+│   └── LlmExecutorService   — 共享 LLM 执行入口
 │
 ├── ChannelsModule
 │   └── WecomModule
@@ -678,27 +697,27 @@ AppModule
 
 ### 必填（无默认值）
 
-| 变量 | 说明 |
-|------|------|
-| `ANTHROPIC_API_KEY` | Anthropic API 密钥 |
-| `AGENT_CHAT_MODEL` | 主对话模型（如 `anthropic/claude-sonnet-4-5-20250929`） |
-| `UPSTASH_REDIS_REST_URL` | Redis REST API |
-| `UPSTASH_REDIS_REST_TOKEN` | Redis Token |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase 密钥 |
+| 变量                        | 说明                                                    |
+| --------------------------- | ------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`         | Anthropic API 密钥                                      |
+| `AGENT_CHAT_MODEL`          | 主对话模型（如 `anthropic/claude-sonnet-4-5-20250929`） |
+| `UPSTASH_REDIS_REST_URL`    | Redis REST API                                          |
+| `UPSTASH_REDIS_REST_TOKEN`  | Redis Token                                             |
+| `NEXT_PUBLIC_SUPABASE_URL`  | Supabase URL                                            |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase 密钥                                           |
 
 ### Agent 行为（有默认值）
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `AGENT_MAX_OUTPUT_TOKENS` | 4096 | 输出 token 上限 |
+| 变量                           | 默认值    | 说明                   |
+| ------------------------------ | --------- | ---------------------- |
+| `AGENT_MAX_OUTPUT_TOKENS`      | 4096      | 输出 token 上限        |
 | `AGENT_THINKING_BUDGET_TOKENS` | 0（关闭） | Extended thinking 预算 |
-| `AGENT_MAX_INPUT_CHARS` | 8000 | 输入字符上限 |
-| `MAX_HISTORY_PER_CHAT` | 60 | 短期记忆最大消息条数 |
-| `MEMORY_SESSION_TTL_DAYS` | 1 | 会话记忆 TTL（天） |
-| `AGENT_CHAT_FALLBACKS` | — | 对话模型降级链 |
-| `AGENT_FAST_MODEL` | — | 快速模型 |
-| `ENABLE_MESSAGE_MERGE` | true | 消息聚合开关（硬编码） |
+| `AGENT_MAX_INPUT_CHARS`        | 8000      | 输入字符上限           |
+| `MAX_HISTORY_PER_CHAT`         | 60        | 短期记忆最大消息条数   |
+| `MEMORY_SESSION_TTL_DAYS`      | 1         | 会话记忆 TTL（天）     |
+| `AGENT_CHAT_FALLBACKS`         | —         | 对话模型降级链         |
+| `AGENT_FAST_MODEL`             | —         | 快速模型               |
+| `ENABLE_MESSAGE_MERGE`         | true      | 消息聚合开关（硬编码） |
 
 > 消息聚合的静默窗口 `initialMergeWindowMs`（默认 3000ms）已从环境变量迁移到 Supabase `hosting_config` 表，通过 Dashboard 动态调整。旧的 `INITIAL_MERGE_WINDOW_MS` / `MAX_MERGED_MESSAGES` 已废弃。
 
@@ -715,12 +734,12 @@ AppModule
 
 ## 相关代码
 
-| 模块 | 入口文件 |
-|------|---------|
-| Agent Loop | `src/agent/runner.service.ts` |
-| Context | `src/agent/context/context.service.ts` |
-| Providers | `src/providers/router.service.ts` |
-| Memory | `src/memory/memory.service.ts` |
-| Tools | `src/tools/tool-registry.service.ts` |
-| Pipeline | `src/channels/wecom/message/services/pipeline.service.ts` |
-| Evaluation | `src/evaluation/test-suite.service.ts` |
+| 模块       | 入口文件                                                  |
+| ---------- | --------------------------------------------------------- |
+| Agent Loop | `src/agent/runner.service.ts`                             |
+| Context    | `src/agent/context/context.service.ts`                    |
+| Providers  | `src/providers/router.service.ts`                         |
+| Memory     | `src/memory/memory.service.ts`                            |
+| Tools      | `src/tools/tool-registry.service.ts`                      |
+| Pipeline   | `src/channels/wecom/message/services/pipeline.service.ts` |
+| Evaluation | `src/evaluation/test-suite.service.ts`                    |

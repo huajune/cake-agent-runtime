@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { generateText } from 'ai';
-import { RouterService } from '@providers/router.service';
-import { ModelRole } from '@providers/types';
+import { LlmExecutorService } from '@/llm/llm-executor.service';
+import { ModelRole } from '@/llm/llm.types';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { MemoryConfig } from '../memory.config';
 import { LongTermService } from './long-term.service';
@@ -63,7 +62,7 @@ export class SettlementService {
     private readonly config: MemoryConfig,
     private readonly longTerm: LongTermService,
     private readonly chatSession: ChatSessionService,
-    private readonly router: RouterService,
+    private readonly llm: LlmExecutorService,
   ) {}
 
   /** 是否达到沉淀阈值。只负责判断会话是否闲置够久。 */
@@ -162,9 +161,8 @@ export class SettlementService {
         : '无提取信息';
 
       // LLM 生成摘要
-      const model = this.router.resolveByRole(ModelRole.Extract);
-      const result = await generateText({
-        model,
+      const result = await this.llm.generate({
+        role: ModelRole.Extract,
         system: SUMMARY_SYSTEM_PROMPT,
         prompt: `[对话记录]\n${conversationText}\n\n[提取信息]\n${factsText}`,
       });
@@ -202,9 +200,8 @@ export class SettlementService {
     if (existingArchive) parts.push(`已有总结：${existingArchive}`);
     parts.push(`需要合并的新记录：\n${overflow.map((e) => `- ${e.summary}`).join('\n')}`);
 
-    const model = this.router.resolveByRole(ModelRole.Extract);
-    const result = await generateText({
-      model,
+    const result = await this.llm.generate({
+      role: ModelRole.Extract,
       system: ARCHIVE_COMPRESS_PROMPT,
       prompt: parts.join('\n\n'),
     });

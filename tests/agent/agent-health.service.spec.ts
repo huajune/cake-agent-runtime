@@ -2,9 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AgentHealthService } from '@agent/agent-health.service';
 import { RedisService } from '@infra/redis/redis.service';
 import { SupabaseService } from '@infra/supabase/supabase.service';
-import { ToolRegistryService } from '@tools/tool-registry.service';
-import { RouterService } from '@providers/router.service';
 import { RegistryService } from '@providers/registry.service';
+import { RouterService } from '@providers/router.service';
+import { ToolRegistryService } from '@tools/tool-registry.service';
 import { ContextService } from '@agent/context/context.service';
 
 describe('AgentHealthService', () => {
@@ -26,19 +26,21 @@ describe('AgentHealthService', () => {
   };
 
   const mockToolRegistry = {
-    listBySource: jest.fn().mockImplementation((source: string) =>
-      source === 'built-in' ? ['advance_stage', 'recall_history'] : ['mcp_tool_1'],
-    ),
+    listBySource: jest
+      .fn()
+      .mockImplementation((source: string) =>
+        source === 'built-in' ? ['advance_stage', 'recall_history'] : ['mcp_tool_1'],
+      ),
+  };
+
+  const mockRegistry = {
+    listProviders: jest.fn().mockReturnValue(['anthropic']),
   };
 
   const mockRouter = {
     listRoleDetails: jest.fn().mockReturnValue({
       chat: { model: 'anthropic/claude-sonnet-4-6' },
     }),
-  };
-
-  const mockRegistry = {
-    listProviders: jest.fn().mockReturnValue(['anthropic']),
   };
 
   const mockContext = {
@@ -52,8 +54,8 @@ describe('AgentHealthService', () => {
         { provide: RedisService, useValue: mockRedisService },
         { provide: SupabaseService, useValue: mockSupabaseService },
         { provide: ToolRegistryService, useValue: mockToolRegistry },
-        { provide: RouterService, useValue: mockRouter },
         { provide: RegistryService, useValue: mockRegistry },
+        { provide: RouterService, useValue: mockRouter },
         { provide: ContextService, useValue: mockContext },
       ],
     }).compile();

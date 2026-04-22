@@ -98,7 +98,7 @@ Winston Logger 配置，日志不记录 API Key、Token 等敏感值；飞书告
 `generateText` / `streamText` 调用时统一传入 `maxOutputTokens`，防止 LLM 返回超长内容导致成本失控。
 
 - `AgentRunnerService`：从 `AGENT_MAX_OUTPUT_TOKENS` 读取，默认 4096
-- `CompletionService`：同上，调用方可通过参数覆盖单次上限
+- `LlmExecutorService`：同上，一次性调用方也统一走这个入口
 
 **输入长度守卫**
 

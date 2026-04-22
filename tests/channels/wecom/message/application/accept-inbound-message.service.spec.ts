@@ -1,4 +1,5 @@
 import { AcceptInboundMessageService } from '@channels/wecom/message/application/accept-inbound-message.service';
+import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { EnterpriseMessageCallbackDto } from '@channels/wecom/message/ingress/message-callback.dto';
 import { ContactType, MessageSource, MessageType } from '@enums/message-callback.enum';
 import { FilterReason } from '@enums/message-filter.enum';
@@ -31,6 +32,9 @@ describe('AcceptInboundMessageService', () => {
   const runtimeConfig = {
     resolveWecomChatModelSelection: jest.fn(),
   };
+  const llm = {
+    supportsVisionInput: jest.fn(),
+  };
 
   let service: AcceptInboundMessageService;
 
@@ -49,8 +53,9 @@ describe('AcceptInboundMessageService', () => {
     wecomObservability.buildFailureMetadata.mockResolvedValue({ traceId: 'msg-1' });
     wecomObservability.markImagePrepared.mockResolvedValue(undefined);
     runtimeConfig.resolveWecomChatModelSelection.mockResolvedValue({
-      effectiveModelId: 'gpt-test',
+      overrideModelId: 'gpt-test',
     });
+    llm.supportsVisionInput.mockReturnValue(true);
     service = new AcceptInboundMessageService(
       deduplicationService as never,
       chatSession as never,
@@ -59,6 +64,7 @@ describe('AcceptInboundMessageService', () => {
       wecomObservability as never,
       monitoringService as never,
       runtimeConfig as never,
+      llm as never,
     );
   });
 

@@ -2,8 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '@infra/redis/redis.service';
 import { SupabaseService } from '@infra/supabase/supabase.service';
 import { ToolRegistryService } from '@tools/tool-registry.service';
-import { RouterService } from '@providers/router.service';
 import { RegistryService } from '@providers/registry.service';
+import { RouterService } from '@providers/router.service';
 import { ContextService } from './context/context.service';
 
 export interface DependencyCheck {
@@ -36,8 +36,8 @@ export class AgentHealthService {
     private readonly redisService: RedisService,
     private readonly supabaseService: SupabaseService,
     private readonly toolRegistry: ToolRegistryService,
-    private readonly router: RouterService,
     private readonly registry: RegistryService,
+    private readonly router: RouterService,
     private readonly context: ContextService,
   ) {}
 

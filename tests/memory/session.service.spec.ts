@@ -1,21 +1,13 @@
 import { SessionService } from '@memory/services/session.service';
+import { ModelRole } from '@/llm/llm.types';
 import type { EntityExtractionResult } from '@memory/types/session-facts.types';
 import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
 
-// Mock generateText + Output from 'ai'
-jest.mock('ai', () => ({
-  generateText: jest.fn(),
-  Output: {
-    object: jest.fn().mockImplementation((opts: unknown) => opts),
-  },
-}));
-
-import { generateText } from 'ai';
-
-const mockGenerateText = generateText as jest.MockedFunction<typeof generateText>;
-
-function mockOutput(obj: unknown) {
-  return { output: obj } as never;
+function mockStructured(obj: unknown) {
+  return {
+    output: obj,
+    usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
+  } as never;
 }
 
 describe('SessionService', () => {
@@ -26,8 +18,8 @@ describe('SessionService', () => {
 
   const mockConfig = { sessionTtl: 86400, sessionExtractionIncrementalMessages: 10 };
 
-  const mockRouter = {
-    resolveByRole: jest.fn().mockReturnValue('mock-model'),
+  const mockLlm = {
+    generateStructured: jest.fn(),
   };
 
   const mockSponge = {
@@ -71,7 +63,7 @@ describe('SessionService', () => {
     service = new SessionService(
       mockRedisStore as never,
       mockConfig as never,
-      mockRouter as never,
+      mockLlm as never,
       mockSponge as never,
     );
   });
@@ -130,7 +122,12 @@ describe('SessionService', () => {
         interview_info: { ...FALLBACK_EXTRACTION.interview_info, name: '张三' },
       };
       mockRedisStore.get.mockResolvedValue({
-        content: { facts: existing, lastCandidatePool: null, presentedJobs: null, currentFocusJob: null },
+        content: {
+          facts: existing,
+          lastCandidatePool: null,
+          presentedJobs: null,
+          currentFocusJob: null,
+        },
       });
 
       const newFacts: EntityExtractionResult = {
@@ -290,13 +287,13 @@ describe('SessionService', () => {
   describe('extraction methods', () => {
     it('should skip extraction on empty messages', async () => {
       await service.extractAndSave('corp1', 'user1', 'sess1', []);
-      expect(mockGenerateText).not.toHaveBeenCalled();
+      expect(mockLlm.generateStructured).not.toHaveBeenCalled();
     });
 
     it('should use full conversation history on cache miss', async () => {
       mockRedisStore.get.mockResolvedValue(null);
-      mockGenerateText.mockResolvedValue(
-        mockOutput({
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured({
           interview_info: {
             name: '张三',
             phone: null,
@@ -330,10 +327,10 @@ describe('SessionService', () => {
         { role: 'assistant', content: '第二轮确认' },
       ]);
 
-      expect(mockRouter.resolveByRole).toHaveBeenCalledWith('extract');
-      expect(mockGenerateText).toHaveBeenCalledWith(
+      expect(mockLlm.generateStructured).toHaveBeenCalledWith(
         expect.objectContaining({
-          model: 'mock-model',
+          role: ModelRole.Extract,
+          outputName: 'WeworkCandidateFacts',
           system: expect.any(String),
           prompt: expect.stringContaining('用户: 第一轮问候'),
         }),
@@ -360,8 +357,8 @@ describe('SessionService', () => {
           },
         },
       });
-      mockGenerateText.mockResolvedValue(
-        mockOutput({
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured({
           interview_info: {
             name: null,
             phone: '13800138000',
@@ -396,7 +393,7 @@ describe('SessionService', () => {
 
       await service.extractAndSave('corp1', 'user1', 'sess1', messages);
 
-      const llmPrompt = mockGenerateText.mock.calls[0]?.[0]?.prompt as string;
+      const llmPrompt = mockLlm.generateStructured.mock.calls[0]?.[0]?.prompt as string;
       expect(llmPrompt).toContain('用户: 历史消息3');
       expect(llmPrompt).not.toContain('用户: 历史消息1\n');
       expect(mockRedisStore.set).toHaveBeenCalled();
@@ -404,7 +401,7 @@ describe('SessionService', () => {
 
     it('should use fallback on LLM failure', async () => {
       mockRedisStore.get.mockResolvedValue(null);
-      mockGenerateText.mockRejectedValue(new Error('LLM timeout'));
+      mockLlm.generateStructured.mockRejectedValue(new Error('LLM timeout'));
 
       await service.extractAndSave('corp1', 'user1', 'sess1', [{ role: 'user', content: '你好' }]);
 
@@ -422,7 +419,7 @@ describe('SessionService', () => {
 
     it('should use fallback when output is null', async () => {
       mockRedisStore.get.mockResolvedValue(null);
-      mockGenerateText.mockResolvedValue(mockOutput(null));
+      mockLlm.generateStructured.mockRejectedValue(new Error('No structured output returned'));
 
       await service.extractAndSave('corp1', 'user1', 'sess1', [{ role: 'user', content: '你好' }]);
 
@@ -450,8 +447,8 @@ describe('SessionService', () => {
 
     it('should filter out system messages', async () => {
       mockRedisStore.get.mockResolvedValue(null);
-      mockGenerateText.mockResolvedValue(
-        mockOutput({
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured({
           interview_info: {
             name: null,
             phone: null,
@@ -483,14 +480,14 @@ describe('SessionService', () => {
         { role: 'user', content: '你好' },
       ]);
 
-      const callArgs = mockGenerateText.mock.calls[0][0];
+      const callArgs = mockLlm.generateStructured.mock.calls[0][0];
       expect(callArgs.prompt).not.toContain('You are a helpful assistant');
     });
 
     it('should include brand data in prompt', async () => {
       mockRedisStore.get.mockResolvedValue(null);
-      mockGenerateText.mockResolvedValue(
-        mockOutput({
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured({
           interview_info: {
             name: null,
             phone: null,
@@ -519,7 +516,7 @@ describe('SessionService', () => {
 
       await service.extractAndSave('corp1', 'user1', 'sess1', [{ role: 'user', content: '你好' }]);
 
-      const callArgs = mockGenerateText.mock.calls[0][0];
+      const callArgs = mockLlm.generateStructured.mock.calls[0][0];
       expect(callArgs.prompt).toContain('海底捞');
       expect(callArgs.prompt).toContain('肯德基');
       expect(callArgs.prompt).toContain('KFC');
@@ -527,8 +524,8 @@ describe('SessionService', () => {
 
     it('should normalize brand aliases into standard brand names before saving facts', async () => {
       mockRedisStore.get.mockResolvedValue(null);
-      mockGenerateText.mockResolvedValue(
-        mockOutput({
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured({
           interview_info: {
             name: null,
             phone: null,
@@ -555,9 +552,11 @@ describe('SessionService', () => {
         }),
       );
 
-      await service.extractAndSave('corp1', 'user1', 'sess1', [{ role: 'user', content: '来一份' }]);
+      await service.extractAndSave('corp1', 'user1', 'sess1', [
+        { role: 'user', content: '来一份' },
+      ]);
 
-      const callArgs = mockGenerateText.mock.calls[0][0];
+      const callArgs = mockLlm.generateStructured.mock.calls[0][0];
       expect(callArgs.prompt).toContain('[品牌别名命中提示]');
       expect(callArgs.prompt).toContain('来一份');
       expect(callArgs.prompt).toContain('来伊份');
@@ -578,8 +577,8 @@ describe('SessionService', () => {
 
     it('should not misclassify generic phrases that merely contain alias text', async () => {
       mockRedisStore.get.mockResolvedValue(null);
-      mockGenerateText.mockResolvedValue(
-        mockOutput({
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured({
           interview_info: {
             name: null,
             phone: null,

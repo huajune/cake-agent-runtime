@@ -31,21 +31,21 @@ export interface AgentInvokeParams {
   /** 调用方身份；决定是否加载短期记忆、默认 strategySource 等运行时行为。 */
   callerKind: CallerKind;
   /**
-   * 对话消息列表（含历史 + 当前用户消息）
-   * callerKind='test-suite' / 'debug' 使用。
+   * 对话消息列表（含历史 + 当前用户消息）。
+   *
+   * - WECOM：只传一条当前 user 消息（`[{ role: 'user', content: ... }]`），
+   *   完整历史由 memory 层从 Redis/DB 加载
+   * - TEST_SUITE / DEBUG：一次性传入完整历史 + 当前消息
    */
-  messages?: AgentInputMessage[];
-  /**
-   * 当前用户消息（callerKind='wecom'）
-   * 历史消息由 ShortTermService 内部从 Supabase 读取（已含当前消息，无需重复传入）。
-   */
-  userMessage?: string;
+  messages: AgentInputMessage[];
   /** 外部用户 ID */
   userId: string;
   /** 企业 ID */
   corpId: string;
   /** 会话 ID（chatId，用于记忆隔离） */
   sessionId: string;
+  /** 请求级 trace/message ID，用于写回 turn-end post-processing 状态。 */
+  messageId?: string;
   /** 场景标识，默认 candidate-consultation */
   scenario?: string;
   /** 最大工具循环步数，默认 5 */

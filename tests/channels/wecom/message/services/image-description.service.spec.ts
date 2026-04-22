@@ -1,14 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ImageDescriptionService } from '@wecom/message/application/image-description.service';
-import { CompletionService } from '@agent/completion.service';
+import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
+import { ModelRole } from '@/llm/llm.types';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
-import { ModelRole } from '@providers/types';
 
 describe('ImageDescriptionService', () => {
   let service: ImageDescriptionService;
 
-  const mockCompletionService = {
+  const mockLlm = {
     generate: jest.fn(),
   };
 
@@ -24,7 +24,7 @@ describe('ImageDescriptionService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ImageDescriptionService,
-        { provide: CompletionService, useValue: mockCompletionService },
+        { provide: LlmExecutorService, useValue: mockLlm },
         { provide: ChatSessionService, useValue: mockChatSessionService },
         { provide: AlertNotifierService, useValue: mockAlertService },
       ],
@@ -41,7 +41,7 @@ describe('ImageDescriptionService', () => {
   describe('describeAndUpdateAsync', () => {
     it('should call vision model and update message content on success', async () => {
       const description = '这是一个招聘平台的截图，显示了一个餐厅服务员岗位';
-      mockCompletionService.generate.mockResolvedValue({
+      mockLlm.generate.mockResolvedValue({
         text: description,
         usage: { totalTokens: 100 },
       });
@@ -52,9 +52,10 @@ describe('ImageDescriptionService', () => {
       // Wait for the fire-and-forget promise to settle
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      expect(mockCompletionService.generate).toHaveBeenCalledWith(
+      expect(mockLlm.generate).toHaveBeenCalledWith(
         expect.objectContaining({
           role: ModelRole.Vision,
+          system: expect.any(String),
           maxOutputTokens: 256,
           messages: expect.arrayContaining([
             expect.objectContaining({
@@ -74,7 +75,7 @@ describe('ImageDescriptionService', () => {
     });
 
     it('should not update content when description is empty', async () => {
-      mockCompletionService.generate.mockResolvedValue({
+      mockLlm.generate.mockResolvedValue({
         text: '   ',
         usage: { totalTokens: 10 },
       });
@@ -83,7 +84,7 @@ describe('ImageDescriptionService', () => {
 
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      expect(mockCompletionService.generate).toHaveBeenCalled();
+      expect(mockLlm.generate).toHaveBeenCalled();
       expect(mockChatSessionService.updateMessageContent).not.toHaveBeenCalled();
     });
 
@@ -92,19 +93,19 @@ describe('ImageDescriptionService', () => {
 
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      expect(mockCompletionService.generate).not.toHaveBeenCalled();
+      expect(mockLlm.generate).not.toHaveBeenCalled();
       expect(mockChatSessionService.updateMessageContent).not.toHaveBeenCalled();
     });
 
     it('should catch and log errors without throwing', async () => {
-      mockCompletionService.generate.mockRejectedValue(new Error('Vision API failed'));
+      mockLlm.generate.mockRejectedValue(new Error('Vision API failed'));
 
       // Should not throw
       service.describeAndUpdateAsync('msg-error', 'https://example.com/image.jpg');
 
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      expect(mockCompletionService.generate).toHaveBeenCalled();
+      expect(mockLlm.generate).toHaveBeenCalled();
       expect(mockChatSessionService.updateMessageContent).not.toHaveBeenCalled();
     });
   });

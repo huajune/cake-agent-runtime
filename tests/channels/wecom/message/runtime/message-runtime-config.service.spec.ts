@@ -98,7 +98,6 @@ describe('MessageRuntimeConfigService', () => {
 
     await expect(service.resolveWecomChatModelSelection()).resolves.toEqual({
       overrideModelId: 'gpt-runtime',
-      effectiveModelId: 'gpt-runtime',
       thinkingMode: 'fast',
       thinking: {
         type: 'disabled',
@@ -114,7 +113,6 @@ describe('MessageRuntimeConfigService', () => {
 
     await expect(service.resolveWecomChatModelSelection()).resolves.toEqual({
       overrideModelId: undefined,
-      effectiveModelId: 'gpt-env-default',
       thinkingMode: 'deep',
       thinking: {
         type: 'enabled',

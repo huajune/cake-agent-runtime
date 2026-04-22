@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { CompletionService } from '@agent/completion.service';
-import { ModelRole } from '@providers/types';
+import { LlmExecutorService } from '@/llm/llm-executor.service';
+import { ModelRole } from '@/llm/llm.types';
 import { randomUUID } from 'crypto';
 import {
   SimilarityRating,
@@ -33,7 +33,7 @@ const DIMENSION_WEIGHTS = {
 export class LlmEvaluationService {
   private readonly logger = new Logger(LlmEvaluationService.name);
 
-  constructor(private readonly completion: CompletionService) {
+  constructor(private readonly llm: LlmExecutorService) {
     this.logger.log('LlmEvaluationService 初始化完成');
   }
 
@@ -54,15 +54,15 @@ export class LlmEvaluationService {
       const { systemPrompt, userMessage } = this.buildEvaluationPrompts(input);
 
       // 调用 LLM 进行结构化评估（通过 schema 约束输出格式）
-      const completionResult = await this.completion.generateStructured({
-        systemPrompt,
-        messages: [{ role: 'user', content: userMessage }],
+      const completionResult = await this.llm.generateStructured({
         role: ModelRole.Evaluate,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
         schema: EvaluationStructuredOutputSchema,
         outputName: 'LlmEvaluationResult',
       });
 
-      const evaluation = this.normalizeEvaluationResult(completionResult.object, evaluationId);
+      const evaluation = this.normalizeEvaluationResult(completionResult.output, evaluationId);
 
       // 添加 token 使用信息
       evaluation.tokenUsage = {

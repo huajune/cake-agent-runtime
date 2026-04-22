@@ -48,7 +48,7 @@ describe('MemoryService', () => {
         corpId: 'corp1',
         userId: 'user1',
         sessionId: 'sess1',
-        typedMessages: [{ role: 'user', content: '你好' }],
+        normalizedMessages: [{ role: 'user', content: '你好' }],
       };
 
       await service.onTurnEnd(ctx as never, '收到');

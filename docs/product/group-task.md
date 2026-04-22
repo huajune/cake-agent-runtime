@@ -91,7 +91,7 @@ Cron 定时触发 / API 手动触发
    ├── 判断是否有数据（无数据 → 跳过）
    ├── 生成消息
    │   ├── 模板策略 → buildMessage()
-   │   └── AI 策略 → buildPrompt() → CompletionService → appendFooter()（可选，当前无策略实现）
+   │   └── AI 策略 → buildPrompt() → LlmExecutorService.generateSimple() → appendFooter()（可选，当前无策略实现）
    ├── 同组所有群发送相同消息（群间间隔 2s）
    └── 兼职群额外发小程序卡片（NotificationSenderService）
         ↓
@@ -300,7 +300,7 @@ curl -X POST http://localhost:8585/config/group-task-config \
 | 服务 | 用途 | 模块 |
 |------|------|------|
 | **SpongeService** | 拉取 BI 订单、兼职岗位、面试安排 | `@sponge` |
-| **CompletionService** | AI 文案生成 | `@agent` |
+| **LlmExecutorService** | AI 文案生成 | `@/llm` |
 | **MessageSenderService** | 企微群消息发送（小组级 API + 小程序卡片） | `@channels/wecom` |
 | **FeishuWebhookService** | 飞书通知（预览 + 结果报告） | `@infra/feishu` |
 | **RoomService** | 企微群列表获取 | `@channels/wecom/room` |

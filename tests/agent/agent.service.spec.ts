@@ -3,56 +3,55 @@ import { ConfigService } from '@nestjs/config';
 import { AgentRunnerService } from '@agent/runner.service';
 import { AgentPreparationService } from '@agent/agent-preparation.service';
 import { CallerKind } from '@enums/agent.enum';
+import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { MemoryService } from '@memory/memory.service';
-import { ReliableService } from '@providers/reliable.service';
 
-// Mock generateText from ai SDK
 jest.mock('ai', () => ({
-  generateText: jest.fn().mockResolvedValue({
-    text: 'Hello!',
-    steps: [{}],
-    usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
-  }),
-  streamText: jest.fn(),
   stepCountIs: jest.fn().mockReturnValue(() => false),
   hasToolCall: jest.fn().mockReturnValue(() => false),
 }));
 
-/**
- * AgentRunnerService.invoke() 测试
- *
- * 测试 invoke() 的完整流水线：stage → compose → classify → 记忆 → generateText
- */
-describe('AgentRunnerService - invoke', () => {
+describe('AgentRunnerService', () => {
   let service: AgentRunnerService;
 
   const mockPreparation = {
-    prepare: jest.fn().mockResolvedValue({
-      finalPrompt: 'test system prompt',
-      typedMessages: [{ role: 'user', content: 'Hello' }],
-      chatModel: 'mock-model',
-      chatModelId: 'mock-model-id',
-      chatFallbacks: ['mock-fallback-model'],
-      tools: {},
-      corpId: 'corp-1',
-      userId: 'user-123',
-      sessionId: 'sess-1',
-      maxSteps: 5,
-      entryStage: null,
-      turnState: { candidatePool: null },
-    }),
+    prepare: jest.fn(),
   };
 
   const mockMemoryService = {
     onTurnEnd: jest.fn().mockResolvedValue(undefined),
   };
 
-  const mockReliableService = {
-    generateText: jest.fn(),
+  const mockLlm = {
+    supportsVisionInput: jest.fn().mockReturnValue(true),
+    generate: jest.fn(),
+    stream: jest.fn(),
   };
 
   const mockConfigService = {
     get: jest.fn().mockImplementation((key: string, defaultValue?: string) => defaultValue),
+  };
+
+  const invokeParams = {
+    callerKind: CallerKind.TEST_SUITE,
+    messages: [{ role: 'user', content: 'Hello' }],
+    userId: 'user-123',
+    corpId: 'corp-1',
+    sessionId: 'sess-1',
+    messageId: 'msg-1',
+  };
+
+  const preparedContext = {
+    finalPrompt: 'test system prompt',
+    normalizedMessages: [{ role: 'user', content: 'Hello' }],
+    tools: {},
+    corpId: 'corp-1',
+    userId: 'user-123',
+    sessionId: 'sess-1',
+    maxSteps: 5,
+    entryStage: null,
+    turnState: { candidatePool: null },
+    memorySnapshot: undefined,
   };
 
   beforeEach(async () => {
@@ -62,243 +61,125 @@ describe('AgentRunnerService - invoke', () => {
         { provide: ConfigService, useValue: mockConfigService },
         { provide: AgentPreparationService, useValue: mockPreparation },
         { provide: MemoryService, useValue: mockMemoryService },
-        { provide: ReliableService, useValue: mockReliableService },
+        { provide: LlmExecutorService, useValue: mockLlm },
       ],
     }).compile();
 
     service = module.get<AgentRunnerService>(AgentRunnerService);
     jest.clearAllMocks();
 
-    mockPreparation.prepare.mockResolvedValue({
-      finalPrompt: 'test system prompt',
-      typedMessages: [{ role: 'user', content: 'Hello' }],
-      chatModel: 'mock-model',
-      chatModelId: 'mock-model-id',
-      chatFallbacks: ['mock-fallback-model'],
-      tools: {},
-      corpId: 'corp-1',
-      userId: 'user-123',
-      sessionId: 'sess-1',
-      maxSteps: 5,
-      entryStage: null,
-      turnState: { candidatePool: null },
-    });
+    mockLlm.supportsVisionInput.mockReturnValue(true);
+    mockPreparation.prepare.mockResolvedValue(preparedContext);
     mockMemoryService.onTurnEnd.mockResolvedValue(undefined);
-    mockReliableService.generateText.mockResolvedValue({
-      text: 'Hello!',
-      steps: [{}],
-      usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
-    });
-
-    // Re-mock streamText for each test
-    const { streamText } = require('ai');
-    streamText.mockReset();
-  });
-
-  const invokeParams = {
-    callerKind: CallerKind.TEST_SUITE,
-    messages: [{ role: 'user', content: 'Hello' }],
-    userId: 'user-123',
-    corpId: 'corp-1',
-    sessionId: 'sess-1',
-  };
-
-  it('should prepare, execute, and finish turn lifecycle', async () => {
-    const result = await service.invoke(invokeParams);
-
-    expect(result.text).toBe('Hello!');
-    expect(result.steps).toBe(1);
-    expect(mockPreparation.prepare).toHaveBeenCalledWith(invokeParams, 'invoke');
-  });
-
-  it('should expose actual llm request snapshot', async () => {
-    const onPreparedRequest = jest.fn();
-
-    const result = await service.invoke({ ...invokeParams, onPreparedRequest });
-
-    expect(onPreparedRequest).toHaveBeenCalledWith(
-      expect.objectContaining({
-        modelId: 'mock-model-id',
+    mockLlm.generate.mockImplementation(async (options: Record<string, unknown>) => {
+      const onPreparedRequest = options.onPreparedRequest as
+        | ((request: Record<string, unknown>) => Promise<void> | void)
+        | undefined;
+      await onPreparedRequest?.({
+        modelId: 'openai/gpt-5.1',
+        fallbackModelIds: ['openai/gpt-5-mini'],
         system: 'test system prompt',
         messages: [{ role: 'user', content: 'Hello' }],
-        fallbackModelIds: ['mock-fallback-model'],
         maxOutputTokens: 4096,
         maxSteps: 5,
+      });
+
+      return {
+        text: 'Hello!',
+        response: {
+          messages: [{ role: 'assistant', content: [{ type: 'text', text: 'Hello!' }] }],
+        },
+        steps: [{}],
+        usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+      };
+    });
+    mockLlm.stream.mockResolvedValue({ textStream: 'stream' });
+  });
+
+  it('should prepare with vision capability resolved from llm executor', async () => {
+    await service.invoke(invokeParams);
+
+    expect(mockLlm.supportsVisionInput).toHaveBeenCalledWith({
+      role: 'chat',
+      modelId: undefined,
+      disableFallbacks: undefined,
+    });
+    expect(mockPreparation.prepare).toHaveBeenCalledWith(invokeParams, 'invoke', {
+      enableVision: true,
+    });
+  });
+
+  it('should invoke llm executor and expose prepared request snapshot', async () => {
+    const onPreparedRequest = jest.fn();
+
+    const result = await service.invoke({
+      ...invokeParams,
+      onPreparedRequest,
+      modelId: 'openai/gpt-5.1',
+      disableFallbacks: true,
+      thinking: { type: 'enabled', budgetTokens: 4000 },
+    });
+
+    expect(mockLlm.generate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: 'chat',
+        modelId: 'openai/gpt-5.1',
+        disableFallbacks: true,
+        thinking: { type: 'enabled', budgetTokens: 4000 },
+        system: 'test system prompt',
+        messages: [{ role: 'user', content: 'Hello' }],
+      }),
+    );
+    expect(onPreparedRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelId: 'openai/gpt-5.1',
+        fallbackModelIds: ['openai/gpt-5-mini'],
       }),
     );
     expect(result.agentRequest).toEqual(
       expect.objectContaining({
-        modelId: 'mock-model-id',
-        system: 'test system prompt',
-        messages: [{ role: 'user', content: 'Hello' }],
-        fallbackModelIds: ['mock-fallback-model'],
-        maxOutputTokens: 4096,
-        maxSteps: 5,
+        modelId: 'openai/gpt-5.1',
+        fallbackModelIds: ['openai/gpt-5-mini'],
       }),
     );
-  });
-
-  it('should expose response messages from generateText for downstream observability', async () => {
-    mockReliableService.generateText.mockResolvedValueOnce({
-      text: 'Hello!',
-      response: {
-        messages: [
-          {
-            role: 'assistant',
-            content: [
-              { type: 'reasoning', text: '先思考一下' },
-              { type: 'text', text: 'Hello!' },
-            ],
-          },
-        ],
-      },
-      steps: [{}],
-      usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
-    });
-
-    const result = await service.invoke(invokeParams);
-
     expect(result.responseMessages).toEqual([
-      {
-        role: 'assistant',
-        content: [
-          { type: 'reasoning', text: '先思考一下' },
-          { type: 'text', text: 'Hello!' },
-        ],
-      },
+      { role: 'assistant', content: [{ type: 'text', text: 'Hello!' }] },
     ]);
   });
 
-  it('should map deep thinking to provider-specific options for invoke', async () => {
-    mockPreparation.prepare.mockResolvedValueOnce({
-      finalPrompt: 'test system prompt',
-      typedMessages: [{ role: 'user', content: 'Hello' }],
-      chatModel: 'mock-model',
-      chatModelId: 'openai/gpt-5.1',
-      chatFallbacks: ['mock-fallback-model'],
-      tools: {},
-      corpId: 'corp-1',
-      userId: 'user-123',
-      sessionId: 'sess-1',
-      maxSteps: 5,
-      entryStage: null,
-      turnState: { candidatePool: null },
+  it('should use env thinking budget when request does not override thinking', async () => {
+    mockConfigService.get.mockImplementation((key: string, defaultValue?: string) => {
+      if (key === 'AGENT_THINKING_BUDGET_TOKENS') return '3000';
+      return defaultValue;
     });
 
-    await service.invoke({
-      ...invokeParams,
-      thinking: {
-        type: 'enabled',
-        budgetTokens: 4000,
-      },
-    });
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AgentRunnerService,
+        { provide: ConfigService, useValue: mockConfigService },
+        { provide: AgentPreparationService, useValue: mockPreparation },
+        { provide: MemoryService, useValue: mockMemoryService },
+        { provide: LlmExecutorService, useValue: mockLlm },
+      ],
+    }).compile();
+    service = module.get<AgentRunnerService>(AgentRunnerService);
 
-    expect(mockReliableService.generateText).toHaveBeenCalledWith(
-      'openai/gpt-5.1',
+    await service.invoke(invokeParams);
+
+    expect(mockLlm.generate).toHaveBeenCalledWith(
       expect.objectContaining({
-        providerOptions: {
-          openai: {
-            reasoningEffort: 'high',
-          },
-        },
+        thinking: { type: 'enabled', budgetTokens: 3000 },
       }),
-      ['mock-fallback-model'],
     );
-  });
-
-  it('should honor explicit fast mode and disable deep thinking overrides', async () => {
-    mockPreparation.prepare.mockResolvedValueOnce({
-      finalPrompt: 'test system prompt',
-      typedMessages: [{ role: 'user', content: 'Hello' }],
-      chatModel: 'mock-model',
-      chatModelId: 'deepseek/deepseek-chat',
-      chatFallbacks: ['mock-fallback-model'],
-      tools: {},
-      corpId: 'corp-1',
-      userId: 'user-123',
-      sessionId: 'sess-1',
-      maxSteps: 5,
-      entryStage: null,
-      turnState: { candidatePool: null },
-    });
-
-    await service.invoke({
-      ...invokeParams,
-      thinking: {
-        type: 'disabled',
-        budgetTokens: 0,
-      },
-    });
-
-    expect(mockReliableService.generateText).toHaveBeenCalledWith(
-      'deepseek/deepseek-chat',
-      expect.objectContaining({
-        providerOptions: {
-          deepseek: {
-            thinking: {
-              type: 'disabled',
-            },
-          },
-        },
-      }),
-      ['mock-fallback-model'],
-    );
-  });
-
-  it('should pass persisted stage to compose', async () => {
-    mockPreparation.prepare.mockResolvedValue({
-      finalPrompt: 'test system prompt',
-      typedMessages: [{ role: 'user', content: 'Hello' }],
-      chatModel: 'mock-model',
-      chatModelId: 'mock-model-id',
-      chatFallbacks: ['mock-fallback-model'],
-      tools: {},
-      corpId: 'corp-1',
-      userId: 'user-123',
-      sessionId: 'sess-1',
-      maxSteps: 5,
-      entryStage: 'job_consultation',
-      turnState: { candidatePool: null },
-    });
-
-    await service.invoke(invokeParams);
-
-    expect(mockPreparation.prepare).toHaveBeenCalledWith(invokeParams, 'invoke');
-  });
-
-  it('should pass undefined stage when no stage in memory', async () => {
-    await service.invoke(invokeParams);
-
-    expect(mockPreparation.prepare).toHaveBeenCalledWith(invokeParams, 'invoke');
-  });
-
-  it('should use default scenario when none provided', async () => {
-    await service.invoke(invokeParams);
-
-    expect(mockPreparation.prepare).toHaveBeenCalledWith(invokeParams, 'invoke');
-  });
-
-  it('should use custom scenario when provided', async () => {
-    await service.invoke({ ...invokeParams, scenario: 'group-operations' });
-
-    expect(mockPreparation.prepare).toHaveBeenCalledWith(
-      { ...invokeParams, scenario: 'group-operations' },
-      'invoke',
-    );
-  });
-
-  it('should rethrow error when generateText throws', async () => {
-    mockReliableService.generateText.mockRejectedValue(new Error('Network timeout'));
-
-    await expect(service.invoke(invokeParams)).rejects.toThrow('Network timeout');
   });
 
   it('should enrich thrown model errors with agent metadata', async () => {
-    mockReliableService.generateText.mockRejectedValue(new Error('Network timeout'));
+    mockLlm.generate.mockRejectedValue(new Error('Network timeout'));
 
     const error = await service.invoke(invokeParams).catch((err) => err);
 
     expect(error).toMatchObject({
+      message: 'Network timeout',
       isAgentError: true,
       agentMeta: expect.objectContaining({
         sessionId: 'sess-1',
@@ -310,19 +191,9 @@ describe('AgentRunnerService - invoke', () => {
 
   it('should include memory warning when messages are empty', async () => {
     mockPreparation.prepare.mockResolvedValue({
-      finalPrompt: 'test system prompt',
-      typedMessages: [],
+      ...preparedContext,
+      normalizedMessages: [],
       memoryLoadWarning: 'shortTerm: Connection timeout',
-      chatModel: 'mock-model',
-      chatModelId: 'mock-model-id',
-      chatFallbacks: ['mock-fallback-model'],
-      tools: {},
-      corpId: 'corp-1',
-      userId: 'user-123',
-      sessionId: 'sess-1',
-      maxSteps: 5,
-      entryStage: null,
-      turnState: { candidatePool: null },
     });
 
     const error = await service.invoke(invokeParams).catch((err) => err);
@@ -340,77 +211,42 @@ describe('AgentRunnerService - invoke', () => {
     });
   });
 
-  it('should trigger memory lifecycle after assistant turn', async () => {
+  it('should trigger turn-end lifecycle without blocking invoke success', async () => {
     mockPreparation.prepare.mockResolvedValue({
-      finalPrompt: 'test system prompt',
-      typedMessages: [
-        { role: 'assistant', content: '杨浦奥乐齐这边有长白这家店。' },
+      ...preparedContext,
+      normalizedMessages: [
+        { role: 'assistant', content: '之前给你推荐了长白门店。' },
         { role: 'user', content: '我想报名长白' },
       ],
-      chatModel: 'mock-model',
-      chatModelId: 'mock-model-id',
-      chatFallbacks: ['mock-fallback-model'],
-      tools: {},
-      corpId: 'corp-1',
-      userId: 'user-123',
-      sessionId: 'sess-1',
-      maxSteps: 5,
-      entryStage: null,
-      turnState: { candidatePool: [{ jobId: 519709, brandName: '奥乐齐', storeName: '长白' }] },
+      turnState: {
+        candidatePool: [{ jobId: 519709, brandName: '奥乐齐', storeName: '长白' }],
+      },
     });
+    mockMemoryService.onTurnEnd.mockRejectedValue(new Error('memory lifecycle failed'));
 
-    mockReliableService.generateText.mockResolvedValue({
-      text: '可以，我先帮你确认下长白这边的面试要求。',
-      steps: [{}],
-      usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
-    });
-
-    await service.invoke({
-      ...invokeParams,
-      messages: [
-        { role: 'assistant', content: '杨浦奥乐齐这边有长白这家店。' },
-        { role: 'user', content: '我想报名长白' },
-      ],
-    });
+    await expect(
+      service.invoke({
+        ...invokeParams,
+        messages: [
+          { role: 'assistant', content: '之前给你推荐了长白门店。' },
+          { role: 'user', content: '我想报名长白' },
+        ],
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        text: 'Hello!',
+        steps: 1,
+      }),
+    );
 
     expect(mockMemoryService.onTurnEnd).toHaveBeenCalledWith(
       expect.objectContaining({
         corpId: 'corp-1',
         userId: 'user-123',
         sessionId: 'sess-1',
-        candidatePool: [{ jobId: 519709, brandName: '奥乐齐', storeName: '长白' }],
+        messageId: 'msg-1',
       }),
-      '可以，我先帮你确认下长白这边的面试要求。',
+      'Hello!',
     );
-  });
-
-  it('should not fail invoke when turn-end lifecycle fails', async () => {
-    mockMemoryService.onTurnEnd.mockRejectedValue(new Error('memory lifecycle failed'));
-
-    await expect(service.invoke(invokeParams)).resolves.toEqual(
-      expect.objectContaining({
-        text: 'Hello!',
-        steps: 1,
-      }),
-    );
-  });
-
-  it('should enrich stream setup failures with agent metadata', async () => {
-    const { streamText } = require('ai');
-    streamText.mockImplementation(() => {
-      throw new Error('stream init failed');
-    });
-
-    const error = await service.stream(invokeParams).catch((err) => err);
-
-    expect(error).toMatchObject({
-      message: 'stream init failed',
-      isAgentError: true,
-      agentMeta: expect.objectContaining({
-        sessionId: 'sess-1',
-        userId: 'user-123',
-        messageCount: 1,
-      }),
-    });
   });
 });

@@ -4,21 +4,6 @@ import { CallerKind } from '@enums/agent.enum';
 import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
 
 describe('AgentPreparationService', () => {
-  const mockConfigService = {
-    get: jest.fn((key: string, defaultValue?: string) => {
-      if (key === 'AGENT_CHAT_MODEL') return 'openrouter/anthropic/claude-sonnet-4-6';
-      return defaultValue;
-    }),
-  };
-
-  const mockRouter = {
-    resolveForTurn: jest.fn().mockReturnValue({
-      model: 'mock-chat-model',
-      modelId: 'openrouter/anthropic/claude-sonnet-4-6',
-      fallbacks: ['mock-fallback-model'],
-    }),
-  };
-
   const mockToolRegistry = {
     buildForScenario: jest.fn().mockReturnValue({ duliday_job_list: {} }),
   };
@@ -64,15 +49,6 @@ describe('AgentPreparationService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockConfigService.get.mockImplementation((key: string, defaultValue?: string) => {
-      if (key === 'AGENT_CHAT_MODEL') return 'openrouter/anthropic/claude-sonnet-4-6';
-      return defaultValue;
-    });
-    mockRouter.resolveForTurn.mockReturnValue({
-      model: 'mock-chat-model',
-      modelId: 'openrouter/anthropic/claude-sonnet-4-6',
-      fallbacks: ['mock-fallback-model'],
-    });
     mockToolRegistry.buildForScenario.mockReturnValue({ duliday_job_list: {} });
     mockRecruitmentCaseService.getActiveOnboardFollowupCase.mockResolvedValue(null);
     mockRecruitmentStageResolver.resolve.mockImplementation(
@@ -119,8 +95,6 @@ describe('AgentPreparationService', () => {
     mockInputGuard.detectMessages.mockReturnValue({ safe: true });
 
     service = new AgentPreparationService(
-      mockConfigService as never,
-      mockRouter as never,
       mockToolRegistry as never,
       mockRecruitmentCaseService as never,
       mockRecruitmentStageResolver as never,
@@ -135,7 +109,7 @@ describe('AgentPreparationService', () => {
     const result = await service.prepare(
       {
         callerKind: CallerKind.WECOM,
-        userMessage: '当前用户消息',
+        messages: [{ role: 'user', content: '当前用户消息' }],
         userId: 'user-1',
         corpId: 'corp-1',
         sessionId: 'sess-1',
@@ -172,7 +146,7 @@ describe('AgentPreparationService', () => {
     expect(mockRecruitmentStageResolver.resolve).toHaveBeenCalledWith({
       proceduralStage: 'job_consultation',
       recruitmentCase: null,
-      currentMessageContent: '短期里的当前消息',
+      currentMessageContent: '当前用户消息',
     });
     expect(mockContext.compose.mock.calls[0][0].memoryBlock).toContain('[会话记忆]');
     expect(result.finalPrompt).toContain('SYSTEM_PROMPT');
@@ -181,7 +155,7 @@ describe('AgentPreparationService', () => {
     expect(result.finalPrompt).toContain('[会话记忆]');
     expect(result.finalPrompt).toContain('意向城市: 上海');
     expect(result.entryStage).toBe('job_consultation');
-    expect(result.typedMessages).toEqual([{ role: 'user', content: '短期里的当前消息' }]);
+    expect(result.normalizedMessages).toEqual([{ role: 'user', content: '短期里的当前消息' }]);
 
     const [, toolContext] = mockToolRegistry.buildForScenario.mock.calls[0];
     expect(toolContext.currentStage).toBe('job_consultation');
@@ -252,7 +226,7 @@ describe('AgentPreparationService', () => {
     const result = await service.prepare(
       {
         callerKind: CallerKind.WECOM,
-        userMessage: '我想约面',
+        messages: [{ role: 'user', content: '我想约面' }],
         userId: 'user-1',
         corpId: 'corp-1',
         sessionId: 'sess-1',
@@ -294,7 +268,7 @@ describe('AgentPreparationService', () => {
     const result = await service.prepare(
       {
         callerKind: CallerKind.WECOM,
-        userMessage: '我到店了',
+        messages: [{ role: 'user', content: '我到店了' }],
         userId: 'user-1',
         corpId: 'corp-1',
         sessionId: 'sess-1',
@@ -422,7 +396,7 @@ describe('AgentPreparationService', () => {
     await service.prepare(
       {
         callerKind: CallerKind.WECOM,
-        userMessage: '我在北京，来一份有吗',
+        messages: [{ role: 'user', content: '我在北京，来一份有吗' }],
         userId: 'user-1',
         corpId: 'corp-1',
         sessionId: 'sess-1',
@@ -483,7 +457,7 @@ describe('AgentPreparationService', () => {
     const result = await service.prepare(
       {
         callerKind: CallerKind.WECOM,
-        userMessage: '帮我看看这张图',
+        messages: [{ role: 'user', content: '帮我看看这张图' }],
         userId: 'user-1',
         corpId: 'corp-1',
         sessionId: 'sess-1',
@@ -491,10 +465,11 @@ describe('AgentPreparationService', () => {
         imageMessageIds: ['img-1'],
       },
       'stream',
+      { enableVision: true },
     );
 
-    expect(result.typedMessages).toHaveLength(1);
-    expect(result.typedMessages[0]).toEqual({
+    expect(result.normalizedMessages).toHaveLength(1);
+    expect(result.normalizedMessages[0]).toEqual({
       role: 'user',
       content: [
         { type: 'text', text: '[图片 messageId=img-1]' },
@@ -519,7 +494,7 @@ describe('AgentPreparationService', () => {
     const result = await service.prepare(
       {
         callerKind: CallerKind.WECOM,
-        userMessage: '当前用户消息',
+        messages: [{ role: 'user', content: '当前用户消息' }],
         userId: 'user-1',
         corpId: 'corp-1',
         sessionId: 'sess-1',
@@ -534,7 +509,7 @@ describe('AgentPreparationService', () => {
     await service.prepare(
       {
         callerKind: CallerKind.WECOM,
-        userMessage: '帮我看看兼职',
+        messages: [{ role: 'user', content: '帮我看看兼职' }],
         userId: 'user-1',
         corpId: 'corp-1',
         sessionId: 'sess-1',
@@ -568,7 +543,7 @@ describe('AgentPreparationService', () => {
     await service.prepare(
       {
         callerKind: CallerKind.WECOM,
-        userMessage: '你好',
+        messages: [{ role: 'user', content: '你好' }],
         userId: 'user-1',
         corpId: 'corp-1',
         sessionId: 'sess-1',

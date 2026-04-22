@@ -5,20 +5,10 @@
  * OpenAI-compatible 厂商使用 @ai-sdk/openai-compatible 接入。
  */
 
-// ==================== 模型角色 ====================
+import { ModelRole } from '@/llm/llm.types';
 
-/**
- * 模型角色定义 — 单一来源
- *
- * 每个角色对应环境变量 AGENT_{ROLE}_MODEL 和 AGENT_{ROLE}_FALLBACKS。
- * 新增角色只需在此处添加一行。
- */
-export enum ModelRole {
-  Chat = 'chat',
-  Extract = 'extract',
-  Vision = 'vision',
-  Evaluate = 'evaluate',
-}
+// ==================== 模型角色 ====================
+export { ModelRole };
 
 // ==================== Provider 配置 ====================
 

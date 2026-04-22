@@ -1,5 +1,5 @@
-import { Module, forwardRef } from '@nestjs/common';
-import { AgentModule } from '@agent/agent.module';
+import { Module } from '@nestjs/common';
+import { LlmModule } from '@/llm/llm.module';
 import { LlmEvaluationService } from './llm-evaluation.service';
 import { ConversationParserService } from './conversation-parser.service';
 
@@ -13,7 +13,7 @@ import { ConversationParserService } from './conversation-parser.service';
  * 无 DB、无 HTTP 接口、无外部集成。
  */
 @Module({
-  imports: [forwardRef(() => AgentModule)],
+  imports: [LlmModule],
   providers: [LlmEvaluationService, ConversationParserService],
   exports: [LlmEvaluationService, ConversationParserService],
 })

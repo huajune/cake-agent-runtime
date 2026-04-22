@@ -135,6 +135,16 @@ export class MessageProcessingService {
   }
 
   /**
+   * 更新 turn-end 后处理状态（running / completed / completed_with_errors）。
+   */
+  async updatePostProcessingStatus(
+    messageId: string,
+    status: MessageProcessingRecordInput['postProcessingStatus'],
+  ): Promise<boolean> {
+    return this.messageProcessingRepository.updatePostProcessingStatus(messageId, status);
+  }
+
+  /**
    * 将过期的 agent_invocation 字段置为 NULL（释放 TOAST 空间）
    */
   async nullAgentInvocations(daysOld: number): Promise<number> {

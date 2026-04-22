@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { BizMessageModule } from '@biz/message/message.module';
 import { UserModule } from '@biz/user/user.module';
+import { LlmModule } from '@/llm/llm.module';
 import { SpongeModule } from '@sponge/sponge.module';
 import { MemoryConfig } from './memory.config';
 import { MemoryService } from './memory.service';
@@ -23,7 +24,7 @@ import { MemoryLifecycleService } from './services/memory-lifecycle.service';
  * - stores: Redis / Supabase 基础设施
  */
 @Module({
-  imports: [BizMessageModule, SpongeModule, UserModule],
+  imports: [BizMessageModule, SpongeModule, UserModule, LlmModule],
   providers: [
     MemoryConfig,
     RedisStore,

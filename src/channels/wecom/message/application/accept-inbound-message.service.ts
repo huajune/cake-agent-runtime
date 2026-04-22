@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { supportsVision } from '@providers/types';
+import { LlmExecutorService } from '@/llm/llm-executor.service';
+import { ModelRole } from '@/llm/llm.types';
 import { ScenarioType } from '@enums/agent.enum';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
@@ -31,6 +32,7 @@ export class AcceptInboundMessageService {
     private readonly wecomObservability: WecomMessageObservabilityService,
     private readonly monitoringService: MessageTrackingService,
     private readonly runtimeConfig: MessageRuntimeConfigService,
+    private readonly llm: LlmExecutorService,
   ) {}
 
   async execute(messageData: EnterpriseMessageCallbackDto): Promise<AcceptInboundMessageResult> {
@@ -139,8 +141,11 @@ export class AcceptInboundMessageService {
       return;
     }
 
-    const { effectiveModelId } = await this.runtimeConfig.resolveWecomChatModelSelection();
-    const shouldDescribeBeforeAgent = !supportsVision(effectiveModelId);
+    const { overrideModelId } = await this.runtimeConfig.resolveWecomChatModelSelection();
+    const shouldDescribeBeforeAgent = !this.llm.supportsVisionInput({
+      role: ModelRole.Chat,
+      modelId: overrideModelId,
+    });
 
     if (shouldDescribeBeforeAgent) {
       await this.imageDescription.describeAndUpdateSync(messageData.messageId, imgUrl);
