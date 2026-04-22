@@ -1,4 +1,6 @@
 import { streamText } from 'ai';
+import { CallerKind } from '@/enums/agent.enum';
+import type { LlmThinkingConfig } from '@/llm/llm.types';
 import type {
   AgentMemorySnapshot,
   AgentStepDetail,
@@ -12,10 +14,7 @@ export type {
   AgentToolCallStatus,
 } from '@shared-types/agent-telemetry.types';
 
-export interface AgentThinkingConfig {
-  type: 'enabled' | 'disabled';
-  budgetTokens: number;
-}
+export type AgentThinkingConfig = LlmThinkingConfig;
 
 export interface AgentInputMessage {
   role: string;
@@ -27,22 +26,24 @@ export interface AgentInputMessage {
 }
 
 export interface AgentInvokeParams {
+  /** 调用方身份；决定是否加载短期记忆、默认 strategySource 等运行时行为。 */
+  callerKind: CallerKind;
   /**
-   * 对话消息列表（含历史 + 当前用户消息）
-   * controller / test-suite 直接调用时使用；wecom 渠道请改用 userMessage。
+   * 对话消息列表（含历史 + 当前用户消息）。
+   *
+   * - WECOM：只传一条当前 user 消息（`[{ role: 'user', content: ... }]`），
+   *   完整历史由 memory 层从 Redis/DB 加载
+   * - TEST_SUITE / DEBUG：一次性传入完整历史 + 当前消息
    */
-  messages?: AgentInputMessage[];
-  /**
-   * 当前用户消息（wecom 渠道路径）
-   * 历史消息由 ShortTermService 内部从 Supabase 读取（已含当前消息，无需重复传入）。
-   */
-  userMessage?: string;
+  messages: AgentInputMessage[];
   /** 外部用户 ID */
   userId: string;
   /** 企业 ID */
   corpId: string;
   /** 会话 ID（chatId，用于记忆隔离） */
   sessionId: string;
+  /** 请求级 trace/message ID，用于写回 turn-end post-processing 状态。 */
+  messageId?: string;
   /** 场景标识，默认 candidate-consultation */
   scenario?: string;
   /** 最大工具循环步数，默认 5 */
@@ -74,6 +75,12 @@ export interface AgentInvokeParams {
    * 为空时回退到 AGENT_CHAT_MODEL 角色路由。
    */
   modelId?: string;
+  /**
+   * 是否在本次调用中禁用模型降级链（fallbacks）。
+   * 默认 false：即便指定了 modelId，仍使用 chat 角色的 fallback 链兜底。
+   * 仅在测试保真场景（test-suite）下应置为 true，确保跑的就是指定模型。
+   */
+  disableFallbacks?: boolean;
   /** 覆盖本次调用使用的思考模式 */
   thinking?: AgentThinkingConfig;
   /**

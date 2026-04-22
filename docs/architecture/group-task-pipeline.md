@@ -41,7 +41,7 @@
               ├─ ② 生成消息
               │     模板策略 → buildMessage()    (抢单/兼职/店长)
               │     AI 策略  → buildPrompt()     (工作小贴士)
-              │               → CompletionService.generateSimple()
+              │               → LlmExecutorService.generateSimple()
               │               → appendFooter()（可选）
               │
               ├─ ③ 同组所有群发送相同消息

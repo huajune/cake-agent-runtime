@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { generateText, Output } from 'ai';
-import { RouterService } from '@providers/router.service';
-import { ModelRole } from '@providers/types';
+import { LlmExecutorService } from '@/llm/llm-executor.service';
+import { ModelRole } from '@/llm/llm.types';
 import { SpongeService } from '@/sponge/sponge.service';
 import { RedisStore } from '../stores/redis.store';
 import { MemoryConfig } from '../memory.config';
@@ -50,7 +49,7 @@ export class SessionService {
   constructor(
     private readonly redisStore: RedisStore,
     private readonly config: MemoryConfig,
-    private readonly router: RouterService,
+    private readonly llm: LlmExecutorService,
     private readonly sponge: SpongeService,
   ) {}
 
@@ -349,24 +348,15 @@ export class SessionService {
 
   private async callLLM(prompt: string): Promise<EntityExtractionResult> {
     try {
-      const model = this.router.resolveByRole(ModelRole.Extract);
-
-      const result = await generateText({
-        model,
+      const result = await this.llm.generateStructured({
+        role: ModelRole.Extract,
         // LLM 输出使用简单 schema（city 为 string），避免 Zod union/transform 产生
         // 的复杂 JSON schema 让 LLM 误解结构；service 层再归一化为 CityFact。
-        output: Output.object({
-          schema: LLMEntityExtractionResultSchema,
-          name: 'WeworkCandidateFacts',
-        }),
+        schema: LLMEntityExtractionResultSchema,
+        outputName: 'WeworkCandidateFacts',
         system: SESSION_EXTRACTION_SYSTEM_PROMPT,
         prompt,
       });
-
-      if (!result.output) {
-        this.logger.warn('[extractFacts] No structured output returned');
-        return FALLBACK_EXTRACTION;
-      }
 
       // 归一化：LLM 输出的 city 字符串经 EntityExtractionResultSchema 转为 CityFact 对象
       return EntityExtractionResultSchema.parse(result.output);

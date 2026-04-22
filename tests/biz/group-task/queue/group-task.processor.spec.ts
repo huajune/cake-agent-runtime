@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bull';
 import { GroupTaskProcessor } from '@biz/group-task/queue/group-task.processor';
-import { CompletionService } from '@agent/completion.service';
+import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { RedisService } from '@infra/redis/redis.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { NotificationSenderService } from '@biz/group-task/services/notification-sender.service';
@@ -49,7 +49,7 @@ describe('GroupTaskProcessor', () => {
     reportToFeishu: jest.Mock;
   };
   let brandRotation: { recordPushedBrand: jest.Mock };
-  let completion: { generateSimple: jest.Mock };
+  let llm: { generateSimple: jest.Mock };
   let partTimeStrategy: {
     type: GroupTaskType;
     tagPrefix: string;
@@ -101,7 +101,7 @@ describe('GroupTaskProcessor', () => {
       recordPushedBrand: jest.fn().mockResolvedValue(undefined),
     };
 
-    completion = {
+    llm = {
       generateSimple: jest.fn().mockResolvedValue('AI 生成消息'),
     };
 
@@ -118,7 +118,7 @@ describe('GroupTaskProcessor', () => {
       providers: [
         GroupTaskProcessor,
         { provide: getQueueToken(GROUP_TASK_QUEUE_NAME), useValue: queueMock },
-        { provide: CompletionService, useValue: completion },
+        { provide: LlmExecutorService, useValue: llm },
         { provide: RedisService, useValue: redisMock },
         { provide: GroupResolverService, useValue: groupResolver },
         { provide: NotificationSenderService, useValue: notificationSender },
@@ -280,7 +280,7 @@ describe('GroupTaskProcessor', () => {
       await invokeHandler(GroupTaskJobName.PREPARE, prepareData);
 
       // AI 只调一次（同组共享）
-      expect(completion.generateSimple).toHaveBeenCalledTimes(1);
+      expect(llm.generateSimple).toHaveBeenCalledTimes(1);
 
       const sendCalls = queueMock.add.mock.calls.filter((c) => c[0] === GroupTaskJobName.SEND);
       expect(sendCalls).toHaveLength(2);

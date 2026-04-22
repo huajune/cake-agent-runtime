@@ -31,6 +31,29 @@ export type AnomalyFlag =
   | 'tool_chain_overlong'
   | 'no_tool_called';
 
+export interface PostProcessingStepStatus {
+  name: string;
+  status: 'success' | 'failure' | 'skipped';
+  success: boolean;
+  durationMs: number;
+  error?: string;
+  reason?: string;
+}
+
+export interface PostProcessingStatus {
+  status: 'running' | 'completed' | 'completed_with_errors' | 'skipped';
+  startedAt: string;
+  completedAt?: string;
+  durationMs?: number;
+  counts: {
+    total: number;
+    succeeded: number;
+    failed: number;
+    skipped: number;
+  };
+  steps: PostProcessingStepStatus[];
+}
+
 /**
  * 监控元数据（随消息传递的追踪信息）
  */
@@ -48,6 +71,8 @@ export interface MonitoringMetadata {
   agentSteps?: AgentStepDetail[];
   /** 本轮记忆上下文快照（写入 message_processing_records.memory_snapshot 列） */
   memorySnapshot?: AgentMemorySnapshot;
+  /** turn-end 后处理状态（写入 message_processing_records.post_processing_status 列） */
+  postProcessingStatus?: PostProcessingStatus;
   /** 异常信号标签（tracking 层根据 toolCalls 自动计算，调用方无需传） */
   anomalyFlags?: AnomalyFlag[];
   /** Agent 调用记录（完整的请求/响应，用于排障） */
@@ -108,6 +133,7 @@ export interface MessageProcessingRecord {
   agentSteps?: AgentStepDetail[];
   anomalyFlags?: AnomalyFlag[];
   memorySnapshot?: AgentMemorySnapshot;
+  postProcessingStatus?: PostProcessingStatus;
 
   // 聚合关系
   batchId?: string;

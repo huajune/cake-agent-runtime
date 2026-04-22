@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
 import { SpongeModule } from '@sponge/sponge.module';
+import { LlmModule } from '@/llm/llm.module';
 import { RoomModule } from '@channels/wecom/room/room.module';
 import { MessageSenderModule } from '@channels/wecom/message-sender/message-sender.module';
 import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
-import { CompletionService } from '@agent/completion.service';
 import { GroupTaskSchedulerService } from './services/group-task-scheduler.service';
 import { GroupResolverService } from './services/group-resolver.service';
 import { GroupMembershipService } from './services/group-membership.service';
@@ -27,6 +27,7 @@ import { GROUP_TASK_QUEUE_NAME } from './queue/group-task-queue.constants';
 @Module({
   imports: [
     SpongeModule,
+    LlmModule,
     RoomModule,
     MessageSenderModule,
     HostingConfigModule,
@@ -41,7 +42,6 @@ import { GROUP_TASK_QUEUE_NAME } from './queue/group-task-queue.constants';
   ],
   controllers: [GroupTaskController],
   providers: [
-    CompletionService,
     GroupTaskSchedulerService,
     GroupTaskProcessor,
     GroupResolverService,

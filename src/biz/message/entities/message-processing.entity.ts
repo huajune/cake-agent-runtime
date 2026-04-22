@@ -37,4 +37,6 @@ export interface MessageProcessingDbRecord {
   anomaly_flags?: string[];
   /** 记忆上下文快照 JSONB */
   memory_snapshot?: unknown;
+  /** turn-end 后处理状态 JSONB */
+  post_processing_status?: unknown;
 }

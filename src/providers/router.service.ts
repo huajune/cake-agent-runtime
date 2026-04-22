@@ -1,8 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { LanguageModel, generateText, streamText } from 'ai';
-import { ReliableService } from './reliable.service';
-import { ModelRole, ReliableConfig } from './types';
+import { ModelRole } from './types';
+
+export interface ModelRoute {
+  modelId: string;
+  fallbacks: string[] | undefined;
+}
 
 /**
  * 模型路由服务 — Layer 3: 角色 → 模型映射
@@ -19,66 +22,7 @@ import { ModelRole, ReliableConfig } from './types';
 export class RouterService {
   private readonly logger = new Logger(RouterService.name);
 
-  constructor(
-    private readonly reliable: ReliableService,
-    private readonly config: ConfigService,
-  ) {}
-
-  /**
-   * 按角色获取模型
-   *
-   * @param role - 角色名 (chat, fast, classify, reasoning 等)
-   * @returns 带容错的 LanguageModel
-   */
-  resolveByRole(role: ModelRole | string): LanguageModel {
-    const modelId = this.config.get<string>(`AGENT_${role.toUpperCase()}_MODEL`);
-    if (!modelId) {
-      throw new Error(`角色 "${role}" 未配置模型 (AGENT_${role.toUpperCase()}_MODEL)`);
-    }
-    const fallbacks = this.parseFallbacks(role);
-    return this.reliable.resolveWithFallback(modelId, fallbacks);
-  }
-
-  /**
-   * 精确调用（不走角色路由）
-   *
-   * @param modelId - 完整模型 ID (provider/model)
-   * @param fallbacks - 降级模型 ID 列表
-   */
-  resolve(modelId: string, fallbacks?: string[]): LanguageModel {
-    return this.reliable.resolveWithFallback(modelId, fallbacks);
-  }
-
-  /**
-   * 按角色执行 generateText（带完整容错链）
-   */
-  async generateTextByRole(
-    role: ModelRole | string,
-    params: Omit<Parameters<typeof generateText>[0], 'model'>,
-    config?: Partial<ReliableConfig>,
-  ): Promise<Awaited<ReturnType<typeof generateText>>> {
-    const modelId = this.config.get<string>(`AGENT_${role.toUpperCase()}_MODEL`);
-    if (!modelId) {
-      throw new Error(`角色 "${role}" 未配置模型`);
-    }
-    const fallbacks = this.parseFallbacks(role);
-    return this.reliable.generateText(modelId, params, fallbacks, config);
-  }
-
-  /**
-   * 按角色执行 streamText（带模型降级）
-   */
-  streamTextByRole(
-    role: ModelRole | string,
-    params: Omit<Parameters<typeof streamText>[0], 'model'>,
-  ): ReturnType<typeof streamText> {
-    const modelId = this.config.get<string>(`AGENT_${role.toUpperCase()}_MODEL`);
-    if (!modelId) {
-      throw new Error(`角色 "${role}" 未配置模型`);
-    }
-    const fallbacks = this.parseFallbacks(role);
-    return this.reliable.streamText(modelId, params, fallbacks);
-  }
+  constructor(private readonly config: ConfigService) {}
 
   /** 列出所有已配置的角色 */
   listRoles(): ModelRole[] {
@@ -101,6 +45,67 @@ export class RouterService {
   /** 获取指定角色的 fallback 模型列表 */
   getFallbacks(role: ModelRole | string): string[] | undefined {
     return this.parseFallbacks(role);
+  }
+
+  /** 获取指定角色当前映射到的 modelId（直接读 AGENT_{ROLE}_MODEL 环境变量）。 */
+  getModelIdByRole(role: ModelRole | string): string {
+    return this.config.get<string>(`AGENT_${role.toUpperCase()}_MODEL`) ?? '';
+  }
+
+  /** 获取指定角色的执行路由（primary + fallback 链）。 */
+  getRouteByRole(role: ModelRole | string): ModelRoute {
+    const modelId = this.getModelIdByRole(role);
+    if (!modelId) {
+      throw new Error(`角色 "${role}" 未配置模型 (AGENT_${role.toUpperCase()}_MODEL)`);
+    }
+    return {
+      modelId,
+      fallbacks: this.parseFallbacks(role),
+    };
+  }
+
+  /**
+   * 解析一次执行要用的模型路由：
+   *
+   * - 指定 overrideModelId 时用精确模型；否则走 role 路由
+   * - 显式传入 fallbacks 时优先采用；否则使用 role 默认 fallback
+   * - disableFallbacks=true 时强制清空降级链
+   */
+  resolveRoute(options: {
+    role?: ModelRole | string;
+    overrideModelId?: string;
+    fallbacks?: string[];
+    disableFallbacks?: boolean;
+  }): ModelRoute {
+    const role = options.role ?? ModelRole.Chat;
+    const trimmed = options.overrideModelId?.trim();
+    const configuredFallbacks = options.fallbacks ?? this.getFallbacks(role);
+    const fallbacks = options.disableFallbacks ? undefined : configuredFallbacks;
+
+    if (trimmed) {
+      this.logger.log(`使用指定模型: ${trimmed}${options.disableFallbacks ? ' (禁用降级)' : ''}`);
+      return {
+        modelId: trimmed,
+        fallbacks,
+      };
+    }
+
+    const route = this.getRouteByRole(role);
+    return fallbacks ? { modelId: route.modelId, fallbacks } : route;
+  }
+
+  /** 兼容 chat turn 路径的便捷别名。 */
+  resolveForTurn(options: {
+    overrideModelId?: string;
+    fallbacks?: string[];
+    disableFallbacks?: boolean;
+  }): ModelRoute {
+    return this.resolveRoute({
+      role: ModelRole.Chat,
+      overrideModelId: options.overrideModelId,
+      fallbacks: options.fallbacks,
+      disableFallbacks: options.disableFallbacks,
+    });
   }
 
   private parseFallbacks(role: ModelRole | string): string[] | undefined {

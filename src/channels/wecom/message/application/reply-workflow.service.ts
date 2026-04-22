@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ScenarioType } from '@enums/agent.enum';
+import { CallerKind, ScenarioType } from '@enums/agent.enum';
 import { MonitoringMetadata } from '@shared-types/tracking.types';
 import { AgentRunnerService } from '@agent/runner.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
@@ -11,6 +11,7 @@ import type { AgentError } from '@shared-types/agent-error.types';
 import { MessageDeduplicationService } from '../runtime/deduplication.service';
 import { MessageRuntimeConfigService } from '../runtime/message-runtime-config.service';
 import { MessageDeliveryService } from '../delivery/delivery.service';
+import { SimpleMergeService } from '../runtime/simple-merge.service';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
 import { MessageProcessingFailureService } from './message-processing-failure.service';
 import { PreAgentRiskInterceptService } from './pre-agent-risk-intercept.service';
@@ -29,6 +30,7 @@ export class ReplyWorkflowService {
     private readonly runtimeConfig: MessageRuntimeConfigService,
     private readonly processingFailureService: MessageProcessingFailureService,
     private readonly preAgentRiskIntercept: PreAgentRiskInterceptService,
+    private readonly simpleMergeService: SimpleMergeService,
   ) {}
 
   async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
@@ -144,28 +146,19 @@ export class ReplyWorkflowService {
     isSingleMessage: boolean;
     batchContext?: { batchId: string; allMessages: EnterpriseMessageCallbackDto[] };
   }): Promise<void> {
-    const {
-      traceId,
-      chatId,
-      content,
-      contactName,
-      scenario,
-      parsed,
-      isSingleMessage,
-      batchContext,
-    } = params;
+    const { traceId, chatId, contactName, scenario, parsed, isSingleMessage, batchContext } =
+      params;
 
     const logPrefix = isSingleMessage ? '' : '[聚合处理]';
-    const allMessages = batchContext?.allMessages ?? [params.primaryMessage];
-    const imageUrls = allMessages
-      .map((message) => MessageParser.extractImageUrl(message))
-      .filter((url): url is string => url !== null);
-    const imageMessageIds = allMessages
-      .filter((message) => MessageParser.extractImageUrl(message) !== null)
-      .map((message) => message.messageId);
+    // 重跑会扩展本轮消息集合，这几个字段需要是 let。
+    let allMessages: EnterpriseMessageCallbackDto[] = batchContext?.allMessages ?? [
+      params.primaryMessage,
+    ];
+    let content = params.content;
+    let imageUrls = this.collectImageUrls(allMessages);
+    let imageMessageIds = this.collectImageMessageIds(allMessages);
 
-    const { overrideModelId, effectiveModelId, thinking } =
-      await this.runtimeConfig.resolveWecomChatModelSelection();
+    const { overrideModelId, thinking } = await this.runtimeConfig.resolveWecomChatModelSelection();
 
     // 前置风险同步预检：命中高置信度关键词即同步执行暂停+告警，
     // 但不短路 Agent——本轮安抚回复仍由 Agent 以招募者身份自主生成，
@@ -180,16 +173,13 @@ export class ReplyWorkflowService {
       );
     }
 
-    const agentResult = await this.callAgent({
+    const agentCallParams = {
       sessionId: chatId,
-      userMessage: content,
       scenario,
       messageId: traceId,
       recordMonitoring: true,
       userId: this.resolveAgentUserId(params.primaryMessage, parsed),
       corpId: this.resolveCorpId(params.primaryMessage),
-      imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
-      imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
       botUserId: params.primaryMessage.botUserId,
       contactName: parsed.contactName,
       botImId: params.primaryMessage.imBotId,
@@ -200,13 +190,44 @@ export class ReplyWorkflowService {
       apiType: parsed._apiType,
       modelId: overrideModelId,
       thinking,
-      effectiveModelId,
+    } as const;
+
+    let agentResult = await this.callAgent({
+      ...agentCallParams,
+      userMessage: content,
+      imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+      imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
     });
 
     this.logger.log(
       `${logPrefix}[${contactName}] Agent 处理完成，耗时 ${agentResult.processingTime}ms，` +
         `tokens=${agentResult.reply.usage?.totalTokens || 'N/A'}`,
     );
+
+    // 投递前重跑：Agent 生成期间若用户又发了新消息，丢弃本次回复，合并新消息重跑一次。
+    // 只允许一次重跑——第二次生成期间到的新消息交给投递后的 follow-up job 处理，避免无限重跑。
+    const newMessages = await this.fetchPendingSinceAgentStart(chatId);
+    if (newMessages.length > 0) {
+      this.logger.warn(
+        `${logPrefix}[${contactName}][Replay] 检测到 ${newMessages.length} 条新消息，丢弃首次回复并重新调用 Agent (chatId=${chatId})`,
+      );
+      allMessages = [...allMessages, ...newMessages];
+      content = this.wecomObservability.buildMergedRequestContent(allMessages);
+      imageUrls = this.collectImageUrls(allMessages);
+      imageMessageIds = this.collectImageMessageIds(allMessages);
+
+      agentResult = await this.callAgent({
+        ...agentCallParams,
+        userMessage: content,
+        imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+        imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
+      });
+
+      this.logger.log(
+        `${logPrefix}[${contactName}][Replay] 重跑 Agent 完成，耗时 ${agentResult.processingTime}ms，` +
+          `tokens=${agentResult.reply.usage?.totalTokens || 'N/A'}`,
+      );
+    }
 
     if (agentResult.isFallback) {
       this.processingFailureService.sendFallbackAlert({
@@ -221,6 +242,8 @@ export class ReplyWorkflowService {
       });
     }
 
+    const processedMessageIds = allMessages.map((message) => message.messageId);
+
     // Agent 主动沉默：跳过 WeCom 发送，但仍完成本轮流水与观测。
     if (agentResult.isSkipped) {
       this.logger.log(`${logPrefix}[${contactName}] Agent 主动沉默，跳过消息发送`);
@@ -233,11 +256,7 @@ export class ReplyWorkflowService {
         batchContext?.batchId,
       );
       this.monitoringService.recordSuccess(traceId, skippedMetadata);
-      await this.markMessagesAsProcessed(
-        batchContext
-          ? batchContext.allMessages.map((message) => message.messageId)
-          : [params.primaryMessage.messageId],
-      );
+      await this.markMessagesAsProcessed(processedMessageIds);
       return;
     }
 
@@ -257,11 +276,7 @@ export class ReplyWorkflowService {
     );
 
     this.monitoringService.recordSuccess(traceId, successMetadata);
-    await this.markMessagesAsProcessed(
-      batchContext
-        ? batchContext.allMessages.map((message) => message.messageId)
-        : [params.primaryMessage.messageId],
-    );
+    await this.markMessagesAsProcessed(processedMessageIds);
 
     if (!batchContext) {
       this.logger.debug(`[${contactName}] 请求流水 [${traceId}] 已标记为已处理`);
@@ -326,7 +341,6 @@ export class ReplyWorkflowService {
     apiType?: 'enterprise' | 'group';
     modelId?: string;
     thinking?: AgentThinkingConfig;
-    effectiveModelId?: string;
   }): Promise<AgentInvokeResult> {
     const {
       userMessage,
@@ -347,10 +361,12 @@ export class ReplyWorkflowService {
       }
 
       const result = await this.runner.invoke({
-        userMessage,
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: userMessage }],
         userId,
         corpId,
         sessionId: params.sessionId,
+        messageId,
         scenario,
         contactName: params.contactName,
         imageUrls: params.imageUrls,
@@ -436,6 +452,39 @@ export class ReplyWorkflowService {
 
   private resolveCorpId(messageData: EnterpriseMessageCallbackDto): string {
     return messageData.orgId || 'default';
+  }
+
+  private collectImageUrls(messages: EnterpriseMessageCallbackDto[]): string[] {
+    return messages
+      .map((message) => MessageParser.extractImageUrl(message))
+      .filter((url): url is string => url !== null);
+  }
+
+  private collectImageMessageIds(messages: EnterpriseMessageCallbackDto[]): string[] {
+    return messages
+      .filter((message) => MessageParser.extractImageUrl(message) !== null)
+      .map((message) => message.messageId);
+  }
+
+  /**
+   * Agent 执行期间的新消息：原子取出并清空 pending list。
+   *
+   * 调用时机限定在 Bull Worker 持有 per-chat 处理锁期间，
+   * 因此 LRANGE + LTRIM 非原子不会造成跨 Worker 的竞态。
+   */
+  private async fetchPendingSinceAgentStart(
+    chatId: string,
+  ): Promise<EnterpriseMessageCallbackDto[]> {
+    try {
+      const { messages } = await this.simpleMergeService.getAndClearPendingMessages(chatId);
+      return messages;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `[Replay] 读取 Agent 执行期间的新消息失败，跳过重跑 chatId=${chatId}: ${errorMessage}`,
+      );
+      return [];
+    }
   }
 
   private buildDeliveryContext(

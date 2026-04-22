@@ -7,6 +7,7 @@ import {
   type AgentRunResult,
   type AgentStreamResult,
 } from '@agent/runner.service';
+import { CallerKind } from '@enums/agent.enum';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ChatMessageInput } from '@biz/message/types/message.types';
 import {
@@ -108,6 +109,7 @@ export class TestExecutionService {
       );
 
       agentResult = await this.runner.invoke({
+        callerKind: CallerKind.TEST_SUITE,
         messages,
         userId: request.userId,
         corpId: TEST_CORP_ID,
@@ -117,6 +119,7 @@ export class TestExecutionService {
         botImId: request.botImId,
         strategySource,
         modelId: request.modelId,
+        disableFallbacks: true,
       });
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -223,6 +226,7 @@ export class TestExecutionService {
 
     const messages = this.buildRunnerMessages(historyForAgent, request.message, request.imageUrls);
     const runnerParams = {
+      callerKind: CallerKind.TEST_SUITE,
       messages,
       userId: request.userId,
       corpId: TEST_CORP_ID,
@@ -233,6 +237,7 @@ export class TestExecutionService {
       botUserId: request.botUserId,
       botImId: request.botImId,
       modelId: request.modelId,
+      disableFallbacks: true,
     };
 
     const runnerResult = await this.runner.stream(runnerParams);
@@ -240,6 +245,7 @@ export class TestExecutionService {
     return {
       ...runnerResult,
       agentRequest: {
+        callerKind: CallerKind.TEST_SUITE,
         messages,
         userId: request.userId,
         corpId: TEST_CORP_ID,

@@ -13,39 +13,89 @@
 **预计版本**: `v5.2.0`
 **最近更新**: `2026-04-21`
 **来源分支**: `develop`
-**累计 PR**: 8
+**累计 PR**: 9
 
 ### 更新摘要
 - [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) [codex] 完善通知链路并修复群任务与消息处理后续问题
 - [PR #74](https://github.com/huajune/cake-agent-runtime/pull/74) [codex] Refactor observability and notification flow
 - [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) [codex] add conversation risk and onboarding handoff monitoring
-- [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) consolidate fact extraction and drop LocationCityResolver
+- [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) refactor(memory): consolidate fact extraction and drop LocationCityResolver
 - [PR #82](https://github.com/huajune/cake-agent-runtime/pull/82) [codex] improve monitoring visibility and runtime config consistency
-- [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) cap same-tool calls per turn and enrich processing trace
-- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) 消息回调立即 ACK + 队列/缓存降延 + 健康证等若干修复
+- [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) fix(agent): cap same-tool calls per turn and enrich processing trace
+- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) perf(wecom): 消息回调立即 ACK + 队列/缓存降延 + 健康证等若干修复
 - [PR #91](https://github.com/huajune/cake-agent-runtime/pull/91) 能力标签 + 发布时间展示
 
 ### 新功能
-- [PR #91](https://github.com/huajune/cake-agent-runtime/pull/91) 能力标签 + 发布时间展示
+- [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) 新增飞书通知路由（bot 到接收人映射）
+- [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) 新增异步对话风险监控：规则命中 + LLM 复核 + 私聊监控告警
+- [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) 新增 recruitment_cases 表，跨天持久化 onboard_followup 预约上下文
+- [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) 新增入职交接检测：自动暂停托管、告警运营并标记 case 为 handoff
+- [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) 打通 Web 端手动恢复流程，关闭最近一次入职交接 case
 
 ### 问题修复
-- [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) [codex] 完善通知链路并修复群任务与消息处理后续问题
-- [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) cap same-tool calls per turn and enrich processing trace
-- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) 消息回调立即 ACK + 队列/缓存降延 + 健康证等若干修复
+- [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) 修复企业级群任务发送与后续 BI 查询问题
+- [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) 修复回复归一化与次要消息处理/监控的后续问题
+- [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) 对齐运行时行为，修正陈旧 spec 让本地 pre-push CI 重新通过
+- [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) 修复暂停用户场景下后续消息不再落库的问题（AI 仍屏蔽、历史持久化保留）
+- [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) 从 active 入职 case 解析 effectiveStage，让 agent 预约后仍能处理简单问答
+- [PR #82](https://github.com/huajune/cake-agent-runtime/pull/82) 托管开关 / paused-user / 群黑名单统一走 local hot cache → Redis → DB，修复多实例场景下长期陈旧值
+- [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) runner.service 新增 prepareStep 钩子，单轮同名工具调用 ≥3 次时用 activeTools 白名单动态屏蔽并在 system 追加拦截提示，逼模型基于已有数据收敛
+- [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) 重写 duliday_job_list 工具描述：显式 DB 关键字精确匹配、字段稳定性分级（jobIdList/brandIdList 高→city/region 中→storeName/brandAlias 低）、列出 5 条调用规则
+- [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) 重写 prompt 工具手册 duliday_job_list 章节（检索机制 + 5 类用户场景 + 0/1/≥2 结果处理动作）
+- [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) 新增 HardConstraintsSection 集中渲染 [本轮查询硬约束]，避免硬约束丢失导致错误查询
+- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) 企微消息回调同步返回 200，把 pipeline 过滤/分派挪到 fire-and-forget 异步链，消除托管平台单消息补发 3 次的超时重发
+- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) duliday_interview_booking 健康证 labelName 正则放宽为 /健康证/，覆盖 有无健康证/是否有健康证/健康证情况 等命名，修复首次必挂、重试才成功
+- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) Session 事实抽取过滤 我是xx / 你好我是xx 打招呼语误提取为真实 name，新增 name-guard.ts 工具与测试
+- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) GroupTaskProcessor 任务重试耗尽与 未找到任何目标群 走 exceptionNotifier，堵住线上静默失败黑洞
+- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) message-splitter 句号/问号后接中文的断句识别容忍中间空白与换行，不再把 。\n中文 漏判
 
 ### 优化调整
-- [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) consolidate fact extraction and drop LocationCityResolver
+- [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) 优化抢单 prompt/过滤与通知发送行为
+- [PR #74](https://github.com/huajune/cake-agent-runtime/pull/74) 抽取全局 NotificationModule，告警/运维/私聊监控分离独立 Feishu channel 与卡片渲染
+- [PR #74](https://github.com/huajune/cake-agent-runtime/pull/74) 接入可观测性 incident 上报与进程级异常监控，替换旧的 Feishu/logger 告警链
+- [PR #74](https://github.com/huajune/cake-agent-runtime/pull/74) 新增可复用 analytics helpers（metrics/trend/业务规则），统一接入监控与投递流程
+- [PR #74](https://github.com/huajune/cake-agent-runtime/pull/74) 告警卡片补充 model chain / retry count / memory warnings / dispatch mode 等诊断上下文
+- [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) 重构企微消息 runtime 为 ingress / application / delivery / runtime / telemetry 五层
+- [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) memory 模块 fact 抽取作为地点信号→城市的唯一真相源，下线独立 Agent resolver 与 toolContext 旁路
+- [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) Preferences.city 从 string 升级为结构化 CityFact（value/confidence/evidence），Agent 可据此自主决策
+- [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) 删除 LocationCityResolverService（及 agent.module 注册）与 ToolBuildContext/PromptContext/ComposeParams 的 resolvedCity 旁路字段
+- [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) 统一地理映射到 src/memory/facts/geo-mappings.ts，合并此前分散在两处的 10+ 城市映射表
+- [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) extractor 并入 high-confidence-facts.ts，吸收 resolver 的推导能力产出带 evidence 的 CityFact
+- [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) Redis 旧字符串 city 数据通过 PreferencesSchema 自动归一化为 CityFact，无需单独数据迁移
+- [PR #82](https://github.com/huajune/cake-agent-runtime/pull/82) 企微消息入口与 merge 调度刷新 runtime config 快照，使 AI 回复与合并配置实时生效
+- [PR #82](https://github.com/huajune/cake-agent-runtime/pull/82) 扩展监控、tracking、analytics 与对话风险链路（含 Dashboard/UI 更新）
+- [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) message_processing_records 新增结构化 tool_calls（resultCount/status）、agent_steps 逐步拆分、memory_snapshot
+- [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) runner / ai-stream-trace 同步落库每步 reasoning / usage / finishReason，Dashboard 详情抽屉展示对应字段
+- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) 短期记忆缓存改为 INSERT-only 原子镜像（依赖 chat_messages.message_id UNIQUE），只有真正 INSERT 的那条才镜像进 Redis list，消除重复 messageId 双写竞态
+- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) updateMessageContent 由 lrange→改→del→全量 rpush 简化为直接失效整 list、下次读取 cache miss 时 backfill
+- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) 删除 memory:short_term:message: 反查索引 key，避免双写去重
+- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) Queue/PreDispatch 消除聚合窗口 + 前置准备的双重串行 await，改写成基于静默窗口的 debounce 模型
+- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) Agent prompt 最前面加入显式优先级栈（红线 > 硬约束 > 全局 > 阶段 > 风格）与发送前两条自检
 
 ### 运维与流程
-- [PR #74](https://github.com/huajune/cake-agent-runtime/pull/74) [codex] Refactor observability and notification flow
-- [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) [codex] add conversation risk and onboarding handoff monitoring
-- [PR #82](https://github.com/huajune/cake-agent-runtime/pull/82) [codex] improve monitoring visibility and runtime config consistency
+- [PR #74](https://github.com/huajune/cake-agent-runtime/pull/74) uncaughtException 与 unhandledRejection 统一走 incident pipeline 上报
+- [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) 新增 hourly stats 聚合修复与 recruitment_cases 的 DB migrations
 
 ### 配置变更
 - 无
 
 ### 验证记录
-- 无
+- [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) pnpm run ci:check 通过，pre-push hook 通过
+- [PR #74](https://github.com/huajune/cake-agent-runtime/pull/74) pnpm run ci:check 通过（162 suites、2148 tests）
+- [PR #74](https://github.com/huajune/cake-agent-runtime/pull/74) notifier/observability/analytics/delivery 端到端测试覆盖刷新
+- [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) pnpm run ci:check 通过，pre-push 全量 jest --coverage 通过（182 suites、2238 tests）
+- [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) pnpm run build/lint/test 全通过（197 suites、2317 tests）
+- [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) 待上线前抽查：旧 Redis city 字符串能正确归一化、extractor 输出 city evidence 合理
+- [PR #82](https://github.com/huajune/cake-agent-runtime/pull/82) 同步修复因 runtime-config / monitoring 重构而失效的单测与 CI 期望
+- [PR #82](https://github.com/huajune/cake-agent-runtime/pull/82) pnpm run ci:check 与 pre-push 通过（198/198 suites、2283/2283 tests）
+- [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) pnpm run build/lint/test 通过（2296 tests）
+- [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) 待测试环境用两个生产 case 重放：Case 1 收敛到 ≤2 次 duliday_job_list / Case 2 注入硬约束后带上性别+晚班 filter
+- [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) 待观察生产 [工具调用硬截断] 日志频次，确认无误伤
+- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) pnpm run test 2420 tests green / tsc --noEmit 0 errors
+- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) 新增 pipeline 永远 pending 时仍同步返回 200 的回归测试
+- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) duliday-interview-booking 7 条覆盖四种健康证 labelName + 别名 supplementAnswers + 未传报 missing + 健康证类型 不被截胡
+- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) name-guard 覆盖常见打招呼句式
+- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) 待上线后 24h 观察：托管补发率、duliday 缺字段率、企微回调 p99（目标 <50ms）
 <!-- release:pending:end -->
 
 ## [5.1.0] - 2026-04-09

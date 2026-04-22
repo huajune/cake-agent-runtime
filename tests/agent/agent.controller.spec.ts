@@ -3,6 +3,7 @@ import { HttpException } from '@nestjs/common';
 import { AgentController } from '@agent/agent.controller';
 import { AgentRunnerService } from '@agent/runner.service';
 import { AgentHealthService } from '@agent/agent-health.service';
+import { CallerKind } from '@enums/agent.enum';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { RegistryService } from '@providers/registry.service';
 
@@ -166,11 +167,13 @@ describe('AgentController', () => {
       });
 
       expect(mockLoop.invoke).toHaveBeenCalledWith({
+        callerKind: CallerKind.DEBUG,
         messages: [{ role: 'user', content: '你好' }],
         userId: 'user-1',
         corpId: 'debug',
         sessionId: 'conv123',
         scenario: 'candidate-consultation',
+        strategySource: 'testing',
       });
       expect(result.success).toBe(true);
       expect(result.text).toBe('你好！');
@@ -188,10 +191,12 @@ describe('AgentController', () => {
 
       expect(mockLoop.invoke).toHaveBeenCalledWith(
         expect.objectContaining({
+          callerKind: CallerKind.DEBUG,
           messages: [{ role: 'user', content: '测试' }],
           userId: 'debug-user',
           corpId: 'debug',
           scenario: 'candidate-consultation',
+          strategySource: 'testing',
         }),
       );
       expect(result.success).toBe(true);

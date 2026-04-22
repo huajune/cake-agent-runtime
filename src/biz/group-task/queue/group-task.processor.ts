@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Job, Queue } from 'bull';
-import { CompletionService } from '@agent/completion.service';
+import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { RedisService } from '@infra/redis/redis.service';
 import { AlertLevel } from '@enums/alert.enum';
 import { IncidentReporterService } from '@observability/incidents/incident-reporter.service';
@@ -54,7 +54,7 @@ export class GroupTaskProcessor implements OnModuleInit {
 
   constructor(
     @InjectQueue(GROUP_TASK_QUEUE_NAME) private readonly queue: Queue,
-    private readonly completionService: CompletionService,
+    private readonly llm: LlmExecutorService,
     private readonly redisService: RedisService,
     private readonly groupResolver: GroupResolverService,
     private readonly notificationSender: NotificationSenderService,
@@ -356,7 +356,7 @@ export class GroupTaskProcessor implements OnModuleInit {
     let message: string;
     if (strategy.needsAI && strategy.buildPrompt) {
       const prompt = strategy.buildPrompt(notificationData, representative);
-      message = await this.completionService.generateSimple({
+      message = await this.llm.generateSimple({
         systemPrompt: prompt.systemPrompt,
         userMessage: prompt.userMessage,
       });

@@ -1,13 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { ModelMessage } from 'ai';
 import { SpongeService } from '@sponge/sponge.service';
+import type { PostProcessingStatus, PostProcessingStepStatus } from '@shared-types/tracking.types';
 import { LongTermService } from './long-term.service';
+import { MemoryEnrichmentService, type CandidateIdentityHint } from './memory-enrichment.service';
 import { ProceduralService } from './procedural.service';
 import { SettlementService } from './settlement.service';
 import { SessionService } from './session.service';
 import { ShortTermService } from './short-term.service';
 import { extractHighConfidenceFacts } from '../facts/high-confidence-facts';
 import type { AgentMemoryContext } from '../types/memory-runtime.types';
+import type { ShortTermMessage } from '../types/short-term.types';
 import {
   type EntityExtractionResult,
   type RecommendedJobSummary,
@@ -17,14 +21,24 @@ export interface MemoryLifecycleTurnContext {
   corpId: string;
   userId: string;
   sessionId: string;
-  typedMessages: ModelMessage[];
+  messageId?: string;
+  normalizedMessages: ModelMessage[];
   /** 本轮工具查到的候选池；回合结束时统一写入会话记忆。 */
   candidatePool?: RecommendedJobSummary[] | null;
 }
 
-export interface MemoryTurnStartMessage {
-  role: string;
-  content: string;
+interface StepOutcome<T = void> {
+  step: PostProcessingStepStatus;
+  value?: T;
+}
+
+interface TimedTask<T = void> {
+  name: string;
+  timings: {
+    startedAt: number;
+    endedAt: number;
+  };
+  promise: Promise<T>;
 }
 
 /**
@@ -49,33 +63,51 @@ export class MemoryLifecycleService {
     private readonly settlement: SettlementService,
     private readonly session: SessionService,
     private readonly sponge: SpongeService,
+    private readonly enrichment: MemoryEnrichmentService,
+    private readonly messageProcessing: MessageProcessingService,
   ) {}
 
+  /**
+   * @param currentUserMessage 本轮 user 的最新文本。同时服务于两件事：
+   *   - 前置高置信识别（品牌/城市/年龄等规则抽取）
+   *   - 短期窗口空兜底（includeShortTerm=true 但 DB/Redis 无数据时兜上）
+   */
   async onTurnStart(
     corpId: string,
     userId: string,
     sessionId: string,
-    currentMessages?: MemoryTurnStartMessage[],
+    currentUserMessage?: string,
     options?: {
       includeShortTerm?: boolean;
+      /**
+       * 外部身份定位，用于向外部系统补全快照中缺失的画像字段（如性别）。
+       * 提供时触发 MemoryEnrichmentService。
+       */
+      enrichmentIdentity?: CandidateIdentityHint;
     },
   ): Promise<AgentMemoryContext> {
     const includeShortTerm = options?.includeShortTerm ?? true;
 
-    const [shortTermMessages, sessionState, proceduralState, profile] = await Promise.all([
+    const [rawShortTermMessages, sessionState, proceduralState, profile] = await Promise.all([
       includeShortTerm ? this.shortTerm.getMessages(sessionId) : Promise.resolve([]),
       this.session.getSessionState(corpId, userId, sessionId),
       this.procedural.get(corpId, userId, sessionId),
       this.longTerm.getProfile(corpId, userId),
     ]);
 
-    const highConfidenceFacts = await this.detectHighConfidenceFacts(currentMessages);
+    const shortTermMessages = this.applyShortTermFallback(
+      rawShortTermMessages,
+      includeShortTerm ? currentUserMessage : undefined,
+      sessionId,
+    );
+
+    const highConfidenceFacts = await this.detectHighConfidenceFacts(currentUserMessage);
     const warnings: string[] = [];
     if (includeShortTerm && this.shortTerm.lastLoadError) {
       warnings.push(`shortTerm: ${this.shortTerm.lastLoadError}`);
     }
 
-    return {
+    const snapshot: AgentMemoryContext = {
       shortTerm: {
         messageWindow: shortTermMessages,
       },
@@ -85,63 +117,133 @@ export class MemoryLifecycleService {
       procedural: proceduralState,
       longTerm: { profile },
     };
+
+    if (options?.enrichmentIdentity) {
+      return await this.enrichment.enrich(snapshot, options.enrichmentIdentity);
+    }
+
+    return snapshot;
+  }
+
+  /**
+   * 当短期窗口为空时，用调用方提供的 user 消息兜底。
+   *
+   * 这是 wecom 链路的瞬时故障兜底：当前轮消息刚写入 DB/Redis 但读回为空，
+   * 模型至少拿到"这一轮 user 说了什么"而不会因为 messages=[] 直接抛错。
+   */
+  private applyShortTermFallback(
+    messages: ShortTermMessage[],
+    fallbackUserMessage: string | undefined,
+    sessionId: string,
+  ): ShortTermMessage[] {
+    if (messages.length > 0) return messages;
+    const trimmed = fallbackUserMessage?.trim();
+    if (!trimmed) return messages;
+
+    this.logger.warn(
+      `短期记忆为空，使用 fallback 消息兜底: sessionId=${sessionId}, len=${trimmed.length}`,
+    );
+    return [{ role: 'user', content: trimmed }];
   }
 
   async onTurnEnd(ctx: MemoryLifecycleTurnContext, assistantText?: string): Promise<void> {
-    const lastUserMsg = ctx.typedMessages.filter((m) => m.role === 'user').pop();
-    if (!lastUserMsg) return;
+    const lifecycleStartedAt = Date.now();
+    await this.persistPostProcessingStatus(ctx.messageId, {
+      status: 'running',
+      startedAt: new Date(lifecycleStartedAt).toISOString(),
+      counts: {
+        total: 0,
+        succeeded: 0,
+        failed: 0,
+        skipped: 0,
+      },
+      steps: [],
+    });
 
-    const lastUserText = this.extractTextFromContent(lastUserMsg.content);
-    const previousState = await this.session
-      .getSessionState(ctx.corpId, ctx.userId, ctx.sessionId)
-      .catch((err) => {
-        this.logger.warn('读取会话状态失败', err);
-        return null;
+    const steps: PostProcessingStepStatus[] = [];
+
+    try {
+      const lastUserMsg = ctx.normalizedMessages.filter((m) => m.role === 'user').pop();
+      if (!lastUserMsg) {
+        steps.push(
+          this.buildSkippedStep(
+            'locate_last_user_message',
+            'normalizedMessages 中没有 user 消息，跳过 turn-end post-processing',
+          ),
+        );
+        await this.persistFinalPostProcessingStatus(ctx.messageId, lifecycleStartedAt, steps);
+        return;
+      }
+
+      const lastUserText = this.extractTextFromContent(lastUserMsg.content);
+      const previousStateResult = await this.runMeasuredStep(
+        'load_previous_state',
+        async () => await this.session.getSessionState(ctx.corpId, ctx.userId, ctx.sessionId),
+      );
+      steps.push(previousStateResult.step);
+
+      const branchNames: string[] = [];
+      const branchPromises: Array<Promise<PostProcessingStepStatus[]>> = [];
+      const previousState = previousStateResult.value;
+
+      if (previousState && this.settlement.shouldSettle(previousState.lastSessionActiveAt)) {
+        const settlementTask = this.createTimedTask('settlement', async () => {
+          await this.settlement.settle(ctx.corpId, ctx.userId, ctx.sessionId, previousState);
+        });
+        branchNames.push(settlementTask.name);
+        branchPromises.push(
+          settlementTask.promise
+            .then(() => [
+              this.buildSuccessStep(
+                settlementTask.name,
+                settlementTask.timings.startedAt,
+                settlementTask.timings.endedAt,
+              ),
+            ])
+            .catch((error) =>
+              Promise.reject({
+                error,
+                durationMs: Math.max(
+                  settlementTask.timings.endedAt - settlementTask.timings.startedAt,
+                  0,
+                ),
+              }),
+            ),
+        );
+      } else {
+        const reason =
+          previousStateResult.step.status === 'failure'
+            ? '上一轮 session state 读取失败，跳过 settlement'
+            : '会话未达到沉淀阈值';
+        steps.push(this.buildSkippedStep('settlement', reason));
+      }
+
+      branchNames.push('session_turn_end_updates');
+      branchPromises.push(this.runSessionTurnEndSteps(ctx, lastUserText, assistantText));
+
+      const settledBranches = await Promise.allSettled(branchPromises);
+      settledBranches.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          steps.push(...result.value);
+          return;
+        }
+
+        const branchError = this.extractBranchError(result.reason);
+        steps.push(
+          this.buildFailureStep(
+            branchNames[index] ?? 'turn_end_branch',
+            branchError.message,
+            branchError.durationMs,
+          ),
+        );
       });
 
-    // 先基于“上一段会话最后活跃时间”判断要不要沉淀旧会话。
-    // 这里必须在写入新的 lastSessionActiveAt 之前判断，否则每轮都会把会话重新“刷新”为当前时间。
-    if (previousState && this.settlement.shouldSettle(previousState.lastSessionActiveAt)) {
-      this.settlement
-        .settle(ctx.corpId, ctx.userId, ctx.sessionId, previousState)
-        .catch((err) => this.logger.warn('记忆沉淀失败', err));
+      await this.persistFinalPostProcessingStatus(ctx.messageId, lifecycleStartedAt, steps);
+    } catch (error) {
+      steps.push(this.buildFailureStep('turn_end_lifecycle', this.normalizeError(error), 0));
+      await this.persistFinalPostProcessingStatus(ctx.messageId, lifecycleStartedAt, steps);
+      throw error;
     }
-
-    // 候选池是本轮工具的临时产物，统一在 turn end 落入会话记忆，
-    // 这样 memory 的外部入口仍然保持 onTurnStart / onTurnEnd 两个固定时机。
-    if (ctx.candidatePool?.length) {
-      await this.session
-        .saveLastCandidatePool(ctx.corpId, ctx.userId, ctx.sessionId, ctx.candidatePool)
-        .catch((err) => this.logger.warn('候选池写入失败', err));
-    }
-
-    // 会话活跃时间是“这段 session 最后一次继续聊的时间”，
-    // 它用于判断会话是否已结束，不等于记忆沉淀时间。
-    await this.session
-      .storeActivity(ctx.corpId, ctx.userId, ctx.sessionId, {
-        lastSessionActiveAt: new Date().toISOString(),
-      })
-      .catch((err) => this.logger.warn('记忆存储失败', err));
-
-    if (assistantText?.trim()) {
-      await this.session
-        .projectAssistantTurn({
-          corpId: ctx.corpId,
-          userId: ctx.userId,
-          sessionId: ctx.sessionId,
-          userText: lastUserText,
-          assistantText,
-        })
-        .catch((err) => this.logger.warn('岗位记忆投影失败', err));
-    }
-
-    const flatMessages = ctx.typedMessages.map((m) => ({
-      role: String(m.role),
-      content: this.extractTextFromContent(m.content),
-    }));
-    this.session
-      .extractAndSave(ctx.corpId, ctx.userId, ctx.sessionId, flatMessages)
-      .catch((err) => this.logger.warn('事实提取失败', err));
   }
 
   /** 把消息内容扁平化成纯文本。 */
@@ -174,22 +276,214 @@ export class MemoryLifecycleService {
   }
 
   private async detectHighConfidenceFacts(
-    messages?: MemoryTurnStartMessage[],
+    currentUserMessage?: string,
   ): Promise<EntityExtractionResult | null> {
-    if (!messages?.length) return null;
-
-    const userMessages = messages
-      .filter((message) => message.role === 'user')
-      .map((message) => message.content)
-      .filter((content) => content.trim().length > 0);
-
-    if (userMessages.length === 0) return null;
+    const trimmed = currentUserMessage?.trim();
+    if (!trimmed) return null;
 
     const brandData = await this.sponge.fetchBrandList();
-    const highConfidenceFacts = extractHighConfidenceFacts(userMessages, brandData);
+    const highConfidenceFacts = extractHighConfidenceFacts([trimmed], brandData);
     if (!highConfidenceFacts) return null;
 
     this.logger.debug(`前置高置信识别命中: ${highConfidenceFacts.reasoning}`);
     return highConfidenceFacts;
+  }
+
+  private async runSessionTurnEndSteps(
+    ctx: MemoryLifecycleTurnContext,
+    lastUserText: string,
+    assistantText?: string,
+  ): Promise<PostProcessingStepStatus[]> {
+    const steps: PostProcessingStepStatus[] = [];
+
+    // 这些步骤都会读改写同一份 session state，保留串行执行以避免 Redis 状态互相覆盖。
+    if (ctx.candidatePool?.length) {
+      const candidatePoolResult = await this.runMeasuredStep('save_candidate_pool', async () => {
+        await this.session.saveLastCandidatePool(
+          ctx.corpId,
+          ctx.userId,
+          ctx.sessionId,
+          ctx.candidatePool ?? [],
+        );
+      });
+      steps.push(candidatePoolResult.step);
+    } else {
+      steps.push(this.buildSkippedStep('save_candidate_pool', '本轮没有 candidatePool 需要写入'));
+    }
+
+    const activityResult = await this.runMeasuredStep('store_activity', async () => {
+      await this.session.storeActivity(ctx.corpId, ctx.userId, ctx.sessionId, {
+        lastSessionActiveAt: new Date().toISOString(),
+      });
+    });
+    steps.push(activityResult.step);
+
+    if (assistantText?.trim()) {
+      const projectionResult = await this.runMeasuredStep('project_assistant_turn', async () => {
+        await this.session.projectAssistantTurn({
+          corpId: ctx.corpId,
+          userId: ctx.userId,
+          sessionId: ctx.sessionId,
+          userText: lastUserText,
+          assistantText,
+        });
+      });
+      steps.push(projectionResult.step);
+    } else {
+      steps.push(
+        this.buildSkippedStep('project_assistant_turn', '本轮没有 assistantText，跳过岗位记忆投影'),
+      );
+    }
+
+    const flatMessages = ctx.normalizedMessages.map((m) => ({
+      role: String(m.role),
+      content: this.extractTextFromContent(m.content),
+    }));
+    const extractFactsResult = await this.runMeasuredStep('extract_facts', async () => {
+      await this.session.extractAndSave(ctx.corpId, ctx.userId, ctx.sessionId, flatMessages);
+    });
+    steps.push(extractFactsResult.step);
+
+    return steps;
+  }
+
+  private createTimedTask<T>(name: string, task: () => Promise<T>): TimedTask<T> {
+    const timings = {
+      startedAt: Date.now(),
+      endedAt: Date.now(),
+    };
+
+    const promise = Promise.resolve()
+      .then(task)
+      .finally(() => {
+        timings.endedAt = Date.now();
+      });
+
+    return {
+      name,
+      timings,
+      promise,
+    };
+  }
+
+  private async runMeasuredStep<T>(name: string, task: () => Promise<T>): Promise<StepOutcome<T>> {
+    const startedAt = Date.now();
+    try {
+      const value = await task();
+      return {
+        value,
+        step: this.buildSuccessStep(name, startedAt, Date.now()),
+      };
+    } catch (error) {
+      const message = this.normalizeError(error);
+      this.logger.warn(`${name} 失败: ${message}`);
+      return {
+        step: this.buildFailureStep(name, message, Date.now() - startedAt),
+      };
+    }
+  }
+
+  private buildSuccessStep(
+    name: string,
+    startedAt: number,
+    endedAt: number,
+  ): PostProcessingStepStatus {
+    return {
+      name,
+      status: 'success',
+      success: true,
+      durationMs: Math.max(endedAt - startedAt, 0),
+    };
+  }
+
+  private buildFailureStep(
+    name: string,
+    error: string,
+    durationMs: number,
+  ): PostProcessingStepStatus {
+    return {
+      name,
+      status: 'failure',
+      success: false,
+      durationMs: Math.max(durationMs, 0),
+      error,
+    };
+  }
+
+  private buildSkippedStep(name: string, reason: string): PostProcessingStepStatus {
+    return {
+      name,
+      status: 'skipped',
+      success: true,
+      durationMs: 0,
+      reason,
+    };
+  }
+
+  private async persistPostProcessingStatus(
+    messageId: string | undefined,
+    status: PostProcessingStatus,
+  ): Promise<void> {
+    if (!messageId) return;
+
+    try {
+      await this.messageProcessing.updatePostProcessingStatus(messageId, status);
+    } catch (error) {
+      this.logger.warn(`写入 post_processing_status 失败 [${messageId}]`, error);
+    }
+  }
+
+  private async persistFinalPostProcessingStatus(
+    messageId: string | undefined,
+    lifecycleStartedAt: number,
+    steps: PostProcessingStepStatus[],
+  ): Promise<void> {
+    const completedAt = Date.now();
+    const failed = steps.filter((step) => step.status === 'failure').length;
+    const skipped = steps.filter((step) => step.status === 'skipped').length;
+    const succeeded = steps.filter((step) => step.status === 'success').length;
+    const finalStatus: PostProcessingStatus = {
+      status:
+        steps.length === 1 && steps[0]?.status === 'skipped'
+          ? 'skipped'
+          : failed > 0
+            ? 'completed_with_errors'
+            : 'completed',
+      startedAt: new Date(lifecycleStartedAt).toISOString(),
+      completedAt: new Date(completedAt).toISOString(),
+      durationMs: Math.max(completedAt - lifecycleStartedAt, 0),
+      counts: {
+        total: steps.length,
+        succeeded,
+        failed,
+        skipped,
+      },
+      steps,
+    };
+
+    await this.persistPostProcessingStatus(messageId, finalStatus);
+  }
+
+  private normalizeError(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    return String(error);
+  }
+
+  private extractBranchError(reason: unknown): { message: string; durationMs: number } {
+    if (typeof reason === 'object' && reason !== null) {
+      const typed = reason as { error?: unknown; durationMs?: unknown };
+      return {
+        message: this.normalizeError(typed.error ?? reason),
+        durationMs:
+          typeof typed.durationMs === 'number' && Number.isFinite(typed.durationMs)
+            ? typed.durationMs
+            : 0,
+      };
+    }
+
+    return {
+      message: this.normalizeError(reason),
+      durationMs: 0,
+    };
   }
 }

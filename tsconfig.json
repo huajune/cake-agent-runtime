@@ -17,71 +17,28 @@
     "strictBindCallApply": false,
     "forceConsistentCasingInFileNames": false,
     "noFallthroughCasesInSwitch": false,
-    "types": [
-      "jest",
-      "node"
-    ],
+    "types": ["jest", "node"],
     "paths": {
-      "@/*": [
-        "src/*"
-      ],
-      "@infra/*": [
-        "src/infra/*"
-      ],
-      "@agent/*": [
-        "src/agent/*"
-      ],
-      "@channels": [
-        "src/channels"
-      ],
-      "@channels/*": [
-        "src/channels/*"
-      ],
-      "@wecom": [
-        "src/channels/wecom"
-      ],
-      "@wecom/*": [
-        "src/channels/wecom/*"
-      ],
-      "@enums/*": [
-        "src/enums/*"
-      ],
-      "@test-suite/*": [
-        "src/biz/test-suite/*"
-      ],
-      "@evaluation/*": [
-        "src/evaluation/*"
-      ],
-      "@biz/*": [
-        "src/biz/*"
-      ],
-      "@providers/*": [
-        "src/providers/*"
-      ],
-      "@tools/*": [
-        "src/tools/*"
-      ],
-      "@memory/*": [
-        "src/memory/*"
-      ],
-      "@mcp/*": [
-        "src/mcp/*"
-      ],
-      "@sponge/*": [
-        "src/sponge/*"
-      ],
-      "@observability/*": [
-        "src/observability/*"
-      ],
-      "@notification/*": [
-        "src/notification/*"
-      ],
-      "@analytics/*": [
-        "src/analytics/*"
-      ],
-      "@shared-types/*": [
-        "src/types/*"
-      ],
+      "@/*": ["src/*"],
+      "@infra/*": ["src/infra/*"],
+      "@agent/*": ["src/agent/*"],
+      "@channels": ["src/channels"],
+      "@channels/*": ["src/channels/*"],
+      "@wecom": ["src/channels/wecom"],
+      "@wecom/*": ["src/channels/wecom/*"],
+      "@enums/*": ["src/enums/*"],
+      "@test-suite/*": ["src/biz/test-suite/*"],
+      "@evaluation/*": ["src/evaluation/*"],
+      "@biz/*": ["src/biz/*"],
+      "@providers/*": ["src/providers/*"],
+      "@tools/*": ["src/tools/*"],
+      "@memory/*": ["src/memory/*"],
+      "@mcp/*": ["src/mcp/*"],
+      "@sponge/*": ["src/sponge/*"],
+      "@observability/*": ["src/observability/*"],
+      "@notification/*": ["src/notification/*"],
+      "@analytics/*": ["src/analytics/*"],
+      "@shared-types/*": ["src/types/*"],
       "@modelcontextprotocol/sdk/client": [
         "./node_modules/@modelcontextprotocol/sdk/dist/cjs/client/index"
       ],
@@ -96,12 +53,6 @@
       ]
     }
   },
-  "include": [
-    "src/**/*"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "web"
-  ]
+  "include": ["src/**/*", "jest.config.ts"],
+  "exclude": ["node_modules", "dist", "web"]
 }

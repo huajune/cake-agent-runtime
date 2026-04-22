@@ -35,11 +35,21 @@ describe('MemoryLifecycleService', () => {
     ]),
   };
 
+  const mockEnrichment = {
+    enrich: jest.fn(),
+  };
+
+  const mockMessageProcessing = {
+    updatePostProcessingStatus: jest.fn().mockResolvedValue(true),
+  };
+
   let service: MemoryLifecycleService;
 
   beforeEach(() => {
     jest.clearAllMocks();
     mockShortTerm.lastLoadError = null;
+    mockSettlement.shouldSettle.mockReturnValue(false);
+    mockSettlement.settle.mockResolvedValue(undefined);
     mockSessionService.getSessionState.mockResolvedValue({
       facts: null,
       lastCandidatePool: null,
@@ -47,6 +57,8 @@ describe('MemoryLifecycleService', () => {
       currentFocusJob: null,
       lastSessionActiveAt: null,
     });
+    mockEnrichment.enrich.mockImplementation(async (snapshot) => snapshot);
+    mockMessageProcessing.updatePostProcessingStatus.mockResolvedValue(true);
 
     service = new MemoryLifecycleService(
       mockShortTerm as never,
@@ -55,6 +67,8 @@ describe('MemoryLifecycleService', () => {
       mockSettlement as never,
       mockSessionService as never,
       mockSponge as never,
+      mockEnrichment as never,
+      mockMessageProcessing as never,
     );
   });
 
@@ -119,9 +133,7 @@ describe('MemoryLifecycleService', () => {
     });
     mockLongTerm.getProfile.mockResolvedValue(null);
 
-    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', [
-      { role: 'user', content: '来一份' },
-    ]);
+    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', '来一份');
 
     expect(mockSponge.fetchBrandList).toHaveBeenCalled();
     expect(ctx.sessionMemory).toBeNull();
@@ -153,9 +165,12 @@ describe('MemoryLifecycleService', () => {
     });
     mockLongTerm.getProfile.mockResolvedValue(null);
 
-    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', [
-      { role: 'user', content: '上海杨浦，我是男生，25岁，有健康证，想找兼职服务员，周末有空' },
-    ]);
+    const ctx = await service.onTurnStart(
+      'corp-1',
+      'user-1',
+      'sess-1',
+      '上海杨浦，我是男生，25岁，有健康证，想找兼职服务员，周末有空',
+    );
 
     expect(ctx.sessionMemory?.facts?.preferences.brands).toEqual(['来伊份']);
     expect(ctx.sessionMemory?.facts?.preferences.city).toBeNull();
@@ -169,7 +184,79 @@ describe('MemoryLifecycleService', () => {
     expect(ctx.highConfidenceFacts?.interview_info.age).toBe('25');
   });
 
-it('should not fallback to short-term history when current turn messages are absent', async () => {
+  it('should fallback to current user message when short-term window is empty', async () => {
+    mockShortTerm.getMessages.mockResolvedValue([]);
+    mockProcedural.get.mockResolvedValue({
+      currentStage: 'trust_building',
+      fromStage: null,
+      advancedAt: null,
+      reason: null,
+    });
+    mockLongTerm.getProfile.mockResolvedValue(null);
+
+    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', '救急消息');
+
+    expect(ctx.shortTerm.messageWindow).toEqual([{ role: 'user', content: '救急消息' }]);
+  });
+
+  it('should not apply fallback when short-term window is non-empty', async () => {
+    mockShortTerm.getMessages.mockResolvedValue([{ role: 'user', content: '历史消息' }]);
+    mockProcedural.get.mockResolvedValue({
+      currentStage: 'trust_building',
+      fromStage: null,
+      advancedAt: null,
+      reason: null,
+    });
+    mockLongTerm.getProfile.mockResolvedValue(null);
+
+    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', '救急消息');
+
+    expect(ctx.shortTerm.messageWindow).toEqual([{ role: 'user', content: '历史消息' }]);
+  });
+
+  it('should invoke enrichment when identity is provided', async () => {
+    mockShortTerm.getMessages.mockResolvedValue([{ role: 'user', content: 'hi' }]);
+    mockProcedural.get.mockResolvedValue({
+      currentStage: 'trust_building',
+      fromStage: null,
+      advancedAt: null,
+      reason: null,
+    });
+    mockLongTerm.getProfile.mockResolvedValue(null);
+    mockEnrichment.enrich.mockImplementation(async (snapshot) => ({
+      ...snapshot,
+      highConfidenceFacts: {
+        ...FALLBACK_EXTRACTION,
+        interview_info: { ...FALLBACK_EXTRACTION.interview_info, gender: '男' },
+        reasoning: 'enriched',
+      },
+    }));
+
+    const identity = { token: 't', imBotId: 'b', imContactId: 'c' };
+    const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1', undefined, {
+      enrichmentIdentity: identity,
+    });
+
+    expect(mockEnrichment.enrich).toHaveBeenCalledWith(expect.any(Object), identity);
+    expect(ctx.highConfidenceFacts?.interview_info.gender).toBe('男');
+  });
+
+  it('should skip enrichment when identity is not provided', async () => {
+    mockShortTerm.getMessages.mockResolvedValue([{ role: 'user', content: 'hi' }]);
+    mockProcedural.get.mockResolvedValue({
+      currentStage: 'trust_building',
+      fromStage: null,
+      advancedAt: null,
+      reason: null,
+    });
+    mockLongTerm.getProfile.mockResolvedValue(null);
+
+    await service.onTurnStart('corp-1', 'user-1', 'sess-1');
+
+    expect(mockEnrichment.enrich).not.toHaveBeenCalled();
+  });
+
+  it('should not fallback to short-term history when current turn messages are absent', async () => {
     mockShortTerm.getMessages.mockResolvedValue([{ role: 'user', content: '来一份' }]);
     mockProcedural.get.mockResolvedValue({
       currentStage: 'trust_building',
@@ -200,7 +287,7 @@ it('should not fallback to short-term history when current turn messages are abs
         corpId: 'corp-1',
         userId: 'user-1',
         sessionId: 'sess-1',
-        typedMessages: [
+        normalizedMessages: [
           { role: 'assistant', content: '杨浦这边有长白这家店。' },
           {
             role: 'user',
@@ -275,12 +362,98 @@ it('should not fallback to short-term history when current turn messages are abs
     ]);
   });
 
+  it('should persist running and final post-processing status when messageId is present', async () => {
+    await service.onTurnEnd(
+      {
+        corpId: 'corp-1',
+        userId: 'user-1',
+        sessionId: 'sess-1',
+        messageId: 'msg-1',
+        normalizedMessages: [{ role: 'user', content: '我想找长白附近的兼职' }],
+        candidatePool: [
+          {
+            jobId: 519709,
+            brandName: '奥乐齐',
+            jobName: '分拣打包',
+            storeName: '长白',
+            cityName: '上海',
+            regionName: '杨浦',
+            laborForm: '全职',
+            salaryDesc: '6200-9800 元/月',
+            jobCategoryName: '分拣员',
+          },
+        ],
+      },
+      '可以，我先帮你确认下长白这边的面试要求。',
+    );
+
+    expect(mockMessageProcessing.updatePostProcessingStatus).toHaveBeenNthCalledWith(
+      1,
+      'msg-1',
+      expect.objectContaining({
+        status: 'running',
+        steps: [],
+      }),
+    );
+    expect(mockMessageProcessing.updatePostProcessingStatus).toHaveBeenLastCalledWith(
+      'msg-1',
+      expect.objectContaining({
+        status: 'completed',
+        counts: expect.objectContaining({
+          total: expect.any(Number),
+          failed: 0,
+        }),
+        steps: expect.arrayContaining([
+          expect.objectContaining({ name: 'load_previous_state', status: 'success' }),
+          expect.objectContaining({ name: 'settlement', status: 'skipped' }),
+          expect.objectContaining({ name: 'save_candidate_pool', status: 'success' }),
+          expect.objectContaining({ name: 'store_activity', status: 'success' }),
+          expect.objectContaining({ name: 'project_assistant_turn', status: 'success' }),
+          expect.objectContaining({ name: 'extract_facts', status: 'success' }),
+        ]),
+      }),
+    );
+  });
+
+  it('should aggregate failed turn-end steps into completed_with_errors status', async () => {
+    mockSessionService.extractAndSave.mockRejectedValueOnce(new Error('extract failed'));
+
+    await service.onTurnEnd(
+      {
+        corpId: 'corp-1',
+        userId: 'user-1',
+        sessionId: 'sess-1',
+        messageId: 'msg-2',
+        normalizedMessages: [{ role: 'user', content: '继续看看' }],
+      },
+      '好的',
+    );
+
+    expect(mockMessageProcessing.updatePostProcessingStatus).toHaveBeenLastCalledWith(
+      'msg-2',
+      expect.objectContaining({
+        status: 'completed_with_errors',
+        counts: expect.objectContaining({
+          failed: 1,
+        }),
+        steps: expect.arrayContaining([
+          expect.objectContaining({
+            name: 'extract_facts',
+            status: 'failure',
+            success: false,
+            error: 'extract failed',
+          }),
+        ]),
+      }),
+    );
+  });
+
   it('should skip lifecycle work when there is no user message', async () => {
     await service.onTurnEnd({
       corpId: 'corp-1',
       userId: 'user-1',
       sessionId: 'sess-1',
-      typedMessages: [{ role: 'assistant', content: '你好' }],
+      normalizedMessages: [{ role: 'assistant', content: '你好' }],
     });
 
     expect(mockSessionService.getSessionState).not.toHaveBeenCalled();

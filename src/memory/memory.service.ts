@@ -4,13 +4,15 @@ import { LongTermService } from './services/long-term.service';
 import { SessionService } from './services/session.service';
 import {
   MemoryLifecycleService,
-  type MemoryTurnStartMessage,
   type MemoryLifecycleTurnContext,
 } from './services/memory-lifecycle.service';
+import type { CandidateIdentityHint } from './services/memory-enrichment.service';
 import type { AgentMemoryContext } from './types/memory-runtime.types';
 import type { MessageMetadata, SummaryData, UserProfile } from './types/long-term.types';
 import type { InvitedGroupRecord } from './types/session-facts.types';
 import type { ProceduralState } from './types/procedural.types';
+
+export type { CandidateIdentityHint } from './services/memory-enrichment.service';
 
 /** memory 模块对外 facade，只保留真实外部入口。 */
 @Injectable()
@@ -24,17 +26,22 @@ export class MemoryService {
     private readonly lifecycle: MemoryLifecycleService,
   ) {}
 
-  /** 回合开始时读取运行时记忆。 */
+  /**
+   * 回合开始时读取运行时记忆。
+   *
+   * @param currentUserMessage 本轮 user 最新文本；用于前置高置信识别 + 短期窗口空兜底
+   */
   async onTurnStart(
     corpId: string,
     userId: string,
     sessionId: string,
-    currentMessages?: MemoryTurnStartMessage[],
+    currentUserMessage?: string,
     options?: {
       includeShortTerm?: boolean;
+      enrichmentIdentity?: CandidateIdentityHint;
     },
   ): Promise<AgentMemoryContext> {
-    return await this.lifecycle.onTurnStart(corpId, userId, sessionId, currentMessages, options);
+    return await this.lifecycle.onTurnStart(corpId, userId, sessionId, currentUserMessage, options);
   }
 
   /** 回合结束时触发记忆收尾。 */

@@ -1,5 +1,6 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AgentRunnerService, type AgentRunResult } from '@agent/runner.service';
+import { CallerKind } from '@enums/agent.enum';
 import { LlmEvaluationService } from '@evaluation/llm-evaluation.service';
 import { type EvaluationDimensions } from '@evaluation/evaluation.types';
 import { ConversationParserService } from '@evaluation/conversation-parser.service';
@@ -360,6 +361,7 @@ export class ConversationTestService {
       ];
 
       loopResult = await this.runner.invoke({
+        callerKind: CallerKind.TEST_SUITE,
         messages: runnerMessages,
         userId,
         corpId: 'test',
@@ -385,6 +387,7 @@ export class ConversationTestService {
       totalTokens: 0,
     };
     const agentRequest = {
+      callerKind: CallerKind.TEST_SUITE,
       messages: [
         ...turn.history.map((m) => ({
           role: m.role,

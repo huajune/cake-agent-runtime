@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { LlmEvaluationService } from '@evaluation/llm-evaluation.service';
-import { CompletionService } from '@agent/completion.service';
+import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { SimilarityRating } from '@evaluation/evaluation.types';
 
 describe('LlmEvaluationService', () => {
@@ -8,11 +8,10 @@ describe('LlmEvaluationService', () => {
 
   const mockCompletion = {
     generateStructured: jest.fn(),
-    generateSimple: jest.fn(),
   };
 
   const makeCompletionResult = (summary: string, score: number) => ({
-    object: {
+    output: {
       summary,
       dimensions: {
         factualAccuracy: { score, reason: '事实一致' },
@@ -26,7 +25,7 @@ describe('LlmEvaluationService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [LlmEvaluationService, { provide: CompletionService, useValue: mockCompletion }],
+      providers: [LlmEvaluationService, { provide: LlmExecutorService, useValue: mockCompletion }],
     }).compile();
 
     service = module.get<LlmEvaluationService>(LlmEvaluationService);
@@ -87,7 +86,8 @@ describe('LlmEvaluationService', () => {
 
       expect(mockCompletion.generateStructured).toHaveBeenCalledWith(
         expect.objectContaining({
-          systemPrompt: expect.any(String),
+          system: expect.any(String),
+          role: expect.any(String),
           messages: [{ role: 'user', content: expect.any(String) }],
           outputName: 'LlmEvaluationResult',
         }),

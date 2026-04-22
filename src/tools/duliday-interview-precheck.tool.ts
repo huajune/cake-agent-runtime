@@ -433,8 +433,12 @@ function dedupeStrings(values: string[]): string[] {
 function normalizeGenderValue(value: string | null | undefined): string | null {
   const text = normalizePolicyText(value);
   if (!text) return null;
-  if (/(^|[^女])男/.test(text)) return '男';
-  if (/女/.test(text)) return '女';
+  const hasMale = /男/.test(text);
+  const hasStandaloneMale = /(^|[^女])男/.test(text);
+  const hasFemale = /女/.test(text);
+  if (hasMale && hasFemale) return null;
+  if (hasStandaloneMale) return '男';
+  if (hasFemale) return '女';
   return text;
 }
 

@@ -1,8 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { LanguageModel, generateText, streamText } from 'ai';
 import { RegistryService } from './registry.service';
 import { DEFAULT_RELIABLE_CONFIG, ErrorCategory, ReliableConfig } from './types';
-import type { AgentError } from '@shared-types/agent-error.types';
 
 /**
  * 容错模型服务 — Layer 2: retry + fallback + 模型降级
@@ -20,105 +18,12 @@ export class ReliableService {
 
   constructor(private readonly registry: RegistryService) {}
 
-  /**
-   * 带容错的 generateText 调用
-   *
-   * @param modelId - 主模型 ID (provider/model)
-   * @param fallbacks - 降级模型 ID 列表
-   * @param params - generateText 参数（不含 model）
-   * @param config - 容错配置
-   */
-  async generateText(
-    modelId: string,
-    params: Omit<Parameters<typeof generateText>[0], 'model'>,
-    fallbacks?: string[],
-    config?: Partial<ReliableConfig>,
-  ): Promise<Awaited<ReturnType<typeof generateText>>> {
-    const cfg = { ...DEFAULT_RELIABLE_CONFIG, ...config };
-    const modelChain = [modelId, ...(fallbacks ?? [])];
-    const attempts: string[] = [];
-    let lastRawError: unknown = null;
-    let lastCategory: ErrorCategory = 'retryable';
-
-    for (const currentModelId of modelChain) {
-      let model: LanguageModel;
-      try {
-        model = this.registry.resolve(currentModelId);
-      } catch {
-        attempts.push(`${currentModelId}: provider未注册`);
-        continue;
-      }
-
-      for (let attempt = 1; attempt <= cfg.maxRetries; attempt++) {
-        try {
-          return await generateText({
-            ...params,
-            model,
-            maxRetries: 0, // 禁用 AI SDK 内置重试（默认 2 会导致叠加）；设 0 后只调 1 次，失败抛原始错误供 classifyError 精确分类
-          } as Parameters<typeof generateText>[0]);
-        } catch (err) {
-          const category = this.classifyError(err);
-          lastRawError = err;
-          lastCategory = category;
-          const msg = err instanceof Error ? err.message : String(err);
-          attempts.push(
-            `${currentModelId} attempt ${attempt}/${cfg.maxRetries}: ${category}; ${msg}`,
-          );
-
-          if (category === 'non_retryable') break;
-
-          if (attempt < cfg.maxRetries) {
-            const backoff = this.calculateBackoff(attempt, cfg, err);
-            this.logger.warn(
-              `${currentModelId} 重试 ${attempt}/${cfg.maxRetries}, 等待 ${backoff}ms`,
-            );
-            await this.sleep(backoff);
-          }
-        }
-      }
-    }
-
-    const trail = attempts.join('\n  ');
-    const error = new Error(`所有模型均失败:\n  ${trail}`) as AgentError;
-    error.isAgentError = true;
-    error.agentMeta = {
-      ...(this.getExistingAgentMeta(lastRawError) ?? {}),
-      modelsAttempted: modelChain,
-      totalAttempts: attempts.length,
-      lastCategory,
-    };
-    error.apiKey = this.getApiKey(lastRawError);
-    throw error;
-  }
-
-  /**
-   * 带容错的 streamText 调用
-   * 流式无法重试中间状态，仅做模型降级（不做重试）
-   */
-  streamText(
-    modelId: string,
-    params: Omit<Parameters<typeof streamText>[0], 'model'>,
-    fallbacks?: string[],
-  ): ReturnType<typeof streamText> {
-    const model = this.resolveWithFallback(modelId, fallbacks);
-    return streamText({ ...params, model } as Parameters<typeof streamText>[0]);
-  }
-
-  /** 解析模型，主模型失败则尝试 fallback（仅解析阶段） */
-  resolveWithFallback(modelId: string, fallbacks?: string[]): LanguageModel {
+  isModelAvailable(modelId: string): boolean {
     try {
-      return this.registry.resolve(modelId);
+      this.registry.resolve(modelId);
+      return true;
     } catch {
-      if (!fallbacks?.length) throw new Error(`模型解析失败: ${modelId}, 无 fallback`);
-      for (const fb of fallbacks) {
-        try {
-          this.logger.warn(`${modelId} 解析失败, 降级到 ${fb}`);
-          return this.registry.resolve(fb);
-        } catch {
-          continue;
-        }
-      }
-      throw new Error(`模型解析失败: ${modelId}, 所有 fallback 均失败`);
+      return false;
     }
   }
 
@@ -157,6 +62,20 @@ export class ReliableService {
     return 'retryable';
   }
 
+  getRetryConfig(config?: Partial<ReliableConfig>): ReliableConfig {
+    return { ...DEFAULT_RELIABLE_CONFIG, ...config };
+  }
+
+  shouldRetry(category: ErrorCategory, attempt: number, config?: Partial<ReliableConfig>): boolean {
+    const cfg = this.getRetryConfig(config);
+    if (category === 'non_retryable') return false;
+    return attempt < cfg.maxRetries;
+  }
+
+  getBackoffMs(attempt: number, err: unknown, config?: Partial<ReliableConfig>): number {
+    return this.calculateBackoff(attempt, this.getRetryConfig(config), err);
+  }
+
   private calculateBackoff(attempt: number, cfg: ReliableConfig, err: unknown): number {
     // 检查 Retry-After header（从错误信息中解析）
     if (err instanceof Error) {
@@ -174,18 +93,5 @@ export class ReliableService {
 
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
-  private getExistingAgentMeta(error: unknown): AgentError['agentMeta'] | undefined {
-    if (typeof error !== 'object' || error === null) return undefined;
-    const meta = (error as AgentError).agentMeta;
-    return meta ? { ...meta } : undefined;
-  }
-
-  private getApiKey(error: unknown): string | undefined {
-    if (typeof error !== 'object' || error === null) return undefined;
-    return typeof (error as AgentError).apiKey === 'string'
-      ? (error as AgentError).apiKey
-      : undefined;
   }
 }

@@ -2,7 +2,7 @@
 
 > Cake Agent Runtime - 技术文档导航
 
-**最后更新**：2026-03-23
+**最后更新**：2026-04-22
 
 ---
 
@@ -13,6 +13,7 @@ docs/
 ├── README.md              # 本文档（文档索引）
 ├── architecture/          # 架构设计文档
 │   ├── agent-runtime-architecture.md
+│   ├── llm-executor-dependency-diagram.md
 │   ├── memory-system-architecture.md
 │   ├── message-service-architecture.md
 │   ├── monitoring-system-architecture.md
@@ -50,6 +51,12 @@ docs/
   - 三层 Provider 架构（注册 → 容错 → 路由）
   - Context 动态 Prompt 组装、工具系统、MCP 扩展
   - **更新日期**：2026-03-23
+
+- **[LLM Executor 调用关系图](architecture/llm-executor-dependency-diagram.md)** 🆕
+  - 聚焦 `agent / memory / llm / providers` 的调用边界
+  - 解释为什么 memory 也会调用 LLM，以及它与 agent 的关系
+  - 包含一张分层依赖图和一张典型回合时序图
+  - **更新日期**：2026-04-22
 
 - **[Agent 记忆系统架构](architecture/memory-system-architecture.md)**
   - 四层记忆模型：短期、会话事实、程序性、长期档案（基于 CoALA 框架）
@@ -102,10 +109,10 @@ docs/
 
 **资源使用概览**：
 
-| 服务 | 免费额度 | 当前使用率 |
-|------|---------|-----------|
-| Upstash Redis | 10K 命令/天 | ~15% |
-| Supabase | 500 MB | < 2% |
+| 服务          | 免费额度    | 当前使用率 |
+| ------------- | ----------- | ---------- |
+| Upstash Redis | 10K 命令/天 | ~15%       |
+| Supabase      | 500 MB      | < 2%       |
 
 ---
 

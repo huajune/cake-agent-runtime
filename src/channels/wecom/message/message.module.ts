@@ -1,6 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
+import { LlmModule } from '@/llm/llm.module';
 import { MessageIngressController } from './ingress/message-ingress.controller';
 import { MessageOpsController } from './ingress/message-ops.controller';
 import { MessageService } from './message.service';
@@ -53,6 +54,7 @@ import {
 @Module({
   imports: [
     ConfigModule,
+    LlmModule,
     forwardRef(() => AgentModule),
     MessageSenderModule,
     BizMessageModule,

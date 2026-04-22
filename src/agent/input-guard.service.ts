@@ -85,15 +85,34 @@ export class InputGuardService {
   }
 
   /**
-   * 检测消息列表中的所有 user 消息
+   * 检测消息列表中的所有 user 消息。
+   * content 接受 string 或 AI SDK 的 content parts 数组（自动抽出 text parts 拼接）。
    */
-  detectMessages(messages: { role: string; content: string }[]): GuardResult {
+  detectMessages(messages: { role: string; content: unknown }[]): GuardResult {
     for (const msg of messages) {
       if (msg.role !== 'user') continue;
-      const result = this.detect(msg.content);
+      const text = this.extractText(msg.content);
+      const result = this.detect(text);
       if (!result.safe) return result;
     }
     return { safe: true };
+  }
+
+  private extractText(content: unknown): string {
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+      return content
+        .filter(
+          (part): part is { type: 'text'; text: string } =>
+            part != null &&
+            typeof part === 'object' &&
+            (part as { type?: unknown }).type === 'text' &&
+            typeof (part as { text?: unknown }).text === 'string',
+        )
+        .map((part) => part.text)
+        .join(' ');
+    }
+    return '';
   }
 
   /**

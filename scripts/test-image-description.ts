@@ -8,8 +8,8 @@
 
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
-import { CompletionService } from '../src/agent/completion.service';
-import { ModelRole } from '../src/providers/types';
+import { LlmExecutorService } from '../src/llm/llm-executor.service';
+import { ModelRole } from '../src/llm/llm.types';
 
 const SYSTEM_PROMPT = [
   '你是招聘场景的图片分析助手。候选人发来的图片大多是招聘平台截图。',
@@ -30,14 +30,14 @@ async function main() {
   console.log(`\n🖼️  测试图片: ${imageUrl}\n`);
 
   const app = await NestFactory.createApplicationContext(AppModule, { logger: ['error', 'warn'] });
-  const completionService = app.get(CompletionService);
+  const llm = app.get(LlmExecutorService);
 
   try {
     console.log(`⏳ 调用 Vision 模型 (${ModelRole.Vision})...\n`);
     const start = Date.now();
 
-    const result = await completionService.generate({
-      systemPrompt: SYSTEM_PROMPT,
+    const result = await llm.generate({
+      system: SYSTEM_PROMPT,
       messages: [
         {
           role: 'user',
@@ -55,7 +55,9 @@ async function main() {
 
     console.log('✅ 描述结果:');
     console.log(`   ${result.text.trim()}\n`);
-    console.log(`📊 Token 消耗: input=${result.usage.inputTokens}, output=${result.usage.outputTokens}, total=${result.usage.totalTokens}`);
+    console.log(
+      `📊 Token 消耗: input=${result.usage.inputTokens}, output=${result.usage.outputTokens}, total=${result.usage.totalTokens}`,
+    );
     console.log(`⏱️  耗时: ${elapsed}ms\n`);
   } catch (error) {
     console.error('❌ 失败:', error.message);

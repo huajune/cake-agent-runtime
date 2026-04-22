@@ -41,6 +41,7 @@ export class MessageProcessingRepository extends BaseRepository {
     'agent_steps',
     'anomaly_flags',
     'memory_snapshot',
+    'post_processing_status',
     'token_usage',
     'is_fallback',
     'fallback_success',
@@ -526,6 +527,34 @@ export class MessageProcessingRepository extends BaseRepository {
     }
   }
 
+  async updatePostProcessingStatus(
+    messageId: string,
+    status: MessageProcessingRecordInput['postProcessingStatus'],
+  ): Promise<boolean> {
+    if (!this.isAvailable()) {
+      return false;
+    }
+
+    try {
+      const { error } = await this.getClient()
+        .from(this.tableName)
+        .update({
+          post_processing_status: status,
+        })
+        .eq('message_id', messageId);
+
+      if (error) {
+        this.logger.error(`[消息处理记录] 更新后处理状态失败 [${messageId}]:`, error);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      this.logger.error(`[消息处理记录] 更新后处理状态异常 [${messageId}]:`, error);
+      return false;
+    }
+  }
+
   /**
    * 清空所有消息处理记录（危险操作）
    */
@@ -581,6 +610,7 @@ export class MessageProcessingRepository extends BaseRepository {
       agent_steps: record.agentSteps,
       anomaly_flags: record.anomalyFlags,
       memory_snapshot: record.memorySnapshot,
+      post_processing_status: record.postProcessingStatus,
     };
   }
 
@@ -621,6 +651,8 @@ export class MessageProcessingRepository extends BaseRepository {
       agentSteps: record.agent_steps as MessageProcessingRecordInput['agentSteps'],
       anomalyFlags: record.anomaly_flags as MessageProcessingRecordInput['anomalyFlags'],
       memorySnapshot: record.memory_snapshot as MessageProcessingRecordInput['memorySnapshot'],
+      postProcessingStatus:
+        record.post_processing_status as MessageProcessingRecordInput['postProcessingStatus'],
     };
   }
 

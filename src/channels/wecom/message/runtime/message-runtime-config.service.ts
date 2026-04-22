@@ -14,7 +14,6 @@ export interface MessageTypingConfig {
 
 interface WecomChatSelection {
   overrideModelId?: string;
-  effectiveModelId: string;
   thinkingMode: AgentThinkingMode;
   thinking: AgentThinkingConfig;
 }
@@ -131,13 +130,10 @@ export class MessageRuntimeConfigService implements OnModuleInit {
   async resolveWecomChatModelSelection(): Promise<WecomChatSelection> {
     await this.syncSnapshot(true);
     const overrideModelId = this.overrideModelId?.trim() || undefined;
-    const effectiveModelId =
-      overrideModelId ?? this.configService.get<string>('AGENT_CHAT_MODEL') ?? '';
     const thinkingMode = this.wecomThinkingMode;
 
     return {
       overrideModelId,
-      effectiveModelId,
       thinkingMode,
       thinking:
         thinkingMode === 'deep'

@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Body, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { Public } from '@infra/server/response/decorators/api-response.decorator';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
+import { CallerKind } from '@enums/agent.enum';
 import { AgentRunnerService } from './runner.service';
 import { RegistryService } from '@providers/registry.service';
 import { AgentHealthService } from './agent-health.service';
@@ -55,11 +56,13 @@ export class AgentController {
 
     try {
       const result = await this.runner.invoke({
+        callerKind: CallerKind.DEBUG,
         messages: [{ role: 'user', content: body.message }],
         userId: body.userId || 'debug-user',
         corpId: 'debug',
         sessionId,
         scenario,
+        strategySource: 'testing',
       });
 
       return {

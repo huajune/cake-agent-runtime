@@ -3,7 +3,11 @@ import type {
   AgentStepDetail,
   AgentToolCall,
 } from '@shared-types/agent-telemetry.types';
-import type { AlertErrorType, AnomalyFlag } from '@shared-types/tracking.types';
+import type {
+  AlertErrorType,
+  AnomalyFlag,
+  PostProcessingStatus,
+} from '@shared-types/tracking.types';
 
 /**
  * 聊天消息输入格式
@@ -110,4 +114,6 @@ export interface MessageProcessingRecordInput {
   anomalyFlags?: AnomalyFlag[];
   /** 本轮触发时的记忆上下文快照 */
   memorySnapshot?: AgentMemorySnapshot;
+  /** turn-end 后处理状态 */
+  postProcessingStatus?: PostProcessingStatus;
 }

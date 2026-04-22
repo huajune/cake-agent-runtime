@@ -14,7 +14,7 @@ export interface NotificationStrategy {
   /** 群标签前缀，用于匹配目标群（如 '抢单群'、'兼职群'、'店长群'） */
   readonly tagPrefix: string;
 
-  /** 是否需要 AI 生成（false = 纯模板，true = 需要调用 CompletionService） */
+  /** 是否需要 AI 生成（false = 纯模板，true = 需要调用共享 LLM 执行器） */
   readonly needsAI: boolean;
 
   /** 整轮任务开始前的一次性准备（可选），例如刷新外部数据源 */

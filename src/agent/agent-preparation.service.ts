@@ -1,21 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { ModelMessage, ToolSet } from 'ai';
-import { RouterService } from '@providers/router.service';
-import { ModelRole, supportsVision } from '@providers/types';
+import { CallerKind } from '@/enums/agent.enum';
 import { ToolRegistryService } from '@tools/tool-registry.service';
-import { CandidateProfileEnrichmentService } from '@biz/user/services/candidate-profile-enrichment.service';
 import { RecruitmentCaseRecord } from '@biz/recruitment-case/entities/recruitment-case.entity';
 import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
 import { RecruitmentStageResolverService } from '@biz/recruitment-case/services/recruitment-stage-resolver.service';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { formatExtractionFactLines } from '@memory/formatters/fact-lines.formatter';
-import { MemoryService } from '@memory/memory.service';
+import { MemoryService, type CandidateIdentityHint } from '@memory/memory.service';
 import { MemoryConfig } from '@memory/memory.config';
 import type { UserProfile } from '@memory/types/long-term.types';
 import {
-  FALLBACK_EXTRACTION,
-  type EntityExtractionResult,
   type RecommendedJobSummary,
   type WeworkSessionState,
 } from '@memory/types/session-facts.types';
@@ -29,11 +24,8 @@ import {
 
 export interface PreparedAgentContext {
   finalPrompt: string;
-  typedMessages: ModelMessage[];
+  normalizedMessages: ModelMessage[];
   memoryLoadWarning?: string;
-  chatModel: ReturnType<RouterService['resolveByRole']>;
-  chatModelId: string;
-  chatFallbacks?: string[];
   tools: ToolSet;
   corpId: string;
   userId: string;
@@ -54,14 +46,11 @@ export class AgentPreparationService {
   private readonly logger = new Logger(AgentPreparationService.name);
 
   constructor(
-    private readonly configService: ConfigService,
-    private readonly router: RouterService,
     private readonly toolRegistry: ToolRegistryService,
     private readonly recruitmentCaseService: RecruitmentCaseService,
     private readonly recruitmentStageResolver: RecruitmentStageResolverService,
     private readonly memoryService: MemoryService,
     private readonly memoryConfig: MemoryConfig,
-    private readonly candidateProfileEnrichmentService: CandidateProfileEnrichmentService,
     private readonly context: ContextService,
     private readonly inputGuard: InputGuardService,
   ) {}
@@ -69,194 +58,89 @@ export class AgentPreparationService {
   async prepare(
     params: AgentInvokeParams,
     mode: 'invoke' | 'stream',
+    options?: { enableVision?: boolean },
   ): Promise<PreparedAgentContext> {
     const {
-      messages: passedMessages,
-      userMessage,
+      callerKind,
       userId,
       corpId,
       sessionId,
       scenario = 'candidate-consultation',
       maxSteps = 5,
-      imageUrls,
-      imageMessageIds,
-      botUserId,
-      externalUserId,
-      botImId,
-      token,
-      imContactId,
-      imRoomId,
-      apiType,
-      modelId: overrideModelId,
     } = params;
 
     this.logger.log(
-      `Agent ${mode}: userId=${userId}, corpId=${corpId}, sessionId=${sessionId}, scenario=${scenario}`,
+      `Agent ${mode}: callerKind=${callerKind}, userId=${userId}, corpId=${corpId}, sessionId=${sessionId}, scenario=${scenario}`,
     );
 
-    const trimmedPassedMessages =
-      userMessage === undefined ? this.trimMessages(passedMessages ?? []) : undefined;
-    const currentTurnMessages = this.pickCurrentTurnMessages(userMessage, trimmedPassedMessages);
-    const shouldLoadShortTerm = userMessage !== undefined || trimmedPassedMessages === undefined;
+    // 入参归一化：只认 messages[]，本轮的 user 文本是最后一条 user content。
+    const truncatedMessages = this.truncateToCharBudget(params.messages);
+    const currentUserMessage = this.latestUserContent(truncatedMessages);
 
-    // 1. 读取本轮运行时记忆。
-    const memory = await this.memoryService.onTurnStart(
-      corpId,
-      userId,
-      sessionId,
-      currentTurnMessages,
-      {
-        includeShortTerm: shouldLoadShortTerm,
-      },
-    );
-    const memoryLoadWarning = memory._warnings?.join('; ') || undefined;
-
-    if (scenario === 'candidate-consultation') {
-      await this.supplementGenderFromCustomerDetailIfNeeded(memory, {
+    // 并行拉取本轮依赖：四类记忆快照 + 仍在跟进的招聘 case。
+    const [memory, activeRecruitmentCase] = await Promise.all([
+      this.memoryService.onTurnStart(corpId, userId, sessionId, currentUserMessage, {
+        includeShortTerm: callerKind === CallerKind.WECOM,
+        enrichmentIdentity: this.buildEnrichmentIdentity(params),
+      }),
+      this.recruitmentCaseService.getActiveOnboardFollowupCase({
         corpId,
-        userId,
-        token,
-        imBotId: botImId,
-        imContactId,
-        wecomUserId: botUserId,
-        externalUserId,
-      });
-    }
+        chatId: sessionId,
+      }),
+    ]);
 
-    const activeRecruitmentCase = await this.recruitmentCaseService.getActiveOnboardFollowupCase({
-      corpId,
-      chatId: sessionId,
+    // 对话消息归一化为 AI SDK ModelMessage[]（含多模态图片注入）。
+    const normalizedMessages = this.normalizeConversation({
+      callerKind,
+      memoryWindow: memory.shortTerm.messageWindow,
+      passedMessages: truncatedMessages,
+      enableVision: options?.enableVision ?? false,
+      imageUrls: params.imageUrls,
+      imageMessageIds: params.imageMessageIds,
     });
 
-    // 2. 决定本轮消息来源。
-    //    当 userMessage 存在但短期记忆为空时（DB/缓存瞬时故障），用 userMessage 兜底，
-    //    避免 messages 为空导致 AI SDK 抛出 "Invalid prompt: messages must not be empty"。
-    let messages: AgentInputMessage[];
-    if (userMessage !== undefined) {
-      const shortTermMessages = memory.shortTerm.messageWindow;
-      if (shortTermMessages.length > 0) {
-        messages = shortTermMessages;
-      } else {
-        const trimmed = userMessage.trim();
-        if (trimmed) {
-          this.logger.warn(
-            `短期记忆为空，使用 userMessage 兜底: sessionId=${sessionId}, len=${trimmed.length}`,
-          );
-          messages = [{ role: 'user', content: trimmed }];
-        } else {
-          messages = [];
-        }
-      }
-    } else {
-      messages = trimmedPassedMessages ?? [];
-    }
+    // 输入安全检查：扫 prompt injection → 异步告警 → 返回需要追加到 system prompt 的 guard suffix。
+    const guardSuffix = this.applyInputGuard(normalizedMessages, currentUserMessage, userId);
 
-    // 3. 安全检查，并统一转换成 ModelMessage。
-    const guardResult = this.inputGuard.detectMessages(messages);
-    const trimmedOverrideModelId = overrideModelId?.trim();
-    const chatModel = trimmedOverrideModelId
-      ? this.router.resolve(trimmedOverrideModelId)
-      : this.router.resolveByRole(ModelRole.Chat);
-    const chatModelId =
-      trimmedOverrideModelId ?? this.configService.get<string>('AGENT_CHAT_MODEL') ?? '';
-    const chatFallbacks = trimmedOverrideModelId
-      ? undefined
-      : this.router.getFallbacks(ModelRole.Chat);
-    if (trimmedOverrideModelId) {
-      this.logger.log(`使用用户指定模型: ${trimmedOverrideModelId}`);
-    }
-    const typedMessages = this.toModelMessages(messages, supportsVision(chatModelId));
+    // Compose 的输入：memoryBlock 渲染 + 当前阶段推导（procedural > case > 当前用户输入）
+    const memoryBlock = this.buildMemoryBlock(memory, activeRecruitmentCase);
+    const stageFromResolver = this.recruitmentStageResolver.resolve({
+      proceduralStage: memory.procedural.currentStage ?? undefined,
+      recruitmentCase: activeRecruitmentCase,
+      currentMessageContent: currentUserMessage ?? '',
+    });
 
-    // 4. 先把长期记忆和会话记忆渲染成统一记忆块。
-    //    本轮高置信 / 待确认线索的 partition + 渲染由 TurnHintsSection 负责，这里只传原始数据。
-    const profileBlock = this.formatProfile(memory.longTerm.profile);
-    const factsBlock = memory.sessionMemory ? this.formatSessionFacts(memory.sessionMemory) : '';
-    const recruitmentCaseBlock = this.formatRecruitmentCase(activeRecruitmentCase);
-    const memoryBlock = profileBlock + factsBlock + recruitmentCaseBlock;
-
-    // 5. 读取当前阶段，并按场景组装 prompt。
-    const resolvedStage =
-      this.recruitmentStageResolver.resolve({
-        proceduralStage: memory.procedural.currentStage ?? undefined,
-        recruitmentCase: activeRecruitmentCase,
-        currentMessageContent: this.pickLatestUserContent(messages) ?? userMessage ?? '',
-      }) ?? undefined;
+    // System prompt 组装（委托 ContextService.compose）
     const { systemPrompt, stageGoals, thresholds } = await this.context.compose({
       scenario,
-      currentStage: resolvedStage,
+      currentStage: stageFromResolver ?? undefined,
       memoryBlock,
       sessionFacts: memory.sessionMemory?.facts ?? null,
       highConfidenceFacts: memory.highConfidenceFacts,
       strategySource: params.strategySource,
     });
-    const entryStage = resolvedStage ?? Object.keys(stageGoals)[0] ?? null;
 
-    const turnState: PreparedAgentContext['turnState'] = {
-      candidatePool: null,
-    };
+    // 本轮入口阶段：resolver 能给值就用，否则兜底到策略里第一个 stage（对应"新会话的起点"）
+    const entryStage = stageFromResolver ?? Object.keys(stageGoals)[0] ?? null;
 
-    // 6. 以 compose 的顺序结果作为最终 system prompt 基底。
-    let finalPrompt = systemPrompt;
-
-    // 7. 命中注入风险时，追加 guard suffix，并异步告警。
-    if (!guardResult.safe) {
-      finalPrompt += InputGuardService.GUARD_SUFFIX;
-      const lastUserMsg = messages.filter((m) => m.role === 'user').pop();
-      this.inputGuard
-        .alertInjection(userId, guardResult.reason!, lastUserMsg?.content ?? '')
-        .catch(() => {});
-    }
-
-    // 8. Vision 模型下，把顶层图片参数挂到最后一条 user message。
-    if (imageUrls?.length && supportsVision(chatModelId)) {
-      this.injectImageParts(typedMessages, imageUrls, imageMessageIds);
-    }
-
-    // 9. 构建工具上下文，并暂存本轮候选池。
-    //    这里同时把 entryStage 和合法阶段列表交给 advance_stage。
-    //    工具层只负责“提交阶段变更”，真正的阶段来源仍然是本轮入口阶段 + 当前策略配置。
-    const toolContext: ToolBuildContext = {
-      userId,
-      corpId,
-      sessionId,
-      messages: typedMessages,
-      thresholds,
-      imageMessageIds,
-      currentStage: entryStage,
-      availableStages: Object.keys(stageGoals),
+    // 工具上下文 + 观测快照（都消费 entryStage）。
+    const turnState: PreparedAgentContext['turnState'] = { candidatePool: null };
+    const toolContext = this.buildToolContext({
+      params,
+      memory,
+      normalizedMessages,
+      entryStage,
       stageGoals,
-      onJobsFetched: async (jobs) => {
-        turnState.candidatePool = jobs as RecommendedJobSummary[];
-      },
-      botUserId,
-      contactName: params.contactName,
-      botImId,
-      strategySource:
-        params.strategySource ??
-        (corpId === 'test' || corpId === 'debug' ? ('testing' as const) : undefined),
-      profile: memory.longTerm.profile,
-      sessionFacts: memory.sessionMemory?.facts ?? null,
-      currentFocusJob: memory.sessionMemory?.currentFocusJob ?? null,
-      token,
-      imContactId,
-      imRoomId,
-      chatId: sessionId,
-      apiType,
-    };
-
-    // 10. 按场景挑出本轮允许使用的工具。
+      thresholds,
+      turnState,
+    });
     const tools = this.toolRegistry.buildForScenario(scenario, toolContext) as ToolSet;
-
-    // 11. 记忆快照（供 observability 落入 message_processing_records.memory_snapshot）。
     const memorySnapshot = this.buildMemorySnapshot(memory, entryStage);
 
     return {
-      finalPrompt,
-      typedMessages,
-      memoryLoadWarning,
-      chatModel,
-      chatModelId,
-      chatFallbacks,
+      finalPrompt: systemPrompt + guardSuffix,
+      normalizedMessages,
+      memoryLoadWarning: memory._warnings?.join('; '),
       tools,
       corpId,
       userId,
@@ -265,6 +149,131 @@ export class AgentPreparationService {
       entryStage,
       turnState,
       memorySnapshot,
+    };
+  }
+
+  /**
+   * 取最后一条 user 消息的文本内容。入参已是 AgentInputMessage[]（content 纯字符串）。
+   */
+  private latestUserContent(messages: AgentInputMessage[]): string | undefined {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (messages[i].role !== 'user') continue;
+      const content = messages[i].content?.trim();
+      if (content) return content;
+    }
+    return undefined;
+  }
+
+  /**
+   * 装配候选人画像富化所需的身份标识。
+   * 仅在 candidate-consultation 场景 + 有 token 时触发外部补全。
+   */
+  private buildEnrichmentIdentity(params: AgentInvokeParams): CandidateIdentityHint | undefined {
+    const scenario = params.scenario ?? 'candidate-consultation';
+    if (scenario !== 'candidate-consultation' || !params.token) return undefined;
+    return {
+      token: params.token,
+      imBotId: params.botImId,
+      imContactId: params.imContactId,
+      wecomUserId: params.botUserId,
+      externalUserId: params.externalUserId,
+    };
+  }
+
+  /**
+   * 把本轮对话归一化为 AI SDK 的 ModelMessage[]：
+   *   1. 按 callerKind 选定消息源（WECOM 用 memory 历史，其他用调用方直传的）
+   *   2. 转成 ModelMessage
+   *   3. 按需注入顶层图片 parts（多模态 vision）
+   */
+  private normalizeConversation(input: {
+    callerKind: CallerKind;
+    memoryWindow: AgentInputMessage[];
+    passedMessages: AgentInputMessage[];
+    enableVision: boolean;
+    imageUrls?: string[];
+    imageMessageIds?: string[];
+  }): ModelMessage[] {
+    const source =
+      input.callerKind === CallerKind.WECOM ? input.memoryWindow : input.passedMessages;
+    const normalized = this.toModelMessages(source, input.enableVision);
+    if (input.imageUrls?.length && input.enableVision) {
+      this.injectImageParts(normalized, input.imageUrls, input.imageMessageIds);
+    }
+    return normalized;
+  }
+
+  /**
+   * 输入安全检查闭环：扫描 prompt injection → 异步告警 → 返回需要追加到 system prompt 的防护 suffix。
+   * 命中注入时返回 GUARD_SUFFIX，否则返回空字符串。
+   */
+  private applyInputGuard(
+    normalizedMessages: ModelMessage[],
+    currentUserMessage: string | undefined,
+    userId: string,
+  ): string {
+    const guardResult = this.inputGuard.detectMessages(normalizedMessages);
+    if (guardResult.safe) return '';
+    this.inputGuard
+      .alertInjection(userId, guardResult.reason!, currentUserMessage ?? '')
+      .catch(() => {});
+    return InputGuardService.GUARD_SUFFIX;
+  }
+
+  /**
+   * 把本轮相关记忆渲染成 ContextService.compose 能直接消费的 memoryBlock 字符串。
+   */
+  private buildMemoryBlock(
+    memory: Awaited<ReturnType<MemoryService['onTurnStart']>>,
+    activeRecruitmentCase: RecruitmentCaseRecord | null,
+  ): string {
+    return (
+      this.formatProfile(memory.longTerm.profile) +
+      (memory.sessionMemory ? this.formatSessionFacts(memory.sessionMemory) : '') +
+      this.formatRecruitmentCase(activeRecruitmentCase)
+    );
+  }
+
+  /**
+   * 组装工具上下文。entryStage / availableStages 交给 advance_stage 使用；
+   * onJobsFetched 回调把本轮候选池暂存到 turnState，交给 onTurnEnd 落盘。
+   */
+  private buildToolContext(input: {
+    params: AgentInvokeParams;
+    memory: Awaited<ReturnType<MemoryService['onTurnStart']>>;
+    normalizedMessages: ModelMessage[];
+    entryStage: string | null;
+    stageGoals: Awaited<ReturnType<ContextService['compose']>>['stageGoals'];
+    thresholds: Awaited<ReturnType<ContextService['compose']>>['thresholds'];
+    turnState: PreparedAgentContext['turnState'];
+  }): ToolBuildContext {
+    const { params, memory, normalizedMessages, entryStage, stageGoals, thresholds, turnState } =
+      input;
+    return {
+      userId: params.userId,
+      corpId: params.corpId,
+      sessionId: params.sessionId,
+      messages: normalizedMessages,
+      thresholds,
+      imageMessageIds: params.imageMessageIds,
+      currentStage: entryStage,
+      availableStages: Object.keys(stageGoals),
+      stageGoals,
+      onJobsFetched: async (jobs) => {
+        turnState.candidatePool = jobs as RecommendedJobSummary[];
+      },
+      botUserId: params.botUserId,
+      contactName: params.contactName,
+      botImId: params.botImId,
+      strategySource: params.strategySource,
+      profile: memory.longTerm.profile,
+      sessionFacts: memory.sessionMemory?.facts ?? null,
+      currentFocusJob: memory.sessionMemory?.currentFocusJob ?? null,
+      token: params.token,
+      imContactId: params.imContactId,
+      imRoomId: params.imRoomId,
+      chatId: params.sessionId,
+      apiType: params.apiType,
     };
   }
 
@@ -547,8 +556,11 @@ export class AgentPreparationService {
     });
   }
 
-  /** 按字符上限裁剪外部传入的消息。 */
-  private trimMessages(messages: AgentInputMessage[]): AgentInputMessage[] {
+  /**
+   * 按字符预算裁剪消息窗口：总字符数超限时，从最早的消息开始丢弃，保留最新的若干条，
+   * 直到剩余消息总字符数 ≤ sessionWindowMaxChars。
+   */
+  private truncateToCharBudget(messages: AgentInputMessage[]): AgentInputMessage[] {
     const maxChars = this.memoryConfig.sessionWindowMaxChars;
     const totalChars = messages.reduce((sum, m) => sum + (m.content?.length ?? 0), 0);
     if (totalChars <= maxChars) return messages;
@@ -566,133 +578,5 @@ export class AgentPreparationService {
 
     this.logger.warn(`保留最近 ${kept.length}/${messages.length} 条消息，共 ${charCount} 字符`);
     return kept;
-  }
-
-  /** 只取本轮最新的 user 输入，供前置高置信识别使用。 */
-  private pickCurrentTurnMessages(
-    userMessage?: string,
-    messages?: AgentInputMessage[],
-  ): AgentInputMessage[] | undefined {
-    if (userMessage !== undefined) {
-      const content = userMessage.trim();
-      return content ? [{ role: 'user', content }] : undefined;
-    }
-
-    if (!messages?.length) return undefined;
-
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role !== 'user') continue;
-      const content = this.extractTextFromContent(messages[i].content).trim();
-      return content ? [{ role: 'user', content }] : undefined;
-    }
-
-    return undefined;
-  }
-
-  private pickLatestUserContent(messages: AgentInputMessage[]): string | null {
-    for (let i = messages.length - 1; i >= 0; i -= 1) {
-      if (messages[i].role !== 'user') continue;
-      const content = this.extractTextFromContent(messages[i].content).trim();
-      if (content) return content;
-    }
-
-    return null;
-  }
-
-  private async supplementGenderFromCustomerDetailIfNeeded(
-    memory: Awaited<ReturnType<MemoryService['onTurnStart']>>,
-    params: {
-      corpId: string;
-      userId: string;
-      token?: string;
-      imBotId?: string;
-      imContactId?: string;
-      wecomUserId?: string;
-      externalUserId?: string;
-    },
-  ): Promise<void> {
-    if (this.resolveKnownGender(memory)) {
-      return;
-    }
-
-    try {
-      const gender = await this.candidateProfileEnrichmentService.lookupGenderFromCustomerDetail({
-        token: params.token,
-        imBotId: params.imBotId,
-        imContactId: params.imContactId,
-        wecomUserId: params.wecomUserId,
-        externalUserId: params.externalUserId,
-      });
-
-      if (!gender) {
-        return;
-      }
-
-      memory.highConfidenceFacts = this.mergeSupplementalGenderFact(
-        memory.highConfidenceFacts,
-        gender,
-      );
-
-      this.logger.log(`客户详情补充性别成功: userId=${params.userId}, gender=${gender}`);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.warn(`客户详情补充性别失败: userId=${params.userId}, error=${errorMessage}`);
-    }
-  }
-
-  private resolveKnownGender(
-    memory: Awaited<ReturnType<MemoryService['onTurnStart']>>,
-  ): string | null {
-    return (
-      this.normalizeGenderValue(memory.longTerm.profile?.gender) ??
-      this.normalizeGenderValue(memory.sessionMemory?.facts?.interview_info.gender) ??
-      this.normalizeGenderValue(memory.highConfidenceFacts?.interview_info.gender)
-    );
-  }
-
-  private normalizeGenderValue(value: unknown): '男' | '女' | null {
-    if (typeof value === 'number') {
-      if (value === 1) return '男';
-      if (value === 2) return '女';
-      return null;
-    }
-
-    if (typeof value !== 'string') {
-      return null;
-    }
-
-    const text = value.trim();
-    if (!text) return null;
-    if (text === '1') return '男';
-    if (text === '2') return '女';
-    if (/^(male|man)$/i.test(text)) return '男';
-    if (/^(female|woman)$/i.test(text)) return '女';
-    if (/(^|[^女])男/.test(text)) return '男';
-    if (/女/.test(text)) return '女';
-    return null;
-  }
-
-  private mergeSupplementalGenderFact(
-    existing: EntityExtractionResult | null,
-    gender: '男' | '女',
-  ): EntityExtractionResult {
-    const base: EntityExtractionResult = existing
-      ? {
-          ...existing,
-          interview_info: { ...existing.interview_info },
-          preferences: { ...existing.preferences },
-        }
-      : {
-          ...FALLBACK_EXTRACTION,
-          interview_info: { ...FALLBACK_EXTRACTION.interview_info },
-          preferences: { ...FALLBACK_EXTRACTION.preferences },
-        };
-
-    base.interview_info.gender = gender;
-    base.reasoning = [base.reasoning?.trim(), `客户详情接口补充性别：${gender}`]
-      .filter(Boolean)
-      .join('；');
-
-    return base;
   }
 }

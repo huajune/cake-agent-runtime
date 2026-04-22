@@ -620,6 +620,51 @@ describe('buildPartTimeJobUserMessage', () => {
       expect(result).toContain('年龄18-50岁');
     });
 
+    it('should reflect custom age range from hiringRequirement', () => {
+      const job = makeJob({
+        hiringRequirement: {
+          basicPersonalRequirements: { minAge: 22, maxAge: 40 },
+        },
+      });
+      const result = buildPartTimeJobUserMessage(makeData([job]));
+
+      expect(result).toContain('年龄22-40岁');
+      expect(result).not.toContain('年龄18-50岁');
+    });
+
+    it('should render "N 岁以上" when only minAge is present', () => {
+      const job = makeJob({
+        hiringRequirement: {
+          basicPersonalRequirements: { minAge: 20 },
+        },
+      });
+      const result = buildPartTimeJobUserMessage(makeData([job]));
+
+      expect(result).toContain('年龄20岁以上');
+    });
+
+    it('should render "N 岁以下" when only maxAge is present', () => {
+      const job = makeJob({
+        hiringRequirement: {
+          basicPersonalRequirements: { maxAge: 45 },
+        },
+      });
+      const result = buildPartTimeJobUserMessage(makeData([job]));
+
+      expect(result).toContain('年龄45岁以下');
+    });
+
+    it('should fall back to broad 18-50 copy when age fields are missing', () => {
+      const job = makeJob({
+        hiringRequirement: {
+          basicPersonalRequirements: {},
+        },
+      });
+      const result = buildPartTimeJobUserMessage(makeData([job]));
+
+      expect(result).toContain('年龄18-50岁');
+    });
+
     it('should include gender when it is not 男性,女性', () => {
       const job = makeJob({
         hiringRequirement: {
@@ -710,7 +755,7 @@ describe('buildPartTimeJobUserMessage', () => {
       expect(result).not.toContain('社保');
     });
 
-    it('should join multiple requirement items with 、 after broad age copy', () => {
+    it('should join multiple requirement items with 、 after age copy', () => {
       const job = makeJob({
         hiringRequirement: {
           basicPersonalRequirements: { minAge: 20, maxAge: 40, genderRequirement: '女性' },
@@ -719,7 +764,7 @@ describe('buildPartTimeJobUserMessage', () => {
       });
       const result = buildPartTimeJobUserMessage(makeData([job]));
 
-      expect(result).toContain('年龄18-50岁、女性、学历高中及以上');
+      expect(result).toContain('年龄20-40岁、女性、学历高中及以上');
     });
 
     it('should omit 用人要求 line when hiringRequirement is absent', () => {

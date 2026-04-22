@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CustomerService } from '@wecom/customer/customer.service';
+import { normalizeGenderValue } from '@memory/facts/high-confidence-facts';
 
 export interface CandidateGenderLookupParams {
   token?: string;
@@ -38,7 +39,7 @@ export class CandidateProfileEnrichmentService {
         wecomUserId,
         externalUserId,
       });
-      return this.normalizeGenderValue(detail?.data?.gender);
+      return normalizeGenderValue(detail?.data?.gender);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(
@@ -46,27 +47,5 @@ export class CandidateProfileEnrichmentService {
       );
       return null;
     }
-  }
-
-  private normalizeGenderValue(value: unknown): '男' | '女' | null {
-    if (typeof value === 'number') {
-      if (value === 1) return '男';
-      if (value === 2) return '女';
-      return null;
-    }
-
-    if (typeof value !== 'string') {
-      return null;
-    }
-
-    const text = value.trim();
-    if (!text) return null;
-    if (text === '1') return '男';
-    if (text === '2') return '女';
-    if (/^(male|man)$/i.test(text)) return '男';
-    if (/^(female|woman)$/i.test(text)) return '女';
-    if (/(^|[^女])男/.test(text)) return '男';
-    if (/女/.test(text)) return '女';
-    return null;
   }
 }

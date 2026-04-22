@@ -498,10 +498,21 @@ function extractHiringRequirement(job: JobDetail): string {
 
   const items: string[] = [];
 
-  // 年龄范围统一写宽泛，避免劝退求职者
-  items.push('年龄18-50岁');
-
   const basic = prop(hr, 'basicPersonalRequirements') as Record<string, unknown> | undefined;
+
+  // 优先读岗位数据里的年龄要求；两端都缺失时回退到宽泛的 18-50 岁，避免劝退求职者
+  const minAge = typeof basic?.minAge === 'number' ? basic.minAge : null;
+  const maxAge = typeof basic?.maxAge === 'number' ? basic.maxAge : null;
+  if (minAge !== null && maxAge !== null) {
+    items.push(`年龄${minAge}-${maxAge}岁`);
+  } else if (minAge !== null) {
+    items.push(`年龄${minAge}岁以上`);
+  } else if (maxAge !== null) {
+    items.push(`年龄${maxAge}岁以下`);
+  } else {
+    items.push('年龄18-50岁');
+  }
+
   if (basic?.genderRequirement && basic.genderRequirement !== '男性,女性') {
     items.push(`${basic.genderRequirement}`);
   }
