@@ -1,0 +1,394 @@
+@use '@/assets/styles/variables' as *;
+
+.text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.fallback {
+  color: $text-secondary;
+  font-style: italic;
+}
+
+.system {
+  display: inline-block;
+  font-size: $font-size-xs;
+  color: $text-muted;
+  background: rgba(0, 0, 0, 0.04);
+  padding: 4px 10px;
+  border-radius: $radius-md;
+}
+
+/* ---------- IMAGE ---------- */
+.imageLink {
+  display: block;
+  line-height: 0;
+}
+
+.image {
+  max-width: 260px;
+  max-height: 320px;
+  border-radius: $radius-md;
+  object-fit: cover;
+  background: rgba(0, 0, 0, 0.04);
+  transition: transform 0.2s ease;
+
+  &:hover {
+    transform: scale(1.01);
+  }
+}
+
+/* ---------- EMOTION ---------- */
+.emotion {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  background: transparent;
+}
+
+/* ---------- VOICE ---------- */
+.voice {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  padding: 10px 14px;
+  border-radius: $radius-md;
+  background: rgba(99, 102, 241, 0.06);
+  border: 1px solid rgba(99, 102, 241, 0.12);
+  min-width: 220px;
+  max-width: 320px;
+}
+
+.voiceHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: $font-size-xs;
+  color: $text-secondary;
+}
+
+.voiceIcon {
+  font-size: $font-size-base;
+}
+
+.voiceLabel {
+  font-weight: $font-weight-medium;
+}
+
+.voiceDuration {
+  margin-left: auto;
+  color: $text-muted;
+}
+
+.voiceAudio {
+  width: 100%;
+  height: 32px;
+}
+
+.voiceTranscript {
+  font-size: $font-size-xs;
+  color: $text-primary;
+  line-height: $line-height-normal;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.transcriptLabel {
+  font-size: 10px;
+  color: $text-muted;
+  font-weight: $font-weight-medium;
+}
+
+/* ---------- VIDEO ---------- */
+.video {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.videoPlayer {
+  max-width: 320px;
+  max-height: 320px;
+  border-radius: $radius-md;
+  background: #000;
+}
+
+.mediaMeta {
+  font-size: $font-size-xs;
+  color: $text-muted;
+}
+
+/* ---------- FILE ---------- */
+.file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: $radius-md;
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  color: $text-primary;
+  text-decoration: none;
+  min-width: 220px;
+  max-width: 320px;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.05);
+  }
+}
+
+.fileIcon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.fileInfo {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.fileName {
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileMeta {
+  font-size: $font-size-xs;
+  color: $text-muted;
+  margin-top: 2px;
+}
+
+/* ---------- LINK ---------- */
+.link {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: $radius-md;
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  color: $text-primary;
+  text-decoration: none;
+  min-width: 240px;
+  max-width: 340px;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.05);
+  }
+}
+
+.linkThumb {
+  width: 56px;
+  height: 56px;
+  border-radius: $radius-sm;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.linkBody {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+  flex: 1;
+}
+
+.linkTitle {
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.linkDesc {
+  font-size: $font-size-xs;
+  color: $text-secondary;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.linkUrl {
+  font-size: 11px;
+  color: $text-muted;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- LOCATION ---------- */
+.location {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 14px;
+  border-radius: $radius-md;
+  background: rgba(34, 197, 94, 0.06);
+  border: 1px solid rgba(34, 197, 94, 0.15);
+  min-width: 220px;
+  max-width: 320px;
+}
+
+.locationHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.locationIcon {
+  font-size: $font-size-base;
+}
+
+.locationName {
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  color: $text-primary;
+}
+
+.locationAddress {
+  font-size: $font-size-xs;
+  color: $text-secondary;
+  line-height: $line-height-normal;
+}
+
+.locationLink {
+  font-size: $font-size-xs;
+  color: #16a34a;
+  text-decoration: none;
+  margin-top: 2px;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+/* ---------- MINI PROGRAM ---------- */
+.miniProgram {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: $radius-md;
+  background: rgba(16, 185, 129, 0.05);
+  border: 1px solid rgba(16, 185, 129, 0.15);
+  min-width: 220px;
+  max-width: 320px;
+}
+
+.miniProgramHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.miniProgramIcon {
+  width: 16px;
+  height: 16px;
+  border-radius: $radius-xs;
+  object-fit: cover;
+}
+
+.miniProgramTag {
+  font-size: 10px;
+  color: #047857;
+  background: rgba(16, 185, 129, 0.15);
+  padding: 1px 6px;
+  border-radius: $radius-xs;
+  font-weight: $font-weight-medium;
+}
+
+.miniProgramTitle {
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  color: $text-primary;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.miniProgramThumb {
+  width: 100%;
+  max-height: 140px;
+  object-fit: cover;
+  border-radius: $radius-sm;
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.miniProgramDesc {
+  font-size: $font-size-xs;
+  color: $text-secondary;
+  line-height: $line-height-normal;
+}
+
+/* ---------- CONTACT CARD ---------- */
+.contact {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: $radius-md;
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  min-width: 220px;
+  max-width: 300px;
+}
+
+.contactAvatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.contactAvatarFallback {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.06);
+  font-size: $font-size-lg;
+  flex-shrink: 0;
+}
+
+.contactInfo {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.contactLabel {
+  font-size: 10px;
+  color: $text-muted;
+}
+
+.contactName {
+  font-size: $font-size-sm;
+  font-weight: $font-weight-medium;
+  color: $text-primary;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contactAlias {
+  font-size: $font-size-xs;
+  color: $text-secondary;
+}
