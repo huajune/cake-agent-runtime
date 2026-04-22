@@ -252,11 +252,12 @@ export class ToolRegistryService {
       if (reg.tool) tools[name] = reg.tool;
     }
 
-    // 动态注入：当前轮次有图片消息时，注册 save_image_description 工具
+    // 动态注入：当前轮次有图片/表情消息时，注册 save_image_description 工具
     if (context.imageMessageIds?.length) {
       const imgTool = buildSaveImageDescriptionTool(
         this.chatSessionService,
         context.imageMessageIds,
+        context.visualMessageTypes,
       );
       tools['save_image_description'] = imgTool(context);
       this.logger.log(

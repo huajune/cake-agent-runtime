@@ -5,6 +5,7 @@ import type {
   RecommendedJobSummary,
 } from '@memory/types/session-facts.types';
 import type { UserProfile } from '@memory/types/long-term.types';
+import type { MessageType } from '@enums/message-callback.enum';
 
 export type AiTool = Tool;
 export type AiToolSet = ToolSet;
@@ -30,8 +31,14 @@ export interface ToolBuildContext {
   bookingSucceeded?: boolean;
   /** 业务阈值（策略配置） */
   thresholds?: Threshold[];
-  /** 图片消息 ID 列表（当前轮次包含图片时传入，供 save_image_description 工具使用） */
+  /** 图片/表情消息 ID 列表（当前轮次包含视觉消息时传入，供 save_image_description 工具使用） */
   imageMessageIds?: string[];
+  /**
+   * messageId → 视觉消息类型映射。
+   * 用于 save_image_description 工具按类型选用 `[图片消息]` / `[表情消息]` 前缀；
+   * 缺省条目视为 IMAGE。
+   */
+  visualMessageTypes?: Record<string, MessageType.IMAGE | MessageType.EMOTION>;
   /** 本轮入口阶段；来自程序记忆中的持久化 currentStage。 */
   currentStage?: string | null;
   /** 当前策略里允许使用的合法阶段标识；供 advance_stage 做合法性校验。 */

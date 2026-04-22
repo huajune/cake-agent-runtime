@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CallerKind, ScenarioType } from '@enums/agent.enum';
+import { MessageType } from '@enums/message-callback.enum';
 import { MonitoringMetadata } from '@shared-types/tracking.types';
 import { AgentRunnerService } from '@agent/runner.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
@@ -157,6 +158,7 @@ export class ReplyWorkflowService {
     let content = params.content;
     let imageUrls = this.collectImageUrls(allMessages);
     let imageMessageIds = this.collectImageMessageIds(allMessages);
+    let visualMessageTypes = this.buildVisualMessageTypes(allMessages);
 
     const { overrideModelId, thinking } = await this.runtimeConfig.resolveWecomChatModelSelection();
 
@@ -197,6 +199,8 @@ export class ReplyWorkflowService {
       userMessage: content,
       imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
       imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
+      visualMessageTypes:
+        Object.keys(visualMessageTypes).length > 0 ? visualMessageTypes : undefined,
     });
 
     this.logger.log(
@@ -215,12 +219,15 @@ export class ReplyWorkflowService {
       content = this.wecomObservability.buildMergedRequestContent(allMessages);
       imageUrls = this.collectImageUrls(allMessages);
       imageMessageIds = this.collectImageMessageIds(allMessages);
+      visualMessageTypes = this.buildVisualMessageTypes(allMessages);
 
       agentResult = await this.callAgent({
         ...agentCallParams,
         userMessage: content,
         imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
         imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
+        visualMessageTypes:
+          Object.keys(visualMessageTypes).length > 0 ? visualMessageTypes : undefined,
       });
 
       this.logger.log(
@@ -331,6 +338,7 @@ export class ReplyWorkflowService {
     corpId: string;
     imageUrls?: string[];
     imageMessageIds?: string[];
+    visualMessageTypes?: Record<string, MessageType.IMAGE | MessageType.EMOTION>;
     botUserId?: string;
     contactName?: string;
     botImId?: string;
@@ -371,6 +379,7 @@ export class ReplyWorkflowService {
         contactName: params.contactName,
         imageUrls: params.imageUrls,
         imageMessageIds: params.imageMessageIds,
+        visualMessageTypes: params.visualMessageTypes,
         botUserId: params.botUserId,
         botImId: params.botImId,
         externalUserId: params.externalUserId,
@@ -464,6 +473,23 @@ export class ReplyWorkflowService {
     return messages
       .filter((message) => MessageParser.extractImageUrl(message) !== null)
       .map((message) => message.messageId);
+  }
+
+  /**
+   * 构建 messageId → 视觉类型 映射（IMAGE / EMOTION）。
+   * 供 save_image_description 工具按类型选用前缀写回 DB。
+   */
+  private buildVisualMessageTypes(
+    messages: EnterpriseMessageCallbackDto[],
+  ): Record<string, MessageType.IMAGE | MessageType.EMOTION> {
+    const map: Record<string, MessageType.IMAGE | MessageType.EMOTION> = {};
+    for (const message of messages) {
+      const kind = MessageParser.extractVisualMessageType(message);
+      if (kind) {
+        map[message.messageId] = kind;
+      }
+    }
+    return map;
   }
 
   /**

@@ -82,9 +82,9 @@ export class MessageParser {
       return this.formatVoiceAsText(payload);
     }
 
-    // 表情消息
+    // 表情消息 - 文字标记（表情图片同样通过 image part 传入 Agent 做 vision 识别）
     if (isEmotionPayload(messageType, payload)) {
-      return '[表情消息]';
+      return '[表情消息] 候选人发送了一个表情';
     }
 
     // 图片消息 - 文字标记（实际图片通过 image part 传入 Agent）
@@ -101,16 +101,36 @@ export class MessageParser {
   }
 
   /**
-   * 提取图片 URL（供 pipeline 传递给 Agent 做多模态识别）
+   * 提取视觉 URL（图片 / 表情）
+   *
+   * 表情和图片走同一条 vision 识别管线；差异仅体现在写回 DB 的前缀上（见
+   * `ImageDescriptionService` / `save_image_description` 工具）。
    */
   static extractImageUrl(messageData: EnterpriseMessageCallbackDto): string | null {
-    if (
-      messageData.messageType === MessageType.IMAGE &&
-      isImagePayload(messageData.messageType, messageData.payload)
-    ) {
-      return messageData.payload.imageUrl || messageData.payload.url || null;
+    const { messageType, payload } = messageData;
+
+    if (messageType === MessageType.IMAGE && isImagePayload(messageType, payload)) {
+      return payload.imageUrl || payload.url || null;
     }
+
+    if (messageType === MessageType.EMOTION && isEmotionPayload(messageType, payload)) {
+      return payload.imageUrl || null;
+    }
+
     return null;
+  }
+
+  /**
+   * 判断消息携带的视觉类型：IMAGE / EMOTION / null。
+   *
+   * 供下游区分写回 DB 的前缀（`[图片消息]` vs `[表情消息]`）。
+   */
+  static extractVisualMessageType(
+    messageData: EnterpriseMessageCallbackDto,
+  ): MessageType.IMAGE | MessageType.EMOTION | null {
+    if (this.extractImageUrl(messageData) === null) return null;
+    if (messageData.messageType === MessageType.EMOTION) return MessageType.EMOTION;
+    return MessageType.IMAGE;
   }
 
   /**

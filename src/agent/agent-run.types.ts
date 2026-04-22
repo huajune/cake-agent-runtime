@@ -1,6 +1,7 @@
 import { streamText } from 'ai';
 import { CallerKind } from '@/enums/agent.enum';
 import type { LlmThinkingConfig } from '@/llm/llm.types';
+import type { MessageType } from '@enums/message-callback.enum';
 import type {
   AgentMemorySnapshot,
   AgentStepDetail,
@@ -48,10 +49,16 @@ export interface AgentInvokeParams {
   scenario?: string;
   /** 最大工具循环步数，默认 5 */
   maxSteps?: number;
-  /** 图片 URL 列表（多模态消息，传入 Agent 做 vision 识别） */
+  /** 图片/表情 URL 列表（多模态消息，传入 Agent 做 vision 识别） */
   imageUrls?: string[];
-  /** 图片消息 ID 列表（供 save_image_description 工具回写 DB） */
+  /** 图片/表情消息 ID 列表（供 save_image_description 工具回写 DB） */
   imageMessageIds?: string[];
+  /**
+   * messageId → 视觉消息类型映射。
+   * 仅含 IMAGE / EMOTION；供 save_image_description 工具按类型选用
+   * `[图片消息]` / `[表情消息]` 前缀回写 DB。缺省条目视为 IMAGE。
+   */
+  visualMessageTypes?: Record<string, MessageType.IMAGE | MessageType.EMOTION>;
   /** 策略来源：wecom 读 released，test 读 testing */
   strategySource?: 'released' | 'testing';
   /** 当前与候选人聊天的托管账号企微 userId（拉群时作为 botUserId） */

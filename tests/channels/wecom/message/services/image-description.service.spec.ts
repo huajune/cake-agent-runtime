@@ -4,6 +4,7 @@ import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ModelRole } from '@/llm/llm.types';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
+import { MessageType } from '@enums/message-callback.enum';
 
 describe('ImageDescriptionService', () => {
   let service: ImageDescriptionService;
@@ -107,6 +108,28 @@ describe('ImageDescriptionService', () => {
 
       expect(mockLlm.generate).toHaveBeenCalled();
       expect(mockChatSessionService.updateMessageContent).not.toHaveBeenCalled();
+    });
+
+    it('should use [表情消息] prefix when kind is EMOTION', async () => {
+      const description = '微笑表情';
+      mockLlm.generate.mockResolvedValue({
+        text: description,
+        usage: { totalTokens: 50 },
+      });
+      mockChatSessionService.updateMessageContent.mockResolvedValue(undefined);
+
+      service.describeAndUpdateAsync(
+        'msg-emoji-1',
+        'https://example.com/emoji.gif',
+        MessageType.EMOTION,
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(mockChatSessionService.updateMessageContent).toHaveBeenCalledWith(
+        'msg-emoji-1',
+        `[表情消息] ${description}`,
+      );
     });
   });
 });

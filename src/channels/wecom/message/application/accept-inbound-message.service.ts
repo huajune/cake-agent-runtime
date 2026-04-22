@@ -141,6 +141,11 @@ export class AcceptInboundMessageService {
       return;
     }
 
+    const visualKind = MessageParser.extractVisualMessageType(messageData);
+    if (!visualKind) {
+      return;
+    }
+
     const { overrideModelId } = await this.runtimeConfig.resolveWecomChatModelSelection();
     const shouldDescribeBeforeAgent = !this.llm.supportsVisionInput({
       role: ModelRole.Chat,
@@ -148,7 +153,7 @@ export class AcceptInboundMessageService {
     });
 
     if (shouldDescribeBeforeAgent) {
-      await this.imageDescription.describeAndUpdateSync(messageData.messageId, imgUrl);
+      await this.imageDescription.describeAndUpdateSync(messageData.messageId, imgUrl, visualKind);
       await this.wecomObservability.markImagePrepared(messageData.messageId);
     }
   }

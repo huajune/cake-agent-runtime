@@ -3,6 +3,15 @@ import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ModelRole } from '@/llm/llm.types';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
+import { MessageType } from '@enums/message-callback.enum';
+
+/** 视觉消息种类：图片 / 表情（都走同一条 vision 识别管线，仅前缀不同）。 */
+export type VisualMessageKind = MessageType.IMAGE | MessageType.EMOTION;
+
+function formatDescription(kind: VisualMessageKind, description: string): string {
+  const prefix = kind === MessageType.EMOTION ? '[表情消息]' : '[图片消息]';
+  return `${prefix} ${description}`;
+}
 
 /**
  * 图片描述服务
@@ -22,12 +31,12 @@ export class ImageDescriptionService {
   private readonly ALERT_THRESHOLD = 3;
 
   private readonly SYSTEM_PROMPT = [
-    '你是招聘场景的图片分析助手。候选人发来的图片大多是招聘平台截图。',
+    '你是招聘场景的图片分析助手。候选人发来的图片大多是招聘平台截图，也可能是微信表情。',
     '请提取关键信息，用简洁中文输出（2-3句话）：',
     '\n- 招聘截图：提取岗位名称、薪资、门店/公司、距离、工作要求等关键信息',
     '\n- 地图/位置截图：提取地点名称和位置信息',
     '\n- 聊天截图：提取关键对话内容',
-    '\n- 表情包/无实际信息的图片：简短说明即可',
+    '\n- 表情包/表情贴图：描述表情传达的情绪或动作（如"微笑"、"比心"、"点头OK"），不要强行脑补语义',
     '\n不要添加评价或建议，只提取事实信息。',
   ].join('');
 
@@ -38,18 +47,23 @@ export class ImageDescriptionService {
   ) {}
 
   /**
-   * 异步描述图片并回写 content（fire-and-forget）
+   * 异步描述图片/表情并回写 content（fire-and-forget）
    * 适用于主模型支持 vision 的场景（当轮由 Agent 直接看图，此描述仅补充后续轮次）
    */
-  describeAndUpdateAsync(messageId: string, imageUrl: string): void {
+  describeAndUpdateAsync(
+    messageId: string,
+    imageUrl: string,
+    kind: VisualMessageKind = MessageType.IMAGE,
+  ): void {
+    const label = this.kindLabel(kind);
     this.logger.log(
-      `[触发] 开始图片描述(异步) [${messageId}], url=${imageUrl.substring(0, 80)}...`,
+      `[触发] 开始${label}描述(异步) [${messageId}], url=${imageUrl.substring(0, 80)}...`,
     );
-    this.describeAndUpdate(messageId, imageUrl).catch((error) => {
+    this.describeAndUpdate(messageId, imageUrl, kind).catch((error) => {
       this.consecutiveFailures++;
       const err = error instanceof Error ? error : new Error(String(error));
       this.logger.error(
-        `图片描述失败 [${messageId}] (连续第${this.consecutiveFailures}次): ${err.message}`,
+        `${label}描述失败 [${messageId}] (连续第${this.consecutiveFailures}次): ${err.message}`,
         err.stack,
       );
 
@@ -57,8 +71,8 @@ export class ImageDescriptionService {
       if (this.consecutiveFailures === this.ALERT_THRESHOLD) {
         this.alertService
           .sendSimpleAlert(
-            '图片描述服务连续失败',
-            `Vision 模型连续 ${this.ALERT_THRESHOLD} 次调用失败，图片消息无法被识别。\n最近错误: ${err.message}`,
+            '图片/表情描述服务连续失败',
+            `Vision 模型连续 ${this.ALERT_THRESHOLD} 次调用失败，图片/表情消息无法被识别。\n最近错误: ${err.message}`,
             'warning',
           )
           .catch(() => {});
@@ -67,28 +81,33 @@ export class ImageDescriptionService {
   }
 
   /**
-   * 同步描述图片并回写 content（阻塞等待结果）
+   * 同步描述图片/表情并回写 content（阻塞等待结果）
    * 适用于主模型不支持 vision 的场景 — 必须在 Agent 读历史前完成描述
    */
-  async describeAndUpdateSync(messageId: string, imageUrl: string): Promise<void> {
+  async describeAndUpdateSync(
+    messageId: string,
+    imageUrl: string,
+    kind: VisualMessageKind = MessageType.IMAGE,
+  ): Promise<void> {
+    const label = this.kindLabel(kind);
     this.logger.log(
-      `[触发] 开始图片描述(同步) [${messageId}], url=${imageUrl.substring(0, 80)}...`,
+      `[触发] 开始${label}描述(同步) [${messageId}], url=${imageUrl.substring(0, 80)}...`,
     );
     try {
-      await this.describeAndUpdate(messageId, imageUrl);
+      await this.describeAndUpdate(messageId, imageUrl, kind);
     } catch (error) {
       this.consecutiveFailures++;
       const err = error instanceof Error ? error : new Error(String(error));
       this.logger.error(
-        `图片描述失败 [${messageId}] (连续第${this.consecutiveFailures}次): ${err.message}`,
+        `${label}描述失败 [${messageId}] (连续第${this.consecutiveFailures}次): ${err.message}`,
         err.stack,
       );
 
       if (this.consecutiveFailures === this.ALERT_THRESHOLD) {
         this.alertService
           .sendSimpleAlert(
-            '图片描述服务连续失败',
-            `Vision 模型连续 ${this.ALERT_THRESHOLD} 次调用失败，图片消息无法被识别。\n最近错误: ${err.message}`,
+            '图片/表情描述服务连续失败',
+            `Vision 模型连续 ${this.ALERT_THRESHOLD} 次调用失败，图片/表情消息无法被识别。\n最近错误: ${err.message}`,
             'warning',
           )
           .catch(() => {});
@@ -98,16 +117,23 @@ export class ImageDescriptionService {
   }
 
   /**
-   * 调用 vision 模型描述图片，回写到 DB
+   * 调用 vision 模型描述图片/表情，回写到 DB
    */
-  private async describeAndUpdate(messageId: string, imageUrl: string): Promise<void> {
+  private async describeAndUpdate(
+    messageId: string,
+    imageUrl: string,
+    kind: VisualMessageKind,
+  ): Promise<void> {
     let parsedUrl: URL;
     try {
       parsedUrl = new URL(imageUrl);
     } catch {
-      this.logger.warn(`无效的图片 URL [${messageId}]: ${imageUrl}`);
+      this.logger.warn(`无效的${this.kindLabel(kind)} URL [${messageId}]: ${imageUrl}`);
       return;
     }
+
+    const promptText =
+      kind === MessageType.EMOTION ? '请描述这个表情传达的情绪或动作。' : '请描述这张图片的内容。';
 
     const result = await this.llm.generate({
       role: ModelRole.Vision,
@@ -117,7 +143,7 @@ export class ImageDescriptionService {
           role: 'user',
           content: [
             { type: 'image' as const, image: parsedUrl },
-            { type: 'text' as const, text: '请描述这张图片的内容。' },
+            { type: 'text' as const, text: promptText },
           ],
         },
       ],
@@ -126,18 +152,21 @@ export class ImageDescriptionService {
 
     const description = result.text.trim();
     if (!description) {
-      this.logger.warn(`图片描述返回空结果 [${messageId}]`);
+      this.logger.warn(`${this.kindLabel(kind)}描述返回空结果 [${messageId}]`);
       return;
     }
 
-    const content = `[图片消息] ${description}`;
-    await this.chatSession.updateMessageContent(messageId, content);
+    await this.chatSession.updateMessageContent(messageId, formatDescription(kind, description));
 
     // 成功则重置失败计数
     this.consecutiveFailures = 0;
 
     this.logger.log(
-      `图片描述完成 [${messageId}]: "${description.substring(0, 50)}${description.length > 50 ? '...' : ''}", tokens=${result.usage.totalTokens}`,
+      `${this.kindLabel(kind)}描述完成 [${messageId}]: "${description.substring(0, 50)}${description.length > 50 ? '...' : ''}", tokens=${result.usage.totalTokens}`,
     );
+  }
+
+  private kindLabel(kind: VisualMessageKind): string {
+    return kind === MessageType.EMOTION ? '表情' : '图片';
   }
 }
