@@ -39,24 +39,24 @@ export const feishuBitableConfig: FeishuBitableConfig = {
     },
     badcase: {
       // badcase 反馈表
-      appToken: 'WXQgb98iPauYsHsSYzMckqHcnbb',
-      tableId: 'tbllFuw1BVwpvyrI',
+      appToken: 'C0Y0bTzEga4dFQsmwlycaWvrn3c',
+      tableId: 'tblZGWZguvorS36f',
     },
     goodcase: {
       // goodcase 反馈表
-      appToken: 'WXQgb98iPauYsHsSYzMckqHcnbb',
-      tableId: 'tblmI0UBzhknkIOm',
+      appToken: 'C0Y0bTzEga4dFQsmwlycaWvrn3c',
+      tableId: 'tblpV01GZ7tQVoFp',
     },
     testSuite: {
       // 测试/验证集表（汇总表）- 用例测试数据
-      appToken: 'WXQgb98iPauYsHsSYzMckqHcnbb',
-      tableId: 'tblCRHFQqqJDJeSx',
+      appToken: 'C0Y0bTzEga4dFQsmwlycaWvrn3c',
+      tableId: 'tbltUtkNvnMa2zCh',
     },
     validationSet: {
       // 验证集表（回归验证数据）
       // 注意：与 testSuite 在同一个多维表格文档中，只是不同的 sheet
-      appToken: 'WXQgb98iPauYsHsSYzMckqHcnbb',
-      tableId: 'tblfVcyKmPsFwUhy',
+      appToken: 'C0Y0bTzEga4dFQsmwlycaWvrn3c',
+      tableId: 'tbleJIWf910JDTDn',
     },
   },
 };
