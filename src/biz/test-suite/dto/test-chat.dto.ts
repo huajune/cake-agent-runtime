@@ -689,12 +689,21 @@ export class ImportCuratedConversationDatasetRequestDto {
   cases: CuratedConversationCaseDto[];
 }
 
+export interface CuratedDatasetImportFailure {
+  identifier: string;
+  stage: 'upsert' | 'lineage';
+  message: string;
+  recordId?: string;
+}
+
 export interface CuratedDatasetImportResult {
   created: number;
   updated: number;
   unchanged: number;
+  failed: number;
   total: number;
   recordIds: string[];
+  failures: CuratedDatasetImportFailure[];
 }
 
 /**
