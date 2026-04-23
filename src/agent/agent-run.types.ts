@@ -45,6 +45,16 @@ export interface AgentInvokeParams {
   sessionId: string;
   /** 请求级 trace/message ID，用于写回 turn-end post-processing 状态。 */
   messageId?: string;
+  /**
+   * WECOM 聚合/重跑的短期记忆截止时间。
+   *
+   * 入口层会在 quiet-window 结束后从 Redis pending list 取出“本批”消息，但
+   * ChatSessionService.saveMessage() 会把所有入站消息即时镜像到短期记忆缓存。
+   * 若 Agent 生成期间用户又发了新消息，那条消息可能已经进了 short-term cache，
+   * 但还没有被当前批次消费。这里传入本批最大消息时间戳，让 memory 层只读取
+   * `timestamp <= cutoff` 的历史，避免上一批提前吃到下一批 pending 消息。
+   */
+  shortTermEndTimeInclusive?: number;
   /** 场景标识，默认 candidate-consultation */
   scenario?: string;
   /** 最大工具循环步数，默认 5 */

@@ -107,6 +107,52 @@ describe('ShortTermService', () => {
     expect(result[0].content).toContain('缓存消息');
   });
 
+  it('should filter cached messages after the inclusive cutoff', async () => {
+    mockRedis.lrange.mockResolvedValue([
+      JSON.stringify({
+        chatId: 'chat_1',
+        messageId: 'm1',
+        role: 'user',
+        content: '本批消息',
+        timestamp: 1710900000000,
+      }),
+      JSON.stringify({
+        chatId: 'chat_1',
+        messageId: 'm2',
+        role: 'user',
+        content: '下一批 pending',
+        timestamp: 1710900001000,
+      }),
+    ]);
+
+    const result = await service.getMessages('chat_1', {
+      endTimeInclusive: 1710900000000,
+    });
+
+    expect(mockRepo.getChatHistory).not.toHaveBeenCalled();
+    expect(result).toHaveLength(1);
+    expect(result[0].content).toContain('本批消息');
+    expect(result[0].content).not.toContain('下一批 pending');
+  });
+
+  it('should pass the inclusive cutoff to db history on cache miss', async () => {
+    mockRedis.lrange.mockResolvedValue([]);
+    mockRepo.getChatHistory.mockResolvedValue([]);
+
+    await service.getMessages('chat_1', {
+      endTimeInclusive: 1710900000000,
+    });
+
+    expect(mockRepo.getChatHistory).toHaveBeenCalledWith(
+      'chat_1',
+      60,
+      expect.objectContaining({
+        startTimeInclusive: expect.any(Number),
+        endTimeInclusive: 1710900000000,
+      }),
+    );
+  });
+
   it('should clear lastLoadError after a successful reload', async () => {
     mockRedis.lrange.mockResolvedValue([]);
     mockRepo.getChatHistory.mockRejectedValueOnce(new Error('db error')).mockResolvedValueOnce([]);

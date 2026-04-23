@@ -105,9 +105,7 @@ describe('ContextService', () => {
     expect(prompt.indexOf('# 红线规则（以下行为绝对禁止）')).toBeGreaterThan(
       prompt.indexOf('# 回合 SOP'),
     );
-    expect(prompt.lastIndexOf('[当前阶段策略]')).toBeGreaterThan(
-      prompt.indexOf('# 业务阈值'),
-    );
+    expect(prompt.lastIndexOf('[当前阶段策略]')).toBeGreaterThan(prompt.indexOf('# 业务阈值'));
     expect(prompt.indexOf('# 发送前自检（全部需通过）')).toBeGreaterThan(
       prompt.indexOf('当前时间：'),
     );
@@ -115,6 +113,9 @@ describe('ContextService', () => {
     expect(prompt).toContain('[用户档案]');
     expect(prompt).toContain('姓名: 张三');
     expect(prompt).toContain('先接情绪，再解释用途');
+    expect(prompt).toContain('includeWelfare=true');
+    expect(prompt).toContain('includeJobSalary=true');
+    expect(prompt).toContain('今天也能约');
     // 工具专属规则（如 bookingChecklist.collectionStrategy）已迁移到各工具的 description 字段，
     // 不再出现在主 system prompt 中。
     expect(prompt).not.toContain('# 工具手册');

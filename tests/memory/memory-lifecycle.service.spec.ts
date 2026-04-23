@@ -100,6 +100,25 @@ describe('MemoryLifecycleService', () => {
     expect(ctx.shortTerm.messageWindow).toEqual([{ role: 'user', content: 'hello' }]);
   });
 
+  it('should forward short-term cutoff on turn start', async () => {
+    mockShortTerm.getMessages.mockResolvedValue([{ role: 'user', content: 'hello' }]);
+    mockProcedural.get.mockResolvedValue({
+      currentStage: 'trust_building',
+      fromStage: null,
+      advancedAt: null,
+      reason: null,
+    });
+    mockLongTerm.getProfile.mockResolvedValue(null);
+
+    await service.onTurnStart('corp-1', 'user-1', 'sess-1', 'hello', {
+      shortTermEndTimeInclusive: 1710900000000,
+    });
+
+    expect(mockShortTerm.getMessages).toHaveBeenCalledWith('sess-1', {
+      endTimeInclusive: 1710900000000,
+    });
+  });
+
   it('should propagate short-term load warnings into runtime memory context', async () => {
     mockShortTerm.getMessages.mockResolvedValue([]);
     mockShortTerm.lastLoadError = 'Connection timeout';
