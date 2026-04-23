@@ -11,6 +11,7 @@ import type { UserData } from '../types';
 export interface PausedUserRaw {
   chatId: string;
   pausedAt: number;
+  pauseExpiresAt: number;
   odName?: string;
   groupName?: string;
 }
@@ -30,5 +31,6 @@ export function transformPausedUsers(pausedUsers: PausedUserRaw[]): UserData[] {
     firstActiveAt: user.pausedAt, // 直接使用时间戳
     lastActiveAt: user.pausedAt, // 直接使用时间戳
     isPaused: true,
+    pauseExpiresAt: user.pauseExpiresAt,
   }));
 }

@@ -33,14 +33,6 @@ export const FEISHU_WEBHOOK_CHANNELS = {
 export type FeishuWebhookChannel = keyof typeof FEISHU_WEBHOOK_CHANNELS;
 
 /**
- * 飞书多维表格配置
- */
-export const FEISHU_BITABLE = {
-  APP_ID: 'RypLwXb1yiKdRpkFN4bcvWnmnsf',
-  TABLE_ID: 'tblKNwN8aquh2JAy',
-} as const;
-
-/**
  * 告警节流配置
  */
 export const ALERT_THROTTLE = {

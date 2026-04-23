@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CallerKind, ScenarioType } from '@enums/agent.enum';
+import { MessageType } from '@enums/message-callback.enum';
 import { MonitoringMetadata } from '@shared-types/tracking.types';
 import { AgentRunnerService } from '@agent/runner.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
@@ -16,6 +17,41 @@ import { WecomMessageObservabilityService } from '../telemetry/wecom-message-obs
 import { MessageProcessingFailureService } from './message-processing-failure.service';
 import { PreAgentRiskInterceptService } from './pre-agent-risk-intercept.service';
 import type { AgentThinkingConfig } from '@agent/agent-run.types';
+
+/**
+ * 触发后会产生不可逆副作用的工具集合。
+ *
+ * 首次 Agent 调用若命中其中任一工具（无论 result.success 如何），
+ * 视为"本轮副作用已固化"，直接投递首次回复，跳过 replay 检测：
+ * - `advance_stage`   procedural memory DB 直写 currentStage
+ * - `invite_to_group` 企业级 addMember 外部 API + session facts 直写 invitedGroups
+ * - `duliday_interview_booking` 杜力岱预约外部 API + recruitment_cases 建行 + 失败侧暂停托管
+ *
+ * 若 replay 丢弃首次回复，上述副作用已落地但用户未收到回复，会造成严重错乱：
+ * - 阶段错位（procedural 被推进但 Agent 二次生成以为还在前一阶段）
+ * - 群邀请已发但无解释
+ * - 面试已预约但 Agent 二次生成重复尝试
+ *
+ * Agent 生成期间到达的新消息会留在 Redis pending list 里，
+ * 由 MessageProcessor.handleProcessJob 末尾的 `checkAndProcessNewMessages`
+ * 补建 follow-up job 在下一轮独立处理。
+ */
+const REPLAY_BLOCKING_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'advance_stage',
+  'invite_to_group',
+  'duliday_interview_booking',
+]);
+
+function collectBlockingTools(toolCalls: AgentInvokeResult['toolCalls']): string[] {
+  if (!toolCalls || toolCalls.length === 0) return [];
+  const hit = new Set<string>();
+  for (const call of toolCalls) {
+    if (REPLAY_BLOCKING_TOOL_NAMES.has(call.toolName)) {
+      hit.add(call.toolName);
+    }
+  }
+  return Array.from(hit);
+}
 
 @Injectable()
 export class ReplyWorkflowService {
@@ -157,6 +193,7 @@ export class ReplyWorkflowService {
     let content = params.content;
     let imageUrls = this.collectImageUrls(allMessages);
     let imageMessageIds = this.collectImageMessageIds(allMessages);
+    let visualMessageTypes = this.buildVisualMessageTypes(allMessages);
 
     const { overrideModelId, thinking } = await this.runtimeConfig.resolveWecomChatModelSelection();
 
@@ -192,11 +229,16 @@ export class ReplyWorkflowService {
       thinking,
     } as const;
 
+    // 首次调用延迟 turn-end：若随后检测到新消息会走 replay 丢弃本次回复，
+    // 记忆投影/事实提取也必须一同被丢弃，否则会把「未发出的回复」污染到 session 记忆里。
     let agentResult = await this.callAgent({
       ...agentCallParams,
       userMessage: content,
       imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
       imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
+      visualMessageTypes:
+        Object.keys(visualMessageTypes).length > 0 ? visualMessageTypes : undefined,
+      deferTurnEnd: true,
     });
 
     this.logger.log(
@@ -204,29 +246,75 @@ export class ReplyWorkflowService {
         `tokens=${agentResult.reply.usage?.totalTokens || 'N/A'}`,
     );
 
-    // 投递前重跑：Agent 生成期间若用户又发了新消息，丢弃本次回复，合并新消息重跑一次。
-    // 只允许一次重跑——第二次生成期间到的新消息交给投递后的 follow-up job 处理，避免无限重跑。
-    const newMessages = await this.fetchPendingSinceAgentStart(chatId);
-    if (newMessages.length > 0) {
+    // 副作用工具短路：首次调用若命中 advance_stage / invite_to_group /
+    // duliday_interview_booking 中任一个，就视为本轮已经在外部系统留下了
+    // 不可撤销的痕迹——不去 drain pending，直接投递首次回复。
+    // Agent 生成期间到达的新消息仍留在 Redis pending list 里，由
+    // MessageProcessor 末尾的 checkAndProcessNewMessages 补建 follow-up
+    // job 在下一轮独立处理。
+    const blockingTools = collectBlockingTools(agentResult.toolCalls);
+    const replayBlocked = blockingTools.length > 0;
+
+    if (replayBlocked) {
       this.logger.warn(
-        `${logPrefix}[${contactName}][Replay] 检测到 ${newMessages.length} 条新消息，丢弃首次回复并重新调用 Agent (chatId=${chatId})`,
+        `${logPrefix}[${contactName}][Replay-Skip] 首次调用命中不可逆工具 [${blockingTools.join(
+          ',',
+        )}]，跳过 replay 检测，直接投递首次回复 (chatId=${chatId})`,
       );
-      allMessages = [...allMessages, ...newMessages];
-      content = this.wecomObservability.buildMergedRequestContent(allMessages);
-      imageUrls = this.collectImageUrls(allMessages);
-      imageMessageIds = this.collectImageMessageIds(allMessages);
+      if (agentResult.runTurnEnd) {
+        void agentResult.runTurnEnd().catch((err) => {
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          this.logger.warn(`[${contactName}] turn-end lifecycle 执行失败: ${errorMessage}`);
+        });
+        agentResult.runTurnEnd = undefined;
+      }
+    } else {
+      // 投递前重跑：Agent 生成期间若用户又发了新消息，丢弃本次回复，合并新消息重跑一次。
+      // 只允许一次重跑——第二次生成期间到的新消息交给投递后的 follow-up job 处理，避免无限重跑。
+      const newMessages = await this.fetchPendingSinceAgentStart(chatId);
+      if (newMessages.length > 0) {
+        this.logger.warn(
+          `${logPrefix}[${contactName}][Replay] 检测到 ${newMessages.length} 条新消息，丢弃首次回复并重新调用 Agent (chatId=${chatId})`,
+        );
+        // 丢弃首次的 runTurnEnd——它承载了将首次回复写入 session 记忆的副作用。
+        // 下面第二次 callAgent 使用默认 deferTurnEnd=false，runner 内部会 fire-and-forget 触发。
+        agentResult.runTurnEnd = undefined;
 
-      agentResult = await this.callAgent({
-        ...agentCallParams,
-        userMessage: content,
-        imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
-        imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
-      });
+        allMessages = [...allMessages, ...newMessages];
+        content = this.wecomObservability.buildMergedRequestContent(allMessages);
+        imageUrls = this.collectImageUrls(allMessages);
+        imageMessageIds = this.collectImageMessageIds(allMessages);
+        visualMessageTypes = this.buildVisualMessageTypes(allMessages);
 
-      this.logger.log(
-        `${logPrefix}[${contactName}][Replay] 重跑 Agent 完成，耗时 ${agentResult.processingTime}ms，` +
-          `tokens=${agentResult.reply.usage?.totalTokens || 'N/A'}`,
-      );
+        // Replay 合入的新消息在 intake 时已写了一条 processing 流水，本轮的终态只会
+        // 回写到 traceId 那一行。若不在这里回收，这些源记录会一直停在「处理中」，
+        // 只能等 30 分钟的 timeoutStuckRecords 兜底清理。
+        await this.wecomObservability.mergePrepTimingsFromSources(
+          traceId,
+          newMessages.map((message) => message.messageId),
+        );
+
+        agentResult = await this.callAgent({
+          ...agentCallParams,
+          userMessage: content,
+          imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+          imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
+          visualMessageTypes:
+            Object.keys(visualMessageTypes).length > 0 ? visualMessageTypes : undefined,
+        });
+
+        this.logger.log(
+          `${logPrefix}[${contactName}][Replay] 重跑 Agent 完成，耗时 ${agentResult.processingTime}ms，` +
+            `tokens=${agentResult.reply.usage?.totalTokens || 'N/A'}`,
+        );
+      } else if (agentResult.runTurnEnd) {
+        // 首次结果被最终采纳，显式触发 turn-end lifecycle（与默认路径语义对齐：fire-and-forget）。
+        void agentResult.runTurnEnd().catch((err) => {
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          this.logger.warn(`[${contactName}] turn-end lifecycle 执行失败: ${errorMessage}`);
+        });
+        agentResult.runTurnEnd = undefined;
+      }
     }
 
     if (agentResult.isFallback) {
@@ -331,6 +419,7 @@ export class ReplyWorkflowService {
     corpId: string;
     imageUrls?: string[];
     imageMessageIds?: string[];
+    visualMessageTypes?: Record<string, MessageType.IMAGE | MessageType.EMOTION>;
     botUserId?: string;
     contactName?: string;
     botImId?: string;
@@ -341,6 +430,8 @@ export class ReplyWorkflowService {
     apiType?: 'enterprise' | 'group';
     modelId?: string;
     thinking?: AgentThinkingConfig;
+    /** 延迟 turn-end 生命周期触发；replay 首次调用置 true 以便被丢弃时不污染记忆 */
+    deferTurnEnd?: boolean;
   }): Promise<AgentInvokeResult> {
     const {
       userMessage,
@@ -349,6 +440,7 @@ export class ReplyWorkflowService {
       recordMonitoring = true,
       userId,
       corpId,
+      deferTurnEnd,
     } = params;
 
     const startTime = Date.now();
@@ -371,6 +463,7 @@ export class ReplyWorkflowService {
         contactName: params.contactName,
         imageUrls: params.imageUrls,
         imageMessageIds: params.imageMessageIds,
+        visualMessageTypes: params.visualMessageTypes,
         botUserId: params.botUserId,
         botImId: params.botImId,
         externalUserId: params.externalUserId,
@@ -380,6 +473,7 @@ export class ReplyWorkflowService {
         apiType: params.apiType,
         modelId: params.modelId,
         thinking: params.thinking,
+        deferTurnEnd,
         onPreparedRequest:
           recordMonitoring && messageId
             ? (agentRequest) => this.wecomObservability.recordAgentRequest(messageId, agentRequest)
@@ -406,7 +500,7 @@ export class ReplyWorkflowService {
         }`,
       );
 
-      const invokeResult = {
+      const invokeResult: AgentInvokeResult = {
         reply: { content, reasoning: result.reasoning, usage: result.usage },
         isFallback: false,
         isSkipped,
@@ -415,6 +509,7 @@ export class ReplyWorkflowService {
         agentSteps: result.agentSteps,
         memorySnapshot: result.memorySnapshot,
         responseMessages: result.responseMessages,
+        runTurnEnd: result.runTurnEnd,
       };
       if (recordMonitoring && messageId) {
         await this.wecomObservability.recordAgentResult(messageId, invokeResult);
@@ -464,6 +559,23 @@ export class ReplyWorkflowService {
     return messages
       .filter((message) => MessageParser.extractImageUrl(message) !== null)
       .map((message) => message.messageId);
+  }
+
+  /**
+   * 构建 messageId → 视觉类型 映射（IMAGE / EMOTION）。
+   * 供 save_image_description 工具按类型选用前缀写回 DB。
+   */
+  private buildVisualMessageTypes(
+    messages: EnterpriseMessageCallbackDto[],
+  ): Record<string, MessageType.IMAGE | MessageType.EMOTION> {
+    const map: Record<string, MessageType.IMAGE | MessageType.EMOTION> = {};
+    for (const message of messages) {
+      const kind = MessageParser.extractVisualMessageType(message);
+      if (kind) {
+        map[message.messageId] = kind;
+      }
+    }
+    return map;
   }
 
   /**

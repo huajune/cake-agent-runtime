@@ -19,6 +19,7 @@ export interface TodayUserData {
 export interface PausedUserData {
   chatId: string;
   pausedAt: number;
+  pauseExpiresAt: number;
   odName?: string;
   groupName?: string;
 }

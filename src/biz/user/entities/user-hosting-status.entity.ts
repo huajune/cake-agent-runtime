@@ -7,6 +7,7 @@ export interface UserHostingStatus {
   is_paused: boolean;
   paused_at: string | null;
   resumed_at: string | null;
+  pause_expires_at: string | null;
   pause_count: number;
   created_at: string;
   updated_at: string;

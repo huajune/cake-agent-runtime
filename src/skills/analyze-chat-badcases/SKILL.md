@@ -22,6 +22,13 @@ description: 抽样分析招聘 Agent 的生产对话质量，识别问题并协
 
 字段含义见 `references/schema.md`——在 Step 2 读完原始数据后需要参考。
 
+**飞书角色分工**：
+- `BadCase / GoodCase`：样本池，只保存证据、观察和候选素材
+- `测试集 / 验证集`：正式数据集，只能由本 skill 策展、确认后再导入
+- `资产关联`：内部血缘表，自动记录样本池和正式数据集之间的关联边
+
+不要把样本池里的记录机械搬运成正式数据集，也不要依赖手动勾选字段决定是否入库。
+
 ## 执行步骤
 
 ### Step 1. 抽样
@@ -83,13 +90,36 @@ description: 抽样分析招聘 Agent 的生产对话质量，识别问题并协
 
 **针对本次修复的问题类型**生成用例，不是 badcase 全量档案。
 
-每个 case 契约：
-- `input`: 触发场景的用户输入（单条或多轮）
-- `expected_behavior`: 自然语言描述期望的 Agent 行为（描述行为，别写死回复文本）
-- `references_chat_id`: 关联的真实案例 chat_id（可追溯）
-- `problem_category`: Step 3 里定义的问题名
+优先整理成两类 JSON 草稿，方便 Step 8 直接导入：
 
-在对话里用 markdown 表格或 JSON 展示全量草稿。
+1. `scenarioCases`：用于导入 `测试集`
+- `caseId`: 稳定 ID，同一条用例后续迭代必须保持不变
+- `caseName`: 用例名称
+- `category`: 问题分类（对应 Step 3 的问题名）
+- `userMessage`: 最后一条用户输入
+- `chatHistory`: 多轮上下文（可选）
+- `checkpoint`: 核心检查点（可选）
+- `expectedOutput`: 自然语言描述期望行为
+- `sourceType`: `从BadCase生成 / 手工新增 / 从GoodCase提炼 / 线上回捞`
+- `sourceBadCaseIds`: 关联 badcase ID 列表（可选）
+- `sourceGoodCaseIds`: 关联 goodcase ID 列表（可选）
+- `sourceChatIds`: 关联 chat_id 列表（可选）
+- `participantName / managerName / consultTime`: 追溯信息，可选
+- `remark`: 策展备注，可选
+- `enabled`: 是否启用，默认 `true`
+
+2. `conversationCases`：用于导入 `验证集`
+- `validationId`: 稳定 ID，同一条验证样本后续迭代必须保持不变
+- `validationTitle`: 验证标题
+- `conversation`: 完整对话记录
+- `chatId`: 主 chat_id（可选）
+- `participantName / managerName / consultTime`: 对话元信息，可选
+- `sourceType`: `真实生产 / 从BadCase沉淀 / 从GoodCase沉淀 / 人工补充`
+- `sourceBadCaseIds / sourceGoodCaseIds / sourceChatIds`: 溯源信息，可选
+- `remark`: 策展备注，可选
+- `enabled`: 是否启用，默认 `true`
+
+在对话里用 markdown 或 JSON 展示全量草稿，等用户确认后再入库。
 
 ### Step 7. 用户对话确认
 
@@ -98,6 +128,21 @@ description: 抽样分析招聘 Agent 的生产对话质量，识别问题并协
 ### Step 8. 导入 test-suite
 
 test-suite 模块已有 HTTP 接口。端点速查见 `references/test-suite-api.md`。调用前 Read 对应 DTO 文件确认契约。
+
+导入前先确保：
+- 本次要导入的内容已经在对话里经过用户确认
+- `测试集 / 验证集` 只包含本轮策展后的正式资产
+- 不要假设 `BadCase / GoodCase` 会自动同步到正式数据集
+
+导入时使用：
+- `POST /test-suite/datasets/scenario/import-curated`：把 `scenarioCases` 幂等 upsert 到 `测试集`
+- `POST /test-suite/datasets/conversation/import-curated`：把 `conversationCases` 幂等 upsert 到 `验证集`
+
+注意：
+- 同一 `caseId / validationId` 会更新原记录，不会重复创建
+- 如果内容发生变化，系统会把旧的 `测试状态 / 批次 / 分数` 等执行结果清回 `待测试`
+- 如果 payload 完全一致，导入应保持幂等，不重复重置
+- 导入时会自动同步 `资产关联` 表，不需要手工维护来源关系
 
 ### Step 9. 跑测试
 
@@ -122,6 +167,8 @@ test-suite 模块已有 HTTP 接口。端点速查见 `references/test-suite-api
 
 **你不要做**：
 - 不要跳过 Step 4 / Step 7 直接改代码或入库——用户需要审查闸门
+- 不要把 `BadCase / GoodCase` 当成正式测试资产表，它们只是样本池
+- 不要依赖任何手动勾选字段来决定是否进入 `测试集 / 验证集`
 - 不要硬编码红线清单；业务规则在 `src/biz/strategy/`，要用时去读
 - 不要把 SQL 原始结果直接丢给用户——先按 chat_id 聚合成对话流水再分析
 - 不要在任何文件里写 `API_GUARD_TOKEN` 的值

@@ -13,3 +13,18 @@
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.01), 0 1px 2px -1px rgba(0, 0, 0, 0.01);
   overflow: hidden;
 }
+
+.tabHint {
+  padding: 10px 32px;
+  font-size: 13px;
+  color: #64748b;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tabHintIcon {
+  font-size: 14px;
+}

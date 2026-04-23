@@ -155,8 +155,37 @@
   }
 }
 
-.messageTypeIcon {
-  margin-right: 4px;
+// 媒体气泡（图片/视频/表情）：去掉背景和内边距，让媒体本身作为主体
+.mediaBubble {
+  padding: 0;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none;
+  border-radius: $radius-md;
+  overflow: hidden;
+
+  &.user,
+  &.assistant {
+    background: transparent;
+    border: none;
+    border-bottom-left-radius: $radius-md;
+    border-bottom-right-radius: $radius-md;
+  }
+}
+
+// 卡片气泡（链接/位置/小程序/文件/语音/名片）：仅做内容承载，内部组件已带自身样式
+.cardBubble {
+  padding: 0;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none;
+  border-radius: 0;
+
+  &.user,
+  &.assistant {
+    background: transparent;
+    border: none;
+  }
 }
 
 // 响应式 (PC端)

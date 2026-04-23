@@ -12,6 +12,8 @@ import { TestBatchService } from './services/test-batch.service';
 import { TestImportService } from './services/test-import.service';
 import { TestWriteBackService } from './services/test-write-back.service';
 import { ConversationTestService } from './services/conversation-test.service';
+import { CuratedDatasetImportService } from './services/curated-dataset-import.service';
+import { CuratedDatasetPayloadBuilderService } from './services/curated-dataset-payload-builder.service';
 import { AgentModule } from '@agent/agent.module';
 import { BizModule } from '@biz/biz.module';
 import { FeishuSyncModule } from '@biz/feishu-sync/feishu-sync.module';
@@ -20,6 +22,7 @@ import { ObservabilityModule } from '@observability/observability.module';
 import { ToolModule } from '@tools/tool.module';
 import { AiStreamObservabilityService } from './services/ai-stream-observability.service';
 import { MemoryModule } from '@memory/memory.module';
+import { LineageSyncService } from './services/lineage-sync.service';
 
 /**
  * 测试套件模块
@@ -75,6 +78,9 @@ import { MemoryModule } from '@memory/memory.module';
     TestWriteBackService,
     TestBatchService,
     ConversationTestService,
+    CuratedDatasetPayloadBuilderService,
+    LineageSyncService,
+    CuratedDatasetImportService,
     TestSuiteProcessor,
     TestImportService,
     AiStreamObservabilityService,
@@ -86,6 +92,7 @@ import { MemoryModule } from '@memory/memory.module';
     TestWriteBackService,
     TestSuiteProcessor,
     ConversationTestService,
+    CuratedDatasetImportService,
   ],
 })
 export class TestSuiteModule {}

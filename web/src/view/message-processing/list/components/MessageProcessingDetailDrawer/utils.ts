@@ -1,5 +1,5 @@
 import type { UIMessage } from 'ai';
-import type { MessageRecord } from '@/api/types/chat.types';
+import type { MessageRecord, MessageRecordMemorySnapshot } from '@/api/types/chat.types';
 
 type AnyRecord = Record<string, unknown>;
 
@@ -120,6 +120,29 @@ function buildDebugRequestContext(request?: AnyRecord): AnyRecord | undefined {
     ...rest
   } = request;
   return Object.keys(rest).length > 0 ? rest : undefined;
+}
+
+function buildMemorySnapshotPayload(
+  snapshot?: MessageRecordMemorySnapshot,
+): AnyRecord | undefined {
+  if (!snapshot) return undefined;
+
+  const entries: AnyRecord = {};
+  if (snapshot.currentStage) entries['程序性阶段'] = snapshot.currentStage;
+  if (snapshot.presentedJobIds && snapshot.presentedJobIds.length > 0) {
+    entries['本轮已展示岗位'] = snapshot.presentedJobIds;
+  }
+  if (snapshot.recommendedJobIds && snapshot.recommendedJobIds.length > 0) {
+    entries['推荐记录'] = snapshot.recommendedJobIds;
+  }
+  if (snapshot.sessionFacts && Object.keys(snapshot.sessionFacts).length > 0) {
+    entries['会话事实'] = snapshot.sessionFacts;
+  }
+  if (snapshot.profileKeys && snapshot.profileKeys.length > 0) {
+    entries['长期画像 keys'] = snapshot.profileKeys;
+  }
+
+  return Object.keys(entries).length > 0 ? entries : undefined;
 }
 
 function buildTextPart(text: string) {
@@ -572,6 +595,16 @@ export function getRawPayloadPanels(message: MessageRecord): RawPayloadPanel[] {
       label: '排障上下文',
       description: '处理记录里的链路标识、会话信息与调度上下文',
       data: debugRequestContext,
+    });
+  }
+
+  const memorySnapshotPayload = buildMemorySnapshotPayload(message.memorySnapshot);
+  if (memorySnapshotPayload) {
+    panels.push({
+      key: 'memory-snapshot',
+      label: '记忆快照',
+      description: '本轮 Agent 触发时的四层记忆上下文（阶段 / 会话事实 / 推荐记录 / 画像 keys）',
+      data: memorySnapshotPayload,
     });
   }
 

@@ -3,6 +3,8 @@ import type { ChatMessage, ChatSession } from '@/hooks/chat/useChatSessions';
 import { FeedbackButtons } from '@/view/agent-test/list/components/FeedbackButtons';
 import { FeedbackModal } from '@/view/agent-test/list/components/FeedbackModal';
 import { useFeedback } from '@/view/agent-test/list/hooks/useFeedback';
+import { MessageBubbleContent } from './MessageBubbleContent';
+import { getBubbleVariant } from './bubble-variant';
 import styles from './index.module.scss';
 
 // 格式化时间戳
@@ -29,21 +31,6 @@ function formatDate(timestamp: number): string {
     return '昨天';
   }
   return date.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' });
-}
-
-// 消息类型图标
-function getMessageTypeIcon(messageType?: string): string {
-  const icons: Record<string, string> = {
-    IMAGE: '🖼️',
-    VOICE: '🎤',
-    VIDEO: '🎬',
-    FILE: '📎',
-    LINK: '🔗',
-    LOCATION: '📍',
-    EMOTION: '😊',
-    MINI_PROGRAM: '📱',
-  };
-  return messageType ? icons[messageType] || '' : '';
 }
 
 interface MessageDetailProps {
@@ -168,7 +155,15 @@ export default function MessageDetail({
               const avatarUrl = !isAssistant
                 ? msg.avatar || currentSession?.avatar
                 : undefined;
-              const messageTypeIcon = getMessageTypeIcon(msg.messageType);
+              const variant = getBubbleVariant(msg.messageType);
+              const bubbleClass = [
+                styles.messageBubble,
+                isAssistant ? styles.assistant : styles.user,
+                variant === 'media' ? styles.mediaBubble : '',
+                variant === 'card' ? styles.cardBubble : '',
+              ]
+                .filter(Boolean)
+                .join(' ');
 
               return (
                 <div
@@ -200,13 +195,12 @@ export default function MessageDetail({
                       <span className={styles.senderName}>{displayName}</span>
                       <span className={styles.messageTime}>{formatTime(msg.timestamp)}</span>
                     </div>
-                    <div
-                      className={`${styles.messageBubble} ${isAssistant ? styles.assistant : styles.user}`}
-                    >
-                      {messageTypeIcon && (
-                        <span className={styles.messageTypeIcon}>{messageTypeIcon}</span>
-                      )}
-                      {msg.content}
+                    <div className={bubbleClass}>
+                      <MessageBubbleContent
+                        messageType={msg.messageType}
+                        content={msg.content}
+                        payload={msg.payload}
+                      />
                     </div>
                   </div>
                 </div>

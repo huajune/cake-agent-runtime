@@ -1,4 +1,5 @@
 import { buildSaveImageDescriptionTool } from '@tools/save-image-description.tool';
+import { MessageType } from '@enums/message-callback.enum';
 
 describe('buildSaveImageDescriptionTool', () => {
   const mockChatSession = {
@@ -95,6 +96,51 @@ describe('buildSaveImageDescriptionTool', () => {
     expect(mockChatSession.updateMessageContent).toHaveBeenCalledWith(
       'msg-img-2',
       '[图片消息] 第二张图片描述',
+    );
+  });
+
+  it('should use [表情消息] prefix when messageType is EMOTION', async () => {
+    const builder = buildSaveImageDescriptionTool(
+      mockChatSession as never,
+      ['msg-emoji-1', 'msg-img-1'],
+      { 'msg-emoji-1': MessageType.EMOTION, 'msg-img-1': MessageType.IMAGE },
+    );
+    const builtTool = builder({} as never);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const exec = (builtTool as any).execute;
+
+    await exec({ messageId: 'msg-emoji-1', description: '微笑表情' });
+    await exec({ messageId: 'msg-img-1', description: '一张招聘海报' });
+
+    expect(mockChatSession.updateMessageContent).toHaveBeenCalledWith(
+      'msg-emoji-1',
+      '[表情消息] 微笑表情',
+    );
+    expect(mockChatSession.updateMessageContent).toHaveBeenCalledWith(
+      'msg-img-1',
+      '[图片消息] 一张招聘海报',
+    );
+  });
+
+  it('should fall back to [图片消息] prefix when messageId is missing from visualMessageTypes', async () => {
+    const builder = buildSaveImageDescriptionTool(
+      mockChatSession as never,
+      ['msg-unknown-kind'],
+      {},
+    );
+    const builtTool = builder({} as never);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (builtTool as any).execute({
+      messageId: 'msg-unknown-kind',
+      description: '未标注类型的描述',
+    });
+
+    expect(result).toEqual({ success: true });
+    expect(mockChatSession.updateMessageContent).toHaveBeenCalledWith(
+      'msg-unknown-kind',
+      '[图片消息] 未标注类型的描述',
     );
   });
 });

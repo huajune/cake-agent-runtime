@@ -116,9 +116,7 @@ export class AgentRunnerService {
       }
       this.logger.log(`Loop 完成: steps=${r.steps.length}, tokens=${r.usage.totalTokens}`);
 
-      this.dispatchTurnEndLifecycle({ ...ctx, messageId: params.messageId }, r.text);
-
-      return this.buildRunResult({
+      const result = this.buildRunResult({
         text: r.text,
         reasoningText: r.reasoningText,
         responseMessages: r.response?.messages as Array<Record<string, unknown>> | undefined,
@@ -133,6 +131,10 @@ export class AgentRunnerService {
         stepStartMs,
         stepEndWallclocks,
       });
+
+      this.attachTurnEnd(result, ctx, params.messageId, r.text, params.deferTurnEnd);
+
+      return result;
     } catch (err) {
       const agentError = this.enrichAgentError(err, ctx);
       this.logger.error('Agent 执行失败', agentError);
@@ -195,7 +197,7 @@ export class AgentRunnerService {
             stepStartMs,
             stepEndWallclocks,
           });
-          this.dispatchTurnEndLifecycle({ ...ctx, messageId: params.messageId }, text);
+          this.attachTurnEnd(result, ctx, params.messageId, text, params.deferTurnEnd);
           if (params.onFinish) {
             Promise.resolve(params.onFinish(result)).catch((err) =>
               this.logger.warn('流式完成回调执行失败', err),
@@ -321,6 +323,41 @@ export class AgentRunnerService {
     void this.runTurnEndLifecycle(ctx, assistantText).catch((err) =>
       this.logger.warn('记忆生命周期执行失败', err),
     );
+  }
+
+  /**
+   * 根据 deferTurnEnd 决定是 fire-and-forget 立即触发，还是把触发器暴露给调用方。
+   *
+   * 延迟模式用于 replay：首次生成结果可能被后续合并消息丢弃，若立即触发
+   * projectAssistantTurn/extractFacts 会把「本应丢弃」的首次回复写进 session 记忆，
+   * 污染下一轮 recall。
+   */
+  private attachTurnEnd(
+    result: AgentRunResult,
+    ctx: Pick<
+      Parameters<MemoryService['onTurnEnd']>[0],
+      'corpId' | 'userId' | 'sessionId' | 'normalizedMessages'
+    > & {
+      turnState: {
+        candidatePool: Parameters<MemoryService['onTurnEnd']>[0]['candidatePool'];
+      };
+    },
+    messageId: string | undefined,
+    assistantText: string,
+    deferTurnEnd: boolean | undefined,
+  ): void {
+    const lifecycleCtx = { ...ctx, messageId };
+    if (!deferTurnEnd) {
+      this.dispatchTurnEndLifecycle(lifecycleCtx, assistantText);
+      return;
+    }
+
+    let consumed = false;
+    result.runTurnEnd = async () => {
+      if (consumed) return;
+      consumed = true;
+      await this.runTurnEndLifecycle(lifecycleCtx, assistantText);
+    };
   }
 
   private buildRunResult(params: {

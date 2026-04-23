@@ -3,6 +3,7 @@ import {
   IsOptional,
   IsArray,
   IsBoolean,
+  IsNumber,
   ValidateNested,
   IsEnum,
   IsIn,
@@ -489,6 +490,220 @@ export interface ImportResult {
     category?: string;
     message: string;
   }>;
+}
+
+export enum ScenarioDatasetSourceType {
+  FROM_BADCASE = '从BadCase生成',
+  MANUAL = '手工新增',
+  FROM_GOODCASE = '从GoodCase提炼',
+  FROM_PRODUCTION = '线上回捞',
+}
+
+export enum ConversationDatasetSourceType {
+  PRODUCTION = '真实生产',
+  FROM_BADCASE = '从BadCase沉淀',
+  FROM_GOODCASE = '从GoodCase沉淀',
+  MANUAL = '人工补充',
+}
+
+export class CuratedScenarioCaseDto {
+  @ApiProperty({ description: '稳定的用例ID，用于幂等导入' })
+  @IsString()
+  caseId: string;
+
+  @ApiProperty({ description: '用例名称' })
+  @IsString()
+  caseName: string;
+
+  @ApiPropertyOptional({ description: '场景分类' })
+  @IsOptional()
+  @IsString()
+  category?: string;
+
+  @ApiProperty({ description: '用户消息（最后一条用户输入）' })
+  @IsString()
+  userMessage: string;
+
+  @ApiPropertyOptional({ description: '聊天记录 / 上下文（多轮时建议填写）' })
+  @IsOptional()
+  @IsString()
+  chatHistory?: string;
+
+  @ApiPropertyOptional({ description: '核心检查点（简短版）' })
+  @IsOptional()
+  @IsString()
+  checkpoint?: string;
+
+  @ApiPropertyOptional({ description: '预期输出 / expected_behavior（自然语言描述）' })
+  @IsOptional()
+  @IsString()
+  expectedOutput?: string;
+
+  @ApiPropertyOptional({
+    description: '来源类型',
+    enum: ScenarioDatasetSourceType,
+    default: ScenarioDatasetSourceType.MANUAL,
+  })
+  @IsOptional()
+  @IsEnum(ScenarioDatasetSourceType)
+  sourceType?: ScenarioDatasetSourceType;
+
+  @ApiPropertyOptional({ description: '关联 BadCase ID 列表', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  sourceBadCaseIds?: string[];
+
+  @ApiPropertyOptional({ description: '关联 GoodCase ID 列表', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  sourceGoodCaseIds?: string[];
+
+  @ApiPropertyOptional({ description: '关联 chat_id 列表', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  sourceChatIds?: string[];
+
+  @ApiPropertyOptional({ description: '候选人昵称 / participantName' })
+  @IsOptional()
+  @IsString()
+  participantName?: string;
+
+  @ApiPropertyOptional({ description: '招募经理姓名' })
+  @IsOptional()
+  @IsString()
+  managerName?: string;
+
+  @ApiPropertyOptional({ description: '咨询时间（Unix 毫秒时间戳）' })
+  @IsOptional()
+  @IsNumber()
+  consultTime?: number;
+
+  @ApiPropertyOptional({ description: '备注 / 策展说明' })
+  @IsOptional()
+  @IsString()
+  remark?: string;
+
+  @ApiPropertyOptional({ description: '是否启用', default: true })
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+}
+
+export class ImportCuratedScenarioDatasetRequestDto {
+  @ApiPropertyOptional({ description: '导入说明，仅用于返回展示' })
+  @IsOptional()
+  @IsString()
+  importNote?: string;
+
+  @ApiProperty({ description: '策展后的正式场景用例列表', type: [CuratedScenarioCaseDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CuratedScenarioCaseDto)
+  cases: CuratedScenarioCaseDto[];
+}
+
+export class CuratedConversationCaseDto {
+  @ApiProperty({ description: '稳定的验证ID，用于幂等导入' })
+  @IsString()
+  validationId: string;
+
+  @ApiProperty({ description: '验证标题' })
+  @IsString()
+  validationTitle: string;
+
+  @ApiProperty({ description: '完整对话记录' })
+  @IsString()
+  conversation: string;
+
+  @ApiPropertyOptional({ description: '候选人昵称 / participantName' })
+  @IsOptional()
+  @IsString()
+  participantName?: string;
+
+  @ApiPropertyOptional({ description: '招募经理姓名' })
+  @IsOptional()
+  @IsString()
+  managerName?: string;
+
+  @ApiPropertyOptional({ description: '咨询时间（Unix 毫秒时间戳）' })
+  @IsOptional()
+  @IsNumber()
+  consultTime?: number;
+
+  @ApiPropertyOptional({ description: 'chat_id（如有）' })
+  @IsOptional()
+  @IsString()
+  chatId?: string;
+
+  @ApiPropertyOptional({
+    description: '来源类型',
+    enum: ConversationDatasetSourceType,
+    default: ConversationDatasetSourceType.PRODUCTION,
+  })
+  @IsOptional()
+  @IsEnum(ConversationDatasetSourceType)
+  sourceType?: ConversationDatasetSourceType;
+
+  @ApiPropertyOptional({ description: '关联 BadCase ID 列表', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  sourceBadCaseIds?: string[];
+
+  @ApiPropertyOptional({ description: '关联 GoodCase ID 列表', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  sourceGoodCaseIds?: string[];
+
+  @ApiPropertyOptional({ description: '关联 chat_id 列表', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  sourceChatIds?: string[];
+
+  @ApiPropertyOptional({ description: '备注 / 策展说明' })
+  @IsOptional()
+  @IsString()
+  remark?: string;
+
+  @ApiPropertyOptional({ description: '是否启用', default: true })
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+}
+
+export class ImportCuratedConversationDatasetRequestDto {
+  @ApiPropertyOptional({ description: '导入说明，仅用于返回展示' })
+  @IsOptional()
+  @IsString()
+  importNote?: string;
+
+  @ApiProperty({ description: '策展后的正式回归验证列表', type: [CuratedConversationCaseDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CuratedConversationCaseDto)
+  cases: CuratedConversationCaseDto[];
+}
+
+export interface CuratedDatasetImportFailure {
+  identifier: string;
+  stage: 'upsert' | 'lineage';
+  message: string;
+  recordId?: string;
+}
+
+export interface CuratedDatasetImportResult {
+  created: number;
+  updated: number;
+  unchanged: number;
+  failed: number;
+  total: number;
+  recordIds: string[];
+  failures: CuratedDatasetImportFailure[];
 }
 
 /**

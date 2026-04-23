@@ -22,6 +22,7 @@ import { TestImportService } from './services/test-import.service';
 import { TestWriteBackService } from './services/test-write-back.service';
 import { ConversationTestService } from './services/conversation-test.service';
 import { AiStreamObservabilityService } from './services/ai-stream-observability.service';
+import { CuratedDatasetImportService } from './services/curated-dataset-import.service';
 import { TestSuiteProcessor } from './test-suite.processor';
 import { FeishuBitableSyncService, AgentTestFeedback } from '@biz/feishu-sync/bitable-sync.service';
 import { MemoryService } from '@memory/memory.service';
@@ -36,6 +37,8 @@ import {
   QuickCreateBatchRequestDto,
   WriteBackFeishuRequestDto,
   ResetChatSessionRequestDto,
+  ImportCuratedScenarioDatasetRequestDto,
+  ImportCuratedConversationDatasetRequestDto,
 } from './dto/test-chat.dto';
 import {
   GetConversationSourcesDto,
@@ -68,6 +71,7 @@ export class TestSuiteController {
     private readonly writeBackService: TestWriteBackService,
     private readonly conversationTestService: ConversationTestService,
     private readonly aiStreamObservability: AiStreamObservabilityService,
+    private readonly curatedDatasetImportService: CuratedDatasetImportService,
     private readonly testProcessor: TestSuiteProcessor,
     private readonly feishuBitableService: FeishuBitableSyncService,
     private readonly memoryService: MemoryService,
@@ -323,6 +327,26 @@ export class TestSuiteController {
     return { success: true, data: await this.importService.importFromFeishu(request) };
   }
 
+  @Post('datasets/scenario/import-curated')
+  @ApiOperation({ summary: '导入策展后的正式测试集（幂等 upsert）' })
+  async importCuratedScenarioDataset(@Body() request: ImportCuratedScenarioDatasetRequestDto) {
+    return {
+      success: true,
+      data: await this.curatedDatasetImportService.importScenarioDataset(request),
+    };
+  }
+
+  @Post('datasets/conversation/import-curated')
+  @ApiOperation({ summary: '导入策展后的正式验证集（幂等 upsert）' })
+  async importCuratedConversationDataset(
+    @Body() request: ImportCuratedConversationDatasetRequestDto,
+  ) {
+    return {
+      success: true,
+      data: await this.curatedDatasetImportService.importConversationDataset(request),
+    };
+  }
+
   @Post('batches/quick-create')
   @ApiOperation({ summary: '一键创建批量测试' })
   async quickCreateBatch(@Body() request: QuickCreateBatchRequestDto) {
@@ -540,7 +564,10 @@ export class TestSuiteController {
       throw new Error(result.error || '写入飞书表格失败');
     }
 
-    return { success: true, data: { recordId: result.recordId, type: request.type } };
+    return {
+      success: true,
+      data: { recordId: result.recordId, type: request.type },
+    };
   }
 
   // ==================== 回归验证 ====================

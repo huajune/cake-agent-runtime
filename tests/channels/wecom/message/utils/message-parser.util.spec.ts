@@ -99,7 +99,7 @@ describe('MessageParser', () => {
         payload: { imageUrl: 'http://example.com/emoji.gif' },
       });
       const result = MessageParser.parse(messageData);
-      expect(result.content).toBe('[表情消息]');
+      expect(result.content).toBe('[表情消息] 候选人发送了一个表情');
     });
 
     it('should extract content for mini program messages', () => {

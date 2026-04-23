@@ -143,6 +143,7 @@ describe('UserHostingService', () => {
       expect(mockUserHostingRepository.upsertPause).toHaveBeenCalledWith(
         'user1',
         expect.any(String),
+        expect.any(String),
       );
     });
 
@@ -204,9 +205,18 @@ describe('UserHostingService', () => {
     });
 
     it('should return paused users with profiles merged', async () => {
+      const futureIso = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
       mockUserHostingRepository.findPausedUserIds.mockResolvedValue([
-        { user_id: 'user1', paused_at: '2024-01-01T00:00:00.000Z' },
-        { user_id: 'user2', paused_at: '2024-01-02T00:00:00.000Z' },
+        {
+          user_id: 'user1',
+          paused_at: new Date().toISOString(),
+          pause_expires_at: futureIso,
+        },
+        {
+          user_id: 'user2',
+          paused_at: new Date().toISOString(),
+          pause_expires_at: futureIso,
+        },
       ]);
       mockUserHostingRepository.findUserProfiles.mockResolvedValue([
         { chatId: 'user1', odName: 'Alice', groupName: 'GroupA' },
@@ -216,21 +226,21 @@ describe('UserHostingService', () => {
       const result = await service.getPausedUsersWithProfiles();
 
       expect(result).toHaveLength(2);
-      expect(result[0]).toMatchObject({
-        userId: 'user1',
-        odName: 'Alice',
-        groupName: 'GroupA',
-      });
-      expect(result[1]).toMatchObject({
-        userId: 'user2',
-        odName: 'Bob',
-        groupName: 'GroupB',
-      });
+      expect(result.map((r) => r.userId).sort()).toEqual(['user1', 'user2']);
+      const user1 = result.find((r) => r.userId === 'user1');
+      const user2 = result.find((r) => r.userId === 'user2');
+      expect(user1).toMatchObject({ odName: 'Alice', groupName: 'GroupA' });
+      expect(user2).toMatchObject({ odName: 'Bob', groupName: 'GroupB' });
     });
 
     it('should return paused users without profiles when profile query fails', async () => {
+      const futureIso = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
       mockUserHostingRepository.findPausedUserIds.mockResolvedValue([
-        { user_id: 'user1', paused_at: '2024-01-01T00:00:00.000Z' },
+        {
+          user_id: 'user1',
+          paused_at: new Date().toISOString(),
+          pause_expires_at: futureIso,
+        },
       ]);
       mockUserHostingRepository.findUserProfiles.mockRejectedValue(new Error('DB error'));
 
@@ -243,7 +253,11 @@ describe('UserHostingService', () => {
 
     it('should use cached data when cache is valid', async () => {
       const now = Date.now();
-      (service as any).pausedUsersCache.set('user1', { isPaused: true, pausedAt: now });
+      (service as any).pausedUsersCache.set('user1', {
+        isPaused: true,
+        pausedAt: now,
+        expiresAt: now + 3 * 24 * 60 * 60 * 1000,
+      });
       (service as any).cacheExpiry = now + 60_000;
 
       mockUserHostingRepository.findUserProfiles.mockResolvedValue([
@@ -258,9 +272,18 @@ describe('UserHostingService', () => {
     });
 
     it('should handle missing profile for some users gracefully', async () => {
+      const futureIso = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
       mockUserHostingRepository.findPausedUserIds.mockResolvedValue([
-        { user_id: 'user1', paused_at: '2024-01-01T00:00:00.000Z' },
-        { user_id: 'user2', paused_at: '2024-01-02T00:00:00.000Z' },
+        {
+          user_id: 'user1',
+          paused_at: new Date().toISOString(),
+          pause_expires_at: futureIso,
+        },
+        {
+          user_id: 'user2',
+          paused_at: new Date().toISOString(),
+          pause_expires_at: futureIso,
+        },
       ]);
       // Only user1 has a profile
       mockUserHostingRepository.findUserProfiles.mockResolvedValue([

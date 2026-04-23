@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ModelMessage, ToolSet } from 'ai';
 import { CallerKind } from '@/enums/agent.enum';
+import { MessageType } from '@enums/message-callback.enum';
 import { ToolRegistryService } from '@tools/tool-registry.service';
 import { RecruitmentCaseRecord } from '@biz/recruitment-case/entities/recruitment-case.entity';
 import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
@@ -73,9 +74,11 @@ export class AgentPreparationService {
       `Agent ${mode}: callerKind=${callerKind}, userId=${userId}, corpId=${corpId}, sessionId=${sessionId}, scenario=${scenario}`,
     );
 
-    // 入参归一化：只认 messages[]，本轮的 user 文本是最后一条 user content。
+    // 入参归一化：只认 messages[]。本轮的 user 文本 = 末尾连续的 user 块（上一条 assistant 之后的所有 user）。
+    // 这样不管上层是否已把多条消息合并成单条 user，都能覆盖本轮全部用户输入——
+    // 合并场景（WeCom replay、test-suite 多条连发）下后续事实提取/阶段推断才不会漏内容。
     const truncatedMessages = this.truncateToCharBudget(params.messages);
-    const currentUserMessage = this.latestUserContent(truncatedMessages);
+    const currentUserMessage = this.trailingUserContent(truncatedMessages);
 
     // 并行拉取本轮依赖：四类记忆快照 + 仍在跟进的招聘 case。
     const [memory, activeRecruitmentCase] = await Promise.all([
@@ -89,7 +92,7 @@ export class AgentPreparationService {
       }),
     ]);
 
-    // 对话消息归一化为 AI SDK ModelMessage[]（含多模态图片注入）。
+    // 对话消息归一化为 AI SDK ModelMessage[]（含多模态图片/表情注入）。
     const normalizedMessages = this.normalizeConversation({
       callerKind,
       memoryWindow: memory.shortTerm.messageWindow,
@@ -97,6 +100,7 @@ export class AgentPreparationService {
       enableVision: options?.enableVision ?? false,
       imageUrls: params.imageUrls,
       imageMessageIds: params.imageMessageIds,
+      visualMessageTypes: params.visualMessageTypes,
     });
 
     // 输入安全检查：扫 prompt injection → 异步告警 → 返回需要追加到 system prompt 的 guard suffix。
@@ -153,15 +157,24 @@ export class AgentPreparationService {
   }
 
   /**
-   * 取最后一条 user 消息的文本内容。入参已是 AgentInputMessage[]（content 纯字符串）。
+   * 取本轮用户输入：末尾连续的 user 块（到上一条 assistant 为止），以换行合并。
+   *
+   * 为什么不只取最后一条：合并请求（WeCom replay、test-suite 多条连发）下，
+   * 末尾可能连续多条 user 且尚未有 assistant 打断。只取最后一条会让下游的
+   * 高置信事实提取、阶段推断、guard 告警文本漏掉前面几条的内容。
    */
-  private latestUserContent(messages: AgentInputMessage[]): string | undefined {
+  private trailingUserContent(messages: AgentInputMessage[]): string | undefined {
+    const collected: string[] = [];
     for (let i = messages.length - 1; i >= 0; i -= 1) {
-      if (messages[i].role !== 'user') continue;
-      const content = messages[i].content?.trim();
-      if (content) return content;
+      const role = messages[i].role;
+      if (role === 'user') {
+        const content = messages[i].content?.trim();
+        if (content) collected.unshift(content);
+        continue;
+      }
+      if (role === 'assistant') break;
     }
-    return undefined;
+    return collected.length > 0 ? collected.join('\n') : undefined;
   }
 
   /**
@@ -193,12 +206,18 @@ export class AgentPreparationService {
     enableVision: boolean;
     imageUrls?: string[];
     imageMessageIds?: string[];
+    visualMessageTypes?: Record<string, MessageType.IMAGE | MessageType.EMOTION>;
   }): ModelMessage[] {
     const source =
       input.callerKind === CallerKind.WECOM ? input.memoryWindow : input.passedMessages;
     const normalized = this.toModelMessages(source, input.enableVision);
     if (input.imageUrls?.length && input.enableVision) {
-      this.injectImageParts(normalized, input.imageUrls, input.imageMessageIds);
+      this.injectImageParts(
+        normalized,
+        input.imageUrls,
+        input.imageMessageIds,
+        input.visualMessageTypes,
+      );
     }
     return normalized;
   }
@@ -256,6 +275,7 @@ export class AgentPreparationService {
       messages: normalizedMessages,
       thresholds,
       imageMessageIds: params.imageMessageIds,
+      visualMessageTypes: params.visualMessageTypes,
       currentStage: entryStage,
       availableStages: Object.keys(stageGoals),
       stageGoals,
@@ -504,36 +524,41 @@ export class AgentPreparationService {
     });
   }
 
-  /** 把顶层图片参数挂到最后一条 user message。 */
+  /** 把顶层图片/表情参数挂到最后一条 user message。 */
   private injectImageParts(
     messages: ModelMessage[],
     imageUrls: string[],
     imageMessageIds?: string[],
+    visualMessageTypes?: Record<string, MessageType.IMAGE | MessageType.EMOTION>,
   ): void {
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role === 'user') {
         const textContent = this.extractTextFromContent(messages[i].content);
-        const imageParts = this.buildImageParts(imageUrls, imageMessageIds);
+        const imageParts = this.buildImageParts(imageUrls, imageMessageIds, visualMessageTypes);
         if (imageParts.length === 0) return;
         const textPart = textContent ? [{ type: 'text' as const, text: String(textContent) }] : [];
         messages[i] = {
           role: 'user',
           content: [...imageParts, ...textPart],
         };
-        this.logger.log(`注入 ${imageUrls.length} 张图片到 user message（多模态 vision）`);
+        this.logger.log(`注入 ${imageUrls.length} 张图片/表情到 user message（多模态 vision）`);
         return;
       }
     }
   }
 
-  /** 构建 image parts，并附带可选的图片 messageId 标签。 */
-  private buildImageParts(imageUrls: string[], imageMessageIds?: string[]) {
+  /** 构建 image parts，并附带可选的图片/表情 messageId 标签。 */
+  private buildImageParts(
+    imageUrls: string[],
+    imageMessageIds?: string[],
+    visualMessageTypes?: Record<string, MessageType.IMAGE | MessageType.EMOTION>,
+  ) {
     const validUrls = imageUrls
       .map((url) => {
         try {
           return new URL(url);
         } catch {
-          this.logger.warn(`跳过无效的图片 URL: ${url}`);
+          this.logger.warn(`跳过无效的图片/表情 URL: ${url}`);
           return null;
         }
       })
@@ -542,14 +567,16 @@ export class AgentPreparationService {
     if (validUrls.length === 0) return [];
     if (imageMessageIds?.length && imageMessageIds.length !== validUrls.length) {
       this.logger.warn(
-        `图片 URL 数量(${validUrls.length})与 messageId 数量(${imageMessageIds.length})不一致，将按现有顺序尽力注入`,
+        `图片/表情 URL 数量(${validUrls.length})与 messageId 数量(${imageMessageIds.length})不一致，将按现有顺序尽力注入`,
       );
     }
 
     return validUrls.flatMap((url, index) => {
       const messageId = imageMessageIds?.[index];
+      const kindName =
+        messageId && visualMessageTypes?.[messageId] === MessageType.EMOTION ? '表情' : '图片';
       const label = messageId
-        ? { type: 'text' as const, text: `[图片 messageId=${messageId}]` }
+        ? { type: 'text' as const, text: `[${kindName} messageId=${messageId}]` }
         : null;
       const image = { type: 'image' as const, image: url };
       return label ? [label, image] : [image];

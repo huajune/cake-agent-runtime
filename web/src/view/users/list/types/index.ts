@@ -14,6 +14,7 @@ export interface UserData {
   firstActiveAt: number; // 时间戳（毫秒）
   lastActiveAt: number; // 时间戳（毫秒）
   isPaused: boolean;
+  pauseExpiresAt?: number; // 暂停自动解禁时间戳（毫秒），仅暂停用户列表使用
 }
 
 /**

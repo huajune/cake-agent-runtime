@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { RedisService } from '@infra/redis/redis.service';
 import { UserHostingRepository } from '../repositories/user-hosting.repository';
 import { UserActivityAggregate } from '../types/user.types';
@@ -9,7 +10,14 @@ import { UserActivityAggregate } from '../types/user.types';
 interface PausedUserCacheEntry {
   isPaused: boolean;
   pausedAt: number;
+  expiresAt: number;
 }
+
+/**
+ * 暂停托管的自动解禁期限：3 天（硬编码）
+ */
+const PAUSE_DURATION_MS = 3 * 24 * 60 * 60 * 1000;
+const EXPIRE_CRON_LOCK_TTL_SECONDS = 55;
 
 /**
  * 用户托管 Service
@@ -27,6 +35,7 @@ export class UserHostingService {
   private readonly logger = new Logger(UserHostingService.name);
 
   private static readonly SHARED_CACHE_KEY = 'hosting:paused-users:v1';
+  private static readonly EXPIRE_CRON_LOCK_KEY = 'hosting:paused-users:expire-lock:v1';
 
   private readonly CACHE_TTL_MS = 1_000; // 1 秒本地热缓存
 
@@ -49,7 +58,11 @@ export class UserHostingService {
     await this.ensureFreshPausedUsers();
 
     const entry = this.pausedUsersCache.get(userId);
-    return entry !== undefined && entry.isPaused;
+    if (entry === undefined || !entry.isPaused) {
+      return false;
+    }
+    // 解禁期限到期后视为未暂停（数据库由 expirePausedUsers 异步回写）
+    return entry.expiresAt > Date.now();
   }
 
   /**
@@ -72,13 +85,20 @@ export class UserHostingService {
     await this.ensureFreshPausedUsers();
 
     const now = Date.now();
+    const expiresAt = now + PAUSE_DURATION_MS;
 
-    this.pausedUsersCache.set(userId, { isPaused: true, pausedAt: now });
+    this.pausedUsersCache.set(userId, { isPaused: true, pausedAt: now, expiresAt });
     this.cacheExpiry = Date.now() + this.CACHE_TTL_MS;
 
     try {
-      await this.repository.upsertPause(userId, new Date(now).toISOString());
-      this.logger.log(`[托管暂停] 用户 ${userId} 已暂停托管`);
+      await this.repository.upsertPause(
+        userId,
+        new Date(now).toISOString(),
+        new Date(expiresAt).toISOString(),
+      );
+      this.logger.log(
+        `[托管暂停] 用户 ${userId} 已暂停托管，自动解禁时间 ${new Date(expiresAt).toISOString()}`,
+      );
     } catch (error) {
       this.logger.error(`暂停用户 ${userId} 托管失败`, error);
     }
@@ -122,13 +142,24 @@ export class UserHostingService {
    * 若 user_activity 查询失败，仅返回不含资料的基础列表。
    */
   async getPausedUsersWithProfiles(): Promise<
-    { userId: string; pausedAt: number; odName?: string; groupName?: string }[]
+    {
+      userId: string;
+      pausedAt: number;
+      pauseExpiresAt: number;
+      odName?: string;
+      groupName?: string;
+    }[]
   > {
     await this.ensureFreshPausedUsers();
 
+    const now = Date.now();
     const pausedEntries = Array.from(this.pausedUsersCache.entries())
-      .filter(([, entry]) => entry.isPaused)
-      .map(([userId, entry]) => ({ userId, pausedAt: entry.pausedAt }));
+      .filter(([, entry]) => entry.isPaused && entry.expiresAt > now)
+      .map(([userId, entry]) => ({
+        userId,
+        pausedAt: entry.pausedAt,
+        pauseExpiresAt: entry.expiresAt,
+      }));
 
     if (pausedEntries.length === 0) {
       return [];
@@ -152,6 +183,7 @@ export class UserHostingService {
       return pausedEntries.map((entry) => ({
         userId: entry.userId,
         pausedAt: entry.pausedAt,
+        pauseExpiresAt: entry.pauseExpiresAt,
         odName: profileMap.get(entry.userId)?.odName,
         groupName: profileMap.get(entry.userId)?.groupName,
       }));
@@ -198,6 +230,42 @@ export class UserHostingService {
     return this.repository.cleanupUserActivity(retentionDays);
   }
 
+  // ==================== 定时清理 ====================
+
+  /**
+   * 每分钟扫描一次，将已过解禁期限的暂停记录回写为恢复状态
+   *
+   * 与 loadPausedUsers 中的 lazy clean 互为兜底：
+   * - lazy clean 依赖读流量触发；空载场景下 DB 不会被清理
+   * - 本 cron 独立于流量，保证 DB 状态与 expires_at 始终一致
+   *
+   * UPDATE 语句幂等；共享缓存刷新由 Redis 锁串行化，避免多副本回写竞态。
+   */
+  @Cron(CronExpression.EVERY_MINUTE)
+  async expireOverduePausedUsers(): Promise<void> {
+    const lockToken = await this.acquireExpireCronLock();
+    if (!lockToken) {
+      this.logger.debug('跳过过期暂停扫描：其他副本正在执行');
+      return;
+    }
+
+    try {
+      const expired = await this.repository.expirePausedUsers();
+      if (expired.length === 0) {
+        return;
+      }
+      this.logger.log(
+        `[托管解禁·定时] 自动解禁 ${expired.length} 个到期用户: ${expired.join(',')}`,
+      );
+      // 触发缓存重载，让本地/Redis 共享缓存与 DB 同步
+      await this.refreshCache();
+    } catch (error) {
+      this.logger.error('定时清理过期暂停记录失败', error);
+    } finally {
+      await this.releaseExpireCronLock(lockToken);
+    }
+  }
+
   // ==================== 缓存管理 ====================
 
   /**
@@ -220,13 +288,28 @@ export class UserHostingService {
    */
   private async loadPausedUsers(): Promise<void> {
     try {
+      // lazy clean：先把已过解禁期限的记录回写为恢复状态
+      try {
+        const expired = await this.repository.expirePausedUsers();
+        if (expired.length > 0) {
+          this.logger.log(`[托管解禁] 自动解禁 ${expired.length} 个到期用户: ${expired.join(',')}`);
+        }
+      } catch (error) {
+        this.logger.warn('清理过期暂停记录失败', error);
+      }
+
       const rows = await this.repository.findPausedUserIds();
 
       this.pausedUsersCache.clear();
       for (const row of rows) {
+        const pausedAt = new Date(row.paused_at).getTime();
+        const expiresAt = row.pause_expires_at
+          ? new Date(row.pause_expires_at).getTime()
+          : pausedAt + PAUSE_DURATION_MS;
         this.pausedUsersCache.set(row.user_id, {
           isPaused: true,
-          pausedAt: new Date(row.paused_at).getTime(),
+          pausedAt,
+          expiresAt,
         });
       }
 
@@ -253,22 +336,30 @@ export class UserHostingService {
     await this.loadPausedUsers();
   }
 
-  private populatePausedUsersCache(entries: Array<{ userId: string; pausedAt: number }>): void {
+  private populatePausedUsersCache(
+    entries: Array<{ userId: string; pausedAt: number; expiresAt?: number }>,
+  ): void {
     this.pausedUsersCache.clear();
     for (const entry of entries) {
       this.pausedUsersCache.set(entry.userId, {
         isPaused: true,
         pausedAt: entry.pausedAt,
+        // 兼容旧版 Redis 快照（无 expiresAt）：以 pausedAt + 3 天兜底
+        expiresAt: entry.expiresAt ?? entry.pausedAt + PAUSE_DURATION_MS,
       });
     }
     this.cacheExpiry = Date.now() + this.CACHE_TTL_MS;
   }
 
-  private async readSharedCache(): Promise<Array<{ userId: string; pausedAt: number }> | null> {
+  private async readSharedCache(): Promise<Array<{
+    userId: string;
+    pausedAt: number;
+    expiresAt?: number;
+  }> | null> {
     try {
       const cached = await this.redisService.get<
-        | Array<{ userId: string; pausedAt: number }>
-        | { users: Array<{ userId: string; pausedAt: number }> }
+        | Array<{ userId: string; pausedAt: number; expiresAt?: number }>
+        | { users: Array<{ userId: string; pausedAt: number; expiresAt?: number }> }
       >(UserHostingService.SHARED_CACHE_KEY);
       if (!cached) {
         return null;
@@ -287,17 +378,46 @@ export class UserHostingService {
 
   private async persistSharedCache(): Promise<void> {
     try {
+      const now = Date.now();
       await this.redisService.set(UserHostingService.SHARED_CACHE_KEY, {
         users: Array.from(this.pausedUsersCache.entries())
-          .filter(([, entry]) => entry.isPaused)
+          .filter(([, entry]) => entry.isPaused && entry.expiresAt > now)
           .map(([userId, entry]) => ({
             userId,
             pausedAt: entry.pausedAt,
+            expiresAt: entry.expiresAt,
           })),
-        updatedAt: Date.now(),
+        updatedAt: now,
       });
     } catch (error) {
       this.logger.warn('写入 Redis 暂停托管缓存失败', error);
+    }
+  }
+
+  private async acquireExpireCronLock(): Promise<string | null> {
+    const token = `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    try {
+      const acquired = await this.redisService.setNx(
+        UserHostingService.EXPIRE_CRON_LOCK_KEY,
+        token,
+        EXPIRE_CRON_LOCK_TTL_SECONDS,
+      );
+      return acquired ? token : null;
+    } catch (error) {
+      this.logger.warn('获取过期暂停扫描锁失败，回退为当前副本执行', error);
+      return token;
+    }
+  }
+
+  private async releaseExpireCronLock(token: string): Promise<void> {
+    try {
+      await this.redisService.eval(
+        "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) end return 0",
+        [UserHostingService.EXPIRE_CRON_LOCK_KEY],
+        [token],
+      );
+    } catch (error) {
+      this.logger.warn('释放过期暂停扫描锁失败', error);
     }
   }
 }

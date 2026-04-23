@@ -1,6 +1,6 @@
 /**
  * 飞书多维表格配置（支持多表）
- * 目前仅配置聊天记录表，如需扩展可在 tables 下新增。
+ * appToken/tableId 等环境相关值由 ConfigService 从环境变量读取。
  */
 export interface FeishuBitableTableConfig {
   appToken: string;
@@ -27,37 +27,41 @@ export interface FeishuBitableConfig {
     goodcase: FeishuBitableTableConfig;
     testSuite: FeishuBitableTableConfig;
     validationSet: FeishuBitableTableConfig;
+    assetRelation: FeishuBitableTableConfig;
   };
 }
 
-export const feishuBitableConfig: FeishuBitableConfig = {
-  tables: {
-    chat: {
-      // 聊天记录表
-      appToken: 'WXQgb98iPauYsHsSYzMckqHcnbb', // 从 wiki 节点转换得到的实际 bitable token
-      tableId: 'tblKNwN8aquh2JAy',
-    },
-    badcase: {
-      // badcase 反馈表
-      appToken: 'WXQgb98iPauYsHsSYzMckqHcnbb',
-      tableId: 'tbllFuw1BVwpvyrI',
-    },
-    goodcase: {
-      // goodcase 反馈表
-      appToken: 'WXQgb98iPauYsHsSYzMckqHcnbb',
-      tableId: 'tblmI0UBzhknkIOm',
-    },
-    testSuite: {
-      // 测试/验证集表（汇总表）- 用例测试数据
-      appToken: 'WXQgb98iPauYsHsSYzMckqHcnbb',
-      tableId: 'tblCRHFQqqJDJeSx',
-    },
-    validationSet: {
-      // 验证集表（回归验证数据）
-      // 注意：与 testSuite 在同一个多维表格文档中，只是不同的 sheet
-      appToken: 'WXQgb98iPauYsHsSYzMckqHcnbb',
-      tableId: 'tblfVcyKmPsFwUhy',
-    },
+export type FeishuBitableTableName = keyof FeishuBitableConfig['tables'];
+
+export interface FeishuBitableTableEnvKeys {
+  appToken: string;
+  tableId: string;
+}
+
+export const feishuBitableEnvConfig: Record<FeishuBitableTableName, FeishuBitableTableEnvKeys> = {
+  chat: {
+    appToken: 'FEISHU_BITABLE_CHAT_APP_TOKEN',
+    tableId: 'FEISHU_BITABLE_CHAT_TABLE_ID',
+  },
+  badcase: {
+    appToken: 'FEISHU_BITABLE_BADCASE_APP_TOKEN',
+    tableId: 'FEISHU_BITABLE_BADCASE_TABLE_ID',
+  },
+  goodcase: {
+    appToken: 'FEISHU_BITABLE_GOODCASE_APP_TOKEN',
+    tableId: 'FEISHU_BITABLE_GOODCASE_TABLE_ID',
+  },
+  testSuite: {
+    appToken: 'FEISHU_BITABLE_TEST_SUITE_APP_TOKEN',
+    tableId: 'FEISHU_BITABLE_TEST_SUITE_TABLE_ID',
+  },
+  validationSet: {
+    appToken: 'FEISHU_BITABLE_VALIDATION_SET_APP_TOKEN',
+    tableId: 'FEISHU_BITABLE_VALIDATION_SET_TABLE_ID',
+  },
+  assetRelation: {
+    appToken: 'FEISHU_BITABLE_ASSET_RELATION_APP_TOKEN',
+    tableId: 'FEISHU_BITABLE_ASSET_RELATION_TABLE_ID',
   },
 };
 

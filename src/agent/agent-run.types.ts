@@ -1,6 +1,7 @@
 import { streamText } from 'ai';
 import { CallerKind } from '@/enums/agent.enum';
 import type { LlmThinkingConfig } from '@/llm/llm.types';
+import type { MessageType } from '@enums/message-callback.enum';
 import type {
   AgentMemorySnapshot,
   AgentStepDetail,
@@ -48,10 +49,16 @@ export interface AgentInvokeParams {
   scenario?: string;
   /** 最大工具循环步数，默认 5 */
   maxSteps?: number;
-  /** 图片 URL 列表（多模态消息，传入 Agent 做 vision 识别） */
+  /** 图片/表情 URL 列表（多模态消息，传入 Agent 做 vision 识别） */
   imageUrls?: string[];
-  /** 图片消息 ID 列表（供 save_image_description 工具回写 DB） */
+  /** 图片/表情消息 ID 列表（供 save_image_description 工具回写 DB） */
   imageMessageIds?: string[];
+  /**
+   * messageId → 视觉消息类型映射。
+   * 仅含 IMAGE / EMOTION；供 save_image_description 工具按类型选用
+   * `[图片消息]` / `[表情消息]` 前缀回写 DB。缺省条目视为 IMAGE。
+   */
+  visualMessageTypes?: Record<string, MessageType.IMAGE | MessageType.EMOTION>;
   /** 策略来源：wecom 读 released，test 读 testing */
   strategySource?: 'released' | 'testing';
   /** 当前与候选人聊天的托管账号企微 userId（拉群时作为 botUserId） */
@@ -88,6 +95,16 @@ export interface AgentInvokeParams {
    * 仅用于埋点/调试，不参与模型请求语义。
    */
   onPreparedRequest?: (request: Record<string, unknown>) => Promise<void> | void;
+  /**
+   * 延迟 turn-end 生命周期到调用方显式触发。
+   *
+   * 默认 false：模型返回后 runner 内部 fire-and-forget 触发 onTurnEnd（记忆投影/事实提取）。
+   *
+   * 开启后：runner 不再自动触发，`AgentRunResult.runTurnEnd` 暴露一个 dispatcher 给调用方。
+   * 适用于 replay 场景——首次生成的回复需要被丢弃，其记忆副作用也不能执行；
+   * 若首次结果最终被采纳，再由调用方手动触发。
+   */
+  deferTurnEnd?: boolean;
 }
 
 export interface AgentRunResult {
@@ -110,6 +127,14 @@ export interface AgentRunResult {
   agentRequest?: Record<string, unknown>;
   /** 本轮触发时的记忆上下文快照 */
   memorySnapshot?: AgentMemorySnapshot;
+  /**
+   * 仅当 `AgentInvokeParams.deferTurnEnd=true` 时返回。
+   *
+   * 调用方对本次生成结果「最终采纳」后需要显式调用一次，以触发 turn-end 生命周期
+   * （记忆投影/事实提取/活跃时间刷新）。若本次结果被丢弃（如 replay 首次调用），
+   * 直接忽略即可。
+   */
+  runTurnEnd?: () => Promise<void>;
 }
 
 /** stream() 返回结果：流 + 元数据 */
