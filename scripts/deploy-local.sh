@@ -21,6 +21,7 @@ REMOTE_SCRIPT="/tmp/${IMAGE_NAME}-deploy-remote.sh"
 RUNTIME_ENV_FILE=".env.production"
 GZIP_LEVEL="${DEPLOY_GZIP_LEVEL:-1}"
 RUN_TESTS="${DEPLOY_RUN_TESTS:-true}"
+DEPLOY_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 read_env_value() {
   local key="$1"
@@ -30,6 +31,62 @@ read_env_value() {
   fi
   sed -n "s/^${key}=//p" "$file" | head -n1
 }
+
+notify_deploy_result() {
+  local exit_code="$1"
+  local deploy_result="failure"
+  local webhook_url="${PRIVATE_CHAT_MONITOR_WEBHOOK_URL:-${DEPLOY_NOTIFICATION_WEBHOOK_URL:-}}"
+  local webhook_secret="${PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET:-${DEPLOY_NOTIFICATION_WEBHOOK_SECRET:-}}"
+  local git_branch git_sha git_short_sha finished_at
+
+  if [[ "$exit_code" -eq 0 ]]; then
+    deploy_result="success"
+  fi
+
+  if [[ -z "$webhook_url" ]]; then
+    webhook_url="$(read_env_value PRIVATE_CHAT_MONITOR_WEBHOOK_URL "$RUNTIME_ENV_FILE")"
+  fi
+
+  if [[ -z "$webhook_secret" ]]; then
+    webhook_secret="$(read_env_value PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET "$RUNTIME_ENV_FILE")"
+  fi
+
+  if [[ -z "$webhook_url" ]]; then
+    webhook_url="$(read_env_value DEPLOY_NOTIFICATION_WEBHOOK_URL "$RUNTIME_ENV_FILE")"
+  fi
+
+  if [[ -z "$webhook_secret" ]]; then
+    webhook_secret="$(read_env_value DEPLOY_NOTIFICATION_WEBHOOK_SECRET "$RUNTIME_ENV_FILE")"
+  fi
+
+  if [[ -z "$webhook_url" ]]; then
+    echo "ℹ️ Deploy notification skipped: PRIVATE_CHAT_MONITOR_WEBHOOK_URL is not configured."
+    return 0
+  fi
+
+  git_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo local)"
+  git_sha="$(git rev-parse HEAD 2>/dev/null || echo "")"
+  git_short_sha="$(git rev-parse --short HEAD 2>/dev/null || echo "$GIT_SHORT_SHA")"
+  finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  if ! PRIVATE_CHAT_MONITOR_WEBHOOK_URL="$webhook_url" \
+    PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET="$webhook_secret" \
+    DEPLOY_RESULT="$deploy_result" \
+    RELEASE_TAG="$IMAGE_TAG" \
+    DEPLOY_ENVIRONMENT="production" \
+    DEPLOY_BRANCH="$git_branch" \
+    DEPLOY_TRIGGER="local deploy" \
+    DEPLOY_HOST="$SSH_HOST" \
+    DEPLOY_SHA="$git_sha" \
+    SHORT_SHA="$git_short_sha" \
+    DEPLOY_STARTED_AT="$DEPLOY_STARTED_AT" \
+    DEPLOY_FINISHED_AT="$finished_at" \
+    node scripts/send-deploy-notification.js; then
+    echo "⚠️ Deploy notification failed; deployment result was ${deploy_result}."
+  fi
+}
+
+trap 'exit_code=$?; notify_deploy_result "$exit_code"; exit "$exit_code"' EXIT
 
 API_GUARD_TOKEN="$(read_env_value API_GUARD_TOKEN "$RUNTIME_ENV_FILE")"
 NEXT_PUBLIC_SUPABASE_URL="$(read_env_value NEXT_PUBLIC_SUPABASE_URL "$RUNTIME_ENV_FILE")"

@@ -123,7 +123,9 @@ on:
 
 ### 更新摘要
 
-- PR #101 修复群任务时区问题
+- PR #101 fix: 修复群任务时区问题
+- PR #102 feat: 支持消息通知群发布卡片
+- PR #103 chore: 优化发布流和版本管理脚本
 
 ### 新功能
 
@@ -159,7 +161,7 @@ on:
 
 ### 更新摘要
 
-- PR #101 修复群任务时区问题
+- PR #101 fix: 修复群任务时区问题
 
 ### 新功能
 
@@ -186,10 +188,10 @@ on:
 
 ### 飞书部署通知
 
-部署通知改走“消息通知群”，需要在 GitHub Secrets 中配置：
+部署通知发送到飞书“企微私域监控群”，需要在 GitHub Secrets 中配置：
 
-- `MESSAGE_NOTIFICATION_WEBHOOK_URL`
-- `MESSAGE_NOTIFICATION_WEBHOOK_SECRET`
+- `PRIVATE_CHAT_MONITOR_WEBHOOK_URL`
+- `PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET`
 
 ---
 
@@ -211,6 +213,7 @@ on:
 
 - PR 标题继续遵循 Conventional Commits，方便自动计算版本号
 - PR 正文使用中文，方便生成团队可读的版本说明
+- `更新摘要` 里的 bullet 会原样保留到 `CHANGELOG.md`，可以写成 `feat:` / `fix:` / `chore:` 这类轻量分类
 
 ### 机器人 PR 约定
 
