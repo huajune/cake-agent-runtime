@@ -14,6 +14,9 @@ const SECRET_ENV_KEYS = [
   'DEPLOY_NOTIFICATION_WEBHOOK_SECRET',
 ];
 const MAX_MARKDOWN_CHARS = 3500;
+const CHANGELOG_PATH = 'CHANGELOG.md';
+const PENDING_START = '<!-- release:pending:start -->';
+const PENDING_END = '<!-- release:pending:end -->';
 
 main().catch((error) => {
   console.error(`Deploy notification failed: ${error.message}`);
@@ -94,7 +97,12 @@ function readReleaseNotes() {
     return fs.readFileSync(releaseNotesFile, 'utf8');
   }
 
-  return env('RELEASE_NOTES', '');
+  const releaseNotes = env('RELEASE_NOTES', '');
+  if (releaseNotes) {
+    return releaseNotes;
+  }
+
+  return readChangelogFallback();
 }
 
 function normalizeReleaseNotes(rawNotes) {
@@ -126,6 +134,45 @@ function extractUpdateSummary(releaseNotes) {
   const nextHeadingIndex = rest.search(/^### /m);
   const summary = (nextHeadingIndex === -1 ? rest : rest.slice(0, nextHeadingIndex)).trim();
   return summary || '- 暂无';
+}
+
+function readChangelogFallback() {
+  if (!fs.existsSync(CHANGELOG_PATH)) {
+    return '';
+  }
+
+  const changelog = fs.readFileSync(CHANGELOG_PATH, 'utf8');
+  const pending = extractPendingSection(changelog);
+  if (pending) {
+    return pending;
+  }
+
+  return extractLatestReleaseSection(changelog);
+}
+
+function extractPendingSection(changelog) {
+  const start = changelog.indexOf(PENDING_START);
+  const end = changelog.indexOf(PENDING_END);
+  if (start === -1 || end === -1 || end <= start) {
+    return '';
+  }
+
+  return changelog.slice(start + PENDING_START.length, end).trim();
+}
+
+function extractLatestReleaseSection(changelog) {
+  const match = /^## \[/m.exec(changelog);
+  if (!match) {
+    return '';
+  }
+
+  const section = changelog.slice(match.index);
+  const nextMatch = /^## \[/m.exec(section.slice(1));
+  if (!nextMatch) {
+    return section.trim();
+  }
+
+  return section.slice(0, nextMatch.index + 1).trim();
 }
 
 function formatShanghaiTime(value) {
