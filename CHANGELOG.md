@@ -6,8 +6,6 @@
 版本号由 GitHub Actions 自动维护，发布说明统一使用中文记录。
 变更记录按 PR 驱动整理：更新摘要优先保留 PR 正文摘要 bullet，分类内容保留团队关心的业务/技术影响，不展开文件级流水账。
 
-本文件当前保留 2026-02-23 以来的 PR 汇总；更早历史请查看 Git tag 或 GitHub Release。
-
 ---
 
 <!-- release:pending:start -->
@@ -16,8 +14,7 @@
 **预计版本**: `v5.2.0`
 **最近更新**: `2026-04-23`
 **来源分支**: `develop`
-**累计 PR**: 16
-**覆盖 PR**: `#72/#74/#76/#78/#79/#81/#82/#84/#86/#87/#89/#90/#91/#93/#96/#98`
+**累计 PR**: 17
 
 ### 更新摘要
 - PR #72 fix: 完善通知链路并修复群任务与消息处理后续问题
@@ -36,6 +33,9 @@
 - PR #93 chore: changelog 脚本化
 - PR #96 fix: 时段硬约束/开场问地址修复
 - PR #98 feat: 飞书表切换 + 表情识别
+- PR #99 chore: 统一 CHANGELOG 更新摘要规则，保留 `feat:` / `fix:` / `chore:` 等轻量类型前缀
+- PR #99 feat: 新增部署完成后的飞书企微私域监控群通知脚本，并接入本地部署和 tag 部署 workflow
+- PR #99 chore: 更新发布/部署文档与待发布状态，确保后续自动生成不会覆盖摘要类型信息
 
 ### 新功能
 - PR #72 新增飞书通知路由，支持 bot 到接收人的映射。
@@ -47,6 +47,7 @@
 - PR #98 暂停托管新增 3 天自动解禁期限，包含定时清理和 lazy 清理。
 - PR #98 表情消息复用 vision 识别管线，按消息类型区分图片与表情前缀。
 - PR #98 replay 命中 `advance_stage` / `invite_to_group` / `duliday_interview_booking` 等不可逆工具时跳过重跑，避免副作用与回复丢弃冲突。
+- PR #99 feat: 新增部署完成后的飞书企微私域监控群通知脚本，并接入本地部署和 tag 部署 workflow
 
 ### 问题修复
 - PR #72 修复企业级群任务发送、后续 BI 查询、回复归一化与次要消息监控问题。
@@ -60,6 +61,7 @@
 - PR #96 将 `invite_to_group` 的 `already_in_group` 结果写入记忆，避免同会话反复调用慢接口。
 - PR #96 修正 `stepDurationMs` 统计精度，避免 Anthropic 秒级时间戳造成排障误判。
 - PR #98 修复 `invite_to_group` 记忆、MCP package exports 解析与相关 Agent 链路问题。
+- PR #99 chore: 统一 CHANGELOG 更新摘要规则，保留 `feat:` / `fix:` / `chore:` 等轻量类型前缀
 
 ### 优化调整
 - PR #74 抽取全局 `NotificationModule`，拆分告警、运维、私聊监控 channel 与卡片渲染。
@@ -86,6 +88,7 @@
 - PR #89 新增 `/message/queue-status` 运维端点，暴露 waiting/active/delayed/completed/failed/paused 队列计数。
 - PR #93 合入告警持久化统一方案设计稿，并补齐版本脚本 dry-run 验证。
 - PR #98 切换到新版飞书多维表格。
+- PR #99 chore: 更新发布/部署文档与待发布状态，确保后续自动生成不会覆盖摘要类型信息
 
 ### 配置变更
 - PR #76 调整企微 callback/runtime 相关配置类型与 UI 表达。
@@ -104,6 +107,11 @@
 - PR #93 `pnpm exec jest` 全量 207 suites / 2424 tests 通过，`pnpm run lint` + `pnpm run format` 通过。
 - PR #96 本地 dev server 跑完 7 条 badcase scenario，人工核验 T1/T4/T6 通过，T2/T3/T7 待多轮 history 补充。
 - PR #98 `pnpm run build` / `pnpm run lint` / `pnpm run test` 通过，覆盖 213 suites / 2441 tests，并列出飞书表、表情、托管到期与 replay 灰度项。
+- PR #99 `node --check scripts/send-deploy-notification.js && node --check scripts/update-version-changelog.js && node --check scripts/get-release-notes.js`
+- PR #99 `bash -n scripts/deploy-local.sh && bash -n scripts/deploy-remote.sh && git diff --check`
+- PR #99 本地假 webhook 捕获部署通知 payload
+- PR #99 pre-commit hook: `pnpm run lint` + `pnpm run format`
+- PR #99 pre-push hook: `pnpm run ci:check`，213 suites / 2441 tests 通过
 <!-- release:pending:end -->
 
 ## [5.1.0] - 2026-04-09
