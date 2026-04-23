@@ -1,7 +1,7 @@
 {
   "baseVersion": "5.1.0",
   "nextVersion": "5.2.0",
-  "updatedAt": "2026-04-22",
+  "updatedAt": "2026-04-23",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -262,6 +262,44 @@
         "\\`pnpm exec jest\\` 全量 207 suites / 2424 tests green（pre-push hook 全过）",
         "\\`pnpm run lint\\` + \\`pnpm run format\\`：pre-commit hook 全过",
         "本地用脚本 dry-run 验证解析：\\`## Summary\\` + H3 子标题能正确提取并分发"
+      ]
+    },
+    {
+      "number": "98",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/98",
+      "title": "飞书表切换 + 表情识别 + 托管暂停到期 + 策略/MCP/Agent 若干修复",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-23",
+      "summary": [
+        "飞书表切换 + 表情识别 + 托管暂停到期 + 策略/MCP/Agent 若干修复"
+      ],
+      "features": [
+        "**feat(strategy)**: 新增时段硬约束/开场问地址/多岗位一岗一段 (d0662d54)",
+        "**feat(user-hosting)**: 暂停托管新增 3 天自动解禁期限（含定时+lazy 清理） (77d26453)",
+        "**feat(emoji-vision)**: 表情消息复用 vision 识别管线，按 messageType 区分 `[图片消息]` / `[表情消息]` 前缀 (e14560e7)",
+        "**test(user-hosting)**: 补齐 pauseExpiresAt 相关测试参数 (e2fbb733)",
+        "**feat(replay)**: 命中不可逆工具（advance_stage / invite_to_group / duliday_interview_booking）时跳过重跑，避免 tool 副作用与 replay 丢弃语义冲突 (603e31c1)"
+      ],
+      "fixes": [
+        "**fix(agent)**: invite_to_group 记忆 already_in_group，修复 step 耗时精度 (84815dc6)",
+        "**fix(mcp)**: 移除 tsconfig MCP 路径别名，改用 package exports 解析 (922ca8e5)"
+      ],
+      "optimizations": [
+        "**refactor(recruitment-case)**: 精简模块依赖 (182527cc)",
+        "**test**: 适配 feishu bitable / curated-dataset 重构后的测试 (eeff5c69)"
+      ],
+      "ops": [
+        "**chore(feishu)**: 切换到新版多维表格 (0f482828)"
+      ],
+      "config": [],
+      "verification": [
+        "`pnpm run build` 通过",
+        "`pnpm run lint` 通过",
+        "`pnpm run test` 全量 213 suites / 2441 tests 全绿",
+        "灰度环境回归：候选人发送表情后 chat_messages.content 写回 `[表情消息] xxx`",
+        "灰度环境回归：暂停用户 3 天后自动解禁，本地/Redis 缓存与 DB 一致",
+        "灰度环境回归：Agent 调用 advance_stage/invite_to_group/booking 后，即使用户在生成期间追发消息，首次回复仍正常投递；追发消息进入下一轮",
+        "飞书表切换后确认双向同步正常"
       ]
     }
   ]

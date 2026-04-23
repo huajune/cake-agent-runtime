@@ -11,9 +11,9 @@
 ## 待发布
 
 **预计版本**: `v5.2.0`
-**最近更新**: `2026-04-22`
+**最近更新**: `2026-04-23`
 **来源分支**: `develop`
-**累计 PR**: 9
+**累计 PR**: 10
 
 ### 更新摘要
 - [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) [codex] 完善通知链路并修复群任务与消息处理后续问题
@@ -25,6 +25,7 @@
 - [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) perf(wecom): 消息回调立即 ACK + 队列/缓存降延 + 健康证等若干修复
 - [PR #91](https://github.com/huajune/cake-agent-runtime/pull/91) 能力标签 + 发布时间展示
 - [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) changelog 脚本化 + 群任务年龄读岗位数据 + test-suite 禁降级
+- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) 飞书表切换 + 表情识别 + 托管暂停到期 + 策略/MCP/Agent 若干修复
 
 ### 新功能
 - [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) 新增飞书通知路由（bot 到接收人映射）
@@ -36,6 +37,11 @@
 - [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 兼职群任务 "招聘对象" 年龄由硬编码的 "18-50 岁" 改为优先读 hiringRequirement.basicPersonalRequirements.minAge/maxAge，支持两端/单端/缺失回退三种格式
 - [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) test-suite 执行指定模型评估时新增 disableFallbacks=true，避免被 chat 角色的 fallback 链静默切换到其他模型导致结果失真
 - [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) src/agent/agent-run.types.ts：AgentInvokeParams 新增 \`disableFallbacks?: boolean\`
+- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) **feat(strategy)**: 新增时段硬约束/开场问地址/多岗位一岗一段 (d0662d54)
+- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) **feat(user-hosting)**: 暂停托管新增 3 天自动解禁期限（含定时+lazy 清理） (77d26453)
+- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) **feat(emoji-vision)**: 表情消息复用 vision 识别管线，按 messageType 区分 `[图片消息]` / `[表情消息]` 前缀 (e14560e7)
+- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) **test(user-hosting)**: 补齐 pauseExpiresAt 相关测试参数 (e2fbb733)
+- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) **feat(replay)**: 命中不可逆工具（advance_stage / invite_to_group / duliday_interview_booking）时跳过重跑，避免 tool 副作用与 replay 丢弃语义冲突 (603e31c1)
 
 ### 问题修复
 - [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) 修复企业级群任务发送与后续 BI 查询问题
@@ -60,6 +66,8 @@
 - [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) CHANGELOG.md：重新生成，待发布段落现有 5 新功能 / 15 修复 / 20 优化 / 2 运维 / 15 验证记录
 - [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 两端都缺 → 回退到宽泛的 \`年龄18-50岁\` 文案（原有兜底意图保留）
 - [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 新增 4 条测试用例（真实年龄 / minAge-only / maxAge-only / 两端缺失回退），修正一条老断言
+- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) **fix(agent)**: invite_to_group 记忆 already_in_group，修复 step 耗时精度 (84815dc6)
+- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) **fix(mcp)**: 移除 tsconfig MCP 路径别名，改用 package exports 解析 (922ca8e5)
 
 ### 优化调整
 - [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) 优化抢单 prompt/过滤与通知发送行为
@@ -84,6 +92,8 @@
 - [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) Queue/PreDispatch 消除聚合窗口 + 前置准备的双重串行 await，改写成基于静默窗口的 debounce 模型
 - [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) Agent prompt 最前面加入显式优先级栈（红线 > 硬约束 > 全局 > 阶段 > 风格）与发送前两条自检
 - [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) extractHiringRequirement 的 \`items.push('年龄18-50岁')\` 改为按数据渲染：
+- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) **refactor(recruitment-case)**: 精简模块依赖 (182527cc)
+- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) **test**: 适配 feishu bitable / curated-dataset 重构后的测试 (eeff5c69)
 
 ### 运维与流程
 - [PR #74](https://github.com/huajune/cake-agent-runtime/pull/74) uncaughtException 与 unhandledRejection 统一走 incident pipeline 上报
@@ -101,6 +111,7 @@
 - [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) src/agent/agent-preparation.service.ts：\`disableFallbacks=true\` 时清空 chatFallbacks
 - [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) src/biz/test-suite/services/test-execution.service.ts：test-suite 两处调用点均传 \`disableFallbacks: true\`
 - [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) docs/todo/alert-persistence-unification.md：设计稿
+- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) **chore(feishu)**: 切换到新版多维表格 (0f482828)
 
 ### 配置变更
 - 无
@@ -125,6 +136,13 @@
 - [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) \`pnpm exec jest\` 全量 207 suites / 2424 tests green（pre-push hook 全过）
 - [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) \`pnpm run lint\` + \`pnpm run format\`：pre-commit hook 全过
 - [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 本地用脚本 dry-run 验证解析：\`## Summary\` + H3 子标题能正确提取并分发
+- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) `pnpm run build` 通过
+- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) `pnpm run lint` 通过
+- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) `pnpm run test` 全量 213 suites / 2441 tests 全绿
+- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) 灰度环境回归：候选人发送表情后 chat_messages.content 写回 `[表情消息] xxx`
+- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) 灰度环境回归：暂停用户 3 天后自动解禁，本地/Redis 缓存与 DB 一致
+- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) 灰度环境回归：Agent 调用 advance_stage/invite_to_group/booking 后，即使用户在生成期间追发消息，首次回复仍正常投递；追发消息进入下一轮
+- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) 飞书表切换后确认双向同步正常
 <!-- release:pending:end -->
 
 ## [5.1.0] - 2026-04-09
