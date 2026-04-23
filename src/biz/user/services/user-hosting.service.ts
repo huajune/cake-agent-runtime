@@ -17,6 +17,7 @@ interface PausedUserCacheEntry {
  * 暂停托管的自动解禁期限：3 天（硬编码）
  */
 const PAUSE_DURATION_MS = 3 * 24 * 60 * 60 * 1000;
+const EXPIRE_CRON_LOCK_TTL_SECONDS = 55;
 
 /**
  * 用户托管 Service
@@ -34,6 +35,7 @@ export class UserHostingService {
   private readonly logger = new Logger(UserHostingService.name);
 
   private static readonly SHARED_CACHE_KEY = 'hosting:paused-users:v1';
+  private static readonly EXPIRE_CRON_LOCK_KEY = 'hosting:paused-users:expire-lock:v1';
 
   private readonly CACHE_TTL_MS = 1_000; // 1 秒本地热缓存
 
@@ -237,10 +239,16 @@ export class UserHostingService {
    * - lazy clean 依赖读流量触发；空载场景下 DB 不会被清理
    * - 本 cron 独立于流量，保证 DB 状态与 expires_at 始终一致
    *
-   * UPDATE 语句幂等，多副本并发执行无副作用。
+   * UPDATE 语句幂等；共享缓存刷新由 Redis 锁串行化，避免多副本回写竞态。
    */
   @Cron(CronExpression.EVERY_MINUTE)
   async expireOverduePausedUsers(): Promise<void> {
+    const lockToken = await this.acquireExpireCronLock();
+    if (!lockToken) {
+      this.logger.debug('跳过过期暂停扫描：其他副本正在执行');
+      return;
+    }
+
     try {
       const expired = await this.repository.expirePausedUsers();
       if (expired.length === 0) {
@@ -253,6 +261,8 @@ export class UserHostingService {
       await this.refreshCache();
     } catch (error) {
       this.logger.error('定时清理过期暂停记录失败', error);
+    } finally {
+      await this.releaseExpireCronLock(lockToken);
     }
   }
 
@@ -381,6 +391,33 @@ export class UserHostingService {
       });
     } catch (error) {
       this.logger.warn('写入 Redis 暂停托管缓存失败', error);
+    }
+  }
+
+  private async acquireExpireCronLock(): Promise<string | null> {
+    const token = `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    try {
+      const acquired = await this.redisService.setNx(
+        UserHostingService.EXPIRE_CRON_LOCK_KEY,
+        token,
+        EXPIRE_CRON_LOCK_TTL_SECONDS,
+      );
+      return acquired ? token : null;
+    } catch (error) {
+      this.logger.warn('获取过期暂停扫描锁失败，回退为当前副本执行', error);
+      return token;
+    }
+  }
+
+  private async releaseExpireCronLock(token: string): Promise<void> {
+    try {
+      await this.redisService.eval(
+        "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) end return 0",
+        [UserHostingService.EXPIRE_CRON_LOCK_KEY],
+        [token],
+      );
+    } catch (error) {
+      this.logger.warn('释放过期暂停扫描锁失败', error);
     }
   }
 }
