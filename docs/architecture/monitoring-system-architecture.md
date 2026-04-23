@@ -1,8 +1,8 @@
 # 监控系统架构设计
 
-> Cake Agent Runtime - 监控数据存储与展示架构
+> Cake Agent Runtime - 监控数据采集、投影与查询架构
 
-**最后更新**：2025-12-02
+**最后更新**：2026-04-23
 
 ---
 
@@ -22,71 +22,96 @@
 
 ## 架构概览
 
-监控系统采用 **简化的两层存储架构**，平衡实时性和运维成本：
+监控模块已上移至业务层 [src/biz/monitoring/](../../src/biz/monitoring/)，采用
+**「Supabase 为真 + 预聚合投影 + Redis 实时计数」** 的三段式结构。不再依赖进程内内存缓存作为主数据源，
+服务重启不会丢失可观测数据。
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              数据产生层                                      │
-│                         MessageService.handleMessage()                      │
+│         WeComMessagePipeline / MessageProcessor.runtime 触发                 │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                      MonitoringService (内存层)                              │
-│   ├── detailRecords[]     环形缓冲区, 最多 1000 条                          │
-│   ├── hourlyStatsMap      小时聚合统计, 最多 72 小时                        │
-│   ├── errorLogs[]         错误日志, 最多 100 条                             │
-│   └── globalCounters      全局计数器                                        │
+│                   采集写入层 (services/tracking)                             │
+│                                                                             │
+│   ├── MessageTrackingService                                                │
+│   │     recordMessageReceived → upsert message_processing_records (processing)
+│   │     recordSuccess / recordFailure → 还原终态记录并 upsert                │
+│   │                                                                         │
+│   └── MonitoringCacheService                                                │
+│         Redis: monitoring:active_requests / :peak_active_requests            │
+│         进程内 MonitoringGlobalCounters（只在本实例累计，非权威）             │
 └─────────────────────────────────────────────────────────────────────────────┘
-                    │
-                    │ 实时快照 (分离存储)
-                    ▼
+                                      │
+                                      ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  MonitoringSnapshotService (Redis 快照层)                                    │
+│                        Supabase 事实表 (SoT)                                 │
 │                                                                             │
-│  分离存储策略 (便于单独清理):                                                 │
-│  ├── monitoring:meta          元数据 (计数器、处理状态)                      │
-│  ├── monitoring:hourly-stats  小时聚合统计                                   │
-│  ├── monitoring:error-logs    错误日志                                       │
-│  └── monitoring:records       详细消息记录 (数据量最大)                       │
+│   ├── message_processing_records  每条请求生命周期 + agent_invocation        │
+│   ├── monitoring_error_logs       失败快照                                   │
+│   └── user_activity               用户活跃 / Token 消耗                       │
 │                                                                             │
-│  TTL: 1 小时 | 允许丢失: 是 (服务重启后从零开始也可接受)                      │
+│   → 已加入 supabase_realtime publication，Dashboard 通过 postgres_changes    │
+│     订阅增量变更                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
-
-注意: 不再将监控数据持久化到 Supabase，接受服务重启后数据丢失。
-聊天消息仍存储在 Supabase，由 DataCleanupService 定期清理过期数据。
+                                      │
+                                      │ 聚合投影 (cron)
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                 投影/维护层 (services/maintenance + projections)             │
+│                                                                             │
+│   每小时 5 分: aggregate_hourly_stats RPC → monitoring_hourly_stats         │
+│   每天 0:10:  aggregate_daily_stats  RPC → monitoring_daily_stats           │
+│                                                                             │
+│   启动时自动回填缺失窗口（startup: 3h / 7d；cron: 14d / 30d 上限）            │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    查询与展示层 (services/dashboard)                         │
+│                                                                             │
+│   AnalyticsDashboardService   Dashboard 概览 / 业务指标聚合                   │
+│   AnalyticsQueryService       System / Trends / 最近消息 / 活跃用户            │
+│   AnalyticsAlertService       每 5 min 评估业务指标 → AlertNotifierService    │
+│                                                                             │
+│   热路径 (今天) 走 message_processing_records 直查                            │
+│   历史 (昨天/本周/本月) 走 monitoring_hourly_stats / monitoring_daily_stats   │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+`AnalyticsController` 暴露 `/analytics/**` API；旧的 `/monitoring/**` 路由和 Redis 快照
+(`MonitoringSnapshotService`) 已下线。
 
 ---
 
 ## 存储策略
 
-### 两层存储对比
+### 三层数据分工
 
-| 存储层 | 技术 | 数据内容 | 生命周期 | 主要用途 |
-|-------|------|---------|---------|---------|
-| **内存层** | Node.js 内存 | 完整详细记录 + 聚合统计 | 进程生命周期 | 实时查询、Dashboard API |
-| **快照层** | Redis (Upstash) | 分离存储的快照数据 | TTL 1 小时 | 服务重启恢复（可选）、多实例共享 |
+| 层级 | 技术 | 生命周期 | 主要用途 |
+|------|------|----------|----------|
+| **事实层** | Supabase `message_processing_records` / `monitoring_error_logs` | 14 / 30 天 (可配置) | 真正的数据源；Dashboard 热路径 + 小时聚合输入 |
+| **投影层** | Supabase `monitoring_hourly_stats` / `monitoring_daily_stats` | 永久保留 | 历史 Dashboard 查询；节省原始表扫描 |
+| **实时层** | Redis `monitoring:active_requests` / `:peak_active_requests` | 持久 (INCRBY) | 多实例共享在途请求计数、峰值 |
 
-### 为什么简化为两层架构？
+### 为什么抛弃内存+Redis快照方案
 
-1. **内存层**：提供毫秒级响应，支持 Dashboard 实时刷新（5秒轮询）
-2. **Redis 快照层**：支持服务短期重启恢复，但允许数据丢失
-3. **移除 Supabase 持久层**：监控数据属于运维数据，丢失后可从零积累，无需长期保存
+1. **可靠性**：监控数据不能因为进程重启归零，运维看板需要长期趋势。
+2. **多实例一致性**：Supabase 作为 SoT + Redis 计数器天然支持水平扩展。
+3. **查询能力**：SQL/RPC 直接支持分位数、窗口切片、JSONB 聚合，比自己维护 Map 更灵活。
+4. **TOAST 成本**：`agent_invocation` JSONB 体积大，通过 **置 NULL 释放 TOAST + 行级保留** 的分层清理策略把读放大控制住。
 
-### Redis 分离存储策略
+### Redis Key 清单
 
-| Key | 数据内容 | 说明 |
-|-----|---------|------|
-| `monitoring:meta` | 计数器、活跃用户数、处理状态 | 轻量级元数据 |
-| `monitoring:hourly-stats` | 小时聚合统计 | 中等数据量 |
-| `monitoring:error-logs` | 错误日志列表 | 中等数据量 |
-| `monitoring:records` | 详细消息记录 | 数据量最大，可单独清理 |
+| Key | 类型 | 作用 |
+|-----|------|------|
+| `monitoring:active_requests` | INTEGER | 当前在途请求数（接收 +1 / 终态 -1） |
+| `monitoring:peak_active_requests` | INTEGER | 运行期峰值（只增不减，重置需手动） |
 
-优点：
-- 可以单独清理某类数据（如只清理 records）
-- 减少单次写入数据量
-- 便于调试和排查问题
+`MonitoringGlobalCounters`（totalMessages/totalSuccess/...）仍保留，但仅作为**本实例**的心跳计数，
+Dashboard 不再依赖它给出真实值。
 
 ---
 
@@ -95,195 +120,137 @@
 ### 1. 实时写入路径
 
 ```
-用户发送消息
+WeCom 消息入站
     │
     ▼
-MessageService.handleMessage()
+MessageTrackingService.recordMessageReceived()
+    ├── upsert message_processing_records (status=processing)
+    ├── incrementActiveRequests(+1)  → Redis
+    ├── incrementCounter('totalMessages', 1)
+    └── user_activity 先占位 (messageCount=1, tokenUsage=0)
+
+    … Agent 调用链路执行（由 wecom-observability 收集时间线） …
+
+MessageTrackingService.recordSuccess / recordFailure()
+    ├── 从 metadata.agentInvocation 还原终态记录（timings / toolCalls / memorySnapshot / anomalyFlags …）
+    ├── applyTerminalCounters（success/failure/fallback 计数器）
+    ├── upsert message_processing_records (status=success|failure)
+    ├── user_activity 补写 tokenUsage（如果 > 0）
+    └── incrementActiveRequests(-1)
+```
+
+聚合路径下，入站消息都会各自写一条 `processing` 记录；trace 创建后通过
+`dropMergedSourceRecords(sourceMessageIds, batchId)` 一次性删除源行并回收 activeRequests 计数，
+只在 batchId 那一行回写终态，避免"源行永远停留在 processing"。
+
+### 2. 数据投影路径
+
+```
+每小时 5 分 (Asia/Shanghai)
     │
-    ├── monitoringService.recordMessageReceived()  ─┐
-    ├── monitoringService.recordAiStart()          │
-    ├── monitoringService.recordAiEnd()            ├─► 内存更新 ─► Redis 快照
-    ├── monitoringService.recordSendStart()        │
-    ├── monitoringService.recordSendEnd()          │
-    └── monitoringService.recordSuccess/Failure() ─┘
+    ▼
+AnalyticsMaintenanceService.aggregateHourlyStats()
+    └── catchUpHourlyStats('cron')
+           │
+           ├── 读取 monitoring_hourly_stats 最新一行 → 计算回填窗口 (最多 14 天)
+           │   启动时走 'startup' 分支，上限 3 小时
+           │
+           └── 逐小时调用 RPC aggregate_hourly_stats(p_hour_start, p_hour_end)
+                  └── monitoring_hourly_stats.saveHourlyStats(...) (UPSERT)
+
+每天 00:10 (Asia/Shanghai)
+    │
+    ▼
+AnalyticsMaintenanceService.aggregateDailyStats()
+    └── catchUpDailyStats('cron')
+           └── RPC aggregate_daily_stats → monitoring_daily_stats (UPSERT)
 ```
 
-**代码路径**：
-```typescript
-// MonitoringService
-recordMessageReceived() {
-  this.addRecord(record);           // 更新内存
-  this.globalCounters.totalMessages++;
-  this.persistSnapshot();           // 触发 Redis 写入
-}
-
-private persistSnapshot(): void {
-  this.snapshotService.saveSnapshot(this.buildSnapshotPayload());
-}
-```
-
-### 2. 数据清理路径
+### 3. 数据清理路径
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ 每天凌晨 3 点 (0 3 * * *)                                                    │
-│                                                                             │
-│   DataCleanupService.cleanupExpiredData()                                   │
-│       │                                                                     │
-│       ├── cleanupChatMessages()                                             │
-│       │   └── 清理 60 天前的聊天消息 (Supabase)                              │
-│       │                                                                     │
-│       └── cleanupMonitoringHistory()                                        │
-│           └── 清理 30 天前的历史监控数据 (兼容旧数据)                         │
-└─────────────────────────────────────────────────────────────────────────────┘
+每天凌晨 3 点
+    │
+    ▼
+DataCleanupService.cleanupExpiredData()
+    ├── timeoutStuckProcessingRecords(30 min)   — 兜底把卡住的 processing 标记为 timeout
+    ├── nullAgentInvocations(7 d)                — 释放 TOAST 空间，保留行
+    ├── cleanupChatMessages(60 d)                — DELETE
+    ├── cleanupMessageProcessingRecords(14 d)    — DELETE（已聚合到 monitoring_hourly_stats）
+    ├── cleanupErrorLogs(30 d)                   — DELETE
+    └── cleanupUserActivity(35 d)                — DELETE
+
+monitoring_hourly_stats / monitoring_daily_stats → 永久保留
 ```
 
-### 3. 服务恢复路径
+### 4. 读取路径
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ 服务启动时                                                                   │
-│                                                                             │
-│   MonitoringService.onModuleInit()                                          │
-│       │                                                                     │
-│       └── restoreFromSnapshot()                                             │
-│           │                                                                 │
-│           ├── snapshotService.readSnapshot()                                │
-│           │   ├── Redis.get('monitoring:meta')                              │
-│           │   ├── Redis.get('monitoring:hourly-stats')                      │
-│           │   ├── Redis.get('monitoring:error-logs')                        │
-│           │   └── Redis.get('monitoring:records')                           │
-│           │                                                                 │
-│           └── applySnapshot(snapshot)                                       │
-│               └── 恢复: detailRecords, hourlyStatsMap, errorLogs,           │
-│                        globalCounters (activeUsers/activeChats 从 records 重建)│
-│                                                                             │
-│   注意: 如果 Redis 数据过期或不存在，服务将从空状态启动（可接受）               │
-└─────────────────────────────────────────────────────────────────────────────┘
+GET /analytics/dashboard/overview?range=today|week|month
+    │
+    ▼
+AnalyticsDashboardService
+    │
+    ├── today     → 走 message_processing_records 直查 + Redis activeRequests
+    └── week/month→ 走 HourlyStatsAggregatorService（从 monitoring_hourly_stats 汇总）
+                    + DailyStatsAggregatorService（从 monitoring_daily_stats 汇总）
+                    + 当前小时 fallback 到原始表（避免空窗）
 ```
 
 ---
 
 ## 服务组件
 
-### MonitoringService
+### services/tracking — 采集写入
 
-**职责**：核心监控数据收集与统计
+| 服务 | 职责 |
+|------|------|
+| [MessageTrackingService](../../src/biz/monitoring/services/tracking/message-tracking.service.ts) | 消息生命周期埋点；从 `agentInvocation` 快照还原终态并持久化；异常信号 `anomalyFlags` 计算（tool_loop / tool_empty_result / tool_narrow_result / tool_chain_overlong） |
+| [MonitoringCacheService](../../src/biz/monitoring/services/tracking/monitoring-cache.service.ts) | Redis 共享计数（activeRequests / peakActiveRequests）+ 本实例全局计数器 |
 
-**文件位置**：`src/infra/monitoring/monitoring.service.ts`
+> `recordAiStart/End`、`recordSendStart/End` 等生命周期方法仅作为兼容入口保留，权威时间线由
+> Redis trace（wecom-observability 维护）记录，终态时从 `response.timings` 还原。
 
-**内存数据结构**：
+### services/dashboard — 查询
 
-```typescript
-// 详细记录（环形缓冲区）
-private detailRecords: MessageProcessingRecord[] = [];  // 最多 1000 条
+| 服务 | 职责 |
+|------|------|
+| [AnalyticsDashboardService](../../src/biz/monitoring/services/dashboard/analytics-dashboard.service.ts) | `/dashboard/overview`：概览 + 业务指标（咨询/预约/转化）+ 降级统计 + 队列状态 |
+| [AnalyticsQueryService](../../src/biz/monitoring/services/dashboard/analytics-query.service.ts) | `/dashboard/system`、`/stats/trends`、`/metrics`、`/users`、`/recent-messages`、`/system` |
 
-// 小时聚合统计
-private hourlyStatsMap = new Map<string, HourlyStats>();  // 最多 72 小时
+### services/projections — 投影
 
-// 全局计数器
-private globalCounters: MonitoringGlobalCounters = {
-  totalMessages: 0,
-  totalSuccess: 0,
-  totalFailure: 0,
-  totalAiDuration: 0,
-  totalSendDuration: 0,
-  totalFallback: 0,
-  totalFallbackSuccess: 0,
-};
+| 服务 | 职责 |
+|------|------|
+| [HourlyStatsAggregatorService](../../src/biz/monitoring/services/projections/hourly-stats-aggregator.service.ts) | 从 `monitoring_hourly_stats` 预聚合数据重建 Dashboard 所需统计（overview / fallback / scenario / tool / 小时趋势） |
+| [DailyStatsAggregatorService](../../src/biz/monitoring/services/projections/daily-stats-aggregator.service.ts) | 从 `monitoring_daily_stats` 重建日级趋势 |
 
-// 错误日志
-private errorLogs: MonitoringErrorLog[] = [];  // 最多 100 条
+### services/maintenance — 聚合 + 清空/缓存清除
 
-// 活跃度统计
-private activeUsersSet = new Set<string>();
-private activeChatsSet = new Set<string>();
-private currentProcessing = 0;
-private peakProcessing = 0;
-```
+| 服务 | 职责 |
+|------|------|
+| [AnalyticsMaintenanceService](../../src/biz/monitoring/services/maintenance/analytics-maintenance.service.ts) | 小时/日聚合 cron（含启动回填）+ `POST /analytics/clear` + `POST /analytics/cache/clear` |
 
-**主要方法**：
+### services/alerts — 告警
 
-| 方法 | 用途 |
-|-----|------|
-| `recordMessageReceived()` | 记录消息接收 |
-| `recordAiStart/End()` | 记录 AI 处理时间 |
-| `recordSendStart/End()` | 记录消息发送时间 |
-| `recordSuccess/Failure()` | 记录处理结果 |
-| `getDashboardData(range)` | 获取仪表盘数据 |
-| `getMetricsData()` | 获取详细指标 |
-| `clearAllData()` | 清空所有数据 |
+| 服务 | 职责 |
+|------|------|
+| [AnalyticsAlertService](../../src/biz/monitoring/services/alerts/analytics-alert.service.ts) | 每 5 分钟评估 `BusinessMetricRuleEngine`（成功率 / 平均耗时 / 队列深度 / 错误率），通过 `AlertNotifierService` 发飞书告警；阈值通过 `AgentReplyConfig` 动态下发 |
 
-### MonitoringSnapshotService
+### services/cleanup — 数据清理
 
-**职责**：实时快照分离存储到 Redis
+| 服务 | 职责 |
+|------|------|
+| [DataCleanupService](../../src/biz/monitoring/services/cleanup/data-cleanup.service.ts) | 每天 03:00 分层清理；失败通过 `IncidentReporterService` 上报 |
 
-**文件位置**：`src/infra/monitoring/monitoring-snapshot.service.ts`
+### Repositories
 
-**配置**：
-
-| 配置项 | 值 | 说明 |
-|-------|---|------|
-| Redis Keys | `monitoring:meta`, `monitoring:hourly-stats`, `monitoring:error-logs`, `monitoring:records` | 分离存储键 |
-| TTL | 3600 秒 (1小时) | 自动过期时间 |
-| 环境变量 | `MONITORING_SNAPSHOT_ENABLED` | 启用开关 |
-
-**分离存储结构**：
-
-```typescript
-// 元数据（轻量级）
-interface MonitoringMeta {
-  version: number;
-  savedAt: number;
-  globalCounters: MonitoringGlobalCounters;
-  activeUsersCount: number;  // 只存数量，列表从 records 重建
-  activeChatsCount: number;
-  currentProcessing: number;
-  peakProcessing: number;
-}
-```
-
-**关键实现**：
-
-```typescript
-// 串行写入队列，避免并发竞争
-saveSnapshot(snapshot: MonitoringSnapshot): void {
-  this.writeQueue = this.writeQueue
-    .catch(() => { /* 忽略上一次错误 */ })
-    .then(() => this.writeToRedis(snapshot));
-}
-
-private async writeToRedis(snapshot: MonitoringSnapshot): Promise<void> {
-  // 并行写入所有分离的数据
-  await Promise.all([
-    this.redisService.setex(this.KEY_META, this.SNAPSHOT_TTL_SECONDS, meta),
-    this.redisService.setex(this.KEY_HOURLY_STATS, this.SNAPSHOT_TTL_SECONDS, snapshot.hourlyStats),
-    this.redisService.setex(this.KEY_ERROR_LOGS, this.SNAPSHOT_TTL_SECONDS, snapshot.errorLogs),
-    this.redisService.setex(this.KEY_RECORDS, this.SNAPSHOT_TTL_SECONDS, snapshot.detailRecords),
-  ]);
-}
-```
-
-### DataCleanupService
-
-**职责**：定期清理过期数据
-
-**文件位置**：`src/infra/monitoring/data-cleanup.service.ts`
-
-**定时任务**：
-
-| Cron 表达式 | 执行时间 | 任务 |
-|------------|---------|------|
-| `0 3 * * *` | 每天凌晨3点 | 清理过期聊天消息（60天）和监控历史数据（30天） |
-
-**主要方法**：
-
-| 方法 | 用途 |
-|-----|------|
-| `cleanupExpiredData()` | 定时清理任务入口 |
-| `cleanupChatMessages()` | 清理过期聊天消息 |
-| `cleanupMonitoringHistory()` | 清理过期监控历史（兼容旧数据） |
-| `triggerCleanup()` | 手动触发清理 |
+| Repository | 表 / RPC |
+|------------|---------|
+| [MonitoringRecordRepository](../../src/biz/monitoring/repositories/record.repository.ts) | `message_processing_records` + `get_dashboard_*` / `aggregate_hourly_stats` / `aggregate_daily_stats` RPC |
+| [MonitoringHourlyStatsRepository](../../src/biz/monitoring/repositories/hourly-stats.repository.ts) | `monitoring_hourly_stats` |
+| [MonitoringDailyStatsRepository](../../src/biz/monitoring/repositories/daily-stats.repository.ts) | `monitoring_daily_stats` |
+| [MonitoringErrorLogRepository](../../src/biz/monitoring/repositories/error-log.repository.ts) | `monitoring_error_logs` |
 
 ---
 
@@ -293,260 +260,320 @@ private async writeToRedis(snapshot: MonitoringSnapshot): Promise<void> {
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  Dashboard.tsx                                                              │
-│  ├── useDashboard(timeRange)    ─► GET /monitoring/dashboard?range=today   │
-│  ├── useHealthStatus()          ─► GET /agent/health                       │
-│  ├── useAiReplyStatus()         ─► GET /monitoring/ai-reply-status         │
-│  └── useToggleAiReply()         ─► POST /monitoring/toggle-ai-reply        │
+│  web/src/view/dashboard/* + hooks/analytics/*                               │
+│  ├── useDashboardOverview(range)  ─► GET /analytics/dashboard/overview      │
+│  ├── useSystemMonitoring()        ─► GET /analytics/dashboard/system        │
+│  ├── useTrendsData(range)         ─► GET /analytics/stats/trends            │
+│  ├── useMetrics()                 ─► GET /analytics/metrics                 │
+│  ├── useClearData()               ─► POST /analytics/clear                  │
+│  └── useClearCache()              ─► POST /analytics/cache/clear            │
+│                                                                             │
+│  Supabase Realtime: postgres_changes 订阅 message_processing_records        │
+│  (migration 20260420130000_realtime_message_processing_records.sql)         │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  hooks/useMonitoring.ts (React Query)                                       │
-│  ┌───────────────────────────────────────────────────────────────────────┐ │
-│  │ useDashboard()       refetchInterval: 5000ms                          │ │
-│  │ useMetrics()         refetchInterval: 5000ms                          │ │
-│  │ useHealthStatus()    refetchInterval: 10000ms                         │ │
-│  │ useUsers()           refetchInterval: 10000ms                         │ │
-│  │ useRecentMessages()  refetchInterval: 5000ms                          │ │
-│  └───────────────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  MonitoringController                                                       │
-│  ├── GET  /dashboard        → monitoringService.getDashboardData(range)    │
-│  ├── GET  /metrics          → monitoringService.getMetricsData()           │
-│  ├── GET  /ai-reply-status  → messageService.getAiReplyStatus()            │
-│  ├── POST /toggle-ai-reply  → messageService.toggleAiReply(enabled)        │
-│  └── POST /clear            → monitoringService.clearAllData()             │
+│  AnalyticsController (src/biz/monitoring/monitoring.controller.ts)          │
+│  ├── GET  /analytics/dashboard/overview  → AnalyticsDashboardService        │
+│  ├── GET  /analytics/dashboard/system    → AnalyticsQueryService            │
+│  ├── GET  /analytics/stats/trends        → AnalyticsQueryService            │
+│  ├── GET  /analytics/metrics             → AnalyticsQueryService            │
+│  ├── GET  /analytics/users               → AnalyticsQueryService            │
+│  ├── GET  /analytics/user-trend          → AnalyticsQueryService            │
+│  ├── GET  /analytics/recent-messages     → AnalyticsQueryService            │
+│  ├── GET  /analytics/system              → AnalyticsQueryService            │
+│  ├── POST /analytics/clear               → AnalyticsMaintenanceService      │
+│  └── POST /analytics/cache/clear         → AnalyticsMaintenanceService      │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### API 端点列表
 
-| 方法 | 路径 | 用途 | 刷新频率 |
+| 方法 | 路径 | 用途 | 建议刷新 |
 |-----|------|------|---------|
-| GET | `/monitoring/dashboard?range=today\|week\|month` | 仪表盘数据 | 5s |
-| GET | `/monitoring/metrics` | 详细指标 | 5s |
-| GET | `/monitoring/ai-reply-status` | AI 回复状态 | - |
-| POST | `/monitoring/toggle-ai-reply` | 切换 AI 回复 | - |
-| GET | `/monitoring/users` | 用户列表 | 10s |
-| GET | `/monitoring/recent-messages` | 最近消息 | 5s |
-| POST | `/monitoring/clear` | 清空数据 | - |
-| POST | `/monitoring/cache/refresh` | 刷新缓存 | - |
-| GET | `/agent/health` | 健康状态 | 10s |
+| GET | `/analytics/dashboard/overview?range=today\|week\|month` | Dashboard 概览 | 5s |
+| GET | `/analytics/dashboard/system` | 系统监控（队列 / 运行时） | 5s |
+| GET | `/analytics/stats/trends?range=...` | 趋势数据（小时/日/分钟） | 10s |
+| GET | `/analytics/metrics` | 详细指标（慢记录 / 分位数） | 10s |
+| GET | `/analytics/users?date=YYYY-MM-DD` | 活跃用户 | 10s |
+| GET | `/analytics/user-trend` | 咨询用户趋势 | 30s |
+| GET | `/analytics/recent-messages?limit=50` | 最近消息 | 5s（或 Realtime） |
+| GET | `/analytics/system` | 运行时版本 / 启动时间 | - |
+| POST | `/analytics/clear` | 清空所有监控数据 | - |
+| POST | `/analytics/cache/clear?type=all\|metrics\|history\|agent` | 清除缓存 | - |
+
+> API 默认启用 `ApiTokenGuard`，需要 Bearer `API_GUARD_TOKEN`；Dashboard 前端注入鉴权头后调用。
 
 ---
 
 ## 数据结构定义
 
-### MonitoringSnapshot（Redis 快照）
+### MessageProcessingRecord（主事实表）
+
+迁移 [20260417130223_enrich_message_processing_observability.sql](../../supabase/migrations/20260417130223_enrich_message_processing_observability.sql)
+之后新增 `agent_invocation` / `agent_steps` / `memory_snapshot` / `tool_calls` / `anomaly_flags` / `post_processing_status` 等字段。
 
 ```typescript
-interface MonitoringSnapshot {
-  version: number;                           // 快照版本号
-  savedAt: number;                           // 保存时间戳
-  detailRecords: MessageProcessingRecord[];  // 详细记录
-  hourlyStats: HourlyStats[];                // 小时统计
-  errorLogs: MonitoringErrorLog[];           // 错误日志
-  globalCounters: MonitoringGlobalCounters;  // 全局计数器
-  activeUsers: string[];                     // 活跃用户 ID
-  activeChats: string[];                     // 活跃会话 ID
-  currentProcessing: number;                 // 当前处理中数量
-  peakProcessing: number;                    // 峰值处理数量
-}
-```
-
-### MessageProcessingRecord（消息处理记录）
-
-```typescript
-interface MessageProcessingRecord {
+interface MessageProcessingRecordInput {
   messageId: string;
   chatId: string;
   userId?: string;
   userName?: string;
   managerName?: string;
   receivedAt: number;
-  status: 'processing' | 'success' | 'failure';
+  status: 'processing' | 'success' | 'failure' | 'timeout';
 
-  // 时间节点
+  // 时序
   aiStartAt?: number;
   aiEndAt?: number;
-  sendStartAt?: number;
-  sendEndAt?: number;
-
-  // 耗时统计
-  queueDuration?: number;
+  queueDuration?: number;   // accepted → workerStart
+  prepDuration?: number;    // workerStart → aiStart
   aiDuration?: number;
   sendDuration?: number;
   totalDuration?: number;
 
-  // 业务数据
+  // 业务
   scenario?: ScenarioType;
-  tools?: string[];
   tokenUsage?: number;
   messagePreview?: string;
   replyPreview?: string;
   replySegments?: number;
+  batchId?: string;                     // 聚合 trace
 
-  // 降级信息
+  // Agent 可观测性
+  toolCalls?: AgentToolCall[];
+  agentSteps?: AgentStepDetail[];
+  memorySnapshot?: AgentMemorySnapshot;
+  agentInvocation?: AgentInvocationSnapshot; // JSONB，清理时会被置 NULL 释放 TOAST
+  anomalyFlags?: AnomalyFlag[];
+  postProcessingStatus?: string;
+
+  // 降级
   isFallback?: boolean;
   fallbackSuccess?: boolean;
 
-  // 错误信息
+  // 错误
   error?: string;
   alertType?: AlertErrorType;
 }
 ```
 
-### HourlyStats（小时统计）
+### HourlyStats（小时投影）
 
 ```typescript
 interface HourlyStats {
-  hour: string;          // ISO 格式 (YYYY-MM-DDTHH:00:00.000Z)
+  hour: string;                      // ISO 整点
   messageCount: number;
   successCount: number;
   failureCount: number;
-  successRate: number;   // 百分比
-  avgDuration: number;   // 平均耗时 (ms)
+  timeoutCount: number;              // 2026-04-16 新增
+  successRate: number;
+
+  avgDuration: number;
   minDuration: number;
   maxDuration: number;
   p50Duration: number;
   p95Duration: number;
   p99Duration: number;
+
+  avgQueueDuration: number;          // 2026-04-16 新增
+  avgPrepDuration: number;           // 2026-04-16 新增
   avgAiDuration: number;
   avgSendDuration: number;
+
   activeUsers: number;
   activeChats: number;
+  totalTokenUsage: number;
+
+  fallbackCount: number;
+  fallbackSuccessCount: number;
+
+  errorTypeStats: Record<string, number>;  // JSONB
+  scenarioStats: Record<string, { count: number; successCount: number; avgDuration: number }>;
+  toolStats: Record<string, number>;
+}
+```
+
+### DailyProjectionStats（日投影）
+
+```typescript
+interface DailyProjectionStats {
+  date: string;                      // YYYY-MM-DD (local)
+  messageCount: number;
+  successCount: number;
+  failureCount: number;
+  timeoutCount: number;
+  successRate: number;
+  avgDuration: number;
+  tokenUsage: number;
+  uniqueUsers: number;
+  uniqueChats: number;
+  fallbackCount: number;
+  fallbackSuccessCount: number;
+  fallbackAffectedUsers: number;
+  avgQueueDuration: number;
+  avgPrepDuration: number;
+  errorTypeStats: Record<string, number>;
 }
 ```
 
 ### Supabase 表结构
 
 ```sql
-CREATE TABLE monitoring_hourly (
-  hour         TIMESTAMPTZ PRIMARY KEY,  -- 小时整点时间
-  message_count INTEGER DEFAULT 0,
-  success_count INTEGER DEFAULT 0,
-  failure_count INTEGER DEFAULT 0,
-  avg_duration  NUMERIC(10, 2) DEFAULT 0,
-  p95_duration  NUMERIC(10, 2) DEFAULT 0,
-  active_users  INTEGER DEFAULT 0,
-  active_chats  INTEGER DEFAULT 0,
-  total_tokens  INTEGER DEFAULT 0,
-  created_at    TIMESTAMPTZ DEFAULT NOW(),
-  updated_at    TIMESTAMPTZ DEFAULT NOW()
+-- 小时聚合（baseline + 20260416173000_add_monitoring_daily_stats.sql）
+CREATE TABLE monitoring_hourly_stats (
+  hour                  TIMESTAMPTZ PRIMARY KEY,
+  message_count         INTEGER NOT NULL DEFAULT 0,
+  success_count         INTEGER NOT NULL DEFAULT 0,
+  failure_count         INTEGER NOT NULL DEFAULT 0,
+  timeout_count         INTEGER NOT NULL DEFAULT 0,
+  success_rate          NUMERIC DEFAULT 0,
+  avg_duration          INTEGER DEFAULT 0,
+  min_duration          INTEGER DEFAULT 0,
+  max_duration          INTEGER DEFAULT 0,
+  p50_duration          INTEGER DEFAULT 0,
+  p95_duration          INTEGER DEFAULT 0,
+  p99_duration          INTEGER DEFAULT 0,
+  avg_queue_duration    INTEGER NOT NULL DEFAULT 0,
+  avg_prep_duration     INTEGER NOT NULL DEFAULT 0,
+  avg_ai_duration       INTEGER DEFAULT 0,
+  avg_send_duration     INTEGER DEFAULT 0,
+  active_users          INTEGER DEFAULT 0,
+  active_chats          INTEGER DEFAULT 0,
+  total_token_usage     BIGINT  DEFAULT 0,
+  fallback_count        INTEGER NOT NULL DEFAULT 0,
+  fallback_success_count INTEGER NOT NULL DEFAULT 0,
+  error_type_stats      JSONB   NOT NULL DEFAULT '{}'::jsonb,
+  scenario_stats        JSONB   DEFAULT '{}'::jsonb,
+  tool_stats            JSONB   DEFAULT '{}'::jsonb,
+  created_at            TIMESTAMPTZ DEFAULT NOW(),
+  updated_at            TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 索引优化查询
-CREATE INDEX idx_monitoring_hourly_hour ON monitoring_hourly(hour DESC);
+-- 日聚合（20260416173000_add_monitoring_daily_stats.sql）
+CREATE TABLE monitoring_daily_stats (
+  id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  stat_date               DATE UNIQUE NOT NULL,
+  message_count           INTEGER NOT NULL DEFAULT 0,
+  success_count           INTEGER NOT NULL DEFAULT 0,
+  failure_count           INTEGER NOT NULL DEFAULT 0,
+  timeout_count           INTEGER NOT NULL DEFAULT 0,
+  success_rate            NUMERIC DEFAULT 0,
+  avg_duration            INTEGER DEFAULT 0,
+  total_token_usage       BIGINT  NOT NULL DEFAULT 0,
+  unique_users            INTEGER NOT NULL DEFAULT 0,
+  unique_chats            INTEGER NOT NULL DEFAULT 0,
+  fallback_count          INTEGER NOT NULL DEFAULT 0,
+  fallback_success_count  INTEGER NOT NULL DEFAULT 0,
+  fallback_affected_users INTEGER NOT NULL DEFAULT 0,
+  avg_queue_duration      INTEGER NOT NULL DEFAULT 0,
+  avg_prep_duration       INTEGER NOT NULL DEFAULT 0,
+  error_type_stats        JSONB   NOT NULL DEFAULT '{}'::jsonb,
+  created_at              TIMESTAMPTZ DEFAULT NOW(),
+  updated_at              TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX idx_monitoring_daily_stats_stat_date ON monitoring_daily_stats(stat_date DESC);
 ```
+
+核心 RPC：
+- `aggregate_hourly_stats(p_hour_start, p_hour_end)` — 扫描 `message_processing_records` 返回一行聚合结果
+- `aggregate_daily_stats(p_day_start, p_day_end)` — 同上，按天
+- `get_dashboard_overview_stats` / `get_dashboard_fallback_stats` / `get_dashboard_daily_trend` /
+  `get_dashboard_hourly_trend` / `get_dashboard_minute_trend` / `get_dashboard_scenario_stats` /
+  `get_dashboard_tool_stats`
 
 ---
 
 ## 定时任务
 
-### 任务列表
+| 服务 | Cron | 时区 | 任务 |
+|------|------|------|------|
+| AnalyticsMaintenanceService | `5 * * * *` | Asia/Shanghai | 小时统计聚合（startup 回填 3h / cron 回填 14d） |
+| AnalyticsMaintenanceService | `10 0 * * *` | Asia/Shanghai | 日统计聚合（startup 回填 7d / cron 回填 30d） |
+| AnalyticsAlertService | `*/5 * * * *` | 默认 | 业务指标告警评估（成功率 / 平均耗时 / 队列 / 错误率） |
+| DataCleanupService | `0 3 * * *` | 默认 | 分层清理 + stuck processing → timeout（>30min） |
 
-| 服务 | Cron 表达式 | 执行频率 | 任务描述 |
-|-----|------------|---------|---------|
-| DataCleanupService | `0 3 * * *` | 每天 3:00 | 清理过期聊天消息和监控历史数据 |
-| MonitoringService | `setInterval` | 每小时 | 清理过期内存数据 |
+环境变量（保留天数）：
 
-### 内存数据清理
-
-```typescript
-// MonitoringService 构造函数中
-setInterval(() => {
-  this.cleanupExpiredData();
-}, 60 * 60 * 1000);  // 每小时执行
-
-private cleanupExpiredData(): void {
-  const cutoffTime = Date.now() - this.MAX_HOURLY_STATS * 60 * 60 * 1000;  // 72小时
-
-  // 清理过期的小时统计
-  for (const [key, stats] of this.hourlyStatsMap.entries()) {
-    if (new Date(stats.hour).getTime() < cutoffTime) {
-      this.hourlyStatsMap.delete(key);
-    }
-  }
-}
-```
+| 变量 | 默认值 | 动作 |
+|------|--------|------|
+| `DATA_CLEANUP_AGENT_INVOCATION_DAYS` | 7 | NULL `agent_invocation` |
+| `DATA_CLEANUP_PROCESSING_DAYS` | 14 | DELETE `message_processing_records` |
+| `DATA_CLEANUP_CHAT_DAYS` | 60 | DELETE `chat_messages` |
+| `DATA_CLEANUP_USER_ACTIVITY_DAYS` | 35 | DELETE `user_activity` |
+| `DATA_CLEANUP_ERROR_LOGS_DAYS` | 30 | DELETE `monitoring_error_logs` |
 
 ---
 
 ## 故障恢复
 
-### 场景 1：服务重启
+### 场景 1：应用实例重启
 
-```
-服务启动
-    │
-    ▼
-MonitoringService.onModuleInit()
-    │
-    ▼
-restoreFromSnapshot()
-    │
-    ├── 尝试从 Redis 读取快照
-    │   │
-    │   ├── 成功 → applySnapshot() → 恢复内存数据
-    │   │
-    │   └── 失败 → 使用空数据启动 (快照可能已过期)
-    │
-    └── 日志记录恢复状态
-```
+- `MessageTrackingService.onModuleInit` 仅打印日志，不再加载内存快照。
+- `AnalyticsMaintenanceService.onModuleInit` 触发 `catchUpHourlyStats('startup')` 与
+  `catchUpDailyStats('startup')`，补齐最近 3 小时 / 7 天缺失窗口。
+- `DataCleanupService.onModuleInit` 立即执行一次 `timeoutStuckProcessingRecords`，
+  把上次运行遗留的 `processing` 记录（>30 min）置为 `timeout`，避免 activeRequests 被永久占用。
 
 ### 场景 2：Redis 不可用
 
-- **写入失败**：记录错误日志，不影响内存数据
-- **读取失败**：服务从空状态启动，历史数据可从 Supabase 获取
+- `incrementActiveRequests` 抛错被捕获，仅记录 warn，不阻塞主流程。
+- Dashboard 队列面板会显示 0；主数据仍由 Supabase 提供。
+- peak 值不会在本轮更新，Redis 恢复后从新峰值继续累积。
 
-### 场景 3：Supabase 不可用
+### 场景 3：Supabase 写入失败
 
-- **同步失败**：记录错误日志，下次整点重试
-- **实时数据不受影响**：内存和 Redis 正常工作
+- `saveRecordToDatabase` 使用指数退避重试（最多 3 次，500ms → 2000ms）。
+- 重试仍失败只记录 `logger.error`，不会抛到上游——消息回包优先级高于可观测数据。
+- 下一次小时/日聚合触发时会从事实表自动补回最新状态。
+
+### 场景 4：聚合 RPC 失败
+
+- `aggregateSingleHour` 抛错 → `AnalyticsMaintenanceService` 通过
+  `IncidentReporterService.notifyAsync`（code=`cron.job_failed`）上报飞书告警。
+- 下次 cron 或应用重启会重新补齐缺失窗口（回填窗口会自动延伸至最早允许小时）。
 
 ---
 
 ## 性能与成本
 
-### 资源使用估算
+### Supabase 资源估算（约 300 条消息/天）
 
-| 资源 | 使用量 | 免费额度 | 使用率 |
-|-----|-------|---------|-------|
-| Redis 命令/天 | ~1500 | 10,000 | ~15% |
-| Supabase 存储 | < 1 MB | 500 MB | < 0.2% |
-| Supabase API/天 | ~25 | 无限制* | - |
+| 对象 | 行数 | 平均大小 | 30 天占用 |
+|------|------|----------|-----------|
+| `message_processing_records` | ~300/天 × 14 天 = 4,200 | 2–8 KB (含 `agent_invocation`) | ~25 MB |
+| `monitoring_error_logs` | 波动 | 1 KB | <1 MB |
+| `monitoring_hourly_stats` | 8,760/年 | ~500 B | ~4.3 MB/年（永久） |
+| `monitoring_daily_stats` | 365/年 | ~500 B | ~180 KB/年（永久） |
+| `user_activity` | 波动 | <1 KB | <5 MB |
+
+TOAST 压力主要来源是 `agent_invocation` JSONB，因此每天凌晨把 >7 天的行置为 NULL。
 
 ### Redis 命令估算
 
-```
-每条消息: 5 次 record* 调用 × 1 次 Redis setex = 5 次
-假设每天 300 条消息: 300 × 5 = 1500 次/天
-```
+| 操作 | 次数/消息 |
+|------|-----------|
+| `INCRBY monitoring:active_requests` | 2 (接收 +1 / 终态 -1) |
+| `GET monitoring:active_requests` | Dashboard 每次刷新 1 |
+| `GET/SET monitoring:peak_active_requests` | 接收时 1（若突破峰值） |
 
-### Supabase 存储估算
-
-```
-每小时 1 条记录，每条约 200 字节
-30 天: 24 × 30 × 200 = 144 KB
-```
+按 300 消息/天 × 3 次 ≈ 900 命令/天，远低于 Upstash 免费额度（10,000/天）。
 
 ### 优化建议
 
-1. **批量写入**：考虑将 Redis 快照写入改为定时批量（如每 10 秒）
-2. **压缩存储**：对大型快照启用 JSON 压缩
-3. **分层查询**：热数据走内存，冷数据查 Supabase
+1. **热路径预聚合**：`today` 仍对 `message_processing_records` 直查，若 TPS 升高可启用分钟聚合（`get_dashboard_minute_trend` 已准备好）。
+2. **TOAST 治理**：缩短 `DATA_CLEANUP_AGENT_INVOCATION_DAYS` 可更快释放存储；也可评估把 `agent_invocation` 拆到独立表做冷热分离。
+3. **投影窗口**：启动回填上限可配置（目前硬编码），生产环境如果长时间离线建议上调 cron 上限（14d/30d）再人工触发。
 
 ---
 
 ## 相关文档
 
+- [Agent Runtime 架构](./agent-runtime-architecture.md)
+- [消息服务架构](./message-service-architecture.md)
 - [Redis 与 Supabase 资源使用指南](../infrastructure/redis-supabase-usage.md)
 - [告警系统架构](./ALERT_SYSTEM.md)
-- [消息服务架构](./message-service-architecture.md)
 
 ---
 

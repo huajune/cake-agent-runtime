@@ -1,227 +1,318 @@
 # Agent 记忆系统架构
 
-**最后更新**：2026-03-19
+**最后更新**：2026-04-23
+
+> 这份文档描述当前主链路中真正生效的实现。模块内部的详细职责分解参见
+> [`src/memory/README.md`](../../src/memory/README.md)。
 
 ---
 
 ## 1. 设计理念
 
-基于认知科学的记忆分类模型（CoALA 框架），将 Agent 记忆分为三层。核心原则：
+基于认知科学的记忆分类模型（CoALA 框架），把 Agent 记忆分为四类正式层 + 一类旁路。核心原则：
 
-- **编排层固定读写**：记忆的读取和存储是 Agent Loop 的固定前置/后置步骤，不由 LLM 自主决定
+- **编排层固定读写**：记忆的读取 / 回写是 Agent Loop 的固定前置/后置步骤，不由 LLM 自主决定
 - **按需工具补充**：大体量、非每轮必需的记忆（如历史摘要）通过工具按需检索
 - **语义命名**：代码命名体现"这是什么记忆"，而非"存在哪里"
+- **facade 单入口**：编排层只通过 `MemoryService` 读写，不直接操作 Redis / Supabase
 
 ---
 
-## 2. 三层记忆模型
+## 2. 四层记忆 + 旁路解析
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Agent Loop（编排层）                      │
-│                                                             │
-│  recall:  一次性读取所有记忆 → 注入 prompt                    │
-│  store:   Agent 完成后 → 更新记忆                            │
-│                                                             │
-├──────────── 固定注入（小，每轮都需要）──────────────────────────┤
-│                                                             │
-│  ┌── 短期记忆 (Short-term / Working Memory) ──────────────┐  │
-│  │  chat_messages（Supabase 永久存储）                      │  │
-│  │  → 滑动窗口（轮数 + token + 时间）→ messages[]           │  │
-│  │  → 注入 LLM context window                             │  │
-│  │  → 请求结束即释放，不额外持久化                           │  │
-│  └────────────────────────────────────────────────────────┘  │
-│                                                             │
-│  ┌── 会话事实 (Session Facts) ────────────────────────────┐  │
-│  │  本次求职意向：品牌、薪资、岗位、城市、面试安排            │  │
-│  │  → Redis SESSION_TTL，会话级，每轮 Agent 完成后异步提取            │  │
-│  │  → 空闲超时后沉淀到长期记忆                              │  │
-│  └────────────────────────────────────────────────────────┘  │
-│                                                             │
-│  ┌── 程序记忆 (Procedural Memory) ───────────────────────┐  │
-│  │  STAGE = 招聘流程阶段                                   │  │
-│  │  → Redis SESSION_TTL，控制 Agent 行为模式                        │  │
-│  │  → 由 advance_stage 工具写入（LLM 判断推进时机）          │  │
-│  └────────────────────────────────────────────────────────┘  │
-│                                                             │
-│  ┌── 长期记忆 — Profile (Long-term) ─────────────────────┐  │
-│  │  用户身份：姓名、电话、性别、年龄、学历、是否学生          │  │
-│  │  → Supabase 永久，用户级，跨会话复用                     │  │
-│  │  → 从 Session Facts 中沉淀身份字段                      │  │
-│  └────────────────────────────────────────────────────────┘  │
-│                                                             │
-├──────────── 工具按需检索（大，不总是需要）──────────────────────┤
-│                                                             │
-│  ┌── 长期记忆 — Summary (Long-term) ─────────────────────┐  │
-│  │  情景记忆：历次求职经历摘要                              │  │
-│  │  → Supabase 永久，用户级                               │  │
-│  │  → 会话空闲超时后生成（FACTS + 对话 → LLM 摘要）         │  │
-│  │  → 通过 recall_history 工具按需检索                     │  │
-│  └────────────────────────────────────────────────────────┘  │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Agent Loop（编排层）                              │
+│                                                                     │
+│  onTurnStart:  一次性读取四类记忆 + 当轮高置信识别 → 注入 prompt        │
+│  onTurnEnd:    Agent 完成后 → 写会话态 + 触发后置事实提取              │
+│                                                                     │
+├──────────── 正式记忆（持久化）────────────────────────────────────────┤
+│                                                                     │
+│  ┌── 短期记忆 (Short-term / Working Memory) ──────────────────────┐  │
+│  │  chat_messages（Supabase 永久） + Redis 窗口热缓存               │  │
+│  │  → 读：Redis 优先，DB 兜底；时间边界与 sessionTtl 对齐            │  │
+│  │  → 写：业务写 chat_messages 后同步镜像到 Redis                   │  │
+│  │  → 最终裁剪为 ShortTermMessage[] 注入 LLM context                │  │
+│  └────────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ┌── 会话记忆 (Session Memory) ───────────────────────────────────┐  │
+│  │  本次求职会话的结构化业务状态：                                   │  │
+│  │    facts / lastCandidatePool / presentedJobs /                 │  │
+│  │    currentFocusJob / invitedGroups / lastSessionActiveAt       │  │
+│  │  → Redis，key: facts:{corpId}:{userId}:{sessionId}，TTL 见 §5   │  │
+│  │  → 回合结束异步更新；闲置超时后关键字段沉淀到长期记忆              │  │
+│  └────────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ┌── 程序记忆 (Procedural Memory) ────────────────────────────────┐  │
+│  │  STAGE = 招聘流程阶段 + 最近一次推进来源/时间/原因                │  │
+│  │  → Redis，key: stage:{corpId}:{userId}:{sessionId}              │  │
+│  │  → 唯一写入口：advance_stage 工具                                │  │
+│  └────────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ┌── 长期记忆 (Long-term Memory) ─────────────────────────────────┐  │
+│  │  profile：跨会话稳定身份（姓名/电话/性别/年龄/学历/学生/健康证）    │  │
+│  │  summary：recent[] + archive（分层压缩）+ lastSettledMessageAt   │  │
+│  │  → Supabase agent_memories 每用户一行 + Redis 整行 2h 缓存        │  │
+│  │  → 来源：SettlementService 在空闲超时触发时写入                   │  │
+│  │  → 读取：profile 固定注入；summary 通过 recall_history 工具按需读 │  │
+│  └────────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+├──────────── 旁路解析（非持久化）──────────────────────────────────────┤
+│                                                                     │
+│  ┌── 本轮高置信线索 (highConfidenceFacts) ───────────────────────┐    │
+│  │  对"本轮 user 最新消息"做一次规则 + 别名识别                     │    │
+│  │  → 识别品牌 / 城市 / 用工形式等                                 │    │
+│  │  → 仅注入本轮 prompt，不落库、不参与后置事实提取                  │    │
+│  └─────────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 2.1 短期记忆 (Short-term / Working Memory)
 
-**定义**：当前对话的上下文窗口内容，本质是 LLM 的 context window。
+**定义**：当前对话窗口内容，直接作为模型对话上下文。
 
-**数据源**：`chat_messages` 表（Supabase 永久存储）。注意 chat_messages 本身不是记忆系统的一部分，它是业务数据（审计、Dashboard、回溯），同时作为短期记忆的数据源。
+**真相源**：`chat_messages` 表（Supabase 永久存储）。业务消息先写该表，memory 模块读取并镜像到 Redis 窗口做热缓存。
 
-**窗口策略**（由记忆管理系统统一控制）：
+**读取逻辑**（[`short-term.service.ts`](../../src/memory/services/short-term.service.ts)）：
+
+1. 先从 Redis 窗口缓存读取最近消息
+2. Redis miss 时，回退到 `ChatSessionService.getChatHistory(chatId, maxMessages)`
+3. DB fallback 的时间边界与 `sessionTtl` 对齐
+4. miss 回退后把 DB 结果回填到 Redis
+5. 给每条消息注入时间上下文
+6. 按字符上限裁剪，最终输出 `ShortTermMessage[]`
+
+**窗口策略**：
 
 | 限制维度 | 默认值 | 环境变量 |
 |---------|--------|---------|
 | 最大消息条数 | 60 条 | `MAX_HISTORY_PER_CHAT` |
-| 时间窗口 | 3 天 | — |
+| 时间窗口 | `sessionTtl` 对齐 | `MEMORY_SESSION_TTL_DAYS` |
 | 总字符上限 | 8000 | `AGENT_MAX_INPUT_CHARS` |
 
-**读取时机**：Agent 每轮请求前，从 chat_messages 取最近 N 条消息，裁剪后作为 `messages[]` 传入 LLM。
+**空兜底**：WeCom 聚合/重跑时如果 Redis/DB 都为空，`memory-lifecycle` 会用调用方提供的 `currentUserMessage` 构造一条 user fallback，避免 `messages=[]` 直接抛错。
 
-### 2.2 会话事实 (Session Facts)
+### 2.2 会话记忆 (Session Memory)
 
-**定义**：本次求职过程中提取的结构化意向信息，会话级别。
+**定义**：本次求职会话的结构化业务状态（session 级，非 user 级）。
 
-**存储**：Redis，TTL = SESSION_TTL，key 格式 `facts:{corpId}:{userId}:{sessionId}`
+**存储**：Redis，key `facts:{corpId}:{userId}:{sessionId}`，TTL = `sessionTtl`。
 
-**包含字段**：
+**字段**（[`session-facts.types.ts`](../../src/memory/types/session-facts.types.ts)）：
 
 ```typescript
-// 本次求职意向（会话级，每次可能不同）
-interface SessionFacts {
+interface WeworkSessionState {
+  /** 结构化事实（LLM 后置提取） */
+  facts: EntityExtractionResult | null;
+  /** 每轮覆盖：最后一次 duliday_job_list 返回的候选岗位池 */
+  lastCandidatePool: RecommendedJobSummary[] | null;
+  /** 最近几轮真正发给候选人的岗位 */
+  presentedJobs: RecommendedJobSummary[] | null;
+  /** 候选人当前明确在聊或准备报名的岗位 */
+  currentFocusJob: RecommendedJobSummary | null;
+  /** 本会话中已邀入的兼职群 */
+  invitedGroups: InvitedGroupRecord[] | null;
+  /** 本段会话最后一次仍在继续聊的时间（沉淀判定依据） */
+  lastSessionActiveAt?: string;
+}
+
+interface EntityExtractionResult {
+  interview_info: {
+    name | phone | gender | age | applied_store | applied_position |
+    interview_time | is_student | education | has_health_certificate
+  };
   preferences: {
-    labor_form: string;    // 用工形式（兼职/全职/暑假工）
-    brands: string[];      // 意向品牌
-    salary: string;        // 意向薪资
-    position: string[];    // 意向岗位
-    schedule: string;      // 意向班次
-    city: string;          // 意向城市
-    district: string[];    // 意向区域
-    location: string[];    // 意向地点
+    brands: string[] | null;
+    salary: string | null;
+    position: string[] | null;
+    schedule: string | null;
+    city: CityFact | null;     // { value, confidence, evidence }
+    district: string[] | null;
+    location: string[] | null;
+    labor_form: string | null;
   };
-  interviewInfo: {
-    applied_store: string;    // 应聘门店
-    applied_position: string; // 应聘岗位
-    interview_time: string;   // 面试时间
-  };
+  reasoning: string;
 }
 ```
 
+**city 字段**：现在是 `CityFact = { value, confidence, evidence }`，evidence 枚举：`municipality_compact | explicit_city | unique_district_alias | hotspot_alias`。兼容旧字符串数据，自动归一化。
+
 **读写时机**：
-- 读取：Agent 每轮请求前，作为 `recall()` 的一部分固定注入 prompt
-- 写入：Agent 完成后，由 FactExtractionService 异步提取并存储（fire-and-forget）
-- 沉淀：会话空闲超时后，关键信息沉淀到 Profile 和 Summary
+- 读取：每回合 `onTurnStart` 固定拉取
+- 写入：每回合 `onTurnEnd` 串行写候选池 / activity / 岗位投影 / 后置事实提取
+- 合并策略：`deep-merge.util` —— null/undefined/空串不覆盖旧值，对象递归合并，数组去重合并
+- 沉淀：`lastSessionActiveAt` 闲置超过 `sessionTtl` 后，身份字段沉淀到 Profile，对话摘要写入 Summary
 
 ### 2.3 程序记忆 (Procedural Memory)
 
 **定义**：招聘流程的当前阶段，控制 Agent "怎么做事"。
 
-**存储**：Redis，TTL = SESSION_TTL，key 格式 `stage:{corpId}:{userId}:{sessionId}`
+**存储**：Redis，key `stage:{corpId}:{userId}:{sessionId}`，TTL = `sessionTtl`。
 
-**阶段流程**：
-```
-trust_building → needs_collection → job_recommendation → interview_arrangement
-（信任建立）     （需求收集）        （岗位推荐）          （面试安排）
-```
-
-**读写时机**：
-- 读取：Agent 每轮请求前，固定注入，决定 systemPrompt 中加载哪套阶段策略
-- 写入：由 `advance_stage` 工具在 Agent 循环中写入（LLM 判断当前阶段目标是否达成）
-
-**设计要点**：`advance_stage` 是唯一保留的记忆写入工具，因为阶段推进的时机只有 LLM 能判断。
-
-### 2.4 长期记忆 — Profile
-
-**定义**：用户的稳定身份信息，跨会话复用。
-
-**存储**：Supabase 永久 + Redis 2h 缓存，key 格式 `profile:{corpId}:{userId}`
-
-**包含字段**：
+**字段**（[`procedural.types.ts`](../../src/memory/types/procedural.types.ts)）：
 
 ```typescript
-// 用户身份信息（用户级，基本不变）
-interface UserProfile {
-  name: string;        // 姓名
-  phone: string;       // 电话
-  gender: string;      // 性别
-  age: string;         // 年龄
-  is_student: boolean; // 是否学生
-  education: string;   // 学历
-  has_health_certificate: string; // 健康证
+interface ProceduralState {
+  currentStage: string | null;  // 当前阶段
+  fromStage: string | null;     // 上一阶段（推进前）
+  advancedAt: string | null;    // 推进时间
+  reason: string | null;        // 推进原因（审计用）
 }
 ```
 
-**读写时机**：
-- 读取：Agent 每轮请求前，固定注入（"我知道你是张三"）
-- 写入：会话沉淀时，从 Session Facts 中提取身份字段写入/更新
-
-### 2.5 长期记忆 — Summary
-
-**定义**：历次求职经历的对话摘要，情景记忆（Episodic Memory）。
-
-**存储**：Supabase 永久，用户级
-
-**示例**：
+**阶段流转**：
 ```
-2026-03-15：找上海兼职，意向KFC/麦当劳，面试了KFC浦东店，候选人要确认时间，未入职。
-2026-03-19：找杭州全职，意向星巴克，已安排面试。
+trust_building → needs_collection → job_recommendation → interview_arrangement
+  (信任建立)      (需求收集)         (岗位推荐)           (面试安排)
 ```
 
 **读写时机**：
-- 读取：通过 `recall_history` 工具按需检索（LLM 发现用户提到"上次"时主动调用）
-- 写入：会话空闲超时后，由沉淀服务生成（FACTS + 对话记录 → LLM 摘要）
+- 读取：每回合 `onTurnStart` 固定拉取 → 注入 systemPrompt（决定加载哪套阶段策略）
+- 写入：仅由 `advance_stage` 工具通过 `MemoryService.setStage()` 写入。阶段合法性在工具层校验，memory store 不做业务判断。
 
-**不固定注入的原因**：摘要可能有多条且越积越多，固定注入会浪费 token。大部分对话不需要回顾历史，让 LLM 按需检索更高效。
+### 2.4 长期记忆 (Long-term Memory)
+
+**定义**：跨会话复用的用户稳定信息 + 历次求职经历摘要。
+
+**存储**：Supabase `agent_memories` 表（每用户一行）+ Redis 整行 2h 缓存。
+
+**两部分**（[`long-term.types.ts`](../../src/memory/types/long-term.types.ts)）：
+
+#### Profile（身份信息）
+
+```typescript
+interface UserProfile {
+  name: string | null;
+  phone: string | null;
+  gender: string | null;
+  age: string | null;
+  is_student: boolean | null;
+  education: string | null;
+  has_health_certificate: string | null;
+}
+```
+
+- 读取：每回合 `onTurnStart` 固定注入（"我知道你是张三"）
+- 写入：`SettlementService` 在沉淀时从 session facts 里抽身份字段；或外部系统（如补充性别）通过 `MemoryService.saveProfile()` 直接写入
+
+#### Summary（分层压缩的对话摘要）
+
+```typescript
+interface SummaryData {
+  recent: SummaryEntry[];        // 最近 N 条详细摘要（MAX_RECENT_SUMMARIES = 5）
+  archive: string | null;        // 更早的被 LLM 压缩合并成一段自然语言总结
+  lastSettledMessageAt: string | null;  // 最近一次已沉淀的消息边界
+}
+
+interface SummaryEntry {
+  summary: string;
+  sessionId: string;
+  startTime: string;
+  endTime: string;
+}
+```
+
+**压缩策略**：
+1. 每次沉淀，生成一条 `SummaryEntry` 追加到 `recent` 头部
+2. 当 `recent.length > 5` 时，最早条目移出
+3. 移出的条目与现有 `archive` 一起，由 LLM 压缩合并为新的 `archive`
+
+**不固定注入的原因**：摘要条数不定且会越积越多，固定注入浪费 token；大部分对话不需要回顾历史，让 LLM 通过 `recall_history` 工具按需检索更高效。
+
+### 2.5 旁路：本轮高置信线索 (highConfidenceFacts)
+
+**定义**：针对"本轮 user 最新消息"的规则 + 别名前置识别结果。
+
+**能力**（[`facts/high-confidence-facts.ts`](../../src/memory/facts/high-confidence-facts.ts)）：
+- 品牌规范化（基于 sponge 品牌表 alias 匹配）
+- 城市识别（直辖市简写 / 明确城市 / 唯一区域别名 / 商圈 alias）
+- 用工形式 / 年龄等规则字段
+
+**关键边界**：
+- 只看**当前轮新消息**，不 fallback 到历史窗口
+- 注入本轮 prompt sidecar（`[本轮高置信线索] / [本轮待确认线索]`）
+- **不写入 Redis / Supabase，不参与后置事实提取落库**
+
+因此它不是正式记忆层，是当前轮前置解析 sidecar。
 
 ---
 
 ## 3. 读写时序
 
-### 3.1 每轮对话
+### 3.1 每回合对话 — onTurnStart
+
+[`memory-lifecycle.service.ts`](../../src/memory/services/memory-lifecycle.service.ts) 负责编排。
 
 ```
 用户消息到达
   │
-  ├── 1. 空闲检测
-  │   └── lastInteraction 距今 ≥ SESSION_TTL？
-  │       → 是：触发沉淀（Session Facts → Profile + Summary）
-  │       → 否：继续
+  ├── onTurnStart(corpId, userId, sessionId, currentUserMessage?, options)
+  │   │
+  │   ├── 并行读取：
+  │   │   ├── short-term messages     (Redis → DB fallback)
+  │   │   ├── session state           (Redis)
+  │   │   ├── procedural state        (Redis)
+  │   │   └── profile                 (Redis cache → Supabase)
+  │   │
+  │   ├── 短期窗口空兜底：如为空且 currentUserMessage 非空，兜一条 user 消息
+  │   ├── 前置高置信识别：basedOn currentUserMessage + brandList → highConfidenceFacts
+  │   ├── 可选 enrichment：options.enrichmentIdentity 提供时向外部系统补全缺失字段
+  │   │
+  │   └── 返回 MemoryRecallContext {
+  │         shortTerm.messageWindow,
+  │         sessionMemory,
+  │         highConfidenceFacts,
+  │         procedural,
+  │         longTerm.profile,
+  │         _warnings?
+  │       }
   │
-  ├── 2. recall() — 一次性读取所有固定注入的记忆
-  │   ├── 短期记忆：chat_messages → 窗口裁剪 → messages[]
-  │   ├── 会话事实：Redis facts → sessionFacts
-  │   ├── 程序记忆：Redis stage → procedural
-  │   └── 长期记忆：Supabase/Redis profile → profile
-  │
-  ├── 3. 组装 prompt + 注入记忆 → 调用 LLM
+  ├── Agent 组装 prompt + 注入记忆 → 调用 LLM
   │   │
   │   └── LLM 可能调用的工具：
-  │       ├── advance_stage — 推进流程阶段（程序记忆写入）
-  │       └── recall_history — 按需检索历史摘要（长期记忆读取）
+  │       ├── advance_stage      — 推进流程阶段（程序记忆写入）
+  │       ├── recall_history     — 按需检索长期 summary
+  │       └── invite_to_group    — 记录已邀入群（→ MemoryService.saveInvitedGroup）
   │
-  └── 4. store() — Agent 完成后更新记忆
-      ├── 更新 lastInteraction
-      └── 异步事实提取 → 写入 Session Facts（fire-and-forget）
+  └── onTurnEnd(ctx, assistantText?) — 回合收尾
 ```
 
-### 3.2 会话沉淀（空闲超时触发）
+### 3.2 每回合收尾 — onTurnEnd
 
 ```
-下一条消息到达 → 检测 lastInteraction 距今 ≥ SESSION_TTL
+1. 读旧 sessionState（用于沉淀判定）
+2. 分支 A：settlement（可选）
+   └── 若 lastSessionActiveAt 距今 ≥ sessionTtl → 触发 SettlementService.settle()
+3. 分支 B：session_turn_end_updates（串行，避免 Redis 状态互覆盖）
+   ├── save_candidate_pool         (ctx.candidatePool → lastCandidatePool)
+   ├── store_activity              (更新 lastSessionActiveAt = now)
+   ├── project_assistant_turn      (岗位投影 → presentedJobs / currentFocusJob)
+   └── extract_facts               (后置 LLM 事实提取 → facts)
+4. 把每一步的 success/skipped/failure 写入 message_processing_records.post_processing_status
+```
+
+**关键顺序**：先读旧 `sessionState` 再更新 `lastSessionActiveAt`。否则一旦先写新 activity，旧会话永远达不到沉淀阈值。
+
+### 3.3 会话沉淀 — Settlement
+
+[`settlement.service.ts`](../../src/memory/services/settlement.service.ts)
+
+```
+shouldSettle(lastSessionActiveAt): elapsed ≥ sessionTtl
   │
-  ├── 1. 读取即将过期的 Session Facts
+  ├── 身份字段沉淀 → Profile
+  │   从 facts.interview_info 抽 name/phone/gender/age/is_student/education/has_health_certificate
+  │   → Supabase agent_memories 非 null 覆盖更新
   │
-  ├── 2. 身份字段沉淀到 Profile
-  │   └── name, phone, gender, age, education, is_student
-  │       → Supabase upsert（deepMerge，不覆盖已有值）
+  ├── 对话摘要 → Summary
+  │   读 chat_messages 中 lastSettledMessageAt → lastSessionActiveAt 之间的消息
+  │   + facts 中的求职意向 → LLM 生成 ≤100 字摘要
+  │   → 追加到 summary_data.recent；溢出部分 LLM 合并进 archive（≤200 字）
+  │   → 更新 lastSettledMessageAt
   │
-  ├── 3. 生成对话摘要 → 写入 Summary
-  │   └── 读取 chat_messages 中该时段的对话
-  │       + Session Facts 中的求职意向
-  │       → LLM 生成一段摘要
-  │       → 写入 Supabase
-  │
-  └── 4. Session Facts / Stage 的 Redis key 自然过期（SESSION_TTL）
+  └── 不反写 Redis 会话态；Redis key 自然过期
 ```
 
 ---
@@ -233,228 +324,74 @@ interface UserProfile {
 | 工具 | 记忆类型 | 操作 | 保留原因 |
 |------|---------|------|---------|
 | `advance_stage` | 程序记忆 | 写入 | 只有 LLM 能判断阶段推进时机 |
-| `recall_history` | 长期记忆 | 读取 | 历史摘要按需检索，避免 token 浪费 |
+| `recall_history` | 长期记忆（summary） | 读取 | 历史摘要按需检索，避免 token 浪费 |
+| `invite_to_group` | 会话记忆（invitedGroups） | 写入 | 群邀请是 LLM 决策触发的副作用，发卡后需回写记录 |
 
-### 4.2 删除的工具
+### 4.2 已删除 / 不再存在的工具
 
 | 工具 | 删除原因 |
 |------|---------|
-| `memory_recall` | 编排层已固定注入所有当前记忆，无需 LLM 主动回忆 |
-| `memory_store` | 编排层已通过 FactExtractionService 结构化提取，LLM 随意写入会导致格式不一致和数据冲突 |
+| `memory_recall` | 编排层 `onTurnStart` 已固定注入全部当前记忆 |
+| `memory_store`  | 编排层 `onTurnEnd` 已通过后置事实提取结构化写回，LLM 随意写会格式不一致 |
 
-**设计原则**：编排层保证 LLM 一定知道"当前状态"，工具让 LLM 可以主动"翻阅历史"。写入一律由编排层控制（advance_stage 除外）。
+**设计原则**：编排层保证 LLM 一定知道"当前状态"，工具让 LLM 可以主动"翻阅历史"或"登记副作用"。结构化写入由编排层统一控制。
 
 ---
 
 ## 5. 服务周期与时间常量
 
-记忆系统中有多个时间参数，它们都围绕同一个业务概念——**单次求职服务周期**（从候选人打招呼到上岗的完整过程）。这些时间常量必须统一管理，而非散落在各服务中。
+记忆系统中多个时间参数围绕同一个业务概念——**单次求职服务周期**（候选人打招呼到上岗的完整过程）。
 
 ### 5.1 服务周期定义
 
 ```
-单次求职服务周期（Service Cycle）
+单次求职服务周期 (Service Cycle)
 = 候选人首次发消息 → 咨询 → 面试安排 → 入职确认
 = 典型时长：1~7 天
-= 当前默认值：1 天（SESSION_TTL）
+= 当前默认值：1 天（sessionTtl）
 ```
 
-**空闲超时判定**：最后一条消息距今超过服务周期时长，视为本次服务结束，触发沉淀。
+**空闲超时判定**：`lastSessionActiveAt` 距今超过 `sessionTtl` 即视为本段会话结束，触发沉淀。
 
 ### 5.2 时间常量总表
 
-所有记忆相关的时间配置统一定义在记忆模块中，由 `MemoryConfig` 统一管理：
+所有时间配置统一由 [`MemoryConfig`](../../src/memory/memory.config.ts) 管理：
 
-| 常量 | 默认值 | 环境变量 | 说明 | 受服务周期影响 |
-|------|--------|---------|------|:---:|
-| `SESSION_TTL` | 1d (86400s) | `MEMORY_SESSION_TTL_DAYS` | 会话记忆（Facts + Stage）的 Redis TTL | ✅ 核心参数 |
-| `IDLE_TIMEOUT` | 1d | `MEMORY_IDLE_TIMEOUT_DAYS` | 空闲超时阈值，超过触发沉淀 | ✅ 等于 SESSION_TTL |
-| `SHORT_TERM_WINDOW` | 1d | — | 短期记忆时间窗口（chat_messages 查询范围） | ✅ 等于 SESSION_TTL |
-| `SHORT_TERM_MAX_MESSAGES` | 60 | `MAX_HISTORY_PER_CHAT` | 短期记忆最大消息条数 | |
-| `SHORT_TERM_MAX_CHARS` | 8000 | `AGENT_MAX_INPUT_CHARS` | 短期记忆总字符上限 | |
-| `PROFILE_CACHE_TTL` | 2h (7200s) | — | Profile 的 Redis 缓存时间 | |
+| 常量 | 默认值 | 环境变量 | 说明 |
+|------|--------|---------|------|
+| `sessionTtl` | 1 天（86400 s） | `MEMORY_SESSION_TTL_DAYS` | Redis 会话级数据 TTL；也是沉淀阈值；短期窗口 DB fallback 时间边界 |
+| `sessionWindowMaxMessages` | 60 | `MAX_HISTORY_PER_CHAT` | 短期记忆最大消息条数 |
+| `sessionWindowMaxChars` | 8000 | `AGENT_MAX_INPUT_CHARS` | 短期记忆总字符上限（超限从最早消息开始裁剪） |
+| `sessionExtractionIncrementalMessages` | 10 | `SESSION_EXTRACTION_INCREMENTAL_MESSAGES` | 已有 facts 时，后置提取只重看最近 N 条 |
+| `longTermCacheTtl` | 2h（7200 s） | — | `agent_memories` 整行在 Redis 的缓存时长（硬编码） |
+| `MAX_RECENT_SUMMARIES` | 5 | — | `summary.recent` 最多保留多少条（溢出压缩进 archive） |
 
-**关键约束**：`SESSION_TTL` = `IDLE_TIMEOUT` = `SHORT_TERM_WINDOW`，三者语义相同——都是"一次服务周期的时长"。修改时只需调整 `SESSION_TTL`，其余两个跟随。
-
-### 5.3 代码实现
-
-```typescript
-// src/memory/memory.config.ts — 统一时间常量管理
-
-@Injectable()
-export class MemoryConfig {
-  /** 服务周期时长（秒） — 所有会话级时间的基准 */
-  readonly sessionTtl: number;
-
-  /** 短期记忆最大消息条数 */
-  readonly shortTermMaxMessages: number;
-
-  /** 短期记忆总字符上限 */
-  readonly shortTermMaxChars: number;
-
-  /** Profile Redis 缓存时间（秒） */
-  readonly profileCacheTtl: number;
-
-  constructor(private readonly configService: ConfigService) {
-    const days = parseInt(this.configService.get('MEMORY_SESSION_TTL_DAYS', '1'), 10);
-    this.sessionTtl = days * 24 * 60 * 60;
-
-    this.shortTermMaxMessages = parseInt(
-      this.configService.get('MAX_HISTORY_PER_CHAT', '60'), 10,
-    );
-    this.shortTermMaxChars = parseInt(
-      this.configService.get('AGENT_MAX_INPUT_CHARS', '8000'), 10,
-    );
-    this.profileCacheTtl = 2 * 60 * 60; // 2h，硬编码
-  }
-
-  /** 服务周期天数（用于 Supabase 时间查询） */
-  get sessionTtlDays(): number {
-    return this.sessionTtl / (24 * 60 * 60);
-  }
-}
-```
+**核心约束**：`sessionTtl` 一个参数同时决定 → (1) Redis 会话态过期 (2) 沉淀阈值 (3) 短期窗口 DB fallback 时间边界。修改时只改 `MEMORY_SESSION_TTL_DAYS` 即可。
 
 ---
 
 ## 6. 存储后端
 
-| 记忆类型 | 存储后端 | TTL | Key 格式 | 写入策略 |
-|---------|---------|-----|---------|---------|
-| 短期记忆 | Supabase（chat_messages 表） | 永久 | chat_id | 每条消息落库 |
-| Session Facts | Redis | SESSION_TTL | `facts:{corpId}:{userId}:{sessionId}` | deepMerge |
-| Stage | Redis | SESSION_TTL | `stage:{corpId}:{userId}:{sessionId}` | 覆盖写 |
-| Profile + Summary | `agent_memories` 表（每用户一行）+ Redis 2h 缓存 | 永久 | `(corp_id, user_id)` | Profile 非 null 覆盖，Summary 分层压缩 |
+| 记忆类型 | 存储后端 | 主键 / Key | TTL | 写入策略 |
+|---------|---------|-----------|-----|---------|
+| 短期记忆 | Supabase `chat_messages` + Redis 窗口缓存 | `chat_id` / `session:{id}` | 永久 / 会话级 | 业务写 chat_messages，memory 同步镜像到 Redis |
+| 会话记忆 | Redis | `facts:{corpId}:{userId}:{sessionId}` | `sessionTtl` | deepMerge（null 不覆盖，数组去重合并） |
+| 程序记忆 | Redis | `stage:{corpId}:{userId}:{sessionId}` | `sessionTtl` | 覆盖写 |
+| 长期记忆 | Supabase `agent_memories` + Redis 整行缓存 | `(corp_id, user_id)` 唯一 | 永久 / 2h 缓存 | Profile 非 null 覆盖；Summary 分层压缩 |
 
 ---
 
-## 7. 存储字段总览
+## 7. agent_memories 表结构
 
-完整的记忆系统数据结构一览，按记忆类型分组。
-
-### 7.1 短期记忆 — chat_messages 表（Supabase）
-
-数据源表，非记忆系统直接管理，但作为短期记忆的读取来源。
+每用户一行，Profile 字段平铺、Summary / message_metadata 以 jsonb 存储。
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
+| **基础** | | |
 | `id` | uuid | 主键 |
-| `chat_id` | string | 会话 ID |
-| `message_id` | string | 消息唯一 ID（去重键） |
-| `role` | `'user' \| 'assistant'` | 消息角色 |
-| `content` | string | 消息内容 |
-| `timestamp` | timestamptz | 消息时间 |
-| `candidate_name` | string? | 候选人名称 |
-| `manager_name` | string? | 招募经理名称 |
-| `org_id` | string? | 企业 ID |
-| `bot_id` | string? | 托管账号 ID |
-| `message_type` | string? | 消息类型（文本/图片等） |
-| `source` | string? | 消息来源（手机/AI等） |
-| `is_room` | boolean | 是否群聊 |
-| `im_bot_id` | string? | 托管账号系统 wxid |
-| `im_contact_id` | string? | 联系人系统 ID |
-| `contact_type` | string? | 客户类型 |
-| `is_self` | boolean? | 是否托管账号自己发送 |
-| `payload` | jsonb? | 原始消息内容 |
-| `avatar` | string? | 用户头像 URL |
-| `external_user_id` | string? | 企微外部用户 ID |
-
-**窗口读取**：取最近 SHORT_TERM_MAX_MESSAGES 条 + SESSION_TTL 内 → 裁剪到字符上限 → 输出为 `SimpleMessage[]`
-
-```typescript
-interface SimpleMessage {
-  role: 'user' | 'assistant';
-  content: string;  // 注入时间上下文后的内容
-}
-```
-
-### 7.2 会话事实 — Session Facts（Redis）
-
-**Key**: `facts:{corpId}:{userId}:{sessionId}` | **TTL**: 3d | **写入策略**: deepMerge
-
-```typescript
-interface SessionFacts {
-  /** 面试相关（本次求职） */
-  interviewInfo: {
-    applied_store: string | null;     // 应聘门店
-    applied_position: string | null;  // 应聘岗位
-    interview_time: string | null;    // 面试时间
-  };
-
-  /** 求职意向（本次求职，每次可能不同） */
-  preferences: {
-    labor_form: string | null;     // 用工形式（兼职/全职/暑假工/寒假工/小时工）
-    brands: string[] | null;       // 意向品牌（标准品牌名）
-    salary: string | null;         // 意向薪资
-    position: string[] | null;     // 意向岗位
-    schedule: string | null;       // 意向班次/时间
-    city: string | null;           // 意向城市
-    district: string[] | null;     // 意向区域
-    location: string[] | null;     // 意向地点/商圈
-  };
-
-  /** 提取推理说明 */
-  reasoning: string;
-
-  /** 上轮已推荐岗位（每轮覆盖） */
-  lastRecommendedJobs: RecommendedJobSummary[] | null;
-
-  /** 最后交互时间（用于空闲检测） */
-  lastInteraction: string;
-
-  /** 最后话题摘要 */
-  lastTopic: string;
-}
-
-interface RecommendedJobSummary {
-  jobId: number;
-  brandName: string | null;
-  jobName: string | null;
-  storeName: string | null;
-  cityName: string | null;
-  regionName: string | null;
-  laborForm: string | null;
-  salaryDesc: string | null;
-  jobCategoryName: string | null;
-}
-```
-
-### 7.3 程序记忆 — Stage（Redis）
-
-**Key**: `stage:{corpId}:{userId}:{sessionId}` | **TTL**: 3d | **写入策略**: 覆盖写
-
-```typescript
-interface ProceduralState {
-  /** 当前阶段标识 */
-  currentStage: string;    // 'trust_building' | 'needs_collection' | 'job_recommendation' | 'interview_arrangement'
-  /** 推进时间 */
-  advancedAt: string;      // ISO 时间戳
-  /** 推进原因（审计用） */
-  reason: string;
-}
-```
-
-**阶段流转**：
-
-```
-trust_building → needs_collection → job_recommendation → interview_arrangement
-  (信任建立)       (需求收集)          (岗位推荐)           (面试安排)
-```
-
-### 7.4 长期记忆 — `agent_memories` 表（Supabase）
-
-**核心设计**：每个用户一行，所有长期记忆信息在同一行中。
-
-**表结构**：
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| | **基础信息** | |
-| `id` | uuid | 主键，自动生成 |
 | `corp_id` | string | 企业 ID |
 | `user_id` | string | 用户 ID |
-| | | |
-| | **Profile 字段（平铺）** | |
+| **Profile（平铺）** | | |
 | `name` | string? | 姓名 |
 | `phone` | string? | 联系方式 |
 | `gender` | string? | 性别 |
@@ -462,101 +399,26 @@ trust_building → needs_collection → job_recommendation → interview_arrange
 | `is_student` | boolean? | 是否学生 |
 | `education` | string? | 学历 |
 | `has_health_certificate` | string? | 健康证情况 |
-| | | |
-| | **Summary 字段（jsonb，分层压缩）** | |
-| `summary_data` | jsonb? | 对话摘要数据（分层压缩结构，见下方） |
-| | | |
-| | **消息元数据（jsonb 对象）** | |
-| `message_metadata` | jsonb? | 消息回调的关键字段，首次沉淀时写入 |
-| | | |
-| | **时间戳** | |
+| **Summary（jsonb）** | | |
+| `summary_data` | jsonb? | `{ recent: SummaryEntry[], archive, lastSettledMessageAt }` |
+| **消息元数据（jsonb）** | | |
+| `message_metadata` | jsonb? | `{ botId, imBotId, imContactId, contactType, contactName, externalUserId, avatar }` |
+| **时间戳** | | |
 | `created_at` | timestamptz | 创建时间 |
 | `updated_at` | timestamptz | 最后更新时间 |
 
-**唯一约束**：`(corp_id, user_id)`（每用户一行）
+**唯一约束**：`(corp_id, user_id)`。
 
-**Redis 缓存**：整行有 2h Redis 缓存（读时回填）。
+**设计原因**：
+- Profile 平铺为列 → 可直接 SQL 查询 / 索引 / 过滤
+- Summary 和 metadata 作为整体 jsonb → 不需要单独索引
+- 每用户一行 → 不需要 type 字段区分
 
-**设计说明**：
-- Profile 字段平铺为表列：可直接 SQL 查询、索引、过滤，不需要 jsonb 解析
-- Summary 和 message_metadata 收为 jsonb：它们是整体数据，不需要单独索引
-- 每个用户只有一行，不需要 type 字段区分
+---
 
-#### 7.4.1 Profile
+## 8. 字段归属对照
 
-**写入策略**: 非 null 字段覆盖更新
-
-**数据来源**：会话沉淀时从 Session Facts 中提取身份字段写入。跨会话复用，下次再聊无需重新询问。
-
-#### 7.4.2 Summary（分层压缩策略）
-
-`summary_data` jsonb 结构：
-
-```typescript
-interface SummaryData {
-  /** 最近 N 条详细摘要（默认保留 5 条） */
-  recent: SummaryEntry[];
-  /** 更早的摘要被 LLM 压缩合并成一段总结 */
-  archive: string | null;
-}
-
-interface SummaryEntry {
-  /** 摘要内容 */
-  summary: string;
-  /** 关联的 sessionId */
-  sessionId: string;
-  /** 会话开始时间 */
-  startTime: string;
-  /** 会话结束时间 */
-  endTime: string;
-}
-```
-
-**压缩策略**：
-1. 每次沉淀时，生成一条 `SummaryEntry` 追加到 `recent` 数组头部
-2. 当 `recent.length > MAX_RECENT_SUMMARIES`（默认 5）时，将最早的条目移出
-3. 移出的条目与现有 `archive` 一起，由 LLM 压缩合并为新的 `archive`
-4. `archive` 是一段自然语言总结，如：*"该候选人曾多次咨询，2026年1-2月期间主要找上海地区兼职，面试过KFC和麦当劳共3次，均未入职。"*
-
-**示例数据**：
-
-```json
-{
-  "recent": [
-    {
-      "summary": "找杭州全职服务员，意向星巴克，已安排西湖店面试。",
-      "sessionId": "chat_def456",
-      "startTime": "2026-03-19T09:00:00Z",
-      "endTime": "2026-03-19T11:00:00Z"
-    },
-    {
-      "summary": "找上海浦东兼职，意向KFC和麦当劳，推荐了KFC浦东店，候选人要确认时间，未安排面试。",
-      "sessionId": "chat_abc123",
-      "startTime": "2026-03-15T09:00:00Z",
-      "endTime": "2026-03-15T11:30:00Z"
-    }
-  ],
-  "archive": "2026年1-2月期间曾多次咨询上海地区兼职岗位，面试过麦当劳徐汇店（未到场）和必胜客人民广场店（通过但未入职）。"
-}
-```
-
-**`message_metadata` 结构**：
-
-```typescript
-interface MessageMetadata {
-  botId: string;           // 托管账号 ID
-  imBotId: string;         // 托管账号系统 wxid
-  imContactId: string;     // 联系人系统 ID
-  contactType: number;     // 客户类型：0=未知 1=个微 2=企微 3=企微自建
-  contactName: string;     // 客户名称
-  externalUserId: string;  // 企微外部用户 ID
-  avatar: string;          // 用户头像 URL
-}
-```
-
-### 7.5 字段归属对照（FACTS 拆分）
-
-当前 FactExtractionService 提取的字段将按稳定性拆分到不同记忆层：
+FACTS 提取的字段按稳定性拆分到不同记忆层。
 
 | 字段 | 稳定性 | 归属 | 存储 |
 |------|--------|------|------|
@@ -567,93 +429,110 @@ interface MessageMetadata {
 | `is_student` | 半稳定 | **Profile** | Supabase 永久 |
 | `education` | 半稳定 | **Profile** | Supabase 永久 |
 | `has_health_certificate` | 半稳定 | **Profile** | Supabase 永久 |
-| `applied_store` | 每次不同 | **Session Facts** | Redis SESSION_TTL |
-| `applied_position` | 每次不同 | **Session Facts** | Redis SESSION_TTL |
-| `interview_time` | 每次不同 | **Session Facts** | Redis SESSION_TTL |
-| `labor_form` | 每次不同 | **Session Facts** | Redis SESSION_TTL |
-| `brands` | 每次不同 | **Session Facts** | Redis SESSION_TTL |
-| `salary` | 每次不同 | **Session Facts** | Redis SESSION_TTL |
-| `position` | 每次不同 | **Session Facts** | Redis SESSION_TTL |
-| `schedule` | 每次不同 | **Session Facts** | Redis SESSION_TTL |
-| `city` | 每次不同 | **Session Facts** | Redis SESSION_TTL |
-| `district` | 每次不同 | **Session Facts** | Redis SESSION_TTL |
-| `location` | 每次不同 | **Session Facts** | Redis SESSION_TTL |
+| `applied_store` / `applied_position` / `interview_time` | 每次不同 | **Session facts.interview_info** | Redis `sessionTtl` |
+| `labor_form` / `brands` / `salary` / `position` / `schedule` / `city` / `district` / `location` | 每次不同 | **Session facts.preferences** | Redis `sessionTtl` |
+| `lastCandidatePool` / `presentedJobs` / `currentFocusJob` | 会话级推导 | **Session Memory 顶层** | Redis `sessionTtl` |
+| `invitedGroups` | 会话级副作用 | **Session Memory 顶层** | Redis `sessionTtl` |
 
 ---
 
-## 8. 模块结构
+## 9. 模块结构
 
 ```
 src/memory/
-├── memory.service.ts           # 统一入口：recall() / store()
-├── memory.config.ts            # 时间常量统一管理（SESSION_TTL 等）
-├── memory.types.ts             # 所有记忆相关类型定义
+├── memory.service.ts                 # 对外 facade
+├── memory.config.ts                  # 时间 / 窗口 / 缓存配置
+├── memory.module.ts
+├── README.md                         # 模块内部实现说明（真相源）
 │
-├── stores/                     # 存储后端（内部实现）
-│   ├── redis.store.ts          # Redis 存储
-│   ├── supabase.store.ts       # Supabase 存储
-│   └── deep-merge.util.ts      # 深合并工具
+├── services/                         # 领域服务
+│   ├── memory-lifecycle.service.ts   # onTurnStart / onTurnEnd 编排
+│   ├── short-term.service.ts         # chat_messages + Redis 窗口
+│   ├── session.service.ts            # 会话态读写 + 岗位投影 + 后置事实提取
+│   ├── procedural.service.ts         # 阶段状态读写
+│   ├── long-term.service.ts          # profile / summary 持久化
+│   ├── settlement.service.ts         # 空闲超时沉淀
+│   ├── memory-enrichment.service.ts  # 外部系统补全身份字段
+│   └── session-extraction.prompt.ts  # 后置事实提取 prompt
 │
-├── short-term.service.ts       # 短期记忆（对话窗口管理）
-├── session-facts.service.ts    # 会话事实（本次求职意向）
-├── procedural.service.ts       # 程序记忆（流程阶段）
-├── long-term.service.ts        # 长期记忆（Profile + Summary）
-└── settlement.service.ts       # 沉淀服务（空闲超时 → 长期化）
+├── stores/                           # 基础设施
+│   ├── redis.store.ts
+│   ├── supabase.store.ts
+│   ├── deep-merge.util.ts
+│   └── store.types.ts
+│
+├── types/                            # 类型定义
+│   ├── memory-runtime.types.ts       # MemoryRecallContext (onTurnStart 返回)
+│   ├── short-term.types.ts
+│   ├── session-facts.types.ts        # 含 EntityExtractionResult / CityFact
+│   ├── procedural.types.ts
+│   └── long-term.types.ts
+│
+├── facts/                            # 规则 / 别名识别
+│   ├── high-confidence-facts.ts      # 当前轮高置信识别（旁路）
+│   ├── geo-mappings.ts               # 城市 / 区域 / 商圈别名
+│   ├── labor-form.ts                 # 用工形式规范化
+│   └── name-guard.ts                 # 姓名真伪判定
+│
+└── formatters/
+    └── fact-lines.formatter.ts       # 把 facts 渲染为 prompt 行
 ```
 
-### 8.1 Agent 层调用接口
+### 9.1 MemoryService 对外入口
 
 ```typescript
-// 读取 — 一次性获取完整记忆上下文
-const memory = await this.memory.recall(corpId, userId, sessionId);
+// 回合开始：读取四类记忆 + 当轮高置信识别
+const memory = await this.memory.onTurnStart(
+  corpId, userId, sessionId,
+  currentUserMessage?,
+  { includeShortTerm?, shortTermEndTimeInclusive?, enrichmentIdentity? },
+);
 
-interface AgentMemoryContext {
-  /** 短期记忆 — 裁剪后的对话窗口 */
-  shortTerm: SimpleMessage[];
-  /** 长期记忆 — 用户身份 */
-  longTerm: {
-    profile: UserProfile | null;
-  };
-  /** 程序记忆 — 当前流程阶段 */
-  procedural: {
-    currentStage: string | null;
-    advancedAt: string | null;
-  };
-  /** 会话事实 — 本次求职意向 */
-  sessionFacts: SessionFacts | null;
-}
+// 回合结束：写回会话态 + 触发后置提取
+await this.memory.onTurnEnd(
+  { corpId, userId, sessionId, messageId?, normalizedMessages, candidatePool? },
+  assistantText?,
+);
 
-// 写入 — Agent 完成后一次性更新
-await this.memory.store(corpId, userId, sessionId, {
-  facts: extractedFacts,
-});
+// 长期摘要按需读取（供 recall_history）
+const summary = await this.memory.getSummaryData(corpId, userId);
+
+// 程序记忆写入口（供 advance_stage）
+await this.memory.setStage(corpId, userId, sessionId, state);
+
+// 长期档案外部写入（如 enrichment 补齐性别）
+await this.memory.saveProfile(corpId, userId, partialProfile, metadata?);
+
+// 已邀群登记（供 invite_to_group）
+await this.memory.saveInvitedGroup(corpId, userId, sessionId, record);
+
+// 清理用户长期记忆
+await this.memory.clearLongTermMemory(corpId, userId);
 ```
 
 ---
 
-## 9. 与现有系统的变更清单
+## 10. 设计边界
 
-| 变更项 | 现状 | 目标 |
-|-------|------|------|
-| 短期记忆窗口裁剪 | 分散在 MessageHistoryService + AgentRunnerService.trimMessages() | 收编到 `short-term.service.ts` |
-| FACTS 中的身份字段 | 混在 Session Facts 中，Redis SESSION_TTL 后丢失 | 拆分到 Profile（Supabase 永久） |
-| 对话摘要 | 不存在 | 新增 Summary（沉淀服务生成） |
-| memory_recall 工具 | 存在，与编排层重复 | 删除 |
-| memory_store 工具 | 存在，与 FactExtraction 冲突 | 删除 |
-| recall_history 工具 | 不存在 | 新增，按需检索历史摘要 |
-| enrichPrompt 读取 | 分别读 stage、facts，两次 await | 统一 `memory.recall()` 一次读取 |
-| FACTS key 前缀 | `wework_session:` | `facts:`（语义化） |
-| Profile 调用方 | 基础设施已搭，无调用方 | 接入编排层，沉淀服务写入 |
+- **orchestration 层不直接操作 Redis / Supabase**：只通过 `MemoryService` facade
+- **prompt 格式化放在 agent 模块**，不放在 memory facade
+- **memory store 不做业务判断**：阶段合法性在 `advance_stage` 工具层校验，不在 procedural.service
+- **`advance_stage` 是程序记忆的唯一显式写入口**
+- **`recall_history` 是长期摘要的唯一按需读入口**
+- **沉淀过程不反写 Redis 会话态**：只做 Redis → Supabase 的单向搬运，Redis key 自然过期
+- **highConfidenceFacts 不落库**：只是本轮 sidecar，事实落库走 `onTurnEnd` 后置 LLM 提取
 
 ---
 
 ## 相关文件
 
-- `src/memory/` — 记忆管理模块
-- `src/agent/runner.service.ts` — Agent 编排层（记忆读写调用方）
-- `src/agent/fact-extraction.service.ts` — 事实提取服务
-- `src/tools/advance-stage.tool.ts` — 阶段推进工具
-- `src/tools/memory-recall.tool.ts` — 待删除
-- `src/tools/memory-store.tool.ts` — 待删除
-- `src/channels/wecom/message/services/history.service.ts` — 消息历史（短期记忆数据源）
-- `src/biz/message/repositories/chat-message.repository.ts` — chat_messages 表操作
+- [`src/memory/README.md`](../../src/memory/README.md) — 模块实现细节（真相源）
+- [`src/memory/memory.service.ts`](../../src/memory/memory.service.ts) — facade
+- [`src/memory/services/memory-lifecycle.service.ts`](../../src/memory/services/memory-lifecycle.service.ts) — onTurnStart / onTurnEnd 编排
+- [`src/memory/services/settlement.service.ts`](../../src/memory/services/settlement.service.ts) — 沉淀逻辑
+- [`src/memory/memory.config.ts`](../../src/memory/memory.config.ts) — 时间常量
+- [`src/agent/agent-preparation.service.ts`](../../src/agent/agent-preparation.service.ts) — Agent 侧消费 onTurnStart 结果
+- [`src/tools/advance-stage.tool.ts`](../../src/tools/advance-stage.tool.ts) — 阶段推进
+- [`src/tools/recall-history.tool.ts`](../../src/tools/recall-history.tool.ts) — 按需检索摘要
+- [`src/tools/invite-to-group.tool.ts`](../../src/tools/invite-to-group.tool.ts) — 群邀请副作用登记
+- [`src/biz/message/repositories/chat-message.repository.ts`](../../src/biz/message/repositories/chat-message.repository.ts) — chat_messages 表操作
