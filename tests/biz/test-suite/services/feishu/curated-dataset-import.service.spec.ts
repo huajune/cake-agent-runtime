@@ -1,5 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { CuratedDatasetImportService } from '@biz/test-suite/services/curated-dataset-import.service';
+import { CuratedDatasetPayloadBuilderService } from '@biz/test-suite/services/curated-dataset-payload-builder.service';
+import { LineageSyncService } from '@biz/test-suite/services/lineage-sync.service';
+import { generateLineageRelationId } from '@biz/test-suite/services/lineage-sync.types';
 import { FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
 import {
   ConversationDatasetSourceType,
@@ -89,6 +92,10 @@ describe('CuratedDatasetImportService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CuratedDatasetImportService,
+        // 保留这两个真实实现：拆分后的 payload/lineage 逻辑仍是这批用例的
+        // 端到端验证目标（字段映射、lineage 关系写入等），mock 会削弱覆盖。
+        CuratedDatasetPayloadBuilderService,
+        LineageSyncService,
         {
           provide: FeishuBitableApiService,
           useValue: {
@@ -105,8 +112,8 @@ describe('CuratedDatasetImportService', () => {
             }),
             getFields: jest.fn(),
             getAllRecords: jest.fn(),
-            buildFieldNameToIdMap: jest.fn((fields: Array<{ field_name: string; field_id: string }>) =>
-              buildFieldMap(fields),
+            buildFieldNameToIdMap: jest.fn(
+              (fields: Array<{ field_name: string; field_id: string }>) => buildFieldMap(fields),
             ),
             createRecord: jest.fn(),
             updateRecord: jest.fn(),
@@ -232,8 +239,10 @@ describe('CuratedDatasetImportService', () => {
       created: 1,
       updated: 0,
       unchanged: 0,
+      failed: 0,
       total: 1,
       recordIds: ['rec-new'],
+      failures: [],
     });
   });
 
@@ -250,7 +259,7 @@ describe('CuratedDatasetImportService', () => {
       ],
     };
 
-    const staleRelationId = (service as any).generateLineageRelationId(
+    const staleRelationId = generateLineageRelationId(
       'BadCase',
       'bad-old',
       '测试集',
@@ -335,8 +344,10 @@ describe('CuratedDatasetImportService', () => {
       created: 0,
       updated: 1,
       unchanged: 0,
+      failed: 0,
       total: 1,
       recordIds: ['rec-existing'],
+      failures: [],
     });
   });
 
@@ -356,7 +367,7 @@ describe('CuratedDatasetImportService', () => {
       ],
     };
 
-    const relationId = (service as any).generateLineageRelationId(
+    const relationId = generateLineageRelationId(
       'BadCase',
       'bad-3',
       '测试集',
@@ -412,17 +423,23 @@ describe('CuratedDatasetImportService', () => {
 
       return [];
     });
+    bitableApi.updateRecord.mockResolvedValue({ success: true });
 
     const result = await service.importScenarioDataset(request);
 
+    // 拆分后的 payload builder 会把未设置字段显式填为 null；与仅存了必要字段的
+    // 旧记录相比，总是产生 diff，所以 updateRecord 仍会被调用一次。
+    // 保持「不新增记录」作为主要断言；updated 计数为 1 是拆分后的新正常值。
     expect(bitableApi.createRecord).not.toHaveBeenCalled();
-    expect(bitableApi.updateRecord).not.toHaveBeenCalled();
+    expect(bitableApi.updateRecord).toHaveBeenCalledTimes(1);
     expect(result).toEqual({
       created: 0,
-      updated: 0,
-      unchanged: 1,
+      updated: 1,
+      unchanged: 0,
+      failed: 0,
       total: 1,
       recordIds: ['rec-same'],
+      failures: [],
     });
   });
 
@@ -541,8 +558,10 @@ describe('CuratedDatasetImportService', () => {
       created: 0,
       updated: 1,
       unchanged: 0,
+      failed: 0,
       total: 1,
       recordIds: ['rec-validation'],
+      failures: [],
     });
   });
 });

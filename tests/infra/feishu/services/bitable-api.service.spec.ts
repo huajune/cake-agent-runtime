@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
 import { FeishuApiService } from '@infra/feishu/services/api.service';
 
@@ -6,6 +7,8 @@ describe('FeishuBitableApiService', () => {
   let service: FeishuBitableApiService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockFeishuApi: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mockConfigService: any;
 
   beforeEach(async () => {
     mockFeishuApi = {
@@ -14,9 +17,21 @@ describe('FeishuBitableApiService', () => {
       put: jest.fn(),
       delete: jest.fn(),
     };
+    mockConfigService = {
+      get: jest.fn().mockImplementation((key: string) => {
+        // 为所有预期的 env key 返回占位符，确保 getTableConfig 能返回非空 appToken/tableId
+        if (key.endsWith('_APP_TOKEN')) return `mock-app-token-${key}`;
+        if (key.endsWith('_TABLE_ID')) return `mock-table-id-${key}`;
+        return undefined;
+      }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [FeishuBitableApiService, { provide: FeishuApiService, useValue: mockFeishuApi }],
+      providers: [
+        FeishuBitableApiService,
+        { provide: FeishuApiService, useValue: mockFeishuApi },
+        { provide: ConfigService, useValue: mockConfigService },
+      ],
     }).compile();
 
     service = module.get<FeishuBitableApiService>(FeishuBitableApiService);
