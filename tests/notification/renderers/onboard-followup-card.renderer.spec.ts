@@ -61,8 +61,8 @@ describe('OnboardFollowupCardRenderer', () => {
 
     expect(card).toEqual(
       expect.objectContaining({
-        title: '面试及上岗对接',
-        color: 'orange',
+        title: '🚨 面试及上岗对接 · 需要人工介入',
+        color: 'red',
       }),
     );
     expect((card.content as string)).toContain('微信昵称：wx_candidate');

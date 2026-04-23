@@ -59,7 +59,7 @@ export function StatsRow({ stats, testType = 'scenario' }: StatsRowProps) {
       {isConversation && (
         <>
           <div className={styles.statCard}>
-            <div className={`${styles.statValue} ${styles.success}`}>{stats.passedCount}</div>
+            <div className={`${styles.statValue} ${styles.success}`}>{stats.executedCount}</div>
             <div className={styles.statLabel}>
               <CheckCircle2 size={12} />
               已执行

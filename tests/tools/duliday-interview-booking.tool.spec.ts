@@ -1,9 +1,11 @@
 import {
   buildCustomerLabelList,
+  resolveInterviewType,
   type BuildCustomerLabelListParams,
   type BuildCustomerLabelListResult,
 } from '@tools/duliday-interview-booking.tool';
 import type { SpongeInterviewSupplementDefinition } from '@sponge/sponge-job.util';
+import type { JobDetail } from '@sponge/sponge.types';
 import type { ToolBuildContext } from '@shared-types/tool.types';
 
 function makeParams(
@@ -102,5 +104,34 @@ describe('buildCustomerLabelList — hasHealthCertificate 回填', () => {
     );
 
     expect(result.customerLabelList[0].value).toBe('有');
+  });
+});
+
+describe('resolveInterviewType', () => {
+  function makeJob(firstInterview: Record<string, unknown> | null | undefined): JobDetail {
+    return {
+      interviewProcess: firstInterview ? { firstInterview } : {},
+    } as unknown as JobDetail;
+  }
+
+  it('desc 里含 "ai" 时，统一归类为 AI面试', () => {
+    const job = makeJob({ firstInterviewWay: '线上面试', firstInterviewDesc: '线上ai面试' });
+    expect(resolveInterviewType(job)).toBe('AI面试');
+  });
+
+  it('desc 的 "AI" 匹配大小写不敏感', () => {
+    const job = makeJob({ firstInterviewWay: '线上面试', firstInterviewDesc: 'AI 视频面试' });
+    expect(resolveInterviewType(job)).toBe('AI面试');
+  });
+
+  it('没有 AI 信号时，以 firstInterviewWay 为准', () => {
+    expect(resolveInterviewType(makeJob({ firstInterviewWay: '线上面试' }))).toBe('线上面试');
+    expect(resolveInterviewType(makeJob({ firstInterviewWay: '线下面试' }))).toBe('线下面试');
+  });
+
+  it('firstInterview 缺失或字段为空时返回 undefined', () => {
+    expect(resolveInterviewType(makeJob(null))).toBeUndefined();
+    expect(resolveInterviewType(makeJob({}))).toBeUndefined();
+    expect(resolveInterviewType(makeJob({ firstInterviewWay: '   ' }))).toBeUndefined();
   });
 });

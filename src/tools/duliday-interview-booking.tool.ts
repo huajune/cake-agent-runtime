@@ -51,6 +51,7 @@ export interface InterviewBookingNotificationInfo {
   jobName?: string;
   jobId?: number;
   interviewTime: string;
+  interviewType?: string;
   toolOutput: Record<string, unknown>;
   botImId?: string;
 }
@@ -240,6 +241,7 @@ export function buildInterviewBookingTool(
 
         const genderLabel = getSpongeGenderLabelById(genderId) ?? undefined;
         const ageText = normalizeAgeText(age);
+        let interviewType: string | undefined;
         let requestInfo: Record<string, unknown> = {
           jobId,
           interviewTime,
@@ -317,6 +319,7 @@ export function buildInterviewBookingTool(
             normalizeText(job.basicInfo.jobName) ||
             normalizeText(job.basicInfo.jobNickName) ||
             undefined;
+          interviewType = resolveInterviewType(job);
           requestInfo = {
             jobId,
             interviewTime,
@@ -416,6 +419,7 @@ export function buildInterviewBookingTool(
               genderLabel,
               ageText,
               interviewTime,
+              interviewType,
               brandName: resolvedBrandName,
               storeName: resolvedStoreName,
               jobName: resolvedJobName,
@@ -454,6 +458,7 @@ export function buildInterviewBookingTool(
               genderLabel,
               ageText,
               interviewTime,
+              interviewType,
               brandName,
               storeName,
               jobName,
@@ -653,6 +658,24 @@ function resolveStoreName(job: JobDetail): string | null {
       ? (job.basicInfo.storeInfo as Record<string, unknown>)
       : null;
   return normalizeText(storeInfo?.storeName) || normalizeText(job.basicInfo?.storeName);
+}
+
+export function resolveInterviewType(job: JobDetail): string | undefined {
+  const interviewProcess =
+    job.interviewProcess && typeof job.interviewProcess === 'object'
+      ? (job.interviewProcess as Record<string, unknown>)
+      : null;
+  const firstInterview =
+    interviewProcess?.firstInterview && typeof interviewProcess.firstInterview === 'object'
+      ? (interviewProcess.firstInterview as Record<string, unknown>)
+      : null;
+  if (!firstInterview) return undefined;
+
+  const desc = normalizeText(firstInterview.firstInterviewDesc);
+  if (desc && /ai/i.test(desc)) return 'AI面试';
+
+  const way = normalizeText(firstInterview.firstInterviewWay);
+  return way ?? undefined;
 }
 
 function normalizeText(value: unknown): string | null {

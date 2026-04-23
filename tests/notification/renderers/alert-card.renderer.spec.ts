@@ -52,8 +52,8 @@ describe('AlertCardRenderer', () => {
     });
 
     const payload = cardBuilder.buildMarkdownCard.mock.calls[0][0];
-    expect(payload.title).toBe('【需人工介入】Agent 调用异常');
-    expect(payload.color).toBe('yellow');
+    expect(payload.title).toBe('🚨 Agent 调用异常 · 需要人工介入');
+    expect(payload.color).toBe('red');
     expect(payload.atUsers).toEqual([FEISHU_RECEIVER_USERS.GAO_YAQI]);
     expect(payload.content).toContain('**微信昵称**: Alice');
     expect(payload.content).toContain('**托管账号**: 招募经理A');
@@ -107,7 +107,7 @@ describe('AlertCardRenderer', () => {
     });
 
     const payload = cardBuilder.buildMarkdownCard.mock.calls[0][0];
-    expect(payload.title).toBe('系统异常');
+    expect(payload.title).toBe('🚨 系统异常');
     expect(payload.color).toBe('red');
     expect(payload.content).toContain('**时间**: 2026/04/13 14:52:00');
     expect(payload.content).toContain('**级别**: CRITICAL');

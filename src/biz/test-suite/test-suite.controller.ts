@@ -648,6 +648,8 @@ export class TestSuiteController {
         executionId,
         request.reviewStatus,
         request.reviewComment,
+        request.reviewerSource,
+        request.reviewedBy,
       ),
     };
   }

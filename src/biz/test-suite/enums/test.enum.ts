@@ -35,6 +35,23 @@ export enum ReviewStatus {
 }
 
 /**
+ * 评审来源
+ * 用于区分人工评审、Codex/Claude 等自动评审来源
+ */
+export enum ReviewerSource {
+  /** 人工/控制台评审 */
+  MANUAL = 'manual',
+  /** Codex 评审 */
+  CODEX = 'codex',
+  /** Claude 评审 */
+  CLAUDE = 'claude',
+  /** 系统自动评审 */
+  SYSTEM = 'system',
+  /** 外部 API 调用 */
+  API = 'api',
+}
+
+/**
  * 批次状态
  * 表示测试批次的生命周期状态
  *

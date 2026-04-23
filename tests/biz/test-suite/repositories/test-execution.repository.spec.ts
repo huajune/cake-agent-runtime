@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { TestExecutionRepository } from '@biz/test-suite/repositories/test-execution.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
-import { ExecutionStatus, ReviewStatus } from '@biz/test-suite/enums/test.enum';
+import { ExecutionStatus, ReviewStatus, ReviewerSource } from '@biz/test-suite/enums/test.enum';
 
 function makeQueryMock(result: { data?: unknown; error?: unknown; count?: number }) {
   const chainMethods = [
@@ -55,6 +55,7 @@ const sampleExecution = {
   review_comment: null,
   test_scenario: null,
   reviewed_by: null,
+  reviewer_source: null,
   reviewed_at: null,
   evaluation_reason: null,
   created_at: '2026-03-10T00:00:00Z',
@@ -449,6 +450,7 @@ describe('TestExecutionRepository', () => {
         reviewStatus: ReviewStatus.PASSED,
         reviewComment: 'Looks good',
         reviewedBy: 'reviewer_001',
+        reviewerSource: ReviewerSource.MANUAL,
       });
 
       expect(result.review_status).toBe(ReviewStatus.PASSED);
@@ -471,6 +473,7 @@ describe('TestExecutionRepository', () => {
       const result = await repository.batchUpdateReview(['exec_001', 'exec_002'], {
         reviewStatus: ReviewStatus.FAILED,
         failureReason: 'Wrong answer',
+        reviewerSource: ReviewerSource.MANUAL,
       });
 
       expect(result).toHaveLength(2);

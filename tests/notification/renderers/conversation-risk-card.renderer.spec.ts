@@ -74,7 +74,7 @@ describe('ConversationRiskCardRenderer', () => {
 
     expect(card).toEqual(
       expect.objectContaining({
-        title: '交流异常 · 人工介入',
+        title: '🚨 交流异常 · 需要人工介入',
         color: 'red',
         atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
       }),

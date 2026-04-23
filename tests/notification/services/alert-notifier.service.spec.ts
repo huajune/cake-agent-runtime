@@ -196,7 +196,7 @@ describe('AlertNotifierService', () => {
     });
 
     const payload = mockCardBuilder.buildMarkdownCard.mock.calls[0][0];
-    expect(payload.title).toBe('需要人工介入');
+    expect(payload.title).toBe('🚨 需要人工介入');
   });
 
   it('should suppress Feishu delivery in non-production by default', async () => {

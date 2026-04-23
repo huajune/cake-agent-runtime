@@ -1,6 +1,11 @@
 import { IsString, IsOptional, IsNumber, IsEnum, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ConversationSourceStatus, SimilarityRating, ReviewStatus } from '../enums/test.enum';
+import {
+  ConversationSourceStatus,
+  SimilarityRating,
+  ReviewStatus,
+  ReviewerSource,
+} from '../enums/test.enum';
 
 /**
  * 解析后的对话消息
@@ -73,6 +78,10 @@ export interface ConversationTurnExecution {
   } | null;
   reviewStatus: string;
   reviewComment: string | null;
+  failureReason: string | null;
+  reviewedBy: string | null;
+  reviewerSource: ReviewerSource | null;
+  reviewedAt: Date | null;
   createdAt: Date;
 }
 
@@ -181,6 +190,19 @@ export class UpdateTurnReviewDto {
   @IsOptional()
   @IsString()
   reviewComment?: string;
+
+  @ApiPropertyOptional({ description: '评审人' })
+  @IsOptional()
+  @IsString()
+  reviewedBy?: string;
+
+  @ApiPropertyOptional({
+    description: '评审来源（manual/codex/claude/system/api）',
+    enum: ReviewerSource,
+  })
+  @IsOptional()
+  @IsEnum(ReviewerSource)
+  reviewerSource?: ReviewerSource;
 }
 
 /**

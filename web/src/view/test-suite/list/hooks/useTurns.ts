@@ -90,6 +90,8 @@ export function useTurns(): UseTurnsResult {
           executionId,
           reviewStatus: status,
           reviewComment: comment,
+          reviewedBy: 'dashboard-user',
+          reviewerSource: 'manual',
         });
 
         // 更新本地数据

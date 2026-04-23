@@ -8,6 +8,7 @@ import { ConversationSnapshotRepository } from '@biz/test-suite/repositories/con
 import {
   BatchStatus,
   ReviewStatus,
+  ReviewerSource,
   FeishuTestStatus,
   BatchSource,
   TestType,
@@ -49,6 +50,8 @@ describe('TestBatchService', () => {
   const mockConversationSnapshotRepository = {
     create: jest.fn(),
     findById: jest.fn(),
+    findByBatchId: jest.fn(),
+    countByBatchIdGroupByStatus: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -69,6 +72,11 @@ describe('TestBatchService', () => {
     writeBackService = module.get(TestWriteBackService);
 
     jest.clearAllMocks();
+    mockBatchRepository.findById.mockResolvedValue({
+      id: 'batch-1',
+      status: BatchStatus.REVIEWING,
+      test_type: TestType.SCENARIO,
+    } as TestBatch);
   });
 
   it('should be defined', () => {
@@ -209,6 +217,43 @@ describe('TestBatchService', () => {
         totalCases: 2,
       }));
     });
+
+    it('should auto-complete conversation batch when all conversations are done', async () => {
+      mockBatchRepository.findById.mockResolvedValue({
+        id: 'batch-1',
+        status: BatchStatus.REVIEWING,
+        test_type: TestType.CONVERSATION,
+      } as TestBatch);
+      mockConversationSnapshotRepository.countByBatchIdGroupByStatus.mockResolvedValue({
+        total: 2,
+        pending: 0,
+        running: 0,
+        completed: 2,
+        failed: 0,
+      });
+      mockConversationSnapshotRepository.findByBatchId.mockResolvedValue([
+        { status: 'completed', avg_similarity_score: 71 },
+        { status: 'completed', avg_similarity_score: 50 },
+      ] as any);
+      mockBatchRepository.updateStats.mockResolvedValue(undefined);
+      mockBatchRepository.updateStatus.mockResolvedValue(undefined);
+
+      await service.updateBatchStats('batch-1');
+
+      expect(batchRepository.updateStats).toHaveBeenCalledWith(
+        'batch-1',
+        expect.objectContaining({
+          totalCases: 2,
+          executedCount: 2,
+          pendingReviewCount: 0,
+          passRate: 61,
+        }),
+      );
+      expect(batchRepository.updateStatus).toHaveBeenCalledWith(
+        'batch-1',
+        BatchStatus.COMPLETED,
+      );
+    });
   });
 
   // ========== updateReview ==========
@@ -301,6 +346,7 @@ describe('TestBatchService', () => {
         FeishuTestStatus.PASSED,
         'batch-1',
         undefined,
+        '人工评审通过',
       );
     });
 
@@ -328,6 +374,7 @@ describe('TestBatchService', () => {
         FeishuTestStatus.FAILED,
         'batch-1',
         'wrong_answer',
+        '人工评审失败：wrong_answer',
       );
     });
 
@@ -344,6 +391,25 @@ describe('TestBatchService', () => {
         FeishuTestStatus.SKIPPED,
         'batch-1',
         undefined,
+        '人工评审跳过',
+      );
+    });
+
+    it('should use codex reviewer source in feishu summary when provided', async () => {
+      await service.updateReview('exec-1', {
+        reviewStatus: ReviewStatus.PASSED,
+        reviewedBy: 'codex-runtime',
+        reviewerSource: ReviewerSource.CODEX,
+      });
+
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(writeBackService.writeBackResult).toHaveBeenCalledWith(
+        'case-feishu-1',
+        FeishuTestStatus.PASSED,
+        'batch-1',
+        undefined,
+        'Codex评审通过',
       );
     });
 

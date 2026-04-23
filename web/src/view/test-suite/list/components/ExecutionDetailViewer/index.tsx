@@ -26,6 +26,64 @@ interface HistoryMessage {
   content: string;
 }
 
+interface AgentRequestSummary {
+  sessionId?: string;
+  userId?: string;
+  scenario?: string;
+  strategySource?: string;
+  modelId?: string;
+}
+
+function formatReviewerLabel(reviewer?: string | null): string | null {
+  if (!reviewer) return null;
+  if (reviewer === 'dashboard-user') return '人工';
+  if (reviewer.toLowerCase().includes('codex')) return 'Codex';
+  if (reviewer.toLowerCase().includes('claude')) return 'Claude';
+  return reviewer;
+}
+
+function resolveReviewerSourceLabel(
+  reviewerSource?: TestExecution['reviewer_source'],
+  reviewer?: string | null,
+): string | null {
+  switch (reviewerSource) {
+    case 'manual':
+      return '人工';
+    case 'codex':
+      return 'Codex';
+    case 'claude':
+      return 'Claude';
+    case 'system':
+      return '系统';
+    case 'api':
+      return 'API';
+    default:
+      return formatReviewerLabel(reviewer);
+  }
+}
+
+function formatReviewStatusLabel(
+  reviewStatus: TestExecution['review_status'],
+  reviewerLabel?: string | null,
+): string {
+  if (reviewStatus === 'pending') {
+    return '待评审';
+  }
+
+  const prefix = reviewerLabel ? `${reviewerLabel}评审` : '评审';
+  if (reviewStatus === 'passed') {
+    return `${prefix}通过`;
+  }
+  if (reviewStatus === 'failed') {
+    return `${prefix}失败`;
+  }
+  if (reviewStatus === 'skipped') {
+    return `${prefix}跳过`;
+  }
+
+  return '待评审';
+}
+
 /**
  * 紧凑指标条组件
  */
@@ -171,12 +229,22 @@ export function ExecutionDetailViewer({ execution, showHistory = true }: Executi
 
   const testInput =
     execution.test_input && typeof execution.test_input === 'object' ? execution.test_input : null;
+  const agentRequest =
+    execution.agent_request && typeof execution.agent_request === 'object'
+      ? (execution.agent_request as AgentRequestSummary)
+      : null;
   const toolCalls: ToolCall[] = Array.isArray(execution.tool_calls) ? execution.tool_calls : [];
   const history = Array.isArray(testInput?.history) ? (testInput.history as HistoryMessage[]) : [];
   const inputMessage =
     execution.input_message ||
     (testInput && typeof testInput.message === 'string' ? testInput.message : '') ||
     '';
+  const expectedOutput = execution.expected_output || '';
+  const reviewerLabel = resolveReviewerSourceLabel(
+    execution.reviewer_source,
+    execution.reviewed_by,
+  );
+  const reviewStatusLabel = formatReviewStatusLabel(execution.review_status, reviewerLabel);
 
   // 指标数据
   const durationMs = execution.duration_ms || 0;
@@ -218,6 +286,15 @@ export function ExecutionDetailViewer({ execution, showHistory = true }: Executi
             <div className={styles.userMessage}>{inputMessage || '(无输入)'}</div>
           </div>
 
+          {expectedOutput && (
+            <div className={styles.inputSection}>
+              <div className={styles.sectionLabel}>
+                <MessageCircle size={14} /> 预期输出 / 核心检查点
+              </div>
+              <div className={styles.expectationBox}>{expectedOutput}</div>
+            </div>
+          )}
+
           {/* 聊天历史 */}
           {showHistory && history.length > 0 && (
             <div className={styles.historySection}>
@@ -239,6 +316,38 @@ export function ExecutionDetailViewer({ execution, showHistory = true }: Executi
 
         {/* 右侧：AI 回复区域 */}
         <div className={styles.replyPanel}>
+          <div className={styles.reviewInfo}>
+            <div className={styles.reviewHeader}>
+              <span className={styles.sectionLabel}>
+                <CheckCircle2 size={14} /> 评审信息
+              </span>
+              <span className={styles.reviewStatus}>{reviewStatusLabel}</span>
+            </div>
+            <div className={styles.reviewMeta}>
+              {execution.failure_reason && (
+                <span className={styles.reviewPill}>失败原因: {execution.failure_reason}</span>
+              )}
+              {reviewerLabel && <span className={styles.reviewPill}>评审来源: {reviewerLabel}</span>}
+              {execution.reviewed_at && (
+                <span className={styles.reviewPill}>
+                  评审时间: {new Date(execution.reviewed_at).toLocaleString('zh-CN')}
+                </span>
+              )}
+              {agentRequest?.strategySource && (
+                <span className={styles.reviewPill}>策略源: {agentRequest.strategySource}</span>
+              )}
+              {agentRequest?.scenario && (
+                <span className={styles.reviewPill}>场景: {agentRequest.scenario}</span>
+              )}
+              {agentRequest?.modelId && (
+                <span className={styles.reviewPill}>模型: {agentRequest.modelId}</span>
+              )}
+            </div>
+            {execution.review_comment && (
+              <div className={styles.reviewSummary}>{execution.review_comment}</div>
+            )}
+          </div>
+
           <div className={styles.sectionLabel}>
             <Bot size={14} /> AI 回复
           </div>

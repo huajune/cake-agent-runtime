@@ -397,10 +397,14 @@ export async function updateTurnReview(params: {
   executionId: string;
   reviewStatus: 'passed' | 'failed' | 'skipped';
   reviewComment?: string;
+  reviewedBy?: string;
+  reviewerSource?: 'manual' | 'codex' | 'claude' | 'system' | 'api';
 }): Promise<ConversationTurnExecution> {
   const { data } = await api.patch(`/test-suite/conversations/turns/${params.executionId}/review`, {
     reviewStatus: params.reviewStatus,
     reviewComment: params.reviewComment,
+    reviewedBy: params.reviewedBy,
+    reviewerSource: params.reviewerSource,
   });
   return unwrapResponse<ConversationTurnExecution>(data);
 }

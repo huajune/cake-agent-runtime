@@ -4,10 +4,11 @@ import type { AgentRunResult } from '@agent/runner.service';
 
 /**
  * 对话解析正则表达式
- * 匹配格式: [MM/DD HH:mm 角色] 消息内容
+ * 匹配格式: [MM/DD HH:mm 说话人] 消息内容
  * 例如: [12/04 17:20 候选人] 这还招人吗
+ * 也兼容真实昵称导出的格式，如 [04/23 13:42 Erx] 你好
  */
-const CONVERSATION_LINE_PATTERN = /^\[(\d{2}\/\d{2}\s+\d{2}:\d{2})\s+(候选人|招募经理)\]\s*(.+)$/;
+const CONVERSATION_LINE_PATTERN = /^\[(\d{2}\/\d{2}\s+\d{2}:\d{2})\s+([^\]]+)\]\s*(.+)$/;
 
 /**
  * 对话文本解析服务
@@ -41,6 +42,7 @@ export class ConversationParserService {
       const lines = rawText.split('\n').filter((line) => line.trim());
       const messages: ParsedMessage[] = [];
       let currentMessage: ParsedMessage | null = null;
+      const speakerRoles = new Map<string, 'user' | 'assistant'>();
 
       for (const line of lines) {
         const match = line.match(CONVERSATION_LINE_PATTERN);
@@ -51,8 +53,8 @@ export class ConversationParserService {
             messages.push(currentMessage);
           }
 
-          const [, timestamp, role, content] = match;
-          const mappedRole: 'user' | 'assistant' = role === '候选人' ? 'user' : 'assistant';
+          const [, timestamp, speaker, content] = match;
+          const mappedRole = this.resolveSpeakerRole(speaker.trim(), speakerRoles);
 
           currentMessage = {
             role: mappedRole,
@@ -166,5 +168,32 @@ export class ConversationParserService {
 
     merged.push(current);
     return merged;
+  }
+
+  private resolveSpeakerRole(
+    speaker: string,
+    speakerRoles: Map<string, 'user' | 'assistant'>,
+  ): 'user' | 'assistant' {
+    const existingRole = speakerRoles.get(speaker);
+    if (existingRole) {
+      return existingRole;
+    }
+
+    const normalized = speaker.toLowerCase().replace(/\s+/g, '');
+    let role: 'user' | 'assistant';
+
+    if (/(候选人|求职者|用户|candidate|user)/i.test(speaker)) {
+      role = 'user';
+    } else if (
+      /(招募经理|招聘经理|顾问|客服|assistant|agent|机器人|bot|conglingkaishi)/i.test(normalized)
+    ) {
+      role = 'assistant';
+    } else {
+      const assignedRoles = [...speakerRoles.values()];
+      role = assignedRoles.includes('user') ? 'assistant' : 'user';
+    }
+
+    speakerRoles.set(speaker, role);
+    return role;
   }
 }

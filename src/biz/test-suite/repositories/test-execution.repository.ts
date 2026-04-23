@@ -167,6 +167,7 @@ export class TestExecutionRepository extends BaseRepository {
       similarity_score: data.similarityScore ?? null,
       input_message: data.inputMessage || null,
       review_status: data.reviewStatus || ReviewStatus.PENDING,
+      reviewer_source: data.reviewerSource || null,
       evaluation_reason: data.evaluationReason || null,
     });
 
@@ -360,6 +361,7 @@ export class TestExecutionRepository extends BaseRepository {
         failure_reason: review.failureReason || null,
         test_scenario: review.testScenario || null,
         reviewed_by: review.reviewedBy || null,
+        reviewer_source: review.reviewerSource || null,
         reviewed_at: new Date().toISOString(),
       },
       (q) => q.eq('id', executionId),
@@ -382,6 +384,7 @@ export class TestExecutionRepository extends BaseRepository {
         failure_reason: review.failureReason || null,
         test_scenario: review.testScenario || null,
         reviewed_by: review.reviewedBy || null,
+        reviewer_source: review.reviewerSource || null,
         reviewed_at: new Date().toISOString(),
       },
       (q) => q.in('id', executionIds),

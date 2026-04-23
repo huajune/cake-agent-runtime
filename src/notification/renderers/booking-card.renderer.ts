@@ -14,6 +14,7 @@ export interface InterviewBookingNotificationPayload {
   jobName?: string;
   jobId?: number;
   interviewTime: string;
+  interviewType?: string;
   toolOutput: Record<string, unknown>;
   atUsers?: FeishuReceiver[];
   atAll?: boolean;
@@ -76,10 +77,15 @@ export class BookingCardRenderer {
 
     sections.push(`通知时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
 
+    const baseTitle = isFailure ? '🚨 面试预约失败' : '🎉 面试预约成功';
+    const interviewType = this.pickString(payload.interviewType);
+    const titleWithType = interviewType ? `${baseTitle} · ${interviewType}` : baseTitle;
+    const title = isFailure ? `${titleWithType} · 需要人工介入` : titleWithType;
+
     return {
       isFailure,
       card: this.cardBuilder.buildMarkdownCard({
-        title: isFailure ? '⚠️ 面试预约失败' : '🎉 面试预约成功',
+        title,
         content: sections.join('\n\n'),
         color: isFailure ? 'red' : 'green',
         atUsers: payload.atUsers,

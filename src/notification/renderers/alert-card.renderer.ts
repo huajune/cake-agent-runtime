@@ -14,15 +14,19 @@ export class AlertCardRenderer {
     const title = this.decorateTitle(
       context.summary || this.getDefaultTitle(context.code),
       context,
+      level,
     );
     const errorMessage =
       context.diagnostics?.errorMessage || this.extractErrorMessage(context.diagnostics?.error);
     const content = this.buildContent(context, level, errorMessage);
+    const color: FeishuCardColor = this.requiresManualIntervention(context)
+      ? 'red'
+      : this.getLevelColor(level);
 
     return this.cardBuilder.buildMarkdownCard({
       title,
       content,
-      color: this.getLevelColor(level),
+      color,
       atAll: context.routing?.atAll,
       atUsers: context.routing?.atUsers,
     });
@@ -41,16 +45,35 @@ export class AlertCardRenderer {
     };
   }
 
-  private decorateTitle(title: string, context: AlertContext): string {
-    if (!this.requiresManualIntervention(context)) {
-      return title;
+  private decorateTitle(title: string, context: AlertContext, level: AlertLevel): string {
+    if (this.requiresManualIntervention(context)) {
+      const withEmoji = title.startsWith('🚨') ? title : `🚨 ${title}`;
+      if (withEmoji.includes('需要人工介入')) {
+        return withEmoji;
+      }
+      return `${withEmoji} · 需要人工介入`;
     }
 
-    if (title.includes('人工介入')) {
+    const emoji = this.getLevelEmoji(level);
+    if (!emoji || title.startsWith(emoji)) {
       return title;
     }
+    return `${emoji} ${title}`;
+  }
 
-    return `【需人工介入】${title}`;
+  private getLevelEmoji(level: AlertLevel): string {
+    switch (level) {
+      case AlertLevel.CRITICAL:
+        return '🚨';
+      case AlertLevel.ERROR:
+        return '❌';
+      case AlertLevel.WARNING:
+        return '⚠️';
+      case AlertLevel.INFO:
+        return 'ℹ️';
+      default:
+        return '';
+    }
   }
 
   createPromptInjectionAlert(params: {

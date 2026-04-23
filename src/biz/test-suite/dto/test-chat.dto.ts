@@ -15,6 +15,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ExecutionStatus,
   ReviewStatus,
+  ReviewerSource,
   BatchSource,
   FeishuTestStatus,
   MessageRole,
@@ -377,6 +378,14 @@ export class UpdateReviewRequestDto {
   @IsOptional()
   @IsString()
   reviewedBy?: string;
+
+  @ApiPropertyOptional({
+    description: '评审来源（manual/codex/claude/system/api）',
+    enum: ReviewerSource,
+  })
+  @IsOptional()
+  @IsEnum(ReviewerSource)
+  reviewerSource?: ReviewerSource;
 }
 
 /**
