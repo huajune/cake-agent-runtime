@@ -30,10 +30,7 @@ import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitme
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import { API_BOOKING_REQUIRED_PAYLOAD_FIELDS } from '@tools/duliday/job-booking.contract';
-import {
-  classifySupplementLabel,
-  matchesScreeningFailure,
-} from '@tools/duliday/supplement-label-classifier';
+import { findScreeningFailure } from '@tools/duliday/supplement-label-classifier';
 
 const logger = new Logger('duliday_interview_booking');
 const INTERVIEW_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
@@ -729,34 +726,4 @@ async function sendInterviewBookingNotification(
 
 function normalizeAgeText(age: number): string {
   return `${age}岁`;
-}
-
-/**
- * 遍历候选人对 supplement label 的回答，找出命中岗位硬筛选 failSignal 的字段。
- *
- * 只检查被 `classifySupplementLabel` 识别为 `screening` 的字段；收集型字段
- * （如 "学历"、"一周能上几天班"）即便答得含糊也不在此校验 —— 它们的判定本来
- * 就在海绵后台二次审核环节。
- */
-export interface ScreeningFailure {
-  label: string;
-  answer: string;
-  matched: string;
-}
-
-export function findScreeningFailure(
-  supplementAnswers: Record<string, string> | undefined,
-): ScreeningFailure | null {
-  if (!supplementAnswers) return null;
-  for (const [label, rawAnswer] of Object.entries(supplementAnswers)) {
-    const answer = typeof rawAnswer === 'string' ? rawAnswer : String(rawAnswer ?? '');
-    if (!answer.trim()) continue;
-    const classification = classifySupplementLabel(label);
-    if (classification.type !== 'screening') continue;
-    const matched = matchesScreeningFailure(classification, answer);
-    if (matched) {
-      return { label, answer, matched };
-    }
-  }
-  return null;
 }

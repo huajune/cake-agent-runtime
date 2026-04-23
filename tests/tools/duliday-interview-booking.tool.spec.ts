@@ -1,6 +1,5 @@
 import {
   buildCustomerLabelList,
-  findScreeningFailure,
   resolveInterviewType,
   type BuildCustomerLabelListParams,
   type BuildCustomerLabelListResult,
@@ -137,68 +136,3 @@ describe('resolveInterviewType', () => {
   });
 });
 
-describe('findScreeningFailure', () => {
-  it('returns null when supplementAnswers is undefined or empty', () => {
-    expect(findScreeningFailure(undefined)).toBeNull();
-    expect(findScreeningFailure({})).toBeNull();
-  });
-
-  it('ignores collect-type labels even if answer looks suspicious', () => {
-    expect(
-      findScreeningFailure({
-        学历: '食品类专业本科', // collect 类，不做筛选
-        能干几个月: '不一定',
-      }),
-    ).toBeNull();
-  });
-
-  it('catches blacklist violation (badcase 69e9bba2)', () => {
-    const result = findScreeningFailure({
-      '专业（非新媒、食品）': '食品类',
-    });
-    expect(result).toEqual({
-      label: '专业（非新媒、食品）',
-      answer: '食品类',
-      matched: '食品',
-    });
-  });
-
-  it('catches rhetorical-style negative answer (badcase 69e9bba2)', () => {
-    const result = findScreeningFailure({
-      周四六日都能上班吗: '不一定',
-    });
-    expect(result).toEqual({
-      label: '周四六日都能上班吗',
-      answer: '不一定',
-      matched: '不一定',
-    });
-  });
-
-  it('catches 是否学生（不要学生） when candidate self-identifies as student', () => {
-    // 候选人明确提到"学生"关键词才触发；模糊的"是，在读大三"要靠 Agent 继续追问
-    const result = findScreeningFailure({
-      '是否学生（不要学生）': '我是大三学生',
-    });
-    expect(result?.label).toBe('是否学生（不要学生）');
-    expect(result?.matched).toBe('学生');
-  });
-
-  it('passes when all screening answers are acceptable', () => {
-    expect(
-      findScreeningFailure({
-        '是否学生（不要学生）': '社会人士',
-        '专业（非新媒、食品）': '会计',
-        周四六日都能上班吗: '可以',
-        一周能上几天班: '3天', // collect 类会被跳过
-      }),
-    ).toBeNull();
-  });
-
-  it('skips empty or whitespace-only answers', () => {
-    expect(
-      findScreeningFailure({
-        '专业（非新媒、食品）': '   ',
-      }),
-    ).toBeNull();
-  });
-});
