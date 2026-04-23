@@ -14,7 +14,7 @@
 **预计版本**: `v5.2.0`
 **最近更新**: `2026-04-23`
 **来源分支**: `develop`
-**累计 PR**: 17
+**累计 PR**: 18
 
 ### 更新摘要
 - PR #72 fix: 完善通知链路并修复群任务与消息处理后续问题
@@ -36,6 +36,11 @@
 - PR #99 chore: 统一 CHANGELOG 更新摘要规则，保留 `feat:` / `fix:` / `chore:` 等轻量类型前缀
 - PR #99 feat: 新增部署完成后的飞书企微私域监控群通知脚本，并接入本地部署和 tag 部署 workflow
 - PR #99 chore: 更新发布/部署文档与待发布状态，确保后续自动生成不会覆盖摘要类型信息
+- PR #102 Added a WeCom short-term memory cutoff so a processing batch only reads chat history up to the latest message actually included in that batch.
+- PR #102 Updated replay observability so merged replay inputs refresh trace content/source message IDs before the final Agent call.
+- PR #102 Added empty-text recovery and persisted empty Agent telemetry before failure handling, so production incidents retain tool/step context.
+- PR #102 Tightened candidate-consultation rules for meal objections, salary details, same-day interview precheck, booking promises, and current-focus job extraction.
+- PR #102 Added labor-form normalization so generic "兼职/全职" does not become a misleading platform-level filter.
 
 ### 新功能
 - PR #72 新增飞书通知路由，支持 bot 到接收人的映射。
@@ -78,6 +83,7 @@
 - PR #90 在 Agent prompt 前置优先级栈和发送前自检，减少硬规则反复横跳。
 - PR #93 重写 Changelog 生成链路，按 PR body 的中文/英文栏目和关键词分发到具体分类。
 - PR #98 精简 recruitment-case 模块依赖，并适配 Feishu bitable 与 curated-dataset 重构后的测试。
+- PR #102 Tightened candidate-consultation rules for meal objections, salary details, same-day interview precheck, booking promises, and current-focus job extraction.
 
 ### 运维与流程
 - PR #74 `uncaughtException` 与 `unhandledRejection` 统一进入 incident pipeline。
@@ -89,6 +95,10 @@
 - PR #93 合入告警持久化统一方案设计稿，并补齐版本脚本 dry-run 验证。
 - PR #98 切换到新版飞书多维表格。
 - PR #99 chore: 更新发布/部署文档与待发布状态，确保后续自动生成不会覆盖摘要类型信息
+- PR #102 Added a WeCom short-term memory cutoff so a processing batch only reads chat history up to the latest message actually included in that batch.
+- PR #102 Updated replay observability so merged replay inputs refresh trace content/source message IDs before the final Agent call.
+- PR #102 Added empty-text recovery and persisted empty Agent telemetry before failure handling, so production incidents retain tool/step context.
+- PR #102 Added labor-form normalization so generic "兼职/全职" does not become a misleading platform-level filter.
 
 ### 配置变更
 - PR #76 调整企微 callback/runtime 相关配置类型与 UI 表达。
@@ -112,6 +122,11 @@
 - PR #99 本地假 webhook 捕获部署通知 payload
 - PR #99 pre-commit hook: `pnpm run lint` + `pnpm run format`
 - PR #99 pre-push hook: `pnpm run ci:check`，213 suites / 2441 tests 通过
+- PR #102 `pnpm jest tests/agent/agent.service.spec.ts tests/channels/wecom/message/application/reply-workflow.service.spec.ts tests/memory/short-term.service.spec.ts tests/memory/memory-lifecycle.service.spec.ts tests/agent/agent-preparation.service.spec.ts tests/agent/context/context.service.spec.ts tests/memory/session-extraction.prompt.spec.ts --runInBand --watchman=false`
+- PR #102 `pnpm run typecheck`
+- PR #102 `pnpm run lint:check`
+- PR #102 `pnpm exec prettier --check ...`
+- PR #102 Pre-push hook: `pnpm run ci:check` passed, including 214 Jest suites / 2449 tests.
 <!-- release:pending:end -->
 
 ## [5.1.0] - 2026-04-09

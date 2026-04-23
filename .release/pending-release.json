@@ -392,6 +392,39 @@
         "pre-commit hook: `pnpm run lint` + `pnpm run format`",
         "pre-push hook: `pnpm run ci:check`，213 suites / 2441 tests 通过"
       ]
+    },
+    {
+      "number": "102",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/102",
+      "title": "[codex] fix wecom message pipeline handling",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-23",
+      "summary": [
+        "Added a WeCom short-term memory cutoff so a processing batch only reads chat history up to the latest message actually included in that batch.",
+        "Updated replay observability so merged replay inputs refresh trace content/source message IDs before the final Agent call.",
+        "Added empty-text recovery and persisted empty Agent telemetry before failure handling, so production incidents retain tool/step context.",
+        "Tightened candidate-consultation rules for meal objections, salary details, same-day interview precheck, booking promises, and current-focus job extraction.",
+        "Added labor-form normalization so generic \"兼职/全职\" does not become a misleading platform-level filter."
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [
+        "Tightened candidate-consultation rules for meal objections, salary details, same-day interview precheck, booking promises, and current-focus job extraction."
+      ],
+      "ops": [
+        "Added a WeCom short-term memory cutoff so a processing batch only reads chat history up to the latest message actually included in that batch.",
+        "Updated replay observability so merged replay inputs refresh trace content/source message IDs before the final Agent call.",
+        "Added empty-text recovery and persisted empty Agent telemetry before failure handling, so production incidents retain tool/step context.",
+        "Added labor-form normalization so generic \"兼职/全职\" does not become a misleading platform-level filter."
+      ],
+      "config": [],
+      "verification": [
+        "`pnpm jest tests/agent/agent.service.spec.ts tests/channels/wecom/message/application/reply-workflow.service.spec.ts tests/memory/short-term.service.spec.ts tests/memory/memory-lifecycle.service.spec.ts tests/agent/agent-preparation.service.spec.ts tests/agent/context/context.service.spec.ts tests/memory/session-extraction.prompt.spec.ts --runInBand --watchman=false`",
+        "`pnpm run typecheck`",
+        "`pnpm run lint:check`",
+        "`pnpm exec prettier --check ...`",
+        "Pre-push hook: `pnpm run ci:check` passed, including 214 Jest suites / 2449 tests."
+      ]
     }
   ]
 }
