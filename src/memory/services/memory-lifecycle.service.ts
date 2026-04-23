@@ -80,6 +80,11 @@ export class MemoryLifecycleService {
     options?: {
       includeShortTerm?: boolean;
       /**
+       * 短期记忆读取上界。用于 WeCom 聚合/重跑批次，防止尚未被本批消费的
+       * pending 入站消息因已写入 Redis/DB 历史而提前进入 Agent 上下文。
+       */
+      shortTermEndTimeInclusive?: number;
+      /**
        * 外部身份定位，用于向外部系统补全快照中缺失的画像字段（如性别）。
        * 提供时触发 MemoryEnrichmentService。
        */
@@ -89,7 +94,9 @@ export class MemoryLifecycleService {
     const includeShortTerm = options?.includeShortTerm ?? true;
 
     const [rawShortTermMessages, sessionState, proceduralState, profile] = await Promise.all([
-      includeShortTerm ? this.shortTerm.getMessages(sessionId) : Promise.resolve([]),
+      includeShortTerm
+        ? this.loadShortTermMessages(sessionId, options?.shortTermEndTimeInclusive)
+        : Promise.resolve([]),
       this.session.getSessionState(corpId, userId, sessionId),
       this.procedural.get(corpId, userId, sessionId),
       this.longTerm.getProfile(corpId, userId),
@@ -123,6 +130,16 @@ export class MemoryLifecycleService {
     }
 
     return snapshot;
+  }
+
+  private loadShortTermMessages(
+    sessionId: string,
+    endTimeInclusive?: number,
+  ): Promise<ShortTermMessage[]> {
+    if (endTimeInclusive === undefined) {
+      return this.shortTerm.getMessages(sessionId);
+    }
+    return this.shortTerm.getMessages(sessionId, { endTimeInclusive });
   }
 
   /**

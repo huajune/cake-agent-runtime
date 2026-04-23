@@ -173,6 +173,100 @@ describe('AgentRunnerService', () => {
     );
   });
 
+  it('should recover empty model text with a no-tool follow-up', async () => {
+    mockLlm.generate
+      .mockResolvedValueOnce({
+        text: '',
+        response: {
+          messages: [{ role: 'assistant', content: [{ type: 'reasoning', text: 'need answer' }] }],
+        },
+        steps: [
+          {
+            reasoningText: 'checked interview date',
+            finishReason: 'tool-calls',
+            toolCalls: [
+              {
+                toolCallId: 'tool-1',
+                toolName: 'duliday_interview_precheck',
+                input: { jobId: 522935, requestedDate: 'today' },
+              },
+            ],
+            toolResults: [
+              {
+                toolCallId: 'tool-1',
+                output: {
+                  success: true,
+                  interview: {
+                    requestedDate: {
+                      status: 'unavailable',
+                      reason: '已超过报名截止时间',
+                    },
+                    upcomingTimeOptions: ['明天下午 1 点半到 5 点'],
+                  },
+                },
+              },
+            ],
+            usage: { inputTokens: 80, outputTokens: 20, totalTokens: 100 },
+          },
+        ],
+        usage: { inputTokens: 80, outputTokens: 20, totalTokens: 100 },
+      })
+      .mockResolvedValueOnce({
+        text: '今天已经过了报名截止，明天下午 1 点半到 5 点可以。',
+        reasoningText: undefined,
+        response: {
+          messages: [
+            {
+              role: 'assistant',
+              content: [
+                {
+                  type: 'text',
+                  text: '今天已经过了报名截止，明天下午 1 点半到 5 点可以。',
+                },
+              ],
+            },
+          ],
+        },
+        steps: [
+          {
+            text: '今天已经过了报名截止，明天下午 1 点半到 5 点可以。',
+            finishReason: 'stop',
+            usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+          },
+        ],
+        usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+      });
+
+    const result = await service.invoke(invokeParams);
+    const recoveryCall = mockLlm.generate.mock.calls[1][0] as Record<string, unknown>;
+    const recoveryMessages = recoveryCall.messages as Array<{ role: string; content: string }>;
+
+    expect(mockLlm.generate).toHaveBeenCalledTimes(2);
+    expect(recoveryCall).toEqual(
+      expect.objectContaining({
+        thinking: { type: 'disabled', budgetTokens: 0 },
+      }),
+    );
+    expect(recoveryCall).not.toHaveProperty('tools');
+    expect(recoveryCall).not.toHaveProperty('stopWhen');
+    expect(recoveryCall).not.toHaveProperty('prepareStep');
+    expect(recoveryMessages.at(-1)?.content).toContain('requestedDate.status=unavailable');
+    expect(result.text).toBe('今天已经过了报名截止，明天下午 1 点半到 5 点可以。');
+    expect(result.usage.totalTokens).toBe(115);
+    expect(result.agentSteps.at(-1)).toEqual(
+      expect.objectContaining({
+        text: '今天已经过了报名截止，明天下午 1 点半到 5 点可以。',
+        finishReason: 'empty-text-recovery',
+      }),
+    );
+    expect(mockMemoryService.onTurnEnd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'sess-1',
+      }),
+      '今天已经过了报名截止，明天下午 1 点半到 5 点可以。',
+    );
+  });
+
   it('should enrich thrown model errors with agent metadata', async () => {
     mockLlm.generate.mockRejectedValue(new Error('Network timeout'));
 

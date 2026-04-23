@@ -84,6 +84,7 @@ export class AgentPreparationService {
     const [memory, activeRecruitmentCase] = await Promise.all([
       this.memoryService.onTurnStart(corpId, userId, sessionId, currentUserMessage, {
         includeShortTerm: callerKind === CallerKind.WECOM,
+        shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
         enrichmentIdentity: this.buildEnrichmentIdentity(params),
       }),
       this.recruitmentCaseService.getActiveOnboardFollowupCase({

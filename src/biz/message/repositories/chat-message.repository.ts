@@ -134,7 +134,7 @@ export class ChatMessageRepository extends BaseRepository {
   async getChatHistory(
     chatId: string,
     limit: number = 60,
-    options?: { startTimeInclusive?: number },
+    options?: { startTimeInclusive?: number; endTimeInclusive?: number },
   ): Promise<
     Array<{ messageId: string; role: 'user' | 'assistant'; content: string; timestamp: number }>
   > {
@@ -146,20 +146,19 @@ export class ChatMessageRepository extends BaseRepository {
       const startTime = options?.startTimeInclusive
         ? new Date(options.startTimeInclusive)
         : undefined;
+      const endTime = options?.endTimeInclusive ? new Date(options.endTimeInclusive) : undefined;
 
       const results = await this.select<{
         message_id: string;
         role: string;
         content: string;
         timestamp: string;
-      }>('message_id,role,content,timestamp', (q) =>
-        (startTime
-          ? q.eq('chat_id', chatId).gte('timestamp', startTime.toISOString())
-          : q.eq('chat_id', chatId)
-        )
-          .order('timestamp', { ascending: false })
-          .limit(limit),
-      );
+      }>('message_id,role,content,timestamp', (q) => {
+        let query = q.eq('chat_id', chatId);
+        if (startTime) query = query.gte('timestamp', startTime.toISOString());
+        if (endTime) query = query.lte('timestamp', endTime.toISOString());
+        return query.order('timestamp', { ascending: false }).limit(limit);
+      });
 
       // 返回时反转顺序（从旧到新）
       return results.reverse().map((m) => ({

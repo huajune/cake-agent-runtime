@@ -177,7 +177,7 @@ export class ChatSessionService {
   async getChatHistory(
     chatId: string,
     limit: number,
-    options?: { startTimeInclusive?: number },
+    options?: { startTimeInclusive?: number; endTimeInclusive?: number },
   ): Promise<
     Array<{ messageId: string; role: 'user' | 'assistant'; content: string; timestamp: number }>
   > {

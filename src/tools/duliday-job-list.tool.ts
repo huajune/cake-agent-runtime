@@ -17,6 +17,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
 import type { RecommendedJobSummary } from '@memory/types/session-facts.types';
+import { stripLaborFormFromCategories } from '@memory/facts/labor-form';
 import { ToolBuilder } from '@shared-types/tool.types';
 import {
   buildJobPolicyAnalysis,
@@ -60,7 +61,7 @@ const inputSchema = z.object({
     .optional()
     .default([])
     .describe(
-      '岗位工种/职位类目，描述这份岗位具体做什么工作。例如：["咖啡师"]、["服务员"]、["理货员"]、["分拣员"]、["收银员"]、["骑手"]。',
+      '岗位工种/职位类目，描述这份岗位具体做什么工作。例如：["咖啡师"]、["服务员"]、["理货员"]、["分拣员"]、["收银员"]、["骑手"]。严禁填入"兼职"、"全职"、"小时工"、"寒假工"、"暑假工"、"兼职+"、"临时工"等用工形式词——平台所有岗位都是兼职岗位，用工形式不是岗位工种，若有用工形式偏好应用其他方式在结果中筛选。',
     ),
   brandIdList: z.array(z.number().int()).optional().default([]).describe('品牌ID列表'),
   projectNameList: z.array(z.string()).optional().default([]).describe('项目名称列表'),
@@ -1266,6 +1267,16 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
           return { error: '需要城市信息，只有区，无法查询' };
         }
 
+        // 兜底：剔除 jobCategoryList 中的用工形式词（兼职/全职/小时工/寒假工/暑假工 等）。
+        // 平台所有岗位都是兼职岗位，用工形式不是岗位工种，不应作为 category 查询条件。
+        const { cleaned: sanitizedJobCategoryList, removed: removedCategoryWords } =
+          stripLaborFormFromCategories(jobCategoryList);
+        if (removedCategoryWords.length > 0) {
+          logger.warn(
+            `jobCategoryList 兜底剔除用工形式词: ${removedCategoryWords.join('、')}（原始: ${JSON.stringify(jobCategoryList)}）`,
+          );
+        }
+
         const options = {
           includeBasicInfo,
           includeJobSalary,
@@ -1282,7 +1293,7 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
           projectNameList,
           projectIdList,
           storeNameList,
-          jobCategoryList,
+          jobCategoryList: sanitizedJobCategoryList,
           jobIdList,
           location,
           options,
@@ -1317,7 +1328,7 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
 
           // 岗位类型本地兜底：当 API 对岗位类型检索不稳定时，退回到同条件宽查后，
           // 仅基于真实岗位字段做本地匹配，不依赖手写别名字典。
-          if (jobs.length === 0 && jobCategoryList.length > 0) {
+          if (jobs.length === 0 && sanitizedJobCategoryList.length > 0) {
             const fallback = await spongeService.fetchJobs({
               cityNameList: normalizedCityNameList,
               regionNameList: normalizedRegionNameList,
@@ -1333,7 +1344,7 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
             /* eslint-disable @typescript-eslint/no-explicit-any */
             const filtered = filterJobsByRequestedCategories(
               fallback.jobs as any[],
-              jobCategoryList,
+              sanitizedJobCategoryList,
             );
             /* eslint-enable @typescript-eslint/no-explicit-any */
             if (filtered.length > 0) {

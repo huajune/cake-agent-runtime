@@ -194,6 +194,7 @@ export class ReplyWorkflowService {
     let imageUrls = this.collectImageUrls(allMessages);
     let imageMessageIds = this.collectImageMessageIds(allMessages);
     let visualMessageTypes = this.buildVisualMessageTypes(allMessages);
+    let shortTermEndTimeInclusive = this.resolveShortTermEndTimeInclusive(allMessages);
 
     const { overrideModelId, thinking } = await this.runtimeConfig.resolveWecomChatModelSelection();
 
@@ -238,6 +239,7 @@ export class ReplyWorkflowService {
       imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
       visualMessageTypes:
         Object.keys(visualMessageTypes).length > 0 ? visualMessageTypes : undefined,
+      shortTermEndTimeInclusive,
       deferTurnEnd: true,
     });
 
@@ -285,6 +287,12 @@ export class ReplyWorkflowService {
         imageUrls = this.collectImageUrls(allMessages);
         imageMessageIds = this.collectImageMessageIds(allMessages);
         visualMessageTypes = this.buildVisualMessageTypes(allMessages);
+        shortTermEndTimeInclusive = this.resolveShortTermEndTimeInclusive(allMessages);
+        await this.wecomObservability.updateRequestMessages(traceId, {
+          messages: allMessages,
+          content,
+          mergeWindowMs: this.runtimeConfig.getMergeDelayMs(),
+        });
 
         // Replay 合入的新消息在 intake 时已写了一条 processing 流水，本轮的终态只会
         // 回写到 traceId 那一行。若不在这里回收，这些源记录会一直停在「处理中」，
@@ -301,6 +309,7 @@ export class ReplyWorkflowService {
           imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
           visualMessageTypes:
             Object.keys(visualMessageTypes).length > 0 ? visualMessageTypes : undefined,
+          shortTermEndTimeInclusive,
         });
 
         this.logger.log(
@@ -430,6 +439,7 @@ export class ReplyWorkflowService {
     apiType?: 'enterprise' | 'group';
     modelId?: string;
     thinking?: AgentThinkingConfig;
+    shortTermEndTimeInclusive?: number;
     /** 延迟 turn-end 生命周期触发；replay 首次调用置 true 以便被丢弃时不污染记忆 */
     deferTurnEnd?: boolean;
   }): Promise<AgentInvokeResult> {
@@ -473,6 +483,7 @@ export class ReplyWorkflowService {
         apiType: params.apiType,
         modelId: params.modelId,
         thinking: params.thinking,
+        shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
         deferTurnEnd,
         onPreparedRequest:
           recordMonitoring && messageId
@@ -483,22 +494,6 @@ export class ReplyWorkflowService {
       const processingTime = Date.now() - startTime;
       const content = this.normalizeContent(result.text);
       const isSkipped = result.toolCalls?.some((call) => call.toolName === 'skip_reply') ?? false;
-      if (!content && !isSkipped) {
-        const emptyResponseError = new Error('Agent 返回空响应') as AgentError;
-        emptyResponseError.isAgentError = true;
-        emptyResponseError.agentMeta = {
-          sessionId: params.sessionId,
-          userId,
-          messageCount: 1,
-        };
-        throw emptyResponseError;
-      }
-
-      this.logger.log(
-        `Agent 调用成功，耗时 ${processingTime}ms，tokens=${result.usage?.totalTokens || 'N/A'}${
-          isSkipped ? '，本轮主动沉默' : ''
-        }`,
-      );
 
       const invokeResult: AgentInvokeResult = {
         reply: { content, reasoning: result.reasoning, usage: result.usage },
@@ -515,6 +510,24 @@ export class ReplyWorkflowService {
         await this.wecomObservability.recordAgentResult(messageId, invokeResult);
       }
 
+      if (!content && !isSkipped) {
+        const emptyResponseError = new Error('Agent 返回空响应') as AgentError;
+        emptyResponseError.isAgentError = true;
+        emptyResponseError.agentMeta = {
+          sessionId: params.sessionId,
+          userId,
+          messageCount: 1,
+          lastCategory: 'empty_response',
+        };
+        throw emptyResponseError;
+      }
+
+      this.logger.log(
+        `Agent 调用成功，耗时 ${processingTime}ms，tokens=${result.usage?.totalTokens || 'N/A'}${
+          isSkipped ? '，本轮主动沉默' : ''
+        }`,
+      );
+
       return invokeResult;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -525,6 +538,26 @@ export class ReplyWorkflowService {
         await this.wecomObservability.markAiEnd(messageId);
       }
     }
+  }
+
+  private resolveShortTermEndTimeInclusive(
+    messages: EnterpriseMessageCallbackDto[],
+  ): number | undefined {
+    const timestamps = messages
+      .map((message) => this.resolveStoredMessageTimestamp(message))
+      .filter((timestamp): timestamp is number => Number.isFinite(timestamp));
+    return timestamps.length > 0 ? Math.max(...timestamps) : undefined;
+  }
+
+  private resolveStoredMessageTimestamp(message: EnterpriseMessageCallbackDto): number | undefined {
+    const callbackTimestamp = Number.parseInt(String(message.timestamp), 10);
+    if (Number.isFinite(callbackTimestamp) && callbackTimestamp > 0) {
+      return callbackTimestamp;
+    }
+    if (Number.isFinite(message._receivedAtMs) && (message._receivedAtMs ?? 0) > 0) {
+      return message._receivedAtMs;
+    }
+    return undefined;
   }
 
   private normalizeContent(rawContent: string): string {

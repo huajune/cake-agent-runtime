@@ -574,6 +574,31 @@ describe('AgentPreparationService', () => {
     );
   });
 
+  it('should forward short-term cutoff to memory.onTurnStart for wecom calls', async () => {
+    await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '当前用户消息' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+        shortTermEndTimeInclusive: 1710900000000,
+      },
+      'invoke',
+    );
+
+    expect(mockMemoryService.onTurnStart).toHaveBeenCalledWith(
+      'corp-1',
+      'user-1',
+      'sess-1',
+      '当前用户消息',
+      expect.objectContaining({
+        includeShortTerm: true,
+        shortTermEndTimeInclusive: 1710900000000,
+      }),
+    );
+  });
+
   it('should omit enrichmentIdentity when token is missing', async () => {
     await service.prepare(
       {
