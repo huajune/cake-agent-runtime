@@ -73,7 +73,7 @@ PR 正文请按模板填写中文说明，特别是这些部分：
 - 打 `vX.Y.Z` tag
 - 创建 GitHub Release
 - 触发部署
-- 发送飞书发布通知到消息通知群，并 `@所有人`
+- 发送飞书发布通知到企微私域监控群
 
 ---
 
@@ -101,7 +101,9 @@ PR 正文请按模板填写中文说明，特别是这些部分：
 
 ### 更新摘要
 
-- PR #120 调整版本和部署流
+- PR #118 feat: 支持飞书消息通知群发布卡片
+- PR #119 fix: 修复 UTC CI 下的日期断言失败
+- PR #120 chore: 调整版本和部署流
 
 ### 新功能
 
@@ -114,7 +116,7 @@ PR 正文请按模板填写中文说明，特别是这些部分：
 ### 运维与流程
 
 - PR #120 CI 覆盖 develop/master 的 PR 校验
-- PR #120 发布成功后自动发送飞书卡片并 @所有人
+- PR #120 发布成功后自动发送飞书企微私域监控群通知
 ```
 
 ---
@@ -139,12 +141,12 @@ PR 正文请按模板填写中文说明，特别是这些部分：
 
 自动化仍然会跑，但中文版本说明会退化成只记录 PR 标题，信息会明显变少。
 
-### 如果飞书通知没发出来，要查什么？
+### 如果飞书企微私域监控群通知没发出来，要查什么？
 
 先检查 GitHub Secrets：
 
-- `MESSAGE_NOTIFICATION_WEBHOOK_URL`
-- `MESSAGE_NOTIFICATION_WEBHOOK_SECRET`
+- `PRIVATE_CHAT_MONITOR_WEBHOOK_URL`
+- `PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET`
 
 再检查对应的部署 workflow 日志。
 
@@ -162,4 +164,5 @@ PR 正文请按模板填写中文说明，特别是这些部分：
 
 - PR 标题用规范前缀，方便自动算版本号
 - PR 正文用中文写清楚变更，方便自动生成版本说明
+- `更新摘要` 可以保留 `feat:` / `fix:` / `chore:` 前缀，自动生成时会原样进入 `CHANGELOG.md`
 - release PR 打开后，先看 `CHANGELOG.md` 再决定是否合并

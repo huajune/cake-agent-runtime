@@ -25,8 +25,9 @@ const CHANGELOG_HEADER = [
   '',
   '所有重要的项目更改都将记录在此文件中。',
   '',
-  '本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。',
+  '本项目遵循 语义化版本 规范。',
   '版本号由 GitHub Actions 自动维护，发布说明统一使用中文记录。',
+  '变更记录按 PR 驱动整理：更新摘要优先保留 PR 正文摘要 bullet，分类内容保留团队关心的业务/技术影响，不展开文件级流水账。',
   '',
   '---',
 ].join('\n');
@@ -399,9 +400,9 @@ function parsePullRequestEntry() {
   const sections = parseBodySections(rawBody);
   const fallbackKey = inferPrimaryCategory(rawTitle || title);
 
-  // 更新摘要一律只挂 PR 标题；`## Summary / Changes / What changed` 这类概览段落里的 bullet
-  // 按关键词分发到具体类别，保证 `### 新功能 / 问题修复` 等栏目里是真实变更描述而不是 PR 标题复读。
-  const summaryBullets = sections.summary;
+  // `## 更新摘要 / Summary / Changes` 里的 bullet 要原样保留在 CHANGELOG 摘要中，
+  // 同时按关键词分发到具体类别，避免摘要里的 feat/fix/chore 信号丢失。
+  const summaryBullets = uniqueList(sections.summary);
   sections.summary = [];
   for (const bullet of summaryBullets) {
     const key = categorizeBullet(bullet, fallbackKey);
@@ -426,7 +427,7 @@ function parsePullRequestEntry() {
     title,
     author: rawAuthor,
     mergedAt: rawMergedAt ? rawMergedAt.slice(0, 10) : formatShanghaiDate(),
-    summary: [title],
+    summary: summaryBullets.length > 0 ? summaryBullets : [title],
     features: uniqueList(sections.features),
     fixes: uniqueList(sections.fixes),
     optimizations: uniqueList(sections.optimizations),
@@ -627,7 +628,13 @@ function renderReleaseSection({ version, date, entries }) {
 }
 
 function renderSummaryLines(entries) {
-  const lines = entries.map((entry) => `- ${formatEntryReference(entry)} ${entry.title}`);
+  const lines = [];
+  for (const entry of entries) {
+    const items = entry.summary?.length ? entry.summary : [entry.title].filter(Boolean);
+    for (const item of items) {
+      lines.push(`- ${formatEntryReference(entry)} ${item}`);
+    }
+  }
   return lines.length > 0 ? lines : ['- 暂无'];
 }
 
@@ -642,7 +649,6 @@ function renderCategoryLines(entries, key) {
 }
 
 function formatEntryReference(entry) {
-  if (entry.number && entry.url) return `[PR #${entry.number}](${entry.url})`;
   if (entry.number) return `PR #${entry.number}`;
   return 'PR';
 }
