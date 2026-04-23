@@ -362,6 +362,36 @@
       "verification": [
         "`pnpm run build` / `pnpm run lint` / `pnpm run test` 通过，覆盖 213 suites / 2441 tests，并列出飞书表、表情、托管到期与 replay 灰度项。"
       ]
+    },
+    {
+      "number": "99",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/99",
+      "title": "[codex] 更新 changelog 规则与部署通知",
+      "author": "huajune",
+      "mergedAt": "2026-04-23",
+      "summary": [
+        "chore: 统一 CHANGELOG 更新摘要规则，保留 `feat:` / `fix:` / `chore:` 等轻量类型前缀",
+        "feat: 新增部署完成后的飞书企微私域监控群通知脚本，并接入本地部署和 tag 部署 workflow",
+        "chore: 更新发布/部署文档与待发布状态，确保后续自动生成不会覆盖摘要类型信息"
+      ],
+      "features": [
+        "feat: 新增部署完成后的飞书企微私域监控群通知脚本，并接入本地部署和 tag 部署 workflow"
+      ],
+      "fixes": [
+        "chore: 统一 CHANGELOG 更新摘要规则，保留 `feat:` / `fix:` / `chore:` 等轻量类型前缀"
+      ],
+      "optimizations": [],
+      "ops": [
+        "chore: 更新发布/部署文档与待发布状态，确保后续自动生成不会覆盖摘要类型信息"
+      ],
+      "config": [],
+      "verification": [
+        "`node --check scripts/send-deploy-notification.js && node --check scripts/update-version-changelog.js && node --check scripts/get-release-notes.js`",
+        "`bash -n scripts/deploy-local.sh && bash -n scripts/deploy-remote.sh && git diff --check`",
+        "本地假 webhook 捕获部署通知 payload",
+        "pre-commit hook: `pnpm run lint` + `pnpm run format`",
+        "pre-push hook: `pnpm run ci:check`，213 suites / 2441 tests 通过"
+      ]
     }
   ]
 }
