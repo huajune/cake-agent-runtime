@@ -137,6 +137,54 @@ export class EnvironmentVariables {
   FEISHU_ALERT_ALLOW_NON_PROD?: string;
 
   @IsOptional()
+  @IsString({ message: 'FEISHU_BITABLE_CHAT_APP_TOKEN 必须是字符串' })
+  FEISHU_BITABLE_CHAT_APP_TOKEN?: string;
+
+  @IsOptional()
+  @IsString({ message: 'FEISHU_BITABLE_CHAT_TABLE_ID 必须是字符串' })
+  FEISHU_BITABLE_CHAT_TABLE_ID?: string;
+
+  @IsOptional()
+  @IsString({ message: 'FEISHU_BITABLE_BADCASE_APP_TOKEN 必须是字符串' })
+  FEISHU_BITABLE_BADCASE_APP_TOKEN?: string;
+
+  @IsOptional()
+  @IsString({ message: 'FEISHU_BITABLE_BADCASE_TABLE_ID 必须是字符串' })
+  FEISHU_BITABLE_BADCASE_TABLE_ID?: string;
+
+  @IsOptional()
+  @IsString({ message: 'FEISHU_BITABLE_GOODCASE_APP_TOKEN 必须是字符串' })
+  FEISHU_BITABLE_GOODCASE_APP_TOKEN?: string;
+
+  @IsOptional()
+  @IsString({ message: 'FEISHU_BITABLE_GOODCASE_TABLE_ID 必须是字符串' })
+  FEISHU_BITABLE_GOODCASE_TABLE_ID?: string;
+
+  @IsOptional()
+  @IsString({ message: 'FEISHU_BITABLE_TEST_SUITE_APP_TOKEN 必须是字符串' })
+  FEISHU_BITABLE_TEST_SUITE_APP_TOKEN?: string;
+
+  @IsOptional()
+  @IsString({ message: 'FEISHU_BITABLE_TEST_SUITE_TABLE_ID 必须是字符串' })
+  FEISHU_BITABLE_TEST_SUITE_TABLE_ID?: string;
+
+  @IsOptional()
+  @IsString({ message: 'FEISHU_BITABLE_VALIDATION_SET_APP_TOKEN 必须是字符串' })
+  FEISHU_BITABLE_VALIDATION_SET_APP_TOKEN?: string;
+
+  @IsOptional()
+  @IsString({ message: 'FEISHU_BITABLE_VALIDATION_SET_TABLE_ID 必须是字符串' })
+  FEISHU_BITABLE_VALIDATION_SET_TABLE_ID?: string;
+
+  @IsOptional()
+  @IsString({ message: 'FEISHU_BITABLE_ASSET_RELATION_APP_TOKEN 必须是字符串' })
+  FEISHU_BITABLE_ASSET_RELATION_APP_TOKEN?: string;
+
+  @IsOptional()
+  @IsString({ message: 'FEISHU_BITABLE_ASSET_RELATION_TABLE_ID 必须是字符串' })
+  FEISHU_BITABLE_ASSET_RELATION_TABLE_ID?: string;
+
+  @IsOptional()
   @IsNumber({}, { message: 'ALERT_SUCCESS_RATE_WARNING 必须是数字' })
   @Min(0, { message: 'ALERT_SUCCESS_RATE_WARNING 必须大于等于 0' })
   ALERT_SUCCESS_RATE_WARNING?: number;

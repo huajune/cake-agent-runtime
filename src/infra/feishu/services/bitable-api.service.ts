@@ -1,6 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { FeishuApiService } from './api.service';
-import { feishuBitableConfig, FeishuBitableTableConfig } from '../constants/feishu-bitable.config';
+import {
+  feishuBitableEnvConfig,
+  FeishuBitableTableConfig,
+  FeishuBitableTableName,
+} from '../constants/feishu-bitable.config';
 
 /**
  * 飞书 API 响应结构
@@ -53,8 +58,12 @@ export interface BatchCreateRequest {
 @Injectable()
 export class FeishuBitableApiService {
   private readonly logger = new Logger(FeishuBitableApiService.name);
+  private readonly tableConfigCache = new Map<FeishuBitableTableName, FeishuBitableTableConfig>();
 
-  constructor(private readonly feishuApi: FeishuApiService) {
+  constructor(
+    private readonly feishuApi: FeishuApiService,
+    private readonly configService: ConfigService,
+  ) {
     this.logger.log('FeishuBitableApiService 初始化完成');
   }
 
@@ -63,10 +72,24 @@ export class FeishuBitableApiService {
   /**
    * 获取预配置的表格信息
    */
-  getTableConfig(
-    tableName: 'chat' | 'badcase' | 'goodcase' | 'testSuite' | 'validationSet' | 'assetRelation',
-  ): FeishuBitableTableConfig {
-    return feishuBitableConfig.tables[tableName];
+  getTableConfig(tableName: FeishuBitableTableName): FeishuBitableTableConfig {
+    const cached = this.tableConfigCache.get(tableName);
+    if (cached) {
+      return cached;
+    }
+
+    const envKeys = feishuBitableEnvConfig[tableName];
+    const appToken = this.configService.get<string>(envKeys.appToken)?.trim() || '';
+    const tableId = this.configService.get<string>(envKeys.tableId)?.trim() || '';
+
+    const config = { appToken, tableId };
+    if (!appToken || !tableId) {
+      this.logger.warn(
+        `${tableName} 表配置缺失，请设置环境变量 ${envKeys.appToken} 和 ${envKeys.tableId}`,
+      );
+    }
+    this.tableConfigCache.set(tableName, config);
+    return config;
   }
 
   // ==================== 字段操作 ====================
