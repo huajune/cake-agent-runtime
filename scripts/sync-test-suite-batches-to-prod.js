@@ -40,16 +40,6 @@ async function safeUpsert(client, table, rows, label, warnings) {
   return rows.length;
 }
 
-function mapExecutionsForProd(executions) {
-  return executions.map((execution) => {
-    const sourceId = execution.conversation_snapshot_id || null;
-    return {
-      ...execution,
-      conversation_source_id: sourceId,
-    };
-  });
-}
-
 async function main() {
   const batchIds = process.argv.slice(2).map((value) => value.trim()).filter(Boolean);
   if (batchIds.length === 0) {
@@ -90,17 +80,10 @@ async function main() {
     '生产 test_conversation_snapshots',
     warnings,
   );
-  const syncedSnapshotsLegacy = await safeUpsert(
-    prodDb,
-    'conversation_test_sources',
-    snapshots,
-    '生产 conversation_test_sources',
-    warnings,
-  );
   const syncedExecutions = await safeUpsert(
     prodDb,
     'test_executions',
-    mapExecutionsForProd(executions),
+    executions,
     '生产 test_executions',
     warnings,
   );
@@ -113,7 +96,7 @@ async function main() {
       )
       .in('id', batchIds),
     prodDb
-      .from('conversation_test_sources')
+      .from('test_conversation_snapshots')
       .select('id,batch_id,participant_name,status,total_turns,avg_similarity_score')
       .in('batch_id', batchIds),
     prodDb.from('test_executions').select('id', { count: 'exact', head: true }).in('batch_id', batchIds),
@@ -130,12 +113,11 @@ async function main() {
         synced: {
           testBatches: syncedBatches,
           testConversationSnapshots: syncedSnapshotsNew,
-          legacyConversationSources: syncedSnapshotsLegacy,
           testExecutions: syncedExecutions,
         },
         production: {
           batches: prodBatches,
-          conversationSources: prodConversations,
+          conversationSnapshots: prodConversations,
           executionCount: prodExecutionCount,
         },
         warnings,

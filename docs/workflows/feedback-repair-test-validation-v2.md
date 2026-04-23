@@ -275,7 +275,7 @@ flowchart LR
 如果还需要让线上页面 `https://cake.duliday.com/web/test-suite` 同步看到这轮批次，仅回写飞书还不够，还要把测试环境批次同步到生产 test-suite 数据库：
 
 - 运行 `pnpm sync:test-suite:prod -- <batchId...>`
-- 该脚本会把 `test_batches / test_executions` 同步到生产库，并兼容回归验证的旧表 `conversation_test_sources`
+- 该脚本会把 `test_batches / test_executions / test_conversation_snapshots` 同步到生产 test-suite 数据库
 - 建议在本轮批次评审状态确认后再同步，避免把中间态批次写到线上页面
 
 评审弹窗的信息展示建议按“两层上下文”来理解：

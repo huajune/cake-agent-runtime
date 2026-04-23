@@ -30,6 +30,10 @@ import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitme
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import { API_BOOKING_REQUIRED_PAYLOAD_FIELDS } from '@tools/duliday/job-booking.contract';
+import {
+  classifySupplementLabel,
+  matchesScreeningFailure,
+} from '@tools/duliday/supplement-label-classifier';
 
 const logger = new Logger('duliday_interview_booking');
 const INTERVIEW_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
@@ -85,7 +89,8 @@ export function buildInterviewBookingTool(
 - **只有当本工具返回 success 后，才能向候选人确认面试安排并复述时间与门店**
 - **严禁**在未调用本工具或调用未返回 success 的情况下，告知候选人面试已安排、可以去面试、面试时间地点等任何暗示预约成功的信息
 - 失败处理：当工具返回 _replyInstruction 时，按该字段的指令自主组织一句口语化致歉+衔接的招募者话术（如"这边暂时没约上，我让同事确认一下，稍等"）
-- 失败时严禁原样复读 _replyInstruction、严禁透露接口报错/技术细节、严禁继续推进其他任务`,
+- 失败时严禁原样复读 _replyInstruction、严禁透露接口报错/技术细节、严禁继续推进其他任务
+- 返回 errorType="screening_mismatch" 时：候选人的回答命中了岗位硬筛选的不合格信号（例如在"专业（非新媒、食品）"里答了"食品类"，在"周四六日都能上班吗"里答了"不一定"）。**严禁**对这位候选人重试本工具或换字段重填；按 _replyInstruction 的指引婉拒并调用 invite_to_group 维护，或 request_handoff 转人工`,
       inputSchema: z.object({
         jobId: z.number().int().describe('岗位ID'),
         interviewTime: z
@@ -236,6 +241,31 @@ export function buildInterviewBookingTool(
             success: false,
             errorType: 'invalid_health_certificate_types',
             error: 'healthCertificateTypes 仅支持 1=食品健康证、2=零售健康证、3=其他健康证',
+          };
+        }
+
+        // 岗位后台的 supplement label 有两种语义：收集型（让候选人填）和筛选型（带
+        // 约束语义的硬条件）。后者如 "是否学生（不要学生）" / "专业（非新媒、食品）"
+        // / "周四六日都能上班吗"，若候选人答案命中 failSignals 就是硬伤，必须拦截在
+        // 海绵接口调用前。badcase 69e9bba2536c9654026522da：Agent 把候选人答案
+        // "食品类 / 不一定" 直接提交成功，门店收到一个不合格候选人。
+        const screeningFailure = findScreeningFailure(supplementAnswers);
+        if (screeningFailure) {
+          void userHostingService.pauseUser(context.sessionId).then(() => {
+            logger.log(
+              `[自动暂停] 候选人答案未通过岗位筛选: chatId=${context.sessionId}, label=${screeningFailure.label}`,
+            );
+          });
+          return {
+            success: false,
+            errorType: 'screening_mismatch',
+            failedLabel: screeningFailure.label,
+            candidateAnswer: screeningFailure.answer,
+            matchedFailSignal: screeningFailure.matched,
+            error: `候选人对"${screeningFailure.label}"的回答"${screeningFailure.answer}"未通过岗位筛选（命中不合格信号"${screeningFailure.matched}"）。严禁继续提交预约。`,
+            _outcome: '岗位筛选未通过',
+            _replyInstruction:
+              '候选人的条件与岗位硬要求冲突。用招募者口吻委婉告知"这家店暂时不太合适"，然后按场景调用 invite_to_group 维护候选人，或 request_handoff 转人工。严禁透露具体筛选字段/后台规则/系统用语。',
           };
         }
 
@@ -699,4 +729,34 @@ async function sendInterviewBookingNotification(
 
 function normalizeAgeText(age: number): string {
   return `${age}岁`;
+}
+
+/**
+ * 遍历候选人对 supplement label 的回答，找出命中岗位硬筛选 failSignal 的字段。
+ *
+ * 只检查被 `classifySupplementLabel` 识别为 `screening` 的字段；收集型字段
+ * （如 "学历"、"一周能上几天班"）即便答得含糊也不在此校验 —— 它们的判定本来
+ * 就在海绵后台二次审核环节。
+ */
+export interface ScreeningFailure {
+  label: string;
+  answer: string;
+  matched: string;
+}
+
+export function findScreeningFailure(
+  supplementAnswers: Record<string, string> | undefined,
+): ScreeningFailure | null {
+  if (!supplementAnswers) return null;
+  for (const [label, rawAnswer] of Object.entries(supplementAnswers)) {
+    const answer = typeof rawAnswer === 'string' ? rawAnswer : String(rawAnswer ?? '');
+    if (!answer.trim()) continue;
+    const classification = classifySupplementLabel(label);
+    if (classification.type !== 'screening') continue;
+    const matched = matchesScreeningFailure(classification, answer);
+    if (matched) {
+      return { label, answer, matched };
+    }
+  }
+  return null;
 }
