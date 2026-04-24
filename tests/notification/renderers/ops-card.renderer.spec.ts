@@ -57,7 +57,7 @@ describe('OpsCardRenderer', () => {
 
     expect(card).toEqual(
       expect.objectContaining({
-        title: '📢 兼职通知 — 部分失败',
+        title: '⚠️ 兼职通知 — 部分失败',
         color: 'yellow',
         atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
       }),
@@ -85,7 +85,7 @@ describe('OpsCardRenderer', () => {
 
     expect(card).toEqual(
       expect.objectContaining({
-        title: '上海/零售 所有兼职群已满，需要创建新群',
+        title: '⚠️ 上海/零售 所有兼职群已满，需要创建新群',
         color: 'yellow',
         atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
       }),

@@ -842,6 +842,96 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.bookingChecklist.apiPayloadGuide.candidateCollectFields).toBeUndefined();
   });
 
+  it('should route screening-style supplement labels out of templateText into screeningChecks', async () => {
+    // 回归 badcase batch_69e9bba2536c9654026522da_*：岗位 527385 的四个 supplement
+    // label 带括号约束/反问式语义，之前被当成收集项原样塞进 templateText，Agent 把
+    // 候选人答案（"食品类"/"不一定"）当合格结果提交了 duliday_interview_booking。
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            interviewSupplement: [
+              { interviewSupplementId: 661, interviewSupplement: '一周能上几天班' },
+              {
+                interviewSupplementId: 660,
+                interviewSupplement: '是否学生（不要学生）',
+              },
+              { interviewSupplementId: 659, interviewSupplement: '专业（非新媒、食品）' },
+              { interviewSupplementId: 668, interviewSupplement: '周四六日都能上班吗' },
+              { interviewSupplementId: 564, interviewSupplement: '能干几个月' },
+            ],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({ jobId: 100 });
+
+    expect(result.success).toBe(true);
+    // 收集型 label 仍然进模板
+    expect(result.bookingChecklist.templateText).toContain('一周能上几天班：');
+    expect(result.bookingChecklist.templateText).toContain('能干几个月：');
+    // 筛选型 label 必须被踢出 templateText / requiredFields / missingFields
+    expect(result.bookingChecklist.templateText).not.toContain('是否学生（不要学生）');
+    expect(result.bookingChecklist.templateText).not.toContain('专业（非新媒、食品）');
+    expect(result.bookingChecklist.templateText).not.toContain('周四六日都能上班吗');
+    expect(result.bookingChecklist.requiredFields).not.toEqual(
+      expect.arrayContaining([
+        '是否学生（不要学生）',
+        '专业（非新媒、食品）',
+        '周四六日都能上班吗',
+      ]),
+    );
+    // 但 customerLabelDefinitions 仍包含全量定义，booking 工具需要 labelId 做 payload 回填
+    expect(result.bookingChecklist.customerLabelDefinitions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ labelName: '是否学生（不要学生）' }),
+        expect.objectContaining({ labelName: '专业（非新媒、食品）' }),
+        expect.objectContaining({ labelName: '周四六日都能上班吗' }),
+      ]),
+    );
+    // 筛选题单独出口，带上 labelId / mode / failSignals
+    expect(result.screeningChecks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          labelName: '是否学生（不要学生）',
+          mode: 'blacklist',
+          failSignals: expect.arrayContaining(['学生']),
+        }),
+        expect.objectContaining({
+          labelName: '专业（非新媒、食品）',
+          mode: 'blacklist',
+          failSignals: expect.arrayContaining(['新媒', '食品']),
+        }),
+        expect.objectContaining({
+          labelName: '周四六日都能上班吗',
+          mode: 'rhetorical',
+          failSignals: expect.arrayContaining(['不一定', '不能']),
+        }),
+      ]),
+    );
+  });
+
+  it('should omit screeningChecks when all supplement labels are collect-type', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            interviewSupplement: [
+              { interviewSupplementId: 1, interviewSupplement: '学历' },
+              { interviewSupplementId: 2, interviewSupplement: '能干几个月' },
+            ],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({ jobId: 100 });
+
+    expect(result.success).toBe(true);
+    expect(result.screeningChecks).toBeUndefined();
+  });
+
   it('should mark same-day as unavailable after the latest end time', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-04-07T11:30:00.000Z')); // 19:30 上海时间
     mockSpongeService.fetchJobs.mockResolvedValue({

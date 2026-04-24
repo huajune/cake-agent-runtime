@@ -152,6 +152,50 @@ describe('SessionService', () => {
       );
     });
 
+    it('should overwrite merged interview_info field when forceNullFields is passed', async () => {
+      // 回归 badcase batch_69e9bba2536c9654026522da_*：deepMerge 的 null 不覆盖语义
+      // 会让污染的昵称卡在 Redis 里，sanitizer 需要通过 forceNullFields 显式清除。
+      const existing: EntityExtractionResult = {
+        ...FALLBACK_EXTRACTION,
+        interview_info: {
+          ...FALLBACK_EXTRACTION.interview_info,
+          name: '阳光明媚',
+          phone: '13800138000',
+        },
+      };
+      mockRedisStore.get.mockResolvedValue({
+        content: {
+          facts: existing,
+          lastCandidatePool: null,
+          presentedJobs: null,
+          currentFocusJob: null,
+        },
+      });
+
+      const newFacts: EntityExtractionResult = {
+        ...FALLBACK_EXTRACTION,
+        interview_info: { ...FALLBACK_EXTRACTION.interview_info, name: null },
+      };
+
+      await service.saveFacts('corp1', 'user1', 'session1', newFacts, {
+        forceNullFields: ['name'],
+      });
+
+      expect(mockRedisStore.set).toHaveBeenCalledWith(
+        expect.stringContaining('corp1:user1:session1'),
+        expect.objectContaining({
+          facts: expect.objectContaining({
+            interview_info: expect.objectContaining({
+              name: null,
+              phone: '13800138000', // 未列入 forceNullFields 的字段按常规 deepMerge 保留
+            }),
+          }),
+        }),
+        86400,
+        false,
+      );
+    });
+
     it('should return null when no activity timestamp exists', async () => {
       mockRedisStore.get.mockResolvedValue(null);
 

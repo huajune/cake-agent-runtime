@@ -3,6 +3,7 @@ import {
   TestType,
   ExecutionStatus,
   ReviewStatus,
+  ReviewerSource,
   ConversationSourceStatus,
 } from '../enums/test.enum';
 
@@ -54,6 +55,7 @@ export interface CreateExecutionData {
   similarityScore?: number | null;
   inputMessage?: string;
   reviewStatus?: ReviewStatus;
+  reviewerSource?: ReviewerSource;
   /** LLM 评估理由 */
   evaluationReason?: string | null;
 }
@@ -81,6 +83,7 @@ export interface UpdateReviewData {
   failureReason?: string;
   testScenario?: string;
   reviewedBy?: string;
+  reviewerSource?: ReviewerSource;
 }
 
 /**

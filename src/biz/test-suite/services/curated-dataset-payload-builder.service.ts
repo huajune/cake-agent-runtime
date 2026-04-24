@@ -38,6 +38,7 @@ const scenarioFieldAliases = {
   lastTestTime: ['最近测试时间', '最近测试时间 (1)'],
   testBatch: ['测试批次'],
   errorReason: ['错误原因', '失败原因'],
+  reviewSummary: ['评审摘要', '评审备注', '评审原因'],
   lastExecutionId: ['最近执行ID'],
 } as const;
 
@@ -248,6 +249,9 @@ export class CuratedDatasetPayloadBuilderService {
     }
     if (resolved.errorReason) {
       fields[resolved.errorReason] = null;
+    }
+    if (resolved.reviewSummary) {
+      fields[resolved.reviewSummary] = null;
     }
     if (resolved.lastExecutionId) {
       fields[resolved.lastExecutionId] = null;

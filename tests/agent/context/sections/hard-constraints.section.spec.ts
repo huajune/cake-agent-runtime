@@ -84,6 +84,7 @@ describe('HardConstraintsSection', () => {
 
     expect(output).toContain('意向品牌: 必胜客');
     expect(output).toContain('班次/工时偏好: 晚班');
+    expect(output).toContain('"每天/周一至周日"不等于"可只排周末"');
   });
 
   it('prefers sessionFacts over highConfidenceFacts when both have a value (no merge conflict)', () => {
@@ -128,6 +129,7 @@ describe('HardConstraintsSection', () => {
 
     expect(output).toContain('性别: 男');
     expect(output).toContain('班次/工时偏好: 晚班');
+    expect(output).toContain('早开晚结全天时段');
     expect(output).toContain('调用 duliday_job_list');
   });
 });

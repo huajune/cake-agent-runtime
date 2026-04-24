@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { updateReview, writeBackToFeishu, getExecution, TestExecution } from '@/api/services/agent-test.service';
+import { updateReview, getExecution, TestExecution } from '@/api/services/agent-test.service';
 
 interface UseReviewOptions {
   executions: TestExecution[];
@@ -129,28 +129,18 @@ export function useReview({ executions, onExecutionsChange, onReviewComplete }: 
 
       setReviewLoading(true);
       try {
-        await updateReview(exec.id, {
+        const updatedExecution = await updateReview(exec.id, {
           reviewStatus: status,
           reviewedBy: 'dashboard-user',
+          reviewerSource: 'manual',
           failureReason,
         });
-
-        // 回写飞书（后台执行，不阻塞）
-        if (exec.case_id) {
-          const feishuStatus = status === 'passed' ? '通过' : '失败';
-          writeBackToFeishu(exec.id, feishuStatus).catch((writeErr: unknown) => {
-            const error = writeErr as { message?: string };
-            console.warn('回写飞书失败:', error.message);
-          });
-        }
 
         // 更新本地状态
         const updated = [...safeExecutions];
         updated[currentReviewIndex] = {
           ...exec,
-          review_status: status,
-          reviewed_at: new Date().toISOString(),
-          failure_reason: failureReason || null,
+          ...updatedExecution,
         };
         onExecutionsChange(updated);
 

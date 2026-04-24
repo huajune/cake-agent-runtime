@@ -23,9 +23,9 @@ export class OnboardFollowupCardRenderer {
     ];
 
     return this.cardBuilder.buildMarkdownCard({
-      title: '面试及上岗对接',
+      title: '🚨 面试及上岗对接 · 需要人工介入',
       content: sections.join('\n\n'),
-      color: 'orange',
+      color: 'red',
       atUsers: payload.atUsers,
       atAll: payload.atAll,
     });

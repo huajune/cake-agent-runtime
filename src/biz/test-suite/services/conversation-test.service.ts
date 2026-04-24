@@ -7,12 +7,16 @@ import { ConversationParserService } from '@evaluation/conversation-parser.servi
 import { ConversationSnapshotRepository } from '../repositories/conversation-snapshot.repository';
 import { TestExecutionRepository } from '../repositories/test-execution.repository';
 import { type ConversationSnapshotRecord } from '../entities/conversation-snapshot.entity';
+import { type TestExecution } from '../entities/test-execution.entity';
 import { TestBatchService } from './test-batch.service';
+import { TestWriteBackService } from './test-write-back.service';
 import {
   ExecutionStatus,
   ReviewStatus,
+  ReviewerSource,
   ConversationSourceStatus,
   SimilarityRating,
+  FeishuTestStatus,
 } from '../enums/test.enum';
 import {
   ParsedMessage,
@@ -47,6 +51,7 @@ export class ConversationTestService {
     private readonly parserService: ConversationParserService,
     private readonly conversationSnapshotRepository: ConversationSnapshotRepository,
     private readonly executionRepository: TestExecutionRepository,
+    private readonly writeBackService: TestWriteBackService,
     @Optional() private readonly batchService?: TestBatchService,
   ) {
     this.logger.log('ConversationTestService 初始化完成');
@@ -85,6 +90,9 @@ export class ConversationTestService {
 
     try {
       const turns = this.parserService.splitIntoTurns(source.full_conversation as ParsedMessage[]);
+      if (turns.length === 0) {
+        throw new Error(`对话源 ${sourceId} 没有可执行的候选人轮次`);
+      }
 
       const turnResults: Array<{
         turnNumber: number;
@@ -185,6 +193,10 @@ export class ConversationTestService {
         } | null,
         reviewStatus: exec.review_status,
         reviewComment: exec.review_comment,
+        failureReason: exec.failure_reason,
+        reviewedBy: exec.reviewed_by,
+        reviewerSource: exec.reviewer_source,
+        reviewedAt: exec.reviewed_at ? new Date(exec.reviewed_at) : null,
         createdAt: new Date(exec.created_at),
       };
     });
@@ -294,12 +306,69 @@ export class ConversationTestService {
     executionId: string,
     reviewStatus: ReviewStatus,
     reviewComment?: string,
-  ): Promise<{ executionId: string; reviewStatus: ReviewStatus }> {
-    await this.executionRepository.updateExecution(executionId, {
-      review_status: reviewStatus,
-      review_comment: reviewComment,
+    reviewerSource: ReviewerSource = ReviewerSource.MANUAL,
+    reviewedBy = 'dashboard-user',
+  ): Promise<{
+    id: string;
+    reviewStatus: ReviewStatus;
+    reviewComment: string | null;
+    failureReason: string | null;
+    reviewedBy: string | null;
+    reviewerSource: ReviewerSource | null;
+    reviewedAt: Date | null;
+  }> {
+    await this.executionRepository.updateReview(executionId, {
+      reviewStatus,
+      reviewComment,
+      failureReason: reviewStatus === ReviewStatus.FAILED ? reviewComment : undefined,
+      reviewedBy,
+      reviewerSource,
     });
-    return { executionId, reviewStatus };
+
+    const execution = await this.executionRepository.findById(executionId);
+    if (!execution) {
+      throw new Error(`执行记录不存在: ${executionId}`);
+    }
+
+    const response = {
+      id: execution.id,
+      reviewStatus: execution.review_status,
+      reviewComment: execution.review_comment,
+      failureReason: execution.failure_reason,
+      reviewedBy: execution.reviewed_by,
+      reviewerSource: execution.reviewer_source,
+      reviewedAt: execution.reviewed_at ? new Date(execution.reviewed_at) : null,
+    };
+
+    if (!execution.conversation_snapshot_id) {
+      return response;
+    }
+
+    const source = await this.conversationSnapshotRepository.findById(
+      execution.conversation_snapshot_id,
+    );
+    if (!source?.feishu_record_id) {
+      return response;
+    }
+
+    const turnExecutions = await this.executionRepository.findByConversationSourceId(source.id);
+    const reviewSummary = this.buildConversationReviewSummary(turnExecutions);
+    const manualStatus = this.resolveConversationManualStatus(turnExecutions);
+
+    if (manualStatus || reviewSummary) {
+      void this.writeBackService.writeBackSimilarityScore(
+        source.feishu_record_id,
+        source.avg_similarity_score,
+        {
+          batchId: source.batch_id || undefined,
+          testStatus: manualStatus,
+          minSimilarityScore: source.min_similarity_score,
+          evaluationSummary: reviewSummary || undefined,
+        },
+      );
+    }
+
+    return response;
   }
 
   // ========== 私有方法 ==========
@@ -525,5 +594,73 @@ export class ConversationTestService {
       .sort((a, b) => a.similarityScore - b.similarityScore)[0];
 
     return worstTurn?.evaluationSummary ?? null;
+  }
+
+  private resolveConversationManualStatus(
+    executions: TestExecution[],
+  ): FeishuTestStatus | undefined {
+    if (executions.some((execution) => execution.review_status === ReviewStatus.FAILED)) {
+      return FeishuTestStatus.FAILED;
+    }
+
+    const reviewedExecutions = executions.filter(
+      (execution) => execution.review_status !== ReviewStatus.PENDING,
+    );
+    if (reviewedExecutions.length === executions.length && reviewedExecutions.length > 0) {
+      return FeishuTestStatus.PASSED;
+    }
+
+    return undefined;
+  }
+
+  private buildConversationReviewSummary(executions: TestExecution[]): string | null {
+    const reviewedExecutions = executions.filter(
+      (execution) => execution.review_status !== ReviewStatus.PENDING,
+    );
+    if (reviewedExecutions.length === 0) {
+      return null;
+    }
+
+    const lines = reviewedExecutions
+      .sort((left, right) => (left.turn_number ?? 0) - (right.turn_number ?? 0))
+      .slice(-6)
+      .map((execution) => {
+        const turnLabel = execution.turn_number ? `第${execution.turn_number}轮` : '未标轮次';
+        const reviewerLabel = this.getReviewerSourceLabel(execution.reviewer_source);
+        const statusLabel =
+          execution.review_status === ReviewStatus.PASSED
+            ? '通过'
+            : execution.review_status === ReviewStatus.FAILED
+              ? '失败'
+              : execution.review_status === ReviewStatus.SKIPPED
+                ? '跳过'
+                : '待定';
+        const reason =
+          execution.review_comment?.trim() ||
+          execution.evaluation_reason?.trim() ||
+          (execution.review_status === ReviewStatus.PASSED
+            ? `${reviewerLabel || '评审'}通过`
+            : `${reviewerLabel || '评审'}已更新`);
+        return `${turnLabel} ${statusLabel}${reviewerLabel ? `（${reviewerLabel}）` : ''}：${reason}`;
+      });
+
+    return `评审摘要\n${lines.join('\n')}`;
+  }
+
+  private getReviewerSourceLabel(source?: ReviewerSource | null): string | null {
+    switch (source) {
+      case ReviewerSource.MANUAL:
+        return '人工';
+      case ReviewerSource.CODEX:
+        return 'Codex';
+      case ReviewerSource.CLAUDE:
+        return 'Claude';
+      case ReviewerSource.SYSTEM:
+        return '系统';
+      case ReviewerSource.API:
+        return 'API';
+      default:
+        return null;
+    }
   }
 }

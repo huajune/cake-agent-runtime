@@ -17,6 +17,7 @@ import {
   BatchStatus,
   ExecutionStatus,
   ReviewStatus,
+  ReviewerSource,
   FeishuTestStatus,
   TestType,
   ConversationSourceStatus,
@@ -134,8 +135,17 @@ export class TestBatchService {
    * 更新批次统计信息
    */
   async updateBatchStats(batchId: string): Promise<void> {
+    const batch = await this.batchRepository.findById(batchId);
+    if (!batch) {
+      throw new Error(`批次不存在: ${batchId}`);
+    }
+
     const stats = await this.getBatchStats(batchId);
     await this.batchRepository.updateStats(batchId, stats);
+
+    if (batch.test_type === TestType.CONVERSATION) {
+      await this.syncConversationBatchStatus(batchId, batch.status, stats);
+    }
   }
 
   /**
@@ -163,12 +173,14 @@ export class TestBatchService {
    * 更新评审状态
    */
   async updateReview(executionId: string, review: UpdateReviewRequestDto): Promise<TestExecution> {
+    const reviewerSource = this.resolveReviewerSource(review);
     await this.executionRepository.updateReview(executionId, {
       reviewStatus: review.reviewStatus,
       reviewComment: review.reviewComment,
       failureReason: review.failureReason,
       testScenario: review.testScenario,
       reviewedBy: review.reviewedBy,
+      reviewerSource,
     });
 
     const execution = await this.executionRepository.findById(executionId);
@@ -198,12 +210,14 @@ export class TestBatchService {
    * 批量更新评审状态
    */
   async batchUpdateReview(executionIds: string[], review: UpdateReviewRequestDto): Promise<number> {
+    const reviewerSource = this.resolveReviewerSource(review);
     const updatedExecutions = await this.executionRepository.batchUpdateReview(executionIds, {
       reviewStatus: review.reviewStatus,
       reviewComment: review.reviewComment,
       failureReason: review.failureReason,
       testScenario: review.testScenario,
       reviewedBy: review.reviewedBy,
+      reviewerSource,
     });
 
     const batchIds = new Set(
@@ -308,6 +322,46 @@ export class TestBatchService {
       avgDurationMs: null,
       avgTokenUsage: null,
     };
+  }
+
+  private async syncConversationBatchStatus(
+    batchId: string,
+    currentStatus: BatchStatus,
+    stats: BatchStats,
+  ): Promise<void> {
+    if (stats.totalCases === 0 || stats.pendingReviewCount > 0) {
+      return;
+    }
+
+    if (currentStatus === BatchStatus.CANCELLED || currentStatus === BatchStatus.COMPLETED) {
+      return;
+    }
+
+    const transitionChain: BatchStatus[] = [];
+    if (currentStatus === BatchStatus.CREATED) {
+      transitionChain.push(BatchStatus.RUNNING, BatchStatus.REVIEWING, BatchStatus.COMPLETED);
+    } else if (currentStatus === BatchStatus.RUNNING) {
+      transitionChain.push(BatchStatus.REVIEWING, BatchStatus.COMPLETED);
+    } else if (currentStatus === BatchStatus.REVIEWING) {
+      transitionChain.push(BatchStatus.COMPLETED);
+    }
+
+    // 状态机不允许 CREATED 直接跳 COMPLETED，必须逐步迁移。
+    // 中途某一步失败时（例如 DB 抖动），放弃本轮剩余 transitions；
+    // 下次 sync 会基于当时最新 status 重新计算 chain 继续推进，整体仍可收敛，
+    // 但运营侧需要通过日志/监控看到这种部分失败，避免静默卡在 REVIEWING。
+    for (const status of transitionChain) {
+      try {
+        await this.batchRepository.updateStatus(batchId, status);
+      } catch (error) {
+        this.logger.error(
+          `[syncConversationBatchStatus] 批次 ${batchId} 从 ${currentStatus} 推进到 ${status} 失败，` +
+            `本轮剩余迁移被放弃（下轮 sync 会基于最新状态重试）`,
+          error instanceof Error ? error.stack : String(error),
+        );
+        return;
+      }
+    }
   }
 
   /**
@@ -432,6 +486,7 @@ export class TestBatchService {
         : review.reviewStatus === ReviewStatus.FAILED
           ? FeishuTestStatus.FAILED
           : FeishuTestStatus.SKIPPED;
+    const reviewSummary = this.buildReviewSummary(review);
 
     this.writeBackService
       .writeBackResult(
@@ -439,6 +494,7 @@ export class TestBatchService {
         feishuStatus,
         execution.batch_id || undefined,
         review.failureReason,
+        reviewSummary,
       )
       .then((result) => {
         if (result.success) {
@@ -451,5 +507,72 @@ export class TestBatchService {
         const errorMsg = error instanceof Error ? error.message : String(error);
         this.logger.error(`飞书回写异常: ${execution.case_id} - ${errorMsg}`);
       });
+  }
+
+  private buildReviewSummary(review: UpdateReviewRequestDto): string {
+    const reviewerLabel = this.getReviewerSourceLabel(this.resolveReviewerSource(review));
+    const trimmedComment = review.reviewComment?.trim();
+    if (trimmedComment) {
+      return trimmedComment;
+    }
+
+    if (review.reviewStatus === ReviewStatus.FAILED) {
+      return review.failureReason
+        ? `${reviewerLabel}评审失败：${review.failureReason}`
+        : `${reviewerLabel}评审失败`;
+    }
+
+    if (review.reviewStatus === ReviewStatus.PASSED) {
+      return `${reviewerLabel}评审通过`;
+    }
+
+    if (review.reviewStatus === ReviewStatus.SKIPPED) {
+      return `${reviewerLabel}评审跳过`;
+    }
+
+    return `${reviewerLabel}评审待定`;
+  }
+
+  private resolveReviewerSource(
+    review: Pick<UpdateReviewRequestDto, 'reviewerSource' | 'reviewedBy'>,
+  ): ReviewerSource {
+    if (review.reviewerSource) {
+      return review.reviewerSource;
+    }
+
+    const reviewedBy = review.reviewedBy?.toLowerCase();
+    if (!reviewedBy) {
+      return ReviewerSource.MANUAL;
+    }
+    if (reviewedBy.includes('codex')) {
+      return ReviewerSource.CODEX;
+    }
+    if (reviewedBy.includes('claude')) {
+      return ReviewerSource.CLAUDE;
+    }
+    if (reviewedBy.includes('system')) {
+      return ReviewerSource.SYSTEM;
+    }
+    if (reviewedBy.includes('api')) {
+      return ReviewerSource.API;
+    }
+
+    return ReviewerSource.MANUAL;
+  }
+
+  private getReviewerSourceLabel(source: ReviewerSource): string {
+    switch (source) {
+      case ReviewerSource.CODEX:
+        return 'Codex';
+      case ReviewerSource.CLAUDE:
+        return 'Claude';
+      case ReviewerSource.SYSTEM:
+        return '系统';
+      case ReviewerSource.API:
+        return 'API';
+      case ReviewerSource.MANUAL:
+      default:
+        return '人工';
+    }
   }
 }

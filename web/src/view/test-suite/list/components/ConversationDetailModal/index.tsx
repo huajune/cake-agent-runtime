@@ -9,8 +9,13 @@ import {
   Wrench,
   Headphones,
   MessageSquare,
+  CheckCircle2,
 } from 'lucide-react';
 import type { ConversationSnapshot, ConversationTurnExecution, ToolCall, ParsedMessage } from '../../types';
+import {
+  formatReviewStatusLabel,
+  resolveReviewerSourceLabel,
+} from '../../utils/reviewLabel';
 import { CompactMetrics } from './CompactMetrics';
 import { ToolCallItem } from './ToolCallItem';
 import { LoadingSkeleton } from './LoadingSkeleton';
@@ -64,6 +69,11 @@ export function ConversationDetailModal({
 
   // 获取工具调用（将 unknown[] 转换为 ToolCall[]）
   const toolCalls = (Array.isArray(currentTurn?.toolCalls) ? currentTurn.toolCalls : []) as ToolCall[];
+  const reviewerLabel = resolveReviewerSourceLabel(
+    currentTurn?.reviewerSource,
+    currentTurn?.reviewedBy,
+  );
+  const reviewStatusLabel = formatReviewStatusLabel(currentTurn?.reviewStatus, reviewerLabel);
 
   return (
     <div className={styles.modal}>
@@ -150,6 +160,40 @@ export function ConversationDetailModal({
 
                 {/* 右侧：回复对比区域 */}
                 <div className={styles.replyPanel}>
+                  <div className={styles.reviewInfo}>
+                    <div className={styles.reviewHeader}>
+                      <span className={styles.sectionLabel}>
+                        <CheckCircle2 size={14} /> 评审信息
+                      </span>
+                      <span className={styles.reviewStatus}>{reviewStatusLabel}</span>
+                    </div>
+                    <div className={styles.reviewMeta}>
+                      {currentTurn.failureReason && (
+                        <span className={styles.reviewPill}>
+                          失败原因: {currentTurn.failureReason}
+                        </span>
+                      )}
+                      {reviewerLabel && (
+                        <span className={styles.reviewPill}>
+                          评审来源: {reviewerLabel}
+                        </span>
+                      )}
+                      {currentTurn.reviewedAt && (
+                        <span className={styles.reviewPill}>
+                          评审时间: {new Date(currentTurn.reviewedAt).toLocaleString('zh-CN')}
+                        </span>
+                      )}
+                      {conversation.conversationId && (
+                        <span className={styles.reviewPill}>
+                          chatId: {conversation.conversationId}
+                        </span>
+                      )}
+                    </div>
+                    {currentTurn.reviewComment && (
+                      <div className={styles.reviewSummary}>{currentTurn.reviewComment}</div>
+                    )}
+                  </div>
+
                   {/* 期望回复 */}
                   <div className={styles.replySection}>
                     <div className={styles.sectionLabel}>

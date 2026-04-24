@@ -59,6 +59,45 @@ describe('ConversationParserService', () => {
       expect(result.totalTurns).toBe(2);
     });
 
+    it('should infer roles from real participant nicknames', () => {
+      const rawText = [
+        '[04/23 13:42 Erx] 你好，兼职',
+        '[04/23 13:43 CongLingKaiShiDeXianShiShiJie] 你好，我帮你看看附近的兼职。',
+        '[04/23 13:44 Erx] 我住在上海火车站附近',
+        '[04/23 13:45 CongLingKaiShiDeXianShiShiJie] 我刚查了下附近岗位。',
+      ].join('\n');
+
+      const result = service.parseConversation(rawText);
+
+      expect(result.success).toBe(true);
+      expect(result.messages).toHaveLength(4);
+      expect(result.totalTurns).toBe(2);
+      expect(result.messages.map((message) => message.role)).toEqual([
+        'user',
+        'assistant',
+        'user',
+        'assistant',
+      ]);
+    });
+
+    it('should merge consecutive messages from the same inferred participant', () => {
+      const rawText = [
+        '[04/23 14:26 冬瓜] 六姐',
+        '[04/23 14:26 冬瓜] 你好，请问这个可以周末兼职吗？',
+        '[04/23 14:27 CongLingKaiShiDeXianShiShiJie] 六姐在招的。',
+      ].join('\n');
+
+      const result = service.parseConversation(rawText);
+
+      expect(result.success).toBe(true);
+      expect(result.messages).toHaveLength(2);
+      expect(result.totalTurns).toBe(1);
+      expect(result.messages[0]).toMatchObject({
+        role: 'user',
+        content: '六姐\n你好，请问这个可以周末兼职吗？',
+      });
+    });
+
     it('should return error result for empty string', () => {
       const result = service.parseConversation('');
 

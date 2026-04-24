@@ -11,10 +11,12 @@ jest.mock('@infra/feishu/constants/feishu-bitable.config', () => ({
     lastTestTime: ['最近测试时间'],
     testBatch: ['测试批次'],
     errorReason: ['错误原因'],
+    reviewSummary: ['评审摘要'],
   },
   validationSetFieldNames: {
     similarityScore: ['相似度分数'],
     lastTestTime: ['最近测试时间'],
+    evaluationSummary: ['评估摘要'],
   },
 }));
 
@@ -65,7 +67,9 @@ describe('TestWriteBackService', () => {
       { field_name: '最近测试时间' },
       { field_name: '测试批次' },
       { field_name: '错误原因' },
+      { field_name: '评审摘要' },
       { field_name: '相似度分数' },
+      { field_name: '评估摘要' },
     ]);
   });
 
@@ -223,6 +227,21 @@ describe('TestWriteBackService', () => {
       expect(updateFields['错误原因']).toBe('回答内容错误');
     });
 
+    it('should include reviewSummary when the field exists', async () => {
+      mockBitableApi.updateRecord.mockResolvedValue({ success: true });
+
+      await service.writeBackResult(
+        'rec-1',
+        FeishuTestStatus.PASSED,
+        'batch-1',
+        undefined,
+        '人工评审通过',
+      );
+
+      const updateFields = bitableApi.updateRecord.mock.calls[0][3];
+      expect(updateFields['评审摘要']).toBe('人工评审通过');
+    });
+
     it('should return error when bitableApi call fails', async () => {
       mockBitableApi.updateRecord.mockResolvedValue({
         success: false,
@@ -328,6 +347,17 @@ describe('TestWriteBackService', () => {
 
       const updateFields = bitableApi.updateRecord.mock.calls[0][3];
       expect(updateFields['最近测试时间']).toBeDefined();
+    });
+
+    it('should include evaluationSummary when provided', async () => {
+      mockBitableApi.updateRecord.mockResolvedValue({ success: true });
+
+      await service.writeBackSimilarityScore('rec-1', 75, {
+        evaluationSummary: '评审摘要\n第2轮 失败（Claude）：岗位不匹配',
+      });
+
+      const updateFields = bitableApi.updateRecord.mock.calls[0][3];
+      expect(updateFields['评估摘要']).toBe('评审摘要\n第2轮 失败（Claude）：岗位不匹配');
     });
 
     it('should return error when bitableApi call fails', async () => {

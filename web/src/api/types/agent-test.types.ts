@@ -87,6 +87,7 @@ export interface TestExecution {
   review_status: 'pending' | 'passed' | 'failed' | 'skipped';
   review_comment: string | null;
   reviewed_by: string | null;
+  reviewer_source: 'manual' | 'codex' | 'claude' | 'system' | 'api' | null;
   reviewed_at: string | null;
   failure_reason: string | null;
   executed_at: string;
@@ -123,6 +124,7 @@ export interface UpdateReviewRequest {
   failureReason?: string;
   testScenario?: string;
   reviewedBy?: string;
+  reviewerSource?: 'manual' | 'codex' | 'claude' | 'system' | 'api';
 }
 
 // ==================== 流式测试类型 ====================
@@ -277,6 +279,10 @@ export interface ConversationTurnExecution {
   } | null;
   reviewStatus: string;
   reviewComment: string | null;
+  failureReason: string | null;
+  reviewedBy: string | null;
+  reviewerSource: 'manual' | 'codex' | 'claude' | 'system' | 'api' | null;
+  reviewedAt: Date | null;
   createdAt: Date;
 }
 

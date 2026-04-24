@@ -104,7 +104,7 @@ export class HardConstraintsSection implements PromptSection {
     }
     if (pref.schedule) {
       lines.push(
-        `- 班次/工时偏好: ${pref.schedule}（结合 includeWorkTime 校验，结果集中无匹配班次的岗位不要推荐）`,
+        `- 班次/工时偏好: ${pref.schedule}（结合 includeWorkTime 校验；结果集中无匹配班次的岗位不要推荐；岗位要求"每天/做六休一/周四周六周日都要给班/早开晚结全天时段"时，不能当作"只周末"或"只晚班"匹配；"每天/周一至周日"不等于"可只排周末"）`,
       );
     }
     if (pref.salary) {

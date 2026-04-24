@@ -42,9 +42,9 @@ export const CompactMetrics = memo(function CompactMetrics({
             <>
               <CheckCircle2 size={12} /> 成功
             </>
-          ) : status === 'failed' ? (
+          ) : status === 'failure' || status === 'timeout' ? (
             <>
-              <AlertTriangle size={12} /> 失败
+              <AlertTriangle size={12} /> {status === 'timeout' ? '超时' : '失败'}
             </>
           ) : (
             <>

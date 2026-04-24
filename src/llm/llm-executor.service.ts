@@ -239,6 +239,11 @@ export class LlmExecutorService {
 
     switch (provider) {
       case 'anthropic':
+        if (this.requiresAdaptiveAnthropicThinking(modelId)) {
+          return {
+            anthropic: { thinking: { type: 'adaptive' }, effort: 'high' },
+          } as ProviderOptions;
+        }
         return { anthropic: { thinking: { type: 'enabled', budgetTokens } } } as ProviderOptions;
       case 'deepseek':
         return { deepseek: { thinking: { type: 'enabled' } } } as ProviderOptions;
@@ -263,6 +268,12 @@ export class LlmExecutorService {
       default:
         return undefined;
     }
+  }
+
+  private requiresAdaptiveAnthropicThinking(modelId: string): boolean {
+    const anthropicModelId = modelId.split('/').pop() ?? modelId;
+    const match = /^claude-(?:opus|sonnet)-4-(\d+)/.exec(anthropicModelId);
+    return match ? Number(match[1]) >= 7 : false;
   }
 
   private buildGenerateParams(

@@ -80,6 +80,17 @@ describe('buildJobListTool', () => {
   };
   /* eslint-enable @typescript-eslint/no-explicit-any */
 
+  it('should describe schedule mismatch and multi-job formatting guardrails', () => {
+    const builder = buildJobListTool(mockSpongeService as never);
+    const builtTool = builder(mockContext);
+
+    expect(builtTool.description).toContain('只周末');
+    expect(builtTool.description).toContain('早开晚结全天时段/05:00-23:00');
+    expect(builtTool.description).toContain('不得回复"周末能排"');
+    expect(builtTool.description).toContain('推荐 2 个及以上岗位时');
+    expect(builtTool.description).toContain('禁止把多个岗位压缩在同一句');
+  });
+
   it('should return markdown format by default', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [makeJobData()],
@@ -431,6 +442,8 @@ describe('buildJobListTool', () => {
     expect(result.markdown).toContain('**组合排班**');
     expect(result.markdown).toContain('班次 1: 09:00 - 18:30（每天）');
     expect(result.markdown).toContain('班次 2: 13:00 - 22:30（每天）');
+    expect(result.markdown).toContain('**排班硬约束提示**');
+    expect(result.markdown).toContain('不能把该岗位说成"周末能排"');
   });
 
   it('should render stair salary and periodic interview times for complex jobs', async () => {

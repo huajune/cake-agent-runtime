@@ -29,6 +29,10 @@ import {
   JobPolicyAnalysis,
   normalizePolicyText,
 } from '@tools/duliday/job-policy-parser';
+import {
+  classifySupplementLabel,
+  SupplementClassification,
+} from '@tools/duliday/supplement-label-classifier';
 
 const logger = new Logger('duliday_interview_precheck');
 
@@ -1136,7 +1140,8 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
 - interview.upcomingTimeOptions：未来 7 天实际可约时段的示例 label 数组（已自动过滤报名截止已过的时段）。用来回答"给我几个时间选选"
 - interview.requestedDate：只有在传入 requestedDate 时才有；包含 status（available / unavailable / needs_confirmation）和 reason
 - screeningCriteria：岗位硬性筛选条件（性别/年龄/学历/健康证/是否学生等），**用来筛人**——候选人不符合时直接说明，不要继续往下引导
-- bookingChecklist.missingFields：预约还缺哪些字段
+- screeningChecks：岗位后台把约束语义直接配在 supplement label 里的那一类筛选题（例如 "是否学生（不要学生）"、"专业（非新媒、食品）"、"周四六日都能上班吗"）。**用来筛人**——必须先独立向候选人核对，候选人答案命中 failSignals 就停止收资、走婉拒/拉群，不得继续 booking
+- bookingChecklist.missingFields：预约还缺哪些字段（已剔除 screeningChecks 列出的筛选型 label）
 - bookingChecklist.templateText：正常收资场景下可直接参考的话术模板，已根据会话上下文预填已知字段
 - bookingChecklist.enumHints：只包含 missingFields 涉及字段的合法枚举
 - bookingChecklist.collectionStrategy：当前更适合一次性收资还是渐进式收资；若候选人已表现出抗拒，会返回 starterFields 供你先降负担推进
@@ -1149,7 +1154,8 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
 - 候选人只是询问规则或资料时，先解释规则；不要跳过校验直接进入 duliday_interview_booking
 - 当 nextAction = collect_fields 时，bookingChecklist.templateText 只是默认模板，不是必须逐字复读的指令；正常收资场景优先参考它一次性收集资料，但不要为了守模板而忽略候选人当前情绪
 - 若候选人当轮出现抗拒、不耐烦、拒绝填写、嫌麻烦或辱骂，立即暂停模板化收资；先共情并解释用途，再按 bookingChecklist.collectionStrategy 里的 starterFields 降负担推进，不要继续追整张字段清单
-- 只有在候选人恢复配合、且没有明显情绪阻力时，才恢复完整字段清单或继续进入预约`,
+- 只有在候选人恢复配合、且没有明显情绪阻力时，才恢复完整字段清单或继续进入预约
+- 若返回了 screeningChecks，在把 templateText 发给候选人之前，**必须**用自然话术核对每一条的通过条件；候选人明确表达命中 failSignals 的答案（如"食品类"、"不一定"）时，立即停止收资、婉拒并走 invite_to_group 或 request_handoff`,
       inputSchema,
       execute: async ({ jobId, requestedDate }) => {
         logger.log(`面试前置校验: jobId=${jobId}, requestedDate=${requestedDate ?? 'none'}`);
@@ -1200,6 +1206,32 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
               : '';
           const jobName = normalizePolicyText(job.basicInfo.jobName || job.basicInfo.jobNickName);
           const customerLabelDefinitions = extractInterviewSupplementDefinitions(job);
+          // 把岗位后台配的每个 supplement label 按语义分成"收集型"和"筛选型"。
+          // 筛选型（labelName 自带括号黑名单或反问式）不应进入收集模板，否则 Agent
+          // 会把筛选条件错当成待填字段问候选人 —— badcase 69e9bba2536c9654026522da。
+          const labelClassifications = customerLabelDefinitions.map((definition) => ({
+            definition,
+            classification: classifySupplementLabel(definition.labelName),
+          }));
+          const collectLabelNames = labelClassifications
+            .filter((lc) => lc.classification.type === 'collect')
+            .map((lc) => lc.definition.name);
+          const screeningChecks = labelClassifications
+            .filter(
+              (
+                lc,
+              ): lc is {
+                definition: (typeof labelClassifications)[number]['definition'];
+                classification: Extract<SupplementClassification, { type: 'screening' }>;
+              } => lc.classification.type === 'screening',
+            )
+            .map((lc) => ({
+              labelName: lc.definition.labelName,
+              labelId: lc.definition.labelId,
+              mode: lc.classification.mode,
+              failSignals: [...lc.classification.failSignals],
+            }));
+
           const knownFieldMap = buildKnownFieldMap({
             contextProfile: context.profile ?? null,
             sessionInterviewInfo: context.sessionFacts?.interview_info ?? null,
@@ -1210,7 +1242,7 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
           const requiredFields = [
             ...API_BOOKING_USER_REQUIRED_FIELDS,
             ...analysis.fieldGuidance.screeningFields,
-            ...customerLabelDefinitions.map((definition) => definition.name),
+            ...collectLabelNames,
           ];
           const checklist = buildChecklistTemplate({
             requiredFields,
@@ -1278,6 +1310,10 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
                 : null,
             },
             screeningCriteria,
+            // 筛选型 supplement label 单独出口：Agent 必须先独立向候选人核对，
+            // 候选人答案命中任一 failSignal 就停止收资；对应字段不在 templateText
+            // 里（否则会被错当成需要填写的字段）。
+            screeningChecks: screeningChecks.length > 0 ? screeningChecks : undefined,
             bookingChecklist: {
               requiredFields: checklist.requiredFields,
               displayOrder: checklist.displayOrder,
