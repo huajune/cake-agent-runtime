@@ -635,6 +635,62 @@ describe('ConversationTestService', () => {
         }),
       );
     });
+
+    it('should write back skipped when all turns are skipped', async () => {
+      mockExecutionRepository.updateReview.mockResolvedValue(undefined);
+      mockExecutionRepository.findById.mockResolvedValue({
+        id: 'exec-1',
+        conversation_snapshot_id: 'source-1',
+        review_status: ReviewStatus.SKIPPED,
+        review_comment: '本轮不评审',
+        failure_reason: null,
+        reviewed_by: 'dashboard-user',
+        reviewer_source: ReviewerSource.MANUAL,
+        reviewed_at: new Date().toISOString(),
+      } as any);
+      mockConversationSnapshotRepository.findById.mockResolvedValue(
+        makeSource({
+          avg_similarity_score: 71,
+          min_similarity_score: 26,
+          feishu_record_id: 'rec-001',
+        }),
+      );
+      mockExecutionRepository.findByConversationSourceId.mockResolvedValue([
+        {
+          id: 'exec-1',
+          turn_number: 1,
+          review_status: ReviewStatus.SKIPPED,
+          review_comment: '本轮不评审',
+          evaluation_reason: '自动评估判定偏差较大',
+          reviewer_source: ReviewerSource.MANUAL,
+        },
+        {
+          id: 'exec-2',
+          turn_number: 2,
+          review_status: ReviewStatus.SKIPPED,
+          review_comment: '本轮不评审',
+          evaluation_reason: '自动评估判定偏差较大',
+          reviewer_source: ReviewerSource.MANUAL,
+        },
+      ] as any);
+      mockWriteBackService.writeBackSimilarityScore.mockResolvedValue({ success: true });
+
+      await service.updateTurnReview(
+        'exec-1',
+        ReviewStatus.SKIPPED,
+        '本轮不评审',
+        ReviewerSource.MANUAL,
+        'dashboard-user',
+      );
+
+      expect(writeBackService.writeBackSimilarityScore).toHaveBeenCalledWith(
+        'rec-001',
+        71,
+        expect.objectContaining({
+          testStatus: FeishuTestStatus.SKIPPED,
+        }),
+      );
+    });
   });
 
   // ========== getSourceBatchId ==========

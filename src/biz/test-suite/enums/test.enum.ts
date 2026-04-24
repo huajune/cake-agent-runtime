@@ -51,6 +51,24 @@ export enum ReviewerSource {
   API = 'api',
 }
 
+/** 获取评审来源的展示标签 */
+export function getReviewerSourceLabel(source?: ReviewerSource | null): string | null {
+  switch (source) {
+    case ReviewerSource.MANUAL:
+      return '人工';
+    case ReviewerSource.CODEX:
+      return 'Codex';
+    case ReviewerSource.CLAUDE:
+      return 'Claude';
+    case ReviewerSource.SYSTEM:
+      return '系统';
+    case ReviewerSource.API:
+      return 'API';
+    default:
+      return null;
+  }
+}
+
 /**
  * 批次状态
  * 表示测试批次的生命周期状态
