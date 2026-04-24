@@ -11,10 +11,46 @@
 <!-- release:pending:start -->
 ## 待发布
 
-**预计版本**: `v5.2.0`
+**预计版本**: `v5.2.1`
 **最近更新**: `2026-04-24`
 **来源分支**: `develop`
-**累计 PR**: 20
+**累计 PR**: 1
+
+### 更新摘要
+- PR #111 Add `workflow_dispatch` support to `Build and Deploy` so a release tag can be deployed explicitly.
+- PR #111 Trigger `deploy.yml` from the release metadata workflow after a new release tag and GitHub Release are created.
+- PR #111 Track merged PR env-related file changes in the generated changelog and surface them in deployment notifications as a manual server `.env.production` sync reminder.
+
+### 新功能
+- PR #111 Add `workflow_dispatch` support to `Build and Deploy` so a release tag can be deployed explicitly.
+
+### 问题修复
+- 无
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #111 Trigger `deploy.yml` from the release metadata workflow after a new release tag and GitHub Release are created.
+- PR #111 Track merged PR env-related file changes in the generated changelog and surface them in deployment notifications as a manual server `.env.production` sync reminder.
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #111 `node --check scripts/update-version-changelog.js`
+- PR #111 `node --check scripts/send-deploy-notification.js`
+- PR #111 `pnpm exec prettier --check .github/workflows/deploy.yml .github/workflows/version-changelog.yml scripts/update-version-changelog.js scripts/send-deploy-notification.js`
+- PR #111 Ruby YAML parse for both changed workflow files
+- PR #111 pre-push `pnpm run ci:check` passed: 216 suites, 2515 tests
+<!-- release:pending:end -->
+
+## [5.2.0] - 2026-04-24
+
+**来源分支**: `develop`
 
 ### 更新摘要
 - PR #72 fix: 完善通知链路并修复群任务与消息处理后续问题
@@ -144,6 +180,9 @@
 - PR #89 将运行时配置快照 TTL 从 1s 调整为 30s。
 - PR #98 移除 tsconfig MCP 路径别名，改用 package exports 解析。
 
+### 环境变量提醒
+- 无
+
 ### 验证记录
 - PR #74 `pnpm run ci:check` 通过，覆盖 162 suites / 2148 tests。
 - PR #78 `pnpm run ci:check` 通过，pre-push 全量 `jest --coverage` 通过，覆盖 182 suites / 2238 tests。
@@ -172,7 +211,6 @@
 - PR #107 `pnpm exec tsc --noEmit --pretty false`
 - PR #107 `pnpm exec jest tests/biz/test-suite/services/conversation/conversation-test.service.spec.ts tests/biz/test-suite/services/execution/test-batch.service.spec.ts tests/tools/tool/duliday-interview-booking.tool.spec.ts --runInBand`
 - PR #107 pre-push `pnpm run ci:check` passed: 216 suites, 2515 tests
-<!-- release:pending:end -->
 
 ## [5.1.0] - 2026-04-09
 
