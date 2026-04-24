@@ -136,6 +136,15 @@ description: 抽样分析招聘 Agent 的生产对话质量，或分析 BadCase 
 - 默认不要追求“84 个 BadCase 生成 84 个验证样本”；更合理的是先按根因簇压缩，再扩成 20~35 条原子测试集和 8~15 条代表性回归验证样本
 - 只有通过这个质量闸门的草稿，才允许进入用户确认和导入步骤
 
+验证集专用闸门：
+- `conversationCases` 不是“更长的 scenarioCase”。只有当样本保留整段真实对话有独立回归价值时，才进入 `验证集`
+- BadCase 只有单条用户消息、事故备注、截图转写片段、或 0-3 行短上下文时，默认只能生成 `scenarioCases`，不能生成 `conversationCases`
+- 能进入 `验证集` 的样本必须满足：有完整 `conversation`，能解析出至少 2 个候选人 turn 和 2 个招募经理 turn，且当前问题依赖跨轮上下文、记忆延续、已展示岗位、已收集报名字段、或预约流程状态
+- 缺少 `chatId` 但有完整对话文本时，可以作为验证集草稿，但 `remark` 必须写明“无 chatId，无法回查生产工具流水”；涉及动态事实时优先降级为 `scenarioCases`
+- 如果原始 BadCase 只是“最后一句 + 人工评价”，即使 `chatHistory` 字段里包含后续真人回复，也不要把它直接放进验证集；先截断到事故发生前，并判断是否仍然有完整回归价值
+- 删除或不进入验证集的常见样本：寒暄开场、无意义输入、只有单轮问答、只验证一句话术、无法判断 Agent 应该做什么、只能靠历史真人回复复刻才能得分
+- 每个根因簇最多先沉淀 1-3 条代表性 `conversationCases`；剩余变体放进 `scenarioCases`，避免验证集被同质样本污染
+
 优先整理成两类 JSON 草稿，方便 Step 8 直接导入：
 
 1. `scenarioCases`：用于导入 `测试集`
@@ -156,13 +165,13 @@ description: 抽样分析招聘 Agent 的生产对话质量，或分析 BadCase 
 
 2. `conversationCases`：用于导入 `验证集`
 - `validationId`: 稳定 ID，同一条验证样本后续迭代必须保持不变
-- `validationTitle`: 验证标题
-- `conversation`: 完整对话记录
-- `chatId`: 主 chat_id（可选）
+- `validationTitle`: 验证标题，必须概括根因和关键上下文，不要只写随机 caseName 或“真实生产对话回归样本”
+- `conversation`: 完整对话记录；只能包含到待验证问题发生时所需的上下文，不要把后续真人补救、人工评语、或目标答案混进对话正文
+- `chatId`: 主 chat_id；真实生产样本应优先提供，无法提供时在 `remark` 解释证据边界
 - `participantName / managerName / consultTime`: 对话元信息，可选
 - `sourceType`: `真实生产 / 从BadCase沉淀 / 从GoodCase沉淀 / 人工补充`
 - `sourceBadCaseIds / sourceGoodCaseIds / sourceChatIds`: 溯源信息，可选
-- `remark`: 策展备注，可选
+- `remark`: 策展备注，必须写清关键观察 turn、为什么需要整段回归、动态事实边界、以及是否缺少 chatId / 工具流水
 - `enabled`: 是否启用，默认 `true`
 
 动态工具数据边界：
@@ -179,7 +188,7 @@ description: 抽样分析招聘 Agent 的生产对话质量，或分析 BadCase 
 
 正式资产复核清单：
 - 每条 `scenarioCase` 必须能回答“最后一条用户输入是什么、要验证哪个原子行为、失败判定是什么”，不能只保存一段历史事故描述
-- 每条 `conversationCase` 必须能回答“保留整段真实上下文的价值是什么、哪些 turn 是关键观察点、哪些事实只能由本轮工具结果决定”
+- 每条 `conversationCase` 必须能回答“保留整段真实上下文的价值是什么、哪些 turn 是关键观察点、哪些事实只能由本轮工具结果决定、为什么不能降级成 scenarioCase”
 - `expectedOutput` 不要写成历史真人回复的复刻稿；如果包含具体门店、薪资、距离、面试时间、库存等事实，必须能追溯到本轮工具调用结果或显式 mock 快照
 - 评审弹窗里看到“Agent 调工具生成了当前事实，但期望回复来自历史人工话术”时，优先判定为资产建模问题，先修测试资产或评审提示，不要直接归因 Agent 幻觉
 - 资产导入前抽查重复字段和无效字段，例如 `验证标题展示` 与 `验证标题` 重复、默认 `多行文本` 空列残留；正式表结构要保持最少但够用
@@ -198,6 +207,8 @@ test-suite 模块已有 HTTP 接口。端点速查见 `references/test-suite-api
 - 本次要导入的内容已经在对话里经过用户确认
 - `测试集 / 验证集` 只包含本轮策展后的正式资产
 - 不要假设 `BadCase / GoodCase` 会自动同步到正式数据集
+- 不要使用 `data/badcase/badcase.json` + `scripts/import-badcase-to-feishu.ts` 生成或导入验证集；该脚本是旧的测试集导入工具，只会写 `testSuite` 表，不能代表验证集资产已生成
+- 如果本轮有 `conversationCases`，导入前必须逐条展示 `validationId / validationTitle / 关键观察 turn / 是否有 chatId / 动态事实边界`，并让用户确认
 
 导入时使用：
 - `POST /test-suite/datasets/scenario/import-curated`：把 `scenarioCases` 幂等 upsert 到 `测试集`
