@@ -134,6 +134,51 @@ describe('LlmExecutorService', () => {
   }
 
   describe('generate', () => {
+    it('should use adaptive thinking for Anthropic Claude 4.7 models', async () => {
+      mockGenerateText.mockResolvedValueOnce(makeGenerateResult());
+
+      await service.generate({
+        role: ModelRole.Chat,
+        modelId: 'anthropic/claude-opus-4-7',
+        prompt: 'hello',
+        disableFallbacks: true,
+        thinking: { type: 'enabled', budgetTokens: 4000 },
+      });
+
+      expect(mockGenerateText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          providerOptions: {
+            anthropic: {
+              thinking: { type: 'adaptive' },
+              effort: 'high',
+            },
+          },
+        }),
+      );
+    });
+
+    it('should keep budgeted thinking for older Anthropic Claude models', async () => {
+      mockGenerateText.mockResolvedValueOnce(makeGenerateResult());
+
+      await service.generate({
+        role: ModelRole.Chat,
+        modelId: 'anthropic/claude-opus-4-6',
+        prompt: 'hello',
+        disableFallbacks: true,
+        thinking: { type: 'enabled', budgetTokens: 4000 },
+      });
+
+      expect(mockGenerateText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          providerOptions: {
+            anthropic: {
+              thinking: { type: 'enabled', budgetTokens: 4000 },
+            },
+          },
+        }),
+      );
+    });
+
     it('should retry the primary model before falling back', async () => {
       mockGenerateText
         .mockRejectedValueOnce(new Error('HTTP 500 primary attempt 1'))
