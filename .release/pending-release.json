@@ -1,7 +1,7 @@
 {
   "baseVersion": "5.1.0",
   "nextVersion": "5.2.0",
-  "updatedAt": "2026-04-23",
+  "updatedAt": "2026-04-24",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -424,6 +424,59 @@
         "`pnpm run lint:check`",
         "`pnpm exec prettier --check ...`",
         "Pre-push hook: `pnpm run ci:check` passed, including 214 Jest suites / 2449 tests."
+      ]
+    },
+    {
+      "number": "104",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/104",
+      "title": "[codex] feedback/review flows + booking 姓名清洗与筛选硬闸门",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-24",
+      "summary": [
+        "align feedback validation and test-suite SOP/skill docs with the real execution chain, including production sync for `/web/test-suite`",
+        "add production sync tooling and missing Supabase migrations for conversation snapshots, execution snapshot references, and `reviewer_source`",
+        "complete test-suite review write-back flows across scenario tests and regression validation, including source-aware review labels and Feishu status updates",
+        "fix conversation batch completion/status aggregation and test-suite UI review details/stat cards",
+        "候选人首条 `我是阳光明媚`（微信加好友自动打招呼模板，xx 是昵称）被当作真实姓名写入 `interview_info.name`，登记预约时原样提交到海绵，门店拿到一个\"阳光明媚\"而非真名。",
+        "岗位 527385 的 supplement label 中，`是否学生（不要学生）` / `专业（非新媒、食品）` / `周四六日都能上班吗` 这类**带约束语义的筛选题**被原样塞进 `bookingChecklist.templateText` 当收集项问候选人，候选人答\"食品类 / 不一定\"等硬伤答案，Agent 没识别直接 `duliday_interview_booking` 成功提交。",
+        "**`MessageParser.stripTimeContext` + `name-guard`**：短期记忆通过 `injectTimeContext` 给每条消息追加 `\\n[消息发送时间：...]` 后缀，把 `^...$` 锚定的 `AUTO_GREETING_REGEX` 绕过 —— sanitizer 看到的消息不再是 `我是XX` 纯文本，所以放行了昵称。现在匹配前先剥离时间后缀，命中硬规则照常拦截。",
+        "**`SessionService.saveFacts(..., { forceNullFields })`**：`deepMerge` 的 \"null 不覆盖\" 语义让 sanitizer 的 null 无法清洗已污染 Redis 字段。新增 `forceNullFields` 出口，sanitizer 命中时传 `['name']`，显式覆盖绕开 deepMerge，保证历史污染也能在下一轮 extraction 时被洗掉。",
+        "precheck 分流：`customerLabelDefinitions` 经 classifier 拆分，`templateText`/`requiredFields` 只含 collect；screening 单独出口到新字段 `screeningChecks`（带 labelName / labelId / mode / failSignals）。",
+        "booking 兜底：`findScreeningFailure(supplementAnswers)` 在 `fetchJobs` 之前跑，命中就不发远程请求，阻止不合格候选人进入海绵。",
+        "`tests/memory/facts/name-guard.spec.ts` — 带时间后缀的三种形态（有/无标点、多行）均被 drop",
+        "`tests/memory/session.service.spec.ts` — `forceNullFields` 显式覆盖已污染 `interview_info.name`，其他字段保留",
+        "`tests/tools/duliday/supplement-label-classifier.spec.ts`（新）— classifier 四种模式 + `findScreeningFailure` 遍历逻辑",
+        "`tests/tools/tool/duliday-interview-precheck.tool.spec.ts` — 筛选型 label 不入 templateText；`screeningChecks` 结构正确；全 collect 时字段缺省",
+        "`tests/tools/duliday-interview-booking.tool.spec.ts` — 保留 `buildCustomerLabelList` 旧测试"
+      ],
+      "features": [
+        "**`SessionService.saveFacts(..., { forceNullFields })`**：`deepMerge` 的 \"null 不覆盖\" 语义让 sanitizer 的 null 无法清洗已污染 Redis 字段。新增 `forceNullFields` 出口，sanitizer 命中时传 `['name']`，显式覆盖绕开 deepMerge，保证历史污染也能在下一轮 extraction 时被洗掉。"
+      ],
+      "fixes": [
+        "fix conversation batch completion/status aggregation and test-suite UI review details/stat cards",
+        "booking 兜底：`findScreeningFailure(supplementAnswers)` 在 `fetchJobs` 之前跑，命中就不发远程请求，阻止不合格候选人进入海绵。"
+      ],
+      "optimizations": [
+        "precheck 分流：`customerLabelDefinitions` 经 classifier 拆分，`templateText`/`requiredFields` 只含 collect；screening 单独出口到新字段 `screeningChecks`（带 labelName / labelId / mode / failSignals）。"
+      ],
+      "ops": [
+        "align feedback validation and test-suite SOP/skill docs with the real execution chain, including production sync for `/web/test-suite`",
+        "add production sync tooling and missing Supabase migrations for conversation snapshots, execution snapshot references, and `reviewer_source`",
+        "complete test-suite review write-back flows across scenario tests and regression validation, including source-aware review labels and Feishu status updates",
+        "候选人首条 `我是阳光明媚`（微信加好友自动打招呼模板，xx 是昵称）被当作真实姓名写入 `interview_info.name`，登记预约时原样提交到海绵，门店拿到一个\"阳光明媚\"而非真名。",
+        "岗位 527385 的 supplement label 中，`是否学生（不要学生）` / `专业（非新媒、食品）` / `周四六日都能上班吗` 这类**带约束语义的筛选题**被原样塞进 `bookingChecklist.templateText` 当收集项问候选人，候选人答\"食品类 / 不一定\"等硬伤答案，Agent 没识别直接 `duliday_interview_booking` 成功提交。",
+        "**`MessageParser.stripTimeContext` + `name-guard`**：短期记忆通过 `injectTimeContext` 给每条消息追加 `\\n[消息发送时间：...]` 后缀，把 `^...$` 锚定的 `AUTO_GREETING_REGEX` 绕过 —— sanitizer 看到的消息不再是 `我是XX` 纯文本，所以放行了昵称。现在匹配前先剥离时间后缀，命中硬规则照常拦截。",
+        "`tests/memory/facts/name-guard.spec.ts` — 带时间后缀的三种形态（有/无标点、多行）均被 drop",
+        "`tests/memory/session.service.spec.ts` — `forceNullFields` 显式覆盖已污染 `interview_info.name`，其他字段保留",
+        "`tests/tools/duliday/supplement-label-classifier.spec.ts`（新）— classifier 四种模式 + `findScreeningFailure` 遍历逻辑",
+        "`tests/tools/tool/duliday-interview-precheck.tool.spec.ts` — 筛选型 label 不入 templateText；`screeningChecks` 结构正确；全 collect 时字段缺省",
+        "`tests/tools/duliday-interview-booking.tool.spec.ts` — 保留 `buildCustomerLabelList` 旧测试"
+      ],
+      "config": [],
+      "verification": [
+        "pre-commit lint / format hooks 绿",
+        "`pnpm run ci:check`（lint:check + format:check + typecheck + build:web + nest build + jest 覆盖率）**216 suites / 2511 tests 全通过**",
+        "pre-push hook 本地 CI 流水通过后才推送"
       ]
     }
   ]
