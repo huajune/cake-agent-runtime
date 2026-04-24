@@ -89,6 +89,10 @@ export function ConversationDetailModal({
   const currentTurn = turns[currentTurnIndex];
   const hasPrev = currentTurnIndex > 0;
   const hasNext = currentTurnIndex < turns.length - 1;
+  const displayTotalTurns = Math.max(conversation.totalTurns || 0, turns.length || 0);
+  const displayTurnNumber = currentTurn
+    ? (currentTurn.turnNumber || currentTurnIndex + 1)
+    : 0;
 
   // 获取当前轮次的真人对话历史（候选人 + 招募经理）
   const realHistory = Array.isArray(currentTurn?.history) ? currentTurn.history : [];
@@ -121,9 +125,32 @@ export function ConversationDetailModal({
                 : '--'}
             </div>
           </div>
-          <button className={styles.closeBtn} onClick={onClose}>
-            <X size={18} />
-          </button>
+          <div className={styles.headerActions}>
+            <div className={styles.headerPager} aria-label="轮次翻页">
+              <button
+                type="button"
+                onClick={() => onTurnChange(currentTurnIndex - 1)}
+                disabled={!hasPrev || loading}
+                aria-label="上一轮"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <span className={styles.headerCounter}>
+                {displayTurnNumber} / {displayTotalTurns}
+              </span>
+              <button
+                type="button"
+                onClick={() => onTurnChange(currentTurnIndex + 1)}
+                disabled={!hasNext || loading}
+                aria-label="下一轮"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+            <button className={styles.closeBtn} onClick={onClose} aria-label="关闭">
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* 内容区 */}
@@ -280,28 +307,6 @@ export function ConversationDetailModal({
           ) : null}
         </div>
 
-        {/* 底部导航 */}
-        <div className={styles.modalFooter}>
-          <div className={styles.navigation}>
-            <button
-              className={styles.navBtn}
-              onClick={() => onTurnChange(currentTurnIndex - 1)}
-              disabled={!hasPrev || loading}
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <span className={styles.turnIndicator}>
-              第 {currentTurn?.turnNumber || 1} 轮 / 共 {conversation.totalTurns} 轮
-            </span>
-            <button
-              className={styles.navBtn}
-              onClick={() => onTurnChange(currentTurnIndex + 1)}
-              disabled={!hasNext || loading}
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );

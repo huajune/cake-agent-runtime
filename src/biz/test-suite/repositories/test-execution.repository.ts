@@ -99,6 +99,10 @@ export class TestExecutionRepository extends BaseRepository {
       }
     }
 
+    if (Array.isArray(response.messages)) {
+      sanitized.messages = response.messages;
+    }
+
     if (Array.isArray(response.agentSteps)) {
       sanitized.agentSteps = response.agentSteps.map((step) => {
         const item = step && typeof step === 'object' ? (step as Record<string, unknown>) : {};
@@ -107,6 +111,9 @@ export class TestExecutionRepository extends BaseRepository {
           text: typeof item.text === 'string' ? this.truncateText(item.text) : item.text,
           reasoning:
             typeof item.reasoning === 'string' ? this.truncateText(item.reasoning) : item.reasoning,
+          toolCalls: Array.isArray(item.toolCalls)
+            ? this.sanitizeJsonValue(item.toolCalls)
+            : undefined,
           usage: this.sanitizeJsonValue(item.usage),
           durationMs: item.durationMs,
           finishReason: item.finishReason,

@@ -4,20 +4,23 @@
 
 .sectionTitle {
   margin: 0 0 12px 0;
-  font-size: 11px;
-  color: $text-muted;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 13px;
+  color: $text-primary;
+  letter-spacing: 0;
   font-weight: 700;
 }
 
 /* ── History card ── */
 .historyCard {
-  border: 1px solid rgba($border, 0.75);
-  border-radius: 10px;
-  background: #fff;
-  margin-bottom: 16px;
+  border: 1px solid rgba(139, 92, 246, 0.14);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(251, 250, 255, 0.94) 100%);
+  margin-bottom: 18px;
   overflow: hidden;
+  box-shadow:
+    0 18px 44px rgba(31, 41, 55, 0.06),
+    0 0 34px rgba(139, 92, 246, 0.06);
 }
 
 .historyList {
@@ -31,8 +34,8 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 12px 14px;
-  border-bottom: 1px solid rgba($border, 0.5);
+  padding: 14px 18px;
+  border-bottom: 1px dashed rgba(139, 92, 246, 0.13);
 
   &:last-child {
     border-bottom: none;
@@ -40,11 +43,11 @@
 }
 
 .historyUser {
-  background: #fff;
+  background: rgba(255, 255, 255, 0.7);
 }
 
 .historyAssistant {
-  background: rgba($bg-secondary, 0.45);
+  background: rgba(99, 102, 241, 0.025);
 }
 
 .historyRole {
@@ -60,43 +63,49 @@
   flex: 1;
   min-width: 0;
   color: $text-primary;
-  font-size: 12px;
-  line-height: 1.8;
+  font-size: 13px;
+  line-height: 1.75;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .historyEmpty {
-  padding: 14px;
-  background: rgba($bg-secondary, 0.5);
+  padding: 16px 18px;
+  background: rgba(139, 92, 246, 0.03);
   color: $text-muted;
   font-size: 12px;
 }
 
 /* ── Response card ── */
 .responseCard {
-  border: 1px solid $border;
-  border-radius: 10px;
+  border: 1px solid rgba(139, 92, 246, 0.14);
+  border-radius: 18px;
   overflow: hidden;
-  background: #fff;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(251, 250, 255, 0.94) 100%);
+  box-shadow:
+    0 18px 44px rgba(31, 41, 55, 0.06),
+    0 0 34px rgba(139, 92, 246, 0.06);
 }
 
 .responseHeader {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 16px;
-  border-bottom: 1px solid rgba($border, 0.5);
-  background: rgba($bg-secondary, 0.4);
+  padding: 12px 18px;
+  border-bottom: 1px solid rgba(139, 92, 246, 0.1);
+  background:
+    linear-gradient(135deg, rgba(139, 92, 246, 0.045) 0%, rgba(255, 255, 255, 0.76) 100%);
 }
 
 .roleTag {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.05em;
-  padding: 2px 7px;
-  border-radius: 4px;
+  padding: 3px 9px;
+  border-radius: 8px;
 }
 
 .agentTag {
@@ -110,7 +119,7 @@
 }
 
 .responseBody {
-  padding: 14px 16px;
+  padding: 18px;
   font-size: 13px;
   line-height: 1.7;
   color: $text-primary;
@@ -119,7 +128,22 @@
 }
 
 .agentRenderer {
-  padding-right: 4px;
+  padding-right: 8px;
+
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(139, 92, 246, 0.16);
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+  }
 }
 
 .emptyResponse {
@@ -144,12 +168,12 @@
 
 /* ── Error / Fallback boxes ── */
 .errorBox {
-  background: rgba($danger, 0.02);
-  border: 1px solid rgba($danger, 0.1);
-  border-left: 3px solid rgba($danger, 0.4);
-  border-radius: 10px;
-  padding: 12px 14px;
+  background: linear-gradient(180deg, rgba(255, 241, 242, 0.92) 0%, rgba(255, 255, 255, 0.96) 100%);
+  border: 1px solid rgba($danger, 0.16);
+  border-radius: 16px;
+  padding: 14px 16px;
   margin-top: 16px;
+  box-shadow: 0 14px 34px rgba(239, 68, 68, 0.08);
 }
 
 .errorHeader {
@@ -171,13 +195,14 @@
 }
 
 .fallbackBox {
-  background: rgba(251, 191, 36, 0.03);
-  border: 1px solid rgba($warning, 0.1);
-  border-left: 3px solid rgba($warning, 0.4);
-  border-radius: 10px;
-  padding: 12px 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 251, 235, 0.96) 0%, rgba(255, 255, 255, 0.96) 100%);
+  border: 1px solid rgba(251, 191, 36, 0.24);
+  border-radius: 16px;
+  padding: 14px 16px;
   color: #b45309;
   margin-top: 16px;
+  box-shadow: 0 14px 34px rgba(245, 158, 11, 0.08);
 }
 
 .fallbackHeader {
@@ -215,16 +240,15 @@
   display: flex;
   flex-direction: column;
   flex: 1;
-  gap: 8px;
+  gap: 10px;
 }
 
 .rawTitle {
   margin: 0;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
-  color: $text-muted;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: $text-primary;
+  letter-spacing: 0;
 }
 
 .payloadShell {
@@ -265,11 +289,14 @@
 }
 
 .payloadCard {
-  border: 1px solid rgba($border, 0.5);
-  border-radius: 10px;
-  background: #fff;
+  border: 1px solid rgba(139, 92, 246, 0.14);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(251, 250, 255, 0.94) 100%);
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  box-shadow:
+    0 18px 44px rgba(31, 41, 55, 0.06),
+    0 0 34px rgba(139, 92, 246, 0.06);
 }
 
 .payloadHeader {
@@ -277,8 +304,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 8px 12px;
-  border-bottom: 1px solid rgba($border, 0.5);
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(139, 92, 246, 0.1);
+  background:
+    linear-gradient(135deg, rgba(139, 92, 246, 0.04) 0%, rgba(255, 255, 255, 0.74) 100%);
 }
 
 .payloadLabel {
@@ -303,7 +332,7 @@
 
 .codeShell {
   background: #1e1e2e;
-  border-radius: 0 0 10px 10px;
+  border-radius: 0 0 18px 18px;
   overflow: hidden;
 }
 

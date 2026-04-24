@@ -1,22 +1,19 @@
 import { useEffect, useState, memo } from 'react';
+import type { UIMessage } from 'ai';
 import {
-  Zap,
   Bot,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
-  ArrowRight,
-  ArrowLeft,
   AlertTriangle,
   MessageCircle,
   User,
   Clock,
   Activity,
   Calendar,
-  Brain,
 } from 'lucide-react';
 import { TestExecution } from '@/api/services/agent-test.service';
-import { formatJson, formatToolResult } from '@/utils/format';
+import MessagePartsAdapter from '@/view/agent-test/list/components/MessagePartsAdapter';
 import type { ToolCall, TokenUsage } from '../../types';
 import { formatReviewStatusLabel, resolveReviewerSourceLabel } from '../../utils/reviewLabel';
 import styles from './index.module.scss';
@@ -45,6 +42,7 @@ interface AgentRequestSummary {
 
 interface AgentStepSummary {
   reasoning?: string;
+  text?: string;
 }
 
 /**
@@ -85,6 +83,141 @@ function formatExecutedAt(value?: string | null) {
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
+  });
+}
+
+type UiPart = UIMessage['parts'][number];
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function asNonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function buildTextPart(text: string): UiPart {
+  return { type: 'text', text } as UiPart;
+}
+
+function buildReasoningPart(text: string): UiPart {
+  return { type: 'reasoning', text } as UiPart;
+}
+
+function getToolCallName(tool: unknown, fallbackIndex: number): string {
+  const record = asRecord(tool);
+  return (
+    asNonEmptyString(record?.toolName) ||
+    asNonEmptyString(record?.tool) ||
+    asNonEmptyString(record?.name) ||
+    `tool-${fallbackIndex + 1}`
+  );
+}
+
+function buildToolPart(tool: unknown, index: number): UiPart {
+  const record = asRecord(tool) || {};
+  const toolName = getToolCallName(record, index);
+  const errorText = asNonEmptyString(record.errorText) || asNonEmptyString(record.error);
+  const output = record.output ?? record.result ?? (errorText ? { error: errorText } : undefined);
+  const explicitState = asNonEmptyString(record.state);
+  const state =
+    errorText ||
+    explicitState === 'error' ||
+    explicitState === 'output-error' ||
+    explicitState === 'input-error' ||
+    explicitState === 'output-denied'
+      ? 'output-error'
+      : output !== undefined || explicitState === 'output-available'
+        ? 'output-available'
+        : 'input-available';
+
+  return {
+    type: `tool-${toolName}`,
+    toolName,
+    toolCallId: asNonEmptyString(record.toolCallId) || `${toolName}-${index}`,
+    input: record.input ?? record.args ?? record.arguments,
+    output,
+    state,
+    errorText,
+  } as UiPart;
+}
+
+function normalizeAgentPart(part: unknown, index: number): UiPart | null {
+  const record = asRecord(part);
+  const partType = asNonEmptyString(record?.type);
+  if (!record || !partType) return null;
+
+  if (partType === 'text') {
+    const text = asNonEmptyString(record.text);
+    return text ? buildTextPart(text) : null;
+  }
+
+  if (partType === 'reasoning') {
+    const text = asNonEmptyString(record.text);
+    return text ? buildReasoningPart(text) : null;
+  }
+
+  if (partType === 'dynamic-tool' || partType.startsWith('tool-')) {
+    return buildToolPart(
+      {
+        ...record,
+        toolName: record.toolName || partType.replace(/^tool-/, ''),
+      },
+      index,
+    );
+  }
+
+  if (partType === 'tool-call' || partType === 'tool-result' || partType === 'tool-error') {
+    return buildToolPart(record, index);
+  }
+
+  return null;
+}
+
+function collectOrderedAgentParts(agentResponse: unknown): UiPart[] {
+  const response = asRecord(agentResponse);
+  if (!response) return [];
+
+  const parts: UiPart[] = [];
+  const pushParts = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    value.forEach((part, index) => {
+      const normalized = normalizeAgentPart(part, parts.length + index);
+      if (normalized) parts.push(normalized);
+    });
+  };
+
+  pushParts(response.parts);
+
+  if (Array.isArray(response.messages)) {
+    response.messages.forEach((message) => {
+      const record = asRecord(message);
+      if (!record || (record.role && record.role !== 'assistant')) return;
+      pushParts(record.parts);
+    });
+  }
+
+  return parts;
+}
+
+function hasPartType(parts: UiPart[], type: 'text' | 'reasoning') {
+  return parts.some((part) => part.type === type);
+}
+
+function hasToolPart(parts: UiPart[]) {
+  return parts.some((part) => typeof part.type === 'string' && part.type.startsWith('tool-'));
+}
+
+function hasEquivalentTextPart(parts: UiPart[], text: string) {
+  const normalizedText = text.trim();
+  if (!normalizedText) return true;
+
+  return parts.some((part) => {
+    if (part.type !== 'text') return false;
+    const partText = (part as { text?: string }).text?.trim();
+    return partText === normalizedText;
   });
 }
 
@@ -132,6 +265,82 @@ function extractReasoningBlocks(agentResponse: unknown): string[] {
   }
 
   return Array.from(new Set(blocks));
+}
+
+function buildSyntheticAgentParts(
+  agentResponse: unknown,
+  toolCalls: ToolCall[],
+  actualOutput: string,
+): UiPart[] {
+  const parts: UiPart[] = [];
+  const reasoningBlocks = extractReasoningBlocks(agentResponse);
+  let nextToolIndex = 0;
+
+  reasoningBlocks.forEach((reasoning) => {
+    parts.push(buildReasoningPart(reasoning));
+    if (nextToolIndex < toolCalls.length) {
+      parts.push(buildToolPart(toolCalls[nextToolIndex], nextToolIndex));
+      nextToolIndex += 1;
+    }
+  });
+
+  while (nextToolIndex < toolCalls.length) {
+    parts.push(buildToolPart(toolCalls[nextToolIndex], nextToolIndex));
+    nextToolIndex += 1;
+  }
+
+  if (actualOutput.trim()) {
+    parts.push(buildTextPart(actualOutput.trim()));
+  }
+
+  return parts;
+}
+
+function buildAgentRenderableMessage(
+  agentResponse: unknown,
+  toolCalls: ToolCall[],
+  actualOutput: string,
+  executionId: string,
+): UIMessage | undefined {
+  const orderedParts = collectOrderedAgentParts(agentResponse);
+  const directToolParts = toolCalls.map((tool, index) => buildToolPart(tool, index));
+  const replyText = actualOutput.trim();
+
+  if (orderedParts.length > 0) {
+    const enrichedParts = [...orderedParts];
+
+    if (directToolParts.length > 0 && !hasToolPart(enrichedParts)) {
+      const firstTextIndex = enrichedParts.findIndex((part) => part.type === 'text');
+      if (firstTextIndex >= 0) {
+        enrichedParts.splice(firstTextIndex, 0, ...directToolParts);
+      } else {
+        enrichedParts.push(...directToolParts);
+      }
+    }
+
+    if (replyText && !hasEquivalentTextPart(enrichedParts, replyText)) {
+      enrichedParts.push(buildTextPart(replyText));
+    }
+
+    return {
+      id: `test-suite-agent-${executionId}`,
+      role: 'assistant',
+      parts: enrichedParts,
+    } as UIMessage;
+  }
+
+  const syntheticParts = buildSyntheticAgentParts(agentResponse, toolCalls, replyText);
+  if (syntheticParts.length === 0) return undefined;
+
+  if (!hasPartType(syntheticParts, 'text') && replyText) {
+    syntheticParts.push(buildTextPart(replyText));
+  }
+
+  return {
+    id: `test-suite-agent-${executionId}`,
+    role: 'assistant',
+    parts: syntheticParts,
+  } as UIMessage;
 }
 
 function getReviewTone(status: string) {
@@ -192,72 +401,6 @@ function CompactMetrics({ durationMs, tokenUsage, status, executedAt }: CompactM
     </div>
   );
 }
-
-/**
- * 工具调用组件
- */
-interface ToolCallItemProps {
-  tool: ToolCall;
-  defaultExpanded?: boolean;
-}
-
-const ToolCallItem = memo(function ToolCallItem({
-  tool,
-  defaultExpanded = false,
-}: ToolCallItemProps) {
-  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
-  const toolName = tool.toolName || tool.name || tool.tool || '未知工具';
-  const toolInput = tool.input ?? tool.args ?? tool.arguments;
-  const toolOutput = tool.output ?? tool.result;
-  const hasContent = toolInput !== undefined || toolOutput !== undefined;
-
-  return (
-    <div className={styles.toolCallItem}>
-      <div
-        className={`${styles.toolHeader} ${hasContent ? styles.clickable : ''}`}
-        onClick={() => hasContent && setIsExpanded(!isExpanded)}
-      >
-        <div className={styles.toolName}>
-          <Zap size={11} />
-          {toolName}
-        </div>
-        <div className={styles.toolHeaderRight}>
-          <span className={styles.toolStatus}>
-            <CheckCircle2 size={12} /> 完成
-          </span>
-          {hasContent && (
-            <span className={styles.expandIcon}>
-              {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            </span>
-          )}
-        </div>
-      </div>
-      {isExpanded && (
-        <div className={styles.toolBody}>
-          {toolInput !== undefined && (
-            <div className={styles.toolSection}>
-              <div className={styles.toolSectionLabel}>
-                <ArrowRight size={10} /> 输入
-              </div>
-              <pre className={styles.toolDetail}>{formatJson(toolInput)}</pre>
-            </div>
-          )}
-          {toolOutput !== undefined && (
-            <div className={styles.toolSection}>
-              <div className={styles.toolSectionLabel}>
-                <ArrowLeft size={10} /> 输出
-              </div>
-              <pre className={styles.toolDetail}>
-                {formatToolResult(toolOutput).substring(0, 800)}
-                {formatToolResult(toolOutput).length > 800 && '...'}
-              </pre>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-});
 
 /**
  * 聊天历史组件 - 简洁版
@@ -356,8 +499,6 @@ export function ExecutionDetailViewer({
       ? (execution.agent_request as AgentRequestSummary)
       : null;
   const toolCalls: ToolCall[] = Array.isArray(execution.tool_calls) ? execution.tool_calls : [];
-  const reasoningBlocks = extractReasoningBlocks(execution.agent_response);
-  const hasReasoningTrace = reasoningBlocks.length > 0;
   const history = Array.isArray(testInput?.history) ? (testInput.history as HistoryMessage[]) : [];
   const [showHistoryPanel, setShowHistoryPanel] = useState(true);
   const inputMessage =
@@ -371,6 +512,13 @@ export function ExecutionDetailViewer({
   );
   const reviewStatusLabel = formatReviewStatusLabel(execution.review_status, reviewerLabel);
   const reviewTone = getReviewTone(execution.review_status);
+  const actualOutput = execution.actual_output || '';
+  const agentMessage = buildAgentRenderableMessage(
+    execution.agent_response,
+    toolCalls,
+    actualOutput,
+    execution.id,
+  );
 
   // 构建评审 meta 单行文本（紧凑展示）
   const reviewMetaItems: Array<{ label: string; value: string }> = [];
@@ -387,7 +535,6 @@ export function ExecutionDetailViewer({
     });
   }
   if (agentRequest?.modelId) reviewMetaItems.push({ label: '模型', value: agentRequest.modelId });
-  if (execution.category) reviewMetaItems.push({ label: '分类', value: execution.category });
   if (agentRequest?.sessionId)
     reviewMetaItems.push({ label: 'Session', value: agentRequest.sessionId });
 
@@ -516,48 +663,27 @@ export function ExecutionDetailViewer({
               </div>
             </div>
 
-            {hasReasoningTrace && (
-              <div className={styles.agentTrace}>
-                {reasoningBlocks.map((reasoning, idx) => (
-                  <details key={`reasoning-${idx}`} className={styles.traceItem}>
-                    <summary className={styles.traceHeader}>
-                      <span className={styles.traceName}>
-                        <Brain size={12} />
-                        模型推理摘要
-                      </span>
-                      <ChevronRight size={14} className={styles.traceChevron} />
-                    </summary>
-                    <pre className={styles.traceBody}>{reasoning}</pre>
-                  </details>
-                ))}
+            <div className={styles.agentResponseCard}>
+              <div className={styles.agentResponseHeader}>
+                <span className={styles.agentRoleTag}>AGENT</span>
+                {toolCalls.length > 0 && (
+                  <span className={styles.agentBubbleMeta}>{toolCalls.length} 个工具调用</span>
+                )}
               </div>
-            )}
-
-            {!hasReasoningTrace && (
-              <div className={styles.traceUnavailable}>
-                <Brain size={14} />
-                <span>
-                  本次执行未记录模型推理摘要。完整隐式思考链不会展示；可结合评审信息、工具调用和回复内容判断。
-                </span>
+              <div className={`${styles.agentResponseBody} ${styles.agentRenderer}`}>
+                {agentMessage ? (
+                  <MessagePartsAdapter
+                    message={agentMessage}
+                    expandToolsByDefault={false}
+                    expandReasoningByDefault={false}
+                    renderTextAsMarkdown={false}
+                    textFirst
+                  />
+                ) : (
+                  <div className={styles.emptyAgentResponse}>(无回复)</div>
+                )}
               </div>
-            )}
-
-            <div className={styles.replyContent}>{execution.actual_output || '(无回复)'}</div>
-
-            {toolCalls.length > 0 && (
-              <div className={styles.toolCallsFooter}>
-                <div className={styles.toolCallsFooterTitle}>
-                  <Zap size={14} />
-                  <span>工具调用</span>
-                  <em>{toolCalls.length} 个工具</em>
-                </div>
-                <div className={styles.toolCallsList}>
-                  {toolCalls.map((call, idx) => (
-                    <ToolCallItem key={idx} tool={call} />
-                  ))}
-                </div>
-              </div>
-            )}
+            </div>
           </div>
         </div>
       </div>

@@ -244,6 +244,7 @@ interface MessagePartsAdapterProps {
   expandToolsByDefault?: boolean;
   expandReasoningByDefault?: boolean;
   renderTextAsMarkdown?: boolean;
+  textFirst?: boolean;
 }
 
 function MessagePartsAdapterComponent({
@@ -252,6 +253,7 @@ function MessagePartsAdapterComponent({
   expandToolsByDefault = false,
   expandReasoningByDefault = true,
   renderTextAsMarkdown = false,
+  textFirst = false,
 }: MessagePartsAdapterProps) {
   const parts = message.parts;
 
@@ -275,6 +277,12 @@ function MessagePartsAdapterComponent({
   }
 
   const segments = buildSegments(parts);
+  const displaySegments = textFirst
+    ? [
+        ...segments.filter((segment) => segment.kind === 'text'),
+        ...segments.filter((segment) => segment.kind !== 'text'),
+      ]
+    : segments;
 
   const hasStreamingText = segments.some(
     (s) => s.kind === 'text' && s.texts.join('').trim().length > 0,
@@ -282,11 +290,11 @@ function MessagePartsAdapterComponent({
 
   return (
     <div className={styles.messagePartsContainer}>
-      {segments.map((seg, idx) => {
+      {displaySegments.map((seg, idx) => {
         if (seg.kind === 'reasoning') {
           // 最后一个 reasoning 段在流式中显示为"思考中"，其余为已完成
           const isLastReasoning =
-            !!isStreaming && segments.slice(idx + 1).every((s) => s.kind !== 'reasoning');
+            !!isStreaming && displaySegments.slice(idx + 1).every((s) => s.kind !== 'reasoning');
           return (
             <ReasoningBlock
               key={`reasoning-${idx}`}

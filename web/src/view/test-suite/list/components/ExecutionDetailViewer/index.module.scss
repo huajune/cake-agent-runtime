@@ -367,12 +367,17 @@ $radius-lg: 10px;
 }
 
 .expectationBox {
-  background: linear-gradient(135deg, #ffffff 0%, #fffbeb 100%);
-  border-color: rgba(245, 158, 11, 0.32);
+  background:
+    radial-gradient(circle at 88% 10%, rgba(253, 186, 116, 0.14), transparent 34%),
+    linear-gradient(135deg, #ffffff 0%, #fffdf4 54%, #fff8e1 100%);
+  border-color: rgba(251, 191, 36, 0.26);
+  box-shadow:
+    0 18px 34px rgba(245, 158, 11, 0.07),
+    $shadow-xs;
   max-height: 280px;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(245, 158, 11, 0.28) transparent;
+  scrollbar-color: rgba(245, 158, 11, 0.2) transparent;
 
   &::-webkit-scrollbar {
     width: 3px;
@@ -381,7 +386,7 @@ $radius-lg: 10px;
     background: transparent;
   }
   &::-webkit-scrollbar-thumb {
-    background: rgba(245, 158, 11, 0.28);
+    background: rgba(245, 158, 11, 0.2);
     border-radius: 999px;
   }
 }
@@ -547,9 +552,9 @@ $radius-lg: 10px;
   }
 
   &.failed {
-    background: $feedback-danger-bg;
-    color: $feedback-danger-fg;
-    box-shadow: inset 0 0 0 1px $feedback-danger-line;
+    background: #fdf2f8;
+    color: #db2777;
+    box-shadow: inset 0 0 0 1px #fbcfe8;
   }
 
   &.skipped {
@@ -585,15 +590,15 @@ $radius-lg: 10px;
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  background: $feedback-danger-bg;
+  background: #fdf2f8;
   border-radius: $radius-sm;
-  color: $feedback-danger-fg;
+  color: #be185d;
   font-size: 12px;
   font-weight: 500;
   line-height: 1.5;
   align-self: flex-start;
   max-width: 100%;
-  box-shadow: inset 0 0 0 1px $feedback-danger-line;
+  box-shadow: inset 0 0 0 1px #fbcfe8;
 
   svg {
     flex-shrink: 0;
@@ -607,7 +612,7 @@ $radius-lg: 10px;
 .reviewMeta {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 8px 18px;
   padding-top: 0;
   font-size: 12px;
   color: $ink-500;
@@ -617,14 +622,13 @@ $radius-lg: 10px;
 .reviewMetaItem {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   min-width: 0;
   max-width: 100%;
-  min-height: 26px;
-  padding: 0 9px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(208, 213, 221, 0.8);
+  min-height: 20px;
+  padding: 0;
+  background: transparent;
+  border: 0;
 }
 
 .reviewMetaLabel {
@@ -655,6 +659,62 @@ $radius-lg: 10px;
   color: $ink-400;
   font-size: 12px;
   font-weight: 500;
+}
+
+.agentResponseCard {
+  border: 1px solid $accent-08;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow:
+    0 8px 18px rgba(15, 23, 42, 0.04),
+    $shadow-xs;
+}
+
+.agentResponseHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(234, 236, 240, 0.72);
+  background: rgba(248, 250, 252, 0.72);
+}
+
+.agentRoleTag {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: $success-soft;
+  color: $success;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 1;
+}
+
+.agentBubbleMeta {
+  color: $ink-400;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.agentResponseBody {
+  padding: 14px 16px;
+  color: $ink-900;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.agentRenderer {
+  padding-right: 4px;
+}
+
+.emptyAgentResponse {
+  color: $ink-400;
+  font-size: 13px;
 }
 
 .agentTrace {
