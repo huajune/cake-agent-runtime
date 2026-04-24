@@ -35,6 +35,22 @@ import { findScreeningFailure } from '@tools/duliday/supplement-label-classifier
 const logger = new Logger('duliday_interview_booking');
 const INTERVIEW_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 
+function pauseUserHostingAsync(
+  userHostingService: UserHostingService,
+  chatId: string,
+  successMessage: string,
+): void {
+  void userHostingService
+    .pauseUser(chatId)
+    .then(() => {
+      logger.log(successMessage);
+    })
+    .catch((error: unknown) => {
+      const errorMessage = error instanceof Error ? (error.stack ?? error.message) : String(error);
+      logger.error(`[自动暂停] 暂停托管失败: chatId=${chatId}`, errorMessage);
+    });
+}
+
 const supplementAnswersSchema = z
   .record(z.string(), z.string())
   .optional()
@@ -248,11 +264,11 @@ export function buildInterviewBookingTool(
         // "食品类 / 不一定" 直接提交成功，门店收到一个不合格候选人。
         const screeningFailure = findScreeningFailure(supplementAnswers);
         if (screeningFailure) {
-          void userHostingService.pauseUser(context.sessionId).then(() => {
-            logger.log(
-              `[自动暂停] 候选人答案未通过岗位筛选: chatId=${context.sessionId}, label=${screeningFailure.label}`,
-            );
-          });
+          pauseUserHostingAsync(
+            userHostingService,
+            context.sessionId,
+            `[自动暂停] 候选人答案未通过岗位筛选: chatId=${context.sessionId}, label=${screeningFailure.label}`,
+          );
           return {
             success: false,
             errorType: 'screening_mismatch',
@@ -391,9 +407,11 @@ export function buildInterviewBookingTool(
           context.bookingSucceeded = result.success;
 
           if (!result.success) {
-            void userHostingService.pauseUser(context.sessionId).then(() => {
-              logger.log(`[自动暂停] 预约失败，已暂停托管: chatId=${context.sessionId}`);
-            });
+            pauseUserHostingAsync(
+              userHostingService,
+              context.sessionId,
+              `[自动暂停] 预约失败，已暂停托管: chatId=${context.sessionId}`,
+            );
           } else {
             const resultRecord = result as unknown as Record<string, unknown>;
             const bookingId =
@@ -463,9 +481,11 @@ export function buildInterviewBookingTool(
           logger.error('预约面试失败', err);
           context.bookingSucceeded = false;
 
-          void userHostingService.pauseUser(context.sessionId).then(() => {
-            logger.log(`[自动暂停] 预约异常，已暂停托管: chatId=${context.sessionId}`);
-          });
+          pauseUserHostingAsync(
+            userHostingService,
+            context.sessionId,
+            `[自动暂停] 预约异常，已暂停托管: chatId=${context.sessionId}`,
+          );
 
           const toolResult = {
             success: false,

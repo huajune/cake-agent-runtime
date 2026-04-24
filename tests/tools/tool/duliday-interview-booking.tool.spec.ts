@@ -399,4 +399,29 @@ describe('buildInterviewBookingTool', () => {
     expect(mockUserHostingService.pauseUser).toHaveBeenCalledWith('sess-1');
     expect(mockRecruitmentCaseService.openOnBookingSuccess).not.toHaveBeenCalled();
   });
+
+  it('should not fail the booking result when async pauseUser rejects', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [makeJob()],
+    });
+    mockSpongeService.bookInterview.mockResolvedValue({
+      success: false,
+      code: 500,
+      message: '预约失败',
+      errorList: ['门店不可约'],
+    });
+    mockUserHostingService.pauseUser.mockRejectedValueOnce(new Error('Pause failed'));
+
+    const result = await executeTool({
+      ...validInput,
+      educationId: 2,
+      householdRegisterProvinceId: 310000,
+      height: 172,
+    });
+    await flushAsyncEvents();
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe('booking_rejected');
+    expect(mockUserHostingService.pauseUser).toHaveBeenCalledWith('sess-1');
+  });
 });

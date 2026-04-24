@@ -17,6 +17,7 @@ import {
   ConversationSourceStatus,
   SimilarityRating,
   FeishuTestStatus,
+  getReviewerSourceLabel,
 } from '../enums/test.enum';
 import {
   ParsedMessage,
@@ -607,6 +608,12 @@ export class ConversationTestService {
       (execution) => execution.review_status !== ReviewStatus.PENDING,
     );
     if (reviewedExecutions.length === executions.length && reviewedExecutions.length > 0) {
+      const allSkipped = reviewedExecutions.every(
+        (execution) => execution.review_status === ReviewStatus.SKIPPED,
+      );
+      if (allSkipped) {
+        return FeishuTestStatus.SKIPPED;
+      }
       return FeishuTestStatus.PASSED;
     }
 
@@ -626,7 +633,7 @@ export class ConversationTestService {
       .slice(-6)
       .map((execution) => {
         const turnLabel = execution.turn_number ? `第${execution.turn_number}轮` : '未标轮次';
-        const reviewerLabel = this.getReviewerSourceLabel(execution.reviewer_source);
+        const reviewerLabel = getReviewerSourceLabel(execution.reviewer_source);
         const statusLabel =
           execution.review_status === ReviewStatus.PASSED
             ? '通过'
@@ -645,22 +652,5 @@ export class ConversationTestService {
       });
 
     return `评审摘要\n${lines.join('\n')}`;
-  }
-
-  private getReviewerSourceLabel(source?: ReviewerSource | null): string | null {
-    switch (source) {
-      case ReviewerSource.MANUAL:
-        return '人工';
-      case ReviewerSource.CODEX:
-        return 'Codex';
-      case ReviewerSource.CLAUDE:
-        return 'Claude';
-      case ReviewerSource.SYSTEM:
-        return '系统';
-      case ReviewerSource.API:
-        return 'API';
-      default:
-        return null;
-    }
   }
 }
