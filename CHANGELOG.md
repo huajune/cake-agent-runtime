@@ -14,7 +14,7 @@
 **预计版本**: `v5.2.0`
 **最近更新**: `2026-04-24`
 **来源分支**: `develop`
-**累计 PR**: 19
+**累计 PR**: 20
 
 ### 更新摘要
 - PR #72 fix: 完善通知链路并修复群任务与消息处理后续问题
@@ -56,6 +56,10 @@
 - PR #104 `tests/tools/duliday/supplement-label-classifier.spec.ts`（新）— classifier 四种模式 + `findScreeningFailure` 遍历逻辑
 - PR #104 `tests/tools/tool/duliday-interview-precheck.tool.spec.ts` — 筛选型 label 不入 templateText；`screeningChecks` 结构正确；全 collect 时字段缺省
 - PR #104 `tests/tools/duliday-interview-booking.tool.spec.ts` — 保留 `buildCustomerLabelList` 旧测试
+- PR #107 Extract reviewer source labels into a shared enum helper and reuse it in backend review summary paths.
+- PR #107 Treat conversations where every reviewed turn is skipped as `SKIPPED` instead of `PASSED` when writing back manual status.
+- PR #107 Add `.catch()` logging for async `pauseUser` calls in interview booking fire-and-forget flows.
+- PR #107 Cover the skipped-status and async pause rejection paths with focused tests.
 
 ### 新功能
 - PR #72 新增飞书通知路由，支持 bot 到接收人的映射。
@@ -103,6 +107,7 @@
 - PR #98 精简 recruitment-case 模块依赖，并适配 Feishu bitable 与 curated-dataset 重构后的测试。
 - PR #102 Tightened candidate-consultation rules for meal objections, salary details, same-day interview precheck, booking promises, and current-focus job extraction.
 - PR #104 precheck 分流：`customerLabelDefinitions` 经 classifier 拆分，`templateText`/`requiredFields` 只含 collect；screening 单独出口到新字段 `screeningChecks`（带 labelName / labelId / mode / failSignals）。
+- PR #107 Extract reviewer source labels into a shared enum helper and reuse it in backend review summary paths.
 
 ### 运维与流程
 - PR #74 `uncaughtException` 与 `unhandledRejection` 统一进入 incident pipeline。
@@ -129,6 +134,9 @@
 - PR #104 `tests/tools/duliday/supplement-label-classifier.spec.ts`（新）— classifier 四种模式 + `findScreeningFailure` 遍历逻辑
 - PR #104 `tests/tools/tool/duliday-interview-precheck.tool.spec.ts` — 筛选型 label 不入 templateText；`screeningChecks` 结构正确；全 collect 时字段缺省
 - PR #104 `tests/tools/duliday-interview-booking.tool.spec.ts` — 保留 `buildCustomerLabelList` 旧测试
+- PR #107 Treat conversations where every reviewed turn is skipped as `SKIPPED` instead of `PASSED` when writing back manual status.
+- PR #107 Add `.catch()` logging for async `pauseUser` calls in interview booking fire-and-forget flows.
+- PR #107 Cover the skipped-status and async pause rejection paths with focused tests.
 
 ### 配置变更
 - PR #76 调整企微 callback/runtime 相关配置类型与 UI 表达。
@@ -160,6 +168,10 @@
 - PR #104 pre-commit lint / format hooks 绿
 - PR #104 `pnpm run ci:check`（lint:check + format:check + typecheck + build:web + nest build + jest 覆盖率）**216 suites / 2511 tests 全通过**
 - PR #104 pre-push hook 本地 CI 流水通过后才推送
+- PR #107 `pnpm exec prettier --check src/biz/test-suite/enums/test.enum.ts src/biz/test-suite/services/test-batch.service.ts src/biz/test-suite/services/conversation-test.service.ts src/tools/duliday-interview-booking.tool.ts tests/biz/test-suite/services/conversation/conversation-test.service.spec.ts tests/tools/tool/duliday-interview-booking.tool.spec.ts`
+- PR #107 `pnpm exec tsc --noEmit --pretty false`
+- PR #107 `pnpm exec jest tests/biz/test-suite/services/conversation/conversation-test.service.spec.ts tests/biz/test-suite/services/execution/test-batch.service.spec.ts tests/tools/tool/duliday-interview-booking.tool.spec.ts --runInBand`
+- PR #107 pre-push `pnpm run ci:check` passed: 216 suites, 2515 tests
 <!-- release:pending:end -->
 
 ## [5.1.0] - 2026-04-09

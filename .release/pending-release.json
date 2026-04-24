@@ -478,6 +478,36 @@
         "`pnpm run ci:check`（lint:check + format:check + typecheck + build:web + nest build + jest 覆盖率）**216 suites / 2511 tests 全通过**",
         "pre-push hook 本地 CI 流水通过后才推送"
       ]
+    },
+    {
+      "number": "107",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/107",
+      "title": "[codex] address review followups only",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-24",
+      "summary": [
+        "Extract reviewer source labels into a shared enum helper and reuse it in backend review summary paths.",
+        "Treat conversations where every reviewed turn is skipped as `SKIPPED` instead of `PASSED` when writing back manual status.",
+        "Add `.catch()` logging for async `pauseUser` calls in interview booking fire-and-forget flows.",
+        "Cover the skipped-status and async pause rejection paths with focused tests."
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [
+        "Extract reviewer source labels into a shared enum helper and reuse it in backend review summary paths."
+      ],
+      "ops": [
+        "Treat conversations where every reviewed turn is skipped as `SKIPPED` instead of `PASSED` when writing back manual status.",
+        "Add `.catch()` logging for async `pauseUser` calls in interview booking fire-and-forget flows.",
+        "Cover the skipped-status and async pause rejection paths with focused tests."
+      ],
+      "config": [],
+      "verification": [
+        "`pnpm exec prettier --check src/biz/test-suite/enums/test.enum.ts src/biz/test-suite/services/test-batch.service.ts src/biz/test-suite/services/conversation-test.service.ts src/tools/duliday-interview-booking.tool.ts tests/biz/test-suite/services/conversation/conversation-test.service.spec.ts tests/tools/tool/duliday-interview-booking.tool.spec.ts`",
+        "`pnpm exec tsc --noEmit --pretty false`",
+        "`pnpm exec jest tests/biz/test-suite/services/conversation/conversation-test.service.spec.ts tests/biz/test-suite/services/execution/test-batch.service.spec.ts tests/tools/tool/duliday-interview-booking.tool.spec.ts --runInBand`",
+        "pre-push `pnpm run ci:check` passed: 216 suites, 2515 tests"
+      ]
     }
   ]
 }
