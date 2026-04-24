@@ -137,9 +137,9 @@ description: 抽样分析招聘 Agent 的生产对话质量，或分析 BadCase 
 - 只有通过这个质量闸门的草稿，才允许进入用户确认和导入步骤
 
 验证集专用闸门：
-- `conversationCases` 不是“更长的 scenarioCase”。只有当样本保留整段真实对话有独立回归价值时，才进入 `验证集`
+- `conversationCases` 不是“更长的 scenarioCase”。`验证集` 可以来自 BadCase 策展、重写或补全后的多轮回归样本；判断标准是它是否需要多轮状态回放，而不是是否逐字等于原始生产对话
 - BadCase 只有单条用户消息、事故备注、截图转写片段、或 0-3 行短上下文时，默认只能生成 `scenarioCases`，不能生成 `conversationCases`
-- 能进入 `验证集` 的样本必须满足：有完整 `conversation`，能解析出至少 2 个候选人 turn 和 2 个招募经理 turn，且当前问题依赖跨轮上下文、记忆延续、已展示岗位、已收集报名字段、或预约流程状态
+- 能进入 `验证集` 的样本必须满足：有足够完整的 `conversation`，能解析出至少 2 个用户侧 turn 和 2 个 Agent/招募经理侧 turn，且当前问题依赖跨轮上下文、记忆延续、已展示岗位、已收集报名字段、或预约流程状态；角色名不要求固定为“候选人/招募经理”，只要双方发言边界可识别即可
 - 缺少 `chatId` 但有完整对话文本时，可以作为验证集草稿，但 `remark` 必须写明“无 chatId，无法回查生产工具流水”；涉及动态事实时优先降级为 `scenarioCases`
 - 如果原始 BadCase 只是“最后一句 + 人工评价”，即使 `chatHistory` 字段里包含后续真人回复，也不要把它直接放进验证集；先截断到事故发生前，并判断是否仍然有完整回归价值
 - 删除或不进入验证集的常见样本：寒暄开场、无意义输入、只有单轮问答、只验证一句话术、无法判断 Agent 应该做什么、只能靠历史真人回复复刻才能得分
@@ -166,8 +166,8 @@ description: 抽样分析招聘 Agent 的生产对话质量，或分析 BadCase 
 2. `conversationCases`：用于导入 `验证集`
 - `validationId`: 稳定 ID，同一条验证样本后续迭代必须保持不变
 - `validationTitle`: 验证标题，必须概括根因和关键上下文，不要只写随机 caseName 或“真实生产对话回归样本”
-- `conversation`: 完整对话记录；只能包含到待验证问题发生时所需的上下文，不要把后续真人补救、人工评语、或目标答案混进对话正文
-- `chatId`: 主 chat_id；真实生产样本应优先提供，无法提供时在 `remark` 解释证据边界
+- `conversation`: 足够回放该 BadCase 根因的多轮对话记录；只能包含到待验证问题发生时所需的上下文，不要把后续真人补救、人工评语、或目标答案混进对话正文
+- `chatId`: 主 chat_id；有真实生产来源时优先提供，BadCase 策展/重写样本无法提供时在 `remark` 解释证据边界
 - `participantName / managerName / consultTime`: 对话元信息，可选
 - `sourceType`: `真实生产 / 从BadCase沉淀 / 从GoodCase沉淀 / 人工补充`
 - `sourceBadCaseIds / sourceGoodCaseIds / sourceChatIds`: 溯源信息，可选
