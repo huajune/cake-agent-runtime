@@ -12,9 +12,9 @@
 ## 待发布
 
 **预计版本**: `v5.2.0`
-**最近更新**: `2026-04-23`
+**最近更新**: `2026-04-24`
 **来源分支**: `develop`
-**累计 PR**: 18
+**累计 PR**: 19
 
 ### 更新摘要
 - PR #72 fix: 完善通知链路并修复群任务与消息处理后续问题
@@ -41,6 +41,21 @@
 - PR #102 Added empty-text recovery and persisted empty Agent telemetry before failure handling, so production incidents retain tool/step context.
 - PR #102 Tightened candidate-consultation rules for meal objections, salary details, same-day interview precheck, booking promises, and current-focus job extraction.
 - PR #102 Added labor-form normalization so generic "兼职/全职" does not become a misleading platform-level filter.
+- PR #104 align feedback validation and test-suite SOP/skill docs with the real execution chain, including production sync for `/web/test-suite`
+- PR #104 add production sync tooling and missing Supabase migrations for conversation snapshots, execution snapshot references, and `reviewer_source`
+- PR #104 complete test-suite review write-back flows across scenario tests and regression validation, including source-aware review labels and Feishu status updates
+- PR #104 fix conversation batch completion/status aggregation and test-suite UI review details/stat cards
+- PR #104 候选人首条 `我是阳光明媚`（微信加好友自动打招呼模板，xx 是昵称）被当作真实姓名写入 `interview_info.name`，登记预约时原样提交到海绵，门店拿到一个"阳光明媚"而非真名。
+- PR #104 岗位 527385 的 supplement label 中，`是否学生（不要学生）` / `专业（非新媒、食品）` / `周四六日都能上班吗` 这类**带约束语义的筛选题**被原样塞进 `bookingChecklist.templateText` 当收集项问候选人，候选人答"食品类 / 不一定"等硬伤答案，Agent 没识别直接 `duliday_interview_booking` 成功提交。
+- PR #104 **`MessageParser.stripTimeContext` + `name-guard`**：短期记忆通过 `injectTimeContext` 给每条消息追加 `\n[消息发送时间：...]` 后缀，把 `^...$` 锚定的 `AUTO_GREETING_REGEX` 绕过 —— sanitizer 看到的消息不再是 `我是XX` 纯文本，所以放行了昵称。现在匹配前先剥离时间后缀，命中硬规则照常拦截。
+- PR #104 **`SessionService.saveFacts(..., { forceNullFields })`**：`deepMerge` 的 "null 不覆盖" 语义让 sanitizer 的 null 无法清洗已污染 Redis 字段。新增 `forceNullFields` 出口，sanitizer 命中时传 `['name']`，显式覆盖绕开 deepMerge，保证历史污染也能在下一轮 extraction 时被洗掉。
+- PR #104 precheck 分流：`customerLabelDefinitions` 经 classifier 拆分，`templateText`/`requiredFields` 只含 collect；screening 单独出口到新字段 `screeningChecks`（带 labelName / labelId / mode / failSignals）。
+- PR #104 booking 兜底：`findScreeningFailure(supplementAnswers)` 在 `fetchJobs` 之前跑，命中就不发远程请求，阻止不合格候选人进入海绵。
+- PR #104 `tests/memory/facts/name-guard.spec.ts` — 带时间后缀的三种形态（有/无标点、多行）均被 drop
+- PR #104 `tests/memory/session.service.spec.ts` — `forceNullFields` 显式覆盖已污染 `interview_info.name`，其他字段保留
+- PR #104 `tests/tools/duliday/supplement-label-classifier.spec.ts`（新）— classifier 四种模式 + `findScreeningFailure` 遍历逻辑
+- PR #104 `tests/tools/tool/duliday-interview-precheck.tool.spec.ts` — 筛选型 label 不入 templateText；`screeningChecks` 结构正确；全 collect 时字段缺省
+- PR #104 `tests/tools/duliday-interview-booking.tool.spec.ts` — 保留 `buildCustomerLabelList` 旧测试
 
 ### 新功能
 - PR #72 新增飞书通知路由，支持 bot 到接收人的映射。
@@ -53,6 +68,7 @@
 - PR #98 表情消息复用 vision 识别管线，按消息类型区分图片与表情前缀。
 - PR #98 replay 命中 `advance_stage` / `invite_to_group` / `duliday_interview_booking` 等不可逆工具时跳过重跑，避免副作用与回复丢弃冲突。
 - PR #99 feat: 新增部署完成后的飞书企微私域监控群通知脚本，并接入本地部署和 tag 部署 workflow
+- PR #104 **`SessionService.saveFacts(..., { forceNullFields })`**：`deepMerge` 的 "null 不覆盖" 语义让 sanitizer 的 null 无法清洗已污染 Redis 字段。新增 `forceNullFields` 出口，sanitizer 命中时传 `['name']`，显式覆盖绕开 deepMerge，保证历史污染也能在下一轮 extraction 时被洗掉。
 
 ### 问题修复
 - PR #72 修复企业级群任务发送、后续 BI 查询、回复归一化与次要消息监控问题。
@@ -67,6 +83,8 @@
 - PR #96 修正 `stepDurationMs` 统计精度，避免 Anthropic 秒级时间戳造成排障误判。
 - PR #98 修复 `invite_to_group` 记忆、MCP package exports 解析与相关 Agent 链路问题。
 - PR #99 chore: 统一 CHANGELOG 更新摘要规则，保留 `feat:` / `fix:` / `chore:` 等轻量类型前缀
+- PR #104 fix conversation batch completion/status aggregation and test-suite UI review details/stat cards
+- PR #104 booking 兜底：`findScreeningFailure(supplementAnswers)` 在 `fetchJobs` 之前跑，命中就不发远程请求，阻止不合格候选人进入海绵。
 
 ### 优化调整
 - PR #74 抽取全局 `NotificationModule`，拆分告警、运维、私聊监控 channel 与卡片渲染。
@@ -84,6 +102,7 @@
 - PR #93 重写 Changelog 生成链路，按 PR body 的中文/英文栏目和关键词分发到具体分类。
 - PR #98 精简 recruitment-case 模块依赖，并适配 Feishu bitable 与 curated-dataset 重构后的测试。
 - PR #102 Tightened candidate-consultation rules for meal objections, salary details, same-day interview precheck, booking promises, and current-focus job extraction.
+- PR #104 precheck 分流：`customerLabelDefinitions` 经 classifier 拆分，`templateText`/`requiredFields` 只含 collect；screening 单独出口到新字段 `screeningChecks`（带 labelName / labelId / mode / failSignals）。
 
 ### 运维与流程
 - PR #74 `uncaughtException` 与 `unhandledRejection` 统一进入 incident pipeline。
@@ -99,6 +118,17 @@
 - PR #102 Updated replay observability so merged replay inputs refresh trace content/source message IDs before the final Agent call.
 - PR #102 Added empty-text recovery and persisted empty Agent telemetry before failure handling, so production incidents retain tool/step context.
 - PR #102 Added labor-form normalization so generic "兼职/全职" does not become a misleading platform-level filter.
+- PR #104 align feedback validation and test-suite SOP/skill docs with the real execution chain, including production sync for `/web/test-suite`
+- PR #104 add production sync tooling and missing Supabase migrations for conversation snapshots, execution snapshot references, and `reviewer_source`
+- PR #104 complete test-suite review write-back flows across scenario tests and regression validation, including source-aware review labels and Feishu status updates
+- PR #104 候选人首条 `我是阳光明媚`（微信加好友自动打招呼模板，xx 是昵称）被当作真实姓名写入 `interview_info.name`，登记预约时原样提交到海绵，门店拿到一个"阳光明媚"而非真名。
+- PR #104 岗位 527385 的 supplement label 中，`是否学生（不要学生）` / `专业（非新媒、食品）` / `周四六日都能上班吗` 这类**带约束语义的筛选题**被原样塞进 `bookingChecklist.templateText` 当收集项问候选人，候选人答"食品类 / 不一定"等硬伤答案，Agent 没识别直接 `duliday_interview_booking` 成功提交。
+- PR #104 **`MessageParser.stripTimeContext` + `name-guard`**：短期记忆通过 `injectTimeContext` 给每条消息追加 `\n[消息发送时间：...]` 后缀，把 `^...$` 锚定的 `AUTO_GREETING_REGEX` 绕过 —— sanitizer 看到的消息不再是 `我是XX` 纯文本，所以放行了昵称。现在匹配前先剥离时间后缀，命中硬规则照常拦截。
+- PR #104 `tests/memory/facts/name-guard.spec.ts` — 带时间后缀的三种形态（有/无标点、多行）均被 drop
+- PR #104 `tests/memory/session.service.spec.ts` — `forceNullFields` 显式覆盖已污染 `interview_info.name`，其他字段保留
+- PR #104 `tests/tools/duliday/supplement-label-classifier.spec.ts`（新）— classifier 四种模式 + `findScreeningFailure` 遍历逻辑
+- PR #104 `tests/tools/tool/duliday-interview-precheck.tool.spec.ts` — 筛选型 label 不入 templateText；`screeningChecks` 结构正确；全 collect 时字段缺省
+- PR #104 `tests/tools/duliday-interview-booking.tool.spec.ts` — 保留 `buildCustomerLabelList` 旧测试
 
 ### 配置变更
 - PR #76 调整企微 callback/runtime 相关配置类型与 UI 表达。
@@ -127,6 +157,9 @@
 - PR #102 `pnpm run lint:check`
 - PR #102 `pnpm exec prettier --check ...`
 - PR #102 Pre-push hook: `pnpm run ci:check` passed, including 214 Jest suites / 2449 tests.
+- PR #104 pre-commit lint / format hooks 绿
+- PR #104 `pnpm run ci:check`（lint:check + format:check + typecheck + build:web + nest build + jest 覆盖率）**216 suites / 2511 tests 全通过**
+- PR #104 pre-push hook 本地 CI 流水通过后才推送
 <!-- release:pending:end -->
 
 ## [5.1.0] - 2026-04-09
