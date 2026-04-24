@@ -11,18 +11,25 @@
 <!-- release:pending:start -->
 ## 待发布
 
-**预计版本**: `v5.2.1`
+**预计版本**: `v5.3.0`
 **最近更新**: `2026-04-24`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #111 Add `workflow_dispatch` support to `Build and Deploy` so a release tag can be deployed explicitly.
 - PR #111 Trigger `deploy.yml` from the release metadata workflow after a new release tag and GitHub Release are created.
 - PR #111 Track merged PR env-related file changes in the generated changelog and surface them in deployment notifications as a manual server `.env.production` sync reminder.
+- PR #115 `76599765` enhance test suite validation workflow — 扩展验证流程（新增 `validation_title` 字段 + DB migration、重写 ExecutionDetailViewer / ReviewModal / ConversationList 等前端组件、完善 test-batch/import/write-back service、补充大量单测）
+- PR #115 `ca6fb3a3` tighten validation dataset curation gate — 收紧 `analyze-chat-badcases` skill 的数据集策展规则
+- PR #115 原分支 `codex/release-v5.2.1-clean` 与 `origin/codex/release-v5.2.1-clean` 发散严重（双方 PR #111/#112 hash 不同），但 develop 已带有这两个 PR 的等价/更新版本，无需重复合入
+- PR #115 只挑取 develop 真正缺失的 2 个 test-suite commit
 
 ### 新功能
 - PR #111 Add `workflow_dispatch` support to `Build and Deploy` so a release tag can be deployed explicitly.
+- PR #115 `76599765` enhance test suite validation workflow — 扩展验证流程（新增 `validation_title` 字段 + DB migration、重写 ExecutionDetailViewer / ReviewModal / ConversationList 等前端组件、完善 test-batch/import/write-back service、补充大量单测）
+- PR #115 `ca6fb3a3` tighten validation dataset curation gate — 收紧 `analyze-chat-badcases` skill 的数据集策展规则
+- PR #115 只挑取 develop 真正缺失的 2 个 test-suite commit
 
 ### 问题修复
 - 无
@@ -33,12 +40,13 @@
 ### 运维与流程
 - PR #111 Trigger `deploy.yml` from the release metadata workflow after a new release tag and GitHub Release are created.
 - PR #111 Track merged PR env-related file changes in the generated changelog and surface them in deployment notifications as a manual server `.env.production` sync reminder.
+- PR #115 原分支 `codex/release-v5.2.1-clean` 与 `origin/codex/release-v5.2.1-clean` 发散严重（双方 PR #111/#112 hash 不同），但 develop 已带有这两个 PR 的等价/更新版本，无需重复合入
 
 ### 配置变更
 - 无
 
 ### 环境变量提醒
-- 无
+- PR #115 检测到环境变量相关文件变更：`.env.example`、`src/infra/config/env.validation.ts`。请手动同步远程服务器 `/data/cake/.env.production`。
 
 ### 验证记录
 - PR #111 `node --check scripts/update-version-changelog.js`
