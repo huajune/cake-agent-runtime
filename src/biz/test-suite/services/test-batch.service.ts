@@ -21,6 +21,7 @@ import {
   FeishuTestStatus,
   TestType,
   ConversationSourceStatus,
+  getReviewerSourceLabel,
 } from '../enums/test.enum';
 
 /**
@@ -510,7 +511,7 @@ export class TestBatchService {
   }
 
   private buildReviewSummary(review: UpdateReviewRequestDto): string {
-    const reviewerLabel = this.getReviewerSourceLabel(this.resolveReviewerSource(review));
+    const reviewerLabel = getReviewerSourceLabel(this.resolveReviewerSource(review)) ?? '人工';
     const trimmedComment = review.reviewComment?.trim();
     if (trimmedComment) {
       return trimmedComment;
@@ -558,21 +559,5 @@ export class TestBatchService {
     }
 
     return ReviewerSource.MANUAL;
-  }
-
-  private getReviewerSourceLabel(source: ReviewerSource): string {
-    switch (source) {
-      case ReviewerSource.CODEX:
-        return 'Codex';
-      case ReviewerSource.CLAUDE:
-        return 'Claude';
-      case ReviewerSource.SYSTEM:
-        return '系统';
-      case ReviewerSource.API:
-        return 'API';
-      case ReviewerSource.MANUAL:
-      default:
-        return '人工';
-    }
   }
 }
