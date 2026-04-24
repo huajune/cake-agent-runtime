@@ -18,7 +18,7 @@ describe('FeishuBitableSyncService', () => {
     mockBitableApi = {
       getTableConfig: jest.fn(),
       getFields: jest.fn().mockResolvedValue([
-        { field_name: '多行文本' },
+        { field_name: '问题主键' },
         { field_name: '问题ID' },
         { field_name: '样本ID' },
         { field_name: '标题' },
@@ -187,7 +187,7 @@ describe('FeishuBitableSyncService', () => {
         badcaseTableConfig.appToken,
         badcaseTableConfig.tableId,
         expect.objectContaining({
-          多行文本: '薪资数据不准确',
+          问题主键: expect.any(String),
           标题: '薪资数据不准确',
           状态: '待分析',
           优先级: 'P2',
@@ -234,7 +234,7 @@ describe('FeishuBitableSyncService', () => {
       };
       mockBitableApi.getTableConfig.mockReturnValue(goodcaseConfig);
       mockBitableApi.getFields.mockResolvedValueOnce([
-        { field_name: '多行文本' },
+        { field_name: '样本主键' },
         { field_name: '样本ID' },
         { field_name: '标题' },
         { field_name: '候选人微信昵称' },
@@ -265,6 +265,7 @@ describe('FeishuBitableSyncService', () => {
 
       const callArgs = mockBitableApi.createRecord.mock.calls[0];
       const fields = callArgs[2];
+      expect(fields['样本主键']).toBe(fields['样本ID']);
       expect(fields['用户消息']).toBeDefined();
       expect(fields.chatId).toBeUndefined();
       expect(fields['备注']).toBe('回复质量很好\nchatId: chat_002');

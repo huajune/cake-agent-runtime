@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   FeishuBitableApiService,
   BitableField,
@@ -9,7 +10,6 @@ import { ConversationParserService } from '@evaluation/conversation-parser.servi
 import { ConversationParseResult } from '../dto/conversation-test.dto';
 import { TestBatchService } from './test-batch.service';
 import { TestExecutionService } from './test-execution.service';
-import { TestWriteBackService } from './test-write-back.service';
 import { ConversationTestService } from './conversation-test.service';
 import { TestSuiteProcessor } from '../test-suite.processor';
 import { ConversationSnapshotRepository } from '../repositories/conversation-snapshot.repository';
@@ -42,6 +42,7 @@ export interface ParsedTestCase {
 export interface ParsedConversationTest {
   recordId: string;
   conversationId: string;
+  validationTitle: string | null;
   participantName: string | null;
   rawText: string;
   parseResult: ConversationParseResult;
@@ -60,17 +61,22 @@ export interface ParsedConversationTest {
 @Injectable()
 export class TestImportService {
   private readonly logger = new Logger(TestImportService.name);
+  private readonly conversationConcurrency: number;
 
   constructor(
     private readonly batchService: TestBatchService,
     private readonly executionService: TestExecutionService,
-    private readonly writeBackService: TestWriteBackService,
     private readonly bitableApi: FeishuBitableApiService,
     private readonly conversationSnapshotRepository: ConversationSnapshotRepository,
     private readonly conversationTestService: ConversationTestService,
     private readonly parserService: ConversationParserService,
     private readonly testProcessor: TestSuiteProcessor,
+    private readonly configService: ConfigService,
   ) {
+    this.conversationConcurrency = this.readPositiveInt('TEST_SUITE_CONVERSATION_CONCURRENCY', 8, {
+      min: 1,
+      max: 20,
+    });
     this.logger.log('TestImportService 初始化完成');
   }
 
@@ -372,6 +378,9 @@ export class TestImportService {
         const participantName = this.extractFieldValue(recordFields, fieldNameToId, [
           ...validationSetFieldNames.participantName,
         ]);
+        const validationTitle = this.extractFieldValue(recordFields, fieldNameToId, [
+          ...validationSetFieldNames.title,
+        ]);
 
         const parseResult = this.parserService.parseConversation(rawText);
 
@@ -383,6 +392,7 @@ export class TestImportService {
         conversations.push({
           recordId: record.record_id,
           conversationId: `conv-${record.record_id}`,
+          validationTitle: validationTitle || null,
           participantName: participantName || null,
           rawText,
           parseResult,
@@ -438,6 +448,12 @@ export class TestImportService {
           'name',
           '姓名',
         ]);
+        const validationTitle = this.extractFieldValue(recordFields, fieldNameToId, [
+          ...validationSetFieldNames.title,
+          '验证标题展示',
+          '多行文本',
+          'Text',
+        ]);
 
         const parseResult = this.parserService.parseConversation(rawText);
 
@@ -451,6 +467,7 @@ export class TestImportService {
         conversations.push({
           recordId: record.record_id,
           conversationId: `conv-${record.record_id}`,
+          validationTitle: validationTitle || null,
           participantName: participantName || null,
           rawText,
           parseResult,
@@ -482,7 +499,9 @@ export class TestImportService {
           const content = bracketMatch[2];
           const isAssistant =
             userName === '招募经理' ||
+            userName === '招聘经理' ||
             userName === '经理' ||
+            userName === '客服' ||
             userName === 'AI' ||
             userName === 'assistant';
           return { role: isAssistant ? MessageRole.ASSISTANT : MessageRole.USER, content };
@@ -495,11 +514,13 @@ export class TestImportService {
         if (
           line.startsWith('AI:') ||
           line.startsWith('assistant:') ||
-          line.startsWith('招募经理:')
+          line.startsWith('招募经理:') ||
+          line.startsWith('招聘经理:') ||
+          line.startsWith('客服:')
         ) {
           return {
             role: MessageRole.ASSISTANT,
-            content: line.replace(/^(AI|assistant|招募经理):\s*/i, ''),
+            content: line.replace(/^(AI|assistant|招募经理|招聘经理|客服):\s*/i, ''),
           };
         }
 
@@ -540,12 +561,13 @@ export class TestImportService {
     const sourceIds: string[] = [];
 
     for (const conv of conversations) {
-      const caseName = conv.participantName || '未知用户';
+      const caseName = conv.validationTitle || conv.participantName || '未知验证';
 
       const source = await this.conversationSnapshotRepository.create({
         batchId: batch.id,
         feishuRecordId: conv.recordId,
         conversationId: conv.conversationId || conv.recordId,
+        validationTitle: conv.validationTitle || undefined,
         participantName: conv.participantName || undefined,
         fullConversation: conv.parseResult.messages,
         rawText: conv.rawText,
@@ -564,9 +586,11 @@ export class TestImportService {
 
     await this.batchService.updateBatchStatus(batch.id, BatchStatus.RUNNING);
 
-    this.executeConversationBatchAsync(batch.id, sourceIds).catch((err: Error) => {
-      this.logger.error(`回归验证批量执行失败: ${err.message}`, err.stack);
-    });
+    this.executeConversationBatchAsync(batch.id, sourceIds, options?.parallel).catch(
+      (err: Error) => {
+        this.logger.error(`回归验证批量执行失败: ${err.message}`, err.stack);
+      },
+    );
 
     this.logger.log(`回归验证批次已创建，共 ${savedCases.length} 条用例，开始异步执行`);
 
@@ -581,30 +605,45 @@ export class TestImportService {
   /**
    * 异步执行回归验证批次
    */
-  private async executeConversationBatchAsync(batchId: string, sourceIds: string[]): Promise<void> {
-    this.logger.log(`开始异步执行回归验证批次: ${batchId}, 共 ${sourceIds.length} 条对话`);
+  private async executeConversationBatchAsync(
+    batchId: string,
+    sourceIds: string[],
+    parallel?: boolean,
+  ): Promise<void> {
+    const concurrency = this.resolveConversationConcurrency(sourceIds.length, parallel);
+    this.logger.log(
+      `开始异步执行回归验证批次: ${batchId}, 共 ${sourceIds.length} 条对话，并发=${concurrency}`,
+    );
 
     let successCount = 0;
     let failedCount = 0;
+    let cursor = 0;
 
-    for (const sourceId of sourceIds) {
-      try {
-        const result = await this.conversationTestService.executeConversation(sourceId);
-        successCount++;
-        this.logger.debug(`对话 ${sourceId} 执行成功 (${successCount}/${sourceIds.length})`);
+    const runWorker = async () => {
+      while (cursor < sourceIds.length) {
+        const currentIndex = cursor++;
+        const sourceId = sourceIds[currentIndex];
 
-        await this.writeBackConversationResult(sourceId, result);
-      } catch (error: unknown) {
-        failedCount++;
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        this.logger.error(`对话 ${sourceId} 执行失败: ${errorMsg}`);
+        try {
+          await this.conversationTestService.executeConversation(sourceId);
+          successCount++;
+          this.logger.debug(
+            `对话 ${sourceId} 执行成功 (${successCount + failedCount}/${sourceIds.length})`,
+          );
+        } catch (error: unknown) {
+          failedCount++;
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          this.logger.error(`对话 ${sourceId} 执行失败: ${errorMsg}`);
 
-        await this.conversationSnapshotRepository.updateStatus(
-          sourceId,
-          ConversationSourceStatus.FAILED,
-        );
+          await this.conversationSnapshotRepository.updateStatus(
+            sourceId,
+            ConversationSourceStatus.FAILED,
+          );
+        }
       }
-    }
+    };
+
+    await Promise.all(Array.from({ length: concurrency }, () => runWorker()));
 
     if (failedCount === sourceIds.length) {
       await this.batchService.updateBatchStatus(batchId, BatchStatus.CANCELLED);
@@ -615,52 +654,16 @@ export class TestImportService {
     this.logger.log(`回归验证批次 ${batchId} 执行完成: 成功 ${successCount}, 失败 ${failedCount}`);
   }
 
-  /**
-   * 回写回归验证结果到飞书
-   */
-  private async writeBackConversationResult(
-    sourceId: string,
-    resultPayload: {
-      avgSimilarityScore: number | null;
-      minSimilarityScore: number | null;
-      evaluationSummary: string | null;
-      dimensionScores: {
-        factualAccuracy: number | null;
-        responseEfficiency: number | null;
-        processCompliance: number | null;
-        toneNaturalness: number | null;
-      };
-    },
-  ): Promise<void> {
-    try {
-      const source = await this.conversationSnapshotRepository.findById(sourceId);
-      if (!source?.feishu_record_id) {
-        this.logger.warn(`对话源 ${sourceId} 缺少飞书记录ID，跳过回写`);
-        return;
-      }
-
-      const result = await this.writeBackService.writeBackSimilarityScore(
-        source.feishu_record_id,
-        resultPayload.avgSimilarityScore,
-        {
-          batchId: source.batch_id || undefined,
-          minSimilarityScore: resultPayload.minSimilarityScore,
-          evaluationSummary: resultPayload.evaluationSummary,
-          dimensionScores: resultPayload.dimensionScores,
-        },
-      );
-
-      if (result.success) {
-        this.logger.debug(
-          `对话 ${sourceId} 回写飞书成功，相似度=${resultPayload.avgSimilarityScore}`,
-        );
-      } else {
-        this.logger.warn(`对话 ${sourceId} 回写飞书失败: ${result.error}`);
-      }
-    } catch (error: unknown) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      this.logger.error(`对话 ${sourceId} 回写飞书异常: ${errorMsg}`);
+  private resolveConversationConcurrency(total: number, parallel?: boolean): number {
+    if (total <= 0) {
+      return 1;
     }
+
+    if (parallel === false) {
+      return 1;
+    }
+
+    return Math.min(total, this.conversationConcurrency);
   }
 
   /**
@@ -759,5 +762,27 @@ export class TestImportService {
     }
 
     return String(value).trim();
+  }
+
+  private readPositiveInt(
+    key: string,
+    fallback: number,
+    bounds: { min: number; max: number },
+  ): number {
+    const raw = this.configService.get<string | number>(key);
+    const parsed = typeof raw === 'number' ? raw : Number(raw);
+
+    if (!Number.isFinite(parsed)) {
+      return fallback;
+    }
+
+    const normalized = Math.floor(parsed);
+    if (normalized < bounds.min) {
+      return bounds.min;
+    }
+    if (normalized > bounds.max) {
+      return bounds.max;
+    }
+    return normalized;
   }
 }

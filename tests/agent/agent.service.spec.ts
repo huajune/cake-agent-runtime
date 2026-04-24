@@ -239,7 +239,6 @@ describe('AgentRunnerService', () => {
 
     const result = await service.invoke(invokeParams);
     const recoveryCall = mockLlm.generate.mock.calls[1][0] as Record<string, unknown>;
-    const recoveryMessages = recoveryCall.messages as Array<{ role: string; content: string }>;
 
     expect(mockLlm.generate).toHaveBeenCalledTimes(2);
     expect(recoveryCall).toEqual(
@@ -250,7 +249,9 @@ describe('AgentRunnerService', () => {
     expect(recoveryCall).not.toHaveProperty('tools');
     expect(recoveryCall).not.toHaveProperty('stopWhen');
     expect(recoveryCall).not.toHaveProperty('prepareStep');
-    expect(recoveryMessages.at(-1)?.content).toContain('requestedDate.status=unavailable');
+    expect(recoveryCall).not.toHaveProperty('messages');
+    expect(recoveryCall.prompt).toContain('对话上下文');
+    expect(recoveryCall.prompt).toContain('requestedDate.status=unavailable');
     expect(result.text).toBe('今天已经过了报名截止，明天下午 1 点半到 5 点可以。');
     expect(result.usage.totalTokens).toBe(115);
     expect(result.agentSteps.at(-1)).toEqual(

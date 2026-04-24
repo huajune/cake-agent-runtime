@@ -1,6 +1,16 @@
 import { memo, useCallback } from 'react';
-import { Activity, ChevronRight, Check, X, Clock, Loader2, AlertTriangle } from 'lucide-react';
+import {
+  Activity,
+  ChevronRight,
+  Check,
+  X,
+  Clock,
+  Loader2,
+  AlertTriangle,
+  Play,
+} from 'lucide-react';
 import { TestExecution } from '@/api/services/agent-test.service';
+import { getCategoryStyleClass } from '../../utils';
 import styles from './index.module.scss';
 
 interface CaseListProps {
@@ -8,6 +18,8 @@ interface CaseListProps {
   currentReviewIndex: number;
   reviewMode: boolean;
   onSelect: (index: number) => void;
+  onExecute?: (executionId: string) => void;
+  executing?: string | null;
 }
 
 /** 状态图标配置类型 */
@@ -34,13 +46,6 @@ const REVIEW_STATUS_CONFIG: Record<string, StatusIconConfig> = {
   skipped: { icon: Clock, className: 'reviewPending', title: '跳过评审' },
 };
 
-/** 分类颜色类名数组 */
-const CATEGORY_COLOR_CLASSES = [
-  'category1', 'category2', 'category3', 'category4',
-  'category5', 'category6', 'category7', 'category8',
-  'category9', 'category10', 'category11',
-] as const;
-
 /** 获取执行状态图标配置 */
 const getExecStatusIcon = (status: string): StatusIconConfig =>
   EXEC_STATUS_CONFIG[status] || EXEC_STATUS_CONFIG.pending;
@@ -49,28 +54,35 @@ const getExecStatusIcon = (status: string): StatusIconConfig =>
 const getReviewStatusIcon = (status: string): StatusIconConfig =>
   REVIEW_STATUS_CONFIG[status] || REVIEW_STATUS_CONFIG.pending;
 
-/** 获取分类标签颜色样式类名 */
-const getCategoryStyle = (category: string | null | undefined): string => {
-  if (!category) return 'categoryDefault';
-  const match = category.match(/^(\d+)-/);
-  if (!match) return 'categoryDefault';
-  const num = parseInt(match[1], 10);
-  return CATEGORY_COLOR_CLASSES[(num - 1) % CATEGORY_COLOR_CLASSES.length] || 'categoryDefault';
-};
-
 /** 单个用例项组件 */
 interface CaseItemProps {
   exec: TestExecution;
   index: number;
   isReviewing: boolean;
   onSelect: (index: number) => void;
+  onExecute?: (executionId: string) => void;
+  executing?: string | null;
 }
 
-const CaseItem = memo(function CaseItem({ exec, index, isReviewing, onSelect }: CaseItemProps) {
+const CaseItem = memo(function CaseItem({
+  exec,
+  index,
+  isReviewing,
+  onSelect,
+  onExecute,
+  executing,
+}: CaseItemProps) {
   const execStatus = getExecStatusIcon(exec.execution_status);
   const reviewStatus = getReviewStatusIcon(exec.review_status);
   const ExecIcon = execStatus.icon;
   const ReviewIcon = reviewStatus.icon;
+  const isExecuting = executing === exec.id || exec.execution_status === 'running';
+  const canRerun =
+    !!onExecute &&
+    (exec.review_status === 'failed' ||
+      exec.execution_status === 'failure' ||
+      exec.execution_status === 'timeout' ||
+      exec.execution_status === 'running');
 
   const handleClick = useCallback(() => onSelect(index), [onSelect, index]);
 
@@ -84,7 +96,9 @@ const CaseItem = memo(function CaseItem({ exec, index, isReviewing, onSelect }: 
         <div className={styles.caseNameRow}>
           <span className={styles.caseName}>{exec.case_name || '未命名用例'}</span>
           {exec.category && (
-            <span className={`${styles.categoryTag} ${styles[getCategoryStyle(exec.category)]}`}>
+            <span
+              className={`${styles.categoryTag} ${styles[getCategoryStyleClass(exec.category)]}`}
+            >
               {exec.category}
             </span>
           )}
@@ -106,6 +120,21 @@ const CaseItem = memo(function CaseItem({ exec, index, isReviewing, onSelect }: 
             <ReviewIcon size={12} />
           </span>
         </div>
+        {canRerun && (
+          <button
+            type="button"
+            className={styles.executeBtn}
+            onClick={(event) => {
+              event.stopPropagation();
+              onExecute?.(exec.id);
+            }}
+            disabled={isExecuting}
+            title="重新跑该用例"
+            aria-label={`重新跑 ${exec.case_name || '未命名用例'}`}
+          >
+            {isExecuting ? <Loader2 size={12} className={styles.spinning} /> : <Play size={12} />}
+          </button>
+        )}
         <ChevronRight size={14} className={styles.chevron} />
       </div>
     </div>
@@ -115,7 +144,14 @@ const CaseItem = memo(function CaseItem({ exec, index, isReviewing, onSelect }: 
 /**
  * 用例列表组件
  */
-export function CaseList({ executions, currentReviewIndex, reviewMode, onSelect }: CaseListProps) {
+export function CaseList({
+  executions,
+  currentReviewIndex,
+  reviewMode,
+  onSelect,
+  onExecute,
+  executing,
+}: CaseListProps) {
   const safeExecutions = Array.isArray(executions) ? executions : [];
 
   return (
@@ -135,6 +171,8 @@ export function CaseList({ executions, currentReviewIndex, reviewMode, onSelect 
             index={index}
             isReviewing={reviewMode && currentReviewIndex === index}
             onSelect={onSelect}
+            onExecute={onExecute}
+            executing={executing}
           />
         ))}
       </div>

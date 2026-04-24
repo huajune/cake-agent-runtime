@@ -16,7 +16,7 @@ describe('CuratedDatasetImportService', () => {
   let bitableApi: jest.Mocked<FeishuBitableApiService>;
 
   const scenarioFields = [
-    { field_id: 'fld_primary', field_name: '多行文本', type: 1 },
+    { field_id: 'fld_primary', field_name: '用例主键', type: 1 },
     { field_id: 'fld_case_id', field_name: '用例ID', type: 1 },
     { field_id: 'fld_title', field_name: '用例名称', type: 1 },
     { field_id: 'fld_source_bad', field_name: '来源BadCaseID', type: 1 },
@@ -35,11 +35,10 @@ describe('CuratedDatasetImportService', () => {
     { field_id: 'fld_last_test', field_name: '最近测试时间', type: 5 },
     { field_id: 'fld_test_batch', field_name: '测试批次', type: 1 },
     { field_id: 'fld_error_reason', field_name: '错误原因', type: 3 },
-    { field_id: 'fld_last_execution', field_name: '最近执行ID', type: 1 },
   ];
 
   const conversationFields = [
-    { field_id: 'fld_primary', field_name: '多行文本', type: 1 },
+    { field_id: 'fld_primary', field_name: '验证主键', type: 1 },
     { field_id: 'fld_validation_id', field_name: '验证ID', type: 1 },
     { field_id: 'fld_title', field_name: '验证标题', type: 1 },
     { field_id: 'fld_source_bad', field_name: '来源BadCaseID', type: 1 },
@@ -64,7 +63,7 @@ describe('CuratedDatasetImportService', () => {
   ];
 
   const lineageFields = [
-    { field_id: 'fld_rel_primary', field_name: '多行文本', type: 1 },
+    { field_id: 'fld_rel_primary', field_name: '关系摘要', type: 1 },
     { field_id: 'fld_rel_id', field_name: '关系ID', type: 1 },
     { field_id: 'fld_rel_source_table', field_name: '来源表', type: 3 },
     { field_id: 'fld_rel_source_asset', field_name: '来源资产ID', type: 1 },
@@ -176,7 +175,7 @@ describe('CuratedDatasetImportService', () => {
       'app-test',
       'tbl-test',
       expect.objectContaining({
-        多行文本: '追问地址后再推荐岗位',
+        用例主键: 'TC-001',
         用例ID: 'TC-001',
         用例名称: '追问地址后再推荐岗位',
         来源BadCaseID: 'bad-1, bad-2',
@@ -328,7 +327,6 @@ describe('CuratedDatasetImportService', () => {
         最近测试时间: null,
         测试批次: null,
         错误原因: null,
-        最近执行ID: null,
       }),
     );
     expect(bitableApi.updateRecord).toHaveBeenCalledWith(
@@ -386,7 +384,7 @@ describe('CuratedDatasetImportService', () => {
           {
             record_id: 'rec-same',
             fields: {
-              fld_primary: '保持不变的 case',
+              fld_primary: 'TC-002',
               fld_case_id: 'TC-002',
               fld_title: '保持不变的 case',
               fld_source_bad: 'bad-3',

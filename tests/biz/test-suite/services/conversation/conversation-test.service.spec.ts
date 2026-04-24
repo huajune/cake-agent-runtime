@@ -77,15 +77,20 @@ describe('ConversationTestService', () => {
       id: 'source-1',
       batch_id: 'batch-1',
       conversation_id: 'conv-001',
+      validation_title: '测试验证标题',
       participant_name: 'Alice',
       full_conversation: [
         { role: 'user', content: '你好', timestamp: '17:00' },
         { role: 'assistant', content: '您好，有什么可以帮您？', timestamp: '17:01' },
       ],
+      raw_text: null,
       status: ConversationSourceStatus.PENDING,
       total_turns: 1,
       avg_similarity_score: null,
+      min_similarity_score: null,
       feishu_record_id: 'rec-001',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
       ...overrides,
     }) as ConversationSnapshotRecord;
 
@@ -118,6 +123,7 @@ describe('ConversationTestService', () => {
     writeBackService = module.get(TestWriteBackService);
 
     jest.clearAllMocks();
+    mockWriteBackService.writeBackSimilarityScore.mockResolvedValue({ success: true });
   });
 
   it('should be defined', () => {
@@ -215,6 +221,20 @@ describe('ConversationTestService', () => {
       );
     });
 
+    it('should write back validation result after success', async () => {
+      await service.executeConversation('source-1');
+
+      expect(writeBackService.writeBackSimilarityScore).toHaveBeenCalledWith(
+        'rec-001',
+        85,
+        expect.objectContaining({
+          batchId: 'batch-1',
+          minSimilarityScore: 85,
+          evaluationSummary: '回复正确',
+        }),
+      );
+    });
+
     it('should set source to FAILED and re-throw when repository fails', async () => {
       mockConversationSnapshotRepository.updateSource.mockRejectedValue(
         new Error('Database write error'),
@@ -252,6 +272,46 @@ describe('ConversationTestService', () => {
       await service.executeConversation('source-1');
 
       expect(llmEvaluationService.evaluate).not.toHaveBeenCalled();
+    });
+
+    it('should use tool-grounded evaluation for dynamic tool data turns', async () => {
+      const toolCalls = [
+        {
+          toolName: 'duliday_job_list',
+          args: { cityName: '上海', keyword: '南翔' },
+          result: { items: [{ storeName: '山姆', distance: '9km' }] },
+          resultCount: 1,
+          status: 'narrow',
+        },
+      ];
+      mockOrchestrator.invoke.mockResolvedValue({
+        ...makeOrchestratorSuccess('南翔附近还有山姆岗位可看。'),
+        toolCalls,
+      });
+      mockLlmEvaluationService.evaluate.mockResolvedValue({
+        score: 88,
+        passed: true,
+        summary: '回复基于本轮工具结果',
+        reason: '工具结果一致',
+        evaluationId: 'eval-tool',
+      });
+
+      await service.executeConversation('source-1');
+
+      expect(llmEvaluationService.evaluate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          evaluationMode: 'tool_grounded',
+          toolCalls,
+          expectedOutput: '您好，有什么可以帮您？',
+        }),
+      );
+      expect(executionRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          similarityScore: 88,
+          reviewStatus: ReviewStatus.PASSED,
+          evaluationReason: expect.stringContaining('动态工具评审'),
+        }),
+      );
     });
 
     it('should reuse existing execution when forceRerun is false', async () => {
@@ -423,7 +483,14 @@ describe('ConversationTestService', () => {
             batch_id: 'batch-1',
             feishu_record_id: 'rec-1',
             conversation_id: 'conv-1',
+            validation_title: '北京必胜客岗位咨询',
             participant_name: 'Bob',
+            full_conversation: [
+              { role: 'user', content: '你好' },
+              { role: 'assistant', content: '您好' },
+              { role: 'user', content: '北京必胜客有岗位在招吗？' },
+            ],
+            raw_text: '候选人：我想找早班兼职',
             total_turns: 3,
             avg_similarity_score: 75,
             min_similarity_score: 60,
@@ -447,6 +514,7 @@ describe('ConversationTestService', () => {
       expect(result.total).toBe(1);
       expect(result.page).toBe(1);
       expect(result.pageSize).toBe(20);
+      expect(result.sources[0].validationTitle).toBe('北京必胜客岗位咨询');
     });
 
     it('should pass status filter when provided', async () => {

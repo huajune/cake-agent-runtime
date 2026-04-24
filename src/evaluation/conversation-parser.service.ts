@@ -112,7 +112,8 @@ export class ConversationParserService {
       if (current.role === 'user') {
         turnNumber++;
 
-        // 查找该用户消息之后的助手回复
+        // 查找该用户消息之后的历史助手回复。注意：动态工具数据场景只能作为参考话术，
+        // 不能直接当作岗位库存/距离/面试时间等事实断言。
         const nextAssistant = messages[i + 1];
         const expectedOutput = nextAssistant?.role === 'assistant' ? nextAssistant.content : '';
 

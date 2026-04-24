@@ -193,11 +193,15 @@ export async function executeBatchTest(
   failureCount: number;
   results: TestChatResponse[];
 }> {
-  const { data } = await api.post('/test-suite/batch', {
-    cases,
-    batchName,
-    parallel,
-  }, { timeout: AGENT_TEST_TIMEOUT });
+  const { data } = await api.post(
+    '/test-suite/batch',
+    {
+      cases,
+      batchName,
+      parallel,
+    },
+    { timeout: AGENT_TEST_TIMEOUT },
+  );
   return unwrapResponse<{
     batchId: string;
     totalCases: number;
@@ -274,6 +278,15 @@ export async function getExecution(id: string): Promise<TestExecution> {
   return unwrapResponse<TestExecution>(data);
 }
 
+export async function rerunExecution(id: string): Promise<TestExecution> {
+  const { data } = await api.post(
+    `/test-suite/executions/${id}/execute`,
+    {},
+    { timeout: AGENT_TEST_TIMEOUT },
+  );
+  return unwrapResponse<TestExecution>(data);
+}
+
 export async function updateReview(
   executionId: string,
   review: UpdateReviewRequest,
@@ -298,7 +311,9 @@ export async function importFromFeishu(request: ImportFromFeishuRequest): Promis
   return unwrapResponse<ImportResult>(data);
 }
 
-export async function submitFeedback(request: SubmitFeedbackRequest): Promise<SubmitFeedbackResponse> {
+export async function submitFeedback(
+  request: SubmitFeedbackRequest,
+): Promise<SubmitFeedbackResponse> {
   const { data } = await api.post('/test-suite/feedback', request);
   return unwrapResponse<SubmitFeedbackResponse>(data);
 }
@@ -306,7 +321,9 @@ export async function submitFeedback(request: SubmitFeedbackRequest): Promise<Su
 // ==================== 一键测试 & 飞书回写 ====================
 
 export async function quickCreateBatch(request?: QuickCreateBatchRequest): Promise<ImportResult> {
-  const { data } = await api.post('/test-suite/batches/quick-create', request || {}, { timeout: AGENT_TEST_TIMEOUT });
+  const { data } = await api.post('/test-suite/batches/quick-create', request || {}, {
+    timeout: AGENT_TEST_TIMEOUT,
+  });
   return unwrapResponse<ImportResult>(data);
 }
 
@@ -358,9 +375,13 @@ export async function executeConversation(params: {
   avgSimilarityScore: number | null;
   minSimilarityScore: number | null;
 }> {
-  const { data } = await api.post(`/test-suite/conversations/${params.sourceId}/execute`, {
-    forceRerun: params.forceRerun,
-  }, { timeout: AGENT_TEST_TIMEOUT });
+  const { data } = await api.post(
+    `/test-suite/conversations/${params.sourceId}/execute`,
+    {
+      forceRerun: params.forceRerun,
+    },
+    { timeout: AGENT_TEST_TIMEOUT },
+  );
   return unwrapResponse<{
     sourceId: string;
     conversationId: string;
@@ -381,10 +402,14 @@ export async function executeConversationBatch(params: {
   executedConversations: number;
   avgSimilarityScore: number | null;
 }> {
-  const { data } = await api.post(`/test-suite/conversations/batch/${params.batchId}/execute`, {
-    forceRerun: params.forceRerun,
-    parallel: params.parallel,
-  }, { timeout: AGENT_TEST_TIMEOUT });
+  const { data } = await api.post(
+    `/test-suite/conversations/batch/${params.batchId}/execute`,
+    {
+      forceRerun: params.forceRerun,
+      parallel: params.parallel,
+    },
+    { timeout: AGENT_TEST_TIMEOUT },
+  );
   return unwrapResponse<{
     batchId: string;
     totalConversations: number;

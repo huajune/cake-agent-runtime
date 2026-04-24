@@ -102,6 +102,7 @@ export interface CreateConversationSourceData {
   batchId: string;
   feishuRecordId: string;
   conversationId: string;
+  validationTitle?: string;
   participantName?: string;
   fullConversation: unknown;
   rawText?: string;

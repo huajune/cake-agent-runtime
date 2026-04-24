@@ -4,6 +4,11 @@ import { CallerKind } from '@enums/agent.enum';
 import { LlmEvaluationService } from '@evaluation/llm-evaluation.service';
 import { type EvaluationDimensions } from '@evaluation/evaluation.types';
 import { ConversationParserService } from '@evaluation/conversation-parser.service';
+import {
+  type BitableRecord,
+  FeishuBitableApiService,
+} from '@infra/feishu/services/bitable-api.service';
+import { validationSetFieldNames } from '@infra/feishu/constants/feishu-bitable.config';
 import { ConversationSnapshotRepository } from '../repositories/conversation-snapshot.repository';
 import { TestExecutionRepository } from '../repositories/test-execution.repository';
 import { type ConversationSnapshotRecord } from '../entities/conversation-snapshot.entity';
@@ -34,6 +39,20 @@ const DEFAULT_SCENARIO = 'candidate-consultation';
 /** 相似度阈值（及格线） */
 const SIMILARITY_THRESHOLD = 60;
 
+/** 会随生产数据变化的工具；这类轮次不能把历史真人回复当作动态事实断言 */
+const DYNAMIC_FACT_TOOL_NAMES = new Set([
+  'duliday_job_list',
+  'geocode',
+  'duliday_interview_precheck',
+  'duliday_interview_booking',
+  'send_store_location',
+  'invite_to_group',
+]);
+
+/** 允许策展后的验证集显式写成行为断言，此时仍按 expectedOutput 评估 */
+const ASSERTION_EXPECTATION_PATTERN =
+  /^(期望行为|核心检查点|检查点|断言|评审标准|验收标准|Rubric|rubric)[:：]/;
+
 /**
  * 回归验证测试服务
  *
@@ -54,6 +73,7 @@ export class ConversationTestService {
     private readonly executionRepository: TestExecutionRepository,
     private readonly writeBackService: TestWriteBackService,
     @Optional() private readonly batchService?: TestBatchService,
+    @Optional() private readonly bitableApi?: FeishuBitableApiService,
   ) {
     this.logger.log('ConversationTestService 初始化完成');
   }
@@ -134,7 +154,7 @@ export class ConversationTestService {
         await this.batchService.updateBatchStats(source.batch_id);
       }
 
-      return {
+      const result = {
         sourceId,
         conversationId: source.conversation_id,
         totalTurns: turns.length,
@@ -145,6 +165,10 @@ export class ConversationTestService {
         dimensionScores,
         turns: turnResults,
       };
+
+      await this.writeBackConversationResult(source, result);
+
+      return result;
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       this.logger.error(`对话执行失败: ${errorMsg}`);
@@ -228,6 +252,7 @@ export class ConversationTestService {
       pageSize,
       status ? { status } : undefined,
     );
+    const validationTitleMap = await this.resolveMissingValidationTitles(result.data);
 
     return {
       sources: result.data.map((source) => ({
@@ -236,6 +261,8 @@ export class ConversationTestService {
         feishuRecordId: source.feishu_record_id,
         conversationId: source.conversation_id,
         participantName: source.participant_name,
+        validationTitle:
+          source.validation_title ?? validationTitleMap.get(source.feishu_record_id) ?? null,
         totalTurns: source.total_turns,
         avgSimilarityScore: source.avg_similarity_score,
         minSimilarityScore: source.min_similarity_score,
@@ -357,7 +384,7 @@ export class ConversationTestService {
     const manualStatus = this.resolveConversationManualStatus(turnExecutions);
 
     if (manualStatus || reviewSummary) {
-      void this.writeBackService.writeBackSimilarityScore(
+      const writeBackResult = await this.writeBackService.writeBackSimilarityScore(
         source.feishu_record_id,
         source.avg_similarity_score,
         {
@@ -367,12 +394,116 @@ export class ConversationTestService {
           evaluationSummary: reviewSummary || undefined,
         },
       );
+      if (!writeBackResult.success) {
+        this.logger.warn(`回写回归验证评审结果失败: ${writeBackResult.error}`);
+      }
+    }
+
+    if (source.batch_id && this.batchService) {
+      try {
+        await this.batchService.updateBatchStats(source.batch_id);
+      } catch (error) {
+        this.logger.warn(
+          `刷新回归验证批次统计失败: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
 
     return response;
   }
 
   // ========== 私有方法 ==========
+
+  private async resolveMissingValidationTitles(
+    sources: ConversationSnapshotRecord[],
+  ): Promise<Map<string, string>> {
+    const missingRecordIds = sources
+      .filter((source) => !source.validation_title && source.feishu_record_id)
+      .map((source) => source.feishu_record_id);
+
+    if (missingRecordIds.length === 0 || !this.bitableApi) {
+      return new Map();
+    }
+
+    try {
+      const { appToken, tableId } = this.bitableApi.getTableConfig('validationSet');
+      if (!appToken || !tableId) {
+        return new Map();
+      }
+
+      const missingSet = new Set(missingRecordIds);
+      const fields = await this.bitableApi.getFields(appToken, tableId);
+      const fieldNameToId = this.bitableApi.buildFieldNameToIdMap(fields);
+      const records = await this.bitableApi.getAllRecords(appToken, tableId);
+      const titleMap = new Map<string, string>();
+
+      for (const record of records) {
+        if (!missingSet.has(record.record_id)) {
+          continue;
+        }
+
+        const title = this.extractValidationTitle(record, fieldNameToId);
+        if (title) {
+          titleMap.set(record.record_id, title);
+        }
+      }
+
+      return titleMap;
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`读取验证集标题失败，将使用本地快照字段: ${errorMsg}`);
+      return new Map();
+    }
+  }
+
+  private extractValidationTitle(
+    record: BitableRecord,
+    fieldNameToId: Record<string, string>,
+  ): string | null {
+    for (const name of validationSetFieldNames.title) {
+      const fieldId = fieldNameToId[name];
+      const rawValue =
+        (fieldId ? record.fields[fieldId] : undefined) ?? record.fields[name] ?? undefined;
+      const normalized = this.normalizeFieldValue(rawValue);
+      if (normalized) {
+        return normalized;
+      }
+    }
+
+    return null;
+  }
+
+  private normalizeFieldValue(value: unknown): string | null {
+    if (value === undefined || value === null) {
+      return null;
+    }
+
+    if (typeof value === 'string') {
+      return value.trim() || null;
+    }
+
+    if (Array.isArray(value)) {
+      const text = value
+        .map((item: unknown) => {
+          if (typeof item === 'string') return item;
+          if (item && typeof item === 'object' && 'text' in item) {
+            return (item as { text: string }).text;
+          }
+          return String(item);
+        })
+        .join('\n')
+        .trim();
+      return text || null;
+    }
+
+    if (typeof value === 'object') {
+      if ('text' in value) return String((value as { text: string }).text).trim() || null;
+      if ('value' in value) return String((value as { value: unknown }).value).trim() || null;
+    }
+
+    const text = String(value).trim();
+    return text || null;
+  }
 
   private async executeTurn(
     source: ConversationSnapshotRecord,
@@ -479,20 +610,31 @@ export class ConversationTestService {
     let dimensions: EvaluationDimensions | null = null;
 
     if (executionStatus === ExecutionStatus.SUCCESS && turn.expectedOutput && actualOutput) {
+      const toolGroundedEvaluation = this.shouldUseToolGroundedEvaluation(turn, toolCalls);
       const evaluation = await this.llmEvaluationService.evaluate({
         userMessage: turn.userMessage,
         expectedOutput: turn.expectedOutput,
         actualOutput,
         history: turn.history,
+        evaluationMode: toolGroundedEvaluation ? 'tool_grounded' : 'reference_reply',
+        toolCalls: toolGroundedEvaluation ? toolCalls : undefined,
       });
       similarityScore = evaluation.score;
       rating = this.llmEvaluationService.getRating(evaluation.score);
-      evaluationReason = evaluation.reason;
-      evaluationSummary = evaluation.summary ?? evaluation.reason ?? null;
+      evaluationReason = toolGroundedEvaluation
+        ? `动态工具评审：${evaluation.reason}`
+        : evaluation.reason;
+      evaluationSummary = evaluation.summary
+        ? toolGroundedEvaluation
+          ? `动态工具评审：${evaluation.summary}`
+          : evaluation.summary
+        : evaluationReason;
       dimensions = evaluation.dimensions ?? null;
 
       this.logger.debug(
-        `LLM 评估完成: 轮次 ${turn.turnNumber}, 分数: ${evaluation.score}, 通过: ${evaluation.passed}`,
+        `LLM 评估完成: 轮次 ${turn.turnNumber}, 模式: ${
+          toolGroundedEvaluation ? 'tool_grounded' : 'reference_reply'
+        }, 分数: ${evaluation.score}, 通过: ${evaluation.passed}`,
       );
     }
 
@@ -549,6 +691,69 @@ export class ConversationTestService {
       evaluationSummary,
       dimensions,
     };
+  }
+
+  private shouldUseToolGroundedEvaluation(turn: ConversationTurn, toolCalls: unknown[]): boolean {
+    if (!turn.expectedOutput || ASSERTION_EXPECTATION_PATTERN.test(turn.expectedOutput.trim())) {
+      return false;
+    }
+
+    return this.collectToolNames(toolCalls).some((toolName) =>
+      DYNAMIC_FACT_TOOL_NAMES.has(toolName),
+    );
+  }
+
+  private collectToolNames(toolCalls: unknown[]): string[] {
+    if (!Array.isArray(toolCalls)) return [];
+
+    return toolCalls
+      .map((toolCall) => {
+        if (!toolCall || typeof toolCall !== 'object') return null;
+        const record = toolCall as Record<string, unknown>;
+        const name = record.toolName ?? record.name ?? record.tool;
+        return typeof name === 'string' && name.trim() ? name.trim() : null;
+      })
+      .filter((name): name is string => Boolean(name));
+  }
+
+  private async writeBackConversationResult(
+    source: ConversationSnapshotRecord,
+    resultPayload: {
+      avgSimilarityScore: number | null;
+      minSimilarityScore: number | null;
+      evaluationSummary: string | null;
+      dimensionScores: {
+        factualAccuracy: number | null;
+        responseEfficiency: number | null;
+        processCompliance: number | null;
+        toneNaturalness: number | null;
+      };
+    },
+  ): Promise<void> {
+    if (!source.feishu_record_id) {
+      this.logger.warn(`对话源 ${source.id} 缺少飞书记录ID，跳过回写`);
+      return;
+    }
+
+    try {
+      const result = await this.writeBackService.writeBackSimilarityScore(
+        source.feishu_record_id,
+        resultPayload.avgSimilarityScore,
+        {
+          batchId: source.batch_id || undefined,
+          minSimilarityScore: resultPayload.minSimilarityScore,
+          evaluationSummary: resultPayload.evaluationSummary,
+          dimensionScores: resultPayload.dimensionScores,
+        },
+      );
+
+      if (!result.success) {
+        this.logger.warn(`对话 ${source.id} 回写飞书失败: ${result.error}`);
+      }
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`对话 ${source.id} 回写飞书异常: ${errorMsg}`);
+    }
   }
 
   private aggregateDimensionScores(

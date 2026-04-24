@@ -34,7 +34,7 @@ export interface AgentTestFeedback {
 export class FeishuBitableSyncService {
   private readonly logger = new Logger(FeishuBitableSyncService.name);
   private readonly feedbackFieldAliases = {
-    primaryText: ['多行文本', 'Text'],
+    primaryText: ['问题主键', '样本主键', '问题标题', '多行文本', 'Text'],
     candidateName: ['候选人微信昵称', '候选人姓名', '参与者', '姓名'],
     managerName: ['招募经理姓名', '招募经理', '负责人'],
     consultTime: ['咨询时间', '提交时间', '创建时间'],
@@ -150,7 +150,7 @@ export class FeishuBitableSyncService {
         recordFields[fieldName] = value;
       };
 
-      setField(this.feedbackFieldAliases.primaryText, feedbackTitle);
+      setField(this.feedbackFieldAliases.primaryText, feedbackId);
       setField(this.feedbackFieldAliases.title, feedbackTitle);
       setField(this.feedbackFieldAliases.caseName, feedbackId);
 

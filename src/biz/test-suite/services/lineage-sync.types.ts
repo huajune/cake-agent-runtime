@@ -47,7 +47,7 @@ export interface LineageTableContext {
 }
 
 export const lineageFieldAliases = {
-  primaryText: ['多行文本', 'Text'],
+  primaryText: ['关系摘要', '多行文本', 'Text'],
   relationId: ['关系ID'],
   sourceTable: ['来源表'],
   sourceAssetId: ['来源资产ID'],

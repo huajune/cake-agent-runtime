@@ -20,6 +20,7 @@ import { FeishuTestStatus } from '../enums/test.enum';
 export class TestWriteBackService {
   private readonly logger = new Logger(TestWriteBackService.name);
   private readonly fieldResolutionCache = new Map<string, Record<string, string | undefined>>();
+  private readonly updateRetryDelaysMs = [300, 900];
 
   constructor(
     private readonly executionService: TestExecutionService,
@@ -150,7 +151,7 @@ export class TestWriteBackService {
       }
 
       this.logger.debug(`更新字段: ${JSON.stringify(updateFields)}`);
-      const result = await this.bitableApi.updateRecord(appToken, tableId, recordId, updateFields);
+      const result = await this.updateRecordWithRetry(appToken, tableId, recordId, updateFields);
 
       if (!result.success) {
         this.logger.error(`回写飞书失败: ${result.error}`);
@@ -305,7 +306,7 @@ export class TestWriteBackService {
       }
 
       this.logger.debug(`更新字段: ${JSON.stringify(updateFields)}`);
-      const result = await this.bitableApi.updateRecord(appToken, tableId, recordId, updateFields);
+      const result = await this.updateRecordWithRetry(appToken, tableId, recordId, updateFields);
 
       if (!result.success) {
         this.logger.error(`回写相似度分数失败: ${result.error}`);
@@ -348,5 +349,39 @@ export class TestWriteBackService {
 
     this.fieldResolutionCache.set(cacheKey, resolved as Record<string, string | undefined>);
     return resolved;
+  }
+
+  private async updateRecordWithRetry(
+    appToken: string,
+    tableId: string,
+    recordId: string,
+    fields: Record<string, unknown>,
+  ): Promise<{ success: boolean; error?: string }> {
+    let lastError: string | undefined;
+    const attempts = this.updateRetryDelaysMs.length + 1;
+
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        const result = await this.bitableApi.updateRecord(appToken, tableId, recordId, fields);
+        if (result.success) {
+          return result;
+        }
+
+        lastError = result.error;
+      } catch (error: unknown) {
+        lastError = error instanceof Error ? error.message : String(error);
+      }
+
+      if (attempt < attempts) {
+        this.logger.warn(`回写飞书失败，准备重试(${attempt}/${attempts}): ${lastError}`);
+        await this.sleep(this.updateRetryDelaysMs[attempt - 1]);
+      }
+    }
+
+    return { success: false, error: lastError };
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

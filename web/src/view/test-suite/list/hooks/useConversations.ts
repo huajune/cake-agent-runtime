@@ -5,6 +5,8 @@ import {
   type ConversationSnapshot,
 } from '@/api/services/agent-test.service';
 
+const CONVERSATION_PAGE_SIZE = 100;
+
 interface UseConversationsResult {
   conversations: ConversationSnapshot[];
   selectedConversation: ConversationSnapshot | null;
@@ -29,8 +31,8 @@ export function useConversations(): UseConversationsResult {
   const [loading, setLoading] = useState(false);
   const [executing, setExecuting] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
-  const [page] = useState(1); // Page state reserved for future pagination
-  const pageSize = 20;
+  const page = 1;
+  const pageSize = CONVERSATION_PAGE_SIZE;
 
   const normalizeConversationList = (value: unknown): ConversationSnapshot[] =>
     Array.isArray(value) ? (value as ConversationSnapshot[]) : [];
@@ -41,13 +43,29 @@ export function useConversations(): UseConversationsResult {
   const loadConversations = useCallback(async (batchId: string) => {
     try {
       setLoading(true);
-      const result = await getConversationSnapshots({
-        batchId,
-        page,
-        pageSize,
-      });
-      setConversations(normalizeConversationList(result.sources));
-      setTotal(result.total);
+      const allSources: ConversationSnapshot[] = [];
+      let currentPage = 1;
+      let totalCount = 0;
+
+      do {
+        const result = await getConversationSnapshots({
+          batchId,
+          page: currentPage,
+          pageSize,
+        });
+        const sources = normalizeConversationList(result.sources);
+        allSources.push(...sources);
+        totalCount = result.total ?? allSources.length;
+
+        if (sources.length === 0 || allSources.length >= totalCount) {
+          break;
+        }
+
+        currentPage += 1;
+      } while (true);
+
+      setConversations(allSources);
+      setTotal(totalCount);
     } catch (error) {
       console.error('加载对话列表失败:', error);
       setConversations([]);
@@ -55,7 +73,7 @@ export function useConversations(): UseConversationsResult {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize]);
+  }, [pageSize]);
 
   /**
    * 执行单个回归验证

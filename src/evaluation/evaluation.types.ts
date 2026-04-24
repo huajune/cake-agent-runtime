@@ -29,7 +29,7 @@ export interface ConversationTurn {
   history: ParsedMessage[];
   /** 当前轮用户消息 */
   userMessage: string;
-  /** 期望输出（真人经理的实际回复） */
+  /** 参考输出；真实对话拆轮时为历史下一条真人回复，动态工具场景不能当硬断言 */
   expectedOutput: string;
 }
 
@@ -124,12 +124,16 @@ export const DefaultEvaluationDimensions: EvaluationDimensions = {
 export interface EvaluationInput {
   /** 用户消息 */
   userMessage: string;
-  /** 期望回复（真人参考） */
+  /** 参考回复；真实对话拆轮时为历史下一条真人回复 */
   expectedOutput: string;
   /** 实际回复（Agent 生成） */
   actualOutput: string;
   /** 对话历史（可选，提供上下文） */
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  /** 评估模式：默认按真人参考回复评估；工具动态数据场景按工具结果评估 */
+  evaluationMode?: 'reference_reply' | 'tool_grounded';
+  /** 本轮工具调用；tool_grounded 模式下作为事实锚点 */
+  toolCalls?: unknown[];
 }
 
 /**

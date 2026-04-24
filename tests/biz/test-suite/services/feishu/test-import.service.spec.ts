@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { TestImportService } from '@biz/test-suite/services/test-import.service';
 import { FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
 import { TestBatchService } from '@biz/test-suite/services/test-batch.service';
@@ -8,7 +9,12 @@ import { ConversationTestService } from '@biz/test-suite/services/conversation-t
 import { TestSuiteProcessor } from '@biz/test-suite/test-suite.processor';
 import { ConversationSnapshotRepository } from '@biz/test-suite/repositories/conversation-snapshot.repository';
 import { ConversationParserService } from '@evaluation/conversation-parser.service';
-import { BatchStatus, BatchSource, ExecutionStatus, TestType } from '@biz/test-suite/enums/test.enum';
+import {
+  BatchStatus,
+  BatchSource,
+  ExecutionStatus,
+  TestType,
+} from '@biz/test-suite/enums/test.enum';
 
 describe('TestImportService', () => {
   let service: TestImportService;
@@ -66,6 +72,10 @@ describe('TestImportService', () => {
     addBatchTestJobs: jest.fn(),
   };
 
+  const mockConfigService = {
+    get: jest.fn(),
+  };
+
   const makeBatch = (id = 'batch-1', name = 'Test Batch') => ({
     id,
     name,
@@ -98,6 +108,7 @@ describe('TestImportService', () => {
           provide: TestSuiteProcessor,
           useValue: mockTestProcessor,
         },
+        { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
 
@@ -121,8 +132,7 @@ describe('TestImportService', () => {
     jest.clearAllMocks();
   });
 
-  const mockServiceGetTestCases = () =>
-    jest.spyOn(service as any, 'getTestCases');
+  const mockServiceGetTestCases = () => jest.spyOn(service as any, 'getTestCases');
   const mockServiceGetConversationTests = () =>
     jest.spyOn(service as any, 'getConversationTestsFromDefaultTable');
 
@@ -280,6 +290,7 @@ describe('TestImportService', () => {
           {
             recordId: 'rec-1',
             conversationId: 'conv-1',
+            validationTitle: '生产对话回归样本',
             participantName: 'Alice',
             rawText: 'raw conversation text here',
             parseResult: { success: true, messages: [], totalTurns: 1 },
@@ -309,6 +320,9 @@ describe('TestImportService', () => {
       const result = await service.quickCreateBatch({ testType: TestType.CONVERSATION });
 
       expect(result.batchId).toBe('batch-conv');
+      expect(_conversationSnapshotRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ validationTitle: '生产对话回归样本' }),
+      );
     });
 
     it('should throw error when conversation table has no data', async () => {
@@ -417,6 +431,7 @@ describe('TestImportService', () => {
       });
 
       const fields = [
+        { field_id: 'fld_title', field_name: '验证标题', type: 1 },
         { field_id: 'fld_name', field_name: '候选人微信昵称', type: 1 },
         { field_id: 'fld_conversation', field_name: '完整对话记录', type: 1 },
         { field_id: 'fld_enabled', field_name: '是否启用', type: 7 },
@@ -427,6 +442,7 @@ describe('TestImportService', () => {
           {
             record_id: 'rec-disabled',
             fields: {
+              fld_title: '禁用验证',
               fld_name: '候选人A',
               fld_conversation: '[04/22 10:00 候选人] 你好',
               fld_enabled: false,
@@ -435,6 +451,7 @@ describe('TestImportService', () => {
           {
             record_id: 'rec-enabled',
             fields: {
+              fld_title: '候选人B开场验证',
               fld_name: '候选人B',
               fld_conversation: '[04/22 10:00 候选人] 在吗',
               fld_enabled: true,
@@ -448,6 +465,7 @@ describe('TestImportService', () => {
       expect(conversations[0]).toEqual(
         expect.objectContaining({
           recordId: 'rec-enabled',
+          validationTitle: '候选人B开场验证',
           participantName: '候选人B',
           rawText: '[04/22 10:00 候选人] 在吗',
         }),

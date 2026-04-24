@@ -2,17 +2,31 @@
 
 // ==================== 动画 ====================
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes slideUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 // ==================== 混合宏 ====================
@@ -42,16 +56,16 @@
 
 .reviewContent {
   background: #ffffff;
-  width: 1100px;
-  max-width: 95vw;
-  height: 85vh;
-  max-height: 900px;
+  width: min(1320px, 94vw);
+  height: min(880px, 88vh);
   display: flex;
   flex-direction: column;
   animation: slideUp 0.3s ease;
-  border-radius: 20px;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-  border: 1px solid $accent-15;
+  border-radius: 16px;
+  box-shadow:
+    0 24px 48px -12px rgba(16, 24, 40, 0.24),
+    0 4px 12px rgba(16, 24, 40, 0.06);
+  border: 1px solid rgba(16, 24, 40, 0.08);
   position: relative;
   overflow: hidden;
 }
@@ -60,72 +74,116 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: $spacing-md $spacing-lg;
+  gap: 20px;
+  padding: 18px 22px;
   border-bottom: 1px solid $accent-10;
-  background: linear-gradient(135deg, $accent-08 0%, rgba(236, 72, 153, 0.04) 100%);
+  background: linear-gradient(135deg, $accent-06 0%, rgba(236, 72, 153, 0.04) 54%, #ffffff 100%);
   flex-shrink: 0;
   position: relative;
-  overflow: hidden;
-
-  // shimmer 效果
-  &::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-    animation: shimmer 4s ease-in-out infinite;
-  }
-
-  @keyframes shimmer {
-    0% { left: -100%; }
-    100% { left: 100%; }
-  }
 
   h3 {
-    font-size: $font-size-base;
-    font-weight: $font-weight-semibold;
-    color: $text-primary;
+    font-size: 16px;
+    font-weight: 600;
+    color: #101828;
     margin: 0;
-    position: relative;
-    z-index: 1;
+    letter-spacing: -0.01em;
   }
 
   .closeBtn {
     width: 32px;
     height: 32px;
-    border-radius: 10px;
-    border: none;
+    border-radius: 8px;
+    border: 1px solid transparent;
     background: transparent;
-    color: $text-muted;
+    color: #667085;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s;
-    position: relative;
-    z-index: 1;
+    transition:
+      background 0.15s ease,
+      color 0.15s ease,
+      border-color 0.15s ease;
 
     &:hover {
-      background: rgba(239, 68, 68, 0.1);
-      color: $danger;
+      background: #f9fafb;
+      border-color: #eaecf0;
+      color: #344054;
+    }
+
+    &:focus-visible {
+      outline: 2px solid #e9d7fe;
+      outline-offset: 2px;
     }
   }
 }
 
+.headerTitle {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.headerTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.headerCaseName {
+  max-width: min(780px, 62vw);
+  color: #667085;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.headerCounter {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  color: $accent;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 0 0 1px $accent-15;
+}
+
 .reviewBody {
   flex: 1;
-  overflow-y: auto;
-  padding: $spacing-lg;
+  min-height: 0;
+  overflow: hidden;
+  padding: 18px 22px;
+  background: #ffffff;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139, 92, 246, 0.24) transparent;
 
   &::-webkit-scrollbar {
-    width: 6px;
+    width: 3px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
   }
   &::-webkit-scrollbar-thumb {
-    background: rgba(148, 163, 184, 0.3);
-    border-radius: 3px;
+    background: rgba(139, 92, 246, 0.24);
+    border-radius: 999px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: rgba(139, 92, 246, 0.36);
   }
 }
 
@@ -133,9 +191,10 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
-  border-top: 1px solid $accent-10;
-  background: linear-gradient(135deg, $accent-04 0%, rgba(236, 72, 153, 0.02) 100%);
+  gap: 16px;
+  padding: 14px 22px;
+  border-top: 1px solid $accent-08;
+  background: #ffffff;
   flex-shrink: 0;
   position: relative;
   z-index: 10;
@@ -144,39 +203,47 @@
 .reviewNav {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
 
   button {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    border: none;
-    background: linear-gradient(135deg, $accent-10 0%, $accent-06 100%);
-    color: $accent;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    background: #ffffff;
+    color: #64748b;
     font-size: 13px;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition:
+      background 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease;
     display: flex;
     align-items: center;
     justify-content: center;
 
     &:hover:not(:disabled) {
-      background: linear-gradient(135deg, $accent-20 0%, $accent-12 100%);
-      transform: scale(1.1);
-      box-shadow: 0 2px 8px $accent-20;
+      background: #f8fafc;
+      border-color: #cbd5e1;
+      color: #334155;
+    }
+
+    &:focus-visible {
+      outline: 2px solid $accent-30;
+      outline-offset: 2px;
     }
 
     &:disabled {
-      opacity: 0.25;
+      opacity: 0.35;
       cursor: not-allowed;
     }
   }
 
   span {
-    font-size: 12px;
-    font-weight: 500;
-    color: $accent;
-    min-width: 50px;
+    font-size: $font-size-sm;
+    font-weight: $font-weight-semibold;
+    color: #475569;
+    min-width: 64px;
     text-align: center;
   }
 }
@@ -211,7 +278,8 @@
 
 // 骨架屏闪烁动画
 @keyframes skeletonPulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
@@ -230,12 +298,7 @@
 
 // 骨架屏基础样式
 .skeletonBox {
-  background: linear-gradient(
-    90deg,
-    $accent-08 0%,
-    $accent-15 50%,
-    $accent-08 100%
-  );
+  background: linear-gradient(90deg, $accent-08 0%, $accent-15 50%, $accent-08 100%);
   background-size: 200% 100%;
   animation: skeletonShimmer 1.8s ease-in-out infinite;
   border-radius: 8px;
@@ -453,13 +516,14 @@
 }
 
 // ==================== 操作按钮 ====================
-.passBtn, .failBtn {
-  width: 56px;
-  height: 56px;
+.passBtn,
+.failBtn {
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   border: 2px solid transparent;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: all 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -511,7 +575,7 @@
   }
 
   &:hover {
-    transform: scale(1.18) rotate(8deg);
+    transform: translateY(-1px);
     background: linear-gradient(145deg, #d1fae5, #a7f3d0);
     border-color: rgba(16, 185, 129, 0.5);
     box-shadow:
@@ -520,7 +584,7 @@
       inset 0 2px 4px rgba(255, 255, 255, 0.9);
 
     svg {
-      transform: scale(1.15) rotate(-8deg);
+      transform: scale(1.08);
     }
   }
 
@@ -544,7 +608,7 @@
   }
 
   &:hover {
-    transform: scale(1.18) rotate(-8deg);
+    transform: translateY(-1px);
     background: linear-gradient(145deg, #fbcfe8, #f9a8d4);
     border-color: rgba(236, 72, 153, 0.4);
     box-shadow:
@@ -553,7 +617,7 @@
       inset 0 2px 4px rgba(255, 255, 255, 0.9);
 
     svg {
-      transform: scale(1.15) rotate(8deg);
+      transform: scale(1.08);
     }
   }
 
@@ -563,18 +627,33 @@
 }
 
 .reviewedTag {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 16px;
-  border-radius: 12px;
-  background: $bg-secondary;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid $border;
+  background: $bg-primary;
   color: $text-secondary;
   font-size: $font-size-sm;
-  font-weight: $font-weight-medium;
+  font-weight: $font-weight-semibold;
+
+  &.passed {
+    border-color: rgba(16, 185, 129, 0.18);
+    background: rgba(16, 185, 129, 0.08);
+    color: $success;
+  }
+
+  &.failed {
+    border-color: rgba(239, 68, 68, 0.18);
+    background: rgba(239, 68, 68, 0.06);
+    color: $danger;
+  }
 
   .failureReasonText {
-    color: $text-muted;
+    color: currentcolor;
+    opacity: 0.72;
     font-size: $font-size-xs;
     font-weight: $font-weight-normal;
   }
@@ -584,8 +663,9 @@
 .failureOptions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
-  padding: 12px 16px;
+  padding: 10px 14px;
   background: rgba(239, 68, 68, 0.03);
   border-radius: 14px;
   border: 1px solid rgba(239, 68, 68, 0.1);
@@ -645,12 +725,13 @@
 
   .reviewContent {
     width: 98vw;
-    height: 95vh;
+    height: 94vh;
     max-height: none;
     border-radius: 16px;
   }
 
-  .passBtn, .failBtn {
+  .passBtn,
+  .failBtn {
     width: 50px;
     height: 50px;
 

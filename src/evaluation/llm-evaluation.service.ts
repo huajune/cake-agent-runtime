@@ -16,6 +16,7 @@ export type { LlmEvaluationResult, EvaluationInput };
 
 /** 通过分数阈值 */
 const PASS_THRESHOLD = 60;
+const TOOL_CONTEXT_MAX_CHARS = 7000;
 const DIMENSION_WEIGHTS = {
   factualAccuracy: 0.4,
   responseEfficiency: 0.2,
@@ -103,14 +104,26 @@ export class LlmEvaluationService {
     systemPrompt: string;
     userMessage: string;
   } {
-    const { userMessage: originalUserMessage, expectedOutput, actualOutput, history } = input;
+    const {
+      userMessage: originalUserMessage,
+      expectedOutput,
+      actualOutput,
+      history,
+      evaluationMode = 'reference_reply',
+      toolCalls = [],
+    } = input;
+    const isToolGrounded = evaluationMode === 'tool_grounded';
 
     // 系统提示词：定义评估者角色和规则
     const systemPrompt = `你是一个招聘对话评估专家。请按 4 个维度评估 AI 回复质量，并给出简短总结。
 
 【维度定义】
 1. factualAccuracy（事实正确）
-- 是否与真人参考回复的结论一致
+- ${
+      isToolGrounded
+        ? '本轮是动态工具数据评审：事实锚点是【本轮工具调用结果】，历史真人回复只作话术参考，不作为岗位/距离/时间/名额等事实断言'
+        : '是否与真人参考回复的结论一致'
+    }
 - 是否编造或说错岗位、薪资、地点、时间、班次、规则
 - 一旦出现核心事实相反或强幻觉，这个维度必须低分
 
@@ -138,6 +151,11 @@ export class LlmEvaluationService {
 - 准确性和流程合规优先级最高
 - 「意思差不多」不代表可高分，事实错或流程错必须严厉扣分
 - 如果 AI 回复比真人更完整，但不违背事实和流程，可以给更高分
+${
+  isToolGrounded
+    ? '- 对动态工具数据，不要因为 AI 回复与历史真人回复的岗位库存/距离/时间不同而扣分；只有违背本轮工具结果、漏用工具结论或流程错误才扣分'
+    : ''
+}
 
 请只返回结构化结果，不要输出额外解释。`;
 
@@ -150,13 +168,17 @@ export class LlmEvaluationService {
         '\n\n';
     }
 
+    const toolContext = isToolGrounded
+      ? `【本轮工具调用结果（事实锚点）】\n${this.formatToolCallsForPrompt(toolCalls)}\n\n`
+      : '';
+
     // 用户消息：包含待评估的具体内容
     const userMessage = `请评估以下 AI 客服回复的质量：
 
 ${historyContext}【用户消息】
 ${originalUserMessage}
 
-【参考回复（真人客服）】
+${toolContext}【${isToolGrounded ? '历史真人回复（仅参考，不作为动态事实锚点）' : '参考回复（真人客服）'}】
 ${expectedOutput}
 
 【实际回复（AI 客服）】
@@ -165,6 +187,63 @@ ${actualOutput}
 请按照评分规则进行评估。`;
 
     return { systemPrompt, userMessage };
+  }
+
+  private formatToolCallsForPrompt(toolCalls: unknown[]): string {
+    if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
+      return '（无工具调用记录）';
+    }
+
+    const text = toolCalls
+      .map((toolCall, index) => this.formatSingleToolCall(toolCall, index))
+      .join('\n\n');
+
+    if (text.length <= TOOL_CONTEXT_MAX_CHARS) return text;
+    return `${text.slice(0, TOOL_CONTEXT_MAX_CHARS)}\n...(工具结果过长，已截断)`;
+  }
+
+  private formatSingleToolCall(toolCall: unknown, index: number): string {
+    const record =
+      toolCall && typeof toolCall === 'object' ? (toolCall as Record<string, unknown>) : {};
+    const toolName = this.pickString(record, ['toolName', 'name', 'tool']) || 'unknown';
+    const args = record.args ?? record.input ?? record.arguments ?? {};
+    const result = record.result ?? record.output ?? record.data ?? null;
+    const status = this.pickString(record, ['status', 'state']) || 'unknown';
+    const resultCount = record.resultCount ?? record.count ?? record.total ?? 'unknown';
+
+    return [
+      `#${index + 1} ${toolName}`,
+      `- status: ${status}`,
+      `- resultCount: ${String(resultCount)}`,
+      `- args: ${this.safeJson(args)}`,
+      `- result: ${this.safeJson(result)}`,
+    ].join('\n');
+  }
+
+  private pickString(record: Record<string, unknown>, keys: string[]): string | null {
+    for (const key of keys) {
+      const value = record[key];
+      if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+    return null;
+  }
+
+  private safeJson(value: unknown): string {
+    if (value === null || value === undefined) return 'null';
+    if (typeof value === 'string') return value;
+
+    try {
+      const seen = new WeakSet<object>();
+      return JSON.stringify(value, (_key, item) => {
+        if (item && typeof item === 'object') {
+          if (seen.has(item)) return '[Circular]';
+          seen.add(item);
+        }
+        return item;
+      });
+    } catch (_error) {
+      return String(value);
+    }
   }
 
   /**

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
-import { ExecutionStatus, ReviewStatus } from '../enums/test.enum';
+import { ExecutionStatus, ReviewStatus, ReviewerSource } from '../enums/test.enum';
 import { TestExecution } from '../entities/test-execution.entity';
 import {
   CreateExecutionData,
@@ -70,6 +70,49 @@ export class TestExecutionRepository extends BaseRepository {
       steps: response.steps,
       usage: this.sanitizeJsonValue(response.usage),
     } as Record<string, unknown>;
+
+    if (typeof response.reasoning === 'string') {
+      sanitized.reasoning = this.truncateText(response.reasoning);
+    }
+
+    if (typeof response.reasoningPreview === 'string') {
+      sanitized.reasoningPreview = this.truncateText(response.reasoningPreview);
+    }
+
+    if (response.reply && typeof response.reply === 'object') {
+      const reply = response.reply as Record<string, unknown>;
+      sanitized.reply = {
+        content:
+          typeof reply.content === 'string' ? this.truncateText(reply.content) : reply.content,
+        reasoning:
+          typeof reply.reasoning === 'string'
+            ? this.truncateText(reply.reasoning)
+            : reply.reasoning,
+        usage: this.sanitizeJsonValue(reply.usage),
+      };
+
+      if (!sanitized.text && typeof reply.content === 'string') {
+        sanitized.text = this.truncateText(reply.content);
+      }
+      if (!sanitized.reasoning && typeof reply.reasoning === 'string') {
+        sanitized.reasoning = this.truncateText(reply.reasoning);
+      }
+    }
+
+    if (Array.isArray(response.agentSteps)) {
+      sanitized.agentSteps = response.agentSteps.map((step) => {
+        const item = step && typeof step === 'object' ? (step as Record<string, unknown>) : {};
+        return {
+          stepIndex: item.stepIndex,
+          text: typeof item.text === 'string' ? this.truncateText(item.text) : item.text,
+          reasoning:
+            typeof item.reasoning === 'string' ? this.truncateText(item.reasoning) : item.reasoning,
+          usage: this.sanitizeJsonValue(item.usage),
+          durationMs: item.durationMs,
+          finishReason: item.finishReason,
+        };
+      });
+    }
 
     if (Array.isArray(response.toolCalls)) {
       sanitized.toolCallSummary = response.toolCalls.map((toolCall) => {
@@ -147,7 +190,7 @@ export class TestExecutionRepository extends BaseRepository {
    * 创建执行记录
    */
   async create(data: CreateExecutionData): Promise<TestExecution> {
-    const execution = await this.insert<TestExecution>({
+    const insertPayload = {
       batch_id: data.batchId || null,
       case_id: data.caseId || null,
       case_name: data.caseName || null,
@@ -169,13 +212,51 @@ export class TestExecutionRepository extends BaseRepository {
       review_status: data.reviewStatus || ReviewStatus.PENDING,
       reviewer_source: data.reviewerSource || null,
       evaluation_reason: data.evaluationReason || null,
-    });
+    };
 
-    if (!execution) {
-      throw new Error('创建执行记录失败');
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const execution = await this.insert<TestExecution>(insertPayload);
+      if (execution) {
+        return execution;
+      }
+
+      const existing = await this.findExistingAfterCreateRetry(data);
+      if (existing) {
+        return existing;
+      }
+
+      if (attempt < maxAttempts) {
+        this.logger.warn(`创建执行记录失败，准备重试 (${attempt}/${maxAttempts})`);
+        await this.delay(300 * attempt);
+      }
     }
 
-    return execution;
+    throw new Error('创建执行记录失败');
+  }
+
+  private async findExistingAfterCreateRetry(
+    data: CreateExecutionData,
+  ): Promise<TestExecution | null> {
+    if (data.batchId && data.caseId) {
+      return this.selectOne<TestExecution>('*', (q) =>
+        q.eq('batch_id', data.batchId).eq('case_id', data.caseId),
+      );
+    }
+
+    if (data.conversationSnapshotId && data.turnNumber !== undefined && data.turnNumber !== null) {
+      return this.selectOne<TestExecution>('*', (q) =>
+        q
+          .eq('conversation_snapshot_id', data.conversationSnapshotId)
+          .eq('turn_number', data.turnNumber),
+      );
+    }
+
+    return null;
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
@@ -230,10 +311,11 @@ export class TestExecutionRepository extends BaseRepository {
       | 'duration_ms'
       | 'token_usage'
       | 'failure_reason'
+      | 'conversation_snapshot_id'
     >[]
   > {
     return this.select(
-      'id,execution_status,review_status,category,duration_ms,token_usage,failure_reason',
+      'id,execution_status,review_status,category,duration_ms,token_usage,failure_reason,conversation_snapshot_id',
       (q) => {
         let r = q.eq('batch_id', batchId).order('created_at');
         if (filters?.reviewStatus) {
@@ -432,6 +514,11 @@ export class TestExecutionRepository extends BaseRepository {
       review_status: ReviewStatus;
       review_comment: string | null;
       evaluation_reason: string | null;
+      failure_reason: string | null;
+      test_scenario: string | null;
+      reviewed_by: string | null;
+      reviewer_source: ReviewerSource | null;
+      reviewed_at: string | null;
     }>,
   ): Promise<TestExecution> {
     // 如果包含 agent_request，清理大字段

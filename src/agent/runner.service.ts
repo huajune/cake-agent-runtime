@@ -497,13 +497,7 @@ export class AgentRunnerService {
         disableFallbacks: params.disableFallbacks,
         thinking: { type: 'disabled', budgetTokens: 0 },
         system: `${ctx.finalPrompt}\n\n[空响应恢复模式]\n只输出一条候选人可见的中文回复。不要提系统、工具、模型、thinking、恢复或异常。不要调用工具。`,
-        messages: [
-          ...ctx.normalizedMessages,
-          {
-            role: 'user',
-            content: this.buildEmptyTextRecoveryPrompt(result),
-          },
-        ],
+        prompt: this.buildEmptyTextRecoveryPrompt(result, ctx),
         maxOutputTokens: Math.min(this.maxOutputTokens, 800),
       });
 
@@ -548,12 +542,15 @@ export class AgentRunnerService {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.warn(`空文本恢复失败: sessionId=${ctx.sessionId}; ${message}`);
+      this.logger.warn(
+        `空文本恢复失败: sessionId=${ctx.sessionId}; ${message}`,
+        error instanceof Error ? error.stack : undefined,
+      );
       return result;
     }
   }
 
-  private buildEmptyTextRecoveryPrompt(result: AgentRunResult): string {
+  private buildEmptyTextRecoveryPrompt(result: AgentRunResult, ctx: PreparedAgentContext): string {
     const transcript = result.agentSteps.map((step) => ({
       stepIndex: step.stepIndex,
       finishReason: step.finishReason,
@@ -570,20 +567,56 @@ export class AgentRunnerService {
 
     return [
       '上一轮工具链已经执行完，但最终没有产出可发送文本。',
+      '下面是候选人与招募经理的当前对话上下文，以及刚执行过的工具调用摘要。',
       '请基于当前对话和下面的工具调用摘要，直接补一条候选人可见回复。',
       '要求：',
       '- 只输出回复正文，不要解释内部过程。',
       '- 如果工具结果显示 requestedDate.status=unavailable，必须明确说明不可约原因，并给最近可选替代时间。',
       '- 不要编造工具结果，不要承诺已经预约成功。',
       '',
+      '对话上下文：',
+      this.truncateForPrompt(this.formatMessagesForRecovery(ctx.normalizedMessages), 8000),
+      '',
       '工具调用摘要：',
       this.truncateForPrompt(this.safeJsonStringify(transcript), 14000),
     ].join('\n');
   }
 
+  private formatMessagesForRecovery(messages: PreparedAgentContext['normalizedMessages']): string {
+    return messages
+      .map((message) => {
+        const content = this.stringifyMessageContent(message.content);
+        return `${message.role}: ${content}`;
+      })
+      .join('\n');
+  }
+
+  private stringifyMessageContent(content: unknown): string {
+    if (typeof content === 'string') return content;
+
+    if (Array.isArray(content)) {
+      return content
+        .map((part) => {
+          if (typeof part === 'string') return part;
+          if (typeof part !== 'object' || part === null) return String(part);
+
+          const typedPart = part as Record<string, unknown>;
+          if (typeof typedPart.text === 'string') return typedPart.text;
+          if (typeof typedPart.content === 'string') return typedPart.content;
+          if (typeof typedPart.type === 'string') return `[${typedPart.type}]`;
+          return this.safeJsonStringify(typedPart);
+        })
+        .join('');
+    }
+
+    if (content === undefined || content === null) return '';
+    return this.safeJsonStringify(content);
+  }
+
   private safeJsonStringify(value: unknown): string {
     try {
-      return JSON.stringify(value, null, 2);
+      const json = JSON.stringify(value, null, 2);
+      return json === undefined ? String(value) : json;
     } catch {
       return String(value);
     }

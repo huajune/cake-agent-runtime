@@ -292,9 +292,10 @@ describe('TestWriteBackService', () => {
     });
 
     it('should count failures and accumulate error messages', async () => {
+      mockBitableApi.updateRecord.mockReset();
       mockBitableApi.updateRecord
         .mockResolvedValueOnce({ success: true })
-        .mockResolvedValueOnce({ success: false, error: 'Feishu API error' });
+        .mockResolvedValue({ success: false, error: 'Feishu API error' });
 
       const items = [
         { recordId: 'rec-1', testStatus: FeishuTestStatus.PASSED },
