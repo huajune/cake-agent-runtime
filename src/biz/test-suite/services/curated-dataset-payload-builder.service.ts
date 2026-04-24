@@ -19,7 +19,7 @@ import {
 } from './curated-dataset-import.helpers';
 
 const scenarioFieldAliases = {
-  primaryText: ['多行文本', 'Text'],
+  primaryText: ['用例主键', '用例标题', '多行文本', 'Text'],
   stableId: ['用例ID', 'caseId'],
   title: ['用例名称', '标题', '名称'],
   sourceBadCaseIds: ['来源BadCaseID'],
@@ -43,7 +43,7 @@ const scenarioFieldAliases = {
 } as const;
 
 const conversationFieldAliases = {
-  primaryText: ['多行文本', 'Text'],
+  primaryText: ['验证主键', '验证标题展示', '多行文本', 'Text'],
   stableId: ['验证ID', 'validationId'],
   title: ['验证标题', '标题', '名称'],
   sourceBadCaseIds: ['来源BadCaseID'],
@@ -119,7 +119,7 @@ export class CuratedDatasetPayloadBuilderService {
         : undefined,
     ]);
 
-    setField(fields, resolved.primaryText, this.truncate(currentCase.caseName.trim(), 500));
+    setField(fields, resolved.primaryText, currentCase.caseId.trim());
     setField(fields, resolved.stableId, currentCase.caseId.trim());
     setField(fields, resolved.title, this.truncate(currentCase.caseName.trim(), 500));
     setField(fields, resolved.sourceBadCaseIds, joinIds(currentCase.sourceBadCaseIds), {
@@ -196,7 +196,7 @@ export class CuratedDatasetPayloadBuilderService {
         : undefined,
     ]);
 
-    setField(fields, resolved.primaryText, this.truncate(currentCase.validationTitle.trim(), 500));
+    setField(fields, resolved.primaryText, currentCase.validationId.trim());
     setField(fields, resolved.stableId, currentCase.validationId.trim());
     setField(fields, resolved.title, this.truncate(currentCase.validationTitle.trim(), 500));
     setField(fields, resolved.sourceBadCaseIds, joinIds(currentCase.sourceBadCaseIds), {

@@ -148,7 +148,11 @@ export interface StreamCallbacks {
   onText?: (text: string, fullText: string) => void;
   onToolCall?: (toolCall: { toolName: string; input: any }) => void;
   onToolResult?: (result: { toolName: string; output: any }) => void;
-  onMetrics?: (metrics: { durationMs: number; tokenUsage: TokenUsage; toolCallsCount: number }) => void;
+  onMetrics?: (metrics: {
+    durationMs: number;
+    tokenUsage: TokenUsage;
+    toolCallsCount: number;
+  }) => void;
   onDone?: (result: {
     status: string;
     actualOutput: string;
@@ -250,6 +254,7 @@ export interface ConversationSnapshot {
   batchId: string;
   feishuRecordId: string;
   conversationId: string;
+  validationTitle: string | null;
   participantName: string | null;
   totalTurns: number;
   avgSimilarityScore: number | null;

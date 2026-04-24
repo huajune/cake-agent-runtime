@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
+import { ConfigService } from '@nestjs/config';
 import { Queue, Job } from 'bull';
 import { TestBatchService } from './services/test-batch.service';
 import { TestExecutionService } from './services/test-execution.service';
@@ -84,8 +85,8 @@ export interface ExecutionRecordUpdate {
 export class TestSuiteProcessor implements OnModuleInit {
   private readonly logger = new Logger(TestSuiteProcessor.name);
 
-  private readonly CONCURRENCY = 3;
-  private readonly JOB_TIMEOUT_MS = 120_000;
+  private readonly concurrency: number;
+  private readonly jobTimeoutMs: number;
 
   private readonly PROGRESS_CACHE_PREFIX = 'test-suite:progress:';
   private readonly PROGRESS_CACHE_TTL = 3600;
@@ -95,7 +96,17 @@ export class TestSuiteProcessor implements OnModuleInit {
     private readonly batchService: TestBatchService,
     private readonly executionService: TestExecutionService,
     private readonly redisService: RedisService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    this.concurrency = this.readPositiveInt('TEST_SUITE_WORKER_CONCURRENCY', 10, {
+      min: 1,
+      max: 20,
+    });
+    this.jobTimeoutMs = this.readPositiveInt('TEST_SUITE_JOB_TIMEOUT_MS', 180_000, {
+      min: 10_000,
+      max: 600_000,
+    });
+  }
 
   async onModuleInit() {
     await this.waitForQueueReady();
@@ -103,7 +114,7 @@ export class TestSuiteProcessor implements OnModuleInit {
     this.setupQueueEventListeners();
 
     this.logger.log(
-      `TestSuiteProcessor 已初始化（并发数: ${this.CONCURRENCY}, 超时: ${this.JOB_TIMEOUT_MS}ms）`,
+      `TestSuiteProcessor 已初始化（并发数: ${this.concurrency}, 超时: ${this.jobTimeoutMs}ms）`,
     );
   }
 
@@ -134,9 +145,9 @@ export class TestSuiteProcessor implements OnModuleInit {
   }
 
   private registerWorkers(): void {
-    this.logger.log(`[TestSuite] 注册 Worker，并发数: ${this.CONCURRENCY}...`);
+    this.logger.log(`[TestSuite] 注册 Worker，并发数: ${this.concurrency}...`);
 
-    this.testQueue.process('execute-test', this.CONCURRENCY, async (job: Job<TestJobData>) => {
+    this.testQueue.process('execute-test', this.concurrency, async (job: Job<TestJobData>) => {
       return this.handleTestJob(job);
     });
 
@@ -204,7 +215,7 @@ export class TestSuiteProcessor implements OnModuleInit {
     } catch (error: unknown) {
       const durationMs = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : String(error);
-      const isTimeout = errorMessage?.includes('timeout') || durationMs >= this.JOB_TIMEOUT_MS;
+      const isTimeout = errorMessage?.includes('timeout') || durationMs >= this.jobTimeoutMs;
 
       this.logger.error(`[TestSuite] 测试执行失败: ${caseName} - ${errorMessage}`);
 
@@ -389,7 +400,7 @@ export class TestSuiteProcessor implements OnModuleInit {
         type: 'exponential',
         delay: 5000,
       },
-      timeout: this.JOB_TIMEOUT_MS,
+      timeout: this.jobTimeoutMs,
       priority: options?.priority,
       delay: options?.delay,
       removeOnComplete: true,
@@ -548,5 +559,27 @@ export class TestSuiteProcessor implements OnModuleInit {
       await job.remove();
     }
     return failedJobs.length;
+  }
+
+  private readPositiveInt(
+    key: string,
+    fallback: number,
+    bounds: { min: number; max: number },
+  ): number {
+    const raw = this.configService.get<string | number>(key);
+    const parsed = typeof raw === 'number' ? raw : Number(raw);
+
+    if (!Number.isFinite(parsed)) {
+      return fallback;
+    }
+
+    const normalized = Math.floor(parsed);
+    if (normalized < bounds.min) {
+      return bounds.min;
+    }
+    if (normalized > bounds.max) {
+      return bounds.max;
+    }
+    return normalized;
   }
 }

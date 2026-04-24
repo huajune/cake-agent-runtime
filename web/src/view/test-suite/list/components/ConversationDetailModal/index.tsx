@@ -11,7 +11,12 @@ import {
   MessageSquare,
   CheckCircle2,
 } from 'lucide-react';
-import type { ConversationSnapshot, ConversationTurnExecution, ToolCall, ParsedMessage } from '../../types';
+import type {
+  ConversationSnapshot,
+  ConversationTurnExecution,
+  ToolCall,
+  ParsedMessage,
+} from '../../types';
 import {
   formatReviewStatusLabel,
   resolveReviewerSourceLabel,
@@ -28,6 +33,27 @@ interface ConversationDetailModalProps {
   loading: boolean;
   onClose: () => void;
   onTurnChange: (index: number) => void;
+}
+
+const DYNAMIC_FACT_TOOL_NAMES = new Set([
+  'duliday_job_list',
+  'geocode',
+  'duliday_interview_precheck',
+  'duliday_interview_booking',
+  'send_store_location',
+  'invite_to_group',
+]);
+
+function getToolName(tool: ToolCall): string | null {
+  const name = tool.toolName || tool.name || tool.tool;
+  return typeof name === 'string' && name.trim() ? name.trim() : null;
+}
+
+function hasDynamicFactToolCall(toolCalls: ToolCall[]): boolean {
+  return toolCalls.some((tool) => {
+    const name = getToolName(tool);
+    return Boolean(name && DYNAMIC_FACT_TOOL_NAMES.has(name));
+  });
 }
 
 /**
@@ -68,7 +94,10 @@ export function ConversationDetailModal({
   const realHistory = Array.isArray(currentTurn?.history) ? currentTurn.history : [];
 
   // 获取工具调用（将 unknown[] 转换为 ToolCall[]）
-  const toolCalls = (Array.isArray(currentTurn?.toolCalls) ? currentTurn.toolCalls : []) as ToolCall[];
+  const toolCalls = (
+    Array.isArray(currentTurn?.toolCalls) ? currentTurn.toolCalls : []
+  ) as ToolCall[];
+  const isDynamicToolTurn = hasDynamicFactToolCall(toolCalls);
   const reviewerLabel = resolveReviewerSourceLabel(
     currentTurn?.reviewerSource,
     currentTurn?.reviewedBy,
@@ -197,8 +226,14 @@ export function ConversationDetailModal({
                   {/* 期望回复 */}
                   <div className={styles.replySection}>
                     <div className={styles.sectionLabel}>
-                      <Headphones size={14} /> 真人回复（期望）
+                      <Headphones size={14} />{' '}
+                      {isDynamicToolTurn ? '真人回复（历史参考）' : '真人回复（期望）'}
                     </div>
+                    {isDynamicToolTurn && (
+                      <div className={styles.referenceHint}>
+                        本轮调用了动态工具，评审以本轮工具结果为事实锚点；这条历史回复只作话术参考。
+                      </div>
+                    )}
                     <div className={styles.expectedReply}>
                       {currentTurn.expectedOutput || '(无期望回复)'}
                     </div>

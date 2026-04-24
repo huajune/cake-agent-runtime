@@ -30,7 +30,7 @@ export interface ConversationTurn {
   history: ParsedMessage[];
   /** 当前轮用户消息 */
   userMessage: string;
-  /** 期望输出（真人经理的实际回复） */
+  /** 参考输出；真实对话拆轮时为历史下一条真人回复，动态工具场景不能当硬断言 */
   expectedOutput: string;
 }
 
@@ -42,6 +42,7 @@ export interface ConversationSource {
   batchId: string;
   feishuRecordId: string;
   conversationId: string;
+  validationTitle: string | null;
   participantName: string | null;
   fullConversation: ParsedMessage[];
   rawText: string | null;

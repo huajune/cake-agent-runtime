@@ -85,6 +85,7 @@ export const testSuiteFieldNames: TestSuiteFieldNames = {
  * 用于回归验证数据的读取和回写
  */
 export interface ValidationSetFieldNames {
+  title: string[]; // 验证标题（文本）
   participantName: string[]; // 候选人微信昵称（文本）
   conversation: string[]; // 完整对话记录（多行文本）
   similarityScore: string[]; // 相似度分数（数字）
@@ -100,6 +101,7 @@ export interface ValidationSetFieldNames {
 }
 
 export const validationSetFieldNames: ValidationSetFieldNames = {
+  title: ['验证标题', '标题', '名称'],
   participantName: ['候选人微信昵称', '候选人姓名', '参与者', '姓名'],
   conversation: ['完整对话记录', '聊天记录', '对话记录', 'conversation', 'full_conversation'],
   similarityScore: ['相似度分数', '平均相似度'],

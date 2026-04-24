@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   CreateBatchRequestDto,
   UpdateReviewRequestDto,
@@ -56,6 +57,7 @@ export interface FailureReasonStats {
 @Injectable()
 export class TestBatchService {
   private readonly logger = new Logger(TestBatchService.name);
+  private readonly batchConcurrency: number;
 
   constructor(
     private readonly batchRepository: TestBatchRepository,
@@ -63,7 +65,12 @@ export class TestBatchService {
     private readonly conversationSnapshotRepository: ConversationSnapshotRepository,
     private readonly writeBackService: TestWriteBackService,
     private readonly executionService: TestExecutionService,
+    private readonly configService: ConfigService,
   ) {
+    this.batchConcurrency = this.readPositiveInt('TEST_SUITE_BATCH_CONCURRENCY', 10, {
+      min: 1,
+      max: 20,
+    });
     this.logger.log('TestBatchService 初始化完成');
   }
 
@@ -72,11 +79,22 @@ export class TestBatchService {
    */
   async createBatch(request: CreateBatchRequestDto): Promise<TestBatch> {
     return this.batchRepository.create({
-      name: request.name,
+      name: this.normalizeBatchName(request.name),
       source: request.source,
       feishuTableId: request.feishuTableId,
       testType: request.testType,
     });
+  }
+
+  private normalizeBatchName(name: string): string {
+    const normalized = name
+      .replace(/^\s*反馈验证\s*SOP\s*(?:[-—:：]\s*)?/i, '')
+      .replace(/场景测试/g, '用例测试')
+      .replace(/对话验证/g, '回归验证')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return normalized || name.trim();
   }
 
   /**
@@ -157,6 +175,67 @@ export class TestBatchService {
   }
 
   /**
+   * 重新执行单条用例记录
+   */
+  async rerunExecution(executionId: string): Promise<TestExecution> {
+    const execution = await this.executionRepository.findById(executionId);
+    if (!execution) {
+      throw new Error(`执行记录不存在: ${executionId}`);
+    }
+
+    if (!execution.batch_id || !execution.case_id) {
+      throw new Error('仅支持重跑用例测试执行记录');
+    }
+
+    const testInput = this.asRecord(execution.test_input);
+    const agentRequest = this.asRecord(execution.agent_request);
+    const imageUrls = this.readStringArray(testInput, 'imageUrls');
+
+    const result = await this.executionService.executeTest({
+      message: this.readString(testInput, 'message') || execution.input_message || undefined,
+      history: Array.isArray(testInput.history)
+        ? (testInput.history as TestChatRequestDto['history'])
+        : undefined,
+      imageUrls,
+      scenario: this.readString(testInput, 'scenario') || this.readString(agentRequest, 'scenario'),
+      saveExecution: false,
+      caseId: execution.case_id,
+      caseName: execution.case_name || undefined,
+      category: execution.category || undefined,
+      expectedOutput: execution.expected_output || undefined,
+      batchId: execution.batch_id,
+      userId: this.readString(agentRequest, 'userId') || `scenario-test-${execution.batch_id}`,
+      botUserId: this.readString(agentRequest, 'botUserId'),
+      botImId: this.readString(agentRequest, 'botImId'),
+      modelId: this.readString(agentRequest, 'modelId'),
+    });
+
+    const updated = await this.executionRepository.updateExecution(execution.id, {
+      agent_request: result.request.body,
+      agent_response: result.response.body,
+      actual_output: result.actualOutput,
+      tool_calls: result.response.toolCalls || [],
+      execution_status: result.status,
+      duration_ms: result.metrics.durationMs,
+      token_usage: result.metrics.tokenUsage,
+      error_message:
+        result.status === ExecutionStatus.SUCCESS ? null : this.extractExecutionError(result),
+      review_status: ReviewStatus.PENDING,
+      review_comment: null,
+      failure_reason: null,
+      test_scenario: null,
+      reviewed_by: null,
+      reviewer_source: null,
+      reviewed_at: null,
+    });
+
+    await this.updateBatchStats(execution.batch_id);
+    await this.updateBatchStatus(execution.batch_id, BatchStatus.REVIEWING);
+
+    return updated;
+  }
+
+  /**
    * 获取分类统计
    */
   async getCategoryStats(batchId: string): Promise<CategoryStats[]> {
@@ -200,7 +279,7 @@ export class TestBatchService {
     }
 
     if (execution.case_id && review.reviewStatus !== ReviewStatus.PENDING) {
-      this.writeBackToFeishuAsync(execution, review);
+      await this.writeBackToFeishuAsync(execution, review);
     }
 
     this.logger.log(`更新评审状态: ${executionId} -> ${review.reviewStatus}`);
@@ -226,6 +305,20 @@ export class TestBatchService {
     );
     for (const batchId of batchIds) {
       await this.updateBatchStats(batchId as string);
+
+      const stats = await this.getBatchStats(batchId as string);
+      if (stats.pendingReviewCount === 0 && stats.totalCases > 0) {
+        await this.updateBatchStatus(batchId as string, BatchStatus.COMPLETED);
+        this.logger.log(`批次 ${batchId} 所有用例评审完成，状态更新为 completed`);
+      }
+    }
+
+    if (review.reviewStatus !== ReviewStatus.PENDING) {
+      for (const execution of updatedExecutions) {
+        if (execution.case_id) {
+          await this.writeBackToFeishuAsync(execution, review);
+        }
+      }
     }
 
     return updatedExecutions.length;
@@ -239,7 +332,9 @@ export class TestBatchService {
     batchId?: string,
     parallel = false,
   ): Promise<TestChatResponse[]> {
-    this.logger.log(`批量执行测试: ${cases.length} 个用例, 并行: ${parallel}`);
+    this.logger.log(
+      `批量执行测试: ${cases.length} 个用例, 并行: ${parallel}, 并发=${parallel ? this.batchConcurrency : 1}`,
+    );
 
     if (batchId) {
       await this.updateBatchStatus(batchId, BatchStatus.RUNNING);
@@ -248,7 +343,7 @@ export class TestBatchService {
     const results: TestChatResponse[] = [];
 
     if (parallel) {
-      const batchSize = 5;
+      const batchSize = Math.min(cases.length, this.batchConcurrency);
       for (let i = 0; i < cases.length; i += batchSize) {
         const batch = cases.slice(i, i + batchSize);
         const batchResults = await Promise.all(
@@ -269,6 +364,61 @@ export class TestBatchService {
     }
 
     return results;
+  }
+
+  private readPositiveInt(
+    key: string,
+    fallback: number,
+    bounds: { min: number; max: number },
+  ): number {
+    const raw = this.configService.get<string | number>(key);
+    const parsed = typeof raw === 'number' ? raw : Number(raw);
+
+    if (!Number.isFinite(parsed)) {
+      return fallback;
+    }
+
+    const normalized = Math.floor(parsed);
+    if (normalized < bounds.min) {
+      return bounds.min;
+    }
+    if (normalized > bounds.max) {
+      return bounds.max;
+    }
+    return normalized;
+  }
+
+  private asRecord(value: unknown): Record<string, unknown> {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  }
+
+  private readString(record: Record<string, unknown>, key: string): string | undefined {
+    const value = record[key];
+    return typeof value === 'string' && value.trim() ? value : undefined;
+  }
+
+  private readStringArray(record: Record<string, unknown>, key: string): string[] | undefined {
+    const value = record[key];
+    if (!Array.isArray(value)) return undefined;
+    const items = value.filter((item): item is string => typeof item === 'string' && !!item);
+    return items.length > 0 ? items : undefined;
+  }
+
+  private extractExecutionError(result: TestChatResponse): string | null {
+    const body = this.asRecord(result.response.body);
+    const error = body.error;
+    if (typeof error === 'string' && error.trim()) {
+      return error;
+    }
+    if (typeof error === 'object' && error && 'message' in error) {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === 'string' && message.trim()) {
+        return message;
+      }
+    }
+    return null;
   }
 
   // ========== 统计计算 ==========
@@ -295,14 +445,46 @@ export class TestBatchService {
       await this.conversationSnapshotRepository.countByBatchIdGroupByStatus(batchId);
 
     const sources = await this.conversationSnapshotRepository.findByBatchId(batchId);
+    const turnExecutions = await this.executionRepository.findByBatchIdLite(batchId);
 
     const SIMILARITY_THRESHOLD = 60;
     const completedSources = sources.filter((s) => s.status === ConversationSourceStatus.COMPLETED);
+    const reviewStatusBySource = new Map<
+      string,
+      { hasFailedReview: boolean; hasPendingReview: boolean }
+    >();
+
+    for (const execution of turnExecutions) {
+      const sourceId = execution.conversation_snapshot_id;
+      if (!sourceId) {
+        continue;
+      }
+
+      const current = reviewStatusBySource.get(sourceId) || {
+        hasFailedReview: false,
+        hasPendingReview: false,
+      };
+      reviewStatusBySource.set(sourceId, {
+        hasFailedReview: current.hasFailedReview || execution.review_status === ReviewStatus.FAILED,
+        hasPendingReview:
+          current.hasPendingReview || execution.review_status === ReviewStatus.PENDING,
+      });
+    }
+
     const passedCount = completedSources.filter(
-      (s) => s.avg_similarity_score !== null && s.avg_similarity_score >= SIMILARITY_THRESHOLD,
+      (s) =>
+        !reviewStatusBySource.get(s.id)?.hasFailedReview &&
+        !reviewStatusBySource.get(s.id)?.hasPendingReview &&
+        s.avg_similarity_score !== null &&
+        s.avg_similarity_score >= SIMILARITY_THRESHOLD,
     ).length;
     const failedCount = completedSources.filter(
-      (s) => s.avg_similarity_score !== null && s.avg_similarity_score < SIMILARITY_THRESHOLD,
+      (s) =>
+        reviewStatusBySource.get(s.id)?.hasFailedReview ||
+        (s.avg_similarity_score !== null && s.avg_similarity_score < SIMILARITY_THRESHOLD),
+    ).length;
+    const pendingReviewSourceCount = completedSources.filter(
+      (s) => reviewStatusBySource.get(s.id)?.hasPendingReview,
     ).length;
 
     const validScores = sources
@@ -318,7 +500,7 @@ export class TestBatchService {
       executedCount: statusCounts.completed + statusCounts.failed,
       passedCount,
       failedCount,
-      pendingReviewCount: statusCounts.pending + statusCounts.running,
+      pendingReviewCount: statusCounts.pending + statusCounts.running + pendingReviewSourceCount,
       passRate: avgSimilarity,
       avgDurationMs: null,
       avgTokenUsage: null,
@@ -480,7 +662,10 @@ export class TestBatchService {
 
   // ========== 私有方法 ==========
 
-  private writeBackToFeishuAsync(execution: TestExecution, review: UpdateReviewRequestDto): void {
+  private async writeBackToFeishuAsync(
+    execution: TestExecution,
+    review: UpdateReviewRequestDto,
+  ): Promise<void> {
     const feishuStatus =
       review.reviewStatus === ReviewStatus.PASSED
         ? FeishuTestStatus.PASSED
@@ -489,25 +674,23 @@ export class TestBatchService {
           : FeishuTestStatus.SKIPPED;
     const reviewSummary = this.buildReviewSummary(review);
 
-    this.writeBackService
-      .writeBackResult(
+    try {
+      const result = await this.writeBackService.writeBackResult(
         execution.case_id!,
         feishuStatus,
         execution.batch_id || undefined,
         review.failureReason,
         reviewSummary,
-      )
-      .then((result) => {
-        if (result.success) {
-          this.logger.log(`飞书回写成功: ${execution.case_id} -> ${feishuStatus}`);
-        } else {
-          this.logger.warn(`飞书回写失败: ${execution.case_id} - ${result.error}`);
-        }
-      })
-      .catch((error: unknown) => {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        this.logger.error(`飞书回写异常: ${execution.case_id} - ${errorMsg}`);
-      });
+      );
+      if (result.success) {
+        this.logger.log(`飞书回写成功: ${execution.case_id} -> ${feishuStatus}`);
+      } else {
+        this.logger.warn(`飞书回写失败: ${execution.case_id} - ${result.error}`);
+      }
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`飞书回写异常: ${execution.case_id} - ${errorMsg}`);
+    }
   }
 
   private buildReviewSummary(review: UpdateReviewRequestDto): string {

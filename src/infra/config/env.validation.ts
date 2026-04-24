@@ -82,6 +82,27 @@ export class EnvironmentVariables {
   @IsString({ message: 'API_GUARD_TOKEN 必须是字符串' })
   API_GUARD_TOKEN?: string;
 
+  // ==================== 测试集执行配置 ====================
+  @IsOptional()
+  @IsNumber({}, { message: 'TEST_SUITE_WORKER_CONCURRENCY 必须是数字' })
+  @Min(1, { message: 'TEST_SUITE_WORKER_CONCURRENCY 必须大于等于 1' })
+  TEST_SUITE_WORKER_CONCURRENCY?: number;
+
+  @IsOptional()
+  @IsNumber({}, { message: 'TEST_SUITE_BATCH_CONCURRENCY 必须是数字' })
+  @Min(1, { message: 'TEST_SUITE_BATCH_CONCURRENCY 必须大于等于 1' })
+  TEST_SUITE_BATCH_CONCURRENCY?: number;
+
+  @IsOptional()
+  @IsNumber({}, { message: 'TEST_SUITE_CONVERSATION_CONCURRENCY 必须是数字' })
+  @Min(1, { message: 'TEST_SUITE_CONVERSATION_CONCURRENCY 必须大于等于 1' })
+  TEST_SUITE_CONVERSATION_CONCURRENCY?: number;
+
+  @IsOptional()
+  @IsNumber({}, { message: 'TEST_SUITE_JOB_TIMEOUT_MS 必须是数字' })
+  @Min(10000, { message: 'TEST_SUITE_JOB_TIMEOUT_MS 必须大于等于 10000ms' })
+  TEST_SUITE_JOB_TIMEOUT_MS?: number;
+
   // ==================== 会话管理配置（可选，暂未使用）====================
   @IsOptional()
   @IsNumber({}, { message: 'CONVERSATION_MAX_MESSAGES 必须是数字' })

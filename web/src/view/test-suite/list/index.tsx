@@ -30,6 +30,7 @@ export default function TestSuite() {
     loadingMore,
     detailLoading,
     quickCreating,
+    executingExecutionId,
     total,
     hasMore,
     setSelectedBatch,
@@ -38,6 +39,7 @@ export default function TestSuite() {
     loadMoreBatches,
     refreshBatchStats,
     handleQuickCreate,
+    executeScenarioExecution,
   } = useBatches({ testType: activeTab });
 
   // 用例测试评审功能
@@ -71,6 +73,7 @@ export default function TestSuite() {
     selectedConversation,
     loading: conversationsLoading,
     executing,
+    total: conversationTotal,
     setSelectedConversation,
     loadConversations,
     executeConversationTest: originalExecuteConversationTest,
@@ -136,8 +139,16 @@ export default function TestSuite() {
       <div className={styles.tabContainer}>
         <TabSwitch
           tabs={[
-            { key: 'scenario' as const, label: '用例测试', count: activeTab === 'scenario' ? total : undefined },
-            { key: 'conversation' as const, label: '回归验证', count: activeTab === 'conversation' ? total : undefined },
+            {
+              key: 'scenario' as const,
+              label: '用例测试',
+              count: activeTab === 'scenario' ? total : undefined,
+            },
+            {
+              key: 'conversation' as const,
+              label: '回归验证',
+              count: activeTab === 'conversation' ? total : undefined,
+            },
           ]}
           activeTab={activeTab}
           onTabChange={setActiveTab}
@@ -184,6 +195,8 @@ export default function TestSuite() {
                     currentReviewIndex={currentReviewIndex}
                     reviewMode={reviewMode}
                     onSelect={openExecution}
+                    onExecute={executeScenarioExecution}
+                    executing={executingExecutionId}
                   />
                 </>
               )}
@@ -194,6 +207,7 @@ export default function TestSuite() {
                   conversations={conversations}
                   selectedConversation={null}
                   loading={conversationsLoading}
+                  total={conversationTotal}
                   executing={executing}
                   onSelect={setSelectedConversation}
                   onExecute={executeConversationTest}

@@ -45,7 +45,9 @@ export function StatsRow({ stats, testType = 'scenario' }: StatsRowProps) {
           </div>
           <div className={styles.divider} />
           <div className={styles.statCard}>
-            <div className={`${styles.statValue} ${styles.warning}`}>{stats.pendingReviewCount}</div>
+            <div className={`${styles.statValue} ${styles.warning}`}>
+              {stats.pendingReviewCount}
+            </div>
             <div className={styles.statLabel}>
               <Clock size={12} />
               待评审
@@ -55,7 +57,7 @@ export function StatsRow({ stats, testType = 'scenario' }: StatsRowProps) {
         </>
       )}
 
-      {/* 回归验证：显示已执行/待执行 */}
+      {/* 回归验证：显示已执行/待执行/低分 */}
       {isConversation && (
         <>
           <div className={styles.statCard}>
@@ -67,10 +69,20 @@ export function StatsRow({ stats, testType = 'scenario' }: StatsRowProps) {
           </div>
           <div className={styles.divider} />
           <div className={styles.statCard}>
-            <div className={`${styles.statValue} ${styles.warning}`}>{stats.pendingReviewCount}</div>
+            <div className={`${styles.statValue} ${styles.warning}`}>
+              {stats.pendingReviewCount}
+            </div>
             <div className={styles.statLabel}>
               <Clock size={12} />
               待执行
+            </div>
+          </div>
+          <div className={styles.divider} />
+          <div className={styles.statCard}>
+            <div className={`${styles.statValue} ${styles.danger}`}>{stats.failedCount}</div>
+            <div className={styles.statLabel}>
+              <XCircle size={12} />
+              低分
             </div>
           </div>
           <div className={styles.divider} />
@@ -90,16 +102,20 @@ export function StatsRow({ stats, testType = 'scenario' }: StatsRowProps) {
           {isConversation ? '平均评分' : '通过率'}
         </div>
       </div>
-      <div className={styles.divider} />
-      <div className={styles.statCard}>
-        <div className={styles.statValue}>
-          {stats.avgDurationMs ? `${(stats.avgDurationMs / 1000).toFixed(1)}s` : '-'}
-        </div>
-        <div className={styles.statLabel}>
-          <Timer size={12} />
-          平均耗时
-        </div>
-      </div>
+      {!isConversation && (
+        <>
+          <div className={styles.divider} />
+          <div className={styles.statCard}>
+            <div className={styles.statValue}>
+              {stats.avgDurationMs ? `${(stats.avgDurationMs / 1000).toFixed(1)}s` : '-'}
+            </div>
+            <div className={styles.statLabel}>
+              <Timer size={12} />
+              平均耗时
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

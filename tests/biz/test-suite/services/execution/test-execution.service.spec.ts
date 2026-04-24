@@ -33,6 +33,7 @@ describe('TestExecutionService', () => {
   const makeSuccessResult = (text = 'Agent reply') => ({
     text,
     steps: 1,
+    toolCalls: [],
     usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
   });
 
@@ -103,7 +104,11 @@ describe('TestExecutionService', () => {
       expect(mockChatSessionService.saveMessagesBatch).toHaveBeenCalledWith(
         expect.arrayContaining([
           expect.objectContaining({ role: 'user', content: '你好', chatId: expect.any(String) }),
-          expect.objectContaining({ role: 'assistant', content: '在的', chatId: expect.any(String) }),
+          expect.objectContaining({
+            role: 'assistant',
+            content: '在的',
+            chatId: expect.any(String),
+          }),
         ]),
       );
       expect(mockChatSessionService.saveMessage).toHaveBeenCalledWith(
@@ -129,6 +134,40 @@ describe('TestExecutionService', () => {
       const result = await service.executeTest(baseRequest);
 
       expect(result.status).toBe(ExecutionStatus.FAILURE);
+    });
+
+    it('should mark empty non-skip replies as failure', async () => {
+      mockLoop.invoke.mockResolvedValue(makeSuccessResult(''));
+
+      const result = await service.executeTest(baseRequest);
+
+      expect(result.status).toBe(ExecutionStatus.FAILURE);
+      expect(result.response.statusCode).toBe(500);
+      expect(result.response.body).toEqual(
+        expect.objectContaining({
+          text: '',
+          toolCalls: [],
+        }),
+      );
+    });
+
+    it('should allow intentional skip_reply to produce an empty success', async () => {
+      mockLoop.invoke.mockResolvedValue({
+        ...makeSuccessResult(''),
+        toolCalls: [
+          {
+            toolName: 'skip_reply',
+            args: { reason: '用户确认结束' },
+            result: { skipped: true },
+          },
+        ],
+      } as any);
+
+      const result = await service.executeTest(baseRequest);
+
+      expect(result.status).toBe(ExecutionStatus.SUCCESS);
+      expect(result.actualOutput).toBe('');
+      expect(result.response.statusCode).toBe(200);
     });
 
     it('should save execution record when saveExecution is true', async () => {
@@ -247,7 +286,6 @@ describe('TestExecutionService', () => {
         totalTokens: 0,
       });
     });
-
   });
 
   // ========== executeTestStream ==========
