@@ -116,7 +116,7 @@ export class AgentRunnerService {
       }
       this.logger.log(`Loop 完成: steps=${r.steps.length}, tokens=${r.usage.totalTokens}`);
 
-      const result = this.buildRunResult({
+      let result = this.buildRunResult({
         text: r.text,
         reasoningText: r.reasoningText,
         responseMessages: r.response?.messages as Array<Record<string, unknown>> | undefined,
@@ -132,7 +132,9 @@ export class AgentRunnerService {
         stepEndWallclocks,
       });
 
-      this.attachTurnEnd(result, ctx, params.messageId, r.text, params.deferTurnEnd);
+      result = await this.recoverEmptyTextResult(result, ctx, params);
+
+      this.attachTurnEnd(result, ctx, params.messageId, result.text, params.deferTurnEnd);
 
       return result;
     } catch (err) {
@@ -461,6 +463,135 @@ export class AgentRunnerService {
       agentRequest: params.agentRequest,
       memorySnapshot: params.memorySnapshot,
     };
+  }
+
+  /**
+   * 工具链偶发会以“有 reasoning / 有 tool results，但最终 text 为空”结束。
+   *
+   * 这类结果直接抛给上层会导致用户只收到兜底话术；这里做一次无工具文本恢复：
+   * - 不再开放工具，避免重复预约/拉群等副作用
+   * - 把已执行工具结果压缩成 transcript，让模型只补一条候选人可见回复
+   * - 恢复失败时保留原空结果，让上层按既有异常链路处理
+   */
+  private async recoverEmptyTextResult(
+    result: AgentRunResult,
+    ctx: PreparedAgentContext,
+    params: AgentInvokeParams,
+  ): Promise<AgentRunResult> {
+    if (result.text.trim().length > 0) return result;
+    if (result.toolCalls.some((call) => call.toolName === SKIP_REPLY_TOOL_NAME)) return result;
+
+    this.logger.warn(
+      `Agent 返回空文本，尝试无工具恢复: sessionId=${ctx.sessionId}, steps=${result.steps}`,
+    );
+
+    try {
+      const recoveryUsage = {
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+      };
+      const recovery = await this.llm.generate({
+        role: ModelRole.Chat,
+        modelId: params.modelId,
+        disableFallbacks: params.disableFallbacks,
+        thinking: { type: 'disabled', budgetTokens: 0 },
+        system: `${ctx.finalPrompt}\n\n[空响应恢复模式]\n只输出一条候选人可见的中文回复。不要提系统、工具、模型、thinking、恢复或异常。不要调用工具。`,
+        messages: [
+          ...ctx.normalizedMessages,
+          {
+            role: 'user',
+            content: this.buildEmptyTextRecoveryPrompt(result),
+          },
+        ],
+        maxOutputTokens: Math.min(this.maxOutputTokens, 800),
+      });
+
+      const text = recovery.text?.trim() ?? '';
+      recoveryUsage.inputTokens = recovery.usage.inputTokens ?? 0;
+      recoveryUsage.outputTokens = recovery.usage.outputTokens ?? 0;
+      recoveryUsage.totalTokens = recovery.usage.totalTokens ?? 0;
+
+      if (!text) {
+        this.logger.warn(`空文本恢复仍未产出回复: sessionId=${ctx.sessionId}`);
+        return result;
+      }
+
+      this.logger.log(
+        `空文本恢复成功: sessionId=${ctx.sessionId}, tokens=${recoveryUsage.totalTokens}`,
+      );
+
+      return {
+        ...result,
+        text,
+        responseMessages: [
+          ...(result.responseMessages ?? []),
+          ...((recovery.response?.messages as Array<Record<string, unknown>> | undefined) ?? []),
+        ],
+        steps: result.steps + 1,
+        agentSteps: [
+          ...result.agentSteps,
+          {
+            stepIndex: result.agentSteps.length,
+            text,
+            reasoning: recovery.reasoningText || undefined,
+            toolCalls: [],
+            usage: recoveryUsage,
+            finishReason: 'empty-text-recovery',
+          },
+        ],
+        usage: {
+          inputTokens: result.usage.inputTokens + recoveryUsage.inputTokens,
+          outputTokens: result.usage.outputTokens + recoveryUsage.outputTokens,
+          totalTokens: result.usage.totalTokens + recoveryUsage.totalTokens,
+        },
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`空文本恢复失败: sessionId=${ctx.sessionId}; ${message}`);
+      return result;
+    }
+  }
+
+  private buildEmptyTextRecoveryPrompt(result: AgentRunResult): string {
+    const transcript = result.agentSteps.map((step) => ({
+      stepIndex: step.stepIndex,
+      finishReason: step.finishReason,
+      text: step.text ? this.truncateForPrompt(step.text, 1000) : undefined,
+      reasoning: step.reasoning ? this.truncateForPrompt(step.reasoning, 1200) : undefined,
+      toolCalls: step.toolCalls.map((call) => ({
+        toolName: call.toolName,
+        args: call.args,
+        status: call.status,
+        resultCount: call.resultCount,
+        result: this.truncateForPrompt(this.safeJsonStringify(call.result), 5000),
+      })),
+    }));
+
+    return [
+      '上一轮工具链已经执行完，但最终没有产出可发送文本。',
+      '请基于当前对话和下面的工具调用摘要，直接补一条候选人可见回复。',
+      '要求：',
+      '- 只输出回复正文，不要解释内部过程。',
+      '- 如果工具结果显示 requestedDate.status=unavailable，必须明确说明不可约原因，并给最近可选替代时间。',
+      '- 不要编造工具结果，不要承诺已经预约成功。',
+      '',
+      '工具调用摘要：',
+      this.truncateForPrompt(this.safeJsonStringify(transcript), 14000),
+    ].join('\n');
+  }
+
+  private safeJsonStringify(value: unknown): string {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return String(value);
+    }
+  }
+
+  private truncateForPrompt(value: string, maxChars: number): string {
+    if (value.length <= maxChars) return value;
+    return `${value.slice(0, maxChars)}\n...[truncated ${value.length - maxChars} chars]`;
   }
 
   private extractTimestampMs(value: unknown): number | undefined {

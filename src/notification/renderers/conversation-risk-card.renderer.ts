@@ -20,7 +20,7 @@ export class ConversationRiskCardRenderer {
     ].filter((section): section is string => Boolean(section));
 
     return this.cardBuilder.buildMarkdownCard({
-      title: '交流异常 · 人工介入',
+      title: '🚨 交流异常 · 需要人工介入',
       content: sections.join('\n\n'),
       color: 'red',
       atUsers: payload.atUsers,

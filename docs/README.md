@@ -176,16 +176,16 @@ docs: 更新文档        # 修订号 +1
 - ✅ 使用 Claude Code CLI 提供专业建议
 
 - **[构建与部署指南](workflows/deploy-guide.md)**
-  - 🚀 release tag → test → 服务器按 tag 构建部署 → 健康检查 → 飞书通知
+  - 🚀 release tag → test → 服务器按 tag 构建部署 → 健康检查 → 飞书企微私域监控群通知
   - 本地手动部署（`pnpm run deploy`）
   - 自动回滚机制和排查指南
-  - **更新日期**：2026-03-25
+  - **更新日期**：2026-04-23
 
 **部署流程**：
 
 - ✅ 版本 tag 触发后 SSH 到服务器拉取对应 tag 源码并构建
 - ✅ 健康检查失败自动回滚到上一版本
-- ✅ 飞书通知部署结果
+- ✅ 飞书企微私域监控群通知部署结果
 
 - **[分支保护规则配置指南](workflows/branch-protection-guide.md)** (新增)
   - 🔒 GitHub 分支保护规则配置步骤

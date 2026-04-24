@@ -1,6 +1,6 @@
 # 构建与部署指南
 
-**最后更新**：2026-03-26
+**最后更新**：2026-04-23
 
 ## 概述
 
@@ -79,7 +79,7 @@ GitHub Actions                        远程服务器 /data/cake/
                                        6. 健康检查（60s 内轮询 /agent/health）
                                        7. 成功 → 保留该版本为当前版本
                                           失败 → 自动回滚到上一版本
-3. 飞书通知部署结果
+3. 飞书企微私域监控群通知部署结果
 ```
 
 ---
@@ -106,8 +106,8 @@ pnpm run deploy other-host   # 部署到指定服务器
                                        6. docker load 加载新镜像
                                        7. docker compose up -d 启动容器
                                        8. 健康检查（60s 内轮询 /agent/health）
-                                       9. 成功 → 保留新版本
-                                          失败 → 自动回滚到上一版本
+                                       9. 成功 → 保留新版本并通知飞书企微私域监控群
+                                          失败 → 自动回滚到上一版本并通知飞书企微私域监控群
 ```
 
 ### 两种方式对比
@@ -163,11 +163,15 @@ nano .env.production
 | `STRIDE_API_BASE_URL` | 托管平台 API | Stride |
 | `FEISHU_ALERT_WEBHOOK_URL` | 飞书告警 Webhook | 飞书机器人 |
 | `FEISHU_ALERT_SECRET` | 飞书签名密钥 | 飞书机器人 |
+| `PRIVATE_CHAT_MONITOR_WEBHOOK_URL` | 发版通知 Webhook | 飞书企微私域监控群机器人 |
+| `PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET` | 发版通知签名密钥 | 飞书企微私域监控群机器人 |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase URL | Supabase |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase 前端匿名密钥 | Supabase |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase 密钥 | Supabase |
 
 > 完整配置说明见 `.env.example` 内注释。
+
+CI/CD 自动部署需要在 GitHub Secrets 中配置 `PRIVATE_CHAT_MONITOR_WEBHOOK_URL` / `PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET`。本地 `pnpm run deploy` 会优先读取当前 shell 环境变量，其次读取 `.env.production` 中的同名配置。
 
 ---
 

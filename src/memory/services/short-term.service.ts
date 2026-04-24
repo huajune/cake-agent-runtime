@@ -36,11 +36,17 @@ export class ShortTermService {
    * 2. 注入时间上下文
    * 3. 按字符上限裁剪
    */
-  async getMessages(chatId: string): Promise<ShortTermMessage[]> {
+  async getMessages(
+    chatId: string,
+    options?: { endTimeInclusive?: number },
+  ): Promise<ShortTermMessage[]> {
     this.lastLoadError = null;
 
     try {
-      const cachedHistory = await this.getCachedHistory(chatId);
+      const cachedHistory = this.applyTimeBoundary(
+        await this.getCachedHistory(chatId),
+        options?.endTimeInclusive,
+      );
       if (cachedHistory.length > 0) {
         return this.trimByChars(this.injectTimeContext(cachedHistory));
       }
@@ -50,6 +56,7 @@ export class ShortTermService {
         this.config.sessionWindowMaxMessages,
         {
           startTimeInclusive: Date.now() - this.config.sessionTtl * 1000,
+          endTimeInclusive: options?.endTimeInclusive,
         },
       );
       await this.backfillCache(chatId, rawHistory);
@@ -69,6 +76,14 @@ export class ShortTermService {
       role: msg.role,
       content: MessageParser.injectTimeContext(msg.content, msg.timestamp),
     }));
+  }
+
+  private applyTimeBoundary<T extends { timestamp: number }>(
+    messages: T[],
+    endTimeInclusive?: number,
+  ): T[] {
+    if (!Number.isFinite(endTimeInclusive)) return messages;
+    return messages.filter((message) => message.timestamp <= endTimeInclusive);
   }
 
   private async getCachedHistory(

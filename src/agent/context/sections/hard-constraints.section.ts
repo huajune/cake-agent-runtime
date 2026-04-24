@@ -1,4 +1,5 @@
 import type { EntityExtractionResult, Preferences } from '@memory/types/session-facts.types';
+import { isValidLaborForm } from '@memory/facts/labor-form';
 import { PromptContext, PromptSection } from './section.interface';
 
 /**
@@ -92,11 +93,18 @@ export class HardConstraintsSection implements PromptSection {
       lines.push(`- 意向品牌: ${pref.brands.join('、')}（用 brandIdList 而非 brandAliasList）`);
     }
     if (pref.position?.length) {
-      lines.push(`- 意向岗位: ${pref.position.join('、')}（必要时填 jobCategoryList）`);
+      lines.push(
+        `- 意向岗位: ${pref.position.join('、')}（必要时填 jobCategoryList；注意 jobCategoryList 只接受具体工种如"咖啡师"、"服务员"，严禁填入"兼职/全职/小时工/寒假工"等用工形式词）`,
+      );
+    }
+    if (pref.labor_form && isValidLaborForm(pref.labor_form)) {
+      lines.push(
+        `- 用工形式细分: ${pref.labor_form}（平台全为兼职岗位，此字段仅在候选人明确提到"小时工/寒假工/暑假工/兼职+"时出现；**仅作为结果过滤器**，不要填入 jobCategoryList 或任何查询参数，而是开 includeWorkTime 后基于岗位排班/工时特征在结果中筛选匹配项）`,
+      );
     }
     if (pref.schedule) {
       lines.push(
-        `- 班次/工时偏好: ${pref.schedule}（结合 includeWorkTime 校验，结果集中无匹配班次的岗位不要推荐）`,
+        `- 班次/工时偏好: ${pref.schedule}（结合 includeWorkTime 校验；结果集中无匹配班次的岗位不要推荐；岗位要求"每天/做六休一/周四周六周日都要给班/早开晚结全天时段"时，不能当作"只周末"或"只晚班"匹配；"每天/周一至周日"不等于"可只排周末"）`,
       );
     }
     if (pref.salary) {

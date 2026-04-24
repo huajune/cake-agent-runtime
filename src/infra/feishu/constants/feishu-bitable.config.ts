@@ -17,6 +17,7 @@ export interface TestSuiteFieldNames {
   testBatch: string[]; // 测试批次（文本）
   failureCategory: string[]; // 失败分类（单选）- 测试场景分类
   errorReason: string[]; // 错误原因（单选）- Agent 错误归因
+  reviewSummary?: string[]; // 评审摘要（文本）
   similarityScore?: string[]; // 相似度分数（数字）- 回归验证平均相似度
 }
 
@@ -75,6 +76,7 @@ export const testSuiteFieldNames: TestSuiteFieldNames = {
   testBatch: ['测试批次'],
   failureCategory: ['分类', '错误分类'],
   errorReason: ['错误原因', '失败原因'],
+  reviewSummary: ['评审摘要', '评审备注', '评审原因'],
   similarityScore: ['相似度分数', '平均相似度'],
 };
 

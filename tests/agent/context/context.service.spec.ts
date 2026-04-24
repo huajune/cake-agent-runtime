@@ -105,9 +105,7 @@ describe('ContextService', () => {
     expect(prompt.indexOf('# 红线规则（以下行为绝对禁止）')).toBeGreaterThan(
       prompt.indexOf('# 回合 SOP'),
     );
-    expect(prompt.lastIndexOf('[当前阶段策略]')).toBeGreaterThan(
-      prompt.indexOf('# 业务阈值'),
-    );
+    expect(prompt.lastIndexOf('[当前阶段策略]')).toBeGreaterThan(prompt.indexOf('# 业务阈值'));
     expect(prompt.indexOf('# 发送前自检（全部需通过）')).toBeGreaterThan(
       prompt.indexOf('当前时间：'),
     );
@@ -115,6 +113,13 @@ describe('ContextService', () => {
     expect(prompt).toContain('[用户档案]');
     expect(prompt).toContain('姓名: 张三');
     expect(prompt).toContain('先接情绪，再解释用途');
+    expect(prompt).toContain('includeWelfare=true');
+    expect(prompt).toContain('includeJobSalary=true');
+    expect(prompt).toContain('今天也能约');
+    expect(prompt).toContain('早开晚结/全天时段/05:00-23:00');
+    expect(prompt).toContain('"每天/周一至周日"不等于"可只排周末"');
+    expect(prompt).toContain('推荐 2 个及以上岗位时必须分条分段输出');
+    expect(prompt).toContain('若推荐多个岗位，我是否按岗位分条分段展示');
     // 工具专属规则（如 bookingChecklist.collectionStrategy）已迁移到各工具的 description 字段，
     // 不再出现在主 system prompt 中。
     expect(prompt).not.toContain('# 工具手册');

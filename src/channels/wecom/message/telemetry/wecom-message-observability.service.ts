@@ -169,6 +169,42 @@ export class WecomMessageObservabilityService {
     return parts.join('\n');
   }
 
+  async updateRequestMessages(
+    messageId: string,
+    params: {
+      messages: EnterpriseMessageCallbackDto[];
+      content: string;
+      mergeWindowMs?: number;
+    },
+  ): Promise<void> {
+    const trace = await this.traceStore.get<WecomTraceContext>(messageId);
+    if (!trace) return;
+
+    const { messages, content, mergeWindowMs } = params;
+    const imageCount = messages.filter((message) => MessageParser.extractImageUrl(message)).length;
+    const acceptedAt = this.resolveEarliestAcceptedAt(messages);
+    const sourceMessageLastAcceptedAt = this.resolveLatestAcceptedAt(messages);
+    const quietWindowEligibleAt =
+      sourceMessageLastAcceptedAt !== undefined &&
+      mergeWindowMs !== undefined &&
+      Number.isFinite(mergeWindowMs)
+        ? sourceMessageLastAcceptedAt + Math.max(mergeWindowMs, 0)
+        : undefined;
+
+    trace.request.content = content;
+    trace.request.imageCount = imageCount;
+    trace.request.sourceMessageIds = messages.map((message) => message.messageId);
+    trace.request.sourceMessageCount = messages.length;
+    if (acceptedAt !== undefined) {
+      trace.request.acceptedAt = acceptedAt;
+      trace.timings.acceptedAt = acceptedAt;
+    }
+    trace.request.sourceMessageLastAcceptedAt = sourceMessageLastAcceptedAt;
+    trace.request.quietWindowEligibleAt = quietWindowEligibleAt;
+
+    await this.traceStore.set(messageId, trace);
+  }
+
   async hasTrace(messageId: string): Promise<boolean> {
     return Boolean(await this.traceStore.get(messageId));
   }
@@ -513,12 +549,16 @@ export class WecomMessageObservabilityService {
   }
 
   private resolveAcceptedAt(messages: EnterpriseMessageCallbackDto[]): number {
+    return this.resolveEarliestAcceptedAt(messages) ?? Date.now();
+  }
+
+  private resolveEarliestAcceptedAt(messages: EnterpriseMessageCallbackDto[]): number | undefined {
     const candidates = messages
       .map((message) => message._receivedAtMs)
       .filter((value): value is number => Number.isFinite(value) && value > 0);
 
     if (candidates.length === 0) {
-      return Date.now();
+      return undefined;
     }
 
     return Math.min(...candidates);

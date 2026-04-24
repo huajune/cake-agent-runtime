@@ -606,11 +606,11 @@ export class TestImportService {
       }
     }
 
-    await this.batchService.updateBatchStats(batchId);
+    if (failedCount === sourceIds.length) {
+      await this.batchService.updateBatchStatus(batchId, BatchStatus.CANCELLED);
+    }
 
-    const finalStatus =
-      failedCount === sourceIds.length ? BatchStatus.CANCELLED : BatchStatus.REVIEWING;
-    await this.batchService.updateBatchStatus(batchId, finalStatus);
+    await this.batchService.updateBatchStats(batchId);
 
     this.logger.log(`回归验证批次 ${batchId} 执行完成: 成功 ${successCount}, 失败 ${failedCount}`);
   }

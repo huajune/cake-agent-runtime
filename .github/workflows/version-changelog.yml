@@ -257,7 +257,10 @@ jobs:
           node scripts/get-release-notes.js "${VERSION}" > /tmp/release_notes.md
 
           if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
-            echo "ℹ️ GitHub Release already exists: ${TAG_NAME}"
+            gh release edit "${TAG_NAME}" \
+              --title "${TAG_NAME}" \
+              --notes-file /tmp/release_notes.md
+            echo "✅ GitHub Release notes updated: ${TAG_NAME}"
             exit 0
           fi
 

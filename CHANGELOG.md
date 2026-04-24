@@ -2,8 +2,9 @@
 
 所有重要的项目更改都将记录在此文件中。
 
-本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
+本项目遵循 语义化版本 规范。
 版本号由 GitHub Actions 自动维护，发布说明统一使用中文记录。
+变更记录按 PR 驱动整理：更新摘要优先保留 PR 正文摘要 bullet，分类内容保留团队关心的业务/技术影响，不展开文件级流水账。
 
 ---
 
@@ -11,893 +12,337 @@
 ## 待发布
 
 **预计版本**: `v5.2.0`
-**最近更新**: `2026-04-23`
+**最近更新**: `2026-04-24`
 **来源分支**: `develop`
-**累计 PR**: 10
+**累计 PR**: 20
 
 ### 更新摘要
-- [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) [codex] 完善通知链路并修复群任务与消息处理后续问题
-- [PR #74](https://github.com/huajune/cake-agent-runtime/pull/74) [codex] Refactor observability and notification flow
-- [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) [codex] add conversation risk and onboarding handoff monitoring
-- [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) refactor(memory): consolidate fact extraction and drop LocationCityResolver
-- [PR #82](https://github.com/huajune/cake-agent-runtime/pull/82) [codex] improve monitoring visibility and runtime config consistency
-- [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) fix(agent): cap same-tool calls per turn and enrich processing trace
-- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) perf(wecom): 消息回调立即 ACK + 队列/缓存降延 + 健康证等若干修复
-- [PR #91](https://github.com/huajune/cake-agent-runtime/pull/91) 能力标签 + 发布时间展示
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) changelog 脚本化 + 群任务年龄读岗位数据 + test-suite 禁降级
-- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) 飞书表切换 + 表情识别 + 托管暂停到期 + 策略/MCP/Agent 若干修复
+- PR #72 fix: 完善通知链路并修复群任务与消息处理后续问题
+- PR #74 refactor: 重构可观测性与通知链路
+- PR #76 refactor: 简化企微运行时处理并对齐 Sponge 合同
+- PR #78 feat: 新增对话风险与入职交接监控
+- PR #79 feat: 将风险干预改为 Agent 驱动
+- PR #81 refactor: 统一记忆事实抽取并下线 LocationCityResolver
+- PR #82 fix: 提升监控可见性与运行时配置一致性
+- PR #84 feat: 强化监控统计投影与请求级可观测性
+- PR #86 fix: 限制单轮同名工具调用并补齐处理链路追踪
+- PR #87 chore: 批量整理运行时、工具描述与本地环境隔离
+- PR #89 perf: 消除企微消息队列 Queue 与 PreDispatch 延迟
+- PR #90 fix: 企微回调立即 ACK、队列/缓存降延与健康证修复
+- PR #91 feat: 模型能力标签与发布时间展示
+- PR #93 chore: changelog 脚本化
+- PR #96 fix: 时段硬约束/开场问地址修复
+- PR #98 feat: 飞书表切换 + 表情识别
+- PR #99 chore: 统一 CHANGELOG 更新摘要规则，保留 `feat:` / `fix:` / `chore:` 等轻量类型前缀
+- PR #99 feat: 新增部署完成后的飞书企微私域监控群通知脚本，并接入本地部署和 tag 部署 workflow
+- PR #99 chore: 更新发布/部署文档与待发布状态，确保后续自动生成不会覆盖摘要类型信息
+- PR #102 Added a WeCom short-term memory cutoff so a processing batch only reads chat history up to the latest message actually included in that batch.
+- PR #102 Updated replay observability so merged replay inputs refresh trace content/source message IDs before the final Agent call.
+- PR #102 Added empty-text recovery and persisted empty Agent telemetry before failure handling, so production incidents retain tool/step context.
+- PR #102 Tightened candidate-consultation rules for meal objections, salary details, same-day interview precheck, booking promises, and current-focus job extraction.
+- PR #102 Added labor-form normalization so generic "兼职/全职" does not become a misleading platform-level filter.
+- PR #104 align feedback validation and test-suite SOP/skill docs with the real execution chain, including production sync for `/web/test-suite`
+- PR #104 add production sync tooling and missing Supabase migrations for conversation snapshots, execution snapshot references, and `reviewer_source`
+- PR #104 complete test-suite review write-back flows across scenario tests and regression validation, including source-aware review labels and Feishu status updates
+- PR #104 fix conversation batch completion/status aggregation and test-suite UI review details/stat cards
+- PR #104 候选人首条 `我是阳光明媚`（微信加好友自动打招呼模板，xx 是昵称）被当作真实姓名写入 `interview_info.name`，登记预约时原样提交到海绵，门店拿到一个"阳光明媚"而非真名。
+- PR #104 岗位 527385 的 supplement label 中，`是否学生（不要学生）` / `专业（非新媒、食品）` / `周四六日都能上班吗` 这类**带约束语义的筛选题**被原样塞进 `bookingChecklist.templateText` 当收集项问候选人，候选人答"食品类 / 不一定"等硬伤答案，Agent 没识别直接 `duliday_interview_booking` 成功提交。
+- PR #104 **`MessageParser.stripTimeContext` + `name-guard`**：短期记忆通过 `injectTimeContext` 给每条消息追加 `\n[消息发送时间：...]` 后缀，把 `^...$` 锚定的 `AUTO_GREETING_REGEX` 绕过 —— sanitizer 看到的消息不再是 `我是XX` 纯文本，所以放行了昵称。现在匹配前先剥离时间后缀，命中硬规则照常拦截。
+- PR #104 **`SessionService.saveFacts(..., { forceNullFields })`**：`deepMerge` 的 "null 不覆盖" 语义让 sanitizer 的 null 无法清洗已污染 Redis 字段。新增 `forceNullFields` 出口，sanitizer 命中时传 `['name']`，显式覆盖绕开 deepMerge，保证历史污染也能在下一轮 extraction 时被洗掉。
+- PR #104 precheck 分流：`customerLabelDefinitions` 经 classifier 拆分，`templateText`/`requiredFields` 只含 collect；screening 单独出口到新字段 `screeningChecks`（带 labelName / labelId / mode / failSignals）。
+- PR #104 booking 兜底：`findScreeningFailure(supplementAnswers)` 在 `fetchJobs` 之前跑，命中就不发远程请求，阻止不合格候选人进入海绵。
+- PR #104 `tests/memory/facts/name-guard.spec.ts` — 带时间后缀的三种形态（有/无标点、多行）均被 drop
+- PR #104 `tests/memory/session.service.spec.ts` — `forceNullFields` 显式覆盖已污染 `interview_info.name`，其他字段保留
+- PR #104 `tests/tools/duliday/supplement-label-classifier.spec.ts`（新）— classifier 四种模式 + `findScreeningFailure` 遍历逻辑
+- PR #104 `tests/tools/tool/duliday-interview-precheck.tool.spec.ts` — 筛选型 label 不入 templateText；`screeningChecks` 结构正确；全 collect 时字段缺省
+- PR #104 `tests/tools/duliday-interview-booking.tool.spec.ts` — 保留 `buildCustomerLabelList` 旧测试
+- PR #107 Extract reviewer source labels into a shared enum helper and reuse it in backend review summary paths.
+- PR #107 Treat conversations where every reviewed turn is skipped as `SKIPPED` instead of `PASSED` when writing back manual status.
+- PR #107 Add `.catch()` logging for async `pauseUser` calls in interview booking fire-and-forget flows.
+- PR #107 Cover the skipped-status and async pause rejection paths with focused tests.
 
 ### 新功能
-- [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) 新增飞书通知路由（bot 到接收人映射）
-- [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) 新增异步对话风险监控：规则命中 + LLM 复核 + 私聊监控告警
-- [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) 新增 recruitment_cases 表，跨天持久化 onboard_followup 预约上下文
-- [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) 新增入职交接检测：自动暂停托管、告警运营并标记 case 为 handoff
-- [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) 打通 Web 端手动恢复流程，关闭最近一次入职交接 case
-- [PR #91](https://github.com/huajune/cake-agent-runtime/pull/91) 能力标签 + 发布时间展示
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 兼职群任务 "招聘对象" 年龄由硬编码的 "18-50 岁" 改为优先读 hiringRequirement.basicPersonalRequirements.minAge/maxAge，支持两端/单端/缺失回退三种格式
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) test-suite 执行指定模型评估时新增 disableFallbacks=true，避免被 chat 角色的 fallback 链静默切换到其他模型导致结果失真
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) src/agent/agent-run.types.ts：AgentInvokeParams 新增 \`disableFallbacks?: boolean\`
-- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) **feat(strategy)**: 新增时段硬约束/开场问地址/多岗位一岗一段 (d0662d54)
-- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) **feat(user-hosting)**: 暂停托管新增 3 天自动解禁期限（含定时+lazy 清理） (77d26453)
-- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) **feat(emoji-vision)**: 表情消息复用 vision 识别管线，按 messageType 区分 `[图片消息]` / `[表情消息]` 前缀 (e14560e7)
-- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) **test(user-hosting)**: 补齐 pauseExpiresAt 相关测试参数 (e2fbb733)
-- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) **feat(replay)**: 命中不可逆工具（advance_stage / invite_to_group / duliday_interview_booking）时跳过重跑，避免 tool 副作用与 replay 丢弃语义冲突 (603e31c1)
+- PR #72 新增飞书通知路由，支持 bot 到接收人的映射。
+- PR #78 新增对话风险监控、入职交接检测、`recruitment_cases` 持久化和 Web 手动恢复流程。
+- PR #79 新增 `raise_risk_alert` / `request_handoff` Agent 工具，由模型同步触发暂停托管、飞书告警和 case 状态变更。
+- PR #91 模型选择器展示能力标签、发布时间和多模态能力，便于配置时判断模型适用场景。
+- PR #93 群任务招聘对象年龄改为读取岗位 `minAge/maxAge`，支持两端、单端和缺失回退。
+- PR #93 test-suite 支持 `disableFallbacks=true`，避免指定模型评估被 fallback 链静默切走。
+- PR #98 暂停托管新增 3 天自动解禁期限，包含定时清理和 lazy 清理。
+- PR #98 表情消息复用 vision 识别管线，按消息类型区分图片与表情前缀。
+- PR #98 replay 命中 `advance_stage` / `invite_to_group` / `duliday_interview_booking` 等不可逆工具时跳过重跑，避免副作用与回复丢弃冲突。
+- PR #99 feat: 新增部署完成后的飞书企微私域监控群通知脚本，并接入本地部署和 tag 部署 workflow
+- PR #104 **`SessionService.saveFacts(..., { forceNullFields })`**：`deepMerge` 的 "null 不覆盖" 语义让 sanitizer 的 null 无法清洗已污染 Redis 字段。新增 `forceNullFields` 出口，sanitizer 命中时传 `['name']`，显式覆盖绕开 deepMerge，保证历史污染也能在下一轮 extraction 时被洗掉。
 
 ### 问题修复
-- [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) 修复企业级群任务发送与后续 BI 查询问题
-- [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) 修复回复归一化与次要消息处理/监控的后续问题
-- [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) 对齐运行时行为，修正陈旧 spec 让本地 pre-push CI 重新通过
-- [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) 修复暂停用户场景下后续消息不再落库的问题（AI 仍屏蔽、历史持久化保留）
-- [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) 从 active 入职 case 解析 effectiveStage，让 agent 预约后仍能处理简单问答
-- [PR #82](https://github.com/huajune/cake-agent-runtime/pull/82) 托管开关 / paused-user / 群黑名单统一走 local hot cache → Redis → DB，修复多实例场景下长期陈旧值
-- [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) runner.service 新增 prepareStep 钩子，单轮同名工具调用 ≥3 次时用 activeTools 白名单动态屏蔽并在 system 追加拦截提示，逼模型基于已有数据收敛
-- [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) 重写 duliday_job_list 工具描述：显式 DB 关键字精确匹配、字段稳定性分级（jobIdList/brandIdList 高→city/region 中→storeName/brandAlias 低）、列出 5 条调用规则
-- [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) 重写 prompt 工具手册 duliday_job_list 章节（检索机制 + 5 类用户场景 + 0/1/≥2 结果处理动作）
-- [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) 新增 HardConstraintsSection 集中渲染 [本轮查询硬约束]，避免硬约束丢失导致错误查询
-- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) 企微消息回调同步返回 200，把 pipeline 过滤/分派挪到 fire-and-forget 异步链，消除托管平台单消息补发 3 次的超时重发
-- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) duliday_interview_booking 健康证 labelName 正则放宽为 /健康证/，覆盖 有无健康证/是否有健康证/健康证情况 等命名，修复首次必挂、重试才成功
-- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) Session 事实抽取过滤 我是xx / 你好我是xx 打招呼语误提取为真实 name，新增 name-guard.ts 工具与测试
-- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) GroupTaskProcessor 任务重试耗尽与 未找到任何目标群 走 exceptionNotifier，堵住线上静默失败黑洞
-- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) message-splitter 句号/问号后接中文的断句识别容忍中间空白与换行，不再把 。\n中文 漏判
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 重写 changelog 生成脚本，让 PR body 的 Summary/Changes/What changed 里的 bullet 能按关键词分发到具体类别（修复/新增/优化/运维），不再只是 PR 标题复读；同步手工补齐 v5.2.0 待发布 7 条 PR 的 rich 变更条目
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) SECTION_ALIASES 扩展英文标题：Summary / Changes / What changed / Impact / Features / Bug Fixes / Refactor / Validation 等
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) parseBodySections 只让 H2 重置类别边界，H3+ 作为子标题继承，保证 \`## Summary\` 下 \`### 消息回调 / ### Agent 侧修复\` 子段 bullet 不丢
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 新增 categorizeBullet：按关键词（fix/修复、feat/新增、refactor/perf/优化、ops/CI）把 Summary 池的 bullet 分发到类别列表，缺信号时回落到 PR 标题推断类别
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) CHANGELOG.md：重新生成，待发布段落现有 5 新功能 / 15 修复 / 20 优化 / 2 运维 / 15 验证记录
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 两端都缺 → 回退到宽泛的 \`年龄18-50岁\` 文案（原有兜底意图保留）
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 新增 4 条测试用例（真实年龄 / minAge-only / maxAge-only / 两端缺失回退），修正一条老断言
-- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) **fix(agent)**: invite_to_group 记忆 already_in_group，修复 step 耗时精度 (84815dc6)
-- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) **fix(mcp)**: 移除 tsconfig MCP 路径别名，改用 package exports 解析 (922ca8e5)
+- PR #72 修复企业级群任务发送、后续 BI 查询、回复归一化与次要消息监控问题。
+- PR #78 修复暂停用户后续消息不落库的问题，并从 active 入职 case 解析 `effectiveStage`。
+- PR #82 托管开关、paused-user、群黑名单统一走 local hot cache -> Redis -> DB，修复多实例长期读取陈旧值。
+- PR #86 对 `duliday_job_list` 增加同名工具调用上限、硬约束渲染和结果处理规则，降低循环查询与误用结果风险。
+- PR #87 修复 hard-constraints 将“用工形式”错误引导到 `jobCategoryList` 的问题，改为查询后过滤。
+- PR #89 将 Bull worker 并发与内部 semaphore 对齐，避免 handler 持有 lock 阻塞 delayed job 调度。
+- PR #90 企微消息回调同步返回 200，消除托管平台因响应慢造成的重复补发。
+- PR #90 修复健康证字段匹配、打招呼语误提取姓名、群任务静默失败和中文断句漏判。
+- PR #96 将 `invite_to_group` 的 `already_in_group` 结果写入记忆，避免同会话反复调用慢接口。
+- PR #96 修正 `stepDurationMs` 统计精度，避免 Anthropic 秒级时间戳造成排障误判。
+- PR #98 修复 `invite_to_group` 记忆、MCP package exports 解析与相关 Agent 链路问题。
+- PR #99 chore: 统一 CHANGELOG 更新摘要规则，保留 `feat:` / `fix:` / `chore:` 等轻量类型前缀
+- PR #104 fix conversation batch completion/status aggregation and test-suite UI review details/stat cards
+- PR #104 booking 兜底：`findScreeningFailure(supplementAnswers)` 在 `fetchJobs` 之前跑，命中就不发远程请求，阻止不合格候选人进入海绵。
 
 ### 优化调整
-- [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) 优化抢单 prompt/过滤与通知发送行为
-- [PR #74](https://github.com/huajune/cake-agent-runtime/pull/74) 抽取全局 NotificationModule，告警/运维/私聊监控分离独立 Feishu channel 与卡片渲染
-- [PR #74](https://github.com/huajune/cake-agent-runtime/pull/74) 接入可观测性 incident 上报与进程级异常监控，替换旧的 Feishu/logger 告警链
-- [PR #74](https://github.com/huajune/cake-agent-runtime/pull/74) 新增可复用 analytics helpers（metrics/trend/业务规则），统一接入监控与投递流程
-- [PR #74](https://github.com/huajune/cake-agent-runtime/pull/74) 告警卡片补充 model chain / retry count / memory warnings / dispatch mode 等诊断上下文
-- [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) 重构企微消息 runtime 为 ingress / application / delivery / runtime / telemetry 五层
-- [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) memory 模块 fact 抽取作为地点信号→城市的唯一真相源，下线独立 Agent resolver 与 toolContext 旁路
-- [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) Preferences.city 从 string 升级为结构化 CityFact（value/confidence/evidence），Agent 可据此自主决策
-- [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) 删除 LocationCityResolverService（及 agent.module 注册）与 ToolBuildContext/PromptContext/ComposeParams 的 resolvedCity 旁路字段
-- [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) 统一地理映射到 src/memory/facts/geo-mappings.ts，合并此前分散在两处的 10+ 城市映射表
-- [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) extractor 并入 high-confidence-facts.ts，吸收 resolver 的推导能力产出带 evidence 的 CityFact
-- [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) Redis 旧字符串 city 数据通过 PreferencesSchema 自动归一化为 CityFact，无需单独数据迁移
-- [PR #82](https://github.com/huajune/cake-agent-runtime/pull/82) 企微消息入口与 merge 调度刷新 runtime config 快照，使 AI 回复与合并配置实时生效
-- [PR #82](https://github.com/huajune/cake-agent-runtime/pull/82) 扩展监控、tracking、analytics 与对话风险链路（含 Dashboard/UI 更新）
-- [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) message_processing_records 新增结构化 tool_calls（resultCount/status）、agent_steps 逐步拆分、memory_snapshot
-- [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) runner / ai-stream-trace 同步落库每步 reasoning / usage / finishReason，Dashboard 详情抽屉展示对应字段
-- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) 短期记忆缓存改为 INSERT-only 原子镜像（依赖 chat_messages.message_id UNIQUE），只有真正 INSERT 的那条才镜像进 Redis list，消除重复 messageId 双写竞态
-- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) updateMessageContent 由 lrange→改→del→全量 rpush 简化为直接失效整 list、下次读取 cache miss 时 backfill
-- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) 删除 memory:short_term:message: 反查索引 key，避免双写去重
-- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) Queue/PreDispatch 消除聚合窗口 + 前置准备的双重串行 await，改写成基于静默窗口的 debounce 模型
-- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) Agent prompt 最前面加入显式优先级栈（红线 > 硬约束 > 全局 > 阶段 > 风格）与发送前两条自检
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) extractHiringRequirement 的 \`items.push('年龄18-50岁')\` 改为按数据渲染：
-- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) **refactor(recruitment-case)**: 精简模块依赖 (182527cc)
-- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) **test**: 适配 feishu bitable / curated-dataset 重构后的测试 (eeff5c69)
+- PR #74 抽取全局 `NotificationModule`，拆分告警、运维、私聊监控 channel 与卡片渲染。
+- PR #74 接入 incident 上报、进程级异常监控和复用型 analytics helpers，统一监控与投递计算口径。
+- PR #76 将企微消息运行时改为请求级模型，移除旧 `is_primary` 兼容语义，并简化为静默窗口触发。
+- PR #81 将 `Preferences.city` 升级为带置信度和证据的 `CityFact`，统一地理映射与高置信事实抽取。
+- PR #82 在入口与 merge 调度刷新 runtime config 快照，并扩展监控、tracking、analytics 与 Dashboard 展示。
+- PR #84 新增日级统计投影和更丰富的小时聚合字段，区分静默窗口等待与真实队列等待。
+- PR #84 将 message processing 详情改为保存真实 LLM 请求快照，提升请求回放和排障可见性。
+- PR #86 为 message processing 增加结构化 tool calls、agent steps、memory snapshot、reasoning、usage 与 finishReason。
+- PR #87 统一工具 DESCRIPTION 的“何时调用/何时不调用/参数/边界”结构，并精简 message filter 与 Redis key util。
+- PR #89 将历史写入、source record 清理和配置读取从关键路径拆出，生产 queueDuration 从 36-89s 降至约 13s。
+- PR #90 短期记忆缓存改为 INSERT-only 原子镜像，`updateMessageContent` 改为失效整 list 后按需 backfill。
+- PR #90 在 Agent prompt 前置优先级栈和发送前自检，减少硬规则反复横跳。
+- PR #93 重写 Changelog 生成链路，按 PR body 的中文/英文栏目和关键词分发到具体分类。
+- PR #98 精简 recruitment-case 模块依赖，并适配 Feishu bitable 与 curated-dataset 重构后的测试。
+- PR #102 Tightened candidate-consultation rules for meal objections, salary details, same-day interview precheck, booking promises, and current-focus job extraction.
+- PR #104 precheck 分流：`customerLabelDefinitions` 经 classifier 拆分，`templateText`/`requiredFields` 只含 collect；screening 单独出口到新字段 `screeningChecks`（带 labelName / labelId / mode / failSignals）。
+- PR #107 Extract reviewer source labels into a shared enum helper and reuse it in backend review summary paths.
 
 ### 运维与流程
-- [PR #74](https://github.com/huajune/cake-agent-runtime/pull/74) uncaughtException 与 unhandledRejection 统一走 incident pipeline 上报
-- [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) 新增 hourly stats 聚合修复与 recruitment_cases 的 DB migrations
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 合入告警持久化统一方案的设计 todo
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) scripts/update-version-changelog.js
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) normalizeBodyLine 收紧为只认 bullet/编号列表，散文叙述不会误落入类别
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 更新摘要栏目固定只挂 PR 标题
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) .release/pending-release.json：手工补齐 7 条待发布 PR（#72/#74/#78/#81/#82/#86/#90）的 rich 变更条目
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) src/biz/group-task/prompts/part-time-job.prompt.ts
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 两端都有 → \`年龄{min}-{max}岁\`
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 仅 minAge → \`年龄{min}岁以上\`
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 仅 maxAge → \`年龄{max}岁以下\`
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 字段路径与 duliday-job-list.tool.ts / job-policy-parser.ts 对齐
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) src/agent/agent-preparation.service.ts：\`disableFallbacks=true\` 时清空 chatFallbacks
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) src/biz/test-suite/services/test-execution.service.ts：test-suite 两处调用点均传 \`disableFallbacks: true\`
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) docs/todo/alert-persistence-unification.md：设计稿
-- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) **chore(feishu)**: 切换到新版多维表格 (0f482828)
+- PR #74 `uncaughtException` 与 `unhandledRejection` 统一进入 incident pipeline。
+- PR #78 新增 hourly stats 聚合修复与 `recruitment_cases` 数据库迁移。
+- PR #84 新增 `monitoring_daily_stats`，将跨小时聚合中的唯一用户等指标改回精确查询或投影。
+- PR #87 引入 `RUNTIME_ENV` 做 Redis/Bull key 隔离，避免本地环境误消费生产队列。
+- PR #87 新增 `analyze-chat-badcases` 生产对话质量分析 skill，并同步文档与测试。
+- PR #89 新增 `/message/queue-status` 运维端点，暴露 waiting/active/delayed/completed/failed/paused 队列计数。
+- PR #93 合入告警持久化统一方案设计稿，并补齐版本脚本 dry-run 验证。
+- PR #98 切换到新版飞书多维表格。
+- PR #99 chore: 更新发布/部署文档与待发布状态，确保后续自动生成不会覆盖摘要类型信息
+- PR #102 Added a WeCom short-term memory cutoff so a processing batch only reads chat history up to the latest message actually included in that batch.
+- PR #102 Updated replay observability so merged replay inputs refresh trace content/source message IDs before the final Agent call.
+- PR #102 Added empty-text recovery and persisted empty Agent telemetry before failure handling, so production incidents retain tool/step context.
+- PR #102 Added labor-form normalization so generic "兼职/全职" does not become a misleading platform-level filter.
+- PR #104 align feedback validation and test-suite SOP/skill docs with the real execution chain, including production sync for `/web/test-suite`
+- PR #104 add production sync tooling and missing Supabase migrations for conversation snapshots, execution snapshot references, and `reviewer_source`
+- PR #104 complete test-suite review write-back flows across scenario tests and regression validation, including source-aware review labels and Feishu status updates
+- PR #104 候选人首条 `我是阳光明媚`（微信加好友自动打招呼模板，xx 是昵称）被当作真实姓名写入 `interview_info.name`，登记预约时原样提交到海绵，门店拿到一个"阳光明媚"而非真名。
+- PR #104 岗位 527385 的 supplement label 中，`是否学生（不要学生）` / `专业（非新媒、食品）` / `周四六日都能上班吗` 这类**带约束语义的筛选题**被原样塞进 `bookingChecklist.templateText` 当收集项问候选人，候选人答"食品类 / 不一定"等硬伤答案，Agent 没识别直接 `duliday_interview_booking` 成功提交。
+- PR #104 **`MessageParser.stripTimeContext` + `name-guard`**：短期记忆通过 `injectTimeContext` 给每条消息追加 `\n[消息发送时间：...]` 后缀，把 `^...$` 锚定的 `AUTO_GREETING_REGEX` 绕过 —— sanitizer 看到的消息不再是 `我是XX` 纯文本，所以放行了昵称。现在匹配前先剥离时间后缀，命中硬规则照常拦截。
+- PR #104 `tests/memory/facts/name-guard.spec.ts` — 带时间后缀的三种形态（有/无标点、多行）均被 drop
+- PR #104 `tests/memory/session.service.spec.ts` — `forceNullFields` 显式覆盖已污染 `interview_info.name`，其他字段保留
+- PR #104 `tests/tools/duliday/supplement-label-classifier.spec.ts`（新）— classifier 四种模式 + `findScreeningFailure` 遍历逻辑
+- PR #104 `tests/tools/tool/duliday-interview-precheck.tool.spec.ts` — 筛选型 label 不入 templateText；`screeningChecks` 结构正确；全 collect 时字段缺省
+- PR #104 `tests/tools/duliday-interview-booking.tool.spec.ts` — 保留 `buildCustomerLabelList` 旧测试
+- PR #107 Treat conversations where every reviewed turn is skipped as `SKIPPED` instead of `PASSED` when writing back manual status.
+- PR #107 Add `.catch()` logging for async `pauseUser` calls in interview booking fire-and-forget flows.
+- PR #107 Cover the skipped-status and async pause rejection paths with focused tests.
 
 ### 配置变更
-- 无
+- PR #76 调整企微 callback/runtime 相关配置类型与 UI 表达。
+- PR #87 新增 `RUNTIME_ENV` 环境隔离约定。
+- PR #89 将运行时配置快照 TTL 从 1s 调整为 30s。
+- PR #98 移除 tsconfig MCP 路径别名，改用 package exports 解析。
 
 ### 验证记录
-- [PR #72](https://github.com/huajune/cake-agent-runtime/pull/72) pnpm run ci:check 通过，pre-push hook 通过
-- [PR #74](https://github.com/huajune/cake-agent-runtime/pull/74) pnpm run ci:check 通过（162 suites、2148 tests）
-- [PR #74](https://github.com/huajune/cake-agent-runtime/pull/74) notifier/observability/analytics/delivery 端到端测试覆盖刷新
-- [PR #78](https://github.com/huajune/cake-agent-runtime/pull/78) pnpm run ci:check 通过，pre-push 全量 jest --coverage 通过（182 suites、2238 tests）
-- [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) pnpm run build/lint/test 全通过（197 suites、2317 tests）
-- [PR #81](https://github.com/huajune/cake-agent-runtime/pull/81) 待上线前抽查：旧 Redis city 字符串能正确归一化、extractor 输出 city evidence 合理
-- [PR #82](https://github.com/huajune/cake-agent-runtime/pull/82) 同步修复因 runtime-config / monitoring 重构而失效的单测与 CI 期望
-- [PR #82](https://github.com/huajune/cake-agent-runtime/pull/82) pnpm run ci:check 与 pre-push 通过（198/198 suites、2283/2283 tests）
-- [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) pnpm run build/lint/test 通过（2296 tests）
-- [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) 待测试环境用两个生产 case 重放：Case 1 收敛到 ≤2 次 duliday_job_list / Case 2 注入硬约束后带上性别+晚班 filter
-- [PR #86](https://github.com/huajune/cake-agent-runtime/pull/86) 待观察生产 [工具调用硬截断] 日志频次，确认无误伤
-- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) pnpm run test 2420 tests green / tsc --noEmit 0 errors
-- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) 新增 pipeline 永远 pending 时仍同步返回 200 的回归测试
-- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) duliday-interview-booking 7 条覆盖四种健康证 labelName + 别名 supplementAnswers + 未传报 missing + 健康证类型 不被截胡
-- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) name-guard 覆盖常见打招呼句式
-- [PR #90](https://github.com/huajune/cake-agent-runtime/pull/90) 待上线后 24h 观察：托管补发率、duliday 缺字段率、企微回调 p99（目标 <50ms）
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) \`pnpm exec jest\` 全量 207 suites / 2424 tests green（pre-push hook 全过）
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) \`pnpm run lint\` + \`pnpm run format\`：pre-commit hook 全过
-- [PR #93](https://github.com/huajune/cake-agent-runtime/pull/93) 本地用脚本 dry-run 验证解析：\`## Summary\` + H3 子标题能正确提取并分发
-- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) `pnpm run build` 通过
-- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) `pnpm run lint` 通过
-- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) `pnpm run test` 全量 213 suites / 2441 tests 全绿
-- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) 灰度环境回归：候选人发送表情后 chat_messages.content 写回 `[表情消息] xxx`
-- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) 灰度环境回归：暂停用户 3 天后自动解禁，本地/Redis 缓存与 DB 一致
-- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) 灰度环境回归：Agent 调用 advance_stage/invite_to_group/booking 后，即使用户在生成期间追发消息，首次回复仍正常投递；追发消息进入下一轮
-- [PR #98](https://github.com/huajune/cake-agent-runtime/pull/98) 飞书表切换后确认双向同步正常
+- PR #74 `pnpm run ci:check` 通过，覆盖 162 suites / 2148 tests。
+- PR #78 `pnpm run ci:check` 通过，pre-push 全量 `jest --coverage` 通过，覆盖 182 suites / 2238 tests。
+- PR #81 `pnpm run build` / `pnpm run lint` / `pnpm run test` 通过，覆盖 197 suites / 2317 tests。
+- PR #82 `pnpm run ci:check` 与 pre-push 通过，覆盖 198 suites / 2283 tests。
+- PR #86 `pnpm run build` / `pnpm run lint` / `pnpm run test` 通过，覆盖 2296 tests。
+- PR #87 pre-push 通过，覆盖 2318 tests，并要求灰度验证 `jobCategoryList` 不再传入“兼职/全职”。
+- PR #90 `pnpm run test` 通过 2420 tests，`tsc --noEmit` 0 errors，并补齐回调 ACK、健康证和 name-guard 回归测试。
+- PR #93 `pnpm exec jest` 全量 207 suites / 2424 tests 通过，`pnpm run lint` + `pnpm run format` 通过。
+- PR #96 本地 dev server 跑完 7 条 badcase scenario，人工核验 T1/T4/T6 通过，T2/T3/T7 待多轮 history 补充。
+- PR #98 `pnpm run build` / `pnpm run lint` / `pnpm run test` 通过，覆盖 213 suites / 2441 tests，并列出飞书表、表情、托管到期与 replay 灰度项。
+- PR #99 `node --check scripts/send-deploy-notification.js && node --check scripts/update-version-changelog.js && node --check scripts/get-release-notes.js`
+- PR #99 `bash -n scripts/deploy-local.sh && bash -n scripts/deploy-remote.sh && git diff --check`
+- PR #99 本地假 webhook 捕获部署通知 payload
+- PR #99 pre-commit hook: `pnpm run lint` + `pnpm run format`
+- PR #99 pre-push hook: `pnpm run ci:check`，213 suites / 2441 tests 通过
+- PR #102 `pnpm jest tests/agent/agent.service.spec.ts tests/channels/wecom/message/application/reply-workflow.service.spec.ts tests/memory/short-term.service.spec.ts tests/memory/memory-lifecycle.service.spec.ts tests/agent/agent-preparation.service.spec.ts tests/agent/context/context.service.spec.ts tests/memory/session-extraction.prompt.spec.ts --runInBand --watchman=false`
+- PR #102 `pnpm run typecheck`
+- PR #102 `pnpm run lint:check`
+- PR #102 `pnpm exec prettier --check ...`
+- PR #102 Pre-push hook: `pnpm run ci:check` passed, including 214 Jest suites / 2449 tests.
+- PR #104 pre-commit lint / format hooks 绿
+- PR #104 `pnpm run ci:check`（lint:check + format:check + typecheck + build:web + nest build + jest 覆盖率）**216 suites / 2511 tests 全通过**
+- PR #104 pre-push hook 本地 CI 流水通过后才推送
+- PR #107 `pnpm exec prettier --check src/biz/test-suite/enums/test.enum.ts src/biz/test-suite/services/test-batch.service.ts src/biz/test-suite/services/conversation-test.service.ts src/tools/duliday-interview-booking.tool.ts tests/biz/test-suite/services/conversation/conversation-test.service.spec.ts tests/tools/tool/duliday-interview-booking.tool.spec.ts`
+- PR #107 `pnpm exec tsc --noEmit --pretty false`
+- PR #107 `pnpm exec jest tests/biz/test-suite/services/conversation/conversation-test.service.spec.ts tests/biz/test-suite/services/execution/test-batch.service.spec.ts tests/tools/tool/duliday-interview-booking.tool.spec.ts --runInBand`
+- PR #107 pre-push `pnpm run ci:check` passed: 216 suites, 2515 tests
 <!-- release:pending:end -->
 
 ## [5.1.0] - 2026-04-09
 
 **来源分支**: `develop`
+**覆盖 PR**: `#59/#60/#63/#66/#70`
 
 ### 更新摘要
-- [PR #63](https://github.com/huajune/cake-agent-runtime/pull/63) [codex] chore: 自动化受保护分支发布流程
-- [PR #66](https://github.com/huajune/cake-agent-runtime/pull/66) interview precheck deadline parsing + job list prompt guidance
-- [PR #70](https://github.com/huajune/cake-agent-runtime/pull/70) 修复企微群消息发送失败 + 模板优化
+- PR #59 fix: 收紧运行时校验护栏
+- PR #60 fix: 修复群任务静默拉群、真实成员检查与时段过滤
+- PR #63 chore: 自动化受保护分支发布流程
+- PR #66 feat: 面试预检 deadline 解析与岗位列表 prompt 引导
+- PR #70 fix: 修复企微群消息发送失败与群任务模板
 
 ### 新功能
-- [PR #66](https://github.com/huajune/cake-agent-runtime/pull/66) interview precheck deadline parsing + job list prompt guidance
+- PR #63 将版本与变更记录流程改为受保护分支友好的机器人元数据 PR 模式。
+- PR #63 发布通知改为发送到消息通知群，使用中文卡片并 `@所有人`。
+- PR #66 新增面试预检 deadline 解析，并增强岗位列表 prompt 引导。
 
 ### 问题修复
-- [PR #70](https://github.com/huajune/cake-agent-runtime/pull/70) 修复企微群消息发送失败 + 模板优化
+- PR #59 启用全局 `ValidationPipe`，补齐 debug 和 worker concurrency DTO，阻断非法输入进入核心链路。
+- PR #59 将 LLM 评估改为 schema-driven structured output，校验 webhook、Redis session facts 和 Sponge API 响应。
+- PR #60 拉群工具在城市无群时静默跳过，并以真实群成员缓存替代单次 API 调用去重。
+- PR #60 抢单群按早/中/晚时段限定查询范围，避免多次推送重复的一周订单。
+- PR #70 修复企业级群消息 `imBotId` 取错字段导致的静默失败，并检查 Stride API 业务状态码。
 
 ### 优化调整
-- 无
+- PR #60 群任务订单过滤按时段落地：上午仅今天、下午查明天、晚上查周末，保留手动触发兜底。
+- PR #70 抢单群通知模板增加表情前缀，群成员服务、拉群工具与 GroupTaskPanel 样式同步精简。
 
 ### 运维与流程
-- [PR #63](https://github.com/huajune/cake-agent-runtime/pull/63) [codex] chore: 自动化受保护分支发布流程
+- PR #63 发布工作流改为 `develop` 准备待发布信息、`master` 固化正式版本、tag 与 GitHub Release。
+- PR #63 补充中文 PR 模板、版本说明脚本和发布流程文档。
+
+### 配置变更
+- PR #63 新增 `MESSAGE_NOTIFICATION_WEBHOOK_URL` 与 `MESSAGE_NOTIFICATION_WEBHOOK_SECRET` 发布通知配置。
+
+### 验证记录
+- PR #59 `jest` 指定回归集通过，`tsc -p tsconfig.json --noEmit` 通过。
+- PR #60 拉群工具 11 条测试通过，抢单策略 6 条测试通过，`pnpm run build` 通过。
+- PR #70 通过 Stride 企业级 API curl 和 `/group-task/test-send` 验证企微群消息可送达。
+
+## [5.0.0] - 2026-04-08
+
+**来源分支**: `develop`
+**覆盖 PR**: `#52/#53/#55/#57`
+
+### 更新摘要
+- PR #52 feat: 策略配置版本化与环境隔离
+- PR #53 feat: 拉人进群工具产品设计与基础依赖
+- PR #55 chore: 通过 PR 同步 release 更新到 develop
+- PR #57 chore: 同步 master 4.0.0 发布文件到 develop
+
+### 新功能
+- PR #52 将 Supabase 拆分为 prod/test 项目，策略配置新增 testing/released/archived 状态。
+- PR #52 Web 编辑只影响 testing 版本，微信用户始终读取 released 版本，并新增 `publish_strategy` 原子发布 RPC。
+- PR #52 策略页面新增发布按钮和版本状态栏，ChatTester 支持图片上传与图片描述工具。
+- PR #53 新增拉人进群产品设计：按城市 + 行业匹配群，支持群满告警、负载均衡和防重复拉群策略。
+
+### 问题修复
+- PR #55 release sync 改为创建/更新 develop PR，避免受保护分支直推失败和 cherry-pick 冲突。
+
+### 优化调整
+- PR #53 为 ToolModule 补充 BizMessageModule 依赖，并将 ChatTester “清空”按钮改为“重置会话”。
+
+### 运维与流程
+- PR #55 release 同步仅限 `package.json` 与 `CHANGELOG.md`，降低版本文件分叉风险。
+- PR #57 将 master 4.0.0 发布文件同步回 develop，解除后续 PR 冲突。
+
+### 配置变更
+- PR #52 新增策略配置状态、版本字段与发布 RPC 相关数据库迁移。
+
+### 验证记录
+- PR #52 本地验证策略页面加载 testing 版本，编辑后 ChatTester 使用新配置。
+- PR #53 产品设计文档 review 通过，`pnpm run build` 通过。
+- PR #55 校验 workflow YAML、`git diff --check`，并本地模拟 develop sync PR 创建路径。
+
+## [4.0.0] - 2026-04-01
+
+**来源分支**: `develop`
+**覆盖 PR**: `#22/#24/#26/#27/#28/#30/#32/#34/#36/#38/#39/#42/#45/#50`
+
+### 更新摘要
+- PR #22 feat: 支持多消息类型并清理评估模块
+- PR #24 chore: 自动部署与 Docker Web 构建
+- PR #26 chore: 自动部署流水线与飞书通知
+- PR #30 fix: 修复 Web 问题、增强健康检查并新增角色设置
+- PR #34 refactor: 重构部署流水线并更新文档
+- PR #38 feat: 智能推荐、地理编码与主动告知招聘要求
+- PR #39 feat: 群任务定时通知自动化
+- PR #50 chore: 稳定 release 与部署工作流
+
+### 新功能
+- PR #22 支持语音、表情、图片、小程序消息解析、过滤、展示与 vision 图片描述。
+- PR #22 新增 `AGENT_EVALUATE_MODEL` 评估角色，评估模型不再占用主聊天模型。
+- PR #24 Dockerfile 在后端构建前加入 Web 前端构建，部署产物包含 Dashboard。
+- PR #26 部署成功/失败发送飞书卡片通知，包含项目、分支、提交信息。
+- PR #30 新增 Redis/Supabase 真实健康检查、`role_setting` 全栈 CRUD、worker 队列状态卡片和 Dashboard 增强。
+- PR #38 新增 geocode 工具，支持地址解析、行政区划、经纬度、按距离排序和过滤岗位。
+- PR #38 首次推荐岗位时主动展示招聘硬性条件，避免推岗后逐项追问。
+- PR #39 新增群任务定时通知系统：Cron 调度、群解析、AI/模板生成、企微群发送、飞书报告。
+- PR #39 Dashboard 新增 GroupTaskPanel，支持开关控制、试运行模式和手动触发。
+
+### 问题修复
+- PR #27 与 PR #28 解决 master/develop 冲突，移除重复 evaluation 文件和孤立测试。
+- PR #30 修复聊天记录日期范围、agent-test 草稿持久化和 stuck `processing` 记录恢复问题。
+- PR #32 修复部署 SSH passphrase 与 notify job 被 production environment 保护规则阻塞的问题。
+- PR #36 简化 Dockerfile 为 3 stages，并使用 `pnpm prune --prod` 降低镜像风险。
+- PR #38 修复 vision 模型连接超时和 version-changelog workflow 相关问题。
+- PR #42 转义 docker-compose healthcheck 中的 `$`，修复部署插值失败。
+
+### 优化调整
+- PR #30 移除类型 hack，补充接口输入校验，抽取业务指标类型并修复 AI SDK 类型转换。
+- PR #34 部署从 GHCR 大镜像传输改为服务器 git fetch + docker build，并新增健康检查失败自动回滚。
+- PR #34 精简 package scripts、统一默认端口到 8585，并重写部署文档。
+- PR #39 修复群任务配置默认值双源头、dryRun 竞态和表单状态丢失。
+- PR #50 统一本地与 CI 部署的 immutable image tag 和远端回滚逻辑。
+
+### 运维与流程
+- PR #24 新增 SSH 自动部署 job。
+- PR #26 合并到 develop 后通过 release PR 触发 master 部署。
+- PR #34 部署流水线简化为 test -> deploy -> notify。
+- PR #45 version-changelog workflow 更新版本后自动同步 `package.json` 与 `CHANGELOG.md` 到 develop。
+- PR #50 发布流程改为 master bump、tag-driven deployments，并将 release commit 同步回 develop。
+
+### 配置变更
+- PR #26 docker-compose 模板 `env_file` 改为 `.env.prod`。
+- PR #32 新增 `DEPLOY_SSH_PASSPHRASE` 与 `FEISHU_DEPLOY_WEBHOOK_URL` 配置要求。
+- PR #34 全局端口从 8080 统一为 8585。
+- PR #38 部署配置统一 `.env.prod`，vision 模型切换为 `qwen/qwen-vl-plus`。
+
+### 验证记录
+- PR #24 验证 Docker 镜像包含 Web 前端并可触发部署。
+- PR #28 112 suites / 1830 tests 通过，CI 通过。
+- PR #30 `npx tsc --noEmit` 无类型错误，核心 controller/parser specs 通过。
+- PR #34 `bash -n` 校验部署脚本，`docker compose config` 通过。
+- PR #39 群任务产品文档、测试套件指南与相关回归测试同步更新。
+- PR #50 `pnpm run build:web`、部署脚本语法检查、workflow YAML 解析和 `git diff --check` 通过。
+
+## [2.0.0] - 2026-03-23
+
+**来源分支**: `develop`
+**覆盖 PR**: `#15/#16/#18/#19/#20/#21`
+
+### 更新摘要
+- PR #15 chore: 禁止直接推送 develop 分支
+- PR #16 chore: 触发 AI Review 流程测试
+- PR #18 chore: 接入 huajune agent integration 基础分支
+- PR #19 chore: 同步 AI Code Review workflow 到 develop
+- PR #20 feat: 发布 Cake Agent Runtime v2.0 自主 Agent 架构
+- PR #21 chore: 更新部署容器名并移除旧 PR 模板
+
+### 新功能
+- PR #20 从花卷 API 代理层演进为 Cake Agent Runtime，自主编排 Recall -> Compose -> Execute -> Store。
+- PR #20 引入多模型 Provider、动态 Context Section、工具系统、四层记忆、五阶段候选人咨询策略和 Dashboard。
+
+### 问题修复
+- 无
+
+### 优化调整
+- PR #18 作为自主 Agent 架构切换前置整合分支，为 v2.0 合并做基础准备。
+- PR #19 将 AI Review 规则从内联 YAML 外置到 `.github/review-rules.md`，并移除旧 inline comment 工具。
+
+### 运维与流程
+- PR #15 Husky 阻止直接推送 develop，推动通过 PR 合并。
+- PR #16 验证 AI Review 触发链路。
+- PR #21 部署容器名从 `wecom-service` 改为 `cake-agent`，并清理旧 PR 模板。
 
 ### 配置变更
 - 无
 
 ### 验证记录
-- 无
-
-## [4.0.0] - 2026-04-01
-
-**分支**: `master`
-
-Bug 修复：
-- require stride enterprise token (8064605)
-- align group tests with server-side token refactor (44396b5)
-- move enterprise group token server-side (a0f7328)
-- escape $ in docker-compose healthcheck to prevent interpolation (b78264f)
-- use explicit Asia/Shanghai timezone in formatLocalDate (5a138de)
-- group-task: fix UTC timezone in selectTitle and polish order display (b13cce3)
-- group-task: address PR #39 review round 6 — safety, tests, architecture (610e3ec)
-- group-task: address PR #39 review round 5 — bugs, tests, architecture (c276dc0)
-- group-task: address PR #39 review round 4 — security, concurrency, PII, tests (5ab0a5b)
-- group-task: address PR #39 review round 3 — tests, UX, type safety (c428575)
-- group-task: address PR #39 review — security, architecture, and quality fixes (cde5066)
-- test: add getConfigValue mock to hosting-config-facade test (912574d)
-- address PR #38 review — remove hardcoded token, add tests, fix layer dependency (a3a6425)
-- group-task: resolve config defaults split, dryRun race condition, and form state loss (031af3f)
-- hardcode API guard token in frontend to fix CI/CD 403 error (b74f332)
-- local deploy builds image locally and fix Dockerfile for CI (b15e22e)
-- unify default port to 8585 across all config files (6e4b039)
-- address code review — port, tests, exception types (c0a12d5)
-- throw on strategy update failure and fix deploy config (771e0d7)
-- simplify Dockerfile to 3 stages, use pnpm prune --prod (a2a457a)
-- address code review feedback (4a5f41f)
-- restore lint:check script used by CI (a12521c)
-- remove environment from notify job (uses repo secrets) (aaaee3e)
-- resolve merge conflicts with develop (3778351)
-- add SSH passphrase to deploy step (3722592)
-- ci: add SSH passphrase and fix notify job (9e76515)
-- resolve web bugs, enhance health check, and add role setting (#30) (b4f83b1)
-- address PR review round 2 (2a523e3)
-- test: fix analytics dashboard and image-description test failures (9d37d44)
-- address PR review feedback (5268948)
-- export BusinessMetricsSnapshot to resolve TS4053 build error (5496b51)
-- resolve web bugs, enhance health check, and add role setting feature (d053aae)
-- resolve merge conflicts between develop and master (#27) (05866e9)
-- test: fix test specs to match current RPC-based implementations (87bdcac)
-- db: add status CHECK constraint and fix booking NULL bypass (f086afa)
-- db: fix RPC return value handling and apply missing migrations (50371e6)
-- dashboard: 对话验证评分单位从百分号改为分 (759e7b7)
-- dashboard: 优化红包雨动画时序，让恭喜发财与红包同步消失 (a6e85b8)
-- feishu: 移除 test_type 字段以匹配飞书表结构 (3111446)
-- test-suite: 测试执行时去掉历史记录最后两条消息 (ee18639)
-- test-suite: 修复飞书回写时缺少 case_id 的问题 (8faf641)
-- dashboard: 修复聊天记录页面布局高度自适应问题 (413a237)
-- dashboard: 修复搜索后点击列表项显示暂无数据的问题 (a571f12)
-- monitoring: 日志列表只展示主消息，排除聚合的次要消息 (3e399a4)
-- 优化用户活动记录时机和仪表盘布局 (c11a9e0)
-- 修复消息聚合 batch_id 和 is_primary 未持久化到数据库的问题 (dc95522)
-- 修复用户趋势图 NaN 显示问题 (0a88d6a)
-- 修复用户趋势图 NaN 显示 & 增加 Supabase 超时配置 (b49eb13)
-- 修复今日咨询用户列表排序 & 启用 user_activity 聚合表写入 (f76909a)
-- supabase: 增加 REST API 超时时间以处理慢查询 (dd90ac2)
-- dashboard: 修复咨询用户页面数据无法显示的问题 (ddadd51)
-- monitoring: 修复系统监控页面数据统计问题 (884df4e)
-- feishu: 修复聊天记录同步重复和昵称混乱问题 (e7b7972)
-- logger: 修复 Dashboard WebSocket 连接失败问题 (a2cf440)
-- 优化 ChatSection 降级显示和 prompt 工具名称明确 (d7cc454)
-- agent: 修复 LogsTable 隐藏 bug 并恢复 toolContext 配置 (35e7772)
-- dashboard: 修复 modelConfig 展示路径和 response 完整展示 (49b4040)
-- feishu: 修复每日聊天记录同步服务，改用 Supabase 数据源 (dfacec1)
-- 修复会话列表 contactType 标签显示错误 & 增强消息回调日志 (b276128)
-- 修复 assistant 消息不存储的 bug (5736828)
-- dashboard: 修复会话列表标签被挤压变形问题 (0d0c909)
-- Dashboard 适配 ngrok 代理环境 (fc8f1c1)
-- 修复消息发送策略 & 恢复消息格式处理 (b92125e)
-- message: 企业级 groupId 黑名单不再影响小组级消息 (502582b)
-- agent: 添加 Agent API 认证失败诊断和告警增强 (85f5eb4)
-- 修复配置扫描和安全漏洞 (de26fee)
-- agent: 修复4个关键 bug 和设计缺陷 (4af93bc)
-- 修复版本更新工作流分支保护冲突 (beaf7c2)
-- 暂时禁用 AI Code Review workflow (7bee5a3)
-- 升级 CI 中的 pnpm 版本到 10 (368932c)
-- 修复 Jest 路径别名映射和单元测试 (b6ea995)
-
-Feature 更新：
-- docs: 调整文档目录结构 (bcc1114)
-- feishu: consolidate Feishu modules and fix booking notifications (61a691b)
-- agent: 简化模块结构并消除代理层 (4695b8a)
-- group-task: add docs, frontend service and GroupTaskPanel component (18622b4)
-- group-task: 群任务定时通知自动化 (3e47939)
-- smart recommendation with geocoding, thresholds, and proactive job requirements (6b7bdd9)
-- ci: auto-deploy pipeline with Feishu notification (#26) (53b915f)
-- ci: add auto-deploy and Docker web build (#24) (8deb340)
-- message: support multi-message types and clean up evaluation module (#22) (65869d6)
-- strategy: add dynamic strategy config with drag-and-drop red lines (1a727fd)
-- room: add enterprise-level group chat list endpoint (ded7827)
-- skills: add Supabase Postgres and NestJS best practices skills (c98edba)
-- test: add LLM evaluation test script (a293a5d)
-- dashboard: 完成对话验证前端 API 集成和页面整合 (6541dcc)
-- dashboard: 实现对话验证前端基础组件 (cbbbce4)
-- test-suite: 实现 Agent 多轮对话验证系统 (c595339)
-- dashboard: 新春主题装饰更新 (a86a59a)
-- test-suite: 批次列表支持无限滚动分页 (2c4c8e1)
-- test-suite: 优化批次列表展示并添加飞书回写功能 (85b25f0)
-- dashboard: 优化 Agent 测试页面 ChatTester 组件 UI (fc6cedf)
-- 新增 Agent 测试模块和文档资源 (9959d47)
-- dashboard: 新增 Agent 对话测试页面及界面优化 (68fe71b)
-- booking: 重命名预约表并添加用户/经理信息 (0377111)
-- prompt: 完善推荐规则和昵称识别规则 (cc4b55c)
-- booking: 实现预约统计事件驱动架构 (5f7988d)
-- dashboard: 日志页面新增用户昵称模糊搜索功能 (de0e9c5)
-- prompt: 新增业务规则章节（品牌查询/推荐/约面） (48ef039)
-- history: 聊天历史查询增加近3天时间限制 (396b023)
-- dashboard: 优化 Dashboard 图表 x 轴显示逻辑 (887beee)
-- 实现消息聚合的数据库关系追踪 (5f04a95)
-- feishu: 飞书告警系统增强 & Dashboard 术语优化 (3765c16)
-- 添加 API Key 脱敏日志显示 (1124b2b)
-- 添加 Agent API Key 硬编码 fallback 机制 (c76e511)
-- 集成飞书预约通知 & 监控服务架构升级 (a7334dc)
-- 消息聚合开关 + 用户活跃度统计 + 临时资源报告 (03c599d)
-- dashboard: 告警阈值可配置 + 布局修复 (12a6d1c)
-- dashboard: add logs view with message detail drawer (92c98c0)
-- dashboard: 健康状态卡片悬浮显示详情 (790e760)
-- 只处理个微用户的消息 (2f344e7)
-- v1.3 数据库 schema 扩展 & Dashboard 聊天记录适配 (db8b3cc)
-- 添加小组托管管理功能 & 优化 Dashboard UI (1ad2ceb)
-- 添加 React Dashboard 子项目 (9985469)
-- 系统配置和用户托管状态持久化到 Supabase (191054a)
-- 系统配置和用户托管状态持久化到 Supabase (7a84e67)
-- 监控仪表盘紫蓝渐变主题 & 品牌配置告警节流 (0bef72d)
-- 支持小组级消息回调和 API 适配 (fdb7681)
-- alert: 添加业务指标告警独立开关 (3f9398b)
-- 实现企业级智能告警系统和监控增强 (7ae1cd4)
-- 增强错误追踪和监控界面优化 (c8324e9)
-- 修复并重新启用 AI Code Review workflow (436b8fe)
-- 智能消息发送优化和错误处理增强 (c9f6aba)
-- 添加 CI 工作流和分支保护规则 (50df648)
-- test-suite: 优化执行记录查询性能并添加骨架屏加载 (fadbcbf)
-- extract formatLocalDate util to fix UTC timezone globally (ca673b2)
-- address PR #39 review round 2 — race fix, SRP split, full DTOs (442788d)
-- hosting-config: add DTOs for all controller endpoints (a33d687)
-- monitoring: replace Redis cache with in-memory cache in analytics and simplify MonitoringCacheService (ec5c06f)
-- redis: remove over-engineered Redis layers and fix TOCTOU race (6566b1f)
-- redis: centralize Redis key constants and remove redundant L2 cache (5599966)
-- monitoring: extract DB record interfaces into entities/ directory (abeadf3)
-- enforce biz module architecture conventions across all domains (bf97269)
-- unify monitoring module from core/ + biz/analytics into biz/monitoring (99f05d3)
-- remove barrel index.ts from biz domain modules (e924168)
-- separate database entities from service-layer types in biz modules (040904c)
-- merge src/db/ repositories and types into src/biz/ domain modules (65dfa1f)
-- reorganize biz services into services/ directories and clean controllers (6209925)
-- dashboard: migrate API layer to modular api/ directory and remove legacy types (8274561)
-- reorganize biz/message and dashboard hooks by business domain (024a542)
-- restructure biz module into domain-aligned sub-modules (58a0209)
-- 迁移 Supabase repos 到 src/core/supabase 和 src/db，并更新所有引用 (5d9dc43)
-- supabase: extract repositories from core to dedicated supabase module (d22751e)
-- db: migrate SQL files to Supabase CLI migrations (2f04947)
-- monitoring: implement tiered storage architecture and fix database issues (d9831bd)
-- agent: remove extractModel config and add channelType default (5e1b424)
-- unify test naming, enhance agent facade and dashboard UX (41df58c)
-- test: unify chatId to sessionId naming across test chain (da25584)
-- agent: unify sessionId naming, add extended thinking support, and improve streaming UX (6d23644)
-- agent: consolidate test-chat into debug-chat and add userId passthrough (7bc70e8)
-- agent: align facade with production pipeline and fix security logging (3673b22)
-- agent: remove unused fields from Agent API payload (f16cf09)
-- test-suite: 重命名测试集为测试/验证集并修复历史上下文显示 (a21fdf3)
-- dashboard: 优化 test-suite 前端组件结构和类型安全 (c6b79bf)
-- test-suite: 优化测试场景分类并支持错误原因回写飞书 (47d46d3)
-- test-suite: 分离测试场景和错误原因分类 (e047815)
-- supabase: 将 SupabaseService 拆分为 Repository 层架构 (abe0a72)
-- pipeline: 重构消息处理核心逻辑，消除代码重复 (a0c3636)
-- prompt: 精简通用聊天提示词，移除冗余示例 (81453f0)
-- prompt: 精简示例对话回复至20字以内 (587875b)
-- prompt: 移除推荐句式中的内部参考标注 (83b572f)
-- prompt: 移除 prompt 中的内部参考标注 (82b1fe4)
-- dashboard: 消息配置 → 回复设置 (7f0aa6e)
-- dashboard: 优化菜单和指标命名，区分全量消息与Bot托管 (8d5a7aa)
-- dashboard: 重构 useMonitoring hooks 为模块化架构 (ea7e152)
-- 抽取 maskApiKey 为共享工具函数 (c82c652)
-- monitoring: 清理废弃代码并优化消息处理记录 (7d8c724)
-- 统一日志页面数据源架构 (ac4292a)
-- dashboard: 重构 logs 模块为 CSS Modules 最佳实践 (70180f6)
-- alert: 统一告警出口到 Pipeline，优化节流和级别映射 (2a52435)
-- wecom: 重构消息处理模块，拆分 Pipeline 服务 (1422429)
-- update hosting page styles and optimize agent profile (4568e0d)
-- replace dashboard2 with dashboard and clean up tracked node_modules (1ed1e08)
-- 简化告警系统 & 清理废弃模块 (00eb22e)
-- 优化模块结构和命名规范 (c78b2ed)
-- 重命名scripts为hooks并添加会话启动提醒 (0d7d4a8)
-- 清理模块导出和修复健康检查安全问题 (f864cd5)
-- 优化 AgentResult 适配和使用方式 (750d4c5)
-- 统一工具/模型管理到 AgentRegistryService (289ae57)
-- agent: 核心重构 - 拆分服务和解除循环依赖 (6956257)
-- 重写commit规范为英文版本 (fcc2817)
-- 移动提交规范文档到agents目录 (d6275e2)
-- 优化 CI 触发策略，仅在 PR 时运行检查 (a1102f0)
-- workflows: update AI review guide and add deploy guide (2fd6e00)
-- db: update database-schema.md to reflect recent migrations (5cecf2e)
-- add architecture comparison and LLM optimization todos (013c8be)
-- 新增 Bull Queue 使用指南并更新文档引用 (8420a96)
-- 移除无效的文档引用并修正相对路径 (64a0df3)
-- 新增测试套件架构设计文档 (2e2e435)
-- 新增场景测试工作流程文档 (710b223)
-- 重构对话验证工作流程文档 (b2b43c4)
-- 添加 test-suite 架构重构计划 (182aa9f)
-- 新增企微智能化分析报告（2025-12-17） (9181bbe)
-- add Advanced Documentation section to CLAUDE.md (1550dbd)
-- 添加Git提交信息规范文档 (5ebe58e)
-- add date.util.spec.ts for timezone utility functions (6be87d3)
-- add comprehensive unit tests for all modules (87 spec files, 2172 tests) (b8658cc)
-- 添加 maskApiKey 工具函数测试用例 (0e6788f)
-- 修复监控模块测试用例 (efba522)
-- update monitoring and message controller specs (0138ec3)
-- stabilize release and deploy workflow (67efcd5)
-- overhaul deploy pipeline and update docs (deace17)
-- update deploy container name and remove PR template (#21) (21300bc)
-- husky: forbid direct push to develop branch (5ff9b78)
-- update Claude Code settings with new tool permissions (8339da4)
-- upgrade pnpm to v10.28.0 and fix workspace installation (938a569)
-- 更新 Claude Code 配置（Upstash Redis 升级验证） (9e70b2d)
-- 清理 Agent 模块遗留备份文件 (223e9ab)
-- 触发 CI 重新运行 (8326b86)
-- format group controller (b4b0fb7)
-- dashboard: 优化对话详情弹窗 loading 体验 (55f3f47)
-- dashboard: 美化 Tab 切换组件样式 (5cab8a4)
-- dashboard: 调整聊天记录页面最小高度 (04d7dbb)
-- dashboard: 用户列表改为卡片式布局 (2660802)
-- 定稿了 (#54) (dc39e78)
-- auto-sync version/changelog updates to develop branch (d7db304)
-- resolve conflict with develop (remove tsconfig.tsbuildinfo) (7114aaa)
-- inject VITE_API_GUARD_TOKEN into build pipeline (2ceba42)
-- Cake Agent Runtime v2.0 — autonomous agent architecture (#20) (#28) (9a59af3)
-- Feature/huajune agent integration (#18) (dc3097a)
-- externalize review rules to review-rules.md (#19) (f923c9b)
-- trigger AI review test (0abc7ba)
-- trigger AI review test (abf4770)
-- review: switch to Claude Code OAuth token auth (373dd81)
-- review: replace custom script with anthropics/claude-code-action@v1 (e409998)
-- migrate AI review to Claude Code CLI and replace SSH deploy with GitHub Release (e211c92)
-- 添加消息聚合状态更新的详细日志 (62de89f)
-- Allow dashboard dev server via local IP (78826c6)
-- Add pending helper scripts and logger components (d853241)
-- Record user messages before AI switch (3ac81dd)
-
-
-## [3.0.0] - 2026-03-27
-
-**分支**: `master`
-
-Bug 修复：
-- escape $ in docker-compose healthcheck to prevent interpolation (b78264f)
-- use explicit Asia/Shanghai timezone in formatLocalDate (5a138de)
-- group-task: fix UTC timezone in selectTitle and polish order display (b13cce3)
-- group-task: address PR #39 review round 6 — safety, tests, architecture (610e3ec)
-- group-task: address PR #39 review round 5 — bugs, tests, architecture (c276dc0)
-- group-task: address PR #39 review round 4 — security, concurrency, PII, tests (5ab0a5b)
-- group-task: address PR #39 review round 3 — tests, UX, type safety (c428575)
-- group-task: address PR #39 review — security, architecture, and quality fixes (cde5066)
-- test: add getConfigValue mock to hosting-config-facade test (912574d)
-- address PR #38 review — remove hardcoded token, add tests, fix layer dependency (a3a6425)
-- group-task: resolve config defaults split, dryRun race condition, and form state loss (031af3f)
-- hardcode API guard token in frontend to fix CI/CD 403 error (b74f332)
-- local deploy builds image locally and fix Dockerfile for CI (b15e22e)
-- unify default port to 8585 across all config files (6e4b039)
-- address code review — port, tests, exception types (c0a12d5)
-- throw on strategy update failure and fix deploy config (771e0d7)
-- simplify Dockerfile to 3 stages, use pnpm prune --prod (a2a457a)
-- address code review feedback (4a5f41f)
-- restore lint:check script used by CI (a12521c)
-- remove environment from notify job (uses repo secrets) (aaaee3e)
-- resolve merge conflicts with develop (3778351)
-- add SSH passphrase to deploy step (3722592)
-- ci: add SSH passphrase and fix notify job (9e76515)
-- resolve web bugs, enhance health check, and add role setting (#30) (b4f83b1)
-- address PR review round 2 (2a523e3)
-- test: fix analytics dashboard and image-description test failures (9d37d44)
-- address PR review feedback (5268948)
-- export BusinessMetricsSnapshot to resolve TS4053 build error (5496b51)
-- resolve web bugs, enhance health check, and add role setting feature (d053aae)
-- resolve merge conflicts between develop and master (#27) (05866e9)
-- test: fix test specs to match current RPC-based implementations (87bdcac)
-- db: add status CHECK constraint and fix booking NULL bypass (f086afa)
-- db: fix RPC return value handling and apply missing migrations (50371e6)
-- dashboard: 对话验证评分单位从百分号改为分 (759e7b7)
-- dashboard: 优化红包雨动画时序，让恭喜发财与红包同步消失 (a6e85b8)
-- feishu: 移除 test_type 字段以匹配飞书表结构 (3111446)
-- test-suite: 测试执行时去掉历史记录最后两条消息 (ee18639)
-- test-suite: 修复飞书回写时缺少 case_id 的问题 (8faf641)
-- dashboard: 修复聊天记录页面布局高度自适应问题 (413a237)
-- dashboard: 修复搜索后点击列表项显示暂无数据的问题 (a571f12)
-- monitoring: 日志列表只展示主消息，排除聚合的次要消息 (3e399a4)
-- 优化用户活动记录时机和仪表盘布局 (c11a9e0)
-- 修复消息聚合 batch_id 和 is_primary 未持久化到数据库的问题 (dc95522)
-- 修复用户趋势图 NaN 显示问题 (0a88d6a)
-- 修复用户趋势图 NaN 显示 & 增加 Supabase 超时配置 (b49eb13)
-- 修复今日咨询用户列表排序 & 启用 user_activity 聚合表写入 (f76909a)
-- supabase: 增加 REST API 超时时间以处理慢查询 (dd90ac2)
-- dashboard: 修复咨询用户页面数据无法显示的问题 (ddadd51)
-- monitoring: 修复系统监控页面数据统计问题 (884df4e)
-- feishu: 修复聊天记录同步重复和昵称混乱问题 (e7b7972)
-- logger: 修复 Dashboard WebSocket 连接失败问题 (a2cf440)
-- 优化 ChatSection 降级显示和 prompt 工具名称明确 (d7cc454)
-- agent: 修复 LogsTable 隐藏 bug 并恢复 toolContext 配置 (35e7772)
-- dashboard: 修复 modelConfig 展示路径和 response 完整展示 (49b4040)
-- feishu: 修复每日聊天记录同步服务，改用 Supabase 数据源 (dfacec1)
-- 修复会话列表 contactType 标签显示错误 & 增强消息回调日志 (b276128)
-- 修复 assistant 消息不存储的 bug (5736828)
-- dashboard: 修复会话列表标签被挤压变形问题 (0d0c909)
-- Dashboard 适配 ngrok 代理环境 (fc8f1c1)
-- 修复消息发送策略 & 恢复消息格式处理 (b92125e)
-- message: 企业级 groupId 黑名单不再影响小组级消息 (502582b)
-- agent: 添加 Agent API 认证失败诊断和告警增强 (85f5eb4)
-- 修复配置扫描和安全漏洞 (de26fee)
-- agent: 修复4个关键 bug 和设计缺陷 (4af93bc)
-- 修复版本更新工作流分支保护冲突 (beaf7c2)
-- 暂时禁用 AI Code Review workflow (7bee5a3)
-- 升级 CI 中的 pnpm 版本到 10 (368932c)
-- 修复 Jest 路径别名映射和单元测试 (b6ea995)
-
-Feature 更新：
-- docs: 调整文档目录结构 (bcc1114)
-- feishu: consolidate Feishu modules and fix booking notifications (61a691b)
-- agent: 简化模块结构并消除代理层 (4695b8a)
-- group-task: add docs, frontend service and GroupTaskPanel component (18622b4)
-- group-task: 群任务定时通知自动化 (3e47939)
-- smart recommendation with geocoding, thresholds, and proactive job requirements (6b7bdd9)
-- ci: auto-deploy pipeline with Feishu notification (#26) (53b915f)
-- ci: add auto-deploy and Docker web build (#24) (8deb340)
-- message: support multi-message types and clean up evaluation module (#22) (65869d6)
-- strategy: add dynamic strategy config with drag-and-drop red lines (1a727fd)
-- room: add enterprise-level group chat list endpoint (ded7827)
-- skills: add Supabase Postgres and NestJS best practices skills (c98edba)
-- test: add LLM evaluation test script (a293a5d)
-- dashboard: 完成对话验证前端 API 集成和页面整合 (6541dcc)
-- dashboard: 实现对话验证前端基础组件 (cbbbce4)
-- test-suite: 实现 Agent 多轮对话验证系统 (c595339)
-- dashboard: 新春主题装饰更新 (a86a59a)
-- test-suite: 批次列表支持无限滚动分页 (2c4c8e1)
-- test-suite: 优化批次列表展示并添加飞书回写功能 (85b25f0)
-- dashboard: 优化 Agent 测试页面 ChatTester 组件 UI (fc6cedf)
-- 新增 Agent 测试模块和文档资源 (9959d47)
-- dashboard: 新增 Agent 对话测试页面及界面优化 (68fe71b)
-- booking: 重命名预约表并添加用户/经理信息 (0377111)
-- prompt: 完善推荐规则和昵称识别规则 (cc4b55c)
-- booking: 实现预约统计事件驱动架构 (5f7988d)
-- dashboard: 日志页面新增用户昵称模糊搜索功能 (de0e9c5)
-- prompt: 新增业务规则章节（品牌查询/推荐/约面） (48ef039)
-- history: 聊天历史查询增加近3天时间限制 (396b023)
-- dashboard: 优化 Dashboard 图表 x 轴显示逻辑 (887beee)
-- 实现消息聚合的数据库关系追踪 (5f04a95)
-- feishu: 飞书告警系统增强 & Dashboard 术语优化 (3765c16)
-- 添加 API Key 脱敏日志显示 (1124b2b)
-- 添加 Agent API Key 硬编码 fallback 机制 (c76e511)
-- 集成飞书预约通知 & 监控服务架构升级 (a7334dc)
-- 消息聚合开关 + 用户活跃度统计 + 临时资源报告 (03c599d)
-- dashboard: 告警阈值可配置 + 布局修复 (12a6d1c)
-- dashboard: add logs view with message detail drawer (92c98c0)
-- dashboard: 健康状态卡片悬浮显示详情 (790e760)
-- 只处理个微用户的消息 (2f344e7)
-- v1.3 数据库 schema 扩展 & Dashboard 聊天记录适配 (db8b3cc)
-- 添加小组托管管理功能 & 优化 Dashboard UI (1ad2ceb)
-- 添加 React Dashboard 子项目 (9985469)
-- 系统配置和用户托管状态持久化到 Supabase (191054a)
-- 系统配置和用户托管状态持久化到 Supabase (7a84e67)
-- 监控仪表盘紫蓝渐变主题 & 品牌配置告警节流 (0bef72d)
-- 支持小组级消息回调和 API 适配 (fdb7681)
-- alert: 添加业务指标告警独立开关 (3f9398b)
-- 实现企业级智能告警系统和监控增强 (7ae1cd4)
-- 增强错误追踪和监控界面优化 (c8324e9)
-- 修复并重新启用 AI Code Review workflow (436b8fe)
-- 智能消息发送优化和错误处理增强 (c9f6aba)
-- 添加 CI 工作流和分支保护规则 (50df648)
-- test-suite: 优化执行记录查询性能并添加骨架屏加载 (fadbcbf)
-- extract formatLocalDate util to fix UTC timezone globally (ca673b2)
-- address PR #39 review round 2 — race fix, SRP split, full DTOs (442788d)
-- hosting-config: add DTOs for all controller endpoints (a33d687)
-- monitoring: replace Redis cache with in-memory cache in analytics and simplify MonitoringCacheService (ec5c06f)
-- redis: remove over-engineered Redis layers and fix TOCTOU race (6566b1f)
-- redis: centralize Redis key constants and remove redundant L2 cache (5599966)
-- monitoring: extract DB record interfaces into entities/ directory (abeadf3)
-- enforce biz module architecture conventions across all domains (bf97269)
-- unify monitoring module from core/ + biz/analytics into biz/monitoring (99f05d3)
-- remove barrel index.ts from biz domain modules (e924168)
-- separate database entities from service-layer types in biz modules (040904c)
-- merge src/db/ repositories and types into src/biz/ domain modules (65dfa1f)
-- reorganize biz services into services/ directories and clean controllers (6209925)
-- dashboard: migrate API layer to modular api/ directory and remove legacy types (8274561)
-- reorganize biz/message and dashboard hooks by business domain (024a542)
-- restructure biz module into domain-aligned sub-modules (58a0209)
-- 迁移 Supabase repos 到 src/core/supabase 和 src/db，并更新所有引用 (5d9dc43)
-- supabase: extract repositories from core to dedicated supabase module (d22751e)
-- db: migrate SQL files to Supabase CLI migrations (2f04947)
-- monitoring: implement tiered storage architecture and fix database issues (d9831bd)
-- agent: remove extractModel config and add channelType default (5e1b424)
-- unify test naming, enhance agent facade and dashboard UX (41df58c)
-- test: unify chatId to sessionId naming across test chain (da25584)
-- agent: unify sessionId naming, add extended thinking support, and improve streaming UX (6d23644)
-- agent: consolidate test-chat into debug-chat and add userId passthrough (7bc70e8)
-- agent: align facade with production pipeline and fix security logging (3673b22)
-- agent: remove unused fields from Agent API payload (f16cf09)
-- test-suite: 重命名测试集为测试/验证集并修复历史上下文显示 (a21fdf3)
-- dashboard: 优化 test-suite 前端组件结构和类型安全 (c6b79bf)
-- test-suite: 优化测试场景分类并支持错误原因回写飞书 (47d46d3)
-- test-suite: 分离测试场景和错误原因分类 (e047815)
-- supabase: 将 SupabaseService 拆分为 Repository 层架构 (abe0a72)
-- pipeline: 重构消息处理核心逻辑，消除代码重复 (a0c3636)
-- prompt: 精简通用聊天提示词，移除冗余示例 (81453f0)
-- prompt: 精简示例对话回复至20字以内 (587875b)
-- prompt: 移除推荐句式中的内部参考标注 (83b572f)
-- prompt: 移除 prompt 中的内部参考标注 (82b1fe4)
-- dashboard: 消息配置 → 回复设置 (7f0aa6e)
-- dashboard: 优化菜单和指标命名，区分全量消息与Bot托管 (8d5a7aa)
-- dashboard: 重构 useMonitoring hooks 为模块化架构 (ea7e152)
-- 抽取 maskApiKey 为共享工具函数 (c82c652)
-- monitoring: 清理废弃代码并优化消息处理记录 (7d8c724)
-- 统一日志页面数据源架构 (ac4292a)
-- dashboard: 重构 logs 模块为 CSS Modules 最佳实践 (70180f6)
-- alert: 统一告警出口到 Pipeline，优化节流和级别映射 (2a52435)
-- wecom: 重构消息处理模块，拆分 Pipeline 服务 (1422429)
-- update hosting page styles and optimize agent profile (4568e0d)
-- replace dashboard2 with dashboard and clean up tracked node_modules (1ed1e08)
-- 简化告警系统 & 清理废弃模块 (00eb22e)
-- 优化模块结构和命名规范 (c78b2ed)
-- 重命名scripts为hooks并添加会话启动提醒 (0d7d4a8)
-- 清理模块导出和修复健康检查安全问题 (f864cd5)
-- 优化 AgentResult 适配和使用方式 (750d4c5)
-- 统一工具/模型管理到 AgentRegistryService (289ae57)
-- agent: 核心重构 - 拆分服务和解除循环依赖 (6956257)
-- 重写commit规范为英文版本 (fcc2817)
-- 移动提交规范文档到agents目录 (d6275e2)
-- 优化 CI 触发策略，仅在 PR 时运行检查 (a1102f0)
-- workflows: update AI review guide and add deploy guide (2fd6e00)
-- db: update database-schema.md to reflect recent migrations (5cecf2e)
-- add architecture comparison and LLM optimization todos (013c8be)
-- 新增 Bull Queue 使用指南并更新文档引用 (8420a96)
-- 移除无效的文档引用并修正相对路径 (64a0df3)
-- 新增测试套件架构设计文档 (2e2e435)
-- 新增场景测试工作流程文档 (710b223)
-- 重构对话验证工作流程文档 (b2b43c4)
-- 添加 test-suite 架构重构计划 (182aa9f)
-- 新增企微智能化分析报告（2025-12-17） (9181bbe)
-- add Advanced Documentation section to CLAUDE.md (1550dbd)
-- 添加Git提交信息规范文档 (5ebe58e)
-- add date.util.spec.ts for timezone utility functions (6be87d3)
-- add comprehensive unit tests for all modules (87 spec files, 2172 tests) (b8658cc)
-- 添加 maskApiKey 工具函数测试用例 (0e6788f)
-- 修复监控模块测试用例 (efba522)
-- update monitoring and message controller specs (0138ec3)
-- overhaul deploy pipeline and update docs (deace17)
-- update deploy container name and remove PR template (#21) (21300bc)
-- husky: forbid direct push to develop branch (5ff9b78)
-- update Claude Code settings with new tool permissions (8339da4)
-- upgrade pnpm to v10.28.0 and fix workspace installation (938a569)
-- 更新 Claude Code 配置（Upstash Redis 升级验证） (9e70b2d)
-- 清理 Agent 模块遗留备份文件 (223e9ab)
-- 触发 CI 重新运行 (8326b86)
-- dashboard: 优化对话详情弹窗 loading 体验 (55f3f47)
-- dashboard: 美化 Tab 切换组件样式 (5cab8a4)
-- dashboard: 调整聊天记录页面最小高度 (04d7dbb)
-- dashboard: 用户列表改为卡片式布局 (2660802)
-- auto-sync version/changelog updates to develop branch (d7db304)
-- resolve conflict with develop (remove tsconfig.tsbuildinfo) (7114aaa)
-- inject VITE_API_GUARD_TOKEN into build pipeline (2ceba42)
-- Cake Agent Runtime v2.0 — autonomous agent architecture (#20) (#28) (9a59af3)
-- Feature/huajune agent integration (#18) (dc3097a)
-- externalize review rules to review-rules.md (#19) (f923c9b)
-- trigger AI review test (0abc7ba)
-- trigger AI review test (abf4770)
-- review: switch to Claude Code OAuth token auth (373dd81)
-- review: replace custom script with anthropics/claude-code-action@v1 (e409998)
-- migrate AI review to Claude Code CLI and replace SSH deploy with GitHub Release (e211c92)
-- 添加消息聚合状态更新的详细日志 (62de89f)
-- Allow dashboard dev server via local IP (78826c6)
-- Add pending helper scripts and logger components (d853241)
-- Record user messages before AI switch (3ac81dd)
-
-
-## [2.0.0] - 2026-03-27
-
-**分支**: `master`
-
-Bug 修复：
-- escape $ in docker-compose healthcheck to prevent interpolation (b78264f)
-- use explicit Asia/Shanghai timezone in formatLocalDate (5a138de)
-- group-task: fix UTC timezone in selectTitle and polish order display (b13cce3)
-- group-task: address PR #39 review round 6 — safety, tests, architecture (610e3ec)
-- group-task: address PR #39 review round 5 — bugs, tests, architecture (c276dc0)
-- group-task: address PR #39 review round 4 — security, concurrency, PII, tests (5ab0a5b)
-- group-task: address PR #39 review round 3 — tests, UX, type safety (c428575)
-- group-task: address PR #39 review — security, architecture, and quality fixes (cde5066)
-- test: add getConfigValue mock to hosting-config-facade test (912574d)
-- address PR #38 review — remove hardcoded token, add tests, fix layer dependency (a3a6425)
-- group-task: resolve config defaults split, dryRun race condition, and form state loss (031af3f)
-- hardcode API guard token in frontend to fix CI/CD 403 error (b74f332)
-- local deploy builds image locally and fix Dockerfile for CI (b15e22e)
-- unify default port to 8585 across all config files (6e4b039)
-- address code review — port, tests, exception types (c0a12d5)
-- throw on strategy update failure and fix deploy config (771e0d7)
-- simplify Dockerfile to 3 stages, use pnpm prune --prod (a2a457a)
-- address code review feedback (4a5f41f)
-- restore lint:check script used by CI (a12521c)
-- remove environment from notify job (uses repo secrets) (aaaee3e)
-- resolve merge conflicts with develop (3778351)
-- add SSH passphrase to deploy step (3722592)
-- ci: add SSH passphrase and fix notify job (9e76515)
-- resolve web bugs, enhance health check, and add role setting (#30) (b4f83b1)
-- address PR review round 2 (2a523e3)
-- test: fix analytics dashboard and image-description test failures (9d37d44)
-- address PR review feedback (5268948)
-- export BusinessMetricsSnapshot to resolve TS4053 build error (5496b51)
-- resolve web bugs, enhance health check, and add role setting feature (d053aae)
-- resolve merge conflicts between develop and master (#27) (05866e9)
-- test: fix test specs to match current RPC-based implementations (87bdcac)
-- db: add status CHECK constraint and fix booking NULL bypass (f086afa)
-- db: fix RPC return value handling and apply missing migrations (50371e6)
-- dashboard: 对话验证评分单位从百分号改为分 (759e7b7)
-- dashboard: 优化红包雨动画时序，让恭喜发财与红包同步消失 (a6e85b8)
-- feishu: 移除 test_type 字段以匹配飞书表结构 (3111446)
-- test-suite: 测试执行时去掉历史记录最后两条消息 (ee18639)
-- test-suite: 修复飞书回写时缺少 case_id 的问题 (8faf641)
-- dashboard: 修复聊天记录页面布局高度自适应问题 (413a237)
-- dashboard: 修复搜索后点击列表项显示暂无数据的问题 (a571f12)
-- monitoring: 日志列表只展示主消息，排除聚合的次要消息 (3e399a4)
-- 优化用户活动记录时机和仪表盘布局 (c11a9e0)
-- 修复消息聚合 batch_id 和 is_primary 未持久化到数据库的问题 (dc95522)
-- 修复用户趋势图 NaN 显示问题 (0a88d6a)
-- 修复用户趋势图 NaN 显示 & 增加 Supabase 超时配置 (b49eb13)
-- 修复今日咨询用户列表排序 & 启用 user_activity 聚合表写入 (f76909a)
-- supabase: 增加 REST API 超时时间以处理慢查询 (dd90ac2)
-- dashboard: 修复咨询用户页面数据无法显示的问题 (ddadd51)
-- monitoring: 修复系统监控页面数据统计问题 (884df4e)
-- feishu: 修复聊天记录同步重复和昵称混乱问题 (e7b7972)
-- logger: 修复 Dashboard WebSocket 连接失败问题 (a2cf440)
-- 优化 ChatSection 降级显示和 prompt 工具名称明确 (d7cc454)
-- agent: 修复 LogsTable 隐藏 bug 并恢复 toolContext 配置 (35e7772)
-- dashboard: 修复 modelConfig 展示路径和 response 完整展示 (49b4040)
-- feishu: 修复每日聊天记录同步服务，改用 Supabase 数据源 (dfacec1)
-- 修复会话列表 contactType 标签显示错误 & 增强消息回调日志 (b276128)
-- 修复 assistant 消息不存储的 bug (5736828)
-- dashboard: 修复会话列表标签被挤压变形问题 (0d0c909)
-- Dashboard 适配 ngrok 代理环境 (fc8f1c1)
-- 修复消息发送策略 & 恢复消息格式处理 (b92125e)
-- message: 企业级 groupId 黑名单不再影响小组级消息 (502582b)
-- agent: 添加 Agent API 认证失败诊断和告警增强 (85f5eb4)
-- 修复配置扫描和安全漏洞 (de26fee)
-- agent: 修复4个关键 bug 和设计缺陷 (4af93bc)
-- 修复版本更新工作流分支保护冲突 (beaf7c2)
-- 暂时禁用 AI Code Review workflow (7bee5a3)
-- 升级 CI 中的 pnpm 版本到 10 (368932c)
-- 修复 Jest 路径别名映射和单元测试 (b6ea995)
-
-Feature 更新：
-- docs: 调整文档目录结构 (bcc1114)
-- feishu: consolidate Feishu modules and fix booking notifications (61a691b)
-- agent: 简化模块结构并消除代理层 (4695b8a)
-- group-task: add docs, frontend service and GroupTaskPanel component (18622b4)
-- group-task: 群任务定时通知自动化 (3e47939)
-- smart recommendation with geocoding, thresholds, and proactive job requirements (6b7bdd9)
-- ci: auto-deploy pipeline with Feishu notification (#26) (53b915f)
-- ci: add auto-deploy and Docker web build (#24) (8deb340)
-- message: support multi-message types and clean up evaluation module (#22) (65869d6)
-- strategy: add dynamic strategy config with drag-and-drop red lines (1a727fd)
-- room: add enterprise-level group chat list endpoint (ded7827)
-- skills: add Supabase Postgres and NestJS best practices skills (c98edba)
-- test: add LLM evaluation test script (a293a5d)
-- dashboard: 完成对话验证前端 API 集成和页面整合 (6541dcc)
-- dashboard: 实现对话验证前端基础组件 (cbbbce4)
-- test-suite: 实现 Agent 多轮对话验证系统 (c595339)
-- dashboard: 新春主题装饰更新 (a86a59a)
-- test-suite: 批次列表支持无限滚动分页 (2c4c8e1)
-- test-suite: 优化批次列表展示并添加飞书回写功能 (85b25f0)
-- dashboard: 优化 Agent 测试页面 ChatTester 组件 UI (fc6cedf)
-- 新增 Agent 测试模块和文档资源 (9959d47)
-- dashboard: 新增 Agent 对话测试页面及界面优化 (68fe71b)
-- booking: 重命名预约表并添加用户/经理信息 (0377111)
-- prompt: 完善推荐规则和昵称识别规则 (cc4b55c)
-- booking: 实现预约统计事件驱动架构 (5f7988d)
-- dashboard: 日志页面新增用户昵称模糊搜索功能 (de0e9c5)
-- prompt: 新增业务规则章节（品牌查询/推荐/约面） (48ef039)
-- history: 聊天历史查询增加近3天时间限制 (396b023)
-- dashboard: 优化 Dashboard 图表 x 轴显示逻辑 (887beee)
-- 实现消息聚合的数据库关系追踪 (5f04a95)
-- feishu: 飞书告警系统增强 & Dashboard 术语优化 (3765c16)
-- 添加 API Key 脱敏日志显示 (1124b2b)
-- 添加 Agent API Key 硬编码 fallback 机制 (c76e511)
-- 集成飞书预约通知 & 监控服务架构升级 (a7334dc)
-- 消息聚合开关 + 用户活跃度统计 + 临时资源报告 (03c599d)
-- dashboard: 告警阈值可配置 + 布局修复 (12a6d1c)
-- dashboard: add logs view with message detail drawer (92c98c0)
-- dashboard: 健康状态卡片悬浮显示详情 (790e760)
-- 只处理个微用户的消息 (2f344e7)
-- v1.3 数据库 schema 扩展 & Dashboard 聊天记录适配 (db8b3cc)
-- 添加小组托管管理功能 & 优化 Dashboard UI (1ad2ceb)
-- 添加 React Dashboard 子项目 (9985469)
-- 系统配置和用户托管状态持久化到 Supabase (191054a)
-- 系统配置和用户托管状态持久化到 Supabase (7a84e67)
-- 监控仪表盘紫蓝渐变主题 & 品牌配置告警节流 (0bef72d)
-- 支持小组级消息回调和 API 适配 (fdb7681)
-- alert: 添加业务指标告警独立开关 (3f9398b)
-- 实现企业级智能告警系统和监控增强 (7ae1cd4)
-- 增强错误追踪和监控界面优化 (c8324e9)
-- 修复并重新启用 AI Code Review workflow (436b8fe)
-- 智能消息发送优化和错误处理增强 (c9f6aba)
-- 添加 CI 工作流和分支保护规则 (50df648)
-- test-suite: 优化执行记录查询性能并添加骨架屏加载 (fadbcbf)
-- extract formatLocalDate util to fix UTC timezone globally (ca673b2)
-- address PR #39 review round 2 — race fix, SRP split, full DTOs (442788d)
-- hosting-config: add DTOs for all controller endpoints (a33d687)
-- monitoring: replace Redis cache with in-memory cache in analytics and simplify MonitoringCacheService (ec5c06f)
-- redis: remove over-engineered Redis layers and fix TOCTOU race (6566b1f)
-- redis: centralize Redis key constants and remove redundant L2 cache (5599966)
-- monitoring: extract DB record interfaces into entities/ directory (abeadf3)
-- enforce biz module architecture conventions across all domains (bf97269)
-- unify monitoring module from core/ + biz/analytics into biz/monitoring (99f05d3)
-- remove barrel index.ts from biz domain modules (e924168)
-- separate database entities from service-layer types in biz modules (040904c)
-- merge src/db/ repositories and types into src/biz/ domain modules (65dfa1f)
-- reorganize biz services into services/ directories and clean controllers (6209925)
-- dashboard: migrate API layer to modular api/ directory and remove legacy types (8274561)
-- reorganize biz/message and dashboard hooks by business domain (024a542)
-- restructure biz module into domain-aligned sub-modules (58a0209)
-- 迁移 Supabase repos 到 src/core/supabase 和 src/db，并更新所有引用 (5d9dc43)
-- supabase: extract repositories from core to dedicated supabase module (d22751e)
-- db: migrate SQL files to Supabase CLI migrations (2f04947)
-- monitoring: implement tiered storage architecture and fix database issues (d9831bd)
-- agent: remove extractModel config and add channelType default (5e1b424)
-- unify test naming, enhance agent facade and dashboard UX (41df58c)
-- test: unify chatId to sessionId naming across test chain (da25584)
-- agent: unify sessionId naming, add extended thinking support, and improve streaming UX (6d23644)
-- agent: consolidate test-chat into debug-chat and add userId passthrough (7bc70e8)
-- agent: align facade with production pipeline and fix security logging (3673b22)
-- agent: remove unused fields from Agent API payload (f16cf09)
-- test-suite: 重命名测试集为测试/验证集并修复历史上下文显示 (a21fdf3)
-- dashboard: 优化 test-suite 前端组件结构和类型安全 (c6b79bf)
-- test-suite: 优化测试场景分类并支持错误原因回写飞书 (47d46d3)
-- test-suite: 分离测试场景和错误原因分类 (e047815)
-- supabase: 将 SupabaseService 拆分为 Repository 层架构 (abe0a72)
-- pipeline: 重构消息处理核心逻辑，消除代码重复 (a0c3636)
-- prompt: 精简通用聊天提示词，移除冗余示例 (81453f0)
-- prompt: 精简示例对话回复至20字以内 (587875b)
-- prompt: 移除推荐句式中的内部参考标注 (83b572f)
-- prompt: 移除 prompt 中的内部参考标注 (82b1fe4)
-- dashboard: 消息配置 → 回复设置 (7f0aa6e)
-- dashboard: 优化菜单和指标命名，区分全量消息与Bot托管 (8d5a7aa)
-- dashboard: 重构 useMonitoring hooks 为模块化架构 (ea7e152)
-- 抽取 maskApiKey 为共享工具函数 (c82c652)
-- monitoring: 清理废弃代码并优化消息处理记录 (7d8c724)
-- 统一日志页面数据源架构 (ac4292a)
-- dashboard: 重构 logs 模块为 CSS Modules 最佳实践 (70180f6)
-- alert: 统一告警出口到 Pipeline，优化节流和级别映射 (2a52435)
-- wecom: 重构消息处理模块，拆分 Pipeline 服务 (1422429)
-- update hosting page styles and optimize agent profile (4568e0d)
-- replace dashboard2 with dashboard and clean up tracked node_modules (1ed1e08)
-- 简化告警系统 & 清理废弃模块 (00eb22e)
-- 优化模块结构和命名规范 (c78b2ed)
-- 重命名scripts为hooks并添加会话启动提醒 (0d7d4a8)
-- 清理模块导出和修复健康检查安全问题 (f864cd5)
-- 优化 AgentResult 适配和使用方式 (750d4c5)
-- 统一工具/模型管理到 AgentRegistryService (289ae57)
-- agent: 核心重构 - 拆分服务和解除循环依赖 (6956257)
-- 重写commit规范为英文版本 (fcc2817)
-- 移动提交规范文档到agents目录 (d6275e2)
-- 优化 CI 触发策略，仅在 PR 时运行检查 (a1102f0)
-- workflows: update AI review guide and add deploy guide (2fd6e00)
-- db: update database-schema.md to reflect recent migrations (5cecf2e)
-- add architecture comparison and LLM optimization todos (013c8be)
-- 新增 Bull Queue 使用指南并更新文档引用 (8420a96)
-- 移除无效的文档引用并修正相对路径 (64a0df3)
-- 新增测试套件架构设计文档 (2e2e435)
-- 新增场景测试工作流程文档 (710b223)
-- 重构对话验证工作流程文档 (b2b43c4)
-- 添加 test-suite 架构重构计划 (182aa9f)
-- 新增企微智能化分析报告（2025-12-17） (9181bbe)
-- add Advanced Documentation section to CLAUDE.md (1550dbd)
-- 添加Git提交信息规范文档 (5ebe58e)
-- add date.util.spec.ts for timezone utility functions (6be87d3)
-- add comprehensive unit tests for all modules (87 spec files, 2172 tests) (b8658cc)
-- 添加 maskApiKey 工具函数测试用例 (0e6788f)
-- 修复监控模块测试用例 (efba522)
-- update monitoring and message controller specs (0138ec3)
-- overhaul deploy pipeline and update docs (deace17)
-- update deploy container name and remove PR template (#21) (21300bc)
-- husky: forbid direct push to develop branch (5ff9b78)
-- update Claude Code settings with new tool permissions (8339da4)
-- upgrade pnpm to v10.28.0 and fix workspace installation (938a569)
-- 更新 Claude Code 配置（Upstash Redis 升级验证） (9e70b2d)
-- 清理 Agent 模块遗留备份文件 (223e9ab)
-- 触发 CI 重新运行 (8326b86)
-- dashboard: 优化对话详情弹窗 loading 体验 (55f3f47)
-- dashboard: 美化 Tab 切换组件样式 (5cab8a4)
-- dashboard: 调整聊天记录页面最小高度 (04d7dbb)
-- dashboard: 用户列表改为卡片式布局 (2660802)
-- resolve conflict with develop (remove tsconfig.tsbuildinfo) (7114aaa)
-- inject VITE_API_GUARD_TOKEN into build pipeline (2ceba42)
-- Cake Agent Runtime v2.0 — autonomous agent architecture (#20) (#28) (9a59af3)
-- Feature/huajune agent integration (#18) (dc3097a)
-- externalize review rules to review-rules.md (#19) (f923c9b)
-- trigger AI review test (0abc7ba)
-- trigger AI review test (abf4770)
-- review: switch to Claude Code OAuth token auth (373dd81)
-- review: replace custom script with anthropics/claude-code-action@v1 (e409998)
-- migrate AI review to Claude Code CLI and replace SSH deploy with GitHub Release (e211c92)
-- 添加消息聚合状态更新的详细日志 (62de89f)
-- Allow dashboard dev server via local IP (78826c6)
-- Add pending helper scripts and logger components (d853241)
-- Record user messages before AI switch (3ac81dd)
-
-
-## [1.1.0] - 2025-11-10
-
-**分支**: `master`
-
-Feature 更新：
-- 添加系统监控和性能追踪功能 (4442ca6)
-- 添加版本发布指南文档 (35aaee8)
-
-
-## [1.0.7] - 2025-11-06
-
-**分支**: `master`
-
-Feature 更新：
-- 过滤 CHANGELOG 中的自动化提交 (8579cf0)
-
-
-## [1.0.6] - 2025-11-06
-
-**分支**: `master`
-
-Feature 更新：
-- 简化 CHANGELOG 格式为两个主要分类 (575e716)
-- 改进 CHANGELOG 格式以保留提交作用域信息 (0ae7877)
-- 更新自动化版本管理文档说明 (e7fdc1c)
-- 重置 CHANGELOG.md 等待自动生成 (c61d0ed)
-- sync version 1.0.5 from master [skip ci] (27f129c)
-- Merge pull request #6 from huajune/develop (e96d822)
+- PR #19 验证 ai-code-review workflow 合并后可运行。
+- PR #20 本地构建通过、1948 tests 通过、CI Checks 通过，生产部署验证待执行。

@@ -18,6 +18,10 @@ describe('name-guard', () => {
       ['您好，我是赵六。', '赵六'],
       ['Hello，我是Alice', 'Alice'],
       ['  我是 孙七  ', null], // 中间含空格，不视为纯打招呼句式
+      // 带短期记忆注入的时间后缀，badcase batch_69e9bba2536c9654026522da_*
+      ['我是阳光明媚\n[消息发送时间：2026-04-23 14:26 周四]', '阳光明媚'],
+      ['你好，我是李四\n[消息发送时间：2026-04-23 10:00 周四]', '李四'],
+      ['我是张三\n[消息发送时间：2026-04-23 09:00 周四]\n', '张三'],
     ])('parses "我是xx" greeting from %s', (input, expected) => {
       expect(extractAutoGreetingName(input)).toBe(expected);
     });

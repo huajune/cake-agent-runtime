@@ -1,4 +1,4 @@
-import { ExecutionStatus, ReviewStatus } from '../enums/test.enum';
+import { ExecutionStatus, ReviewStatus, ReviewerSource } from '../enums/test.enum';
 
 /**
  * 测试执行记录（数据库格式）
@@ -23,6 +23,7 @@ export interface TestExecution {
   review_status: ReviewStatus;
   review_comment: string | null;
   reviewed_by: string | null;
+  reviewer_source: ReviewerSource | null;
   reviewed_at: string | null;
   failure_reason: string | null;
   test_scenario: string | null;

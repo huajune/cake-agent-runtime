@@ -15,7 +15,9 @@ import {
   normalizeDistrictForLookup,
 } from './geo-mappings';
 
-const LABOR_FORM_KEYWORDS = ['兼职', '全职', '小时工', '寒假工', '暑假工', '临时工'] as const;
+// 平台所有岗位本身就是兼职，"兼职"/"全职"/"临时工" 不是筛选维度，不纳入高置信提取。
+// 仅提取四个细分用工形式：兼职+、小时工、寒假工、暑假工。
+const LABOR_FORM_KEYWORDS = ['兼职+', '小时工', '寒假工', '暑假工'] as const;
 const POSITION_KEYWORDS = [
   '服务员',
   '收银员',

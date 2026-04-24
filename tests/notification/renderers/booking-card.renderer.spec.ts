@@ -53,6 +53,34 @@ describe('BookingCardRenderer', () => {
     expect((result.card.content as string)).toContain('结果：预约成功');
   });
 
+  it('should append interview type to the success title when provided', () => {
+    const result = renderer.buildInterviewBookingCard({
+      candidateName: 'Carol',
+      phone: '13700137000',
+      interviewTime: '2026-04-24 14:00',
+      interviewType: 'AI面试',
+      toolOutput: { success: true },
+    });
+
+    expect(result.card).toEqual(
+      expect.objectContaining({ title: '🎉 面试预约成功 · AI面试' }),
+    );
+  });
+
+  it('should append interview type to the failure title when provided', () => {
+    const result = renderer.buildInterviewBookingCard({
+      candidateName: 'Dave',
+      phone: '13600136000',
+      interviewTime: '2026-04-24 14:00',
+      interviewType: '线上面试',
+      toolOutput: { success: false, error: '名额已满' },
+    });
+
+    expect(result.card).toEqual(
+      expect.objectContaining({ title: '🚨 面试预约失败 · 线上面试 · 需要人工介入' }),
+    );
+  });
+
   it('should render failure booking cards with fallback result details', () => {
     const result = renderer.buildInterviewBookingCard({
       contactName: 'wx_bob',
@@ -72,7 +100,7 @@ describe('BookingCardRenderer', () => {
     expect(result.isFailure).toBe(true);
     expect(result.card).toEqual(
       expect.objectContaining({
-        title: '⚠️ 面试预约失败',
+        title: '🚨 面试预约失败 · 需要人工介入',
         color: 'red',
         atAll: true,
       }),

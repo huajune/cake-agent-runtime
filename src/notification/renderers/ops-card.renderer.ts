@@ -61,15 +61,19 @@ export class OpsCardRenderer {
 
     let statusText: string;
     let color: 'green' | 'yellow' | 'red';
+    let titleEmoji: string;
     if (isSuccess) {
       statusText = '全部成功';
       color = 'green';
+      titleEmoji = '📢';
     } else if (isPartialFail) {
       statusText = '部分失败';
       color = 'yellow';
+      titleEmoji = '⚠️';
     } else {
       statusText = '全部失败';
       color = 'red';
+      titleEmoji = '🚨';
     }
 
     const lines: string[] = [
@@ -125,7 +129,7 @@ export class OpsCardRenderer {
     );
 
     return this.cardBuilder.buildMarkdownCard({
-      title: `📢 ${modeLabel}${params.typeName}通知 — ${statusText}`,
+      title: `${titleEmoji} ${modeLabel}${params.typeName}通知 — ${statusText}`,
       content: lines.join('\n'),
       color,
       atUsers: params.atUsers,
@@ -159,7 +163,7 @@ export class OpsCardRenderer {
     ].join('\n');
 
     return this.cardBuilder.buildMarkdownCard({
-      title: conclusion,
+      title: `⚠️ ${conclusion}`,
       content,
       color: 'yellow',
       atUsers: params.atUsers,

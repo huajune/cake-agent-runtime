@@ -1,11 +1,11 @@
 ---
 name: analyze-chat-badcases
-description: 抽样分析招聘 Agent 的生产对话质量，识别问题并协作修复，生成针对性测试集验证修复。用于以下场景：用户提到"分析生产对话"、"找 badcase"、"Agent 表现怎么样"、"对话回归"、"质量审计"、"候选人流失分析"、"抽查最近的聊天"，或任何涉及招聘 Agent 对话质量改进的闭环任务。即使用户没有显式说"分析 badcase"，只要他们在讨论 Agent 对话问题并想动手改进，就应该用这个 skill。
+description: 抽样分析招聘 Agent 的生产对话质量，或分析 BadCase / GoodCase 反馈样本池中提交的样本，识别问题并协作修复，生成针对性测试集验证修复。用于以下场景：用户提到"分析生产对话"、"找 badcase"、"分析昨天/今天提交的 badcase"、"进入反馈验证 SOP"、"Agent 表现怎么样"、"对话回归"、"质量审计"、"候选人流失分析"、"抽查最近的聊天"，或任何涉及招聘 Agent 对话质量改进的闭环任务。即使用户没有显式说"分析 badcase"，只要他们在讨论 Agent 对话问题并想动手改进，就应该用这个 skill。
 ---
 
 # Analyze Chat Badcases
 
-产品能力：抽样生产对话 → LLM 分析 → 协作修复 → 生成针对性测试集 → 跑测试验证。
+产品能力：收集生产对话或反馈样本 → LLM 分析 → 协作修复 → 生成针对性测试集 → 跑测试验证。
 
 ## 业务语境
 
@@ -22,6 +22,12 @@ description: 抽样分析招聘 Agent 的生产对话质量，识别问题并协
 
 字段含义见 `references/schema.md`——在 Step 2 读完原始数据后需要参考。
 
+**飞书反馈样本池**：
+- `BadCase / GoodCase` 是反馈样本池，不是正式测试资产
+- 表配置来自 `FEISHU_BITABLE_BADCASE_*` / `FEISHU_BITABLE_GOODCASE_*`
+- 常用字段别名见 `src/biz/feishu-sync/bitable-sync.service.ts` 的 `feedbackFieldAliases`
+- 按提交时间分析时，优先用 `提交时间 / 创建时间 / 咨询时间` 做时间窗口；如果字段不存在，再用飞书记录元数据的创建时间兜底
+
 **飞书角色分工**：
 - `BadCase / GoodCase`：样本池，只保存证据、观察和候选素材
 - `测试集 / 验证集`：正式数据集，只能由本 skill 策展、确认后再导入
@@ -29,9 +35,39 @@ description: 抽样分析招聘 Agent 的生产对话质量，识别问题并协
 
 不要把样本池里的记录机械搬运成正式数据集，也不要依赖手动勾选字段决定是否入库。
 
+反馈修复测试验证链路遵循 `docs/workflows/feedback-repair-test-validation-v2.md`：反馈只进样本池，正式测试资产只能由本 skill 策展、用户确认后导入。
+
 ## 执行步骤
 
-### Step 1. 抽样
+### Step 0. 选择入口
+
+先判断用户要分析的是哪类来源：
+
+- 用户说"昨天/今天提交的 badcase"、"反馈验证 SOP"、"反馈样本"、"BadCase 表"：走飞书反馈样本池入口，按用户指定时间窗口读取 `BadCase`，必要时同步读取相关 `GoodCase`
+- 用户说"最近聊天"、"生产对话抽样"、"抽查最近 N 个候选人"：走生产 Supabase 抽样入口
+- 用户没有说清楚来源但提到"提交"或"反馈"：默认走飞书反馈样本池入口，不要退回随机抽样生产对话
+
+时间窗口必须明确写成绝对日期。例如当前日期是 2026-04-23 时，"昨天和今天"应解释为 2026-04-22 00:00:00 到 2026-04-23 23:59:59（使用用户本地时区）。
+
+### Step 1A. 飞书反馈样本池读取
+
+读取 `BadCase` 表中指定时间窗口内提交的记录，整理为统一样本结构：
+
+- `badcaseId`: 优先取 `问题ID / 用例名称 / record_id`
+- `submittedAt`: `提交时间 / 创建时间 / 咨询时间`
+- `category`: `分类 / 错误分类`
+- `status`: `状态`
+- `priority`: `优先级`
+- `source`: `来源`
+- `chatId`: `chatId / 会话ID`，没有独立字段时从备注里的 `chatId:` 提取
+- `candidateName / managerName`
+- `userMessage`
+- `chatHistory`
+- `remark`
+
+如果记录只有片段、没有完整对话，但有 `chatId`，再回查生产 Supabase 的 `chat_messages` 补齐完整会话；如果没有 `chatId`，只能基于 `chatHistory` 和备注分析，并在报告里标注证据不足。
+
+### Step 1B. 生产对话抽样
 
 默认抽最近 15 个候选人完整对话。用户指定了其他数量就按用户说的。
 
@@ -151,7 +187,44 @@ test-suite 模块已有 HTTP 接口。端点速查见 `references/test-suite-api
 - 未通过用例清单 + 失败原因
 - 若通过率不理想，回 Step 5 继续迭代
 
-### Step 10.（可选）广播
+人工评审时要把“系统记录”和“飞书回写”一起收口：
+- 场景测试执行 `PATCH /test-suite/executions/:id/review` 后，应自动把 `测试集` 的 `测试状态 / 最近测试时间 / 测试批次 / 错误原因 / 评审摘要` 回写到飞书
+- 回归验证执行 `PATCH /test-suite/conversations/turns/:executionId/review` 后，应自动把 `验证集` 的 `测试状态 / 最近测试时间 / 测试批次 / 相似度分数 / 最低分 / 评估摘要` 回写到飞书
+- 如果飞书字段已更新但线上页面没变，不要误判为回写失败；`https://cake.duliday.com/web/test-suite` 读的是生产 test-suite 数据库，不是飞书表
+
+评审弹窗展示信息时，优先使用 test-suite 当前执行记录里已经稳定保存的上下文：
+- 用户消息 / 历史上下文 / 预期输出 / 实际输出 / 工具调用 / 人工评审状态与备注
+- 只有当正式资产能稳定关联到源 `chatId / messageId` 时，才再深挖 `message_processing_records`
+- 不要默认把生产消息处理流水整段塞进评审弹窗；否则容易混入不属于测试执行的数据噪音
+
+如果用户明确要求把结果同步到线上页面 `https://cake.duliday.com/web/test-suite`，不要只停留在测试环境数据库或飞书回写：
+- 先确认批次评审状态已经稳定
+- 再运行 `pnpm sync:test-suite:prod -- <batchId...>` 把这轮批次同步到生产 test-suite 数据库
+- 该页面的数据源是生产库里的 `test_batches / test_executions / conversation source`，不是飞书表本身
+
+### Step 10. 回写反馈样本池状态
+
+跑完测试后，必须把本轮涉及的源 `BadCase / GoodCase` 样本收尾回写；不要只更新 `测试集 / 验证集 / 资产关联`。
+
+BadCase 推荐状态流转：
+- 刚收集、尚未分析：`待分析`
+- 已确认问题但未修：`待修复`
+- 正在修代码 / prompt / 工具：`修复中`
+- 修复已完成、测试还没跑：`待测试`
+- 测试已跑但还需人工确认：`待验证`
+- 定向测试/回归验证已通过，或已确认无需继续处理：`已解决`
+- 样本已失效：`已过时`
+
+回写字段优先级：
+- `状态`：按上面的状态流转写入
+- `根因层`：`prompt / stage / tool / data / memory / workflow / policy / unknown`
+- `修复说明`：写清修复文件/策略、正式用例 ID、验证批次 ID、是否有残余风险
+- `最近复现时间`：本轮最终验证或复跑时间
+- `复现次数`：只有本轮确实统计过复现次数时再写，不要编造
+
+如果本轮导入了正式资产，应在 `修复说明` 里写明 `caseId / validationId / recordId / batchId`，因为源样本池本身不一定有专门的关联字段；正式血缘关系仍以 `资产关联` 表为准。
+
+### Step 11.（可选）广播
 
 询问用户："要不要把这次分析+修复+验证结果发飞书群？"
 
@@ -176,6 +249,7 @@ test-suite 模块已有 HTTP 接口。端点速查见 `references/test-suite-api
 
 ## 参考文件
 
-- `queries/latest-chats.sql` — 抽样 SQL，Step 1 直接用
+- `queries/latest-chats.sql` — 生产对话抽样 SQL，Step 1B 直接用
 - `references/schema.md` — 两表字段含义 + anomaly_flags / tool_calls / memory_snapshot JSONB 结构
 - `references/test-suite-api.md` — test-suite 端点速查，Step 8/9 用
+- `docs/workflows/feedback-repair-test-validation-v2.md` — 反馈修复测试验证链路 V2，定义样本池、正式测试资产和血缘关系边界

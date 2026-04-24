@@ -102,17 +102,32 @@ export class SessionService {
     return state.lastSessionActiveAt ?? null;
   }
 
+  /**
+   * 保存本轮提取的会话事实。
+   *
+   * 默认走 deepMerge（null/空串不覆盖旧值，保留历史积累）；但 `forceNullFields`
+   * 列出的 `interview_info` 字段会在 merge 之后被显式覆盖为 null，用于让调用方
+   * 把确定不该保留的旧值（如 sanitizer 识别出的昵称）从 Redis 中清掉。
+   *
+   * 背景：badcase `batch_69e9bba2536c9654026522da_*` —— deepMerge 的 "null 不
+   * 覆盖" 语义让 sanitizer 的 null 输出无法清除已污染的 name。新增该参数作为
+   * 显式覆盖出口，sanitizer 命中时传 `['name']`。
+   */
   async saveFacts(
     corpId: string,
     userId: string,
     sessionId: string,
     facts: EntityExtractionResult,
+    options?: { forceNullFields?: readonly (keyof EntityExtractionResult['interview_info'])[] },
   ): Promise<void> {
     const key = this.buildKey(corpId, userId, sessionId);
     const state = await this.getSessionState(corpId, userId, sessionId);
-    const mergedFacts = EntityExtractionResultSchema.parse(
-      state.facts ? deepMerge(state.facts, facts) : facts,
+    const baseMerge = state.facts ? deepMerge(state.facts, facts) : facts;
+    const forcedMerge = this.applyForceNullFields(
+      baseMerge as EntityExtractionResult,
+      options?.forceNullFields,
     );
+    const mergedFacts = EntityExtractionResultSchema.parse(forcedMerge);
 
     await this.redisStore.set(
       key,
@@ -120,6 +135,26 @@ export class SessionService {
       this.config.sessionTtl,
       false,
     );
+  }
+
+  private applyForceNullFields(
+    facts: EntityExtractionResult,
+    forceNullFields?: readonly (keyof EntityExtractionResult['interview_info'])[],
+  ): EntityExtractionResult {
+    if (!forceNullFields || forceNullFields.length === 0) return facts;
+    // interview_info 的字段类型异构（string|null、boolean|null 等），
+    // 用 Record 视图收敛成 null 赋值，避免逐字段命中具体联合类型的推导限制。
+    const interview = { ...facts.interview_info } as Record<
+      keyof EntityExtractionResult['interview_info'],
+      unknown
+    >;
+    for (const field of forceNullFields) {
+      interview[field] = null;
+    }
+    return {
+      ...facts,
+      interview_info: interview as EntityExtractionResult['interview_info'],
+    };
   }
 
   async saveLastCandidatePool(
@@ -343,7 +378,11 @@ export class SessionService {
       );
     }
 
-    await this.saveFacts(corpId, userId, sessionId, newFacts);
+    // sanitizer 命中时，除了把本轮 name 置 null，还要用 forceNullFields 显式覆盖
+    // Redis 中可能已被早期漏网昵称污染的字段，避免 deepMerge "null 不覆盖" 留存旧值。
+    await this.saveFacts(corpId, userId, sessionId, newFacts, {
+      forceNullFields: droppedName ? ['name'] : undefined,
+    });
   }
 
   private async callLLM(prompt: string): Promise<EntityExtractionResult> {

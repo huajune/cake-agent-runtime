@@ -38,6 +38,7 @@ export class MemoryService {
     currentUserMessage?: string,
     options?: {
       includeShortTerm?: boolean;
+      shortTermEndTimeInclusive?: number;
       enrichmentIdentity?: CandidateIdentityHint;
     },
   ): Promise<AgentMemoryContext> {

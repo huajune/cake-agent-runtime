@@ -24,6 +24,7 @@ describe('ReplyWorkflowService', () => {
     markAiStart: jest.fn(),
     recordAgentRequest: jest.fn(),
     recordAgentResult: jest.fn(),
+    updateRequestMessages: jest.fn(),
     markAiEnd: jest.fn(),
     markReplySkipped: jest.fn(),
     buildSuccessMetadata: jest.fn(),
@@ -82,6 +83,7 @@ describe('ReplyWorkflowService', () => {
     wecomObservability.markAiStart.mockResolvedValue(undefined);
     wecomObservability.recordAgentRequest.mockResolvedValue(undefined);
     wecomObservability.recordAgentResult.mockResolvedValue(undefined);
+    wecomObservability.updateRequestMessages.mockResolvedValue(undefined);
     wecomObservability.markAiEnd.mockResolvedValue(undefined);
     wecomObservability.markReplySkipped.mockResolvedValue(undefined);
     wecomObservability.buildSuccessMetadata.mockResolvedValue({ ok: true });
@@ -142,6 +144,7 @@ describe('ReplyWorkflowService', () => {
         corpId: 'corp-1',
         externalUserId: 'external-user-1',
         modelId: 'gpt-runtime',
+        shortTermEndTimeInclusive: 1713168000000,
         thinking: {
           type: 'enabled',
           budgetTokens: 4000,
@@ -170,6 +173,65 @@ describe('ReplyWorkflowService', () => {
     );
     expect(monitoringService.recordSuccess).toHaveBeenCalledWith('msg-1', { ok: true });
     expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');
+  });
+
+  it('should persist empty Agent telemetry before delegating failure handling', async () => {
+    const agentSteps = [
+      {
+        stepIndex: 0,
+        reasoning: '工具执行后没有最终文本',
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_precheck',
+            args: { jobId: 522935, requestedDate: 'today' },
+            result: { success: true },
+            status: 'unknown',
+          },
+        ],
+        finishReason: 'stop',
+      },
+    ];
+    runner.invoke.mockResolvedValueOnce({
+      text: '',
+      reasoning: '只有 thinking，没有回复文本',
+      responseMessages: [{ role: 'assistant', content: [{ type: 'reasoning', text: '...' }] }],
+      toolCalls: agentSteps[0].toolCalls,
+      agentSteps,
+      usage: { inputTokens: 10, outputTokens: 0, totalTokens: 10 },
+    });
+
+    await service.processSingleMessage(createMessage());
+
+    expect(wecomObservability.recordAgentResult).toHaveBeenCalledWith(
+      'msg-1',
+      expect.objectContaining({
+        reply: expect.objectContaining({ content: '' }),
+        toolCalls: agentSteps[0].toolCalls,
+        agentSteps,
+        responseMessages: [{ role: 'assistant', content: [{ type: 'reasoning', text: '...' }] }],
+      }),
+    );
+    expect(processingFailureService.inferErrorType).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Agent 返回空响应',
+        isAgentError: true,
+        agentMeta: expect.objectContaining({
+          lastCategory: 'empty_response',
+        }),
+      }),
+      'message',
+    );
+    expect(processingFailureService.handleProcessingError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Agent 返回空响应',
+      }),
+      expect.anything(),
+      expect.objectContaining({
+        dispatchMode: 'direct',
+        traceId: 'msg-1',
+      }),
+    );
+    expect(deliveryService.deliverReply).not.toHaveBeenCalled();
   });
 
   describe('投递前重跑（replay）', () => {
@@ -202,10 +264,12 @@ describe('ReplyWorkflowService', () => {
       const primary = createMessage();
       const late1 = createMessage({
         messageId: 'msg-late-1',
+        timestamp: '1713168001000',
         payload: { text: '补充一句', pureText: '补充一句' },
       });
       const late2 = createMessage({
         messageId: 'msg-late-2',
+        timestamp: '1713168002000',
         payload: { text: '再补一句', pureText: '再补一句' },
       });
       simpleMergeService.getAndClearPendingMessages.mockResolvedValueOnce({
@@ -233,9 +297,17 @@ describe('ReplyWorkflowService', () => {
       expect(runner.invoke).toHaveBeenCalledTimes(2);
       // 首次启用 deferTurnEnd；第二次采用默认（runner 自动 dispatch）
       expect(runner.invoke.mock.calls[0][0]).toEqual(
-        expect.objectContaining({ deferTurnEnd: true }),
+        expect.objectContaining({
+          deferTurnEnd: true,
+          shortTermEndTimeInclusive: 1713168000000,
+        }),
       );
-      expect(runner.invoke.mock.calls[1][0].deferTurnEnd).toBeUndefined();
+      expect(runner.invoke.mock.calls[1][0]).toEqual(
+        expect.objectContaining({
+          deferTurnEnd: undefined,
+          shortTermEndTimeInclusive: 1713168002000,
+        }),
+      );
       // 首次的 runTurnEnd 必须被丢弃——它承载了「未发出的首次回复」对 session 记忆的污染
       expect(firstRunTurnEnd).not.toHaveBeenCalled();
       expect(runner.invoke.mock.calls[1][0]).toEqual(
@@ -263,6 +335,11 @@ describe('ReplyWorkflowService', () => {
         'msg-late-1',
         'msg-late-2',
       ]);
+      expect(wecomObservability.updateRequestMessages).toHaveBeenCalledWith('msg-1', {
+        messages: [primary, late1, late2],
+        content: '你好\n补充一句\n再补一句',
+        mergeWindowMs: 3500,
+      });
     });
 
     it('Case C: 重跑只允许一次——第二次 Agent 生成期间又有新消息也不再重跑', async () => {
@@ -290,11 +367,7 @@ describe('ReplyWorkflowService', () => {
       expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
     });
 
-    it.each([
-      ['advance_stage'],
-      ['invite_to_group'],
-      ['duliday_interview_booking'],
-    ])(
+    it.each([['advance_stage'], ['invite_to_group'], ['duliday_interview_booking']])(
       'Case E: 首次调用命中不可逆工具 [%s] 时跳过 replay，不 drain pending，直接投递首次回复',
       async (blockingToolName) => {
         const primary = createMessage();

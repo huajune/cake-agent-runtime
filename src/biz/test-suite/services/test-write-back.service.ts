@@ -35,6 +35,7 @@ export class TestWriteBackService {
     executionId: string,
     testStatus: FeishuTestStatus,
     errorReason?: string,
+    reviewSummary?: string,
   ): Promise<{ success: boolean; error?: string }> {
     const execution = await this.executionService.getExecution(executionId);
     if (!execution) {
@@ -46,7 +47,13 @@ export class TestWriteBackService {
       return { success: false, error: '执行记录缺少飞书记录 ID' };
     }
 
-    return this.writeBackResult(recordId, testStatus, execution.batch_id || undefined, errorReason);
+    return this.writeBackResult(
+      recordId,
+      testStatus,
+      execution.batch_id || undefined,
+      errorReason,
+      reviewSummary,
+    );
   }
 
   /**
@@ -57,6 +64,7 @@ export class TestWriteBackService {
       executionId: string;
       testStatus: FeishuTestStatus;
       errorReason?: string;
+      reviewSummary?: string;
     }>,
   ): Promise<{ success: number; failed: number; errors: string[] }> {
     const writeBackItems: Array<{
@@ -64,6 +72,7 @@ export class TestWriteBackService {
       testStatus: FeishuTestStatus;
       batchId?: string;
       errorReason?: string;
+      reviewSummary?: string;
     }> = [];
 
     const errors: string[] = [];
@@ -84,6 +93,7 @@ export class TestWriteBackService {
         testStatus: item.testStatus,
         batchId: execution.batch_id || undefined,
         errorReason: item.errorReason,
+        reviewSummary: item.reviewSummary,
       });
     }
 
@@ -104,6 +114,7 @@ export class TestWriteBackService {
     testStatus: FeishuTestStatus,
     batchId?: string,
     errorReason?: string,
+    reviewSummary?: string,
   ): Promise<{ success: boolean; error?: string }> {
     try {
       const { appToken, tableId } = this.bitableApi.getTableConfig('testSuite');
@@ -129,6 +140,9 @@ export class TestWriteBackService {
 
       if (testStatus === FeishuTestStatus.FAILED && errorReason && resolvedFields.errorReason) {
         updateFields[resolvedFields.errorReason] = errorReason;
+      }
+      if (reviewSummary && resolvedFields.reviewSummary) {
+        updateFields[resolvedFields.reviewSummary] = reviewSummary;
       }
 
       if (Object.keys(updateFields).length === 0) {
@@ -161,6 +175,7 @@ export class TestWriteBackService {
       testStatus: FeishuTestStatus;
       batchId?: string;
       errorReason?: string;
+      reviewSummary?: string;
     }>,
   ): Promise<{ success: number; failed: number; errors: string[] }> {
     let success = 0;
@@ -173,6 +188,7 @@ export class TestWriteBackService {
         item.testStatus,
         item.batchId,
         item.errorReason,
+        item.reviewSummary,
       );
 
       if (result.success) {

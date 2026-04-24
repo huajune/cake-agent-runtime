@@ -6,11 +6,14 @@ import { LlmEvaluationService } from '@evaluation/llm-evaluation.service';
 import { ConversationParserService } from '@evaluation/conversation-parser.service';
 import { ConversationSnapshotRepository } from '@biz/test-suite/repositories/conversation-snapshot.repository';
 import { TestExecutionRepository } from '@biz/test-suite/repositories/test-execution.repository';
+import { TestWriteBackService } from '@biz/test-suite/services/test-write-back.service';
 import {
   ExecutionStatus,
   ReviewStatus,
   ConversationSourceStatus,
   SimilarityRating,
+  FeishuTestStatus,
+  ReviewerSource,
 } from '@biz/test-suite/enums/test.enum';
 import { ConversationSnapshotRecord } from '@biz/test-suite/entities/conversation-snapshot.entity';
 
@@ -21,6 +24,7 @@ describe('ConversationTestService', () => {
   let parserService: jest.Mocked<ConversationParserService>;
   let conversationSnapshotRepository: jest.Mocked<ConversationSnapshotRepository>;
   let executionRepository: jest.Mocked<TestExecutionRepository>;
+  let writeBackService: jest.Mocked<TestWriteBackService>;
 
   const mockOrchestrator = {
     invoke: jest.fn(),
@@ -54,10 +58,16 @@ describe('ConversationTestService', () => {
   };
 
   const mockExecutionRepository = {
+    findById: jest.fn(),
     findByConversationSourceId: jest.fn(),
     findByConversationSourceAndTurn: jest.fn(),
     create: jest.fn(),
     updateExecution: jest.fn(),
+    updateReview: jest.fn(),
+  };
+
+  const mockWriteBackService = {
+    writeBackSimilarityScore: jest.fn(),
   };
 
   const makeSource = (
@@ -95,6 +105,7 @@ describe('ConversationTestService', () => {
         { provide: ConversationParserService, useValue: mockParserService },
         { provide: ConversationSnapshotRepository, useValue: mockConversationSnapshotRepository },
         { provide: TestExecutionRepository, useValue: mockExecutionRepository },
+        { provide: TestWriteBackService, useValue: mockWriteBackService },
       ],
     }).compile();
 
@@ -104,6 +115,7 @@ describe('ConversationTestService', () => {
     parserService = module.get(ConversationParserService);
     conversationSnapshotRepository = module.get(ConversationSnapshotRepository);
     executionRepository = module.get(TestExecutionRepository);
+    writeBackService = module.get(TestWriteBackService);
 
     jest.clearAllMocks();
   });
@@ -281,6 +293,23 @@ describe('ConversationTestService', () => {
 
       await expect(service.executeConversation('source-1')).rejects.toThrow(
         '缺少 participant_name',
+      );
+    });
+
+    it('should fail instead of completing when no executable turns are parsed', async () => {
+      mockParserService.splitIntoTurns.mockReturnValue([]);
+
+      await expect(service.executeConversation('source-1')).rejects.toThrow(
+        '没有可执行的候选人轮次',
+      );
+
+      expect(conversationSnapshotRepository.updateSource).not.toHaveBeenCalledWith(
+        'source-1',
+        expect.objectContaining({ status: ConversationSourceStatus.COMPLETED }),
+      );
+      expect(conversationSnapshotRepository.updateStatus).toHaveBeenCalledWith(
+        'source-1',
+        ConversationSourceStatus.FAILED,
       );
     });
 
@@ -491,26 +520,176 @@ describe('ConversationTestService', () => {
 
   describe('updateTurnReview', () => {
     it('should update execution review status', async () => {
-      mockExecutionRepository.updateExecution.mockResolvedValue(undefined);
+      mockExecutionRepository.updateReview.mockResolvedValue(undefined);
+      mockExecutionRepository.findById.mockResolvedValue({
+        id: 'exec-1',
+        conversation_snapshot_id: 'source-1',
+        review_status: ReviewStatus.PASSED,
+        review_comment: 'Looks good',
+        failure_reason: null,
+        reviewed_by: 'dashboard-user',
+        reviewer_source: ReviewerSource.MANUAL,
+        reviewed_at: new Date().toISOString(),
+      } as any);
+      mockConversationSnapshotRepository.findById.mockResolvedValue(makeSource());
+      mockExecutionRepository.findByConversationSourceId.mockResolvedValue([
+        {
+          id: 'exec-1',
+          turn_number: 1,
+          review_status: ReviewStatus.PASSED,
+          review_comment: 'Looks good',
+          evaluation_reason: '自动评估良好',
+        },
+      ] as any);
+      mockWriteBackService.writeBackSimilarityScore.mockResolvedValue({ success: true });
 
       const result = await service.updateTurnReview('exec-1', ReviewStatus.PASSED, 'Looks good');
 
-      expect(executionRepository.updateExecution).toHaveBeenCalledWith('exec-1', {
-        review_status: ReviewStatus.PASSED,
-        review_comment: 'Looks good',
+      expect(executionRepository.updateReview).toHaveBeenCalledWith('exec-1', {
+        reviewStatus: ReviewStatus.PASSED,
+        reviewComment: 'Looks good',
+        failureReason: undefined,
+        reviewedBy: 'dashboard-user',
+        reviewerSource: ReviewerSource.MANUAL,
       });
-      expect(result).toEqual({ executionId: 'exec-1', reviewStatus: ReviewStatus.PASSED });
+      expect(result).toEqual(
+        expect.objectContaining({
+          id: 'exec-1',
+          reviewStatus: ReviewStatus.PASSED,
+          reviewerSource: ReviewerSource.MANUAL,
+        }),
+      );
     });
 
     it('should update without comment when not provided', async () => {
-      mockExecutionRepository.updateExecution.mockResolvedValue(undefined);
+      mockExecutionRepository.updateReview.mockResolvedValue(undefined);
+      mockExecutionRepository.findById.mockResolvedValue({
+        id: 'exec-1',
+        conversation_snapshot_id: null,
+        review_status: ReviewStatus.FAILED,
+        review_comment: null,
+        failure_reason: null,
+        reviewed_by: 'dashboard-user',
+        reviewer_source: ReviewerSource.MANUAL,
+        reviewed_at: new Date().toISOString(),
+      } as any);
 
       await service.updateTurnReview('exec-1', ReviewStatus.FAILED);
 
-      expect(executionRepository.updateExecution).toHaveBeenCalledWith('exec-1', {
-        review_status: ReviewStatus.FAILED,
-        review_comment: undefined,
+      expect(executionRepository.updateReview).toHaveBeenCalledWith('exec-1', {
+        reviewStatus: ReviewStatus.FAILED,
+        reviewComment: undefined,
+        failureReason: undefined,
+        reviewedBy: 'dashboard-user',
+        reviewerSource: ReviewerSource.MANUAL,
       });
+    });
+
+    it('should write back manual review summary to validationSet when source exists', async () => {
+      mockExecutionRepository.updateReview.mockResolvedValue(undefined);
+      mockExecutionRepository.findById.mockResolvedValue({
+        id: 'exec-1',
+        conversation_snapshot_id: 'source-1',
+        review_status: ReviewStatus.FAILED,
+        review_comment: '岗位明显不匹配',
+        failure_reason: '岗位明显不匹配',
+        reviewed_by: 'claude-reviewer',
+        reviewer_source: ReviewerSource.CLAUDE,
+        reviewed_at: new Date().toISOString(),
+      } as any);
+      mockConversationSnapshotRepository.findById.mockResolvedValue(
+        makeSource({
+          avg_similarity_score: 71,
+          min_similarity_score: 26,
+          feishu_record_id: 'rec-001',
+        }),
+      );
+      mockExecutionRepository.findByConversationSourceId.mockResolvedValue([
+        {
+          id: 'exec-1',
+          turn_number: 1,
+          review_status: ReviewStatus.FAILED,
+          review_comment: '岗位明显不匹配',
+          evaluation_reason: '自动评估判定偏差较大',
+          reviewer_source: ReviewerSource.CLAUDE,
+        },
+      ] as any);
+      mockWriteBackService.writeBackSimilarityScore.mockResolvedValue({ success: true });
+
+      await service.updateTurnReview(
+        'exec-1',
+        ReviewStatus.FAILED,
+        '岗位明显不匹配',
+        ReviewerSource.CLAUDE,
+        'claude-reviewer',
+      );
+
+      expect(writeBackService.writeBackSimilarityScore).toHaveBeenCalledWith(
+        'rec-001',
+        71,
+        expect.objectContaining({
+          batchId: 'batch-1',
+          minSimilarityScore: 26,
+          testStatus: FeishuTestStatus.FAILED,
+          evaluationSummary: '评审摘要\n第1轮 失败（Claude）：岗位明显不匹配',
+        }),
+      );
+    });
+
+    it('should write back skipped when all turns are skipped', async () => {
+      mockExecutionRepository.updateReview.mockResolvedValue(undefined);
+      mockExecutionRepository.findById.mockResolvedValue({
+        id: 'exec-1',
+        conversation_snapshot_id: 'source-1',
+        review_status: ReviewStatus.SKIPPED,
+        review_comment: '本轮不评审',
+        failure_reason: null,
+        reviewed_by: 'dashboard-user',
+        reviewer_source: ReviewerSource.MANUAL,
+        reviewed_at: new Date().toISOString(),
+      } as any);
+      mockConversationSnapshotRepository.findById.mockResolvedValue(
+        makeSource({
+          avg_similarity_score: 71,
+          min_similarity_score: 26,
+          feishu_record_id: 'rec-001',
+        }),
+      );
+      mockExecutionRepository.findByConversationSourceId.mockResolvedValue([
+        {
+          id: 'exec-1',
+          turn_number: 1,
+          review_status: ReviewStatus.SKIPPED,
+          review_comment: '本轮不评审',
+          evaluation_reason: '自动评估判定偏差较大',
+          reviewer_source: ReviewerSource.MANUAL,
+        },
+        {
+          id: 'exec-2',
+          turn_number: 2,
+          review_status: ReviewStatus.SKIPPED,
+          review_comment: '本轮不评审',
+          evaluation_reason: '自动评估判定偏差较大',
+          reviewer_source: ReviewerSource.MANUAL,
+        },
+      ] as any);
+      mockWriteBackService.writeBackSimilarityScore.mockResolvedValue({ success: true });
+
+      await service.updateTurnReview(
+        'exec-1',
+        ReviewStatus.SKIPPED,
+        '本轮不评审',
+        ReviewerSource.MANUAL,
+        'dashboard-user',
+      );
+
+      expect(writeBackService.writeBackSimilarityScore).toHaveBeenCalledWith(
+        'rec-001',
+        71,
+        expect.objectContaining({
+          testStatus: FeishuTestStatus.SKIPPED,
+        }),
+      );
     });
   });
 

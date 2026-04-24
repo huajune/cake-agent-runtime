@@ -1,3 +1,4 @@
+import { isValidLaborForm } from '../facts/labor-form';
 import type { EntityExtractionResult } from '../types/session-facts.types';
 
 /**
@@ -20,7 +21,10 @@ export function formatExtractionFactLines(facts: EntityExtractionResult): string
   if (info.education) lines.push(`- 学历: ${info.education}`);
   if (info.has_health_certificate) lines.push(`- 健康证: ${info.has_health_certificate}`);
 
-  if (pref.labor_form) lines.push(`- 用工形式: ${pref.labor_form}`);
+  // 历史数据里可能存在 labor_form="兼职"/"全职"，读取时过滤掉（平台全为兼职，这类值无筛选价值）。
+  if (pref.labor_form && isValidLaborForm(pref.labor_form)) {
+    lines.push(`- 用工形式: ${pref.labor_form}`);
+  }
   if (pref.brands?.length) lines.push(`- 意向品牌: ${pref.brands.join('、')}`);
   if (pref.salary) lines.push(`- 意向薪资: ${pref.salary}`);
   if (pref.position?.length) lines.push(`- 意向岗位: ${pref.position.join('、')}`);

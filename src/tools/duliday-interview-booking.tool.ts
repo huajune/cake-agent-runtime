@@ -30,9 +30,26 @@ import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitme
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import { API_BOOKING_REQUIRED_PAYLOAD_FIELDS } from '@tools/duliday/job-booking.contract';
+import { findScreeningFailure } from '@tools/duliday/supplement-label-classifier';
 
 const logger = new Logger('duliday_interview_booking');
 const INTERVIEW_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+
+function pauseUserHostingAsync(
+  userHostingService: UserHostingService,
+  chatId: string,
+  successMessage: string,
+): void {
+  void userHostingService
+    .pauseUser(chatId)
+    .then(() => {
+      logger.log(successMessage);
+    })
+    .catch((error: unknown) => {
+      const errorMessage = error instanceof Error ? (error.stack ?? error.message) : String(error);
+      logger.error(`[自动暂停] 暂停托管失败: chatId=${chatId}`, errorMessage);
+    });
+}
 
 const supplementAnswersSchema = z
   .record(z.string(), z.string())
@@ -51,6 +68,7 @@ export interface InterviewBookingNotificationInfo {
   jobName?: string;
   jobId?: number;
   interviewTime: string;
+  interviewType?: string;
   toolOutput: Record<string, unknown>;
   botImId?: string;
 }
@@ -84,7 +102,8 @@ export function buildInterviewBookingTool(
 - **只有当本工具返回 success 后，才能向候选人确认面试安排并复述时间与门店**
 - **严禁**在未调用本工具或调用未返回 success 的情况下，告知候选人面试已安排、可以去面试、面试时间地点等任何暗示预约成功的信息
 - 失败处理：当工具返回 _replyInstruction 时，按该字段的指令自主组织一句口语化致歉+衔接的招募者话术（如"这边暂时没约上，我让同事确认一下，稍等"）
-- 失败时严禁原样复读 _replyInstruction、严禁透露接口报错/技术细节、严禁继续推进其他任务`,
+- 失败时严禁原样复读 _replyInstruction、严禁透露接口报错/技术细节、严禁继续推进其他任务
+- 返回 errorType="screening_mismatch" 时：候选人的回答命中了岗位硬筛选的不合格信号（例如在"专业（非新媒、食品）"里答了"食品类"，在"周四六日都能上班吗"里答了"不一定"）。**严禁**对这位候选人重试本工具或换字段重填；按 _replyInstruction 的指引婉拒并调用 invite_to_group 维护，或 request_handoff 转人工`,
       inputSchema: z.object({
         jobId: z.number().int().describe('岗位ID'),
         interviewTime: z
@@ -238,8 +257,34 @@ export function buildInterviewBookingTool(
           };
         }
 
+        // 岗位后台的 supplement label 有两种语义：收集型（让候选人填）和筛选型（带
+        // 约束语义的硬条件）。后者如 "是否学生（不要学生）" / "专业（非新媒、食品）"
+        // / "周四六日都能上班吗"，若候选人答案命中 failSignals 就是硬伤，必须拦截在
+        // 海绵接口调用前。badcase 69e9bba2536c9654026522da：Agent 把候选人答案
+        // "食品类 / 不一定" 直接提交成功，门店收到一个不合格候选人。
+        const screeningFailure = findScreeningFailure(supplementAnswers);
+        if (screeningFailure) {
+          pauseUserHostingAsync(
+            userHostingService,
+            context.sessionId,
+            `[自动暂停] 候选人答案未通过岗位筛选: chatId=${context.sessionId}, label=${screeningFailure.label}`,
+          );
+          return {
+            success: false,
+            errorType: 'screening_mismatch',
+            failedLabel: screeningFailure.label,
+            candidateAnswer: screeningFailure.answer,
+            matchedFailSignal: screeningFailure.matched,
+            error: `候选人对"${screeningFailure.label}"的回答"${screeningFailure.answer}"未通过岗位筛选（命中不合格信号"${screeningFailure.matched}"）。严禁继续提交预约。`,
+            _outcome: '岗位筛选未通过',
+            _replyInstruction:
+              '候选人的条件与岗位硬要求冲突。用招募者口吻委婉告知"这家店暂时不太合适"，然后按场景调用 invite_to_group 维护候选人，或 request_handoff 转人工。严禁透露具体筛选字段/后台规则/系统用语。',
+          };
+        }
+
         const genderLabel = getSpongeGenderLabelById(genderId) ?? undefined;
         const ageText = normalizeAgeText(age);
+        let interviewType: string | undefined;
         let requestInfo: Record<string, unknown> = {
           jobId,
           interviewTime,
@@ -317,6 +362,7 @@ export function buildInterviewBookingTool(
             normalizeText(job.basicInfo.jobName) ||
             normalizeText(job.basicInfo.jobNickName) ||
             undefined;
+          interviewType = resolveInterviewType(job);
           requestInfo = {
             jobId,
             interviewTime,
@@ -361,9 +407,11 @@ export function buildInterviewBookingTool(
           context.bookingSucceeded = result.success;
 
           if (!result.success) {
-            void userHostingService.pauseUser(context.sessionId).then(() => {
-              logger.log(`[自动暂停] 预约失败，已暂停托管: chatId=${context.sessionId}`);
-            });
+            pauseUserHostingAsync(
+              userHostingService,
+              context.sessionId,
+              `[自动暂停] 预约失败，已暂停托管: chatId=${context.sessionId}`,
+            );
           } else {
             const resultRecord = result as unknown as Record<string, unknown>;
             const bookingId =
@@ -416,6 +464,7 @@ export function buildInterviewBookingTool(
               genderLabel,
               ageText,
               interviewTime,
+              interviewType,
               brandName: resolvedBrandName,
               storeName: resolvedStoreName,
               jobName: resolvedJobName,
@@ -432,9 +481,11 @@ export function buildInterviewBookingTool(
           logger.error('预约面试失败', err);
           context.bookingSucceeded = false;
 
-          void userHostingService.pauseUser(context.sessionId).then(() => {
-            logger.log(`[自动暂停] 预约异常，已暂停托管: chatId=${context.sessionId}`);
-          });
+          pauseUserHostingAsync(
+            userHostingService,
+            context.sessionId,
+            `[自动暂停] 预约异常，已暂停托管: chatId=${context.sessionId}`,
+          );
 
           const toolResult = {
             success: false,
@@ -454,6 +505,7 @@ export function buildInterviewBookingTool(
               genderLabel,
               ageText,
               interviewTime,
+              interviewType,
               brandName,
               storeName,
               jobName,
@@ -653,6 +705,37 @@ function resolveStoreName(job: JobDetail): string | null {
       ? (job.basicInfo.storeInfo as Record<string, unknown>)
       : null;
   return normalizeText(storeInfo?.storeName) || normalizeText(job.basicInfo?.storeName);
+}
+
+/**
+ * 从岗位详情中解析面试方式的展示字符串（"AI面试" / "线下面试" 等）。
+ *
+ * Schema 假设（上游契约：supplier/entryUser 对岗位详情的约定）：
+ *   job.interviewProcess 可能为 undefined / 任意对象；
+ *   job.interviewProcess.firstInterview?.firstInterviewDesc?: string   —— 含 "ai"（大小写不敏感）一律归为 AI 面试
+ *   job.interviewProcess.firstInterview?.firstInterviewWay?:  string   —— 兜底取原值（"线上面试"/"线下面试" 等）
+ *
+ * 这里没有用 Zod 做运行时校验，而是用 `Record<string, unknown>` 做最小防御 —— 是因为
+ * 这个字段只用于通知展示（不会回写海绵），任一字段缺失/类型不符都静默退化为 undefined，
+ * 不会影响预约主流程。如果上游契约扩字段（例如 firstInterview 再下挂一层），这里不会
+ * 自动跟上，需要手动更新路径。
+ */
+export function resolveInterviewType(job: JobDetail): string | undefined {
+  const interviewProcess =
+    job.interviewProcess && typeof job.interviewProcess === 'object'
+      ? (job.interviewProcess as Record<string, unknown>)
+      : null;
+  const firstInterview =
+    interviewProcess?.firstInterview && typeof interviewProcess.firstInterview === 'object'
+      ? (interviewProcess.firstInterview as Record<string, unknown>)
+      : null;
+  if (!firstInterview) return undefined;
+
+  const desc = normalizeText(firstInterview.firstInterviewDesc);
+  if (desc && /ai/i.test(desc)) return 'AI面试';
+
+  const way = normalizeText(firstInterview.firstInterviewWay);
+  return way ?? undefined;
 }
 
 function normalizeText(value: unknown): string | null {
