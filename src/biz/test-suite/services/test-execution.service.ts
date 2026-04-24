@@ -132,6 +132,14 @@ export class TestExecutionService {
     const durationMs = Date.now() - startTime;
 
     const extracted = this.extractResult(agentResult);
+    if (
+      executionStatus === ExecutionStatus.SUCCESS &&
+      !extracted.actualOutput.trim() &&
+      !this.isIntentionalSkipReply(agentResult)
+    ) {
+      executionStatus = ExecutionStatus.FAILURE;
+      errorMessage = 'Agent returned empty output without skip_reply';
+    }
 
     const response: TestChatResponse = {
       actualOutput: extracted.actualOutput,
@@ -638,5 +646,9 @@ export class TestExecutionService {
       })),
       tokenUsage: result.usage || { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
     };
+  }
+
+  private isIntentionalSkipReply(result: AgentRunResult | null): boolean {
+    return Boolean(result?.toolCalls?.some((toolCall) => toolCall.toolName === 'skip_reply'));
   }
 }

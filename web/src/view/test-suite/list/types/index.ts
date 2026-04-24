@@ -57,6 +57,7 @@ export interface ConversationSnapshot {
   batchId: string;
   feishuRecordId: string;
   conversationId: string;
+  validationTitle: string | null;
   participantName: string | null;
   totalTurns: number;
   avgSimilarityScore: number | null;

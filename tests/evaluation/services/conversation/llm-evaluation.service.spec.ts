@@ -113,6 +113,33 @@ describe('LlmEvaluationService', () => {
       expect(userContent).toContain('你好');
     });
 
+    it('should treat tool results as the fact anchor in tool-grounded mode', async () => {
+      mockCompletion.generateStructured.mockResolvedValue(makeCompletionResult('ok', 80));
+
+      await service.evaluate({
+        ...input,
+        expectedOutput: '嘉定这边岗位暂时都满了',
+        actualOutput: '南翔附近还有山姆岗位可以看',
+        evaluationMode: 'tool_grounded',
+        toolCalls: [
+          {
+            toolName: 'duliday_job_list',
+            args: { cityName: '上海' },
+            result: { items: [{ storeName: '山姆', distance: '9km' }] },
+            resultCount: 1,
+            status: 'narrow',
+          },
+        ],
+      });
+
+      const callArgs = mockCompletion.generateStructured.mock.calls[0][0];
+      const userContent = callArgs.messages[0].content;
+      expect(callArgs.system).toContain('动态工具数据评审');
+      expect(userContent).toContain('本轮工具调用结果');
+      expect(userContent).toContain('duliday_job_list');
+      expect(userContent).toContain('历史真人回复（仅参考');
+    });
+
     it('should truncate reason to 200 characters', async () => {
       const longSummary = 'a'.repeat(300);
       mockCompletion.generateStructured.mockResolvedValue(makeCompletionResult(longSummary, 80));

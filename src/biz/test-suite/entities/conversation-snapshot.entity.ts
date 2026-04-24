@@ -9,6 +9,7 @@ export interface ConversationSnapshotRecord {
   batch_id: string;
   feishu_record_id: string;
   conversation_id: string;
+  validation_title: string | null;
   participant_name: string | null;
   full_conversation: unknown;
   raw_text: string | null;

@@ -11,7 +11,12 @@ import {
   MessageSquare,
   CheckCircle2,
 } from 'lucide-react';
-import type { ConversationSnapshot, ConversationTurnExecution, ToolCall, ParsedMessage } from '../../types';
+import type {
+  ConversationSnapshot,
+  ConversationTurnExecution,
+  ToolCall,
+  ParsedMessage,
+} from '../../types';
 import {
   formatReviewStatusLabel,
   resolveReviewerSourceLabel,
@@ -28,6 +33,27 @@ interface ConversationDetailModalProps {
   loading: boolean;
   onClose: () => void;
   onTurnChange: (index: number) => void;
+}
+
+const DYNAMIC_FACT_TOOL_NAMES = new Set([
+  'duliday_job_list',
+  'geocode',
+  'duliday_interview_precheck',
+  'duliday_interview_booking',
+  'send_store_location',
+  'invite_to_group',
+]);
+
+function getToolName(tool: ToolCall): string | null {
+  const name = tool.toolName || tool.name || tool.tool;
+  return typeof name === 'string' && name.trim() ? name.trim() : null;
+}
+
+function hasDynamicFactToolCall(toolCalls: ToolCall[]): boolean {
+  return toolCalls.some((tool) => {
+    const name = getToolName(tool);
+    return Boolean(name && DYNAMIC_FACT_TOOL_NAMES.has(name));
+  });
 }
 
 /**
@@ -63,12 +89,19 @@ export function ConversationDetailModal({
   const currentTurn = turns[currentTurnIndex];
   const hasPrev = currentTurnIndex > 0;
   const hasNext = currentTurnIndex < turns.length - 1;
+  const displayTotalTurns = Math.max(conversation.totalTurns || 0, turns.length || 0);
+  const displayTurnNumber = currentTurn
+    ? (currentTurn.turnNumber || currentTurnIndex + 1)
+    : 0;
 
   // 获取当前轮次的真人对话历史（候选人 + 招募经理）
   const realHistory = Array.isArray(currentTurn?.history) ? currentTurn.history : [];
 
   // 获取工具调用（将 unknown[] 转换为 ToolCall[]）
-  const toolCalls = (Array.isArray(currentTurn?.toolCalls) ? currentTurn.toolCalls : []) as ToolCall[];
+  const toolCalls = (
+    Array.isArray(currentTurn?.toolCalls) ? currentTurn.toolCalls : []
+  ) as ToolCall[];
+  const isDynamicToolTurn = hasDynamicFactToolCall(toolCalls);
   const reviewerLabel = resolveReviewerSourceLabel(
     currentTurn?.reviewerSource,
     currentTurn?.reviewedBy,
@@ -92,9 +125,32 @@ export function ConversationDetailModal({
                 : '--'}
             </div>
           </div>
-          <button className={styles.closeBtn} onClick={onClose}>
-            <X size={18} />
-          </button>
+          <div className={styles.headerActions}>
+            <div className={styles.headerPager} aria-label="轮次翻页">
+              <button
+                type="button"
+                onClick={() => onTurnChange(currentTurnIndex - 1)}
+                disabled={!hasPrev || loading}
+                aria-label="上一轮"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <span className={styles.headerCounter}>
+                {displayTurnNumber} / {displayTotalTurns}
+              </span>
+              <button
+                type="button"
+                onClick={() => onTurnChange(currentTurnIndex + 1)}
+                disabled={!hasNext || loading}
+                aria-label="下一轮"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+            <button className={styles.closeBtn} onClick={onClose} aria-label="关闭">
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* 内容区 */}
@@ -197,8 +253,14 @@ export function ConversationDetailModal({
                   {/* 期望回复 */}
                   <div className={styles.replySection}>
                     <div className={styles.sectionLabel}>
-                      <Headphones size={14} /> 真人回复（期望）
+                      <Headphones size={14} />{' '}
+                      {isDynamicToolTurn ? '真人回复（历史参考）' : '真人回复（期望）'}
                     </div>
+                    {isDynamicToolTurn && (
+                      <div className={styles.referenceHint}>
+                        本轮调用了动态工具，评审以本轮工具结果为事实锚点；这条历史回复只作话术参考。
+                      </div>
+                    )}
                     <div className={styles.expectedReply}>
                       {currentTurn.expectedOutput || '(无期望回复)'}
                     </div>
@@ -245,28 +307,6 @@ export function ConversationDetailModal({
           ) : null}
         </div>
 
-        {/* 底部导航 */}
-        <div className={styles.modalFooter}>
-          <div className={styles.navigation}>
-            <button
-              className={styles.navBtn}
-              onClick={() => onTurnChange(currentTurnIndex - 1)}
-              disabled={!hasPrev || loading}
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <span className={styles.turnIndicator}>
-              第 {currentTurn?.turnNumber || 1} 轮 / 共 {conversation.totalTurns} 轮
-            </span>
-            <button
-              className={styles.navBtn}
-              onClick={() => onTurnChange(currentTurnIndex + 1)}
-              disabled={!hasNext || loading}
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );

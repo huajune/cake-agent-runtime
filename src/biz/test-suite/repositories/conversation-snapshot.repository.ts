@@ -32,16 +32,30 @@ export class ConversationSnapshotRepository extends BaseRepository {
    * 创建对话快照记录
    */
   async create(data: CreateConversationSourceData): Promise<ConversationSnapshotRecord> {
-    return this.insert<ConversationSnapshotRecord>({
+    const payload = {
       batch_id: data.batchId,
       feishu_record_id: data.feishuRecordId,
       conversation_id: data.conversationId,
+      validation_title: data.validationTitle || null,
       participant_name: data.participantName || null,
       full_conversation: data.fullConversation,
       raw_text: data.rawText || null,
       total_turns: data.totalTurns,
       status: ConversationSourceStatus.PENDING,
-    });
+    };
+
+    const result = await this.insert<ConversationSnapshotRecord>(payload);
+    if (result || !data.validationTitle) {
+      return result as ConversationSnapshotRecord;
+    }
+
+    const fallbackPayload: Omit<typeof payload, 'validation_title'> & {
+      validation_title?: string | null;
+    } = { ...payload };
+    delete fallbackPayload.validation_title;
+    return this.insert<ConversationSnapshotRecord>(
+      fallbackPayload,
+    ) as Promise<ConversationSnapshotRecord>;
   }
 
   /**

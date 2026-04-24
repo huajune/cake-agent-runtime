@@ -475,6 +475,13 @@ export class TestSuiteController {
     return { success: true, data: execution };
   }
 
+  @Post('executions/:id/execute')
+  @ApiOperation({ summary: '重新执行单条测试用例' })
+  @ApiParam({ name: 'id', description: '执行记录ID' })
+  async rerunExecution(@Param('id') id: string) {
+    return { success: true, data: await this.batchService.rerunExecution(id) };
+  }
+
   // ==================== 评审管理 ====================
 
   @Patch('executions/:id/review')

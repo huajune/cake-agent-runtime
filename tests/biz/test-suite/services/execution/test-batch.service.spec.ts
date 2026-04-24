@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { TestBatchService } from '@biz/test-suite/services/test-batch.service';
 import { TestBatchRepository } from '@biz/test-suite/repositories/test-batch.repository';
 import { TestExecutionRepository } from '@biz/test-suite/repositories/test-execution.repository';
@@ -45,6 +46,11 @@ describe('TestBatchService', () => {
 
   const mockExecutionService = {
     saveExecution: jest.fn(),
+    executeTest: jest.fn(),
+  };
+
+  const mockConfigService = {
+    get: jest.fn(),
   };
 
   const mockConversationSnapshotRepository = {
@@ -63,6 +69,7 @@ describe('TestBatchService', () => {
         { provide: ConversationSnapshotRepository, useValue: mockConversationSnapshotRepository },
         { provide: TestWriteBackService, useValue: mockWriteBackService },
         { provide: TestExecutionService, useValue: mockExecutionService },
+        { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
 
@@ -72,6 +79,7 @@ describe('TestBatchService', () => {
     writeBackService = module.get(TestWriteBackService);
 
     jest.clearAllMocks();
+    mockConfigService.get.mockReturnValue(undefined);
     mockBatchRepository.findById.mockResolvedValue({
       id: 'batch-1',
       status: BatchStatus.REVIEWING,
@@ -105,6 +113,31 @@ describe('TestBatchService', () => {
       });
       expect(result).toBe(mockBatch);
     });
+
+    it.each([
+      ['反馈验证 SOP 2026-04-24 场景补跑 bc-4cpob79w', '2026-04-24 场景补跑 bc-4cpob79w'],
+      ['反馈验证 SOP：2026-04-24 场景测试', '2026-04-24 用例测试'],
+      ['反馈验证 SOP 2026-04-24 回归验证', '2026-04-24 回归验证'],
+      ['反馈验证 SOP 2026-04-24 对话验证', '2026-04-24 回归验证'],
+    ])(
+      'should normalize generated feedback validation name "%s"',
+      async (inputName, expectedName) => {
+        const mockBatch = { id: 'batch-1', name: expectedName } as TestBatch;
+        mockBatchRepository.create.mockResolvedValue(mockBatch);
+
+        await service.createBatch({
+          name: inputName,
+          source: BatchSource.FEISHU,
+          testType: TestType.SCENARIO,
+        });
+
+        expect(batchRepository.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            name: expectedName,
+          }),
+        );
+      },
+    );
   });
 
   // ========== getBatches ==========
@@ -205,17 +238,30 @@ describe('TestBatchService', () => {
   describe('updateBatchStats', () => {
     it('should calculate stats internally and persist them', async () => {
       const mockExecutions = [
-        { execution_status: 'completed', review_status: 'passed', duration_ms: 1000, token_usage: 100 },
-        { execution_status: 'completed', review_status: 'failed', duration_ms: 2000, token_usage: 200 },
+        {
+          execution_status: 'completed',
+          review_status: 'passed',
+          duration_ms: 1000,
+          token_usage: 100,
+        },
+        {
+          execution_status: 'completed',
+          review_status: 'failed',
+          duration_ms: 2000,
+          token_usage: 200,
+        },
       ] as unknown as TestExecution[];
       mockExecutionRepository.findByBatchIdLite.mockResolvedValue(mockExecutions);
       mockBatchRepository.updateStats.mockResolvedValue(undefined);
 
       await service.updateBatchStats('batch-1');
 
-      expect(batchRepository.updateStats).toHaveBeenCalledWith('batch-1', expect.objectContaining({
-        totalCases: 2,
-      }));
+      expect(batchRepository.updateStats).toHaveBeenCalledWith(
+        'batch-1',
+        expect.objectContaining({
+          totalCases: 2,
+        }),
+      );
     });
 
     it('should auto-complete conversation batch when all conversations are done', async () => {
@@ -249,10 +295,7 @@ describe('TestBatchService', () => {
           passRate: 61,
         }),
       );
-      expect(batchRepository.updateStatus).toHaveBeenCalledWith(
-        'batch-1',
-        BatchStatus.COMPLETED,
-      );
+      expect(batchRepository.updateStatus).toHaveBeenCalledWith('batch-1', BatchStatus.COMPLETED);
     });
   });
 
@@ -430,17 +473,20 @@ describe('TestBatchService', () => {
   describe('batchUpdateReview', () => {
     it('should update multiple executions and return count', async () => {
       const updatedExecutions = [
-        { id: 'exec-1', batch_id: 'batch-1' },
-        { id: 'exec-2', batch_id: 'batch-1' },
+        { id: 'exec-1', batch_id: 'batch-1', case_id: 'rec-1' },
+        { id: 'exec-2', batch_id: 'batch-1', case_id: 'rec-2' },
       ] as TestExecution[];
       mockExecutionRepository.batchUpdateReview.mockResolvedValue(updatedExecutions);
       mockExecutionRepository.findByBatchIdLite.mockResolvedValue([
         { execution_status: 'completed', review_status: 'passed' },
       ] as unknown as TestExecution[]);
       mockBatchRepository.updateStats.mockResolvedValue(undefined);
+      mockWriteBackService.writeBackResult.mockResolvedValue({ success: true });
 
       const result = await service.batchUpdateReview(['exec-1', 'exec-2'], {
         reviewStatus: ReviewStatus.PASSED,
+        reviewComment: 'Codex评审通过',
+        reviewerSource: ReviewerSource.CODEX,
       });
 
       expect(executionRepository.batchUpdateReview).toHaveBeenCalledWith(
@@ -448,6 +494,14 @@ describe('TestBatchService', () => {
         expect.objectContaining({ reviewStatus: ReviewStatus.PASSED }),
       );
       expect(result).toBe(2);
+      expect(writeBackService.writeBackResult).toHaveBeenCalledTimes(2);
+      expect(writeBackService.writeBackResult).toHaveBeenCalledWith(
+        'rec-1',
+        FeishuTestStatus.PASSED,
+        'batch-1',
+        undefined,
+        'Codex评审通过',
+      );
     });
 
     it('should update stats for all affected batches', async () => {
@@ -467,6 +521,23 @@ describe('TestBatchService', () => {
 
       // Two distinct batches should each have their stats updated
       expect(batchRepository.updateStats).toHaveBeenCalledTimes(2);
+    });
+
+    it('should not write back pending batch reviews to Feishu', async () => {
+      const updatedExecutions = [
+        { id: 'exec-1', batch_id: 'batch-1', case_id: 'rec-1' },
+      ] as TestExecution[];
+      mockExecutionRepository.batchUpdateReview.mockResolvedValue(updatedExecutions);
+      mockExecutionRepository.findByBatchIdLite.mockResolvedValue([
+        { execution_status: 'completed', review_status: 'pending' },
+      ] as unknown as TestExecution[]);
+      mockBatchRepository.updateStats.mockResolvedValue(undefined);
+
+      await service.batchUpdateReview(['exec-1'], {
+        reviewStatus: ReviewStatus.PENDING,
+      });
+
+      expect(writeBackService.writeBackResult).not.toHaveBeenCalled();
     });
   });
 });
