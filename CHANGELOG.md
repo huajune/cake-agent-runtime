@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.2.0] - 2026-04-24
 
-**预计版本**: `v5.2.0`
-**最近更新**: `2026-04-24`
 **来源分支**: `develop`
-**累计 PR**: 20
 
 ### 更新摘要
 - PR #72 fix: 完善通知链路并修复群任务与消息处理后续问题
@@ -172,7 +168,6 @@
 - PR #107 `pnpm exec tsc --noEmit --pretty false`
 - PR #107 `pnpm exec jest tests/biz/test-suite/services/conversation/conversation-test.service.spec.ts tests/biz/test-suite/services/execution/test-batch.service.spec.ts tests/tools/tool/duliday-interview-booking.tool.spec.ts --runInBand`
 - PR #107 pre-push `pnpm run ci:check` passed: 216 suites, 2515 tests
-<!-- release:pending:end -->
 
 ## [5.1.0] - 2026-04-09
 
