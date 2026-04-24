@@ -687,6 +687,19 @@ function resolveStoreName(job: JobDetail): string | null {
   return normalizeText(storeInfo?.storeName) || normalizeText(job.basicInfo?.storeName);
 }
 
+/**
+ * 从岗位详情中解析面试方式的展示字符串（"AI面试" / "线下面试" 等）。
+ *
+ * Schema 假设（上游契约：supplier/entryUser 对岗位详情的约定）：
+ *   job.interviewProcess 可能为 undefined / 任意对象；
+ *   job.interviewProcess.firstInterview?.firstInterviewDesc?: string   —— 含 "ai"（大小写不敏感）一律归为 AI 面试
+ *   job.interviewProcess.firstInterview?.firstInterviewWay?:  string   —— 兜底取原值（"线上面试"/"线下面试" 等）
+ *
+ * 这里没有用 Zod 做运行时校验，而是用 `Record<string, unknown>` 做最小防御 —— 是因为
+ * 这个字段只用于通知展示（不会回写海绵），任一字段缺失/类型不符都静默退化为 undefined，
+ * 不会影响预约主流程。如果上游契约扩字段（例如 firstInterview 再下挂一层），这里不会
+ * 自动跟上，需要手动更新路径。
+ */
 export function resolveInterviewType(job: JobDetail): string | undefined {
   const interviewProcess =
     job.interviewProcess && typeof job.interviewProcess === 'object'

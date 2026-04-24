@@ -22,3 +22,7 @@ ALTER TABLE public.test_executions
 
 COMMENT ON COLUMN public.test_executions.reviewer_source IS
   '评审来源：manual/codex/claude/system/api';
+
+-- 通知 PostgREST 重载 schema 缓存，否则刚加的列/约束不会被 API 识别。
+-- 与同批 20260423183000 / 20260423184000 / 20260423193000 的做法保持一致。
+NOTIFY pgrst, 'reload schema';

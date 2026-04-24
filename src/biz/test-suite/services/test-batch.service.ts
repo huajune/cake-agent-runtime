@@ -346,8 +346,21 @@ export class TestBatchService {
       transitionChain.push(BatchStatus.COMPLETED);
     }
 
+    // 状态机不允许 CREATED 直接跳 COMPLETED，必须逐步迁移。
+    // 中途某一步失败时（例如 DB 抖动），放弃本轮剩余 transitions；
+    // 下次 sync 会基于当时最新 status 重新计算 chain 继续推进，整体仍可收敛，
+    // 但运营侧需要通过日志/监控看到这种部分失败，避免静默卡在 REVIEWING。
     for (const status of transitionChain) {
-      await this.batchRepository.updateStatus(batchId, status);
+      try {
+        await this.batchRepository.updateStatus(batchId, status);
+      } catch (error) {
+        this.logger.error(
+          `[syncConversationBatchStatus] 批次 ${batchId} 从 ${currentStatus} 推进到 ${status} 失败，` +
+            `本轮剩余迁移被放弃（下轮 sync 会基于最新状态重试）`,
+          error instanceof Error ? error.stack : String(error),
+        );
+        return;
+      }
     }
   }
 

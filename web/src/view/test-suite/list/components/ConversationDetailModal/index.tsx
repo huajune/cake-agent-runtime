@@ -12,6 +12,10 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import type { ConversationSnapshot, ConversationTurnExecution, ToolCall, ParsedMessage } from '../../types';
+import {
+  formatReviewStatusLabel,
+  resolveReviewerSourceLabel,
+} from '../../utils/reviewLabel';
 import { CompactMetrics } from './CompactMetrics';
 import { ToolCallItem } from './ToolCallItem';
 import { LoadingSkeleton } from './LoadingSkeleton';
@@ -24,56 +28,6 @@ interface ConversationDetailModalProps {
   loading: boolean;
   onClose: () => void;
   onTurnChange: (index: number) => void;
-}
-
-function formatReviewerLabel(reviewer?: string | null): string | null {
-  if (!reviewer) return null;
-  if (reviewer === 'dashboard-user') return '人工';
-  if (reviewer.toLowerCase().includes('codex')) return 'Codex';
-  if (reviewer.toLowerCase().includes('claude')) return 'Claude';
-  return reviewer;
-}
-
-function resolveReviewerSourceLabel(
-  reviewerSource?: ConversationTurnExecution['reviewerSource'],
-  reviewer?: string | null,
-): string | null {
-  switch (reviewerSource) {
-    case 'manual':
-      return '人工';
-    case 'codex':
-      return 'Codex';
-    case 'claude':
-      return 'Claude';
-    case 'system':
-      return '系统';
-    case 'api':
-      return 'API';
-    default:
-      return formatReviewerLabel(reviewer);
-  }
-}
-
-function formatReviewStatusLabel(
-  reviewStatus?: string | null,
-  reviewerLabel?: string | null,
-): string {
-  if (reviewStatus === 'pending' || !reviewStatus) {
-    return '待评审';
-  }
-
-  const prefix = reviewerLabel ? `${reviewerLabel}评审` : '评审';
-  if (reviewStatus === 'passed') {
-    return `${prefix}通过`;
-  }
-  if (reviewStatus === 'failed') {
-    return `${prefix}失败`;
-  }
-  if (reviewStatus === 'skipped') {
-    return `${prefix}跳过`;
-  }
-
-  return '待评审';
 }
 
 /**
