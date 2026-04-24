@@ -34,6 +34,12 @@ const CHANGELOG_HEADER = [
 
 const PENDING_START = '<!-- release:pending:start -->';
 const PENDING_END = '<!-- release:pending:end -->';
+const ENV_SYNC_TARGET = '/data/cake/.env.production';
+const ENV_RELATED_FILE_PATTERNS = [
+  /^\.env(?:\.[^/]+)?(?:\.(?:example|sample|template))?$/,
+  /^\.env\.(?:example|sample|template)$/,
+  /^src\/infra\/config\/env\.validation\.ts$/,
+];
 
 // 标题别名按类别归一化。
 // - `summary` 下的 bullet 会被再次分发到具体类别（见 categorizeBullet），
@@ -391,6 +397,7 @@ function parsePullRequestEntry() {
   const rawUrl = (process.env.MERGED_PR_URL || '').trim();
   const rawAuthor = (process.env.MERGED_PR_AUTHOR || '').trim();
   const rawMergedAt = (process.env.MERGED_PR_MERGED_AT || '').trim();
+  const envFiles = detectEnvRelatedFiles(parseMergedPrFiles(process.env.MERGED_PR_FILES || ''));
 
   if (!rawTitle && !rawBody && !rawNumber) {
     return null;
@@ -433,6 +440,7 @@ function parsePullRequestEntry() {
     optimizations: uniqueList(sections.optimizations),
     ops: uniqueList(sections.ops),
     config: uniqueList(sections.config),
+    envFiles,
     verification: uniqueList(sections.verification),
   };
 }
@@ -500,9 +508,8 @@ function parseBodySections(body) {
 
 // 把落在 `summary` 池的 bullet 按关键词分发到具体类别；缺乏信号时回落到 PR 标题推断的类别。
 function categorizeBullet(text, fallbackKey) {
-  const hasFix = /修复|修正|解决|漏判|误判|堵住|兜底|fix(?:ed|es)?\b|bug\b|resolve[ds]?\b|hotfix/i.test(
-    text,
-  );
+  const hasFix =
+    /修复|修正|解决|漏判|误判|堵住|兜底|fix(?:ed|es)?\b|bug\b|resolve[ds]?\b|hotfix/i.test(text);
   const hasFeat =
     /新功能|新增|添加|支持|接入|打通|feat(?:ure)?\b|introduce|support\b|enable\b/i.test(text);
   const hasOpt =
@@ -551,6 +558,37 @@ function uniqueList(values) {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
+function parseMergedPrFiles(rawValue) {
+  const trimmed = rawValue.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.map((item) => (typeof item === 'string' ? item : item?.path)).filter(Boolean);
+      }
+    } catch {
+      // Fall back to newline parsing below.
+    }
+  }
+
+  return trimmed
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function detectEnvRelatedFiles(files) {
+  return uniqueList(
+    files
+      .map((filePath) => filePath.replace(/\\/g, '/').replace(/^\.\//, ''))
+      .filter((filePath) => ENV_RELATED_FILE_PATTERNS.some((pattern) => pattern.test(filePath))),
+  );
+}
+
 function upsertPendingEntry(state, entry) {
   const index = state.entries.findIndex((item) => item.number && item.number === entry.number);
   if (index >= 0) {
@@ -588,6 +626,9 @@ function renderPendingSection(state) {
     '### 配置变更',
     ...renderCategoryLines(state.entries, 'config'),
     '',
+    '### 环境变量提醒',
+    ...renderEnvReminderLines(state.entries),
+    '',
     '### 验证记录',
     ...renderCategoryLines(state.entries, 'verification'),
     PENDING_END,
@@ -620,6 +661,9 @@ function renderReleaseSection({ version, date, entries }) {
     '### 配置变更',
     ...renderCategoryLines(entries, 'config'),
     '',
+    '### 环境变量提醒',
+    ...renderEnvReminderLines(entries),
+    '',
     '### 验证记录',
     ...renderCategoryLines(entries, 'verification'),
   ];
@@ -646,6 +690,26 @@ function renderCategoryLines(entries, key) {
     }
   }
   return lines.length > 0 ? lines : ['- 无'];
+}
+
+function renderEnvReminderLines(entries) {
+  const lines = [];
+  for (const entry of entries) {
+    const envFiles = Array.isArray(entry.envFiles) ? entry.envFiles : [];
+    if (envFiles.length === 0) continue;
+
+    lines.push(
+      `- ${formatEntryReference(entry)} 检测到环境变量相关文件变更：${formatInlineFileList(
+        envFiles,
+      )}。请手动同步远程服务器 \`${ENV_SYNC_TARGET}\`。`,
+    );
+  }
+
+  return lines.length > 0 ? lines : ['- 无'];
+}
+
+function formatInlineFileList(files) {
+  return files.map((filePath) => `\`${filePath}\``).join('、');
 }
 
 function formatEntryReference(entry) {
