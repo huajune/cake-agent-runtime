@@ -5,10 +5,7 @@ const https = require('https');
 const crypto = require('crypto');
 const fs = require('fs');
 
-const WEBHOOK_ENV_KEYS = [
-  'PRIVATE_CHAT_MONITOR_WEBHOOK_URL',
-  'DEPLOY_NOTIFICATION_WEBHOOK_URL',
-];
+const WEBHOOK_ENV_KEYS = ['PRIVATE_CHAT_MONITOR_WEBHOOK_URL', 'DEPLOY_NOTIFICATION_WEBHOOK_URL'];
 const SECRET_ENV_KEYS = [
   'PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET',
   'DEPLOY_NOTIFICATION_WEBHOOK_SECRET',
@@ -78,11 +75,15 @@ async function main() {
 function buildMarkdown() {
   const releaseTag = env('RELEASE_TAG', env('IMAGE_TAG', env('GITHUB_REF_NAME', 'unknown')));
   const publishedAt = formatShanghaiTime(env('DEPLOY_FINISHED_AT', new Date().toISOString()));
-  const updateSummary = extractUpdateSummary(normalizeReleaseNotes(readReleaseNotes()));
+  const releaseNotes = normalizeReleaseNotes(readReleaseNotes());
+  const envReminder = extractEnvReminder(releaseNotes);
+  const updateSummary = extractUpdateSummary(releaseNotes);
 
   const lines = [
     `**版本号**：${releaseTag}`,
     `**发布时间**：${publishedAt}`,
+    '',
+    ...renderOptionalSection('环境变量同步提醒', envReminder),
     '',
     '### 更新摘要',
     updateSummary,
@@ -120,20 +121,41 @@ function normalizeReleaseNotes(rawNotes) {
 }
 
 function extractUpdateSummary(releaseNotes) {
-  const trimmed = releaseNotes.trim();
-  if (!trimmed) {
-    return '- 暂无';
+  return extractMarkdownSection(releaseNotes, '更新摘要') || releaseNotes.trim() || '- 暂无';
+}
+
+function extractEnvReminder(releaseNotes) {
+  const reminder = extractMarkdownSection(releaseNotes, '环境变量提醒');
+  if (!reminder || reminder === '- 无') {
+    return '';
   }
 
-  const heading = /^### 更新摘要\s*\n/m.exec(trimmed);
+  return reminder;
+}
+
+function extractMarkdownSection(markdown, headingText) {
+  const trimmed = markdown.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  const escapedHeading = escapeRegExp(headingText);
+  const heading = new RegExp(`^### ${escapedHeading}\\s*\\n`, 'm').exec(trimmed);
   if (!heading) {
-    return trimmed;
+    return '';
   }
 
   const rest = trimmed.slice(heading.index + heading[0].length);
   const nextHeadingIndex = rest.search(/^### /m);
-  const summary = (nextHeadingIndex === -1 ? rest : rest.slice(0, nextHeadingIndex)).trim();
-  return summary || '- 暂无';
+  return (nextHeadingIndex === -1 ? rest : rest.slice(0, nextHeadingIndex)).trim();
+}
+
+function renderOptionalSection(title, content) {
+  if (!content) {
+    return [];
+  }
+
+  return [`### ${title}`, content];
 }
 
 function readChangelogFallback() {
@@ -205,6 +227,10 @@ function truncateText(input, maxChars) {
   return `${input.slice(0, maxChars)}\n\n...内容过长，已截断`;
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function postJson(url, payload) {
   return new Promise((resolve, reject) => {
     const target = new URL(url);
@@ -263,7 +289,9 @@ function assertFeishuResponse(response) {
 
   const code = typeof parsed.code === 'number' ? parsed.code : parsed.StatusCode;
   if (typeof code === 'number' && code !== 0) {
-    throw new Error(`Feishu webhook code=${code}: ${parsed.msg || parsed.StatusMessage || response.body}`);
+    throw new Error(
+      `Feishu webhook code=${code}: ${parsed.msg || parsed.StatusMessage || response.body}`,
+    );
   }
 }
 

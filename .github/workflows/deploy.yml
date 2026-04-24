@@ -4,14 +4,26 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag to deploy, for example v5.2.0'
+        required: true
+        type: string
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
 
 jobs:
   # 1. 先跑测试，防止坏代码直接上线
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout release tag
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 1
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -68,7 +80,7 @@ jobs:
           script: |
             set -euo pipefail
             IMAGE_NAME="cake-agent-runtime"
-            RELEASE_TAG="${{ github.ref_name }}"
+            RELEASE_TAG="${{ env.RELEASE_TAG }}"
             IMAGE_TAG="$RELEASE_TAG"
             cd /data/cake
 
@@ -127,7 +139,7 @@ jobs:
       - name: Checkout release tag
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ env.RELEASE_TAG }}
           fetch-depth: 1
 
       - name: Setup Node.js
@@ -138,7 +150,7 @@ jobs:
       - name: Extract release notes
         id: release_notes
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${RELEASE_TAG#v}"
           if ! node scripts/get-release-notes.js "${VERSION}" > /tmp/release_notes.md; then
             echo "未能提取 v${VERSION} 的 CHANGELOG 发布说明，请查看 GitHub Actions 详情。" > /tmp/release_notes.md
           fi
@@ -157,6 +169,6 @@ jobs:
           DEPLOY_ENVIRONMENT: production
           DEPLOY_BRANCH: master
           DEPLOY_TRIGGER: GitHub Actions
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ env.RELEASE_TAG }}
           RELEASE_NOTES: ${{ steps.release_notes.outputs.notes }}
         run: node scripts/send-deploy-notification.js
