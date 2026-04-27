@@ -193,6 +193,7 @@ export interface SubmitFeedbackRequest {
   errorType?: string;
   remark?: string;
   chatId?: string;
+  batchId?: string;
   candidateName?: string;
   managerName?: string;
 }
@@ -200,6 +201,7 @@ export interface SubmitFeedbackRequest {
 export interface SubmitFeedbackResponse {
   recordId: string;
   type: FeedbackType;
+  message?: string;
 }
 
 export interface BatchListResponse {

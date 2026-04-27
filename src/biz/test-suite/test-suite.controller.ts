@@ -562,6 +562,7 @@ export class TestSuiteController {
       errorType: request.errorType,
       remark: request.remark,
       chatId: request.chatId,
+      batchId: request.batchId,
       candidateName: request.candidateName,
       managerName: request.managerName,
     };
@@ -573,7 +574,11 @@ export class TestSuiteController {
 
     return {
       success: true,
-      data: { recordId: result.recordId, type: request.type },
+      data: {
+        recordId: result.recordId,
+        type: request.type,
+        message: `${request.type === 'goodcase' ? 'GoodCase' : 'BadCase'} 已成功写入飞书表格`,
+      },
     };
   }
 

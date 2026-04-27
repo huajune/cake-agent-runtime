@@ -21,7 +21,7 @@ export function FeedbackButtons({
   if (successType === 'goodcase') {
     return (
       <span className={styles.feedbackSuccess}>
-        <Check size={12} /> 已标记为 Good
+        <Check size={12} /> GoodCase 已写入飞书
       </span>
     );
   }
@@ -29,7 +29,7 @@ export function FeedbackButtons({
   if (successType === 'badcase') {
     return (
       <span className={styles.feedbackSuccess}>
-        <Check size={12} /> 已标记为 Bad
+        <Check size={12} /> BadCase 已写入飞书
       </span>
     );
   }

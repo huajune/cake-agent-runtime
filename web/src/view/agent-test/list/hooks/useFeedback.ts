@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import toast from 'react-hot-toast';
 import { submitFeedback, FeedbackType } from '@/api/services/agent-test.service';
 
 export interface UseFeedbackOptions {
@@ -24,6 +25,7 @@ export interface UseFeedbackReturn {
     chatHistory: string;
     userMessage?: string;
     chatId?: string;
+    batchId?: string;
     candidateName?: string;
     managerName?: string;
   }) => Promise<boolean>;
@@ -63,32 +65,41 @@ export function useFeedback({ onError }: UseFeedbackOptions = {}): UseFeedbackRe
       chatHistory,
       userMessage,
       chatId,
+      batchId,
       candidateName,
       managerName,
     }: {
       chatHistory: string;
       userMessage?: string;
       chatId?: string;
+      batchId?: string;
       candidateName?: string;
       managerName?: string;
     }): Promise<boolean> => {
       if (!feedbackType || !chatHistory.trim()) return false;
 
+      const submittedType = feedbackType;
       setIsSubmitting(true);
       setSubmitError(null);
       try {
-        await submitFeedback({
-          type: feedbackType,
+        const result = await submitFeedback({
+          type: submittedType,
           chatHistory: chatHistory.trim(),
           userMessage: userMessage?.trim() || undefined,
           errorType: scenarioType || undefined, // 场景分类提交到 errorType 字段
           remark: remark || undefined,
           chatId,
+          batchId,
           candidateName: candidateName?.trim() || undefined,
           managerName: managerName?.trim() || undefined,
         });
-        setSuccessType(feedbackType);
+        setSuccessType(submittedType);
         closeModal();
+        toast.success(
+          result.message ||
+            `${submittedType === 'goodcase' ? 'GoodCase' : 'BadCase'} 已成功写入飞书表格`,
+          { duration: 3500 },
+        );
         // 3 秒后清除成功状态
         setTimeout(() => setSuccessType(null), 3000);
         return true;
