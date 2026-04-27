@@ -34,4 +34,5 @@ export interface UserTableProps {
   isPausedTab?: boolean;
   pendingChatId?: string;
   emptyMessage?: string;
+  resolveBotLabel?: (user: Pick<UserData, 'botUserId' | 'imBotId'>) => string;
 }

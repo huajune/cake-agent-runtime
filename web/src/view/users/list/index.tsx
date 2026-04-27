@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { ArrowUpDown, Bot, Info, Search, X } from 'lucide-react';
+import { useConfiguredBots } from '@/hooks/bot/useBots';
 import { useTodayUsers, useToggleUserHosting, usePausedUsers } from '@/hooks/user/useUsers';
+import type { BotAccount } from '@/api/types/bot.types';
 
 // 类型导入
 import type { TabType, UserData } from './types';
@@ -20,7 +22,14 @@ const ALL_BOTS = '__all_bots__';
 
 type SortMode = 'firstActiveDesc' | 'lastActiveDesc' | 'messageDesc';
 
-function getBotLabel(user: Pick<UserData, 'botUserId' | 'imBotId'>) {
+interface BotOption {
+  value: string;
+  label: string;
+  aliases: string[];
+  count: number;
+}
+
+function getUserBotLabel(user: Pick<UserData, 'botUserId' | 'imBotId'>) {
   return user.botUserId || user.imBotId || '';
 }
 
@@ -32,6 +41,42 @@ function compareText(a?: string, b?: string) {
   return (a || '').localeCompare(b || '', 'zh-Hans-CN', { numeric: true, sensitivity: 'base' });
 }
 
+function uniqueValues(values: Array<string | undefined>) {
+  return Array.from(
+    new Set(
+      values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)),
+    ),
+  );
+}
+
+function getBotAliases(bot: BotAccount) {
+  return uniqueValues([bot.nickName, bot.weixin, bot.wxid, bot.id]).map(normalizeText);
+}
+
+function getBotOptionValue(bot: BotAccount, index: number) {
+  return bot.wxid || bot.id || bot.weixin || bot.nickName || `bot-${index}`;
+}
+
+function getBotDisplayName(bot: BotAccount) {
+  const primary = bot.nickName || bot.weixin || bot.wxid || bot.id || '未命名账号';
+  if (bot.nickName && bot.weixin && normalizeText(bot.nickName) !== normalizeText(bot.weixin)) {
+    return `${bot.nickName} / ${bot.weixin}`;
+  }
+  return primary;
+}
+
+function getUserBotAliases(user: Pick<UserData, 'botUserId' | 'imBotId'>) {
+  return uniqueValues([user.botUserId, user.imBotId]).map(normalizeText);
+}
+
+function matchesBotOption(
+  user: Pick<UserData, 'botUserId' | 'imBotId'>,
+  option: Pick<BotOption, 'aliases'>,
+) {
+  const userAliases = getUserBotAliases(user);
+  return userAliases.some((alias) => option.aliases.includes(alias));
+}
+
 export default function Users() {
   const [activeTab, setActiveTab] = useState<TabType>('today');
   const [searchKeyword, setSearchKeyword] = useState('');
@@ -39,6 +84,7 @@ export default function Users() {
   const [botFilter, setBotFilter] = useState(ALL_BOTS);
   const { data: todayUsers = [], isLoading: isTodayLoading } = useTodayUsers();
   const { data: pausedUsers = [], isLoading: isPausedLoading } = usePausedUsers();
+  const { data: configuredBots = [], isLoading: isBotsLoading } = useConfiguredBots();
   const toggleHosting = useToggleUserHosting();
 
   const handleToggleHosting = (chatId: string, enabled: boolean) => {
@@ -52,30 +98,49 @@ export default function Users() {
   const pendingChatId = toggleHosting.isPending ? toggleHosting.variables?.chatId : undefined;
 
   const botOptions = useMemo(() => {
+    const optionsByValue = new Map<string, Omit<BotOption, 'count'>>();
+
+    configuredBots.forEach((bot, index) => {
+      const aliases = getBotAliases(bot);
+      if (aliases.length === 0) return;
+
+      const value = getBotOptionValue(bot, index);
+      const existing = optionsByValue.get(value);
+      optionsByValue.set(value, {
+        value,
+        label: existing?.label || getBotDisplayName(bot),
+        aliases: uniqueValues([...(existing?.aliases || []), ...aliases]),
+      });
+    });
+
+    const options = Array.from(optionsByValue.values());
     const counts = new Map<string, number>();
 
     for (const user of sourceUsers) {
-      const botLabel = getBotLabel(user);
-      if (!botLabel) continue;
-      counts.set(botLabel, (counts.get(botLabel) || 0) + 1);
+      const matchedOption = options.find((option) => matchesBotOption(user, option));
+      if (!matchedOption) continue;
+      counts.set(matchedOption.value, (counts.get(matchedOption.value) || 0) + 1);
     }
 
-    return Array.from(counts.entries())
-      .map(([label, count]) => ({ label, count }))
+    return options
+      .map((option) => ({ ...option, count: counts.get(option.value) || 0 }))
       .sort((a, b) => compareText(a.label, b.label));
-  }, [sourceUsers]);
+  }, [configuredBots, sourceUsers]);
 
-  const activeBotFilter = botOptions.some((option) => option.label === botFilter)
-    ? botFilter
-    : ALL_BOTS;
+  const activeBotOption = botOptions.find((option) => option.value === botFilter);
+  const activeBotFilter = activeBotOption ? botFilter : ALL_BOTS;
+
+  const resolveBotLabel = (user: Pick<UserData, 'botUserId' | 'imBotId'>) => {
+    const matchedOption = botOptions.find((option) => matchesBotOption(user, option));
+    return matchedOption?.label || getUserBotLabel(user) || '-';
+  };
 
   const displayUsers = useMemo(() => {
     const keyword = normalizeText(searchKeyword);
 
     return sourceUsers
       .filter((user) => {
-        const botLabel = getBotLabel(user);
-        if (activeBotFilter !== ALL_BOTS && botLabel !== activeBotFilter) {
+        if (activeBotOption && !matchesBotOption(user, activeBotOption)) {
           return false;
         }
 
@@ -98,10 +163,9 @@ export default function Users() {
 
         return b.firstActiveAt - a.firstActiveAt || compareText(a.chatId, b.chatId);
       });
-  }, [activeBotFilter, searchKeyword, sortMode, sourceUsers]);
+  }, [activeBotOption, searchKeyword, sortMode, sourceUsers]);
 
-  const emptyMessage =
-    searchKeyword || activeBotFilter !== ALL_BOTS ? '没有匹配的数据' : '暂无数据';
+  const emptyMessage = searchKeyword || activeBotOption ? '没有匹配的数据' : '暂无数据';
 
   return (
     <div className={styles.page}>
@@ -166,13 +230,17 @@ export default function Users() {
               value={activeBotFilter}
               onChange={(event) => setBotFilter(event.target.value)}
               aria-label="托管 bot 过滤"
-              disabled={botOptions.length === 0}
+              disabled={isBotsLoading || botOptions.length === 0}
             >
               <option value={ALL_BOTS}>
-                {botOptions.length === 0 ? '暂无 bot 数据' : '全部 bot'}
+                {isBotsLoading
+                  ? '正在加载托管账号'
+                  : botOptions.length === 0
+                    ? '暂无托管账号'
+                    : '全部托管账号'}
               </option>
               {botOptions.map((option) => (
-                <option key={option.label} value={option.label}>
+                <option key={option.value} value={option.value}>
                   {option.label} ({option.count})
                 </option>
               ))}
@@ -188,6 +256,7 @@ export default function Users() {
           isPausedTab={activeTab === 'paused'}
           pendingChatId={pendingChatId}
           emptyMessage={emptyMessage}
+          resolveBotLabel={resolveBotLabel}
         />
       </section>
     </div>

@@ -16,6 +16,7 @@ export default function UserTable({
   isPausedTab = false,
   pendingChatId,
   emptyMessage = '暂无数据',
+  resolveBotLabel,
 }: UserTableProps) {
   const columnCount = isPausedTab ? 6 : 8;
 
@@ -57,7 +58,8 @@ export default function UserTable({
             </tr>
           ) : (
             users.map((user) => {
-              const botLabel = getBotLabel(user);
+              const botLabel = resolveBotLabel?.(user) || getBotLabel(user);
+              const botTitle = [user.botUserId, user.imBotId].filter(Boolean).join(' / ');
               const isUpdating = pendingChatId === user.chatId;
 
               return (
@@ -73,7 +75,7 @@ export default function UserTable({
                       <span>{user.odName || '未知用户'}</span>
                     </div>
                   </td>
-                  <td className={styles.botCell} title={user.imBotId || botLabel}>
+                  <td className={styles.botCell} title={botTitle || botLabel}>
                     {botLabel}
                   </td>
                   <td className={styles.chatIdCell}>
