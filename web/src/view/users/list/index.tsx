@@ -109,16 +109,6 @@ export default function Users() {
       });
   }, [activeBotFilter, searchKeyword, sortMode, sourceUsers]);
 
-  const activeHostedCount = todayUsers.filter((user) => !user.isPaused).length;
-  const botCount = useMemo(
-    () =>
-      new Set(
-        todayUsers
-          .map((user) => user.botUserId || user.imBotId)
-          .filter((value): value is string => Boolean(value)),
-      ).size,
-    [todayUsers],
-  );
   const emptyMessage =
     searchKeyword || activeBotFilter !== ALL_BOTS ? '没有匹配的用户' : '暂无数据';
 
@@ -146,24 +136,9 @@ export default function Users() {
         )}
 
         <div className={styles.toolbar}>
-          <div className={styles.summaryStrip}>
-            <div className={styles.summaryItem}>
-              <span>当前托管</span>
-              <strong>{activeHostedCount}</strong>
-            </div>
-            <div className={styles.summaryItem}>
-              <span>bot 账号</span>
-              <strong>{botCount}</strong>
-            </div>
-            <div className={styles.summaryItem}>
-              <span>已暂停</span>
-              <strong>{pausedUsers.length}</strong>
-            </div>
-          </div>
-
           <div className={styles.controls}>
             <label className={styles.searchControl}>
-              <Search aria-hidden="true" size={16} />
+              <Search aria-hidden="true" size={15} />
               <input
                 value={searchKeyword}
                 onChange={(event) => setSearchKeyword(event.target.value)}
@@ -183,7 +158,7 @@ export default function Users() {
             </label>
 
             <label className={styles.sortControl}>
-              <ArrowUpDown aria-hidden="true" size={16} />
+              <ArrowUpDown aria-hidden="true" size={15} />
               <select
                 value={sortMode}
                 onChange={(event) => setSortMode(event.target.value as SortMode)}
@@ -196,30 +171,32 @@ export default function Users() {
             </label>
           </div>
 
-          <div className={styles.botRail} aria-label="托管 bot 筛选">
-            <button
-              type="button"
-              className={`${styles.botChip} ${activeBotFilter === ALL_BOTS ? styles.active : ''}`}
-              onClick={() => setBotFilter(ALL_BOTS)}
-            >
-              <Bot size={14} aria-hidden="true" />
-              <span>全部</span>
-              <strong>{sourceUsers.length}</strong>
-            </button>
-            {botOptions.map((option) => (
+          {sourceUsers.length > 0 && (
+            <div className={styles.botRail} aria-label="托管 bot 筛选">
               <button
-                key={option.label}
                 type="button"
-                className={`${styles.botChip} ${activeBotFilter === option.label ? styles.active : ''}`}
-                onClick={() => setBotFilter(option.label)}
-                title={option.label}
+                className={`${styles.botChip} ${activeBotFilter === ALL_BOTS ? styles.active : ''}`}
+                onClick={() => setBotFilter(ALL_BOTS)}
               >
-                <Bot size={14} aria-hidden="true" />
-                <span>{option.label}</span>
-                <strong>{option.count}</strong>
+                <Bot size={13} aria-hidden="true" />
+                <span>全部</span>
+                <strong>{sourceUsers.length}</strong>
               </button>
-            ))}
-          </div>
+              {botOptions.map((option) => (
+                <button
+                  key={option.label}
+                  type="button"
+                  className={`${styles.botChip} ${activeBotFilter === option.label ? styles.active : ''}`}
+                  onClick={() => setBotFilter(option.label)}
+                  title={option.label}
+                >
+                  <Bot size={13} aria-hidden="true" />
+                  <span>{option.label}</span>
+                  <strong>{option.count}</strong>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* 用户表格 */}

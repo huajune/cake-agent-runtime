@@ -37,53 +37,16 @@
 .toolbar {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 20px 24px 18px;
+  gap: 10px;
+  padding: 14px 24px;
   border-bottom: 1px solid #e2e8f0;
   background: #ffffff;
 }
 
-.summaryStrip {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1px;
-  overflow: hidden;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #e2e8f0;
-}
-
-.summaryItem {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-  padding: 12px 14px;
-  background: #f8fafc;
-
-  span {
-    overflow: hidden;
-    color: #64748b;
-    font-size: 12px;
-    font-weight: 500;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  strong {
-    color: #0f172a;
-    font-size: 18px;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-    line-height: 1;
-  }
-}
-
 .controls {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) 220px;
-  gap: 12px;
+  grid-template-columns: minmax(260px, 1fr) 210px;
+  gap: 10px;
   align-items: center;
 }
 
@@ -92,7 +55,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 40px;
+  min-height: 36px;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   background: #ffffff;
@@ -108,7 +71,7 @@
 
   svg {
     flex: 0 0 auto;
-    margin-left: 12px;
+    margin-left: 10px;
   }
 }
 
@@ -119,7 +82,7 @@
     border: none;
     outline: none;
     color: #0f172a;
-    font-size: 14px;
+    font-size: 13px;
 
     &::placeholder {
       color: #94a3b8;
@@ -153,7 +116,7 @@
     outline: none;
     background: transparent;
     color: #334155;
-    font-size: 14px;
+    font-size: 13px;
     cursor: pointer;
   }
 }
@@ -170,7 +133,7 @@
   align-items: center;
   gap: 6px;
   max-width: 220px;
-  min-height: 34px;
+  min-height: 30px;
   padding: 0 11px;
   border: 1px solid #dbe3ef;
   border-radius: 999px;
@@ -178,7 +141,7 @@
   color: #475569;
   cursor: pointer;
   flex: 0 0 auto;
-  font-size: 13px;
+  font-size: 12px;
   transition:
     background 0.2s ease,
     border-color 0.2s ease,
@@ -225,10 +188,6 @@
 
   .toolbar {
     padding: 16px;
-  }
-
-  .summaryStrip {
-    grid-template-columns: 1fr;
   }
 
   .controls {
