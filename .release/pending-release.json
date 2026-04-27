@@ -1,7 +1,7 @@
 {
   "baseVersion": "5.2.0",
   "nextVersion": "5.3.0",
-  "updatedAt": "2026-04-24",
+  "updatedAt": "2026-04-27",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -61,6 +61,27 @@
         ".env.example",
         "src/infra/config/env.validation.ts"
       ],
+      "verification": []
+    },
+    {
+      "number": "118",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/118",
+      "title": "tighten test suite validation gate and add ops-facing agent guides",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-27",
+      "summary": [
+        "收紧测试套件作为验证闸门：以 badcase 为锚的数据集策展、重跑评审、Agent 思考/工具/回复链可视化重放，并补齐相关测试。",
+        "提供面向运营/产品的两份新文档：Agent 运行时架构（运营视角）和 Agent 工作流与工具说明，从研发版架构文档加上交叉链接。"
+      ],
+      "features": [
+        "收紧测试套件作为验证闸门：以 badcase 为锚的数据集策展、重跑评审、Agent 思考/工具/回复链可视化重放，并补齐相关测试。",
+        "提供面向运营/产品的两份新文档：Agent 运行时架构（运营视角）和 Agent 工作流与工具说明，从研发版架构文档加上交叉链接。"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
       "verification": []
     }
   ]
