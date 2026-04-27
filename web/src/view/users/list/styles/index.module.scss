@@ -112,6 +112,11 @@
     color: #334155;
     font-size: 13px;
     cursor: pointer;
+
+    &:disabled {
+      color: #94a3b8;
+      cursor: not-allowed;
+    }
   }
 }
 

@@ -21,7 +21,7 @@ const ALL_BOTS = '__all_bots__';
 type SortMode = 'firstActiveDesc' | 'lastActiveDesc' | 'messageDesc';
 
 function getBotLabel(user: Pick<UserData, 'botUserId' | 'imBotId'>) {
-  return user.botUserId || user.imBotId || '未知 bot';
+  return user.botUserId || user.imBotId || '';
 }
 
 function normalizeText(value?: string) {
@@ -56,6 +56,7 @@ export default function Users() {
 
     for (const user of sourceUsers) {
       const botLabel = getBotLabel(user);
+      if (!botLabel) continue;
       counts.set(botLabel, (counts.get(botLabel) || 0) + 1);
     }
 
@@ -82,8 +83,8 @@ export default function Users() {
           return true;
         }
 
-        return [user.odName, user.groupName, user.chatId, user.botUserId, user.imBotId].some(
-          (value) => normalizeText(value).includes(keyword),
+        return [user.odName, user.groupName, user.chatId].some((value) =>
+          normalizeText(value).includes(keyword),
         );
       })
       .sort((a, b) => {
@@ -131,8 +132,8 @@ export default function Users() {
             <input
               value={searchKeyword}
               onChange={(event) => setSearchKeyword(event.target.value)}
-              placeholder="搜索用户 / 会话 / bot"
-              aria-label="搜索用户、会话或 bot"
+              placeholder="搜索用户 / 会话ID"
+              aria-label="搜索用户或会话 ID"
             />
             {searchKeyword && (
               <button
@@ -153,9 +154,9 @@ export default function Users() {
               onChange={(event) => setSortMode(event.target.value as SortMode)}
               aria-label="排序方式"
             >
-              <option value="firstActiveDesc">首次活跃最新</option>
-              <option value="lastActiveDesc">最后活跃最新</option>
-              <option value="messageDesc">消息数最多</option>
+              <option value="firstActiveDesc">首次活跃时间新到旧</option>
+              <option value="lastActiveDesc">最后活跃时间新到旧</option>
+              <option value="messageDesc">消息数多到少</option>
             </select>
           </label>
 
@@ -165,8 +166,11 @@ export default function Users() {
               value={activeBotFilter}
               onChange={(event) => setBotFilter(event.target.value)}
               aria-label="托管 bot 过滤"
+              disabled={botOptions.length === 0}
             >
-              <option value={ALL_BOTS}>全部托管 bot</option>
+              <option value={ALL_BOTS}>
+                {botOptions.length === 0 ? '暂无 bot 数据' : '全部 bot'}
+              </option>
               {botOptions.map((option) => (
                 <option key={option.label} value={option.label}>
                   {option.label} ({option.count})
