@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
+import { ApiError, NetworkError } from '@/api/client';
 import { submitFeedback, FeedbackType } from '@/api/services/agent-test.service';
 
 export interface UseFeedbackOptions {
@@ -30,6 +31,28 @@ export interface UseFeedbackReturn {
     managerName?: string;
   }) => Promise<boolean>;
   clearSuccess: () => void;
+}
+
+function getFeedbackErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    const details = error.details as { validationErrors?: string[] } | undefined;
+    const validationErrors = details?.validationErrors;
+    if (Array.isArray(validationErrors) && validationErrors.length > 0) {
+      return validationErrors.join('；');
+    }
+
+    return error.message || '提交反馈失败，请重试';
+  }
+
+  if (error instanceof NetworkError) {
+    return error.message;
+  }
+
+  if (error instanceof Error) {
+    return error.message || '提交反馈失败，请重试';
+  }
+
+  return '提交反馈失败，请重试';
 }
 
 /**
@@ -105,8 +128,10 @@ export function useFeedback({ onError }: UseFeedbackOptions = {}): UseFeedbackRe
         return true;
       } catch (err) {
         console.error('提交反馈失败:', err);
-        setSubmitError('提交反馈失败，请重试');
-        onError?.('提交反馈失败，请重试');
+        const message = getFeedbackErrorMessage(err);
+        setSubmitError(message);
+        toast.error(message, { duration: 4500 });
+        onError?.(message);
         return false;
       } finally {
         setIsSubmitting(false);
