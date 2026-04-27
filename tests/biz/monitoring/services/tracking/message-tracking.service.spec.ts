@@ -112,8 +112,34 @@ describe('MessageTrackingService', () => {
         chatId: 'chat-1',
         odId: 'user-1',
         odName: 'User One',
+        botUserId: undefined,
+        imBotId: undefined,
         messageCount: 1,
         totalTokens: 0,
+      }),
+    );
+  });
+
+  it('should persist bot identity in user activity when provided', async () => {
+    service.recordMessageReceived(
+      'msg-bot',
+      'chat-bot',
+      'user-1',
+      'User One',
+      'Hello World',
+      undefined,
+      'Manager A',
+      1700000000000,
+      { botUserId: 'bot-a', imBotId: 'im-bot-a' },
+    );
+
+    await flushPromises();
+
+    expect(userHostingService.upsertActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chatId: 'chat-bot',
+        botUserId: 'bot-a',
+        imBotId: 'im-bot-a',
       }),
     );
   });

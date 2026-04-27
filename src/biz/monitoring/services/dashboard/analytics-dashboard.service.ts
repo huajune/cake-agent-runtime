@@ -622,6 +622,8 @@ export class AnalyticsDashboardService {
         odName: user.odName || user.chatId,
         groupId: user.groupId,
         groupName: user.groupName,
+        botUserId: user.botUserId,
+        imBotId: user.imBotId,
         messageCount: user.messageCount,
         tokenUsage: user.tokenUsage,
         firstActiveAt: user.firstActiveAt,

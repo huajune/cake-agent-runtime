@@ -38,6 +38,11 @@ interface InvocationSnapshot {
   isFallback?: boolean;
 }
 
+interface BotIdentity {
+  botUserId?: string;
+  imBotId?: string;
+}
+
 /**
  * 消息追踪服务
  *
@@ -87,6 +92,7 @@ export class MessageTrackingService {
     metadata?: MonitoringMetadata,
     managerName?: string,
     receivedAt?: number,
+    botIdentity?: BotIdentity,
   ): void {
     const now = receivedAt && Number.isFinite(receivedAt) ? receivedAt : Date.now();
     const record: MessageProcessingRecordInput = {
@@ -123,6 +129,8 @@ export class MessageTrackingService {
       messageCount: 1,
       tokenUsage: 0,
       activeAt: now,
+      botUserId: botIdentity?.botUserId ?? managerName,
+      imBotId: botIdentity?.imBotId,
     }).catch((err) => {
       this.logger.warn(`记录用户活动失败 [${messageId}]:`, err);
     });
@@ -455,6 +463,8 @@ export class MessageTrackingService {
     userName?: string;
     groupId?: string;
     groupName?: string;
+    botUserId?: string;
+    imBotId?: string;
     messageCount: number;
     tokenUsage: number;
     activeAt: number;
@@ -466,6 +476,8 @@ export class MessageTrackingService {
         odName: data.userName,
         groupId: data.groupId,
         groupName: data.groupName,
+        botUserId: data.botUserId,
+        imBotId: data.imBotId,
         messageCount: data.messageCount,
         totalTokens: data.tokenUsage,
         activeAt: new Date(data.activeAt),

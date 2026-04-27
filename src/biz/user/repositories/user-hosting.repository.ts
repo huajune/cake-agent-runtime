@@ -100,7 +100,7 @@ export class UserHostingRepository extends BaseRepository {
   // ==================== user_activity 操作 ====================
 
   /**
-   * 查询指定用户 ID 列表的资料（od_name、group_name）
+   * 查询指定用户 ID 列表的资料（od_name、group_name、托管 bot 身份）
    */
   async findUserProfiles(userIds: string[]): Promise<UserProfile[]> {
     if (userIds.length === 0) {
@@ -109,7 +109,7 @@ export class UserHostingRepository extends BaseRepository {
 
     const { data, error } = await this.getClient()
       .from('user_activity')
-      .select('chat_id,od_name,group_name')
+      .select('chat_id,od_name,group_name,bot_user_id,im_bot_id')
       .in('chat_id', userIds)
       .order('last_active_at', { ascending: false });
 
@@ -118,11 +118,20 @@ export class UserHostingRepository extends BaseRepository {
       return [];
     }
 
-    const rows = (data as { chat_id: string; od_name?: string; group_name?: string }[]) ?? [];
+    const rows =
+      (data as {
+        chat_id: string;
+        od_name?: string;
+        group_name?: string;
+        bot_user_id?: string;
+        im_bot_id?: string;
+      }[]) ?? [];
     return rows.map((row) => ({
       chatId: row.chat_id,
       odName: row.od_name,
       groupName: row.group_name,
+      botUserId: row.bot_user_id,
+      imBotId: row.im_bot_id,
     }));
   }
 
@@ -147,6 +156,8 @@ export class UserHostingRepository extends BaseRepository {
           od_name: string | null;
           group_id: string | null;
           group_name: string | null;
+          bot_user_id: string | null;
+          im_bot_id: string | null;
           message_count: string;
           token_usage: string;
           first_active_at: string;
@@ -165,6 +176,8 @@ export class UserHostingRepository extends BaseRepository {
         odName: row.od_name ?? undefined,
         groupId: row.group_id ?? undefined,
         groupName: row.group_name ?? undefined,
+        botUserId: row.bot_user_id ?? undefined,
+        imBotId: row.im_bot_id ?? undefined,
         messageCount: parseInt(row.message_count, 10),
         tokenUsage: parseInt(row.token_usage, 10),
         firstActiveAt: new Date(row.first_active_at).getTime(),
@@ -185,6 +198,8 @@ export class UserHostingRepository extends BaseRepository {
     odName?: string;
     groupId?: string;
     groupName?: string;
+    botUserId?: string;
+    imBotId?: string;
     messageCount?: number;
     totalTokens?: number;
     activeAt?: Date;
@@ -203,6 +218,8 @@ export class UserHostingRepository extends BaseRepository {
         p_message_count: data.messageCount ?? 1,
         p_token_usage: data.totalTokens ?? 0,
         p_active_at: (data.activeAt ?? new Date()).toISOString(),
+        p_bot_user_id: data.botUserId || null,
+        p_im_bot_id: data.imBotId || null,
       });
     } catch (error) {
       this.logger.error('更新用户活跃记录失败', error);

@@ -23,6 +23,8 @@ export async function getPausedUsers() {
       pauseExpiresAt: number;
       odName?: string;
       groupName?: string;
+      botUserId?: string;
+      imBotId?: string;
     }>;
   }>(data);
   return response.users.map((user) => ({
@@ -31,6 +33,8 @@ export async function getPausedUsers() {
     pauseExpiresAt: user.pauseExpiresAt,
     odName: user.odName,
     groupName: user.groupName,
+    botUserId: user.botUserId,
+    imBotId: user.imBotId,
   }));
 }
 

@@ -136,7 +136,7 @@ export class UserHostingService {
    * 流程：
    * 1. 确保缓存有效（过期则从 DB 刷新）
    * 2. 从缓存中提取暂停用户的 ID 与暂停时间
-   * 3. 从 user_activity 批量查询 odName / groupName
+   * 3. 从 user_activity 批量查询 odName / groupName / 托管 bot 身份
    * 4. 合并返回
    *
    * 若 user_activity 查询失败，仅返回不含资料的基础列表。
@@ -148,6 +148,8 @@ export class UserHostingService {
       pauseExpiresAt: number;
       odName?: string;
       groupName?: string;
+      botUserId?: string;
+      imBotId?: string;
     }[]
   > {
     await this.ensureFreshPausedUsers();
@@ -170,12 +172,17 @@ export class UserHostingService {
     try {
       const profiles = await this.repository.findUserProfiles(userIds);
 
-      const profileMap = new Map<string, { odName?: string; groupName?: string }>();
+      const profileMap = new Map<
+        string,
+        { odName?: string; groupName?: string; botUserId?: string; imBotId?: string }
+      >();
       for (const record of profiles) {
         if (!profileMap.has(record.chatId)) {
           profileMap.set(record.chatId, {
             odName: record.odName,
             groupName: record.groupName,
+            botUserId: record.botUserId,
+            imBotId: record.imBotId,
           });
         }
       }
@@ -186,6 +193,8 @@ export class UserHostingService {
         pauseExpiresAt: entry.pauseExpiresAt,
         odName: profileMap.get(entry.userId)?.odName,
         groupName: profileMap.get(entry.userId)?.groupName,
+        botUserId: profileMap.get(entry.userId)?.botUserId,
+        imBotId: profileMap.get(entry.userId)?.imBotId,
       }));
     } catch (error) {
       this.logger.error('查询暂停用户资料异常', error);
@@ -216,6 +225,8 @@ export class UserHostingService {
     odName?: string;
     groupId?: string;
     groupName?: string;
+    botUserId?: string;
+    imBotId?: string;
     messageCount?: number;
     totalTokens?: number;
     activeAt?: Date;

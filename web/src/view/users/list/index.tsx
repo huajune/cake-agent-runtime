@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { ArrowUpDown, Bot, Info, Search, X } from 'lucide-react';
 import { useTodayUsers, useToggleUserHosting, usePausedUsers } from '@/hooks/user/useUsers';
 
 // 类型导入
-import type { TabType } from './types';
+import type { TabType, UserData } from './types';
 
 // 工具函数导入
 import { transformPausedUsers } from './utils/transformers';
@@ -15,8 +16,27 @@ import UserTabNav from './components/UserTabNav';
 // 样式导入
 import styles from './styles/index.module.scss';
 
+const ALL_BOTS = '__all_bots__';
+
+type SortMode = 'bot' | 'recent' | 'messages';
+
+function getBotLabel(user: Pick<UserData, 'botUserId' | 'imBotId'>) {
+  return user.botUserId || user.imBotId || '未知 bot';
+}
+
+function normalizeText(value?: string) {
+  return (value || '').trim().toLowerCase();
+}
+
+function compareText(a?: string, b?: string) {
+  return (a || '').localeCompare(b || '', 'zh-Hans-CN', { numeric: true, sensitivity: 'base' });
+}
+
 export default function Users() {
   const [activeTab, setActiveTab] = useState<TabType>('today');
+  const [botFilter, setBotFilter] = useState(ALL_BOTS);
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [sortMode, setSortMode] = useState<SortMode>('bot');
   const { data: todayUsers = [], isLoading: isTodayLoading } = useTodayUsers();
   const { data: pausedUsers = [], isLoading: isPausedLoading } = usePausedUsers();
   const toggleHosting = useToggleUserHosting();
@@ -27,8 +47,80 @@ export default function Users() {
 
   const pausedUsersData = transformPausedUsers(pausedUsers);
 
-  const displayUsers = activeTab === 'today' ? todayUsers : pausedUsersData;
+  const sourceUsers = activeTab === 'today' ? todayUsers : pausedUsersData;
   const isLoading = activeTab === 'today' ? isTodayLoading : isPausedLoading;
+  const pendingChatId = toggleHosting.isPending ? toggleHosting.variables?.chatId : undefined;
+
+  const botOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    for (const user of sourceUsers) {
+      const label = getBotLabel(user);
+      counts.set(label, (counts.get(label) || 0) + 1);
+    }
+
+    return Array.from(counts.entries())
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => compareText(a.label, b.label));
+  }, [sourceUsers]);
+
+  const activeBotFilter = botOptions.some((option) => option.label === botFilter)
+    ? botFilter
+    : ALL_BOTS;
+
+  const displayUsers = useMemo(() => {
+    const keyword = normalizeText(searchKeyword);
+
+    return sourceUsers
+      .filter((user) => {
+        const botLabel = getBotLabel(user);
+        if (activeBotFilter !== ALL_BOTS && botLabel !== activeBotFilter) {
+          return false;
+        }
+
+        if (!keyword) {
+          return true;
+        }
+
+        return [user.odName, user.groupName, user.chatId, user.botUserId, user.imBotId].some(
+          (value) => normalizeText(value).includes(keyword),
+        );
+      })
+      .sort((a, b) => {
+        if (sortMode === 'recent') {
+          return b.lastActiveAt - a.lastActiveAt || compareText(a.chatId, b.chatId);
+        }
+
+        if (sortMode === 'messages') {
+          return (
+            b.messageCount - a.messageCount ||
+            b.lastActiveAt - a.lastActiveAt ||
+            compareText(a.chatId, b.chatId)
+          );
+        }
+
+        return (
+          compareText(getBotLabel(a), getBotLabel(b)) ||
+          Number(a.isPaused) - Number(b.isPaused) ||
+          compareText(a.groupName, b.groupName) ||
+          b.lastActiveAt - a.lastActiveAt ||
+          compareText(a.chatId, b.chatId)
+        );
+      });
+  }, [activeBotFilter, searchKeyword, sortMode, sourceUsers]);
+
+  const activeHostedCount = todayUsers.filter((user) => !user.isPaused).length;
+  const botCount = useMemo(
+    () =>
+      new Set(
+        todayUsers
+          .map((user) => user.botUserId || user.imBotId)
+          .filter((value): value is string => Boolean(value)),
+      ).size,
+    [todayUsers],
+  );
+  const emptyMessage =
+    searchKeyword || activeBotFilter !== ALL_BOTS ? '没有匹配的用户' : '暂无数据';
 
   return (
     <div className={styles.page}>
@@ -46,10 +138,89 @@ export default function Users() {
 
         {activeTab === 'paused' && (
           <div className={styles.tabHint}>
-            <span className={styles.tabHintIcon}>ℹ️</span>
-            <span>禁止托管后，系统将在 3 天后自动恢复托管；如需提前恢复，请手动切换上方"托管状态"开关。</span>
+            <Info className={styles.tabHintIcon} aria-hidden="true" />
+            <span>
+              禁止托管后，系统将在 3 天后自动恢复托管；如需提前恢复，请手动切换上方"托管状态"开关。
+            </span>
           </div>
         )}
+
+        <div className={styles.toolbar}>
+          <div className={styles.summaryStrip}>
+            <div className={styles.summaryItem}>
+              <span>当前托管</span>
+              <strong>{activeHostedCount}</strong>
+            </div>
+            <div className={styles.summaryItem}>
+              <span>bot 账号</span>
+              <strong>{botCount}</strong>
+            </div>
+            <div className={styles.summaryItem}>
+              <span>已暂停</span>
+              <strong>{pausedUsers.length}</strong>
+            </div>
+          </div>
+
+          <div className={styles.controls}>
+            <label className={styles.searchControl}>
+              <Search aria-hidden="true" size={16} />
+              <input
+                value={searchKeyword}
+                onChange={(event) => setSearchKeyword(event.target.value)}
+                placeholder="搜索用户 / 会话 / bot"
+                aria-label="搜索用户、会话或 bot"
+              />
+              {searchKeyword && (
+                <button
+                  type="button"
+                  className={styles.clearSearch}
+                  onClick={() => setSearchKeyword('')}
+                  aria-label="清空搜索"
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
+              )}
+            </label>
+
+            <label className={styles.sortControl}>
+              <ArrowUpDown aria-hidden="true" size={16} />
+              <select
+                value={sortMode}
+                onChange={(event) => setSortMode(event.target.value as SortMode)}
+                aria-label="排序方式"
+              >
+                <option value="bot">按 bot 稳定分组</option>
+                <option value="recent">最近活跃优先</option>
+                <option value="messages">消息数优先</option>
+              </select>
+            </label>
+          </div>
+
+          <div className={styles.botRail} aria-label="托管 bot 筛选">
+            <button
+              type="button"
+              className={`${styles.botChip} ${activeBotFilter === ALL_BOTS ? styles.active : ''}`}
+              onClick={() => setBotFilter(ALL_BOTS)}
+            >
+              <Bot size={14} aria-hidden="true" />
+              <span>全部</span>
+              <strong>{sourceUsers.length}</strong>
+            </button>
+            {botOptions.map((option) => (
+              <button
+                key={option.label}
+                type="button"
+                className={`${styles.botChip} ${activeBotFilter === option.label ? styles.active : ''}`}
+                onClick={() => setBotFilter(option.label)}
+                title={option.label}
+              >
+                <Bot size={14} aria-hidden="true" />
+                <span>{option.label}</span>
+                <strong>{option.count}</strong>
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* 用户表格 */}
         <UserTable
@@ -57,6 +228,8 @@ export default function Users() {
           isLoading={isLoading}
           onToggleHosting={handleToggleHosting}
           isPausedTab={activeTab === 'paused'}
+          pendingChatId={pendingChatId}
+          emptyMessage={emptyMessage}
         />
       </section>
     </div>
