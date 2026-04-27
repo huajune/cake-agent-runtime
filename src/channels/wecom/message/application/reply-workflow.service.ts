@@ -16,7 +16,14 @@ import { SimpleMergeService } from '../runtime/simple-merge.service';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
 import { MessageProcessingFailureService } from './message-processing-failure.service';
 import { PreAgentRiskInterceptService } from './pre-agent-risk-intercept.service';
+import { ImageDescriptionService } from './image-description.service';
 import type { AgentThinkingConfig } from '@agent/agent-run.types';
+
+/**
+ * Vision 描述等待上限。Vision 调用通常 3-6s；15s 给 ~2.5x 余量。
+ * 超时仍未完成时放行，Agent 用占位文本继续——避免单次 vision 卡死整个回合。
+ */
+const VISION_AWAIT_TIMEOUT_MS = 15_000;
 
 /**
  * 触发后会产生不可逆副作用的工具集合。
@@ -67,6 +74,7 @@ export class ReplyWorkflowService {
     private readonly processingFailureService: MessageProcessingFailureService,
     private readonly preAgentRiskIntercept: PreAgentRiskInterceptService,
     private readonly simpleMergeService: SimpleMergeService,
+    private readonly imageDescription: ImageDescriptionService,
   ) {}
 
   async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
@@ -230,6 +238,11 @@ export class ReplyWorkflowService {
       thinking,
     } as const;
 
+    // Vision 描述同步等待：accept-inbound 已 fire-and-forget 触发了 vision，
+    // 此时若描述还没回写到 chat_messages.content，Agent 读短期记忆只能拿到占位文本。
+    // awaitVision 等待本批所有图片/表情的描述 settle 后再调 Agent。超时则放行。
+    await this.ensureVisionDescriptionsReady(imageMessageIds, contactName, logPrefix);
+
     // 首次调用延迟 turn-end：若随后检测到新消息会走 replay 丢弃本次回复，
     // 记忆投影/事实提取也必须一同被丢弃，否则会把「未发出的回复」污染到 session 记忆里。
     let agentResult = await this.callAgent({
@@ -301,6 +314,9 @@ export class ReplyWorkflowService {
           traceId,
           newMessages.map((message) => message.messageId),
         );
+
+        // 等 replay 合入的新消息（可能含图片）的 vision 描述完成后再重跑 Agent
+        await this.ensureVisionDescriptionsReady(imageMessageIds, contactName, logPrefix);
 
         agentResult = await this.callAgent({
           ...agentCallParams,
@@ -580,6 +596,29 @@ export class ReplyWorkflowService {
 
   private resolveCorpId(messageData: EnterpriseMessageCallbackDto): string {
     return messageData.orgId || 'default';
+  }
+
+  /**
+   * 等待本批所有图片/表情的 vision 描述完成（已完成的立即返回；超时则放行）。
+   *
+   * 必须在 callAgent 之前调用——Agent 读短期记忆时会从 chat_messages.content 取
+   * vision 描述，若描述还没回写，模型只能拿到 "[图片消息]" 这种占位文本，
+   * 相当于看不到图片内容。
+   */
+  private async ensureVisionDescriptionsReady(
+    visualMessageIds: string[],
+    contactName: string,
+    logPrefix: string,
+  ): Promise<void> {
+    if (visualMessageIds.length === 0) return;
+    const startedAt = Date.now();
+    await this.imageDescription.awaitVision(visualMessageIds, VISION_AWAIT_TIMEOUT_MS);
+    const waitedMs = Date.now() - startedAt;
+    if (waitedMs > 50) {
+      this.logger.log(
+        `${logPrefix}[${contactName}] 等待 vision 描述完成: ${waitedMs}ms (${visualMessageIds.length} 张)`,
+      );
+    }
   }
 
   private collectImageUrls(messages: EnterpriseMessageCallbackDto[]): string[] {

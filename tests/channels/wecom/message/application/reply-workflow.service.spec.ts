@@ -45,6 +45,9 @@ describe('ReplyWorkflowService', () => {
   const simpleMergeService = {
     getAndClearPendingMessages: jest.fn(),
   };
+  const imageDescription = {
+    awaitVision: jest.fn().mockResolvedValue(undefined),
+  };
 
   let service: ReplyWorkflowService;
 
@@ -123,6 +126,7 @@ describe('ReplyWorkflowService', () => {
       processingFailureService as never,
       preAgentRiskIntercept as never,
       simpleMergeService as never,
+      imageDescription as never,
     );
   });
 

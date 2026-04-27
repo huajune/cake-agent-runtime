@@ -63,7 +63,7 @@ describe('MessageParser', () => {
         payload: { url: 'http://example.com/img.jpg', size: 1024 },
       });
       const result = MessageParser.parse(messageData);
-      expect(result.content).toBe('[图片消息] 候选人发送了一张图片');
+      expect(result.content).toBe('[图片消息]');
     });
 
     it('should extract content for image messages (enterprise-level: imageUrl)', () => {
@@ -72,7 +72,7 @@ describe('MessageParser', () => {
         payload: { imageUrl: 'http://example.com/img.jpg', size: 1024, width: 118, height: 210 },
       });
       const result = MessageParser.parse(messageData);
-      expect(result.content).toBe('[图片消息] 候选人发送了一张图片');
+      expect(result.content).toBe('[图片消息]');
     });
 
     it('should extract content for voice messages (group-level: url, no STT)', () => {
@@ -99,7 +99,7 @@ describe('MessageParser', () => {
         payload: { imageUrl: 'http://example.com/emoji.gif' },
       });
       const result = MessageParser.parse(messageData);
-      expect(result.content).toBe('[表情消息] 候选人发送了一个表情');
+      expect(result.content).toBe('[表情消息]');
     });
 
     it('should extract content for mini program messages', () => {

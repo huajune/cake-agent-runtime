@@ -20,7 +20,8 @@ function formatDescription(kind: VisualMessageKind, description: string): string
  * 这样短期记忆读取历史时，Agent 能理解图片内容而非仅看到 "[图片消息]"。
  *
  * 模型选择：AGENT_VISION_MODEL → AGENT_CHAT_MODEL（由共享 LLM Executor 做角色路由）
- * 调用方式：fire-and-forget，不阻塞消息主流程。
+ * 调用方式：fire-and-forget，不阻塞消息主流程；通过 inFlight 追踪让 worker 在
+ * 真正读取历史前 awaitVision 等待完成。
  */
 @Injectable()
 export class ImageDescriptionService {
@@ -29,6 +30,9 @@ export class ImageDescriptionService {
   /** 连续失败计数，用于节流告警 */
   private consecutiveFailures = 0;
   private readonly ALERT_THRESHOLD = 3;
+
+  /** 进行中的描述任务：messageId → 描述完成后 settle 的 Promise */
+  private readonly inFlight = new Map<string, Promise<void>>();
 
   private readonly SYSTEM_PROMPT = [
     '你是招聘场景的图片分析助手。候选人发来的图片大多是招聘平台截图，也可能是微信表情。',
@@ -48,72 +52,88 @@ export class ImageDescriptionService {
 
   /**
    * 异步描述图片/表情并回写 content（fire-and-forget）
-   * 适用于主模型支持 vision 的场景（当轮由 Agent 直接看图，此描述仅补充后续轮次）
+   *
+   * 进行中的任务会注册到 `inFlight`，供 `awaitVision` 在真正调用 Agent 前等待完成。
+   * 这样消息可以立即进入合批队列（更新 lastMessageAt 重置 debounce），
+   * 而 vision 描述在后台并行进行，避免文本/图片被合批 debounce 拆开。
    */
   describeAndUpdateAsync(
     messageId: string,
     imageUrl: string,
     kind: VisualMessageKind = MessageType.IMAGE,
   ): void {
+    if (this.inFlight.has(messageId)) {
+      // 同一条消息已在描述中（不应发生，dedup 应已拦截），直接复用即可
+      return;
+    }
+
     const label = this.kindLabel(kind);
     this.logger.log(
       `[触发] 开始${label}描述(异步) [${messageId}], url=${imageUrl.substring(0, 80)}...`,
     );
-    this.describeAndUpdate(messageId, imageUrl, kind).catch((error) => {
-      this.consecutiveFailures++;
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.logger.error(
-        `${label}描述失败 [${messageId}] (连续第${this.consecutiveFailures}次): ${err.message}`,
-        err.stack,
-      );
 
-      // 连续失败达到阈值时发送告警
-      if (this.consecutiveFailures === this.ALERT_THRESHOLD) {
-        this.alertService
-          .sendSimpleAlert(
-            '图片/表情描述服务连续失败',
-            `Vision 模型连续 ${this.ALERT_THRESHOLD} 次调用失败，图片/表情消息无法被识别。\n最近错误: ${err.message}`,
-            'warning',
-          )
-          .catch(() => {});
-      }
-    });
+    const task = this.describeAndUpdate(messageId, imageUrl, kind)
+      .catch((error) => {
+        this.consecutiveFailures++;
+        const err = error instanceof Error ? error : new Error(String(error));
+        this.logger.error(
+          `${label}描述失败 [${messageId}] (连续第${this.consecutiveFailures}次): ${err.message}`,
+          err.stack,
+        );
+
+        if (this.consecutiveFailures === this.ALERT_THRESHOLD) {
+          this.alertService
+            .sendSimpleAlert(
+              '图片/表情描述服务连续失败',
+              `Vision 模型连续 ${this.ALERT_THRESHOLD} 次调用失败，图片/表情消息无法被识别。\n最近错误: ${err.message}`,
+              'warning',
+            )
+            .catch(() => {});
+        }
+      })
+      .finally(() => {
+        this.inFlight.delete(messageId);
+      });
+
+    this.inFlight.set(messageId, task);
   }
 
   /**
-   * 同步描述图片/表情并回写 content（阻塞等待结果）
-   * 适用于主模型不支持 vision 的场景 — 必须在 Agent 读历史前完成描述
+   * 等待给定 messageIds 对应的 vision 描述全部 settle（成功或失败均算完成）。
+   *
+   * 已经 settle 或从未触发的 id 视作 no-op；超过 timeoutMs 仍未完成时直接放行，
+   * Agent 仍可基于占位文本运行，避免单次 vision 卡死整个回合。
    */
-  async describeAndUpdateSync(
-    messageId: string,
-    imageUrl: string,
-    kind: VisualMessageKind = MessageType.IMAGE,
-  ): Promise<void> {
-    const label = this.kindLabel(kind);
-    this.logger.log(
-      `[触发] 开始${label}描述(同步) [${messageId}], url=${imageUrl.substring(0, 80)}...`,
-    );
-    try {
-      await this.describeAndUpdate(messageId, imageUrl, kind);
-    } catch (error) {
-      this.consecutiveFailures++;
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.logger.error(
-        `${label}描述失败 [${messageId}] (连续第${this.consecutiveFailures}次): ${err.message}`,
-        err.stack,
-      );
-
-      if (this.consecutiveFailures === this.ALERT_THRESHOLD) {
-        this.alertService
-          .sendSimpleAlert(
-            '图片/表情描述服务连续失败',
-            `Vision 模型连续 ${this.ALERT_THRESHOLD} 次调用失败，图片/表情消息无法被识别。\n最近错误: ${err.message}`,
-            'warning',
-          )
-          .catch(() => {});
-      }
-      // 同步路径不抛出异常，避免阻塞主流程
+  async awaitVision(messageIds: string[], timeoutMs: number): Promise<void> {
+    const pending: Promise<void>[] = [];
+    for (const id of messageIds) {
+      const task = this.inFlight.get(id);
+      if (task) pending.push(task);
     }
+    if (pending.length === 0) return;
+
+    let timeoutHandle: NodeJS.Timeout | undefined;
+    const timeoutPromise = new Promise<'timeout'>((resolve) => {
+      timeoutHandle = setTimeout(() => resolve('timeout'), timeoutMs);
+    });
+    try {
+      const winner = await Promise.race([
+        Promise.allSettled(pending).then(() => 'done' as const),
+        timeoutPromise,
+      ]);
+      if (winner === 'timeout') {
+        this.logger.warn(
+          `[等待 vision] ${timeoutMs}ms 超时未完成 (待完成 ${pending.length} 张)，放行 Agent 继续运行`,
+        );
+      }
+    } finally {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+    }
+  }
+
+  /** 当前是否有指定 messageId 的描述在进行中。 */
+  hasInFlight(messageId: string): boolean {
+    return this.inFlight.has(messageId);
   }
 
   /**

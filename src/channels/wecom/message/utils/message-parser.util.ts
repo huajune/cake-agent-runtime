@@ -82,14 +82,15 @@ export class MessageParser {
       return this.formatVoiceAsText(payload);
     }
 
-    // 表情消息 - 文字标记（表情图片同样通过 image part 传入 Agent 做 vision 识别）
+    // 表情消息 - 文字标记（vision 描述完成后由 ImageDescriptionService 回写为
+    // `[表情消息] {description}`；这里只用占位前缀，避免硬编码"候选人/招募经理"主语）
     if (isEmotionPayload(messageType, payload)) {
-      return '[表情消息] 候选人发送了一个表情';
+      return '[表情消息]';
     }
 
-    // 图片消息 - 文字标记（实际图片通过 image part 传入 Agent）
+    // 图片消息 - 文字标记（同上，role 由 chat_messages.role 区分，不放在内容里）
     if (isImagePayload(messageType, payload)) {
-      return '[图片消息] 候选人发送了一张图片';
+      return '[图片消息]';
     }
 
     // 小程序消息
