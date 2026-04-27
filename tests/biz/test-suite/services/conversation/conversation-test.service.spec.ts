@@ -420,6 +420,10 @@ describe('ConversationTestService', () => {
           turn_number: 1,
           input_message: '你好',
           expected_output: '您好',
+          agent_response: {
+            text: '您好，有什么可以帮您',
+            agentSteps: [{ stepIndex: 0, toolCalls: [] }],
+          },
           actual_output: '您好，有什么可以帮您',
           similarity_score: 80,
           evaluation_reason: '良好',
@@ -441,6 +445,9 @@ describe('ConversationTestService', () => {
       expect(result.conversationInfo.totalTurns).toBe(2);
       expect(result.turns).toHaveLength(1);
       expect(result.turns[0].turnNumber).toBe(1);
+      expect(result.turns[0].agentResponse).toEqual(
+        expect.objectContaining({ text: '您好，有什么可以帮您' }),
+      );
     });
 
     it('should sort turns by turnNumber ascending', async () => {

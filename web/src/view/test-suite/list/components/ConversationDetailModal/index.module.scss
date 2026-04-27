@@ -655,156 +655,71 @@
   }
 }
 
-// ==================== 工具调用区域 ====================
-.toolCallsSection {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.toolCallsToggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid $accent-12;
-  border-radius: 14px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #475569;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
-
-  svg {
-    color: $accent;
-    transition: transform 0.2s ease;
-  }
-
-  .rotatedIcon {
-    transform: rotate(-90deg);
-  }
-
-  &:hover {
-    background: $accent-04;
-    border-color: $accent-20;
-  }
-}
-
-.toolCallsList {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 200px;
-  overflow-y: auto;
-
-  &::-webkit-scrollbar {
-    width: 4px;
-  }
-  &::-webkit-scrollbar-thumb {
-    background: rgba(148, 163, 184, 0.3);
-    border-radius: 2px;
-  }
-}
-
-.toolCallItem {
-  background: rgba(255, 255, 255, 0.92);
-  border-radius: 14px;
-  border: 1px solid $accent-10;
+.agentResponseCard {
+  border: 1px solid rgba(16, 185, 129, 0.18);
+  border-radius: 16px;
   overflow: hidden;
-
-  &:hover {
-    border-color: $accent-20;
-  }
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(236, 253, 245, 0.48) 100%);
+  box-shadow:
+    0 14px 34px rgba(16, 24, 40, 0.05),
+    0 0 26px rgba(16, 185, 129, 0.07);
 }
 
-.toolHeader {
+.agentResponseHeader {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 11px 14px;
-  user-select: none;
-
-  &.clickable {
-    cursor: pointer;
-
-    &:hover {
-      background: $accent-04;
-    }
-  }
+  gap: 8px;
+  min-height: 40px;
+  padding: 9px 16px;
+  border-bottom: 1px solid rgba(209, 250, 229, 0.8);
+  background: rgba(248, 250, 252, 0.72);
 }
 
-.toolName {
+.agentRoleTag {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 0;
-  background: transparent;
-  color: $accent;
-  border: 0;
-  border-radius: 0;
-  font-size: 12px;
-  font-family: 'JetBrains Mono', monospace;
-  font-weight: 600;
-
-  svg {
-    color: $accent;
-  }
-}
-
-.expandIcon {
-  display: flex;
-  align-items: center;
-  color: #94a3b8;
-  transition: transform 0.2s ease;
-
-  .rotated {
-    transform: rotate(90deg);
-  }
-}
-
-.toolBody {
-  padding: 0 14px 12px;
-  animation: slideDown 0.2s ease-out;
-}
-
-.toolSection {
-  margin-top: 10px;
-}
-
-.toolSectionLabel {
+  width: fit-content;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: $success-soft;
+  color: $success;
   font-size: 10px;
   font-weight: 700;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 6px;
+  letter-spacing: 0.05em;
+  line-height: 1;
 }
 
-.toolDetail {
-  margin: 0;
-  padding: 10px 12px;
-  background: #1e293b;
-  border-radius: 6px;
-  font-size: 11px;
-  font-family: 'Monaco', 'Menlo', monospace;
-  color: #e2e8f0;
-  overflow-x: auto;
-  white-space: pre-wrap;
-  word-break: break-all;
-  line-height: 1.6;
-  max-height: 120px;
+.agentBubbleMeta {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.agentResponseBody {
+  max-height: 360px;
   overflow-y: auto;
-  border: 1px solid #334155;
+  padding: 14px 16px;
+  color: #1e293b;
+  font-size: 13px;
+  line-height: 1.75;
 
   &::-webkit-scrollbar {
     width: 4px;
-    height: 4px;
   }
   &::-webkit-scrollbar-thumb {
-    background: #475569;
-    border-radius: 2px;
+    background: rgba(16, 185, 129, 0.22);
+    border-radius: 999px;
   }
+}
+
+.agentRenderer {
+  padding-right: 8px;
+}
+
+.emptyAgentResponse {
+  color: #94a3b8;
+  font-size: 13px;
 }
 
 // ==================== 底部导航 ====================

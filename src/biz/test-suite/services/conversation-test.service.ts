@@ -205,6 +205,7 @@ export class ConversationTestService {
         inputMessage: exec.input_message || turn?.userMessage || '',
         history: turn?.history || [],
         expectedOutput: exec.expected_output || turn?.expectedOutput || null,
+        agentResponse: exec.agent_response ?? null,
         actualOutput: exec.actual_output,
         similarityScore: exec.similarity_score ?? null,
         evaluationReason: exec.evaluation_reason ?? null,

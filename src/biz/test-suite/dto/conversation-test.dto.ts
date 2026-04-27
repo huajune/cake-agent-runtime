@@ -65,6 +65,8 @@ export interface ConversationTurnExecution {
   /** 真人对话历史（候选人 + 招募经理的对话，作为 Agent 的上下文） */
   history: ParsedMessage[];
   expectedOutput: string | null;
+  /** Agent 原始响应快照，用于前端还原思考/工具/回复的调用链 */
+  agentResponse: unknown | null;
   actualOutput: string | null;
   similarityScore: number | null;
   /** LLM 评估理由 */

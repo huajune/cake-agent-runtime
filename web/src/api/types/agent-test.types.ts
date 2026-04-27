@@ -271,6 +271,7 @@ export interface ConversationTurnExecution {
   inputMessage: string;
   history: ParsedMessage[];
   expectedOutput: string | null;
+  agentResponse: unknown | null;
   actualOutput: string | null;
   similarityScore: number | null;
   evaluationReason: string | null;

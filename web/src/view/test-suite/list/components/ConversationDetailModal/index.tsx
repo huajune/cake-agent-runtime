@@ -6,11 +6,11 @@ import {
   ChevronDown,
   User,
   Bot,
-  Wrench,
   Headphones,
   MessageSquare,
   CheckCircle2,
 } from 'lucide-react';
+import MessagePartsAdapter from '@/view/agent-test/list/components/MessagePartsAdapter';
 import type {
   ConversationSnapshot,
   ConversationTurnExecution,
@@ -21,8 +21,8 @@ import {
   formatReviewStatusLabel,
   resolveReviewerSourceLabel,
 } from '../../utils/reviewLabel';
+import { buildAgentRenderableMessage } from '../../utils/agentRenderableMessage';
 import { CompactMetrics } from './CompactMetrics';
-import { ToolCallItem } from './ToolCallItem';
 import { LoadingSkeleton } from './LoadingSkeleton';
 import styles from './index.module.scss';
 
@@ -84,7 +84,6 @@ export function ConversationDetailModal({
   onTurnChange,
 }: ConversationDetailModalProps) {
   const [showHistory, setShowHistory] = useState(true);
-  const [showToolCalls, setShowToolCalls] = useState(false);
 
   const currentTurn = turns[currentTurnIndex];
   const hasPrev = currentTurnIndex > 0;
@@ -107,6 +106,16 @@ export function ConversationDetailModal({
     currentTurn?.reviewedBy,
   );
   const reviewStatusLabel = formatReviewStatusLabel(currentTurn?.reviewStatus, reviewerLabel);
+  const actualOutput =
+    typeof currentTurn?.actualOutput === 'string' ? currentTurn.actualOutput : '';
+  const agentMessage = currentTurn
+    ? buildAgentRenderableMessage(
+        currentTurn.agentResponse,
+        toolCalls,
+        actualOutput,
+        currentTurn.id,
+      )
+    : undefined;
 
   return (
     <div className={styles.modal}>
@@ -271,36 +280,30 @@ export function ConversationDetailModal({
                     <div className={styles.sectionLabel}>
                       <Bot size={14} /> Agent 回复（实际）
                     </div>
-                    <div className={styles.actualReply}>
-                      {(typeof currentTurn.actualOutput === 'string'
-                        ? currentTurn.actualOutput.replace(/\n\n+/g, ' ')
-                        : '') || '(无实际回复)'}
+                    <div className={styles.agentResponseCard}>
+                      <div className={styles.agentResponseHeader}>
+                        <span className={styles.agentRoleTag}>AGENT</span>
+                        {toolCalls.length > 0 && (
+                          <span className={styles.agentBubbleMeta}>
+                            {toolCalls.length} 个工具调用
+                          </span>
+                        )}
+                      </div>
+                      <div className={`${styles.agentResponseBody} ${styles.agentRenderer}`}>
+                        {agentMessage ? (
+                          <MessagePartsAdapter
+                            message={agentMessage}
+                            expandToolsByDefault={false}
+                            expandReasoningByDefault={false}
+                            renderTextAsMarkdown={false}
+                            textFirst
+                          />
+                        ) : (
+                          <div className={styles.emptyAgentResponse}>(无实际回复)</div>
+                        )}
+                      </div>
                     </div>
                   </div>
-
-                  {/* 工具调用（如果有） - 移到 Agent 回复下面 */}
-                  {toolCalls.length > 0 && (
-                    <div className={styles.toolCallsSection}>
-                      <div
-                        className={styles.toolCallsToggle}
-                        onClick={() => setShowToolCalls(!showToolCalls)}
-                      >
-                        <Wrench size={12} />
-                        <span>工具调用 ({toolCalls.length})</span>
-                        <ChevronDown
-                          size={12}
-                          className={!showToolCalls ? styles.rotatedIcon : ''}
-                        />
-                      </div>
-                      {showToolCalls && (
-                        <div className={styles.toolCallsList}>
-                          {toolCalls.map((tool, idx) => (
-                            <ToolCallItem key={idx} tool={tool} />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               </div>
             </div>

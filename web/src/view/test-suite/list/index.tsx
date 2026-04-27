@@ -74,6 +74,7 @@ export default function TestSuite() {
     loading: conversationsLoading,
     executing,
     total: conversationTotal,
+    loadedBatchId: loadedConversationBatchId,
     setSelectedConversation,
     loadConversations,
     executeConversationTest: originalExecuteConversationTest,
@@ -111,6 +112,14 @@ export default function TestSuite() {
       loadTurns(selectedConversation.id);
     }
   }, [selectedConversation, loadTurns]);
+
+  const isConversationBatchLoaded =
+    activeTab === 'conversation' && selectedBatch?.id === loadedConversationBatchId;
+  const visibleConversations = isConversationBatchLoaded ? conversations : [];
+  const isConversationListLoading =
+    activeTab === 'conversation' &&
+    Boolean(selectedBatch) &&
+    (conversationsLoading || !isConversationBatchLoaded);
 
   return (
     <div className={styles.page}>
@@ -204,10 +213,10 @@ export default function TestSuite() {
               {/* 回归验证视图 - 与用例测试统一为列表+弹窗模式 */}
               {activeTab === 'conversation' && (
                 <ConversationList
-                  conversations={conversations}
+                  conversations={visibleConversations}
                   selectedConversation={null}
-                  loading={conversationsLoading}
-                  total={conversationTotal}
+                  loading={isConversationListLoading}
+                  total={isConversationBatchLoaded ? conversationTotal : 0}
                   executing={executing}
                   onSelect={setSelectedConversation}
                   onExecute={executeConversationTest}

@@ -25,14 +25,14 @@ export class TestBatchRepository extends BaseRepository {
    * created   → running, cancelled
    * running   → reviewing, cancelled
    * reviewing → completed, cancelled
-   * completed → (终态)
+   * completed → reviewing（单条重跑后重新进入评审）
    * cancelled → (终态)
    */
   private readonly VALID_STATUS_TRANSITIONS: Record<BatchStatus, BatchStatus[]> = {
     [BatchStatus.CREATED]: [BatchStatus.RUNNING, BatchStatus.CANCELLED],
     [BatchStatus.RUNNING]: [BatchStatus.REVIEWING, BatchStatus.CANCELLED],
     [BatchStatus.REVIEWING]: [BatchStatus.COMPLETED, BatchStatus.CANCELLED],
-    [BatchStatus.COMPLETED]: [], // 终态
+    [BatchStatus.COMPLETED]: [BatchStatus.REVIEWING],
     [BatchStatus.CANCELLED]: [], // 终态
   };
 
@@ -135,6 +135,8 @@ export class TestBatchRepository extends BaseRepository {
     const updateData: Record<string, unknown> = { status: newStatus };
     if (newStatus === BatchStatus.COMPLETED || newStatus === BatchStatus.CANCELLED) {
       updateData.completed_at = new Date().toISOString();
+    } else if (currentStatus === BatchStatus.COMPLETED) {
+      updateData.completed_at = null;
     }
 
     await this.update(updateData, (q) => q.eq('id', batchId));

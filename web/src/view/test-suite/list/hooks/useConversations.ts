@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   getConversationSnapshots,
   executeConversation,
@@ -13,6 +13,7 @@ interface UseConversationsResult {
   loading: boolean;
   executing: string | null;
   total: number;
+  loadedBatchId: string | null;
   page: number;
   pageSize: number;
   setSelectedConversation: (conversation: ConversationSnapshot | null) => void;
@@ -31,6 +32,8 @@ export function useConversations(): UseConversationsResult {
   const [loading, setLoading] = useState(false);
   const [executing, setExecuting] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
+  const [loadedBatchId, setLoadedBatchId] = useState<string | null>(null);
+  const requestSeqRef = useRef(0);
   const page = 1;
   const pageSize = CONVERSATION_PAGE_SIZE;
 
@@ -41,6 +44,9 @@ export function useConversations(): UseConversationsResult {
    * 加载对话列表
    */
   const loadConversations = useCallback(async (batchId: string) => {
+    const requestSeq = requestSeqRef.current + 1;
+    requestSeqRef.current = requestSeq;
+
     try {
       setLoading(true);
       const allSources: ConversationSnapshot[] = [];
@@ -64,14 +70,26 @@ export function useConversations(): UseConversationsResult {
         currentPage += 1;
       } while (true);
 
+      if (requestSeq !== requestSeqRef.current) {
+        return;
+      }
+
       setConversations(allSources);
       setTotal(totalCount);
+      setLoadedBatchId(batchId);
     } catch (error) {
+      if (requestSeq !== requestSeqRef.current) {
+        return;
+      }
+
       console.error('加载对话列表失败:', error);
       setConversations([]);
       setTotal(0);
+      setLoadedBatchId(batchId);
     } finally {
-      setLoading(false);
+      if (requestSeq === requestSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, [pageSize]);
 
@@ -159,6 +177,7 @@ export function useConversations(): UseConversationsResult {
     loading,
     executing,
     total,
+    loadedBatchId,
     page,
     pageSize,
     setSelectedConversation,
