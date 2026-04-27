@@ -4,24 +4,24 @@
 .tableWrapper {
   overflow-x: auto;
   border: none;
-  padding: 0 24px 24px;
+  padding: 32px;
 }
 
 .table {
   width: 100%;
-  min-width: 980px;
+  min-width: 1080px;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 14px;
   background: #fff;
 
   th {
-    padding: 12px 16px;
+    padding: 16px 24px;
     text-align: left;
     background: #f8fafc;
     color: #64748b;
     font-weight: 500;
-    font-size: 12px;
+    font-size: 13px;
     border-top: 1px solid #e2e8f0;
     border-bottom: 1px solid #e2e8f0;
     white-space: nowrap;
@@ -40,7 +40,7 @@
   }
 
   td {
-    padding: 14px 16px;
+    padding: 16px 24px;
     text-align: left;
     border-bottom: 1px solid #e2e8f0;
     color: #334155;
@@ -71,7 +71,7 @@
 .loadingCell {
   text-align: center;
   vertical-align: middle;
-  padding: 96px 0 !important;
+  padding: 120px 0 !important;
   color: #94a3b8;
 
   .emptyStateContainer {
@@ -115,7 +115,12 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  min-width: 180px;
+
+  span {
+    font-weight: 500;
+    color: $text-primary;
+    font-size: 14px;
+  }
 }
 
 .avatar {
@@ -133,113 +138,14 @@
   flex-shrink: 0;
 }
 
-.userMeta,
-.botCell,
-.timeCell,
-.metricsCell,
-.chatCell {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-
-.userName {
+.botCell {
   max-width: 180px;
   overflow: hidden;
-  color: $text-primary;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.userSubline,
-.botId,
-.timeCell span,
-.metricsCell span {
-  max-width: 220px;
-  overflow: hidden;
-  color: #94a3b8;
-  font-size: 12px;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.botCell {
-  min-width: 150px;
-}
-
-.botLabel {
-  display: inline-flex;
-  max-width: 220px;
-  align-items: center;
-  gap: 6px;
   color: #334155;
-  font-weight: 600;
-  line-height: 1.35;
-
-  svg {
-    flex: 0 0 auto;
-    color: #0f766e;
-  }
-
-  span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-}
-
-.chatCell {
-  min-width: 180px;
-
-  code {
-    display: block;
-    max-width: 240px;
-    overflow: hidden;
-    color: #64748b;
-    font-family:
-      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
-      monospace;
-    font-size: 11px;
-    letter-spacing: 0;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  span {
-    width: fit-content;
-    padding: 2px 7px;
-    border: 1px solid rgba(6, 182, 212, 0.2);
-    border-radius: 999px;
-    background: rgba(6, 182, 212, 0.08);
-    color: #0e7490;
-    font-size: 11px;
-    font-weight: 600;
-  }
-}
-
-.timeCell {
-  min-width: 120px;
-
-  strong {
-    color: #334155;
-    font-size: 13px;
-    font-weight: 600;
-  }
-}
-
-.metricsCell {
-  min-width: 100px;
-
-  strong {
-    color: #1f2937;
-    font-size: 15px;
-    font-weight: 700;
-  }
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chatIdCell {
@@ -329,7 +235,7 @@
 // 响应式 (PC端)
 @include respond-to(xl) {
   .tableWrapper {
-    padding: 0 $spacing-md $spacing-md;
+    padding: $spacing-md;
   }
 
   .table {
@@ -342,7 +248,7 @@
 
 @include respond-to(lg) {
   .tableWrapper {
-    padding: 0 $spacing-sm $spacing-sm;
+    padding: $spacing-sm;
   }
 
   .table {
@@ -358,11 +264,12 @@
     }
   }
 
-  .userName,
-  .userSubline,
-  .botLabel,
-  .botId,
-  .chatCell code {
-    max-width: 140px;
+  .chatIdCell,
+  .botCell {
+    font-size: 10px;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }

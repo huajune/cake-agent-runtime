@@ -18,7 +18,7 @@ import styles from './styles/index.module.scss';
 
 const ALL_BOTS = '__all_bots__';
 
-type SortMode = 'bot' | 'recent' | 'messages';
+type SortMode = 'firstActiveDesc' | 'lastActiveDesc' | 'messageDesc';
 
 function getBotLabel(user: Pick<UserData, 'botUserId' | 'imBotId'>) {
   return user.botUserId || user.imBotId || '未知 bot';
@@ -34,9 +34,9 @@ function compareText(a?: string, b?: string) {
 
 export default function Users() {
   const [activeTab, setActiveTab] = useState<TabType>('today');
-  const [botFilter, setBotFilter] = useState(ALL_BOTS);
   const [searchKeyword, setSearchKeyword] = useState('');
-  const [sortMode, setSortMode] = useState<SortMode>('bot');
+  const [sortMode, setSortMode] = useState<SortMode>('firstActiveDesc');
+  const [botFilter, setBotFilter] = useState(ALL_BOTS);
   const { data: todayUsers = [], isLoading: isTodayLoading } = useTodayUsers();
   const { data: pausedUsers = [], isLoading: isPausedLoading } = usePausedUsers();
   const toggleHosting = useToggleUserHosting();
@@ -55,8 +55,8 @@ export default function Users() {
     const counts = new Map<string, number>();
 
     for (const user of sourceUsers) {
-      const label = getBotLabel(user);
-      counts.set(label, (counts.get(label) || 0) + 1);
+      const botLabel = getBotLabel(user);
+      counts.set(botLabel, (counts.get(botLabel) || 0) + 1);
     }
 
     return Array.from(counts.entries())
@@ -87,30 +87,20 @@ export default function Users() {
         );
       })
       .sort((a, b) => {
-        if (sortMode === 'recent') {
+        if (sortMode === 'lastActiveDesc') {
           return b.lastActiveAt - a.lastActiveAt || compareText(a.chatId, b.chatId);
         }
 
-        if (sortMode === 'messages') {
-          return (
-            b.messageCount - a.messageCount ||
-            b.lastActiveAt - a.lastActiveAt ||
-            compareText(a.chatId, b.chatId)
-          );
+        if (sortMode === 'messageDesc') {
+          return b.messageCount - a.messageCount || compareText(a.chatId, b.chatId);
         }
 
-        return (
-          compareText(getBotLabel(a), getBotLabel(b)) ||
-          Number(a.isPaused) - Number(b.isPaused) ||
-          compareText(a.groupName, b.groupName) ||
-          b.lastActiveAt - a.lastActiveAt ||
-          compareText(a.chatId, b.chatId)
-        );
+        return b.firstActiveAt - a.firstActiveAt || compareText(a.chatId, b.chatId);
       });
   }, [activeBotFilter, searchKeyword, sortMode, sourceUsers]);
 
   const emptyMessage =
-    searchKeyword || activeBotFilter !== ALL_BOTS ? '没有匹配的用户' : '暂无数据';
+    searchKeyword || activeBotFilter !== ALL_BOTS ? '没有匹配的数据' : '暂无数据';
 
   return (
     <div className={styles.page}>
@@ -136,67 +126,54 @@ export default function Users() {
         )}
 
         <div className={styles.toolbar}>
-          <div className={styles.controls}>
-            <label className={styles.searchControl}>
-              <Search aria-hidden="true" size={15} />
-              <input
-                value={searchKeyword}
-                onChange={(event) => setSearchKeyword(event.target.value)}
-                placeholder="搜索用户 / 会话 / bot"
-                aria-label="搜索用户、会话或 bot"
-              />
-              {searchKeyword && (
-                <button
-                  type="button"
-                  className={styles.clearSearch}
-                  onClick={() => setSearchKeyword('')}
-                  aria-label="清空搜索"
-                >
-                  <X size={14} aria-hidden="true" />
-                </button>
-              )}
-            </label>
-
-            <label className={styles.sortControl}>
-              <ArrowUpDown aria-hidden="true" size={15} />
-              <select
-                value={sortMode}
-                onChange={(event) => setSortMode(event.target.value as SortMode)}
-                aria-label="排序方式"
-              >
-                <option value="bot">按 bot 稳定分组</option>
-                <option value="recent">最近活跃优先</option>
-                <option value="messages">消息数优先</option>
-              </select>
-            </label>
-          </div>
-
-          {sourceUsers.length > 0 && (
-            <div className={styles.botRail} aria-label="托管 bot 筛选">
+          <label className={styles.searchControl}>
+            <Search aria-hidden="true" size={15} />
+            <input
+              value={searchKeyword}
+              onChange={(event) => setSearchKeyword(event.target.value)}
+              placeholder="搜索用户 / 会话 / bot"
+              aria-label="搜索用户、会话或 bot"
+            />
+            {searchKeyword && (
               <button
                 type="button"
-                className={`${styles.botChip} ${activeBotFilter === ALL_BOTS ? styles.active : ''}`}
-                onClick={() => setBotFilter(ALL_BOTS)}
+                className={styles.clearSearch}
+                onClick={() => setSearchKeyword('')}
+                aria-label="清空搜索"
               >
-                <Bot size={13} aria-hidden="true" />
-                <span>全部</span>
-                <strong>{sourceUsers.length}</strong>
+                <X size={14} aria-hidden="true" />
               </button>
+            )}
+          </label>
+
+          <label className={styles.selectControl}>
+            <ArrowUpDown aria-hidden="true" size={15} />
+            <select
+              value={sortMode}
+              onChange={(event) => setSortMode(event.target.value as SortMode)}
+              aria-label="排序方式"
+            >
+              <option value="firstActiveDesc">首次活跃最新</option>
+              <option value="lastActiveDesc">最后活跃最新</option>
+              <option value="messageDesc">消息数最多</option>
+            </select>
+          </label>
+
+          <label className={styles.selectControl}>
+            <Bot aria-hidden="true" size={15} />
+            <select
+              value={activeBotFilter}
+              onChange={(event) => setBotFilter(event.target.value)}
+              aria-label="托管 bot 过滤"
+            >
+              <option value={ALL_BOTS}>全部托管 bot</option>
               {botOptions.map((option) => (
-                <button
-                  key={option.label}
-                  type="button"
-                  className={`${styles.botChip} ${activeBotFilter === option.label ? styles.active : ''}`}
-                  onClick={() => setBotFilter(option.label)}
-                  title={option.label}
-                >
-                  <Bot size={13} aria-hidden="true" />
-                  <span>{option.label}</span>
-                  <strong>{option.count}</strong>
-                </button>
+                <option key={option.label} value={option.label}>
+                  {option.label} ({option.count})
+                </option>
               ))}
-            </div>
-          )}
+            </select>
+          </label>
         </div>
 
         {/* 用户表格 */}

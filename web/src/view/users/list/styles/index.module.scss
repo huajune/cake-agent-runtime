@@ -35,23 +35,17 @@
 }
 
 .toolbar {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 190px 220px;
   gap: 10px;
+  align-items: center;
   padding: 14px 24px;
   border-bottom: 1px solid #e2e8f0;
   background: #ffffff;
 }
 
-.controls {
-  display: grid;
-  grid-template-columns: minmax(260px, 1fr) 210px;
-  gap: 10px;
-  align-items: center;
-}
-
 .searchControl,
-.sortControl {
+.selectControl {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -109,7 +103,7 @@
   }
 }
 
-.sortControl {
+.selectControl {
   select {
     width: 100%;
     border: none;
@@ -121,66 +115,6 @@
   }
 }
 
-.botRail {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 2px;
-}
-
-.botChip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 220px;
-  min-height: 30px;
-  padding: 0 11px;
-  border: 1px solid #dbe3ef;
-  border-radius: 999px;
-  background: #ffffff;
-  color: #475569;
-  cursor: pointer;
-  flex: 0 0 auto;
-  font-size: 12px;
-  transition:
-    background 0.2s ease,
-    border-color 0.2s ease,
-    color 0.2s ease;
-
-  span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  strong {
-    min-width: 18px;
-    padding: 1px 6px;
-    border-radius: 999px;
-    background: #f1f5f9;
-    color: #64748b;
-    font-size: 11px;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-  }
-
-  &:hover {
-    border-color: #14b8a6;
-    color: #0f766e;
-  }
-
-  &.active {
-    border-color: #14b8a6;
-    background: rgba(20, 184, 166, 0.08);
-    color: #0f766e;
-
-    strong {
-      background: #ffffff;
-      color: #0f766e;
-    }
-  }
-}
-
 @include respond-to(md) {
   .tabHint {
     padding: 10px 16px;
@@ -188,9 +122,6 @@
 
   .toolbar {
     padding: 16px;
-  }
-
-  .controls {
     grid-template-columns: 1fr;
   }
 }
