@@ -1,6 +1,8 @@
 # Agent 运行时架构
 
 **最后更新**：2026-04-23
+**面向**：研发同学
+**运营/产品视角**：[agent-runtime-architecture-product-view.md](agent-runtime-architecture-product-view.md)
 
 ---
 
