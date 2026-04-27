@@ -12,9 +12,9 @@
 ## 待发布
 
 **预计版本**: `v5.3.0`
-**最近更新**: `2026-04-24`
+**最近更新**: `2026-04-27`
 **来源分支**: `develop`
-**累计 PR**: 2
+**累计 PR**: 3
 
 ### 更新摘要
 - PR #111 Add `workflow_dispatch` support to `Build and Deploy` so a release tag can be deployed explicitly.
@@ -24,12 +24,16 @@
 - PR #115 `ca6fb3a3` tighten validation dataset curation gate — 收紧 `analyze-chat-badcases` skill 的数据集策展规则
 - PR #115 原分支 `codex/release-v5.2.1-clean` 与 `origin/codex/release-v5.2.1-clean` 发散严重（双方 PR #111/#112 hash 不同），但 develop 已带有这两个 PR 的等价/更新版本，无需重复合入
 - PR #115 只挑取 develop 真正缺失的 2 个 test-suite commit
+- PR #118 收紧测试套件作为验证闸门：以 badcase 为锚的数据集策展、重跑评审、Agent 思考/工具/回复链可视化重放，并补齐相关测试。
+- PR #118 提供面向运营/产品的两份新文档：Agent 运行时架构（运营视角）和 Agent 工作流与工具说明，从研发版架构文档加上交叉链接。
 
 ### 新功能
 - PR #111 Add `workflow_dispatch` support to `Build and Deploy` so a release tag can be deployed explicitly.
 - PR #115 `76599765` enhance test suite validation workflow — 扩展验证流程（新增 `validation_title` 字段 + DB migration、重写 ExecutionDetailViewer / ReviewModal / ConversationList 等前端组件、完善 test-batch/import/write-back service、补充大量单测）
 - PR #115 `ca6fb3a3` tighten validation dataset curation gate — 收紧 `analyze-chat-badcases` skill 的数据集策展规则
 - PR #115 只挑取 develop 真正缺失的 2 个 test-suite commit
+- PR #118 收紧测试套件作为验证闸门：以 badcase 为锚的数据集策展、重跑评审、Agent 思考/工具/回复链可视化重放，并补齐相关测试。
+- PR #118 提供面向运营/产品的两份新文档：Agent 运行时架构（运营视角）和 Agent 工作流与工具说明，从研发版架构文档加上交叉链接。
 
 ### 问题修复
 - 无
