@@ -79,6 +79,38 @@
         "pnpm run test:ci 通过：216 suites / 2526 tests",
         "pnpm run lint:check / format:check / typecheck 全部通过"
       ]
+    },
+    {
+      "number": "120",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/120",
+      "title": "[codex] improve hosting ops and feedback flows",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-27",
+      "summary": [
+        "fix WeCom image/text merge handling and booking/dashboard stats recording",
+        "improve the users hosting operations page with search, stable sorting, bot filtering, and real configured bot data",
+        "add Good/Bad feedback from the message-processing drawer, including Batch ID write-through to Feishu",
+        "make feedback success and failure states much more visible, including backend error details",
+        "refine pending release notes and deploy notification markdown"
+      ],
+      "features": [],
+      "fixes": [
+        "fix WeCom image/text merge handling and booking/dashboard stats recording"
+      ],
+      "optimizations": [
+        "improve the users hosting operations page with search, stable sorting, bot filtering, and real configured bot data"
+      ],
+      "ops": [
+        "add Good/Bad feedback from the message-processing drawer, including Batch ID write-through to Feishu",
+        "make feedback success and failure states much more visible, including backend error details",
+        "refine pending release notes and deploy notification markdown"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "pnpm run ci:check",
+        "pre-push hook passed: 216 suites / 2532 tests"
+      ]
     }
   ]
 }

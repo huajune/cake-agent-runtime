@@ -14,12 +14,17 @@
 **预计版本**: `v5.3.0`
 **最近更新**: `2026-04-27`
 **来源分支**: `develop`
-**累计 PR**: 3
+**累计 PR**: 4
 
 ### 更新摘要
 - PR #111 chore：发布部署流水线支持 tag 触发与环境变量同步提醒
 - PR #115 feat：测试套件验证流程增强 + 数据集策展硬闸门
 - PR #118 feat：Agent 思考/工具/回复链可视化重放与运营视角文档
+- PR #120 fix WeCom image/text merge handling and booking/dashboard stats recording
+- PR #120 improve the users hosting operations page with search, stable sorting, bot filtering, and real configured bot data
+- PR #120 add Good/Bad feedback from the message-processing drawer, including Batch ID write-through to Feishu
+- PR #120 make feedback success and failure states much more visible, including backend error details
+- PR #120 refine pending release notes and deploy notification markdown
 
 ### 新功能
 - PR #115 测试套件新增校验标题字段，前端重写复核弹窗、执行详情与对话列表组件
@@ -28,16 +33,20 @@
 - PR #118 新增运营/产品视角的 Agent 运行时与工作流文档，并与研发版架构文档交叉链接
 
 ### 问题修复
-- 无
+- PR #120 fix WeCom image/text merge handling and booking/dashboard stats recording
 
 ### 优化调整
 - PR #115 收紧 badcase 数据集策展规则
 - PR #118 批次状态机放开 completed → reviewing，支持单条重跑后重新评审
+- PR #120 improve the users hosting operations page with search, stable sorting, bot filtering, and real configured bot data
 
 ### 运维与流程
 - PR #111 发布工作流在打 tag、创建 GitHub Release 之后自动触发部署，避免受保护分支推送不触发下游
 - PR #111 部署工作流支持手动指定 tag 触发，便于回滚或定向重发
 - PR #111 PR 合并后在变更记录中标记环境变量相关文件，提示生产侧手动同步
+- PR #120 add Good/Bad feedback from the message-processing drawer, including Batch ID write-through to Feishu
+- PR #120 make feedback success and failure states much more visible, including backend error details
+- PR #120 refine pending release notes and deploy notification markdown
 
 ### 配置变更
 - 无
@@ -51,6 +60,8 @@
 - PR #115 Dashboard 测试套件列表 / 执行详情 / 对话复核弹窗回归通过
 - PR #118 pnpm run test:ci 通过：216 suites / 2526 tests
 - PR #118 pnpm run lint:check / format:check / typecheck 全部通过
+- PR #120 pnpm run ci:check
+- PR #120 pre-push hook passed: 216 suites / 2532 tests
 <!-- release:pending:end -->
 
 ## [5.2.0] - 2026-04-24
