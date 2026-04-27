@@ -7,12 +7,43 @@ export interface BotAccount {
   id?: string;
   wxid?: string;
   weixin?: string;
+  wecomUserId?: string;
+  name?: string;
   nickName?: string;
   avatar?: string;
   online?: boolean;
+  status?: number;
   corpName?: string;
+  corpId?: string;
   aiStatus?: number;
+  aiBotId?: string;
+  groupId?: string;
   groupName?: string;
+  groupAiBotId?: string;
+}
+
+interface GroupBotAccount {
+  id?: string;
+  wxid?: string;
+  wecomUserId?: string;
+  status?: number;
+  name?: string;
+  avatar?: string;
+  corpId?: string;
+  aiStatus?: number;
+  aiBotId?: string;
+  corpName?: string;
+}
+
+interface GroupBotsResponse {
+  errcode?: number;
+  errmsg?: string;
+  groups?: Array<{
+    id?: string;
+    name?: string;
+    groupAiBotId?: string;
+    bots?: GroupBotAccount[];
+  }>;
 }
 
 @Injectable()
@@ -42,89 +73,76 @@ export class BotService {
   }
 
   /**
-   * 获取当前系统已配置小组 token 下的托管账号列表。
-   * 前端不需要也不应该传小组 token，因此这里统一从 GROUP_TASK_TOKENS 读取。
+   * 获取企业内各小组托管账号信息。
+   * 使用企业级接口统一读取托管开关同源的小组账号，不依赖 GROUP_TASK_TOKENS。
    */
   async getConfiguredBotList(): Promise<BotAccount[]> {
-    const tokenConfigs = this.parseGroupTaskTokens();
-    if (tokenConfigs.length === 0) {
-      this.logger.warn('GROUP_TASK_TOKENS 未配置，无法获取托管账号列表');
+    const token = this.configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim();
+    if (!token) {
+      this.logger.warn('STRIDE_ENTERPRISE_TOKEN 未配置，无法获取企业托管账号列表');
       return [];
     }
 
-    const settledResults = await Promise.allSettled(
-      tokenConfigs.map(async ({ groupName, token }) => {
-        const response = await this.getBotList(token);
-        return this.extractBotAccounts(response).map((bot) => ({
-          ...bot,
-          groupName,
-        }));
-      }),
-    );
+    try {
+      const apiUrl = this.apiConfig.endpoints.bot.groupBots();
+      const response = (await this.httpService.get(apiUrl, { token })) as GroupBotsResponse;
+      const bots = new Map<string, BotAccount>();
 
-    const bots = new Map<string, BotAccount>();
+      for (const group of this.extractGroups(response)) {
+        for (const bot of group.bots || []) {
+          const key = bot.wxid || bot.id || bot.wecomUserId || bot.name;
+          if (!key) continue;
 
-    settledResults.forEach((result, index) => {
-      if (result.status === 'rejected') {
-        this.logger.warn(
-          `获取小组 [${tokenConfigs[index]?.groupName || '未知'}] 托管账号失败: ${
-            result.reason instanceof Error ? result.reason.message : String(result.reason)
-          }`,
-        );
-        return;
-      }
-
-      for (const bot of result.value) {
-        const key = bot.wxid || bot.id || bot.weixin || bot.nickName;
-        if (!key) continue;
-        bots.set(key, { ...bots.get(key), ...bot });
-      }
-    });
-
-    return Array.from(bots.values()).sort((a, b) => {
-      if (a.online !== b.online) {
-        return a.online ? -1 : 1;
-      }
-      return (a.nickName || a.weixin || a.wxid || '').localeCompare(
-        b.nickName || b.weixin || b.wxid || '',
-        'zh-Hans-CN',
-        { numeric: true, sensitivity: 'base' },
-      );
-    });
-  }
-
-  private parseGroupTaskTokens(): Array<{ groupName: string; token: string }> {
-    const raw = this.configService.get<string>('GROUP_TASK_TOKENS', '').trim();
-    if (!raw) return [];
-
-    return raw
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean)
-      .map((item) => {
-        const separatorIndex = item.indexOf(':');
-        if (separatorIndex === -1) {
-          return { groupName: item, token: item };
+          bots.set(key, {
+            ...bots.get(key),
+            id: bot.id,
+            wxid: bot.wxid,
+            weixin: bot.wecomUserId,
+            wecomUserId: bot.wecomUserId,
+            name: bot.name,
+            nickName: bot.name,
+            avatar: bot.avatar,
+            status: bot.status,
+            corpId: bot.corpId,
+            corpName: bot.corpName,
+            aiStatus: bot.aiStatus,
+            aiBotId: bot.aiBotId,
+            groupId: group.id,
+            groupName: group.name,
+            groupAiBotId: group.groupAiBotId,
+          });
         }
+      }
 
-        return {
-          groupName: item.slice(0, separatorIndex).trim(),
-          token: item.slice(separatorIndex + 1).trim(),
-        };
-      })
-      .filter((item) => item.token);
+      this.logger.log(`获取企业托管账号列表成功: ${bots.size} 个账号`);
+      return Array.from(bots.values()).sort((a, b) =>
+        (a.nickName || a.weixin || a.wxid || '').localeCompare(
+          b.nickName || b.weixin || b.wxid || '',
+          'zh-Hans-CN',
+          { numeric: true, sensitivity: 'base' },
+        ),
+      );
+    } catch (error) {
+      this.logger.error('获取企业托管账号列表失败:', error);
+      throw error;
+    }
   }
 
-  private extractBotAccounts(response: unknown): BotAccount[] {
+  private extractGroups(response: unknown): NonNullable<GroupBotsResponse['groups']> {
     let current = response;
     while (current && typeof current === 'object' && 'data' in current) {
       current = (current as { data: unknown }).data;
     }
 
-    if (!Array.isArray(current)) {
+    const groups =
+      current && typeof current === 'object' && 'groups' in current
+        ? (current as GroupBotsResponse).groups
+        : undefined;
+
+    if (!Array.isArray(groups)) {
       return [];
     }
 
-    return current.filter((item): item is BotAccount => item !== null && typeof item === 'object');
+    return groups.filter((group) => group !== null && typeof group === 'object');
   }
 }

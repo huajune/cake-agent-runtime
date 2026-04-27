@@ -50,17 +50,21 @@ function uniqueValues(values: Array<string | undefined>) {
 }
 
 function getBotAliases(bot: BotAccount) {
-  return uniqueValues([bot.nickName, bot.weixin, bot.wxid, bot.id]).map(normalizeText);
+  return uniqueValues([bot.nickName, bot.name, bot.weixin, bot.wecomUserId, bot.wxid, bot.id]).map(
+    normalizeText,
+  );
 }
 
 function getBotOptionValue(bot: BotAccount, index: number) {
-  return bot.wxid || bot.id || bot.weixin || bot.nickName || `bot-${index}`;
+  return bot.wxid || bot.id || bot.wecomUserId || bot.weixin || bot.nickName || `bot-${index}`;
 }
 
 function getBotDisplayName(bot: BotAccount) {
-  const primary = bot.nickName || bot.weixin || bot.wxid || bot.id || '未命名账号';
-  if (bot.nickName && bot.weixin && normalizeText(bot.nickName) !== normalizeText(bot.weixin)) {
-    return `${bot.nickName} / ${bot.weixin}`;
+  const name = bot.nickName || bot.name;
+  const userId = bot.wecomUserId || bot.weixin;
+  const primary = name || userId || bot.wxid || bot.id || '未命名账号';
+  if (name && userId && normalizeText(name) !== normalizeText(userId)) {
+    return `${name} / ${userId}`;
   }
   return primary;
 }
