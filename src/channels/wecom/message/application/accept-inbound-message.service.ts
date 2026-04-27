@@ -152,10 +152,21 @@ export class AcceptInboundMessageService {
       modelId: overrideModelId,
     });
 
-    if (shouldDescribeBeforeAgent) {
-      await this.imageDescription.describeAndUpdateSync(messageData.messageId, imgUrl, visualKind);
-      await this.wecomObservability.markImagePrepared(messageData.messageId);
+    if (!shouldDescribeBeforeAgent) {
+      return;
     }
+
+    // 关键：vision 描述同步等待会让消息晚 ~6s 才进 Redis 队列，期间前一条文本的
+    // debounce 静默会"假性达标"提前 fire，把图文拆成两批（参见 wecom-batch race）。
+    // 改 fire-and-forget 后，addMessage 立即更新 lastMessageAt 重置静默；worker
+    // 真正取本批后由 ReplyWorkflowService 的 awaitVision 等待描述完成再调 Agent。
+    this.imageDescription.describeAndUpdateAsync(messageData.messageId, imgUrl, visualKind);
+
+    // 描述真正完成后再补打 imagePreparedAt（observability only），不影响业务正确性。
+    void this.imageDescription
+      .awaitVision([messageData.messageId], 30_000)
+      .then(() => this.wecomObservability.markImagePrepared(messageData.messageId))
+      .catch(() => {});
   }
 
   private async handleSelfMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
@@ -202,6 +213,20 @@ export class AcceptInboundMessageService {
     this.logger.log(
       `[自发消息] 已存储为 assistant 历史 [${messageData.messageId}]: "${content.substring(0, 50)}${content.length > 50 ? '...' : ''}"`,
     );
+
+    // 招募经理（真人）发的图片/表情也需要 vision 描述：assistant 角色历史不会作为
+    // image part 注入下一轮 Agent，模型只能从 text content 读图。这里 fire-and-forget
+    // 触发描述，描述完成后会通过 chat_messages.UPDATE 回写 content（带 [图片消息] 前缀）
+    // 并失效短期记忆缓存。
+    this.triggerSelfMessageVisionIfNeeded(messageData);
+  }
+
+  private triggerSelfMessageVisionIfNeeded(messageData: EnterpriseMessageCallbackDto): void {
+    const imgUrl = MessageParser.extractImageUrl(messageData);
+    if (!imgUrl) return;
+    const visualKind = MessageParser.extractVisualMessageType(messageData);
+    if (!visualKind) return;
+    this.imageDescription.describeAndUpdateAsync(messageData.messageId, imgUrl, visualKind);
   }
 
   private async recordUserMessageToHistory(

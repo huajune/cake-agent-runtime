@@ -747,6 +747,11 @@ export class SubmitFeedbackRequestDto {
   @IsString()
   chatId?: string;
 
+  @ApiPropertyOptional({ description: 'Batch ID' })
+  @IsOptional()
+  @IsString()
+  batchId?: string;
+
   @ApiPropertyOptional({ description: '候选人微信昵称' })
   @IsOptional()
   @IsString()

@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BotService } from '@wecom/bot/bot.service';
 import { HttpService } from '@infra/client-http/http.service';
 import { ApiConfigService } from '@infra/config/api-config.service';
+import { ConfigService } from '@nestjs/config';
 
 describe('BotService', () => {
   let service: BotService;
@@ -14,8 +15,13 @@ describe('BotService', () => {
     endpoints: {
       bot: {
         list: jest.fn().mockReturnValue('https://api.example.com/bot/list'),
+        groupBots: jest.fn().mockReturnValue('https://api.example.com/bot/getGroupBots'),
       },
     },
+  };
+
+  const mockConfigService = {
+    get: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -24,6 +30,7 @@ describe('BotService', () => {
         BotService,
         { provide: HttpService, useValue: mockHttpService },
         { provide: ApiConfigService, useValue: mockApiConfig },
+        { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
 

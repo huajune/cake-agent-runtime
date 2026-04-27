@@ -9,6 +9,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
 import type { InterviewBookingCustomerLabel, JobDetail } from '@sponge/sponge.types';
+import type { RecruitmentCaseRecord } from '@biz/recruitment-case/entities/recruitment-case.entity';
 import {
   getSpongeEducationLabelById,
   getSpongeGenderLabelById,
@@ -27,6 +28,7 @@ import {
 } from '@sponge/sponge-job.util';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
+import { BookingService } from '@biz/message/services/booking.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import { API_BOOKING_REQUIRED_PAYLOAD_FIELDS } from '@tools/duliday/job-booking.contract';
@@ -34,6 +36,26 @@ import { findScreeningFailure } from '@tools/duliday/supplement-label-classifier
 
 const logger = new Logger('duliday_interview_booking');
 const INTERVIEW_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+
+function buildAlreadyBookedResult(activeCase: RecruitmentCaseRecord): Record<string, unknown> {
+  return {
+    success: false,
+    errorType: 'already_booked',
+    _outcome: '当前会话已存在面试预约，本次未重复提交',
+    _replyInstruction:
+      '当前会话已有面试预约。请直接基于 currentBooking 里的时间、门店、岗位等信息回答候选人；不要说“重新约好了”。若候选人要求改期/取消，或反馈门店查不到预约、预约信息冲突，请调用 request_handoff 转人工处理。',
+    currentBooking: {
+      bookingId: activeCase.booking_id,
+      bookedAt: activeCase.booked_at,
+      interviewTime: activeCase.interview_time,
+      jobId: activeCase.job_id,
+      jobName: activeCase.job_name,
+      brandName: activeCase.brand_name,
+      storeName: activeCase.store_name,
+      status: activeCase.status,
+    },
+  };
+}
 
 function pauseUserHostingAsync(
   userHostingService: UserHostingService,
@@ -48,6 +70,27 @@ function pauseUserHostingAsync(
     .catch((error: unknown) => {
       const errorMessage = error instanceof Error ? (error.stack ?? error.message) : String(error);
       logger.error(`[自动暂停] 暂停托管失败: chatId=${chatId}`, errorMessage);
+    });
+}
+
+function recordBookingCountAsync(
+  bookingService: BookingService,
+  context: ToolBuildContext,
+  booking: { brandName?: string; storeName?: string },
+): void {
+  void bookingService
+    .incrementBookingCount({
+      brandName: booking.brandName,
+      storeName: booking.storeName,
+      chatId: context.chatId ?? context.sessionId,
+      userId: context.userId,
+      userName: context.contactName,
+      managerId: context.botUserId ?? context.botImId,
+      managerName: context.botUserId,
+    })
+    .catch((error: unknown) => {
+      const errorMessage = error instanceof Error ? (error.stack ?? error.message) : String(error);
+      logger.error(`[预约统计] 写入失败: chatId=${context.sessionId}`, errorMessage);
     });
 }
 
@@ -78,12 +121,15 @@ export function buildInterviewBookingTool(
   privateChatNotifier: PrivateChatMonitorNotifierService,
   userHostingService: UserHostingService,
   recruitmentCaseService: RecruitmentCaseService,
+  bookingService: BookingService,
 ): ToolBuilder {
   return (context) => {
     return tool({
       description: `预约面试。真正调用面试预约接口，提交面试时间 + 候选人信息。入参必须与 supplier/entryUser 契约保持一致。
 
 ## 前置
+- 若系统提示中已存在 [当前预约信息]，说明本会话已有 active 面试预约；候选人追问面试时间/门店/岗位/预约状态时，直接基于 [当前预约信息] 回答，**严禁再次调用本工具**
+- 候选人要求改期/取消、反馈门店查不到预约或预约信息冲突时，不要再次调用本工具，按 request_handoff 的规则转人工处理
 - 需要 jobId。优先从 [会话记忆] 的「当前焦点岗位」中获取；若没有，再从「最近已展示岗位」或「上轮候选岗位池」中获取，或调用 duliday_job_list 查询
 - 涉及"今天能不能约"、"哪天能约"、"当前岗位还要补什么资料"时，先调用 duliday_interview_precheck，再决定是否进入预约
 - 在调用前，先按当前阶段策略和 duliday_job_list 的结果核对硬条件、面试形式和明确时间
@@ -169,6 +215,25 @@ export function buildInterviewBookingTool(
         jobName,
       }) => {
         logger.log(`预约面试: ${name}, jobId=${jobId}`);
+
+        try {
+          const activeCase = await recruitmentCaseService.getActiveOnboardFollowupCase({
+            corpId: context.corpId,
+            chatId: context.sessionId,
+          });
+          if (activeCase) {
+            // 这里不是本轮新预约成功，显式置 false 用来拦住同轮重复拉群等副作用。
+            context.bookingSucceeded = false;
+            logger.warn(
+              `检测到已存在 active 面试 case，跳过重复预约: chatId=${context.sessionId}, caseId=${activeCase.id}`,
+            );
+            return buildAlreadyBookedResult(activeCase);
+          }
+        } catch (caseLookupError: unknown) {
+          const message =
+            caseLookupError instanceof Error ? caseLookupError.message : String(caseLookupError);
+          logger.warn(`查询 active 面试 case 失败，继续执行预约流程: ${message}`);
+        }
 
         const missingFields = [
           { field: 'jobId', value: jobId },
@@ -366,6 +431,10 @@ export function buildInterviewBookingTool(
           requestInfo = {
             jobId,
             interviewTime,
+            brandName: resolvedBrandName,
+            storeName: resolvedStoreName,
+            jobName: resolvedJobName,
+            interviewType,
             name,
             phone,
             age,
@@ -418,6 +487,11 @@ export function buildInterviewBookingTool(
               typeof resultRecord.booking_id === 'string' && resultRecord.booking_id.trim()
                 ? resultRecord.booking_id.trim()
                 : null;
+
+            recordBookingCountAsync(bookingService, context, {
+              brandName: resolvedBrandName,
+              storeName: resolvedStoreName,
+            });
 
             void recruitmentCaseService
               .openOnBookingSuccess({

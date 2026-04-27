@@ -57,13 +57,72 @@ describe('MessageParser', () => {
       expect(result.content).toBe('hello world');
     });
 
+    it('should prepend quoteMessage as a [引用 X：Y] line when payload carries one', () => {
+      const messageData = buildMessageData({
+        payload: {
+          text: '这个是每天吗，几点',
+          pureText: '这个是每天吗，几点',
+          quoteMessage: {
+            messageId: 'cff1dabe51d82bfc7f4fd66c4aff9150',
+            wxid: '1688855171908166',
+            nickname: '李宇杭',
+            type: '7',
+            timestamp: '1777275510346',
+            content: { text: '奥乐齐红松店（晚班补货）：离你3.3km，18-45岁，负责上货补货。' },
+          },
+        },
+      });
+      const result = MessageParser.parse(messageData);
+      expect(result.content).toBe(
+        '[引用 李宇杭：奥乐齐红松店（晚班补货）：离你3.3km，18-45岁，负责上货补货。]\n这个是每天吗，几点',
+      );
+    });
+
+    it('should fall back to placeholder when quoted message is non-text', () => {
+      const messageData = buildMessageData({
+        payload: {
+          text: '看这张',
+          pureText: '看这张',
+          quoteMessage: {
+            messageId: 'm-1',
+            wxid: 'w-1',
+            nickname: '招募经理',
+            type: '6',
+            timestamp: '1777275510346',
+            content: { url: 'http://example.com/img.jpg' },
+          },
+        },
+      });
+      const result = MessageParser.parse(messageData);
+      expect(result.content).toBe('[引用 招募经理：[图片消息]]\n看这张');
+    });
+
+    it('should ignore quoteMessage when its content has no readable text', () => {
+      const messageData = buildMessageData({
+        payload: {
+          text: 'hello',
+          pureText: 'hello',
+          quoteMessage: {
+            messageId: 'm-2',
+            wxid: 'w-2',
+            nickname: '某人',
+            type: '999',
+            timestamp: '1777275510346',
+            content: {},
+          },
+        },
+      });
+      const result = MessageParser.parse(messageData);
+      expect(result.content).toBe('hello');
+    });
+
     it('should extract content for image messages (group-level: url)', () => {
       const messageData = buildMessageData({
         messageType: MessageType.IMAGE,
         payload: { url: 'http://example.com/img.jpg', size: 1024 },
       });
       const result = MessageParser.parse(messageData);
-      expect(result.content).toBe('[图片消息] 候选人发送了一张图片');
+      expect(result.content).toBe('[图片消息]');
     });
 
     it('should extract content for image messages (enterprise-level: imageUrl)', () => {
@@ -72,7 +131,7 @@ describe('MessageParser', () => {
         payload: { imageUrl: 'http://example.com/img.jpg', size: 1024, width: 118, height: 210 },
       });
       const result = MessageParser.parse(messageData);
-      expect(result.content).toBe('[图片消息] 候选人发送了一张图片');
+      expect(result.content).toBe('[图片消息]');
     });
 
     it('should extract content for voice messages (group-level: url, no STT)', () => {
@@ -99,7 +158,7 @@ describe('MessageParser', () => {
         payload: { imageUrl: 'http://example.com/emoji.gif' },
       });
       const result = MessageParser.parse(messageData);
-      expect(result.content).toBe('[表情消息] 候选人发送了一个表情');
+      expect(result.content).toBe('[表情消息]');
     });
 
     it('should extract content for mini program messages', () => {

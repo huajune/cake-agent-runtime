@@ -106,6 +106,7 @@ export class ApiConfigService {
     // 机器人相关
     bot: {
       list: () => this.buildApiUrl('/bot/list'),
+      groupBots: () => this.buildApiUrl('/bot/getGroupBots', 'enterprise-v1'),
     },
     // 小组相关（使用企业级 API）
     group: {

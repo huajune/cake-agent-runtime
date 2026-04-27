@@ -9,6 +9,8 @@ export interface TodayUserData {
   odId: string;
   odName: string;
   groupName?: string;
+  botUserId?: string;
+  imBotId?: string;
   messageCount: number;
   tokenUsage: number;
   firstActiveAt: number;
@@ -22,6 +24,8 @@ export interface PausedUserData {
   pauseExpiresAt: number;
   odName?: string;
   groupName?: string;
+  botUserId?: string;
+  imBotId?: string;
 }
 
 export interface UserInfo {

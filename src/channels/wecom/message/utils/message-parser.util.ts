@@ -9,6 +9,8 @@ import {
   LocationPayload,
   VoicePayload,
   MiniProgramPayload,
+  QuoteMessage,
+  TextPayload,
 } from '../ingress/message-callback.dto';
 import { MessageType } from '@enums/message-callback.enum';
 import { ScenarioType } from '@enums/agent.enum';
@@ -67,9 +69,11 @@ export class MessageParser {
   static extractContent(messageData: EnterpriseMessageCallbackDto): string {
     const { messageType, payload } = messageData;
 
-    // 文本消息
+    // 文本消息（含微信原生引用气泡）
     if (isTextPayload(messageType, payload)) {
-      return payload.pureText || payload.text;
+      const baseText = payload.pureText || payload.text;
+      const quoted = this.formatQuoteMessage(payload);
+      return quoted ? `${quoted}\n${baseText}` : baseText;
     }
 
     // 位置消息 - 转换为自然语言描述
@@ -82,14 +86,15 @@ export class MessageParser {
       return this.formatVoiceAsText(payload);
     }
 
-    // 表情消息 - 文字标记（表情图片同样通过 image part 传入 Agent 做 vision 识别）
+    // 表情消息 - 文字标记（vision 描述完成后由 ImageDescriptionService 回写为
+    // `[表情消息] {description}`；这里只用占位前缀，避免硬编码"候选人/招募经理"主语）
     if (isEmotionPayload(messageType, payload)) {
-      return '[表情消息] 候选人发送了一个表情';
+      return '[表情消息]';
     }
 
-    // 图片消息 - 文字标记（实际图片通过 image part 传入 Agent）
+    // 图片消息 - 文字标记（同上，role 由 chat_messages.role 区分，不放在内容里）
     if (isImagePayload(messageType, payload)) {
-      return '[图片消息] 候选人发送了一张图片';
+      return '[图片消息]';
     }
 
     // 小程序消息
@@ -97,6 +102,46 @@ export class MessageParser {
       return this.formatMiniProgramAsText(payload);
     }
 
+    return '';
+  }
+
+  /**
+   * 把微信原生引用气泡（payload.quoteMessage）渲染成 Agent 可读的引用前缀。
+   *
+   * 业务背景：候选人长按 bot 之前发的某条岗位/规则消息选择"引用"后再回复时，
+   * 企微回调里 `payload.quoteMessage` 会带被引用消息的发言人和原文。若不渲染进
+   * Agent 看到的对话内容，模型只看到"这个是每天吗"这种孤立指代，就会把"这个"
+   * 误绑到对话中最近的岗位（badcase #19 / `recvhYwaqtr5dr`）。
+   */
+  private static formatQuoteMessage(payload: TextPayload): string | null {
+    const quote = payload.quoteMessage;
+    if (!quote) return null;
+    const text = MessageParser.extractQuoteText(quote);
+    if (!text) return null;
+    const trimmed = text.replace(/\s+/g, ' ').trim();
+    if (!trimmed) return null;
+    const speaker = quote.nickname?.trim() || '对方';
+    const snippet = trimmed.length > 120 ? `${trimmed.slice(0, 120)}…` : trimmed;
+    return `[引用 ${speaker}：${snippet}]`;
+  }
+
+  /**
+   * 从引用消息的 content 字段抽出可读文本。content 类型按 quote.type 变化（文本/图片/语音…），
+   * 这里只处理文本场景；其他类型用 [图片消息]/[语音消息] 之类的占位符。
+   */
+  private static extractQuoteText(quote: QuoteMessage): string {
+    const c = quote.content;
+    if (typeof c === 'string') return c;
+    if (c && typeof c === 'object') {
+      const obj = c as { text?: unknown; pureText?: unknown };
+      if (typeof obj.pureText === 'string') return obj.pureText;
+      if (typeof obj.text === 'string') return obj.text;
+    }
+    // 非文本引用：根据被引用消息的 type 给个占位
+    const t = String(quote.type ?? '').toLowerCase();
+    if (t === '6' || t === 'image') return '[图片消息]';
+    if (t === '5' || t === 'emotion') return '[表情消息]';
+    if (t === '2' || t === 'voice') return '[语音消息]';
     return '';
   }
 

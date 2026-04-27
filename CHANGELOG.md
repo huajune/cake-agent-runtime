@@ -17,34 +17,27 @@
 **累计 PR**: 3
 
 ### 更新摘要
-- PR #111 Add `workflow_dispatch` support to `Build and Deploy` so a release tag can be deployed explicitly.
-- PR #111 Trigger `deploy.yml` from the release metadata workflow after a new release tag and GitHub Release are created.
-- PR #111 Track merged PR env-related file changes in the generated changelog and surface them in deployment notifications as a manual server `.env.production` sync reminder.
-- PR #115 `76599765` enhance test suite validation workflow — 扩展验证流程（新增 `validation_title` 字段 + DB migration、重写 ExecutionDetailViewer / ReviewModal / ConversationList 等前端组件、完善 test-batch/import/write-back service、补充大量单测）
-- PR #115 `ca6fb3a3` tighten validation dataset curation gate — 收紧 `analyze-chat-badcases` skill 的数据集策展规则
-- PR #115 原分支 `codex/release-v5.2.1-clean` 与 `origin/codex/release-v5.2.1-clean` 发散严重（双方 PR #111/#112 hash 不同），但 develop 已带有这两个 PR 的等价/更新版本，无需重复合入
-- PR #115 只挑取 develop 真正缺失的 2 个 test-suite commit
-- PR #118 收紧测试套件作为验证闸门：以 badcase 为锚的数据集策展、重跑评审、Agent 思考/工具/回复链可视化重放，并补齐相关测试。
-- PR #118 提供面向运营/产品的两份新文档：Agent 运行时架构（运营视角）和 Agent 工作流与工具说明，从研发版架构文档加上交叉链接。
+- PR #111 chore：发布部署流水线支持 tag 触发与环境变量同步提醒
+- PR #115 feat：测试套件验证流程增强 + 数据集策展硬闸门
+- PR #118 feat：Agent 思考/工具/回复链可视化重放与运营视角文档
 
 ### 新功能
-- PR #111 Add `workflow_dispatch` support to `Build and Deploy` so a release tag can be deployed explicitly.
-- PR #115 `76599765` enhance test suite validation workflow — 扩展验证流程（新增 `validation_title` 字段 + DB migration、重写 ExecutionDetailViewer / ReviewModal / ConversationList 等前端组件、完善 test-batch/import/write-back service、补充大量单测）
-- PR #115 `ca6fb3a3` tighten validation dataset curation gate — 收紧 `analyze-chat-badcases` skill 的数据集策展规则
-- PR #115 只挑取 develop 真正缺失的 2 个 test-suite commit
-- PR #118 收紧测试套件作为验证闸门：以 badcase 为锚的数据集策展、重跑评审、Agent 思考/工具/回复链可视化重放，并补齐相关测试。
-- PR #118 提供面向运营/产品的两份新文档：Agent 运行时架构（运营视角）和 Agent 工作流与工具说明，从研发版架构文档加上交叉链接。
+- PR #115 测试套件新增校验标题字段，前端重写复核弹窗、执行详情与对话列表组件
+- PR #115 测试批次导入与回写飞书的服务链路完善
+- PR #118 Agent 响应快照持久化，前端在执行详情按思考链 → 工具调用 → 回复链单一来源还原
+- PR #118 新增运营/产品视角的 Agent 运行时与工作流文档，并与研发版架构文档交叉链接
 
 ### 问题修复
 - 无
 
 ### 优化调整
-- 无
+- PR #115 收紧 badcase 数据集策展规则
+- PR #118 批次状态机放开 completed → reviewing，支持单条重跑后重新评审
 
 ### 运维与流程
-- PR #111 Trigger `deploy.yml` from the release metadata workflow after a new release tag and GitHub Release are created.
-- PR #111 Track merged PR env-related file changes in the generated changelog and surface them in deployment notifications as a manual server `.env.production` sync reminder.
-- PR #115 原分支 `codex/release-v5.2.1-clean` 与 `origin/codex/release-v5.2.1-clean` 发散严重（双方 PR #111/#112 hash 不同），但 develop 已带有这两个 PR 的等价/更新版本，无需重复合入
+- PR #111 发布工作流在打 tag、创建 GitHub Release 之后自动触发部署，避免受保护分支推送不触发下游
+- PR #111 部署工作流支持手动指定 tag 触发，便于回滚或定向重发
+- PR #111 PR 合并后在变更记录中标记环境变量相关文件，提示生产侧手动同步
 
 ### 配置变更
 - 无
@@ -53,11 +46,11 @@
 - PR #115 检测到环境变量相关文件变更：`.env.example`、`src/infra/config/env.validation.ts`。请手动同步远程服务器 `/data/cake/.env.production`。
 
 ### 验证记录
-- PR #111 `node --check scripts/update-version-changelog.js`
-- PR #111 `node --check scripts/send-deploy-notification.js`
-- PR #111 `pnpm exec prettier --check .github/workflows/deploy.yml .github/workflows/version-changelog.yml scripts/update-version-changelog.js scripts/send-deploy-notification.js`
-- PR #111 Ruby YAML parse for both changed workflow files
-- PR #111 pre-push `pnpm run ci:check` passed: 216 suites, 2515 tests
+- PR #111 pnpm run ci:check 通过：216 suites / 2515 tests
+- PR #115 测试环境已应用 validation_title 字段迁移
+- PR #115 Dashboard 测试套件列表 / 执行详情 / 对话复核弹窗回归通过
+- PR #118 pnpm run test:ci 通过：216 suites / 2526 tests
+- PR #118 pnpm run lint:check / format:check / typecheck 全部通过
 <!-- release:pending:end -->
 
 ## [5.2.0] - 2026-04-24

@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { formatDuration } from '@/utils/format';
+import { FeedbackButtons } from '@/view/agent-test/list/components/FeedbackButtons';
+import { FeedbackModal } from '@/view/agent-test/list/components/FeedbackModal';
+import { useFeedback } from '@/view/agent-test/list/hooks/useFeedback';
 import { useMessageProcessingRecordDetail } from '@/hooks/chat/useMessageProcessingRecords';
 import ChatSection from './ChatSection';
 import {
@@ -8,6 +11,7 @@ import {
   getTimingMetrics,
   getExecutionFacts,
   getContextFacts,
+  getHistoryMessages,
 } from './utils';
 import styles from './index.module.scss';
 
@@ -31,6 +35,22 @@ export default function MessageProcessingDetailDrawer({
 }: MessageProcessingDetailDrawerProps) {
   const { data: message, isLoading } = useMessageProcessingRecordDetail(messageId);
   const leftColRef = useRef<HTMLDivElement | null>(null);
+  const feedback = useFeedback();
+  const {
+    clearSuccess,
+    closeModal,
+    feedbackType,
+    isOpen,
+    isSubmitting,
+    openModal,
+    remark,
+    scenarioType,
+    setRemark,
+    setScenarioType,
+    submit,
+    submitError,
+    successType,
+  } = feedback;
   const timings = useMemo(
     () => (message ? withFallback(() => getTimingMetrics(message), {}) : {}),
     [message],
@@ -42,6 +62,43 @@ export default function MessageProcessingDetailDrawer({
   const contextFacts = useMemo(
     () => (message ? withFallback(() => getContextFacts(message), []) : []),
     [message],
+  );
+  const feedbackHistoryMessages = useMemo(
+    () => {
+      if (!message) return [];
+
+      const fallback: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+      if (message.messagePreview?.trim()) {
+        fallback.push({ role: 'user', content: message.messagePreview });
+      }
+      if (message.replyPreview?.trim()) {
+        fallback.push({ role: 'assistant', content: message.replyPreview });
+      }
+
+      return withFallback(() => getHistoryMessages(message), fallback);
+    },
+    [message],
+  );
+  const chatHistoryPreview = useMemo(() => {
+    if (!message) return '';
+
+    return feedbackHistoryMessages
+      .map((item, index) => {
+        const displayName =
+          item.role === 'assistant'
+            ? message.managerName || '招募经理'
+            : message.userName || '候选人';
+        return `[${index + 1} ${displayName}] ${item.content}`;
+      })
+      .join('\n');
+  }, [feedbackHistoryMessages, message]);
+  const lastUserMessage = useMemo(
+    () =>
+      [...feedbackHistoryMessages]
+        .reverse()
+        .find((item) => item.role === 'user' && item.content.trim())?.content ||
+      message?.messagePreview,
+    [feedbackHistoryMessages, message?.messagePreview],
   );
   const latencyRows = useMemo(
     () =>
@@ -62,11 +119,28 @@ export default function MessageProcessingDetailDrawer({
     }
   };
 
+  const handleSubmitFeedback = useCallback(() => {
+    if (!message) return;
+
+    void submit({
+      chatHistory: chatHistoryPreview,
+      userMessage: lastUserMessage,
+      chatId: message.chatId,
+      batchId: message.batchId,
+      candidateName: message.userName,
+      managerName: message.managerName,
+    });
+  }, [chatHistoryPreview, lastUserMessage, message, submit]);
+
   useEffect(() => {
     if (!isLoading) {
       leftColRef.current?.scrollTo({ top: 0, behavior: 'auto' });
     }
   }, [messageId, isLoading]);
+
+  useEffect(() => {
+    clearSuccess();
+  }, [clearSuccess, messageId]);
 
   if (isLoading || !message) {
     return (
@@ -193,6 +267,31 @@ export default function MessageProcessingDetailDrawer({
             )}
           </div>
         </div>
+
+        <div className={styles.actionBar}>
+          <div className={styles.feedbackGroup}>
+            <FeedbackButtons
+              successType={successType}
+              disabled={isLoading || !chatHistoryPreview.trim()}
+              onGoodCase={() => openModal('goodcase')}
+              onBadCase={() => openModal('badcase')}
+            />
+          </div>
+        </div>
+
+        <FeedbackModal
+          isOpen={isOpen}
+          feedbackType={feedbackType}
+          scenarioType={scenarioType}
+          remark={remark}
+          isSubmitting={isSubmitting}
+          chatHistoryPreview={chatHistoryPreview}
+          submitError={submitError}
+          onClose={closeModal}
+          onScenarioTypeChange={setScenarioType}
+          onRemarkChange={setRemark}
+          onSubmit={handleSubmitFeedback}
+        />
       </div>
     </div>
   );

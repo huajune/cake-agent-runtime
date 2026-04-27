@@ -7,10 +7,12 @@
 
 .section {
   background: #ffffff;
-  border-radius: 16px;
+  border-radius: 8px;
   border: 1px solid #e2e8f0;
   padding: 0;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.01), 0 1px 2px -1px rgba(0, 0, 0, 0.01);
+  box-shadow:
+    0 1px 3px 0 rgba(0, 0, 0, 0.01),
+    0 1px 2px -1px rgba(0, 0, 0, 0.01);
   overflow: hidden;
 }
 
@@ -26,5 +28,105 @@
 }
 
 .tabHintIcon {
-  font-size: 14px;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  color: #0e7490;
+}
+
+.toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 190px 220px;
+  gap: 10px;
+  align-items: center;
+  padding: 14px 24px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #ffffff;
+}
+
+.searchControl,
+.selectControl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #64748b;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+
+  &:focus-within {
+    border-color: $primary;
+    box-shadow: 0 0 0 3px $primary-10;
+  }
+
+  svg {
+    flex: 0 0 auto;
+    margin-left: 10px;
+  }
+}
+
+.searchControl {
+  input {
+    width: 100%;
+    min-width: 0;
+    border: none;
+    outline: none;
+    color: #0f172a;
+    font-size: 13px;
+
+    &::placeholder {
+      color: #94a3b8;
+    }
+  }
+}
+
+.clearSearch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+
+  &:hover {
+    background: #f1f5f9;
+    color: #475569;
+  }
+}
+
+.selectControl {
+  select {
+    width: 100%;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: #334155;
+    font-size: 13px;
+    cursor: pointer;
+
+    &:disabled {
+      color: #94a3b8;
+      cursor: not-allowed;
+    }
+  }
+}
+
+@include respond-to(md) {
+  .tabHint {
+    padding: 10px 16px;
+  }
+
+  .toolbar {
+    padding: 16px;
+    grid-template-columns: 1fr;
+  }
 }

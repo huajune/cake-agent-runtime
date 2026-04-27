@@ -211,7 +211,13 @@ describe('UserHostingRepository', () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
       const dbRows = [
-        { chat_id: 'user_001', od_name: 'Alice', group_name: 'Team A' },
+        {
+          chat_id: 'user_001',
+          od_name: 'Alice',
+          group_name: 'Team A',
+          bot_user_id: 'bot-a',
+          im_bot_id: 'im-bot-a',
+        },
         { chat_id: 'user_002', od_name: 'Bob', group_name: 'Team B' },
       ];
 
@@ -228,6 +234,8 @@ describe('UserHostingRepository', () => {
       expect(result[0].chatId).toBe('user_001');
       expect(result[0].odName).toBe('Alice');
       expect(result[0].groupName).toBe('Team A');
+      expect(result[0].botUserId).toBe('bot-a');
+      expect(result[0].imBotId).toBe('im-bot-a');
       expect(result[1].chatId).toBe('user_002');
     });
 
@@ -292,6 +300,8 @@ describe('UserHostingRepository', () => {
         odName: 'Alice',
         groupId: 'group_001',
         groupName: 'Team A',
+        botUserId: 'bot-a',
+        imBotId: 'im-bot-a',
         messageCount: 5,
         totalTokens: 500,
         activeAt,
@@ -306,6 +316,8 @@ describe('UserHostingRepository', () => {
         p_message_count: 5,
         p_token_usage: 500,
         p_active_at: activeAt.toISOString(),
+        p_bot_user_id: 'bot-a',
+        p_im_bot_id: 'im-bot-a',
       });
     });
 
@@ -324,6 +336,8 @@ describe('UserHostingRepository', () => {
           p_od_name: null,
           p_group_id: null,
           p_group_name: null,
+          p_bot_user_id: null,
+          p_im_bot_id: null,
           p_message_count: 1,
           p_token_usage: 0,
         }),

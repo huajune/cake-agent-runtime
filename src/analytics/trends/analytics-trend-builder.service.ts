@@ -56,31 +56,10 @@ export class AnalyticsTrendBuilderService {
 
       if (record.userId) bucket.users.add(record.userId);
 
-      const toolCalls = record.agentInvocation?.response?.toolCalls;
-      if (Array.isArray(toolCalls)) {
-        for (const toolCall of toolCalls) {
-          if (toolCall?.toolName !== 'duliday_interview_booking') continue;
-          bucket.bookingAttempts += 1;
-          if (this.checkBookingOutputSuccess(toolCall.result)) {
-            bucket.successfulBookings += 1;
-          }
-        }
-      } else {
-        const chatResponse = record.agentInvocation?.response;
-        if (chatResponse?.messages) {
-          for (const message of chatResponse.messages) {
-            if (!message.parts) continue;
-            for (const part of message.parts) {
-              if (part.type === 'dynamic-tool' && part.toolName === 'duliday_interview_booking') {
-                bucket.bookingAttempts += 1;
-                if (part.state === 'output-available' && part.output) {
-                  if (this.checkBookingOutputSuccess(part.output)) {
-                    bucket.successfulBookings += 1;
-                  }
-                }
-              }
-            }
-          }
+      for (const result of this.getBookingToolCallResults(record)) {
+        bucket.bookingAttempts += 1;
+        if (this.checkBookingOutputSuccess(result)) {
+          bucket.successfulBookings += 1;
         }
       }
 
@@ -157,6 +136,50 @@ export class AnalyticsTrendBuilderService {
       return obj.success === true;
     }
     return (output as Record<string, unknown>).success === true;
+  }
+
+  private getBookingToolCallResults(record: MessageProcessingRecord): unknown[] {
+    const topLevelCalls = (record.toolCalls ?? [])
+      .filter((call) => {
+        const toolName =
+          (call as { toolName?: string; name?: string }).toolName ??
+          (call as { toolName?: string; name?: string }).name;
+        return toolName === 'duliday_interview_booking';
+      })
+      .map((call) => call.result);
+
+    if (topLevelCalls.length > 0) {
+      return topLevelCalls;
+    }
+
+    const response = record.agentInvocation?.response;
+    const legacyToolCalls = response?.toolCalls;
+
+    if (Array.isArray(legacyToolCalls)) {
+      return legacyToolCalls
+        .filter((call) => call?.toolName === 'duliday_interview_booking')
+        .map((call) => call.result);
+    }
+
+    if (!Array.isArray(response?.messages)) {
+      return [];
+    }
+
+    const results: unknown[] = [];
+    for (const message of response.messages) {
+      if (!Array.isArray(message.parts)) continue;
+      for (const part of message.parts) {
+        if (
+          part.type === 'dynamic-tool' &&
+          part.toolName === 'duliday_interview_booking' &&
+          part.state === 'output-available'
+        ) {
+          results.push(part.output);
+        }
+      }
+    }
+
+    return results;
   }
 
   private getMinuteKey(timestamp: number): string {

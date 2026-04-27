@@ -17,6 +17,11 @@ describe('buildInterviewBookingTool', () => {
 
   const mockRecruitmentCaseService = {
     openOnBookingSuccess: jest.fn().mockResolvedValue(undefined),
+    getActiveOnboardFollowupCase: jest.fn().mockResolvedValue(null),
+  };
+
+  const mockBookingService = {
+    incrementBookingCount: jest.fn().mockResolvedValue(undefined),
   };
 
   const mockContext: ToolBuildContext = {
@@ -24,6 +29,8 @@ describe('buildInterviewBookingTool', () => {
     corpId: 'corp-1',
     sessionId: 'sess-1',
     messages: [],
+    contactName: '候选人微信名',
+    botUserId: 'manager-1',
   };
 
   const validInput = {
@@ -82,6 +89,7 @@ describe('buildInterviewBookingTool', () => {
       mockPrivateChatNotifier as never,
       mockUserHostingService as never,
       mockRecruitmentCaseService as never,
+      mockBookingService as never,
     );
     const builtTool = builder({
       ...mockContext,
@@ -110,6 +118,54 @@ describe('buildInterviewBookingTool', () => {
       'genderId',
       'operateType',
     ]);
+    expect(mockPrivateChatNotifier.notifyInterviewBookingResult).not.toHaveBeenCalled();
+  });
+
+  it('should skip external booking when an active appointment case already exists', async () => {
+    mockRecruitmentCaseService.getActiveOnboardFollowupCase.mockResolvedValueOnce({
+      id: 'case-1',
+      corp_id: 'corp-1',
+      chat_id: 'sess-1',
+      user_id: 'user-1',
+      case_type: 'onboard_followup',
+      status: 'active',
+      booking_id: 'BK-1001',
+      booked_at: '2026-03-19T08:00:00.000Z',
+      interview_time: '2026-03-20 14:00:00',
+      job_id: 100,
+      job_name: '后厨-小时工',
+      brand_name: '成都你六姐',
+      store_name: '上海浦江城市生活广场店',
+      bot_im_id: 'bot-1',
+      followup_window_ends_at: null,
+      last_relevant_at: null,
+      metadata: {},
+      created_at: '2026-03-19T08:00:00.000Z',
+      updated_at: '2026-03-19T08:00:00.000Z',
+    });
+
+    const context: Partial<ToolBuildContext> = {};
+    const result = await executeTool(validInput, context);
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe('already_booked');
+    expect(result.currentBooking).toEqual(
+      expect.objectContaining({
+        bookingId: 'BK-1001',
+        interviewTime: '2026-03-20 14:00:00',
+        jobId: 100,
+        jobName: '后厨-小时工',
+        brandName: '成都你六姐',
+        storeName: '上海浦江城市生活广场店',
+      }),
+    );
+    expect(mockRecruitmentCaseService.getActiveOnboardFollowupCase).toHaveBeenCalledWith({
+      corpId: 'corp-1',
+      chatId: 'sess-1',
+    });
+    expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+    expect(mockRecruitmentCaseService.openOnBookingSuccess).not.toHaveBeenCalled();
     expect(mockPrivateChatNotifier.notifyInterviewBookingResult).not.toHaveBeenCalled();
   });
 
@@ -316,6 +372,15 @@ describe('buildInterviewBookingTool', () => {
         metadata: { tool: 'duliday_interview_booking' },
       }),
     });
+    expect(mockBookingService.incrementBookingCount).toHaveBeenCalledWith({
+      brandName: '成都你六姐',
+      storeName: '上海浦江城市生活广场店',
+      chatId: 'sess-1',
+      userId: 'user-1',
+      userName: '候选人微信名',
+      managerId: 'manager-1',
+      managerName: 'manager-1',
+    });
   });
 
   it('should return missing_customer_label_values when supplements require unknown answers', async () => {
@@ -398,6 +463,7 @@ describe('buildInterviewBookingTool', () => {
     );
     expect(mockUserHostingService.pauseUser).toHaveBeenCalledWith('sess-1');
     expect(mockRecruitmentCaseService.openOnBookingSuccess).not.toHaveBeenCalled();
+    expect(mockBookingService.incrementBookingCount).not.toHaveBeenCalled();
   });
 
   it('should not fail the booking result when async pauseUser rejects', async () => {

@@ -17,7 +17,8 @@ describe('AcceptInboundMessageService', () => {
     validate: jest.fn(),
   };
   const imageDescription = {
-    describeAndUpdateSync: jest.fn(),
+    describeAndUpdateAsync: jest.fn(),
+    awaitVision: jest.fn(),
   };
   const wecomObservability = {
     markHistoryStored: jest.fn(),

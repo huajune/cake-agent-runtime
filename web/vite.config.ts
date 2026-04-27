@@ -24,8 +24,15 @@ function readRootEnvValue(mode: string, key: string): string {
 
 export default defineConfig(({ mode }) => {
   const apiGuardToken = process.env.API_GUARD_TOKEN || readRootEnvValue(mode, 'API_GUARD_TOKEN');
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || readRootEnvValue(mode, 'NEXT_PUBLIC_SUPABASE_URL');
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || readRootEnvValue(mode, 'NEXT_PUBLIC_SUPABASE_ANON_KEY');
+  const apiProxyTarget =
+    process.env.VITE_API_PROXY_TARGET ||
+    process.env.API_PROXY_TARGET ||
+    `http://localhost:${process.env.PORT || readRootEnvValue(mode, 'PORT') || '8080'}`;
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || readRootEnvValue(mode, 'NEXT_PUBLIC_SUPABASE_URL');
+  const supabaseAnonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    readRootEnvValue(mode, 'NEXT_PUBLIC_SUPABASE_ANON_KEY');
 
   return {
     plugins: [react()],
@@ -51,9 +58,22 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       port: 5175, // 使用不同端口避免冲突
       proxy: Object.fromEntries(
-        ['/agent', '/analytics', '/config', '/strategy', '/user', '/test-suite', '/message', '/group', '/feishu', '/monitoring'].map(
-          (prefix) => [prefix, { target: 'http://localhost:8080', changeOrigin: true, timeout: 120000 }],
-        ),
+        [
+          '/agent',
+          '/analytics',
+          '/config',
+          '/strategy',
+          '/user',
+          '/test-suite',
+          '/message',
+          '/group',
+          '/bot',
+          '/feishu',
+          '/monitoring',
+        ].map((prefix) => [
+          prefix,
+          { target: apiProxyTarget, changeOrigin: true, timeout: 120000 },
+        ]),
       ),
     },
     build: {

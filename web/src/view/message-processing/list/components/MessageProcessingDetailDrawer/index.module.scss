@@ -123,6 +123,26 @@
   }
 }
 
+.actionBar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: $spacing-sm;
+  padding: 14px 20px;
+  border-top: 1px solid rgba(139, 92, 246, 0.12);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0.96) 100%),
+    radial-gradient(circle at top left, rgba(139, 92, 246, 0.06), transparent 55%);
+  box-shadow: 0 -10px 24px rgba(15, 23, 42, 0.03);
+}
+
+.feedbackGroup {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: $spacing-xs;
+}
+
 /* ── Right panel shared ── */
 .sideTitle {
   font-size: 12px;

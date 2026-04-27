@@ -13,4 +13,13 @@ export class BotController {
   async getBotList(@Query('token') token: string) {
     return await this.botService.getBotList(token);
   }
+
+  /**
+   * 获取当前系统已配置的托管账号列表
+   * 访问: GET http://localhost:3000/bot/configured-list
+   */
+  @Get('configured-list')
+  async getConfiguredBotList() {
+    return await this.botService.getConfiguredBotList();
+  }
 }

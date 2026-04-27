@@ -19,6 +19,7 @@ export interface AgentTestFeedback {
   errorType?: string; // 错误类型（仅 badcase）
   remark?: string; // 备注
   chatId?: string; // 会话 ID
+  batchId?: string; // Batch ID
   candidateName?: string; // 候选人昵称
   managerName?: string; // 招募经理姓名
 }
@@ -45,6 +46,7 @@ export class FeishuBitableSyncService {
     category: ['分类', '错误分类'],
     remark: ['备注', '说明', '附注'],
     chatId: ['chatId', '会话ID', '会话 Id', '会话ID（chatId）'],
+    batchId: ['Batch ID', 'BatchID', 'batchId', 'batch_id', '批次ID', '批次 ID', '测试批次'],
     source: ['来源'],
     status: ['状态'],
     priority: ['优先级'],
@@ -170,6 +172,7 @@ export class FeishuBitableSyncService {
 
       const remarkField = resolveFieldName(this.feedbackFieldAliases.remark);
       const chatIdField = resolveFieldName(this.feedbackFieldAliases.chatId);
+      const batchIdField = resolveFieldName(this.feedbackFieldAliases.batchId);
       const remarkParts: string[] = [];
       if (feedback.remark) {
         remarkParts.push(feedback.remark);
@@ -180,6 +183,14 @@ export class FeishuBitableSyncService {
           recordFields[chatIdField] = feedback.chatId;
         } else if (remarkField) {
           remarkParts.push(`chatId: ${feedback.chatId}`);
+        }
+      }
+
+      if (feedback.batchId) {
+        if (batchIdField) {
+          recordFields[batchIdField] = feedback.batchId;
+        } else if (remarkField) {
+          remarkParts.push(`Batch ID: ${feedback.batchId}`);
         }
       }
 
@@ -295,7 +306,7 @@ export class FeishuBitableSyncService {
 
     for (const rawLine of remark.split('\n')) {
       const line = rawLine.trim();
-      if (!line || /^chatId\s*:/i.test(line)) {
+      if (!line || /^(chatId|Batch ID)\s*:/i.test(line)) {
         continue;
       }
 

@@ -14,6 +14,8 @@ export interface PausedUserRaw {
   pauseExpiresAt: number;
   odName?: string;
   groupName?: string;
+  botUserId?: string;
+  imBotId?: string;
 }
 
 /**
@@ -26,6 +28,8 @@ export function transformPausedUsers(pausedUsers: PausedUserRaw[]): UserData[] {
     chatId: user.chatId,
     odName: user.odName,
     groupName: user.groupName,
+    botUserId: user.botUserId,
+    imBotId: user.imBotId,
     messageCount: 0,
     tokenUsage: 0,
     firstActiveAt: user.pausedAt, // 直接使用时间戳

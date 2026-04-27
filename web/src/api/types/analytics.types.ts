@@ -80,6 +80,8 @@ export interface TodayUser {
   odId: string;
   odName?: string;
   groupName?: string;
+  botUserId?: string;
+  imBotId?: string;
   messageCount: number;
   tokenUsage: number;
   firstActiveAt: string;

@@ -46,7 +46,8 @@ describe('MessagePipelineService', () => {
   };
 
   const mockImageDescriptionService = {
-    describeAndUpdateSync: jest.fn(),
+    describeAndUpdateAsync: jest.fn(),
+    awaitVision: jest.fn().mockResolvedValue(undefined),
   };
 
   const mockLlmService = {
@@ -264,7 +265,7 @@ describe('MessagePipelineService', () => {
       });
       // Pre-Agent 风险预检位于 ReplyWorkflow 内部，execute() 阶段不触发
       expect(mockPreAgentRiskIntercept.precheck).not.toHaveBeenCalled();
-      expect(mockImageDescriptionService.describeAndUpdateSync).not.toHaveBeenCalled();
+      expect(mockImageDescriptionService.describeAndUpdateAsync).not.toHaveBeenCalled();
       expect(mockRunnerService.invoke).not.toHaveBeenCalled();
     });
   });

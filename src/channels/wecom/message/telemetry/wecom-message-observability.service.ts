@@ -35,6 +35,8 @@ interface WecomTraceRequestContext {
   userId?: string;
   userName?: string;
   managerName?: string;
+  botUserId?: string;
+  imBotId?: string;
   scenario: ScenarioType;
   content: string;
   imageCount: number;
@@ -114,6 +116,10 @@ export class WecomMessageObservabilityService {
       { scenario: context.scenario },
       context.managerName,
       acceptedAt,
+      {
+        botUserId: context.botUserId ?? context.managerName,
+        imBotId: context.imBotId,
+      },
     );
   }
 
@@ -138,6 +144,8 @@ export class WecomMessageObservabilityService {
       userId: parsed.imContactId,
       userName: parsed.contactName,
       managerName: parsed.managerName,
+      botUserId: primaryMessage.botUserId ?? parsed.managerName,
+      imBotId: parsed.imBotId,
       scenario,
       content,
       imageCount,

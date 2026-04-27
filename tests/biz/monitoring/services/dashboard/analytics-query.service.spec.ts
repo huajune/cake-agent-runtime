@@ -222,9 +222,7 @@ describe('AnalyticsQueryService', () => {
     it('should return empty data gracefully when records fetch fails', async () => {
       // getRecordsByTimeRange private method swallows errors and returns []
       // so getSystemMonitoringAsync resolves with empty/default values
-      mockMessageProcessingService.getRecordsByTimeRange.mockRejectedValue(
-        new Error('DB error'),
-      );
+      mockMessageProcessingService.getRecordsByTimeRange.mockRejectedValue(new Error('DB error'));
 
       const result = await service.getSystemMonitoringAsync();
 
@@ -280,9 +278,7 @@ describe('AnalyticsQueryService', () => {
     it('should return empty data gracefully when records fetch fails', async () => {
       // getRecordsByTimeRange private method swallows errors and returns []
       // so getTrendsDataAsync resolves with empty trend arrays
-      mockMessageProcessingService.getRecordsByTimeRange.mockRejectedValue(
-        new Error('DB error'),
-      );
+      mockMessageProcessingService.getRecordsByTimeRange.mockRejectedValue(new Error('DB error'));
 
       const result = await service.getTrendsDataAsync('today');
 
@@ -410,10 +406,7 @@ describe('AnalyticsQueryService', () => {
       const result = await service.getMessageStatsAsync(1000, 2000);
 
       expect(result).toEqual(expected);
-      expect(messageProcessingService.getMessageStatsByTimestamps).toHaveBeenCalledWith(
-        1000,
-        2000,
-      );
+      expect(messageProcessingService.getMessageStatsByTimestamps).toHaveBeenCalledWith(1000, 2000);
     });
   });
 
@@ -486,6 +479,8 @@ describe('AnalyticsQueryService', () => {
           odName: 'User One',
           groupId: 'group-1',
           groupName: 'Group One',
+          botUserId: 'bot-a',
+          imBotId: 'im-bot-a',
           messageCount: 5,
           tokenUsage: 200,
           firstActiveAt: 1000,
@@ -503,6 +498,8 @@ describe('AnalyticsQueryService', () => {
         odName: 'User One',
         groupId: 'group-1',
         groupName: 'Group One',
+        botUserId: 'bot-a',
+        imBotId: 'im-bot-a',
         messageCount: 5,
         tokenUsage: 200,
         isPaused: true,

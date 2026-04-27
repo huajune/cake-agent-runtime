@@ -54,11 +54,13 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 10px;
+  padding: 6px 12px;
   background: $success-soft;
   color: $success;
+  border: 1px solid rgba(16, 185, 129, 0.22);
   border-radius: $radius-full;
   font-size: $font-size-xs;
-  font-weight: $font-weight-medium;
+  font-weight: $font-weight-semibold;
+  box-shadow: 0 8px 18px rgba(16, 185, 129, 0.12);
   animation: fadeIn 0.3s ease-out;
 }

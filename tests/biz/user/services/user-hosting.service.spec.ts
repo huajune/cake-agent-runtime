@@ -219,7 +219,7 @@ describe('UserHostingService', () => {
         },
       ]);
       mockUserHostingRepository.findUserProfiles.mockResolvedValue([
-        { chatId: 'user1', odName: 'Alice', groupName: 'GroupA' },
+        { chatId: 'user1', odName: 'Alice', groupName: 'GroupA', botUserId: 'bot-a' },
         { chatId: 'user2', odName: 'Bob', groupName: 'GroupB' },
       ]);
 
@@ -229,7 +229,7 @@ describe('UserHostingService', () => {
       expect(result.map((r) => r.userId).sort()).toEqual(['user1', 'user2']);
       const user1 = result.find((r) => r.userId === 'user1');
       const user2 = result.find((r) => r.userId === 'user2');
-      expect(user1).toMatchObject({ odName: 'Alice', groupName: 'GroupA' });
+      expect(user1).toMatchObject({ odName: 'Alice', groupName: 'GroupA', botUserId: 'bot-a' });
       expect(user2).toMatchObject({ odName: 'Bob', groupName: 'GroupB' });
     });
 

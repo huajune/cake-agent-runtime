@@ -9,6 +9,8 @@ export interface UserData {
   chatId: string;
   odName?: string;
   groupName?: string;
+  botUserId?: string;
+  imBotId?: string;
   messageCount: number;
   tokenUsage: number;
   firstActiveAt: number; // 时间戳（毫秒）
@@ -30,4 +32,7 @@ export interface UserTableProps {
   isLoading: boolean;
   onToggleHosting: (chatId: string, enabled: boolean) => void;
   isPausedTab?: boolean;
+  pendingChatId?: string;
+  emptyMessage?: string;
+  resolveBotLabel?: (user: Pick<UserData, 'botUserId' | 'imBotId'>) => string;
 }

@@ -17,18 +17,6 @@ onTurnStart → Compose → Execute (LLM + Tools) → onTurnEnd
    ↑ 读记忆       组装 prompt       多步工具循环       写记忆 / 沉淀
 ```
 
-**技术选型**：
-
-| 组件       | 技术                  | 说明                                     |
-| ---------- | --------------------- | ---------------------------------------- |
-| 运行时框架 | NestJS 10.3           | 依赖注入、模块化                         |
-| AI SDK     | Vercel AI SDK         | generateText / streamText / tool calling |
-| 模型接入   | 多 Provider           | Anthropic、OpenAI、DeepSeek、Qwen 等     |
-| 会话存储   | Redis (Upstash)       | 会话事实、程序记忆、短期窗口缓存         |
-| 持久存储   | Supabase (PostgreSQL) | 对话历史、用户画像、策略配置、观测记录   |
-| 队列       | Bull (Redis)          | 消息聚合、后台任务                       |
-
----
 
 ## 2. 分层架构
 

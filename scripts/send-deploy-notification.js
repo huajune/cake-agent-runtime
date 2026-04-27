@@ -85,7 +85,7 @@ function buildMarkdown() {
     '',
     ...renderOptionalSection('环境变量同步提醒', envReminder),
     '',
-    '### 更新摘要',
+    '**更新摘要**',
     updateSummary,
   ];
 
@@ -155,7 +155,7 @@ function renderOptionalSection(title, content) {
     return [];
   }
 
-  return [`### ${title}`, content];
+  return [`**${title}**`, content];
 }
 
 function readChangelogFallback() {

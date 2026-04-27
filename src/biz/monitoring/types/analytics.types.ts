@@ -136,6 +136,8 @@ export interface TodayUser {
   odName: string;
   groupId?: string;
   groupName?: string;
+  botUserId?: string;
+  imBotId?: string;
   chatId: string;
   messageCount: number;
   tokenUsage: number;
