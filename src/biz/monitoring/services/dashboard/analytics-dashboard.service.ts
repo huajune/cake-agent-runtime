@@ -810,15 +810,16 @@ export class AnalyticsDashboardService {
     activeUsers: number,
     bookingCount: number,
   ): BusinessMetricsSnapshot {
-    // 只有预约总数（attempts），无成功/失败拆分数据，故 successful/failed/successRate 均为 0
+    // interview_booking_records 只在预约接口返回 success 后写入，所以这里的统计即成功预约数。
     const conversionRate = activeUsers > 0 ? (bookingCount / activeUsers) * 100 : 0;
+    const successRate = bookingCount > 0 ? 100 : 0;
     return {
       consultations: { total: activeUsers, new: activeUsers },
       bookings: {
         attempts: bookingCount,
-        successful: 0,
+        successful: bookingCount,
         failed: 0,
-        successRate: 0,
+        successRate,
       },
       conversion: { consultationToBooking: parseFloat(conversionRate.toFixed(2)) },
     };
@@ -958,78 +959,7 @@ export class AnalyticsDashboardService {
     records: MessageProcessingRecord[],
     timeRange: TimeRange,
   ): BusinessMetricTrendPoint[] {
-    const keyFn =
-      timeRange === 'today'
-        ? (r: MessageProcessingRecord) => this.getMinuteKey(r.receivedAt)
-        : (r: MessageProcessingRecord) => this.getDayKey(r.receivedAt);
-
-    const buckets = new Map<
-      string,
-      { users: Set<string>; bookingAttempts: number; successfulBookings: number }
-    >();
-
-    for (const record of records) {
-      const key = keyFn(record);
-      const bucket = buckets.get(key) || {
-        users: new Set<string>(),
-        bookingAttempts: 0,
-        successfulBookings: 0,
-      };
-
-      if (record.userId) bucket.users.add(record.userId);
-
-      const toolCalls = record.agentInvocation?.response?.toolCalls;
-      if (Array.isArray(toolCalls)) {
-        for (const toolCall of toolCalls) {
-          if (toolCall?.toolName !== 'duliday_interview_booking') continue;
-          bucket.bookingAttempts += 1;
-          if (this.checkBookingOutputSuccess(toolCall.result)) {
-            bucket.successfulBookings += 1;
-          }
-        }
-      } else {
-        const chatResponse = record.agentInvocation?.response;
-        if (chatResponse?.messages) {
-          for (const message of chatResponse.messages) {
-            if (!message.parts) continue;
-            for (const part of message.parts) {
-              if (part.type === 'dynamic-tool' && part.toolName === 'duliday_interview_booking') {
-                bucket.bookingAttempts += 1;
-                if (part.state === 'output-available' && part.output) {
-                  if (this.checkBookingOutputSuccess(part.output)) {
-                    bucket.successfulBookings += 1;
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-
-      buckets.set(key, bucket);
-    }
-
-    return Array.from(buckets.entries())
-      .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
-      .map(([minute, bucket]) => {
-        const consultations = bucket.users.size;
-        const bookingAttempts = bucket.bookingAttempts;
-        const successfulBookings = bucket.successfulBookings;
-        return {
-          minute,
-          consultations,
-          bookingAttempts,
-          successfulBookings,
-          conversionRate:
-            consultations > 0
-              ? parseFloat(((bookingAttempts / consultations) * 100).toFixed(2))
-              : 0,
-          bookingSuccessRate:
-            bookingAttempts > 0
-              ? parseFloat(((successfulBookings / bookingAttempts) * 100).toFixed(2))
-              : 0,
-        };
-      });
+    return this.analyticsTrendBuilder.buildBusinessTrend(records, timeRange);
   }
 
   private buildToolUsageMetrics(records: MessageProcessingRecord[]): ToolUsageMetric[] {

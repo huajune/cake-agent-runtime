@@ -450,9 +450,7 @@ describe('AnalyticsDashboardService', () => {
     });
 
     it('should return empty dashboard data on error', async () => {
-      mockMessageProcessingService.getRecordsByTimeRange.mockRejectedValue(
-        new Error('DB error'),
-      );
+      mockMessageProcessingService.getRecordsByTimeRange.mockRejectedValue(new Error('DB error'));
 
       const result = await service.getDashboardDataAsync('today');
 
@@ -751,14 +749,30 @@ describe('AnalyticsDashboardService', () => {
       });
       mockMonitoringRecordRepository.getDashboardOverviewStats
         .mockResolvedValueOnce({
-        ...defaultOverview,
-        activeUsers: 2,
-      })
+          ...defaultOverview,
+          activeUsers: 2,
+        })
         .mockResolvedValueOnce(defaultOverview);
+      mockBookingService.getBookingStats.mockResolvedValue([
+        {
+          date: '2026-04-27',
+          brandName: 'BrandA',
+          storeName: 'StoreA',
+          bookingCount: 3,
+          chatId: null,
+          userId: null,
+          userName: null,
+          managerId: null,
+          managerName: null,
+        },
+      ]);
 
       const result = await service.getDashboardOverviewAsync('today');
 
       expect(result.business.consultations.total).toBe(2);
+      expect(result.business.bookings.attempts).toBe(3);
+      expect(result.business.bookings.successful).toBe(3);
+      expect(result.business.bookings.successRate).toBe(100);
     });
 
     it('should throw on error without catching', async () => {

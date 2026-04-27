@@ -25,6 +25,7 @@ import { buildRequestHandoffTool } from './request-handoff.tool';
 import { buildSkipReplyTool } from './skip-reply.tool';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
+import { BookingService } from '@biz/message/services/booking.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { RoomService } from '@channels/wecom/room/room.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
@@ -67,6 +68,7 @@ export class ToolRegistryService {
     opsNotifier: OpsNotifierService,
     privateChatMonitorNotifier: PrivateChatMonitorNotifierService,
     private readonly chatSessionService: ChatSessionService,
+    bookingService: BookingService,
     userHostingService: UserHostingService,
     recruitmentCaseService: RecruitmentCaseService,
     configService: ConfigService,
@@ -106,6 +108,7 @@ export class ToolRegistryService {
           privateChatMonitorNotifier,
           userHostingService,
           recruitmentCaseService,
+          bookingService,
         ),
       }),
 

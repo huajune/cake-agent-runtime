@@ -139,4 +139,47 @@ describe('AnalyticsTrendBuilderService', () => {
       },
     ]);
   });
+
+  it('should prefer top-level toolCalls when building booking trend', () => {
+    const ts = new Date('2026-04-13T10:00:10+08:00').getTime();
+    const records: MessageProcessingRecord[] = [
+      {
+        messageId: '1',
+        chatId: 'chat-1',
+        userId: 'user-1',
+        receivedAt: ts,
+        status: 'success',
+        toolCalls: [
+          {
+            toolName: 'duliday_interview_booking',
+            args: {},
+            result: { success: true },
+          },
+        ],
+        agentInvocation: {
+          request: {},
+          response: {
+            toolCalls: [
+              {
+                toolName: 'duliday_interview_booking',
+                result: { success: true },
+              },
+            ],
+          },
+          isFallback: false,
+        },
+      },
+    ];
+
+    expect(service.buildBusinessTrend(records, 'today')).toEqual([
+      {
+        minute: toMinuteKey(ts),
+        consultations: 1,
+        bookingAttempts: 1,
+        successfulBookings: 1,
+        conversionRate: 100,
+        bookingSuccessRate: 100,
+      },
+    ]);
+  });
 });
