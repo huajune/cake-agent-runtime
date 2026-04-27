@@ -24,6 +24,28 @@ export function isValidLaborForm(value: string | null | undefined): boolean {
 }
 
 /**
+ * 把岗位 API 返回的 labor_form 值规整为"可对外展示"的口径。
+ *
+ * 业务前提：平台所有岗位都是兼职岗位。API 历史数据里偶尔会有 "全职"、"正式工" 等
+ * 反向词（badcase #17 `recvhYumoxHRv7` —— 必胜客被工具直接渲染成"全职"，触发
+ * 红线"禁止将岗位表述为全职"）。展示前必须收敛：
+ *
+ * - 反向词（"全职/正式工/临时工"）→ 返回 null（不展示，让上层省掉这一行，避免
+ *   LLM 透传给候选人）。
+ * - 平台属性词 "兼职" → 返回 null（平台所有岗位都是兼职，没有信息量，省掉避免
+ *   LLM 误把平台属性当 specific 用工形式描述）。
+ * - 合法细分（兼职+ / 小时工 / 寒假工 / 暑假工）→ 原样返回。
+ * - 其它非空值 → 原样返回（兜底，避免误删未见过的合法值）。
+ */
+export function sanitizeLaborFormForDisplay(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if ((INVALID_LABOR_FORM_WORDS as readonly string[]).includes(trimmed)) return null;
+  return trimmed;
+}
+
+/**
  * 从 jobCategoryList 等查询参数中剔除"用工形式"词。
  *
  * 这些词不是岗位工种，不应作为 category 查询条件；

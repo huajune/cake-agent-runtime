@@ -618,7 +618,15 @@ function buildChecklistTemplate(params: {
       !requiredFields.includes(field) &&
       (API_BOOKING_USER_OPTIONAL_FIELDS as readonly string[]).includes(field),
   );
-  const orderedFields = orderFields([...requiredFields, ...knownOptionalFields]);
+  // TEMPLATE_CORE_FIELDS 是收资模板必要骨架（姓名/电话/性别/年龄/面试时间/应聘门店）。
+  // 即使岗位 API 没把这些字段写进 requiredFields，也必须强制纳入展示——
+  // badcase #2 `recvhXziDt4jps`：API 漏了"姓名"，模板就把姓名整行删掉了，
+  // 候选人按模板填一堆资料没填名字，bot 才补问。
+  const orderedFields = orderFields([
+    ...TEMPLATE_CORE_FIELDS,
+    ...requiredFields,
+    ...knownOptionalFields,
+  ]);
   const coreFields = TEMPLATE_CORE_FIELDS.filter((field) => orderedFields.includes(field));
   const dynamicFields = orderedFields.filter((field) => !TEMPLATE_CORE_FIELDS.includes(field));
   const displayOrder = [...coreFields, ...dynamicFields];

@@ -17,7 +17,10 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
 import type { RecommendedJobSummary } from '@memory/types/session-facts.types';
-import { stripLaborFormFromCategories } from '@memory/facts/labor-form';
+import {
+  sanitizeLaborFormForDisplay,
+  stripLaborFormFromCategories,
+} from '@memory/facts/labor-form';
 import { ToolBuilder } from '@shared-types/tool.types';
 import {
   buildJobPolicyAnalysis,
@@ -84,9 +87,18 @@ const inputSchema = z.object({
     .describe('返回格式，可多选。默认 ["markdown"]'),
 
   includeBasicInfo: z.boolean().optional().default(true).describe('返回基本信息 - 默认true'),
-  includeJobSalary: z.boolean().optional().default(false).describe('返回薪资信息'),
+  // 默认 true 的两类（badcase #15 北京必胜客日结/月结、#22 六姐没主动报薪）：
+  // - includeJobSalary：薪资是候选人最关心的事实，缺薪资的推荐易被竞品挖走；阶梯
+  //   薪资和发薪周期（日结/月结）也都靠这个开关返回。默认 false 时模型常忘开。
+  // - includeHiringRequirement：首次推荐就该让候选人看到关键要求自行判断（已在
+  //   prompt 写明），默认 false 等于把"模型记得开"当兜底，不可靠。
+  includeJobSalary: z.boolean().optional().default(true).describe('返回薪资信息 - 默认true'),
   includeWelfare: z.boolean().optional().default(false).describe('返回福利信息'),
-  includeHiringRequirement: z.boolean().optional().default(false).describe('返回招聘要求'),
+  includeHiringRequirement: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe('返回招聘要求 - 默认true'),
   includeWorkTime: z.boolean().optional().default(false).describe('返回工作时间/班次'),
   includeInterviewProcess: z.boolean().optional().default(false).describe('返回面试流程'),
 });
@@ -377,7 +389,9 @@ function renderBasicInfoSection(bi: any, distanceKm: number | null | undefined):
   pushField(lines, '岗位名称', bi.jobName);
   pushField(lines, '岗位简称', bi.jobNickName);
   pushField(lines, '岗位类型', bi.jobCategoryName);
-  pushField(lines, '用工形式', bi.laborForm);
+  // 渲染前 sanitize：API 偶发回 "全职/正式工" 等反向词，直接渲染会让 LLM 把岗位
+  // 描述成"全职"，违反"统一按兼职口径沟通"红线（badcase #17）。
+  pushField(lines, '用工形式', sanitizeLaborFormForDisplay(bi.laborForm));
   pushLongText(lines, '工作内容', bi.jobContent);
 
   const brand = formatNameWithId(bi.brandName, bi.brandId);
