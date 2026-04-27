@@ -257,7 +257,7 @@ describe('TestBatchRepository', () => {
     it('should throw on invalid state transition', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
-      // Return batch in COMPLETED status (terminal state)
+      // Return batch in COMPLETED status; only reopening to REVIEWING is allowed.
       const completedBatch = { ...sampleBatch, status: BatchStatus.COMPLETED };
       const queryMock = makeQueryMock({ data: [completedBatch], error: null });
       mockSupabaseClient.from.mockReturnValue(queryMock);
@@ -296,6 +296,35 @@ describe('TestBatchRepository', () => {
       await expect(
         repository.updateStatus('batch_001', BatchStatus.REVIEWING),
       ).resolves.not.toThrow();
+    });
+
+    it('should reopen completed batch for review and clear completed_at', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      const completedBatch = {
+        ...sampleBatch,
+        status: BatchStatus.COMPLETED,
+        completed_at: '2026-03-10T01:00:00Z',
+      };
+      const reviewingBatch = {
+        ...sampleBatch,
+        status: BatchStatus.REVIEWING,
+        completed_at: null,
+      };
+      const updateQuery = makeQueryMock({ data: [reviewingBatch], error: null });
+
+      mockSupabaseClient.from
+        .mockReturnValueOnce(makeQueryMock({ data: [completedBatch], error: null }))
+        .mockReturnValue(updateQuery);
+
+      await expect(
+        repository.updateStatus('batch_001', BatchStatus.REVIEWING),
+      ).resolves.not.toThrow();
+
+      expect(updateQuery.update).toHaveBeenCalledWith({
+        status: BatchStatus.REVIEWING,
+        completed_at: null,
+      });
     });
 
     it('should silently ignore when transitioning to same status (idempotent)', async () => {

@@ -77,7 +77,7 @@ export function getReviewerSourceLabel(source?: ReviewerSource | null): string |
  * - created → running, cancelled
  * - running → reviewing, cancelled
  * - reviewing → completed, cancelled
- * - completed → (终态)
+ * - completed → reviewing（单条重跑后重新进入评审）
  * - cancelled → (终态)
  */
 export enum BatchStatus {
