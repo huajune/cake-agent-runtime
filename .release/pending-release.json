@@ -1,41 +1,36 @@
 {
-  "baseVersion": "5.3.0",
-  "nextVersion": "5.3.1",
+  "baseVersion": "5.3.1",
+  "nextVersion": "5.3.2",
   "updatedAt": "2026-04-28",
   "sourceBranch": "develop",
   "entries": [
     {
-      "number": "129",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/129",
-      "title": "自动创建发版 PR",
+      "number": "135",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/135",
+      "title": "避免飞书通知配置缺失阻断发布",
       "author": "ArielZhu",
       "mergedAt": "2026-04-28",
       "summary": [
-        "在版本元数据 PR 合并到 develop 后，自动创建或更新 develop → master 发版 PR。",
-        "修复 scripts/get-release-notes.js 对 CHANGELOG 发布段的提取逻辑，避免 JS 正则不支持 \\Z 导致 GitHub Release 创建失败。",
-        "发布 workflow 在 tag 已存在但 GitHub Release 缺失/需要更新时，也会继续触发部署，支持半失败恢复。",
-        "更新发版文档，明确自动创建流程和本地命令兜底。"
+        "修复部署 workflow 的飞书通知 job 读不到 production 环境 secrets 的问题。",
+        "补充 `DEPLOY_NOTIFICATION_WEBHOOK_URL` / `DEPLOY_NOTIFICATION_WEBHOOK_SECRET` 作为旧配置名兜底。",
+        "当 webhook 未配置时跳过通知但不阻断发布，避免“代码已部署成功但 workflow 被通知步骤标红”。"
       ],
-      "features": [
-        "发布 workflow 在 tag 已存在但 GitHub Release 缺失/需要更新时，也会继续触发部署，支持半失败恢复。"
-      ],
+      "features": [],
       "fixes": [
-        "修复 scripts/get-release-notes.js 对 CHANGELOG 发布段的提取逻辑，避免 JS 正则不支持 \\Z 导致 GitHub Release 创建失败。",
-        "更新发版文档，明确自动创建流程和本地命令兜底。"
+        "修复部署 workflow 的飞书通知 job 读不到 production 环境 secrets 的问题。",
+        "补充 `DEPLOY_NOTIFICATION_WEBHOOK_URL` / `DEPLOY_NOTIFICATION_WEBHOOK_SECRET` 作为旧配置名兜底。"
       ],
-      "optimizations": [
-        "在版本元数据 PR 合并到 develop 后，自动创建或更新 develop → master 发版 PR。"
+      "optimizations": [],
+      "ops": [
+        "当 webhook 未配置时跳过通知但不阻断发布，避免“代码已部署成功但 workflow 被通知步骤标红”。"
       ],
-      "ops": [],
       "config": [],
       "envFiles": [],
       "verification": [
-        "node --check scripts/build-release-pr-body.js && node --check scripts/create-release-pr.js && node --check scripts/get-release-notes.js",
-        "使用 origin/master 的 CHANGELOG 验证可提取 v5.3.0 发布说明",
-        "pnpm release:pr:preview",
-        "ruby YAML 解析 .github/workflows/version-changelog.yml 通过",
-        "pnpm exec prettier --check .github/workflows/version-changelog.yml scripts/get-release-notes.js",
-        "pre-push pnpm run ci:check：216 个测试套件、2532 个测试通过"
+        "ruby YAML 解析 `.github/workflows/deploy.yml` 通过",
+        "`pnpm exec prettier --check .github/workflows/deploy.yml`",
+        "`REQUIRE_DEPLOY_NOTIFICATION=false node scripts/send-deploy-notification.js`",
+        "pre-push `pnpm run ci:check`：216 个测试套件、2532 个测试通过"
       ]
     }
   ]
