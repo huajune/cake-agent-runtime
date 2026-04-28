@@ -7,6 +7,7 @@ import { GroupContext } from '@biz/group-task/group-task.types';
 import { RoomService } from '@channels/wecom/room/room.service';
 import { MemoryService } from '@memory/memory.service';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
+import { refreshMemberCountsFromEnterpriseList } from '@tools/duliday/enterprise-room-count.util';
 
 const logger = new Logger('invite_to_group');
 
@@ -20,16 +21,6 @@ interface CitySnapshot {
   totalGroups: number;
   memberLimit: number;
   byIndustry: CitySnapshotIndustry[];
-}
-
-interface EnterpriseRoomItem {
-  imRoomId?: string;
-  wxid?: string;
-  roomWxid?: string;
-  groupChatId?: string;
-  memberList?: unknown[];
-  members?: unknown[];
-  [key: string]: unknown;
 }
 
 export function buildInviteToGroupTool(
@@ -283,123 +274,6 @@ export function buildInviteToGroupTool(
         }
       },
     });
-}
-
-async function refreshMemberCountsFromEnterpriseList(params: {
-  groups: GroupContext[];
-  roomService: RoomService;
-  enterpriseToken: string;
-}): Promise<GroupContext[]> {
-  if (params.groups.length === 0) return params.groups;
-
-  const relevantRoomIds = new Set(params.groups.map((group) => group.imRoomId).filter(Boolean));
-  const memberCounts = new Map<string, number>();
-  const pageSize = 1000;
-  let current = 1;
-  let hasMore = true;
-
-  try {
-    while (hasMore && memberCounts.size < relevantRoomIds.size) {
-      const result = await params.roomService.getEnterpriseGroupChatList(
-        params.enterpriseToken,
-        current,
-        pageSize,
-      );
-      const rooms = extractEnterpriseRooms(result);
-      if (rooms.length === 0) break;
-
-      for (const room of rooms) {
-        const roomId = extractEnterpriseRoomId(room);
-        if (!roomId || !relevantRoomIds.has(roomId)) continue;
-
-        const memberCount = extractMemberCount(room);
-        if (memberCount !== undefined) memberCounts.set(roomId, memberCount);
-      }
-
-      hasMore = rooms.length >= pageSize;
-      current++;
-    }
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.warn(`刷新企业级群人数失败，使用缓存人数继续: ${message}`);
-    return params.groups;
-  }
-
-  if (memberCounts.size === 0) return params.groups;
-
-  return params.groups.map((group) => {
-    const freshCount = memberCounts.get(group.imRoomId);
-    if (freshCount === undefined) return group;
-    return { ...group, memberCount: freshCount };
-  });
-}
-
-function extractEnterpriseRooms(result: unknown): EnterpriseRoomItem[] {
-  if (Array.isArray(result)) return result.filter(isEnterpriseRoomItem);
-  if (!result || typeof result !== 'object') return [];
-
-  const record = result as Record<string, unknown>;
-  const data = record.data;
-  if (Array.isArray(data)) return data.filter(isEnterpriseRoomItem);
-
-  if (data && typeof data === 'object') {
-    const nested = data as Record<string, unknown>;
-    for (const key of ['data', 'list', 'records', 'rows']) {
-      const value = nested[key];
-      if (Array.isArray(value)) return value.filter(isEnterpriseRoomItem);
-    }
-  }
-
-  for (const key of ['list', 'records', 'rows']) {
-    const value = record[key];
-    if (Array.isArray(value)) return value.filter(isEnterpriseRoomItem);
-  }
-
-  return [];
-}
-
-function isEnterpriseRoomItem(value: unknown): value is EnterpriseRoomItem {
-  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
-}
-
-function extractEnterpriseRoomId(room: EnterpriseRoomItem): string | undefined {
-  for (const key of ['imRoomId', 'wxid', 'roomWxid', 'groupChatId']) {
-    const value = room[key];
-    if (typeof value === 'string' && value.trim()) return value.trim();
-  }
-  return undefined;
-}
-
-function extractMemberCount(room: EnterpriseRoomItem): number | undefined {
-  for (const key of [
-    'memberCount',
-    'member_count',
-    'memberNum',
-    'member_num',
-    'memberCnt',
-    'member_cnt',
-    'membersCount',
-    'memberTotal',
-    'totalMember',
-    'roomMemberCount',
-  ]) {
-    const parsed = parseCount(room[key]);
-    if (parsed !== undefined) return parsed;
-  }
-
-  if (Array.isArray(room.memberList)) return room.memberList.length;
-  if (Array.isArray(room.members)) return room.members.length;
-
-  return undefined;
-}
-
-function parseCount(value: unknown): number | undefined {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string' && value.trim()) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return undefined;
 }
 
 function parseInviteApiResult(result: unknown): {
