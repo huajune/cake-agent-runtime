@@ -1,6 +1,6 @@
 ---
 name: analyze-chat-badcases
-description: 抽样分析招聘 Agent 的生产对话质量，或分析 BadCase / GoodCase 反馈样本池中提交的样本，识别问题并协作修复，生成针对性测试集验证修复。用于以下场景：用户提到"分析生产对话"、"找 badcase"、"分析昨天/今天提交的 badcase"、"进入反馈验证 SOP"、"Agent 表现怎么样"、"对话回归"、"质量审计"、"候选人流失分析"、"抽查最近的聊天"，或任何涉及招聘 Agent 对话质量改进的闭环任务。即使用户没有显式说"分析 badcase"，只要他们在讨论 Agent 对话问题并想动手改进，就应该用这个 skill。
+description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodCase 反馈样本池中提交的样本，识别问题并协作修复，生成针对性测试集验证修复。用于以下场景：用户提到"分析生产对话"、"找 badcase"、"分析昨天/今天提交的 badcase"、"进入反馈验证 SOP"、"Agent 表现怎么样"、"对话回归"、"质量审计"、"候选人流失分析"、"抽查最近的聊天"，或任何涉及 Agent 对话质量改进的闭环任务。即使用户没有显式说"分析 badcase"，只要他们在讨论 Agent 对话问题并想动手改进，就应该用这个 skill。
 ---
 
 # Analyze Chat Badcases
