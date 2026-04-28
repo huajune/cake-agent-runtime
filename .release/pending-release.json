@@ -1,168 +1,40 @@
 {
-  "baseVersion": "5.2.0",
-  "nextVersion": "5.3.0",
+  "baseVersion": "5.3.0",
+  "nextVersion": "5.3.1",
   "updatedAt": "2026-04-28",
   "sourceBranch": "develop",
   "entries": [
     {
-      "number": "111",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/111",
-      "title": "chore：发布部署流水线支持 tag 触发与环境变量同步提醒",
+      "number": "129",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/129",
+      "title": "自动创建发版 PR",
       "author": "ArielZhu",
-      "mergedAt": "2026-04-24",
+      "mergedAt": "2026-04-28",
       "summary": [
-        "chore：发布部署流水线支持 tag 触发与环境变量同步提醒"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "发布工作流在打 tag、创建 GitHub Release 之后自动触发部署，避免受保护分支推送不触发下游",
-        "部署工作流支持手动指定 tag 触发，便于回滚或定向重发",
-        "PR 合并后在变更记录中标记环境变量相关文件，提示生产侧手动同步"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "pnpm run ci:check 通过：216 suites / 2515 tests"
-      ]
-    },
-    {
-      "number": "115",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/115",
-      "title": "feat：测试套件验证流程增强 + 数据集策展硬闸门",
-      "author": "ArielZhu",
-      "mergedAt": "2026-04-24",
-      "summary": [
-        "feat：测试套件验证流程增强 + 数据集策展硬闸门"
+        "在版本元数据 PR 合并到 develop 后，自动创建或更新 develop → master 发版 PR。",
+        "修复 scripts/get-release-notes.js 对 CHANGELOG 发布段的提取逻辑，避免 JS 正则不支持 \\Z 导致 GitHub Release 创建失败。",
+        "发布 workflow 在 tag 已存在但 GitHub Release 缺失/需要更新时，也会继续触发部署，支持半失败恢复。",
+        "更新发版文档，明确自动创建流程和本地命令兜底。"
       ],
       "features": [
-        "测试套件新增校验标题字段，前端重写复核弹窗、执行详情与对话列表组件",
-        "测试批次导入与回写飞书的服务链路完善"
+        "发布 workflow 在 tag 已存在但 GitHub Release 缺失/需要更新时，也会继续触发部署，支持半失败恢复。"
       ],
-      "fixes": [],
-      "optimizations": [
-        "收紧 badcase 数据集策展规则"
-      ],
-      "ops": [],
-      "config": [],
-      "envFiles": [
-        ".env.example",
-        "src/infra/config/env.validation.ts"
-      ],
-      "verification": [
-        "测试环境已应用 validation_title 字段迁移",
-        "Dashboard 测试套件列表 / 执行详情 / 对话复核弹窗回归通过"
-      ]
-    },
-    {
-      "number": "118",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/118",
-      "title": "feat：Agent 思考/工具/回复链可视化重放与运营视角文档",
-      "author": "ArielZhu",
-      "mergedAt": "2026-04-27",
-      "summary": [
-        "feat：Agent 思考/工具/回复链可视化重放与运营视角文档"
-      ],
-      "features": [
-        "Agent 响应快照持久化，前端在执行详情按思考链 → 工具调用 → 回复链单一来源还原",
-        "新增运营/产品视角的 Agent 运行时与工作流文档，并与研发版架构文档交叉链接"
-      ],
-      "fixes": [],
-      "optimizations": [
-        "批次状态机放开 completed → reviewing，支持单条重跑后重新评审"
-      ],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "pnpm run test:ci 通过：216 suites / 2526 tests",
-        "pnpm run lint:check / format:check / typecheck 全部通过"
-      ]
-    },
-    {
-      "number": "120",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/120",
-      "title": "[codex] improve hosting ops and feedback flows",
-      "author": "ArielZhu",
-      "mergedAt": "2026-04-27",
-      "summary": [
-        "fix WeCom image/text merge handling and booking/dashboard stats recording",
-        "improve the users hosting operations page with search, stable sorting, bot filtering, and real configured bot data",
-        "add Good/Bad feedback from the message-processing drawer, including Batch ID write-through to Feishu",
-        "make feedback success and failure states much more visible, including backend error details",
-        "refine pending release notes and deploy notification markdown"
-      ],
-      "features": [],
       "fixes": [
-        "fix WeCom image/text merge handling and booking/dashboard stats recording"
+        "修复 scripts/get-release-notes.js 对 CHANGELOG 发布段的提取逻辑，避免 JS 正则不支持 \\Z 导致 GitHub Release 创建失败。",
+        "更新发版文档，明确自动创建流程和本地命令兜底。"
       ],
       "optimizations": [
-        "improve the users hosting operations page with search, stable sorting, bot filtering, and real configured bot data"
+        "在版本元数据 PR 合并到 develop 后，自动创建或更新 develop → master 发版 PR。"
       ],
-      "ops": [
-        "add Good/Bad feedback from the message-processing drawer, including Batch ID write-through to Feishu",
-        "make feedback success and failure states much more visible, including backend error details",
-        "refine pending release notes and deploy notification markdown"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "pnpm run ci:check",
-        "pre-push hook passed: 216 suites / 2532 tests"
-      ]
-    },
-    {
-      "number": "123",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/123",
-      "title": "准备 Web 后台发版改动",
-      "author": "ArielZhu",
-      "mergedAt": "2026-04-28",
-      "summary": [
-        "准备 Web 后台发版改动"
-      ],
-      "features": [
-        "准备 Web 后台发版改动"
-      ],
-      "fixes": [],
-      "optimizations": [],
       "ops": [],
       "config": [],
       "envFiles": [],
       "verification": [
-        "pre-commit: `pnpm run lint` + `pnpm run format` 通过。",
-        "pre-push: `pnpm run ci:check` 通过。",
-        "`ci:check` 覆盖：`lint:check`、`format:check`、`typecheck`、`build:ci`、`test:ci`。",
-        "`test:ci`: 216 suites / 2532 tests passed。"
-      ]
-    },
-    {
-      "number": "125",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/125",
-      "title": "自动填充发版 PR 正文",
-      "author": "ArielZhu",
-      "mergedAt": "2026-04-28",
-      "summary": [
-        "新增 Release PR Autofill：develop → master 发版 PR 创建后，自动从 CHANGELOG.md 待发布内容生成中文标题和正文。",
-        "增加本地发版 PR 命令：pnpm release:pr:preview 预览，pnpm release:pr:create 创建或更新 develop → master PR。",
-        "更新 PR 模板和发版文档，说明发版 PR 可以先填临时标题，也可以用命令避免手填。"
-      ],
-      "features": [
-        "新增 Release PR Autofill：develop → master 发版 PR 创建后，自动从 CHANGELOG.md 待发布内容生成中文标题和正文。"
-      ],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "增加本地发版 PR 命令：pnpm release:pr:preview 预览，pnpm release:pr:create 创建或更新 develop → master PR。",
-        "更新 PR 模板和发版文档，说明发版 PR 可以先填临时标题，也可以用命令避免手填。"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "node --check scripts/build-release-pr-body.js",
-        "node --check scripts/create-release-pr.js",
+        "node --check scripts/build-release-pr-body.js && node --check scripts/create-release-pr.js && node --check scripts/get-release-notes.js",
+        "使用 origin/master 的 CHANGELOG 验证可提取 v5.3.0 发布说明",
         "pnpm release:pr:preview",
-        "pnpm exec prettier --check package.json scripts/create-release-pr.js docs/workflows/version-release-guide.md",
+        "ruby YAML 解析 .github/workflows/version-changelog.yml 通过",
+        "pnpm exec prettier --check .github/workflows/version-changelog.yml scripts/get-release-notes.js",
         "pre-push pnpm run ci:check：216 个测试套件、2532 个测试通过"
       ]
     }
