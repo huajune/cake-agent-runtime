@@ -11,10 +11,45 @@
 <!-- release:pending:start -->
 ## 待发布
 
-**预计版本**: `v5.3.2`
+**预计版本**: `v5.4.0`
 **最近更新**: `2026-04-28`
 **来源分支**: `develop`
 **累计 PR**: 1
+
+### 更新摘要
+- PR #141 支持消息流水按托管 BOT 筛选
+
+### 新功能
+- PR #141 支持消息流水按托管 BOT 筛选
+
+### 问题修复
+- 无
+
+### 优化调整
+- 无
+
+### 运维与流程
+- 无
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #141 `pnpm jest tests/biz/message/message.controller.spec.ts tests/biz/message/services/message-processing.service.spec.ts tests/biz/message/repositories/message-processing.repository.spec.ts --runInBand --watchman=false`
+- PR #141 `pnpm run build:web`
+- PR #141 `pnpm run typecheck`
+- PR #141 `pnpm run lint:check`
+- PR #141 `pnpm run format:check`
+- PR #141 `API_GUARD_TOKEN=ci-placeholder-token pnpm run build`
+- PR #141 push 前完整 `pnpm run ci:check` 通过：216 suites / 2539 tests
+<!-- release:pending:end -->
+
+## [5.3.2] - 2026-04-28
+
+**来源分支**: `develop`
 
 ### 更新摘要
 - PR #135 修复部署 workflow 的飞书通知 job 读不到 production 环境 secrets 的问题。
@@ -45,7 +80,6 @@
 - PR #135 `pnpm exec prettier --check .github/workflows/deploy.yml`
 - PR #135 `REQUIRE_DEPLOY_NOTIFICATION=false node scripts/send-deploy-notification.js`
 - PR #135 pre-push `pnpm run ci:check`：216 个测试套件、2532 个测试通过
-<!-- release:pending:end -->
 
 ## [5.3.1] - 2026-04-28
 
