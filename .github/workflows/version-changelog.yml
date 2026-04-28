@@ -281,6 +281,7 @@ jobs:
           echo "tag_created=true" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
+        id: github_release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -296,15 +297,17 @@ jobs:
               --title "${TAG_NAME}" \
               --notes-file /tmp/release_notes.md
             echo "✅ GitHub Release notes updated: ${TAG_NAME}"
+            echo "release_ready=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           gh release create "${TAG_NAME}" \
             --title "${TAG_NAME}" \
             --notes-file /tmp/release_notes.md
+          echo "release_ready=true" >> "$GITHUB_OUTPUT"
 
       - name: Trigger deploy workflow
-        if: steps.release_tag.outputs.tag_created == 'true'
+        if: steps.github_release.outputs.release_ready == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ steps.release_tag.outputs.tag_name }}
