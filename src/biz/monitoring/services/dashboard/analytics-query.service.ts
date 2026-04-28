@@ -26,6 +26,11 @@ import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { MessageTrackingService } from '../tracking/message-tracking.service';
 import { MessageProcessor } from '@wecom/message/runtime/message.processor';
 import * as os from 'os';
+import {
+  calculateDashboardTimeRanges,
+  getDashboardTimeRangeCutoff,
+  toMessageProcessingRecords,
+} from './analytics-dashboard.util';
 
 /**
  * 单项数据查询服务
@@ -107,7 +112,7 @@ export class AnalyticsQueryService {
     businessTrend: BusinessMetricTrendPoint[];
   }> {
     try {
-      const timeRanges = this.calculateTimeRanges(timeRange);
+      const timeRanges = calculateDashboardTimeRanges(timeRange);
       const { currentStart, currentEnd } = timeRanges;
 
       const [currentRecords, errorLogs, trends] = await Promise.all([
@@ -325,7 +330,7 @@ export class AnalyticsQueryService {
   public async getRecentDetailRecords(limit: number = 50): Promise<MessageProcessingRecord[]> {
     try {
       const result = await this.messageProcessingService.getRecordsByTimestamps({ limit });
-      return result.records as unknown as MessageProcessingRecord[];
+      return toMessageProcessingRecords(result.records);
     } catch (error) {
       this.logger.error('查询最近消息记录异常:', error);
       return [];
@@ -342,7 +347,7 @@ export class AnalyticsQueryService {
   ): Promise<MessageProcessingRecord[]> {
     try {
       const records = await this.messageProcessingService.getRecordsByTimeRange(startTime, endTime);
-      return records as unknown as MessageProcessingRecord[];
+      return toMessageProcessingRecords(records);
     } catch (error) {
       this.logger.error('按时间范围查询消息记录失败:', error);
       return [];
@@ -357,7 +362,7 @@ export class AnalyticsQueryService {
         startTime: cutoffTime.getTime(),
         limit: limitByRange[range] || 2000,
       });
-      return result.records as unknown as MessageProcessingRecord[];
+      return toMessageProcessingRecords(result.records);
     } catch (error) {
       this.logger.error(`查询消息记录异常 [${range}]:`, error);
       return [];
@@ -400,65 +405,8 @@ export class AnalyticsQueryService {
   // 私有计算方法
   // ========================================
 
-  private calculateTimeRanges(timeRange: TimeRange): {
-    currentStart: number;
-    currentEnd: number;
-    previousStart: number;
-    previousEnd: number;
-  } {
-    const nowDate = new Date();
-    const now = nowDate.getTime();
-    let currentStart: number;
-    let currentEnd: number;
-    let previousStart: number;
-    let previousEnd: number;
-
-    switch (timeRange) {
-      case 'today': {
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-        currentStart = todayStart.getTime();
-        currentEnd = now;
-        const yesterdayStart = new Date(todayStart);
-        yesterdayStart.setDate(yesterdayStart.getDate() - 1);
-        previousStart = yesterdayStart.getTime();
-        previousEnd = previousStart + (currentEnd - currentStart);
-        break;
-      }
-      case 'week': {
-        const weekStart = new Date(nowDate);
-        const daysSinceMonday = (weekStart.getDay() + 6) % 7;
-        weekStart.setDate(weekStart.getDate() - daysSinceMonday);
-        weekStart.setHours(0, 0, 0, 0);
-        currentStart = weekStart.getTime();
-        currentEnd = now;
-        const previousWeekStart = new Date(weekStart);
-        previousWeekStart.setDate(previousWeekStart.getDate() - 7);
-        previousStart = previousWeekStart.getTime();
-        previousEnd = previousStart + (currentEnd - currentStart);
-        break;
-      }
-      case 'month': {
-        const monthStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), 1);
-        currentStart = monthStart.getTime();
-        currentEnd = now;
-        const previousMonthStart = new Date(nowDate.getFullYear(), nowDate.getMonth() - 1, 1);
-        previousStart = previousMonthStart.getTime();
-        previousEnd = Math.min(previousStart + (currentEnd - currentStart), currentStart);
-        break;
-      }
-      default:
-        currentStart = now - 24 * 60 * 60 * 1000;
-        currentEnd = now;
-        previousStart = currentStart - 24 * 60 * 60 * 1000;
-        previousEnd = currentStart;
-    }
-
-    return { currentStart, currentEnd, previousStart, previousEnd };
-  }
-
   private getTimeRangeCutoff(range: TimeRange): Date {
-    return new Date(this.calculateTimeRanges(range).currentStart);
+    return getDashboardTimeRangeCutoff(range);
   }
 
   private calculatePercentilesFromArray(values: number[]): {

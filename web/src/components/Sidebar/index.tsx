@@ -4,9 +4,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Bug, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { preloadRouteChunk, type AppRoutePath } from '@/routes/lazy-pages';
 import { markRouteNavigationStart } from '@/utils/perf';
-
-const BADCASE_FEISHU_URL =
-  'https://gingjqcjzc.feishu.cn/wiki/SWGgwAfsAihO6ukGQrCc18Qonwc?table=tblZGWZguvorS36f&view=vew7SMbKZG';
+import { BADCASE_FEISHU_URL } from '@/constants';
 
 interface SidebarProps {
   isCollapsed: boolean;
