@@ -1,37 +1,7 @@
 {
-  "baseVersion": "5.3.1",
+  "baseVersion": "5.3.2",
   "nextVersion": "5.3.2",
   "updatedAt": "2026-04-28",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "135",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/135",
-      "title": "避免飞书通知配置缺失阻断发布",
-      "author": "ArielZhu",
-      "mergedAt": "2026-04-28",
-      "summary": [
-        "修复部署 workflow 的飞书通知 job 读不到 production 环境 secrets 的问题。",
-        "补充 `DEPLOY_NOTIFICATION_WEBHOOK_URL` / `DEPLOY_NOTIFICATION_WEBHOOK_SECRET` 作为旧配置名兜底。",
-        "当 webhook 未配置时跳过通知但不阻断发布，避免“代码已部署成功但 workflow 被通知步骤标红”。"
-      ],
-      "features": [],
-      "fixes": [
-        "修复部署 workflow 的飞书通知 job 读不到 production 环境 secrets 的问题。",
-        "补充 `DEPLOY_NOTIFICATION_WEBHOOK_URL` / `DEPLOY_NOTIFICATION_WEBHOOK_SECRET` 作为旧配置名兜底。"
-      ],
-      "optimizations": [],
-      "ops": [
-        "当 webhook 未配置时跳过通知但不阻断发布，避免“代码已部署成功但 workflow 被通知步骤标红”。"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "ruby YAML 解析 `.github/workflows/deploy.yml` 通过",
-        "`pnpm exec prettier --check .github/workflows/deploy.yml`",
-        "`REQUIRE_DEPLOY_NOTIFICATION=false node scripts/send-deploy-notification.js`",
-        "pre-push `pnpm run ci:check`：216 个测试套件、2532 个测试通过"
-      ]
-    }
-  ]
+  "entries": []
 }

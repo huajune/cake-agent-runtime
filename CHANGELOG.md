@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.3.2] - 2026-04-28
 
-**预计版本**: `v5.3.2`
-**最近更新**: `2026-04-28`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #135 修复部署 workflow 的飞书通知 job 读不到 production 环境 secrets 的问题。
@@ -45,7 +41,6 @@
 - PR #135 `pnpm exec prettier --check .github/workflows/deploy.yml`
 - PR #135 `REQUIRE_DEPLOY_NOTIFICATION=false node scripts/send-deploy-notification.js`
 - PR #135 pre-push `pnpm run ci:check`：216 个测试套件、2532 个测试通过
-<!-- release:pending:end -->
 
 ## [5.3.1] - 2026-04-28
 
