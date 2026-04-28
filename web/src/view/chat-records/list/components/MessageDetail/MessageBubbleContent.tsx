@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+import { ExternalLink, X, ZoomIn } from 'lucide-react';
 import styles from './MessageBubbleContent.module.scss';
 
 type Payload = Record<string, unknown> | undefined;
@@ -48,22 +50,170 @@ interface Props {
   payload?: Record<string, unknown>;
 }
 
+interface PreviewImage {
+  url: string;
+  alt: string;
+}
+
+function getImageUrls(payload: Payload): { previewUrl?: string; thumbnailUrl?: string } {
+  const previewUrl = pickString(
+    payload,
+    'originalImageUrl',
+    'originalUrl',
+    'originImageUrl',
+    'originUrl',
+    'fullImageUrl',
+    'fullUrl',
+    'hdImageUrl',
+    'hdUrl',
+    'cdnOriginalImageUrl',
+    'cdnOriginalUrl',
+    'cdnorigimgurl',
+    'downloadUrl',
+    'mediaUrl',
+    'imageUrl',
+    'url',
+  );
+  const thumbnailUrl = pickString(
+    payload,
+    'thumbnailUrl',
+    'thumbUrl',
+    'thumbImageUrl',
+    'thumb',
+    'cdnThumbUrl',
+    'cdnthumburl',
+    'previewImageUrl',
+    'previewUrl',
+    'imageUrl',
+    'url',
+  );
+
+  return {
+    previewUrl,
+    thumbnailUrl: thumbnailUrl || previewUrl,
+  };
+}
+
 export function MessageBubbleContent({ messageType, content, payload }: Props) {
+  const [previewImage, setPreviewImage] = useState<PreviewImage | null>(null);
+
+  useEffect(() => {
+    if (!previewImage) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setPreviewImage(null);
+      }
+    };
+
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [previewImage]);
+
+  const imagePreview = previewImage ? (
+    <div
+      className={styles.previewBackdrop}
+      role="dialog"
+      aria-modal="true"
+      aria-label="图片预览"
+      onClick={() => setPreviewImage(null)}
+    >
+      <div className={styles.previewToolbar} onClick={(event) => event.stopPropagation()}>
+        <a
+          href={previewImage.url}
+          target="_blank"
+          rel="noreferrer"
+          className={styles.previewIconButton}
+          title="新窗口打开原图"
+          aria-label="新窗口打开原图"
+        >
+          <ExternalLink size={18} aria-hidden="true" />
+        </a>
+        <button
+          type="button"
+          className={styles.previewIconButton}
+          onClick={() => setPreviewImage(null)}
+          title="关闭预览"
+          aria-label="关闭预览"
+        >
+          <X size={20} aria-hidden="true" />
+        </button>
+      </div>
+      <img
+        src={previewImage.url}
+        alt={previewImage.alt}
+        className={styles.previewImage}
+        onClick={(event) => event.stopPropagation()}
+      />
+    </div>
+  ) : null;
+
   switch (messageType) {
     case 'IMAGE': {
-      const url = pickString(payload, 'imageUrl', 'url');
-      if (!url) return <span className={styles.fallback}>{content || '[图片消息]'}</span>;
+      const { previewUrl, thumbnailUrl } = getImageUrls(payload);
+      const displayUrl = thumbnailUrl || previewUrl;
+      const targetUrl = previewUrl || displayUrl;
+      if (!displayUrl || !targetUrl) {
+        return <span className={styles.fallback}>{content || '[图片消息]'}</span>;
+      }
       return (
-        <a href={url} target="_blank" rel="noreferrer" className={styles.imageLink}>
-          <img src={url} alt="图片" className={styles.image} loading="lazy" />
-        </a>
+        <>
+          <button
+            type="button"
+            className={styles.imageLink}
+            onClick={() => setPreviewImage({ url: targetUrl, alt: '图片预览' })}
+            title="放大预览图片"
+            aria-label="放大预览图片"
+          >
+            <img
+              src={displayUrl}
+              alt="图片"
+              className={styles.image}
+              loading="lazy"
+              decoding="async"
+            />
+            <span className={styles.imageOverlay} aria-hidden="true">
+              <ZoomIn size={16} />
+            </span>
+          </button>
+          {imagePreview}
+        </>
       );
     }
 
     case 'EMOTION': {
-      const url = pickString(payload, 'imageUrl', 'url');
-      if (!url) return <span className={styles.fallback}>{content || '[表情消息]'}</span>;
-      return <img src={url} alt="表情" className={styles.emotion} loading="lazy" />;
+      const { previewUrl, thumbnailUrl } = getImageUrls(payload);
+      const displayUrl = thumbnailUrl || previewUrl;
+      const targetUrl = previewUrl || displayUrl;
+      if (!displayUrl || !targetUrl) {
+        return <span className={styles.fallback}>{content || '[表情消息]'}</span>;
+      }
+      return (
+        <>
+          <button
+            type="button"
+            className={styles.emotionButton}
+            onClick={() => setPreviewImage({ url: targetUrl, alt: '表情预览' })}
+            title="放大预览表情"
+            aria-label="放大预览表情"
+          >
+            <img
+              src={displayUrl}
+              alt="表情"
+              className={styles.emotion}
+              loading="lazy"
+              decoding="async"
+            />
+          </button>
+          {imagePreview}
+        </>
+      );
     }
 
     case 'VOICE': {

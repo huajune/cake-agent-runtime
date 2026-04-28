@@ -4,6 +4,7 @@ const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
 const fs = require('fs');
+const { formatReleaseText, isEmptyReleaseLine } = require('./release-note-formatters');
 
 const WEBHOOK_ENV_KEYS = ['PRIVATE_CHAT_MONITOR_WEBHOOK_URL', 'DEPLOY_NOTIFICATION_WEBHOOK_URL'];
 const SECRET_ENV_KEYS = [
@@ -15,10 +16,12 @@ const CHANGELOG_PATH = 'CHANGELOG.md';
 const PENDING_START = '<!-- release:pending:start -->';
 const PENDING_END = '<!-- release:pending:end -->';
 
-main().catch((error) => {
-  console.error(`Deploy notification failed: ${error.message}`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(`Deploy notification failed: ${error.message}`);
+    process.exit(1);
+  });
+}
 
 async function main() {
   const webhookUrl = firstEnv(WEBHOOK_ENV_KEYS);
@@ -121,7 +124,30 @@ function normalizeReleaseNotes(rawNotes) {
 }
 
 function extractUpdateSummary(releaseNotes) {
-  return extractMarkdownSection(releaseNotes, '更新摘要') || releaseNotes.trim() || '- 暂无';
+  const summaryLines = parseMarkdownBullets(extractMarkdownSection(releaseNotes, '更新摘要'))
+    .map((line) => formatReleaseText(line, { includePrReference: false }))
+    .filter(Boolean);
+
+  if (summaryLines.length > 0) {
+    return uniqueList(summaryLines)
+      .slice(0, 8)
+      .map((line) => `- ${line}`)
+      .join('\n');
+  }
+
+  const publicLines = extractPublicUpdateLines(releaseNotes);
+  if (publicLines.length > 0) {
+    return publicLines.map((line) => `- ${line}`).join('\n');
+  }
+
+  const fallbackLines = parseMarkdownBullets(releaseNotes.trim())
+    .map((line) => formatReleaseText(line, { includePrReference: false }))
+    .filter(Boolean);
+
+  return uniqueList(fallbackLines)
+    .slice(0, 8)
+    .map((line) => `- ${line}`)
+    .join('\n') || '- 暂无';
 }
 
 function extractEnvReminder(releaseNotes) {
@@ -130,7 +156,17 @@ function extractEnvReminder(releaseNotes) {
     return '';
   }
 
-  return reminder;
+  const lines = parseMarkdownBullets(reminder)
+    .map((line) => formatReleaseText(line, { includePrReference: false }))
+    .filter((line) => line && !isEmptyReleaseLine(line));
+
+  if (lines.length === 0) {
+    return '';
+  }
+
+  return uniqueList(lines)
+    .map((line) => `- ${line}`)
+    .join('\n');
 }
 
 function extractMarkdownSection(markdown, headingText) {
@@ -148,6 +184,39 @@ function extractMarkdownSection(markdown, headingText) {
   const rest = trimmed.slice(heading.index + heading[0].length);
   const nextHeadingIndex = rest.search(/^### /m);
   return (nextHeadingIndex === -1 ? rest : rest.slice(0, nextHeadingIndex)).trim();
+}
+
+function extractPublicUpdateLines(releaseNotes) {
+  const sections = ['新功能', '问题修复', '优化调整', '运维与流程', '配置变更'];
+  const lines = [];
+
+  for (const section of sections) {
+    for (const item of parseMarkdownBullets(extractMarkdownSection(releaseNotes, section))) {
+      const text = formatReleaseText(item, { includePrReference: false });
+      if (!text || isEmptyReleaseLine(text)) continue;
+      lines.push(text);
+    }
+  }
+
+  return uniqueList(lines).slice(0, 10);
+}
+
+function parseMarkdownBullets(markdown) {
+  if (!markdown) {
+    return [];
+  }
+
+  return markdown
+    .split('\n')
+    .map((line) => {
+      const match = line.trim().match(/^(?:[-*+]\s+|\d+\.\s+)(.+)$/);
+      return match ? match[1].trim() : '';
+    })
+    .filter(Boolean);
+}
+
+function uniqueList(values) {
+  return Array.from(new Set(values.filter(Boolean)));
 }
 
 function renderOptionalSection(title, content) {
@@ -270,6 +339,12 @@ function postJson(url, payload) {
     request.end();
   });
 }
+
+module.exports = {
+  buildMarkdown,
+  extractUpdateSummary,
+  normalizeReleaseNotes,
+};
 
 function assertFeishuResponse(response) {
   if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {

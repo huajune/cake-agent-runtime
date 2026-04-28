@@ -55,7 +55,13 @@ export default function Dashboard() {
   const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month'>('today');
   const [autoRefresh, setAutoRefresh] = useState(true);
 
-  const { data: dashboard, isLoading: dashboardLoading, dataUpdatedAt } = useDashboardOverview(timeRange, autoRefresh);
+  const {
+    data: rawDashboard,
+    isLoading: dashboardInitialLoading,
+    dataUpdatedAt,
+  } = useDashboardOverview(timeRange, autoRefresh);
+  const dashboard = rawDashboard?.timeRange === timeRange ? rawDashboard : undefined;
+  const dashboardLoading = dashboardInitialLoading || !dashboard;
   const { data: health } = useHealthStatus(autoRefresh);
   const { data: aiStatus } = useAiReplyStatus();
   const toggleAiReply = useToggleAiReply();
@@ -175,8 +181,8 @@ export default function Dashboard() {
     labels: businessPoints.map((p) => formatLabel(p.minute)),
     datasets: [
       {
-        label: '预约次数',
-        data: businessPoints.map((p) => p.bookingAttempts || 0),
+        label: '预约成功数',
+        data: businessPoints.map((p) => p.successfulBookings || p.bookingAttempts || 0),
         borderColor: THEME_COLORS.accent,
         backgroundColor: THEME_COLORS.accent20,
         fill: true,
@@ -187,8 +193,8 @@ export default function Dashboard() {
         pointHoverRadius: 6,
       },
       {
-        label: '预约成功率',
-        data: businessPoints.map((p) => p.bookingSuccessRate || 0),
+        label: '咨询转化率',
+        data: businessPoints.map((p) => p.conversionRate || 0),
         borderColor: '#10b981',
         backgroundColor: 'transparent',
         borderDash: [5, 5],
@@ -210,8 +216,8 @@ export default function Dashboard() {
     },
     scales: {
       x: commonOptions.scales.x,
-      y: { ...commonOptions.scales.y, position: 'left' as const, title: { display: true, text: '预约次数', color: THEME_COLORS.accent, font: { size: 10 } } },
-      y1: { ...commonOptions.scales.y, position: 'right' as const, grid: { drawOnChartArea: false }, ticks: { callback: (value: number | string) => `${value}%` }, title: { display: true, text: '成功率 (%)', color: '#10b981', font: { size: 10 } } },
+      y: { ...commonOptions.scales.y, position: 'left' as const, title: { display: true, text: '预约成功数', color: THEME_COLORS.accent, font: { size: 10 } } },
+      y1: { ...commonOptions.scales.y, position: 'right' as const, grid: { drawOnChartArea: false }, ticks: { callback: (value: number | string) => `${value}%` }, title: { display: true, text: '转化率 (%)', color: '#10b981', font: { size: 10 } } },
     },
   };
 
@@ -256,6 +262,8 @@ export default function Dashboard() {
   };
 
   const timeRangeBadge = timeRange === 'today' ? '本日' : timeRange === 'week' ? '本周' : '本月';
+  const comparisonLabel =
+    timeRange === 'today' ? '较昨日同期' : timeRange === 'week' ? '较上周同期' : '较上月同期';
 
   return (
     <div className={styles.page}>
@@ -287,6 +295,7 @@ export default function Dashboard() {
           value={dashboardLoading ? '-' : (overview?.totalMessages ?? 0)}
           subtitle="成功 + 异常"
           delta={overviewDelta?.totalMessages}
+          deltaLabel={comparisonLabel}
           variant="primary"
           timeRangeBadge={timeRangeBadge}
         />
@@ -295,6 +304,8 @@ export default function Dashboard() {
           value={dashboardLoading ? '-' : `${(overview?.successRate ?? 0).toFixed(1)}%`}
           subtitle={`成功 ${overview?.successCount ?? 0} 条`}
           delta={overviewDelta?.successRate}
+          deltaLabel={comparisonLabel}
+          deltaUnit="points"
           variant="success"
         />
         <MetricCard
@@ -302,6 +313,7 @@ export default function Dashboard() {
           value={dashboardLoading ? '-' : formatDuration(overview?.avgDuration ?? 0)}
           subtitle="秒"
           delta={overviewDelta?.avgDuration}
+          deltaLabel={comparisonLabel}
           deltaInverse
         />
         <MetricCard
@@ -309,13 +321,12 @@ export default function Dashboard() {
           value={dashboardLoading ? '-' : (overview?.activeUsers ?? 0)}
           subtitle={`${overview?.activeChats ?? 0} 个会话`}
           delta={overviewDelta?.activeUsers}
+          deltaLabel={comparisonLabel}
         />
         <MetricCard
           label="降级次数"
           value={dashboardLoading ? '-' : (dashboard?.fallback?.totalCount ?? 0)}
           subtitle={`成功率 ${(dashboard?.fallback?.successRate ?? 0).toFixed(1)}% (${dashboard?.fallback?.successCount ?? 0}/${dashboard?.fallback?.totalCount ?? 0})`}
-          delta={dashboard?.fallbackDelta?.totalCount}
-          deltaInverse
           className="border-warning-soft"
         />
       </MetricGrid>
@@ -327,21 +338,20 @@ export default function Dashboard() {
           value={dashboardLoading ? '-' : (business?.consultations?.total ?? 0)}
           subtitle={<>独立用户，同一人多次算 1 个</>}
           delta={businessDelta?.consultations}
+          deltaLabel={comparisonLabel}
           timeRangeBadge={timeRangeBadge}
           className="border-primary-soft"
         />
         <MetricCard
-          label="预约面试次数"
-          value={dashboardLoading ? '-' : (business?.bookings?.attempts ?? 0)}
-          subtitle={<>成功 <span className="text-success">{business?.bookings?.successful ?? 0}</span> / 失败 <span className="text-danger">{business?.bookings?.failed ?? 0}</span></>}
-          delta={businessDelta?.bookingAttempts}
+          label="预约成功数"
+          value={dashboardLoading ? '-' : (business?.bookings?.successful ?? 0)}
+          subtitle={<>已记录成功预约</>}
           className="border-purple-soft"
         />
         <MetricCard
-          label="预约成功率"
-          value={dashboardLoading ? '-' : `${(business?.bookings?.successRate ?? 0).toFixed(1)}%`}
-          subtitle={<>咨询转化率 <span className="text-success">{(business?.conversion?.consultationToBooking ?? 0).toFixed(1)}%</span></>}
-          delta={businessDelta?.bookingSuccessRate}
+          label="咨询转化率"
+          value={dashboardLoading ? '-' : `${(business?.conversion?.consultationToBooking ?? 0).toFixed(1)}%`}
+          subtitle={<>预约成功 <span className="text-success">{business?.bookings?.successful ?? 0}</span> / 托管用户 <span>{business?.consultations?.total ?? 0}</span></>}
           variant="success"
           className="border-success-soft"
         />
@@ -352,7 +362,7 @@ export default function Dashboard() {
         <ChartCard title="托管用户趋势" subtitle="独立用户数">
           <Line data={consultationChartData} options={{ ...commonOptions, scales: { ...commonOptions.scales, y: { ...commonOptions.scales.y, ticks: { stepSize: 1, precision: 0 } } } }} />
         </ChartCard>
-        <ChartCard title="预约转化趋势" subtitle="预约次数与成功率">
+        <ChartCard title="预约转化趋势" subtitle="预约成功数与咨询转化率">
           <Line data={bookingChartData} options={bookingChartOptions} />
         </ChartCard>
       </ChartsRow>

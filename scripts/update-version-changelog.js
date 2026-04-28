@@ -11,6 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const { formatReleaseText, isEmptyReleaseLine } = require('./release-note-formatters');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const CONFIG = {
@@ -27,7 +28,7 @@ const CHANGELOG_HEADER = [
   '',
   '本项目遵循 语义化版本 规范。',
   '版本号由 GitHub Actions 自动维护，发布说明统一使用中文记录。',
-  '变更记录按 PR 驱动整理：更新摘要优先保留 PR 正文摘要 bullet，分类内容保留团队关心的业务/技术影响，不展开文件级流水账。',
+  '变更记录按 PR 驱动整理：自动清理 PR/commit 前缀与常见英文工程表述，尽量产出可直接用于发布通知的中文摘要。',
   '',
   '---',
 ].join('\n');
@@ -447,8 +448,7 @@ function parsePullRequestEntry() {
 
 function normalizeTitle(title) {
   const trimmed = title.trim();
-  const match = trimmed.match(/^\w+(?:\(.+?\))?!?:\s*(.+)$/);
-  return (match ? match[1] : trimmed).trim();
+  return formatReleaseText(trimmed, { includePrReference: false });
 }
 
 function inferPrimaryCategory(title) {
@@ -551,7 +551,7 @@ function normalizeBodyLine(line) {
     return '';
   }
 
-  return content;
+  return formatReleaseText(content, { includePrReference: false });
 }
 
 function uniqueList(values) {
@@ -676,7 +676,9 @@ function renderSummaryLines(entries) {
   for (const entry of entries) {
     const items = entry.summary?.length ? entry.summary : [entry.title].filter(Boolean);
     for (const item of items) {
-      lines.push(`- ${formatEntryReference(entry)} ${item}`);
+      const text = formatReleaseText(item, { includePrReference: false });
+      if (!text) continue;
+      lines.push(`- ${formatEntryReference(entry)} ${text}`);
     }
   }
   return lines.length > 0 ? lines : ['- 暂无'];
@@ -686,7 +688,9 @@ function renderCategoryLines(entries, key) {
   const lines = [];
   for (const entry of entries) {
     for (const item of entry[key] || []) {
-      lines.push(`- ${formatEntryReference(entry)} ${item}`);
+      const text = formatReleaseText(item, { includePrReference: false });
+      if (!text || isEmptyReleaseLine(text)) continue;
+      lines.push(`- ${formatEntryReference(entry)} ${text}`);
     }
   }
   return lines.length > 0 ? lines : ['- 无'];
