@@ -14,16 +14,29 @@
 **预计版本**: `v5.4.0`
 **最近更新**: `2026-04-28`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #141 支持消息流水按托管 BOT 筛选
+- PR #140 Hardened interview precheck/booking around `00:00-00:00` date-only windows so deadline-like timestamps are not submitted as concrete interview times.
+- PR #140 Added bookable slot metadata and prompt guidance so the agent asks for a valid date/time instead of inventing one.
+- PR #140 Updated `invite_to_group` routing to refresh group member counts from the enterprise group list before selecting a group.
+- PR #140 Skips groups at or over `GROUP_MEMBER_LIMIT`, retries the next candidate when the invite API reports `-10`, and only alerts when every matching group is full.
+- PR #140 Reduces invalid interview booking submissions for special all-day/date-only windows.
+- PR #140 Prevents continuing to invite candidates into full part-time groups when another city/industry-matched group is available.
+- PR #140 Keeps the group capacity alert reserved for the true overflow case where all matching groups are full.
 
 ### 新功能
 - PR #141 支持消息流水按托管 BOT 筛选
 
 ### 问题修复
-- 无
+- PR #140 Hardened interview precheck/booking around `00:00-00:00` date-only windows so deadline-like timestamps are not submitted as concrete interview times.
+- PR #140 Added bookable slot metadata and prompt guidance so the agent asks for a valid date/time instead of inventing one.
+- PR #140 Updated `invite_to_group` routing to refresh group member counts from the enterprise group list before selecting a group.
+- PR #140 Skips groups at or over `GROUP_MEMBER_LIMIT`, retries the next candidate when the invite API reports `-10`, and only alerts when every matching group is full.
+- PR #140 Reduces invalid interview booking submissions for special all-day/date-only windows.
+- PR #140 Prevents continuing to invite candidates into full part-time groups when another city/industry-matched group is available.
+- PR #140 Keeps the group capacity alert reserved for the true overflow case where all matching groups are full.
 
 ### 优化调整
 - 无
@@ -45,6 +58,12 @@
 - PR #141 `pnpm run format:check`
 - PR #141 `API_GUARD_TOKEN=ci-placeholder-token pnpm run build`
 - PR #141 push 前完整 `pnpm run ci:check` 通过：216 suites / 2539 tests
+- PR #140 `pnpm jest tests/tools/tool/duliday-interview-precheck.tool.spec.ts tests/tools/tool/duliday-interview-booking.tool.spec.ts tests/tools/tool/invite-to-group.tool.spec.ts --runInBand --watchman=false`
+- PR #140 `pnpm run typecheck`
+- PR #140 `pnpm run lint:check`
+- PR #140 `pnpm prettier --check src/tools/invite-to-group.tool.ts tests/tools/tool/invite-to-group.tool.spec.ts`
+- PR #140 `git diff --check`
+- PR #140 Pre-push `pnpm run ci:check` passed: 216 test suites, 2540 tests.
 <!-- release:pending:end -->
 
 ## [5.3.2] - 2026-04-28
