@@ -166,3 +166,13 @@ PR 正文请按模板填写中文说明，特别是这些部分：
 - PR 正文用中文写清楚变更，方便自动生成版本说明
 - `更新摘要` 写成可直接发群的中文，不要依赖 `feat:` / `fix:` / `chore:` 解释语义；脚本会兜底清理这些前缀
 - release PR 打开后，先看 `CHANGELOG.md` 再决定是否合并
+
+## develop → master 发版 PR
+
+网页上创建 `develop` → `master` PR 时，不需要手填通用 PR 模板。填一个临时标题并创建即可，`Release PR Autofill` workflow 会自动从 `CHANGELOG.md` 的待发布区生成标题和正文。
+
+本地也可以预览自动生成的内容：
+
+```bash
+node scripts/build-release-pr-body.js --stdout
+```
