@@ -117,6 +117,36 @@ jobs:
         run: |
           echo "ℹ️ 如果 develop 开启严格分支保护，请合并机器人创建的版本元数据 PR，而不是依赖工作流直推。"
 
+  create-release-pr:
+    if: >
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'develop' &&
+      (
+        github.event.pull_request.head.ref == 'chore/release-metadata/develop' ||
+        startsWith(github.event.pull_request.title, 'chore(release): 更新待发布版本信息') ||
+        contains(format('{0}', github.event.pull_request.body), '<!-- release-metadata-pr -->')
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 1
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Create or update release PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          node scripts/create-release-pr.js --base master --head develop
+
   finalize-master-release:
     if: >
       github.event.pull_request.merged == true &&
