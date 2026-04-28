@@ -133,6 +133,7 @@ jobs:
   notify:
     needs: deploy
     runs-on: ubuntu-latest
+    environment: production
     if: always()
 
     steps:
@@ -164,7 +165,9 @@ jobs:
         env:
           PRIVATE_CHAT_MONITOR_WEBHOOK_URL: ${{ secrets.PRIVATE_CHAT_MONITOR_WEBHOOK_URL }}
           PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET: ${{ secrets.PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET }}
-          REQUIRE_DEPLOY_NOTIFICATION: 'true'
+          DEPLOY_NOTIFICATION_WEBHOOK_URL: ${{ secrets.DEPLOY_NOTIFICATION_WEBHOOK_URL }}
+          DEPLOY_NOTIFICATION_WEBHOOK_SECRET: ${{ secrets.DEPLOY_NOTIFICATION_WEBHOOK_SECRET }}
+          REQUIRE_DEPLOY_NOTIFICATION: 'false'
           DEPLOY_RESULT: ${{ needs.deploy.result }}
           DEPLOY_ENVIRONMENT: production
           DEPLOY_BRANCH: master
