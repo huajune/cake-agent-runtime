@@ -6,7 +6,7 @@
 
 1. 日常开发通过 PR 合并到 `develop`
 2. 合并后自动创建或更新一个机器人“版本元数据 PR”到 `develop`
-3. 从 `develop` 创建 release PR 到 `master`
+3. 合并机器人“版本元数据 PR”后，自动创建或更新 `develop -> master` release PR
 4. release PR 合并后，自动创建或更新一个机器人“正式发布固化 PR”到 `master`
 5. 正式发布固化 PR 合并后自动打 tag、创建 GitHub Release，并触发生产部署
 
@@ -59,8 +59,9 @@ PR 正文请按模板填写中文说明，特别是这些部分：
 当你准备发版时：
 
 1. 确认 `develop` 上的 `CHANGELOG.md` 待发布内容正确
-2. 创建 PR：`develop -> master`
-3. 审核本次版本说明、配置影响、验证情况
+2. 合并机器人创建的“版本元数据 PR”
+3. 等系统自动创建或更新 `develop -> master` release PR
+4. 审核本次版本说明、配置影响、验证情况
 
 ### 第二步：合并 release PR
 
@@ -169,9 +170,11 @@ PR 正文请按模板填写中文说明，特别是这些部分：
 
 ## develop → master 发版 PR
 
-网页上创建 `develop` → `master` PR 时，不需要手填通用 PR 模板。填一个临时标题并创建即可，`Release PR Autofill` workflow 会自动从 `CHANGELOG.md` 的待发布区生成标题和正文。
+正常情况下，合并机器人“版本元数据 PR”到 `develop` 后，系统会自动创建或更新 `develop` → `master` release PR，并从 `CHANGELOG.md` 的待发布区生成标题和正文。
 
-如果这次发版还没把 `Release PR Autofill` 带进 `master`，可以用本地命令直接创建或更新发版 PR。这个命令只创建或更新 PR，不会合并、不打 tag、也不会发布：
+如果你在网页上手动创建 `develop` → `master` PR，不需要手填通用 PR 模板。填一个临时标题并创建即可，`Release PR Autofill` workflow 会自动从 `CHANGELOG.md` 的待发布区生成标题和正文。
+
+如果自动创建没有触发，也可以用本地命令直接创建或更新发版 PR。这个命令只创建或更新 PR，不会合并、不打 tag、也不会发布：
 
 ```bash
 pnpm release:pr:create
