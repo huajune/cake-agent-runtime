@@ -8,6 +8,45 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.3.2`
+**最近更新**: `2026-04-28`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #135 修复部署 workflow 的飞书通知 job 读不到 production 环境 secrets 的问题。
+- PR #135 补充 `DEPLOY_NOTIFICATION_WEBHOOK_URL` / `DEPLOY_NOTIFICATION_WEBHOOK_SECRET` 作为旧配置名兜底。
+- PR #135 当 webhook 未配置时跳过通知但不阻断发布，避免“代码已部署成功但 workflow 被通知步骤标红”。
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #135 修复部署 workflow 的飞书通知 job 读不到 production 环境 secrets 的问题。
+- PR #135 补充 `DEPLOY_NOTIFICATION_WEBHOOK_URL` / `DEPLOY_NOTIFICATION_WEBHOOK_SECRET` 作为旧配置名兜底。
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #135 当 webhook 未配置时跳过通知但不阻断发布，避免“代码已部署成功但 workflow 被通知步骤标红”。
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #135 ruby YAML 解析 `.github/workflows/deploy.yml` 通过
+- PR #135 `pnpm exec prettier --check .github/workflows/deploy.yml`
+- PR #135 `REQUIRE_DEPLOY_NOTIFICATION=false node scripts/send-deploy-notification.js`
+- PR #135 pre-push `pnpm run ci:check`：216 个测试套件、2532 个测试通过
+<!-- release:pending:end -->
+
 ## [5.3.1] - 2026-04-28
 
 **来源分支**: `develop`
