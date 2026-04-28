@@ -36,6 +36,11 @@ import { DailyStatsAggregatorService } from '../projections/daily-stats-aggregat
 import { HourlyStatsAggregatorService } from '../projections/hourly-stats-aggregator.service';
 import { MessageTrackingService } from '../tracking/message-tracking.service';
 import { MessageProcessor } from '@wecom/message/runtime/message.processor';
+import {
+  calculateDashboardTimeRanges,
+  getDashboardTimeRangeCutoff,
+  toMessageProcessingRecords,
+} from './analytics-dashboard.util';
 
 /** 业务指标快照（用户数 + 预约数 + 转化率） */
 export interface BusinessMetricsSnapshot {
@@ -43,6 +48,25 @@ export interface BusinessMetricsSnapshot {
   bookings: { attempts: number; successful: number; failed: number; successRate: number };
   conversion: { consultationToBooking: number };
 }
+
+type DashboardOverviewResponse = {
+  timeRange: string;
+  overview: DashboardOverviewStats & { activeUsers: number; activeChats: number };
+  overviewDelta: {
+    totalMessages: number;
+    successRate: number;
+    avgDuration: number;
+    activeUsers: number;
+  };
+  dailyTrend: DailyStats[];
+  tokenTrend: { time: string; tokenUsage: number; messageCount: number }[];
+  businessTrend: BusinessMetricTrendPoint[];
+  responseTrend: ResponseMinuteTrendPoint[];
+  business: BusinessMetricsSnapshot;
+  businessDelta: { consultations: number; bookingAttempts: number; bookingSuccessRate: number };
+  fallback: DashboardFallbackStats;
+  fallbackDelta: { totalCount: number; successRate: number };
+};
 
 /**
  * Dashboard 数据聚合服务
@@ -52,6 +76,10 @@ export interface BusinessMetricsSnapshot {
 export class AnalyticsDashboardService {
   private readonly logger = new Logger(AnalyticsDashboardService.name);
   private readonly DEFAULT_WINDOW_HOURS = 24;
+  private readonly overviewCache = new Map<
+    TimeRange,
+    { expireAt: number; value: DashboardOverviewResponse }
+  >();
 
   constructor(
     private readonly messageProcessingService: MessageProcessingService,
@@ -80,7 +108,7 @@ export class AnalyticsDashboardService {
    */
   async getDashboardDataAsync(timeRange: TimeRange = 'today'): Promise<DashboardData> {
     try {
-      const timeRanges = this.calculateTimeRanges(timeRange);
+      const timeRanges = calculateDashboardTimeRanges(timeRange);
       const { currentStart, currentEnd, previousStart, previousEnd } = timeRanges;
 
       const [
@@ -176,26 +204,16 @@ export class AnalyticsDashboardService {
   /**
    * 获取 Dashboard 概览数据（优化版 - 使用 SQL 聚合查询）
    */
-  async getDashboardOverviewAsync(timeRange: TimeRange = 'today'): Promise<{
-    timeRange: string;
-    overview: DashboardOverviewStats & { activeUsers: number; activeChats: number };
-    overviewDelta: {
-      totalMessages: number;
-      successRate: number;
-      avgDuration: number;
-      activeUsers: number;
-    };
-    dailyTrend: DailyStats[];
-    tokenTrend: { time: string; tokenUsage: number; messageCount: number }[];
-    businessTrend: BusinessMetricTrendPoint[];
-    responseTrend: ResponseMinuteTrendPoint[];
-    business: BusinessMetricsSnapshot;
-    businessDelta: { consultations: number; bookingAttempts: number; bookingSuccessRate: number };
-    fallback: DashboardFallbackStats;
-    fallbackDelta: { totalCount: number; successRate: number };
-  }> {
+  async getDashboardOverviewAsync(
+    timeRange: TimeRange = 'today',
+  ): Promise<DashboardOverviewResponse> {
     try {
-      const timeRanges = this.calculateTimeRanges(timeRange);
+      const cached = this.getCachedDashboardOverview(timeRange);
+      if (cached) {
+        return cached;
+      }
+
+      const timeRanges = calculateDashboardTimeRanges(timeRange);
       const { currentStart, currentEnd, previousStart, previousEnd } = timeRanges;
 
       const currentStartDate = new Date(currentStart);
@@ -335,7 +353,7 @@ export class AnalyticsDashboardService {
       const [currentBookings, previousBookings, trendRecords] = await Promise.all([
         this.getBookingCount(curStartDate, curEndDate),
         this.getBookingCount(prevStartDate, prevEndDate),
-        this.getDetailRecordsByTimeRange(timeRange),
+        this.getBusinessTrendRecordsByTimeRange(currentStart, currentEnd, timeRange),
       ]);
 
       const business = this.buildBusinessFromStats(currentOverview.activeUsers, currentBookings);
@@ -408,7 +426,7 @@ export class AnalyticsDashboardService {
               }),
             );
 
-      return {
+      const response: DashboardOverviewResponse = {
         timeRange,
         overview,
         overviewDelta,
@@ -421,10 +439,32 @@ export class AnalyticsDashboardService {
         fallback,
         fallbackDelta,
       };
+      this.setCachedDashboardOverview(timeRange, response);
+      return response;
     } catch (error) {
       this.logger.error('获取Dashboard概览数据失败:', error);
       throw error;
     }
+  }
+
+  private getCachedDashboardOverview(timeRange: TimeRange): DashboardOverviewResponse | null {
+    const cached = this.overviewCache.get(timeRange);
+    if (!cached || cached.expireAt <= Date.now()) {
+      this.overviewCache.delete(timeRange);
+      return null;
+    }
+    return cached.value;
+  }
+
+  private setCachedDashboardOverview(timeRange: TimeRange, value: DashboardOverviewResponse): void {
+    this.overviewCache.set(timeRange, {
+      value,
+      expireAt: Date.now() + this.getOverviewCacheTtlMs(timeRange),
+    });
+  }
+
+  private getOverviewCacheTtlMs(timeRange: TimeRange): number {
+    return timeRange === 'today' ? 10_000 : 60_000;
   }
 
   private getHourStart(date: Date): Date {
@@ -544,7 +584,7 @@ export class AnalyticsDashboardService {
   ): Promise<MessageProcessingRecord[]> {
     try {
       const records = await this.messageProcessingService.getRecordsByTimeRange(startTime, endTime);
-      return records as unknown as MessageProcessingRecord[];
+      return toMessageProcessingRecords(records);
     } catch (error) {
       this.logger.error('按时间范围查询消息记录失败:', error);
       return [];
@@ -554,7 +594,7 @@ export class AnalyticsDashboardService {
   private async getRecentDetailRecords(limit: number = 50): Promise<MessageProcessingRecord[]> {
     try {
       const result = await this.messageProcessingService.getRecordsByTimestamps({ limit });
-      return result.records as unknown as MessageProcessingRecord[];
+      return toMessageProcessingRecords(result.records);
     } catch (error) {
       this.logger.error('查询最近消息记录异常:', error);
       return [];
@@ -569,9 +609,28 @@ export class AnalyticsDashboardService {
         startTime: cutoffTime.getTime(),
         limit: limitByRange[range] || 2000,
       });
-      return result.records as unknown as MessageProcessingRecord[];
+      return toMessageProcessingRecords(result.records);
     } catch (error) {
       this.logger.error(`查询消息记录异常 [${range}]:`, error);
+      return [];
+    }
+  }
+
+  private async getBusinessTrendRecordsByTimeRange(
+    startTime: number,
+    endTime: number,
+    range: TimeRange,
+  ): Promise<MessageProcessingRecord[]> {
+    try {
+      const limitByRange = { today: 2000, week: 5000, month: 10000 };
+      const result = await this.messageProcessingService.getBusinessTrendRecordsByTimeRange(
+        startTime,
+        endTime,
+        limitByRange[range] || 2000,
+      );
+      return toMessageProcessingRecords(result);
+    } catch (error) {
+      this.logger.error(`查询业务趋势记录异常 [${range}]:`, error);
       return [];
     }
   }
@@ -640,67 +699,8 @@ export class AnalyticsDashboardService {
   // 私有计算方法
   // ========================================
 
-  private calculateTimeRanges(timeRange: TimeRange): {
-    currentStart: number;
-    currentEnd: number;
-    previousStart: number;
-    previousEnd: number;
-  } {
-    const now = Date.now();
-    let currentStart: number;
-    let currentEnd: number;
-    let previousStart: number;
-    let previousEnd: number;
-
-    switch (timeRange) {
-      case 'today': {
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-        currentStart = todayStart.getTime();
-        currentEnd = now;
-        const yesterdayStart = new Date(todayStart);
-        yesterdayStart.setDate(yesterdayStart.getDate() - 1);
-        previousStart = yesterdayStart.getTime();
-        previousEnd = currentStart;
-        break;
-      }
-      case 'week':
-        currentStart = now - 7 * 24 * 60 * 60 * 1000;
-        currentEnd = now;
-        previousStart = currentStart - 7 * 24 * 60 * 60 * 1000;
-        previousEnd = currentStart;
-        break;
-      case 'month':
-        currentStart = now - 30 * 24 * 60 * 60 * 1000;
-        currentEnd = now;
-        previousStart = currentStart - 30 * 24 * 60 * 60 * 1000;
-        previousEnd = currentStart;
-        break;
-      default:
-        currentStart = now - 24 * 60 * 60 * 1000;
-        currentEnd = now;
-        previousStart = currentStart - 24 * 60 * 60 * 1000;
-        previousEnd = currentStart;
-    }
-
-    return { currentStart, currentEnd, previousStart, previousEnd };
-  }
-
   private getTimeRangeCutoff(range: TimeRange): Date {
-    const now = new Date();
-    switch (range) {
-      case 'today':
-        now.setHours(0, 0, 0, 0);
-        return now;
-      case 'week':
-        now.setDate(now.getDate() - 7);
-        return now;
-      case 'month':
-        now.setDate(now.getDate() - 30);
-        return now;
-      default:
-        return now;
-    }
+    return getDashboardTimeRangeCutoff(range);
   }
 
   private calculatePercentChange(current: number, previous: number): number {

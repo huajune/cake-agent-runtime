@@ -31,6 +31,8 @@
     "db:status:prod": "dotenv -e .env.local -- bash -c 'supabase migration list --db-url $SUPABASE_DB_URL_PROD'",
     "db:new": "supabase migration new",
     "sync:test-suite:prod": "node scripts/sync-test-suite-batches-to-prod.js",
+    "release:pr:preview": "node scripts/build-release-pr-body.js --stdout",
+    "release:pr:create": "node scripts/create-release-pr.js",
     "deploy": "bash scripts/deploy-local.sh"
   },
   "dependencies": {

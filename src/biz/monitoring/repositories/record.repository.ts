@@ -148,9 +148,21 @@ export class MonitoringRecordRepository extends BaseRepository {
       totalTokenUsage: 0,
     };
 
-    return this.rpcSingleRow('get_dashboard_overview_stats', defaultResult, OVERVIEW_MAPPING, {
+    const params = {
       p_start_date: startDate.toISOString(),
       p_end_date: endDate.toISOString(),
+    };
+    const fastResult = await this.rpc<Array<Record<string, unknown>>>(
+      'get_dashboard_overview_stats_fast',
+      params,
+    );
+
+    if (fastResult && fastResult.length > 0) {
+      return this.mapRpcRow<DashboardOverviewStats>(fastResult[0], OVERVIEW_MAPPING);
+    }
+
+    return this.rpcSingleRow('get_dashboard_overview_stats', defaultResult, OVERVIEW_MAPPING, {
+      ...params,
     });
   }
 

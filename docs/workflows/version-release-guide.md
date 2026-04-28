@@ -101,9 +101,9 @@ PR 正文请按模板填写中文说明，特别是这些部分：
 
 ### 更新摘要
 
-- PR #118 feat: 支持飞书消息通知群发布卡片
-- PR #119 fix: 修复 UTC CI 下的日期断言失败
-- PR #120 chore: 调整版本和部署流
+- PR #118 支持飞书消息通知群发布卡片
+- PR #119 修复 UTC CI 下的日期断言失败
+- PR #120 调整版本和部署流
 
 ### 新功能
 
@@ -164,5 +164,21 @@ PR 正文请按模板填写中文说明，特别是这些部分：
 
 - PR 标题用规范前缀，方便自动算版本号
 - PR 正文用中文写清楚变更，方便自动生成版本说明
-- `更新摘要` 可以保留 `feat:` / `fix:` / `chore:` 前缀，自动生成时会原样进入 `CHANGELOG.md`
+- `更新摘要` 写成可直接发群的中文，不要依赖 `feat:` / `fix:` / `chore:` 解释语义；脚本会兜底清理这些前缀
 - release PR 打开后，先看 `CHANGELOG.md` 再决定是否合并
+
+## develop → master 发版 PR
+
+网页上创建 `develop` → `master` PR 时，不需要手填通用 PR 模板。填一个临时标题并创建即可，`Release PR Autofill` workflow 会自动从 `CHANGELOG.md` 的待发布区生成标题和正文。
+
+如果这次发版还没把 `Release PR Autofill` 带进 `master`，可以用本地命令直接创建或更新发版 PR。这个命令只创建或更新 PR，不会合并、不打 tag、也不会发布：
+
+```bash
+pnpm release:pr:create
+```
+
+本地也可以预览自动生成的内容：
+
+```bash
+pnpm release:pr:preview
+```

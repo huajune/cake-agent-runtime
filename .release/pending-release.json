@@ -1,7 +1,7 @@
 {
   "baseVersion": "5.2.0",
   "nextVersion": "5.3.0",
-  "updatedAt": "2026-04-27",
+  "updatedAt": "2026-04-28",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -110,6 +110,60 @@
       "verification": [
         "pnpm run ci:check",
         "pre-push hook passed: 216 suites / 2532 tests"
+      ]
+    },
+    {
+      "number": "123",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/123",
+      "title": "准备 Web 后台发版改动",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-28",
+      "summary": [
+        "准备 Web 后台发版改动"
+      ],
+      "features": [
+        "准备 Web 后台发版改动"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "pre-commit: `pnpm run lint` + `pnpm run format` 通过。",
+        "pre-push: `pnpm run ci:check` 通过。",
+        "`ci:check` 覆盖：`lint:check`、`format:check`、`typecheck`、`build:ci`、`test:ci`。",
+        "`test:ci`: 216 suites / 2532 tests passed。"
+      ]
+    },
+    {
+      "number": "125",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/125",
+      "title": "自动填充发版 PR 正文",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-28",
+      "summary": [
+        "新增 Release PR Autofill：develop → master 发版 PR 创建后，自动从 CHANGELOG.md 待发布内容生成中文标题和正文。",
+        "增加本地发版 PR 命令：pnpm release:pr:preview 预览，pnpm release:pr:create 创建或更新 develop → master PR。",
+        "更新 PR 模板和发版文档，说明发版 PR 可以先填临时标题，也可以用命令避免手填。"
+      ],
+      "features": [
+        "新增 Release PR Autofill：develop → master 发版 PR 创建后，自动从 CHANGELOG.md 待发布内容生成中文标题和正文。"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "增加本地发版 PR 命令：pnpm release:pr:preview 预览，pnpm release:pr:create 创建或更新 develop → master PR。",
+        "更新 PR 模板和发版文档，说明发版 PR 可以先填临时标题，也可以用命令避免手填。"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "node --check scripts/build-release-pr-body.js",
+        "node --check scripts/create-release-pr.js",
+        "pnpm release:pr:preview",
+        "pnpm exec prettier --check package.json scripts/create-release-pr.js docs/workflows/version-release-guide.md",
+        "pre-push pnpm run ci:check：216 个测试套件、2532 个测试通过"
       ]
     }
   ]

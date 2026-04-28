@@ -120,7 +120,11 @@
 }
 
 .metricDelta {
-  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
   font-weight: $font-weight-semibold;
 
   &.positive {
@@ -130,4 +134,13 @@
   &.negative {
     color: $danger;
   }
+
+  &.neutral {
+    color: $text-muted;
+  }
+}
+
+.deltaLabel {
+  color: $text-muted;
+  font-weight: $font-weight-medium;
 }

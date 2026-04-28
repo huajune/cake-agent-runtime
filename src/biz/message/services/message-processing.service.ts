@@ -105,6 +105,17 @@ export class MessageProcessingService {
   }
 
   /**
+   * 获取 Dashboard 业务趋势所需的轻量记录。
+   */
+  async getBusinessTrendRecordsByTimeRange(startTime: number, endTime: number, limit?: number) {
+    return this.messageProcessingRepository.getBusinessTrendRecordsByTimeRange(
+      startTime,
+      endTime,
+      limit,
+    );
+  }
+
+  /**
    * 按时间戳选项查询消息处理记录（供内部服务使用）
    */
   async getRecordsByTimestamps(options: {

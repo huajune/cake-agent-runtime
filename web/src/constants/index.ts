@@ -2,6 +2,9 @@
  * 全局共享常量
  */
 
+export const BADCASE_FEISHU_URL =
+  'https://gingjqcjzc.feishu.cn/wiki/SWGgwAfsAihO6ukGQrCc18Qonwc?table=tblZGWZguvorS36f&view=vew7SMbKZG';
+
 /**
  * 💜 主题颜色配置
  *

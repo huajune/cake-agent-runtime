@@ -21,29 +21,178 @@
 
 /* ---------- IMAGE ---------- */
 .imageLink {
-  display: block;
-  line-height: 0;
-}
-
-.image {
-  max-width: 260px;
-  max-height: 320px;
+  position: relative;
+  display: inline-flex;
+  padding: 0;
+  border: 0;
   border-radius: $radius-md;
-  object-fit: cover;
-  background: rgba(0, 0, 0, 0.04);
-  transition: transform 0.2s ease;
+  appearance: none;
+  background: transparent;
+  line-height: 0;
+  cursor: zoom-in;
 
-  &:hover {
-    transform: scale(1.01);
+  &:focus-visible {
+    outline: 2px solid rgba(99, 102, 241, 0.5);
+    outline-offset: 3px;
+  }
+
+  &:hover .imageOverlay,
+  &:focus-visible .imageOverlay {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
+.image {
+  display: block;
+  max-width: min(320px, 44vw);
+  max-height: min(420px, 58vh);
+  border-radius: $radius-md;
+  object-fit: contain;
+  background: rgba(0, 0, 0, 0.04);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+
+  &:hover {
+    transform: scale(1.01);
+    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.12);
+  }
+}
+
+.imageOverlay {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(15, 23, 42, 0.72);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.18);
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+  pointer-events: none;
+}
+
+.previewBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: $z-modal + 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 72px 40px 40px;
+  background: rgba(15, 23, 42, 0.82);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  cursor: zoom-out;
+}
+
+.previewToolbar {
+  position: fixed;
+  top: 24px;
+  right: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: default;
+}
+
+.previewIconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background 0.18s ease,
+    transform 0.18s ease;
+
+  &:hover,
+  &:focus-visible {
+    background: rgba(255, 255, 255, 0.22);
+    transform: translateY(-1px);
+  }
+
+  &:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.72);
+    outline-offset: 3px;
+  }
+}
+
+.previewImage {
+  display: block;
+  max-width: min(92vw, 1280px);
+  max-height: calc(100vh - 128px);
+  border-radius: $radius-md;
+  object-fit: contain;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.42);
+  cursor: default;
+}
+
 /* ---------- EMOTION ---------- */
+.emotionButton {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  border-radius: $radius-md;
+  appearance: none;
+  background: transparent;
+  cursor: zoom-in;
+
+  &:focus-visible {
+    outline: 2px solid rgba(99, 102, 241, 0.5);
+    outline-offset: 3px;
+  }
+}
+
 .emotion {
   width: 96px;
   height: 96px;
   object-fit: contain;
   background: transparent;
+}
+
+@include respond-to(sm) {
+  .image {
+    max-width: 72vw;
+    max-height: 46vh;
+  }
+
+  .previewBackdrop {
+    padding: 64px 16px 24px;
+  }
+
+  .previewToolbar {
+    top: 14px;
+    right: 14px;
+  }
+
+  .previewIconButton {
+    width: 36px;
+    height: 36px;
+  }
+
+  .previewImage {
+    max-width: 94vw;
+    max-height: calc(100vh - 104px);
+  }
 }
 
 /* ---------- VOICE ---------- */
