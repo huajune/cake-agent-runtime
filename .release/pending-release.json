@@ -111,6 +111,30 @@
         "pnpm run ci:check",
         "pre-push hook passed: 216 suites / 2532 tests"
       ]
+    },
+    {
+      "number": "123",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/123",
+      "title": "准备 Web 后台发版改动",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-28",
+      "summary": [
+        "准备 Web 后台发版改动"
+      ],
+      "features": [
+        "准备 Web 后台发版改动"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "pre-commit: `pnpm run lint` + `pnpm run format` 通过。",
+        "pre-push: `pnpm run ci:check` 通过。",
+        "`ci:check` 覆盖：`lint:check`、`format:check`、`typecheck`、`build:ci`、`test:ci`。",
+        "`test:ci`: 216 suites / 2532 tests passed。"
+      ]
     }
   ]
 }

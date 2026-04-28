@@ -14,7 +14,7 @@
 **预计版本**: `v5.3.0`
 **最近更新**: `2026-04-28`
 **来源分支**: `develop`
-**累计 PR**: 4
+**累计 PR**: 5
 
 ### 更新摘要
 - PR #111 发布部署流水线支持 tag 触发与环境变量同步提醒
@@ -25,12 +25,14 @@
 - PR #120 消息处理详情抽屉新增好/坏反馈，并将 Batch ID 回写飞书
 - PR #120 优化反馈成功/失败状态展示，并补充后端错误详情
 - PR #120 优化待发布说明和部署通知格式
+- PR #123 准备 Web 后台发版改动
 
 ### 新功能
 - PR #115 测试套件新增校验标题字段，前端重写复核弹窗、执行详情与对话列表组件
 - PR #115 测试批次导入与回写飞书的服务链路完善
 - PR #118 Agent 响应快照持久化，前端在执行详情按思考链 → 工具调用 → 回复链单一来源还原
 - PR #118 新增运营/产品视角的 Agent 运行时与工作流文档，并与研发版架构文档交叉链接
+- PR #123 准备 Web 后台发版改动
 
 ### 问题修复
 - PR #120 修复企微图片/文本合并处理，以及预约与仪表盘统计记录
@@ -62,5 +64,8 @@
 - PR #118 pnpm run lint:check / format:check / typecheck 全部通过
 - PR #120 pnpm run ci:check
 - PR #120 pre-push hook passed: 216 suites / 2532 tests
+- PR #123 pre-commit: `pnpm run lint` + `pnpm run format` 通过。
+- PR #123 pre-push: `pnpm run ci:check` 通过。
+- PR #123 `ci:check` 覆盖：`lint:check`、`format:check`、`typecheck`、`build:ci`、`test:ci`。
+- PR #123 `test:ci`: 216 suites / 2532 tests passed。
 <!-- release:pending:end -->
-
