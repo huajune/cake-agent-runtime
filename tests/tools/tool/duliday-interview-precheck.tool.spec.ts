@@ -1084,6 +1084,65 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.interview.requestedDate.reason).toContain('报名截止时间');
   });
 
+  it('should expose 00:00-00:00 windows as date-only slots that cannot be auto-booked', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-28T03:30:00.000Z')); // 11:30 上海时间
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            firstInterview: {
+              periodicInterviewTimes: [
+                {
+                  interviewWeekday: '每周四',
+                  interviewTimes: [
+                    {
+                      interviewStartTime: '00:00',
+                      interviewEndTime: '00:00',
+                      cycleDeadlineDay: '当天',
+                      cycleDeadlineEnd: '10:00',
+                    },
+                  ],
+                },
+              ],
+              fixedInterviewTimes: [],
+            },
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({ jobId: 100, requestedDate: '2026-04-30' });
+
+    expect(result.success).toBe(true);
+    expect(result.interview.requestedDate).toEqual({
+      value: '2026-04-30',
+      status: 'available',
+      reason: expect.stringContaining('2026-04-30'),
+    });
+    expect(result.interview.upcomingTimeOptions).toContain(
+      '2026-04-30 周四 00:00-00:00（报名截止 2026-04-30 10:00）',
+    );
+    expect(result.interview.bookableSlots).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          date: '2026-04-30',
+          weekday: '周四',
+          startTime: '00:00',
+          endTime: '00:00',
+          registrationDeadline: '2026-04-30 10:00',
+          dateOnly: true,
+          bookingAllowed: false,
+          requiresManualConfirmation: true,
+        }),
+      ]),
+    );
+    const requestedSlot = result.interview.bookableSlots.find(
+      (slot: Record<string, unknown>) => slot.date === '2026-04-30',
+    );
+    expect(requestedSlot.interviewTime).toBeUndefined();
+    expect(requestedSlot.reason).toContain('不要自动调用预约工具');
+  });
+
   it('should surface Sponge errors as precheck_failed', async () => {
     mockSpongeService.fetchJobs.mockRejectedValue(new Error('API timeout'));
 
