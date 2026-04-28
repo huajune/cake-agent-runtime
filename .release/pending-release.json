@@ -68,6 +68,34 @@
         "`git diff --check`",
         "Pre-push `pnpm run ci:check` passed: 216 test suites, 2540 tests."
       ]
+    },
+    {
+      "number": "145",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/145",
+      "title": "merge master into develop for v5.4.0",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-28",
+      "summary": [
+        "合并最新 master 到 develop，用于解除 #143 发版 PR 的冲突",
+        "保留 develop 的 v5.4.0 待发布元数据",
+        "保留 master 已固化的 v5.3.2 发布记录"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [
+        "合并最新 master 到 develop，用于解除 #143 发版 PR 的冲突"
+      ],
+      "ops": [
+        "保留 develop 的 v5.4.0 待发布元数据",
+        "保留 master 已固化的 v5.3.2 发布记录"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "JSON parse: package.json / .release/pending-release.json",
+        "确认 package.json、CHANGELOG.md、.release/pending-release.json 无冲突标记",
+        "git diff --check --cached"
+      ]
     }
   ]
 }
