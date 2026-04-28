@@ -1,42 +1,7 @@
 {
-  "baseVersion": "5.3.0",
+  "baseVersion": "5.3.1",
   "nextVersion": "5.3.1",
   "updatedAt": "2026-04-28",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "129",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/129",
-      "title": "自动创建发版 PR",
-      "author": "ArielZhu",
-      "mergedAt": "2026-04-28",
-      "summary": [
-        "在版本元数据 PR 合并到 develop 后，自动创建或更新 develop → master 发版 PR。",
-        "修复 scripts/get-release-notes.js 对 CHANGELOG 发布段的提取逻辑，避免 JS 正则不支持 \\Z 导致 GitHub Release 创建失败。",
-        "发布 workflow 在 tag 已存在但 GitHub Release 缺失/需要更新时，也会继续触发部署，支持半失败恢复。",
-        "更新发版文档，明确自动创建流程和本地命令兜底。"
-      ],
-      "features": [
-        "发布 workflow 在 tag 已存在但 GitHub Release 缺失/需要更新时，也会继续触发部署，支持半失败恢复。"
-      ],
-      "fixes": [
-        "修复 scripts/get-release-notes.js 对 CHANGELOG 发布段的提取逻辑，避免 JS 正则不支持 \\Z 导致 GitHub Release 创建失败。",
-        "更新发版文档，明确自动创建流程和本地命令兜底。"
-      ],
-      "optimizations": [
-        "在版本元数据 PR 合并到 develop 后，自动创建或更新 develop → master 发版 PR。"
-      ],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "node --check scripts/build-release-pr-body.js && node --check scripts/create-release-pr.js && node --check scripts/get-release-notes.js",
-        "使用 origin/master 的 CHANGELOG 验证可提取 v5.3.0 发布说明",
-        "pnpm release:pr:preview",
-        "ruby YAML 解析 .github/workflows/version-changelog.yml 通过",
-        "pnpm exec prettier --check .github/workflows/version-changelog.yml scripts/get-release-notes.js",
-        "pre-push pnpm run ci:check：216 个测试套件、2532 个测试通过"
-      ]
-    }
-  ]
+  "entries": []
 }
