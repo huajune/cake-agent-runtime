@@ -14,7 +14,7 @@
 **预计版本**: `v5.3.0`
 **最近更新**: `2026-04-28`
 **来源分支**: `develop`
-**累计 PR**: 5
+**累计 PR**: 6
 
 ### 更新摘要
 - PR #111 发布部署流水线支持 tag 触发与环境变量同步提醒
@@ -26,6 +26,9 @@
 - PR #120 优化反馈成功/失败状态展示，并补充后端错误详情
 - PR #120 优化待发布说明和部署通知格式
 - PR #123 准备 Web 后台发版改动
+- PR #125 新增 Release PR Autofill：develop → master 发版 PR 创建后，自动从 CHANGELOG.md 待发布内容生成中文标题和正文。
+- PR #125 增加本地发版 PR 命令：pnpm release:pr:preview 预览，pnpm release:pr:create 创建或更新 develop → master PR。
+- PR #125 更新 PR 模板和发版文档，说明发版 PR 可以先填临时标题，也可以用命令避免手填。
 
 ### 新功能
 - PR #115 测试套件新增校验标题字段，前端重写复核弹窗、执行详情与对话列表组件
@@ -33,6 +36,7 @@
 - PR #118 Agent 响应快照持久化，前端在执行详情按思考链 → 工具调用 → 回复链单一来源还原
 - PR #118 新增运营/产品视角的 Agent 运行时与工作流文档，并与研发版架构文档交叉链接
 - PR #123 准备 Web 后台发版改动
+- PR #125 新增 Release PR Autofill：develop → master 发版 PR 创建后，自动从 CHANGELOG.md 待发布内容生成中文标题和正文。
 
 ### 问题修复
 - PR #120 修复企微图片/文本合并处理，以及预约与仪表盘统计记录
@@ -49,6 +53,8 @@
 - PR #120 消息处理详情抽屉新增好/坏反馈，并将 Batch ID 回写飞书
 - PR #120 优化反馈成功/失败状态展示，并补充后端错误详情
 - PR #120 优化待发布说明和部署通知格式
+- PR #125 增加本地发版 PR 命令：pnpm release:pr:preview 预览，pnpm release:pr:create 创建或更新 develop → master PR。
+- PR #125 更新 PR 模板和发版文档，说明发版 PR 可以先填临时标题，也可以用命令避免手填。
 
 ### 配置变更
 - 无
@@ -68,4 +74,9 @@
 - PR #123 pre-push: `pnpm run ci:check` 通过。
 - PR #123 `ci:check` 覆盖：`lint:check`、`format:check`、`typecheck`、`build:ci`、`test:ci`。
 - PR #123 `test:ci`: 216 suites / 2532 tests passed。
+- PR #125 node --check scripts/build-release-pr-body.js
+- PR #125 node --check scripts/create-release-pr.js
+- PR #125 pnpm release:pr:preview
+- PR #125 pnpm exec prettier --check package.json scripts/create-release-pr.js docs/workflows/version-release-guide.md
+- PR #125 pre-push pnpm run ci:check：216 个测试套件、2532 个测试通过
 <!-- release:pending:end -->
