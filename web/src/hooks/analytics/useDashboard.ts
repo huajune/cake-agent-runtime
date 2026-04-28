@@ -12,12 +12,19 @@ export type {
   TrendsData,
 } from '@/api/services/analytics.service';
 
+function getOverviewRefetchInterval(timeRange: string): number {
+  return timeRange === 'today' ? 15000 : 60000;
+}
+
 /** @deprecated 使用 useDashboardOverview 替代 */
 export function useDashboard(timeRange: string, autoRefresh = true) {
   return useQuery({
     queryKey: ['dashboard', timeRange],
     queryFn: () => analyticsService.getDashboard(timeRange),
-    refetchInterval: autoRefresh ? 5000 : false,
+    refetchInterval: autoRefresh ? getOverviewRefetchInterval(timeRange) : false,
+    staleTime: autoRefresh ? 10000 : 60000,
+    refetchOnWindowFocus: false,
+    placeholderData: (previousData) => previousData,
   });
 }
 
@@ -25,7 +32,10 @@ export function useDashboardOverview(timeRange: string, autoRefresh = true) {
   return useQuery({
     queryKey: ['dashboard-overview', timeRange],
     queryFn: () => analyticsService.getDashboardOverview(timeRange),
-    refetchInterval: autoRefresh ? 5000 : false,
+    refetchInterval: autoRefresh ? getOverviewRefetchInterval(timeRange) : false,
+    staleTime: autoRefresh ? 10000 : 60000,
+    refetchOnWindowFocus: false,
+    placeholderData: (previousData) => previousData,
   });
 }
 

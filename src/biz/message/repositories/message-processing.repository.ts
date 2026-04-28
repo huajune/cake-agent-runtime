@@ -52,6 +52,14 @@ export class MessageProcessingRepository extends BaseRepository {
   // 工具执行、Trace、Delivery、Fallback 等富字段全部依赖该 jsonb。
   private readonly detailSelectedColumns = `${this.listSelectedColumns},agent_invocation`;
 
+  // Dashboard 业务趋势只需要时间、用户和预约工具调用结果，避免为图表拉取大块快照字段。
+  private readonly businessTrendSelectedColumns = [
+    'message_id',
+    'received_at',
+    'user_id',
+    'tool_calls',
+  ].join(',');
+
   constructor(supabaseService: SupabaseService) {
     super(supabaseService);
   }
@@ -382,6 +390,39 @@ export class MessageProcessingRepository extends BaseRepository {
       return results.map((r) => this.fromDbRecord(r));
     } catch (error) {
       this.logger.error('按时间范围查询消息记录失败:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Dashboard 业务趋势轻量查询：只取趋势构建需要的字段。
+   */
+  async getBusinessTrendRecordsByTimeRange(
+    startTime: number,
+    endTime: number,
+    limit: number = 10000,
+  ): Promise<MessageProcessingRecordInput[]> {
+    if (!this.isAvailable()) {
+      return [];
+    }
+
+    try {
+      const startDate = new Date(startTime).toISOString();
+      const endDate = new Date(endTime).toISOString();
+
+      const results = await this.select<MessageProcessingDbRecord>(
+        this.businessTrendSelectedColumns,
+        (q) =>
+          q
+            .gte('received_at', startDate)
+            .lt('received_at', endDate)
+            .order('received_at', { ascending: true })
+            .limit(limit),
+      );
+
+      return results.map((r) => this.fromDbRecord(r));
+    } catch (error) {
+      this.logger.error('按时间范围查询业务趋势记录失败:', error);
       return [];
     }
   }

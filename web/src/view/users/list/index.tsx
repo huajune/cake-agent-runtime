@@ -81,6 +81,26 @@ function matchesBotOption(
   return userAliases.some((alias) => option.aliases.includes(alias));
 }
 
+function filterUsersByControls(
+  users: UserData[],
+  keyword: string,
+  botOption?: Pick<BotOption, 'aliases'>,
+) {
+  return users.filter((user) => {
+    if (botOption && !matchesBotOption(user, botOption)) {
+      return false;
+    }
+
+    if (!keyword) {
+      return true;
+    }
+
+    return [user.odName, user.groupName, user.chatId].some((value) =>
+      normalizeText(value).includes(keyword),
+    );
+  });
+}
+
 export default function Users() {
   const [activeTab, setActiveTab] = useState<TabType>('today');
   const [searchKeyword, setSearchKeyword] = useState('');
@@ -95,7 +115,7 @@ export default function Users() {
     toggleHosting.mutate({ chatId, enabled });
   };
 
-  const pausedUsersData = transformPausedUsers(pausedUsers);
+  const pausedUsersData = useMemo(() => transformPausedUsers(pausedUsers), [pausedUsers]);
 
   const sourceUsers = activeTab === 'today' ? todayUsers : pausedUsersData;
   const isLoading = activeTab === 'today' ? isTodayLoading : isPausedLoading;
@@ -133,41 +153,38 @@ export default function Users() {
 
   const activeBotOption = botOptions.find((option) => option.value === botFilter);
   const activeBotFilter = activeBotOption ? botFilter : ALL_BOTS;
+  const normalizedKeyword = normalizeText(searchKeyword);
 
   const resolveBotLabel = (user: Pick<UserData, 'botUserId' | 'imBotId'>) => {
     const matchedOption = botOptions.find((option) => matchesBotOption(user, option));
     return matchedOption?.label || getUserBotLabel(user) || '-';
   };
 
+  const filteredTodayUsers = useMemo(
+    () => filterUsersByControls(todayUsers, normalizedKeyword, activeBotOption),
+    [activeBotOption, normalizedKeyword, todayUsers],
+  );
+
+  const filteredPausedUsers = useMemo(
+    () => filterUsersByControls(pausedUsersData, normalizedKeyword, activeBotOption),
+    [activeBotOption, normalizedKeyword, pausedUsersData],
+  );
+
+  const filteredSourceUsers = activeTab === 'today' ? filteredTodayUsers : filteredPausedUsers;
+
   const displayUsers = useMemo(() => {
-    const keyword = normalizeText(searchKeyword);
+    return [...filteredSourceUsers].sort((a, b) => {
+      if (sortMode === 'lastActiveDesc') {
+        return b.lastActiveAt - a.lastActiveAt || compareText(a.chatId, b.chatId);
+      }
 
-    return sourceUsers
-      .filter((user) => {
-        if (activeBotOption && !matchesBotOption(user, activeBotOption)) {
-          return false;
-        }
+      if (sortMode === 'messageDesc') {
+        return b.messageCount - a.messageCount || compareText(a.chatId, b.chatId);
+      }
 
-        if (!keyword) {
-          return true;
-        }
-
-        return [user.odName, user.groupName, user.chatId].some((value) =>
-          normalizeText(value).includes(keyword),
-        );
-      })
-      .sort((a, b) => {
-        if (sortMode === 'lastActiveDesc') {
-          return b.lastActiveAt - a.lastActiveAt || compareText(a.chatId, b.chatId);
-        }
-
-        if (sortMode === 'messageDesc') {
-          return b.messageCount - a.messageCount || compareText(a.chatId, b.chatId);
-        }
-
-        return b.firstActiveAt - a.firstActiveAt || compareText(a.chatId, b.chatId);
-      });
-  }, [activeBotOption, searchKeyword, sortMode, sourceUsers]);
+      return b.firstActiveAt - a.firstActiveAt || compareText(a.chatId, b.chatId);
+    });
+  }, [filteredSourceUsers, sortMode]);
 
   const emptyMessage = searchKeyword || activeBotOption ? '没有匹配的数据' : '暂无数据';
 
@@ -180,8 +197,8 @@ export default function Users() {
       <section className={styles.section}>
         <UserTabNav
           activeTab={activeTab}
-          todayCount={todayUsers.length}
-          pausedCount={pausedUsers.length}
+          todayCount={filteredTodayUsers.length}
+          pausedCount={filteredPausedUsers.length}
           onTabChange={setActiveTab}
         />
 

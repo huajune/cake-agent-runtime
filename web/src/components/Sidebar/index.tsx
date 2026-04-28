@@ -1,9 +1,12 @@
 import { MouseEvent, useCallback } from 'react';
 import logoIcon from '@/assets/images/cake_recruiter_icon.png';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Bug, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { preloadRouteChunk, type AppRoutePath } from '@/routes/lazy-pages';
 import { markRouteNavigationStart } from '@/utils/perf';
+
+const BADCASE_FEISHU_URL =
+  'https://gingjqcjzc.feishu.cn/wiki/SWGgwAfsAihO6ukGQrCc18Qonwc?table=tblZGWZguvorS36f&view=vew7SMbKZG';
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -230,6 +233,16 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           <span className="nav-icon"><AgentTestIcon /></span>
           {!isCollapsed && <span className="nav-text">对话调试</span>}
         </NavLink>
+        <a
+          href={BADCASE_FEISHU_URL}
+          className="nav-item"
+          title={isCollapsed ? 'BadCase' : undefined}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <span className="nav-icon"><Bug size={18} strokeWidth={1.7} /></span>
+          {!isCollapsed && <span className="nav-text">BadCase</span>}
+        </a>
         <NavLink
           to="/test-suite"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}

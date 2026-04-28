@@ -909,8 +909,20 @@ export function getContextFacts(message: MessageRecord): Array<{
 }> {
   const request = getInvocationRequest(message);
   const facts: Array<{ label: string; value: string; mono?: boolean }> = [];
+  const candidateName =
+    message.userName ||
+    asString(request?.userName) ||
+    asString(request?.contactName) ||
+    asString(request?.candidateName);
+  const managerName =
+    message.managerName ||
+    asString(request?.managerName) ||
+    asString(request?.botUserId) ||
+    asString(request?.botName);
   const batchId = message.batchId || asString(request?.batchId);
 
+  if (candidateName) facts.push({ label: '候选人昵称', value: candidateName });
+  if (managerName) facts.push({ label: '托管 BOT', value: managerName });
   if (message.chatId) facts.push({ label: 'Chat ID', value: message.chatId, mono: true });
   if (batchId) facts.push({ label: 'Batch ID', value: batchId, mono: true });
 

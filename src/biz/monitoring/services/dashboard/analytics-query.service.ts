@@ -406,7 +406,8 @@ export class AnalyticsQueryService {
     previousStart: number;
     previousEnd: number;
   } {
-    const now = Date.now();
+    const nowDate = new Date();
+    const now = nowDate.getTime();
     let currentStart: number;
     let currentEnd: number;
     let previousStart: number;
@@ -421,21 +422,31 @@ export class AnalyticsQueryService {
         const yesterdayStart = new Date(todayStart);
         yesterdayStart.setDate(yesterdayStart.getDate() - 1);
         previousStart = yesterdayStart.getTime();
-        previousEnd = currentStart;
+        previousEnd = previousStart + (currentEnd - currentStart);
         break;
       }
-      case 'week':
-        currentStart = now - 7 * 24 * 60 * 60 * 1000;
+      case 'week': {
+        const weekStart = new Date(nowDate);
+        const daysSinceMonday = (weekStart.getDay() + 6) % 7;
+        weekStart.setDate(weekStart.getDate() - daysSinceMonday);
+        weekStart.setHours(0, 0, 0, 0);
+        currentStart = weekStart.getTime();
         currentEnd = now;
-        previousStart = currentStart - 7 * 24 * 60 * 60 * 1000;
-        previousEnd = currentStart;
+        const previousWeekStart = new Date(weekStart);
+        previousWeekStart.setDate(previousWeekStart.getDate() - 7);
+        previousStart = previousWeekStart.getTime();
+        previousEnd = previousStart + (currentEnd - currentStart);
         break;
-      case 'month':
-        currentStart = now - 30 * 24 * 60 * 60 * 1000;
+      }
+      case 'month': {
+        const monthStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), 1);
+        currentStart = monthStart.getTime();
         currentEnd = now;
-        previousStart = currentStart - 30 * 24 * 60 * 60 * 1000;
-        previousEnd = currentStart;
+        const previousMonthStart = new Date(nowDate.getFullYear(), nowDate.getMonth() - 1, 1);
+        previousStart = previousMonthStart.getTime();
+        previousEnd = Math.min(previousStart + (currentEnd - currentStart), currentStart);
         break;
+      }
       default:
         currentStart = now - 24 * 60 * 60 * 1000;
         currentEnd = now;
@@ -447,20 +458,7 @@ export class AnalyticsQueryService {
   }
 
   private getTimeRangeCutoff(range: TimeRange): Date {
-    const now = new Date();
-    switch (range) {
-      case 'today':
-        now.setHours(0, 0, 0, 0);
-        return now;
-      case 'week':
-        now.setDate(now.getDate() - 7);
-        return now;
-      case 'month':
-        now.setDate(now.getDate() - 30);
-        return now;
-      default:
-        return now;
-    }
+    return new Date(this.calculateTimeRanges(range).currentStart);
   }
 
   private calculatePercentilesFromArray(values: number[]): {

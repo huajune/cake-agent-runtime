@@ -44,6 +44,25 @@ export interface BusinessMetricsSnapshot {
   conversion: { consultationToBooking: number };
 }
 
+type DashboardOverviewResponse = {
+  timeRange: string;
+  overview: DashboardOverviewStats & { activeUsers: number; activeChats: number };
+  overviewDelta: {
+    totalMessages: number;
+    successRate: number;
+    avgDuration: number;
+    activeUsers: number;
+  };
+  dailyTrend: DailyStats[];
+  tokenTrend: { time: string; tokenUsage: number; messageCount: number }[];
+  businessTrend: BusinessMetricTrendPoint[];
+  responseTrend: ResponseMinuteTrendPoint[];
+  business: BusinessMetricsSnapshot;
+  businessDelta: { consultations: number; bookingAttempts: number; bookingSuccessRate: number };
+  fallback: DashboardFallbackStats;
+  fallbackDelta: { totalCount: number; successRate: number };
+};
+
 /**
  * Dashboard 数据聚合服务
  * 负责仪表盘完整数据和概览数据的聚合计算
@@ -52,6 +71,10 @@ export interface BusinessMetricsSnapshot {
 export class AnalyticsDashboardService {
   private readonly logger = new Logger(AnalyticsDashboardService.name);
   private readonly DEFAULT_WINDOW_HOURS = 24;
+  private readonly overviewCache = new Map<
+    TimeRange,
+    { expireAt: number; value: DashboardOverviewResponse }
+  >();
 
   constructor(
     private readonly messageProcessingService: MessageProcessingService,
@@ -176,25 +199,15 @@ export class AnalyticsDashboardService {
   /**
    * 获取 Dashboard 概览数据（优化版 - 使用 SQL 聚合查询）
    */
-  async getDashboardOverviewAsync(timeRange: TimeRange = 'today'): Promise<{
-    timeRange: string;
-    overview: DashboardOverviewStats & { activeUsers: number; activeChats: number };
-    overviewDelta: {
-      totalMessages: number;
-      successRate: number;
-      avgDuration: number;
-      activeUsers: number;
-    };
-    dailyTrend: DailyStats[];
-    tokenTrend: { time: string; tokenUsage: number; messageCount: number }[];
-    businessTrend: BusinessMetricTrendPoint[];
-    responseTrend: ResponseMinuteTrendPoint[];
-    business: BusinessMetricsSnapshot;
-    businessDelta: { consultations: number; bookingAttempts: number; bookingSuccessRate: number };
-    fallback: DashboardFallbackStats;
-    fallbackDelta: { totalCount: number; successRate: number };
-  }> {
+  async getDashboardOverviewAsync(
+    timeRange: TimeRange = 'today',
+  ): Promise<DashboardOverviewResponse> {
     try {
+      const cached = this.getCachedDashboardOverview(timeRange);
+      if (cached) {
+        return cached;
+      }
+
       const timeRanges = this.calculateTimeRanges(timeRange);
       const { currentStart, currentEnd, previousStart, previousEnd } = timeRanges;
 
@@ -335,7 +348,7 @@ export class AnalyticsDashboardService {
       const [currentBookings, previousBookings, trendRecords] = await Promise.all([
         this.getBookingCount(curStartDate, curEndDate),
         this.getBookingCount(prevStartDate, prevEndDate),
-        this.getDetailRecordsByTimeRange(timeRange),
+        this.getBusinessTrendRecordsByTimeRange(currentStart, currentEnd, timeRange),
       ]);
 
       const business = this.buildBusinessFromStats(currentOverview.activeUsers, currentBookings);
@@ -408,7 +421,7 @@ export class AnalyticsDashboardService {
               }),
             );
 
-      return {
+      const response: DashboardOverviewResponse = {
         timeRange,
         overview,
         overviewDelta,
@@ -421,10 +434,32 @@ export class AnalyticsDashboardService {
         fallback,
         fallbackDelta,
       };
+      this.setCachedDashboardOverview(timeRange, response);
+      return response;
     } catch (error) {
       this.logger.error('获取Dashboard概览数据失败:', error);
       throw error;
     }
+  }
+
+  private getCachedDashboardOverview(timeRange: TimeRange): DashboardOverviewResponse | null {
+    const cached = this.overviewCache.get(timeRange);
+    if (!cached || cached.expireAt <= Date.now()) {
+      this.overviewCache.delete(timeRange);
+      return null;
+    }
+    return cached.value;
+  }
+
+  private setCachedDashboardOverview(timeRange: TimeRange, value: DashboardOverviewResponse): void {
+    this.overviewCache.set(timeRange, {
+      value,
+      expireAt: Date.now() + this.getOverviewCacheTtlMs(timeRange),
+    });
+  }
+
+  private getOverviewCacheTtlMs(timeRange: TimeRange): number {
+    return timeRange === 'today' ? 10_000 : 60_000;
   }
 
   private getHourStart(date: Date): Date {
@@ -576,6 +611,25 @@ export class AnalyticsDashboardService {
     }
   }
 
+  private async getBusinessTrendRecordsByTimeRange(
+    startTime: number,
+    endTime: number,
+    range: TimeRange,
+  ): Promise<MessageProcessingRecord[]> {
+    try {
+      const limitByRange = { today: 2000, week: 5000, month: 10000 };
+      const result = await this.messageProcessingService.getBusinessTrendRecordsByTimeRange(
+        startTime,
+        endTime,
+        limitByRange[range] || 2000,
+      );
+      return result as unknown as MessageProcessingRecord[];
+    } catch (error) {
+      this.logger.error(`查询业务趋势记录异常 [${range}]:`, error);
+      return [];
+    }
+  }
+
   private async getHourlyStats(hours: number = 72): Promise<HourlyStats[]> {
     try {
       return (await this.hourlyStatsRepository.getRecentHourlyStats(
@@ -646,7 +700,8 @@ export class AnalyticsDashboardService {
     previousStart: number;
     previousEnd: number;
   } {
-    const now = Date.now();
+    const nowDate = new Date();
+    const now = nowDate.getTime();
     let currentStart: number;
     let currentEnd: number;
     let previousStart: number;
@@ -661,21 +716,31 @@ export class AnalyticsDashboardService {
         const yesterdayStart = new Date(todayStart);
         yesterdayStart.setDate(yesterdayStart.getDate() - 1);
         previousStart = yesterdayStart.getTime();
-        previousEnd = currentStart;
+        previousEnd = previousStart + (currentEnd - currentStart);
         break;
       }
-      case 'week':
-        currentStart = now - 7 * 24 * 60 * 60 * 1000;
+      case 'week': {
+        const weekStart = new Date(nowDate);
+        const daysSinceMonday = (weekStart.getDay() + 6) % 7;
+        weekStart.setDate(weekStart.getDate() - daysSinceMonday);
+        weekStart.setHours(0, 0, 0, 0);
+        currentStart = weekStart.getTime();
         currentEnd = now;
-        previousStart = currentStart - 7 * 24 * 60 * 60 * 1000;
-        previousEnd = currentStart;
+        const previousWeekStart = new Date(weekStart);
+        previousWeekStart.setDate(previousWeekStart.getDate() - 7);
+        previousStart = previousWeekStart.getTime();
+        previousEnd = previousStart + (currentEnd - currentStart);
         break;
-      case 'month':
-        currentStart = now - 30 * 24 * 60 * 60 * 1000;
+      }
+      case 'month': {
+        const monthStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), 1);
+        currentStart = monthStart.getTime();
         currentEnd = now;
-        previousStart = currentStart - 30 * 24 * 60 * 60 * 1000;
-        previousEnd = currentStart;
+        const previousMonthStart = new Date(nowDate.getFullYear(), nowDate.getMonth() - 1, 1);
+        previousStart = previousMonthStart.getTime();
+        previousEnd = Math.min(previousStart + (currentEnd - currentStart), currentStart);
         break;
+      }
       default:
         currentStart = now - 24 * 60 * 60 * 1000;
         currentEnd = now;
@@ -687,20 +752,7 @@ export class AnalyticsDashboardService {
   }
 
   private getTimeRangeCutoff(range: TimeRange): Date {
-    const now = new Date();
-    switch (range) {
-      case 'today':
-        now.setHours(0, 0, 0, 0);
-        return now;
-      case 'week':
-        now.setDate(now.getDate() - 7);
-        return now;
-      case 'month':
-        now.setDate(now.getDate() - 30);
-        return now;
-      default:
-        return now;
-    }
+    return new Date(this.calculateTimeRanges(range).currentStart);
   }
 
   private calculatePercentChange(current: number, previous: number): number {
