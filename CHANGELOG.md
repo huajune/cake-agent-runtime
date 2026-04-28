@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.3.0] - 2026-04-28
 
-**预计版本**: `v5.3.0`
-**最近更新**: `2026-04-28`
 **来源分支**: `develop`
-**累计 PR**: 6
 
 ### 更新摘要
 - PR #111 发布部署流水线支持 tag 触发与环境变量同步提醒
@@ -79,4 +75,3 @@
 - PR #125 pnpm release:pr:preview
 - PR #125 pnpm exec prettier --check package.json scripts/create-release-pr.js docs/workflows/version-release-guide.md
 - PR #125 pre-push pnpm run ci:check：216 个测试套件、2532 个测试通过
-<!-- release:pending:end -->
