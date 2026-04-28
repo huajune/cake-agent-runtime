@@ -171,8 +171,14 @@ PR 正文请按模板填写中文说明，特别是这些部分：
 
 网页上创建 `develop` → `master` PR 时，不需要手填通用 PR 模板。填一个临时标题并创建即可，`Release PR Autofill` workflow 会自动从 `CHANGELOG.md` 的待发布区生成标题和正文。
 
+如果这次发版还没把 `Release PR Autofill` 带进 `master`，可以用本地命令直接创建或更新发版 PR。这个命令只创建或更新 PR，不会合并、不打 tag、也不会发布：
+
+```bash
+pnpm release:pr:create
+```
+
 本地也可以预览自动生成的内容：
 
 ```bash
-node scripts/build-release-pr-body.js --stdout
+pnpm release:pr:preview
 ```
