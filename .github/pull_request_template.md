@@ -1,3 +1,5 @@
+> 发版 PR（`develop` → `master`）：可以只填一个临时标题直接创建，`Release PR Autofill` 会自动用 `CHANGELOG.md` 待发布内容替换标题和正文。
+
 ## 更新摘要
 
 - 请用 1-3 条中文说明这次 PR 的核心变化
