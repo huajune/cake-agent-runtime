@@ -72,6 +72,23 @@ describe('MessageProcessingService', () => {
       expect(endTime).toBeLessThanOrEqual(afterCall);
     });
 
+    it('should normalize and pass user and manager filters', async () => {
+      const mockStats = { total: 5 };
+      mockMessageProcessingRepository.getMessageStats.mockResolvedValue(mockStats);
+
+      const result = await service.getMessageStats('2024-01-01', '2024-01-31', {
+        userName: ' Alice ',
+        managerName: ['LiHanTing', '李涵婷', 'LiHanTing'],
+      });
+
+      expect(result).toEqual(mockStats);
+      const [, , filters] = mockMessageProcessingRepository.getMessageStats.mock.calls[0];
+      expect(filters).toEqual({
+        userName: 'Alice',
+        managerNames: ['LiHanTing', '李涵婷'],
+      });
+    });
+
     it('should pass through repository errors', async () => {
       mockMessageProcessingRepository.getMessageStats.mockRejectedValue(new Error('DB error'));
 
@@ -103,6 +120,22 @@ describe('MessageProcessingService', () => {
 
       const [, , limit] = mockMessageProcessingRepository.getSlowestMessages.mock.calls[0];
       expect(limit).toBe(5);
+    });
+
+    it('should pass filters to repository', async () => {
+      mockMessageProcessingRepository.getSlowestMessages.mockResolvedValue([]);
+
+      await service.getSlowestMessages(undefined, undefined, 5, {
+        userName: 'Alice',
+        managerName: 'LiHanTing,李涵婷',
+      });
+
+      const [, , limit, filters] = mockMessageProcessingRepository.getSlowestMessages.mock.calls[0];
+      expect(limit).toBe(5);
+      expect(filters).toEqual({
+        userName: 'Alice',
+        managerNames: ['LiHanTing', '李涵婷'],
+      });
     });
 
     it('should pass timestamp range when dates are provided', async () => {
@@ -146,6 +179,7 @@ describe('MessageProcessingService', () => {
         status: 'success',
         chatId: 'chat1',
         userName: 'Alice',
+        managerName: ['LiHanTing', '李涵婷'],
         limit: '20',
         offset: '0',
       });
@@ -155,6 +189,7 @@ describe('MessageProcessingService', () => {
       expect(options.status).toBe('success');
       expect(options.chatId).toBe('chat1');
       expect(options.userName).toBe('Alice');
+      expect(options.managerNames).toEqual(['LiHanTing', '李涵婷']);
       expect(options.limit).toBe(20);
       expect(options.offset).toBe(0);
     });
@@ -170,6 +205,7 @@ describe('MessageProcessingService', () => {
       expect(options.chatId).toBe('chat1');
       expect(options.status).toBeUndefined();
       expect(options.userName).toBeUndefined();
+      expect(options.managerNames).toBeUndefined();
       expect(options.limit).toBeUndefined();
       expect(options.offset).toBeUndefined();
     });

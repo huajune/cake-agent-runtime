@@ -7,6 +7,7 @@ import { GroupContext } from '@biz/group-task/group-task.types';
 import { RoomService } from '@channels/wecom/room/room.service';
 import { MemoryService } from '@memory/memory.service';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
+import { refreshMemberCountsFromEnterpriseList } from '@tools/duliday/enterprise-room-count.util';
 
 const logger = new Logger('invite_to_group');
 
@@ -113,12 +114,17 @@ export function buildInviteToGroupTool(
             return { success: false, reason: 'no_group_in_city' };
           }
 
-          const citySnapshot = buildCitySnapshot(cityGroups, memberLimit);
+          const groupsWithFreshCounts = await refreshMemberCountsFromEnterpriseList({
+            groups: cityGroups,
+            roomService,
+            enterpriseToken: normalizedEnterpriseToken,
+          });
+          const citySnapshot = buildCitySnapshot(groupsWithFreshCounts, memberLimit);
 
-          const { candidates, fallbackUsed } = resolveCandidates(cityGroups, industry);
-          const targetGroup = pickAvailableGroup(candidates, memberLimit);
+          const { candidates, fallbackUsed } = resolveCandidates(groupsWithFreshCounts, industry);
+          const availableCandidates = pickAvailableGroups(candidates, memberLimit);
 
-          if (!targetGroup) {
+          if (availableCandidates.length === 0) {
             logger.warn(`群已满: ${city}/${industry ?? '全行业'} (user=${context.userId})`);
             void sendGroupFullAlert({
               city,
@@ -140,102 +146,126 @@ export function buildInviteToGroupTool(
             };
           }
 
-          const isDirectAdd = (targetGroup.memberCount ?? 0) < 40;
           const selectionReason: 'lowest_member_count' | 'only_option' =
             candidates.length === 1 ? 'only_option' : 'lowest_member_count';
 
-          const addResult = await roomService.addMemberEnterprise({
-            token: normalizedEnterpriseToken,
-            imBotId: context.botImId,
-            botUserId: context.botUserId,
-            contactWxid: context.userId,
-            roomWxid: targetGroup.imRoomId,
-          });
-          const inviteApiResult = parseInviteApiResult(addResult);
-          if (!inviteApiResult.accepted) {
-            if (inviteApiResult.code === -9) {
-              // 外部接口返回 user 已在群：写入 invitedGroups 记忆，避免同会话后续
-              // 再触发 invite_to_group 重复调用这个慢接口（实测每次 20-30s）。
-              await memoryService
-                .saveInvitedGroup(context.corpId, context.userId, context.sessionId, {
+          const fullGroupsDuringInvite: GroupContext[] = [];
+          for (const targetGroup of availableCandidates) {
+            const addResult = await roomService.addMemberEnterprise({
+              token: normalizedEnterpriseToken,
+              imBotId: context.botImId,
+              botUserId: context.botUserId,
+              contactWxid: context.userId,
+              roomWxid: targetGroup.imRoomId,
+            });
+            const inviteApiResult = parseInviteApiResult(addResult);
+            if (!inviteApiResult.accepted) {
+              if (inviteApiResult.code === -9) {
+                // 外部接口返回 user 已在群：写入 invitedGroups 记忆，避免同会话后续
+                // 再触发 invite_to_group 重复调用这个慢接口（实测每次 20-30s）。
+                await memoryService
+                  .saveInvitedGroup(context.corpId, context.userId, context.sessionId, {
+                    groupName: targetGroup.groupName,
+                    city,
+                    industry: industry ?? undefined,
+                    invitedAt: new Date().toISOString(),
+                  })
+                  .catch((err: unknown) => {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    logger.warn(`写入 invitedGroups 失败（忽略）: ${msg}`);
+                  });
+                logger.log(
+                  `用户已在群中，记入记忆并静默跳过: ${targetGroup.groupName} (user=${context.userId})`,
+                );
+                return {
+                  success: false,
+                  reason: 'already_in_group',
                   groupName: targetGroup.groupName,
-                  city,
-                  industry: industry ?? undefined,
-                  invitedAt: new Date().toISOString(),
-                })
-                .catch((err: unknown) => {
-                  const msg = err instanceof Error ? err.message : String(err);
-                  logger.warn(`写入 invitedGroups 失败（忽略）: ${msg}`);
+                };
+              }
+
+              if (inviteApiResult.code === -10) {
+                logger.warn(
+                  `接口返回群已满，尝试下一个候选群: ${targetGroup.groupName} (user=${context.userId})`,
+                );
+                fullGroupsDuringInvite.push({
+                  ...targetGroup,
+                  memberCount: Math.max(targetGroup.memberCount ?? 0, memberLimit),
                 });
-              logger.log(
-                `用户已在群中，记入记忆并静默跳过: ${targetGroup.groupName} (user=${context.userId})`,
+                continue;
+              }
+
+              logger.warn(
+                `企业级拉群接口拒绝: ${targetGroup.groupName} (user=${context.userId}, error=${inviteApiResult.error})`,
               );
               return {
                 success: false,
-                reason: 'already_in_group',
+                reason: 'invite_api_rejected',
+                error: inviteApiResult.error,
                 groupName: targetGroup.groupName,
-              };
-            }
-
-            if (inviteApiResult.code === -10) {
-              logger.warn(`接口返回群已满: ${targetGroup.groupName} (user=${context.userId})`);
-              void sendGroupFullAlert({
                 city,
-                industry,
-                memberLimit,
-                groups: [
-                  {
-                    name: targetGroup.groupName,
-                    memberCount: targetGroup.memberCount,
-                  },
-                ],
-                opsNotifier,
-              }).catch((error: unknown) => {
-                const message = error instanceof Error ? error.message : String(error);
-                logger.error(`飞书告警发送失败: ${message}`);
-              });
-              return {
-                success: false,
-                reason: 'group_full',
-                groupName: targetGroup.groupName,
-                citySnapshot,
+                industry: industry ?? undefined,
               };
             }
 
-            logger.warn(
-              `企业级拉群接口拒绝: ${targetGroup.groupName} (user=${context.userId}, error=${inviteApiResult.error})`,
+            await memoryService.saveInvitedGroup(
+              context.corpId,
+              context.userId,
+              context.sessionId,
+              {
+                groupName: targetGroup.groupName,
+                city,
+                industry: industry ?? undefined,
+                invitedAt: new Date().toISOString(),
+              },
             );
+
+            const isDirectAdd = (targetGroup.memberCount ?? 0) < 40;
+
+            logger.log(
+              `拉群成功: ${targetGroup.groupName} (user=${context.userId}, city=${city}, industry=${industry ?? '-'}, matched=${targetGroup.industry ?? '-'}, fallback=${fallbackUsed})`,
+            );
+
             return {
-              success: false,
-              reason: 'invite_api_rejected',
-              error: inviteApiResult.error,
+              success: true,
               groupName: targetGroup.groupName,
               city,
               industry: industry ?? undefined,
+              inviteMode: isDirectAdd ? 'direct' : 'link',
+              matchedIndustry: targetGroup.industry,
+              fallbackUsed,
+              selectionReason,
+              citySnapshot,
             };
           }
 
-          await memoryService.saveInvitedGroup(context.corpId, context.userId, context.sessionId, {
-            groupName: targetGroup.groupName,
-            city,
-            industry: industry ?? undefined,
-            invitedAt: new Date().toISOString(),
-          });
-
-          logger.log(
-            `拉群成功: ${targetGroup.groupName} (user=${context.userId}, city=${city}, industry=${industry ?? '-'}, matched=${targetGroup.industry ?? '-'}, fallback=${fallbackUsed})`,
+          const fullGroupNames = new Set(fullGroupsDuringInvite.map((group) => group.imRoomId));
+          const alertGroups = candidates.map((group) =>
+            fullGroupNames.has(group.imRoomId)
+              ? { ...group, memberCount: Math.max(group.memberCount ?? 0, memberLimit) }
+              : group,
           );
 
-          return {
-            success: true,
-            groupName: targetGroup.groupName,
+          logger.warn(`所有候选群均已满: ${city}/${industry ?? '全行业'} (user=${context.userId})`);
+          void sendGroupFullAlert({
             city,
-            industry: industry ?? undefined,
-            inviteMode: isDirectAdd ? 'direct' : 'link',
-            matchedIndustry: targetGroup.industry,
-            fallbackUsed,
-            selectionReason,
-            citySnapshot,
+            industry,
+            memberLimit,
+            groups: alertGroups.map((group) => ({
+              name: group.groupName,
+              memberCount: group.memberCount,
+            })),
+            opsNotifier,
+          }).catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : String(error);
+            logger.error(`飞书告警发送失败: ${message}`);
+          });
+
+          return {
+            success: false,
+            reason: 'group_full',
+            groupName: alertGroups.length === 1 ? alertGroups[0]?.groupName : undefined,
+            citySnapshot: buildCitySnapshot(alertGroups, memberLimit),
           };
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
@@ -318,18 +348,14 @@ function resolveCandidates(
   return { candidates: cityGroups, fallbackUsed: true };
 }
 
-function pickAvailableGroup(
-  candidates: GroupContext[],
-  memberLimit: number,
-): GroupContext | undefined {
-  const sortedByCapacity = candidates
-    .filter((group) => group.memberCount !== undefined)
-    .sort((left, right) => (left.memberCount ?? 0) - (right.memberCount ?? 0));
-  const withCapacity = sortedByCapacity.length > 0 ? sortedByCapacity : candidates;
-
-  return withCapacity.find(
-    (group) => group.memberCount === undefined || group.memberCount < memberLimit,
-  );
+function pickAvailableGroups(candidates: GroupContext[], memberLimit: number): GroupContext[] {
+  return [...candidates]
+    .sort((left, right) => {
+      const leftCount = left.memberCount ?? Number.POSITIVE_INFINITY;
+      const rightCount = right.memberCount ?? Number.POSITIVE_INFINITY;
+      return leftCount - rightCount;
+    })
+    .filter((group) => group.memberCount === undefined || group.memberCount < memberLimit);
 }
 
 function buildCitySnapshot(cityGroups: GroupContext[], memberLimit: number): CitySnapshot {

@@ -24,7 +24,10 @@ describe('buildInviteToGroupTool', () => {
   });
 
   const mockGroupResolver = { resolveGroups: jest.fn() };
-  const mockRoomService = { addMemberEnterprise: jest.fn() };
+  const mockRoomService = {
+    addMemberEnterprise: jest.fn(),
+    getEnterpriseGroupChatList: jest.fn(),
+  };
   const mockOpsNotifier = { sendGroupFullAlert: jest.fn() };
   const mockMemoryService = { saveInvitedGroup: jest.fn() };
   const MEMBER_LIMIT = 200;
@@ -32,6 +35,7 @@ describe('buildInviteToGroupTool', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockOpsNotifier.sendGroupFullAlert.mockResolvedValue(true);
+    mockRoomService.getEnterpriseGroupChatList.mockResolvedValue({ data: [] });
   });
 
   const flushAsyncEvents = async () => {
@@ -140,7 +144,10 @@ describe('buildInviteToGroupTool', () => {
 
   it('should silently skip when API reports user is already in the target group', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup()]);
-    mockRoomService.addMemberEnterprise.mockResolvedValue({ errcode: -9, errmsg: '群聊中已经存在此好友' });
+    mockRoomService.addMemberEnterprise.mockResolvedValue({
+      errcode: -9,
+      errmsg: '群聊中已经存在此好友',
+    });
 
     const result = await executeTool({ city: '上海' });
 
@@ -233,6 +240,132 @@ describe('buildInviteToGroupTool', () => {
     expect(result.selectionReason).toBe('lowest_member_count');
   });
 
+  it('should skip a group whose refreshed enterprise member count reaches the limit', async () => {
+    mockGroupResolver.resolveGroups.mockResolvedValue([
+      makeGroup({
+        imRoomId: 'room-1',
+        groupName: '独立客&上海餐饮兼职①群',
+        industry: '餐饮',
+        memberCount: 50,
+      }),
+      makeGroup({
+        imRoomId: 'room-2',
+        groupName: '独立客&上海餐饮兼职②群',
+        industry: '餐饮',
+        memberCount: 120,
+      }),
+    ]);
+    mockRoomService.getEnterpriseGroupChatList.mockResolvedValue({
+      data: [
+        {
+          imRoomId: 'room-1',
+          memberList: Array.from({ length: MEMBER_LIMIT + 1 }, (_, index) => ({
+            imContactId: `member-a-${index}`,
+          })),
+        },
+        {
+          imRoomId: 'room-2',
+          memberList: Array.from({ length: 80 }, (_, index) => ({
+            imContactId: `member-b-${index}`,
+          })),
+        },
+      ],
+    });
+    mockRoomService.addMemberEnterprise.mockResolvedValue({ errcode: 0, errmsg: 'ok' });
+    mockMemoryService.saveInvitedGroup.mockResolvedValue(undefined);
+
+    const result = await executeTool({ city: '上海', industry: '餐饮' });
+
+    expect(result.success).toBe(true);
+    expect(result.groupName).toBe('独立客&上海餐饮兼职②群');
+    expect(result.citySnapshot.byIndustry).toEqual([
+      { industry: '餐饮', groupCount: 2, availableCount: 1 },
+    ]);
+    expect(mockRoomService.addMemberEnterprise).toHaveBeenCalledWith(
+      expect.objectContaining({ roomWxid: 'room-2' }),
+    );
+  });
+
+  it('should alert without inviting when refreshed enterprise counts show all candidates are full', async () => {
+    mockGroupResolver.resolveGroups.mockResolvedValue([
+      makeGroup({
+        imRoomId: 'room-1',
+        groupName: '独立客&上海餐饮兼职①群',
+        industry: '餐饮',
+        memberCount: 50,
+      }),
+      makeGroup({
+        imRoomId: 'room-2',
+        groupName: '独立客&上海餐饮兼职②群',
+        industry: '餐饮',
+        memberCount: 80,
+      }),
+    ]);
+    mockRoomService.getEnterpriseGroupChatList.mockResolvedValue({
+      data: [
+        {
+          imRoomId: 'room-1',
+          memberList: Array.from({ length: MEMBER_LIMIT + 1 }, (_, index) => ({
+            imContactId: `member-a-${index}`,
+          })),
+        },
+        {
+          imRoomId: 'room-2',
+          memberList: Array.from({ length: MEMBER_LIMIT }, (_, index) => ({
+            imContactId: `member-b-${index}`,
+          })),
+        },
+      ],
+    });
+
+    const result = await executeTool({ city: '上海', industry: '餐饮' });
+    await flushAsyncEvents();
+
+    expect(result.success).toBe(false);
+    expect(result.reason).toBe('group_full');
+    expect(result.citySnapshot.byIndustry).toEqual([
+      { industry: '餐饮', groupCount: 2, availableCount: 0 },
+    ]);
+    expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
+    expect(mockOpsNotifier.sendGroupFullAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        city: '上海',
+        industry: '餐饮',
+        groups: [
+          { name: '独立客&上海餐饮兼职①群', memberCount: MEMBER_LIMIT + 1 },
+          { name: '独立客&上海餐饮兼职②群', memberCount: MEMBER_LIMIT },
+        ],
+      }),
+    );
+  });
+
+  it('should try the next candidate when invite API reports the selected group is full', async () => {
+    mockGroupResolver.resolveGroups.mockResolvedValue([
+      makeGroup({ imRoomId: 'room-1', groupName: '上海兼职群1号', memberCount: 20 }),
+      makeGroup({ imRoomId: 'room-2', groupName: '上海兼职群2号', memberCount: 30 }),
+    ]);
+    mockRoomService.addMemberEnterprise
+      .mockResolvedValueOnce({ errcode: -10, errmsg: '群人数达到上限(500)' })
+      .mockResolvedValueOnce({ errcode: 0, errmsg: 'ok' });
+    mockMemoryService.saveInvitedGroup.mockResolvedValue(undefined);
+
+    const result = await executeTool({ city: '上海' });
+    await flushAsyncEvents();
+
+    expect(result.success).toBe(true);
+    expect(result.groupName).toBe('上海兼职群2号');
+    expect(mockRoomService.addMemberEnterprise).toHaveBeenCalledTimes(2);
+    expect(mockRoomService.addMemberEnterprise).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ roomWxid: 'room-1' }),
+    );
+    expect(mockRoomService.addMemberEnterprise).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ roomWxid: 'room-2' }),
+    );
+    expect(mockOpsNotifier.sendGroupFullAlert).not.toHaveBeenCalled();
+  });
+
   it('should expose citySnapshot reproducing 零售 fallback when industry is missing', async () => {
     // 还原真实 badcase：上海餐饮 6 群 + 零售 3 群，不传 industry 时按人数兜底选中零售小群
     mockGroupResolver.resolveGroups.mockResolvedValue([
@@ -290,7 +423,10 @@ describe('buildInviteToGroupTool', () => {
 
   it('should return group_full when API reports group member limit reached', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup({ memberCount: 199 })]);
-    mockRoomService.addMemberEnterprise.mockResolvedValue({ errcode: -10, errmsg: '群人数达到上限(500)' });
+    mockRoomService.addMemberEnterprise.mockResolvedValue({
+      errcode: -10,
+      errmsg: '群人数达到上限(500)',
+    });
 
     const result = await executeTool({ city: '上海' });
     await flushAsyncEvents();
@@ -303,7 +439,7 @@ describe('buildInviteToGroupTool', () => {
       expect.objectContaining({
         city: '上海',
         memberLimit: MEMBER_LIMIT,
-        groups: [{ name: '上海兼职群1号', memberCount: 199 }],
+        groups: [{ name: '上海兼职群1号', memberCount: MEMBER_LIMIT }],
       }),
     );
   });
@@ -319,14 +455,11 @@ describe('buildInviteToGroupTool', () => {
     );
     const builtTool = builder(mockContext);
 
-    const result = await builtTool.execute(
-      { city: '上海' } as any,
-      {
-        toolCallId: 'test',
-        messages: [],
-        abortSignal: undefined as any,
-      },
-    );
+    const result = await builtTool.execute({ city: '上海' } as any, {
+      toolCallId: 'test',
+      messages: [],
+      abortSignal: undefined as any,
+    });
 
     expect(result).toEqual({
       success: false,

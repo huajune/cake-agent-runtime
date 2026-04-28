@@ -230,6 +230,7 @@ describe('MessageController (biz/message)', () => {
       expect(messageProcessingService.getMessageStats).toHaveBeenCalledWith(
         '2024-01-01',
         '2024-01-31',
+        { userName: undefined, managerName: undefined },
       );
       expect(result).toEqual(mockResult);
     });
@@ -239,7 +240,25 @@ describe('MessageController (biz/message)', () => {
 
       await controller.getMessageStats();
 
-      expect(messageProcessingService.getMessageStats).toHaveBeenCalledWith(undefined, undefined);
+      expect(messageProcessingService.getMessageStats).toHaveBeenCalledWith(undefined, undefined, {
+        userName: undefined,
+        managerName: undefined,
+      });
+    });
+
+    it('should pass user and manager filters', async () => {
+      mockMessageProcessingService.getMessageStats.mockResolvedValue({});
+
+      await controller.getMessageStats('2024-01-01', '2024-01-31', 'Alice', [
+        'LiHanTing',
+        '李涵婷',
+      ]);
+
+      expect(messageProcessingService.getMessageStats).toHaveBeenCalledWith(
+        '2024-01-01',
+        '2024-01-31',
+        { userName: 'Alice', managerName: ['LiHanTing', '李涵婷'] },
+      );
     });
   });
 
@@ -254,6 +273,7 @@ describe('MessageController (biz/message)', () => {
         '2024-01-01',
         '2024-01-31',
         10,
+        { userName: undefined, managerName: undefined },
       );
       expect(result).toEqual(mockResult);
     });
@@ -267,6 +287,20 @@ describe('MessageController (biz/message)', () => {
         undefined,
         undefined,
         undefined,
+        { userName: undefined, managerName: undefined },
+      );
+    });
+
+    it('should pass filters when provided', async () => {
+      mockMessageProcessingService.getSlowestMessages.mockResolvedValue([]);
+
+      await controller.getSlowestMessages('2024-01-01', '2024-01-31', '10', 'Alice', 'LiHanTing');
+
+      expect(messageProcessingService.getSlowestMessages).toHaveBeenCalledWith(
+        '2024-01-01',
+        '2024-01-31',
+        10,
+        { userName: 'Alice', managerName: 'LiHanTing' },
       );
     });
   });
@@ -282,6 +316,7 @@ describe('MessageController (biz/message)', () => {
         'success',
         'chat-1',
         'User1',
+        'LiHanTing',
         '50',
         '0',
       );
@@ -292,6 +327,7 @@ describe('MessageController (biz/message)', () => {
         status: 'success',
         chatId: 'chat-1',
         userName: 'User1',
+        managerName: 'LiHanTing',
         limit: '50',
         offset: '0',
       });
@@ -309,6 +345,7 @@ describe('MessageController (biz/message)', () => {
         status: undefined,
         chatId: undefined,
         userName: undefined,
+        managerName: undefined,
         limit: undefined,
         offset: undefined,
       });

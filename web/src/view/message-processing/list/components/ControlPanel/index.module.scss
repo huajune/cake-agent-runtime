@@ -92,7 +92,9 @@
   color: var(--text-primary);
   font-size: 12px;
   outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 
   &:focus {
     border-color: rgba(91, 87, 255, 0.4);
@@ -117,6 +119,52 @@
   font-size: 11px;
   line-height: 1;
   cursor: pointer;
+}
+
+/* ── Bot select ── */
+.selectWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 200px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid rgba(161, 173, 255, 0.2);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.76);
+  color: #64748b;
+  flex-shrink: 1;
+  min-width: 150px;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:focus-within {
+    border-color: rgba(91, 87, 255, 0.4);
+    box-shadow: 0 0 0 2px rgba(91, 87, 255, 0.06);
+  }
+
+  svg {
+    flex: 0 0 auto;
+    color: #64748b;
+  }
+}
+
+.selectInput {
+  min-width: 0;
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:disabled {
+    color: #94a3b8;
+    cursor: not-allowed;
+  }
 }
 
 /* ── Stat badges: compact inline metrics ── */
@@ -155,22 +203,30 @@
 /* Badge color variants */
 .badgePrimary {
   background: rgba(99, 102, 241, 0.07);
-  .statBadgeValue { color: var(--primary); }
+  .statBadgeValue {
+    color: var(--primary);
+  }
 }
 
 .badgeSuccess {
   background: rgba(16, 185, 129, 0.07);
-  .statBadgeValue { color: var(--success); }
+  .statBadgeValue {
+    color: var(--success);
+  }
 }
 
 .badgeDanger {
   background: rgba(239, 68, 68, 0.07);
-  .statBadgeValue { color: var(--danger); }
+  .statBadgeValue {
+    color: var(--danger);
+  }
 }
 
 .badgeWarning {
   background: rgba(245, 158, 11, 0.07);
-  .statBadgeValue { color: var(--warning); }
+  .statBadgeValue {
+    color: var(--warning);
+  }
 }
 
 /* ── Responsive ── */
@@ -203,6 +259,11 @@
   }
 
   .searchWrap {
+    width: 100%;
+    flex-basis: 100%;
+  }
+
+  .selectWrap {
     width: 100%;
     flex-basis: 100%;
   }

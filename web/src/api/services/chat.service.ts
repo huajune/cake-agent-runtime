@@ -74,10 +74,24 @@ export async function getChatSessionMessages(chatId: string) {
 
 // ==================== 消息处理记录 API ====================
 
-export async function getMessageStats(options?: { startDate?: string; endDate?: string }) {
+function appendManagerNameParams(params: URLSearchParams, managerNames?: string[]) {
+  for (const managerName of managerNames || []) {
+    const trimmed = managerName.trim();
+    if (trimmed) params.append('managerName', trimmed);
+  }
+}
+
+export async function getMessageStats(options?: {
+  startDate?: string;
+  endDate?: string;
+  userName?: string;
+  managerNames?: string[];
+}) {
   const params = new URLSearchParams();
   if (options?.startDate) params.set('startDate', options.startDate);
   if (options?.endDate) params.set('endDate', options.endDate);
+  if (options?.userName) params.set('userName', options.userName);
+  appendManagerNameParams(params, options?.managerNames);
   const { data } = await api.get(`/analytics/message-stats?${params.toString()}`);
   return unwrapResponse<MessageStats>(data);
 }
@@ -85,11 +99,15 @@ export async function getMessageStats(options?: { startDate?: string; endDate?: 
 export async function getSlowestMessages(options?: {
   startDate?: string;
   endDate?: string;
+  userName?: string;
+  managerNames?: string[];
   limit?: number;
 }) {
   const params = new URLSearchParams();
   if (options?.startDate) params.set('startDate', options.startDate);
   if (options?.endDate) params.set('endDate', options.endDate);
+  if (options?.userName) params.set('userName', options.userName);
+  appendManagerNameParams(params, options?.managerNames);
   if (options?.limit) params.set('limit', String(options.limit));
   const { data } = await api.get(`/analytics/slowest-messages?${params.toString()}`);
   return unwrapResponse<MessageRecord[]>(data);
@@ -101,6 +119,7 @@ export async function getMessageProcessingRecords(options?: {
   status?: 'processing' | 'success' | 'failure' | 'timeout';
   chatId?: string;
   userName?: string;
+  managerNames?: string[];
   limit?: number;
   offset?: number;
 }) {
@@ -110,6 +129,7 @@ export async function getMessageProcessingRecords(options?: {
   if (options?.status) params.set('status', options.status);
   if (options?.chatId) params.set('chatId', options.chatId);
   if (options?.userName) params.set('userName', options.userName);
+  appendManagerNameParams(params, options?.managerNames);
   if (options?.limit) params.set('limit', String(options.limit));
   if (options?.offset) params.set('offset', String(options.offset));
   const { data } = await api.get(`/analytics/message-processing-records?${params.toString()}`);

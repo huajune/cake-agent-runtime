@@ -30,6 +30,14 @@ import {
   normalizePolicyText,
 } from '@tools/duliday/job-policy-parser';
 import {
+  compareTime,
+  getShanghaiWeekday,
+  isDateOnlyWindow,
+  normalizeHm,
+  resolveBookingDeadlineDateTime,
+  shiftDate,
+} from '@tools/duliday/interview-window.util';
+import {
   classifySupplementLabel,
   SupplementClassification,
 } from '@tools/duliday/supplement-label-classifier';
@@ -331,103 +339,6 @@ function formatShanghaiDate(date: Date): string {
     month: '2-digit',
     day: '2-digit',
   }).format(date);
-}
-
-function getShanghaiWeekday(dateStr: string): string {
-  const label = new Intl.DateTimeFormat('zh-CN', {
-    timeZone: 'Asia/Shanghai',
-    weekday: 'long',
-  }).format(new Date(`${dateStr}T12:00:00+08:00`));
-
-  const map: Record<string, string> = {
-    星期一: '每周一',
-    星期二: '每周二',
-    星期三: '每周三',
-    星期四: '每周四',
-    星期五: '每周五',
-    星期六: '每周六',
-    星期日: '每周日',
-    周一: '每周一',
-    周二: '每周二',
-    周三: '每周三',
-    周四: '每周四',
-    周五: '每周五',
-    周六: '每周六',
-    周日: '每周日',
-  };
-
-  return map[label] ?? label;
-}
-
-function compareTime(a: string, b: string): number {
-  return a.localeCompare(b);
-}
-
-function shiftDate(dateStr: string, offsetDays: number): string {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  const utcMillis = Date.UTC(year, month - 1, day) + offsetDays * 24 * 60 * 60 * 1000;
-  const shifted = new Date(utcMillis);
-  const y = shifted.getUTCFullYear();
-  const m = String(shifted.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(shifted.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-function normalizeHm(value?: string): string | null {
-  if (!value) return null;
-  const match = value.match(/(\d{1,2})[:：](\d{2})/);
-  if (!match) return null;
-  const hh = Number(match[1]);
-  const mm = Number(match[2]);
-  if (!Number.isFinite(hh) || !Number.isFinite(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) {
-    return null;
-  }
-  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-}
-
-function parseCycleDeadlineDay(raw?: string): number | null {
-  if (!raw) return null;
-  const normalized = raw.trim();
-  if (!normalized) return null;
-
-  if (/^-?\d+$/.test(normalized)) return Number(normalized);
-
-  if (normalized === '当天' || normalized === '当日') return 0;
-  if (normalized === '前一天' || normalized === '前1天') return -1;
-  if (normalized === '前两天' || normalized === '前2天') return -2;
-
-  return null;
-}
-
-function normalizeDateTime(raw: string): string | null {
-  const normalized = raw.replace(/\//g, '-').trim();
-  const dateTimeMatch = normalized.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{1,2}[:：]\d{2})(?::\d{2})?$/);
-  if (!dateTimeMatch) return null;
-
-  const date = dateTimeMatch[1];
-  const hm = normalizeHm(dateTimeMatch[2]);
-  if (!hm) return null;
-  return `${date} ${hm}`;
-}
-
-function resolveBookingDeadlineDateTime(
-  interviewDate: string,
-  window: InterviewWindow,
-): string | null {
-  if (window.fixedDeadline) {
-    const fixed = normalizeDateTime(window.fixedDeadline);
-    if (fixed) return fixed;
-
-    const hm = normalizeHm(window.fixedDeadline);
-    if (hm) return `${interviewDate} ${hm}`;
-  }
-
-  const dayOffset = parseCycleDeadlineDay(window.cycleDeadlineDay);
-  const endHm = normalizeHm(window.cycleDeadlineEnd);
-  if (dayOffset === null || !endHm) return null;
-
-  const deadlineDate = shiftDate(interviewDate, dayOffset);
-  return `${deadlineDate} ${endHm}`;
 }
 
 function dedupeStrings(values: string[]): string[] {
@@ -820,6 +731,100 @@ function buildUpcomingTimeOptions(
   return options.slice(0, maxOptions).map((option) => option.label);
 }
 
+function buildBookableSlots(params: {
+  windows: InterviewWindow[];
+  requestedDate?: string | null;
+  horizonDays?: number;
+  maxOptions?: number;
+}): Array<Record<string, unknown>> {
+  const { windows, requestedDate = null, horizonDays = 7, maxOptions = 10 } = params;
+  if (windows.length === 0) return [];
+
+  const now = new Date();
+  const today = formatLocalDate(now);
+  const nowTime = formatShanghaiTime(now);
+  const nowDateTime = `${today} ${nowTime}`;
+  const dates = new Set<string>();
+
+  for (let i = 0; i < horizonDays; i += 1) {
+    dates.add(shiftDate(today, i));
+  }
+  if (requestedDate) dates.add(requestedDate);
+
+  const slots: Array<Record<string, unknown> & { date: string; startTime: string }> = [];
+  const seen = new Set<string>();
+
+  for (const date of dates) {
+    const weekday = getShanghaiWeekday(date);
+
+    for (const window of windows) {
+      if (window.date && window.date !== date) continue;
+      if (!window.date && window.weekday && window.weekday !== weekday) continue;
+      if (!window.date && !window.weekday) continue;
+
+      const registrationDeadline = resolveBookingDeadlineDateTime(date, window);
+      if (registrationDeadline && nowDateTime.localeCompare(registrationDeadline) > 0) continue;
+
+      const key = `${date}|${window.startTime}|${window.endTime}|${registrationDeadline ?? ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const weekdayShort = weekday.replace('每周', '周');
+      const dateOnly = isDateOnlyWindow(window);
+      const normalizedStart = normalizeHm(window.startTime);
+      const base = {
+        date,
+        weekday: weekdayShort,
+        startTime: window.startTime,
+        endTime: window.endTime,
+        label: `${date} ${weekdayShort} ${window.startTime}-${window.endTime}`,
+        registrationDeadline,
+      };
+
+      slots.push(
+        dateOnly
+          ? {
+              ...base,
+              dateOnly: true,
+              bookingAllowed: false,
+              requiresManualConfirmation: true,
+              reason:
+                '该面试窗口只标注日期，没有明确几点面试；不要自动调用预约工具，先让同事确认具体提交时间。',
+            }
+          : !normalizedStart
+            ? {
+                ...base,
+                dateOnly: false,
+                bookingAllowed: false,
+                requiresManualConfirmation: true,
+                reason:
+                  '该面试窗口缺少可识别的具体开始时间；不要自动调用预约工具，先让同事确认具体提交时间。',
+              }
+            : {
+                ...base,
+                dateOnly: false,
+                bookingAllowed: true,
+                interviewTime: `${date} ${normalizedStart}:00`,
+              },
+      );
+    }
+  }
+
+  slots.sort((a, b) =>
+    a.date === b.date ? compareTime(a.startTime, b.startTime) : a.date.localeCompare(b.date),
+  );
+
+  if (requestedDate) {
+    const requestedSlots = slots.filter((slot) => slot.date === requestedDate);
+    const otherSlots = slots
+      .filter((slot) => slot.date !== requestedDate)
+      .slice(0, Math.max(0, maxOptions - requestedSlots.length));
+    return [...requestedSlots, ...otherSlots];
+  }
+
+  return slots.slice(0, maxOptions);
+}
+
 /**
  * 将周期性面试窗口压缩为人类可读的规则总结。
  * - 同 startTime/endTime/deadline 的窗口按 weekday 合并
@@ -1146,6 +1151,7 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
 ## 返回字段
 - interview.scheduleRule：岗位的面试周期规则，例如"周一至周五 13:30-16:30，当天 12:00 前报名"。用来回答"还有别的时间吗/下周能约吗"这类开放问题
 - interview.upcomingTimeOptions：未来 7 天实际可约时段的示例 label 数组（已自动过滤报名截止已过的时段）。用来回答"给我几个时间选选"
+- interview.bookableSlots：结构化可约时段。只有 bookingAllowed=true 且带 interviewTime 的 slot 才能进入 duliday_interview_booking；bookingAllowed=false / dateOnly=true 表示只确定日期、不确定具体面试时间，必须先人工确认，严禁拿 registrationDeadline 当 interviewTime
 - interview.requestedDate：只有在传入 requestedDate 时才有；包含 status（available / unavailable / needs_confirmation）和 reason
 - screeningCriteria：岗位硬性筛选条件（性别/年龄/学历/健康证/是否学生等），**用来筛人**——候选人不符合时直接说明，不要继续往下引导
 - screeningChecks：岗位后台把约束语义直接配在 supplement label 里的那一类筛选题（例如 "是否学生（不要学生）"、"专业（非新媒、食品）"、"周四六日都能上班吗"）。**用来筛人**——必须先独立向候选人核对，候选人答案命中 failSignals 就停止收资、走婉拒/拉群，不得继续 booking
@@ -1157,6 +1163,8 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
 
 ## 硬规则
 - 面试时段是**周期性规则**，不是"固定几个名额"。即使 upcomingTimeOptions 只列出几条，也要结合 scheduleRule 理解完整规则，不得说"只有这几个时间可以约"
+- "报名截止/registrationDeadline" 只表示最晚提交预约的时间，**绝不是面试时间**；严禁把报名截止时间传给 duliday_interview_booking
+- 若 bookableSlots 中目标日期的 slot 为 dateOnly=true 或 bookingAllowed=false，只能告诉候选人"日期可以/线上面试但具体时间需确认"，不要调用 duliday_interview_booking
 - 若 interview.requestedDate.status 为 unavailable，必须直接说明原因，不得继续引导候选人填写资料假装可以预约
 - 若 interview.requestedDate.status 为 needs_confirmation，先表述"我先帮你确认下今天还能不能约"，不要直接承诺可以，也不要输出生硬的规则解释句
 - 候选人只是询问规则或资料时，先解释规则；不要跳过校验直接进入 duliday_interview_booking
@@ -1258,6 +1266,10 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
           });
 
           const upcomingTimeOptions = buildUpcomingTimeOptions(windows);
+          const bookableSlots = buildBookableSlots({
+            windows,
+            requestedDate: normalizedDate.date,
+          });
           const scheduleRule = buildScheduleRule(windows);
           const screeningCriteria = buildScreeningCriteria(analysis);
           const enumHints = buildEnumHintsForMissing(checklist.missingFields);
@@ -1309,6 +1321,7 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
               address: analysis.interviewMeta.address,
               scheduleRule,
               upcomingTimeOptions,
+              bookableSlots,
               requestedDate: requestedDateCheck
                 ? {
                     value: normalizedDate.date,

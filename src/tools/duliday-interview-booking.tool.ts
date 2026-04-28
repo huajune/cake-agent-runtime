@@ -26,6 +26,7 @@ import {
   extractInterviewSupplementDefinitions,
   SpongeInterviewSupplementDefinition,
 } from '@sponge/sponge-job.util';
+import { buildJobPolicyAnalysis, InterviewWindow } from '@tools/duliday/job-policy-parser';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
 import { BookingService } from '@biz/message/services/booking.service';
@@ -33,9 +34,106 @@ import { PrivateChatMonitorNotifierService } from '@notification/services/privat
 import { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import { API_BOOKING_REQUIRED_PAYLOAD_FIELDS } from '@tools/duliday/job-booking.contract';
 import { findScreeningFailure } from '@tools/duliday/supplement-label-classifier';
+import {
+  compareTime,
+  getShanghaiWeekday,
+  isDateOnlyWindow,
+  normalizeHm,
+  resolveBookingDeadlineDateTime,
+} from '@tools/duliday/interview-window.util';
 
 const logger = new Logger('duliday_interview_booking');
 const INTERVIEW_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+
+function matchWindowsForDate(windows: InterviewWindow[], date: string): InterviewWindow[] {
+  const weekday = getShanghaiWeekday(date);
+  return windows.filter((window) => {
+    if (window.date) return window.date === date;
+    if (window.weekday) return window.weekday === weekday;
+    return false;
+  });
+}
+
+function formatWindowLabel(date: string, window: InterviewWindow): string {
+  const deadline = resolveBookingDeadlineDateTime(date, window);
+  const deadlineText = deadline ? `（报名截止 ${deadline}）` : '';
+  return `${date} ${window.startTime}-${window.endTime}${deadlineText}`;
+}
+
+function validateInterviewTimeAgainstSchedule(
+  interviewTime: string,
+  job: JobDetail,
+): Record<string, unknown> | null {
+  const analysis = buildJobPolicyAnalysis(job);
+  const windows = analysis.interviewWindows;
+  if (windows.length === 0) return null;
+
+  const [date, hms] = interviewTime.split(' ');
+  const hm = hms?.slice(0, 5);
+  if (!date || !hm) return null;
+
+  const matchedWindows = matchWindowsForDate(windows, date);
+  if (matchedWindows.length === 0) {
+    return {
+      success: false,
+      errorType: 'invalid_interview_time_slot',
+      error: `${date} 没有可预约的面试时段`,
+      availableSlots: windows.slice(0, 8).map((window) => ({
+        date: window.date,
+        weekday: window.weekday,
+        startTime: window.startTime,
+        endTime: window.endTime,
+      })),
+    };
+  }
+
+  const concreteWindows = matchedWindows.filter((window) => !isDateOnlyWindow(window));
+  const validConcreteWindow = concreteWindows.find((window) => {
+    const startHm = normalizeHm(window.startTime);
+    const endHm = normalizeHm(window.endTime) ?? startHm;
+    if (!startHm || !endHm) return false;
+    return compareTime(hm, startHm) >= 0 && compareTime(hm, endHm) <= 0;
+  });
+  if (validConcreteWindow) return null;
+
+  const submittedDateTime = `${date} ${hm}`;
+  const matchedDeadline = matchedWindows
+    .map((window) => resolveBookingDeadlineDateTime(date, window))
+    .find((deadline): deadline is string => Boolean(deadline && deadline === submittedDateTime));
+
+  if (matchedDeadline) {
+    return {
+      success: false,
+      errorType: 'deadline_used_as_interview_time',
+      error: `${matchedDeadline} 是报名截止时间，不是面试时间；严禁把报名截止时间作为 interviewTime 提交。`,
+      registrationDeadline: matchedDeadline,
+      _outcome: '预约失败',
+      _replyInstruction:
+        '预约未提交。请以真人招募者口吻告诉候选人“这个日期可以，但具体面试时间我让同事确认一下”，不要说已经约好，不要透露接口或系统细节。',
+    };
+  }
+
+  if (concreteWindows.length === 0 && matchedWindows.some(isDateOnlyWindow)) {
+    return {
+      success: false,
+      errorType: 'ambiguous_date_only_slot',
+      error:
+        '该面试窗口只标注 00:00-00:00，表示只确定日期、不确定具体几点；在未确认上游提交契约前，不自动预约。',
+      date,
+      matchedSlots: matchedWindows.map((window) => formatWindowLabel(date, window)),
+      _outcome: '预约失败',
+      _replyInstruction:
+        '预约未提交。请以真人招募者口吻告诉候选人“这个日期可以，线上面试具体时间我让同事确认一下”，不要说已经约好，不要透露接口或系统细节。',
+    };
+  }
+
+  return {
+    success: false,
+    errorType: 'invalid_interview_time_slot',
+    error: `${interviewTime} 不在该岗位可预约的面试时段内`,
+    availableSlots: matchedWindows.map((window) => formatWindowLabel(date, window)),
+  };
+}
 
 function buildAlreadyBookedResult(activeCase: RecruitmentCaseRecord): Record<string, unknown> {
   return {
@@ -133,6 +231,9 @@ export function buildInterviewBookingTool(
 - 需要 jobId。优先从 [会话记忆] 的「当前焦点岗位」中获取；若没有，再从「最近已展示岗位」或「上轮候选岗位池」中获取，或调用 duliday_job_list 查询
 - 涉及"今天能不能约"、"哪天能约"、"当前岗位还要补什么资料"时，先调用 duliday_interview_precheck，再决定是否进入预约
 - 在调用前，先按当前阶段策略和 duliday_job_list 的结果核对硬条件、面试形式和明确时间
+- 预约时间必须来自 duliday_interview_precheck 返回的结构化 bookableSlots：只有 bookingAllowed=true 且有 interviewTime 的 slot 才能提交
+- "报名截止/registrationDeadline" 只表示最晚提交预约的时间，**绝不是面试时间**；严禁把报名截止时间作为 interviewTime
+- 若目标 slot 是 00:00-00:00 / dateOnly=true / bookingAllowed=false，表示只确定日期、不确定具体几点，先让同事确认，不要调用本工具自动预约
 - 若预约所需信息中存在候选人尚未明确提供的字段（如学历、健康证情况），必须先向候选人确认；**严禁擅自默认"大专"、"有健康证"等值代填**
 - 健康证、学历等信息优先结合岗位要求与约面重点解释；若岗位结果未明确展示但预约工具仍需要该字段，也要先向候选人确认，再调用工具
 
@@ -388,6 +489,12 @@ export function buildInterviewBookingTool(
               errorType: 'job_not_found',
               error: `未找到 jobId=${jobId} 对应的岗位，无法回填 customerLabelList`,
             };
+          }
+
+          const interviewTimeValidation = validateInterviewTimeAgainstSchedule(interviewTime, job);
+          if (interviewTimeValidation) {
+            context.bookingSucceeded = false;
+            return interviewTimeValidation;
           }
 
           const customerLabelResolution = buildCustomerLabelList({

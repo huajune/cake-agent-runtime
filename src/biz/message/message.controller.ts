@@ -75,8 +75,13 @@ export class MessageController {
   async getMessageStats(
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('userName') userName?: string,
+    @Query('managerName') managerName?: string | string[],
   ) {
-    return this.messageProcessingService.getMessageStats(startDate, endDate);
+    return this.messageProcessingService.getMessageStats(startDate, endDate, {
+      userName,
+      managerName,
+    });
   }
 
   @Get('slowest-messages')
@@ -84,11 +89,14 @@ export class MessageController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('limit') limit?: string,
+    @Query('userName') userName?: string,
+    @Query('managerName') managerName?: string | string[],
   ) {
     return this.messageProcessingService.getSlowestMessages(
       startDate,
       endDate,
       limit ? parseInt(limit, 10) : undefined,
+      { userName, managerName },
     );
   }
 
@@ -99,6 +107,7 @@ export class MessageController {
     @Query('status') status?: 'processing' | 'success' | 'failure' | 'timeout',
     @Query('chatId') chatId?: string,
     @Query('userName') userName?: string,
+    @Query('managerName') managerName?: string | string[],
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
@@ -108,6 +117,7 @@ export class MessageController {
       status,
       chatId,
       userName,
+      managerName,
       limit,
       offset,
     });

@@ -1,7 +1,101 @@
 {
   "baseVersion": "5.3.2",
-  "nextVersion": "5.3.2",
+  "nextVersion": "5.4.0",
   "updatedAt": "2026-04-28",
   "sourceBranch": "develop",
-  "entries": []
+  "entries": [
+    {
+      "number": "141",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/141",
+      "title": "支持消息流水按托管 BOT 筛选",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-28",
+      "summary": [
+        "支持消息流水按托管 BOT 筛选"
+      ],
+      "features": [
+        "支持消息流水按托管 BOT 筛选"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm jest tests/biz/message/message.controller.spec.ts tests/biz/message/services/message-processing.service.spec.ts tests/biz/message/repositories/message-processing.repository.spec.ts --runInBand --watchman=false`",
+        "`pnpm run build:web`",
+        "`pnpm run typecheck`",
+        "`pnpm run lint:check`",
+        "`pnpm run format:check`",
+        "`API_GUARD_TOKEN=ci-placeholder-token pnpm run build`",
+        "push 前完整 `pnpm run ci:check` 通过：216 suites / 2539 tests"
+      ]
+    },
+    {
+      "number": "140",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/140",
+      "title": "修复面试时段与群容量路由",
+      "author": "huajune",
+      "mergedAt": "2026-04-28",
+      "summary": [
+        "Hardened interview precheck/booking around `00:00-00:00` date-only windows so deadline-like timestamps are not submitted as concrete interview times.",
+        "Added bookable slot metadata and prompt guidance so the agent asks for a valid date/time instead of inventing one.",
+        "Updated `invite_to_group` routing to refresh group member counts from the enterprise group list before selecting a group.",
+        "Skips groups at or over `GROUP_MEMBER_LIMIT`, retries the next candidate when the invite API reports `-10`, and only alerts when every matching group is full.",
+        "Reduces invalid interview booking submissions for special all-day/date-only windows.",
+        "Prevents continuing to invite candidates into full part-time groups when another city/industry-matched group is available.",
+        "Keeps the group capacity alert reserved for the true overflow case where all matching groups are full."
+      ],
+      "features": [],
+      "fixes": [
+        "Hardened interview precheck/booking around `00:00-00:00` date-only windows so deadline-like timestamps are not submitted as concrete interview times.",
+        "Added bookable slot metadata and prompt guidance so the agent asks for a valid date/time instead of inventing one.",
+        "Updated `invite_to_group` routing to refresh group member counts from the enterprise group list before selecting a group.",
+        "Skips groups at or over `GROUP_MEMBER_LIMIT`, retries the next candidate when the invite API reports `-10`, and only alerts when every matching group is full.",
+        "Reduces invalid interview booking submissions for special all-day/date-only windows.",
+        "Prevents continuing to invite candidates into full part-time groups when another city/industry-matched group is available.",
+        "Keeps the group capacity alert reserved for the true overflow case where all matching groups are full."
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm jest tests/tools/tool/duliday-interview-precheck.tool.spec.ts tests/tools/tool/duliday-interview-booking.tool.spec.ts tests/tools/tool/invite-to-group.tool.spec.ts --runInBand --watchman=false`",
+        "`pnpm run typecheck`",
+        "`pnpm run lint:check`",
+        "`pnpm prettier --check src/tools/invite-to-group.tool.ts tests/tools/tool/invite-to-group.tool.spec.ts`",
+        "`git diff --check`",
+        "Pre-push `pnpm run ci:check` passed: 216 test suites, 2540 tests."
+      ]
+    },
+    {
+      "number": "145",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/145",
+      "title": "merge master into develop for v5.4.0",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-28",
+      "summary": [
+        "合并最新 master 到 develop，用于解除 #143 发版 PR 的冲突",
+        "保留 develop 的 v5.4.0 待发布元数据",
+        "保留 master 已固化的 v5.3.2 发布记录"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [
+        "合并最新 master 到 develop，用于解除 #143 发版 PR 的冲突"
+      ],
+      "ops": [
+        "保留 develop 的 v5.4.0 待发布元数据",
+        "保留 master 已固化的 v5.3.2 发布记录"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "JSON parse: package.json / .release/pending-release.json",
+        "确认 package.json、CHANGELOG.md、.release/pending-release.json 无冲突标记",
+        "git diff --check --cached"
+      ]
+    }
+  ]
 }
