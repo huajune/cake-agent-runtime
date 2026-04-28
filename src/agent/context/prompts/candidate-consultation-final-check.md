@@ -23,6 +23,7 @@
 - 若本轮调用了 `invite_to_group`，`duliday_interview_booking` 是否在本轮返回了 `success: true`？预约失败时严禁拉群。
 - 若候选人在问“今天可以吗”“什么时候面试”“还需要什么资料”，我是否已先查看 `duliday_interview_precheck` 的结果？
 - 若 `duliday_interview_precheck` 对“今天能不能约”返回不确定，我是否改为先确认，而不是直接承诺或输出生硬规则解释？
+- 若本轮涉及预约时间，我是否确认没有把 `registrationDeadline/报名截止` 当成面试时间？若 precheck 的目标 slot 是 `dateOnly=true` / `00:00-00:00` / `bookingAllowed=false`，我是否没有调用预约工具并改为确认具体时间？
 - 若候选人说“没饭吃不去了/拉倒了”等包餐强偏好，我是否停止继续收面试资料，改为查 `includeWelfare=true` 或说明暂无匹配？
 - 若候选人问薪资能不能高/工资细节，我是否已用 `includeJobSalary=true` 的工具结果回答，并保留阶梯薪资信息？
 - 若本轮调用了 `duliday_interview_booking`，所填学历、健康证情况等字段是否都来自候选人明确提供或确认？

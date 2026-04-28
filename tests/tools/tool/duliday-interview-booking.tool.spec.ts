@@ -236,6 +236,180 @@ describe('buildInterviewBookingTool', () => {
     expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
   });
 
+  it('should reject using registration deadline as interviewTime before external booking', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            interviewSupplement: [],
+            firstInterview: {
+              periodicInterviewTimes: [
+                {
+                  interviewWeekday: '每周四',
+                  interviewTimes: [
+                    {
+                      interviewStartTime: '00:00',
+                      interviewEndTime: '00:00',
+                      cycleDeadlineDay: '当天',
+                      cycleDeadlineEnd: '10:00',
+                    },
+                  ],
+                },
+              ],
+              fixedInterviewTimes: [],
+            },
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({
+      ...validInput,
+      interviewTime: '2026-04-30 10:00:00',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe('deadline_used_as_interview_time');
+    expect(result.registrationDeadline).toBe('2026-04-30 10:00');
+    expect(result.error).toContain('报名截止时间');
+    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+    expect(mockPrivateChatNotifier.notifyInterviewBookingResult).not.toHaveBeenCalled();
+  });
+
+  it('should reject date-only 00:00-00:00 windows until the upstream contract is confirmed', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            interviewSupplement: [],
+            firstInterview: {
+              periodicInterviewTimes: [
+                {
+                  interviewWeekday: '每周四',
+                  interviewTimes: [
+                    {
+                      interviewStartTime: '00:00',
+                      interviewEndTime: '00:00',
+                      cycleDeadlineDay: '当天',
+                      cycleDeadlineEnd: '10:00',
+                    },
+                  ],
+                },
+              ],
+              fixedInterviewTimes: [],
+            },
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({
+      ...validInput,
+      interviewTime: '2026-04-30 00:00:00',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe('ambiguous_date_only_slot');
+    expect(result.date).toBe('2026-04-30');
+    expect(result.matchedSlots).toEqual(['2026-04-30 00:00-00:00（报名截止 2026-04-30 10:00）']);
+    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+    expect(mockPrivateChatNotifier.notifyInterviewBookingResult).not.toHaveBeenCalled();
+  });
+
+  it('should allow interviewTime inside a concrete interview window', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            interviewSupplement: [],
+            firstInterview: {
+              periodicInterviewTimes: [
+                {
+                  interviewWeekday: '每周五',
+                  interviewTimes: [
+                    {
+                      interviewStartTime: '13:30',
+                      interviewEndTime: '16:30',
+                      cycleDeadlineDay: '当天',
+                      cycleDeadlineEnd: '12:00',
+                    },
+                  ],
+                },
+              ],
+              fixedInterviewTimes: [],
+            },
+          },
+        }),
+      ],
+    });
+    mockSpongeService.bookInterview.mockResolvedValue({
+      success: true,
+      code: 0,
+      message: '预约成功',
+      notice: null,
+      errorList: null,
+    });
+
+    const result = await executeTool({
+      ...validInput,
+      interviewTime: '2026-03-20 14:00:00',
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        interviewTime: '2026-03-20 14:00:00',
+      }),
+    );
+  });
+
+  it('should not reject a deadline-shaped time when it is also inside a concrete window', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            interviewSupplement: [],
+            firstInterview: {
+              periodicInterviewTimes: [
+                {
+                  interviewWeekday: '每周五',
+                  interviewTimes: [
+                    {
+                      interviewStartTime: '10:00',
+                      interviewEndTime: '12:00',
+                      cycleDeadlineDay: '当天',
+                      cycleDeadlineEnd: '10:00',
+                    },
+                  ],
+                },
+              ],
+              fixedInterviewTimes: [],
+            },
+          },
+        }),
+      ],
+    });
+    mockSpongeService.bookInterview.mockResolvedValue({
+      success: true,
+      code: 0,
+      message: '预约成功',
+      notice: null,
+      errorList: null,
+    });
+
+    const result = await executeTool({
+      ...validInput,
+      interviewTime: '2026-03-20 10:00:00',
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        interviewTime: '2026-03-20 10:00:00',
+      }),
+    );
+  });
+
   it('should build customerLabelList from real job supplements and candidate info', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [
