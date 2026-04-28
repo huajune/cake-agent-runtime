@@ -1143,6 +1143,45 @@ describe('buildInterviewPrecheckTool', () => {
     expect(requestedSlot.reason).toContain('不要自动调用预约工具');
   });
 
+  it('should normalize bookable slot interviewTime to the booking tool format', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-28T03:30:00.000Z')); // 11:30 上海时间
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-04-30',
+                  interviewTimes: [
+                    {
+                      interviewStartTime: '9:30',
+                      interviewEndTime: '10:30',
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({ jobId: 100, requestedDate: '2026-04-30' });
+
+    expect(result.success).toBe(true);
+    const requestedSlot = result.interview.bookableSlots.find(
+      (slot: Record<string, unknown>) => slot.date === '2026-04-30',
+    );
+    expect(requestedSlot).toEqual(
+      expect.objectContaining({
+        dateOnly: false,
+        bookingAllowed: true,
+        interviewTime: '2026-04-30 09:30:00',
+      }),
+    );
+  });
+
   it('should surface Sponge errors as precheck_failed', async () => {
     mockSpongeService.fetchJobs.mockRejectedValue(new Error('API timeout'));
 
