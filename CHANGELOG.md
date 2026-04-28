@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.4.0] - 2026-04-28
 
-**预计版本**: `v5.4.0`
-**最近更新**: `2026-04-28`
 **来源分支**: `develop`
-**累计 PR**: 3
 
 ### 更新摘要
 - PR #141 支持消息流水按托管 BOT 筛选
@@ -71,7 +67,6 @@
 - PR #145 JSON parse: package.json / .release/pending-release.json
 - PR #145 确认 package.json、CHANGELOG.md、.release/pending-release.json 无冲突标记
 - PR #145 git diff --check --cached
-<!-- release:pending:end -->
 
 ## [5.3.2] - 2026-04-28
 
