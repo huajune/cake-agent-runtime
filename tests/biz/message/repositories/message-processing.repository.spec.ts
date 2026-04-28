@@ -17,6 +17,7 @@ function makeQueryMock(result: { data?: unknown; error?: unknown; count?: number
     'lt',
     'in',
     'or',
+    'ilike',
     'order',
     'limit',
     'range',
@@ -183,6 +184,19 @@ describe('MessageProcessingRepository', () => {
 
       expect(result).toEqual([]);
     });
+
+    it('should apply manager filters when provided', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      const queryMock = makeQueryMock({ data: [], error: null });
+      mockSupabaseClient.from.mockReturnValue(queryMock);
+
+      await repository.getSlowestMessages(undefined, undefined, 10, {
+        managerNames: ['LiHanTing'],
+      });
+
+      expect(queryMock.ilike).toHaveBeenCalledWith('manager_name', '%LiHanTing%');
+    });
   });
 
   // ==================== getMessageProcessingRecords ====================
@@ -247,6 +261,20 @@ describe('MessageProcessingRepository', () => {
       expect(result.records).toEqual([]);
     });
 
+    it('should filter by manager aliases when provided', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      const queryMock = makeQueryMock({ data: [], error: null, count: 0 });
+      mockSupabaseClient.from.mockReturnValue(queryMock);
+
+      await repository.getMessageProcessingRecords({
+        managerNames: ['LiHanTing', '李涵婷'],
+      });
+
+      expect(queryMock.or).toHaveBeenCalledWith(
+        'manager_name.ilike.%LiHanTing%,manager_name.ilike.%李涵婷%',
+      );
+    });
   });
 
   // ==================== getMessageProcessingRecordById ====================
@@ -358,6 +386,36 @@ describe('MessageProcessingRepository', () => {
         failed: 2,
         avgDuration: 1500,
         avgTtft: 420,
+      });
+    });
+
+    it('should calculate filtered stats without RPC', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      const queryMock = makeQueryMock({
+        data: [
+          { status: 'success', total_duration: 1000, ttft_ms: '120' },
+          { status: 'failure', total_duration: 500, ttft_ms: null },
+          { status: 'timeout', total_duration: 0, ttft_ms: '' },
+        ],
+        error: null,
+      });
+      mockSupabaseClient.from.mockReturnValue(queryMock);
+
+      const result = await repository.getMessageStats(Date.now() - 3600000, Date.now(), {
+        userName: 'Alice',
+        managerNames: ['LiHanTing'],
+      });
+
+      expect(mockSupabaseClient.rpc).not.toHaveBeenCalled();
+      expect(queryMock.ilike).toHaveBeenCalledWith('user_name', '%Alice%');
+      expect(queryMock.ilike).toHaveBeenCalledWith('manager_name', '%LiHanTing%');
+      expect(result).toEqual({
+        total: 3,
+        success: 1,
+        failed: 2,
+        avgDuration: 750,
+        avgTtft: 120,
       });
     });
   });

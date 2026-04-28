@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { Bot } from 'lucide-react';
 import { formatDuration } from '@/utils/format';
 import styles from './index.module.scss';
 
@@ -20,6 +21,11 @@ interface ControlPanelProps {
   onTimeRangeChange: (range: 'today' | 'week' | 'month') => void;
   searchUserName?: string;
   onSearchUserNameChange?: (userName: string) => void;
+  botFilter: string;
+  botOptions: Array<{ value: string; label: string }>;
+  isBotsLoading?: boolean;
+  allBotsValue: string;
+  onBotFilterChange: (value: string) => void;
 }
 
 const TIME_RANGE_OPTIONS = [
@@ -43,6 +49,11 @@ export default function ControlPanel({
   onTimeRangeChange,
   searchUserName = '',
   onSearchUserNameChange,
+  botFilter,
+  botOptions,
+  isBotsLoading = false,
+  allBotsValue,
+  onBotFilterChange,
 }: ControlPanelProps) {
   const [inputValue, setInputValue] = useState(searchUserName);
 
@@ -78,7 +89,11 @@ export default function ControlPanel({
   const statBadges = [
     { label: '请求数', value: String(stats.total), toneClass: styles.badgePrimary },
     { label: '成功', value: String(stats.success), toneClass: styles.badgeSuccess },
-    { label: '异常', value: String(stats.failed), toneClass: stats.failed > 0 ? styles.badgeDanger : '' },
+    {
+      label: '异常',
+      value: String(stats.failed),
+      toneClass: stats.failed > 0 ? styles.badgeDanger : '',
+    },
     { label: 'TTFT', value: formatDuration(stats.avgTtft ?? 0), toneClass: styles.badgeWarning },
   ];
 
@@ -93,9 +108,7 @@ export default function ControlPanel({
               key={option.key}
               type="button"
               onClick={() => onTimeRangeChange(option.key)}
-              className={`${styles.segBtn} ${
-                timeRange === option.key ? styles.segBtnActive : ''
-              }`}
+              className={`${styles.segBtn} ${timeRange === option.key ? styles.segBtnActive : ''}`}
             >
               {option.label}
             </button>
@@ -124,6 +137,30 @@ export default function ControlPanel({
             </button>
           )}
         </div>
+
+        <label className={styles.selectWrap}>
+          <Bot aria-hidden="true" size={14} />
+          <select
+            value={botFilter}
+            onChange={(event) => onBotFilterChange(event.target.value)}
+            className={styles.selectInput}
+            aria-label="托管 BOT 筛选"
+            disabled={isBotsLoading || botOptions.length === 0}
+          >
+            <option value={allBotsValue}>
+              {isBotsLoading
+                ? '正在加载托管账号'
+                : botOptions.length === 0
+                  ? '暂无托管账号'
+                  : '全部托管账号'}
+            </option>
+            {botOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <div className={styles.statsGroup}>
           {statBadges.map((item) => (

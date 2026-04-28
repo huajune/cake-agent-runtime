@@ -12,7 +12,12 @@ import * as chatService from '@/api/services/chat.service';
 /**
  * 获取消息统计数据（聚合查询，轻量级）
  */
-export function useMessageStats(options?: { startDate?: string; endDate?: string }) {
+export function useMessageStats(options?: {
+  startDate?: string;
+  endDate?: string;
+  userName?: string;
+  managerNames?: string[];
+}) {
   return useQuery({
     queryKey: ['message-stats', options],
     queryFn: () => chatService.getMessageStats(options),
@@ -26,6 +31,8 @@ export function useMessageStats(options?: { startDate?: string; endDate?: string
 export function useSlowestMessages(options?: {
   startDate?: string;
   endDate?: string;
+  userName?: string;
+  managerNames?: string[];
   limit?: number;
   enabled?: boolean;
 }) {
@@ -46,6 +53,7 @@ export function useMessageProcessingRecords(options?: {
   status?: 'processing' | 'success' | 'failure' | 'timeout';
   chatId?: string;
   userName?: string;
+  managerNames?: string[];
   limit?: number;
   offset?: number;
   enabled?: boolean;
