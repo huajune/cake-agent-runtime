@@ -14,7 +14,7 @@
 **预计版本**: `v5.4.0`
 **最近更新**: `2026-04-28`
 **来源分支**: `develop`
-**累计 PR**: 2
+**累计 PR**: 3
 
 ### 更新摘要
 - PR #141 支持消息流水按托管 BOT 筛选
@@ -25,6 +25,9 @@
 - PR #140 Reduces invalid interview booking submissions for special all-day/date-only windows.
 - PR #140 Prevents continuing to invite candidates into full part-time groups when another city/industry-matched group is available.
 - PR #140 Keeps the group capacity alert reserved for the true overflow case where all matching groups are full.
+- PR #145 合并最新 master 到 develop，用于解除 #143 发版 PR 的冲突
+- PR #145 保留 develop 的 v5.4.0 待发布元数据
+- PR #145 保留 master 已固化的 v5.3.2 发布记录
 
 ### 新功能
 - PR #141 支持消息流水按托管 BOT 筛选
@@ -39,10 +42,11 @@
 - PR #140 Keeps the group capacity alert reserved for the true overflow case where all matching groups are full.
 
 ### 优化调整
-- 无
+- PR #145 合并最新 master 到 develop，用于解除 #143 发版 PR 的冲突
 
 ### 运维与流程
-- 无
+- PR #145 保留 develop 的 v5.4.0 待发布元数据
+- PR #145 保留 master 已固化的 v5.3.2 发布记录
 
 ### 配置变更
 - 无
@@ -64,6 +68,9 @@
 - PR #140 `pnpm prettier --check src/tools/invite-to-group.tool.ts tests/tools/tool/invite-to-group.tool.spec.ts`
 - PR #140 `git diff --check`
 - PR #140 Pre-push `pnpm run ci:check` passed: 216 test suites, 2540 tests.
+- PR #145 JSON parse: package.json / .release/pending-release.json
+- PR #145 确认 package.json、CHANGELOG.md、.release/pending-release.json 无冲突标记
+- PR #145 git diff --check --cached
 <!-- release:pending:end -->
 
 ## [5.3.2] - 2026-04-28
