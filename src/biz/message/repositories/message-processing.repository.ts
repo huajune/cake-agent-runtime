@@ -4,6 +4,11 @@ import { SupabaseService } from '@infra/supabase/supabase.service';
 import { MessageProcessingDbRecord } from '../entities/message-processing.entity';
 import { MessageProcessingRecordInput } from '../types/message.types';
 
+interface MessageProcessingFilters {
+  userName?: string;
+  managerNames?: string[];
+}
+
 /**
  * 消息处理记录 Repository
  *
@@ -98,6 +103,7 @@ export class MessageProcessingRepository extends BaseRepository {
     startTime?: number,
     endTime?: number,
     limit: number = 10,
+    filters?: MessageProcessingFilters,
   ): Promise<MessageProcessingRecordInput[]> {
     if (!this.isAvailable()) {
       this.logger.warn('[最慢消息] Supabase 未初始化');
@@ -115,6 +121,7 @@ export class MessageProcessingRepository extends BaseRepository {
             .limit(limit);
           if (startTime) r = r.gte('received_at', new Date(startTime).toISOString());
           if (endTime) r = r.lte('received_at', new Date(endTime).toISOString());
+          r = this.applyTextFilters(r, filters);
           return r;
         },
       );
@@ -137,6 +144,7 @@ export class MessageProcessingRepository extends BaseRepository {
     status?: 'processing' | 'success' | 'failure' | 'timeout';
     chatId?: string;
     userName?: string;
+    managerNames?: string[];
     limit?: number;
     offset?: number;
   }): Promise<{
@@ -158,7 +166,10 @@ export class MessageProcessingRepository extends BaseRepository {
         else if (options.endTime) r = r.lte('received_at', new Date(options.endTime).toISOString());
         if (options.status) r = r.eq('status', options.status);
         if (options.chatId) r = r.eq('chat_id', options.chatId);
-        if (options.userName) r = r.ilike('user_name', `%${options.userName}%`);
+        r = this.applyTextFilters(r, {
+          userName: options.userName,
+          managerNames: options.managerNames,
+        });
         if (options.limit) {
           const offset = options.offset ?? 0;
           r = r.range(offset, offset + options.limit - 1);
@@ -219,6 +230,7 @@ export class MessageProcessingRepository extends BaseRepository {
   async getMessageStats(
     startTime: number,
     endTime: number,
+    filters?: MessageProcessingFilters,
   ): Promise<{
     total: number;
     success: number;
@@ -231,6 +243,10 @@ export class MessageProcessingRepository extends BaseRepository {
     }
 
     try {
+      if (this.hasTextFilters(filters)) {
+        return this.getFilteredMessageStats(startTime, endTime, filters);
+      }
+
       const result = await this.rpc<
         Array<{
           total_messages: string | number;
@@ -616,6 +632,100 @@ export class MessageProcessingRepository extends BaseRepository {
   }
 
   // ==================== 私有方法 ====================
+
+  private hasTextFilters(filters?: MessageProcessingFilters): boolean {
+    return Boolean(
+      filters?.userName?.trim() || this.normalizeFilterValues(filters?.managerNames).length,
+    );
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private applyTextFilters(query: any, filters?: MessageProcessingFilters) {
+    let result = query;
+    const userName = filters?.userName?.trim();
+    if (userName) result = result.ilike('user_name', `%${userName}%`);
+
+    const managerNames = this.normalizeFilterValues(filters?.managerNames);
+    if (managerNames.length === 1) {
+      return result.ilike('manager_name', `%${managerNames[0]}%`);
+    }
+
+    if (managerNames.length > 1) {
+      const orFilter = managerNames
+        .map((managerName) => `manager_name.ilike.%${this.escapeOrFilterValue(managerName)}%`)
+        .join(',');
+      return result.or(orFilter);
+    }
+
+    return result;
+  }
+
+  private normalizeFilterValues(values?: string[]): string[] {
+    return Array.from(new Set((values || []).map((value) => value.trim()).filter(Boolean)));
+  }
+
+  private escapeOrFilterValue(value: string): string {
+    return value.replace(/[,()]/g, '');
+  }
+
+  private async getFilteredMessageStats(
+    startTime: number,
+    endTime: number,
+    filters?: MessageProcessingFilters,
+  ): Promise<{
+    total: number;
+    success: number;
+    failed: number;
+    avgDuration: number;
+    avgTtft: number;
+  }> {
+    const rows = await this.select<MessageProcessingDbRecord>(
+      [
+        'status',
+        'total_duration',
+        'ttft_ms:agent_invocation->response->timings->durations->>requestToFirstTextDeltaMs',
+      ].join(','),
+      (q) => {
+        let r = q
+          .gte('received_at', new Date(startTime).toISOString())
+          .lt('received_at', new Date(endTime).toISOString());
+        r = this.applyTextFilters(r, filters);
+        return r;
+      },
+    );
+
+    let success = 0;
+    let failed = 0;
+    let durationSum = 0;
+    let durationCount = 0;
+    let ttftSum = 0;
+    let ttftCount = 0;
+
+    for (const row of rows) {
+      if (row.status === 'success') success += 1;
+      else failed += 1;
+
+      const duration = this.parseNumber(row.total_duration);
+      if (duration !== undefined && duration > 0) {
+        durationSum += duration;
+        durationCount += 1;
+      }
+
+      const ttft = this.extractTtftMs(row);
+      if (ttft !== undefined && ttft > 0) {
+        ttftSum += ttft;
+        ttftCount += 1;
+      }
+    }
+
+    return {
+      total: rows.length,
+      success,
+      failed,
+      avgDuration: durationCount > 0 ? Math.round(durationSum / durationCount) : 0,
+      avgTtft: ttftCount > 0 ? Math.round(ttftSum / ttftCount) : 0,
+    };
+  }
 
   /**
    * 转换为数据库记录格式

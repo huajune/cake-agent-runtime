@@ -15,23 +15,41 @@ export class MessageProcessingService {
   /**
    * 获取消息统计数据（聚合查询）
    */
-  async getMessageStats(startDate?: string, endDate?: string) {
+  async getMessageStats(
+    startDate?: string,
+    endDate?: string,
+    filters?: { userName?: string; managerName?: string | string[] },
+  ) {
     const startTime = this.toStartTimestamp(startDate, 1);
     const endTime = this.toEndTimestamp(endDate);
     this.logger.debug(
       `获取消息统计: ${new Date(startTime).toISOString()} ~ ${new Date(endTime).toISOString()}`,
     );
-    return this.messageProcessingRepository.getMessageStats(startTime, endTime);
+    return this.messageProcessingRepository.getMessageStats(
+      startTime,
+      endTime,
+      this.toRepositoryFilters(filters),
+    );
   }
 
   /**
    * 获取最慢消息 Top N
    */
-  async getSlowestMessages(startDate?: string, endDate?: string, limit = 10) {
+  async getSlowestMessages(
+    startDate?: string,
+    endDate?: string,
+    limit = 10,
+    filters?: { userName?: string; managerName?: string | string[] },
+  ) {
     const startTime = startDate ? this.toStartTimestamp(startDate) : undefined;
     const endTime = endDate ? this.toEndTimestamp(endDate) : undefined;
     this.logger.debug(`获取最慢消息 Top ${limit}`);
-    return this.messageProcessingRepository.getSlowestMessages(startTime, endTime, limit);
+    return this.messageProcessingRepository.getSlowestMessages(
+      startTime,
+      endTime,
+      limit,
+      this.toRepositoryFilters(filters),
+    );
   }
 
   /**
@@ -43,10 +61,11 @@ export class MessageProcessingService {
     status?: 'processing' | 'success' | 'failure' | 'timeout';
     chatId?: string;
     userName?: string;
+    managerName?: string | string[];
     limit?: string;
     offset?: string;
   }) {
-    const options: Record<string, unknown> = {};
+    const options: Parameters<MessageProcessingRepository['getMessageProcessingRecords']>[0] = {};
     if (query.startDate) {
       const d = new Date(query.startDate);
       d.setHours(0, 0, 0, 0);
@@ -60,6 +79,8 @@ export class MessageProcessingService {
     if (query.status) options.status = query.status;
     if (query.chatId) options.chatId = query.chatId;
     if (query.userName) options.userName = query.userName;
+    const managerNames = this.normalizeQueryValues(query.managerName);
+    if (managerNames.length > 0) options.managerNames = managerNames;
     if (query.limit) options.limit = parseInt(query.limit, 10);
     if (query.offset) options.offset = parseInt(query.offset, 10);
 
@@ -208,5 +229,27 @@ export class MessageProcessingService {
       return d.getTime();
     }
     return Date.now();
+  }
+
+  private toRepositoryFilters(filters?: { userName?: string; managerName?: string | string[] }) {
+    const userName = filters?.userName?.trim();
+    const managerNames = this.normalizeQueryValues(filters?.managerName);
+    if (!userName && managerNames.length === 0) return undefined;
+    return {
+      userName: userName || undefined,
+      managerNames: managerNames.length > 0 ? managerNames : undefined,
+    };
+  }
+
+  private normalizeQueryValues(value?: string | string[]): string[] {
+    const values = Array.isArray(value) ? value : value ? [value] : [];
+    return Array.from(
+      new Set(
+        values
+          .flatMap((item) => item.split(','))
+          .map((item) => item.trim())
+          .filter(Boolean),
+      ),
+    );
   }
 }
