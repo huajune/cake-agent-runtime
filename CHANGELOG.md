@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.3.1] - 2026-04-28
 
-**预计版本**: `v5.3.1`
-**最近更新**: `2026-04-28`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #129 在版本元数据 PR 合并到 develop 后，自动创建或更新 develop → master 发版 PR。
@@ -48,7 +44,6 @@
 - PR #129 ruby YAML 解析 .github/workflows/version-changelog.yml 通过
 - PR #129 pnpm exec prettier --check .github/workflows/version-changelog.yml scripts/get-release-notes.js
 - PR #129 pre-push pnpm run ci:check：216 个测试套件、2532 个测试通过
-<!-- release:pending:end -->
 
 ## [5.3.0] - 2026-04-28
 
