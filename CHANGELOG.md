@@ -14,13 +14,17 @@
 **预计版本**: `v5.5.0`
 **最近更新**: `2026-04-29`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #148 Add badcase traceability and memory fixture support across test-suite imports, execution records, conversation snapshots, and Feishu payload handling.
 - PR #148 Add Supabase migrations, backfill/check tooling, and workflow documentation for trace-memory evaluation.
 - PR #148 Extend dashboard/business trend RPC support, release/deploy notification formatting, and related frontend test-suite/feedback views.
 - PR #148 Tighten prompt, memory, and tool behavior used by candidate consultation badcase validation.
+- PR #151 master 已固化 v5.4.0：`.release/pending-release.json` 清空 entries，`CHANGELOG.md` 把 `<!-- release:pending -->` 块替换为 `[5.4.0]` 段
+- PR #151 develop 已写入 v5.5.0 待发布数据（来自 PR #148）
+- PR #151 `.release/pending-release.json` 取 develop 版本（`baseVersion 5.4.0` / `nextVersion 5.5.0` / 含 #148 entry）
+- PR #151 `CHANGELOG.md` 取 develop 版本（保留 v5.5.0 待发布块；`[5.4.0]` 等历史段两边一致）
 
 ### 新功能
 - PR #148 Add badcase traceability and memory fixture support across test-suite imports, execution records, conversation snapshots, and Feishu payload handling.
@@ -35,6 +39,10 @@
 
 ### 运维与流程
 - PR #148 Add Supabase migrations, backfill/check tooling, and workflow documentation for trace-memory evaluation.
+- PR #151 master 已固化 v5.4.0：`.release/pending-release.json` 清空 entries，`CHANGELOG.md` 把 `<!-- release:pending -->` 块替换为 `[5.4.0]` 段
+- PR #151 develop 已写入 v5.5.0 待发布数据（来自 PR #148）
+- PR #151 `.release/pending-release.json` 取 develop 版本（`baseVersion 5.4.0` / `nextVersion 5.5.0` / 含 #148 entry）
+- PR #151 `CHANGELOG.md` 取 develop 版本（保留 v5.5.0 待发布块；`[5.4.0]` 等历史段两边一致）
 
 ### 配置变更
 - 无
@@ -47,6 +55,10 @@
 - PR #148 `pnpm exec jest --watchman=false --runTestsByPath tests/biz/monitoring/services/dashboard/analytics-query.service.spec.ts`
 - PR #148 Pre-commit hook: lint + format passed
 - PR #148 Pre-push hook: `pnpm run ci:check` passed, including lint, format, typecheck, build, and `jest --coverage --watchman=false` (219 suites / 2574 tests)
+- PR #151 `node -e 'JSON.parse(...)'` 校验 `.release/pending-release.json` 合法
+- PR #151 `grep` 确认无遗留冲突标记
+- PR #151 CI Checks 通过
+- PR #151 合并本 PR 后 PR #150 状态变为 MERGEABLE
 <!-- release:pending:end -->
 
 ## [5.4.0] - 2026-04-28
