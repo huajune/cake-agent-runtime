@@ -116,10 +116,10 @@ describe('ContextService', () => {
     expect(prompt).toContain('includeWelfare=true');
     expect(prompt).toContain('includeJobSalary=true');
     expect(prompt).toContain('今天也能约');
-    expect(prompt).toContain('[岗位约束（不可包装成"周末可做"）]');
+    expect(prompt).toContain('不能包装成"周末可做"或"晚班可排"');
     expect(prompt).toContain('05:00-23:00');
-    expect(prompt).toContain('推荐 2 个及以上岗位必须分条分段');
-    expect(prompt).toContain('推荐多个岗位时我是否分条分段');
+    expect(prompt).toContain('推荐 2 个及以上岗位时必须分条分段输出');
+    expect(prompt).toContain('若推荐多个岗位，我是否按岗位分条分段展示');
     // 工具专属规则（如 bookingChecklist.collectionStrategy）已迁移到各工具的 description 字段，
     // 不再出现在主 system prompt 中。
     expect(prompt).not.toContain('# 工具手册');

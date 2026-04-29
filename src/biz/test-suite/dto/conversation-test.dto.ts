@@ -185,9 +185,10 @@ export class GetConversationTurnsDto {
  * 更新轮次评审请求 DTO
  */
 export class UpdateTurnReviewDto {
-  @ApiProperty({ description: '执行记录ID' })
+  @ApiPropertyOptional({ description: '执行记录ID；路由参数已包含，body 中可省略' })
+  @IsOptional()
   @IsString()
-  executionId: string;
+  executionId?: string;
 
   @ApiProperty({ description: '评审状态', enum: ReviewStatus })
   @IsEnum(ReviewStatus)

@@ -708,8 +708,12 @@ export class ConversationTestService {
         ? ReviewStatus.PASSED
         : ReviewStatus.PENDING;
 
-    if (existingExecution) {
-      await this.executionRepository.updateExecution(existingExecution.id, {
+    const executionToUpdate =
+      existingExecution ??
+      (await this.executionRepository.findByConversationSourceAndTurn(source.id, turn.turnNumber));
+
+    if (executionToUpdate) {
+      await this.executionRepository.updateExecution(executionToUpdate.id, {
         agent_request: agentRequest,
         agent_response: loopResult,
         actual_output: actualOutput,
