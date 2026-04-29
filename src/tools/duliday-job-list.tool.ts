@@ -18,6 +18,7 @@ import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
 import type { RecommendedJobSummary } from '@memory/types/session-facts.types';
 import {
+  sanitizeJobDisplayText,
   sanitizeLaborFormForDisplay,
   stripLaborFormFromCategories,
 } from '@memory/facts/labor-form';
@@ -386,9 +387,12 @@ function renderBasicInfoSection(bi: any, distanceKm: number | null | undefined):
   if (!bi) return '';
   const lines: string[] = [];
 
-  pushField(lines, '岗位名称', bi.jobName);
-  pushField(lines, '岗位简称', bi.jobNickName);
-  pushField(lines, '岗位类型', bi.jobCategoryName);
+  // jobName / jobNickName / jobCategoryName 在渲染前剔除 "全职/正式工/临时工" 残留
+  // （badcase nwr0i50f：奥乐齐分拣岗 jobName 含"全职"，Agent 转述给用户后产生混乱）。
+  // 平台所有岗位都是兼职，这些词在岗位名里没有业务含义。
+  pushField(lines, '岗位名称', sanitizeJobDisplayText(bi.jobName));
+  pushField(lines, '岗位简称', sanitizeJobDisplayText(bi.jobNickName));
+  pushField(lines, '岗位类型', sanitizeJobDisplayText(bi.jobCategoryName));
   // 渲染前 sanitize：API 偶发回 "全职/正式工" 等反向词，直接渲染会让 LLM 把岗位
   // 描述成"全职"，违反"统一按兼职口径沟通"红线（badcase #17）。
   pushField(lines, '用工形式', sanitizeLaborFormForDisplay(bi.laborForm));

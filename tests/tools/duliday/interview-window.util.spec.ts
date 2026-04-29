@@ -1,5 +1,6 @@
 import {
   compareTime,
+  findSameDayCutoffViolation,
   getShanghaiWeekday,
   isDateOnlyWindow,
   normalizeDateTime,
@@ -73,5 +74,69 @@ describe('interview-window.util', () => {
     expect(isDateOnlyWindow({ weekday: '每周四', startTime: '9:30', endTime: '10:30' })).toBe(
       false,
     );
+  });
+
+  describe('findSameDayCutoffViolation', () => {
+    // 上海时间 2026-04-29 14:00（周三）→ 已过当日 12:00 截止
+    const NOW_AFTER_CUTOFF = new Date('2026-04-29T06:00:00.000Z');
+    // 上海时间 2026-04-29 10:00（周三）→ 未到当日 12:00 截止
+    const NOW_BEFORE_CUTOFF = new Date('2026-04-29T02:00:00.000Z');
+
+    const window: InterviewWindow = {
+      weekday: '每周三',
+      startTime: '13:30',
+      endTime: '17:00',
+      cycleDeadlineDay: '当天',
+      cycleDeadlineEnd: '12:00',
+    };
+
+    it('blocks when interviewDate=today and current time has passed all deadlines', () => {
+      const result = findSameDayCutoffViolation('2026-04-29', [window], NOW_AFTER_CUTOFF);
+      expect(result).not.toBeNull();
+      expect(result?.latestDeadline).toBe('2026-04-29 12:00');
+      expect(result?.reason).toContain('已超过');
+    });
+
+    it('does not block when current time is still before deadline', () => {
+      expect(
+        findSameDayCutoffViolation('2026-04-29', [window], NOW_BEFORE_CUTOFF),
+      ).toBeNull();
+    });
+
+    it('does not block when interviewDate is in the future', () => {
+      expect(
+        findSameDayCutoffViolation('2026-04-30', [window], NOW_AFTER_CUTOFF),
+      ).toBeNull();
+    });
+
+    it('returns null when no matching window for the date', () => {
+      const thursdayWindow: InterviewWindow = { ...window, weekday: '每周四' };
+      expect(
+        findSameDayCutoffViolation('2026-04-29', [thursdayWindow], NOW_AFTER_CUTOFF),
+      ).toBeNull();
+    });
+
+    it('returns null when window has no deadline configured', () => {
+      const noDeadline: InterviewWindow = {
+        weekday: '每周三',
+        startTime: '13:30',
+        endTime: '17:00',
+      };
+      expect(
+        findSameDayCutoffViolation('2026-04-29', [noDeadline], NOW_AFTER_CUTOFF),
+      ).toBeNull();
+    });
+
+    it('handles fixed-date windows', () => {
+      const fixed: InterviewWindow = {
+        date: '2026-04-29',
+        startTime: '13:30',
+        endTime: '17:00',
+        fixedDeadline: '12:00',
+      };
+      const result = findSameDayCutoffViolation('2026-04-29', [fixed], NOW_AFTER_CUTOFF);
+      expect(result).not.toBeNull();
+      expect(result?.latestDeadline).toBe('2026-04-29 12:00');
+    });
   });
 });

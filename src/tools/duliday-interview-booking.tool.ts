@@ -36,11 +36,13 @@ import { API_BOOKING_REQUIRED_PAYLOAD_FIELDS } from '@tools/duliday/job-booking.
 import { findScreeningFailure } from '@tools/duliday/supplement-label-classifier';
 import {
   compareTime,
+  findSameDayCutoffViolation,
   getShanghaiWeekday,
   isDateOnlyWindow,
   normalizeHm,
   resolveBookingDeadlineDateTime,
 } from '@tools/duliday/interview-window.util';
+import { isLikelyRealChineseName } from '@memory/facts/name-guard';
 
 const logger = new Logger('duliday_interview_booking');
 const INTERVIEW_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
@@ -71,6 +73,21 @@ function validateInterviewTimeAgainstSchedule(
   const [date, hms] = interviewTime.split(' ');
   const hm = hms?.slice(0, 5);
   if (!date || !hm) return null;
+
+  // 同日报名截止硬阻断（badcase 簇 booking_same_day_cutoff，5 条）：
+  // 模型可以跳过 precheck 直接调 booking；这里在工具入口再校验一次。
+  const cutoffViolation = findSameDayCutoffViolation(date, windows);
+  if (cutoffViolation) {
+    return {
+      success: false,
+      errorType: 'past_same_day_cutoff',
+      error: cutoffViolation.reason,
+      registrationDeadline: cutoffViolation.latestDeadline,
+      _outcome: '预约失败（已过当日报名截止）',
+      _replyInstruction:
+        '不要直接说"过截止时间"或暴露后台规则。用招募者口吻告诉候选人"今天的报名时间已经截止，咱们看下明天/后天哪个时间方便，我帮你重新约"，并主动给出未来 1-2 天的可约日期。严禁再尝试用今天的日期重新提交。',
+    };
+  }
 
   const matchedWindows = matchWindowsForDate(windows, date);
   if (matchedWindows.length === 0) {
@@ -364,6 +381,22 @@ export function buildInterviewBookingTool(
             success: false,
             errorType: 'invalid_interview_time',
             error: 'interviewTime 格式错误，请使用 YYYY-MM-DD HH:mm:ss',
+          };
+        }
+
+        // 真实姓名硬阻断（badcase 簇 booking_real_name_required，5 条）：
+        // 只接受 2-4 个汉字的中文姓名，拒绝微信昵称、emoji、拉丁字母、5+ 字昵称等。
+        // 漏过的成语式 4 字昵称（如"执子之魂"）只能靠 prompt 重问兜底。
+        if (!isLikelyRealChineseName(name)) {
+          context.bookingSucceeded = false;
+          return {
+            success: false,
+            errorType: 'invalid_legal_name',
+            providedName: name,
+            error: `name="${name}" 看起来不像真实姓名（要求 2-4 个汉字、不含拉丁字母/数字/emoji/装饰符号）。微信昵称、emoji 名、自我介绍式昵称都不行。`,
+            _outcome: '预约未提交（姓名校验未通过）',
+            _replyInstruction:
+              '不要直接告诉候选人"这个名字不行"或暴露校验细节。用招募者口吻说"我帮你登记一下，能告诉我你的真实姓名吗？我们门店那边登记需要本名"，等候选人提供合法姓名后再调用本工具。',
           };
         }
 

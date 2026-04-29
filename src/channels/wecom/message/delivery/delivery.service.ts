@@ -3,6 +3,7 @@ import { MessageSenderService } from '../../message-sender/message-sender.servic
 import { SendMessageType } from '../../message-sender/dto/send-message.dto';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { MessageSplitter } from '../utils/message-splitter.util';
+import { detectOutputLeak } from '../utils/output-leak-guard.util';
 import { DeliveryContext, DeliveryResult, AgentReply, DeliveryFailureError } from '../types';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
 import { TypingPolicyService } from './typing-policy.service';
@@ -51,6 +52,31 @@ export class MessageDeliveryService implements OnModuleInit {
       if (recordMonitoring) {
         this.monitoringService.recordSendStart(messageId);
         await this.wecomObservability.markDeliveryStart(messageId);
+      }
+
+      // 输出泄漏兜底：badcase vllg7hlu 中模型把"阶段已切换到..."直接发给了候选人。
+      // Prompt 软约束已存在但偶尔失守，这里做最后一道过滤——命中即静默丢弃整条回复，
+      // 不重试不告警。被丢弃的回复仍计成功，避免触发上层重试再次外抛。
+      const leakedPattern = detectOutputLeak(reply.content);
+      if (leakedPattern) {
+        const totalTime = Date.now() - startTime;
+        this.logger.warn(
+          `[${contactName}] 检测到内部状态泄漏，丢弃回复 (pattern=${leakedPattern.source}): "${this.truncate(reply.content)}"`,
+        );
+        const skippedResult: DeliveryResult = {
+          success: true,
+          segmentCount: 0,
+          failedSegments: 0,
+          deliveredSegments: 0,
+          totalTime,
+          skipped: true,
+          skipReason: 'output_leak',
+        };
+        if (recordMonitoring) {
+          this.monitoringService.recordSendEnd(messageId);
+          await this.wecomObservability.markDeliveryEnd(messageId, skippedResult);
+        }
+        return skippedResult;
       }
 
       const needsSplit = this.typingPolicy.shouldSplit(reply.content);

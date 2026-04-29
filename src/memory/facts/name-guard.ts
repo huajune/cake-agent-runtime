@@ -63,3 +63,26 @@ export function sanitizeInterviewName(
     droppedName: name,
   };
 }
+
+/**
+ * 中文姓名正向校验。
+ *
+ * 业务背景：badcase 簇 `booking_real_name_required`（5 条）—— Agent 在候选人只给了
+ * 微信昵称（如 "执子之魂"、"💰余᭄苼囿財࿐"、"小晴早点睡"）的情况下仍调用预约接口。
+ * `sanitizeInterviewName` 只对"我是XX"自动打招呼场景兜底，其他来源（候选人手动
+ * 回复名字时贴了昵称）漏网。预约工具的 `name` 字段是直接进 sponge 的，必须在
+ * 工具入参侧硬卡。
+ *
+ * 校验规则（保守起见，只拦明显不是真名的情况）：
+ * - 长度 2-4 个汉字（汉族姓名几乎都在此范围；4 字以上几乎全是昵称/成语式昵称）
+ * - 仅含 CJK 统一汉字，不含拉丁/数字/emoji/装饰符号/中文标点
+ *
+ * 已知漏网：4 字成语式昵称（如 "执子之魂"），目前拦不住，依赖 Agent 在收名时按
+ * prompt 重问；若漏网 case 攒多了再加字典或上 LLM 判断。
+ */
+const REAL_NAME_REGEX = /^[一-鿿]{2,4}$/u;
+
+export function isLikelyRealChineseName(value: string | null | undefined): boolean {
+  if (!value) return false;
+  return REAL_NAME_REGEX.test(value.trim());
+}

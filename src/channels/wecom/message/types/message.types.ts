@@ -77,6 +77,10 @@ export interface DeliveryResult {
   deliveredSegments?: number;
   totalTime: number;
   error?: string;
+  /** 投递层主动跳过本次发送（如输出泄漏过滤命中）。 */
+  skipped?: boolean;
+  /** 跳过原因，用于排障。 */
+  skipReason?: 'output_leak';
 }
 
 export class DeliveryFailureError extends Error {
