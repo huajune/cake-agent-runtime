@@ -345,6 +345,17 @@ export class TestExecutionRepository extends BaseRepository {
   }
 
   /**
+   * 获取批次内所有执行记录的评审状态与排障证据（用于 BadCase 状态回写聚合）
+   */
+  async findBatchTraceByBatchId(
+    batchId: string,
+  ): Promise<Pick<TestExecution, 'id' | 'review_status' | 'execution_status' | 'source_trace'>[]> {
+    return this.select('id,review_status,execution_status,source_trace', (q) =>
+      q.eq('batch_id', batchId).order('created_at'),
+    );
+  }
+
+  /**
    * 获取批次的执行记录（列表版，用于前端列表展示）
    * 只选择列表展示所需字段，排除大型 JSON 字段以提升性能
    */

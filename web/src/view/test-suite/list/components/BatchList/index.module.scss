@@ -220,6 +220,31 @@
   text-overflow: ellipsis;
 }
 
+.batchId {
+  display: block;
+  width: 100%;
+  margin-top: 2px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.25;
+  color: $text-muted;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity 0.2s ease, color 0.2s ease;
+
+  &:hover {
+    opacity: 1;
+    color: $accent;
+  }
+}
+
 // ==================== 批次状态标签（简约样式）====================
 .batchStatusTag {
   font-size: 11px;

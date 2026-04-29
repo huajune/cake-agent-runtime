@@ -446,6 +446,57 @@ describe('TestExecutionService', () => {
     });
   });
 
+  describe('resolveHistoryForAgent', () => {
+    type HistoryRequest = Pick<TestChatRequestDto, 'history' | 'message' | 'skipHistoryTrim'>;
+    type HistoryMessage = { role: MessageRole; content: string; imageUrls?: string[] };
+
+    const resolveHistoryForAgent = (request: HistoryRequest): HistoryMessage[] =>
+      (
+        service as unknown as {
+          resolveHistoryForAgent(request: HistoryRequest): HistoryMessage[];
+        }
+      ).resolveHistoryForAgent(request);
+
+    it('should trim history before the latest matching current user message', () => {
+      const history = [
+        { role: MessageRole.USER, content: '我5月1号回来面试可以吗' },
+        { role: MessageRole.ASSISTANT, content: '我先帮你查' },
+        { role: MessageRole.USER, content: ' 我5月1号回来面试可以吗 ' },
+        { role: MessageRole.ASSISTANT, content: '未来助手回复，不应进入本轮' },
+      ];
+
+      expect(
+        resolveHistoryForAgent({
+          history,
+          message: '我5月1号回来面试可以吗',
+        }),
+      ).toEqual(history.slice(0, 2));
+    });
+
+    it('should keep history unchanged when current message is not found', () => {
+      const history = [
+        { role: MessageRole.USER, content: '想找静安附近兼职' },
+        { role: MessageRole.ASSISTANT, content: '我帮你看看岗位' },
+      ];
+
+      expect(
+        resolveHistoryForAgent({
+          history,
+          message: '我想找浦东附近兼职',
+        }),
+      ).toBe(history);
+    });
+
+    it('should keep empty history unchanged', () => {
+      expect(
+        resolveHistoryForAgent({
+          history: [],
+          message: '你好',
+        }),
+      ).toEqual([]);
+    });
+  });
+
   // ========== getExecution ==========
 
   describe('getExecution', () => {

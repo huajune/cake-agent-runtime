@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { FeishuBitableSyncService, AgentTestFeedback } from '@biz/feishu-sync/bitable-sync.service';
+import { FeedbackSourceTraceService } from '@biz/feishu-sync/feedback-source-trace.service';
 import { FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 
@@ -62,6 +63,7 @@ describe('FeishuBitableSyncService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         FeishuBitableSyncService,
+        FeedbackSourceTraceService,
         { provide: FeishuBitableApiService, useValue: mockBitableApi },
         { provide: MessageProcessingService, useValue: mockMessageProcessingService },
       ],
@@ -366,6 +368,78 @@ describe('FeishuBitableSyncService', () => {
       expect(typeof fields['用例名称']).toBe('string');
       expect((fields['用例名称'] as string).length).toBeGreaterThan(0);
       expect(fields['用例名称']).toBe(fields['问题ID']);
+    });
+  });
+
+  describe('updateBadcaseStatuses', () => {
+    const updateRecord = jest.fn();
+    beforeEach(() => {
+      updateRecord.mockReset();
+      (mockBitableApi as unknown as { updateRecord: jest.Mock }).updateRecord = updateRecord;
+      mockBitableApi.getTableConfig.mockReturnValue(badcaseTableConfig);
+    });
+
+    it('should noop when items is empty', async () => {
+      const result = await service.updateBadcaseStatuses([]);
+      expect(result).toEqual({ success: 0, failed: 0, errors: [] });
+      expect(updateRecord).not.toHaveBeenCalled();
+    });
+
+    it('should fail when badcase table config is missing', async () => {
+      mockBitableApi.getTableConfig.mockReturnValueOnce({ appToken: '', tableId: '' });
+      const result = await service.updateBadcaseStatuses([
+        { recordId: 'rec_a', status: '已解决' },
+      ]);
+      expect(result.failed).toBe(1);
+      expect(result.errors[0]).toContain('badcase 表配置不完整');
+      expect(updateRecord).not.toHaveBeenCalled();
+    });
+
+    it('should skip when 状态 field is absent', async () => {
+      mockBitableApi.getFields.mockResolvedValueOnce([
+        { field_name: '问题ID' },
+      ] as any);
+      const result = await service.updateBadcaseStatuses([
+        { recordId: 'rec_a', status: '已解决' },
+      ]);
+      expect(result.failed).toBe(1);
+      expect(result.errors[0]).toContain('状态字段');
+      expect(updateRecord).not.toHaveBeenCalled();
+    });
+
+    it('should write status field for every record', async () => {
+      mockBitableApi.getFields.mockResolvedValueOnce([
+        { field_name: '状态' },
+        { field_name: '修复说明' },
+      ] as any);
+      updateRecord.mockResolvedValue({ success: true });
+
+      const result = await service.updateBadcaseStatuses([
+        { recordId: 'rec_a', status: '已解决', batchId: 'batch-1', summary: 'pass all' },
+        { recordId: 'rec_b', status: '待验证', batchId: 'batch-1' },
+      ]);
+
+      expect(result).toEqual({ success: 2, failed: 0, errors: [] });
+      expect(updateRecord).toHaveBeenCalledTimes(2);
+      const firstCallFields = updateRecord.mock.calls[0][3];
+      expect(firstCallFields['状态']).toBe('已解决');
+      expect(firstCallFields['修复说明']).toBe('pass all');
+    });
+
+    it('should accumulate per-record errors without aborting the loop', async () => {
+      mockBitableApi.getFields.mockResolvedValueOnce([{ field_name: '状态' }] as any);
+      updateRecord
+        .mockResolvedValueOnce({ success: true })
+        .mockResolvedValueOnce({ success: false, error: 'rate limited' });
+
+      const result = await service.updateBadcaseStatuses([
+        { recordId: 'rec_a', status: '处理中' },
+        { recordId: 'rec_b', status: '已解决' },
+      ]);
+
+      expect(result.success).toBe(1);
+      expect(result.failed).toBe(1);
+      expect(result.errors).toEqual(['rec_b: rate limited']);
     });
   });
 });

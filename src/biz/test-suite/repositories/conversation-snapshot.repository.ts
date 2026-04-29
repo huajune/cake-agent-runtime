@@ -87,8 +87,9 @@ export class ConversationSnapshotRepository extends BaseRepository {
         'memory_assertions',
       ]);
       const candidate = { ...payload };
+      const maxAttempts = optionalColumns.size + 1;
 
-      while (true) {
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
         const attemptPayload = { ...candidate };
         const { data: result, error } = await insertPayload(attemptPayload);
         if (!error) {
@@ -99,7 +100,15 @@ export class ConversationSnapshotRepository extends BaseRepository {
 
         const missingColumn = this.extractMissingOptionalColumn(error, optionalColumns);
         if (missingColumn) {
+          if (!Object.prototype.hasOwnProperty.call(candidate, missingColumn)) {
+            this.handleError('INSERT', {
+              code: 'SCHEMA_FALLBACK_REPEAT',
+              message: `${this.tableName} schema fallback repeated missing optional column ${missingColumn}`,
+            });
+            return null;
+          }
           delete candidate[missingColumn];
+          optionalColumns.delete(missingColumn);
           if (missingColumn === 'validation_title') {
             this.validationTitleColumnAvailable = false;
           }
@@ -116,6 +125,12 @@ export class ConversationSnapshotRepository extends BaseRepository {
         this.handleError('INSERT', error);
         return null;
       }
+
+      this.handleError('INSERT', {
+        code: 'SCHEMA_FALLBACK_LIMIT',
+        message: `${this.tableName} schema fallback exceeded ${maxAttempts} attempts`,
+      });
+      return null;
     } catch (error) {
       if (this.isConflictError(error)) {
         this.logger.debug(`${this.tableName} 记录已存在，跳过插入`);

@@ -6,6 +6,7 @@ import { TestExecutionRepository } from '@biz/test-suite/repositories/test-execu
 import { TestWriteBackService } from '@biz/test-suite/services/test-write-back.service';
 import { TestExecutionService } from '@biz/test-suite/services/test-execution.service';
 import { ConversationSnapshotRepository } from '@biz/test-suite/repositories/conversation-snapshot.repository';
+import { FeishuBitableSyncService } from '@biz/feishu-sync/bitable-sync.service';
 import {
   BatchStatus,
   ExecutionStatus,
@@ -36,6 +37,7 @@ describe('TestBatchService', () => {
     findByBatchId: jest.fn(),
     findByBatchIdLite: jest.fn(),
     findByBatchIdForList: jest.fn(),
+    findBatchTraceByBatchId: jest.fn().mockResolvedValue([]),
     findById: jest.fn(),
     updateExecution: jest.fn(),
     updateReview: jest.fn(),
@@ -62,6 +64,10 @@ describe('TestBatchService', () => {
     countByBatchIdGroupByStatus: jest.fn(),
   };
 
+  const mockFeishuBitableSync = {
+    updateBadcaseStatuses: jest.fn().mockResolvedValue({ success: 0, failed: 0, errors: [] }),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -72,6 +78,7 @@ describe('TestBatchService', () => {
         { provide: TestWriteBackService, useValue: mockWriteBackService },
         { provide: TestExecutionService, useValue: mockExecutionService },
         { provide: ConfigService, useValue: mockConfigService },
+        { provide: FeishuBitableSyncService, useValue: mockFeishuBitableSync },
       ],
     }).compile();
 
@@ -220,6 +227,60 @@ describe('TestBatchService', () => {
       expect(executionRepository.findByBatchIdForList).toHaveBeenCalledWith('batch-1', {
         category: 'FAQ',
       });
+    });
+  });
+
+  // ========== executeBatch ==========
+
+  describe('executeBatch', () => {
+    const cases = [
+      { message: 'case-1', userId: 'user-1', scenario: 'candidate-consultation' },
+      { message: 'case-2', userId: 'user-2', scenario: 'candidate-consultation' },
+    ];
+
+    const response = (text: string) =>
+      ({
+        actualOutput: text,
+        response: { statusCode: 200, body: { text }, toolCalls: [] },
+      }) as any;
+
+    it('should execute in parallel by default', async () => {
+      let resolveFirst: (value: unknown) => void = () => {};
+      mockExecutionService.executeTest
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveFirst = resolve;
+            }),
+        )
+        .mockResolvedValueOnce(response('second'));
+
+      const promise = service.executeBatch(cases as any);
+      await Promise.resolve();
+
+      expect(mockExecutionService.executeTest).toHaveBeenCalledTimes(2);
+      resolveFirst(response('first'));
+      await expect(promise).resolves.toHaveLength(2);
+    });
+
+    it('should execute serially when parallel is false', async () => {
+      let resolveFirst: (value: unknown) => void = () => {};
+      mockExecutionService.executeTest
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveFirst = resolve;
+            }),
+        )
+        .mockResolvedValueOnce(response('second'));
+
+      const promise = service.executeBatch(cases as any, undefined, false);
+      await Promise.resolve();
+
+      expect(mockExecutionService.executeTest).toHaveBeenCalledTimes(1);
+      resolveFirst(response('first'));
+      await expect(promise).resolves.toHaveLength(2);
+      expect(mockExecutionService.executeTest).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -678,6 +739,136 @@ describe('TestBatchService', () => {
       });
 
       expect(writeBackService.writeBackResult).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('propagateBadcaseStatusOnCompletion', () => {
+    beforeEach(() => {
+      mockFeishuBitableSync.updateBadcaseStatuses.mockClear();
+      mockBatchRepository.findById.mockResolvedValue({
+        id: 'batch-9',
+        status: BatchStatus.COMPLETED,
+        test_type: TestType.SCENARIO,
+      } as TestBatch);
+    });
+
+    it('should aggregate scenario executions per badcaseRecordId and derive status', async () => {
+      mockExecutionRepository.findBatchTraceByBatchId.mockResolvedValue([
+        {
+          id: 'e1',
+          review_status: ReviewStatus.PASSED,
+          execution_status: ExecutionStatus.SUCCESS,
+          source_trace: { badcaseRecordIds: ['bc_a', 'bc_shared'] },
+        },
+        {
+          id: 'e2',
+          review_status: ReviewStatus.PASSED,
+          execution_status: ExecutionStatus.SUCCESS,
+          source_trace: { badcaseRecordIds: ['bc_a'] },
+        },
+        {
+          id: 'e3',
+          review_status: ReviewStatus.FAILED,
+          execution_status: ExecutionStatus.SUCCESS,
+          source_trace: { badcaseRecordIds: ['bc_b', 'bc_shared'] },
+        },
+        {
+          id: 'e4',
+          review_status: ReviewStatus.PENDING,
+          execution_status: ExecutionStatus.PENDING,
+          source_trace: { badcaseRecordIds: ['bc_c'] },
+        },
+      ] as any);
+
+      await service.propagateBadcaseStatusOnCompletion('batch-9');
+
+      expect(mockFeishuBitableSync.updateBadcaseStatuses).toHaveBeenCalledTimes(1);
+      const items = mockFeishuBitableSync.updateBadcaseStatuses.mock.calls[0][0] as Array<{
+        recordId: string;
+        status: string;
+      }>;
+      const byId = Object.fromEntries(items.map((i) => [i.recordId, i.status]));
+      expect(byId.bc_a).toBe('已解决');
+      expect(byId.bc_b).toBe('待验证');
+      expect(byId.bc_shared).toBe('待验证');
+      expect(byId.bc_c).toBe('处理中');
+    });
+
+    it('should skip writeback when no source_trace.badcaseRecordIds is present', async () => {
+      mockExecutionRepository.findBatchTraceByBatchId.mockResolvedValue([
+        {
+          id: 'e1',
+          review_status: ReviewStatus.PASSED,
+          execution_status: ExecutionStatus.SUCCESS,
+          source_trace: null,
+        },
+      ] as any);
+
+      await service.propagateBadcaseStatusOnCompletion('batch-9');
+
+      expect(mockFeishuBitableSync.updateBadcaseStatuses).not.toHaveBeenCalled();
+    });
+
+    it('should not throw when downstream writeback fails', async () => {
+      mockExecutionRepository.findBatchTraceByBatchId.mockResolvedValue([
+        {
+          id: 'e1',
+          review_status: ReviewStatus.PASSED,
+          execution_status: ExecutionStatus.SUCCESS,
+          source_trace: { badcaseRecordIds: ['bc_a'] },
+        },
+      ] as any);
+      mockFeishuBitableSync.updateBadcaseStatuses.mockRejectedValueOnce(new Error('boom'));
+
+      await expect(
+        service.propagateBadcaseStatusOnCompletion('batch-9'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should aggregate conversation snapshots when batch is conversation type', async () => {
+      mockBatchRepository.findById.mockResolvedValue({
+        id: 'batch-conv',
+        status: BatchStatus.COMPLETED,
+        test_type: TestType.CONVERSATION,
+      } as TestBatch);
+      mockConversationSnapshotRepository.findByBatchId.mockResolvedValue([
+        {
+          id: 'snap-1',
+          avg_similarity_score: 80,
+          source_trace: { badcaseRecordIds: ['bc_x'] },
+        },
+        {
+          id: 'snap-2',
+          avg_similarity_score: 40,
+          source_trace: { badcaseRecordIds: ['bc_y'] },
+        },
+      ] as any);
+      mockExecutionRepository.findBatchTraceByBatchId.mockResolvedValue([
+        {
+          id: 'turn-1',
+          review_status: ReviewStatus.PASSED,
+          execution_status: ExecutionStatus.SUCCESS,
+          source_trace: null,
+          conversation_snapshot_id: 'snap-1',
+        },
+        {
+          id: 'turn-2',
+          review_status: ReviewStatus.FAILED,
+          execution_status: ExecutionStatus.SUCCESS,
+          source_trace: null,
+          conversation_snapshot_id: 'snap-2',
+        },
+      ] as any);
+
+      await service.propagateBadcaseStatusOnCompletion('batch-conv');
+
+      const items = mockFeishuBitableSync.updateBadcaseStatuses.mock.calls[0][0] as Array<{
+        recordId: string;
+        status: string;
+      }>;
+      const byId = Object.fromEntries(items.map((i) => [i.recordId, i.status]));
+      expect(byId.bc_x).toBe('已解决');
+      expect(byId.bc_y).toBe('待验证');
     });
   });
 });

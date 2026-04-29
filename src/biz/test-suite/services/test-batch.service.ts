@@ -12,8 +12,13 @@ import { TestExecutionRepository } from '../repositories/test-execution.reposito
 import { ConversationSnapshotRepository } from '../repositories/conversation-snapshot.repository';
 import { TestBatch } from '../entities/test-batch.entity';
 import { TestExecution } from '../entities/test-execution.entity';
+import { TestSourceTrace } from '../types/test-debug-trace.types';
 import { TestWriteBackService } from './test-write-back.service';
 import { TestExecutionService } from './test-execution.service';
+import {
+  BadcaseDerivedStatus,
+  FeishuBitableSyncService,
+} from '@biz/feishu-sync/bitable-sync.service';
 import {
   BatchStatus,
   ExecutionStatus,
@@ -66,6 +71,7 @@ export class TestBatchService {
     private readonly writeBackService: TestWriteBackService,
     private readonly executionService: TestExecutionService,
     private readonly configService: ConfigService,
+    private readonly feishuBitableSync: FeishuBitableSyncService,
   ) {
     this.batchConcurrency = this.readPositiveInt('TEST_SUITE_BATCH_CONCURRENCY', 20, {
       min: 1,
@@ -291,6 +297,7 @@ export class TestBatchService {
       if (stats.pendingReviewCount === 0 && stats.totalCases > 0) {
         await this.updateBatchStatus(execution.batch_id, BatchStatus.COMPLETED);
         this.logger.log(`批次 ${execution.batch_id} 所有用例评审完成，状态更新为 completed`);
+        await this.propagateBadcaseStatusOnCompletion(execution.batch_id);
       }
     }
 
@@ -326,6 +333,7 @@ export class TestBatchService {
       if (stats.pendingReviewCount === 0 && stats.totalCases > 0) {
         await this.updateBatchStatus(batchId as string, BatchStatus.COMPLETED);
         this.logger.log(`批次 ${batchId} 所有用例评审完成，状态更新为 completed`);
+        await this.propagateBadcaseStatusOnCompletion(batchId as string);
       }
     }
 
@@ -348,7 +356,7 @@ export class TestBatchService {
     batchId?: string,
     parallel = true,
   ): Promise<TestChatResponse[]> {
-    const concurrency = Math.min(cases.length || 1, this.batchConcurrency);
+    const concurrency = parallel ? Math.min(cases.length || 1, this.batchConcurrency) : 1;
     this.logger.log(`批量执行测试: ${cases.length} 个用例, 并行: ${parallel}, 并发=${concurrency}`);
 
     if (batchId) {
@@ -559,6 +567,10 @@ export class TestBatchService {
         return;
       }
     }
+
+    if (transitionChain.includes(BatchStatus.COMPLETED)) {
+      await this.propagateBadcaseStatusOnCompletion(batchId);
+    }
   }
 
   /**
@@ -672,6 +684,133 @@ export class TestBatchService {
         percentage: total > 0 ? Math.round((count / total) * 100) : 0,
       }))
       .sort((a, b) => b.count - a.count);
+  }
+
+  /**
+   * 批次完成后，把派生用例的评审结果聚合回写到 BadCase 样本池的"状态"字段。
+   *
+   * 聚合规则（按 sourceTrace.badcaseRecordIds 分组）：
+   * - 任一执行评审失败 → 待验证
+   * - 全部通过 → 已解决
+   * - 仍有 PENDING → 处理中
+   *
+   * 此方法仅在批次进入 COMPLETED 时触发；不阻断批次状态推进，异常仅记录日志。
+   */
+  async propagateBadcaseStatusOnCompletion(batchId: string): Promise<void> {
+    try {
+      const batch = await this.batchRepository.findById(batchId);
+      if (!batch) {
+        return;
+      }
+
+      const items = await this.aggregateBadcaseStatusUpdates(batch);
+      if (items.length === 0) {
+        return;
+      }
+
+      const result = await this.feishuBitableSync.updateBadcaseStatuses(items);
+      this.logger.log(
+        `[BadcaseStatus] 批次 ${batchId} 派生 BadCase 状态回写: 成功=${result.success} 失败=${result.failed} 总计=${items.length}`,
+      );
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[BadcaseStatus] 批次 ${batchId} 派生 BadCase 状态回写异常: ${errorMsg}`);
+    }
+  }
+
+  /**
+   * 聚合批次内 sourceTrace.badcaseRecordIds → 派生 BadCase 状态。
+   * 同时处理用例测试（执行级 trace）和回归验证（快照级 trace）两类批次。
+   */
+  private async aggregateBadcaseStatusUpdates(batch: TestBatch): Promise<
+    Array<{
+      recordId: string;
+      status: BadcaseDerivedStatus;
+      batchId: string;
+      summary: string;
+    }>
+  > {
+    const aggregates = new Map<
+      string,
+      { passed: number; failed: number; pending: number; total: number }
+    >();
+
+    const accumulate = (
+      reviewStatus: ReviewStatus | null | undefined,
+      recordIds: string[] | undefined,
+    ) => {
+      if (!recordIds?.length) return;
+      for (const recordId of recordIds) {
+        const id = recordId?.trim();
+        if (!id) continue;
+        const stat = aggregates.get(id) || { passed: 0, failed: 0, pending: 0, total: 0 };
+        stat.total += 1;
+        if (reviewStatus === ReviewStatus.PASSED) stat.passed += 1;
+        else if (reviewStatus === ReviewStatus.FAILED) stat.failed += 1;
+        else stat.pending += 1;
+        aggregates.set(id, stat);
+      }
+    };
+
+    if (batch.test_type === TestType.CONVERSATION) {
+      const snapshots = await this.conversationSnapshotRepository.findByBatchId(batch.id);
+      const turnExecutions = await this.executionRepository.findBatchTraceByBatchId(batch.id);
+      const reviewBySnapshot = new Map<
+        string,
+        { hasFailed: boolean; hasPending: boolean; hasPassed: boolean }
+      >();
+      for (const exec of turnExecutions) {
+        const sourceId = (exec as { conversation_snapshot_id?: string | null })
+          .conversation_snapshot_id;
+        if (!sourceId) continue;
+        const cur = reviewBySnapshot.get(sourceId) || {
+          hasFailed: false,
+          hasPending: false,
+          hasPassed: false,
+        };
+        if (exec.review_status === ReviewStatus.FAILED) cur.hasFailed = true;
+        else if (exec.review_status === ReviewStatus.PENDING) cur.hasPending = true;
+        else if (exec.review_status === ReviewStatus.PASSED) cur.hasPassed = true;
+        reviewBySnapshot.set(sourceId, cur);
+      }
+
+      for (const snapshot of snapshots) {
+        const trace = snapshot.source_trace as TestSourceTrace | null;
+        const recordIds = trace?.badcaseRecordIds;
+        if (!recordIds?.length) continue;
+        const review = reviewBySnapshot.get(snapshot.id);
+        const derived = review?.hasFailed
+          ? ReviewStatus.FAILED
+          : review?.hasPending || (!review && !snapshot.avg_similarity_score)
+            ? ReviewStatus.PENDING
+            : ReviewStatus.PASSED;
+        accumulate(derived, recordIds);
+      }
+    } else {
+      const executions = await this.executionRepository.findBatchTraceByBatchId(batch.id);
+      for (const exec of executions) {
+        const trace = exec.source_trace as TestSourceTrace | null;
+        accumulate(exec.review_status, trace?.badcaseRecordIds);
+      }
+    }
+
+    const items: Array<{
+      recordId: string;
+      status: BadcaseDerivedStatus;
+      batchId: string;
+      summary: string;
+    }> = [];
+    for (const [recordId, stat] of aggregates) {
+      const status: BadcaseDerivedStatus =
+        stat.failed > 0 ? '待验证' : stat.pending > 0 ? '处理中' : '已解决';
+      items.push({
+        recordId,
+        status,
+        batchId: batch.id,
+        summary: `批次 ${batch.id}: 派生用例 ${stat.total} 个，通过 ${stat.passed}，失败 ${stat.failed}，待评审 ${stat.pending}`,
+      });
+    }
+    return items;
   }
 
   // ========== 私有方法 ==========

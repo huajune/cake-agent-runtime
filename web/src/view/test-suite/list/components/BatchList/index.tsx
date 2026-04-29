@@ -148,6 +148,17 @@ export function BatchList({
                   <time className={styles.batchCreatedAt} dateTime={batch.created_at}>
                     创建时间 {createdAt}
                   </time>
+                  <button
+                    type="button"
+                    className={styles.batchId}
+                    title={`点击复制 batchId：${batch.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void navigator.clipboard?.writeText(batch.id);
+                    }}
+                  >
+                    ID {batch.id}
+                  </button>
                 </div>
               );
             })}
