@@ -11,7 +11,7 @@ import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { MessageProcessor } from '@wecom/message/runtime/message.processor';
-import { addLocalDays, getLocalDayStart } from '@infra/utils/date.util';
+import { addLocalDays, formatLocalMinute, getLocalDayStart } from '@infra/utils/date.util';
 
 const buildRecord = (overrides = {}) => ({
   messageId: 'msg-1',
@@ -586,10 +586,9 @@ describe('AnalyticsQueryService', () => {
 
       const [startDate, endDate] = mockUserHostingService.getActiveUsersByDateRange.mock.calls[0];
 
-      expect(startDate.getHours()).toBe(0);
-      expect(startDate.getMinutes()).toBe(0);
-      expect(endDate.getHours()).toBe(23);
-      expect(endDate.getMinutes()).toBe(59);
+      expect(formatLocalMinute(startDate)).toBe('2026-03-11 00:00');
+      expect(formatLocalMinute(endDate)).toBe('2026-03-11 23:59');
+      expect(endDate.getTime() - startDate.getTime()).toBe(24 * 60 * 60 * 1000 - 1);
     });
   });
 
