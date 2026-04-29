@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.5.0] - 2026-04-29
 
-**预计版本**: `v5.5.0`
-**最近更新**: `2026-04-29`
 **来源分支**: `develop`
-**累计 PR**: 2
 
 ### 更新摘要
 - PR #148 Add badcase traceability and memory fixture support across test-suite imports, execution records, conversation snapshots, and Feishu payload handling.
@@ -59,7 +55,6 @@
 - PR #151 `grep` 确认无遗留冲突标记
 - PR #151 CI Checks 通过
 - PR #151 合并本 PR 后 PR #150 状态变为 MERGEABLE
-<!-- release:pending:end -->
 
 ## [5.4.0] - 2026-04-28
 

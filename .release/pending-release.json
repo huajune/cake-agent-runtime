@@ -1,71 +1,7 @@
 {
-  "baseVersion": "5.4.0",
+  "baseVersion": "5.5.0",
   "nextVersion": "5.5.0",
   "updatedAt": "2026-04-29",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "148",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/148",
-      "title": "支持 badcase trace 记忆评估",
-      "author": "huajune",
-      "mergedAt": "2026-04-29",
-      "summary": [
-        "Add badcase traceability and memory fixture support across test-suite imports, execution records, conversation snapshots, and Feishu payload handling.",
-        "Add Supabase migrations, backfill/check tooling, and workflow documentation for trace-memory evaluation.",
-        "Extend dashboard/business trend RPC support, release/deploy notification formatting, and related frontend test-suite/feedback views.",
-        "Tighten prompt, memory, and tool behavior used by candidate consultation badcase validation."
-      ],
-      "features": [
-        "Add badcase traceability and memory fixture support across test-suite imports, execution records, conversation snapshots, and Feishu payload handling.",
-        "Extend dashboard/business trend RPC support, release/deploy notification formatting, and related frontend test-suite/feedback views.",
-        "Tighten prompt, memory, and tool behavior used by candidate consultation badcase validation."
-      ],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "Add Supabase migrations, backfill/check tooling, and workflow documentation for trace-memory evaluation."
-      ],
-      "config": [],
-      "envFiles": [
-        ".env.example"
-      ],
-      "verification": [
-        "`pnpm run typecheck`",
-        "`pnpm exec jest --watchman=false --runTestsByPath tests/biz/monitoring/services/dashboard/analytics-query.service.spec.ts`",
-        "Pre-commit hook: lint + format passed",
-        "Pre-push hook: `pnpm run ci:check` passed, including lint, format, typecheck, build, and `jest --coverage --watchman=false` (219 suites / 2574 tests)"
-      ]
-    },
-    {
-      "number": "151",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/151",
-      "title": "解除 PR #150 冲突（合并 master 到 develop）",
-      "author": "ArielZhu",
-      "mergedAt": "2026-04-29",
-      "summary": [
-        "master 已固化 v5.4.0：`.release/pending-release.json` 清空 entries，`CHANGELOG.md` 把 `<!-- release:pending -->` 块替换为 `[5.4.0]` 段",
-        "develop 已写入 v5.5.0 待发布数据（来自 PR #148）",
-        "`.release/pending-release.json` 取 develop 版本（`baseVersion 5.4.0` / `nextVersion 5.5.0` / 含 #148 entry）",
-        "`CHANGELOG.md` 取 develop 版本（保留 v5.5.0 待发布块；`[5.4.0]` 等历史段两边一致）"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "master 已固化 v5.4.0：`.release/pending-release.json` 清空 entries，`CHANGELOG.md` 把 `<!-- release:pending -->` 块替换为 `[5.4.0]` 段",
-        "develop 已写入 v5.5.0 待发布数据（来自 PR #148）",
-        "`.release/pending-release.json` 取 develop 版本（`baseVersion 5.4.0` / `nextVersion 5.5.0` / 含 #148 entry）",
-        "`CHANGELOG.md` 取 develop 版本（保留 v5.5.0 待发布块；`[5.4.0]` 等历史段两边一致）"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`node -e 'JSON.parse(...)'` 校验 `.release/pending-release.json` 合法",
-        "`grep` 确认无遗留冲突标记",
-        "CI Checks 通过",
-        "合并本 PR 后 PR #150 状态变为 MERGEABLE"
-      ]
-    }
-  ]
+  "entries": []
 }
