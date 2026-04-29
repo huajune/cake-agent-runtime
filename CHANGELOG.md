@@ -11,10 +11,47 @@
 <!-- release:pending:start -->
 ## 待发布
 
-**预计版本**: `v5.4.0`
-**最近更新**: `2026-04-28`
+**预计版本**: `v5.5.0`
+**最近更新**: `2026-04-29`
 **来源分支**: `develop`
-**累计 PR**: 3
+**累计 PR**: 1
+
+### 更新摘要
+- PR #148 Add badcase traceability and memory fixture support across test-suite imports, execution records, conversation snapshots, and Feishu payload handling.
+- PR #148 Add Supabase migrations, backfill/check tooling, and workflow documentation for trace-memory evaluation.
+- PR #148 Extend dashboard/business trend RPC support, release/deploy notification formatting, and related frontend test-suite/feedback views.
+- PR #148 Tighten prompt, memory, and tool behavior used by candidate consultation badcase validation.
+
+### 新功能
+- PR #148 Add badcase traceability and memory fixture support across test-suite imports, execution records, conversation snapshots, and Feishu payload handling.
+- PR #148 Extend dashboard/business trend RPC support, release/deploy notification formatting, and related frontend test-suite/feedback views.
+- PR #148 Tighten prompt, memory, and tool behavior used by candidate consultation badcase validation.
+
+### 问题修复
+- 无
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #148 Add Supabase migrations, backfill/check tooling, and workflow documentation for trace-memory evaluation.
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- PR #148 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
+
+### 验证记录
+- PR #148 `pnpm run typecheck`
+- PR #148 `pnpm exec jest --watchman=false --runTestsByPath tests/biz/monitoring/services/dashboard/analytics-query.service.spec.ts`
+- PR #148 Pre-commit hook: lint + format passed
+- PR #148 Pre-push hook: `pnpm run ci:check` passed, including lint, format, typecheck, build, and `jest --coverage --watchman=false` (219 suites / 2574 tests)
+<!-- release:pending:end -->
+
+## [5.4.0] - 2026-04-28
+
+**来源分支**: `develop`
 
 ### 更新摘要
 - PR #141 支持消息流水按托管 BOT 筛选
@@ -33,9 +70,6 @@
 - PR #141 支持消息流水按托管 BOT 筛选
 
 ### 问题修复
-- fix: 真实姓名校验补黑名单（测试/用户/昵称等）
-- fix: 同日面试承诺前必须 precheck
-- fix: 工作时间 vs 面试时间需澄清
 - PR #140 Hardened interview precheck/booking around `00:00-00:00` date-only windows so deadline-like timestamps are not submitted as concrete interview times.
 - PR #140 Added bookable slot metadata and prompt guidance so the agent asks for a valid date/time instead of inventing one.
 - PR #140 Updated `invite_to_group` routing to refresh group member counts from the enterprise group list before selecting a group.
@@ -74,7 +108,6 @@
 - PR #145 JSON parse: package.json / .release/pending-release.json
 - PR #145 确认 package.json、CHANGELOG.md、.release/pending-release.json 无冲突标记
 - PR #145 git diff --check --cached
-<!-- release:pending:end -->
 
 ## [5.3.2] - 2026-04-28
 
