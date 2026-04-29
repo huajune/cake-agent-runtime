@@ -190,6 +190,8 @@ export class AnalyticsQueryService {
           totalSendDuration: 0,
           totalFallback: 0,
           totalFallbackSuccess: 0,
+          totalOutputLeakSkipped: 0,
+          totalSameBrandCollapseSkipped: 0,
         },
         percentiles: { p50: 0, p95: 0, p99: 0, p999: 0 },
         slowestRecords: [],

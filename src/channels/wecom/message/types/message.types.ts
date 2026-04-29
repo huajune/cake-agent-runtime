@@ -80,7 +80,7 @@ export interface DeliveryResult {
   /** 投递层主动跳过本次发送（如输出泄漏过滤命中）。 */
   skipped?: boolean;
   /** 跳过原因，用于排障。 */
-  skipReason?: 'output_leak';
+  skipReason?: 'output_leak' | 'same_brand_collapse';
 }
 
 export class DeliveryFailureError extends Error {
