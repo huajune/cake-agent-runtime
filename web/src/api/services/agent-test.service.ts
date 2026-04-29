@@ -44,6 +44,7 @@ export type {
   ImportFromFeishuRequest,
   ImportResult,
   FeedbackType,
+  FeedbackSourceTrace,
   SubmitFeedbackRequest,
   SubmitFeedbackResponse,
   BatchListResponse,
@@ -185,7 +186,7 @@ export function executeTestStream(
 export async function executeBatchTest(
   cases: TestChatRequest[],
   batchName?: string,
-  parallel = false,
+  parallel = true,
 ): Promise<{
   batchId: string;
   totalCases: number;

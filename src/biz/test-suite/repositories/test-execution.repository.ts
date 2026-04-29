@@ -219,11 +219,16 @@ export class TestExecutionRepository extends BaseRepository {
       review_status: data.reviewStatus || ReviewStatus.PENDING,
       reviewer_source: data.reviewerSource || null,
       evaluation_reason: data.evaluationReason || null,
+      source_trace: this.sanitizeJsonValue(data.sourceTrace) || null,
+      execution_trace: this.sanitizeJsonValue(data.executionTrace) || null,
+      memory_setup: this.sanitizeJsonValue(data.memorySetup) || null,
+      memory_assertions: this.sanitizeJsonValue(data.memoryAssertions) || null,
+      memory_trace: this.sanitizeJsonValue(data.memoryTrace) || null,
     };
 
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      const execution = await this.insert<TestExecution>(insertPayload);
+      const execution = await this.insert<TestExecution>(insertPayload as Partial<TestExecution>);
       if (execution) {
         return execution;
       }
@@ -420,18 +425,26 @@ export class TestExecutionRepository extends BaseRepository {
     caseId: string,
     data: UpdateExecutionResultData,
   ): Promise<void> {
-    const updated = await this.update(
-      {
-        agent_request: this.sanitizeAgentRequest(data.agentRequest) || null,
-        agent_response: this.sanitizeAgentResponse(data.agentResponse) || null,
-        actual_output: data.actualOutput || '',
-        tool_calls: this.sanitizeToolCalls(data.toolCalls || []),
-        execution_status: data.executionStatus,
-        duration_ms: data.durationMs,
-        token_usage: this.sanitizeJsonValue(data.tokenUsage) || null,
-        error_message: data.errorMessage || null,
-      },
-      (q) => q.eq('batch_id', batchId).eq('case_id', caseId),
+    const payload: Record<string, unknown> = {
+      agent_request: this.sanitizeAgentRequest(data.agentRequest) || null,
+      agent_response: this.sanitizeAgentResponse(data.agentResponse) || null,
+      actual_output: data.actualOutput || '',
+      tool_calls: this.sanitizeToolCalls(data.toolCalls || []),
+      execution_status: data.executionStatus,
+      duration_ms: data.durationMs,
+      token_usage: this.sanitizeJsonValue(data.tokenUsage) || null,
+      error_message: data.errorMessage || null,
+    };
+
+    if (data.executionTrace !== undefined) {
+      payload.execution_trace = this.sanitizeJsonValue(data.executionTrace) || null;
+    }
+    if (data.memoryTrace !== undefined) {
+      payload.memory_trace = this.sanitizeJsonValue(data.memoryTrace) || null;
+    }
+
+    const updated = await this.update(payload, (q) =>
+      q.eq('batch_id', batchId).eq('case_id', caseId),
     );
 
     if (updated.length === 0) {
@@ -526,6 +539,11 @@ export class TestExecutionRepository extends BaseRepository {
       reviewed_by: string | null;
       reviewer_source: ReviewerSource | null;
       reviewed_at: string | null;
+      source_trace: unknown;
+      execution_trace: unknown;
+      memory_setup: unknown;
+      memory_assertions: unknown;
+      memory_trace: unknown;
     }>,
   ): Promise<TestExecution> {
     // 如果包含 agent_request，清理大字段
@@ -546,7 +564,29 @@ export class TestExecutionRepository extends BaseRepository {
       sanitizedData.token_usage = this.sanitizeJsonValue(sanitizedData.token_usage);
     }
 
-    const results = await this.update<TestExecution>(sanitizedData, (q) => q.eq('id', id));
+    if (sanitizedData.source_trace !== undefined) {
+      sanitizedData.source_trace = this.sanitizeJsonValue(sanitizedData.source_trace);
+    }
+
+    if (sanitizedData.execution_trace !== undefined) {
+      sanitizedData.execution_trace = this.sanitizeJsonValue(sanitizedData.execution_trace);
+    }
+
+    if (sanitizedData.memory_setup !== undefined) {
+      sanitizedData.memory_setup = this.sanitizeJsonValue(sanitizedData.memory_setup);
+    }
+
+    if (sanitizedData.memory_assertions !== undefined) {
+      sanitizedData.memory_assertions = this.sanitizeJsonValue(sanitizedData.memory_assertions);
+    }
+
+    if (sanitizedData.memory_trace !== undefined) {
+      sanitizedData.memory_trace = this.sanitizeJsonValue(sanitizedData.memory_trace);
+    }
+
+    const results = await this.update<TestExecution>(sanitizedData as Partial<TestExecution>, (q) =>
+      q.eq('id', id),
+    );
     if (!results[0]) {
       throw new Error(`更新执行记录失败: ${id}`);
     }

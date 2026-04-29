@@ -67,6 +67,10 @@ export interface ConversationTurnExecution {
   expectedOutput: string | null;
   /** Agent 原始响应快照，用于前端还原思考/工具/回复的调用链 */
   agentResponse: unknown | null;
+  /** 完整测试执行 trace bundle */
+  executionTrace?: unknown | null;
+  /** 记忆评测 trace bundle */
+  memoryTrace?: unknown | null;
   actualOutput: string | null;
   similarityScore: number | null;
   /** LLM 评估理由 */

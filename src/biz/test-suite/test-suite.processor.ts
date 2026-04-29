@@ -7,6 +7,13 @@ import { TestExecutionService } from './services/test-execution.service';
 import { TestBatch } from './entities/test-batch.entity';
 import { RedisService } from '@infra/redis/redis.service';
 import { ExecutionStatus, MessageRole, BatchStatus } from './enums/test.enum';
+import type {
+  MemoryAssertions,
+  MemoryFixtureSetup,
+  TestExecutionTraceBundle,
+  TestMemoryTraceBundle,
+  TestSourceTrace,
+} from './types/test-debug-trace.types';
 
 /**
  * 测试任务 Job 数据结构
@@ -19,6 +26,9 @@ export interface TestJobData {
   message: string;
   history?: Array<{ role: MessageRole; content: string }>;
   expectedOutput?: string;
+  sourceTrace?: TestSourceTrace | null;
+  memorySetup?: MemoryFixtureSetup | null;
+  memoryAssertions?: MemoryAssertions | null;
   totalCases: number;
   caseIndex: number;
 }
@@ -76,6 +86,10 @@ export interface ExecutionRecordUpdate {
   actualOutput: string;
   status: ExecutionStatus;
   metrics: { durationMs: number; tokenUsage: TokenUsage };
+  trace?: {
+    executionTrace?: TestExecutionTraceBundle | null;
+    memoryTrace?: TestMemoryTraceBundle | null;
+  };
 }
 
 /**
@@ -98,7 +112,7 @@ export class TestSuiteProcessor implements OnModuleInit {
     private readonly redisService: RedisService,
     private readonly configService: ConfigService,
   ) {
-    this.concurrency = this.readPositiveInt('TEST_SUITE_WORKER_CONCURRENCY', 10, {
+    this.concurrency = this.readPositiveInt('TEST_SUITE_WORKER_CONCURRENCY', 20, {
       min: 1,
       max: 20,
     });
@@ -173,7 +187,18 @@ export class TestSuiteProcessor implements OnModuleInit {
   }
 
   private async handleTestJob(job: Job<TestJobData>): Promise<TestJobResult> {
-    const { batchId, caseId, caseName, category, message, history, expectedOutput } = job.data;
+    const {
+      batchId,
+      caseId,
+      caseName,
+      category,
+      message,
+      history,
+      expectedOutput,
+      sourceTrace,
+      memorySetup,
+      memoryAssertions,
+    } = job.data;
     const startTime = Date.now();
 
     const userId = `scenario-test-${batchId}`;
@@ -193,9 +218,12 @@ export class TestSuiteProcessor implements OnModuleInit {
         caseName,
         category,
         expectedOutput,
+        sourceTrace: sourceTrace ?? undefined,
+        memorySetup: memorySetup ?? undefined,
+        memoryAssertions: memoryAssertions ?? undefined,
         batchId,
         saveExecution: false,
-        userId,
+        userId: `${userId}-${caseId}`,
         sessionId,
       });
 
@@ -283,6 +311,8 @@ export class TestSuiteProcessor implements OnModuleInit {
       executionStatus: result.status,
       durationMs: result.metrics.durationMs,
       tokenUsage: result.metrics.tokenUsage,
+      executionTrace: result.trace?.executionTrace,
+      memoryTrace: result.trace?.memoryTrace,
     });
     this.logger.debug(`[TestSuite] 更新执行记录成功: ${caseId}`);
   }
@@ -417,6 +447,9 @@ export class TestSuiteProcessor implements OnModuleInit {
       message: string;
       history?: Array<{ role: MessageRole; content: string }>;
       expectedOutput?: string;
+      sourceTrace?: TestSourceTrace | null;
+      memorySetup?: MemoryFixtureSetup | null;
+      memoryAssertions?: MemoryAssertions | null;
     }>,
   ): Promise<Job<TestJobData>[]> {
     const totalCases = cases.length;
@@ -440,6 +473,9 @@ export class TestSuiteProcessor implements OnModuleInit {
         message: testCase.message,
         history: testCase.history,
         expectedOutput: testCase.expectedOutput,
+        sourceTrace: testCase.sourceTrace,
+        memorySetup: testCase.memorySetup,
+        memoryAssertions: testCase.memoryAssertions,
         totalCases,
         caseIndex: i,
       });

@@ -18,8 +18,6 @@ import { useHealthStatus } from '@/hooks/analytics/useMetrics';
 import {
   useAiReplyStatus,
   useToggleAiReply,
-  useAvailableModels,
-  useConfiguredTools,
 } from '@/hooks/config/useSystemConfig';
 import { useWorkerStatus } from '@/hooks/config/useWorker';
 import { formatDuration, formatMinuteLabel, formatDayLabel, formatHourLabel } from '@/utils/format';
@@ -63,7 +61,7 @@ export default function Dashboard() {
   const dashboard = rawDashboard?.timeRange === timeRange ? rawDashboard : undefined;
   const dashboardLoading = dashboardInitialLoading || !dashboard;
   const { data: health } = useHealthStatus(autoRefresh);
-  const { data: aiStatus } = useAiReplyStatus();
+  const { data: aiStatus } = useAiReplyStatus(autoRefresh);
   const toggleAiReply = useToggleAiReply();
 
   // 卡片装饰贴纸
@@ -94,10 +92,7 @@ export default function Dashboard() {
     };
   }, [dashboardLoading]);
 
-  // 详情数据（悬浮时加载）
-  const { data: modelsData } = useAvailableModels();
-  const { data: toolsData } = useConfiguredTools();
-  const { data: workerStatus } = useWorkerStatus();
+  const { data: workerStatus } = useWorkerStatus(autoRefresh);
 
 
   const overview = dashboard?.overview;
@@ -264,6 +259,41 @@ export default function Dashboard() {
   const timeRangeBadge = timeRange === 'today' ? '本日' : timeRange === 'week' ? '本周' : '本月';
   const comparisonLabel =
     timeRange === 'today' ? '较昨日同期' : timeRange === 'week' ? '较上周同期' : '较上月同期';
+  const totalMessages = overview?.totalMessages ?? 0;
+  const successCount = overview?.successCount ?? 0;
+  const failureCount = overview?.failureCount ?? 0;
+  const activeChats = overview?.activeChats ?? 0;
+  const fallbackTotal = dashboard?.fallback?.totalCount ?? 0;
+  const fallbackSuccess = dashboard?.fallback?.successCount ?? 0;
+  const managedUsers = business?.consultations?.total ?? 0;
+  const successfulBookings = business?.bookings?.successful ?? 0;
+  const hideEmptyDelta = (current: number, delta?: number) =>
+    dashboardLoading || (current === 0 && Math.abs(delta ?? 0) < 0.05) ? undefined : delta;
+  const requestSubtitle = dashboardLoading
+    ? '加载中'
+    : totalMessages > 0 ? `成功 ${successCount} / 异常 ${failureCount}` : '暂无请求';
+  const successRateSubtitle = dashboardLoading
+    ? '加载中'
+    : totalMessages > 0 ? `成功 ${successCount} / 请求 ${totalMessages}` : '暂无请求';
+  const responseSubtitle = dashboardLoading
+    ? '加载中'
+    : totalMessages > 0 ? '按有效请求统计' : '暂无有效响应';
+  const activeUserSubtitle = dashboardLoading
+    ? '加载中'
+    : activeChats > 0 ? `${activeChats} 个会话` : '暂无会话';
+  const fallbackSubtitle = dashboardLoading
+    ? '加载中'
+    : fallbackTotal > 0 ? `成功 ${fallbackSuccess} / 降级 ${fallbackTotal}` : '暂无降级';
+  const bookingSubtitle = dashboardLoading
+    ? <>加载中</>
+    : successfulBookings > 0 ? <>已记录成功预约</> : <>暂无成功预约</>;
+  const conversionSubtitle = dashboardLoading
+    ? <>加载中</>
+    : managedUsers > 0 ? (
+      <>预约成功 <span className="text-success">{successfulBookings}</span> / 托管用户 <span>{managedUsers}</span></>
+    ) : (
+      <>暂无托管用户</>
+    );
 
   return (
     <div className={styles.page}>
@@ -282,8 +312,6 @@ export default function Dashboard() {
         {/* 健康状态网格 */}
         <HealthGrid
           health={health}
-          modelsData={modelsData}
-          toolsData={toolsData}
           workerStatus={workerStatus}
         />
       </ControlPanel>
@@ -292,9 +320,9 @@ export default function Dashboard() {
       <MetricGrid>
         <MetricCard
           label="处理请求数"
-          value={dashboardLoading ? '-' : (overview?.totalMessages ?? 0)}
-          subtitle="成功 + 异常"
-          delta={overviewDelta?.totalMessages}
+          value={dashboardLoading ? '-' : totalMessages}
+          subtitle={requestSubtitle}
+          delta={hideEmptyDelta(totalMessages, overviewDelta?.totalMessages)}
           deltaLabel={comparisonLabel}
           variant="primary"
           timeRangeBadge={timeRangeBadge}
@@ -302,8 +330,8 @@ export default function Dashboard() {
         <MetricCard
           label="成功率"
           value={dashboardLoading ? '-' : `${(overview?.successRate ?? 0).toFixed(1)}%`}
-          subtitle={`成功 ${overview?.successCount ?? 0} 条`}
-          delta={overviewDelta?.successRate}
+          subtitle={successRateSubtitle}
+          delta={hideEmptyDelta(totalMessages, overviewDelta?.successRate)}
           deltaLabel={comparisonLabel}
           deltaUnit="points"
           variant="success"
@@ -311,22 +339,22 @@ export default function Dashboard() {
         <MetricCard
           label="平均响应"
           value={dashboardLoading ? '-' : formatDuration(overview?.avgDuration ?? 0)}
-          subtitle="秒"
-          delta={overviewDelta?.avgDuration}
+          subtitle={responseSubtitle}
+          delta={hideEmptyDelta(overview?.avgDuration ?? 0, overviewDelta?.avgDuration)}
           deltaLabel={comparisonLabel}
           deltaInverse
         />
         <MetricCard
           label="活跃用户"
           value={dashboardLoading ? '-' : (overview?.activeUsers ?? 0)}
-          subtitle={`${overview?.activeChats ?? 0} 个会话`}
-          delta={overviewDelta?.activeUsers}
+          subtitle={activeUserSubtitle}
+          delta={hideEmptyDelta(overview?.activeUsers ?? 0, overviewDelta?.activeUsers)}
           deltaLabel={comparisonLabel}
         />
         <MetricCard
           label="降级次数"
-          value={dashboardLoading ? '-' : (dashboard?.fallback?.totalCount ?? 0)}
-          subtitle={`成功率 ${(dashboard?.fallback?.successRate ?? 0).toFixed(1)}% (${dashboard?.fallback?.successCount ?? 0}/${dashboard?.fallback?.totalCount ?? 0})`}
+          value={dashboardLoading ? '-' : fallbackTotal}
+          subtitle={fallbackSubtitle}
           className="border-warning-soft"
         />
       </MetricGrid>
@@ -335,23 +363,23 @@ export default function Dashboard() {
       <MetricGrid columns={3}>
         <MetricCard
           label="托管用户数"
-          value={dashboardLoading ? '-' : (business?.consultations?.total ?? 0)}
-          subtitle={<>独立用户，同一人多次算 1 个</>}
-          delta={businessDelta?.consultations}
+          value={dashboardLoading ? '-' : managedUsers}
+          subtitle={<>独立用户，同一人仅算 1 个</>}
+          delta={hideEmptyDelta(managedUsers, businessDelta?.consultations)}
           deltaLabel={comparisonLabel}
           timeRangeBadge={timeRangeBadge}
           className="border-primary-soft"
         />
         <MetricCard
           label="预约成功数"
-          value={dashboardLoading ? '-' : (business?.bookings?.successful ?? 0)}
-          subtitle={<>已记录成功预约</>}
+          value={dashboardLoading ? '-' : successfulBookings}
+          subtitle={bookingSubtitle}
           className="border-purple-soft"
         />
         <MetricCard
           label="咨询转化率"
           value={dashboardLoading ? '-' : `${(business?.conversion?.consultationToBooking ?? 0).toFixed(1)}%`}
-          subtitle={<>预约成功 <span className="text-success">{business?.bookings?.successful ?? 0}</span> / 托管用户 <span>{business?.consultations?.total ?? 0}</span></>}
+          subtitle={conversionSubtitle}
           variant="success"
           className="border-success-soft"
         />

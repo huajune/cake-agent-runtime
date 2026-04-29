@@ -84,6 +84,10 @@ export class SessionService {
     };
   }
 
+  async clearSessionState(corpId: string, userId: string, sessionId: string): Promise<boolean> {
+    return await this.redisStore.del(this.buildKey(corpId, userId, sessionId));
+  }
+
   async getFacts(
     corpId: string,
     userId: string,

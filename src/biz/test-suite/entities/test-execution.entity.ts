@@ -1,4 +1,11 @@
 import { ExecutionStatus, ReviewStatus, ReviewerSource } from '../enums/test.enum';
+import type {
+  MemoryAssertions,
+  MemoryFixtureSetup,
+  TestExecutionTraceBundle,
+  TestMemoryTraceBundle,
+  TestSourceTrace,
+} from '../types/test-debug-trace.types';
 
 /**
  * 测试执行记录（数据库格式）
@@ -35,4 +42,9 @@ export interface TestExecution {
   input_message: string | null;
   /** LLM 评估理由 */
   evaluation_reason: string | null;
+  source_trace: TestSourceTrace | null;
+  execution_trace: TestExecutionTraceBundle | null;
+  memory_setup: MemoryFixtureSetup | null;
+  memory_assertions: MemoryAssertions | null;
+  memory_trace: TestMemoryTraceBundle | null;
 }

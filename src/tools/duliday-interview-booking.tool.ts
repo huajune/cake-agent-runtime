@@ -227,13 +227,14 @@ export function buildInterviewBookingTool(
 
 ## 前置
 - 若系统提示中已存在 [当前预约信息]，说明本会话已有 active 面试预约；候选人追问面试时间/门店/岗位/预约状态时，直接基于 [当前预约信息] 回答，**严禁再次调用本工具**
-- 候选人要求改期/取消、反馈门店查不到预约或预约信息冲突时，不要再次调用本工具，按 request_handoff 的规则转人工处理
+- 候选人要求改期/取消、反馈门店查不到预约或预约信息冲突，或说已面试/面试通过/店长已联系/只能一家店/正在报到培训办入职时，不要再次调用本工具，按 request_handoff 的规则转人工处理
 - 需要 jobId。优先从 [会话记忆] 的「当前焦点岗位」中获取；若没有，再从「最近已展示岗位」或「上轮候选岗位池」中获取，或调用 duliday_job_list 查询
 - 涉及"今天能不能约"、"哪天能约"、"当前岗位还要补什么资料"时，先调用 duliday_interview_precheck，再决定是否进入预约
 - 在调用前，先按当前阶段策略和 duliday_job_list 的结果核对硬条件、面试形式和明确时间
 - 预约时间必须来自 duliday_interview_precheck 返回的结构化 bookableSlots：只有 bookingAllowed=true 且有 interviewTime 的 slot 才能提交
 - "报名截止/registrationDeadline" 只表示最晚提交预约的时间，**绝不是面试时间**；严禁把报名截止时间作为 interviewTime
 - 若目标 slot 是 00:00-00:00 / dateOnly=true / bookingAllowed=false，表示只确定日期、不确定具体几点，先让同事确认，不要调用本工具自动预约
+- 若候选人刚补充"每周最多两天/做一休一/只周末/不上夜班/下班后/六点才下班/现在决定不了时间"等出勤或时间硬约束，必须暂停预约；先用 duliday_interview_precheck 或 duliday_job_list(includeWorkTime=true) 校验当前岗位匹配。未确认匹配前严禁调用本工具，也不要继续收资料
 - 若预约所需信息中存在候选人尚未明确提供的字段（如学历、健康证情况），必须先向候选人确认；**严禁擅自默认"大专"、"有健康证"等值代填**
 - 健康证、学历等信息优先结合岗位要求与约面重点解释；若岗位结果未明确展示但预约工具仍需要该字段，也要先向候选人确认，再调用工具
 
@@ -250,7 +251,7 @@ export function buildInterviewBookingTool(
 - **严禁**在未调用本工具或调用未返回 success 的情况下，告知候选人面试已安排、可以去面试、面试时间地点等任何暗示预约成功的信息
 - 失败处理：当工具返回 _replyInstruction 时，按该字段的指令自主组织一句口语化致歉+衔接的招募者话术（如"这边暂时没约上，我让同事确认一下，稍等"）
 - 失败时严禁原样复读 _replyInstruction、严禁透露接口报错/技术细节、严禁继续推进其他任务
-- 返回 errorType="screening_mismatch" 时：候选人的回答命中了岗位硬筛选的不合格信号（例如在"专业（非新媒、食品）"里答了"食品类"，在"周四六日都能上班吗"里答了"不一定"）。**严禁**对这位候选人重试本工具或换字段重填；按 _replyInstruction 的指引婉拒并调用 invite_to_group 维护，或 request_handoff 转人工`,
+- 返回 errorType="screening_mismatch" 时：候选人的回答命中了岗位硬筛选的不合格信号（例如在"专业（非新媒、食品）"里明确答了"我是食品专业/学食品"，在"周四六日都能上班吗"里答了"不一定"）。**严禁**对这位候选人重试本工具或换字段重填；按 _replyInstruction 的指引婉拒并调用 invite_to_group 维护，或 request_handoff 转人工。注意："食品类健康证/食品健康证/餐饮健康证"是健康证类型，不是专业答案`,
       inputSchema: z.object({
         jobId: z.number().int().describe('岗位ID'),
         interviewTime: z

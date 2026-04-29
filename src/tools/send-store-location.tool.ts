@@ -45,6 +45,34 @@ function extractStoreLocation(job: JobDetail): {
   };
 }
 
+/**
+ * 楼层提示匹配模式。只识别有"楼/层/F/B[1-9]"等明确楼层指示的片段，
+ * 避免把"青塔西路 1 号"这种街道门牌号误判为楼层。
+ *
+ * 命中后会顺带把紧随其后的"X 号 / X-X 号 / X 室 / X 铺"等铺位号一起抓出来，
+ * 因为候选人在商场里关心的是"几层 + 几号铺"。
+ */
+const FLOOR_HINT_PATTERN =
+  /((?:负[一二三四五六七八九十]|地下[一二三四五1-5]|[BLF][1-5]|[1-9][0-9]?)[层楼F](?:[\s-]?\d{1,3}(?:[\s-]\d{1,3})?\s*(?:号|室|铺|档|位|窗口|商铺))?|(?:第)?[一二三四五六七八九十]+\s*层(?:[\s-]?\d{1,3}(?:[\s-]\d{1,3})?\s*(?:号|室|铺|档|位|窗口|商铺))?)/g;
+
+/**
+ * 从完整门店地址里抽出"楼层 / 单元号"等微定位信息。
+ * 企微 location 卡片只显示场馆名，B1层 48-50 号这类关键定位埋在地址文本里候选人看不到，
+ * 需要发卡片后再用一句文字补出来。
+ */
+function extractFloorHint(storeAddress: string | null): string | null {
+  if (!storeAddress) return null;
+  const normalized = storeAddress.replace(/\s+/g, '');
+
+  const hits = new Set<string>();
+  for (const match of normalized.matchAll(FLOOR_HINT_PATTERN)) {
+    if (match[0]) hits.add(match[0]);
+  }
+
+  if (hits.size === 0) return null;
+  return Array.from(hits).join(' ');
+}
+
 export function buildSendStoreLocationTool(
   spongeService: SpongeService,
   messageSenderService: MessageSenderService,
@@ -68,7 +96,8 @@ export function buildSendStoreLocationTool(
 ## 硬规则
 - 不要凭记忆手写坐标或自己拼定位 payload；只通过此工具发送
 - 如果工具返回 _fixedReply，必须原样输出，不要额外再重写一遍地址说明
-- 若工具返回失败且同时带回 storeAddress，可改为用文字把门店地址发给候选人`,
+- 若工具返回失败且同时带回 storeAddress，可改为用文字把门店地址发给候选人
+- 工具返回 floorHint 不为空时，_fixedReply 已包含楼层/铺号提示，直接原样发送即可，不要再重复编造楼层信息`,
       inputSchema: z.object({
         jobId: z
           .number()
@@ -151,6 +180,11 @@ export function buildSendStoreLocationTool(
             `门店定位发送成功: jobId=${resolvedJobId}, store=${store.storeName}, session=${context.sessionId}`,
           );
 
+          const floorHint = extractFloorHint(store.storeAddress);
+          const fixedReply = floorHint
+            ? `门店位置我发你了，你点开就能看导航。门店在 ${floorHint}，别走错。`
+            : '门店位置我发你了，你点开就能看导航。';
+
           return {
             success: true,
             jobId: resolvedJobId,
@@ -158,7 +192,8 @@ export function buildSendStoreLocationTool(
             storeAddress: store.storeAddress,
             latitude: store.latitude,
             longitude: store.longitude,
-            _fixedReply: '门店位置我发你了，你点开就能看导航。',
+            floorHint,
+            _fixedReply: fixedReply,
             _replyRule:
               '当工具返回 _fixedReply 时，必须原样输出 _fixedReply 的内容作为本轮完整回复',
           };

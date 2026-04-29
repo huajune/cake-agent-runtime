@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import type { ChatMessage, ChatSession } from '@/hooks/chat/useChatSessions';
+import type { FeedbackSourceTrace } from '@/api/types/agent-test.types';
 import { FeedbackButtons } from '@/view/agent-test/list/components/FeedbackButtons';
 import { FeedbackModal } from '@/view/agent-test/list/components/FeedbackModal';
 import { useFeedback } from '@/view/agent-test/list/hooks/useFeedback';
@@ -89,16 +90,35 @@ export default function MessageDetail({
     [currentSession?.candidateName, currentSession?.managerName, messages],
   );
 
-  const lastUserMessage = useMemo(
-    () => [...messages].reverse().find((msg) => msg.role === 'user' && msg.content.trim())?.content,
+  const lastUserMessageRecord = useMemo(
+    () => [...messages].reverse().find((msg) => msg.role === 'user' && msg.content.trim()),
     [messages],
   );
+  const lastUserMessage = lastUserMessageRecord?.content;
+  const sourceTrace = useMemo<FeedbackSourceTrace | undefined>(() => {
+    if (!selectedChatId) return undefined;
+    const relatedMessageIds = messages.map((msg) => msg.id).filter(Boolean);
+
+    return {
+      chatIds: [selectedChatId],
+      anchorMessageIds: lastUserMessageRecord?.id ? [lastUserMessageRecord.id] : undefined,
+      relatedMessageIds,
+      raw: {
+        source: 'chat-record-detail',
+        messageCount: messages.length,
+        firstMessageAt: messages[0]?.timestamp,
+        lastMessageAt: messages[messages.length - 1]?.timestamp,
+      },
+    };
+  }, [lastUserMessageRecord?.id, messages, selectedChatId]);
 
   const handleSubmitFeedback = useCallback(() => {
     void submit({
       chatHistory: chatHistoryPreview,
       userMessage: lastUserMessage,
       chatId: selectedChatId || undefined,
+      messageId: lastUserMessageRecord?.id,
+      sourceTrace,
       candidateName: currentSession?.candidateName,
       managerName: currentSession?.managerName,
     });
@@ -107,7 +127,9 @@ export default function MessageDetail({
     currentSession?.candidateName,
     currentSession?.managerName,
     lastUserMessage,
+    lastUserMessageRecord?.id,
     selectedChatId,
+    sourceTrace,
     submit,
   ]);
 
@@ -152,9 +174,7 @@ export default function MessageDetail({
                 ? msg.managerName || currentSession?.managerName || '招募经理'
                 : msg.candidateName || currentSession?.candidateName || '候选人';
               const avatarChar = displayName.charAt(0).toUpperCase();
-              const avatarUrl = !isAssistant
-                ? msg.avatar || currentSession?.avatar
-                : undefined;
+              const avatarUrl = !isAssistant ? msg.avatar || currentSession?.avatar : undefined;
               const variant = getBubbleVariant(msg.messageType);
               const bubbleClass = [
                 styles.messageBubble,
@@ -189,9 +209,7 @@ export default function MessageDetail({
                     {avatarChar}
                   </div>
                   <div className={styles.messageContent}>
-                    <div
-                      className={`${styles.messageMeta} ${isAssistant ? styles.assistant : ''}`}
-                    >
+                    <div className={`${styles.messageMeta} ${isAssistant ? styles.assistant : ''}`}>
                       <span className={styles.senderName}>{displayName}</span>
                       <span className={styles.messageTime}>{formatTime(msg.timestamp)}</span>
                     </div>

@@ -140,6 +140,44 @@ describe('buildSendStoreLocationTool', () => {
     expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
   });
 
+  it('should append floor hint extracted from store address', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          storeInfo: {
+            storeName: '上海置汇旭辉店',
+            storeAddress:
+              '上海市-浦东新区-张杨路2389弄1-2号LCM置汇旭辉广场B1层48-50号成都你六姐',
+            latitude: 31.2421,
+            longitude: 121.5557,
+          },
+        }),
+      ],
+    });
+    mockMessageSenderService.sendMessage.mockResolvedValue({ errcode: 0, errmsg: 'ok' });
+
+    const result = await executeTool({ jobId: 100 });
+
+    expect(result.success).toBe(true);
+    expect(result.floorHint).not.toBeNull();
+    expect(result.floorHint).toMatch(/B1\s*层|48-50\s*号/);
+    expect(result._fixedReply).toContain('门店位置我发你了');
+    expect(result._fixedReply).toContain('别走错');
+  });
+
+  it('should fallback to plain reply when address has no floor hint', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [makeJob()],
+    });
+    mockMessageSenderService.sendMessage.mockResolvedValue({ errcode: 0, errmsg: 'ok' });
+
+    const result = await executeTool({ jobId: 100 });
+
+    expect(result.success).toBe(true);
+    expect(result.floorHint).toBeNull();
+    expect(result._fixedReply).toBe('门店位置我发你了，你点开就能看导航。');
+  });
+
   it('should return fallback info when store coordinates are unavailable', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [

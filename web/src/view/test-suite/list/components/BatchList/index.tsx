@@ -1,6 +1,7 @@
 import { useRef, useCallback, useEffect } from 'react';
 import { FolderOpen, Sparkles, Loader2 } from 'lucide-react';
 import { TestBatch } from '@/api/services/agent-test.service';
+import { formatDateTime } from '@/utils/format';
 import { getBatchStatusDisplay } from '../../constants';
 import styles from './index.module.scss';
 
@@ -96,6 +97,7 @@ export function BatchList({
               const status = getBatchStatusDisplay(batch.status);
               const isConversation = batch.test_type === 'conversation';
               const reviewedCount = batch.total_cases - (batch.pending_review_count || 0);
+              const createdAt = formatDateTime(batch.created_at);
               return (
                 <div
                   key={batch.id}
@@ -143,6 +145,9 @@ export function BatchList({
                         : '-'}
                     </span>
                   </div>
+                  <time className={styles.batchCreatedAt} dateTime={batch.created_at}>
+                    创建时间 {createdAt}
+                  </time>
                 </div>
               );
             })}

@@ -177,4 +177,6 @@ export interface MessageRecord {
   anomalyFlags?: MessageRecordAnomalyFlag[];
   /** 本轮触发时的记忆上下文快照 */
   memorySnapshot?: MessageRecordMemorySnapshot;
+  /** turn-end 后处理状态 */
+  postProcessingStatus?: Record<string, unknown>;
 }

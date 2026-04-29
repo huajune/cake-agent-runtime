@@ -1,4 +1,9 @@
 import { ConversationSourceStatus } from '../enums/test.enum';
+import type {
+  MemoryAssertions,
+  MemoryFixtureSetup,
+  TestSourceTrace,
+} from '../types/test-debug-trace.types';
 
 /**
  * 对话快照记录（数据库格式）
@@ -17,6 +22,9 @@ export interface ConversationSnapshotRecord {
   avg_similarity_score: number | null;
   min_similarity_score: number | null;
   status: ConversationSourceStatus;
+  source_trace: TestSourceTrace | null;
+  memory_setup: MemoryFixtureSetup | null;
+  memory_assertions: MemoryAssertions | null;
   created_at: string;
   updated_at: string;
 }

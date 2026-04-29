@@ -11,6 +11,7 @@ import { MonitoringErrorLogRepository } from '@biz/monitoring/repositories/error
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { MessageProcessor } from '@wecom/message/runtime/message.processor';
+import { addLocalDays, getLocalDayStart } from '@infra/utils/date.util';
 
 const buildRecord = (overrides = {}) => ({
   messageId: 'msg-1',
@@ -618,10 +619,9 @@ describe('AnalyticsQueryService', () => {
       const [startDate, endDate] = (messageProcessingService.getDailyUserStats as jest.Mock).mock
         .calls[0];
 
-      const daysDiff = Math.round(
-        (endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000),
+      expect(startDate.toISOString()).toBe(
+        addLocalDays(getLocalDayStart(endDate), -30).toISOString(),
       );
-      expect(daysDiff).toBe(30);
     });
   });
 

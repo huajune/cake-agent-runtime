@@ -1,7 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AnalyticsMetricsService } from '@analytics/metrics/analytics-metrics.service';
 import { AnalyticsTrendBuilderService } from '@analytics/trends/analytics-trend-builder.service';
-import { formatLocalDate } from '@infra/utils/date.util';
+import {
+  addLocalDays,
+  formatLocalDate,
+  formatLocalMinute,
+  getLocalDayStart,
+  getLocalHourStart,
+} from '@infra/utils/date.util';
 import {
   MessageProcessingRecord,
   MonitoringErrorLog,
@@ -221,9 +227,7 @@ export class AnalyticsDashboardService {
       const previousStartDate = new Date(previousStart);
       const previousEndDate = new Date(previousEnd);
 
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-      sevenDaysAgo.setHours(0, 0, 0, 0);
+      const sevenDaysAgo = addLocalDays(getLocalDayStart(currentEndDate), -6);
       const currentHourStart = this.getHourStart(currentEndDate);
       const hourlyProjectionFresh = await this.isHourlyProjectionFresh(currentEndDate);
       const dailyProjectionFresh = await this.isDailyProjectionFresh(currentEndDate);
@@ -349,11 +353,16 @@ export class AnalyticsDashboardService {
       const prevStartDate = formatLocalDate(previousStartDate);
       const prevEndDate = formatLocalDate(previousEndDate);
 
-      // 并行查询：预约数（轻量索引查询）+ 趋势原始记录（仅当期，用于图表）
-      const [currentBookings, previousBookings, trendRecords] = await Promise.all([
+      // 并行查询：预约数（轻量索引查询）+ 业务趋势（数据库侧聚合，避免拉取原始流水）
+      const [currentBookings, previousBookings, businessTrend] = await Promise.all([
         this.getBookingCount(curStartDate, curEndDate),
         this.getBookingCount(prevStartDate, prevEndDate),
-        this.getBusinessTrendRecordsByTimeRange(currentStart, currentEnd, timeRange),
+        this.getBusinessTrendFromDatabase(
+          currentStart,
+          currentEnd,
+          currentOverview.activeUsers,
+          timeRange,
+        ),
       ]);
 
       const business = this.buildBusinessFromStats(currentOverview.activeUsers, currentBookings);
@@ -406,8 +415,6 @@ export class AnalyticsDashboardService {
                   ? parseFloat(((item.successCount / item.messageCount) * 100).toFixed(2))
                   : 0,
             }));
-
-      const businessTrend = this.analyticsTrendBuilder.buildBusinessTrend(trendRecords, timeRange);
 
       const tokenTrend =
         timeRange === 'today'
@@ -468,15 +475,11 @@ export class AnalyticsDashboardService {
   }
 
   private getHourStart(date: Date): Date {
-    const hourStart = new Date(date);
-    hourStart.setMinutes(0, 0, 0);
-    return hourStart;
+    return getLocalHourStart(date);
   }
 
   private getDayStart(date: Date): Date {
-    const dayStart = new Date(date);
-    dayStart.setHours(0, 0, 0, 0);
-    return dayStart;
+    return getLocalDayStart(date);
   }
 
   private async isHourlyProjectionFresh(currentEndDate: Date): Promise<boolean> {
@@ -487,8 +490,9 @@ export class AnalyticsDashboardService {
         return false;
       }
 
-      const expectedLatestCompletedHour = this.getHourStart(currentEndDate);
-      expectedLatestCompletedHour.setHours(expectedLatestCompletedHour.getHours() - 1);
+      const expectedLatestCompletedHour = new Date(
+        this.getHourStart(currentEndDate).getTime() - 60 * 60 * 1000,
+      );
 
       return new Date(latestHourly.hour).getTime() >= expectedLatestCompletedHour.getTime();
     } catch (error) {
@@ -505,8 +509,7 @@ export class AnalyticsDashboardService {
         return false;
       }
 
-      const expectedLatestCompletedDay = this.getDayStart(currentEndDate);
-      expectedLatestCompletedDay.setDate(expectedLatestCompletedDay.getDate() - 1);
+      const expectedLatestCompletedDay = addLocalDays(this.getDayStart(currentEndDate), -1);
 
       return latestDaily.date >= formatLocalDate(expectedLatestCompletedDay);
     } catch (error) {
@@ -616,11 +619,26 @@ export class AnalyticsDashboardService {
     }
   }
 
-  private async getBusinessTrendRecordsByTimeRange(
+  private async getBusinessTrendFromDatabase(
     startTime: number,
     endTime: number,
+    activeUsers: number,
     range: TimeRange,
-  ): Promise<MessageProcessingRecord[]> {
+  ): Promise<BusinessMetricTrendPoint[]> {
+    const startDate = new Date(startTime);
+    const endDate = new Date(endTime);
+    const businessTrend = await this.monitoringRepository.getDashboardBusinessTrend(
+      startDate,
+      endDate,
+      5,
+      range === 'today' ? 'minute' : 'day',
+    );
+
+    if (businessTrend.length > 0 || activeUsers === 0) {
+      return businessTrend;
+    }
+
+    this.logger.warn('[Dashboard] 业务趋势聚合 RPC 无结果，回退到原始记录聚合');
     try {
       const limitByRange = { today: 2000, week: 5000, month: 10000 };
       const result = await this.messageProcessingService.getBusinessTrendRecordsByTimeRange(
@@ -628,7 +646,10 @@ export class AnalyticsDashboardService {
         endTime,
         limitByRange[range] || 2000,
       );
-      return toMessageProcessingRecords(result);
+      return this.analyticsTrendBuilder.buildBusinessTrend(
+        toMessageProcessingRecords(result),
+        range,
+      );
     } catch (error) {
       this.logger.error(`查询业务趋势记录异常 [${range}]:`, error);
       return [];
@@ -660,8 +681,7 @@ export class AnalyticsDashboardService {
 
   private async getTodayUsersFromDatabase(): Promise<TodayUser[]> {
     try {
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
+      const todayStart = getLocalDayStart();
       const dbUsers = await this.userHostingService.getActiveUsersByDateRange(
         todayStart,
         new Date(),
@@ -926,7 +946,7 @@ export class AnalyticsDashboardService {
     }
 
     return Array.from(buckets.entries())
-      .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
+      .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([minute, bucket]) => ({
         minute,
         avgDuration:
@@ -953,7 +973,7 @@ export class AnalyticsDashboardService {
     }
 
     return Array.from(buckets.entries())
-      .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
+      .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([minute, count]) => ({ minute, count }));
   }
 
@@ -1039,21 +1059,11 @@ export class AnalyticsDashboardService {
   // ========================================
 
   private getMinuteKey(timestamp: number): string {
-    const date = new Date(timestamp);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${minutes}`;
+    return formatLocalMinute(new Date(timestamp));
   }
 
   private getDayKey(timestamp: number): string {
-    const date = new Date(timestamp);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return formatLocalDate(new Date(timestamp));
   }
 
   // ========================================

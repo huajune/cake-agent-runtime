@@ -1,6 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
+import type { MessageProcessingRecordInput } from '@biz/message/types/message.types';
 import { MessageProcessingRecord } from '@shared-types/tracking.types';
 import {
   FeishuBitableApiService,
@@ -19,9 +20,27 @@ export interface AgentTestFeedback {
   errorType?: string; // 错误类型（仅 badcase）
   remark?: string; // 备注
   chatId?: string; // 会话 ID
+  messageId?: string; // 触发消息 ID
+  traceId?: string; // Agent/runtime trace ID
   batchId?: string; // Batch ID
+  sourceTrace?: FeedbackSourceTrace | null; // 反馈来源排障证据包
   candidateName?: string; // 候选人昵称
   managerName?: string; // 招募经理姓名
+}
+
+export interface FeedbackSourceTrace {
+  badcaseIds?: string[];
+  goodcaseIds?: string[];
+  badcaseRecordIds?: string[];
+  chatIds?: string[];
+  anchorMessageIds?: string[];
+  relatedMessageIds?: string[];
+  messageProcessingIds?: string[];
+  traceIds?: string[];
+  executionIds?: string[];
+  batchIds?: string[];
+  notes?: string[];
+  raw?: Record<string, unknown>;
 }
 
 /**
@@ -46,7 +65,25 @@ export class FeishuBitableSyncService {
     category: ['分类', '错误分类'],
     remark: ['备注', '说明', '附注'],
     chatId: ['chatId', '会话ID', '会话 Id', '会话ID（chatId）'],
+    messageId: ['message_id', 'messageId', 'MessageID', '消息ID', '触发MessageID'],
+    traceId: ['traceId', 'TraceID', 'Agent Trace ID', '运行TraceID'],
     batchId: ['Batch ID', 'BatchID', 'batchId', 'batch_id', '批次ID', '批次 ID', '测试批次'],
+    sourceTraceJson: ['SourceTrace', 'sourceTrace', 'source_trace', '排障Trace', '排障证据JSON'],
+    sourceRecordIds: ['来源RecordID', '来源RecordIds', 'sourceRecordIds', 'badcaseRecordIds'],
+    sourceChatIds: ['来源ChatID', '来源ChatIds', 'sourceChatIds', 'chatIds'],
+    sourceAnchorMessageIds: [
+      '来源MessageID',
+      '来源MessageIds',
+      'sourceAnchorMessageIds',
+      'anchorMessageIds',
+    ],
+    sourceMessageProcessingIds: [
+      '处理流水ID',
+      'messageProcessingIds',
+      'sourceMessageProcessingIds',
+    ],
+    sourceTraceIds: ['来源TraceID', 'sourceTraceIds', 'traceIds'],
+    sourceBatchIds: ['来源BatchID', 'sourceBatchIds', 'batchIds'],
     source: ['来源'],
     status: ['状态'],
     priority: ['优先级'],
@@ -139,6 +176,7 @@ export class FeishuBitableSyncService {
       const existingFieldNames = new Set(fields.map((field) => field.field_name));
       const feedbackId = this.generateFeedbackId();
       const feedbackTitle = this.buildFeedbackTitle(feedback);
+      const sourceTrace = await this.buildFeedbackSourceTrace(feedback);
 
       const resolveFieldName = (aliases: readonly string[]): string | undefined =>
         aliases.find((alias) => existingFieldNames.has(alias));
@@ -172,6 +210,8 @@ export class FeishuBitableSyncService {
 
       const remarkField = resolveFieldName(this.feedbackFieldAliases.remark);
       const chatIdField = resolveFieldName(this.feedbackFieldAliases.chatId);
+      const messageIdField = resolveFieldName(this.feedbackFieldAliases.messageId);
+      const traceIdField = resolveFieldName(this.feedbackFieldAliases.traceId);
       const batchIdField = resolveFieldName(this.feedbackFieldAliases.batchId);
       const remarkParts: string[] = [];
       if (feedback.remark) {
@@ -194,8 +234,32 @@ export class FeishuBitableSyncService {
         }
       }
 
+      if (feedback.messageId) {
+        if (messageIdField) {
+          recordFields[messageIdField] = feedback.messageId;
+        } else if (remarkField) {
+          remarkParts.push(`messageId: ${feedback.messageId}`);
+        }
+      }
+
+      if (feedback.traceId) {
+        if (traceIdField) {
+          recordFields[traceIdField] = feedback.traceId;
+        } else if (remarkField) {
+          remarkParts.push(`traceId: ${feedback.traceId}`);
+        }
+      }
+
+      this.setFeedbackSourceTraceFields({
+        sourceTrace,
+        setField,
+        resolveFieldName,
+        remarkField,
+        remarkParts,
+      });
+
       if (remarkField && remarkParts.length > 0) {
-        recordFields[remarkField] = this.bitableApi.truncateText(remarkParts.join('\n'), 1000);
+        recordFields[remarkField] = this.bitableApi.truncateText(remarkParts.join('\n'), 3000);
       }
 
       if (feedback.type === 'badcase') {
@@ -234,6 +298,351 @@ export class FeishuBitableSyncService {
   }
 
   // ==================== 私有方法 ====================
+
+  private async buildFeedbackSourceTrace(
+    feedback: AgentTestFeedback,
+  ): Promise<FeedbackSourceTrace | null> {
+    const processingRecord = await this.resolveFeedbackProcessingRecord(feedback);
+    const recordTraceId = this.extractTraceId(processingRecord);
+    const baseTrace = this.normalizeFeedbackSourceTrace({
+      ...(feedback.sourceTrace ?? {}),
+      chatIds: this.mergeLists(feedback.sourceTrace?.chatIds, feedback.chatId),
+      anchorMessageIds: this.mergeLists(
+        feedback.sourceTrace?.anchorMessageIds,
+        feedback.messageId,
+        processingRecord?.messageId,
+      ),
+      relatedMessageIds: this.mergeLists(
+        feedback.sourceTrace?.relatedMessageIds,
+        processingRecord?.messageId,
+      ),
+      messageProcessingIds: this.mergeLists(
+        feedback.sourceTrace?.messageProcessingIds,
+        processingRecord?.messageId,
+      ),
+      traceIds: this.mergeLists(feedback.sourceTrace?.traceIds, feedback.traceId, recordTraceId),
+      batchIds: this.mergeLists(
+        feedback.sourceTrace?.batchIds,
+        feedback.batchId,
+        processingRecord?.batchId,
+      ),
+      raw: this.compactObject({
+        ...(feedback.sourceTrace?.raw ?? {}),
+        feedback: this.compactObject({
+          submittedVia: 'test-suite/feedback',
+          type: feedback.type,
+          errorType: feedback.errorType,
+        }),
+        messageProcessing: processingRecord
+          ? this.summarizeProcessingRecord(processingRecord)
+          : undefined,
+      }),
+    });
+
+    return this.normalizeFeedbackSourceTrace(baseTrace);
+  }
+
+  private async resolveFeedbackProcessingRecord(
+    feedback: AgentTestFeedback,
+  ): Promise<MessageProcessingRecordInput | null> {
+    const candidateMessageIds = this.mergeLists(
+      feedback.messageId,
+      feedback.sourceTrace?.anchorMessageIds,
+      feedback.sourceTrace?.messageProcessingIds,
+    );
+
+    for (const messageId of candidateMessageIds) {
+      const record = await this.safeGetMessageProcessingRecord(messageId);
+      if (record) return record;
+    }
+
+    if (!feedback.chatId) return null;
+
+    try {
+      const records = await this.messageProcessingService.getMessageProcessingRecords({
+        chatId: feedback.chatId,
+        limit: '20',
+      });
+      const selected =
+        this.pickBestProcessingRecord(records as MessageProcessingRecordInput[], feedback) ??
+        (records as MessageProcessingRecordInput[])[0];
+
+      if (!selected?.messageId) return null;
+      return (await this.safeGetMessageProcessingRecord(selected.messageId)) ?? selected;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`[Feedback] 查询 chatId=${feedback.chatId} 处理流水失败: ${errorMessage}`);
+      return null;
+    }
+  }
+
+  private async safeGetMessageProcessingRecord(
+    messageId: string,
+  ): Promise<MessageProcessingRecordInput | null> {
+    try {
+      return await this.messageProcessingService.getMessageProcessingRecordById(messageId);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`[Feedback] 查询 messageId=${messageId} 处理流水失败: ${errorMessage}`);
+      return null;
+    }
+  }
+
+  private pickBestProcessingRecord(
+    records: MessageProcessingRecordInput[],
+    feedback: AgentTestFeedback,
+  ): MessageProcessingRecordInput | null {
+    if (!records.length) return null;
+    const normalizedUserMessage = this.normalizeTextForMatch(feedback.userMessage);
+    if (!normalizedUserMessage) return records[0];
+
+    return (
+      records.find((record) => {
+        const preview = this.normalizeTextForMatch(record.messagePreview);
+        return preview.includes(normalizedUserMessage) || normalizedUserMessage.includes(preview);
+      }) ?? records[0]
+    );
+  }
+
+  private setFeedbackSourceTraceFields(options: {
+    sourceTrace: FeedbackSourceTrace | null;
+    setField: (aliases: readonly string[], value: unknown) => void;
+    resolveFieldName: (aliases: readonly string[]) => string | undefined;
+    remarkField?: string;
+    remarkParts: string[];
+  }) {
+    const { sourceTrace, setField, resolveFieldName, remarkField, remarkParts } = options;
+    if (!sourceTrace) return;
+
+    const sourceTraceJson = this.stringifyCompact(sourceTrace);
+    setField(
+      this.feedbackFieldAliases.sourceTraceJson,
+      sourceTraceJson ? this.bitableApi.truncateText(sourceTraceJson, 10000) : undefined,
+    );
+    this.setIdFieldOrRemark(
+      this.feedbackFieldAliases.sourceRecordIds,
+      sourceTrace.badcaseRecordIds,
+      resolveFieldName,
+      setField,
+      remarkField,
+      remarkParts,
+      'badcaseRecordIds',
+    );
+    this.setIdFieldOrRemark(
+      this.feedbackFieldAliases.sourceChatIds,
+      sourceTrace.chatIds,
+      resolveFieldName,
+      setField,
+      remarkField,
+      remarkParts,
+      'sourceChatIds',
+    );
+    this.setIdFieldOrRemark(
+      this.feedbackFieldAliases.sourceAnchorMessageIds,
+      sourceTrace.anchorMessageIds,
+      resolveFieldName,
+      setField,
+      remarkField,
+      remarkParts,
+      'sourceAnchorMessageIds',
+    );
+    this.setIdFieldOrRemark(
+      this.feedbackFieldAliases.sourceMessageProcessingIds,
+      sourceTrace.messageProcessingIds,
+      resolveFieldName,
+      setField,
+      remarkField,
+      remarkParts,
+      'messageProcessingIds',
+    );
+    this.setIdFieldOrRemark(
+      this.feedbackFieldAliases.sourceTraceIds,
+      sourceTrace.traceIds,
+      resolveFieldName,
+      setField,
+      remarkField,
+      remarkParts,
+      'sourceTraceIds',
+    );
+    this.setIdFieldOrRemark(
+      this.feedbackFieldAliases.sourceBatchIds,
+      sourceTrace.batchIds,
+      resolveFieldName,
+      setField,
+      remarkField,
+      remarkParts,
+      'sourceBatchIds',
+    );
+
+    const hasTraceField = !!resolveFieldName(this.feedbackFieldAliases.sourceTraceJson);
+    if (!hasTraceField && sourceTraceJson && remarkField) {
+      remarkParts.push(`SourceTrace: ${this.bitableApi.truncateText(sourceTraceJson, 1200)}`);
+    }
+  }
+
+  private setIdFieldOrRemark(
+    aliases: readonly string[],
+    values: string[] | undefined,
+    resolveFieldName: (aliases: readonly string[]) => string | undefined,
+    setField: (aliases: readonly string[], value: unknown) => void,
+    remarkField: string | undefined,
+    remarkParts: string[],
+    label: string,
+  ) {
+    const joined = this.mergeLists(values).join(', ');
+    if (!joined) return;
+    if (resolveFieldName(aliases)) {
+      setField(aliases, joined);
+    } else if (remarkField) {
+      remarkParts.push(`${label}: ${joined}`);
+    }
+  }
+
+  private summarizeProcessingRecord(record: MessageProcessingRecordInput): Record<string, unknown> {
+    return this.compactObject({
+      messageId: record.messageId,
+      chatId: record.chatId,
+      userId: record.userId,
+      userName: record.userName,
+      managerName: record.managerName,
+      receivedAt: record.receivedAt,
+      status: record.status,
+      scenario: record.scenario,
+      batchId: record.batchId,
+      totalDuration: record.totalDuration,
+      aiDuration: record.aiDuration,
+      ttftMs: record.ttftMs,
+      anomalyFlags: record.anomalyFlags,
+      memorySnapshot: record.memorySnapshot,
+      postProcessingStatus: record.postProcessingStatus,
+      toolCalls: record.toolCalls?.map((toolCall) =>
+        this.compactObject({
+          toolName: toolCall.toolName,
+          args: toolCall.args,
+          status: toolCall.status,
+          resultCount: toolCall.resultCount,
+          durationMs: toolCall.durationMs,
+        }),
+      ),
+      agentSteps: record.agentSteps?.map((step) =>
+        this.compactObject({
+          stepIndex: step.stepIndex,
+          toolCalls: step.toolCalls?.map((toolCall) => toolCall.toolName),
+          usage: step.usage,
+          durationMs: step.durationMs,
+          finishReason: step.finishReason,
+        }),
+      ),
+      agentInvocation: this.summarizeAgentInvocation(record.agentInvocation),
+    });
+  }
+
+  private summarizeAgentInvocation(value: unknown): Record<string, unknown> | undefined {
+    const invocation = this.asRecord(value);
+    if (!invocation) return undefined;
+    const response = this.asRecord(invocation.response);
+    const request = this.asRecord(invocation.request);
+    return this.compactObject({
+      isFallback: invocation.isFallback,
+      request: this.compactObject({
+        modelId: request?.modelId,
+        scenario: request?.scenario,
+        messageCount: Array.isArray(request?.messages) ? request.messages.length : undefined,
+      }),
+      response: this.compactObject({
+        traceId: response?.traceId,
+        status: response?.status,
+        finishReason: response?.finishReason,
+        timings: response?.timings,
+        usage: response?.usage,
+        toolCallCount: Array.isArray(response?.toolCalls) ? response.toolCalls.length : undefined,
+      }),
+    });
+  }
+
+  private extractTraceId(record?: MessageProcessingRecordInput | null): string | undefined {
+    const response = this.asRecord(this.asRecord(record?.agentInvocation)?.response);
+    return typeof response?.traceId === 'string' && response.traceId.trim()
+      ? response.traceId.trim()
+      : undefined;
+  }
+
+  private normalizeFeedbackSourceTrace(
+    trace?: FeedbackSourceTrace | null,
+  ): FeedbackSourceTrace | null {
+    if (!trace) return null;
+    const normalized = this.compactObject({
+      badcaseIds: this.mergeLists(trace.badcaseIds),
+      goodcaseIds: this.mergeLists(trace.goodcaseIds),
+      badcaseRecordIds: this.mergeLists(trace.badcaseRecordIds),
+      chatIds: this.mergeLists(trace.chatIds),
+      anchorMessageIds: this.mergeLists(trace.anchorMessageIds),
+      relatedMessageIds: this.mergeLists(trace.relatedMessageIds),
+      messageProcessingIds: this.mergeLists(trace.messageProcessingIds),
+      traceIds: this.mergeLists(trace.traceIds),
+      executionIds: this.mergeLists(trace.executionIds),
+      batchIds: this.mergeLists(trace.batchIds),
+      notes: this.mergeLists(trace.notes),
+      raw: this.compactObject(trace.raw),
+    });
+    return Object.keys(normalized).length > 0 ? normalized : null;
+  }
+
+  private mergeLists(...values: unknown[]): string[] {
+    const result: string[] = [];
+    const push = (value: unknown) => {
+      if (value === undefined || value === null) return;
+      if (Array.isArray(value)) {
+        for (const item of value) push(item);
+        return;
+      }
+      for (const item of String(value).split(/[\s,，;；|]+/)) {
+        const trimmed = item.trim();
+        if (trimmed && !result.includes(trimmed)) result.push(trimmed);
+      }
+    };
+    for (const value of values) push(value);
+    return result;
+  }
+
+  private compactObject(value?: Record<string, unknown> | null): Record<string, unknown> {
+    if (!value) return {};
+    const entries = Object.entries(value)
+      .map(([key, entryValue]) => [key, this.compactValue(entryValue)] as const)
+      .filter(([, entryValue]) => entryValue !== undefined);
+    return Object.fromEntries(entries);
+  }
+
+  private compactValue(value: unknown): unknown {
+    if (value === undefined || value === null) return undefined;
+    if (Array.isArray(value)) {
+      const items = value
+        .map((item) => this.compactValue(item))
+        .filter((item) => item !== undefined);
+      return items.length > 0 ? items : undefined;
+    }
+    if (typeof value === 'object') {
+      const compacted = this.compactObject(value as Record<string, unknown>);
+      return Object.keys(compacted).length > 0 ? compacted : undefined;
+    }
+    if (typeof value === 'string' && value.trim() === '') return undefined;
+    return value;
+  }
+
+  private stringifyCompact(value: unknown): string | undefined {
+    const compacted = this.compactValue(value);
+    return compacted === undefined ? undefined : JSON.stringify(compacted, null, 2);
+  }
+
+  private asRecord(value: unknown): Record<string, unknown> | undefined {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined;
+  }
+
+  private normalizeTextForMatch(value?: string): string {
+    return (value || '').replace(/\s+/g, ' ').trim();
+  }
 
   private buildFeishuRecord(record: MessageProcessingRecord): BatchCreateRequest | null {
     const userName = record.userName || record.userId;

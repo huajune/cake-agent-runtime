@@ -20,6 +20,7 @@ import {
 @Injectable()
 export class ConversationSnapshotRepository extends BaseRepository {
   protected readonly tableName = 'test_conversation_snapshots';
+  private validationTitleColumnAvailable: boolean | null = null;
 
   constructor(supabaseService: SupabaseService) {
     super(supabaseService);
@@ -32,30 +33,112 @@ export class ConversationSnapshotRepository extends BaseRepository {
    * 创建对话快照记录
    */
   async create(data: CreateConversationSourceData): Promise<ConversationSnapshotRecord> {
-    const payload = {
+    const payload = this.buildCreatePayload(
+      data,
+      this.validationTitleColumnAvailable !== false && data.validationTitle !== undefined,
+    );
+
+    return this.insertCreatePayload(payload) as Promise<ConversationSnapshotRecord>;
+  }
+
+  private buildCreatePayload(
+    data: CreateConversationSourceData,
+    includeValidationTitle: boolean,
+  ): Record<string, unknown> {
+    const payload: Record<string, unknown> = {
       batch_id: data.batchId,
       feishu_record_id: data.feishuRecordId,
       conversation_id: data.conversationId,
-      validation_title: data.validationTitle || null,
       participant_name: data.participantName || null,
       full_conversation: data.fullConversation,
       raw_text: data.rawText || null,
       total_turns: data.totalTurns,
       status: ConversationSourceStatus.PENDING,
+      source_trace: data.sourceTrace || null,
+      memory_setup: data.memorySetup || null,
+      memory_assertions: data.memoryAssertions || null,
     };
 
-    const result = await this.insert<ConversationSnapshotRecord>(payload);
-    if (result || !data.validationTitle) {
-      return result as ConversationSnapshotRecord;
+    if (includeValidationTitle) {
+      payload.validation_title = data.validationTitle || null;
     }
 
-    const fallbackPayload: Omit<typeof payload, 'validation_title'> & {
-      validation_title?: string | null;
-    } = { ...payload };
-    delete fallbackPayload.validation_title;
-    return this.insert<ConversationSnapshotRecord>(
-      fallbackPayload,
-    ) as Promise<ConversationSnapshotRecord>;
+    return payload;
+  }
+
+  private async insertCreatePayload(
+    payload: Record<string, unknown>,
+  ): Promise<ConversationSnapshotRecord | null> {
+    if (!this.isAvailable()) {
+      this.logger.warn(`Supabase 未初始化，跳过 ${this.tableName} 插入`);
+      return null;
+    }
+
+    const insertPayload = async (candidate: Record<string, unknown>) => {
+      const query = this.getClient().from(this.tableName).insert(candidate);
+      return query.select();
+    };
+
+    try {
+      const optionalColumns = new Set([
+        'validation_title',
+        'source_trace',
+        'memory_setup',
+        'memory_assertions',
+      ]);
+      const candidate = { ...payload };
+
+      while (true) {
+        const attemptPayload = { ...candidate };
+        const { data: result, error } = await insertPayload(attemptPayload);
+        if (!error) {
+          this.validationTitleColumnAvailable =
+            candidate.validation_title === undefined ? false : true;
+          return (result as ConversationSnapshotRecord[])?.[0] ?? null;
+        }
+
+        const missingColumn = this.extractMissingOptionalColumn(error, optionalColumns);
+        if (missingColumn) {
+          delete candidate[missingColumn];
+          if (missingColumn === 'validation_title') {
+            this.validationTitleColumnAvailable = false;
+          }
+          this.logger.warn(
+            `${this.tableName} 缺少 ${missingColumn} 列，已按旧 schema 跳过该列；请确认 traceability 迁移已应用`,
+          );
+          continue;
+        }
+
+        if (this.isConflictError(error)) {
+          this.logger.debug(`${this.tableName} 记录已存在，跳过插入`);
+          return null;
+        }
+        this.handleError('INSERT', error);
+        return null;
+      }
+    } catch (error) {
+      if (this.isConflictError(error)) {
+        this.logger.debug(`${this.tableName} 记录已存在，跳过插入`);
+        return null;
+      }
+      this.handleError('INSERT', error);
+      return null;
+    }
+  }
+
+  private extractMissingOptionalColumn(
+    error: unknown,
+    optionalColumns: Set<string>,
+  ): string | null {
+    const pgError = error as { code?: string; message?: string };
+    if (pgError.code !== 'PGRST204') return null;
+    const message = pgError.message || '';
+    for (const column of optionalColumns) {
+      if (message.includes(`'${column}' column`) || message.includes(` ${column} `)) {
+        return column;
+      }
+    }
+    return null;
   }
 
   /**

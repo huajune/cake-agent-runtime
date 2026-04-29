@@ -1,5 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { BitableRecord, FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
+import {
+  BitableField,
+  BitableRecord,
+  FeishuBitableApiService,
+} from '@infra/feishu/services/bitable-api.service';
 import {
   CuratedDatasetImportFailure,
   CuratedDatasetImportResult,
@@ -40,7 +44,8 @@ export class CuratedDatasetImportService {
     }
 
     const { appToken, tableId } = this.bitableApi.getTableConfig('testSuite');
-    const fields = await this.bitableApi.getFields(appToken, tableId);
+    let fields = await this.bitableApi.getFields(appToken, tableId);
+    fields = await this.ensureTraceabilityFields(appToken, tableId, fields);
     const resolved = this.payloadBuilder.resolveScenarioFieldNames(fields);
     this.payloadBuilder.ensureScenarioRequiredFields(resolved);
 
@@ -122,7 +127,8 @@ export class CuratedDatasetImportService {
     }
 
     const { appToken, tableId } = this.bitableApi.getTableConfig('validationSet');
-    const fields = await this.bitableApi.getFields(appToken, tableId);
+    let fields = await this.bitableApi.getFields(appToken, tableId);
+    fields = await this.ensureTraceabilityFields(appToken, tableId, fields);
     const resolved = this.payloadBuilder.resolveConversationFieldNames(fields);
     this.payloadBuilder.ensureConversationRequiredFields(resolved);
 
@@ -301,5 +307,45 @@ export class CuratedDatasetImportService {
       message,
       recordId,
     };
+  }
+
+  private async ensureTraceabilityFields(
+    appToken: string,
+    tableId: string,
+    fields: BitableField[],
+  ): Promise<BitableField[]> {
+    const specs = [
+      { canonicalName: '来源BadCaseRecordID', aliases: ['来源RecordID', 'sourceRecordIds'] },
+      { canonicalName: '触发MessageID', aliases: ['AnchorMessageID', 'sourceAnchorMessageIds'] },
+      { canonicalName: '相关MessageID', aliases: ['RelatedMessageID', 'sourceRelatedMessageIds'] },
+      {
+        canonicalName: '处理流水ID',
+        aliases: ['MessageProcessingID', 'sourceMessageProcessingIds'],
+      },
+      { canonicalName: 'TraceID', aliases: ['来源TraceID', 'sourceTraceIds'] },
+      { canonicalName: 'SourceTrace', aliases: ['排障Trace', 'sourceTrace', '排障证据JSON'] },
+      { canonicalName: 'MemorySetup', aliases: ['记忆前置', 'memorySetup'] },
+      { canonicalName: 'MemoryAssertions', aliases: ['记忆断言', 'memoryAssertions'] },
+    ];
+    const existingNames = new Set(fields.map((field) => field.field_name));
+    const nextFields = [...fields];
+
+    for (const spec of specs) {
+      const aliases = [spec.canonicalName, ...spec.aliases];
+      if (aliases.some((alias) => existingNames.has(alias))) {
+        continue;
+      }
+
+      const result = await this.bitableApi.createField(appToken, tableId, spec.canonicalName, 1);
+      existingNames.add(spec.canonicalName);
+      nextFields.push({
+        field_id: result.fieldId,
+        field_name: spec.canonicalName,
+        type: 1,
+      });
+      this.logger.log(`已为策展数据集表 ${tableId} 创建可选字段: ${spec.canonicalName}`);
+    }
+
+    return nextFields;
   }
 }

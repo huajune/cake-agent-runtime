@@ -6,6 +6,13 @@ import {
   ReviewerSource,
   ConversationSourceStatus,
 } from '../enums/test.enum';
+import type {
+  MemoryAssertions,
+  MemoryFixtureSetup,
+  TestExecutionTraceBundle,
+  TestMemoryTraceBundle,
+  TestSourceTrace,
+} from './test-debug-trace.types';
 
 /**
  * 创建批次请求
@@ -58,6 +65,11 @@ export interface CreateExecutionData {
   reviewerSource?: ReviewerSource;
   /** LLM 评估理由 */
   evaluationReason?: string | null;
+  sourceTrace?: TestSourceTrace | null;
+  executionTrace?: TestExecutionTraceBundle | null;
+  memorySetup?: MemoryFixtureSetup | null;
+  memoryAssertions?: MemoryAssertions | null;
+  memoryTrace?: TestMemoryTraceBundle | null;
 }
 
 /**
@@ -72,6 +84,8 @@ export interface UpdateExecutionResultData {
   durationMs: number;
   tokenUsage?: unknown;
   errorMessage?: string;
+  executionTrace?: TestExecutionTraceBundle | null;
+  memoryTrace?: TestMemoryTraceBundle | null;
 }
 
 /**
@@ -107,6 +121,9 @@ export interface CreateConversationSourceData {
   fullConversation: unknown;
   rawText?: string;
   totalTurns: number;
+  sourceTrace?: TestSourceTrace | null;
+  memorySetup?: MemoryFixtureSetup | null;
+  memoryAssertions?: MemoryAssertions | null;
 }
 
 /**

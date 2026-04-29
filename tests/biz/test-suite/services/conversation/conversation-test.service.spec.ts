@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { ConversationTestService } from '@biz/test-suite/services/conversation-test.service';
 import { AgentRunnerService } from '@agent/runner.service';
 import { ContextService } from '@agent/context/context.service';
@@ -69,6 +70,11 @@ describe('ConversationTestService', () => {
   const mockWriteBackService = {
     writeBackSimilarityScore: jest.fn(),
   };
+  const mockConfigService = {
+    get: jest.fn((key: string) =>
+      key === 'TEST_SUITE_CONVERSATION_TURN_TIMEOUT_MS' ? '1000' : undefined,
+    ),
+  };
 
   const makeSource = (
     overrides: Partial<ConversationSnapshotRecord> = {},
@@ -111,6 +117,7 @@ describe('ConversationTestService', () => {
         { provide: ConversationSnapshotRepository, useValue: mockConversationSnapshotRepository },
         { provide: TestExecutionRepository, useValue: mockExecutionRepository },
         { provide: TestWriteBackService, useValue: mockWriteBackService },
+        { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
 
@@ -338,21 +345,43 @@ describe('ConversationTestService', () => {
       expect(orchestrator.invoke).toHaveBeenCalled();
     });
 
-    it('should use participant_name as userId', async () => {
-      await service.executeConversation('source-1');
+    it('should record timeout turns instead of hanging the source', async () => {
+      mockOrchestrator.invoke.mockImplementation(() => new Promise(() => undefined));
 
-      expect(orchestrator.invoke).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: 'Alice' }),
+      const result = await service.executeConversation('source-1');
+
+      expect(result.turns[0].executionStatus).toBe(ExecutionStatus.TIMEOUT);
+      expect(mockLlmEvaluationService.evaluate).not.toHaveBeenCalled();
+      expect(mockExecutionRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          executionStatus: ExecutionStatus.TIMEOUT,
+          errorMessage: expect.stringContaining('timeout after 1000ms'),
+          reviewStatus: ReviewStatus.PENDING,
+        }),
+      );
+      expect(conversationSnapshotRepository.updateSource).toHaveBeenCalledWith(
+        'source-1',
+        expect.objectContaining({ status: ConversationSourceStatus.COMPLETED }),
       );
     });
 
-    it('should throw error when source has no participant_name', async () => {
+    it('should use source id as isolated test userId', async () => {
+      await service.executeConversation('source-1');
+
+      expect(orchestrator.invoke).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'conversation-test-source-1' }),
+      );
+    });
+
+    it('should not require participant_name for runner identity', async () => {
       mockConversationSnapshotRepository.findById.mockResolvedValue(
         makeSource({ participant_name: null as unknown as string }),
       );
 
-      await expect(service.executeConversation('source-1')).rejects.toThrow(
-        '缺少 participant_name',
+      await service.executeConversation('source-1');
+
+      expect(orchestrator.invoke).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'conversation-test-source-1' }),
       );
     });
 

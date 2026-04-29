@@ -67,7 +67,7 @@ export class TestBatchService {
     private readonly executionService: TestExecutionService,
     private readonly configService: ConfigService,
   ) {
-    this.batchConcurrency = this.readPositiveInt('TEST_SUITE_BATCH_CONCURRENCY', 10, {
+    this.batchConcurrency = this.readPositiveInt('TEST_SUITE_BATCH_CONCURRENCY', 20, {
       min: 1,
       max: 20,
     });
@@ -187,6 +187,11 @@ export class TestBatchService {
       throw new Error('仅支持重跑用例测试执行记录');
     }
 
+    const batch = await this.batchRepository.findById(execution.batch_id);
+    if (batch?.status === BatchStatus.CREATED) {
+      await this.updateBatchStatus(execution.batch_id, BatchStatus.RUNNING);
+    }
+
     const testInput = this.asRecord(execution.test_input);
     const agentRequest = this.asRecord(execution.agent_request);
     const imageUrls = this.readStringArray(testInput, 'imageUrls');
@@ -208,6 +213,15 @@ export class TestBatchService {
       botUserId: this.readString(agentRequest, 'botUserId'),
       botImId: this.readString(agentRequest, 'botImId'),
       modelId: this.readString(agentRequest, 'modelId'),
+      sourceTrace: execution.source_trace ?? undefined,
+      memorySetup:
+        this.asNonEmptyRecord(execution.memory_setup) ||
+        this.asNonEmptyRecord(testInput.memorySetup) ||
+        undefined,
+      memoryAssertions:
+        this.asNonEmptyRecord(execution.memory_assertions) ||
+        this.asNonEmptyRecord(testInput.memoryAssertions) ||
+        undefined,
     });
 
     const updated = await this.executionRepository.updateExecution(execution.id, {
@@ -227,6 +241,8 @@ export class TestBatchService {
       reviewed_by: null,
       reviewer_source: null,
       reviewed_at: null,
+      execution_trace: result.trace?.executionTrace ?? null,
+      memory_trace: result.trace?.memoryTrace ?? null,
     });
 
     await this.updateBatchStats(execution.batch_id);
@@ -330,11 +346,10 @@ export class TestBatchService {
   async executeBatch(
     cases: TestChatRequestDto[],
     batchId?: string,
-    parallel = false,
+    parallel = true,
   ): Promise<TestChatResponse[]> {
-    this.logger.log(
-      `批量执行测试: ${cases.length} 个用例, 并行: ${parallel}, 并发=${parallel ? this.batchConcurrency : 1}`,
-    );
+    const concurrency = Math.min(cases.length || 1, this.batchConcurrency);
+    this.logger.log(`批量执行测试: ${cases.length} 个用例, 并行: ${parallel}, 并发=${concurrency}`);
 
     if (batchId) {
       await this.updateBatchStatus(batchId, BatchStatus.RUNNING);
@@ -342,20 +357,12 @@ export class TestBatchService {
 
     const results: TestChatResponse[] = [];
 
-    if (parallel) {
-      const batchSize = Math.min(cases.length, this.batchConcurrency);
-      for (let i = 0; i < cases.length; i += batchSize) {
-        const batch = cases.slice(i, i + batchSize);
-        const batchResults = await Promise.all(
-          batch.map((testCase) => this.executionService.executeTest({ ...testCase, batchId })),
-        );
-        results.push(...batchResults);
-      }
-    } else {
-      for (const testCase of cases) {
-        const result = await this.executionService.executeTest({ ...testCase, batchId });
-        results.push(result);
-      }
+    for (let i = 0; i < cases.length; i += concurrency) {
+      const batch = cases.slice(i, i + concurrency);
+      const batchResults = await Promise.all(
+        batch.map((testCase) => this.executionService.executeTest({ ...testCase, batchId })),
+      );
+      results.push(...batchResults);
     }
 
     if (batchId) {
@@ -392,6 +399,11 @@ export class TestBatchService {
     return value && typeof value === 'object' && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : {};
+  }
+
+  private asNonEmptyRecord(value: unknown): Record<string, unknown> | undefined {
+    const record = this.asRecord(value);
+    return Object.keys(record).length > 0 ? record : undefined;
   }
 
   private readString(record: Record<string, unknown>, key: string): string | undefined {
@@ -512,7 +524,7 @@ export class TestBatchService {
     currentStatus: BatchStatus,
     stats: BatchStats,
   ): Promise<void> {
-    if (stats.totalCases === 0 || stats.pendingReviewCount > 0) {
+    if (stats.totalCases === 0 || stats.executedCount < stats.totalCases) {
       return;
     }
 
@@ -522,10 +534,12 @@ export class TestBatchService {
 
     const transitionChain: BatchStatus[] = [];
     if (currentStatus === BatchStatus.CREATED) {
-      transitionChain.push(BatchStatus.RUNNING, BatchStatus.REVIEWING, BatchStatus.COMPLETED);
+      transitionChain.push(BatchStatus.RUNNING, BatchStatus.REVIEWING);
     } else if (currentStatus === BatchStatus.RUNNING) {
-      transitionChain.push(BatchStatus.REVIEWING, BatchStatus.COMPLETED);
-    } else if (currentStatus === BatchStatus.REVIEWING) {
+      transitionChain.push(BatchStatus.REVIEWING);
+    }
+
+    if (stats.pendingReviewCount === 0) {
       transitionChain.push(BatchStatus.COMPLETED);
     }
 

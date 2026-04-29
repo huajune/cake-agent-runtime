@@ -1,4 +1,14 @@
-import { formatLocalDate, formatLocalDateTime, getTomorrowDate } from '@infra/utils/date.util';
+import {
+  formatLocalDate,
+  formatLocalDateTime,
+  formatLocalMinute,
+  getLocalDayStart,
+  getLocalHourStart,
+  getLocalMonthStart,
+  getLocalWeekStart,
+  getTomorrowDate,
+  parseLocalDateStart,
+} from '@infra/utils/date.util';
 
 describe('date.util (Asia/Shanghai)', () => {
   describe('formatLocalDate', () => {
@@ -39,6 +49,47 @@ describe('date.util (Asia/Shanghai)', () => {
     it('should use 24-hour format', () => {
       const date = new Date('2026-03-27T23:05:09+08:00');
       expect(formatLocalDateTime(date)).toBe('2026-03-27 23:05:09');
+    });
+  });
+
+  describe('formatLocalMinute', () => {
+    it('should format UTC instants as Shanghai minute labels', () => {
+      expect(formatLocalMinute(new Date('2026-04-28T10:11:30Z'))).toBe('2026-04-28 18:11');
+    });
+  });
+
+  describe('local period starts', () => {
+    it('should return Shanghai day start as an absolute instant', () => {
+      expect(getLocalDayStart(new Date('2026-04-28T10:11:30Z')).toISOString()).toBe(
+        '2026-04-27T16:00:00.000Z',
+      );
+    });
+
+    it('should return Shanghai hour start as an absolute instant', () => {
+      expect(getLocalHourStart(new Date('2026-04-28T10:11:30Z')).toISOString()).toBe(
+        '2026-04-28T10:00:00.000Z',
+      );
+    });
+
+    it('should return Shanghai week start on Monday', () => {
+      expect(getLocalWeekStart(new Date('2026-04-29T02:00:00Z')).toISOString()).toBe(
+        '2026-04-26T16:00:00.000Z',
+      );
+    });
+
+    it('should return Shanghai month start with offsets', () => {
+      expect(getLocalMonthStart(new Date('2026-04-28T10:11:30Z')).toISOString()).toBe(
+        '2026-03-31T16:00:00.000Z',
+      );
+      expect(getLocalMonthStart(new Date('2026-04-28T10:11:30Z'), -1).toISOString()).toBe(
+        '2026-02-28T16:00:00.000Z',
+      );
+    });
+
+    it('should parse YYYY-MM-DD as Shanghai day start', () => {
+      expect(parseLocalDateStart('2026-04-28').toISOString()).toBe(
+        '2026-04-27T16:00:00.000Z',
+      );
     });
   });
 

@@ -47,9 +47,7 @@ describe('classifySupplementLabel', () => {
       expect(result.type).toBe('screening');
       if (result.type !== 'screening') return;
       expect(result.mode).toBe('rhetorical');
-      expect(result.failSignals).toEqual(
-        expect.arrayContaining(['不能', '不一定', '做不了']),
-      );
+      expect(result.failSignals).toEqual(expect.arrayContaining(['不能', '不一定', '做不了']));
     });
 
     it('treats 问号结尾 the same as 吗 句', () => {
@@ -84,6 +82,14 @@ describe('matchesScreeningFailure', () => {
     if (cls.type !== 'screening') throw new Error('expected screening');
     expect(matchesScreeningFailure(cls, '食品类')).toBe('食品');
     expect(matchesScreeningFailure(cls, '新媒体方向')).toBe('新媒');
+  });
+
+  it('does not treat health certificate type as profession answer', () => {
+    const cls = classifySupplementLabel('专业（非新媒、食品）');
+    if (cls.type !== 'screening') throw new Error('expected screening');
+    expect(matchesScreeningFailure(cls, '食品类健康证')).toBeNull();
+    expect(matchesScreeningFailure(cls, '我有食品健康证')).toBeNull();
+    expect(matchesScreeningFailure(cls, '我是食品专业，有健康证')).toBe('食品');
   });
 
   it('returns null when candidate answer does not contain any blacklist keyword', () => {
@@ -140,6 +146,14 @@ describe('findScreeningFailure', () => {
       answer: '食品类',
       matched: '食品',
     });
+  });
+
+  it('does not fail profession screening when answer is only a health certificate type', () => {
+    expect(
+      findScreeningFailure({
+        '专业（非新媒、食品）': '食品类健康证',
+      }),
+    ).toBeNull();
   });
 
   it('catches rhetorical-style negative answer (badcase 69e9bba2)', () => {

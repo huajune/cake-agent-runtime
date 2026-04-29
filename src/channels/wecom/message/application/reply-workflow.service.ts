@@ -30,7 +30,6 @@ const VISION_AWAIT_TIMEOUT_MS = 15_000;
  *
  * 首次 Agent 调用若命中其中任一工具（无论 result.success 如何），
  * 视为"本轮副作用已固化"，直接投递首次回复，跳过 replay 检测：
- * - `advance_stage`   procedural memory DB 直写 currentStage
  * - `invite_to_group` 企业级 addMember 外部 API + session facts 直写 invitedGroups
  * - `duliday_interview_booking` 杜力岱预约外部 API + recruitment_cases 建行 + 失败侧暂停托管
  *
@@ -42,9 +41,12 @@ const VISION_AWAIT_TIMEOUT_MS = 15_000;
  * Agent 生成期间到达的新消息会留在 Redis pending list 里，
  * 由 MessageProcessor.handleProcessJob 末尾的 `checkAndProcessNewMessages`
  * 补建 follow-up job 在下一轮独立处理。
+ *
+ * 注意：`advance_stage` 不属于这里的不可逆副作用。阶段推进只影响内部程序记忆；
+ * 如果因此跳过 replay，会把 Agent 生成期间到达的候选人补充信息拆成下一轮，
+ * 造成先回复旧问题、再处理新约束的错位体验。
  */
 const REPLAY_BLOCKING_TOOL_NAMES: ReadonlySet<string> = new Set([
-  'advance_stage',
   'invite_to_group',
   'duliday_interview_booking',
 ]);

@@ -4,7 +4,11 @@ const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
 const fs = require('fs');
-const { formatReleaseText, isEmptyReleaseLine } = require('./release-note-formatters');
+const {
+  formatOperationalReleaseText,
+  formatReleaseText,
+  isEmptyReleaseLine,
+} = require('./release-note-formatters');
 
 const WEBHOOK_ENV_KEYS = ['PRIVATE_CHAT_MONITOR_WEBHOOK_URL', 'DEPLOY_NOTIFICATION_WEBHOOK_URL'];
 const SECRET_ENV_KEYS = [
@@ -15,6 +19,51 @@ const MAX_MARKDOWN_CHARS = 3500;
 const CHANGELOG_PATH = 'CHANGELOG.md';
 const PENDING_START = '<!-- release:pending:start -->';
 const PENDING_END = '<!-- release:pending:end -->';
+const DEFAULT_OPERATIONAL_SUMMARY = '- 本次包含体验优化与稳定性修复，技术明细已记录在版本说明中。';
+const DEPLOY_STATUS_META = {
+  success: {
+    icon: '🎂',
+    title: '已发布',
+    accent: '✨',
+    markdown: '生产环境发布完成',
+    template: 'turquoise',
+  },
+  failure: {
+    icon: '⚠️',
+    title: '发布异常',
+    accent: '',
+    markdown: '生产环境发布失败，请查看 GitHub Actions 日志',
+    template: 'red',
+  },
+  cancelled: {
+    icon: '⏸️',
+    title: '发布取消',
+    accent: '',
+    markdown: '发布流程已取消',
+    template: 'orange',
+  },
+  canceled: {
+    icon: '⏸️',
+    title: '发布取消',
+    accent: '',
+    markdown: '发布流程已取消',
+    template: 'orange',
+  },
+  skipped: {
+    icon: '⏭️',
+    title: '发布跳过',
+    accent: '',
+    markdown: '发布流程被跳过',
+    template: 'grey',
+  },
+  unknown: {
+    icon: '🔎',
+    title: '发布状态待确认',
+    accent: '',
+    markdown: '发布状态待确认',
+    template: 'blue',
+  },
+};
 
 if (require.main === module) {
   main().catch((error) => {
@@ -26,6 +75,8 @@ if (require.main === module) {
 async function main() {
   const webhookUrl = firstEnv(WEBHOOK_ENV_KEYS);
   const requireNotification = isTruthy(process.env.REQUIRE_DEPLOY_NOTIFICATION);
+  const releaseTag = getReleaseTag();
+  const deployResult = getDeployResult();
 
   if (!webhookUrl) {
     const message = `Deploy notification skipped: configure ${WEBHOOK_ENV_KEYS.join(' or ')}`;
@@ -43,14 +94,14 @@ async function main() {
       header: {
         title: {
           tag: 'plain_text',
-          content: '版本发布通知',
+          content: buildCardTitle(releaseTag, deployResult),
         },
-        template: 'green',
+        template: getCardTemplate(deployResult),
       },
       elements: [
         {
           tag: 'markdown',
-          content: buildMarkdown(),
+          content: buildMarkdown({ releaseTag, deployResult }),
         },
         {
           tag: 'div',
@@ -75,24 +126,46 @@ async function main() {
   console.log('Deploy notification sent to Feishu private domain monitor group.');
 }
 
-function buildMarkdown() {
-  const releaseTag = env('RELEASE_TAG', env('IMAGE_TAG', env('GITHUB_REF_NAME', 'unknown')));
+function buildMarkdown(options = {}) {
+  const releaseTag = options.releaseTag || getReleaseTag();
+  const deployResult = normalizeDeployResult(options.deployResult || getDeployResult());
+  const deployStatus = getDeployStatusMeta(deployResult);
   const publishedAt = formatShanghaiTime(env('DEPLOY_FINISHED_AT', new Date().toISOString()));
   const releaseNotes = normalizeReleaseNotes(readReleaseNotes());
   const envReminder = extractEnvReminder(releaseNotes);
   const updateSummary = extractUpdateSummary(releaseNotes);
 
   const lines = [
-    `**版本号**：${releaseTag}`,
+    `**版本**：${releaseTag}`,
     `**发布时间**：${publishedAt}`,
-    '',
-    ...renderOptionalSection('环境变量同步提醒', envReminder),
-    '',
-    '**更新摘要**',
-    updateSummary,
+    `**发布状态**：${deployStatus.markdown}`,
   ];
+  if (envReminder) {
+    lines.push('', ...renderOptionalSection('需要关注', envReminder));
+  }
+  lines.push('', '**本次更新**', updateSummary);
 
   return truncateText(lines.join('\n'), MAX_MARKDOWN_CHARS);
+}
+
+function buildCardTitle(releaseTag = getReleaseTag(), deployResult = getDeployResult()) {
+  const deployStatus = getDeployStatusMeta(deployResult);
+  const versionText = releaseTag && releaseTag !== 'unknown' ? `${releaseTag} ` : '';
+  const accentText = deployStatus.accent ? ` ${deployStatus.accent}` : '';
+
+  return `${deployStatus.icon} 蛋糕私域托管 · ${versionText}${deployStatus.title}${accentText}`;
+}
+
+function getCardTemplate(deployResult = getDeployResult()) {
+  return getDeployStatusMeta(deployResult).template;
+}
+
+function getReleaseTag() {
+  return env('RELEASE_TAG', env('IMAGE_TAG', env('GITHUB_REF_NAME', 'unknown')));
+}
+
+function getDeployResult() {
+  return env('DEPLOY_RESULT', 'success');
 }
 
 function readReleaseNotes() {
@@ -125,29 +198,23 @@ function normalizeReleaseNotes(rawNotes) {
 
 function extractUpdateSummary(releaseNotes) {
   const summaryLines = parseMarkdownBullets(extractMarkdownSection(releaseNotes, '更新摘要'))
-    .map((line) => formatReleaseText(line, { includePrReference: false }))
+    .map((line) => formatOperationalReleaseText(line, { includePrReference: false }))
     .filter(Boolean);
 
   if (summaryLines.length > 0) {
-    return uniqueList(summaryLines)
-      .slice(0, 8)
-      .map((line) => `- ${line}`)
-      .join('\n');
+    return renderUpdateSummary(summaryLines);
   }
 
   const publicLines = extractPublicUpdateLines(releaseNotes);
   if (publicLines.length > 0) {
-    return publicLines.map((line) => `- ${line}`).join('\n');
+    return renderUpdateSummary(publicLines);
   }
 
   const fallbackLines = parseMarkdownBullets(releaseNotes.trim())
-    .map((line) => formatReleaseText(line, { includePrReference: false }))
+    .map((line) => formatOperationalReleaseText(line, { includePrReference: false }))
     .filter(Boolean);
 
-  return uniqueList(fallbackLines)
-    .slice(0, 8)
-    .map((line) => `- ${line}`)
-    .join('\n') || '- 暂无';
+  return renderUpdateSummary(fallbackLines);
 }
 
 function extractEnvReminder(releaseNotes) {
@@ -192,13 +259,23 @@ function extractPublicUpdateLines(releaseNotes) {
 
   for (const section of sections) {
     for (const item of parseMarkdownBullets(extractMarkdownSection(releaseNotes, section))) {
-      const text = formatReleaseText(item, { includePrReference: false });
+      const text = formatOperationalReleaseText(item, { includePrReference: false });
       if (!text || isEmptyReleaseLine(text)) continue;
       lines.push(text);
     }
   }
 
   return uniqueList(lines).slice(0, 10);
+}
+
+function renderUpdateSummary(lines) {
+  const items = uniqueList(lines).slice(0, 6);
+
+  if (items.length === 0) {
+    return DEFAULT_OPERATIONAL_SUMMARY;
+  }
+
+  return items.map((line) => `- ${line}`).join('\n');
 }
 
 function parseMarkdownBullets(markdown) {
@@ -264,6 +341,18 @@ function extractLatestReleaseSection(changelog) {
   }
 
   return section.slice(0, nextMatch.index + 1).trim();
+}
+
+function getDeployStatusMeta(deployResult) {
+  return DEPLOY_STATUS_META[normalizeDeployResult(deployResult)];
+}
+
+function normalizeDeployResult(deployResult) {
+  const normalized = String(deployResult || '')
+    .trim()
+    .toLowerCase();
+
+  return DEPLOY_STATUS_META[normalized] ? normalized : 'unknown';
 }
 
 function formatShanghaiTime(value) {
@@ -341,8 +430,10 @@ function postJson(url, payload) {
 }
 
 module.exports = {
+  buildCardTitle,
   buildMarkdown,
   extractUpdateSummary,
+  getCardTemplate,
   normalizeReleaseNotes,
 };
 

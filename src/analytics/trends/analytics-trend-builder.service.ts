@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { formatLocalDate, formatLocalMinute } from '@infra/utils/date.util';
 import { MessageProcessingRecord, MonitoringErrorLog } from '@shared-types/tracking.types';
 import {
   AlertTrendPoint,
@@ -28,7 +29,7 @@ export class AnalyticsTrendBuilderService {
     }
 
     return Array.from(buckets.entries())
-      .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
+      .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([minute, count]) => ({ minute, count }));
   }
 
@@ -67,7 +68,7 @@ export class AnalyticsTrendBuilderService {
     }
 
     return Array.from(buckets.entries())
-      .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
+      .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([minute, bucket]) => {
         const consultations = bucket.users.size;
         const bookingAttempts = bucket.bookingAttempts;
@@ -106,7 +107,7 @@ export class AnalyticsTrendBuilderService {
     }
 
     return Array.from(buckets.entries())
-      .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
+      .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([minute, bucket]) => ({
         minute,
         avgDuration:
@@ -183,20 +184,10 @@ export class AnalyticsTrendBuilderService {
   }
 
   private getMinuteKey(timestamp: number): string {
-    const date = new Date(timestamp);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${minutes}`;
+    return formatLocalMinute(new Date(timestamp));
   }
 
   private getDayKey(timestamp: number): string {
-    const date = new Date(timestamp);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return formatLocalDate(new Date(timestamp));
   }
 }

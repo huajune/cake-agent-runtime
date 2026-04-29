@@ -208,6 +208,18 @@
   }
 }
 
+.batchCreatedAt {
+  display: block;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.25;
+  color: $text-muted;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 // ==================== 批次状态标签（简约样式）====================
 .batchStatusTag {
   font-size: 11px;

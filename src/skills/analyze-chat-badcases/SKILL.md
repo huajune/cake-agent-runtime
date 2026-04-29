@@ -15,6 +15,7 @@ description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodC
 ## 数据源
 
 **生产 Supabase 直连**（只读）：
+
 - MCP 工具：`mcp__supabase__execute_sql`
 - `project_id`: `uvmbxcilpteaiizplcyp`
 
@@ -23,12 +24,14 @@ description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodC
 字段含义见 `references/schema.md`——在 Step 2 读完原始数据后需要参考。
 
 **飞书反馈样本池**：
+
 - `BadCase / GoodCase` 是反馈样本池，不是正式测试资产
 - 表配置来自 `FEISHU_BITABLE_BADCASE_*` / `FEISHU_BITABLE_GOODCASE_*`
 - 常用字段别名见 `src/biz/feishu-sync/bitable-sync.service.ts` 的 `feedbackFieldAliases`
 - 按提交时间分析时，优先用 `提交时间 / 创建时间 / 咨询时间` 做时间窗口；如果字段不存在，再用飞书记录元数据的创建时间兜底
 
 **飞书角色分工**：
+
 - `BadCase / GoodCase`：样本池，只保存证据、观察和候选素材
 - `测试集 / 验证集`：正式数据集，只能由本 skill 策展、确认后再导入
 - `资产关联`：内部血缘表，自动记录样本池和正式数据集之间的关联边
@@ -36,6 +39,8 @@ description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodC
 不要把样本池里的记录机械搬运成正式数据集，也不要依赖手动勾选字段决定是否入库。
 
 反馈修复测试验证链路遵循 `docs/workflows/feedback-repair-test-validation-v2.md`：反馈只进样本池，正式测试资产只能由本 skill 策展、用户确认后导入。
+
+涉及排障链路与记忆评测时，必须同时遵循 `docs/workflows/badcase-trace-memory-evaluation.md`：新反馈要带 `messageId / traceId / sourceTrace`，正式测试资产要带 `sourceTrace / memorySetup / memoryAssertions`，存量数据缺失时先回填再重跑。
 
 ## 执行步骤
 
@@ -64,6 +69,8 @@ description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodC
 - `userMessage`
 - `chatHistory`
 - `remark`
+- `messageId / traceId / sourceTrace`: 优先取独立字段；缺字段时从 `备注` 或 `SourceTrace / 排障Trace` JSON 里解析
+- `memorySetup / memoryAssertions`: 只在正式测试资产中使用；样本池如果带了草案，可以作为策展参考，不要直接视为已验证事实
 
 如果记录只有片段、没有完整对话，但有 `chatId`，再回查生产 Supabase 的 `chat_messages` 补齐完整会话；如果没有 `chatId`，只能基于 `chatHistory` 和备注分析，并在报告里标注证据不足。
 
@@ -91,6 +98,7 @@ description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodC
 # 对话分析报告（chat × N）
 
 ## 概要
+
 - 样本范围：{时间范围}
 - 总 turn / assistant turn 数 / 失败率 / 平均时延
 - 有 anomaly_flags 的 turn 比例
@@ -99,12 +107,14 @@ description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodC
 ## 问题分类
 
 ### [你自己命名的问题]
+
 - 触发样本：chat_id={xxx}, chat_id={xxx}
 - 典型片段（引用 2~3 行对话原文）
 - 判断理由
 - 修复方向：具体到代码位置 / prompt 段落 / 工具实现
 
 ## 整体观察
+
 （对这批样本的整体判断）
 ```
 
@@ -117,6 +127,7 @@ description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodC
 ### Step 5. 实施修复
 
 按常规开发流程：
+
 - Read 相关代码定位问题点
 - 改代码 / prompt / 工具实现
 - 遵循 `.claude/agents/code-standards.md`
@@ -127,6 +138,7 @@ description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodC
 **针对本次修复的问题类型**生成用例，不是 badcase 全量档案。
 
 正式资产策展闸门：
+
 - `BadCase / GoodCase` 只是证据样本池，不是高质量测试资产；不要把样本池记录按 1:1 原样搬成 `测试集 / 验证集`
 - 生成草稿前必须先对样本做 `保留 / 重写 / 合并 / 删除` 分层，并把分层结论展示给用户
 - `保留`：已有输入、上下文、检查点、期望行为都清楚，且能稳定自动评审
@@ -137,6 +149,7 @@ description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodC
 - 只有通过这个质量闸门的草稿，才允许进入用户确认和导入步骤
 
 验证集专用闸门：
+
 - `conversationCases` 不是“更长的 scenarioCase”。`验证集` 可以来自 BadCase 策展、重写或补全后的多轮回归样本；判断标准是它是否需要多轮状态回放，而不是是否逐字等于原始生产对话
 - BadCase 只有单条用户消息、事故备注、截图转写片段、或 0-3 行短上下文时，默认只能生成 `scenarioCases`，不能生成 `conversationCases`
 - 能进入 `验证集` 的样本必须满足：有足够完整的 `conversation`，能解析出至少 2 个用户侧 turn 和 2 个 Agent/招募经理侧 turn，且当前问题依赖跨轮上下文、记忆延续、已展示岗位、已收集报名字段、或预约流程状态；角色名不要求固定为“候选人/招募经理”，只要双方发言边界可识别即可
@@ -148,6 +161,7 @@ description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodC
 优先整理成两类 JSON 草稿，方便 Step 8 直接导入：
 
 1. `scenarioCases`：用于导入 `测试集`
+
 - `caseId`: 稳定 ID，同一条用例后续迭代必须保持不变
 - `caseName`: 用例名称
 - `category`: 问题分类（对应 Step 3 的问题名）
@@ -159,11 +173,16 @@ description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodC
 - `sourceBadCaseIds`: 关联 badcase ID 列表（可选）
 - `sourceGoodCaseIds`: 关联 goodcase ID 列表（可选）
 - `sourceChatIds`: 关联 chat_id 列表（可选）
+- `sourceRecordIds / sourceAnchorMessageIds / sourceRelatedMessageIds / sourceMessageProcessingIds / sourceTraceIds`: 排障 ID，能拿到就必须保留
+- `sourceTrace`: 完整排障证据包，至少包含 badcase/chat/message 维度中可获得的 ID
+- `memorySetup`: 测试前置记忆 fixture；记忆相关 BadCase 必填，非记忆 case 可为空但要说明原因
+- `memoryAssertions`: 记忆能力断言；记忆相关 BadCase 必填
 - `participantName / managerName / consultTime`: 追溯信息，可选
 - `remark`: 策展备注，可选
 - `enabled`: 是否启用，默认 `true`
 
 2. `conversationCases`：用于导入 `验证集`
+
 - `validationId`: 稳定 ID，同一条验证样本后续迭代必须保持不变
 - `validationTitle`: 验证标题，必须概括根因和关键上下文，不要只写随机 caseName 或“真实生产对话回归样本”
 - `conversation`: 足够回放该 BadCase 根因的多轮对话记录；只能包含到待验证问题发生时所需的上下文，不要把后续真人补救、人工评语、或目标答案混进对话正文
@@ -171,10 +190,19 @@ description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodC
 - `participantName / managerName / consultTime`: 对话元信息，可选
 - `sourceType`: `真实生产 / 从BadCase沉淀 / 从GoodCase沉淀 / 人工补充`
 - `sourceBadCaseIds / sourceGoodCaseIds / sourceChatIds`: 溯源信息，可选
+- `sourceRecordIds / sourceAnchorMessageIds / sourceRelatedMessageIds / sourceMessageProcessingIds / sourceTraceIds / sourceTrace`: 排障证据链，能拿到就必须保留
+- `memorySetup / memoryAssertions`: 多轮状态、已展示岗位、预约流程、报名字段延续等验证集必须提供
 - `remark`: 策展备注，必须写清关键观察 turn、为什么需要整段回归、动态事实边界、以及是否缺少 chatId / 工具流水
 - `enabled`: 是否启用，默认 `true`
 
+回填与覆盖率检查：
+
+- 存量草稿缺少 `sourceTrace / memorySetup / memoryAssertions` 时，先运行 `node scripts/backfill-badcase-trace-memory.js --check`
+- 默认输出 `tmp/curated-badcase-dataset-draft-20260428-trace-enriched.json` 和 `tmp/badcase-trace-memory-coverage-20260429.json`
+- 覆盖率不是质量通过证明；覆盖率通过后仍要按正式资产复核清单逐条审计
+
 动态工具数据边界：
+
 - `conversation` 里的历史真人回复默认只是复盘参考，不等于硬期望回复
 - 涉及岗位库存、距离、面试时间、薪资、年龄/健康证门槛等会由 `duliday_job_list / geocode / duliday_interview_precheck` 实时生成的数据时，不要把历史下一句写成固定事实断言
 - 需要稳定自动评审时，优先在 `expectedOutput` 写成 `核心检查点：...` / `期望行为：...` 这类行为断言，例如“必须先 geocode 再查岗；回复要基于本轮工具结果，不得声称历史岗位仍在/已满”
@@ -182,11 +210,13 @@ description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodC
 - 对于工具生成的岗位/距离/预约结论，真人历史回复只能用于理解当时发生了什么；真正的评审事实锚点必须来自本轮工具结果或显式 mock 的工具快照
 
 上下文与记忆完整性闸门：
+
 - `chatHistory` 不是装饰字段；它必须覆盖当前用户消息之前、会影响 Agent 判断的关键上下文，尤其是候选人已经给过的城市/区域/商圈、年龄、性别、健康证、学历、可上班时间、岗位/品牌偏好、已拒绝原因、已展示岗位、当前焦点岗位、已预约信息
 - 默认不要生成 0-3 行的多轮场景测试；除非这是明确的首轮开场/单轮查岗场景，且 `remark` 必须写明“首轮场景：无历史上下文”或“单轮查岗，事实锚点来自本轮工具结果”
 - 对于“已给信息后不得反复询问”“候选人追问/拒绝/确认”“约面字段收集”“岗位硬约束延续”等场景，`chatHistory` 通常应保留 4-10 个关键 turn；必要时保留更多，但只能截到当前用户消息之前，不能把目标答案或后续真人回复塞进去
 
 正式资产复核清单：
+
 - 每条 `scenarioCase` 必须能回答“最后一条用户输入是什么、要验证哪个原子行为、失败判定是什么”，不能只保存一段历史事故描述
 - 每条 `conversationCase` 必须能回答“保留整段真实上下文的价值是什么、哪些 turn 是关键观察点、哪些事实只能由本轮工具结果决定、为什么不能降级成 scenarioCase”
 - `expectedOutput` 不要写成历史真人回复的复刻稿；如果包含具体门店、薪资、距离、面试时间、库存等事实，必须能追溯到本轮工具调用结果或显式 mock 快照
@@ -194,6 +224,7 @@ description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodC
 - 资产导入前抽查重复字段和无效字段，例如 `验证标题展示` 与 `验证标题` 重复、默认 `多行文本` 空列残留；正式表结构要保持最少但够用
 
 已有正式资产审计与修订 SOP：
+
 - 用户要求“看飞书里已有测试集/验证集是否适合测试”“review 测试集和验证集”“重写不合适 case”时，读取正式 `测试集 / 验证集` 表，不要只看本地草稿或源 `BadCase`
 - 审计输出必须分层：`基本符合 / 需修订后可用 / 不适合直接跑`；不要把“来自 BadCase 策展”误判为不合格，重点判断是否可执行、可稳定评审、边界是否清楚
 - `测试集` 审计项：是否有 `caseId / caseName / userMessage / checkpoint 或 expectedOutput`，`chatHistory` 是否足够支撑当前行为，动态事实是否写明以本轮工具结果为准，是否混入后续人工补救或评审文本
@@ -207,6 +238,7 @@ description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodC
 - 修订完成后要重新全量审计正式表，确认 `问题数=0` 或列出剩余问题；不要只凭更新接口成功就结束
 
 动态事实断言模板：
+
 - `测试集 expectedOutput` 推荐写法：`期望行为：... 具体门店、距离、薪资、岗位要求、预约结果以本轮 geocode / job_list / precheck / booking 工具结果为准；不得复刻历史人工话术。`
 - `验证集 conversation` 推荐写法：把历史 Agent 轮写成 `期望行为: ...`，让多轮状态可回放，但不把历史下一句当固定答案
 - `remark` 推荐写法：`关键观察 turn：...；动态事实边界：... 只按本轮工具结果评审；无 chatId，无法回查生产工具流水。`
@@ -223,6 +255,7 @@ description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodC
 test-suite 模块已有 HTTP 接口。端点速查见 `references/test-suite-api.md`。调用前 Read 对应 DTO 文件确认契约。
 
 导入前先确保：
+
 - 本次要导入的内容已经在对话里经过用户确认
 - `测试集 / 验证集` 只包含本轮策展后的正式资产
 - 不要假设 `BadCase / GoodCase` 会自动同步到正式数据集
@@ -230,10 +263,12 @@ test-suite 模块已有 HTTP 接口。端点速查见 `references/test-suite-api
 - 如果本轮有 `conversationCases`，导入前必须逐条展示 `validationId / validationTitle / 关键观察 turn / 是否有 chatId / 动态事实边界`，并让用户确认
 
 导入时使用：
+
 - `POST /test-suite/datasets/scenario/import-curated`：把 `scenarioCases` 幂等 upsert 到 `测试集`
 - `POST /test-suite/datasets/conversation/import-curated`：把 `conversationCases` 幂等 upsert 到 `验证集`
 
 注意：
+
 - 同一 `caseId / validationId` 会更新原记录，不会重复创建
 - 如果内容发生变化，系统会把旧的 `测试状态 / 批次 / 分数` 等执行结果清回 `待测试`
 - 如果 payload 完全一致，导入应保持幂等，不重复重置
@@ -242,6 +277,7 @@ test-suite 模块已有 HTTP 接口。端点速查见 `references/test-suite-api
 ### Step 9. 跑测试
 
 调 test-suite 批次执行端点，轮询结果。输出：
+
 - 通过率
 - 未通过用例清单 + 失败原因
 - 若通过率不理想，回 Step 5 继续迭代
@@ -253,6 +289,7 @@ test-suite 模块已有 HTTP 接口。端点速查见 `references/test-suite-api
 - `反馈验证 SOP` 只是操作流程名，不是批次标题的一部分
 
 人工评审时要把“系统记录”和“飞书回写”一起收口：
+
 - 场景测试执行 `PATCH /test-suite/executions/:id/review` 后，应自动把 `测试集` 的 `测试状态 / 最近测试时间 / 测试批次 / 错误原因 / 评审摘要` 回写到飞书
 - 回归验证执行 `PATCH /test-suite/conversations/turns/:executionId/review` 后，应自动把 `验证集` 的 `测试状态 / 最近测试时间 / 测试批次 / 相似度分数 / 最低分 / 评估摘要` 回写到飞书
 - 回归验证批次统计必须按验证样本聚合 turn 级评审：任一 turn 人审失败则整条验证样本失败，任一 turn 待评审则整条验证样本待评审；不要只用平均相似度判断整条样本通过
@@ -262,11 +299,13 @@ test-suite 模块已有 HTTP 接口。端点速查见 `references/test-suite-api
 - 如果飞书字段已更新但线上页面没变，不要误判为回写失败；`https://cake.duliday.com/web/test-suite` 读的是生产 test-suite 数据库，不是飞书表
 
 评审弹窗展示信息时，优先使用 test-suite 当前执行记录里已经稳定保存的上下文：
+
 - 用户消息 / 历史上下文 / 预期输出 / 实际输出 / 工具调用 / 人工评审状态与备注
 - 只有当正式资产能稳定关联到源 `chatId / messageId` 时，才再深挖 `message_processing_records`
 - 不要默认把生产消息处理流水整段塞进评审弹窗；否则容易混入不属于测试执行的数据噪音
 
 如果用户明确要求把结果同步到线上页面 `https://cake.duliday.com/web/test-suite`，不要只停留在测试环境数据库或飞书回写：
+
 - 先确认批次评审状态已经稳定
 - 再运行 `pnpm sync:test-suite:prod -- <batchId...>` 把这轮批次同步到生产 test-suite 数据库
 - 该页面的数据源是生产库里的 `test_batches / test_executions / conversation source`，不是飞书表本身
@@ -276,21 +315,26 @@ test-suite 模块已有 HTTP 接口。端点速查见 `references/test-suite-api
 跑完测试后，必须把本轮涉及的源 `BadCase / GoodCase` 样本收尾回写；不要只更新 `测试集 / 验证集 / 资产关联`。
 
 回写源样本池前必须先确认正式测试资产已全量对齐：
+
 - `测试集` 中本轮 `来源BadCaseID` 对应记录不应再停留在 `待测试`
 - `验证集` 中本轮 `来源BadCaseID` 对应记录不应再停留在 `待测试`
 - 只有 `测试集=通过` 且 `验证集=通过` 的源样本才能写 `已解决`
 - 如果场景测试已通过但回归验证失败或低于阈值，源 `BadCase` 写 `待验证`，并在 `修复说明` 中写明失败批次和需要人工复核
 
-BadCase 推荐状态流转：
+BadCase 状态只保留 4 个运营可判断状态：
+
 - 刚收集、尚未分析：`待分析`
-- 已确认问题但未修：`待修复`
-- 正在修代码 / prompt / 工具：`修复中`
-- 修复已完成、测试还没跑：`待测试`
-- 测试已跑但还需人工确认：`待验证`
+- 已确认要修、正在修代码 / prompt / 工具、或修完待测：`处理中`
+- 测试已跑但还需人工确认，或场景测试已通过但回归验证失败：`待验证`
 - 定向测试/回归验证已通过，或已确认无需继续处理：`已解决`
-- 样本已失效：`已过时`
+
+历史状态合并规则：
+
+- `待修复 / 修复中 / 待测试` 统一并入 `处理中`
+- `已过时` 统一并入 `已解决`
 
 回写字段优先级：
+
 - `状态`：按上面的状态流转写入
 - `根因层`：`prompt / stage / tool / data / memory / workflow / policy / unknown`
 - `修复说明`：写清修复文件/策略、正式用例 ID、验证批次 ID、是否有残余风险
@@ -308,12 +352,14 @@ BadCase 推荐状态流转：
 ## 判断边界
 
 **你被期望做**：
+
 - 判断对话好坏（招聘语境 + 业务常识）
 - 归类问题模式，自己命名
 - 读代码定位、改代码
 - 生成测试用例并根据用户反馈迭代
 
 **你不要做**：
+
 - 不要跳过 Step 4 / Step 7 直接改代码或入库——用户需要审查闸门
 - 不要把 `BadCase / GoodCase` 当成正式测试资产表，它们只是样本池
 - 不要依赖任何手动勾选字段来决定是否进入 `测试集 / 验证集`

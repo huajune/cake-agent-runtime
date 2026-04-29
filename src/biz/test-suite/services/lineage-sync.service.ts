@@ -32,6 +32,7 @@ import {
   LineageTargetTable,
   lineageFieldAliases,
 } from './lineage-sync.types';
+import { normalizeSourceTrace } from './test-trace.helpers';
 
 @Injectable()
 export class LineageSyncService {
@@ -214,6 +215,7 @@ export class LineageSyncService {
     const targetTitle = currentCase.caseName.trim();
     const curatedSourceType = currentCase.sourceType || ScenarioDatasetSourceType.MANUAL;
     const syncedAt = Date.now();
+    const sourceTrace = normalizeSourceTrace(currentCase);
     const remark = composeRemark([
       importNote ? `导入说明: ${importNote}` : undefined,
       currentCase.remark ? `策展备注: ${currentCase.remark.trim()}` : undefined,
@@ -223,17 +225,26 @@ export class LineageSyncService {
       [
         {
           sourceTable: 'BadCase',
-          sourceIds: currentCase.sourceBadCaseIds,
+          sourceIds: normalizeIds([
+            ...(currentCase.sourceBadCaseIds || []),
+            ...(sourceTrace?.badcaseIds || []),
+          ]),
           relationRole: '问题来源',
         },
         {
           sourceTable: 'GoodCase',
-          sourceIds: currentCase.sourceGoodCaseIds,
+          sourceIds: normalizeIds([
+            ...(currentCase.sourceGoodCaseIds || []),
+            ...(sourceTrace?.goodcaseIds || []),
+          ]),
           relationRole: '正样本参考',
         },
         {
           sourceTable: 'Chat',
-          sourceIds: currentCase.sourceChatIds,
+          sourceIds: normalizeIds([
+            ...(currentCase.sourceChatIds || []),
+            ...(sourceTrace?.chatIds || []),
+          ]),
           relationRole: '对话证据',
         },
       ],
@@ -258,6 +269,7 @@ export class LineageSyncService {
     const targetTitle = currentCase.validationTitle.trim();
     const curatedSourceType = currentCase.sourceType || ConversationDatasetSourceType.PRODUCTION;
     const syncedAt = Date.now();
+    const sourceTrace = normalizeSourceTrace(currentCase);
     const remark = composeRemark([
       importNote ? `导入说明: ${importNote}` : undefined,
       currentCase.remark ? `策展备注: ${currentCase.remark.trim()}` : undefined,
@@ -267,12 +279,18 @@ export class LineageSyncService {
       [
         {
           sourceTable: 'BadCase',
-          sourceIds: currentCase.sourceBadCaseIds,
+          sourceIds: normalizeIds([
+            ...(currentCase.sourceBadCaseIds || []),
+            ...(sourceTrace?.badcaseIds || []),
+          ]),
           relationRole: '问题来源',
         },
         {
           sourceTable: 'GoodCase',
-          sourceIds: currentCase.sourceGoodCaseIds,
+          sourceIds: normalizeIds([
+            ...(currentCase.sourceGoodCaseIds || []),
+            ...(sourceTrace?.goodcaseIds || []),
+          ]),
           relationRole: '正样本参考',
         },
         {

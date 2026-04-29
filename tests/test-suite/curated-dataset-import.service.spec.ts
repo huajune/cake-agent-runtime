@@ -19,6 +19,7 @@ describe('CuratedDatasetImportService', () => {
       getFields: jest.fn().mockResolvedValue([]),
       buildFieldNameToIdMap: jest.fn().mockReturnValue({}),
       getAllRecords: jest.fn().mockResolvedValue([]),
+      createField: jest.fn().mockResolvedValue({ fieldId: 'fld-created' }),
       createRecord: jest.fn(),
       updateRecord: jest.fn(),
     } as unknown as jest.Mocked<FeishuBitableApiService>;

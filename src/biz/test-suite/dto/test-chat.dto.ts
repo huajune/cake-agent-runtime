@@ -4,6 +4,7 @@ import {
   IsArray,
   IsBoolean,
   IsNumber,
+  IsObject,
   ValidateNested,
   IsEnum,
   IsIn,
@@ -22,6 +23,89 @@ import {
   FeedbackType,
   TestType,
 } from '../enums/test.enum';
+import type {
+  MemoryAssertions,
+  MemoryFixtureSetup,
+  TestExecutionTraceBundle,
+  TestMemoryTraceBundle,
+  TestSourceTrace,
+} from '../types/test-debug-trace.types';
+
+export class SourceTraceDto {
+  @ApiPropertyOptional({ description: '来源 BadCase 稳定 ID 列表', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  badcaseIds?: string[];
+
+  @ApiPropertyOptional({ description: '来源 GoodCase 稳定 ID 列表', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  goodcaseIds?: string[];
+
+  @ApiPropertyOptional({ description: '来源 BadCase/反馈表 Feishu record_id 列表', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  badcaseRecordIds?: string[];
+
+  @ApiPropertyOptional({ description: '来源 chat_id 列表', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  chatIds?: string[];
+
+  @ApiPropertyOptional({ description: '触发消息 messageId 列表', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  anchorMessageIds?: string[];
+
+  @ApiPropertyOptional({ description: '相关消息 messageId 列表', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  relatedMessageIds?: string[];
+
+  @ApiPropertyOptional({
+    description: 'message_processing_records 或处理流水 ID 列表',
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  messageProcessingIds?: string[];
+
+  @ApiPropertyOptional({ description: 'Agent/runtime traceId 列表', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  traceIds?: string[];
+
+  @ApiPropertyOptional({ description: '关联测试执行 ID 列表', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  executionIds?: string[];
+
+  @ApiPropertyOptional({ description: '关联测试批次 ID 列表', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  batchIds?: string[];
+
+  @ApiPropertyOptional({ description: '排障备注', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  notes?: string[];
+
+  @ApiPropertyOptional({ description: '未结构化的原始排障证据包' })
+  @IsOptional()
+  @IsObject()
+  raw?: Record<string, unknown>;
+}
 
 /**
  * 简单消息结构（用于对话历史）
@@ -180,6 +264,22 @@ export class VercelAIChatRequestDto {
   @IsOptional()
   @IsString()
   modelId?: string;
+
+  @ApiPropertyOptional({ description: '来源排障链路（BadCase/chat/message/trace 等）' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SourceTraceDto)
+  sourceTrace?: SourceTraceDto;
+
+  @ApiPropertyOptional({ description: '测试前置记忆 fixture；仅测试链路使用' })
+  @IsOptional()
+  @IsObject()
+  memorySetup?: MemoryFixtureSetup;
+
+  @ApiPropertyOptional({ description: '记忆能力断言；仅测试链路使用' })
+  @IsOptional()
+  @IsObject()
+  memoryAssertions?: MemoryAssertions;
 }
 
 /**
@@ -281,6 +381,22 @@ export class TestChatRequestDto {
   @IsOptional()
   @IsString()
   modelId?: string;
+
+  @ApiPropertyOptional({ description: '来源排障链路（BadCase/chat/message/trace 等）' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SourceTraceDto)
+  sourceTrace?: SourceTraceDto;
+
+  @ApiPropertyOptional({ description: '测试前置记忆 fixture；仅测试链路使用' })
+  @IsOptional()
+  @IsObject()
+  memorySetup?: MemoryFixtureSetup;
+
+  @ApiPropertyOptional({ description: '记忆能力断言；仅测试链路使用' })
+  @IsOptional()
+  @IsObject()
+  memoryAssertions?: MemoryAssertions;
 }
 
 /**
@@ -421,6 +537,12 @@ export interface TestChatResponse {
       outputTokens: number;
       totalTokens: number;
     };
+  };
+
+  trace?: {
+    sourceTrace?: TestSourceTrace | null;
+    executionTrace?: TestExecutionTraceBundle | null;
+    memoryTrace?: TestMemoryTraceBundle | null;
   };
 }
 
@@ -575,6 +697,55 @@ export class CuratedScenarioCaseDto {
   @IsString({ each: true })
   sourceChatIds?: string[];
 
+  @ApiPropertyOptional({ description: '来源 BadCase/反馈表 Feishu record_id 列表', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  sourceRecordIds?: string[];
+
+  @ApiPropertyOptional({ description: '来源触发消息 messageId 列表', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  sourceAnchorMessageIds?: string[];
+
+  @ApiPropertyOptional({ description: '来源相关消息 messageId 列表', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  sourceRelatedMessageIds?: string[];
+
+  @ApiPropertyOptional({
+    description: '来源 message_processing_records 或处理流水 ID 列表',
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  sourceMessageProcessingIds?: string[];
+
+  @ApiPropertyOptional({ description: '来源 Agent/runtime traceId 列表', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  sourceTraceIds?: string[];
+
+  @ApiPropertyOptional({ description: '完整来源排障链路' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SourceTraceDto)
+  sourceTrace?: SourceTraceDto;
+
+  @ApiPropertyOptional({ description: '测试前置记忆 fixture；仅测试链路使用' })
+  @IsOptional()
+  @IsObject()
+  memorySetup?: MemoryFixtureSetup;
+
+  @ApiPropertyOptional({ description: '记忆能力断言；仅测试链路使用' })
+  @IsOptional()
+  @IsObject()
+  memoryAssertions?: MemoryAssertions;
+
   @ApiPropertyOptional({ description: '候选人昵称 / participantName' })
   @IsOptional()
   @IsString()
@@ -674,6 +845,55 @@ export class CuratedConversationCaseDto {
   @IsString({ each: true })
   sourceChatIds?: string[];
 
+  @ApiPropertyOptional({ description: '来源 BadCase/反馈表 Feishu record_id 列表', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  sourceRecordIds?: string[];
+
+  @ApiPropertyOptional({ description: '来源触发消息 messageId 列表', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  sourceAnchorMessageIds?: string[];
+
+  @ApiPropertyOptional({ description: '来源相关消息 messageId 列表', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  sourceRelatedMessageIds?: string[];
+
+  @ApiPropertyOptional({
+    description: '来源 message_processing_records 或处理流水 ID 列表',
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  sourceMessageProcessingIds?: string[];
+
+  @ApiPropertyOptional({ description: '来源 Agent/runtime traceId 列表', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  sourceTraceIds?: string[];
+
+  @ApiPropertyOptional({ description: '完整来源排障链路' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SourceTraceDto)
+  sourceTrace?: SourceTraceDto;
+
+  @ApiPropertyOptional({ description: '测试前置记忆 fixture；仅测试链路使用' })
+  @IsOptional()
+  @IsObject()
+  memorySetup?: MemoryFixtureSetup;
+
+  @ApiPropertyOptional({ description: '记忆能力断言；仅测试链路使用' })
+  @IsOptional()
+  @IsObject()
+  memoryAssertions?: MemoryAssertions;
+
   @ApiPropertyOptional({ description: '备注 / 策展说明' })
   @IsOptional()
   @IsString()
@@ -747,10 +967,27 @@ export class SubmitFeedbackRequestDto {
   @IsString()
   chatId?: string;
 
+  @ApiPropertyOptional({ description: '触发消息 messageId' })
+  @IsOptional()
+  @IsString()
+  messageId?: string;
+
+  @ApiPropertyOptional({ description: 'Agent/runtime traceId' })
+  @IsOptional()
+  @IsString()
+  traceId?: string;
+
   @ApiPropertyOptional({ description: 'Batch ID' })
   @IsOptional()
   @IsString()
   batchId?: string;
+
+  @ApiPropertyOptional({ description: '反馈来源排障证据包', type: SourceTraceDto })
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => SourceTraceDto)
+  sourceTrace?: SourceTraceDto;
 
   @ApiPropertyOptional({ description: '候选人微信昵称' })
   @IsOptional()

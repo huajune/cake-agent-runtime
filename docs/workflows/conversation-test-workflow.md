@@ -17,6 +17,7 @@
 ### 功能定位
 
 回归验证是测试套件的核心功能之一,用于:
+
 - 从飞书多维表格 **validationSet 表** 导入真实客户对话记录
 - 将历史对话重放给 AI Agent,验证回复质量
 - 使用 LLM 自动评估 Agent 回复与真人回复的相似度
@@ -27,12 +28,12 @@
 
 ### 核心概念
 
-| 概念 | 说明 | 示例 |
-|------|------|------|
-| **测试批次 (Batch)** | 一次导入的完整测试/验证集 | "回归验证 2026/1/16" |
-| **对话源 (Source)** | 单个完整对话记录 | Paidax 的 3 轮对话 |
-| **测试轮次 (Turn)** | 对话中的单次交互 | 用户问 → Agent 答 |
-| **相似度评分 (Score)** | LLM 对回复质量的评分 | 0-100 分,60分及格 |
+| 概念                   | 说明                      | 示例                 |
+| ---------------------- | ------------------------- | -------------------- |
+| **测试批次 (Batch)**   | 一次导入的完整测试/验证集 | "回归验证 2026/1/16" |
+| **对话源 (Source)**    | 单个完整对话记录          | Paidax 的 3 轮对话   |
+| **测试轮次 (Turn)**    | 对话中的单次交互          | 用户问 → Agent 答    |
+| **相似度评分 (Score)** | LLM 对回复质量的评分      | 0-100 分,60分及格    |
 
 ### 技术栈
 
@@ -93,33 +94,33 @@
 
 #### test_batches (测试批次表)
 
-| 字段 | 类型 | 说明 | 示例 |
-|------|------|------|------|
-| `id` | UUID | 主键 | `batch-001` |
-| `name` | TEXT | 批次名称 | "回归验证 2026/1/16 11:13" |
-| `test_type` | TEXT | 测试类型 | `'conversation'` |
-| `status` | TEXT | 批次状态 | `'created'` \| `'running'` \| `'completed'` |
-| `total_cases` | INTEGER | 对话总数 | `19` |
-| `executed_count` | INTEGER | 已执行数 | `2` |
-| `pass_rate` | NUMERIC | 平均评分 | `82.5` |
-| `created_at` | TIMESTAMP | 创建时间 | - |
-| `updated_at` | TIMESTAMP | 更新时间 | - |
+| 字段             | 类型      | 说明     | 示例                                        |
+| ---------------- | --------- | -------- | ------------------------------------------- |
+| `id`             | UUID      | 主键     | `batch-001`                                 |
+| `name`           | TEXT      | 批次名称 | "回归验证 2026/1/16 11:13"                  |
+| `test_type`      | TEXT      | 测试类型 | `'conversation'`                            |
+| `status`         | TEXT      | 批次状态 | `'created'` \| `'running'` \| `'completed'` |
+| `total_cases`    | INTEGER   | 对话总数 | `19`                                        |
+| `executed_count` | INTEGER   | 已执行数 | `2`                                         |
+| `pass_rate`      | NUMERIC   | 平均评分 | `82.5`                                      |
+| `created_at`     | TIMESTAMP | 创建时间 | -                                           |
+| `updated_at`     | TIMESTAMP | 更新时间 | -                                           |
 
 #### conversation_sources (对话源表)
 
-| 字段 | 类型 | 说明 | 数据示例 |
-|------|------|------|----------|
-| `id` | UUID | 主键 | `source-001` |
-| `batch_id` | UUID | 所属批次 | `batch-001` |
-| `feishu_record_id` | TEXT | 飞书记录ID | `rec123` |
-| `conversation_id` | TEXT | 对话标识 | `conv-595972ed` |
-| `participant_name` | TEXT | 参与者姓名 | `"Paidax"` |
-| `full_conversation` | JSONB | 完整对话 | 见下方示例 |
-| `raw_text` | TEXT | 原始文本 | 飞书原始对话记录 |
-| `total_turns` | INTEGER | 轮次总数 | `3` |
-| `avg_similarity_score` | NUMERIC | 平均评分 | `83.5` |
-| `min_similarity_score` | NUMERIC | 最低评分 | `75.0` |
-| `status` | TEXT | 执行状态 | `'pending'` \| `'running'` \| `'completed'` \| `'failed'` |
+| 字段                   | 类型    | 说明       | 数据示例                                                  |
+| ---------------------- | ------- | ---------- | --------------------------------------------------------- |
+| `id`                   | UUID    | 主键       | `source-001`                                              |
+| `batch_id`             | UUID    | 所属批次   | `batch-001`                                               |
+| `feishu_record_id`     | TEXT    | 飞书记录ID | `rec123`                                                  |
+| `conversation_id`      | TEXT    | 对话标识   | `conv-595972ed`                                           |
+| `participant_name`     | TEXT    | 参与者姓名 | `"Paidax"`                                                |
+| `full_conversation`    | JSONB   | 完整对话   | 见下方示例                                                |
+| `raw_text`             | TEXT    | 原始文本   | 飞书原始对话记录                                          |
+| `total_turns`          | INTEGER | 轮次总数   | `3`                                                       |
+| `avg_similarity_score` | NUMERIC | 平均评分   | `83.5`                                                    |
+| `min_similarity_score` | NUMERIC | 最低评分   | `75.0`                                                    |
+| `status`               | TEXT    | 执行状态   | `'pending'` \| `'running'` \| `'completed'` \| `'failed'` |
 
 **full_conversation JSONB 结构**:
 
@@ -150,27 +151,32 @@
 
 #### test_executions (执行记录表)
 
-| 字段 | 类型 | 说明 | 示例 |
-|------|------|------|------|
-| `id` | UUID | 主键 | `exec-001` |
-| `conversation_snapshot_id` | UUID | 所属对话源 | `source-001` |
-| `turn_number` | INTEGER | 轮次编号 | `1` (从1开始) |
-| `input_message` | TEXT | 用户输入 | "我想了解Java岗位" |
-| `expected_output` | TEXT | 期望输出 | "好的,我们有以下..." |
-| `actual_output` | TEXT | 实际输出 | "当然可以!我们目前..." |
-| `similarity_score` | NUMERIC | 相似度评分 | `85.0` |
-| `evaluation_reason` | TEXT | 评估理由 | "回复正确理解了用户意图..." |
-| `agent_request` | JSONB | Agent 请求 | API 请求参数 |
-| `agent_response` | JSONB | Agent 响应 | API 完整响应 |
-| `tool_calls` | JSONB | 工具调用 | `[]` 或工具调用数组 |
-| `execution_status` | TEXT | 执行状态 | `'success'` \| `'failed'` |
-| `duration_ms` | INTEGER | 执行耗时 | `3500` (ms) |
-| `token_usage` | JSONB | Token 用量 | `{inputTokens, outputTokens, totalTokens}` |
-| `error_message` | TEXT | 错误信息 | - |
-| `review_status` | TEXT | 评审状态 | `'pending_review'` \| `'passed'` \| `'failed'` |
-| `review_comment` | TEXT | 评审评论 | - |
-| `reviewed_by` | TEXT | 评审人 | - |
-| `reviewed_at` | TIMESTAMP | 评审时间 | - |
+| 字段                       | 类型      | 说明                                          | 示例                                           |
+| -------------------------- | --------- | --------------------------------------------- | ---------------------------------------------- |
+| `id`                       | UUID      | 主键                                          | `exec-001`                                     |
+| `conversation_snapshot_id` | UUID      | 所属对话源                                    | `source-001`                                   |
+| `turn_number`              | INTEGER   | 轮次编号                                      | `1` (从1开始)                                  |
+| `input_message`            | TEXT      | 用户输入                                      | "我想了解Java岗位"                             |
+| `expected_output`          | TEXT      | 期望输出                                      | "好的,我们有以下..."                           |
+| `actual_output`            | TEXT      | 实际输出                                      | "当然可以!我们目前..."                         |
+| `similarity_score`         | NUMERIC   | 相似度评分                                    | `85.0`                                         |
+| `evaluation_reason`        | TEXT      | 评估理由                                      | "回复正确理解了用户意图..."                    |
+| `agent_request`            | JSONB     | Agent 请求                                    | API 请求参数                                   |
+| `agent_response`           | JSONB     | Agent 响应                                    | API 完整响应                                   |
+| `tool_calls`               | JSONB     | 工具调用                                      | `[]` 或工具调用数组                            |
+| `execution_status`         | TEXT      | 执行状态                                      | `'success'` \| `'failed'`                      |
+| `duration_ms`              | INTEGER   | 执行耗时                                      | `3500` (ms)                                    |
+| `token_usage`              | JSONB     | Token 用量                                    | `{inputTokens, outputTokens, totalTokens}`     |
+| `error_message`            | TEXT      | 错误信息                                      | -                                              |
+| `review_status`            | TEXT      | 评审状态                                      | `'pending_review'` \| `'passed'` \| `'failed'` |
+| `review_comment`           | TEXT      | 评审评论                                      | -                                              |
+| `reviewed_by`              | TEXT      | 评审人                                        | -                                              |
+| `reviewed_at`              | TIMESTAMP | 评审时间                                      | -                                              |
+| `source_trace`             | JSONB     | 来源 BadCase/GoodCase/chat/message 排障证据链 | `{badcaseIds, chatIds, anchorMessageIds}`      |
+| `execution_trace`          | JSONB     | 当前 turn 的执行证据链                        | `{runtime, agent, asset}`                      |
+| `memory_setup`             | JSONB     | 对话验证前置记忆 fixture                      | `{sessionFacts, currentStage}`                 |
+| `memory_assertions`        | JSONB     | 记忆评测断言                                  | `{shouldPreserve}`                             |
+| `memory_trace`             | JSONB     | 当前 turn 入口记忆、turn-end、执行后记忆状态  | `{entrySnapshot, postTurnState}`               |
 
 ## 工作流程
 
@@ -223,7 +229,7 @@ const batch = await testBatchRepository.create({
 ```typescript
 const feishuRecords = await feishuBitableService.getRecords({
   appToken: 'bascn...',
-  tableId: 'tbl...'
+  tableId: 'tbl...',
 });
 ```
 
@@ -362,7 +368,7 @@ for (const turn of turns) {
   const agentResponse = await agentService.chat({
     conversationId: `${source.conversation_id}-turn-${turn.turnNumber}`,
     userMessage: turn.userMessage,
-    messages: turn.history,  // 关键: 传递历史上下文
+    messages: turn.history, // 关键: 传递历史上下文
     model: 'anthropic/claude-sonnet-4-5',
   });
 
@@ -402,7 +408,7 @@ for (const turn of turns) {
 
 ```typescript
 const executions = await testExecutionRepository.findBySourceId(sourceId);
-const scores = executions.map(e => e.similarity_score).filter(Boolean);
+const scores = executions.map((e) => e.similarity_score).filter(Boolean);
 
 await conversationSourceRepository.update(sourceId, {
   status: 'completed',
@@ -415,11 +421,11 @@ await conversationSourceRepository.update(sourceId, {
 
 ```typescript
 const sources = await conversationSourceRepository.findByBatchId(batchId);
-const completed = sources.filter(s => s.status === 'completed');
+const completed = sources.filter((s) => s.status === 'completed');
 
 await testBatchRepository.update(batchId, {
   executed_count: completed.length,
-  pass_rate: average(completed.map(s => s.avg_similarity_score)),
+  pass_rate: average(completed.map((s) => s.avg_similarity_score)),
 });
 ```
 
@@ -571,6 +577,7 @@ GET /test-suite/conversation/turns?sourceId=source-001
 使用 LLM (GPT-4o-mini) 作为评估器,对比 Agent 回复与真人回复的质量。
 
 **关键设计**:
+
 - **模型选择**: `openai/gpt-4o-mini` (速度快、成本低)
 - **禁用工具**: 评估时关闭所有工具,确保纯文本输出
 - **结构化输出**: 强制 JSON 格式输出评分和理由
@@ -638,12 +645,12 @@ ${input.actualOutput}
 
 ### 评分标准
 
-| 分数区间 | 等级 | 颜色 | 说明 |
-|---------|------|------|------|
-| 80-100 | 优秀 | 🟢 绿色 | 回复质量与真人相当或更好 |
-| 60-79 | 良好 | 🔵 蓝色 | 回复基本正确,有改进空间 |
-| 40-59 | 一般 | 🟡 黄色 | 部分理解偏差或信息不完整 |
-| 0-39 | 较差 | 🔴 红色 | 理解错误或答非所问 |
+| 分数区间 | 等级 | 颜色    | 说明                     |
+| -------- | ---- | ------- | ------------------------ |
+| 80-100   | 优秀 | 🟢 绿色 | 回复质量与真人相当或更好 |
+| 60-79    | 良好 | 🔵 蓝色 | 回复基本正确,有改进空间  |
+| 40-59    | 一般 | 🟡 黄色 | 部分理解偏差或信息不完整 |
+| 0-39     | 较差 | 🔴 红色 | 理解错误或答非所问       |
 
 **及格线**: 60 分
 
@@ -672,18 +679,21 @@ TestSuitePage (index.tsx)
 ```typescript
 // 使用自定义 Hook 管理数据
 const {
-  batches,              // 批次列表
-  selectedBatch,        // 当前选中批次
-  conversations,        // 对话列表
-  executeConversationTest,  // 执行测试
-  loadBatches,          // 刷新批次
+  batches, // 批次列表
+  selectedBatch, // 当前选中批次
+  conversations, // 对话列表
+  executeConversationTest, // 执行测试
+  loadBatches, // 刷新批次
 } = useConversations();
 
 // 执行后自动刷新
-const handleExecute = useCallback(async (conversationId: string) => {
-  await executeConversationTest(conversationId);
-  await loadBatches();  // 刷新统计数据
-}, [executeConversationTest, loadBatches]);
+const handleExecute = useCallback(
+  async (conversationId: string) => {
+    await executeConversationTest(conversationId);
+    await loadBatches(); // 刷新统计数据
+  },
+  [executeConversationTest, loadBatches],
+);
 ```
 
 ### 数据流
@@ -693,6 +703,7 @@ const handleExecute = useCallback(async (conversationId: string) => {
 ```
 
 **关键刷新点**:
+
 1. 执行测试后 → 刷新批次列表 (更新统计)
 2. 展开批次后 → 加载对话列表
 3. 查看详情后 → 加载轮次数据
@@ -714,15 +725,15 @@ FEISHU_APP_SECRET=xxx
 
 ```typescript
 // src/test-suite/services/llm-evaluation.service.ts
-const EVALUATION_MODEL = 'openai/gpt-4o-mini';  // 评估模型
-const PASS_THRESHOLD = 60;  // 及格分数线
+const EVALUATION_MODEL = 'openai/gpt-4o-mini'; // 评估模型
+const PASS_THRESHOLD = 60; // 及格分数线
 
 // 评分标准权重
 const CRITERIA = {
-  INTENT_UNDERSTANDING: 0.4,   // 意图理解 40%
-  INFORMATION_COMPLETENESS: 0.3,  // 信息完整性 30%
-  LANGUAGE_EXPRESSION: 0.2,    // 语言表达 20%
-  RELEVANCE: 0.1,              // 相关性 10%
+  INTENT_UNDERSTANDING: 0.4, // 意图理解 40%
+  INFORMATION_COMPLETENESS: 0.3, // 信息完整性 30%
+  LANGUAGE_EXPRESSION: 0.2, // 语言表达 20%
+  RELEVANCE: 0.1, // 相关性 10%
 };
 ```
 
@@ -732,16 +743,17 @@ const CRITERIA = {
 
 **validationSet 表字段**:
 
-| 字段名 | 字段类型 | 必填 | 说明 |
-|--------|---------|------|------|
-| `候选人微信昵称` | 单行文本 | ❌ | 参与者姓名 |
-| `完整对话记录` | 多行文本 | ✅ | 完整对话文本 |
-| `相似度分数` | 数字 | ❌ | 回写字段,LLM 评估平均分 |
-| `最近测试时间` | 日期时间 | ❌ | 回写字段,最后一次测试时间 |
-| `测试批次` | 单行文本 | ❌ | 回写字段,测试批次标识 |
-| `测试状态` | 单选 | ❌ | 回写字段,执行状态 |
+| 字段名           | 字段类型 | 必填 | 说明                      |
+| ---------------- | -------- | ---- | ------------------------- |
+| `候选人微信昵称` | 单行文本 | ❌   | 参与者姓名                |
+| `完整对话记录`   | 多行文本 | ✅   | 完整对话文本              |
+| `相似度分数`     | 数字     | ❌   | 回写字段,LLM 评估平均分   |
+| `最近测试时间`   | 日期时间 | ❌   | 回写字段,最后一次测试时间 |
+| `测试批次`       | 单行文本 | ❌   | 回写字段,测试批次标识     |
+| `测试状态`       | 单选     | ❌   | 回写字段,执行状态         |
 
 **对话记录格式**:
+
 ```
 【杜力岱】消息内容  时间戳
 【🎯杜力岱招聘助手】回复内容  时间戳
@@ -772,6 +784,7 @@ export const validationSetFieldNames = {
 ### Q1: 如何提高评估准确性?
 
 **A**:
+
 1. 优化评估 prompt,明确评分标准
 2. 使用更强大的模型 (如 GPT-4)
 3. 增加人工复审机制 (review_status 字段)
@@ -779,6 +792,7 @@ export const validationSetFieldNames = {
 ### Q2: 执行失败如何处理?
 
 **A**:
+
 - 系统自动记录错误到 `test_executions.error_message`
 - 对话源状态标记为 `'failed'`
 - 前端显示错误提示,支持重试
@@ -791,6 +805,7 @@ export const validationSetFieldNames = {
 ### Q4: 批次统计如何计算?
 
 **A**:
+
 - `totalCases`: `conversation_sources` 表记录数
 - `executedCount`: `status='completed'` 的记录数
 - `passRate`: 所有已完成对话的 `avg_similarity_score` 平均值

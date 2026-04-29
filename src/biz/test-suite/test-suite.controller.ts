@@ -562,7 +562,10 @@ export class TestSuiteController {
       errorType: request.errorType,
       remark: request.remark,
       chatId: request.chatId,
+      messageId: request.messageId,
+      traceId: request.traceId,
       batchId: request.batchId,
+      sourceTrace: request.sourceTrace,
       candidateName: request.candidateName,
       managerName: request.managerName,
     };

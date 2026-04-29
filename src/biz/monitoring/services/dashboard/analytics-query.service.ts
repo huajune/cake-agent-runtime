@@ -2,6 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AnalyticsMetricsService } from '@analytics/metrics/analytics-metrics.service';
 import { AnalyticsTrendBuilderService } from '@analytics/trends/analytics-trend-builder.service';
 import {
+  addLocalDays,
+  formatLocalDate,
+  formatLocalMinute,
+  getLocalDayStart,
+  parseLocalDateStart,
+} from '@infra/utils/date.util';
+import {
   MessageProcessingRecord,
   MonitoringErrorLog,
   MonitoringGlobalCounters,
@@ -224,8 +231,7 @@ export class AnalyticsQueryService {
   }
 
   async getTodayUsersFromDatabase(): Promise<TodayUser[]> {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    const todayStart = getLocalDayStart();
     return this.buildTodayUsers(todayStart, new Date());
   }
 
@@ -259,10 +265,8 @@ export class AnalyticsQueryService {
       return [];
     }
 
-    const startDate = new Date(date);
-    startDate.setHours(0, 0, 0, 0);
-    const endDate = new Date(date);
-    endDate.setHours(23, 59, 59, 999);
+    const startDate = parseLocalDateStart(date);
+    const endDate = new Date(addLocalDays(startDate, 1).getTime() - 1);
 
     return this.buildTodayUsers(startDate, endDate);
   }
@@ -299,8 +303,7 @@ export class AnalyticsQueryService {
 
   async getUserTrend(): Promise<Array<{ date: string; userCount: number; messageCount: number }>> {
     const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 30);
+    const startDate = addLocalDays(getLocalDayStart(endDate), -30);
     const stats = await this.messageProcessingService.getDailyUserStats(startDate, endDate);
     return stats.map((s) => ({
       date: s.date,
@@ -315,9 +318,8 @@ export class AnalyticsQueryService {
     Array<{ hour: string; message_count: number; active_users: number; active_chats: number }>
   > {
     this.logger.debug(`获取聊天趋势: 最近 ${days} 天`);
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
     const endDate = new Date();
+    const startDate = addLocalDays(getLocalDayStart(endDate), -days);
     const trend = await this.monitoringRecordRepository.getDashboardHourlyTrend(startDate, endDate);
     return trend.map((item) => ({
       hour: item.hour,
@@ -496,7 +498,7 @@ export class AnalyticsQueryService {
     }
 
     return Array.from(buckets.entries())
-      .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
+      .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([minute, bucket]) => ({
         minute,
         avgDuration:
@@ -523,7 +525,7 @@ export class AnalyticsQueryService {
     }
 
     return Array.from(buckets.entries())
-      .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
+      .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([minute, count]) => ({ minute, count }));
   }
 
@@ -583,7 +585,7 @@ export class AnalyticsQueryService {
     }
 
     return Array.from(buckets.entries())
-      .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
+      .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([minute, bucket]) => {
         const consultations = bucket.users.size;
         const bookingAttempts = bucket.bookingAttempts;
@@ -643,20 +645,10 @@ export class AnalyticsQueryService {
   // ========================================
 
   private getMinuteKey(timestamp: number): string {
-    const date = new Date(timestamp);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${minutes}`;
+    return formatLocalMinute(new Date(timestamp));
   }
 
   private getDayKey(timestamp: number): string {
-    const date = new Date(timestamp);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return formatLocalDate(new Date(timestamp));
   }
 }
