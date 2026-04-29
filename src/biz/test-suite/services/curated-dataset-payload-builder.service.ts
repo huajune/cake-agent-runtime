@@ -17,12 +17,22 @@ import {
   setField,
   truncate,
 } from './curated-dataset-import.helpers';
+import { normalizeSourceTrace, stringifyTraceJson } from './test-trace.helpers';
 
 const scenarioFieldAliases = {
   primaryText: ['用例主键', '用例标题', '多行文本', 'Text'],
   stableId: ['用例ID', 'caseId'],
   title: ['用例名称', '标题', '名称'],
   sourceBadCaseIds: ['来源BadCaseID'],
+  sourceChatIds: ['来源ChatID', '来源ChatIds', 'sourceChatIds'],
+  sourceRecordIds: ['来源BadCaseRecordID', '来源RecordID', 'sourceRecordIds'],
+  sourceAnchorMessageIds: ['触发MessageID', 'AnchorMessageID', 'sourceAnchorMessageIds'],
+  sourceRelatedMessageIds: ['相关MessageID', 'RelatedMessageID', 'sourceRelatedMessageIds'],
+  sourceMessageProcessingIds: ['处理流水ID', 'MessageProcessingID', 'sourceMessageProcessingIds'],
+  sourceTraceIds: ['TraceID', '来源TraceID', 'sourceTraceIds'],
+  sourceTraceJson: ['排障Trace', 'SourceTrace', 'sourceTrace', '排障证据JSON'],
+  memorySetupJson: ['MemorySetup', '记忆前置', 'memorySetup'],
+  memoryAssertionsJson: ['MemoryAssertions', '记忆断言', 'memoryAssertions'],
   sourceType: ['来源类型'],
   enabled: ['是否启用', '启用'],
   category: ['分类'],
@@ -47,6 +57,15 @@ const conversationFieldAliases = {
   stableId: ['验证ID', 'validationId'],
   title: ['验证标题', '标题', '名称'],
   sourceBadCaseIds: ['来源BadCaseID'],
+  sourceChatIds: ['来源ChatID', '来源ChatIds', 'sourceChatIds'],
+  sourceRecordIds: ['来源BadCaseRecordID', '来源RecordID', 'sourceRecordIds'],
+  sourceAnchorMessageIds: ['触发MessageID', 'AnchorMessageID', 'sourceAnchorMessageIds'],
+  sourceRelatedMessageIds: ['相关MessageID', 'RelatedMessageID', 'sourceRelatedMessageIds'],
+  sourceMessageProcessingIds: ['处理流水ID', 'MessageProcessingID', 'sourceMessageProcessingIds'],
+  sourceTraceIds: ['TraceID', '来源TraceID', 'sourceTraceIds'],
+  sourceTraceJson: ['排障Trace', 'SourceTrace', 'sourceTrace', '排障证据JSON'],
+  memorySetupJson: ['MemorySetup', '记忆前置', 'memorySetup'],
+  memoryAssertionsJson: ['MemoryAssertions', '记忆断言', 'memoryAssertions'],
   sourceType: ['来源类型'],
   enabled: ['是否启用', '启用'],
   chatId: ['chatId', '会话ID', '会话 Id', '会话ID（chatId）'],
@@ -108,15 +127,24 @@ export class CuratedDatasetPayloadBuilderService {
     importNote?: string,
   ): Record<string, unknown> {
     const fields: Record<string, unknown> = {};
+    const sourceTrace = normalizeSourceTrace(currentCase);
     const remark = composeRemark([
       importNote ? `导入说明: ${importNote}` : undefined,
       currentCase.remark ? `策展备注: ${currentCase.remark.trim()}` : undefined,
       currentCase.sourceGoodCaseIds?.length
         ? `来源GoodCaseID: ${joinIds(currentCase.sourceGoodCaseIds)}`
         : undefined,
-      currentCase.sourceChatIds?.length
-        ? `来源ChatID: ${joinIds(currentCase.sourceChatIds)}`
+      sourceTrace?.badcaseRecordIds?.length
+        ? `来源BadCaseRecordID: ${joinIds(sourceTrace.badcaseRecordIds)}`
         : undefined,
+      sourceTrace?.chatIds?.length ? `来源ChatID: ${joinIds(sourceTrace.chatIds)}` : undefined,
+      sourceTrace?.anchorMessageIds?.length
+        ? `触发MessageID: ${joinIds(sourceTrace.anchorMessageIds)}`
+        : undefined,
+      sourceTrace?.messageProcessingIds?.length
+        ? `处理流水ID: ${joinIds(sourceTrace.messageProcessingIds)}`
+        : undefined,
+      sourceTrace?.traceIds?.length ? `TraceID: ${joinIds(sourceTrace.traceIds)}` : undefined,
     ]);
 
     setField(fields, resolved.primaryText, currentCase.caseId.trim());
@@ -125,6 +153,45 @@ export class CuratedDatasetPayloadBuilderService {
     setField(fields, resolved.sourceBadCaseIds, joinIds(currentCase.sourceBadCaseIds), {
       clearWithNull: true,
     });
+    setField(fields, resolved.sourceChatIds, joinIds(sourceTrace?.chatIds), {
+      clearWithNull: true,
+    });
+    setField(fields, resolved.sourceRecordIds, joinIds(sourceTrace?.badcaseRecordIds), {
+      clearWithNull: true,
+    });
+    setField(fields, resolved.sourceAnchorMessageIds, joinIds(sourceTrace?.anchorMessageIds), {
+      clearWithNull: true,
+    });
+    setField(fields, resolved.sourceRelatedMessageIds, joinIds(sourceTrace?.relatedMessageIds), {
+      clearWithNull: true,
+    });
+    setField(
+      fields,
+      resolved.sourceMessageProcessingIds,
+      joinIds(sourceTrace?.messageProcessingIds),
+      { clearWithNull: true },
+    );
+    setField(fields, resolved.sourceTraceIds, joinIds(sourceTrace?.traceIds), {
+      clearWithNull: true,
+    });
+    setField(
+      fields,
+      resolved.sourceTraceJson,
+      this.truncate(stringifyTraceJson(sourceTrace), 12000),
+      { clearWithNull: true },
+    );
+    setField(
+      fields,
+      resolved.memorySetupJson,
+      this.truncate(stringifyTraceJson(currentCase.memorySetup), 12000),
+      { clearWithNull: true },
+    );
+    setField(
+      fields,
+      resolved.memoryAssertionsJson,
+      this.truncate(stringifyTraceJson(currentCase.memoryAssertions), 12000),
+      { clearWithNull: true },
+    );
     setField(
       fields,
       resolved.sourceType,
@@ -185,15 +252,24 @@ export class CuratedDatasetPayloadBuilderService {
   ): Record<string, unknown> {
     const fields: Record<string, unknown> = {};
     const primaryChatId = emptyToNull(currentCase.chatId) || firstId(currentCase.sourceChatIds);
+    const sourceTrace = normalizeSourceTrace(currentCase);
     const remark = composeRemark([
       importNote ? `导入说明: ${importNote}` : undefined,
       currentCase.remark ? `策展备注: ${currentCase.remark.trim()}` : undefined,
       currentCase.sourceGoodCaseIds?.length
         ? `来源GoodCaseID: ${joinIds(currentCase.sourceGoodCaseIds)}`
         : undefined,
-      currentCase.sourceChatIds?.length
-        ? `来源ChatID: ${joinIds(currentCase.sourceChatIds)}`
+      sourceTrace?.badcaseRecordIds?.length
+        ? `来源BadCaseRecordID: ${joinIds(sourceTrace.badcaseRecordIds)}`
         : undefined,
+      sourceTrace?.chatIds?.length ? `来源ChatID: ${joinIds(sourceTrace.chatIds)}` : undefined,
+      sourceTrace?.anchorMessageIds?.length
+        ? `触发MessageID: ${joinIds(sourceTrace.anchorMessageIds)}`
+        : undefined,
+      sourceTrace?.messageProcessingIds?.length
+        ? `处理流水ID: ${joinIds(sourceTrace.messageProcessingIds)}`
+        : undefined,
+      sourceTrace?.traceIds?.length ? `TraceID: ${joinIds(sourceTrace.traceIds)}` : undefined,
     ]);
 
     setField(fields, resolved.primaryText, currentCase.validationId.trim());
@@ -202,6 +278,45 @@ export class CuratedDatasetPayloadBuilderService {
     setField(fields, resolved.sourceBadCaseIds, joinIds(currentCase.sourceBadCaseIds), {
       clearWithNull: true,
     });
+    setField(fields, resolved.sourceChatIds, joinIds(sourceTrace?.chatIds), {
+      clearWithNull: true,
+    });
+    setField(fields, resolved.sourceRecordIds, joinIds(sourceTrace?.badcaseRecordIds), {
+      clearWithNull: true,
+    });
+    setField(fields, resolved.sourceAnchorMessageIds, joinIds(sourceTrace?.anchorMessageIds), {
+      clearWithNull: true,
+    });
+    setField(fields, resolved.sourceRelatedMessageIds, joinIds(sourceTrace?.relatedMessageIds), {
+      clearWithNull: true,
+    });
+    setField(
+      fields,
+      resolved.sourceMessageProcessingIds,
+      joinIds(sourceTrace?.messageProcessingIds),
+      { clearWithNull: true },
+    );
+    setField(fields, resolved.sourceTraceIds, joinIds(sourceTrace?.traceIds), {
+      clearWithNull: true,
+    });
+    setField(
+      fields,
+      resolved.sourceTraceJson,
+      this.truncate(stringifyTraceJson(sourceTrace), 12000),
+      { clearWithNull: true },
+    );
+    setField(
+      fields,
+      resolved.memorySetupJson,
+      this.truncate(stringifyTraceJson(currentCase.memorySetup), 12000),
+      { clearWithNull: true },
+    );
+    setField(
+      fields,
+      resolved.memoryAssertionsJson,
+      this.truncate(stringifyTraceJson(currentCase.memoryAssertions), 12000),
+      { clearWithNull: true },
+    );
     setField(
       fields,
       resolved.sourceType,

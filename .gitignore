@@ -50,6 +50,7 @@ lerna-debug.log*
 *.tmp
 *.temp
 .cache
+/tmp/
 
 # Agent test output
 scripts/agent-debug-response*.json
@@ -72,3 +73,4 @@ user_token_cache.json
 supabase/.temp/
 supabase/.env
 .claude/worktrees/
+.claude/*.lock

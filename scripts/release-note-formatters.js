@@ -1,10 +1,7 @@
 const EMPTY_RELEASE_LINE_RE = /^(?:无|暂无|none|n\/a|待补充)$/i;
 
 const EXACT_REWRITES = [
-  [
-    /^improve hosting ops and feedback flows$/i,
-    '优化托管运营与反馈流程',
-  ],
+  [/^improve hosting ops and feedback flows$/i, '优化托管运营与反馈流程'],
   [
     /^fix WeCom image\/text merge handling and booking\/dashboard stats recording$/i,
     '修复企微图片/文本合并处理，以及预约与仪表盘统计记录',
@@ -43,6 +40,32 @@ const TERM_REWRITES = [
   [/\bbooking\/dashboard stats recording\b/g, '预约与仪表盘统计记录'],
 ];
 
+const OPERATIONAL_REWRITES = [
+  [/支持消息流水按托管 BOT 筛选/, '消息流水支持按托管 BOT 筛选，排查会话更方便'],
+  [
+    /Hardened interview precheck\/booking around `?00:00-00:00`? date-only windows/i,
+    '面试预约增加特殊日期窗口校验，避免把截止时间误当成具体面试时间提交',
+  ],
+  [
+    /Added bookable slot metadata and prompt guidance/i,
+    '可预约时段会明确标记和提示，缺少具体时间时 Agent 会先询问候选人',
+  ],
+  [
+    /Updated `?invite_to_group`? routing to refresh group member counts/i,
+    '拉群前会刷新企业微信群人数，优先选择仍有容量的匹配群',
+  ],
+  [
+    /Skips groups at or over `?GROUP_MEMBER_LIMIT`?/i,
+    '群满时会自动跳过并尝试下一个匹配群，只有所有匹配群都满时才告警',
+  ],
+  [/Reduces invalid interview booking submissions/i, '减少全天/仅日期面试窗口导致的无效预约提交'],
+  [
+    /Prevents continuing to invite candidates into full part-time groups/i,
+    '当存在同城同业的可用群时，不再继续拉入已满兼职群',
+  ],
+  [/Keeps the group capacity alert reserved/i, '群容量告警只在所有匹配群都满时触发，减少误报'],
+];
+
 function formatReleaseText(value, options = {}) {
   const { includePrReference = true } = options;
   let text = normalizeInlineText(value);
@@ -58,6 +81,22 @@ function formatReleaseText(value, options = {}) {
   text = normalizeInlineText(text);
 
   return isEmptyReleaseLine(text) ? '' : text;
+}
+
+function formatOperationalReleaseText(value, options = {}) {
+  const text = formatReleaseText(value, options);
+  if (!text) return '';
+
+  const localized = localizeOperationalReleaseText(text);
+  if (localized) {
+    return localized;
+  }
+
+  if (isMostlyTechnicalEnglish(text)) {
+    return '';
+  }
+
+  return text;
 }
 
 function normalizeInlineText(value) {
@@ -100,11 +139,29 @@ function localizeReleaseText(value) {
   return localized;
 }
 
+function localizeOperationalReleaseText(value) {
+  for (const [pattern, replacement] of OPERATIONAL_REWRITES) {
+    if (pattern.test(value)) {
+      return replacement;
+    }
+  }
+
+  return '';
+}
+
+function isMostlyTechnicalEnglish(value) {
+  const englishLetters = (value.match(/[A-Za-z]/g) || []).length;
+  const chineseLetters = (value.match(/[\u4e00-\u9fa5]/g) || []).length;
+
+  return englishLetters >= 12 && englishLetters > chineseLetters * 2;
+}
+
 function isEmptyReleaseLine(value) {
   return EMPTY_RELEASE_LINE_RE.test(normalizeInlineText(value));
 }
 
 module.exports = {
+  formatOperationalReleaseText,
   formatReleaseText,
   isEmptyReleaseLine,
 };

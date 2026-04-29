@@ -427,4 +427,19 @@ describe('MessageTrackingService', () => {
     expect(cacheService.incrementCounters).not.toHaveBeenCalled();
     expect(await service.getActiveRequests()).toBe(0);
   });
+
+  describe('recordReplySkipped', () => {
+    it('increments totalOutputLeakSkipped when reason=output_leak', () => {
+      service.recordReplySkipped('msg-9', 'output_leak');
+      expect(cacheService.incrementCounter).toHaveBeenCalledWith('totalOutputLeakSkipped', 1);
+    });
+
+    it('increments totalSameBrandCollapseSkipped when reason=same_brand_collapse', () => {
+      service.recordReplySkipped('msg-10', 'same_brand_collapse');
+      expect(cacheService.incrementCounter).toHaveBeenCalledWith(
+        'totalSameBrandCollapseSkipped',
+        1,
+      );
+    });
+  });
 });

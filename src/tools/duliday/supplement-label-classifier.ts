@@ -123,9 +123,21 @@ export function matchesScreeningFailure(
   const normalized = answer.trim();
   if (!normalized) return null;
   for (const signal of classification.failSignals) {
-    if (normalized.includes(signal)) return signal;
+    if (!normalized.includes(signal)) continue;
+    if (isLikelyHealthCertificateTypeAnswerForProfession(classification.labelName, normalized)) {
+      continue;
+    }
+    return signal;
   }
   return null;
+}
+
+function isLikelyHealthCertificateTypeAnswerForProfession(
+  labelName: string,
+  answer: string,
+): boolean {
+  if (!/专业/.test(labelName) || !/健康证/.test(answer)) return false;
+  return !/(专业|学的是|学的|读的是|读的|(?:食品|新媒).{0,4}专业)/.test(answer);
 }
 
 /**

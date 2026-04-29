@@ -140,6 +140,118 @@ describe('ConversationSnapshotRepository', () => {
 
       expect(result.participant_name).toBeNull();
     });
+
+    it('should fall back when validation_title column is missing', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      const missingColumnResult = makeQueryMock({
+        data: null,
+        error: {
+          code: 'PGRST204',
+          message:
+            "Could not find the 'validation_title' column of 'test_conversation_snapshots' in the schema cache",
+        },
+      });
+      const fallbackSource = { ...sampleSource, validation_title: null };
+      const fallbackResult = makeQueryMock({ data: [fallbackSource], error: null });
+      mockSupabaseClient.from
+        .mockReturnValueOnce(missingColumnResult)
+        .mockReturnValueOnce(fallbackResult);
+
+      const result = await repository.create({
+        batchId: 'batch_001',
+        feishuRecordId: 'feishu_001',
+        conversationId: 'conv_001',
+        validationTitle: '验证标题',
+        participantName: 'Alice',
+        fullConversation: [{ role: 'user', content: 'Hello' }],
+        rawText: 'Alice: Hello',
+        totalTurns: 3,
+      });
+
+      expect(result).toEqual(fallbackSource);
+      expect(missingColumnResult.insert).toHaveBeenCalledWith(
+        expect.objectContaining({ validation_title: '验证标题' }),
+      );
+      expect(fallbackResult.insert).toHaveBeenCalledWith(
+        expect.not.objectContaining({ validation_title: expect.anything() }),
+      );
+    });
+
+    it('should skip validation_title after detecting an old schema', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      const missingColumnResult = makeQueryMock({
+        data: null,
+        error: {
+          code: 'PGRST204',
+          message:
+            "Could not find the 'validation_title' column of 'test_conversation_snapshots' in the schema cache",
+        },
+      });
+      const fallbackResult = makeQueryMock({ data: [sampleSource], error: null });
+      const secondInsertResult = makeQueryMock({ data: [sampleSource], error: null });
+      mockSupabaseClient.from
+        .mockReturnValueOnce(missingColumnResult)
+        .mockReturnValueOnce(fallbackResult)
+        .mockReturnValueOnce(secondInsertResult);
+
+      await repository.create({
+        batchId: 'batch_001',
+        feishuRecordId: 'feishu_001',
+        conversationId: 'conv_001',
+        validationTitle: '验证标题',
+        fullConversation: [],
+        totalTurns: 0,
+      });
+
+      await repository.create({
+        batchId: 'batch_002',
+        feishuRecordId: 'feishu_002',
+        conversationId: 'conv_002',
+        validationTitle: '另一个标题',
+        fullConversation: [],
+        totalTurns: 0,
+      });
+
+      expect(secondInsertResult.insert).toHaveBeenCalledWith(
+        expect.not.objectContaining({ validation_title: expect.anything() }),
+      );
+    });
+
+    it('should stop retrying when schema fallback reports the same missing column again', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      const missingColumnResult = makeQueryMock({
+        data: null,
+        error: {
+          code: 'PGRST204',
+          message:
+            "Could not find the 'validation_title' column of 'test_conversation_snapshots' in the schema cache",
+        },
+      });
+      mockSupabaseClient.from.mockReturnValue(missingColumnResult);
+
+      const result = await repository.create({
+        batchId: 'batch_001',
+        feishuRecordId: 'feishu_001',
+        conversationId: 'conv_001',
+        validationTitle: '验证标题',
+        fullConversation: [],
+        totalTurns: 0,
+      });
+
+      expect(result).toBeNull();
+      expect(mockSupabaseClient.from).toHaveBeenCalledTimes(2);
+      expect(missingColumnResult.insert).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ validation_title: '验证标题' }),
+      );
+      expect(missingColumnResult.insert).toHaveBeenNthCalledWith(
+        2,
+        expect.not.objectContaining({ validation_title: expect.anything() }),
+      );
+    });
   });
 
   // ==================== findById ====================

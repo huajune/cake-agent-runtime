@@ -113,13 +113,18 @@ describe('ContextService', () => {
     expect(prompt).toContain('[用户档案]');
     expect(prompt).toContain('姓名: 张三');
     expect(prompt).toContain('先接情绪，再解释用途');
-    expect(prompt).toContain('includeWelfare=true');
-    expect(prompt).toContain('includeJobSalary=true');
-    expect(prompt).toContain('今天也能约');
-    expect(prompt).toContain('早开晚结/全天时段/05:00-23:00');
-    expect(prompt).toContain('"每天/周一至周日"不等于"可只排周末"');
+    expect(prompt).toContain('includeWelfare` / `includeJobSalary`');
+    expect(prompt).toContain('未来某天才能面试');
+    // 同日面试承诺前必须 precheck（P2-002 修复）
+    expect(prompt).toContain('duliday_interview_precheck');
+    expect(prompt).toContain('禁止承诺任何具体日期');
+    // 工作班次 vs 面试时间澄清（P2-029 修复）
+    expect(prompt).toContain('当前**工作班次**不合适');
+    expect(prompt).toContain('提议的**面试时间**不合适');
+    expect(prompt).toContain('不能包装成"周末可做"或"晚班可排"');
+    expect(prompt).toContain('05:00-23:00');
     expect(prompt).toContain('推荐 2 个及以上岗位时必须分条分段输出');
-    expect(prompt).toContain('若推荐多个岗位，我是否按岗位分条分段展示');
+    expect(prompt).toContain('若本轮做了具体岗位推荐');
     // 工具专属规则（如 bookingChecklist.collectionStrategy）已迁移到各工具的 description 字段，
     // 不再出现在主 system prompt 中。
     expect(prompt).not.toContain('# 工具手册');

@@ -70,6 +70,18 @@ export class MemoryService {
     return await this.longTerm.clearUserMemory(corpId, userId);
   }
 
+  async getStage(corpId: string, userId: string, sessionId: string): Promise<ProceduralState> {
+    return await this.procedural.get(corpId, userId, sessionId);
+  }
+
+  async clearSessionMemory(corpId: string, userId: string, sessionId: string): Promise<boolean> {
+    const [sessionCleared, stageCleared] = await Promise.all([
+      this.session.clearSessionState(corpId, userId, sessionId),
+      this.procedural.clear(corpId, userId, sessionId),
+    ]);
+    return sessionCleared || stageCleared;
+  }
+
   /** 记录已邀入的兼职群，供 invite_to_group 工具调用。 */
   async saveInvitedGroup(
     corpId: string,

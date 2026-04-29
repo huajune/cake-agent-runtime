@@ -4,6 +4,7 @@ import { FeedbackButtons } from '@/view/agent-test/list/components/FeedbackButto
 import { FeedbackModal } from '@/view/agent-test/list/components/FeedbackModal';
 import { useFeedback } from '@/view/agent-test/list/hooks/useFeedback';
 import { useMessageProcessingRecordDetail } from '@/hooks/chat/useMessageProcessingRecords';
+import type { FeedbackSourceTrace } from '@/api/types/agent-test.types';
 import ChatSection from './ChatSection';
 import {
   getStatusLabel,
@@ -27,6 +28,10 @@ function withFallback<T>(factory: () => T, fallback: T): T {
     console.warn('[MessageProcessingDetailDrawer] derived data fallback', error);
     return fallback;
   }
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
 export default function MessageProcessingDetailDrawer({
@@ -63,22 +68,19 @@ export default function MessageProcessingDetailDrawer({
     () => (message ? withFallback(() => getContextFacts(message), []) : []),
     [message],
   );
-  const feedbackHistoryMessages = useMemo(
-    () => {
-      if (!message) return [];
+  const feedbackHistoryMessages = useMemo(() => {
+    if (!message) return [];
 
-      const fallback: Array<{ role: 'user' | 'assistant'; content: string }> = [];
-      if (message.messagePreview?.trim()) {
-        fallback.push({ role: 'user', content: message.messagePreview });
-      }
-      if (message.replyPreview?.trim()) {
-        fallback.push({ role: 'assistant', content: message.replyPreview });
-      }
+    const fallback: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+    if (message.messagePreview?.trim()) {
+      fallback.push({ role: 'user', content: message.messagePreview });
+    }
+    if (message.replyPreview?.trim()) {
+      fallback.push({ role: 'assistant', content: message.replyPreview });
+    }
 
-      return withFallback(() => getHistoryMessages(message), fallback);
-    },
-    [message],
-  );
+    return withFallback(() => getHistoryMessages(message), fallback);
+  }, [message]);
   const chatHistoryPreview = useMemo(() => {
     if (!message) return '';
 
@@ -100,6 +102,42 @@ export default function MessageProcessingDetailDrawer({
       message?.messagePreview,
     [feedbackHistoryMessages, message?.messagePreview],
   );
+  const feedbackTrace = useMemo<{
+    traceId?: string;
+    sourceTrace?: FeedbackSourceTrace;
+  }>(() => {
+    if (!message) return {};
+
+    const response = message.agentInvocation?.response;
+    const traceId = asString(response?.traceId);
+    return {
+      traceId,
+      sourceTrace: {
+        chatIds: message.chatId ? [message.chatId] : undefined,
+        anchorMessageIds: message.messageId ? [message.messageId] : undefined,
+        relatedMessageIds: message.messageId ? [message.messageId] : undefined,
+        messageProcessingIds: message.messageId ? [message.messageId] : undefined,
+        traceIds: traceId ? [traceId] : undefined,
+        batchIds: message.batchId ? [message.batchId] : undefined,
+        raw: {
+          source: 'message-processing-detail-drawer',
+          status: message.status,
+          scenario: message.scenario,
+          anomalyFlags: message.anomalyFlags,
+          memorySnapshot: message.memorySnapshot,
+          postProcessingStatus: message.postProcessingStatus,
+          toolCalls: message.toolCalls,
+          agentSteps: message.agentSteps?.map((step) => ({
+            stepIndex: step.stepIndex,
+            toolCalls: step.toolCalls?.map((toolCall) => toolCall.toolName),
+            usage: step.usage,
+            durationMs: step.durationMs,
+            finishReason: step.finishReason,
+          })),
+        },
+      },
+    };
+  }, [message]);
   const latencyRows = useMemo(
     () =>
       [
@@ -126,11 +164,14 @@ export default function MessageProcessingDetailDrawer({
       chatHistory: chatHistoryPreview,
       userMessage: lastUserMessage,
       chatId: message.chatId,
+      messageId: message.messageId,
+      traceId: feedbackTrace.traceId,
       batchId: message.batchId,
+      sourceTrace: feedbackTrace.sourceTrace,
       candidateName: message.userName,
       managerName: message.managerName,
     });
-  }, [chatHistoryPreview, lastUserMessage, message, submit]);
+  }, [chatHistoryPreview, feedbackTrace, lastUserMessage, message, submit]);
 
   useEffect(() => {
     if (!isLoading) {
@@ -149,12 +190,12 @@ export default function MessageProcessingDetailDrawer({
           <div className={styles.header}>
             <div className={styles.headerTop}>
               <h3 className={styles.headerTitle}>处理记录详情</h3>
-              <button className={styles.closeBtn} onClick={onClose}>&times;</button>
+              <button className={styles.closeBtn} onClick={onClose}>
+                &times;
+              </button>
             </div>
           </div>
-          <div className={styles.loadingBody}>
-            {isLoading ? '加载中...' : '未找到消息详情'}
-          </div>
+          <div className={styles.loadingBody}>{isLoading ? '加载中...' : '未找到消息详情'}</div>
         </div>
       </div>
     );
@@ -187,15 +228,15 @@ export default function MessageProcessingDetailDrawer({
         <div className={styles.header}>
           <div className={styles.headerTop}>
             <h3 className={styles.headerTitle}>处理记录详情</h3>
-            <span className={`status-badge ${statusTone}`}>
-              {getStatusLabel(message.status)}
-            </span>
+            <span className={`status-badge ${statusTone}`}>{getStatusLabel(message.status)}</span>
             {message.isFallback && (
               <span className="status-badge warning">
                 {message.fallbackSuccess ? 'Fallback 成功' : 'Fallback 失败'}
               </span>
             )}
-            <button className={styles.closeBtn} onClick={onClose}>&times;</button>
+            <button className={styles.closeBtn} onClick={onClose}>
+              &times;
+            </button>
           </div>
         </div>
 
@@ -240,9 +281,7 @@ export default function MessageProcessingDetailDrawer({
                   {contextFacts.map((f) => (
                     <div key={f.label} className={styles.latencyRow}>
                       <span className={styles.latencyLabel}>{f.label}</span>
-                      <span
-                        className={`${styles.latencyValue} ${f.mono ? styles.monoValue : ''}`}
-                      >
+                      <span className={`${styles.latencyValue} ${f.mono ? styles.monoValue : ''}`}>
                         {f.value}
                       </span>
                     </div>

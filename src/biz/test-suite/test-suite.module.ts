@@ -23,6 +23,7 @@ import { ToolModule } from '@tools/tool.module';
 import { AiStreamObservabilityService } from './services/ai-stream-observability.service';
 import { MemoryModule } from '@memory/memory.module';
 import { LineageSyncService } from './services/lineage-sync.service';
+import { MemoryFixtureService } from './services/memory-fixture.service';
 
 /**
  * 测试套件模块
@@ -80,6 +81,7 @@ import { LineageSyncService } from './services/lineage-sync.service';
     ConversationTestService,
     CuratedDatasetPayloadBuilderService,
     LineageSyncService,
+    MemoryFixtureService,
     CuratedDatasetImportService,
     TestSuiteProcessor,
     TestImportService,
@@ -93,6 +95,7 @@ import { LineageSyncService } from './services/lineage-sync.service';
     TestSuiteProcessor,
     ConversationTestService,
     CuratedDatasetImportService,
+    MemoryFixtureService,
   ],
 })
 export class TestSuiteModule {}

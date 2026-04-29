@@ -95,6 +95,7 @@ describe('AnalyticsDashboardService', () => {
   const mockMessageProcessingService = {
     getRecordsByTimeRange: jest.fn(),
     getRecordsByTimestamps: jest.fn(),
+    getBusinessTrendRecordsByTimeRange: jest.fn(),
     getActiveUsers: jest.fn(),
   };
 
@@ -126,6 +127,7 @@ describe('AnalyticsDashboardService', () => {
     getDashboardDailyTrend: jest.fn(),
     getDashboardMinuteTrend: jest.fn(),
     getDashboardHourlyTrend: jest.fn(),
+    getDashboardBusinessTrend: jest.fn(),
   };
 
   const mockBookingService = {
@@ -240,6 +242,7 @@ describe('AnalyticsDashboardService', () => {
       records: [],
       total: 0,
     });
+    mockMessageProcessingService.getBusinessTrendRecordsByTimeRange.mockResolvedValue([]);
     mockMessageProcessingService.getActiveUsers.mockResolvedValue([]);
     mockUserHostingService.getActiveUsersByDateRange.mockResolvedValue([]);
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -270,6 +273,7 @@ describe('AnalyticsDashboardService', () => {
     mockMonitoringRecordRepository.getDashboardDailyTrend.mockResolvedValue([]);
     mockMonitoringRecordRepository.getDashboardMinuteTrend.mockResolvedValue([]);
     mockMonitoringRecordRepository.getDashboardHourlyTrend.mockResolvedValue([]);
+    mockMonitoringRecordRepository.getDashboardBusinessTrend.mockResolvedValue([]);
     mockMessageTrackingService.getActiveRequests.mockResolvedValue(0);
     mockMessageTrackingService.getPeakActiveRequests.mockResolvedValue(0);
     mockMessageProcessor.getQueueStatus.mockResolvedValue({

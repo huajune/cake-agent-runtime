@@ -1,6 +1,11 @@
 import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { formatLocalDate } from '@infra/utils/date.util';
+import {
+  formatLocalDate,
+  getLocalDayStart,
+  getLocalHourStart,
+  parseLocalDateStart,
+} from '@infra/utils/date.util';
 import { HourlyStats } from '../../types/analytics.types';
 import { DailyProjectionStats } from '../../types/analytics.types';
 import { MonitoringCacheService } from '../tracking/monitoring-cache.service';
@@ -250,9 +255,7 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
   }
 
   private getHourStart(date: Date): Date {
-    const hourStart = new Date(date);
-    hourStart.setMinutes(0, 0, 0);
-    return hourStart;
+    return getLocalHourStart(date);
   }
 
   private async catchUpDailyStats(trigger: 'startup' | 'cron'): Promise<void> {
@@ -384,13 +387,10 @@ export class AnalyticsMaintenanceService implements OnModuleInit {
   }
 
   private getDayStart(date: Date): Date {
-    const dayStart = new Date(date);
-    dayStart.setHours(0, 0, 0, 0);
-    return dayStart;
+    return getLocalDayStart(date);
   }
 
   private parseLocalDateStart(date: string): Date {
-    const [year, month, day] = date.split('-').map(Number);
-    return new Date(year, month - 1, day, 0, 0, 0, 0);
+    return parseLocalDateStart(date);
   }
 }

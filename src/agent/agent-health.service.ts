@@ -31,6 +31,9 @@ export interface HealthCheckResult {
 @Injectable()
 export class AgentHealthService {
   private readonly logger = new Logger(AgentHealthService.name);
+  private readonly cacheTtlMs = 10_000;
+  private cachedResult?: { expireAt: number; value: HealthCheckResult };
+  private inFlight?: Promise<HealthCheckResult>;
 
   constructor(
     private readonly redisService: RedisService,
@@ -42,6 +45,28 @@ export class AgentHealthService {
   ) {}
 
   async check(): Promise<HealthCheckResult> {
+    const now = Date.now();
+    if (this.cachedResult && this.cachedResult.expireAt > now) {
+      return this.cachedResult.value;
+    }
+
+    if (this.inFlight) {
+      return this.inFlight;
+    }
+
+    this.inFlight = this.computeCheck()
+      .then((result) => {
+        this.cachedResult = { value: result, expireAt: Date.now() + this.cacheTtlMs };
+        return result;
+      })
+      .finally(() => {
+        this.inFlight = undefined;
+      });
+
+    return this.inFlight;
+  }
+
+  private async computeCheck(): Promise<HealthCheckResult> {
     const builtInTools = this.toolRegistry.listBySource('built-in');
     const mcpTools = this.toolRegistry.listBySource('mcp');
 

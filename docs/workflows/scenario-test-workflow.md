@@ -17,6 +17,7 @@
 ### 功能定位
 
 用例测试是测试套件的核心功能之一,用于:
+
 - 基于预设的测试用例验证 AI Agent 的回复质量
 - 从飞书多维表格导入标准化的测试场景
 - 人工评审 Agent 回复,标注通过/失败
@@ -24,23 +25,23 @@
 
 ### 核心概念
 
-| 概念 | 说明 | 示例 |
-|------|------|------|
-| **测试批次 (Batch)** | 一次导入的完整测试/验证集 | "用例测试 2026/1/16" |
-| **测试用例 (Case)** | 单个预设的测试场景 | "候选人咨询Java岗位" |
-| **测试分类 (Category)** | 用例的功能分类 | "岗位咨询", "薪资问题" |
-| **人工评审 (Review)** | 对 Agent 回复的质量判断 | 通过/失败 + 失败原因 |
+| 概念                    | 说明                      | 示例                   |
+| ----------------------- | ------------------------- | ---------------------- |
+| **测试批次 (Batch)**    | 一次导入的完整测试/验证集 | "用例测试 2026/1/16"   |
+| **测试用例 (Case)**     | 单个预设的测试场景        | "候选人咨询Java岗位"   |
+| **测试分类 (Category)** | 用例的功能分类            | "岗位咨询", "薪资问题" |
+| **人工评审 (Review)**   | 对 Agent 回复的质量判断   | 通过/失败 + 失败原因   |
 
 ### 与回归验证的区别
 
-| 维度 | 用例测试 (Scenario Test) | 回归验证 (Conversation Test) |
-|------|-------------------------|------------------------------|
-| **飞书数据表** | testSuite 表 | validationSet 表 (独立) |
-| **数据来源** | 人工编写的标准测试用例 | 真实客户对话记录 |
-| **测试目标** | 验证特定场景的处理能力 | 验证整体对话质量 |
-| **评估方式** | 人工评审 (通过/失败) | LLM 自动评分 (0-100) |
-| **典型用途** | 功能回归测试 | 质量基准测试 |
-| **测试轮次** | 单轮问答 | 多轮对话 |
+| 维度           | 用例测试 (Scenario Test) | 回归验证 (Conversation Test) |
+| -------------- | ------------------------ | ---------------------------- |
+| **飞书数据表** | testSuite 表             | validationSet 表 (独立)      |
+| **数据来源**   | 人工编写的标准测试用例   | 真实客户对话记录             |
+| **测试目标**   | 验证特定场景的处理能力   | 验证整体对话质量             |
+| **评估方式**   | 人工评审 (通过/失败)     | LLM 自动评分 (0-100)         |
+| **典型用途**   | 功能回归测试             | 质量基准测试                 |
+| **测试轮次**   | 单轮问答                 | 多轮对话                     |
 
 > **注意**: 用例测试和回归验证使用独立的飞书表格，不再通过 `test_type` 字段区分。
 
@@ -94,45 +95,50 @@
 
 #### test_batches (测试批次表)
 
-| 字段 | 类型 | 说明 | 示例 |
-|------|------|------|------|
-| `id` | UUID | 主键 | `batch-001` |
-| `name` | TEXT | 批次名称 | "用例测试 2026/1/16 14:30" |
-| `test_type` | TEXT | 测试类型 | `'scenario'` |
-| `source` | TEXT | 来源 | `'feishu'` \| `'manual'` |
-| `status` | TEXT | 批次状态 | `'created'` \| `'running'` \| `'reviewing'` \| `'completed'` |
-| `total_cases` | INTEGER | 用例总数 | `50` |
-| `executed_count` | INTEGER | 已执行数 | `30` |
-| `pass_rate` | NUMERIC | 通过率 | `85.5` |
-| `feishu_app_token` | TEXT | 飞书 App Token | `bascn...` |
-| `feishu_table_id` | TEXT | 飞书 Table ID | `tbl...` |
-| `created_at` | TIMESTAMP | 创建时间 | - |
-| `updated_at` | TIMESTAMP | 更新时间 | - |
+| 字段               | 类型      | 说明           | 示例                                                         |
+| ------------------ | --------- | -------------- | ------------------------------------------------------------ |
+| `id`               | UUID      | 主键           | `batch-001`                                                  |
+| `name`             | TEXT      | 批次名称       | "用例测试 2026/1/16 14:30"                                   |
+| `test_type`        | TEXT      | 测试类型       | `'scenario'`                                                 |
+| `source`           | TEXT      | 来源           | `'feishu'` \| `'manual'`                                     |
+| `status`           | TEXT      | 批次状态       | `'created'` \| `'running'` \| `'reviewing'` \| `'completed'` |
+| `total_cases`      | INTEGER   | 用例总数       | `50`                                                         |
+| `executed_count`   | INTEGER   | 已执行数       | `30`                                                         |
+| `pass_rate`        | NUMERIC   | 通过率         | `85.5`                                                       |
+| `feishu_app_token` | TEXT      | 飞书 App Token | `bascn...`                                                   |
+| `feishu_table_id`  | TEXT      | 飞书 Table ID  | `tbl...`                                                     |
+| `created_at`       | TIMESTAMP | 创建时间       | -                                                            |
+| `updated_at`       | TIMESTAMP | 更新时间       | -                                                            |
 
 #### test_executions (测试执行记录表)
 
-| 字段 | 类型 | 说明 | 数据示例 |
-|------|------|------|----------|
-| `id` | UUID | 主键 | `exec-001` |
-| `batch_id` | UUID | 所属批次 | `batch-001` |
-| `case_id` | TEXT | 用例ID (飞书) | `rec123` |
-| `case_name` | TEXT | 用例名称 | "候选人咨询Java岗位薪资" |
-| `category` | TEXT | 分类 | "岗位咨询" |
-| `test_input` | JSONB | 测试输入 | 见下方示例 |
-| `expected_output` | TEXT | 期望输出 | "薪资范围15-25K..." |
-| `actual_output` | TEXT | 实际输出 | "Java开发岗位薪资..." |
-| `execution_status` | TEXT | 执行状态 | `'pending'` \| `'success'` \| `'failure'` |
-| `review_status` | TEXT | 评审状态 | `'pending'` \| `'passed'` \| `'failed'` |
-| `failure_reason` | TEXT | 失败原因 | "工具调用错误" |
-| `agent_request` | JSONB | Agent 请求 | API 请求参数 |
-| `agent_response` | JSONB | Agent 响应 | API 完整响应 |
-| `tool_calls` | JSONB | 工具调用 | `[]` 或工具调用数组 |
-| `duration_ms` | INTEGER | 执行耗时 | `3500` (ms) |
-| `token_usage` | JSONB | Token 用量 | `{inputTokens, outputTokens, totalTokens}` |
-| `error_message` | TEXT | 错误信息 | - |
-| `review_comment` | TEXT | 评审评论 | "回复内容不准确" |
-| `reviewed_by` | TEXT | 评审人 | "张三" |
-| `reviewed_at` | TIMESTAMP | 评审时间 | - |
+| 字段                | 类型      | 说明                                          | 数据示例                                   |
+| ------------------- | --------- | --------------------------------------------- | ------------------------------------------ |
+| `id`                | UUID      | 主键                                          | `exec-001`                                 |
+| `batch_id`          | UUID      | 所属批次                                      | `batch-001`                                |
+| `case_id`           | TEXT      | 用例ID (飞书)                                 | `rec123`                                   |
+| `case_name`         | TEXT      | 用例名称                                      | "候选人咨询Java岗位薪资"                   |
+| `category`          | TEXT      | 分类                                          | "岗位咨询"                                 |
+| `test_input`        | JSONB     | 测试输入                                      | 见下方示例                                 |
+| `expected_output`   | TEXT      | 期望输出                                      | "薪资范围15-25K..."                        |
+| `actual_output`     | TEXT      | 实际输出                                      | "Java开发岗位薪资..."                      |
+| `execution_status`  | TEXT      | 执行状态                                      | `'pending'` \| `'success'` \| `'failure'`  |
+| `review_status`     | TEXT      | 评审状态                                      | `'pending'` \| `'passed'` \| `'failed'`    |
+| `failure_reason`    | TEXT      | 失败原因                                      | "工具调用错误"                             |
+| `agent_request`     | JSONB     | Agent 请求                                    | API 请求参数                               |
+| `agent_response`    | JSONB     | Agent 响应                                    | API 完整响应                               |
+| `tool_calls`        | JSONB     | 工具调用                                      | `[]` 或工具调用数组                        |
+| `duration_ms`       | INTEGER   | 执行耗时                                      | `3500` (ms)                                |
+| `token_usage`       | JSONB     | Token 用量                                    | `{inputTokens, outputTokens, totalTokens}` |
+| `error_message`     | TEXT      | 错误信息                                      | -                                          |
+| `review_comment`    | TEXT      | 评审评论                                      | "回复内容不准确"                           |
+| `reviewed_by`       | TEXT      | 评审人                                        | "张三"                                     |
+| `reviewed_at`       | TIMESTAMP | 评审时间                                      | -                                          |
+| `source_trace`      | JSONB     | 来源 BadCase/GoodCase/chat/message 排障证据链 | `{badcaseIds, chatIds, anchorMessageIds}`  |
+| `execution_trace`   | JSONB     | 本次测试运行的执行证据链                      | `{runtime, agent, asset}`                  |
+| `memory_setup`      | JSONB     | 测试前置记忆 fixture                          | `{sessionFacts, presentedJobs}`            |
+| `memory_assertions` | JSONB     | 记忆评测断言                                  | `{shouldPreserve}`                         |
+| `memory_trace`      | JSONB     | 入口记忆、turn-end、执行后记忆状态            | `{entrySnapshot, postTurnState}`           |
 
 **test_input JSONB 结构**:
 
@@ -210,25 +216,25 @@ const records = await feishuBitableApi.getRecords({
 
 ```typescript
 // 解析飞书记录
-const cases = records.map(record => ({
+const cases = records.map((record) => ({
   caseId: record.record_id,
   caseName: record.fields['用例名称'],
   category: record.fields['分类'],
   message: record.fields['用户消息'],
-  history: parseHistory(record.fields['对话历史']),  // 可选
+  history: parseHistory(record.fields['对话历史']), // 可选
   expectedOutput: record.fields['预期回复'],
 }));
 ```
 
 **飞书字段映射**:
 
-| 飞书字段 | 数据库字段 | 必填 | 说明 |
-|---------|-----------|------|------|
-| `用例名称` | `case_name` | ✅ | 测试用例的描述性名称 |
-| `分类` | `category` | ❌ | 用例分类 (如"岗位咨询") |
-| `用户消息` | `test_input.message` | ✅ | 用户的输入消息 |
-| `对话历史` | `test_input.history` | ❌ | JSON 格式的历史消息 |
-| `预期回复` | `expected_output` | ❌ | 期望的 Agent 回复 |
+| 飞书字段   | 数据库字段           | 必填 | 说明                    |
+| ---------- | -------------------- | ---- | ----------------------- |
+| `用例名称` | `case_name`          | ✅   | 测试用例的描述性名称    |
+| `分类`     | `category`           | ❌   | 用例分类 (如"岗位咨询") |
+| `用户消息` | `test_input.message` | ✅   | 用户的输入消息          |
+| `对话历史` | `test_input.history` | ❌   | JSON 格式的历史消息     |
+| `预期回复` | `expected_output`    | ❌   | 期望的 Agent 回复       |
 
 3. **创建测试批次**
 
@@ -276,6 +282,7 @@ await testBatchRepository.update(batch.id, {
 ### 阶段 2: 执行测试 (批量运行)
 
 **触发方式**:
+
 - 导入时立即执行 (`executeImmediately: true`)
 - 手动点击"开始测试"按钮
 
@@ -505,13 +512,13 @@ enum FailureReason {
 
 **飞书字段映射**:
 
-| 飞书字段 | 数据来源 | 示例 |
-|---------|---------|------|
-| `测试结果` | `review_status` | "通过" / "失败" / "跳过" |
-| `Agent回复` | `actual_output` | "Java开发岗位薪资..." |
-| `测试时间` | `created_at` | "2026-01-16 14:30:25" |
-| `错误原因` | `failure_reason` + `review_comment` | "回答不完整: 未提及..." |
-| `执行耗时` | `duration_ms` | "3500ms" |
+| 飞书字段    | 数据来源                            | 示例                     |
+| ----------- | ----------------------------------- | ------------------------ |
+| `测试结果`  | `review_status`                     | "通过" / "失败" / "跳过" |
+| `Agent回复` | `actual_output`                     | "Java开发岗位薪资..."    |
+| `测试时间`  | `created_at`                        | "2026-01-16 14:30:25"    |
+| `错误原因`  | `failure_reason` + `review_comment` | "回答不完整: 未提及..."  |
+| `执行耗时`  | `duration_ms`                       | "3500ms"                 |
 
 ## API 接口
 
@@ -756,24 +763,24 @@ GET /test-suite/execution/:executionId
 
 评审人应基于以下维度判断:
 
-| 维度 | 说明 | 权重 |
-|------|------|------|
-| **准确性** | 回复内容是否正确 | 40% |
-| **完整性** | 是否覆盖必要信息 | 30% |
-| **相关性** | 是否与用户问题相关 | 20% |
-| **专业性** | 语言表达是否专业 | 10% |
+| 维度       | 说明               | 权重 |
+| ---------- | ------------------ | ---- |
+| **准确性** | 回复内容是否正确   | 40%  |
+| **完整性** | 是否覆盖必要信息   | 30%  |
+| **相关性** | 是否与用户问题相关 | 20%  |
+| **专业性** | 语言表达是否专业   | 10%  |
 
 ### 失败原因分类
 
-| 原因代码 | 说明 | 示例 |
-|---------|------|------|
-| `wrong_answer` | 回答错误 | 薪资范围说错 |
-| `incomplete` | 回答不完整 | 未提及关键信息 |
-| `hallucination` | 产生幻觉 | 编造不存在的岗位 |
-| `tool_error` | 工具调用错误 | 错误触发搜索工具 |
-| `format_issue` | 格式问题 | 未按要求格式输出 |
-| `tone_issue` | 语气问题 | 语气不专业 |
-| `other` | 其他原因 | 自定义原因 |
+| 原因代码        | 说明         | 示例             |
+| --------------- | ------------ | ---------------- |
+| `wrong_answer`  | 回答错误     | 薪资范围说错     |
+| `incomplete`    | 回答不完整   | 未提及关键信息   |
+| `hallucination` | 产生幻觉     | 编造不存在的岗位 |
+| `tool_error`    | 工具调用错误 | 错误触发搜索工具 |
+| `format_issue`  | 格式问题     | 未按要求格式输出 |
+| `tone_issue`    | 语气问题     | 语气不专业       |
+| `other`         | 其他原因     | 自定义原因       |
 
 ### 评审状态流转
 
@@ -798,28 +805,28 @@ GET /test-suite/execution/:executionId
 
 **必填字段**:
 
-| 字段名 | 字段类型 | 说明 | 示例 |
-|--------|---------|------|------|
-| `用例名称` | 单行文本 | 测试用例描述 | "候选人咨询Java岗位薪资" |
-| `用户消息` | 多行文本 | 用户输入 | "你好,我想了解Java岗位的薪资范围" |
+| 字段名     | 字段类型 | 说明         | 示例                              |
+| ---------- | -------- | ------------ | --------------------------------- |
+| `用例名称` | 单行文本 | 测试用例描述 | "候选人咨询Java岗位薪资"          |
+| `用户消息` | 多行文本 | 用户输入     | "你好,我想了解Java岗位的薪资范围" |
 
 **可选字段**:
 
-| 字段名 | 字段类型 | 说明 | 示例 |
-|--------|---------|------|------|
-| `分类` | 单选 | 用例分类 | "岗位咨询" |
-| `对话历史` | 多行文本 | JSON 格式的历史消息 | `[{"role":"user","content":"..."}]` |
-| `预期回复` | 多行文本 | 期望的 Agent 回复 | "薪资范围15-25K,根据经验调整..." |
-| `测试状态` | 单选 | 回写字段 | "通过" / "失败" / "跳过" |
-| `最近测试时间` | 日期时间 | 回写字段 | "2026-01-16 14:30:25" |
-| `测试批次` | 单行文本 | 回写字段 | 测试批次标识 |
-| `分类` (失败分类) | 单选 | 回写字段 | 测试场景分类 |
-| `错误原因` | 单选 | 回写字段 | Agent 错误归因 |
+| 字段名            | 字段类型 | 说明                | 示例                                |
+| ----------------- | -------- | ------------------- | ----------------------------------- |
+| `分类`            | 单选     | 用例分类            | "岗位咨询"                          |
+| `对话历史`        | 多行文本 | JSON 格式的历史消息 | `[{"role":"user","content":"..."}]` |
+| `预期回复`        | 多行文本 | 期望的 Agent 回复   | "薪资范围15-25K,根据经验调整..."    |
+| `测试状态`        | 单选     | 回写字段            | "通过" / "失败" / "跳过"            |
+| `最近测试时间`    | 日期时间 | 回写字段            | "2026-01-16 14:30:25"               |
+| `测试批次`        | 单行文本 | 回写字段            | 测试批次标识                        |
+| `分类` (失败分类) | 单选     | 回写字段            | 测试场景分类                        |
+| `错误原因`        | 单选     | 回写字段            | Agent 错误归因                      |
 
 **已废弃字段**:
 
-| 字段名 | 说明 |
-|--------|------|
+| 字段名         | 说明                                               |
+| -------------- | -------------------------------------------------- |
 | ~~`测试类型`~~ | 已废弃,回归验证数据已迁移到独立的 validationSet 表 |
 
 ### 数据同步流程
@@ -884,14 +891,14 @@ UPSTASH_REDIS_REST_TOKEN=...
 BullModule.registerQueue({
   name: 'test-suite',
   defaultJobOptions: {
-    attempts: 2,                          // 失败重试次数
+    attempts: 2, // 失败重试次数
     backoff: {
       type: 'exponential',
-      delay: 5000,                        // 重试延迟 5s
+      delay: 5000, // 重试延迟 5s
     },
-    timeout: 120000,                      // 任务超时 2min
-    removeOnComplete: true,               // 完成后删除
-    removeOnFail: false,                  // 失败保留
+    timeout: 120000, // 任务超时 2min
+    removeOnComplete: true, // 完成后删除
+    removeOnFail: false, // 失败保留
   },
 });
 ```
@@ -918,12 +925,14 @@ cancelled  cancelled  cancelled
 ### 1. 测试用例设计
 
 **✅ 推荐**:
+
 - 用例名称清晰描述测试场景
 - 按功能分类组织用例
 - 覆盖常见和边界场景
 - 预期输出具体明确
 
 **❌ 避免**:
+
 - 用例名称过于笼统 ("测试1", "测试2")
 - 缺少分类标签
 - 只测试正常流程
@@ -932,11 +941,13 @@ cancelled  cancelled  cancelled
 ### 2. 执行策略
 
 **串行执行 (推荐)**:
+
 - 适合大批量测试 (>20 个用例)
 - 避免 API 限流
 - 稳定可靠
 
 **并行执行 (谨慎)**:
+
 - 适合小批量测试 (<10 个用例)
 - 注意 API 限流风险
 - 快速验证
@@ -944,12 +955,14 @@ cancelled  cancelled  cancelled
 ### 3. 评审规范
 
 **评审时应**:
+
 - 仔细对比实际输出与预期输出
 - 选择准确的失败原因分类
 - 填写清晰的评审评论
 - 及时回写飞书
 
 **评审时不应**:
+
 - 仅凭主观感受判断
 - 漏填失败原因
 - 评论过于简单 ("不行", "错了")
@@ -960,6 +973,7 @@ cancelled  cancelled  cancelled
 ### Q1: 如何组织测试用例?
 
 **A**: 建议按功能模块分类:
+
 - 岗位咨询类
 - 薪资福利类
 - 简历投递类
@@ -971,6 +985,7 @@ cancelled  cancelled  cancelled
 ### Q2: 执行失败如何处理?
 
 **A**:
+
 1. 查看 `error_message` 字段定位问题
 2. 检查 Agent API 是否正常
 3. 验证测试输入是否合法
@@ -979,6 +994,7 @@ cancelled  cancelled  cancelled
 ### Q3: 如何提高评审效率?
 
 **A**:
+
 1. 优先评审失败的用例
 2. 使用批量评审功能 (如果实现)
 3. 设置评审模板快速填写
@@ -987,6 +1003,7 @@ cancelled  cancelled  cancelled
 ### Q4: 批次统计如何计算?
 
 **A**:
+
 - `totalCases`: test_executions 表记录数
 - `executedCount`: `execution_status != 'pending'` 的记录数
 - `passedCount`: `review_status = 'passed'` 的记录数

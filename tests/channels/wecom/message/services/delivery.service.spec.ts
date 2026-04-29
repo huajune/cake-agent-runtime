@@ -20,6 +20,7 @@ describe('MessageDeliveryService', () => {
   const mockMonitoringService = {
     recordSendStart: jest.fn(),
     recordSendEnd: jest.fn(),
+    recordReplySkipped: jest.fn(),
   };
 
   const mockTypingPolicyService = {
@@ -124,6 +125,41 @@ describe('MessageDeliveryService', () => {
 
       await expect(service.deliverReply({ content: 'Hello' }, deliveryContext, true)).rejects.toBeInstanceOf(
         DeliveryFailureError,
+      );
+    });
+
+    it('silently drops reply when output leak detected (badcase vllg7hlu)', async () => {
+      const reply: AgentReply = {
+        content: '阶段已切换到 job_consultation，等待候选人回复年龄信息。',
+      };
+
+      const result = await service.deliverReply(reply, deliveryContext, true);
+
+      expect(result.success).toBe(true);
+      expect(result.skipped).toBe(true);
+      expect(result.skipReason).toBe('output_leak');
+      expect(result.segmentCount).toBe(0);
+      expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
+      expect(mockMonitoringService.recordReplySkipped).toHaveBeenCalledWith(
+        'msg-123',
+        'output_leak',
+      );
+    });
+
+    it('silently drops reply when same-brand collapse detected (badcase laybqxn4)', async () => {
+      const reply: AgentReply = {
+        content: '有肯德基，17-27.5 元、肯德基，17-27.5 元可以选',
+      };
+
+      const result = await service.deliverReply(reply, deliveryContext, true);
+
+      expect(result.success).toBe(true);
+      expect(result.skipped).toBe(true);
+      expect(result.skipReason).toBe('same_brand_collapse');
+      expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
+      expect(mockMonitoringService.recordReplySkipped).toHaveBeenCalledWith(
+        'msg-123',
+        'same_brand_collapse',
       );
     });
 

@@ -1,8 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { AnalyticsController } from '@biz/monitoring/monitoring.controller';
+import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { AnalyticsController, MonitoringController } from '@biz/monitoring/monitoring.controller';
 import { AnalyticsDashboardService } from '@biz/monitoring/services/dashboard/analytics-dashboard.service';
 import { AnalyticsQueryService } from '@biz/monitoring/services/dashboard/analytics-query.service';
 import { AnalyticsMaintenanceService } from '@biz/monitoring/services/maintenance/analytics-maintenance.service';
+import { MonitoringCacheService } from '@biz/monitoring/services/tracking/monitoring-cache.service';
+import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
+import { ApiTokenGuard } from '@infra/server/guards/api-token.guard';
 
 describe('AnalyticsController', () => {
   let controller: AnalyticsController;
@@ -277,5 +281,95 @@ describe('AnalyticsController', () => {
 
       await expect(controller.clearCache('all')).rejects.toThrow('Cache clear failed');
     });
+  });
+});
+
+describe('MonitoringController', () => {
+  let controller: MonitoringController;
+
+  const counters = {
+    totalMessages: 1,
+    totalSuccess: 1,
+    totalFailure: 0,
+    totalAiDuration: 10,
+    totalSendDuration: 5,
+    totalFallback: 0,
+    totalFallbackSuccess: 0,
+    totalOutputLeakSkipped: 2,
+    totalSameBrandCollapseSkipped: 1,
+  };
+
+  const mockDashboardService = {
+    getDashboardOverviewAsync: jest.fn(),
+  };
+
+  const mockCacheService = {
+    getCounters: jest.fn(),
+  };
+
+  const mockMessageTrackingService = {
+    recordReplySkipped: jest.fn(),
+  };
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [MonitoringController],
+      providers: [
+        { provide: AnalyticsDashboardService, useValue: mockDashboardService },
+        { provide: MonitoringCacheService, useValue: mockCacheService },
+        { provide: MessageTrackingService, useValue: mockMessageTrackingService },
+      ],
+    })
+      .overrideGuard(ApiTokenGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
+
+    controller = module.get<MonitoringController>(MonitoringController);
+    jest.clearAllMocks();
+  });
+
+  it('protects the local probe skip endpoint with ApiTokenGuard', () => {
+    const guards = Reflect.getMetadata(
+      GUARDS_METADATA,
+      MonitoringController.prototype.probeReplySkipped,
+    );
+
+    expect(guards).toContain(ApiTokenGuard);
+  });
+
+  it('returns dashboard data with top-level skip counters', async () => {
+    mockDashboardService.getDashboardOverviewAsync.mockResolvedValue({ timeRange: 'today' });
+    mockCacheService.getCounters.mockResolvedValue(counters);
+
+    const result = await controller.getMonitoringDashboard();
+
+    expect(mockDashboardService.getDashboardOverviewAsync).toHaveBeenCalledWith('today');
+    expect(result).toMatchObject({
+      timeRange: 'today',
+      globalCounters: counters,
+      totalOutputLeakSkipped: 2,
+      totalSameBrandCollapseSkipped: 1,
+    });
+  });
+
+  it('returns global counters directly', async () => {
+    mockCacheService.getCounters.mockResolvedValue(counters);
+
+    await expect(controller.getGlobalCounters()).resolves.toEqual(counters);
+  });
+
+  it('records a probe skip and returns updated counters', async () => {
+    mockCacheService.getCounters.mockResolvedValue({ ...counters, totalOutputLeakSkipped: 3 });
+
+    const result = await controller.probeReplySkipped({
+      messageId: 'msg-1',
+      reason: 'output_leak',
+    });
+
+    expect(mockMessageTrackingService.recordReplySkipped).toHaveBeenCalledWith(
+      'msg-1',
+      'output_leak',
+    );
+    expect(result.totalOutputLeakSkipped).toBe(3);
   });
 });

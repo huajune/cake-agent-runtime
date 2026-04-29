@@ -11,6 +11,7 @@ import {
   MonitoringGlobalCounters,
   AlertErrorType,
   AnomalyFlag,
+  DeliverySkipReason,
 } from '@shared-types/tracking.types';
 import { MonitoringCacheService } from './monitoring-cache.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
@@ -153,6 +154,19 @@ export class MessageTrackingService {
   recordSendStart(_messageId: string): void {}
 
   recordSendEnd(_messageId: string): void {}
+
+  /**
+   * 投递层主动丢弃回复时累计计数器。配合 DeliveryResult.skipReason 写库，
+   * 用于排障 / 回归测试断言。
+   */
+  recordReplySkipped(messageId: string, reason: DeliverySkipReason): void {
+    const counterKey: keyof MonitoringGlobalCounters =
+      reason === 'output_leak' ? 'totalOutputLeakSkipped' : 'totalSameBrandCollapseSkipped';
+    this.cacheService.incrementCounter(counterKey, 1).catch((err) => {
+      this.logger.warn(`更新 ${counterKey} 计数器失败 [${messageId}]:`, err);
+    });
+    this.logger.warn(`[Monitoring] 投递跳过 [${messageId}] reason=${reason}`);
+  }
 
   /**
    * 记录消息处理成功

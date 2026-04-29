@@ -7,6 +7,7 @@ import {
   DailyTrendData,
   HourlyTrendData,
 } from '../types/repository.types';
+import { BusinessMetricTrendPoint } from '../types/analytics.types';
 
 // ==================== RPC 字段映射 ====================
 
@@ -234,6 +235,36 @@ export class MonitoringRecordRepository extends BaseRepository {
         p_start_date: startDate.toISOString(),
         p_end_date: endDate.toISOString(),
         p_interval_minutes: intervalMinutes,
+      },
+    );
+  }
+
+  /**
+   * 获取 Dashboard 业务趋势。
+   *
+   * 数据库侧聚合，避免把当前时间段原始记录拉回 Node 再做分桶。
+   */
+  async getDashboardBusinessTrend(
+    startDate: Date,
+    endDate: Date,
+    intervalMinutes: number = 5,
+    granularity: 'minute' | 'day' = 'minute',
+  ): Promise<BusinessMetricTrendPoint[]> {
+    return this.rpcMappedList<BusinessMetricTrendPoint>(
+      'get_dashboard_business_trend',
+      {
+        minute: { field: 'minute', type: 'string' as const },
+        consultations: { field: 'consultations', type: 'int' as const },
+        bookingAttempts: { field: 'booking_attempts', type: 'int' as const },
+        successfulBookings: { field: 'successful_bookings', type: 'int' as const },
+        conversionRate: { field: 'conversion_rate', type: 'float' as const },
+        bookingSuccessRate: { field: 'booking_success_rate', type: 'float' as const },
+      },
+      {
+        p_start_date: startDate.toISOString(),
+        p_end_date: endDate.toISOString(),
+        p_interval_minutes: intervalMinutes,
+        p_granularity: granularity,
       },
     );
   }

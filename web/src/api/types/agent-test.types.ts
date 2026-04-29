@@ -84,6 +84,7 @@ export interface TestExecution {
   duration_ms: number | null;
   token_usage: TokenUsage | null;
   error_message: string | null;
+  dialogue_turn_count?: number;
   review_status: 'pending' | 'passed' | 'failed' | 'skipped';
   review_comment: string | null;
   reviewed_by: string | null;
@@ -186,6 +187,21 @@ export interface ImportResult {
 
 export type FeedbackType = 'badcase' | 'goodcase';
 
+export interface FeedbackSourceTrace {
+  badcaseIds?: string[];
+  goodcaseIds?: string[];
+  badcaseRecordIds?: string[];
+  chatIds?: string[];
+  anchorMessageIds?: string[];
+  relatedMessageIds?: string[];
+  messageProcessingIds?: string[];
+  traceIds?: string[];
+  executionIds?: string[];
+  batchIds?: string[];
+  notes?: string[];
+  raw?: Record<string, unknown>;
+}
+
 export interface SubmitFeedbackRequest {
   type: FeedbackType;
   chatHistory: string;
@@ -193,7 +209,10 @@ export interface SubmitFeedbackRequest {
   errorType?: string;
   remark?: string;
   chatId?: string;
+  messageId?: string;
+  traceId?: string;
   batchId?: string;
+  sourceTrace?: FeedbackSourceTrace;
   candidateName?: string;
   managerName?: string;
 }

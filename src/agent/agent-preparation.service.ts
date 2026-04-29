@@ -142,8 +142,10 @@ export class AgentPreparationService {
     const tools = this.toolRegistry.buildForScenario(scenario, toolContext) as ToolSet;
     const memorySnapshot = this.buildMemorySnapshot(memory, entryStage);
 
+    const criticalTurnGuard = this.buildCriticalTurnGuard(currentUserMessage, truncatedMessages);
+
     return {
-      finalPrompt: systemPrompt + guardSuffix,
+      finalPrompt: systemPrompt + guardSuffix + criticalTurnGuard,
       normalizedMessages,
       memoryLoadWarning: memory._warnings?.join('; '),
       tools,
@@ -176,6 +178,86 @@ export class AgentPreparationService {
       if (role === 'assistant') break;
     }
     return collected.length > 0 ? collected.join('\n') : undefined;
+  }
+
+  /**
+   * 把本轮最容易复发的事故规则追加到 system prompt 最末尾。
+   *
+   * 这些规则不是替代主 prompt，而是把“当前消息已经命中”的禁令放到最后，
+   * 避免模型在长上下文里先承认规则、最后又被阶段策略带回收资或预约。
+   */
+  private buildCriticalTurnGuard(
+    currentUserMessage: string | undefined,
+    messages: AgentInputMessage[],
+  ): string {
+    const current = currentUserMessage ?? '';
+    const recent = messages
+      .slice(-12)
+      .map((message) => `${message.role}: ${message.content ?? ''}`)
+      .join('\n');
+    const combined = `${recent}\n${current}`;
+    const guards: string[] = [];
+
+    if (
+      /每周.{0,6}(最多|至多|只能|只).{0,4}[一二两三四五六七八九十\d]+天|做一休一|只周末|下班后|[一二两三四五六七八九十\d]+点才(?:能)?下班|现在决定不了时间|不上夜班/.test(
+        current,
+      )
+    ) {
+      guards.push(
+        '本轮候选人补充或重复了出勤/班次硬约束。最终回复在本轮工具校验前严禁说“资料都收到了/资料已收到/没问题/可以/备注上/资料备注/后面安排/随时发我再安排/到时候沟通/先把资料录上”，也严禁继续追问身高、体重、住址、支援意愿等收资字段。必须先用 duliday_interview_precheck 或 duliday_job_list(includeWorkTime=true) 校验当前岗位；若当前岗位不明确或没有本轮工具结果，只能说明“这个时间/每周出勤属于硬约束，需要先按班次核岗位是否匹配”，然后再询问岗位/位置用于筛选，不能基于历史助手话术直接断言“门店面试最晚到5点/今天来不及/等确定了再安排”或说资料已收好。若候选人问“6点下班还能不能面试”，未校验前必须回复“我先按下班后/晚班可约来核岗位”，不能直接给可约或不可约结论。',
+      );
+    }
+
+    if (
+      /(?:\d{1,2}月\d{1,2}[日号]?|今天|明天|后天|下周[一二三四五六日天]?|这?周[一二三四五六日天]|周[一二三四五六日天]).{0,12}(回来)?面试.{0,8}(可以|行|方便|吗)|面试.{0,12}(?:\d{1,2}月\d{1,2}[日号]?|今天|明天|后天|下周[一二三四五六日天]?|这?周[一二三四五六日天]|周[一二三四五六日天])|(?:\d{1,2}月\d{1,2}[日号]?|今天|明天|后天|下周[一二三四五六日天]?|这?周[一二三四五六日天]|周[一二三四五六日天]).{0,8}(上午|下午|晚上|[一二两三四五六七八九十\d]+点)?.{0,8}(可以|行吗|方便|能不能)/.test(
+        current,
+      )
+    ) {
+      guards.push(
+        '本轮候选人指定了面试日期。未调用 duliday_interview_precheck(requestedDate=候选人指定日期) 前，最终回复严禁说“可以/能约/通常可以/一般可以/帮你登记/帮你预约”，也不要催更近日期、改成其他日期时间或继续收整套资料。若 jobId/当前岗位不明确，先确认门店/岗位，不能直接承诺该日期可约；若 job_list 没查到当前岗位，也只能先确认门店/岗位。',
+      );
+    }
+
+    if (/健康证/.test(combined) && /专业|食品|新媒体|填写错误|职业/.test(combined)) {
+      guards.push(
+        '本轮涉及“健康证”和“专业筛选”。健康证只代表证件，不代表候选人的专业；即使历史助手说过专业不符，也不能把“有食品健康证”当成“食品专业”。最终回复必须先澄清“你实际专业是什么”，严禁直接拒绝预约或复述“食品/新媒体专业不符”，也不要声称已拉群，除非本轮 invite_to_group 成功。',
+      );
+    }
+
+    if (
+      /已面试|面试通过|通过了|入职|报到|培训|店长.{0,8}联系|只能一家店|选[^，。！？\n]{0,8}店|先去[^，。！？\n]{0,8}面试/.test(
+        combined,
+      )
+    ) {
+      guards.push(
+        '近邻上下文显示候选人已在面试/入职/只能保留一家店/门店已联系的跟进状态。最终回复严禁重新问“哪天方便面试”、重新收资、重新预约或继续推荐；需要处理状态、门店选择、异常或图片信息时，优先 request_handoff。若无 active case，也只能说让同事确认。',
+      );
+    }
+
+    if (
+      /1[3-9]\d{9}/.test(current) &&
+      /大专|本科|中专|高中|学历|年龄|岁|时间|周[一二三四五六日天]|下午|上午/.test(current)
+    ) {
+      guards.push(
+        '本轮候选人已经提交了报名/预约资料。最终回复必须先确认已收到姓名、电话、年龄、学历、面试时间等已给字段；候选人给了“周三下午/明天下午/具体日期时间”时必须原样承接，严禁擅自改成周四、两点或其他时间。严禁让候选人重填整套模板，也严禁回到“发地址/哪个区/查附近岗位”的入口。若当前岗位缺失，只能确认报名岗位/门店，不要改问住址。',
+      );
+    }
+
+    if (/银行卡|工资|扣税|税务|本人卡|别人卡|房贷|起诉|没几块钱|没啥税/.test(combined)) {
+      guards.push(
+        '本轮在讨论银行卡/税务/发薪主体。若没有本轮工具或明确岗位规则，最终回复严禁说“总部统一规定/公司统一流程/公司统一走账/统一流程/财务流程统一/按平台规则走/没法绕过/个人操作不了/必须/一定/不管多少/门店也按规定办事”，也严禁说“面试时问门店/让门店同事问问/现场沟通/灵活处理/特殊处理/变通”。只能说“通常需要本人账户，具体以岗位或同事确认”。候选人因银行卡异常、被起诉、房贷断供等无法本人卡发薪时，必须 request_handoff 或说明让同事确认；最终回复不要反问附近岗位/在聊的店/要不要看岗位，也不要继续强推约面。',
+      );
+    }
+
+    if (/\[位置分享\]|经纬度|这是我住的地方|住处|地址|附近/.test(combined)) {
+      guards.push(
+        '近邻上下文包含位置线索。若最终回复要引用“刚才那家/这家/那个奥乐齐/附近岗位”等具体推荐，必须写清门店名或地址，并且事实来自本轮 duliday_job_list、当前焦点岗位或当前预约信息。若历史推荐只有品牌/距离/薪资而缺门店/地址，不能继续用“这家”承接，必须重新查岗或先补清门店/地址。',
+      );
+    }
+
+    if (guards.length === 0) return '';
+
+    return `\n\n# 本轮动态硬禁令\n${guards.map((guard) => `- ${guard}`).join('\n')}`;
   }
 
   /**

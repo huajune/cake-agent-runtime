@@ -416,17 +416,31 @@ function extractStudentInfo(message: string): {
 }
 
 function extractEducation(message: string): string | null {
+  if (isLikelyLocationOrSchoolName(message)) return null;
+
   for (const keyword of EDUCATION_KEYWORDS) {
     if (message.includes(keyword)) return keyword;
   }
   return null;
 }
 
+function isLikelyLocationOrSchoolName(message: string): boolean {
+  if (message.includes('[位置分享]') || message.includes('[经纬度:')) return true;
+  return /(小学部|初中部|高中部|中学部|大学城|学校|校区|学院|幼儿园|附小)/.test(message);
+}
+
 function extractHealthCertificate(message: string): string | null {
-  if (/有健康证/.test(message)) return '有';
-  if (/没有健康证|没健康证|无健康证/.test(message)) return '无';
-  if (/接受办健康证|可以办健康证|可办健康证/.test(message)) return '无但接受办理健康证';
   if (/不接受办健康证|不办健康证/.test(message)) return '无且不接受办理健康证';
+  if (/接受办健康证|可以办健康证|可办健康证/.test(message)) return '无但接受办理健康证';
+  if (/没有(?:食品|餐饮|零售)?(?:类)?健康证|没健康证|无健康证/.test(message)) return '无';
+  if (
+    /健康证.{0,6}(?:不是|非)本地|(?:外地|异地).{0,3}健康证|健康证.{0,4}(?:外地|异地)/.test(message)
+  ) {
+    return '非本地健康证';
+  }
+  if (/有健康证|(?:食品|餐饮|零售)(?:类)?健康证/.test(message)) {
+    return '有';
+  }
   return null;
 }
 
@@ -457,8 +471,61 @@ function extractPositions(message: string): string[] {
 }
 
 function extractSchedule(message: string): string | null {
-  const matched = SCHEDULE_KEYWORDS.filter((keyword) => message.includes(keyword));
+  const matched: string[] = [];
+
+  for (const keyword of SCHEDULE_KEYWORDS) {
+    if (message.includes(keyword)) matched.push(keyword);
+  }
+
+  const weeklyDayConstraint = extractWeeklyDayConstraint(message);
+  if (weeklyDayConstraint) matched.push(weeklyDayConstraint);
+
+  if (/做一休一|上一休一|干一休一|做一天休一天|上一天休一天/.test(message)) {
+    matched.push('做一休一');
+  }
+
+  if (
+    /(?:不想上|不能上|不接受|不愿意上|不要|不做|不上).{0,3}夜班|夜班.{0,4}(?:不上|不要|不做|不接受)/.test(
+      message,
+    )
+  ) {
+    matched.push('不上夜班');
+  }
+
+  for (const shift of ['早班', '白班', '晚班', '夜班', '周末', '工作日'] as const) {
+    if (new RegExp(`只(?:能|想|考虑)?(?:上|做|干)?${shift}`).test(message)) {
+      matched.push(`只${shift}`);
+    }
+  }
+
+  const timeRange = extractTimeRange(message);
+  if (timeRange) matched.push(timeRange);
+
+  if (
+    /下班后|下班以后|下班之后|晚[上间]\s*\d{1,2}\s*(?:点|:|：)|[一二三四五六七八九十\d]{1,3}\s*点(?:半)?(?:才|才能)?下班/.test(
+      message,
+    )
+  ) {
+    matched.push('下班后');
+  }
+
   return matched.length > 0 ? Array.from(new Set(matched)).join('、') : null;
+}
+
+function extractWeeklyDayConstraint(message: string): string | null {
+  const match = message.match(/(?:每周|一周)[^，。！？；;]{0,12}?([一二两三四五六七0-7])\s*天/);
+  if (!match?.[1]) return null;
+
+  const phrase = match[0];
+  const qualifier = /最多|至多|只能|只|就/.test(phrase) ? '最多' : '';
+  return `每周${qualifier}${match[1]}天`;
+}
+
+function extractTimeRange(message: string): string | null {
+  const match = message.match(
+    /((?:早上|上午|下午|晚上|晚间)?\s*[0-9一二三四五六七八九十]{1,3}\s*(?:点|:|：)(?:半|\d{2})?\s*(?:到|至|-|~)\s*[0-9一二三四五六七八九十]{1,3}\s*(?:点|:|：)?(?:半|\d{2})?)/,
+  );
+  return match?.[1]?.replace(/\s+/g, '') ?? null;
 }
 
 /**
@@ -478,12 +545,20 @@ function extractLocation(message: string): LocationSignals {
   const compact = extractMunicipalityCompact(message);
   if (compact) return compact;
 
+  const explicitDistricts = extractExplicitDistricts(message);
+  const explicitLocations = Array.from(
+    new Set([
+      ...extractPositionShareLocations(message),
+      ...extractExplicitLocations(message, explicitDistricts),
+    ]),
+  );
+
   const explicitCity = extractExplicitCity(message);
   if (explicitCity) {
     return {
       city: { value: explicitCity, confidence: 'high', evidence: 'explicit_city' },
-      district: [],
-      location: [],
+      district: explicitDistricts,
+      location: explicitLocations,
     };
   }
 
@@ -508,8 +583,6 @@ function extractLocation(message: string): LocationSignals {
     }
   }
 
-  const explicitDistricts = extractExplicitDistricts(message);
-  const explicitLocations = extractExplicitLocations(message, explicitDistricts);
   const inferredCity = resolveCityFromAny(explicitDistricts, explicitLocations);
 
   return {
@@ -585,9 +658,16 @@ function extractExplicitCity(message: string): string | null {
 function extractExplicitDistricts(message: string): string[] {
   const districts = Array.from(
     message.matchAll(/([\u4e00-\u9fa5]{2,10}(?:区|县|镇|街道|新区|开发区))/g),
-  ).map((match) => normalizeDistrictForLookup(match[1]));
+  ).map((match) => normalizeExplicitDistrict(match[1]));
 
   return Array.from(new Set(districts.filter(Boolean)));
+}
+
+function normalizeExplicitDistrict(candidate: string): string {
+  const withoutCityPrefix = candidate
+    .replace(/^[\u4e00-\u9fa5]{2,12}省/, '')
+    .replace(/^[\u4e00-\u9fa5]{2,12}市/, '');
+  return normalizeDistrictForLookup(withoutCityPrefix);
 }
 
 function extractExplicitLocations(message: string, districts: string[]): string[] {
@@ -600,6 +680,19 @@ function extractExplicitLocations(message: string, districts: string[]): string[
   if (!location) return [];
   if (districts.some((district) => location.includes(district))) return [];
   return [location];
+}
+
+function extractPositionShareLocations(message: string): string[] {
+  if (!message.includes('[位置分享]')) return [];
+
+  const locations: string[] = [];
+  const title = message.match(/\[位置分享\]\s*([^（\[]+)/)?.[1]?.trim();
+  if (title) locations.push(title);
+
+  const address = message.match(/（([^）]+)）/)?.[1]?.trim();
+  if (address) locations.push(address);
+
+  return Array.from(new Set(locations.filter(Boolean)));
 }
 
 function resolveCityFromDistrict(candidate: string): string | null {

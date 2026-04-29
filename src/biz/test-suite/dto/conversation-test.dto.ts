@@ -67,6 +67,10 @@ export interface ConversationTurnExecution {
   expectedOutput: string | null;
   /** Agent 原始响应快照，用于前端还原思考/工具/回复的调用链 */
   agentResponse: unknown | null;
+  /** 完整测试执行 trace bundle */
+  executionTrace?: unknown | null;
+  /** 记忆评测 trace bundle */
+  memoryTrace?: unknown | null;
   actualOutput: string | null;
   similarityScore: number | null;
   /** LLM 评估理由 */
@@ -181,9 +185,10 @@ export class GetConversationTurnsDto {
  * 更新轮次评审请求 DTO
  */
 export class UpdateTurnReviewDto {
-  @ApiProperty({ description: '执行记录ID' })
+  @ApiPropertyOptional({ description: '执行记录ID；路由参数已包含，body 中可省略' })
+  @IsOptional()
   @IsString()
-  executionId: string;
+  executionId?: string;
 
   @ApiProperty({ description: '评审状态', enum: ReviewStatus })
   @IsEnum(ReviewStatus)

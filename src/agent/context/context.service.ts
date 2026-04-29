@@ -192,7 +192,15 @@ export class ContextService implements OnModuleInit {
       return '';
     }
 
-    if (cityGroups.length === 0) return '';
+    if (cityGroups.length === 0) {
+      return [
+        `## 兼职群资源（${city}）`,
+        '- 该城市暂无可用兼职群',
+        '',
+        '本城市群库为空：禁止承诺"我先把你拉进群/进我们群/发群邀请/后面群里通知"等拉群相关动作；',
+        '如确需对接，引导候选人留意后续主动联系，或调用 request_handoff 转人工跟进。',
+      ].join('\n');
+    }
 
     const byIndustry = new Map<string, { groupCount: number; availableCount: number }>();
     for (const group of cityGroups) {

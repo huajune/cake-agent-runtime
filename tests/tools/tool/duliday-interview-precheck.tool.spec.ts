@@ -665,6 +665,42 @@ describe('buildInterviewPrecheckTool', () => {
     expect(result.bookingChecklist.templateText).toContain('健康证：无但接受办理健康证');
   });
 
+  it('should not treat non-local health certificate as a completed certificate answer', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-04-08',
+                  interviewStartTime: '13:30',
+                  interviewEndTime: '16:30',
+                },
+              ],
+            },
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      { jobId: 100, requestedDate: '2026-04-08' },
+      {
+        sessionFacts: {
+          interview_info: { has_health_certificate: '非本地健康证' },
+          preferences: {},
+          reasoning: 'test',
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.bookingChecklist.missingFields).toContain('健康证情况');
+    expect(result.bookingChecklist.templateText).toContain('健康证：');
+  });
+
   it('should switch to progressive collection guidance when candidate resists filling many fields', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [makeJob()],

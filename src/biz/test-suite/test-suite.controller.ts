@@ -562,7 +562,10 @@ export class TestSuiteController {
       errorType: request.errorType,
       remark: request.remark,
       chatId: request.chatId,
+      messageId: request.messageId,
+      traceId: request.traceId,
       batchId: request.batchId,
+      sourceTrace: request.sourceTrace,
       candidateName: request.candidateName,
       managerName: request.managerName,
     };
@@ -654,6 +657,10 @@ export class TestSuiteController {
     @Param('executionId') executionId: string,
     @Body() request: UpdateTurnReviewDto,
   ) {
+    if (request.executionId && request.executionId !== executionId) {
+      throw new HttpException('执行记录ID不匹配', HttpStatus.BAD_REQUEST);
+    }
+
     return {
       success: true,
       data: await this.conversationTestService.updateTurnReview(

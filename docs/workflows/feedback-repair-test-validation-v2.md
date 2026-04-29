@@ -10,12 +10,18 @@
 - `BadCase / GoodCase` 只负责收集样本
 - `测试集 / 验证集` 只负责承载正式测试资产
 - `资产关联` 自动记录样本和正式资产之间的血缘关系
+- `sourceTrace / memorySetup / memoryAssertions` 记录排障证据链和记忆评测输入
 
 也就是说：
 
 - 提交反馈，不会再直接进入正式测试集
 - 正式测试集和验证集，只能通过 `analyze-chat-badcases` 这条策展工作流生成
 - 不再依赖手动勾选字段做同步
+- 记忆相关 BadCase 必须能通过测试链路复现“测试前记忆、执行中读取、turn-end 后写入”
+
+记忆评测与排障字段的完整契约见：
+
+- `docs/workflows/badcase-trace-memory-evaluation.md`
 
 ---
 
@@ -260,7 +266,7 @@ flowchart LR
 
 测试完成后，还要回写源样本池：
 
-- 已完成修复和验证的 `BadCase`，状态应从 `待分析 / 待修复 / 修复中 / 待测试 / 待验证` 流转到合适终态，通常是 `已解决`
+- `BadCase` 状态收敛为 `待分析 / 处理中 / 待验证 / 已解决`：未分析写 `待分析`，已确认要修、修复中或修完待测写 `处理中`，测试后仍需人工确认写 `待验证`，已解决或无需修复写 `已解决`
 - `修复说明` 应写清修复点、正式用例 ID、验证批次 ID、残余风险
 - `根因层` 应标注 `prompt / stage / tool / data / memory / workflow / policy / unknown`
 - `最近复现时间` 写本轮最终验证或复跑时间

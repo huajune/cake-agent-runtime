@@ -39,6 +39,39 @@ describe('extractHighConfidenceFacts', () => {
     expect(result?.interview_info.has_health_certificate).toBe('有');
   });
 
+  it('should extract schedule hard constraints beyond simple shift keywords', () => {
+    expect(
+      extractHighConfidenceFacts(['每周最多也就能干两天'], brandData)?.preferences.schedule,
+    ).toBe('每周最多两天');
+
+    expect(extractHighConfidenceFacts(['我只能做一休一'], brandData)?.preferences.schedule).toBe(
+      '做一休一',
+    );
+
+    expect(extractHighConfidenceFacts(['有没有不上夜班的'], brandData)?.preferences.schedule).toBe(
+      '夜班、不上夜班',
+    );
+
+    expect(
+      extractHighConfidenceFacts(['我今天六点才能下班'], brandData)?.preferences.schedule,
+    ).toBe('下班后');
+  });
+
+  it('should distinguish health certificate type from missing certificate wording', () => {
+    expect(
+      extractHighConfidenceFacts(['我有食品类健康证'], brandData)?.interview_info
+        .has_health_certificate,
+    ).toBe('有');
+    expect(
+      extractHighConfidenceFacts(['健康证不是本地的'], brandData)?.interview_info
+        .has_health_certificate,
+    ).toBe('非本地健康证');
+    expect(
+      extractHighConfidenceFacts(['我没有食品健康证'], brandData)?.interview_info
+        .has_health_certificate,
+    ).toBe('无');
+  });
+
   it('should extract specific labor_form subtypes only (小时工 / 寒假工 / 暑假工 / 兼职+)', () => {
     const hourly = extractHighConfidenceFacts(['我想做小时工'], brandData);
     expect(hourly?.preferences.labor_form).toBe('小时工');
@@ -55,5 +88,24 @@ describe('extractHighConfidenceFacts', () => {
     const combined = extractHighConfidenceFacts(['想找兼职服务员'], brandData);
     expect(combined?.preferences.position).toEqual(['服务员']);
     expect(combined?.preferences.labor_form).toBeNull();
+  });
+
+  it('should not extract education from location or school names', () => {
+    const result = extractHighConfidenceFacts(
+      ['[位置分享] 大宁国际学校小学部（上海市静安区江场路1428号） [经纬度:31.295946,121.453613]'],
+      brandData,
+    );
+
+    expect(result?.interview_info.education ?? null).toBeNull();
+    expect(result?.preferences.city).toEqual({
+      value: '上海',
+      confidence: 'high',
+      evidence: 'explicit_city',
+    });
+    expect(result?.preferences.district).toEqual(['静安']);
+    expect(result?.preferences.location).toEqual([
+      '大宁国际学校小学部',
+      '上海市静安区江场路1428号',
+    ]);
   });
 });

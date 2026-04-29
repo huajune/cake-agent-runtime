@@ -1,6 +1,7 @@
 import {
   extractAutoGreetingName,
   isFromAutoGreeting,
+  isLikelyRealChineseName,
   sanitizeInterviewName,
 } from '@/memory/facts/name-guard';
 import {
@@ -101,6 +102,59 @@ describe('name-guard', () => {
       expect(result.sanitized.interview_info.name).toBeNull();
       expect(result.sanitized.interview_info.phone).toBe('13800138000');
       expect(result.sanitized.interview_info.age).toBe('28');
+    });
+  });
+
+  describe('isLikelyRealChineseName', () => {
+    it.each(['张三', '李四', '胡晓雷', '欧阳娜娜'])(
+      'accepts real Chinese name %s',
+      (value) => {
+        expect(isLikelyRealChineseName(value)).toBe(true);
+      },
+    );
+
+    it.each([
+      '小晴早点睡', // 5 字昵称
+      '余᭄苼囿財', // 含装饰字符
+      '💰余', // emoji
+      'Rafeal·Gal', // 拉丁
+      '张三A', // 含字母
+      '张3', // 含数字
+      '胡', // 1 字
+      '', // 空
+      '   ', // 空白
+      'X 张三', // 含空格
+    ])('rejects nickname-like input %p', (value) => {
+      expect(isLikelyRealChineseName(value)).toBe(false);
+    });
+
+    it('rejects null / undefined', () => {
+      expect(isLikelyRealChineseName(null)).toBe(false);
+      expect(isLikelyRealChineseName(undefined)).toBe(false);
+    });
+
+    it('still accepts 4-char idiom-style names (known false-positive, prompt fallback)', () => {
+      // 漏网契约：4 字成语式昵称无法靠正则区分，依赖 prompt 让 Agent 重问
+      expect(isLikelyRealChineseName('执子之魂')).toBe(true);
+    });
+
+    it.each([
+      '测' + '试姓名', // P2 批次 SCN-P2-20260429-004 实测 fixture
+      '测' + '试用户',
+      '测' + '试候选人',
+      '用户张三',
+      '昵称小明',
+      '游客小李',
+      '匿名用户',
+      '无名氏',
+      '客户A真', // 含字母也会先被正则拒，这里测前缀分支不影响
+    ])('rejects placeholder prefix %p', (value) => {
+      expect(isLikelyRealChineseName(value)).toBe(false);
+    });
+
+    it('keeps real names even if they contain blacklist words in the middle', () => {
+      // "张测试"开头不是黑名单词，仍然通过
+      expect(isLikelyRealChineseName('张测试')).toBe(true);
     });
   });
 });

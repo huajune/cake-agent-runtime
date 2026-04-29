@@ -1,4 +1,5 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AgentRunnerService, type AgentRunResult } from '@agent/runner.service';
 import { CallerKind } from '@enums/agent.enum';
 import { LlmEvaluationService } from '@evaluation/llm-evaluation.service';
@@ -13,8 +14,14 @@ import { ConversationSnapshotRepository } from '../repositories/conversation-sna
 import { TestExecutionRepository } from '../repositories/test-execution.repository';
 import { type ConversationSnapshotRecord } from '../entities/conversation-snapshot.entity';
 import { type TestExecution } from '../entities/test-execution.entity';
+import { MemoryFixtureService } from './memory-fixture.service';
 import { TestBatchService } from './test-batch.service';
 import { TestWriteBackService } from './test-write-back.service';
+import type {
+  TestExecutionTraceBundle,
+  TestMemoryTraceBundle,
+  TestRuntimeScope,
+} from '../types/test-debug-trace.types';
 import {
   ExecutionStatus,
   ReviewStatus,
@@ -64,6 +71,8 @@ const ASSERTION_EXPECTATION_PATTERN =
 @Injectable()
 export class ConversationTestService {
   private readonly logger = new Logger(ConversationTestService.name);
+  private readonly turnTimeoutMs: number;
+  private readonly conversationConcurrency: number;
 
   constructor(
     private readonly runner: AgentRunnerService,
@@ -72,9 +81,19 @@ export class ConversationTestService {
     private readonly conversationSnapshotRepository: ConversationSnapshotRepository,
     private readonly executionRepository: TestExecutionRepository,
     private readonly writeBackService: TestWriteBackService,
+    @Optional() private readonly memoryFixtureService?: MemoryFixtureService,
     @Optional() private readonly batchService?: TestBatchService,
     @Optional() private readonly bitableApi?: FeishuBitableApiService,
+    @Optional() private readonly configService?: ConfigService,
   ) {
+    this.turnTimeoutMs = this.readPositiveInt('TEST_SUITE_CONVERSATION_TURN_TIMEOUT_MS', 180_000, {
+      min: 1_000,
+      max: 600_000,
+    });
+    this.conversationConcurrency = this.readPositiveInt('TEST_SUITE_CONVERSATION_CONCURRENCY', 20, {
+      min: 1,
+      max: 20,
+    });
     this.logger.log('ConversationTestService 初始化完成');
   }
 
@@ -114,6 +133,10 @@ export class ConversationTestService {
       if (turns.length === 0) {
         throw new Error(`对话源 ${sourceId} 没有可执行的候选人轮次`);
       }
+
+      const memoryScope = this.buildConversationRuntimeScope(source);
+      await this.memoryFixtureService?.reset(memoryScope);
+      await this.memoryFixtureService?.seed(memoryScope, source.memory_setup);
 
       const turnResults: Array<{
         turnNumber: number;
@@ -206,6 +229,8 @@ export class ConversationTestService {
         history: turn?.history || [],
         expectedOutput: exec.expected_output || turn?.expectedOutput || null,
         agentResponse: exec.agent_response ?? null,
+        executionTrace: exec.execution_trace ?? null,
+        memoryTrace: exec.memory_trace ?? null,
         actualOutput: exec.actual_output,
         similarityScore: exec.similarity_score ?? null,
         evaluationReason: exec.evaluation_reason ?? null,
@@ -307,18 +332,25 @@ export class ConversationTestService {
     const results: ConversationExecutionResult[] = [];
     let successCount = 0;
     let failedCount = 0;
+    let cursor = 0;
 
-    for (const source of sources) {
-      try {
-        const result = await this.executeConversation(source.id, forceRerun);
-        results.push(result);
-        successCount++;
-      } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        this.logger.error(`对话 ${source.id} 执行失败: ${errorMessage}`);
-        failedCount++;
+    const concurrency = Math.min(sources.length, this.conversationConcurrency);
+    const runWorker = async () => {
+      while (cursor < sources.length) {
+        const source = sources[cursor++];
+        try {
+          const result = await this.executeConversation(source.id, forceRerun);
+          results.push(result);
+          successCount++;
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          this.logger.error(`对话 ${source.id} 执行失败: ${errorMessage}`);
+          failedCount++;
+        }
       }
-    }
+    };
+
+    await Promise.all(Array.from({ length: concurrency }, () => runWorker()));
 
     // 批量执行完成后更新批次统计
     if (this.batchService) {
@@ -548,10 +580,10 @@ export class ConversationTestService {
     let executionStatus: ExecutionStatus = ExecutionStatus.SUCCESS;
     let errorMessage: string | null = null;
 
-    const userId = source.participant_name;
-    if (!userId) {
-      throw new Error(`对话源 ${source.id} 缺少 participant_name，无法作为 userId`);
-    }
+    const userId = this.buildConversationTestUserId(source);
+    const runtimeScope = this.buildConversationRuntimeScope(source);
+    let turnEnd: TestMemoryTraceBundle['turnEnd'] = { status: 'skipped' };
+    let postTurnState: unknown = null;
 
     try {
       const runnerMessages = [
@@ -562,21 +594,30 @@ export class ConversationTestService {
         { role: 'user' as const, content: turn.userMessage },
       ];
 
-      loopResult = await this.runner.invoke({
-        callerKind: CallerKind.TEST_SUITE,
-        messages: runnerMessages,
-        userId,
-        corpId: 'test',
-        sessionId,
-        scenario,
-        strategySource: 'testing',
-      });
+      loopResult = await this.withTimeout(
+        this.runner.invoke({
+          callerKind: CallerKind.TEST_SUITE,
+          messages: runnerMessages,
+          userId,
+          corpId: 'test',
+          sessionId,
+          scenario,
+          strategySource: 'testing',
+          disableFallbacks: true,
+          deferTurnEnd: true,
+        }),
+        this.turnTimeoutMs,
+        `回归验证轮次执行超时: source=${source.id}, turn=${turn.turnNumber}`,
+      );
+      turnEnd = await this.runDeferredTurnEnd(loopResult);
+      postTurnState = await this.readMemoryStateBestEffort(runtimeScope);
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       executionStatus = errorMsg.includes('timeout')
         ? ExecutionStatus.TIMEOUT
         : ExecutionStatus.FAILURE;
       errorMessage = errorMsg;
+      postTurnState = await this.readMemoryStateBestEffort(runtimeScope);
     }
 
     const durationMs = Date.now() - startTime;
@@ -602,7 +643,26 @@ export class ConversationTestService {
       sessionId,
       scenario,
       strategySource: 'testing' as const,
+      disableFallbacks: true,
     };
+    const executionTrace = this.buildConversationExecutionTrace({
+      source,
+      turn,
+      runtimeScope,
+      loopResult,
+      toolCalls,
+      tokenUsage,
+      startedAt: startTime,
+      completedAt: Date.now(),
+      durationMs,
+    });
+    const memoryTrace = this.buildConversationMemoryTrace({
+      runtimeScope,
+      source,
+      loopResult,
+      postTurnState,
+      turnEnd,
+    });
 
     let similarityScore: number | null = null;
     let rating: SimilarityRating | null = null;
@@ -612,14 +672,18 @@ export class ConversationTestService {
 
     if (executionStatus === ExecutionStatus.SUCCESS && turn.expectedOutput && actualOutput) {
       const toolGroundedEvaluation = this.shouldUseToolGroundedEvaluation(turn, toolCalls);
-      const evaluation = await this.llmEvaluationService.evaluate({
-        userMessage: turn.userMessage,
-        expectedOutput: turn.expectedOutput,
-        actualOutput,
-        history: turn.history,
-        evaluationMode: toolGroundedEvaluation ? 'tool_grounded' : 'reference_reply',
-        toolCalls: toolGroundedEvaluation ? toolCalls : undefined,
-      });
+      const evaluation = await this.withTimeout(
+        this.llmEvaluationService.evaluate({
+          userMessage: turn.userMessage,
+          expectedOutput: turn.expectedOutput,
+          actualOutput,
+          history: turn.history,
+          evaluationMode: toolGroundedEvaluation ? 'tool_grounded' : 'reference_reply',
+          toolCalls: toolGroundedEvaluation ? toolCalls : undefined,
+        }),
+        this.turnTimeoutMs,
+        `回归验证评估超时: source=${source.id}, turn=${turn.turnNumber}`,
+      );
       similarityScore = evaluation.score;
       rating = this.llmEvaluationService.getRating(evaluation.score);
       evaluationReason = toolGroundedEvaluation
@@ -644,8 +708,12 @@ export class ConversationTestService {
         ? ReviewStatus.PASSED
         : ReviewStatus.PENDING;
 
-    if (existingExecution) {
-      await this.executionRepository.updateExecution(existingExecution.id, {
+    const executionToUpdate =
+      existingExecution ??
+      (await this.executionRepository.findByConversationSourceAndTurn(source.id, turn.turnNumber));
+
+    if (executionToUpdate) {
+      await this.executionRepository.updateExecution(executionToUpdate.id, {
         agent_request: agentRequest,
         agent_response: loopResult,
         actual_output: actualOutput,
@@ -657,6 +725,8 @@ export class ConversationTestService {
         similarity_score: similarityScore,
         review_status: reviewStatus,
         evaluation_reason: evaluationReason,
+        execution_trace: executionTrace,
+        memory_trace: memoryTrace,
       });
     } else {
       await this.executionRepository.create({
@@ -681,6 +751,11 @@ export class ConversationTestService {
         similarityScore,
         reviewStatus,
         evaluationReason,
+        sourceTrace: source.source_trace,
+        executionTrace,
+        memorySetup: source.memory_setup,
+        memoryAssertions: source.memory_assertions,
+        memoryTrace,
       });
     }
 
@@ -702,6 +777,141 @@ export class ConversationTestService {
     return this.collectToolNames(toolCalls).some((toolName) =>
       DYNAMIC_FACT_TOOL_NAMES.has(toolName),
     );
+  }
+
+  private buildConversationRuntimeScope(source: ConversationSnapshotRecord): TestRuntimeScope {
+    return {
+      corpId: 'test',
+      userId: this.buildConversationTestUserId(source),
+      sessionId: source.conversation_id,
+      callerKind: CallerKind.TEST_SUITE,
+      strategySource: 'testing',
+      scenario: DEFAULT_SCENARIO,
+    };
+  }
+
+  private buildConversationTestUserId(source: ConversationSnapshotRecord): string {
+    return `conversation-test-${source.id}`;
+  }
+
+  private async runDeferredTurnEnd(
+    loopResult: AgentRunResult | null,
+  ): Promise<TestMemoryTraceBundle['turnEnd']> {
+    if (!loopResult?.runTurnEnd) {
+      return { status: 'skipped' };
+    }
+
+    const startedAt = Date.now();
+    try {
+      await loopResult.runTurnEnd();
+      return { status: 'completed', durationMs: Date.now() - startedAt };
+    } catch (error: unknown) {
+      return {
+        status: 'failed',
+        durationMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  private async readMemoryStateBestEffort(scope: TestRuntimeScope): Promise<unknown> {
+    try {
+      if (!this.memoryFixtureService) {
+        return null;
+      }
+      return await this.memoryFixtureService.read(scope);
+    } catch (error: unknown) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  private buildConversationExecutionTrace(params: {
+    source: ConversationSnapshotRecord;
+    turn: ConversationTurn;
+    runtimeScope: TestRuntimeScope;
+    loopResult: AgentRunResult | null;
+    toolCalls: unknown[];
+    tokenUsage: unknown;
+    startedAt: number;
+    completedAt: number;
+    durationMs: number;
+  }): TestExecutionTraceBundle {
+    return {
+      schemaVersion: 1,
+      sourceTrace: params.source.source_trace,
+      asset: {
+        batchId: params.source.batch_id,
+        feishuRecordId: params.source.feishu_record_id,
+        conversationSnapshotId: params.source.id,
+        validationTitle: params.source.validation_title,
+        turnNumber: params.turn.turnNumber,
+      },
+      runtime: {
+        ...params.runtimeScope,
+        startedAt: new Date(params.startedAt).toISOString(),
+        completedAt: new Date(params.completedAt).toISOString(),
+        durationMs: params.durationMs,
+      },
+      agent: {
+        memorySnapshot: params.loopResult?.memorySnapshot,
+        toolCalls: params.toolCalls,
+        steps: params.loopResult?.agentSteps,
+        usage: params.tokenUsage,
+      },
+    };
+  }
+
+  private buildConversationMemoryTrace(params: {
+    runtimeScope: TestRuntimeScope;
+    source: ConversationSnapshotRecord;
+    loopResult: AgentRunResult | null;
+    postTurnState: unknown;
+    turnEnd: TestMemoryTraceBundle['turnEnd'];
+  }): TestMemoryTraceBundle {
+    return {
+      schemaVersion: 1,
+      scope: params.runtimeScope,
+      setup: params.source.memory_setup,
+      assertions: params.source.memory_assertions,
+      entrySnapshot: params.loopResult?.memorySnapshot,
+      postTurnState: params.postTurnState,
+      turnEnd: params.turnEnd,
+    };
+  }
+
+  private async withTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    message: string,
+  ): Promise<T> {
+    let timeout: NodeJS.Timeout | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeout = setTimeout(
+        () => reject(new Error(`${message} timeout after ${timeoutMs}ms`)),
+        timeoutMs,
+      );
+    });
+
+    try {
+      return await Promise.race([promise, timeoutPromise]);
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    }
+  }
+
+  private readPositiveInt(
+    key: string,
+    fallback: number,
+    bounds: { min: number; max: number },
+  ): number {
+    const raw = this.configService?.get<string | number>(key);
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) {
+      return fallback;
+    }
+    return Math.max(bounds.min, Math.min(bounds.max, Math.floor(parsed)));
   }
 
   private collectToolNames(toolCalls: unknown[]): string[] {
