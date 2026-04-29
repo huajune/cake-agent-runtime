@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { CuratedDatasetImportService } from '@biz/test-suite/services/curated-dataset-import.service';
-import { FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
+import { BitableField, FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
 import { CuratedDatasetPayloadBuilderService } from '@biz/test-suite/services/curated-dataset-payload-builder.service';
 import { LineageSyncService } from '@biz/test-suite/services/lineage-sync.service';
 
@@ -137,5 +137,42 @@ describe('CuratedDatasetImportService', () => {
         },
       ],
     });
+  });
+
+  it('continues when a traceability field is concurrently created remotely', async () => {
+    const existingFields: BitableField[] = [
+      { field_id: 'fld_anchor', field_name: '触发MessageID', type: 1 },
+      { field_id: 'fld_related', field_name: '相关MessageID', type: 1 },
+      { field_id: 'fld_processing', field_name: '处理流水ID', type: 1 },
+      { field_id: 'fld_trace', field_name: 'TraceID', type: 1 },
+      { field_id: 'fld_source_trace', field_name: 'SourceTrace', type: 1 },
+      { field_id: 'fld_memory_setup', field_name: 'MemorySetup', type: 1 },
+      { field_id: 'fld_memory_assertions', field_name: 'MemoryAssertions', type: 1 },
+    ];
+    const sourceRecordField: BitableField = {
+      field_id: 'fld_source_record',
+      field_name: '来源BadCaseRecordID',
+      type: 1,
+    };
+    const conflict = Object.assign(new Error('创建字段失败: field already exists'), {
+      code: 1254004,
+    });
+
+    mockBitableApi.createField.mockRejectedValueOnce(conflict);
+    mockBitableApi.getFields.mockResolvedValue([...existingFields, sourceRecordField]);
+
+    const result = await (
+      service as unknown as {
+        ensureTraceabilityFields: (
+          appToken: string,
+          tableId: string,
+          fields: BitableField[],
+        ) => Promise<BitableField[]>;
+      }
+    ).ensureTraceabilityFields('app', 'tbl', existingFields);
+
+    expect(mockBitableApi.createField).toHaveBeenCalledTimes(1);
+    expect(mockBitableApi.getFields).toHaveBeenCalledWith('app', 'tbl');
+    expect(result).toEqual(expect.arrayContaining([sourceRecordField]));
   });
 });

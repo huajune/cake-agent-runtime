@@ -20,6 +20,17 @@ interface LocalDateTimeParts {
   second: number;
 }
 
+function getDateTimeFormatPartValue(
+  parts: Intl.DateTimeFormatPart[],
+  type: Intl.DateTimeFormatPartTypes,
+): string {
+  const part = parts.find((p) => p.type === type);
+  if (!part) {
+    throw new Error(`Intl.DateTimeFormat did not yield part: ${type}`);
+  }
+  return part.value;
+}
+
 function getLocalDateTimeParts(date: Date): LocalDateTimeParts {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: LOCAL_TIMEZONE,
@@ -32,7 +43,7 @@ function getLocalDateTimeParts(date: Date): LocalDateTimeParts {
     hourCycle: 'h23',
   }).formatToParts(date);
 
-  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)!.value;
+  const get = (type: Intl.DateTimeFormatPartTypes) => getDateTimeFormatPartValue(parts, type);
   return {
     year: Number(get('year')),
     month: Number(get('month')),
@@ -68,9 +79,9 @@ export function formatLocalDate(date: Date): string {
     day: '2-digit',
   }).formatToParts(date);
 
-  const y = parts.find((p) => p.type === 'year')!.value;
-  const m = parts.find((p) => p.type === 'month')!.value;
-  const d = parts.find((p) => p.type === 'day')!.value;
+  const y = getDateTimeFormatPartValue(parts, 'year');
+  const m = getDateTimeFormatPartValue(parts, 'month');
+  const d = getDateTimeFormatPartValue(parts, 'day');
   return `${y}-${m}-${d}`;
 }
 

@@ -1,10 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { AnalyticsController, MonitoringController } from '@biz/monitoring/monitoring.controller';
 import { AnalyticsDashboardService } from '@biz/monitoring/services/dashboard/analytics-dashboard.service';
 import { AnalyticsQueryService } from '@biz/monitoring/services/dashboard/analytics-query.service';
 import { AnalyticsMaintenanceService } from '@biz/monitoring/services/maintenance/analytics-maintenance.service';
 import { MonitoringCacheService } from '@biz/monitoring/services/tracking/monitoring-cache.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
+import { ApiTokenGuard } from '@infra/server/guards/api-token.guard';
 
 describe('AnalyticsController', () => {
   let controller: AnalyticsController;
@@ -317,10 +319,22 @@ describe('MonitoringController', () => {
         { provide: MonitoringCacheService, useValue: mockCacheService },
         { provide: MessageTrackingService, useValue: mockMessageTrackingService },
       ],
-    }).compile();
+    })
+      .overrideGuard(ApiTokenGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<MonitoringController>(MonitoringController);
     jest.clearAllMocks();
+  });
+
+  it('protects the local probe skip endpoint with ApiTokenGuard', () => {
+    const guards = Reflect.getMetadata(
+      GUARDS_METADATA,
+      MonitoringController.prototype.probeReplySkipped,
+    );
+
+    expect(guards).toContain(ApiTokenGuard);
   });
 
   it('returns dashboard data with top-level skip counters', async () => {

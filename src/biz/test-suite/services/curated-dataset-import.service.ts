@@ -20,6 +20,8 @@ import { LineageSyncService } from './lineage-sync.service';
 
 type CuratedDatasetImportOperation = 'created' | 'updated' | 'unchanged';
 
+const BITABLE_FIELD_ALREADY_EXISTS_CODES = new Set([1254004]);
+
 interface UpsertRecordResult {
   operation: CuratedDatasetImportOperation;
   recordId: string;
@@ -336,16 +338,54 @@ export class CuratedDatasetImportService {
         continue;
       }
 
-      const result = await this.bitableApi.createField(appToken, tableId, spec.canonicalName, 1);
-      existingNames.add(spec.canonicalName);
-      nextFields.push({
-        field_id: result.fieldId,
-        field_name: spec.canonicalName,
-        type: 1,
-      });
-      this.logger.log(`已为策展数据集表 ${tableId} 创建可选字段: ${spec.canonicalName}`);
+      try {
+        const result = await this.bitableApi.createField(appToken, tableId, spec.canonicalName, 1);
+        existingNames.add(spec.canonicalName);
+        nextFields.push({
+          field_id: result.fieldId,
+          field_name: spec.canonicalName,
+          type: 1,
+        });
+        this.logger.log(`已为策展数据集表 ${tableId} 创建可选字段: ${spec.canonicalName}`);
+      } catch (error) {
+        if (!this.isFieldAlreadyExistsError(error)) {
+          throw error;
+        }
+
+        this.logger.warn(
+          `策展数据集表 ${tableId} 可选字段已存在，刷新字段缓存后继续: ${spec.canonicalName}`,
+        );
+        const refreshedFields = await this.bitableApi.getFields(appToken, tableId);
+        for (const field of refreshedFields) {
+          if (!existingNames.has(field.field_name)) {
+            existingNames.add(field.field_name);
+            nextFields.push(field);
+          }
+        }
+      }
     }
 
     return nextFields;
+  }
+
+  private isFieldAlreadyExistsError(error: unknown): boolean {
+    const errorLike = error as {
+      code?: unknown;
+      feishuCode?: unknown;
+      response?: { data?: { code?: unknown; msg?: unknown } };
+      message?: string;
+    };
+    const codes = [errorLike?.code, errorLike?.feishuCode, errorLike?.response?.data?.code]
+      .map((code) => Number(code))
+      .filter((code) => Number.isFinite(code));
+
+    if (codes.some((code) => BITABLE_FIELD_ALREADY_EXISTS_CODES.has(code))) {
+      return true;
+    }
+
+    const message = [errorLike?.message, errorLike?.response?.data?.msg, String(error)]
+      .filter(Boolean)
+      .join(' ');
+    return /field already exists|字段已存在|already exists/i.test(message);
   }
 }

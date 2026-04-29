@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Logger, Query, Post, HttpCode } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Query, Post, HttpCode, UseGuards } from '@nestjs/common';
 import { AnalyticsDashboardService } from './services/dashboard/analytics-dashboard.service';
 import { AnalyticsQueryService } from './services/dashboard/analytics-query.service';
 import { AnalyticsMaintenanceService } from './services/maintenance/analytics-maintenance.service';
@@ -6,6 +6,7 @@ import { MonitoringCacheService } from './services/tracking/monitoring-cache.ser
 import { MessageTrackingService } from './services/tracking/message-tracking.service';
 import { MetricsData, TimeRange } from './types/analytics.types';
 import { DeliverySkipReason } from '@shared-types/tracking.types';
+import { ApiTokenGuard } from '@infra/server/guards/api-token.guard';
 
 /**
  * Analytics API 控制器
@@ -174,6 +175,7 @@ export class MonitoringController {
    *
    * 本地验收用：模拟投递层静默丢弃事件，验证 counter 可见且会增长。
    */
+  @UseGuards(ApiTokenGuard)
   @Post('global-counters/probe-skip')
   @HttpCode(200)
   async probeReplySkipped(@Body() body?: { messageId?: string; reason?: DeliverySkipReason }) {

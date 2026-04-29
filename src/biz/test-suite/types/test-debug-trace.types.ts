@@ -50,7 +50,23 @@ export interface MemoryFixtureSetup {
   procedural?: Record<string, unknown>;
 }
 
-export type MemoryAssertions = Record<string, unknown>;
+export interface MemoryAssertions {
+  /** Expected long-term memory fragments, e.g. profile fields. */
+  longTerm?: Record<string, unknown>;
+  /** Expected session facts after the turn. */
+  sessionFacts?: Record<string, unknown>;
+  /** Expected procedural memory fragments after the turn. */
+  procedural?: Record<string, unknown>;
+  /** Requires persisted traces to retain sourceTrace evidence. */
+  sourceTraceRequired?: boolean;
+  /** Memory keys that should survive the turn. */
+  shouldPreserve?: string[];
+  /** Source BadCase IDs expected in trace-linked memory assertions. */
+  sourceBadcaseIds?: string[];
+  /** Source anchor message IDs expected in trace-linked memory assertions. */
+  sourceAnchorMessageIds?: string[];
+  [key: string]: unknown;
+}
 
 export interface TestRuntimeScope {
   corpId: string;

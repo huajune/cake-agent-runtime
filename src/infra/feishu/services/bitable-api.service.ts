@@ -142,7 +142,13 @@ export class FeishuBitableApiService {
     >(`/bitable/v1/apps/${appToken}/tables/${tableId}/fields`, body);
 
     if (response.data.code !== 0) {
-      throw new Error(`创建字段失败: ${response.data.msg}`);
+      const error = new Error(`创建字段失败: ${response.data.msg}`) as Error & {
+        code?: number;
+        feishuCode?: number;
+      };
+      error.code = response.data.code;
+      error.feishuCode = response.data.code;
+      throw error;
     }
 
     this.logger.log(`成功创建字段: ${fieldName} (${response.data.data!.field.field_id})`);
