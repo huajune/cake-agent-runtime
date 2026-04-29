@@ -176,14 +176,14 @@ export class MonitoringController {
    */
   @Post('global-counters/probe-skip')
   @HttpCode(200)
-  async probeReplySkipped(
-    @Body() body?: { messageId?: string; reason?: DeliverySkipReason },
-  ) {
+  async probeReplySkipped(@Body() body?: { messageId?: string; reason?: DeliverySkipReason }) {
     const reason: DeliverySkipReason =
       body?.reason === 'same_brand_collapse' ? 'same_brand_collapse' : 'output_leak';
     const messageId = body?.messageId?.trim() || `monitoring-probe-${Date.now()}`;
 
-    this.logger.warn(`[MonitoringProbe] recordReplySkipped messageId=${messageId} reason=${reason}`);
+    this.logger.warn(
+      `[MonitoringProbe] recordReplySkipped messageId=${messageId} reason=${reason}`,
+    );
     this.messageTrackingService.recordReplySkipped(messageId, reason);
 
     return this.cacheService.getCounters();
