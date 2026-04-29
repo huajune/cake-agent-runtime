@@ -137,5 +137,24 @@ describe('name-guard', () => {
       // 漏网契约：4 字成语式昵称无法靠正则区分，依赖 prompt 让 Agent 重问
       expect(isLikelyRealChineseName('执子之魂')).toBe(true);
     });
+
+    it.each([
+      '测试姓名', // P2 批次 SCN-P2-20260429-004 实测 fixture
+      '测试用户',
+      '测试候选人',
+      '用户张三',
+      '昵称小明',
+      '游客小李',
+      '匿名用户',
+      '无名氏',
+      '客户A真', // 含字母也会先被正则拒，这里测前缀分支不影响
+    ])('rejects placeholder prefix %p', (value) => {
+      expect(isLikelyRealChineseName(value)).toBe(false);
+    });
+
+    it('keeps real names even if they contain blacklist words in the middle', () => {
+      // "张测试"开头不是黑名单词，仍然通过
+      expect(isLikelyRealChineseName('张测试')).toBe(true);
+    });
   });
 });

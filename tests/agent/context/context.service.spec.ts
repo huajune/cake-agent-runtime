@@ -115,6 +115,12 @@ describe('ContextService', () => {
     expect(prompt).toContain('先接情绪，再解释用途');
     expect(prompt).toContain('includeWelfare` / `includeJobSalary`');
     expect(prompt).toContain('未来某天才能面试');
+    // 同日面试承诺前必须 precheck（P2-002 修复）
+    expect(prompt).toContain('duliday_interview_precheck');
+    expect(prompt).toContain('禁止承诺任何具体日期');
+    // 工作班次 vs 面试时间澄清（P2-029 修复）
+    expect(prompt).toContain('当前**工作班次**不合适');
+    expect(prompt).toContain('提议的**面试时间**不合适');
     expect(prompt).toContain('不能包装成"周末可做"或"晚班可排"');
     expect(prompt).toContain('05:00-23:00');
     expect(prompt).toContain('推荐 2 个及以上岗位时必须分条分段输出');

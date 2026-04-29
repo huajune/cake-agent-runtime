@@ -76,13 +76,21 @@ export function sanitizeInterviewName(
  * 校验规则（保守起见，只拦明显不是真名的情况）：
  * - 长度 2-4 个汉字（汉族姓名几乎都在此范围；4 字以上几乎全是昵称/成语式昵称）
  * - 仅含 CJK 统一汉字，不含拉丁/数字/emoji/装饰符号/中文标点
+ * - 不以"测试 / 用户 / 昵称 / 游客 / 匿名"等占位前缀开头（避免 fixture 风格的
+ *   "测试姓名" 通过校验——P2 批次 SCN-P2-20260429-004 实测漏网）
  *
  * 已知漏网：4 字成语式昵称（如 "执子之魂"），目前拦不住，依赖 Agent 在收名时按
  * prompt 重问；若漏网 case 攒多了再加字典或上 LLM 判断。
  */
 const REAL_NAME_REGEX = /^[一-鿿]{2,4}$/u;
+const PLACEHOLDER_PREFIX_BLACKLIST = ['测试', '用户', '昵称', '游客', '匿名', '无名', '客户'];
 
 export function isLikelyRealChineseName(value: string | null | undefined): boolean {
   if (!value) return false;
-  return REAL_NAME_REGEX.test(value.trim());
+  const trimmed = value.trim();
+  if (!REAL_NAME_REGEX.test(trimmed)) return false;
+  for (const prefix of PLACEHOLDER_PREFIX_BLACKLIST) {
+    if (trimmed.startsWith(prefix)) return false;
+  }
+  return true;
 }
