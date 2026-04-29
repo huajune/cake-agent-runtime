@@ -155,6 +155,18 @@ description: 抽样分析Agent 的生产对话质量，或分析 BadCase / GoodC
 - 自检：如果 Agent 在这条 `userMessage` 上做对了正确决策，结果应该和 badcase 表现的错误行为**不同**；如果两者本来就一致（因为错误已经在 chatHistory 里发生过），这条 case 不能用，必须重新选锚点
 - 反例自检：若 Agent 在 reasoning 里说"看历史上一轮我说过.../用户已经确认了..."，且 badcase 要测的正是"上一轮该不该说"，则锚点错了
 
+**已知漏网与黑名单**：
+
+- `isLikelyRealChineseName` 对 4 字成语式昵称仍有漏网，例如"执子之魂"等；这类输入需要 prompt/收名话术兜底要求候选人确认真实姓名
+- `测试/用户/昵称/游客/匿名` 前缀已加入 booking name 黑名单，预约入口不得把这类占位昵称当真实姓名提交
+- 同品牌多门店压缩已有 delivery 层兜底，但召回率不是 100%；该能力是 heuristic，策展同类 case 时仍要保留可验证的店名/地址区分检查点
+
+**测试套件接口踩坑提示**：
+
+- `POST /test-suite/batches/quick-create` 会**整表**读飞书测试集（没有 priority / category / sourceType 过滤），不要用它来跑"P1 批次/P2 批次/某 source 子集"这类目标批次——会拉到 119 条全表，不只你要的子集
+- 想跑特定子集的批次时，正确路径是：先按目标筛选 case 列表（按本地 curated JSON 或飞书 search filter） → 调 `POST /test-suite/batches`（带显式 caseIds）创建执行，而不是 quick-create
+- 目标批次的 `batchName` 必须显式包含目标维度（如 "2026-04-29 P2 用例测试 30 条"），避免和 quick-create 全表批次在列表里混淆
+
 - 只有通过这个质量闸门的草稿，才允许进入用户确认和导入步骤
 
 验证集专用闸门：

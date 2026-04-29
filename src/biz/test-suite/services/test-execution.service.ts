@@ -92,6 +92,11 @@ export class TestExecutionService {
     private readonly chatSessionService: ChatSessionService,
     @Optional() private readonly memoryFixtureService?: MemoryFixtureService,
   ) {
+    if (!this.memoryFixtureService) {
+      this.logger.warn(
+        'MemoryFixtureService 未注入，记忆隔离已禁用：测试用例的 memorySetup（reset/seed/read）将被静默跳过',
+      );
+    }
     this.logger.log('TestExecutionService 初始化完成');
   }
 

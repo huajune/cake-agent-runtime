@@ -33,6 +33,9 @@
 - PR #141 支持消息流水按托管 BOT 筛选
 
 ### 问题修复
+- fix: 真实姓名校验补黑名单（测试/用户/昵称等）
+- fix: 同日面试承诺前必须 precheck
+- fix: 工作时间 vs 面试时间需澄清
 - PR #140 Hardened interview precheck/booking around `00:00-00:00` date-only windows so deadline-like timestamps are not submitted as concrete interview times.
 - PR #140 Added bookable slot metadata and prompt guidance so the agent asks for a valid date/time instead of inventing one.
 - PR #140 Updated `invite_to_group` routing to refresh group member counts from the enterprise group list before selecting a group.

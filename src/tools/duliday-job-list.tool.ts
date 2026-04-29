@@ -1210,6 +1210,23 @@ function formatBrandStoreDisplayLine(
 }
 
 /**
+ * `buildBrandNearestStoreSummary` 实际读取的最小 job 字段集。
+ * 命名上保持与外部 raw job 一致，作为该函数的自描述契约。
+ * `jobSalary` 透传给 `formatSalarySummary`，结构由后者负责。
+ */
+type BrandSummaryJobInput = {
+  basicInfo?: {
+    brandName?: unknown;
+    brandId?: unknown;
+    jobId?: unknown;
+    storeName?: unknown;
+    storeInfo?: { storeName?: unknown } | null;
+  } | null;
+  _distanceKm?: unknown;
+  jobSalary?: unknown;
+};
+
+/**
  * 同品牌"最近门店"汇总：候选人在某区域有 brand intent 时，
  * 如果同品牌返回多家门店，必须按品牌分组挑距离最近的 1-2 家展示，
  * 否则容易跳过更近的同品牌门店推荐更远的（badcase 70xxcmhy）。
@@ -1217,7 +1234,9 @@ function formatBrandStoreDisplayLine(
  * 每个 store 同时附带 `displayLine` 固定结构话术，LLM 必须按此转述同品牌多门店，
  * 禁止把多家门店压缩成"有 X 品牌"（badcase laybqxn4）。
  */
-function buildBrandNearestStoreSummary(jobs: any[]): BrandNearestStoresGroup[] | null {
+function buildBrandNearestStoreSummary(
+  jobs: BrandSummaryJobInput[],
+): BrandNearestStoresGroup[] | null {
   if (!Array.isArray(jobs) || jobs.length === 0) return null;
 
   const buckets = new Map<
@@ -1242,8 +1261,14 @@ function buildBrandNearestStoreSummary(jobs: any[]): BrandNearestStoresGroup[] |
     if (jobId == null) continue;
     const key = `${brandName}__${brandId ?? 'null'}`;
     const bucket = buckets.get(key) ?? { brandName, brandId, stores: [] };
+    const storeName =
+      typeof job.basicInfo?.storeInfo?.storeName === 'string'
+        ? job.basicInfo.storeInfo.storeName
+        : typeof job.basicInfo?.storeName === 'string'
+          ? job.basicInfo.storeName
+          : null;
     bucket.stores.push({
-      storeName: job.basicInfo?.storeInfo?.storeName ?? job.basicInfo?.storeName ?? null,
+      storeName,
       jobId,
       distanceKm:
         typeof job._distanceKm === 'number' ? Math.round(job._distanceKm * 10) / 10 : null,
