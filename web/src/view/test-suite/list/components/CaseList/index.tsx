@@ -8,6 +8,7 @@ import {
   Loader2,
   AlertTriangle,
   Play,
+  MessageCircle,
 } from 'lucide-react';
 import { TestExecution } from '@/api/services/agent-test.service';
 import { getCategoryStyleClass } from '../../utils';
@@ -95,6 +96,12 @@ const CaseItem = memo(function CaseItem({
       <div className={styles.caseContent}>
         <div className={styles.caseNameRow}>
           <span className={styles.caseName}>{exec.case_name || '未命名用例'}</span>
+          {typeof exec.dialogue_turn_count === 'number' && exec.dialogue_turn_count > 0 && (
+            <span className={styles.turnTag} title={`对话轮数：${exec.dialogue_turn_count} 轮`}>
+              <MessageCircle size={10} />
+              {exec.dialogue_turn_count} 轮
+            </span>
+          )}
           {exec.category && (
             <span
               className={`${styles.categoryTag} ${styles[getCategoryStyleClass(exec.category)]}`}

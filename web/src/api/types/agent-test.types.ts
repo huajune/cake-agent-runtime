@@ -84,6 +84,7 @@ export interface TestExecution {
   duration_ms: number | null;
   token_usage: TokenUsage | null;
   error_message: string | null;
+  dialogue_turn_count?: number;
   review_status: 'pending' | 'passed' | 'failed' | 'skipped';
   review_comment: string | null;
   reviewed_by: string | null;

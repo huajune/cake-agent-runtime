@@ -9,6 +9,7 @@ import {
   UpdateReviewData,
   ExecutionFilters,
 } from '../types/test-suite.types';
+import { countScenarioDialogueTurns } from '../utils/scenario-turn-count.util';
 
 /**
  * 测试执行记录 Repository
@@ -372,10 +373,11 @@ export class TestExecutionRepository extends BaseRepository {
       | 'execution_status'
       | 'review_status'
       | 'created_at'
-    > & { input_message?: string })[]
+      | 'input_message'
+    > & { dialogue_turn_count: number })[]
   > {
     const results = await this.select<TestExecution>(
-      'id,case_id,case_name,category,execution_status,review_status,created_at,test_input',
+      'id,case_id,case_name,category,execution_status,review_status,created_at,input_message,test_input',
       (q) => {
         let r = q.eq('batch_id', batchId).order('created_at');
         if (filters?.reviewStatus) {
@@ -400,7 +402,9 @@ export class TestExecutionRepository extends BaseRepository {
       execution_status: r.execution_status,
       review_status: r.review_status,
       created_at: r.created_at,
-      input_message: (r.test_input as { message?: string } | null)?.message || '',
+      input_message:
+        (r.test_input as { message?: string } | null)?.message ?? r.input_message ?? '',
+      dialogue_turn_count: countScenarioDialogueTurns(r.test_input, r.input_message),
     }));
   }
 

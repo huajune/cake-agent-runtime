@@ -15,6 +15,9 @@ const HANDOFF_REASON_LABELS: Record<string, string> = {
   no_reception: '到店无人接待',
   booking_conflict: '预约信息冲突',
   onboarding_paperwork: '入职办理异常',
+  interview_result_inquiry: '候选人追问面试结果',
+  modify_appointment: '候选人要求改期/取消已预约面试',
+  self_recruited_or_completed: '候选人已被面试通过/餐厅自招/办入职',
   other: '其他需人工处理场景',
 };
 
@@ -50,8 +53,11 @@ export function buildRequestHandoffTool(
 2. no_reception：候选人到店后联系不上负责人、店长不在、无人接待、电话打不通
 3. booking_conflict：门店反馈查不到预约、与系统记录冲突、现场说没有你预约的岗位
 4. onboarding_paperwork：候选人进入入职/上岗对接、办理手续、报到流程等你无法处理的环节
-5. other：明显需要人工介入但不属于以上四类的面试/入职阶段阻塞
-- 候选人要求改期/取消、反馈已面试通过、店长已联系、只能一家店、正在报到/培训/办入职，或出现银行卡/税务/发薪主体特殊情况需要确认，也按上述最接近原因处理；不要重新推荐、重新收资或重新预约
+5. interview_result_inquiry：候选人主动追问面试结果/是否通过/录取通知，例如"我刚刚面试过了通过了吗"、"店长说让我等通知"、"今天面完了什么时候有结果"
+6. modify_appointment：候选人要求改时间/取消/重排已预约的面试，例如"能不能改到明天"、"约的那天我去不了"、"想取消之前的预约"
+7. self_recruited_or_completed：候选人称已被该门店面试通过/已经在该门店上班/餐厅自招/办入职/上岗，例如"我已经在 X 店干过了"、"是店长让我来的"、"我们餐厅找的我"、"现在来办入职"、"要先离职吗"
+8. other：明显需要人工介入但不属于以上七类的面试/入职阶段阻塞
+- 候选人出现银行卡/税务/发薪主体特殊情况需要确认，也按 other 处理；不要重新推荐、重新收资或重新预约
 
 ## 何时不调用
 - 如果候选人只是常规询问门店位置/路线，先用 send_store_location 处理，不要直接转人工
@@ -76,6 +82,9 @@ export function buildRequestHandoffTool(
             'no_reception',
             'booking_conflict',
             'onboarding_paperwork',
+            'interview_result_inquiry',
+            'modify_appointment',
+            'self_recruited_or_completed',
             'other',
           ])
           .describe('转人工原因代码'),

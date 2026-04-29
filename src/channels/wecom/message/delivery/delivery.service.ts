@@ -130,7 +130,10 @@ export class MessageDeliveryService implements OnModuleInit {
     context: DeliveryContext,
   ): Promise<DeliveryResult> {
     const { token, imBotId, imContactId, imRoomId, contactName, chatId, _apiType } = context;
-    const segments = MessageSplitter.split(content);
+    // 单次回复段数上限：防御性兜底，避免 Agent 写得过碎一次发 N 条消息刷屏。
+    // 业务正常回复 1~4 段，超过 8 段一律视为异常并贪心合并最短相邻段。
+    const MAX_SEGMENTS_PER_REPLY = 8;
+    const segments = MessageSplitter.split(content, MAX_SEGMENTS_PER_REPLY);
 
     this.logger.log(
       `[${contactName}] 消息包含双换行符或"～"，拆分为 ${segments.length} 条消息发送`,
