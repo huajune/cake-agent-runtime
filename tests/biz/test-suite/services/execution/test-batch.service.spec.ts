@@ -6,8 +6,10 @@ import { TestExecutionRepository } from '@biz/test-suite/repositories/test-execu
 import { TestWriteBackService } from '@biz/test-suite/services/test-write-back.service';
 import { TestExecutionService } from '@biz/test-suite/services/test-execution.service';
 import { ConversationSnapshotRepository } from '@biz/test-suite/repositories/conversation-snapshot.repository';
+import { FeishuBitableSyncService } from '@biz/feishu-sync/bitable-sync.service';
 import {
   BatchStatus,
+  ExecutionStatus,
   ReviewStatus,
   ReviewerSource,
   FeishuTestStatus,
@@ -35,7 +37,9 @@ describe('TestBatchService', () => {
     findByBatchId: jest.fn(),
     findByBatchIdLite: jest.fn(),
     findByBatchIdForList: jest.fn(),
+    findBatchTraceByBatchId: jest.fn().mockResolvedValue([]),
     findById: jest.fn(),
+    updateExecution: jest.fn(),
     updateReview: jest.fn(),
     batchUpdateReview: jest.fn(),
   };
@@ -60,6 +64,10 @@ describe('TestBatchService', () => {
     countByBatchIdGroupByStatus: jest.fn(),
   };
 
+  const mockFeishuBitableSync = {
+    updateBadcaseStatuses: jest.fn().mockResolvedValue({ success: 0, failed: 0, errors: [] }),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -70,6 +78,7 @@ describe('TestBatchService', () => {
         { provide: TestWriteBackService, useValue: mockWriteBackService },
         { provide: TestExecutionService, useValue: mockExecutionService },
         { provide: ConfigService, useValue: mockConfigService },
+        { provide: FeishuBitableSyncService, useValue: mockFeishuBitableSync },
       ],
     }).compile();
 
@@ -221,6 +230,60 @@ describe('TestBatchService', () => {
     });
   });
 
+  // ========== executeBatch ==========
+
+  describe('executeBatch', () => {
+    const cases = [
+      { message: 'case-1', userId: 'user-1', scenario: 'candidate-consultation' },
+      { message: 'case-2', userId: 'user-2', scenario: 'candidate-consultation' },
+    ];
+
+    const response = (text: string) =>
+      ({
+        actualOutput: text,
+        response: { statusCode: 200, body: { text }, toolCalls: [] },
+      }) as any;
+
+    it('should execute in parallel by default', async () => {
+      let resolveFirst: (value: unknown) => void = () => {};
+      mockExecutionService.executeTest
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveFirst = resolve;
+            }),
+        )
+        .mockResolvedValueOnce(response('second'));
+
+      const promise = service.executeBatch(cases as any);
+      await Promise.resolve();
+
+      expect(mockExecutionService.executeTest).toHaveBeenCalledTimes(2);
+      resolveFirst(response('first'));
+      await expect(promise).resolves.toHaveLength(2);
+    });
+
+    it('should execute serially when parallel is false', async () => {
+      let resolveFirst: (value: unknown) => void = () => {};
+      mockExecutionService.executeTest
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveFirst = resolve;
+            }),
+        )
+        .mockResolvedValueOnce(response('second'));
+
+      const promise = service.executeBatch(cases as any, undefined, false);
+      await Promise.resolve();
+
+      expect(mockExecutionService.executeTest).toHaveBeenCalledTimes(1);
+      resolveFirst(response('first'));
+      await expect(promise).resolves.toHaveLength(2);
+      expect(mockExecutionService.executeTest).toHaveBeenCalledTimes(2);
+    });
+  });
+
   // ========== updateBatchStatus ==========
 
   describe('updateBatchStatus', () => {
@@ -230,6 +293,102 @@ describe('TestBatchService', () => {
       await service.updateBatchStatus('batch-1', BatchStatus.RUNNING);
 
       expect(batchRepository.updateStatus).toHaveBeenCalledWith('batch-1', BatchStatus.RUNNING);
+    });
+  });
+
+  // ========== rerunExecution ==========
+
+  describe('rerunExecution', () => {
+    it('should move a created batch to running before rerun and persist trace fields', async () => {
+      const execution = {
+        id: 'exec-1',
+        batch_id: 'batch-1',
+        case_id: 'case-feishu-1',
+        case_name: '记忆回归用例',
+        category: 'memory',
+        input_message: '上次我说我喜欢什么口味？',
+        expected_output: '草莓',
+        test_input: {
+          message: '上次我说我喜欢什么口味？',
+          imageUrls: ['https://example.com/a.png'],
+          memorySetup: { episodic: [{ key: 'flavor', value: '草莓' }] },
+          memoryAssertions: { mustRecall: ['草莓'] },
+        },
+        agent_request: {
+          userId: 'user-1',
+          botUserId: 'bot-1',
+          botImId: 'im-1',
+          modelId: 'model-1',
+          scenario: '用户记忆召回',
+        },
+        source_trace: { badcaseRecordId: 'rec-badcase-1' },
+      } as unknown as TestExecution;
+      const updatedExecution = { ...execution, execution_status: ExecutionStatus.SUCCESS };
+
+      mockExecutionRepository.findById.mockResolvedValue(execution);
+      mockExecutionRepository.updateExecution.mockResolvedValue(updatedExecution);
+      mockExecutionRepository.findByBatchIdLite.mockResolvedValue([
+        {
+          execution_status: ExecutionStatus.SUCCESS,
+          review_status: ReviewStatus.PENDING,
+          duration_ms: 123,
+        },
+      ] as unknown as TestExecution[]);
+      mockExecutionService.executeTest.mockResolvedValue({
+        request: { body: { userId: 'user-1' } },
+        response: { body: { answer: '草莓' }, toolCalls: [{ name: 'memory.search' }] },
+        actualOutput: '草莓',
+        status: ExecutionStatus.SUCCESS,
+        metrics: { durationMs: 123, tokenUsage: { total: 456 } },
+        trace: {
+          executionTrace: { traceId: 'trace-1' },
+          memoryTrace: { recalled: ['草莓'] },
+        },
+      });
+      mockBatchRepository.findById
+        .mockResolvedValueOnce({
+          id: 'batch-1',
+          status: BatchStatus.CREATED,
+          test_type: TestType.SCENARIO,
+        } as TestBatch)
+        .mockResolvedValue({
+          id: 'batch-1',
+          status: BatchStatus.RUNNING,
+          test_type: TestType.SCENARIO,
+        } as TestBatch);
+      mockBatchRepository.updateStatus.mockResolvedValue(undefined);
+      mockBatchRepository.updateStats.mockResolvedValue(undefined);
+
+      const result = await service.rerunExecution('exec-1');
+
+      expect(result).toBe(updatedExecution);
+      expect(batchRepository.updateStatus).toHaveBeenNthCalledWith(
+        1,
+        'batch-1',
+        BatchStatus.RUNNING,
+      );
+      expect(mockExecutionService.executeTest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          batchId: 'batch-1',
+          caseId: 'case-feishu-1',
+          sourceTrace: { badcaseRecordId: 'rec-badcase-1' },
+          memorySetup: { episodic: [{ key: 'flavor', value: '草莓' }] },
+          memoryAssertions: { mustRecall: ['草莓'] },
+          userId: 'user-1',
+        }),
+      );
+      expect(executionRepository.updateExecution).toHaveBeenCalledWith(
+        'exec-1',
+        expect.objectContaining({
+          execution_trace: { traceId: 'trace-1' },
+          memory_trace: { recalled: ['草莓'] },
+          review_status: ReviewStatus.PENDING,
+        }),
+      );
+      expect(batchRepository.updateStatus).toHaveBeenLastCalledWith(
+        'batch-1',
+        BatchStatus.REVIEWING,
+      );
     });
   });
 
@@ -296,6 +455,48 @@ describe('TestBatchService', () => {
         }),
       );
       expect(batchRepository.updateStatus).toHaveBeenCalledWith('batch-1', BatchStatus.COMPLETED);
+    });
+
+    it('should move completed conversation execution into reviewing while turn reviews are pending', async () => {
+      mockBatchRepository.findById.mockResolvedValue({
+        id: 'batch-1',
+        status: BatchStatus.RUNNING,
+        test_type: TestType.CONVERSATION,
+      } as TestBatch);
+      mockConversationSnapshotRepository.countByBatchIdGroupByStatus.mockResolvedValue({
+        total: 1,
+        pending: 0,
+        running: 0,
+        completed: 1,
+        failed: 0,
+      });
+      mockConversationSnapshotRepository.findByBatchId.mockResolvedValue([
+        { id: 'source-1', status: 'completed', avg_similarity_score: 80 },
+      ] as any);
+      mockExecutionRepository.findByBatchIdLite.mockResolvedValue([
+        {
+          conversation_snapshot_id: 'source-1',
+          review_status: ReviewStatus.PENDING,
+        },
+      ] as any);
+      mockBatchRepository.updateStats.mockResolvedValue(undefined);
+      mockBatchRepository.updateStatus.mockResolvedValue(undefined);
+
+      await service.updateBatchStats('batch-1');
+
+      expect(batchRepository.updateStats).toHaveBeenCalledWith(
+        'batch-1',
+        expect.objectContaining({
+          totalCases: 1,
+          executedCount: 1,
+          pendingReviewCount: 1,
+        }),
+      );
+      expect(batchRepository.updateStatus).toHaveBeenCalledWith('batch-1', BatchStatus.REVIEWING);
+      expect(batchRepository.updateStatus).not.toHaveBeenCalledWith(
+        'batch-1',
+        BatchStatus.COMPLETED,
+      );
     });
   });
 
@@ -538,6 +739,136 @@ describe('TestBatchService', () => {
       });
 
       expect(writeBackService.writeBackResult).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('propagateBadcaseStatusOnCompletion', () => {
+    beforeEach(() => {
+      mockFeishuBitableSync.updateBadcaseStatuses.mockClear();
+      mockBatchRepository.findById.mockResolvedValue({
+        id: 'batch-9',
+        status: BatchStatus.COMPLETED,
+        test_type: TestType.SCENARIO,
+      } as TestBatch);
+    });
+
+    it('should aggregate scenario executions per badcaseRecordId and derive status', async () => {
+      mockExecutionRepository.findBatchTraceByBatchId.mockResolvedValue([
+        {
+          id: 'e1',
+          review_status: ReviewStatus.PASSED,
+          execution_status: ExecutionStatus.SUCCESS,
+          source_trace: { badcaseRecordIds: ['bc_a', 'bc_shared'] },
+        },
+        {
+          id: 'e2',
+          review_status: ReviewStatus.PASSED,
+          execution_status: ExecutionStatus.SUCCESS,
+          source_trace: { badcaseRecordIds: ['bc_a'] },
+        },
+        {
+          id: 'e3',
+          review_status: ReviewStatus.FAILED,
+          execution_status: ExecutionStatus.SUCCESS,
+          source_trace: { badcaseRecordIds: ['bc_b', 'bc_shared'] },
+        },
+        {
+          id: 'e4',
+          review_status: ReviewStatus.PENDING,
+          execution_status: ExecutionStatus.PENDING,
+          source_trace: { badcaseRecordIds: ['bc_c'] },
+        },
+      ] as any);
+
+      await service.propagateBadcaseStatusOnCompletion('batch-9');
+
+      expect(mockFeishuBitableSync.updateBadcaseStatuses).toHaveBeenCalledTimes(1);
+      const items = mockFeishuBitableSync.updateBadcaseStatuses.mock.calls[0][0] as Array<{
+        recordId: string;
+        status: string;
+      }>;
+      const byId = Object.fromEntries(items.map((i) => [i.recordId, i.status]));
+      expect(byId.bc_a).toBe('已解决');
+      expect(byId.bc_b).toBe('待验证');
+      expect(byId.bc_shared).toBe('待验证');
+      expect(byId.bc_c).toBe('处理中');
+    });
+
+    it('should skip writeback when no source_trace.badcaseRecordIds is present', async () => {
+      mockExecutionRepository.findBatchTraceByBatchId.mockResolvedValue([
+        {
+          id: 'e1',
+          review_status: ReviewStatus.PASSED,
+          execution_status: ExecutionStatus.SUCCESS,
+          source_trace: null,
+        },
+      ] as any);
+
+      await service.propagateBadcaseStatusOnCompletion('batch-9');
+
+      expect(mockFeishuBitableSync.updateBadcaseStatuses).not.toHaveBeenCalled();
+    });
+
+    it('should not throw when downstream writeback fails', async () => {
+      mockExecutionRepository.findBatchTraceByBatchId.mockResolvedValue([
+        {
+          id: 'e1',
+          review_status: ReviewStatus.PASSED,
+          execution_status: ExecutionStatus.SUCCESS,
+          source_trace: { badcaseRecordIds: ['bc_a'] },
+        },
+      ] as any);
+      mockFeishuBitableSync.updateBadcaseStatuses.mockRejectedValueOnce(new Error('boom'));
+
+      await expect(
+        service.propagateBadcaseStatusOnCompletion('batch-9'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should aggregate conversation snapshots when batch is conversation type', async () => {
+      mockBatchRepository.findById.mockResolvedValue({
+        id: 'batch-conv',
+        status: BatchStatus.COMPLETED,
+        test_type: TestType.CONVERSATION,
+      } as TestBatch);
+      mockConversationSnapshotRepository.findByBatchId.mockResolvedValue([
+        {
+          id: 'snap-1',
+          avg_similarity_score: 80,
+          source_trace: { badcaseRecordIds: ['bc_x'] },
+        },
+        {
+          id: 'snap-2',
+          avg_similarity_score: 40,
+          source_trace: { badcaseRecordIds: ['bc_y'] },
+        },
+      ] as any);
+      mockExecutionRepository.findBatchTraceByBatchId.mockResolvedValue([
+        {
+          id: 'turn-1',
+          review_status: ReviewStatus.PASSED,
+          execution_status: ExecutionStatus.SUCCESS,
+          source_trace: null,
+          conversation_snapshot_id: 'snap-1',
+        },
+        {
+          id: 'turn-2',
+          review_status: ReviewStatus.FAILED,
+          execution_status: ExecutionStatus.SUCCESS,
+          source_trace: null,
+          conversation_snapshot_id: 'snap-2',
+        },
+      ] as any);
+
+      await service.propagateBadcaseStatusOnCompletion('batch-conv');
+
+      const items = mockFeishuBitableSync.updateBadcaseStatuses.mock.calls[0][0] as Array<{
+        recordId: string;
+        status: string;
+      }>;
+      const byId = Object.fromEntries(items.map((i) => [i.recordId, i.status]));
+      expect(byId.bc_x).toBe('已解决');
+      expect(byId.bc_y).toBe('待验证');
     });
   });
 });

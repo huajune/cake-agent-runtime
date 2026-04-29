@@ -24,6 +24,36 @@ export function isValidLaborForm(value: string | null | undefined): boolean {
 }
 
 /**
+ * 把岗位 API 返回的 jobName / jobNickName / jobCategoryName 等"可展示文本"中
+ * 残留的 platform-反向词剔除掉。
+ *
+ * 业务背景：badcase `nwr0i50f` —— 奥乐齐分拣岗的 `jobName` 中带"全职"二字，
+ * Agent 看到工具结果里的"全职"，向候选人解释为"名字带全职只是招人的叫法"，
+ * 暴露平台属性混乱给用户。平台所有岗位都是兼职，"全职/正式工/临时工"在岗位名里
+ * 没有任何业务含义，应在渲染层统一剥离，不让 LLM 触达这些词。
+ *
+ * 实现策略：纯字符串 token 替换，配合分隔符清理。可能会让原本写成
+ * "蛋糕全职岗" 的字段变成 "蛋糕岗"，这正是我们想要的——平台所有岗位都是兼职，
+ * 不存在"全职岗"语义。
+ */
+export function sanitizeJobDisplayText(value: string | null | undefined): string | null {
+  if (!value) return null;
+  let out = value;
+  for (const token of INVALID_LABOR_FORM_WORDS) {
+    if (token === '兼职') continue; // "兼职"是合法平台属性词，可以出现在 jobName 里
+    out = out.split(token).join('');
+  }
+  // 移除因剔除产生的空括号、空连字符片段
+  out = out
+    .replace(/[（(]\s*[)）]/g, '')
+    .replace(/[-——_/]{2,}/g, '-')
+    .replace(/^[\s\-_/]+|[\s\-_/]+$/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return out || null;
+}
+
+/**
  * 把岗位 API 返回的 labor_form 值规整为"可对外展示"的口径。
  *
  * 业务前提：平台所有岗位都是兼职岗位。API 历史数据里偶尔会有 "全职"、"正式工" 等

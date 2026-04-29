@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { BitableRecord } from '@infra/feishu/services/bitable-api.service';
 import { CuratedConversationCaseDto } from '../dto/test-chat.dto';
 import { normalizeIds, ResolvedFieldNames } from './curated-dataset-import.helpers';
+import { normalizeSourceTrace } from './test-trace.helpers';
 
 export type LineageSourceTable = 'BadCase' | 'GoodCase' | 'Chat';
 export type LineageTargetTable = '测试集' | '验证集';
@@ -70,7 +71,8 @@ export function buildLineageTargetKey(
 }
 
 export function collectConversationChatIds(currentCase: CuratedConversationCaseDto): string[] {
-  const values = [...(currentCase.sourceChatIds || [])];
+  const sourceTrace = normalizeSourceTrace(currentCase);
+  const values = [...(currentCase.sourceChatIds || []), ...(sourceTrace?.chatIds || [])];
   if (currentCase.chatId?.trim()) {
     values.unshift(currentCase.chatId.trim());
   }

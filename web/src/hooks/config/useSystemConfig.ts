@@ -43,12 +43,12 @@ export function useConfiguredTools() {
 /**
  * 获取 AI 回复状态
  */
-export function useAiReplyStatus() {
+export function useAiReplyStatus(autoRefresh = true) {
   return useQuery({
     queryKey: ['ai-reply-status'],
     queryFn: () => monitoringService.getAiReplyStatus(),
     staleTime: 1000,
-    refetchInterval: LIVE_CONFIG_REFETCH_INTERVAL_MS,
+    refetchInterval: autoRefresh ? LIVE_CONFIG_REFETCH_INTERVAL_MS : false,
   });
 }
 

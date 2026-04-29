@@ -3,6 +3,8 @@ import { MessageSenderService } from '../../message-sender/message-sender.servic
 import { SendMessageType } from '../../message-sender/dto/send-message.dto';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { MessageSplitter } from '../utils/message-splitter.util';
+import { detectOutputLeak } from '../utils/output-leak-guard.util';
+import { findCollapsedSameBrand } from '../utils/same-brand-collapse-guard.util';
 import { DeliveryContext, DeliveryResult, AgentReply, DeliveryFailureError } from '../types';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
 import { TypingPolicyService } from './typing-policy.service';
@@ -51,6 +53,29 @@ export class MessageDeliveryService implements OnModuleInit {
       if (recordMonitoring) {
         this.monitoringService.recordSendStart(messageId);
         await this.wecomObservability.markDeliveryStart(messageId);
+      }
+
+      // 投递前兜底过滤：badcase vllg7hlu（输出泄漏）/ laybqxn4（同品牌多门店压缩）。
+      // Prompt 软约束已存在但偶尔失守，这里做最后一道过滤——命中即静默丢弃整条回复，
+      // 不重试不告警。被丢弃的回复仍计成功，避免触发上层重试再次外抛。
+      const skipReason = this.findSkipReason(reply.content, contactName);
+      if (skipReason) {
+        const totalTime = Date.now() - startTime;
+        const skippedResult: DeliveryResult = {
+          success: true,
+          segmentCount: 0,
+          failedSegments: 0,
+          deliveredSegments: 0,
+          totalTime,
+          skipped: true,
+          skipReason,
+        };
+        if (recordMonitoring) {
+          this.monitoringService.recordReplySkipped(messageId, skipReason);
+          this.monitoringService.recordSendEnd(messageId);
+          await this.wecomObservability.markDeliveryEnd(messageId, skippedResult);
+        }
+        return skippedResult;
       }
 
       const needsSplit = this.typingPolicy.shouldSplit(reply.content);
@@ -130,7 +155,10 @@ export class MessageDeliveryService implements OnModuleInit {
     context: DeliveryContext,
   ): Promise<DeliveryResult> {
     const { token, imBotId, imContactId, imRoomId, contactName, chatId, _apiType } = context;
-    const segments = MessageSplitter.split(content);
+    // 单次回复段数上限：防御性兜底，避免 Agent 写得过碎一次发 N 条消息刷屏。
+    // 业务正常回复 1~4 段，超过 8 段一律视为异常并贪心合并最短相邻段。
+    const MAX_SEGMENTS_PER_REPLY = 8;
+    const segments = MessageSplitter.split(content, MAX_SEGMENTS_PER_REPLY);
 
     this.logger.log(
       `[${contactName}] 消息包含双换行符或"～"，拆分为 ${segments.length} 条消息发送`,
@@ -211,5 +239,33 @@ export class MessageDeliveryService implements OnModuleInit {
 
   private truncate(text: string, maxLength: number = 50): string {
     return text.length <= maxLength ? text : `${text.substring(0, maxLength)}...`;
+  }
+
+  /**
+   * 投递前回复内容兜底检查。命中任一规则即静默丢弃整条回复（不重试不告警）。
+   * - output_leak：模型暴露内部阶段术语 / 工具调用 / JSON / 代码块（badcase vllg7hlu）
+   * - same_brand_collapse：同品牌多门店被压缩成"X、X"（badcase laybqxn4）
+   */
+  private findSkipReason(
+    content: string,
+    contactName: string,
+  ): DeliveryResult['skipReason'] | null {
+    const leakedPattern = detectOutputLeak(content);
+    if (leakedPattern) {
+      this.logger.warn(
+        `[${contactName}] 检测到内部状态泄漏，丢弃回复 (pattern=${leakedPattern.source}): "${this.truncate(content)}"`,
+      );
+      return 'output_leak';
+    }
+
+    const collapsedBrand = findCollapsedSameBrand(content);
+    if (collapsedBrand) {
+      this.logger.warn(
+        `[${contactName}] 检测到同品牌多门店被压缩 (brand="${collapsedBrand}")，丢弃回复: "${this.truncate(content)}"`,
+      );
+      return 'same_brand_collapse';
+    }
+
+    return null;
   }
 }

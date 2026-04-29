@@ -36,12 +36,15 @@ describe('HardConstraintsSection', () => {
     const facts = cloneFallback();
     facts.preferences.city = { value: '南京', confidence: 'high', evidence: 'explicit_city' };
     facts.preferences.district = ['秦淮区', '建邺区'];
+    facts.preferences.location = ['新街口'];
 
     const output = section.build({ ...baseCtx, sessionFacts: facts });
 
     expect(output).toContain('[本轮查询硬约束]');
     expect(output).toContain('- 城市: 南京（必填到 cityNameList）');
     expect(output).toContain('- 区域: 秦淮区、建邺区（填到 regionNameList）');
+    expect(output).toContain('位置/商圈/地标: 新街口');
+    expect(output).toContain('必须先 geocode');
   });
 
   it('surfaces interview_info constraints (gender / age / health cert / education / student)', () => {

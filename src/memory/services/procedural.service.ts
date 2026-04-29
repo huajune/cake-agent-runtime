@@ -62,6 +62,10 @@ export class ProceduralService {
     this.logger.log(`阶段更新: ${state.currentStage} (user=${userId})`);
   }
 
+  async clear(corpId: string, userId: string, sessionId: string): Promise<boolean> {
+    return await this.redisStore.del(this.buildKey(corpId, userId, sessionId));
+  }
+
   // ---- 内部方法 ----
 
   private buildKey(corpId: string, userId: string, sessionId: string): string {

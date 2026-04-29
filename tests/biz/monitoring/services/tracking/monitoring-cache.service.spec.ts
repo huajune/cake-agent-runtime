@@ -88,6 +88,8 @@ describe('MonitoringCacheService', () => {
         totalSendDuration: 0,
         totalFallback: 0,
         totalFallbackSuccess: 0,
+        totalOutputLeakSkipped: 0,
+        totalSameBrandCollapseSkipped: 0,
       });
     });
 
@@ -115,6 +117,8 @@ describe('MonitoringCacheService', () => {
         totalSendDuration: 0,
         totalFallback: 0,
         totalFallbackSuccess: 0,
+        totalOutputLeakSkipped: 0,
+        totalSameBrandCollapseSkipped: 0,
       });
     });
   });
@@ -129,6 +133,8 @@ describe('MonitoringCacheService', () => {
         totalSendDuration: 30000,
         totalFallback: 5,
         totalFallbackSuccess: 4,
+        totalOutputLeakSkipped: 2,
+        totalSameBrandCollapseSkipped: 1,
       };
 
       await service.setCounters(counters);

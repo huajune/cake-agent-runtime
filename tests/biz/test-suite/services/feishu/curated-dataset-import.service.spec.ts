@@ -114,6 +114,7 @@ describe('CuratedDatasetImportService', () => {
             buildFieldNameToIdMap: jest.fn(
               (fields: Array<{ field_name: string; field_id: string }>) => buildFieldMap(fields),
             ),
+            createField: jest.fn().mockResolvedValue({ fieldId: 'fld-created' }),
             createRecord: jest.fn(),
             updateRecord: jest.fn(),
             truncateText: jest.fn((text: string) => text),

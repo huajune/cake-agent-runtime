@@ -163,13 +163,18 @@ describe('FeishuBitableApiService', () => {
     });
 
     it('should throw error when API returns non-zero code', async () => {
+      expect.assertions(3);
       mockFeishuApi.post.mockResolvedValue({
         data: { code: 1254004, msg: 'field already exists' },
       });
 
-      await expect(service.createField('appToken', 'tableId', '字段', 1)).rejects.toThrow(
-        '创建字段失败: field already exists',
-      );
+      try {
+        await service.createField('appToken', 'tableId', '字段', 1);
+      } catch (error) {
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toBe('创建字段失败: field already exists');
+        expect(error).toMatchObject({ code: 1254004, feishuCode: 1254004 });
+      }
     });
   });
 

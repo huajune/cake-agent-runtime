@@ -1,23 +1,14 @@
 import { AnalyticsTrendBuilderService } from '@analytics/trends/analytics-trend-builder.service';
+import { formatLocalDate, formatLocalMinute } from '@infra/utils/date.util';
 import { MessageProcessingRecord, MonitoringErrorLog } from '@shared-types/tracking.types';
 
 /** 从时间戳生成本地 minute key，与 service 内部逻辑一致 */
 function toMinuteKey(timestamp: number): string {
-  const d = new Date(timestamp);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  const hours = String(d.getHours()).padStart(2, '0');
-  const minutes = String(d.getMinutes()).padStart(2, '0');
-  return `${year}-${month}-${day} ${hours}:${minutes}`;
+  return formatLocalMinute(new Date(timestamp));
 }
 
 function toDayKey(timestamp: number): string {
-  const d = new Date(timestamp);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return formatLocalDate(new Date(timestamp));
 }
 
 describe('AnalyticsTrendBuilderService', () => {
@@ -58,6 +49,32 @@ describe('AnalyticsTrendBuilderService', () => {
         avgDuration: 2000,
         messageCount: 2,
         successRate: 50,
+      },
+    ]);
+  });
+
+  it('should bucket trend labels in Asia/Shanghai instead of server timezone', () => {
+    const ts = new Date('2026-04-28T10:11:30Z').getTime();
+
+    expect(
+      service.buildResponseTrend(
+        [
+          {
+            messageId: '1',
+            chatId: 'chat-1',
+            receivedAt: ts,
+            status: 'success',
+            totalDuration: 1000,
+          },
+        ],
+        'today',
+      ),
+    ).toEqual([
+      {
+        minute: '2026-04-28 18:11',
+        avgDuration: 1000,
+        messageCount: 1,
+        successRate: 100,
       },
     ]);
   });

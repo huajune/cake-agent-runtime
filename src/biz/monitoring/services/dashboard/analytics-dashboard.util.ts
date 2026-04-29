@@ -1,4 +1,10 @@
 import { ScenarioType } from '@enums/agent.enum';
+import {
+  addLocalDays,
+  getLocalDayStart,
+  getLocalMonthStart,
+  getLocalWeekStart,
+} from '@infra/utils/date.util';
 import type { MessageProcessingRecordInput } from '@biz/message/types/message.types';
 import type { AgentInvocationRecord, MessageProcessingRecord } from '@shared-types/tracking.types';
 import type { TimeRange } from '../../types/analytics.types';
@@ -16,11 +22,9 @@ export function calculateDashboardTimeRanges(timeRange: TimeRange): DashboardTim
 
   switch (timeRange) {
     case 'today': {
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
+      const todayStart = getLocalDayStart(nowDate);
       const currentStart = todayStart.getTime();
-      const previousStartDate = new Date(todayStart);
-      previousStartDate.setDate(previousStartDate.getDate() - 1);
+      const previousStartDate = addLocalDays(todayStart, -1);
       const previousStart = previousStartDate.getTime();
 
       return {
@@ -32,13 +36,9 @@ export function calculateDashboardTimeRanges(timeRange: TimeRange): DashboardTim
     }
 
     case 'week': {
-      const weekStart = new Date(nowDate);
-      const daysSinceMonday = (weekStart.getDay() + 6) % 7;
-      weekStart.setDate(weekStart.getDate() - daysSinceMonday);
-      weekStart.setHours(0, 0, 0, 0);
+      const weekStart = getLocalWeekStart(nowDate);
       const currentStart = weekStart.getTime();
-      const previousWeekStart = new Date(weekStart);
-      previousWeekStart.setDate(previousWeekStart.getDate() - 7);
+      const previousWeekStart = addLocalDays(weekStart, -7);
       const previousStart = previousWeekStart.getTime();
 
       return {
@@ -50,9 +50,9 @@ export function calculateDashboardTimeRanges(timeRange: TimeRange): DashboardTim
     }
 
     case 'month': {
-      const monthStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), 1);
+      const monthStart = getLocalMonthStart(nowDate);
       const currentStart = monthStart.getTime();
-      const previousMonthStart = new Date(nowDate.getFullYear(), nowDate.getMonth() - 1, 1);
+      const previousMonthStart = getLocalMonthStart(nowDate, -1);
       const previousStart = previousMonthStart.getTime();
 
       return {

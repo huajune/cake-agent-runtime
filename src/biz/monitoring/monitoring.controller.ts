@@ -1,8 +1,12 @@
-import { Controller, Get, Logger, Query, Post, HttpCode } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Query, Post, HttpCode, UseGuards } from '@nestjs/common';
 import { AnalyticsDashboardService } from './services/dashboard/analytics-dashboard.service';
 import { AnalyticsQueryService } from './services/dashboard/analytics-query.service';
 import { AnalyticsMaintenanceService } from './services/maintenance/analytics-maintenance.service';
+import { MonitoringCacheService } from './services/tracking/monitoring-cache.service';
+import { MessageTrackingService } from './services/tracking/message-tracking.service';
 import { MetricsData, TimeRange } from './types/analytics.types';
+import { DeliverySkipReason } from '@shared-types/tracking.types';
+import { ApiTokenGuard } from '@infra/server/guards/api-token.guard';
 
 /**
  * Analytics API 控制器
@@ -122,5 +126,68 @@ export class AnalyticsController {
     this.logger.log(`手动触发清除缓存: ${cacheType}`);
     await this.maintenanceService.clearCacheAsync(cacheType);
     return { success: true, message: `缓存 [${cacheType}] 已清除` };
+  }
+}
+
+/**
+ * Monitoring 兼容出口。
+ * Dashboard 历史验收脚本使用 /monitoring/*，这里保留轻量别名并直接暴露全局计数器。
+ */
+@Controller('monitoring')
+export class MonitoringController {
+  private readonly logger = new Logger(MonitoringController.name);
+
+  constructor(
+    private readonly dashboardService: AnalyticsDashboardService,
+    private readonly cacheService: MonitoringCacheService,
+    private readonly messageTrackingService: MessageTrackingService,
+  ) {}
+
+  /**
+   * GET /monitoring/dashboard?range=today|week|month
+   */
+  @Get('dashboard')
+  async getMonitoringDashboard(@Query('range') range?: TimeRange) {
+    const timeRange = range || 'today';
+    const [dashboard, globalCounters] = await Promise.all([
+      this.dashboardService.getDashboardOverviewAsync(timeRange),
+      this.cacheService.getCounters(),
+    ]);
+
+    return {
+      ...dashboard,
+      globalCounters,
+      totalOutputLeakSkipped: globalCounters.totalOutputLeakSkipped,
+      totalSameBrandCollapseSkipped: globalCounters.totalSameBrandCollapseSkipped,
+    };
+  }
+
+  /**
+   * GET /monitoring/global-counters
+   */
+  @Get('global-counters')
+  async getGlobalCounters() {
+    return this.cacheService.getCounters();
+  }
+
+  /**
+   * POST /monitoring/global-counters/probe-skip
+   *
+   * 本地验收用：模拟投递层静默丢弃事件，验证 counter 可见且会增长。
+   */
+  @UseGuards(ApiTokenGuard)
+  @Post('global-counters/probe-skip')
+  @HttpCode(200)
+  async probeReplySkipped(@Body() body?: { messageId?: string; reason?: DeliverySkipReason }) {
+    const reason: DeliverySkipReason =
+      body?.reason === 'same_brand_collapse' ? 'same_brand_collapse' : 'output_leak';
+    const messageId = body?.messageId?.trim() || `monitoring-probe-${Date.now()}`;
+
+    this.logger.warn(
+      `[MonitoringProbe] recordReplySkipped messageId=${messageId} reason=${reason}`,
+    );
+    this.messageTrackingService.recordReplySkipped(messageId, reason);
+
+    return this.cacheService.getCounters();
   }
 }

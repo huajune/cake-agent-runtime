@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Readable } from 'stream';
 import { createHash } from 'node:crypto';
 import {
@@ -21,6 +21,20 @@ import { TestChatRequestDto, TestChatResponse, VercelAIChatRequestDto } from '..
 import { TestExecutionRepository } from '../repositories/test-execution.repository';
 import { TestExecution } from '../entities/test-execution.entity';
 import { ExecutionStatus, MessageRole } from '../enums/test.enum';
+import { MemoryFixtureService } from './memory-fixture.service';
+import {
+  coerceMemoryAssertions,
+  coerceMemorySetup,
+  normalizeSourceTrace,
+} from './test-trace.helpers';
+import type {
+  MemoryAssertions,
+  MemoryFixtureSetup,
+  TestExecutionTraceBundle,
+  TestMemoryTraceBundle,
+  TestRuntimeScope,
+  TestSourceTrace,
+} from '../types/test-debug-trace.types';
 
 /** 默认场景 */
 const DEFAULT_SCENARIO = 'candidate-consultation';
@@ -48,6 +62,17 @@ interface TokenUsage {
   totalTokens: number;
 }
 
+interface MonitoringContextInfo {
+  syntheticMessageId: string;
+  historyMessageIds: string[];
+}
+
+interface TurnEndTrace {
+  status: 'completed' | 'failed' | 'skipped';
+  durationMs?: number;
+  error?: string;
+}
+
 /**
  * 测试执行服务
  *
@@ -65,7 +90,13 @@ export class TestExecutionService {
     private readonly runner: AgentRunnerService,
     private readonly executionRepository: TestExecutionRepository,
     private readonly chatSessionService: ChatSessionService,
+    @Optional() private readonly memoryFixtureService?: MemoryFixtureService,
   ) {
+    if (!this.memoryFixtureService) {
+      this.logger.warn(
+        'MemoryFixtureService 未注入，记忆隔离已禁用：测试用例的 memorySetup（reset/seed/read）将被静默跳过',
+      );
+    }
     this.logger.log('TestExecutionService 初始化完成');
   }
 
@@ -94,9 +125,26 @@ export class TestExecutionService {
     const sessionId = request.sessionId ?? `test-${Date.now()}`;
     const historyForAgent = this.resolveHistoryForAgent(request);
     const strategySource = this.resolveStrategySource(request);
+    const sourceTrace = normalizeSourceTrace({ sourceTrace: request.sourceTrace });
+    const memorySetup = coerceMemorySetup(request.memorySetup);
+    const memoryAssertions = coerceMemoryAssertions(request.memoryAssertions);
+    const runtimeScope: TestRuntimeScope = {
+      corpId: TEST_CORP_ID,
+      userId: request.userId,
+      sessionId,
+      callerKind: CallerKind.TEST_SUITE,
+      strategySource,
+      scenario,
+    };
+    let monitoringInfo: MonitoringContextInfo | null = null;
+    let turnEnd: TurnEndTrace = { status: 'skipped' };
+    let postTurnState: unknown = null;
 
     try {
-      await this.prepareMonitoringContext({
+      await this.memoryFixtureService?.reset(runtimeScope);
+      await this.memoryFixtureService?.seed(runtimeScope, memorySetup);
+
+      monitoringInfo = await this.prepareMonitoringContext({
         request,
         sessionId,
         historyForAgent,
@@ -120,13 +168,18 @@ export class TestExecutionService {
         strategySource,
         modelId: request.modelId,
         disableFallbacks: true,
+        messageId: monitoringInfo.syntheticMessageId,
+        deferTurnEnd: true,
       });
+      turnEnd = await this.runDeferredTurnEnd(agentResult);
+      postTurnState = await this.readMemoryStateBestEffort(runtimeScope);
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       executionStatus = errorMsg.includes('timeout')
         ? ExecutionStatus.TIMEOUT
         : ExecutionStatus.FAILURE;
       errorMessage = errorMsg;
+      postTurnState = await this.readMemoryStateBestEffort(runtimeScope);
     }
 
     const durationMs = Date.now() - startTime;
@@ -140,6 +193,26 @@ export class TestExecutionService {
       executionStatus = ExecutionStatus.FAILURE;
       errorMessage = 'Agent returned empty output without skip_reply';
     }
+
+    const executionTrace = this.buildExecutionTrace({
+      request,
+      sourceTrace,
+      runtimeScope,
+      monitoringInfo,
+      agentResult,
+      extracted,
+      startedAt: startTime,
+      completedAt: Date.now(),
+      durationMs,
+    });
+    const memoryTrace = this.buildMemoryTrace({
+      runtimeScope,
+      memorySetup,
+      memoryAssertions,
+      agentResult,
+      postTurnState,
+      turnEnd,
+    });
 
     const response: TestChatResponse = {
       actualOutput: extracted.actualOutput,
@@ -166,6 +239,11 @@ export class TestExecutionService {
         durationMs,
         tokenUsage: extracted.tokenUsage,
       },
+      trace: {
+        sourceTrace,
+        executionTrace,
+        memoryTrace,
+      },
     };
 
     if (request.saveExecution !== false) {
@@ -179,6 +257,9 @@ export class TestExecutionService {
           history: request.history,
           imageUrls: request.imageUrls,
           scenario,
+          sourceTrace,
+          memorySetup,
+          memoryAssertions,
         },
         expectedOutput: request.expectedOutput,
         agentRequest: response.request.body,
@@ -189,6 +270,11 @@ export class TestExecutionService {
         durationMs,
         tokenUsage: extracted.tokenUsage,
         errorMessage,
+        sourceTrace,
+        executionTrace,
+        memorySetup,
+        memoryAssertions,
+        memoryTrace,
       });
 
       response.executionId = execution.id;
@@ -297,6 +383,8 @@ export class TestExecutionService {
       durationMs: number;
       tokenUsage?: unknown;
       errorMessage?: string;
+      executionTrace?: TestExecutionTraceBundle | null;
+      memoryTrace?: TestMemoryTraceBundle | null;
     },
   ): Promise<void> {
     try {
@@ -326,6 +414,11 @@ export class TestExecutionService {
     durationMs: number;
     tokenUsage: unknown;
     errorMessage: string | null;
+    sourceTrace?: TestSourceTrace | null;
+    executionTrace?: TestExecutionTraceBundle | null;
+    memorySetup?: MemoryFixtureSetup | null;
+    memoryAssertions?: MemoryAssertions | null;
+    memoryTrace?: TestMemoryTraceBundle | null;
   }): Promise<TestExecution> {
     return this.executionRepository.create(data);
   }
@@ -388,6 +481,92 @@ export class TestExecutionService {
     return { testRequest, messageText };
   }
 
+  private async runDeferredTurnEnd(agentResult: AgentRunResult | null): Promise<TurnEndTrace> {
+    if (!agentResult?.runTurnEnd) {
+      return { status: 'skipped' };
+    }
+
+    const startedAt = Date.now();
+    try {
+      await agentResult.runTurnEnd();
+      return { status: 'completed', durationMs: Date.now() - startedAt };
+    } catch (error: unknown) {
+      return {
+        status: 'failed',
+        durationMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  private async readMemoryStateBestEffort(scope: TestRuntimeScope): Promise<unknown> {
+    try {
+      if (!this.memoryFixtureService) {
+        return null;
+      }
+      return await this.memoryFixtureService.read(scope);
+    } catch (error: unknown) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  private buildExecutionTrace(params: {
+    request: TestChatRequestDto;
+    sourceTrace: TestSourceTrace | null;
+    runtimeScope: TestRuntimeScope;
+    monitoringInfo: MonitoringContextInfo | null;
+    agentResult: AgentRunResult | null;
+    extracted: ExtractedResult;
+    startedAt: number;
+    completedAt: number;
+    durationMs: number;
+  }): TestExecutionTraceBundle {
+    return {
+      schemaVersion: 1,
+      sourceTrace: params.sourceTrace,
+      asset: {
+        batchId: params.request.batchId,
+        caseId: params.request.caseId,
+        caseName: params.request.caseName,
+        category: params.request.category,
+      },
+      runtime: {
+        ...params.runtimeScope,
+        messageId: params.monitoringInfo?.syntheticMessageId,
+        historyMessageIds: params.monitoringInfo?.historyMessageIds,
+        startedAt: new Date(params.startedAt).toISOString(),
+        completedAt: new Date(params.completedAt).toISOString(),
+        durationMs: params.durationMs,
+      },
+      agent: {
+        modelId: params.request.modelId,
+        memorySnapshot: params.agentResult?.memorySnapshot,
+        toolCalls: params.extracted.toolCalls,
+        steps: params.agentResult?.agentSteps,
+        usage: params.extracted.tokenUsage,
+      },
+    };
+  }
+
+  private buildMemoryTrace(params: {
+    runtimeScope: TestRuntimeScope;
+    memorySetup: MemoryFixtureSetup | null;
+    memoryAssertions: MemoryAssertions | null;
+    agentResult: AgentRunResult | null;
+    postTurnState: unknown;
+    turnEnd: TurnEndTrace;
+  }): TestMemoryTraceBundle {
+    return {
+      schemaVersion: 1,
+      scope: params.runtimeScope,
+      setup: params.memorySetup,
+      assertions: params.memoryAssertions,
+      entrySnapshot: params.agentResult?.memorySnapshot,
+      postTurnState: params.postTurnState,
+      turnEnd: params.turnEnd,
+    };
+  }
+
   private resolveStrategySource(
     request: Pick<TestChatRequestDto, 'botUserId' | 'botImId'>,
   ): 'testing' | 'released' {
@@ -401,33 +580,60 @@ export class TestExecutionService {
   // ========== 私有方法 ==========
 
   private resolveHistoryForAgent(
-    request: Pick<TestChatRequestDto, 'history' | 'skipHistoryTrim'>,
+    request: Pick<TestChatRequestDto, 'history' | 'message' | 'skipHistoryTrim'>,
   ): Array<{ role: MessageRole; content: string; imageUrls?: string[] }> {
-    return request.skipHistoryTrim ? request.history || [] : (request.history || []).slice(0, -2);
+    const history = request.history || [];
+    if (request.skipHistoryTrim) return history;
+
+    const currentMessage = request.message?.trim();
+    if (!currentMessage || history.length === 0) return history;
+
+    let currentMessageIndex = -1;
+    for (let i = history.length - 1; i >= 0; i -= 1) {
+      const message = history[i];
+      if (message.role === MessageRole.USER && message.content?.trim() === currentMessage) {
+        currentMessageIndex = i;
+        break;
+      }
+    }
+    if (currentMessageIndex >= 0) {
+      return history.slice(0, currentMessageIndex);
+    }
+
+    return history;
   }
 
   private async prepareMonitoringContext(params: {
     request: TestChatRequestDto;
     sessionId: string;
     historyForAgent: Array<{ role: MessageRole; content: string; imageUrls?: string[] }>;
-  }): Promise<void> {
+  }): Promise<MonitoringContextInfo> {
     const { request, sessionId, historyForAgent } = params;
 
-    await this.syncHistoryToProductionChat(request, sessionId, historyForAgent);
+    const historyMessageIds = await this.syncHistoryToProductionChat(
+      request,
+      sessionId,
+      historyForAgent,
+    );
 
     const syntheticMessage = this.buildSyntheticInboundMessage(request, sessionId);
     await this.chatSessionService.saveMessage(
       this.toCurrentUserChatMessage(request, sessionId, syntheticMessage),
     );
+
+    return {
+      syntheticMessageId: syntheticMessage.messageId,
+      historyMessageIds,
+    };
   }
 
   private async syncHistoryToProductionChat(
     request: TestChatRequestDto,
     sessionId: string,
     history: Array<{ role: MessageRole; content: string; imageUrls?: string[] }>,
-  ): Promise<void> {
+  ): Promise<string[]> {
     if (history.length === 0) {
-      return;
+      return [];
     }
 
     const baseTimestamp = Date.now() - (history.length + 1) * 1000;
@@ -442,6 +648,7 @@ export class TestExecutionService {
     );
 
     await this.chatSessionService.saveMessagesBatch(messages);
+    return messages.map((message) => message.messageId);
   }
 
   private toChatHistoryMessage(params: {

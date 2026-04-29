@@ -41,6 +41,7 @@ import {
   classifySupplementLabel,
   SupplementClassification,
 } from '@tools/duliday/supplement-label-classifier';
+import { isLikelyRealChineseName } from '@memory/facts/name-guard';
 
 const logger = new Logger('duliday_interview_precheck');
 
@@ -360,6 +361,7 @@ function normalizeGenderValue(value: string | null | undefined): string | null {
 function normalizeHealthCertificateValue(value: string | null | undefined): string | null {
   const text = normalizePolicyText(value);
   if (!text) return null;
+  if (/非本地|不是本地|外地|异地/.test(text)) return null;
   if (/^有$|有健康证/.test(text)) return '有';
   // 显式拒办优先识别，避免被下方"无但接受办理"模式误吞
   if (/无且不接受办理健康证|不办健康证|不接受办健康证|不接受办理/.test(text)) {
@@ -1143,6 +1145,9 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
 ## 何时调用
 - 候选人问"今天可以吗"、"什么时候可以面试"、"要准备什么资料"、"还需要我提供什么信息"时优先调用
 - 回答"今天可以吗/哪天能面/要补哪些资料"前，先看此工具结果；不要只根据 duliday_job_list 的摘要或自己理解直接回答
+- 候选人明确提出日期或时间（如"后天最好"、"5月1号回来面试可以吗"、"今天六点才能下班可以去面试吗"）时，必须带 requestedDate 调用；当前焦点岗位不明确时，先确认门店/岗位，不得凭记忆给出可约日期
+- 收资/约面过程中候选人补充"每周最多两天/做一休一/只周末/不上夜班/下班后/六点才下班/现在决定不了时间"等硬约束时，先用本工具和/或 duliday_job_list(includeWorkTime=true) 校验当前岗位是否匹配，再决定是否继续收资
+- **进入收资场景前必须先调本工具一次**：候选人明确表达约面意向（"需要面试吗 / 帮我约 / 这家可以"等）后，**第一步必须先调本工具拿到 bookingChecklist.requiredFieldsToCollectNow 与 nameFieldGuard**，再按工具结果一次性发资料模板；严禁绕过工具直接问"哪天方便"或"叫什么"等碎片化收资
 
 ## 参数
 - jobId：岗位 ID（必填）
@@ -1154,11 +1159,13 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
 - interview.bookableSlots：结构化可约时段。只有 bookingAllowed=true 且带 interviewTime 的 slot 才能进入 duliday_interview_booking；bookingAllowed=false / dateOnly=true 表示只确定日期、不确定具体面试时间，必须先人工确认，严禁拿 registrationDeadline 当 interviewTime
 - interview.requestedDate：只有在传入 requestedDate 时才有；包含 status（available / unavailable / needs_confirmation）和 reason
 - screeningCriteria：岗位硬性筛选条件（性别/年龄/学历/健康证/是否学生等），**用来筛人**——候选人不符合时直接说明，不要继续往下引导
-- screeningChecks：岗位后台把约束语义直接配在 supplement label 里的那一类筛选题（例如 "是否学生（不要学生）"、"专业（非新媒、食品）"、"周四六日都能上班吗"）。**用来筛人**——必须先独立向候选人核对，候选人答案命中 failSignals 就停止收资、走婉拒/拉群，不得继续 booking
+- screeningChecks：岗位后台把约束语义直接配在 supplement label 里的那一类筛选题（例如 "是否学生（不要学生）"、"专业（非新媒、食品）"、"周四六日都能上班吗"）。**用来筛人**——必须先独立向候选人核对，候选人答案命中 failSignals 就停止收资、走婉拒/拉群，不得继续 booking；但 "食品类健康证/食品健康证/餐饮健康证" 是健康证类型，不是专业答案，遇到专业筛选题时必须澄清实际专业
 - bookingChecklist.missingFields：预约还缺哪些字段（已剔除 screeningChecks 列出的筛选型 label）
+- bookingChecklist.requiredFieldsToCollectNow：当前阶段必须立刻收齐的字段（missingFields 的扁平副本，便于一次性补问；若数组非空，回复必须把这些字段写成模板让候选人一次性填齐）
 - bookingChecklist.templateText：正常收资场景下可直接参考的话术模板，已根据会话上下文预填已知字段
 - bookingChecklist.enumHints：只包含 missingFields 涉及字段的合法枚举
 - bookingChecklist.collectionStrategy：当前更适合一次性收资还是渐进式收资；若候选人已表现出抗拒，会返回 starterFields 供你先降负担推进
+- nameFieldGuard：仅当当前已知姓名不像真名时返回（suspicious=true）；意味着 knownFieldMap 里的"姓名"是昵称或占位串，**严禁**在 booking 里复用——必须先向候选人补问真实姓名后再覆写
 - apiPayloadGuide：最新 supplier/entryUser 契约入参指引
 
 ## 硬规则
@@ -1167,11 +1174,15 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
 - 若 bookableSlots 中目标日期的 slot 为 dateOnly=true 或 bookingAllowed=false，只能告诉候选人"日期可以/线上面试但具体时间需确认"，不要调用 duliday_interview_booking
 - 若 interview.requestedDate.status 为 unavailable，必须直接说明原因，不得继续引导候选人填写资料假装可以预约
 - 若 interview.requestedDate.status 为 needs_confirmation，先表述"我先帮你确认下今天还能不能约"，不要直接承诺可以，也不要输出生硬的规则解释句
+- 候选人指定的未来日期不可约时，只能说明该日期不可约并给出工具返回的最近可选时段，不能擅自把候选人改到更近/更远日期，也不能继续催今天/明天
 - 候选人只是询问规则或资料时，先解释规则；不要跳过校验直接进入 duliday_interview_booking
 - 当 nextAction = collect_fields 时，bookingChecklist.templateText 只是默认模板，不是必须逐字复读的指令；正常收资场景优先参考它一次性收集资料，但不要为了守模板而忽略候选人当前情绪
+- 当候选人已经给过姓名、电话、年龄、学历、面试时间等字段时，使用 bookingChecklist.knownFieldMap / missingFields 只补问缺失项；不要让候选人重填已给字段
+- **nameFieldGuard.suspicious=true 时**：当前 sessionFacts 里的姓名是昵称/占位串，必须**用 templateText 中"姓名："字段为空让候选人填**；严禁基于 knownFieldMap.姓名 直接进入 booking。Agent 回复必须含一句"门店登记需要本名"或同义请求，让候选人主动给出真实姓名后再覆写
 - 若候选人当轮出现抗拒、不耐烦、拒绝填写、嫌麻烦或辱骂，立即暂停模板化收资；先共情并解释用途，再按 bookingChecklist.collectionStrategy 里的 starterFields 降负担推进，不要继续追整张字段清单
 - 只有在候选人恢复配合、且没有明显情绪阻力时，才恢复完整字段清单或继续进入预约
-- 若返回了 screeningChecks，在把 templateText 发给候选人之前，**必须**用自然话术核对每一条的通过条件；候选人明确表达命中 failSignals 的答案（如"食品类"、"不一定"）时，立即停止收资、婉拒并走 invite_to_group 或 request_handoff`,
+- 若返回了 screeningChecks，在把 templateText 发给候选人之前，**必须**用自然话术核对每一条的通过条件；候选人在专业筛选题里明确回答"我是食品专业/学食品"，或在出勤筛选题里回答"不一定"等命中 failSignals 的答案时，立即停止收资、婉拒并走 invite_to_group 或 request_handoff。若候选人说的是"食品类健康证/食品健康证/餐饮健康证"，不要当成专业不合格，先澄清专业
+- **班次硬约束与岗位 workTime 不重叠时禁约面**：候选人 schedule 硬约束（"做一休一/每周最多两天/只周末/不上夜班/下班后/六点才下班"等）与当前候选岗位的工作时间无重叠时，禁止继续 collect_fields/duliday_interview_booking 进入约面流程，必须先用 duliday_job_list(includeWorkTime=true) 校验确认无匹配，再婉拒并走 invite_to_group。已经识别为不匹配仍继续收资约面 = 通融式推荐`,
       inputSchema,
       execute: async ({ jobId, requestedDate }) => {
         logger.log(`面试前置校验: jobId=${jobId}, requestedDate=${requestedDate ?? 'none'}`);
@@ -1255,6 +1266,13 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
             jobName,
           });
 
+          // 真名可疑标记：knownFieldMap.姓名 已填，但不像真实姓名（可能是微信昵称
+          // 或占位字符串）。P2 批次 SCN-P2-20260429-005 实测：候选人给了完整资料，
+          // Agent 却没识别"姓名是昵称"问题。此标记让 Agent 在 collect 阶段就能看到。
+          const knownName = knownFieldMap['姓名'];
+          const nameFieldLooksSuspicious =
+            Boolean(knownName) && !isLikelyRealChineseName(knownName);
+
           const requiredFields = [
             ...API_BOOKING_USER_REQUIRED_FIELDS,
             ...analysis.fieldGuidance.screeningFields,
@@ -1335,10 +1353,23 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
             // 候选人答案命中任一 failSignal 就停止收资；对应字段不在 templateText
             // 里（否则会被错当成需要填写的字段）。
             screeningChecks: screeningChecks.length > 0 ? screeningChecks : undefined,
+            // 真实姓名校验信号（P2 批次 SCN-P2-20260429-005）：
+            // suspicious=true 表示 knownFieldMap 里的姓名看起来不像真实姓名（昵称/占位串）。
+            // Agent 必须在收资阶段就向候选人补问真实姓名，并在调用 booking 前重新覆写姓名字段。
+            nameFieldGuard: nameFieldLooksSuspicious
+              ? {
+                  suspicious: true,
+                  observedValue: knownName,
+                  reason:
+                    '当前已知姓名不像真实中文姓名（可能是微信昵称/含 emoji/含字母数字/超过 4 字）。请向候选人确认真实姓名后再覆写并提交 booking。',
+                }
+              : undefined,
             bookingChecklist: {
               requiredFields: checklist.requiredFields,
               displayOrder: checklist.displayOrder,
               missingFields: checklist.missingFields,
+              // 当前阶段必须立刻收齐的字段（missingFields 即时副本，扁平展示便于 Agent 一次性补问）
+              requiredFieldsToCollectNow: checklist.missingFields,
               templateText: checklist.templateText,
               enumHints,
               collectionStrategy: collectionStrategy

@@ -584,4 +584,107 @@ describe('buildJobListTool', () => {
     expect(result.queryMeta.distanceScanPages).toBe(2);
     expect(result.queryMeta.distanceScanTruncated).toBe(false);
   });
+
+  describe('multi-store same-brand rendering (badcase laybqxn4)', () => {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const makeKfcJob = (jobId: number, storeName: string, distanceKm: number, wage: number) =>
+      ({
+        ...makeJobData({
+          basicInfo: {
+            jobId,
+            brandId: 100,
+            brandName: '肯德基',
+            storeInfo: { storeName, storeAddress: '上海市虹桥', storeCityName: '上海' },
+          },
+          jobSalary: {
+            salaryScenarioList: [
+              {
+                comprehensiveSalary: {
+                  minComprehensiveSalary: wage,
+                  maxComprehensiveSalary: wage + 5,
+                  comprehensiveSalaryUnit: '元/时',
+                },
+              },
+            ],
+          },
+        }),
+        _distanceKm: distanceKm,
+      }) as any;
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+
+    it('emits ⚠️ 同品牌多门店 section in markdown when ≥2 stores share a brand', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeKfcJob(1, '绿地缤纷城店', 2.3, 17),
+          makeKfcJob(2, '日月光店', 5.1, 17),
+        ],
+        total: 2,
+      });
+
+      const result = await executeTool(mockContext, {
+        ...defaultInput,
+        location: { latitude: 31.21, longitude: 121.29 },
+      });
+
+      const md = result.markdown as string;
+      expect(md).toContain('⚠️ 同品牌多门店');
+      expect(md).toContain('肯德基（绿地缤纷城店，2.3km，17-22 元/时）');
+      expect(md).toContain('肯德基（日月光店，5.1km，17-22 元/时）');
+      expect(md).toContain('jobId: 1');
+      expect(md).toContain('jobId: 2');
+    });
+
+    it('exposes multiStoreSameBrandGroups in queryMeta', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [makeKfcJob(1, '绿地缤纷城店', 2.3, 17), makeKfcJob(2, '日月光店', 5.1, 17)],
+        total: 2,
+      });
+
+      const result = await executeTool(mockContext, {
+        ...defaultInput,
+        location: { latitude: 31.21, longitude: 121.29 },
+      });
+
+      expect(result.queryMeta.multiStoreSameBrandGroups).toEqual([
+        expect.objectContaining({
+          brandName: '肯德基',
+          totalStoreCount: 2,
+          requiresStoreDifferentiation: true,
+          displayLines: [
+            '肯德基（绿地缤纷城店，2.3km，17-22 元/时）',
+            '肯德基（日月光店，5.1km，17-22 元/时）',
+          ],
+        }),
+      ]);
+    });
+
+    it('does not emit warning section when each brand has only 1 store', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeKfcJob(1, '绿地缤纷城店', 2.3, 17),
+          {
+            ...makeJobData({
+              basicInfo: {
+                jobId: 2,
+                brandId: 200,
+                brandName: '麦当劳',
+                storeInfo: { storeName: '徐汇店', storeCityName: '上海' },
+              },
+            }),
+            _distanceKm: 3.0,
+          },
+        ],
+        total: 2,
+      });
+
+      const result = await executeTool(mockContext, {
+        ...defaultInput,
+        location: { latitude: 31.21, longitude: 121.29 },
+      });
+
+      const md = result.markdown as string;
+      expect(md).not.toContain('⚠️ 同品牌多门店');
+      expect(result.queryMeta.multiStoreSameBrandGroups).toBeNull();
+    });
+  });
 });

@@ -1,5 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { BitableRecord, FeishuBitableApiService } from '@infra/feishu/services/bitable-api.service';
+import {
+  BitableField,
+  BitableRecord,
+  FeishuBitableApiService,
+} from '@infra/feishu/services/bitable-api.service';
 import {
   CuratedDatasetImportFailure,
   CuratedDatasetImportResult,
@@ -15,6 +19,8 @@ import {
 import { LineageSyncService } from './lineage-sync.service';
 
 type CuratedDatasetImportOperation = 'created' | 'updated' | 'unchanged';
+
+const BITABLE_FIELD_ALREADY_EXISTS_CODES = new Set([1254004]);
 
 interface UpsertRecordResult {
   operation: CuratedDatasetImportOperation;
@@ -40,7 +46,8 @@ export class CuratedDatasetImportService {
     }
 
     const { appToken, tableId } = this.bitableApi.getTableConfig('testSuite');
-    const fields = await this.bitableApi.getFields(appToken, tableId);
+    let fields = await this.bitableApi.getFields(appToken, tableId);
+    fields = await this.ensureTraceabilityFields(appToken, tableId, fields);
     const resolved = this.payloadBuilder.resolveScenarioFieldNames(fields);
     this.payloadBuilder.ensureScenarioRequiredFields(resolved);
 
@@ -122,7 +129,8 @@ export class CuratedDatasetImportService {
     }
 
     const { appToken, tableId } = this.bitableApi.getTableConfig('validationSet');
-    const fields = await this.bitableApi.getFields(appToken, tableId);
+    let fields = await this.bitableApi.getFields(appToken, tableId);
+    fields = await this.ensureTraceabilityFields(appToken, tableId, fields);
     const resolved = this.payloadBuilder.resolveConversationFieldNames(fields);
     this.payloadBuilder.ensureConversationRequiredFields(resolved);
 
@@ -301,5 +309,83 @@ export class CuratedDatasetImportService {
       message,
       recordId,
     };
+  }
+
+  private async ensureTraceabilityFields(
+    appToken: string,
+    tableId: string,
+    fields: BitableField[],
+  ): Promise<BitableField[]> {
+    const specs = [
+      { canonicalName: '来源BadCaseRecordID', aliases: ['来源RecordID', 'sourceRecordIds'] },
+      { canonicalName: '触发MessageID', aliases: ['AnchorMessageID', 'sourceAnchorMessageIds'] },
+      { canonicalName: '相关MessageID', aliases: ['RelatedMessageID', 'sourceRelatedMessageIds'] },
+      {
+        canonicalName: '处理流水ID',
+        aliases: ['MessageProcessingID', 'sourceMessageProcessingIds'],
+      },
+      { canonicalName: 'TraceID', aliases: ['来源TraceID', 'sourceTraceIds'] },
+      { canonicalName: 'SourceTrace', aliases: ['排障Trace', 'sourceTrace', '排障证据JSON'] },
+      { canonicalName: 'MemorySetup', aliases: ['记忆前置', 'memorySetup'] },
+      { canonicalName: 'MemoryAssertions', aliases: ['记忆断言', 'memoryAssertions'] },
+    ];
+    const existingNames = new Set(fields.map((field) => field.field_name));
+    const nextFields = [...fields];
+
+    for (const spec of specs) {
+      const aliases = [spec.canonicalName, ...spec.aliases];
+      if (aliases.some((alias) => existingNames.has(alias))) {
+        continue;
+      }
+
+      try {
+        const result = await this.bitableApi.createField(appToken, tableId, spec.canonicalName, 1);
+        existingNames.add(spec.canonicalName);
+        nextFields.push({
+          field_id: result.fieldId,
+          field_name: spec.canonicalName,
+          type: 1,
+        });
+        this.logger.log(`已为策展数据集表 ${tableId} 创建可选字段: ${spec.canonicalName}`);
+      } catch (error) {
+        if (!this.isFieldAlreadyExistsError(error)) {
+          throw error;
+        }
+
+        this.logger.warn(
+          `策展数据集表 ${tableId} 可选字段已存在，刷新字段缓存后继续: ${spec.canonicalName}`,
+        );
+        const refreshedFields = await this.bitableApi.getFields(appToken, tableId);
+        for (const field of refreshedFields) {
+          if (!existingNames.has(field.field_name)) {
+            existingNames.add(field.field_name);
+            nextFields.push(field);
+          }
+        }
+      }
+    }
+
+    return nextFields;
+  }
+
+  private isFieldAlreadyExistsError(error: unknown): boolean {
+    const errorLike = error as {
+      code?: unknown;
+      feishuCode?: unknown;
+      response?: { data?: { code?: unknown; msg?: unknown } };
+      message?: string;
+    };
+    const codes = [errorLike?.code, errorLike?.feishuCode, errorLike?.response?.data?.code]
+      .map((code) => Number(code))
+      .filter((code) => Number.isFinite(code));
+
+    if (codes.some((code) => BITABLE_FIELD_ALREADY_EXISTS_CODES.has(code))) {
+      return true;
+    }
+
+    const message = [errorLike?.message, errorLike?.response?.data?.msg, String(error)]
+      .filter(Boolean)
+      .join(' ');
+    return /field already exists|字段已存在|already exists/i.test(message);
   }
 }

@@ -163,4 +163,11 @@ export interface MonitoringGlobalCounters {
   totalSendDuration: number;
   totalFallback: number;
   totalFallbackSuccess: number;
+  /** 投递层兜底丢弃数：模型输出泄漏内部阶段术语/工具调用/JSON 等（badcase vllg7hlu）。 */
+  totalOutputLeakSkipped: number;
+  /** 投递层兜底丢弃数：同品牌多门店被压缩（badcase laybqxn4）。 */
+  totalSameBrandCollapseSkipped: number;
 }
+
+/** 投递层主动丢弃回复的原因，与 DeliveryResult.skipReason 同枚举。 */
+export type DeliverySkipReason = 'output_leak' | 'same_brand_collapse';

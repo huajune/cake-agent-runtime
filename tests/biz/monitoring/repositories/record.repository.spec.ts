@@ -292,6 +292,69 @@ describe('MonitoringRecordRepository', () => {
     });
   });
 
+  // ==================== getDashboardBusinessTrend ====================
+
+  describe('getDashboardBusinessTrend', () => {
+    it('should return empty array when supabase is not available', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(false);
+
+      const result = await repository.getDashboardBusinessTrend(new Date(), new Date());
+
+      expect(result).toEqual([]);
+    });
+
+    it('should return mapped business trend data', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      mockSupabaseClient.rpc.mockResolvedValue({
+        data: [
+          {
+            minute: '2026-04-28 18:10',
+            consultations: '8',
+            booking_attempts: '2',
+            successful_bookings: '1',
+            conversion_rate: '25.00',
+            booking_success_rate: '50.00',
+          },
+        ],
+        error: null,
+      });
+
+      const result = await repository.getDashboardBusinessTrend(new Date(), new Date());
+
+      expect(result).toEqual([
+        {
+          minute: '2026-04-28 18:10',
+          consultations: 8,
+          bookingAttempts: 2,
+          successfulBookings: 1,
+          conversionRate: 25,
+          bookingSuccessRate: 50,
+        },
+      ]);
+    });
+
+    it('should pass granularity and interval to RPC', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+      mockSupabaseClient.rpc.mockResolvedValue({ data: [], error: null });
+
+      await repository.getDashboardBusinessTrend(
+        new Date('2026-04-28T00:00:00Z'),
+        new Date('2026-04-29T00:00:00Z'),
+        10,
+        'day',
+      );
+
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledWith(
+        'get_dashboard_business_trend',
+        expect.objectContaining({
+          p_interval_minutes: 10,
+          p_granularity: 'day',
+        }),
+      );
+    });
+  });
+
   // ==================== getDashboardScenarioStats ====================
 
   describe('getDashboardScenarioStats', () => {

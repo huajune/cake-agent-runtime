@@ -120,6 +120,66 @@ describe('TestExecutionService', () => {
       );
     });
 
+    it('should keep same-turn user history while removing only duplicated current message', async () => {
+      mockLoop.invoke.mockResolvedValue(makeSuccessResult('AI回复'));
+
+      await service.executeTest({
+        ...baseRequest,
+        message: '王静怡，38，13816246197，大专',
+        history: [
+          { role: MessageRole.ASSISTANT, content: '你看这周哪天方便过来面试？' },
+          { role: MessageRole.USER, content: '这周三下午行吗' },
+          { role: MessageRole.USER, content: '王静怡，38，13816246197，大专' },
+        ],
+      });
+
+      expect(loop.invoke).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messages: [
+            {
+              role: 'assistant',
+              content: '你看这周哪天方便过来面试？',
+              imageUrls: undefined,
+            },
+            { role: 'user', content: '这周三下午行吗', imageUrls: undefined },
+            { role: 'user', content: '王静怡，38，13816246197，大专', imageUrls: undefined },
+          ],
+        }),
+      );
+    });
+
+    it('should drop future history after the selected current message', async () => {
+      mockLoop.invoke.mockResolvedValue(makeSuccessResult('AI回复'));
+
+      await service.executeTest({
+        ...baseRequest,
+        message: '这边我5月1号回来面试可以吗',
+        history: [
+          { role: MessageRole.ASSISTANT, content: '门店和岗位是银泰3F的哈根达斯。' },
+          { role: MessageRole.USER, content: '这边我5月1号回来面试可以吗' },
+          { role: MessageRole.ASSISTANT, content: '5月1号可以的。' },
+          { role: MessageRole.USER, content: '这边我5月5日回来面试可以吗' },
+        ],
+      });
+
+      expect(loop.invoke).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messages: [
+            {
+              role: 'assistant',
+              content: '门店和岗位是银泰3F的哈根达斯。',
+              imageUrls: undefined,
+            },
+            {
+              role: 'user',
+              content: '这边我5月1号回来面试可以吗',
+              imageUrls: undefined,
+            },
+          ],
+        }),
+      );
+    });
+
     it('should return TIMEOUT status when timeout error is thrown', async () => {
       mockLoop.invoke.mockRejectedValue(new Error('Request timeout exceeded'));
 
@@ -243,7 +303,7 @@ describe('TestExecutionService', () => {
       );
     });
 
-    it('should trim last 2 history entries and append current message', async () => {
+    it('should preserve non-duplicated history and append current message', async () => {
       mockLoop.invoke.mockResolvedValue(makeSuccessResult());
 
       const history = [
@@ -255,11 +315,17 @@ describe('TestExecutionService', () => {
       await service.executeTest({ ...baseRequest, history });
 
       const callArgs = loop.invoke.mock.calls[0][0];
-      // history sliced to first 2 + current user message = 3
-      expect(callArgs.messages).toHaveLength(3);
+      expect(callArgs.messages).toHaveLength(5);
+      expect(callArgs.messages.slice(0, -1)).toEqual([
+        { role: 'user', content: 'h1', imageUrls: undefined },
+        { role: 'assistant', content: 'h2', imageUrls: undefined },
+        { role: 'user', content: 'h3', imageUrls: undefined },
+        { role: 'assistant', content: 'h4', imageUrls: undefined },
+      ]);
       expect(callArgs.messages[callArgs.messages.length - 1]).toEqual({
         role: 'user',
         content: baseRequest.message,
+        imageUrls: undefined,
       });
     });
 
@@ -377,6 +443,57 @@ describe('TestExecutionService', () => {
           botImId: 'im-bot-1',
         }),
       );
+    });
+  });
+
+  describe('resolveHistoryForAgent', () => {
+    type HistoryRequest = Pick<TestChatRequestDto, 'history' | 'message' | 'skipHistoryTrim'>;
+    type HistoryMessage = { role: MessageRole; content: string; imageUrls?: string[] };
+
+    const resolveHistoryForAgent = (request: HistoryRequest): HistoryMessage[] =>
+      (
+        service as unknown as {
+          resolveHistoryForAgent(request: HistoryRequest): HistoryMessage[];
+        }
+      ).resolveHistoryForAgent(request);
+
+    it('should trim history before the latest matching current user message', () => {
+      const history = [
+        { role: MessageRole.USER, content: '我5月1号回来面试可以吗' },
+        { role: MessageRole.ASSISTANT, content: '我先帮你查' },
+        { role: MessageRole.USER, content: ' 我5月1号回来面试可以吗 ' },
+        { role: MessageRole.ASSISTANT, content: '未来助手回复，不应进入本轮' },
+      ];
+
+      expect(
+        resolveHistoryForAgent({
+          history,
+          message: '我5月1号回来面试可以吗',
+        }),
+      ).toEqual(history.slice(0, 2));
+    });
+
+    it('should keep history unchanged when current message is not found', () => {
+      const history = [
+        { role: MessageRole.USER, content: '想找静安附近兼职' },
+        { role: MessageRole.ASSISTANT, content: '我帮你看看岗位' },
+      ];
+
+      expect(
+        resolveHistoryForAgent({
+          history,
+          message: '我想找浦东附近兼职',
+        }),
+      ).toBe(history);
+    });
+
+    it('should keep empty history unchanged', () => {
+      expect(
+        resolveHistoryForAgent({
+          history: [],
+          message: '你好',
+        }),
+      ).toEqual([]);
     });
   });
 

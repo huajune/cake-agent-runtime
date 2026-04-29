@@ -2,6 +2,7 @@ import {
   INVALID_LABOR_FORM_WORDS,
   VALID_LABOR_FORMS,
   isValidLaborForm,
+  sanitizeJobDisplayText,
   stripLaborFormFromCategories,
 } from '@/memory/facts/labor-form';
 
@@ -74,6 +75,45 @@ describe('labor-form', () => {
       const snapshot = [...input];
       stripLaborFormFromCategories(input);
       expect(input).toEqual(snapshot);
+    });
+  });
+
+  describe('sanitizeJobDisplayText', () => {
+    it.each([null, undefined, ''])('returns null for empty input %p', (value) => {
+      expect(sanitizeJobDisplayText(value)).toBeNull();
+    });
+
+    it('strips "全职" residue from jobName (badcase nwr0i50f)', () => {
+      expect(sanitizeJobDisplayText('蛋糕全职岗')).toBe('蛋糕岗');
+      expect(sanitizeJobDisplayText('全职配送员')).toBe('配送员');
+      expect(sanitizeJobDisplayText('配送员-全职')).toBe('配送员');
+    });
+
+    it('strips "正式工" / "临时工"', () => {
+      expect(sanitizeJobDisplayText('正式工服务员')).toBe('服务员');
+      expect(sanitizeJobDisplayText('收银员（临时工）')).toBe('收银员');
+    });
+
+    it('keeps "兼职" since it is the platform legal attribute', () => {
+      expect(sanitizeJobDisplayText('兼职服务员')).toBe('兼职服务员');
+      expect(sanitizeJobDisplayText('服务员-兼职岗')).toBe('服务员-兼职岗');
+    });
+
+    it('cleans up empty parens / dangling separators after stripping', () => {
+      expect(sanitizeJobDisplayText('服务员（全职）')).toBe('服务员');
+      expect(sanitizeJobDisplayText('全职--服务员')).toBe('服务员');
+      expect(sanitizeJobDisplayText('  全职  服务员  ')).toBe('服务员');
+    });
+
+    it('returns null when nothing meaningful is left', () => {
+      expect(sanitizeJobDisplayText('全职')).toBeNull();
+      expect(sanitizeJobDisplayText('正式工')).toBeNull();
+      expect(sanitizeJobDisplayText('  -  ')).toBeNull();
+    });
+
+    it('leaves clean job names untouched', () => {
+      expect(sanitizeJobDisplayText('服务员')).toBe('服务员');
+      expect(sanitizeJobDisplayText('M Stand 咖啡师')).toBe('M Stand 咖啡师');
     });
   });
 });

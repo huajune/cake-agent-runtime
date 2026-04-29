@@ -371,7 +371,7 @@ describe('ReplyWorkflowService', () => {
       expect(deliveryService.deliverReply).toHaveBeenCalledTimes(1);
     });
 
-    it.each([['advance_stage'], ['invite_to_group'], ['duliday_interview_booking']])(
+    it.each([['invite_to_group'], ['duliday_interview_booking']])(
       'Case E: 首次调用命中不可逆工具 [%s] 时跳过 replay，不 drain pending，直接投递首次回复',
       async (blockingToolName) => {
         const primary = createMessage();
@@ -417,6 +417,59 @@ describe('ReplyWorkflowService', () => {
         );
       },
     );
+
+    it('Case E2: 首次只调用 advance_stage 时仍执行 replay，合并 Agent 生成期间的新消息', async () => {
+      const primary = createMessage();
+      const late1 = createMessage({
+        messageId: 'msg-late-stage',
+        timestamp: '1713168001000',
+        payload: { text: '补充一个硬约束', pureText: '补充一个硬约束' },
+      });
+      simpleMergeService.getAndClearPendingMessages.mockResolvedValueOnce({
+        messages: [late1],
+        batchId: 'batch-late',
+      });
+      const firstRunTurnEnd = jest.fn().mockResolvedValue(undefined);
+      runner.invoke
+        .mockResolvedValueOnce({
+          text: '首次回复（会被丢弃）',
+          reasoning: undefined,
+          responseMessages: [],
+          toolCalls: [{ toolName: 'advance_stage', args: {} }],
+          usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+          runTurnEnd: firstRunTurnEnd,
+        })
+        .mockResolvedValueOnce({
+          text: '合并新约束后的最终回复',
+          reasoning: undefined,
+          responseMessages: [],
+          usage: { inputTokens: 4, outputTokens: 5, totalTokens: 9 },
+        });
+
+      await service.processSingleMessage(primary);
+
+      expect(simpleMergeService.getAndClearPendingMessages).toHaveBeenCalledTimes(1);
+      expect(runner.invoke).toHaveBeenCalledTimes(2);
+      expect(firstRunTurnEnd).not.toHaveBeenCalled();
+      expect(runner.invoke.mock.calls[1][0]).toEqual(
+        expect.objectContaining({
+          messages: [
+            expect.objectContaining({
+              role: 'user',
+              content: '你好\n补充一个硬约束',
+            }),
+          ],
+        }),
+      );
+      expect(deliveryService.deliverReply).toHaveBeenCalledWith(
+        expect.objectContaining({ content: '合并新约束后的最终回复' }),
+        expect.anything(),
+        true,
+      );
+      expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith(
+        'msg-late-stage',
+      );
+    });
 
     it('Case F: 首次命中不可逆工具 + 无副作用的其他工具，仍然按 skip 处理', async () => {
       const primary = createMessage();

@@ -22,6 +22,18 @@ import {
   MessageRole,
 } from '../enums/test.enum';
 import { validationSetFieldNames } from '@infra/feishu/constants/feishu-bitable.config';
+import type {
+  MemoryAssertions,
+  MemoryFixtureSetup,
+  TestSourceTrace,
+} from '../types/test-debug-trace.types';
+import {
+  coerceMemoryAssertions,
+  coerceMemorySetup,
+  normalizeIdList,
+  normalizeSourceTrace,
+  parseJsonObject,
+} from './test-trace.helpers';
 
 /**
  * 解析后的测试用例（用例测试）
@@ -34,6 +46,9 @@ export interface ParsedTestCase {
   history?: Array<{ role: MessageRole; content: string }>;
   expectedOutput?: string;
   testType: TestType;
+  sourceTrace?: TestSourceTrace | null;
+  memorySetup?: MemoryFixtureSetup | null;
+  memoryAssertions?: MemoryAssertions | null;
 }
 
 /**
@@ -47,6 +62,9 @@ export interface ParsedConversationTest {
   rawText: string;
   parseResult: ConversationParseResult;
   testType: TestType;
+  sourceTrace?: TestSourceTrace | null;
+  memorySetup?: MemoryFixtureSetup | null;
+  memoryAssertions?: MemoryAssertions | null;
 }
 
 /**
@@ -73,7 +91,7 @@ export class TestImportService {
     private readonly testProcessor: TestSuiteProcessor,
     private readonly configService: ConfigService,
   ) {
-    this.conversationConcurrency = this.readPositiveInt('TEST_SUITE_CONVERSATION_CONCURRENCY', 8, {
+    this.conversationConcurrency = this.readPositiveInt('TEST_SUITE_CONVERSATION_CONCURRENCY', 20, {
       min: 1,
       max: 20,
     });
@@ -116,6 +134,9 @@ export class TestImportService {
           message: testCase.message,
           history: testCase.history,
           scenario: 'candidate-consultation',
+          sourceTrace: testCase.sourceTrace,
+          memorySetup: testCase.memorySetup,
+          memoryAssertions: testCase.memoryAssertions,
         },
         expectedOutput: testCase.expectedOutput,
         agentRequest: null,
@@ -126,6 +147,9 @@ export class TestImportService {
         durationMs: 0,
         tokenUsage: null,
         errorMessage: null,
+        sourceTrace: testCase.sourceTrace,
+        memorySetup: testCase.memorySetup,
+        memoryAssertions: testCase.memoryAssertions,
       });
 
       savedCases.push({
@@ -181,7 +205,7 @@ export class TestImportService {
         options?.batchName ||
         `用例测试 ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`,
       executeImmediately: true,
-      parallel: options?.parallel || false,
+      parallel: options?.parallel ?? true,
       testType: TestType.SCENARIO,
     });
   }
@@ -316,6 +340,7 @@ export class TestImportService {
           '答案',
           'answer',
         ]);
+        const traceBundle = this.extractTraceBundle(record.record_id, recordFields, fieldNameToId);
 
         cases.push({
           caseId: record.record_id,
@@ -325,6 +350,7 @@ export class TestImportService {
           history: historyText ? this.parseHistory(historyText) : undefined,
           expectedOutput: expectedOutput || undefined,
           testType: TestType.SCENARIO,
+          ...traceBundle,
         });
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -388,6 +414,7 @@ export class TestImportService {
           this.logger.warn(`对话解析失败 ${record.record_id}: ${parseResult.error || '未知错误'}`);
           continue;
         }
+        const traceBundle = this.extractTraceBundle(record.record_id, recordFields, fieldNameToId);
 
         conversations.push({
           recordId: record.record_id,
@@ -397,6 +424,7 @@ export class TestImportService {
           rawText,
           parseResult,
           testType: TestType.CONVERSATION,
+          ...traceBundle,
         });
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -463,6 +491,7 @@ export class TestImportService {
           );
           continue;
         }
+        const traceBundle = this.extractTraceBundle(record.record_id, recordFields, fieldNameToId);
 
         conversations.push({
           recordId: record.record_id,
@@ -472,6 +501,7 @@ export class TestImportService {
           rawText,
           parseResult,
           testType: TestType.CONVERSATION,
+          ...traceBundle,
         });
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -481,6 +511,99 @@ export class TestImportService {
 
     this.logger.log(`成功解析 ${conversations.length} 条验证集对话记录`);
     return conversations;
+  }
+
+  private extractTraceBundle(
+    recordId: string,
+    recordFields: Record<string, unknown>,
+    fieldNameToId: Record<string, string>,
+  ): {
+    sourceTrace: TestSourceTrace | null;
+    memorySetup: MemoryFixtureSetup | null;
+    memoryAssertions: MemoryAssertions | null;
+  } {
+    const sourceTraceJson = parseJsonObject(
+      this.extractFieldValue(recordFields, fieldNameToId, [
+        '排障Trace',
+        'SourceTrace',
+        'sourceTrace',
+        '排障证据JSON',
+      ]),
+    );
+    const memorySetup = coerceMemorySetup(
+      parseJsonObject(
+        this.extractFieldValue(recordFields, fieldNameToId, [
+          'MemorySetup',
+          '记忆前置',
+          'memorySetup',
+        ]),
+      ),
+    );
+    const memoryAssertions = coerceMemoryAssertions(
+      parseJsonObject(
+        this.extractFieldValue(recordFields, fieldNameToId, [
+          'MemoryAssertions',
+          '记忆断言',
+          'memoryAssertions',
+        ]),
+      ),
+    );
+
+    const sourceTrace = normalizeSourceTrace({
+      sourceTrace: sourceTraceJson as TestSourceTrace | undefined,
+      sourceBadCaseIds: normalizeIdList(
+        this.extractFieldValue(recordFields, fieldNameToId, ['来源BadCaseID']),
+      ),
+      sourceGoodCaseIds: normalizeIdList(
+        this.extractFieldValue(recordFields, fieldNameToId, ['来源GoodCaseID']),
+      ),
+      sourceRecordIds: normalizeIdList(
+        this.extractFieldValue(recordFields, fieldNameToId, [
+          '来源BadCaseRecordID',
+          '来源RecordID',
+          'sourceRecordIds',
+        ]),
+      ),
+      sourceChatIds: normalizeIdList(
+        this.extractFieldValue(recordFields, fieldNameToId, [
+          '来源ChatID',
+          '来源ChatIds',
+          'sourceChatIds',
+          'chatId',
+        ]),
+      ),
+      sourceAnchorMessageIds: normalizeIdList(
+        this.extractFieldValue(recordFields, fieldNameToId, [
+          '触发MessageID',
+          'AnchorMessageID',
+          'sourceAnchorMessageIds',
+        ]),
+      ),
+      sourceRelatedMessageIds: normalizeIdList(
+        this.extractFieldValue(recordFields, fieldNameToId, [
+          '相关MessageID',
+          'RelatedMessageID',
+          'sourceRelatedMessageIds',
+        ]),
+      ),
+      sourceMessageProcessingIds: normalizeIdList(
+        this.extractFieldValue(recordFields, fieldNameToId, [
+          '处理流水ID',
+          'MessageProcessingID',
+          'sourceMessageProcessingIds',
+        ]),
+      ),
+      sourceTraceIds: normalizeIdList(
+        this.extractFieldValue(recordFields, fieldNameToId, [
+          'TraceID',
+          '来源TraceID',
+          'sourceTraceIds',
+        ]),
+      ),
+      raw: { datasetRecordId: recordId },
+    });
+
+    return { sourceTrace, memorySetup, memoryAssertions };
   }
 
   /**
@@ -572,6 +695,9 @@ export class TestImportService {
         fullConversation: conv.parseResult.messages,
         rawText: conv.rawText,
         totalTurns: conv.parseResult.totalTurns,
+        sourceTrace: conv.sourceTrace,
+        memorySetup: conv.memorySetup,
+        memoryAssertions: conv.memoryAssertions,
       });
 
       sourceIds.push(source.id);

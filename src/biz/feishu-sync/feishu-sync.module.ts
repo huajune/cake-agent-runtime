@@ -3,6 +3,7 @@ import { BizMessageModule } from '@biz/message/message.module';
 import { FeishuBitableSyncService } from './bitable-sync.service';
 import { ChatRecordSyncService } from './chat-record.service';
 import { FeishuSyncController } from './feishu-sync.controller';
+import { FeedbackSourceTraceService } from './feedback-source-trace.service';
 
 /**
  * 飞书同步模块
@@ -13,7 +14,7 @@ import { FeishuSyncController } from './feishu-sync.controller';
 @Module({
   imports: [BizMessageModule],
   controllers: [FeishuSyncController],
-  providers: [FeishuBitableSyncService, ChatRecordSyncService],
+  providers: [FeishuBitableSyncService, ChatRecordSyncService, FeedbackSourceTraceService],
   exports: [FeishuBitableSyncService, ChatRecordSyncService],
 })
 export class FeishuSyncModule {}

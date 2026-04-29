@@ -89,6 +89,11 @@ export class HardConstraintsSection implements PromptSection {
     if (pref.district?.length) {
       lines.push(`- 区域: ${pref.district.join('、')}（填到 regionNameList）`);
     }
+    if (pref.location?.length) {
+      lines.push(
+        `- 位置/商圈/地标: ${pref.location.join('、')}（做具体门店或附近岗位推荐前，必须先 geocode 或使用位置分享经纬度，再用 location 调 duliday_job_list；不得直接复用历史岗位事实）`,
+      );
+    }
     if (pref.brands?.length) {
       lines.push(`- 意向品牌: ${pref.brands.join('、')}（用 brandIdList 而非 brandAliasList）`);
     }
@@ -104,7 +109,7 @@ export class HardConstraintsSection implements PromptSection {
     }
     if (pref.schedule) {
       lines.push(
-        `- 班次/工时偏好: ${pref.schedule}（结合 includeWorkTime 校验；结果集中无匹配班次的岗位不要推荐；岗位要求"每天/做六休一/周四周六周日都要给班/早开晚结全天时段"时，不能当作"只周末"或"只晚班"匹配；"每天/周一至周日"不等于"可只排周末"）`,
+        `- 班次/工时偏好: ${pref.schedule}（结合 includeWorkTime 校验；结果集中无匹配班次/出勤的岗位不要推荐；岗位要求"每天/做六休一/周四周六周日都要给班/早开晚结全天时段"时，不能当作"只周末/每周最多几天/做一休一/下班后/只晚班"匹配；"每天/周一至周日"不等于"可只排周末"；若正在收资/约面且本轮刚补充或重复该硬约束，未校验匹配前不得说"没问题/备注上"，也不得继续追问身高体重住址等收资字段）`,
       );
     }
     if (pref.salary) {

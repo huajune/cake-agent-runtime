@@ -478,6 +478,58 @@ describe('AgentPreparationService', () => {
     );
   });
 
+  it.each([
+    {
+      name: 'attendance constraints',
+      messages: [{ role: 'user' as const, content: '我每周最多只能上两天，下班后才能面试' }],
+      expected: '出勤/班次硬约束',
+    },
+    {
+      name: 'requested interview date',
+      messages: [{ role: 'user' as const, content: '我5月1号回来面试可以吗' }],
+      expected: '本轮候选人指定了面试日期',
+    },
+    {
+      name: 'health certificate versus major mismatch',
+      messages: [{ role: 'user' as const, content: '我有食品健康证，不是专业填写错误吧' }],
+      expected: '健康证只代表证件',
+    },
+    {
+      name: 'existing interview or onboarding state',
+      messages: [{ role: 'user' as const, content: '我已经面试通过了，店长联系我了' }],
+      expected: '已在面试/入职',
+    },
+    {
+      name: 'submitted registration details',
+      messages: [{ role: 'user' as const, content: '张三，25岁，13800000000，大专，周三下午' }],
+      expected: '已经提交了报名/预约资料',
+    },
+    {
+      name: 'payroll bank card issue',
+      messages: [{ role: 'user' as const, content: '工资必须本人银行卡吗，我房贷起诉了' }],
+      expected: '银行卡/税务/发薪主体',
+    },
+    {
+      name: 'location clue',
+      messages: [{ role: 'user' as const, content: '[位置分享] 这是我住的地方，附近还有岗位吗' }],
+      expected: '位置线索',
+    },
+  ])('should append critical turn guard for $name', async ({ messages, expected }) => {
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.TEST_SUITE,
+        messages,
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    expect(result.finalPrompt).toContain('# 本轮动态硬禁令');
+    expect(result.finalPrompt).toContain(expected);
+  });
+
   it('should inject top-level images into the last user message when model supports vision', async () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: {

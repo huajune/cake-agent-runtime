@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { ApiError, NetworkError } from '@/api/client';
 import { submitFeedback, FeedbackType } from '@/api/services/agent-test.service';
+import type { FeedbackSourceTrace } from '@/api/types/agent-test.types';
 
 export interface UseFeedbackOptions {
   onError?: (error: string) => void;
@@ -26,7 +27,10 @@ export interface UseFeedbackReturn {
     chatHistory: string;
     userMessage?: string;
     chatId?: string;
+    messageId?: string;
+    traceId?: string;
     batchId?: string;
+    sourceTrace?: FeedbackSourceTrace;
     candidateName?: string;
     managerName?: string;
   }) => Promise<boolean>;
@@ -88,14 +92,20 @@ export function useFeedback({ onError }: UseFeedbackOptions = {}): UseFeedbackRe
       chatHistory,
       userMessage,
       chatId,
+      messageId,
+      traceId,
       batchId,
+      sourceTrace,
       candidateName,
       managerName,
     }: {
       chatHistory: string;
       userMessage?: string;
       chatId?: string;
+      messageId?: string;
+      traceId?: string;
       batchId?: string;
+      sourceTrace?: FeedbackSourceTrace;
       candidateName?: string;
       managerName?: string;
     }): Promise<boolean> => {
@@ -109,10 +119,13 @@ export function useFeedback({ onError }: UseFeedbackOptions = {}): UseFeedbackRe
           type: submittedType,
           chatHistory: chatHistory.trim(),
           userMessage: userMessage?.trim() || undefined,
-          errorType: scenarioType || undefined, // 场景分类提交到 errorType 字段
+          errorType: scenarioType || undefined, // 后端历史字段名，实际承载 BadCase「分类」
           remark: remark || undefined,
           chatId,
+          messageId,
+          traceId,
           batchId,
+          sourceTrace,
           candidateName: candidateName?.trim() || undefined,
           managerName: managerName?.trim() || undefined,
         });
