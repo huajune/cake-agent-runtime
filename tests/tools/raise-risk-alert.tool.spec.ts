@@ -24,6 +24,8 @@ describe('buildRaiseRiskAlertTool', () => {
       sessionService as never,
     )(ctx);
 
+  const flushMicrotasks = () => new Promise((resolve) => setImmediate(resolve));
+
   beforeEach(() => {
     jest.clearAllMocks();
     chatSessionService.getChatHistory.mockResolvedValue([
@@ -49,7 +51,7 @@ describe('buildRaiseRiskAlertTool', () => {
     expect(interventionService.dispatch).not.toHaveBeenCalled();
   });
 
-  it('dispatches intervention and returns dispatch status with instruction', async () => {
+  it('fires intervention dispatch async and returns immediately with instruction', async () => {
     const tool = buildTool();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (tool as any).execute({
@@ -73,22 +75,17 @@ describe('buildRaiseRiskAlertTool', () => {
         currentMessageContent: '你说啥呢',
       }),
     );
-    expect(result).toMatchObject({
-      dispatched: true,
-      paused: true,
-      alerted: true,
-    });
+    // 工具立即返回，不再透传 dispatch 的 paused/alerted/suppressed
+    expect(result).toMatchObject({ dispatched: true });
+    expect(result).not.toHaveProperty('paused');
+    expect(result).not.toHaveProperty('alerted');
+    expect(result).not.toHaveProperty('suppressed');
     expect(typeof result.instruction).toBe('string');
-    expect(result).not.toHaveProperty('suggestedReply');
+    await flushMicrotasks();
   });
 
-  it('propagates already_paused suppression from InterventionService', async () => {
-    interventionService.dispatch.mockResolvedValue({
-      dispatched: false,
-      paused: false,
-      alerted: false,
-      suppressed: 'already_paused',
-    });
+  it('does not throw even if async dispatch rejects (fire-and-forget)', async () => {
+    interventionService.dispatch.mockRejectedValue(new Error('supabase down'));
 
     const tool = buildTool();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -97,15 +94,11 @@ describe('buildRaiseRiskAlertTool', () => {
       reason: '再次辱骂',
     });
 
-    expect(result).toMatchObject({
-      dispatched: false,
-      paused: false,
-      alerted: false,
-      suppressed: 'already_paused',
-    });
+    expect(result).toMatchObject({ dispatched: true });
+    await flushMicrotasks();
   });
 
-  it('swallows history/session lookup failures and still dispatches', async () => {
+  it('swallows history/session lookup failures and still fires dispatch', async () => {
     chatSessionService.getChatHistory.mockRejectedValue(new Error('redis down'));
     sessionService.getSessionState.mockRejectedValue(new Error('db down'));
 
@@ -124,5 +117,6 @@ describe('buildRaiseRiskAlertTool', () => {
       }),
     );
     expect(result).toMatchObject({ dispatched: true });
+    await flushMicrotasks();
   });
 });

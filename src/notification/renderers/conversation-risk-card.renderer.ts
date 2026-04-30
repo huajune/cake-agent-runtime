@@ -15,8 +15,7 @@ export class ConversationRiskCardRenderer {
       this.buildSection('聊天上下文（最近10条）', this.formatRecentMessages(payload)),
       this.buildSection('候选人信息', this.formatCandidateInfo(payload)),
       this.buildSection('岗位信息', this.formatJobInfo(payload)),
-      '请处理完成后手动恢复托管。',
-      `通知时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`,
+      '处理完请到 Web 托管后台手动恢复托管。',
     ].filter((section): section is string => Boolean(section));
 
     return this.cardBuilder.buildMarkdownCard({

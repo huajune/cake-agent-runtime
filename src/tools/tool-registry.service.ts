@@ -148,7 +148,7 @@ export class ToolRegistryService {
       raise_risk_alert: createToolDefinition({
         name: 'raise_risk_alert',
         description:
-          '候选人出现辱骂/投诉/情绪升级时调用，同步触发人工介入（暂停托管+飞书告警）。调用后请以招募者身份自主组织共情/安抚话术，不使用预设模板，也不得暴露机器人/托管/系统等字眼。',
+          '候选人出现辱骂/投诉/情绪升级时调用，异步触发人工介入（暂停托管+飞书告警，不阻塞回复）。调用后请以招募者身份自主组织共情/安抚话术，不使用预设模板，也不得暴露机器人/托管/系统等字眼。',
         create: buildRaiseRiskAlertTool(
           interventionService,
           this.chatSessionService,
@@ -159,12 +159,13 @@ export class ToolRegistryService {
       request_handoff: createToolDefinition({
         name: 'request_handoff',
         description:
-          '面试/入职跟进阶段遇到需要人工处理的问题（找不到门店、无人接待、预约冲突、办理入职等）时调用，同步触发人工介入并标记 case 为 handoff',
+          '面试/入职跟进阶段遇到需要人工处理的问题（找不到门店、无人接待、预约冲突、办理入职等）时调用。**调用即短路 Agent**：runtime 立即结束本轮，候选人本次不会收到任何回复；副作用（暂停托管+case 改为 handoff+飞书告警）全部异步执行。',
         create: buildRequestHandoffTool(
           interventionService,
           recruitmentCaseService,
           this.chatSessionService,
           sessionService,
+          userHostingService,
         ),
       }),
 
