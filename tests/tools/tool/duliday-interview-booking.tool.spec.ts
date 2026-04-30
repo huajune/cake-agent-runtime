@@ -265,12 +265,13 @@ describe('buildInterviewBookingTool', () => {
 
     const result = await executeTool({
       ...validInput,
-      interviewTime: '2026-04-30 10:00:00',
+      // 用 2026-05-14（周四）避开"今日"以免触发同日截止兜底，让 deadline 检查保持唯一命中点
+      interviewTime: '2026-05-14 10:00:00',
     });
 
     expect(result.success).toBe(false);
     expect(result.errorType).toBe('deadline_used_as_interview_time');
-    expect(result.registrationDeadline).toBe('2026-04-30 10:00');
+    expect(result.registrationDeadline).toBe('2026-05-14 10:00');
     expect(result.error).toContain('报名截止时间');
     expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
     expect(mockPrivateChatNotifier.notifyInterviewBookingResult).not.toHaveBeenCalled();
@@ -305,13 +306,14 @@ describe('buildInterviewBookingTool', () => {
 
     const result = await executeTool({
       ...validInput,
-      interviewTime: '2026-04-30 00:00:00',
+      // 用 2026-05-14（周四）避开"今日"以免同日截止兜底先返回 past_same_day_cutoff
+      interviewTime: '2026-05-14 00:00:00',
     });
 
     expect(result.success).toBe(false);
     expect(result.errorType).toBe('ambiguous_date_only_slot');
-    expect(result.date).toBe('2026-04-30');
-    expect(result.matchedSlots).toEqual(['2026-04-30 00:00-00:00（报名截止 2026-04-30 10:00）']);
+    expect(result.date).toBe('2026-05-14');
+    expect(result.matchedSlots).toEqual(['2026-05-14 00:00-00:00（报名截止 2026-05-14 10:00）']);
     expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
     expect(mockPrivateChatNotifier.notifyInterviewBookingResult).not.toHaveBeenCalled();
   });

@@ -26,8 +26,42 @@ console.log(JSON.stringify({
     const result = JSON.parse(output);
 
     expect(result.title).toBe('🎂 蛋糕私域托管 · v5.4.0 已发布 ✨');
-    expect(result.successTemplate).toBe('turquoise');
+    expect(result.successTemplate).toBe('violet');
     expect(result.failureTemplate).toBe('red');
+  });
+
+  it('renders two-section update when structured release notes are available', () => {
+    const releaseNotes = `
+### 更新摘要
+- 占位摘要
+
+### 新功能
+- PR #154 人工介入更顺畅：候选人发"转人工"后 Agent 立即停止抢答
+- PR #154 岗位推荐主动告知具体工作班次
+
+### 问题修复
+- PR #154 健康证不再阻塞面试
+
+### 优化调整
+- PR #154 班次时间逻辑下沉到工具内部
+
+### 运维与流程
+- PR #154 飞书 BadCase 状态双向回写脚本
+`;
+
+    const markdown = runNode(`
+process.env.RELEASE_NOTES = ${JSON.stringify(releaseNotes)};
+const { buildMarkdown } = require('./scripts/send-deploy-notification');
+console.log(buildMarkdown({ releaseTag: 'v5.6.0', deployResult: 'success' }));
+`);
+
+    expect(markdown).toContain('**业务改动（候选人/运营可感知）**');
+    expect(markdown).toContain('**优化与运维（非业务感知）**');
+    expect(markdown).toContain('- 人工介入更顺畅：候选人发"转人工"后 Agent 立即停止抢答');
+    expect(markdown).toContain('- 健康证不再阻塞面试');
+    expect(markdown).toContain('- 班次时间逻辑下沉到工具内部');
+    expect(markdown).toContain('- 飞书 BadCase 状态双向回写脚本');
+    expect(markdown).not.toContain('**本次更新**');
   });
 
   it('rewrites technical English release notes into operator-friendly Chinese', () => {

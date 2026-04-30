@@ -121,10 +121,20 @@ describe('ContextService', () => {
     // 工作班次 vs 面试时间澄清（P2-029 修复）
     expect(prompt).toContain('当前**工作班次**不合适');
     expect(prompt).toContain('提议的**面试时间**不合适');
-    expect(prompt).toContain('不能包装成"周末可做"或"晚班可排"');
-    expect(prompt).toContain('05:00-23:00');
+    // 11 班次硬约束（业务声明版）
+    expect(prompt).toContain('候选人已明确表达时段/班次硬约束');
     expect(prompt).toContain('推荐 2 个及以上岗位时必须分条分段输出');
     expect(prompt).toContain('若本轮做了具体岗位推荐');
+    // 14 进入收资前必须 precheck（业务声明版）
+    expect(prompt).toContain('进入收资/约面流程前必须先做面试预检');
+    // 15/16 已沉淀到 DB 红线（自动注入），不再出现在 candidate-consultation.md
+    expect(prompt).not.toContain('healthCertGate');
+    expect(prompt).not.toContain('candidateScheduleConstraint');
+    expect(prompt).not.toContain('投递层会直接拦截');
+    // v4 复盘：注意力被"日期已过"带跑的兜底（修复 005）
+    expect(prompt).toContain('禁止只问候选人挑新日期就跳过工具');
+    // v4 复盘：两人分流红线（修复 012）已沉淀到 DB 红线，不再出现在 candidate-consultation.md
+    expect(prompt).not.toContain('两人结伴求职、当前门店名额不足时必须主动给就近分流方案');
     // 工具专属规则（如 bookingChecklist.collectionStrategy）已迁移到各工具的 description 字段，
     // 不再出现在主 system prompt 中。
     expect(prompt).not.toContain('# 工具手册');

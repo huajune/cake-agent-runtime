@@ -23,7 +23,8 @@ const RISK_TYPE_LABELS: Record<string, string> = {
  * - 候选人明确投诉、举报或威胁维权
  * - 候选人情绪连续升级、反复追问或出现软负向表达
  *
- * 本工具仅触发副作用：暂停托管 + 飞书告警。
+ * 本工具仅触发副作用：异步暂停托管 + 异步飞书告警（fire-and-forget，不阻塞回复）。
+ * 返回值只表示本轮告警任务已接收，不代表异步暂停/飞书发送的最终结果。
  * 安抚话术由 Agent 基于候选人语境自行组织，不使用预设模板，
  * 并且严格禁止在回复中暴露“机器人 / 托管 / 系统”等身份字眼。
  */
@@ -34,7 +35,7 @@ export function buildRaiseRiskAlertTool(
 ): ToolBuilder {
   return (context) => {
     return tool({
-      description: `当候选人出现风险行为时调用，同步触发人工介入（暂停托管 + 飞书告警）。
+      description: `当候选人出现风险行为时调用，触发人工介入（异步暂停托管 + 异步飞书告警，不阻塞本轮回复）。
 
 ## 触发场景（出现任一即必须调用）
 1. 候选人出现明显辱骂、人身攻击、粗俗表达（如"滚"、"傻X"、"有病"）
@@ -45,7 +46,7 @@ export function buildRaiseRiskAlertTool(
 - 如果仅是普通不耐烦、没有情绪升级迹象，不要调用本工具，按正常阶段策略处理即可
 
 ## 执行效果
-- 工具会同步执行「暂停托管 + 飞书告警」，下一轮候选人发言将不再由你回复
+- 异步执行「暂停托管 + 飞书告警」，本轮 Agent 仍需输出共情/安抚话术给候选人；下一轮候选人发言将由人工接手，不再由你回复
 
 ## 参数
 - riskType：abuse / complaint_risk / escalation 三选一，按最贴合的一项选择
@@ -70,7 +71,7 @@ export function buildRaiseRiskAlertTool(
 
         if (!chatId) {
           logger.warn(`raise_risk_alert 缺少 chatId (user=${context.userId})`);
-          return { dispatched: false, error: 'missing_chat_id' };
+          return { accepted: false, error: 'missing_chat_id' };
         }
 
         const [recentMessages, sessionState] = await Promise.all([
@@ -80,38 +81,43 @@ export function buildRaiseRiskAlertTool(
             .catch(() => null),
         ]);
 
-        const result = await interventionService.dispatch({
-          kind: 'conversation_risk',
-          source: 'agent_tool',
-          riskType,
-          riskLabel: RISK_TYPE_LABELS[riskType] ?? '交流异常',
-          summary: summary?.trim() || '候选人对话出现异常风险',
-          reason: reason?.trim() || `命中 ${riskType}`,
-          chatId,
-          corpId: context.corpId,
-          userId: context.userId,
-          pauseTargetId,
-          botImId: context.botImId,
-          botUserName: context.botUserId,
-          contactName: context.contactName,
-          currentMessageContent: extractLatestUserMessage(recentMessages),
-          recentMessages: recentMessages.map((m) => ({
-            role: m.role as 'user' | 'assistant',
-            content: m.content,
-            timestamp: m.timestamp,
-          })),
-          sessionState,
-        });
-
-        logger.warn(
-          `raise_risk_alert: chatId=${chatId}, type=${riskType}, dispatched=${result.dispatched}, alerted=${result.alerted}`,
-        );
+        void interventionService
+          .dispatch({
+            kind: 'conversation_risk',
+            source: 'agent_tool',
+            riskType,
+            riskLabel: RISK_TYPE_LABELS[riskType] ?? '交流异常',
+            summary: summary?.trim() || '候选人对话出现异常风险',
+            reason: reason?.trim() || `命中 ${riskType}`,
+            chatId,
+            corpId: context.corpId,
+            userId: context.userId,
+            pauseTargetId,
+            botImId: context.botImId,
+            botUserName: context.botUserId,
+            contactName: context.contactName,
+            currentMessageContent: extractLatestUserMessage(recentMessages),
+            recentMessages: recentMessages.map((m) => ({
+              role: m.role as 'user' | 'assistant',
+              content: m.content,
+              timestamp: m.timestamp,
+            })),
+            sessionState,
+          })
+          .then((result) => {
+            logger.warn(
+              `raise_risk_alert dispatched: chatId=${chatId}, type=${riskType}, paused=${result.paused}, alerted=${result.alerted}, suppressed=${result.suppressed ?? '-'}`,
+            );
+          })
+          .catch((err: unknown) => {
+            const message = err instanceof Error ? err.message : String(err);
+            logger.error(
+              `raise_risk_alert dispatch 异步执行失败: chatId=${chatId}, type=${riskType}, ${message}`,
+            );
+          });
 
         return {
-          dispatched: result.dispatched,
-          paused: result.paused,
-          alerted: result.alerted,
-          suppressed: result.suppressed,
+          accepted: true,
           instruction:
             '请在本轮回复中以招募者身份共情候选人情绪，避免继续推进任务；严禁使用“机器人/托管/系统/自动”等字眼。',
         };

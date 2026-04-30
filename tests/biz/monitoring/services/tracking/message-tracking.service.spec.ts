@@ -434,12 +434,9 @@ describe('MessageTrackingService', () => {
       expect(cacheService.incrementCounter).toHaveBeenCalledWith('totalOutputLeakSkipped', 1);
     });
 
-    it('increments totalSameBrandCollapseSkipped when reason=same_brand_collapse', () => {
-      service.recordReplySkipped('msg-10', 'same_brand_collapse');
-      expect(cacheService.incrementCounter).toHaveBeenCalledWith(
-        'totalSameBrandCollapseSkipped',
-        1,
-      );
+    it('increments totalHostingPausedSkipped when reason=hosting_paused', () => {
+      service.recordReplySkipped('msg-10', 'hosting_paused');
+      expect(cacheService.incrementCounter).toHaveBeenCalledWith('totalHostingPausedSkipped', 1);
     });
   });
 });

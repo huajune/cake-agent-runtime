@@ -6,6 +6,7 @@ describe('buildRequestHandoffTool', () => {
   const recruitmentCaseService = { getActiveOnboardFollowupCase: jest.fn() };
   const chatSessionService = { getChatHistory: jest.fn() };
   const sessionService = { getSessionState: jest.fn() };
+  const userHostingService = { pauseUser: jest.fn() };
 
   const mockContext: ToolBuildContext = {
     userId: 'user-1',
@@ -46,7 +47,10 @@ describe('buildRequestHandoffTool', () => {
       recruitmentCaseService as never,
       chatSessionService as never,
       sessionService as never,
+      userHostingService as never,
     )(ctx);
+
+  const flushMicrotasks = () => new Promise((resolve) => setImmediate(resolve));
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -60,6 +64,7 @@ describe('buildRequestHandoffTool', () => {
       paused: true,
       alerted: true,
     });
+    userHostingService.pauseUser.mockResolvedValue(undefined);
   });
 
   it('returns missing_chat_id when chatId and sessionId are both absent', async () => {
@@ -75,7 +80,7 @@ describe('buildRequestHandoffTool', () => {
     expect(interventionService.dispatch).not.toHaveBeenCalled();
   });
 
-  it('returns no_active_case with instruction when no active case', async () => {
+  it('short-circuits and async-pauses hosting when no active case', async () => {
     recruitmentCaseService.getActiveOnboardFollowupCase.mockResolvedValue(null);
 
     const tool = buildTool();
@@ -85,12 +90,18 @@ describe('buildRequestHandoffTool', () => {
       reason: '候选人提了一些后续问题',
     });
 
-    expect(result).toMatchObject({ dispatched: false, error: 'no_active_case' });
+    expect(result).toMatchObject({
+      dispatched: false,
+      shortCircuited: true,
+      error: 'no_active_case',
+    });
     expect(typeof result.instruction).toBe('string');
     expect(interventionService.dispatch).not.toHaveBeenCalled();
+    await flushMicrotasks();
+    expect(userHostingService.pauseUser).toHaveBeenCalledWith('chat-1');
   });
 
-  it('dispatches handoff with caseId and returns dispatch status with instruction', async () => {
+  it('short-circuits agent and fires dispatch async with caseId', async () => {
     const tool = buildTool();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (tool as any).execute({
@@ -99,6 +110,17 @@ describe('buildRequestHandoffTool', () => {
       summary: '已发过位置仍无法到店',
     });
 
+    // 工具立即返回短路标记，不等待 dispatch 结果
+    expect(result).toMatchObject({
+      dispatched: true,
+      shortCircuited: true,
+      caseId: 'case-9',
+    });
+    expect(typeof result.instruction).toBe('string');
+    expect(result).not.toHaveProperty('paused');
+    expect(result).not.toHaveProperty('alerted');
+
+    // dispatch 已经被异步发起，参数与原同步路径一致
     expect(interventionService.dispatch).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: 'onboard_handoff',
@@ -115,13 +137,20 @@ describe('buildRequestHandoffTool', () => {
         currentMessageContent: '找不到门店啊',
       }),
     );
-    expect(result).toMatchObject({
-      dispatched: true,
-      paused: true,
-      alerted: true,
-      caseId: 'case-9',
+    await flushMicrotasks();
+  });
+
+  it('does not throw even if async dispatch rejects (fire-and-forget)', async () => {
+    interventionService.dispatch.mockRejectedValue(new Error('supabase down'));
+
+    const tool = buildTool();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (tool as any).execute({
+      reasonCode: 'cannot_find_store',
+      reason: '候选人反馈导航错',
     });
-    expect(typeof result.instruction).toBe('string');
-    expect(result).not.toHaveProperty('suggestedReply');
+
+    expect(result).toMatchObject({ dispatched: true, shortCircuited: true });
+    await flushMicrotasks();
   });
 });

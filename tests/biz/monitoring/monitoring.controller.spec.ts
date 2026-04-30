@@ -296,7 +296,7 @@ describe('MonitoringController', () => {
     totalFallback: 0,
     totalFallbackSuccess: 0,
     totalOutputLeakSkipped: 2,
-    totalSameBrandCollapseSkipped: 1,
+    totalHostingPausedSkipped: 4,
   };
 
   const mockDashboardService = {
@@ -337,7 +337,7 @@ describe('MonitoringController', () => {
     expect(guards).toContain(ApiTokenGuard);
   });
 
-  it('returns dashboard data with top-level skip counters', async () => {
+  it('returns dashboard data with output leak skip counter', async () => {
     mockDashboardService.getDashboardOverviewAsync.mockResolvedValue({ timeRange: 'today' });
     mockCacheService.getCounters.mockResolvedValue(counters);
 
@@ -348,7 +348,6 @@ describe('MonitoringController', () => {
       timeRange: 'today',
       globalCounters: counters,
       totalOutputLeakSkipped: 2,
-      totalSameBrandCollapseSkipped: 1,
     });
   });
 

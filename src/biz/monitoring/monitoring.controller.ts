@@ -158,7 +158,7 @@ export class MonitoringController {
       ...dashboard,
       globalCounters,
       totalOutputLeakSkipped: globalCounters.totalOutputLeakSkipped,
-      totalSameBrandCollapseSkipped: globalCounters.totalSameBrandCollapseSkipped,
+      totalHostingPausedSkipped: globalCounters.totalHostingPausedSkipped,
     };
   }
 
@@ -173,14 +173,13 @@ export class MonitoringController {
   /**
    * POST /monitoring/global-counters/probe-skip
    *
-   * 本地验收用：模拟投递层静默丢弃事件，验证 counter 可见且会增长。
+   * 本地验收用：模拟内部实现泄漏拦截事件，验证 counter 可见且会增长。
    */
   @UseGuards(ApiTokenGuard)
   @Post('global-counters/probe-skip')
   @HttpCode(200)
   async probeReplySkipped(@Body() body?: { messageId?: string; reason?: DeliverySkipReason }) {
-    const reason: DeliverySkipReason =
-      body?.reason === 'same_brand_collapse' ? 'same_brand_collapse' : 'output_leak';
+    const reason: DeliverySkipReason = 'output_leak';
     const messageId = body?.messageId?.trim() || `monitoring-probe-${Date.now()}`;
 
     this.logger.warn(

@@ -18,7 +18,8 @@ export interface PreAgentRiskPrecheckResult {
  * Pre-Agent 同步风险预检
  *
  * 职责：在 Agent 推理之前，用高置信度关键词规则判断候选人最近消息是否存在
- * 明显辱骂/投诉/举报等信号。命中即同步触发人工介入副作用：
+ * 明显辱骂/投诉/举报等信号。命中即异步触发人工介入副作用（fire-and-forget，
+ * 不阻塞 Agent 推理）：
  *   - 暂停托管（下一轮候选人发言将不再触发 Agent 回复）
  *   - 飞书告警（通知人工接手）
  *
@@ -83,8 +84,8 @@ export class PreAgentRiskInterceptService {
       `[PreAgentRiskPrecheck] 命中规则: chatId=${chatId}, type=${detection.riskType}, reason=${detection.reason}`,
     );
 
-    try {
-      await this.interventionService.dispatch({
+    void this.interventionService
+      .dispatch({
         kind: 'conversation_risk',
         source: 'regex_intercept',
         riskType: detection.riskType ?? 'abuse',
@@ -101,13 +102,13 @@ export class PreAgentRiskInterceptService {
         currentMessageContent: content,
         recentMessages: context.recentMessages,
         sessionState,
+      })
+      .catch((error: unknown) => {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.error(
+          `[PreAgentRiskPrecheck] intervention dispatch failed: chatId=${chatId}, reason=${errorMessage}`,
+        );
       });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        `[PreAgentRiskPrecheck] intervention dispatch failed: chatId=${chatId}, reason=${errorMessage}`,
-      );
-    }
 
     return {
       hit: true,

@@ -46,11 +46,9 @@ describe('MessageFilterRules', () => {
 
   it('PausedUserFilterRule should downgrade paused users to history-only handling', async () => {
     const userHostingService = {
-      isUserPaused: jest
+      isAnyPaused: jest
         .fn()
-        .mockResolvedValueOnce(false)
-        .mockResolvedValueOnce(false)
-        .mockResolvedValueOnce(true),
+        .mockResolvedValue({ paused: true, matchedId: 'external-user-1' }),
     };
     const rule = new PausedUserFilterRule(userHostingService as never);
 
