@@ -45,6 +45,7 @@ export class AcceptInboundMessageService {
     const filterResult = await this.filterService.validate(messageData);
 
     if (!filterResult.pass) {
+      await this.recordFilteredInboundMessageToHistory(messageData, filterResult);
       return {
         shouldDispatch: false,
         response: { success: true, message: `${filterResult.reason} ignored` },
@@ -63,6 +64,39 @@ export class AcceptInboundMessageService {
     }
 
     return this.prepareForDispatch(messageData, filterResult);
+  }
+
+  private async recordFilteredInboundMessageToHistory(
+    messageData: EnterpriseMessageCallbackDto,
+    filterResult: FilterResult,
+  ): Promise<void> {
+    const parsed = MessageParser.parse(messageData);
+
+    if (parsed.isRoom) {
+      return;
+    }
+
+    const content = filterResult.content ?? parsed.content;
+    if (!content || content.trim().length === 0) {
+      return;
+    }
+
+    const saved = await this.recordUserMessageToHistory(messageData, content).then(
+      (inserted) => inserted,
+      (error) => {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.warn(
+          `[过滤归档] 写入失败 [${messageData.messageId}], reason=${filterResult.reason}: ${errorMessage}`,
+        );
+        return false;
+      },
+    );
+
+    if (saved) {
+      this.logger.log(
+        `[过滤归档] 已记录但不触发AI [${messageData.messageId}], chatId=${parsed.chatId}, reason=${filterResult.reason}`,
+      );
+    }
   }
 
   private async prepareForDispatch(
@@ -232,7 +266,7 @@ export class AcceptInboundMessageService {
   private async recordUserMessageToHistory(
     messageData: EnterpriseMessageCallbackDto,
     contentFromFilter?: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const parsed = MessageParser.parse(messageData);
     const { chatId, contactName } = parsed;
     const content = contentFromFilter ?? parsed.content;
@@ -240,7 +274,7 @@ export class AcceptInboundMessageService {
 
     if (!content || content.trim().length === 0) {
       this.logger.debug(`[历史记录] 消息内容为空，跳过记录历史 [${messageData.messageId}]`);
-      return;
+      return false;
     }
 
     const userMsg: ChatMessageInput = {
@@ -264,7 +298,7 @@ export class AcceptInboundMessageService {
       avatar: messageData.avatar,
       externalUserId: messageData.externalUserId,
     };
-    await this.chatSession.saveMessage(userMsg);
+    return this.chatSession.saveMessage(userMsg);
   }
 
   private async getCandidateNameFromHistory(chatId: string): Promise<string | undefined> {

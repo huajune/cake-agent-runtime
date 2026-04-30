@@ -115,6 +115,38 @@ describe('AcceptInboundMessageService', () => {
     expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');
   });
 
+  it('should archive filtered personal inbound messages without dispatching', async () => {
+    filterService.validate.mockResolvedValueOnce({
+      pass: false,
+      reason: FilterReason.INVALID_SOURCE,
+    });
+
+    await expect(
+      service.execute(
+        createMessage({
+          source: MessageSource.AGGREGATED_CHAT_MANUAL,
+          payload: {
+            text: '这条也要能在后台看到',
+            pureText: '这条也要能在后台看到',
+          },
+        }),
+      ),
+    ).resolves.toEqual({
+      shouldDispatch: false,
+      response: { success: true, message: `${FilterReason.INVALID_SOURCE} ignored` },
+    });
+
+    expect(chatSession.saveMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: 'user',
+        content: '这条也要能在后台看到',
+        source: MessageSource.AGGREGATED_CHAT_MANUAL,
+      }),
+    );
+    expect(wecomObservability.startRequestTrace).not.toHaveBeenCalled();
+    expect(deduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalled();
+  });
+
   it('should ignore duplicate inbound messages before dispatching', async () => {
     deduplicationService.isMessageProcessedAsync.mockResolvedValueOnce(true);
 
