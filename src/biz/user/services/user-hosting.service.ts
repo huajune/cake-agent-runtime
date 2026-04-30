@@ -73,6 +73,24 @@ export class UserHostingService {
     return { userId, isPaused };
   }
 
+  /**
+   * 任一 ID 命中暂停即返回命中值。
+   *
+   * 同一会话在不同上下文里存在多个等价 ID（chatId / imContactId / externalUserId），
+   * 入口过滤、worker 拉起、投递分段三处复查时统一调这个方法，避免各处自己实现 OR 语义。
+   */
+  async isAnyPaused(
+    userIds: ReadonlyArray<string | null | undefined>,
+  ): Promise<{ paused: boolean; matchedId?: string }> {
+    for (const id of userIds) {
+      if (!id) continue;
+      if (await this.isUserPaused(id)) {
+        return { paused: true, matchedId: id };
+      }
+    }
+    return { paused: false };
+  }
+
   // ==================== 暂停 / 恢复 ====================
 
   /**

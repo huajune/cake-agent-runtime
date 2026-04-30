@@ -104,6 +104,28 @@ describe('UserHostingService', () => {
     });
   });
 
+  // ==================== isAnyPaused ====================
+
+  describe('isAnyPaused', () => {
+    it('returns paused with the matched id when any input id is paused', async () => {
+      mockUserHostingRepository.findPausedUserIds.mockResolvedValue([
+        { user_id: 'external-1', paused_at: new Date().toISOString() },
+      ]);
+
+      const result = await service.isAnyPaused(['chat-1', 'contact-1', 'external-1']);
+
+      expect(result).toEqual({ paused: true, matchedId: 'external-1' });
+    });
+
+    it('returns paused=false when none of the ids are paused', async () => {
+      mockUserHostingRepository.findPausedUserIds.mockResolvedValue([]);
+
+      const result = await service.isAnyPaused(['chat-1', 'contact-1', null, undefined]);
+
+      expect(result).toEqual({ paused: false });
+    });
+  });
+
   // ==================== getUserHostingStatus ====================
 
   describe('getUserHostingStatus', () => {

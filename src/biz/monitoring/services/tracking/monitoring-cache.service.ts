@@ -22,6 +22,7 @@ export class MonitoringCacheService {
     totalFallback: 0,
     totalFallbackSuccess: 0,
     totalOutputLeakSkipped: 0,
+    totalHostingPausedSkipped: 0,
     totalSameBrandCollapseSkipped: 0,
     totalPayrollDeferSkipped: 0,
   };
@@ -58,6 +59,7 @@ export class MonitoringCacheService {
       totalFallback: 0,
       totalFallbackSuccess: 0,
       totalOutputLeakSkipped: 0,
+      totalHostingPausedSkipped: 0,
       totalSameBrandCollapseSkipped: 0,
       totalPayrollDeferSkipped: 0,
     };

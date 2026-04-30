@@ -35,6 +35,7 @@ import {
   type CandidateScheduleConstraint,
   type ScheduleSemantic,
 } from '@tools/duliday/schedule-semantic.util';
+import { composeShiftTimeBrief, composeShiftTimeText } from '@tools/duliday/format-shift-time.util';
 
 // ==================== 常量 ====================
 
@@ -414,8 +415,16 @@ function addSummaryLine(lines: string[], label: string, value: string | null | u
   }
 }
 
-function formatInterviewDecisionSummary(policy: JobPolicyAnalysis): string {
+function formatInterviewDecisionSummary(
+  policy: JobPolicyAnalysis,
+  shiftTimeText?: string | null,
+): string {
   const lines: string[] = [];
+
+  if (shiftTimeText) {
+    // 单/多档班次都按 normalize 后的描述展示在最显眼位置；含义（早班/午高峰短班/选其一/必须全做/星期约束/工时长度）已被组装好。
+    addSummaryLine(lines, '工作班次', shiftTimeText);
+  }
 
   if (policy.normalizedRequirements.ageRequirement !== '不限') {
     addSummaryLine(lines, '年龄要求', policy.normalizedRequirements.ageRequirement);
@@ -1121,6 +1130,17 @@ function isMinimalMode(flags: ProgressiveDisclosureFlags): boolean {
   );
 }
 
+function isFirstRecommendationContext(flags: ProgressiveDisclosureFlags): boolean {
+  // 4 个默认 true 的字段都开 = 模型在做首次推荐（候选人还没看过这家岗位的全貌）。
+  // 模型显式关闭其中之一 = 在做追问回答，不需要顶部摘要。
+  return (
+    flags.includeBasicInfo &&
+    flags.includeJobSalary &&
+    flags.includeWorkTime &&
+    flags.includeHiringRequirement
+  );
+}
+
 function formatJobToMarkdown(job: any, index: number, flags: ProgressiveDisclosureFlags): string {
   const bi = job.basicInfo;
   const policy = buildJobPolicyAnalysis(job);
@@ -1130,8 +1150,14 @@ function formatJobToMarkdown(job: any, index: number, flags: ProgressiveDisclosu
   }
   let md = `## ${index + 1}. ${titleParts.join(' ')}\n\n`;
 
+  // 仅在首次推荐场景下注入班次描述（含早/中/晚班/午高峰、可选其一/必排/星期约束等含义）。
+  // 数据缺失时为 null，约面重点 section 不显示该行。
+  const shiftTimeText = isFirstRecommendationContext(flags)
+    ? composeShiftTimeText(job.workTime)
+    : null;
+
   if (flags.includeHiringRequirement || flags.includeInterviewProcess) {
-    md += formatInterviewDecisionSummary(policy);
+    md += formatInterviewDecisionSummary(policy, shiftTimeText);
   }
   if (flags.includeBasicInfo) {
     md += renderBasicInfoSection(job.basicInfo, job._distanceKm);
@@ -1252,7 +1278,9 @@ export interface BrandStoreEntry {
   jobId: number;
   distanceKm: number | null;
   wageRange: string | null;
-  /** 已经按 `品牌（门店，距离，薪资）` 渲染好的话术，禁止 LLM 二次重写。 */
+  /** 紧凑版班次时段（如 "07:30-15:30 / 10:00-20:00"），缺数据时为 null。 */
+  shiftBrief: string | null;
+  /** 已经按 `品牌（门店，距离，薪资，班次）` 渲染好的话术，禁止 LLM 二次重写。 */
   displayLine: string;
 }
 
@@ -1270,6 +1298,7 @@ function formatBrandStoreDisplayLine(
   storeName: string | null,
   distanceKm: number | null,
   wageRange: string | null,
+  shiftBrief: string | null,
 ): string {
   const parts: string[] = [];
   parts.push(storeName?.trim() || '门店待确认');
@@ -1279,6 +1308,9 @@ function formatBrandStoreDisplayLine(
   if (wageRange?.trim()) {
     parts.push(wageRange.trim());
   }
+  if (shiftBrief?.trim()) {
+    parts.push(shiftBrief.trim());
+  }
   return `${brandName}（${parts.join('，')}）`;
 }
 
@@ -1286,6 +1318,7 @@ function formatBrandStoreDisplayLine(
  * `buildBrandNearestStoreSummary` 实际读取的最小 job 字段集。
  * 命名上保持与外部 raw job 一致，作为该函数的自描述契约。
  * `jobSalary` 透传给 `formatSalarySummary`，结构由后者负责。
+ * `workTime` 透传给 `composeShiftTimeBrief` 让 displayLine 单行附带班次时段。
  */
 type BrandSummaryJobInput = {
   basicInfo?: {
@@ -1297,6 +1330,7 @@ type BrandSummaryJobInput = {
   } | null;
   _distanceKm?: unknown;
   jobSalary?: unknown;
+  workTime?: unknown;
 };
 
 /**
@@ -1322,6 +1356,7 @@ function buildBrandNearestStoreSummary(
         jobId: number;
         distanceKm: number | null;
         wageRange: string | null;
+        shiftBrief: string | null;
       }>;
     }
   >();
@@ -1346,6 +1381,7 @@ function buildBrandNearestStoreSummary(
       distanceKm:
         typeof job._distanceKm === 'number' ? Math.round(job._distanceKm * 10) / 10 : null,
       wageRange: formatSalarySummary(job),
+      shiftBrief: composeShiftTimeBrief(job.workTime),
     });
     buckets.set(key, bucket);
   }
@@ -1369,6 +1405,7 @@ function buildBrandNearestStoreSummary(
             store.storeName,
             store.distanceKm,
             store.wageRange,
+            store.shiftBrief,
           ),
         }));
       return {

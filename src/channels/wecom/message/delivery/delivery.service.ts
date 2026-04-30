@@ -1,11 +1,10 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { MessageSenderService } from '../../message-sender/message-sender.service';
 import { SendMessageType } from '../../message-sender/dto/send-message.dto';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { MessageSplitter } from '../utils/message-splitter.util';
 import { detectOutputLeak } from '../utils/output-leak-guard.util';
-import { detectPayrollDeferToStore } from '../utils/payroll-defer-guard.util';
-import { findCollapsedSameBrand } from '../utils/same-brand-collapse-guard.util';
 import { DeliveryContext, DeliveryResult, AgentReply, DeliveryFailureError } from '../types';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
 import { TypingPolicyService } from './typing-policy.service';
@@ -29,6 +28,7 @@ export class MessageDeliveryService implements OnModuleInit {
     private readonly monitoringService: MessageTrackingService,
     private readonly typingPolicy: TypingPolicyService,
     private readonly wecomObservability: WecomMessageObservabilityService,
+    private readonly userHostingService: UserHostingService,
   ) {}
 
   async onModuleInit() {
@@ -56,9 +56,8 @@ export class MessageDeliveryService implements OnModuleInit {
         await this.wecomObservability.markDeliveryStart(messageId);
       }
 
-      // 投递前兜底过滤：badcase vllg7hlu（输出泄漏）/ laybqxn4（同品牌多门店压缩）。
-      // Prompt 软约束已存在但偶尔失守，这里做最后一道过滤——命中即静默丢弃整条回复，
-      // 不重试不告警。被丢弃的回复仍计成功，避免触发上层重试再次外抛。
+      // 投递前只拦截内部实现泄漏。内容质量问题不能在这里静默吞掉，
+      // 否则会造成"监控成功但候选人没收到"的假成功。
       const skipReason = this.findSkipReason(reply.content, contactName);
       if (skipReason) {
         const totalTime = Date.now() - startTime;
@@ -76,6 +75,31 @@ export class MessageDeliveryService implements OnModuleInit {
           this.monitoringService.recordSendEnd(messageId);
           await this.wecomObservability.markDeliveryEnd(messageId, skippedResult);
         }
+        return skippedResult;
+      }
+
+      // 入口/worker 复查后，Agent 推理 + 工具调用还会再消耗 10-30s。
+      // 投递前用同一组 ID 再做一次 isAnyPaused，命中即整批回复一段不发，
+      // 避免运营关托管后仍有"撤回很多条"的体验（1tsdimfg badcase）。
+      if (await this.shouldSkipForHostingPause(context)) {
+        const totalTime = Date.now() - startTime;
+        const skippedResult: DeliveryResult = {
+          success: true,
+          segmentCount: 0,
+          failedSegments: 0,
+          deliveredSegments: 0,
+          totalTime,
+          skipped: true,
+          skipReason: 'hosting_paused',
+        };
+        if (recordMonitoring) {
+          this.monitoringService.recordReplySkipped(messageId, 'hosting_paused');
+          this.monitoringService.recordSendEnd(messageId);
+          await this.wecomObservability.markDeliveryEnd(messageId, skippedResult);
+        }
+        this.logger.warn(
+          `[${contactName}] 投递前命中已暂停托管，${reply.content.length} 字符回复全部丢弃 (chatId=${context.chatId})`,
+        );
         return skippedResult;
       }
 
@@ -170,6 +194,7 @@ export class MessageDeliveryService implements OnModuleInit {
     let successCount = 0;
     let failedCount = 0;
     let firstSegmentSent = false;
+    let pauseInterrupted = false;
 
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i];
@@ -180,6 +205,18 @@ export class MessageDeliveryService implements OnModuleInit {
         `[${contactName}] 等待 ${delayMs}ms 后发送第 ${i + 1}/${segments.length} 条消息`,
       );
       await this.sleep(delayMs);
+
+      // 段间打字延迟 + 段间 paragraph gap 加起来可达数秒，运营在分段过程中点
+      // 关托管时必须立刻止损，避免循环把后续段一段段发出。每段发送前复查
+      // isUserPaused，命中则截断（已发出的段保留）。
+      if (await this.shouldSkipForHostingPause(context)) {
+        pauseInterrupted = true;
+        this.logger.warn(
+          `[${contactName}] 分段投递期间命中已暂停托管，` +
+            `已发 ${successCount}/${segments.length} 段，丢弃剩余 ${segments.length - i} 段 (chatId=${chatId})`,
+        );
+        break;
+      }
 
       this.logger.log(
         `[${contactName}] 发送第 ${i + 1}/${segments.length} 条消息: "${this.truncate(segment)}"`,
@@ -210,8 +247,13 @@ export class MessageDeliveryService implements OnModuleInit {
       }
     }
 
+    if (pauseInterrupted) {
+      this.monitoringService.recordReplySkipped(context.messageId, 'hosting_paused');
+    }
+
     this.logger.log(
-      `[${contactName}] 分段发送完成，成功 ${successCount}/${segments.length}，失败 ${failedCount}`,
+      `[${contactName}] 分段发送完成，成功 ${successCount}/${segments.length}，失败 ${failedCount}` +
+        (pauseInterrupted ? '，因关托管中断' : ''),
     );
 
     const result: DeliveryResult = {
@@ -220,6 +262,8 @@ export class MessageDeliveryService implements OnModuleInit {
       failedSegments: failedCount,
       deliveredSegments: successCount,
       totalTime: 0,
+      skipped: pauseInterrupted || undefined,
+      skipReason: pauseInterrupted ? 'hosting_paused' : undefined,
       error: failedCount > 0 ? `${failedCount}/${segments.length} 个消息片段发送失败` : undefined,
     };
 
@@ -228,6 +272,17 @@ export class MessageDeliveryService implements OnModuleInit {
     }
 
     return result;
+  }
+
+  /**
+   * 投递前/段间统一的"已暂停托管"复查。
+   *
+   * 与 PausedUserFilterRule、MessageProcessor.dropIfHostingPaused 共用 `isAnyPaused`
+   * helper，保证三层 guard 语义一致：任一 ID 命中暂停即视为关托管。
+   */
+  private async shouldSkipForHostingPause(context: DeliveryContext): Promise<boolean> {
+    const hit = await this.userHostingService.isAnyPaused([context.chatId, context.imContactId]);
+    return hit.paused;
   }
 
   private calculateDelay(text: string, isFirstSegment: boolean = false): number {
@@ -243,10 +298,10 @@ export class MessageDeliveryService implements OnModuleInit {
   }
 
   /**
-   * 投递前回复内容兜底检查。命中任一规则即静默丢弃整条回复（不重试不告警）。
-   * - output_leak：模型暴露内部阶段术语 / 工具调用 / JSON / 代码块
-   * - same_brand_collapse：同品牌多门店被压缩成"X、X"
-   * - payroll_defer_to_store：发薪问题甩给到店/面试时问店长（合规风险转嫁）
+   * 投递前回复内容兜底检查。
+   *
+   * 这里只保留内部实现泄漏拦截：阶段术语、工具调用、JSON/代码块等内容一旦发给
+   * 候选人会暴露系统实现。其他质量问题不能静默丢弃，必须正常下发或在 Agent 层修正。
    */
   private findSkipReason(
     content: string,
@@ -258,22 +313,6 @@ export class MessageDeliveryService implements OnModuleInit {
         `[${contactName}] 检测到内部状态泄漏，丢弃回复 (pattern=${leakedPattern.source}): "${this.truncate(content)}"`,
       );
       return 'output_leak';
-    }
-
-    const collapsedBrand = findCollapsedSameBrand(content);
-    if (collapsedBrand) {
-      this.logger.warn(
-        `[${contactName}] 检测到同品牌多门店被压缩 (brand="${collapsedBrand}")，丢弃回复: "${this.truncate(content)}"`,
-      );
-      return 'same_brand_collapse';
-    }
-
-    const payrollDefer = detectPayrollDeferToStore(content);
-    if (payrollDefer) {
-      this.logger.warn(
-        `[${contactName}] 检测到发薪问题被甩给到店/店长 (pattern=${payrollDefer.source})，丢弃回复: "${this.truncate(content)}"`,
-      );
-      return 'payroll_defer_to_store';
     }
 
     return null;

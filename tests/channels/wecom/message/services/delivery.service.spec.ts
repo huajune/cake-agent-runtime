@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { MessageDeliveryService } from '@wecom/message/delivery/delivery.service';
 import { MessageSenderService } from '@wecom/message-sender/message-sender.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
+import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import {
   DeliveryContext,
   DeliveryFailureError,
@@ -35,6 +36,10 @@ describe('MessageDeliveryService', () => {
     markDeliveryEnd: jest.fn(),
   };
 
+  const mockUserHostingService = {
+    isAnyPaused: jest.fn(),
+  };
+
   const deliveryContext: DeliveryContext = {
     token: 'token-123',
     imBotId: 'wxid-bot-123',
@@ -53,6 +58,7 @@ describe('MessageDeliveryService', () => {
         { provide: MessageTrackingService, useValue: mockMonitoringService },
         { provide: TypingPolicyService, useValue: mockTypingPolicyService },
         { provide: WecomMessageObservabilityService, useValue: mockWecomObservabilityService },
+        { provide: UserHostingService, useValue: mockUserHostingService },
       ],
     }).compile();
 
@@ -71,6 +77,7 @@ describe('MessageDeliveryService', () => {
       paragraphGapMs: 2000,
     });
     mockTypingPolicyService.calculateDelay.mockReturnValue(0);
+    mockUserHostingService.isAnyPaused.mockResolvedValue({ paused: false });
 
     jest.spyOn(service as any, 'sleep').mockImplementation(async () => undefined);
   });
@@ -146,7 +153,7 @@ describe('MessageDeliveryService', () => {
       );
     });
 
-    it('silently drops reply when same-brand collapse detected (badcase laybqxn4)', async () => {
+    it('sends same-brand collapse content instead of silently dropping it', async () => {
       const reply: AgentReply = {
         content: '有肯德基，17-27.5 元、肯德基，17-27.5 元可以选',
       };
@@ -154,12 +161,70 @@ describe('MessageDeliveryService', () => {
       const result = await service.deliverReply(reply, deliveryContext, true);
 
       expect(result.success).toBe(true);
+      expect(result.skipped).toBeUndefined();
+      expect(result.segmentCount).toBe(1);
+      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(1);
+      expect(mockMonitoringService.recordReplySkipped).not.toHaveBeenCalled();
+    });
+
+    it('sends payroll defer content instead of silently dropping it', async () => {
+      const reply: AgentReply = {
+        content: '工资怎么发可以到店再问下店长确认。',
+      };
+
+      const result = await service.deliverReply(reply, deliveryContext, true);
+
+      expect(result.success).toBe(true);
+      expect(result.skipped).toBeUndefined();
+      expect(result.segmentCount).toBe(1);
+      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(1);
+      expect(mockMonitoringService.recordReplySkipped).not.toHaveBeenCalled();
+    });
+
+    it('drops entire reply when hosting is paused before delivery (badcase 1tsdimfg)', async () => {
+      mockUserHostingService.isAnyPaused.mockResolvedValueOnce({
+        paused: true,
+        matchedId: 'chat-123',
+      });
+
+      const result = await service.deliverReply(
+        { content: 'Hello\n\nWorld\n\nAgain' },
+        deliveryContext,
+        true,
+      );
+
+      expect(result.success).toBe(true);
       expect(result.skipped).toBe(true);
-      expect(result.skipReason).toBe('same_brand_collapse');
+      expect(result.skipReason).toBe('hosting_paused');
+      expect(result.segmentCount).toBe(0);
       expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
       expect(mockMonitoringService.recordReplySkipped).toHaveBeenCalledWith(
         'msg-123',
-        'same_brand_collapse',
+        'hosting_paused',
+      );
+    });
+
+    it('truncates segment loop when hosting becomes paused mid-delivery', async () => {
+      // 投递前不暂停，第二段前命中暂停 → 第一段已发，第二/三段被丢弃
+      mockUserHostingService.isAnyPaused
+        .mockResolvedValueOnce({ paused: false }) // 投递前 pre-check
+        .mockResolvedValueOnce({ paused: false }) // 第一段前
+        .mockResolvedValueOnce({ paused: true, matchedId: 'chat-123' }); // 第二段前
+
+      const result = await service.deliverReply(
+        { content: 'First\n\nSecond\n\nThird' },
+        deliveryContext,
+        true,
+      );
+
+      expect(result.segmentCount).toBe(3);
+      expect(result.deliveredSegments).toBe(1);
+      expect(result.skipped).toBe(true);
+      expect(result.skipReason).toBe('hosting_paused');
+      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(1);
+      expect(mockMonitoringService.recordReplySkipped).toHaveBeenCalledWith(
+        'msg-123',
+        'hosting_paused',
       );
     });
 

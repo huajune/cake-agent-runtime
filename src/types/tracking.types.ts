@@ -165,11 +165,16 @@ export interface MonitoringGlobalCounters {
   totalFallbackSuccess: number;
   /** 投递层兜底丢弃数：模型输出泄漏内部阶段术语/工具调用/JSON 等。 */
   totalOutputLeakSkipped: number;
-  /** 投递层兜底丢弃数：同品牌多门店被压缩。 */
+  /**
+   * 投递层主动止损：用户在静默窗口或 Agent 生成期间被关托管，分段循环每段
+   * 复查命中后剩余段被丢弃（避免复现"撤回很多条"badcase）。
+   */
+  totalHostingPausedSkipped: number;
+  /** 历史兼容字段：同品牌多门店压缩不再触发投递层丢弃。 */
   totalSameBrandCollapseSkipped: number;
-  /** 投递层兜底丢弃数：发薪问题甩给到店/面试时问店长。 */
+  /** 历史兼容字段：发薪甩锅不再触发投递层丢弃。 */
   totalPayrollDeferSkipped: number;
 }
 
 /** 投递层主动丢弃回复的原因，与 DeliveryResult.skipReason 同枚举。 */
-export type DeliverySkipReason = 'output_leak' | 'same_brand_collapse' | 'payroll_defer_to_store';
+export type DeliverySkipReason = 'output_leak' | 'hosting_paused';

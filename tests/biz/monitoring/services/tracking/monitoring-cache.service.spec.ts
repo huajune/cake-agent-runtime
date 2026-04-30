@@ -89,6 +89,7 @@ describe('MonitoringCacheService', () => {
         totalFallback: 0,
         totalFallbackSuccess: 0,
         totalOutputLeakSkipped: 0,
+        totalHostingPausedSkipped: 0,
         totalSameBrandCollapseSkipped: 0,
         totalPayrollDeferSkipped: 0,
       });
@@ -119,6 +120,7 @@ describe('MonitoringCacheService', () => {
         totalFallback: 0,
         totalFallbackSuccess: 0,
         totalOutputLeakSkipped: 0,
+        totalHostingPausedSkipped: 0,
         totalSameBrandCollapseSkipped: 0,
         totalPayrollDeferSkipped: 0,
       });
@@ -136,6 +138,7 @@ describe('MonitoringCacheService', () => {
         totalFallback: 5,
         totalFallbackSuccess: 4,
         totalOutputLeakSkipped: 2,
+        totalHostingPausedSkipped: 4,
         totalSameBrandCollapseSkipped: 1,
         totalPayrollDeferSkipped: 3,
       };
