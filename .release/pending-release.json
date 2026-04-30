@@ -76,6 +76,42 @@
         "Pre-push hook（lint + format + typecheck + build + jest --coverage）已通过",
         "合并本 PR 后 PR #156 状态变为 MERGEABLE"
       ]
+    },
+    {
+      "number": "159",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/159",
+      "title": "飞书发版卡片改两段式 + 主色调改紫色",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-30",
+      "summary": [
+        "**结构**：原 \\`**本次更新**\\` 单列表 → 拆成两段",
+        "**业务改动（候选人/运营可感知）**：来源 CHANGELOG \\`### 新功能\\` + \\`### 问题修复\\`",
+        "**优化与运维（非业务感知）**：来源 CHANGELOG \\`### 优化调整\\` + \\`### 运维与流程\\`",
+        "**颜色**：success 卡片主色调 \\`turquoise\\`（青绿）→ \\`violet\\`（紫）",
+        "**兼容**：当结构化段落都为空时，回退到原 \\`**本次更新**\\` 单列表（保留 v5.5.0 之前老 release 的兼容路径）"
+      ],
+      "features": [
+        "**结构**：原 \\`**本次更新**\\` 单列表 → 拆成两段",
+        "**颜色**：success 卡片主色调 \\`turquoise\\`（青绿）→ \\`violet\\`（紫）"
+      ],
+      "fixes": [
+        "**业务改动（候选人/运营可感知）**：来源 CHANGELOG \\`### 新功能\\` + \\`### 问题修复\\`"
+      ],
+      "optimizations": [
+        "**优化与运维（非业务感知）**：来源 CHANGELOG \\`### 优化调整\\` + \\`### 运维与流程\\`"
+      ],
+      "ops": [
+        "**兼容**：当结构化段落都为空时，回退到原 \\`**本次更新**\\` 单列表（保留 v5.5.0 之前老 release 的兼容路径）"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "新增测试：\\`renders two-section update when structured release notes are available\\`",
+        "现有测试：color 期望从 turquoise 改为 violet",
+        "现有测试：单列表 fallback（仅 \\`### 更新摘要\\`）仍走 \\`**本次更新**\\` 路径",
+        "\\`pnpm jest tests/scripts/send-deploy-notification.spec.ts\\` 全绿（5/5）",
+        "Pre-push hook 通过：228 套件 / 2749 测试"
+      ]
     }
   ]
 }
