@@ -49,6 +49,33 @@
         "DB 迁移已 apply test+prod，rule_count 一致",
         "投递层兜底回退后 phrase guard 死代码全部清理"
       ]
+    },
+    {
+      "number": "157",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/157",
+      "title": "同步 master 到 develop 解除 PR #156 冲突",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-30",
+      "summary": [
+        "把 master（已固化的 v5.5.0）合并回 develop，解除 PR #156（v5.6.0 发版）的冲突",
+        "趁机重写 v5.6.0 的 `pending-release.json` + `CHANGELOG.md` 待发布块，按业务视角组织摘要"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [
+        "把 master（已固化的 v5.5.0）合并回 develop，解除 PR #156（v5.6.0 发版）的冲突"
+      ],
+      "ops": [
+        "趁机重写 v5.6.0 的 `pending-release.json` + `CHANGELOG.md` 待发布块，按业务视角组织摘要"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`node -e 'JSON.parse(...)'` 校验 `.release/pending-release.json` 合法",
+        "grep 确认无遗留冲突标记",
+        "Pre-push hook（lint + format + typecheck + build + jest --coverage）已通过",
+        "合并本 PR 后 PR #156 状态变为 MERGEABLE"
+      ]
     }
   ]
 }
