@@ -56,6 +56,12 @@ export interface JobPolicyAnalysis {
     demand: string | null;
     timeHint: string | null;
     registrationDeadlineHint: string | null;
+    /**
+     * 面试流程话术，已由 demand / interviewRemark / timingHighlights 合并去重，
+     * 直接抛给候选人即可（含 AI 面试 / 二维码 / 保持电话畅通 / 入职前办健康证 等流程要点）。
+     * 三个来源都为空时返回 null。
+     */
+    flowScript: string | null;
   };
   highlights: {
     requirementHighlights: string[];
@@ -557,6 +563,45 @@ function extractRegistrationDeadline(fragment: string): string | null {
   return normalized;
 }
 
+/**
+ * 把面试流程相关的三处原始字段（firstInterview.interviewDemand /
+ * interviewProcess.remark / pickKeySentences 出的 timingHighlights）
+ * 合成一段直接可读给候选人的话术。同义/重复句子去重，按"流程→时效"排序。
+ *
+ * 返回 null 时表示岗位数据里完全没写流程信息，调用方自行兜底。
+ */
+function composeInterviewFlowScript(input: {
+  demand: string | null;
+  interviewRemark: string | null;
+  timingHighlights: string[];
+}): string | null {
+  const fragments: string[] = [];
+  if (input.demand) fragments.push(input.demand);
+  if (input.interviewRemark) fragments.push(input.interviewRemark);
+  for (const t of input.timingHighlights) {
+    if (t) fragments.push(t);
+  }
+  if (fragments.length === 0) return null;
+
+  // 拆句子去重，保留首次出现顺序。
+  const sentences: string[] = [];
+  const seen = new Set<string>();
+  for (const fragment of fragments) {
+    const parts = fragment
+      .split(/[。；;\n\r]+/u)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    for (const sentence of parts) {
+      const key = sentence.replace(/[\s，,。；;！!？?]+/gu, '');
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      sentences.push(sentence);
+    }
+  }
+  if (sentences.length === 0) return null;
+  return sentences.join('；');
+}
+
 export function buildJobPolicyAnalysis(job: JobDetail): JobPolicyAnalysis {
   const hiringRequirement = asRecord(job.hiringRequirement);
   const basic = asRecord(hiringRequirement?.basicPersonalRequirements);
@@ -617,6 +662,11 @@ export function buildJobPolicyAnalysis(job: JobDetail): JobPolicyAnalysis {
       demand: interviewDemand,
       timeHint: extractInterviewTimeHint(job),
       registrationDeadlineHint: extractRegistrationDeadlineHint(job),
+      flowScript: composeInterviewFlowScript({
+        demand: interviewDemand,
+        interviewRemark,
+        timingHighlights,
+      }),
     },
     highlights: {
       requirementHighlights,

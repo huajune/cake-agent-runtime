@@ -127,7 +127,7 @@ describe('ContextService', () => {
     expect(prompt).toContain('若本轮做了具体岗位推荐');
     // v3 补丁：生成阶段强绑定（P2 v3 005/001/003/015 修复）
     expect(prompt).toContain('进入收资/约面流程前必须先调');
-    expect(prompt).toContain('约面前必须并列核验日期+健康证两件事');
+    expect(prompt).toContain('健康证默认不阻塞面试');
     expect(prompt).toContain('发薪/工资规则相关问题严禁说"到店问 / 面试时问 / 直接跟店长确认"');
     // v4 复盘：注意力被"日期已过"带跑的兜底（修复 005）
     expect(prompt).toContain('禁止只问候选人挑新日期就跳过工具');
