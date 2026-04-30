@@ -14,7 +14,7 @@
 **预计版本**: `v5.6.0`
 **最近更新**: `2026-04-30`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #154 人工介入更顺畅：候选人发"转人工"后 Agent 立即停止抢答，改异步通知运营接手
@@ -25,6 +25,8 @@
 - PR #154 结伴求职分流：两人一起求职、当前门店名额不足时，主动推荐就近同行业门店，避免一人空手
 - PR #154 干扰信号下流程仍稳：候选人发"日期已过/改约"等话术时仍照常进入面试预约校验
 - PR #154 招聘红线体系精简：从 29 条整合到 13 条，规则更清晰、Agent 更少误触发
+- PR #157 把 master（已固化的 v5.5.0）合并回 develop，解除 PR #156（v5.6.0 发版）的冲突
+- PR #157 趁机重写 v5.6.0 的 `pending-release.json` + `CHANGELOG.md` 待发布块，按业务视角组织摘要
 
 ### 新功能
 - PR #154 人工介入更顺畅：候选人发"转人工"后 Agent 立即停止抢答，改异步通知运营接手
@@ -40,12 +42,14 @@
 ### 优化调整
 - PR #154 招聘红线体系精简：从 29 条整合到 13 条，prompt 强化"如实呈现/班次时间"
 - PR #154 投递层兜底回退：移除发薪甩锅 / 同品牌压缩等静默拦截，投递层只拦内部实现泄漏
-- PR #154 班次时间逻辑下沉到工具内部（`format-shift-time.util`），数据缺失返 null 不补 fallback
+- PR #154 班次时间逻辑下沉到工具内部（format-shift-time.util），数据缺失返 null 不补 fallback
 - PR #154 死代码清理：未生效 phrase guard / 推断字段 / 监控计数器全部清理
+- PR #157 把 master（已固化的 v5.5.0）合并回 develop，解除 PR #156（v5.6.0 发版）的冲突
 
 ### 运维与流程
 - PR #154 飞书 BadCase 状态双向回写脚本（priority + status 同步）
 - PR #154 prod 历史漂移规则回填，test/prod rule_count 对齐
+- PR #157 趁机重写 v5.6.0 的 `pending-release.json` + `CHANGELOG.md` 待发布块，按业务视角组织摘要
 
 ### 配置变更
 - 无
@@ -54,10 +58,14 @@
 - 无
 
 ### 验证记录
-- PR #154 单测全绿：227 套件 / **2719 测试** 通过
+- PR #154 单测全绿：227 套件 / 2719 测试通过
 - PR #154 lint + tsc 干净
 - PR #154 DB 迁移已 apply test+prod，rule_count 一致
 - PR #154 投递层兜底回退后 phrase guard 死代码全部清理
+- PR #157 `node -e 'JSON.parse(...)'` 校验 `.release/pending-release.json` 合法
+- PR #157 grep 确认无遗留冲突标记
+- PR #157 Pre-push hook（lint + format + typecheck + build + jest --coverage）已通过
+- PR #157 合并本 PR 后 PR #156 状态变为 MERGEABLE
 <!-- release:pending:end -->
 
 ## [5.5.0] - 2026-04-29
