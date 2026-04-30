@@ -297,7 +297,6 @@ describe('MonitoringController', () => {
     totalFallbackSuccess: 0,
     totalOutputLeakSkipped: 2,
     totalHostingPausedSkipped: 4,
-    totalSameBrandCollapseSkipped: 1,
   };
 
   const mockDashboardService = {

@@ -170,10 +170,6 @@ export interface MonitoringGlobalCounters {
    * 复查命中后剩余段被丢弃（避免复现"撤回很多条"badcase）。
    */
   totalHostingPausedSkipped: number;
-  /** 历史兼容字段：同品牌多门店压缩不再触发投递层丢弃。 */
-  totalSameBrandCollapseSkipped: number;
-  /** 历史兼容字段：发薪甩锅不再触发投递层丢弃。 */
-  totalPayrollDeferSkipped: number;
 }
 
 /** 投递层主动丢弃回复的原因，与 DeliveryResult.skipReason 同枚举。 */
