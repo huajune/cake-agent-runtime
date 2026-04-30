@@ -1,70 +1,76 @@
 {
-  "baseVersion": "5.4.0",
-  "nextVersion": "5.5.0",
-  "updatedAt": "2026-04-29",
+  "baseVersion": "5.5.0",
+  "nextVersion": "5.6.0",
+  "updatedAt": "2026-04-30",
   "sourceBranch": "develop",
   "entries": [
     {
-      "number": "148",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/148",
-      "title": "支持 badcase trace 记忆评估",
-      "author": "huajune",
-      "mergedAt": "2026-04-29",
+      "number": "154",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/154",
+      "title": "P2 v3 红线 + handoff 短路 + 班次三连修复",
+      "author": "ArielZhu",
+      "mergedAt": "2026-04-30",
       "summary": [
-        "Add badcase traceability and memory fixture support across test-suite imports, execution records, conversation snapshots, and Feishu payload handling.",
-        "Add Supabase migrations, backfill/check tooling, and workflow documentation for trace-memory evaluation.",
-        "Extend dashboard/business trend RPC support, release/deploy notification formatting, and related frontend test-suite/feedback views.",
-        "Tighten prompt, memory, and tool behavior used by candidate consultation badcase validation."
+        "进入收资场景前必须先 `duliday_interview_precheck`",
+        "约面前必须并列核验日期+健康证（后被运营宽口径替换）",
+        "发薪/工资规则严禁说\"到店问/面试时问/店长确认\"",
+        "岗位推荐必须主动告知具体工作班次时间（**izoyiy16 / 9c49atl7 / tkozzsp1 三连根因**）",
+        "顺手回填 prod 漂移的 2 条历史规则（test→prod rule_count 21→27）",
+        "候选人消息含\"日期已过/改约\"等干扰信号时，仍要照常 precheck（v4 005 case）",
+        "两人结伴求职、当前门店名额不足时主动给就近分流方案（v4 012 case）",
+        "precheck 工具结果新增 `interview.flowDescription / processRemark / timingHighlights`（v4 025 案后回退）",
+        "默认走\"先来面试，录用后再去办\"，约面前不主动追问健康证状态",
+        "仅当岗位明确要求\"持证才能预约\"时前置确认",
+        "旧\"并列核验\"红线删除，替换为\"健康证默认不阻塞面试\"",
+        "DB rule_count 仍 29（删 1 加 1）",
+        "班次硬约束 → `duliday_job_list` 加 `candidateScheduleConstraint` 入参 + `schedule-semantic.util` 工具内过滤",
+        "健康证 gate → precheck 推断 `before_interview / before_onboard / unknown`（后续清理时已回退，留单向沉淀痕迹）",
+        "投递层 phrase guard 用于发薪甩锅 / 同品牌压缩（**已被 7692780d 全部回退**——投递层只拦内部实现泄漏）",
+        "新增 `format-shift-time.util.ts`：班次归一化（早班/午高峰短班/晚班 + 工时长度 + 星期约束 + 跨午夜）",
+        "数据缺失返 null（不补 fallback 文案，不会误显示）",
+        "接入 `### 约面重点 工作班次` 行，依据 `flags.includeWorkTime` gate",
+        "删除 candidate-consultation.md 规则 15/16/17（下沉到 DB 红线）",
+        "11/14/18 重写为业务声明（去 `candidateScheduleConstraint`/`healthCertGate`/`bookingChecklist.requiredFieldsToCollectNow` 等实现引用）",
+        "删 `payroll-defer-guard.util` / `same-brand-collapse-guard.util` 两个未生效的 phrase guard",
+        "删 `flowScript` / `healthCertGate` 推断字段（确认未接线）",
+        "删 `MonitoringGlobalCounters` 中 `totalSameBrandCollapseSkipped` / `totalPayrollDeferSkipped` 残留字段（不再触发的死字段）"
       ],
       "features": [
-        "Add badcase traceability and memory fixture support across test-suite imports, execution records, conversation snapshots, and Feishu payload handling.",
-        "Extend dashboard/business trend RPC support, release/deploy notification formatting, and related frontend test-suite/feedback views.",
-        "Tighten prompt, memory, and tool behavior used by candidate consultation badcase validation."
+        "进入收资场景前必须先 `duliday_interview_precheck`",
+        "约面前必须并列核验日期+健康证（后被运营宽口径替换）",
+        "发薪/工资规则严禁说\"到店问/面试时问/店长确认\"",
+        "岗位推荐必须主动告知具体工作班次时间（**izoyiy16 / 9c49atl7 / tkozzsp1 三连根因**）",
+        "顺手回填 prod 漂移的 2 条历史规则（test→prod rule_count 21→27）",
+        "候选人消息含\"日期已过/改约\"等干扰信号时，仍要照常 precheck（v4 005 case）",
+        "两人结伴求职、当前门店名额不足时主动给就近分流方案（v4 012 case）",
+        "precheck 工具结果新增 `interview.flowDescription / processRemark / timingHighlights`（v4 025 案后回退）",
+        "默认走\"先来面试，录用后再去办\"，约面前不主动追问健康证状态",
+        "仅当岗位明确要求\"持证才能预约\"时前置确认",
+        "旧\"并列核验\"红线删除，替换为\"健康证默认不阻塞面试\"",
+        "DB rule_count 仍 29（删 1 加 1）",
+        "班次硬约束 → `duliday_job_list` 加 `candidateScheduleConstraint` 入参 + `schedule-semantic.util` 工具内过滤",
+        "健康证 gate → precheck 推断 `before_interview / before_onboard / unknown`（后续清理时已回退，留单向沉淀痕迹）",
+        "投递层 phrase guard 用于发薪甩锅 / 同品牌压缩（**已被 7692780d 全部回退**——投递层只拦内部实现泄漏）",
+        "新增 `format-shift-time.util.ts`：班次归一化（早班/午高峰短班/晚班 + 工时长度 + 星期约束 + 跨午夜）",
+        "数据缺失返 null（不补 fallback 文案，不会误显示）",
+        "接入 `### 约面重点 工作班次` 行，依据 `flags.includeWorkTime` gate",
+        "删除 candidate-consultation.md 规则 15/16/17（下沉到 DB 红线）",
+        "11/14/18 重写为业务声明（去 `candidateScheduleConstraint`/`healthCertGate`/`bookingChecklist.requiredFieldsToCollectNow` 等实现引用）",
+        "删 `payroll-defer-guard.util` / `same-brand-collapse-guard.util` 两个未生效的 phrase guard",
+        "删 `flowScript` / `healthCertGate` 推断字段（确认未接线）",
+        "删 `MonitoringGlobalCounters` 中 `totalSameBrandCollapseSkipped` / `totalPayrollDeferSkipped` 残留字段（不再触发的死字段）"
       ],
       "fixes": [],
       "optimizations": [],
-      "ops": [
-        "Add Supabase migrations, backfill/check tooling, and workflow documentation for trace-memory evaluation."
-      ],
-      "config": [],
-      "envFiles": [
-        ".env.example"
-      ],
-      "verification": [
-        "`pnpm run typecheck`",
-        "`pnpm exec jest --watchman=false --runTestsByPath tests/biz/monitoring/services/dashboard/analytics-query.service.spec.ts`",
-        "Pre-commit hook: lint + format passed",
-        "Pre-push hook: `pnpm run ci:check` passed, including lint, format, typecheck, build, and `jest --coverage --watchman=false` (219 suites / 2574 tests)"
-      ]
-    },
-    {
-      "number": "151",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/151",
-      "title": "解除 PR #150 冲突（合并 master 到 develop）",
-      "author": "ArielZhu",
-      "mergedAt": "2026-04-29",
-      "summary": [
-        "master 已固化 v5.4.0：`.release/pending-release.json` 清空 entries，`CHANGELOG.md` 把 `<!-- release:pending -->` 块替换为 `[5.4.0]` 段",
-        "develop 已写入 v5.5.0 待发布数据（来自 PR #148）",
-        "`.release/pending-release.json` 取 develop 版本（`baseVersion 5.4.0` / `nextVersion 5.5.0` / 含 #148 entry）",
-        "`CHANGELOG.md` 取 develop 版本（保留 v5.5.0 待发布块；`[5.4.0]` 等历史段两边一致）"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "master 已固化 v5.4.0：`.release/pending-release.json` 清空 entries，`CHANGELOG.md` 把 `<!-- release:pending -->` 块替换为 `[5.4.0]` 段",
-        "develop 已写入 v5.5.0 待发布数据（来自 PR #148）",
-        "`.release/pending-release.json` 取 develop 版本（`baseVersion 5.4.0` / `nextVersion 5.5.0` / 含 #148 entry）",
-        "`CHANGELOG.md` 取 develop 版本（保留 v5.5.0 待发布块；`[5.4.0]` 等历史段两边一致）"
-      ],
+      "ops": [],
       "config": [],
       "envFiles": [],
       "verification": [
-        "`node -e 'JSON.parse(...)'` 校验 `.release/pending-release.json` 合法",
-        "`grep` 确认无遗留冲突标记",
-        "CI Checks 通过",
-        "合并本 PR 后 PR #150 状态变为 MERGEABLE"
+        "单测全绿：227 套件 / **2719 测试** 通过（含 format-shift-time 15 例 / context.service / monitoring 等所有集成）",
+        "lint + tsc 干净",
+        "DB 迁移已 apply test+prod，rule_count 一致",
+        "投递层兜底回退后，phrase guard 死代码全部清理（同品牌压缩 / 发薪甩锅 util + counter 字段）",
+        "飞书 BadCase 状态回写脚本已落（priority + status 双向）"
       ]
     }
   ]

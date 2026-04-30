@@ -1,6 +1,6 @@
 {
   "name": "cake-agent-runtime",
-  "version": "5.5.0",
+  "version": "5.6.0",
   "description": "自主 AI Agent 运行时 — 基于 Vercel AI SDK 多 Provider 架构",
   "author": "",
   "private": true,

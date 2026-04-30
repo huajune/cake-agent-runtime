@@ -11,10 +11,87 @@
 <!-- release:pending:start -->
 ## 待发布
 
-**预计版本**: `v5.5.0`
-**最近更新**: `2026-04-29`
+**预计版本**: `v5.6.0`
+**最近更新**: `2026-04-30`
 **来源分支**: `develop`
-**累计 PR**: 2
+**累计 PR**: 1
+
+### 更新摘要
+- PR #154 进入收资场景前必须先 `duliday_interview_precheck`
+- PR #154 约面前必须并列核验日期+健康证（后被运营宽口径替换）
+- PR #154 发薪/工资规则严禁说"到店问/面试时问/店长确认"
+- PR #154 岗位推荐必须主动告知具体工作班次时间（**izoyiy16 / 9c49atl7 / tkozzsp1 三连根因**）
+- PR #154 顺手回填 prod 漂移的 2 条历史规则（test→prod rule_count 21→27）
+- PR #154 候选人消息含"日期已过/改约"等干扰信号时，仍要照常 precheck（v4 005 case）
+- PR #154 两人结伴求职、当前门店名额不足时主动给就近分流方案（v4 012 case）
+- PR #154 precheck 工具结果新增 `interview.flowDescription / processRemark / timingHighlights`（v4 025 案后回退）
+- PR #154 默认走"先来面试，录用后再去办"，约面前不主动追问健康证状态
+- PR #154 仅当岗位明确要求"持证才能预约"时前置确认
+- PR #154 旧"并列核验"红线删除，替换为"健康证默认不阻塞面试"
+- PR #154 DB rule_count 仍 29（删 1 加 1）
+- PR #154 班次硬约束 → `duliday_job_list` 加 `candidateScheduleConstraint` 入参 + `schedule-semantic.util` 工具内过滤
+- PR #154 健康证 gate → precheck 推断 `before_interview / before_onboard / unknown`（后续清理时已回退，留单向沉淀痕迹）
+- PR #154 投递层 phrase guard 用于发薪甩锅 / 同品牌压缩（**已被 7692780d 全部回退**——投递层只拦内部实现泄漏）
+- PR #154 新增 `format-shift-time.util.ts`：班次归一化（早班/午高峰短班/晚班 + 工时长度 + 星期约束 + 跨午夜）
+- PR #154 数据缺失返 null（不补 fallback 文案，不会误显示）
+- PR #154 接入 `### 约面重点 工作班次` 行，依据 `flags.includeWorkTime` gate
+- PR #154 删除 candidate-consultation.md 规则 15/16/17（下沉到 DB 红线）
+- PR #154 11/14/18 重写为业务声明（去 `candidateScheduleConstraint`/`healthCertGate`/`bookingChecklist.requiredFieldsToCollectNow` 等实现引用）
+- PR #154 删 `payroll-defer-guard.util` / `same-brand-collapse-guard.util` 两个未生效的 phrase guard
+- PR #154 删 `flowScript` / `healthCertGate` 推断字段（确认未接线）
+- PR #154 删 `MonitoringGlobalCounters` 中 `totalSameBrandCollapseSkipped` / `totalPayrollDeferSkipped` 残留字段（不再触发的死字段）
+
+### 新功能
+- PR #154 进入收资场景前必须先 `duliday_interview_precheck`
+- PR #154 约面前必须并列核验日期+健康证（后被运营宽口径替换）
+- PR #154 发薪/工资规则严禁说"到店问/面试时问/店长确认"
+- PR #154 岗位推荐必须主动告知具体工作班次时间（**izoyiy16 / 9c49atl7 / tkozzsp1 三连根因**）
+- PR #154 顺手回填 prod 漂移的 2 条历史规则（test→prod rule_count 21→27）
+- PR #154 候选人消息含"日期已过/改约"等干扰信号时，仍要照常 precheck（v4 005 case）
+- PR #154 两人结伴求职、当前门店名额不足时主动给就近分流方案（v4 012 case）
+- PR #154 precheck 工具结果新增 `interview.flowDescription / processRemark / timingHighlights`（v4 025 案后回退）
+- PR #154 默认走"先来面试，录用后再去办"，约面前不主动追问健康证状态
+- PR #154 仅当岗位明确要求"持证才能预约"时前置确认
+- PR #154 旧"并列核验"红线删除，替换为"健康证默认不阻塞面试"
+- PR #154 DB rule_count 仍 29（删 1 加 1）
+- PR #154 班次硬约束 → `duliday_job_list` 加 `candidateScheduleConstraint` 入参 + `schedule-semantic.util` 工具内过滤
+- PR #154 健康证 gate → precheck 推断 `before_interview / before_onboard / unknown`（后续清理时已回退，留单向沉淀痕迹）
+- PR #154 投递层 phrase guard 用于发薪甩锅 / 同品牌压缩（**已被 7692780d 全部回退**——投递层只拦内部实现泄漏）
+- PR #154 新增 `format-shift-time.util.ts`：班次归一化（早班/午高峰短班/晚班 + 工时长度 + 星期约束 + 跨午夜）
+- PR #154 数据缺失返 null（不补 fallback 文案，不会误显示）
+- PR #154 接入 `### 约面重点 工作班次` 行，依据 `flags.includeWorkTime` gate
+- PR #154 删除 candidate-consultation.md 规则 15/16/17（下沉到 DB 红线）
+- PR #154 11/14/18 重写为业务声明（去 `candidateScheduleConstraint`/`healthCertGate`/`bookingChecklist.requiredFieldsToCollectNow` 等实现引用）
+- PR #154 删 `payroll-defer-guard.util` / `same-brand-collapse-guard.util` 两个未生效的 phrase guard
+- PR #154 删 `flowScript` / `healthCertGate` 推断字段（确认未接线）
+- PR #154 删 `MonitoringGlobalCounters` 中 `totalSameBrandCollapseSkipped` / `totalPayrollDeferSkipped` 残留字段（不再触发的死字段）
+
+### 问题修复
+- 无
+
+### 优化调整
+- 无
+
+### 运维与流程
+- 无
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #154 单测全绿：227 套件 / **2719 测试** 通过（含 format-shift-time 15 例 / context.service / monitoring 等所有集成）
+- PR #154 lint + tsc 干净
+- PR #154 DB 迁移已 apply test+prod，rule_count 一致
+- PR #154 投递层兜底回退后，phrase guard 死代码全部清理（同品牌压缩 / 发薪甩锅 util + counter 字段）
+- PR #154 飞书 BadCase 状态回写脚本已落（priority + status 双向）
+<!-- release:pending:end -->
+
+## [5.5.0] - 2026-04-29
+
+**来源分支**: `develop`
 
 ### 更新摘要
 - PR #148 Add badcase traceability and memory fixture support across test-suite imports, execution records, conversation snapshots, and Feishu payload handling.
@@ -59,7 +136,6 @@
 - PR #151 `grep` 确认无遗留冲突标记
 - PR #151 CI Checks 通过
 - PR #151 合并本 PR 后 PR #150 状态变为 MERGEABLE
-<!-- release:pending:end -->
 
 ## [5.4.0] - 2026-04-28
 
