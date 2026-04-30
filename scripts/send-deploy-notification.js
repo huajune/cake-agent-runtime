@@ -26,7 +26,7 @@ const DEPLOY_STATUS_META = {
     title: '已发布',
     accent: '✨',
     markdown: '生产环境发布完成',
-    template: 'turquoise',
+    template: 'violet',
   },
   failure: {
     icon: '⚠️',
@@ -133,7 +133,6 @@ function buildMarkdown(options = {}) {
   const publishedAt = formatShanghaiTime(env('DEPLOY_FINISHED_AT', new Date().toISOString()));
   const releaseNotes = normalizeReleaseNotes(readReleaseNotes());
   const envReminder = extractEnvReminder(releaseNotes);
-  const updateSummary = extractUpdateSummary(releaseNotes);
 
   const lines = [
     `**版本**：${releaseTag}`,
@@ -143,9 +142,48 @@ function buildMarkdown(options = {}) {
   if (envReminder) {
     lines.push('', ...renderOptionalSection('需要关注', envReminder));
   }
-  lines.push('', '**本次更新**', updateSummary);
+
+  const structured = extractStructuredUpdate(releaseNotes);
+  if (structured) {
+    lines.push('', structured);
+  } else {
+    lines.push('', '**本次更新**', extractUpdateSummary(releaseNotes));
+  }
 
   return truncateText(lines.join('\n'), MAX_MARKDOWN_CHARS);
+}
+
+function extractStructuredUpdate(releaseNotes) {
+  const businessLines = collectSectionLines(releaseNotes, ['新功能', '问题修复']);
+  const opsLines = collectSectionLines(releaseNotes, ['优化调整', '运维与流程']);
+
+  if (businessLines.length === 0 && opsLines.length === 0) {
+    return '';
+  }
+
+  const blocks = [];
+  if (businessLines.length > 0) {
+    blocks.push('**业务改动（候选人/运营可感知）**');
+    blocks.push(...businessLines.map((line) => `- ${line}`));
+  }
+  if (opsLines.length > 0) {
+    if (blocks.length > 0) blocks.push('');
+    blocks.push('**优化与运维（非业务感知）**');
+    blocks.push(...opsLines.map((line) => `- ${line}`));
+  }
+  return blocks.join('\n');
+}
+
+function collectSectionLines(releaseNotes, sectionTitles) {
+  const lines = [];
+  for (const title of sectionTitles) {
+    for (const item of parseMarkdownBullets(extractMarkdownSection(releaseNotes, title))) {
+      const text = formatOperationalReleaseText(item, { includePrReference: false });
+      if (!text || isEmptyReleaseLine(text)) continue;
+      lines.push(text);
+    }
+  }
+  return uniqueList(lines);
 }
 
 function buildCardTitle(releaseTag = getReleaseTag(), deployResult = getDeployResult()) {
@@ -432,6 +470,7 @@ function postJson(url, payload) {
 module.exports = {
   buildCardTitle,
   buildMarkdown,
+  extractStructuredUpdate,
   extractUpdateSummary,
   getCardTemplate,
   normalizeReleaseNotes,
