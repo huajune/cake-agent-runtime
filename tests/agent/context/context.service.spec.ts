@@ -126,9 +126,13 @@ describe('ContextService', () => {
     expect(prompt).toContain('推荐 2 个及以上岗位时必须分条分段输出');
     expect(prompt).toContain('若本轮做了具体岗位推荐');
     // v3 补丁：生成阶段强绑定（P2 v3 005/001/003/015 修复）
-    expect(prompt).toContain('进入收资场景前必须先调');
+    expect(prompt).toContain('进入收资/约面流程前必须先调');
     expect(prompt).toContain('约面前必须并列核验日期+健康证两件事');
-    expect(prompt).toContain('发薪/工资规则相关问题严禁说"到店问/面试时问/直接跟店长确认"');
+    expect(prompt).toContain('发薪/工资规则相关问题严禁说"到店问 / 面试时问 / 直接跟店长确认"');
+    // v4 复盘：注意力被"日期已过"带跑的兜底（修复 005）
+    expect(prompt).toContain('禁止只问候选人挑新日期就跳过工具');
+    // v4 复盘：两人分流红线（修复 012）
+    expect(prompt).toContain('两人结伴求职、当前门店名额不足时必须主动给就近分流方案');
     // 工具专属规则（如 bookingChecklist.collectionStrategy）已迁移到各工具的 description 字段，
     // 不再出现在主 system prompt 中。
     expect(prompt).not.toContain('# 工具手册');

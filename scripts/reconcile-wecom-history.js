@@ -8,6 +8,14 @@ const { createClient } = require('@supabase/supabase-js');
 const DEFAULT_ENV_FILE = '.env.production';
 const DEFAULT_LOOKBACK_MINUTES = 10;
 
+function writeStdout(message) {
+  process.stdout.write(`${message}\n`);
+}
+
+function writeStderr(message) {
+  process.stderr.write(`${message}\n`);
+}
+
 function parseArgs(argv) {
   const args = {
     env: DEFAULT_ENV_FILE,
@@ -49,7 +57,7 @@ function parseArgs(argv) {
 }
 
 function printUsage() {
-  console.log(`Usage:
+  writeStdout(`Usage:
   node scripts/reconcile-wecom-history.js [options]
 
 Options:
@@ -341,7 +349,7 @@ async function main() {
     inserted = data || [];
   }
 
-  console.log(
+  writeStdout(
     JSON.stringify(
       {
         dryRun: args.dryRun,
@@ -373,6 +381,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  writeStderr(error instanceof Error ? error.message : String(error));
   process.exit(1);
 });

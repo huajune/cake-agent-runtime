@@ -45,6 +45,7 @@ export class AcceptInboundMessageService {
     const filterResult = await this.filterService.validate(messageData);
 
     if (!filterResult.pass) {
+      // pass=false is a terminal filtered path; historyOnly is only handled for pass=true below.
       await this.recordFilteredInboundMessageToHistory(messageData, filterResult);
       return {
         shouldDispatch: false,

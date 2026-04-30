@@ -1158,6 +1158,7 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
 - interview.upcomingTimeOptions：未来 7 天实际可约时段的示例 label 数组（已自动过滤报名截止已过的时段）。用来回答"给我几个时间选选"
 - interview.bookableSlots：结构化可约时段。只有 bookingAllowed=true 且带 interviewTime 的 slot 才能进入 duliday_interview_booking；bookingAllowed=false / dateOnly=true 表示只确定日期、不确定具体面试时间，必须先人工确认，严禁拿 registrationDeadline 当 interviewTime
 - interview.requestedDate：只有在传入 requestedDate 时才有；包含 status（available / unavailable / needs_confirmation）和 reason
+- interview.flowDescription / interview.processRemark / interview.timingHighlights：岗位面试流程的事实描述，含"线上 AI 面试 / 二维码会发到企微 / 保持电话畅通 / 24 小时出结果 / 入职前必须办好健康证"等关键流程。**预约成功后或候选人问"怎么面/什么形式/会发什么"时必须按这些字段照念**，不得凭 method 字段（仅"线上/线下"两个字）自己编流程。北京必胜客等品牌的 AI 面试码、流程节奏都在这里
 - screeningCriteria：岗位硬性筛选条件（性别/年龄/学历/健康证/是否学生等），**用来筛人**——候选人不符合时直接说明，不要继续往下引导
 - screeningChecks：岗位后台把约束语义直接配在 supplement label 里的那一类筛选题（例如 "是否学生（不要学生）"、"专业（非新媒、食品）"、"周四六日都能上班吗"）。**用来筛人**——必须先独立向候选人核对，候选人答案命中 failSignals 就停止收资、走婉拒/拉群，不得继续 booking；但 "食品类健康证/食品健康证/餐饮健康证" 是健康证类型，不是专业答案，遇到专业筛选题时必须澄清实际专业
 - bookingChecklist.missingFields：预约还缺哪些字段（已剔除 screeningChecks 列出的筛选型 label）
@@ -1340,6 +1341,17 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
               scheduleRule,
               upcomingTimeOptions,
               bookableSlots,
+              // 面试流程描述：原岗位数据里已经写了"线上 AI 面试 / 收到二维码 /
+              // 保持电话畅通"等流程信息（在 firstInterview.interviewDemand 与
+              // interviewProcess.remark 里），把它直接抛给模型让其按事实转述，
+              // 而不是凭"线上面试"四个字自己编流程。P2 批次 025 实测：北京必胜客
+              // 是线上 AI 面试有面试码，模型说"没有"。
+              flowDescription: analysis.interviewMeta.demand,
+              processRemark: analysis.normalizedRequirements.interviewRemark,
+              timingHighlights:
+                analysis.highlights.timingHighlights.length > 0
+                  ? analysis.highlights.timingHighlights
+                  : undefined,
               requestedDate: requestedDateCheck
                 ? {
                     value: normalizedDate.date,
