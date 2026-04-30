@@ -11,15 +11,13 @@ export class OnboardFollowupCardRenderer {
     payload: OnboardFollowupNotificationPayload & { atUsers?: FeishuReceiver[]; atAll?: boolean },
   ): Record<string, unknown> {
     const sections = [
-      '系统已自动暂停托管，请人工介入处理。',
       `风险类型：${payload.alertLabel}`,
       `命中原因：${payload.reason}`,
       `当前消息：${payload.currentMessageContent}`,
       `**聊天上下文（最近10条）**\n${this.formatRecentMessages(payload)}`,
       `**候选人信息**\n${this.formatCandidateInfo(payload)}`,
       `**预约信息**\n${this.formatCaseInfo(payload)}`,
-      '**系统动作**\n已暂停托管\nAI 已停止回复\n请在 Web 托管管理页面处理后手动恢复托管',
-      `通知时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`,
+      '处理完请到 Web 托管后台手动恢复托管。',
     ];
 
     return this.cardBuilder.buildMarkdownCard({

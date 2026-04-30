@@ -91,31 +91,26 @@ export class PausedUserFilterRule implements MessageFilterRule {
   constructor(private readonly userHostingService: UserHostingService) {}
 
   async evaluate(messageData: EnterpriseMessageCallbackDto): Promise<FilterResult | null> {
-    const pauseCheckIds = [
+    const hit = await this.userHostingService.isAnyPaused([
       messageData.chatId,
       messageData.imContactId,
       messageData.externalUserId,
-    ].filter(Boolean) as string[];
+    ]);
+    if (!hit.paused) return null;
 
-    for (const id of pauseCheckIds) {
-      if (await this.userHostingService.isUserPaused(id)) {
-        const content = MessageParser.extractContent(messageData);
-        this.logger.log(
-          `[过滤-暂停托管] 暂停托管用户消息仅记录历史 [${messageData.messageId}], matchedId=${id}`,
-        );
-        return {
-          pass: true,
-          content,
-          historyOnly: true,
-          reason: FilterReason.USER_PAUSED,
-          details: {
-            userId: id,
-          },
-        };
-      }
-    }
-
-    return null;
+    const content = MessageParser.extractContent(messageData);
+    this.logger.log(
+      `[过滤-暂停托管] 暂停托管用户消息仅记录历史 [${messageData.messageId}], matchedId=${hit.matchedId}`,
+    );
+    return {
+      pass: true,
+      content,
+      historyOnly: true,
+      reason: FilterReason.USER_PAUSED,
+      details: {
+        userId: hit.matchedId!,
+      },
+    };
   }
 }
 

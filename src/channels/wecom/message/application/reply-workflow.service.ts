@@ -359,9 +359,10 @@ export class ReplyWorkflowService {
 
     const processedMessageIds = allMessages.map((message) => message.messageId);
 
-    // Agent 主动沉默：跳过 WeCom 发送，但仍完成本轮流水与观测。
+    // Agent 主动沉默 / 转人工短路：跳过 WeCom 发送，但仍完成本轮流水与观测。
     if (agentResult.isSkipped) {
-      this.logger.log(`${logPrefix}[${contactName}] Agent 主动沉默，跳过消息发送`);
+      const skipReason = this.extractSkipReason(agentResult) || '本轮无需回复';
+      this.logger.log(`${logPrefix}[${contactName}] Agent 短路，跳过消息发送 (${skipReason})`);
       await this.wecomObservability.markReplySkipped(traceId);
       const skippedMetadata = await this.buildSuccessMetadata(
         traceId,
@@ -420,8 +421,16 @@ export class ReplyWorkflowService {
   }
 
   private extractSkipReason(agentResult: AgentInvokeResult): string | undefined {
-    const call = agentResult.toolCalls?.find((tc) => tc.toolName === 'skip_reply');
-    const reason = (call?.args as { reason?: unknown } | undefined)?.reason;
+    const handoffCall = agentResult.toolCalls?.find((tc) => tc.toolName === 'request_handoff');
+    if (handoffCall) {
+      const args = handoffCall.args as { reasonCode?: unknown; reason?: unknown } | undefined;
+      const reasonCode = typeof args?.reasonCode === 'string' ? args.reasonCode : '';
+      const reason = typeof args?.reason === 'string' ? args.reason.trim() : '';
+      const composed = [reasonCode && `handoff:${reasonCode}`, reason].filter(Boolean).join(' | ');
+      return composed || undefined;
+    }
+    const skipCall = agentResult.toolCalls?.find((tc) => tc.toolName === 'skip_reply');
+    const reason = (skipCall?.args as { reason?: unknown } | undefined)?.reason;
     return typeof reason === 'string' && reason.trim().length > 0 ? reason.trim() : undefined;
   }
 
@@ -511,7 +520,10 @@ export class ReplyWorkflowService {
 
       const processingTime = Date.now() - startTime;
       const content = this.normalizeContent(result.text);
-      const isSkipped = result.toolCalls?.some((call) => call.toolName === 'skip_reply') ?? false;
+      const isSkipped =
+        result.toolCalls?.some(
+          (call) => call.toolName === 'skip_reply' || call.toolName === 'request_handoff',
+        ) ?? false;
 
       const invokeResult: AgentInvokeResult = {
         reply: { content, reasoning: result.reasoning, usage: result.usage },

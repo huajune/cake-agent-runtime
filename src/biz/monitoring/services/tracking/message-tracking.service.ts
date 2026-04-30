@@ -161,7 +161,7 @@ export class MessageTrackingService {
    */
   recordReplySkipped(messageId: string, reason: DeliverySkipReason): void {
     const counterKey: keyof MonitoringGlobalCounters =
-      reason === 'output_leak' ? 'totalOutputLeakSkipped' : 'totalSameBrandCollapseSkipped';
+      reason === 'hosting_paused' ? 'totalHostingPausedSkipped' : 'totalOutputLeakSkipped';
     this.cacheService.incrementCounter(counterKey, 1).catch((err) => {
       this.logger.warn(`更新 ${counterKey} 计数器失败 [${messageId}]:`, err);
     });

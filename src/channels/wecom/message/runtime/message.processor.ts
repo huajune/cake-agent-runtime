@@ -1,10 +1,12 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue, Job } from 'bull';
+import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
 
 // 导入子服务
 import { SimpleMergeService } from './simple-merge.service';
+import { MessageDeduplicationService } from './deduplication.service';
 import { MessagePipelineService } from '../application/pipeline.service';
 import { MessageWorkerManagerService } from './message-worker-manager.service';
 
@@ -27,6 +29,8 @@ export class MessageProcessor implements OnModuleInit {
     private readonly messagePipeline: MessagePipelineService,
     private readonly simpleMergeService: SimpleMergeService,
     private readonly workerManager: MessageWorkerManagerService,
+    private readonly userHostingService: UserHostingService,
+    private readonly deduplicationService: MessageDeduplicationService,
   ) {}
 
   async onModuleInit() {
@@ -170,6 +174,14 @@ export class MessageProcessor implements OnModuleInit {
         return;
       }
 
+      // 入口 PausedUserFilterRule 在消息进入 debounce 静默窗口前已经过一次
+      // isUserPaused，但运营在静默窗口内点关托管时，已入队的 batch 会绕过入口
+      // 检查直接落到这里。worker 拉起后再复查一次：命中即丢弃整批，避免穿透
+      // 到 Agent 投递（1tsdimfg badcase）。
+      if (await this.dropIfHostingPaused(chatId, messages, job.id)) {
+        return;
+      }
+
       // 处理消息
       await this.processMessages(messages, batchId);
 
@@ -199,6 +211,45 @@ export class MessageProcessor implements OnModuleInit {
     batchId: string,
   ): Promise<void> {
     await this.messagePipeline.processMergedMessages(messages, batchId);
+  }
+
+  /**
+   * 静默窗口期内运营关托管 → drain 出来的 batch 命中暂停时直接丢弃。
+   *
+   * 同时把每条 messageId 标记为已处理（与 historyOnly 路径对齐），避免回调
+   * 重试时再次进入 debounce 队列。
+   */
+  private async dropIfHostingPaused(
+    chatId: string,
+    messages: EnterpriseMessageCallbackDto[],
+    jobId: string | number,
+  ): Promise<boolean> {
+    const primary = messages[messages.length - 1];
+    const hit = await this.userHostingService.isAnyPaused([
+      chatId,
+      primary.imContactId,
+      primary.externalUserId,
+    ]);
+    if (!hit.paused) return false;
+
+    this.logger.log(
+      `[Bull][已暂停托管] 任务 ${jobId} 丢弃 ${messages.length} 条消息 (chatId=${chatId}, matchedId=${hit.matchedId})`,
+    );
+
+    await Promise.all(
+      messages.map((message) =>
+        this.deduplicationService
+          .markMessageAsProcessedAsync(message.messageId)
+          .catch((error: unknown) => {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            this.logger.warn(
+              `[Bull][已暂停托管] 去重标记失败 [${message.messageId}]: ${errorMessage}`,
+            );
+            return false;
+          }),
+      ),
+    );
+    return true;
   }
 
   // ==================== 公共 API ====================

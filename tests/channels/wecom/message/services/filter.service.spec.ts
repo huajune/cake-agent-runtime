@@ -19,7 +19,7 @@ describe('MessageFilterService', () => {
   let service: MessageFilterService;
 
   const mockUserHostingService = {
-    isUserPaused: jest.fn(),
+    isAnyPaused: jest.fn(),
   };
 
   const mockGroupBlacklistService = {
@@ -63,7 +63,7 @@ describe('MessageFilterService', () => {
     jest.clearAllMocks();
 
     // Default: user not paused, group not blacklisted
-    mockUserHostingService.isUserPaused.mockResolvedValue(false);
+    mockUserHostingService.isAnyPaused.mockResolvedValue({ paused: false });
     mockGroupBlacklistService.isGroupBlacklisted.mockResolvedValue(false);
   });
 
@@ -118,7 +118,10 @@ describe('MessageFilterService', () => {
     });
 
     it('should store paused user messages as historyOnly', async () => {
-      mockUserHostingService.isUserPaused.mockResolvedValue(true);
+      mockUserHostingService.isAnyPaused.mockResolvedValue({
+        paused: true,
+        matchedId: 'chat-123',
+      });
 
       const result = await service.validate(validMessageData);
 
@@ -126,12 +129,19 @@ describe('MessageFilterService', () => {
       expect(result.historyOnly).toBe(true);
       expect(result.content).toBe('Hello, world!');
       expect(result.reason).toBe(FilterReason.USER_PAUSED);
-      expect(mockUserHostingService.isUserPaused).toHaveBeenCalledWith('chat-123');
-      expect(mockUserHostingService.isUserPaused).toHaveBeenCalledTimes(1);
+      expect(mockUserHostingService.isAnyPaused).toHaveBeenCalledWith([
+        'chat-123',
+        validMessageData.imContactId,
+        validMessageData.externalUserId,
+      ]);
+      expect(mockUserHostingService.isAnyPaused).toHaveBeenCalledTimes(1);
     });
 
     it('should use externalUserId when chatId and imContactId are not available', async () => {
-      mockUserHostingService.isUserPaused.mockResolvedValue(true);
+      mockUserHostingService.isAnyPaused.mockResolvedValue({
+        paused: true,
+        matchedId: 'ext-user-123',
+      });
       const messageData = {
         ...validMessageData,
         chatId: undefined,
@@ -143,7 +153,11 @@ describe('MessageFilterService', () => {
 
       expect(result.pass).toBe(true);
       expect(result.historyOnly).toBe(true);
-      expect(mockUserHostingService.isUserPaused).toHaveBeenCalledWith('ext-user-123');
+      expect(mockUserHostingService.isAnyPaused).toHaveBeenCalledWith([
+        undefined,
+        undefined,
+        'ext-user-123',
+      ]);
       expect(result.reason).toBe(FilterReason.USER_PAUSED);
     });
 
@@ -157,7 +171,12 @@ describe('MessageFilterService', () => {
 
       const result = await service.validate(messageData);
 
-      expect(mockUserHostingService.isUserPaused).not.toHaveBeenCalled();
+      // helper 内部短路过滤掉 null/undefined → 调用一次但无任何 ID 命中
+      expect(mockUserHostingService.isAnyPaused).toHaveBeenCalledWith([
+        undefined,
+        undefined,
+        undefined,
+      ]);
       expect(result.pass).toBe(true);
     });
 

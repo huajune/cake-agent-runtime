@@ -21,10 +21,19 @@ import {
  * 跳过本轮回复的沉默工具名。
  *
  * 约束：
- * - 只能在本轮尚未发生任何其它工具调用时使用
+ * - 只能在本轮尚未发生任何其它工具调用时使用（prepareStep 互斥）
  * - 一旦被调用，stopWhen 立即结束本轮 loop，不再进入下一步
  */
 const SKIP_REPLY_TOOL_NAME = 'skip_reply';
+
+/**
+ * 短路工具集合：调用后 runtime 立即结束本轮 loop，且不进入空响应恢复，
+ * 也不再投递任何对外消息。
+ *
+ * - skip_reply：候选人仅发确认词时主动沉默
+ * - request_handoff：面试/入职阶段需人工接管，禁止 Agent 收口回复
+ */
+const SHORT_CIRCUIT_TOOL_NAMES = [SKIP_REPLY_TOOL_NAME, 'request_handoff'] as const;
 
 /** prepareStep 函数类型（沿用 ai SDK，本地不必锁死 TOOLS 泛型）。 */
 type PrepareStepFn = NonNullable<Parameters<typeof generateText>[0]['prepareStep']>;
@@ -98,7 +107,10 @@ export class AgentRunnerService {
         messages: ctx.normalizedMessages,
         tools: ctx.tools,
         maxOutputTokens: this.maxOutputTokens,
-        stopWhen: [stepCountIs(ctx.maxSteps), hasToolCall(SKIP_REPLY_TOOL_NAME)],
+        stopWhen: [
+          stepCountIs(ctx.maxSteps),
+          ...SHORT_CIRCUIT_TOOL_NAMES.map((name) => hasToolCall(name)),
+        ],
         prepareStep: this.buildPrepareStep(ctx),
         onStepFinish: () => {
           stepEndWallclocks.push(Date.now());
@@ -172,7 +184,10 @@ export class AgentRunnerService {
         messages: ctx.normalizedMessages,
         tools: ctx.tools,
         maxOutputTokens: this.maxOutputTokens,
-        stopWhen: [stepCountIs(ctx.maxSteps), hasToolCall(SKIP_REPLY_TOOL_NAME)],
+        stopWhen: [
+          stepCountIs(ctx.maxSteps),
+          ...SHORT_CIRCUIT_TOOL_NAMES.map((name) => hasToolCall(name)),
+        ],
         prepareStep: this.buildPrepareStep(ctx),
         onStepFinish: () => {
           stepEndWallclocks.push(Date.now());
@@ -479,7 +494,13 @@ export class AgentRunnerService {
     params: AgentInvokeParams,
   ): Promise<AgentRunResult> {
     if (result.text.trim().length > 0) return result;
-    if (result.toolCalls.some((call) => call.toolName === SKIP_REPLY_TOOL_NAME)) return result;
+    if (
+      result.toolCalls.some((call) =>
+        (SHORT_CIRCUIT_TOOL_NAMES as readonly string[]).includes(call.toolName),
+      )
+    ) {
+      return result;
+    }
 
     this.logger.warn(
       `Agent 返回空文本，尝试无工具恢复: sessionId=${ctx.sessionId}, steps=${result.steps}`,
