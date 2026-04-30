@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.6.0] - 2026-04-30
 
-**预计版本**: `v5.6.0`
-**最近更新**: `2026-04-30`
 **来源分支**: `develop`
-**累计 PR**: 3
 
 ### 更新摘要
 - PR #154 人工介入更顺畅：候选人发"转人工"后 Agent 立即停止抢答，改异步通知运营接手
@@ -81,7 +77,6 @@
 - PR #159 现有测试：单列表 fallback（仅 \`### 更新摘要\`）仍走 \`**本次更新**\` 路径
 - PR #159 \`pnpm jest tests/scripts/send-deploy-notification.spec.ts\` 全绿（5/5）
 - PR #159 Pre-push hook 通过：228 套件 / 2749 测试
-<!-- release:pending:end -->
 
 ## [5.5.0] - 2026-04-29
 
