@@ -1,5 +1,4 @@
 import { AcceptInboundMessageService } from '@channels/wecom/message/application/accept-inbound-message.service';
-import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { EnterpriseMessageCallbackDto } from '@channels/wecom/message/ingress/message-callback.dto';
 import { ContactType, MessageSource, MessageType } from '@enums/message-callback.enum';
 import { FilterReason } from '@enums/message-filter.enum';
@@ -143,6 +142,23 @@ describe('AcceptInboundMessageService', () => {
         source: MessageSource.AGGREGATED_CHAT_MANUAL,
       }),
     );
+    expect(wecomObservability.startRequestTrace).not.toHaveBeenCalled();
+    expect(deduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalled();
+  });
+
+  it('should not archive terminal filtered reasons outside the allowlist', async () => {
+    filterService.validate.mockResolvedValueOnce({
+      pass: false,
+      reason: FilterReason.SELF_MESSAGE,
+      content: '机器人自己的消息不应归档为 user',
+    });
+
+    await expect(service.execute(createMessage())).resolves.toEqual({
+      shouldDispatch: false,
+      response: { success: true, message: `${FilterReason.SELF_MESSAGE} ignored` },
+    });
+
+    expect(chatSession.saveMessage).not.toHaveBeenCalled();
     expect(wecomObservability.startRequestTrace).not.toHaveBeenCalled();
     expect(deduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalled();
   });

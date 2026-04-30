@@ -7,6 +7,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const DEFAULT_ENV_FILE = '.env.production';
 const DEFAULT_LOOKBACK_MINUTES = 10;
+const MAX_HISTORY_PAGES = 300;
 
 function writeStdout(message) {
   process.stdout.write(`${message}\n`);
@@ -157,7 +158,7 @@ async function fetchHistoryRows({ baseUrl, token, snapshotDay }) {
   const rows = [];
   let seq;
 
-  for (let page = 0; page < 300; page += 1) {
+  for (let page = 0; page < MAX_HISTORY_PAGES; page += 1) {
     const params = {
       token,
       pageSize: 100,
@@ -179,6 +180,12 @@ async function fetchHistoryRows({ baseUrl, token, snapshotDay }) {
 
     if (!body.seq || body.seq === seq || pageRows.length === 0) break;
     seq = body.seq;
+
+    if (page === MAX_HISTORY_PAGES - 1) {
+      writeStderr(
+        `[warn] message/history reached ${MAX_HISTORY_PAGES} pages for snapshotDay=${snapshotDay}; results may be truncated`,
+      );
+    }
   }
 
   return rows;
@@ -259,7 +266,7 @@ function toChatMessageRecord(row, metadata) {
     timestamp: new Date(timestamp).toISOString(),
     candidate_name: row.contactName,
     manager_name: row.botWeixin || chatMeta.managerName,
-    org_id: chatMeta.orgId || 'group_callback_org',
+    org_id: chatMeta.orgId || null,
     bot_id: row.botId || chatMeta.botId,
     message_type: toStorageMessageType(row.type),
     source: 'MOBILE_PUSH',

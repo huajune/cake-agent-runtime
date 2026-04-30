@@ -34,6 +34,14 @@ const PLANS: Plan[] = [
 
 type EnvMap = Record<string, string>;
 
+function writeStdout(message: string): void {
+  process.stdout.write(`${message}\n`);
+}
+
+function writeStderr(message: string): void {
+  process.stderr.write(`${message}\n`);
+}
+
 function parseEnv(envPath: string): EnvMap {
   if (!fs.existsSync(envPath)) {
     throw new Error(`找不到环境文件: ${envPath}`);
@@ -115,16 +123,16 @@ async function main(): Promise<void> {
     throw new Error(`环境变量不完整 envPath=${envPath}`);
   }
 
-  console.log(`[writeback-status] envPath=${envPath} apply=${apply}`);
-  console.log(`[writeback-status] 计划变更 ${PLANS.length} 条:`);
+  writeStdout(`[writeback-status] envPath=${envPath} apply=${apply}`);
+  writeStdout(`[writeback-status] 计划变更 ${PLANS.length} 条:`);
   for (const plan of PLANS) {
-    console.log(
+    writeStdout(
       `  - ${plan.badcaseId} (${plan.recordId}) ${plan.current} → ${plan.target}  // ${plan.reason}`,
     );
   }
 
   if (!apply) {
-    console.log('\n[dry-run] 未传 --apply，仅打印计划，未发起请求');
+    writeStdout('\n[dry-run] 未传 --apply，仅打印计划，未发起请求');
     return;
   }
 
@@ -136,24 +144,24 @@ async function main(): Promise<void> {
     try {
       await updateStatus(token, appToken, tableId, plan.recordId, plan.target);
       success += 1;
-      console.log(`  ✓ ${plan.badcaseId} → ${plan.target}`);
+      writeStdout(`  ✓ ${plan.badcaseId} → ${plan.target}`);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       failed += 1;
       errors.push(`${plan.badcaseId}: ${message}`);
-      console.log(`  ✗ ${plan.badcaseId}: ${message}`);
+      writeStdout(`  ✗ ${plan.badcaseId}: ${message}`);
     }
   }
-  console.log(`\n[writeback-status] 完成 success=${success} failed=${failed}`);
+  writeStdout(`\n[writeback-status] 完成 success=${success} failed=${failed}`);
   if (errors.length > 0) {
-    console.log('错误明细:');
-    for (const e of errors) console.log(`  - ${e}`);
+    writeStdout('错误明细:');
+    for (const e of errors) writeStdout(`  - ${e}`);
     process.exit(1);
   }
 }
 
 main().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
-  console.error(`[writeback-status] 失败: ${message}`);
+  writeStderr(`[writeback-status] 失败: ${message}`);
   process.exit(1);
 });

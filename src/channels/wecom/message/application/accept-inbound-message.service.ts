@@ -13,6 +13,9 @@ import { WecomMessageObservabilityService } from '../telemetry/wecom-message-obs
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
 import { MessageParser } from '../utils/message-parser.util';
 import { MessageSource, getMessageSourceDescription } from '@enums/message-callback.enum';
+import { FilterReason } from '@enums/message-filter.enum';
+
+const FILTERED_HISTORY_ARCHIVE_REASONS = new Set<string>([FilterReason.INVALID_SOURCE]);
 
 export interface AcceptInboundMessageResult {
   shouldDispatch: boolean;
@@ -71,6 +74,10 @@ export class AcceptInboundMessageService {
     messageData: EnterpriseMessageCallbackDto,
     filterResult: FilterResult,
   ): Promise<void> {
+    if (!filterResult.reason || !FILTERED_HISTORY_ARCHIVE_REASONS.has(filterResult.reason)) {
+      return;
+    }
+
     const parsed = MessageParser.parse(messageData);
 
     if (parsed.isRoom) {

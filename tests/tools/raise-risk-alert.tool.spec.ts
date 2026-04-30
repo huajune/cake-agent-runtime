@@ -47,7 +47,7 @@ describe('buildRaiseRiskAlertTool', () => {
       reason: '候选人骂人',
     });
 
-    expect(result).toMatchObject({ dispatched: false, error: 'missing_chat_id' });
+    expect(result).toMatchObject({ accepted: false, error: 'missing_chat_id' });
     expect(interventionService.dispatch).not.toHaveBeenCalled();
   });
 
@@ -75,8 +75,9 @@ describe('buildRaiseRiskAlertTool', () => {
         currentMessageContent: '你说啥呢',
       }),
     );
-    // 工具立即返回，不再透传 dispatch 的 paused/alerted/suppressed
-    expect(result).toMatchObject({ dispatched: true });
+    // 工具立即返回，只表示异步任务已被接收，不再透传 dispatch 的 paused/alerted/suppressed
+    expect(result).toMatchObject({ accepted: true });
+    expect(result).not.toHaveProperty('dispatched');
     expect(result).not.toHaveProperty('paused');
     expect(result).not.toHaveProperty('alerted');
     expect(result).not.toHaveProperty('suppressed');
@@ -94,7 +95,8 @@ describe('buildRaiseRiskAlertTool', () => {
       reason: '再次辱骂',
     });
 
-    expect(result).toMatchObject({ dispatched: true });
+    expect(result).toMatchObject({ accepted: true });
+    expect(result).not.toHaveProperty('dispatched');
     await flushMicrotasks();
   });
 
@@ -116,7 +118,8 @@ describe('buildRaiseRiskAlertTool', () => {
         sessionState: null,
       }),
     );
-    expect(result).toMatchObject({ dispatched: true });
+    expect(result).toMatchObject({ accepted: true });
+    expect(result).not.toHaveProperty('dispatched');
     await flushMicrotasks();
   });
 });

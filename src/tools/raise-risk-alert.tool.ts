@@ -71,7 +71,7 @@ export function buildRaiseRiskAlertTool(
 
         if (!chatId) {
           logger.warn(`raise_risk_alert 缺少 chatId (user=${context.userId})`);
-          return { dispatched: false, error: 'missing_chat_id' };
+          return { accepted: false, error: 'missing_chat_id' };
         }
 
         const [recentMessages, sessionState] = await Promise.all([
@@ -117,7 +117,7 @@ export function buildRaiseRiskAlertTool(
           });
 
         return {
-          dispatched: true,
+          accepted: true,
           instruction:
             '请在本轮回复中以招募者身份共情候选人情绪，避免继续推进任务；严禁使用“机器人/托管/系统/自动”等字眼。',
         };

@@ -12,38 +12,77 @@
  * - 调用方按 null 选择"不显示该字段"，不补 fallback 文案
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 interface ShiftSlot {
   start: string; // HH:MM
   end: string; // HH:MM
   weekdays?: string; // 来自 combinedArrangement.combinedArrangementWeekdays（如"每周一,每周二"）
 }
 
+interface WorkTimeInput {
+  dailyShiftSchedule?: DailyShiftScheduleInput;
+  monthWorkTime?: MonthWorkTimeInput;
+  dayWorkTime?: DayWorkTimeInput;
+}
+
+interface DailyShiftScheduleInput {
+  arrangementType?: unknown;
+  fixedScheduleList?: FixedScheduleInput[];
+  combinedArrangement?: CombinedArrangementInput[];
+  fixedTime?: FixedTimeInput;
+}
+
+interface FixedScheduleInput {
+  fixedShiftStartTime?: unknown;
+  fixedShiftEndTime?: unknown;
+}
+
+interface CombinedArrangementInput {
+  combinedArrangementStartTime?: unknown;
+  combinedArrangementEndTime?: unknown;
+  combinedArrangementWeekdays?: unknown;
+}
+
+interface FixedTimeInput {
+  goToWorkStartTime?: unknown;
+  goToWorkEndTime?: unknown;
+  goOffWorkStartTime?: unknown;
+  goOffWorkEndTime?: unknown;
+}
+
+interface MonthWorkTimeInput {
+  perMonthMinWorkTime?: unknown;
+}
+
+interface DayWorkTimeInput {
+  perDayMinWorkHours?: unknown;
+}
+
 /** 主入口：从 workTime 产出可对外展示的班次文案。null = 没有具体班次。 */
-export function composeShiftTimeText(workTime: any): string | null {
+export function composeShiftTimeText(workTime: unknown): string | null {
   if (!isNonEmpty(workTime)) return null;
-  if (looksLikeFlexibleArrangement(workTime)) {
+  const input = workTime as WorkTimeInput;
+
+  if (looksLikeFlexibleArrangement(input)) {
     // 弹性排班 → 不强行展示具体时段，按候选人自定义/门店排返回简短描述
-    return composeFlexibleSummary(workTime);
+    return composeFlexibleSummary(input);
   }
 
-  const slots = collectShiftSlots(workTime);
+  const slots = collectShiftSlots(input);
   if (slots.length === 0) return null;
 
-  const mode = inferSelectionMode(workTime, slots);
+  const mode = inferSelectionMode(input, slots);
   return formatSlots(slots, mode);
 }
 
 /** 收集所有候选 slot，按优先级：fixedScheduleList > combinedArrangement > fixedTime（窄区间）。 */
-function collectShiftSlots(workTime: any): ShiftSlot[] {
+function collectShiftSlots(workTime: WorkTimeInput): ShiftSlot[] {
   const schedule = workTime?.dailyShiftSchedule;
   if (!schedule) return [];
 
   // 1) fixedScheduleList: 多档班次
   const fixedList = Array.isArray(schedule.fixedScheduleList) ? schedule.fixedScheduleList : [];
   const fromFixedList: ShiftSlot[] = fixedList
-    .map((sh: any) => ({
+    .map((sh) => ({
       start: normalizeHm(sh?.fixedShiftStartTime),
       end: normalizeHm(sh?.fixedShiftEndTime),
     }))
@@ -53,7 +92,7 @@ function collectShiftSlots(workTime: any): ShiftSlot[] {
   // 2) combinedArrangement: 带星期的时段
   const combined = Array.isArray(schedule.combinedArrangement) ? schedule.combinedArrangement : [];
   const fromCombined: ShiftSlot[] = combined
-    .map((ca: any) => ({
+    .map((ca) => ({
       start: normalizeHm(ca?.combinedArrangementStartTime),
       end: normalizeHm(ca?.combinedArrangementEndTime),
       weekdays:
@@ -65,7 +104,8 @@ function collectShiftSlots(workTime: any): ShiftSlot[] {
   if (fromCombined.length > 0) return fromCombined;
 
   // 3) fixedTime: 仅当上班区间 < 2h 时视为"班次起止"
-  const ft = schedule.fixedTime || {};
+  const ft = schedule.fixedTime;
+  if (!ft) return [];
   const goUpStart = normalizeHm(ft.goToWorkStartTime);
   const goUpEnd = normalizeHm(ft.goToWorkEndTime);
   const goOffStart = normalizeHm(ft.goOffWorkStartTime);
@@ -95,7 +135,7 @@ function collectShiftSlots(workTime: any): ShiftSlot[] {
 /** 选择关系：由 workTime 形态推断。 */
 type SelectionMode = 'single' | 'pick_one' | 'by_weekday';
 
-function inferSelectionMode(workTime: any, slots: ShiftSlot[]): SelectionMode {
+function inferSelectionMode(workTime: WorkTimeInput, slots: ShiftSlot[]): SelectionMode {
   if (slots.length === 1) return 'single';
 
   // combinedArrangement 多条且每条带 weekdays → 按星期排班
@@ -117,13 +157,13 @@ function inferSelectionMode(workTime: any, slots: ShiftSlot[]): SelectionMode {
  * 其他值（含未来未知值）一律按数据形态判断（fixedScheduleList → combinedArrangement → fixedTime）。
  * 没具体班次数据时上层会自然返回 null，不会误显示。
  */
-function looksLikeFlexibleArrangement(workTime: any): boolean {
+function looksLikeFlexibleArrangement(workTime: WorkTimeInput): boolean {
   const arrangementType = workTime?.dailyShiftSchedule?.arrangementType;
   if (typeof arrangementType === 'string' && /弹性|灵活/.test(arrangementType)) return true;
   return false;
 }
 
-function composeFlexibleSummary(workTime: any): string | null {
+function composeFlexibleSummary(workTime: WorkTimeInput): string | null {
   const month = workTime?.monthWorkTime;
   const day = workTime?.dayWorkTime;
   const monthMin = numberOf(month?.perMonthMinWorkTime);
@@ -308,5 +348,3 @@ function numberOf(value: unknown): number | null {
   }
   return null;
 }
-
-/* eslint-enable @typescript-eslint/no-explicit-any */
