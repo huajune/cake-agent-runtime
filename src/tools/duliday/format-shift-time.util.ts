@@ -93,13 +93,7 @@ function collectShiftSlots(workTime: any): ShiftSlot[] {
 }
 
 /** 选择关系：由 workTime 形态推断。 */
-type SelectionMode =
-  | 'single'
-  | 'pick_one'
-  | 'required_all'
-  | 'by_weekday'
-  | 'flexible_self_select'
-  | 'flexible_store';
+type SelectionMode = 'single' | 'pick_one' | 'by_weekday';
 
 function inferSelectionMode(workTime: any, slots: ShiftSlot[]): SelectionMode {
   if (slots.length === 1) return 'single';
@@ -108,23 +102,24 @@ function inferSelectionMode(workTime: any, slots: ShiftSlot[]): SelectionMode {
   const allHaveWeekdays = slots.every((s) => Boolean(s.weekdays));
   if (allHaveWeekdays) return 'by_weekday';
 
-  const arrangementType =
-    typeof workTime?.dailyShiftSchedule?.arrangementType === 'string'
-      ? workTime.dailyShiftSchedule.arrangementType
-      : '';
-
-  // 已知运营术语推断
-  if (/全做|必须|全排/.test(arrangementType)) return 'required_all';
-  if (/选|轮|换|可任选/.test(arrangementType)) return 'pick_one';
-
-  // 默认多档 = 候选人选其一（最常见）
+  // 多档 fixedScheduleList 的标准业务语义就是"候选人选其一"。
+  // arrangementType 字段实际值我们见过 '固定排班制'/'组合排班制'/'弹性' 等，
+  // 含义并不能可靠推断"必须全做"，保守默认 pick_one。
   return 'pick_one';
 }
 
-/** 弹性排班的简短描述（无具体时段）。 */
+/**
+ * 弹性排班识别 — 收紧到只识别"弹性/灵活"两个关键词，避免误判。
+ *
+ * 已知 arrangementType 真实值（来自代码内 fixture）：
+ * - '固定排班制' / '组合排班制' / '弹性'
+ * 这里**只**当 arrangementType 含 弹性 / 灵活 时走 flexible 分支；
+ * 其他值（含未来未知值）一律按数据形态判断（fixedScheduleList → combinedArrangement → fixedTime）。
+ * 没具体班次数据时上层会自然返回 null，不会误显示。
+ */
 function looksLikeFlexibleArrangement(workTime: any): boolean {
   const arrangementType = workTime?.dailyShiftSchedule?.arrangementType;
-  if (typeof arrangementType === 'string' && /弹性/.test(arrangementType)) return true;
+  if (typeof arrangementType === 'string' && /弹性|灵活/.test(arrangementType)) return true;
   return false;
 }
 
@@ -155,22 +150,7 @@ function formatSlots(slots: ShiftSlot[], mode: SelectionMode): string {
     return lines.join('\n');
   }
 
-  const header = (() => {
-    switch (mode) {
-      case 'pick_one':
-        return `班次可选其一：`;
-      case 'required_all':
-        return `每天必排（共 ${slots.length} 档）：`;
-      case 'flexible_self_select':
-        return `候选人自定义班次（参考时段）：`;
-      case 'flexible_store':
-        return `按门店排班（参考时段）：`;
-      default:
-        return `班次（共 ${slots.length} 档）：`;
-    }
-  })();
-
-  return `${header}\n${lines.join('\n')}`;
+  return `班次可选其一：\n${lines.join('\n')}`;
 }
 
 function formatSingleSlotLine(slot: ShiftSlot): string {
@@ -330,25 +310,3 @@ function numberOf(value: unknown): number | null {
 }
 
 /* eslint-enable @typescript-eslint/no-explicit-any */
-
-// ==================== 给 displayLine 用的紧凑版（单行） ====================
-
-/**
- * 给同品牌多门店 displayLine 用的紧凑表示。一行简短，多档时仅留时段串。
- */
-export function composeShiftTimeBrief(workTime: unknown): string | null {
-  const full = composeShiftTimeText(workTime as Record<string, unknown>);
-  if (!full) return null;
-  // single 形态：直接返回
-  if (!full.includes('\n')) return full;
-  // 多档：抽出每行的时段范围，用 / 拼
-  const lines = full.split('\n').filter((line) => line.startsWith('-'));
-  const ranges = lines
-    .map((line) => {
-      const m = line.match(/(\d{2}:\d{2}-(?:次日 )?\d{2}:\d{2})/);
-      return m ? m[1] : '';
-    })
-    .filter(Boolean);
-  if (ranges.length === 0) return null;
-  return ranges.join(' / ');
-}

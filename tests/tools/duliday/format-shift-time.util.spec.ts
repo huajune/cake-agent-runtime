@@ -1,7 +1,4 @@
-import {
-  composeShiftTimeBrief,
-  composeShiftTimeText,
-} from '@tools/duliday/format-shift-time.util';
+import { composeShiftTimeText } from '@tools/duliday/format-shift-time.util';
 
 describe('composeShiftTimeText', () => {
   describe('null cases', () => {
@@ -154,6 +151,54 @@ describe('composeShiftTimeText', () => {
       expect(text).toContain('弹性排班');
       expect(text).toContain('每月最少 80 小时');
     });
+
+    it('treats "灵活排班" as flexible', () => {
+      const text = composeShiftTimeText({
+        dailyShiftSchedule: { arrangementType: '灵活排班' },
+        monthWorkTime: { perMonthMinWorkTime: 60 },
+      });
+      expect(text).toContain('弹性排班');
+    });
+
+    it('does NOT treat unknown arrangementType (固定排班制 / 组合排班制 / 自由 / 轮班 etc.) as flexible', () => {
+      // 已知 fixture 真实值：'固定排班制' / '组合排班制'
+      // 未知/不识别值：让数据形态本身决定
+      const fixedSchedule = composeShiftTimeText({
+        dailyShiftSchedule: {
+          arrangementType: '固定排班制',
+          fixedScheduleList: [{ fixedShiftStartTime: '07:30', fixedShiftEndTime: '15:30' }],
+        },
+      });
+      expect(fixedSchedule).toContain('07:30-15:30');
+
+      const combinedSchedule = composeShiftTimeText({
+        dailyShiftSchedule: {
+          arrangementType: '组合排班制',
+          combinedArrangement: [
+            {
+              combinedArrangementStartTime: '11:30',
+              combinedArrangementEndTime: '13:30',
+              combinedArrangementWeekdays: '每周一,每周二,每周三,每周四,每周五',
+            },
+          ],
+        },
+      });
+      expect(combinedSchedule).toContain('11:30-13:30');
+
+      // 未知 arrangementType + 无具体班次 → null（不会误展示）
+      expect(
+        composeShiftTimeText({
+          dailyShiftSchedule: { arrangementType: '自由排班' },
+          monthWorkTime: { perMonthMinWorkTime: 80 },
+        }),
+      ).toBeNull();
+
+      expect(
+        composeShiftTimeText({
+          dailyShiftSchedule: { arrangementType: '轮班制' },
+        }),
+      ).toBeNull();
+    });
   });
 
   describe('priority: fixedScheduleList > combinedArrangement > fixedTime', () => {
@@ -173,34 +218,5 @@ describe('composeShiftTimeText', () => {
       expect(text).toContain('07:30-15:30');
       expect(text).not.toContain('09:00-18:00');
     });
-  });
-});
-
-describe('composeShiftTimeBrief', () => {
-  it('returns same single-line for single shift', () => {
-    expect(
-      composeShiftTimeBrief({
-        dailyShiftSchedule: {
-          fixedScheduleList: [{ fixedShiftStartTime: '07:30', fixedShiftEndTime: '15:30' }],
-        },
-      }),
-    ).toBe('07:30-15:30（早班，约 8 小时）');
-  });
-
-  it('compresses multi shift to time ranges joined by /', () => {
-    expect(
-      composeShiftTimeBrief({
-        dailyShiftSchedule: {
-          fixedScheduleList: [
-            { fixedShiftStartTime: '07:30', fixedShiftEndTime: '15:30' },
-            { fixedShiftStartTime: '15:30', fixedShiftEndTime: '23:30' },
-          ],
-        },
-      }),
-    ).toBe('07:30-15:30 / 15:30-23:30');
-  });
-
-  it('returns null when no shift data', () => {
-    expect(composeShiftTimeBrief({})).toBeNull();
   });
 });
