@@ -192,6 +192,7 @@ export class AnalyticsQueryService {
           totalFallbackSuccess: 0,
           totalOutputLeakSkipped: 0,
           totalSameBrandCollapseSkipped: 0,
+          totalPayrollDeferSkipped: 0,
         },
         percentiles: { p50: 0, p95: 0, p99: 0, p999: 0 },
         slowestRecords: [],

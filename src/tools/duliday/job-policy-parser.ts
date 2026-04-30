@@ -38,6 +38,17 @@ export interface FieldGuidance {
   fieldSignals: PolicyFieldSignal[];
 }
 
+/**
+ * 健康证业务口径 gate（运营拍版）：
+ *
+ * - `before_interview`：岗位明确收紧——必须先办好健康证才能约面试
+ *   触发关键词：有证约 / 持证上岗才能预约 / 先办证再约 / 必须有证才能约 / 有健康证才能预约
+ * - `before_onboard`：默认宽口径——面试不要求有证，上岗前办好即可
+ *   适用：健康证字段非空但无收紧关键词，或 jobName 含"餐饮/食品"等场景
+ * - `unknown`：岗位数据完全没提健康证（罕见，按宽口径处理但不主动提）
+ */
+export type HealthCertGate = 'before_interview' | 'before_onboard' | 'unknown';
+
 export interface JobPolicyAnalysis {
   interviewWindows: InterviewWindow[];
   fieldGuidance: FieldGuidance;
@@ -46,6 +57,7 @@ export interface JobPolicyAnalysis {
     ageRequirement: string;
     educationRequirement: string;
     healthCertificateRequirement: string;
+    healthCertGate: HealthCertGate;
     remark: string | null;
     interviewRemark: string | null;
     interviewSupplements: string[];
@@ -564,6 +576,56 @@ function extractRegistrationDeadline(fragment: string): string | null {
 }
 
 /**
+ * 健康证 gate 推断：
+ *
+ * - 收紧 (before_interview)：jobName / interviewProcess.remark / hiringRequirement.remark
+ *   任一字段命中收紧关键词
+ * - 否则若 cert.healthCertificate 非空 / interviewSupplements 含健康证 → before_onboard
+ * - 否则 unknown
+ */
+const HEALTH_CERT_TIGHT_KEYWORDS = [
+  '有证约',
+  '持证上岗才能预约',
+  '持证才能预约',
+  '先办健康证再约',
+  '先办证再约',
+  '必须有证才能约',
+  '有健康证才能预约',
+  '有健康证才能约',
+  '必须先办健康证',
+  '必须先有健康证',
+  '提前办好健康证',
+];
+
+function inferHealthCertGate(input: {
+  jobName: string | null;
+  healthCertRequirement: string | null;
+  interviewRemark: string | null;
+  requirementRemark: string | null;
+  interviewSupplements: string[];
+}): HealthCertGate {
+  const haystacks = [
+    input.jobName ?? '',
+    input.healthCertRequirement ?? '',
+    input.interviewRemark ?? '',
+    input.requirementRemark ?? '',
+    ...input.interviewSupplements,
+  ].filter(Boolean);
+  const joined = haystacks.join('\n');
+
+  for (const kw of HEALTH_CERT_TIGHT_KEYWORDS) {
+    if (joined.includes(kw)) return 'before_interview';
+  }
+
+  const hasAnyHealthCertSignal =
+    Boolean(input.healthCertRequirement && input.healthCertRequirement !== '不限') ||
+    /健康证/.test(joined);
+  if (hasAnyHealthCertSignal) return 'before_onboard';
+
+  return 'unknown';
+}
+
+/**
  * 把面试流程相关的三处原始字段（firstInterview.interviewDemand /
  * interviewProcess.remark / pickKeySentences 出的 timingHighlights）
  * 合成一段直接可读给候选人的话术。同义/重复句子去重，按"流程→时效"排序。
@@ -652,6 +714,13 @@ export function buildJobPolicyAnalysis(job: JobDetail): JobPolicyAnalysis {
       educationRequirement: normalizePolicyText(asString(cert?.education)) || '不限',
       healthCertificateRequirement:
         normalizePolicyText(asString(cert?.healthCertificate)) || '未明确要求',
+      healthCertGate: inferHealthCertGate({
+        jobName: normalizePolicyText(asString(asRecord(job.basicInfo)?.jobName)),
+        healthCertRequirement: normalizePolicyText(asString(cert?.healthCertificate)),
+        interviewRemark,
+        requirementRemark,
+        interviewSupplements,
+      }),
       remark: requirementRemark,
       interviewRemark,
       interviewSupplements,

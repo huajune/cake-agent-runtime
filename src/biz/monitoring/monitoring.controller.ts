@@ -159,6 +159,7 @@ export class MonitoringController {
       globalCounters,
       totalOutputLeakSkipped: globalCounters.totalOutputLeakSkipped,
       totalSameBrandCollapseSkipped: globalCounters.totalSameBrandCollapseSkipped,
+      totalPayrollDeferSkipped: globalCounters.totalPayrollDeferSkipped,
     };
   }
 
@@ -179,8 +180,16 @@ export class MonitoringController {
   @Post('global-counters/probe-skip')
   @HttpCode(200)
   async probeReplySkipped(@Body() body?: { messageId?: string; reason?: DeliverySkipReason }) {
-    const reason: DeliverySkipReason =
-      body?.reason === 'same_brand_collapse' ? 'same_brand_collapse' : 'output_leak';
+    const reason: DeliverySkipReason = (() => {
+      switch (body?.reason) {
+        case 'same_brand_collapse':
+        case 'payroll_defer_to_store':
+        case 'output_leak':
+          return body.reason;
+        default:
+          return 'output_leak';
+      }
+    })();
     const messageId = body?.messageId?.trim() || `monitoring-probe-${Date.now()}`;
 
     this.logger.warn(

@@ -23,6 +23,7 @@ export class MonitoringCacheService {
     totalFallbackSuccess: 0,
     totalOutputLeakSkipped: 0,
     totalSameBrandCollapseSkipped: 0,
+    totalPayrollDeferSkipped: 0,
   };
 
   constructor(private readonly redisService: RedisService) {}
@@ -58,6 +59,7 @@ export class MonitoringCacheService {
       totalFallbackSuccess: 0,
       totalOutputLeakSkipped: 0,
       totalSameBrandCollapseSkipped: 0,
+      totalPayrollDeferSkipped: 0,
     };
     this.logger.log('全局计数器已重置');
   }

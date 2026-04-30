@@ -29,6 +29,12 @@ import {
   sanitizeConstraintText,
   type JobPolicyAnalysis,
 } from '@tools/duliday/job-policy-parser';
+import {
+  classifyScheduleSemantic,
+  matchScheduleConstraint,
+  type CandidateScheduleConstraint,
+  type ScheduleSemantic,
+} from '@tools/duliday/schedule-semantic.util';
 
 // ==================== 常量 ====================
 
@@ -106,6 +112,18 @@ const inputSchema = z.object({
     .describe('返回招聘要求 - 默认true'),
   includeWorkTime: z.boolean().optional().default(true).describe('返回工作时间/班次 - 默认true'),
   includeInterviewProcess: z.boolean().optional().default(false).describe('返回面试流程'),
+
+  candidateScheduleConstraint: z
+    .object({
+      onlyWeekends: z.boolean().optional().describe('候选人只能周末上班'),
+      onlyEvenings: z.boolean().optional().describe('候选人只做晚班/晚上有空'),
+      onlyMornings: z.boolean().optional().describe('候选人只做早班'),
+      maxDaysPerWeek: z.number().int().min(1).max(7).optional().describe('候选人每周最多 N 天'),
+    })
+    .optional()
+    .describe(
+      '候选人班次硬约束。传入后，工具会按岗位 workTime 语义判定是否兼容；不兼容岗位会从结果中移除并在 queryMeta.scheduleFilter 里说明剔除数量。候选人明确表达"只能周末/只做晚班/每周最多两天"等班次硬约束时必须传，避免推荐工作日强排班/全周岗位。',
+    ),
 });
 
 // ==================== 通用工具函数 ====================
@@ -180,6 +198,57 @@ function scoreJobAgainstRequestedCategories(job: any, jobCategoryList: string[])
   }
 
   return score;
+}
+
+function formatScheduleConstraintLabel(c: CandidateScheduleConstraint): string {
+  const parts: string[] = [];
+  if (c.onlyWeekends) parts.push('只周末');
+  if (c.onlyEvenings) parts.push('只晚班');
+  if (c.onlyMornings) parts.push('只早班');
+  if (typeof c.maxDaysPerWeek === 'number') parts.push(`每周最多 ${c.maxDaysPerWeek} 天`);
+  return parts.join(' / ') || '未明确';
+}
+
+/**
+ * 按候选人班次硬约束过滤岗位 + 给每个保留岗位标 scheduleSemantic。
+ * 不兼容岗位被剔除并附原因。
+ */
+function applyScheduleConstraint(
+  jobs: any[],
+  constraint: CandidateScheduleConstraint | undefined,
+): {
+  jobs: any[];
+  excluded: Array<{ jobId: number | null; brandName: string | null; reason: string }>;
+} {
+  const excluded: Array<{ jobId: number | null; brandName: string | null; reason: string }> = [];
+  const kept: any[] = [];
+
+  for (const job of jobs) {
+    const analysis = buildJobPolicyAnalysis(job);
+    const workTimeText = job.workTime ? JSON.stringify(job.workTime) : '';
+    const semantics: ScheduleSemantic[] = classifyScheduleSemantic({
+      workTimeText,
+      interviewRemark: analysis.normalizedRequirements.interviewRemark,
+      requirementRemark: analysis.normalizedRequirements.remark,
+    });
+    job._scheduleSemantic = semantics;
+    if (!constraint) {
+      kept.push(job);
+      continue;
+    }
+    const result = matchScheduleConstraint(semantics, constraint);
+    if (result.matched) {
+      kept.push(job);
+    } else {
+      excluded.push({
+        jobId: typeof job.basicInfo?.jobId === 'number' ? job.basicInfo.jobId : null,
+        brandName: typeof job.basicInfo?.brandName === 'string' ? job.basicInfo.brandName : null,
+        reason: result.reason || '与候选人班次硬约束冲突',
+      });
+    }
+  }
+
+  return { jobs: kept, excluded };
 }
 
 function filterJobsByRequestedCategories(jobs: any[], jobCategoryList: string[]): any[] {
@@ -1500,6 +1569,7 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
         includeHiringRequirement = true,
         includeWorkTime = false,
         includeInterviewProcess = false,
+        candidateScheduleConstraint,
       }) => {
         const normalizedCityNameList = cityNameList.map((city) => city.trim()).filter(Boolean);
         const normalizedRegionNameList = regionNameList
@@ -1685,6 +1755,28 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
             return { error: '未找到符合条件的岗位' };
           }
 
+          // 候选人班次硬约束过滤（同时给保留岗位标 _scheduleSemantic）。
+          // 即使候选人没传约束，也要给所有岗位标语义，便于上层信号使用。
+          const scheduleFilterResult = applyScheduleConstraint(jobs, candidateScheduleConstraint);
+          jobs = scheduleFilterResult.jobs;
+          total = jobs.length;
+          if (
+            candidateScheduleConstraint &&
+            scheduleFilterResult.excluded.length > 0 &&
+            jobs.length === 0
+          ) {
+            return {
+              error: `按候选人班次约束（${formatScheduleConstraintLabel(candidateScheduleConstraint)}）过滤后无匹配岗位；建议候选人放宽时段或用 invite_to_group 拉群维护`,
+              queryMeta: {
+                scheduleFilter: {
+                  applied: true,
+                  excludedCount: scheduleFilterResult.excluded.length,
+                  excludedExamples: scheduleFilterResult.excluded.slice(0, 3),
+                },
+              },
+            };
+          }
+
           const flags: ProgressiveDisclosureFlags = {
             includeBasicInfo,
             includeJobSalary,
@@ -1722,6 +1814,14 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
             distanceThresholdKm: maxKm ?? null,
             distanceScanPages,
             distanceScanTruncated,
+            scheduleFilter: candidateScheduleConstraint
+              ? {
+                  applied: true,
+                  candidateConstraint: candidateScheduleConstraint,
+                  excludedCount: scheduleFilterResult.excluded.length,
+                  excludedExamples: scheduleFilterResult.excluded.slice(0, 5),
+                }
+              : { applied: false },
             brandNearestStores: brandGroups,
             // 同品牌≥2 家的硬约束信号（badcase laybqxn4）：LLM 必须按 displayLine
             // 转述同品牌门店，禁止把多家门店压成"有 X 品牌"。

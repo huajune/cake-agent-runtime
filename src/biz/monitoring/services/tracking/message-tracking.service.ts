@@ -160,8 +160,16 @@ export class MessageTrackingService {
    * 用于排障 / 回归测试断言。
    */
   recordReplySkipped(messageId: string, reason: DeliverySkipReason): void {
-    const counterKey: keyof MonitoringGlobalCounters =
-      reason === 'output_leak' ? 'totalOutputLeakSkipped' : 'totalSameBrandCollapseSkipped';
+    const counterKey: keyof MonitoringGlobalCounters = (() => {
+      switch (reason) {
+        case 'output_leak':
+          return 'totalOutputLeakSkipped';
+        case 'same_brand_collapse':
+          return 'totalSameBrandCollapseSkipped';
+        case 'payroll_defer_to_store':
+          return 'totalPayrollDeferSkipped';
+      }
+    })();
     this.cacheService.incrementCounter(counterKey, 1).catch((err) => {
       this.logger.warn(`更新 ${counterKey} 计数器失败 [${messageId}]:`, err);
     });

@@ -4,6 +4,7 @@ import { SendMessageType } from '../../message-sender/dto/send-message.dto';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { MessageSplitter } from '../utils/message-splitter.util';
 import { detectOutputLeak } from '../utils/output-leak-guard.util';
+import { detectPayrollDeferToStore } from '../utils/payroll-defer-guard.util';
 import { findCollapsedSameBrand } from '../utils/same-brand-collapse-guard.util';
 import { DeliveryContext, DeliveryResult, AgentReply, DeliveryFailureError } from '../types';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
@@ -243,8 +244,9 @@ export class MessageDeliveryService implements OnModuleInit {
 
   /**
    * 投递前回复内容兜底检查。命中任一规则即静默丢弃整条回复（不重试不告警）。
-   * - output_leak：模型暴露内部阶段术语 / 工具调用 / JSON / 代码块（badcase vllg7hlu）
-   * - same_brand_collapse：同品牌多门店被压缩成"X、X"（badcase laybqxn4）
+   * - output_leak：模型暴露内部阶段术语 / 工具调用 / JSON / 代码块
+   * - same_brand_collapse：同品牌多门店被压缩成"X、X"
+   * - payroll_defer_to_store：发薪问题甩给到店/面试时问店长（合规风险转嫁）
    */
   private findSkipReason(
     content: string,
@@ -264,6 +266,14 @@ export class MessageDeliveryService implements OnModuleInit {
         `[${contactName}] 检测到同品牌多门店被压缩 (brand="${collapsedBrand}")，丢弃回复: "${this.truncate(content)}"`,
       );
       return 'same_brand_collapse';
+    }
+
+    const payrollDefer = detectPayrollDeferToStore(content);
+    if (payrollDefer) {
+      this.logger.warn(
+        `[${contactName}] 检测到发薪问题被甩给到店/店长 (pattern=${payrollDefer.source})，丢弃回复: "${this.truncate(content)}"`,
+      );
+      return 'payroll_defer_to_store';
     }
 
     return null;
