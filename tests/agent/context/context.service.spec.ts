@@ -133,8 +133,8 @@ describe('ContextService', () => {
     expect(prompt).not.toContain('投递层会直接拦截');
     // v4 复盘：注意力被"日期已过"带跑的兜底（修复 005）
     expect(prompt).toContain('禁止只问候选人挑新日期就跳过工具');
-    // v4 复盘：两人分流红线（修复 012）
-    expect(prompt).toContain('两人结伴求职、当前门店名额不足时必须主动给就近分流方案');
+    // v4 复盘：两人分流红线（修复 012）已沉淀到 DB 红线，不再出现在 candidate-consultation.md
+    expect(prompt).not.toContain('两人结伴求职、当前门店名额不足时必须主动给就近分流方案');
     // 工具专属规则（如 bookingChecklist.collectionStrategy）已迁移到各工具的 description 字段，
     // 不再出现在主 system prompt 中。
     expect(prompt).not.toContain('# 工具手册');
