@@ -113,11 +113,13 @@ describe('ContextService', () => {
     expect(prompt).toContain('[用户档案]');
     expect(prompt).toContain('姓名: 张三');
     expect(prompt).toContain('先接情绪，再解释用途');
-    expect(prompt).toContain('includeWelfare` / `includeJobSalary`');
-    expect(prompt).toContain('未来某天才能面试');
-    // 同日面试承诺前必须 precheck（P2-002 修复）
+    // final-check 数据开关条目 — 已下沉到 duliday_job_list 工具描述（## 按候选人当前问题精确开启数据开关）
+    expect(prompt).not.toContain('includeWelfare` / `includeJobSalary`');
+    // final-check「未来某天才能面试」/「禁止承诺任何具体日期」— 已下沉到 duliday_interview_precheck 工具描述
+    expect(prompt).not.toContain('未来某天才能面试');
+    expect(prompt).not.toContain('禁止承诺任何具体日期');
+    // 主 prompt 第 12 条仍引用 duliday_interview_precheck 作为工具描述桥梁
     expect(prompt).toContain('duliday_interview_precheck');
-    expect(prompt).toContain('禁止承诺任何具体日期');
     // 工作班次 vs 面试时间澄清（P2-029 修复）
     expect(prompt).toContain('当前**工作班次**不合适');
     expect(prompt).toContain('提议的**面试时间**不合适');
@@ -125,8 +127,8 @@ describe('ContextService', () => {
     expect(prompt).not.toContain('候选人已明确表达时段/班次硬约束');
     // 13 多岗位分段输出 — 已下沉到 duliday_job_list 工具描述（## 回复展示要求），主 prompt 不再固化
     expect(prompt).not.toContain('推荐 2 个及以上岗位时必须分条分段输出');
-    // final-check 仍承担「岗位推荐主动展示薪资/班次」表达自检
-    expect(prompt).toContain('若本轮做了具体岗位推荐');
+    // final-check「岗位推荐主动展示薪资/班次」— 已下沉到 duliday_job_list 工具描述（## 回复展示要求），主 prompt/final-check 不再固化
+    expect(prompt).not.toContain('若本轮做了具体岗位推荐');
     // 16/17 约面前必跑 precheck — 已下沉到 duliday_interview_booking 工具描述（## 调用契约），主 prompt 改为引用「以工具描述为准」
     expect(prompt).not.toContain('进入收资/约面流程前必须先做面试预检');
     expect(prompt).toContain('以 [`duliday_interview_precheck`] 与 [`duliday_interview_booking`] 工具描述为准');
