@@ -1,5 +1,6 @@
 import { buildJobListTool } from '@tools/duliday-job-list.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
+import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 describe('buildJobListTool', () => {
   const mockSpongeService = {
@@ -108,7 +109,9 @@ describe('buildJobListTool', () => {
 
     const result = await executeTool();
 
-    expect(result.error).toContain('未找到');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+    expect(result.error).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+    expect(result._replyInstruction).toContain('invite_to_group');
   });
 
   it('should block region-only queries when city is missing', async () => {
@@ -118,8 +121,36 @@ describe('buildJobListTool', () => {
       regionNameList: ['徐汇'],
     });
 
-    expect(result).toEqual({ error: '需要城市信息，只有区，无法查询' });
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_MISSING_CITY_CONTEXT);
+    expect(result.error).toBe(TOOL_ERROR_TYPES.JOB_LIST_MISSING_CITY_CONTEXT);
+    expect(result._replyInstruction).toContain('城市');
+    expect(result._replyInstruction).not.toMatch(/上海|北京|杭州|成都/);
     expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+  });
+
+  it('should block store-only queries when city and coordinates are missing', async () => {
+    const result = await executeTool(mockContext, {
+      ...defaultInput,
+      cityNameList: [],
+      storeNameList: ['人民广场店'],
+    });
+
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_MISSING_CITY_CONTEXT);
+    expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
+  });
+
+  it('should allow region queries when coordinates are provided', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+
+    const result = await executeTool(mockContext, {
+      ...defaultInput,
+      cityNameList: [],
+      regionNameList: ['徐汇'],
+      location: { longitude: 121.45, latitude: 31.18 },
+    });
+
+    expect(result.errorType).not.toBe(TOOL_ERROR_TYPES.JOB_LIST_MISSING_CITY_CONTEXT);
+    expect(mockSpongeService.fetchJobs).toHaveBeenCalled();
   });
 
   it('should call onJobsFetched callback', async () => {
@@ -213,7 +244,9 @@ describe('buildJobListTool', () => {
 
     const result = await executeTool();
 
-    expect(result.error).toContain('API timeout');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED);
+    expect(result.reason).toBe('API timeout');
+    expect(result._replyInstruction).not.toContain('API timeout');
   });
 
   it('should prepend interview decision summary when requirement or interview flags are enabled', async () => {

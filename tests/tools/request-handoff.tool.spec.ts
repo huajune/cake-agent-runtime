@@ -1,5 +1,6 @@
 import { buildRequestHandoffTool } from '@tools/request-handoff.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
+import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 describe('buildRequestHandoffTool', () => {
   const interventionService = { dispatch: jest.fn() };
@@ -75,7 +76,10 @@ describe('buildRequestHandoffTool', () => {
       reason: '找不到门店',
     });
 
-    expect(result).toMatchObject({ dispatched: false, error: 'missing_chat_id' });
+    expect(result).toMatchObject({
+      dispatched: false,
+      errorType: TOOL_ERROR_TYPES.MISSING_CHAT_ID,
+    });
     expect(recruitmentCaseService.getActiveOnboardFollowupCase).not.toHaveBeenCalled();
     expect(interventionService.dispatch).not.toHaveBeenCalled();
   });
@@ -93,9 +97,9 @@ describe('buildRequestHandoffTool', () => {
     expect(result).toMatchObject({
       dispatched: false,
       shortCircuited: true,
-      error: 'no_active_case',
+      errorType: TOOL_ERROR_TYPES.NO_ACTIVE_CASE,
     });
-    expect(typeof result.instruction).toBe('string');
+    expect(typeof result._replyInstruction).toBe('string');
     expect(interventionService.dispatch).not.toHaveBeenCalled();
     await flushMicrotasks();
     expect(userHostingService.pauseUser).toHaveBeenCalledWith('chat-1');

@@ -1,5 +1,6 @@
 import { buildGeocodeTool } from '@tools/geocode.tool';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
+import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 describe('geocode tool', () => {
   const mockGeocodingService = {
@@ -41,17 +42,33 @@ describe('geocode tool', () => {
     (mockGeocodingService.geocode as jest.Mock).mockResolvedValue(null);
 
     const execute = (toolInstance as { execute: (args: Record<string, string>) => Promise<unknown> }).execute;
-    const result = await execute({ address: '不存在', city: '上海' });
+    const result = (await execute({ address: '不存在', city: '上海' })) as Record<string, unknown>;
 
-    expect(result).toEqual({ error: '无法解析地名: "不存在"' });
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.GEOCODE_UNRESOLVED_ADDRESS);
+    expect(result.error).toBe(TOOL_ERROR_TYPES.GEOCODE_UNRESOLVED_ADDRESS);
+    expect(result.address).toBe('不存在');
+    expect(result.city).toBe('上海');
+    expect(result._replyInstruction).toContain('确认');
   });
 
   it('should return error when geocoding service throws', async () => {
     (mockGeocodingService.geocode as jest.Mock).mockRejectedValue(new Error('API down'));
 
     const execute = (toolInstance as { execute: (args: Record<string, string>) => Promise<unknown> }).execute;
-    const result = await execute({ address: '九亭', city: '上海' });
+    const result = (await execute({ address: '九亭', city: '上海' })) as Record<string, unknown>;
 
-    expect(result).toEqual({ error: '地理编码失败: API down' });
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.GEOCODE_FAILED);
+    expect(result.error).toBe(TOOL_ERROR_TYPES.GEOCODE_FAILED);
+    expect(result.reason).toBe('API down');
+    expect(result._replyInstruction).toContain('稍等');
+  });
+
+  it('should reject when city is empty', async () => {
+    const execute = (toolInstance as { execute: (args: Record<string, string>) => Promise<unknown> }).execute;
+    const result = (await execute({ address: '九亭', city: '   ' })) as Record<string, unknown>;
+
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.GEOCODE_CITY_REQUIRED);
+    expect(result._replyInstruction).not.toMatch(/上海|北京|杭州|成都/);
+    expect(mockGeocodingService.geocode).not.toHaveBeenCalled();
   });
 });

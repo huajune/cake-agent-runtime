@@ -1,5 +1,6 @@
 import { buildInterviewPrecheckTool } from '@tools/duliday-interview-precheck.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
+import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 describe('buildInterviewPrecheckTool', () => {
   const mockSpongeService = {
@@ -93,11 +94,9 @@ describe('buildInterviewPrecheckTool', () => {
   it('should reject unsupported requested date strings', async () => {
     const result = await executeTool({ jobId: 100, requestedDate: 'next week' });
 
-    expect(result).toEqual({
-      success: false,
-      errorType: 'invalid_requested_date',
-      error: '无法识别的日期：next week',
-    });
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_INVALID_REQUESTED_DATE);
+    expect(result.detailedReason).toBe('无法识别的日期：next week');
   });
 
   it('should return job_not_found when Sponge returns no matching job', async () => {
@@ -106,8 +105,8 @@ describe('buildInterviewPrecheckTool', () => {
     const result = await executeTool({ jobId: 999, requestedDate: '2026-04-08' });
 
     expect(result.success).toBe(false);
-    expect(result.errorType).toBe('job_not_found');
-    expect(result.error).toContain('jobId=999');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_FOUND);
+    expect(result.detailedReason).toContain('jobId=999');
   });
 
   it('should mark future fixed interview dates as available', async () => {
@@ -1224,7 +1223,8 @@ describe('buildInterviewPrecheckTool', () => {
     const result = await executeTool({ jobId: 100 });
 
     expect(result.success).toBe(false);
-    expect(result.errorType).toBe('precheck_failed');
-    expect(result.error).toContain('API timeout');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_FAILED);
+    expect(result.reason).toBe('API timeout');
+    expect(result._replyInstruction).not.toContain('API timeout');
   });
 });

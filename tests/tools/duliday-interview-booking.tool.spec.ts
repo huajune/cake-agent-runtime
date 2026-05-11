@@ -1,12 +1,13 @@
+import { resolveInterviewType } from '@tools/duliday-interview-booking.tool';
 import {
   buildCustomerLabelList,
-  resolveInterviewType,
   type BuildCustomerLabelListParams,
   type BuildCustomerLabelListResult,
-} from '@tools/duliday-interview-booking.tool';
+} from '@tools/duliday/interview-booking-customer-label.builder';
 import type { SpongeInterviewSupplementDefinition } from '@sponge/sponge-job.util';
 import type { JobDetail } from '@sponge/sponge.types';
 import type { ToolBuildContext } from '@shared-types/tool.types';
+import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 function makeParams(
   override: Partial<BuildCustomerLabelListParams> = {},
@@ -23,9 +24,7 @@ function makeParams(
   };
 }
 
-function healthCertDefinition(
-  labelName: string,
-): SpongeInterviewSupplementDefinition {
+function healthCertDefinition(labelName: string): SpongeInterviewSupplementDefinition {
   return { labelId: 13, labelName, name: labelName };
 }
 
@@ -69,9 +68,7 @@ describe('buildCustomerLabelList — hasHealthCertificate 回填', () => {
     const result = expectSuccess(
       buildCustomerLabelList(
         makeParams({
-          supplementDefinitions: [
-            { labelId: 14, labelName: '健康证类型', name: '健康证类型' },
-          ],
+          supplementDefinitions: [{ labelId: 14, labelName: '健康证类型', name: '健康证类型' }],
           healthCertificateTypes: [1],
         }),
       ),
@@ -89,7 +86,7 @@ describe('buildCustomerLabelList — hasHealthCertificate 回填', () => {
       ),
     );
 
-    expect(result.errorType).toBe('missing_customer_label_values');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_CUSTOMER_LABEL_VALUES);
     expect(result.missingSupplementLabels).toEqual(['有无健康证']);
   });
 
@@ -135,4 +132,3 @@ describe('resolveInterviewType', () => {
     expect(resolveInterviewType(makeJob({ firstInterviewWay: '   ' }))).toBeUndefined();
   });
 });
-

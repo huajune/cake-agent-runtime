@@ -60,6 +60,8 @@ export interface GroupContext {
   labels?: string[];
   /** 托管账号 wxid（发消息用） */
   imBotId: string;
+  /** 托管账号 wecomUserId（企业级 addMember 的 botUserId）；与 imBotId 同步取自 botInfo */
+  botUserId?: string;
   /** 小组级 token（发消息用） */
   token: string;
   /** 对话 ID（小组级发消息用） */

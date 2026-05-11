@@ -10,6 +10,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { ToolBuilder } from '@shared-types/tool.types';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 const logger = new Logger('geocode');
 
@@ -54,11 +55,29 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
       description: DESCRIPTION,
       inputSchema,
       execute: async ({ address, city }) => {
+        const normalizedCity = city?.trim() ?? '';
+        if (!normalizedCity) {
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.GEOCODE_CITY_REQUIRED,
+            replyInstruction:
+              'city 是必填参数。优先用 [会话记忆] / [历史对话] 中候选人明示的城市；' +
+              '若候选人提到的地点公认唯一对应某城市，可基于通识补 city；' +
+              '地点存在歧义或无法确认唯一指向时，反问候选人所在城市，反问必须中性，不得带具体城市名。',
+          });
+        }
+
         try {
-          const result = await geocodingService.geocode(address, city);
+          const result = await geocodingService.geocode(address, normalizedCity);
 
           if (!result) {
-            return { error: `无法解析地名: "${address}"` };
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.GEOCODE_UNRESOLVED_ADDRESS,
+              replyInstruction:
+                '地名无法在当前城市内解析。先核对 address 与 city 是否对应；' +
+                '若候选人原话本就模糊（如只给出小区/楼栋俗称），向候选人确认更具体的地址或地标，' +
+                '再重新调用本工具；不要凭已有信息硬猜地点。',
+              details: { address, city: normalizedCity },
+            });
           }
 
           return {
@@ -72,7 +91,13 @@ export function buildGeocodeTool(geocodingService: GeocodingService): ToolBuilde
           };
         } catch (err) {
           logger.error('地理编码失败', err);
-          return { error: `地理编码失败: ${err instanceof Error ? err.message : '未知错误'}` };
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.GEOCODE_FAILED,
+            replyInstruction:
+              '地理编码接口暂时不可用。不要把异常信息原文转述给候选人；用招募者口吻说"这边稍等下"，' +
+              '可先基于已知城市/区域用 duliday_job_list 兜底，或调用 request_handoff 转人工。',
+            details: { reason: err instanceof Error ? err.message : '未知错误' },
+          });
         }
       },
     });

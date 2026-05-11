@@ -136,6 +136,58 @@ export class OpsCardRenderer {
     });
   }
 
+  buildInviteRejectedAlertCard(params: {
+    city: string;
+    industry?: string;
+    chatBotImId?: string;
+    chatBotUserId?: string;
+    rejectedGroups: Array<{
+      name: string;
+      imRoomId: string;
+      ownerBotImId?: string;
+      ownerBotUserId?: string;
+      error?: string;
+    }>;
+    atUsers?: FeishuReceiver[];
+  }): Record<string, unknown> {
+    const scope = `${params.city}${params.industry ? ` / ${params.industry}` : ''}`;
+    const chatBotLabel = params.chatBotUserId
+      ? `${params.chatBotUserId} (${params.chatBotImId ?? '-'})`
+      : (params.chatBotImId ?? '未知');
+
+    const rejectedLines = params.rejectedGroups.map((group, index) => {
+      const ownerLabel = group.ownerBotUserId
+        ? `${group.ownerBotUserId} (${group.ownerBotImId ?? '-'})`
+        : (group.ownerBotImId ?? '未知群主');
+      return [
+        `${index + 1}. **${group.name}**`,
+        `   - imRoomId: ${group.imRoomId}`,
+        `   - 群主 bot: ${ownerLabel}`,
+        `   - 错误: ${group.error ?? '-'}`,
+      ].join('\n');
+    });
+
+    const content = [
+      `**时间**: ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`,
+      '**级别**: WARNING',
+      `**范围**: ${scope}`,
+      `**接客 bot**: ${chatBotLabel}`,
+      `**结论**: 接客 bot 在该城市/行业的全部候选群里都被拒绝（典型为 errcode=400400 "room not found"，即接客 bot 不是群成员）`,
+      '**修复动作**: 在企微后台把"接客 bot"拉进下方列出的群，或与群主确认 bot 关系',
+      `**被拒群数**: ${params.rejectedGroups.length}`,
+      '',
+      '**被拒群明细**',
+      ...rejectedLines,
+    ].join('\n');
+
+    return this.cardBuilder.buildMarkdownCard({
+      title: `⚠️ 接客 bot 拉群被拒 — ${scope}`,
+      content,
+      color: 'red',
+      atUsers: params.atUsers,
+    });
+  }
+
   buildGroupFullAlertCard(params: {
     city: string;
     industry?: string;

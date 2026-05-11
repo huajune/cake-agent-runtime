@@ -15,6 +15,7 @@ import {
   SPONGE_PROVINCE_MAPPING,
 } from '@sponge/sponge.enums';
 import { ToolBuilder } from '@shared-types/tool.types';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { formatLocalDate, getTomorrowDate } from '@infra/utils/date.util';
 import { stripNullish } from '@infra/utils/object.util';
 import {
@@ -44,6 +45,55 @@ import {
 import { isLikelyRealChineseName } from '@memory/facts/name-guard';
 
 const logger = new Logger('duliday_interview_precheck');
+
+const DESCRIPTION = `面试前置校验。本工具负责解释岗位规则、返回筛选条件和收资策略，**不负责真正提交预约**（真正提交用 duliday_interview_booking）。
+
+## 何时调用
+- 候选人问"今天可以吗"、"什么时候可以面试"、"要准备什么资料"、"还需要我提供什么信息"时优先调用
+- 回答"今天可以吗/哪天能面/要补哪些资料"前，先看此工具结果；不要只根据 duliday_job_list 的摘要或自己理解直接回答
+- 候选人明确提出日期或时间（如"后天最好"、"5月1号回来面试可以吗"、"今天六点才能下班可以去面试吗"）时，必须带 requestedDate 调用；当前焦点岗位不明确时，先确认门店/岗位，不得凭记忆给出可约日期
+- 收资/约面过程中候选人补充"每周最多两天/做一休一/只周末/不上夜班/下班后/六点才下班/现在决定不了时间"等硬约束时，先用本工具和/或 duliday_job_list(includeWorkTime=true) 校验当前岗位是否匹配，再决定是否继续收资
+- **进入收资场景前必须先调本工具一次**：候选人明确表达约面意向（"需要面试吗 / 帮我约 / 这家可以"等）后，**第一步必须先调本工具拿到 bookingChecklist.requiredFieldsToCollectNow 与 nameFieldGuard**，再按工具结果一次性发资料模板；严禁绕过工具直接问"哪天方便"或"叫什么"等碎片化收资
+
+## 参数
+- jobId：岗位 ID（必填）
+- requestedDate：**仅当**候选人明确说出想约的具体日期时才传入（如 today / 明天 / 下周三 / YYYY-MM-DD）。候选人只是泛泛询问时不要传
+
+## 返回字段
+- interview.scheduleRule：岗位的面试周期规则，例如"周一至周五 13:30-16:30，当天 12:00 前报名"。用来回答"还有别的时间吗/下周能约吗"这类开放问题
+- interview.upcomingTimeOptions：未来 7 天实际可约时段的示例 label 数组（已自动过滤报名截止已过的时段）。用来回答"给我几个时间选选"
+- interview.bookableSlots：结构化可约时段。只有 bookingAllowed=true 且带 interviewTime 的 slot 才能进入 duliday_interview_booking；bookingAllowed=false / dateOnly=true 表示只确定日期、不确定具体面试时间，必须先人工确认，严禁拿 registrationDeadline 当 interviewTime
+- interview.requestedDate：只有在传入 requestedDate 时才有；包含 status（available / unavailable / needs_confirmation）和 reason
+- interview.flowDescription / interview.processRemark / interview.timingHighlights：岗位面试流程的事实描述，含"线上 AI 面试 / 二维码会发到企微 / 保持电话畅通 / 24 小时出结果 / 入职前必须办好健康证"等关键流程。**预约成功后或候选人问"怎么面/什么形式/会发什么"时必须按这些字段照念**，不得凭 method 字段（仅"线上/线下"两个字）自己编流程。北京必胜客等品牌的 AI 面试码、流程节奏都在这里
+- screeningCriteria：岗位硬性筛选条件（性别/年龄/学历/健康证/是否学生等），**用来筛人**——候选人不符合时直接说明，不要继续往下引导
+- healthCertGate：健康证业务口径，三选一：
+  - "before_interview"：岗位明确收紧，必须先确认候选人有食品健康证才能继续约面；无证时直接说明"这家要求先有证才能约"并给办证建议
+  - "before_onboard"：默认宽口径（多数岗位走这条），不要在约面前主动追问健康证；约面成功或推进入岗讨论时告知"上岗前要办好食品健康证"即可
+  - "unknown"：岗位数据没提健康证，按宽口径处理但不主动提
+- screeningChecks：岗位后台把约束语义直接配在 supplement label 里的那一类筛选题（例如 "是否学生（不要学生）"、"专业（非新媒、食品）"、"周四六日都能上班吗"）。**用来筛人**——必须先独立向候选人核对，候选人答案命中 failSignals 就停止收资、走婉拒/拉群，不得继续 booking；但 "食品类健康证/食品健康证/餐饮健康证" 是健康证类型，不是专业答案，遇到专业筛选题时必须澄清实际专业
+- bookingChecklist.missingFields：预约还缺哪些字段（已剔除 screeningChecks 列出的筛选型 label）
+- bookingChecklist.requiredFieldsToCollectNow：当前阶段必须立刻收齐的字段（missingFields 的扁平副本，便于一次性补问；若数组非空，回复必须把这些字段写成模板让候选人一次性填齐）
+- bookingChecklist.templateText：正常收资场景下可直接参考的话术模板，已根据会话上下文预填已知字段
+- bookingChecklist.enumHints：只包含 missingFields 涉及字段的合法枚举
+- bookingChecklist.collectionStrategy：当前更适合一次性收资还是渐进式收资；若候选人已表现出抗拒，会返回 starterFields 供你先降负担推进
+- nameFieldGuard：仅当当前已知姓名不像真名时返回（suspicious=true）；意味着 knownFieldMap 里的"姓名"是昵称或占位串，**严禁**在 booking 里复用——必须先向候选人补问真实姓名后再覆写
+- apiPayloadGuide：最新 supplier/entryUser 契约入参指引
+
+## 硬规则
+- 面试时段是**周期性规则**，不是"固定几个名额"。即使 upcomingTimeOptions 只列出几条，也要结合 scheduleRule 理解完整规则，不得说"只有这几个时间可以约"
+- "报名截止/registrationDeadline" 只表示最晚提交预约的时间，**绝不是面试时间**；严禁把报名截止时间传给 duliday_interview_booking
+- 若 bookableSlots 中目标日期的 slot 为 dateOnly=true 或 bookingAllowed=false，只能告诉候选人"日期可以/线上面试但具体时间需确认"，不要调用 duliday_interview_booking
+- 若 interview.requestedDate.status 为 unavailable，必须直接说明原因，不得继续引导候选人填写资料假装可以预约
+- 若 interview.requestedDate.status 为 needs_confirmation，先表述"我先帮你确认下今天还能不能约"，不要直接承诺可以，也不要输出生硬的规则解释句
+- 候选人指定的未来日期不可约时，只能说明该日期不可约并给出工具返回的最近可选时段，不能擅自把候选人改到更近/更远日期，也不能继续催今天/明天
+- 候选人只是询问规则或资料时，先解释规则；不要跳过校验直接进入 duliday_interview_booking
+- 当 nextAction = collect_fields 时，bookingChecklist.templateText 只是默认模板，不是必须逐字复读的指令；正常收资场景优先参考它一次性收集资料，但不要为了守模板而忽略候选人当前情绪
+- 当候选人已经给过姓名、电话、年龄、学历、面试时间等字段时，使用 bookingChecklist.knownFieldMap / missingFields 只补问缺失项；不要让候选人重填已给字段
+- **nameFieldGuard.suspicious=true 时**：当前 sessionFacts 里的姓名是昵称/占位串，必须**用 templateText 中"姓名："字段为空让候选人填**；严禁基于 knownFieldMap.姓名 直接进入 booking。Agent 回复必须含一句"门店登记需要本名"或同义请求，让候选人主动给出真实姓名后再覆写
+- 若候选人当轮出现抗拒、不耐烦、拒绝填写、嫌麻烦或辱骂，立即暂停模板化收资；先共情并解释用途，再按 bookingChecklist.collectionStrategy 里的 starterFields 降负担推进，不要继续追整张字段清单
+- 只有在候选人恢复配合、且没有明显情绪阻力时，才恢复完整字段清单或继续进入预约
+- 若返回了 screeningChecks，在把 templateText 发给候选人之前，**必须**用自然话术核对每一条的通过条件；候选人在专业筛选题里明确回答"我是食品专业/学食品"，或在出勤筛选题里回答"不一定"等命中 failSignals 的答案时，立即停止收资、婉拒并走 invite_to_group 或 request_handoff。若候选人说的是"食品类健康证/食品健康证/餐饮健康证"，不要当成专业不合格，先澄清专业
+- **班次硬约束与岗位 workTime 不重叠时禁约面**：候选人 schedule 硬约束（"做一休一/每周最多两天/只周末/不上夜班/下班后/六点才下班"等）与当前候选岗位的工作时间无重叠时，禁止继续 collect_fields/duliday_interview_booking 进入约面流程，必须先用 duliday_job_list(includeWorkTime=true) 校验确认无匹配，再婉拒并走 invite_to_group。已经识别为不匹配仍继续收资约面 = 通融式推荐`;
 
 const inputSchema = z.object({
   jobId: z.number().describe('岗位 ID'),
@@ -1140,65 +1190,21 @@ function evaluateRequestedDate(params: {
 export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBuilder {
   return (context) =>
     tool({
-      description: `面试前置校验。本工具负责解释岗位规则、返回筛选条件和收资策略，**不负责真正提交预约**（真正提交用 duliday_interview_booking）。
-
-## 何时调用
-- 候选人问"今天可以吗"、"什么时候可以面试"、"要准备什么资料"、"还需要我提供什么信息"时优先调用
-- 回答"今天可以吗/哪天能面/要补哪些资料"前，先看此工具结果；不要只根据 duliday_job_list 的摘要或自己理解直接回答
-- 候选人明确提出日期或时间（如"后天最好"、"5月1号回来面试可以吗"、"今天六点才能下班可以去面试吗"）时，必须带 requestedDate 调用；当前焦点岗位不明确时，先确认门店/岗位，不得凭记忆给出可约日期
-- 收资/约面过程中候选人补充"每周最多两天/做一休一/只周末/不上夜班/下班后/六点才下班/现在决定不了时间"等硬约束时，先用本工具和/或 duliday_job_list(includeWorkTime=true) 校验当前岗位是否匹配，再决定是否继续收资
-- **进入收资场景前必须先调本工具一次**：候选人明确表达约面意向（"需要面试吗 / 帮我约 / 这家可以"等）后，**第一步必须先调本工具拿到 bookingChecklist.requiredFieldsToCollectNow 与 nameFieldGuard**，再按工具结果一次性发资料模板；严禁绕过工具直接问"哪天方便"或"叫什么"等碎片化收资
-
-## 参数
-- jobId：岗位 ID（必填）
-- requestedDate：**仅当**候选人明确说出想约的具体日期时才传入（如 today / 明天 / 下周三 / YYYY-MM-DD）。候选人只是泛泛询问时不要传
-
-## 返回字段
-- interview.scheduleRule：岗位的面试周期规则，例如"周一至周五 13:30-16:30，当天 12:00 前报名"。用来回答"还有别的时间吗/下周能约吗"这类开放问题
-- interview.upcomingTimeOptions：未来 7 天实际可约时段的示例 label 数组（已自动过滤报名截止已过的时段）。用来回答"给我几个时间选选"
-- interview.bookableSlots：结构化可约时段。只有 bookingAllowed=true 且带 interviewTime 的 slot 才能进入 duliday_interview_booking；bookingAllowed=false / dateOnly=true 表示只确定日期、不确定具体面试时间，必须先人工确认，严禁拿 registrationDeadline 当 interviewTime
-- interview.requestedDate：只有在传入 requestedDate 时才有；包含 status（available / unavailable / needs_confirmation）和 reason
-- interview.flowDescription / interview.processRemark / interview.timingHighlights：岗位面试流程的事实描述，含"线上 AI 面试 / 二维码会发到企微 / 保持电话畅通 / 24 小时出结果 / 入职前必须办好健康证"等关键流程。**预约成功后或候选人问"怎么面/什么形式/会发什么"时必须按这些字段照念**，不得凭 method 字段（仅"线上/线下"两个字）自己编流程。北京必胜客等品牌的 AI 面试码、流程节奏都在这里
-- screeningCriteria：岗位硬性筛选条件（性别/年龄/学历/健康证/是否学生等），**用来筛人**——候选人不符合时直接说明，不要继续往下引导
-- healthCertGate：健康证业务口径，三选一：
-  - "before_interview"：岗位明确收紧，必须先确认候选人有食品健康证才能继续约面；无证时直接说明"这家要求先有证才能约"并给办证建议
-  - "before_onboard"：默认宽口径（多数岗位走这条），不要在约面前主动追问健康证；约面成功或推进入岗讨论时告知"上岗前要办好食品健康证"即可
-  - "unknown"：岗位数据没提健康证，按宽口径处理但不主动提
-- screeningChecks：岗位后台把约束语义直接配在 supplement label 里的那一类筛选题（例如 "是否学生（不要学生）"、"专业（非新媒、食品）"、"周四六日都能上班吗"）。**用来筛人**——必须先独立向候选人核对，候选人答案命中 failSignals 就停止收资、走婉拒/拉群，不得继续 booking；但 "食品类健康证/食品健康证/餐饮健康证" 是健康证类型，不是专业答案，遇到专业筛选题时必须澄清实际专业
-- bookingChecklist.missingFields：预约还缺哪些字段（已剔除 screeningChecks 列出的筛选型 label）
-- bookingChecklist.requiredFieldsToCollectNow：当前阶段必须立刻收齐的字段（missingFields 的扁平副本，便于一次性补问；若数组非空，回复必须把这些字段写成模板让候选人一次性填齐）
-- bookingChecklist.templateText：正常收资场景下可直接参考的话术模板，已根据会话上下文预填已知字段
-- bookingChecklist.enumHints：只包含 missingFields 涉及字段的合法枚举
-- bookingChecklist.collectionStrategy：当前更适合一次性收资还是渐进式收资；若候选人已表现出抗拒，会返回 starterFields 供你先降负担推进
-- nameFieldGuard：仅当当前已知姓名不像真名时返回（suspicious=true）；意味着 knownFieldMap 里的"姓名"是昵称或占位串，**严禁**在 booking 里复用——必须先向候选人补问真实姓名后再覆写
-- apiPayloadGuide：最新 supplier/entryUser 契约入参指引
-
-## 硬规则
-- 面试时段是**周期性规则**，不是"固定几个名额"。即使 upcomingTimeOptions 只列出几条，也要结合 scheduleRule 理解完整规则，不得说"只有这几个时间可以约"
-- "报名截止/registrationDeadline" 只表示最晚提交预约的时间，**绝不是面试时间**；严禁把报名截止时间传给 duliday_interview_booking
-- 若 bookableSlots 中目标日期的 slot 为 dateOnly=true 或 bookingAllowed=false，只能告诉候选人"日期可以/线上面试但具体时间需确认"，不要调用 duliday_interview_booking
-- 若 interview.requestedDate.status 为 unavailable，必须直接说明原因，不得继续引导候选人填写资料假装可以预约
-- 若 interview.requestedDate.status 为 needs_confirmation，先表述"我先帮你确认下今天还能不能约"，不要直接承诺可以，也不要输出生硬的规则解释句
-- 候选人指定的未来日期不可约时，只能说明该日期不可约并给出工具返回的最近可选时段，不能擅自把候选人改到更近/更远日期，也不能继续催今天/明天
-- 候选人只是询问规则或资料时，先解释规则；不要跳过校验直接进入 duliday_interview_booking
-- 当 nextAction = collect_fields 时，bookingChecklist.templateText 只是默认模板，不是必须逐字复读的指令；正常收资场景优先参考它一次性收集资料，但不要为了守模板而忽略候选人当前情绪
-- 当候选人已经给过姓名、电话、年龄、学历、面试时间等字段时，使用 bookingChecklist.knownFieldMap / missingFields 只补问缺失项；不要让候选人重填已给字段
-- **nameFieldGuard.suspicious=true 时**：当前 sessionFacts 里的姓名是昵称/占位串，必须**用 templateText 中"姓名："字段为空让候选人填**；严禁基于 knownFieldMap.姓名 直接进入 booking。Agent 回复必须含一句"门店登记需要本名"或同义请求，让候选人主动给出真实姓名后再覆写
-- 若候选人当轮出现抗拒、不耐烦、拒绝填写、嫌麻烦或辱骂，立即暂停模板化收资；先共情并解释用途，再按 bookingChecklist.collectionStrategy 里的 starterFields 降负担推进，不要继续追整张字段清单
-- 只有在候选人恢复配合、且没有明显情绪阻力时，才恢复完整字段清单或继续进入预约
-- 若返回了 screeningChecks，在把 templateText 发给候选人之前，**必须**用自然话术核对每一条的通过条件；候选人在专业筛选题里明确回答"我是食品专业/学食品"，或在出勤筛选题里回答"不一定"等命中 failSignals 的答案时，立即停止收资、婉拒并走 invite_to_group 或 request_handoff。若候选人说的是"食品类健康证/食品健康证/餐饮健康证"，不要当成专业不合格，先澄清专业
-- **班次硬约束与岗位 workTime 不重叠时禁约面**：候选人 schedule 硬约束（"做一休一/每周最多两天/只周末/不上夜班/下班后/六点才下班"等）与当前候选岗位的工作时间无重叠时，禁止继续 collect_fields/duliday_interview_booking 进入约面流程，必须先用 duliday_job_list(includeWorkTime=true) 校验确认无匹配，再婉拒并走 invite_to_group。已经识别为不匹配仍继续收资约面 = 通融式推荐`,
+      description: DESCRIPTION,
       inputSchema,
       execute: async ({ jobId, requestedDate }) => {
         logger.log(`面试前置校验: jobId=${jobId}, requestedDate=${requestedDate ?? 'none'}`);
 
         const normalizedDate = normalizeRequestedDate(requestedDate);
         if (normalizedDate.error) {
-          return {
-            success: false,
-            errorType: 'invalid_requested_date',
-            error: normalizedDate.error,
-          };
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.PRECHECK_INVALID_REQUESTED_DATE,
+            outcome: '前置校验失败（日期非法）',
+            replyInstruction:
+              'requestedDate 无法解析。先和候选人确认具体日期（如"明天/这周六/4 月 28 日"），' +
+              '解析为 YYYY-MM-DD 后重新调用本工具。禁止凭印象生成日期。',
+            details: { detailedReason: normalizedDate.error },
+          });
         }
 
         try {
@@ -1215,11 +1221,14 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
 
           const job = jobs[0];
           if (!job?.basicInfo) {
-            return {
-              success: false,
-              errorType: 'job_not_found',
-              error: `未找到 jobId=${jobId} 对应的岗位`,
-            };
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_FOUND,
+              outcome: '前置校验失败（未找到岗位）',
+              replyInstruction:
+                '当前 jobId 对应的岗位查不到。先用 duliday_job_list 重新核对岗位状态；' +
+                '不要透露 jobId 或接口细节给候选人。',
+              details: { jobId, detailedReason: `未找到 jobId=${jobId} 对应的岗位` },
+            });
           }
 
           const analysis = buildJobPolicyAnalysis(job);
@@ -1411,11 +1420,14 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
           });
         } catch (err) {
           logger.error('面试前置校验失败', err);
-          return {
-            success: false,
-            errorType: 'precheck_failed',
-            error: `面试前置校验失败: ${err instanceof Error ? err.message : '未知错误'}`,
-          };
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.PRECHECK_FAILED,
+            outcome: '前置校验接口异常',
+            replyInstruction:
+              '前置校验接口暂时不可用。不要把异常信息转述给候选人；用招募者口吻安抚"这边稍等下"，' +
+              '可调用 request_handoff 转人工。',
+            details: { reason: err instanceof Error ? err.message : '未知错误' },
+          });
         }
       },
     });

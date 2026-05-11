@@ -23,6 +23,7 @@ import {
   stripLaborFormFromCategories,
 } from '@memory/facts/labor-form';
 import { ToolBuilder } from '@shared-types/tool.types';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import {
   buildJobPolicyAnalysis,
   cleanPolicyText,
@@ -1590,8 +1591,27 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
           .map((region) => region.trim())
           .filter(Boolean);
 
-        if (normalizedRegionNameList.length > 0 && normalizedCityNameList.length === 0) {
-          return { error: '需要城市信息，只有区，无法查询' };
+        // 缺城市上下文兜底：用户给了区/门店/商圈级位置线索，但既没传 cityNameList
+        // 也没有 location 坐标（geocode 拿到的经纬度）。badcase 簇 missing_city_context
+        // （v3nexby8/spen553o/o1intrqf/jqhr3kku）：Agent 在没有城市的情况下直接预设
+        // "是上海吗" 或脑补"合川=重庆"，导致跨城误判。
+        const hasCity = normalizedCityNameList.length > 0;
+        const hasCoordinates = location?.longitude != null && location?.latitude != null;
+        const hasRegionalIntent =
+          normalizedRegionNameList.length > 0 ||
+          storeNameList.length > 0 ||
+          projectNameList.length > 0;
+
+        if (hasRegionalIntent && !hasCity && !hasCoordinates) {
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.JOB_LIST_MISSING_CITY_CONTEXT,
+            outcome: '查询前置缺城市',
+            replyInstruction:
+              '查询前必须先确定候选人所在城市。处理顺序：' +
+              '(1) 先检查 [会话记忆] / [历史对话] 中候选人是否已明示城市；' +
+              '(2) 若候选人提到的地点是公认唯一对应某城市的著名地标，可基于通识补 city 后先调 geocode 验证，再重新调本工具；' +
+              '(3) 地点存在多城市同名、属于连锁名称、或无法确认唯一指向时，反问候选人所在城市；反问必须中性，不得带具体城市名。',
+          });
         }
 
         // 兜底：剔除 jobCategoryList 中的用工形式词（兼职/全职/小时工/寒假工/暑假工 等）。
@@ -1749,9 +1769,16 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
               );
               total = jobs.length;
               if (beforeCount > 0 && jobs.length === 0) {
-                return {
-                  error: `附近 ${maxKm}km 内没有符合条件的岗位，可以尝试扩大搜索范围`,
-                };
+                return buildToolError({
+                  errorType: TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS,
+                  outcome: `附近 ${maxKm}km 内无符合岗位`,
+                  replyInstruction:
+                    '附近半径内已过滤为空。先尝试一次合理范围内的扩面（同城邻区 / 放宽距离 / 同品牌邻店），' +
+                    '本轮直接执行，不要向候选人多问。' +
+                    '若扩面后仍无结果，按"无岗动作链"直接告知候选人"暂时没有合适岗位"并调用 invite_to_group 拉群维护，' +
+                    '禁止反问"换品牌 / 换城市 / 别的区域"。',
+                  details: { maxKm },
+                });
               }
             }
 
@@ -1766,7 +1793,15 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
           }
 
           if (jobs.length === 0) {
-            return { error: '未找到符合条件的岗位' };
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS,
+              outcome: '未找到符合条件的岗位',
+              replyInstruction:
+                '本次查询无匹配岗位。先核对是否用了 storeNameList / brandAliasList 等低稳定字段；' +
+                '是则换 regionNameList / brandIdList 重试一次。' +
+                '若已是高稳定字段仍为 0，如实告知候选人"暂时没有合适岗位"并调用 invite_to_group 拉群维护，' +
+                '禁止反问"换品牌 / 换城市 / 别的区域"；候选人主动追问扩张时同样按此动作链处理。',
+            });
           }
 
           // 候选人班次硬约束过滤（同时给保留岗位标 _scheduleSemantic）。
@@ -1779,16 +1814,27 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
             scheduleFilterResult.excluded.length > 0 &&
             jobs.length === 0
           ) {
-            return {
-              error: `按候选人班次约束（${formatScheduleConstraintLabel(candidateScheduleConstraint)}）过滤后无匹配岗位；建议候选人放宽时段或用 invite_to_group 拉群维护`,
-              queryMeta: {
-                scheduleFilter: {
-                  applied: true,
-                  excludedCount: scheduleFilterResult.excluded.length,
-                  excludedExamples: scheduleFilterResult.excluded.slice(0, 3),
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.JOB_LIST_SCHEDULE_FILTER_EMPTY,
+              outcome: '班次约束过滤后无匹配岗位',
+              replyInstruction:
+                '本轮工具结果经候选人班次硬约束过滤后为空。' +
+                '先如实告知候选人"在你的班次约束下，附近暂时没有合适的岗位"，' +
+                '再询问是否可以放宽时段；若候选人不愿放宽，调用 invite_to_group 拉群维护。' +
+                '禁止把被剔除的岗位再以"差不多"包装回去。',
+              details: {
+                queryMeta: {
+                  scheduleFilter: {
+                    applied: true,
+                    excludedCount: scheduleFilterResult.excluded.length,
+                    excludedExamples: scheduleFilterResult.excluded.slice(0, 3),
+                  },
                 },
+                candidateConstraintLabel: formatScheduleConstraintLabel(
+                  candidateScheduleConstraint,
+                ),
               },
-            };
+            });
           }
 
           const flags: ProgressiveDisclosureFlags = {
@@ -1859,9 +1905,14 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
           return result;
         } catch (err) {
           logger.error('获取岗位列表失败', err);
-          return {
-            error: `获取岗位列表失败: ${err instanceof Error ? err.message : '未知错误'}`,
-          };
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.JOB_LIST_FETCH_FAILED,
+            outcome: '岗位查询接口失败',
+            replyInstruction:
+              '岗位查询接口暂时不可用。不要把异常信息原文转述给候选人；用招募者口吻安抚"这边稍等下"，' +
+              '基于 [会话记忆] 已展示岗位维持上下文，必要时调用 request_handoff 转人工。',
+            details: { reason: err instanceof Error ? err.message : '未知错误' },
+          });
         }
       },
     });
