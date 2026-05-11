@@ -16,10 +16,37 @@ import { FeishuTestStatus } from '../enums/test.enum';
  * - 直接回写飞书记录（按 record ID）
  * - 回写回归验证相似度分数
  */
+/**
+ * 飞书 recordId 模式：`rec` 前缀 + 至少 8 位字母/数字。
+ *
+ * 历史背景：`test_executions.case_id` 字段在两条创建路径上语义不一致：
+ * - **curated-dataset-import 路径**：导入飞书测试集时存的是飞书 recordId（rec... 开头）
+ * - **direct batch 路径**：从本地 curated JSON 直接创建批次时存的是稳定 caseId（如 `P1-SCN-spen553o`）
+ *
+ * writeBack 服务历史上把 case_id 直接当 recordId 调飞书更新接口，遇到 direct batch
+ * 路径就 RecordIdNotFound。本服务统一在更新前调用 `resolveFeishuRecordId` 兼容两种形态。
+ */
+const FEISHU_RECORD_ID_PATTERN = /^rec[a-zA-Z0-9]{8,}$/;
+
+/** 用于在飞书测试集 / 验证集中按业务稳定 ID 反查 recordId 的字段别名。 */
+const STABLE_ID_FIELD_ALIASES = {
+  testSuite: ['用例ID', 'caseId'] as const,
+  validationSet: ['验证ID', 'validationId'] as const,
+};
+
+type DatasetTable = 'testSuite' | 'validationSet';
+
 @Injectable()
 export class TestWriteBackService {
   private readonly logger = new Logger(TestWriteBackService.name);
   private readonly fieldResolutionCache = new Map<string, Record<string, string | undefined>>();
+  /**
+   * caseId → 飞书 recordId 反查缓存（per process）。
+   *
+   * key: `${dataset}:${caseId}`，value: recordId（命中）或 null（已查但飞书侧不存在）。
+   * 进程内永久缓存——caseId ↔ recordId 关系在飞书侧稳定（除非整条 case 被删除重建）。
+   */
+  private readonly stableIdLookupCache = new Map<string, string | null>();
   private readonly updateRetryDelaysMs = [300, 900];
 
   constructor(
@@ -27,6 +54,68 @@ export class TestWriteBackService {
     private readonly bitableApi: FeishuBitableApiService,
   ) {
     this.logger.log('TestWriteBackService 初始化完成');
+  }
+
+  /**
+   * 把 case_id 字段值（可能是飞书 recordId，也可能是业务稳定 caseId）统一解析为飞书 recordId。
+   *
+   * @returns recordId 或 null（飞书侧不存在；调用方应放弃写回并返回明确错误）
+   */
+  private async resolveFeishuRecordId(
+    candidate: string,
+    dataset: DatasetTable,
+  ): Promise<string | null> {
+    const trimmed = candidate.trim();
+    if (!trimmed) return null;
+
+    if (FEISHU_RECORD_ID_PATTERN.test(trimmed)) {
+      return trimmed;
+    }
+
+    const cacheKey = `${dataset}:${trimmed}`;
+    if (this.stableIdLookupCache.has(cacheKey)) {
+      return this.stableIdLookupCache.get(cacheKey) ?? null;
+    }
+
+    const recordId = await this.lookupRecordIdByStableId(trimmed, dataset);
+    this.stableIdLookupCache.set(cacheKey, recordId);
+    return recordId;
+  }
+
+  private async lookupRecordIdByStableId(
+    stableId: string,
+    dataset: DatasetTable,
+  ): Promise<string | null> {
+    try {
+      const { appToken, tableId } = this.bitableApi.getTableConfig(dataset);
+      if (!appToken || !tableId) {
+        this.logger.warn(`[${dataset}] 配置缺失，无法反查飞书 recordId: stableId=${stableId}`);
+        return null;
+      }
+
+      const fields = await this.bitableApi.getFields(appToken, tableId);
+      const aliasNames = STABLE_ID_FIELD_ALIASES[dataset];
+      const stableField = fields.find((f) => aliasNames.includes(f.field_name as never));
+      if (!stableField) {
+        this.logger.warn(
+          `[${dataset}] 未找到稳定 ID 字段（候选别名: ${aliasNames.join('、')}）；无法反查 recordId`,
+        );
+        return null;
+      }
+
+      // 飞书 filter 表达式：CurrentValue.[字段名] = "值"
+      const filter = `CurrentValue.[${stableField.field_name}] = "${stableId.replace(/"/g, '\\"')}"`;
+      const records = await this.bitableApi.queryRecords(appToken, tableId, filter, 1);
+      if (records.length === 0) {
+        this.logger.warn(`[${dataset}] 按 stableId 反查飞书未命中: ${stableId}`);
+        return null;
+      }
+      return records[0].record_id;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[${dataset}] 反查飞书 recordId 异常: stableId=${stableId}, ${message}`);
+      return null;
+    }
   }
 
   /**
@@ -108,15 +197,24 @@ export class TestWriteBackService {
   }
 
   /**
-   * 回写测试结果到飞书记录（按 record ID）
+   * 回写测试结果到飞书记录。
+   *
+   * 入参 `recordIdOrCaseId` 兼容两种形态：飞书 recordId（rec... 开头）或业务稳定 caseId；
+   * 服务内部统一通过 `resolveFeishuRecordId` 反查得到真实 recordId。
    */
   async writeBackResult(
-    recordId: string,
+    recordIdOrCaseId: string,
     testStatus: FeishuTestStatus,
     batchId?: string,
     errorReason?: string,
     reviewSummary?: string,
   ): Promise<{ success: boolean; error?: string }> {
+    const recordId = await this.resolveFeishuRecordId(recordIdOrCaseId, 'testSuite');
+    if (!recordId) {
+      const error = `飞书测试集中未找到对应记录: ${recordIdOrCaseId}`;
+      this.logger.warn(error);
+      return { success: false, error };
+    }
     try {
       const { appToken, tableId } = this.bitableApi.getTableConfig('testSuite');
       const resolvedFields = await this.resolveFieldNames(
@@ -204,10 +302,12 @@ export class TestWriteBackService {
   }
 
   /**
-   * 回写回归验证相似度分数到飞书
+   * 回写回归验证相似度分数到飞书。
+   *
+   * 入参 `recordIdOrValidationId` 兼容飞书 recordId 或业务稳定 validationId。
    */
   async writeBackSimilarityScore(
-    recordId: string,
+    recordIdOrValidationId: string,
     avgSimilarityScore: number | null,
     options?: {
       batchId?: string;
@@ -222,6 +322,12 @@ export class TestWriteBackService {
       };
     },
   ): Promise<{ success: boolean; error?: string }> {
+    const recordId = await this.resolveFeishuRecordId(recordIdOrValidationId, 'validationSet');
+    if (!recordId) {
+      const error = `飞书验证集中未找到对应记录: ${recordIdOrValidationId}`;
+      this.logger.warn(error);
+      return { success: false, error };
+    }
     try {
       const { appToken, tableId } = this.bitableApi.getTableConfig('validationSet');
       const resolvedFields = await this.resolveFieldNames(
