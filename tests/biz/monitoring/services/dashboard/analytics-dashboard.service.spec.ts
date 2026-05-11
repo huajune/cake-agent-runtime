@@ -706,10 +706,8 @@ describe('AnalyticsDashboardService', () => {
     });
 
     it('should format response trend from daily projection for week range', async () => {
-      // 固定到周三正午，确保 weekStart（本周一）严格早于 todayStart，
+      // 固定到周三正午，确保近 7 天窗口跨过今天之前的完整日期，
       // 进而让 currentPeriodDaily 必走 merge 分支去查 getDailyTrendFromDaily。
-      // 周一跑会因 weekStart === todayStart 直接落到 monitoringRepository.getDashboardDailyTrend，
-      // mock 的第二个 mockResolvedValueOnce 永远不会被消费，导致 responseTrend 为空。
       jest.useFakeTimers().setSystemTime(new Date('2026-05-13T12:00:00+08:00'));
       mockDailyStatsRepository.getLatestDailyStat.mockResolvedValue({ date: '2026-05-12' });
       try {
@@ -724,6 +722,125 @@ describe('AnalyticsDashboardService', () => {
         expect(result.responseTrend).toHaveLength(1);
         expect(result.responseTrend[0].minute).toBe('2026-03-11');
         expect(result.responseTrend[0].successRate).toBe(90);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('should recover week trend points from raw daily trend when projection returns empty', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-05-11T08:30:00Z'));
+      mockDailyStatsRepository.getLatestDailyStat.mockResolvedValue({ date: '2026-05-10' });
+      mockMonitoringRecordRepository.getDashboardOverviewStats
+        .mockResolvedValueOnce({
+          ...defaultOverview,
+          totalMessages: 7,
+          successCount: 6,
+          failureCount: 1,
+          successRate: 85.71,
+          avgDuration: 4200,
+          activeUsers: 3,
+          activeChats: 3,
+          totalTokenUsage: 1200,
+        })
+        .mockResolvedValueOnce(defaultOverview);
+      mockMonitoringRecordRepository.getDashboardDailyTrend
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          {
+            date: '2026-05-11',
+            messageCount: 7,
+            successCount: 6,
+            avgDuration: 4200,
+            tokenUsage: 1200,
+            uniqueUsers: 3,
+          },
+        ]);
+
+      try {
+        const result = await service.getDashboardOverviewAsync('week');
+
+        expect(monitoringRepository.getDashboardDailyTrend).toHaveBeenCalledTimes(3);
+        expect(result.responseTrend).toEqual([
+          {
+            minute: '2026-05-11',
+            avgDuration: 4200,
+            messageCount: 7,
+            successRate: 85.71,
+          },
+        ]);
+        expect(result.tokenTrend).toEqual([
+          {
+            time: '2026-05-11',
+            tokenUsage: 1200,
+            messageCount: 7,
+          },
+        ]);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('should synthesize week trend points only when raw trend recovery is also empty', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-05-11T08:30:00Z'));
+      mockDailyStatsRepository.getLatestDailyStat.mockResolvedValue({ date: '2026-05-10' });
+      mockMonitoringRecordRepository.getDashboardOverviewStats
+        .mockResolvedValueOnce({
+          ...defaultOverview,
+          totalMessages: 7,
+          successCount: 6,
+          failureCount: 1,
+          successRate: 85.71,
+          avgDuration: 4200,
+          activeUsers: 3,
+          activeChats: 3,
+          totalTokenUsage: 1200,
+        })
+        .mockResolvedValueOnce(defaultOverview);
+      mockBookingService.getBookingStats
+        .mockResolvedValueOnce([
+          {
+            date: '2026-05-11',
+            brandName: 'BrandA',
+            storeName: 'StoreA',
+            bookingCount: 2,
+            chatId: null,
+            userId: null,
+            userName: null,
+            managerId: null,
+            managerName: null,
+          },
+        ])
+        .mockResolvedValueOnce([]);
+
+      try {
+        const result = await service.getDashboardOverviewAsync('week');
+
+        expect(result.responseTrend).toEqual([
+          {
+            minute: '2026-05-11',
+            avgDuration: 4200,
+            messageCount: 7,
+            successRate: 85.71,
+          },
+        ]);
+        expect(result.tokenTrend).toEqual([
+          {
+            time: '2026-05-11',
+            tokenUsage: 1200,
+            messageCount: 7,
+          },
+        ]);
+        expect(result.businessTrend).toEqual([
+          {
+            minute: '2026-05-11',
+            consultations: 3,
+            bookingAttempts: 2,
+            successfulBookings: 2,
+            conversionRate: 66.67,
+            bookingSuccessRate: 100,
+          },
+        ]);
       } finally {
         jest.useRealTimers();
       }
