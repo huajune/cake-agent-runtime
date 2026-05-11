@@ -30,7 +30,8 @@ describe('MessageProcessor', () => {
     acquireProcessingLock: jest.fn().mockResolvedValue(true),
     releaseProcessingLock: jest.fn().mockResolvedValue(undefined),
     isQuietWindowElapsed: jest.fn().mockResolvedValue(true),
-    getAndClearPendingMessages: jest.fn(),
+    claimPendingSnapshot: jest.fn(),
+    ackPendingMessages: jest.fn().mockResolvedValue(undefined),
     checkAndProcessNewMessages: jest.fn().mockResolvedValue(false),
   };
 
@@ -66,7 +67,7 @@ describe('MessageProcessor', () => {
     jest.clearAllMocks();
   });
 
-  it('should delegate merged batches to MessagePipelineService', async () => {
+  it('should delegate merged batches to MessagePipelineService with initial snapshot size', async () => {
     const messages = [
       {
         chatId: 'chat-123',
@@ -74,9 +75,9 @@ describe('MessageProcessor', () => {
       },
     ];
 
-    await (processor as any).processMessages(messages, 'batch-001');
+    await (processor as any).processMessages(messages, 'batch-001', 1);
 
-    expect(mockPipeline.processMergedMessages).toHaveBeenCalledWith(messages, 'batch-001');
+    expect(mockPipeline.processMergedMessages).toHaveBeenCalledWith(messages, 'batch-001', 1);
   });
 
   describe('dropIfHostingPaused', () => {
