@@ -65,9 +65,11 @@ describe('geocode tool', () => {
 
   it('should reject when city is empty', async () => {
     const execute = (toolInstance as { execute: (args: Record<string, string>) => Promise<unknown> }).execute;
-    const result = (await execute({ address: '九亭', city: '   ' })) as Record<string, unknown>;
+    const result = (await execute({ address: '合川万象城', city: '   ' })) as Record<string, unknown>;
 
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.GEOCODE_CITY_REQUIRED);
+    expect(result._replyInstruction).toContain('区县/镇 + 商场/广场/购物中心');
+    expect(result._replyInstruction).toContain('不得基于通识补 city');
     expect(result._replyInstruction).not.toMatch(/上海|北京|杭州|成都/);
     expect(mockGeocodingService.geocode).not.toHaveBeenCalled();
   });

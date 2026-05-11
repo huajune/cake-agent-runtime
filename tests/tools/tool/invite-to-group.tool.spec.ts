@@ -117,6 +117,7 @@ describe('buildInviteToGroupTool', () => {
 
     expect(result.success).toBe(false);
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_NO_GROUP_AVAILABLE);
+    expect(result._replyInstruction).toContain('request_handoff');
   });
 
   it('should block invite when booking failed in same turn', async () => {
@@ -173,6 +174,7 @@ describe('buildInviteToGroupTool', () => {
 
     expect(result.success).toBe(false);
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_GROUP_FULL);
+    expect(result._replyInstruction).toContain('request_handoff');
     expect(result.citySnapshot).toEqual({
       totalGroups: 2,
       memberLimit: MEMBER_LIMIT,
@@ -550,6 +552,7 @@ describe('buildInviteToGroupTool', () => {
 
     expect(result.success).toBe(false);
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_MISSING_BOT_IDENTITY);
+    expect(result._replyInstruction).toContain('request_handoff');
     expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
     expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
   });

@@ -13,6 +13,9 @@ import { refreshMemberCountsFromEnterpriseList } from '@tools/duliday/enterprise
 
 const logger = new Logger('invite_to_group');
 
+const UNDELIVERED_INVITE_HANDOFF_INSTRUCTION =
+  '如果候选人本轮是在同意入群/后续通知，或当前意向已无匹配而需要群维护，请立即调用 request_handoff(reasonCode="other") 转人工跟进；调用后不得再输出文本。';
+
 const DESCRIPTION = `邀请候选人加入企微兼职群。
 
 ## 触发场景（满足任一即可）
@@ -51,6 +54,7 @@ const DESCRIPTION = `邀请候选人加入企微兼职群。
 
 ## 失败处理
 - success: false 时静默跳过，不向候选人提及群相关内容
+- 若候选人本轮是在同意入群/后续通知，或当前意向已无匹配而需要群维护，但工具返回 success: false，必须立刻调用 request_handoff(reasonCode="other") 转人工跟进；不要自然语言收尾把候选人晾住
 - 只有 success: true 时才能说"已拉群/已发入群邀请"；无群、群满、接口拒绝、未调用工具时，都不要承诺群相关动作
 - 严禁在未调用本工具、或本工具返回 success: false 时说"我先拉你进群/后面群里通知/已发群邀请"
 
@@ -109,8 +113,7 @@ export function buildInviteToGroupTool(
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.INVITE_ENTERPRISE_TOKEN_MISSING,
               outcome: '企业 Token 未配置',
-              replyInstruction:
-                '拉群配置缺失，本次不向候选人提及群相关内容；这是部署侧配置问题，不应反复重试。',
+              replyInstruction: `拉群配置缺失，本次不向候选人提及群相关内容；这是部署侧配置问题，不应反复重试。${UNDELIVERED_INVITE_HANDOFF_INSTRUCTION}`,
               details: { detailedReason: 'STRIDE_ENTERPRISE_TOKEN 未配置，无法执行企业级拉群' },
             });
           }
@@ -119,8 +122,7 @@ export function buildInviteToGroupTool(
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.INVITE_MISSING_BOT_IDENTITY,
               outcome: '缺少 bot 身份信息',
-              replyInstruction:
-                '拉群所需的 bot 身份不完整，本次不向候选人提及群相关内容；这是上下文缺失问题，不要反复重试。',
+              replyInstruction: `拉群所需的 bot 身份不完整，本次不向候选人提及群相关内容；这是上下文缺失问题，不要反复重试。${UNDELIVERED_INVITE_HANDOFF_INSTRUCTION}`,
               details: { detailedReason: '缺少 botImId / botUserId，无法执行企业级拉群' },
             });
           }
@@ -131,8 +133,7 @@ export function buildInviteToGroupTool(
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.INVITE_NO_GROUP_AVAILABLE,
               outcome: '暂无可用群',
-              replyInstruction:
-                '当前平台无可用兼职群数据，本次不向候选人提及群相关内容；如果对话需要收尾，按招募者口吻自然结束。',
+              replyInstruction: `当前平台无可用兼职群数据，本次不向候选人提及群相关内容。${UNDELIVERED_INVITE_HANDOFF_INSTRUCTION}`,
             });
           }
 
@@ -147,8 +148,7 @@ export function buildInviteToGroupTool(
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.INVITE_NO_GROUP_IN_CITY,
               outcome: '该城市无匹配群',
-              replyInstruction:
-                '该候选人所在城市暂无兼职群，本次不向候选人提及群相关内容；如果对话需要收尾，按招募者口吻自然结束。',
+              replyInstruction: `该候选人所在城市暂无兼职群，本次不向候选人提及群相关内容。${UNDELIVERED_INVITE_HANDOFF_INSTRUCTION}`,
               details: { city },
             });
           }
@@ -181,8 +181,7 @@ export function buildInviteToGroupTool(
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.INVITE_GROUP_FULL,
               outcome: '候选群均已满',
-              replyInstruction:
-                '该候选人区域/行业下的兼职群均已满，本次不向候选人提及群相关内容；运维侧告警已自动触发，对话按招募者口吻自然收尾。',
+              replyInstruction: `该候选人区域/行业下的兼职群均已满，本次不向候选人提及群相关内容；运维侧告警已自动触发。${UNDELIVERED_INVITE_HANDOFF_INSTRUCTION}`,
               details: { citySnapshot },
             });
           }
@@ -321,8 +320,7 @@ export function buildInviteToGroupTool(
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.INVITE_API_REJECTED,
               outcome: '候选群均被接口拒绝',
-              replyInstruction:
-                '所有候选群被企业接口拒绝（通常是 bot 不在群中等结构性问题），本次不向候选人提及群相关内容；运维告警已自动触发，对话按招募者口吻自然收尾。',
+              replyInstruction: `所有候选群被企业接口拒绝（通常是 bot 不在群中等结构性问题），本次不向候选人提及群相关内容；运维告警已自动触发。${UNDELIVERED_INVITE_HANDOFF_INSTRUCTION}`,
               details: {
                 groupName: rejectedGroupsDuringInvite[0].group.groupName,
                 city,
@@ -351,8 +349,7 @@ export function buildInviteToGroupTool(
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.INVITE_GROUP_FULL,
             outcome: '候选群均已满',
-            replyInstruction:
-              '该候选人区域/行业下的兼职群均已满，本次不向候选人提及群相关内容；运维告警已自动触发，对话按招募者口吻自然收尾。',
+            replyInstruction: `该候选人区域/行业下的兼职群均已满，本次不向候选人提及群相关内容；运维告警已自动触发。${UNDELIVERED_INVITE_HANDOFF_INSTRUCTION}`,
             details: {
               groupName: alertGroups.length === 1 ? alertGroups[0]?.groupName : undefined,
               citySnapshot: buildCitySnapshot(alertGroups, memberLimit),
@@ -364,8 +361,7 @@ export function buildInviteToGroupTool(
           return buildToolError({
             errorType: TOOL_ERROR_TYPES.INVITE_API_FAILED,
             outcome: '拉群接口异常',
-            replyInstruction:
-              '拉群接口暂时不可用，本次不向候选人提及群相关内容；不要把异常信息原文转述给候选人，对话按招募者口吻自然收尾。',
+            replyInstruction: `拉群接口暂时不可用，本次不向候选人提及群相关内容；不要把异常信息原文转述给候选人。${UNDELIVERED_INVITE_HANDOFF_INSTRUCTION}`,
             details: { reason: message },
           });
         }

@@ -101,7 +101,13 @@ export class HardConstraintsSection implements PromptSection {
       lines.push(`- 城市: ${pref.city.value}（必填到 cityNameList）`);
     }
     if (pref.district?.length) {
-      lines.push(`- 区域: ${pref.district.join('、')}（填到 regionNameList）`);
+      if (pref.city?.value) {
+        lines.push(`- 区域: ${pref.district.join('、')}（填到 regionNameList）`);
+      } else {
+        lines.push(
+          `- 区域: ${pref.district.join('、')}（当前没有已确认城市，禁止基于区县通识补 city；先中性确认候选人所在城市，确认前不得调用 duliday_job_list）`,
+        );
+      }
     }
     if (pref.location?.length) {
       lines.push(

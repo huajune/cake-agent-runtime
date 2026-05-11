@@ -483,6 +483,60 @@ describe('buildInterviewPrecheckTool', () => {
     );
   });
 
+  it('should not prefill manager name as candidate name (badcase m5lpfwi0)', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-04-08',
+                  interviewStartTime: '13:30',
+                  interviewEndTime: '16:30',
+                },
+              ],
+            },
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      { jobId: 100, requestedDate: '2026-04-08' },
+      {
+        botUserId: '李涵婷',
+        sessionFacts: {
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            name: '李涵婷',
+            phone: '13800138000',
+            gender: '男',
+            age: '37',
+            interview_time: '2026-04-08',
+          },
+          preferences: {
+            ...FALLBACK_EXTRACTION.preferences,
+          },
+          reasoning: 'badcase m5lpfwi0: quoted manager name was extracted as candidate name',
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.nameFieldGuard).toEqual(
+      expect.objectContaining({
+        suspicious: true,
+        observedValue: '李涵婷',
+      }),
+    );
+    expect(result.nameFieldGuard.reason).toContain('招募经理');
+    expect(result.bookingChecklist.missingFields).toContain('姓名');
+    expect(result.bookingChecklist.templateText).toContain('姓名：');
+    expect(result.bookingChecklist.templateText).not.toContain('姓名：李涵婷');
+  });
+
   it('should default identity to 社会人士 when age >= 25 (skip is_student question)', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
     mockSpongeService.fetchJobs.mockResolvedValue({
