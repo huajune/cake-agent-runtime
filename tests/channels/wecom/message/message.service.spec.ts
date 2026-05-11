@@ -221,11 +221,12 @@ describe('MessageService', () => {
 
   describe('processMergedMessages', () => {
     it('should delegate to pipeline service', async () => {
-      await service.processMergedMessages([validMessageData], 'batch-001');
+      await service.processMergedMessages([validMessageData], 'batch-001', 1);
 
       expect(mockPipelineService.processMergedMessages).toHaveBeenCalledWith(
         [validMessageData],
         'batch-001',
+        1,
       );
     });
   });

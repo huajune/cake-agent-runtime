@@ -137,7 +137,10 @@ describe('MessagePipelineService', () => {
   };
 
   const mockSimpleMergeService = {
-    getAndClearPendingMessages: jest.fn().mockResolvedValue({ messages: [], batchId: '' }),
+    claimPendingSnapshot: jest
+      .fn()
+      .mockResolvedValue({ messages: [], snapshotSize: 0, batchId: '' }),
+    ackPendingMessages: jest.fn().mockResolvedValue(undefined),
   };
 
   const validMessageData: EnterpriseMessageCallbackDto = {
@@ -424,6 +427,7 @@ describe('MessagePipelineService', () => {
           },
         ],
         'batch-001',
+        2,
       );
 
       expect(mockRunnerService.invoke).toHaveBeenCalledWith(

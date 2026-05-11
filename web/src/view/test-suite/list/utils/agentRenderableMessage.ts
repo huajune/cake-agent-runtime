@@ -270,7 +270,12 @@ export function buildAgentRenderableMessage(
   const replyText = actualOutput.trim();
 
   if (orderedParts.length > 0) {
-    const enrichedParts = [...orderedParts];
+    // actualOutput is the authoritative final candidate-visible reply. response messages may
+    // contain intermediate text from multi-step generation/recovery/replay, so keep only
+    // reasoning/tool parts from the raw trace when final output is available.
+    const enrichedParts = replyText
+      ? orderedParts.filter((part) => part.type !== 'text')
+      : [...orderedParts];
 
     if (directToolParts.length > 0 && !hasToolPart(enrichedParts)) {
       const firstTextIndex = enrichedParts.findIndex((part) => part.type === 'text');

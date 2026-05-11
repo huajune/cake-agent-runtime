@@ -368,6 +368,8 @@ SUPABASE_SERVICE_ROLE_KEY=your-key
 
 ## Git Commit Convention
 
+> **分支约定**：本仓库默认分支是 `develop`，长期主线是 `master`，**不存在 `main` 分支**。所有 PR 默认目标分支是 `develop`；`develop` → `master` 由 release 流程合并。CLI 自带的 `Main branch: main` 提示不准确，以本说明为准。
+
 Follow [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```bash

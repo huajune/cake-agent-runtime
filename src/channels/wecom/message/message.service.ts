@@ -179,10 +179,11 @@ export class MessageService implements OnModuleInit {
   async processMergedMessages(
     messages: EnterpriseMessageCallbackDto[],
     batchId: string,
+    initialSnapshotSize: number,
   ): Promise<void> {
     this.processingCount++;
     try {
-      await this.pipelineService.processMergedMessages(messages, batchId);
+      await this.pipelineService.processMergedMessages(messages, batchId, initialSnapshotSize);
     } finally {
       this.processingCount--;
     }

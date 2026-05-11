@@ -98,27 +98,33 @@ export class SimpleMergeService implements OnModuleInit {
   }
 
   /**
-   * 获取并清空待处理消息（供 Worker 调用）
-   * 使用原子操作确保不会重复处理
-   * @returns 消息列表和批次ID
+   * 抓取 pending 列表当前快照（不从队列中移除）。
+   *
+   * 与旧的 `getAndClearPendingMessages` 区别：本方法只 LRANGE，不 LTRIM。处理成功后由
+   * 调用方显式调用 `ackPendingMessages` 将已消费的部分裁掉。这样进程被发版 SIGKILL
+   * 中断时，pending 中的消息保持原样，Bull stalled retry 拉起的新 worker 仍能拿到
+   * 完整数据继续处理，避免候选人消息因部署被吞。
+   *
+   * @param fromIndex 起始索引。Worker 初次抓取传 0；agent 执行期间补抓新消息（replay
+   *                  路径）传上一次的 snapshotSize，避免与初次快照重叠。
+   * @returns messages 解析后的消息；snapshotSize 本次抓取到的原始条数（含解析失败项，
+   *          用于 ack 时的 LTRIM 偏移）；batchId 仅在 fromIndex===0 时生成。
    */
-  async getAndClearPendingMessages(
+  async claimPendingSnapshot(
     chatId: string,
-  ): Promise<{ messages: EnterpriseMessageCallbackDto[]; batchId: string }> {
+    fromIndex = 0,
+  ): Promise<{ messages: EnterpriseMessageCallbackDto[]; snapshotSize: number; batchId: string }> {
     const pendingKey = RedisKeyBuilder.pending(chatId);
 
-    // 获取所有待处理消息
-    const rawMessages = await this.redisService.lrange<string>(pendingKey, 0, -1);
+    const rawMessages = await this.redisService.lrange<string>(pendingKey, fromIndex, -1);
 
     if (!rawMessages || rawMessages.length === 0) {
-      this.logger.debug(`[${chatId}] 待处理队列为空（可能已被其他 Worker 处理）`);
-      return { messages: [], batchId: '' };
+      if (fromIndex === 0) {
+        this.logger.debug(`[${chatId}] 待处理队列为空（可能已被其他 Worker 处理）`);
+      }
+      return { messages: [], snapshotSize: 0, batchId: '' };
     }
 
-    // 只裁剪掉本次读取到的消息，保留消费期间新追加的消息
-    await this.redisService.ltrim(pendingKey, rawMessages.length, -1);
-
-    // 解析消息
     const messages: EnterpriseMessageCallbackDto[] = [];
     for (const raw of rawMessages) {
       try {
@@ -130,11 +136,29 @@ export class SimpleMergeService implements OnModuleInit {
       }
     }
 
-    // 生成批次ID（格式：batch_{chatId}_{timestamp}）
-    const batchId = `batch_${chatId}_${Date.now()}`;
+    const batchId = fromIndex === 0 ? `batch_${chatId}_${Date.now()}` : '';
 
-    this.logger.log(`[${chatId}] 获取到 ${messages.length} 条待处理消息, batchId=${batchId}`);
-    return { messages, batchId };
+    if (batchId) {
+      this.logger.log(`[${chatId}] 读取 ${messages.length} 条待处理消息, batchId=${batchId}`);
+    } else {
+      this.logger.log(`[${chatId}] 补抓 ${messages.length} 条 pending（fromIndex=${fromIndex}）`);
+    }
+
+    return { messages, snapshotSize: rawMessages.length, batchId };
+  }
+
+  /**
+   * 确认已处理的 pending 消息，从队首裁掉 `count` 条。
+   *
+   * 必须在 agent 调用 + 投递全部成功后调用一次（聚合传 snap1Size + replay snap2Size）。
+   * 投递前进程被 kill 时调用方应跳过 ack，让 pending 保持原样以供 Bull stalled retry
+   * 拉起的新 worker 重放。
+   */
+  async ackPendingMessages(chatId: string, count: number): Promise<void> {
+    if (count <= 0) return;
+    const pendingKey = RedisKeyBuilder.pending(chatId);
+    await this.redisService.ltrim(pendingKey, count, -1);
+    this.logger.debug(`[${chatId}] ack 已处理 ${count} 条 pending`);
   }
 
   async acquireProcessingLock(chatId: string, ownerToken: string): Promise<boolean> {

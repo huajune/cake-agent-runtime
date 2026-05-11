@@ -706,17 +706,27 @@ describe('AnalyticsDashboardService', () => {
     });
 
     it('should format response trend from daily projection for week range', async () => {
-      mockDailyStatsAggregator.getDailyTrendFromDaily
-        .mockResolvedValueOnce([]) // 7-day trend
-        .mockResolvedValueOnce([
-          { date: '2026-03-11', avgDuration: 5000, messageCount: 50, successCount: 45 },
-        ]); // current period
+      // 固定到周三正午，确保 weekStart（本周一）严格早于 todayStart，
+      // 进而让 currentPeriodDaily 必走 merge 分支去查 getDailyTrendFromDaily。
+      // 周一跑会因 weekStart === todayStart 直接落到 monitoringRepository.getDashboardDailyTrend，
+      // mock 的第二个 mockResolvedValueOnce 永远不会被消费，导致 responseTrend 为空。
+      jest.useFakeTimers().setSystemTime(new Date('2026-05-13T12:00:00+08:00'));
+      mockDailyStatsRepository.getLatestDailyStat.mockResolvedValue({ date: '2026-05-12' });
+      try {
+        mockDailyStatsAggregator.getDailyTrendFromDaily
+          .mockResolvedValueOnce([]) // 7-day trend
+          .mockResolvedValueOnce([
+            { date: '2026-03-11', avgDuration: 5000, messageCount: 50, successCount: 45 },
+          ]); // current period
 
-      const result = await service.getDashboardOverviewAsync('week');
+        const result = await service.getDashboardOverviewAsync('week');
 
-      expect(result.responseTrend).toHaveLength(1);
-      expect(result.responseTrend[0].minute).toBe('2026-03-11');
-      expect(result.responseTrend[0].successRate).toBe(90);
+        expect(result.responseTrend).toHaveLength(1);
+        expect(result.responseTrend[0].minute).toBe('2026-03-11');
+        expect(result.responseTrend[0].successRate).toBe(90);
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('should calculate fallbackDelta correctly', async () => {

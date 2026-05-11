@@ -165,9 +165,11 @@ export class MessageProcessor implements OnModuleInit {
         return;
       }
 
-      // 从 Redis 获取待处理消息
-      const { messages, batchId } =
-        await this.simpleMergeService.getAndClearPendingMessages(chatId);
+      // 抓取 pending 快照但不清空。处理成功后 reply-workflow 会调用 ackPendingMessages
+      // 把已消费的部分裁掉；agent 执行中进程被 kill → 跳过 ack → pending 保留 → Bull
+      // stalled retry 拉起的新 worker 仍能拿到完整数据，避免候选人消息被吞。
+      const { messages, snapshotSize, batchId } =
+        await this.simpleMergeService.claimPendingSnapshot(chatId);
 
       if (messages.length === 0) {
         this.logger.debug(`[Bull] 任务 ${job.id} 没有待处理消息，跳过`);
@@ -179,11 +181,13 @@ export class MessageProcessor implements OnModuleInit {
       // 检查直接落到这里。worker 拉起后再复查一次：命中即丢弃整批，避免穿透
       // 到 Agent 投递（1tsdimfg badcase）。
       if (await this.dropIfHostingPaused(chatId, messages, job.id)) {
+        // 命中暂停 → 已显式 markMessageAsProcessedAsync，pending 这部分也应当裁掉。
+        await this.simpleMergeService.ackPendingMessages(chatId, snapshotSize);
         return;
       }
 
       // 处理消息
-      await this.processMessages(messages, batchId);
+      await this.processMessages(messages, batchId, snapshotSize);
 
       // 处理完后若又收到了新消息，则按“最后一条消息后的静默窗口”补建下一轮检查任务
       await this.simpleMergeService.checkAndProcessNewMessages(chatId);
@@ -204,13 +208,16 @@ export class MessageProcessor implements OnModuleInit {
 
   /**
    * 处理消息的核心逻辑
-   * 直接委托给聚合消息工作流
+   * 直接委托给聚合消息工作流。`initialSnapshotSize` 透传给 reply-workflow，用于在
+   * 投递成功后 ack 掉初次抓取的 N 条 pending（含 replay 阶段补抓的部分由 reply-workflow
+   * 自行累加再一次 ack）。
    */
   private async processMessages(
     messages: EnterpriseMessageCallbackDto[],
     batchId: string,
+    initialSnapshotSize: number,
   ): Promise<void> {
-    await this.messagePipeline.processMergedMessages(messages, batchId);
+    await this.messagePipeline.processMergedMessages(messages, batchId, initialSnapshotSize);
   }
 
   /**
