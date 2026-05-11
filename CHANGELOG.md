@@ -11,10 +11,49 @@
 <!-- release:pending:start -->
 ## 待发布
 
-**预计版本**: `v5.6.0`
-**最近更新**: `2026-04-30`
+**预计版本**: `v5.6.1`
+**最近更新**: `2026-05-11`
 **来源分支**: `develop`
-**累计 PR**: 3
+**累计 PR**: 1
+
+### 更新摘要
+- PR #162 **核心修复**：消息管道 pending 队列拆 claim/ack 两步，agent 执行中进程被 SIGKILL 不再丢候选人消息
+- PR #162 **附带 UI 修复**：测试套件渲染过滤掉 raw trace 的中间 text part，避免多步生成/重放产生的文本重复显示
+- PR #162 **附带文档**：CLAUDE.md 增加分支约定说明（仓库无 main，默认 develop）
+- PR #162 **附带测试修复**：dashboard week 测试在周一稳定失败的隐藏 bug（fake timer 固定到周三）
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #162 **核心修复**：消息管道 pending 队列拆 claim/ack 两步，agent 执行中进程被 SIGKILL 不再丢候选人消息
+- PR #162 **附带 UI 修复**：测试套件渲染过滤掉 raw trace 的中间 text part，避免多步生成/重放产生的文本重复显示
+- PR #162 **附带文档**：CLAUDE.md 增加分支约定说明（仓库无 main，默认 develop）
+- PR #162 **附带测试修复**：dashboard week 测试在周一稳定失败的隐藏 bug（fake timer 固定到周三）
+
+### 优化调整
+- 无
+
+### 运维与流程
+- 无
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #162 全量 jest 2752 个测试通过
+- PR #162 `simple-merge.service.spec.ts` 新增 `claimPendingSnapshot` / `ackPendingMessages` / fromIndex 行为断言
+- PR #162 `reply-workflow.service.spec.ts` 同步覆盖 replay 路径 fromIndex 累加
+- PR #162 `message.processor.spec.ts` 验证 `initialSnapshotSize` 透传
+- PR #162 dashboard week 测试在周一 / 非周一两种系统时间下都通过
+<!-- release:pending:end -->
+
+## [5.6.0] - 2026-04-30
+
+**来源分支**: `develop`
 
 ### 更新摘要
 - PR #154 人工介入更顺畅：候选人发"转人工"后 Agent 立即停止抢答，改异步通知运营接手
@@ -81,7 +120,6 @@
 - PR #159 现有测试：单列表 fallback（仅 \`### 更新摘要\`）仍走 \`**本次更新**\` 路径
 - PR #159 \`pnpm jest tests/scripts/send-deploy-notification.spec.ts\` 全绿（5/5）
 - PR #159 Pre-push hook 通过：228 套件 / 2749 测试
-<!-- release:pending:end -->
 
 ## [5.5.0] - 2026-04-29
 
