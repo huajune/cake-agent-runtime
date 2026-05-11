@@ -386,6 +386,10 @@ export class TurnHintsSection implements PromptSection {
       district: null,
       location: null,
       labor_form: null,
+      delayed_intent: null,
+      short_term: null,
+      open_position: null,
+      time_windows: null,
     };
   }
 }

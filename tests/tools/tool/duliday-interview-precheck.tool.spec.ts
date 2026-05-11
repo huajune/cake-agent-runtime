@@ -1,6 +1,7 @@
 import { buildInterviewPrecheckTool } from '@tools/duliday-interview-precheck.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
 
 describe('buildInterviewPrecheckTool', () => {
   const mockSpongeService = {
@@ -438,6 +439,7 @@ describe('buildInterviewPrecheckTool', () => {
             has_health_certificate: '有',
           },
           preferences: {
+            ...FALLBACK_EXTRACTION.preferences,
             brands: null,
             salary: null,
             position: null,
@@ -446,6 +448,10 @@ describe('buildInterviewPrecheckTool', () => {
             district: null,
             location: null,
             labor_form: null,
+          delayed_intent: null,
+          short_term: null,
+          open_position: null,
+          time_windows: null,
           },
           reasoning: 'test',
         },
@@ -513,7 +519,7 @@ describe('buildInterviewPrecheckTool', () => {
         },
         sessionFacts: {
           interview_info: { age: '30' },
-          preferences: {},
+          preferences: FALLBACK_EXTRACTION.preferences,
           reasoning: 'test',
         },
       },
@@ -550,6 +556,7 @@ describe('buildInterviewPrecheckTool', () => {
             gender: '男女不限',
           },
           preferences: {
+            ...FALLBACK_EXTRACTION.preferences,
             brands: null,
             salary: null,
             position: null,
@@ -558,6 +565,10 @@ describe('buildInterviewPrecheckTool', () => {
             district: null,
             location: null,
             labor_form: null,
+          delayed_intent: null,
+          short_term: null,
+          open_position: null,
+          time_windows: null,
           },
           reasoning: 'test',
         },
@@ -606,7 +617,7 @@ describe('buildInterviewPrecheckTool', () => {
         },
         sessionFacts: {
           interview_info: { age: '20' },
-          preferences: {},
+          preferences: FALLBACK_EXTRACTION.preferences,
           reasoning: 'test',
         },
       },
@@ -651,7 +662,7 @@ describe('buildInterviewPrecheckTool', () => {
         },
         sessionFacts: {
           interview_info: { has_health_certificate: '无' },
-          preferences: {},
+          preferences: FALLBACK_EXTRACTION.preferences,
           reasoning: 'test',
         },
       },
@@ -689,7 +700,7 @@ describe('buildInterviewPrecheckTool', () => {
       {
         sessionFacts: {
           interview_info: { has_health_certificate: '非本地健康证' },
-          preferences: {},
+          preferences: FALLBACK_EXTRACTION.preferences,
           reasoning: 'test',
         },
       },

@@ -105,4 +105,32 @@ export class OpsNotifierService {
     });
     return this.opsChannel.send(card);
   }
+
+  /**
+   * Reply 事实矛盾告警（来自 ReplyFactGuardService phase 1）。
+   *
+   * Agent 在确认轮自由发挥（如本轮没调 invite_to_group 却声明"群已满"），
+   * 结构性背离 tool 真实结果。本告警仅观察，不改写回复——用于积累样本判断
+   * 关键词规则准确率，决定是否升级到 phase 2 改写。
+   */
+  async sendReplyFactContradictionAlert(params: {
+    chatId?: string;
+    userId?: string;
+    botImId?: string;
+    botUserName?: string;
+    replyPreview: string;
+    contradictions: Array<{ ruleId: string; label: string }>;
+    toolNames: string[];
+  }): Promise<boolean> {
+    const atUsers = new Set<FeishuReceiver>([FEISHU_RECEIVER_USERS.GAO_YAQI]);
+    if (params.botImId) {
+      const chatReceiver = BOT_TO_RECEIVER[params.botImId];
+      if (chatReceiver) atUsers.add(chatReceiver);
+    }
+    const card = this.opsCardRenderer.buildReplyFactContradictionAlertCard({
+      ...params,
+      atUsers: Array.from(atUsers),
+    });
+    return this.opsChannel.send(card);
+  }
 }

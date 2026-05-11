@@ -5,6 +5,7 @@ import { ToolBuilder } from '@shared-types/tool.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { GroupContext } from '@biz/group-task/group-task.types';
+import { normalizeCity } from '@biz/group-task/utils/city-normalize.util';
 import { RoomService } from '@channels/wecom/room/room.service';
 import { MemoryService } from '@memory/memory.service';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
@@ -135,7 +136,12 @@ export function buildInviteToGroupTool(
             });
           }
 
-          const cityGroups = allGroups.filter((group) => group.city === city);
+          // 用 normalizeCity 兜底字符串不一致——Agent 传入可能是 "北京市"，
+          // 而群 labels 里通常是 "北京"。严格相等会让整轮回 no_group_in_city。
+          const normalizedTargetCity = normalizeCity(city);
+          const cityGroups = allGroups.filter(
+            (group) => normalizeCity(group.city) === normalizedTargetCity,
+          );
           if (cityGroups.length === 0) {
             logger.log(`城市无匹配，静默跳过: ${city} (user=${context.userId})`);
             return buildToolError({

@@ -136,6 +136,49 @@ export class OpsCardRenderer {
     });
   }
 
+  buildReplyFactContradictionAlertCard(params: {
+    chatId?: string;
+    userId?: string;
+    botImId?: string;
+    botUserName?: string;
+    replyPreview: string;
+    contradictions: Array<{ ruleId: string; label: string }>;
+    toolNames: string[];
+    atUsers?: FeishuReceiver[];
+  }): Record<string, unknown> {
+    const botLabel = params.botUserName
+      ? `${params.botUserName} (${params.botImId ?? '-'})`
+      : (params.botImId ?? '未知');
+
+    const ruleLines = params.contradictions.map(
+      (c, i) => `${i + 1}. ${c.label}（ruleId: ${c.ruleId}）`,
+    );
+
+    const content = [
+      `**时间**: ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`,
+      '**级别**: WARNING（仅观察，未改写回复）',
+      `**接客 bot**: ${botLabel}`,
+      `**chatId**: ${params.chatId ?? '-'}`,
+      `**userId**: ${params.userId ?? '-'}`,
+      `**本轮 tool**: ${params.toolNames.length > 0 ? params.toolNames.join(', ') : '（无）'}`,
+      '',
+      '**命中规则**',
+      ...ruleLines,
+      '',
+      '**回复预览（前 200 字）**',
+      `> ${params.replyPreview.replace(/\n/g, ' ')}`,
+      '',
+      '排查建议：若准确率高，可升级到 phase 2（命中即静默丢弃回复）；若误报多，调整规则关键词或加 exception。',
+    ].join('\n');
+
+    return this.cardBuilder.buildMarkdownCard({
+      title: '⚠️ Agent 回复事实矛盾（与本轮 tool 结果不一致）',
+      content,
+      color: 'yellow',
+      atUsers: params.atUsers,
+    });
+  }
+
   buildInviteRejectedAlertCard(params: {
     city: string;
     industry?: string;

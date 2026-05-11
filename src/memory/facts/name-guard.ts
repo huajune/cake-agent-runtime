@@ -41,6 +41,35 @@ export function isFromAutoGreeting(name: string, userMessages: readonly string[]
   return false;
 }
 
+/**
+ * 结构化收资表单回填中的"姓名：xxx"键值对识别。
+ *
+ * 业务背景：badcase ci7iigv4 / 362ketwp —— 候选人 T1 说"我是赵堤"（被 sanitizer 视为
+ * 打招呼语），随后 Agent 发收资 checklist，候选人按模板回填"姓名：赵堤 / 联系电话:... /
+ * 年龄:..."。这种结构化回填可信度远高于打招呼语，应允许 LLM 抽出的 name 通过。
+ *
+ * 匹配规则：消息中包含 `姓名` / `名字` 后接冒号(中英文)/空格再跟同名字符串，且 name 出现
+ * 在合理位置（行首或行内键值对位置），不要误匹配普通陈述句"我姓名叫不告诉你"等。
+ */
+const STRUCTURED_NAME_KEY_REGEX =
+  /(?:^|[\n\r])\s*(?:姓名|名字)\s*[：:\s]\s*([^\n\r。，,！!？?]+?)(?=[\n\r]|$)/u;
+
+export function hasStructuredNameSubmission(
+  name: string,
+  userMessages: readonly string[],
+): boolean {
+  if (!name) return false;
+  const target = name.trim();
+  if (!target) return false;
+  for (const message of userMessages) {
+    if (!message) continue;
+    const normalized = message.replace(TIME_CONTEXT_SUFFIX_REGEX, '');
+    const match = STRUCTURED_NAME_KEY_REGEX.exec(normalized);
+    if (match && match[1].trim() === target) return true;
+  }
+  return false;
+}
+
 export interface SanitizeNameResult {
   sanitized: EntityExtractionResult;
   droppedName: string | null;
@@ -53,6 +82,12 @@ export function sanitizeInterviewName(
   const name = facts.interview_info?.name?.trim();
   if (!name) return { sanitized: facts, droppedName: null };
   if (!isFromAutoGreeting(name, userMessages)) {
+    return { sanitized: facts, droppedName: null };
+  }
+  // 即使 name 来自"我是xx"打招呼语，只要候选人后续按结构化模板回填"姓名：xx"，就视为可信，
+  // 不再 drop。badcase ci7iigv4 / 362ketwp：T1 打招呼"我是赵堤"，T9 按 booking checklist
+  // 填"姓名：赵堤"，原 sanitizer 仍按 T1 一刀切丢弃，导致 booking 缺真名。
+  if (hasStructuredNameSubmission(name, userMessages)) {
     return { sanitized: facts, droppedName: null };
   }
   return {

@@ -65,6 +65,20 @@ export class HardConstraintsSection implements PromptSection {
         sessionFacts?.preferences.location ?? highConfidenceFacts?.preferences.location ?? null,
       labor_form:
         sessionFacts?.preferences.labor_form ?? highConfidenceFacts?.preferences.labor_form ?? null,
+      delayed_intent:
+        sessionFacts?.preferences.delayed_intent ??
+        highConfidenceFacts?.preferences.delayed_intent ??
+        null,
+      short_term:
+        sessionFacts?.preferences.short_term ?? highConfidenceFacts?.preferences.short_term ?? null,
+      open_position:
+        sessionFacts?.preferences.open_position ??
+        highConfidenceFacts?.preferences.open_position ??
+        null,
+      time_windows:
+        sessionFacts?.preferences.time_windows ??
+        highConfidenceFacts?.preferences.time_windows ??
+        null,
     };
 
     return { interview, pref };
@@ -139,6 +153,27 @@ export class HardConstraintsSection implements PromptSection {
     if (interview.education) {
       lines.push(
         `- 学历: ${interview.education}（开 includeHiringRequirement，结果中学历不符的不要推荐）`,
+      );
+    }
+
+    if (pref.open_position) {
+      lines.push(
+        `- 候选人岗位开放: 是（候选人说过"什么都可以/X都行/什么工作都行"等宽口径句式；jobCategoryList 必须留空，禁止锁定为某具体工种；按区域/品牌/班次召回后由候选人自选）`,
+      );
+    }
+    if (pref.short_term) {
+      lines.push(
+        `- 短期工意向: 是（候选人明确表示"做几天/临时/短期"；最少工作月数 ≥ 1 的岗位不得推荐；本轮如要继续推荐，必须匹配 labor_form ∈ 寒假工/暑假工/小时工，否则直接 invite_to_group）`,
+      );
+    }
+    if (pref.delayed_intent) {
+      lines.push(
+        `- 推迟意向: ${pref.delayed_intent.until}（候选人明确推迟/再说；本轮及后续禁止主动催面/催报名/反复确认时间；按招募者口吻收尾，必要时调用 invite_to_group 留存）`,
+      );
+    }
+    if (pref.time_windows?.length) {
+      lines.push(
+        `- 可用时间窗口: ${pref.time_windows.join('、')}（推荐岗位的工时班次必须与该窗口有交集；不满足直接说明而不是反复追问候选人）`,
       );
     }
 

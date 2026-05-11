@@ -18,22 +18,19 @@
 export const TOOL_ERROR_TYPES = {
   // ============================================================
   // duliday_interview_booking
+  // 注意：时段/筛选答案/真实姓名等硬规则由 duliday_interview_precheck 前置拦截，
+  // 本工具只保留接口契约层面的入参校验、active case 兜底、customerLabel 构造、
+  // 海绵接口结果错误。
   // ============================================================
-  BOOKING_PAST_SAME_DAY_CUTOFF: 'booking.past_same_day_cutoff',
-  BOOKING_INVALID_INTERVIEW_TIME_SLOT: 'booking.invalid_interview_time_slot',
-  BOOKING_DEADLINE_USED_AS_INTERVIEW_TIME: 'booking.deadline_used_as_interview_time',
-  BOOKING_AMBIGUOUS_DATE_ONLY_SLOT: 'booking.ambiguous_date_only_slot',
   BOOKING_ALREADY_BOOKED: 'booking.already_booked',
   BOOKING_MISSING_FIELDS: 'booking.missing_fields',
   BOOKING_INVALID_INTERVIEW_TIME: 'booking.invalid_interview_time',
-  BOOKING_INVALID_LEGAL_NAME: 'booking.invalid_legal_name',
   BOOKING_INVALID_AGE: 'booking.invalid_age',
   BOOKING_INVALID_GENDER_ID: 'booking.invalid_gender_id',
   BOOKING_INVALID_OPERATE_TYPE: 'booking.invalid_operate_type',
   BOOKING_INVALID_EDUCATION_ID: 'booking.invalid_education_id',
   BOOKING_INVALID_HEALTH_CERTIFICATE: 'booking.invalid_health_certificate',
   BOOKING_INVALID_HEALTH_CERTIFICATE_TYPES: 'booking.invalid_health_certificate_types',
-  BOOKING_SCREENING_MISMATCH: 'booking.screening_mismatch',
   BOOKING_JOB_NOT_FOUND: 'booking.job_not_found',
   BOOKING_REJECTED: 'booking.rejected',
   BOOKING_REQUEST_FAILED: 'booking.request_failed',

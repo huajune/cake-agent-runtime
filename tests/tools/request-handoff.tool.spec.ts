@@ -7,7 +7,6 @@ describe('buildRequestHandoffTool', () => {
   const recruitmentCaseService = { getActiveOnboardFollowupCase: jest.fn() };
   const chatSessionService = { getChatHistory: jest.fn() };
   const sessionService = { getSessionState: jest.fn() };
-  const userHostingService = { pauseUser: jest.fn() };
 
   const mockContext: ToolBuildContext = {
     userId: 'user-1',
@@ -48,7 +47,6 @@ describe('buildRequestHandoffTool', () => {
       recruitmentCaseService as never,
       chatSessionService as never,
       sessionService as never,
-      userHostingService as never,
     )(ctx);
 
   const flushMicrotasks = () => new Promise((resolve) => setImmediate(resolve));
@@ -65,7 +63,6 @@ describe('buildRequestHandoffTool', () => {
       paused: true,
       alerted: true,
     });
-    userHostingService.pauseUser.mockResolvedValue(undefined);
   });
 
   it('returns missing_chat_id when chatId and sessionId are both absent', async () => {
@@ -84,7 +81,7 @@ describe('buildRequestHandoffTool', () => {
     expect(interventionService.dispatch).not.toHaveBeenCalled();
   });
 
-  it('short-circuits and async-pauses hosting when no active case', async () => {
+  it('short-circuits and dispatches general_handoff when no active case', async () => {
     recruitmentCaseService.getActiveOnboardFollowupCase.mockResolvedValue(null);
 
     const tool = buildTool();
@@ -92,6 +89,7 @@ describe('buildRequestHandoffTool', () => {
     const result = await (tool as any).execute({
       reasonCode: 'other',
       reason: '候选人提了一些后续问题',
+      summary: '当前会话无可对接 case',
     });
 
     expect(result).toMatchObject({
@@ -100,9 +98,22 @@ describe('buildRequestHandoffTool', () => {
       errorType: TOOL_ERROR_TYPES.NO_ACTIVE_CASE,
     });
     expect(typeof result._replyInstruction).toBe('string');
-    expect(interventionService.dispatch).not.toHaveBeenCalled();
+
+    // 异步 dispatch 走 general_handoff（暂停 + 告警都由 intervention 统一编排）
     await flushMicrotasks();
-    expect(userHostingService.pauseUser).toHaveBeenCalledWith('chat-1');
+    expect(interventionService.dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'general_handoff',
+        source: 'agent_tool',
+        reason: '候选人提了一些后续问题',
+        summary: '当前会话无可对接 case',
+        chatId: 'chat-1',
+        pauseTargetId: 'chat-1',
+        botImId: 'bot-im-1',
+        botUserName: 'mgr-bob',
+        currentMessageContent: '找不到门店啊',
+      }),
+    );
   });
 
   it('short-circuits agent and fires dispatch async with caseId', async () => {

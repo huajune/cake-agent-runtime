@@ -16,6 +16,7 @@ import { SimpleMergeService } from '../runtime/simple-merge.service';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
 import { MessageProcessingFailureService } from './message-processing-failure.service';
 import { PreAgentRiskInterceptService } from './pre-agent-risk-intercept.service';
+import { ReplyFactGuardService } from './reply-fact-guard.service';
 import { ImageDescriptionService } from './image-description.service';
 import type { AgentThinkingConfig } from '@agent/agent-run.types';
 
@@ -75,6 +76,7 @@ export class ReplyWorkflowService {
     private readonly runtimeConfig: MessageRuntimeConfigService,
     private readonly processingFailureService: MessageProcessingFailureService,
     private readonly preAgentRiskIntercept: PreAgentRiskInterceptService,
+    private readonly replyFactGuard: ReplyFactGuardService,
     private readonly simpleMergeService: SimpleMergeService,
     private readonly imageDescription: ImageDescriptionService,
   ) {}
@@ -559,6 +561,20 @@ export class ReplyWorkflowService {
         result.toolCalls?.some(
           (call) => call.toolName === 'skip_reply' || call.toolName === 'request_handoff',
         ) ?? false;
+
+      // Phase 1：reply 后置事实对账——命中即日志告警，不改写文本
+      // 历史 badcase i41pab8n：invite_to_group 成功后下一轮 Agent 无 tool 调用
+      // 自由发挥说"群已满"。规则积累 1-2 周后再决定是否升级到 phase 2 改写。
+      if (!isSkipped && content) {
+        this.replyFactGuard.check({
+          replyText: content,
+          toolCalls: result.toolCalls,
+          chatId: params.sessionId,
+          userId,
+          botImId: params.botImId,
+          botUserName: params.botUserId,
+        });
+      }
 
       const invokeResult: AgentInvokeResult = {
         reply: { content, reasoning: result.reasoning, usage: result.usage },
