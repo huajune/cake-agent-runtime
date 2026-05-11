@@ -148,7 +148,9 @@ export class HardConstraintsSection implements PromptSection {
     }
     if (interview.is_student !== null && interview.is_student !== undefined) {
       lines.push(
-        `- 是否学生: ${interview.is_student ? '是' : '否'}（开 includeHiringRequirement，结果中明确"不接受学生/学生勿扰"的不要推给学生候选人）`,
+        interview.is_student
+          ? '- 是否学生: 是（学生/在读/准研究生身份是硬闸门；先开 includeHiringRequirement 或 duliday_interview_precheck 核对岗位招聘要求，不得直接说"没问题/符合要求/身份不限"；结果中明确"不接受学生/学生勿扰/社会人士"的不要推给学生候选人，工具未明示可接受学生时保守说明需要确认）'
+          : '- 是否学生: 否（开 includeHiringRequirement 核对岗位招聘要求，不要把社会人士误问成学生）',
       );
     }
     if (interview.has_health_certificate) {

@@ -400,14 +400,23 @@ function extractStudentInfo(message: string): {
   isStudent: boolean | null;
   education: string | null;
 } {
+  if (/本科在读/.test(message)) {
+    return { isStudent: true, education: '本科在读' };
+  }
+  if (/硕士在读|研究生在读|研一|研二|研三/.test(message)) {
+    return { isStudent: true, education: '硕士在读' };
+  }
+  if (/博士在读|博一|博二|博三/.test(message)) {
+    return { isStudent: true, education: '博士在读' };
+  }
+  if (/考上研究生|研究生.*录取|录取.*研究生|准研究生|待入学|准备读研|读研|上研/.test(message)) {
+    return { isStudent: true, education: '硕士待入学' };
+  }
   if (/我是学生|还在读|在校|在读/.test(message)) {
     return { isStudent: true, education: null };
   }
   if (/大一|大二|大三|大四/.test(message)) {
     return { isStudent: true, education: '本科在读' };
-  }
-  if (/研一|研二|研三/.test(message)) {
-    return { isStudent: true, education: '硕士在读' };
   }
   if (/不是学生|已毕业/.test(message)) {
     return { isStudent: false, education: null };

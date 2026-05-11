@@ -234,7 +234,9 @@ describe('ContextService', () => {
     expect(systemPrompt).toContain('## 兼职群资源（上海）');
     expect(systemPrompt).toContain('- 餐饮：1 个群');
     expect(systemPrompt).toContain('- 零售：1 个群');
-    expect(systemPrompt).not.toContain('北京');
+    // 检查"非候选人所在城市的群"未泄漏到 inventory 段，而非整个 prompt 不能含 "北京" 字样
+    // （hard-constraints 段会把"禁止凭通识补北京/重庆等城市"作为反例文案列出）
+    expect(systemPrompt).not.toContain('北京餐饮兼职群');
     expect(systemPrompt).toContain('必须传对应 industry 参数');
   });
 
