@@ -113,26 +113,31 @@ describe('ContextService', () => {
     expect(prompt).toContain('[用户档案]');
     expect(prompt).toContain('姓名: 张三');
     expect(prompt).toContain('先接情绪，再解释用途');
-    expect(prompt).toContain('includeWelfare` / `includeJobSalary`');
-    expect(prompt).toContain('未来某天才能面试');
-    // 同日面试承诺前必须 precheck（P2-002 修复）
+    // final-check 数据开关条目 — 已下沉到 duliday_job_list 工具描述（## 按候选人当前问题精确开启数据开关）
+    expect(prompt).not.toContain('includeWelfare` / `includeJobSalary`');
+    // final-check「未来某天才能面试」/「禁止承诺任何具体日期」— 已下沉到 duliday_interview_precheck 工具描述
+    expect(prompt).not.toContain('未来某天才能面试');
+    expect(prompt).not.toContain('禁止承诺任何具体日期');
+    // 主 prompt 第 12 条仍引用 duliday_interview_precheck 作为工具描述桥梁
     expect(prompt).toContain('duliday_interview_precheck');
-    expect(prompt).toContain('禁止承诺任何具体日期');
     // 工作班次 vs 面试时间澄清（P2-029 修复）
     expect(prompt).toContain('当前**工作班次**不合适');
     expect(prompt).toContain('提议的**面试时间**不合适');
-    // 11 班次硬约束（业务声明版）
-    expect(prompt).toContain('候选人已明确表达时段/班次硬约束');
-    expect(prompt).toContain('推荐 2 个及以上岗位时必须分条分段输出');
-    expect(prompt).toContain('若本轮做了具体岗位推荐');
-    // 14 进入收资前必须 precheck（业务声明版）
-    expect(prompt).toContain('进入收资/约面流程前必须先做面试预检');
+    // 11 班次硬约束 — 已下沉到 strategy_config.red_lines（运营可配），主 prompt 不再固化
+    expect(prompt).not.toContain('候选人已明确表达时段/班次硬约束');
+    // 13 多岗位分段输出 — 已下沉到 duliday_job_list 工具描述（## 回复展示要求），主 prompt 不再固化
+    expect(prompt).not.toContain('推荐 2 个及以上岗位时必须分条分段输出');
+    // final-check「岗位推荐主动展示薪资/班次」— 已下沉到 duliday_job_list 工具描述（## 回复展示要求），主 prompt/final-check 不再固化
+    expect(prompt).not.toContain('若本轮做了具体岗位推荐');
+    // 16/17 约面前必跑 precheck — 已下沉到 duliday_interview_booking 工具描述（## 调用契约），主 prompt 改为引用「以工具描述为准」
+    expect(prompt).not.toContain('进入收资/约面流程前必须先做面试预检');
+    expect(prompt).toContain('以 [`duliday_interview_precheck`] 与 [`duliday_interview_booking`] 工具描述为准');
     // 15/16 已沉淀到 DB 红线（自动注入），不再出现在 candidate-consultation.md
     expect(prompt).not.toContain('healthCertGate');
     expect(prompt).not.toContain('candidateScheduleConstraint');
     expect(prompt).not.toContain('投递层会直接拦截');
-    // v4 复盘：注意力被"日期已过"带跑的兜底（修复 005）
-    expect(prompt).toContain('禁止只问候选人挑新日期就跳过工具');
+    // v4 复盘：注意力被"日期已过"带跑的兜底（修复 005）— 已随第 16/17 条下沉到 duliday_interview_precheck / duliday_interview_booking 工具描述，主 prompt 不再固化
+    expect(prompt).not.toContain('禁止只问候选人挑新日期就跳过工具');
     // v4 复盘：两人分流红线（修复 012）已沉淀到 DB 红线，不再出现在 candidate-consultation.md
     expect(prompt).not.toContain('两人结伴求职、当前门店名额不足时必须主动给就近分流方案');
     // 工具专属规则（如 bookingChecklist.collectionStrategy）已迁移到各工具的 description 字段，
@@ -222,6 +227,10 @@ describe('ContextService', () => {
           district: null,
           location: null,
           labor_form: null,
+          delayed_intent: null,
+          short_term: null,
+          open_position: null,
+          time_windows: null,
         },
         reasoning: '',
       },
@@ -230,7 +239,9 @@ describe('ContextService', () => {
     expect(systemPrompt).toContain('## 兼职群资源（上海）');
     expect(systemPrompt).toContain('- 餐饮：1 个群');
     expect(systemPrompt).toContain('- 零售：1 个群');
-    expect(systemPrompt).not.toContain('北京');
+    // 检查"非候选人所在城市的群"未泄漏到 inventory 段，而非整个 prompt 不能含 "北京" 字样
+    // （hard-constraints 段会把"禁止凭通识补北京/重庆等城市"作为反例文案列出）
+    expect(systemPrompt).not.toContain('北京餐饮兼职群');
     expect(systemPrompt).toContain('必须传对应 industry 参数');
   });
 

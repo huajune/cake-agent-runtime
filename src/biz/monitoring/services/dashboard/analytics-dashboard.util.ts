@@ -1,10 +1,5 @@
 import { ScenarioType } from '@enums/agent.enum';
-import {
-  addLocalDays,
-  getLocalDayStart,
-  getLocalMonthStart,
-  getLocalWeekStart,
-} from '@infra/utils/date.util';
+import { addLocalDays, getLocalDayStart } from '@infra/utils/date.util';
 import type { MessageProcessingRecordInput } from '@biz/message/types/message.types';
 import type { AgentInvocationRecord, MessageProcessingRecord } from '@shared-types/tracking.types';
 import type { TimeRange } from '../../types/analytics.types';
@@ -36,10 +31,10 @@ export function calculateDashboardTimeRanges(timeRange: TimeRange): DashboardTim
     }
 
     case 'week': {
-      const weekStart = getLocalWeekStart(nowDate);
-      const currentStart = weekStart.getTime();
-      const previousWeekStart = addLocalDays(weekStart, -7);
-      const previousStart = previousWeekStart.getTime();
+      const currentStartDate = addLocalDays(getLocalDayStart(nowDate), -6);
+      const currentStart = currentStartDate.getTime();
+      const previousStartDate = addLocalDays(currentStartDate, -7);
+      const previousStart = previousStartDate.getTime();
 
       return {
         currentStart,
@@ -50,16 +45,16 @@ export function calculateDashboardTimeRanges(timeRange: TimeRange): DashboardTim
     }
 
     case 'month': {
-      const monthStart = getLocalMonthStart(nowDate);
-      const currentStart = monthStart.getTime();
-      const previousMonthStart = getLocalMonthStart(nowDate, -1);
-      const previousStart = previousMonthStart.getTime();
+      const currentStartDate = addLocalDays(getLocalDayStart(nowDate), -29);
+      const currentStart = currentStartDate.getTime();
+      const previousStartDate = addLocalDays(currentStartDate, -30);
+      const previousStart = previousStartDate.getTime();
 
       return {
         currentStart,
         currentEnd: now,
         previousStart,
-        previousEnd: Math.min(previousStart + (now - currentStart), currentStart),
+        previousEnd: previousStart + (now - currentStart),
       };
     }
 

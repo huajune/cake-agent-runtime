@@ -75,7 +75,7 @@ export class TestBatchService {
   ) {
     this.batchConcurrency = this.readPositiveInt('TEST_SUITE_BATCH_CONCURRENCY', 20, {
       min: 1,
-      max: 20,
+      max: 22,
     });
     this.logger.log('TestBatchService 初始化完成');
   }

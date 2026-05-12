@@ -13,6 +13,7 @@ import { join } from 'path';
 import { StrategyConfigService as BizStrategyConfigService } from '@biz/strategy/services/strategy-config.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { GroupContext } from '@biz/group-task/group-task.types';
+import { normalizeCity } from '@biz/group-task/utils/city-normalize.util';
 import type { EntityExtractionResult } from '@memory/types/session-facts.types';
 import {
   StrategyConfigRecord,
@@ -186,7 +187,8 @@ export class ContextService implements OnModuleInit {
     let cityGroups: GroupContext[];
     try {
       const allGroups = await this.groupResolver.resolveGroups('兼职群');
-      cityGroups = allGroups.filter((group) => group.city === city);
+      const normalizedTargetCity = normalizeCity(city);
+      cityGroups = allGroups.filter((group) => normalizeCity(group.city) === normalizedTargetCity);
     } catch (error) {
       this.logger.warn(`预渲染兼职群资源失败 (city=${city}): ${(error as Error).message}`);
       return '';

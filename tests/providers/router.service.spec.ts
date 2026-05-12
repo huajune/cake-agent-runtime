@@ -11,7 +11,7 @@ describe('RouterService', () => {
   beforeEach(async () => {
     env = {
       AGENT_CHAT_MODEL: 'anthropic/claude-sonnet-4-6',
-      AGENT_CHAT_FALLBACKS: 'openai/gpt-4o, deepseek/deepseek-chat',
+      AGENT_CHAT_FALLBACKS: 'openai/gpt-4o, deepseek/deepseek-v4-flash',
     };
 
     mockConfigService = {
@@ -52,7 +52,7 @@ describe('RouterService', () => {
       expect(service.listRoleDetails()).toEqual({
         chat: {
           model: 'anthropic/claude-sonnet-4-6',
-          fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-chat'],
+          fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-v4-flash'],
         },
         vision: {
           model: 'google/gemini-2.0-flash',
@@ -68,7 +68,7 @@ describe('RouterService', () => {
 
       expect(service.getFallbacks(ModelRole.Chat)).toEqual([
         'openai/gpt-4o',
-        'deepseek/deepseek-chat',
+        'deepseek/deepseek-v4-flash',
       ]);
     });
 
@@ -101,14 +101,14 @@ describe('RouterService', () => {
     it('should return the route for a configured role', () => {
       expect(service.getRouteByRole(ModelRole.Chat)).toEqual({
         modelId: 'anthropic/claude-sonnet-4-6',
-        fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-chat'],
+        fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-v4-flash'],
       });
     });
 
     it('should treat role strings case-insensitively', () => {
       expect(service.getRouteByRole('CHAT')).toEqual({
         modelId: 'anthropic/claude-sonnet-4-6',
-        fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-chat'],
+        fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-v4-flash'],
       });
     });
 
@@ -123,7 +123,7 @@ describe('RouterService', () => {
     it('should resolve the configured route when no override is provided', () => {
       expect(service.resolveRoute({ role: ModelRole.Chat })).toEqual({
         modelId: 'anthropic/claude-sonnet-4-6',
-        fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-chat'],
+        fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-v4-flash'],
       });
     });
 
@@ -147,7 +147,7 @@ describe('RouterService', () => {
         }),
       ).toEqual({
         modelId: 'openai/gpt-4o-mini',
-        fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-chat'],
+        fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-v4-flash'],
       });
     });
 
@@ -169,7 +169,7 @@ describe('RouterService', () => {
     it('should default to the chat route', () => {
       expect(service.resolveForTurn({})).toEqual({
         modelId: 'anthropic/claude-sonnet-4-6',
-        fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-chat'],
+        fallbacks: ['openai/gpt-4o', 'deepseek/deepseek-v4-flash'],
       });
     });
 

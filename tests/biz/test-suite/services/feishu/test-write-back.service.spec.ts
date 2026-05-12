@@ -37,7 +37,7 @@ describe('TestWriteBackService', () => {
 
   const makeExecution = (overrides: Record<string, unknown> = {}) => ({
     id: 'exec-1',
-    case_id: 'rec-feishu-1',
+    case_id: 'recvifeishu01',
     batch_id: 'batch-1',
     ...overrides,
   });
@@ -107,7 +107,7 @@ describe('TestWriteBackService', () => {
       expect(bitableApi.updateRecord).toHaveBeenCalledWith(
         'app-token',
         'table-id',
-        'rec-feishu-1',
+        'recvifeishu01',
         expect.objectContaining({ 测试状态: FeishuTestStatus.PASSED }),
       );
       expect(result.success).toBe(true);
@@ -184,13 +184,13 @@ describe('TestWriteBackService', () => {
     it('should write PASSED status to feishu record', async () => {
       mockBitableApi.updateRecord.mockResolvedValue({ success: true });
 
-      const result = await service.writeBackResult('rec-1', FeishuTestStatus.PASSED, 'batch-1');
+      const result = await service.writeBackResult('recvifeishu01', FeishuTestStatus.PASSED, 'batch-1');
 
       expect(bitableApi.getTableConfig).toHaveBeenCalledWith('testSuite');
       expect(bitableApi.updateRecord).toHaveBeenCalledWith(
         'app-token',
         'table-id',
-        'rec-1',
+        'recvifeishu01',
         expect.objectContaining({ 测试状态: FeishuTestStatus.PASSED }),
       );
       expect(result.success).toBe(true);
@@ -199,7 +199,7 @@ describe('TestWriteBackService', () => {
     it('should include batchId in update fields when provided', async () => {
       mockBitableApi.updateRecord.mockResolvedValue({ success: true });
 
-      await service.writeBackResult('rec-1', FeishuTestStatus.PASSED, 'batch-123');
+      await service.writeBackResult('recvifeishu01', FeishuTestStatus.PASSED, 'batch-123');
 
       expect(bitableApi.updateRecord).toHaveBeenCalledWith(
         expect.any(String),
@@ -212,7 +212,7 @@ describe('TestWriteBackService', () => {
     it('should NOT include errorReason field for PASSED status', async () => {
       mockBitableApi.updateRecord.mockResolvedValue({ success: true });
 
-      await service.writeBackResult('rec-1', FeishuTestStatus.PASSED, undefined, '某个原因');
+      await service.writeBackResult('recvifeishu01', FeishuTestStatus.PASSED, undefined, '某个原因');
 
       const updateFields = bitableApi.updateRecord.mock.calls[0][3];
       expect(updateFields['错误原因']).toBeUndefined();
@@ -221,7 +221,7 @@ describe('TestWriteBackService', () => {
     it('should include errorReason field only for FAILED status', async () => {
       mockBitableApi.updateRecord.mockResolvedValue({ success: true });
 
-      await service.writeBackResult('rec-1', FeishuTestStatus.FAILED, undefined, '回答内容错误');
+      await service.writeBackResult('recvifeishu01', FeishuTestStatus.FAILED, undefined, '回答内容错误');
 
       const updateFields = bitableApi.updateRecord.mock.calls[0][3];
       expect(updateFields['错误原因']).toBe('回答内容错误');
@@ -231,7 +231,7 @@ describe('TestWriteBackService', () => {
       mockBitableApi.updateRecord.mockResolvedValue({ success: true });
 
       await service.writeBackResult(
-        'rec-1',
+        'recvifeishu01',
         FeishuTestStatus.PASSED,
         'batch-1',
         undefined,
@@ -248,7 +248,7 @@ describe('TestWriteBackService', () => {
         error: 'Record not found in Feishu',
       });
 
-      const result = await service.writeBackResult('rec-1', FeishuTestStatus.PASSED);
+      const result = await service.writeBackResult('recvifeishu01', FeishuTestStatus.PASSED);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Record not found in Feishu');
@@ -257,7 +257,7 @@ describe('TestWriteBackService', () => {
     it('should handle exceptions and return error result', async () => {
       mockBitableApi.updateRecord.mockRejectedValue(new Error('Network error'));
 
-      const result = await service.writeBackResult('rec-1', FeishuTestStatus.PASSED);
+      const result = await service.writeBackResult('recvifeishu01', FeishuTestStatus.PASSED);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Network error');
@@ -266,7 +266,7 @@ describe('TestWriteBackService', () => {
     it('should always include lastTestTime in update fields', async () => {
       mockBitableApi.updateRecord.mockResolvedValue({ success: true });
 
-      await service.writeBackResult('rec-1', FeishuTestStatus.PASSED);
+      await service.writeBackResult('recvifeishu01', FeishuTestStatus.PASSED);
 
       const updateFields = bitableApi.updateRecord.mock.calls[0][3];
       expect(updateFields['最近测试时间']).toBeDefined();
@@ -280,8 +280,8 @@ describe('TestWriteBackService', () => {
       mockBitableApi.updateRecord.mockResolvedValue({ success: true });
 
       const items = [
-        { recordId: 'rec-1', testStatus: FeishuTestStatus.PASSED },
-        { recordId: 'rec-2', testStatus: FeishuTestStatus.FAILED },
+        { recordId: 'recvifeishu01', testStatus: FeishuTestStatus.PASSED },
+        { recordId: 'recvifeishu02', testStatus: FeishuTestStatus.FAILED },
       ];
 
       const result = await service.batchWriteBackResults(items);
@@ -298,15 +298,15 @@ describe('TestWriteBackService', () => {
         .mockResolvedValue({ success: false, error: 'Feishu API error' });
 
       const items = [
-        { recordId: 'rec-1', testStatus: FeishuTestStatus.PASSED },
-        { recordId: 'rec-2', testStatus: FeishuTestStatus.FAILED },
+        { recordId: 'recvifeishu01', testStatus: FeishuTestStatus.PASSED },
+        { recordId: 'recvifeishu02', testStatus: FeishuTestStatus.FAILED },
       ];
 
       const result = await service.batchWriteBackResults(items);
 
       expect(result.success).toBe(1);
       expect(result.failed).toBe(1);
-      expect(result.errors[0]).toContain('rec-2');
+      expect(result.errors[0]).toContain('recvifeishu02');
     });
   });
 
@@ -320,13 +320,13 @@ describe('TestWriteBackService', () => {
       });
       mockBitableApi.updateRecord.mockResolvedValue({ success: true });
 
-      const result = await service.writeBackSimilarityScore('rec-1', 85);
+      const result = await service.writeBackSimilarityScore('recvifeishu01', 85);
 
       expect(bitableApi.getTableConfig).toHaveBeenCalledWith('validationSet');
       expect(bitableApi.updateRecord).toHaveBeenCalledWith(
         'validation-app',
         'validation-table',
-        'rec-1',
+        'recvifeishu01',
         expect.objectContaining({ 相似度分数: 85 }),
       );
       expect(result.success).toBe(true);
@@ -335,7 +335,7 @@ describe('TestWriteBackService', () => {
     it('should not include similarityScore field when null', async () => {
       mockBitableApi.updateRecord.mockResolvedValue({ success: true });
 
-      await service.writeBackSimilarityScore('rec-1', null);
+      await service.writeBackSimilarityScore('recvifeishu01', null);
 
       const updateFields = bitableApi.updateRecord.mock.calls[0][3];
       expect(updateFields['相似度分数']).toBeUndefined();
@@ -344,7 +344,7 @@ describe('TestWriteBackService', () => {
     it('should always include lastTestTime even when score is null', async () => {
       mockBitableApi.updateRecord.mockResolvedValue({ success: true });
 
-      await service.writeBackSimilarityScore('rec-1', null);
+      await service.writeBackSimilarityScore('recvifeishu01', null);
 
       const updateFields = bitableApi.updateRecord.mock.calls[0][3];
       expect(updateFields['最近测试时间']).toBeDefined();
@@ -353,7 +353,7 @@ describe('TestWriteBackService', () => {
     it('should include evaluationSummary when provided', async () => {
       mockBitableApi.updateRecord.mockResolvedValue({ success: true });
 
-      await service.writeBackSimilarityScore('rec-1', 75, {
+      await service.writeBackSimilarityScore('recvifeishu01', 75, {
         evaluationSummary: '评审摘要\n第2轮 失败（Claude）：岗位不匹配',
       });
 
@@ -367,7 +367,7 @@ describe('TestWriteBackService', () => {
         error: 'Permission denied',
       });
 
-      const result = await service.writeBackSimilarityScore('rec-1', 70);
+      const result = await service.writeBackSimilarityScore('recvifeishu01', 70);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Permission denied');
@@ -376,10 +376,102 @@ describe('TestWriteBackService', () => {
     it('should handle exceptions gracefully', async () => {
       mockBitableApi.updateRecord.mockRejectedValue(new Error('Connection timeout'));
 
-      const result = await service.writeBackSimilarityScore('rec-1', 75);
+      const result = await service.writeBackSimilarityScore('recvifeishu01', 75);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Connection timeout');
+    });
+  });
+
+  // ========== resolveFeishuRecordId（caseId → recordId lookup） ==========
+
+  describe('caseId → recordId lookup（direct batch 路径）', () => {
+    /**
+     * 历史背景：direct batch 创建 execution 时存的是稳定 caseId（如 P1-SCN-spen553o），
+     * 不是飞书 recordId。writeBack 服务必须先按 caseId 反查飞书测试集拿到真实 recordId。
+     */
+    beforeEach(() => {
+      // 扩展 mock：getFields 多返回一个稳定 ID 字段
+      mockBitableApi.getFields.mockResolvedValue([
+        { field_name: '测试状态' },
+        { field_name: '最近测试时间' },
+        { field_name: '测试批次' },
+        { field_name: '错误原因' },
+        { field_name: '评审摘要' },
+        { field_name: '相似度分数' },
+        { field_name: '评估摘要' },
+        { field_name: '用例ID' },
+      ]);
+    });
+
+    it('应当通过 stableId 反查飞书 recordId 后写回成功', async () => {
+      const queryRecords = jest.fn().mockResolvedValue([{ record_id: 'recvilookup001' }]);
+      (mockBitableApi as unknown as { queryRecords: typeof queryRecords }).queryRecords =
+        queryRecords;
+      mockBitableApi.updateRecord.mockResolvedValue({ success: true });
+
+      const result = await service.writeBackResult(
+        'P1-SCN-spen553o',
+        FeishuTestStatus.PASSED,
+        'batch-direct',
+      );
+
+      expect(queryRecords).toHaveBeenCalledWith(
+        'app-token',
+        'table-id',
+        'CurrentValue.[用例ID] = "P1-SCN-spen553o"',
+        1,
+      );
+      expect(mockBitableApi.updateRecord).toHaveBeenCalledWith(
+        'app-token',
+        'table-id',
+        'recvilookup001',
+        expect.any(Object),
+      );
+      expect(result.success).toBe(true);
+    });
+
+    it('当 stableId 在飞书中查不到时应返回明确错误', async () => {
+      const queryRecords = jest.fn().mockResolvedValue([]);
+      (mockBitableApi as unknown as { queryRecords: typeof queryRecords }).queryRecords =
+        queryRecords;
+
+      const result = await service.writeBackResult('SCN-NON-EXISTENT', FeishuTestStatus.PASSED);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('未找到对应记录');
+      expect(mockBitableApi.updateRecord).not.toHaveBeenCalled();
+    });
+
+    it('对 rec 前缀的真实 recordId 应直接走更新（不触发 lookup）', async () => {
+      const queryRecords = jest.fn();
+      (mockBitableApi as unknown as { queryRecords: typeof queryRecords }).queryRecords =
+        queryRecords;
+      mockBitableApi.updateRecord.mockResolvedValue({ success: true });
+
+      const result = await service.writeBackResult('recvirealfeishu01', FeishuTestStatus.PASSED);
+
+      expect(queryRecords).not.toHaveBeenCalled();
+      expect(mockBitableApi.updateRecord).toHaveBeenCalledWith(
+        'app-token',
+        'table-id',
+        'recvirealfeishu01',
+        expect.any(Object),
+      );
+      expect(result.success).toBe(true);
+    });
+
+    it('lookup 结果应在进程内缓存，重复调用同一 stableId 不再查飞书', async () => {
+      const queryRecords = jest.fn().mockResolvedValue([{ record_id: 'recvicache01' }]);
+      (mockBitableApi as unknown as { queryRecords: typeof queryRecords }).queryRecords =
+        queryRecords;
+      mockBitableApi.updateRecord.mockResolvedValue({ success: true });
+
+      await service.writeBackResult('P1-SCN-cached', FeishuTestStatus.PASSED);
+      await service.writeBackResult('P1-SCN-cached', FeishuTestStatus.FAILED);
+
+      expect(queryRecords).toHaveBeenCalledTimes(1);
+      expect(mockBitableApi.updateRecord).toHaveBeenCalledTimes(2);
     });
   });
 });

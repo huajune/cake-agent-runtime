@@ -15,6 +15,8 @@
  *
  * 🍕可直接通过上面的链接进入【独立客小程序】查看更多{城市}区域订单~
  * ❗有任何问题可随时联系沟通哦~
+ *
+ * 上海/武汉必胜客群会替换为对应 BP 联系人提示。
  */
 
 import { BIOrder, BI_FIELD_NAMES, TimeSlot } from '../group-task.types';
@@ -25,6 +27,11 @@ interface OrderGrabTemplateData {
   city: string;
   timeSlot?: TimeSlot;
 }
+
+const FOOTER_CONTACT_BY_CITY: Record<string, string> = {
+  上海: '独立客灵工BP-8004',
+  武汉: '独立客灵工BP-8003',
+};
 
 /**
  * 生成抢单群通知消息（模板拼装）
@@ -71,11 +78,30 @@ export function buildOrderGrabMessage(data: OrderGrabTemplateData): string {
     lines.push('');
   }
 
-  // 固定尾部
-  lines.push(`🍕可直接通过上面的链接进入【独立客小程序】查看更多${city}区域订单~`);
-  lines.push('❗有任何问题可随时联系沟通哦~');
+  lines.push(...buildFooterLines(city));
 
   return lines.join('\n');
+}
+
+function buildFooterLines(city: string): string[] {
+  const normalizedCity = normalizeFooterCity(city);
+  const contact = FOOTER_CONTACT_BY_CITY[normalizedCity];
+
+  if (!contact) {
+    return [
+      `🍕可直接通过上面的链接进入【独立客小程序】查看更多${city}区域订单~`,
+      '❗有任何问题可随时联系沟通哦~',
+    ];
+  }
+
+  return [
+    `🍕可直接通过上面的链接进入【独立客小程序】查看更多 ${normalizedCity}区域订单~`,
+    `无法接单或需要办理入职的伙伴，请咨询群里的【${contact}】`,
+  ];
+}
+
+function normalizeFooterCity(city: string): string {
+  return city.trim().replace(/(?:市|地区)$/, '');
 }
 
 /**

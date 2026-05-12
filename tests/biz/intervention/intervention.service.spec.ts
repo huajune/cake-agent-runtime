@@ -1,5 +1,6 @@
 import { InterventionService } from '@biz/intervention/intervention.service';
 import type {
+  GeneralHandoffInterventionPayload,
   HandoffInterventionPayload,
   RiskInterventionPayload,
 } from '@biz/intervention/intervention.service';
@@ -16,6 +17,9 @@ describe('InterventionService', () => {
     notifyConversationRisk: jest.fn(),
   };
   const handoffNotifier = {
+    notify: jest.fn(),
+  };
+  const generalHandoffNotifier = {
     notify: jest.fn(),
   };
 
@@ -84,12 +88,14 @@ describe('InterventionService', () => {
     recruitmentCaseService.markHandoff.mockResolvedValue(undefined);
     riskNotifier.notifyConversationRisk.mockResolvedValue(true);
     handoffNotifier.notify.mockResolvedValue(true);
+    generalHandoffNotifier.notify.mockResolvedValue(true);
 
     service = new InterventionService(
       userHostingService as never,
       recruitmentCaseService as never,
       riskNotifier as never,
       handoffNotifier as never,
+      generalHandoffNotifier as never,
     );
   });
 
@@ -164,5 +170,33 @@ describe('InterventionService', () => {
       alerted: false,
       suppressed: 'notify_failed',
     });
+  });
+
+  it('pauses + notifies via GeneralHandoffNotifierService for general_handoff payload', async () => {
+    const generalPayload: GeneralHandoffInterventionPayload = {
+      ...baseContext,
+      kind: 'general_handoff',
+      alertLabel: '需人工跟进',
+      reason: '当前会话无 active case 且候选人需人工',
+      summary: '候选人想入群但城市无可用群',
+      source: 'agent_tool',
+    };
+
+    const result = await service.dispatch(generalPayload);
+
+    expect(userHostingService.pauseUser).toHaveBeenCalledWith('chat-1');
+    expect(generalHandoffNotifier.notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        alertLabel: '需人工跟进',
+        reason: '当前会话无 active case 且候选人需人工',
+        summary: '候选人想入群但城市无可用群',
+        chatId: 'chat-1',
+        pausedUserId: 'chat-1',
+      }),
+    );
+    expect(handoffNotifier.notify).not.toHaveBeenCalled();
+    expect(riskNotifier.notifyConversationRisk).not.toHaveBeenCalled();
+    expect(recruitmentCaseService.markHandoff).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ dispatched: true, paused: true, alerted: true });
   });
 });

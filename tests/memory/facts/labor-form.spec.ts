@@ -3,6 +3,7 @@ import {
   VALID_LABOR_FORMS,
   isValidLaborForm,
   sanitizeJobDisplayText,
+  sanitizeLaborFormForDisplay,
   stripLaborFormFromCategories,
 } from '@/memory/facts/labor-form';
 
@@ -115,5 +116,21 @@ describe('labor-form', () => {
       expect(sanitizeJobDisplayText('服务员')).toBe('服务员');
       expect(sanitizeJobDisplayText('M Stand 咖啡师')).toBe('M Stand 咖啡师');
     });
+  });
+
+  describe('sanitizeLaborFormForDisplay', () => {
+    it.each(['兼职', '全职', '临时工', '正式工'])(
+      'hides platform/reverse labor-form word %s from candidate-facing context',
+      (value) => {
+        expect(sanitizeLaborFormForDisplay(value)).toBeNull();
+      },
+    );
+
+    it.each(['兼职+', '小时工', '寒假工', '暑假工'])(
+      'keeps meaningful labor-form subtype %s',
+      (value) => {
+        expect(sanitizeLaborFormForDisplay(value)).toBe(value);
+      },
+    );
   });
 });

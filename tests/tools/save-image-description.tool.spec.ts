@@ -1,5 +1,6 @@
 import { buildSaveImageDescriptionTool } from '@tools/save-image-description.tool';
 import { MessageType } from '@enums/message-callback.enum';
+import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 describe('buildSaveImageDescriptionTool', () => {
   const mockChatSession = {
@@ -60,7 +61,11 @@ describe('buildSaveImageDescriptionTool', () => {
       description: '某些描述',
     });
 
-    expect(result).toEqual({ success: false, error: 'Invalid messageId' });
+    expect(result).toMatchObject({
+      success: false,
+      errorType: TOOL_ERROR_TYPES.SAVE_IMAGE_INVALID_MESSAGE_ID,
+      providedMessageId: 'msg-unknown',
+    });
     expect(mockChatSession.updateMessageContent).not.toHaveBeenCalled();
   });
 

@@ -136,6 +136,101 @@ export class OpsCardRenderer {
     });
   }
 
+  buildReplyFactContradictionAlertCard(params: {
+    chatId?: string;
+    userId?: string;
+    botImId?: string;
+    botUserName?: string;
+    replyPreview: string;
+    contradictions: Array<{ ruleId: string; label: string }>;
+    toolNames: string[];
+    atUsers?: FeishuReceiver[];
+  }): Record<string, unknown> {
+    const botLabel = params.botUserName
+      ? `${params.botUserName} (${params.botImId ?? '-'})`
+      : (params.botImId ?? '未知');
+
+    const ruleLines = params.contradictions.map(
+      (c, i) => `${i + 1}. ${c.label}（ruleId: ${c.ruleId}）`,
+    );
+
+    const content = [
+      `**时间**: ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`,
+      '**级别**: WARNING（仅观察，未改写回复）',
+      `**接客 bot**: ${botLabel}`,
+      `**chatId**: ${params.chatId ?? '-'}`,
+      `**userId**: ${params.userId ?? '-'}`,
+      `**本轮 tool**: ${params.toolNames.length > 0 ? params.toolNames.join(', ') : '（无）'}`,
+      '',
+      '**命中规则**',
+      ...ruleLines,
+      '',
+      '**回复预览（前 400 字）**',
+      `> ${params.replyPreview.replace(/\n/g, ' ')}`,
+      '',
+      '排查建议：若准确率高，可升级到 phase 2（命中即静默丢弃回复）；若误报多，调整规则关键词或加 exception。',
+    ].join('\n');
+
+    return this.cardBuilder.buildMarkdownCard({
+      title: '⚠️ Agent 回复事实矛盾（与本轮 tool 结果不一致）',
+      content,
+      color: 'yellow',
+      atUsers: params.atUsers,
+    });
+  }
+
+  buildInviteRejectedAlertCard(params: {
+    city: string;
+    industry?: string;
+    chatBotImId?: string;
+    chatBotUserId?: string;
+    rejectedGroups: Array<{
+      name: string;
+      imRoomId: string;
+      ownerBotImId?: string;
+      ownerBotUserId?: string;
+      error?: string;
+    }>;
+    atUsers?: FeishuReceiver[];
+  }): Record<string, unknown> {
+    const scope = `${params.city}${params.industry ? ` / ${params.industry}` : ''}`;
+    const chatBotLabel = params.chatBotUserId
+      ? `${params.chatBotUserId} (${params.chatBotImId ?? '-'})`
+      : (params.chatBotImId ?? '未知');
+
+    const rejectedLines = params.rejectedGroups.map((group, index) => {
+      const ownerLabel = group.ownerBotUserId
+        ? `${group.ownerBotUserId} (${group.ownerBotImId ?? '-'})`
+        : (group.ownerBotImId ?? '未知群主');
+      return [
+        `${index + 1}. **${group.name}**`,
+        `   - imRoomId: ${group.imRoomId}`,
+        `   - 群主 bot: ${ownerLabel}`,
+        `   - 错误: ${group.error ?? '-'}`,
+      ].join('\n');
+    });
+
+    const content = [
+      `**时间**: ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`,
+      '**级别**: WARNING',
+      `**范围**: ${scope}`,
+      `**接客 bot**: ${chatBotLabel}`,
+      `**结论**: 接客 bot 在该城市/行业的全部候选群里都被拒绝（典型为 errcode=400400 "room not found"，即接客 bot 不是群成员）`,
+      '**修复动作**: 在企微后台把"接客 bot"拉进下方列出的群，或与群主确认 bot 关系',
+      `**被拒群数**: ${params.rejectedGroups.length}`,
+      '',
+      '**被拒群明细**',
+      ...rejectedLines,
+    ].join('\n');
+
+    return this.cardBuilder.buildMarkdownCard({
+      title: `⚠️ 接客 bot 拉群被拒 — ${scope}`,
+      content,
+      color: 'red',
+      atUsers: params.atUsers,
+    });
+  }
+
   buildGroupFullAlertCard(params: {
     city: string;
     industry?: string;

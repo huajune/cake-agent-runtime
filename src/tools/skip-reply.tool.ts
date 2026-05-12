@@ -5,20 +5,7 @@ import { ToolBuilder } from '@shared-types/tool.types';
 
 const logger = new Logger('skip_reply');
 
-/**
- * skip_reply 工具
- *
- * 副作用型工具：调用后本轮不再生成对外消息。
- * 与 raise_risk_alert / request_handoff 同类——不产生对话回复，只落观测指标。
- *
- * 使用场景：候选人回复仅为纯确认词（好的/好/谢谢/嗯/收到/ok），
- * 且上一轮你已完成明确推进（给岗位、发模板、拉群、面试确认），
- * 本轮继续主动回复反而显得生硬。
- */
-export function buildSkipReplyTool(): ToolBuilder {
-  return (context) => {
-    return tool({
-      description: `主动跳过本轮回复（什么都不发）。调用后 runtime 会短路消息发送，但仍记录本轮流水。
+const DESCRIPTION = `主动跳过本轮回复（什么都不发）。调用后 runtime 会短路消息发送，但仍记录本轮流水。
 
 ## 调用充要条件（全部满足才允许调用）
 1. 候选人本轮消息为纯确认词（好的/好/谢谢/嗯/收到/ok/okk/好吧 等），长度 < 10 字符，**不含问句结构**；
@@ -39,13 +26,30 @@ export function buildSkipReplyTool(): ToolBuilder {
 ## 执行效果
 - 本轮不给候选人发任何消息
 - 流水仍写入 message_processing_records（deliveryState=skipped_intentional）
-- 监控可统计"主动沉默率"`,
-      inputSchema: z.object({
-        reason: z
-          .string()
-          .min(1)
-          .describe('为何沉默：简短中文描述触发条件（如"候选人回复好的，上轮已拉群"）'),
-      }),
+- 监控可统计"主动沉默率"`;
+
+const inputSchema = z.object({
+  reason: z
+    .string()
+    .min(1)
+    .describe('为何沉默：简短中文描述触发条件（如"候选人回复好的，上轮已拉群"）'),
+});
+
+/**
+ * skip_reply 工具
+ *
+ * 副作用型工具：调用后本轮不再生成对外消息。
+ * 与 raise_risk_alert / request_handoff 同类——不产生对话回复，只落观测指标。
+ *
+ * 使用场景：候选人回复仅为纯确认词（好的/好/谢谢/嗯/收到/ok），
+ * 且上一轮你已完成明确推进（给岗位、发模板、拉群、面试确认），
+ * 本轮继续主动回复反而显得生硬。
+ */
+export function buildSkipReplyTool(): ToolBuilder {
+  return (context) => {
+    return tool({
+      description: DESCRIPTION,
+      inputSchema,
       execute: async ({ reason }) => {
         const chatId = context.chatId ?? context.sessionId;
         logger.log(

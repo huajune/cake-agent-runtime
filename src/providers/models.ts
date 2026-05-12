@@ -84,11 +84,17 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
   },
 
   // ==================== DeepSeek ====================
-  'deepseek/deepseek-chat': {
+  'deepseek/deepseek-v4-flash': {
     provider: 'deepseek',
-    name: 'DeepSeek Chat',
-    description: 'DeepSeek V3.2 (通用对话 / 极致性价比)',
-    capabilities: ['tool-use'],
+    name: 'DeepSeek V4 Flash',
+    description: 'DeepSeek V4 Flash (高速 / 高性价比 / 1M 上下文)',
+    capabilities: ['thinking', 'tool-use', 'long-context'],
+  },
+  'deepseek/deepseek-v4-pro': {
+    provider: 'deepseek',
+    name: 'DeepSeek V4 Pro',
+    description: 'DeepSeek V4 Pro (旗舰推理 / Agent 能力 / 1M 上下文)',
+    capabilities: ['thinking', 'tool-use', 'long-context'],
   },
 
   // ==================== 通义千问 (Qwen) ====================

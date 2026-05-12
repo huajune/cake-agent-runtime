@@ -26,8 +26,6 @@ export default function ControlPanel({
   lastUpdate,
   children,
 }: ControlPanelProps) {
-
-
   return (
     <section className="control-panel">
       {/* 装饰性光点 */}
@@ -48,13 +46,13 @@ export default function ControlPanel({
               className={timeRange === 'week' ? 'active' : ''}
               onClick={() => onTimeRangeChange('week')}
             >
-              本周
+              近7天
             </button>
             <button
               className={timeRange === 'month' ? 'active' : ''}
               onClick={() => onTimeRangeChange('month')}
             >
-              本月
+              近30天
             </button>
           </div>
           <label className="toggle-switch">
@@ -71,7 +69,9 @@ export default function ControlPanel({
         </div>
 
         <div className="control-panel-right">
-          <span className={`health-panel-badge ${healthStatus === 'healthy' ? '' : healthStatus === 'error' ? 'error' : 'warning'}`}>
+          <span
+            className={`health-panel-badge ${healthStatus === 'healthy' ? '' : healthStatus === 'error' ? 'error' : 'warning'}`}
+          >
             {healthMessage}
           </span>
           <label className="auto-refresh">

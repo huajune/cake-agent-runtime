@@ -143,7 +143,7 @@ for (let i = messages.length - 1; i >= 0; i--) {
 | `API_GUARD_TOKEN` | 无 | 可选 | 管理端点 Bearer Token，未配置则不鉴权 |
 | `AGENT_MAX_OUTPUT_TOKENS` | `4096` | 可选 | LLM 单次最大输出 token 数，最小值 100 |
 | `AGENT_MAX_INPUT_CHARS` | `8000` | 可选 | 输入消息总字符上限，最小值 100 |
-| `AGENT_DEFAULT_FALLBACKS` | 无 | 可选 | 全局模型降级链，逗号分隔，如 `deepseek/deepseek-chat,qwen/qwen-max-latest` |
+| `AGENT_DEFAULT_FALLBACKS` | 无 | 可选 | 全局模型降级链，逗号分隔，如 `deepseek/deepseek-v4-flash,qwen/qwen-max-latest` |
 | `AGENT_THINKING_BUDGET_TOKENS` | `0` | 可选 | Extended Thinking token 预算，0 为禁用 |
 | `FEISHU_ALERT_WEBHOOK_URL` | 无 | 必填（生产） | 安全告警推送目标 |
 | `FEISHU_ALERT_SECRET` | 无 | 必填（生产） | 飞书 Webhook 签名密钥 |

@@ -1,6 +1,7 @@
 import { buildSendStoreLocationTool } from '@tools/send-store-location.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { SendMessageType } from '@channels/wecom/message-sender/dto/send-message.dto';
+import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 describe('buildSendStoreLocationTool', () => {
   const mockSpongeService = {
@@ -135,7 +136,7 @@ describe('buildSendStoreLocationTool', () => {
     );
 
     expect(result.success).toBe(false);
-    expect(result.errorType).toBe('missing_delivery_context');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.STORE_LOCATION_MISSING_DELIVERY_CONTEXT);
     expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
     expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
   });
@@ -193,7 +194,7 @@ describe('buildSendStoreLocationTool', () => {
     const result = await executeTool({ jobId: 100 });
 
     expect(result.success).toBe(false);
-    expect(result.errorType).toBe('store_location_unavailable');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.STORE_LOCATION_UNAVAILABLE);
     expect(result.storeAddress).toBe('北京市丰台区青塔西路 1 号');
     expect(mockMessageSenderService.sendMessage).not.toHaveBeenCalled();
   });

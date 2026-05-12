@@ -1,5 +1,6 @@
 import {
   extractAutoGreetingName,
+  hasStructuredNameSubmission,
   isFromAutoGreeting,
   isLikelyRealChineseName,
   sanitizeInterviewName,
@@ -88,6 +89,28 @@ describe('name-guard', () => {
       expect(result.sanitized.interview_info.name).toBe('执子之魂');
     });
 
+    it('keeps name when greeting xx is later confirmed via structured checklist (姓名：xx)', () => {
+      // badcase ci7iigv4：T1 打招呼"我是赵堤"，T9 按收资表单回填"姓名：赵堤..."
+      const facts = buildFacts('赵堤');
+      const result = sanitizeInterviewName(facts, [
+        '我是赵堤',
+        '不用压三日结吗',
+        '姓名：赵堤\n联系电话：18410579340\n年龄：24\n性别：男',
+      ]);
+      expect(result.droppedName).toBeNull();
+      expect(result.sanitized.interview_info.name).toBe('赵堤');
+    });
+
+    it('keeps name when greeting xx is later confirmed via checklist with 名字 key', () => {
+      const facts = buildFacts('李爱国');
+      const result = sanitizeInterviewName(facts, [
+        '我是李爱国',
+        '名字: 李爱国\n年龄：58',
+      ]);
+      expect(result.droppedName).toBeNull();
+      expect(result.sanitized.interview_info.name).toBe('李爱国');
+    });
+
     it('preserves other interview_info fields when sanitizing', () => {
       const facts: EntityExtractionResult = {
         ...FALLBACK_EXTRACTION,
@@ -102,6 +125,38 @@ describe('name-guard', () => {
       expect(result.sanitized.interview_info.name).toBeNull();
       expect(result.sanitized.interview_info.phone).toBe('13800138000');
       expect(result.sanitized.interview_info.age).toBe('28');
+    });
+  });
+
+  describe('hasStructuredNameSubmission', () => {
+    it.each([
+      ['赵堤', ['姓名：赵堤\n联系电话：18410579340\n年龄：24']],
+      ['赵堤', ['姓名: 赵堤']],
+      ['赵堤', ['姓名 赵堤\n年龄：24']],
+      ['李爱国', ['名字：李爱国\n年龄：58']],
+      // 多行，包含其它内容
+      [
+        '刘润润',
+        ['姓名:刘润润\n联系方式:18342360799\n年龄:31\n学历:大学本科\n健康证情况（有/无）:无'],
+      ],
+      // 带时间后缀
+      ['赵堤', ['姓名：赵堤\n[消息发送时间：2026-04-30 10:31 周三]']],
+    ])('matches structured submission of %s in %j', (name, messages) => {
+      expect(hasStructuredNameSubmission(name, messages)).toBe(true);
+    });
+
+    it.each([
+      // 名字不匹配
+      ['张三', ['姓名：李四']],
+      // 没有 key
+      ['赵堤', ['赵堤']],
+      // 是打招呼，不算结构化回填
+      ['赵堤', ['我是赵堤']],
+      // 空
+      ['赵堤', []],
+      ['', ['姓名：赵堤']],
+    ])('rejects non-structured cases: name=%p messages=%j', (name, messages) => {
+      expect(hasStructuredNameSubmission(name, messages)).toBe(false);
     });
   });
 

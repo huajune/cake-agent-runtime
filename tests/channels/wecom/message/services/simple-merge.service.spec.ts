@@ -145,52 +145,92 @@ describe('SimpleMergeService', () => {
     });
   });
 
-  describe('getAndClearPendingMessages', () => {
-    it('should return parsed messages and batch ID', async () => {
+  describe('claimPendingSnapshot', () => {
+    it('should return parsed messages, snapshotSize and batchId without clearing pending', async () => {
       const rawMessages = [
         JSON.stringify(validMessageData),
         JSON.stringify({ ...validMessageData, messageId: 'msg-456' }),
       ];
       mockRedisService.lrange.mockResolvedValue(rawMessages);
 
-      const result = await service.getAndClearPendingMessages('chat-123');
+      const result = await service.claimPendingSnapshot('chat-123');
 
       expect(result.messages).toHaveLength(2);
+      expect(result.snapshotSize).toBe(2);
       expect(result.batchId).toMatch(/^batch_chat-123_\d+$/);
-      expect(mockRedisService.ltrim).toHaveBeenCalledWith(
+      expect(mockRedisService.lrange).toHaveBeenCalledWith(
+        'wecom:message:pending:chat-123',
+        0,
+        -1,
+      );
+      // 关键改动：claim 阶段不再 LTRIM，只有显式 ack 才裁掉
+      expect(mockRedisService.ltrim).not.toHaveBeenCalled();
+    });
+
+    it('should support fromIndex for replay path and skip batchId generation', async () => {
+      mockRedisService.lrange.mockResolvedValue([JSON.stringify(validMessageData)]);
+
+      const result = await service.claimPendingSnapshot('chat-123', 2);
+
+      expect(result.messages).toHaveLength(1);
+      expect(result.snapshotSize).toBe(1);
+      expect(result.batchId).toBe('');
+      expect(mockRedisService.lrange).toHaveBeenCalledWith(
         'wecom:message:pending:chat-123',
         2,
         -1,
       );
     });
 
-    it('should return empty messages and empty batchId when queue is empty', async () => {
+    it('should return empty messages and snapshotSize=0 when queue is empty', async () => {
       mockRedisService.lrange.mockResolvedValue([]);
 
-      const result = await service.getAndClearPendingMessages('chat-empty');
+      const result = await service.claimPendingSnapshot('chat-empty');
 
       expect(result.messages).toHaveLength(0);
+      expect(result.snapshotSize).toBe(0);
       expect(result.batchId).toBe('');
     });
 
-    it('should skip malformed JSON messages', async () => {
+    it('should skip malformed JSON messages but still count snapshotSize accurately', async () => {
       mockRedisService.lrange.mockResolvedValue([
         JSON.stringify(validMessageData),
         'invalid-json-{{{',
       ]);
 
-      const result = await service.getAndClearPendingMessages('chat-123');
+      const result = await service.claimPendingSnapshot('chat-123');
 
       expect(result.messages).toHaveLength(1);
+      // snapshotSize 反映原始条数，用于 ack 时正确 LTRIM 偏移
+      expect(result.snapshotSize).toBe(2);
     });
 
     it('should handle already-parsed objects in lrange result', async () => {
-      // Simulate when Redis returns object instead of string
       mockRedisService.lrange.mockResolvedValue([validMessageData]);
 
-      const result = await service.getAndClearPendingMessages('chat-123');
+      const result = await service.claimPendingSnapshot('chat-123');
 
       expect(result.messages).toHaveLength(1);
+      expect(result.snapshotSize).toBe(1);
+    });
+  });
+
+  describe('ackPendingMessages', () => {
+    it('should LTRIM the first count items from pending', async () => {
+      await service.ackPendingMessages('chat-123', 3);
+
+      expect(mockRedisService.ltrim).toHaveBeenCalledWith(
+        'wecom:message:pending:chat-123',
+        3,
+        -1,
+      );
+    });
+
+    it('should be a no-op when count <= 0', async () => {
+      await service.ackPendingMessages('chat-123', 0);
+      await service.ackPendingMessages('chat-123', -1);
+
+      expect(mockRedisService.ltrim).not.toHaveBeenCalled();
     });
   });
 

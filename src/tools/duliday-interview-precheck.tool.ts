@@ -15,6 +15,7 @@ import {
   SPONGE_PROVINCE_MAPPING,
 } from '@sponge/sponge.enums';
 import { ToolBuilder } from '@shared-types/tool.types';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { formatLocalDate, getTomorrowDate } from '@infra/utils/date.util';
 import { stripNullish } from '@infra/utils/object.util';
 import {
@@ -44,6 +45,70 @@ import {
 import { isLikelyRealChineseName } from '@memory/facts/name-guard';
 
 const logger = new Logger('duliday_interview_precheck');
+
+const DESCRIPTION = `面试前置校验。本工具负责解释岗位规则、返回筛选条件和收资策略，**不负责真正提交预约**（真正提交用 duliday_interview_booking）。
+
+**与 duliday_interview_booking 的契约**：booking 工具完全信任本工具的结论，自身不会再做时段窗口/筛选答案/真实姓名等硬规则的二次校验。Agent 必须在调 booking 之前先调本工具，并按返回的 nextAction 行动；漏调本工具就直接进 booking 会让候选人被错约面、被错放过筛选硬伤。
+
+## 何时调用
+- 候选人问"今天可以吗"、"什么时候可以面试"、"要准备什么资料"、"还需要我提供什么信息"时优先调用
+- 回答"今天可以吗/哪天能面/要补哪些资料"前，先看此工具结果；不要只根据 duliday_job_list 的摘要或自己理解直接回答
+- 候选人明确提出日期或时间（如"后天最好"、"5月1号回来面试可以吗"、"今天六点才能下班可以去面试吗"）时，必须带 requestedDate 调用；当前焦点岗位不明确时，先确认门店/岗位，不得凭记忆给出可约日期
+- 收资/约面过程中候选人补充"每周最多两天/做一休一/只周末/不上夜班/下班后/六点才下班/现在决定不了时间"等硬约束时，先用本工具和/或 duliday_job_list(includeWorkTime=true) 校验当前岗位是否匹配，再决定是否继续收资
+- **进入收资场景前必须先调本工具一次**：候选人明确表达约面意向（"需要面试吗 / 帮我约 / 这家可以"等）后，**第一步必须先调本工具拿到 bookingChecklist.requiredFieldsToCollectNow 与 nameFieldGuard**，再按工具结果一次性发资料模板；严禁绕过工具直接问"哪天方便"或"叫什么"等碎片化收资
+- **每次准备调 duliday_interview_booking 之前必须最后再确认一次本工具的本轮结果**：哪怕之前已经调过，只要候选人补了新字段、改了面试时间、改了门店或岗位，就要重新调一次，确保你拿到的 bookableSlots / screeningChecks / nameFieldGuard 是最新的
+
+## 参数
+- jobId：岗位 ID（必填）
+- requestedDate：**仅当**候选人明确说出想约的具体日期时才传入（如 today / 明天 / 下周三 / YYYY-MM-DD）。候选人只是泛泛询问时不要传
+
+## 返回字段
+- interview.scheduleRule：岗位的面试周期规则，例如"周一至周五 13:30-16:30，当天 12:00 前报名"。用来回答"还有别的时间吗/下周能约吗"这类开放问题
+- interview.upcomingTimeOptions：未来 7 天实际可约时段的示例 label 数组（已自动过滤报名截止已过的时段）。用来回答"给我几个时间选选"
+- interview.bookableSlots：结构化可约时段。只有 bookingAllowed=true 且带 interviewTime 的 slot 才能进入 duliday_interview_booking；bookingAllowed=false / dateOnly=true 表示只确定日期、不确定具体面试时间，必须先人工确认，严禁拿 registrationDeadline 当 interviewTime
+- interview.requestedDate：只有在传入 requestedDate 时才有；包含 status（available / unavailable / needs_confirmation）和 reason
+- interview.flowDescription / interview.processRemark / interview.timingHighlights：岗位面试流程的事实描述，含"线上 AI 面试 / 二维码会发到企微 / 保持电话畅通 / 24 小时出结果 / 入职前必须办好健康证"等关键流程。**预约成功后或候选人问"怎么面/什么形式/会发什么"时必须按这些字段照念**，不得凭 method 字段（仅"线上/线下"两个字）自己编流程。北京必胜客等品牌的 AI 面试码、流程节奏都在这里
+- screeningCriteria：岗位硬性筛选条件（性别/年龄/学历/健康证/是否学生等），**用来筛人**——候选人不符合时直接说明，不要继续往下引导
+- healthCertGate：健康证业务口径，三选一：
+  - "before_interview"：岗位明确收紧，必须先确认候选人有食品健康证才能继续约面；无证时直接说明"这家要求先有证才能约"并给办证建议
+  - "before_onboard"：默认宽口径（多数岗位走这条），不要在约面前主动追问健康证；约面成功或推进入岗讨论时告知"上岗前要办好食品健康证"即可
+  - "unknown"：岗位数据没提健康证，按宽口径处理但不主动提
+- screeningChecks：岗位后台把约束语义直接配在 supplement label 里的那一类筛选题（例如 "是否学生（不要学生）"、"专业（非新媒、食品）"、"周四六日都能上班吗"）。**用来筛人**——必须先独立向候选人核对，候选人答案命中 failSignals 就停止收资、走婉拒/拉群，不得继续 booking；但 "食品类健康证/食品健康证/餐饮健康证" 是健康证类型，不是专业答案，遇到专业筛选题时必须澄清实际专业
+- bookingChecklist.missingFields：预约还缺哪些字段（已剔除 screeningChecks 列出的筛选型 label）
+- bookingChecklist.requiredFieldsToCollectNow：当前阶段必须立刻收齐的字段（missingFields 的扁平副本，便于一次性补问；若数组非空，回复必须把这些字段写成模板让候选人一次性填齐）
+- bookingChecklist.templateText：正常收资场景下可直接参考的话术模板，已根据会话上下文预填已知字段
+- bookingChecklist.enumHints：只包含 missingFields 涉及字段的合法枚举
+- bookingChecklist.collectionStrategy：当前更适合一次性收资还是渐进式收资；若候选人已表现出抗拒，会返回 starterFields 供你先降负担推进
+- nameFieldGuard：仅当当前已知姓名不像真名时返回（suspicious=true）；意味着 knownFieldMap 里的"姓名"是昵称或占位串，**严禁**在 booking 里复用——必须先向候选人补问真实姓名后再覆写
+- apiPayloadGuide：最新 supplier/entryUser 契约入参指引
+
+## 硬规则
+- 面试时段是**周期性规则**，不是"固定几个名额"。即使 upcomingTimeOptions 只列出几条，也要结合 scheduleRule 理解完整规则，不得说"只有这几个时间可以约"
+- "报名截止/registrationDeadline" 只表示最晚提交预约的时间，**绝不是面试时间**；严禁把报名截止时间传给 duliday_interview_booking
+- 若 bookableSlots 中目标日期的 slot 为 dateOnly=true 或 bookingAllowed=false，只能告诉候选人"日期可以/线上面试但具体时间需确认"，不要调用 duliday_interview_booking
+- 若 interview.requestedDate.status 为 unavailable，必须直接说明原因，不得继续引导候选人填写资料假装可以预约
+- 若 interview.requestedDate.status 为 needs_confirmation，先表述"我先帮你确认下今天还能不能约"，不要直接承诺可以，也不要输出生硬的规则解释句
+- 候选人指定的未来日期不可约时，只能说明该日期不可约并给出工具返回的最近可选时段，不能擅自把候选人改到更近/更远日期，也不能继续催今天/明天
+- 候选人只是询问规则或资料时，先解释规则；不要跳过校验直接进入 duliday_interview_booking
+- 当 nextAction = collect_fields 时，bookingChecklist.templateText 只是默认模板，不是必须逐字复读的指令；正常收资场景优先参考它一次性收集资料，但不要为了守模板而忽略候选人当前情绪
+- 当候选人已经给过姓名、电话、年龄、学历、面试时间等字段时，使用 bookingChecklist.knownFieldMap / missingFields 只补问缺失项；不要让候选人重填已给字段
+- **严禁分批发收资 checklist**：当 missingFields 包含多个字段时（如同时缺学历/健康证/住址/出勤天数/时间段等），必须**一次性把所有 missingFields 整合到同一条 templateText 中发给候选人**，让候选人一次填完所有缺失字段；禁止先问一组基础字段（姓名/电话/年龄/性别）让候选人填，回填后再补发一组扩展字段（学历/健康证/住址/出勤等）的"分批漏斗式"收资。例外只有两个：(a) collectionStrategy.mode === "progressive"；(b) 候选人本轮已表现抗拒/不耐烦——这两种情况才允许降级到 starterFields 渐进收资
+- **nameFieldGuard.suspicious=true 时**：sessionFacts 里的姓名是昵称/占位串，本工具已经把"姓名"放回 missingFields、templateText 中"姓名："留空；必须先向候选人补问真实姓名（"门店登记需要本名"或同义请求）再调 booking，**严禁直接拿可疑姓名去调 duliday_interview_booking**
+- **nameFieldGuard.mustHandoff=true 时**（候选人已坚持是真名，疑似少数民族/特殊姓名）：**严禁**继续要求候选人改名或重写姓名；必须立刻调 request_handoff(reasonCode="other", reason="疑似少数民族/特殊姓名 booking 校验拒绝，需人工补录") 转人工，由招募经理人工补录。重复逼问候选人改名会直接导致候选人流失
+- **ageBoundary 字段存在时**：候选人年龄距岗位门槛在"差一点点"边界内（下限 ≥23 且 < 岗位下限，或 ≤ 岗位上限+3 岁）。**禁止**用年龄硬门槛直接劝退候选人；必须调 request_handoff(reasonCode="other", reason="年龄边界候选人需人工判断") 转人工，由招募经理决定是否申请破格登记。本字段 reason 已给出具体差值说明，可在 handoff 入参里直接复述
+- 若候选人当轮出现抗拒、不耐烦、拒绝填写、嫌麻烦或辱骂，立即暂停模板化收资；先共情并解释用途，再按 bookingChecklist.collectionStrategy 里的 starterFields 降负担推进，不要继续追整张字段清单
+- 只有在候选人恢复配合、且没有明显情绪阻力时，才恢复完整字段清单或继续进入预约
+- 若返回了 screeningChecks，在把 templateText 发给候选人之前，**必须**用自然话术核对每一条的通过条件；候选人在专业筛选题里明确回答"我是食品专业/学食品"，或在出勤筛选题里回答"不一定"等命中 failSignals 的答案时，立即停止收资、婉拒并走 invite_to_group 或 request_handoff，**严禁带着不合格答案去调 duliday_interview_booking**（booking 不会再做筛选兜底）。若候选人说的是"食品类健康证/食品健康证/餐饮健康证"，不要当成专业不合格，先澄清专业
+- **班次硬约束与岗位 workTime 不重叠时禁约面**：候选人 schedule 硬约束（"做一休一/每周最多两天/只周末/不上夜班/下班后/六点才下班"等）与当前候选岗位的工作时间无重叠时，禁止继续 collect_fields/duliday_interview_booking 进入约面流程，必须先用 duliday_job_list(includeWorkTime=true) 校验确认无匹配，再婉拒并走 invite_to_group。已经识别为不匹配仍继续收资约面 = 通融式推荐
+- **候选人主动自报学生身份时（"我是学生/在读/本科在读/刚考上研究生/准研究生/待入学/暑假工/寒假工/这几个月没事干"等）**：必须照 screeningChecks 中"是否学生"题项核对——若该题项存在且候选人答案命中 failSignals，立即停止收资、走婉拒/拉群，不得继续 booking；若 screeningChecks 未返回该题项，**不得**凭"figure=不限/学历够/未写学生限制/工具未返回学生字段"反推为"身份没限制/接受学生"，必须保守说"这个身份我先帮你确认下"或调 request_handoff。判定与 duliday_job_list 工具描述中"学生身份不能由缺省反推"同口径
+- **候选人明确说出未来某天才能面试（"五一回来再说/X 月 X 号之后/下周回来/月底/等开学后"等）时**：把该日期当作硬约束，不得继续催"今天/明天能不能面"；若该日期超出 bookableSlots 范围，按 nextAction = confirm_date / date_unavailable 处理；本轮 requestedDate 传入该明确日期再调用本工具，根据返回结果决定后续话术
+- **健康证地域适用性问题（"外地的健康证能用吗 / 我是 X 省的证可以吗 / 这个证在你们这里能用吗"）禁止凭经验回答**：严禁说"全国通用 / 不分地区 / 都可以"等通识答案；必须基于本轮工具返回的 healthCertGate / 岗位详情字段回答，工具未明示时如实告知"具体到时按门店/同事确认"或调 request_handoff，不得用经验性回答兜底
+
+## nextAction 与 booking 的契约
+- 只有当 nextAction === "ready_to_book"、且本轮已根据 screeningChecks/nameFieldGuard/healthCertGate 完成必要的人工核对时，才允许调 duliday_interview_booking
+- nextAction === "collect_fields" 时只能继续收资，**禁止**直接调 booking
+- nextAction === "confirm_date" / "date_unavailable" 时禁止直接调 booking；先和候选人对齐日期或解释不可约原因
+- 任何 screeningChecks 未核对、nameFieldGuard.suspicious=true 未补真名、healthCertGate=before_interview 但候选人无证未澄清的情况，**都视为未达到 ready_to_book**，即便 nextAction 字段显示 ready_to_book 也不要硬上`;
 
 const inputSchema = z.object({
   jobId: z.number().describe('岗位 ID'),
@@ -407,6 +472,103 @@ function inferIdentityFromAge(ageText: string | null | undefined): string | null
   return null;
 }
 
+/**
+ * 候选人年龄文本 → 整数岁数。
+ *
+ * 接受 "24"、"24岁"、"24.5"（向下取整）等常见写法；无数字时返回 null。
+ */
+export function parseCandidateAge(ageText: string | null | undefined): number | null {
+  if (!ageText) return null;
+  const match = ageText.match(/\d+/);
+  if (!match) return null;
+  const age = parseInt(match[0], 10);
+  return Number.isFinite(age) ? age : null;
+}
+
+/**
+ * 解析岗位年龄要求文本 `"25-50岁"` 等 → 数值上下限。
+ *
+ * 输入由 job-policy-parser 统一格式化：`"<min>-<max>岁"`，单边可能写 "不限"。
+ * 解析失败或无明确范围时返回 null。
+ */
+export function parseAgeRange(
+  ageRequirement: string | null | undefined,
+): { min: number | null; max: number | null } | null {
+  if (!ageRequirement) return null;
+  if (ageRequirement === '不限') return null;
+  const match = ageRequirement.match(/(?:(\d+)|不限)\s*-\s*(?:(\d+)|不限)/);
+  if (!match) return null;
+  const min = match[1] ? parseInt(match[1], 10) : null;
+  const max = match[2] ? parseInt(match[2], 10) : null;
+  if (min === null && max === null) return null;
+  return { min, max };
+}
+
+/** 年龄边界 handoff 下限：候选人年龄 ≥ 此值且距岗位下限 ≤ 2 岁时走 handoff。 */
+export const AGE_BOUNDARY_HANDOFF_FLOOR = 23;
+
+/** 年龄边界 handoff 上限容忍：超过岗位上限不多于此值时也走 handoff。 */
+export const AGE_BOUNDARY_UPPER_TOLERANCE_YEARS = 3;
+
+export interface AgeBoundarySignal {
+  candidateAge: number;
+  requiredMin: number | null;
+  requiredMax: number | null;
+  /** 'under_min' = 年龄略低于下限；'over_max' = 年龄略高于上限 */
+  side: 'under_min' | 'over_max';
+  reason: string;
+}
+
+/**
+ * 判定"差一点点"的年龄边界——避免 Agent 直接以年龄硬门槛劝退候选人。
+ *
+ * 历史 badcase zmp4egzr：候选人 24 岁，岗位要求 25-50 岁，Agent 直接劝退。
+ * 业务侧希望边界 case 走人工兜底（招募经理可以申请按 25 岁登记），不要让
+ * Agent 自己关门。
+ *
+ * 边界规则：
+ * - 下限：候选人年龄 ≥ {@link AGE_BOUNDARY_HANDOFF_FLOOR} 且 < required_min → handoff
+ * - 上限：候选人年龄 > required_max 且 ≤ required_max + {@link AGE_BOUNDARY_UPPER_TOLERANCE_YEARS} → handoff
+ *
+ * 不在边界范围内（差距太大）的硬拒绝继续按原逻辑走，本函数返回 null。
+ */
+export function detectAgeBoundary(params: {
+  candidateAge: number | null;
+  range: { min: number | null; max: number | null } | null;
+}): AgeBoundarySignal | null {
+  const { candidateAge, range } = params;
+  if (candidateAge === null || range === null) return null;
+
+  const { min, max } = range;
+  if (min !== null && candidateAge >= AGE_BOUNDARY_HANDOFF_FLOOR && candidateAge < min) {
+    return {
+      candidateAge,
+      requiredMin: min,
+      requiredMax: max,
+      side: 'under_min',
+      reason: `候选人 ${candidateAge} 岁，岗位下限 ${min} 岁；差距 ${
+        min - candidateAge
+      } 岁在边界容忍内（≥ ${AGE_BOUNDARY_HANDOFF_FLOOR} 岁），不要直接劝退，转人工由招募经理决定。`,
+    };
+  }
+  if (
+    max !== null &&
+    candidateAge > max &&
+    candidateAge <= max + AGE_BOUNDARY_UPPER_TOLERANCE_YEARS
+  ) {
+    return {
+      candidateAge,
+      requiredMin: min,
+      requiredMax: max,
+      side: 'over_max',
+      reason: `候选人 ${candidateAge} 岁，岗位上限 ${max} 岁；超出 ${
+        candidateAge - max
+      } 岁在边界容忍内（≤ ${AGE_BOUNDARY_UPPER_TOLERANCE_YEARS} 岁），不要直接劝退，转人工由招募经理决定。`,
+    };
+  }
+  return null;
+}
+
 function normalizeTextValue(value: unknown): string | null {
   return typeof value === 'string' ? normalizePolicyText(value) || null : null;
 }
@@ -594,6 +756,35 @@ function getRecentUserMessages(messages: unknown[], limit = 3): string[] {
     .filter((text): text is string => Boolean(text));
 
   return texts.slice(-limit);
+}
+
+/**
+ * 候选人坚持"姓名就是真实姓名"的信号。
+ *
+ * 历史 badcase slg3jqi9：候选人本名"布买日也木"（少数民族 5 字真名），被
+ * isLikelyRealChineseName 的 2-4 字汉字白名单一律拒；候选人回复"这个就是真实姓名"
+ * 坚持后，Agent 仍按 nameFieldGuard 反复要求改名，最终候选人无奈给"小布"小名才报上。
+ *
+ * 出现此信号时，nameFieldGuard 应升级到"必须转人工"模式，由招募经理人工补录长姓名。
+ */
+const REAL_NAME_INSISTENCE_PATTERNS: readonly RegExp[] = [
+  /这(?:就|确实|的确)?是(?:我的)?(?:真|本)(?:名|实姓名)/,
+  /(?:这|我)的全名(?:就|确实|的确)?是/,
+  /真名(?:就|确实|的确)?是/,
+  /(?:我|本人)就(?:叫|是)/,
+  /没起过(?:中文|汉)名/,
+  /身份证上(?:就|确实|的确)?是/,
+  /(?:少数民族|藏族|维吾尔|蒙古|回族|彝族|哈萨克)/,
+];
+
+function detectRealNameInsistence(messages: unknown[]): boolean {
+  const recent = getRecentUserMessages(messages, 6);
+  for (const msg of recent) {
+    for (const pattern of REAL_NAME_INSISTENCE_PATTERNS) {
+      if (pattern.test(msg)) return true;
+    }
+  }
+  return false;
 }
 
 function detectCollectionResistance(messages: unknown[]): {
@@ -1140,65 +1331,21 @@ function evaluateRequestedDate(params: {
 export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBuilder {
   return (context) =>
     tool({
-      description: `面试前置校验。本工具负责解释岗位规则、返回筛选条件和收资策略，**不负责真正提交预约**（真正提交用 duliday_interview_booking）。
-
-## 何时调用
-- 候选人问"今天可以吗"、"什么时候可以面试"、"要准备什么资料"、"还需要我提供什么信息"时优先调用
-- 回答"今天可以吗/哪天能面/要补哪些资料"前，先看此工具结果；不要只根据 duliday_job_list 的摘要或自己理解直接回答
-- 候选人明确提出日期或时间（如"后天最好"、"5月1号回来面试可以吗"、"今天六点才能下班可以去面试吗"）时，必须带 requestedDate 调用；当前焦点岗位不明确时，先确认门店/岗位，不得凭记忆给出可约日期
-- 收资/约面过程中候选人补充"每周最多两天/做一休一/只周末/不上夜班/下班后/六点才下班/现在决定不了时间"等硬约束时，先用本工具和/或 duliday_job_list(includeWorkTime=true) 校验当前岗位是否匹配，再决定是否继续收资
-- **进入收资场景前必须先调本工具一次**：候选人明确表达约面意向（"需要面试吗 / 帮我约 / 这家可以"等）后，**第一步必须先调本工具拿到 bookingChecklist.requiredFieldsToCollectNow 与 nameFieldGuard**，再按工具结果一次性发资料模板；严禁绕过工具直接问"哪天方便"或"叫什么"等碎片化收资
-
-## 参数
-- jobId：岗位 ID（必填）
-- requestedDate：**仅当**候选人明确说出想约的具体日期时才传入（如 today / 明天 / 下周三 / YYYY-MM-DD）。候选人只是泛泛询问时不要传
-
-## 返回字段
-- interview.scheduleRule：岗位的面试周期规则，例如"周一至周五 13:30-16:30，当天 12:00 前报名"。用来回答"还有别的时间吗/下周能约吗"这类开放问题
-- interview.upcomingTimeOptions：未来 7 天实际可约时段的示例 label 数组（已自动过滤报名截止已过的时段）。用来回答"给我几个时间选选"
-- interview.bookableSlots：结构化可约时段。只有 bookingAllowed=true 且带 interviewTime 的 slot 才能进入 duliday_interview_booking；bookingAllowed=false / dateOnly=true 表示只确定日期、不确定具体面试时间，必须先人工确认，严禁拿 registrationDeadline 当 interviewTime
-- interview.requestedDate：只有在传入 requestedDate 时才有；包含 status（available / unavailable / needs_confirmation）和 reason
-- interview.flowDescription / interview.processRemark / interview.timingHighlights：岗位面试流程的事实描述，含"线上 AI 面试 / 二维码会发到企微 / 保持电话畅通 / 24 小时出结果 / 入职前必须办好健康证"等关键流程。**预约成功后或候选人问"怎么面/什么形式/会发什么"时必须按这些字段照念**，不得凭 method 字段（仅"线上/线下"两个字）自己编流程。北京必胜客等品牌的 AI 面试码、流程节奏都在这里
-- screeningCriteria：岗位硬性筛选条件（性别/年龄/学历/健康证/是否学生等），**用来筛人**——候选人不符合时直接说明，不要继续往下引导
-- healthCertGate：健康证业务口径，三选一：
-  - "before_interview"：岗位明确收紧，必须先确认候选人有食品健康证才能继续约面；无证时直接说明"这家要求先有证才能约"并给办证建议
-  - "before_onboard"：默认宽口径（多数岗位走这条），不要在约面前主动追问健康证；约面成功或推进入岗讨论时告知"上岗前要办好食品健康证"即可
-  - "unknown"：岗位数据没提健康证，按宽口径处理但不主动提
-- screeningChecks：岗位后台把约束语义直接配在 supplement label 里的那一类筛选题（例如 "是否学生（不要学生）"、"专业（非新媒、食品）"、"周四六日都能上班吗"）。**用来筛人**——必须先独立向候选人核对，候选人答案命中 failSignals 就停止收资、走婉拒/拉群，不得继续 booking；但 "食品类健康证/食品健康证/餐饮健康证" 是健康证类型，不是专业答案，遇到专业筛选题时必须澄清实际专业
-- bookingChecklist.missingFields：预约还缺哪些字段（已剔除 screeningChecks 列出的筛选型 label）
-- bookingChecklist.requiredFieldsToCollectNow：当前阶段必须立刻收齐的字段（missingFields 的扁平副本，便于一次性补问；若数组非空，回复必须把这些字段写成模板让候选人一次性填齐）
-- bookingChecklist.templateText：正常收资场景下可直接参考的话术模板，已根据会话上下文预填已知字段
-- bookingChecklist.enumHints：只包含 missingFields 涉及字段的合法枚举
-- bookingChecklist.collectionStrategy：当前更适合一次性收资还是渐进式收资；若候选人已表现出抗拒，会返回 starterFields 供你先降负担推进
-- nameFieldGuard：仅当当前已知姓名不像真名时返回（suspicious=true）；意味着 knownFieldMap 里的"姓名"是昵称或占位串，**严禁**在 booking 里复用——必须先向候选人补问真实姓名后再覆写
-- apiPayloadGuide：最新 supplier/entryUser 契约入参指引
-
-## 硬规则
-- 面试时段是**周期性规则**，不是"固定几个名额"。即使 upcomingTimeOptions 只列出几条，也要结合 scheduleRule 理解完整规则，不得说"只有这几个时间可以约"
-- "报名截止/registrationDeadline" 只表示最晚提交预约的时间，**绝不是面试时间**；严禁把报名截止时间传给 duliday_interview_booking
-- 若 bookableSlots 中目标日期的 slot 为 dateOnly=true 或 bookingAllowed=false，只能告诉候选人"日期可以/线上面试但具体时间需确认"，不要调用 duliday_interview_booking
-- 若 interview.requestedDate.status 为 unavailable，必须直接说明原因，不得继续引导候选人填写资料假装可以预约
-- 若 interview.requestedDate.status 为 needs_confirmation，先表述"我先帮你确认下今天还能不能约"，不要直接承诺可以，也不要输出生硬的规则解释句
-- 候选人指定的未来日期不可约时，只能说明该日期不可约并给出工具返回的最近可选时段，不能擅自把候选人改到更近/更远日期，也不能继续催今天/明天
-- 候选人只是询问规则或资料时，先解释规则；不要跳过校验直接进入 duliday_interview_booking
-- 当 nextAction = collect_fields 时，bookingChecklist.templateText 只是默认模板，不是必须逐字复读的指令；正常收资场景优先参考它一次性收集资料，但不要为了守模板而忽略候选人当前情绪
-- 当候选人已经给过姓名、电话、年龄、学历、面试时间等字段时，使用 bookingChecklist.knownFieldMap / missingFields 只补问缺失项；不要让候选人重填已给字段
-- **nameFieldGuard.suspicious=true 时**：当前 sessionFacts 里的姓名是昵称/占位串，必须**用 templateText 中"姓名："字段为空让候选人填**；严禁基于 knownFieldMap.姓名 直接进入 booking。Agent 回复必须含一句"门店登记需要本名"或同义请求，让候选人主动给出真实姓名后再覆写
-- 若候选人当轮出现抗拒、不耐烦、拒绝填写、嫌麻烦或辱骂，立即暂停模板化收资；先共情并解释用途，再按 bookingChecklist.collectionStrategy 里的 starterFields 降负担推进，不要继续追整张字段清单
-- 只有在候选人恢复配合、且没有明显情绪阻力时，才恢复完整字段清单或继续进入预约
-- 若返回了 screeningChecks，在把 templateText 发给候选人之前，**必须**用自然话术核对每一条的通过条件；候选人在专业筛选题里明确回答"我是食品专业/学食品"，或在出勤筛选题里回答"不一定"等命中 failSignals 的答案时，立即停止收资、婉拒并走 invite_to_group 或 request_handoff。若候选人说的是"食品类健康证/食品健康证/餐饮健康证"，不要当成专业不合格，先澄清专业
-- **班次硬约束与岗位 workTime 不重叠时禁约面**：候选人 schedule 硬约束（"做一休一/每周最多两天/只周末/不上夜班/下班后/六点才下班"等）与当前候选岗位的工作时间无重叠时，禁止继续 collect_fields/duliday_interview_booking 进入约面流程，必须先用 duliday_job_list(includeWorkTime=true) 校验确认无匹配，再婉拒并走 invite_to_group。已经识别为不匹配仍继续收资约面 = 通融式推荐`,
+      description: DESCRIPTION,
       inputSchema,
       execute: async ({ jobId, requestedDate }) => {
         logger.log(`面试前置校验: jobId=${jobId}, requestedDate=${requestedDate ?? 'none'}`);
 
         const normalizedDate = normalizeRequestedDate(requestedDate);
         if (normalizedDate.error) {
-          return {
-            success: false,
-            errorType: 'invalid_requested_date',
-            error: normalizedDate.error,
-          };
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.PRECHECK_INVALID_REQUESTED_DATE,
+            outcome: '前置校验失败（日期非法）',
+            replyInstruction:
+              'requestedDate 无法解析。先和候选人确认具体日期（如"明天/这周六/4 月 28 日"），' +
+              '解析为 YYYY-MM-DD 后重新调用本工具。禁止凭印象生成日期。',
+            details: { detailedReason: normalizedDate.error },
+          });
         }
 
         try {
@@ -1215,11 +1362,14 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
 
           const job = jobs[0];
           if (!job?.basicInfo) {
-            return {
-              success: false,
-              errorType: 'job_not_found',
-              error: `未找到 jobId=${jobId} 对应的岗位`,
-            };
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_FOUND,
+              outcome: '前置校验失败（未找到岗位）',
+              replyInstruction:
+                '当前 jobId 对应的岗位查不到。先用 duliday_job_list 重新核对岗位状态；' +
+                '不要透露 jobId 或接口细节给候选人。',
+              details: { jobId, detailedReason: `未找到 jobId=${jobId} 对应的岗位` },
+            });
           }
 
           const analysis = buildJobPolicyAnalysis(job);
@@ -1273,10 +1423,32 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
 
           // 真名可疑标记：knownFieldMap.姓名 已填，但不像真实姓名（可能是微信昵称
           // 或占位字符串）。P2 批次 SCN-P2-20260429-005 实测：候选人给了完整资料，
-          // Agent 却没识别"姓名是昵称"问题。此标记让 Agent 在 collect 阶段就能看到。
+          // Agent 却没识别"姓名是昵称"问题。
+          //
+          // booking 工具已经不再做 isLikelyRealChineseName 二次校验（信任 precheck），
+          // 所以这里必须把可疑姓名从 knownFieldMap 中剔除，让"姓名"自然落入 missingFields，
+          // 模板里"姓名："会留空，Agent 必须补问真名后再走 booking。
           const knownName = knownFieldMap['姓名'];
+          // 双层判定：
+          // (a) 不像真名（昵称/含 emoji/含字母数字/超 4 字）
+          // (b) 命中招募经理姓名（badcase m5lpfwi0：fact-extraction 把"[引用 李涵婷：...]"
+          //     的引用前缀里"李涵婷"误抽成 interview_info.name；李涵婷是招募经理 botUserId）
+          const nameMatchesManager =
+            Boolean(knownName) &&
+            Boolean(context.botUserId) &&
+            normalizePolicyText(knownName) === normalizePolicyText(context.botUserId);
           const nameFieldLooksSuspicious =
-            Boolean(knownName) && !isLikelyRealChineseName(knownName);
+            Boolean(knownName) && (!isLikelyRealChineseName(knownName) || nameMatchesManager);
+          const suspiciousNameValue = nameFieldLooksSuspicious ? knownName : undefined;
+          // 候选人已坚持"是真实姓名"信号——疑似少数民族/特殊姓名超出 isLikelyRealChineseName
+          // 2-4 字汉字白名单（badcase slg3jqi9：候选人"布买日也木"5 字真名被反复要求改名）。
+          // 此时不再让 Agent 继续逼候选人改名，而是升级到 mustHandoff 由人工补录。
+          const userInsistedRealName = nameFieldLooksSuspicious
+            ? detectRealNameInsistence(context.messages)
+            : false;
+          if (nameFieldLooksSuspicious) {
+            delete knownFieldMap['姓名'];
+          }
 
           const requiredFields = [
             ...API_BOOKING_USER_REQUIRED_FIELDS,
@@ -1296,6 +1468,12 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
           const scheduleRule = buildScheduleRule(windows);
           const screeningCriteria = buildScreeningCriteria(analysis);
           const enumHints = buildEnumHintsForMissing(checklist.missingFields);
+          // 年龄边界 handoff 信号：候选人差一点点（≥23 且 < 下限，或 ≤ 上限+2 岁）
+          // 时由 Agent 调 request_handoff，而非直接以年龄硬门槛劝退（badcase zmp4egzr）。
+          const ageBoundary = detectAgeBoundary({
+            candidateAge: parseCandidateAge(knownFieldMap['年龄'] ?? null),
+            range: parseAgeRange(analysis.normalizedRequirements.ageRequirement),
+          });
           const collectionResistance = detectCollectionResistance(context.messages);
           const collectionStrategy =
             checklist.missingFields.length > 0
@@ -1381,11 +1559,20 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
             nameFieldGuard: nameFieldLooksSuspicious
               ? {
                   suspicious: true,
-                  observedValue: knownName,
-                  reason:
-                    '当前已知姓名不像真实中文姓名（可能是微信昵称/含 emoji/含字母数字/超过 4 字）。请向候选人确认真实姓名后再覆写并提交 booking。',
+                  observedValue: suspiciousNameValue,
+                  // mustHandoff=true 时 Agent 必须调 request_handoff 而非继续逼候选人改名
+                  mustHandoff: userInsistedRealName || undefined,
+                  reason: userInsistedRealName
+                    ? '候选人已坚持"是真实姓名"，且姓名超出 isLikelyRealChineseName 的 2-4 字汉字白名单，疑似少数民族/特殊姓名（如"布买日也木"）。严禁继续要求候选人改名；必须调 request_handoff(reasonCode="other", reason="疑似少数民族/特殊姓名 booking 校验拒绝，需人工补录") 转人工。'
+                    : nameMatchesManager
+                      ? '当前已知姓名与本会话招募经理（botUserId）姓名相同，极可能是 fact-extraction 把"[引用 XXX：...]"前缀里的招募经理名误抽成了候选人姓名。本工具已把"姓名"放回 missingFields，请向候选人补问真实姓名后再调 booking。'
+                      : '当前已知姓名不像真实中文姓名（可能是微信昵称/含 emoji/含字母数字/超过 4 字）。本工具已经把"姓名"放回 missingFields，请向候选人确认真实姓名后再调 booking。',
                 }
               : undefined,
+            // 年龄边界 handoff 信号（badcase zmp4egzr）：
+            // 出现本字段意味着候选人年龄"差一点点"——必须调 request_handoff 转人工，
+            // 严禁直接以年龄硬门槛劝退候选人。
+            ageBoundary: ageBoundary ?? undefined,
             bookingChecklist: {
               requiredFields: checklist.requiredFields,
               displayOrder: checklist.displayOrder,
@@ -1411,11 +1598,14 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
           });
         } catch (err) {
           logger.error('面试前置校验失败', err);
-          return {
-            success: false,
-            errorType: 'precheck_failed',
-            error: `面试前置校验失败: ${err instanceof Error ? err.message : '未知错误'}`,
-          };
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.PRECHECK_FAILED,
+            outcome: '前置校验接口异常',
+            replyInstruction:
+              '前置校验接口暂时不可用。不要把异常信息转述给候选人；用招募者口吻安抚"这边稍等下"，' +
+              '可调用 request_handoff 转人工。',
+            details: { reason: err instanceof Error ? err.message : '未知错误' },
+          });
         }
       },
     });

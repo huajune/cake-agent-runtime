@@ -14,6 +14,7 @@ interface SimpleRoomItem {
   wxid: string;
   topic: string;
   chatId: string;
+  /** botInfo.wxid 是托管账号 imBotId；botInfo.weixin 是 wecomUserId（企业级 addMember 的 botUserId） */
   botInfo: { wxid: string; weixin: string; nickName: string };
   labels?: RoomLabel[];
   deleted?: boolean;
@@ -194,6 +195,7 @@ export class GroupResolverService implements OnModuleInit {
           tag: parsed.type,
           labels: (room.labels || []).map((label) => label.name),
           imBotId: room.botInfo?.wxid || '',
+          botUserId: room.botInfo?.weixin || undefined,
           token,
           chatId: room.chatId || '',
           memberCount: room.memberCount,
@@ -222,6 +224,7 @@ export class GroupResolverService implements OnModuleInit {
       topic: string;
       chatId: string;
       botWxid: string;
+      botUserId?: string;
       memberCount?: number;
     }> = [];
 
@@ -244,6 +247,7 @@ export class GroupResolverService implements OnModuleInit {
             topic: room.topic || '',
             chatId: room.chatId || '',
             botWxid: room.botInfo?.wxid || '',
+            botUserId: room.botInfo?.weixin || undefined,
             memberCount: room.memberCount,
           });
         }
@@ -268,6 +272,7 @@ export class GroupResolverService implements OnModuleInit {
       city: '测试',
       tag: '测试',
       imBotId: match.botWxid,
+      botUserId: match.botUserId,
       token: match.token,
       chatId: match.chatId,
       memberCount: match.memberCount,
