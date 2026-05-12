@@ -47,7 +47,7 @@ export class NotificationSenderService {
   ) {
     this.enterpriseToken = this.configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim() || '';
     this.sendDelayMs = parseInt(
-      this.configService.get<string>('GROUP_TASK_SEND_DELAY_MS', '60000'),
+      this.configService.get<string>('GROUP_TASK_SEND_DELAY_MS', '120000'),
       10,
     );
     this.miniprogramAppid = this.configService.get<string>('MINIPROGRAM_APPID', '');
