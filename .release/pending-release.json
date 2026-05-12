@@ -60,6 +60,30 @@
         "JSON 校验通过",
         "CHANGELOG 结构正常（pending 块完整，5.6.0 段落无重复）"
       ]
+    },
+    {
+      "number": "168",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/168",
+      "title": "把 master 真 merge commit 回 develop（修正 PR #167 squash 失效）",
+      "author": "ArielZhu",
+      "mergedAt": "2026-05-12",
+      "summary": [
+        "把 master 真 merge commit 回 develop（修正 PR #167 squash 失效）"
+      ],
+      "features": [],
+      "fixes": [
+        "把 master 真 merge commit 回 develop（修正 PR #167 squash 失效）"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "git graph 显示 commit \\`a7b92930\\` 有 2 parent，包含 master 的 \\`275d3f1c\\`",
+        "全量 jest 2876 个测试通过（pre-push hook 已确认）",
+        "JSON 校验通过",
+        "CHANGELOG 结构完整"
+      ]
     }
   ]
 }
