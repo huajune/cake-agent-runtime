@@ -26,6 +26,7 @@ import { PrivateChatMonitorNotifierService } from '@notification/services/privat
 import { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import { API_BOOKING_REQUIRED_PAYLOAD_FIELDS } from '@tools/duliday/job-booking.contract';
 import { buildCustomerLabelList } from '@tools/duliday/interview-booking-customer-label.builder';
+import { runBookingGuards } from '@tools/duliday/booking-guards.util';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 const logger = new Logger('duliday_interview_booking');
@@ -419,6 +420,14 @@ export function buildInterviewBookingTool(
                 },
               }),
             );
+          }
+
+          // Defense-in-depth: 在调 sponge bookInterview 之前再跑一次 precheck 已经做过的
+          // 三类硬规则校验（真名 / 时段 / 筛选答案）。LLM 偶发会跳过 precheck 直接调本工具，
+          // 这里作为 server-side 兜底——详见 booking-guards.util.ts。
+          const guardFailure = runBookingGuards({ job, name, interviewTime, supplementAnswers });
+          if (guardFailure) {
+            return markBookingFailed(context, guardFailure);
           }
 
           const customerLabelResolution = buildCustomerLabelList({

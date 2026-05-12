@@ -165,7 +165,7 @@ export class OpsCardRenderer {
       '**命中规则**',
       ...ruleLines,
       '',
-      '**回复预览（前 200 字）**',
+      '**回复预览（前 400 字）**',
       `> ${params.replyPreview.replace(/\n/g, ' ')}`,
       '',
       '排查建议：若准确率高，可升级到 phase 2（命中即静默丢弃回复）；若误报多，调整规则关键词或加 exception。',

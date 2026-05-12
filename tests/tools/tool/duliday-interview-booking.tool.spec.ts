@@ -251,6 +251,73 @@ describe('buildInterviewBookingTool', () => {
     expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
   });
 
+  // Defense-in-depth: 三个 booking guard 在 LLM 跳过 precheck / 无视 precheck 警告时兜底。
+  // 同源函数（isLikelyRealChineseName / findSameDayCutoffViolation / findScreeningFailure）
+  // 已在 precheck 跑过一次，booking 这里是兜底再跑一次，避免 server-side 安全网被删后裸奔。
+  it('booking guard: should reject when name fails isLikelyRealChineseName', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+
+    const result = await executeTool({ ...validInput, name: 'Mike' });
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS);
+    expect(result._replyInstruction).toContain('真实姓名');
+    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+  });
+
+  it('booking guard: should reject when interviewTime falls outside the job windows', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            interviewSupplement: [],
+            firstInterview: {
+              periodicInterviewTimes: [
+                {
+                  interviewWeekday: '每周五',
+                  interviewTimes: [
+                    {
+                      interviewStartTime: '13:30',
+                      interviewEndTime: '16:30',
+                      cycleDeadlineDay: '当天',
+                      cycleDeadlineEnd: '12:00',
+                    },
+                  ],
+                },
+              ],
+              fixedInterviewTimes: [],
+            },
+          },
+        }),
+      ],
+    });
+
+    // 2026-03-19 是星期四，岗位只在每周五开窗——guard 应拦下
+    const result = await executeTool({ ...validInput, interviewTime: '2026-03-19 14:00:00' });
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_INVALID_INTERVIEW_TIME);
+    expect(result.detailedReason).toContain('2026-03-19');
+    expect(Array.isArray(result.availableSlots)).toBe(true);
+    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+  });
+
+  it('booking guard: should reject when supplementAnswers hit a screening failure', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+
+    // 食品相关专业的"在读/学过" 命中筛选 failSignal（label 带括号黑名单 "不要..." 触发
+    // BLACKLIST_PAREN_REGEX 分类为 screening；answer 含 "食品" 命中 failSignal）
+    const result = await executeTool({
+      ...validInput,
+      supplementAnswers: { '专业（不要食品/食安/卫检等专业）': '我是食品专业的' },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
+    expect(result._replyInstruction).toContain('筛选');
+    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+  });
+
   // 时段窗口/报名截止/dateOnly 等时段硬规则的二次校验已经从 booking 移除——
   // 由 duliday_interview_precheck 前置拦截，booking 信任 precheck 的结论。
   // 仍保留一条"合法时段提交成功"的正路径，作为 booking 端的烟雾测试。

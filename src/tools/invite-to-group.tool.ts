@@ -327,6 +327,7 @@ export function buildInviteToGroupTool(
                 industry: industry ?? undefined,
                 citySnapshot,
                 reason: rejectedGroupsDuringInvite[0].error,
+                totalRejected: rejectedGroupsDuringInvite.length,
               },
             });
           }
