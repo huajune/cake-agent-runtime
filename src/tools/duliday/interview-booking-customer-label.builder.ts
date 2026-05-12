@@ -97,7 +97,7 @@ export function buildCustomerLabelList(
     return {
       success: false,
       errorType: TOOL_ERROR_TYPES.BOOKING_INVALID_CUSTOMER_LABEL_VALUES,
-      error: `岗位补充标签取值超过 51 字符：${invalidSupplementLabels.join('、')}`,
+      error: `岗位补充标签取值超过 ${SPONGE_CUSTOMER_LABEL_MAX_LENGTH} 字符：${invalidSupplementLabels.join('、')}`,
       invalidSupplementLabels,
       customerLabelDefinitions: definitions,
     };

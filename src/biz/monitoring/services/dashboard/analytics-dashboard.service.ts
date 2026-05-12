@@ -565,7 +565,7 @@ export class AnalyticsDashboardService {
       return trend;
     }
 
-    this.logger.error(
+    this.logger.warn(
       `[Dashboard] ${timeRange} 响应趋势为空但汇总非 0，使用汇总点兜底避免前端空白，请继续排查趋势 RPC`,
     );
 
@@ -589,7 +589,7 @@ export class AnalyticsDashboardService {
       return trend;
     }
 
-    this.logger.error(
+    this.logger.warn(
       `[Dashboard] ${timeRange} Token 趋势为空但汇总非 0，使用汇总点兜底避免前端空白，请继续排查趋势 RPC`,
     );
 
@@ -613,7 +613,7 @@ export class AnalyticsDashboardService {
       return trend;
     }
 
-    this.logger.error(
+    this.logger.warn(
       `[Dashboard] ${timeRange} 业务趋势为空但业务汇总非 0，使用汇总点兜底避免前端空白，请继续排查业务趋势 RPC`,
     );
 
