@@ -6,8 +6,38 @@ import { SendMessageType } from '@channels/wecom/message-sender/dto/send-message
 import { SpongeService } from '@sponge/sponge.service';
 import type { JobDetail } from '@sponge/sponge.types';
 import { ToolBuilder } from '@shared-types/tool.types';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 const logger = new Logger('send_store_location');
+
+const DESCRIPTION = `向候选人发送当前门店的企微位置消息（不是文本回复）。
+
+## 使用场景
+- 已经明确具体岗位或门店后，候选人追问"地址在哪"、"发个定位"、"怎么过去"、"导航怎么走"时优先调用
+
+## 参数规则
+- jobId 可选：
+  - 当前焦点岗位已经唯一明确时，可省略，让工具自动复用当前焦点岗位
+  - 若最近同时聊了多个岗位或门店，必须传入明确的 jobId；不明确时先向候选人问清楚是哪家店
+
+## 执行效果
+- 工具直接向当前企微会话发送位置消息（不是普通文本回复）
+- 成功后通常只需要再补一句简短确认
+
+## 硬规则
+- 不要凭记忆手写坐标或自己拼定位 payload；只通过此工具发送
+- 如果工具返回 _fixedReply，必须原样输出，不要额外再重写一遍地址说明
+- 若工具返回失败且同时带回 storeAddress，可改为用文字把门店地址发给候选人
+- 工具返回 floorHint 不为空时，_fixedReply 已包含楼层/铺号提示，直接原样发送即可，不要再重复编造楼层信息
+
+## 空头承诺禁忌
+- 本轮回复中只要出现"门店定位我发你 / 发你个定位 / 把定位发你 / 我发个位置过去"等表述，**必须**本轮实调本工具
+- 已说要发定位但没调本工具 = 空头承诺，候选人下轮没收到定位会困惑或流失
+- 工具调用失败时优先用文字发送 storeAddress 兜底，不得只说"我发你"然后什么都没发`;
+
+const inputSchema = z.object({
+  jobId: z.number().int().optional().describe('目标岗位 jobId。若当前焦点岗位已唯一明确，可省略'),
+});
 
 function pickString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -79,48 +109,28 @@ export function buildSendStoreLocationTool(
 ): ToolBuilder {
   return (context) =>
     tool({
-      description: `向候选人发送当前门店的企微位置消息（不是文本回复）。
-
-## 使用场景
-- 已经明确具体岗位或门店后，候选人追问"地址在哪"、"发个定位"、"怎么过去"、"导航怎么走"时优先调用
-
-## 参数规则
-- jobId 可选：
-  - 当前焦点岗位已经唯一明确时，可省略，让工具自动复用当前焦点岗位
-  - 若最近同时聊了多个岗位或门店，必须传入明确的 jobId；不明确时先向候选人问清楚是哪家店
-
-## 执行效果
-- 工具直接向当前企微会话发送位置消息（不是普通文本回复）
-- 成功后通常只需要再补一句简短确认
-
-## 硬规则
-- 不要凭记忆手写坐标或自己拼定位 payload；只通过此工具发送
-- 如果工具返回 _fixedReply，必须原样输出，不要额外再重写一遍地址说明
-- 若工具返回失败且同时带回 storeAddress，可改为用文字把门店地址发给候选人
-- 工具返回 floorHint 不为空时，_fixedReply 已包含楼层/铺号提示，直接原样发送即可，不要再重复编造楼层信息`,
-      inputSchema: z.object({
-        jobId: z
-          .number()
-          .int()
-          .optional()
-          .describe('目标岗位 jobId。若当前焦点岗位已唯一明确，可省略'),
-      }),
+      description: DESCRIPTION,
+      inputSchema,
       execute: async ({ jobId }) => {
         const resolvedJobId = jobId ?? context.currentFocusJob?.jobId ?? null;
         if (!resolvedJobId) {
-          return {
-            success: false,
-            errorType: 'missing_job_id',
-            error: '缺少明确的 jobId，暂时无法判断该给哪家门店发定位',
-          };
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.STORE_LOCATION_MISSING_JOB_ID,
+            outcome: '缺少 jobId',
+            replyInstruction:
+              '没有明确的目标岗位 jobId。先从 [当前焦点岗位] 或会话上下文确认候选人具体在聊哪家门店；' +
+              '不确定时先口头问"是指 xx 店那家吗"，确认后再调用本工具。',
+          });
         }
 
         if (!context.token || !context.botImId || !(context.imContactId || context.imRoomId)) {
-          return {
-            success: false,
-            errorType: 'missing_delivery_context',
-            error: '缺少当前会话发送上下文，无法发送定位消息',
-          };
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.STORE_LOCATION_MISSING_DELIVERY_CONTEXT,
+            outcome: '缺少发送上下文',
+            replyInstruction:
+              '当前会话缺少发送定位所需的上下文（token / imBotId / imContactId / imRoomId）。' +
+              '这是结构性问题，本轮不要重试；按招募者口吻把门店地址用文字告诉候选人。',
+          });
         }
 
         try {
@@ -135,11 +145,14 @@ export function buildSendStoreLocationTool(
 
           const matchedJob = jobs.find((job) => job.basicInfo?.jobId === resolvedJobId) ?? jobs[0];
           if (!matchedJob) {
-            return {
-              success: false,
-              errorType: 'job_not_found',
-              error: `未找到 jobId=${resolvedJobId} 对应的岗位，无法发送门店定位`,
-            };
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.STORE_LOCATION_JOB_NOT_FOUND,
+              outcome: '未找到岗位',
+              replyInstruction:
+                '当前 jobId 对应的岗位查不到。先用 duliday_job_list 重新核对岗位状态；' +
+                '不要透露 jobId 或接口细节给候选人。',
+              details: { jobId: resolvedJobId },
+            });
           }
 
           const store = extractStoreLocation(matchedJob);
@@ -149,14 +162,18 @@ export function buildSendStoreLocationTool(
             store.latitude == null ||
             store.longitude == null
           ) {
-            return {
-              success: false,
-              errorType: 'store_location_unavailable',
-              error: '当前岗位缺少完整门店定位信息，暂时无法发送位置消息',
-              jobId: resolvedJobId,
-              storeName: store.storeName,
-              storeAddress: store.storeAddress,
-            };
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.STORE_LOCATION_UNAVAILABLE,
+              outcome: '岗位门店定位信息不全',
+              replyInstruction:
+                '当前岗位缺少完整门店定位（地址或经纬度）。把已知的门店名+地址用文字告诉候选人；' +
+                '不要谎称"位置已发"，也不要透露字段缺失这种内部细节。',
+              details: {
+                jobId: resolvedJobId,
+                storeName: store.storeName,
+                storeAddress: store.storeAddress,
+              },
+            });
           }
 
           await messageSenderService.sendMessage({
@@ -200,12 +217,13 @@ export function buildSendStoreLocationTool(
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           logger.error(`门店定位发送失败: jobId=${resolvedJobId}, error=${message}`);
-          return {
-            success: false,
-            errorType: 'send_location_failed',
-            error: `发送门店定位失败: ${message}`,
-            jobId: resolvedJobId,
-          };
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.STORE_LOCATION_SEND_FAILED,
+            outcome: '门店定位发送失败',
+            replyInstruction:
+              '门店定位发送失败。不要把异常信息原文转述给候选人；用招募者口吻把门店地址直接用文字告诉候选人。',
+            details: { jobId: resolvedJobId, reason: message },
+          });
         }
       },
     });

@@ -1,5 +1,7 @@
 import { buildInterviewPrecheckTool } from '@tools/duliday-interview-precheck.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
+import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
 
 describe('buildInterviewPrecheckTool', () => {
   const mockSpongeService = {
@@ -93,11 +95,9 @@ describe('buildInterviewPrecheckTool', () => {
   it('should reject unsupported requested date strings', async () => {
     const result = await executeTool({ jobId: 100, requestedDate: 'next week' });
 
-    expect(result).toEqual({
-      success: false,
-      errorType: 'invalid_requested_date',
-      error: '无法识别的日期：next week',
-    });
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_INVALID_REQUESTED_DATE);
+    expect(result.detailedReason).toBe('无法识别的日期：next week');
   });
 
   it('should return job_not_found when Sponge returns no matching job', async () => {
@@ -106,8 +106,8 @@ describe('buildInterviewPrecheckTool', () => {
     const result = await executeTool({ jobId: 999, requestedDate: '2026-04-08' });
 
     expect(result.success).toBe(false);
-    expect(result.errorType).toBe('job_not_found');
-    expect(result.error).toContain('jobId=999');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_JOB_NOT_FOUND);
+    expect(result.detailedReason).toContain('jobId=999');
   });
 
   it('should mark future fixed interview dates as available', async () => {
@@ -439,6 +439,7 @@ describe('buildInterviewPrecheckTool', () => {
             has_health_certificate: '有',
           },
           preferences: {
+            ...FALLBACK_EXTRACTION.preferences,
             brands: null,
             salary: null,
             position: null,
@@ -447,6 +448,10 @@ describe('buildInterviewPrecheckTool', () => {
             district: null,
             location: null,
             labor_form: null,
+          delayed_intent: null,
+          short_term: null,
+          open_position: null,
+          time_windows: null,
           },
           reasoning: 'test',
         },
@@ -476,6 +481,60 @@ describe('buildInterviewPrecheckTool', () => {
         starterFields: ['面试时间'],
       }),
     );
+  });
+
+  it('should not prefill manager name as candidate name (badcase m5lpfwi0)', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-04-08',
+                  interviewStartTime: '13:30',
+                  interviewEndTime: '16:30',
+                },
+              ],
+            },
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      { jobId: 100, requestedDate: '2026-04-08' },
+      {
+        botUserId: '李涵婷',
+        sessionFacts: {
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            name: '李涵婷',
+            phone: '13800138000',
+            gender: '男',
+            age: '37',
+            interview_time: '2026-04-08',
+          },
+          preferences: {
+            ...FALLBACK_EXTRACTION.preferences,
+          },
+          reasoning: 'badcase m5lpfwi0: quoted manager name was extracted as candidate name',
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.nameFieldGuard).toEqual(
+      expect.objectContaining({
+        suspicious: true,
+        observedValue: '李涵婷',
+      }),
+    );
+    expect(result.nameFieldGuard.reason).toContain('招募经理');
+    expect(result.bookingChecklist.missingFields).toContain('姓名');
+    expect(result.bookingChecklist.templateText).toContain('姓名：');
+    expect(result.bookingChecklist.templateText).not.toContain('姓名：李涵婷');
   });
 
   it('should default identity to 社会人士 when age >= 25 (skip is_student question)', async () => {
@@ -514,7 +573,7 @@ describe('buildInterviewPrecheckTool', () => {
         },
         sessionFacts: {
           interview_info: { age: '30' },
-          preferences: {},
+          preferences: FALLBACK_EXTRACTION.preferences,
           reasoning: 'test',
         },
       },
@@ -551,6 +610,7 @@ describe('buildInterviewPrecheckTool', () => {
             gender: '男女不限',
           },
           preferences: {
+            ...FALLBACK_EXTRACTION.preferences,
             brands: null,
             salary: null,
             position: null,
@@ -559,6 +619,10 @@ describe('buildInterviewPrecheckTool', () => {
             district: null,
             location: null,
             labor_form: null,
+          delayed_intent: null,
+          short_term: null,
+          open_position: null,
+          time_windows: null,
           },
           reasoning: 'test',
         },
@@ -607,7 +671,7 @@ describe('buildInterviewPrecheckTool', () => {
         },
         sessionFacts: {
           interview_info: { age: '20' },
-          preferences: {},
+          preferences: FALLBACK_EXTRACTION.preferences,
           reasoning: 'test',
         },
       },
@@ -652,7 +716,7 @@ describe('buildInterviewPrecheckTool', () => {
         },
         sessionFacts: {
           interview_info: { has_health_certificate: '无' },
-          preferences: {},
+          preferences: FALLBACK_EXTRACTION.preferences,
           reasoning: 'test',
         },
       },
@@ -690,7 +754,7 @@ describe('buildInterviewPrecheckTool', () => {
       {
         sessionFacts: {
           interview_info: { has_health_certificate: '非本地健康证' },
-          preferences: {},
+          preferences: FALLBACK_EXTRACTION.preferences,
           reasoning: 'test',
         },
       },
@@ -1224,7 +1288,8 @@ describe('buildInterviewPrecheckTool', () => {
     const result = await executeTool({ jobId: 100 });
 
     expect(result.success).toBe(false);
-    expect(result.errorType).toBe('precheck_failed');
-    expect(result.error).toContain('API timeout');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.PRECHECK_FAILED);
+    expect(result.reason).toBe('API timeout');
+    expect(result._replyInstruction).not.toContain('API timeout');
   });
 });

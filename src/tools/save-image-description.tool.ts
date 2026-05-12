@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { MessageType } from '@enums/message-callback.enum';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 const logger = new Logger('save_image_description');
 
@@ -49,7 +50,13 @@ export function buildSaveImageDescriptionTool(
       execute: async ({ messageId, description }) => {
         if (!imageMessageIds.includes(messageId)) {
           logger.warn(`messageId ${messageId} 不在图片/表情消息列表中，跳过`);
-          return { success: false, error: 'Invalid messageId' };
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.SAVE_IMAGE_INVALID_MESSAGE_ID,
+            outcome: 'messageId 不在当前图片/表情列表中',
+            replyInstruction:
+              '传入的 messageId 不在本轮可用列表内。检查描述前的 [图片 messageId=...] 或 [表情 messageId=...] 标签后用合法 messageId 重新调用本工具。',
+            details: { providedMessageId: messageId, availableMessageIds: imageMessageIds },
+          });
         }
 
         const prefix = resolvePrefix(messageId, visualMessageTypes);

@@ -188,10 +188,10 @@ export class TestExecutionService {
     if (
       executionStatus === ExecutionStatus.SUCCESS &&
       !extracted.actualOutput.trim() &&
-      !this.isIntentionalSkipReply(agentResult)
+      !this.isIntentionalNoReply(agentResult)
     ) {
       executionStatus = ExecutionStatus.FAILURE;
-      errorMessage = 'Agent returned empty output without skip_reply';
+      errorMessage = 'Agent returned empty output without an intentional no-reply tool';
     }
 
     const executionTrace = this.buildExecutionTrace({
@@ -855,7 +855,11 @@ export class TestExecutionService {
     };
   }
 
-  private isIntentionalSkipReply(result: AgentRunResult | null): boolean {
-    return Boolean(result?.toolCalls?.some((toolCall) => toolCall.toolName === 'skip_reply'));
+  private isIntentionalNoReply(result: AgentRunResult | null): boolean {
+    return Boolean(
+      result?.toolCalls?.some((toolCall) =>
+        ['skip_reply', 'request_handoff'].includes(toolCall.toolName),
+      ),
+    );
   }
 }

@@ -59,10 +59,35 @@ const NullableCityFactSchema = z
   });
 
 /**
+ * 推迟意向：候选人明确表达"延期/再说/不急/晚点"时记录的事实。
+ *
+ * badcase 簇 delayed_intent（3azxa3pf 五一后才面 / 1sy7d9ia 下周再说 / kjc5877z 周六日面试 等）：
+ * Agent 看到推迟信号仍反复催促 booking，导致候选人拉黑。
+ * 沉淀到此字段后，hard-constraints / booking gate 应禁止本轮及后续主动催面。
+ */
+export const DelayedIntentSchema = z.object({
+  /** 推迟到何时（保留原话，如 "五一后" / "下周" / "晚点联系"） */
+  until: z.string(),
+  /** 触发该判断的原话片段，用于审计与去歧义 */
+  raw: z.string(),
+});
+export type DelayedIntent = z.infer<typeof DelayedIntentSchema>;
+
+const NullableDelayedIntentSchema = DelayedIntentSchema.nullable().default(null);
+
+/**
  * 意向偏好 schema — 存储态（Redis/记忆）
  *
  * city 字段为 CityFact 对象（含 confidence/evidence），
  * 但解析时接受旧的字符串数据做自动归一化，保证 Redis 兼容。
+ *
+ * 新增字段（与 booking gate / hard-constraints 配套）：
+ * - delayed_intent：候选人明确推迟/再说意向
+ * - short_term：候选人只能做几天/临时（与 minMonths 岗位互斥）
+ * - open_position：候选人"什么岗位都行/X都可以"宽口径（不锁定到 position）
+ * - time_windows：候选人给出的可用时间窗口（如"17点后"、"14点前"）
+ *
+ * 兼容性：所有新字段均 nullable + default(null)，旧 Redis 数据缺字段时解析为 null。
  */
 export const PreferencesSchema = z.object({
   brands: z.array(z.string()).nullable().describe('意向品牌'),
@@ -75,6 +100,20 @@ export const PreferencesSchema = z.object({
   district: z.array(z.string()).nullable().describe('意向区域'),
   location: z.array(z.string()).nullable().describe('意向地点/商圈'),
   labor_form: z.string().nullable().describe('用工形式'),
+  delayed_intent: NullableDelayedIntentSchema.describe(
+    '推迟意向：候选人明确表达"推迟/再说/不急/晚点"时记录，下游禁止本轮及后续主动催面',
+  ),
+  short_term: z.boolean().nullable().default(null).describe('是否短期工（"做几天/临时"等）'),
+  open_position: z
+    .boolean()
+    .nullable()
+    .default(null)
+    .describe('是否岗位开放（"什么都可以/X都可以"句式，position 应留空避免被锁定）'),
+  time_windows: z
+    .array(z.string())
+    .nullable()
+    .default(null)
+    .describe('可用时间窗口（保留原话，如"17点后"、"14点前"）'),
 });
 
 /**
@@ -93,6 +132,23 @@ export const LLMPreferencesSchema = z.object({
   district: z.array(z.string()).nullable().describe('意向区域'),
   location: z.array(z.string()).nullable().describe('意向地点/商圈'),
   labor_form: z.string().nullable().describe('用工形式'),
+  delayed_intent: DelayedIntentSchema.nullable().describe(
+    '推迟意向（仅在候选人原话明确出现"推迟/再说/不急/晚点/X后/下周/周末后"等延期信号时填写；含糊不要填）',
+  ),
+  short_term: z
+    .boolean()
+    .nullable()
+    .describe('是否短期工（仅在原话出现"做几天/几天/临时/短期"等明确短期信号时填 true）'),
+  open_position: z
+    .boolean()
+    .nullable()
+    .describe(
+      '是否岗位开放（候选人说"什么都可以/X都行/什么工作都行/什么都能做"等宽口径句式时填 true；此时 position 必须留空）',
+    ),
+  time_windows: z
+    .array(z.string())
+    .nullable()
+    .describe('可用时间窗口（候选人给出的时间点/段，如"17点后"、"14点前"）'),
 });
 
 /** 实体提取结果 schema — 存储态（包含 CityFact） */
@@ -141,6 +197,10 @@ export const FALLBACK_EXTRACTION: EntityExtractionResult = {
     district: null,
     location: null,
     labor_form: null,
+    delayed_intent: null,
+    short_term: null,
+    open_position: null,
+    time_windows: null,
   },
   reasoning: '实体提取失败，使用空值降级',
 };

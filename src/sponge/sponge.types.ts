@@ -279,11 +279,19 @@ export interface InterviewBookingResult {
   errorList?: InterviewBookingErrorItem[] | null;
 }
 
+/**
+ * Sponge `customerLabel.value` 字段最大长度。
+ *
+ * 来源：杜力岱后台对岗位补充字段值的硬约束。booking 工具的 customer-label
+ * builder 在拼装入参前会先按本常量裁剪/校验，避免接口报错。
+ */
+export const SPONGE_CUSTOMER_LABEL_MAX_LENGTH = 51;
+
 export const InterviewBookingCustomerLabelSchema = z.object({
   labelId: z.number().int(),
   labelName: z.string().min(1),
   name: z.string().min(1),
-  value: z.string().max(51).optional(),
+  value: z.string().max(SPONGE_CUSTOMER_LABEL_MAX_LENGTH).optional(),
 });
 
 export const InterviewBookingErrorItemSchema = z.object({

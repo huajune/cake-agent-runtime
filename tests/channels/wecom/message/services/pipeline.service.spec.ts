@@ -23,6 +23,7 @@ import { AlertLevel } from '@enums/alert.enum';
 import { FilterReason } from '@wecom/message/application/filter.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { PreAgentRiskInterceptService } from '@wecom/message/application/pre-agent-risk-intercept.service';
+import { ReplyFactGuardService } from '@wecom/message/application/reply-fact-guard.service';
 
 describe('MessagePipelineService', () => {
   let service: MessagePipelineService;
@@ -183,6 +184,10 @@ describe('MessagePipelineService', () => {
         { provide: AlertNotifierService, useValue: mockAlertService },
         { provide: WecomMessageObservabilityService, useValue: mockWecomObservabilityService },
         { provide: PreAgentRiskInterceptService, useValue: mockPreAgentRiskIntercept },
+        {
+          provide: ReplyFactGuardService,
+          useValue: { check: jest.fn().mockReturnValue({ hit: false, contradictions: [] }) },
+        },
       ],
     }).compile();
 

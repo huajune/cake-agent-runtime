@@ -302,6 +302,27 @@ export class AnalyticsDashboardService {
         );
       }
 
+      if (
+        timeRange !== 'today' &&
+        currentOverview.totalMessages > 0 &&
+        (minuteTrend.length === 0 || tokenTrendData.length === 0)
+      ) {
+        const recoveredDailyTrend = await this.recoverCurrentPeriodDailyTrend(
+          currentStartDate,
+          currentEndDate,
+          timeRange,
+        );
+
+        if (recoveredDailyTrend.length > 0) {
+          if (minuteTrend.length === 0) {
+            minuteTrend = recoveredDailyTrend;
+          }
+          if (tokenTrendData.length === 0) {
+            tokenTrendData = recoveredDailyTrend;
+          }
+        }
+      }
+
       const overview = {
         totalMessages: currentOverview.totalMessages,
         successCount: currentOverview.successCount,
@@ -354,7 +375,7 @@ export class AnalyticsDashboardService {
       const prevEndDate = formatLocalDate(previousEndDate);
 
       // 并行查询：预约数（轻量索引查询）+ 业务趋势（数据库侧聚合，避免拉取原始流水）
-      const [currentBookings, previousBookings, businessTrend] = await Promise.all([
+      const [currentBookings, previousBookings, rawBusinessTrend] = await Promise.all([
         this.getBookingCount(curStartDate, curEndDate),
         this.getBookingCount(prevStartDate, prevEndDate),
         this.getBusinessTrendFromDatabase(
@@ -381,7 +402,7 @@ export class AnalyticsDashboardService {
         uniqueUsers: item.uniqueUsers,
       }));
 
-      const responseTrend =
+      const rawResponseTrend =
         timeRange === 'today'
           ? (
               minuteTrend as {
@@ -416,7 +437,7 @@ export class AnalyticsDashboardService {
                   : 0,
             }));
 
-      const tokenTrend =
+      const rawTokenTrend =
         timeRange === 'today'
           ? (tokenTrendData as { hour: string; tokenUsage: number; messageCount: number }[]).map(
               (item) => ({
@@ -432,6 +453,24 @@ export class AnalyticsDashboardService {
                 messageCount: item.messageCount,
               }),
             );
+      const responseTrend = this.withResponseTrendFallback(
+        rawResponseTrend,
+        timeRange,
+        currentEndDate,
+        currentOverview,
+      );
+      const tokenTrend = this.withTokenTrendFallback(
+        rawTokenTrend,
+        timeRange,
+        currentEndDate,
+        currentOverview,
+      );
+      const businessTrend = this.withBusinessTrendFallback(
+        rawBusinessTrend,
+        timeRange,
+        currentEndDate,
+        business,
+      );
 
       const response: DashboardOverviewResponse = {
         timeRange,
@@ -480,6 +519,114 @@ export class AnalyticsDashboardService {
 
   private getDayStart(date: Date): Date {
     return getLocalDayStart(date);
+  }
+
+  private async recoverCurrentPeriodDailyTrend(
+    currentStartDate: Date,
+    currentEndDate: Date,
+    timeRange: TimeRange,
+  ): Promise<DailyTrendData[]> {
+    this.logger.error(
+      `[Dashboard] ${timeRange} 汇总有数据但日趋势为空，回源查询真实日趋势: start=${currentStartDate.toISOString()}, end=${currentEndDate.toISOString()}`,
+    );
+
+    try {
+      const rawTrend = await this.monitoringRepository.getDashboardDailyTrend(
+        currentStartDate,
+        currentEndDate,
+      );
+
+      if (rawTrend.length === 0) {
+        this.logger.error(
+          `[Dashboard] ${timeRange} 回源日趋势仍为空，请检查 get_dashboard_daily_trend RPC 与 message_processing_records 时间字段`,
+        );
+      }
+
+      return rawTrend;
+    } catch (error) {
+      this.logger.error(`[Dashboard] ${timeRange} 回源查询真实日趋势失败:`, error);
+      return [];
+    }
+  }
+
+  private getFallbackTrendTime(timeRange: TimeRange, currentEndDate: Date): string {
+    return timeRange === 'today'
+      ? formatLocalMinute(currentEndDate)
+      : formatLocalDate(currentEndDate);
+  }
+
+  private withResponseTrendFallback(
+    trend: ResponseMinuteTrendPoint[],
+    timeRange: TimeRange,
+    currentEndDate: Date,
+    overview: DashboardOverviewStats,
+  ): ResponseMinuteTrendPoint[] {
+    if (trend.length > 0 || overview.totalMessages <= 0) {
+      return trend;
+    }
+
+    this.logger.warn(
+      `[Dashboard] ${timeRange} 响应趋势为空但汇总非 0，使用汇总点兜底避免前端空白，请继续排查趋势 RPC`,
+    );
+
+    return [
+      {
+        minute: this.getFallbackTrendTime(timeRange, currentEndDate),
+        avgDuration: overview.avgDuration,
+        messageCount: overview.totalMessages,
+        successRate: overview.successRate,
+      },
+    ];
+  }
+
+  private withTokenTrendFallback(
+    trend: { time: string; tokenUsage: number; messageCount: number }[],
+    timeRange: TimeRange,
+    currentEndDate: Date,
+    overview: DashboardOverviewStats,
+  ): { time: string; tokenUsage: number; messageCount: number }[] {
+    if (trend.length > 0 || overview.totalMessages <= 0) {
+      return trend;
+    }
+
+    this.logger.warn(
+      `[Dashboard] ${timeRange} Token 趋势为空但汇总非 0，使用汇总点兜底避免前端空白，请继续排查趋势 RPC`,
+    );
+
+    return [
+      {
+        time: this.getFallbackTrendTime(timeRange, currentEndDate),
+        tokenUsage: overview.totalTokenUsage,
+        messageCount: overview.totalMessages,
+      },
+    ];
+  }
+
+  private withBusinessTrendFallback(
+    trend: BusinessMetricTrendPoint[],
+    timeRange: TimeRange,
+    currentEndDate: Date,
+    business: BusinessMetricsSnapshot,
+  ): BusinessMetricTrendPoint[] {
+    const consultations = business.consultations.total;
+    if (trend.length > 0 || consultations <= 0) {
+      return trend;
+    }
+
+    this.logger.warn(
+      `[Dashboard] ${timeRange} 业务趋势为空但业务汇总非 0，使用汇总点兜底避免前端空白，请继续排查业务趋势 RPC`,
+    );
+
+    return [
+      {
+        minute: this.getFallbackTrendTime(timeRange, currentEndDate),
+        consultations,
+        bookingAttempts: business.bookings.attempts,
+        successfulBookings: business.bookings.successful,
+        conversionRate: business.conversion.consultationToBooking,
+        bookingSuccessRate: business.bookings.successRate,
+      },
+    ];
   }
 
   private async isHourlyProjectionFresh(currentEndDate: Date): Promise<boolean> {

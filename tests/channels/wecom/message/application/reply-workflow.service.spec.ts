@@ -118,6 +118,8 @@ describe('ReplyWorkflowService', () => {
     processingFailureService.handleProcessingError.mockResolvedValue(undefined);
     preAgentRiskIntercept.precheck.mockResolvedValue({ hit: false });
 
+    const replyFactGuard = { check: jest.fn().mockReturnValue({ hit: false, contradictions: [] }) };
+
     service = new ReplyWorkflowService(
       deduplicationService as never,
       deliveryService as never,
@@ -127,6 +129,7 @@ describe('ReplyWorkflowService', () => {
       runtimeConfig as never,
       processingFailureService as never,
       preAgentRiskIntercept as never,
+      replyFactGuard as never,
       simpleMergeService as never,
       imageDescription as never,
     );

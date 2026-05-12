@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
 import { ConversationRiskNotifierService } from '@notification/services/conversation-risk-notifier.service';
+import { GeneralHandoffNotifierService } from '@notification/services/general-handoff-notifier.service';
 import { OnboardFollowupNotifierService } from '@notification/services/onboard-followup-notifier.service';
 import type { WeworkSessionState } from '@memory/types/session-facts.types';
 import type { RecruitmentCaseRecord } from '@biz/recruitment-case/entities/recruitment-case.entity';
@@ -44,7 +45,26 @@ export interface HandoffInterventionPayload extends InterventionBase {
   source: 'agent_tool';
 }
 
-export type InterventionPayload = RiskInterventionPayload | HandoffInterventionPayload;
+/**
+ * 通用人工介入（无 active case 兜底）。
+ *
+ * 触发场景：候选人需要人工介入但当前会话没有 onboard_followup case
+ * （如：找不到合适的群、首次需人工跟进、出现非预约/入职阶段的阻塞）。
+ *
+ * 与 onboard_handoff 不同：不依赖 RecruitmentCase，但同样会暂停托管 + 飞书告警。
+ */
+export interface GeneralHandoffInterventionPayload extends InterventionBase {
+  kind: 'general_handoff';
+  alertLabel: string;
+  reason: string;
+  summary?: string;
+  source: 'agent_tool';
+}
+
+export type InterventionPayload =
+  | RiskInterventionPayload
+  | HandoffInterventionPayload
+  | GeneralHandoffInterventionPayload;
 
 export interface InterventionResult {
   dispatched: boolean;
@@ -71,6 +91,7 @@ export class InterventionService {
     private readonly recruitmentCaseService: RecruitmentCaseService,
     private readonly riskNotifier: ConversationRiskNotifierService,
     private readonly handoffNotifier: OnboardFollowupNotifierService,
+    private readonly generalHandoffNotifier: GeneralHandoffNotifierService,
   ) {}
 
   async dispatch(payload: InterventionPayload): Promise<InterventionResult> {
@@ -94,10 +115,14 @@ export class InterventionService {
       await this.recruitmentCaseService.markHandoff(payload.caseId);
     }
 
-    const alerted =
-      payload.kind === 'conversation_risk'
-        ? await this.notifyRisk(payload)
-        : await this.notifyHandoff(payload);
+    let alerted = false;
+    if (payload.kind === 'conversation_risk') {
+      alerted = await this.notifyRisk(payload);
+    } else if (payload.kind === 'onboard_handoff') {
+      alerted = await this.notifyHandoff(payload);
+    } else {
+      alerted = await this.notifyGeneralHandoff(payload);
+    }
 
     this.logger.warn(
       `[Intervention] kind=${payload.kind} source=${payload.source} chatId=${payload.chatId} alerted=${alerted}`,
@@ -141,6 +166,23 @@ export class InterventionService {
       recentMessages: payload.recentMessages,
       sessionState: payload.sessionState,
       recruitmentCase: payload.recruitmentCase,
+    });
+  }
+
+  private notifyGeneralHandoff(payload: GeneralHandoffInterventionPayload): Promise<boolean> {
+    return this.generalHandoffNotifier.notify({
+      alertLabel: payload.alertLabel,
+      reason: payload.reason,
+      summary: payload.summary,
+      corpId: payload.corpId,
+      botImId: payload.botImId,
+      botUserName: payload.botUserName,
+      contactName: payload.contactName,
+      chatId: payload.chatId,
+      pausedUserId: payload.pauseTargetId,
+      currentMessageContent: payload.currentMessageContent,
+      recentMessages: payload.recentMessages,
+      sessionState: payload.sessionState,
     });
   }
 }

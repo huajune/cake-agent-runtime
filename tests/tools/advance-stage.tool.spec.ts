@@ -1,5 +1,6 @@
 import { buildAdvanceStageTool } from '@tools/advance-stage.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
+import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 describe('buildAdvanceStageTool', () => {
   const mockMemoryService = {
@@ -127,12 +128,12 @@ describe('buildAdvanceStageTool', () => {
       reason: '测试非法阶段',
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       success: false,
-      errorCode: 'invalid_stage',
-      error: '非法阶段: unknown_stage',
+      errorType: TOOL_ERROR_TYPES.STAGE_INVALID_TARGET,
       currentStage: 'trust_building',
       allowedStages: ['trust_building', 'job_consultation', 'interview_scheduling'],
+      attemptedStage: 'unknown_stage',
     });
     expect(mockMemoryService.setStage).not.toHaveBeenCalled();
   });
@@ -147,11 +148,11 @@ describe('buildAdvanceStageTool', () => {
       reason: '测试重复推进',
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       success: false,
-      errorCode: 'same_stage',
-      error: '当前已处于阶段: trust_building',
+      errorType: TOOL_ERROR_TYPES.STAGE_ALREADY_AT_TARGET,
       currentStage: 'trust_building',
+      attemptedStage: 'trust_building',
     });
     expect(mockMemoryService.setStage).not.toHaveBeenCalled();
   });

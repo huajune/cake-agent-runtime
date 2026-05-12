@@ -1,5 +1,6 @@
 import { buildInterviewBookingTool } from '@tools/duliday-interview-booking.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
+import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 describe('buildInterviewBookingTool', () => {
   const mockSpongeService = {
@@ -80,7 +81,7 @@ describe('buildInterviewBookingTool', () => {
   };
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
-  const executeTool = async (
+  const executeToolWithContext = async (
     input: Record<string, any>,
     contextOverride: Partial<ToolBuildContext> = {},
   ) => {
@@ -91,24 +92,38 @@ describe('buildInterviewBookingTool', () => {
       mockRecruitmentCaseService as never,
       mockBookingService as never,
     );
-    const builtTool = builder({
+    const toolContext = {
       ...mockContext,
       ...contextOverride,
-    });
-    return builtTool.execute(input as any, {
+    };
+    const builtTool = builder(toolContext);
+    const result = (await builtTool.execute(input as any, {
       toolCallId: 'test',
       messages: [],
       abortSignal: undefined as any,
-    }) as any;
+    })) as any;
+    return { result, context: toolContext };
+  };
+
+  const executeTool = async (
+    input: Record<string, any>,
+    contextOverride: Partial<ToolBuildContext> = {},
+  ) => {
+    const { result } = await executeToolWithContext(input, contextOverride);
+    return result;
   };
   /* eslint-enable @typescript-eslint/no-explicit-any */
 
   it('should return error for missing required payload fields', async () => {
-    const result = await executeTool({ ...validInput, operateType: undefined });
+    const { result, context } = await executeToolWithContext({
+      ...validInput,
+      operateType: undefined,
+    });
 
     expect(result.success).toBe(false);
-    expect(result.errorType).toBe('missing_fields');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS);
     expect(result.missingFields).toContain('operateType');
+    expect(context.bookingSucceeded).toBe(false);
     expect(result.requiredPayloadFields).toEqual([
       'jobId',
       'interviewTime',
@@ -148,7 +163,7 @@ describe('buildInterviewBookingTool', () => {
     const result = await executeTool(validInput, context);
 
     expect(result.success).toBe(false);
-    expect(result.errorType).toBe('already_booked');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
     expect(result.currentBooking).toEqual(
       expect.objectContaining({
         bookingId: 'BK-1001',
@@ -173,36 +188,36 @@ describe('buildInterviewBookingTool', () => {
     const result = await executeTool({ ...validInput, interviewTime: '2026/03/20 14:00' });
 
     expect(result.success).toBe(false);
-    expect(result.errorType).toBe('invalid_interview_time');
-    expect(result.error).toContain('YYYY-MM-DD HH:mm:ss');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_INVALID_INTERVIEW_TIME);
+    expect(result.detailedReason ?? result._replyInstruction).toContain('YYYY-MM-DD HH:mm:ss');
   });
 
   it('should return error for invalid age', async () => {
     const result = await executeTool({ ...validInput, age: 101 });
 
     expect(result.success).toBe(false);
-    expect(result.errorType).toBe('invalid_age');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_INVALID_AGE);
   });
 
   it('should return error for invalid genderId', async () => {
     const result = await executeTool({ ...validInput, genderId: 3 });
 
     expect(result.success).toBe(false);
-    expect(result.errorType).toBe('invalid_gender_id');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_INVALID_GENDER_ID);
   });
 
   it('should return error for invalid operateType', async () => {
     const result = await executeTool({ ...validInput, operateType: 9 });
 
     expect(result.success).toBe(false);
-    expect(result.errorType).toBe('invalid_operate_type');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_INVALID_OPERATE_TYPE);
   });
 
   it('should return error for invalid educationId', async () => {
     const result = await executeTool({ ...validInput, educationId: 99 });
 
     expect(result.success).toBe(false);
-    expect(result.errorType).toBe('invalid_education_id');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_INVALID_EDUCATION_ID);
     expect(result.availableEducationIds).toEqual(
       expect.objectContaining({
         2: '本科',
@@ -215,14 +230,14 @@ describe('buildInterviewBookingTool', () => {
     const result = await executeTool({ ...validInput, hasHealthCertificate: 4 });
 
     expect(result.success).toBe(false);
-    expect(result.errorType).toBe('invalid_health_certificate');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_INVALID_HEALTH_CERTIFICATE);
   });
 
   it('should return error for invalid health certificate types', async () => {
     const result = await executeTool({ ...validInput, healthCertificateTypes: [1, 7] });
 
     expect(result.success).toBe(false);
-    expect(result.errorType).toBe('invalid_health_certificate_types');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_INVALID_HEALTH_CERTIFICATE_TYPES);
   });
 
   it('should return error when job lookup cannot find the job', async () => {
@@ -231,12 +246,26 @@ describe('buildInterviewBookingTool', () => {
     const result = await executeTool(validInput);
 
     expect(result.success).toBe(false);
-    expect(result.errorType).toBe('job_not_found');
-    expect(result.error).toContain('jobId=100');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_JOB_NOT_FOUND);
+    expect(result.detailedReason).toContain('jobId=100');
     expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
   });
 
-  it('should reject using registration deadline as interviewTime before external booking', async () => {
+  // Defense-in-depth: 三个 booking guard 在 LLM 跳过 precheck / 无视 precheck 警告时兜底。
+  // 同源函数（isLikelyRealChineseName / findSameDayCutoffViolation / findScreeningFailure）
+  // 已在 precheck 跑过一次，booking 这里是兜底再跑一次，避免 server-side 安全网被删后裸奔。
+  it('booking guard: should reject when name fails isLikelyRealChineseName', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+
+    const result = await executeTool({ ...validInput, name: 'Mike' });
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS);
+    expect(result._replyInstruction).toContain('真实姓名');
+    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+  });
+
+  it('booking guard: should reject when interviewTime falls outside the job windows', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [
         makeJob({
@@ -245,13 +274,13 @@ describe('buildInterviewBookingTool', () => {
             firstInterview: {
               periodicInterviewTimes: [
                 {
-                  interviewWeekday: '每周四',
+                  interviewWeekday: '每周五',
                   interviewTimes: [
                     {
-                      interviewStartTime: '00:00',
-                      interviewEndTime: '00:00',
+                      interviewStartTime: '13:30',
+                      interviewEndTime: '16:30',
                       cycleDeadlineDay: '当天',
-                      cycleDeadlineEnd: '10:00',
+                      cycleDeadlineEnd: '12:00',
                     },
                   ],
                 },
@@ -263,62 +292,36 @@ describe('buildInterviewBookingTool', () => {
       ],
     });
 
+    // 2026-03-19 是星期四，岗位只在每周五开窗——guard 应拦下
+    const result = await executeTool({ ...validInput, interviewTime: '2026-03-19 14:00:00' });
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_INVALID_INTERVIEW_TIME);
+    expect(result.detailedReason).toContain('2026-03-19');
+    expect(Array.isArray(result.availableSlots)).toBe(true);
+    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+  });
+
+  it('booking guard: should reject when supplementAnswers hit a screening failure', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+
+    // 食品相关专业的"在读/学过" 命中筛选 failSignal（label 带括号黑名单 "不要..." 触发
+    // BLACKLIST_PAREN_REGEX 分类为 screening；answer 含 "食品" 命中 failSignal）
     const result = await executeTool({
       ...validInput,
-      // 用 2026-05-14（周四）避开"今日"以免触发同日截止兜底，让 deadline 检查保持唯一命中点
-      interviewTime: '2026-05-14 10:00:00',
+      supplementAnswers: { '专业（不要食品/食安/卫检等专业）': '我是食品专业的' },
     });
 
     expect(result.success).toBe(false);
-    expect(result.errorType).toBe('deadline_used_as_interview_time');
-    expect(result.registrationDeadline).toBe('2026-05-14 10:00');
-    expect(result.error).toContain('报名截止时间');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
+    expect(result._replyInstruction).toContain('筛选');
     expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-    expect(mockPrivateChatNotifier.notifyInterviewBookingResult).not.toHaveBeenCalled();
   });
 
-  it('should reject date-only 00:00-00:00 windows until the upstream contract is confirmed', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [
-        makeJob({
-          interviewProcess: {
-            interviewSupplement: [],
-            firstInterview: {
-              periodicInterviewTimes: [
-                {
-                  interviewWeekday: '每周四',
-                  interviewTimes: [
-                    {
-                      interviewStartTime: '00:00',
-                      interviewEndTime: '00:00',
-                      cycleDeadlineDay: '当天',
-                      cycleDeadlineEnd: '10:00',
-                    },
-                  ],
-                },
-              ],
-              fixedInterviewTimes: [],
-            },
-          },
-        }),
-      ],
-    });
-
-    const result = await executeTool({
-      ...validInput,
-      // 用 2026-05-14（周四）避开"今日"以免同日截止兜底先返回 past_same_day_cutoff
-      interviewTime: '2026-05-14 00:00:00',
-    });
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe('ambiguous_date_only_slot');
-    expect(result.date).toBe('2026-05-14');
-    expect(result.matchedSlots).toEqual(['2026-05-14 00:00-00:00（报名截止 2026-05-14 10:00）']);
-    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-    expect(mockPrivateChatNotifier.notifyInterviewBookingResult).not.toHaveBeenCalled();
-  });
-
-  it('should allow interviewTime inside a concrete interview window', async () => {
+  // 时段窗口/报名截止/dateOnly 等时段硬规则的二次校验已经从 booking 移除——
+  // 由 duliday_interview_precheck 前置拦截，booking 信任 precheck 的结论。
+  // 仍保留一条"合法时段提交成功"的正路径，作为 booking 端的烟雾测试。
+  it('should submit the booking when interviewTime is supplied (precheck is trusted to have validated it)', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [
         makeJob({
@@ -361,53 +364,6 @@ describe('buildInterviewBookingTool', () => {
     expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
       expect.objectContaining({
         interviewTime: '2026-03-20 14:00:00',
-      }),
-    );
-  });
-
-  it('should not reject a deadline-shaped time when it is also inside a concrete window', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [
-        makeJob({
-          interviewProcess: {
-            interviewSupplement: [],
-            firstInterview: {
-              periodicInterviewTimes: [
-                {
-                  interviewWeekday: '每周五',
-                  interviewTimes: [
-                    {
-                      interviewStartTime: '10:00',
-                      interviewEndTime: '12:00',
-                      cycleDeadlineDay: '当天',
-                      cycleDeadlineEnd: '10:00',
-                    },
-                  ],
-                },
-              ],
-              fixedInterviewTimes: [],
-            },
-          },
-        }),
-      ],
-    });
-    mockSpongeService.bookInterview.mockResolvedValue({
-      success: true,
-      code: 0,
-      message: '预约成功',
-      notice: null,
-      errorList: null,
-    });
-
-    const result = await executeTool({
-      ...validInput,
-      interviewTime: '2026-03-20 10:00:00',
-    });
-
-    expect(result.success).toBe(true);
-    expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
-      expect.objectContaining({
-        interviewTime: '2026-03-20 10:00:00',
       }),
     );
   });
@@ -573,7 +529,7 @@ describe('buildInterviewBookingTool', () => {
     const result = await executeTool(validInput);
 
     expect(result.success).toBe(false);
-    expect(result.errorType).toBe('missing_customer_label_values');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_CUSTOMER_LABEL_VALUES);
     expect(result.missingSupplementLabels).toEqual(['爱好']);
     expect(result.customerLabelDefinitions).toEqual([
       {
@@ -600,7 +556,7 @@ describe('buildInterviewBookingTool', () => {
     await flushAsyncEvents();
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Network error');
+    expect(result.reason).toBe('Network error');
     expect(mockPrivateChatNotifier.notifyInterviewBookingResult).toHaveBeenCalledWith(
       expect.objectContaining({
         candidateName: '张三',
@@ -610,7 +566,7 @@ describe('buildInterviewBookingTool', () => {
         interviewTime: '2026-03-20 14:00:00',
         toolOutput: expect.objectContaining({
           success: false,
-          errorType: 'booking_request_failed',
+          errorType: TOOL_ERROR_TYPES.BOOKING_REQUEST_FAILED,
           requestInfo: expect.objectContaining({
             operateType: 6,
             customerLabelList: [
@@ -663,7 +619,7 @@ describe('buildInterviewBookingTool', () => {
     await flushAsyncEvents();
 
     expect(result.success).toBe(false);
-    expect(result.errorType).toBe('booking_rejected');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
     expect(mockUserHostingService.pauseUser).toHaveBeenCalledWith('sess-1');
   });
 });

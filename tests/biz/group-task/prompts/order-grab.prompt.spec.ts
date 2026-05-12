@@ -119,6 +119,32 @@ describe('buildOrderGrabMessage', () => {
       expect(resultB).toContain('杭州');
       expect(resultA).not.toContain('杭州');
     });
+
+    it('uses 上海 BP contact footer for 上海 order grab groups', () => {
+      const order = makeOrder();
+      const result = buildOrderGrabMessage({ orders: [order], city: '上海' });
+      const lines = result.split('\n');
+
+      expect(lines[lines.length - 2]).toBe(
+        '🍕可直接通过上面的链接进入【独立客小程序】查看更多 上海区域订单~',
+      );
+      expect(lines[lines.length - 1]).toBe(
+        '无法接单或需要办理入职的伙伴，请咨询群里的【独立客灵工BP-8004】',
+      );
+    });
+
+    it('uses 武汉 BP contact footer for 武汉 order grab groups', () => {
+      const order = makeOrder();
+      const result = buildOrderGrabMessage({ orders: [order], city: '武汉地区' });
+      const lines = result.split('\n');
+
+      expect(lines[lines.length - 2]).toBe(
+        '🍕可直接通过上面的链接进入【独立客小程序】查看更多 武汉区域订单~',
+      );
+      expect(lines[lines.length - 1]).toBe(
+        '无法接单或需要办理入职的伙伴，请咨询群里的【独立客灵工BP-8003】',
+      );
+    });
   });
 
   // -------------------------------------------------------------------------

@@ -4,47 +4,14 @@ import { z } from 'zod';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
 import { SessionService } from '@memory/services/session.service';
-import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { InterventionService } from '@biz/intervention/intervention.service';
 import { ToolBuilder } from '@shared-types/tool.types';
+import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { extractLatestUserMessage } from './utils/chat-history.util';
 
 const logger = new Logger('request_handoff');
 
-const HANDOFF_REASON_LABELS: Record<string, string> = {
-  cannot_find_store: '找不到门店',
-  no_reception: '到店无人接待',
-  booking_conflict: '预约信息冲突',
-  onboarding_paperwork: '入职办理异常',
-  interview_result_inquiry: '候选人追问面试结果',
-  modify_appointment: '候选人要求改期/取消已预约面试',
-  self_recruited_or_completed: '候选人已被面试通过/餐厅自招/办入职',
-  other: '其他需人工处理场景',
-};
-
-/**
- * request_handoff 工具
- *
- * 当 Agent 判断候选人已进入「面试/入职跟进阶段」或出现明显需要人工确认的
- * 预约/改期/入职阻塞时调用。
- *
- * 行为约定（与 skip_reply 同属「短路工具」）：
- * - 调用即由 runtime 立即结束本轮 loop，本轮不再生成任何对外回复
- * - 副作用全部 fire-and-forget：异步暂停托管 + 异步飞书告警 + 异步 case 状态变更
- * - 即便没有 active case，也会异步暂停托管，避免 Agent 继续与候选人对话
- *
- * Agent 调用前不要再尝试组织安抚/收口话术——本轮就是沉默。
- */
-export function buildRequestHandoffTool(
-  interventionService: InterventionService,
-  recruitmentCaseService: RecruitmentCaseService,
-  chatSessionService: ChatSessionService,
-  sessionService: SessionService,
-  userHostingService: UserHostingService,
-): ToolBuilder {
-  return (context) => {
-    return tool({
-      description: `面试/入职跟进阶段遇到需人工处理的场景时调用。**调用即短路本轮——runtime 会自动结束本轮，候选人本次不会收到任何回复**，副作用（暂停托管 / 飞书告警 / case 状态变更）全部异步执行。
+const DESCRIPTION = `面试/入职跟进阶段遇到需人工处理的场景时调用。**调用即短路本轮——runtime 会自动结束本轮，候选人本次不会收到任何回复**，副作用（暂停托管 / 飞书告警 / case 状态变更）全部异步执行。
 
 ## 前置条件
 - [当前预约信息] 存在时必须调用，本工具会异步暂停托管并发送人工介入告警
@@ -76,29 +43,71 @@ export function buildRequestHandoffTool(
 
 ## 硬规则
 - 调用本工具后，**禁止再生成任何对外文本**，也不得继续调用其它工具
-- 严禁在本轮继续推进其他任务（换岗位、改约时间、收资料等）`,
-      inputSchema: z.object({
-        reasonCode: z
-          .enum([
-            'cannot_find_store',
-            'no_reception',
-            'booking_conflict',
-            'onboarding_paperwork',
-            'interview_result_inquiry',
-            'modify_appointment',
-            'self_recruited_or_completed',
-            'other',
-          ])
-          .describe('转人工原因代码'),
-        reason: z.string().describe('具体原因：结合候选人原话说明当前阻塞点'),
-        summary: z.string().optional().describe('情况摘要：1 句话描述已收集的关键信息'),
-      }),
+- 严禁在本轮继续推进其他任务（换岗位、改约时间、收资料等）`;
+
+const inputSchema = z.object({
+  reasonCode: z
+    .enum([
+      'cannot_find_store',
+      'no_reception',
+      'booking_conflict',
+      'onboarding_paperwork',
+      'interview_result_inquiry',
+      'modify_appointment',
+      'self_recruited_or_completed',
+      'other',
+    ])
+    .describe('转人工原因代码'),
+  reason: z.string().describe('具体原因：结合候选人原话说明当前阻塞点'),
+  summary: z.string().optional().describe('情况摘要：1 句话描述已收集的关键信息'),
+});
+
+const HANDOFF_REASON_LABELS: Record<string, string> = {
+  cannot_find_store: '找不到门店',
+  no_reception: '到店无人接待',
+  booking_conflict: '预约信息冲突',
+  onboarding_paperwork: '入职办理异常',
+  interview_result_inquiry: '候选人追问面试结果',
+  modify_appointment: '候选人要求改期/取消已预约面试',
+  self_recruited_or_completed: '候选人已被面试通过/餐厅自招/办入职',
+  other: '其他需人工处理场景',
+};
+
+/**
+ * request_handoff 工具
+ *
+ * 当 Agent 判断候选人已进入「面试/入职跟进阶段」或出现明显需要人工确认的
+ * 预约/改期/入职阻塞时调用。
+ *
+ * 行为约定（与 skip_reply 同属「短路工具」）：
+ * - 调用即由 runtime 立即结束本轮 loop，本轮不再生成任何对外回复
+ * - 副作用全部 fire-and-forget：异步暂停托管 + 异步飞书告警 + 异步 case 状态变更
+ * - 即便没有 active case，也会异步暂停托管，避免 Agent 继续与候选人对话
+ *
+ * Agent 调用前不要再尝试组织安抚/收口话术——本轮就是沉默。
+ */
+export function buildRequestHandoffTool(
+  interventionService: InterventionService,
+  recruitmentCaseService: RecruitmentCaseService,
+  chatSessionService: ChatSessionService,
+  sessionService: SessionService,
+): ToolBuilder {
+  return (context) => {
+    return tool({
+      description: DESCRIPTION,
+      inputSchema,
       execute: async ({ reasonCode, reason, summary }) => {
         const chatId = context.chatId ?? context.sessionId;
         const pauseTargetId = chatId || context.imContactId || context.userId;
 
         if (!chatId) {
-          return { dispatched: false, error: 'missing_chat_id' };
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.MISSING_CHAT_ID,
+            outcome: '缺少 chatId，无法转人工',
+            replyInstruction:
+              '当前调用缺少 chatId 上下文，本轮不要再调用其他工具；这是结构性问题，无法通过对话恢复。',
+            successField: 'dispatched',
+          });
         }
 
         const activeCase = await recruitmentCaseService.getActiveOnboardFollowupCase({
@@ -106,29 +115,63 @@ export function buildRequestHandoffTool(
           chatId,
         });
 
-        if (!activeCase) {
-          logger.warn(
-            `request_handoff 无 active case: chatId=${chatId}, code=${reasonCode}; 仍异步暂停托管以避免继续对话`,
-          );
-          void userHostingService.pauseUser(pauseTargetId).catch((err: unknown) => {
-            const message = err instanceof Error ? err.message : String(err);
-            logger.error(`request_handoff 异步暂停托管失败: chatId=${chatId}, ${message}`);
-          });
-          return {
-            dispatched: false,
-            shortCircuited: true,
-            error: 'no_active_case',
-            instruction:
-              '本轮 runtime 已自动结束，托管已异步暂停。禁止再生成任何文本或调用其他工具。',
-          };
-        }
-
         const [recentMessages, sessionState] = await Promise.all([
           chatSessionService.getChatHistory(chatId, 10).catch(() => []),
           sessionService
             .getSessionState(context.corpId, context.userId, context.sessionId)
             .catch(() => null),
         ]);
+
+        if (!activeCase) {
+          // 无 active case：候选人仍需人工跟进，dispatch general_handoff
+          // —— 复用 InterventionService 的同款"暂停托管 + 飞书告警"通路。
+          // 历史 badcase 0nmr8jh6：候选人想入群但无合适群，Agent 调 request_handoff
+          // 后只暂停了托管、没发告警，招募经理永远收不到通知，候选人被晾在那里。
+          logger.warn(
+            `request_handoff 无 active case，走 general_handoff: chatId=${chatId}, code=${reasonCode}`,
+          );
+          void interventionService
+            .dispatch({
+              kind: 'general_handoff',
+              source: 'agent_tool',
+              alertLabel: HANDOFF_REASON_LABELS[reasonCode] ?? '需人工跟进',
+              reason: reason?.trim() || HANDOFF_REASON_LABELS[reasonCode] || '需要人工协助',
+              summary: summary?.trim(),
+              chatId,
+              corpId: context.corpId,
+              userId: context.userId,
+              pauseTargetId,
+              botImId: context.botImId,
+              botUserName: context.botUserId,
+              contactName: context.contactName,
+              currentMessageContent: extractLatestUserMessage(recentMessages),
+              recentMessages: recentMessages.map((m) => ({
+                role: m.role as 'user' | 'assistant',
+                content: m.content,
+                timestamp: m.timestamp,
+              })),
+              sessionState,
+            })
+            .then((result) => {
+              logger.warn(
+                `request_handoff dispatched (general): chatId=${chatId}, code=${reasonCode}, paused=${result.paused}, alerted=${result.alerted}, suppressed=${result.suppressed ?? '-'}`,
+              );
+            })
+            .catch((err: unknown) => {
+              const message = err instanceof Error ? err.message : String(err);
+              logger.error(
+                `request_handoff general dispatch 异步执行失败: chatId=${chatId}, ${message}`,
+              );
+            });
+          return buildToolError({
+            errorType: TOOL_ERROR_TYPES.NO_ACTIVE_CASE,
+            outcome: '会话无 active case，已转通用人工跟进',
+            replyInstruction:
+              '本轮 runtime 已自动结束，托管会被异步暂停并飞书告警人工跟进。禁止再生成任何文本或调用其他工具。',
+            successField: 'dispatched',
+            details: { shortCircuited: true },
+          });
+        }
 
         void interventionService
           .dispatch({

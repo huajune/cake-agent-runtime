@@ -72,6 +72,36 @@ describe('extractHighConfidenceFacts', () => {
     ).toBe('无');
   });
 
+  it('should treat admitted or enrolled graduate students as student identity', () => {
+    const admitted = extractHighConfidenceFacts(
+      ['我去年毕业了但是今年考上研究生了能行吗'],
+      brandData,
+    );
+    expect(admitted?.interview_info.is_student).toBe(true);
+    expect(admitted?.interview_info.education).toBe('硕士待入学');
+
+    const undergrad = extractHighConfidenceFacts(['学历填本科在读有影响吗'], brandData);
+    expect(undergrad?.interview_info.is_student).toBe(true);
+    expect(undergrad?.interview_info.education).toBe('本科在读');
+  });
+
+  it.each([
+    ['社会人士，目前待岗状态'],
+    ['我是社会人士'],
+    ['上班族，找个兼职'],
+    ['我已经工作了'],
+    ['之前工作过几年'],
+    ['目前在职'],
+    ['暂时待岗中'],
+    ['失业了想找份兼职'],
+    ['退休了想发挥余热'],
+    ['全职妈妈，孩子上学后有空'],
+    ['平时在家带娃'],
+  ])('should mark non-student identity for message: %s', (message) => {
+    const result = extractHighConfidenceFacts([message], brandData);
+    expect(result?.interview_info.is_student).toBe(false);
+  });
+
   it('should extract specific labor_form subtypes only (小时工 / 寒假工 / 暑假工 / 兼职+)', () => {
     const hourly = extractHighConfidenceFacts(['我想做小时工'], brandData);
     expect(hourly?.preferences.labor_form).toBe('小时工');

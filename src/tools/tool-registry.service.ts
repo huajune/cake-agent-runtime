@@ -165,7 +165,6 @@ export class ToolRegistryService {
           recruitmentCaseService,
           this.chatSessionService,
           sessionService,
-          userHostingService,
         ),
       }),
 

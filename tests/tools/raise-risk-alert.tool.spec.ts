@@ -1,5 +1,6 @@
 import { buildRaiseRiskAlertTool } from '@tools/raise-risk-alert.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
+import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 describe('buildRaiseRiskAlertTool', () => {
   const interventionService = { dispatch: jest.fn() };
@@ -47,7 +48,10 @@ describe('buildRaiseRiskAlertTool', () => {
       reason: '候选人骂人',
     });
 
-    expect(result).toMatchObject({ accepted: false, error: 'missing_chat_id' });
+    expect(result).toMatchObject({
+      accepted: false,
+      errorType: TOOL_ERROR_TYPES.MISSING_CHAT_ID,
+    });
     expect(interventionService.dispatch).not.toHaveBeenCalled();
   });
 

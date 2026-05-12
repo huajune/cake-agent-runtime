@@ -13,7 +13,7 @@ import { HourlyStats } from '../../types/analytics.types';
  * 小时统计聚合服务
  *
  * 从 monitoring_hourly_stats 预聚合数据中重建 Dashboard 所需的各类统计。
- * 用于非实时查询（昨天/本周/本月），替代直接扫描 message_processing_records。
+ * 用于非实时查询（昨天/近 7 天/近 30 天），替代直接扫描 message_processing_records。
  */
 @Injectable()
 export class HourlyStatsAggregatorService {

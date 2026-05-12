@@ -71,6 +71,19 @@ describe('HardConstraintsSection', () => {
     const output = section.build({ ...baseCtx, sessionFacts: facts });
 
     expect(output).toContain('是否学生: 是');
+    expect(output).toContain('不得直接说"没问题/符合要求/身份不限"');
+    expect(output).toContain('figure=不限、学历够、未写学生限制都不能推断为身份没限制');
+  });
+
+  it('requires neutral city confirmation when district is known but city is missing', () => {
+    const facts = cloneFallback();
+    facts.preferences.district = ['房山'];
+
+    const output = section.build({ ...baseCtx, sessionFacts: facts });
+
+    expect(output).toContain('区域: 房山');
+    expect(output).toContain('反问时不得带具体城市名');
+    expect(output).toContain('禁止"是在 X 城市的 X 区吗"');
   });
 
   it('falls back to highConfidenceFacts when sessionFacts has no value for a field', () => {

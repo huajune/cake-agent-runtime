@@ -15,10 +15,7 @@ import {
 } from 'chart.js';
 import { useDashboardOverview } from '@/hooks/analytics/useDashboard';
 import { useHealthStatus } from '@/hooks/analytics/useMetrics';
-import {
-  useAiReplyStatus,
-  useToggleAiReply,
-} from '@/hooks/config/useSystemConfig';
+import { useAiReplyStatus, useToggleAiReply } from '@/hooks/config/useSystemConfig';
 import { useWorkerStatus } from '@/hooks/config/useWorker';
 import { formatDuration, formatMinuteLabel, formatDayLabel, formatHourLabel } from '@/utils/format';
 import { THEME_COLORS } from '@/constants';
@@ -46,7 +43,7 @@ ChartJS.register(
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
 );
 
 export default function Dashboard() {
@@ -69,12 +66,13 @@ export default function Dashboard() {
     const cards = document.querySelectorAll('.metric-card, .chart-card, .insight-card');
 
     cards.forEach((card) => {
-      card.querySelectorAll('.spring-sticker').forEach(s => s.remove());
+      card.querySelectorAll('.spring-sticker').forEach((s) => s.remove());
 
       if (Math.random() > 0.6) {
         const sticker = document.createElement('div');
         sticker.className = 'spring-sticker sticker-tr';
-        sticker.textContent = springDecorations[Math.floor(Math.random() * springDecorations.length)];
+        sticker.textContent =
+          springDecorations[Math.floor(Math.random() * springDecorations.length)];
         sticker.style.animationDelay = `${Math.random() * 2}s`;
         card.appendChild(sticker);
       }
@@ -82,18 +80,18 @@ export default function Dashboard() {
       if (Math.random() > 0.85) {
         const sticker2 = document.createElement('div');
         sticker2.className = 'spring-sticker sticker-tl';
-        sticker2.textContent = springDecorations[Math.floor(Math.random() * springDecorations.length)];
+        sticker2.textContent =
+          springDecorations[Math.floor(Math.random() * springDecorations.length)];
         card.appendChild(sticker2);
       }
     });
 
     return () => {
-      document.querySelectorAll('.spring-sticker').forEach(s => s.remove());
+      document.querySelectorAll('.spring-sticker').forEach((s) => s.remove());
     };
   }, [dashboardLoading]);
 
   const { data: workerStatus } = useWorkerStatus(autoRefresh);
-
 
   const overview = dashboard?.overview;
   const overviewDelta = dashboard?.overviewDelta;
@@ -104,18 +102,24 @@ export default function Dashboard() {
   const formatLabel = isToday ? formatMinuteLabel : formatDayLabel;
   const businessPoints = isToday
     ? (dashboard?.businessTrend || []).slice(-90)
-    : (dashboard?.businessTrend || []);
+    : dashboard?.businessTrend || [];
 
   // 健康状态
-  const healthStatus = health?.status === 'healthy' &&
-    health?.providers?.count > 0 &&
-    health?.tools?.total > 0
-    ? 'healthy'
-    : health?.status !== 'healthy' ? 'error' : 'warning';
+  const healthStatus =
+    health?.status === 'healthy' && health?.providers?.count > 0 && health?.tools?.total > 0
+      ? 'healthy'
+      : health?.status !== 'healthy'
+        ? 'error'
+        : 'warning';
 
-  const healthMessage = healthStatus === 'healthy'
-    ? '全部正常'
-    : health?.status !== 'healthy' ? '服务异常' : health ? '部分异常' : '检查中...';
+  const healthMessage =
+    healthStatus === 'healthy'
+      ? '全部正常'
+      : health?.status !== 'healthy'
+        ? '服务异常'
+        : health
+          ? '部分异常'
+          : '检查中...';
 
   // 图表配置
   const commonOptions = {
@@ -140,7 +144,13 @@ export default function Dashboard() {
         display: true,
         grid: { display: false, drawBorder: true },
         border: { display: true },
-        ticks: { display: true, color: '#94a3b8', font: { size: 11 }, autoSkip: true, maxRotation: 0 }
+        ticks: {
+          display: true,
+          color: '#94a3b8',
+          font: { size: 11 },
+          autoSkip: true,
+          maxRotation: 0,
+        },
       },
       y: {
         beginAtZero: true,
@@ -158,17 +168,19 @@ export default function Dashboard() {
   // 托管用户趋势
   const consultationChartData = {
     labels: businessPoints.map((p) => formatLabel(p.minute)),
-    datasets: [{
-      label: '用户数',
-      data: businessPoints.map((p) => p.consultations || 0),
-      borderColor: THEME_COLORS.primary,
-      backgroundColor: THEME_COLORS.primary20,
-      fill: true,
-      pointBackgroundColor: '#ffffff',
-      pointBorderColor: THEME_COLORS.primary,
-      pointRadius: 4,
-      pointHoverRadius: 6,
-    }],
+    datasets: [
+      {
+        label: '用户数',
+        data: businessPoints.map((p) => p.consultations || 0),
+        borderColor: THEME_COLORS.primary,
+        backgroundColor: THEME_COLORS.primary20,
+        fill: true,
+        pointBackgroundColor: '#ffffff',
+        pointBorderColor: THEME_COLORS.primary,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+      },
+    ],
   };
 
   // 预约转化趋势
@@ -211,54 +223,75 @@ export default function Dashboard() {
     },
     scales: {
       x: commonOptions.scales.x,
-      y: { ...commonOptions.scales.y, position: 'left' as const, title: { display: true, text: '预约成功数', color: THEME_COLORS.accent, font: { size: 10 } } },
-      y1: { ...commonOptions.scales.y, position: 'right' as const, grid: { drawOnChartArea: false }, ticks: { callback: (value: number | string) => `${value}%` }, title: { display: true, text: '转化率 (%)', color: '#10b981', font: { size: 10 } } },
+      y: {
+        ...commonOptions.scales.y,
+        position: 'left' as const,
+        title: {
+          display: true,
+          text: '预约成功数',
+          color: THEME_COLORS.accent,
+          font: { size: 10 },
+        },
+      },
+      y1: {
+        ...commonOptions.scales.y,
+        position: 'right' as const,
+        grid: { drawOnChartArea: false },
+        ticks: { callback: (value: number | string) => `${value}%` },
+        title: { display: true, text: '转化率 (%)', color: '#10b981', font: { size: 10 } },
+      },
     },
   };
 
-  // Token 消耗 - 本日显示小时级，本周/本月显示天级
+  // Token 消耗 - 本日显示小时级，近7天/近30天显示天级
   const tokenPoints = dashboard?.tokenTrend || [];
   const tokenChartData = {
     labels: tokenPoints.map((p: any) =>
-      isToday ? formatHourLabel(p.time) : formatDayLabel(p.time)
+      isToday ? formatHourLabel(p.time) : formatDayLabel(p.time),
     ),
-    datasets: [{
-      label: 'Token 消耗',
-      data: tokenPoints.map((p: any) => p.tokenUsage),
-      backgroundColor: '#f59e0b',
-      borderRadius: 6,
-      hoverBackgroundColor: '#d97706',
-      barThickness: 'flex' as const,
-      maxBarThickness: 32,
-    }],
+    datasets: [
+      {
+        label: 'Token 消耗',
+        data: tokenPoints.map((p: any) => p.tokenUsage),
+        backgroundColor: '#f59e0b',
+        borderRadius: 6,
+        hoverBackgroundColor: '#d97706',
+        barThickness: 'flex' as const,
+        maxBarThickness: 32,
+      },
+    ],
   };
 
-  // 响应耗时 - 本日显示分钟级，本周/本月显示天级
+  // 响应耗时 - 本日显示分钟级，近7天/近30天显示天级
   const responsePoints = isToday
     ? (dashboard?.responseTrend || []).slice(-60)
-    : (dashboard?.responseTrend || []);
+    : dashboard?.responseTrend || [];
   const responseChartData = {
-    labels: responsePoints.map((p) => isToday ? formatMinuteLabel(p.minute) : formatDayLabel(p.minute)),
-    datasets: [{
-      label: '平均耗时 (秒)',
-      data: responsePoints.map((p) => (p.avgDuration ? p.avgDuration / 1000 : 0)),
-      borderColor: '#06b6d4',
-      backgroundColor: 'rgba(6, 182, 212, 0.2)',
-      fill: true,
-      tension: 0.4,
-      borderWidth: 3,
-      pointRadius: 0,
-      pointHoverRadius: 6,
-      pointBackgroundColor: '#ffffff',
-      pointBorderColor: '#06b6d4',
-      pointBorderWidth: 2,
-      pointHoverBorderWidth: 3,
-    }],
+    labels: responsePoints.map((p) =>
+      isToday ? formatMinuteLabel(p.minute) : formatDayLabel(p.minute),
+    ),
+    datasets: [
+      {
+        label: '平均耗时 (秒)',
+        data: responsePoints.map((p) => (p.avgDuration ? p.avgDuration / 1000 : 0)),
+        borderColor: '#06b6d4',
+        backgroundColor: 'rgba(6, 182, 212, 0.2)',
+        fill: true,
+        tension: 0.4,
+        borderWidth: 3,
+        pointRadius: 0,
+        pointHoverRadius: 6,
+        pointBackgroundColor: '#ffffff',
+        pointBorderColor: '#06b6d4',
+        pointBorderWidth: 2,
+        pointHoverBorderWidth: 3,
+      },
+    ],
   };
 
-  const timeRangeBadge = timeRange === 'today' ? '本日' : timeRange === 'week' ? '本周' : '本月';
+  const timeRangeBadge = timeRange === 'today' ? '本日' : timeRange === 'week' ? '近7天' : '近30天';
   const comparisonLabel =
-    timeRange === 'today' ? '较昨日同期' : timeRange === 'week' ? '较上周同期' : '较上月同期';
+    timeRange === 'today' ? '较昨日同期' : timeRange === 'week' ? '较前7天同期' : '较前30天同期';
   const totalMessages = overview?.totalMessages ?? 0;
   const successCount = overview?.successCount ?? 0;
   const failureCount = overview?.failureCount ?? 0;
@@ -271,29 +304,46 @@ export default function Dashboard() {
     dashboardLoading || (current === 0 && Math.abs(delta ?? 0) < 0.05) ? undefined : delta;
   const requestSubtitle = dashboardLoading
     ? '加载中'
-    : totalMessages > 0 ? `成功 ${successCount} / 异常 ${failureCount}` : '暂无请求';
+    : totalMessages > 0
+      ? `成功 ${successCount} / 异常 ${failureCount}`
+      : '暂无请求';
   const successRateSubtitle = dashboardLoading
     ? '加载中'
-    : totalMessages > 0 ? `成功 ${successCount} / 请求 ${totalMessages}` : '暂无请求';
+    : totalMessages > 0
+      ? `成功 ${successCount} / 请求 ${totalMessages}`
+      : '暂无请求';
   const responseSubtitle = dashboardLoading
     ? '加载中'
-    : totalMessages > 0 ? '按有效请求统计' : '暂无有效响应';
+    : totalMessages > 0
+      ? '按有效请求统计'
+      : '暂无有效响应';
   const activeUserSubtitle = dashboardLoading
     ? '加载中'
-    : activeChats > 0 ? `${activeChats} 个会话` : '暂无会话';
+    : activeChats > 0
+      ? `${activeChats} 个会话`
+      : '暂无会话';
   const fallbackSubtitle = dashboardLoading
     ? '加载中'
-    : fallbackTotal > 0 ? `成功 ${fallbackSuccess} / 降级 ${fallbackTotal}` : '暂无降级';
-  const bookingSubtitle = dashboardLoading
-    ? <>加载中</>
-    : successfulBookings > 0 ? <>已记录成功预约</> : <>暂无成功预约</>;
-  const conversionSubtitle = dashboardLoading
-    ? <>加载中</>
-    : managedUsers > 0 ? (
-      <>预约成功 <span className="text-success">{successfulBookings}</span> / 托管用户 <span>{managedUsers}</span></>
-    ) : (
-      <>暂无托管用户</>
-    );
+    : fallbackTotal > 0
+      ? `成功 ${fallbackSuccess} / 降级 ${fallbackTotal}`
+      : '暂无降级';
+  const bookingSubtitle = dashboardLoading ? (
+    <>加载中</>
+  ) : successfulBookings > 0 ? (
+    <>已记录成功预约</>
+  ) : (
+    <>暂无成功预约</>
+  );
+  const conversionSubtitle = dashboardLoading ? (
+    <>加载中</>
+  ) : managedUsers > 0 ? (
+    <>
+      预约成功 <span className="text-success">{successfulBookings}</span> / 托管用户{' '}
+      <span>{managedUsers}</span>
+    </>
+  ) : (
+    <>暂无托管用户</>
+  );
 
   return (
     <div className={styles.page}>
@@ -310,10 +360,7 @@ export default function Dashboard() {
         lastUpdate={dataUpdatedAt ?? null}
       >
         {/* 健康状态网格 */}
-        <HealthGrid
-          health={health}
-          workerStatus={workerStatus}
-        />
+        <HealthGrid health={health} workerStatus={workerStatus} />
       </ControlPanel>
 
       {/* 核心指标 */}
@@ -378,7 +425,11 @@ export default function Dashboard() {
         />
         <MetricCard
           label="咨询转化率"
-          value={dashboardLoading ? '-' : `${(business?.conversion?.consultationToBooking ?? 0).toFixed(1)}%`}
+          value={
+            dashboardLoading
+              ? '-'
+              : `${(business?.conversion?.consultationToBooking ?? 0).toFixed(1)}%`
+          }
           subtitle={conversionSubtitle}
           variant="success"
           className="border-success-soft"
@@ -388,7 +439,16 @@ export default function Dashboard() {
       {/* 趋势图表 */}
       <ChartsRow>
         <ChartCard title="托管用户趋势" subtitle="独立用户数">
-          <Line data={consultationChartData} options={{ ...commonOptions, scales: { ...commonOptions.scales, y: { ...commonOptions.scales.y, ticks: { stepSize: 1, precision: 0 } } } }} />
+          <Line
+            data={consultationChartData}
+            options={{
+              ...commonOptions,
+              scales: {
+                ...commonOptions.scales,
+                y: { ...commonOptions.scales.y, ticks: { stepSize: 1, precision: 0 } },
+              },
+            }}
+          />
         </ChartCard>
         <ChartCard title="预约转化趋势" subtitle="预约成功数与咨询转化率">
           <Line data={bookingChartData} options={bookingChartOptions} />
@@ -401,7 +461,9 @@ export default function Dashboard() {
           title="Token 消耗"
           subtitle={isToday ? '今日每小时消耗' : `${timeRangeBadge}每日消耗`}
           kpiLabel={`${timeRangeBadge}总消耗`}
-          kpiValue={tokenPoints.reduce((sum: number, p: any) => sum + (p.tokenUsage || 0), 0) || '-'}
+          kpiValue={
+            tokenPoints.reduce((sum: number, p: any) => sum + (p.tokenUsage || 0), 0) || '-'
+          }
         >
           <Bar data={tokenChartData} options={commonOptions} />
         </ChartCard>
@@ -409,7 +471,9 @@ export default function Dashboard() {
           title="响应耗时"
           subtitle={isToday ? '今日平均响应时间' : `${timeRangeBadge}平均响应时间`}
           kpiLabel="当前平均"
-          kpiValue={dashboard?.overview?.avgDuration ? formatDuration(dashboard.overview.avgDuration) : '-'}
+          kpiValue={
+            dashboard?.overview?.avgDuration ? formatDuration(dashboard.overview.avgDuration) : '-'
+          }
         >
           <Line data={responseChartData} options={commonOptions} />
         </ChartCard>

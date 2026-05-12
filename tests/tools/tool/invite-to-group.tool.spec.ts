@@ -1,6 +1,7 @@
 import { buildInviteToGroupTool } from '@tools/invite-to-group.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { GroupContext } from '@biz/group-task/group-task.types';
+import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 describe('buildInviteToGroupTool', () => {
   const mockContext: ToolBuildContext = {
@@ -28,13 +29,17 @@ describe('buildInviteToGroupTool', () => {
     addMemberEnterprise: jest.fn(),
     getEnterpriseGroupChatList: jest.fn(),
   };
-  const mockOpsNotifier = { sendGroupFullAlert: jest.fn() };
+  const mockOpsNotifier = {
+    sendGroupFullAlert: jest.fn(),
+    sendInviteRejectedAlert: jest.fn(),
+  };
   const mockMemoryService = { saveInvitedGroup: jest.fn() };
   const MEMBER_LIMIT = 200;
 
   beforeEach(() => {
     jest.clearAllMocks();
     mockOpsNotifier.sendGroupFullAlert.mockResolvedValue(true);
+    mockOpsNotifier.sendInviteRejectedAlert.mockResolvedValue(true);
     mockRoomService.getEnterpriseGroupChatList.mockResolvedValue({ data: [] });
   });
 
@@ -111,7 +116,8 @@ describe('buildInviteToGroupTool', () => {
     const result = await executeTool({ city: '上海' });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('暂无可用群');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_NO_GROUP_AVAILABLE);
+    expect(result._replyInstruction).toContain('request_handoff');
   });
 
   it('should block invite when booking failed in same turn', async () => {
@@ -123,7 +129,7 @@ describe('buildInviteToGroupTool', () => {
     );
 
     expect(result.success).toBe(false);
-    expect(result.reason).toBe('booking_not_succeeded');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_BOOKING_NOT_SUCCESS);
     expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
     expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
   });
@@ -137,7 +143,7 @@ describe('buildInviteToGroupTool', () => {
     const result = await executeTool({ city: '上海' });
 
     expect(result.success).toBe(false);
-    expect(result.reason).toBe('no_group_in_city');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_NO_GROUP_IN_CITY);
     expect(result.availableCities).toBeUndefined();
     expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
   });
@@ -152,7 +158,7 @@ describe('buildInviteToGroupTool', () => {
     const result = await executeTool({ city: '上海' });
 
     expect(result.success).toBe(false);
-    expect(result.reason).toBe('already_in_group');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_ALREADY_IN_GROUP);
     expect(result.groupName).toBe('上海兼职群1号');
     expect(mockRoomService.addMemberEnterprise).toHaveBeenCalled();
   });
@@ -167,7 +173,8 @@ describe('buildInviteToGroupTool', () => {
     await flushAsyncEvents();
 
     expect(result.success).toBe(false);
-    expect(result.reason).toBe('group_full');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_GROUP_FULL);
+    expect(result._replyInstruction).toContain('request_handoff');
     expect(result.citySnapshot).toEqual({
       totalGroups: 2,
       memberLimit: MEMBER_LIMIT,
@@ -322,7 +329,7 @@ describe('buildInviteToGroupTool', () => {
     await flushAsyncEvents();
 
     expect(result.success).toBe(false);
-    expect(result.reason).toBe('group_full');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_GROUP_FULL);
     expect(result.citySnapshot.byIndustry).toEqual([
       { industry: '餐饮', groupCount: 2, availableCount: 0 },
     ]);
@@ -406,19 +413,83 @@ describe('buildInviteToGroupTool', () => {
     const result = await executeTool({ city: '上海' });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('WeChat API timeout');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_API_FAILED);
+    expect(result.reason).toBe('WeChat API timeout');
+    expect(result._replyInstruction).not.toContain('WeChat API timeout');
   });
 
-  it('should return invite_api_rejected when enterprise API returns non-zero errcode', async () => {
+  it('should return invite_api_rejected and alert when enterprise API returns non-zero errcode', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup()]);
     mockRoomService.addMemberEnterprise.mockResolvedValue({ errcode: 40003, errmsg: 'forbidden' });
 
     const result = await executeTool({ city: '上海' });
+    await flushAsyncEvents();
 
     expect(result.success).toBe(false);
-    expect(result.reason).toBe('invite_api_rejected');
-    expect(result.error).toContain('errcode=40003');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_API_REJECTED);
+    expect(result.reason).toContain('errcode=40003');
     expect(mockMemoryService.saveInvitedGroup).not.toHaveBeenCalled();
+    expect(mockOpsNotifier.sendInviteRejectedAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        city: '上海',
+        chatBotImId: 'chat-bot-im-id',
+        chatBotUserId: 'chat-bot-weixin',
+        rejectedGroups: [
+          expect.objectContaining({
+            name: '上海兼职群1号',
+            error: expect.stringContaining('errcode=40003'),
+          }),
+        ],
+      }),
+    );
+  });
+
+  it('should try the next candidate when invite API rejects the selected group (e.g. 400400 room not found)', async () => {
+    mockGroupResolver.resolveGroups.mockResolvedValue([
+      makeGroup({ imRoomId: 'room-1', groupName: '上海零售①' }),
+      makeGroup({ imRoomId: 'room-2', groupName: '上海零售②' }),
+    ]);
+    mockRoomService.addMemberEnterprise
+      .mockResolvedValueOnce({ errcode: 400400, errmsg: 'room not found' })
+      .mockResolvedValueOnce({ errcode: 0, errmsg: 'ok' });
+    mockMemoryService.saveInvitedGroup.mockResolvedValue(undefined);
+
+    const result = await executeTool({ city: '上海' });
+    await flushAsyncEvents();
+
+    expect(result.success).toBe(true);
+    expect(result.groupName).toBe('上海零售②');
+    expect(mockRoomService.addMemberEnterprise).toHaveBeenCalledTimes(2);
+    expect(mockOpsNotifier.sendInviteRejectedAlert).not.toHaveBeenCalled();
+  });
+
+  it('should send invite_rejected alert (not group_full) when every candidate is rejected', async () => {
+    mockGroupResolver.resolveGroups.mockResolvedValue([
+      makeGroup({ imRoomId: 'room-1', groupName: '上海零售①', imBotId: 'owner-bot-im' }),
+      makeGroup({ imRoomId: 'room-2', groupName: '上海零售②', imBotId: 'owner-bot-im' }),
+    ]);
+    mockRoomService.addMemberEnterprise.mockResolvedValue({
+      errcode: 400400,
+      errmsg: 'room not found',
+    });
+
+    const result = await executeTool({ city: '上海' });
+    await flushAsyncEvents();
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_API_REJECTED);
+    expect(mockRoomService.addMemberEnterprise).toHaveBeenCalledTimes(2);
+    expect(mockOpsNotifier.sendGroupFullAlert).not.toHaveBeenCalled();
+    expect(mockOpsNotifier.sendInviteRejectedAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        city: '上海',
+        chatBotImId: 'chat-bot-im-id',
+        rejectedGroups: expect.arrayContaining([
+          expect.objectContaining({ name: '上海零售①', ownerBotImId: 'owner-bot-im' }),
+          expect.objectContaining({ name: '上海零售②', ownerBotImId: 'owner-bot-im' }),
+        ]),
+      }),
+    );
   });
 
   it('should return group_full when API reports group member limit reached', async () => {
@@ -432,7 +503,7 @@ describe('buildInviteToGroupTool', () => {
     await flushAsyncEvents();
 
     expect(result.success).toBe(false);
-    expect(result.reason).toBe('group_full');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_GROUP_FULL);
     expect(result.groupName).toBe('上海兼职群1号');
     expect(result.citySnapshot.totalGroups).toBe(1);
     expect(mockOpsNotifier.sendGroupFullAlert).toHaveBeenCalledWith(
@@ -461,10 +532,9 @@ describe('buildInviteToGroupTool', () => {
       abortSignal: undefined as any,
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       success: false,
-      errorType: 'enterprise_token_missing',
-      error: 'STRIDE_ENTERPRISE_TOKEN 未配置，无法执行企业级拉群',
+      errorType: TOOL_ERROR_TYPES.INVITE_ENTERPRISE_TOKEN_MISSING,
     });
     expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
     expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
@@ -480,7 +550,8 @@ describe('buildInviteToGroupTool', () => {
     );
 
     expect(result.success).toBe(false);
-    expect(result.reason).toBe('missing_bot_identity');
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_MISSING_BOT_IDENTITY);
+    expect(result._replyInstruction).toContain('request_handoff');
     expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
     expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
   });

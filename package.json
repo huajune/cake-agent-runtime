@@ -19,6 +19,7 @@
     "web:dev": "cd web && pnpm run dev",
     "install:all": "pnpm install --ignore-scripts && cd web && pnpm install",
     "test": "jest",
+    "test:badcase:p1": "jest tests/badcase/p1-curated-badcase-regression.spec.ts --watchman=false",
     "test:ci": "jest --coverage --watchman=false",
     "test:cov": "jest --coverage",
     "typecheck": "tsc --noEmit",
