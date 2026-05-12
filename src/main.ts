@@ -102,7 +102,10 @@ async function bootstrap() {
   // 确保端口可用（如果被占用则自动清理）
   await ensurePortAvailable(port);
 
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
+  const bodyLimit = process.env.HTTP_JSON_LIMIT || '20mb';
+  app.useBodyParser('json', { limit: bodyLimit });
+  app.useBodyParser('urlencoded', { limit: bodyLimit, extended: true });
 
   // 启用 CORS
   app.enableCors();
