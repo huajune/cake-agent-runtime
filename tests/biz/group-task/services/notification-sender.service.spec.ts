@@ -194,7 +194,7 @@ describe('NotificationSenderService', () => {
       randomSpy.mockRestore();
     });
 
-    it('should default group task send delay to one minute when config is absent', () => {
+    it('should default group task send delay to 120s when config is absent', () => {
       const defaultDelayService = new NotificationSenderService(
         {
           get: jest.fn((_: string, defaultValue?: string) => defaultValue ?? ''),
@@ -203,7 +203,7 @@ describe('NotificationSenderService', () => {
         opsNotifierService,
       );
 
-      expect((defaultDelayService as unknown as { sendDelayMs: number }).sendDelayMs).toBe(60000);
+      expect((defaultDelayService as unknown as { sendDelayMs: number }).sendDelayMs).toBe(120000);
     });
   });
 
