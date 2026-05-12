@@ -9,11 +9,13 @@ export class GeneralHandoffCardRenderer {
 
   buildCard(
     payload: GeneralHandoffNotificationPayload & {
+      isTest?: boolean;
       atUsers?: FeishuReceiver[];
       atAll?: boolean;
     },
   ): Record<string, unknown> {
     const sections = [
+      payload.isTest ? '> 测试ing（来自回归批次，无需 @ 招募经理）' : null,
       `场景：${payload.alertLabel}`,
       `命中原因：${payload.reason}`,
       payload.summary ? `情况摘要：${payload.summary}` : null,
@@ -24,7 +26,9 @@ export class GeneralHandoffCardRenderer {
     ].filter((line): line is string => Boolean(line));
 
     return this.cardBuilder.buildMarkdownCard({
-      title: '⚠️ 候选人需人工介入（无活跃 case）',
+      title: payload.isTest
+        ? '⚠️ 候选人需人工介入（无活跃 case · 测试ing）'
+        : '⚠️ 候选人需人工介入（无活跃 case）',
       content: sections.join('\n\n'),
       color: 'yellow',
       atUsers: payload.atUsers,

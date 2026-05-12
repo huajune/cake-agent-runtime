@@ -110,7 +110,6 @@ describe('buildJobListTool', () => {
     const result = await executeTool();
 
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
-    expect(result.error).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
     expect(result._replyInstruction).toContain('invite_to_group');
   });
 
@@ -122,7 +121,6 @@ describe('buildJobListTool', () => {
     });
 
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_MISSING_CITY_CONTEXT);
-    expect(result.error).toBe(TOOL_ERROR_TYPES.JOB_LIST_MISSING_CITY_CONTEXT);
     expect(result._replyInstruction).toContain('城市');
     expect(result._replyInstruction).not.toMatch(/上海|北京|杭州|成都/);
     expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
@@ -151,6 +149,62 @@ describe('buildJobListTool', () => {
 
     expect(result.errorType).not.toBe(TOOL_ERROR_TYPES.JOB_LIST_MISSING_CITY_CONTEXT);
     expect(mockSpongeService.fetchJobs).toHaveBeenCalled();
+  });
+
+  it('should derive location.range from max_recommend_distance_km when caller omits range', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJobData()], total: 1 });
+    const ctx: ToolBuildContext = {
+      ...mockContext,
+      thresholds: [
+        {
+          flag: 'max_recommend_distance_km',
+          label: '推荐距离上限',
+          rule: '仅推荐距离范围内门店',
+          max: 10,
+          unit: 'km',
+        },
+      ],
+    };
+
+    await executeTool(ctx, {
+      ...defaultInput,
+      cityNameList: ['上海'],
+      location: { longitude: 121.46, latitude: 31.18 },
+    });
+
+    expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        location: { longitude: 121.46, latitude: 31.18, range: 10000 },
+      }),
+    );
+  });
+
+  it('should keep explicit location.range untouched even when threshold exists', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJobData()], total: 1 });
+    const ctx: ToolBuildContext = {
+      ...mockContext,
+      thresholds: [
+        {
+          flag: 'max_recommend_distance_km',
+          label: '推荐距离上限',
+          rule: '仅推荐距离范围内门店',
+          max: 10,
+          unit: 'km',
+        },
+      ],
+    };
+
+    await executeTool(ctx, {
+      ...defaultInput,
+      cityNameList: ['上海'],
+      location: { longitude: 121.46, latitude: 31.18, range: 3000 },
+    });
+
+    expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        location: { longitude: 121.46, latitude: 31.18, range: 3000 },
+      }),
+    );
   });
 
   it('should call onJobsFetched callback', async () => {

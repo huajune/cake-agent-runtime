@@ -241,6 +241,71 @@ describe('AgentPreparationService', () => {
     );
   });
 
+  it('should hide full-time labor-form residue from job memory prompt block', async () => {
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      shortTerm: {
+        messageWindow: [{ role: 'user', content: '这个可以自己选择一个月上几天吗' }],
+      },
+      sessionMemory: {
+        facts: {
+          ...FALLBACK_EXTRACTION,
+          preferences: {
+            ...FALLBACK_EXTRACTION.preferences,
+            city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
+          },
+        },
+        lastCandidatePool: [
+          {
+            jobId: 525199,
+            brandName: '奥乐齐',
+            jobName: '奥乐齐-1082鑫都-分拣打包-全职',
+            storeName: '1082鑫都',
+            cityName: '上海',
+            regionName: '闵行区',
+            laborForm: '全职',
+            salaryDesc: '6200-9800元/月',
+          },
+          {
+            jobId: 527349,
+            brandName: '瑞幸',
+            jobName: '咖啡师',
+            storeName: '陆家嘴店',
+            cityName: '上海',
+            regionName: '浦东新区',
+            laborForm: '小时工',
+            salaryDesc: '25元/小时',
+          },
+        ],
+        presentedJobs: null,
+        currentFocusJob: null,
+      },
+      highConfidenceFacts: null,
+      longTerm: { profile: null },
+      procedural: {
+        currentStage: 'job_consultation',
+        fromStage: null,
+        advancedAt: null,
+        reason: null,
+      },
+    });
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '这个可以自己选择一个月上几天吗' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    expect(result.finalPrompt).toContain('岗位:奥乐齐-1082鑫都-分拣打包');
+    expect(result.finalPrompt).not.toContain('岗位:奥乐齐-1082鑫都-分拣打包-全职');
+    expect(result.finalPrompt).not.toContain('用工:全职');
+    expect(result.finalPrompt).toContain('用工:小时工');
+  });
+
   it('should switch to onboard_followup when active recruitment case exists', async () => {
     mockRecruitmentCaseService.getActiveOnboardFollowupCase.mockResolvedValue({
       id: 'case-1',

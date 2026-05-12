@@ -174,6 +174,7 @@ export class InterventionService {
       alertLabel: payload.alertLabel,
       reason: payload.reason,
       summary: payload.summary,
+      corpId: payload.corpId,
       botImId: payload.botImId,
       botUserName: payload.botUserName,
       contactName: payload.contactName,

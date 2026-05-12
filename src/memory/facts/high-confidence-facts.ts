@@ -418,7 +418,15 @@ function extractStudentInfo(message: string): {
   if (/大一|大二|大三|大四/.test(message)) {
     return { isStudent: true, education: '本科在读' };
   }
-  if (/不是学生|已毕业/.test(message)) {
+  // 反向触发：候选人明确说自己已离开校园 → is_student=false
+  // badcase v9mxbgiv：候选人回"社会人士，目前待岗状态"，规则只覆盖"不是学生|已毕业"导致漏判，
+  // Agent 反复追问"学生还是社会人士"。需要与 LLM 抽取（session-extraction.prompt.ts）的
+  // 反向触发词保持一致。
+  if (
+    /不是学生|已毕业|社会人士|上班族|已经工作|工作过|在职|待岗|失业|退休|全职妈妈|带娃/.test(
+      message,
+    )
+  ) {
     return { isStudent: false, education: null };
   }
   return { isStudent: null, education: null };
@@ -426,6 +434,10 @@ function extractStudentInfo(message: string): {
 
 function extractEducation(message: string): string | null {
   if (isLikelyLocationOrSchoolName(message)) return null;
+
+  if (/本科在读/.test(message)) return '本科在读';
+  if (/硕士在读|研究生在读/.test(message)) return '硕士在读';
+  if (/博士在读/.test(message)) return '博士在读';
 
   for (const keyword of EDUCATION_KEYWORDS) {
     if (message.includes(keyword)) return keyword;

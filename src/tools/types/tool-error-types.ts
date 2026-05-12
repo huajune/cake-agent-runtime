@@ -108,7 +108,6 @@ export type ToolErrorType = (typeof TOOL_ERROR_TYPES)[keyof typeof TOOL_ERROR_TY
  * 字段约定：
  * - `success` / `dispatched` / `accepted` / `found`：成功标志，按工具语义保留原字段名
  * - `errorType`：机器可读的错误分类，必须来自 TOOL_ERROR_TYPES
- * - `error`：与 errorType 同值，方便日志/grep 兼容旧代码
  * - `_outcome`：一句话人类可读的结果摘要（招募经理/开发者看，不直接给 LLM 复读）
  * - `_replyInstruction`：给 LLM 的下一步动作指导（必填，禁止具体地名/案例/接口报错原文）
  * - `reason` 等其他字段：放工具特有的详情，不进 LLM prompt 的应避免出现在 reply
@@ -119,7 +118,6 @@ export interface ToolErrorReturn {
   accepted?: false;
   found?: false;
   errorType: ToolErrorType;
-  error: ToolErrorType;
   _outcome?: string;
   _replyInstruction: string;
   [key: string]: unknown;
@@ -148,7 +146,6 @@ export function buildToolError(args: {
   return {
     [successKey]: false,
     errorType: args.errorType,
-    error: args.errorType,
     ...(args.outcome ? { _outcome: args.outcome } : {}),
     _replyInstruction: args.replyInstruction,
     ...args.details,

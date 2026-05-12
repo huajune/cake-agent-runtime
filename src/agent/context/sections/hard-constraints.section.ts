@@ -105,7 +105,7 @@ export class HardConstraintsSection implements PromptSection {
         lines.push(`- 区域: ${pref.district.join('、')}（填到 regionNameList）`);
       } else {
         lines.push(
-          `- 区域: ${pref.district.join('、')}（当前没有已确认城市，禁止基于区县通识补 city；先中性确认候选人所在城市，确认前不得调用 duliday_job_list）`,
+          `- 区域: ${pref.district.join('、')}（当前没有已确认城市，禁止基于区县通识补 city；先中性确认候选人所在城市，确认前不得调用 duliday_job_list；反问时不得带具体城市名，禁止"是在 X 城市的 X 区吗"这类诱导句）`,
         );
       }
     }
@@ -149,7 +149,7 @@ export class HardConstraintsSection implements PromptSection {
     if (interview.is_student !== null && interview.is_student !== undefined) {
       lines.push(
         interview.is_student
-          ? '- 是否学生: 是（学生/在读/准研究生身份是硬闸门；先开 includeHiringRequirement 或 duliday_interview_precheck 核对岗位招聘要求，不得直接说"没问题/符合要求/身份不限"；结果中明确"不接受学生/学生勿扰/社会人士"的不要推给学生候选人，工具未明示可接受学生时保守说明需要确认）'
+          ? '- 是否学生: 是（学生/在读/准研究生身份是硬闸门；先开 includeHiringRequirement 或 duliday_interview_precheck 核对岗位招聘要求，不得直接说"没问题/符合要求/身份不限"；结果中明确"不接受学生/学生勿扰/社会人士"的不要推给学生候选人；只有工具明示"学生可/接受学生/学生兼职和社会兼职都可"才可说接受学生，figure=不限、学历够、未写学生限制都不能推断为身份没限制，必须保守说明需要确认）'
           : '- 是否学生: 否（开 includeHiringRequirement 核对岗位招聘要求，不要把社会人士误问成学生）',
       );
     }

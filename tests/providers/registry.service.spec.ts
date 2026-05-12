@@ -247,6 +247,17 @@ describe('RegistryService', () => {
     });
   });
 
+  describe('listModels', () => {
+    it('should expose current DeepSeek V4 models', () => {
+      const modelIds = service.listModels().map((model) => model.id);
+
+      expect(modelIds).toEqual(
+        expect.arrayContaining(['deepseek/deepseek-v4-flash', 'deepseek/deepseek-v4-pro']),
+      );
+      expect(modelIds).not.toContain('deepseek/deepseek-chat');
+    });
+  });
+
   describe('hasProvider', () => {
     it('should return true for registered provider', () => {
       expect(service.hasProvider('anthropic')).toBe(true);

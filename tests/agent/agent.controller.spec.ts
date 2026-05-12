@@ -26,10 +26,10 @@ describe('AgentController', () => {
       description: 'Anthropic Claude Sonnet 4.6 (最新)',
     },
     {
-      id: 'deepseek/deepseek-chat',
+      id: 'deepseek/deepseek-v4-flash',
       provider: 'deepseek',
-      name: 'DeepSeek Chat',
-      description: 'DeepSeek V3',
+      name: 'DeepSeek V4 Flash',
+      description: 'DeepSeek V4 Flash',
     },
   ];
 
@@ -45,7 +45,7 @@ describe('AgentController', () => {
       providers: ['anthropic', 'deepseek'],
       roles: {
         chat: { model: 'anthropic/claude-sonnet-4-6', fallbacks: ['openai/gpt-4o'] },
-        fast: { model: 'deepseek/deepseek-chat' },
+        fast: { model: 'deepseek/deepseek-v4-flash' },
       },
       scenarios: ['candidate-consultation', 'group-operations'],
       tools: {
@@ -90,7 +90,7 @@ describe('AgentController', () => {
       expect(result.providers).toEqual(['anthropic', 'deepseek']);
       expect(result.roles).toEqual({
         chat: { model: 'anthropic/claude-sonnet-4-6', fallbacks: ['openai/gpt-4o'] },
-        fast: { model: 'deepseek/deepseek-chat' },
+        fast: { model: 'deepseek/deepseek-v4-flash' },
       });
       expect(result.tools).toEqual({
         builtIn: [

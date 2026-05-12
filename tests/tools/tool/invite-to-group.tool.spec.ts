@@ -535,7 +535,6 @@ describe('buildInviteToGroupTool', () => {
     expect(result).toMatchObject({
       success: false,
       errorType: TOOL_ERROR_TYPES.INVITE_ENTERPRISE_TOKEN_MISSING,
-      error: TOOL_ERROR_TYPES.INVITE_ENTERPRISE_TOKEN_MISSING,
     });
     expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
     expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();

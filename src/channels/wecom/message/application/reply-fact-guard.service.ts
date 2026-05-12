@@ -105,7 +105,7 @@ export class ReplyFactGuardService {
         userId: params.userId,
         botImId: params.botImId,
         botUserName: params.botUserName,
-        replyPreview: text.slice(0, 200),
+        replyPreview: text.slice(0, 400),
         contradictions,
         toolNames: toolCalls.map((c) => c.toolName),
       })

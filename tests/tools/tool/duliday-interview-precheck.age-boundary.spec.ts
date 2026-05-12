@@ -87,7 +87,7 @@ describe('detectAgeBoundary', () => {
     ).toBeNull();
   });
 
-  it('flags 52 vs [18,50] as over_max handoff (boundary +2)', () => {
+  it('flags candidateAge = max + UPPER_TOLERANCE as over_max handoff', () => {
     const result = detectAgeBoundary({
       candidateAge: 50 + AGE_BOUNDARY_UPPER_TOLERANCE_YEARS,
       range: { min: 18, max: 50 },
@@ -95,9 +95,9 @@ describe('detectAgeBoundary', () => {
     expect(result?.side).toBe('over_max');
   });
 
-  it('does NOT flag 53 vs [18,50] (over +2 tolerance)', () => {
+  it('does NOT flag candidateAge = max + UPPER_TOLERANCE + 1 (over tolerance)', () => {
     const result = detectAgeBoundary({
-      candidateAge: 53,
+      candidateAge: 50 + AGE_BOUNDARY_UPPER_TOLERANCE_YEARS + 1,
       range: { min: 18, max: 50 },
     });
     expect(result).toBeNull();

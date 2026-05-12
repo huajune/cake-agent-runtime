@@ -18,6 +18,13 @@ export interface GeneralHandoffNotificationPayload {
   alertLabel: string;
   reason: string;
   summary?: string;
+  /**
+   * 调用方所属企业 ID；用于识别测试/调试链路。
+   * - 'test'  → TestExecutionService（含所有 badcase 回归批次）
+   * - 'debug' → agent.controller /debug-chat
+   * - 其他    → 真实企业（业务侧不会取这两个值）
+   */
+  corpId: string;
   botImId?: string;
   botUserName?: string;
   contactName?: string;

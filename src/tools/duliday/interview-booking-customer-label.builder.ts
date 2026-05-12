@@ -1,4 +1,7 @@
-import type { InterviewBookingCustomerLabel } from '@sponge/sponge.types';
+import {
+  type InterviewBookingCustomerLabel,
+  SPONGE_CUSTOMER_LABEL_MAX_LENGTH,
+} from '@sponge/sponge.types';
 import type { SpongeInterviewSupplementDefinition } from '@sponge/sponge-job.util';
 import {
   getSpongeEducationLabelById,
@@ -67,7 +70,7 @@ export function buildCustomerLabelList(
       missingSupplementLabels.push(definition.labelName);
       continue;
     }
-    if (value.length > 51) {
+    if (value.length > SPONGE_CUSTOMER_LABEL_MAX_LENGTH) {
       invalidSupplementLabels.push(definition.labelName);
       continue;
     }

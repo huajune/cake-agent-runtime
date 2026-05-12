@@ -45,7 +45,6 @@ describe('geocode tool', () => {
     const result = (await execute({ address: '不存在', city: '上海' })) as Record<string, unknown>;
 
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.GEOCODE_UNRESOLVED_ADDRESS);
-    expect(result.error).toBe(TOOL_ERROR_TYPES.GEOCODE_UNRESOLVED_ADDRESS);
     expect(result.address).toBe('不存在');
     expect(result.city).toBe('上海');
     expect(result._replyInstruction).toContain('确认');
@@ -58,7 +57,6 @@ describe('geocode tool', () => {
     const result = (await execute({ address: '九亭', city: '上海' })) as Record<string, unknown>;
 
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.GEOCODE_FAILED);
-    expect(result.error).toBe(TOOL_ERROR_TYPES.GEOCODE_FAILED);
     expect(result.reason).toBe('API down');
     expect(result._replyInstruction).toContain('稍等');
   });

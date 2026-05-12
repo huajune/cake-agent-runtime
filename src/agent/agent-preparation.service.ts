@@ -8,6 +8,7 @@ import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitme
 import { RecruitmentStageResolverService } from '@biz/recruitment-case/services/recruitment-stage-resolver.service';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { formatExtractionFactLines } from '@memory/formatters/fact-lines.formatter';
+import { sanitizeJobDisplayText, sanitizeLaborFormForDisplay } from '@memory/facts/labor-form';
 import { MemoryService, type CandidateIdentityHint } from '@memory/memory.service';
 import { MemoryConfig } from '@memory/memory.config';
 import type { UserProfile } from '@memory/types/long-term.types';
@@ -501,11 +502,12 @@ export class AgentPreparationService {
   private formatRecruitmentCase(recruitmentCase: RecruitmentCaseRecord | null): string {
     if (!recruitmentCase) return '';
 
+    const displayJobName = sanitizeJobDisplayText(recruitmentCase.job_name);
     const lines = [
       '当前存在一个仍在进行中的面试/上岗跟进 case。',
       recruitmentCase.brand_name ? `品牌: ${recruitmentCase.brand_name}` : null,
       recruitmentCase.store_name ? `门店: ${recruitmentCase.store_name}` : null,
-      recruitmentCase.job_name ? `岗位: ${recruitmentCase.job_name}` : null,
+      displayJobName ? `岗位: ${displayJobName}` : null,
       recruitmentCase.interview_time ? `面试时间: ${recruitmentCase.interview_time}` : null,
       recruitmentCase.booking_id ? `预约编号: ${recruitmentCase.booking_id}` : null,
     ].filter((line): line is string => Boolean(line));
@@ -519,7 +521,10 @@ export class AgentPreparationService {
 
   private formatJobMemoryLine(job: RecommendedJobSummary, index?: number): string {
     const head = index ? `${index}. [jobId:${job.jobId}]` : `[jobId:${job.jobId}]`;
-    const parts = [head, `品牌:${job.brandName ?? ''} - 岗位:${job.jobName ?? ''}`];
+    const parts = [
+      head,
+      `品牌:${job.brandName ?? ''} - 岗位:${sanitizeJobDisplayText(job.jobName) ?? ''}`,
+    ];
 
     if (job.storeName) parts.push(`门店:${job.storeName}`);
     if (job.storeAddress) parts.push(`地址:${job.storeAddress}`);
@@ -527,7 +532,8 @@ export class AgentPreparationService {
       parts.push(`地区:${[job.cityName, job.regionName].filter(Boolean).join('')}`);
     }
     if (job.distanceKm != null) parts.push(`距离:${job.distanceKm.toFixed(1)}km`);
-    if (job.laborForm) parts.push(`用工:${job.laborForm}`);
+    const displayLaborForm = sanitizeLaborFormForDisplay(job.laborForm);
+    if (displayLaborForm) parts.push(`用工:${displayLaborForm}`);
     if (job.salaryDesc) parts.push(`薪资:${job.salaryDesc}`);
 
     const bookingConstraint = this.formatBookingConstraint(job);

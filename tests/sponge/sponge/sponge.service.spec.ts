@@ -124,17 +124,14 @@ describe('SpongeService', () => {
       expect(result.jobs[0].basicInfo?.jobNickName).toBeNull();
     });
 
-    it('should return empty result on non-zero code', async () => {
+    it('should throw on non-zero code (do not silently swallow API errors)', async () => {
       const mockResponse = {
         ok: true,
         json: jest.fn().mockResolvedValue({ code: 1, message: '失败' }),
       };
       jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
 
-      const result = await service.fetchJobs({});
-
-      expect(result.jobs).toHaveLength(0);
-      expect(result.total).toBe(0);
+      await expect(service.fetchJobs({})).rejects.toThrow('岗位查询失败: 失败');
     });
 
     it('should throw on HTTP error', async () => {
