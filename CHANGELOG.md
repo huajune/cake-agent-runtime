@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.6.1] - 2026-05-12
 
-**预计版本**: `v5.6.1`
-**最近更新**: `2026-05-12`
 **来源分支**: `develop`
-**累计 PR**: 3
 
 ### 更新摘要
 - PR #162 **核心修复**：消息管道 pending 队列拆 claim/ack 两步，agent 执行中进程被 SIGKILL 不再丢候选人消息
@@ -61,7 +57,6 @@
 - PR #168 全量 jest 2876 个测试通过（pre-push hook 已确认）
 - PR #168 JSON 校验通过
 - PR #168 CHANGELOG 结构完整
-<!-- release:pending:end -->
 
 ## [5.6.0] - 2026-04-30
 
