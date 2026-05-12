@@ -1,7 +1,7 @@
 {
   "baseVersion": "5.6.0",
   "nextVersion": "5.6.1",
-  "updatedAt": "2026-05-11",
+  "updatedAt": "2026-05-12",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -33,6 +33,32 @@
         "`reply-workflow.service.spec.ts` 同步覆盖 replay 路径 fromIndex 累加",
         "`message.processor.spec.ts` 验证 `initialSnapshotSize` 透传",
         "dashboard week 测试在周一 / 非周一两种系统时间下都通过"
+      ]
+    },
+    {
+      "number": "167",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/167",
+      "title": "合并 master 回 develop，解除 PR #164 冲突",
+      "author": "ArielZhu",
+      "mergedAt": "2026-05-12",
+      "summary": [
+        "\\`CHANGELOG.md\\` —— 解决 auto-merge 锚点错位（master 引入的 5.6.0 标题与 develop 的 pending 块叠加），保留 pending 块 + 一份 5.6.0 段落",
+        "\\`.release/pending-release.json\\` —— 保留 develop 的 5.6.1 + PR #162 entries"
+      ],
+      "features": [],
+      "fixes": [
+        "\\`CHANGELOG.md\\` —— 解决 auto-merge 锚点错位（master 引入的 5.6.0 标题与 develop 的 pending 块叠加），保留 pending 块 + 一份 5.6.0 段落"
+      ],
+      "optimizations": [],
+      "ops": [
+        "\\`.release/pending-release.json\\` —— 保留 develop 的 5.6.1 + PR #162 entries"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "全量 jest 2876 个测试通过（pre-push hook 已确认）",
+        "JSON 校验通过",
+        "CHANGELOG 结构正常（pending 块完整，5.6.0 段落无重复）"
       ]
     }
   ]

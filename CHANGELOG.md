@@ -12,15 +12,17 @@
 ## 待发布
 
 **预计版本**: `v5.6.1`
-**最近更新**: `2026-05-11`
+**最近更新**: `2026-05-12`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #162 **核心修复**：消息管道 pending 队列拆 claim/ack 两步，agent 执行中进程被 SIGKILL 不再丢候选人消息
 - PR #162 **附带 UI 修复**：测试套件渲染过滤掉 raw trace 的中间 text part，避免多步生成/重放产生的文本重复显示
 - PR #162 **附带文档**：CLAUDE.md 增加分支约定说明（仓库无 main，默认 develop）
 - PR #162 **附带测试修复**：dashboard week 测试在周一稳定失败的隐藏 bug（fake timer 固定到周三）
+- PR #167 \`CHANGELOG.md\` —— 解决 auto-merge 锚点错位（master 引入的 5.6.0 标题与 develop 的 pending 块叠加），保留 pending 块 + 一份 5.6.0 段落
+- PR #167 \`.release/pending-release.json\` —— 保留 develop 的 5.6.1 + PR #162 entries
 
 ### 新功能
 - 无
@@ -30,12 +32,13 @@
 - PR #162 **附带 UI 修复**：测试套件渲染过滤掉 raw trace 的中间 text part，避免多步生成/重放产生的文本重复显示
 - PR #162 **附带文档**：CLAUDE.md 增加分支约定说明（仓库无 main，默认 develop）
 - PR #162 **附带测试修复**：dashboard week 测试在周一稳定失败的隐藏 bug（fake timer 固定到周三）
+- PR #167 \`CHANGELOG.md\` —— 解决 auto-merge 锚点错位（master 引入的 5.6.0 标题与 develop 的 pending 块叠加），保留 pending 块 + 一份 5.6.0 段落
 
 ### 优化调整
 - 无
 
 ### 运维与流程
-- 无
+- PR #167 \`.release/pending-release.json\` —— 保留 develop 的 5.6.1 + PR #162 entries
 
 ### 配置变更
 - 无
@@ -49,6 +52,9 @@
 - PR #162 `reply-workflow.service.spec.ts` 同步覆盖 replay 路径 fromIndex 累加
 - PR #162 `message.processor.spec.ts` 验证 `initialSnapshotSize` 透传
 - PR #162 dashboard week 测试在周一 / 非周一两种系统时间下都通过
+- PR #167 全量 jest 2876 个测试通过（pre-push hook 已确认）
+- PR #167 JSON 校验通过
+- PR #167 CHANGELOG 结构正常（pending 块完整，5.6.0 段落无重复）
 <!-- release:pending:end -->
 
 ## [5.6.0] - 2026-04-30
