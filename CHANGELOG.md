@@ -14,7 +14,7 @@
 **预计版本**: `v5.6.1`
 **最近更新**: `2026-05-12`
 **来源分支**: `develop`
-**累计 PR**: 2
+**累计 PR**: 3
 
 ### 更新摘要
 - PR #162 **核心修复**：消息管道 pending 队列拆 claim/ack 两步，agent 执行中进程被 SIGKILL 不再丢候选人消息
@@ -23,6 +23,7 @@
 - PR #162 **附带测试修复**：dashboard week 测试在周一稳定失败的隐藏 bug（fake timer 固定到周三）
 - PR #167 \`CHANGELOG.md\` —— 解决 auto-merge 锚点错位（master 引入的 5.6.0 标题与 develop 的 pending 块叠加），保留 pending 块 + 一份 5.6.0 段落
 - PR #167 \`.release/pending-release.json\` —— 保留 develop 的 5.6.1 + PR #162 entries
+- PR #168 把 master 真 merge commit 回 develop（修正 PR #167 squash 失效）
 
 ### 新功能
 - 无
@@ -33,6 +34,7 @@
 - PR #162 **附带文档**：CLAUDE.md 增加分支约定说明（仓库无 main，默认 develop）
 - PR #162 **附带测试修复**：dashboard week 测试在周一稳定失败的隐藏 bug（fake timer 固定到周三）
 - PR #167 \`CHANGELOG.md\` —— 解决 auto-merge 锚点错位（master 引入的 5.6.0 标题与 develop 的 pending 块叠加），保留 pending 块 + 一份 5.6.0 段落
+- PR #168 把 master 真 merge commit 回 develop（修正 PR #167 squash 失效）
 
 ### 优化调整
 - 无
@@ -55,6 +57,10 @@
 - PR #167 全量 jest 2876 个测试通过（pre-push hook 已确认）
 - PR #167 JSON 校验通过
 - PR #167 CHANGELOG 结构正常（pending 块完整，5.6.0 段落无重复）
+- PR #168 git graph 显示 commit \`a7b92930\` 有 2 parent，包含 master 的 \`275d3f1c\`
+- PR #168 全量 jest 2876 个测试通过（pre-push hook 已确认）
+- PR #168 JSON 校验通过
+- PR #168 CHANGELOG 结构完整
 <!-- release:pending:end -->
 
 ## [5.6.0] - 2026-04-30
