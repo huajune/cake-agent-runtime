@@ -11,10 +11,67 @@
 <!-- release:pending:start -->
 ## 待发布
 
-**预计版本**: `v5.6.1`
-**最近更新**: `2026-05-12`
+**预计版本**: `v5.7.0`
+**最近更新**: `2026-05-13`
 **来源分支**: `develop`
-**累计 PR**: 3
+**累计 PR**: 1
+
+### 更新摘要
+- PR #171 **invite-to-group「已在群」误判**（2778bdb1）— `INVITE_ALREADY_IN_GROUP` 改 success 返回，规避 PR #165 引入的"失败统一兜底 request_handoff"误触
+- PR #171 **modify_appointment 误判首次约面**（144a6e40）— 招募经理抛多个候选时段、候选人选其一不算改期；过期 active case 不构成改期依据
+- PR #171 **reply-fact-guard 弱承诺误报**（273d69be）— 收紧 group_promise 正则，"群里通知/群更新/关注群"等 future-tense 不再要求本轮拉群，badcase gay6j94c 强承诺覆盖不变
+- PR #171 **「有病」辱骂误判**（f4aece89）— 候选人说明"家里有病人"被命中关键词，伤害正常求职者，从 ABUSE_KEYWORDS 移除
+- PR #171 alertLabel/riskLabel 合并到 title（general-handoff / onboard-followup / conversation-risk）
+- PR #171 顶层行内字段 label 全部加粗，跟 ops-card 系列对齐
+- PR #171 命中原因 + 建议动作 用引用块 + 红字 + 加粗三重强调
+- PR #171 general-handoff header 升到 red、emoji 改 🚨，与同档卡片对齐
+- PR #171 ops 拉群被拒 emoji ⚠️→🚨 跟 header 颜色对齐
+- PR #171 顺手把 request_handoff 的 `summary` 字段改名 `actionAdvice`，语义升级为"建议下一步动作"
+- PR #171 **CI/Docker 供应链加固**（ef49f22d）— GitHub Actions SHA pin、`persist-credentials: false`、移除 `pull-requests: write`；Node base image digest pin、pnpm 锁 10.33.4；`pnpm-workspace` 加 `minimumReleaseAge: 1440 + blockExoticSubdeps`
+- PR #171 **拆分 reply-fact-guard notifier**（4f71a93e）— 从 OpsNotifierService 解耦出独立 service，对话级介入告警走私聊群、不与运营群混发
+- PR #171 **Dashboard 运营日报菜单 + HealthGrid 精简**（858f27e5）— 加飞书外链项；移除 HealthGrid hover tooltip
+- PR #171 **飞书数据同步脚本**（c42d9c27）— 海绵岗位数据问题批量推送脚本
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #171 **invite-to-group「已在群」误判**（2778bdb1）— `INVITE_ALREADY_IN_GROUP` 改 success 返回，规避 PR #165 引入的"失败统一兜底 request_handoff"误触
+- PR #171 **modify_appointment 误判首次约面**（144a6e40）— 招募经理抛多个候选时段、候选人选其一不算改期；过期 active case 不构成改期依据
+- PR #171 **reply-fact-guard 弱承诺误报**（273d69be）— 收紧 group_promise 正则，"群里通知/群更新/关注群"等 future-tense 不再要求本轮拉群，badcase gay6j94c 强承诺覆盖不变
+- PR #171 **「有病」辱骂误判**（f4aece89）— 候选人说明"家里有病人"被命中关键词，伤害正常求职者，从 ABUSE_KEYWORDS 移除
+- PR #171 顶层行内字段 label 全部加粗，跟 ops-card 系列对齐
+- PR #171 命中原因 + 建议动作 用引用块 + 红字 + 加粗三重强调
+- PR #171 general-handoff header 升到 red、emoji 改 🚨，与同档卡片对齐
+- PR #171 ops 拉群被拒 emoji ⚠️→🚨 跟 header 颜色对齐
+- PR #171 顺手把 request_handoff 的 `summary` 字段改名 `actionAdvice`，语义升级为"建议下一步动作"
+- PR #171 **Dashboard 运营日报菜单 + HealthGrid 精简**（858f27e5）— 加飞书外链项；移除 HealthGrid hover tooltip
+- PR #171 **飞书数据同步脚本**（c42d9c27）— 海绵岗位数据问题批量推送脚本
+
+### 优化调整
+- PR #171 alertLabel/riskLabel 合并到 title（general-handoff / onboard-followup / conversation-risk）
+- PR #171 **拆分 reply-fact-guard notifier**（4f71a93e）— 从 OpsNotifierService 解耦出独立 service，对话级介入告警走私聊群、不与运营群混发
+
+### 运维与流程
+- PR #171 **CI/Docker 供应链加固**（ef49f22d）— GitHub Actions SHA pin、`persist-credentials: false`、移除 `pull-requests: write`；Node base image digest pin、pnpm 锁 10.33.4；`pnpm-workspace` 加 `minimumReleaseAge: 1440 + blockExoticSubdeps`
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #171 `pnpm run test` — 2879/2879 全绿
+- PR #171 `pnpm run lint` — 干净
+- PR #171 关键 false-positive case 加防回归测试覆盖（4 处）
+- PR #171 部署后线上观察 4 类告警噪声是否真的下降
+- PR #171 部署后视觉确认：general-handoff 卡片红色 🚨、命中原因高亮、4 张业务告警卡 label 字重统一
+<!-- release:pending:end -->
+
+## [5.6.1] - 2026-05-12
+
+**来源分支**: `develop`
 
 ### 更新摘要
 - PR #162 **核心修复**：消息管道 pending 队列拆 claim/ack 两步，agent 执行中进程被 SIGKILL 不再丢候选人消息
@@ -61,7 +118,6 @@
 - PR #168 全量 jest 2876 个测试通过（pre-push hook 已确认）
 - PR #168 JSON 校验通过
 - PR #168 CHANGELOG 结构完整
-<!-- release:pending:end -->
 
 ## [5.6.0] - 2026-04-30
 
