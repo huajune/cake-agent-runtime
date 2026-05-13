@@ -1,88 +1,60 @@
 {
-  "baseVersion": "5.6.0",
-  "nextVersion": "5.6.1",
-  "updatedAt": "2026-05-12",
+  "baseVersion": "5.6.1",
+  "nextVersion": "5.7.0",
+  "updatedAt": "2026-05-13",
   "sourceBranch": "develop",
   "entries": [
     {
-      "number": "162",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/162",
-      "title": "拆分 pending 消息 claim/ack，防发版 SIGKILL 吞消息",
+      "number": "171",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/171",
+      "title": "通知卡片样式 + 4 类 false positive 收口 + 供应链加固",
       "author": "ArielZhu",
-      "mergedAt": "2026-05-11",
+      "mergedAt": "2026-05-13",
       "summary": [
-        "**核心修复**：消息管道 pending 队列拆 claim/ack 两步，agent 执行中进程被 SIGKILL 不再丢候选人消息",
-        "**附带 UI 修复**：测试套件渲染过滤掉 raw trace 的中间 text part，避免多步生成/重放产生的文本重复显示",
-        "**附带文档**：CLAUDE.md 增加分支约定说明（仓库无 main，默认 develop）",
-        "**附带测试修复**：dashboard week 测试在周一稳定失败的隐藏 bug（fake timer 固定到周三）"
+        "**invite-to-group「已在群」误判**（2778bdb1）— `INVITE_ALREADY_IN_GROUP` 改 success 返回，规避 PR #165 引入的\"失败统一兜底 request_handoff\"误触",
+        "**modify_appointment 误判首次约面**（144a6e40）— 招募经理抛多个候选时段、候选人选其一不算改期；过期 active case 不构成改期依据",
+        "**reply-fact-guard 弱承诺误报**（273d69be）— 收紧 group_promise 正则，\"群里通知/群更新/关注群\"等 future-tense 不再要求本轮拉群，badcase gay6j94c 强承诺覆盖不变",
+        "**「有病」辱骂误判**（f4aece89）— 候选人说明\"家里有病人\"被命中关键词，伤害正常求职者，从 ABUSE_KEYWORDS 移除",
+        "alertLabel/riskLabel 合并到 title（general-handoff / onboard-followup / conversation-risk）",
+        "顶层行内字段 label 全部加粗，跟 ops-card 系列对齐",
+        "命中原因 + 建议动作 用引用块 + 红字 + 加粗三重强调",
+        "general-handoff header 升到 red、emoji 改 🚨，与同档卡片对齐",
+        "ops 拉群被拒 emoji ⚠️→🚨 跟 header 颜色对齐",
+        "顺手把 request_handoff 的 `summary` 字段改名 `actionAdvice`，语义升级为\"建议下一步动作\"",
+        "**CI/Docker 供应链加固**（ef49f22d）— GitHub Actions SHA pin、`persist-credentials: false`、移除 `pull-requests: write`；Node base image digest pin、pnpm 锁 10.33.4；`pnpm-workspace` 加 `minimumReleaseAge: 1440 + blockExoticSubdeps`",
+        "**拆分 reply-fact-guard notifier**（4f71a93e）— 从 OpsNotifierService 解耦出独立 service，对话级介入告警走私聊群、不与运营群混发",
+        "**Dashboard 运营日报菜单 + HealthGrid 精简**（858f27e5）— 加飞书外链项；移除 HealthGrid hover tooltip",
+        "**飞书数据同步脚本**（c42d9c27）— 海绵岗位数据问题批量推送脚本"
       ],
       "features": [],
       "fixes": [
-        "**核心修复**：消息管道 pending 队列拆 claim/ack 两步，agent 执行中进程被 SIGKILL 不再丢候选人消息",
-        "**附带 UI 修复**：测试套件渲染过滤掉 raw trace 的中间 text part，避免多步生成/重放产生的文本重复显示",
-        "**附带文档**：CLAUDE.md 增加分支约定说明（仓库无 main，默认 develop）",
-        "**附带测试修复**：dashboard week 测试在周一稳定失败的隐藏 bug（fake timer 固定到周三）"
+        "**invite-to-group「已在群」误判**（2778bdb1）— `INVITE_ALREADY_IN_GROUP` 改 success 返回，规避 PR #165 引入的\"失败统一兜底 request_handoff\"误触",
+        "**modify_appointment 误判首次约面**（144a6e40）— 招募经理抛多个候选时段、候选人选其一不算改期；过期 active case 不构成改期依据",
+        "**reply-fact-guard 弱承诺误报**（273d69be）— 收紧 group_promise 正则，\"群里通知/群更新/关注群\"等 future-tense 不再要求本轮拉群，badcase gay6j94c 强承诺覆盖不变",
+        "**「有病」辱骂误判**（f4aece89）— 候选人说明\"家里有病人\"被命中关键词，伤害正常求职者，从 ABUSE_KEYWORDS 移除",
+        "顶层行内字段 label 全部加粗，跟 ops-card 系列对齐",
+        "命中原因 + 建议动作 用引用块 + 红字 + 加粗三重强调",
+        "general-handoff header 升到 red、emoji 改 🚨，与同档卡片对齐",
+        "ops 拉群被拒 emoji ⚠️→🚨 跟 header 颜色对齐",
+        "顺手把 request_handoff 的 `summary` 字段改名 `actionAdvice`，语义升级为\"建议下一步动作\"",
+        "**Dashboard 运营日报菜单 + HealthGrid 精简**（858f27e5）— 加飞书外链项；移除 HealthGrid hover tooltip",
+        "**飞书数据同步脚本**（c42d9c27）— 海绵岗位数据问题批量推送脚本"
       ],
-      "optimizations": [],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "全量 jest 2752 个测试通过",
-        "`simple-merge.service.spec.ts` 新增 `claimPendingSnapshot` / `ackPendingMessages` / fromIndex 行为断言",
-        "`reply-workflow.service.spec.ts` 同步覆盖 replay 路径 fromIndex 累加",
-        "`message.processor.spec.ts` 验证 `initialSnapshotSize` 透传",
-        "dashboard week 测试在周一 / 非周一两种系统时间下都通过"
-      ]
-    },
-    {
-      "number": "167",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/167",
-      "title": "合并 master 回 develop，解除 PR #164 冲突",
-      "author": "ArielZhu",
-      "mergedAt": "2026-05-12",
-      "summary": [
-        "\\`CHANGELOG.md\\` —— 解决 auto-merge 锚点错位（master 引入的 5.6.0 标题与 develop 的 pending 块叠加），保留 pending 块 + 一份 5.6.0 段落",
-        "\\`.release/pending-release.json\\` —— 保留 develop 的 5.6.1 + PR #162 entries"
+      "optimizations": [
+        "alertLabel/riskLabel 合并到 title（general-handoff / onboard-followup / conversation-risk）",
+        "**拆分 reply-fact-guard notifier**（4f71a93e）— 从 OpsNotifierService 解耦出独立 service，对话级介入告警走私聊群、不与运营群混发"
       ],
-      "features": [],
-      "fixes": [
-        "\\`CHANGELOG.md\\` —— 解决 auto-merge 锚点错位（master 引入的 5.6.0 标题与 develop 的 pending 块叠加），保留 pending 块 + 一份 5.6.0 段落"
-      ],
-      "optimizations": [],
       "ops": [
-        "\\`.release/pending-release.json\\` —— 保留 develop 的 5.6.1 + PR #162 entries"
+        "**CI/Docker 供应链加固**（ef49f22d）— GitHub Actions SHA pin、`persist-credentials: false`、移除 `pull-requests: write`；Node base image digest pin、pnpm 锁 10.33.4；`pnpm-workspace` 加 `minimumReleaseAge: 1440 + blockExoticSubdeps`"
       ],
       "config": [],
       "envFiles": [],
       "verification": [
-        "全量 jest 2876 个测试通过（pre-push hook 已确认）",
-        "JSON 校验通过",
-        "CHANGELOG 结构正常（pending 块完整，5.6.0 段落无重复）"
-      ]
-    },
-    {
-      "number": "168",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/168",
-      "title": "把 master 真 merge commit 回 develop（修正 PR #167 squash 失效）",
-      "author": "ArielZhu",
-      "mergedAt": "2026-05-12",
-      "summary": [
-        "把 master 真 merge commit 回 develop（修正 PR #167 squash 失效）"
-      ],
-      "features": [],
-      "fixes": [
-        "把 master 真 merge commit 回 develop（修正 PR #167 squash 失效）"
-      ],
-      "optimizations": [],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "git graph 显示 commit \\`a7b92930\\` 有 2 parent，包含 master 的 \\`275d3f1c\\`",
-        "全量 jest 2876 个测试通过（pre-push hook 已确认）",
-        "JSON 校验通过",
-        "CHANGELOG 结构完整"
+        "`pnpm run test` — 2879/2879 全绿",
+        "`pnpm run lint` — 干净",
+        "关键 false-positive case 加防回归测试覆盖（4 处）",
+        "部署后线上观察 4 类告警噪声是否真的下降",
+        "部署后视觉确认：general-handoff 卡片红色 🚨、命中原因高亮、4 张业务告警卡 label 字重统一"
       ]
     }
   ]
