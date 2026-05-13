@@ -2,16 +2,16 @@ import { ReplyFactGuardService } from '@channels/wecom/message/application/reply
 import type { AgentToolCall } from '@/types/agent-telemetry.types';
 
 describe('ReplyFactGuardService', () => {
-  const opsNotifier = {
-    sendReplyFactContradictionAlert: jest.fn(),
+  const replyFactGuardNotifier = {
+    notifyContradiction: jest.fn(),
   };
 
   let service: ReplyFactGuardService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    opsNotifier.sendReplyFactContradictionAlert.mockResolvedValue(true);
-    service = new ReplyFactGuardService(opsNotifier as never);
+    replyFactGuardNotifier.notifyContradiction.mockResolvedValue(true);
+    service = new ReplyFactGuardService(replyFactGuardNotifier as never);
   });
 
   const flushAsync = () => new Promise((resolve) => setImmediate(resolve));
@@ -32,7 +32,7 @@ describe('ReplyFactGuardService', () => {
     });
 
     expect(result).toEqual({ hit: false, contradictions: [] });
-    expect(opsNotifier.sendReplyFactContradictionAlert).not.toHaveBeenCalled();
+    expect(replyFactGuardNotifier.notifyContradiction).not.toHaveBeenCalled();
   });
 
   it('returns hit=false when reply claims group full AND invite_to_group succeeded this turn (legit)', async () => {
@@ -45,7 +45,7 @@ describe('ReplyFactGuardService', () => {
     });
 
     expect(result).toEqual({ hit: false, contradictions: [] });
-    expect(opsNotifier.sendReplyFactContradictionAlert).not.toHaveBeenCalled();
+    expect(replyFactGuardNotifier.notifyContradiction).not.toHaveBeenCalled();
   });
 
   it('flags contradiction when reply says 群已满 but no invite_to_group this turn', async () => {
@@ -64,7 +64,7 @@ describe('ReplyFactGuardService', () => {
     ]);
 
     await flushAsync();
-    expect(opsNotifier.sendReplyFactContradictionAlert).toHaveBeenCalledWith(
+    expect(replyFactGuardNotifier.notifyContradiction).toHaveBeenCalledWith(
       expect.objectContaining({
         chatId: 'chat-1',
         userId: 'user-1',
@@ -87,6 +87,18 @@ describe('ReplyFactGuardService', () => {
     });
     expect(result.hit).toBe(true);
     expect(result.contradictions[0].ruleId).toBe('group_promise_without_invite');
+  });
+
+  it('does NOT flag future-tense follow-up "群里通知" when candidate is presumed already in group', async () => {
+    // false-positive 防回归：候选人已经在群里时，Agent 婉拒当前岗位自然带出
+    // "后续合适的我在群里通知你"，本轮无需也不该再调 invite_to_group。
+    // 强承诺（拉/加/进...群、发群邀请）才要求本轮拉群兜底。
+    const result = service.check({
+      replyText: '虹口区目前的岗位年龄都在20岁以上，暂时不匹配。后续有合适的我在群里通知你。',
+      toolCalls: [],
+      chatId: 'chat-1',
+    });
+    expect(result.hit).toBe(false);
   });
 
   it('does NOT flag promise when invite_to_group success backs it', async () => {
@@ -121,7 +133,7 @@ describe('ReplyFactGuardService', () => {
   });
 
   it('does not throw if ops notifier alert rejects (fire-and-forget)', async () => {
-    opsNotifier.sendReplyFactContradictionAlert.mockRejectedValue(new Error('feishu down'));
+    replyFactGuardNotifier.notifyContradiction.mockRejectedValue(new Error('feishu down'));
 
     const result = service.check({
       replyText: '群已满了',

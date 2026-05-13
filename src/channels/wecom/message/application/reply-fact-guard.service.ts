@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AgentToolCall } from '@agent/agent-run.types';
-import { OpsNotifierService } from '@notification/services/ops-notifier.service';
+import { ReplyFactGuardNotifierService } from '@notification/services/reply-fact-guard-notifier.service';
 
 /**
  * 单条事实矛盾规则：reply 中出现 `keywords` 任一时，要求本轮 tool 调用满足
@@ -53,17 +53,23 @@ export class ReplyFactGuardService {
     },
     {
       ruleId: 'group_promise_without_invite',
-      label: '承诺"群里通知/关注群更新/进群"但本轮未成功调 invite_to_group（badcase gay6j94c）',
-      // 拉群承诺关键词——LLM 在 reply / skip_reply.reason 里编"群"相关承诺，
-      // 必须本轮有 invite_to_group 成功兜底，否则就是空头承诺（候选人没真的被拉进任何群）。
+      label: '承诺"拉/邀请进群"但本轮未成功调 invite_to_group（badcase gay6j94c）',
+      // 仅匹配"本轮要拉群"的强承诺，必须有 invite_to_group 成功兜底，否则就是空头承诺。
+      // 不匹配"群里通知/群更新/关注群"等 future-tense 弱承诺——这些话术常出现在候选人
+      // 已在群里的会话中（"后续合适的我在群里通知你"），未来 follow-up 不要求本轮拉群。
+      // 弱承诺误报场景（false positive）：候选人此前已被拉过群，Agent 婉拒当前岗位时
+      // 自然带出"群里通知你"，本轮无需也不该再调 invite_to_group。
+      // 弱承诺真要监控，需要 invitedGroups 记忆豁免，留待 phase 2 升级时一起做。
+      // [^。，,；！？\s]{0,15} 允许"拉你"与"群"之间夹任意修饰词（"拉你进咱们餐饮兼职群"），
+      // 但禁止跨标点，避免误吃到下一句的"群里通知你"上。
       keywords:
-        /拉(?:你|您)进群|拉群|进(?:咱们|我们)群|发(?:个|一个|条)?(?:入)?群邀请|群里通知|群里(?:发|说)|关注群|关注一下群|群更新|群里(?:有|后续)/,
+        /拉(?:你|您)[^。，,；！？\s]{0,15}?群|进(?:咱们|我们|这个|这|这边)[^。，,；！？\s]{0,15}?群|加(?:你|您)[^。，,；！？\s]{0,15}?群|发(?:个|一个|条)?(?:入)?群邀请/,
       requiredToolPredicate: (toolCalls) =>
         ReplyFactGuardService.inviteCalledSuccessfully(toolCalls),
     },
   ];
 
-  constructor(private readonly opsNotifier: OpsNotifierService) {}
+  constructor(private readonly replyFactGuardNotifier: ReplyFactGuardNotifierService) {}
 
   /**
    * 检查 reply 是否与本轮 tool 调用矛盾。命中即日志告警，不改写文本。
@@ -99,8 +105,8 @@ export class ReplyFactGuardService {
     );
 
     // 飞书告警 fire-and-forget——不阻塞回复链路
-    void this.opsNotifier
-      .sendReplyFactContradictionAlert({
+    void this.replyFactGuardNotifier
+      .notifyContradiction({
         chatId: params.chatId,
         userId: params.userId,
         botImId: params.botImId,
