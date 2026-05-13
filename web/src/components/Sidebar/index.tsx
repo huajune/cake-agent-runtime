@@ -1,10 +1,10 @@
 import { MouseEvent, useCallback } from 'react';
 import logoIcon from '@/assets/images/cake_recruiter_icon.png';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Bug, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Bug, PanelLeftClose, PanelLeftOpen, Table2 } from 'lucide-react';
 import { preloadRouteChunk, type AppRoutePath } from '@/routes/lazy-pages';
 import { markRouteNavigationStart } from '@/utils/perf';
-import { BADCASE_FEISHU_URL } from '@/constants';
+import { BADCASE_FEISHU_URL, OPERATION_METRICS_FEISHU_URL } from '@/constants';
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -177,6 +177,16 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           <span className="nav-icon"><DashboardIcon /></span>
           {!isCollapsed && <span className="nav-text">仪表盘</span>}
         </NavLink>
+        <a
+          href={OPERATION_METRICS_FEISHU_URL}
+          className="nav-item"
+          title={isCollapsed ? '运营日报' : undefined}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <span className="nav-icon"><Table2 size={18} strokeWidth={1.7} /></span>
+          {!isCollapsed && <span className="nav-text">运营日报</span>}
+        </a>
 
         {/* 管理 */}
         {!isCollapsed && <div className="group-title">管理</div>}

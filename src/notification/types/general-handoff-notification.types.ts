@@ -17,7 +17,7 @@ export interface GeneralHandoffNotificationMessage {
 export interface GeneralHandoffNotificationPayload {
   alertLabel: string;
   reason: string;
-  summary?: string;
+  actionAdvice?: string;
   /**
    * 调用方所属企业 ID；用于识别测试/调试链路。
    * - 'test'  → TestExecutionService（含所有 badcase 回归批次）

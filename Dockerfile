@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1.7
 
 # Stage 1: Dependency Installation
-FROM node:20-bookworm-slim AS deps
+FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS deps
 WORKDIR /app
 
-# Install pnpm
-RUN npm install -g pnpm
+# Install a fixed pnpm version to keep dependency resolution reproducible.
+RUN npm install -g pnpm@10.33.4
 
 # Copy package files (including all workspace packages)
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -43,7 +43,7 @@ RUN pnpm run build
 RUN CI=true pnpm prune --prod
 
 # Stage 3: Runner
-FROM node:20-bookworm-slim AS runner
+FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

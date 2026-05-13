@@ -89,7 +89,7 @@ describe('buildRequestHandoffTool', () => {
     const result = await (tool as any).execute({
       reasonCode: 'other',
       reason: '候选人提了一些后续问题',
-      summary: '当前会话无可对接 case',
+      actionAdvice: '当前会话无可对接 case',
     });
 
     expect(result).toMatchObject({
@@ -106,7 +106,7 @@ describe('buildRequestHandoffTool', () => {
         kind: 'general_handoff',
         source: 'agent_tool',
         reason: '候选人提了一些后续问题',
-        summary: '当前会话无可对接 case',
+        actionAdvice: '当前会话无可对接 case',
         chatId: 'chat-1',
         pauseTargetId: 'chat-1',
         botImId: 'bot-im-1',
@@ -122,7 +122,7 @@ describe('buildRequestHandoffTool', () => {
     const result = await (tool as any).execute({
       reasonCode: 'cannot_find_store',
       reason: '候选人反馈导航错',
-      summary: '已发过位置仍无法到店',
+      actionAdvice: '已发过位置仍无法到店',
     });
 
     // 工具立即返回短路标记，不等待 dispatch 结果
@@ -143,7 +143,7 @@ describe('buildRequestHandoffTool', () => {
         caseId: 'case-9',
         alertLabel: '找不到门店',
         reason: '候选人反馈导航错',
-        summary: '已发过位置仍无法到店',
+        actionAdvice: '已发过位置仍无法到店',
         chatId: 'chat-1',
         pauseTargetId: 'chat-1',
         botImId: 'bot-im-1',

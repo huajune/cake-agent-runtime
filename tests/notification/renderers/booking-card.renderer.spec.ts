@@ -50,7 +50,7 @@ describe('BookingCardRenderer', () => {
     expect((result.card.content as string)).toContain('托管账号：招募经理A');
     expect((result.card.content as string)).toContain('面试时间：2026-04-13 07:30');
     expect((result.card.content as string)).toContain('预约编号：BK-1001');
-    expect((result.card.content as string)).toContain('结果：预约成功');
+    expect((result.card.content as string)).toContain('**结果**：预约成功');
   });
 
   it('should append interview type to the success title when provided', () => {

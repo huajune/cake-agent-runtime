@@ -206,8 +206,12 @@ export function buildInviteToGroupTool(
 
             if (!inviteApiResult.accepted) {
               if (inviteApiResult.code === -9) {
-                // 外部接口返回 user 已在群：写入 invitedGroups 记忆，避免同会话后续
-                // 再触发 invite_to_group 重复调用这个慢接口（实测每次 20-30s）。
+                // 外部接口返回 user 已在群：业务目标已经达成（候选人在群内），
+                // 按 success 返回。不走 buildToolError，避免 prompt 里"invite 失败分支
+                // 统一调 request_handoff 兜底"规则误把这种正常路径当失败处理（badcase
+                // i41pab8n / gay6j94c 引入兜底时未区分"群拉不上"和"已在群"）。
+                // 同时写入 invitedGroups 记忆，避免同会话后续再触发本工具重调慢接口
+                // （实测每次 20-30s）。
                 await memoryService
                   .saveInvitedGroup(context.corpId, context.userId, context.sessionId, {
                     groupName: targetGroup.groupName,
@@ -222,13 +226,16 @@ export function buildInviteToGroupTool(
                 logger.log(
                   `用户已在群中，记入记忆并静默跳过: ${targetGroup.groupName} (user=${context.userId})`,
                 );
-                return buildToolError({
-                  errorType: TOOL_ERROR_TYPES.INVITE_ALREADY_IN_GROUP,
-                  outcome: '候选人已在该群中',
-                  replyInstruction:
+                return {
+                  success: true,
+                  alreadyInGroup: true,
+                  groupName: targetGroup.groupName,
+                  city,
+                  industry: industry ?? undefined,
+                  _outcome: '候选人已在该群中',
+                  _replyInstruction:
                     '候选人已在目标群里，本次不向候选人提及群相关内容；记忆已写入，同会话后续不再重复触发本工具。',
-                  details: { groupName: targetGroup.groupName },
-                });
+                };
               }
 
               if (inviteApiResult.code === -10) {

@@ -24,6 +24,31 @@ describe('ConversationRiskDetectorService', () => {
     service = new ConversationRiskDetectorService();
   });
 
+  it('does NOT flag "家里有病人 / 我爸有病" as abuse — real-life caregiving statements, not insults', () => {
+    // false-positive 防回归：候选人说明因家人重病需要早班 / 下午班，本是合理诉求；
+    // 早期 ABUSE_KEYWORDS 含 "有病" 时 substring 匹配会把 "家里有病人" 误判为辱骂，
+    // 直接暂停托管 + 飞书告警，伤害正常求职者。
+    const result = service.detect({
+      ...baseContext,
+      currentMessageContent: '其他都好说，太晚超过十点半我就真没办法，家里有病人。',
+      recentMessages: [
+        ...baseContext.recentMessages,
+        {
+          role: 'user',
+          content: '我爸去年底得了癌症需要化疗，我爸病了后我就以早班、下午班为准。',
+          timestamp: 1712044910000,
+        },
+        {
+          role: 'user',
+          content: '其他都好说，太晚超过十点半我就真没办法，家里有病人。',
+          timestamp: 1712044920000,
+        },
+      ],
+    });
+
+    expect(result.hit).toBe(false);
+  });
+
   it('should detect abuse keywords', () => {
     const result = service.detect({
       ...baseContext,

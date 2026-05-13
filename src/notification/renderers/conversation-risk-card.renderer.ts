@@ -19,7 +19,7 @@ export class ConversationRiskCardRenderer {
     ].filter((section): section is string => Boolean(section));
 
     return this.cardBuilder.buildMarkdownCard({
-      title: '🚨 交流异常 · 需要人工介入',
+      title: `🚨 交流异常 · ${payload.riskLabel}`,
       content: sections.join('\n\n'),
       color: 'red',
       atUsers: payload.atUsers,
@@ -28,16 +28,16 @@ export class ConversationRiskCardRenderer {
   }
 
   private formatOverview(payload: ConversationRiskNotificationPayload): string {
-    const lines = [`风险类型：${payload.riskLabel}`];
+    const lines: string[] = [];
 
     if (this.shouldRenderSummary(payload)) {
-      lines.push(`风险摘要：${payload.summary.trim()}`);
+      lines.push(`**风险摘要**：${payload.summary.trim()}`);
     }
 
-    lines.push(`命中原因：${payload.reason}`);
-    lines.push(`当前消息：\n${this.formatQuotedText(payload.currentMessageContent)}`);
+    lines.push(`> <font color='red'>**命中原因**：${payload.reason}</font>`);
+    lines.push(`**当前消息**：\n${this.formatQuotedText(payload.currentMessageContent)}`);
 
-    return lines.join('\n');
+    return lines.join('\n\n');
   }
 
   private formatRecentMessages(payload: ConversationRiskNotificationPayload): string {

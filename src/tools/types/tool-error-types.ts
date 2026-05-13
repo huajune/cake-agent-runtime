@@ -68,7 +68,6 @@ export const TOOL_ERROR_TYPES = {
   INVITE_NO_GROUP_AVAILABLE: 'invite.no_group_available',
   INVITE_NO_GROUP_IN_CITY: 'invite.no_group_in_city',
   INVITE_GROUP_FULL: 'invite.group_full',
-  INVITE_ALREADY_IN_GROUP: 'invite.already_in_group',
   INVITE_API_REJECTED: 'invite.api_rejected',
   INVITE_API_FAILED: 'invite.api_failed',
 

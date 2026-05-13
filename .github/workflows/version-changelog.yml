@@ -12,9 +12,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  actions: write
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   prepare-develop-release:
@@ -25,16 +23,19 @@ jobs:
       !startsWith(github.event.pull_request.title, 'chore(release): 更新待发布版本信息') &&
       !contains(format('{0}', github.event.pull_request.body), '<!-- release-metadata-pr -->')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Checkout develop
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: develop
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
 
@@ -127,16 +128,20 @@ jobs:
         contains(format('{0}', github.event.pull_request.body), '<!-- release-metadata-pr -->')
       )
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Checkout develop
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: develop
           fetch-depth: 1
+          persist-credentials: false
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
 
@@ -155,16 +160,19 @@ jobs:
       !startsWith(github.event.pull_request.title, 'chore(release): 固化正式版本记录') &&
       !contains(format('{0}', github.event.pull_request.body), '<!-- release-metadata-pr -->')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Checkout master
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: master
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
 
@@ -241,16 +249,19 @@ jobs:
       github.event.pull_request.base.ref == 'master' &&
       github.event.pull_request.head.ref == 'chore/release-metadata/master'
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: write
     steps:
       - name: Checkout master
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: master
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
 
