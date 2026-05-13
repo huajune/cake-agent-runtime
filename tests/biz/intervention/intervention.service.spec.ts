@@ -56,7 +56,7 @@ describe('InterventionService', () => {
     caseId: 'case-9',
     alertLabel: '找不到门店',
     reason: '候选人反馈找不到门店',
-    summary: '需要人工协助到店',
+    actionAdvice: '需要人工协助到店',
     source: 'agent_tool',
     recruitmentCase: {
       id: 'case-9',
@@ -178,7 +178,7 @@ describe('InterventionService', () => {
       kind: 'general_handoff',
       alertLabel: '需人工跟进',
       reason: '当前会话无 active case 且候选人需人工',
-      summary: '候选人想入群但城市无可用群',
+      actionAdvice: '候选人想入群但城市无可用群',
       source: 'agent_tool',
     };
 
@@ -189,7 +189,7 @@ describe('InterventionService', () => {
       expect.objectContaining({
         alertLabel: '需人工跟进',
         reason: '当前会话无 active case 且候选人需人工',
-        summary: '候选人想入群但城市无可用群',
+        actionAdvice: '候选人想入群但城市无可用群',
         chatId: 'chat-1',
         pausedUserId: 'chat-1',
       }),

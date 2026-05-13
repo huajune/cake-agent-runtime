@@ -78,14 +78,17 @@ describe('ConversationRiskCardRenderer', () => {
 
     expect(card).toEqual(
       expect.objectContaining({
-        title: '🚨 交流异常 · 需要人工介入',
+        title: '🚨 交流异常 · 投诉/举报风险',
         color: 'red',
         atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
       }),
     );
-    expect((card.content as string)).toContain('风险类型：投诉/举报风险');
-    expect((card.content as string)).not.toContain('风险摘要：候选人出现明确投诉风险');
-    expect((card.content as string)).toContain('当前消息：\n> 你们是不是骗子，我要投诉');
+    expect((card.content as string)).not.toContain('风险类型：');
+    expect((card.content as string)).not.toContain('**风险摘要**：候选人出现明确投诉风险');
+    expect((card.content as string)).toContain(
+      "> <font color='red'>**命中原因**：命中关键词：投诉、骗子</font>",
+    );
+    expect((card.content as string)).toContain('**当前消息**：\n> 你们是不是骗子，我要投诉');
     expect((card.content as string)).toContain('微信昵称：Alice');
     expect((card.content as string)).toContain('姓名：Alice');
     expect((card.content as string)).toContain('托管账号：招募经理A');
@@ -244,8 +247,9 @@ describe('ConversationRiskCardRenderer', () => {
       },
     });
 
-    expect((card.content as string)).toContain('风险类型：辱骂/攻击');
-    expect((card.content as string)).not.toContain('风险摘要：候选人出现明显辱骂或攻击性表达');
+    expect((card as { title: string }).title).toBe('🚨 交流异常 · 辱骂/攻击');
+    expect((card.content as string)).not.toContain('风险类型：');
+    expect((card.content as string)).not.toContain('**风险摘要**：候选人出现明显辱骂或攻击性表达');
     expect((card.content as string)).not.toContain('**系统动作**');
     expect((card.content as string)).not.toContain('AI 已停止回复');
   });

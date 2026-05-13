@@ -224,7 +224,7 @@ export class OpsCardRenderer {
     ].join('\n');
 
     return this.cardBuilder.buildMarkdownCard({
-      title: `⚠️ 接客 bot 拉群被拒 — ${scope}`,
+      title: `🚨 接客 bot 拉群被拒 — ${scope}`,
       content,
       color: 'red',
       atUsers: params.atUsers,

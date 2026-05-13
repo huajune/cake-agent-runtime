@@ -16,24 +16,30 @@ export class GeneralHandoffCardRenderer {
   ): Record<string, unknown> {
     const sections = [
       payload.isTest ? '> 测试ing（来自回归批次，无需 @ 招募经理）' : null,
-      `场景：${payload.alertLabel}`,
-      `命中原因：${payload.reason}`,
-      payload.summary ? `情况摘要：${payload.summary}` : null,
-      `当前消息：${payload.currentMessageContent || '-'}`,
+      this.formatHighlightedFocus(payload.reason, payload.actionAdvice),
+      `**当前消息**：${payload.currentMessageContent || '-'}`,
       `**聊天上下文（最近10条）**\n${this.formatRecentMessages(payload)}`,
       `**候选人信息**\n${this.formatCandidateInfo(payload)}`,
       '处理完请到 Web 托管后台手动恢复托管。',
     ].filter((line): line is string => Boolean(line));
 
+    const baseTitle = `🚨 候选人需人工介入 · ${payload.alertLabel}`;
     return this.cardBuilder.buildMarkdownCard({
-      title: payload.isTest
-        ? '⚠️ 候选人需人工介入（无活跃 case · 测试ing）'
-        : '⚠️ 候选人需人工介入（无活跃 case）',
+      title: payload.isTest ? `${baseTitle} · 测试ing` : baseTitle,
       content: sections.join('\n\n'),
-      color: 'yellow',
+      color: 'red',
       atUsers: payload.atUsers,
       atAll: payload.atAll,
     });
+  }
+
+  private formatHighlightedFocus(reason: string, actionAdvice?: string): string {
+    const lines = [`> <font color='red'>**命中原因**：${reason}</font>`];
+    const trimmedAdvice = actionAdvice?.trim();
+    if (trimmedAdvice) {
+      lines.push(`> <font color='red'>**建议动作**：${trimmedAdvice}</font>`);
+    }
+    return lines.join('\n');
   }
 
   private formatRecentMessages(payload: GeneralHandoffNotificationPayload): string {

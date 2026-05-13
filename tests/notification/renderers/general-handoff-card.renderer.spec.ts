@@ -53,7 +53,7 @@ function buildPayload(override: Partial<RendererInput> = {}): RendererInput {
   const base: GeneralHandoffNotificationPayload = {
     alertLabel: '无活跃 case 但需介入',
     reason: '候选人触发 request_handoff（no_active_case 分支）',
-    summary: '候选人需要人工帮助',
+    actionAdvice: '建议联系候选人确认意向',
     corpId: 'corp-1',
     contactName: 'wx_candidate',
     botUserName: '招募经理A',
@@ -79,13 +79,13 @@ describe('GeneralHandoffCardRenderer', () => {
   });
 
   describe('buildCard', () => {
-    it('uses production title and yellow color when isTest is false', () => {
+    it('merges alertLabel into title and uses red color when isTest is false', () => {
       const card = renderer.buildCard(buildPayload());
 
       expect(card).toEqual(
         expect.objectContaining({
-          title: '⚠️ 候选人需人工介入（无活跃 case）',
-          color: 'yellow',
+          title: '🚨 候选人需人工介入 · 无活跃 case 但需介入',
+          color: 'red',
         }),
       );
       expect(card.content as string).not.toContain('测试ing');
@@ -95,33 +95,38 @@ describe('GeneralHandoffCardRenderer', () => {
       const card = renderer.buildCard(buildPayload({ isTest: true }));
 
       expect((card as { title: string }).title).toBe(
-        '⚠️ 候选人需人工介入（无活跃 case · 测试ing）',
+        '🚨 候选人需人工介入 · 无活跃 case 但需介入 · 测试ing',
       );
       expect(card.content as string).toContain(
         '测试ing（来自回归批次，无需 @ 招募经理）',
       );
     });
 
-    it('renders scene / reason / chatId / pausedUserId / handover-hint sections', () => {
+    it('highlights reason / actionAdvice and renders bolded inline labels', () => {
       const card = renderer.buildCard(buildPayload());
       const content = card.content as string;
 
-      expect(content).toContain('场景：无活跃 case 但需介入');
-      expect(content).toContain('命中原因：候选人触发 request_handoff（no_active_case 分支）');
-      expect(content).toContain('当前消息：我想找人帮忙');
+      expect(content).not.toContain('场景：');
+      expect(content).toContain(
+        "> <font color='red'>**命中原因**：候选人触发 request_handoff（no_active_case 分支）</font>",
+      );
+      expect(content).toContain(
+        "> <font color='red'>**建议动作**：建议联系候选人确认意向</font>",
+      );
+      expect(content).toContain('**当前消息**：我想找人帮忙');
       expect(content).toContain('会话ID：chat-123');
       expect(content).toContain('暂停ID：chat-123');
       expect(content).toContain('处理完请到 Web 托管后台手动恢复托管。');
     });
 
-    it('omits the summary line when summary is empty', () => {
-      const card = renderer.buildCard(buildPayload({ summary: undefined }));
-      expect(card.content as string).not.toContain('情况摘要');
+    it('omits the action-advice line when actionAdvice is empty', () => {
+      const card = renderer.buildCard(buildPayload({ actionAdvice: undefined }));
+      expect(card.content as string).not.toContain('**建议动作**');
     });
 
     it('renders dash placeholder when currentMessageContent is empty', () => {
       const card = renderer.buildCard(buildPayload({ currentMessageContent: '' }));
-      expect(card.content as string).toContain('当前消息：-');
+      expect(card.content as string).toContain('**当前消息**：-');
     });
 
     it('propagates atUsers / atAll to the card builder', () => {
