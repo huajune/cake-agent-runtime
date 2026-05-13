@@ -101,6 +101,20 @@ describe('ReplyFactGuardService', () => {
     expect(result.hit).toBe(false);
   });
 
+  it('does NOT flag "你看群里有人感兴趣吗" when Agent asks candidate to forward jobs to their own group', async () => {
+    // false-positive 防回归：候选人想做差价中介，Agent 婉拒并改口让候选人在自己的群里
+    // 转发岗位信息（"你有群的话我把岗位发你"），跟 invite_to_group 完全无关。
+    const result = service.check({
+      replyText:
+        '这种赚差价的模式不太行哈，我们这边都是品牌直招。不过你有群的话，我把昌平的岗位发你，大家直接报名也挺方便。你看群里有人感兴趣吗？',
+      toolCalls: [
+        { toolName: 'duliday_job_list', args: {}, status: 'ok', result: { success: true } },
+      ],
+      chatId: 'chat-1',
+    });
+    expect(result.hit).toBe(false);
+  });
+
   it('does NOT flag promise when invite_to_group success backs it', async () => {
     const result = service.check({
       replyText: '我拉你进群了，后面有合适的群里通知你。',
