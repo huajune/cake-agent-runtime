@@ -148,7 +148,7 @@ describe('buildInviteToGroupTool', () => {
     expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
   });
 
-  it('should silently skip when API reports user is already in the target group', async () => {
+  it('returns success with alreadyInGroup flag when API reports user is already in the target group', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup()]);
     mockRoomService.addMemberEnterprise.mockResolvedValue({
       errcode: -9,
@@ -157,9 +157,10 @@ describe('buildInviteToGroupTool', () => {
 
     const result = await executeTool({ city: '上海' });
 
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_ALREADY_IN_GROUP);
+    expect(result.success).toBe(true);
+    expect(result.alreadyInGroup).toBe(true);
     expect(result.groupName).toBe('上海兼职群1号');
+    expect(result._replyInstruction).toContain('不向候选人提及');
     expect(mockRoomService.addMemberEnterprise).toHaveBeenCalled();
   });
 
