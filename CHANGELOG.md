@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.7.0] - 2026-05-14
 
-**预计版本**: `v5.7.0`
-**最近更新**: `2026-05-14`
 **来源分支**: `develop`
-**累计 PR**: 2
 
 ### 更新摘要
 - PR #171 **invite-to-group「已在群」误判**（2778bdb1）— `INVITE_ALREADY_IN_GROUP` 改 success 返回，规避 PR #165 引入的"失败统一兜底 request_handoff"误触
@@ -73,7 +69,6 @@
 - PR #174 `.release/pending-release.json` JSON 语法 OK
 - PR #174 CHANGELOG pending 块标记完整
 - PR #174 pre-push 全量 jest 通过
-<!-- release:pending:end -->
 
 ## [5.6.1] - 2026-05-12
 
