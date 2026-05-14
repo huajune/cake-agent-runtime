@@ -5,6 +5,9 @@
 export const BADCASE_FEISHU_URL =
   'https://gingjqcjzc.feishu.cn/wiki/SWGgwAfsAihO6ukGQrCc18Qonwc?table=tblZGWZguvorS36f&view=vew7SMbKZG';
 
+export const OPERATION_METRICS_FEISHU_URL =
+  'https://gingjqcjzc.feishu.cn/wiki/JA9wwoysQiUzBJkFJmnchl9XnJg?table=tblusTgxaBKp9BA7&view=vewC9jds1z';
+
 /**
  * 💜 主题颜色配置
  *

@@ -40,7 +40,7 @@ export interface HandoffInterventionPayload extends InterventionBase {
   caseId: string;
   alertLabel: string;
   reason: string;
-  summary?: string;
+  actionAdvice?: string;
   recruitmentCase: RecruitmentCaseRecord;
   source: 'agent_tool';
 }
@@ -57,7 +57,7 @@ export interface GeneralHandoffInterventionPayload extends InterventionBase {
   kind: 'general_handoff';
   alertLabel: string;
   reason: string;
-  summary?: string;
+  actionAdvice?: string;
   source: 'agent_tool';
 }
 
@@ -157,6 +157,7 @@ export class InterventionService {
     return this.handoffNotifier.notify({
       alertLabel: payload.alertLabel,
       reason: payload.reason,
+      actionAdvice: payload.actionAdvice,
       botImId: payload.botImId,
       botUserName: payload.botUserName,
       contactName: payload.contactName,
@@ -173,7 +174,7 @@ export class InterventionService {
     return this.generalHandoffNotifier.notify({
       alertLabel: payload.alertLabel,
       reason: payload.reason,
-      summary: payload.summary,
+      actionAdvice: payload.actionAdvice,
       corpId: payload.corpId,
       botImId: payload.botImId,
       botUserName: payload.botUserName,

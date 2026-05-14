@@ -10,6 +10,7 @@ export interface OnboardFollowupNotificationMessage {
 export interface OnboardFollowupNotificationPayload {
   alertLabel: string;
   reason: string;
+  actionAdvice?: string;
   botImId?: string;
   botUserName?: string;
   contactName?: string;

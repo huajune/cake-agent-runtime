@@ -65,10 +65,15 @@ describe('OnboardFollowupCardRenderer', () => {
 
     expect(card).toEqual(
       expect.objectContaining({
-        title: '🚨 面试及上岗对接 · 需要人工介入',
+        title: '🚨 面试上岗对接 · 到店无人接待',
         color: 'red',
       }),
     );
+    expect((card.content as string)).not.toContain('风险类型：');
+    expect((card.content as string)).toContain(
+      "> <font color='red'>**命中原因**：候选人到店后无人接待或联系不上负责人，需要人工介入协调</font>",
+    );
+    expect((card.content as string)).toContain('**当前消息**：我到店了，但是没人接待');
     expect((card.content as string)).toContain('微信昵称：wx_candidate');
     expect((card.content as string)).toContain('姓名：张三');
     expect((card.content as string)).toContain('托管账号：招募经理A');

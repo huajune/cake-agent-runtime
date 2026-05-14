@@ -11,9 +11,8 @@ export class OnboardFollowupCardRenderer {
     payload: OnboardFollowupNotificationPayload & { atUsers?: FeishuReceiver[]; atAll?: boolean },
   ): Record<string, unknown> {
     const sections = [
-      `风险类型：${payload.alertLabel}`,
-      `命中原因：${payload.reason}`,
-      `当前消息：${payload.currentMessageContent}`,
+      this.formatHighlightedFocus(payload.reason, payload.actionAdvice),
+      `**当前消息**：${payload.currentMessageContent}`,
       `**聊天上下文（最近10条）**\n${this.formatRecentMessages(payload)}`,
       `**候选人信息**\n${this.formatCandidateInfo(payload)}`,
       `**预约信息**\n${this.formatCaseInfo(payload)}`,
@@ -21,12 +20,21 @@ export class OnboardFollowupCardRenderer {
     ];
 
     return this.cardBuilder.buildMarkdownCard({
-      title: '🚨 面试及上岗对接 · 需要人工介入',
+      title: `🚨 面试上岗对接 · ${payload.alertLabel}`,
       content: sections.join('\n\n'),
       color: 'red',
       atUsers: payload.atUsers,
       atAll: payload.atAll,
     });
+  }
+
+  private formatHighlightedFocus(reason: string, actionAdvice?: string): string {
+    const lines = [`> <font color='red'>**命中原因**：${reason}</font>`];
+    const trimmedAdvice = actionAdvice?.trim();
+    if (trimmedAdvice) {
+      lines.push(`> <font color='red'>**建议动作**：${trimmedAdvice}</font>`);
+    }
+    return lines.join('\n');
   }
 
   private formatRecentMessages(payload: OnboardFollowupNotificationPayload): string {

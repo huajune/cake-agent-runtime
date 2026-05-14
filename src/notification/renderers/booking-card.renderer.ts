@@ -72,10 +72,12 @@ export class BookingCardRenderer {
         sections.push(`**失败详情**\n${resultLines.join('\n')}`);
       }
     } else if (resultMessage) {
-      sections.push(`结果：${resultMessage}`);
+      sections.push(`**结果**：${resultMessage}`);
     }
 
-    sections.push(`通知时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
+    sections.push(
+      `**通知时间**：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`,
+    );
 
     const baseTitle = isFailure ? '🚨 面试预约失败' : '🎉 面试预约成功';
     const interviewType = this.pickString(payload.interviewType);
