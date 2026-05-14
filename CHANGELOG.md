@@ -12,9 +12,9 @@
 ## 待发布
 
 **预计版本**: `v5.7.0`
-**最近更新**: `2026-05-13`
+**最近更新**: `2026-05-14`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #171 **invite-to-group「已在群」误判**（2778bdb1）— `INVITE_ALREADY_IN_GROUP` 改 success 返回，规避 PR #165 引入的"失败统一兜底 request_handoff"误触
@@ -31,6 +31,7 @@
 - PR #171 **拆分 reply-fact-guard notifier**（4f71a93e）— 从 OpsNotifierService 解耦出独立 service，对话级介入告警走私聊群、不与运营群混发
 - PR #171 **Dashboard 运营日报菜单 + HealthGrid 精简**（858f27e5）— 加飞书外链项；移除 HealthGrid hover tooltip
 - PR #171 **飞书数据同步脚本**（c42d9c27）— 海绵岗位数据问题批量推送脚本
+- PR #174 把 master merge 回 develop，解除 PR #173 冲突
 
 ### 新功能
 - 无
@@ -54,6 +55,7 @@
 
 ### 运维与流程
 - PR #171 **CI/Docker 供应链加固**（ef49f22d）— GitHub Actions SHA pin、`persist-credentials: false`、移除 `pull-requests: write`；Node base image digest pin、pnpm 锁 10.33.4；`pnpm-workspace` 加 `minimumReleaseAge: 1440 + blockExoticSubdeps`
+- PR #174 把 master merge 回 develop，解除 PR #173 冲突
 
 ### 配置变更
 - 无
@@ -67,6 +69,10 @@
 - PR #171 关键 false-positive case 加防回归测试覆盖（4 处）
 - PR #171 部署后线上观察 4 类告警噪声是否真的下降
 - PR #171 部署后视觉确认：general-handoff 卡片红色 🚨、命中原因高亮、4 张业务告警卡 label 字重统一
+- PR #174 本地 `git diff origin/develop...HEAD` 为空（确认是纯拓扑 merge，无内容变化）
+- PR #174 `.release/pending-release.json` JSON 语法 OK
+- PR #174 CHANGELOG pending 块标记完整
+- PR #174 pre-push 全量 jest 通过
 <!-- release:pending:end -->
 
 ## [5.6.1] - 2026-05-12
