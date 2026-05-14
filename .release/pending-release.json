@@ -1,7 +1,7 @@
 {
   "baseVersion": "5.6.1",
   "nextVersion": "5.7.0",
-  "updatedAt": "2026-05-13",
+  "updatedAt": "2026-05-14",
   "sourceBranch": "develop",
   "entries": [
     {
@@ -55,6 +55,30 @@
         "关键 false-positive case 加防回归测试覆盖（4 处）",
         "部署后线上观察 4 类告警噪声是否真的下降",
         "部署后视觉确认：general-handoff 卡片红色 🚨、命中原因高亮、4 张业务告警卡 label 字重统一"
+      ]
+    },
+    {
+      "number": "174",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/174",
+      "title": "把 master merge 回 develop，解除 PR #173 冲突",
+      "author": "ArielZhu",
+      "mergedAt": "2026-05-14",
+      "summary": [
+        "把 master merge 回 develop，解除 PR #173 冲突"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "把 master merge 回 develop，解除 PR #173 冲突"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "本地 `git diff origin/develop...HEAD` 为空（确认是纯拓扑 merge，无内容变化）",
+        "`.release/pending-release.json` JSON 语法 OK",
+        "CHANGELOG pending 块标记完整",
+        "pre-push 全量 jest 通过"
       ]
     }
   ]
