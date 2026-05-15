@@ -31,6 +31,29 @@
         "新增 `session.service` 测试覆盖：LLM 留空 city 时白名单回填、LLM 已填 city 时不覆盖",
         "`pnpm run lint` 干净"
       ]
+    },
+    {
+      "number": "181",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/181",
+      "title": "bot 创建的 PR 也走 AI Code Review",
+      "author": "ArielZhu",
+      "mergedAt": "2026-05-15",
+      "summary": [
+        "bot 创建的 PR 也走 AI Code Review"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "bot 创建的 PR 也走 AI Code Review"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "\\`python yaml.safe_load\\` 校验两个 YAML 文件语法",
+        "合并后，下一个普通 PR 合到 develop 触发 \\`prepare-develop-release\\` → 期望新建/更新的 release-metadata PR 能拿到 AI review",
+        "失败兜底：即便 dispatch step 报错，元数据 PR 本身仍然成功创建（\\`continue-on-error: true\\`）"
+      ]
     }
   ]
 }
