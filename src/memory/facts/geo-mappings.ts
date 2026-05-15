@@ -285,3 +285,41 @@ export function normalizeCityName(value: string | null | undefined): string | nu
   const normalized = value.trim().replace(/市$/, '');
   return normalized || null;
 }
+
+/**
+ * 单个 district 名 → 城市（命中白名单则返回 city，否则 null）。
+ * 兼容 "青浦" 和 "青浦区" 两种形式（白名单只存归一化后的形式）。
+ */
+export function resolveCityFromDistrict(candidate: string): string | null {
+  const normalized = normalizeDistrictForLookup(candidate);
+  return DISTRICT_TO_CITY[candidate] ?? DISTRICT_TO_CITY[normalized] ?? null;
+}
+
+/** 单个 location/商圈名 → 城市（命中白名单则返回 city，否则 null）。 */
+export function resolveCityFromLocation(candidate: string): string | null {
+  const normalized = candidate.replace(/\s+/g, '');
+  return LOCATION_TO_CITY[candidate] ?? LOCATION_TO_CITY[normalized] ?? null;
+}
+
+/**
+ * 从 district / location 列表里查白名单，命中后返回带证据的 city。
+ *
+ * 这是"代码白名单作为城市识别唯一真相源"的入口：上游的 LLM session 提取按 prompt
+ * 要求对单独的"区/镇/街道"留 null city（防跨城同名），但白名单恰好已经把跨城同名
+ * 排除，剩下的（青浦/浦东/朝阳/海淀…）应当无歧义地补出来。此函数让确定性兜底逻
+ * 辑覆盖 LLM 的保守留空，避免"高置信明明能识别，sessionFacts 却 city=null"的尴尬。
+ */
+export function resolveCityFromGeoSignals(
+  districts: readonly string[] | null | undefined,
+  locations: readonly string[] | null | undefined,
+): { value: string; evidence: 'unique_district_alias' | 'hotspot_alias' } | null {
+  for (const district of districts ?? []) {
+    const city = resolveCityFromDistrict(district);
+    if (city) return { value: city, evidence: 'unique_district_alias' };
+  }
+  for (const location of locations ?? []) {
+    const city = resolveCityFromLocation(location);
+    if (city) return { value: city, evidence: 'hotspot_alias' };
+  }
+  return null;
+}
