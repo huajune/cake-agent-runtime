@@ -11,10 +11,47 @@
 <!-- release:pending:start -->
 ## 待发布
 
-**预计版本**: `v5.7.0`
-**最近更新**: `2026-05-14`
+**预计版本**: `v5.7.1`
+**最近更新**: `2026-05-15`
 **来源分支**: `develop`
-**累计 PR**: 2
+**累计 PR**: 1
+
+### 更新摘要
+- PR #177 修复"你好我在青浦区"等带前缀消息无法识别城市的 bug：高置信路径贪婪正则把整段当区名，归一化后变成 \"你好我在青浦\" 永远查不到白名单
+- PR #177 让 \`DISTRICT_TO_CITY\` / \`LOCATION_TO_CITY\` 白名单成为城市识别的唯一真相源：LLM 按 prompt 对单独区名留空 city 时，由确定性逻辑在 \`session.service\` 兜底回填
+- PR #177 把 \`resolveCityFromDistrict\` / \`resolveCityFromLocation\` 提为 \`geo-mappings.ts\` 公共 helper，避免双轨实现漂移
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #177 修复"你好我在青浦区"等带前缀消息无法识别城市的 bug：高置信路径贪婪正则把整段当区名，归一化后变成 \"你好我在青浦\" 永远查不到白名单
+- PR #177 让 \`DISTRICT_TO_CITY\` / \`LOCATION_TO_CITY\` 白名单成为城市识别的唯一真相源：LLM 按 prompt 对单独区名留空 city 时，由确定性逻辑在 \`session.service\` 兜底回填
+- PR #177 把 \`resolveCityFromDistrict\` / \`resolveCityFromLocation\` 提为 \`geo-mappings.ts\` 公共 helper，避免双轨实现漂移
+
+### 优化调整
+- 无
+
+### 运维与流程
+- 无
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #177 \`pnpm run test -- tests/memory\` — 222 个测试全过
+- PR #177 新增 \`高置信路径\` 测试覆盖：你好我在青浦区 / 我在浦东区 / 住在朝阳区
+- PR #177 新增 \`session.service\` 测试覆盖：LLM 留空 city 时白名单回填、LLM 已填 city 时不覆盖
+- PR #177 \`pnpm run lint\` 干净
+- PR #177 灰度后观测：missing_city_context 工具错误率、Agent 反复反问城市的多轮 case
+<!-- release:pending:end -->
+
+## [5.7.0] - 2026-05-14
+
+**来源分支**: `develop`
 
 ### 更新摘要
 - PR #171 **invite-to-group「已在群」误判**（2778bdb1）— `INVITE_ALREADY_IN_GROUP` 改 success 返回，规避 PR #165 引入的"失败统一兜底 request_handoff"误触
@@ -73,7 +110,6 @@
 - PR #174 `.release/pending-release.json` JSON 语法 OK
 - PR #174 CHANGELOG pending 块标记完整
 - PR #174 pre-push 全量 jest 通过
-<!-- release:pending:end -->
 
 ## [5.6.1] - 2026-05-12
 
