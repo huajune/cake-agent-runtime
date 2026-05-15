@@ -1,59 +1,7 @@
 {
-  "baseVersion": "5.7.0",
+  "baseVersion": "5.7.1",
   "nextVersion": "5.7.1",
   "updatedAt": "2026-05-15",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "177",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/177",
-      "title": "区/地标白名单作为城市识别唯一真相源",
-      "author": "ArielZhu",
-      "mergedAt": "2026-05-15",
-      "summary": [
-        "修复\"你好我在青浦区/我在浦东区\"等带前缀消息无法识别城市的 bug：高置信路径贪婪正则把整段当区名，归一化后变成\"你好我在青浦\"永远查不到白名单",
-        "让 `DISTRICT_TO_CITY` / `LOCATION_TO_CITY` 白名单成为城市识别的唯一真相源：LLM 按 prompt 对单独区名留空 city 时，由确定性逻辑在 `session.service` 兜底回填，避免下游 hard-constraints 把候选人卡在\"当前没有已确认城市\"反问循环"
-      ],
-      "features": [],
-      "fixes": [
-        "修复\"你好我在青浦区/我在浦东区\"等带前缀消息无法识别城市的 bug：高置信路径贪婪正则把整段当区名，归一化后变成\"你好我在青浦\"永远查不到白名单",
-        "LLM session 提取按 prompt 对单独区名留空 city 时，由 `session.service` 用白名单兜底回填，避免下游 hard-constraints 把候选人卡在\"当前没有已确认城市\"反问循环"
-      ],
-      "optimizations": [
-        "把 `resolveCityFromDistrict` / `resolveCityFromLocation` / `resolveCityFromGeoSignals` 提为 `geo-mappings.ts` 公共 helper，避免高置信路径和 session 提取路径的双轨实现漂移"
-      ],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`pnpm run test -- tests/memory` — 222 个测试全过",
-        "新增高置信路径测试覆盖：你好我在青浦区 / 我在浦东区 / 住在朝阳区",
-        "新增 `session.service` 测试覆盖：LLM 留空 city 时白名单回填、LLM 已填 city 时不覆盖",
-        "`pnpm run lint` 干净"
-      ]
-    },
-    {
-      "number": "181",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/181",
-      "title": "bot 创建的 PR 也走 AI Code Review",
-      "author": "ArielZhu",
-      "mergedAt": "2026-05-15",
-      "summary": [
-        "bot 创建的 PR 也走 AI Code Review"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "bot 创建的 PR 也走 AI Code Review"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "\\`python yaml.safe_load\\` 校验两个 YAML 文件语法",
-        "合并后，下一个普通 PR 合到 develop 触发 \\`prepare-develop-release\\` → 期望新建/更新的 release-metadata PR 能拿到 AI review",
-        "失败兜底：即便 dispatch step 报错，元数据 PR 本身仍然成功创建（\\`continue-on-error: true\\`）"
-      ]
-    }
-  ]
+  "entries": []
 }
