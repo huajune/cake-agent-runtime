@@ -5,6 +5,16 @@ on:
     types: [opened, synchronize, reopened]
     branches:
       - develop
+  # 补 workflow_dispatch 触发器：bot 用 GITHUB_TOKEN 创建/更新的 PR 不会触发
+  # pull_request 事件（GitHub 反递归设计），但 workflow_dispatch 是该限制的
+  # 例外通道，允许从 GITHUB_TOKEN 触发。release-metadata workflow 创建 bot PR
+  # 后会 dispatch 本 workflow 并把 pr_number 透传过来。
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to review（用于 bot 创建的 PR 无法走 pull_request 事件的兜底）'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -16,11 +26,28 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Resolve PR context
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            PR_NUMBER="${{ inputs.pr_number }}"
+            HEAD_SHA=$(gh pr view "$PR_NUMBER" --json headRefOid --jq .headRefOid)
+          else
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          fi
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ steps.pr.outputs.head_sha }}
 
       - name: Read review rules
         id: review-rules
@@ -36,7 +63,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
+            PR NUMBER: ${{ steps.pr.outputs.number }}
 
             Review this PR according to the following rules:
 

@@ -26,6 +26,9 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      # 需要 actions:write 才能用 gh workflow run 派发 ai-code-review.yml；
+      # 详见本文件末尾"为 bot PR 触发 AI Code Review" step。
+      actions: write
     steps:
       - name: Checkout develop
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -45,6 +48,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Create or update develop release metadata PR
+        id: bot_pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MERGED_PR_TITLE: ${{ github.event.pull_request.title }}
@@ -69,6 +73,7 @@ jobs:
 
           if git diff --quiet package.json CHANGELOG.md .release/pending-release.json; then
             echo "ℹ️ develop 的版本元数据无变化，跳过 PR 更新"
+            echo "pr_number=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -105,14 +110,36 @@ jobs:
           if [ -n "${EXISTING_PR_NUMBER}" ]; then
             gh pr edit "${EXISTING_PR_NUMBER}" --title "${PR_TITLE}" --body "${PR_BODY}"
             echo "✅ 已更新 develop 版本元数据 PR: #${EXISTING_PR_NUMBER}"
+            echo "pr_number=${EXISTING_PR_NUMBER}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          gh pr create \
+          PR_URL=$(gh pr create \
             --base "${BASE_BRANCH}" \
             --head "${BOT_BRANCH}" \
             --title "${PR_TITLE}" \
-            --body "${PR_BODY}"
+            --body "${PR_BODY}")
+          NEW_PR_NUMBER="${PR_URL##*/}"
+          echo "✅ 已创建 develop 版本元数据 PR: #${NEW_PR_NUMBER}"
+          echo "pr_number=${NEW_PR_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      # bot 用 GITHUB_TOKEN 创建/更新的 PR 不会触发 ai-code-review.yml 的
+      # pull_request 事件（GitHub 反递归设计）。workflow_dispatch 是该限制
+      # 的例外通道，允许从 GITHUB_TOKEN 派发，所以这里把刚处理的 bot PR 号
+      # 透传给 ai-code-review.yml 让它跑起来。
+      - name: Dispatch AI Code Review for bot PR
+        if: steps.bot_pr.outputs.pr_number != ''
+        # AI review 失败不应阻塞元数据 PR 流程本身（PR 已经创建成功了）。
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.bot_pr.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+          gh workflow run ai-code-review.yml \
+            --ref develop \
+            -f pr_number="${PR_NUMBER}"
+          echo "🚀 已派发 ai-code-review.yml 给 PR #${PR_NUMBER}"
 
       - name: Reminder for branch protection
         run: |

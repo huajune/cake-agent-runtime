@@ -461,6 +461,109 @@ describe('SessionService', () => {
       );
     });
 
+    it('should backfill city from whitelist district when LLM leaves city null', async () => {
+      // LLM 按 session-extraction prompt 对单独区名留 null city（防跨城同名）。
+      // 但 DISTRICT_TO_CITY 白名单已经把跨城同名排除，应当用确定性兜底补 city。
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured({
+          interview_info: {
+            name: null,
+            phone: null,
+            gender: null,
+            age: null,
+            applied_store: null,
+            applied_position: null,
+            interview_time: null,
+            is_student: null,
+            education: null,
+            has_health_certificate: null,
+          },
+          preferences: {
+            brands: null,
+            salary: null,
+            position: null,
+            schedule: null,
+            city: null,
+            district: ['青浦'],
+            location: null,
+            labor_form: null,
+          },
+          reasoning: '用户提到青浦区',
+        }),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'sess1', [
+        { role: 'user', content: '你好我在青浦区' },
+      ]);
+
+      expect(mockRedisStore.set).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          facts: expect.objectContaining({
+            preferences: expect.objectContaining({
+              city: expect.objectContaining({
+                value: '上海',
+                confidence: 'high',
+                evidence: 'unique_district_alias',
+              }),
+              district: ['青浦'],
+            }),
+          }),
+        }),
+        86400,
+        false,
+      );
+    });
+
+    it('should not overwrite city when LLM already filled it', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured({
+          interview_info: {
+            name: null,
+            phone: null,
+            gender: null,
+            age: null,
+            applied_store: null,
+            applied_position: null,
+            interview_time: null,
+            is_student: null,
+            education: null,
+            has_health_certificate: null,
+          },
+          preferences: {
+            brands: null,
+            salary: null,
+            position: null,
+            schedule: null,
+            city: '北京',
+            district: ['青浦'],
+            location: null,
+            labor_form: null,
+          },
+          reasoning: '历史明示了北京（虽然本轮 district 误识为青浦）',
+        }),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'sess1', [
+        { role: 'user', content: '北京但有亲戚在青浦' },
+      ]);
+
+      expect(mockRedisStore.set).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          facts: expect.objectContaining({
+            preferences: expect.objectContaining({
+              city: expect.objectContaining({ value: '北京' }),
+            }),
+          }),
+        }),
+        86400,
+        false,
+      );
+    });
+
     it('should use fallback when output is null', async () => {
       mockRedisStore.get.mockResolvedValue(null);
       mockLlm.generateStructured.mockRejectedValue(new Error('No structured output returned'));
