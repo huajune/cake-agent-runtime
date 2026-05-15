@@ -7,12 +7,13 @@ import {
   type Preferences,
 } from '../types/session-facts.types';
 import {
-  DISTRICT_TO_CITY,
-  LOCATION_TO_CITY,
   MUNICIPALITIES,
   SUPPORTED_CITY_PREFIXES,
   normalizeCityName,
   normalizeDistrictForLookup,
+  resolveCityFromDistrict,
+  resolveCityFromGeoSignals,
+  resolveCityFromLocation,
 } from './geo-mappings';
 
 // 平台所有岗位本身就是兼职，"兼职"/"全职"/"临时工" 不是筛选维度，不纳入高置信提取。
@@ -589,7 +590,7 @@ function extractLocation(message: string): LocationSignals {
     if (districtCity) {
       return {
         city: { value: districtCity, confidence: 'high', evidence: 'unique_district_alias' },
-        district: [candidate],
+        district: [normalizeDistrictForLookup(candidate)],
         location: [],
       };
     }
@@ -687,7 +688,11 @@ function extractExplicitDistricts(message: string): string[] {
 function normalizeExplicitDistrict(candidate: string): string {
   const withoutCityPrefix = candidate
     .replace(/^[\u4e00-\u9fa5]{2,12}省/, '')
-    .replace(/^[\u4e00-\u9fa5]{2,12}市/, '');
+    .replace(/^[\u4e00-\u9fa5]{2,12}市/, '')
+    // 剥掉常见对话/位置前缀。否则贪婪正则 [一-龥]{2,10}(?:区|...) 会把
+    // "你好我在青浦区" 整段当成区名，归一化后变成"你好我在青浦"，永远查不到白名单。
+    .replace(/^(?:你好|您好|哈喽|嗨)/, '')
+    .replace(/^(?:我在|人在|住在|我住|目前在|现在在|今天在|平时在|在)/, '');
   return normalizeDistrictForLookup(withoutCityPrefix);
 }
 
@@ -716,30 +721,11 @@ function extractPositionShareLocations(message: string): string[] {
   return Array.from(new Set(locations.filter(Boolean)));
 }
 
-function resolveCityFromDistrict(candidate: string): string | null {
-  const normalized = normalizeDistrictForLookup(candidate);
-  return DISTRICT_TO_CITY[candidate] ?? DISTRICT_TO_CITY[normalized] ?? null;
-}
-
-function resolveCityFromLocation(candidate: string): string | null {
-  const normalized = candidate.replace(/\s+/g, '');
-  return LOCATION_TO_CITY[candidate] ?? LOCATION_TO_CITY[normalized] ?? null;
-}
-
 function resolveCityFromAny(districts: string[], locations: string[]): CityFact | null {
-  for (const district of districts) {
-    const city = resolveCityFromDistrict(district);
-    if (city) {
-      return { value: city, confidence: 'high', evidence: 'unique_district_alias' };
-    }
-  }
-  for (const location of locations) {
-    const city = resolveCityFromLocation(location);
-    if (city) {
-      return { value: city, confidence: 'high', evidence: 'hotspot_alias' };
-    }
-  }
-  return null;
+  const resolved = resolveCityFromGeoSignals(districts, locations);
+  return resolved
+    ? { value: resolved.value, confidence: 'high', evidence: resolved.evidence }
+    : null;
 }
 
 function normalizeLocationCandidate(message: string): string {

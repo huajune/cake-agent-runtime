@@ -23,6 +23,7 @@ import {
   SESSION_EXTRACTION_SYSTEM_PROMPT,
 } from './session-extraction.prompt';
 import { detectBrandAliasHints, mergeDetectedBrands } from '../facts/high-confidence-facts';
+import { resolveCityFromGeoSignals } from '../facts/geo-mappings';
 import { sanitizeInterviewName } from '../facts/name-guard';
 import {
   extractPresentedJobs,
@@ -402,11 +403,38 @@ export class SessionService {
       });
 
       // 归一化：LLM 输出的 city 字符串经 EntityExtractionResultSchema 转为 CityFact 对象
-      return EntityExtractionResultSchema.parse(result.output);
+      const parsed = EntityExtractionResultSchema.parse(result.output);
+      return this.backfillCityFromWhitelist(parsed);
     } catch (err) {
       this.logger.warn('[extractFacts] LLM extraction failed, using fallback', err);
       return FALLBACK_EXTRACTION;
     }
+  }
+
+  /**
+   * LLM 按 session-extraction prompt 对"单独的区/镇/街道"留 null city（防跨城同名）。
+   * 但 DISTRICT_TO_CITY / LOCATION_TO_CITY 白名单恰好已经把跨城同名排除，剩下的
+   * （青浦/浦东/朝阳/海淀…）应当无歧义补出。此处用确定性兜底覆盖 LLM 的保守留空，
+   * 避免"高置信明明能识别，sessionFacts 却 city=null"的尴尬（badcase: 候选人多轮
+   * 反复说"青浦区/金泽"，Agent 仍被硬约束卡在"当前没有已确认城市"循环里反问）。
+   */
+  private backfillCityFromWhitelist(facts: EntityExtractionResult): EntityExtractionResult {
+    if (facts.preferences.city) return facts;
+    const resolved = resolveCityFromGeoSignals(
+      facts.preferences.district,
+      facts.preferences.location,
+    );
+    if (!resolved) return facts;
+    this.logger.debug(
+      `[extractFacts] 白名单回填 city=${resolved.value}（evidence: ${resolved.evidence}）`,
+    );
+    return {
+      ...facts,
+      preferences: {
+        ...facts.preferences,
+        city: { value: resolved.value, confidence: 'high', evidence: resolved.evidence },
+      },
+    };
   }
 
   private buildKey(corpId: string, userId: string, sessionId: string): string {

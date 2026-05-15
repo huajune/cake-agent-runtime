@@ -120,6 +120,27 @@ describe('extractHighConfidenceFacts', () => {
     expect(combined?.preferences.labor_form).toBeNull();
   });
 
+  it('should extract city from whitelist district even when preceded by greetings or positional verbs', () => {
+    // badcase: 候选人发"你好我在青浦区"，贪婪正则把整段当成区名归一化为
+    // "你好我在青浦"，导致 DISTRICT_TO_CITY 永远查不到，city 留空，下游硬约束
+    // 进入"当前没有已确认城市"分支，Agent 反复反问城市。修复后应正确识别青浦→上海。
+    const greeted = extractHighConfidenceFacts(['你好我在青浦区'], brandData);
+    expect(greeted?.preferences.city).toEqual({
+      value: '上海',
+      confidence: 'high',
+      evidence: 'unique_district_alias',
+    });
+    expect(greeted?.preferences.district).toEqual(['青浦']);
+
+    const positional = extractHighConfidenceFacts(['我在浦东区'], brandData);
+    expect(positional?.preferences.city?.value).toBe('上海');
+    expect(positional?.preferences.district).toEqual(['浦东']);
+
+    const lived = extractHighConfidenceFacts(['住在朝阳区'], brandData);
+    expect(lived?.preferences.city?.value).toBe('北京');
+    expect(lived?.preferences.district).toEqual(['朝阳']);
+  });
+
   it('should not extract education from location or school names', () => {
     const result = extractHighConfidenceFacts(
       ['[位置分享] 大宁国际学校小学部（上海市静安区江场路1428号） [经纬度:31.295946,121.453613]'],
