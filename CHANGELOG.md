@@ -14,12 +14,13 @@
 **预计版本**: `v5.7.1`
 **最近更新**: `2026-05-15`
 **来源分支**: `develop`
-**累计 PR**: 2
+**累计 PR**: 3
 
 ### 更新摘要
 - PR #177 修复"你好我在青浦区/我在浦东区"等带前缀消息无法识别城市的 bug：高置信路径贪婪正则把整段当区名，归一化后变成"你好我在青浦"永远查不到白名单
 - PR #177 让 `DISTRICT_TO_CITY` / `LOCATION_TO_CITY` 白名单成为城市识别的唯一真相源：LLM 按 prompt 对单独区名留空 city 时，由确定性逻辑在 `session.service` 兜底回填，避免下游 hard-constraints 把候选人卡在"当前没有已确认城市"反问循环
 - PR #181 bot 创建的 PR 也走 AI Code Review
+- PR #183 sync master back into develop for v5.7.1
 
 ### 新功能
 - 无
@@ -33,6 +34,7 @@
 
 ### 运维与流程
 - PR #181 bot 创建的 PR 也走 AI Code Review
+- PR #183 sync master back into develop for v5.7.1
 
 ### 配置变更
 - 无
@@ -48,6 +50,10 @@
 - PR #181 \`python yaml.safe_load\` 校验两个 YAML 文件语法
 - PR #181 合并后，下一个普通 PR 合到 develop 触发 \`prepare-develop-release\` → 期望新建/更新的 release-metadata PR 能拿到 AI review
 - PR #181 失败兜底：即便 dispatch step 报错，元数据 PR 本身仍然成功创建（\`continue-on-error: true\`）
+- PR #183 `git diff --name-only origin/develop...HEAD` 为空
+- PR #183 `.release/pending-release.json` JSON 解析通过
+- PR #183 `CHANGELOG.md` / `.release/pending-release.json` 无冲突标记
+- PR #183 本地模拟 develop 合 master 无冲突标记
 <!-- release:pending:end -->
 
 ## [5.7.0] - 2026-05-14

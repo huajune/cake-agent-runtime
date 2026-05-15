@@ -54,6 +54,30 @@
         "合并后，下一个普通 PR 合到 develop 触发 \\`prepare-develop-release\\` → 期望新建/更新的 release-metadata PR 能拿到 AI review",
         "失败兜底：即便 dispatch step 报错，元数据 PR 本身仍然成功创建（\\`continue-on-error: true\\`）"
       ]
+    },
+    {
+      "number": "183",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/183",
+      "title": "sync master back into develop for v5.7.1",
+      "author": "ArielZhu",
+      "mergedAt": "2026-05-15",
+      "summary": [
+        "sync master back into develop for v5.7.1"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "sync master back into develop for v5.7.1"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`git diff --name-only origin/develop...HEAD` 为空",
+        "`.release/pending-release.json` JSON 解析通过",
+        "`CHANGELOG.md` / `.release/pending-release.json` 无冲突标记",
+        "本地模拟 develop 合 master 无冲突标记"
+      ]
     }
   ]
 }
