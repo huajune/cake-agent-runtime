@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.7.1] - 2026-05-15
 
-**预计版本**: `v5.7.1`
-**最近更新**: `2026-05-15`
 **来源分支**: `develop`
-**累计 PR**: 2
 
 ### 更新摘要
 - PR #177 修复"你好我在青浦区/我在浦东区"等带前缀消息无法识别城市的 bug：高置信路径贪婪正则把整段当区名，归一化后变成"你好我在青浦"永远查不到白名单
@@ -48,7 +44,6 @@
 - PR #181 \`python yaml.safe_load\` 校验两个 YAML 文件语法
 - PR #181 合并后，下一个普通 PR 合到 develop 触发 \`prepare-develop-release\` → 期望新建/更新的 release-metadata PR 能拿到 AI review
 - PR #181 失败兜底：即便 dispatch step 报错，元数据 PR 本身仍然成功创建（\`continue-on-error: true\`）
-<!-- release:pending:end -->
 
 ## [5.7.0] - 2026-05-14
 
