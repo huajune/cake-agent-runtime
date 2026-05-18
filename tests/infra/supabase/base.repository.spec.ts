@@ -81,6 +81,14 @@ class TestRepository extends BaseRepository {
   testIsAvailable(): boolean {
     return this.isAvailable();
   }
+
+  testHandleError(operation: string, error: unknown): void {
+    this.handleError(operation, error);
+  }
+
+  getLogger() {
+    return this.logger;
+  }
 }
 
 describe('BaseRepository', () => {
@@ -317,6 +325,66 @@ describe('BaseRepository', () => {
 
       expect(result).toEqual([{ ok: true }]);
       expect(mockRpc).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // ==================== handleError ====================
+
+  describe('handleError (HTML summarization)', () => {
+    const cloudflare521Html = `<!DOCTYPE html>
+<html lang="en-US">
+<head><title>supabase.co | 521: Web server is down</title></head>
+<body>
+<h1>Web server is down<span class="code-label">Error code 521</span></h1>
+<div id="cf-host-status" class="cf-error-source">
+<span class="md:block w-full truncate">uvmbxcilpteaiizplcyp.supabase.co</span>
+</div>
+</body>
+</html>`.repeat(3); // simulate the multi-KB blob supabase-js actually returns
+
+    it('should collapse Cloudflare HTML error into a single-line summary', () => {
+      const spy = jest.spyOn(repository.getLogger(), 'error').mockImplementation(() => undefined);
+
+      repository.testHandleError('UPSERT', { message: cloudflare521Html, code: undefined });
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      const logged = String(spy.mock.calls[0][0]);
+      expect(logged).not.toContain('<!DOCTYPE');
+      expect(logged).not.toContain('<html');
+      expect(logged).toContain('HTML response (non-JSON)');
+      expect(logged).toContain('code=521');
+      expect(logged).toContain('521: Web server is down');
+      expect(logged).toContain('uvmbxcilpteaiizplcyp.supabase.co');
+      // Sanity: keep the line bounded — much shorter than the raw HTML
+      expect(logged.length).toBeLessThan(400);
+
+      spy.mockRestore();
+    });
+
+    it('should truncate excessively long non-HTML messages', () => {
+      const spy = jest.spyOn(repository.getLogger(), 'error').mockImplementation(() => undefined);
+      const longMessage = 'x'.repeat(2000);
+
+      repository.testHandleError('SELECT', { message: longMessage, code: 'XX000' });
+
+      const logged = String(spy.mock.calls[0][0]);
+      expect(logged).toContain('[truncated]');
+      expect(logged.length).toBeLessThan(700);
+
+      spy.mockRestore();
+    });
+
+    it('should leave short plain-text messages unchanged', () => {
+      const spy = jest.spyOn(repository.getLogger(), 'error').mockImplementation(() => undefined);
+
+      repository.testHandleError('UPDATE', { message: 'duplicate key value', code: '23505' });
+
+      const logged = String(spy.mock.calls[0][0]);
+      expect(logged).toContain('duplicate key value');
+      expect(logged).toContain('23505');
+      expect(logged).not.toContain('[truncated]');
+
+      spy.mockRestore();
     });
   });
 
