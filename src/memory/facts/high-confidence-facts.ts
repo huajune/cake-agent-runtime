@@ -7,14 +7,30 @@ import {
   type Preferences,
 } from '../types/session-facts.types';
 import {
+  DISTRICT_TO_CITY,
+  LOCATION_TO_CITY,
   MUNICIPALITIES,
   SUPPORTED_CITY_PREFIXES,
+  matchInUncoveredSegments,
   normalizeCityName,
   normalizeDistrictForLookup,
-  resolveCityFromDistrict,
-  resolveCityFromGeoSignals,
-  resolveCityFromLocation,
+  scanWhitelistKeysByLongest,
+  type WhitelistScanResult,
 } from './geo-mappings';
+
+/**
+ * 城市识别词典：直辖市 + 已支持城市前缀去重后的精确匹配集合。
+ * 给 scanWhitelistKeysByLongest 作为 city 维度的输入。
+ */
+const CITY_DICT: Record<string, true> = Object.fromEntries(
+  Array.from(new Set<string>([...MUNICIPALITIES, ...SUPPORTED_CITY_PREFIXES])).map((city) => [
+    city,
+    true,
+  ]),
+);
+
+/** 正则兜底：在白名单未覆盖区间识别"白名单外的 raw district"（不补 city）。 */
+const RAW_DISTRICT_PATTERN = /([一-龥]{2,10}(?:区|县|镇|街道|新区|开发区))/g;
 
 // 平台所有岗位本身就是兼职，"兼职"/"全职"/"临时工" 不是筛选维度，不纳入高置信提取。
 // 仅提取四个细分用工形式：兼职+、小时工、寒假工、暑假工。
@@ -553,150 +569,113 @@ function extractTimeRange(message: string): string | null {
 /**
  * 抽取地点相关字段（含高置信城市推导）。
  *
- * 依次尝试：
- *   1. 直辖市紧凑表达（"上海浦东"）→ city + district
- *   2. 显式城市（"北京/上海/武汉…"）→ city
- *   3. 区名唯一映射（"徐汇"→上海）→ city（+ district）
- *   4. 热门地点/商圈映射（"陆家嘴"→上海）→ city（+ location）
- *   5. 区名兜底（显式"XX区"但映射表没覆盖）→ district 列表
- *   6. 地标兜底（"XX附近"）→ location 列表
+ * 设计：**白名单驱动扫描 + 正则兜底**（PR #177 之后的第二次重构）。
  *
- * city 一定输出 CityFact 对象（含 evidence）。
+ * 以前用"贪婪正则吃整段 → 事后清洗"的策略，每出一种新表达（"你好我在青浦区"、
+ * "浦东新区航头镇"…）都要在清洗链上加一刀。本版本反过来：
+ *   1. 先用白名单做最长精确匹配（city → district → location），数据驱动
+ *   2. 未覆盖字符段才交给正则识别"白名单外的 raw district"，**不补 city**（留给 LLM）
+ *
+ * 加新支持城市/区，只改 geo-mappings 数据，不再动正则/清洗。
  */
 function extractLocation(message: string): LocationSignals {
-  const compact = extractMunicipalityCompact(message);
-  if (compact) return compact;
+  const positionShareLocations = extractPositionShareLocations(message);
 
-  const explicitDistricts = extractExplicitDistricts(message);
-  const explicitLocations = Array.from(
-    new Set([
-      ...extractPositionShareLocations(message),
-      ...extractExplicitLocations(message, explicitDistricts),
-    ]),
+  // 三轮串联扫描，covered 区间逐轮累积，避免后轮再去消费前轮已认领的字符
+  const cityScan = scanWhitelistKeysByLongest(message, CITY_DICT);
+  const districtScan = scanWhitelistKeysByLongest(message, DISTRICT_TO_CITY, cityScan.covered);
+  const locationScan = scanWhitelistKeysByLongest(message, LOCATION_TO_CITY, districtScan.covered);
+
+  const city = resolveCity(message, cityScan, districtScan, locationScan);
+
+  // district：白名单命中（归一化后） + 未覆盖区间正则兜底（白名单外，城市未知）
+  const whitelistDistricts = districtScan.hits.map((hit) => normalizeDistrictForLookup(hit.key));
+  const rawDistricts = matchInUncoveredSegments(
+    message,
+    locationScan.covered,
+    RAW_DISTRICT_PATTERN,
+  ).map(normalizeRawDistrict);
+  const districts = Array.from(new Set([...whitelistDistricts, ...rawDistricts].filter(Boolean)));
+
+  // location：位置分享 title/address + 白名单命中 + "XX附近/旁边" 兜底
+  const whitelistLocations = locationScan.hits.map((hit) => hit.key);
+  const nearbyLocations = extractNearbyLocations(message, districts);
+  const locations = Array.from(
+    new Set([...positionShareLocations, ...whitelistLocations, ...nearbyLocations].filter(Boolean)),
   );
 
-  const explicitCity = extractExplicitCity(message);
-  if (explicitCity) {
-    return {
-      city: { value: explicitCity, confidence: 'high', evidence: 'explicit_city' },
-      district: explicitDistricts,
-      location: explicitLocations,
-    };
-  }
-
-  const candidate = normalizeLocationCandidate(message);
-  if (candidate) {
-    const districtCity = resolveCityFromDistrict(candidate);
-    if (districtCity) {
-      return {
-        city: { value: districtCity, confidence: 'high', evidence: 'unique_district_alias' },
-        district: [normalizeDistrictForLookup(candidate)],
-        location: [],
-      };
-    }
-
-    const hotspotCity = resolveCityFromLocation(candidate);
-    if (hotspotCity) {
-      return {
-        city: { value: hotspotCity, confidence: 'high', evidence: 'hotspot_alias' },
-        district: [],
-        location: [candidate],
-      };
-    }
-  }
-
-  const inferredCity = resolveCityFromAny(explicitDistricts, explicitLocations);
-
-  return {
-    city: inferredCity,
-    district: explicitDistricts,
-    location: explicitLocations,
-  };
+  return { city, district: districts, location: locations };
 }
 
-function extractMunicipalityCompact(message: string): LocationSignals | null {
-  const normalized = message.replace(/\s+/g, '');
-  const firstSegment = normalized.split(/[，,。；;]/)[0] ?? normalized;
+/**
+ * 综合三轮扫描结果推导 city（带 evidence）。
+ *
+ * 优先级：白名单 city > district 反推 > location 反推 > 通用"XX市"正则兜底。
+ *
+ * evidence 细分：
+ *   - `municipality_compact`：直辖市开头（start=0）且紧接 district 命中（"上海浦东"）
+ *   - `explicit_city`：其他 city 白名单命中或通用"XX市"匹配
+ *   - `unique_district_alias`：从 district 反推（无歧义区名）
+ *   - `hotspot_alias`：从 location/商圈反推
+ */
+function resolveCity(
+  message: string,
+  cityScan: WhitelistScanResult,
+  districtScan: WhitelistScanResult,
+  locationScan: WhitelistScanResult,
+): CityFact | null {
+  const cityHit = cityScan.hits[0];
+  if (cityHit) {
+    const isMunicipality = (MUNICIPALITIES as readonly string[]).includes(cityHit.key);
+    const hasTightDistrict = districtScan.hits.some((d) => d.start === cityHit.end);
+    const evidence =
+      isMunicipality && cityHit.start === 0 && hasTightDistrict
+        ? 'municipality_compact'
+        : 'explicit_city';
+    return { value: cityHit.key, confidence: 'high', evidence };
+  }
 
-  for (const city of MUNICIPALITIES) {
-    if (!firstSegment.startsWith(city)) continue;
-
-    const remainder = firstSegment.slice(city.length);
-    if (!remainder) {
-      return {
-        city: { value: city, confidence: 'high', evidence: 'municipality_compact' },
-        district: [],
-        location: [],
-      };
-    }
-
-    const compactDistrict = remainder.match(/^([\u4e00-\u9fa5]{2,6})(区|县|镇)?$/);
-    if (compactDistrict) {
-      return {
-        city: { value: city, confidence: 'high', evidence: 'municipality_compact' },
-        district: [normalizeDistrictForLookup(compactDistrict[1])],
-        location: [],
-      };
-    }
-
-    const explicitDistrict = remainder.match(
-      /^([\u4e00-\u9fa5]{2,8}(?:区|县|镇|街道|新区|开发区))/,
-    );
-    if (explicitDistrict) {
-      return {
-        city: { value: city, confidence: 'high', evidence: 'municipality_compact' },
-        district: [normalizeDistrictForLookup(explicitDistrict[1])],
-        location: [],
-      };
-    }
-
+  const districtHit = districtScan.hits[0];
+  if (districtHit) {
     return {
-      city: { value: city, confidence: 'high', evidence: 'municipality_compact' },
-      district: [],
-      location: [],
+      value: DISTRICT_TO_CITY[districtHit.key],
+      confidence: 'high',
+      evidence: 'unique_district_alias',
     };
+  }
+
+  const locationHit = locationScan.hits[0];
+  if (locationHit) {
+    return {
+      value: LOCATION_TO_CITY[locationHit.key],
+      confidence: 'high',
+      evidence: 'hotspot_alias',
+    };
+  }
+
+  // 通用"XX市"兜底：白名单未列入的城市名（如新城上线但数据未同步）
+  const genericCityMatch = message.match(/([一-龥]{2,8})市/);
+  const generic = genericCityMatch?.[1] ? normalizeCityName(genericCityMatch[1]) : null;
+  if (generic) {
+    return { value: generic, confidence: 'high', evidence: 'explicit_city' };
   }
 
   return null;
 }
 
-function extractExplicitCity(message: string): string | null {
-  const normalized = message.replace(/\s+/g, '');
-  const firstSegment = normalized.split(/[，,。；;]/)[0] ?? normalized;
-
-  for (const city of SUPPORTED_CITY_PREFIXES) {
-    if (firstSegment.startsWith(city)) return city;
-  }
-
-  const municipalityMatch = message.match(/(北京|上海|天津|重庆)(?:市)?/);
-  if (municipalityMatch) return municipalityMatch[1];
-
-  const genericCityMatch = message.match(/([\u4e00-\u9fa5]{2,8})市/);
-  if (genericCityMatch?.[1]) return normalizeCityName(genericCityMatch[1]);
-
-  return null;
-}
-
-function extractExplicitDistricts(message: string): string[] {
-  const districts = Array.from(
-    message.matchAll(/([\u4e00-\u9fa5]{2,10}(?:区|县|镇|街道|新区|开发区))/g),
-  ).map((match) => normalizeExplicitDistrict(match[1]));
-
-  return Array.from(new Set(districts.filter(Boolean)));
-}
-
-function normalizeExplicitDistrict(candidate: string): string {
-  const withoutCityPrefix = candidate
+function normalizeRawDistrict(candidate: string): string {
+  // 兜底场景：候选词来自"白名单未覆盖区间"。理论上不含已识别的区名，但仍可能整段
+  // 被正则吃进来（如完全在白名单外的城市的区），所以复用旧版前缀剥离 + 后缀归一化
+  // 作最后一层保险。
+  const withoutPrefix = candidate
     .replace(/^[\u4e00-\u9fa5]{2,12}省/, '')
     .replace(/^[\u4e00-\u9fa5]{2,12}市/, '')
-    // 剥掉常见对话/位置前缀。否则贪婪正则 [一-龥]{2,10}(?:区|...) 会把
-    // "你好我在青浦区" 整段当成区名，归一化后变成"你好我在青浦"，永远查不到白名单。
     .replace(/^(?:你好|您好|哈喽|嗨)/, '')
     .replace(/^(?:我在|人在|住在|我住|目前在|现在在|今天在|平时在|在)/, '');
-  return normalizeDistrictForLookup(withoutCityPrefix);
+  return normalizeDistrictForLookup(withoutPrefix);
 }
 
-function extractExplicitLocations(message: string, districts: string[]): string[] {
+function extractNearbyLocations(message: string, districts: string[]): string[] {
   const nearbyMatch = message.match(
     /(?:我在|人在|在|住在)?([\u4e00-\u9fa5A-Za-z0-9]{2,20})(?:附近|旁边)/,
   );
@@ -719,24 +698,6 @@ function extractPositionShareLocations(message: string): string[] {
   if (address) locations.push(address);
 
   return Array.from(new Set(locations.filter(Boolean)));
-}
-
-function resolveCityFromAny(districts: string[], locations: string[]): CityFact | null {
-  const resolved = resolveCityFromGeoSignals(districts, locations);
-  return resolved
-    ? { value: resolved.value, confidence: 'high', evidence: resolved.evidence }
-    : null;
-}
-
-function normalizeLocationCandidate(message: string): string {
-  return message
-    .replace(/\s+/g, '')
-    .split(/[，,。；;]/)[0]
-    .replace(/^(我在|人在|在|住在)/, '')
-    .replace(/(有店招吗|有岗位吗|有店吗|有没有|有吗|招吗|在招吗|行吗|呢|呀|哈|吧)$/g, '')
-    .replace(/(附近|旁边|这边|那边|周边)$/g, '')
-    .replace(/(找工作|工作|岗位|门店|店招)$/g, '')
-    .trim();
 }
 
 function buildBrandCandidates(brandData: BrandItem[]): BrandCandidate[] {
