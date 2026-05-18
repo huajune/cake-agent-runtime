@@ -8,6 +8,44 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.7.2`
+**最近更新**: `2026-05-18`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #188 地理识别改成白名单驱动扫描，修复区+镇/区+街道贪婪误吞
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #188 地理识别改成白名单驱动扫描，修复区+镇/区+街道贪婪误吞
+
+### 优化调整
+- 无
+
+### 运维与流程
+- 无
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #188 `pnpm test` — 全套 **236 suites / 2890 cases 全绿**
+- PR #188 `pnpm run test -- tests/memory/high-confidence-facts.spec.ts` — 新增 22 个 case 全绿，含原 20 个 + 新增"浦东新区航头镇" / "徐汇区漕河泾街道" / "海淀区清河镇" / "浦东新区"最长前缀
+- PR #188 `pnpm run test -- tests/memory/session.service.spec.ts` — `backfillCityFromWhitelist` 相关 case 全绿
+- PR #188 `pnpm run lint` 无 warning
+- PR #188 `npx prettier --check` 通过
+- PR #188 `npx tsc --noEmit` 无错误
+<!-- release:pending:end -->
+
 ## [5.7.1] - 2026-05-15
 
 **来源分支**: `develop`

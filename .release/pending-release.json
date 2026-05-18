@@ -1,7 +1,34 @@
 {
   "baseVersion": "5.7.1",
-  "nextVersion": "5.7.1",
-  "updatedAt": "2026-05-15",
+  "nextVersion": "5.7.2",
+  "updatedAt": "2026-05-18",
   "sourceBranch": "develop",
-  "entries": []
+  "entries": [
+    {
+      "number": "188",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/188",
+      "title": "地理识别改成白名单驱动扫描，修复区+镇/区+街道贪婪误吞",
+      "author": "ArielZhu",
+      "mergedAt": "2026-05-18",
+      "summary": [
+        "地理识别改成白名单驱动扫描，修复区+镇/区+街道贪婪误吞"
+      ],
+      "features": [],
+      "fixes": [
+        "地理识别改成白名单驱动扫描，修复区+镇/区+街道贪婪误吞"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm test` — 全套 **236 suites / 2890 cases 全绿**",
+        "`pnpm run test -- tests/memory/high-confidence-facts.spec.ts` — 新增 22 个 case 全绿，含原 20 个 + 新增\"浦东新区航头镇\" / \"徐汇区漕河泾街道\" / \"海淀区清河镇\" / \"浦东新区\"最长前缀",
+        "`pnpm run test -- tests/memory/session.service.spec.ts` — `backfillCityFromWhitelist` 相关 case 全绿",
+        "`pnpm run lint` 无 warning",
+        "`npx prettier --check` 通过",
+        "`npx tsc --noEmit` 无错误"
+      ]
+    }
+  ]
 }
