@@ -9,7 +9,7 @@ import { normalizeCity } from '@biz/group-task/utils/city-normalize.util';
 import { RoomService } from '@channels/wecom/room/room.service';
 import { MemoryService } from '@memory/memory.service';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
-import { refreshMemberCountsFromEnterpriseList } from '@tools/duliday/enterprise-room-count.util';
+import { refreshMemberCountsFromEnterpriseList } from '@tools/utils/enterprise-room-count.util';
 
 const logger = new Logger('invite_to_group');
 
@@ -127,7 +127,7 @@ export function buildInviteToGroupTool(
             });
           }
 
-          const allGroups = await groupResolver.resolveGroups('兼职群');
+          const allGroups = await groupResolver.resolveGroups('兼职群', { forceRefresh: true });
           if (allGroups.length === 0) {
             logger.warn(`无兼职群数据 (user=${context.userId})`);
             return buildToolError({

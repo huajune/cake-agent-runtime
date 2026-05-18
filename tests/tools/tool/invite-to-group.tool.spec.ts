@@ -82,6 +82,7 @@ describe('buildInviteToGroupTool', () => {
     expect(result.city).toBe('上海');
     expect(result.selectionReason).toBe('only_option');
     expect(result.fallbackUsed).toBe(false);
+    expect(mockGroupResolver.resolveGroups).toHaveBeenCalledWith('兼职群', { forceRefresh: true });
     expect(result.citySnapshot).toEqual({
       totalGroups: 1,
       memberLimit: MEMBER_LIMIT,
@@ -289,6 +290,41 @@ describe('buildInviteToGroupTool', () => {
     expect(result.citySnapshot.byIndustry).toEqual([
       { industry: '餐饮', groupCount: 2, availableCount: 1 },
     ]);
+    expect(mockRoomService.addMemberEnterprise).toHaveBeenCalledWith(
+      expect.objectContaining({ roomWxid: 'room-2' }),
+    );
+  });
+
+  it('should skip a group whose refreshed enterprise count only matches by chatId', async () => {
+    mockGroupResolver.resolveGroups.mockResolvedValue([
+      makeGroup({
+        imRoomId: 'room-1',
+        chatId: 'chat-1',
+        groupName: '独立客&上海餐饮兼职①群',
+        industry: '餐饮',
+        memberCount: 50,
+      }),
+      makeGroup({
+        imRoomId: 'room-2',
+        chatId: 'chat-2',
+        groupName: '独立客&上海餐饮兼职②群',
+        industry: '餐饮',
+        memberCount: 80,
+      }),
+    ]);
+    mockRoomService.getEnterpriseGroupChatList.mockResolvedValue({
+      data: [
+        { chatId: 'chat-1', member_count: 275 },
+        { chatId: 'chat-2', member_count: 80 },
+      ],
+    });
+    mockRoomService.addMemberEnterprise.mockResolvedValue({ errcode: 0, errmsg: 'ok' });
+    mockMemoryService.saveInvitedGroup.mockResolvedValue(undefined);
+
+    const result = await executeTool({ city: '上海', industry: '餐饮' });
+
+    expect(result.success).toBe(true);
+    expect(result.groupName).toBe('独立客&上海餐饮兼职②群');
     expect(mockRoomService.addMemberEnterprise).toHaveBeenCalledWith(
       expect.objectContaining({ roomWxid: 'room-2' }),
     );

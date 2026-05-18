@@ -3,7 +3,7 @@ import {
   buildCustomerLabelList,
   type BuildCustomerLabelListParams,
   type BuildCustomerLabelListResult,
-} from '@tools/duliday/interview-booking-customer-label.builder';
+} from '@tools/duliday/booking/interview-booking-customer-label.builder';
 import type { SpongeInterviewSupplementDefinition } from '@sponge/sponge-job.util';
 import type { JobDetail } from '@sponge/sponge.types';
 import type { ToolBuildContext } from '@shared-types/tool.types';

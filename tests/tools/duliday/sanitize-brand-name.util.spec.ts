@@ -1,4 +1,4 @@
-import { sanitizeBrandName } from '@tools/duliday/sanitize-brand-name.util';
+import { sanitizeBrandName } from '@tools/utils/sanitize-brand-name.util';
 
 describe('sanitizeBrandName', () => {
   describe('passthrough', () => {

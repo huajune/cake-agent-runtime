@@ -1,7 +1,7 @@
 import {
   buildOnSiteScript,
   formatInterviewTimeForReply,
-} from '@tools/duliday/booking-reply-format.util';
+} from '@tools/duliday/booking/booking-reply-format.util';
 
 describe('formatInterviewTimeForReply', () => {
   it('formats YYYY-MM-DD HH:mm:ss to natural Chinese with weekday', () => {

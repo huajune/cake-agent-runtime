@@ -24,13 +24,13 @@ import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitme
 import { BookingService } from '@biz/message/services/booking.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
-import { API_BOOKING_REQUIRED_PAYLOAD_FIELDS } from '@tools/duliday/job-booking.contract';
-import { buildCustomerLabelList } from '@tools/duliday/interview-booking-customer-label.builder';
-import { runBookingGuards } from '@tools/duliday/booking-guards.util';
+import { API_BOOKING_REQUIRED_PAYLOAD_FIELDS } from '@tools/duliday/booking/job-booking.contract';
+import { buildCustomerLabelList } from '@tools/duliday/booking/interview-booking-customer-label.builder';
+import { runBookingGuards } from '@tools/duliday/booking/booking-guards.util';
 import {
   buildOnSiteScript,
   formatInterviewTimeForReply,
-} from '@tools/duliday/booking-reply-format.util';
+} from '@tools/duliday/booking/booking-reply-format.util';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 const logger = new Logger('duliday_interview_booking');

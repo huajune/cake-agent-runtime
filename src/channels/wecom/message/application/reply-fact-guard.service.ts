@@ -124,6 +124,7 @@ interface FactRule {
   ruleId: string;
   label: string;
   keywords: RegExp;
+  ignorePredicate?: (text: string, toolCalls: AgentToolCall[]) => boolean;
   requiredToolPredicate: (toolCalls: AgentToolCall[]) => boolean;
 }
 
@@ -143,6 +144,17 @@ interface FactRule {
 @Injectable()
 export class ReplyFactGuardService {
   private readonly logger = new Logger(ReplyFactGuardService.name);
+
+  /**
+   * "要不要/还是先拉你进群？" 属于征求候选人选择，不是声称本轮已经完成拉群。
+   * 这类问句不能要求本轮 invite_to_group 成功，否则会把正常的候选人确认流程打成误报。
+   */
+  private static isConditionalGroupInviteQuestion(text: string): boolean {
+    const normalized = text.replace(/\s+/g, '');
+    return /(?:要不要|需不需要|是否需要|你看是|还是(?:先)?|要不(?:我)?)[^。！？?；]{0,80}?(?:拉(?:你|您)[^。！？?；]{0,15}?群|进(?:咱们|我们|这个|这|这边)[^。！？?；]{0,15}?群|加(?:你|您)[^。！？?；]{0,15}?群|发(?:个|一个|条)?(?:入)?群邀请)[^。！？?；]{0,80}?(?:吗|呢|？|\?)/.test(
+      normalized,
+    );
+  }
 
   /** 本轮 invite_to_group 真正成功了（用于规则 requiredToolPredicate）。 */
   private static inviteCalledSuccessfully(toolCalls: AgentToolCall[]): boolean {
@@ -249,6 +261,7 @@ export class ReplyFactGuardService {
       // 但禁止跨标点，避免误吃到下一句的"群里通知你"上。
       keywords:
         /拉(?:你|您)[^。，,；！？\s]{0,15}?群|进(?:咱们|我们|这个|这|这边)[^。，,；！？\s]{0,15}?群|加(?:你|您)[^。，,；！？\s]{0,15}?群|发(?:个|一个|条)?(?:入)?群邀请/,
+      ignorePredicate: (text) => ReplyFactGuardService.isConditionalGroupInviteQuestion(text),
       requiredToolPredicate: (toolCalls) =>
         ReplyFactGuardService.inviteCalledSuccessfully(toolCalls),
     },
@@ -266,6 +279,8 @@ export class ReplyFactGuardService {
     toolCalls: AgentToolCall[] | undefined;
     chatId?: string;
     userId?: string;
+    traceId?: string;
+    contactName?: string;
     botImId?: string;
     botUserName?: string;
   }): { hit: boolean; contradictions: Array<{ ruleId: string; label: string }> } {
@@ -277,6 +292,7 @@ export class ReplyFactGuardService {
 
     for (const rule of this.rules) {
       if (!rule.keywords.test(text)) continue;
+      if (rule.ignorePredicate?.(text, toolCalls)) continue;
       if (rule.requiredToolPredicate(toolCalls)) continue;
       contradictions.push({ ruleId: rule.ruleId, label: rule.label });
     }
@@ -307,6 +323,8 @@ export class ReplyFactGuardService {
       .notifyContradiction({
         chatId: params.chatId,
         userId: params.userId,
+        traceId: params.traceId,
+        contactName: params.contactName,
         botImId: params.botImId,
         botUserName: params.botUserName,
         replyPreview: text.slice(0, 400),

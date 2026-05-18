@@ -1,4 +1,4 @@
-import type { InterviewWindow } from './job-policy-parser';
+import type { InterviewWindow } from '@tools/utils/job-policy-parser';
 
 export function normalizeHm(value?: string): string | null {
   if (!value) return null;

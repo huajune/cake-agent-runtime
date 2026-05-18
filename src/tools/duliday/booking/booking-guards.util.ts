@@ -18,16 +18,16 @@
  */
 import type { JobDetail } from '@sponge/sponge.types';
 import { isLikelyRealChineseName } from '@memory/facts/name-guard';
-import { buildJobPolicyAnalysis, InterviewWindow } from '@tools/duliday/job-policy-parser';
+import { buildJobPolicyAnalysis, InterviewWindow } from '@tools/utils/job-policy-parser';
 import {
   findSameDayCutoffViolation,
   getShanghaiWeekday,
   resolveBookingDeadlineDateTime,
-} from '@tools/duliday/interview-window.util';
+} from '@tools/duliday/booking/interview-window.util';
 import {
   findScreeningFailure,
   type ScreeningFailure,
-} from '@tools/duliday/supplement-label-classifier';
+} from '@tools/utils/supplement-label-classifier';
 import {
   buildToolError,
   TOOL_ERROR_TYPES,

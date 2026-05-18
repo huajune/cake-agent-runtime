@@ -348,39 +348,36 @@ booking 成功收尾话术同理：本轮已部分做完（`_onSiteScript` / `_c
 
 ### 4.2 目标结构
 
+保留 `duliday-job-list.tool.ts` 作为单一入口文件（不开新目录），所有内部职责拆到现有的平铺 `src/tools/duliday/` 下。命名沿用现有 `*.util.ts` 后缀风格，job-list 专用文件加 `job-list-` 前缀以与跨工具共享的 util 区分。
+
 ```
-src/tools/duliday-job-list/                       # 改成目录
-├── index.ts                                       # tool({...}) + execute，~200 行
-├── description.md                                 # DESCRIPTION 抽出，~400 行 prompt 文字
-├── input-schema.ts                                # zod schema，~50 行
+src/tools/
+├── duliday-job-list.tool.ts                       # 入口，~600 行（DESCRIPTION + input-schema + execute 编排）
 │
-├── search/                                        # L2 检索过滤排序
-│   ├── distance.ts                                # haversineDistance + sortByDistance
-│   ├── schedule-filter.ts                         # applyScheduleConstraint
-│   └── category-filter.ts                         # filterJobsByRequestedCategories + score
-│
-├── sanitize/                                      # L_NEW 主线 3 数据契约（核心新增）
-│   ├── job-for-agent.ts                           # sanitizeJobForAgent + JobForAgent 类型
-│   ├── store-name-clean.ts                        # 剥离内部编码
-│   ├── salary-structurize.ts                      # 三件套 + holidayBonus enum
-│   ├── hard-requirement-enumize.ts                # screeningChecks/customerLabel → enum
-│   ├── welfare-canonicalize.ts                    # 福利字段净化
-│   └── store-status-derive.ts                     # 营业中/无在招/未知
-│
-├── render/                                        # L_NEW 主线 4 模板化（核心新增）
-│   ├── render-candidate-message.ts                # 顶层 intro + cards + outro
-│   ├── render-job-card.ts                         # 单岗位卡片
-│   ├── render-no-job-fallback.ts                  # 无岗动作链文案
-│   └── render-multi-store-warning.ts              # 同品牌多门店强约束
-│
-├── brand-aggregation/                             # L6 同品牌门店逻辑
-│   ├── build-brand-nearest-stores.ts
-│   └── multi-store-warning-data.ts                # 结构化数据，render 层消费
-│
-└── helpers/                                       # L4-L5 通用工具
-    ├── text-clean.ts
-    ├── value-format.ts
-    └── inferences.ts
+└── duliday/                                        # 平铺目录
+    │  -- 已存在 --
+    ├── booking-guards.util.ts
+    ├── booking-reply-format.util.ts
+    ├── enterprise-room-count.util.ts
+    ├── format-shift-time.util.ts
+    ├── interview-booking-customer-label.builder.ts
+    ├── interview-window.util.ts
+    ├── job-booking.contract.ts
+    ├── job-policy-parser.ts
+    ├── sanitize-brand-name.util.ts
+    ├── schedule-semantic.util.ts
+    ├── supplement-label-classifier.ts
+    │
+    │  -- Phase 1.A 拆分新加 --
+    ├── job-list-search.util.ts                    # haversineDistance + sortByDistance + applyScheduleConstraint + filterByCategory + scoreAgainstCategories
+    ├── job-list-helpers.util.ts                   # 单字段格式化（cleanText / formatValueWithUnit / formatRange / compressWeekdays / stripCityPrefixFromStoreName ...）
+    ├── job-list-render-sections.util.ts           # 各 section 渲染（basic-info / salary / welfare / hiring-requirement / work-time / interview-process / decision-summary）
+    ├── job-list-render.util.ts                    # formatJobToMarkdown / formatJobToOneLine / formatJobsToMarkdown（编排各 section）
+    ├── job-list-brand-stores.util.ts              # 同品牌多门店聚合 + multi-store-warning
+    │
+    │  -- Phase 1.B 才加（不在 1.A 内） --
+    └── job-list-sanitize.util.ts                  # sanitizeJobForAgent + JobForAgent 类型 + storeName 清洗 + storeStatus 派生 + hardRequirements enum 化
+```
 
 src/tools/duliday/                                 # 跨工具共享 util 保持不动
 ├── booking-guards.util.ts

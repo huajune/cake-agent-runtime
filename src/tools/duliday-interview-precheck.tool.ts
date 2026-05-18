@@ -23,13 +23,13 @@ import {
   API_BOOKING_REQUIRED_PAYLOAD_FIELDS,
   API_BOOKING_USER_OPTIONAL_FIELDS,
   API_BOOKING_USER_REQUIRED_FIELDS,
-} from '@tools/duliday/job-booking.contract';
+} from '@tools/duliday/booking/job-booking.contract';
 import {
   buildJobPolicyAnalysis,
   InterviewWindow,
   JobPolicyAnalysis,
   normalizePolicyText,
-} from '@tools/duliday/job-policy-parser';
+} from '@tools/utils/job-policy-parser';
 import {
   compareTime,
   getShanghaiWeekday,
@@ -37,11 +37,11 @@ import {
   normalizeHm,
   resolveBookingDeadlineDateTime,
   shiftDate,
-} from '@tools/duliday/interview-window.util';
+} from '@tools/duliday/booking/interview-window.util';
 import {
   classifySupplementLabel,
   SupplementClassification,
-} from '@tools/duliday/supplement-label-classifier';
+} from '@tools/utils/supplement-label-classifier';
 import { isLikelyRealChineseName } from '@memory/facts/name-guard';
 
 const logger = new Logger('duliday_interview_precheck');

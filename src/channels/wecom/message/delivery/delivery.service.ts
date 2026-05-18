@@ -194,9 +194,7 @@ export class MessageDeliveryService implements OnModuleInit {
     const MAX_SEGMENTS_PER_REPLY = looksLikeBookingSuccess ? 6 : 4;
     const segments = MessageSplitter.split(content, MAX_SEGMENTS_PER_REPLY);
 
-    this.logger.log(
-      `[${contactName}] 消息包含双换行符或"～"，拆分为 ${segments.length} 条消息发送`,
-    );
+    this.logger.log(`[${contactName}] 消息包含双换行符，拆分为 ${segments.length} 条消息发送`);
     this.logger.debug(`[${contactName}] 原始消息: "${content}"`);
     this.logger.debug(`[${contactName}] 拆分结果: ${JSON.stringify(segments)}`);
 

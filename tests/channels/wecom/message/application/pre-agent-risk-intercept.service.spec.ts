@@ -79,6 +79,60 @@ describe('PreAgentRiskInterceptService', () => {
     expect(interventionService.dispatch).not.toHaveBeenCalled();
   });
 
+  it('skips visual-only image descriptions before keyword risk detection', async () => {
+    const imageMessage: EnterpriseMessageCallbackDto = {
+      ...message,
+      messageType: MessageType.IMAGE,
+      payload: { imageUrl: 'https://example.com/job-list.png' },
+    };
+
+    const result = await service.precheck({
+      messageData: imageMessage,
+      content: '[图片消息] 这是一张招聘平台职位列表截图，整体为垂直滚动列表',
+    });
+
+    expect(result).toEqual({ hit: false });
+    expect(detector.detect).not.toHaveBeenCalled();
+    expect(chatSessionService.getChatHistory).not.toHaveBeenCalled();
+    expect(interventionService.dispatch).not.toHaveBeenCalled();
+  });
+
+  it('filters image descriptions out of merged-message risk context', async () => {
+    chatSessionService.getChatHistory.mockResolvedValue([
+      {
+        role: 'user',
+        content: '[图片消息] 这是一张招聘平台职位列表截图，整体为垂直滚动列表',
+        timestamp: 1_700_000_000_000,
+      },
+      { role: 'user', content: '你好', timestamp: 1_700_000_001_000 },
+    ]);
+    detector.detect.mockReturnValue({ hit: false });
+    const imageMessage: EnterpriseMessageCallbackDto = {
+      ...message,
+      messageType: MessageType.IMAGE,
+      messageId: 'msg-image',
+      payload: { imageUrl: 'https://example.com/job-list.png' },
+    };
+    const textMessage: EnterpriseMessageCallbackDto = {
+      ...message,
+      messageId: 'msg-text',
+      payload: { text: '你好' },
+    };
+
+    await service.precheck({
+      messageData: textMessage,
+      content: '[图片消息] 这是一张招聘平台职位列表截图，整体为垂直滚动列表\n你好',
+      messages: [imageMessage, textMessage],
+    });
+
+    expect(detector.detect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        currentMessageContent: '你好',
+        recentMessages: [{ role: 'user', content: '你好', timestamp: 1_700_000_001_000 }],
+      }),
+    );
+  });
+
   it('dispatches conversation_risk intervention when detector hits', async () => {
     detector.detect.mockReturnValue({
       hit: true,

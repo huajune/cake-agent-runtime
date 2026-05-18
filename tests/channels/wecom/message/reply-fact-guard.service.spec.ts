@@ -54,6 +54,8 @@ describe('ReplyFactGuardService', () => {
       toolCalls: [],
       chatId: 'chat-1',
       userId: 'user-1',
+      traceId: 'trace-1',
+      contactName: '候选人A',
       botImId: 'bot-1',
       botUserName: 'mgr-bob',
     });
@@ -68,6 +70,8 @@ describe('ReplyFactGuardService', () => {
       expect.objectContaining({
         chatId: 'chat-1',
         userId: 'user-1',
+        traceId: 'trace-1',
+        contactName: '候选人A',
         botImId: 'bot-1',
         botUserName: 'mgr-bob',
         replyPreview: expect.stringContaining('群里人数满了'),
@@ -87,6 +91,20 @@ describe('ReplyFactGuardService', () => {
     });
     expect(result.hit).toBe(true);
     expect(result.contradictions[0].ruleId).toBe('group_promise_without_invite');
+  });
+
+  it('does NOT flag conditional invite questions before the candidate agrees', async () => {
+    const result = service.check({
+      replyText:
+        '附近这几家餐饮目前对学生身份卡得都比较紧。你看是让我继续帮你留意其他能接学生的门店，还是先拉你进群，后面有合适的我直接通知你?',
+      toolCalls: [
+        { toolName: 'duliday_job_list', args: {}, status: 'ok', result: { success: true } },
+      ],
+      chatId: 'chat-1',
+    });
+
+    expect(result.hit).toBe(false);
+    expect(replyFactGuardNotifier.notifyContradiction).not.toHaveBeenCalled();
   });
 
   it('does NOT flag future-tense follow-up "群里通知" when candidate is presumed already in group', async () => {
@@ -195,9 +213,7 @@ describe('ReplyFactGuardService', () => {
 
       const result = service.check({
         replyText,
-        toolCalls: [
-          makePrecheckCall(['姓名', '联系方式', '性别', '年龄', '学历', '过往工作经验']),
-        ],
+        toolCalls: [makePrecheckCall(['姓名', '联系方式', '性别', '年龄', '学历', '过往工作经验'])],
         chatId: 'chat-1',
       });
 
@@ -238,10 +254,9 @@ describe('ReplyFactGuardService', () => {
       const result = service.check({
         replyText,
         toolCalls: [
-          makePrecheckCall(
-            ['姓名', '联系电话', '年龄', '学历', '健康证情况'],
-            { starterFields: ['姓名', '联系电话', '年龄'] },
-          ),
+          makePrecheckCall(['姓名', '联系电话', '年龄', '学历', '健康证情况'], {
+            starterFields: ['姓名', '联系电话', '年龄'],
+          }),
         ],
         chatId: 'chat-1',
       });
@@ -277,10 +292,12 @@ describe('ReplyFactGuardService', () => {
   });
 
   describe('salary_fabrication (badcase aalxnd77 / zt98hgy3)', () => {
-    const makeJobListCall = (overrides: {
-      holidayType?: string;
-      overtimeType?: string;
-    } = {}): AgentToolCall => ({
+    const makeJobListCall = (
+      overrides: {
+        holidayType?: string;
+        overtimeType?: string;
+      } = {},
+    ): AgentToolCall => ({
       toolName: 'duliday_job_list',
       args: {},
       status: 'ok',
