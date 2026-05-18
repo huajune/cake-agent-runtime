@@ -159,4 +159,226 @@ describe('ReplyFactGuardService', () => {
     await flushAsync();
     // 不应抛
   });
+
+  describe('booking_form_field_mismatch (badcase 67o8y2ez)', () => {
+    const makePrecheckCall = (
+      requiredFields: string[],
+      overrides: { starterFields?: string[]; missingFields?: string[] } = {},
+    ): AgentToolCall => ({
+      toolName: 'duliday_interview_precheck',
+      args: {},
+      status: 'ok',
+      result: {
+        bookingChecklist: {
+          requiredFieldsToCollectNow: requiredFields,
+          missingFields: overrides.missingFields ?? requiredFields,
+          collectionStrategy: overrides.starterFields
+            ? { mode: 'progressive', starterFields: overrides.starterFields }
+            : { mode: 'all_at_once' },
+        },
+      },
+    });
+
+    it('flags missing field when reply form drops a precheck-required field', () => {
+      // 67o8y2ez 实景：precheck 要"过往工作经验"，Agent 模板把它换成"应聘门店/面试时间"
+      const replyText = [
+        '先将以下资料补充下发给我，我来帮你约面试：',
+        '',
+        '姓名：',
+        '联系方式：',
+        '性别：',
+        '年龄：',
+        '学历：',
+        '应聘门店：',
+        '面试时间：',
+      ].join('\n');
+
+      const result = service.check({
+        replyText,
+        toolCalls: [
+          makePrecheckCall(['姓名', '联系方式', '性别', '年龄', '学历', '过往工作经验']),
+        ],
+        chatId: 'chat-1',
+      });
+
+      expect(result.hit).toBe(true);
+      const mismatch = result.contradictions.find(
+        (c) => c.ruleId === 'booking_form_field_mismatch',
+      );
+      expect(mismatch).toBeDefined();
+      expect(mismatch?.label).toContain('过往工作经验');
+    });
+
+    it('passes when reply contains all precheck-required fields (extra fields are tolerated)', () => {
+      const replyText = [
+        '姓名：',
+        '电话：',
+        '年龄：',
+        '学历：',
+        '过往经历：',
+        '应聘门店：',
+        '面试时间：',
+      ].join('\n');
+
+      const result = service.check({
+        replyText,
+        toolCalls: [makePrecheckCall(['姓名', '联系电话', '年龄', '学历', '过往工作经验'])],
+        chatId: 'chat-1',
+      });
+
+      const mismatch = result.contradictions.find(
+        (c) => c.ruleId === 'booking_form_field_mismatch',
+      );
+      expect(mismatch).toBeUndefined();
+    });
+
+    it('uses starterFields when precheck has降级 progressive strategy', () => {
+      const replyText = ['姓名：', '电话：', '年龄：'].join('\n');
+
+      const result = service.check({
+        replyText,
+        toolCalls: [
+          makePrecheckCall(
+            ['姓名', '联系电话', '年龄', '学历', '健康证情况'],
+            { starterFields: ['姓名', '联系电话', '年龄'] },
+          ),
+        ],
+        chatId: 'chat-1',
+      });
+
+      // reply 收齐了 starterFields 三项就够，不该告警漏"学历/健康证"
+      const mismatch = result.contradictions.find(
+        (c) => c.ruleId === 'booking_form_field_mismatch',
+      );
+      expect(mismatch).toBeUndefined();
+    });
+
+    it('does not flag short replies without a form-like field block', () => {
+      // 单行说明 "时薪：24" 不该被当成收资模板
+      const result = service.check({
+        replyText: '基础时薪：24 元/时，做满 40 小时升 26。',
+        toolCalls: [makePrecheckCall(['姓名', '联系电话', '年龄'])],
+        chatId: 'chat-1',
+      });
+
+      const mismatch = result.contradictions.find(
+        (c) => c.ruleId === 'booking_form_field_mismatch',
+      );
+      expect(mismatch).toBeUndefined();
+    });
+
+    it('does not flag when precheck was not called this turn', () => {
+      // 没调 precheck 时不约束（用户可能复用之前轮次的字段）
+      const replyText = ['姓名：', '电话：', '年龄：', '学历：'].join('\n');
+      const result = service.check({ replyText, toolCalls: [], chatId: 'chat-1' });
+
+      expect(result.hit).toBe(false);
+    });
+  });
+
+  describe('salary_fabrication (badcase aalxnd77 / zt98hgy3)', () => {
+    const makeJobListCall = (overrides: {
+      holidayType?: string;
+      overtimeType?: string;
+    } = {}): AgentToolCall => ({
+      toolName: 'duliday_job_list',
+      args: {},
+      status: 'ok',
+      result: {
+        rawData: {
+          result: [
+            {
+              jobSalary: {
+                salaryScenarioList: [
+                  {
+                    basicSalary: { basicSalary: 24, basicSalaryUnit: '元/时' },
+                    holidaySalary: { holidaySalaryType: overrides.holidayType ?? '无薪资' },
+                    overtimeSalary: { overtimeSalaryType: overrides.overtimeType ?? '无薪资' },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    it('flags fabrication when reply claims 节假日双倍 but tool has no holiday salary', () => {
+      const result = service.check({
+        replyText: '这家薪资是 24 元/时，节假日双倍。',
+        toolCalls: [makeJobListCall()],
+        chatId: 'chat-1',
+      });
+
+      expect(result.hit).toBe(true);
+      const hit = result.contradictions.find((c) => c.ruleId === 'salary_fabrication');
+      expect(hit).toBeDefined();
+    });
+
+    it('flags fabrication when reply says 周末加薪 but tool has no holiday salary', () => {
+      const result = service.check({
+        replyText: '基础时薪 24 元，周末加薪。',
+        toolCalls: [makeJobListCall()],
+        chatId: 'chat-1',
+      });
+
+      const hit = result.contradictions.find((c) => c.ruleId === 'salary_fabrication');
+      expect(hit).toBeDefined();
+    });
+
+    it('flags fabrication when reply says 薪资面议', () => {
+      const result = service.check({
+        replyText: '这家店薪资面议，到店谈。',
+        toolCalls: [makeJobListCall()],
+        chatId: 'chat-1',
+      });
+
+      const hit = result.contradictions.find((c) => c.ruleId === 'salary_fabrication');
+      expect(hit).toBeDefined();
+    });
+
+    it('flags fabrication for 工资按表现浮动', () => {
+      const result = service.check({
+        replyText: '24 元起步，工资按表现浮动。',
+        toolCalls: [makeJobListCall()],
+        chatId: 'chat-1',
+      });
+
+      const hit = result.contradictions.find((c) => c.ruleId === 'salary_fabrication');
+      expect(hit).toBeDefined();
+    });
+
+    it('passes when reply truthfully describes holiday salary that exists in tool result', () => {
+      const result = service.check({
+        replyText: '节假日薪资按 2 倍算，平时 24 元/时。',
+        toolCalls: [makeJobListCall({ holidayType: '多倍薪资' })],
+        chatId: 'chat-1',
+      });
+
+      const hit = result.contradictions.find((c) => c.ruleId === 'salary_fabrication');
+      expect(hit).toBeUndefined();
+    });
+
+    it('does not flag when no duliday_job_list was called this turn (Agent may relay prior turn facts)', () => {
+      const result = service.check({
+        replyText: '这家薪资节假日不一样，是浮动的。',
+        toolCalls: [],
+        chatId: 'chat-1',
+      });
+
+      const hit = result.contradictions.find((c) => c.ruleId === 'salary_fabrication');
+      expect(hit).toBeUndefined();
+    });
+
+    it('does not flag plain salary descriptions without fabrication phrases', () => {
+      const result = service.check({
+        replyText: '这家时薪 24 元，做满 40 小时涨到 26，月结。',
+        toolCalls: [makeJobListCall()],
+        chatId: 'chat-1',
+      });
+
+      const hit = result.contradictions.find((c) => c.ruleId === 'salary_fabrication');
+      expect(hit).toBeUndefined();
+    });
+  });
 });

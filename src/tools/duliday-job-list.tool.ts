@@ -37,6 +37,7 @@ import {
   type ScheduleSemantic,
 } from '@tools/duliday/schedule-semantic.util';
 import { composeShiftTimeText } from '@tools/duliday/format-shift-time.util';
+import { sanitizeBrandName } from '@tools/duliday/sanitize-brand-name.util';
 
 // ==================== 常量 ====================
 
@@ -1251,6 +1252,21 @@ function formatJobToMarkdown(job: any, index: number, flags: ProgressiveDisclosu
   return md;
 }
 
+/**
+ * 推荐文案紧凑约束 hint：插在 markdown 头部告诉 LLM 单岗位最多 2 段
+ * （门店头 + 详情合并），避免按"每字段独立段"生成 5+ 条短消息刷屏（badcase cc1fb40s）。
+ *
+ * 此 hint 是 prompt 引导层，后端 delivery 层还有 MAX_SEGMENTS_PER_REPLY=4 硬合并兜底。
+ */
+const RECOMMENDATION_DENSITY_HINT = [
+  '> **岗位推荐文案紧凑约束**：把每个岗位转述给候选人时，',
+  '> 第 1 行=门店名+距离+薪资基础；第 2 行=班次+主要要求（健康证/年龄/性别合并一句）。',
+  '> **禁止**把"门店名 / 距离 / 薪资 / 阶梯 / 班次 / 年龄 / 健康证"逐字段拆成 5+ 段，会让候选人压力大（badcase cc1fb40s）；',
+  '> 同一回复全部岗位+开场+收尾合计 ≤ 4 段，约面收尾类回复才允许放宽到 6 段。',
+  '',
+  '',
+].join('\n');
+
 function formatJobsToMarkdown(
   jobs: any[],
   total: number,
@@ -1263,6 +1279,7 @@ function formatJobsToMarkdown(
   const end = Math.min(start + jobs.length - 1, total);
 
   let md = `# 在招岗位（共 ${total} 个）\n\n`;
+  md += RECOMMENDATION_DENSITY_HINT;
 
   // 同品牌多门店强约束置顶（badcase laybqxn4：同品牌两家被压缩成"有肯德基、肯德基"）
   const multiStoreSection = renderMultiStoreBrandWarning(brandGroups);
@@ -1966,13 +1983,15 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
           const multiStoreGroups = getMultiStoreBrandGroups(brandGroups);
 
           if (formatSet.has('markdown')) {
-            result.markdown = formatJobsToMarkdown(
-              jobs,
-              total,
-              DEFAULT_PAGE_NUM,
-              DEFAULT_PAGE_SIZE,
-              flags,
-              brandGroups,
+            result.markdown = sanitizeBrandName(
+              formatJobsToMarkdown(
+                jobs,
+                total,
+                DEFAULT_PAGE_NUM,
+                DEFAULT_PAGE_SIZE,
+                flags,
+                brandGroups,
+              ),
             );
           }
           if (formatSet.has('rawData')) {

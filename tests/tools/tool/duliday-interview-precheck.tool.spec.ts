@@ -581,7 +581,8 @@ describe('buildInterviewPrecheckTool', () => {
 
     expect(result.success).toBe(true);
     expect(result.bookingChecklist.missingFields).not.toContain('身份');
-    expect(result.bookingChecklist.templateText).toContain('身份：社会人士');
+    // 字段名带括号消歧（badcase bi6ewy2w：候选人误把"身份"理解成身份证号）
+    expect(result.bookingChecklist.templateText).toContain('身份（学生/社会人士）：社会人士');
     // 年龄 < 25 的情况下，identity 应仍然缺失 —— 对照用例见下
   });
 

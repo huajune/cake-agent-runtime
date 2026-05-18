@@ -139,6 +139,18 @@ describe('extractHighConfidenceFacts', () => {
     const lived = extractHighConfidenceFacts(['住在朝阳区'], brandData);
     expect(lived?.preferences.city?.value).toBe('北京');
     expect(lived?.preferences.district).toEqual(['朝阳']);
+
+    const nanjing = extractHighConfidenceFacts(['我在栖霞区'], brandData);
+    expect(nanjing?.preferences.city).toEqual({
+      value: '南京',
+      confidence: 'high',
+      evidence: 'unique_district_alias',
+    });
+    expect(nanjing?.preferences.district).toEqual(['栖霞']);
+
+    const liuhe = extractHighConfidenceFacts(['六合区'], brandData);
+    expect(liuhe?.preferences.city?.value).toBe('南京');
+    expect(liuhe?.preferences.district).toEqual(['六合']);
   });
 
   it('should resolve city from whitelist district even when message glues district + sub-town/street', () => {

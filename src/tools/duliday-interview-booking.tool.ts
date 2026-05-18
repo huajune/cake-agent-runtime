@@ -27,6 +27,10 @@ import { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import { API_BOOKING_REQUIRED_PAYLOAD_FIELDS } from '@tools/duliday/job-booking.contract';
 import { buildCustomerLabelList } from '@tools/duliday/interview-booking-customer-label.builder';
 import { runBookingGuards } from '@tools/duliday/booking-guards.util';
+import {
+  buildOnSiteScript,
+  formatInterviewTimeForReply,
+} from '@tools/duliday/booking-reply-format.util';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 const logger = new Logger('duliday_interview_booking');
@@ -575,6 +579,14 @@ export function buildInterviewBookingTool(
                 errorType: null,
                 requestInfo,
                 _outcome: '预约成功，可以告知候选人面试安排',
+                // 历史 badcase keciu6u6 / waugdoxa / 2za5e0ek：约面成功后 Agent 漏说具体时间点、漏教候选人到店脚本。
+                // 这两个字段是工具事实，Agent 必须照实复述（在 Agent prompt 的"## 硬规则"段有强约束）。
+                _confirmedInterviewTimeHuman: formatInterviewTimeForReply(interviewTime),
+                _onSiteScript: buildOnSiteScript({
+                  candidateName: name,
+                  jobName: resolvedJobName,
+                }),
+                _resultDisclaimer: '具体上岗时间和面试结果以门店现场告知为准',
               }
             : {
                 ...result,
