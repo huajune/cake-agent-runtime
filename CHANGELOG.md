@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.7.2] - 2026-05-18
 
-**预计版本**: `v5.7.2`
-**最近更新**: `2026-05-18`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #188 地理识别改成白名单驱动扫描，修复区+镇/区+街道贪婪误吞
@@ -44,7 +40,6 @@
 - PR #188 `pnpm run lint` 无 warning
 - PR #188 `npx prettier --check` 通过
 - PR #188 `npx tsc --noEmit` 无错误
-<!-- release:pending:end -->
 
 ## [5.7.1] - 2026-05-15
 
