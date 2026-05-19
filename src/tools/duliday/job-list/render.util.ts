@@ -55,6 +55,7 @@ import {
   extractWelfareFacts,
   renderWelfareFactsBanner,
 } from '@tools/duliday/job-list/welfare-facts.util';
+import { renderCandidateCardsBanner } from '@tools/duliday/job-list/candidate-card.util';
 
 /**
  * 渐进式数据返回开关——控制 markdown 输出包含哪些 section。
@@ -929,7 +930,11 @@ export function formatJobsToMarkdown(
 
   let md = `# 在招岗位（共 ${total} 个）\n\n`;
 
-  // 同品牌多门店强约束置顶（badcase laybqxn4：同品牌两家被压缩成"有肯德基、肯德基"）
+  // 推荐对话用模板（Phase 1.C）：每个岗位一张固定结构卡片（地址/班次/薪资/要求），
+  // 让 LLM 直接照念，杜绝"班次漏说每周天数、薪资偷懒、推荐缺地址"等 ④ 类 badcase。
+  md += renderCandidateCardsBanner(jobs);
+
+  // 同品牌多门店强约束置顶（同品牌两家被压缩成"有肯德基、肯德基"）
   const multiStoreSection = renderMultiStoreBrandWarning(brandGroups);
   if (multiStoreSection) {
     md += multiStoreSection;
