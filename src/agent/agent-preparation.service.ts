@@ -352,6 +352,7 @@ export class AgentPreparationService {
   }): ToolBuildContext {
     const { params, memory, normalizedMessages, entryStage, stageGoals, thresholds, turnState } =
       input;
+    const recentBrandPool = this.collectRecentBrandPool(memory.sessionMemory);
     return {
       userId: params.userId,
       corpId: params.corpId,
@@ -373,12 +374,40 @@ export class AgentPreparationService {
       profile: memory.longTerm.profile,
       sessionFacts: memory.sessionMemory?.facts ?? null,
       currentFocusJob: memory.sessionMemory?.currentFocusJob ?? null,
+      recentBrandPool,
       token: params.token,
       imContactId: params.imContactId,
       imRoomId: params.imRoomId,
       chatId: params.sessionId,
       apiType: params.apiType,
     };
+  }
+
+  /**
+   * 汇总本会话最近推荐过的品牌名（去重，按出现顺序保留）。
+   *
+   * 取 presentedJobs（真正发给候选人的岗位）+ lastCandidatePool（最近一次工具结果），
+   * 并把 currentFocusJob 的品牌也带上。供 duliday_job_list 做品牌别名同音回指匹配。
+   */
+  private collectRecentBrandPool(
+    session: Awaited<ReturnType<MemoryService['onTurnStart']>>['sessionMemory'],
+  ): string[] {
+    if (!session) return [];
+    const ordered = [
+      ...(session.presentedJobs ?? []),
+      ...(session.lastCandidatePool ?? []),
+      ...(session.currentFocusJob ? [session.currentFocusJob] : []),
+    ];
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const job of ordered) {
+      const brand = job?.brandName?.trim();
+      if (!brand) continue;
+      if (seen.has(brand)) continue;
+      seen.add(brand);
+      result.push(brand);
+    }
+    return result;
   }
 
   /**

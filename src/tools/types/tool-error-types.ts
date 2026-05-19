@@ -55,7 +55,13 @@ export const TOOL_ERROR_TYPES = {
   // ============================================================
   // geocode
   // ============================================================
+  /**
+   * @deprecated 自 [松绑 city 必填 + 引入多候选验证] 之后，
+   * geocode 工具不再因为 city 缺失硬报错——除非命中
+   * `GENERIC_AMBIGUOUS_SUFFIX` 黑名单。常量保留只为兼容历史 badcase 记录。
+   */
   GEOCODE_CITY_REQUIRED: 'geocode.city_required',
+  GEOCODE_AMBIGUOUS_SUFFIX: 'geocode.ambiguous_suffix',
   GEOCODE_UNRESOLVED_ADDRESS: 'geocode.unresolved_address',
   GEOCODE_FAILED: 'geocode.failed',
 
