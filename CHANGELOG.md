@@ -14,7 +14,7 @@
 **预计版本**: `v5.8.0`
 **最近更新**: `2026-05-19`
 **来源分支**: `develop`
-**累计 PR**: 2
+**累计 PR**: 3
 
 ### 更新摘要
 - PR #192 **Agent 品牌意向例外**：候选人只是接受 Agent 自推岗位时，不把该品牌当成候选人硬性品牌意向；硬条件不符时先去掉 `brandIdList` 并保留位置/年龄/身份/时间窗等硬约束重查，避免过早 `request_handoff`。
@@ -43,6 +43,18 @@
 - PR #195 **低风险**：所有改动都是新增字段 + 新增 banner，不改原有 markdown / API 入参；旧调用方读 raw 数据继续工作
 - PR #195 **中风险**：booking-guards 新增 gender + healthCert 硬拦，候选人 facts 与岗位约束冲突会拒 booking。已覆盖 11 例单测，且工具 description 给了清晰的 replyInstruction 让 LLM 转 handoff
 - PR #195 **零风险机械搬运**：precheck 拆分 8 文件 1745 行，全部走过 jest
+- PR #196 **Phase 3.1+3.2** 信号提取层：把候选人在更早轮次说过的"班次硬约束 / 未来日期硬约束"持久化到 sessionFacts，下游工具自动消费
+- PR #196 **Phase 2-lite.1** booking precheck 契约硬约束：把"必须先 precheck 且 ready_to_book"从 prompt 红线下沉到入参强校验
+- PR #196 **Phase 1.C.3-5** 文案模板化收尾：跨品牌硬过滤 + 缺位置/跨城市禁反问 description
+- PR #196 不引入全局 stage state machine（精度低、维护成本高）
+- PR #196 用现有 precheck 已经派生的 `nextAction` + `missingFieldsCount` 作为契约
+- PR #196 booking 工具入口硬校验候选人字段是否齐全 + 状态是否合法
+- PR #196 Q3 代他人报名（一条 badcase 不值得双主体模型）
+- PR #196 Q5 上下文承接（单 case 不值得动主 prompt）
+- PR #196 y7f3jqsh 静默 10 分钟（message scheduler 范围，本 PR 外）
+- PR #196 **中风险（要重点 review）**：booking 入参新增 prechecked 必填字段，是 breaking change 到工具契约。LLM 必须显式复读 precheck 的 nextAction + missingFieldsCount。在 description 已强调，但需观察生产数据看是否有 LLM 不填的情况
+- PR #196 **低风险**：sessionFacts 新增字段（schedule_constraint + available_after），都是 nullable + 默认 null，旧 Redis 数据兼容
+- PR #196 **低风险**：filterJobsToRequestedBrands 是 conservative 过滤（候选人没指定品牌时直通）
 
 ### 新功能
 - PR #192 **架构沉淀**：新增 `docs/architecture/agent-redesign-from-badcases.md`，把 63 条 badcase 收敛成槽位状态机、信号提取、工具数据契约、文案模板化 4 条后续主线。
@@ -52,6 +64,18 @@
 - PR #195 booking-guards 新增 hard-requirement gate 11 例
 - PR #195 **低风险**：所有改动都是新增字段 + 新增 banner，不改原有 markdown / API 入参；旧调用方读 raw 数据继续工作
 - PR #195 **中风险**：booking-guards 新增 gender + healthCert 硬拦，候选人 facts 与岗位约束冲突会拒 booking。已覆盖 11 例单测，且工具 description 给了清晰的 replyInstruction 让 LLM 转 handoff
+- PR #196 **Phase 3.1+3.2** 信号提取层：把候选人在更早轮次说过的"班次硬约束 / 未来日期硬约束"持久化到 sessionFacts，下游工具自动消费
+- PR #196 **Phase 2-lite.1** booking precheck 契约硬约束：把"必须先 precheck 且 ready_to_book"从 prompt 红线下沉到入参强校验
+- PR #196 **Phase 1.C.3-5** 文案模板化收尾：跨品牌硬过滤 + 缺位置/跨城市禁反问 description
+- PR #196 不引入全局 stage state machine（精度低、维护成本高）
+- PR #196 用现有 precheck 已经派生的 `nextAction` + `missingFieldsCount` 作为契约
+- PR #196 booking 工具入口硬校验候选人字段是否齐全 + 状态是否合法
+- PR #196 Q3 代他人报名（一条 badcase 不值得双主体模型）
+- PR #196 Q5 上下文承接（单 case 不值得动主 prompt）
+- PR #196 y7f3jqsh 静默 10 分钟（message scheduler 范围，本 PR 外）
+- PR #196 **中风险（要重点 review）**：booking 入参新增 prechecked 必填字段，是 breaking change 到工具契约。LLM 必须显式复读 precheck 的 nextAction + missingFieldsCount。在 description 已强调，但需观察生产数据看是否有 LLM 不填的情况
+- PR #196 **低风险**：sessionFacts 新增字段（schedule_constraint + available_after），都是 nullable + 默认 null，旧 Redis 数据兼容
+- PR #196 **低风险**：filterJobsToRequestedBrands 是 conservative 过滤（候选人没指定品牌时直通）
 
 ### 问题修复
 - PR #192 **Agent 品牌意向例外**：候选人只是接受 Agent 自推岗位时，不把该品牌当成候选人硬性品牌意向；硬条件不符时先去掉 `brandIdList` 并保留位置/年龄/身份/时间窗等硬约束重查，避免过早 `request_handoff`。
@@ -96,6 +120,10 @@
 - PR #195 重点 review `welfare-facts.util.ts` 的 ❌/✅/💵/❓ 符号语义是否对齐业务
 - PR #195 precheck 拆分的 7 个 util 路径变化是否影响其他调用方（grep `from '@tools/duliday-interview-precheck.tool'`）
 - PR #195 评估 booking-guards 新增 hard-requirement gate 是否会误伤合规候选人
+- PR #196 code review 3 个 commit（按 commit 顺序）
+- PR #196 重点 review Phase 2-lite.1 的 prechecked 入参契约是否合适
+- PR #196 评估 filterJobsToRequestedBrands 的子串匹配规则是否会有误伤
+- PR #196 看 available_after 的日期解析正则是否会误触发
 <!-- release:pending:end -->
 
 ## [5.7.2] - 2026-05-18
