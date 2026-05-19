@@ -59,6 +59,14 @@ export interface ToolBuildContext {
   sessionFacts?: EntityExtractionResult | null;
   /** 当前会话聚焦岗位快照（用于无参复用 jobId 等上下文） */
   currentFocusJob?: RecommendedJobSummary | null;
+  /**
+   * 本会话最近推荐过的品牌名集合（去重）。
+   *
+   * 来源：sessionMemory.presentedJobs ∪ sessionMemory.lastCandidatePool 的 brandName。
+   * 用途：duliday_job_list 在 brandAliasList 命中 0 时做同音/字形回指模糊匹配，
+   * 识别"刘姐妹"实指上轮推过的"成都你六姐"这类候选人口误，避免直接判 0 拉群。
+   */
+  recentBrandPool?: string[];
   /** 当前聊天会话的企业级 token（供需要主动发消息的工具使用） */
   token?: string;
   /** 当前聊天对象的系统 wxid（私聊时使用） */

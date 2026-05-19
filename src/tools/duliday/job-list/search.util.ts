@@ -78,6 +78,54 @@ export function scoreJobAgainstRequestedCategories(job: any, jobCategoryList: st
   return score;
 }
 
+/**
+ * 候选人输入的品牌别名里常见的"门店/分店"通用后缀。
+ * 匹配时优先剥掉这些后缀再做 forward substring，避免改成裸的双向 `includes` 把
+ * 含相同字根的无关 alias（如"汉堡不错"匹到"汉堡"）也算成命中。
+ */
+const ALIAS_GENERIC_SUFFIXES = ['店面', '分店', '总店', '门店', '专卖店', '旗舰店', '店'];
+
+function stripAliasGenericSuffix(alias: string): string {
+  for (const suffix of ALIAS_GENERIC_SUFFIXES) {
+    if (alias.length > suffix.length && alias.endsWith(suffix)) {
+      return alias.slice(0, -suffix.length);
+    }
+  }
+  return alias;
+}
+
+/**
+ * 候选人明确品牌意向（brandAliasList 非空）时，把结果硬过滤到该意向品牌。
+ *
+ * 历史 badcase bb012h5c：候选人找"大米先生"，结果回了"史伟莎销售/消杀员"等
+ * 不相关品牌，Agent 跨品牌推。原因是 sponge 后端在某些场景下会做模糊匹配返回
+ * 非精确品牌，或 LLM 把多个品牌一起塞了 brandAliasList。
+ *
+ * 匹配策略：对每个 alias 走两次 forward `brandName.includes(...)`：
+ * 1. 原始 alias
+ * 2. 剥掉常见门店后缀后的 alias（"肯德基店" → "肯德基"，让品牌 "肯德基" 也能命中）
+ *
+ * 故意**不**做裸的 `alias.includes(brandName)` 反向匹配——那会让 "汉堡不错" 这类
+ * 噪声 alias 误伤掉以 "汉堡" 开头的品牌（review feedback：reverse direction 在
+ * brandName 短时存在误伤风险）。
+ */
+export function filterJobsToRequestedBrands(jobs: any[], brandAliasList: string[]): any[] {
+  if (!Array.isArray(brandAliasList) || brandAliasList.length === 0) return jobs;
+  const aliases = brandAliasList
+    .map((alias) => normalizeKeyword(alias))
+    .filter((alias) => alias.length > 0);
+  if (aliases.length === 0) return jobs;
+  return jobs.filter((job) => {
+    const brandName = normalizeKeyword(job?.basicInfo?.brandName);
+    if (!brandName) return false;
+    return aliases.some((alias) => {
+      if (brandName.includes(alias)) return true;
+      const stripped = stripAliasGenericSuffix(alias);
+      return stripped !== alias && brandName.includes(stripped);
+    });
+  });
+}
+
 export function formatScheduleConstraintLabel(c: CandidateScheduleConstraint): string {
   const parts: string[] = [];
   if (c.onlyWeekends) parts.push('只周末');

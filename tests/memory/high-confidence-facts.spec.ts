@@ -57,6 +57,111 @@ describe('extractHighConfidenceFacts', () => {
     ).toBe('下班后');
   });
 
+  describe('schedule_constraint (Phase 3.1 structured)', () => {
+    it('extracts onlyWeekends from "只能周末上班"', () => {
+      const constraint = extractHighConfidenceFacts(
+        ['我只能周末上班'],
+        brandData,
+      )?.preferences.schedule_constraint;
+      expect(constraint?.onlyWeekends).toBe(true);
+      expect(constraint?.maxDaysPerWeek).toBeNull();
+    });
+
+    it('extracts onlyEvenings from "只做晚班"', () => {
+      const constraint = extractHighConfidenceFacts(
+        ['我只做晚班'],
+        brandData,
+      )?.preferences.schedule_constraint;
+      expect(constraint?.onlyEvenings).toBe(true);
+    });
+
+    it('extracts maxDaysPerWeek=1 from "做一休一"', () => {
+      const constraint = extractHighConfidenceFacts(
+        ['我只能做一休一'],
+        brandData,
+      )?.preferences.schedule_constraint;
+      expect(constraint?.maxDaysPerWeek).toBe(1);
+    });
+
+    it('extracts maxDaysPerWeek=2 from "每周最多两天"', () => {
+      const constraint = extractHighConfidenceFacts(
+        ['每周最多也就能干两天'],
+        brandData,
+      )?.preferences.schedule_constraint;
+      expect(constraint?.maxDaysPerWeek).toBe(2);
+    });
+
+    it('extracts maxDaysPerWeek=2 from "做二休一"', () => {
+      const constraint = extractHighConfidenceFacts(
+        ['可以做二休一'],
+        brandData,
+      )?.preferences.schedule_constraint;
+      expect(constraint?.maxDaysPerWeek).toBe(2);
+    });
+
+    it('combines multiple constraints in one message', () => {
+      const constraint = extractHighConfidenceFacts(
+        ['我只能周末做晚班，每周最多两天'],
+        brandData,
+      )?.preferences.schedule_constraint;
+      expect(constraint?.onlyWeekends).toBe(true);
+      expect(constraint?.onlyEvenings).toBe(true);
+      expect(constraint?.maxDaysPerWeek).toBe(2);
+    });
+
+    it('returns null when no constraint signal', () => {
+      const constraint = extractHighConfidenceFacts(
+        ['你好我想看下兼职'],
+        brandData,
+      )?.preferences.schedule_constraint;
+      expect(constraint ?? null).toBeNull();
+    });
+  });
+
+  describe('available_after (Phase 3.2 future date constraint)', () => {
+    beforeAll(() => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-04-20T10:00:00+08:00'));
+    });
+    afterAll(() => {
+      jest.useRealTimers();
+    });
+
+    it('extracts明确日期"5月1日之后" → next future date', () => {
+      const aa = extractHighConfidenceFacts(
+        ['5月1日之后才能来面试'],
+        brandData,
+      )?.preferences.available_after;
+      expect(aa?.date).toBe('2026-05-01');
+      expect(aa?.raw).toContain('5月1日');
+    });
+
+    it('extracts full date "2026-05-15 之后"', () => {
+      const aa = extractHighConfidenceFacts(
+        ['2026-05-15之后再面试吧'],
+        brandData,
+      )?.preferences.available_after;
+      expect(aa?.date).toBe('2026-05-15');
+    });
+
+    it('rolls over to next year when month-day already passed', () => {
+      const aa = extractHighConfidenceFacts(
+        ['3月10日之后联系'],
+        brandData,
+      )?.preferences.available_after;
+      // 当前 2026-04-20，3月10日已过 → 2027-03-10
+      expect(aa?.date).toBe('2027-03-10');
+    });
+
+    it('does NOT extract fuzzy wording like "月底/等开学/下周再说"', () => {
+      expect(
+        extractHighConfidenceFacts(['等开学再说'], brandData)?.preferences.available_after,
+      ).toBeUndefined();
+      expect(
+        extractHighConfidenceFacts(['月底再面试'], brandData)?.preferences.available_after,
+      ).toBeUndefined();
+    });
+  });
+
   it('should distinguish health certificate type from missing certificate wording', () => {
     expect(
       extractHighConfidenceFacts(['我有食品类健康证'], brandData)?.interview_info

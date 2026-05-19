@@ -273,4 +273,176 @@ describe('GeocodingService', () => {
       expect(result).toBeNull();
     });
   });
+
+  describe('searchCandidates', () => {
+    const makePoi = (overrides: Record<string, unknown> = {}) => ({
+      name: '默认 POI',
+      pname: '上海市',
+      cityname: '上海市',
+      adname: '嘉定区',
+      address: '马陆镇',
+      business_area: '马陆',
+      location: '121.27,31.32',
+      ...overrides,
+    });
+
+    it('cache hit 时直接返回，不调用高德', async () => {
+      const cached = [
+        {
+          formattedAddress: '上海市嘉定区马陆镇',
+          province: '上海市',
+          city: '上海市',
+          district: '嘉定区',
+          township: '马陆',
+          longitude: 121.27,
+          latitude: 31.32,
+          poiName: '马陆镇',
+        },
+      ];
+      redisService.get.mockResolvedValue(cached);
+
+      const result = await service.searchCandidates('马陆');
+
+      expect(result).toEqual(cached);
+      expect(redisService.get).toHaveBeenCalledWith('geocode:candidates:v1:马陆');
+    });
+
+    it('未传 city 时不设 citylimit，让高德全国搜索', async () => {
+      redisService.get.mockResolvedValue(null);
+      global.fetch = jest.fn().mockResolvedValue(mockPlaceResponse([makePoi()]));
+
+      const candidates = await service.searchCandidates('马陆');
+
+      const url = (global.fetch as jest.Mock).mock.calls[0][0] as string;
+      expect(url).toContain('/v3/place/text');
+      expect(url).not.toContain('citylimit');
+      expect(url).not.toContain('city=');
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0].poiName).toBe('默认 POI');
+    });
+
+    it('传 city 时启用 citylimit', async () => {
+      redisService.get.mockResolvedValue(null);
+      global.fetch = jest.fn().mockResolvedValue(mockPlaceResponse([makePoi()]));
+
+      await service.searchCandidates('马陆', '上海');
+
+      const url = (global.fetch as jest.Mock).mock.calls[0][0] as string;
+      expect(url).toContain('citylimit=true');
+      expect(url).toContain('city=%E4%B8%8A%E6%B5%B7'); // 上海 URL 编码
+    });
+
+    it('多 POI 返回 → 全部映射为 GeocodeCandidate 并写缓存', async () => {
+      redisService.get.mockResolvedValue(null);
+      global.fetch = jest.fn().mockResolvedValue(
+        mockPlaceResponse([
+          makePoi({ name: '解放路上海店', cityname: '上海市' }),
+          makePoi({ name: '解放路南京店', cityname: '南京市', pname: '江苏省' }),
+        ]),
+      );
+
+      const candidates = await service.searchCandidates('解放路');
+
+      expect(candidates).toHaveLength(2);
+      expect(candidates.map((c) => c.city)).toEqual(['上海市', '南京市']);
+      expect(redisService.setex).toHaveBeenCalledWith(
+        'geocode:candidates:v1:解放路',
+        30 * 24 * 3600,
+        expect.any(Array),
+      );
+    });
+
+    it('location 字段非法的 POI 会被跳过', async () => {
+      redisService.get.mockResolvedValue(null);
+      global.fetch = jest.fn().mockResolvedValue(
+        mockPlaceResponse([
+          makePoi({ name: '好数据' }),
+          makePoi({ name: '坏数据', location: 'not-a-coord' }),
+          makePoi({ name: '无坐标', location: '' }),
+        ]),
+      );
+
+      const candidates = await service.searchCandidates('测试');
+
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0].poiName).toBe('好数据');
+    });
+
+    it('limit 参数透传给高德 offset', async () => {
+      redisService.get.mockResolvedValue(null);
+      global.fetch = jest.fn().mockResolvedValue(mockPlaceResponse([]));
+
+      await service.searchCandidates('马陆', null, 8);
+
+      const url = (global.fetch as jest.Mock).mock.calls[0][0] as string;
+      expect(url).toContain('offset=8');
+    });
+
+    it('limit 超过 20 时被截断到 20', async () => {
+      redisService.get.mockResolvedValue(null);
+      global.fetch = jest.fn().mockResolvedValue(mockPlaceResponse([]));
+
+      await service.searchCandidates('马陆', null, 100);
+
+      const url = (global.fetch as jest.Mock).mock.calls[0][0] as string;
+      expect(url).toContain('offset=20');
+    });
+
+    it('limit 小于 1 时被提升到 1', async () => {
+      redisService.get.mockResolvedValue(null);
+      global.fetch = jest.fn().mockResolvedValue(mockPlaceResponse([]));
+
+      await service.searchCandidates('马陆', null, 0);
+
+      const url = (global.fetch as jest.Mock).mock.calls[0][0] as string;
+      expect(url).toContain('offset=1');
+    });
+
+    it('高德返回空 → 返回空数组且不写缓存', async () => {
+      redisService.get.mockResolvedValue(null);
+      global.fetch = jest.fn().mockResolvedValue(mockPlaceResponse([]));
+
+      const candidates = await service.searchCandidates('不存在');
+
+      expect(candidates).toEqual([]);
+      expect(redisService.setex).not.toHaveBeenCalled();
+    });
+
+    it('AMAP_API_KEY 缺失 → 直接返回空数组', async () => {
+      const noKeyConfigService = {
+        get: jest.fn().mockReturnValue(''),
+      };
+
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          GeocodingService,
+          { provide: ConfigService, useValue: noKeyConfigService },
+          { provide: RedisService, useValue: mockRedisService },
+        ],
+      }).compile();
+
+      const serviceNoKey = module.get<GeocodingService>(GeocodingService);
+      const candidates = await serviceNoKey.searchCandidates('马陆');
+
+      expect(candidates).toEqual([]);
+    });
+
+    it('HTTP 失败 → 返回空数组（不抛错）', async () => {
+      redisService.get.mockResolvedValue(null);
+      global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 500 });
+
+      const candidates = await service.searchCandidates('马陆');
+
+      expect(candidates).toEqual([]);
+    });
+
+    it('fetch 抛错 → 返回空数组', async () => {
+      redisService.get.mockResolvedValue(null);
+      global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
+
+      const candidates = await service.searchCandidates('马陆');
+
+      expect(candidates).toEqual([]);
+    });
+  });
 });

@@ -745,33 +745,6 @@ describe('buildJobListTool', () => {
       ]);
     });
 
-    it('includes recommendation density hint at top of markdown (H.3 / badcase cc1fb40s)', async () => {
-      mockSpongeService.fetchJobs.mockResolvedValue({
-        jobs: [
-          makeKfcJob(1, '绿地缤纷城店', 2.3, 17),
-          makeKfcJob(2, '日月光店', 5.1, 17),
-        ],
-        total: 2,
-      });
-
-      const result = await executeTool(mockContext, {
-        ...defaultInput,
-        location: { latitude: 31.21, longitude: 121.29 },
-      });
-
-      const md = result.markdown as string;
-      expect(md).toContain('岗位推荐文案紧凑约束');
-      expect(md).toContain('禁止');
-      expect(md).toContain('cc1fb40s');
-      // hint 必须出现在岗位标题之后、同品牌多门店警告之前/同位（即位于文档头部）
-      const headerIdx = md.indexOf('# 在招岗位');
-      const hintIdx = md.indexOf('岗位推荐文案紧凑约束');
-      const warningIdx = md.indexOf('⚠️ 同品牌多门店');
-      expect(headerIdx).toBeGreaterThanOrEqual(0);
-      expect(hintIdx).toBeGreaterThan(headerIdx);
-      expect(warningIdx).toBeGreaterThan(hintIdx);
-    });
-
     it('does not emit warning section when each brand has only 1 store', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
         jobs: [
@@ -799,6 +772,90 @@ describe('buildJobListTool', () => {
       const md = result.markdown as string;
       expect(md).not.toContain('⚠️ 同品牌多门店');
       expect(result.queryMeta.multiStoreSameBrandGroups).toBeNull();
+    });
+  });
+
+  describe('brand alias 同音回指 (badcase batch_6a0c074c536c9654029b6930)', () => {
+    it('high confidence 单一匹配：候选人说"刘姐妹"实指上轮"成都你六姐"，工具回指并指示直接沿用', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+
+      const ctxWithRecentBrands: ToolBuildContext = {
+        ...mockContext,
+        recentBrandPool: ['成都你六姐', '奥乐齐'],
+      };
+
+      const result = await executeTool(ctxWithRecentBrands, {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        brandAliasList: ['刘姐妹'],
+      });
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+      expect(result._outcome).toContain('已自动回指');
+      expect(result.aliasFuzzyMatch).not.toBeNull();
+      expect(result.aliasFuzzyMatch.confidence).toBe('high');
+      expect(result.aliasFuzzyMatch.suggestions[0].brandName).toBe('成都你六姐');
+      expect(result.aliasFuzzyMatch.suggestions[0].sharedChars).toEqual(['姐']);
+      expect(result._replyInstruction).toContain('直接按该品牌继续推进');
+      // 高置信分支必须明确禁止 invite_to_group 拉群（语义检查："不要...invite_to_group"）
+      expect(result._replyInstruction).toMatch(/不要[^。]*invite_to_group/);
+      expect(result._replyInstruction).toContain('成都你六姐');
+    });
+
+    it('low confidence 多个相近匹配（分数完全相同）：要求反问澄清', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+
+      // "肯德" 同时对"肯德基"和"肯德乐"得满分（共享[肯,德]+共享拼音[ken,de]）
+      // → 两个候选 score 都=1，margin=0 < 0.15 → low confidence
+      const ctxWithAmbiguousBrands: ToolBuildContext = {
+        ...mockContext,
+        recentBrandPool: ['肯德基', '肯德乐'],
+      };
+
+      const result = await executeTool(ctxWithAmbiguousBrands, {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        brandAliasList: ['肯德'],
+      });
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+      expect(result.aliasFuzzyMatch).not.toBeNull();
+      expect(result.aliasFuzzyMatch.confidence).toBe('low');
+      expect(result.aliasFuzzyMatch.suggestions).toHaveLength(2);
+      expect(result._replyInstruction).toContain('反问澄清');
+      expect(result._replyInstruction).not.toContain('直接按该品牌继续推进');
+    });
+
+    it('no fuzzy match：候选人输入与最近推荐品牌完全无关，回退到 noMatchScript 拉群', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+
+      const ctxWithUnrelatedBrand: ToolBuildContext = {
+        ...mockContext,
+        recentBrandPool: ['奥乐齐'],
+      };
+
+      const result = await executeTool(ctxWithUnrelatedBrand, {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        brandAliasList: ['真功夫'], // 与"奥乐齐"无任何同音/共享字
+      });
+
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.JOB_LIST_NO_RESULTS);
+      expect(result.aliasFuzzyMatch).toBeNull();
+      expect(result._replyInstruction).toContain('invite_to_group');
+    });
+
+    it('no recentBrandPool：未传品牌池时不触发模糊匹配，照旧走 noMatchScript', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [], total: 0 });
+
+      const result = await executeTool(mockContext, {
+        ...defaultInput,
+        cityNameList: ['上海'],
+        brandAliasList: ['刘姐妹'],
+      });
+
+      expect(result.aliasFuzzyMatch).toBeNull();
+      expect(result._replyInstruction).toContain('invite_to_group');
     });
   });
 });

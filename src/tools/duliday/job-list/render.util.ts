@@ -8,7 +8,6 @@
  *   各业务 section 的 markdown 投影
  * - formatJobToOneLine / formatJobToMarkdown / formatJobsToMarkdown：单/多岗位编排
  * - inferStudentRequirement：商业语义推断（学生身份要求）
- * - RECOMMENDATION_DENSITY_HINT：推荐文案紧凑约束 hint
  *
  * 依赖：
  * - helpers (job-list-helpers.util)：单字段格式化 + 空值判断
@@ -38,12 +37,25 @@ import {
   isNonEmpty,
   pushField,
   pushLongText,
-  stripCityPrefixFromStoreName,
 } from '@tools/duliday/job-list/helpers.util';
 import {
   renderMultiStoreBrandWarning,
   type BrandNearestStoresGroup,
 } from '@tools/duliday/job-list/brand-stores.util';
+import { normalizeStoreNameForAgent } from '@tools/duliday/job-list/sanitize.util';
+import {
+  extractHardRequirements,
+  type HardRequirements,
+} from '@tools/duliday/job-list/hard-requirements.util';
+import {
+  extractSalaryFacts,
+  renderSalaryFactsBanner,
+} from '@tools/duliday/job-list/salary-facts.util';
+import {
+  extractWelfareFacts,
+  renderWelfareFactsBanner,
+} from '@tools/duliday/job-list/welfare-facts.util';
+import { renderCandidateCardsBanner } from '@tools/duliday/job-list/candidate-card.util';
 
 /**
  * 渐进式数据返回开关——控制 markdown 输出包含哪些 section。
@@ -120,6 +132,59 @@ function formatInterviewDecisionSummary(
   return lines.length > 0 ? '### 约面重点\n' + lines.join('\n') + '\n\n' : '';
 }
 
+const GENDER_LABEL: Record<HardRequirements['gender'], string | null> = {
+  male: '仅限男',
+  female: '仅限女',
+  any: null,
+  unspecified: null,
+};
+
+const HEALTH_CERT_LABEL: Record<HardRequirements['healthCert'], string | null> = {
+  required_before_interview: '面试前必须持有健康证（无证不可到店）',
+  required_before_onboard: '入职前必须办妥健康证（面试时可没有）',
+  not_required: '岗位不需要健康证',
+  unspecified: null,
+};
+
+/**
+ * 顶部硬性约束 banner：把派生 enum（gender / household / healthCert）渲染成
+ * 醒目的"先看这里"段，紧跟在岗位标题之后。
+ *
+ * 设计要点：
+ * - 只有任一字段非 unspecified/any 时才输出；岗位真没要求时不污染上下文。
+ * - 用 "> ⚠️ 候选人硬性约束" 引用块包裹，让 LLM 容易识别这是不可妥协的硬规则。
+ * - 文案直接告诉 LLM 该如何处理（询问 / 拦 booking），避免它把硬约束当软建议处理。
+ */
+function renderHardRequirementsBanner(hr: HardRequirements): string {
+  const lines: string[] = [];
+
+  const genderLabel = GENDER_LABEL[hr.gender];
+  if (genderLabel) {
+    lines.push(`- **性别**：${genderLabel}（与候选人性别冲突则不得 booking）`);
+  }
+
+  if (hr.household) {
+    const verb = hr.household.mode === 'include' ? '仅接受' : '不接受';
+    lines.push(
+      `- **户籍**：${verb} ${hr.household.regions.join('/')}（不掌握候选人户籍时先确认再 booking）`,
+    );
+  }
+
+  const healthCertLabel = HEALTH_CERT_LABEL[hr.healthCert];
+  if (healthCertLabel) {
+    lines.push(`- **健康证**：${healthCertLabel}`);
+  }
+
+  if (lines.length === 0) return '';
+
+  return [
+    '> ⚠️ **候选人硬性约束**（不可妥协；与候选人 fact 冲突时不得 booking）',
+    ...lines.map((l) => `> ${l}`),
+    '',
+    '',
+  ].join('\n');
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // ==================== 模块 1：基本信息 ====================
@@ -145,7 +210,7 @@ function renderBasicInfoSection(bi: any, distanceKm: number | null | undefined):
   if (project) lines.push(`- **项目**: ${project}`);
 
   const store = bi.storeInfo || {};
-  const displayStoreName = stripCityPrefixFromStoreName(store.storeName, store.storeCityName);
+  const displayStoreName = normalizeStoreNameForAgent(store.storeName, store.storeCityName);
   const storeLine = formatNameWithId(displayStoreName, store.storeId);
   if (storeLine) lines.push(`- **门店**: ${storeLine}`);
   pushField(lines, '城市', store.storeCityName);
@@ -312,7 +377,11 @@ function renderSalarySection(salary: any): string {
   if (probation) blocks.push(probation);
 
   if (blocks.length === 0) return '';
-  return '### 薪资信息\n' + blocks.join('') + '\n';
+  // 薪资速览 banner 放在 section 头部：先告诉 LLM 哪些字段有 / 哪些没有，
+  // 让它在 reply 时只引用"有"的部分，杜绝编造"节假日双倍/周末加薪"等不存在字段。
+  const facts = extractSalaryFacts(salary);
+  const factsBanner = renderSalaryFactsBanner(facts);
+  return '### 薪资信息\n' + factsBanner + blocks.join('') + '\n';
 }
 
 // ==================== 模块 3：福利信息 ====================
@@ -369,7 +438,11 @@ function renderWelfareSection(welfare: any): string {
 
   pushLongText(lines, '备注', welfare.memo);
 
-  return lines.length ? '### 福利信息\n' + lines.join('\n') + '\n\n' : '';
+  if (lines.length === 0) return '';
+  // 福利速览 banner 放在 section 头部：把"员工自理/不购买"这类易被压缩成"有"的
+  // 字面值显式标 ❌ 无；让 LLM 在 reply 时只引用 ✅/💵 项，不编造工具未返回的福利。
+  const factsBanner = renderWelfareFactsBanner(extractWelfareFacts(welfare));
+  return '### 福利信息\n' + factsBanner + lines.join('\n') + '\n\n';
 }
 
 // ==================== 模块 4：招聘要求 ====================
@@ -781,7 +854,7 @@ function formatJobToOneLine(job: any, index: number): string {
   const bi = job.basicInfo;
   const store = bi.storeInfo;
   const parts = [`${index + 1}. **${bi.brandName || ''} - ${bi.jobName || '未命名'}**`];
-  const displayStoreName = stripCityPrefixFromStoreName(store?.storeName, store?.storeCityName);
+  const displayStoreName = normalizeStoreNameForAgent(store?.storeName, store?.storeCityName);
   if (displayStoreName) parts.push(displayStoreName);
   if (store?.storeAddress) parts.push(store.storeAddress);
   if (job._distanceKm != null) parts.push(`距离 ${job._distanceKm.toFixed(1)}km`);
@@ -807,6 +880,10 @@ function formatJobToMarkdown(job: any, index: number, flags: ProgressiveDisclosu
     titleParts.push(`(${bi.jobNickName})`);
   }
   let md = `## ${index + 1}. ${titleParts.join(' ')}\n\n`;
+
+  // 硬性约束 banner 紧跟标题：性别 / 户籍 / 健康证 三类高频硬约束，
+  // 任一非 unspecified/any 时才输出。让 LLM 一眼看到不可妥协的硬规则。
+  md += renderHardRequirementsBanner(extractHardRequirements(job, policy));
 
   // 候选人需要 workTime 时（默认开）才注入归一化班次（含早/中/晚班/午高峰/星期约束等含义）；
   // 模型显式关 includeWorkTime 表示本轮在做不涉及班次的追问，无需归一化班次。
@@ -840,21 +917,6 @@ function formatJobToMarkdown(job: any, index: number, flags: ProgressiveDisclosu
   return md;
 }
 
-/**
- * 推荐文案紧凑约束 hint：插在 markdown 头部告诉 LLM 单岗位最多 2 段
- * （门店头 + 详情合并），避免按"每字段独立段"生成 5+ 条短消息刷屏（badcase cc1fb40s）。
- *
- * 此 hint 是 prompt 引导层，后端 delivery 层还有 MAX_SEGMENTS_PER_REPLY=4 硬合并兜底。
- */
-const RECOMMENDATION_DENSITY_HINT = [
-  '> **岗位推荐文案紧凑约束**：把每个岗位转述给候选人时，',
-  '> 第 1 行=门店名+距离+薪资基础；第 2 行=班次+主要要求（健康证/年龄/性别合并一句）。',
-  '> **禁止**把"门店名 / 距离 / 薪资 / 阶梯 / 班次 / 年龄 / 健康证"逐字段拆成 5+ 段，会让候选人压力大（badcase cc1fb40s）；',
-  '> 同一回复全部岗位+开场+收尾合计 ≤ 4 段，约面收尾类回复才允许放宽到 6 段。',
-  '',
-  '',
-].join('\n');
-
 export function formatJobsToMarkdown(
   jobs: any[],
   total: number,
@@ -867,9 +929,12 @@ export function formatJobsToMarkdown(
   const end = Math.min(start + jobs.length - 1, total);
 
   let md = `# 在招岗位（共 ${total} 个）\n\n`;
-  md += RECOMMENDATION_DENSITY_HINT;
 
-  // 同品牌多门店强约束置顶（badcase laybqxn4：同品牌两家被压缩成"有肯德基、肯德基"）
+  // 推荐对话用模板（Phase 1.C）：每个岗位一张固定结构卡片（地址/班次/薪资/要求），
+  // 让 LLM 直接照念，杜绝"班次漏说每周天数、薪资偷懒、推荐缺地址"等 ④ 类 badcase。
+  md += renderCandidateCardsBanner(jobs);
+
+  // 同品牌多门店强约束置顶（同品牌两家被压缩成"有肯德基、肯德基"）
   const multiStoreSection = renderMultiStoreBrandWarning(brandGroups);
   if (multiStoreSection) {
     md += multiStoreSection;

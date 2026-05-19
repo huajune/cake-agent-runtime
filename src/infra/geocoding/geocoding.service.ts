@@ -1,12 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@infra/redis/redis.service';
-import { GeocodeResult } from './geocoding.types';
+import { GeocodeCandidate, GeocodeResult } from './geocoding.types';
 
 const AMAP_PLACE_API = 'https://restapi.amap.com/v3/place/text';
 const AMAP_GEOCODE_API = 'https://restapi.amap.com/v3/geocode/geo';
 const CACHE_PREFIX = 'geocode:v2:';
+const CANDIDATES_CACHE_PREFIX = 'geocode:candidates:v1:';
 const CACHE_TTL_SECONDS = 30 * 24 * 3600; // 30 天
+const DEFAULT_CANDIDATES_LIMIT = 5;
 
 /** 高德返回的空字段是 []，需统一转成字符串 */
 function str(v: unknown): string {
@@ -68,6 +70,118 @@ export class GeocodingService {
     await this.redisService.setex(cacheKey, CACHE_TTL_SECONDS, result);
 
     return result;
+  }
+
+  /**
+   * 多候选 POI 搜索 — 用于歧义判定（同名地名命中几个城市）。
+   *
+   * 调用方（geocode 工具）按返回 candidates 的 city 分布决定：
+   * - 单一城市 → 直接采纳第一条
+   * - 多城市 → 把候选清单回给 Agent，由 Agent 反问候选人确认
+   * - 空 → 走结构化 geocode 兜底（沿用 `geocode()`）或反问"换个地名"
+   *
+   * 与单结果 `geocode()` 的差异：
+   * - 不调用结构化 geocode 兜底（兜底默认返回 1 条，无法反映歧义）
+   * - 不强制 `citylimit`，city 为空时高德全国搜索
+   * - 缓存独立 key（candidates vs single result 不互通）
+   *
+   * @param address 地名或地址文本
+   * @param city 可选城市；传入时 citylimit 生效，仅在该城市搜索
+   * @param limit POI 返回上限，默认 5
+   */
+  async searchCandidates(
+    address: string,
+    city?: string | null,
+    limit = DEFAULT_CANDIDATES_LIMIT,
+  ): Promise<GeocodeCandidate[]> {
+    if (!this.apiKey) {
+      this.logger.warn('缺少 AMAP_API_KEY，地理编码不可用');
+      return [];
+    }
+
+    const normalizedCity = city?.trim() || '';
+    const cacheKey =
+      CANDIDATES_CACHE_PREFIX + (normalizedCity ? `${normalizedCity}:${address}` : address);
+
+    const cached = await this.redisService.get<GeocodeCandidate[]>(cacheKey);
+    if (cached) return cached;
+
+    const candidates = await this.fetchPoiCandidates(address, normalizedCity, limit);
+
+    if (candidates.length === 0) {
+      this.logger.debug(`多候选搜索无结果: "${address}" city="${normalizedCity}"`);
+      return [];
+    }
+
+    await this.redisService.setex(cacheKey, CACHE_TTL_SECONDS, candidates);
+    return candidates;
+  }
+
+  /**
+   * 拉 POI 列表 — 仅供 `searchCandidates` 内部使用。
+   * 沿用与 `searchPoi` 相同的字段映射，但保留多条且不限制 `offset=1`。
+   */
+  private async fetchPoiCandidates(
+    address: string,
+    city: string,
+    limit: number,
+  ): Promise<GeocodeCandidate[]> {
+    try {
+      const params = new URLSearchParams({
+        key: this.apiKey,
+        keywords: address,
+        offset: String(Math.min(Math.max(limit, 1), 20)),
+        page: '1',
+        extensions: 'base',
+        output: 'JSON',
+      });
+      if (city) {
+        params.set('city', city);
+        params.set('citylimit', 'true');
+      }
+
+      const response = await fetch(`${AMAP_PLACE_API}?${params}`);
+      if (!response.ok) {
+        this.logger.warn(`高德 POI 多候选 HTTP 失败: ${response.status}`);
+        return [];
+      }
+
+      const data = await response.json();
+      if (data.status !== '1' || !Array.isArray(data.pois) || data.pois.length === 0) {
+        return [];
+      }
+
+      const candidates: GeocodeCandidate[] = [];
+      for (const poi of data.pois) {
+        const location = str(poi.location);
+        if (!location) continue;
+
+        const [lng, lat] = location.split(',').map(Number);
+        if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
+
+        const province = str(poi.pname);
+        const cityName = str(poi.cityname) || province;
+        const district = str(poi.adname);
+        const poiName = str(poi.name);
+        const poiAddress = str(poi.address);
+
+        candidates.push({
+          formattedAddress: `${province}${cityName === province ? '' : cityName}${district}${poiAddress}${poiName}`,
+          province,
+          city: cityName,
+          district,
+          township: str(poi.business_area),
+          longitude: lng,
+          latitude: lat,
+          poiName,
+        });
+      }
+
+      return candidates;
+    } catch (err) {
+      this.logger.error('高德 POI 多候选失败', err);
+      return [];
+    }
   }
 
   /**
