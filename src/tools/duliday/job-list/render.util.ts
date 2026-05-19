@@ -51,6 +51,10 @@ import {
   extractSalaryFacts,
   renderSalaryFactsBanner,
 } from '@tools/duliday/job-list/salary-facts.util';
+import {
+  extractWelfareFacts,
+  renderWelfareFactsBanner,
+} from '@tools/duliday/job-list/welfare-facts.util';
 
 /**
  * 渐进式数据返回开关——控制 markdown 输出包含哪些 section。
@@ -433,7 +437,11 @@ function renderWelfareSection(welfare: any): string {
 
   pushLongText(lines, '备注', welfare.memo);
 
-  return lines.length ? '### 福利信息\n' + lines.join('\n') + '\n\n' : '';
+  if (lines.length === 0) return '';
+  // 福利速览 banner 放在 section 头部：把"员工自理/不购买"这类易被压缩成"有"的
+  // 字面值显式标 ❌ 无；让 LLM 在 reply 时只引用 ✅/💵 项，不编造工具未返回的福利。
+  const factsBanner = renderWelfareFactsBanner(extractWelfareFacts(welfare));
+  return '### 福利信息\n' + factsBanner + lines.join('\n') + '\n\n';
 }
 
 // ==================== 模块 4：招聘要求 ====================
