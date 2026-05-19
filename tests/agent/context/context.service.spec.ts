@@ -231,6 +231,8 @@ describe('ContextService', () => {
           short_term: null,
           open_position: null,
           time_windows: null,
+      schedule_constraint: null,
+      available_after: null,
         },
         reasoning: '',
       },

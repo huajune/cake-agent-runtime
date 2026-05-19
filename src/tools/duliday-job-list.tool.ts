@@ -289,6 +289,32 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
           .map((region) => region.trim())
           .filter(Boolean);
 
+        // Phase 3.1：候选人在更早轮次表达过的班次硬约束已经被 fact-extraction 持久化到
+        // sessionFacts.preferences.schedule_constraint。Agent 本轮调本工具时若没显式
+        // 传 candidateScheduleConstraint，自动从 sessionFacts 兜底，避免 Agent 忘了
+        // 拉回候选人原话（badcase 簇 schedule_constraint_forgotten）。
+        const persistedConstraint = context.sessionFacts?.preferences?.schedule_constraint ?? null;
+        if (!candidateScheduleConstraint && persistedConstraint) {
+          const hasAnySignal =
+            persistedConstraint.onlyWeekends ||
+            persistedConstraint.onlyEvenings ||
+            persistedConstraint.onlyMornings ||
+            persistedConstraint.maxDaysPerWeek !== null;
+          if (hasAnySignal) {
+            candidateScheduleConstraint = {
+              ...(persistedConstraint.onlyWeekends && { onlyWeekends: true }),
+              ...(persistedConstraint.onlyEvenings && { onlyEvenings: true }),
+              ...(persistedConstraint.onlyMornings && { onlyMornings: true }),
+              ...(persistedConstraint.maxDaysPerWeek !== null && {
+                maxDaysPerWeek: persistedConstraint.maxDaysPerWeek,
+              }),
+            };
+            logger.log(
+              `从 sessionFacts 自动兜底 candidateScheduleConstraint: ${JSON.stringify(candidateScheduleConstraint)}`,
+            );
+          }
+        }
+
         // 缺城市上下文兜底：用户给了区/门店/商圈级位置线索，但既没传 cityNameList
         // 也没有 location 坐标（geocode 拿到的经纬度）。badcase 簇 missing_city_context
         // （v3nexby8/spen553o/o1intrqf/jqhr3kku）：Agent 在没有城市的情况下直接预设

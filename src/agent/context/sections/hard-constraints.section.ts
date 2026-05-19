@@ -79,6 +79,14 @@ export class HardConstraintsSection implements PromptSection {
         sessionFacts?.preferences.time_windows ??
         highConfidenceFacts?.preferences.time_windows ??
         null,
+      schedule_constraint:
+        sessionFacts?.preferences.schedule_constraint ??
+        highConfidenceFacts?.preferences.schedule_constraint ??
+        null,
+      available_after:
+        sessionFacts?.preferences.available_after ??
+        highConfidenceFacts?.preferences.available_after ??
+        null,
     };
 
     return { interview, pref };

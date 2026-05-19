@@ -176,11 +176,32 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
 
           const analysis = buildJobPolicyAnalysis(job);
           const windows = analysis.interviewWindows;
+
+          // Phase 3.2：候选人在更早轮次说过的明确"未来 X 日期之后才能面"硬约束已经
+          // 被 fact-extraction 持久化到 sessionFacts.preferences.available_after。
+          // 若 Agent 本轮带的 requestedDate 早于该日期，直接判 date_unavailable，
+          // 避免 Agent 继续催"今天/明天能不能面"（badcase 簇 future_date_constraint）。
+          const persistedAvailableAfter =
+            context.sessionFacts?.preferences?.available_after ?? null;
+          const requestedDateBlockedByPersistedFloor =
+            persistedAvailableAfter &&
+            normalizedDate.date &&
+            normalizedDate.date < persistedAvailableAfter.date;
+
           const requestedDateCheck = normalizedDate.date
-            ? evaluateRequestedDate({
-                date: normalizedDate.date,
-                windows,
-              })
+            ? requestedDateBlockedByPersistedFloor
+              ? {
+                  status: 'unavailable' as const,
+                  canSchedule: false,
+                  matchedWindows: [],
+                  reason: `候选人此前已明确表示 ${persistedAvailableAfter!.date} 之后才能面试（原话："${persistedAvailableAfter!.raw}"），requestedDate=${normalizedDate.date} 早于该日期`,
+                  policyNotes: [],
+                  decisionBasis: 'no_matching_schedule' as const,
+                }
+              : evaluateRequestedDate({
+                  date: normalizedDate.date,
+                  windows,
+                })
             : null;
 
           const storeInfo = job.basicInfo?.storeInfo ?? null;
