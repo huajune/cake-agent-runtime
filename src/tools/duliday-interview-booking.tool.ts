@@ -429,7 +429,14 @@ export function buildInterviewBookingTool(
           // Defense-in-depth: 在调 sponge bookInterview 之前再跑一次 precheck 已经做过的
           // 三类硬规则校验（真名 / 时段 / 筛选答案）。LLM 偶发会跳过 precheck 直接调本工具，
           // 这里作为 server-side 兜底——详见 booking-guards.util.ts。
-          const guardFailure = runBookingGuards({ job, name, interviewTime, supplementAnswers });
+          const guardFailure = runBookingGuards({
+            job,
+            name,
+            interviewTime,
+            supplementAnswers,
+            candidateGenderId: genderId,
+            candidateHasHealthCertificate: hasHealthCertificate,
+          });
           if (guardFailure) {
             return markBookingFailed(context, guardFailure);
           }

@@ -43,6 +43,10 @@ import {
   type BrandNearestStoresGroup,
 } from '@tools/duliday/job-list/brand-stores.util';
 import { normalizeStoreNameForAgent } from '@tools/duliday/job-list/sanitize.util';
+import {
+  extractHardRequirements,
+  type HardRequirements,
+} from '@tools/duliday/job-list/hard-requirements.util';
 
 /**
  * 渐进式数据返回开关——控制 markdown 输出包含哪些 section。
@@ -117,6 +121,59 @@ function formatInterviewDecisionSummary(
   }
 
   return lines.length > 0 ? '### 约面重点\n' + lines.join('\n') + '\n\n' : '';
+}
+
+const GENDER_LABEL: Record<HardRequirements['gender'], string | null> = {
+  male: '仅限男',
+  female: '仅限女',
+  any: null,
+  unspecified: null,
+};
+
+const HEALTH_CERT_LABEL: Record<HardRequirements['healthCert'], string | null> = {
+  required_before_interview: '面试前必须持有健康证（无证不可到店）',
+  required_before_onboard: '入职前必须办妥健康证（面试时可没有）',
+  not_required: '岗位不需要健康证',
+  unspecified: null,
+};
+
+/**
+ * 顶部硬性约束 banner：把派生 enum（gender / household / healthCert）渲染成
+ * 醒目的"先看这里"段，紧跟在岗位标题之后。
+ *
+ * 设计要点：
+ * - 只有任一字段非 unspecified/any 时才输出；岗位真没要求时不污染上下文。
+ * - 用 "> ⚠️ 候选人硬性约束" 引用块包裹，让 LLM 容易识别这是不可妥协的硬规则。
+ * - 文案直接告诉 LLM 该如何处理（询问 / 拦 booking），避免它把硬约束当软建议处理。
+ */
+function renderHardRequirementsBanner(hr: HardRequirements): string {
+  const lines: string[] = [];
+
+  const genderLabel = GENDER_LABEL[hr.gender];
+  if (genderLabel) {
+    lines.push(`- **性别**：${genderLabel}（与候选人性别冲突则不得 booking）`);
+  }
+
+  if (hr.household) {
+    const verb = hr.household.mode === 'include' ? '仅接受' : '不接受';
+    lines.push(
+      `- **户籍**：${verb} ${hr.household.regions.join('/')}（不掌握候选人户籍时先确认再 booking）`,
+    );
+  }
+
+  const healthCertLabel = HEALTH_CERT_LABEL[hr.healthCert];
+  if (healthCertLabel) {
+    lines.push(`- **健康证**：${healthCertLabel}`);
+  }
+
+  if (lines.length === 0) return '';
+
+  return [
+    '> ⚠️ **候选人硬性约束**（不可妥协；与候选人 fact 冲突时不得 booking）',
+    ...lines.map((l) => `> ${l}`),
+    '',
+    '',
+  ].join('\n');
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -806,6 +863,10 @@ function formatJobToMarkdown(job: any, index: number, flags: ProgressiveDisclosu
     titleParts.push(`(${bi.jobNickName})`);
   }
   let md = `## ${index + 1}. ${titleParts.join(' ')}\n\n`;
+
+  // 硬性约束 banner 紧跟标题：性别 / 户籍 / 健康证 三类高频硬约束，
+  // 任一非 unspecified/any 时才输出。让 LLM 一眼看到不可妥协的硬规则。
+  md += renderHardRequirementsBanner(extractHardRequirements(job, policy));
 
   // 候选人需要 workTime 时（默认开）才注入归一化班次（含早/中/晚班/午高峰/星期约束等含义）；
   // 模型显式关 includeWorkTime 表示本轮在做不涉及班次的追问，无需归一化班次。

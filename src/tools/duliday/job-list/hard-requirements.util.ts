@@ -120,10 +120,13 @@ function normalizeHealthCert(gate: unknown, requirementText: unknown): HealthCer
 }
 
 /**
- * 顶层入口：从 raw job 派生 HardRequirements enum。
+ * 顶层入口：从 raw job + 可选的 policy 派生 HardRequirements enum。
  *
  * 当前只覆盖 gender / household / healthCert 三类高频硬约束。
  * 后续切片会扩展 age / student / education 等。
+ *
+ * policy 参数：调用方已经跑过 buildJobPolicyAnalysis 时直接传进来，避免重复构建。
+ * 不传则只能从 job._policy（测试 fixture 通道）兜底，realtime 调用务必显式传入。
  */
 export function extractHardRequirements(
   job:
@@ -133,11 +136,14 @@ export function extractHardRequirements(
       }
     | null
     | undefined,
+  policy?: { normalizedRequirements?: any } | null,
 ): HardRequirements {
   const req = job?.hiringRequirement;
-  const basic = (req && typeof req === 'object' && req.basic) || {};
+  // sponge raw 用 basicPersonalRequirements；render/job-policy-parser 都按此 key 解构。
+  const basic =
+    (req && typeof req === 'object' && (req.basicPersonalRequirements || req.basic)) || {};
   const hometown = (req && typeof req === 'object' && req.requirementsForHometown) || null;
-  const normalized = job?._policy?.normalizedRequirements;
+  const normalized = policy?.normalizedRequirements ?? job?._policy?.normalizedRequirements;
 
   return {
     gender: normalizeGender(basic.genderRequirement),

@@ -16,7 +16,7 @@ describe('extractHardRequirements', () => {
       ['', 'unspecified'],
       ['未填写', 'unspecified'],
     ])('classifies "%s" as %s', (input, expected) => {
-      const result = extractHardRequirements({ hiringRequirement: { basic: { genderRequirement: input } } });
+      const result = extractHardRequirements({ hiringRequirement: { basicPersonalRequirements: { genderRequirement: input } } });
       expect(result.gender).toBe(expected);
     });
 
@@ -138,7 +138,7 @@ describe('extractHardRequirements', () => {
     it('extracts all three fields from a complete raw job', () => {
       const result = extractHardRequirements({
         hiringRequirement: {
-          basic: { genderRequirement: '女' },
+          basicPersonalRequirements: { genderRequirement: '女' },
           requirementsForHometown: {
             nativePlaceRequirementType: '不要',
             nativePlaces: ['东三省'],

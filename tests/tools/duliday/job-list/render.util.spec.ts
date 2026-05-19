@@ -66,6 +66,66 @@ describe('job-list render util', () => {
     expect(markdown.indexOf('⚠️ 同品牌多门店')).toBeLessThan(markdown.indexOf('## 1. 服务员'));
   });
 
+  describe('hard-requirements banner', () => {
+    const detailFlags: ProgressiveDisclosureFlags = {
+      includeBasicInfo: true,
+      includeJobSalary: false,
+      includeWelfare: false,
+      includeHiringRequirement: true,
+      includeWorkTime: false,
+      includeInterviewProcess: false,
+    };
+
+    it('does not render banner when all hard requirements unspecified/any', () => {
+      const job = makeJob(1);
+      // makeJob 默认 cert.healthCertificate="食品健康证" 会触发 before_onboard banner，
+      // 这里覆盖为空，验证 unspecified 路径不渲染。
+      job.hiringRequirement = {
+        basicPersonalRequirements: { minAge: 18, maxAge: 50, genderRequirement: '不限' },
+        figure: '不限',
+      } as typeof job.hiringRequirement;
+      const markdown = formatJobsToMarkdown([job], 1, 1, 10, detailFlags);
+      expect(markdown).not.toContain('候选人硬性约束');
+    });
+
+    it('renders banner for gender + household exclude + health cert before_interview', () => {
+      const job = makeJob(1);
+      job.hiringRequirement = {
+        basicPersonalRequirements: { minAge: 18, maxAge: 50, genderRequirement: '女' },
+        requirementsForHometown: {
+          nativePlaceRequirementType: '不要',
+          nativePlaces: ['东三省', '河南'],
+        },
+        certificate: { healthCertificate: '必须先办健康证' },
+        figure: '不限',
+      } as typeof job.hiringRequirement;
+      const markdown = formatJobsToMarkdown([job], 1, 1, 10, detailFlags);
+
+      expect(markdown).toContain('候选人硬性约束');
+      expect(markdown).toContain('仅限女');
+      expect(markdown).toContain('不接受 东三省/河南');
+      expect(markdown).toContain('面试前必须持有健康证');
+      const bannerIdx = markdown.indexOf('候选人硬性约束');
+      const titleIdx = markdown.indexOf('## 1.');
+      expect(bannerIdx).toBeGreaterThan(titleIdx);
+    });
+
+    it('renders only health cert before_onboard when nothing else specified', () => {
+      const job = makeJob(1);
+      job.hiringRequirement = {
+        basicPersonalRequirements: { minAge: 18, maxAge: 50, genderRequirement: '不限' },
+        certificate: { healthCertificate: '食品健康证' },
+        figure: '不限',
+      } as typeof job.hiringRequirement;
+      const markdown = formatJobsToMarkdown([job], 1, 1, 10, detailFlags);
+
+      expect(markdown).toContain('候选人硬性约束');
+      expect(markdown).toContain('入职前必须办妥健康证');
+      expect(markdown).not.toContain('仅限女');
+      expect(markdown).not.toContain('仅限男');
+    });
+  });
+
   it('infers student requirement from normalized policy text and field signals', () => {
     expect(inferStudentRequirement(makePolicy({ remark: '仅限非学生，需要已毕业' }))).toBe(
       '不接受学生',
