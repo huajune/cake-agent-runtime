@@ -20,6 +20,7 @@ import type { RecommendedJobSummary } from '@memory/types/session-facts.types';
 import { stripLaborFormFromCategories } from '@memory/facts/labor-form';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { buildNoMatchScript } from '@tools/duliday/job-list/no-match-script.util';
 import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
 import { sanitizeBrandName } from '@tools/utils/sanitize-brand-name.util';
 import {
@@ -488,9 +489,21 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
                   replyInstruction:
                     '附近半径内已过滤为空。先尝试一次合理范围内的扩面（同城邻区 / 放宽距离 / 同品牌邻店），' +
                     '本轮直接执行，不要向候选人多问。' +
-                    '若扩面后仍无结果，按"无岗动作链"直接告知候选人"暂时没有合适岗位"并调用 invite_to_group 拉群维护，' +
-                    '禁止反问"换品牌 / 换城市 / 别的区域"。',
-                  details: { maxKm },
+                    '若扩面后仍无结果，**严格按 noMatchScript.candidateMessage 原文照念给候选人，再调 invite_to_group 拉群**——' +
+                    '不要自己改写承接句，不要跨品牌推荐。',
+                  details: {
+                    maxKm,
+                    noMatchScript: buildNoMatchScript({
+                      brandLabels: brandAliasList,
+                      storeLabels: storeNameList,
+                      cityLabels: normalizedCityNameList,
+                      regionLabels: normalizedRegionNameList,
+                      maxKm,
+                      scheduleConstraintLabel: candidateScheduleConstraint
+                        ? formatScheduleConstraintLabel(candidateScheduleConstraint)
+                        : null,
+                    }),
+                  },
                 });
               }
             }
@@ -512,8 +525,21 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
               replyInstruction:
                 '本次查询无匹配岗位。先核对是否用了 storeNameList / brandAliasList 等低稳定字段；' +
                 '是则换 regionNameList / brandIdList 重试一次。' +
-                '若已是高稳定字段仍为 0，如实告知候选人"暂时没有合适岗位"并调用 invite_to_group 拉群维护，' +
-                '禁止反问"换品牌 / 换城市 / 别的区域"；候选人主动追问扩张时同样按此动作链处理。',
+                '若已是高稳定字段仍为 0，**严格按 noMatchScript.candidateMessage 原文照念给候选人，再调 invite_to_group 拉群**——' +
+                '不得自行改写承接句、不得跨品牌推荐、不得反问"换品牌 / 换城市 / 别的区域"；' +
+                '候选人主动追问扩张时同样按此动作链处理。',
+              details: {
+                noMatchScript: buildNoMatchScript({
+                  brandLabels: brandAliasList,
+                  storeLabels: storeNameList,
+                  cityLabels: normalizedCityNameList,
+                  regionLabels: normalizedRegionNameList,
+                  maxKm: maxKm ?? null,
+                  scheduleConstraintLabel: candidateScheduleConstraint
+                    ? formatScheduleConstraintLabel(candidateScheduleConstraint)
+                    : null,
+                }),
+              },
             });
           }
 
@@ -532,8 +558,8 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
               outcome: '班次约束过滤后无匹配岗位',
               replyInstruction:
                 '本轮工具结果经候选人班次硬约束过滤后为空。' +
-                '先如实告知候选人"在你的班次约束下，附近暂时没有合适的岗位"，' +
-                '再询问是否可以放宽时段；若候选人不愿放宽，调用 invite_to_group 拉群维护。' +
+                '**严格按 noMatchScript.candidateMessage 原文照念给候选人**，再询问是否可以放宽时段；' +
+                '若候选人不愿放宽，调用 invite_to_group 拉群维护。' +
                 '禁止把被剔除的岗位再以"差不多"包装回去。',
               details: {
                 queryMeta: {
@@ -546,6 +572,16 @@ export function buildJobListTool(spongeService: SpongeService): ToolBuilder {
                 candidateConstraintLabel: formatScheduleConstraintLabel(
                   candidateScheduleConstraint,
                 ),
+                noMatchScript: buildNoMatchScript({
+                  brandLabels: brandAliasList,
+                  storeLabels: storeNameList,
+                  cityLabels: normalizedCityNameList,
+                  regionLabels: normalizedRegionNameList,
+                  maxKm: maxKm ?? null,
+                  scheduleConstraintLabel: formatScheduleConstraintLabel(
+                    candidateScheduleConstraint,
+                  ),
+                }),
               },
             });
           }
