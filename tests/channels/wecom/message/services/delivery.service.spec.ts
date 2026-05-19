@@ -119,6 +119,50 @@ describe('MessageDeliveryService', () => {
       expect(mockWecomObservabilityService.markFirstSegmentSent).toHaveBeenCalledTimes(1);
     });
 
+    it('coalesces over-fragmented replies to cap=4 (badcase cc1fb40s)', async () => {
+      // cc1fb40s 实景：Agent 一次发 8 段（门店 + 距离 + 薪资 + 阶梯 + 班次 + 时长 + 要求 + 是否方便）
+      // 单次回复段数应被压回 4 段
+      const reply: AgentReply = {
+        content: [
+          '查到永德路附近这两家在招：',
+          '成都你六姐（浦江万达店），距离 5.7km',
+          '薪资 24 元/时，做满 40 小时涨到 26。',
+          '班次是 11:00-14:00，午高峰 3 小时左右。',
+          '要求 18-40 岁男生，得有食品健康证。',
+          '成都你六姐（鑫都满天星店），距离 5.8km',
+          '班次是晚上 21:00 到 00:30，大概 3 个半小时。',
+          '你看哪个时间段比较方便？',
+        ].join('\n\n'),
+      };
+
+      const result = await service.deliverReply(reply, deliveryContext, true);
+
+      expect(result.success).toBe(true);
+      expect(result.segmentCount).toBe(4);
+      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(4);
+    });
+
+    it('relaxes cap to 6 when reply looks like booking-success closing', async () => {
+      // 约面收尾业务上必须一次说全（时间 + 门店 + 注意事项 + 健康证 + 入群 + 自报家门）
+      // 应保持 6 段，不被压到 4
+      const reply: AgentReply = {
+        content: [
+          '帮你约好啦，明天（周三）13:30 去凤起汇店面试。',
+          '门店地址：上海市青浦区凤阁路 55 号凤起汇 F1。',
+          '到了跟店长说你是独立客介绍来的，注意着装整洁。',
+          '上岗前记得准备好食品健康证，到时候店里会核对。',
+          '入群邀请已发，点一下就能进群。',
+          '路上注意安全，有问题随时问我。',
+        ].join('\n\n'),
+      };
+
+      const result = await service.deliverReply(reply, deliveryContext, true);
+
+      expect(result.success).toBe(true);
+      expect(result.segmentCount).toBe(6);
+      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(6);
+    });
+
     it('should skip monitoring when recordMonitoring=false', async () => {
       await service.deliverReply({ content: 'Hello' }, deliveryContext, false);
 

@@ -495,6 +495,18 @@ export class AgentPreparationService {
       sections.push(`## 当前焦点岗位\n${this.formatJobMemoryLine(state.currentFocusJob)}`);
     }
 
+    if (state.invitedGroups?.length) {
+      // 历史 badcase 3g1ruov9 / 6vzw8oh3：本会话拉过群但记忆里漏渲染，Agent 看不到导致重复拉群。
+      // 触发 invite_to_group 工具时本字段已写入 session 记忆，这里把它注入 prompt 让 Agent 主动避让。
+      const groupLines = state.invitedGroups.map((g, i) => {
+        const industry = g.industry ? `（${g.industry}）` : '';
+        return `${i + 1}. ${g.groupName}${industry} - 城市: ${g.city}, 邀请时间: ${g.invitedAt}`;
+      });
+      sections.push(
+        `## 本会话已邀入的兼职群（禁止重复拉群）\n${groupLines.join('\n')}\n\n_命中以上任一群时，禁止再次调用 invite_to_group；候选人本轮再次同意入群/暗示想进群时，直接告知"之前已经把你拉到 X 群了，可以查看一下手机微信"即可。_`,
+      );
+    }
+
     if (sections.length === 0) return '';
     return `\n\n[会话记忆]\n\n${sections.join('\n\n')}`;
   }

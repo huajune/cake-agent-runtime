@@ -139,6 +139,8 @@ export class OpsCardRenderer {
   buildReplyFactContradictionAlertCard(params: {
     chatId?: string;
     userId?: string;
+    traceId?: string;
+    contactName?: string;
     botImId?: string;
     botUserName?: string;
     replyPreview: string;
@@ -157,9 +159,11 @@ export class OpsCardRenderer {
     const content = [
       `**时间**: ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`,
       '**级别**: WARNING（仅观察，未改写回复）',
+      `**候选人**: ${params.contactName ?? '-'}`,
       `**接客 bot**: ${botLabel}`,
       `**chatId**: ${params.chatId ?? '-'}`,
       `**userId**: ${params.userId ?? '-'}`,
+      `**traceId**: ${params.traceId ?? '-'}`,
       `**本轮 tool**: ${params.toolNames.length > 0 ? params.toolNames.join(', ') : '（无）'}`,
       '',
       '**命中规则**',

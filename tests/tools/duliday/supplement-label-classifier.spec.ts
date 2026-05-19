@@ -2,7 +2,7 @@ import {
   classifySupplementLabel,
   findScreeningFailure,
   matchesScreeningFailure,
-} from '@/tools/duliday/supplement-label-classifier';
+} from '@/tools/utils/supplement-label-classifier';
 
 describe('classifySupplementLabel', () => {
   describe('collect labels', () => {

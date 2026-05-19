@@ -1,4 +1,4 @@
-import { API_BOOKING_SUBMISSION_FIELDS } from '@tools/duliday/job-booking.contract';
+import { API_BOOKING_SUBMISSION_FIELDS } from '@tools/duliday/booking/job-booking.contract';
 import {
   findSpongeEducationIdByLabel,
   getAvailableSpongeEducations,

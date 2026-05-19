@@ -9,7 +9,8 @@ import { normalizeCity } from '@biz/group-task/utils/city-normalize.util';
 import { RoomService } from '@channels/wecom/room/room.service';
 import { MemoryService } from '@memory/memory.service';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
-import { refreshMemberCountsFromEnterpriseList } from '@tools/duliday/enterprise-room-count.util';
+import { refreshMemberCountsFromEnterpriseList } from '@tools/utils/enterprise-room-count.util';
+import { resolveCityFromDistrict } from '@memory/facts/geo-mappings';
 
 const logger = new Logger('invite_to_group');
 
@@ -36,7 +37,9 @@ const DESCRIPTION = `邀请候选人加入企微兼职群。
 - [兼职群资源] 段已注明该城市无可用群时
 
 ## 参数
-- city（必填）：从 [会话记忆] 或对话上下文获取
+- city（必填）：候选人所在**城市级**名称，从 [会话记忆] / [本轮查询硬约束] 的"城市"字段获取，例如"上海"、"北京"、"武汉"。
+  - 严禁把区域/区县/镇/街道/商圈/门店地址传给 city，例如"静安区"、"浦东新区"只能用于查岗的 regionNameList / location，不能作为兼职群城市
+  - 当上下文同时出现"城市: 上海"和"区域: 静安区"时，调用本工具必须传 city="上海"
 - industry（强烈建议传）：候选人的求职意向行业
   - 候选人意向餐饮（如肯德基、必胜客、奶茶店、饭店服务员）→ 必须传 industry="餐饮"
   - 候选人意向零售（如奥乐齐、超市补货、便利店）→ 必须传 industry="零售"
@@ -54,6 +57,7 @@ const DESCRIPTION = `邀请候选人加入企微兼职群。
 
 ## 失败处理
 - success: false 时静默跳过，不向候选人提及群相关内容
+- 若 errorType=invite.invalid_city_scope，说明你把区域/区县误传给了 city。必须立即用工具返回的 expectedCity 重新调用 invite_to_group；不要调用 request_handoff，也不要说"该区域暂无兼职群"
 - 若候选人本轮是在同意入群/后续通知，或当前意向已无匹配而需要群维护，但工具返回 success: false，必须立刻调用 request_handoff(reasonCode="other") 转人工跟进；不要自然语言收尾把候选人晾住
 - 只有 success: true 时才能说"已拉群/已发入群邀请"；无群、群满、接口拒绝、未调用工具时，都不要承诺群相关动作
 - 严禁在未调用本工具、或本工具返回 success: false 时说"我先拉你进群/后面群里通知/已发群邀请"
@@ -64,7 +68,11 @@ const DESCRIPTION = `邀请候选人加入企微兼职群。
 - 拉群成功后，本轮必须停止继续推荐其他岗位；后续轮也不要再向候选人推岗位，转为群内运营`;
 
 const inputSchema = z.object({
-  city: z.string().describe('候选人所在城市'),
+  city: z
+    .string()
+    .describe(
+      '候选人所在城市级名称，如"上海"。严禁传区域/区县/镇/街道/商圈，如"静安区"、"浦东新区"。',
+    ),
   industry: z
     .string()
     .optional()
@@ -127,7 +135,25 @@ export function buildInviteToGroupTool(
             });
           }
 
-          const allGroups = await groupResolver.resolveGroups('兼职群');
+          const districtResolvedCity = resolveCityFromDistrict(city.trim());
+          if (districtResolvedCity) {
+            logger.warn(
+              `invite_to_group city 入参误传为区域: city=${city}, expectedCity=${districtResolvedCity} (user=${context.userId})`,
+            );
+            return buildToolError({
+              errorType: TOOL_ERROR_TYPES.INVITE_INVALID_CITY_SCOPE,
+              outcome: 'city 入参误传为区域/区县',
+              replyInstruction:
+                'invite_to_group 的 city 必须是城市级名称，不能传区域/区县/镇。请立即使用 expectedCity 字段重新调用 invite_to_group，并保留原 industry；不要调用 request_handoff，也不要说"该区域暂无兼职群"。',
+              details: {
+                city,
+                expectedCity: districtResolvedCity,
+                industry: industry ?? undefined,
+              },
+            });
+          }
+
+          const allGroups = await groupResolver.resolveGroups('兼职群', { forceRefresh: true });
           if (allGroups.length === 0) {
             logger.warn(`无兼职群数据 (user=${context.userId})`);
             return buildToolError({

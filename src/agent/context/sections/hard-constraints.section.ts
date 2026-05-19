@@ -98,11 +98,15 @@ export class HardConstraintsSection implements PromptSection {
     const lines: string[] = [];
 
     if (pref.city?.value) {
-      lines.push(`- 城市: ${pref.city.value}（必填到 cityNameList）`);
+      lines.push(
+        `- 城市: ${pref.city.value}（必填到 duliday_job_list.cityNameList；调用 invite_to_group 时也必须用这个城市级名称）`,
+      );
     }
     if (pref.district?.length) {
       if (pref.city?.value) {
-        lines.push(`- 区域: ${pref.district.join('、')}（填到 regionNameList）`);
+        lines.push(
+          `- 区域: ${pref.district.join('、')}（填到 duliday_job_list.regionNameList；严禁填到 invite_to_group.city）`,
+        );
       } else {
         lines.push(
           `- 区域: ${pref.district.join('、')}（当前没有已确认城市，禁止基于区县通识补 city；先中性确认候选人所在城市，确认前不得调用 duliday_job_list；反问时不得带具体城市名，禁止"是在 X 城市的 X 区吗"这类诱导句）`,

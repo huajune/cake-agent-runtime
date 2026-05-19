@@ -41,12 +41,13 @@ export class PreAgentRiskInterceptService {
   async precheck(params: {
     messageData: EnterpriseMessageCallbackDto;
     content: string;
+    messages?: EnterpriseMessageCallbackDto[];
   }): Promise<PreAgentRiskPrecheckResult> {
     const parsed = MessageParser.parse(params.messageData);
     const chatId = parsed.chatId;
     const userId = parsed.imContactId || params.messageData.externalUserId || chatId;
     const corpId = parsed.orgId || 'default';
-    const content = params.content?.trim() ?? '';
+    const content = this.buildRiskScanContent(params)?.trim() ?? '';
 
     if (!chatId || !userId || !content) {
       return { hit: false };
@@ -67,11 +68,13 @@ export class PreAgentRiskInterceptService {
       botImId: parsed.imBotId,
       botUserName: parsed.managerName,
       currentMessageContent: content,
-      recentMessages: recentMessages.map((m) => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-        timestamp: m.timestamp,
-      })),
+      recentMessages: recentMessages
+        .filter((m) => !this.isVisualGeneratedContent(m.content))
+        .map((m) => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+          timestamp: m.timestamp,
+        })),
       sessionState,
     };
 
@@ -116,5 +119,30 @@ export class PreAgentRiskInterceptService {
       reason: detection.reason,
       label: detection.riskLabel,
     };
+  }
+
+  private buildRiskScanContent(params: {
+    messageData: EnterpriseMessageCallbackDto;
+    content: string;
+    messages?: EnterpriseMessageCallbackDto[];
+  }): string {
+    const fallback = params.content?.trim() ?? '';
+    if (!fallback) return '';
+
+    const messages = params.messages?.length ? params.messages : [params.messageData];
+    const textParts = messages
+      .filter((message) => !MessageParser.extractVisualMessageType(message))
+      .map((message) => MessageParser.extractContent(message).trim())
+      .filter((content) => content && !this.isVisualGeneratedContent(content));
+
+    if (textParts.length > 0) return textParts.join('\n');
+
+    if (MessageParser.extractVisualMessageType(params.messageData)) return '';
+    if (this.isVisualGeneratedContent(fallback)) return '';
+    return fallback;
+  }
+
+  private isVisualGeneratedContent(content: string | undefined): boolean {
+    return /^\s*\[(?:图片|表情)消息\]/.test(content ?? '');
   }
 }

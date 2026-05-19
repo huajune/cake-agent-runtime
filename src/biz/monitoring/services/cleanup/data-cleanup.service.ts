@@ -68,19 +68,28 @@ export class DataCleanupService implements OnModuleInit {
   }
 
   async onModuleInit(): Promise<void> {
-    if (this.supabaseService.isAvailable()) {
-      this.logger.log(
-        `✅ 数据清理服务已启动 (agent_invocation ${this.agentInvocationRetentionDays}天NULL, ` +
-          `处理记录 ${this.processingRetentionDays}天DELETE, ` +
-          `聊天消息 ${this.chatRetentionDays}天DELETE, ` +
-          `小时聚合永久保留)`,
-      );
-
-      // 启动时立即清理上次运行遗留的卡住记录（不等 cron）
-      await this.timeoutStuckProcessingRecords();
-    } else {
+    if (!this.supabaseService.isAvailable()) {
       this.logger.warn('⚠️ 数据清理服务已禁用 (Supabase 不可用)');
+      return;
     }
+
+    this.logger.log(
+      `✅ 数据清理服务已启动 (agent_invocation ${this.agentInvocationRetentionDays}天NULL, ` +
+        `处理记录 ${this.processingRetentionDays}天DELETE, ` +
+        `聊天消息 ${this.chatRetentionDays}天DELETE, ` +
+        `小时聚合永久保留)`,
+    );
+
+    // 启动时清理上次运行遗留的卡住记录，但绝不阻塞 bootstrap：
+    // 若 Supabase 此刻不可达（如平台故障），Supabase SDK 的 fetch 默认 120s 超时
+    // 会把 onModuleInit 卡到 deploy 健康检查窗口结束，触发误回滚。
+    void this.timeoutStuckProcessingRecords().catch((error) => {
+      this.logger.warn(
+        `启动时清理卡住记录失败（不影响后续 cron 清理）: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    });
   }
 
   /**

@@ -1,4 +1,4 @@
-import { composeShiftTimeText } from '@tools/duliday/format-shift-time.util';
+import { composeShiftTimeText } from '@tools/utils/format-shift-time.util';
 
 describe('composeShiftTimeText', () => {
   describe('null cases', () => {

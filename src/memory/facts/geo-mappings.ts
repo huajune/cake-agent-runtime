@@ -15,6 +15,7 @@ export const SUPPORTED_CITY_PREFIXES = [
   '天津',
   '重庆',
   '武汉',
+  '南京',
   '宁波',
   '恩施',
   '宜昌',
@@ -68,6 +69,9 @@ export const DISTRICT_TO_CITY: Record<string, string> = {
   青浦: '上海',
   奉贤: '上海',
   崇明: '上海',
+  // 南京
+  栖霞: '南京',
+  六合: '南京',
   // 武汉
   江岸: '武汉',
   江汉: '武汉',

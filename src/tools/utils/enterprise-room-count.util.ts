@@ -9,7 +9,11 @@ interface EnterpriseRoomItem {
   imRoomId?: string;
   wxid?: string;
   roomWxid?: string;
+  roomId?: string;
+  chatId?: string;
   groupChatId?: string;
+  roomWecomChatId?: string;
+  wecomChatId?: string;
   memberList?: unknown[];
   members?: unknown[];
   [key: string]: unknown;
@@ -23,7 +27,12 @@ export async function refreshMemberCountsFromEnterpriseList(params: {
 }): Promise<GroupContext[]> {
   if (params.groups.length === 0) return params.groups;
 
-  const relevantRoomIds = new Set(params.groups.map((group) => group.imRoomId).filter(Boolean));
+  const groupKeyByRoomIdentifier = new Map<string, string>();
+  for (const group of params.groups) {
+    for (const id of [group.imRoomId, group.chatId]) {
+      if (id) groupKeyByRoomIdentifier.set(id, group.imRoomId);
+    }
+  }
   const memberCounts = new Map<string, number>();
   const pageSize = 1000;
   const maxPages = params.maxPages ?? DEFAULT_MAX_ENTERPRISE_GROUP_LIST_PAGES;
@@ -31,7 +40,7 @@ export async function refreshMemberCountsFromEnterpriseList(params: {
   let hasMore = true;
 
   try {
-    while (hasMore && memberCounts.size < relevantRoomIds.size && current <= maxPages) {
+    while (hasMore && memberCounts.size < params.groups.length && current <= maxPages) {
       const result = await params.roomService.getEnterpriseGroupChatList(
         params.enterpriseToken,
         current,
@@ -41,11 +50,13 @@ export async function refreshMemberCountsFromEnterpriseList(params: {
       if (rooms.length === 0) break;
 
       for (const room of rooms) {
-        const roomId = extractEnterpriseRoomId(room);
-        if (!roomId || !relevantRoomIds.has(roomId)) continue;
+        const groupKey = extractEnterpriseRoomIds(room)
+          .map((roomId) => groupKeyByRoomIdentifier.get(roomId))
+          .find((matched): matched is string => Boolean(matched));
+        if (!groupKey) continue;
 
         const memberCount = extractMemberCount(room);
-        if (memberCount !== undefined) memberCounts.set(roomId, memberCount);
+        if (memberCount !== undefined) memberCounts.set(groupKey, memberCount);
       }
 
       hasMore = rooms.length >= pageSize;
@@ -95,11 +106,25 @@ function isEnterpriseRoomItem(value: unknown): value is EnterpriseRoomItem {
 }
 
 export function extractEnterpriseRoomId(room: EnterpriseRoomItem): string | undefined {
-  for (const key of ['imRoomId', 'wxid', 'roomWxid', 'groupChatId']) {
+  return extractEnterpriseRoomIds(room)[0];
+}
+
+export function extractEnterpriseRoomIds(room: EnterpriseRoomItem): string[] {
+  const ids: string[] = [];
+  for (const key of [
+    'imRoomId',
+    'wxid',
+    'roomWxid',
+    'roomId',
+    'chatId',
+    'groupChatId',
+    'roomWecomChatId',
+    'wecomChatId',
+  ]) {
     const value = room[key];
-    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'string' && value.trim()) ids.push(value.trim());
   }
-  return undefined;
+  return Array.from(new Set(ids));
 }
 
 export function extractMemberCount(room: EnterpriseRoomItem): number | undefined {

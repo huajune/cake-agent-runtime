@@ -82,6 +82,7 @@ describe('buildInviteToGroupTool', () => {
     expect(result.city).toBe('上海');
     expect(result.selectionReason).toBe('only_option');
     expect(result.fallbackUsed).toBe(false);
+    expect(mockGroupResolver.resolveGroups).toHaveBeenCalledWith('兼职群', { forceRefresh: true });
     expect(result.citySnapshot).toEqual({
       totalGroups: 1,
       memberLimit: MEMBER_LIMIT,
@@ -97,6 +98,37 @@ describe('buildInviteToGroupTool', () => {
       }),
     );
     expect(mockMemoryService.saveInvitedGroup).toHaveBeenCalled();
+  });
+
+  it('rejects district-level city input and instructs retry with city-level expectedCity', async () => {
+    const result = await executeTool({ city: '静安区', industry: '餐饮' });
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_INVALID_CITY_SCOPE);
+    expect(result.city).toBe('静安区');
+    expect(result.expectedCity).toBe('上海');
+    expect(result.industry).toBe('餐饮');
+    expect(result._replyInstruction).toContain('重新调用 invite_to_group');
+    expect(result._replyInstruction).toContain('不要调用 request_handoff');
+    expect(result._replyInstruction).toContain('不要说"该区域暂无兼职群"');
+    expect(mockGroupResolver.resolveGroups).not.toHaveBeenCalled();
+    expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
+  });
+
+  it('documents that invite_to_group.city must not receive district or region names', () => {
+    const builder = buildInviteToGroupTool(
+      mockGroupResolver as any,
+      mockRoomService as any,
+      mockOpsNotifier as any,
+      mockMemoryService as any,
+      MEMBER_LIMIT,
+      'enterprise-token-test',
+    );
+    const builtTool = builder(mockContext);
+
+    expect(builtTool.description).toContain('候选人所在**城市级**名称');
+    expect(builtTool.description).toContain('严禁把区域/区县/镇/街道/商圈/门店地址传给 city');
+    expect(builtTool.description).toContain('city="上海"');
   });
 
   it('should return link invite mode for group with 40+ members', async () => {
@@ -289,6 +321,41 @@ describe('buildInviteToGroupTool', () => {
     expect(result.citySnapshot.byIndustry).toEqual([
       { industry: '餐饮', groupCount: 2, availableCount: 1 },
     ]);
+    expect(mockRoomService.addMemberEnterprise).toHaveBeenCalledWith(
+      expect.objectContaining({ roomWxid: 'room-2' }),
+    );
+  });
+
+  it('should skip a group whose refreshed enterprise count only matches by chatId', async () => {
+    mockGroupResolver.resolveGroups.mockResolvedValue([
+      makeGroup({
+        imRoomId: 'room-1',
+        chatId: 'chat-1',
+        groupName: '独立客&上海餐饮兼职①群',
+        industry: '餐饮',
+        memberCount: 50,
+      }),
+      makeGroup({
+        imRoomId: 'room-2',
+        chatId: 'chat-2',
+        groupName: '独立客&上海餐饮兼职②群',
+        industry: '餐饮',
+        memberCount: 80,
+      }),
+    ]);
+    mockRoomService.getEnterpriseGroupChatList.mockResolvedValue({
+      data: [
+        { chatId: 'chat-1', member_count: 275 },
+        { chatId: 'chat-2', member_count: 80 },
+      ],
+    });
+    mockRoomService.addMemberEnterprise.mockResolvedValue({ errcode: 0, errmsg: 'ok' });
+    mockMemoryService.saveInvitedGroup.mockResolvedValue(undefined);
+
+    const result = await executeTool({ city: '上海', industry: '餐饮' });
+
+    expect(result.success).toBe(true);
+    expect(result.groupName).toBe('独立客&上海餐饮兼职②群');
     expect(mockRoomService.addMemberEnterprise).toHaveBeenCalledWith(
       expect.objectContaining({ roomWxid: 'room-2' }),
     );
