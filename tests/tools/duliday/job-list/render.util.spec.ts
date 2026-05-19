@@ -15,11 +15,10 @@ describe('job-list render util', () => {
     includeInterviewProcess: false,
   };
 
-  it('renders minimal markdown with density hint, one-line jobs and pagination hint', () => {
+  it('renders minimal markdown with one-line jobs and pagination hint', () => {
     const markdown = formatJobsToMarkdown([makeJob(1)], 3, 1, 1, minimalFlags);
 
     expect(markdown).toContain('# 在招岗位（共 3 个）');
-    expect(markdown).toContain('岗位推荐文案紧凑约束');
     expect(markdown).toContain('1. **肯德基 - 服务员** | 静安寺店 | 上海市静安区xx路 | 距离 2.3km');
     expect(markdown).toContain('_还有 2 个岗位未显示');
   });

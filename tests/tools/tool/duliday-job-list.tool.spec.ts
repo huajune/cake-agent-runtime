@@ -745,33 +745,6 @@ describe('buildJobListTool', () => {
       ]);
     });
 
-    it('includes recommendation density hint at top of markdown (H.3 / badcase cc1fb40s)', async () => {
-      mockSpongeService.fetchJobs.mockResolvedValue({
-        jobs: [
-          makeKfcJob(1, '绿地缤纷城店', 2.3, 17),
-          makeKfcJob(2, '日月光店', 5.1, 17),
-        ],
-        total: 2,
-      });
-
-      const result = await executeTool(mockContext, {
-        ...defaultInput,
-        location: { latitude: 31.21, longitude: 121.29 },
-      });
-
-      const md = result.markdown as string;
-      expect(md).toContain('岗位推荐文案紧凑约束');
-      expect(md).toContain('禁止');
-      expect(md).toContain('cc1fb40s');
-      // hint 必须出现在岗位标题之后、同品牌多门店警告之前/同位（即位于文档头部）
-      const headerIdx = md.indexOf('# 在招岗位');
-      const hintIdx = md.indexOf('岗位推荐文案紧凑约束');
-      const warningIdx = md.indexOf('⚠️ 同品牌多门店');
-      expect(headerIdx).toBeGreaterThanOrEqual(0);
-      expect(hintIdx).toBeGreaterThan(headerIdx);
-      expect(warningIdx).toBeGreaterThan(hintIdx);
-    });
-
     it('does not emit warning section when each brand has only 1 store', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
         jobs: [
