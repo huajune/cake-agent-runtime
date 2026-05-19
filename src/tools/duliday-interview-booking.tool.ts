@@ -191,8 +191,12 @@ const inputSchema = z.object({
         .min(0)
         .describe('本轮 precheck 返回的 bookingChecklist.missingFields 长度'),
     })
+    .optional()
     .describe(
-      '【硬约束】调本工具前必须先调 duliday_interview_precheck，把返回结果中的 nextAction 与 missingFieldsCount 原样填入本字段。漏填或 nextAction !== "ready_to_book" 或 missingFieldsCount > 0 时，booking 工具会直接拒绝，不会调 sponge API。设计原因：booking 完全信任 precheck 的结论，本字段是 server-side 兜底，确保 LLM 不跳过 precheck 直接 booking。',
+      '【硬约束】调本工具前必须先调 duliday_interview_precheck，把返回结果中的 nextAction 与 missingFieldsCount 原样填入本字段。' +
+        '漏填、nextAction !== "ready_to_book" 或 missingFieldsCount > 0 时，booking 工具直接返回 BOOKING_REJECTED，不会调 sponge API。' +
+        '字段技术上可选只是为了让 schema 不卡校验、缺失时能走友好错误返回（带 replyInstruction），业务语义上仍必填——' +
+        '如果本轮没调 precheck，**不要瞎填**，直接漏掉，工具会回错让你先去调 precheck。',
     ),
 });
 
@@ -250,6 +254,23 @@ export function buildInterviewBookingTool(
         // Phase 2-lite.1：precheck 契约硬约束。booking 完全信任 precheck 结论，
         // LLM 必须把本轮 precheck 的 nextAction + missingFieldsCount 显式传进来；
         // 任一不满足 ready_to_book 则直接拒，不进 sponge API。
+        // 缺 prechecked 等价于"未调 precheck"——schema 层故意松绑成 optional，
+        // 让漏调场景走 buildToolError 返回 replyInstruction，而不是被 Vercel AI SDK
+        // 在 schema 校验阶段拒掉（那会让 LLM 拿到 raw schema error 循环重试）。
+        if (!prechecked) {
+          return markBookingFailed(
+            context,
+            buildToolError({
+              errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
+              outcome: '预约失败（未先调 duliday_interview_precheck）',
+              replyInstruction:
+                'booking 强依赖 precheck 闸门，但本轮入参缺 prechecked。先调 duliday_interview_precheck 拿到 nextAction + bookingChecklist.missingFields.length，' +
+                '把 nextAction === "ready_to_book" 且 missingFieldsCount === 0 的结果原样填入 prechecked，再来调本工具。' +
+                '不要凭空猜 prechecked 的值。',
+              details: { prechecked: null },
+            }),
+          );
+        }
         if (prechecked.nextAction !== 'ready_to_book') {
           return markBookingFailed(
             context,

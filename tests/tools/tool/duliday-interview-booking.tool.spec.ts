@@ -224,6 +224,21 @@ describe('buildInterviewBookingTool', () => {
       expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS);
       expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
     });
+
+    it('rejects with friendly error when prechecked is omitted entirely', async () => {
+      // 模拟 LLM 漏调 precheck 直接 booking 的场景：prechecked 字段缺失。
+      // schema 已松绑为 optional，不应被 Vercel AI SDK 卡在 schema validation，
+      // 应该走 buildToolError → replyInstruction 让 LLM 先去调 precheck。
+      const { prechecked, ...inputWithoutPrechecked } = validInput;
+      void prechecked;
+      const result = await executeTool(inputWithoutPrechecked);
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
+      expect(result._outcome).toContain('未先调');
+      expect(result._replyInstruction).toContain('duliday_interview_precheck');
+      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+      expect(mockRecruitmentCaseService.openOnBookingSuccess).not.toHaveBeenCalled();
+    });
   });
 
   it('should return error for invalid time format', async () => {
