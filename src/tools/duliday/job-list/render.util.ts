@@ -47,6 +47,10 @@ import {
   extractHardRequirements,
   type HardRequirements,
 } from '@tools/duliday/job-list/hard-requirements.util';
+import {
+  extractSalaryFacts,
+  renderSalaryFactsBanner,
+} from '@tools/duliday/job-list/salary-facts.util';
 
 /**
  * 渐进式数据返回开关——控制 markdown 输出包含哪些 section。
@@ -368,7 +372,11 @@ function renderSalarySection(salary: any): string {
   if (probation) blocks.push(probation);
 
   if (blocks.length === 0) return '';
-  return '### 薪资信息\n' + blocks.join('') + '\n';
+  // 薪资速览 banner 放在 section 头部：先告诉 LLM 哪些字段有 / 哪些没有，
+  // 让它在 reply 时只引用"有"的部分，杜绝编造"节假日双倍/周末加薪"等不存在字段。
+  const facts = extractSalaryFacts(salary);
+  const factsBanner = renderSalaryFactsBanner(facts);
+  return '### 薪资信息\n' + factsBanner + blocks.join('') + '\n';
 }
 
 // ==================== 模块 3：福利信息 ====================

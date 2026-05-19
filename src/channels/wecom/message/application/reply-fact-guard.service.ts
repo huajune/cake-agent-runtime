@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AgentToolCall } from '@agent/agent-run.types';
 import { ReplyFactGuardNotifierService } from '@notification/services/reply-fact-guard-notifier.service';
+import { extractSalaryFacts } from '@tools/duliday/job-list/salary-facts.util';
 
 /**
  * 从 reply 中抽取"字段名：" 模板字段集合。
@@ -78,10 +79,7 @@ function normalizeFieldName(name: string): string {
 
 /**
  * 判断本轮 duliday_job_list 返回里是否有"节假日/加班"独立薪资字段（type ≠ "无薪资"）。
- *
- * 工具 jobSalary.salaryScenarioList[i].holidaySalary.holidaySalaryType 取值有
- * "无薪资" / "固定薪资" / "多倍薪资" 等；only 后两种允许 Agent 在 reply 里说"节假日/加班
- * 有额外/不一样的薪资"。
+ * 实现委托给 salary-facts.util 统一派生，避免双口径漂移。
  */
 function hasNonEmptyHolidayOrOvertimeSalary(jobListResult: unknown): boolean {
   if (typeof jobListResult !== 'object' || jobListResult === null) return false;
@@ -94,24 +92,9 @@ function hasNonEmptyHolidayOrOvertimeSalary(jobListResult: unknown): boolean {
   if (!Array.isArray(jobs)) return false;
 
   for (const job of jobs) {
-    const salary = (job as Record<string, unknown> | undefined)?.jobSalary as
-      | Record<string, unknown>
-      | undefined;
-    const scenarios = salary?.salaryScenarioList;
-    if (!Array.isArray(scenarios)) continue;
-    for (const scenario of scenarios) {
-      const s = scenario as Record<string, unknown>;
-      const holidayType = (s.holidaySalary as Record<string, unknown> | undefined)
-        ?.holidaySalaryType;
-      const overtimeType = (s.overtimeSalary as Record<string, unknown> | undefined)
-        ?.overtimeSalaryType;
-      if (
-        (typeof holidayType === 'string' && holidayType !== '无薪资') ||
-        (typeof overtimeType === 'string' && overtimeType !== '无薪资')
-      ) {
-        return true;
-      }
-    }
+    const jobSalary = (job as Record<string, unknown> | undefined)?.jobSalary;
+    const facts = extractSalaryFacts(jobSalary);
+    if (facts.hasHolidayBonus || facts.hasOvertimeBonus) return true;
   }
   return false;
 }
