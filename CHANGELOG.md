@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.8.0] - 2026-05-19
 
-**预计版本**: `v5.8.0`
-**最近更新**: `2026-05-19`
 **来源分支**: `develop`
-**累计 PR**: 3
 
 ### 更新摘要
 - PR #192 **Agent 品牌意向例外**：候选人只是接受 Agent 自推岗位时，不把该品牌当成候选人硬性品牌意向；硬条件不符时先去掉 `brandIdList` 并保留位置/年龄/身份/时间窗等硬约束重查，避免过早 `request_handoff`。
@@ -124,7 +120,6 @@
 - PR #196 重点 review Phase 2-lite.1 的 prechecked 入参契约是否合适
 - PR #196 评估 filterJobsToRequestedBrands 的子串匹配规则是否会有误伤
 - PR #196 看 available_after 的日期解析正则是否会误触发
-<!-- release:pending:end -->
 
 ## [5.7.2] - 2026-05-18
 
