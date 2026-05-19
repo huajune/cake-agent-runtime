@@ -10,7 +10,7 @@
  * - renderMultiStoreBrandWarning：渲染"同品牌多门店"强约束 markdown section
  */
 
-import { stripCityPrefixFromStoreName } from '@tools/duliday/job-list/helpers.util';
+import { normalizeStoreNameForAgent } from '@tools/duliday/job-list/sanitize.util';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -135,7 +135,7 @@ export function buildBrandNearestStoreSummary(
       typeof job.basicInfo?.storeInfo?.storeCityName === 'string'
         ? job.basicInfo.storeInfo.storeCityName
         : null;
-    const storeName = stripCityPrefixFromStoreName(rawStoreName, storeCityName);
+    const storeName = normalizeStoreNameForAgent(rawStoreName, storeCityName);
     bucket.stores.push({
       storeName,
       jobId,

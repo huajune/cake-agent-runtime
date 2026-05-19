@@ -38,12 +38,12 @@ import {
   isNonEmpty,
   pushField,
   pushLongText,
-  stripCityPrefixFromStoreName,
 } from '@tools/duliday/job-list/helpers.util';
 import {
   renderMultiStoreBrandWarning,
   type BrandNearestStoresGroup,
 } from '@tools/duliday/job-list/brand-stores.util';
+import { normalizeStoreNameForAgent } from '@tools/duliday/job-list/sanitize.util';
 
 /**
  * 渐进式数据返回开关——控制 markdown 输出包含哪些 section。
@@ -145,7 +145,7 @@ function renderBasicInfoSection(bi: any, distanceKm: number | null | undefined):
   if (project) lines.push(`- **项目**: ${project}`);
 
   const store = bi.storeInfo || {};
-  const displayStoreName = stripCityPrefixFromStoreName(store.storeName, store.storeCityName);
+  const displayStoreName = normalizeStoreNameForAgent(store.storeName, store.storeCityName);
   const storeLine = formatNameWithId(displayStoreName, store.storeId);
   if (storeLine) lines.push(`- **门店**: ${storeLine}`);
   pushField(lines, '城市', store.storeCityName);
@@ -781,7 +781,7 @@ function formatJobToOneLine(job: any, index: number): string {
   const bi = job.basicInfo;
   const store = bi.storeInfo;
   const parts = [`${index + 1}. **${bi.brandName || ''} - ${bi.jobName || '未命名'}**`];
-  const displayStoreName = stripCityPrefixFromStoreName(store?.storeName, store?.storeCityName);
+  const displayStoreName = normalizeStoreNameForAgent(store?.storeName, store?.storeCityName);
   if (displayStoreName) parts.push(displayStoreName);
   if (store?.storeAddress) parts.push(store.storeAddress);
   if (job._distanceKm != null) parts.push(`距离 ${job._distanceKm.toFixed(1)}km`);
