@@ -11,10 +11,10 @@
 <!-- release:pending:start -->
 ## 待发布
 
-**预计版本**: `v5.7.3`
+**预计版本**: `v5.8.0`
 **最近更新**: `2026-05-19`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #192 **Agent 品牌意向例外**：候选人只是接受 Agent 自推岗位时，不把该品牌当成候选人硬性品牌意向；硬条件不符时先去掉 `brandIdList` 并保留位置/年龄/身份/时间窗等硬约束重查，避免过早 `request_handoff`。
@@ -26,9 +26,32 @@
 - PR #192 约面成功后的时间、到店话术、免责声明等回复更稳定。
 - PR #192 运营侧能更早发现收资字段漏收和薪资编造风险。
 - PR #192 `duliday_job_list` 后续维护面更清晰，检索、渲染、聚合逻辑不再都塞在单文件里。
+- PR #195 `cb2b09c1` storeName 内部编码剥离 + 门店状态禁编造（badcase 2xcajl7w / z1u2ntbg）
+- PR #195 `516cad1e` hardRequirements enum 派生骨架（gender / household / healthCert）
+- PR #195 `ab0074d4` 清理 LLM 上下文里的 badcase ID 泄露
+- PR #195 `17e735b0` hardRequirements 接入 render banner + booking-guards hard gate
+- PR #195 `6e4bc8c6` salary 字段速览 banner + reply-fact-guard 复用同一派生层
+- PR #195 `5d814455` welfare 字段速览 + 净化"员工自理/不购买"等弱否定
+- PR #195 `7cab33ca` 拆 duliday-interview-precheck.tool 成 duliday/precheck/* 7 个 util，主文件 1615 → 410 行 (-75%)；机械搬运，0 逻辑改动
+- PR #195 `aac6b859` Phase 1.C.1 候选人推荐卡片模板化（班次 5 + 薪资 3 + 地址 3 = 11 条 badcase）
+- PR #195 `ed483b7a` Phase 1.C.2 无岗动作链 noMatchScript + 户籍敏感字段委婉问（拉群 + 软收尾 + 替代品牌 + 敏感字段 = 4 条 badcase）
+- PR #195 全量 **3017 单测通过**（本 PR 新增 ≈ 90 例）
+- PR #195 新增 util 全部带独立 spec：
+- PR #195 sanitize / hard-requirements / salary-facts / welfare-facts / candidate-card / no-match-script
+- PR #195 booking-guards 新增 hard-requirement gate 11 例
+- PR #195 重大改动（render banner + reply-fact-guard 重构）走全量 jest
+- PR #195 **低风险**：所有改动都是新增字段 + 新增 banner，不改原有 markdown / API 入参；旧调用方读 raw 数据继续工作
+- PR #195 **中风险**：booking-guards 新增 gender + healthCert 硬拦，候选人 facts 与岗位约束冲突会拒 booking。已覆盖 11 例单测，且工具 description 给了清晰的 replyInstruction 让 LLM 转 handoff
+- PR #195 **零风险机械搬运**：precheck 拆分 8 文件 1745 行，全部走过 jest
 
 ### 新功能
 - PR #192 **架构沉淀**：新增 `docs/architecture/agent-redesign-from-badcases.md`，把 63 条 badcase 收敛成槽位状态机、信号提取、工具数据契约、文案模板化 4 条后续主线。
+- PR #195 `17e735b0` hardRequirements 接入 render banner + booking-guards hard gate
+- PR #195 全量 **3017 单测通过**（本 PR 新增 ≈ 90 例）
+- PR #195 新增 util 全部带独立 spec：
+- PR #195 booking-guards 新增 hard-requirement gate 11 例
+- PR #195 **低风险**：所有改动都是新增字段 + 新增 banner，不改原有 markdown / API 入参；旧调用方读 raw 数据继续工作
+- PR #195 **中风险**：booking-guards 新增 gender + healthCert 硬拦，候选人 facts 与岗位约束冲突会拒 booking。已覆盖 11 例单测，且工具 description 给了清晰的 replyInstruction 让 LLM 转 handoff
 
 ### 问题修复
 - PR #192 **Agent 品牌意向例外**：候选人只是接受 Agent 自推岗位时，不把该品牌当成候选人硬性品牌意向；硬条件不符时先去掉 `brandIdList` 并保留位置/年龄/身份/时间窗等硬约束重查，避免过早 `request_handoff`。
@@ -41,7 +64,17 @@
 - PR #192 `duliday_job_list` 后续维护面更清晰，检索、渲染、聚合逻辑不再都塞在单文件里。
 
 ### 优化调整
-- 无
+- PR #195 `cb2b09c1` storeName 内部编码剥离 + 门店状态禁编造（badcase 2xcajl7w / z1u2ntbg）
+- PR #195 `516cad1e` hardRequirements enum 派生骨架（gender / household / healthCert）
+- PR #195 `ab0074d4` 清理 LLM 上下文里的 badcase ID 泄露
+- PR #195 `6e4bc8c6` salary 字段速览 banner + reply-fact-guard 复用同一派生层
+- PR #195 `5d814455` welfare 字段速览 + 净化"员工自理/不购买"等弱否定
+- PR #195 `7cab33ca` 拆 duliday-interview-precheck.tool 成 duliday/precheck/* 7 个 util，主文件 1615 → 410 行 (-75%)；机械搬运，0 逻辑改动
+- PR #195 `aac6b859` Phase 1.C.1 候选人推荐卡片模板化（班次 5 + 薪资 3 + 地址 3 = 11 条 badcase）
+- PR #195 `ed483b7a` Phase 1.C.2 无岗动作链 noMatchScript + 户籍敏感字段委婉问（拉群 + 软收尾 + 替代品牌 + 敏感字段 = 4 条 badcase）
+- PR #195 sanitize / hard-requirements / salary-facts / welfare-facts / candidate-card / no-match-script
+- PR #195 重大改动（render banner + reply-fact-guard 重构）走全量 jest
+- PR #195 **零风险机械搬运**：precheck 拆分 8 文件 1745 行，全部走过 jest
 
 ### 运维与流程
 - 无
@@ -57,6 +90,12 @@
 - PR #192 `git push` pre-push hook 再次运行 `pnpm run ci:check` 通过：239 suites / 2888 tests
 - PR #192 GitHub Actions `CI Checks` 等待完成
 - PR #192 GitHub Actions `ai-code-review` 等待完成
+- PR #195 code review 9 个 commit（每个 self-contained，建议按 commit 顺序看）
+- PR #195 重点 review `candidate-card.util.ts` 卡片格式（是否覆盖业务关心的字段）
+- PR #195 重点 review `no-match-script.util.ts` 的 candidateMessage 文案（是否够口语化）
+- PR #195 重点 review `welfare-facts.util.ts` 的 ❌/✅/💵/❓ 符号语义是否对齐业务
+- PR #195 precheck 拆分的 7 个 util 路径变化是否影响其他调用方（grep `from '@tools/duliday-interview-precheck.tool'`）
+- PR #195 评估 booking-guards 新增 hard-requirement gate 是否会误伤合规候选人
 <!-- release:pending:end -->
 
 ## [5.7.2] - 2026-05-18

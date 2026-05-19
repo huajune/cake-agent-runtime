@@ -1,6 +1,6 @@
 {
   "baseVersion": "5.7.2",
-  "nextVersion": "5.7.3",
+  "nextVersion": "5.8.0",
   "updatedAt": "2026-05-19",
   "sourceBranch": "develop",
   "entries": [
@@ -43,6 +43,65 @@
         "`git push` pre-push hook 再次运行 `pnpm run ci:check` 通过：239 suites / 2888 tests",
         "GitHub Actions `CI Checks` 等待完成",
         "GitHub Actions `ai-code-review` 等待完成"
+      ]
+    },
+    {
+      "number": "195",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/195",
+      "title": "Phase 1.B 数据契约层 + Phase 1.C 文案模板化 + precheck 拆分",
+      "author": "ArielZhu",
+      "mergedAt": "2026-05-19",
+      "summary": [
+        "`cb2b09c1` storeName 内部编码剥离 + 门店状态禁编造（badcase 2xcajl7w / z1u2ntbg）",
+        "`516cad1e` hardRequirements enum 派生骨架（gender / household / healthCert）",
+        "`ab0074d4` 清理 LLM 上下文里的 badcase ID 泄露",
+        "`17e735b0` hardRequirements 接入 render banner + booking-guards hard gate",
+        "`6e4bc8c6` salary 字段速览 banner + reply-fact-guard 复用同一派生层",
+        "`5d814455` welfare 字段速览 + 净化\"员工自理/不购买\"等弱否定",
+        "`7cab33ca` 拆 duliday-interview-precheck.tool 成 duliday/precheck/* 7 个 util，主文件 1615 → 410 行 (-75%)；机械搬运，0 逻辑改动",
+        "`aac6b859` Phase 1.C.1 候选人推荐卡片模板化（班次 5 + 薪资 3 + 地址 3 = 11 条 badcase）",
+        "`ed483b7a` Phase 1.C.2 无岗动作链 noMatchScript + 户籍敏感字段委婉问（拉群 + 软收尾 + 替代品牌 + 敏感字段 = 4 条 badcase）",
+        "全量 **3017 单测通过**（本 PR 新增 ≈ 90 例）",
+        "新增 util 全部带独立 spec：",
+        "sanitize / hard-requirements / salary-facts / welfare-facts / candidate-card / no-match-script",
+        "booking-guards 新增 hard-requirement gate 11 例",
+        "重大改动（render banner + reply-fact-guard 重构）走全量 jest",
+        "**低风险**：所有改动都是新增字段 + 新增 banner，不改原有 markdown / API 入参；旧调用方读 raw 数据继续工作",
+        "**中风险**：booking-guards 新增 gender + healthCert 硬拦，候选人 facts 与岗位约束冲突会拒 booking。已覆盖 11 例单测，且工具 description 给了清晰的 replyInstruction 让 LLM 转 handoff",
+        "**零风险机械搬运**：precheck 拆分 8 文件 1745 行，全部走过 jest"
+      ],
+      "features": [
+        "`17e735b0` hardRequirements 接入 render banner + booking-guards hard gate",
+        "全量 **3017 单测通过**（本 PR 新增 ≈ 90 例）",
+        "新增 util 全部带独立 spec：",
+        "booking-guards 新增 hard-requirement gate 11 例",
+        "**低风险**：所有改动都是新增字段 + 新增 banner，不改原有 markdown / API 入参；旧调用方读 raw 数据继续工作",
+        "**中风险**：booking-guards 新增 gender + healthCert 硬拦，候选人 facts 与岗位约束冲突会拒 booking。已覆盖 11 例单测，且工具 description 给了清晰的 replyInstruction 让 LLM 转 handoff"
+      ],
+      "fixes": [],
+      "optimizations": [
+        "`cb2b09c1` storeName 内部编码剥离 + 门店状态禁编造（badcase 2xcajl7w / z1u2ntbg）",
+        "`516cad1e` hardRequirements enum 派生骨架（gender / household / healthCert）",
+        "`ab0074d4` 清理 LLM 上下文里的 badcase ID 泄露",
+        "`6e4bc8c6` salary 字段速览 banner + reply-fact-guard 复用同一派生层",
+        "`5d814455` welfare 字段速览 + 净化\"员工自理/不购买\"等弱否定",
+        "`7cab33ca` 拆 duliday-interview-precheck.tool 成 duliday/precheck/* 7 个 util，主文件 1615 → 410 行 (-75%)；机械搬运，0 逻辑改动",
+        "`aac6b859` Phase 1.C.1 候选人推荐卡片模板化（班次 5 + 薪资 3 + 地址 3 = 11 条 badcase）",
+        "`ed483b7a` Phase 1.C.2 无岗动作链 noMatchScript + 户籍敏感字段委婉问（拉群 + 软收尾 + 替代品牌 + 敏感字段 = 4 条 badcase）",
+        "sanitize / hard-requirements / salary-facts / welfare-facts / candidate-card / no-match-script",
+        "重大改动（render banner + reply-fact-guard 重构）走全量 jest",
+        "**零风险机械搬运**：precheck 拆分 8 文件 1745 行，全部走过 jest"
+      ],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "code review 9 个 commit（每个 self-contained，建议按 commit 顺序看）",
+        "重点 review `candidate-card.util.ts` 卡片格式（是否覆盖业务关心的字段）",
+        "重点 review `no-match-script.util.ts` 的 candidateMessage 文案（是否够口语化）",
+        "重点 review `welfare-facts.util.ts` 的 ❌/✅/💵/❓ 符号语义是否对齐业务",
+        "precheck 拆分的 7 个 util 路径变化是否影响其他调用方（grep `from '@tools/duliday-interview-precheck.tool'`）",
+        "评估 booking-guards 新增 hard-requirement gate 是否会误伤合规候选人"
       ]
     }
   ]
