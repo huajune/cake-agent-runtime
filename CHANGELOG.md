@@ -11,10 +11,57 @@
 <!-- release:pending:start -->
 ## 待发布
 
-**预计版本**: `v5.7.2`
-**最近更新**: `2026-05-18`
+**预计版本**: `v5.7.3`
+**最近更新**: `2026-05-19`
 **来源分支**: `develop`
 **累计 PR**: 1
+
+### 更新摘要
+- PR #192 **Agent 品牌意向例外**：候选人只是接受 Agent 自推岗位时，不把该品牌当成候选人硬性品牌意向；硬条件不符时先去掉 `brandIdList` 并保留位置/年龄/身份/时间窗等硬约束重查，避免过早 `request_handoff`。
+- PR #192 **启动和日志稳定性**：`DataCleanupService.onModuleInit` 不再等待启动清理完成；Supabase/Cloudflare HTML 错误页会被摘要成单行，避免 bootstrap 被长超时拖死、日志被 HTML 淹没。
+- PR #192 **badcase 工具层硬修**：补上品牌名净化、拉群幂等记忆、收资字段一致性告警、薪资防编告警、面试预约收尾模板、少数民族姓名豁免、南京/栖霞/六合地理映射等边界。
+- PR #192 **架构沉淀**：新增 `docs/architecture/agent-redesign-from-badcases.md`，把 63 条 badcase 收敛成槽位状态机、信号提取、工具数据契约、文案模板化 4 条后续主线。
+- PR #192 **tools 目录重组**：把 `duliday-job-list.tool.ts` 的检索、helper、同品牌门店聚合、markdown 渲染拆到 `src/tools/duliday/job-list/*`，并将 booking 专用 util 与跨工具 util 分层归位。
+- PR #192 候选人接受 Agent 推荐后，硬条件不符时更可能继续获得替代岗位，而不是被错误转人工。
+- PR #192 约面成功后的时间、到店话术、免责声明等回复更稳定。
+- PR #192 运营侧能更早发现收资字段漏收和薪资编造风险。
+- PR #192 `duliday_job_list` 后续维护面更清晰，检索、渲染、聚合逻辑不再都塞在单文件里。
+
+### 新功能
+- PR #192 **架构沉淀**：新增 `docs/architecture/agent-redesign-from-badcases.md`，把 63 条 badcase 收敛成槽位状态机、信号提取、工具数据契约、文案模板化 4 条后续主线。
+
+### 问题修复
+- PR #192 **Agent 品牌意向例外**：候选人只是接受 Agent 自推岗位时，不把该品牌当成候选人硬性品牌意向；硬条件不符时先去掉 `brandIdList` 并保留位置/年龄/身份/时间窗等硬约束重查，避免过早 `request_handoff`。
+- PR #192 **启动和日志稳定性**：`DataCleanupService.onModuleInit` 不再等待启动清理完成；Supabase/Cloudflare HTML 错误页会被摘要成单行，避免 bootstrap 被长超时拖死、日志被 HTML 淹没。
+- PR #192 **badcase 工具层硬修**：补上品牌名净化、拉群幂等记忆、收资字段一致性告警、薪资防编告警、面试预约收尾模板、少数民族姓名豁免、南京/栖霞/六合地理映射等边界。
+- PR #192 **tools 目录重组**：把 `duliday-job-list.tool.ts` 的检索、helper、同品牌门店聚合、markdown 渲染拆到 `src/tools/duliday/job-list/*`，并将 booking 专用 util 与跨工具 util 分层归位。
+- PR #192 候选人接受 Agent 推荐后，硬条件不符时更可能继续获得替代岗位，而不是被错误转人工。
+- PR #192 约面成功后的时间、到店话术、免责声明等回复更稳定。
+- PR #192 运营侧能更早发现收资字段漏收和薪资编造风险。
+- PR #192 `duliday_job_list` 后续维护面更清晰，检索、渲染、聚合逻辑不再都塞在单文件里。
+
+### 优化调整
+- 无
+
+### 运维与流程
+- 无
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #192 `pnpm run ci:check` 本地通过：239 suites / 2888 tests
+- PR #192 `git push` pre-push hook 再次运行 `pnpm run ci:check` 通过：239 suites / 2888 tests
+- PR #192 GitHub Actions `CI Checks` 等待完成
+- PR #192 GitHub Actions `ai-code-review` 等待完成
+<!-- release:pending:end -->
+
+## [5.7.2] - 2026-05-18
+
+**来源分支**: `develop`
 
 ### 更新摘要
 - PR #188 地理识别改成白名单驱动扫描，修复区+镇/区+街道贪婪误吞
@@ -44,7 +91,6 @@
 - PR #188 `pnpm run lint` 无 warning
 - PR #188 `npx prettier --check` 通过
 - PR #188 `npx tsc --noEmit` 无错误
-<!-- release:pending:end -->
 
 ## [5.7.1] - 2026-05-15
 
