@@ -1,12 +1,51 @@
 import {
   applyScheduleConstraint,
   filterJobsByRequestedCategories,
+  filterJobsToRequestedBrands,
   formatScheduleConstraintLabel,
   haversineDistance,
   scoreJobAgainstRequestedCategories,
 } from '@tools/duliday/job-list/search.util';
 
 describe('job-list search util', () => {
+  describe('filterJobsToRequestedBrands (Phase 1.C.3)', () => {
+    const dami = { basicInfo: { jobId: 1, brandName: '大米先生' } };
+    const swei = { basicInfo: { jobId: 2, brandName: '史伟莎销售' } };
+    const kfc = { basicInfo: { jobId: 3, brandName: 'KFC肯德基' } };
+    const noBrand = { basicInfo: { jobId: 4 } };
+
+    it('returns all jobs when brandAliasList empty', () => {
+      const out = filterJobsToRequestedBrands([dami, swei], []);
+      expect(out).toHaveLength(2);
+    });
+
+    it('keeps only jobs whose brandName contains the alias (substring)', () => {
+      const out = filterJobsToRequestedBrands([dami, swei, kfc], ['大米先生']);
+      expect(out).toEqual([dami]);
+    });
+
+    it('matches when alias is a substring of brandName (e.g. "肯德基" in "KFC肯德基")', () => {
+      const out = filterJobsToRequestedBrands([dami, kfc], ['肯德基']);
+      expect(out).toEqual([kfc]);
+    });
+
+    it('matches when brandName is a substring of alias (e.g. brand "肯德基" + alias "肯德基店")', () => {
+      const job = { basicInfo: { jobId: 5, brandName: '肯德基' } };
+      const out = filterJobsToRequestedBrands([job], ['肯德基店']);
+      expect(out).toEqual([job]);
+    });
+
+    it('drops jobs with missing brandName', () => {
+      const out = filterJobsToRequestedBrands([dami, noBrand], ['大米先生']);
+      expect(out).toEqual([dami]);
+    });
+
+    it('accepts any of multiple aliases', () => {
+      const out = filterJobsToRequestedBrands([dami, swei, kfc], ['大米先生', '肯德基']);
+      expect(out).toEqual([dami, kfc]);
+    });
+  });
+
   it('calculates haversine distance in kilometers', () => {
     const distance = haversineDistance(31.2304, 121.4737, 31.2206, 121.5503);
 

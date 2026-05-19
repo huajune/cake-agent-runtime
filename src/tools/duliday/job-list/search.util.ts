@@ -78,6 +78,29 @@ export function scoreJobAgainstRequestedCategories(job: any, jobCategoryList: st
   return score;
 }
 
+/**
+ * 候选人明确品牌意向（brandAliasList 非空）时，把结果硬过滤到该意向品牌。
+ *
+ * 历史 badcase bb012h5c：候选人找"大米先生"，结果回了"史伟莎销售/消杀员"等
+ * 不相关品牌，Agent 跨品牌推。原因是 sponge 后端在某些场景下会做模糊匹配返回
+ * 非精确品牌，或 LLM 把多个品牌一起塞了 brandAliasList。
+ *
+ * 本函数对 jobs[].basicInfo.brandName 做"任一别名出现在品牌名中"的子串匹配，
+ * 不匹配的岗位直接剔除。空 brandAliasList 时直通。
+ */
+export function filterJobsToRequestedBrands(jobs: any[], brandAliasList: string[]): any[] {
+  if (!Array.isArray(brandAliasList) || brandAliasList.length === 0) return jobs;
+  const aliases = brandAliasList
+    .map((alias) => normalizeKeyword(alias))
+    .filter((alias) => alias.length > 0);
+  if (aliases.length === 0) return jobs;
+  return jobs.filter((job) => {
+    const brandName = normalizeKeyword(job?.basicInfo?.brandName);
+    if (!brandName) return false;
+    return aliases.some((alias) => brandName.includes(alias) || alias.includes(brandName));
+  });
+}
+
 export function formatScheduleConstraintLabel(c: CandidateScheduleConstraint): string {
   const parts: string[] = [];
   if (c.onlyWeekends) parts.push('只周末');
