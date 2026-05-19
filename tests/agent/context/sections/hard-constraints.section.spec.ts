@@ -41,8 +41,12 @@ describe('HardConstraintsSection', () => {
     const output = section.build({ ...baseCtx, sessionFacts: facts });
 
     expect(output).toContain('[本轮查询硬约束]');
-    expect(output).toContain('- 城市: 南京（必填到 cityNameList）');
-    expect(output).toContain('- 区域: 秦淮区、建邺区（填到 regionNameList）');
+    expect(output).toContain(
+      '- 城市: 南京（必填到 duliday_job_list.cityNameList；调用 invite_to_group 时也必须用这个城市级名称）',
+    );
+    expect(output).toContain(
+      '- 区域: 秦淮区、建邺区（填到 duliday_job_list.regionNameList；严禁填到 invite_to_group.city）',
+    );
     expect(output).toContain('位置/商圈/地标: 新街口');
     expect(output).toContain('必须先 geocode');
   });

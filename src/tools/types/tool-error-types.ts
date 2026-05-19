@@ -65,6 +65,7 @@ export const TOOL_ERROR_TYPES = {
   INVITE_BOOKING_NOT_SUCCESS: 'invite.booking_not_success',
   INVITE_ENTERPRISE_TOKEN_MISSING: 'invite.enterprise_token_missing',
   INVITE_MISSING_BOT_IDENTITY: 'invite.missing_bot_identity',
+  INVITE_INVALID_CITY_SCOPE: 'invite.invalid_city_scope',
   INVITE_NO_GROUP_AVAILABLE: 'invite.no_group_available',
   INVITE_NO_GROUP_IN_CITY: 'invite.no_group_in_city',
   INVITE_GROUP_FULL: 'invite.group_full',
