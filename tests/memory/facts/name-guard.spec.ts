@@ -211,5 +211,32 @@ describe('name-guard', () => {
       // "张测试"开头不是黑名单词，仍然通过
       expect(isLikelyRealChineseName('张测试')).toBe(true);
     });
+
+    describe('5-8 字少数民族真名豁免（badcase uw8ow1xw / slg3jqi9）', () => {
+      it.each([
+        '布买日也木',
+        '阿不力克木',
+        '玛依拉古丽',
+        '艾尔肯江',
+        '巴特尔孟和',
+        '才让顿珠',
+      ])('accepts 5-8 char minority name %p', (value) => {
+        expect(isLikelyRealChineseName(value)).toBe(true);
+      });
+
+      it.each([
+        '小晴早点睡',
+        '加油宝贝吖',
+        '甜甜小可爱',
+        '困死的小猫',
+        '小贝早点睡',
+      ])('still rejects 5-8 char Chinese nickname %p', (value) => {
+        expect(isLikelyRealChineseName(value)).toBe(false);
+      });
+
+      it('rejects 9+ char Chinese strings (likely nickname or sentence)', () => {
+        expect(isLikelyRealChineseName('阿不力克木买买提江')).toBe(false);
+      });
+    });
   });
 });

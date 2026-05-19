@@ -1,10 +1,12 @@
 import type { BrandItem } from '@/sponge/sponge.types';
+import { formatLocalDate } from '@infra/utils/date.util';
 import {
   FALLBACK_EXTRACTION,
   type CityFact,
   type EntityExtractionResult,
   type InterviewInfo,
   type Preferences,
+  type ScheduleConstraintFact,
 } from '../types/session-facts.types';
 import {
   DISTRICT_TO_CITY,
@@ -219,6 +221,41 @@ export function extractHighConfidenceFacts(
     if (schedule) {
       facts.preferences.schedule = schedule;
       reasons.push(`班次识别：${schedule}`);
+    }
+
+    const scheduleConstraint = extractScheduleConstraintStructured(message);
+    if (scheduleConstraint) {
+      const merged: ScheduleConstraintFact = {
+        onlyWeekends:
+          scheduleConstraint.onlyWeekends ??
+          facts.preferences.schedule_constraint?.onlyWeekends ??
+          null,
+        onlyEvenings:
+          scheduleConstraint.onlyEvenings ??
+          facts.preferences.schedule_constraint?.onlyEvenings ??
+          null,
+        onlyMornings:
+          scheduleConstraint.onlyMornings ??
+          facts.preferences.schedule_constraint?.onlyMornings ??
+          null,
+        maxDaysPerWeek:
+          scheduleConstraint.maxDaysPerWeek ??
+          facts.preferences.schedule_constraint?.maxDaysPerWeek ??
+          null,
+      };
+      facts.preferences.schedule_constraint = merged;
+      const labelParts: string[] = [];
+      if (merged.onlyWeekends) labelParts.push('只周末');
+      if (merged.onlyEvenings) labelParts.push('只晚班');
+      if (merged.onlyMornings) labelParts.push('只早班');
+      if (merged.maxDaysPerWeek !== null) labelParts.push(`每周≤${merged.maxDaysPerWeek}天`);
+      reasons.push(`班次硬约束（结构化）：${labelParts.join('、') || '空'}`);
+    }
+
+    const availableAfter = extractAvailableAfterDate(message, formatLocalDate(new Date()));
+    if (availableAfter) {
+      facts.preferences.available_after = availableAfter;
+      reasons.push(`未来日期硬约束：${availableAfter.date}（原话："${availableAfter.raw}"）`);
     }
 
     const location = extractLocation(message);
@@ -557,6 +594,144 @@ function extractWeeklyDayConstraint(message: string): string | null {
   const phrase = match[0];
   const qualifier = /最多|至多|只能|只|就/.test(phrase) ? '最多' : '';
   return `每周${qualifier}${match[1]}天`;
+}
+
+const CHINESE_NUM_MAP: Record<string, number> = {
+  一: 1,
+  二: 2,
+  两: 2,
+  三: 3,
+  四: 4,
+  五: 5,
+  六: 6,
+  七: 7,
+};
+
+function parseChineseOrArabicNumber(token: string): number | null {
+  if (CHINESE_NUM_MAP[token] != null) return CHINESE_NUM_MAP[token];
+  const num = parseInt(token, 10);
+  return Number.isFinite(num) && num >= 1 && num <= 7 ? num : null;
+}
+
+/**
+ * 结构化班次约束提取（Phase 3.1）。
+ *
+ * 与 extractSchedule 的字符串输出互补：把"做一休一/每周最多两天/只周末/只晚班"
+ * 等高置信信号同时派生成 ScheduleConstraintFact 对象，便于 duliday_job_list 工具
+ * 直接读取并自动带上 candidateScheduleConstraint 入参，不依赖 LLM 在多轮后还记得。
+ *
+ * 返回 null 表示本条消息没有可结构化的硬约束信号。
+ */
+function extractScheduleConstraintStructured(message: string): {
+  onlyWeekends: boolean | null;
+  onlyEvenings: boolean | null;
+  onlyMornings: boolean | null;
+  maxDaysPerWeek: number | null;
+} | null {
+  const result = {
+    onlyWeekends: null as boolean | null,
+    onlyEvenings: null as boolean | null,
+    onlyMornings: null as boolean | null,
+    maxDaysPerWeek: null as number | null,
+  };
+
+  // 只 + 任意 ≤ 8 字符 + 周末/晚班/夜班/早班，允许"只能周末做晚班"这种复合表达
+  if (/只(?:能|想|考虑)?[^，。！？；;]{0,8}?周末/.test(message)) result.onlyWeekends = true;
+  if (/只(?:能|想|考虑)?[^，。！？；;]{0,8}?(?:晚|夜)班/.test(message)) result.onlyEvenings = true;
+  if (/只(?:能|想|考虑)?[^，。！？；;]{0,8}?早班/.test(message)) result.onlyMornings = true;
+
+  // 做一休一/上一休一 → maxDaysPerWeek = 1
+  if (/做一休一|上一休一|干一休一|做一天休一天|上一天休一天/.test(message)) {
+    result.maxDaysPerWeek = 1;
+  }
+  // 每周 + 任意 ≤ 15 字符 + 数字 + 天；片段需含"最多/至多/只能/只/就"等上限语义
+  if (result.maxDaysPerWeek === null) {
+    const limitedMatch = message.match(
+      /(?:每周|一周)([^，。！？；;]{0,15}?)([一二两三四五六七0-7])\s*天/,
+    );
+    if (limitedMatch?.[1] !== undefined && limitedMatch?.[2]) {
+      const qualifierFragment = limitedMatch[1] ?? '';
+      if (/最多|至多|只能|只|就/.test(qualifierFragment)) {
+        const n = parseChineseOrArabicNumber(limitedMatch[2]);
+        if (n !== null) result.maxDaysPerWeek = n;
+      }
+    }
+  }
+  if (result.maxDaysPerWeek === null) {
+    const doRestMatch = message.match(
+      /做\s*([一二两三四五六七1-7])\s*休\s*([一二两三四五六七1-7])/,
+    );
+    if (doRestMatch?.[1]) {
+      const n = parseChineseOrArabicNumber(doRestMatch[1]);
+      if (n !== null) result.maxDaysPerWeek = n;
+    }
+  }
+
+  const hasAny =
+    result.onlyWeekends !== null ||
+    result.onlyEvenings !== null ||
+    result.onlyMornings !== null ||
+    result.maxDaysPerWeek !== null;
+  return hasAny ? result : null;
+}
+
+/**
+ * 未来日期硬约束提取（Phase 3.2，简化版）。
+ *
+ * 仅识别明确日期（"5月1日之后" / "5.1 之后" / "2026-05-15 之后"），
+ * 解析成 YYYY-MM-DD；模糊词（"等开学" / "月底" / "下周后"）一律不识别，
+ * 让 Agent handoff 转人工，避免错误抽日期。
+ *
+ * 返回 null 表示无可解析的明确日期信号。
+ */
+function extractAvailableAfterDate(
+  message: string,
+  today: string,
+): { date: string; raw: string } | null {
+  const currentYear = Number(today.slice(0, 4));
+
+  // 2026-05-15 / 2026/05/15 + 后/之后/以后
+  const fullDate = message.match(/((\d{4})[-/](\d{1,2})[-/](\d{1,2}))\s*(?:之?后|以后|起)/);
+  if (fullDate?.[1]) {
+    const [, , y, m, d] = fullDate;
+    const date = toYyyyMmDd(Number(y), Number(m), Number(d));
+    if (date && date > today) return { date, raw: fullDate[0] };
+  }
+
+  // X月Y日/号 + 后/之后/以后
+  const monthDay = message.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]\s*(?:之?后|以后|起)/);
+  if (monthDay?.[1] && monthDay[2]) {
+    const date = toYyyyMmDd(currentYear, Number(monthDay[1]), Number(monthDay[2]));
+    if (date) {
+      // 若解析出的日期 ≤ 今天，往后推一年
+      const finalDate =
+        date > today ? date : toYyyyMmDd(currentYear + 1, Number(monthDay[1]), Number(monthDay[2]));
+      if (finalDate) return { date: finalDate, raw: monthDay[0] };
+    }
+  }
+
+  // M.D 之后 / M.D 以后（如"5.1之后"）
+  const dotMatch = message.match(/(\d{1,2})\.(\d{1,2})\s*(?:之?后|以后|起)/);
+  if (dotMatch?.[1] && dotMatch[2]) {
+    const date = toYyyyMmDd(currentYear, Number(dotMatch[1]), Number(dotMatch[2]));
+    if (date) {
+      const finalDate =
+        date > today ? date : toYyyyMmDd(currentYear + 1, Number(dotMatch[1]), Number(dotMatch[2]));
+      if (finalDate) return { date: finalDate, raw: dotMatch[0] };
+    }
+  }
+
+  return null;
+}
+
+function toYyyyMmDd(y: number, m: number, d: number): string | null {
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+  if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+  const utc = new Date(Date.UTC(y, m - 1, d));
+  if (utc.getUTCFullYear() !== y || utc.getUTCMonth() + 1 !== m || utc.getUTCDate() !== d) {
+    return null;
+  }
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
 function extractTimeRange(message: string): string | null {

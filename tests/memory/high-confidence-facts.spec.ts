@@ -57,6 +57,111 @@ describe('extractHighConfidenceFacts', () => {
     ).toBe('下班后');
   });
 
+  describe('schedule_constraint (Phase 3.1 structured)', () => {
+    it('extracts onlyWeekends from "只能周末上班"', () => {
+      const constraint = extractHighConfidenceFacts(
+        ['我只能周末上班'],
+        brandData,
+      )?.preferences.schedule_constraint;
+      expect(constraint?.onlyWeekends).toBe(true);
+      expect(constraint?.maxDaysPerWeek).toBeNull();
+    });
+
+    it('extracts onlyEvenings from "只做晚班"', () => {
+      const constraint = extractHighConfidenceFacts(
+        ['我只做晚班'],
+        brandData,
+      )?.preferences.schedule_constraint;
+      expect(constraint?.onlyEvenings).toBe(true);
+    });
+
+    it('extracts maxDaysPerWeek=1 from "做一休一"', () => {
+      const constraint = extractHighConfidenceFacts(
+        ['我只能做一休一'],
+        brandData,
+      )?.preferences.schedule_constraint;
+      expect(constraint?.maxDaysPerWeek).toBe(1);
+    });
+
+    it('extracts maxDaysPerWeek=2 from "每周最多两天"', () => {
+      const constraint = extractHighConfidenceFacts(
+        ['每周最多也就能干两天'],
+        brandData,
+      )?.preferences.schedule_constraint;
+      expect(constraint?.maxDaysPerWeek).toBe(2);
+    });
+
+    it('extracts maxDaysPerWeek=2 from "做二休一"', () => {
+      const constraint = extractHighConfidenceFacts(
+        ['可以做二休一'],
+        brandData,
+      )?.preferences.schedule_constraint;
+      expect(constraint?.maxDaysPerWeek).toBe(2);
+    });
+
+    it('combines multiple constraints in one message', () => {
+      const constraint = extractHighConfidenceFacts(
+        ['我只能周末做晚班，每周最多两天'],
+        brandData,
+      )?.preferences.schedule_constraint;
+      expect(constraint?.onlyWeekends).toBe(true);
+      expect(constraint?.onlyEvenings).toBe(true);
+      expect(constraint?.maxDaysPerWeek).toBe(2);
+    });
+
+    it('returns null when no constraint signal', () => {
+      const constraint = extractHighConfidenceFacts(
+        ['你好我想看下兼职'],
+        brandData,
+      )?.preferences.schedule_constraint;
+      expect(constraint ?? null).toBeNull();
+    });
+  });
+
+  describe('available_after (Phase 3.2 future date constraint)', () => {
+    beforeAll(() => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-04-20T10:00:00+08:00'));
+    });
+    afterAll(() => {
+      jest.useRealTimers();
+    });
+
+    it('extracts明确日期"5月1日之后" → next future date', () => {
+      const aa = extractHighConfidenceFacts(
+        ['5月1日之后才能来面试'],
+        brandData,
+      )?.preferences.available_after;
+      expect(aa?.date).toBe('2026-05-01');
+      expect(aa?.raw).toContain('5月1日');
+    });
+
+    it('extracts full date "2026-05-15 之后"', () => {
+      const aa = extractHighConfidenceFacts(
+        ['2026-05-15之后再面试吧'],
+        brandData,
+      )?.preferences.available_after;
+      expect(aa?.date).toBe('2026-05-15');
+    });
+
+    it('rolls over to next year when month-day already passed', () => {
+      const aa = extractHighConfidenceFacts(
+        ['3月10日之后联系'],
+        brandData,
+      )?.preferences.available_after;
+      // 当前 2026-04-20，3月10日已过 → 2027-03-10
+      expect(aa?.date).toBe('2027-03-10');
+    });
+
+    it('does NOT extract fuzzy wording like "月底/等开学/下周再说"', () => {
+      expect(
+        extractHighConfidenceFacts(['等开学再说'], brandData)?.preferences.available_after,
+      ).toBeUndefined();
+      expect(
+        extractHighConfidenceFacts(['月底再面试'], brandData)?.preferences.available_after,
+      ).toBeUndefined();
+    });
+  });
+
   it('should distinguish health certificate type from missing certificate wording', () => {
     expect(
       extractHighConfidenceFacts(['我有食品类健康证'], brandData)?.interview_info
@@ -139,6 +244,49 @@ describe('extractHighConfidenceFacts', () => {
     const lived = extractHighConfidenceFacts(['住在朝阳区'], brandData);
     expect(lived?.preferences.city?.value).toBe('北京');
     expect(lived?.preferences.district).toEqual(['朝阳']);
+
+    const nanjing = extractHighConfidenceFacts(['我在栖霞区'], brandData);
+    expect(nanjing?.preferences.city).toEqual({
+      value: '南京',
+      confidence: 'high',
+      evidence: 'unique_district_alias',
+    });
+    expect(nanjing?.preferences.district).toEqual(['栖霞']);
+
+    const liuhe = extractHighConfidenceFacts(['六合区'], brandData);
+    expect(liuhe?.preferences.city?.value).toBe('南京');
+    expect(liuhe?.preferences.district).toEqual(['六合']);
+  });
+
+  it('should resolve city from whitelist district even when message glues district + sub-town/street', () => {
+    // badcase 2026-05-18 (msg id 23946)：候选人发"浦东新区航头镇"，贪婪正则把整段
+    // 当一个 district 捕获，归一化"浦东新区航头"查不到白名单，city 留空，硬约束
+    // 又把 Agent 卡进"当前没有已确认城市"循环反问。重构成白名单驱动扫描后，
+    // "浦东新区"应优先于"浦东"被认领，剩余"航头镇"通过正则兜底但**不影响 city 识别**。
+    const district_plus_town = extractHighConfidenceFacts(['浦东新区航头镇'], brandData);
+    expect(district_plus_town?.preferences.city).toEqual({
+      value: '上海',
+      confidence: 'high',
+      evidence: 'unique_district_alias',
+    });
+    expect(district_plus_town?.preferences.district).toContain('浦东新区');
+
+    // 同模式的另一种表达：区 + 街道
+    const district_plus_street = extractHighConfidenceFacts(['徐汇区漕河泾街道'], brandData);
+    expect(district_plus_street?.preferences.city?.value).toBe('上海');
+    expect(district_plus_street?.preferences.district).toContain('徐汇');
+
+    // 同模式的另一种城市：海淀 + 镇
+    const beijing_district_plus_town = extractHighConfidenceFacts(['海淀区清河镇'], brandData);
+    expect(beijing_district_plus_town?.preferences.city?.value).toBe('北京');
+    expect(beijing_district_plus_town?.preferences.district).toContain('海淀');
+  });
+
+  it('should prefer the longest whitelist district when multiple keys could prefix match', () => {
+    // "浦东" 和 "浦东新区" 都在白名单里。扫描必须先认领"浦东新区"，避免被短 key 偷走。
+    const result = extractHighConfidenceFacts(['浦东新区'], brandData);
+    expect(result?.preferences.city?.value).toBe('上海');
+    expect(result?.preferences.district).toEqual(['浦东新区']);
   });
 
   it('should resolve city from whitelist district even when message glues district + sub-town/street', () => {

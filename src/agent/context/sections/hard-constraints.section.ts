@@ -79,6 +79,14 @@ export class HardConstraintsSection implements PromptSection {
         sessionFacts?.preferences.time_windows ??
         highConfidenceFacts?.preferences.time_windows ??
         null,
+      schedule_constraint:
+        sessionFacts?.preferences.schedule_constraint ??
+        highConfidenceFacts?.preferences.schedule_constraint ??
+        null,
+      available_after:
+        sessionFacts?.preferences.available_after ??
+        highConfidenceFacts?.preferences.available_after ??
+        null,
     };
 
     return { interview, pref };
@@ -98,14 +106,18 @@ export class HardConstraintsSection implements PromptSection {
     const lines: string[] = [];
 
     if (pref.city?.value) {
-      lines.push(`- 城市: ${pref.city.value}（必填到 cityNameList）`);
+      lines.push(
+        `- 城市: ${pref.city.value}（必填到 duliday_job_list.cityNameList；调用 invite_to_group 时也必须用这个城市级名称）`,
+      );
     }
     if (pref.district?.length) {
       if (pref.city?.value) {
-        lines.push(`- 区域: ${pref.district.join('、')}（填到 regionNameList）`);
+        lines.push(
+          `- 区域: ${pref.district.join('、')}（填到 duliday_job_list.regionNameList；严禁填到 invite_to_group.city）`,
+        );
       } else {
         lines.push(
-          `- 区域: ${pref.district.join('、')}（当前没有已确认城市，禁止基于区县通识补 city；先中性确认候选人所在城市，确认前不得调用 duliday_job_list；反问时不得带具体城市名，禁止"是在 X 城市的 X 区吗"这类诱导句）`,
+          `- 区域: ${pref.district.join('、')}（当前没有已确认城市；优先把区/县名作为 address 传给 \`geocode\` 工具，让工具按 unique/ambiguous 三态判定——单城返回直接用，多城同名再反问；不要先反问候选人城市再调工具；反问时不得带具体城市名）`,
         );
       }
     }

@@ -1,7 +1,154 @@
 {
   "baseVersion": "5.7.2",
-  "nextVersion": "5.7.2",
-  "updatedAt": "2026-05-18",
+  "nextVersion": "5.8.0",
+  "updatedAt": "2026-05-19",
   "sourceBranch": "develop",
-  "entries": []
+  "entries": [
+    {
+      "number": "192",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/192",
+      "title": "Agent badcase 修复与 duliday 工具拆分",
+      "author": "ArielZhu",
+      "mergedAt": "2026-05-19",
+      "summary": [
+        "**Agent 品牌意向例外**：候选人只是接受 Agent 自推岗位时，不把该品牌当成候选人硬性品牌意向；硬条件不符时先去掉 `brandIdList` 并保留位置/年龄/身份/时间窗等硬约束重查，避免过早 `request_handoff`。",
+        "**启动和日志稳定性**：`DataCleanupService.onModuleInit` 不再等待启动清理完成；Supabase/Cloudflare HTML 错误页会被摘要成单行，避免 bootstrap 被长超时拖死、日志被 HTML 淹没。",
+        "**badcase 工具层硬修**：补上品牌名净化、拉群幂等记忆、收资字段一致性告警、薪资防编告警、面试预约收尾模板、少数民族姓名豁免、南京/栖霞/六合地理映射等边界。",
+        "**架构沉淀**：新增 `docs/architecture/agent-redesign-from-badcases.md`，把 63 条 badcase 收敛成槽位状态机、信号提取、工具数据契约、文案模板化 4 条后续主线。",
+        "**tools 目录重组**：把 `duliday-job-list.tool.ts` 的检索、helper、同品牌门店聚合、markdown 渲染拆到 `src/tools/duliday/job-list/*`，并将 booking 专用 util 与跨工具 util 分层归位。",
+        "候选人接受 Agent 推荐后，硬条件不符时更可能继续获得替代岗位，而不是被错误转人工。",
+        "约面成功后的时间、到店话术、免责声明等回复更稳定。",
+        "运营侧能更早发现收资字段漏收和薪资编造风险。",
+        "`duliday_job_list` 后续维护面更清晰，检索、渲染、聚合逻辑不再都塞在单文件里。"
+      ],
+      "features": [
+        "**架构沉淀**：新增 `docs/architecture/agent-redesign-from-badcases.md`，把 63 条 badcase 收敛成槽位状态机、信号提取、工具数据契约、文案模板化 4 条后续主线。"
+      ],
+      "fixes": [
+        "**Agent 品牌意向例外**：候选人只是接受 Agent 自推岗位时，不把该品牌当成候选人硬性品牌意向；硬条件不符时先去掉 `brandIdList` 并保留位置/年龄/身份/时间窗等硬约束重查，避免过早 `request_handoff`。",
+        "**启动和日志稳定性**：`DataCleanupService.onModuleInit` 不再等待启动清理完成；Supabase/Cloudflare HTML 错误页会被摘要成单行，避免 bootstrap 被长超时拖死、日志被 HTML 淹没。",
+        "**badcase 工具层硬修**：补上品牌名净化、拉群幂等记忆、收资字段一致性告警、薪资防编告警、面试预约收尾模板、少数民族姓名豁免、南京/栖霞/六合地理映射等边界。",
+        "**tools 目录重组**：把 `duliday-job-list.tool.ts` 的检索、helper、同品牌门店聚合、markdown 渲染拆到 `src/tools/duliday/job-list/*`，并将 booking 专用 util 与跨工具 util 分层归位。",
+        "候选人接受 Agent 推荐后，硬条件不符时更可能继续获得替代岗位，而不是被错误转人工。",
+        "约面成功后的时间、到店话术、免责声明等回复更稳定。",
+        "运营侧能更早发现收资字段漏收和薪资编造风险。",
+        "`duliday_job_list` 后续维护面更清晰，检索、渲染、聚合逻辑不再都塞在单文件里。"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run ci:check` 本地通过：239 suites / 2888 tests",
+        "`git push` pre-push hook 再次运行 `pnpm run ci:check` 通过：239 suites / 2888 tests",
+        "GitHub Actions `CI Checks` 等待完成",
+        "GitHub Actions `ai-code-review` 等待完成"
+      ]
+    },
+    {
+      "number": "195",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/195",
+      "title": "Phase 1.B 数据契约层 + Phase 1.C 文案模板化 + precheck 拆分",
+      "author": "ArielZhu",
+      "mergedAt": "2026-05-19",
+      "summary": [
+        "`cb2b09c1` storeName 内部编码剥离 + 门店状态禁编造（badcase 2xcajl7w / z1u2ntbg）",
+        "`516cad1e` hardRequirements enum 派生骨架（gender / household / healthCert）",
+        "`ab0074d4` 清理 LLM 上下文里的 badcase ID 泄露",
+        "`17e735b0` hardRequirements 接入 render banner + booking-guards hard gate",
+        "`6e4bc8c6` salary 字段速览 banner + reply-fact-guard 复用同一派生层",
+        "`5d814455` welfare 字段速览 + 净化\"员工自理/不购买\"等弱否定",
+        "`7cab33ca` 拆 duliday-interview-precheck.tool 成 duliday/precheck/* 7 个 util，主文件 1615 → 410 行 (-75%)；机械搬运，0 逻辑改动",
+        "`aac6b859` Phase 1.C.1 候选人推荐卡片模板化（班次 5 + 薪资 3 + 地址 3 = 11 条 badcase）",
+        "`ed483b7a` Phase 1.C.2 无岗动作链 noMatchScript + 户籍敏感字段委婉问（拉群 + 软收尾 + 替代品牌 + 敏感字段 = 4 条 badcase）",
+        "全量 **3017 单测通过**（本 PR 新增 ≈ 90 例）",
+        "新增 util 全部带独立 spec：",
+        "sanitize / hard-requirements / salary-facts / welfare-facts / candidate-card / no-match-script",
+        "booking-guards 新增 hard-requirement gate 11 例",
+        "重大改动（render banner + reply-fact-guard 重构）走全量 jest",
+        "**低风险**：所有改动都是新增字段 + 新增 banner，不改原有 markdown / API 入参；旧调用方读 raw 数据继续工作",
+        "**中风险**：booking-guards 新增 gender + healthCert 硬拦，候选人 facts 与岗位约束冲突会拒 booking。已覆盖 11 例单测，且工具 description 给了清晰的 replyInstruction 让 LLM 转 handoff",
+        "**零风险机械搬运**：precheck 拆分 8 文件 1745 行，全部走过 jest"
+      ],
+      "features": [
+        "`17e735b0` hardRequirements 接入 render banner + booking-guards hard gate",
+        "全量 **3017 单测通过**（本 PR 新增 ≈ 90 例）",
+        "新增 util 全部带独立 spec：",
+        "booking-guards 新增 hard-requirement gate 11 例",
+        "**低风险**：所有改动都是新增字段 + 新增 banner，不改原有 markdown / API 入参；旧调用方读 raw 数据继续工作",
+        "**中风险**：booking-guards 新增 gender + healthCert 硬拦，候选人 facts 与岗位约束冲突会拒 booking。已覆盖 11 例单测，且工具 description 给了清晰的 replyInstruction 让 LLM 转 handoff"
+      ],
+      "fixes": [],
+      "optimizations": [
+        "`cb2b09c1` storeName 内部编码剥离 + 门店状态禁编造（badcase 2xcajl7w / z1u2ntbg）",
+        "`516cad1e` hardRequirements enum 派生骨架（gender / household / healthCert）",
+        "`ab0074d4` 清理 LLM 上下文里的 badcase ID 泄露",
+        "`6e4bc8c6` salary 字段速览 banner + reply-fact-guard 复用同一派生层",
+        "`5d814455` welfare 字段速览 + 净化\"员工自理/不购买\"等弱否定",
+        "`7cab33ca` 拆 duliday-interview-precheck.tool 成 duliday/precheck/* 7 个 util，主文件 1615 → 410 行 (-75%)；机械搬运，0 逻辑改动",
+        "`aac6b859` Phase 1.C.1 候选人推荐卡片模板化（班次 5 + 薪资 3 + 地址 3 = 11 条 badcase）",
+        "`ed483b7a` Phase 1.C.2 无岗动作链 noMatchScript + 户籍敏感字段委婉问（拉群 + 软收尾 + 替代品牌 + 敏感字段 = 4 条 badcase）",
+        "sanitize / hard-requirements / salary-facts / welfare-facts / candidate-card / no-match-script",
+        "重大改动（render banner + reply-fact-guard 重构）走全量 jest",
+        "**零风险机械搬运**：precheck 拆分 8 文件 1745 行，全部走过 jest"
+      ],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "code review 9 个 commit（每个 self-contained，建议按 commit 顺序看）",
+        "重点 review `candidate-card.util.ts` 卡片格式（是否覆盖业务关心的字段）",
+        "重点 review `no-match-script.util.ts` 的 candidateMessage 文案（是否够口语化）",
+        "重点 review `welfare-facts.util.ts` 的 ❌/✅/💵/❓ 符号语义是否对齐业务",
+        "precheck 拆分的 7 个 util 路径变化是否影响其他调用方（grep `from '@tools/duliday-interview-precheck.tool'`）",
+        "评估 booking-guards 新增 hard-requirement gate 是否会误伤合规候选人"
+      ]
+    },
+    {
+      "number": "196",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/196",
+      "title": "Phase 3 信号提取 + Phase 2-lite booking 契约 + Phase 1.C 收尾",
+      "author": "ArielZhu",
+      "mergedAt": "2026-05-19",
+      "summary": [
+        "**Phase 3.1+3.2** 信号提取层：把候选人在更早轮次说过的\"班次硬约束 / 未来日期硬约束\"持久化到 sessionFacts，下游工具自动消费",
+        "**Phase 2-lite.1** booking precheck 契约硬约束：把\"必须先 precheck 且 ready_to_book\"从 prompt 红线下沉到入参强校验",
+        "**Phase 1.C.3-5** 文案模板化收尾：跨品牌硬过滤 + 缺位置/跨城市禁反问 description",
+        "不引入全局 stage state machine（精度低、维护成本高）",
+        "用现有 precheck 已经派生的 `nextAction` + `missingFieldsCount` 作为契约",
+        "booking 工具入口硬校验候选人字段是否齐全 + 状态是否合法",
+        "Q3 代他人报名（一条 badcase 不值得双主体模型）",
+        "Q5 上下文承接（单 case 不值得动主 prompt）",
+        "y7f3jqsh 静默 10 分钟（message scheduler 范围，本 PR 外）",
+        "**中风险（要重点 review）**：booking 入参新增 prechecked 必填字段，是 breaking change 到工具契约。LLM 必须显式复读 precheck 的 nextAction + missingFieldsCount。在 description 已强调，但需观察生产数据看是否有 LLM 不填的情况",
+        "**低风险**：sessionFacts 新增字段（schedule_constraint + available_after），都是 nullable + 默认 null，旧 Redis 数据兼容",
+        "**低风险**：filterJobsToRequestedBrands 是 conservative 过滤（候选人没指定品牌时直通）"
+      ],
+      "features": [
+        "**Phase 3.1+3.2** 信号提取层：把候选人在更早轮次说过的\"班次硬约束 / 未来日期硬约束\"持久化到 sessionFacts，下游工具自动消费",
+        "**Phase 2-lite.1** booking precheck 契约硬约束：把\"必须先 precheck 且 ready_to_book\"从 prompt 红线下沉到入参强校验",
+        "**Phase 1.C.3-5** 文案模板化收尾：跨品牌硬过滤 + 缺位置/跨城市禁反问 description",
+        "不引入全局 stage state machine（精度低、维护成本高）",
+        "用现有 precheck 已经派生的 `nextAction` + `missingFieldsCount` 作为契约",
+        "booking 工具入口硬校验候选人字段是否齐全 + 状态是否合法",
+        "Q3 代他人报名（一条 badcase 不值得双主体模型）",
+        "Q5 上下文承接（单 case 不值得动主 prompt）",
+        "y7f3jqsh 静默 10 分钟（message scheduler 范围，本 PR 外）",
+        "**中风险（要重点 review）**：booking 入参新增 prechecked 必填字段，是 breaking change 到工具契约。LLM 必须显式复读 precheck 的 nextAction + missingFieldsCount。在 description 已强调，但需观察生产数据看是否有 LLM 不填的情况",
+        "**低风险**：sessionFacts 新增字段（schedule_constraint + available_after），都是 nullable + 默认 null，旧 Redis 数据兼容",
+        "**低风险**：filterJobsToRequestedBrands 是 conservative 过滤（候选人没指定品牌时直通）"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "code review 3 个 commit（按 commit 顺序）",
+        "重点 review Phase 2-lite.1 的 prechecked 入参契约是否合适",
+        "评估 filterJobsToRequestedBrands 的子串匹配规则是否会有误伤",
+        "看 available_after 的日期解析正则是否会误触发"
+      ]
+    }
+  ]
 }

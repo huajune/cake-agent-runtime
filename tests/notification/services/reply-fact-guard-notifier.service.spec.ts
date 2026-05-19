@@ -28,6 +28,8 @@ describe('ReplyFactGuardNotifierService', () => {
   const buildParams = (overrides: Record<string, unknown> = {}) => ({
     chatId: 'chat-1',
     userId: 'user-1',
+    traceId: 'trace-1',
+    contactName: '候选人A',
     botImId: undefined as string | undefined,
     botUserName: 'mgr-bob',
     replyPreview: '群已满了',

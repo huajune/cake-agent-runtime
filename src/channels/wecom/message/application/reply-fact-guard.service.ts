@@ -1,6 +1,103 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AgentToolCall } from '@agent/agent-run.types';
 import { ReplyFactGuardNotifierService } from '@notification/services/reply-fact-guard-notifier.service';
+import { extractSalaryFacts } from '@tools/duliday/job-list/salary-facts.util';
+
+/**
+ * 从 reply 中抽取"字段名：" 模板字段集合。
+ *
+ * 识别规则：行首是 2-8 字符中文/斜杠（如"姓名"、"联系方式"、"籍贯/户籍"），
+ * 紧跟全角或半角冒号，且冒号后不是数字（防误吃"面试时间：13:30"里的"13"）。
+ * 至少 3 行命中才视为收资模板，避免误判普通的"门店地址："/"时薪：24"等单行说明。
+ */
+function extractFormFieldsFromReply(reply: string): string[] {
+  const fields: string[] = [];
+  const fieldLineRegex = /^\s*([一-龥/]{2,8})[：:](?!\s*\d)/;
+  for (const line of reply.split(/\r?\n/)) {
+    const match = line.match(fieldLineRegex);
+    if (match) fields.push(match[1]);
+  }
+  return fields;
+}
+
+/**
+ * 从本轮 duliday_interview_precheck 工具结果中读出 Agent 本轮应该收集的字段集合。
+ *
+ * 优先级：collectionStrategy.starterFields > bookingChecklist.requiredFieldsToCollectNow
+ * > bookingChecklist.missingFields。同步 precheck 工具对 progressive/抗拒场景的降级语义。
+ */
+function readExpectedFieldsFromPrecheck(toolCalls: AgentToolCall[]): string[] | null {
+  const precheck = toolCalls.find(
+    (call) => call.toolName === 'duliday_interview_precheck' && call.result,
+  );
+  if (!precheck || typeof precheck.result !== 'object' || precheck.result === null) return null;
+
+  const result = precheck.result as Record<string, unknown>;
+  const checklist = result.bookingChecklist as Record<string, unknown> | undefined;
+  if (!checklist) return null;
+
+  const strategy = checklist.collectionStrategy as Record<string, unknown> | undefined;
+  const starterFields = strategy?.starterFields;
+  if (Array.isArray(starterFields) && starterFields.length > 0) {
+    return starterFields.filter((f): f is string => typeof f === 'string');
+  }
+
+  const required = checklist.requiredFieldsToCollectNow;
+  if (Array.isArray(required) && required.length > 0) {
+    return required.filter((f): f is string => typeof f === 'string');
+  }
+
+  const missing = checklist.missingFields;
+  if (Array.isArray(missing) && missing.length > 0) {
+    return missing.filter((f): f is string => typeof f === 'string');
+  }
+
+  return null;
+}
+
+/**
+ * 把 precheck 返回字段与 reply 模板字段都规范成同一基准，方便对账。
+ *
+ * - "联系方式" / "电话" / "联系电话" → "电话"
+ * - "工作经验" / "过往经历" / "过往经验" / "过往公司岗位年限" → "经验"
+ * - "健康证" / "健康证情况" → "健康证"
+ * - "学历" / "学历水平" → "学历"
+ * - "面试时间" / "可面试时间" → "面试时间"
+ * - 其余按 trim 比对
+ */
+function normalizeFieldName(name: string): string {
+  const trimmed = name.trim();
+  if (/电话|联系方式/.test(trimmed)) return '电话';
+  if (/经验|过往|经历|公司.*岗位/.test(trimmed)) return '经验';
+  if (/健康证/.test(trimmed)) return '健康证';
+  if (/学历/.test(trimmed)) return '学历';
+  if (/面试时间/.test(trimmed)) return '面试时间';
+  if (/籍贯|户籍/.test(trimmed)) return '籍贯';
+  if (/身份证(号)?/.test(trimmed)) return '身份证号';
+  return trimmed;
+}
+
+/**
+ * 判断本轮 duliday_job_list 返回里是否有"节假日/加班"独立薪资字段（type ≠ "无薪资"）。
+ * 实现委托给 salary-facts.util 统一派生，避免双口径漂移。
+ */
+function hasNonEmptyHolidayOrOvertimeSalary(jobListResult: unknown): boolean {
+  if (typeof jobListResult !== 'object' || jobListResult === null) return false;
+  const rawData = (jobListResult as Record<string, unknown>).rawData as
+    | Record<string, unknown>
+    | undefined;
+  const jobs = (rawData?.result ?? (jobListResult as Record<string, unknown>).result) as
+    | unknown[]
+    | undefined;
+  if (!Array.isArray(jobs)) return false;
+
+  for (const job of jobs) {
+    const jobSalary = (job as Record<string, unknown> | undefined)?.jobSalary;
+    const facts = extractSalaryFacts(jobSalary);
+    if (facts.hasHolidayBonus || facts.hasOvertimeBonus) return true;
+  }
+  return false;
+}
 
 /**
  * 单条事实矛盾规则：reply 中出现 `keywords` 任一时，要求本轮 tool 调用满足
@@ -10,6 +107,7 @@ interface FactRule {
   ruleId: string;
   label: string;
   keywords: RegExp;
+  ignorePredicate?: (text: string, toolCalls: AgentToolCall[]) => boolean;
   requiredToolPredicate: (toolCalls: AgentToolCall[]) => boolean;
 }
 
@@ -30,6 +128,17 @@ interface FactRule {
 export class ReplyFactGuardService {
   private readonly logger = new Logger(ReplyFactGuardService.name);
 
+  /**
+   * "要不要/还是先拉你进群？" 属于征求候选人选择，不是声称本轮已经完成拉群。
+   * 这类问句不能要求本轮 invite_to_group 成功，否则会把正常的候选人确认流程打成误报。
+   */
+  private static isConditionalGroupInviteQuestion(text: string): boolean {
+    const normalized = text.replace(/\s+/g, '');
+    return /(?:要不要|需不需要|是否需要|你看是|还是(?:先)?|要不(?:我)?)[^。！？?；]{0,80}?(?:拉(?:你|您)[^。！？?；]{0,15}?群|进(?:咱们|我们|这个|这|这边)[^。！？?；]{0,15}?群|加(?:你|您)[^。！？?；]{0,15}?群|发(?:个|一个|条)?(?:入)?群邀请)[^。！？?；]{0,80}?(?:吗|呢|？|\?)/.test(
+      normalized,
+    );
+  }
+
   /** 本轮 invite_to_group 真正成功了（用于规则 requiredToolPredicate）。 */
   private static inviteCalledSuccessfully(toolCalls: AgentToolCall[]): boolean {
     return toolCalls.some(
@@ -40,6 +149,77 @@ export class ReplyFactGuardService {
             call.result !== null &&
             (call.result as Record<string, unknown>).success === true)),
     );
+  }
+
+  /**
+   * 检测 reply 是否凭空编造"节假日双倍 / 周末加薪 / 浮动 / 面议"等本平台没有的薪资口径。
+   *
+   * 历史 badcase：
+   * - aalxnd77：阶梯薪资被说成"固定的 24 元/时"
+   * - zt98hgy3：受候选人发来的其它平台截图污染，编造"周末和节假日不一样"
+   *
+   * 命中规则：reply 含"节假日双倍 / 周末加薪 / 工资浮动 / 薪资面议"等关键词 +
+   *   本轮 duliday_job_list 返回的 jobSalary 里 holidaySalary/overtimeSalary 字段
+   *   type 都是"无薪资"或缺失 → 判定为编造。
+   *
+   * 例外：本轮没有 duliday_job_list 调用时（如 Agent 仅在转述上一轮已查岗的薪资细节），
+   *   不告警——避免 Agent 复述历史薪资被误伤。
+   */
+  private static detectSalaryFabrication(
+    text: string,
+    toolCalls: AgentToolCall[],
+  ): { ruleId: string; label: string } | null {
+    const fabricationPhrases =
+      /节假日(工资|薪资|时薪)?双倍|节假日(工资|薪资|时薪)(不一样|更高|翻倍)|周末(加薪|双倍|涨)|工资(按表现|按业绩|按绩效)?浮动|薪资面议|薪资按.*面议/;
+    if (!fabricationPhrases.test(text)) return null;
+
+    const jobListCall = toolCalls.find(
+      (call) => call.toolName === 'duliday_job_list' && call.result,
+    );
+    if (!jobListCall) return null;
+
+    const hasHolidayOrOvertimeSalary = hasNonEmptyHolidayOrOvertimeSalary(jobListCall.result);
+    if (hasHolidayOrOvertimeSalary) return null;
+
+    return {
+      ruleId: 'salary_fabrication',
+      label:
+        '回复声称节假日/周末薪资差异或工资浮动/面议，但本轮 duliday_job_list 返回的 jobSalary 里没有对应的 holidaySalary/overtimeSalary 字段（badcase aalxnd77 / zt98hgy3）',
+    };
+  }
+
+  /**
+   * 检测 reply 中的收资模板字段是否与本轮 duliday_interview_precheck 返回的
+   * requiredFieldsToCollectNow（或 starterFields 降级集合）一致。
+   *
+   * 命中规则：reply 像收资模板（≥3 行"字段名："格式）+ 本轮调过 precheck
+   *   + 工具要求的字段在 reply 中漏掉了 ≥1 个 → 判定 mismatch。
+   *
+   * 历史 badcase 67o8y2ez：precheck 返回需要"过往工作经验"等字段，Agent 自己
+   * 改模板时把"工作经验"漏掉、又加上 precheck 没要求的"应聘门店/面试时间"，
+   * 候选人按 Agent 模板填完后 booking 仍然缺字段。
+   *
+   * 只检测 "expected 中存在但 reply 中漏了"——"多了字段"不告警（Agent 加
+   * "应聘门店/面试时间"虽然 precheck 没要求，但通常是良性的明确告知）。
+   */
+  private static detectBookingFormFieldMismatch(
+    text: string,
+    toolCalls: AgentToolCall[],
+  ): { ruleId: string; label: string } | null {
+    const fieldsInReply = extractFormFieldsFromReply(text);
+    if (fieldsInReply.length < 3) return null;
+
+    const expected = readExpectedFieldsFromPrecheck(toolCalls);
+    if (!expected || expected.length === 0) return null;
+
+    const replySet = new Set(fieldsInReply.map(normalizeFieldName));
+    const missing = expected.filter((f) => !replySet.has(normalizeFieldName(f)));
+    if (missing.length === 0) return null;
+
+    return {
+      ruleId: 'booking_form_field_mismatch',
+      label: `收资模板字段与 precheck.requiredFieldsToCollectNow 不一致，漏掉字段: ${missing.join('/')}（badcase 67o8y2ez）`,
+    };
   }
 
   private readonly rules: FactRule[] = [
@@ -64,6 +244,7 @@ export class ReplyFactGuardService {
       // 但禁止跨标点，避免误吃到下一句的"群里通知你"上。
       keywords:
         /拉(?:你|您)[^。，,；！？\s]{0,15}?群|进(?:咱们|我们|这个|这|这边)[^。，,；！？\s]{0,15}?群|加(?:你|您)[^。，,；！？\s]{0,15}?群|发(?:个|一个|条)?(?:入)?群邀请/,
+      ignorePredicate: (text) => ReplyFactGuardService.isConditionalGroupInviteQuestion(text),
       requiredToolPredicate: (toolCalls) =>
         ReplyFactGuardService.inviteCalledSuccessfully(toolCalls),
     },
@@ -81,6 +262,8 @@ export class ReplyFactGuardService {
     toolCalls: AgentToolCall[] | undefined;
     chatId?: string;
     userId?: string;
+    traceId?: string;
+    contactName?: string;
     botImId?: string;
     botUserName?: string;
   }): { hit: boolean; contradictions: Array<{ ruleId: string; label: string }> } {
@@ -92,8 +275,22 @@ export class ReplyFactGuardService {
 
     for (const rule of this.rules) {
       if (!rule.keywords.test(text)) continue;
+      if (rule.ignorePredicate?.(text, toolCalls)) continue;
       if (rule.requiredToolPredicate(toolCalls)) continue;
       contradictions.push({ ruleId: rule.ruleId, label: rule.label });
+    }
+
+    const bookingFormMismatch = ReplyFactGuardService.detectBookingFormFieldMismatch(
+      text,
+      toolCalls,
+    );
+    if (bookingFormMismatch) {
+      contradictions.push(bookingFormMismatch);
+    }
+
+    const salaryFabrication = ReplyFactGuardService.detectSalaryFabrication(text, toolCalls);
+    if (salaryFabrication) {
+      contradictions.push(salaryFabrication);
     }
 
     if (contradictions.length === 0) return { hit: false, contradictions: [] };
@@ -109,6 +306,8 @@ export class ReplyFactGuardService {
       .notifyContradiction({
         chatId: params.chatId,
         userId: params.userId,
+        traceId: params.traceId,
+        contactName: params.contactName,
         botImId: params.botImId,
         botUserName: params.botUserName,
         replyPreview: text.slice(0, 400),

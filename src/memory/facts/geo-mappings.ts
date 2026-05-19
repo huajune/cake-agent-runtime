@@ -15,6 +15,7 @@ export const SUPPORTED_CITY_PREFIXES = [
   '天津',
   '重庆',
   '武汉',
+  '南京',
   '宁波',
   '恩施',
   '宜昌',
@@ -68,6 +69,9 @@ export const DISTRICT_TO_CITY: Record<string, string> = {
   青浦: '上海',
   奉贤: '上海',
   崇明: '上海',
+  // 南京
+  栖霞: '南京',
+  六合: '南京',
   // 武汉
   江岸: '武汉',
   江汉: '武汉',
@@ -268,6 +272,67 @@ export const LOCATION_TO_CITY: Record<string, string> = {
   九方: '赣州',
   郁孤台: '赣州',
 };
+
+/**
+ * 跨城同名的"通用后缀"——命中即视为高歧义地名。
+ *
+ * 这类地名（万达广场、火车站、人民公园 …）在多个城市都有同名 POI，
+ * 仅凭 LLM 通识根本无法唯一对应某城市。geocode 工具命中这条黑名单时
+ * 强制 Agent 先反问候选人城市，禁止凭通识补 city。
+ *
+ * 与"白名单 + 通识"的分工：白名单（DISTRICT_TO_CITY / LOCATION_TO_CITY）
+ * 是高置信唯一对应；本黑名单是高置信非唯一。两者之间的灰区交给
+ * LLM 通识 + geocode 多候选验证。
+ *
+ * 维护原则：
+ * - 严格的"以此结尾或完整等于"匹配，避免误伤"川沙百联购物中心"这种实际唯一的 POI
+ * - 仅收录确实跨城同名 ≥3 个城市的后缀
+ */
+export const GENERIC_AMBIGUOUS_SUFFIXES = [
+  // 连锁商业地产（跨城同名重灾区）
+  '万达广场',
+  '万象城',
+  '吾悦广场',
+  '银泰',
+  '天街',
+  '印象城',
+  '砂之船',
+  '大悦城',
+  // 通用商业类型词
+  '购物中心',
+  '商场',
+  '广场',
+  '步行街',
+  '商业街',
+  '美食街',
+  // 交通枢纽
+  '火车站',
+  '高铁站',
+  '汽车站',
+  '客运站',
+  '地铁站',
+  // 公共设施
+  '大学',
+  '学院',
+  '医院',
+  '人民公园',
+  '人民广场',
+  '中心医院',
+] as const;
+
+/**
+ * 判定地名是否命中"通用后缀黑名单"。
+ *
+ * 匹配规则：完整等于 / 以后缀结尾。不做"包含"匹配，防止误伤
+ * "万达广场店"" 万达广场南门" 这类本地化别称（这些通常是单点 POI）。
+ */
+export function hasGenericAmbiguousSuffix(name: string): boolean {
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  return GENERIC_AMBIGUOUS_SUFFIXES.some(
+    (suffix) => trimmed === suffix || trimmed.endsWith(suffix),
+  );
+}
 
 /**
  * 归一化后可去掉的后缀（"区/县/镇"等）。

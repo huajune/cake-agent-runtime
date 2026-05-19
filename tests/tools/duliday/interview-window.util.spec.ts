@@ -8,8 +8,8 @@ import {
   parseCycleDeadlineDay,
   resolveBookingDeadlineDateTime,
   shiftDate,
-} from '@tools/duliday/interview-window.util';
-import type { InterviewWindow } from '@tools/duliday/job-policy-parser';
+} from '@tools/duliday/booking/interview-window.util';
+import type { InterviewWindow } from '@tools/utils/job-policy-parser';
 
 describe('interview-window.util', () => {
   it('should normalize HH:mm strings to two-digit hour format', () => {

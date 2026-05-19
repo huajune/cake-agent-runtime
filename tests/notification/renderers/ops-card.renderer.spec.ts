@@ -31,9 +31,9 @@ describe('OpsCardRenderer', () => {
         color: 'blue',
       }),
     );
-    expect((card.content as string)).toContain('**目标群**: 上海兼职1群');
-    expect((card.content as string)).toContain('**标签**: 兼职 / 上海 / 零售');
-    expect((card.content as string)).toContain('今晚 7 点上新');
+    expect(card.content as string).toContain('**目标群**: 上海兼职1群');
+    expect(card.content as string).toContain('**标签**: 兼职 / 上海 / 零售');
+    expect(card.content as string).toContain('今晚 7 点上新');
   });
 
   it('should render detailed partial-failure reports', () => {
@@ -62,13 +62,45 @@ describe('OpsCardRenderer', () => {
         atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
       }),
     );
-    expect((card.content as string)).toContain('**总群数**: 5 | **分组**: 4');
-    expect((card.content as string)).toContain('**✅ 成功分组**');
-    expect((card.content as string)).toContain('**⏭️ 已跳过**');
-    expect((card.content as string)).toContain('**⚠️ 部分失败**');
-    expect((card.content as string)).toContain('**❌ 失败分组**');
-    expect((card.content as string)).toContain('**🚨 错误明细**');
-    expect((card.content as string)).toContain('Webhook timeout');
+    expect(card.content as string).toContain('**总群数**: 5 | **分组**: 4');
+    expect(card.content as string).toContain('**✅ 成功分组**');
+    expect(card.content as string).toContain('**⏭️ 已跳过**');
+    expect(card.content as string).toContain('**⚠️ 部分失败**');
+    expect(card.content as string).toContain('**❌ 失败分组**');
+    expect(card.content as string).toContain('**🚨 错误明细**');
+    expect(card.content as string).toContain('Webhook timeout');
+  });
+
+  it('should render reply fact contradiction cards with candidate and trace context', () => {
+    const card = renderer.buildReplyFactContradictionAlertCard({
+      chatId: 'chat-1',
+      userId: 'user-1',
+      traceId: 'msg-1',
+      contactName: '候选人A',
+      botImId: 'bot-im-1',
+      botUserName: 'manager-1',
+      replyPreview: '我先拉你进群，后面有合适的通知你。',
+      contradictions: [
+        {
+          ruleId: 'group_promise_without_invite',
+          label: '承诺拉群但本轮未成功调 invite_to_group',
+        },
+      ],
+      toolNames: ['duliday_job_list', 'advance_stage'],
+      atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+    });
+
+    expect(card).toEqual(
+      expect.objectContaining({
+        title: '⚠️ Agent 回复事实矛盾（与本轮 tool 结果不一致）',
+        color: 'yellow',
+        atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
+      }),
+    );
+    expect(card.content as string).toContain('**候选人**: 候选人A');
+    expect(card.content as string).toContain('**traceId**: msg-1');
+    expect(card.content as string).toContain('**chatId**: chat-1');
+    expect(card.content as string).toContain('group_promise_without_invite');
   });
 
   it('should render group full alert cards with numbered group list', () => {
@@ -76,10 +108,7 @@ describe('OpsCardRenderer', () => {
       city: '上海',
       industry: '零售',
       memberLimit: 200,
-      groups: [
-        { name: '上海零售1群', memberCount: 200 },
-        { name: '上海零售2群' },
-      ],
+      groups: [{ name: '上海零售1群', memberCount: 200 }, { name: '上海零售2群' }],
       atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
     });
 
@@ -90,9 +119,9 @@ describe('OpsCardRenderer', () => {
         atUsers: [FEISHU_RECEIVER_USERS.GAO_YAQI],
       }),
     );
-    expect((card.content as string)).toContain('**范围**: 上海 / 零售');
-    expect((card.content as string)).toContain('**容量阈值**: 200 人');
-    expect((card.content as string)).toContain('1. 上海零售1群 (200 / 200)');
-    expect((card.content as string)).toContain('2. 上海零售2群 (未知 / 200)');
+    expect(card.content as string).toContain('**范围**: 上海 / 零售');
+    expect(card.content as string).toContain('**容量阈值**: 200 人');
+    expect(card.content as string).toContain('1. 上海零售1群 (200 / 200)');
+    expect(card.content as string).toContain('2. 上海零售2群 (未知 / 200)');
   });
 });

@@ -41,8 +41,12 @@ describe('HardConstraintsSection', () => {
     const output = section.build({ ...baseCtx, sessionFacts: facts });
 
     expect(output).toContain('[本轮查询硬约束]');
-    expect(output).toContain('- 城市: 南京（必填到 cityNameList）');
-    expect(output).toContain('- 区域: 秦淮区、建邺区（填到 regionNameList）');
+    expect(output).toContain(
+      '- 城市: 南京（必填到 duliday_job_list.cityNameList；调用 invite_to_group 时也必须用这个城市级名称）',
+    );
+    expect(output).toContain(
+      '- 区域: 秦淮区、建邺区（填到 duliday_job_list.regionNameList；严禁填到 invite_to_group.city）',
+    );
     expect(output).toContain('位置/商圈/地标: 新街口');
     expect(output).toContain('必须先 geocode');
   });
@@ -75,15 +79,18 @@ describe('HardConstraintsSection', () => {
     expect(output).toContain('figure=不限、学历够、未写学生限制都不能推断为身份没限制');
   });
 
-  it('requires neutral city confirmation when district is known but city is missing', () => {
+  it('routes district-without-city through geocode tri-state instead of reverse-asking the candidate', () => {
     const facts = cloneFallback();
     facts.preferences.district = ['房山'];
 
     const output = section.build({ ...baseCtx, sessionFacts: facts });
 
     expect(output).toContain('区域: 房山');
+    // 新策略：优先调 geocode 让工具判定（unique/ambiguous 三态），而非先反问候选人
+    expect(output).toContain('优先把区/县名作为 address 传给 `geocode`');
+    expect(output).toContain('unique/ambiguous 三态');
+    expect(output).toContain('不要先反问候选人城市');
     expect(output).toContain('反问时不得带具体城市名');
-    expect(output).toContain('禁止"是在 X 城市的 X 区吗"');
   });
 
   it('falls back to highConfidenceFacts when sessionFacts has no value for a field', () => {

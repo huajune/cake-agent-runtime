@@ -1,6 +1,6 @@
 import { formatLocalDate } from '@infra/utils/date.util';
 import { JobDetail } from '@sponge/sponge.types';
-import { API_BOOKING_SUBMISSION_FIELDS } from '@tools/duliday/job-booking.contract';
+import { API_BOOKING_SUBMISSION_FIELDS } from '@tools/duliday/booking/job-booking.contract';
 
 export interface InterviewWindow {
   weekday?: string;
