@@ -289,6 +289,37 @@ describe('extractHighConfidenceFacts', () => {
     expect(result?.preferences.district).toEqual(['浦东新区']);
   });
 
+  it('should resolve city from whitelist district even when message glues district + sub-town/street', () => {
+    // badcase 2026-05-18 (msg id 23946)：候选人发"浦东新区航头镇"，贪婪正则把整段
+    // 当一个 district 捕获，归一化"浦东新区航头"查不到白名单，city 留空，硬约束
+    // 又把 Agent 卡进"当前没有已确认城市"循环反问。重构成白名单驱动扫描后，
+    // "浦东新区"应优先于"浦东"被认领，剩余"航头镇"通过正则兜底但**不影响 city 识别**。
+    const district_plus_town = extractHighConfidenceFacts(['浦东新区航头镇'], brandData);
+    expect(district_plus_town?.preferences.city).toEqual({
+      value: '上海',
+      confidence: 'high',
+      evidence: 'unique_district_alias',
+    });
+    expect(district_plus_town?.preferences.district).toContain('浦东新区');
+
+    // 同模式的另一种表达：区 + 街道
+    const district_plus_street = extractHighConfidenceFacts(['徐汇区漕河泾街道'], brandData);
+    expect(district_plus_street?.preferences.city?.value).toBe('上海');
+    expect(district_plus_street?.preferences.district).toContain('徐汇');
+
+    // 同模式的另一种城市：海淀 + 镇
+    const beijing_district_plus_town = extractHighConfidenceFacts(['海淀区清河镇'], brandData);
+    expect(beijing_district_plus_town?.preferences.city?.value).toBe('北京');
+    expect(beijing_district_plus_town?.preferences.district).toContain('海淀');
+  });
+
+  it('should prefer the longest whitelist district when multiple keys could prefix match', () => {
+    // "浦东" 和 "浦东新区" 都在白名单里。扫描必须先认领"浦东新区"，避免被短 key 偷走。
+    const result = extractHighConfidenceFacts(['浦东新区'], brandData);
+    expect(result?.preferences.city?.value).toBe('上海');
+    expect(result?.preferences.district).toEqual(['浦东新区']);
+  });
+
   it('should not extract education from location or school names', () => {
     const result = extractHighConfidenceFacts(
       ['[位置分享] 大宁国际学校小学部（上海市静安区江场路1428号） [经纬度:31.295946,121.453613]'],
