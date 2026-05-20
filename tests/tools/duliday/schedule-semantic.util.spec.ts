@@ -26,6 +26,54 @@ describe('classifyScheduleSemantic', () => {
     );
   });
 
+  it('detects structured weekend-only weekdays from custom work time fields', () => {
+    const workTimeText = JSON.stringify({
+      weekWorkTime: {
+        weekWorkTimeRequirement: '自定义时间',
+        customnWorkTimeList: [
+          {
+            customWorkWeekdays: ['每周六', '每周日'],
+          },
+        ],
+      },
+      dailyShiftSchedule: {
+        arrangementType: '组合排班制',
+        combinedArrangement: [
+          {
+            combinedArrangementWeekdays: '每周六,每周日',
+            combinedArrangementStartTime: '10:00',
+            combinedArrangementEndTime: '12:00',
+          },
+        ],
+      },
+    });
+
+    expect(classifyScheduleSemantic({ workTimeText })).toEqual(
+      expect.arrayContaining(['weekend_only_compatible']),
+    );
+  });
+
+  it('does not treat structured weekdays that include workdays as weekend-only', () => {
+    const workTimeText = JSON.stringify({
+      weekWorkTime: {
+        customnWorkTimeList: [
+          {
+            customWorkWeekdays: ['每周五', '每周六', '每周日'],
+          },
+        ],
+      },
+      dailyShiftSchedule: {
+        combinedArrangement: [
+          {
+            combinedArrangementWeekdays: '每周六,每周日',
+          },
+        ],
+      },
+    });
+
+    expect(classifyScheduleSemantic({ workTimeText })).not.toContain('weekend_only_compatible');
+  });
+
   it('also reads interview and requirement remarks', () => {
     expect(
       classifyScheduleSemantic({
