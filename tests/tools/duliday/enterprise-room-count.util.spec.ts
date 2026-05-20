@@ -1,11 +1,12 @@
 import type { GroupContext } from '@biz/group-task/group-task.types';
 import {
   extractEnterpriseRoomId,
+  extractEnterpriseRoomIds,
   extractEnterpriseRooms,
   extractMemberCount,
   parseCount,
   refreshMemberCountsFromEnterpriseList,
-} from '@tools/duliday/enterprise-room-count.util';
+} from '@tools/utils/enterprise-room-count.util';
 
 describe('enterprise-room-count.util', () => {
   const makeGroup = (overrides: Partial<GroupContext> = {}): GroupContext => ({
@@ -39,6 +40,13 @@ describe('enterprise-room-count.util', () => {
     expect(extractEnterpriseRoomId({ wxid: ' room-1 ' })).toBe('room-1');
     expect(extractEnterpriseRoomId({ groupChatId: 'room-2' })).toBe('room-2');
     expect(extractEnterpriseRoomId({ groupChatId: ' ' })).toBeUndefined();
+    expect(
+      extractEnterpriseRoomIds({
+        imRoomId: 'room-1',
+        chatId: 'chat-1',
+        roomWecomChatId: 'chat-1',
+      }),
+    ).toEqual(['room-1', 'chat-1']);
 
     expect(extractMemberCount({ member_count: '128' })).toBe(128);
     expect(extractMemberCount({ roomMemberCount: 88 })).toBe(88);
@@ -76,6 +84,23 @@ describe('enterprise-room-count.util', () => {
 
     expect(refreshed.map((group) => group.memberCount)).toEqual([201, 80]);
     expect(roomService.getEnterpriseGroupChatList).toHaveBeenCalledWith('token', 1, 1000);
+  });
+
+  it('should refresh matched group counts when enterprise list only returns chatId', async () => {
+    const roomService = {
+      getEnterpriseGroupChatList: jest.fn().mockResolvedValue({
+        data: [{ chatId: 'chat-1', member_count: 275 }],
+      }),
+    };
+    const groups = [makeGroup({ imRoomId: 'room-1', chatId: 'chat-1', memberCount: 50 })];
+
+    const refreshed = await refreshMemberCountsFromEnterpriseList({
+      groups,
+      roomService,
+      enterpriseToken: 'token',
+    });
+
+    expect(refreshed[0].memberCount).toBe(275);
   });
 
   it('should cap enterprise list pagination when no target room is matched', async () => {

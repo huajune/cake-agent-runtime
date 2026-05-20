@@ -76,6 +76,52 @@ export type DelayedIntent = z.infer<typeof DelayedIntentSchema>;
 const NullableDelayedIntentSchema = DelayedIntentSchema.nullable().default(null);
 
 /**
+ * 候选人班次硬约束（结构化版本，与 duliday_job_list 工具的 candidateScheduleConstraint 入参对齐）。
+ *
+ * 历史 badcase 簇 schedule_constraint_forgotten：候选人在 T1 说"做一休一/每周最多两天/
+ * 只周末/只晚班"等班次硬约束，Agent 在 T5+ 调 duliday_job_list 时忘了把约束带上，
+ * 推出工作日强排班岗位，候选人到店发现不符。
+ *
+ * 设计：把 schedule（自由文本）持久化的同时，额外存一份结构化对象，让下游 tool
+ * 调用可以直接读取并自动带上 candidateScheduleConstraint 入参，不靠 LLM 记忆。
+ */
+export const ScheduleConstraintFactSchema = z.object({
+  onlyWeekends: z.boolean().nullable().default(null).describe('只周末上班'),
+  onlyEvenings: z.boolean().nullable().default(null).describe('只做晚班/夜班'),
+  onlyMornings: z.boolean().nullable().default(null).describe('只做早班'),
+  maxDaysPerWeek: z
+    .number()
+    .int()
+    .min(1)
+    .max(7)
+    .nullable()
+    .default(null)
+    .describe('每周最多上班 N 天（"做一休一"→1，"做二休一"→2，"每周最多两天"→2）'),
+});
+export type ScheduleConstraintFact = z.infer<typeof ScheduleConstraintFactSchema>;
+
+const NullableScheduleConstraintSchema = ScheduleConstraintFactSchema.nullable().default(null);
+
+/**
+ * 候选人明确给出的"未来 X 日期之后才能面试"硬约束。
+ *
+ * 历史 badcase 簇 future_date_constraint：候选人说"五一回来再说/五月 1 日之后/
+ * 5 月 15 日"等明确日期，Agent 继续催"今天/明天能不能面"。
+ *
+ * 设计：仅持久化能解析成明确日期（YYYY-MM-DD）的信号；
+ * 模糊词（"等开学" / "月底" / "下周后"）不入库，让 Agent 调 request_handoff 转人工。
+ */
+export const AvailableAfterFactSchema = z.object({
+  /** YYYY-MM-DD 格式的最早可面试日期；早于该日期的 slot 均视为不可约 */
+  date: z.string().describe('YYYY-MM-DD'),
+  /** 触发该判断的候选人原话片段，用于审计 */
+  raw: z.string(),
+});
+export type AvailableAfterFact = z.infer<typeof AvailableAfterFactSchema>;
+
+const NullableAvailableAfterSchema = AvailableAfterFactSchema.nullable().default(null);
+
+/**
  * 意向偏好 schema — 存储态（Redis/记忆）
  *
  * city 字段为 CityFact 对象（含 confidence/evidence），
@@ -114,6 +160,12 @@ export const PreferencesSchema = z.object({
     .nullable()
     .default(null)
     .describe('可用时间窗口（保留原话，如"17点后"、"14点前"）'),
+  schedule_constraint: NullableScheduleConstraintSchema.describe(
+    '班次硬约束（结构化）：onlyWeekends/onlyEvenings/onlyMornings/maxDaysPerWeek，与 duliday_job_list 入参对齐',
+  ),
+  available_after: NullableAvailableAfterSchema.describe(
+    '未来日期硬约束：仅当候选人原话明确给出可解析的具体日期时填写；早于此日期的 slot 视为不可约',
+  ),
 });
 
 /**
@@ -149,6 +201,12 @@ export const LLMPreferencesSchema = z.object({
     .array(z.string())
     .nullable()
     .describe('可用时间窗口（候选人给出的时间点/段，如"17点后"、"14点前"）'),
+  schedule_constraint: ScheduleConstraintFactSchema.nullable().describe(
+    '班次硬约束结构化：候选人原话出现"做一休一/每周最多 N 天/只周末/只晚班"等明确硬约束时填写；含糊不填',
+  ),
+  available_after: AvailableAfterFactSchema.nullable().describe(
+    '未来日期硬约束：候选人原话给出可解析的明确日期（"5月1日之后/2026-05-15 之后"）时填写 YYYY-MM-DD；模糊词（"等开学/月底"）一律不填',
+  ),
 });
 
 /** 实体提取结果 schema — 存储态（包含 CityFact） */
@@ -201,6 +259,8 @@ export const FALLBACK_EXTRACTION: EntityExtractionResult = {
     short_term: null,
     open_position: null,
     time_windows: null,
+    schedule_constraint: null,
+    available_after: null,
   },
   reasoning: '实体提取失败，使用空值降级',
 };

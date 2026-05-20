@@ -73,6 +73,33 @@ describe('ReplyNormalizer', () => {
 
       expect(ReplyNormalizer.needsNormalization(input)).toBe(false);
     });
+
+    it('Markdown 装饰符需要规范化', () => {
+      expect(ReplyNormalizer.needsNormalization('**重点**：附近有岗位')).toBe(true);
+      expect(ReplyNormalizer.needsNormalization('`重点`：附近有岗位')).toBe(true);
+    });
+  });
+
+  describe('normalize - Markdown 装饰符清理', () => {
+    it('应该去除加粗和行内代码符号', () => {
+      const input = '**重点**：`成都你六姐` 这家还在招，薪资 __24 元/小时__。';
+
+      const result = ReplyNormalizer.normalize(input);
+
+      expect(result).toBe('重点：成都你六姐 这家还在招，薪资 24 元/小时。');
+    });
+
+    it('不应影响星号列表识别', () => {
+      const input = `有以下岗位：
+* **服务员**
+* **后厨**`;
+
+      const result = ReplyNormalizer.normalize(input);
+
+      expect(result).toContain('有服务员、后厨可以选');
+      expect(result).not.toContain('*');
+      expect(result).not.toContain('**');
+    });
   });
 
   describe('normalize - 列表格式转换', () => {
@@ -136,6 +163,23 @@ describe('ReplyNormalizer', () => {
       expect(result).toContain('有服务员、后厨、收银员可以选');
       expect(result).not.toContain('1.');
       expect(result).not.toContain('2.');
+    });
+
+    it('不应改写包含岗位明细的数字编号列表', () => {
+      const input = `帮你看了下，附近有两家成都你六姐在招前厅。
+
+1. 鑫都满天星店，离你 3.6km。 24 元/小时（每月超 40 小时后是 26 元，超 80 小时后 28 元），班次是晚上 9 点到 12 点半。要求 20 岁以上，得办食品健康证。
+2. 莘庄龙之梦店，离你 9.2km。薪资一样，班次是中午 11 点半到 2 点半，要求 20 到 35 岁。
+
+你看哪个时间更方便？`;
+
+      const result = ReplyNormalizer.normalize(input);
+
+      expect(result).toBe(input);
+      expect(result).toContain('24 元/小时');
+      expect(result).toContain('班次是晚上 9 点到 12 点半');
+      expect(result).toContain('得办食品健康证');
+      expect(result).not.toContain('可以选');
     });
 
     it('应该简化列表前的问句', () => {

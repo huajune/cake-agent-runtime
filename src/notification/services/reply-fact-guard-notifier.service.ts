@@ -29,6 +29,8 @@ export class ReplyFactGuardNotifierService {
   async notifyContradiction(params: {
     chatId?: string;
     userId?: string;
+    traceId?: string;
+    contactName?: string;
     botImId?: string;
     botUserName?: string;
     replyPreview: string;

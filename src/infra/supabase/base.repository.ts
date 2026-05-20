@@ -441,9 +441,33 @@ export abstract class BaseRepository {
    */
   protected handleError(operation: string, error: unknown): void {
     const pgError = error as { code?: string; message?: string };
+    const rawMessage = pgError.message || String(error);
+    const message = this.summarizeErrorMessage(rawMessage);
     this.logger.error(
-      `[${this.tableName}] ${operation} 失败 (${pgError.code || 'unknown'}): ${pgError.message || String(error)}`,
+      `[${this.tableName}] ${operation} 失败 (${pgError.code || 'unknown'}): ${message}`,
     );
+  }
+
+  /**
+   * Supabase SDK 在非 JSON 响应（如 Cloudflare 521 错误页）下，会把整页 HTML 灌进
+   * error.message。直接打 logger 会有几百行噪音，淹没真正的信号。
+   * 这里把 HTML 收敛成单行摘要，提取 status code、title 等关键信号 + 截断。
+   */
+  private summarizeErrorMessage(message: string): string {
+    const looksLikeHtml = /<!doctype\s+html|<html[\s>]/i.test(message);
+    if (!looksLikeHtml) {
+      return message.length > 500 ? `${message.slice(0, 500)}… [truncated]` : message;
+    }
+
+    const titleMatch = message.match(/<title[^>]*>([^<]+)<\/title>/i);
+    const errorCodeMatch = message.match(/Error code (\d+)/i);
+    const hostMatch = message.match(/cf-host-status[\s\S]*?<span class="md:block[^>]*>([^<]+)</i);
+
+    const parts: string[] = ['HTML response (non-JSON)'];
+    if (errorCodeMatch) parts.push(`code=${errorCodeMatch[1]}`);
+    if (titleMatch) parts.push(`title="${titleMatch[1].trim()}"`);
+    if (hostMatch) parts.push(`host="${hostMatch[1].trim()}"`);
+    return parts.join(' | ');
   }
 
   /**

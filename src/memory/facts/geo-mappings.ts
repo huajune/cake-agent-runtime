@@ -15,6 +15,7 @@ export const SUPPORTED_CITY_PREFIXES = [
   '天津',
   '重庆',
   '武汉',
+  '南京',
   '宁波',
   '恩施',
   '宜昌',
@@ -68,6 +69,9 @@ export const DISTRICT_TO_CITY: Record<string, string> = {
   青浦: '上海',
   奉贤: '上海',
   崇明: '上海',
+  // 南京
+  栖霞: '南京',
+  六合: '南京',
   // 武汉
   江岸: '武汉',
   江汉: '武汉',
@@ -270,6 +274,67 @@ export const LOCATION_TO_CITY: Record<string, string> = {
 };
 
 /**
+ * 跨城同名的"通用后缀"——命中即视为高歧义地名。
+ *
+ * 这类地名（万达广场、火车站、人民公园 …）在多个城市都有同名 POI，
+ * 仅凭 LLM 通识根本无法唯一对应某城市。geocode 工具命中这条黑名单时
+ * 强制 Agent 先反问候选人城市，禁止凭通识补 city。
+ *
+ * 与"白名单 + 通识"的分工：白名单（DISTRICT_TO_CITY / LOCATION_TO_CITY）
+ * 是高置信唯一对应；本黑名单是高置信非唯一。两者之间的灰区交给
+ * LLM 通识 + geocode 多候选验证。
+ *
+ * 维护原则：
+ * - 严格的"以此结尾或完整等于"匹配，避免误伤"川沙百联购物中心"这种实际唯一的 POI
+ * - 仅收录确实跨城同名 ≥3 个城市的后缀
+ */
+export const GENERIC_AMBIGUOUS_SUFFIXES = [
+  // 连锁商业地产（跨城同名重灾区）
+  '万达广场',
+  '万象城',
+  '吾悦广场',
+  '银泰',
+  '天街',
+  '印象城',
+  '砂之船',
+  '大悦城',
+  // 通用商业类型词
+  '购物中心',
+  '商场',
+  '广场',
+  '步行街',
+  '商业街',
+  '美食街',
+  // 交通枢纽
+  '火车站',
+  '高铁站',
+  '汽车站',
+  '客运站',
+  '地铁站',
+  // 公共设施
+  '大学',
+  '学院',
+  '医院',
+  '人民公园',
+  '人民广场',
+  '中心医院',
+] as const;
+
+/**
+ * 判定地名是否命中"通用后缀黑名单"。
+ *
+ * 匹配规则：完整等于 / 以后缀结尾。不做"包含"匹配，防止误伤
+ * "万达广场店"" 万达广场南门" 这类本地化别称（这些通常是单点 POI）。
+ */
+export function hasGenericAmbiguousSuffix(name: string): boolean {
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  return GENERIC_AMBIGUOUS_SUFFIXES.some(
+    (suffix) => trimmed === suffix || trimmed.endsWith(suffix),
+  );
+}
+
+/**
  * 归一化后可去掉的后缀（"区/县/镇"等）。
  * extractor 在查找 DISTRICT_TO_CITY 前会用这个规则再试一次。
  */
@@ -293,6 +358,114 @@ export function normalizeCityName(value: string | null | undefined): string | nu
 export function resolveCityFromDistrict(candidate: string): string | null {
   const normalized = normalizeDistrictForLookup(candidate);
   return DISTRICT_TO_CITY[candidate] ?? DISTRICT_TO_CITY[normalized] ?? null;
+}
+
+export interface WhitelistScanHit {
+  /** 命中的白名单 key */
+  key: string;
+  /** key 在消息中起始位置（0-based） */
+  start: number;
+  /** key 在消息中结束位置（exclusive） */
+  end: number;
+}
+
+export interface WhitelistScanResult {
+  hits: WhitelistScanHit[];
+  /** 字符级覆盖标记，长度 === message.length，供后续扫描复用以避免重叠匹配 */
+  covered: boolean[];
+}
+
+/**
+ * "白名单驱动 + 最长优先"扫描器：给定消息与字典，按 key 长度降序找出所有非重叠命中。
+ *
+ * 这是地理识别的核心机制——把"贪婪正则吞整段 → 事后清洗"反过来：
+ * 先用白名单做最长精确匹配（数据驱动，扩白名单即扩能力），未覆盖的字符段交给
+ * 正则兜底（识别白名单外的"XX区/镇/街道"，但不补 city，留给 LLM 处理）。
+ *
+ * 设计要点：
+ * - 按 key 长度降序遍历，确保 "浦东新区" 先于 "浦东" 被消费，不会被 "浦东" 提前占用
+ * - 通过 `preCovered` 串联多轮扫描（city → district → location），后续轮次不会
+ *   再去吃前面已认领的字符段，天然避免歧义
+ * - hits 按 start 升序返回，方便上游"开头紧凑表达"的判定
+ */
+export function scanWhitelistKeysByLongest(
+  message: string,
+  dict: Readonly<Record<string, unknown>>,
+  preCovered?: readonly boolean[],
+): WhitelistScanResult {
+  const len = message.length;
+  const covered: boolean[] = preCovered
+    ? Array.from({ length: len }, (_, i) => preCovered[i] ?? false)
+    : new Array(len).fill(false);
+
+  const hits: WhitelistScanHit[] = [];
+  const sortedKeys = Object.keys(dict)
+    .filter((key) => key.length > 0 && key.length <= len)
+    .sort((a, b) => b.length - a.length);
+
+  for (const key of sortedKeys) {
+    let from = 0;
+    while (from <= len - key.length) {
+      const idx = message.indexOf(key, from);
+      if (idx < 0) break;
+      const end = idx + key.length;
+      let collides = false;
+      for (let i = idx; i < end; i++) {
+        if (covered[i]) {
+          collides = true;
+          break;
+        }
+      }
+      if (collides) {
+        from = idx + 1;
+        continue;
+      }
+      hits.push({ key, start: idx, end });
+      for (let i = idx; i < end; i++) covered[i] = true;
+      from = end;
+    }
+  }
+
+  hits.sort((a, b) => a.start - b.start);
+  return { hits, covered };
+}
+
+/**
+ * 在指定字符级覆盖之外的连续区间上跑一次正则匹配，用于"白名单兜底"。
+ *
+ * 调用者通常已经先跑完 city/district/location 三轮白名单扫描，未覆盖的字符段
+ * 才是真正"白名单未识别"的部分；这里在这些段上跑 [一-龥]+(?:区|县|镇|街道|新区|开发区)
+ * 之类的正则去捕获白名单外的 raw district——但仅作为 district 标注，不补 city。
+ */
+export function matchInUncoveredSegments(
+  message: string,
+  covered: readonly boolean[],
+  pattern: RegExp,
+): string[] {
+  const segments: string[] = [];
+  let buf = '';
+  for (let i = 0; i < message.length; i++) {
+    if (covered[i]) {
+      if (buf) {
+        segments.push(buf);
+        buf = '';
+      }
+    } else {
+      buf += message[i];
+    }
+  }
+  if (buf) segments.push(buf);
+
+  const matches: string[] = [];
+  for (const segment of segments) {
+    const flags = pattern.flags.includes('g') ? pattern.flags : pattern.flags + 'g';
+    const globalPattern = new RegExp(pattern.source, flags);
+    for (const m of segment.matchAll(globalPattern)) {
+      if (m[1] !== undefined) matches.push(m[1]);
+      else if (m[0]) matches.push(m[0]);
+    }
+  }
+  return matches;
 }
 
 /** 单个 location/商圈名 → 城市（命中白名单则返回 city，否则 null）。 */

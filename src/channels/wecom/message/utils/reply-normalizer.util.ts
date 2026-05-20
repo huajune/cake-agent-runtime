@@ -17,8 +17,8 @@ export class ReplyNormalizer {
   static normalize(text: string): string {
     if (!text || typeof text !== 'string') return text;
 
-    // 首先移除时间标记（防御性处理：模型可能模仿历史消息格式）
-    const cleaned = this.removeTimeMarkers(text);
+    // 首先移除时间标记与 Markdown 装饰符（防御性处理：模型可能模仿历史消息格式/Markdown）
+    const cleaned = this.removeMarkdownDecoration(this.removeTimeMarkers(text));
 
     if (this.containsListMarkers(cleaned)) return this.normalizeComplexStructure(cleaned);
     return this.cleanWhitespace(cleaned);
@@ -30,6 +30,10 @@ export class ReplyNormalizer {
    */
   private static removeTimeMarkers(text: string): string {
     return text.replace(this.TIME_MARKER_PATTERN, '').trim();
+  }
+
+  private static removeMarkdownDecoration(text: string): string {
+    return text.replace(/\*\*/g, '').replace(/__/g, '').replace(/`/g, '');
   }
 
   private static containsListMarkers(text: string): boolean {
@@ -79,6 +83,10 @@ export class ReplyNormalizer {
       }
     }
 
+    if (!this.canCompactListItems(listItems)) {
+      return lines.join('\n');
+    }
+
     const parts: string[] = [];
     if (leadingLines.length > 0) {
       let leadingText = leadingLines.join('');
@@ -99,6 +107,27 @@ export class ReplyNormalizer {
       parts.push(trailingText);
     }
     return parts.join('');
+  }
+
+  private static canCompactListItems(listItems: string[]): boolean {
+    return listItems.length > 0 && listItems.every((item) => this.isSimpleOptionItem(item));
+  }
+
+  private static isSimpleOptionItem(item: string): boolean {
+    const normalized = item.trim();
+    if (!normalized) return false;
+    if (normalized.length > 24) return false;
+    if (/[。；;：:]/.test(normalized)) return false;
+    if (/[，,]/.test(normalized) && this.containsJobDetailSignal(normalized)) return false;
+    if (/[（）()]/.test(normalized) && this.containsJobDetailSignal(normalized)) return false;
+    if (/\d+\s*(?:元|岁|km|公里|小时|点|:|：)/i.test(normalized)) return false;
+    return true;
+  }
+
+  private static containsJobDetailSignal(text: string): boolean {
+    return /(?:离你|距离|薪资|时薪|班次|要求|健康证|小时|工作内容|门店|到店|月结|周结|日结|公里|km)/i.test(
+      text,
+    );
   }
 
   private static simplifyQuestionInText(text: string): string {
@@ -145,6 +174,8 @@ export class ReplyNormalizer {
     if (!text) return false;
     // 时间标记需要清理
     if (this.TIME_MARKER_PATTERN.test(text)) return true;
+    // Markdown 装饰符需要清理
+    if (/\*\*|__|`/.test(text)) return true;
     // 列表符号需要转自然语言
     if (/^\s*[-*•]\s+/m.test(text)) return true;
     if (/^\s*\d+[\.\)]\s+/m.test(text)) return true;

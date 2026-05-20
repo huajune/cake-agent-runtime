@@ -4,12 +4,13 @@ import { RoomService } from '@channels/wecom/room/room.service';
 
 describe('GroupResolverService', () => {
   let service: GroupResolverService;
+  let mockRoomService: { getRoomSimpleList: jest.Mock };
 
   beforeEach(() => {
     const mockConfigService = {
       get: jest.fn().mockReturnValue('艾酱:test-token'),
     };
-    const mockRoomService = {
+    mockRoomService = {
       getRoomSimpleList: jest.fn(),
     };
 
@@ -78,6 +79,41 @@ describe('GroupResolverService', () => {
           { id: '2', name: '上海' },
         ]),
       ).toBeNull();
+    });
+  });
+
+  describe('resolveGroups', () => {
+    const makeRoom = (memberCount: number) => ({
+      wxid: 'room-1',
+      topic: '独立客&上海餐饮兼职①群',
+      chatId: 'chat-1',
+      botInfo: { wxid: 'bot-im-1', weixin: 'bot-user-1', nickName: 'bot' },
+      labels: [
+        { id: '1', name: '兼职群' },
+        { id: '2', name: '上海' },
+        { id: '3', name: '餐饮' },
+      ],
+      memberCount,
+    });
+
+    const makeListResponse = (memberCount: number) => ({
+      data: {
+        data: [makeRoom(memberCount)],
+        page: { total: 1 },
+      },
+    });
+
+    it('forceRefresh should bypass cached group member counts', async () => {
+      mockRoomService.getRoomSimpleList
+        .mockResolvedValueOnce(makeListResponse(50))
+        .mockResolvedValueOnce(makeListResponse(275));
+
+      const cached = await service.resolveGroups('兼职群');
+      const refreshed = await service.resolveGroups('兼职群', { forceRefresh: true });
+
+      expect(cached[0].memberCount).toBe(50);
+      expect(refreshed[0].memberCount).toBe(275);
+      expect(mockRoomService.getRoomSimpleList).toHaveBeenCalledTimes(2);
     });
   });
 });

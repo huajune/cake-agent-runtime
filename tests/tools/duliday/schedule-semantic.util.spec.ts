@@ -2,7 +2,7 @@ import {
   classifyScheduleSemantic,
   matchScheduleConstraint,
   ScheduleSemantic,
-} from '@tools/duliday/schedule-semantic.util';
+} from '@tools/utils/schedule-semantic.util';
 
 describe('classifyScheduleSemantic', () => {
   it.each([

@@ -5,7 +5,7 @@ import {
   extractInterviewWindows,
   normalizePolicyText,
   sanitizeConstraintText,
-} from '@tools/duliday/job-policy-parser';
+} from '@tools/utils/job-policy-parser';
 
 describe('job-policy-parser', () => {
   beforeEach(() => {

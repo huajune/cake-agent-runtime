@@ -109,16 +109,99 @@ export function sanitizeInterviewName(
  * 工具入参侧硬卡。
  *
  * 校验规则（保守起见，只拦明显不是真名的情况）：
- * - 长度 2-4 个汉字（汉族姓名几乎都在此范围；4 字以上几乎全是昵称/成语式昵称）
- * - 仅含 CJK 统一汉字，不含拉丁/数字/emoji/装饰符号/中文标点
+ * - 长度 2-8 个汉字（汉族姓名通常 2-4 字；少数民族真名常 5-7 字，如"布买日也木"，
+ *   历史 badcase uw8ow1xw / slg3jqi9：原 {2,4} 上限把少数民族真名一律拒，Agent 反复
+ *   要求候选人改名最终用"小布"代替）
+ * - 仅含 CJK 统一汉字，不含拉丁/数字/emoji/装饰符号/中文标点（昵称多含 emoji / 拼音 / 标点）
  * - 不以"测试 / 用户 / 昵称 / 游客 / 匿名"等占位前缀开头（避免 fixture 风格的
  *   "测试姓名" 通过校验——P2 批次 SCN-P2-20260429-004 实测漏网）
  *
  * 已知漏网：4 字成语式昵称（如 "执子之魂"），目前拦不住，依赖 Agent 在收名时按
  * prompt 重问；若漏网 case 攒多了再加字典或上 LLM 判断。
  */
-const REAL_NAME_REGEX = /^[一-鿿]{2,4}$/u;
+const REAL_NAME_REGEX = /^[一-鿿]{2,8}$/u;
 const PLACEHOLDER_PREFIX_BLACKLIST = ['测试', '用户', '昵称', '游客', '匿名', '无名', '客户'];
+
+/**
+ * 5+ 字纯汉字串中的"昵称提示字"——含这些字几乎都是昵称/口语短句而非真名。
+ *
+ * 设计思路：5+ 字真名（多见于少数民族，如"布买日也木"/"阿不力克木"）每字独立、无语义动词；
+ * 5+ 字昵称（如"小晴早点睡"/"加油宝贝吖"）通常含动词、情绪词或常见叠词。
+ *
+ * 不做"白名单"（覆盖不全），只在 5+ 字时做"含昵称提示字 → 拒"的负判断。
+ */
+const NICKNAME_HINT_CHARS = new Set([
+  // 动词
+  '睡',
+  '吃',
+  '玩',
+  '笑',
+  '哭',
+  '爱',
+  '恨',
+  '想',
+  '念',
+  '走',
+  '跑',
+  '飞',
+  '跳',
+  '叫',
+  '听',
+  '看',
+  '说',
+  '问',
+  '答',
+  // 情绪/形容
+  '困',
+  '累',
+  '快',
+  '慢',
+  '甜',
+  '苦',
+  '萌',
+  '帅',
+  '美',
+  '丑',
+  '好',
+  '坏',
+  '乖',
+  '皮',
+  // 常见昵称语气/句末
+  '吖',
+  '呀',
+  '哒',
+  '哦',
+  '呢',
+  '哈',
+  '嘛',
+  '呐',
+  '吗',
+  '咯',
+  '嘞',
+  '哟',
+  // 鼓励语
+  '加',
+  '油',
+  '冲',
+  '稳',
+  '赢',
+  '胜',
+  // 网名常见装饰词
+  '点',
+  '宝',
+  '贝',
+  '酱',
+  '崽',
+  '仔',
+]);
+
+function looksLikeLongChineseNickname(value: string): boolean {
+  if (value.length <= 4) return false;
+  for (const ch of value) {
+    if (NICKNAME_HINT_CHARS.has(ch)) return true;
+  }
+  return false;
+}
 
 export function isLikelyRealChineseName(value: string | null | undefined): boolean {
   if (!value) return false;
@@ -127,5 +210,7 @@ export function isLikelyRealChineseName(value: string | null | undefined): boole
   for (const prefix of PLACEHOLDER_PREFIX_BLACKLIST) {
     if (trimmed.startsWith(prefix)) return false;
   }
+  // 5-8 字纯汉字含昵称提示字 → 拒；典型场景：'小晴早点睡' / '加油宝贝吖' / '小可爱'
+  if (looksLikeLongChineseNickname(trimmed)) return false;
   return true;
 }

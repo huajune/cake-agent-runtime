@@ -241,6 +241,50 @@ describe('AgentPreparationService', () => {
     );
   });
 
+  it('renders invitedGroups in session memory to prevent duplicate invite (badcase 3g1ruov9 / 6vzw8oh3)', async () => {
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      shortTerm: { messageWindow: [{ role: 'user', content: '还有别的吗' }] },
+      sessionMemory: {
+        facts: FALLBACK_EXTRACTION,
+        lastCandidatePool: null,
+        presentedJobs: null,
+        currentFocusJob: null,
+        invitedGroups: [
+          {
+            groupName: '天津餐饮兼职②群',
+            city: '天津',
+            industry: '餐饮',
+            invitedAt: '2026-05-15T16:24:00.000Z',
+          },
+        ],
+      },
+      highConfidenceFacts: null,
+      longTerm: { profile: null },
+      procedural: {
+        currentStage: 'job_consultation',
+        fromStage: null,
+        advancedAt: null,
+        reason: null,
+      },
+    });
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '还有别的吗' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+      },
+      'invoke',
+    );
+
+    expect(result.finalPrompt).toContain('本会话已邀入的兼职群');
+    expect(result.finalPrompt).toContain('天津餐饮兼职②群');
+    expect(result.finalPrompt).toContain('禁止重复拉群');
+    expect(result.finalPrompt).toContain('禁止再次调用 invite_to_group');
+  });
+
   it('should hide full-time labor-form residue from job memory prompt block', async () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: {

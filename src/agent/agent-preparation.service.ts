@@ -352,6 +352,7 @@ export class AgentPreparationService {
   }): ToolBuildContext {
     const { params, memory, normalizedMessages, entryStage, stageGoals, thresholds, turnState } =
       input;
+    const recentBrandPool = this.collectRecentBrandPool(memory.sessionMemory);
     return {
       userId: params.userId,
       corpId: params.corpId,
@@ -373,12 +374,40 @@ export class AgentPreparationService {
       profile: memory.longTerm.profile,
       sessionFacts: memory.sessionMemory?.facts ?? null,
       currentFocusJob: memory.sessionMemory?.currentFocusJob ?? null,
+      recentBrandPool,
       token: params.token,
       imContactId: params.imContactId,
       imRoomId: params.imRoomId,
       chatId: params.sessionId,
       apiType: params.apiType,
     };
+  }
+
+  /**
+   * 汇总本会话最近推荐过的品牌名（去重，按出现顺序保留）。
+   *
+   * 取 presentedJobs（真正发给候选人的岗位）+ lastCandidatePool（最近一次工具结果），
+   * 并把 currentFocusJob 的品牌也带上。供 duliday_job_list 做品牌别名同音回指匹配。
+   */
+  private collectRecentBrandPool(
+    session: Awaited<ReturnType<MemoryService['onTurnStart']>>['sessionMemory'],
+  ): string[] {
+    if (!session) return [];
+    const ordered = [
+      ...(session.presentedJobs ?? []),
+      ...(session.lastCandidatePool ?? []),
+      ...(session.currentFocusJob ? [session.currentFocusJob] : []),
+    ];
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const job of ordered) {
+      const brand = job?.brandName?.trim();
+      if (!brand) continue;
+      if (seen.has(brand)) continue;
+      seen.add(brand);
+      result.push(brand);
+    }
+    return result;
   }
 
   /**
@@ -493,6 +522,18 @@ export class AgentPreparationService {
 
     if (state.currentFocusJob) {
       sections.push(`## 当前焦点岗位\n${this.formatJobMemoryLine(state.currentFocusJob)}`);
+    }
+
+    if (state.invitedGroups?.length) {
+      // 历史 badcase 3g1ruov9 / 6vzw8oh3：本会话拉过群但记忆里漏渲染，Agent 看不到导致重复拉群。
+      // 触发 invite_to_group 工具时本字段已写入 session 记忆，这里把它注入 prompt 让 Agent 主动避让。
+      const groupLines = state.invitedGroups.map((g, i) => {
+        const industry = g.industry ? `（${g.industry}）` : '';
+        return `${i + 1}. ${g.groupName}${industry} - 城市: ${g.city}, 邀请时间: ${g.invitedAt}`;
+      });
+      sections.push(
+        `## 本会话已邀入的兼职群（禁止重复拉群）\n${groupLines.join('\n')}\n\n_命中以上任一群时，禁止再次调用 invite_to_group；候选人本轮再次同意入群/暗示想进群时，直接告知"之前已经把你拉到 X 群了，可以查看一下手机微信"即可。_`,
+      );
     }
 
     if (sections.length === 0) return '';

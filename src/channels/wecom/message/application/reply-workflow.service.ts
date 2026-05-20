@@ -226,6 +226,7 @@ export class ReplyWorkflowService {
     const precheckResult = await this.preAgentRiskIntercept.precheck({
       messageData: params.primaryMessage,
       content,
+      messages: allMessages,
     });
     if (precheckResult.hit) {
       this.logger.warn(
@@ -571,6 +572,8 @@ export class ReplyWorkflowService {
           toolCalls: result.toolCalls,
           chatId: params.sessionId,
           userId,
+          traceId: messageId,
+          contactName: params.contactName,
           botImId: params.botImId,
           botUserName: params.botUserId,
         });

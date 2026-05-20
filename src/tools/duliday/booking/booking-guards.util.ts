@@ -3,7 +3,7 @@
  *
  * 设计目的：duliday_interview_booking 工具描述上要求"先调 precheck 再调 booking"，
  * 但 LLM 偶发会跳过 precheck 直接调 booking、或无视 precheck 的 nameFieldGuard /
- * screeningChecks 警告硬塞数据。下列三类硬规则在 precheck 已经做过一次，
+ * screeningChecks 警告硬塞数据。下列四类硬规则在 precheck 已经做过一次，
  * booking 在调 sponge API 之前再跑一次，作为 server-side 兜底：
  *
  * 1. 真实姓名 (isLikelyRealChineseName)
@@ -12,22 +12,29 @@
  *    — badcase 簇 booking_same_day_cutoff (5 cases) + invalid_interview_time_slot
  * 3. 筛选答案 (findScreeningFailure)
  *    — badcase 69e9bba2 (agent 把不合格候选人直接送进 booking)
+ * 4. 候选人 facts 与岗位硬性约束冲突 (extractHardRequirements + candidate facts)
+ *    — gender / healthCert 两类，从 raw + policy 派生的 enum 与候选人入参对账
  *
- * 与 precheck 共用底层函数（name-guard / interview-window / supplement-label-classifier），
- * 不存在双口径漂移风险；多花的成本是 booking 路径上一次本地数据计算（不增加 sponge 调用）。
+ * 与 precheck 共用底层函数（name-guard / interview-window / supplement-label-classifier /
+ * hard-requirements），不存在双口径漂移风险；多花的成本是 booking 路径上一次本地数据计算
+ * （不增加 sponge 调用）。
  */
 import type { JobDetail } from '@sponge/sponge.types';
 import { isLikelyRealChineseName } from '@memory/facts/name-guard';
-import { buildJobPolicyAnalysis, InterviewWindow } from '@tools/duliday/job-policy-parser';
+import { buildJobPolicyAnalysis, InterviewWindow } from '@tools/utils/job-policy-parser';
 import {
   findSameDayCutoffViolation,
   getShanghaiWeekday,
   resolveBookingDeadlineDateTime,
-} from '@tools/duliday/interview-window.util';
+} from '@tools/duliday/booking/interview-window.util';
 import {
   findScreeningFailure,
   type ScreeningFailure,
-} from '@tools/duliday/supplement-label-classifier';
+} from '@tools/utils/supplement-label-classifier';
+import {
+  extractHardRequirements,
+  type HardRequirements,
+} from '@tools/duliday/job-list/hard-requirements.util';
 import {
   buildToolError,
   TOOL_ERROR_TYPES,
@@ -39,10 +46,14 @@ export interface BookingGuardInput {
   name: string;
   interviewTime: string;
   supplementAnswers?: Record<string, string>;
+  /** 候选人性别：1=男，2=女（来自 booking 工具入参） */
+  candidateGenderId?: number;
+  /** 候选人健康证：1=有，2=无但接受办理，3=无且不接受办理 */
+  candidateHasHealthCertificate?: number;
 }
 
 /**
- * 跑完三个 booking guard。命中即返回 ToolErrorReturn；全部通过返回 null。
+ * 跑完四个 booking guard。命中即返回 ToolErrorReturn；全部通过返回 null。
  *
  * 调用方应在 booking 路径上拿到 job 数据后、调 sponge bookInterview API 之前调用本函数。
  */
@@ -55,6 +66,9 @@ export function runBookingGuards(input: BookingGuardInput): ToolErrorReturn | nu
 
   const screeningFailure = checkScreeningAnswers(input.supplementAnswers);
   if (screeningFailure) return screeningFailure;
+
+  const hardRequirementFailure = checkHardRequirements(input);
+  if (hardRequirementFailure) return hardRequirementFailure;
 
   return null;
 }
@@ -85,6 +99,84 @@ function checkScreeningAnswers(
       screeningFailure: failure,
     },
   });
+}
+
+/**
+ * 比对岗位硬约束与候选人 facts。命中性别冲突 / 健康证不满足等不可妥协场景时拒 booking。
+ * 户籍约束当前不在 booking 层做硬拦——province ID 映射在工具入参之外，留给 precheck/render 提醒。
+ */
+function checkHardRequirements(input: BookingGuardInput): ToolErrorReturn | null {
+  const policy = buildJobPolicyAnalysis(input.job);
+  const hr: HardRequirements = extractHardRequirements(input.job, policy);
+
+  const genderConflict = detectGenderConflict(hr.gender, input.candidateGenderId);
+  if (genderConflict) {
+    return buildToolError({
+      errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
+      outcome: '预约失败（候选人性别与岗位硬性约束冲突）',
+      replyInstruction:
+        '岗位明确限制性别，候选人性别不符，**严禁继续 booking**。先用礼貌话术告知候选人本岗位仅限对方不属于的性别，然后调 duliday_job_list 重新筛同区域其他岗位；或在用户自荐其它意向时调 request_handoff 转人工，让招募经理判断是否破例。不要回头修改 genderId 重试本工具。',
+      details: { detailedReason: genderConflict },
+    });
+  }
+
+  const healthCertConflict = detectHealthCertConflict(
+    hr.healthCert,
+    input.candidateHasHealthCertificate,
+  );
+  if (healthCertConflict) {
+    return buildToolError({
+      errorType: TOOL_ERROR_TYPES.BOOKING_REJECTED,
+      outcome: '预约失败（候选人健康证状态不满足岗位硬性约束）',
+      replyInstruction: healthCertConflict.replyInstruction,
+      details: { detailedReason: healthCertConflict.detailedReason },
+    });
+  }
+
+  return null;
+}
+
+function detectGenderConflict(
+  required: HardRequirements['gender'],
+  candidateGenderId: number | undefined,
+): string | null {
+  if (required !== 'male' && required !== 'female') return null;
+  if (candidateGenderId !== 1 && candidateGenderId !== 2) return null;
+  if (required === 'female' && candidateGenderId === 1) {
+    return '岗位限女，候选人性别=男（genderId=1）';
+  }
+  if (required === 'male' && candidateGenderId === 2) {
+    return '岗位限男，候选人性别=女（genderId=2）';
+  }
+  return null;
+}
+
+function detectHealthCertConflict(
+  required: HardRequirements['healthCert'],
+  candidateHasHealthCertificate: number | undefined,
+): { detailedReason: string; replyInstruction: string } | null {
+  if (required === 'unspecified' || required === 'not_required') return null;
+  if (candidateHasHealthCertificate == null) return null;
+
+  // 面试前必须有：无证（无论是否接受办理）都不应直接 booking
+  if (required === 'required_before_interview' && candidateHasHealthCertificate !== 1) {
+    return {
+      detailedReason: `岗位要求面试前必须持证，候选人 hasHealthCertificate=${candidateHasHealthCertificate}（非 1=有）`,
+      replyInstruction:
+        '岗位明确要求面试前必须持有健康证，候选人当前无证。**严禁继续 booking**。告诉候选人需先办妥健康证再约面，或调 duliday_job_list 找"入职前办即可/不需要健康证"的同区域岗位；候选人坚持本岗的话调 request_handoff 转人工。',
+    };
+  }
+
+  // 入职前必须有：候选人"无且不接受办理"才拦
+  if (required === 'required_before_onboard' && candidateHasHealthCertificate === 3) {
+    return {
+      detailedReason: '岗位要求入职前持证，候选人 hasHealthCertificate=3（无且不接受办理）',
+      replyInstruction:
+        '岗位入职前需办妥健康证，候选人明确不接受办理。**严禁继续 booking**。调 duliday_job_list 找不需要健康证的岗位推荐；候选人坚持本岗则调 request_handoff 转人工。',
+    };
+  }
+
+  return null;
 }
 
 function validateInterviewTimeAgainstSchedule(

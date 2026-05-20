@@ -106,8 +106,11 @@ export class GroupResolverService implements OnModuleInit {
    *
    * @param tagPrefix 群类型标签，如 '抢单群'、'兼职群'、'店长群'
    */
-  async resolveGroups(tagPrefix: string): Promise<GroupContext[]> {
-    const allGroups = await this.fetchAllGroups();
+  async resolveGroups(
+    tagPrefix: string,
+    options: { forceRefresh?: boolean } = {},
+  ): Promise<GroupContext[]> {
+    const allGroups = await this.fetchAllGroups(options.forceRefresh === true);
     return allGroups.filter((g) => g.tag === tagPrefix);
   }
 
@@ -116,8 +119,8 @@ export class GroupResolverService implements OnModuleInit {
    *
    * 遍历所有小组 token，合并去重（按 imRoomId）。
    */
-  private async fetchAllGroups(): Promise<GroupContext[]> {
-    if (this.cachedGroups.length > 0 && Date.now() < this.cacheExpiry) {
+  private async fetchAllGroups(forceRefresh = false): Promise<GroupContext[]> {
+    if (!forceRefresh && this.cachedGroups.length > 0 && Date.now() < this.cacheExpiry) {
       return this.cachedGroups;
     }
 
