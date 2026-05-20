@@ -37,6 +37,34 @@
         "Pre-push `pnpm run ci:check`: 236 suites passed, 2890 tests passed",
         "Live snapshot replay retained `[528102, 527672]` for `onlyWeekends=true`"
       ]
+    },
+    {
+      "number": "205",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/205",
+      "title": "修复发布后 master 回同步 develop 流程",
+      "author": "huajune",
+      "mergedAt": "2026-05-20",
+      "summary": [
+        "Synced the current `master` release history back into the `develop` branch line so the next `develop → master` release PR no longer has the same release metadata conflict shape.",
+        "Added a `sync-master-back-to-develop` job to `.github/workflows/version-changelog.yml`.",
+        "After the master release finalization flow publishes a tag/release/deploy, the workflow now creates or updates a `master → develop` sync PR automatically."
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "Synced the current `master` release history back into the `develop` branch line so the next `develop → master` release PR no longer has the same release metadata conflict shape.",
+        "Added a `sync-master-back-to-develop` job to `.github/workflows/version-changelog.yml`.",
+        "After the master release finalization flow publishes a tag/release/deploy, the workflow now creates or updates a `master → develop` sync PR automatically."
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm exec prettier --check .github/workflows/version-changelog.yml`",
+        "`git diff --check`",
+        "local `git merge-tree` simulation showed no `changed in both` conflict after this branch is merged",
+        "pre-push `pnpm run ci:check`: 258 suites passed, 3238 tests passed"
+      ]
     }
   ]
 }

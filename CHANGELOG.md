@@ -8,6 +8,61 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.8.1`
+**最近更新**: `2026-05-20`
+**来源分支**: `develop`
+**累计 PR**: 2
+
+### 更新摘要
+- PR #202 Added structured `workTimeText` parsing to schedule semantic classification.
+- PR #202 Weekend-only jobs are now recognized from `weekWorkTime.customnWorkTimeList[].customWorkWeekdays` and `dailyShiftSchedule.combinedArrangement[].combinedArrangementWeekdays`.
+- PR #202 Added regression coverage for structured weekend-only jobs and mixed weekday/weekend schedules.
+- PR #202 天通苑 `周末兼职` queries can now retain the structured weekend-only jobs, including 果蔬好 `528102` and `527672` from the reproduced snapshot.
+- PR #202 Jobs that require weekdays or full-week availability are still excluded from strict weekend-only queries.
+- PR #205 Synced the current `master` release history back into the `develop` branch line so the next `develop → master` release PR no longer has the same release metadata conflict shape.
+- PR #205 Added a `sync-master-back-to-develop` job to `.github/workflows/version-changelog.yml`.
+- PR #205 After the master release finalization flow publishes a tag/release/deploy, the workflow now creates or updates a `master → develop` sync PR automatically.
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #202 Added structured `workTimeText` parsing to schedule semantic classification.
+- PR #202 Weekend-only jobs are now recognized from `weekWorkTime.customnWorkTimeList[].customWorkWeekdays` and `dailyShiftSchedule.combinedArrangement[].combinedArrangementWeekdays`.
+- PR #202 Added regression coverage for structured weekend-only jobs and mixed weekday/weekend schedules.
+- PR #202 天通苑 `周末兼职` queries can now retain the structured weekend-only jobs, including 果蔬好 `528102` and `527672` from the reproduced snapshot.
+- PR #202 Jobs that require weekdays or full-week availability are still excluded from strict weekend-only queries.
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #205 Synced the current `master` release history back into the `develop` branch line so the next `develop → master` release PR no longer has the same release metadata conflict shape.
+- PR #205 Added a `sync-master-back-to-develop` job to `.github/workflows/version-changelog.yml`.
+- PR #205 After the master release finalization flow publishes a tag/release/deploy, the workflow now creates or updates a `master → develop` sync PR automatically.
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #202 `pnpm jest tests/tools/duliday/schedule-semantic.util.spec.ts --watchman=false`
+- PR #202 `pnpm jest tests/tools/tool/duliday-job-list.tool.spec.ts --watchman=false`
+- PR #202 `pnpm exec prettier --check src/tools/duliday/schedule-semantic.util.ts tests/tools/duliday/schedule-semantic.util.spec.ts`
+- PR #202 `pnpm typecheck`
+- PR #202 Pre-push `pnpm run ci:check`: 236 suites passed, 2890 tests passed
+- PR #202 Live snapshot replay retained `[528102, 527672]` for `onlyWeekends=true`
+- PR #205 `pnpm exec prettier --check .github/workflows/version-changelog.yml`
+- PR #205 `git diff --check`
+- PR #205 local `git merge-tree` simulation showed no `changed in both` conflict after this branch is merged
+- PR #205 pre-push `pnpm run ci:check`: 258 suites passed, 3238 tests passed
+<!-- release:pending:end -->
+
 ## [5.8.0] - 2026-05-19
 
 **预计版本**: `v5.8.1`
