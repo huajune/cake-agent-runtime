@@ -149,6 +149,7 @@ jobs:
     if: >
       github.event.pull_request.merged == true &&
       github.event.pull_request.base.ref == 'develop' &&
+      !startsWith(github.event.pull_request.head.ref, 'chore/release-metadata/sync-master-to-develop-') &&
       (
         github.event.pull_request.head.ref == 'chore/release-metadata/develop' ||
         startsWith(github.event.pull_request.title, 'chore(release): 更新待发布版本信息') ||
