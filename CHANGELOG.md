@@ -11,10 +11,52 @@
 <!-- release:pending:start -->
 ## 待发布
 
-**预计版本**: `v5.8.0`
-**最近更新**: `2026-05-19`
+**预计版本**: `v5.8.1`
+**最近更新**: `2026-05-20`
 **来源分支**: `develop`
-**累计 PR**: 3
+**累计 PR**: 1
+
+### 更新摘要
+- PR #202 Added structured `workTimeText` parsing to schedule semantic classification.
+- PR #202 Weekend-only jobs are now recognized from `weekWorkTime.customnWorkTimeList[].customWorkWeekdays` and `dailyShiftSchedule.combinedArrangement[].combinedArrangementWeekdays`.
+- PR #202 Added regression coverage for structured weekend-only jobs and mixed weekday/weekend schedules.
+- PR #202 天通苑 `周末兼职` queries can now retain the structured weekend-only jobs, including 果蔬好 `528102` and `527672` from the reproduced snapshot.
+- PR #202 Jobs that require weekdays or full-week availability are still excluded from strict weekend-only queries.
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #202 Added structured `workTimeText` parsing to schedule semantic classification.
+- PR #202 Weekend-only jobs are now recognized from `weekWorkTime.customnWorkTimeList[].customWorkWeekdays` and `dailyShiftSchedule.combinedArrangement[].combinedArrangementWeekdays`.
+- PR #202 Added regression coverage for structured weekend-only jobs and mixed weekday/weekend schedules.
+- PR #202 天通苑 `周末兼职` queries can now retain the structured weekend-only jobs, including 果蔬好 `528102` and `527672` from the reproduced snapshot.
+- PR #202 Jobs that require weekdays or full-week availability are still excluded from strict weekend-only queries.
+
+### 优化调整
+- 无
+
+### 运维与流程
+- 无
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #202 `pnpm jest tests/tools/duliday/schedule-semantic.util.spec.ts --watchman=false`
+- PR #202 `pnpm jest tests/tools/tool/duliday-job-list.tool.spec.ts --watchman=false`
+- PR #202 `pnpm exec prettier --check src/tools/duliday/schedule-semantic.util.ts tests/tools/duliday/schedule-semantic.util.spec.ts`
+- PR #202 `pnpm typecheck`
+- PR #202 Pre-push `pnpm run ci:check`: 236 suites passed, 2890 tests passed
+- PR #202 Live snapshot replay retained `[528102, 527672]` for `onlyWeekends=true`
+<!-- release:pending:end -->
+
+## [5.8.0] - 2026-05-20
+
+**来源分支**: `develop`
 
 ### 更新摘要
 - PR #192 **Agent 品牌意向例外**：候选人只是接受 Agent 自推岗位时，不把该品牌当成候选人硬性品牌意向；硬条件不符时先去掉 `brandIdList` 并保留位置/年龄/身份/时间窗等硬约束重查，避免过早 `request_handoff`。
@@ -124,7 +166,6 @@
 - PR #196 重点 review Phase 2-lite.1 的 prechecked 入参契约是否合适
 - PR #196 评估 filterJobsToRequestedBrands 的子串匹配规则是否会有误伤
 - PR #196 看 available_after 的日期解析正则是否会误触发
-<!-- release:pending:end -->
 
 ## [5.7.2] - 2026-05-18
 
