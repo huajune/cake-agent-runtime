@@ -279,6 +279,9 @@ jobs:
     permissions:
       actions: write
       contents: write
+    outputs:
+      tag_name: ${{ steps.release_tag.outputs.tag_name }}
+      version: ${{ steps.release_tag.outputs.version }}
     steps:
       - name: Checkout master
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -354,3 +357,121 @@ jobs:
           gh workflow run deploy.yml \
             --ref master \
             -f release_tag="${RELEASE_TAG}"
+
+  sync-master-back-to-develop:
+    needs: publish-master-release
+    if: >
+      needs.publish-master-release.result == 'success' &&
+      needs.publish-master-release.outputs.version != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: develop
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create or update master back-sync PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.publish-master-release.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          BASE_BRANCH="develop"
+          SOURCE_BRANCH="master"
+          BOT_BRANCH="chore/release-metadata/sync-master-to-develop-v${VERSION}"
+
+          git fetch origin "${BASE_BRANCH}" "${SOURCE_BRANCH}" --tags
+          git checkout -B "${BOT_BRANCH}" "origin/${BASE_BRANCH}"
+
+          set +e
+          git merge --no-ff --no-commit "origin/${SOURCE_BRANCH}"
+          MERGE_STATUS=$?
+          set -e
+
+          if [ "${MERGE_STATUS}" -ne 0 ]; then
+            CONFLICTS="$(git diff --name-only --diff-filter=U)"
+            if [ -z "${CONFLICTS}" ]; then
+              echo "❌ master → develop merge failed without listed conflicts"
+              exit "${MERGE_STATUS}"
+            fi
+
+            ALLOWED_CONFLICTS=".release/pending-release.json CHANGELOG.md package.json pnpm-lock.yaml"
+            for file in ${CONFLICTS}; do
+              case " ${ALLOWED_CONFLICTS} " in
+                *" ${file} "*)
+                  echo "ℹ️ Resolving expected release metadata conflict with develop version: ${file}"
+                  git checkout --ours -- "${file}"
+                  git add "${file}"
+                  ;;
+                *)
+                  echo "❌ Unexpected conflict while syncing master into develop: ${file}"
+                  git merge --abort || true
+                  exit 1
+                  ;;
+              esac
+            done
+          fi
+
+          node scripts/update-version-changelog.js prepare
+          git add package.json CHANGELOG.md .release/pending-release.json
+
+          if ! git rev-parse -q --verify MERGE_HEAD >/dev/null && \
+             git diff --quiet && \
+             git diff --cached --quiet; then
+            echo "ℹ️ develop already contains master; no sync PR needed"
+            exit 0
+          fi
+
+          git commit -m "chore(release): sync master into develop after v${VERSION}"
+          git push --force-with-lease origin "HEAD:${BOT_BRANCH}"
+
+          PR_TITLE="chore(release): sync master into develop after v${VERSION}"
+          PR_BODY=$(cat <<EOF
+          <!-- release-metadata-pr -->
+          ## 说明
+
+          此 PR 由 GitHub Actions 自动创建，用于在 \`master\` 发布固化后把发布历史同步回 \`develop\`。
+
+          - 触发版本: \`v${VERSION}\`
+          - 目标分支: \`${BASE_BRANCH}\`
+          - 来源分支: \`${SOURCE_BRANCH}\`
+          - 目的: 避免下一次 \`develop → master\` 发版 PR 因 \`CHANGELOG.md\` / \`.release/pending-release.json\` 等版本元数据文件重复冲突
+          EOF
+          )
+
+          EXISTING_PR_NUMBER=$(gh pr list \
+            --base "${BASE_BRANCH}" \
+            --head "${BOT_BRANCH}" \
+            --state open \
+            --json number \
+            --jq '.[0].number // ""')
+
+          if [ -n "${EXISTING_PR_NUMBER}" ]; then
+            gh pr edit "${EXISTING_PR_NUMBER}" --title "${PR_TITLE}" --body "${PR_BODY}"
+            echo "✅ 已更新 master → develop 同步 PR: #${EXISTING_PR_NUMBER}"
+            exit 0
+          fi
+
+          PR_URL=$(gh pr create \
+            --base "${BASE_BRANCH}" \
+            --head "${BOT_BRANCH}" \
+            --title "${PR_TITLE}" \
+            --body "${PR_BODY}")
+          NEW_PR_NUMBER="${PR_URL##*/}"
+          echo "✅ 已创建 master → develop 同步 PR: #${NEW_PR_NUMBER}"
