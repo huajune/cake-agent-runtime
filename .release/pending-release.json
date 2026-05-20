@@ -1,7 +1,42 @@
 {
   "baseVersion": "5.8.0",
-  "nextVersion": "5.8.0",
-  "updatedAt": "2026-05-19",
+  "nextVersion": "5.8.1",
+  "updatedAt": "2026-05-20",
   "sourceBranch": "develop",
-  "entries": []
+  "entries": [
+    {
+      "number": "202",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/202",
+      "title": "修复周末岗位排班过滤",
+      "author": "huajune",
+      "mergedAt": "2026-05-20",
+      "summary": [
+        "Added structured `workTimeText` parsing to schedule semantic classification.",
+        "Weekend-only jobs are now recognized from `weekWorkTime.customnWorkTimeList[].customWorkWeekdays` and `dailyShiftSchedule.combinedArrangement[].combinedArrangementWeekdays`.",
+        "Added regression coverage for structured weekend-only jobs and mixed weekday/weekend schedules.",
+        "天通苑 `周末兼职` queries can now retain the structured weekend-only jobs, including 果蔬好 `528102` and `527672` from the reproduced snapshot.",
+        "Jobs that require weekdays or full-week availability are still excluded from strict weekend-only queries."
+      ],
+      "features": [],
+      "fixes": [
+        "Added structured `workTimeText` parsing to schedule semantic classification.",
+        "Weekend-only jobs are now recognized from `weekWorkTime.customnWorkTimeList[].customWorkWeekdays` and `dailyShiftSchedule.combinedArrangement[].combinedArrangementWeekdays`.",
+        "Added regression coverage for structured weekend-only jobs and mixed weekday/weekend schedules.",
+        "天通苑 `周末兼职` queries can now retain the structured weekend-only jobs, including 果蔬好 `528102` and `527672` from the reproduced snapshot.",
+        "Jobs that require weekdays or full-week availability are still excluded from strict weekend-only queries."
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm jest tests/tools/duliday/schedule-semantic.util.spec.ts --watchman=false`",
+        "`pnpm jest tests/tools/tool/duliday-job-list.tool.spec.ts --watchman=false`",
+        "`pnpm exec prettier --check src/tools/duliday/schedule-semantic.util.ts tests/tools/duliday/schedule-semantic.util.spec.ts`",
+        "`pnpm typecheck`",
+        "Pre-push `pnpm run ci:check`: 236 suites passed, 2890 tests passed",
+        "Live snapshot replay retained `[528102, 527672]` for `onlyWeekends=true`"
+      ]
+    }
+  ]
 }
