@@ -1,7 +1,32 @@
 {
   "baseVersion": "5.8.1",
-  "nextVersion": "5.8.2",
-  "updatedAt": "2026-05-20",
+  "nextVersion": "5.9.0",
+  "updatedAt": "2026-05-21",
   "sourceBranch": "develop",
-  "entries": []
+  "entries": [
+    {
+      "number": "209",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/209",
+      "title": "添加盼盼和小阳的飞书通知接收人",
+      "author": "ArielZhu",
+      "mergedAt": "2026-05-21",
+      "summary": [
+        "新增吴盼盼（盼盼组 bot `1688854263771949`）和郭晓阳（艾酱测试组 bot `1688855753660960`）到飞书通知接收人配置",
+        "同步更新 `BOT_TO_RECEIVER` 映射，群任务通知可自动 @对应负责人"
+      ],
+      "features": [
+        "新增吴盼盼（盼盼组 bot `1688854263771949`）和郭晓阳（艾酱测试组 bot `1688855753660960`）到飞书通知接收人配置",
+        "同步更新 `BOT_TO_RECEIVER` 映射，群任务通知可自动 @对应负责人"
+      ],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "确认盼盼组消息通知能正确 @盼盼",
+        "确认小阳 bot 消息通知能正确 @小阳"
+      ]
+    }
+  ]
 }
