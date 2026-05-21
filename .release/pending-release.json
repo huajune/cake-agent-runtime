@@ -1,35 +1,7 @@
 {
-  "baseVersion": "5.9.0",
+  "baseVersion": "5.9.1",
   "nextVersion": "5.9.1",
   "updatedAt": "2026-05-21",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "214",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/214",
-      "title": "降噪三类误报 + 改写 badcase 直写飞书多维表格",
-      "author": "ArielZhu",
-      "mergedAt": "2026-05-21",
-      "summary": [
-        "**group_promise_without_invite 误报降噪**：新增 Case 2（能力/选项陈述，如\"我也可以拉你进群\"）和 Case 3（invite + 尾随确认问，如\"发个入群邀请，你看行行？\"）豁免，避免把候选人确认阶段的条件句打成误报",
-        "**booking_form_field_mismatch 误报降噪**：正则扩展支持字段名后跟括号注释再接冒号（如「健康证（有/无）：」「身份（学生/社会人士）：」），斜杠合并字段（如「性别/年龄：」）按 `/` 拆分独立对账",
-        "**告警路由变更**：`ReplyFactGuardNotifierService` 移除飞书告警卡片，改为直写飞书 BadCase 多维表格（`FeishuBitableSyncService.writeAgentTestFeedback`），`NotificationModule` 引入 `FeishuSyncModule`"
-      ],
-      "features": [
-        "**group_promise_without_invite 误报降噪**：新增 Case 2（能力/选项陈述，如\"我也可以拉你进群\"）和 Case 3（invite + 尾随确认问，如\"发个入群邀请，你看行行？\"）豁免，避免把候选人确认阶段的条件句打成误报",
-        "**booking_form_field_mismatch 误报降噪**：正则扩展支持字段名后跟括号注释再接冒号（如「健康证（有/无）：」「身份（学生/社会人士）：」），斜杠合并字段（如「性别/年龄：」）按 `/` 拆分独立对账"
-      ],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "**告警路由变更**：`ReplyFactGuardNotifierService` 移除飞书告警卡片，改为直写飞书 BadCase 多维表格（`FeishuBitableSyncService.writeAgentTestFeedback`），`NotificationModule` 引入 `FeishuSyncModule`"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "单元测试 28 条全部通过（含 5 条新增回归用例，覆盖括号注释、斜杠合并字段、Case 2/3 豁免、仍需告警的断言场景）",
-        "真实链路验证：批次 `22b99b24`，2 条回归用例在本地 dev server 运行，`duliday_interview_precheck` 实际调用，Agent 生成含「身份（学生/社会人士）：」的收资模板，`ReplyFactGuard` 日志无 `booking_form_field_mismatch` 告警"
-      ]
-    }
-  ]
+  "entries": []
 }
