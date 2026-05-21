@@ -41,14 +41,18 @@ describe('job-list render util', () => {
             jobId: 1,
             distanceKm: 2.3,
             wageRange: '24-29 元/时',
-            displayLine: '肯德基（静安寺店，2.3km，24-29 元/时）',
+            shiftSummary: '11:00-15:00',
+            requirementSummary: '18-45岁',
+            displayLine: '肯德基（静安寺店，2.3km，11:00-15:00，24-29 元/时，18-45岁）',
           },
           {
             storeName: '日月光店',
             jobId: 2,
             distanceKm: 5.1,
             wageRange: '24-29 元/时',
-            displayLine: '肯德基（日月光店，5.1km，24-29 元/时）',
+            shiftSummary: '11:00-15:00',
+            requirementSummary: null,
+            displayLine: '肯德基（日月光店，5.1km，11:00-15:00，24-29 元/时）',
           },
         ],
       },
@@ -57,7 +61,7 @@ describe('job-list render util', () => {
     const markdown = formatJobsToMarkdown([makeJob(1)], 1, 1, 10, flags, brandGroups);
 
     expect(markdown).toContain('⚠️ 同品牌多门店');
-    expect(markdown).toContain('肯德基（静安寺店，2.3km，24-29 元/时）');
+    expect(markdown).toContain('肯德基（静安寺店，2.3km，11:00-15:00，24-29 元/时，18-45岁）');
     expect(markdown).toContain('### 约面重点');
     expect(markdown).toContain('- **工作班次**:');
     expect(markdown).toContain('### 薪资信息');

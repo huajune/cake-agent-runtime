@@ -1,30 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
-import {
-  BOT_TO_RECEIVER,
-  FEISHU_RECEIVER_USERS,
-  FeishuReceiver,
-} from '@infra/feishu/constants/receivers';
-import { FeishuPrivateChatChannel } from '../channels/feishu-private-chat.channel';
-import { OpsCardRenderer } from '../renderers/ops-card.renderer';
+import { FeishuBitableSyncService } from '@biz/feishu-sync/bitable-sync.service';
 
 /**
- * Reply 事实矛盾告警（来自 ReplyFactGuardService phase 1）。
+ * Reply 事实矛盾写入器（来自 ReplyFactGuardService phase 1）。
  *
  * Agent 在确认轮自由发挥（如本轮没调 invite_to_group 却声明"群已满"/"群里发你"），
- * 结构性背离 tool 真实结果。本告警仅观察，不改写回复——用于积累样本判断
- * 关键词规则准确率，决定是否升级到 phase 2 改写。
- *
- * 投递渠道：与 risk / handoff 等对话级介入告警一致，走私聊群（PRIVATE_CHAT_MONITOR），
- * 不与运营群（MESSAGE_NOTIFICATION，群任务执行流）混发。
+ * 结构性背离 tool 真实结果。命中后直接写入飞书 badcase 多维表，供后续排查和规则验证。
  */
 @Injectable()
 export class ReplyFactGuardNotifierService {
   private readonly logger = new Logger(ReplyFactGuardNotifierService.name);
 
-  constructor(
-    private readonly privateChatChannel: FeishuPrivateChatChannel,
-    private readonly opsCardRenderer: OpsCardRenderer,
-  ) {}
+  constructor(private readonly bitableSyncService: FeishuBitableSyncService) {}
 
   async notifyContradiction(params: {
     chatId?: string;
@@ -33,23 +20,56 @@ export class ReplyFactGuardNotifierService {
     contactName?: string;
     botImId?: string;
     botUserName?: string;
+    userMessage?: string;
     replyPreview: string;
     contradictions: Array<{ ruleId: string; label: string }>;
     toolNames: string[];
   }): Promise<boolean> {
-    const atUsers = new Set<FeishuReceiver>([FEISHU_RECEIVER_USERS.GAO_YAQI]);
-    if (params.botImId) {
-      const chatReceiver = BOT_TO_RECEIVER[params.botImId];
-      if (chatReceiver) atUsers.add(chatReceiver);
+    const ruleIds = params.contradictions.map((c) => c.ruleId).join(', ');
+    const ruleLabels = params.contradictions
+      .map((c, i) => `${i + 1}. ${c.label}（ruleId: ${c.ruleId}）`)
+      .join('\n');
+
+    // 构建最小可读对话片段
+    const chatHistory = [
+      params.userMessage ? `[候选人] ${params.userMessage}` : null,
+      `[招募经理] ${params.replyPreview}`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const remark = [
+      `命中规则：${ruleIds}`,
+      ruleLabels,
+      `本轮 tool：${params.toolNames.length > 0 ? params.toolNames.join(', ') : '（无）'}`,
+      params.botImId ? `botImId：${params.botImId}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    try {
+      const result = await this.bitableSyncService.writeAgentTestFeedback({
+        type: 'badcase',
+        chatHistory,
+        userMessage: params.userMessage,
+        errorType: ruleIds,
+        remark,
+        chatId: params.chatId,
+        traceId: params.traceId,
+        candidateName: params.contactName,
+        managerName: params.botUserName,
+      });
+
+      if (!result.success) {
+        this.logger.error(
+          `[ReplyFactGuard] badcase 写入失败: chatId=${params.chatId ?? '-'}, error=${result.error}`,
+        );
+      }
+      return result.success;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[ReplyFactGuard] badcase 写入异常: ${message}`);
+      return false;
     }
-    const card = this.opsCardRenderer.buildReplyFactContradictionAlertCard({
-      ...params,
-      atUsers: Array.from(atUsers),
-    });
-    const sent = await this.privateChatChannel.send(card);
-    if (!sent) {
-      this.logger.error(`[ReplyFactGuard] 飞书告警发送失败: chatId=${params.chatId ?? '-'}`);
-    }
-    return sent;
   }
 }

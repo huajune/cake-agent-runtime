@@ -4,13 +4,16 @@
  * 从 duliday-job-list.tool.ts 拆出（Phase 1.A 机械搬运，0 逻辑变更）：
  * - BrandStoreEntry / BrandNearestStoresGroup 类型
  * - formatSalarySummary：单条岗位的薪资摘要（"24-26 元/时"）
- * - formatBrandStoreDisplayLine：拼成"品牌（门店，距离，薪资）"展示行
+ * - formatBrandStoreDisplayLine：拼成"品牌（门店，距离，班次，薪资，要求）"展示行
  * - buildBrandNearestStoreSummary：jobs[] → BrandNearestStoresGroup[]
  * - getMultiStoreBrandGroups：筛同品牌 ≥2 家的分组
  * - renderMultiStoreBrandWarning：渲染"同品牌多门店"强约束 markdown section
  */
 
 import { normalizeStoreNameForAgent } from '@tools/duliday/job-list/sanitize.util';
+import { composeShiftTimeText } from '@tools/utils/format-shift-time.util';
+import { extractHardRequirements } from '@tools/duliday/job-list/hard-requirements.util';
+import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -19,7 +22,9 @@ export interface BrandStoreEntry {
   jobId: number;
   distanceKm: number | null;
   wageRange: string | null;
-  /** 已经按 `品牌（门店，距离，薪资）` 渲染好的话术，禁止 LLM 二次重写。 */
+  shiftSummary: string | null;
+  requirementSummary: string | null;
+  /** 已经按 `品牌（门店，距离，班次，薪资，要求）` 渲染好的话术，禁止 LLM 二次重写。 */
   displayLine: string;
 }
 
@@ -60,15 +65,23 @@ function formatBrandStoreDisplayLine(
   brandName: string,
   storeName: string | null,
   distanceKm: number | null,
+  shiftSummary: string | null,
   wageRange: string | null,
+  requirementSummary: string | null,
 ): string {
   const parts: string[] = [];
   parts.push(storeName?.trim() || '门店待确认');
   if (distanceKm != null && Number.isFinite(distanceKm)) {
     parts.push(`${distanceKm.toFixed(1)}km`);
   }
+  if (shiftSummary?.trim()) {
+    parts.push(shiftSummary.trim());
+  }
   if (wageRange?.trim()) {
     parts.push(wageRange.trim());
+  }
+  if (requirementSummary?.trim()) {
+    parts.push(requirementSummary.trim());
   }
   return `${brandName}（${parts.join('，')}）`;
 }
@@ -88,7 +101,27 @@ type BrandSummaryJobInput = {
   } | null;
   _distanceKm?: unknown;
   jobSalary?: unknown;
+  workTime?: unknown;
+  hiringRequirement?: unknown;
 };
+
+function formatShiftSummary(job: BrandSummaryJobInput): string | null {
+  const shift = composeShiftTimeText(job.workTime);
+  return shift || null;
+}
+
+function formatRequirementSummary(job: BrandSummaryJobInput): string | null {
+  const policy = buildJobPolicyAnalysis(job as any);
+  const hr = extractHardRequirements(job as any, policy);
+  const parts: string[] = [];
+  const age = policy.normalizedRequirements.ageRequirement;
+  if (age && age !== '不限') parts.push(age);
+  if (hr.gender === 'female') parts.push('仅限女');
+  else if (hr.gender === 'male') parts.push('仅限男');
+  if (hr.healthCert === 'required_before_interview') parts.push('需健康证');
+  else if (hr.healthCert === 'required_before_onboard') parts.push('入职前办健康证');
+  return parts.length > 0 ? parts.join('，') : null;
+}
 
 /**
  * 同品牌"最近门店"汇总：候选人在某区域有 brand intent 时，
@@ -113,6 +146,8 @@ export function buildBrandNearestStoreSummary(
         jobId: number;
         distanceKm: number | null;
         wageRange: string | null;
+        shiftSummary: string | null;
+        requirementSummary: string | null;
       }>;
     }
   >();
@@ -142,6 +177,8 @@ export function buildBrandNearestStoreSummary(
       distanceKm:
         typeof job._distanceKm === 'number' ? Math.round(job._distanceKm * 10) / 10 : null,
       wageRange: formatSalarySummary(job),
+      shiftSummary: formatShiftSummary(job),
+      requirementSummary: formatRequirementSummary(job),
     });
     buckets.set(key, bucket);
   }
@@ -164,7 +201,9 @@ export function buildBrandNearestStoreSummary(
             bucket.brandName,
             store.storeName,
             store.distanceKm,
+            store.shiftSummary,
             store.wageRange,
+            store.requirementSummary,
           ),
         }));
       return {
@@ -199,10 +238,10 @@ export function renderMultiStoreBrandWarning(
   const lines: string[] = [];
   lines.push('## ⚠️ 同品牌多门店');
   lines.push(
-    '> 以下品牌返回多家门店。**推荐这些岗位时必须按门店名+距离+薪资逐家区分，禁止只说"有 X 品牌"或把两家合并成一句**。',
+    '> 以下品牌返回多家门店。**推荐这些岗位时必须按门店名+距离+班次+薪资+要求逐家区分，禁止只说"有 X 品牌"或把两家合并成一句**。',
   );
   lines.push(
-    '> 直接照下方 displayLine 原文转述（可改成口语化的连接词，但门店名/距离/薪资不得省略）。',
+    '> 直接照上方「推荐对话用模板」卡片原文逐条转述（可改成口语化的连接词，但门店名/距离/班次/薪资/要求不得省略）。',
   );
   for (const group of multi) {
     lines.push('');
