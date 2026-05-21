@@ -13,6 +13,8 @@ export const FEISHU_RECEIVER_USERS = {
   NAN_GUA: { openId: 'ou_954fb7341fd7fdd320de2d419d26df19', name: '南瓜' },
   LI_YUHANG: { openId: 'ou_e6868065cb0baa3c0304441a6a8c16e7', name: '李宇航' },
   ZHU_DONGSHENG: { openId: 'ou_9834f6ccffb3abdbeeabbc28581af6df', name: '祝东升' },
+  PAN_PAN: { openId: 'ou_12cf003c378f89299f8ccf32252c22c0', name: '盼盼' },
+  GUO_XIAOYANG: { openId: 'ou_6d3f217a88b5033ff256c64492e52ae7', name: '小阳' },
 } as const satisfies Record<string, FeishuReceiver>;
 
 /**
@@ -25,4 +27,6 @@ export const BOT_TO_RECEIVER: Record<string, FeishuReceiver> = {
   '1688855171908166': FEISHU_RECEIVER_USERS.LI_YUHANG, // 宇航组 - 李宇杭
   '1688854363869800': FEISHU_RECEIVER_USERS.ZHU_DONGSHENG, // 东升组 - 祝东升
   '1688854359801821': FEISHU_RECEIVER_USERS.NAN_GUA, // 南瓜组 - 李涵婷
+  '1688854263771949': FEISHU_RECEIVER_USERS.PAN_PAN, // 盼盼组 - 吴盼盼
+  '1688855753660960': FEISHU_RECEIVER_USERS.GUO_XIAOYANG, // 艾酱测试组 - 郭晓阳
 };
