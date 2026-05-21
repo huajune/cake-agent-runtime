@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.9.1] - 2026-05-21
 
-**预计版本**: `v5.9.1`
-**最近更新**: `2026-05-21`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #214 **group_promise_without_invite 误报降噪**：新增 Case 2（能力/选项陈述，如"我也可以拉你进群"）和 Case 3（invite + 尾随确认问，如"发个入群邀请，你看行行？"）豁免，避免把候选人确认阶段的条件句打成误报
@@ -43,7 +39,6 @@
 ### 验证记录
 - PR #214 单元测试 28 条全部通过（含 5 条新增回归用例，覆盖括号注释、斜杠合并字段、Case 2/3 豁免、仍需告警的断言场景）
 - PR #214 真实链路验证：批次 `22b99b24`，2 条回归用例在本地 dev server 运行，`duliday_interview_precheck` 实际调用，Agent 生成含「身份（学生/社会人士）：」的收资模板，`ReplyFactGuard` 日志无 `booking_form_field_mismatch` 告警
-<!-- release:pending:end -->
 
 ## [5.9.0] - 2026-05-21
 
