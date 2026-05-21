@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { FeishuModule } from '@infra/feishu/feishu.module';
+import { FeishuSyncModule } from '@biz/feishu-sync/feishu-sync.module';
 import { FeishuAlertChannel } from './channels/feishu-alert.channel';
 import { FeishuOpsChannel } from './channels/feishu-ops.channel';
 import { FeishuPrivateChatChannel } from './channels/feishu-private-chat.channel';
@@ -19,7 +20,7 @@ import { ReplyFactGuardNotifierService } from './services/reply-fact-guard-notif
 
 @Global()
 @Module({
-  imports: [FeishuModule],
+  imports: [FeishuModule, FeishuSyncModule],
   providers: [
     FeishuAlertChannel,
     FeishuOpsChannel,

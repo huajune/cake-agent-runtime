@@ -133,6 +133,47 @@ describe('ReplyFactGuardService', () => {
     expect(result.hit).toBe(false);
   });
 
+  it('does NOT flag "发个入群邀请，你看行行？" as conditional offer before candidate confirms (case 3)', async () => {
+    // false-positive 防回归（同类 gay6j94c 告警误报）：
+    // Agent 找不到近期合适岗位，附带提出"先发个入群邀请"作为备选，以问句征求候选人确认。
+    // 候选人尚未回复，invite_to_group 尚未执行；这是 pre-action 询问，不是已完成承诺。
+    const result = service.check({
+      replyText:
+        '北京通州和朝阳这边暂时没有特别匹配的兼职岗位，我先给你发个入群邀请，你看行行？群里有更新我第一时间通知你。',
+      toolCalls: [
+        { toolName: 'geocode', args: {}, status: 'ok', result: {} },
+        { toolName: 'duliday_job_list', args: {}, status: 'ok', result: {} },
+      ],
+      chatId: 'chat-1',
+    });
+    expect(result.hit).toBe(false);
+  });
+
+  it('does NOT flag "我也可以拉你进群" as capability statement (case 2)', async () => {
+    // false-positive 防回归：Agent 介绍完岗位后顺带说"我也可以拉你进群"，
+    // 是选项提示（能力/选项陈述），不是已完成的拉群承诺。
+    const result = service.check({
+      replyText:
+        '通州这边有两个合适的岗位，你看感兴趣哪家。另外我也可以拉你进咱们餐饮兼职群，有新岗位我会第一时间通知你。',
+      toolCalls: [
+        { toolName: 'duliday_job_list', args: {}, status: 'ok', result: {} },
+      ],
+      chatId: 'chat-1',
+    });
+    expect(result.hit).toBe(false);
+  });
+
+  it('STILL flags "我拉你进群了" assertion without invite_to_group (not a question)', async () => {
+    // 回归保证：纯陈述句"我拉你进群了"不含问号，不应被新的 case 3 豁免。
+    const result = service.check({
+      replyText: '我拉你进咱们餐饮兼职群了，后面有合适的直接通知你。',
+      toolCalls: [],
+      chatId: 'chat-1',
+    });
+    expect(result.hit).toBe(true);
+    expect(result.contradictions[0].ruleId).toBe('group_promise_without_invite');
+  });
+
   it('does NOT flag promise when invite_to_group success backs it', async () => {
     const result = service.check({
       replyText: '我拉你进群了，后面有合适的群里通知你。',
@@ -288,6 +329,57 @@ describe('ReplyFactGuardService', () => {
       const result = service.check({ replyText, toolCalls: [], chatId: 'chat-1' });
 
       expect(result.hit).toBe(false);
+    });
+
+    it('does not flag when field has bracket annotation before colon (false-positive 面试时间（选一个）：)', () => {
+      // 误报防回归：Agent 在字段名后加括号注释（"面试时间（选一个）："），
+      // 字段实际存在，但旧正则因括号打断了匹配而误报缺失。
+      const replyText = [
+        '姓名：',
+        '电话：',
+        '性别：',
+        '年龄：',
+        '学历：',
+        '健康证（有/无）：',
+        '面试时间（选一个）：明天周五 13:00 / 后天周六 09:00',
+        '应聘门店：泛海店',
+      ].join('\n');
+
+      const result = service.check({
+        replyText,
+        toolCalls: [makePrecheckCall(['姓名', '电话', '性别', '年龄', '学历', '面试时间'])],
+        chatId: 'chat-1',
+      });
+
+      const mismatch = result.contradictions.find(
+        (c) => c.ruleId === 'booking_form_field_mismatch',
+      );
+      expect(mismatch).toBeUndefined();
+    });
+
+    it('does not flag when slash-merged field covers multiple required fields (false-positive 性别/年龄：)', () => {
+      // 误报防回归：Agent 把"性别"和"年龄"合并为一行"性别/年龄："，
+      // 旧逻辑把整体当成一个未知字段，导致性别和年龄都被判为缺失。
+      const replyText = [
+        '姓名：',
+        '电话：',
+        '性别/年龄：',
+        '学历：',
+        '面试时间（选一个）：',
+        '身份（学生/社会人士）：',
+        '健康证：',
+      ].join('\n');
+
+      const result = service.check({
+        replyText,
+        toolCalls: [makePrecheckCall(['姓名', '电话', '性别', '年龄', '学历', '面试时间'])],
+        chatId: 'chat-1',
+      });
+
+      const mismatch = result.contradictions.find(
+        (c) => c.ruleId === 'booking_form_field_mismatch',
+      );
+      expect(mismatch).toBeUndefined();
     });
   });
 

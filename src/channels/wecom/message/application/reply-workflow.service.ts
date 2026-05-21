@@ -576,6 +576,7 @@ export class ReplyWorkflowService {
           contactName: params.contactName,
           botImId: params.botImId,
           botUserName: params.botUserId,
+          userMessage: params.userMessage,
         });
       }
 

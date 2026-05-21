@@ -7,15 +7,21 @@ import { extractSalaryFacts } from '@tools/duliday/job-list/salary-facts.util';
  * 从 reply 中抽取"字段名：" 模板字段集合。
  *
  * 识别规则：行首是 2-8 字符中文/斜杠（如"姓名"、"联系方式"、"籍贯/户籍"），
- * 紧跟全角或半角冒号，且冒号后不是数字（防误吃"面试时间：13:30"里的"13"）。
+ * 字段名后可带括号注释（如"面试时间（选一个）："、"健康证（有/无）："），
+ * 然后是全角或半角冒号，且冒号后不是数字（防误吃"面试时间：13:30"里的"13"）。
  * 至少 3 行命中才视为收资模板，避免误判普通的"门店地址："/"时薪：24"等单行说明。
  */
 function extractFormFieldsFromReply(reply: string): string[] {
   const fields: string[] = [];
-  const fieldLineRegex = /^\s*([一-龥/]{2,8})[：:](?!\s*\d)/;
+  // `(?:[（(][^）)]*[）)])*` 允许字段名后跟零或多个括号注释，再接冒号
+  const fieldLineRegex = /^\s*([一-龥/]{2,8})(?:[（(][^）)]*[）)])*[：:](?!\s*\d)/;
   for (const line of reply.split(/\r?\n/)) {
     const match = line.match(fieldLineRegex);
-    if (match) fields.push(match[1]);
+    if (match) {
+      // 斜杠合并字段（如"性别/年龄："）拆分为独立字段，逐个加入集合
+      const parts = match[1].split('/').filter(Boolean);
+      fields.push(...parts);
+    }
   }
   return fields;
 }
@@ -131,12 +137,46 @@ export class ReplyFactGuardService {
   /**
    * "要不要/还是先拉你进群？" 属于征求候选人选择，不是声称本轮已经完成拉群。
    * 这类问句不能要求本轮 invite_to_group 成功，否则会把正常的候选人确认流程打成误报。
+   *
+   * 覆盖三种条件句形式：
+   * 1. 领头词 + invite + ？：要不要/还是先拉你进群？
+   * 2. 能力/选项陈述：我也可以拉你进群（不是承诺，是给候选人的一个选项）
+   * 3. invite + 尾随确认问：发个入群邀请，你看行行？（向候选人征求确认，下轮才执行）
    */
   private static isConditionalGroupInviteQuestion(text: string): boolean {
     const normalized = text.replace(/\s+/g, '');
-    return /(?:要不要|需不需要|是否需要|你看是|还是(?:先)?|要不(?:我)?)[^。！？?；]{0,80}?(?:拉(?:你|您)[^。！？?；]{0,15}?群|进(?:咱们|我们|这个|这|这边)[^。！？?；]{0,15}?群|加(?:你|您)[^。！？?；]{0,15}?群|发(?:个|一个|条)?(?:入)?群邀请)[^。！？?；]{0,80}?(?:吗|呢|？|\?)/.test(
-      normalized,
-    );
+
+    // Case 1：领头征询词 + invite + 问号
+    if (
+      /(?:要不要|需不需要|是否需要|你看是|还是(?:先)?|要不(?:我)?)[^。！？?；]{0,80}?(?:拉(?:你|您)[^。！？?；]{0,15}?群|进(?:咱们|我们|这个|这|这边)[^。！？?；]{0,15}?群|加(?:你|您)[^。！？?；]{0,15}?群|发(?:个|一个|条)?(?:入)?群邀请)[^。！？?；]{0,80}?(?:吗|呢|？|\?)/.test(
+        normalized,
+      )
+    ) {
+      return true;
+    }
+
+    // Case 2：能力/选项陈述（"我也可以/可以" + invite）
+    // 场景：Agent 在介绍岗位后顺带提到"也可以拉你进群"，属于选项提示，不是承诺。
+    if (
+      /(?:我?(?:也|还)?可以|(?:要|需要|有需要|感兴趣)的话(?:我)?(?:也)?)[^。！？?；]{0,30}?(?:拉(?:你|您)[^。！？?；]{0,15}?群|进(?:咱们|我们|这个|这|这边)[^。！？?；]{0,15}?群|加(?:你|您)[^。！？?；]{0,15}?群|发(?:个|一个|条)?(?:入)?群邀请)/.test(
+        normalized,
+      )
+    ) {
+      return true;
+    }
+
+    // Case 3：invite + 尾随确认问（"发个入群邀请，你看行行？"）
+    // 向候选人征求确认，invite_to_group 尚未执行，候选人同意后下轮再调。
+    // 用 [^。！？]{0,30} 限制窗口，避免误豁免"我拉你进群，有问题你看如何联系我？"
+    if (
+      /(?:拉(?:你|您)[^。，,；！？\s]{0,15}?群|进(?:咱们|我们|这个|这|这边)[^。，,；！？\s]{0,15}?群|加(?:你|您)[^。，,；！？\s]{0,15}?群|发(?:个|一个|条)?(?:入)?群邀请)[^。！？]{0,30}?(?:你看(?:行|好|可以|怎么样|行不行|行行)?|好吗|行吗|可以吗|方便吗|好不好)[^。！？]{0,10}?(?:？|\?)/.test(
+        normalized,
+      )
+    ) {
+      return true;
+    }
+
+    return false;
   }
 
   /** 本轮 invite_to_group 真正成功了（用于规则 requiredToolPredicate）。 */
@@ -266,6 +306,8 @@ export class ReplyFactGuardService {
     contactName?: string;
     botImId?: string;
     botUserName?: string;
+    /** 本轮候选人输入，用于写 badcase 时构建对话上下文 */
+    userMessage?: string;
   }): { hit: boolean; contradictions: Array<{ ruleId: string; label: string }> } {
     const text = params.replyText ?? '';
     if (!text.trim()) return { hit: false, contradictions: [] };
@@ -310,6 +352,7 @@ export class ReplyFactGuardService {
         contactName: params.contactName,
         botImId: params.botImId,
         botUserName: params.botUserName,
+        userMessage: params.userMessage,
         replyPreview: text.slice(0, 400),
         contradictions,
         toolNames: toolCalls.map((c) => c.toolName),

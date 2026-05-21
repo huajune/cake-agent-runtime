@@ -8,6 +8,43 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.9.1`
+**最近更新**: `2026-05-21`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #214 **group_promise_without_invite 误报降噪**：新增 Case 2（能力/选项陈述，如"我也可以拉你进群"）和 Case 3（invite + 尾随确认问，如"发个入群邀请，你看行行？"）豁免，避免把候选人确认阶段的条件句打成误报
+- PR #214 **booking_form_field_mismatch 误报降噪**：正则扩展支持字段名后跟括号注释再接冒号（如「健康证（有/无）：」「身份（学生/社会人士）：」），斜杠合并字段（如「性别/年龄：」）按 `/` 拆分独立对账
+- PR #214 **告警路由变更**：`ReplyFactGuardNotifierService` 移除飞书告警卡片，改为直写飞书 BadCase 多维表格（`FeishuBitableSyncService.writeAgentTestFeedback`），`NotificationModule` 引入 `FeishuSyncModule`
+
+### 新功能
+- PR #214 **group_promise_without_invite 误报降噪**：新增 Case 2（能力/选项陈述，如"我也可以拉你进群"）和 Case 3（invite + 尾随确认问，如"发个入群邀请，你看行行？"）豁免，避免把候选人确认阶段的条件句打成误报
+- PR #214 **booking_form_field_mismatch 误报降噪**：正则扩展支持字段名后跟括号注释再接冒号（如「健康证（有/无）：」「身份（学生/社会人士）：」），斜杠合并字段（如「性别/年龄：」）按 `/` 拆分独立对账
+
+### 问题修复
+- 无
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #214 **告警路由变更**：`ReplyFactGuardNotifierService` 移除飞书告警卡片，改为直写飞书 BadCase 多维表格（`FeishuBitableSyncService.writeAgentTestFeedback`），`NotificationModule` 引入 `FeishuSyncModule`
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #214 单元测试 28 条全部通过（含 5 条新增回归用例，覆盖括号注释、斜杠合并字段、Case 2/3 豁免、仍需告警的断言场景）
+- PR #214 真实链路验证：批次 `22b99b24`，2 条回归用例在本地 dev server 运行，`duliday_interview_precheck` 实际调用，Agent 生成含「身份（学生/社会人士）：」的收资模板，`ReplyFactGuard` 日志无 `booking_form_field_mismatch` 告警
+<!-- release:pending:end -->
+
 ## [5.9.0] - 2026-05-21
 
 **来源分支**: `develop`
