@@ -450,7 +450,9 @@
       "WebSearch",
       "WebFetch(domain:dev.to)",
       "Bash(git -C . diff --stat feat/add-panpan-xiaoyang-receivers origin/develop -- src/tools/ src/notification/ src/channels/wecom/message/application/)",
-      "Bash(md5)"
+      "Bash(md5)",
+      "mcp__github__list_pull_requests",
+      "mcp__github__get_pull_request_files"
     ],
     "deny": [
       "Bash(git restore:*)",
