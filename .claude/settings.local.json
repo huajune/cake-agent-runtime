@@ -448,7 +448,9 @@
       "mcp__context7__query-docs",
       "WebFetch(domain:github.com)",
       "WebSearch",
-      "WebFetch(domain:dev.to)"
+      "WebFetch(domain:dev.to)",
+      "Bash(git -C . diff --stat feat/add-panpan-xiaoyang-receivers origin/develop -- src/tools/ src/notification/ src/channels/wecom/message/application/)",
+      "Bash(md5)"
     ],
     "deny": [
       "Bash(git restore:*)",
