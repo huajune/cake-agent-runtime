@@ -203,9 +203,21 @@ export class MemoryLifecycleService {
       const branchPromises: Array<Promise<PostProcessingStepStatus[]>> = [];
       const previousState = previousStateResult.value;
 
-      if (previousState && this.settlement.shouldSettle(previousState.lastSessionActiveAt)) {
+      // 会话沉淀：不再依赖 Redis 中的 lastSessionActiveAt（已从 schema 中删除）。
+      // 改用 detectAndSettle：通过 chat_messages DB 时间戳检测断层，驱动沉淀触发。
+      // 读取失败时降级跳过，不中断主流程。
+      if (previousStateResult.step.status === 'failure') {
+        steps.push(
+          this.buildSkippedStep('settlement', '上一轮 session state 读取失败，跳过 settlement'),
+        );
+      } else {
         const settlementTask = this.createTimedTask('settlement', async () => {
-          await this.settlement.settle(ctx.corpId, ctx.userId, ctx.sessionId, previousState);
+          await this.settlement.detectAndSettle(
+            ctx.corpId,
+            ctx.userId,
+            ctx.sessionId,
+            previousState?.facts ?? null,
+          );
         });
         branchNames.push(settlementTask.name);
         branchPromises.push(
@@ -227,12 +239,6 @@ export class MemoryLifecycleService {
               }),
             ),
         );
-      } else {
-        const reason =
-          previousStateResult.step.status === 'failure'
-            ? '上一轮 session state 读取失败，跳过 settlement'
-            : '会话未达到沉淀阈值';
-        steps.push(this.buildSkippedStep('settlement', reason));
       }
 
       branchNames.push('session_turn_end_updates');
@@ -281,14 +287,12 @@ export class MemoryLifecycleService {
     lastCandidatePool: unknown[] | null;
     presentedJobs: unknown[] | null;
     currentFocusJob: unknown | null;
-    lastSessionActiveAt?: string;
   }): boolean {
     return Boolean(
       state.facts ||
         state.lastCandidatePool?.length ||
         state.presentedJobs?.length ||
-        state.currentFocusJob ||
-        state.lastSessionActiveAt,
+        state.currentFocusJob,
     );
   }
 
@@ -327,13 +331,6 @@ export class MemoryLifecycleService {
     } else {
       steps.push(this.buildSkippedStep('save_candidate_pool', '本轮没有 candidatePool 需要写入'));
     }
-
-    const activityResult = await this.runMeasuredStep('store_activity', async () => {
-      await this.session.storeActivity(ctx.corpId, ctx.userId, ctx.sessionId, {
-        lastSessionActiveAt: new Date().toISOString(),
-      });
-    });
-    steps.push(activityResult.step);
 
     if (assistantText?.trim()) {
       const projectionResult = await this.runMeasuredStep('project_assistant_turn', async () => {

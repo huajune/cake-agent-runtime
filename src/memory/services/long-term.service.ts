@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseStore } from '../stores/supabase.store';
 import type {
   UserProfile,
+  UserProfileMeta,
+  ProfileFieldMeta,
   SummaryData,
   SummaryEntry,
   MessageMetadata,
@@ -50,6 +52,59 @@ export class LongTermService {
       await this.supabaseStore.upsertProfile(corpId, userId, nonNull, metadata);
     } catch (error) {
       this.logger.warn('保存 Profile 失败', error);
+    }
+  }
+
+  /**
+   * 报名成功后写入 Profile — Path A（最高质量数据来源）
+   *
+   * 与 saveProfile 的区别：
+   * - 每个字段同时写入 ProfileFieldMeta（source='booking', confidence='high'）
+   * - 走 upsertProfileWithMeta 路径，元数据持久化到 profile_fields_meta 列
+   *
+   * 这是 Hassabis 原则在实践中最重要的体现：报名数据是候选人自主提供并经
+   * precheck 校验的，置信度最高，同时必须留下可审计的来源记录。
+   */
+  async writeFromBooking(
+    corpId: string,
+    userId: string,
+    data: {
+      name: string;
+      phone: string;
+      /** 年龄整数，报名工具入参 */
+      age: number;
+      /** 性别展示标签，如 "男" / "女" */
+      gender: string;
+    },
+  ): Promise<void> {
+    try {
+      const writtenAt = new Date().toISOString();
+      const bookingMeta: ProfileFieldMeta = {
+        source: 'booking',
+        confidence: 'high',
+        writtenAt,
+      };
+
+      const profile: Partial<UserProfile> = {
+        name: data.name,
+        phone: data.phone,
+        age: String(data.age),
+        gender: data.gender,
+      };
+
+      const meta: UserProfileMeta = {
+        name: bookingMeta,
+        phone: bookingMeta,
+        age: bookingMeta,
+        gender: bookingMeta,
+      };
+
+      await this.supabaseStore.upsertProfileWithMeta(corpId, userId, profile, meta);
+      this.logger.log(
+        `[writeFromBooking] Profile 写入成功: corpId=${corpId}, userId=${userId}, name=${data.name}`,
+      );
+    } catch (error) {
+      this.logger.warn('[writeFromBooking] 写入 Profile 失败', error);
     }
   }
 

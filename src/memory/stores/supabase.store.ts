@@ -4,6 +4,7 @@ import { RedisService } from '@infra/redis/redis.service';
 import { MemoryConfig } from '../memory.config';
 import type {
   UserProfile,
+  UserProfileMeta,
   SummaryData,
   SummaryEntry,
   MessageMetadata,
@@ -81,6 +82,41 @@ export class SupabaseStore implements MemoryStore {
     if (metadata) updateData.message_metadata = metadata;
 
     if (Object.keys(updateData).length === 0) return;
+
+    await this.upsertRow(corpId, userId, updateData);
+  }
+
+  /**
+   * 写入 Profile 字段并同时记录来源元数据（profile_fields_meta）。
+   *
+   * 与 upsertProfile 的区别：会读取现有的 profile_fields_meta 并将新的 meta 合并进去，
+   * 保证历史元数据不被清除。适用于 booking / enrichment 等高质量数据写入路径。
+   */
+  async upsertProfileWithMeta(
+    corpId: string,
+    userId: string,
+    profile: Partial<UserProfile>,
+    meta: UserProfileMeta,
+    metadata?: MessageMetadata,
+  ): Promise<void> {
+    const updateData: Record<string, unknown> = {};
+
+    if (profile.name != null) updateData.name = profile.name;
+    if (profile.phone != null) updateData.phone = profile.phone;
+    if (profile.gender != null) updateData.gender = profile.gender;
+    if (profile.age != null) updateData.age = profile.age;
+    if (profile.is_student != null) updateData.is_student = profile.is_student;
+    if (profile.education != null) updateData.education = profile.education;
+    if (profile.has_health_certificate != null)
+      updateData.has_health_certificate = profile.has_health_certificate;
+    if (metadata) updateData.message_metadata = metadata;
+
+    if (Object.keys(updateData).length === 0 && Object.keys(meta).length === 0) return;
+
+    // 读取已有的元数据并做字段级合并（新值覆盖旧值，保留无更新字段的历史记录）
+    const existingRow = await this.getRow(corpId, userId);
+    const existingMeta: UserProfileMeta = existingRow?.profile_fields_meta ?? {};
+    updateData.profile_fields_meta = { ...existingMeta, ...meta };
 
     await this.upsertRow(corpId, userId, updateData);
   }

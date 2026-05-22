@@ -87,14 +87,12 @@ describe('SessionService', () => {
           lastCandidatePool: [],
           presentedJobs: [],
           currentFocusJob: null,
-          lastSessionActiveAt: '2026-03-20T00:00:00Z',
         },
       });
 
       const state = await service.getSessionState('corp1', 'user1', 'session1');
 
       expect(state.facts).toEqual(FALLBACK_EXTRACTION);
-      expect(state.lastSessionActiveAt).toBe('2026-03-20T00:00:00Z');
     });
 
     it('should ignore invalid persisted session state from Redis', async () => {
@@ -196,23 +194,6 @@ describe('SessionService', () => {
       );
     });
 
-    it('should return null when no activity timestamp exists', async () => {
-      mockRedisStore.get.mockResolvedValue(null);
-
-      const result = await service.getLastSessionActiveAt('corp1', 'user1', 'session1');
-
-      expect(result).toBeNull();
-    });
-
-    it('should return lastSessionActiveAt from state', async () => {
-      mockRedisStore.get.mockResolvedValue({
-        content: { lastSessionActiveAt: '2026-03-20T10:00:00Z' },
-      });
-
-      const result = await service.getLastSessionActiveAt('corp1', 'user1', 'session1');
-
-      expect(result).toBe('2026-03-20T10:00:00Z');
-    });
   });
 
   describe('projection methods', () => {

@@ -336,14 +336,6 @@ export interface WeworkSessionState {
   currentFocusJob: RecommendedJobSummary | null;
   /** 本会话中已邀入的兼职群 */
   invitedGroups: InvitedGroupRecord[] | null;
-  /**
-   * 当前这段会话最后一次仍在继续聊的时间。
-   *
-   * 用途：
-   * - 判断这段会话是否已经闲置到可以沉淀
-   * - 不等于记忆沉淀时间，也不等于某条摘要的边界时间
-   */
-  lastSessionActiveAt?: string;
 }
 
 export const InvitedGroupRecordSchema = z.object({
@@ -359,7 +351,6 @@ export const WeworkSessionStateSchema = z.object({
   presentedJobs: z.array(RecommendedJobSummarySchema).nullable(),
   currentFocusJob: RecommendedJobSummarySchema.nullable(),
   invitedGroups: z.array(InvitedGroupRecordSchema).nullable(),
-  lastSessionActiveAt: z.string().optional(),
 });
 
 /** 当前会话没有任何结构化记忆时的空状态。 */

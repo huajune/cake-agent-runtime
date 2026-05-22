@@ -98,15 +98,6 @@ export class SessionService {
     return state.facts;
   }
 
-  async getLastSessionActiveAt(
-    corpId: string,
-    userId: string,
-    sessionId: string,
-  ): Promise<string | null> {
-    const state = await this.getSessionState(corpId, userId, sessionId);
-    return state.lastSessionActiveAt ?? null;
-  }
-
   /**
    * 保存本轮提取的会话事实。
    *
@@ -256,23 +247,6 @@ export class SessionService {
       this.serializeStateContent({ ...state, invitedGroups: merged }) as Record<string, unknown>,
       this.config.sessionTtl,
       false,
-    );
-  }
-
-  async storeActivity(
-    corpId: string,
-    userId: string,
-    sessionId: string,
-    data: { lastSessionActiveAt: string },
-  ): Promise<void> {
-    // 这里只写“这段会话最近一次还在继续聊的时间”，
-    // 不负责判断是否应该沉淀；沉淀判断由 MemoryLifecycle + Settlement 组合完成。
-    const key = this.buildKey(corpId, userId, sessionId);
-    await this.redisStore.set(
-      key,
-      this.serializeStateContent(data) as Record<string, unknown>,
-      this.config.sessionTtl,
-      true,
     );
   }
 

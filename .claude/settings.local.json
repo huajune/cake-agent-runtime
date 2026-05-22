@@ -453,7 +453,8 @@
       "Bash(md5)",
       "mcp__github__list_pull_requests",
       "mcp__github__get_pull_request_files",
-      "Bash(pnpm ts-node *)"
+      "Bash(pnpm ts-node *)",
+      "mcp__exa__web_fetch_exa"
     ],
     "deny": [
       "Bash(git restore:*)",
