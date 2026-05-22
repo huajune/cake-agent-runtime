@@ -15,12 +15,12 @@ export type { UserTrendData, TodayUserData, PausedUserData } from '@/api/service
 // ==================== Query Hooks ====================
 
 /**
- * 获取近1月托管用户趋势数据
+ * 获取托管用户趋势数据
  */
-export function useUserTrend(autoRefresh = true) {
+export function useUserTrend(days = 30, autoRefresh = true) {
   return useQuery({
-    queryKey: ['user-trend'],
-    queryFn: () => userService.getUserTrend(),
+    queryKey: ['user-trend', days],
+    queryFn: () => userService.getUserTrend(days),
     refetchInterval: autoRefresh ? 60000 : false,
   });
 }

@@ -26,9 +26,19 @@ type MetricBoard = {
   peak: number;
 };
 
+const USER_TREND_RANGE_OPTIONS = [
+  { days: 30, label: '近30天', totalLabel: '30天累计' },
+  { days: 90, label: '近90天', totalLabel: '90天累计' },
+  { days: 180, label: '近180天', totalLabel: '180天累计' },
+] as const;
+
 export default function UserTrendChart() {
   const [isExpanded, setIsExpanded] = useState(false);
-  const { data: trendData = [], isLoading } = useUserTrend();
+  const [selectedDays, setSelectedDays] = useState<number>(30);
+  const { data: trendData = [], isLoading } = useUserTrend(selectedDays);
+  const selectedRange =
+    USER_TREND_RANGE_OPTIONS.find((option) => option.days === selectedDays) ||
+    USER_TREND_RANGE_OPTIONS[0];
 
   // 格式化日期显示（MM-DD）
   const formatDate = (dateStr: string) => {
@@ -39,12 +49,15 @@ export default function UserTrendChart() {
   };
 
   // 准备图表数据
-  const chartData: ChartDataItem[] = trendData.map(item => ({
-    date: formatDate(item.date),
-    fullDate: item.date,
-    用户数: item.userCount,
-    消息数: item.messageCount,
-  }));
+  const chartData: ChartDataItem[] = [...trendData]
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .map((item) => ({
+      date: formatDate(item.date),
+      fullDate: item.date,
+      用户数: item.userCount,
+      消息数: item.messageCount,
+    }));
+  const xAxisInterval = Math.max(0, Math.ceil(chartData.length / 10) - 1);
 
   // 计算统计数据
   const totalUsers = chartData.reduce((sum, item) => sum + item.用户数, 0);
@@ -88,7 +101,7 @@ export default function UserTrendChart() {
               <div className={styles.headerIcon}>
                 <IconTrend />
               </div>
-              <span>近30天托管趋势</span>
+              <span>{selectedRange.label}托管趋势</span>
             </h3>
             {!isExpanded && (
               <div className={styles.statsPreview}>
@@ -102,6 +115,24 @@ export default function UserTrendChart() {
                 </span>
               </div>
             )}
+            <div
+              className={styles.rangeSelector}
+              role="group"
+              aria-label="趋势时间范围"
+              onClick={(event) => event.stopPropagation()}
+            >
+              {USER_TREND_RANGE_OPTIONS.map((option) => (
+                <button
+                  key={option.days}
+                  type="button"
+                  className={option.days === selectedDays ? styles.activeRange : undefined}
+                  onClick={() => setSelectedDays(option.days)}
+                  aria-pressed={option.days === selectedDays}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
           </div>
           <button
             type="button"
@@ -171,7 +202,7 @@ export default function UserTrendChart() {
                     </div>
                   </div>
                   <div className={styles.boardStats}>
-                    <span>30天累计 <strong>{board.total}</strong>{board.unit}</span>
+                    <span>{selectedRange.totalLabel} <strong>{board.total}</strong>{board.unit}</span>
                     <span>日均 <strong>{board.average}</strong>{board.unit}</span>
                   </div>
                   <div className={styles.chartContainer}>
@@ -190,6 +221,7 @@ export default function UserTrendChart() {
                           tick={{ fontSize: 12, fill: '#6b7280' }}
                           tickLine={false}
                           axisLine={{ stroke: '#e5e7eb' }}
+                          interval={xAxisInterval}
                         />
                         <YAxis
                           stroke="#9ca3af"

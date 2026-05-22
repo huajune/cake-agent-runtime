@@ -98,6 +98,49 @@
   }
 }
 
+.rangeSelector {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba($border, 0.8);
+  border-radius: $radius-full;
+  background: rgba($bg-secondary, 0.8);
+  flex-shrink: 0;
+
+  button {
+    min-height: 44px;
+    padding: 0 14px;
+    border: none;
+    border-radius: $radius-full;
+    background: transparent;
+    color: $text-secondary;
+    font-size: $font-size-sm;
+    font-weight: $font-weight-medium;
+    cursor: pointer;
+    transition:
+      background $transition-fast,
+      color $transition-fast,
+      box-shadow $transition-fast;
+
+    &:hover {
+      color: $primary;
+      background: $primary-05;
+    }
+
+    &:focus-visible {
+      outline: 2px solid rgba($primary, 0.35);
+      outline-offset: 2px;
+    }
+  }
+
+  .activeRange {
+    color: $primary;
+    background: $bg-card;
+    box-shadow: 0 4px 12px rgba($primary, 0.14);
+  }
+}
+
 .toggleBtn {
   width: 32px;
   height: 32px;
@@ -435,6 +478,16 @@
     .statsPreview {
       width: 100%;
       gap: $spacing-sm;
+    }
+
+    .rangeSelector {
+      width: 100%;
+      overflow-x: auto;
+      justify-content: flex-start;
+
+      button {
+        flex: 1 0 auto;
+      }
     }
   }
 

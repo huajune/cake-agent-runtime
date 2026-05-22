@@ -15,8 +15,8 @@ import {
 } from 'chart.js';
 import { useDashboardOverview } from '@/hooks/analytics/useDashboard';
 import { useHealthStatus } from '@/hooks/analytics/useMetrics';
-import { useAiReplyStatus, useToggleAiReply } from '@/hooks/config/useSystemConfig';
 import { useWorkerStatus } from '@/hooks/config/useWorker';
+import type { DashboardTimeRange } from '@/api/types/analytics.types';
 import { formatDuration, formatMinuteLabel, formatDayLabel, formatHourLabel } from '@/utils/format';
 import { THEME_COLORS } from '@/constants';
 
@@ -31,6 +31,22 @@ import styles from './styles/index.module.scss';
 
 // 春日装饰 emoji 列表
 const springDecorations = ['🌿', '🍃', '🌱', '🌾', '🐦', '🐝', '🌻', '🌼', '🍀', '🌳'];
+
+const TIME_RANGE_LABELS: Record<DashboardTimeRange, string> = {
+  today: '本日',
+  week: '近7天',
+  month: '近30天',
+  twoMonths: '近2月',
+  threeMonths: '近3月',
+};
+
+const COMPARISON_LABELS: Record<DashboardTimeRange, string> = {
+  today: '较昨日同期',
+  week: '较前7天同期',
+  month: '较前30天同期',
+  twoMonths: '较前2月同期',
+  threeMonths: '较前3月同期',
+};
 
 // 注册 Chart.js 组件
 ChartJS.register(
@@ -47,7 +63,7 @@ ChartJS.register(
 );
 
 export default function Dashboard() {
-  const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month'>('today');
+  const [timeRange, setTimeRange] = useState<DashboardTimeRange>('today');
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   const {
@@ -58,8 +74,6 @@ export default function Dashboard() {
   const dashboard = rawDashboard?.timeRange === timeRange ? rawDashboard : undefined;
   const dashboardLoading = dashboardInitialLoading || !dashboard;
   const { data: health } = useHealthStatus(autoRefresh);
-  const { data: aiStatus } = useAiReplyStatus(autoRefresh);
-  const toggleAiReply = useToggleAiReply();
 
   // 卡片装饰贴纸
   useEffect(() => {
@@ -243,7 +257,7 @@ export default function Dashboard() {
     },
   };
 
-  // Token 消耗 - 本日显示小时级，近7天/近30天显示天级
+  // Token 消耗 - 本日显示小时级，其余范围显示天级
   const tokenPoints = dashboard?.tokenTrend || [];
   const tokenChartData = {
     labels: tokenPoints.map((p: any) =>
@@ -262,7 +276,7 @@ export default function Dashboard() {
     ],
   };
 
-  // 响应耗时 - 本日显示分钟级，近7天/近30天显示天级
+  // 响应耗时 - 本日显示分钟级，其余范围显示天级
   const responsePoints = isToday
     ? (dashboard?.responseTrend || []).slice(-60)
     : dashboard?.responseTrend || [];
@@ -289,9 +303,8 @@ export default function Dashboard() {
     ],
   };
 
-  const timeRangeBadge = timeRange === 'today' ? '本日' : timeRange === 'week' ? '近7天' : '近30天';
-  const comparisonLabel =
-    timeRange === 'today' ? '较昨日同期' : timeRange === 'week' ? '较前7天同期' : '较前30天同期';
+  const timeRangeBadge = TIME_RANGE_LABELS[timeRange];
+  const comparisonLabel = COMPARISON_LABELS[timeRange];
   const totalMessages = overview?.totalMessages ?? 0;
   const successCount = overview?.successCount ?? 0;
   const failureCount = overview?.failureCount ?? 0;
@@ -353,8 +366,6 @@ export default function Dashboard() {
         onTimeRangeChange={setTimeRange}
         autoRefresh={autoRefresh}
         onAutoRefreshChange={setAutoRefresh}
-        aiEnabled={aiStatus?.enabled ?? false}
-        onAiToggle={(enabled) => toggleAiReply.mutate(enabled)}
         healthStatus={healthStatus}
         healthMessage={healthMessage}
         lastUpdate={dataUpdatedAt ?? null}

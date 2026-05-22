@@ -108,6 +108,113 @@ describe('SupabaseStore', () => {
     });
   });
 
+  describe('upsertProfileWithMeta', () => {
+    it('should merge new meta with existing profile_fields_meta from DB', async () => {
+      const existingMeta = {
+        name: { source: 'extraction' as const, confidence: 'medium' as const, writtenAt: '2026-01-01T00:00:00.000Z' },
+      };
+      // getRow (select '*') → existing row with profile_fields_meta
+      mockRedis.get.mockResolvedValue(null);
+      mockMaybeSingle
+        .mockResolvedValueOnce({
+          data: {
+            name: '旧张三',
+            phone: null,
+            gender: null,
+            age: null,
+            is_student: null,
+            education: null,
+            has_health_certificate: null,
+            profile_fields_meta: existingMeta,
+          },
+          error: null,
+        })
+        // upsertRow → select('id') check
+        .mockResolvedValueOnce({ data: { id: 1 }, error: null });
+
+      const newBookingMeta = {
+        phone: { source: 'booking' as const, confidence: 'high' as const, writtenAt: '2026-05-22T10:00:00.000Z' },
+      };
+      await store.upsertProfileWithMeta('corp1', 'user1', { phone: '13800138000' }, newBookingMeta);
+
+      // update should be called with merged meta: both 'name' (old) and 'phone' (new)
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          profile_fields_meta: {
+            name: existingMeta.name,
+            phone: newBookingMeta.phone,
+          },
+          phone: '13800138000',
+        }),
+      );
+    });
+
+    it('should write all profile fields and overwrite existing field meta', async () => {
+      const existingMeta = {
+        name: { source: 'extraction' as const, confidence: 'medium' as const, writtenAt: '2026-01-01T00:00:00.000Z' },
+      };
+      mockRedis.get.mockResolvedValue(null);
+      mockMaybeSingle
+        .mockResolvedValueOnce({
+          data: {
+            name: '旧张三',
+            phone: null,
+            gender: null,
+            age: null,
+            is_student: null,
+            education: null,
+            has_health_certificate: null,
+            profile_fields_meta: existingMeta,
+          },
+          error: null,
+        })
+        .mockResolvedValueOnce({ data: { id: 1 }, error: null });
+
+      const bookingMeta = { source: 'booking' as const, confidence: 'high' as const, writtenAt: '2026-05-22T10:00:00.000Z' };
+      await store.upsertProfileWithMeta(
+        'corp1',
+        'user1',
+        { name: '张三', phone: '13800138000', age: '22', gender: '男' },
+        { name: bookingMeta, phone: bookingMeta, age: bookingMeta, gender: bookingMeta },
+      );
+
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: '张三',
+          phone: '13800138000',
+          age: '22',
+          gender: '男',
+          // booking overwrites the old extraction meta for 'name'
+          profile_fields_meta: expect.objectContaining({
+            name: bookingMeta,
+            phone: bookingMeta,
+            age: bookingMeta,
+            gender: bookingMeta,
+          }),
+        }),
+      );
+    });
+
+    it('should insert when no existing row', async () => {
+      mockRedis.get.mockResolvedValue(null);
+      mockMaybeSingle
+        .mockResolvedValueOnce({ data: null, error: null }) // getRow: no row
+        .mockResolvedValueOnce({ data: null, error: null }); // upsertRow select id: no row → insert
+
+      const meta = { name: { source: 'booking' as const, confidence: 'high' as const, writtenAt: '2026-05-22T10:00:00.000Z' } };
+      await store.upsertProfileWithMeta('corp1', 'user1', { name: '张三' }, meta);
+
+      expect(mockInsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          corp_id: 'corp1',
+          user_id: 'user1',
+          name: '张三',
+          profile_fields_meta: meta,
+        }),
+      );
+    });
+  });
+
   describe('del (v1 compat)', () => {
     it('should delete from Redis cache', async () => {
       await store.del('profile:corp1:user1');

@@ -114,6 +114,27 @@ describe('SessionService', () => {
       });
     });
 
+    it('should silently strip unknown lastSessionActiveAt field from old Redis data (backward compat)', async () => {
+      // Old Redis entries (written before the refactor) may contain `lastSessionActiveAt`.
+      // Zod's z.object() strips unknown keys by default — this must NOT cause a parse error.
+      mockRedisStore.get.mockResolvedValue({
+        content: {
+          facts: FALLBACK_EXTRACTION,
+          lastCandidatePool: null,
+          presentedJobs: null,
+          currentFocusJob: null,
+          invitedGroups: null,
+          lastSessionActiveAt: '2026-04-01T10:00:00.000Z', // legacy field
+        },
+      });
+
+      const state = await service.getSessionState('corp1', 'user1', 'session1');
+
+      // Should parse successfully — legacy field stripped, known fields intact
+      expect(state.facts).toEqual(FALLBACK_EXTRACTION);
+      expect(state).not.toHaveProperty('lastSessionActiveAt');
+    });
+
     it('should deepMerge with existing facts', async () => {
       const existing: EntityExtractionResult = {
         ...FALLBACK_EXTRACTION,

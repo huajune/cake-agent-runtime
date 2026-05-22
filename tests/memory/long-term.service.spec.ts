@@ -4,6 +4,7 @@ describe('LongTermService', () => {
   const mockSupabaseStore = {
     getProfile: jest.fn(),
     upsertProfile: jest.fn().mockResolvedValue(undefined),
+    upsertProfileWithMeta: jest.fn().mockResolvedValue(undefined),
     getSummaryData: jest.fn(),
     appendSummary: jest.fn().mockResolvedValue(undefined),
     markLastSettledMessageAt: jest.fn().mockResolvedValue(undefined),
@@ -59,6 +60,69 @@ describe('LongTermService', () => {
         { name: '张三', gender: '男' },
         undefined,
       );
+    });
+  });
+
+  describe('writeFromBooking', () => {
+    it('should call upsertProfileWithMeta with booking source and high confidence', async () => {
+      await service.writeFromBooking('corp1', 'user1', {
+        name: '张三',
+        phone: '13800138000',
+        age: 22,
+        gender: '男',
+      });
+
+      expect(mockSupabaseStore.upsertProfileWithMeta).toHaveBeenCalledWith(
+        'corp1',
+        'user1',
+        { name: '张三', phone: '13800138000', age: '22', gender: '男' },
+        {
+          name: expect.objectContaining({ source: 'booking', confidence: 'high' }),
+          phone: expect.objectContaining({ source: 'booking', confidence: 'high' }),
+          age: expect.objectContaining({ source: 'booking', confidence: 'high' }),
+          gender: expect.objectContaining({ source: 'booking', confidence: 'high' }),
+        },
+      );
+    });
+
+    it('should convert age from number to string', async () => {
+      await service.writeFromBooking('corp1', 'user1', {
+        name: '李四',
+        phone: '13900139000',
+        age: 18,
+        gender: '女',
+      });
+
+      const call = mockSupabaseStore.upsertProfileWithMeta.mock.calls[0];
+      expect(call[2].age).toBe('18');
+    });
+
+    it('should include writtenAt ISO timestamp in each field meta', async () => {
+      const before = new Date().toISOString();
+      await service.writeFromBooking('corp1', 'user1', {
+        name: '王五',
+        phone: '13700137000',
+        age: 30,
+        gender: '男',
+      });
+      const after = new Date().toISOString();
+
+      const meta = mockSupabaseStore.upsertProfileWithMeta.mock.calls[0][3];
+      expect(meta.name.writtenAt >= before).toBe(true);
+      expect(meta.name.writtenAt <= after).toBe(true);
+    });
+
+    it('should swallow errors from upsertProfileWithMeta silently', async () => {
+      mockSupabaseStore.upsertProfileWithMeta.mockRejectedValueOnce(new Error('DB error'));
+
+      await expect(
+        service.writeFromBooking('corp1', 'user1', {
+          name: '张三',
+          phone: '13800138000',
+          age: 22,
+          gender: '男',
+        }),
+      ).resolves.toBeUndefined();
     });
   });
 

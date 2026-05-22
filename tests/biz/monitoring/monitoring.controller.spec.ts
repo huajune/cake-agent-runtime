@@ -84,6 +84,14 @@ describe('AnalyticsController', () => {
       expect(dashboardService.getDashboardOverviewAsync).toHaveBeenCalledWith('month');
     });
 
+    it('should support multi-month ranges', async () => {
+      mockDashboardService.getDashboardOverviewAsync.mockResolvedValue({});
+
+      await controller.getDashboardOverview('twoMonths');
+
+      expect(dashboardService.getDashboardOverviewAsync).toHaveBeenCalledWith('twoMonths');
+    });
+
     it('should propagate errors from dashboardService', async () => {
       mockDashboardService.getDashboardOverviewAsync.mockRejectedValue(new Error('DB error'));
 
@@ -126,6 +134,14 @@ describe('AnalyticsController', () => {
       await controller.getTrends('week');
 
       expect(queryService.getTrendsDataAsync).toHaveBeenCalledWith('week');
+    });
+
+    it('should pass multi-month range to queryService', async () => {
+      mockQueryService.getTrendsDataAsync.mockResolvedValue([]);
+
+      await controller.getTrends('threeMonths');
+
+      expect(queryService.getTrendsDataAsync).toHaveBeenCalledWith('threeMonths');
     });
   });
 
@@ -177,8 +193,24 @@ describe('AnalyticsController', () => {
 
       const result = await controller.getUserTrend();
 
-      expect(queryService.getUserTrend).toHaveBeenCalled();
+      expect(queryService.getUserTrend).toHaveBeenCalledWith(undefined);
       expect(result).toEqual(mockResult);
+    });
+
+    it('should pass requested days to queryService', async () => {
+      mockQueryService.getUserTrend.mockResolvedValue([]);
+
+      await controller.getUserTrend('90');
+
+      expect(queryService.getUserTrend).toHaveBeenCalledWith(90);
+    });
+
+    it('should ignore invalid days query', async () => {
+      mockQueryService.getUserTrend.mockResolvedValue([]);
+
+      await controller.getUserTrend('abc');
+
+      expect(queryService.getUserTrend).toHaveBeenCalledWith(undefined);
     });
   });
 
