@@ -452,7 +452,8 @@
       "Bash(git -C . diff --stat feat/add-panpan-xiaoyang-receivers origin/develop -- src/tools/ src/notification/ src/channels/wecom/message/application/)",
       "Bash(md5)",
       "mcp__github__list_pull_requests",
-      "mcp__github__get_pull_request_files"
+      "mcp__github__get_pull_request_files",
+      "Bash(pnpm ts-node *)"
     ],
     "deny": [
       "Bash(git restore:*)",

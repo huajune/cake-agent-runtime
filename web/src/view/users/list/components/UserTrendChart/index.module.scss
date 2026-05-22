@@ -36,6 +36,8 @@
     align-items: center;
     gap: $spacing-lg;
     flex: 1;
+    min-width: 0;
+    flex-wrap: wrap;
   }
 
   .headerIcon {
@@ -64,6 +66,7 @@
     display: flex;
     gap: $spacing-lg;
     align-items: center;
+    flex-wrap: wrap;
   }
 
   .stat {
@@ -155,6 +158,7 @@
   display: flex;
   align-items: center;
   gap: 20px;
+  min-width: 0;
   border: 1px solid rgba($border, 0.6);
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -243,6 +247,7 @@
 
 .statInfo {
   flex: 1;
+  min-width: 0;
   position: relative;
   z-index: 2;
 }
@@ -261,7 +266,8 @@
   font-weight: 700;
   color: #1e293b;
   line-height: 1.1;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
 
   .unit {
     font-size: 14px;
@@ -301,6 +307,86 @@
   border: 1px solid $border;
 }
 
+.chartBoards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: $spacing-md;
+}
+
+.chartBoard {
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+  border: 1px solid rgba($border, 0.9);
+  border-radius: $radius-lg;
+  padding: $spacing-md;
+  min-width: 0;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+}
+
+.chartBoardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-md;
+  margin-bottom: $spacing-sm;
+
+  h4 {
+    margin: 0;
+    color: $text-primary;
+    font-size: $font-size-lg;
+    font-weight: $font-weight-semibold;
+    line-height: 1.35;
+  }
+
+  p {
+    margin: 4px 0 0;
+    color: $text-muted;
+    font-size: $font-size-sm;
+    line-height: 1.45;
+  }
+}
+
+.boardPeak {
+  flex-shrink: 0;
+  border-radius: $radius-full;
+  background: $bg-secondary;
+  border: 1px solid $border;
+  padding: 6px 10px;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.boardStats {
+  display: flex;
+  align-items: center;
+  gap: $spacing-md;
+  margin-bottom: $spacing-md;
+  color: $text-secondary;
+  font-size: $font-size-sm;
+  flex-wrap: wrap;
+
+  span {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    min-height: 20px;
+  }
+
+  strong {
+    color: $text-primary;
+    font-size: $font-size-xl;
+    line-height: 1;
+  }
+}
+
+.chartBoard .chartContainer {
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+}
+
 .emptyState {
   min-height: 320px;
   display: flex;
@@ -318,6 +404,75 @@
     color: $text-muted;
     font-size: $font-size-sm;
     margin: 0;
+  }
+}
+
+@media (max-width: $breakpoint-lg) {
+  .statsCards,
+  .chartBoards {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: $breakpoint-sm) {
+  .sectionHeader {
+    padding: $spacing-md;
+
+    .titleRow {
+      align-items: flex-start;
+      gap: $spacing-sm;
+    }
+
+    .titleGroup {
+      gap: $spacing-sm;
+    }
+
+    h3 {
+      font-size: $font-size-base;
+      line-height: 1.4;
+    }
+
+    .statsPreview {
+      width: 100%;
+      gap: $spacing-sm;
+    }
+  }
+
+  .chartWrapper {
+    padding: $spacing-md;
+  }
+
+  .statCard {
+    padding: $spacing-md;
+    gap: $spacing-sm;
+  }
+
+  .statIcon {
+    width: 48px;
+    height: 48px;
+    border-radius: $radius-md;
+
+    svg {
+      width: 24px;
+      height: 24px;
+    }
+  }
+
+  .statLabel {
+    font-size: $font-size-xs;
+  }
+
+  .statValue {
+    font-size: $font-size-3xl;
+  }
+
+  .chartBoardHeader {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .boardPeak {
+    align-self: flex-start;
   }
 }
 

@@ -20,11 +20,13 @@ import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
 export interface BrandStoreEntry {
   storeName: string | null;
   jobId: number;
+  /** 岗位职位名（优先取 jobCategoryName，如"普通服务员"、"水果促销员"）。 */
+  jobName: string | null;
   distanceKm: number | null;
   wageRange: string | null;
   shiftSummary: string | null;
   requirementSummary: string | null;
-  /** 已经按 `品牌（门店，距离，班次，薪资，要求）` 渲染好的话术，禁止 LLM 二次重写。 */
+  /** 已经按 `品牌 职位（门店，距离，班次，薪资，要求）` 渲染好的话术，禁止 LLM 二次重写。 */
   displayLine: string;
 }
 
@@ -63,6 +65,7 @@ export function formatSalarySummary(job: any): string | null {
 
 function formatBrandStoreDisplayLine(
   brandName: string,
+  jobName: string | null,
   storeName: string | null,
   distanceKm: number | null,
   shiftSummary: string | null,
@@ -83,7 +86,8 @@ function formatBrandStoreDisplayLine(
   if (requirementSummary?.trim()) {
     parts.push(requirementSummary.trim());
   }
-  return `${brandName}（${parts.join('，')}）`;
+  const displayBrand = jobName ? `${brandName} ${jobName}` : brandName;
+  return `${displayBrand}（${parts.join('，')}）`;
 }
 
 /**
@@ -96,6 +100,8 @@ type BrandSummaryJobInput = {
     brandName?: unknown;
     brandId?: unknown;
     jobId?: unknown;
+    jobCategoryName?: unknown;
+    jobName?: unknown;
     storeName?: unknown;
     storeInfo?: { storeName?: unknown; storeCityName?: unknown } | null;
   } | null;
@@ -144,6 +150,7 @@ export function buildBrandNearestStoreSummary(
       stores: Array<{
         storeName: string | null;
         jobId: number;
+        jobName: string | null;
         distanceKm: number | null;
         wageRange: string | null;
         shiftSummary: string | null;
@@ -171,9 +178,16 @@ export function buildBrandNearestStoreSummary(
         ? job.basicInfo.storeInfo.storeCityName
         : null;
     const storeName = normalizeStoreNameForAgent(rawStoreName, storeCityName);
+    const jobName =
+      typeof job.basicInfo?.jobCategoryName === 'string'
+        ? job.basicInfo.jobCategoryName
+        : typeof job.basicInfo?.jobName === 'string'
+          ? job.basicInfo.jobName
+          : null;
     bucket.stores.push({
       storeName,
       jobId,
+      jobName,
       distanceKm:
         typeof job._distanceKm === 'number' ? Math.round(job._distanceKm * 10) / 10 : null,
       wageRange: formatSalarySummary(job),
@@ -199,6 +213,7 @@ export function buildBrandNearestStoreSummary(
           ...store,
           displayLine: formatBrandStoreDisplayLine(
             bucket.brandName,
+            store.jobName,
             store.storeName,
             store.distanceKm,
             store.shiftSummary,

@@ -23,8 +23,22 @@ export class MemoryConfig {
    * - 这些数据包括：候选人事实、候选岗位池、已展示岗位、当前焦点岗位、当前阶段等临时状态
    * - 如果用户在这段时间内一直没有继续发消息，就认为这一段会话已经结束
    * - 会话结束后，这段会话里的信息才有机会被沉淀到长期记忆
+   *
+   * ⚠️ 注意：此 TTL 只控制 Redis 会话状态的生命周期，不影响 Supabase 历史消息的回查窗口。
+   *    历史消息回查窗口由 `historyWindowSeconds` 独立控制，两者不应混用。
    */
   readonly sessionTtl: number;
+
+  /**
+   * 从 Supabase 回查历史消息的时间窗口（秒）。
+   *
+   * 与 `sessionTtl` 分离的原因：会话状态（Redis facts）过期是正常的，
+   * 但过期后用户回来续聊时，Agent 仍需要看到此前的对话历史来重建上下文。
+   * 若两者共用同一个 TTL，会导致"跨天回来的用户被当新用户对待"的问题。
+   *
+   * 默认 7 天（MEMORY_HISTORY_WINDOW_DAYS）。
+   */
+  readonly historyWindowSeconds: number;
 
   /** 单轮会话窗口最多读取多少条历史消息。 */
   readonly sessionWindowMaxMessages: number;
@@ -42,6 +56,9 @@ export class MemoryConfig {
     const days = parseInt(this.configService.get('MEMORY_SESSION_TTL_DAYS', '1'), 10);
     this.sessionTtl = days * 24 * 60 * 60;
 
+    const historyDays = parseInt(this.configService.get('MEMORY_HISTORY_WINDOW_DAYS', '7'), 10);
+    this.historyWindowSeconds = historyDays * 24 * 60 * 60;
+
     this.sessionWindowMaxMessages = parseInt(
       this.configService.get('MAX_HISTORY_PER_CHAT', '60'),
       10,
@@ -57,7 +74,7 @@ export class MemoryConfig {
     this.longTermCacheTtl = 2 * 60 * 60; // 2h
 
     this.logger.log(
-      `MemoryConfig: sessionTtl=${days}d, windowMessages=${this.sessionWindowMaxMessages}, windowChars=${this.sessionWindowMaxChars}, extractionIncremental=${this.sessionExtractionIncrementalMessages}`,
+      `MemoryConfig: sessionTtl=${days}d, historyWindow=${historyDays}d, windowMessages=${this.sessionWindowMaxMessages}, windowChars=${this.sessionWindowMaxChars}, extractionIncremental=${this.sessionExtractionIncrementalMessages}`,
     );
   }
 

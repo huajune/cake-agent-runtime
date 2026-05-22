@@ -172,6 +172,7 @@ export function extractHighConfidenceFacts(
     const gender = extractGender(message);
     if (gender) {
       facts.interview_info.gender = gender;
+      facts.interview_info.gender_source = 'candidate';
       reasons.push(`性别识别：${gender}`);
     }
 
@@ -373,6 +374,7 @@ export function mergeSupplementalGenderFact(
     : cloneFallbackExtraction();
 
   base.interview_info.gender = gender;
+  base.interview_info.gender_source = 'system';
   const suffix = `${sourceLabel}补充性别：${gender}`;
   base.reasoning = [base.reasoning?.trim(), suffix].filter(Boolean).join('；');
 

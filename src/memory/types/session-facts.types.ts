@@ -8,6 +8,11 @@ export const InterviewInfoSchema = z.object({
   name: z.string().nullable().describe('姓名'),
   phone: z.string().nullable().describe('联系方式'),
   gender: z.string().nullable().describe('性别'),
+  gender_source: z
+    .enum(['candidate', 'system'])
+    .nullable()
+    .optional()
+    .describe('性别来源：candidate=候选人自陈，system=企微系统兜底标签'),
   age: z.string().nullable().describe('年龄'),
   applied_store: z.string().nullable().describe('应聘门店'),
   applied_position: z.string().nullable().describe('应聘岗位'),
@@ -238,6 +243,7 @@ export const FALLBACK_EXTRACTION: EntityExtractionResult = {
     name: null,
     phone: null,
     gender: null,
+    gender_source: null,
     age: null,
     applied_store: null,
     applied_position: null,
@@ -278,6 +284,8 @@ export interface RecommendedJobSummary {
   regionName: string | null;
   laborForm: string | null;
   salaryDesc: string | null;
+  /** 班次摘要（由 composeShiftTimeText 生成）。null 表示工具调用时未获取到班次数据。 */
+  shiftSummary?: string | null;
   jobCategoryName: string | null;
   ageRequirement?: string | null;
   educationRequirement?: string | null;
@@ -296,6 +304,7 @@ export const RecommendedJobSummarySchema = z.object({
   regionName: z.string().nullable(),
   laborForm: z.string().nullable(),
   salaryDesc: z.string().nullable(),
+  shiftSummary: z.string().nullable().optional(),
   jobCategoryName: z.string().nullable(),
   ageRequirement: z.string().nullable().optional(),
   educationRequirement: z.string().nullable().optional(),
