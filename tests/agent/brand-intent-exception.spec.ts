@@ -13,7 +13,7 @@ describe('agent-recommended brand intent exception', () => {
     const handoffTool = readFileSync(join(root, 'src/tools/request-handoff.tool.ts'), 'utf8');
 
     expect(candidatePrompt).toContain('Agent 主动推荐不等于候选人自带品牌意向');
-    expect(candidatePrompt).toContain('去掉原品牌限制');
+    expect(candidatePrompt).toContain('去掉 jobIdList / brandIdList / brandAliasList');
     expect(candidatePrompt).toContain('includeHiringRequirement');
     expect(candidatePrompt).toContain('includeWorkTime');
 
