@@ -8,6 +8,7 @@ import type {
   SummaryEntry,
   MessageMetadata,
 } from '../types/long-term.types';
+import type { EntityExtractionResult } from '../types/session-facts.types';
 
 /**
  * 长期记忆服务 — Profile + Summary
@@ -105,6 +106,53 @@ export class LongTermService {
       );
     } catch (error) {
       this.logger.warn('[writeFromBooking] 写入 Profile 失败', error);
+    }
+  }
+
+  /**
+   * 沉淀时写入 Profile — Path B（中等置信度兜底）
+   *
+   * 当会话沉淀触发时，从 LLM 提取的 facts 中抽取身份字段写入 Profile。
+   * source='extraction', confidence='medium'，booking 写入可覆盖。
+   */
+  async writeFromSettlement(
+    corpId: string,
+    userId: string,
+    facts: EntityExtractionResult,
+  ): Promise<void> {
+    try {
+      const info = facts.interview_info;
+      const profile: Partial<UserProfile> = {};
+
+      if (info.name) profile.name = info.name;
+      if (info.phone) profile.phone = info.phone;
+      if (info.gender) profile.gender = info.gender;
+      if (info.age) profile.age = info.age;
+      if (info.is_student !== null && info.is_student !== undefined)
+        profile.is_student = info.is_student;
+      if (info.education) profile.education = info.education;
+      if (info.has_health_certificate) profile.has_health_certificate = info.has_health_certificate;
+
+      if (Object.keys(profile).length === 0) return;
+
+      const writtenAt = new Date().toISOString();
+      const extractionMeta: ProfileFieldMeta = {
+        source: 'extraction',
+        confidence: 'medium',
+        writtenAt,
+      };
+
+      const meta: UserProfileMeta = {};
+      for (const key of Object.keys(profile)) {
+        meta[key as keyof UserProfile] = extractionMeta;
+      }
+
+      await this.supabaseStore.upsertProfileWithMeta(corpId, userId, profile, meta);
+      this.logger.log(
+        `[writeFromSettlement] Profile 写入: userId=${userId}, fields=${Object.keys(profile).join(',')}`,
+      );
+    } catch (error) {
+      this.logger.warn('[writeFromSettlement] 写入 Profile 失败', error);
     }
   }
 

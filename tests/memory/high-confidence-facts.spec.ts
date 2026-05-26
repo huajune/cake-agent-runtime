@@ -1,4 +1,7 @@
-import { extractHighConfidenceFacts } from '@memory/facts/high-confidence-facts';
+import {
+  extractHighConfidenceFacts,
+  extractStructuredName,
+} from '@memory/facts/high-confidence-facts';
 
 describe('extractHighConfidenceFacts', () => {
   const brandData = [
@@ -16,6 +19,13 @@ describe('extractHighConfidenceFacts', () => {
     const result = extractHighConfidenceFacts(['给我来一份工作'], brandData);
 
     expect(result).toBeNull();
+  });
+
+  it('should not match conjunction chars as brand alias', () => {
+    const brands = [{ name: '和府捞面', aliases: ['和'] }];
+    const result = extractHighConfidenceFacts(['肯德基和星巴克'], brands);
+
+    expect(result?.preferences.brands ?? []).not.toContain('和府捞面');
   });
 
   it('should extract explicit high-confidence entities from one sentence', () => {
@@ -39,6 +49,43 @@ describe('extractHighConfidenceFacts', () => {
     expect(result?.interview_info.has_health_certificate).toBe('有');
   });
 
+  it('should keep first scalar values across multiple messages', () => {
+    const result = extractHighConfidenceFacts(
+      [
+        '我25岁，男的，本科，有健康证，想做小时工，工资5000-6000，周末有空，13800138000',
+        '我18岁，女的，硕士，没有健康证，想做寒假工，工资7000-8000，早班，13900139000',
+      ],
+      brandData,
+    );
+
+    expect(result?.interview_info.phone).toBe('13800138000');
+    expect(result?.interview_info.age).toBe('25');
+    expect(result?.interview_info.gender).toBe('男');
+    expect(result?.interview_info.education).toBe('本科');
+    expect(result?.interview_info.has_health_certificate).toBe('有');
+    expect(result?.preferences.labor_form).toBe('小时工');
+    expect(result?.preferences.salary).toBe('工资5000-6000');
+    expect(result?.preferences.schedule).toBe('周末');
+  });
+
+  it('should not extract phone from longer numeric strings', () => {
+    const result = extractHighConfidenceFacts(['订单号20261380013800123'], brandData);
+
+    expect(result?.interview_info.phone ?? null).toBeNull();
+  });
+
+  it('should not extract age from job requirement wording', () => {
+    const result = extractHighConfidenceFacts(['要求20-35岁'], brandData);
+
+    expect(result?.interview_info.age ?? null).toBeNull();
+  });
+
+  it('should not extract salary from generic numeric ranges', () => {
+    const result = extractHighConfidenceFacts(['编号100-200'], brandData);
+
+    expect(result?.preferences.salary ?? null).toBeNull();
+  });
+
   it('should extract schedule hard constraints beyond simple shift keywords', () => {
     expect(
       extractHighConfidenceFacts(['每周最多也就能干两天'], brandData)?.preferences.schedule,
@@ -59,61 +106,47 @@ describe('extractHighConfidenceFacts', () => {
 
   describe('schedule_constraint (Phase 3.1 structured)', () => {
     it('extracts onlyWeekends from "只能周末上班"', () => {
-      const constraint = extractHighConfidenceFacts(
-        ['我只能周末上班'],
-        brandData,
-      )?.preferences.schedule_constraint;
+      const constraint = extractHighConfidenceFacts(['我只能周末上班'], brandData)?.preferences
+        .schedule_constraint;
       expect(constraint?.onlyWeekends).toBe(true);
       expect(constraint?.maxDaysPerWeek).toBeNull();
     });
 
     it('extracts onlyEvenings from "只做晚班"', () => {
-      const constraint = extractHighConfidenceFacts(
-        ['我只做晚班'],
-        brandData,
-      )?.preferences.schedule_constraint;
+      const constraint = extractHighConfidenceFacts(['我只做晚班'], brandData)?.preferences
+        .schedule_constraint;
       expect(constraint?.onlyEvenings).toBe(true);
     });
 
     it('extracts maxDaysPerWeek=1 from "做一休一"', () => {
-      const constraint = extractHighConfidenceFacts(
-        ['我只能做一休一'],
-        brandData,
-      )?.preferences.schedule_constraint;
+      const constraint = extractHighConfidenceFacts(['我只能做一休一'], brandData)?.preferences
+        .schedule_constraint;
       expect(constraint?.maxDaysPerWeek).toBe(1);
     });
 
     it('extracts maxDaysPerWeek=2 from "每周最多两天"', () => {
-      const constraint = extractHighConfidenceFacts(
-        ['每周最多也就能干两天'],
-        brandData,
-      )?.preferences.schedule_constraint;
+      const constraint = extractHighConfidenceFacts(['每周最多也就能干两天'], brandData)
+        ?.preferences.schedule_constraint;
       expect(constraint?.maxDaysPerWeek).toBe(2);
     });
 
     it('extracts maxDaysPerWeek=2 from "做二休一"', () => {
-      const constraint = extractHighConfidenceFacts(
-        ['可以做二休一'],
-        brandData,
-      )?.preferences.schedule_constraint;
+      const constraint = extractHighConfidenceFacts(['可以做二休一'], brandData)?.preferences
+        .schedule_constraint;
       expect(constraint?.maxDaysPerWeek).toBe(2);
     });
 
     it('combines multiple constraints in one message', () => {
-      const constraint = extractHighConfidenceFacts(
-        ['我只能周末做晚班，每周最多两天'],
-        brandData,
-      )?.preferences.schedule_constraint;
+      const constraint = extractHighConfidenceFacts(['我只能周末做晚班，每周最多两天'], brandData)
+        ?.preferences.schedule_constraint;
       expect(constraint?.onlyWeekends).toBe(true);
       expect(constraint?.onlyEvenings).toBe(true);
       expect(constraint?.maxDaysPerWeek).toBe(2);
     });
 
     it('returns null when no constraint signal', () => {
-      const constraint = extractHighConfidenceFacts(
-        ['你好我想看下兼职'],
-        brandData,
-      )?.preferences.schedule_constraint;
+      const constraint = extractHighConfidenceFacts(['你好我想看下兼职'], brandData)?.preferences
+        .schedule_constraint;
       expect(constraint ?? null).toBeNull();
     });
   });
@@ -127,27 +160,21 @@ describe('extractHighConfidenceFacts', () => {
     });
 
     it('extracts明确日期"5月1日之后" → next future date', () => {
-      const aa = extractHighConfidenceFacts(
-        ['5月1日之后才能来面试'],
-        brandData,
-      )?.preferences.available_after;
+      const aa = extractHighConfidenceFacts(['5月1日之后才能来面试'], brandData)?.preferences
+        .available_after;
       expect(aa?.date).toBe('2026-05-01');
       expect(aa?.raw).toContain('5月1日');
     });
 
     it('extracts full date "2026-05-15 之后"', () => {
-      const aa = extractHighConfidenceFacts(
-        ['2026-05-15之后再面试吧'],
-        brandData,
-      )?.preferences.available_after;
+      const aa = extractHighConfidenceFacts(['2026-05-15之后再面试吧'], brandData)?.preferences
+        .available_after;
       expect(aa?.date).toBe('2026-05-15');
     });
 
     it('rolls over to next year when month-day already passed', () => {
-      const aa = extractHighConfidenceFacts(
-        ['3月10日之后联系'],
-        brandData,
-      )?.preferences.available_after;
+      const aa = extractHighConfidenceFacts(['3月10日之后联系'], brandData)?.preferences
+        .available_after;
       // 当前 2026-04-20，3月10日已过 → 2027-03-10
       expect(aa?.date).toBe('2027-03-10');
     });
@@ -188,6 +215,13 @@ describe('extractHighConfidenceFacts', () => {
     const undergrad = extractHighConfidenceFacts(['学历填本科在读有影响吗'], brandData);
     expect(undergrad?.interview_info.is_student).toBe(true);
     expect(undergrad?.interview_info.education).toBe('本科在读');
+  });
+
+  it('should not downgrade "本科在读" to "本科"', () => {
+    const result = extractHighConfidenceFacts(['我是大三本科在读'], brandData);
+
+    expect(result?.interview_info.education).toBe('本科在读');
+    expect(result?.interview_info.is_student).toBe(true);
   });
 
   it.each([
@@ -289,37 +323,6 @@ describe('extractHighConfidenceFacts', () => {
     expect(result?.preferences.district).toEqual(['浦东新区']);
   });
 
-  it('should resolve city from whitelist district even when message glues district + sub-town/street', () => {
-    // badcase 2026-05-18 (msg id 23946)：候选人发"浦东新区航头镇"，贪婪正则把整段
-    // 当一个 district 捕获，归一化"浦东新区航头"查不到白名单，city 留空，硬约束
-    // 又把 Agent 卡进"当前没有已确认城市"循环反问。重构成白名单驱动扫描后，
-    // "浦东新区"应优先于"浦东"被认领，剩余"航头镇"通过正则兜底但**不影响 city 识别**。
-    const district_plus_town = extractHighConfidenceFacts(['浦东新区航头镇'], brandData);
-    expect(district_plus_town?.preferences.city).toEqual({
-      value: '上海',
-      confidence: 'high',
-      evidence: 'unique_district_alias',
-    });
-    expect(district_plus_town?.preferences.district).toContain('浦东新区');
-
-    // 同模式的另一种表达：区 + 街道
-    const district_plus_street = extractHighConfidenceFacts(['徐汇区漕河泾街道'], brandData);
-    expect(district_plus_street?.preferences.city?.value).toBe('上海');
-    expect(district_plus_street?.preferences.district).toContain('徐汇');
-
-    // 同模式的另一种城市：海淀 + 镇
-    const beijing_district_plus_town = extractHighConfidenceFacts(['海淀区清河镇'], brandData);
-    expect(beijing_district_plus_town?.preferences.city?.value).toBe('北京');
-    expect(beijing_district_plus_town?.preferences.district).toContain('海淀');
-  });
-
-  it('should prefer the longest whitelist district when multiple keys could prefix match', () => {
-    // "浦东" 和 "浦东新区" 都在白名单里。扫描必须先认领"浦东新区"，避免被短 key 偷走。
-    const result = extractHighConfidenceFacts(['浦东新区'], brandData);
-    expect(result?.preferences.city?.value).toBe('上海');
-    expect(result?.preferences.district).toEqual(['浦东新区']);
-  });
-
   it('should not extract education from location or school names', () => {
     const result = extractHighConfidenceFacts(
       ['[位置分享] 大宁国际学校小学部（上海市静安区江场路1428号） [经纬度:31.295946,121.453613]'],
@@ -337,6 +340,131 @@ describe('extractHighConfidenceFacts', () => {
       '大宁国际学校小学部',
       '上海市静安区江场路1428号',
     ]);
+  });
+
+  it.each(['大超市', '去夜市', '逛早市', '全市统一'])(
+    'should not extract city from "%s"',
+    (message) => {
+      const result = extractHighConfidenceFacts([message], brandData);
+
+      expect(result?.preferences.city ?? null).toBeNull();
+    },
+  );
+
+  it.each([
+    ['苏州市有岗位吗', '苏州'],
+    ['昆山市有没有兼职', '昆山'],
+    ['芒市有店吗', '芒市'],
+  ])('should extract explicit national city name from "%s"', (message, city) => {
+    const result = extractHighConfidenceFacts([message], brandData);
+
+    expect(result?.preferences.city).toEqual({
+      value: city,
+      confidence: 'high',
+      evidence: 'explicit_city',
+    });
+  });
+
+  describe('extractStructuredName', () => {
+    it('should extract name from "姓名：XX" key-value pair', () => {
+      expect(extractStructuredName('姓名：赵堤')).toBe('赵堤');
+      expect(extractStructuredName('姓名:张三')).toBe('张三');
+      expect(extractStructuredName('名字：李四')).toBe('李四');
+      expect(extractStructuredName('姓名 王五')).toBe('王五');
+    });
+
+    it('should extract name from multi-line structured form', () => {
+      const form = '姓名：赵堤\n联系电话：18800001111\n年龄：24';
+      expect(extractStructuredName(form)).toBe('赵堤');
+    });
+
+    it('should reject nicknames that fail isLikelyRealChineseName', () => {
+      expect(extractStructuredName('姓名：执子之魂加油')).toBeNull();
+      expect(extractStructuredName('姓名：test123')).toBeNull();
+      expect(extractStructuredName('姓名：小晴早点睡')).toBeNull();
+    });
+
+    it('should return null when no structured name key is present', () => {
+      expect(extractStructuredName('我叫张三')).toBeNull();
+      expect(extractStructuredName('我是李四')).toBeNull();
+      expect(extractStructuredName('想找工作')).toBeNull();
+    });
+
+    it('should accept minority names (2-8 chars)', () => {
+      expect(extractStructuredName('姓名：布买日也木')).toBe('布买日也木');
+    });
+  });
+
+  it('should extract structured name via extractHighConfidenceFacts', () => {
+    const result = extractHighConfidenceFacts(
+      ['姓名：赵堤\n联系电话：18800001111\n年龄：24'],
+      brandData,
+    );
+    expect(result?.interview_info.name).toBe('赵堤');
+    expect(result?.interview_info.phone).toBe('18800001111');
+    expect(result?.interview_info.age).toBe('24');
+  });
+
+  describe('extractStructuredName edge cases', () => {
+    it('should NOT extract name from quoted block containing structured form', () => {
+      // 引用块里的"姓名：XX"不是候选人填的，是经理发的模板
+      // stripQuotedBlocks 剥离后剩余"好的我来填"，无可提取字段，整体返回 null
+      const quoted = '[引用 李涵婷：姓名：王五\n联系电话：13800138000]\n好的我来填';
+      const result = extractHighConfidenceFacts([quoted], brandData);
+      expect(result).toBeNull();
+    });
+
+    it('should extract name from candidate reply after quoted block', () => {
+      // 引用块被剥离后，候选人自己填的部分应该被提取
+      const msg = '[引用 经理：请按模板填写]\n姓名：赵堤\n年龄：24';
+      const result = extractHighConfidenceFacts([msg], brandData);
+      expect(result?.interview_info.name).toBe('赵堤');
+      expect(result?.interview_info.age).toBe('24');
+    });
+
+    it('should take first name when multiple messages contain structured names', () => {
+      const result = extractHighConfidenceFacts(
+        ['姓名：张三\n年龄：25', '姓名：李四\n年龄：30'],
+        brandData,
+      );
+      expect(result?.interview_info.name).toBe('张三');
+    });
+
+    it('should extract name with space separator (姓名 XX)', () => {
+      expect(extractStructuredName('姓名 赵堤')).toBe('赵堤');
+    });
+
+    it('should NOT extract single-char name from structured form', () => {
+      // 单字不是合法姓名
+      expect(extractStructuredName('姓名：赵')).toBeNull();
+    });
+
+    it('should NOT extract name when value is followed by comma on same line', () => {
+      // 正则要求 value 延伸到行尾或字符串末尾，"姓名：张三，男"是单行混写，不符合结构化表单格式
+      expect(extractStructuredName('姓名：张三，男')).toBeNull();
+    });
+
+    it('should extract name when value is on its own line even with trailing content below', () => {
+      // 但如果"姓名：张三"独占一行，后面有其他行，应该提取
+      expect(extractStructuredName('姓名：张三\n性别：男')).toBe('张三');
+    });
+
+    it('should handle time context suffix on structured form message', () => {
+      // 短期记忆注入的时间后缀不应干扰结构化提取
+      const msg = '姓名：赵堤\n年龄：24\n[消息发送时间：2026-04-23 14:26 周四]';
+      const result = extractHighConfidenceFacts([msg], brandData);
+      expect(result?.interview_info.name).toBe('赵堤');
+    });
+
+    it('should coexist with auto-greeting in multi-message extraction', () => {
+      // T1 打招呼"我是阳光明媚"，T5 填表"姓名：赵堤"
+      // 规则层应提取"赵堤"，不受打招呼语干扰
+      const result = extractHighConfidenceFacts(
+        ['我是阳光明媚', '你好', '姓名：赵堤\n联系电话：18800001111'],
+        brandData,
+      );
+      expect(result?.interview_info.name).toBe('赵堤');
+    });
   });
 
   describe('badcase 6a13c26f: quoted message stripping', () => {

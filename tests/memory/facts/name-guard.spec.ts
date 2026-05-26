@@ -126,6 +126,7 @@ describe('name-guard', () => {
       expect(result.sanitized.interview_info.phone).toBe('13800138000');
       expect(result.sanitized.interview_info.age).toBe('28');
     });
+
   });
 
   describe('hasStructuredNameSubmission', () => {

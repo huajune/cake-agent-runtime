@@ -16,8 +16,7 @@ describe('SupabaseStore', () => {
     limit: jest.fn().mockReturnThis(),
   };
   const mockSelect = jest.fn().mockReturnValue(mockEqChain);
-  const mockUpdate = jest.fn().mockReturnValue({ eq: jest.fn().mockResolvedValue({ error: null }) });
-  const mockInsert = jest.fn().mockResolvedValue({ error: null });
+  const mockUpsert = jest.fn().mockResolvedValue({ error: null });
   const mockDelete = jest.fn().mockReturnValue({
     eq: jest.fn().mockReturnValue({
       eq: jest.fn().mockResolvedValue({ error: null }),
@@ -27,8 +26,7 @@ describe('SupabaseStore', () => {
   const mockSupabaseClient = {
     from: jest.fn().mockReturnValue({
       select: mockSelect,
-      update: mockUpdate,
-      insert: mockInsert,
+      upsert: mockUpsert,
       delete: mockDelete,
     }),
   };
@@ -115,37 +113,37 @@ describe('SupabaseStore', () => {
       };
       // getRow (select '*') → existing row with profile_fields_meta
       mockRedis.get.mockResolvedValue(null);
-      mockMaybeSingle
-        .mockResolvedValueOnce({
-          data: {
-            name: '旧张三',
-            phone: null,
-            gender: null,
-            age: null,
-            is_student: null,
-            education: null,
-            has_health_certificate: null,
-            profile_fields_meta: existingMeta,
-          },
-          error: null,
-        })
-        // upsertRow → select('id') check
-        .mockResolvedValueOnce({ data: { id: 1 }, error: null });
+      mockMaybeSingle.mockResolvedValueOnce({
+        data: {
+          name: '旧张三',
+          phone: null,
+          gender: null,
+          age: null,
+          is_student: null,
+          education: null,
+          has_health_certificate: null,
+          profile_fields_meta: existingMeta,
+        },
+        error: null,
+      });
 
       const newBookingMeta = {
         phone: { source: 'booking' as const, confidence: 'high' as const, writtenAt: '2026-05-22T10:00:00.000Z' },
       };
       await store.upsertProfileWithMeta('corp1', 'user1', { phone: '13800138000' }, newBookingMeta);
 
-      // update should be called with merged meta: both 'name' (old) and 'phone' (new)
-      expect(mockUpdate).toHaveBeenCalledWith(
+      // upsert should be called with merged meta: both 'name' (old) and 'phone' (new)
+      expect(mockUpsert).toHaveBeenCalledWith(
         expect.objectContaining({
+          corp_id: 'corp1',
+          user_id: 'user1',
           profile_fields_meta: {
             name: existingMeta.name,
             phone: newBookingMeta.phone,
           },
           phone: '13800138000',
         }),
+        { onConflict: 'corp_id,user_id' },
       );
     });
 
@@ -154,21 +152,19 @@ describe('SupabaseStore', () => {
         name: { source: 'extraction' as const, confidence: 'medium' as const, writtenAt: '2026-01-01T00:00:00.000Z' },
       };
       mockRedis.get.mockResolvedValue(null);
-      mockMaybeSingle
-        .mockResolvedValueOnce({
-          data: {
-            name: '旧张三',
-            phone: null,
-            gender: null,
-            age: null,
-            is_student: null,
-            education: null,
-            has_health_certificate: null,
-            profile_fields_meta: existingMeta,
-          },
-          error: null,
-        })
-        .mockResolvedValueOnce({ data: { id: 1 }, error: null });
+      mockMaybeSingle.mockResolvedValueOnce({
+        data: {
+          name: '旧张三',
+          phone: null,
+          gender: null,
+          age: null,
+          is_student: null,
+          education: null,
+          has_health_certificate: null,
+          profile_fields_meta: existingMeta,
+        },
+        error: null,
+      });
 
       const bookingMeta = { source: 'booking' as const, confidence: 'high' as const, writtenAt: '2026-05-22T10:00:00.000Z' };
       await store.upsertProfileWithMeta(
@@ -178,13 +174,12 @@ describe('SupabaseStore', () => {
         { name: bookingMeta, phone: bookingMeta, age: bookingMeta, gender: bookingMeta },
       );
 
-      expect(mockUpdate).toHaveBeenCalledWith(
+      expect(mockUpsert).toHaveBeenCalledWith(
         expect.objectContaining({
           name: '张三',
           phone: '13800138000',
           age: '22',
           gender: '男',
-          // booking overwrites the old extraction meta for 'name'
           profile_fields_meta: expect.objectContaining({
             name: bookingMeta,
             phone: bookingMeta,
@@ -192,25 +187,103 @@ describe('SupabaseStore', () => {
             gender: bookingMeta,
           }),
         }),
+        { onConflict: 'corp_id,user_id' },
       );
     });
 
-    it('should insert when no existing row', async () => {
+    it('should NOT let medium confidence overwrite high confidence fields', async () => {
+      const existingMeta = {
+        name: { source: 'booking' as const, confidence: 'high' as const, writtenAt: '2026-05-20T10:00:00.000Z' },
+        phone: { source: 'booking' as const, confidence: 'high' as const, writtenAt: '2026-05-20T10:00:00.000Z' },
+        age: { source: 'booking' as const, confidence: 'high' as const, writtenAt: '2026-05-20T10:00:00.000Z' },
+        gender: { source: 'booking' as const, confidence: 'high' as const, writtenAt: '2026-05-20T10:00:00.000Z' },
+      };
       mockRedis.get.mockResolvedValue(null);
-      mockMaybeSingle
-        .mockResolvedValueOnce({ data: null, error: null }) // getRow: no row
-        .mockResolvedValueOnce({ data: null, error: null }); // upsertRow select id: no row → insert
+      mockMaybeSingle.mockResolvedValueOnce({
+        data: {
+          name: '张三',
+          phone: '13800138000',
+          gender: '男',
+          age: '22',
+          is_student: null,
+          education: null,
+          has_health_certificate: null,
+          profile_fields_meta: existingMeta,
+        },
+        error: null,
+      });
+
+      const extractionMeta = { source: 'extraction' as const, confidence: 'medium' as const, writtenAt: '2026-05-22T10:00:00.000Z' };
+      await store.upsertProfileWithMeta(
+        'corp1',
+        'user1',
+        { name: '李四', phone: '13900139000', age: '25', gender: '女', education: '本科' },
+        {
+          name: extractionMeta,
+          phone: extractionMeta,
+          age: extractionMeta,
+          gender: extractionMeta,
+          education: extractionMeta,
+        },
+      );
+
+      // Only education (no existing high-confidence) should be written
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          education: '本科',
+          profile_fields_meta: expect.objectContaining({
+            name: existingMeta.name,
+            phone: existingMeta.phone,
+            age: existingMeta.age,
+            gender: existingMeta.gender,
+            education: extractionMeta,
+          }),
+        }),
+        { onConflict: 'corp_id,user_id' },
+      );
+      // Booking fields must NOT appear in upsert payload
+      const upsertPayload = mockUpsert.mock.calls[0][0];
+      expect(upsertPayload.name).toBeUndefined();
+      expect(upsertPayload.phone).toBeUndefined();
+      expect(upsertPayload.age).toBeUndefined();
+      expect(upsertPayload.gender).toBeUndefined();
+    });
+
+    it('should skip upsert entirely when all fields are guarded by high confidence', async () => {
+      const existingMeta = {
+        name: { source: 'booking' as const, confidence: 'high' as const, writtenAt: '2026-05-20T10:00:00.000Z' },
+      };
+      mockRedis.get.mockResolvedValue(null);
+      mockMaybeSingle.mockResolvedValueOnce({
+        data: {
+          name: '张三',
+          profile_fields_meta: existingMeta,
+        },
+        error: null,
+      });
+
+      const extractionMeta = { source: 'extraction' as const, confidence: 'medium' as const, writtenAt: '2026-05-22T10:00:00.000Z' };
+      await store.upsertProfileWithMeta('corp1', 'user1', { name: '李四' }, { name: extractionMeta });
+
+      // No upsert should happen
+      expect(mockUpsert).not.toHaveBeenCalled();
+    });
+
+    it('should upsert when no existing row', async () => {
+      mockRedis.get.mockResolvedValue(null);
+      mockMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // getRow: no row
 
       const meta = { name: { source: 'booking' as const, confidence: 'high' as const, writtenAt: '2026-05-22T10:00:00.000Z' } };
       await store.upsertProfileWithMeta('corp1', 'user1', { name: '张三' }, meta);
 
-      expect(mockInsert).toHaveBeenCalledWith(
+      expect(mockUpsert).toHaveBeenCalledWith(
         expect.objectContaining({
           corp_id: 'corp1',
           user_id: 'user1',
           name: '张三',
           profile_fields_meta: meta,
         }),
+        { onConflict: 'corp_id,user_id' },
       );
     });
   });

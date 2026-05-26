@@ -453,8 +453,9 @@
       "Bash(md5)",
       "mcp__github__list_pull_requests",
       "mcp__github__get_pull_request_files",
-      "Bash(pnpm ts-node *)",
-      "mcp__exa__web_fetch_exa"
+      "Bash(git -C /Users/jiezhu/workSpace/DuLiDay/cake-agent-runtime diff develop..feat/memory-refactor -- supabase/migrations/)",
+      "Bash(bash /tmp/test-name-extraction.sh)",
+      "Bash(bash /tmp/run-15-cases.sh)"
     ],
     "deny": [
       "Bash(git restore:*)",

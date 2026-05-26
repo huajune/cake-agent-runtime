@@ -91,6 +91,9 @@ export class SupabaseStore implements MemoryStore {
    *
    * 与 upsertProfile 的区别：会读取现有的 profile_fields_meta 并将新的 meta 合并进去，
    * 保证历史元数据不被清除。适用于 booking / enrichment 等高质量数据写入路径。
+   *
+   * 置信度守卫：已有 confidence='high' 的字段不允许被 confidence!='high' 的写入覆盖，
+   * 防止 settlement（medium/extraction）冲掉 booking（high）的数据。
    */
   async upsertProfileWithMeta(
     corpId: string,
@@ -99,25 +102,47 @@ export class SupabaseStore implements MemoryStore {
     meta: UserProfileMeta,
     metadata?: MessageMetadata,
   ): Promise<void> {
-    const updateData: Record<string, unknown> = {};
-
-    if (profile.name != null) updateData.name = profile.name;
-    if (profile.phone != null) updateData.phone = profile.phone;
-    if (profile.gender != null) updateData.gender = profile.gender;
-    if (profile.age != null) updateData.age = profile.age;
-    if (profile.is_student != null) updateData.is_student = profile.is_student;
-    if (profile.education != null) updateData.education = profile.education;
-    if (profile.has_health_certificate != null)
-      updateData.has_health_certificate = profile.has_health_certificate;
-    if (metadata) updateData.message_metadata = metadata;
-
-    if (Object.keys(updateData).length === 0 && Object.keys(meta).length === 0) return;
-
-    // 读取已有的元数据并做字段级合并（新值覆盖旧值，保留无更新字段的历史记录）
     const existingRow = await this.getRow(corpId, userId);
     const existingMeta: UserProfileMeta = existingRow?.profile_fields_meta ?? {};
-    updateData.profile_fields_meta = { ...existingMeta, ...meta };
 
+    const updateData: Record<string, unknown> = {};
+    const mergedMeta: UserProfileMeta = { ...existingMeta };
+    const profileFields: (keyof UserProfile)[] = [
+      'name',
+      'phone',
+      'gender',
+      'age',
+      'is_student',
+      'education',
+      'has_health_certificate',
+    ];
+    const skippedFields: string[] = [];
+
+    for (const field of profileFields) {
+      if (profile[field] == null) continue;
+
+      const existing = existingMeta[field];
+      const incoming = meta[field];
+
+      if (existing?.confidence === 'high' && incoming?.confidence !== 'high') {
+        skippedFields.push(field);
+        continue;
+      }
+
+      updateData[field] = profile[field];
+      if (incoming) mergedMeta[field] = incoming;
+    }
+
+    if (skippedFields.length > 0) {
+      this.logger.log(
+        `[upsertProfileWithMeta] 置信度守卫：跳过 ${skippedFields.join(',')}（已有 high，incoming 非 high）`,
+      );
+    }
+
+    if (metadata) updateData.message_metadata = metadata;
+    if (Object.keys(updateData).filter((k) => k !== 'message_metadata').length === 0) return;
+
+    updateData.profile_fields_meta = mergedMeta;
     await this.upsertRow(corpId, userId, updateData);
   }
 
@@ -274,24 +299,14 @@ export class SupabaseStore implements MemoryStore {
       return;
     }
 
-    const existing = await client
+    const { error } = await client
       .from(TABLE)
-      .select('id')
-      .eq('corp_id', corpId)
-      .eq('user_id', userId)
-      .maybeSingle();
+      .upsert(
+        { corp_id: corpId, user_id: userId, ...fields, updated_at: new Date().toISOString() },
+        { onConflict: 'corp_id,user_id' },
+      );
 
-    const updateFields = { ...fields, updated_at: new Date().toISOString() };
-
-    if (existing.data) {
-      const { error } = await client.from(TABLE).update(updateFields).eq('id', existing.data.id);
-      if (error) this.logger.warn('更新长期记忆失败', error.message);
-    } else {
-      const { error } = await client
-        .from(TABLE)
-        .insert({ corp_id: corpId, user_id: userId, ...updateFields });
-      if (error) this.logger.warn('插入长期记忆失败', error.message);
-    }
+    if (error) this.logger.warn('upsert 长期记忆失败', error.message);
 
     await this.invalidateCache(corpId, userId);
   }

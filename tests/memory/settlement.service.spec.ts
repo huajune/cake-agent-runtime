@@ -1,13 +1,15 @@
 import { SettlementService } from '@memory/services/settlement.service';
+import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
 
 describe('SettlementService', () => {
-  const SESSION_TTL = 86400; // 1 day in seconds
-  const mockConfig = { sessionTtl: SESSION_TTL };
+  const SETTLEMENT_GAP = 86400; // 1 day in seconds
+  const mockConfig = { settlementGapSeconds: SETTLEMENT_GAP };
 
   const mockLongTermService = {
     getSummaryData: jest.fn(),
     appendSummary: jest.fn().mockResolvedValue(undefined),
     markLastSettledMessageAt: jest.fn().mockResolvedValue(undefined),
+    writeFromSettlement: jest.fn().mockResolvedValue(undefined),
   };
 
   const mockChatSession = {
@@ -31,24 +33,87 @@ describe('SettlementService', () => {
   });
 
   describe('detectAndSettle', () => {
-    it('should return false when lastSettledMessageAt is null (no settlement baseline)', async () => {
+    // ==================== 冷启动场景 ====================
+
+    it('should NOT advance boundary when messages exist but no gap (cold start)', async () => {
+      const now = Date.now();
+      mockLongTermService.getSummaryData.mockResolvedValue({
+        recent: [],
+        archive: null,
+        lastSettledMessageAt: null,
+      });
+      mockChatSession.getChatHistoryInRange.mockResolvedValue([
+        { role: 'user', content: 'hello', timestamp: now - 3600 * 1000 },
+        { role: 'assistant', content: 'hi', timestamp: now - 1800 * 1000 },
+      ]);
+
+      const result = await service.detectAndSettle('corp1', 'user1', 'sess1', null);
+
+      expect(result).toBe(false);
+      expect(mockLongTermService.markLastSettledMessageAt).not.toHaveBeenCalled();
+      expect(mockLongTermService.appendSummary).not.toHaveBeenCalled();
+    });
+
+    it('should NOT advance boundary when no messages (cold start, prevents DB-outage skip)', async () => {
+      mockLongTermService.getSummaryData.mockResolvedValue({
+        recent: [],
+        archive: null,
+        lastSettledMessageAt: null,
+      });
+      mockChatSession.getChatHistoryInRange.mockResolvedValue([]);
+
+      const result = await service.detectAndSettle('corp1', 'user1', 'sess1', null);
+
+      expect(result).toBe(false);
+      expect(mockLongTermService.markLastSettledMessageAt).not.toHaveBeenCalled();
+    });
+
+    it('should settle old session on cold start when gap exists in history', async () => {
+      const now = Date.now();
       mockLongTermService.getSummaryData.mockResolvedValue({
         recent: [],
         archive: null,
         lastSettledMessageAt: null,
       });
 
+      const oldMsg = { role: 'user' as const, content: '找工作', timestamp: now - 3 * 86400 * 1000 };
+      const oldMsg2 = { role: 'assistant' as const, content: '好的', timestamp: now - 3 * 86400 * 1000 + 60000 };
+      // gap > sessionTtl
+      const newMsg = { role: 'user' as const, content: '还在么', timestamp: now - 3600 * 1000 };
+
+      mockChatSession.getChatHistoryInRange.mockResolvedValue([oldMsg, oldMsg2, newMsg]);
+
+      const result = await service.detectAndSettle('corp1', 'user1', 'sess1', null);
+
+      expect(result).toBe(true);
+      expect(mockLongTermService.appendSummary).toHaveBeenCalledWith(
+        'corp1',
+        'user1',
+        expect.objectContaining({
+          endTime: new Date(oldMsg2.timestamp).toISOString(),
+        }),
+        expect.objectContaining({
+          lastSettledMessageAt: new Date(oldMsg2.timestamp).toISOString(),
+        }),
+      );
+    });
+
+    it('should handle getSummaryData returning null gracefully (cold start)', async () => {
+      mockLongTermService.getSummaryData.mockResolvedValue(null);
+      mockChatSession.getChatHistoryInRange.mockResolvedValue([]);
+
       const result = await service.detectAndSettle('corp1', 'user1', 'sess1', null);
 
       expect(result).toBe(false);
-      expect(mockChatSession.getChatHistoryInRange).not.toHaveBeenCalled();
     });
+
+    // ==================== 正常流程 ====================
 
     it('should return false when no messages since lastSettledMessageAt', async () => {
       mockLongTermService.getSummaryData.mockResolvedValue({
         recent: [],
         archive: null,
-        lastSettledMessageAt: new Date(Date.now() - 2 * SESSION_TTL * 1000).toISOString(),
+        lastSettledMessageAt: new Date(Date.now() - 2 * SETTLEMENT_GAP * 1000).toISOString(),
       });
       mockChatSession.getChatHistoryInRange.mockResolvedValue([]);
 
@@ -62,9 +127,8 @@ describe('SettlementService', () => {
       mockLongTermService.getSummaryData.mockResolvedValue({
         recent: [],
         archive: null,
-        lastSettledMessageAt: new Date(now - 2 * 3600 * 1000).toISOString(), // 2h ago
+        lastSettledMessageAt: new Date(now - 2 * 3600 * 1000).toISOString(),
       });
-      // Messages within the same session (no gap >= 1 day)
       mockChatSession.getChatHistoryInRange.mockResolvedValue([
         { role: 'user', content: 'hello', timestamp: now - 1.5 * 3600 * 1000 },
         { role: 'assistant', content: 'hi', timestamp: now - 1 * 3600 * 1000 },
@@ -79,18 +143,15 @@ describe('SettlementService', () => {
 
     it('should detect session gap and trigger summary generation', async () => {
       const now = Date.now();
-      const lastSettled = new Date(now - 3 * SESSION_TTL * 1000).toISOString(); // 3 days ago
+      const lastSettled = new Date(now - 3 * SETTLEMENT_GAP * 1000).toISOString();
       mockLongTermService.getSummaryData.mockResolvedValue({
         recent: [],
         archive: null,
         lastSettledMessageAt: lastSettled,
       });
 
-      // Old session: Day 1 (3 days ago)
       const oldMsg1 = { role: 'user' as const, content: '我想找工作', timestamp: now - 3 * 86400 * 1000 };
       const oldMsg2 = { role: 'assistant' as const, content: '好的', timestamp: now - 3 * 86400 * 1000 + 60000 };
-      // Gap: 2 days (> sessionTtl = 1 day)
-      // New session: Day 3 (1 day ago)
       const newMsg1 = { role: 'user' as const, content: '还在么', timestamp: now - 1 * 86400 * 1000 };
 
       mockChatSession.getChatHistoryInRange.mockResolvedValue([oldMsg1, oldMsg2, newMsg1]);
@@ -109,13 +170,11 @@ describe('SettlementService', () => {
       );
     });
 
-    it('should use the LAST gap when multiple gaps exist (multi-session history)', async () => {
-      // Scenario: 3 sessions in history — gaps at positions 2 and 4
-      // Messages: [s1_msg1, s1_msg2] --- gap 2d --- [s2_msg1, s2_msg2] --- gap 1.5d --- [s3_msg1]
-      // The loop keeps the LAST gap, so gapBeforeIndex = 4 (before s3_msg1)
-      // → messages [0..3] = s1 + s2 are the "previous session"; endTime = s2_msg2
+    // ==================== 多断层：只沉淀第一个 ====================
+
+    it('should use the FIRST gap when multiple gaps exist (settle one session per turn)', async () => {
       const now = Date.now();
-      const lastSettled = new Date(now - 5 * 86400 * 1000).toISOString(); // 5 days ago
+      const lastSettled = new Date(now - 5 * 86400 * 1000).toISOString();
       mockLongTermService.getSummaryData.mockResolvedValue({
         recent: [],
         archive: null,
@@ -127,7 +186,7 @@ describe('SettlementService', () => {
       // gap ~2 days (> sessionTtl)
       const s2m1 = { role: 'user' as const, content: 'day3', timestamp: now - 3 * 86400 * 1000 };
       const s2m2 = { role: 'assistant' as const, content: 'ok', timestamp: now - 3 * 86400 * 1000 + 60000 };
-      // gap ~1.5 days (> sessionTtl = 1 day)
+      // gap ~1.5 days (> sessionTtl)
       const s3m1 = { role: 'user' as const, content: 'today', timestamp: now - 1.5 * 86400 * 1000 };
 
       mockChatSession.getChatHistoryInRange.mockResolvedValue([s1m1, s1m2, s2m1, s2m2, s3m1]);
@@ -135,20 +194,22 @@ describe('SettlementService', () => {
       const result = await service.detectAndSettle('corp1', 'user1', 'sess1', null);
 
       expect(result).toBe(true);
-      // endTime should be the last message BEFORE the last gap = s2m2
+      // First gap is between s1m2 and s2m1 → only s1 messages are settled
       expect(mockLongTermService.appendSummary).toHaveBeenCalledWith(
         'corp1',
         'user1',
         expect.objectContaining({
-          endTime: new Date(s2m2.timestamp).toISOString(),
+          endTime: new Date(s1m2.timestamp).toISOString(),
         }),
-        expect.objectContaining({ lastSettledMessageAt: new Date(s2m2.timestamp).toISOString() }),
+        expect.objectContaining({ lastSettledMessageAt: new Date(s1m2.timestamp).toISOString() }),
       );
     });
 
+    // ==================== 边界条件 ====================
+
     it('should trigger when gap is exactly equal to sessionTtl (boundary inclusive)', async () => {
       const now = Date.now();
-      const lastSettled = new Date(now - 2 * SESSION_TTL * 1000).toISOString();
+      const lastSettled = new Date(now - 2 * SETTLEMENT_GAP * 1000).toISOString();
       mockLongTermService.getSummaryData.mockResolvedValue({
         recent: [],
         archive: null,
@@ -156,8 +217,7 @@ describe('SettlementService', () => {
       });
 
       const msg1 = { role: 'user' as const, content: 'old', timestamp: now - 2 * 86400 * 1000 };
-      // Gap exactly = SESSION_TTL * 1000 ms (== 86400000 ms)
-      const msg2 = { role: 'user' as const, content: 'new', timestamp: msg1.timestamp + SESSION_TTL * 1000 };
+      const msg2 = { role: 'user' as const, content: 'new', timestamp: msg1.timestamp + SETTLEMENT_GAP * 1000 };
 
       mockChatSession.getChatHistoryInRange.mockResolvedValue([msg1, msg2]);
 
@@ -174,7 +234,7 @@ describe('SettlementService', () => {
 
     it('should NOT trigger when gap is one millisecond below sessionTtl', async () => {
       const now = Date.now();
-      const lastSettled = new Date(now - 2 * SESSION_TTL * 1000).toISOString();
+      const lastSettled = new Date(now - 2 * SETTLEMENT_GAP * 1000).toISOString();
       mockLongTermService.getSummaryData.mockResolvedValue({
         recent: [],
         archive: null,
@@ -182,8 +242,7 @@ describe('SettlementService', () => {
       });
 
       const msg1 = { role: 'user' as const, content: 'old', timestamp: now - 2 * 86400 * 1000 };
-      // Gap is 1 ms short of SESSION_TTL — should NOT trigger
-      const msg2 = { role: 'user' as const, content: 'new', timestamp: msg1.timestamp + SESSION_TTL * 1000 - 1 };
+      const msg2 = { role: 'user' as const, content: 'new', timestamp: msg1.timestamp + SETTLEMENT_GAP * 1000 - 1 };
 
       mockChatSession.getChatHistoryInRange.mockResolvedValue([msg1, msg2]);
 
@@ -194,17 +253,14 @@ describe('SettlementService', () => {
     });
 
     it('should return false when all messages are in new session with no unsettled old messages', async () => {
-      // No internal gap, but gap from lastSettledAt to first message is >= sessionTtl
-      // This means all messages are "new session" — old session had nothing left to settle
       const now = Date.now();
-      const lastSettled = new Date(now - 3 * SESSION_TTL * 1000).toISOString(); // 3 days ago
+      const lastSettled = new Date(now - 3 * SETTLEMENT_GAP * 1000).toISOString();
       mockLongTermService.getSummaryData.mockResolvedValue({
         recent: [],
         archive: null,
         lastSettledMessageAt: lastSettled,
       });
 
-      // All messages are recent (today), no gap between them
       const msg1 = { role: 'user' as const, content: 'hi', timestamp: now - 3600 * 1000 };
       const msg2 = { role: 'assistant' as const, content: 'hello', timestamp: now - 1800 * 1000 };
 
@@ -212,31 +268,74 @@ describe('SettlementService', () => {
 
       const result = await service.detectAndSettle('corp1', 'user1', 'sess1', null);
 
-      // gapFromSettled (3 days) >= sessionTtl BUT no internal gap, so current code returns false
-      // (all messages are new-session, nothing to settle from old)
       expect(result).toBe(false);
       expect(mockLongTermService.appendSummary).not.toHaveBeenCalled();
-    });
-
-    it('should handle getSummaryData returning null gracefully', async () => {
-      mockLongTermService.getSummaryData.mockResolvedValue(null);
-
-      const result = await service.detectAndSettle('corp1', 'user1', 'sess1', null);
-
-      expect(result).toBe(false);
     });
 
     it('should return false and not throw if getChatHistoryInRange rejects', async () => {
       mockLongTermService.getSummaryData.mockResolvedValue({
         recent: [],
         archive: null,
-        lastSettledMessageAt: new Date(Date.now() - 2 * SESSION_TTL * 1000).toISOString(),
+        lastSettledMessageAt: new Date(Date.now() - 2 * SETTLEMENT_GAP * 1000).toISOString(),
       });
       mockChatSession.getChatHistoryInRange.mockRejectedValue(new Error('DB error'));
 
       const result = await service.detectAndSettle('corp1', 'user1', 'sess1', null);
 
       expect(result).toBe(false);
+    });
+
+    // ==================== Profile 沉淀写入 ====================
+
+    it('should call writeFromSettlement when facts are provided and settlement triggers', async () => {
+      const now = Date.now();
+      const lastSettled = new Date(now - 3 * SETTLEMENT_GAP * 1000).toISOString();
+      mockLongTermService.getSummaryData.mockResolvedValue({
+        recent: [],
+        archive: null,
+        lastSettledMessageAt: lastSettled,
+      });
+
+      const oldMsg = { role: 'user' as const, content: '我叫张三', timestamp: now - 3 * 86400 * 1000 };
+      const newMsg = { role: 'user' as const, content: '还在么', timestamp: now - 3600 * 1000 };
+      mockChatSession.getChatHistoryInRange.mockResolvedValue([oldMsg, newMsg]);
+
+      const fakeFacts = {
+        ...FALLBACK_EXTRACTION,
+        interview_info: {
+          ...FALLBACK_EXTRACTION.interview_info,
+          name: '张三',
+          phone: '13800138000',
+        },
+        reasoning: 'test',
+      };
+
+      const result = await service.detectAndSettle('corp1', 'user1', 'sess1', fakeFacts);
+
+      expect(result).toBe(true);
+      expect(mockLongTermService.writeFromSettlement).toHaveBeenCalledWith(
+        'corp1',
+        'user1',
+        fakeFacts,
+      );
+    });
+
+    it('should NOT call writeFromSettlement when facts are null', async () => {
+      const now = Date.now();
+      const lastSettled = new Date(now - 3 * SETTLEMENT_GAP * 1000).toISOString();
+      mockLongTermService.getSummaryData.mockResolvedValue({
+        recent: [],
+        archive: null,
+        lastSettledMessageAt: lastSettled,
+      });
+
+      const oldMsg = { role: 'user' as const, content: 'hi', timestamp: now - 3 * 86400 * 1000 };
+      const newMsg = { role: 'user' as const, content: 'hello', timestamp: now - 3600 * 1000 };
+      mockChatSession.getChatHistoryInRange.mockResolvedValue([oldMsg, newMsg]);
+
+      await service.detectAndSettle('corp1', 'user1', 'sess1', null);
+
+      expect(mockLongTermService.writeFromSettlement).not.toHaveBeenCalled();
     });
   });
 });

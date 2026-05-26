@@ -196,7 +196,12 @@ export class MessageSplitter {
 
   private static isStructuredHeaderLine(line: string): boolean {
     const normalized = line.trim();
-    return /\d+(?:\.\d+)?\s*(?:km|公里)/i.test(normalized) && /[，,、]/.test(normalized);
+    return /\d+(?:\.\d+)?\s*(?:km|公里)/i.test(normalized) || this.isLikelyJobTitleLine(normalized);
+  }
+
+  private static isLikelyJobTitleLine(line: string): boolean {
+    if (/[。！？!?；;：:]$/.test(line) || line.length > 80) return false;
+    return /[（(].+[）)]/.test(line) || /(?:店|门店|广场|中心|天街|天地|坊|汇)/.test(line);
   }
 
   private static isListItemLine(line: string): boolean {
@@ -212,6 +217,10 @@ export class MessageSplitter {
     }
 
     return (
+      /^(?:早班|中班|晚班|夜班|白班|午班).*\d{1,2}[:：]\d{2}\s*(?:-|~|—|到|至)\s*\d{1,2}[:：]\d{2}/.test(
+        normalized,
+      ) ||
+      /^\d{1,2}[:：]\d{2}\s*(?:-|~|—|到|至)\s*\d{1,2}[:：]\d{2}/.test(normalized) ||
       /^(?:班次|上班时间|时间)(?:是|为|\s).*\d{1,2}[:：]\d{2}\s*(?:-|~|—|到|至)\s*\d{1,2}[:：]\d{2}/.test(
         normalized,
       ) ||
@@ -226,7 +235,7 @@ export class MessageSplitter {
   }
 
   private static isFormLine(line: string): boolean {
-    return /^(?:姓名|联系方式|电话|手机号|性别|年龄|面试时间|应聘门店|学历|健康证|身份|应聘岗位)[：:]/.test(
+    return /^(?:姓名|联系方式|联系电话|电话|手机号|性别|年龄|面试时间|应聘门店|学历|健康证|身份|应聘岗位)[：:]/.test(
       line.trim(),
     );
   }

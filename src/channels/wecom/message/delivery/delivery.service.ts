@@ -3,6 +3,7 @@ import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { MessageSenderService } from '../../message-sender/message-sender.service';
 import { SendMessageType } from '../../message-sender/dto/send-message.dto';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
+import { MESSAGE_SPLIT_MAX_SEGMENTS } from '@infra/config/constants/message.constants';
 import { MessageSplitter } from '../utils/message-splitter.util';
 import { detectOutputLeak } from '../utils/output-leak-guard.util';
 import { DeliveryContext, DeliveryResult, AgentReply, DeliveryFailureError } from '../types';
@@ -181,7 +182,7 @@ export class MessageDeliveryService implements OnModuleInit {
     context: DeliveryContext,
   ): Promise<DeliveryResult> {
     const { token, imBotId, imContactId, imRoomId, contactName, chatId, _apiType } = context;
-    const segments = MessageSplitter.split(content);
+    const segments = MessageSplitter.split(content, MESSAGE_SPLIT_MAX_SEGMENTS);
 
     this.logger.log(`[${contactName}] 消息触发分段发送，拆分为 ${segments.length} 条消息发送`);
     this.logger.debug(`[${contactName}] 原始消息: "${content}"`);

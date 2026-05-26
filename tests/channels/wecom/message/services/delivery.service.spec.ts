@@ -7,6 +7,7 @@ import { DeliveryContext, DeliveryFailureError, AgentReply } from '@wecom/messag
 import { WecomMessageObservabilityService } from '@wecom/message/telemetry/wecom-message-observability.service';
 import { TypingPolicyService } from '@wecom/message/delivery/typing-policy.service';
 import { MessageSplitter } from '@wecom/message/utils/message-splitter.util';
+import { MESSAGE_SPLIT_MAX_SEGMENTS } from '@infra/config/constants/message.constants';
 
 describe('MessageDeliveryService', () => {
   let service: MessageDeliveryService;
@@ -170,7 +171,7 @@ describe('MessageDeliveryService', () => {
       );
     });
 
-    it('sends all natural segments without default cap=4', async () => {
+    it('coalesces overlong replies to the max segment cap', async () => {
       // cc1fb40s 实景：Agent 一次发 8 段（门店 + 距离 + 薪资 + 阶梯 + 班次 + 时长 + 要求 + 是否方便）
       const reply: AgentReply = {
         content: [
@@ -188,11 +189,25 @@ describe('MessageDeliveryService', () => {
       const result = await service.deliverReply(reply, deliveryContext, true);
 
       expect(result.success).toBe(true);
-      expect(result.segmentCount).toBe(8);
-      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(8);
+      expect(result.segmentCount).toBe(MESSAGE_SPLIT_MAX_SEGMENTS);
+      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(
+        MESSAGE_SPLIT_MAX_SEGMENTS,
+      );
+      expect(mockMessageSenderService.sendMessage).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          payload: { text: expect.stringContaining('查到永德路附近这两家在招') },
+        }),
+      );
+      expect(mockMessageSenderService.sendMessage).toHaveBeenNthCalledWith(
+        MESSAGE_SPLIT_MAX_SEGMENTS,
+        expect.objectContaining({
+          payload: { text: expect.stringContaining('你看哪个时间段比较方便') },
+        }),
+      );
     });
 
-    it('sends booking-success closing by natural split count', async () => {
+    it('coalesces booking-success closing to the max segment cap', async () => {
       // 约面收尾业务上必须一次说全（时间 + 门店 + 注意事项 + 健康证 + 入群 + 自报家门）
       const reply: AgentReply = {
         content: [
@@ -208,8 +223,18 @@ describe('MessageDeliveryService', () => {
       const result = await service.deliverReply(reply, deliveryContext, true);
 
       expect(result.success).toBe(true);
-      expect(result.segmentCount).toBe(6);
-      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(6);
+      expect(result.segmentCount).toBe(MESSAGE_SPLIT_MAX_SEGMENTS);
+      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(
+        MESSAGE_SPLIT_MAX_SEGMENTS,
+      );
+      expect(mockMessageSenderService.sendMessage).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ payload: { text: expect.stringContaining('帮你约好啦') } }),
+      );
+      expect(mockMessageSenderService.sendMessage).toHaveBeenNthCalledWith(
+        MESSAGE_SPLIT_MAX_SEGMENTS,
+        expect.objectContaining({ payload: { text: expect.stringContaining('路上注意安全') } }),
+      );
     });
 
     it('should skip monitoring when recordMonitoring=false', async () => {

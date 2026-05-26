@@ -16,18 +16,28 @@ export class MemoryConfig {
   private readonly logger = new Logger(MemoryConfig.name);
 
   /**
-   * 当前会话最多保留多久（秒）。
+   * Redis 会话状态的生命周期（秒）。
    *
-   * 作用：
-   * - `session.service` 和 `procedural.service` 写进 Redis 的会话级数据，会按这个时长自动过期
-   * - 这些数据包括：候选人事实、候选岗位池、已展示岗位、当前焦点岗位、当前阶段等临时状态
-   * - 如果用户在这段时间内一直没有继续发消息，就认为这一段会话已经结束
-   * - 会话结束后，这段会话里的信息才有机会被沉淀到长期记忆
+   * 控制 `session.service` 和 `procedural.service` 写进 Redis 的会话级数据的过期时间，
+   * 包括：候选人事实、候选岗位池、已展示岗位、当前焦点岗位、当前阶段等临时状态。
    *
-   * ⚠️ 注意：此 TTL 只控制 Redis 会话状态的生命周期，不影响 Supabase 历史消息的回查窗口。
-   *    历史消息回查窗口由 `historyWindowSeconds` 独立控制，两者不应混用。
+   * ⚠️ 此 TTL 只控制 Redis key 的存活时长，不影响：
+   *    - Supabase 历史消息的回查窗口（由 `historyWindowSeconds` 控制）
+   *    - 会话沉淀的间隙判定阈值（由 `settlementGapSeconds` 控制）
    */
   readonly sessionTtl: number;
+
+  /**
+   * 沉淀间隙阈值（秒）。
+   *
+   * 连续两条消息的时间差 ≥ 此阈值时，SettlementService 认为上一段会话已结束，
+   * 触发摘要沉淀到长期记忆。
+   *
+   * 与 `sessionTtl` 分离的原因：Redis facts 的存活时长（sessionTtl）是"数据还在不在"，
+   * 沉淀阈值是"对话是否已断"——两者可以独立调优。例如 sessionTtl=2天让隔天回来的用户
+   * 仍有 facts 可用，而 settlementGap=1天让超过一天的间隙及时沉淀。
+   */
+  readonly settlementGapSeconds: number;
 
   /**
    * 从 Supabase 回查历史消息的时间窗口（秒）。
@@ -53,8 +63,14 @@ export class MemoryConfig {
   readonly longTermCacheTtl: number;
 
   constructor(private readonly configService: ConfigService) {
-    const days = parseInt(this.configService.get('MEMORY_SESSION_TTL_DAYS', '1'), 10);
+    const days = parseInt(this.configService.get('MEMORY_SESSION_TTL_DAYS', '2'), 10);
     this.sessionTtl = days * 24 * 60 * 60;
+
+    const settlementGapDays = parseInt(
+      this.configService.get('MEMORY_SETTLEMENT_GAP_DAYS', '1'),
+      10,
+    );
+    this.settlementGapSeconds = settlementGapDays * 24 * 60 * 60;
 
     const historyDays = parseInt(this.configService.get('MEMORY_HISTORY_WINDOW_DAYS', '7'), 10);
     this.historyWindowSeconds = historyDays * 24 * 60 * 60;
@@ -64,7 +80,7 @@ export class MemoryConfig {
       10,
     );
     this.sessionWindowMaxChars = parseInt(
-      this.configService.get('AGENT_MAX_INPUT_CHARS', '8000'),
+      this.configService.get('AGENT_MAX_INPUT_CHARS', '12000'),
       10,
     );
     this.sessionExtractionIncrementalMessages = parseInt(
@@ -74,7 +90,7 @@ export class MemoryConfig {
     this.longTermCacheTtl = 2 * 60 * 60; // 2h
 
     this.logger.log(
-      `MemoryConfig: sessionTtl=${days}d, historyWindow=${historyDays}d, windowMessages=${this.sessionWindowMaxMessages}, windowChars=${this.sessionWindowMaxChars}, extractionIncremental=${this.sessionExtractionIncrementalMessages}`,
+      `MemoryConfig: sessionTtl=${days}d, settlementGap=${settlementGapDays}d, historyWindow=${historyDays}d, windowMessages=${this.sessionWindowMaxMessages}, windowChars=${this.sessionWindowMaxChars}, extractionIncremental=${this.sessionExtractionIncrementalMessages}`,
     );
   }
 
