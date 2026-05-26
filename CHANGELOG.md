@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.10.0] - 2026-05-26
 
-**预计版本**: `v5.10.0`
-**最近更新**: `2026-05-26`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #219 **记忆系统重构**：三路径写入 + DB 时间戳驱动沉淀，解耦历史回查窗口与 session TTL，修复跨天上下文丢失
@@ -44,7 +40,6 @@
 - PR #219 258 test suites / 3263 tests 全部通过
 - PR #219 pre-push CI（lint + format + typecheck + build + test）通过
 - PR #219 线上验证记忆沉淀跨天场景
-<!-- release:pending:end -->
 
 ## [5.9.1] - 2026-05-21
 
