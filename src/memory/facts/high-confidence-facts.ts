@@ -135,11 +135,28 @@ interface LocationSignals {
   location: string[];
 }
 
+/**
+ * 剥离引用消息块，只保留候选人自己写的内容。
+ *
+ * 引用格式：`[引用 XXX：<被引用内容>]` 或行首 `引用 XXX：<内容>`。
+ * 被引用内容通常是招募经理发的岗位描述，其中的年龄/班次/薪资等数值
+ * 属于岗位要求，不是候选人自陈——必须在规则提取前剥离，否则所有
+ * extract* 函数都会误提取引用块内的实体。
+ */
+function stripQuotedBlocks(message: string): string {
+  return message
+    .replace(/\[引用[^\]]*\]/g, '')
+    .replace(/^引用\s+[^：]+：.*$/gm, '')
+    .trim();
+}
+
 export function extractHighConfidenceFacts(
   userMessages: string[],
   brandData: BrandItem[],
 ): EntityExtractionResult | null {
-  const normalizedMessages = userMessages.map((message) => message.trim()).filter(Boolean);
+  const normalizedMessages = userMessages
+    .map((message) => stripQuotedBlocks(message.trim()))
+    .filter(Boolean);
   if (normalizedMessages.length === 0) return null;
 
   const facts = cloneFallbackExtraction();

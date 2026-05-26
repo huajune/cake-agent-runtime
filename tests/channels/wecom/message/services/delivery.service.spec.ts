@@ -3,13 +3,10 @@ import { MessageDeliveryService } from '@wecom/message/delivery/delivery.service
 import { MessageSenderService } from '@wecom/message-sender/message-sender.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
-import {
-  DeliveryContext,
-  DeliveryFailureError,
-  AgentReply,
-} from '@wecom/message/types';
+import { DeliveryContext, DeliveryFailureError, AgentReply } from '@wecom/message/types';
 import { WecomMessageObservabilityService } from '@wecom/message/telemetry/wecom-message-observability.service';
 import { TypingPolicyService } from '@wecom/message/delivery/typing-policy.service';
+import { MessageSplitter } from '@wecom/message/utils/message-splitter.util';
 
 describe('MessageDeliveryService', () => {
   let service: MessageDeliveryService;
@@ -69,7 +66,7 @@ describe('MessageDeliveryService', () => {
     mockMonitoringService.recordSendStart.mockReturnValue(undefined);
     mockMonitoringService.recordSendEnd.mockReturnValue(undefined);
     mockTypingPolicyService.shouldSplit.mockImplementation((content: string) =>
-      content.includes('\n\n'),
+      MessageSplitter.needsSplit(content),
     );
     mockTypingPolicyService.getSnapshot.mockReturnValue({
       splitSend: true,
@@ -100,9 +97,23 @@ describe('MessageDeliveryService', () => {
       expect(result.segmentCount).toBe(1);
       expect(result.deliveredSegments).toBe(1);
       expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(1);
+      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ payload: { text: 'Short message' } }),
+      );
       expect(mockMonitoringService.recordSendStart).toHaveBeenCalledWith('msg-123');
       expect(mockMonitoringService.recordSendEnd).toHaveBeenCalledWith('msg-123');
       expect(mockWecomObservabilityService.markFirstSegmentSent).toHaveBeenCalledWith('msg-123');
+    });
+
+    it('should strip trailing punctuation for single-message delivery', async () => {
+      const result = await service.deliverReply({ content: '收到～' }, deliveryContext, true);
+
+      expect(result.success).toBe(true);
+      expect(result.segmentCount).toBe(1);
+      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(1);
+      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ payload: { text: '收到' } }),
+      );
     });
 
     it('should split and send multiple messages when content contains double newlines', async () => {
@@ -119,9 +130,48 @@ describe('MessageDeliveryService', () => {
       expect(mockWecomObservabilityService.markFirstSegmentSent).toHaveBeenCalledTimes(1);
     });
 
-    it('coalesces over-fragmented replies to cap=4 (badcase cc1fb40s)', async () => {
+    it('should split and send two messages when content contains wave mark', async () => {
+      const reply: AgentReply = {
+        content: '你好呀～你平时在哪个区域方便点？',
+      };
+
+      const result = await service.deliverReply(reply, deliveryContext, true);
+
+      expect(result.success).toBe(true);
+      expect(result.segmentCount).toBe(2);
+      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(2);
+      expect(mockMessageSenderService.sendMessage).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ payload: { text: '你好呀' } }),
+      );
+      expect(mockMessageSenderService.sendMessage).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ payload: { text: '你平时在哪个区域方便点' } }),
+      );
+    });
+
+    it('should split and send two messages when content contains full stop', async () => {
+      const reply: AgentReply = {
+        content: '好的。请把你方便的位置发我下。',
+      };
+
+      const result = await service.deliverReply(reply, deliveryContext, true);
+
+      expect(result.success).toBe(true);
+      expect(result.segmentCount).toBe(2);
+      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(2);
+      expect(mockMessageSenderService.sendMessage).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ payload: { text: '好的' } }),
+      );
+      expect(mockMessageSenderService.sendMessage).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ payload: { text: '请把你方便的位置发我下' } }),
+      );
+    });
+
+    it('sends all natural segments without default cap=4', async () => {
       // cc1fb40s 实景：Agent 一次发 8 段（门店 + 距离 + 薪资 + 阶梯 + 班次 + 时长 + 要求 + 是否方便）
-      // 单次回复段数应被压回 4 段
       const reply: AgentReply = {
         content: [
           '查到永德路附近这两家在招：',
@@ -138,13 +188,12 @@ describe('MessageDeliveryService', () => {
       const result = await service.deliverReply(reply, deliveryContext, true);
 
       expect(result.success).toBe(true);
-      expect(result.segmentCount).toBe(4);
-      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(4);
+      expect(result.segmentCount).toBe(8);
+      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(8);
     });
 
-    it('relaxes cap to 6 when reply looks like booking-success closing', async () => {
+    it('sends booking-success closing by natural split count', async () => {
       // 约面收尾业务上必须一次说全（时间 + 门店 + 注意事项 + 健康证 + 入群 + 自报家门）
-      // 应保持 6 段，不被压到 4
       const reply: AgentReply = {
         content: [
           '帮你约好啦，明天（周三）13:30 去凤起汇店面试。',
@@ -174,9 +223,9 @@ describe('MessageDeliveryService', () => {
     it('should throw DeliveryFailureError when single send fails', async () => {
       mockMessageSenderService.sendMessage.mockRejectedValue(new Error('Send failed'));
 
-      await expect(service.deliverReply({ content: 'Hello' }, deliveryContext, true)).rejects.toBeInstanceOf(
-        DeliveryFailureError,
-      );
+      await expect(
+        service.deliverReply({ content: 'Hello' }, deliveryContext, true),
+      ).rejects.toBeInstanceOf(DeliveryFailureError);
     });
 
     it('silently drops reply when output leak detected (badcase vllg7hlu)', async () => {
@@ -303,8 +352,8 @@ describe('MessageDeliveryService', () => {
         typingSpeedCharsPerSec: 8,
         paragraphGapMs: 2500,
       });
-      mockTypingPolicyService.calculateDelay.mockImplementation((_: string, isFirstSegment = false) =>
-        isFirstSegment ? 0 : 2500,
+      mockTypingPolicyService.calculateDelay.mockImplementation(
+        (_: string, isFirstSegment = false) => (isFirstSegment ? 0 : 2500),
       );
 
       await service.onModuleInit();

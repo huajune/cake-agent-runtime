@@ -338,4 +338,38 @@ describe('extractHighConfidenceFacts', () => {
       '上海市静安区江场路1428号',
     ]);
   });
+
+  describe('badcase 6a13c26f: quoted message stripping', () => {
+    const badcaseMessages = [
+      '都不太合适耶',
+      '[引用 李涵婷：成都你六姐-莘庄龙之梦店 前厅服务员，3.1km 班次：11:30-14:30（午高峰短班，约3小时） 薪资：24元/时，满40小时26元/时，满80小时28元/时 要求：20-35岁，入职前办食品健康证]\n我36岁',
+      '[引用 李涵婷：奥乐齐-1082鑫都 晚班补货，3.2km 班次：22:00-07:00（夜班） 薪资：5500-6500元/月（约30元/时） 要求：18-40岁]\n我白天9:00到下午三点有时间，上不就夜班',
+    ];
+
+    it('should extract age=36 from candidate text, not 35 from quoted job requirement', () => {
+      const result = extractHighConfidenceFacts(badcaseMessages, brandData);
+      expect(result?.interview_info.age).toBe('36');
+    });
+
+    it('should NOT extract salary from quoted job descriptions', () => {
+      const result = extractHighConfidenceFacts(badcaseMessages, brandData);
+      expect(result?.preferences.salary).toBeNull();
+    });
+
+    it('should NOT extract position keywords from quoted job descriptions', () => {
+      const result = extractHighConfidenceFacts(badcaseMessages, brandData);
+      expect(result?.preferences.position).toBeNull();
+    });
+
+    it('should NOT extract shift schedule from quoted job descriptions', () => {
+      const result = extractHighConfidenceFacts(badcaseMessages, brandData);
+      // "不就夜班" from candidate's own text — should not match the shift keywords
+      // from the quoted content like "晚班" "11:30-14:30" "夜班"
+      const schedule = result?.preferences.schedule;
+      if (schedule) {
+        expect(schedule).not.toContain('11:30-14:30');
+        expect(schedule).not.toContain('22:00-07:00');
+      }
+    });
+  });
 });
