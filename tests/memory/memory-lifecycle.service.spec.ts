@@ -10,14 +10,12 @@ describe('MemoryLifecycleService', () => {
   const mockSessionService = {
     getSessionState: jest.fn(),
     saveLastCandidatePool: jest.fn().mockResolvedValue(undefined),
-    storeActivity: jest.fn().mockResolvedValue(undefined),
     projectAssistantTurn: jest.fn().mockResolvedValue(undefined),
     extractAndSave: jest.fn().mockResolvedValue(undefined),
   };
 
   const mockSettlement = {
-    shouldSettle: jest.fn().mockReturnValue(false),
-    settle: jest.fn().mockResolvedValue(undefined),
+    detectAndSettle: jest.fn().mockResolvedValue(false),
   };
 
   const mockProcedural = {
@@ -48,14 +46,12 @@ describe('MemoryLifecycleService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockShortTerm.lastLoadError = null;
-    mockSettlement.shouldSettle.mockReturnValue(false);
-    mockSettlement.settle.mockResolvedValue(undefined);
+    mockSettlement.detectAndSettle.mockResolvedValue(false);
     mockSessionService.getSessionState.mockResolvedValue({
       facts: null,
       lastCandidatePool: null,
       presentedJobs: null,
       currentFocusJob: null,
-      lastSessionActiveAt: null,
     });
     mockEnrichment.enrich.mockImplementation(async (snapshot) => snapshot);
     mockMessageProcessing.updatePostProcessingStatus.mockResolvedValue(true);
@@ -79,7 +75,6 @@ describe('MemoryLifecycleService', () => {
       lastCandidatePool: null,
       presentedJobs: null,
       currentFocusJob: null,
-      lastSessionActiveAt: null,
     });
     mockProcedural.get.mockResolvedValue({
       currentStage: 'job_consultation',
@@ -142,7 +137,6 @@ describe('MemoryLifecycleService', () => {
       lastCandidatePool: null,
       presentedJobs: null,
       currentFocusJob: null,
-      lastSessionActiveAt: null,
     });
     mockProcedural.get.mockResolvedValue({
       currentStage: 'trust_building',
@@ -174,7 +168,6 @@ describe('MemoryLifecycleService', () => {
       lastCandidatePool: null,
       presentedJobs: null,
       currentFocusJob: null,
-      lastSessionActiveAt: null,
     });
     mockProcedural.get.mockResolvedValue({
       currentStage: 'trust_building',
@@ -291,15 +284,13 @@ describe('MemoryLifecycleService', () => {
     expect(ctx.highConfidenceFacts).toBeNull();
   });
 
-  it('should settle old session, store activity, project jobs, and trigger extraction', async () => {
+  it('should run detectAndSettle, project jobs, and trigger extraction on turn end', async () => {
     mockSessionService.getSessionState.mockResolvedValue({
       facts: null,
       lastCandidatePool: null,
       presentedJobs: null,
       currentFocusJob: null,
-      lastSessionActiveAt: '2026-03-28T10:00:00.000Z',
     });
-    mockSettlement.shouldSettle.mockReturnValue(true);
 
     await service.onTurnEnd(
       {
@@ -335,20 +326,11 @@ describe('MemoryLifecycleService', () => {
     );
 
     expect(mockSessionService.getSessionState).toHaveBeenCalledWith('corp-1', 'user-1', 'sess-1');
-    expect(mockSettlement.shouldSettle).toHaveBeenCalledWith('2026-03-28T10:00:00.000Z');
-    expect(mockSettlement.settle).toHaveBeenCalledWith(
+    expect(mockSettlement.detectAndSettle).toHaveBeenCalledWith(
       'corp-1',
       'user-1',
       'sess-1',
-      expect.objectContaining({ lastSessionActiveAt: '2026-03-28T10:00:00.000Z' }),
-    );
-    expect(mockSessionService.storeActivity).toHaveBeenCalledWith(
-      'corp-1',
-      'user-1',
-      'sess-1',
-      expect.objectContaining({
-        lastSessionActiveAt: expect.any(String),
-      }),
+      null, // facts is null
     );
     expect(mockSessionService.saveLastCandidatePool).toHaveBeenCalledWith(
       'corp-1',
@@ -424,9 +406,8 @@ describe('MemoryLifecycleService', () => {
         }),
         steps: expect.arrayContaining([
           expect.objectContaining({ name: 'load_previous_state', status: 'success' }),
-          expect.objectContaining({ name: 'settlement', status: 'skipped' }),
+          expect.objectContaining({ name: 'settlement', status: 'success' }),
           expect.objectContaining({ name: 'save_candidate_pool', status: 'success' }),
-          expect.objectContaining({ name: 'store_activity', status: 'success' }),
           expect.objectContaining({ name: 'project_assistant_turn', status: 'success' }),
           expect.objectContaining({ name: 'extract_facts', status: 'success' }),
         ]),
@@ -476,7 +457,6 @@ describe('MemoryLifecycleService', () => {
     });
 
     expect(mockSessionService.getSessionState).not.toHaveBeenCalled();
-    expect(mockSessionService.storeActivity).not.toHaveBeenCalled();
     expect(mockSessionService.projectAssistantTurn).not.toHaveBeenCalled();
     expect(mockSessionService.extractAndSave).not.toHaveBeenCalled();
   });

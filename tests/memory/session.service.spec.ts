@@ -87,14 +87,12 @@ describe('SessionService', () => {
           lastCandidatePool: [],
           presentedJobs: [],
           currentFocusJob: null,
-          lastSessionActiveAt: '2026-03-20T00:00:00Z',
         },
       });
 
       const state = await service.getSessionState('corp1', 'user1', 'session1');
 
       expect(state.facts).toEqual(FALLBACK_EXTRACTION);
-      expect(state.lastSessionActiveAt).toBe('2026-03-20T00:00:00Z');
     });
 
     it('should ignore invalid persisted session state from Redis', async () => {
@@ -114,6 +112,27 @@ describe('SessionService', () => {
         currentFocusJob: null,
         invitedGroups: null,
       });
+    });
+
+    it('should silently strip unknown lastSessionActiveAt field from old Redis data (backward compat)', async () => {
+      // Old Redis entries (written before the refactor) may contain `lastSessionActiveAt`.
+      // Zod's z.object() strips unknown keys by default — this must NOT cause a parse error.
+      mockRedisStore.get.mockResolvedValue({
+        content: {
+          facts: FALLBACK_EXTRACTION,
+          lastCandidatePool: null,
+          presentedJobs: null,
+          currentFocusJob: null,
+          invitedGroups: null,
+          lastSessionActiveAt: '2026-04-01T10:00:00.000Z', // legacy field
+        },
+      });
+
+      const state = await service.getSessionState('corp1', 'user1', 'session1');
+
+      // Should parse successfully — legacy field stripped, known fields intact
+      expect(state.facts).toEqual(FALLBACK_EXTRACTION);
+      expect(state).not.toHaveProperty('lastSessionActiveAt');
     });
 
     it('should deepMerge with existing facts', async () => {
@@ -194,24 +213,6 @@ describe('SessionService', () => {
         86400,
         false,
       );
-    });
-
-    it('should return null when no activity timestamp exists', async () => {
-      mockRedisStore.get.mockResolvedValue(null);
-
-      const result = await service.getLastSessionActiveAt('corp1', 'user1', 'session1');
-
-      expect(result).toBeNull();
-    });
-
-    it('should return lastSessionActiveAt from state', async () => {
-      mockRedisStore.get.mockResolvedValue({
-        content: { lastSessionActiveAt: '2026-03-20T10:00:00Z' },
-      });
-
-      const result = await service.getLastSessionActiveAt('corp1', 'user1', 'session1');
-
-      expect(result).toBe('2026-03-20T10:00:00Z');
     });
   });
 
@@ -454,6 +455,145 @@ describe('SessionService', () => {
         expect.objectContaining({
           facts: expect.objectContaining({
             reasoning: '实体提取失败，使用空值降级',
+          }),
+        }),
+        86400,
+        false,
+      );
+    });
+
+    it('should still save high-confidence rule facts when LLM extraction fails', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockRejectedValue(new Error('LLM timeout'));
+
+      await service.extractAndSave('corp1', 'user1', 'sess1', [
+        { role: 'user', content: '我的电话是13800138000' },
+      ]);
+
+      expect(mockRedisStore.set).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          facts: expect.objectContaining({
+            interview_info: expect.objectContaining({
+              phone: '13800138000',
+            }),
+            reasoning: expect.stringContaining('规则模式匹配参考线索'),
+          }),
+        }),
+        86400,
+        false,
+      );
+    });
+
+    it('should let LLM output take precedence over conflicting rule facts', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured({
+          ...FALLBACK_EXTRACTION,
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            is_student: true,
+            education: '本科',
+          },
+          preferences: {
+            ...FALLBACK_EXTRACTION.preferences,
+            city: '上海',
+          },
+          reasoning: 'LLM 提取到本科和上海',
+        }),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'sess1', [
+        { role: 'user', content: '我是大三本科在读，我在苏州市，只周末上班' },
+      ]);
+
+      expect(mockRedisStore.set).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          facts: expect.objectContaining({
+            interview_info: expect.objectContaining({
+              // LLM 的 "本科" 优先于规则的 "本科在读"
+              education: '本科',
+            }),
+            preferences: expect.objectContaining({
+              // LLM 的 "上海" 优先于规则的 "苏州"
+              city: expect.objectContaining({ value: '上海' }),
+              // 规则兜底：LLM 未提取 schedule_constraint，规则补位
+              schedule_constraint: expect.objectContaining({
+                onlyWeekends: true,
+              }),
+            }),
+            reasoning: expect.stringContaining('规则模式匹配参考线索'),
+          }),
+        }),
+        86400,
+        false,
+      );
+    });
+
+    it('should backfill rule facts when LLM returns null for a field', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured({
+          ...FALLBACK_EXTRACTION,
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            name: '张三',
+          },
+          preferences: {
+            ...FALLBACK_EXTRACTION.preferences,
+          },
+          reasoning: 'LLM 只提取到姓名',
+        }),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'sess1', [
+        { role: 'user', content: '我叫张三，电话13800138000' },
+      ]);
+
+      expect(mockRedisStore.set).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          facts: expect.objectContaining({
+            interview_info: expect.objectContaining({
+              name: '张三',
+              phone: '13800138000',
+            }),
+          }),
+        }),
+        86400,
+        false,
+      );
+    });
+
+    it('should recover rule-extracted structured name after LLM nickname is sanitized', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      // LLM 从"我是阳光明媚"提取了昵称，sanitizer 会 drop 它
+      // 规则从"姓名：赵堤"提取了结构化真名，应该在 sanitize 后补位
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured({
+          ...FALLBACK_EXTRACTION,
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            name: '阳光明媚',
+          },
+          reasoning: 'LLM 提取到"阳光明媚"',
+        }),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'sess1', [
+        { role: 'user', content: '我是阳光明媚' },
+        { role: 'assistant', content: '你好' },
+        { role: 'user', content: '姓名：赵堤' },
+      ]);
+
+      expect(mockRedisStore.set).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          facts: expect.objectContaining({
+            interview_info: expect.objectContaining({
+              name: '赵堤',
+            }),
           }),
         }),
         86400,

@@ -12,7 +12,7 @@ import {
   classifySupplementLabel,
   SupplementClassification,
 } from '@tools/utils/supplement-label-classifier';
-import { isLikelyRealChineseName } from '@memory/facts/name-guard';
+import { isStrictRealChineseName } from '@memory/facts/name-guard';
 
 // Phase 1.A 拆分：辅助函数全部下沉到 duliday/precheck/* 子目录，0 逻辑改动。
 import {
@@ -247,7 +247,7 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
           // 真名可疑标记：knownFieldMap.姓名 已填，但不像真实姓名（可能是微信昵称
           // 或占位字符串）。
           //
-          // booking 工具已经不再做 isLikelyRealChineseName 二次校验（信任 precheck），
+          // booking 工具已经不再做 isStrictRealChineseName 二次校验（信任 precheck），
           // 所以这里必须把可疑姓名从 knownFieldMap 中剔除，让"姓名"自然落入 missingFields，
           // 模板里"姓名："会留空，Agent 必须补问真名后再走 booking。
           const knownName = knownFieldMap['姓名'];
@@ -260,9 +260,9 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
             Boolean(context.botUserId) &&
             normalizePolicyText(knownName) === normalizePolicyText(context.botUserId);
           const nameFieldLooksSuspicious =
-            Boolean(knownName) && (!isLikelyRealChineseName(knownName) || nameMatchesManager);
+            Boolean(knownName) && (!isStrictRealChineseName(knownName) || nameMatchesManager);
           const suspiciousNameValue = nameFieldLooksSuspicious ? knownName : undefined;
-          // 候选人已坚持"是真实姓名"信号——疑似少数民族/特殊姓名超出 isLikelyRealChineseName
+          // 候选人已坚持"是真实姓名"信号——疑似少数民族/特殊姓名超出 isStrictRealChineseName
           // 2-4 字汉字白名单。此时不再让 Agent 继续逼候选人改名，而是升级到 mustHandoff 由人工补录。
           const userInsistedRealName = nameFieldLooksSuspicious
             ? detectRealNameInsistence(context.messages)
@@ -383,7 +383,7 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
                   // mustHandoff=true 时 Agent 必须调 request_handoff 而非继续逼候选人改名
                   mustHandoff: userInsistedRealName || undefined,
                   reason: userInsistedRealName
-                    ? '候选人已坚持"是真实姓名"，且姓名超出 isLikelyRealChineseName 的 2-4 字汉字白名单，疑似少数民族/特殊姓名（如"布买日也木"）。严禁继续要求候选人改名；必须调 request_handoff(reasonCode="other", reason="疑似少数民族/特殊姓名 booking 校验拒绝，需人工补录") 转人工。'
+                    ? '候选人已坚持"是真实姓名"，且姓名超出 isStrictRealChineseName 的 2-4 字汉字白名单，疑似少数民族/特殊姓名（如"布买日也木"）。严禁继续要求候选人改名；必须调 request_handoff(reasonCode="other", reason="疑似少数民族/特殊姓名 booking 校验拒绝，需人工补录") 转人工。'
                     : nameMatchesManager
                       ? '当前已知姓名与本会话招募经理（botUserId）姓名相同，极可能是 fact-extraction 把"[引用 XXX：...]"前缀里的招募经理名误抽成了候选人姓名。本工具已把"姓名"放回 missingFields，请向候选人补问真实姓名后再调 booking。'
                       : '当前已知姓名不像真实中文姓名（可能是微信昵称/含 emoji/含字母数字/超过 4 字）。本工具已经把"姓名"放回 missingFields，请向候选人确认真实姓名后再调 booking。',

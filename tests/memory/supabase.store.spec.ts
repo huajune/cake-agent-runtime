@@ -16,21 +16,21 @@ describe('SupabaseStore', () => {
     limit: jest.fn().mockReturnThis(),
   };
   const mockSelect = jest.fn().mockReturnValue(mockEqChain);
-  const mockUpdate = jest.fn().mockReturnValue({ eq: jest.fn().mockResolvedValue({ error: null }) });
-  const mockInsert = jest.fn().mockResolvedValue({ error: null });
+  const mockUpsert = jest.fn().mockResolvedValue({ error: null });
   const mockDelete = jest.fn().mockReturnValue({
     eq: jest.fn().mockReturnValue({
       eq: jest.fn().mockResolvedValue({ error: null }),
     }),
   });
+  const mockRpc = jest.fn();
 
   const mockSupabaseClient = {
     from: jest.fn().mockReturnValue({
       select: mockSelect,
-      update: mockUpdate,
-      insert: mockInsert,
+      upsert: mockUpsert,
       delete: mockDelete,
     }),
+    rpc: mockRpc,
   };
 
   const mockSupabaseService = {
@@ -105,6 +105,164 @@ describe('SupabaseStore', () => {
       const result = await store.getSummaryData('corp1', 'user1');
 
       expect(result).toEqual({ ...summaryData, lastSettledMessageAt: null });
+    });
+  });
+
+  describe('upsertProfileWithMeta', () => {
+    it('should call RPC with profile, meta, and message_metadata', async () => {
+      mockRpc.mockResolvedValue({
+        data: { written_fields: ['name', 'phone'], skipped_fields: [] },
+        error: null,
+      });
+
+      const bookingMeta = { source: 'booking' as const, confidence: 'high' as const, writtenAt: '2026-05-22T10:00:00.000Z' };
+      await store.upsertProfileWithMeta(
+        'corp1',
+        'user1',
+        { name: '张三', phone: '13800138000' },
+        { name: bookingMeta, phone: bookingMeta },
+        { botId: 'bot-1' },
+      );
+
+      expect(mockRpc).toHaveBeenCalledWith('upsert_profile_with_confidence_guard', {
+        p_corp_id: 'corp1',
+        p_user_id: 'user1',
+        p_profile: { name: '张三', phone: '13800138000' },
+        p_meta: { name: bookingMeta, phone: bookingMeta },
+        p_message_metadata: { botId: 'bot-1' },
+      });
+    });
+
+    it('should invalidate Redis cache after successful RPC', async () => {
+      mockRpc.mockResolvedValue({
+        data: { written_fields: ['name'], skipped_fields: [] },
+        error: null,
+      });
+
+      const meta = { name: { source: 'booking' as const, confidence: 'high' as const, writtenAt: '2026-05-22T10:00:00.000Z' } };
+      await store.upsertProfileWithMeta('corp1', 'user1', { name: '张三' }, meta);
+
+      expect(mockRedis.del).toHaveBeenCalledWith('profile:corp1:user1');
+    });
+
+    it('should not call RPC when profile and meta are both empty', async () => {
+      await store.upsertProfileWithMeta('corp1', 'user1', {}, {});
+
+      expect(mockRpc).not.toHaveBeenCalled();
+    });
+
+    it('should filter null values from profile before calling RPC', async () => {
+      mockRpc.mockResolvedValue({
+        data: { written_fields: ['phone'], skipped_fields: [] },
+        error: null,
+      });
+
+      const meta = { phone: { source: 'booking' as const, confidence: 'high' as const, writtenAt: '2026-05-22T10:00:00.000Z' } };
+      await store.upsertProfileWithMeta('corp1', 'user1', { name: null, phone: '138' } as never, meta);
+
+      expect(mockRpc).toHaveBeenCalledWith(
+        'upsert_profile_with_confidence_guard',
+        expect.objectContaining({
+          p_profile: { phone: '138' },
+        }),
+      );
+    });
+
+    it('should handle RPC error gracefully without crashing', async () => {
+      mockRpc.mockResolvedValue({ data: null, error: { message: 'RPC not found' } });
+
+      const meta = { name: { source: 'booking' as const, confidence: 'high' as const, writtenAt: '2026-05-22T10:00:00.000Z' } };
+      await expect(
+        store.upsertProfileWithMeta('corp1', 'user1', { name: '张三' }, meta),
+      ).resolves.toBeUndefined();
+
+      expect(mockRedis.del).not.toHaveBeenCalled();
+    });
+
+    it('should pass null for message_metadata when not provided', async () => {
+      mockRpc.mockResolvedValue({
+        data: { written_fields: ['name'], skipped_fields: [] },
+        error: null,
+      });
+
+      const meta = { name: { source: 'booking' as const, confidence: 'high' as const, writtenAt: '2026-05-22T10:00:00.000Z' } };
+      await store.upsertProfileWithMeta('corp1', 'user1', { name: '张三' }, meta);
+
+      expect(mockRpc).toHaveBeenCalledWith(
+        'upsert_profile_with_confidence_guard',
+        expect.objectContaining({ p_message_metadata: null }),
+      );
+    });
+
+    it('should fill missing field meta with enrichment medium default', async () => {
+      mockRpc.mockResolvedValue({
+        data: { written_fields: ['name'], skipped_fields: [] },
+        error: null,
+      });
+
+      await store.upsertProfileWithMeta('corp1', 'user1', { name: '张三' }, {});
+
+      expect(mockRpc).toHaveBeenCalledWith(
+        'upsert_profile_with_confidence_guard',
+        expect.objectContaining({
+          p_meta: {
+            name: expect.objectContaining({ source: 'enrichment', confidence: 'medium' }),
+          },
+        }),
+      );
+    });
+
+    it('should delegate confidence guard to atomic DB RPC, not app-level read-then-write', async () => {
+      // 回归场景：settlement 先读（无 high）→ booking 写 high → settlement 后写 medium
+      // 应用层 read-then-write 无法防止此交错。验证走 RPC 而非 from().upsert()。
+      mockRpc.mockResolvedValue({
+        data: { written_fields: ['education'], skipped_fields: ['name', 'phone', 'age', 'gender'] },
+        error: null,
+      });
+
+      const extractionMeta = { source: 'extraction' as const, confidence: 'medium' as const, writtenAt: '2026-05-22T10:00:00.000Z' };
+      await store.upsertProfileWithMeta(
+        'corp1',
+        'user1',
+        { name: '李四', phone: '139', age: '25', gender: '女', education: '本科' },
+        {
+          name: extractionMeta,
+          phone: extractionMeta,
+          age: extractionMeta,
+          gender: extractionMeta,
+          education: extractionMeta,
+        },
+      );
+
+      // 关键断言：走 RPC（原子），而非 from().upsert()（非原子）
+      expect(mockRpc).toHaveBeenCalledTimes(1);
+      expect(mockRpc).toHaveBeenCalledWith(
+        'upsert_profile_with_confidence_guard',
+        expect.objectContaining({ p_corp_id: 'corp1' }),
+      );
+      expect(mockUpsert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('set (v1 compat)', () => {
+    it('should delegate profile writes to upsertProfileWithMeta', async () => {
+      mockRpc.mockResolvedValue({
+        data: { written_fields: ['name'], skipped_fields: [] },
+        error: null,
+      });
+
+      await store.set('profile:corp1:user1', { name: '张三' });
+
+      expect(mockRpc).toHaveBeenCalledWith(
+        'upsert_profile_with_confidence_guard',
+        expect.objectContaining({
+          p_profile: { name: '张三' },
+          p_meta: {
+            name: expect.objectContaining({ source: 'enrichment', confidence: 'medium' }),
+          },
+        }),
+      );
+      expect(mockUpsert).not.toHaveBeenCalled();
     });
   });
 

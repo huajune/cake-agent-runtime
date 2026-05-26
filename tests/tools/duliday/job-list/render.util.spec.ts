@@ -39,6 +39,7 @@ describe('job-list render util', () => {
           {
             storeName: '静安寺店',
             jobId: 1,
+            jobName: '餐饮',
             distanceKm: 2.3,
             wageRange: '24-29 元/时',
             shiftSummary: '11:00-15:00',
@@ -48,6 +49,7 @@ describe('job-list render util', () => {
           {
             storeName: '日月光店',
             jobId: 2,
+            jobName: '餐饮',
             distanceKm: 5.1,
             wageRange: '24-29 元/时',
             shiftSummary: '11:00-15:00',

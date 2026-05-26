@@ -22,7 +22,6 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { composeShiftTimeText } from '@tools/utils/format-shift-time.util';
 import { hasValue } from '@tools/duliday/job-list/helpers.util';
 import { normalizeStoreNameForAgent } from '@tools/duliday/job-list/sanitize.util';
 import {
@@ -51,14 +50,29 @@ function buildAddress(job: any): string {
 }
 
 function buildShiftPart(workTime: unknown): string {
-  const shift = composeShiftTimeText(workTime);
-  if (!shift) return '';
-  const week = (workTime as any)?.weekWorkTime ?? {};
-  const dayParts: string[] = [];
-  if (hasValue(week.perWeekWorkDays)) dayParts.push(`每周 ${week.perWeekWorkDays} 天`);
-  else if (hasValue(week.perWeekNeedWorkDays)) dayParts.push(`每周 ${week.perWeekNeedWorkDays} 天`);
-  const dayText = dayParts.join('');
-  return dayText ? `${shift}（${dayText}）` : shift;
+  const wt = workTime as any;
+  if (!wt) return '';
+  const parts: string[] = [];
+
+  // 时间段：直接读 fixedScheduleList，不做计算
+  const slots = wt?.dailyShiftSchedule?.fixedScheduleList;
+  if (Array.isArray(slots) && slots.length > 0) {
+    const ranges = slots
+      .filter((s: any) => hasValue(s?.fixedShiftStartTime) && hasValue(s?.fixedShiftEndTime))
+      .map((s: any) => `${s.fixedShiftStartTime}-${s.fixedShiftEndTime}`);
+    if (ranges.length > 0) parts.push(ranges.join(' / '));
+  }
+
+  // 每日最少工时（有则展示，不推断）
+  const dayMin = wt?.dayWorkTime?.perDayMinWorkHours;
+  if (hasValue(dayMin)) parts.push(`每日至少 ${dayMin} 小时`);
+
+  // 每周天数
+  const week = wt?.weekWorkTime ?? {};
+  if (hasValue(week.perWeekWorkDays)) parts.push(`每周 ${week.perWeekWorkDays} 天`);
+  else if (hasValue(week.perWeekNeedWorkDays)) parts.push(`每周 ${week.perWeekNeedWorkDays} 天`);
+
+  return parts.join('，');
 }
 
 function buildSalaryPart(job: any): string {

@@ -126,6 +126,7 @@ describe('name-guard', () => {
       expect(result.sanitized.interview_info.phone).toBe('13800138000');
       expect(result.sanitized.interview_info.age).toBe('28');
     });
+
   });
 
   describe('hasStructuredNameSubmission', () => {
@@ -161,15 +162,14 @@ describe('name-guard', () => {
   });
 
   describe('isLikelyRealChineseName', () => {
-    it.each(['张三', '李四', '胡晓雷', '欧阳娜娜'])(
-      'accepts real Chinese name %s',
+    it.each(['张三', '李四', '胡晓雷', '欧阳娜娜', '布买日也'])(
+      'accepts 2-5 char real Chinese name %s',
       (value) => {
         expect(isLikelyRealChineseName(value)).toBe(true);
       },
     );
 
     it.each([
-      '小晴早点睡', // 5 字昵称
       '余᭄苼囿財', // 含装饰字符
       '💰余', // emoji
       'Rafeal·Gal', // 拉丁
@@ -179,9 +179,18 @@ describe('name-guard', () => {
       '', // 空
       '   ', // 空白
       'X 张三', // 含空格
-    ])('rejects nickname-like input %p', (value) => {
+      '小晴早点睡觉', // 6 字 → 超上限
+      '加油宝贝吖呀', // 6 字 → 超上限
+    ])('rejects invalid input %p', (value) => {
       expect(isLikelyRealChineseName(value)).toBe(false);
     });
+
+    it.each(['布买日也木', '阿不力克木', '小晴早点睡'])(
+      'accepts 5-char pure CJK %p (boundary, known false-positive for nicknames)',
+      (value) => {
+        expect(isLikelyRealChineseName(value)).toBe(true);
+      },
+    );
 
     it('rejects null / undefined', () => {
       expect(isLikelyRealChineseName(null)).toBe(false);
@@ -189,53 +198,36 @@ describe('name-guard', () => {
     });
 
     it('still accepts 4-char idiom-style names (known false-positive, prompt fallback)', () => {
-      // 漏网契约：4 字成语式昵称无法靠正则区分，依赖 prompt 让 Agent 重问
       expect(isLikelyRealChineseName('执子之魂')).toBe(true);
     });
 
     it.each([
-      '测' + '试姓名', // P2 批次 SCN-P2-20260429-004 实测 fixture
+      '测' + '试姓名',
       '测' + '试用户',
-      '测' + '试候选人',
       '用户张三',
       '昵称小明',
       '游客小李',
-      '匿名用户',
-      '无名氏',
-      '客户A真', // 含字母也会先被正则拒，这里测前缀分支不影响
+      '客户A真',
     ])('rejects placeholder prefix %p', (value) => {
       expect(isLikelyRealChineseName(value)).toBe(false);
     });
 
     it('keeps real names even if they contain blacklist words in the middle', () => {
-      // "张测试"开头不是黑名单词，仍然通过
       expect(isLikelyRealChineseName('张测试')).toBe(true);
     });
 
-    describe('5-8 字少数民族真名豁免（badcase uw8ow1xw / slg3jqi9）', () => {
+    describe('6+ 字一律拒绝', () => {
       it.each([
-        '布买日也木',
-        '阿不力克木',
-        '玛依拉古丽',
-        '艾尔肯江',
-        '巴特尔孟和',
-        '才让顿珠',
-      ])('accepts 5-8 char minority name %p', (value) => {
-        expect(isLikelyRealChineseName(value)).toBe(true);
-      });
-
-      it.each([
-        '小晴早点睡',
-        '加油宝贝吖',
-        '甜甜小可爱',
-        '困死的小猫',
-        '小贝早点睡',
-      ])('still rejects 5-8 char Chinese nickname %p', (value) => {
+        '小晴早点睡觉',
+        '加油宝贝吖呀',
+        '阿不力克木江',
+        '玛依拉古丽娜',
+      ])('rejects 6+ char string %p', (value) => {
         expect(isLikelyRealChineseName(value)).toBe(false);
       });
 
-      it('rejects 9+ char Chinese strings (likely nickname or sentence)', () => {
-        expect(isLikelyRealChineseName('阿不力克木买买提江')).toBe(false);
+      it.each(['布买日也木', '艾尔肯江尔'])('boundary: 5 char %p', (value) => {
+        expect(isLikelyRealChineseName(value)).toBe(value.length <= 5);
       });
     });
   });

@@ -91,8 +91,10 @@ export interface TodayUser {
 
 // ==================== 聚合数据 ====================
 
+export type DashboardTimeRange = 'today' | 'week' | 'month' | 'twoMonths' | 'threeMonths';
+
 export interface DashboardData {
-  timeRange: 'today' | 'week' | 'month';
+  timeRange: DashboardTimeRange;
   overview: Overview;
   overviewDelta: OverviewDelta;
   queue: QueueInfo;

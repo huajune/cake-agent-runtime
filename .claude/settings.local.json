@@ -452,7 +452,10 @@
       "Bash(git -C . diff --stat feat/add-panpan-xiaoyang-receivers origin/develop -- src/tools/ src/notification/ src/channels/wecom/message/application/)",
       "Bash(md5)",
       "mcp__github__list_pull_requests",
-      "mcp__github__get_pull_request_files"
+      "mcp__github__get_pull_request_files",
+      "Bash(git -C /Users/jiezhu/workSpace/DuLiDay/cake-agent-runtime diff develop..feat/memory-refactor -- supabase/migrations/)",
+      "Bash(bash /tmp/test-name-extraction.sh)",
+      "Bash(bash /tmp/run-15-cases.sh)"
     ],
     "deny": [
       "Bash(git restore:*)",

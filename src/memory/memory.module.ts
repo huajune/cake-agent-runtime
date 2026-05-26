@@ -38,6 +38,6 @@ import { MemoryLifecycleService } from './services/memory-lifecycle.service';
     MemoryLifecycleService,
     MemoryService,
   ],
-  exports: [MemoryConfig, MemoryService, SessionService],
+  exports: [MemoryConfig, MemoryService, SessionService, LongTermService],
 })
 export class MemoryModule {}

@@ -62,7 +62,7 @@ export function getRecentUserMessages(messages: unknown[], limit = 3): string[] 
  * 候选人坚持"姓名就是真实姓名"的信号。
  *
  * 历史 badcase slg3jqi9：候选人本名"布买日也木"（少数民族 5 字真名），被
- * isLikelyRealChineseName 的 2-4 字汉字白名单一律拒；候选人回复"这个就是真实姓名"
+ * isStrictRealChineseName 的 2-4 字汉字白名单一律拒；候选人回复"这个就是真实姓名"
  * 坚持后，Agent 仍按 nameFieldGuard 反复要求改名，最终候选人无奈给"小布"小名才报上。
  *
  * 出现此信号时，nameFieldGuard 应升级到"必须转人工"模式，由招募经理人工补录长姓名。

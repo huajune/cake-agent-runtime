@@ -23,6 +23,7 @@ import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
 import { BookingService } from '@biz/message/services/booking.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
+import { LongTermService } from '@memory/services/long-term.service';
 import { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import { API_BOOKING_REQUIRED_PAYLOAD_FIELDS } from '@tools/duliday/booking/job-booking.contract';
 import { buildCustomerLabelList } from '@tools/duliday/booking/interview-booking-customer-label.builder';
@@ -223,6 +224,7 @@ export function buildInterviewBookingTool(
   userHostingService: UserHostingService,
   recruitmentCaseService: RecruitmentCaseService,
   bookingService: BookingService,
+  longTermService: LongTermService,
 ): ToolBuilder {
   return (context) => {
     return tool({
@@ -617,6 +619,21 @@ export function buildInterviewBookingTool(
               typeof resultRecord.booking_id === 'string' && resultRecord.booking_id.trim()
                 ? resultRecord.booking_id.trim()
                 : null;
+
+            // Path A: 预约成功 → 将高置信度候选人信息写入长期记忆 Profile。
+            // 报名数据是候选人自主填写并经 precheck 校验的，是所有来源中置信度最高的。
+            void longTermService
+              .writeFromBooking(context.corpId, context.userId, {
+                name,
+                phone,
+                age,
+                gender: getSpongeGenderLabelById(genderId) ?? String(genderId),
+              })
+              .catch((err: unknown) => {
+                logger.warn(
+                  `[booking] writeFromBooking 失败，不影响主流程: ${err instanceof Error ? err.message : String(err)}`,
+                );
+              });
 
             recordBookingCountAsync(bookingService, context, {
               brandName: resolvedBrandName,

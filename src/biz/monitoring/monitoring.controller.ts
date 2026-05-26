@@ -24,7 +24,7 @@ export class AnalyticsController {
 
   /**
    * 获取 Dashboard 概览数据
-   * GET /analytics/dashboard/overview?range=today|week|month
+   * GET /analytics/dashboard/overview?range=today|week|month|twoMonths|threeMonths
    */
   @Get('dashboard/overview')
   async getDashboardOverview(@Query('range') range?: TimeRange) {
@@ -45,7 +45,7 @@ export class AnalyticsController {
 
   /**
    * 获取趋势数据
-   * GET /analytics/stats/trends?range=today|week|month
+   * GET /analytics/stats/trends?range=today|week|month|twoMonths|threeMonths
    */
   @Get('stats/trends')
   async getTrends(@Query('range') range?: TimeRange) {
@@ -77,11 +77,13 @@ export class AnalyticsController {
 
   /**
    * 获取咨询用户趋势数据
-   * GET /analytics/user-trend
+   * GET /analytics/user-trend?days=30|90|180
    */
   @Get('user-trend')
-  async getUserTrend() {
-    return this.queryService.getUserTrend();
+  async getUserTrend(@Query('days') days?: string) {
+    const parsedDays = days ? Number.parseInt(days, 10) : undefined;
+    const trendDays = Number.isFinite(parsedDays) ? parsedDays : undefined;
+    return this.queryService.getUserTrend(trendDays);
   }
 
   /**
@@ -144,7 +146,7 @@ export class MonitoringController {
   ) {}
 
   /**
-   * GET /monitoring/dashboard?range=today|week|month
+   * GET /monitoring/dashboard?range=today|week|month|twoMonths|threeMonths
    */
   @Get('dashboard')
   async getMonitoringDashboard(@Query('range') range?: TimeRange) {

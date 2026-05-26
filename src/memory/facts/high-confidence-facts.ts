@@ -12,13 +12,16 @@ import {
   DISTRICT_TO_CITY,
   LOCATION_TO_CITY,
   MUNICIPALITIES,
+  NATIONAL_CITY_SUFFIX_TO_CITY,
   SUPPORTED_CITY_PREFIXES,
   matchInUncoveredSegments,
-  normalizeCityName,
   normalizeDistrictForLookup,
   scanWhitelistKeysByLongest,
   type WhitelistScanResult,
 } from './geo-mappings';
+import { isLikelyRealChineseName } from './name-guard';
+
+// ── 地理常量 ───────────────────────────────────────────────────────────────
 
 /**
  * 城市识别词典：直辖市 + 已支持城市前缀去重后的精确匹配集合。
@@ -34,51 +37,15 @@ const CITY_DICT: Record<string, true> = Object.fromEntries(
 /** 正则兜底：在白名单未覆盖区间识别"白名单外的 raw district"（不补 city）。 */
 const RAW_DISTRICT_PATTERN = /([一-龥]{2,10}(?:区|县|镇|街道|新区|开发区))/g;
 
-// 平台所有岗位本身就是兼职，"兼职"/"全职"/"临时工" 不是筛选维度，不纳入高置信提取。
-// 仅提取四个细分用工形式：兼职+、小时工、寒假工、暑假工。
-const LABOR_FORM_KEYWORDS = ['兼职+', '小时工', '寒假工', '暑假工'] as const;
-const POSITION_KEYWORDS = [
-  '服务员',
-  '收银员',
-  '店员',
-  '营业员',
-  '导购',
-  '理货员',
-  '分拣员',
-  '分拣',
-  '打包',
-  '配送员',
-  '骑手',
-  '咖啡师',
-  '厨工',
-  '洗碗工',
-  '保洁',
-  '仓管',
-] as const;
-const EDUCATION_KEYWORDS = [
-  '小学',
-  '初中',
-  '高中',
-  '中专',
-  '大专',
-  '本科',
-  '硕士',
-  '博士',
-] as const;
-const SCHEDULE_KEYWORDS = [
-  '周末',
-  '工作日',
-  '早班',
-  '晚班',
-  '夜班',
-  '白班',
-  '全天',
-  '上午',
-  '下午',
-  '周一到周五',
-  '周一到周日',
-] as const;
-const GENERIC_QUERY_PATTERNS = [
+// ── 品牌匹配常量 ───────────────────────────────────────────────────────────
+
+/**
+ * 品牌匹配降噪词表：仅用于 buildExactMatchTokens 内的 stripBrandNoisePatterns，
+ * 目的是从候选人消息中剥离求职意图词和语气词，留下纯品牌名。
+ * 注意：与 LABOR_FORM_KEYWORDS 有交集，但不冲突——labor_form 提取跑在原始消息上，
+ * 此清洗只在品牌匹配通道内生效。
+ */
+const BRAND_NOISE_PATTERNS = [
   '我想找',
   '想找',
   '我想看',
@@ -115,7 +82,77 @@ const GENERIC_QUERY_PATTERNS = [
   '哦',
   '啊',
 ] as const;
-const CONJUNCTION_SPLIT_REGEX = /(和|跟|或|或者|and|or)/;
+const CONJUNCTION_SPLIT_REGEX = /(?:或者|和|跟|或|and|or)/;
+
+// ── 个人信息关键词 ─────────────────────────────────────────────────────────
+
+const EDUCATION_KEYWORDS = [
+  '小学',
+  '初中',
+  '高中',
+  '中专',
+  '大专',
+  '本科',
+  '硕士',
+  '博士',
+] as const;
+
+// ── 岗位偏好关键词 ─────────────────────────────────────────────────────────
+
+// 平台所有岗位本身就是兼职，"兼职"/"全职"/"临时工" 不是筛选维度，不纳入高置信提取。
+// 仅提取四个细分用工形式：兼职+、小时工、寒假工、暑假工。
+const LABOR_FORM_KEYWORDS = ['兼职+', '小时工', '寒假工', '暑假工'] as const;
+const POSITION_KEYWORDS = [
+  '服务员',
+  '收银员',
+  '店员',
+  '营业员',
+  '导购',
+  '理货员',
+  '分拣员',
+  '分拣',
+  '打包',
+  '配送员',
+  '骑手',
+  '咖啡师',
+  '厨工',
+  '洗碗工',
+  '保洁',
+  '仓管',
+] as const;
+const SCHEDULE_KEYWORDS = [
+  '周末',
+  '工作日',
+  '早班',
+  '晚班',
+  '夜班',
+  '白班',
+  '全天',
+  '上午',
+  '下午',
+  '周一到周五',
+  '周一到周日',
+] as const;
+
+// ── 班次共享模式 ───────────────────────────────────────────────────────────
+
+const WORK_REST_PATTERN = /做一休一|上一休一|干一休一|做一天休一天|上一天休一天/;
+const DO_REST_PATTERN = /做\s*([一二两三四五六七1-7])\s*休\s*([一二两三四五六七1-7])/;
+const REJECT_NIGHT_PATTERN =
+  /(?:不想上|不能上|不接受|不愿意上|不要|不做|不上).{0,3}夜班|夜班.{0,4}(?:不上|不要|不做|不接受)/;
+const ONLY_SHIFT_TARGETS = ['早班', '白班', '晚班', '夜班', '周末', '工作日'] as const;
+type OnlyShiftTarget = (typeof ONLY_SHIFT_TARGETS)[number];
+const WEEKLY_DAY_PATTERN = /(?:每周|一周)([^，。！？；;]{0,15}?)([一二两三四五六七0-7])\s*天/;
+const CHINESE_NUM_MAP: Record<string, number> = {
+  一: 1,
+  二: 2,
+  两: 2,
+  三: 3,
+  四: 4,
+  五: 5,
+  六: 6,
+  七: 7,
+};
 
 export interface BrandAliasHint {
   brandName: string;
@@ -135,11 +172,28 @@ interface LocationSignals {
   location: string[];
 }
 
+/**
+ * 剥离引用消息块，只保留候选人自己写的内容。
+ *
+ * 引用格式：`[引用 XXX：<被引用内容>]` 或行首 `引用 XXX：<内容>`。
+ * 被引用内容通常是招募经理发的岗位描述，其中的年龄/班次/薪资等数值
+ * 属于岗位要求，不是候选人自陈——必须在规则提取前剥离，否则所有
+ * extract* 函数都会误提取引用块内的实体。
+ */
+function stripQuotedBlocks(message: string): string {
+  return message
+    .replace(/\[引用[^\]]*\]/g, '')
+    .replace(/^引用\s+[^：]+：.*$/gm, '')
+    .trim();
+}
+
 export function extractHighConfidenceFacts(
   userMessages: string[],
   brandData: BrandItem[],
 ): EntityExtractionResult | null {
-  const normalizedMessages = userMessages.map((message) => message.trim()).filter(Boolean);
+  const normalizedMessages = userMessages
+    .map((message) => stripQuotedBlocks(message.trim()))
+    .filter(Boolean);
   if (normalizedMessages.length === 0) return null;
 
   const facts = cloneFallbackExtraction();
@@ -157,54 +211,61 @@ export function extractHighConfidenceFacts(
   }
 
   for (const message of normalizedMessages) {
+    const structuredName = extractStructuredName(message);
+    if (structuredName && !facts.interview_info.name) {
+      facts.interview_info.name = structuredName;
+      reasons.push(`结构化姓名识别：${structuredName}（来源：收资表单键值对）`);
+    }
+
     const phone = extractPhone(message);
-    if (phone) {
+    if (phone && !facts.interview_info.phone) {
       facts.interview_info.phone = phone;
       reasons.push(`手机号识别：${phone}`);
     }
 
     const age = extractAge(message);
-    if (age) {
+    if (age && !facts.interview_info.age) {
       facts.interview_info.age = age;
       reasons.push(`年龄识别：${age}`);
     }
 
     const gender = extractGender(message);
-    if (gender) {
+    if (gender && !facts.interview_info.gender) {
       facts.interview_info.gender = gender;
+      facts.interview_info.gender_source = 'candidate';
       reasons.push(`性别识别：${gender}`);
     }
 
     const studentInfo = extractStudentInfo(message);
-    if (studentInfo.isStudent !== null) {
+    if (studentInfo.isStudent !== null && facts.interview_info.is_student === null) {
       facts.interview_info.is_student = studentInfo.isStudent;
       reasons.push(`学生身份识别：${studentInfo.isStudent ? '是' : '否'}`);
     }
-    if (studentInfo.education) {
+    if (studentInfo.education && !facts.interview_info.education) {
       facts.interview_info.education = studentInfo.education;
       reasons.push(`学历识别：${studentInfo.education}`);
-    }
-
-    const explicitEducation = extractEducation(message);
-    if (explicitEducation) {
-      facts.interview_info.education = explicitEducation;
-      reasons.push(`学历识别：${explicitEducation}`);
+    } else if (!studentInfo.education) {
+      const explicitEducation = extractEducation(message);
+      if (explicitEducation && !facts.interview_info.education) {
+        facts.interview_info.education = explicitEducation;
+        reasons.push(`学历识别：${explicitEducation}`);
+      }
     }
 
     const healthCertificate = extractHealthCertificate(message);
-    if (healthCertificate) {
+    if (healthCertificate && !facts.interview_info.has_health_certificate) {
       facts.interview_info.has_health_certificate = healthCertificate;
       reasons.push(`健康证识别：${healthCertificate}`);
     }
 
     const laborForm = extractLaborForm(message);
-    if (laborForm) {
+    if (laborForm && !facts.preferences.labor_form) {
       facts.preferences.labor_form = laborForm;
       reasons.push(`用工形式识别：${laborForm}`);
     }
 
     const salary = extractSalary(message);
-    if (salary) {
+    if (salary && !facts.preferences.salary) {
       facts.preferences.salary = salary;
       reasons.push(`薪资识别：${salary}`);
     }
@@ -218,7 +279,7 @@ export function extractHighConfidenceFacts(
     }
 
     const schedule = extractSchedule(message);
-    if (schedule) {
+    if (schedule && !facts.preferences.schedule) {
       facts.preferences.schedule = schedule;
       reasons.push(`班次识别：${schedule}`);
     }
@@ -373,6 +434,7 @@ export function mergeSupplementalGenderFact(
     : cloneFallbackExtraction();
 
   base.interview_info.gender = gender;
+  base.interview_info.gender_source = 'system';
   const suffix = `${sourceLabel}补充性别：${gender}`;
   base.reasoning = [base.reasoning?.trim(), suffix].filter(Boolean).join('；');
 
@@ -430,11 +492,37 @@ function hasAnyValue(record: InterviewInfo | Preferences): boolean {
   });
 }
 
+/**
+ * 结构化收资表单中的"姓名：XX"键值对提取。
+ *
+ * 与 name-guard.ts 的 hasStructuredNameSubmission 共用同一匹配逻辑，
+ * 但定位不同：这里是"正向提取"（上游锚定），name-guard 是"事后救援"（下游补漏）。
+ * 提取后经 isLikelyRealChineseName 校验，拦截昵称/乱码等非真名。
+ */
+const STRUCTURED_NAME_REGEX =
+  /(?:^|[\n\r])\s*(?:姓名|名字)\s*[：:\s]\s*([^\n\r。，,！!？?]+?)(?=[\n\r]|$)/u;
+
+export function extractStructuredName(message: string): string | null {
+  const match = STRUCTURED_NAME_REGEX.exec(message);
+  if (!match?.[1]) return null;
+  const candidate = match[1].trim();
+  if (!candidate) return null;
+  return isLikelyRealChineseName(candidate) ? candidate : null;
+}
+
 function extractPhone(message: string): string | null {
-  return message.match(/1[3-9]\d{9}/)?.[0] ?? null;
+  return message.match(/(?<!\d)1[3-9]\d{9}(?!\d)/)?.[0] ?? null;
 }
 
 function extractAge(message: string): string | null {
+  // 结构化表单优先：「年龄：22」可信度最高，即使同一消息含要求文本也应提取
+  const structuredAge = message.match(/(?:^|[\n\r])\s*年龄\s*[：:\s]\s*(\d{2})(?=\D|$)/u);
+  if (structuredAge) return structuredAge[1];
+
+  // 排除岗位要求/范围描述（仅对非结构化提取生效）
+  if (/(?:要求|需要|限|须).{0,6}\d{2}\s*岁/.test(message)) return null;
+  if (/\d{2}\s*[-~至到]\s*\d{2}\s*岁/.test(message)) return null;
+
   const directAge = message.match(/(\d{2})岁/);
   if (directAge) return directAge[1];
 
@@ -531,12 +619,21 @@ function extractSalary(message: string): string | null {
     /(时薪\s*\d+(?:\.\d+)?(?:\s*[-~到]\s*\d+(?:\.\d+)?)?)/,
     /(\d+(?:\.\d+)?\s*元\s*\/\s*(?:时|小时|天|月))/,
     /((?:月薪|日薪)\s*\d+(?:\s*[-~到]\s*\d+)?)/,
-    /(\d{3,5}\s*[-~到]\s*\d{3,5})/,
   ];
 
   for (const pattern of patterns) {
     const match = message.match(pattern);
     if (match?.[1]) return match[1].replace(/\s+/g, '');
+  }
+
+  const rangeMatch = message.match(
+    /((?:薪资|工资|月薪|时薪|日薪|收入|待遇|报酬)?\s*\d{3,5}\s*[-~到]\s*\d{3,5}\s*(?:(?:元|块)(?:\s*\/\s*(?:月|天|时|小时))?|\/\s*(?:月|天|时|小时))?)/,
+  );
+  if (rangeMatch?.[1]) {
+    const normalized = rangeMatch[1].replace(/\s+/g, '');
+    const hasSemanticPrefix = /^(?:薪资|工资|月薪|时薪|日薪|收入|待遇|报酬)/.test(normalized);
+    const hasUnitSuffix = /(?:元|块|\/(?:月|天|时|小时))$/.test(normalized);
+    if (hasSemanticPrefix || hasUnitSuffix) return normalized;
   }
   return null;
 }
@@ -555,23 +652,14 @@ function extractSchedule(message: string): string | null {
   const weeklyDayConstraint = extractWeeklyDayConstraint(message);
   if (weeklyDayConstraint) matched.push(weeklyDayConstraint);
 
-  if (/做一休一|上一休一|干一休一|做一天休一天|上一天休一天/.test(message)) {
-    matched.push('做一休一');
-  }
+  const workRestSchedule = matchWorkRestSchedule(message);
+  if (workRestSchedule) matched.push(workRestSchedule);
 
-  if (
-    /(?:不想上|不能上|不接受|不愿意上|不要|不做|不上).{0,3}夜班|夜班.{0,4}(?:不上|不要|不做|不接受)/.test(
-      message,
-    )
-  ) {
+  if (REJECT_NIGHT_PATTERN.test(message)) {
     matched.push('不上夜班');
   }
 
-  for (const shift of ['早班', '白班', '晚班', '夜班', '周末', '工作日'] as const) {
-    if (new RegExp(`只(?:能|想|考虑)?(?:上|做|干)?${shift}`).test(message)) {
-      matched.push(`只${shift}`);
-    }
-  }
+  matched.push(...matchOnlyShifts(message));
 
   const timeRange = extractTimeRange(message);
   if (timeRange) matched.push(timeRange);
@@ -588,29 +676,63 @@ function extractSchedule(message: string): string | null {
 }
 
 function extractWeeklyDayConstraint(message: string): string | null {
-  const match = message.match(/(?:每周|一周)[^，。！？；;]{0,12}?([一二两三四五六七0-7])\s*天/);
-  if (!match?.[1]) return null;
+  const signal = matchWeeklyDayConstraint(message);
+  if (!signal) return null;
 
-  const phrase = match[0];
-  const qualifier = /最多|至多|只能|只|就/.test(phrase) ? '最多' : '';
-  return `每周${qualifier}${match[1]}天`;
+  const qualifier = signal.isUpperBound ? '最多' : '';
+  return `每周${qualifier}${signal.token}天`;
 }
-
-const CHINESE_NUM_MAP: Record<string, number> = {
-  一: 1,
-  二: 2,
-  两: 2,
-  三: 3,
-  四: 4,
-  五: 5,
-  六: 6,
-  七: 7,
-};
 
 function parseChineseOrArabicNumber(token: string): number | null {
   if (CHINESE_NUM_MAP[token] != null) return CHINESE_NUM_MAP[token];
   const num = parseInt(token, 10);
   return Number.isFinite(num) && num >= 1 && num <= 7 ? num : null;
+}
+
+function matchOnlyShiftTargets(message: string): OnlyShiftTarget[] {
+  return ONLY_SHIFT_TARGETS.filter((shift) =>
+    new RegExp(`只(?:能|想|考虑)?[^，。！？；;]{0,8}?${shift}`).test(message),
+  );
+}
+
+function matchOnlyShifts(message: string): string[] {
+  return matchOnlyShiftTargets(message).map((shift) => `只${shift}`);
+}
+
+function matchWorkRestDays(message: string): number | null {
+  return matchWorkRestSignal(message)?.days ?? null;
+}
+
+function matchWorkRestSchedule(message: string): string | null {
+  return matchWorkRestSignal(message)?.label ?? null;
+}
+
+function matchWorkRestSignal(message: string): { days: number; label: string } | null {
+  if (WORK_REST_PATTERN.test(message)) return { days: 1, label: '做一休一' };
+
+  const doRestMatch = message.match(DO_REST_PATTERN);
+  if (!doRestMatch?.[1]) return null;
+
+  const days = parseChineseOrArabicNumber(doRestMatch[1]);
+  if (days === null) return null;
+
+  return { days, label: doRestMatch[0].replace(/\s+/g, '') };
+}
+
+function matchWeeklyDayConstraint(message: string): {
+  token: string;
+  value: number | null;
+  isUpperBound: boolean;
+} | null {
+  const match = message.match(WEEKLY_DAY_PATTERN);
+  if (!match?.[2]) return null;
+
+  const qualifierFragment = match[1] ?? '';
+  return {
+    token: match[2],
+    value: parseChineseOrArabicNumber(match[2]),
+    isUpperBound: /最多|至多|只能|只|就/.test(qualifierFragment),
+  };
 }
 
 /**
@@ -635,35 +757,21 @@ function extractScheduleConstraintStructured(message: string): {
     maxDaysPerWeek: null as number | null,
   };
 
-  // 只 + 任意 ≤ 8 字符 + 周末/晚班/夜班/早班，允许"只能周末做晚班"这种复合表达
-  if (/只(?:能|想|考虑)?[^，。！？；;]{0,8}?周末/.test(message)) result.onlyWeekends = true;
-  if (/只(?:能|想|考虑)?[^，。！？；;]{0,8}?(?:晚|夜)班/.test(message)) result.onlyEvenings = true;
-  if (/只(?:能|想|考虑)?[^，。！？；;]{0,8}?早班/.test(message)) result.onlyMornings = true;
-
-  // 做一休一/上一休一 → maxDaysPerWeek = 1
-  if (/做一休一|上一休一|干一休一|做一天休一天|上一天休一天/.test(message)) {
-    result.maxDaysPerWeek = 1;
+  const onlyShiftTargets = matchOnlyShiftTargets(message);
+  if (onlyShiftTargets.includes('周末')) result.onlyWeekends = true;
+  if (onlyShiftTargets.some((shift) => shift === '晚班' || shift === '夜班')) {
+    result.onlyEvenings = true;
   }
+  if (onlyShiftTargets.includes('早班')) result.onlyMornings = true;
+
+  const workRestDays = matchWorkRestDays(message);
+  if (workRestDays !== null) result.maxDaysPerWeek = workRestDays;
+
   // 每周 + 任意 ≤ 15 字符 + 数字 + 天；片段需含"最多/至多/只能/只/就"等上限语义
   if (result.maxDaysPerWeek === null) {
-    const limitedMatch = message.match(
-      /(?:每周|一周)([^，。！？；;]{0,15}?)([一二两三四五六七0-7])\s*天/,
-    );
-    if (limitedMatch?.[1] !== undefined && limitedMatch?.[2]) {
-      const qualifierFragment = limitedMatch[1] ?? '';
-      if (/最多|至多|只能|只|就/.test(qualifierFragment)) {
-        const n = parseChineseOrArabicNumber(limitedMatch[2]);
-        if (n !== null) result.maxDaysPerWeek = n;
-      }
-    }
-  }
-  if (result.maxDaysPerWeek === null) {
-    const doRestMatch = message.match(
-      /做\s*([一二两三四五六七1-7])\s*休\s*([一二两三四五六七1-7])/,
-    );
-    if (doRestMatch?.[1]) {
-      const n = parseChineseOrArabicNumber(doRestMatch[1]);
-      if (n !== null) result.maxDaysPerWeek = n;
+    const weeklyDayConstraint = matchWeeklyDayConstraint(message);
+    if (weeklyDayConstraint?.isUpperBound && weeklyDayConstraint.value !== null) {
+      result.maxDaysPerWeek = weeklyDayConstraint.value;
     }
   }
 
@@ -828,11 +936,19 @@ function resolveCity(
     };
   }
 
-  // 通用"XX市"兜底：白名单未列入的城市名（如新城上线但数据未同步）
-  const genericCityMatch = message.match(/([一-龥]{2,8})市/);
-  const generic = genericCityMatch?.[1] ? normalizeCityName(genericCityMatch[1]) : null;
-  if (generic) {
-    return { value: generic, confidence: 'high', evidence: 'explicit_city' };
+  // 全国城市名表兜底：只接受真实"XX市"行政区划名，避免"大超市/夜市"误提取。
+  const nationalCityScan = scanWhitelistKeysByLongest(
+    message,
+    NATIONAL_CITY_SUFFIX_TO_CITY,
+    locationScan.covered,
+  );
+  const nationalCityHit = nationalCityScan.hits[0];
+  if (nationalCityHit) {
+    return {
+      value: NATIONAL_CITY_SUFFIX_TO_CITY[nationalCityHit.key],
+      confidence: 'high',
+      evidence: 'explicit_city',
+    };
   }
 
   return null;
@@ -891,7 +1007,7 @@ function buildExactMatchTokens(message: string): string[] {
   const normalized = normalizeForBrandMatch(message);
   if (!normalized) return [];
 
-  const stripped = stripGenericQueryText(normalized);
+  const stripped = stripBrandNoisePatterns(normalized);
   const tokens = new Set<string>();
 
   if (normalized) tokens.add(normalized);
@@ -904,9 +1020,9 @@ function buildExactMatchTokens(message: string): string[] {
   return Array.from(tokens).filter(Boolean);
 }
 
-function stripGenericQueryText(normalizedText: string): string {
+function stripBrandNoisePatterns(normalizedText: string): string {
   let output = normalizedText;
-  for (const pattern of GENERIC_QUERY_PATTERNS) {
+  for (const pattern of BRAND_NOISE_PATTERNS) {
     output = output.replace(new RegExp(pattern, 'g'), '');
   }
   return output;

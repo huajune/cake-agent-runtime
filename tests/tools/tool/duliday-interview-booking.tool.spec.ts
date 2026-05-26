@@ -86,12 +86,16 @@ describe('buildInterviewBookingTool', () => {
     input: Record<string, any>,
     contextOverride: Partial<ToolBuildContext> = {},
   ) => {
+    const mockLongTermService = {
+      writeFromBooking: jest.fn().mockResolvedValue(undefined),
+    };
     const builder = buildInterviewBookingTool(
       mockSpongeService as never,
       mockPrivateChatNotifier as never,
       mockUserHostingService as never,
       mockRecruitmentCaseService as never,
       mockBookingService as never,
+      mockLongTermService as never,
     );
     const toolContext = {
       ...mockContext,

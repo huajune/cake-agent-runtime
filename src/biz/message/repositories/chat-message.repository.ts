@@ -178,7 +178,7 @@ export class ChatMessageRepository extends BaseRepository {
    */
   async getChatHistoryInRange(
     chatId: string,
-    options: { startTimeExclusive?: number; endTimeInclusive?: number },
+    options: { startTimeExclusive?: number; endTimeInclusive?: number; limit?: number },
   ): Promise<Array<{ role: 'user' | 'assistant'; content: string; timestamp: number }>> {
     if (!this.isAvailable()) {
       return [];
@@ -194,6 +194,9 @@ export class ChatMessageRepository extends BaseRepository {
           }
           if (options.endTimeInclusive != null) {
             query = query.lte('timestamp', new Date(options.endTimeInclusive).toISOString());
+          }
+          if (options.limit != null) {
+            query = query.limit(options.limit);
           }
           return query;
         },

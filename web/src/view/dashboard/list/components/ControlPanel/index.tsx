@@ -1,26 +1,31 @@
 import { formatDateTime } from '@/utils/format';
+import type { DashboardTimeRange } from '@/api/types/analytics.types';
 // import styles from './index.module.scss';
 
 interface ControlPanelProps {
-  timeRange: 'today' | 'week' | 'month';
-  onTimeRangeChange: (range: 'today' | 'week' | 'month') => void;
+  timeRange: DashboardTimeRange;
+  onTimeRangeChange: (range: DashboardTimeRange) => void;
   autoRefresh: boolean;
   onAutoRefreshChange: (enabled: boolean) => void;
-  aiEnabled: boolean;
-  onAiToggle: (enabled: boolean) => void;
   healthStatus: 'healthy' | 'warning' | 'error' | 'loading';
   healthMessage: string;
   lastUpdate: number | null;
   children?: React.ReactNode;
 }
 
+const TIME_RANGE_OPTIONS: Array<{ key: DashboardTimeRange; label: string }> = [
+  { key: 'today', label: '本日' },
+  { key: 'week', label: '近7天' },
+  { key: 'month', label: '近30天' },
+  { key: 'twoMonths', label: '近2月' },
+  { key: 'threeMonths', label: '近3月' },
+];
+
 export default function ControlPanel({
   timeRange,
   onTimeRangeChange,
   autoRefresh,
   onAutoRefreshChange,
-  aiEnabled,
-  onAiToggle,
   healthStatus,
   healthMessage,
   lastUpdate,
@@ -36,36 +41,17 @@ export default function ControlPanel({
         <div className="control-panel-left">
           <div className="control-panel-title">系统控制</div>
           <div className="filters">
-            <button
-              className={timeRange === 'today' ? 'active' : ''}
-              onClick={() => onTimeRangeChange('today')}
-            >
-              本日
-            </button>
-            <button
-              className={timeRange === 'week' ? 'active' : ''}
-              onClick={() => onTimeRangeChange('week')}
-            >
-              近7天
-            </button>
-            <button
-              className={timeRange === 'month' ? 'active' : ''}
-              onClick={() => onTimeRangeChange('month')}
-            >
-              近30天
-            </button>
+            {TIME_RANGE_OPTIONS.map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                className={timeRange === option.key ? 'active' : ''}
+                onClick={() => onTimeRangeChange(option.key)}
+              >
+                {option.label}
+              </button>
+            ))}
           </div>
-          <label className="toggle-switch">
-            <span>🤖 智能回复</span>
-            <input
-              type="checkbox"
-              checked={aiEnabled}
-              onChange={(e) => onAiToggle(e.target.checked)}
-            />
-            <span className={`status-text ${aiEnabled ? 'enabled' : 'disabled'}`}>
-              {aiEnabled ? '已启用' : '已禁用'}
-            </span>
-          </label>
         </div>
 
         <div className="control-panel-right">

@@ -4,7 +4,7 @@ import {
   MonitoringErrorLog,
 } from '@shared-types/tracking.types';
 
-export type AnalyticsTimeRange = 'today' | 'week' | 'month';
+export type AnalyticsTimeRange = 'today' | 'week' | 'month' | 'twoMonths' | 'threeMonths';
 
 export interface ResponseMinuteTrendPoint {
   minute: string;

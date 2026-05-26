@@ -102,115 +102,39 @@ export function sanitizeInterviewName(
 /**
  * 中文姓名正向校验。
  *
- * 业务背景：badcase 簇 `booking_real_name_required`（5 条）—— Agent 在候选人只给了
- * 微信昵称（如 "执子之魂"、"💰余᭄苼囿財࿐"、"小晴早点睡"）的情况下仍调用预约接口。
- * `sanitizeInterviewName` 只对"我是XX"自动打招呼场景兜底，其他来源（候选人手动
- * 回复名字时贴了昵称）漏网。预约工具的 `name` 字段是直接进 sponge 的，必须在
- * 工具入参侧硬卡。
+ * 校验规则：
+ * - 长度 2-5 个 CJK 汉字（汉族 2-4 字覆盖 99%+，少数民族最长 5 字如"布买日也木"）
+ * - 仅含 CJK 统一汉字，不含拉丁/数字/emoji/装饰符号
+ * - 不以"测试/用户/昵称/游客/匿名"等占位前缀开头
  *
- * 校验规则（保守起见，只拦明显不是真名的情况）：
- * - 长度 2-8 个汉字（汉族姓名通常 2-4 字；少数民族真名常 5-7 字，如"布买日也木"，
- *   历史 badcase uw8ow1xw / slg3jqi9：原 {2,4} 上限把少数民族真名一律拒，Agent 反复
- *   要求候选人改名最终用"小布"代替）
- * - 仅含 CJK 统一汉字，不含拉丁/数字/emoji/装饰符号/中文标点（昵称多含 emoji / 拼音 / 标点）
- * - 不以"测试 / 用户 / 昵称 / 游客 / 匿名"等占位前缀开头（避免 fixture 风格的
- *   "测试姓名" 通过校验——P2 批次 SCN-P2-20260429-004 实测漏网）
- *
- * 已知漏网：4 字成语式昵称（如 "执子之魂"），目前拦不住，依赖 Agent 在收名时按
- * prompt 重问；若漏网 case 攒多了再加字典或上 LLM 判断。
+ * 6+ 字纯汉字一律拒——微信昵称 6 字以上极其常见（"小晴早点睡"/"加油宝贝吖"），
+ * 而 6 字真名在招聘场景几乎不存在，用枚举 hint char 去拦截是打地鼠，不如一刀切。
+ * 已知漏网：4 字成语式昵称（"执子之魂"），依赖 Agent prompt 收名时重问。
  */
-const REAL_NAME_REGEX = /^[一-鿿]{2,8}$/u;
+const REAL_NAME_REGEX = /^[一-鿿]{2,5}$/u;
+const REAL_NAME_STRICT_REGEX = /^[一-鿿]{2,4}$/u;
 const PLACEHOLDER_PREFIX_BLACKLIST = ['测试', '用户', '昵称', '游客', '匿名', '无名', '客户'];
 
-/**
- * 5+ 字纯汉字串中的"昵称提示字"——含这些字几乎都是昵称/口语短句而非真名。
- *
- * 设计思路：5+ 字真名（多见于少数民族，如"布买日也木"/"阿不力克木"）每字独立、无语义动词；
- * 5+ 字昵称（如"小晴早点睡"/"加油宝贝吖"）通常含动词、情绪词或常见叠词。
- *
- * 不做"白名单"（覆盖不全），只在 5+ 字时做"含昵称提示字 → 拒"的负判断。
- */
-const NICKNAME_HINT_CHARS = new Set([
-  // 动词
-  '睡',
-  '吃',
-  '玩',
-  '笑',
-  '哭',
-  '爱',
-  '恨',
-  '想',
-  '念',
-  '走',
-  '跑',
-  '飞',
-  '跳',
-  '叫',
-  '听',
-  '看',
-  '说',
-  '问',
-  '答',
-  // 情绪/形容
-  '困',
-  '累',
-  '快',
-  '慢',
-  '甜',
-  '苦',
-  '萌',
-  '帅',
-  '美',
-  '丑',
-  '好',
-  '坏',
-  '乖',
-  '皮',
-  // 常见昵称语气/句末
-  '吖',
-  '呀',
-  '哒',
-  '哦',
-  '呢',
-  '哈',
-  '嘛',
-  '呐',
-  '吗',
-  '咯',
-  '嘞',
-  '哟',
-  // 鼓励语
-  '加',
-  '油',
-  '冲',
-  '稳',
-  '赢',
-  '胜',
-  // 网名常见装饰词
-  '点',
-  '宝',
-  '贝',
-  '酱',
-  '崽',
-  '仔',
-]);
-
-function looksLikeLongChineseNickname(value: string): boolean {
-  if (value.length <= 4) return false;
-  for (const ch of value) {
-    if (NICKNAME_HINT_CHARS.has(ch)) return true;
-  }
-  return false;
-}
-
-export function isLikelyRealChineseName(value: string | null | undefined): boolean {
+function checkChineseName(value: string | null | undefined, regex: RegExp): boolean {
   if (!value) return false;
   const trimmed = value.trim();
-  if (!REAL_NAME_REGEX.test(trimmed)) return false;
+  if (!regex.test(trimmed)) return false;
   for (const prefix of PLACEHOLDER_PREFIX_BLACKLIST) {
     if (trimmed.startsWith(prefix)) return false;
   }
-  // 5-8 字纯汉字含昵称提示字 → 拒；典型场景：'小晴早点睡' / '加油宝贝吖' / '小可爱'
-  if (looksLikeLongChineseNickname(trimmed)) return false;
   return true;
+}
+
+/** 宽松版（2-5 字）：用于规则提取层，允许 5 字少数民族真名通过。 */
+export function isLikelyRealChineseName(value: string | null | undefined): boolean {
+  return checkChineseName(value, REAL_NAME_REGEX);
+}
+
+/**
+ * 严格版（2-4 字）：用于 booking/precheck 硬 guard。
+ * 5 字纯 CJK 有较高概率是昵称（"小晴早点睡"），不应直接进预约接口。
+ * 5 字真名（少数民族）走 precheck 的 mustHandoff 转人工补录。
+ */
+export function isStrictRealChineseName(value: string | null | undefined): boolean {
+  return checkChineseName(value, REAL_NAME_STRICT_REGEX);
 }

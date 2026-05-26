@@ -306,6 +306,18 @@ describe('AnalyticsQueryService', () => {
 
       expect(hourlyStatsRepository.getRecentHourlyStats).toHaveBeenCalledWith(720);
     });
+
+    it('should use 1440 hourly stats for two-month range', async () => {
+      await service.getTrendsDataAsync('twoMonths');
+
+      expect(hourlyStatsRepository.getRecentHourlyStats).toHaveBeenCalledWith(1440);
+    });
+
+    it('should use 2160 hourly stats for three-month range', async () => {
+      await service.getTrendsDataAsync('threeMonths');
+
+      expect(hourlyStatsRepository.getRecentHourlyStats).toHaveBeenCalledWith(2160);
+    });
   });
 
   // ========================================
@@ -597,7 +609,7 @@ describe('AnalyticsQueryService', () => {
   // ========================================
 
   describe('getUserTrend', () => {
-    it('should return 30-day user trend data', async () => {
+    it('should return user trend data', async () => {
       mockMessageProcessingService.getDailyUserStats.mockResolvedValue([
         { date: '2026-03-11', uniqueUsers: 10, messageCount: 50 },
         { date: '2026-03-10', uniqueUsers: 8, messageCount: 40 },
@@ -610,7 +622,7 @@ describe('AnalyticsQueryService', () => {
       expect(result[1]).toEqual({ date: '2026-03-10', userCount: 8, messageCount: 40 });
     });
 
-    it('should query last 30 days', async () => {
+    it('should query last 30 days by default', async () => {
       mockMessageProcessingService.getDailyUserStats.mockResolvedValue([]);
 
       await service.getUserTrend();
@@ -620,6 +632,32 @@ describe('AnalyticsQueryService', () => {
 
       expect(startDate.toISOString()).toBe(
         addLocalDays(getLocalDayStart(endDate), -30).toISOString(),
+      );
+    });
+
+    it('should query the requested trend window', async () => {
+      mockMessageProcessingService.getDailyUserStats.mockResolvedValue([]);
+
+      await service.getUserTrend(90);
+
+      const [startDate, endDate] = (messageProcessingService.getDailyUserStats as jest.Mock).mock
+        .calls[0];
+
+      expect(startDate.toISOString()).toBe(
+        addLocalDays(getLocalDayStart(endDate), -90).toISOString(),
+      );
+    });
+
+    it('should cap user trend queries at one year', async () => {
+      mockMessageProcessingService.getDailyUserStats.mockResolvedValue([]);
+
+      await service.getUserTrend(999);
+
+      const [startDate, endDate] = (messageProcessingService.getDailyUserStats as jest.Mock).mock
+        .calls[0];
+
+      expect(startDate.toISOString()).toBe(
+        addLocalDays(getLocalDayStart(endDate), -365).toISOString(),
       );
     });
   });

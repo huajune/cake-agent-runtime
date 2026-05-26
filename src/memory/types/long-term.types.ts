@@ -9,6 +9,34 @@ export interface UserProfile {
   has_health_certificate: string | null;
 }
 
+export const USER_PROFILE_FIELD_KEYS = [
+  'name',
+  'phone',
+  'gender',
+  'age',
+  'is_student',
+  'education',
+  'has_health_certificate',
+] as const satisfies readonly (keyof UserProfile)[];
+
+/**
+ * 单个 Profile 字段的来源元数据。
+ *
+ * 参考 Hassabis 原则：每一条存储的记忆值都应当有来源、时间戳和置信度，
+ * 以便系统在未来能审计、更新或撤销。
+ */
+export interface ProfileFieldMeta {
+  /** 写入来源 */
+  source: 'booking' | 'extraction' | 'enrichment';
+  /** 置信度（booking 天然 high；extraction 由 LLM 决定；enrichment 因外部系统推断，通常 medium） */
+  confidence: 'high' | 'medium';
+  /** ISO timestamp，字段最后一次被写入的时间 */
+  writtenAt: string;
+}
+
+/** 每个 Profile 字段的元数据映射。 */
+export type UserProfileMeta = Partial<Record<keyof UserProfile, ProfileFieldMeta>>;
+
 /** 消息回调元数据 — 冗余到长期记忆中 */
 export interface MessageMetadata {
   botId?: string;
@@ -66,6 +94,8 @@ export interface AgentMemoryRow {
   has_health_certificate?: string | null;
   summary_data?: SummaryData | null;
   message_metadata?: MessageMetadata | null;
+  /** 每个 Profile 字段的来源元数据（migration 20260522000000 添加） */
+  profile_fields_meta?: UserProfileMeta | null;
   created_at: string;
   updated_at: string;
 }

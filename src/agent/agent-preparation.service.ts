@@ -576,6 +576,7 @@ export class AgentPreparationService {
     const displayLaborForm = sanitizeLaborFormForDisplay(job.laborForm);
     if (displayLaborForm) parts.push(`用工:${displayLaborForm}`);
     if (job.salaryDesc) parts.push(`薪资:${job.salaryDesc}`);
+    if (job.shiftSummary) parts.push(`班次:${job.shiftSummary}`);
 
     const bookingConstraint = this.formatBookingConstraint(job);
     if (bookingConstraint) parts.push(`约面要求:${bookingConstraint}`);

@@ -12,7 +12,13 @@ export function formatExtractionFactLines(facts: EntityExtractionResult): string
 
   if (info.name) lines.push(`- 姓名: ${info.name}`);
   if (info.phone) lines.push(`- 联系方式: ${info.phone}`);
-  if (info.gender) lines.push(`- 性别: ${info.gender}`);
+  if (info.gender) {
+    const sourceTag =
+      info.gender_source === 'candidate'
+        ? '（候选人自陈）'
+        : '（系统标签，未经候选人自陈，不得用于直接排除候选人）';
+    lines.push(`- 性别: ${info.gender}${sourceTag}`);
+  }
   if (info.age) lines.push(`- 年龄: ${info.age}`);
   if (info.applied_store) lines.push(`- 应聘门店: ${info.applied_store}`);
   if (info.applied_position) lines.push(`- 应聘岗位: ${info.applied_position}`);
