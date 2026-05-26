@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { ImageDescriptionService } from '@wecom/message/application/image-description.service';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
@@ -21,6 +22,14 @@ describe('ImageDescriptionService', () => {
     sendSimpleAlert: jest.fn().mockResolvedValue(true),
   };
 
+  const mockConfigService = {
+    get: jest.fn((key: string) => {
+      if (key === 'STRIDE_ENTERPRISE_API_BASE_URL') return 'https://stride-bg.dpclouds.com/hub-api';
+      if (key === 'STRIDE_ENTERPRISE_TOKEN') return 'test-token';
+      return undefined;
+    }),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -28,6 +37,7 @@ describe('ImageDescriptionService', () => {
         { provide: LlmExecutorService, useValue: mockLlm },
         { provide: ChatSessionService, useValue: mockChatSessionService },
         { provide: AlertNotifierService, useValue: mockAlertService },
+        { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
 

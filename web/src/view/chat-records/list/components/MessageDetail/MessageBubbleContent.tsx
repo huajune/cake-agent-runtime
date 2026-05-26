@@ -58,6 +58,7 @@ interface PreviewImage {
 function getImageUrls(payload: Payload): { previewUrl?: string; thumbnailUrl?: string } {
   const previewUrl = pickString(
     payload,
+    'artworkUrl',
     'originalImageUrl',
     'originalUrl',
     'originImageUrl',

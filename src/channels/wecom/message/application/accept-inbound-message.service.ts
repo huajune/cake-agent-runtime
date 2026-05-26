@@ -140,6 +140,9 @@ export class AcceptInboundMessageService {
       });
     }
 
+    // 图片消息：先同步获取原图 URL 写入 payload，再存记录（一次 INSERT 到位）
+    await this.enrichImagePayload(messageData);
+
     // 历史记录异步化：chat_messages INSERT（Supabase）+ short-term cache（Redis）总计
     // 约 500ms-2s，阻塞了 PreDispatch。Agent 在 ≥10s 静默窗口后才读历史，
     // 异步写入有充裕时间完成。失败降级：下一轮看不到本轮 user 消息。
@@ -202,7 +205,14 @@ export class AcceptInboundMessageService {
     // debounce 静默会"假性达标"提前 fire，把图文拆成两批（参见 wecom-batch race）。
     // 改 fire-and-forget 后，addMessage 立即更新 lastMessageAt 重置静默；worker
     // 真正取本批后由 ReplyWorkflowService 的 awaitVision 等待描述完成再调 Agent。
-    this.imageDescription.describeAndUpdateAsync(messageData.messageId, imgUrl, visualKind);
+    const resolvedUrl = (messageData.payload as Record<string, unknown>)?.artworkUrl as
+      | string
+      | undefined;
+    this.imageDescription.describeAndUpdateAsync(
+      messageData.messageId,
+      resolvedUrl || imgUrl,
+      visualKind,
+    );
 
     // 描述真正完成后再补打 imagePreparedAt（observability only），不影响业务正确性。
     void this.imageDescription
@@ -227,6 +237,7 @@ export class AcceptInboundMessageService {
       );
     }
 
+    await this.enrichImagePayload(messageData);
     const candidateName = await this.getCandidateNameFromHistory(chatId);
     const isRoom = Boolean(messageData.imRoomId);
     const assistantMsg: ChatMessageInput = {
@@ -268,7 +279,34 @@ export class AcceptInboundMessageService {
     if (!imgUrl) return;
     const visualKind = MessageParser.extractVisualMessageType(messageData);
     if (!visualKind) return;
-    this.imageDescription.describeAndUpdateAsync(messageData.messageId, imgUrl, visualKind);
+    const resolvedUrl = (messageData.payload as Record<string, unknown>)?.artworkUrl as
+      | string
+      | undefined;
+    this.imageDescription.describeAndUpdateAsync(
+      messageData.messageId,
+      resolvedUrl || imgUrl,
+      visualKind,
+    );
+  }
+
+  private async enrichImagePayload(messageData: EnterpriseMessageCallbackDto): Promise<void> {
+    const imgUrl = MessageParser.extractImageUrl(messageData);
+    if (!imgUrl) return;
+
+    const artworkUrl = await this.imageDescription.resolveArtworkUrl(
+      messageData.messageId,
+      imgUrl,
+      {
+        chatId: messageData.chatId,
+        imBotId: messageData.imBotId,
+        imContactId: messageData.imContactId,
+        imRoomId: messageData.imRoomId,
+      },
+    );
+
+    if (artworkUrl !== imgUrl) {
+      (messageData.payload as Record<string, unknown>).artworkUrl = artworkUrl;
+    }
   }
 
   private async recordUserMessageToHistory(

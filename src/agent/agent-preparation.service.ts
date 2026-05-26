@@ -13,6 +13,7 @@ import { MemoryService, type CandidateIdentityHint } from '@memory/memory.servic
 import { MemoryConfig } from '@memory/memory.config';
 import type { UserProfile } from '@memory/types/long-term.types';
 import {
+  type EntityExtractionResult,
   type RecommendedJobSummary,
   type WeworkSessionState,
 } from '@memory/types/session-facts.types';
@@ -353,6 +354,10 @@ export class AgentPreparationService {
     const { params, memory, normalizedMessages, entryStage, stageGoals, thresholds, turnState } =
       input;
     const recentBrandPool = this.collectRecentBrandPool(memory.sessionMemory);
+    const sessionFacts = this.mergeSessionFactsWithHighConfidence(
+      memory.sessionMemory?.facts ?? null,
+      memory.highConfidenceFacts,
+    );
     return {
       userId: params.userId,
       corpId: params.corpId,
@@ -372,7 +377,7 @@ export class AgentPreparationService {
       botImId: params.botImId,
       strategySource: params.strategySource,
       profile: memory.longTerm.profile,
-      sessionFacts: memory.sessionMemory?.facts ?? null,
+      sessionFacts,
       currentFocusJob: memory.sessionMemory?.currentFocusJob ?? null,
       recentBrandPool,
       token: params.token,
@@ -381,6 +386,43 @@ export class AgentPreparationService {
       chatId: params.sessionId,
       apiType: params.apiType,
     };
+  }
+
+  /**
+   * 把本轮高置信识别结果（interview_info）叠加到上一轮 sessionFacts 上，
+   * 让工具（如 precheck）能拿到当前消息里刚提供的候选人字段（年龄/姓名/电话等）。
+   * 非 null 的高置信值覆盖旧值，null 不覆盖。
+   */
+  private mergeSessionFactsWithHighConfidence(
+    sessionFacts: EntityExtractionResult | null,
+    highConfidence: EntityExtractionResult | null,
+  ): EntityExtractionResult | null {
+    if (!highConfidence) return sessionFacts;
+    if (!sessionFacts) return highConfidence;
+
+    const merged = { ...sessionFacts };
+
+    // interview_info: 非 null 的高置信值覆盖旧值
+    const baseInfo = { ...sessionFacts.interview_info };
+    const hcInfo = highConfidence.interview_info;
+    for (const key of Object.keys(hcInfo) as Array<keyof typeof hcInfo>) {
+      if (hcInfo[key] != null) {
+        (baseInfo as Record<string, unknown>)[key] = hcInfo[key];
+      }
+    }
+    merged.interview_info = baseInfo;
+
+    // preferences: 非 null 的高置信值覆盖旧值
+    const basePref = { ...sessionFacts.preferences };
+    const hcPref = highConfidence.preferences;
+    for (const key of Object.keys(hcPref) as Array<keyof typeof hcPref>) {
+      if (hcPref[key] != null) {
+        (basePref as Record<string, unknown>)[key] = hcPref[key];
+      }
+    }
+    merged.preferences = basePref;
+
+    return merged;
   }
 
   /**

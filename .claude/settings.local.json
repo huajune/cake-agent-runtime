@@ -455,7 +455,10 @@
       "mcp__github__get_pull_request_files",
       "Bash(git -C /Users/jiezhu/workSpace/DuLiDay/cake-agent-runtime diff develop..feat/memory-refactor -- supabase/migrations/)",
       "Bash(bash /tmp/test-name-extraction.sh)",
-      "Bash(bash /tmp/run-15-cases.sh)"
+      "Bash(bash /tmp/run-15-cases.sh)",
+      "Bash(identify /tmp/vision_test_image.jpg)",
+      "Bash(sips -g all /tmp/vision_test_image.jpg)",
+      "Bash(sips -g pixelWidth -g pixelHeight /tmp/artwork_original.jpg)"
     ],
     "deny": [
       "Bash(git restore:*)",

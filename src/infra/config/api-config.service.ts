@@ -97,6 +97,7 @@ export class ApiConfigService {
     // 群聊相关（企业级接口）
     groupChat: {
       list: () => this.buildApiUrl('/groupChat/list', 'enterprise-v2'), // 企业级群列表
+      syncRoom: () => this.buildApiUrl('/groupChat/syncRoom', 'enterprise-v2'), // 群聊同步
       addMember: () => this.buildApiUrl('/instantReply/addFromRoom', 'enterprise-v1'), // 企业级拉人进群
     },
     // 用户相关

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { LlmExecutorService } from '@/llm/llm-executor.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { ModelRole } from '@/llm/llm.types';
@@ -7,6 +8,14 @@ import { MessageType } from '@enums/message-callback.enum';
 
 /** 视觉消息种类：图片 / 表情（都走同一条 vision 识别管线，仅前缀不同）。 */
 export type VisualMessageKind = MessageType.IMAGE | MessageType.EMOTION;
+
+/** 调用 loadArtWorkImage 所需的回调上下文。 */
+export interface ArtworkContext {
+  chatId: string;
+  imBotId: string;
+  imContactId?: string;
+  imRoomId?: string;
+}
 
 function formatDescription(kind: VisualMessageKind, description: string): string {
   const prefix = kind === MessageType.EMOTION ? '[表情消息]' : '[图片消息]';
@@ -34,6 +43,9 @@ export class ImageDescriptionService {
   /** 进行中的描述任务：messageId → 描述完成后 settle 的 Promise */
   private readonly inFlight = new Map<string, Promise<void>>();
 
+  private readonly artworkApiUrl: string;
+  private readonly artworkToken: string;
+
   private readonly SYSTEM_PROMPT = [
     '你是招聘场景的图片分析助手。候选人发来的图片大多是招聘平台截图、证件、招聘海报，也可能是微信表情。',
     '请提取关键信息，用简洁中文输出（一般 2-4 句，证件类必须按下方结构化输出）：',
@@ -50,7 +62,12 @@ export class ImageDescriptionService {
     private readonly llm: LlmExecutorService,
     private readonly chatSession: ChatSessionService,
     private readonly alertService: AlertNotifierService,
-  ) {}
+    configService: ConfigService,
+  ) {
+    const baseUrl = configService.get<string>('STRIDE_ENTERPRISE_API_BASE_URL')!;
+    this.artworkApiUrl = `${baseUrl}/api/v2/message/loadArtWorkImage`;
+    this.artworkToken = configService.get<string>('STRIDE_ENTERPRISE_TOKEN')!;
+  }
 
   /**
    * 异步描述图片/表情并回写 content（fire-and-forget）
@@ -65,7 +82,6 @@ export class ImageDescriptionService {
     kind: VisualMessageKind = MessageType.IMAGE,
   ): void {
     if (this.inFlight.has(messageId)) {
-      // 同一条消息已在描述中（不应发生，dedup 应已拦截），直接复用即可
       return;
     }
 
@@ -159,6 +175,7 @@ export class ImageDescriptionService {
 
     const result = await this.llm.generate({
       role: ModelRole.Vision,
+      disableFallbacks: true,
       system: this.SYSTEM_PROMPT,
       messages: [
         {
@@ -180,12 +197,48 @@ export class ImageDescriptionService {
 
     await this.chatSession.updateMessageContent(messageId, formatDescription(kind, description));
 
-    // 成功则重置失败计数
     this.consecutiveFailures = 0;
 
     this.logger.log(
       `${this.kindLabel(kind)}描述完成 [${messageId}]: "${description.substring(0, 50)}${description.length > 50 ? '...' : ''}", tokens=${result.usage.totalTokens}`,
     );
+  }
+
+  /**
+   * 通过 loadArtWorkImage API 获取原图 URL，失败时回退到压缩图。
+   * 调用方应在存储聊天记录前调用，将结果写入 payload.artworkUrl。
+   */
+  async resolveArtworkUrl(
+    messageId: string,
+    compressedUrl: string,
+    context: ArtworkContext,
+  ): Promise<string> {
+    try {
+      const apiUrl = `${this.artworkApiUrl}?token=${this.artworkToken}`;
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messageId,
+          chatId: context.chatId,
+          imBotId: context.imBotId,
+          imContactId: context.imContactId,
+          imRoomId: context.imRoomId,
+        }),
+        signal: AbortSignal.timeout(8_000),
+      });
+      const data = (await res.json()) as { errcode: number; errmsg: string; url?: string };
+      if (data.errcode === 0 && data.url) {
+        this.logger.log(`[原图] 获取成功 [${messageId}]`);
+        return data.url;
+      }
+      this.logger.warn(`[原图] API 返回 errcode=${data.errcode} [${messageId}]: ${data.errmsg}`);
+    } catch (err) {
+      this.logger.warn(
+        `[原图] 获取失败 [${messageId}]: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    return compressedUrl;
   }
 
   private kindLabel(kind: VisualMessageKind): string {
