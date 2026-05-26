@@ -38,6 +38,12 @@ export interface DashboardFallbackStats {
   affectedUsers: number;
 }
 
+export interface DashboardManualInterventionStats {
+  totalCount: number;
+  handoffCount: number;
+  riskAlertCount: number;
+}
+
 // ========================================
 // 趋势数据
 // ========================================
@@ -211,6 +217,8 @@ export interface DashboardData {
     totalCount: number;
     successRate: number;
   };
+
+  manualIntervention: DashboardManualInterventionStats;
 
   business: {
     consultations: { total: number; new: number };

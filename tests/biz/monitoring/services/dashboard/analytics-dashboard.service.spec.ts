@@ -128,6 +128,7 @@ describe('AnalyticsDashboardService', () => {
     getDashboardMinuteTrend: jest.fn(),
     getDashboardHourlyTrend: jest.fn(),
     getDashboardBusinessTrend: jest.fn(),
+    getDashboardToolStats: jest.fn(),
   };
 
   const mockBookingService = {
@@ -274,6 +275,7 @@ describe('AnalyticsDashboardService', () => {
     mockMonitoringRecordRepository.getDashboardMinuteTrend.mockResolvedValue([]);
     mockMonitoringRecordRepository.getDashboardHourlyTrend.mockResolvedValue([]);
     mockMonitoringRecordRepository.getDashboardBusinessTrend.mockResolvedValue([]);
+    mockMonitoringRecordRepository.getDashboardToolStats.mockResolvedValue([]);
     mockMessageTrackingService.getActiveRequests.mockResolvedValue(0);
     mockMessageTrackingService.getPeakActiveRequests.mockResolvedValue(0);
     mockMessageProcessor.getQueueStatus.mockResolvedValue({
@@ -306,6 +308,7 @@ describe('AnalyticsDashboardService', () => {
       expect(result).toHaveProperty('business');
       expect(result).toHaveProperty('businessDelta');
       expect(result).toHaveProperty('usage');
+      expect(result).toHaveProperty('manualIntervention');
       expect(result).toHaveProperty('queue');
       expect(result).toHaveProperty('alertsSummary');
       expect(result).toHaveProperty('trends');
@@ -373,6 +376,33 @@ describe('AnalyticsDashboardService', () => {
       expect(result.fallback.successCount).toBe(1);
       expect(result.fallback.successRate).toBe(50);
       expect(result.fallback.affectedUsers).toBe(2);
+    });
+
+    it('should calculate manual intervention stats from current records', async () => {
+      const records = [
+        buildRecord({
+          toolCalls: [
+            { toolName: 'request_handoff', args: {} },
+            { toolName: 'raise_risk_alert', args: {} },
+          ],
+        }),
+        buildRecord({
+          messageId: 'msg-2',
+          toolCalls: [
+            { toolName: 'duliday_job_list', args: {} },
+            { toolName: 'request_handoff', args: {} },
+          ],
+        }),
+      ];
+      mockMessageProcessingService.getRecordsByTimeRange.mockResolvedValue(records);
+
+      const result = await service.getDashboardDataAsync('today');
+
+      expect(result.manualIntervention).toEqual({
+        totalCount: 3,
+        handoffCount: 2,
+        riskAlertCount: 1,
+      });
     });
 
     it('should build tool usage metrics from records', async () => {
@@ -501,6 +531,7 @@ describe('AnalyticsDashboardService', () => {
       expect(result).toHaveProperty('businessDelta');
       expect(result).toHaveProperty('fallback');
       expect(result).toHaveProperty('fallbackDelta');
+      expect(result).toHaveProperty('manualIntervention');
     });
 
     it('should always use raw overview and fallback queries for exact range-level counts', async () => {
@@ -543,6 +574,22 @@ describe('AnalyticsDashboardService', () => {
       expect(monitoringRepository.getDashboardFallbackStats).toHaveBeenCalledTimes(2);
       expect(result.overview.activeUsers).toBe(7);
       expect(result.fallback.affectedUsers).toBe(2);
+    });
+
+    it('should include manual intervention trigger stats from handoff and risk tools', async () => {
+      mockMonitoringRecordRepository.getDashboardToolStats.mockResolvedValue([
+        { toolName: 'request_handoff', useCount: 3 },
+        { toolName: 'raise_risk_alert', useCount: 2 },
+        { toolName: 'duliday_job_list', useCount: 10 },
+      ]);
+
+      const result = await service.getDashboardOverviewAsync('today');
+
+      expect(result.manualIntervention).toEqual({
+        totalCount: 5,
+        handoffCount: 3,
+        riskAlertCount: 2,
+      });
     });
 
     it('should fall back to raw hourly trend when hourly projection is stale for today', async () => {
