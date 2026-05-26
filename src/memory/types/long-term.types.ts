@@ -9,6 +9,16 @@ export interface UserProfile {
   has_health_certificate: string | null;
 }
 
+export const USER_PROFILE_FIELD_KEYS = [
+  'name',
+  'phone',
+  'gender',
+  'age',
+  'is_student',
+  'education',
+  'has_health_certificate',
+] as const satisfies readonly (keyof UserProfile)[];
+
 /**
  * 单个 Profile 字段的来源元数据。
  *

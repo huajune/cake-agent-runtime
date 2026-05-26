@@ -194,6 +194,24 @@ describe('SupabaseStore', () => {
       );
     });
 
+    it('should fill missing field meta with enrichment medium default', async () => {
+      mockRpc.mockResolvedValue({
+        data: { written_fields: ['name'], skipped_fields: [] },
+        error: null,
+      });
+
+      await store.upsertProfileWithMeta('corp1', 'user1', { name: '张三' }, {});
+
+      expect(mockRpc).toHaveBeenCalledWith(
+        'upsert_profile_with_confidence_guard',
+        expect.objectContaining({
+          p_meta: {
+            name: expect.objectContaining({ source: 'enrichment', confidence: 'medium' }),
+          },
+        }),
+      );
+    });
+
     it('should delegate confidence guard to atomic DB RPC, not app-level read-then-write', async () => {
       // 回归场景：settlement 先读（无 high）→ booking 写 high → settlement 后写 medium
       // 应用层 read-then-write 无法防止此交错。验证走 RPC 而非 from().upsert()。
@@ -221,6 +239,28 @@ describe('SupabaseStore', () => {
       expect(mockRpc).toHaveBeenCalledWith(
         'upsert_profile_with_confidence_guard',
         expect.objectContaining({ p_corp_id: 'corp1' }),
+      );
+      expect(mockUpsert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('set (v1 compat)', () => {
+    it('should delegate profile writes to upsertProfileWithMeta', async () => {
+      mockRpc.mockResolvedValue({
+        data: { written_fields: ['name'], skipped_fields: [] },
+        error: null,
+      });
+
+      await store.set('profile:corp1:user1', { name: '张三' });
+
+      expect(mockRpc).toHaveBeenCalledWith(
+        'upsert_profile_with_confidence_guard',
+        expect.objectContaining({
+          p_profile: { name: '张三' },
+          p_meta: {
+            name: expect.objectContaining({ source: 'enrichment', confidence: 'medium' }),
+          },
+        }),
       );
       expect(mockUpsert).not.toHaveBeenCalled();
     });

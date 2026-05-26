@@ -3,7 +3,6 @@ import { LongTermService } from '@memory/services/long-term.service';
 describe('LongTermService', () => {
   const mockSupabaseStore = {
     getProfile: jest.fn(),
-    upsertProfile: jest.fn().mockResolvedValue(undefined),
     upsertProfileWithMeta: jest.fn().mockResolvedValue(undefined),
     getSummaryData: jest.fn(),
     appendSummary: jest.fn().mockResolvedValue(undefined),
@@ -48,16 +47,20 @@ describe('LongTermService', () => {
     it('should skip saving when all fields are null', async () => {
       await service.saveProfile('corp1', 'user1', { name: null, phone: null });
 
-      expect(mockSupabaseStore.upsertProfile).not.toHaveBeenCalled();
+      expect(mockSupabaseStore.upsertProfileWithMeta).not.toHaveBeenCalled();
     });
 
-    it('should save only non-null fields', async () => {
+    it('should save only non-null fields with enrichment medium meta', async () => {
       await service.saveProfile('corp1', 'user1', { name: '张三', phone: null, gender: '男' });
 
-      expect(mockSupabaseStore.upsertProfile).toHaveBeenCalledWith(
+      expect(mockSupabaseStore.upsertProfileWithMeta).toHaveBeenCalledWith(
         'corp1',
         'user1',
         { name: '张三', gender: '男' },
+        {
+          name: expect.objectContaining({ source: 'enrichment', confidence: 'medium' }),
+          gender: expect.objectContaining({ source: 'enrichment', confidence: 'medium' }),
+        },
         undefined,
       );
     });

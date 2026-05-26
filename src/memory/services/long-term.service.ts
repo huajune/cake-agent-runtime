@@ -8,6 +8,7 @@ import type {
   SummaryEntry,
   MessageMetadata,
 } from '../types/long-term.types';
+import { USER_PROFILE_FIELD_KEYS } from '../types/long-term.types';
 import type { EntityExtractionResult } from '../types/session-facts.types';
 
 /**
@@ -50,7 +51,11 @@ export class LongTermService {
       }
       if (Object.keys(nonNull).length === 0) return;
 
-      await this.supabaseStore.upsertProfile(corpId, userId, nonNull, metadata);
+      const fieldMeta = this.buildProfileMeta(nonNull, {
+        source: 'enrichment',
+        confidence: 'medium',
+      });
+      await this.supabaseStore.upsertProfileWithMeta(corpId, userId, nonNull, fieldMeta, metadata);
     } catch (error) {
       this.logger.warn('保存 Profile 失败', error);
     }
@@ -213,5 +218,21 @@ export class LongTermService {
       this.logger.warn('清理长期记忆失败', error);
       return false;
     }
+  }
+
+  private buildProfileMeta(
+    profile: Partial<UserProfile>,
+    defaults: Pick<ProfileFieldMeta, 'source' | 'confidence'>,
+  ): UserProfileMeta {
+    const writtenAt = new Date().toISOString();
+    const meta: UserProfileMeta = {};
+
+    for (const key of USER_PROFILE_FIELD_KEYS) {
+      if (profile[key] !== null && profile[key] !== undefined) {
+        meta[key] = { ...defaults, writtenAt };
+      }
+    }
+
+    return meta;
   }
 }

@@ -5,12 +5,13 @@ import { MemoryConfig } from '../memory.config';
 import type {
   UserProfile,
   UserProfileMeta,
+  ProfileFieldMeta,
   SummaryData,
   SummaryEntry,
   MessageMetadata,
   AgentMemoryRow,
 } from '../types/long-term.types';
-import { MAX_RECENT_SUMMARIES } from '../types/long-term.types';
+import { MAX_RECENT_SUMMARIES, USER_PROFILE_FIELD_KEYS } from '../types/long-term.types';
 import type { MemoryEntry, MemoryStore } from './store.types';
 
 const TABLE = 'agent_memories';
@@ -63,29 +64,6 @@ export class SupabaseStore implements MemoryStore {
     };
   }
 
-  async upsertProfile(
-    corpId: string,
-    userId: string,
-    profile: Partial<UserProfile>,
-    metadata?: MessageMetadata,
-  ): Promise<void> {
-    const updateData: Record<string, unknown> = {};
-
-    if (profile.name != null) updateData.name = profile.name;
-    if (profile.phone != null) updateData.phone = profile.phone;
-    if (profile.gender != null) updateData.gender = profile.gender;
-    if (profile.age != null) updateData.age = profile.age;
-    if (profile.is_student != null) updateData.is_student = profile.is_student;
-    if (profile.education != null) updateData.education = profile.education;
-    if (profile.has_health_certificate != null)
-      updateData.has_health_certificate = profile.has_health_certificate;
-    if (metadata) updateData.message_metadata = metadata;
-
-    if (Object.keys(updateData).length === 0) return;
-
-    await this.upsertRow(corpId, userId, updateData);
-  }
-
   /**
    * 写入 Profile 字段并同时记录来源元数据（profile_fields_meta）。
    *
@@ -113,13 +91,17 @@ export class SupabaseStore implements MemoryStore {
     for (const [key, value] of Object.entries(profile)) {
       if (value != null) profileJson[key] = value;
     }
-    if (Object.keys(profileJson).length === 0 && Object.keys(meta).length === 0) return;
+    const mergedMeta = this.withDefaultProfileMeta(profileJson, meta, {
+      source: 'enrichment',
+      confidence: 'medium',
+    });
+    if (Object.keys(profileJson).length === 0 && Object.keys(mergedMeta).length === 0) return;
 
     const { data, error } = await client.rpc('upsert_profile_with_confidence_guard', {
       p_corp_id: corpId,
       p_user_id: userId,
       p_profile: profileJson,
-      p_meta: meta,
+      p_meta: mergedMeta,
       p_message_metadata: metadata ?? null,
     });
 
@@ -278,7 +260,7 @@ export class SupabaseStore implements MemoryStore {
 
   async set(key: string, content: Record<string, unknown>): Promise<void> {
     const { corpId, userId } = this.parseProfileKey(key);
-    await this.upsertProfile(corpId, userId, content as Partial<UserProfile>);
+    await this.upsertProfileWithMeta(corpId, userId, content as Partial<UserProfile>, {});
   }
 
   async del(key: string): Promise<boolean> {
@@ -362,6 +344,23 @@ export class SupabaseStore implements MemoryStore {
 
   private cacheKey(corpId: string, userId: string): string {
     return `profile:${corpId}:${userId}`;
+  }
+
+  private withDefaultProfileMeta(
+    profileJson: Record<string, unknown>,
+    meta: UserProfileMeta,
+    defaults: Pick<ProfileFieldMeta, 'source' | 'confidence'>,
+  ): UserProfileMeta {
+    const mergedMeta: UserProfileMeta = { ...meta };
+    const writtenAt = new Date().toISOString();
+
+    for (const key of USER_PROFILE_FIELD_KEYS) {
+      if (profileJson[key] !== undefined && !mergedMeta[key]) {
+        mergedMeta[key] = { ...defaults, writtenAt };
+      }
+    }
+
+    return mergedMeta;
   }
 
   private parseProfileKey(key: string): { corpId: string; userId: string } {
