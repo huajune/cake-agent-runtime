@@ -378,10 +378,10 @@ describe('extractHighConfidenceFacts', () => {
       expect(extractStructuredName(form)).toBe('赵堤');
     });
 
-    it('should reject nicknames that fail isLikelyRealChineseName', () => {
-      expect(extractStructuredName('姓名：执子之魂加油')).toBeNull();
-      expect(extractStructuredName('姓名：test123')).toBeNull();
-      expect(extractStructuredName('姓名：小晴早点睡')).toBeNull();
+    it('should reject names that fail isLikelyRealChineseName', () => {
+      expect(extractStructuredName('姓名：执子之魂加油')).toBeNull(); // 6 字 → 超上限
+      expect(extractStructuredName('姓名：test123')).toBeNull(); // 非 CJK
+      expect(extractStructuredName('姓名：加油宝贝吖哦')).toBeNull(); // 6 字 → 超上限
     });
 
     it('should return null when no structured name key is present', () => {
@@ -390,8 +390,12 @@ describe('extractHighConfidenceFacts', () => {
       expect(extractStructuredName('想找工作')).toBeNull();
     });
 
-    it('should accept minority names (2-8 chars)', () => {
+    it('should accept 5-char minority names', () => {
       expect(extractStructuredName('姓名：布买日也木')).toBe('布买日也木');
+    });
+
+    it('should reject 6+ char names', () => {
+      expect(extractStructuredName('姓名：阿不力克木江')).toBeNull();
     });
   });
 

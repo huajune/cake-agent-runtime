@@ -89,11 +89,12 @@ export class SupabaseStore implements MemoryStore {
   /**
    * 写入 Profile 字段并同时记录来源元数据（profile_fields_meta）。
    *
-   * 与 upsertProfile 的区别：会读取现有的 profile_fields_meta 并将新的 meta 合并进去，
-   * 保证历史元数据不被清除。适用于 booking / enrichment 等高质量数据写入路径。
+   * 置信度守卫由 DB 端 RPC `upsert_profile_with_confidence_guard` 原子保证：
+   * SELECT ... FOR UPDATE 行锁 → 读 existing meta → 逐字段比较 confidence →
+   * high 不被非 high 覆盖 → 单事务写入。
    *
-   * 置信度守卫：已有 confidence='high' 的字段不允许被 confidence!='high' 的写入覆盖，
-   * 防止 settlement（medium/extraction）冲掉 booking（high）的数据。
+   * 解决的竞态：booking（fire-and-forget, high）与 settlement（async, medium）
+   * 交错时，应用层 read-then-write 无法保证 high 不被覆盖。
    */
   async upsertProfileWithMeta(
     corpId: string,
@@ -102,48 +103,39 @@ export class SupabaseStore implements MemoryStore {
     meta: UserProfileMeta,
     metadata?: MessageMetadata,
   ): Promise<void> {
-    const existingRow = await this.getRow(corpId, userId);
-    const existingMeta: UserProfileMeta = existingRow?.profile_fields_meta ?? {};
-
-    const updateData: Record<string, unknown> = {};
-    const mergedMeta: UserProfileMeta = { ...existingMeta };
-    const profileFields: (keyof UserProfile)[] = [
-      'name',
-      'phone',
-      'gender',
-      'age',
-      'is_student',
-      'education',
-      'has_health_certificate',
-    ];
-    const skippedFields: string[] = [];
-
-    for (const field of profileFields) {
-      if (profile[field] == null) continue;
-
-      const existing = existingMeta[field];
-      const incoming = meta[field];
-
-      if (existing?.confidence === 'high' && incoming?.confidence !== 'high') {
-        skippedFields.push(field);
-        continue;
-      }
-
-      updateData[field] = profile[field];
-      if (incoming) mergedMeta[field] = incoming;
+    const client = this.supabase.getSupabaseClient();
+    if (!client) {
+      this.logger.warn('Supabase 不可用，长期记忆未持久化');
+      return;
     }
 
-    if (skippedFields.length > 0) {
+    const profileJson: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(profile)) {
+      if (value != null) profileJson[key] = value;
+    }
+    if (Object.keys(profileJson).length === 0 && Object.keys(meta).length === 0) return;
+
+    const { data, error } = await client.rpc('upsert_profile_with_confidence_guard', {
+      p_corp_id: corpId,
+      p_user_id: userId,
+      p_profile: profileJson,
+      p_meta: meta,
+      p_message_metadata: metadata ?? null,
+    });
+
+    if (error) {
+      this.logger.warn('[upsertProfileWithMeta] RPC 失败', error.message);
+      return;
+    }
+
+    const result = data as { written_fields: string[]; skipped_fields: string[] } | null;
+    if (result?.skipped_fields?.length) {
       this.logger.log(
-        `[upsertProfileWithMeta] 置信度守卫：跳过 ${skippedFields.join(',')}（已有 high，incoming 非 high）`,
+        `[upsertProfileWithMeta] 置信度守卫：跳过 ${result.skipped_fields.join(',')}（已有 high，incoming 非 high）`,
       );
     }
 
-    if (metadata) updateData.message_metadata = metadata;
-    if (Object.keys(updateData).filter((k) => k !== 'message_metadata').length === 0) return;
-
-    updateData.profile_fields_meta = mergedMeta;
-    await this.upsertRow(corpId, userId, updateData);
+    await this.invalidateCache(corpId, userId);
   }
 
   // ==================== Summary 操作 ====================

@@ -20,7 +20,7 @@
  * （不增加 sponge 调用）。
  */
 import type { JobDetail } from '@sponge/sponge.types';
-import { isLikelyRealChineseName } from '@memory/facts/name-guard';
+import { isStrictRealChineseName } from '@memory/facts/name-guard';
 import { buildJobPolicyAnalysis, InterviewWindow } from '@tools/utils/job-policy-parser';
 import {
   findSameDayCutoffViolation,
@@ -74,7 +74,7 @@ export function runBookingGuards(input: BookingGuardInput): ToolErrorReturn | nu
 }
 
 function checkRealName(name: string): ToolErrorReturn | null {
-  if (isLikelyRealChineseName(name)) return null;
+  if (isStrictRealChineseName(name)) return null;
   return buildToolError({
     errorType: TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS,
     outcome: '预约失败（姓名可疑，疑似昵称/占位串）',
