@@ -22,7 +22,11 @@ import {
   buildSessionExtractionPrompt,
   SESSION_EXTRACTION_SYSTEM_PROMPT,
 } from './session-extraction.prompt';
-import { detectBrandAliasHints, mergeDetectedBrands } from '../facts/high-confidence-facts';
+import {
+  detectBrandAliasHints,
+  extractHighConfidenceFacts,
+  mergeDetectedBrands,
+} from '../facts/high-confidence-facts';
 import { resolveCityFromGeoSignals } from '../facts/geo-mappings';
 import { sanitizeInterviewName } from '../facts/name-guard';
 import {
@@ -96,15 +100,6 @@ export class SessionService {
   ): Promise<EntityExtractionResult | null> {
     const state = await this.getSessionState(corpId, userId, sessionId);
     return state.facts;
-  }
-
-  async getLastSessionActiveAt(
-    corpId: string,
-    userId: string,
-    sessionId: string,
-  ): Promise<string | null> {
-    const state = await this.getSessionState(corpId, userId, sessionId);
-    return state.lastSessionActiveAt ?? null;
   }
 
   /**
@@ -259,23 +254,6 @@ export class SessionService {
     );
   }
 
-  async storeActivity(
-    corpId: string,
-    userId: string,
-    sessionId: string,
-    data: { lastSessionActiveAt: string },
-  ): Promise<void> {
-    // 这里只写“这段会话最近一次还在继续聊的时间”，
-    // 不负责判断是否应该沉淀；沉淀判断由 MemoryLifecycle + Settlement 组合完成。
-    const key = this.buildKey(corpId, userId, sessionId);
-    await this.redisStore.set(
-      key,
-      this.serializeStateContent(data) as Record<string, unknown>,
-      this.config.sessionTtl,
-      true,
-    );
-  }
-
   // ==================== projection ====================
 
   async projectAssistantTurn(params: {
@@ -369,24 +347,29 @@ export class SessionService {
 
     const brandData = await this.sponge.fetchBrandList();
     const aliasHints = detectBrandAliasHints(userMessages, brandData);
+    const ruleFacts = extractHighConfidenceFacts(userMessages, brandData);
     const prompt = buildSessionExtractionPrompt(
       brandData,
       currentMessage,
       messagesToProcess,
       aliasHints,
+      ruleFacts,
     );
     const llmFacts = mergeDetectedBrands(await this.callLLM(prompt), aliasHints);
-    const { sanitized: newFacts, droppedName } = sanitizeInterviewName(llmFacts, userMessages);
+    // 先 sanitize LLM 输出，再 merge 规则 — 确保 LLM 昵称被 drop 后规则的结构化姓名能补位
+    const { sanitized: sanitizedLlm, droppedName } = sanitizeInterviewName(llmFacts, userMessages);
     if (droppedName) {
       this.logger.log(
         `[extractFacts] 丢弃来自"我是xx"打招呼语的昵称"${droppedName}"，不写入 interview_info.name`,
       );
     }
+    const newFacts = this.mergeHighConfidenceRuleFacts(sanitizedLlm, ruleFacts);
 
-    // sanitizer 命中时，除了把本轮 name 置 null，还要用 forceNullFields 显式覆盖
+    // sanitizer 命中且规则也没补上真名时，用 forceNullFields 显式覆盖
     // Redis 中可能已被早期漏网昵称污染的字段，避免 deepMerge "null 不覆盖" 留存旧值。
+    const nameStillNull = droppedName && !newFacts.interview_info.name;
     await this.saveFacts(corpId, userId, sessionId, newFacts, {
-      forceNullFields: droppedName ? ['name'] : undefined,
+      forceNullFields: nameStillNull ? ['name'] : undefined,
     });
   }
 
@@ -409,6 +392,115 @@ export class SessionService {
       this.logger.warn('[extractFacts] LLM extraction failed, using fallback', err);
       return FALLBACK_EXTRACTION;
     }
+  }
+
+  /**
+   * 规则提取作为 LLM 的参考依据，已通过 prompt 注入。
+   * 此处做兜底合并：LLM 输出为主，规则仅在 LLM 未提取到时补位。
+   * 数组字段仍做累积合并（品牌别名归一化等规则独有的映射能力）。
+   */
+  private mergeHighConfidenceRuleFacts(
+    llmFacts: EntityExtractionResult,
+    ruleFacts: EntityExtractionResult | null,
+  ): EntityExtractionResult {
+    if (!ruleFacts) return llmFacts;
+
+    const merged: EntityExtractionResult = {
+      ...llmFacts,
+      interview_info: { ...llmFacts.interview_info },
+      preferences: { ...llmFacts.preferences },
+    };
+
+    const ruleInfo = ruleFacts.interview_info;
+    if (!merged.interview_info.name && ruleInfo.name) merged.interview_info.name = ruleInfo.name;
+    if (!merged.interview_info.phone && ruleInfo.phone)
+      merged.interview_info.phone = ruleInfo.phone;
+    if (!merged.interview_info.gender && ruleInfo.gender) {
+      merged.interview_info.gender = ruleInfo.gender;
+      merged.interview_info.gender_source =
+        ruleInfo.gender_source ?? merged.interview_info.gender_source;
+    }
+    if (!merged.interview_info.age && ruleInfo.age) merged.interview_info.age = ruleInfo.age;
+    if (!merged.interview_info.applied_store && ruleInfo.applied_store)
+      merged.interview_info.applied_store = ruleInfo.applied_store;
+    if (!merged.interview_info.applied_position && ruleInfo.applied_position)
+      merged.interview_info.applied_position = ruleInfo.applied_position;
+    if (!merged.interview_info.interview_time && ruleInfo.interview_time)
+      merged.interview_info.interview_time = ruleInfo.interview_time;
+    if (merged.interview_info.is_student === null && ruleInfo.is_student !== null)
+      merged.interview_info.is_student = ruleInfo.is_student;
+    if (!merged.interview_info.education && ruleInfo.education)
+      merged.interview_info.education = ruleInfo.education;
+    if (!merged.interview_info.has_health_certificate && ruleInfo.has_health_certificate) {
+      merged.interview_info.has_health_certificate = ruleInfo.has_health_certificate;
+    }
+
+    const rulePrefs = ruleFacts.preferences;
+    merged.preferences.brands = this.mergeNullableStringArrays(
+      merged.preferences.brands,
+      rulePrefs.brands,
+    );
+    if (!merged.preferences.salary && rulePrefs.salary)
+      merged.preferences.salary = rulePrefs.salary;
+    merged.preferences.position = this.mergeNullableStringArrays(
+      merged.preferences.position,
+      rulePrefs.position,
+    );
+    if (!merged.preferences.schedule && rulePrefs.schedule)
+      merged.preferences.schedule = rulePrefs.schedule;
+    if (!merged.preferences.city && rulePrefs.city) merged.preferences.city = rulePrefs.city;
+    merged.preferences.district = this.mergeNullableStringArrays(
+      merged.preferences.district,
+      rulePrefs.district,
+    );
+    merged.preferences.location = this.mergeNullableStringArrays(
+      merged.preferences.location,
+      rulePrefs.location,
+    );
+    if (!merged.preferences.labor_form && rulePrefs.labor_form)
+      merged.preferences.labor_form = rulePrefs.labor_form;
+    if (!merged.preferences.delayed_intent && rulePrefs.delayed_intent)
+      merged.preferences.delayed_intent = rulePrefs.delayed_intent;
+    if (merged.preferences.short_term === null && rulePrefs.short_term !== null)
+      merged.preferences.short_term = rulePrefs.short_term;
+    if (merged.preferences.open_position === null && rulePrefs.open_position !== null)
+      merged.preferences.open_position = rulePrefs.open_position;
+    merged.preferences.time_windows = this.mergeNullableStringArrays(
+      merged.preferences.time_windows,
+      rulePrefs.time_windows,
+    );
+    if (rulePrefs.schedule_constraint) {
+      const llmConstraint = merged.preferences.schedule_constraint;
+      merged.preferences.schedule_constraint = {
+        onlyWeekends:
+          llmConstraint?.onlyWeekends ?? rulePrefs.schedule_constraint.onlyWeekends ?? null,
+        onlyEvenings:
+          llmConstraint?.onlyEvenings ?? rulePrefs.schedule_constraint.onlyEvenings ?? null,
+        onlyMornings:
+          llmConstraint?.onlyMornings ?? rulePrefs.schedule_constraint.onlyMornings ?? null,
+        maxDaysPerWeek:
+          llmConstraint?.maxDaysPerWeek ?? rulePrefs.schedule_constraint.maxDaysPerWeek ?? null,
+      };
+    }
+    if (!merged.preferences.available_after && rulePrefs.available_after)
+      merged.preferences.available_after = rulePrefs.available_after;
+
+    const ruleReasoning = ruleFacts.reasoning?.trim();
+    if (ruleReasoning) {
+      merged.reasoning = [merged.reasoning?.trim(), `规则模式匹配参考线索：\n${ruleReasoning}`]
+        .filter(Boolean)
+        .join('\n');
+    }
+
+    return merged;
+  }
+
+  private mergeNullableStringArrays(
+    first: string[] | null | undefined,
+    second: string[] | null | undefined,
+  ): string[] | null {
+    const merged = Array.from(new Set([...(first ?? []), ...(second ?? [])]));
+    return merged.length > 0 ? merged : null;
   }
 
   /**

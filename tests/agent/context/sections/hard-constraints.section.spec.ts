@@ -75,7 +75,7 @@ describe('HardConstraintsSection', () => {
     const output = section.build({ ...baseCtx, sessionFacts: facts });
 
     expect(output).toContain('是否学生: 是');
-    expect(output).toContain('不得直接说"没问题/符合要求/身份不限"');
+    expect(output).toContain('学生/在读/准研究生身份需谨慎处理');
     expect(output).toContain('figure=不限、学历够、未写学生限制都不能推断为身份没限制');
   });
 

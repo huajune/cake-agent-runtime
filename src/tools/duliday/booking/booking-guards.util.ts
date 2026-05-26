@@ -20,7 +20,7 @@
  * （不增加 sponge 调用）。
  */
 import type { JobDetail } from '@sponge/sponge.types';
-import { isLikelyRealChineseName } from '@memory/facts/name-guard';
+import { isStrictRealChineseName } from '@memory/facts/name-guard';
 import { buildJobPolicyAnalysis, InterviewWindow } from '@tools/utils/job-policy-parser';
 import {
   findSameDayCutoffViolation,
@@ -74,13 +74,13 @@ export function runBookingGuards(input: BookingGuardInput): ToolErrorReturn | nu
 }
 
 function checkRealName(name: string): ToolErrorReturn | null {
-  if (isLikelyRealChineseName(name)) return null;
+  if (isStrictRealChineseName(name)) return null;
   return buildToolError({
     errorType: TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS,
     outcome: '预约失败（姓名可疑，疑似昵称/占位串）',
     replyInstruction:
       'booking 入参 name 看起来不像真实姓名（昵称/拼音/占位串等）。回到 duliday_interview_precheck 重新核对——若 nameFieldGuard.suspicious=true 则向候选人补问真名（"门店登记需要本名"）；若 nameFieldGuard.mustHandoff=true 则调 request_handoff(reasonCode="other", reason="疑似少数民族/特殊姓名 booking 校验拒绝") 转人工。严禁在没有合规真名的情况下重试本工具。',
-    details: { detailedReason: `name="${name}" 未通过 isLikelyRealChineseName 校验` },
+    details: { detailedReason: `name="${name}" 未通过 isStrictRealChineseName 校验（2-4 字）` },
   });
 }
 

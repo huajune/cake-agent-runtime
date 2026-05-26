@@ -153,6 +153,45 @@ describe('ShortTermService', () => {
     );
   });
 
+  it('should use historyWindowSeconds (not sessionTtl) for Supabase startTimeInclusive', async () => {
+    const HISTORY_WINDOW_SECONDS = 7 * 86400; // 7 days
+    const SESSION_TTL = 86400; // 1 day — different from history window
+    const customConfig = {
+      sessionWindowMaxMessages: 60,
+      sessionWindowMaxChars: 100000,
+      historyWindowSeconds: HISTORY_WINDOW_SECONDS,
+      sessionTtl: SESSION_TTL,
+    };
+    const customService = new ShortTermService(
+      mockRepo as never,
+      customConfig as never,
+      mockRedis as never,
+    );
+
+    mockRedis.lrange.mockResolvedValue([]);
+    mockRepo.getChatHistory.mockResolvedValue([]);
+
+    const before = Date.now();
+    await customService.getMessages('chat_custom');
+    const after = Date.now();
+
+    const call = mockRepo.getChatHistory.mock.calls[0];
+    const { startTimeInclusive } = call[2] as { startTimeInclusive: number };
+
+    // startTimeInclusive should be ≈ now - 7 days, not now - 1 day
+    const expectedMin = before - HISTORY_WINDOW_SECONDS * 1000;
+    const expectedMax = after - HISTORY_WINDOW_SECONDS * 1000;
+    expect(startTimeInclusive).toBeGreaterThanOrEqual(expectedMin);
+    expect(startTimeInclusive).toBeLessThanOrEqual(expectedMax);
+
+    // Sanity-check: it is NOT derived from SESSION_TTL (1 day)
+    const oneDay = SESSION_TTL * 1000;
+    const sevenDays = HISTORY_WINDOW_SECONDS * 1000;
+    const distanceFromNow = after - startTimeInclusive;
+    expect(distanceFromNow).toBeGreaterThan(oneDay);  // not 1-day window
+    expect(distanceFromNow).toBeLessThanOrEqual(sevenDays + 1000); // ≤ 7-day window
+  });
+
   it('should clear lastLoadError after a successful reload', async () => {
     mockRedis.lrange.mockResolvedValue([]);
     mockRepo.getChatHistory.mockRejectedValueOnce(new Error('db error')).mockResolvedValueOnce([]);

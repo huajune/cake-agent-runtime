@@ -39,6 +39,33 @@ import {
   toMessageProcessingRecords,
 } from './analytics-dashboard.util';
 
+const DEFAULT_USER_TREND_DAYS = 30;
+const MAX_USER_TREND_DAYS = 365;
+
+function normalizeUserTrendDays(days?: number): number {
+  if (!Number.isFinite(days) || days === undefined || days < 1) {
+    return DEFAULT_USER_TREND_DAYS;
+  }
+
+  return Math.min(Math.floor(days), MAX_USER_TREND_DAYS);
+}
+
+const DETAIL_RECORD_LIMIT_BY_RANGE: Record<TimeRange, number> = {
+  today: 2000,
+  week: 5000,
+  month: 10000,
+  twoMonths: 20000,
+  threeMonths: 30000,
+};
+
+const TREND_HOURS_BY_RANGE: Record<TimeRange, number> = {
+  today: 24,
+  week: 168,
+  month: 720,
+  twoMonths: 1440,
+  threeMonths: 2160,
+};
+
 /**
  * 单项数据查询服务
  * 负责系统监控、趋势数据、指标、消息统计、用户等独立查询接口
@@ -303,9 +330,12 @@ export class AnalyticsQueryService {
     }));
   }
 
-  async getUserTrend(): Promise<Array<{ date: string; userCount: number; messageCount: number }>> {
+  async getUserTrend(
+    days?: number,
+  ): Promise<Array<{ date: string; userCount: number; messageCount: number }>> {
+    const trendDays = normalizeUserTrendDays(days);
     const endDate = new Date();
-    const startDate = addLocalDays(getLocalDayStart(endDate), -30);
+    const startDate = addLocalDays(getLocalDayStart(endDate), -trendDays);
     const stats = await this.messageProcessingService.getDailyUserStats(startDate, endDate);
     return stats.map((s) => ({
       date: s.date,
@@ -361,10 +391,9 @@ export class AnalyticsQueryService {
   private async getDetailRecordsByTimeRange(range: TimeRange): Promise<MessageProcessingRecord[]> {
     try {
       const cutoffTime = this.getTimeRangeCutoff(range);
-      const limitByRange = { today: 2000, week: 5000, month: 10000 };
       const result = await this.messageProcessingService.getRecordsByTimestamps({
         startTime: cutoffTime.getTime(),
-        limit: limitByRange[range] || 2000,
+        limit: DETAIL_RECORD_LIMIT_BY_RANGE[range] ?? DETAIL_RECORD_LIMIT_BY_RANGE.today,
       });
       return toMessageProcessingRecords(result.records);
     } catch (error) {
@@ -465,7 +494,7 @@ export class AnalyticsQueryService {
   }
 
   private async calculateTrends(timeRange: TimeRange) {
-    const hours = timeRange === 'today' ? 24 : timeRange === 'week' ? 168 : 720;
+    const hours = TREND_HOURS_BY_RANGE[timeRange] ?? TREND_HOURS_BY_RANGE.month;
     const hourlyStats = await this.getHourlyStats(hours);
     return { hourly: hourlyStats };
   }

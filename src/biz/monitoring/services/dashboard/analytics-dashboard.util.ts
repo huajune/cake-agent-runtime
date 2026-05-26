@@ -4,6 +4,13 @@ import type { MessageProcessingRecordInput } from '@biz/message/types/message.ty
 import type { AgentInvocationRecord, MessageProcessingRecord } from '@shared-types/tracking.types';
 import type { TimeRange } from '../../types/analytics.types';
 
+const RANGE_DAYS: Record<Exclude<TimeRange, 'today'>, number> = {
+  week: 7,
+  month: 30,
+  twoMonths: 60,
+  threeMonths: 90,
+};
+
 export interface DashboardTimeRanges {
   currentStart: number;
   currentEnd: number;
@@ -30,24 +37,14 @@ export function calculateDashboardTimeRanges(timeRange: TimeRange): DashboardTim
       };
     }
 
-    case 'week': {
-      const currentStartDate = addLocalDays(getLocalDayStart(nowDate), -6);
+    case 'week':
+    case 'month':
+    case 'twoMonths':
+    case 'threeMonths': {
+      const days = RANGE_DAYS[timeRange];
+      const currentStartDate = addLocalDays(getLocalDayStart(nowDate), -(days - 1));
       const currentStart = currentStartDate.getTime();
-      const previousStartDate = addLocalDays(currentStartDate, -7);
-      const previousStart = previousStartDate.getTime();
-
-      return {
-        currentStart,
-        currentEnd: now,
-        previousStart,
-        previousEnd: previousStart + (now - currentStart),
-      };
-    }
-
-    case 'month': {
-      const currentStartDate = addLocalDays(getLocalDayStart(nowDate), -29);
-      const currentStart = currentStartDate.getTime();
-      const previousStartDate = addLocalDays(currentStartDate, -30);
+      const previousStartDate = addLocalDays(currentStartDate, -days);
       const previousStart = previousStartDate.getTime();
 
       return {

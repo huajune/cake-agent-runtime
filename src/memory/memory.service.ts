@@ -55,7 +55,7 @@ export class MemoryService {
     return await this.longTerm.getSummaryData(corpId, userId);
   }
 
-  /** 写入长期档案的外部高置信字段（如外部系统补充的性别）。 */
+  /** 写入长期档案的外部补充字段，统一带 profile_fields_meta。 */
   async saveProfile(
     corpId: string,
     userId: string,

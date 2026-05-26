@@ -14,7 +14,7 @@ import {
 // 基础类型
 // ========================================
 
-export type TimeRange = 'today' | 'week' | 'month';
+export type TimeRange = 'today' | 'week' | 'month' | 'twoMonths' | 'threeMonths';
 
 // ========================================
 // Dashboard 概览

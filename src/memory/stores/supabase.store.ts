@@ -4,12 +4,14 @@ import { RedisService } from '@infra/redis/redis.service';
 import { MemoryConfig } from '../memory.config';
 import type {
   UserProfile,
+  UserProfileMeta,
+  ProfileFieldMeta,
   SummaryData,
   SummaryEntry,
   MessageMetadata,
   AgentMemoryRow,
 } from '../types/long-term.types';
-import { MAX_RECENT_SUMMARIES } from '../types/long-term.types';
+import { MAX_RECENT_SUMMARIES, USER_PROFILE_FIELD_KEYS } from '../types/long-term.types';
 import type { MemoryEntry, MemoryStore } from './store.types';
 
 const TABLE = 'agent_memories';
@@ -62,27 +64,60 @@ export class SupabaseStore implements MemoryStore {
     };
   }
 
-  async upsertProfile(
+  /**
+   * 写入 Profile 字段并同时记录来源元数据（profile_fields_meta）。
+   *
+   * 置信度守卫由 DB 端 RPC `upsert_profile_with_confidence_guard` 原子保证：
+   * SELECT ... FOR UPDATE 行锁 → 读 existing meta → 逐字段比较 confidence →
+   * high 不被非 high 覆盖 → 单事务写入。
+   *
+   * 解决的竞态：booking（fire-and-forget, high）与 settlement（async, medium）
+   * 交错时，应用层 read-then-write 无法保证 high 不被覆盖。
+   */
+  async upsertProfileWithMeta(
     corpId: string,
     userId: string,
     profile: Partial<UserProfile>,
+    meta: UserProfileMeta,
     metadata?: MessageMetadata,
   ): Promise<void> {
-    const updateData: Record<string, unknown> = {};
+    const client = this.supabase.getSupabaseClient();
+    if (!client) {
+      this.logger.warn('Supabase 不可用，长期记忆未持久化');
+      return;
+    }
 
-    if (profile.name != null) updateData.name = profile.name;
-    if (profile.phone != null) updateData.phone = profile.phone;
-    if (profile.gender != null) updateData.gender = profile.gender;
-    if (profile.age != null) updateData.age = profile.age;
-    if (profile.is_student != null) updateData.is_student = profile.is_student;
-    if (profile.education != null) updateData.education = profile.education;
-    if (profile.has_health_certificate != null)
-      updateData.has_health_certificate = profile.has_health_certificate;
-    if (metadata) updateData.message_metadata = metadata;
+    const profileJson: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(profile)) {
+      if (value != null) profileJson[key] = value;
+    }
+    const mergedMeta = this.withDefaultProfileMeta(profileJson, meta, {
+      source: 'enrichment',
+      confidence: 'medium',
+    });
+    if (Object.keys(profileJson).length === 0 && Object.keys(mergedMeta).length === 0) return;
 
-    if (Object.keys(updateData).length === 0) return;
+    const { data, error } = await client.rpc('upsert_profile_with_confidence_guard', {
+      p_corp_id: corpId,
+      p_user_id: userId,
+      p_profile: profileJson,
+      p_meta: mergedMeta,
+      p_message_metadata: metadata ?? null,
+    });
 
-    await this.upsertRow(corpId, userId, updateData);
+    if (error) {
+      this.logger.warn('[upsertProfileWithMeta] RPC 失败', error.message);
+      return;
+    }
+
+    const result = data as { written_fields: string[]; skipped_fields: string[] } | null;
+    if (result?.skipped_fields?.length) {
+      this.logger.log(
+        `[upsertProfileWithMeta] 置信度守卫：跳过 ${result.skipped_fields.join(',')}（已有 high，incoming 非 high）`,
+      );
+    }
+
+    await this.invalidateCache(corpId, userId);
   }
 
   // ==================== Summary 操作 ====================
@@ -93,11 +128,68 @@ export class SupabaseStore implements MemoryStore {
   }
 
   /**
-   * 追加一条摘要，自动执行分层压缩
+   * 原子追加一条摘要（DB 端 RPC 行锁），自动执行分层压缩。
    *
-   * @param compressArchive 当 recent 超限时，由调用方传入压缩函数（LLM 调用）
+   * Phase 1: RPC `append_summary_atomic` 在行锁内追加 entry 到 recent 头部，
+   *          超限时返回溢出条目但不压缩（压缩需 LLM，不能在 DB 事务里做）。
+   * Phase 2: 若有溢出且提供了 compressArchive，在应用层压缩后回写 archive。
    */
   async appendSummary(
+    corpId: string,
+    userId: string,
+    entry: SummaryEntry,
+    options?: {
+      lastSettledMessageAt?: string | null;
+      compressArchive?: (
+        overflow: SummaryEntry[],
+        existingArchive: string | null,
+      ) => Promise<string>;
+    },
+  ): Promise<void> {
+    const client = this.supabase.getSupabaseClient();
+    if (!client) {
+      this.logger.warn('Supabase 不可用，appendSummary 跳过');
+      return;
+    }
+
+    const { data: rpcResult, error } = await client.rpc('append_summary_atomic', {
+      p_corp_id: corpId,
+      p_user_id: userId,
+      p_entry: JSON.stringify(entry),
+      p_last_settled_message_at: options?.lastSettledMessageAt ?? null,
+      p_max_recent: MAX_RECENT_SUMMARIES,
+    });
+
+    if (error) {
+      this.logger.warn('[appendSummary] RPC 失败，降级到应用层写入', error.message);
+      await this.appendSummaryFallback(corpId, userId, entry, options);
+      return;
+    }
+
+    await this.invalidateCache(corpId, userId);
+
+    const result = rpcResult as { overflow: SummaryEntry[]; recentCount: number } | null;
+    if (result?.overflow?.length && options?.compressArchive) {
+      try {
+        const summaryData = await this.getSummaryData(corpId, userId);
+        const archive = await options.compressArchive(
+          result.overflow,
+          summaryData?.archive ?? null,
+        );
+        await this.upsertRow(corpId, userId, {
+          summary_data: {
+            ...(summaryData ?? { recent: [], lastSettledMessageAt: null }),
+            archive,
+          },
+        });
+      } catch (err) {
+        this.logger.warn('摘要压缩失败，溢出条目将在下次压缩', err);
+      }
+    }
+  }
+
+  /** RPC 不可用时的降级路径（应用层 read-then-write，非原子）。 */
+  private async appendSummaryFallback(
     corpId: string,
     userId: string,
     entry: SummaryEntry,
@@ -116,21 +208,17 @@ export class SupabaseStore implements MemoryStore {
       lastSettledMessageAt: null,
     };
 
-    // 追加到头部（最新在前）
     data.recent.unshift(entry);
 
-    // 分层压缩：超出上限时，移出最早的条目并压缩到 archive
     if (data.recent.length > MAX_RECENT_SUMMARIES && options?.compressArchive) {
       const overflow = data.recent.splice(MAX_RECENT_SUMMARIES);
       try {
         data.archive = await options.compressArchive(overflow, data.archive);
       } catch (err) {
         this.logger.warn('摘要压缩失败，保留原始条目', err);
-        // 压缩失败时，把溢出的条目放回去（降级：不压缩，下次再试）
         data.recent.push(...overflow);
       }
     } else if (data.recent.length > MAX_RECENT_SUMMARIES) {
-      // 无压缩函数时，直接丢弃最早的
       data.recent = data.recent.slice(0, MAX_RECENT_SUMMARIES);
     }
 
@@ -172,7 +260,7 @@ export class SupabaseStore implements MemoryStore {
 
   async set(key: string, content: Record<string, unknown>): Promise<void> {
     const { corpId, userId } = this.parseProfileKey(key);
-    await this.upsertProfile(corpId, userId, content as Partial<UserProfile>);
+    await this.upsertProfileWithMeta(corpId, userId, content as Partial<UserProfile>, {});
   }
 
   async del(key: string): Promise<boolean> {
@@ -238,24 +326,14 @@ export class SupabaseStore implements MemoryStore {
       return;
     }
 
-    const existing = await client
+    const { error } = await client
       .from(TABLE)
-      .select('id')
-      .eq('corp_id', corpId)
-      .eq('user_id', userId)
-      .maybeSingle();
+      .upsert(
+        { corp_id: corpId, user_id: userId, ...fields, updated_at: new Date().toISOString() },
+        { onConflict: 'corp_id,user_id' },
+      );
 
-    const updateFields = { ...fields, updated_at: new Date().toISOString() };
-
-    if (existing.data) {
-      const { error } = await client.from(TABLE).update(updateFields).eq('id', existing.data.id);
-      if (error) this.logger.warn('更新长期记忆失败', error.message);
-    } else {
-      const { error } = await client
-        .from(TABLE)
-        .insert({ corp_id: corpId, user_id: userId, ...updateFields });
-      if (error) this.logger.warn('插入长期记忆失败', error.message);
-    }
+    if (error) this.logger.warn('upsert 长期记忆失败', error.message);
 
     await this.invalidateCache(corpId, userId);
   }
@@ -266,6 +344,23 @@ export class SupabaseStore implements MemoryStore {
 
   private cacheKey(corpId: string, userId: string): string {
     return `profile:${corpId}:${userId}`;
+  }
+
+  private withDefaultProfileMeta(
+    profileJson: Record<string, unknown>,
+    meta: UserProfileMeta,
+    defaults: Pick<ProfileFieldMeta, 'source' | 'confidence'>,
+  ): UserProfileMeta {
+    const mergedMeta: UserProfileMeta = { ...meta };
+    const writtenAt = new Date().toISOString();
+
+    for (const key of USER_PROFILE_FIELD_KEYS) {
+      if (profileJson[key] !== undefined && !mergedMeta[key]) {
+        mergedMeta[key] = { ...defaults, writtenAt };
+      }
+    }
+
+    return mergedMeta;
   }
 
   private parseProfileKey(key: string): { corpId: string; userId: string } {

@@ -35,6 +35,7 @@ import { PrivateChatMonitorNotifierService } from '@notification/services/privat
 import { InterventionService } from '@biz/intervention/intervention.service';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
 import { SessionService } from '@memory/services/session.service';
+import { LongTermService } from '@memory/services/long-term.service';
 
 /**
  * 统一工具注册表
@@ -74,6 +75,7 @@ export class ToolRegistryService {
     configService: ConfigService,
     interventionService: InterventionService,
     sessionService: SessionService,
+    longTermService: LongTermService,
   ) {
     const memberLimit = parseInt(configService.get('GROUP_MEMBER_LIMIT', '200'), 10);
     const enterpriseToken = configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim();
@@ -109,6 +111,7 @@ export class ToolRegistryService {
           userHostingService,
           recruitmentCaseService,
           bookingService,
+          longTermService,
         ),
       }),
 

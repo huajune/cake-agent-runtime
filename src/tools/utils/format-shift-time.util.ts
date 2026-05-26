@@ -70,8 +70,30 @@ export function composeShiftTimeText(workTime: unknown): string | null {
   const slots = collectShiftSlots(input);
   if (slots.length === 0) return null;
 
+  // 单条 fixedShift 且跨度 ≥ 12 小时时，该条目通常是"排班窗口"而非真实班次时长。
+  // 此时用 perDayMinWorkHours 描述实际每日出勤时长，避免把窗口跨度（如 15h）输出成
+  // "全天班，约 15 小时"误导 LLM（badcase：候选人问"做一整天吗"，LLM 看到 15h 后
+  // 反而用通识补"4-8 小时"，造成空头承诺）。
+  if (slots.length === 1) {
+    const slotHours = durationMinutes(slots[0].start, slots[0].end) / 60;
+    const dayMin = numberOf(input?.dayWorkTime?.perDayMinWorkHours);
+    if (slotHours >= 12 && dayMin !== null && dayMin < slotHours) {
+      return formatWindowSlot(slots[0], dayMin);
+    }
+  }
+
   const mode = inferSelectionMode(input, slots);
   return formatSlots(slots, mode);
+}
+
+/**
+ * 排班窗口格式：API 只记了一条宽跨度 fixedShift（如 07:00-22:00），
+ * 实际排班在窗口内进行，每日最少工时由 perDayMinWorkHours 决定。
+ * 输出示例："07:00-22:00 排班窗口（每日至少 10 小时）"
+ */
+function formatWindowSlot(slot: ShiftSlot, dayMinHours: number): string {
+  const range = formatTimeRange(slot.start, slot.end);
+  return `${range} 排班窗口（每日至少 ${dayMinHours} 小时）`;
 }
 
 /** 收集所有候选 slot，按优先级：fixedScheduleList > combinedArrangement > fixedTime（窄区间）。 */
@@ -133,7 +155,7 @@ function collectShiftSlots(workTime: WorkTimeInput): ShiftSlot[] {
 }
 
 /** 选择关系：由 workTime 形态推断。 */
-type SelectionMode = 'single' | 'pick_one' | 'by_weekday';
+type SelectionMode = 'single' | 'pick_one' | 'by_weekday' | 'all_required';
 
 function inferSelectionMode(workTime: WorkTimeInput, slots: ShiftSlot[]): SelectionMode {
   if (slots.length === 1) return 'single';
@@ -142,9 +164,15 @@ function inferSelectionMode(workTime: WorkTimeInput, slots: ShiftSlot[]): Select
   const allHaveWeekdays = slots.every((s) => Boolean(s.weekdays));
   if (allHaveWeekdays) return 'by_weekday';
 
-  // 多档 fixedScheduleList 的标准业务语义就是"候选人选其一"。
-  // arrangementType 字段实际值我们见过 '固定排班制'/'组合排班制'/'弹性' 等，
-  // 含义并不能可靠推断"必须全做"，保守默认 pick_one。
+  // 如果 perDayMinWorkHours 超过任意单段时长，说明单选一段不足以满足最低工时，
+  // 所有班次都必须出勤（典型：两段各 2h + perDayMinWorkHours=4 → 全部都要做）。
+  const dayMin = numberOf(workTime?.dayWorkTime?.perDayMinWorkHours);
+  if (dayMin !== null && dayMin > 0) {
+    const maxSingleSlotHours = Math.max(...slots.map((s) => durationMinutes(s.start, s.end))) / 60;
+    if (dayMin > maxSingleSlotHours) return 'all_required';
+  }
+
+  // 多档 fixedScheduleList 的默认业务语义就是"候选人选其一"。
   return 'pick_one';
 }
 
@@ -188,6 +216,10 @@ function formatSlots(slots: ShiftSlot[], mode: SelectionMode): string {
     // weekdays 已包含在每行里，不需要选择关系前缀
     if (slots.length === 1) return lines[0].replace(/^-\s*/, '');
     return lines.join('\n');
+  }
+
+  if (mode === 'all_required') {
+    return `组合班次，全部需出勤：\n${lines.join('\n')}`;
   }
 
   return `班次可选其一：\n${lines.join('\n')}`;

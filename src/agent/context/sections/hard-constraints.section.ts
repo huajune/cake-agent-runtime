@@ -3,34 +3,57 @@ import { isValidLaborForm } from '@memory/facts/labor-form';
 import { PromptContext, PromptSection } from './section.interface';
 
 /**
- * 本轮查询硬约束段落
+ * 本轮查询约束段落（硬约束 + 软提示）
  *
- * 把 [会话记忆] / [本轮高置信线索] 中已经明确的「会决定 duliday_job_list filter 应该传什么」
- * 的字段，集中、扁平地列出来，强制模型在调用查询工具时把它们体现到 filter 中。
+ * 把 [会话记忆] / [本轮高置信线索] 中已经明确的字段分两层渲染：
  *
- * 设计动机：
- * - 排障发现，模型在管理员/历史轮已经讲过「急需男生晚班打烊」的会话里，仍会调用一个
- *   不带性别/班次过滤的宽泛查询，再用结果代表"该候选人场景下无空缺"。
- * - sessionFacts 已有这些字段，但被埋在 [会话记忆] 段落内，模型决策时未必会显式提取。
- * - 这里把它们集中渲染成"调用 duliday_job_list 必须考虑"的清单，提高被引用概率。
+ * **硬约束**（6 个）：city / district / location / age / schedule / salary
+ * 这些字段如果模型"忘了"，搜索结果要么完全无效（跨城/跨区），要么严重不匹配
+ * （年龄差太大/班次完全冲突/薪资远低于预期），必须强制体现到查询参数中。
+ * 其中 age 带弹性：差距 ≤3 岁的岗位不排除，标注"需 precheck 确认"。
+ *
+ * **软提示**（其余字段）：gender / position / brands / education / health_cert 等
+ * 这些是结果过滤/筛选条件，模型不带这些条件搜索结果集会大一些，但不会"完全无效"。
+ * 渲染为"建议参考"而非"必须"，模型有权根据上下文判断是否采纳——避免提取错误
+ * 时模型被锁死无法自救。
  */
 export class HardConstraintsSection implements PromptSection {
   readonly name = 'hard-constraints';
 
   build(ctx: PromptContext): string {
     const merged = this.mergeFacts(ctx.sessionFacts ?? null, ctx.highConfidenceFacts ?? null);
-    const lines = this.collectConstraintLines(merged);
-    if (lines.length === 0) return '';
+    const hardLines = this.collectHardConstraintLines(merged);
+    const softLines = this.collectSoftHintLines(merged);
+    if (hardLines.length === 0 && softLines.length === 0) return '';
 
-    return [
-      '[本轮查询硬约束]',
-      '',
-      '以下硬约束来自 [会话记忆] 与 [本轮高置信线索]，是候选人或管理员已经明确表达过的筛选条件。',
-      '调用 duliday_job_list 时**必须**把这些约束体现到 filter 参数；缺少任一硬约束的查询结果',
-      '不得用于"该候选人场景下无空缺"的结论。',
-      '',
-      ...lines,
-    ].join('\n');
+    const sections: string[] = [];
+
+    if (hardLines.length > 0) {
+      sections.push(
+        '[本轮查询硬约束]',
+        '',
+        '以下硬约束来自 [会话记忆] 与 [本轮高置信线索]，是候选人已经明确表达过的核心筛选条件。',
+        '调用 duliday_job_list 时**必须**把这些约束体现到 filter 参数；缺少任一硬约束的查询结果',
+        '不得用于"该候选人场景下无空缺"的结论。',
+        '',
+        ...hardLines,
+      );
+    }
+
+    if (softLines.length > 0) {
+      sections.push(
+        '',
+        '[本轮查询参考信息]',
+        '',
+        '以下信息来自 [会话记忆] 与 [本轮高置信线索]，供查询和推荐时参考。',
+        '这些是建议性过滤条件——优先用于结果筛选，但如果你判断提取可能有误（如从引用消息中误提取），',
+        '可以根据上下文自行决定是否采纳。',
+        '',
+        ...softLines,
+      );
+    }
+
+    return sections.join('\n');
   }
 
   /**
@@ -93,11 +116,12 @@ export class HardConstraintsSection implements PromptSection {
   }
 
   /**
-   * 从合并后的 facts 中挑出"决定 duliday_job_list 应当传什么"的字段。
+   * 硬约束：city / district / location / age / schedule / salary
    *
-   * 不重复渲染所有 facts（那样会和 [会话记忆] 完全冗余），只渲染对查询 filter 直接相关的硬约束。
+   * 这些字段如果模型"忘了"，搜索结果要么完全无效（跨城/跨区），
+   * 要么严重不匹配（年龄差太大/班次冲突/薪资远低于预期）。
    */
-  private collectConstraintLines(
+  private collectHardConstraintLines(
     merged: { interview: EntityExtractionResult['interview_info']; pref: Preferences } | null,
   ): string[] {
     if (!merged) return [];
@@ -126,17 +150,9 @@ export class HardConstraintsSection implements PromptSection {
         `- 位置/商圈/地标: ${pref.location.join('、')}（做具体门店或附近岗位推荐前，必须先 geocode 或使用位置分享经纬度，再用 location 调 duliday_job_list；不得直接复用历史岗位事实）`,
       );
     }
-    if (pref.brands?.length) {
-      lines.push(`- 意向品牌: ${pref.brands.join('、')}（用 brandIdList 而非 brandAliasList）`);
-    }
-    if (pref.position?.length) {
+    if (interview.age) {
       lines.push(
-        `- 意向岗位: ${pref.position.join('、')}（必要时填 jobCategoryList；注意 jobCategoryList 只接受具体工种如"咖啡师"、"服务员"，严禁填入"兼职/全职/小时工/寒假工"等用工形式词）`,
-      );
-    }
-    if (pref.labor_form && isValidLaborForm(pref.labor_form)) {
-      lines.push(
-        `- 用工形式细分: ${pref.labor_form}（平台全为兼职岗位，此字段仅在候选人明确提到"小时工/寒假工/暑假工/兼职+"时出现；**仅作为结果过滤器**，不要填入 jobCategoryList 或任何查询参数，而是开 includeWorkTime 后基于岗位排班/工时特征在结果中筛选匹配项）`,
+        `- 年龄: ${interview.age}（开 includeHiringRequirement；年龄弹性规则：候选人超岗位上限 ≤3 岁（如要求20-35、候选人36-38）或候选人 ≥23 岁且差岗位下限 ≤2 岁（如要求25-40、候选人23-24），该岗位仍可推荐，不要排除也不要说"年龄卡了/超龄"，应说"年龄差一点点，我帮你确认下"，由 precheck ageBoundary 判定；超出弹性范围的才视为不符）`,
       );
     }
     if (pref.schedule) {
@@ -148,52 +164,94 @@ export class HardConstraintsSection implements PromptSection {
       lines.push(`- 意向薪资: ${pref.salary}（开 includeJobSalary，结果中明显低于此预期的不要推）`);
     }
 
+    return lines;
+  }
+
+  /**
+   * 软提示：gender / position / brands / education / health_cert / is_student 等
+   *
+   * 这些是结果过滤/筛选条件，模型不带这些条件搜索结果集会大一些但不会"完全无效"。
+   * 模型有权根据上下文判断是否采纳——避免提取错误时被锁死无法自救。
+   */
+  private collectSoftHintLines(
+    merged: { interview: EntityExtractionResult['interview_info']; pref: Preferences } | null,
+  ): string[] {
+    if (!merged) return [];
+
+    const { interview, pref } = merged;
+    const lines: string[] = [];
+
     if (interview.gender) {
       lines.push(
-        `- 性别: ${interview.gender}（开 includeHiringRequirement，结果中性别不符的不要推荐）`,
+        `- 性别: ${interview.gender}（建议开 includeHiringRequirement，结果中性别不符的优先排除）`,
       );
     }
-    if (interview.age) {
+    if (pref.brands?.length) {
       lines.push(
-        `- 年龄: ${interview.age}（开 includeHiringRequirement，结果中年龄不符的不要推荐）`,
+        `- 意向品牌: ${pref.brands.join('、')}（建议用 brandIdList；若搜索无结果可尝试去掉品牌限制扩大召回）`,
+      );
+    }
+    if (pref.position?.length) {
+      lines.push(
+        `- 意向岗位: ${pref.position.join('、')}（建议填 jobCategoryList；注意只接受具体工种如"咖啡师"、"服务员"，严禁填入用工形式词；若搜索结果全部不匹配候选人的时间/年龄等硬约束，应清空 jobCategoryList 放宽重查一次）`,
+      );
+    }
+    if (pref.labor_form && isValidLaborForm(pref.labor_form)) {
+      lines.push(
+        `- 用工形式细分: ${pref.labor_form}（仅作为结果过滤器，不要填入 jobCategoryList；开 includeWorkTime 后基于岗位排班/工时特征筛选）`,
       );
     }
     if (interview.is_student !== null && interview.is_student !== undefined) {
       lines.push(
         interview.is_student
-          ? '- 是否学生: 是（学生/在读/准研究生身份是硬闸门；先开 includeHiringRequirement 或 duliday_interview_precheck 核对岗位招聘要求，不得直接说"没问题/符合要求/身份不限"；结果中明确"不接受学生/学生勿扰/社会人士"的不要推给学生候选人；只有工具明示"学生可/接受学生/学生兼职和社会兼职都可"才可说接受学生，figure=不限、学历够、未写学生限制都不能推断为身份没限制，必须保守说明需要确认）'
-          : '- 是否学生: 否（开 includeHiringRequirement 核对岗位招聘要求，不要把社会人士误问成学生）',
+          ? '- 是否学生: 是（学生/在读/准研究生身份需谨慎处理；建议开 includeHiringRequirement 或 duliday_interview_precheck 核对；结果中明确"不接受学生"的不要推给学生候选人；figure=不限、学历够、未写学生限制都不能推断为身份没限制，必须保守说明需要确认）'
+          : '- 是否学生: 否（建议开 includeHiringRequirement 核对，不要把社会人士误问成学生）',
       );
     }
     if (interview.has_health_certificate) {
       lines.push(
-        `- 健康证: ${interview.has_health_certificate}（开 includeHiringRequirement，岗位要求健康证而候选人没有时不要推）`,
+        `- 健康证: ${interview.has_health_certificate}（建议开 includeHiringRequirement，岗位要求健康证而候选人没有时优先排除）`,
       );
     }
     if (interview.education) {
       lines.push(
-        `- 学历: ${interview.education}（开 includeHiringRequirement，结果中学历不符的不要推荐）`,
+        `- 学历: ${interview.education}（建议开 includeHiringRequirement，结果中学历不符的优先排除）`,
       );
     }
-
     if (pref.open_position) {
       lines.push(
-        `- 候选人岗位开放: 是（候选人说过"什么都可以/X都行/什么工作都行"等宽口径句式；jobCategoryList 必须留空，禁止锁定为某具体工种；按区域/品牌/班次召回后由候选人自选）`,
+        `- 候选人岗位开放: 是（候选人说过"什么都可以"等宽口径句式；jobCategoryList 建议留空，按区域/品牌/班次召回后由候选人自选）`,
       );
     }
     if (pref.short_term) {
       lines.push(
-        `- 短期工意向: 是（候选人明确表示"做几天/临时/短期"；最少工作月数 ≥ 1 的岗位不得推荐；本轮如要继续推荐，必须匹配 labor_form ∈ 寒假工/暑假工/小时工，否则直接 invite_to_group）`,
+        `- 短期工意向: 是（候选人明确表示"做几天/临时/短期"；最少工作月数 ≥ 1 的岗位优先排除）`,
       );
     }
     if (pref.delayed_intent) {
       lines.push(
-        `- 推迟意向: ${pref.delayed_intent.until}（候选人明确推迟/再说；本轮及后续禁止主动催面/催报名/反复确认时间；按招募者口吻收尾，必要时调用 invite_to_group 留存）`,
+        `- 推迟意向: ${pref.delayed_intent.until}（候选人明确推迟/再说；建议按招募者口吻收尾，不主动催面/催报名）`,
       );
     }
     if (pref.time_windows?.length) {
       lines.push(
-        `- 可用时间窗口: ${pref.time_windows.join('、')}（推荐岗位的工时班次必须与该窗口有交集；不满足直接说明而不是反复追问候选人）`,
+        `- 可用时间窗口: ${pref.time_windows.join('、')}（推荐岗位的工时班次建议与该窗口有交集）`,
+      );
+    }
+    if (pref.schedule_constraint) {
+      const parts: string[] = [];
+      if (pref.schedule_constraint.onlyWeekends) parts.push('只周末');
+      if (pref.schedule_constraint.onlyEvenings) parts.push('只晚班');
+      if (pref.schedule_constraint.onlyMornings) parts.push('只早班');
+      if (pref.schedule_constraint.maxDaysPerWeek)
+        parts.push(`每周最多${pref.schedule_constraint.maxDaysPerWeek}天`);
+      if (parts.length > 0) {
+        lines.push(`- 结构化排班约束: ${parts.join('、')}（建议结合 includeWorkTime 校验匹配度）`);
+      }
+    }
+    if (pref.available_after) {
+      lines.push(
+        `- 最早可面试日期: ${pref.available_after.date}（候选人原话："${pref.available_after.raw}"；该日期前不要催面试）`,
       );
     }
 

@@ -715,8 +715,8 @@ describe('buildJobListTool', () => {
 
       const md = result.markdown as string;
       expect(md).toContain('⚠️ 同品牌多门店');
-      expect(md).toContain('肯德基（绿地缤纷城店，2.3km，17-22 元/时）');
-      expect(md).toContain('肯德基（日月光店，5.1km，17-22 元/时）');
+      expect(md).toContain('肯德基 餐饮（绿地缤纷城店，2.3km，17-22 元/时）');
+      expect(md).toContain('肯德基 餐饮（日月光店，5.1km，17-22 元/时）');
       expect(md).toContain('jobId: 1');
       expect(md).toContain('jobId: 2');
     });
@@ -738,8 +738,8 @@ describe('buildJobListTool', () => {
           totalStoreCount: 2,
           requiresStoreDifferentiation: true,
           displayLines: [
-            '肯德基（绿地缤纷城店，2.3km，17-22 元/时）',
-            '肯德基（日月光店，5.1km，17-22 元/时）',
+            '肯德基 餐饮（绿地缤纷城店，2.3km，17-22 元/时）',
+            '肯德基 餐饮（日月光店，5.1km，17-22 元/时）',
           ],
         }),
       ]);

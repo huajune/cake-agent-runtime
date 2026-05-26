@@ -55,7 +55,10 @@ export class ShortTermService {
         chatId,
         this.config.sessionWindowMaxMessages,
         {
-          startTimeInclusive: Date.now() - this.config.sessionTtl * 1000,
+          // 使用独立的历史回查窗口（historyWindowSeconds），而非 sessionTtl。
+          // sessionTtl 只控制 Redis 会话状态的生命周期；用户跨天回来续聊时，
+          // Redis facts 可能已过期，但 Supabase 历史依然要能追溯，避免被当新用户对待。
+          startTimeInclusive: Date.now() - this.config.historyWindowSeconds * 1000,
           endTimeInclusive: options?.endTimeInclusive,
         },
       );

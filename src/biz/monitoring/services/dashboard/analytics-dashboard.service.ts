@@ -74,6 +74,22 @@ type DashboardOverviewResponse = {
   fallbackDelta: { totalCount: number; successRate: number };
 };
 
+const DETAIL_RECORD_LIMIT_BY_RANGE: Record<TimeRange, number> = {
+  today: 2000,
+  week: 5000,
+  month: 10000,
+  twoMonths: 20000,
+  threeMonths: 30000,
+};
+
+const TREND_HOURS_BY_RANGE: Record<TimeRange, number> = {
+  today: 24,
+  week: 168,
+  month: 720,
+  twoMonths: 1440,
+  threeMonths: 2160,
+};
+
 /**
  * Dashboard 数据聚合服务
  * 负责仪表盘完整数据和概览数据的聚合计算
@@ -754,10 +770,9 @@ export class AnalyticsDashboardService {
   private async getDetailRecordsByTimeRange(range: TimeRange): Promise<MessageProcessingRecord[]> {
     try {
       const cutoffTime = this.getTimeRangeCutoff(range);
-      const limitByRange = { today: 2000, week: 5000, month: 10000 };
       const result = await this.messageProcessingService.getRecordsByTimestamps({
         startTime: cutoffTime.getTime(),
-        limit: limitByRange[range] || 2000,
+        limit: DETAIL_RECORD_LIMIT_BY_RANGE[range] ?? DETAIL_RECORD_LIMIT_BY_RANGE.today,
       });
       return toMessageProcessingRecords(result.records);
     } catch (error) {
@@ -787,11 +802,10 @@ export class AnalyticsDashboardService {
 
     this.logger.warn('[Dashboard] 业务趋势聚合 RPC 无结果，回退到原始记录聚合');
     try {
-      const limitByRange = { today: 2000, week: 5000, month: 10000 };
       const result = await this.messageProcessingService.getBusinessTrendRecordsByTimeRange(
         startTime,
         endTime,
-        limitByRange[range] || 2000,
+        DETAIL_RECORD_LIMIT_BY_RANGE[range] ?? DETAIL_RECORD_LIMIT_BY_RANGE.today,
       );
       return this.analyticsTrendBuilder.buildBusinessTrend(
         toMessageProcessingRecords(result),
@@ -1058,7 +1072,7 @@ export class AnalyticsDashboardService {
   }
 
   private async calculateTrends(timeRange: TimeRange) {
-    const hours = timeRange === 'today' ? 24 : timeRange === 'week' ? 168 : 720;
+    const hours = TREND_HOURS_BY_RANGE[timeRange] ?? TREND_HOURS_BY_RANGE.month;
     const hourlyStats = await this.getHourlyStats(hours);
     return { hourly: hourlyStats };
   }

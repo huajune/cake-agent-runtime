@@ -3,14 +3,8 @@ import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { MessageSenderService } from '../../message-sender/message-sender.service';
 import { SendMessageType } from '../../message-sender/dto/send-message.dto';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
+import { MESSAGE_SPLIT_MAX_SEGMENTS } from '@infra/config/constants/message.constants';
 import { MessageSplitter } from '../utils/message-splitter.util';
-
-/**
- * 约面收尾 / 报名成功类回复的特征关键词。命中时单次回复段数上限放宽到 6，
- * 避免把"已帮你约好 + 时间 + 门店 + 注意事项 + 健康证 + 入群邀请"硬合并成 4 段。
- */
-const BOOKING_SUCCESS_PATTERN =
-  /帮你约好|已经?约好|约好啦|预约成功|报名成功|帮你登记好|已帮你登记|面试已帮你约|资料收到/;
 import { detectOutputLeak } from '../utils/output-leak-guard.util';
 import { DeliveryContext, DeliveryResult, AgentReply, DeliveryFailureError } from '../types';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
@@ -153,6 +147,7 @@ export class MessageDeliveryService implements OnModuleInit {
 
   private async deliverSingle(content: string, context: DeliveryContext): Promise<DeliveryResult> {
     const { token, imBotId, imContactId, imRoomId, contactName, chatId, _apiType } = context;
+    const outboundContent = MessageSplitter.stripTrailingPunctuation(content) || content.trim();
 
     try {
       await this.messageSenderService.sendMessage({
@@ -162,12 +157,12 @@ export class MessageDeliveryService implements OnModuleInit {
         imRoomId,
         chatId,
         messageType: SendMessageType.TEXT,
-        payload: { text: content },
+        payload: { text: outboundContent },
         _apiType,
       });
       await this.wecomObservability.markFirstSegmentSent(context.messageId);
 
-      this.logger.log(`[${contactName}] 单条消息发送成功: "${this.truncate(content)}"`);
+      this.logger.log(`[${contactName}] 单条消息发送成功: "${this.truncate(outboundContent)}"`);
       return {
         success: true,
         segmentCount: 1,
@@ -187,14 +182,9 @@ export class MessageDeliveryService implements OnModuleInit {
     context: DeliveryContext,
   ): Promise<DeliveryResult> {
     const { token, imBotId, imContactId, imRoomId, contactName, chatId, _apiType } = context;
-    // 单次回复段数上限：防御性兜底，避免 Agent 写得过碎一次发 N 条消息刷屏（badcase cc1fb40s）。
-    // 业务正常回复 1~3 段；岗位推荐 / 收资模板等场景偶尔到 4 段；超出一律视为异常并贪心合并最短相邻段。
-    // 例外：约面收尾 / 报名成功这类业务上必须一次说全的场景，放宽到 6 段。
-    const looksLikeBookingSuccess = BOOKING_SUCCESS_PATTERN.test(content);
-    const MAX_SEGMENTS_PER_REPLY = looksLikeBookingSuccess ? 6 : 4;
-    const segments = MessageSplitter.split(content, MAX_SEGMENTS_PER_REPLY);
+    const segments = MessageSplitter.split(content, MESSAGE_SPLIT_MAX_SEGMENTS);
 
-    this.logger.log(`[${contactName}] 消息包含双换行符，拆分为 ${segments.length} 条消息发送`);
+    this.logger.log(`[${contactName}] 消息触发分段发送，拆分为 ${segments.length} 条消息发送`);
     this.logger.debug(`[${contactName}] 原始消息: "${content}"`);
     this.logger.debug(`[${contactName}] 拆分结果: ${JSON.stringify(segments)}`);
 
