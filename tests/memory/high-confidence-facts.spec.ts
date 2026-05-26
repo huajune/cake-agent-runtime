@@ -80,6 +80,15 @@ describe('extractHighConfidenceFacts', () => {
     expect(result?.interview_info.age ?? null).toBeNull();
   });
 
+  it('should extract structured age even when message also contains requirement text', () => {
+    const result = extractHighConfidenceFacts(
+      ['年龄：22，要求：18岁以上'],
+      brandData,
+    );
+
+    expect(result?.interview_info.age).toBe('22');
+  });
+
   it('should not extract salary from generic numeric ranges', () => {
     const result = extractHighConfidenceFacts(['编号100-200'], brandData);
 

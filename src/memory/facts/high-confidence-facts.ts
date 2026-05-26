@@ -515,11 +515,13 @@ function extractPhone(message: string): string | null {
 }
 
 function extractAge(message: string): string | null {
-  if (/(?:要求|需要|限|须).{0,6}\d{2}\s*岁/.test(message)) return null;
-  if (/\d{2}\s*[-~至到]\s*\d{2}\s*岁/.test(message)) return null;
-
+  // 结构化表单优先：「年龄：22」可信度最高，即使同一消息含要求文本也应提取
   const structuredAge = message.match(/(?:^|[\n\r])\s*年龄\s*[：:\s]\s*(\d{2})(?=\D|$)/u);
   if (structuredAge) return structuredAge[1];
+
+  // 排除岗位要求/范围描述（仅对非结构化提取生效）
+  if (/(?:要求|需要|限|须).{0,6}\d{2}\s*岁/.test(message)) return null;
+  if (/\d{2}\s*[-~至到]\s*\d{2}\s*岁/.test(message)) return null;
 
   const directAge = message.match(/(\d{2})岁/);
   if (directAge) return directAge[1];

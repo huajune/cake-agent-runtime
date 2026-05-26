@@ -189,7 +189,7 @@ export class ChatSessionService {
    */
   async getChatHistoryInRange(
     chatId: string,
-    options: { startTimeExclusive?: number; endTimeInclusive?: number },
+    options: { startTimeExclusive?: number; endTimeInclusive?: number; limit?: number },
   ): Promise<Array<{ role: 'user' | 'assistant'; content: string; timestamp: number }>> {
     return this.chatMessageRepository.getChatHistoryInRange(chatId, options);
   }

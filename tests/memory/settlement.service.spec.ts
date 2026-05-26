@@ -35,7 +35,7 @@ describe('SettlementService', () => {
   describe('detectAndSettle', () => {
     // ==================== 冷启动场景 ====================
 
-    it('should NOT advance boundary when messages exist but no gap (cold start)', async () => {
+    it('should initialize boundary to latest message on cold start (no full-history settlement)', async () => {
       const now = Date.now();
       mockLongTermService.getSummaryData.mockResolvedValue({
         recent: [],
@@ -50,7 +50,11 @@ describe('SettlementService', () => {
       const result = await service.detectAndSettle('corp1', 'user1', 'sess1', null);
 
       expect(result).toBe(false);
-      expect(mockLongTermService.markLastSettledMessageAt).not.toHaveBeenCalled();
+      expect(mockLongTermService.markLastSettledMessageAt).toHaveBeenCalledWith(
+        'corp1',
+        'user1',
+        new Date(now - 1800 * 1000).toISOString(),
+      );
       expect(mockLongTermService.appendSummary).not.toHaveBeenCalled();
     });
 
@@ -68,7 +72,7 @@ describe('SettlementService', () => {
       expect(mockLongTermService.markLastSettledMessageAt).not.toHaveBeenCalled();
     });
 
-    it('should settle old session on cold start when gap exists in history', async () => {
+    it('should only initialize boundary on cold start even when gap exists (settlement on next turn)', async () => {
       const now = Date.now();
       mockLongTermService.getSummaryData.mockResolvedValue({
         recent: [],
@@ -77,25 +81,25 @@ describe('SettlementService', () => {
       });
 
       const oldMsg = { role: 'user' as const, content: '找工作', timestamp: now - 3 * 86400 * 1000 };
-      const oldMsg2 = { role: 'assistant' as const, content: '好的', timestamp: now - 3 * 86400 * 1000 + 60000 };
-      // gap > sessionTtl
+      const oldMsg2 = {
+        role: 'assistant' as const,
+        content: '好的',
+        timestamp: now - 3 * 86400 * 1000 + 60000,
+      };
       const newMsg = { role: 'user' as const, content: '还在么', timestamp: now - 3600 * 1000 };
 
       mockChatSession.getChatHistoryInRange.mockResolvedValue([oldMsg, oldMsg2, newMsg]);
 
       const result = await service.detectAndSettle('corp1', 'user1', 'sess1', null);
 
-      expect(result).toBe(true);
-      expect(mockLongTermService.appendSummary).toHaveBeenCalledWith(
+      // Cold start: initialize boundary to latest, don't settle yet
+      expect(result).toBe(false);
+      expect(mockLongTermService.markLastSettledMessageAt).toHaveBeenCalledWith(
         'corp1',
         'user1',
-        expect.objectContaining({
-          endTime: new Date(oldMsg2.timestamp).toISOString(),
-        }),
-        expect.objectContaining({
-          lastSettledMessageAt: new Date(oldMsg2.timestamp).toISOString(),
-        }),
+        new Date(newMsg.timestamp).toISOString(),
       );
+      expect(mockLongTermService.appendSummary).not.toHaveBeenCalled();
     });
 
     it('should handle getSummaryData returning null gracefully (cold start)', async () => {
@@ -105,6 +109,21 @@ describe('SettlementService', () => {
       const result = await service.detectAndSettle('corp1', 'user1', 'sess1', null);
 
       expect(result).toBe(false);
+    });
+
+    // ==================== 快速跳过 ====================
+
+    it('should skip DB query when lastSettledAt is within settlementGapSeconds (fast path)', async () => {
+      mockLongTermService.getSummaryData.mockResolvedValue({
+        recent: [],
+        archive: null,
+        lastSettledMessageAt: new Date(Date.now() - 3600 * 1000).toISOString(), // 1h ago, gap=1day
+      });
+
+      const result = await service.detectAndSettle('corp1', 'user1', 'sess1', null);
+
+      expect(result).toBe(false);
+      expect(mockChatSession.getChatHistoryInRange).not.toHaveBeenCalled();
     });
 
     // ==================== 正常流程 ====================

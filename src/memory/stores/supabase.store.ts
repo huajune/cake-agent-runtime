@@ -146,11 +146,68 @@ export class SupabaseStore implements MemoryStore {
   }
 
   /**
-   * 追加一条摘要，自动执行分层压缩
+   * 原子追加一条摘要（DB 端 RPC 行锁），自动执行分层压缩。
    *
-   * @param compressArchive 当 recent 超限时，由调用方传入压缩函数（LLM 调用）
+   * Phase 1: RPC `append_summary_atomic` 在行锁内追加 entry 到 recent 头部，
+   *          超限时返回溢出条目但不压缩（压缩需 LLM，不能在 DB 事务里做）。
+   * Phase 2: 若有溢出且提供了 compressArchive，在应用层压缩后回写 archive。
    */
   async appendSummary(
+    corpId: string,
+    userId: string,
+    entry: SummaryEntry,
+    options?: {
+      lastSettledMessageAt?: string | null;
+      compressArchive?: (
+        overflow: SummaryEntry[],
+        existingArchive: string | null,
+      ) => Promise<string>;
+    },
+  ): Promise<void> {
+    const client = this.supabase.getSupabaseClient();
+    if (!client) {
+      this.logger.warn('Supabase 不可用，appendSummary 跳过');
+      return;
+    }
+
+    const { data: rpcResult, error } = await client.rpc('append_summary_atomic', {
+      p_corp_id: corpId,
+      p_user_id: userId,
+      p_entry: JSON.stringify(entry),
+      p_last_settled_message_at: options?.lastSettledMessageAt ?? null,
+      p_max_recent: MAX_RECENT_SUMMARIES,
+    });
+
+    if (error) {
+      this.logger.warn('[appendSummary] RPC 失败，降级到应用层写入', error.message);
+      await this.appendSummaryFallback(corpId, userId, entry, options);
+      return;
+    }
+
+    await this.invalidateCache(corpId, userId);
+
+    const result = rpcResult as { overflow: SummaryEntry[]; recentCount: number } | null;
+    if (result?.overflow?.length && options?.compressArchive) {
+      try {
+        const summaryData = await this.getSummaryData(corpId, userId);
+        const archive = await options.compressArchive(
+          result.overflow,
+          summaryData?.archive ?? null,
+        );
+        await this.upsertRow(corpId, userId, {
+          summary_data: {
+            ...(summaryData ?? { recent: [], lastSettledMessageAt: null }),
+            archive,
+          },
+        });
+      } catch (err) {
+        this.logger.warn('摘要压缩失败，溢出条目将在下次压缩', err);
+      }
+    }
+  }
+
+  /** RPC 不可用时的降级路径（应用层 read-then-write，非原子）。 */
+  private async appendSummaryFallback(
     corpId: string,
     userId: string,
     entry: SummaryEntry,
@@ -169,21 +226,17 @@ export class SupabaseStore implements MemoryStore {
       lastSettledMessageAt: null,
     };
 
-    // 追加到头部（最新在前）
     data.recent.unshift(entry);
 
-    // 分层压缩：超出上限时，移出最早的条目并压缩到 archive
     if (data.recent.length > MAX_RECENT_SUMMARIES && options?.compressArchive) {
       const overflow = data.recent.splice(MAX_RECENT_SUMMARIES);
       try {
         data.archive = await options.compressArchive(overflow, data.archive);
       } catch (err) {
         this.logger.warn('摘要压缩失败，保留原始条目', err);
-        // 压缩失败时，把溢出的条目放回去（降级：不压缩，下次再试）
         data.recent.push(...overflow);
       }
     } else if (data.recent.length > MAX_RECENT_SUMMARIES) {
-      // 无压缩函数时，直接丢弃最早的
       data.recent = data.recent.slice(0, MAX_RECENT_SUMMARIES);
     }
 
