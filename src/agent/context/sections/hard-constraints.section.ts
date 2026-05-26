@@ -152,7 +152,7 @@ export class HardConstraintsSection implements PromptSection {
     }
     if (interview.age) {
       lines.push(
-        `- 年龄: ${interview.age}（开 includeHiringRequirement；年龄弹性规则：候选人超岗位上限 ≤3 岁（如要求20-35、候选人36-38）或候选人 ≥23 岁且差岗位下限 ≤2 岁（如要求25-40、候选人23-24），该岗位仍可推荐，不要排除也不要说"年龄卡了/超龄"，应说"年龄差一点点，我帮你确认下"，由 precheck ageBoundary 判定；超出弹性范围的才视为不符）`,
+        `- 年龄: ${interview.age}（开 includeHiringRequirement；年龄弹性由 precheck ageBoundary 字段判定：severity=boundary 的可继续推进，severity=hard_reject 的必须拦截换岗；不要自行决定"稍微超了帮你试试"）`,
       );
     }
     if (pref.schedule) {

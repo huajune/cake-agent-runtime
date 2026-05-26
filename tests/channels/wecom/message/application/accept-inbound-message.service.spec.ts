@@ -18,6 +18,7 @@ describe('AcceptInboundMessageService', () => {
   const imageDescription = {
     describeAndUpdateAsync: jest.fn(),
     awaitVision: jest.fn(),
+    resolveArtworkUrl: jest.fn(),
   };
   const wecomObservability = {
     markHistoryStored: jest.fn(),
@@ -56,6 +57,9 @@ describe('AcceptInboundMessageService', () => {
       overrideModelId: 'gpt-test',
     });
     llm.supportsVisionInput.mockReturnValue(true);
+    imageDescription.resolveArtworkUrl.mockImplementation(
+      (_id: string, url: string) => Promise.resolve(url),
+    );
     service = new AcceptInboundMessageService(
       deduplicationService as never,
       chatSession as never,
@@ -171,6 +175,103 @@ describe('AcceptInboundMessageService', () => {
       response: { success: true, message: 'Duplicate message ignored' },
     });
     expect(chatSession.saveMessage).not.toHaveBeenCalled();
+  });
+
+  describe('图片消息原图链路', () => {
+    const COMPRESSED_URL = 'https://oss.example.com/compressed/thumb.jpg';
+    const ARTWORK_URL = 'https://oss.example.com/artwork/original.jpg';
+
+    function createImageMessage(overrides: Partial<EnterpriseMessageCallbackDto> = {}) {
+      return createMessage({
+        messageType: MessageType.IMAGE,
+        payload: { imageUrl: COMPRESSED_URL, width: 96, height: 210, size: 8870 },
+        ...overrides,
+      });
+    }
+
+    it('enrichImagePayload 应在存记录前获取原图并写入 payload', async () => {
+      imageDescription.resolveArtworkUrl.mockResolvedValue(ARTWORK_URL);
+
+      const message = createImageMessage();
+      await service.execute(message);
+
+      // ① resolveArtworkUrl 被调用（唯一一次 API 调用）
+      expect(imageDescription.resolveArtworkUrl).toHaveBeenCalledWith(
+        'msg-1',
+        COMPRESSED_URL,
+        expect.objectContaining({ chatId: 'chat-1', imBotId: 'im-bot-1' }),
+      );
+
+      // ② payload 已被 enrichImagePayload 原地修改
+      expect(message.payload).toHaveProperty('artworkUrl', ARTWORK_URL);
+
+      // ③ 存记录时 payload 已含 artworkUrl（一次 INSERT 到位）
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(chatSession.saveMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: expect.objectContaining({ artworkUrl: ARTWORK_URL }),
+        }),
+      );
+    });
+
+    it('prepareImageIfNeeded 应使用 payload.artworkUrl 而非重新调 API', async () => {
+      imageDescription.resolveArtworkUrl.mockResolvedValue(ARTWORK_URL);
+      imageDescription.awaitVision.mockResolvedValue(undefined);
+      llm.supportsVisionInput.mockReturnValue(false);
+
+      await service.execute(createImageMessage());
+      await new Promise((resolve) => setImmediate(resolve));
+
+      // resolveArtworkUrl 只在 enrichImagePayload 调了一次
+      expect(imageDescription.resolveArtworkUrl).toHaveBeenCalledTimes(1);
+
+      // describeAndUpdateAsync 收到的是原图 URL（不是压缩图）
+      expect(imageDescription.describeAndUpdateAsync).toHaveBeenCalledWith(
+        'msg-1',
+        ARTWORK_URL,
+        MessageType.IMAGE,
+      );
+    });
+
+    it('原图获取失败时应回退到压缩图，不阻塞流程', async () => {
+      imageDescription.resolveArtworkUrl.mockResolvedValue(COMPRESSED_URL);
+      imageDescription.awaitVision.mockResolvedValue(undefined);
+      llm.supportsVisionInput.mockReturnValue(false);
+
+      const message = createImageMessage();
+      await service.execute(message);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      // payload 不应写入 artworkUrl（因为返回值 === 压缩图）
+      expect(message.payload).not.toHaveProperty('artworkUrl');
+
+      // vision 描述仍然用压缩图继续（降级而非报错）
+      expect(imageDescription.describeAndUpdateAsync).toHaveBeenCalledWith(
+        'msg-1',
+        COMPRESSED_URL,
+        MessageType.IMAGE,
+      );
+    });
+
+    it('自发图片消息也应获取原图后再存记录', async () => {
+      imageDescription.resolveArtworkUrl.mockResolvedValue(ARTWORK_URL);
+
+      const message = createImageMessage({
+        isSelf: true,
+        source: MessageSource.AGGREGATED_CHAT_MANUAL,
+        messageId: 'msg-self-img',
+      });
+
+      await service.execute(message);
+
+      expect(imageDescription.resolveArtworkUrl).toHaveBeenCalled();
+      expect(chatSession.saveMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: 'assistant',
+          payload: expect.objectContaining({ artworkUrl: ARTWORK_URL }),
+        }),
+      );
+    });
   });
 });
 

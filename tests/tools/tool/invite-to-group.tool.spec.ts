@@ -28,6 +28,7 @@ describe('buildInviteToGroupTool', () => {
   const mockRoomService = {
     addMemberEnterprise: jest.fn(),
     getEnterpriseGroupChatList: jest.fn(),
+    syncRoom: jest.fn(),
   };
   const mockOpsNotifier = {
     sendGroupFullAlert: jest.fn(),
@@ -41,6 +42,7 @@ describe('buildInviteToGroupTool', () => {
     mockOpsNotifier.sendGroupFullAlert.mockResolvedValue(true);
     mockOpsNotifier.sendInviteRejectedAlert.mockResolvedValue(true);
     mockRoomService.getEnterpriseGroupChatList.mockResolvedValue({ data: [] });
+    mockRoomService.syncRoom.mockResolvedValue({ errcode: 0, errmsg: 'ok' });
   });
 
   const flushAsyncEvents = async () => {
@@ -324,6 +326,7 @@ describe('buildInviteToGroupTool', () => {
     expect(mockRoomService.addMemberEnterprise).toHaveBeenCalledWith(
       expect.objectContaining({ roomWxid: 'room-2' }),
     );
+    expect(mockRoomService.syncRoom).toHaveBeenCalled();
   });
 
   it('should skip a group whose refreshed enterprise count only matches by chatId', async () => {

@@ -84,6 +84,28 @@ function normalizeFieldName(name: string): string {
 }
 
 /**
+ * 检查某个字段是否已以预填值或括号备注形式出现在 reply 中。
+ *
+ * extractFormFieldsFromReply 只提取空值模板行（"字段名："后无数字），
+ * 但 Agent 经常把已收集的值预填进模板（如"年龄：32"、"电话：139…"），
+ * 或在括号中备注（如"（性别女/50岁我记下了）"）。这些情况下字段并非缺失。
+ */
+function isFieldCollectedInReply(reply: string, fieldName: string): boolean {
+  const normalized = normalizeFieldName(fieldName);
+  const original = fieldName.trim();
+  const terms = [original, normalized].filter((v, i, a) => a.indexOf(v) === i);
+
+  for (const term of terms) {
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`${escaped}(?:[（(][^）)]*[）)])*[：:]\\s*\\S`).test(reply)) return true;
+    if (new RegExp(`[（(][^）)]*${escaped}[^）)]*[）)]`).test(reply)) return true;
+  }
+  // "XX岁" 隐含年龄已知（"（性别女/50岁我记下了）" → 年龄已收集）
+  if (normalized === '年龄' && /\d{1,3}岁/.test(reply)) return true;
+  return false;
+}
+
+/**
  * 判断本轮 duliday_job_list 返回里是否有"节假日/加班"独立薪资字段（type ≠ "无薪资"）。
  * 实现委托给 salary-facts.util 统一派生，避免双口径漂移。
  */
@@ -176,7 +198,37 @@ export class ReplyFactGuardService {
       return true;
     }
 
+    // Case 4a："或者" 引出的备选方案（"或者我先拉你进群"），不要求尾随问号
+    if (
+      /或者(?:我)?(?:也|先|还)?(?:给(?:你|您))?[^。！？?；]{0,20}?(?:拉(?:你|您)[^。！？?；]{0,15}?群|进(?:咱们|我们|这个|这|这边)[^。！？?；]{0,15}?群|加(?:你|您)[^。！？?；]{0,15}?群|发(?:个|一个|条)?(?:入)?群邀请)/.test(
+        normalized,
+      )
+    ) {
+      return true;
+    }
+
+    // Case 4b："不XX的话/可以的话" 条件句 + invite（中间可能夹长解释，放宽到 80 字符）
+    // "不行的话…我先拉你进群留意下？" / "不考虑的话我拉你进群"
+    if (
+      /(?:不[^。！？?；]{0,8}?|(?:可以|愿意|感兴趣|有需要|有兴趣|方便))的话[^。！？?；]{0,80}?(?:拉(?:你|您)[^。！？?；]{0,15}?群|进(?:咱们|我们|这个|这|这边)[^。！？?；]{0,15}?群|加(?:你|您)[^。！？?；]{0,15}?群|发(?:个|一个|条)?(?:入)?群邀请)/.test(
+        normalized,
+      )
+    ) {
+      return true;
+    }
+
     return false;
+  }
+
+  /**
+   * "之前已经拉你进群了" 是回顾既有事实，不是本轮承诺。
+   * 检测 past-tense marker（之前/已经/上次）出现在 invite 短语前的情况。
+   */
+  private static isPastTenseGroupReference(text: string): boolean {
+    const normalized = text.replace(/\s+/g, '');
+    return /(?:之前|已经|上次|前面|前两天|前几天|此前|早先)[^。！？?；]{0,40}?(?:拉(?:你|您)[^。！？?；]{0,15}?群|加(?:你|您)[^。！？?；]{0,15}?群|发(?:过)?(?:入)?群邀请)/.test(
+      normalized,
+    );
   }
 
   /** 本轮 invite_to_group 真正成功了（用于规则 requiredToolPredicate）。 */
@@ -256,9 +308,13 @@ export class ReplyFactGuardService {
     const missing = expected.filter((f) => !replySet.has(normalizeFieldName(f)));
     if (missing.length === 0) return null;
 
+    // Rescue：预填值行（"年龄：32"）和括号备注（"（性别女我记下了）"）不算漏掉
+    const trulyMissing = missing.filter((f) => !isFieldCollectedInReply(text, f));
+    if (trulyMissing.length === 0) return null;
+
     return {
       ruleId: 'booking_form_field_mismatch',
-      label: `收资模板字段与 precheck.requiredFieldsToCollectNow 不一致，漏掉字段: ${missing.join('/')}（badcase 67o8y2ez）`,
+      label: `收资模板字段与 precheck.requiredFieldsToCollectNow 不一致，漏掉字段: ${trulyMissing.join('/')}（badcase 67o8y2ez）`,
     };
   }
 
@@ -284,7 +340,9 @@ export class ReplyFactGuardService {
       // 但禁止跨标点，避免误吃到下一句的"群里通知你"上。
       keywords:
         /拉(?:你|您)[^。，,；！？\s]{0,15}?群|进(?:咱们|我们|这个|这|这边)[^。，,；！？\s]{0,15}?群|加(?:你|您)[^。，,；！？\s]{0,15}?群|发(?:个|一个|条)?(?:入)?群邀请/,
-      ignorePredicate: (text) => ReplyFactGuardService.isConditionalGroupInviteQuestion(text),
+      ignorePredicate: (text) =>
+        ReplyFactGuardService.isConditionalGroupInviteQuestion(text) ||
+        ReplyFactGuardService.isPastTenseGroupReference(text),
       requiredToolPredicate: (toolCalls) =>
         ReplyFactGuardService.inviteCalledSuccessfully(toolCalls),
     },

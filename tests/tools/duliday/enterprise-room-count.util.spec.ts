@@ -62,7 +62,7 @@ describe('enterprise-room-count.util', () => {
     expect(parseCount('')).toBeUndefined();
   });
 
-  it('should refresh matched group counts from enterprise list', async () => {
+  it('should call syncRoom before refreshing member counts from enterprise list', async () => {
     const roomService = {
       getEnterpriseGroupChatList: jest.fn().mockResolvedValue({
         data: [
@@ -70,6 +70,7 @@ describe('enterprise-room-count.util', () => {
           { roomWxid: 'room-2', memberList: Array.from({ length: 80 }, () => ({})) },
         ],
       }),
+      syncRoom: jest.fn().mockResolvedValue({ errcode: 0 }),
     };
     const groups = [
       makeGroup({ imRoomId: 'room-1', memberCount: 50 }),
@@ -83,16 +84,36 @@ describe('enterprise-room-count.util', () => {
     });
 
     expect(refreshed.map((group) => group.memberCount)).toEqual([201, 80]);
-    expect(roomService.getEnterpriseGroupChatList).toHaveBeenCalledWith('token', 1, 1000);
+    expect(roomService.syncRoom).toHaveBeenCalledWith('token', 'bot-1');
+    expect(roomService.getEnterpriseGroupChatList).toHaveBeenCalledWith('token', 1, 1000, 'bot-1');
   });
 
-  it('should refresh matched group counts when enterprise list only returns chatId', async () => {
+  it('should deduplicate syncRoom calls when groups share the same imBotId', async () => {
     const roomService = {
-      getEnterpriseGroupChatList: jest.fn().mockResolvedValue({
-        data: [{ chatId: 'chat-1', member_count: 275 }],
-      }),
+      getEnterpriseGroupChatList: jest.fn().mockResolvedValue({ data: [] }),
+      syncRoom: jest.fn().mockResolvedValue({ errcode: 0 }),
     };
-    const groups = [makeGroup({ imRoomId: 'room-1', chatId: 'chat-1', memberCount: 50 })];
+    const groups = [
+      makeGroup({ imRoomId: 'room-1', imBotId: 'bot-1', memberCount: 50 }),
+      makeGroup({ imRoomId: 'room-2', imBotId: 'bot-1', memberCount: 70 }),
+    ];
+
+    await refreshMemberCountsFromEnterpriseList({
+      groups,
+      roomService,
+      enterpriseToken: 'token',
+    });
+
+    expect(roomService.syncRoom).toHaveBeenCalledTimes(1);
+    expect(roomService.syncRoom).toHaveBeenCalledWith('token', 'bot-1');
+  });
+
+  it('should keep original counts when enterprise list API fails', async () => {
+    const roomService = {
+      getEnterpriseGroupChatList: jest.fn().mockRejectedValue(new Error('timeout')),
+      syncRoom: jest.fn().mockResolvedValue({ errcode: 0 }),
+    };
+    const groups = [makeGroup({ imRoomId: 'room-1', memberCount: 50 })];
 
     const refreshed = await refreshMemberCountsFromEnterpriseList({
       groups,
@@ -100,28 +121,6 @@ describe('enterprise-room-count.util', () => {
       enterpriseToken: 'token',
     });
 
-    expect(refreshed[0].memberCount).toBe(275);
-  });
-
-  it('should cap enterprise list pagination when no target room is matched', async () => {
-    const roomService = {
-      getEnterpriseGroupChatList: jest.fn().mockImplementation((_token, current, pageSize) => ({
-        data: Array.from({ length: pageSize }, (_, index) => ({
-          imRoomId: `other-${current}-${index}`,
-          memberCount: 1,
-        })),
-      })),
-    };
-    const groups = [makeGroup({ imRoomId: 'missing-room', memberCount: 50 })];
-
-    const refreshed = await refreshMemberCountsFromEnterpriseList({
-      groups,
-      roomService,
-      enterpriseToken: 'token',
-      maxPages: 2,
-    });
-
-    expect(refreshed).toBe(groups);
-    expect(roomService.getEnterpriseGroupChatList).toHaveBeenCalledTimes(2);
+    expect(refreshed[0].memberCount).toBe(50);
   });
 });

@@ -27,6 +27,7 @@ import {
   BusinessMetricTrendPoint,
   DashboardOverviewStats,
   DashboardFallbackStats,
+  DashboardManualInterventionStats,
   DailyStats,
   DailyTrendData,
 } from '../../types/analytics.types';
@@ -72,6 +73,13 @@ type DashboardOverviewResponse = {
   businessDelta: { consultations: number; bookingAttempts: number; bookingSuccessRate: number };
   fallback: DashboardFallbackStats;
   fallbackDelta: { totalCount: number; successRate: number };
+  manualIntervention: DashboardManualInterventionStats;
+};
+
+const EMPTY_MANUAL_INTERVENTION_STATS: DashboardManualInterventionStats = {
+  totalCount: 0,
+  handoffCount: 0,
+  riskAlertCount: 0,
 };
 
 const DETAIL_RECORD_LIMIT_BY_RANGE: Record<TimeRange, number> = {
@@ -160,6 +168,7 @@ export class AnalyticsDashboardService {
       const fallback = this.calculateFallbackStats(currentRecords);
       const previousFallback = this.calculateFallbackStats(previousRecords);
       const fallbackDelta = this.calculateFallbackDelta(fallback, previousFallback);
+      const manualIntervention = this.calculateManualInterventionStats(currentRecords);
 
       const currentStartDate = formatLocalDate(new Date(currentStart));
       const currentEndDate = formatLocalDate(new Date(currentEnd));
@@ -201,6 +210,7 @@ export class AnalyticsDashboardService {
         overviewDelta,
         fallback,
         fallbackDelta,
+        manualIntervention,
         business,
         businessDelta,
         usage,
@@ -248,13 +258,19 @@ export class AnalyticsDashboardService {
       const hourlyProjectionFresh = await this.isHourlyProjectionFresh(currentEndDate);
       const dailyProjectionFresh = await this.isDailyProjectionFresh(currentEndDate);
 
-      const [currentOverview, previousOverview, currentFallback, previousFallback] =
-        await Promise.all([
-          this.monitoringRepository.getDashboardOverviewStats(currentStartDate, currentEndDate),
-          this.monitoringRepository.getDashboardOverviewStats(previousStartDate, previousEndDate),
-          this.monitoringRepository.getDashboardFallbackStats(currentStartDate, currentEndDate),
-          this.monitoringRepository.getDashboardFallbackStats(previousStartDate, previousEndDate),
-        ]);
+      const [
+        currentOverview,
+        previousOverview,
+        currentFallback,
+        previousFallback,
+        manualIntervention,
+      ] = await Promise.all([
+        this.monitoringRepository.getDashboardOverviewStats(currentStartDate, currentEndDate),
+        this.monitoringRepository.getDashboardOverviewStats(previousStartDate, previousEndDate),
+        this.monitoringRepository.getDashboardFallbackStats(currentStartDate, currentEndDate),
+        this.monitoringRepository.getDashboardFallbackStats(previousStartDate, previousEndDate),
+        this.getManualInterventionStatsFromDatabase(currentStartDate, currentEndDate),
+      ]);
 
       let dailyTrend: DailyTrendData[];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -500,6 +516,7 @@ export class AnalyticsDashboardService {
         businessDelta,
         fallback,
         fallbackDelta,
+        manualIntervention,
       };
       this.setCachedDashboardOverview(timeRange, response);
       return response;
@@ -946,6 +963,51 @@ export class AnalyticsDashboardService {
     };
   }
 
+  private calculateManualInterventionStats(
+    records: MessageProcessingRecord[],
+  ): DashboardManualInterventionStats {
+    let handoffCount = 0;
+    let riskAlertCount = 0;
+
+    for (const record of records) {
+      for (const call of record.toolCalls ?? []) {
+        if (call.toolName === 'request_handoff') {
+          handoffCount += 1;
+        } else if (call.toolName === 'raise_risk_alert') {
+          riskAlertCount += 1;
+        }
+      }
+    }
+
+    return {
+      totalCount: handoffCount + riskAlertCount,
+      handoffCount,
+      riskAlertCount,
+    };
+  }
+
+  private async getManualInterventionStatsFromDatabase(
+    startDate: Date,
+    endDate: Date,
+  ): Promise<DashboardManualInterventionStats> {
+    try {
+      const toolStats = await this.monitoringRepository.getDashboardToolStats(startDate, endDate);
+      const handoffCount =
+        toolStats.find((item) => item.toolName === 'request_handoff')?.useCount ?? 0;
+      const riskAlertCount =
+        toolStats.find((item) => item.toolName === 'raise_risk_alert')?.useCount ?? 0;
+
+      return {
+        totalCount: handoffCount + riskAlertCount,
+        handoffCount,
+        riskAlertCount,
+      };
+    } catch (error) {
+      this.logger.warn('[Dashboard] 获取人工介入触发统计失败，使用默认值 0:', error);
+      return { ...EMPTY_MANUAL_INTERVENTION_STATS };
+    }
+  }
+
   private async getBusinessMetricsFromDatabase(
     startDate: string,
     endDate: string,
@@ -1246,6 +1308,7 @@ export class AnalyticsDashboardService {
       overviewDelta: { totalMessages: 0, successRate: 0, avgDuration: 0 },
       fallback: { totalCount: 0, successCount: 0, successRate: 0, affectedUsers: 0 },
       fallbackDelta: { totalCount: 0, successRate: 0 },
+      manualIntervention: { ...EMPTY_MANUAL_INTERVENTION_STATS },
       business: {
         consultations: { total: 0, new: 0 },
         bookings: { attempts: 0, successful: 0, failed: 0, successRate: 0 },

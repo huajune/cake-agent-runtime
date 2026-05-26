@@ -48,6 +48,45 @@ const COMPARISON_LABELS: Record<DashboardTimeRange, string> = {
   threeMonths: '较前3月同期',
 };
 
+const RANGE_DAYS: Record<DashboardTimeRange, number> = {
+  today: 1,
+  week: 7,
+  month: 30,
+  twoMonths: 60,
+  threeMonths: 90,
+};
+
+function formatDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function addDays(date: Date, days: number) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+}
+
+function buildDateRange(timeRange: DashboardTimeRange) {
+  const days = RANGE_DAYS[timeRange];
+  const endDate = new Date();
+  const startDate = addDays(endDate, -(days - 1));
+
+  return Array.from({ length: days }, (_, index) => formatDateKey(addDays(startDate, index)));
+}
+
+function toDateKey(value?: string) {
+  if (!value) return '';
+
+  const match = value.match(/^\d{4}-\d{2}-\d{2}/);
+  if (match) {
+    return match[0];
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : formatDateKey(date);
+}
+
 // 注册 Chart.js 组件
 ChartJS.register(
   CategoryScale,
@@ -114,9 +153,20 @@ export default function Dashboard() {
 
   const isToday = timeRange === 'today';
   const formatLabel = isToday ? formatMinuteLabel : formatDayLabel;
+  const dateRange = isToday ? [] : buildDateRange(timeRange);
   const businessPoints = isToday
     ? (dashboard?.businessTrend || []).slice(-90)
-    : dashboard?.businessTrend || [];
+    : dateRange.map((date) => {
+        const point = (dashboard?.businessTrend || []).find((p) => toDateKey(p.minute) === date);
+        return {
+          minute: date,
+          consultations: point?.consultations ?? 0,
+          bookingAttempts: point?.bookingAttempts ?? 0,
+          successfulBookings: point?.successfulBookings ?? 0,
+          conversionRate: point?.conversionRate ?? 0,
+          bookingSuccessRate: point?.bookingSuccessRate ?? 0,
+        };
+      });
 
   // 健康状态
   const healthStatus =
@@ -258,7 +308,16 @@ export default function Dashboard() {
   };
 
   // Token 消耗 - 本日显示小时级，其余范围显示天级
-  const tokenPoints = dashboard?.tokenTrend || [];
+  const tokenPoints = isToday
+    ? dashboard?.tokenTrend || []
+    : dateRange.map((date) => {
+        const point = (dashboard?.tokenTrend || []).find((p: any) => toDateKey(p.time) === date);
+        return {
+          time: date,
+          tokenUsage: point?.tokenUsage ?? 0,
+          messageCount: point?.messageCount ?? 0,
+        };
+      });
   const tokenChartData = {
     labels: tokenPoints.map((p: any) =>
       isToday ? formatHourLabel(p.time) : formatDayLabel(p.time),
@@ -279,7 +338,15 @@ export default function Dashboard() {
   // 响应耗时 - 本日显示分钟级，其余范围显示天级
   const responsePoints = isToday
     ? (dashboard?.responseTrend || []).slice(-60)
-    : dashboard?.responseTrend || [];
+    : dateRange.map((date) => {
+        const point = (dashboard?.responseTrend || []).find((p) => toDateKey(p.minute) === date);
+        return {
+          minute: date,
+          avgDuration: point?.avgDuration ?? 0,
+          messageCount: point?.messageCount ?? 0,
+          successRate: point?.successRate ?? 0,
+        };
+      });
   const responseChartData = {
     labels: responsePoints.map((p) =>
       isToday ? formatMinuteLabel(p.minute) : formatDayLabel(p.minute),
@@ -309,8 +376,9 @@ export default function Dashboard() {
   const successCount = overview?.successCount ?? 0;
   const failureCount = overview?.failureCount ?? 0;
   const activeChats = overview?.activeChats ?? 0;
-  const fallbackTotal = dashboard?.fallback?.totalCount ?? 0;
-  const fallbackSuccess = dashboard?.fallback?.successCount ?? 0;
+  const manualInterventionTotal = dashboard?.manualIntervention?.totalCount ?? 0;
+  const handoffCount = dashboard?.manualIntervention?.handoffCount ?? 0;
+  const riskAlertCount = dashboard?.manualIntervention?.riskAlertCount ?? 0;
   const managedUsers = business?.consultations?.total ?? 0;
   const successfulBookings = business?.bookings?.successful ?? 0;
   const hideEmptyDelta = (current: number, delta?: number) =>
@@ -335,11 +403,11 @@ export default function Dashboard() {
     : activeChats > 0
       ? `${activeChats} 个会话`
       : '暂无会话';
-  const fallbackSubtitle = dashboardLoading
+  const manualInterventionSubtitle = dashboardLoading
     ? '加载中'
-    : fallbackTotal > 0
-      ? `成功 ${fallbackSuccess} / 降级 ${fallbackTotal}`
-      : '暂无降级';
+    : manualInterventionTotal > 0
+      ? `转人工 ${handoffCount} / 风险 ${riskAlertCount}`
+      : '暂无人工介入';
   const bookingSubtitle = dashboardLoading ? (
     <>加载中</>
   ) : successfulBookings > 0 ? (
@@ -410,9 +478,9 @@ export default function Dashboard() {
           deltaLabel={comparisonLabel}
         />
         <MetricCard
-          label="降级次数"
-          value={dashboardLoading ? '-' : fallbackTotal}
-          subtitle={fallbackSubtitle}
+          label="人工介入触发次数"
+          value={dashboardLoading ? '-' : manualInterventionTotal}
+          subtitle={manualInterventionSubtitle}
           className="border-warning-soft"
         />
       </MetricGrid>

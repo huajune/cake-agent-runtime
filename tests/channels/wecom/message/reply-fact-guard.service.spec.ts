@@ -163,6 +163,75 @@ describe('ReplyFactGuardService', () => {
     expect(result.hit).toBe(false);
   });
 
+  it('does NOT flag past-tense "之前已经拉你进群了" (referencing prior action, not this turn)', async () => {
+    const result = service.check({
+      replyText: '之前已经拉你进上海餐饮群了，后续有合适的我会直接在群里通知你。',
+      toolCalls: [],
+      chatId: 'chat-1',
+    });
+    expect(result.hit).toBe(false);
+  });
+
+  it('does NOT flag past-tense "之前拉你进的餐饮群" (relative clause referencing prior group)', async () => {
+    const result = service.check({
+      replyText: '之前拉你进的餐饮群里会持续更新各区的新岗，你留意就行。',
+      toolCalls: [],
+      chatId: 'chat-1',
+    });
+    expect(result.hit).toBe(false);
+  });
+
+  it('does NOT flag past-tense "已经拉你进过天津餐饮兼职群了"', async () => {
+    const result = service.check({
+      replyText:
+        '之前已经拉你进过天津餐饮兼职群了，后续要是出来周末能做的岗位，我会第一时间在群里通知你。',
+      toolCalls: [],
+      chatId: 'chat-1',
+    });
+    expect(result.hit).toBe(false);
+  });
+
+  it('does NOT flag "或者我拉你进兼职群" as alternative offer (case 4)', async () => {
+    const result = service.check({
+      replyText:
+        '这边暂时没有免证的岗位了。或者我拉你进兼职群，后面有新出的免证岗位直接在群里通知你。',
+      toolCalls: [
+        { toolName: 'duliday_job_list', args: {}, status: 'ok', result: {} },
+      ],
+      chatId: 'chat-1',
+    });
+    expect(result.hit).toBe(false);
+  });
+
+  it('does NOT flag "不考虑的话我拉你进兼职群" as conditional offer (case 4)', async () => {
+    const result = service.check({
+      replyText: '不考虑的话我拉你进兼职群，后续有新岗位群里通知你。',
+      toolCalls: [],
+      chatId: 'chat-1',
+    });
+    expect(result.hit).toBe(false);
+  });
+
+  it('does NOT flag "不行的话…我先拉你进群留意下？" as conditional question (case 4)', async () => {
+    const result = service.check({
+      replyText:
+        '不行的话，附近暂时没其他19:30-23:00的短班岗位了，我先拉你进群留意下？',
+      toolCalls: [],
+      chatId: 'chat-1',
+    });
+    expect(result.hit).toBe(false);
+  });
+
+  it('does NOT flag "或者我先拉你进餐饮兼职群" as alternative offer (case 4)', async () => {
+    const result = service.check({
+      replyText:
+        '时段能不能放宽一点？或者我先拉你进餐饮兼职群，后面有新岗我第一时间通知你。',
+      toolCalls: [],
+      chatId: 'chat-1',
+    });
+    expect(result.hit).toBe(false);
+  });
+
   it('STILL flags "我拉你进群了" assertion without invite_to_group (not a question)', async () => {
     // 回归保证：纯陈述句"我拉你进群了"不含问号，不应被新的 case 3 豁免。
     const result = service.check({
@@ -373,6 +442,125 @@ describe('ReplyFactGuardService', () => {
       const result = service.check({
         replyText,
         toolCalls: [makePrecheckCall(['姓名', '电话', '性别', '年龄', '学历', '面试时间'])],
+        chatId: 'chat-1',
+      });
+
+      const mismatch = result.contradictions.find(
+        (c) => c.ruleId === 'booking_form_field_mismatch',
+      );
+      expect(mismatch).toBeUndefined();
+    });
+
+    it('does not flag pre-filled numeric value "年龄：32" as missing (rescue pass)', () => {
+      const replyText = [
+        '资料确认一下：',
+        '',
+        '姓名：董宇强',
+        '电话：13949906531',
+        '年龄：32',
+        '学历：大专',
+        '面试时间：',
+      ].join('\n');
+
+      const result = service.check({
+        replyText,
+        toolCalls: [makePrecheckCall(['姓名', '联系电话', '年龄', '学历', '面试时间'])],
+        chatId: 'chat-1',
+      });
+
+      const mismatch = result.contradictions.find(
+        (c) => c.ruleId === 'booking_form_field_mismatch',
+      );
+      expect(mismatch).toBeUndefined();
+    });
+
+    it('does not flag parenthetical note "（性别女/50岁我记下了）" as missing', () => {
+      const replyText = [
+        '麻烦把剩下的资料补一下：',
+        '',
+        '姓名：',
+        '电话：',
+        '学历：',
+        '面试时间：',
+        '',
+        '（性别女/50岁我记下了）',
+      ].join('\n');
+
+      const result = service.check({
+        replyText,
+        toolCalls: [makePrecheckCall(['姓名', '电话', '性别', '年龄', '学历', '面试时间'])],
+        chatId: 'chat-1',
+      });
+
+      const mismatch = result.contradictions.find(
+        (c) => c.ruleId === 'booking_form_field_mismatch',
+      );
+      expect(mismatch).toBeUndefined();
+    });
+
+    it('does not flag "（性别这边我先按男生备注了）" parenthetical as missing', () => {
+      const replyText = [
+        '姓名：',
+        '电话：',
+        '年龄：',
+        '学历：',
+        '面试时间：',
+        '（性别这边我先按男生备注了）',
+      ].join('\n');
+
+      const result = service.check({
+        replyText,
+        toolCalls: [makePrecheckCall(['姓名', '电话', '性别', '年龄', '学历', '面试时间'])],
+        chatId: 'chat-1',
+      });
+
+      const mismatch = result.contradictions.find(
+        (c) => c.ruleId === 'booking_form_field_mismatch',
+      );
+      expect(mismatch).toBeUndefined();
+    });
+
+    it('still flags truly missing field even when other fields are pre-filled', () => {
+      // 需要 ≥3 个模板行被 extractFormFieldsFromReply 识别才算收资模板
+      // 冒号后跟数字的行不会被提取（"年龄：25"），所以需要足够多的非数字值行
+      const replyText = [
+        '资料确认一下：',
+        '',
+        '姓名：张三',
+        '电话：13800138000',
+        '学历：本科',
+        '健康证：有',
+        '年龄：25',
+      ].join('\n');
+
+      const result = service.check({
+        replyText,
+        toolCalls: [
+          makePrecheckCall(['姓名', '联系电话', '年龄', '学历', '健康证', '性别', '面试时间']),
+        ],
+        chatId: 'chat-1',
+      });
+
+      const mismatch = result.contradictions.find(
+        (c) => c.ruleId === 'booking_form_field_mismatch',
+      );
+      expect(mismatch).toBeDefined();
+      expect(mismatch?.label).toContain('性别');
+      expect(mismatch?.label).toContain('面试时间');
+    });
+
+    it('does not flag pre-filled "面试时间：5月25日10:00" as missing', () => {
+      const replyText = [
+        '姓名：李明',
+        '电话：',
+        '性别：',
+        '年龄：',
+        '面试时间：5月25日10:00',
+      ].join('\n');
+
+      const result = service.check({
+        replyText,
+        toolCalls: [makePrecheckCall(['姓名', '电话', '性别', '年龄', '面试时间'])],
         chatId: 'chat-1',
       });
 
