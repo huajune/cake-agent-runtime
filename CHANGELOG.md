@@ -8,6 +8,44 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.10.0`
+**最近更新**: `2026-05-26`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #219 **记忆系统重构**：三路径写入 + DB 时间戳驱动沉淀，解耦历史回查窗口与 session TTL，修复跨天上下文丢失
+- PR #219 **测试补全**：memory 单元测试 + 集成测试脚本 + DI 导出修复；brand-stores displayLine 断言更新
+- PR #219 **杂项**：TestSuite 队列初始化容错、Dashboard 用户趋势图标签优化、agent-safety-hardening 待办文档
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #219 **记忆系统重构**：三路径写入 + DB 时间戳驱动沉淀，解耦历史回查窗口与 session TTL，修复跨天上下文丢失
+- PR #219 **测试补全**：memory 单元测试 + 集成测试脚本 + DI 导出修复；brand-stores displayLine 断言更新
+
+### 优化调整
+- PR #219 **杂项**：TestSuite 队列初始化容错、Dashboard 用户趋势图标签优化、agent-safety-hardening 待办文档
+
+### 运维与流程
+- 无
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- PR #219 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
+
+### 验证记录
+- PR #219 258 test suites / 3263 tests 全部通过
+- PR #219 pre-push CI（lint + format + typecheck + build + test）通过
+- PR #219 线上验证记忆沉淀跨天场景
+<!-- release:pending:end -->
+
 ## [5.9.1] - 2026-05-21
 
 **来源分支**: `develop`
