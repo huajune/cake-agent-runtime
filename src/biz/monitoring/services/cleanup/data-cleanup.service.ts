@@ -117,7 +117,7 @@ export class DataCleanupService implements OnModuleInit {
     // 4. 清理过期错误日志（>30 天）
     await this.cleanupErrorLogs();
 
-    // 5. 清理过期用户活跃记录（>35 天）
+    // 5. 清理过期用户活跃记录（默认 >365 天）
     await this.cleanupUserActivity();
   }
 

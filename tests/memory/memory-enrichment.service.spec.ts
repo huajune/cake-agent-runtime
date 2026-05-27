@@ -1,6 +1,49 @@
 import { MemoryEnrichmentService } from '@memory/services/memory-enrichment.service';
-import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
+import {
+  FALLBACK_EXTRACTION,
+  type HighConfidenceFacts,
+  type HighConfidenceValue,
+} from '@memory/types/session-facts.types';
 import type { AgentMemoryContext } from '@memory/types/memory-runtime.types';
+
+function highConfidence<T>(value: T, evidence: string): HighConfidenceValue<T> {
+  return { value, confidence: 'high', source: 'rule', evidence };
+}
+
+function emptyHighConfidenceFacts(): HighConfidenceFacts {
+  return {
+    interview_info: {
+      name: null,
+      phone: null,
+      gender: null,
+      gender_source: null,
+      age: null,
+      applied_store: null,
+      applied_position: null,
+      interview_time: null,
+      is_student: null,
+      education: null,
+      has_health_certificate: null,
+    },
+    preferences: {
+      brands: null,
+      salary: null,
+      position: null,
+      schedule: null,
+      city: null,
+      district: null,
+      location: null,
+      labor_form: null,
+      delayed_intent: null,
+      short_term: null,
+      open_position: null,
+      time_windows: null,
+      schedule_constraint: null,
+      available_after: null,
+    },
+    reasoning: 'test',
+  };
+}
 
 describe('MemoryEnrichmentService', () => {
   const mockCandidate = {
@@ -34,7 +77,17 @@ describe('MemoryEnrichmentService', () => {
   it('skips lookup when longTerm profile already has gender', async () => {
     const snapshot: AgentMemoryContext = {
       ...baseSnapshot(),
-      longTerm: { profile: { gender: '女' } as never },
+      longTerm: {
+        profile: {
+          gender: {
+            value: '女',
+            confidence: 'high',
+            source: 'booking',
+            evidence: '测试写入',
+            updatedAt: '2026-05-22T10:00:00.000Z',
+          },
+        } as never,
+      },
     };
 
     await service.enrich(snapshot, { token: 't', imBotId: 'b', imContactId: 'c' });
@@ -65,8 +118,11 @@ describe('MemoryEnrichmentService', () => {
     const snapshot: AgentMemoryContext = {
       ...baseSnapshot(),
       highConfidenceFacts: {
-        ...FALLBACK_EXTRACTION,
-        interview_info: { ...FALLBACK_EXTRACTION.interview_info, gender: '男' },
+        ...emptyHighConfidenceFacts(),
+        interview_info: {
+          ...emptyHighConfidenceFacts().interview_info,
+          gender: highConfidence('男', '性别识别：男'),
+        },
         reasoning: 'existing',
       },
     };
@@ -108,8 +164,11 @@ describe('MemoryEnrichmentService', () => {
     const snapshot: AgentMemoryContext = {
       ...baseSnapshot(),
       highConfidenceFacts: {
-        ...FALLBACK_EXTRACTION,
-        preferences: { ...FALLBACK_EXTRACTION.preferences, brands: ['来伊份'] },
+        ...emptyHighConfidenceFacts(),
+        preferences: {
+          ...emptyHighConfidenceFacts().preferences,
+          brands: highConfidence(['来伊份'], '品牌别名识别：来伊份'),
+        },
         reasoning: '品牌别名识别',
       },
     };
@@ -120,7 +179,9 @@ describe('MemoryEnrichmentService', () => {
       imContactId: 'c',
     });
 
-    expect(result.highConfidenceFacts?.preferences.brands).toEqual(['来伊份']);
+    expect(result.highConfidenceFacts?.preferences.brands).toEqual(
+      expect.objectContaining({ value: ['来伊份'] }),
+    );
     expect(result.highConfidenceFacts?.interview_info.gender).toEqual(
       expect.objectContaining({ value: '女' }),
     );

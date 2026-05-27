@@ -39,6 +39,22 @@ describe('SupabaseStore', () => {
 
   let store: SupabaseStore;
 
+  const profileFact = <T>(
+    value: T,
+    overrides: Partial<{
+      confidence: 'high' | 'medium' | 'low' | 'unknown';
+      source: 'booking' | 'extraction' | 'enrichment';
+      evidence: string;
+      updatedAt: string;
+    }> = {},
+  ) => ({
+    value,
+    confidence: overrides.confidence ?? ('high' as const),
+    source: overrides.source ?? ('booking' as const),
+    evidence: overrides.evidence ?? '测试写入',
+    updatedAt: overrides.updatedAt ?? '2026-05-22T10:00:00.000Z',
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockSupabaseService.getSupabaseClient.mockReturnValue(mockSupabaseClient);
@@ -48,24 +64,45 @@ describe('SupabaseStore', () => {
 
   describe('getProfile', () => {
     it('should return from Redis cache if available', async () => {
-      const cached = { name: '张三', phone: '138', gender: null, age: null, is_student: null, education: null, has_health_certificate: null };
+      const cached = {
+        profile_facts: {
+          name: profileFact('张三'),
+          phone: profileFact('138'),
+          gender: null,
+          age: null,
+          is_student: null,
+          education: null,
+          has_health_certificate: null,
+        },
+      };
       mockRedis.get.mockResolvedValue(cached);
 
       const result = await store.getProfile('corp1', 'user1');
 
-      expect(result).toEqual(cached);
+      expect(result).toEqual(cached.profile_facts);
     });
 
     it('should fallback to Supabase on cache miss', async () => {
       mockRedis.get.mockResolvedValue(null);
       mockMaybeSingle.mockResolvedValue({
-        data: { name: '张三', phone: '138', gender: null, age: null, is_student: null, education: null, has_health_certificate: null },
+        data: {
+          profile_facts: {
+            name: profileFact('张三'),
+            phone: profileFact('138'),
+            gender: null,
+            age: null,
+            is_student: null,
+            education: null,
+            has_health_certificate: null,
+          },
+        },
         error: null,
       });
 
       const result = await store.getProfile('corp1', 'user1');
 
-      expect(result).toEqual(expect.objectContaining({ name: '张三', phone: '138' }));
+      expect(result?.name?.value).toBe('张三');
+      expect(result?.phone?.value).toBe('138');
       expect(mockRedis.setex).toHaveBeenCalled();
     });
 
@@ -108,27 +145,55 @@ describe('SupabaseStore', () => {
     });
   });
 
-  describe('upsertProfileWithMeta', () => {
-    it('should call RPC with profile, meta, and message_metadata', async () => {
+  describe('appendSummary', () => {
+    it('passes summary entry as json object to atomic RPC', async () => {
+      mockRpc.mockResolvedValue({
+        data: { overflow: [], recentCount: 1 },
+        error: null,
+      });
+
+      const entry = {
+        summary: '候选人想约明天',
+        sessionId: 'sess-1',
+        startTime: '2026-05-27T10:00:00.000Z',
+        endTime: '2026-05-27T10:05:00.000Z',
+      };
+
+      await store.appendSummary('corp1', 'user1', entry, {
+        lastSettledMessageAt: entry.endTime,
+      });
+
+      expect(mockRpc).toHaveBeenCalledWith('append_long_term_summary_atomic', {
+        p_corp_id: 'corp1',
+        p_user_id: 'user1',
+        p_entry: entry,
+        p_last_settled_message_at: entry.endTime,
+        p_max_recent: 5,
+      });
+      expect(mockRedis.del).toHaveBeenCalledWith('long-term:corp1:user1');
+    });
+  });
+
+  describe('upsertProfileFacts', () => {
+    it('should call RPC with profile facts and message_metadata', async () => {
       mockRpc.mockResolvedValue({
         data: { written_fields: ['name', 'phone'], skipped_fields: [] },
         error: null,
       });
 
-      const bookingMeta = { source: 'booking' as const, confidence: 'high' as const, writtenAt: '2026-05-22T10:00:00.000Z' };
-      await store.upsertProfileWithMeta(
+      const name = profileFact('张三');
+      const phone = profileFact('13800138000');
+      await store.upsertProfileFacts(
         'corp1',
         'user1',
-        { name: '张三', phone: '13800138000' },
-        { name: bookingMeta, phone: bookingMeta },
+        { name, phone },
         { botId: 'bot-1' },
       );
 
-      expect(mockRpc).toHaveBeenCalledWith('upsert_profile_with_confidence_guard', {
+      expect(mockRpc).toHaveBeenCalledWith('upsert_long_term_profile_facts', {
         p_corp_id: 'corp1',
         p_user_id: 'user1',
-        p_profile: { name: '张三', phone: '13800138000' },
-        p_meta: { name: bookingMeta, phone: bookingMeta },
+        p_profile_facts: { name, phone },
         p_message_metadata: { botId: 'bot-1' },
       });
     });
@@ -139,31 +204,30 @@ describe('SupabaseStore', () => {
         error: null,
       });
 
-      const meta = { name: { source: 'booking' as const, confidence: 'high' as const, writtenAt: '2026-05-22T10:00:00.000Z' } };
-      await store.upsertProfileWithMeta('corp1', 'user1', { name: '张三' }, meta);
+      await store.upsertProfileFacts('corp1', 'user1', { name: profileFact('张三') });
 
-      expect(mockRedis.del).toHaveBeenCalledWith('profile:corp1:user1');
+      expect(mockRedis.del).toHaveBeenCalledWith('long-term:corp1:user1');
     });
 
-    it('should not call RPC when profile and meta are both empty', async () => {
-      await store.upsertProfileWithMeta('corp1', 'user1', {}, {});
+    it('should not call RPC when profile facts and metadata are empty', async () => {
+      await store.upsertProfileFacts('corp1', 'user1', {});
 
       expect(mockRpc).not.toHaveBeenCalled();
     });
 
-    it('should filter null values from profile before calling RPC', async () => {
+    it('should filter null facts before calling RPC', async () => {
       mockRpc.mockResolvedValue({
         data: { written_fields: ['phone'], skipped_fields: [] },
         error: null,
       });
 
-      const meta = { phone: { source: 'booking' as const, confidence: 'high' as const, writtenAt: '2026-05-22T10:00:00.000Z' } };
-      await store.upsertProfileWithMeta('corp1', 'user1', { name: null, phone: '138' } as never, meta);
+      const phone = profileFact('138');
+      await store.upsertProfileFacts('corp1', 'user1', { name: null, phone });
 
       expect(mockRpc).toHaveBeenCalledWith(
-        'upsert_profile_with_confidence_guard',
+        'upsert_long_term_profile_facts',
         expect.objectContaining({
-          p_profile: { phone: '138' },
+          p_profile_facts: { phone },
         }),
       );
     });
@@ -171,9 +235,8 @@ describe('SupabaseStore', () => {
     it('should handle RPC error gracefully without crashing', async () => {
       mockRpc.mockResolvedValue({ data: null, error: { message: 'RPC not found' } });
 
-      const meta = { name: { source: 'booking' as const, confidence: 'high' as const, writtenAt: '2026-05-22T10:00:00.000Z' } };
       await expect(
-        store.upsertProfileWithMeta('corp1', 'user1', { name: '张三' }, meta),
+        store.upsertProfileFacts('corp1', 'user1', { name: profileFact('张三') }),
       ).resolves.toBeUndefined();
 
       expect(mockRedis.del).not.toHaveBeenCalled();
@@ -185,29 +248,27 @@ describe('SupabaseStore', () => {
         error: null,
       });
 
-      const meta = { name: { source: 'booking' as const, confidence: 'high' as const, writtenAt: '2026-05-22T10:00:00.000Z' } };
-      await store.upsertProfileWithMeta('corp1', 'user1', { name: '张三' }, meta);
+      await store.upsertProfileFacts('corp1', 'user1', { name: profileFact('张三') });
 
       expect(mockRpc).toHaveBeenCalledWith(
-        'upsert_profile_with_confidence_guard',
+        'upsert_long_term_profile_facts',
         expect.objectContaining({ p_message_metadata: null }),
       );
     });
 
-    it('should fill missing field meta with enrichment medium default', async () => {
+    it('should pass metadata-only updates to RPC', async () => {
       mockRpc.mockResolvedValue({
-        data: { written_fields: ['name'], skipped_fields: [] },
+        data: { written_fields: [], skipped_fields: [] },
         error: null,
       });
 
-      await store.upsertProfileWithMeta('corp1', 'user1', { name: '张三' }, {});
+      await store.upsertProfileFacts('corp1', 'user1', {}, { botId: 'bot-1' });
 
       expect(mockRpc).toHaveBeenCalledWith(
-        'upsert_profile_with_confidence_guard',
+        'upsert_long_term_profile_facts',
         expect.objectContaining({
-          p_meta: {
-            name: expect.objectContaining({ source: 'enrichment', confidence: 'medium' }),
-          },
+          p_profile_facts: {},
+          p_message_metadata: { botId: 'bot-1' },
         }),
       );
     });
@@ -220,24 +281,22 @@ describe('SupabaseStore', () => {
         error: null,
       });
 
-      const extractionMeta = { source: 'extraction' as const, confidence: 'medium' as const, writtenAt: '2026-05-22T10:00:00.000Z' };
-      await store.upsertProfileWithMeta(
+      await store.upsertProfileFacts(
         'corp1',
         'user1',
-        { name: '李四', phone: '139', age: '25', gender: '女', education: '本科' },
         {
-          name: extractionMeta,
-          phone: extractionMeta,
-          age: extractionMeta,
-          gender: extractionMeta,
-          education: extractionMeta,
+          name: profileFact('李四', { source: 'extraction', confidence: 'medium' }),
+          phone: profileFact('139', { source: 'extraction', confidence: 'medium' }),
+          age: profileFact('25', { source: 'extraction', confidence: 'medium' }),
+          gender: profileFact('女', { source: 'extraction', confidence: 'medium' }),
+          education: profileFact('本科', { source: 'extraction', confidence: 'medium' }),
         },
       );
 
       // 关键断言：走 RPC（原子），而非 from().upsert()（非原子）
       expect(mockRpc).toHaveBeenCalledTimes(1);
       expect(mockRpc).toHaveBeenCalledWith(
-        'upsert_profile_with_confidence_guard',
+        'upsert_long_term_profile_facts',
         expect.objectContaining({ p_corp_id: 'corp1' }),
       );
       expect(mockUpsert).not.toHaveBeenCalled();
@@ -245,7 +304,7 @@ describe('SupabaseStore', () => {
   });
 
   describe('set (v1 compat)', () => {
-    it('should delegate profile writes to upsertProfileWithMeta', async () => {
+    it('should delegate profile writes to upsertProfileFacts', async () => {
       mockRpc.mockResolvedValue({
         data: { written_fields: ['name'], skipped_fields: [] },
         error: null,
@@ -254,11 +313,14 @@ describe('SupabaseStore', () => {
       await store.set('profile:corp1:user1', { name: '张三' });
 
       expect(mockRpc).toHaveBeenCalledWith(
-        'upsert_profile_with_confidence_guard',
+        'upsert_long_term_profile_facts',
         expect.objectContaining({
-          p_profile: { name: '张三' },
-          p_meta: {
-            name: expect.objectContaining({ source: 'enrichment', confidence: 'medium' }),
+          p_profile_facts: {
+            name: expect.objectContaining({
+              value: '张三',
+              source: 'enrichment',
+              confidence: 'medium',
+            }),
           },
         }),
       );
@@ -270,7 +332,7 @@ describe('SupabaseStore', () => {
     it('should delete from Redis cache', async () => {
       await store.del('profile:corp1:user1');
 
-      expect(mockRedis.del).toHaveBeenCalledWith('profile:corp1:user1');
+      expect(mockRedis.del).toHaveBeenCalledWith('long-term:corp1:user1');
     });
   });
 });

@@ -2,7 +2,7 @@
 
 > Cake Agent Runtime - Supabase (PostgreSQL) 数据库设计文档
 
-**最后更新**：2026-04-20
+**最后更新**：2026-05-27
 
 **数据库**：Supabase PostgreSQL | **基线迁移**：[supabase/migrations/20260310000000_baseline.sql](../../supabase/migrations/20260310000000_baseline.sql)
 
@@ -20,7 +20,7 @@
   - [interview_booking_records](#3-interview_booking_records---面试预约记录)
   - [recruitment_cases](#4-recruitment_cases---招聘案件)
 - [记忆/画像表](#记忆画像表)
-  - [agent_memories](#5-agent_memories---用户长期画像)
+  - [agent_long_term_memories](#5-agent_long_term_memories---用户长期记忆)
 - [用户管理表](#用户管理表)
   - [user_activity](#6-user_activity---用户活跃度)
   - [user_hosting_status](#7-user_hosting_status---用户托管状态)
@@ -49,7 +49,7 @@
 | 2 | `message_processing_records` | 消息 | insert / upsert | select / RPC | 30 天（7 天后清空 agent_invocation） |
 | 3 | `interview_booking_records` | 消息 | RPC upsert | select | 永久 |
 | 4 | `recruitment_cases` | 消息 | insert / update | select | 永久（按 status 归档） |
-| 5 | `agent_memories` | 记忆 | upsert | select | 永久 |
+| 5 | `agent_long_term_memories` | 记忆 | RPC upsert / select | select | 永久 |
 | 6 | `user_activity` | 用户 | RPC upsert | select | 30 天 |
 | 7 | `user_hosting_status` | 用户 | upsert / update | select | 永久 |
 | 8 | `monitoring_hourly_stats` | 监控 | upsert | select | 永久 |
@@ -81,7 +81,7 @@
 ├─────────────────────────────────────────────────────────────────┤
 │                        记忆/画像                                 │
 │                                                                 │
-│  agent_memories  (corp_id + user_id 唯一，跨会话持久画像)          │
+│  agent_long_term_memories  (corp_id + user_id 唯一，跨会话长期记忆) │
 ├─────────────────────────────────────────────────────────────────┤
 │                        用户管理表                                │
 │                                                                 │
@@ -307,9 +307,9 @@
 
 ## 记忆/画像表
 
-### 5. agent_memories - 用户长期画像
+### 5. agent_long_term_memories - 用户长期记忆
 
-**用途**：按 `(corp_id, user_id)` 存储跨会话的候选人画像（结构化字段 + summary JSON）
+**用途**：按 `(corp_id, user_id)` 存储跨会话的候选人长期记忆（字段级画像事实 + summary JSON）
 
 **代码位置**：
 
@@ -322,23 +322,69 @@
 | `id` | uuid | gen_random_uuid() | 主键 |
 | `corp_id` | text | NOT NULL | 企业ID |
 | `user_id` | text | NOT NULL | 候选人唯一ID |
-| `name` | text | - | 姓名 |
-| `phone` | text | - | 电话 |
-| `gender` | text | - | 性别 |
-| `age` | text | - | 年龄 |
-| `is_student` | boolean | - | 是否学生 |
-| `education` | text | - | 教育水平 |
-| `has_health_certificate` | text | - | 健康证 |
-| `summary_data` | jsonb | - | 摘要 `{ recent: string[], archive: string }` |
+| `profile_facts` | jsonb | 默认空字段对象 | 姓名、电话、性别、年龄、学生身份、学历、健康证等画像事实 |
+| `summary_data` | jsonb | `{ recent: [], archive: null, lastSettledMessageAt: null }` | 摘要 |
 | `message_metadata` | jsonb | - | 最近消息元数据 |
 | `created_at` | timestamptz | now() | - |
 | `updated_at` | timestamptz | now() | trigger 自动维护 |
 
-**唯一约束**：`(corp_id, user_id)`（迁移 20260320 后每用户仅一行，扁平化画像字段）
+`profile_facts` 固定字段：
 
-**触发器**：`trigger_agent_memories_updated_at`
+- `name`
+- `phone`
+- `gender`
+- `age`
+- `is_student`
+- `education`
+- `has_health_certificate`
 
-**Key 命名**：`profile:{corpId}:{userId}`（由 SupabaseStore 内部使用）
+每个字段值结构：
+
+```json
+{
+  "value": "19986247174",
+  "confidence": "high",
+  "source": "booking",
+  "evidence": "报名成功后写入",
+  "updatedAt": "2026-05-27T10:00:00.000Z"
+}
+```
+
+字段没有值时为 `null`。
+
+`confidence` 取值说明：
+
+| 值 | 含义 | 工具消费 |
+|----|------|----------|
+| `high` | 可程序化采用。来自确定性规则、明确结构化输入，或经过强校验的事实 | 默认消费 |
+| `medium` | 可给模型参考。通常来自 LLM 结构化提取、会话沉淀或外部补全 | 默认不消费 |
+| `low` | 弱参考。来自系统兜底、弱规则或补充接口 | 不消费 |
+| `unknown` | 旧数据或缺少元数据的兼容值 | 不消费 |
+
+`source` 取值说明：
+
+| 值 | 含义 |
+|----|------|
+| `candidate` | 候选人直接明示的结构化输入，且写入链路保留了候选人来源 |
+| `llm` | LLM 根据对话做的结构化提取 |
+| `rule` | 确定性规则、正则、白名单或别名表匹配得到 |
+| `system` | 外部系统或平台接口补充得到 |
+| `memory` | 历史记忆或旧结构兼容迁移得到 |
+| `derived` | 由其他字段推导得到，例如由区/地标白名单反推出城市 |
+| `booking` | 预约/报名成功后写入长期档案，是长期画像的最高质量来源 |
+| `extraction` | 会话沉淀时从 sessionFacts 抽取后写入长期档案；原 sessionFact 来源会记录在 evidence 中 |
+| `enrichment` | 外部画像补全链路写入，例如客户详情接口补充性别 |
+
+**唯一约束**：`(corp_id, user_id)`（每用户仅一行）
+
+**触发器**：`trigger_agent_long_term_memories_updated_at`
+
+**RPC**：
+
+- `upsert_long_term_profile_facts`：字段级合并写入，已有 `high` 字段不会被非 `high` 覆盖
+- `append_long_term_summary_atomic`：原子追加 summary，维护 `recent/archive/lastSettledMessageAt`
+
+**Key 命名**：`long-term:{corpId}:{userId}`（由 SupabaseStore 内部使用）
 
 ---
 
@@ -747,7 +793,7 @@
   │
   ├──► recruitment_cases（约面后跟进 Case，状态驱动）
   │
-  └──► agent_memories（跨会话用户画像，永久）
+  └──► agent_long_term_memories（跨会话长期记忆，永久）
 ```
 
 **清理调度**：由 [src/biz/monitoring/services/cleanup/](../../src/biz/monitoring/services/cleanup/) 下的定时任务驱动，经 Supabase RPC 执行批量删除。

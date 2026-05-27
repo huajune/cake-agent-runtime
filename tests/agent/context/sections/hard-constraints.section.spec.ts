@@ -3,6 +3,8 @@ import type { PromptContext } from '@agent/context/sections/section.interface';
 import {
   FALLBACK_EXTRACTION,
   type EntityExtractionResult,
+  type HighConfidenceFacts,
+  type HighConfidenceValue,
 } from '@memory/types/session-facts.types';
 
 describe('HardConstraintsSection', () => {
@@ -19,6 +21,53 @@ describe('HardConstraintsSection', () => {
     reasoning: '',
   });
 
+  const highConfidenceValue = <T>(value: T, evidence: string): HighConfidenceValue<T> => ({
+    value,
+    confidence: 'high',
+    source: 'rule',
+    evidence,
+  });
+
+  const lowConfidenceValue = <T>(value: T, evidence: string): HighConfidenceValue<T> => ({
+    value,
+    confidence: 'low',
+    source: 'system',
+    evidence,
+  });
+
+  const cloneHighConfidenceFallback = (): HighConfidenceFacts => ({
+    interview_info: {
+      name: null,
+      phone: null,
+      gender: null,
+      gender_source: null,
+      age: null,
+      applied_store: null,
+      applied_position: null,
+      interview_time: null,
+      is_student: null,
+      education: null,
+      has_health_certificate: null,
+    },
+    preferences: {
+      brands: null,
+      salary: null,
+      position: null,
+      schedule: null,
+      city: null,
+      district: null,
+      location: null,
+      labor_form: null,
+      delayed_intent: null,
+      short_term: null,
+      open_position: null,
+      time_windows: null,
+      schedule_constraint: null,
+      available_after: null,
+    },
+    reasoning: '',
+  });
+
   it('returns empty string when no facts available at all', () => {
     expect(section.build(baseCtx)).toBe('');
   });
@@ -27,7 +76,7 @@ describe('HardConstraintsSection', () => {
     const output = section.build({
       ...baseCtx,
       sessionFacts: cloneFallback(),
-      highConfidenceFacts: cloneFallback(),
+      highConfidenceFacts: cloneHighConfidenceFallback(),
     });
     expect(output).toBe('');
   });
@@ -95,9 +144,9 @@ describe('HardConstraintsSection', () => {
 
   it('falls back to highConfidenceFacts when sessionFacts has no value for a field', () => {
     const session = cloneFallback();
-    const high = cloneFallback();
-    high.preferences.brands = ['必胜客'];
-    high.preferences.schedule = '晚班';
+    const high = cloneHighConfidenceFallback();
+    high.preferences.brands = highConfidenceValue(['必胜客'], '品牌别名识别：必胜客');
+    high.preferences.schedule = highConfidenceValue('晚班', '班次识别：晚班');
 
     const output = section.build({
       ...baseCtx,
@@ -113,8 +162,8 @@ describe('HardConstraintsSection', () => {
   it('prefers sessionFacts over highConfidenceFacts when both have a value (no merge conflict)', () => {
     const session = cloneFallback();
     session.preferences.salary = '5000+';
-    const high = cloneFallback();
-    high.preferences.salary = '8000+';
+    const high = cloneHighConfidenceFallback();
+    high.preferences.salary = highConfidenceValue('8000+', '薪资识别：8000+');
 
     const output = section.build({
       ...baseCtx,
@@ -124,6 +173,20 @@ describe('HardConstraintsSection', () => {
 
     expect(output).toContain('意向薪资: 5000+');
     expect(output).not.toContain('意向薪资: 8000+');
+  });
+
+  it('does not consume low-confidence highConfidenceFacts as query constraints', () => {
+    const high = cloneHighConfidenceFallback();
+    high.interview_info.gender = lowConfidenceValue('女', '客户详情接口补充性别：女');
+    high.preferences.city = lowConfidenceValue('上海', '低置信城市');
+
+    const output = section.build({
+      ...baseCtx,
+      sessionFacts: cloneFallback(),
+      highConfidenceFacts: high,
+    });
+
+    expect(output).toBe('');
   });
 
   it('drops empty string and empty array fields from interview_info during merge', () => {

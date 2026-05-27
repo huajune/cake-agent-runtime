@@ -286,7 +286,7 @@ SCENARIO_SECTIONS = {
 [final-check]
 ```
 
-`memoryBlock` 的三段由 `AgentPreparationService.buildMemoryBlock()` 组装，来源：长期档案 + `WeworkSessionState` + `RecruitmentCaseRecord`。
+`memoryBlock` 的三段由 `AgentPreparationService.buildMemoryBlock()` 组装，来源：长期档案 facts + `WeworkSessionState` + `RecruitmentCaseRecord`。
 
 ---
 
@@ -350,7 +350,7 @@ SCENARIO_SECTIONS = {
 
 ## 6. 记忆系统
 
-> 完整设计详见 [memory-system-architecture.md](memory-system-architecture.md)
+> 完整设计详见 [memory-system-architecture.md](memory-system-architecture.md)，端到端数据流见 [memory-and-hints-data-flow.md](memory-and-hints-data-flow.md)。
 
 ### 6.1 四类记忆
 
@@ -359,11 +359,10 @@ SCENARIO_SECTIONS = {
 会话记忆   Redis SESSION_TTL                            读/写：SessionService
   ├─ facts（interview_info + preferences）
   ├─ lastCandidatePool / presentedJobs / currentFocusJob
-  ├─ invitedGroups
-  └─ lastSessionActiveAt
+  └─ invitedGroups
 程序记忆   Redis SESSION_TTL → currentStage             读/写：ProceduralService
 长期记忆   Supabase（+Redis 2h 缓存）                   读/写：LongTermService
-  ├─ profile（姓名、电话、性别、年龄、学生、学历、健康证 ...）
+  ├─ profile_facts（画像字段 + 置信度 + 来源 + 证据 + 更新时间）
   └─ summary（对话摘要）
 ```
 
@@ -395,24 +394,23 @@ await memoryService.onTurnEnd({
 load_previous_state (串行)
   ↓
 ┌─ 分支 A (可能 skip):
-│    settlement  ─ 会话超 SESSION_TTL 未活跃 → 沉淀到 profile + summary
+│    settlement  ─ 消息间隔达到 settlementGapSeconds → 沉淀到 profile_facts + summary
 │
 └─ 分支 B (串行，因为共享 session state):
      save_candidate_pool     ─ 写入 lastCandidatePool
-     store_activity          ─ 刷新 lastSessionActiveAt
      project_assistant_turn  ─ 从 assistant 文本投影 presentedJobs / currentFocusJob
      extract_facts           ─ LLM 提取 facts（preferences / interview_info）
 ```
 
 ### 6.4 高置信识别（前置）
 
-[src/memory/facts/high-confidence-facts.ts](src/memory/facts/high-confidence-facts.ts) 在 `onTurnStart` 里对当前 user 文本做规则匹配（品牌别名、城市、年龄、labor_form 等），产出 `highConfidenceFacts` 注入到 Context 的 `turn-hints` section，让模型优先消费本轮可靠信号。
+[src/memory/facts/high-confidence-facts.ts](src/memory/facts/high-confidence-facts.ts) 在 `onTurnStart` 里对当前 user 文本做规则匹配（品牌别名、城市、年龄、labor_form 等），产出带置信度的 `highConfidenceFacts` 注入到 Context 的 `turn-hints` section，让模型看到字段值、置信度和证据。
 
 新增文件 [src/memory/facts/labor-form.ts](src/memory/facts/labor-form.ts)：识别用工形式（兼职+/小时工/寒假工/暑假工），与平台仅兼职岗位的业务约束对齐。
 
 ### 6.5 外部画像补全
 
-[MemoryEnrichmentService](src/memory/services/memory-enrichment.service.ts) 当 `onTurnStart` 传入 `enrichmentIdentity`（token + imBotId + externalUserId 等）时，向外部杜力岱系统补全缺失的 profile 字段（如性别），并更新快照。仅 `candidate-consultation` 场景 + 有 token 时触发。
+[MemoryEnrichmentService](src/memory/services/memory-enrichment.service.ts) 当 `onTurnStart` 传入 `enrichmentIdentity`（token + imBotId + externalUserId 等）时，向外部杜力岱系统补全缺失的 profile_facts 字段（如性别），并更新长期记忆快照。仅 `candidate-consultation` 场景 + 有 token 时触发。
 
 ### 6.6 设计原则
 
@@ -631,8 +629,8 @@ AppModule
 │   ├── ShortTermService     短期窗口
 │   ├── SessionService       会话记忆（store + projection + extraction）
 │   ├── ProceduralService    程序阶段
-│   ├── LongTermService      用户档案 + 摘要
-│   ├── SettlementService    Session → Profile 沉淀
+│   ├── LongTermService      用户档案 facts + 摘要
+│   ├── SettlementService    Session → profile_facts 沉淀
 │   ├── MemoryEnrichmentService  外部画像补全
 │   ├── RedisStore / SupabaseStore
 │   └── MemoryConfig
@@ -721,7 +719,7 @@ AppModule
        │   │   ├─ 短期：最近 60 条对话（WECOM 启用）
        │   │   ├─ 会话记忆：{ preferences: { city:'上海' }, lastCandidatePool: [...] }
        │   │   ├─ 程序阶段：'needs_collection'
-       │   │   ├─ 长期档案：{ name: '张三', phone: '138xxxx' }
+       │   │   ├─ 长期档案 facts：{ name: { value: '张三', confidence: 'high', source: 'booking', evidence: '报名成功后写入', updatedAt: '...' } }
        │   │   └─ 高置信识别：{ preferences: { jobIntent: '收银员' } }
        │   ├─ RecruitmentCaseService 查活跃 case（无）
        │   ├─ InputGuard 扫注入 → safe
@@ -758,7 +756,6 @@ AppModule
            ├─ 分支 A: settlement（未超阈值 → skipped）
            └─ 分支 B（串行）：
                ├─ save_candidate_pool（3 个岗位写入 session）
-               ├─ store_activity（刷新 lastSessionActiveAt）
                ├─ project_assistant_turn（从回复投影 presentedJobs）
                └─ extract_facts（LLM 提取 preferences.salary、interview_info 等）
    │
@@ -824,9 +821,11 @@ AppModule
 | -------------------------------------------- | -------- | ------------------------------------------ |
 | `AGENT_MAX_OUTPUT_TOKENS`                    | 4096     | 单次输出 token 上限                        |
 | `AGENT_THINKING_BUDGET_TOKENS`               | 0 (关闭) | Extended thinking 预算                     |
-| `AGENT_MAX_INPUT_CHARS`                      | 8000     | 输入字符上限（用于窗口裁剪）               |
+| `AGENT_MAX_INPUT_CHARS`                      | 12000    | 输入字符上限（用于窗口裁剪）               |
 | `MAX_HISTORY_PER_CHAT`                       | 60       | 短期记忆单轮最多消息数                     |
-| `MEMORY_SESSION_TTL_DAYS`                    | 1        | 会话记忆 TTL（天），超期触发 settlement    |
+| `MEMORY_SESSION_TTL_DAYS`                    | 2        | 会话级 Redis TTL（天）                     |
+| `MEMORY_SETTLEMENT_GAP_DAYS`                 | 1        | 会话沉淀间隔阈值（天）                     |
+| `MEMORY_HISTORY_WINDOW_DAYS`                 | 7        | 短期记忆 DB fallback 回查窗口（天）        |
 | `SESSION_EXTRACTION_INCREMENTAL_MESSAGES`    | 10       | 已有 facts 时事实提取的增量窗口            |
 | `GROUP_MEMBER_LIMIT`                         | 200      | 企微兼职群人数上限                         |
 | `AGENT_{ROLE}_MODEL` / `AGENT_{ROLE}_FALLBACKS` | —     | 各角色模型与降级链                         |

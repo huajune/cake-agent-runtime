@@ -1,5 +1,53 @@
 import { MemoryLifecycleService } from '@memory/services/memory-lifecycle.service';
-import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
+import { unwrapHighConfidenceValue } from '@memory/facts/high-confidence-facts';
+import {
+  FALLBACK_EXTRACTION,
+  type HighConfidenceFacts,
+  type HighConfidenceValue,
+} from '@memory/types/session-facts.types';
+
+function highConfidence<T>(
+  value: T,
+  evidence: string,
+  source: HighConfidenceValue<T>['source'] = 'rule',
+): HighConfidenceValue<T> {
+  return { value, confidence: source === 'system' ? 'low' : 'high', source, evidence };
+}
+
+function emptyHighConfidenceFacts(): HighConfidenceFacts {
+  return {
+    interview_info: {
+      name: null,
+      phone: null,
+      gender: null,
+      gender_source: null,
+      age: null,
+      applied_store: null,
+      applied_position: null,
+      interview_time: null,
+      is_student: null,
+      education: null,
+      has_health_certificate: null,
+    },
+    preferences: {
+      brands: null,
+      salary: null,
+      position: null,
+      schedule: null,
+      city: null,
+      district: null,
+      location: null,
+      labor_form: null,
+      delayed_intent: null,
+      short_term: null,
+      open_position: null,
+      time_windows: null,
+      schedule_constraint: null,
+      available_after: null,
+    },
+    reasoning: 'test',
+  };
+}
 
 describe('MemoryLifecycleService', () => {
   const mockShortTerm = {
@@ -82,7 +130,22 @@ describe('MemoryLifecycleService', () => {
       advancedAt: null,
       reason: null,
     });
-    mockLongTerm.getProfile.mockResolvedValue({ name: '张三', phone: '138' });
+    mockLongTerm.getProfile.mockResolvedValue({
+      name: {
+        value: '张三',
+        confidence: 'high',
+        source: 'booking',
+        evidence: '测试写入',
+        updatedAt: '2026-05-22T10:00:00.000Z',
+      },
+      phone: {
+        value: '138',
+        confidence: 'high',
+        source: 'booking',
+        evidence: '测试写入',
+        updatedAt: '2026-05-22T10:00:00.000Z',
+      },
+    });
 
     const ctx = await service.onTurnStart('corp-1', 'user-1', 'sess-1');
 
@@ -150,7 +213,9 @@ describe('MemoryLifecycleService', () => {
 
     expect(mockSponge.fetchBrandList).toHaveBeenCalled();
     expect(ctx.sessionMemory).toBeNull();
-    expect(ctx.highConfidenceFacts?.preferences.brands).toEqual(['来伊份']);
+    expect(ctx.highConfidenceFacts?.preferences.brands).toEqual(
+      expect.objectContaining({ value: ['来伊份'], source: 'rule' }),
+    );
   });
 
   it('should keep persisted session memory unchanged and return high-confidence facts separately', async () => {
@@ -189,9 +254,12 @@ describe('MemoryLifecycleService', () => {
     expect(ctx.highConfidenceFacts?.preferences.city).toEqual({
       value: '上海',
       confidence: 'high',
+      source: 'rule',
       evidence: 'municipality_compact',
     });
-    expect(ctx.highConfidenceFacts?.preferences.district).toEqual(['杨浦']);
+    expect(unwrapHighConfidenceValue(ctx.highConfidenceFacts?.preferences.district)).toEqual([
+      '杨浦',
+    ]);
     expect(ctx.highConfidenceFacts?.interview_info.gender).toEqual(
       expect.objectContaining({ value: '男' }),
     );
@@ -275,8 +343,11 @@ describe('MemoryLifecycleService', () => {
     mockEnrichment.enrich.mockImplementation(async (snapshot) => ({
       ...snapshot,
       highConfidenceFacts: {
-        ...FALLBACK_EXTRACTION,
-        interview_info: { ...FALLBACK_EXTRACTION.interview_info, gender: '男' },
+        ...emptyHighConfidenceFacts(),
+        interview_info: {
+          ...emptyHighConfidenceFacts().interview_info,
+          gender: highConfidence('男', '客户详情接口补充性别：男', 'system'),
+        },
         reasoning: 'enriched',
       },
     }));
@@ -287,7 +358,9 @@ describe('MemoryLifecycleService', () => {
     });
 
     expect(mockEnrichment.enrich).toHaveBeenCalledWith(expect.any(Object), identity);
-    expect(ctx.highConfidenceFacts?.interview_info.gender).toBe('男');
+    expect(ctx.highConfidenceFacts?.interview_info.gender).toEqual(
+      expect.objectContaining({ value: '男', source: 'system' }),
+    );
   });
 
   it('should skip enrichment when identity is not provided', async () => {

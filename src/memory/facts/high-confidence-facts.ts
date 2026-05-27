@@ -3,11 +3,12 @@ import { formatLocalDate } from '@infra/utils/date.util';
 import {
   FALLBACK_EXTRACTION,
   type CityFact,
+  type CityFactEvidence,
   type EntityExtractionResult,
+  type HighConfidenceInterviewInfo,
+  type HighConfidencePreferences,
   type HighConfidenceFacts,
   type HighConfidenceValue,
-  type InterviewInfo,
-  type Preferences,
   type ScheduleConstraintFact,
 } from '../types/session-facts.types';
 import {
@@ -156,6 +157,13 @@ const CHINESE_NUM_MAP: Record<string, number> = {
   七: 7,
 };
 
+const CITY_FACT_EVIDENCES = new Set<CityFactEvidence>([
+  'municipality_compact',
+  'explicit_city',
+  'unique_district_alias',
+  'hotspot_alias',
+]);
+
 export interface BrandAliasHint {
   brandName: string;
   matchedAlias: string;
@@ -203,14 +211,10 @@ export function extractHighConfidenceFacts(
 
   const aliasHints = detectBrandAliasHints(normalizedMessages, brandData);
   if (aliasHints.length > 0) {
-    facts.preferences.brands = Array.from(new Set(aliasHints.map((hint) => hint.brandName)));
-    markPreferenceMeta(
-      facts,
-      'brands',
-      ruleMeta({
-        evidence: `品牌别名识别：${facts.preferences.brands.join('、')}`,
-      }),
-    );
+    const brands = Array.from(new Set(aliasHints.map((hint) => hint.brandName)));
+    facts.preferences.brands = ruleValue(brands, {
+      evidence: `品牌别名识别：${brands.join('、')}`,
+    });
     reasons.push(
       ...aliasHints.map(
         (hint) =>
@@ -222,248 +226,165 @@ export function extractHighConfidenceFacts(
   for (const message of normalizedMessages) {
     const structuredName = extractStructuredName(message);
     if (structuredName && !facts.interview_info.name) {
-      facts.interview_info.name = structuredName;
-      markInterviewInfoMeta(
-        facts,
-        'name',
-        ruleMeta({
-          evidence: `结构化姓名识别：${structuredName}`,
-        }),
-      );
+      facts.interview_info.name = ruleValue(structuredName, {
+        evidence: `结构化姓名识别：${structuredName}`,
+      });
       reasons.push(`结构化姓名识别：${structuredName}（来源：收资表单键值对）`);
     }
 
     const phone = extractPhone(message);
     if (phone && !facts.interview_info.phone) {
-      facts.interview_info.phone = phone;
-      markInterviewInfoMeta(
-        facts,
-        'phone',
-        ruleMeta({
-          evidence: `手机号识别：${phone}`,
-        }),
-      );
+      facts.interview_info.phone = ruleValue(phone, {
+        evidence: `手机号识别：${phone}`,
+      });
       reasons.push(`手机号识别：${phone}`);
     }
 
     const age = extractAge(message);
     if (age && !facts.interview_info.age) {
-      facts.interview_info.age = age;
-      markInterviewInfoMeta(
-        facts,
-        'age',
-        ruleMeta({
-          evidence: `年龄识别：${age}`,
-        }),
-      );
+      facts.interview_info.age = ruleValue(age, {
+        evidence: `年龄识别：${age}`,
+      });
       reasons.push(`年龄识别：${age}`);
     }
 
     const gender = extractGender(message);
     if (gender && !facts.interview_info.gender) {
-      facts.interview_info.gender = gender;
-      facts.interview_info.gender_source = 'candidate';
-      markInterviewInfoMeta(
-        facts,
-        'gender',
-        ruleMeta({
-          evidence: `性别识别：${gender}`,
-        }),
-      );
+      facts.interview_info.gender = ruleValue(gender, {
+        evidence: `性别识别：${gender}`,
+      });
+      facts.interview_info.gender_source = ruleValue('candidate', {
+        evidence: '性别来源：候选人自陈',
+      });
       reasons.push(`性别识别：${gender}`);
     }
 
     const studentInfo = extractStudentInfo(message);
     if (studentInfo.isStudent !== null && facts.interview_info.is_student === null) {
-      facts.interview_info.is_student = studentInfo.isStudent;
-      markInterviewInfoMeta(
-        facts,
-        'is_student',
-        ruleMeta({
-          evidence: `学生身份识别：${studentInfo.isStudent ? '是' : '否'}`,
-        }),
-      );
+      facts.interview_info.is_student = ruleValue(studentInfo.isStudent, {
+        evidence: `学生身份识别：${studentInfo.isStudent ? '是' : '否'}`,
+      });
       reasons.push(`学生身份识别：${studentInfo.isStudent ? '是' : '否'}`);
     }
     if (studentInfo.education && !facts.interview_info.education) {
-      facts.interview_info.education = studentInfo.education;
-      markInterviewInfoMeta(
-        facts,
-        'education',
-        ruleMeta({
-          evidence: `学历识别：${studentInfo.education}`,
-        }),
-      );
+      facts.interview_info.education = ruleValue(studentInfo.education, {
+        evidence: `学历识别：${studentInfo.education}`,
+      });
       reasons.push(`学历识别：${studentInfo.education}`);
     } else if (!studentInfo.education) {
       const explicitEducation = extractEducation(message);
       if (explicitEducation && !facts.interview_info.education) {
-        facts.interview_info.education = explicitEducation;
-        markInterviewInfoMeta(
-          facts,
-          'education',
-          ruleMeta({
-            evidence: `学历识别：${explicitEducation}`,
-          }),
-        );
+        facts.interview_info.education = ruleValue(explicitEducation, {
+          evidence: `学历识别：${explicitEducation}`,
+        });
         reasons.push(`学历识别：${explicitEducation}`);
       }
     }
 
     const healthCertificate = extractHealthCertificate(message);
     if (healthCertificate && !facts.interview_info.has_health_certificate) {
-      facts.interview_info.has_health_certificate = healthCertificate;
-      markInterviewInfoMeta(
-        facts,
-        'has_health_certificate',
-        ruleMeta({
-          evidence: `健康证识别：${healthCertificate}`,
-        }),
-      );
+      facts.interview_info.has_health_certificate = ruleValue(healthCertificate, {
+        evidence: `健康证识别：${healthCertificate}`,
+      });
       reasons.push(`健康证识别：${healthCertificate}`);
     }
 
     const laborForm = extractLaborForm(message);
     if (laborForm && !facts.preferences.labor_form) {
-      facts.preferences.labor_form = laborForm;
-      markPreferenceMeta(
-        facts,
-        'labor_form',
-        ruleMeta({
-          evidence: `用工形式识别：${laborForm}`,
-        }),
-      );
+      facts.preferences.labor_form = ruleValue(laborForm, {
+        evidence: `用工形式识别：${laborForm}`,
+      });
       reasons.push(`用工形式识别：${laborForm}`);
     }
 
     const salary = extractSalary(message);
     if (salary && !facts.preferences.salary) {
-      facts.preferences.salary = salary;
-      markPreferenceMeta(
-        facts,
-        'salary',
-        ruleMeta({
-          evidence: `薪资识别：${salary}`,
-        }),
-      );
+      facts.preferences.salary = ruleValue(salary, {
+        evidence: `薪资识别：${salary}`,
+      });
       reasons.push(`薪资识别：${salary}`);
     }
 
     const positions = extractPositions(message);
     if (positions.length > 0) {
-      facts.preferences.position = Array.from(
-        new Set([...(facts.preferences.position ?? []), ...positions]),
+      const mergedPositions = Array.from(
+        new Set([...(unwrapHighConfidenceValue(facts.preferences.position) ?? []), ...positions]),
       );
-      markPreferenceMeta(
-        facts,
-        'position',
-        ruleMeta({
-          evidence: `岗位识别：${positions.join('、')}`,
-        }),
-      );
+      facts.preferences.position = ruleValue(mergedPositions, {
+        evidence: `岗位识别：${positions.join('、')}`,
+      });
       reasons.push(`岗位识别：${positions.join('、')}`);
     }
 
     const schedule = extractSchedule(message);
     if (schedule && !facts.preferences.schedule) {
-      facts.preferences.schedule = schedule;
-      markPreferenceMeta(
-        facts,
-        'schedule',
-        ruleMeta({
-          evidence: `班次识别：${schedule}`,
-        }),
-      );
+      facts.preferences.schedule = ruleValue(schedule, {
+        evidence: `班次识别：${schedule}`,
+      });
       reasons.push(`班次识别：${schedule}`);
     }
 
     const scheduleConstraint = extractScheduleConstraintStructured(message);
     if (scheduleConstraint) {
+      const existingConstraint = unwrapHighConfidenceValue(facts.preferences.schedule_constraint);
       const merged: ScheduleConstraintFact = {
-        onlyWeekends:
-          scheduleConstraint.onlyWeekends ??
-          facts.preferences.schedule_constraint?.onlyWeekends ??
-          null,
-        onlyEvenings:
-          scheduleConstraint.onlyEvenings ??
-          facts.preferences.schedule_constraint?.onlyEvenings ??
-          null,
-        onlyMornings:
-          scheduleConstraint.onlyMornings ??
-          facts.preferences.schedule_constraint?.onlyMornings ??
-          null,
+        onlyWeekends: scheduleConstraint.onlyWeekends ?? existingConstraint?.onlyWeekends ?? null,
+        onlyEvenings: scheduleConstraint.onlyEvenings ?? existingConstraint?.onlyEvenings ?? null,
+        onlyMornings: scheduleConstraint.onlyMornings ?? existingConstraint?.onlyMornings ?? null,
         maxDaysPerWeek:
-          scheduleConstraint.maxDaysPerWeek ??
-          facts.preferences.schedule_constraint?.maxDaysPerWeek ??
-          null,
+          scheduleConstraint.maxDaysPerWeek ?? existingConstraint?.maxDaysPerWeek ?? null,
       };
-      facts.preferences.schedule_constraint = merged;
       const labelParts: string[] = [];
       if (merged.onlyWeekends) labelParts.push('只周末');
       if (merged.onlyEvenings) labelParts.push('只晚班');
       if (merged.onlyMornings) labelParts.push('只早班');
       if (merged.maxDaysPerWeek !== null) labelParts.push(`每周≤${merged.maxDaysPerWeek}天`);
-      markPreferenceMeta(
-        facts,
-        'schedule_constraint',
-        ruleMeta({
-          evidence: `班次硬约束（结构化）：${labelParts.join('、') || '空'}`,
-        }),
-      );
+      facts.preferences.schedule_constraint = ruleValue(merged, {
+        evidence: `班次硬约束（结构化）：${labelParts.join('、') || '空'}`,
+      });
       reasons.push(`班次硬约束（结构化）：${labelParts.join('、') || '空'}`);
     }
 
     const availableAfter = extractAvailableAfterDate(message, formatLocalDate(new Date()));
     if (availableAfter) {
-      facts.preferences.available_after = availableAfter;
-      markPreferenceMeta(
-        facts,
-        'available_after',
-        ruleMeta({
-          evidence: `未来日期硬约束：${availableAfter.date}`,
-        }),
-      );
+      facts.preferences.available_after = ruleValue(availableAfter, {
+        evidence: `未来日期硬约束：${availableAfter.date}`,
+      });
       reasons.push(`未来日期硬约束：${availableAfter.date}（原话："${availableAfter.raw}"）`);
     }
 
     const location = extractLocation(message);
     if (location.city) {
-      facts.preferences.city = location.city;
-      markPreferenceMeta(
-        facts,
-        'city',
-        ruleMeta({
-          evidence: `城市识别：${location.city.value}（${location.city.evidence}）`,
-        }),
-      );
+      facts.preferences.city = ruleValue(location.city.value, {
+        evidence: location.city.evidence,
+        confidence: location.city.confidence,
+      });
       reasons.push(
         `城市识别：${location.city.value}（证据：${location.city.evidence}，置信：${location.city.confidence}）`,
       );
     }
     if (location.district.length > 0) {
-      facts.preferences.district = Array.from(
-        new Set([...(facts.preferences.district ?? []), ...location.district]),
+      const mergedDistrict = Array.from(
+        new Set([
+          ...(unwrapHighConfidenceValue(facts.preferences.district) ?? []),
+          ...location.district,
+        ]),
       );
-      markPreferenceMeta(
-        facts,
-        'district',
-        ruleMeta({
-          evidence: `区域识别：${location.district.join('、')}`,
-        }),
-      );
+      facts.preferences.district = ruleValue(mergedDistrict, {
+        evidence: `区域识别：${location.district.join('、')}`,
+      });
       reasons.push(`区域识别：${location.district.join('、')}`);
     }
     if (location.location.length > 0) {
-      facts.preferences.location = Array.from(
-        new Set([...(facts.preferences.location ?? []), ...location.location]),
+      const mergedLocation = Array.from(
+        new Set([
+          ...(unwrapHighConfidenceValue(facts.preferences.location) ?? []),
+          ...location.location,
+        ]),
       );
-      markPreferenceMeta(
-        facts,
-        'location',
-        ruleMeta({
-          evidence: `地点识别：${location.location.join('、')}`,
-        }),
-      );
+      facts.preferences.location = ruleValue(mergedLocation, {
+        evidence: `地点识别：${location.location.join('、')}`,
+      });
       reasons.push(`地点识别：${location.location.join('、')}`);
     }
   }
@@ -561,12 +482,15 @@ export function mergeSupplementalGenderFact(
       }
     : cloneFallbackExtraction();
 
-  base.interview_info.gender = gender;
-  base.interview_info.gender_source = 'system';
-  markInterviewInfoMeta(base, 'gender', {
+  base.interview_info.gender = highConfidenceValue(gender, {
     confidence: 'low',
     source: 'system',
     evidence: `${sourceLabel}补充性别：${gender}`,
+  });
+  base.interview_info.gender_source = highConfidenceValue('system', {
+    confidence: 'low',
+    source: 'system',
+    evidence: `${sourceLabel}补充性别来源：系统标签`,
   });
   const suffix = `${sourceLabel}补充性别：${gender}`;
   base.reasoning = [base.reasoning?.trim(), suffix].filter(Boolean).join('；');
@@ -581,6 +505,73 @@ export function unwrapHighConfidenceValue<T>(
   return isHighConfidenceValue(value) ? (value.value as T) : value;
 }
 
+export function filterHighConfidenceFacts(
+  facts: HighConfidenceFacts | null | undefined,
+): HighConfidenceFacts | null {
+  if (!facts) return null;
+
+  const filtered: HighConfidenceFacts = {
+    interview_info: {
+      name: highOnly(facts.interview_info.name),
+      phone: highOnly(facts.interview_info.phone),
+      gender: highOnly(facts.interview_info.gender),
+      gender_source: highOnly(facts.interview_info.gender_source),
+      age: highOnly(facts.interview_info.age),
+      applied_store: highOnly(facts.interview_info.applied_store),
+      applied_position: highOnly(facts.interview_info.applied_position),
+      interview_time: highOnly(facts.interview_info.interview_time),
+      is_student: highOnly(facts.interview_info.is_student),
+      education: highOnly(facts.interview_info.education),
+      has_health_certificate: highOnly(facts.interview_info.has_health_certificate),
+    },
+    preferences: {
+      brands: highOnly(facts.preferences.brands),
+      salary: highOnly(facts.preferences.salary),
+      position: highOnly(facts.preferences.position),
+      schedule: highOnly(facts.preferences.schedule),
+      city: highOnly(facts.preferences.city),
+      district: highOnly(facts.preferences.district),
+      location: highOnly(facts.preferences.location),
+      labor_form: highOnly(facts.preferences.labor_form),
+      delayed_intent: highOnly(facts.preferences.delayed_intent),
+      short_term: highOnly(facts.preferences.short_term),
+      open_position: highOnly(facts.preferences.open_position),
+      time_windows: highOnly(facts.preferences.time_windows),
+      schedule_constraint: highOnly(facts.preferences.schedule_constraint),
+      available_after: highOnly(facts.preferences.available_after),
+    },
+    reasoning: facts.reasoning,
+  };
+
+  return hasAnyHighConfidenceFact(filtered) ? filtered : null;
+}
+
+function highOnly<T>(
+  value: HighConfidenceValue<T> | null | undefined,
+): HighConfidenceValue<T> | null {
+  if (!value) return null;
+  return value.confidence === 'high' ? value : null;
+}
+
+function hasAnyHighConfidenceFact(facts: HighConfidenceFacts): boolean {
+  return (
+    Object.values(facts.interview_info as HighConfidenceInterviewInfo).some(Boolean) ||
+    Object.values(facts.preferences as HighConfidencePreferences).some(Boolean)
+  );
+}
+
+function unwrapHighConfidenceCity(value: HighConfidencePreferences['city']): CityFact | null {
+  if (!value) return null;
+  const evidence = CITY_FACT_EVIDENCES.has(value.evidence as CityFactEvidence)
+    ? (value.evidence as CityFactEvidence)
+    : 'explicit_city';
+  return {
+    value: value.value,
+    confidence: value.confidence === 'low' ? 'low' : 'high',
+    evidence,
+  };
+}
+
 export function unwrapHighConfidenceFacts(
   facts: HighConfidenceFacts | null | undefined,
 ): EntityExtractionResult | null {
@@ -590,7 +581,7 @@ export function unwrapHighConfidenceFacts(
       name: unwrapHighConfidenceValue(facts.interview_info.name),
       phone: unwrapHighConfidenceValue(facts.interview_info.phone),
       gender: unwrapHighConfidenceValue(facts.interview_info.gender),
-      gender_source: facts.interview_info.gender_source ?? null,
+      gender_source: unwrapHighConfidenceValue(facts.interview_info.gender_source),
       age: unwrapHighConfidenceValue(facts.interview_info.age),
       applied_store: unwrapHighConfidenceValue(facts.interview_info.applied_store),
       applied_position: unwrapHighConfidenceValue(facts.interview_info.applied_position),
@@ -601,7 +592,22 @@ export function unwrapHighConfidenceFacts(
         facts.interview_info.has_health_certificate,
       ),
     },
-    preferences: { ...facts.preferences },
+    preferences: {
+      brands: unwrapHighConfidenceValue(facts.preferences.brands),
+      salary: unwrapHighConfidenceValue(facts.preferences.salary),
+      position: unwrapHighConfidenceValue(facts.preferences.position),
+      schedule: unwrapHighConfidenceValue(facts.preferences.schedule),
+      city: unwrapHighConfidenceCity(facts.preferences.city),
+      district: unwrapHighConfidenceValue(facts.preferences.district),
+      location: unwrapHighConfidenceValue(facts.preferences.location),
+      labor_form: unwrapHighConfidenceValue(facts.preferences.labor_form),
+      delayed_intent: unwrapHighConfidenceValue(facts.preferences.delayed_intent),
+      short_term: unwrapHighConfidenceValue(facts.preferences.short_term),
+      open_position: unwrapHighConfidenceValue(facts.preferences.open_position),
+      time_windows: unwrapHighConfidenceValue(facts.preferences.time_windows),
+      schedule_constraint: unwrapHighConfidenceValue(facts.preferences.schedule_constraint),
+      available_after: unwrapHighConfidenceValue(facts.preferences.available_after),
+    },
     reasoning: facts.reasoning,
   };
 }
@@ -651,38 +657,24 @@ function cloneFallbackExtraction(): HighConfidenceFacts {
       education: null,
       has_health_certificate: null,
     },
-    preferences: { ...FALLBACK_EXTRACTION.preferences },
+    preferences: {
+      brands: null,
+      salary: null,
+      position: null,
+      schedule: null,
+      city: null,
+      district: null,
+      location: null,
+      labor_form: null,
+      delayed_intent: null,
+      short_term: null,
+      open_position: null,
+      time_windows: null,
+      schedule_constraint: null,
+      available_after: null,
+    },
     reasoning: FALLBACK_EXTRACTION.reasoning,
   };
-}
-
-function markInterviewInfoMeta(
-  facts: HighConfidenceFacts,
-  field: keyof InterviewInfo,
-  meta: Omit<HighConfidenceValue<unknown>, 'value'>,
-): void {
-  if (field === 'gender_source') return;
-  const currentValue = facts.interview_info[field as keyof HighConfidenceFacts['interview_info']];
-  if (currentValue === null || currentValue === undefined) return;
-  if (isHighConfidenceValue(currentValue)) {
-    facts.interview_info[field as keyof HighConfidenceFacts['interview_info']] = {
-      ...currentValue,
-      ...meta,
-    } as never;
-    return;
-  }
-  facts.interview_info[field as keyof HighConfidenceFacts['interview_info']] = {
-    value: currentValue,
-    ...meta,
-  } as never;
-}
-
-function markPreferenceMeta(
-  _facts: HighConfidenceFacts,
-  _field: keyof Preferences,
-  _meta: Omit<HighConfidenceValue<unknown>, 'value'>,
-): void {
-  // preferences.city 已经是 { value, confidence, evidence } 结构；其他偏好字段本轮暂不改结构。
 }
 
 function ruleMeta(params: {
@@ -696,12 +688,27 @@ function ruleMeta(params: {
   };
 }
 
+function highConfidenceValue<T>(
+  value: T,
+  meta: Omit<HighConfidenceValue<T>, 'value'>,
+): HighConfidenceValue<T> {
+  return { value, ...meta };
+}
+
+function ruleValue<T>(
+  value: T,
+  params: { evidence: string; confidence?: HighConfidenceValue<T>['confidence'] },
+): HighConfidenceValue<T> {
+  return highConfidenceValue(value, ruleMeta(params) as Omit<HighConfidenceValue<T>, 'value'>);
+}
+
 function isHighConfidenceValue(value: unknown): value is HighConfidenceValue<unknown> {
   return (
     typeof value === 'object' &&
     value !== null &&
     'value' in value &&
     'confidence' in value &&
+    'source' in value &&
     'evidence' in value
   );
 }

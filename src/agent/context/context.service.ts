@@ -17,6 +17,7 @@ import { normalizeCity } from '@biz/group-task/utils/city-normalize.util';
 import type {
   EntityExtractionResult,
   HighConfidenceFacts,
+  SessionFacts,
 } from '@memory/types/session-facts.types';
 import {
   StrategyConfigRecord,
@@ -45,7 +46,7 @@ export interface ComposeParams {
   currentStage?: string;
   memoryBlock?: string;
   /** 会话记忆中的已确认提取结果；供 TurnHintsSection 做冲突比对。 */
-  sessionFacts?: EntityExtractionResult | null;
+  sessionFacts?: EntityExtractionResult | SessionFacts | null;
   /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分/渲染。 */
   highConfidenceFacts?: HighConfidenceFacts | null;
   /** 策略来源：wecom 读 released，test 读 testing，默认 released */
@@ -182,7 +183,7 @@ export class ContextService implements OnModuleInit {
    * - 行为：无城市/无群数据/查询失败时返回空串，不影响 prompt 组装
    */
   private async renderGroupInventoryBlock(
-    sessionFacts?: EntityExtractionResult | null,
+    sessionFacts?: EntityExtractionResult | SessionFacts | null,
   ): Promise<string> {
     const city = sessionFacts?.preferences?.city?.value?.trim();
     if (!city) return '';

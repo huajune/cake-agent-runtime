@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
 import { FeishuReceiver } from '@infra/feishu/constants/receivers';
+import { unwrapSessionFactValue } from '@memory/types/session-facts.types';
 import { ConversationRiskNotificationPayload } from '../types/conversation-risk-notification.types';
 
 @Injectable()
@@ -64,15 +65,22 @@ export class ConversationRiskCardRenderer {
     const interviewInfo = payload.sessionState?.facts?.interview_info;
     const preferences = payload.sessionState?.facts?.preferences;
     const normalizedContactName = payload.contactName?.trim();
+    const name = unwrapSessionFactValue(interviewInfo?.name);
+    const phone = unwrapSessionFactValue(interviewInfo?.phone);
+    const gender = unwrapSessionFactValue(interviewInfo?.gender);
+    const age = unwrapSessionFactValue(interviewInfo?.age);
+    const city = unwrapSessionFactValue(preferences?.city);
+    const district = unwrapSessionFactValue(preferences?.district);
+    const position = unwrapSessionFactValue(preferences?.position);
     const lines = [
       normalizedContactName ? `微信昵称：${normalizedContactName}` : null,
-      interviewInfo?.name ? `姓名：${interviewInfo.name}` : null,
-      interviewInfo?.phone ? `电话：${interviewInfo.phone}` : null,
-      interviewInfo?.gender ? `性别：${interviewInfo.gender}` : null,
-      this.isLikelyCandidateAge(interviewInfo?.age) ? `年龄：${interviewInfo?.age}` : null,
-      preferences?.city?.value ? `城市：${preferences.city.value}` : null,
-      preferences?.district?.length ? `区域：${preferences.district.join('、')}` : null,
-      preferences?.position?.length ? `意向岗位：${preferences.position.join('、')}` : null,
+      name ? `姓名：${name}` : null,
+      phone ? `电话：${phone}` : null,
+      gender ? `性别：${gender}` : null,
+      this.isLikelyCandidateAge(age) ? `年龄：${age}` : null,
+      city ? `城市：${city}` : null,
+      district?.length ? `区域：${district.join('、')}` : null,
+      position?.length ? `意向岗位：${position.join('、')}` : null,
       payload.botUserName?.trim() ? `托管账号：${payload.botUserName.trim()}` : null,
       `会话ID：${payload.chatId}`,
       payload.pausedUserId !== payload.chatId ? `暂停目标ID：${payload.pausedUserId}` : null,

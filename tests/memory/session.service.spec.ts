@@ -10,6 +10,10 @@ function mockStructured(obj: unknown) {
   } as never;
 }
 
+function factValue<T>(value: T, extra: Record<string, unknown> = {}) {
+  return expect.objectContaining({ value, ...extra });
+}
+
 describe('SessionService', () => {
   const mockRedisStore = {
     get: jest.fn(),
@@ -83,7 +87,10 @@ describe('SessionService', () => {
     it('should return stored session state', async () => {
       mockRedisStore.get.mockResolvedValue({
         content: {
-          facts: FALLBACK_EXTRACTION,
+          facts: {
+            ...FALLBACK_EXTRACTION,
+            interview_info: { ...FALLBACK_EXTRACTION.interview_info, age: '24' },
+          },
           lastCandidatePool: [],
           presentedJobs: [],
           currentFocusJob: null,
@@ -92,7 +99,9 @@ describe('SessionService', () => {
 
       const state = await service.getSessionState('corp1', 'user1', 'session1');
 
-      expect(state.facts).toEqual(FALLBACK_EXTRACTION);
+      expect(state.facts?.interview_info.age).toEqual(
+        factValue('24', { confidence: 'unknown', source: 'memory' }),
+      );
     });
 
     it('should ignore invalid persisted session state from Redis', async () => {
@@ -161,8 +170,8 @@ describe('SessionService', () => {
         expect.objectContaining({
           facts: expect.objectContaining({
             interview_info: expect.objectContaining({
-              name: '张三',
-              phone: '13800138000',
+              name: factValue('张三', { confidence: 'unknown', source: 'memory' }),
+              phone: factValue('13800138000', { confidence: 'unknown', source: 'memory' }),
             }),
           }),
         }),
@@ -206,7 +215,10 @@ describe('SessionService', () => {
           facts: expect.objectContaining({
             interview_info: expect.objectContaining({
               name: null,
-              phone: '13800138000', // 未列入 forceNullFields 的字段按常规 deepMerge 保留
+              phone: factValue('13800138000', {
+                confidence: 'unknown',
+                source: 'memory',
+              }), // 未列入 forceNullFields 的字段按常规 deepMerge 保留
             }),
           }),
         }),
@@ -384,7 +396,9 @@ describe('SessionService', () => {
         expect.any(String),
         expect.objectContaining({
           facts: expect.objectContaining({
-            interview_info: expect.objectContaining({ name: '张三' }),
+            interview_info: expect.objectContaining({
+              name: factValue('张三', { confidence: 'medium', source: 'llm' }),
+            }),
           }),
         }),
         86400,
@@ -475,7 +489,7 @@ describe('SessionService', () => {
         expect.objectContaining({
           facts: expect.objectContaining({
             interview_info: expect.objectContaining({
-              phone: '13800138000',
+              phone: factValue('13800138000', { confidence: 'high', source: 'rule' }),
             }),
             reasoning: expect.stringContaining('规则模式匹配参考线索'),
           }),
@@ -513,15 +527,18 @@ describe('SessionService', () => {
           facts: expect.objectContaining({
             interview_info: expect.objectContaining({
               // LLM 的 "本科" 优先于规则的 "本科在读"
-              education: '本科',
+              education: factValue('本科', { confidence: 'medium', source: 'llm' }),
             }),
             preferences: expect.objectContaining({
               // LLM 的 "上海" 优先于规则的 "苏州"
-              city: expect.objectContaining({ value: '上海' }),
+              city: factValue('上海', { confidence: 'high' }),
               // 规则兜底：LLM 未提取 schedule_constraint，规则补位
-              schedule_constraint: expect.objectContaining({
-                onlyWeekends: true,
-              }),
+              schedule_constraint: factValue(
+                expect.objectContaining({
+                  onlyWeekends: true,
+                }),
+                { confidence: 'high', source: 'rule' },
+              ),
             }),
             reasoning: expect.stringContaining('规则模式匹配参考线索'),
           }),
@@ -556,8 +573,8 @@ describe('SessionService', () => {
         expect.objectContaining({
           facts: expect.objectContaining({
             interview_info: expect.objectContaining({
-              name: '张三',
-              phone: '13800138000',
+              name: factValue('张三', { confidence: 'medium', source: 'llm' }),
+              phone: factValue('13800138000', { confidence: 'high', source: 'rule' }),
             }),
           }),
         }),
@@ -592,7 +609,7 @@ describe('SessionService', () => {
         expect.objectContaining({
           facts: expect.objectContaining({
             interview_info: expect.objectContaining({
-              name: '赵堤',
+              name: factValue('赵堤', { confidence: 'high', source: 'rule' }),
             }),
           }),
         }),
@@ -642,12 +659,12 @@ describe('SessionService', () => {
         expect.objectContaining({
           facts: expect.objectContaining({
             preferences: expect.objectContaining({
-              city: expect.objectContaining({
-                value: '上海',
+              city: factValue('上海', {
                 confidence: 'high',
+                source: 'rule',
                 evidence: 'unique_district_alias',
               }),
-              district: ['青浦'],
+              district: factValue(['青浦'], { confidence: 'high', source: 'rule' }),
             }),
           }),
         }),
@@ -655,7 +672,6 @@ describe('SessionService', () => {
         false,
       );
     });
-
     it('should not overwrite city when LLM already filled it', async () => {
       mockRedisStore.get.mockResolvedValue(null);
       mockLlm.generateStructured.mockResolvedValue(
@@ -852,7 +868,7 @@ describe('SessionService', () => {
         expect.objectContaining({
           facts: expect.objectContaining({
             preferences: expect.objectContaining({
-              brands: ['来伊份'],
+              brands: factValue(['来伊份'], { confidence: 'high', source: 'rule' }),
             }),
             reasoning: expect.stringContaining('来伊份'),
           }),

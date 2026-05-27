@@ -122,8 +122,8 @@ describe('DataCleanupService', () => {
       expect(messageProcessingService.cleanupRecords).toHaveBeenCalledWith(14);
       // 4. DELETE monitoring_error_logs (>30 天)
       expect(mockErrorLogRepository.cleanupErrorLogs).toHaveBeenCalledWith(30);
-      // 5. DELETE user_activity (>35 天)
-      expect(mockUserHostingService.cleanupActivity).toHaveBeenCalledWith(35);
+      // 5. DELETE user_activity (>365 天)
+      expect(mockUserHostingService.cleanupActivity).toHaveBeenCalledWith(365);
     });
 
     it('should skip cleanup when Supabase is not available', async () => {

@@ -1,4 +1,4 @@
-import type { UserProfile } from './long-term.types';
+import type { UserProfileFacts } from './long-term.types';
 import type { ProceduralState } from './procedural.types';
 import type { ShortTermMessage } from './short-term.types';
 import type { HighConfidenceFacts, WeworkSessionState } from './session-facts.types';
@@ -28,7 +28,7 @@ export interface MemoryRecallContext {
   highConfidenceFacts: HighConfidenceFacts | null;
   procedural: ProceduralState;
   longTerm: {
-    profile: UserProfile | null;
+    profile: UserProfileFacts | null;
   };
 }
 

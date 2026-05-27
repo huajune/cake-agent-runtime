@@ -1,6 +1,7 @@
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
 import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
 import { ConversationRiskCardRenderer } from '@notification/renderers/conversation-risk-card.renderer';
+import { SessionFactsSchema, type SessionFacts } from '@memory/types/session-facts.types';
 
 describe('ConversationRiskCardRenderer', () => {
   let renderer: ConversationRiskCardRenderer;
@@ -29,11 +30,12 @@ describe('ConversationRiskCardRenderer', () => {
         { role: 'user', content: '你们是不是骗子，我要投诉', timestamp: 1712044860000 },
       ],
       sessionState: {
-        facts: {
+        facts: SessionFactsSchema.parse({
           interview_info: {
             name: 'Alice',
             phone: '13800000000',
             gender: '女',
+            gender_source: null,
             age: '23',
             applied_store: null,
             applied_position: null,
@@ -59,7 +61,7 @@ describe('ConversationRiskCardRenderer', () => {
       available_after: null,
           },
           reasoning: 'test',
-        },
+        }) as SessionFacts,
         lastCandidatePool: null,
         presentedJobs: null,
         currentFocusJob: {
@@ -110,11 +112,12 @@ describe('ConversationRiskCardRenderer', () => {
       currentMessageContent: '我要举报',
       recentMessages: [{ role: 'user', content: '我要举报', timestamp: 1712044860000 }],
       sessionState: {
-        facts: {
+        facts: SessionFactsSchema.parse({
           interview_info: {
             name: null,
             phone: null,
             gender: null,
+            gender_source: null,
             age: null,
             applied_store: null,
             applied_position: null,
@@ -140,7 +143,7 @@ describe('ConversationRiskCardRenderer', () => {
       available_after: null,
           },
           reasoning: 'test',
-        },
+        }) as SessionFacts,
         lastCandidatePool: null,
         presentedJobs: null,
         currentFocusJob: null,
@@ -163,11 +166,12 @@ describe('ConversationRiskCardRenderer', () => {
       currentMessageContent: '滚犊子，要我这么多信息',
       recentMessages: [{ role: 'user', content: '滚犊子，要我这么多信息', timestamp: 1712044860000 }],
       sessionState: {
-        facts: {
+        facts: SessionFactsSchema.parse({
           interview_info: {
             name: null,
             phone: null,
             gender: null,
+            gender_source: null,
             age: '18到35岁',
             applied_store: null,
             applied_position: null,
@@ -193,7 +197,7 @@ describe('ConversationRiskCardRenderer', () => {
       available_after: null,
           },
           reasoning: 'test',
-        },
+        }) as SessionFacts,
         lastCandidatePool: null,
         presentedJobs: null,
         currentFocusJob: null,
@@ -217,11 +221,12 @@ describe('ConversationRiskCardRenderer', () => {
       currentMessageContent: '滚犊子，要我这么多信息',
       recentMessages: [{ role: 'user', content: '滚犊子，要我这么多信息', timestamp: 1712044860000 }],
       sessionState: {
-        facts: {
+        facts: SessionFactsSchema.parse({
           interview_info: {
             name: null,
             phone: null,
             gender: null,
+            gender_source: null,
             age: null,
             applied_store: null,
             applied_position: null,
@@ -247,7 +252,7 @@ describe('ConversationRiskCardRenderer', () => {
       available_after: null,
           },
           reasoning: 'test',
-        },
+        }) as SessionFacts,
         lastCandidatePool: null,
         presentedJobs: null,
         currentFocusJob: null,

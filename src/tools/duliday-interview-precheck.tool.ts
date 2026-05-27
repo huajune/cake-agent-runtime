@@ -14,6 +14,12 @@ import {
 } from '@tools/utils/supplement-label-classifier';
 import { isStrictRealChineseName } from '@memory/facts/name-guard';
 import type { HighConfidenceValue } from '@memory/types/session-facts.types';
+import {
+  normalizeEducationValue,
+  normalizeGenderValue,
+  normalizeHealthCertificateValue,
+  normalizeIdentityText,
+} from '@tools/duliday/precheck/field-normalize.util';
 
 // Phase 1.A 拆分：辅助函数全部下沉到 duliday/precheck/* 子目录，0 逻辑改动。
 import {
@@ -71,6 +77,7 @@ const DESCRIPTION = `面试前置校验。本工具负责解释岗位规则、�
 - jobId：岗位 ID（必填）
 - requestedDate：**仅当**候选人明确说出想约的具体日期时才传入（如 today / 明天 / 下周三 / YYYY-MM-DD）。候选人只是泛泛询问时不要传
 - candidateAge：候选人已明确自报的年龄。只要当前对话里能看到候选人年龄，**必须显式传入本字段**，不要只依赖记忆或运行时高置信事实；不要传岗位年龄要求。candidateAge 与记忆冲突时，以 candidateAge 作为本轮最新口径
+- candidateInterviewTime / candidateGender / candidateEducation / candidateHasHealthCertificate / candidateIsStudent：候选人本轮已明确补充的预约字段。只传候选人答案，不要传岗位要求；这些字段与旧记忆冲突时，以本轮显式入参为准
 
 ## 返回字段
 - interview.scheduleRule：岗位的面试周期规则，例如"周一至周五 13:30-16:30，当天 12:00 前报名"。用来回答"还有别的时间吗/下周能约吗"这类开放问题
@@ -142,14 +149,91 @@ const inputSchema = z.object({
     .describe(
       '候选人明确自报的年龄，如 24、"24"、"24岁"。只传候选人年龄，禁止传岗位年龄要求；本字段会覆盖旧记忆里的年龄。',
     ),
+  candidateInterviewTime: z
+    .string()
+    .optional()
+    .describe(
+      '候选人明确表达的面试时间原话，如 "明天吧"、"明天下午2点"。只传候选人的时间表达，不要传岗位面试规则。',
+    ),
+  candidateGender: z
+    .string()
+    .optional()
+    .describe('候选人明确自报的性别，如 "男"、"女"、"我是男生"。禁止传岗位性别要求。'),
+  candidateEducation: z
+    .string()
+    .optional()
+    .describe('候选人明确自报的学历，如 "高中"、"大专"、"本科在读"。禁止传岗位学历要求。'),
+  candidateHasHealthCertificate: z
+    .union([z.string(), z.boolean()])
+    .optional()
+    .describe(
+      '候选人明确说明的健康证情况，如 "有"、"无"、true、false。只传候选人答案，禁止传岗位健康证要求。',
+    ),
+  candidateIsStudent: z
+    .union([z.boolean(), z.string()])
+    .optional()
+    .describe(
+      '候选人明确说明是否学生。建议传 boolean；也可传 "学生"、"社会人士"、"不是学生" 等候选人答案。',
+    ),
 });
 
-type CandidateAgeInput = z.infer<typeof inputSchema>['candidateAge'];
-
-function normalizeCandidateAgeInput(candidateAge: CandidateAgeInput): string | null {
+function normalizeCandidateAgeInput(candidateAge: unknown): string | null {
   if (candidateAge === undefined || candidateAge === null) return null;
   const parsedAge = parseCandidateAge(String(candidateAge));
   return parsedAge === null ? null : String(parsedAge);
+}
+
+function normalizeCandidateInterviewTimeInput(value: unknown): string | null {
+  return typeof value === 'string' ? normalizePolicyText(value) || null : null;
+}
+
+function normalizeCandidateGenderInput(value: unknown): string | null {
+  return typeof value === 'string' ? normalizeGenderValue(value) : null;
+}
+
+function normalizeCandidateEducationInput(value: unknown): string | null {
+  return typeof value === 'string' ? normalizeEducationValue(value) : null;
+}
+
+function normalizeCandidateHealthCertificateInput(value: unknown): string | null {
+  if (typeof value === 'boolean') return normalizeHealthCertificateValue(value ? '有' : '无');
+  return typeof value === 'string' ? normalizeHealthCertificateValue(value) : null;
+}
+
+function normalizeCandidateIsStudentInput(value: unknown): string | null {
+  if (typeof value === 'boolean') return normalizeIdentityText(value);
+  if (typeof value !== 'string') return null;
+  const text = normalizePolicyText(value);
+  if (!text) return null;
+  if (/社会人士|社会人|不是学生|非学生|不算学生|已毕业|上班族|已经工作|工作了/.test(text)) {
+    return '社会人士';
+  }
+  if (/学生|在读|上学|本科在读|研究生|大一|大二|大三|大四|高中生|大学生/.test(text)) {
+    return '学生';
+  }
+  return null;
+}
+
+function readHighConfidenceValue(value: unknown): unknown {
+  return isHighConfidenceValue(value) && value.confidence === 'high' ? value.value : null;
+}
+
+function applyCandidateFieldOverride(
+  knownFieldMap: Record<string, string>,
+  field: string,
+  explicitValue: unknown,
+  highConfidenceValue: unknown,
+  normalize: (value: unknown) => string | null,
+): void {
+  const normalizedExplicit = normalize(explicitValue);
+  if (normalizedExplicit) {
+    knownFieldMap[field] = normalizedExplicit;
+    return;
+  }
+  const normalizedHighConfidence = normalize(readHighConfidenceValue(highConfidenceValue));
+  if (normalizedHighConfidence) {
+    knownFieldMap[field] = normalizedHighConfidence;
+  }
 }
 
 export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBuilder {
@@ -157,7 +241,16 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
     tool({
       description: DESCRIPTION,
       inputSchema,
-      execute: async ({ jobId, requestedDate, candidateAge }) => {
+      execute: async ({
+        jobId,
+        requestedDate,
+        candidateAge,
+        candidateInterviewTime,
+        candidateGender,
+        candidateEducation,
+        candidateHasHealthCertificate,
+        candidateIsStudent,
+      }) => {
         logger.log(`面试前置校验: jobId=${jobId}, requestedDate=${requestedDate ?? 'none'}`);
 
         const normalizedDate = normalizeRequestedDate(requestedDate);
@@ -265,18 +358,49 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
             storeName,
             jobName,
           });
-          const normalizedCandidateAge = normalizeCandidateAgeInput(candidateAge);
-          const highConfidenceAgeFact = context.highConfidenceFacts?.interview_info.age ?? null;
-          const highConfidenceAge =
-            isHighConfidenceValue(highConfidenceAgeFact) &&
-            highConfidenceAgeFact.confidence === 'high'
-              ? normalizeCandidateAgeInput(String(highConfidenceAgeFact.value))
-              : null;
-          if (normalizedCandidateAge) {
-            knownFieldMap['年龄'] = normalizedCandidateAge;
-          } else if (highConfidenceAge) {
-            knownFieldMap['年龄'] = highConfidenceAge;
-          }
+          const highConfidenceInfo = context.highConfidenceFacts?.interview_info ?? null;
+          applyCandidateFieldOverride(
+            knownFieldMap,
+            '年龄',
+            candidateAge,
+            highConfidenceInfo?.age,
+            normalizeCandidateAgeInput,
+          );
+          applyCandidateFieldOverride(
+            knownFieldMap,
+            '面试时间',
+            candidateInterviewTime,
+            highConfidenceInfo?.interview_time,
+            normalizeCandidateInterviewTimeInput,
+          );
+          applyCandidateFieldOverride(
+            knownFieldMap,
+            '性别',
+            candidateGender,
+            highConfidenceInfo?.gender,
+            normalizeCandidateGenderInput,
+          );
+          applyCandidateFieldOverride(
+            knownFieldMap,
+            '学历',
+            candidateEducation,
+            highConfidenceInfo?.education,
+            normalizeCandidateEducationInput,
+          );
+          applyCandidateFieldOverride(
+            knownFieldMap,
+            '健康证情况',
+            candidateHasHealthCertificate,
+            highConfidenceInfo?.has_health_certificate,
+            normalizeCandidateHealthCertificateInput,
+          );
+          applyCandidateFieldOverride(
+            knownFieldMap,
+            '身份',
+            candidateIsStudent,
+            highConfidenceInfo?.is_student,
+            normalizeCandidateIsStudentInput,
+          );
 
           // 真名可疑标记：knownFieldMap.姓名 已填，但不像真实姓名（可能是微信昵称
           // 或占位字符串）。
@@ -469,6 +593,7 @@ function isHighConfidenceValue(value: unknown): value is HighConfidenceValue<unk
     value !== null &&
     'value' in value &&
     'confidence' in value &&
+    'source' in value &&
     'evidence' in value
   );
 }

@@ -4,7 +4,11 @@ import type {
   GeneralHandoffNotificationMessage,
   GeneralHandoffNotificationPayload,
 } from '@notification/types/general-handoff-notification.types';
-import type { WeworkSessionState } from '@memory/types/session-facts.types';
+import {
+  SessionFactsSchema,
+  type SessionFacts,
+  type WeworkSessionState,
+} from '@memory/types/session-facts.types';
 
 type RendererInput = Parameters<GeneralHandoffCardRenderer['buildCard']>[0];
 
@@ -12,11 +16,12 @@ function buildSessionState(
   override: Partial<WeworkSessionState['facts']['interview_info']> = {},
 ): WeworkSessionState {
   return {
-    facts: {
+    facts: SessionFactsSchema.parse({
       interview_info: {
         name: '张三',
         phone: '13800000000',
         gender: '男',
+        gender_source: null,
         age: '23',
         applied_store: null,
         applied_position: null,
@@ -43,7 +48,7 @@ function buildSessionState(
       available_after: null,
       },
       reasoning: 'test',
-    },
+    }) as SessionFacts,
     lastCandidatePool: null,
     presentedJobs: null,
     currentFocusJob: null,
