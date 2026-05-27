@@ -165,7 +165,7 @@ jobs:
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
-      - name: Send Feishu notification to private domain monitor group
+      - name: Send Feishu release notification
         env:
           PRIVATE_CHAT_MONITOR_WEBHOOK_URL: ${{ secrets.PRIVATE_CHAT_MONITOR_WEBHOOK_URL }}
           PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET: ${{ secrets.PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET }}

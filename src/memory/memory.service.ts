@@ -55,7 +55,7 @@ export class MemoryService {
     return await this.longTerm.getSummaryData(corpId, userId);
   }
 
-  /** 写入长期档案的外部补充字段，统一带 profile_fields_meta。 */
+  /** 写入长期档案的外部补充字段，统一落到 profile_facts。 */
   async saveProfile(
     corpId: string,
     userId: string,

@@ -9,14 +9,22 @@ import {
   EntityExtractionResultSchema,
   LLMEntityExtractionResultSchema,
   type EntityExtractionResult,
+  type HighConfidenceFacts,
+  type HighConfidenceValue,
   type RecommendedJobSummary,
   RecommendedJobSummarySchema,
   type InvitedGroupRecord,
   InvitedGroupRecordSchema,
+  SessionFactsSchema,
   SessionFactsRedisContentSchema,
+  type SessionFacts,
+  type SessionFactValue,
   type WeworkSessionState,
   EMPTY_SESSION_STATE,
   FALLBACK_EXTRACTION,
+  sessionFactValue,
+  toSessionFacts,
+  unwrapSessionFactValue,
 } from '../types/session-facts.types';
 import {
   buildSessionExtractionPrompt,
@@ -25,7 +33,9 @@ import {
 import {
   detectBrandAliasHints,
   extractHighConfidenceFacts,
+  filterHighConfidenceFacts,
   mergeDetectedBrands,
+  unwrapHighConfidenceFacts,
 } from '../facts/high-confidence-facts';
 import { resolveCityFromGeoSignals } from '../facts/geo-mappings';
 import { sanitizeInterviewName } from '../facts/name-guard';
@@ -93,11 +103,7 @@ export class SessionService {
     return await this.redisStore.del(this.buildKey(corpId, userId, sessionId));
   }
 
-  async getFacts(
-    corpId: string,
-    userId: string,
-    sessionId: string,
-  ): Promise<EntityExtractionResult | null> {
+  async getFacts(corpId: string, userId: string, sessionId: string): Promise<SessionFacts | null> {
     const state = await this.getSessionState(corpId, userId, sessionId);
     return state.facts;
   }
@@ -117,17 +123,18 @@ export class SessionService {
     corpId: string,
     userId: string,
     sessionId: string,
-    facts: EntityExtractionResult,
+    facts: EntityExtractionResult | SessionFacts,
     options?: { forceNullFields?: readonly (keyof EntityExtractionResult['interview_info'])[] },
   ): Promise<void> {
     const key = this.buildKey(corpId, userId, sessionId);
     const state = await this.getSessionState(corpId, userId, sessionId);
-    const baseMerge = state.facts ? deepMerge(state.facts, facts) : facts;
+    const sessionFacts = this.ensureSessionFacts(facts);
+    const baseMerge = state.facts ? deepMerge(state.facts, sessionFacts) : sessionFacts;
     const forcedMerge = this.applyForceNullFields(
-      baseMerge as EntityExtractionResult,
+      baseMerge as SessionFacts,
       options?.forceNullFields,
     );
-    const mergedFacts = EntityExtractionResultSchema.parse(forcedMerge);
+    const mergedFacts = SessionFactsSchema.parse(forcedMerge) as SessionFacts;
 
     await this.redisStore.set(
       key,
@@ -138,14 +145,14 @@ export class SessionService {
   }
 
   private applyForceNullFields(
-    facts: EntityExtractionResult,
+    facts: SessionFacts,
     forceNullFields?: readonly (keyof EntityExtractionResult['interview_info'])[],
-  ): EntityExtractionResult {
+  ): SessionFacts {
     if (!forceNullFields || forceNullFields.length === 0) return facts;
     // interview_info 的字段类型异构（string|null、boolean|null 等），
     // 用 Record 视图收敛成 null 赋值，避免逐字段命中具体联合类型的推导限制。
     const interview = { ...facts.interview_info } as Record<
-      keyof EntityExtractionResult['interview_info'],
+      keyof SessionFacts['interview_info'],
       unknown
     >;
     for (const field of forceNullFields) {
@@ -153,7 +160,7 @@ export class SessionService {
     }
     return {
       ...facts,
-      interview_info: interview as EntityExtractionResult['interview_info'],
+      interview_info: interview as SessionFacts['interview_info'],
     };
   }
 
@@ -348,6 +355,8 @@ export class SessionService {
     const brandData = await this.sponge.fetchBrandList();
     const aliasHints = detectBrandAliasHints(userMessages, brandData);
     const ruleFacts = extractHighConfidenceFacts(userMessages, brandData);
+    const highConfidenceRuleFacts = filterHighConfidenceFacts(ruleFacts);
+    const ruleFactValues = unwrapHighConfidenceFacts(highConfidenceRuleFacts);
     const prompt = buildSessionExtractionPrompt(
       brandData,
       currentMessage,
@@ -363,11 +372,19 @@ export class SessionService {
         `[extractFacts] 丢弃来自"我是xx"打招呼语的昵称"${droppedName}"，不写入 interview_info.name`,
       );
     }
-    const newFacts = this.mergeHighConfidenceRuleFacts(sanitizedLlm, ruleFacts);
+    const mergedFactValues = this.mergeHighConfidenceRuleFacts(sanitizedLlm, ruleFactValues);
+    const newFacts = this.applyHighConfidenceMetadata(
+      toSessionFacts(mergedFactValues, {
+        confidence: 'medium',
+        source: 'llm',
+        evidence: this.buildLlmFactEvidence(mergedFactValues.reasoning),
+      }),
+      highConfidenceRuleFacts,
+    );
 
     // sanitizer 命中且规则也没补上真名时，用 forceNullFields 显式覆盖
     // Redis 中可能已被早期漏网昵称污染的字段，避免 deepMerge "null 不覆盖" 留存旧值。
-    const nameStillNull = droppedName && !newFacts.interview_info.name;
+    const nameStillNull = droppedName && !unwrapSessionFactValue(newFacts.interview_info.name);
     await this.saveFacts(corpId, userId, sessionId, newFacts, {
       forceNullFields: nameStillNull ? ['name'] : undefined,
     });
@@ -392,6 +409,133 @@ export class SessionService {
       this.logger.warn('[extractFacts] LLM extraction failed, using fallback', err);
       return FALLBACK_EXTRACTION;
     }
+  }
+
+  private ensureSessionFacts(facts: EntityExtractionResult | SessionFacts): SessionFacts {
+    return SessionFactsSchema.parse(facts) as SessionFacts;
+  }
+
+  private buildLlmFactEvidence(reasoning: string | null | undefined): string {
+    const trimmed = reasoning?.trim();
+    return trimmed ? `LLM 结构化提取：${trimmed}` : 'LLM 结构化提取';
+  }
+
+  private applyHighConfidenceMetadata(
+    sessionFacts: SessionFacts,
+    ruleFacts: HighConfidenceFacts | null,
+  ): SessionFacts {
+    if (!ruleFacts) return sessionFacts;
+
+    const result: SessionFacts = {
+      ...sessionFacts,
+      interview_info: { ...sessionFacts.interview_info },
+      preferences: { ...sessionFacts.preferences },
+    };
+    const infoTarget = result.interview_info as unknown as Record<string, unknown>;
+    const prefTarget = result.preferences as unknown as Record<string, unknown>;
+
+    this.applyHighConfidenceField(infoTarget, 'name', ruleFacts.interview_info.name);
+    this.applyHighConfidenceField(infoTarget, 'phone', ruleFacts.interview_info.phone);
+    this.applyHighConfidenceField(infoTarget, 'gender', ruleFacts.interview_info.gender);
+    this.applyHighConfidenceField(
+      infoTarget,
+      'gender_source',
+      ruleFacts.interview_info.gender_source,
+    );
+    this.applyHighConfidenceField(infoTarget, 'age', ruleFacts.interview_info.age);
+    this.applyHighConfidenceField(
+      infoTarget,
+      'applied_store',
+      ruleFacts.interview_info.applied_store,
+    );
+    this.applyHighConfidenceField(
+      infoTarget,
+      'applied_position',
+      ruleFacts.interview_info.applied_position,
+    );
+    this.applyHighConfidenceField(
+      infoTarget,
+      'interview_time',
+      ruleFacts.interview_info.interview_time,
+    );
+    this.applyHighConfidenceField(infoTarget, 'is_student', ruleFacts.interview_info.is_student);
+    this.applyHighConfidenceField(infoTarget, 'education', ruleFacts.interview_info.education);
+    this.applyHighConfidenceField(
+      infoTarget,
+      'has_health_certificate',
+      ruleFacts.interview_info.has_health_certificate,
+    );
+
+    this.applyHighConfidenceField(prefTarget, 'brands', ruleFacts.preferences.brands);
+    this.applyHighConfidenceField(prefTarget, 'salary', ruleFacts.preferences.salary);
+    this.applyHighConfidenceField(prefTarget, 'position', ruleFacts.preferences.position);
+    this.applyHighConfidenceField(prefTarget, 'schedule', ruleFacts.preferences.schedule);
+    this.applyHighConfidenceField(prefTarget, 'city', ruleFacts.preferences.city);
+    this.applyHighConfidenceField(prefTarget, 'district', ruleFacts.preferences.district);
+    this.applyHighConfidenceField(prefTarget, 'location', ruleFacts.preferences.location);
+    this.applyHighConfidenceField(prefTarget, 'labor_form', ruleFacts.preferences.labor_form);
+    this.applyHighConfidenceField(
+      prefTarget,
+      'delayed_intent',
+      ruleFacts.preferences.delayed_intent,
+    );
+    this.applyHighConfidenceField(prefTarget, 'short_term', ruleFacts.preferences.short_term);
+    this.applyHighConfidenceField(prefTarget, 'open_position', ruleFacts.preferences.open_position);
+    this.applyHighConfidenceField(prefTarget, 'time_windows', ruleFacts.preferences.time_windows);
+    this.applyHighConfidenceField(
+      prefTarget,
+      'schedule_constraint',
+      ruleFacts.preferences.schedule_constraint,
+    );
+    this.applyHighConfidenceField(
+      prefTarget,
+      'available_after',
+      ruleFacts.preferences.available_after,
+    );
+
+    return result;
+  }
+
+  private applyHighConfidenceField<T>(
+    target: Record<string, unknown>,
+    field: string,
+    fact: HighConfidenceValue<T> | null,
+  ): void {
+    if (!fact || !this.hasMeaningfulValue(fact.value)) return;
+
+    const currentValue = unwrapSessionFactValue(target[field] as SessionFactValue<T> | T | null);
+    if (this.hasMeaningfulValue(currentValue) && !this.isSameFactValue(currentValue, fact.value)) {
+      return;
+    }
+
+    target[field] = sessionFactValue(fact.value, {
+      confidence: fact.confidence,
+      source: fact.source,
+      evidence: fact.evidence,
+    });
+  }
+
+  private hasMeaningfulValue(value: unknown): boolean {
+    if (value === null || value === undefined) return false;
+    if (typeof value === 'boolean') return true;
+    if (typeof value === 'string') return value.trim().length > 0;
+    if (Array.isArray(value)) return value.length > 0;
+    return true;
+  }
+
+  private isSameFactValue(left: unknown, right: unknown): boolean {
+    if (Array.isArray(left) && Array.isArray(right)) {
+      const normalize = (values: unknown[]) =>
+        values
+          .map((value) => String(value).trim())
+          .filter(Boolean)
+          .sort();
+      return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right));
+    }
+    if (typeof left === 'string' || typeof right === 'string') {
+      return String(left).trim() === String(right).trim();
+    }
+    return JSON.stringify(left) === JSON.stringify(right);
   }
 
   /**

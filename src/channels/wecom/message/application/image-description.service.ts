@@ -54,7 +54,7 @@ export class ImageDescriptionService {
     '\n- 招聘平台截图（无二维码）：提取岗位名称、薪资、门店/公司、距离、工作要求等关键信息',
     '\n- 地图/位置截图：提取地点名称和位置信息',
     '\n- 聊天截图：提取关键对话内容',
-    '\n- 表情包/表情贴图：描述表情传达的情绪或动作（如"微笑"、"比心"、"点头OK"），不要强行脑补语义',
+    '\n- 表情包/表情贴图：只输出表情传达的情绪或动作，控制在 4-12 个字，如"思考"、"微笑"、"比心"、"点头OK"；不要描述角色外观、颜色、姿势细节，也不要猜测台词或意图（如"我懂了"、"我在想主意"）',
     '\n不要添加评价、建议或主观判断（如"建议候选人重新办理"），只如实提取图片上看得见的事实。',
   ].join('');
 
@@ -171,7 +171,9 @@ export class ImageDescriptionService {
     }
 
     const promptText =
-      kind === MessageType.EMOTION ? '请描述这个表情传达的情绪或动作。' : '请描述这张图片的内容。';
+      kind === MessageType.EMOTION
+        ? '请用 4-12 个字描述这个表情传达的情绪或动作。不要描述角色外观、颜色、姿势细节，也不要猜测台词或意图。'
+        : '请描述这张图片的内容。';
 
     const result = await this.llm.generate({
       role: ModelRole.Vision,
@@ -186,7 +188,7 @@ export class ImageDescriptionService {
           ],
         },
       ],
-      maxOutputTokens: 256,
+      maxOutputTokens: kind === MessageType.EMOTION ? 64 : 256,
     });
 
     const description = result.text.trim();

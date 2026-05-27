@@ -407,7 +407,13 @@ export class AnalyticsDashboardService {
       const prevEndDate = formatLocalDate(previousEndDate);
 
       // 并行查询：预约数（轻量索引查询）+ 业务趋势（数据库侧聚合，避免拉取原始流水）
-      const [currentBookings, previousBookings, rawBusinessTrend] = await Promise.all([
+      const [
+        currentBookings,
+        previousBookings,
+        rawBusinessTrend,
+        currentManagedUsers,
+        previousManagedUsers,
+      ] = await Promise.all([
         this.getBookingCount(curStartDate, curEndDate),
         this.getBookingCount(prevStartDate, prevEndDate),
         this.getBusinessTrendFromDatabase(
@@ -416,13 +422,22 @@ export class AnalyticsDashboardService {
           currentOverview.activeUsers,
           timeRange,
         ),
+        this.getManagedUserCountForBusiness(
+          currentStartDate,
+          currentEndDate,
+          currentOverview.activeUsers,
+          timeRange,
+        ),
+        this.getManagedUserCountForBusiness(
+          previousStartDate,
+          previousEndDate,
+          previousOverview.activeUsers,
+          timeRange,
+        ),
       ]);
 
-      const business = this.buildBusinessFromStats(currentOverview.activeUsers, currentBookings);
-      const previousBusiness = this.buildBusinessFromStats(
-        previousOverview.activeUsers,
-        previousBookings,
-      );
+      const business = this.buildBusinessFromStats(currentManagedUsers, currentBookings);
+      const previousBusiness = this.buildBusinessFromStats(previousManagedUsers, previousBookings);
       const businessDelta = this.calculateBusinessDelta(business, previousBusiness);
 
       const formattedDailyTrend: DailyStats[] = dailyTrend.map((item) => ({
@@ -806,6 +821,16 @@ export class AnalyticsDashboardService {
   ): Promise<BusinessMetricTrendPoint[]> {
     const startDate = new Date(startTime);
     const endDate = new Date(endTime);
+
+    if (range !== 'today') {
+      const aggregateTrend = await this.getDailyBusinessTrendFromAggregates(startDate, endDate);
+      if (aggregateTrend.length > 0 || activeUsers === 0) {
+        return aggregateTrend;
+      }
+
+      this.logger.warn('[Dashboard] user_activity 业务趋势无结果，回退到原始记录聚合');
+    }
+
     const businessTrend = await this.monitoringRepository.getDashboardBusinessTrend(
       startDate,
       endDate,
@@ -831,6 +856,76 @@ export class AnalyticsDashboardService {
     } catch (error) {
       this.logger.error(`查询业务趋势记录异常 [${range}]:`, error);
       return [];
+    }
+  }
+
+  private async getDailyBusinessTrendFromAggregates(
+    startDate: Date,
+    endDate: Date,
+  ): Promise<BusinessMetricTrendPoint[]> {
+    const [activityTrend, bookingStats] = await Promise.all([
+      this.userHostingService.getDailyActivityStats(startDate, endDate),
+      this.bookingService.getBookingStats({
+        startDate: formatLocalDate(startDate),
+        endDate: formatLocalDate(endDate),
+      }),
+    ]);
+
+    const bookingCountByDate = new Map<string, number>();
+    for (const item of bookingStats) {
+      bookingCountByDate.set(
+        item.date,
+        (bookingCountByDate.get(item.date) ?? 0) + item.bookingCount,
+      );
+    }
+
+    const dates = new Set<string>([
+      ...activityTrend.map((item) => item.date),
+      ...bookingStats.map((item) => item.date),
+    ]);
+
+    const activityByDate = new Map(activityTrend.map((item) => [item.date, item]));
+
+    return Array.from(dates)
+      .sort((a, b) => a.localeCompare(b))
+      .map((date) => {
+        const consultations = activityByDate.get(date)?.userCount ?? 0;
+        const successfulBookings = bookingCountByDate.get(date) ?? 0;
+        const bookingAttempts = successfulBookings;
+
+        return {
+          minute: date,
+          consultations,
+          bookingAttempts,
+          successfulBookings,
+          conversionRate:
+            consultations > 0
+              ? parseFloat(((successfulBookings / consultations) * 100).toFixed(2))
+              : 0,
+          bookingSuccessRate: bookingAttempts > 0 ? 100 : 0,
+        };
+      });
+  }
+
+  private async getManagedUserCountForBusiness(
+    startDate: Date,
+    endDate: Date,
+    fallbackCount: number,
+    range: TimeRange,
+  ): Promise<number> {
+    if (range === 'today') {
+      return fallbackCount;
+    }
+
+    try {
+      const users = await this.userHostingService.getActiveUsersByDateRange(startDate, endDate);
+      if (users.length > 0 || fallbackCount === 0) {
+        return users.length;
+      }
+      return fallbackCount;
+    } catch (error) {
+      this.logger.warn('[Dashboard] 获取 user_activity 托管用户数失败，回退到概览统计:', error);
+      return fallbackCount;
     }
   }
 

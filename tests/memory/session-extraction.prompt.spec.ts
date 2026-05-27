@@ -2,7 +2,56 @@ import {
   SESSION_EXTRACTION_SYSTEM_PROMPT,
   buildSessionExtractionPrompt,
 } from '@memory/services/session-extraction.prompt';
-import { FALLBACK_EXTRACTION, type EntityExtractionResult } from '@memory/types/session-facts.types';
+import {
+  FALLBACK_EXTRACTION,
+  type EntityExtractionResult,
+  type HighConfidenceFacts,
+  type HighConfidenceValue,
+} from '@memory/types/session-facts.types';
+
+function highConfidence<T>(
+  value: T,
+  evidence: string,
+  confidence: HighConfidenceValue<T>['confidence'] = 'high',
+  source: HighConfidenceValue<T>['source'] = 'rule',
+): HighConfidenceValue<T> {
+  return { value, confidence, source, evidence };
+}
+
+function emptyHighConfidenceFacts(): HighConfidenceFacts {
+  return {
+    interview_info: {
+      name: null,
+      phone: null,
+      gender: null,
+      gender_source: null,
+      age: null,
+      applied_store: null,
+      applied_position: null,
+      interview_time: null,
+      is_student: null,
+      education: null,
+      has_health_certificate: null,
+    },
+    preferences: {
+      brands: null,
+      salary: null,
+      position: null,
+      schedule: null,
+      city: null,
+      district: null,
+      location: null,
+      labor_form: null,
+      delayed_intent: null,
+      short_term: null,
+      open_position: null,
+      time_windows: null,
+      schedule_constraint: null,
+      available_after: null,
+    },
+    reasoning: '',
+  };
+}
 
 describe('SESSION_EXTRACTION_SYSTEM_PROMPT', () => {
   it('should prevent fallback recommendations from overwriting the current applied job', () => {
@@ -51,12 +100,42 @@ describe('buildSessionExtractionPrompt', () => {
     );
 
     expect(prompt).toContain('规则模式匹配线索');
-    expect(prompt).toContain('姓名：赵堤');
-    expect(prompt).toContain('联系方式：18800001111');
-    expect(prompt).toContain('年龄：24');
-    expect(prompt).toContain('性别：男');
-    expect(prompt).toContain('城市：上海');
-    expect(prompt).toContain('区域：浦东');
+    expect(prompt).toContain('姓名: 赵堤');
+    expect(prompt).toContain('联系方式: 18800001111');
+    expect(prompt).toContain('年龄: 24');
+    expect(prompt).toContain('性别: 男');
+    expect(prompt).toContain('意向城市: 上海');
+    expect(prompt).toContain('意向区域: 浦东');
+  });
+
+  it('should pass all highConfidenceFacts to LLM with confidence/source/evidence', () => {
+    const ruleFacts: HighConfidenceFacts = {
+      ...emptyHighConfidenceFacts(),
+      interview_info: {
+        ...emptyHighConfidenceFacts().interview_info,
+        age: highConfidence('24', '年龄识别：24'),
+        gender: highConfidence('女', '客户详情接口补充性别：女', 'low', 'system'),
+        gender_source: highConfidence(
+          'system',
+          '客户详情接口补充性别来源：系统标签',
+          'low',
+          'system',
+        ),
+      },
+      preferences: {
+        ...emptyHighConfidenceFacts().preferences,
+        city: highConfidence('上海', 'explicit_city'),
+      },
+      reasoning: 'test',
+    };
+
+    const prompt = buildSessionExtractionPrompt(brandData, 'msg', [], [], ruleFacts);
+
+    expect(prompt).toContain('年龄: 24（置信度: high，来源: rule，证据: 年龄识别：24）');
+    expect(prompt).toContain(
+      '性别: 女（系统标签，未经候选人自陈，不得用于直接排除候选人）（置信度: low，来源: system，证据: 客户详情接口补充性别：女）',
+    );
+    expect(prompt).toContain('意向城市: 上海（置信度: high，来源: rule，证据: explicit_city）');
   });
 
   it('should show "无" when ruleFacts is null', () => {
@@ -99,7 +178,7 @@ describe('buildSessionExtractionPrompt', () => {
 
     const prompt = buildSessionExtractionPrompt(brandData, 'msg', [], [], ruleFacts);
 
-    expect(prompt).toContain('联系方式：13900139000');
+    expect(prompt).toContain('联系方式: 13900139000');
     expect(prompt).not.toContain('姓名');
     expect(prompt).not.toContain('年龄');
     expect(prompt).not.toContain('性别');
@@ -116,7 +195,7 @@ describe('buildSessionExtractionPrompt', () => {
     };
 
     const prompt = buildSessionExtractionPrompt(brandData, 'msg', [], [], ruleFacts);
-    expect(prompt).toContain('是否学生：否');
+    expect(prompt).toContain('是否学生: 否');
   });
 
   it('should be backwards-compatible when ruleFacts is omitted', () => {

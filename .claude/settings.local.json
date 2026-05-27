@@ -458,7 +458,10 @@
       "Bash(bash /tmp/run-15-cases.sh)",
       "Bash(identify /tmp/vision_test_image.jpg)",
       "Bash(sips -g all /tmp/vision_test_image.jpg)",
-      "Bash(sips -g pixelWidth -g pixelHeight /tmp/artwork_original.jpg)"
+      "Bash(sips -g pixelWidth -g pixelHeight /tmp/artwork_original.jpg)",
+      "Bash(SUPABASE_URL=https://uvmbxcilpteaiizplcyp.supabase.co SUPABASE_KEY=\"$SUPABASE_SERVICE_ROLE_KEY\" node -e ' *)",
+      "Bash(PORT=8586 pnpm run start:dev)",
+      "mcp__feishu-mcp__get_feishu_folder_files"
     ],
     "deny": [
       "Bash(git restore:*)",

@@ -20,7 +20,7 @@ const logger = new Logger('save_image_description');
 const DESCRIPTION = `保存图片或表情内容描述。当用户发送了图片/表情时，你必须调用此工具，将你对图片或表情的理解保存下来。
 如果有多张图片/表情，请按每张分别调用一次，并使用图片前面紧邻的 [图片 messageId=...] 或 [表情 messageId=...] 标签选择对应的 messageId。
 - 图片：提取关键事实信息（岗位、薪资、门店、地点、工作要求等），2-3 句简洁中文。
-- 表情：直接描述表情传达的情绪或动作（如"微笑"、"比心"、"点头OK"），不要强行脑补语义。
+- 表情：只写情绪或动作短语，控制在 4-12 个字（如"思考"、"微笑"、"比心"、"点头OK"）；不要描述角色外观、颜色、姿势细节，也不要猜测台词或意图（如"我懂了"、"我在想主意"）。
 只提取事实信息，不要添加评价或建议。`;
 
 const inputSchema = z.object({
@@ -29,7 +29,7 @@ const inputSchema = z.object({
     .describe(
       '图片或表情消息的 messageId。多张场景请使用对应图片/表情前面的 [图片 messageId=...] 或 [表情 messageId=...] 标签',
     ),
-  description: z.string().describe('图片/表情内容的简洁描述（2-3句话，只提取事实信息）'),
+  description: z.string().describe('图片用 2-3 句提取事实；表情只写 4-12 个字的情绪或动作短语'),
 });
 
 type VisualKind = MessageType.IMAGE | MessageType.EMOTION;

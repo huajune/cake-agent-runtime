@@ -66,18 +66,25 @@ export class AnalyticsController {
   /**
    * 获取活跃用户
    * GET /analytics/users?date=YYYY-MM-DD
+   * GET /analytics/users?days=30|60|90
    */
   @Get('users')
-  async getUsersByDate(@Query('date') date?: string) {
-    if (!date) {
-      return this.queryService.getTodayUsersFromDatabase();
+  async getUsersByDate(@Query('date') date?: string, @Query('days') days?: string) {
+    if (date) {
+      return this.queryService.getUsersByDate(date);
     }
-    return this.queryService.getUsersByDate(date);
+
+    const parsedDays = days ? Number.parseInt(days, 10) : undefined;
+    if (Number.isFinite(parsedDays)) {
+      return this.queryService.getUsersByDays(parsedDays);
+    }
+
+    return this.queryService.getTodayUsersFromDatabase();
   }
 
   /**
    * 获取咨询用户趋势数据
-   * GET /analytics/user-trend?days=30|90|180
+   * GET /analytics/user-trend?days=30|60|90
    */
   @Get('user-trend')
   async getUserTrend(@Query('days') days?: string) {

@@ -1,9 +1,14 @@
 import { LongTermService } from '@memory/services/long-term.service';
+import {
+  FALLBACK_EXTRACTION,
+  sessionFactValue,
+  toSessionFacts,
+} from '@memory/types/session-facts.types';
 
 describe('LongTermService', () => {
   const mockSupabaseStore = {
     getProfile: jest.fn(),
-    upsertProfileWithMeta: jest.fn().mockResolvedValue(undefined),
+    upsertProfileFacts: jest.fn().mockResolvedValue(undefined),
     getSummaryData: jest.fn(),
     appendSummary: jest.fn().mockResolvedValue(undefined),
     markLastSettledMessageAt: jest.fn().mockResolvedValue(undefined),
@@ -27,19 +32,31 @@ describe('LongTermService', () => {
 
     it('should return profile from store', async () => {
       mockSupabaseStore.getProfile.mockResolvedValue({
-        name: '张三',
-        phone: '13800138000',
-        gender: '男',
-        age: '22',
-        is_student: true,
-        education: '本科',
-        has_health_certificate: '有',
+        name: {
+          value: '张三',
+          confidence: 'high',
+          source: 'booking',
+          evidence: '报名成功后写入',
+          updatedAt: '2026-05-22T10:00:00.000Z',
+        },
+        phone: null,
+        gender: null,
+        age: null,
+        is_student: {
+          value: true,
+          confidence: 'medium',
+          source: 'extraction',
+          evidence: '会话沉淀提取',
+          updatedAt: '2026-05-22T10:00:00.000Z',
+        },
+        education: null,
+        has_health_certificate: null,
       });
 
       const profile = await service.getProfile('corp1', 'user1');
 
-      expect(profile?.name).toBe('张三');
-      expect(profile?.is_student).toBe(true);
+      expect(profile?.name?.value).toBe('张三');
+      expect(profile?.is_student?.value).toBe(true);
     });
   });
 
@@ -47,19 +64,26 @@ describe('LongTermService', () => {
     it('should skip saving when all fields are null', async () => {
       await service.saveProfile('corp1', 'user1', { name: null, phone: null });
 
-      expect(mockSupabaseStore.upsertProfileWithMeta).not.toHaveBeenCalled();
+      expect(mockSupabaseStore.upsertProfileFacts).not.toHaveBeenCalled();
     });
 
-    it('should save only non-null fields with enrichment medium meta', async () => {
+    it('should save only non-null fields with enrichment medium facts', async () => {
       await service.saveProfile('corp1', 'user1', { name: '张三', phone: null, gender: '男' });
 
-      expect(mockSupabaseStore.upsertProfileWithMeta).toHaveBeenCalledWith(
+      expect(mockSupabaseStore.upsertProfileFacts).toHaveBeenCalledWith(
         'corp1',
         'user1',
-        { name: '张三', gender: '男' },
         {
-          name: expect.objectContaining({ source: 'enrichment', confidence: 'medium' }),
-          gender: expect.objectContaining({ source: 'enrichment', confidence: 'medium' }),
+          name: expect.objectContaining({
+            value: '张三',
+            source: 'enrichment',
+            confidence: 'medium',
+          }),
+          gender: expect.objectContaining({
+            value: '男',
+            source: 'enrichment',
+            confidence: 'medium',
+          }),
         },
         undefined,
       );
@@ -67,7 +91,7 @@ describe('LongTermService', () => {
   });
 
   describe('writeFromBooking', () => {
-    it('should call upsertProfileWithMeta with booking source and high confidence', async () => {
+    it('should call upsertProfileFacts with booking source and high confidence', async () => {
       await service.writeFromBooking('corp1', 'user1', {
         name: '张三',
         phone: '13800138000',
@@ -75,15 +99,18 @@ describe('LongTermService', () => {
         gender: '男',
       });
 
-      expect(mockSupabaseStore.upsertProfileWithMeta).toHaveBeenCalledWith(
+      expect(mockSupabaseStore.upsertProfileFacts).toHaveBeenCalledWith(
         'corp1',
         'user1',
-        { name: '张三', phone: '13800138000', age: '22', gender: '男' },
         {
-          name: expect.objectContaining({ source: 'booking', confidence: 'high' }),
-          phone: expect.objectContaining({ source: 'booking', confidence: 'high' }),
-          age: expect.objectContaining({ source: 'booking', confidence: 'high' }),
-          gender: expect.objectContaining({ source: 'booking', confidence: 'high' }),
+          name: expect.objectContaining({ value: '张三', source: 'booking', confidence: 'high' }),
+          phone: expect.objectContaining({
+            value: '13800138000',
+            source: 'booking',
+            confidence: 'high',
+          }),
+          age: expect.objectContaining({ value: '22', source: 'booking', confidence: 'high' }),
+          gender: expect.objectContaining({ value: '男', source: 'booking', confidence: 'high' }),
         },
       );
     });
@@ -96,11 +123,11 @@ describe('LongTermService', () => {
         gender: '女',
       });
 
-      const call = mockSupabaseStore.upsertProfileWithMeta.mock.calls[0];
-      expect(call[2].age).toBe('18');
+      const call = mockSupabaseStore.upsertProfileFacts.mock.calls[0];
+      expect(call[2].age.value).toBe('18');
     });
 
-    it('should include writtenAt ISO timestamp in each field meta', async () => {
+    it('should include updatedAt ISO timestamp in each profile fact', async () => {
       const before = new Date().toISOString();
       await service.writeFromBooking('corp1', 'user1', {
         name: '王五',
@@ -110,13 +137,13 @@ describe('LongTermService', () => {
       });
       const after = new Date().toISOString();
 
-      const meta = mockSupabaseStore.upsertProfileWithMeta.mock.calls[0][3];
-      expect(meta.name.writtenAt >= before).toBe(true);
-      expect(meta.name.writtenAt <= after).toBe(true);
+      const facts = mockSupabaseStore.upsertProfileFacts.mock.calls[0][2];
+      expect(facts.name.updatedAt >= before).toBe(true);
+      expect(facts.name.updatedAt <= after).toBe(true);
     });
 
-    it('should swallow errors from upsertProfileWithMeta silently', async () => {
-      mockSupabaseStore.upsertProfileWithMeta.mockRejectedValueOnce(new Error('DB error'));
+    it('should swallow errors from upsertProfileFacts silently', async () => {
+      mockSupabaseStore.upsertProfileFacts.mockRejectedValueOnce(new Error('DB error'));
 
       await expect(
         service.writeFromBooking('corp1', 'user1', {
@@ -126,6 +153,54 @@ describe('LongTermService', () => {
           gender: '男',
         }),
       ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('writeFromSettlement', () => {
+    it('should preserve original session fact metadata in profile evidence', async () => {
+      const sessionFacts = toSessionFacts(
+        {
+          ...FALLBACK_EXTRACTION,
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            name: '张三',
+            age: '24',
+          },
+          reasoning: '候选人提供了姓名和年龄',
+        },
+        {
+          confidence: 'medium',
+          source: 'llm',
+          evidence: 'LLM 结构化提取：候选人提供了姓名和年龄',
+        },
+      );
+      sessionFacts.interview_info.name = sessionFactValue('张三', {
+        confidence: 'high',
+        source: 'rule',
+        evidence: '结构化姓名识别：张三',
+      });
+
+      await service.writeFromSettlement('corp1', 'user1', sessionFacts);
+
+      const savedFacts = mockSupabaseStore.upsertProfileFacts.mock.calls[0][2];
+      expect(savedFacts.name).toEqual(
+        expect.objectContaining({
+          value: '张三',
+          source: 'extraction',
+          confidence: 'medium',
+          evidence: expect.stringContaining('原字段来源=rule'),
+        }),
+      );
+      expect(savedFacts.name.evidence).toContain('原字段置信度=high');
+      expect(savedFacts.name.evidence).toContain('原证据=结构化姓名识别：张三');
+      expect(savedFacts.age).toEqual(
+        expect.objectContaining({
+          value: '24',
+          source: 'extraction',
+          confidence: 'medium',
+          evidence: expect.stringContaining('原字段来源=llm'),
+        }),
+      );
     });
   });
 

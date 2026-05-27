@@ -44,6 +44,8 @@ const PATTERNS: RegExp[] = [
   new RegExp(STAGE_TERMS.map(escapeRegex).join('|')),
   // 等待候选人补 X 信息（典型阶段切换回声）
   /等待候选人(?:回复|提供|补充|确认)\S*信息/,
+  // 工具链结束后把“已经对候选人完成动作”的内部状态当成回复
+  /(?:已发送岗位推荐|已给出岗位信息|岗位推荐已发送)[，,。；;\s]*(?:现在)?等待候选人(?:回应|回复|确认)/,
   // 工具调用回显
   new RegExp(`(?:调用|call|invoke)\\s*(?:${TOOL_NAMES.map(escapeRegex).join('|')})`, 'i'),
   // 工具结果 JSON 残片直接外抛（{"success":true,...}）

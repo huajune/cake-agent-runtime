@@ -25,3 +25,13 @@ export interface UserActivityAggregate {
   firstActiveAt: number;
   lastActiveAt: number;
 }
+
+/**
+ * user_activity 按天聚合结果。
+ */
+export interface DailyUserActivityStats {
+  date: string;
+  userCount: number;
+  messageCount: number;
+  tokenUsage: number;
+}

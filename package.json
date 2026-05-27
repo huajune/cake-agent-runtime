@@ -1,6 +1,6 @@
 {
   "name": "cake-agent-runtime",
-  "version": "5.10.1",
+  "version": "5.11.0",
   "description": "自主 AI Agent 运行时 — 基于 Vercel AI SDK 多 Provider 架构",
   "author": "",
   "private": true,
@@ -34,6 +34,8 @@
     "sync:test-suite:prod": "node scripts/sync-test-suite-batches-to-prod.js",
     "backfill:badcase-trace-memory": "node scripts/backfill-badcase-trace-memory.js",
     "check:badcase-trace-memory": "node scripts/backfill-badcase-trace-memory.js --check",
+    "backfill:long-term-memory:dry-run": "node scripts/backfill-agent-long-term-memories.js --dry-run",
+    "backfill:long-term-memory": "node scripts/backfill-agent-long-term-memories.js --apply",
     "release:pr:preview": "node scripts/build-release-pr-body.js --stdout",
     "release:pr:create": "node scripts/create-release-pr.js",
     "deploy": "bash scripts/deploy-local.sh"

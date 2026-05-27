@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { RedisService } from '@infra/redis/redis.service';
 import { UserHostingRepository } from '../repositories/user-hosting.repository';
-import { UserActivityAggregate } from '../types/user.types';
+import { DailyUserActivityStats, UserActivityAggregate } from '../types/user.types';
 
 /**
  * 缓存中单个用户的暂停状态
@@ -232,6 +232,13 @@ export class UserHostingService {
     endDate: Date,
   ): Promise<UserActivityAggregate[]> {
     return this.repository.findActiveUsersByDateRange(startDate, endDate);
+  }
+
+  /**
+   * 按日期范围查询每日托管趋势（从 user_activity 聚合）。
+   */
+  async getDailyActivityStats(startDate: Date, endDate: Date): Promise<DailyUserActivityStats[]> {
+    return this.repository.findDailyActivityStatsByDateRange(startDate, endDate);
   }
 
   /**

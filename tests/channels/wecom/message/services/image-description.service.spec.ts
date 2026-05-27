@@ -136,6 +136,21 @@ describe('ImageDescriptionService', () => {
 
       await new Promise((resolve) => setTimeout(resolve, 50));
 
+      expect(mockLlm.generate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          maxOutputTokens: 64,
+          messages: expect.arrayContaining([
+            expect.objectContaining({
+              content: expect.arrayContaining([
+                expect.objectContaining({
+                  type: 'text',
+                  text: expect.stringContaining('4-12 个字'),
+                }),
+              ]),
+            }),
+          ]),
+        }),
+      );
       expect(mockChatSessionService.updateMessageContent).toHaveBeenCalledWith(
         'msg-emoji-1',
         `[表情消息] ${description}`,

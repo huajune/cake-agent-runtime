@@ -1,4 +1,14 @@
-import type { EntityExtractionResult, Preferences } from '@memory/types/session-facts.types';
+import {
+  type EntityExtractionResult,
+  type HighConfidenceFacts,
+  type Preferences,
+  type SessionFacts,
+  unwrapSessionFacts,
+} from '@memory/types/session-facts.types';
+import {
+  filterHighConfidenceFacts,
+  unwrapHighConfidenceFacts,
+} from '@memory/facts/high-confidence-facts';
 import { isValidLaborForm } from '@memory/facts/labor-form';
 import { PromptContext, PromptSection } from './section.interface';
 
@@ -63,52 +73,77 @@ export class HardConstraintsSection implements PromptSection {
    * 这里不处理冲突——TurnHintsSection 已负责把冲突字段单独拎到「待确认线索」段落。
    */
   private mergeFacts(
-    sessionFacts: EntityExtractionResult | null,
-    highConfidenceFacts: EntityExtractionResult | null,
+    sessionFacts: EntityExtractionResult | SessionFacts | null,
+    highConfidenceFacts: HighConfidenceFacts | null,
   ): { interview: EntityExtractionResult['interview_info']; pref: Preferences } | null {
-    if (!sessionFacts && !highConfidenceFacts) return null;
+    const highConfidenceSessionFacts = unwrapSessionFacts(sessionFacts, { minConfidence: 'high' });
+    const highConfidenceValues = unwrapHighConfidenceFacts(
+      filterHighConfidenceFacts(highConfidenceFacts),
+    );
+    if (!highConfidenceSessionFacts && !highConfidenceValues) return null;
 
     const interview = {
       ...this.emptyInterviewInfo(),
-      ...this.dropNulls(highConfidenceFacts?.interview_info),
-      ...this.dropNulls(sessionFacts?.interview_info),
+      ...this.dropNulls(highConfidenceValues?.interview_info),
+      ...this.dropNulls(highConfidenceSessionFacts?.interview_info),
     };
 
     const pref: Preferences = {
-      brands: sessionFacts?.preferences.brands ?? highConfidenceFacts?.preferences.brands ?? null,
-      salary: sessionFacts?.preferences.salary ?? highConfidenceFacts?.preferences.salary ?? null,
+      brands:
+        highConfidenceSessionFacts?.preferences.brands ??
+        highConfidenceValues?.preferences.brands ??
+        null,
+      salary:
+        highConfidenceSessionFacts?.preferences.salary ??
+        highConfidenceValues?.preferences.salary ??
+        null,
       position:
-        sessionFacts?.preferences.position ?? highConfidenceFacts?.preferences.position ?? null,
+        highConfidenceSessionFacts?.preferences.position ??
+        highConfidenceValues?.preferences.position ??
+        null,
       schedule:
-        sessionFacts?.preferences.schedule ?? highConfidenceFacts?.preferences.schedule ?? null,
-      city: sessionFacts?.preferences.city ?? highConfidenceFacts?.preferences.city ?? null,
+        highConfidenceSessionFacts?.preferences.schedule ??
+        highConfidenceValues?.preferences.schedule ??
+        null,
+      city:
+        highConfidenceSessionFacts?.preferences.city ??
+        highConfidenceValues?.preferences.city ??
+        null,
       district:
-        sessionFacts?.preferences.district ?? highConfidenceFacts?.preferences.district ?? null,
+        highConfidenceSessionFacts?.preferences.district ??
+        highConfidenceValues?.preferences.district ??
+        null,
       location:
-        sessionFacts?.preferences.location ?? highConfidenceFacts?.preferences.location ?? null,
+        highConfidenceSessionFacts?.preferences.location ??
+        highConfidenceValues?.preferences.location ??
+        null,
       labor_form:
-        sessionFacts?.preferences.labor_form ?? highConfidenceFacts?.preferences.labor_form ?? null,
+        highConfidenceSessionFacts?.preferences.labor_form ??
+        highConfidenceValues?.preferences.labor_form ??
+        null,
       delayed_intent:
-        sessionFacts?.preferences.delayed_intent ??
-        highConfidenceFacts?.preferences.delayed_intent ??
+        highConfidenceSessionFacts?.preferences.delayed_intent ??
+        highConfidenceValues?.preferences.delayed_intent ??
         null,
       short_term:
-        sessionFacts?.preferences.short_term ?? highConfidenceFacts?.preferences.short_term ?? null,
+        highConfidenceSessionFacts?.preferences.short_term ??
+        highConfidenceValues?.preferences.short_term ??
+        null,
       open_position:
-        sessionFacts?.preferences.open_position ??
-        highConfidenceFacts?.preferences.open_position ??
+        highConfidenceSessionFacts?.preferences.open_position ??
+        highConfidenceValues?.preferences.open_position ??
         null,
       time_windows:
-        sessionFacts?.preferences.time_windows ??
-        highConfidenceFacts?.preferences.time_windows ??
+        highConfidenceSessionFacts?.preferences.time_windows ??
+        highConfidenceValues?.preferences.time_windows ??
         null,
       schedule_constraint:
-        sessionFacts?.preferences.schedule_constraint ??
-        highConfidenceFacts?.preferences.schedule_constraint ??
+        highConfidenceSessionFacts?.preferences.schedule_constraint ??
+        highConfidenceValues?.preferences.schedule_constraint ??
         null,
       available_after:
-        sessionFacts?.preferences.available_after ??
-        highConfidenceFacts?.preferences.available_after ??
+        highConfidenceSessionFacts?.preferences.available_after ??
+        highConfidenceValues?.preferences.available_after ??
         null,
     };
 

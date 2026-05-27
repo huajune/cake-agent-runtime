@@ -6,9 +6,23 @@ on:
     branches:
       - develop
       - master
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: '单个已合并到 develop 的 PR 号，例如 224'
+        required: false
+        type: string
+      from_pr:
+        description: '补偿区间起始 PR 号，例如 220'
+        required: false
+        type: string
+      to_pr:
+        description: '补偿区间结束 PR 号，例如 224'
+        required: false
+        type: string
 
 concurrency:
-  group: release-metadata-${{ github.event.pull_request.base.ref }}
+  group: release-metadata-${{ github.event.pull_request.base.ref || 'manual' }}
   cancel-in-progress: false
 
 permissions:
@@ -17,11 +31,14 @@ permissions:
 jobs:
   prepare-develop-release:
     if: >
-      github.event.pull_request.merged == true &&
-      github.event.pull_request.base.ref == 'develop' &&
-      !startsWith(github.event.pull_request.head.ref, 'chore/release-metadata/') &&
-      !startsWith(github.event.pull_request.title, 'chore(release): 更新待发布版本信息') &&
-      !contains(format('{0}', github.event.pull_request.body), '<!-- release-metadata-pr -->')
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.pull_request.merged == true &&
+        github.event.pull_request.base.ref == 'develop' &&
+        !startsWith(github.event.pull_request.head.ref, 'chore/release-metadata/') &&
+        !startsWith(github.event.pull_request.title, 'chore(release): 更新待发布版本信息') &&
+        !contains(format('{0}', github.event.pull_request.body), '<!-- release-metadata-pr -->')
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -29,6 +46,7 @@ jobs:
       # 需要 actions:write 才能用 gh workflow run 派发 ai-code-review.yml；
       # 详见本文件末尾"为 bot PR 触发 AI Code Review" step。
       actions: write
+      id-token: write
     steps:
       - name: Checkout develop
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -47,29 +65,99 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Collect merged PR contexts
+        id: merged_pr_contexts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+          INPUT_PR_NUMBER: ${{ inputs.pr_number || '' }}
+          INPUT_FROM_PR: ${{ inputs.from_pr || '' }}
+          INPUT_TO_PR: ${{ inputs.to_pr || '' }}
+        run: |
+          set -euo pipefail
+
+          if [ "${WORKFLOW_EVENT}" = "workflow_dispatch" ]; then
+            if [ -n "${INPUT_PR_NUMBER}" ]; then
+              PR_NUMBERS="${INPUT_PR_NUMBER}"
+            elif [ -n "${INPUT_FROM_PR}" ] && [ -n "${INPUT_TO_PR}" ]; then
+              PR_NUMBERS="$(seq "${INPUT_FROM_PR}" "${INPUT_TO_PR}" | tr '\n' ' ')"
+            else
+              echo "❌ workflow_dispatch 需要填写 pr_number，或同时填写 from_pr/to_pr"
+              exit 1
+            fi
+          else
+            PR_NUMBERS="${EVENT_PR_NUMBER}"
+          fi
+
+          node scripts/collect-merged-pr-contexts.js ${PR_NUMBERS}
+
+          {
+            echo 'numbers<<EOF'
+            cat .release/merged-pr-numbers.txt
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Generate release notes with Claude
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Read `.release/merged-pr-contexts.json` and generate concise release-note JSON files.
+
+            For each item in `.release/merged-pr-contexts.json`, write exactly one UTF-8 JSON object to:
+            `.release/llm-release-entry-<PR_NUMBER>.json`
+
+            Each JSON object must have these keys:
+            {
+              "businessUpdates": [],
+              "summary": [],
+              "features": [],
+              "fixes": [],
+              "optimizations": [],
+              "ops": [],
+              "config": [],
+              "verification": []
+            }
+
+            Rules:
+            - Only use facts from the PR title, PR body, commits, and changed files in `.release/merged-pr-contexts.json`.
+            - `businessUpdates` is shown directly in the Feishu deploy card under "业务改动（候选人/运营可感知）"; cover every candidate/operator-visible commit there.
+            - `features` and `fixes` should still be categorized for CHANGELOG details.
+            - Prefer business-facing Chinese. Keep necessary identifiers such as Vision, Agent, Dashboard, reply-fact-guard, payload.artworkUrl.
+            - Do not include PR numbers, author names, file paths, test commands, Markdown headings, or "无/暂无".
+            - Put CI/CD, alert routing, deploy flow, and release-process changes in `ops`.
+            - Put environment/config changes in `config`.
+            - If unsure about a section, use an empty array.
+            - Do not edit any other file.
+          claude_args: |
+            --allowedTools "Read,Write"
+
       - name: Create or update develop release metadata PR
         id: bot_pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MERGED_PR_TITLE: ${{ github.event.pull_request.title }}
-          MERGED_PR_BODY: ${{ github.event.pull_request.body }}
-          MERGED_PR_NUMBER: ${{ github.event.pull_request.number }}
-          MERGED_PR_URL: ${{ github.event.pull_request.html_url }}
-          MERGED_PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          MERGED_PR_MERGED_AT: ${{ github.event.pull_request.merged_at }}
+          RELEASE_METADATA_PR_NUMBERS: ${{ steps.merged_pr_contexts.outputs.numbers }}
+          RELEASE_NOTES_LLM_ENABLED: ${{ vars.RELEASE_NOTES_LLM_ENABLED || 'true' }}
+          RELEASE_NOTES_LLM_MODEL: ${{ vars.RELEASE_NOTES_LLM_MODEL || vars.AGENT_EXTRACT_MODEL || 'gpt-5-mini' }}
+          RELEASE_NOTES_LLM_BASE_URL: ${{ secrets.RELEASE_NOTES_LLM_BASE_URL || secrets.OPENAI_BASE_URL || vars.RELEASE_NOTES_LLM_BASE_URL || vars.OPENAI_BASE_URL }}
+          RELEASE_NOTES_LLM_API_KEY: ${{ secrets.RELEASE_NOTES_LLM_API_KEY || secrets.ANTHROPIC_API_KEY || secrets.OPENAI_API_KEY }}
         run: |
           set -euo pipefail
 
           BASE_BRANCH="develop"
           BOT_BRANCH="chore/release-metadata/develop"
-          SOURCE_PR_NUMBER="${{ github.event.pull_request.number }}"
-          MERGED_PR_FILES="$(gh pr view "${SOURCE_PR_NUMBER}" --json files --jq '.files[].path' 2>/dev/null || true)"
-          export MERGED_PR_FILES
 
           git fetch origin "${BASE_BRANCH}"
           git checkout -B "${BOT_BRANCH}" "origin/${BASE_BRANCH}"
 
-          node scripts/update-version-changelog.js prepare
+          while IFS= read -r SOURCE_PR_NUMBER; do
+            [ -n "${SOURCE_PR_NUMBER}" ] || continue
+            MERGED_PR_CONTEXT_FILE=".release/merged-pr-context-${SOURCE_PR_NUMBER}.json" \
+              RELEASE_NOTES_LLM_ENTRY_FILE=".release/llm-release-entry-${SOURCE_PR_NUMBER}.json" \
+              node scripts/update-version-changelog.js prepare
+          done <<< "${RELEASE_METADATA_PR_NUMBERS}"
 
           if git diff --quiet package.json CHANGELOG.md .release/pending-release.json; then
             echo "ℹ️ develop 的版本元数据无变化，跳过 PR 更新"
@@ -78,6 +166,7 @@ jobs:
           fi
 
           VERSION=$(node -p "require('./package.json').version")
+          SOURCE_PR_LABEL="$(printf '%s\n' "${RELEASE_METADATA_PR_NUMBERS}" | sed '/^$/d' | awk '{printf "%s#%s", sep, $1; sep=", "}')"
 
           git add package.json CHANGELOG.md .release/pending-release.json
           git commit -m "chore(release): 更新待发布版本信息 [skip ci]"
@@ -90,7 +179,7 @@ jobs:
 
           此 PR 由 GitHub Actions 自动创建，用于更新 \`develop\` 上的待发布版本信息。
 
-          - 触发来源: #${SOURCE_PR_NUMBER}
+          - 触发来源: ${SOURCE_PR_LABEL:-manual}
           - 目标分支: \`${BASE_BRANCH}\`
           - 预计版本: \`v${VERSION}\`
           - 更新文件:

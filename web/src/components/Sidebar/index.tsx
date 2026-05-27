@@ -193,11 +193,11 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         <NavLink
           to="/users"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title={isCollapsed ? '今日托管' : undefined}
+          title={isCollapsed ? '托管用户' : undefined}
           {...bindPreload('/users')}
         >
           <span className="nav-icon"><UsersIcon /></span>
-          {!isCollapsed && <span className="nav-text">今日托管</span>}
+          {!isCollapsed && <span className="nav-text">托管用户</span>}
         </NavLink>
         <NavLink
           to="/hosting"

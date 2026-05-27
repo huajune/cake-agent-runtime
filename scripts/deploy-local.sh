@@ -35,20 +35,12 @@ read_env_value() {
 notify_deploy_result() {
   local exit_code="$1"
   local deploy_result="failure"
-  local webhook_url="${PRIVATE_CHAT_MONITOR_WEBHOOK_URL:-${DEPLOY_NOTIFICATION_WEBHOOK_URL:-}}"
-  local webhook_secret="${PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET:-${DEPLOY_NOTIFICATION_WEBHOOK_SECRET:-}}"
+  local webhook_url="${DEPLOY_NOTIFICATION_WEBHOOK_URL:-${PRIVATE_CHAT_MONITOR_WEBHOOK_URL:-}}"
+  local webhook_secret="${DEPLOY_NOTIFICATION_WEBHOOK_SECRET:-${PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET:-}}"
   local git_branch git_sha git_short_sha finished_at
 
   if [[ "$exit_code" -eq 0 ]]; then
     deploy_result="success"
-  fi
-
-  if [[ -z "$webhook_url" ]]; then
-    webhook_url="$(read_env_value PRIVATE_CHAT_MONITOR_WEBHOOK_URL "$RUNTIME_ENV_FILE")"
-  fi
-
-  if [[ -z "$webhook_secret" ]]; then
-    webhook_secret="$(read_env_value PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET "$RUNTIME_ENV_FILE")"
   fi
 
   if [[ -z "$webhook_url" ]]; then
@@ -60,7 +52,15 @@ notify_deploy_result() {
   fi
 
   if [[ -z "$webhook_url" ]]; then
-    echo "ℹ️ Deploy notification skipped: PRIVATE_CHAT_MONITOR_WEBHOOK_URL is not configured."
+    webhook_url="$(read_env_value PRIVATE_CHAT_MONITOR_WEBHOOK_URL "$RUNTIME_ENV_FILE")"
+  fi
+
+  if [[ -z "$webhook_secret" ]]; then
+    webhook_secret="$(read_env_value PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET "$RUNTIME_ENV_FILE")"
+  fi
+
+  if [[ -z "$webhook_url" ]]; then
+    echo "ℹ️ Deploy notification skipped: DEPLOY_NOTIFICATION_WEBHOOK_URL is not configured."
     return 0
   fi
 
@@ -69,8 +69,8 @@ notify_deploy_result() {
   git_short_sha="$(git rev-parse --short HEAD 2>/dev/null || echo "$GIT_SHORT_SHA")"
   finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-  if ! PRIVATE_CHAT_MONITOR_WEBHOOK_URL="$webhook_url" \
-    PRIVATE_CHAT_MONITOR_WEBHOOK_SECRET="$webhook_secret" \
+  if ! DEPLOY_NOTIFICATION_WEBHOOK_URL="$webhook_url" \
+    DEPLOY_NOTIFICATION_WEBHOOK_SECRET="$webhook_secret" \
     DEPLOY_RESULT="$deploy_result" \
     RELEASE_TAG="$IMAGE_TAG" \
     DEPLOY_ENVIRONMENT="production" \

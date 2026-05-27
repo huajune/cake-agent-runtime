@@ -24,6 +24,7 @@ describe('AnalyticsController', () => {
     getMetricsDataAsync: jest.fn(),
     getTodayUsersFromDatabase: jest.fn(),
     getUsersByDate: jest.fn(),
+    getUsersByDays: jest.fn(),
     getUserTrend: jest.fn(),
     getRecentDetailRecords: jest.fn(),
     getSystemInfo: jest.fn(),
@@ -170,6 +171,7 @@ describe('AnalyticsController', () => {
 
       expect(queryService.getTodayUsersFromDatabase).toHaveBeenCalled();
       expect(queryService.getUsersByDate).not.toHaveBeenCalled();
+      expect(queryService.getUsersByDays).not.toHaveBeenCalled();
       expect(result).toEqual(mockResult);
     });
 
@@ -181,6 +183,19 @@ describe('AnalyticsController', () => {
       const result = await controller.getUsersByDate(date);
 
       expect(queryService.getUsersByDate).toHaveBeenCalledWith(date);
+      expect(queryService.getTodayUsersFromDatabase).not.toHaveBeenCalled();
+      expect(queryService.getUsersByDays).not.toHaveBeenCalled();
+      expect(result).toEqual(mockResult);
+    });
+
+    it('should call getUsersByDays when days is provided', async () => {
+      const mockResult = [{ userId: 'u-3', name: 'User 3' }];
+      mockQueryService.getUsersByDays.mockResolvedValue(mockResult);
+
+      const result = await controller.getUsersByDate(undefined, '60');
+
+      expect(queryService.getUsersByDays).toHaveBeenCalledWith(60);
+      expect(queryService.getUsersByDate).not.toHaveBeenCalled();
       expect(queryService.getTodayUsersFromDatabase).not.toHaveBeenCalled();
       expect(result).toEqual(mockResult);
     });

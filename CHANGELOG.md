@@ -8,6 +8,55 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.11.0`
+**最近更新**: `2026-05-27`
+**来源分支**: `develop`
+**累计 PR**: 2
+
+### 更新摘要
+- PR #229 修复部署通知会过滤中文发布条目的问题：只要有中文，即使包含 loadArtWorkImage、payload.artworkUrl、AGENT_VISION_FALLBACKS 等技术标识，也不再被当作纯技术英文丢弃
+- PR #229 为图片原图、fact guard、Dashboard、拉群人数修复增加运营可读改写
+- PR #229 补充部署通知回归测试，确保发版通知不会再丢失这类业务改动
+- PR #230 统一 highConfidenceFacts、sessionFacts、长期 profile_facts 的字段级置信度结构
+- PR #230 precheck 新增候选人年龄、面试时间、性别、学历、健康证、学生身份等显式入参，显式入参优先于记忆
+- PR #230 新增 agent_long_term_memories 表、长期画像 RPC 和历史回填脚本
+- PR #230 补充记忆与线索数据流文档，以及 24 岁候选人触发 ageBoundary 的回归测试
+
+### 新功能
+- PR #230 新增 agent_long_term_memories 表、长期画像 RPC 和历史回填脚本
+- PR #230 precheck 入参新增候选人年龄、面试时间、性别、学历、健康证、学生身份等候选字段
+
+### 问题修复
+- PR #229 修复部署通知会过滤中文发布条目的问题：只要有中文，即使包含 loadArtWorkImage、payload.artworkUrl、AGENT_VISION_FALLBACKS 等技术标识，也不再被当作纯技术英文丢弃
+- PR #229 为图片原图、fact guard、Dashboard、拉群人数修复增加运营可读改写
+- PR #230 修复 precheck 只依赖 sessionFacts 时读不到候选人本轮年龄，导致 ageBoundary 返回 unknown 的问题
+- PR #230 复用高置信事实 guard，避免 precheck 内部维护重复判断逻辑
+
+### 优化调整
+- PR #230 统一记忆、线索、事实的数据流文档与字段置信度展示规则
+- PR #230 本轮线索保留候选人本轮确认过的事实，便于模型理解最新表达
+
+### 运维与流程
+- PR #229 补充部署通知回归测试，确保发版通知不会再丢失这类业务改动
+- PR #230 补充长期画像回填 dry-run 和 apply 脚本，默认 dry-run
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- PR #230 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
+
+### 验证记录
+- PR #229 `pnpm jest tests/scripts/send-deploy-notification.spec.ts --watchman=false`
+- PR #230 `pnpm run typecheck`
+- PR #230 `pnpm test -- --runInBand --watchman=false`
+- PR #230 `pnpm run ci:check`
+- PR #230 test DB migration 和 RPC 临时写入验证通过并已清理
+<!-- release:pending:end -->
+
 ## [5.10.1] - 2026-05-27
 
 **来源分支**: `develop`

@@ -3,9 +3,12 @@ import { formatLocalDate } from '@infra/utils/date.util';
 import {
   FALLBACK_EXTRACTION,
   type CityFact,
+  type CityFactEvidence,
   type EntityExtractionResult,
-  type InterviewInfo,
-  type Preferences,
+  type HighConfidenceInterviewInfo,
+  type HighConfidencePreferences,
+  type HighConfidenceFacts,
+  type HighConfidenceValue,
   type ScheduleConstraintFact,
 } from '../types/session-facts.types';
 import {
@@ -154,6 +157,13 @@ const CHINESE_NUM_MAP: Record<string, number> = {
   七: 7,
 };
 
+const CITY_FACT_EVIDENCES = new Set<CityFactEvidence>([
+  'municipality_compact',
+  'explicit_city',
+  'unique_district_alias',
+  'hotspot_alias',
+]);
+
 export interface BrandAliasHint {
   brandName: string;
   matchedAlias: string;
@@ -190,7 +200,7 @@ function stripQuotedBlocks(message: string): string {
 export function extractHighConfidenceFacts(
   userMessages: string[],
   brandData: BrandItem[],
-): EntityExtractionResult | null {
+): HighConfidenceFacts | null {
   const normalizedMessages = userMessages
     .map((message) => stripQuotedBlocks(message.trim()))
     .filter(Boolean);
@@ -201,7 +211,10 @@ export function extractHighConfidenceFacts(
 
   const aliasHints = detectBrandAliasHints(normalizedMessages, brandData);
   if (aliasHints.length > 0) {
-    facts.preferences.brands = Array.from(new Set(aliasHints.map((hint) => hint.brandName)));
+    const brands = Array.from(new Set(aliasHints.map((hint) => hint.brandName)));
+    facts.preferences.brands = ruleValue(brands, {
+      evidence: `品牌别名识别：${brands.join('、')}`,
+    });
     reasons.push(
       ...aliasHints.map(
         (hint) =>
@@ -213,129 +226,165 @@ export function extractHighConfidenceFacts(
   for (const message of normalizedMessages) {
     const structuredName = extractStructuredName(message);
     if (structuredName && !facts.interview_info.name) {
-      facts.interview_info.name = structuredName;
+      facts.interview_info.name = ruleValue(structuredName, {
+        evidence: `结构化姓名识别：${structuredName}`,
+      });
       reasons.push(`结构化姓名识别：${structuredName}（来源：收资表单键值对）`);
     }
 
     const phone = extractPhone(message);
     if (phone && !facts.interview_info.phone) {
-      facts.interview_info.phone = phone;
+      facts.interview_info.phone = ruleValue(phone, {
+        evidence: `手机号识别：${phone}`,
+      });
       reasons.push(`手机号识别：${phone}`);
     }
 
     const age = extractAge(message);
     if (age && !facts.interview_info.age) {
-      facts.interview_info.age = age;
+      facts.interview_info.age = ruleValue(age, {
+        evidence: `年龄识别：${age}`,
+      });
       reasons.push(`年龄识别：${age}`);
     }
 
     const gender = extractGender(message);
     if (gender && !facts.interview_info.gender) {
-      facts.interview_info.gender = gender;
-      facts.interview_info.gender_source = 'candidate';
+      facts.interview_info.gender = ruleValue(gender, {
+        evidence: `性别识别：${gender}`,
+      });
+      facts.interview_info.gender_source = ruleValue('candidate', {
+        evidence: '性别来源：候选人自陈',
+      });
       reasons.push(`性别识别：${gender}`);
     }
 
     const studentInfo = extractStudentInfo(message);
     if (studentInfo.isStudent !== null && facts.interview_info.is_student === null) {
-      facts.interview_info.is_student = studentInfo.isStudent;
+      facts.interview_info.is_student = ruleValue(studentInfo.isStudent, {
+        evidence: `学生身份识别：${studentInfo.isStudent ? '是' : '否'}`,
+      });
       reasons.push(`学生身份识别：${studentInfo.isStudent ? '是' : '否'}`);
     }
     if (studentInfo.education && !facts.interview_info.education) {
-      facts.interview_info.education = studentInfo.education;
+      facts.interview_info.education = ruleValue(studentInfo.education, {
+        evidence: `学历识别：${studentInfo.education}`,
+      });
       reasons.push(`学历识别：${studentInfo.education}`);
     } else if (!studentInfo.education) {
       const explicitEducation = extractEducation(message);
       if (explicitEducation && !facts.interview_info.education) {
-        facts.interview_info.education = explicitEducation;
+        facts.interview_info.education = ruleValue(explicitEducation, {
+          evidence: `学历识别：${explicitEducation}`,
+        });
         reasons.push(`学历识别：${explicitEducation}`);
       }
     }
 
     const healthCertificate = extractHealthCertificate(message);
     if (healthCertificate && !facts.interview_info.has_health_certificate) {
-      facts.interview_info.has_health_certificate = healthCertificate;
+      facts.interview_info.has_health_certificate = ruleValue(healthCertificate, {
+        evidence: `健康证识别：${healthCertificate}`,
+      });
       reasons.push(`健康证识别：${healthCertificate}`);
     }
 
     const laborForm = extractLaborForm(message);
     if (laborForm && !facts.preferences.labor_form) {
-      facts.preferences.labor_form = laborForm;
+      facts.preferences.labor_form = ruleValue(laborForm, {
+        evidence: `用工形式识别：${laborForm}`,
+      });
       reasons.push(`用工形式识别：${laborForm}`);
     }
 
     const salary = extractSalary(message);
     if (salary && !facts.preferences.salary) {
-      facts.preferences.salary = salary;
+      facts.preferences.salary = ruleValue(salary, {
+        evidence: `薪资识别：${salary}`,
+      });
       reasons.push(`薪资识别：${salary}`);
     }
 
     const positions = extractPositions(message);
     if (positions.length > 0) {
-      facts.preferences.position = Array.from(
-        new Set([...(facts.preferences.position ?? []), ...positions]),
+      const mergedPositions = Array.from(
+        new Set([...(unwrapHighConfidenceValue(facts.preferences.position) ?? []), ...positions]),
       );
+      facts.preferences.position = ruleValue(mergedPositions, {
+        evidence: `岗位识别：${positions.join('、')}`,
+      });
       reasons.push(`岗位识别：${positions.join('、')}`);
     }
 
     const schedule = extractSchedule(message);
     if (schedule && !facts.preferences.schedule) {
-      facts.preferences.schedule = schedule;
+      facts.preferences.schedule = ruleValue(schedule, {
+        evidence: `班次识别：${schedule}`,
+      });
       reasons.push(`班次识别：${schedule}`);
     }
 
     const scheduleConstraint = extractScheduleConstraintStructured(message);
     if (scheduleConstraint) {
+      const existingConstraint = unwrapHighConfidenceValue(facts.preferences.schedule_constraint);
       const merged: ScheduleConstraintFact = {
-        onlyWeekends:
-          scheduleConstraint.onlyWeekends ??
-          facts.preferences.schedule_constraint?.onlyWeekends ??
-          null,
-        onlyEvenings:
-          scheduleConstraint.onlyEvenings ??
-          facts.preferences.schedule_constraint?.onlyEvenings ??
-          null,
-        onlyMornings:
-          scheduleConstraint.onlyMornings ??
-          facts.preferences.schedule_constraint?.onlyMornings ??
-          null,
+        onlyWeekends: scheduleConstraint.onlyWeekends ?? existingConstraint?.onlyWeekends ?? null,
+        onlyEvenings: scheduleConstraint.onlyEvenings ?? existingConstraint?.onlyEvenings ?? null,
+        onlyMornings: scheduleConstraint.onlyMornings ?? existingConstraint?.onlyMornings ?? null,
         maxDaysPerWeek:
-          scheduleConstraint.maxDaysPerWeek ??
-          facts.preferences.schedule_constraint?.maxDaysPerWeek ??
-          null,
+          scheduleConstraint.maxDaysPerWeek ?? existingConstraint?.maxDaysPerWeek ?? null,
       };
-      facts.preferences.schedule_constraint = merged;
       const labelParts: string[] = [];
       if (merged.onlyWeekends) labelParts.push('只周末');
       if (merged.onlyEvenings) labelParts.push('只晚班');
       if (merged.onlyMornings) labelParts.push('只早班');
       if (merged.maxDaysPerWeek !== null) labelParts.push(`每周≤${merged.maxDaysPerWeek}天`);
+      facts.preferences.schedule_constraint = ruleValue(merged, {
+        evidence: `班次硬约束（结构化）：${labelParts.join('、') || '空'}`,
+      });
       reasons.push(`班次硬约束（结构化）：${labelParts.join('、') || '空'}`);
     }
 
     const availableAfter = extractAvailableAfterDate(message, formatLocalDate(new Date()));
     if (availableAfter) {
-      facts.preferences.available_after = availableAfter;
+      facts.preferences.available_after = ruleValue(availableAfter, {
+        evidence: `未来日期硬约束：${availableAfter.date}`,
+      });
       reasons.push(`未来日期硬约束：${availableAfter.date}（原话："${availableAfter.raw}"）`);
     }
 
     const location = extractLocation(message);
     if (location.city) {
-      facts.preferences.city = location.city;
+      facts.preferences.city = ruleValue(location.city.value, {
+        evidence: location.city.evidence,
+        confidence: location.city.confidence,
+      });
       reasons.push(
         `城市识别：${location.city.value}（证据：${location.city.evidence}，置信：${location.city.confidence}）`,
       );
     }
     if (location.district.length > 0) {
-      facts.preferences.district = Array.from(
-        new Set([...(facts.preferences.district ?? []), ...location.district]),
+      const mergedDistrict = Array.from(
+        new Set([
+          ...(unwrapHighConfidenceValue(facts.preferences.district) ?? []),
+          ...location.district,
+        ]),
       );
+      facts.preferences.district = ruleValue(mergedDistrict, {
+        evidence: `区域识别：${location.district.join('、')}`,
+      });
       reasons.push(`区域识别：${location.district.join('、')}`);
     }
     if (location.location.length > 0) {
-      facts.preferences.location = Array.from(
-        new Set([...(facts.preferences.location ?? []), ...location.location]),
+      const mergedLocation = Array.from(
+        new Set([
+          ...(unwrapHighConfidenceValue(facts.preferences.location) ?? []),
+          ...location.location,
+        ]),
       );
+      facts.preferences.location = ruleValue(mergedLocation, {
+        evidence: `地点识别：${location.location.join('、')}`,
+      });
       reasons.push(`地点识别：${location.location.join('、')}`);
     }
   }
@@ -421,11 +470,11 @@ export function normalizeGenderValue(value: unknown): '男' | '女' | null {
  * 与 mergeDetectedBrands 同构，都是"补充字段→不可变合并"的合并器。
  */
 export function mergeSupplementalGenderFact(
-  existing: EntityExtractionResult | null,
+  existing: HighConfidenceFacts | null,
   gender: '男' | '女',
   sourceLabel: string,
-): EntityExtractionResult {
-  const base: EntityExtractionResult = existing
+): HighConfidenceFacts {
+  const base: HighConfidenceFacts = existing
     ? {
         ...existing,
         interview_info: { ...existing.interview_info },
@@ -433,12 +482,134 @@ export function mergeSupplementalGenderFact(
       }
     : cloneFallbackExtraction();
 
-  base.interview_info.gender = gender;
-  base.interview_info.gender_source = 'system';
+  base.interview_info.gender = highConfidenceValue(gender, {
+    confidence: 'low',
+    source: 'system',
+    evidence: `${sourceLabel}补充性别：${gender}`,
+  });
+  base.interview_info.gender_source = highConfidenceValue('system', {
+    confidence: 'low',
+    source: 'system',
+    evidence: `${sourceLabel}补充性别来源：系统标签`,
+  });
   const suffix = `${sourceLabel}补充性别：${gender}`;
   base.reasoning = [base.reasoning?.trim(), suffix].filter(Boolean).join('；');
 
   return base;
+}
+
+export function unwrapHighConfidenceValue<T>(
+  value: HighConfidenceValue<T> | T | null | undefined,
+): T | null {
+  if (value === null || value === undefined) return null;
+  return isHighConfidenceValue(value) ? (value.value as T) : value;
+}
+
+export function filterHighConfidenceFacts(
+  facts: HighConfidenceFacts | null | undefined,
+): HighConfidenceFacts | null {
+  if (!facts) return null;
+
+  const filtered: HighConfidenceFacts = {
+    interview_info: {
+      name: highOnly(facts.interview_info.name),
+      phone: highOnly(facts.interview_info.phone),
+      gender: highOnly(facts.interview_info.gender),
+      gender_source: highOnly(facts.interview_info.gender_source),
+      age: highOnly(facts.interview_info.age),
+      applied_store: highOnly(facts.interview_info.applied_store),
+      applied_position: highOnly(facts.interview_info.applied_position),
+      interview_time: highOnly(facts.interview_info.interview_time),
+      is_student: highOnly(facts.interview_info.is_student),
+      education: highOnly(facts.interview_info.education),
+      has_health_certificate: highOnly(facts.interview_info.has_health_certificate),
+    },
+    preferences: {
+      brands: highOnly(facts.preferences.brands),
+      salary: highOnly(facts.preferences.salary),
+      position: highOnly(facts.preferences.position),
+      schedule: highOnly(facts.preferences.schedule),
+      city: highOnly(facts.preferences.city),
+      district: highOnly(facts.preferences.district),
+      location: highOnly(facts.preferences.location),
+      labor_form: highOnly(facts.preferences.labor_form),
+      delayed_intent: highOnly(facts.preferences.delayed_intent),
+      short_term: highOnly(facts.preferences.short_term),
+      open_position: highOnly(facts.preferences.open_position),
+      time_windows: highOnly(facts.preferences.time_windows),
+      schedule_constraint: highOnly(facts.preferences.schedule_constraint),
+      available_after: highOnly(facts.preferences.available_after),
+    },
+    reasoning: facts.reasoning,
+  };
+
+  return hasAnyHighConfidenceFact(filtered) ? filtered : null;
+}
+
+function highOnly<T>(
+  value: HighConfidenceValue<T> | null | undefined,
+): HighConfidenceValue<T> | null {
+  if (!value) return null;
+  return value.confidence === 'high' ? value : null;
+}
+
+function hasAnyHighConfidenceFact(facts: HighConfidenceFacts): boolean {
+  return (
+    Object.values(facts.interview_info as HighConfidenceInterviewInfo).some(Boolean) ||
+    Object.values(facts.preferences as HighConfidencePreferences).some(Boolean)
+  );
+}
+
+function unwrapHighConfidenceCity(value: HighConfidencePreferences['city']): CityFact | null {
+  if (!value) return null;
+  const evidence = CITY_FACT_EVIDENCES.has(value.evidence as CityFactEvidence)
+    ? (value.evidence as CityFactEvidence)
+    : 'explicit_city';
+  return {
+    value: value.value,
+    confidence: value.confidence === 'low' ? 'low' : 'high',
+    evidence,
+  };
+}
+
+export function unwrapHighConfidenceFacts(
+  facts: HighConfidenceFacts | null | undefined,
+): EntityExtractionResult | null {
+  if (!facts) return null;
+  return {
+    interview_info: {
+      name: unwrapHighConfidenceValue(facts.interview_info.name),
+      phone: unwrapHighConfidenceValue(facts.interview_info.phone),
+      gender: unwrapHighConfidenceValue(facts.interview_info.gender),
+      gender_source: unwrapHighConfidenceValue(facts.interview_info.gender_source),
+      age: unwrapHighConfidenceValue(facts.interview_info.age),
+      applied_store: unwrapHighConfidenceValue(facts.interview_info.applied_store),
+      applied_position: unwrapHighConfidenceValue(facts.interview_info.applied_position),
+      interview_time: unwrapHighConfidenceValue(facts.interview_info.interview_time),
+      is_student: unwrapHighConfidenceValue(facts.interview_info.is_student),
+      education: unwrapHighConfidenceValue(facts.interview_info.education),
+      has_health_certificate: unwrapHighConfidenceValue(
+        facts.interview_info.has_health_certificate,
+      ),
+    },
+    preferences: {
+      brands: unwrapHighConfidenceValue(facts.preferences.brands),
+      salary: unwrapHighConfidenceValue(facts.preferences.salary),
+      position: unwrapHighConfidenceValue(facts.preferences.position),
+      schedule: unwrapHighConfidenceValue(facts.preferences.schedule),
+      city: unwrapHighConfidenceCity(facts.preferences.city),
+      district: unwrapHighConfidenceValue(facts.preferences.district),
+      location: unwrapHighConfidenceValue(facts.preferences.location),
+      labor_form: unwrapHighConfidenceValue(facts.preferences.labor_form),
+      delayed_intent: unwrapHighConfidenceValue(facts.preferences.delayed_intent),
+      short_term: unwrapHighConfidenceValue(facts.preferences.short_term),
+      open_position: unwrapHighConfidenceValue(facts.preferences.open_position),
+      time_windows: unwrapHighConfidenceValue(facts.preferences.time_windows),
+      schedule_constraint: unwrapHighConfidenceValue(facts.preferences.schedule_constraint),
+      available_after: unwrapHighConfidenceValue(facts.preferences.available_after),
+    },
+    reasoning: facts.reasoning,
+  };
 }
 
 export function mergeDetectedBrands(
@@ -471,19 +642,82 @@ export function mergeDetectedBrands(
   };
 }
 
-function cloneFallbackExtraction(): EntityExtractionResult {
+function cloneFallbackExtraction(): HighConfidenceFacts {
   return {
-    interview_info: { ...FALLBACK_EXTRACTION.interview_info },
-    preferences: { ...FALLBACK_EXTRACTION.preferences },
+    interview_info: {
+      name: null,
+      phone: null,
+      gender: null,
+      gender_source: null,
+      age: null,
+      applied_store: null,
+      applied_position: null,
+      interview_time: null,
+      is_student: null,
+      education: null,
+      has_health_certificate: null,
+    },
+    preferences: {
+      brands: null,
+      salary: null,
+      position: null,
+      schedule: null,
+      city: null,
+      district: null,
+      location: null,
+      labor_form: null,
+      delayed_intent: null,
+      short_term: null,
+      open_position: null,
+      time_windows: null,
+      schedule_constraint: null,
+      available_after: null,
+    },
     reasoning: FALLBACK_EXTRACTION.reasoning,
   };
 }
 
-function hasAnyExtractedFact(facts: EntityExtractionResult): boolean {
+function ruleMeta(params: {
+  evidence: string;
+  confidence?: HighConfidenceValue<unknown>['confidence'];
+}): Omit<HighConfidenceValue<unknown>, 'value'> {
+  return {
+    confidence: params.confidence ?? 'high',
+    source: 'rule',
+    evidence: params.evidence,
+  };
+}
+
+function highConfidenceValue<T>(
+  value: T,
+  meta: Omit<HighConfidenceValue<T>, 'value'>,
+): HighConfidenceValue<T> {
+  return { value, ...meta };
+}
+
+function ruleValue<T>(
+  value: T,
+  params: { evidence: string; confidence?: HighConfidenceValue<T>['confidence'] },
+): HighConfidenceValue<T> {
+  return highConfidenceValue(value, ruleMeta(params) as Omit<HighConfidenceValue<T>, 'value'>);
+}
+
+export function isHighConfidenceValue(value: unknown): value is HighConfidenceValue<unknown> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'value' in value &&
+    'confidence' in value &&
+    'source' in value &&
+    'evidence' in value
+  );
+}
+
+function hasAnyExtractedFact(facts: HighConfidenceFacts): boolean {
   return hasAnyValue(facts.interview_info) || hasAnyValue(facts.preferences);
 }
 
-function hasAnyValue(record: InterviewInfo | Preferences): boolean {
+function hasAnyValue(record: object): boolean {
   return Object.values(record).some((value) => {
     if (value === null || value === undefined) return false;
     if (Array.isArray(value)) return value.length > 0;
@@ -515,18 +749,26 @@ function extractPhone(message: string): string | null {
 }
 
 function extractAge(message: string): string | null {
-  // 结构化表单优先：「年龄：22」可信度最高，即使同一消息含要求文本也应提取
-  const structuredAge = message.match(/(?:^|[\n\r])\s*年龄\s*[：:\s]\s*(\d{2})(?=\D|$)/u);
+  // 结构化表单优先：「年龄：22 / 年龄 22 / 年龄22」可信度最高，
+  // 即使同一消息含要求文本也应提取。避免把「年龄25-50岁」范围误当候选人年龄。
+  const structuredAge = message.match(
+    /(?:^|[\n\r])\s*年龄\s*[：:\s]?\s*(\d{2})(?!\s*[-~至到])(?=\D|$)/u,
+  );
   if (structuredAge) return structuredAge[1];
 
-  // 排除岗位要求/范围描述（仅对非结构化提取生效）
-  if (/(?:要求|需要|限|须).{0,6}\d{2}\s*岁/.test(message)) return null;
-  if (/\d{2}\s*[-~至到]\s*\d{2}\s*岁/.test(message)) return null;
+  // 排除岗位要求/范围描述（仅对非结构化提取生效），但保留同句中的候选人自述：
+  // 「岗位要求25-50岁，我24岁」应提取 24；「要求20-35岁」仍应返回 null。
+  const candidateText = message
+    .replace(
+      /(?:岗位)?(?:年龄)?(?:要求|需要|限|须)[^，。！？；;\n\r]*?\d{2}\s*(?:[-~至到]\s*\d{2})?\s*(?:周?岁|岁以上|岁以下|以上|以下)?/g,
+      '',
+    )
+    .replace(/\d{2}\s*[-~至到]\s*\d{2}\s*(?:周?岁|岁)?/g, '');
 
-  const directAge = message.match(/(\d{2})岁/);
+  const directAge = candidateText.match(/(\d{2})岁/);
   if (directAge) return directAge[1];
 
-  const currentAge = message.match(/今年(\d{2})/);
+  const currentAge = candidateText.match(/今年(\d{2})/);
   if (currentAge) return currentAge[1];
 
   return null;

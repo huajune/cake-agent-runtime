@@ -50,8 +50,7 @@ describe('renderCandidateCard', () => {
 
   it('includes brand + store + distance in head', () => {
     const card = renderCandidateCard(makeJob(), 0)!;
-    expect(card.oneLine).toContain('肯德基 服务员');
-    expect(card.oneLine).toContain('静安寺店'); // sanitize 去掉了 "上海" 前缀
+    expect(card.oneLine).toContain('肯德基（静安寺店）');
     expect(card.oneLine).toContain('2.3km');
   });
 
@@ -133,7 +132,7 @@ describe('renderCandidateCard', () => {
     const card = renderCandidateCard(job, 0)!;
     expect(card.oneLine).not.toContain('undefined');
     expect(card.oneLine).not.toContain('null');
-    expect(card.oneLine).toContain('麦当劳 服务员');
+    expect(card.oneLine).toContain('麦当劳（日月光店）');
   });
 
   it('numbers card index from 1 when index provided', () => {
@@ -160,7 +159,7 @@ describe('renderCandidateCardsBanner', () => {
   it('renders all jobs as quoted block with header', () => {
     const banner = renderCandidateCardsBanner([makeJob(), makeJob({ basicInfo: { jobId: 102, brandName: '麦当劳', jobName: '服务员', storeInfo: { storeName: '日月光店' } } })]);
     expect(banner).toContain('推荐对话用模板');
-    expect(banner).toContain('不得删除班次/薪资/地址/要求字段');
+    expect(banner).toContain('不得删除或合并');
     expect(banner).toMatch(/> .*1\..*肯德基/);
     expect(banner).toMatch(/> .*2\..*麦当劳/);
   });

@@ -2,20 +2,28 @@ import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseStore } from '../stores/supabase.store';
 import type {
   UserProfile,
-  UserProfileMeta,
-  ProfileFieldMeta,
+  UserProfileFieldKey,
+  UserProfileFacts,
+  ProfileFactConfidence,
+  ProfileFactSource,
   SummaryData,
   SummaryEntry,
   MessageMetadata,
 } from '../types/long-term.types';
-import { USER_PROFILE_FIELD_KEYS } from '../types/long-term.types';
-import type { EntityExtractionResult } from '../types/session-facts.types';
+import { userProfileFactValue, USER_PROFILE_FIELD_KEYS } from '../types/long-term.types';
+import {
+  type EntityExtractionResult,
+  type SessionFacts,
+  type SessionFactValue,
+  isSessionFactValue,
+  unwrapSessionFactValue,
+} from '../types/session-facts.types';
 
 /**
  * 长期记忆服务 — Profile + Summary
  *
  * 管理跨会话持久化的记忆（Supabase 永久，每用户一行）：
- * - Profile（用户身份信息）：平铺列，非 null 覆盖更新
+ * - Profile（用户身份信息）：profile_facts jsonb，字段自身携带置信度/来源/证据
  * - Summary（历次求职摘要）：jsonb，分层压缩（recent[] + archive）
  */
 @Injectable()
@@ -26,7 +34,7 @@ export class LongTermService {
 
   // ==================== Profile ====================
 
-  async getProfile(corpId: string, userId: string): Promise<UserProfile | null> {
+  async getProfile(corpId: string, userId: string): Promise<UserProfileFacts | null> {
     try {
       return await this.supabaseStore.getProfile(corpId, userId);
     } catch (error) {
@@ -51,11 +59,12 @@ export class LongTermService {
       }
       if (Object.keys(nonNull).length === 0) return;
 
-      const fieldMeta = this.buildProfileMeta(nonNull, {
+      const profileFacts = this.buildProfileFacts(nonNull, {
         source: 'enrichment',
         confidence: 'medium',
+        evidence: '外部补充字段写入长期档案',
       });
-      await this.supabaseStore.upsertProfileWithMeta(corpId, userId, nonNull, fieldMeta, metadata);
+      await this.supabaseStore.upsertProfileFacts(corpId, userId, profileFacts, metadata);
     } catch (error) {
       this.logger.warn('保存 Profile 失败', error);
     }
@@ -65,8 +74,8 @@ export class LongTermService {
    * 报名成功后写入 Profile — Path A（最高质量数据来源）
    *
    * 与 saveProfile 的区别：
-   * - 每个字段同时写入 ProfileFieldMeta（source='booking', confidence='high'）
-   * - 走 upsertProfileWithMeta 路径，元数据持久化到 profile_fields_meta 列
+   * - 每个字段写成 { value, confidence, source, evidence, updatedAt }
+   * - 走 upsertProfileFacts 路径，元数据内聚在 profile_facts 字段值里
    *
    * 这是 Hassabis 原则在实践中最重要的体现：报名数据是候选人自主提供并经
    * precheck 校验的，置信度最高，同时必须留下可审计的来源记录。
@@ -84,13 +93,6 @@ export class LongTermService {
     },
   ): Promise<void> {
     try {
-      const writtenAt = new Date().toISOString();
-      const bookingMeta: ProfileFieldMeta = {
-        source: 'booking',
-        confidence: 'high',
-        writtenAt,
-      };
-
       const profile: Partial<UserProfile> = {
         name: data.name,
         phone: data.phone,
@@ -98,14 +100,13 @@ export class LongTermService {
         gender: data.gender,
       };
 
-      const meta: UserProfileMeta = {
-        name: bookingMeta,
-        phone: bookingMeta,
-        age: bookingMeta,
-        gender: bookingMeta,
-      };
+      const profileFacts = this.buildProfileFacts(profile, {
+        source: 'booking',
+        confidence: 'high',
+        evidence: '报名成功后写入',
+      });
 
-      await this.supabaseStore.upsertProfileWithMeta(corpId, userId, profile, meta);
+      await this.supabaseStore.upsertProfileFacts(corpId, userId, profileFacts);
       this.logger.log(
         `[writeFromBooking] Profile 写入成功: corpId=${corpId}, userId=${userId}, name=${data.name}`,
       );
@@ -117,44 +118,23 @@ export class LongTermService {
   /**
    * 沉淀时写入 Profile — Path B（中等置信度兜底）
    *
-   * 当会话沉淀触发时，从 LLM 提取的 facts 中抽取身份字段写入 Profile。
-   * source='extraction', confidence='medium'，booking 写入可覆盖。
+   * 当会话沉淀触发时，从 sessionFacts 中抽取身份字段写入 Profile。
+   * 长期画像的 source='extraction' 表示“通过沉淀写入长期表”；
+   * evidence 会保留原 sessionFact 的 source/confidence/evidence，避免丢失一跳来源。
+   * confidence 固定为 medium，避免沉淀数据覆盖 booking/high。
    */
   async writeFromSettlement(
     corpId: string,
     userId: string,
-    facts: EntityExtractionResult,
+    facts: EntityExtractionResult | SessionFacts,
   ): Promise<void> {
     try {
-      const info = facts.interview_info;
-      const profile: Partial<UserProfile> = {};
+      const profileFacts = this.buildProfileFactsFromSettlement(facts);
+      if (Object.keys(profileFacts).length === 0) return;
 
-      if (info.name) profile.name = info.name;
-      if (info.phone) profile.phone = info.phone;
-      if (info.gender) profile.gender = info.gender;
-      if (info.age) profile.age = info.age;
-      if (info.is_student !== null && info.is_student !== undefined)
-        profile.is_student = info.is_student;
-      if (info.education) profile.education = info.education;
-      if (info.has_health_certificate) profile.has_health_certificate = info.has_health_certificate;
-
-      if (Object.keys(profile).length === 0) return;
-
-      const writtenAt = new Date().toISOString();
-      const extractionMeta: ProfileFieldMeta = {
-        source: 'extraction',
-        confidence: 'medium',
-        writtenAt,
-      };
-
-      const meta: UserProfileMeta = {};
-      for (const key of Object.keys(profile)) {
-        meta[key as keyof UserProfile] = extractionMeta;
-      }
-
-      await this.supabaseStore.upsertProfileWithMeta(corpId, userId, profile, meta);
+      await this.supabaseStore.upsertProfileFacts(corpId, userId, profileFacts);
       this.logger.log(
-        `[writeFromSettlement] Profile 写入: userId=${userId}, fields=${Object.keys(profile).join(',')}`,
+        `[writeFromSettlement] Profile 写入: userId=${userId}, fields=${Object.keys(profileFacts).join(',')}`,
       );
     } catch (error) {
       this.logger.warn('[writeFromSettlement] 写入 Profile 失败', error);
@@ -213,26 +193,78 @@ export class LongTermService {
    */
   async clearUserMemory(corpId: string, userId: string): Promise<boolean> {
     try {
-      return await this.supabaseStore.del(`profile:${corpId}:${userId}`);
+      return await this.supabaseStore.del(`long-term:${corpId}:${userId}`);
     } catch (error) {
       this.logger.warn('清理长期记忆失败', error);
       return false;
     }
   }
 
-  private buildProfileMeta(
+  private buildProfileFacts(
     profile: Partial<UserProfile>,
-    defaults: Pick<ProfileFieldMeta, 'source' | 'confidence'>,
-  ): UserProfileMeta {
-    const writtenAt = new Date().toISOString();
-    const meta: UserProfileMeta = {};
+    defaults: {
+      source: ProfileFactSource;
+      confidence: ProfileFactConfidence;
+      evidence: string;
+    },
+  ): Partial<UserProfileFacts> {
+    const updatedAt = new Date().toISOString();
+    const facts: Partial<UserProfileFacts> = {};
 
     for (const key of USER_PROFILE_FIELD_KEYS) {
-      if (profile[key] !== null && profile[key] !== undefined) {
-        meta[key] = { ...defaults, writtenAt };
+      const value = profile[key];
+      if (value !== null && value !== undefined) {
+        (facts as Record<string, unknown>)[key] = userProfileFactValue(value, {
+          ...defaults,
+          updatedAt,
+        });
       }
     }
 
-    return meta;
+    return facts;
+  }
+
+  private buildProfileFactsFromSettlement(
+    facts: EntityExtractionResult | SessionFacts,
+  ): Partial<UserProfileFacts> {
+    const updatedAt = new Date().toISOString();
+    const profileFacts: Partial<UserProfileFacts> = {};
+    const info = facts.interview_info as Record<UserProfileFieldKey, unknown>;
+
+    for (const key of USER_PROFILE_FIELD_KEYS) {
+      const rawValue = info[key];
+      const value = unwrapSessionFactValue(
+        rawValue as SessionFactValue<string | boolean> | string | boolean | null | undefined,
+      );
+      if (!this.hasProfileValue(value)) continue;
+
+      (profileFacts as Record<string, unknown>)[key] = userProfileFactValue(value, {
+        source: 'extraction',
+        confidence: 'medium',
+        evidence: this.buildSettlementEvidence(rawValue),
+        updatedAt,
+      });
+    }
+
+    return profileFacts;
+  }
+
+  private hasProfileValue(value: unknown): value is string | boolean {
+    if (value === null || value === undefined) return false;
+    if (typeof value === 'boolean') return true;
+    if (typeof value === 'string') return value.trim().length > 0;
+    return false;
+  }
+
+  private buildSettlementEvidence(rawValue: unknown): string {
+    const prefix = '会话沉淀提取';
+    if (!isSessionFactValue(rawValue)) return prefix;
+
+    const parts = [
+      `原字段来源=${rawValue.source}`,
+      `原字段置信度=${rawValue.confidence}`,
+      rawValue.evidence?.trim() ? `原证据=${rawValue.evidence.trim()}` : null,
+    ].filter(Boolean);
+    return `${prefix}；${parts.join('；')}`;
   }
 }

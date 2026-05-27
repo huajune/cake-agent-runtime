@@ -38,7 +38,7 @@
 | 3 | `wecom:message:last-message-at:{chatId}` | String | 5 min | wecom/message | 最近消息到达时间（静默窗口） |
 | 4 | `wecom:message:lock:{chatId}` | String | 5 min | wecom/message | 处理分布式锁（Lua 条件释放） |
 | 5 | `wecom:message:trace:{messageId}` | String | 24 h | wecom/message | 消息 trace 上下文（调试） |
-| 6 | `memory:short_term:chat:{chatId}` | List | 按 `MEMORY_SESSION_TTL_DAYS`（默认 1 天） | memory | 短期对话缓存 |
+| 6 | `memory:short_term:chat:{chatId}` | List | 按 `MEMORY_SESSION_TTL_DAYS`（默认 2 天） | memory | 短期对话缓存 |
 | 7 | `memory:short_term:message:{messageId}` | String | 同上 | memory | messageId → chatId 索引 |
 | 8 | `facts:{corpId}:{userId}:{sessionId}` | String (JSON) | 同上 | memory | 会话事实（Session Facts） |
 | 9 | `stage:{corpId}:{userId}:{sessionId}` | String (JSON) | 同上 | memory | 程序性记忆（当前阶段 FSM） |
@@ -169,11 +169,13 @@
 |------|----|
 | 数据结构 | List |
 | 存储内容 | JSON `{ chatId, messageId, role, content, timestamp }` |
-| TTL | `MEMORY_SESSION_TTL_DAYS * 86400`（默认 1 天） |
+| TTL | `MEMORY_SESSION_TTL_DAYS * 86400`（默认 2 天） |
 
 **操作**：`RPUSH`（追加）/ `LRANGE 0 -1`（读取）/ `LTRIM`（控制窗口）/ `EXPIRE` / `DEL`
 
 **加载流程**：命中缓存直接返回；miss 时回源 `chat_messages`，写回缓存（backfill）。
+
+注意：这个 TTL 只控制 Redis 短期缓存的存活时间；DB fallback 的回查范围由 `MEMORY_HISTORY_WINDOW_DAYS` 控制。
 
 ### 7. `memory:short_term:message:{messageId}` — 消息索引
 
@@ -199,7 +201,9 @@
 |------|----|
 | 数据结构 | String（JSON，Zod 校验） |
 | 存储内容 | `WeworkSessionState`（已展示岗位、当前焦点岗位、已入群记录、品牌别名命中、抽取出的结构化事实等） |
-| TTL | `MEMORY_SESSION_TTL_DAYS` 天 |
+| TTL | `MEMORY_SESSION_TTL_DAYS` 天（默认 2 天） |
+
+注意：`facts:*` 的 TTL 只控制 Redis 会话事实的存活时间；会话沉淀阈值由 `MEMORY_SETTLEMENT_GAP_DAYS` 控制。
 
 **操作**：`GET` / `SET EX`（支持 deepMerge） / `DEL`
 
@@ -409,7 +413,7 @@ bull:{env}:test-suite:{waiting|active|completed|failed|delayed|{jobId}}
 | 消息去重 | 5 min | Redis 自动过期 |
 | 消息聚合队列 / last-message-at / 处理锁 | 5 min（兜底） | Worker 主动裁剪 / Lua 释放 |
 | 消息 trace | 24 h | 自动过期 |
-| 短期记忆缓存 | `MEMORY_SESSION_TTL_DAYS`（默认 1 天） | 自动过期 |
+| 短期记忆缓存 | `MEMORY_SESSION_TTL_DAYS`（默认 2 天） | 自动过期 |
 | Session Facts / 程序性记忆 | 同上 | 自动过期 |
 | 托管共享缓存 | 无 | 观察者 / 定期同步 |
 | 监控实时计数 | 无 | 持续累计 |

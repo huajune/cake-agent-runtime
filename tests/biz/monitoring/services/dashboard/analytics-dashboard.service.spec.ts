@@ -115,6 +115,7 @@ describe('AnalyticsDashboardService', () => {
   const mockUserHostingService = {
     getUserHostingStatus: jest.fn(),
     getActiveUsersByDateRange: jest.fn(),
+    getDailyActivityStats: jest.fn(),
   };
 
   const mockCacheService = {
@@ -246,6 +247,7 @@ describe('AnalyticsDashboardService', () => {
     mockMessageProcessingService.getBusinessTrendRecordsByTimeRange.mockResolvedValue([]);
     mockMessageProcessingService.getActiveUsers.mockResolvedValue([]);
     mockUserHostingService.getActiveUsersByDateRange.mockResolvedValue([]);
+    mockUserHostingService.getDailyActivityStats.mockResolvedValue([]);
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     mockDailyStatsRepository.getLatestDailyStat.mockResolvedValue({ date: yesterday });
     mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([buildHourlyStatsRow()]);
@@ -951,6 +953,60 @@ describe('AnalyticsDashboardService', () => {
       expect(result.business.bookings.attempts).toBe(3);
       expect(result.business.bookings.successful).toBe(3);
       expect(result.business.bookings.successRate).toBe(100);
+    });
+
+    it('should build non-today business trend from user_activity and booking aggregates', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-05-27T11:00:00+08:00'));
+      mockDailyStatsRepository.getLatestDailyStat.mockResolvedValue({ date: '2026-05-26' });
+      mockMonitoringRecordRepository.getDashboardOverviewStats
+        .mockResolvedValueOnce({
+          ...defaultOverview,
+          activeUsers: 999,
+        })
+        .mockResolvedValueOnce(defaultOverview);
+      mockUserHostingService.getActiveUsersByDateRange
+        .mockResolvedValueOnce([{ chatId: 'chat-1' }, { chatId: 'chat-2' }])
+        .mockResolvedValueOnce([]);
+      mockUserHostingService.getDailyActivityStats.mockResolvedValue([
+        { date: '2026-05-21', userCount: 10, messageCount: 30, tokenUsage: 3000 },
+      ]);
+      mockBookingService.getBookingStats.mockImplementation(async ({ startDate }) =>
+        startDate === '2026-05-21'
+          ? [
+              {
+                date: '2026-05-21',
+                brandName: 'BrandA',
+                storeName: 'StoreA',
+                bookingCount: 2,
+                chatId: null,
+                userId: null,
+                userName: null,
+                managerId: null,
+                managerName: null,
+              },
+            ]
+          : [],
+      );
+
+      try {
+        const result = await service.getDashboardOverviewAsync('week');
+
+        expect(monitoringRepository.getDashboardBusinessTrend).not.toHaveBeenCalled();
+        expect(result.business.consultations.total).toBe(2);
+        expect(result.business.bookings.successful).toBe(2);
+        expect(result.businessTrend).toEqual([
+          {
+            minute: '2026-05-21',
+            consultations: 10,
+            bookingAttempts: 2,
+            successfulBookings: 2,
+            conversionRate: 20,
+            bookingSuccessRate: 100,
+          },
+        ]);
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('should throw on error without catching', async () => {

@@ -54,6 +54,9 @@ lerna-debug.log*
 
 # Agent test output
 scripts/agent-debug-response*.json
+.release/merged-pr-context*.json
+.release/merged-pr-numbers.txt
+.release/llm-release-entry*.json
 
 # VSCode History Extension
 .history/

@@ -167,7 +167,7 @@ export function renderWelfareFactsBanner(facts: WelfareFacts): string {
 
   const lines: string[] = [];
   lines.push(
-    '> 🎁 **福利字段速览**（reply 时只能引用"✅ 公司提供"和"💵 仅补贴"项目，"❌ 无"项目严禁包装成"有"）',
+    '> 🎁 **福利字段速览**（reply 时只能引用"✅ 公司提供"和"💵 仅补贴"项目，"❌ 无"项目不得包装成"有"）',
   );
   lines.push(`> - 员工餐：${KIND_LABEL[facts.meals]}`);
   lines.push(`> - 住宿：${KIND_LABEL[facts.accommodation]}`);
@@ -179,9 +179,6 @@ export function renderWelfareFactsBanner(facts: WelfareFacts): string {
   if (facts.otherWelfareItems.length > 0) {
     lines.push(`> - 其它福利：${facts.otherWelfareItems.join('、')}`);
   }
-  lines.push(
-    '> - **未列出的福利（班车/夜宵/带薪假/年终奖 等）一律视为工具未返回，禁止在 reply 里声称岗位有**',
-  );
   lines.push('');
   lines.push('');
   return lines.join('\n');
