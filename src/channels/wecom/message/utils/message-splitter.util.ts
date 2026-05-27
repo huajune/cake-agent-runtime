@@ -212,11 +212,16 @@ export class MessageSplitter {
 
   private static isDetailLine(line: string): boolean {
     const normalized = line.trim();
-    if (/^(?:班次|上班时间|薪资|要求|地址|门店|工作内容|年龄|距离|时间)[：:]/.test(normalized)) {
+    if (
+      /^(?:班次|上班时间|薪资|要求|地址|门店|工作内容|年龄|距离|时间|福利)[：:]/.test(normalized)
+    ) {
       return true;
     }
 
     return (
+      /^(?:距离|离你|离您)(?:约|大概|大约|是|为|在|\s)*\d+(?:\.\d+)?\s*(?:km|公里)/i.test(
+        normalized,
+      ) ||
       /^(?:早班|中班|晚班|夜班|白班|午班).*\d{1,2}[:：]\d{2}\s*(?:-|~|—|到|至)\s*\d{1,2}[:：]\d{2}/.test(
         normalized,
       ) ||
@@ -230,7 +235,8 @@ export class MessageSplitter {
       /^要求(?:是|为|\s).*(?:\d+\s*(?:-|~|—|到|至)\s*\d+\s*岁|健康证|经验|学历|社保)/.test(
         normalized,
       ) ||
-      /^地址(?:是|为|在|\s).+/.test(normalized)
+      /^地址(?:是|为|在|\s).+/.test(normalized) ||
+      /^福利(?:是|为|\s).+/.test(normalized)
     );
   }
 
