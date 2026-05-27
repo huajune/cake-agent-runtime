@@ -151,7 +151,7 @@ describe('renderSalaryFactsBanner', () => {
     expect(banner).toBe('');
   });
 
-  it('renders 速览 with present / absent split', () => {
+  it('only lists confirmed present items, no absent list', () => {
     const banner = renderSalaryFactsBanner(
       extractSalaryFacts({
         salaryScenarioList: [
@@ -165,9 +165,17 @@ describe('renderSalaryFactsBanner', () => {
     expect(banner).toContain('薪资字段速览');
     expect(banner).toContain('基础/综合薪资');
     expect(banner).toContain('全勤奖');
-    expect(banner).toContain('节假日薪资差异');
-    expect(banner).toContain('加班费');
-    expect(banner).toContain('不得在 reply 里声称');
+    expect(banner).not.toContain('没有');
+    expect(banner).not.toContain('不得在 reply 里声称');
+  });
+
+  it('always includes free-text precedence rule', () => {
+    const banner = renderSalaryFactsBanner(
+      extractSalaryFacts({
+        salaryScenarioList: [{ basicSalary: { basicSalary: 18 } }],
+      }),
+    );
+    expect(banner).not.toContain('没有');
   });
 
   it('emits negotiable warning when hasNegotiableHint=true', () => {

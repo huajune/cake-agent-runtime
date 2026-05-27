@@ -131,10 +131,28 @@ function buildRequirementPart(hr: HardRequirements, ageText: string | null): str
   return parts.join('，');
 }
 
+function flattenText(text: unknown): string {
+  if (typeof text !== 'string' || !text.trim()) return '';
+  return text
+    .split(/\r?\n/)
+    .map((l: string) => l.replace(/\t+/g, ' ').trim())
+    .filter(Boolean)
+    .join('；');
+}
+
+function collectRemarks(job: any): string {
+  const parts: string[] = [];
+  const memo = flattenText(job?.welfare?.memo);
+  if (memo) parts.push(`福利备注：${memo}`);
+  const wtRemark = flattenText(job?.workTime?.workTimeRemark);
+  if (wtRemark) parts.push(`班次备注：${wtRemark}`);
+  return parts.join('\n   ');
+}
+
 /**
  * 派生单个岗位的候选人推荐卡片。
  *
- * 输入：raw job（jobs 数组单元素），需包含 basicInfo / workTime / jobSalary / hiringRequirement。
+ * 输入：raw job（jobs 数组单元素），需包含 basicInfo / workTime / jobSalary / hiringRequirement / welfare。
  * 输出：oneLine + multiLine 两种 ready-to-send 模板字符串。
  */
 export function renderCandidateCard(job: any, index?: number): CandidateCard | null {
@@ -150,6 +168,7 @@ export function renderCandidateCard(job: any, index?: number): CandidateCard | n
   const shift = buildShiftPart(job?.workTime);
   const salary = buildSalaryPart(job);
   const stair = buildStairPart(job);
+  const remarks = collectRemarks(job);
   const requirement = buildRequirementPart(hr, policy.normalizedRequirements.ageRequirement);
 
   // 单行：紧凑、用 "｜" 分隔字段，省略空字段
@@ -160,6 +179,7 @@ export function renderCandidateCard(job: any, index?: number): CandidateCard | n
     shift && `班次：${shift}`,
     salary && `薪资：${salary}${stair ? '，' + stair : ''}`,
     requirement && `要求：${requirement}`,
+    remarks && `${remarks}`,
   ].filter(Boolean);
   const oneLine = oneParts.join(' ｜ ');
 
@@ -170,6 +190,7 @@ export function renderCandidateCard(job: any, index?: number): CandidateCard | n
   if (shift) multiLines.push(`   班次：${shift}`);
   if (salary) multiLines.push(`   薪资：${salary}${stair ? '，' + stair : ''}`);
   if (requirement) multiLines.push(`   要求：${requirement}`);
+  if (remarks) multiLines.push(`   ${remarks}`);
   const multiLine = multiLines.join('\n');
 
   return {
@@ -180,8 +201,8 @@ export function renderCandidateCard(job: any, index?: number): CandidateCard | n
 }
 
 /**
- * 渲染插在 markdown 顶部的"推荐用模板"banner——固定结构的卡片合集，
- * 让 LLM 推荐岗位时直接照念，不要自己重新拼装字段。
+ * 渲染插在 markdown 顶部的"推荐用模板"banner——固定结构的卡片合集 +
+ * 每个字段的取值口径规则，LLM 结合下方详情自行组织每个字段的内容。
  *
  * 返回空字符串表示 jobs 为空，调用方跳过插入。
  */
@@ -193,8 +214,9 @@ export function renderCandidateCardsBanner(jobs: any[]): string {
   if (cards.length === 0) return '';
 
   const lines: string[] = [];
+  lines.push('> 📣 **推荐时必须覆盖的字段：地址、班次、薪资、要求**');
   lines.push(
-    '> 📣 **推荐对话用模板**（向候选人介绍岗位时直接引用以下卡片，可微调连接词/语气，但**不得删除班次/薪资/地址/要求字段**）',
+    '> 以下方卡片为结构参考，每个字段的取值须结合该岗位下方详情中的所有信息（包括备注/remark）自行组织，不要照抄卡片里的原始值',
   );
   for (const card of cards) {
     for (const line of card.multiLine.split('\n')) {

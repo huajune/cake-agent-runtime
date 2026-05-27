@@ -377,8 +377,6 @@ function renderSalarySection(salary: any): string {
   if (probation) blocks.push(probation);
 
   if (blocks.length === 0) return '';
-  // 薪资速览 banner 放在 section 头部：先告诉 LLM 哪些字段有 / 哪些没有，
-  // 让它在 reply 时只引用"有"的部分，杜绝编造"节假日双倍/周末加薪"等不存在字段。
   const facts = extractSalaryFacts(salary);
   const factsBanner = renderSalaryFactsBanner(facts);
   return '### 薪资信息\n' + factsBanner + blocks.join('') + '\n';
@@ -930,8 +928,9 @@ export function formatJobsToMarkdown(
 
   let md = `# 在招岗位（共 ${total} 个）\n\n`;
 
-  // 推荐对话用模板（Phase 1.C）：每个岗位一张固定结构卡片（地址/班次/薪资/要求），
-  // 让 LLM 直接照念，杜绝"班次漏说每周天数、薪资偷懒、推荐缺地址"等 ④ 类 badcase。
+  md +=
+    '> ⚠️ **数据使用原则**：各 section 中的备注、remark 等自由文本字段可能包含结构化字段未覆盖或与之矛盾的补充信息，回复时须结合全部内容，**自由文本与结构化字段冲突时以自由文本为准**\n\n';
+
   md += renderCandidateCardsBanner(jobs);
 
   // 同品牌多门店强约束置顶（同品牌两家被压缩成"有肯德基、肯德基"）

@@ -91,7 +91,14 @@ describe('MemoryEnrichmentService', () => {
       imBotId: 'b',
       imContactId: 'c',
     });
-    expect(result.highConfidenceFacts?.interview_info.gender).toBe('男');
+    expect(result.highConfidenceFacts?.interview_info.gender).toEqual(
+      expect.objectContaining({
+        value: '男',
+        confidence: 'low',
+        source: 'system',
+        evidence: '客户详情接口补充性别：男',
+      }),
+    );
     expect(result.highConfidenceFacts?.reasoning).toContain('客户详情接口');
     expect(snapshot.highConfidenceFacts).toBeNull(); // 原快照不被污染
   });
@@ -114,7 +121,9 @@ describe('MemoryEnrichmentService', () => {
     });
 
     expect(result.highConfidenceFacts?.preferences.brands).toEqual(['来伊份']);
-    expect(result.highConfidenceFacts?.interview_info.gender).toBe('女');
+    expect(result.highConfidenceFacts?.interview_info.gender).toEqual(
+      expect.objectContaining({ value: '女' }),
+    );
     expect(result.highConfidenceFacts?.reasoning).toContain('品牌别名识别');
     expect(result.highConfidenceFacts?.reasoning).toContain('客户详情接口补充性别：女');
   });

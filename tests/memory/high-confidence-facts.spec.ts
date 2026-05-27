@@ -1,6 +1,7 @@
 import {
   extractHighConfidenceFacts,
   extractStructuredName,
+  unwrapHighConfidenceValue,
 } from '@memory/facts/high-confidence-facts';
 
 describe('extractHighConfidenceFacts', () => {
@@ -44,9 +45,9 @@ describe('extractHighConfidenceFacts', () => {
     expect(result?.preferences.labor_form).toBeNull();
     expect(result?.preferences.position).toEqual(['服务员']);
     expect(result?.preferences.schedule).toBe('周末');
-    expect(result?.interview_info.gender).toBe('男');
-    expect(result?.interview_info.age).toBe('25');
-    expect(result?.interview_info.has_health_certificate).toBe('有');
+    expect(unwrapHighConfidenceValue(result?.interview_info.gender)).toBe('男');
+    expect(unwrapHighConfidenceValue(result?.interview_info.age)).toBe('25');
+    expect(unwrapHighConfidenceValue(result?.interview_info.has_health_certificate)).toBe('有');
   });
 
   it('should keep first scalar values across multiple messages', () => {
@@ -58,11 +59,11 @@ describe('extractHighConfidenceFacts', () => {
       brandData,
     );
 
-    expect(result?.interview_info.phone).toBe('13800138000');
-    expect(result?.interview_info.age).toBe('25');
-    expect(result?.interview_info.gender).toBe('男');
-    expect(result?.interview_info.education).toBe('本科');
-    expect(result?.interview_info.has_health_certificate).toBe('有');
+    expect(unwrapHighConfidenceValue(result?.interview_info.phone)).toBe('13800138000');
+    expect(unwrapHighConfidenceValue(result?.interview_info.age)).toBe('25');
+    expect(unwrapHighConfidenceValue(result?.interview_info.gender)).toBe('男');
+    expect(unwrapHighConfidenceValue(result?.interview_info.education)).toBe('本科');
+    expect(unwrapHighConfidenceValue(result?.interview_info.has_health_certificate)).toBe('有');
     expect(result?.preferences.labor_form).toBe('小时工');
     expect(result?.preferences.salary).toBe('工资5000-6000');
     expect(result?.preferences.schedule).toBe('周末');
@@ -86,7 +87,39 @@ describe('extractHighConfidenceFacts', () => {
       brandData,
     );
 
-    expect(result?.interview_info.age).toBe('22');
+    expect(unwrapHighConfidenceValue(result?.interview_info.age)).toBe('22');
+  });
+
+  it('should extract structured age when the value is written without a separator', () => {
+    const result = extractHighConfidenceFacts(
+      ['姓名：张琰\n电话：19986247174\n年龄24\n明天吧\n有'],
+      brandData,
+    );
+
+    expect(result?.interview_info.name).toEqual(expect.objectContaining({ value: '张琰' }));
+    expect(result?.interview_info.phone).toEqual(expect.objectContaining({ value: '19986247174' }));
+    expect(result?.interview_info.age).toEqual(
+      expect.objectContaining({
+        value: '24',
+        confidence: 'high',
+        source: 'rule',
+        evidence: '年龄识别：24',
+        raw: '姓名：张琰\n电话：19986247174\n年龄24\n明天吧\n有',
+        extractor: 'extractAge',
+      }),
+    );
+  });
+
+  it('should not extract structured age from age range text without a separator', () => {
+    const result = extractHighConfidenceFacts(['年龄25-50岁'], brandData);
+
+    expect(result?.interview_info.age ?? null).toBeNull();
+  });
+
+  it('should extract candidate age when job requirement age appears in the same message', () => {
+    const result = extractHighConfidenceFacts(['岗位要求25-50岁，我24岁'], brandData);
+
+    expect(unwrapHighConfidenceValue(result?.interview_info.age)).toBe('24');
   });
 
   it('should not extract salary from generic numeric ranges', () => {
@@ -200,16 +233,22 @@ describe('extractHighConfidenceFacts', () => {
 
   it('should distinguish health certificate type from missing certificate wording', () => {
     expect(
-      extractHighConfidenceFacts(['我有食品类健康证'], brandData)?.interview_info
-        .has_health_certificate,
+      unwrapHighConfidenceValue(
+        extractHighConfidenceFacts(['我有食品类健康证'], brandData)?.interview_info
+          .has_health_certificate,
+      ),
     ).toBe('有');
     expect(
-      extractHighConfidenceFacts(['健康证不是本地的'], brandData)?.interview_info
-        .has_health_certificate,
+      unwrapHighConfidenceValue(
+        extractHighConfidenceFacts(['健康证不是本地的'], brandData)?.interview_info
+          .has_health_certificate,
+      ),
     ).toBe('非本地健康证');
     expect(
-      extractHighConfidenceFacts(['我没有食品健康证'], brandData)?.interview_info
-        .has_health_certificate,
+      unwrapHighConfidenceValue(
+        extractHighConfidenceFacts(['我没有食品健康证'], brandData)?.interview_info
+          .has_health_certificate,
+      ),
     ).toBe('无');
   });
 
@@ -218,19 +257,19 @@ describe('extractHighConfidenceFacts', () => {
       ['我去年毕业了但是今年考上研究生了能行吗'],
       brandData,
     );
-    expect(admitted?.interview_info.is_student).toBe(true);
-    expect(admitted?.interview_info.education).toBe('硕士待入学');
+    expect(unwrapHighConfidenceValue(admitted?.interview_info.is_student)).toBe(true);
+    expect(unwrapHighConfidenceValue(admitted?.interview_info.education)).toBe('硕士待入学');
 
     const undergrad = extractHighConfidenceFacts(['学历填本科在读有影响吗'], brandData);
-    expect(undergrad?.interview_info.is_student).toBe(true);
-    expect(undergrad?.interview_info.education).toBe('本科在读');
+    expect(unwrapHighConfidenceValue(undergrad?.interview_info.is_student)).toBe(true);
+    expect(unwrapHighConfidenceValue(undergrad?.interview_info.education)).toBe('本科在读');
   });
 
   it('should not downgrade "本科在读" to "本科"', () => {
     const result = extractHighConfidenceFacts(['我是大三本科在读'], brandData);
 
-    expect(result?.interview_info.education).toBe('本科在读');
-    expect(result?.interview_info.is_student).toBe(true);
+    expect(unwrapHighConfidenceValue(result?.interview_info.education)).toBe('本科在读');
+    expect(unwrapHighConfidenceValue(result?.interview_info.is_student)).toBe(true);
   });
 
   it.each([
@@ -247,7 +286,7 @@ describe('extractHighConfidenceFacts', () => {
     ['平时在家带娃'],
   ])('should mark non-student identity for message: %s', (message) => {
     const result = extractHighConfidenceFacts([message], brandData);
-    expect(result?.interview_info.is_student).toBe(false);
+    expect(unwrapHighConfidenceValue(result?.interview_info.is_student)).toBe(false);
   });
 
   it('should extract specific labor_form subtypes only (小时工 / 寒假工 / 暑假工 / 兼职+)', () => {
@@ -413,9 +452,9 @@ describe('extractHighConfidenceFacts', () => {
       ['姓名：赵堤\n联系电话：18800001111\n年龄：24'],
       brandData,
     );
-    expect(result?.interview_info.name).toBe('赵堤');
-    expect(result?.interview_info.phone).toBe('18800001111');
-    expect(result?.interview_info.age).toBe('24');
+    expect(unwrapHighConfidenceValue(result?.interview_info.name)).toBe('赵堤');
+    expect(unwrapHighConfidenceValue(result?.interview_info.phone)).toBe('18800001111');
+    expect(unwrapHighConfidenceValue(result?.interview_info.age)).toBe('24');
   });
 
   describe('extractStructuredName edge cases', () => {
@@ -431,8 +470,8 @@ describe('extractHighConfidenceFacts', () => {
       // 引用块被剥离后，候选人自己填的部分应该被提取
       const msg = '[引用 经理：请按模板填写]\n姓名：赵堤\n年龄：24';
       const result = extractHighConfidenceFacts([msg], brandData);
-      expect(result?.interview_info.name).toBe('赵堤');
-      expect(result?.interview_info.age).toBe('24');
+      expect(unwrapHighConfidenceValue(result?.interview_info.name)).toBe('赵堤');
+      expect(unwrapHighConfidenceValue(result?.interview_info.age)).toBe('24');
     });
 
     it('should take first name when multiple messages contain structured names', () => {
@@ -440,7 +479,7 @@ describe('extractHighConfidenceFacts', () => {
         ['姓名：张三\n年龄：25', '姓名：李四\n年龄：30'],
         brandData,
       );
-      expect(result?.interview_info.name).toBe('张三');
+      expect(unwrapHighConfidenceValue(result?.interview_info.name)).toBe('张三');
     });
 
     it('should extract name with space separator (姓名 XX)', () => {
@@ -466,7 +505,7 @@ describe('extractHighConfidenceFacts', () => {
       // 短期记忆注入的时间后缀不应干扰结构化提取
       const msg = '姓名：赵堤\n年龄：24\n[消息发送时间：2026-04-23 14:26 周四]';
       const result = extractHighConfidenceFacts([msg], brandData);
-      expect(result?.interview_info.name).toBe('赵堤');
+      expect(unwrapHighConfidenceValue(result?.interview_info.name)).toBe('赵堤');
     });
 
     it('should coexist with auto-greeting in multi-message extraction', () => {
@@ -476,7 +515,7 @@ describe('extractHighConfidenceFacts', () => {
         ['我是阳光明媚', '你好', '姓名：赵堤\n联系电话：18800001111'],
         brandData,
       );
-      expect(result?.interview_info.name).toBe('赵堤');
+      expect(unwrapHighConfidenceValue(result?.interview_info.name)).toBe('赵堤');
     });
   });
 
@@ -489,7 +528,7 @@ describe('extractHighConfidenceFacts', () => {
 
     it('should extract age=36 from candidate text, not 35 from quoted job requirement', () => {
       const result = extractHighConfidenceFacts(badcaseMessages, brandData);
-      expect(result?.interview_info.age).toBe('36');
+      expect(unwrapHighConfidenceValue(result?.interview_info.age)).toBe('36');
     });
 
     it('should NOT extract salary from quoted job descriptions', () => {

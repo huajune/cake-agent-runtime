@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { BOT_TO_RECEIVER } from '@infra/feishu/constants/receivers';
+import { FeishuAlertChannel } from '../channels/feishu-alert.channel';
 import { FeishuPrivateChatChannel } from '../channels/feishu-private-chat.channel';
 import { GeneralHandoffCardRenderer } from '../renderers/general-handoff-card.renderer';
 import { GeneralHandoffNotificationPayload } from '../types/general-handoff-notification.types';
@@ -28,6 +29,7 @@ export class GeneralHandoffNotifierService {
 
   constructor(
     private readonly privateChatChannel: FeishuPrivateChatChannel,
+    private readonly alertChannel: FeishuAlertChannel,
     private readonly cardRenderer: GeneralHandoffCardRenderer,
   ) {}
 
@@ -41,7 +43,8 @@ export class GeneralHandoffNotifierService {
       ...(isTest ? {} : receiver ? { atUsers: [receiver] } : { atAll: true }),
     });
 
-    const success = await this.privateChatChannel.send(card);
+    const targetChannel = isTest ? this.alertChannel : this.privateChatChannel;
+    const success = await targetChannel.send(card);
     const tag = isTest ? '[测试]' : '';
     if (success) {
       this.logger.warn(

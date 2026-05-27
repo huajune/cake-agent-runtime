@@ -485,6 +485,144 @@ describe('buildInterviewPrecheckTool', () => {
     );
   });
 
+  it('should use candidateAge input as the current turn source of truth', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: {
+            basicPersonalRequirements: {
+              minAge: 25,
+              maxAge: 50,
+              genderRequirement: '男性',
+            },
+            remark: '',
+          },
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-04-08',
+                  interviewStartTime: '13:30',
+                  interviewEndTime: '16:30',
+                },
+              ],
+            },
+            interviewSupplement: [],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      {
+        jobId: 100,
+        requestedDate: '2026-04-08',
+        candidateAge: 24,
+      },
+      {
+        sessionFacts: {
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            age: '30',
+            education: null,
+            has_health_certificate: null,
+          },
+          preferences: FALLBACK_EXTRACTION.preferences,
+          reasoning: 'stale context',
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.ageBoundary).toEqual(
+      expect.objectContaining({
+        candidateAge: 24,
+        requiredMin: 25,
+        requiredMax: 50,
+        side: 'under_min',
+        severity: 'boundary',
+      }),
+    );
+    expect(result.bookingChecklist.templateText).toContain('年龄：24');
+    expect(result.bookingChecklist.templateText).not.toContain('年龄：30');
+  });
+
+  it('should use high-confidence highConfidenceFacts age before stale session facts', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: {
+            basicPersonalRequirements: {
+              minAge: 25,
+              maxAge: 50,
+              genderRequirement: '男性',
+            },
+            remark: '',
+          },
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-04-08',
+                  interviewStartTime: '13:30',
+                  interviewEndTime: '16:30',
+                },
+              ],
+            },
+            interviewSupplement: [],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      {
+        jobId: 100,
+        requestedDate: '2026-04-08',
+      },
+      {
+        sessionFacts: {
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            age: '30',
+          },
+          preferences: FALLBACK_EXTRACTION.preferences,
+          reasoning: 'stale context',
+        },
+        highConfidenceFacts: {
+          ...FALLBACK_EXTRACTION,
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            age: {
+              value: '24',
+              confidence: 'high',
+              source: 'rule',
+              evidence: '年龄识别：24',
+              raw: '年龄24',
+              extractor: 'extractAge',
+            },
+          },
+          reasoning: '年龄识别：24',
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.ageBoundary).toEqual(
+      expect.objectContaining({
+        candidateAge: 24,
+        requiredMin: 25,
+        requiredMax: 50,
+        side: 'under_min',
+        severity: 'boundary',
+      }),
+    );
+    expect(result.bookingChecklist.templateText).toContain('年龄：24');
+    expect(result.bookingChecklist.templateText).not.toContain('年龄：30');
+  });
+
   it('should not prefill manager name as candidate name (badcase m5lpfwi0)', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
     mockSpongeService.fetchJobs.mockResolvedValue({

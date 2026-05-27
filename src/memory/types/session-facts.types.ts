@@ -237,6 +237,36 @@ export type EntityExtractionResult = z.infer<typeof EntityExtractionResultSchema
 export type InterviewInfo = z.infer<typeof InterviewInfoSchema>;
 export type Preferences = z.infer<typeof PreferencesSchema>;
 
+/** 高置信字段值：形态对齐 preferences.city，字段自身携带 value/confidence/evidence。 */
+export interface HighConfidenceValue<T> {
+  value: T;
+  confidence: 'high' | 'medium' | 'low';
+  source: 'rule' | 'system';
+  evidence: string;
+  raw?: string;
+  extractor?: string;
+}
+
+export type HighConfidenceMaybeValue<T> = HighConfidenceValue<T> | T | null;
+
+export interface HighConfidenceInterviewInfo {
+  name?: HighConfidenceMaybeValue<string>;
+  phone?: HighConfidenceMaybeValue<string>;
+  gender?: HighConfidenceMaybeValue<string>;
+  gender_source?: 'candidate' | 'system' | null;
+  age?: HighConfidenceMaybeValue<string>;
+  applied_store?: HighConfidenceMaybeValue<string>;
+  applied_position?: HighConfidenceMaybeValue<string>;
+  interview_time?: HighConfidenceMaybeValue<string>;
+  is_student?: HighConfidenceMaybeValue<boolean>;
+  education?: HighConfidenceMaybeValue<string>;
+  has_health_certificate?: HighConfidenceMaybeValue<string>;
+}
+
+export type HighConfidenceFacts = Omit<EntityExtractionResult, 'interview_info'> & {
+  interview_info: HighConfidenceInterviewInfo;
+};
+
 /** 实体提取失败时的降级结果。 */
 export const FALLBACK_EXTRACTION: EntityExtractionResult = {
   interview_info: {

@@ -14,7 +14,10 @@ import { StrategyConfigService as BizStrategyConfigService } from '@biz/strategy
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { GroupContext } from '@biz/group-task/group-task.types';
 import { normalizeCity } from '@biz/group-task/utils/city-normalize.util';
-import type { EntityExtractionResult } from '@memory/types/session-facts.types';
+import type {
+  EntityExtractionResult,
+  HighConfidenceFacts,
+} from '@memory/types/session-facts.types';
 import {
   StrategyConfigRecord,
   StageGoalConfig,
@@ -44,7 +47,7 @@ export interface ComposeParams {
   /** 会话记忆中的已确认提取结果；供 TurnHintsSection 做冲突比对。 */
   sessionFacts?: EntityExtractionResult | null;
   /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分/渲染。 */
-  highConfidenceFacts?: EntityExtractionResult | null;
+  highConfidenceFacts?: HighConfidenceFacts | null;
   /** 策略来源：wecom 读 released，test 读 testing，默认 released */
   strategySource?: 'released' | 'testing';
 }

@@ -26,6 +26,7 @@ import {
   detectBrandAliasHints,
   extractHighConfidenceFacts,
   mergeDetectedBrands,
+  unwrapHighConfidenceFacts,
 } from '../facts/high-confidence-facts';
 import { resolveCityFromGeoSignals } from '../facts/geo-mappings';
 import { sanitizeInterviewName } from '../facts/name-guard';
@@ -348,12 +349,13 @@ export class SessionService {
     const brandData = await this.sponge.fetchBrandList();
     const aliasHints = detectBrandAliasHints(userMessages, brandData);
     const ruleFacts = extractHighConfidenceFacts(userMessages, brandData);
+    const ruleFactValues = unwrapHighConfidenceFacts(ruleFacts);
     const prompt = buildSessionExtractionPrompt(
       brandData,
       currentMessage,
       messagesToProcess,
       aliasHints,
-      ruleFacts,
+      ruleFactValues,
     );
     const llmFacts = mergeDetectedBrands(await this.callLLM(prompt), aliasHints);
     // 先 sanitize LLM 输出，再 merge 规则 — 确保 LLM 昵称被 drop 后规则的结构化姓名能补位
@@ -363,7 +365,7 @@ export class SessionService {
         `[extractFacts] 丢弃来自"我是xx"打招呼语的昵称"${droppedName}"，不写入 interview_info.name`,
       );
     }
-    const newFacts = this.mergeHighConfidenceRuleFacts(sanitizedLlm, ruleFacts);
+    const newFacts = this.mergeHighConfidenceRuleFacts(sanitizedLlm, ruleFactValues);
 
     // sanitizer 命中且规则也没补上真名时，用 forceNullFields 显式覆盖
     // Redis 中可能已被早期漏网昵称污染的字段，避免 deepMerge "null 不覆盖" 留存旧值。

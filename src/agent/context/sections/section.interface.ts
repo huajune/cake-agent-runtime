@@ -1,4 +1,7 @@
-import type { EntityExtractionResult } from '@memory/types/session-facts.types';
+import type {
+  EntityExtractionResult,
+  HighConfidenceFacts,
+} from '@memory/types/session-facts.types';
 import { StrategyConfigRecord } from '@shared-types/strategy-config.types';
 
 /**
@@ -22,7 +25,7 @@ export interface PromptContext {
   /** 会话记忆中的已确认提取结果；供 TurnHintsSection 做冲突比对。 */
   sessionFacts?: EntityExtractionResult | null;
   /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分为普通/待确认线索后渲染。 */
-  highConfidenceFacts?: EntityExtractionResult | null;
+  highConfidenceFacts?: HighConfidenceFacts | null;
 }
 
 /**

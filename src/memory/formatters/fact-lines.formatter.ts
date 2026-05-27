@@ -1,31 +1,63 @@
 import { isValidLaborForm } from '../facts/labor-form';
-import type { EntityExtractionResult } from '../types/session-facts.types';
+import type {
+  EntityExtractionResult,
+  HighConfidenceFacts,
+  HighConfidenceValue,
+} from '../types/session-facts.types';
 
 /**
  * 把结构化提取结果渲染成统一字段列表。
  *
  * 供 session facts 渲染和 turn hints 渲染共用，避免重复维护字段顺序/文案。
  */
-export function formatExtractionFactLines(facts: EntityExtractionResult): string[] {
+export function formatExtractionFactLines(
+  facts: EntityExtractionResult | HighConfidenceFacts,
+): string[] {
   const { interview_info: info, preferences: pref } = facts;
   const lines: string[] = [];
 
-  if (info.name) lines.push(`- 姓名: ${info.name}`);
-  if (info.phone) lines.push(`- 联系方式: ${info.phone}`);
-  if (info.gender) {
+  const name = readFactValue(info.name);
+  if (name) lines.push(`- 姓名: ${name}${formatInlineFactMeta(info.name)}`);
+
+  const phone = readFactValue(info.phone);
+  if (phone) lines.push(`- 联系方式: ${phone}${formatInlineFactMeta(info.phone)}`);
+
+  const gender = readFactValue(info.gender);
+  if (gender) {
     const sourceTag =
       info.gender_source === 'candidate'
         ? '（候选人自陈）'
         : '（系统标签，未经候选人自陈，不得用于直接排除候选人）';
-    lines.push(`- 性别: ${info.gender}${sourceTag}`);
+    lines.push(`- 性别: ${gender}${sourceTag}${formatInlineFactMeta(info.gender)}`);
   }
-  if (info.age) lines.push(`- 年龄: ${info.age}`);
-  if (info.applied_store) lines.push(`- 应聘门店: ${info.applied_store}`);
-  if (info.applied_position) lines.push(`- 应聘岗位: ${info.applied_position}`);
-  if (info.interview_time) lines.push(`- 面试时间: ${info.interview_time}`);
-  if (info.is_student != null) lines.push(`- 是否学生: ${info.is_student ? '是' : '否'}`);
-  if (info.education) lines.push(`- 学历: ${info.education}`);
-  if (info.has_health_certificate) lines.push(`- 健康证: ${info.has_health_certificate}`);
+
+  const age = readFactValue(info.age);
+  if (age) lines.push(`- 年龄: ${age}${formatInlineFactMeta(info.age)}`);
+
+  const appliedStore = readFactValue(info.applied_store);
+  if (appliedStore)
+    lines.push(`- 应聘门店: ${appliedStore}${formatInlineFactMeta(info.applied_store)}`);
+
+  const appliedPosition = readFactValue(info.applied_position);
+  if (appliedPosition)
+    lines.push(`- 应聘岗位: ${appliedPosition}${formatInlineFactMeta(info.applied_position)}`);
+
+  const interviewTime = readFactValue(info.interview_time);
+  if (interviewTime)
+    lines.push(`- 面试时间: ${interviewTime}${formatInlineFactMeta(info.interview_time)}`);
+
+  const isStudent = readFactValue(info.is_student);
+  if (isStudent != null)
+    lines.push(`- 是否学生: ${isStudent ? '是' : '否'}${formatInlineFactMeta(info.is_student)}`);
+
+  const education = readFactValue(info.education);
+  if (education) lines.push(`- 学历: ${education}${formatInlineFactMeta(info.education)}`);
+
+  const healthCertificate = readFactValue(info.has_health_certificate);
+  if (healthCertificate)
+    lines.push(
+      `- 健康证: ${healthCertificate}${formatInlineFactMeta(info.has_health_certificate)}`,
+    );
 
   // 历史数据里可能存在 labor_form="兼职"/"全职"，读取时过滤掉（平台全为兼职，这类值无筛选价值）。
   if (pref.labor_form && isValidLaborForm(pref.labor_form)) {
@@ -44,4 +76,26 @@ export function formatExtractionFactLines(facts: EntityExtractionResult): string
   if (pref.location?.length) lines.push(`- 意向地点: ${pref.location.join('、')}`);
 
   return lines;
+}
+
+function readFactValue<T>(value: HighConfidenceValue<T> | T | null | undefined): T | null {
+  if (value === null || value === undefined) return null;
+  return isInlineHighConfidenceValue(value) ? value.value : value;
+}
+
+function formatInlineFactMeta(value: unknown): string {
+  if (!isInlineHighConfidenceValue(value)) return '';
+  const parts = [`置信度: ${value.confidence}`, `来源: ${value.source}`, `证据: ${value.evidence}`];
+  if (value.extractor) parts.push(`规则: ${value.extractor}`);
+  return `（${parts.join('，')}）`;
+}
+
+function isInlineHighConfidenceValue(value: unknown): value is HighConfidenceValue<unknown> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'value' in value &&
+    'confidence' in value &&
+    'evidence' in value
+  );
 }

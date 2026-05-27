@@ -1,7 +1,9 @@
 import { formatExtractionFactLines } from '@memory/formatters/fact-lines.formatter';
+import { unwrapHighConfidenceFacts } from '@memory/facts/high-confidence-facts';
 import type {
   CityFact,
   EntityExtractionResult,
+  HighConfidenceFacts,
   InterviewInfo,
   Preferences,
 } from '@memory/types/session-facts.types';
@@ -34,7 +36,7 @@ export class TurnHintsSection implements PromptSection {
   }
 
   /** 把本轮前置高置信识别渲染成单独的 runtime hints。 */
-  private renderHighConfidence(facts: EntityExtractionResult): string {
+  private renderHighConfidence(facts: EntityExtractionResult | HighConfidenceFacts): string {
     const lines = formatExtractionFactLines(facts);
     if (lines.length === 0) return '';
 
@@ -52,7 +54,7 @@ export class TurnHintsSection implements PromptSection {
   }
 
   /** 把与会话记忆冲突的当前轮识别结果渲染成待确认线索。 */
-  private renderPendingConfirmation(facts: EntityExtractionResult): string {
+  private renderPendingConfirmation(facts: EntityExtractionResult | HighConfidenceFacts): string {
     const lines = formatExtractionFactLines(facts);
     if (lines.length === 0) return '';
 
@@ -71,10 +73,10 @@ export class TurnHintsSection implements PromptSection {
   /** 把当前轮高置信识别拆成"普通线索"和"待确认线索"。 */
   private partition(
     sessionFacts: EntityExtractionResult | null,
-    highConfidenceFacts: EntityExtractionResult | null,
+    highConfidenceFacts: HighConfidenceFacts | null,
   ): {
-    normalHints: EntityExtractionResult | null;
-    pendingHints: EntityExtractionResult | null;
+    normalHints: EntityExtractionResult | HighConfidenceFacts | null;
+    pendingHints: EntityExtractionResult | HighConfidenceFacts | null;
   } {
     if (!highConfidenceFacts) {
       return { normalHints: null, pendingHints: null };
@@ -84,12 +86,17 @@ export class TurnHintsSection implements PromptSection {
       return { normalHints: highConfidenceFacts, pendingHints: null };
     }
 
+    const highConfidenceValues = unwrapHighConfidenceFacts(highConfidenceFacts);
+    if (!highConfidenceValues) {
+      return { normalHints: null, pendingHints: null };
+    }
+
     const normalHints = this.createEmptyExtractionResult();
     const pendingHints = this.createEmptyExtractionResult();
 
     this.partitionScalarField(
       sessionFacts.interview_info.name,
-      highConfidenceFacts.interview_info.name,
+      highConfidenceValues.interview_info.name,
       (value) => {
         normalHints.interview_info.name = value;
       },
@@ -99,7 +106,7 @@ export class TurnHintsSection implements PromptSection {
     );
     this.partitionScalarField(
       sessionFacts.interview_info.phone,
-      highConfidenceFacts.interview_info.phone,
+      highConfidenceValues.interview_info.phone,
       (value) => {
         normalHints.interview_info.phone = value;
       },
@@ -109,7 +116,7 @@ export class TurnHintsSection implements PromptSection {
     );
     this.partitionScalarField(
       sessionFacts.interview_info.gender,
-      highConfidenceFacts.interview_info.gender,
+      highConfidenceValues.interview_info.gender,
       (value) => {
         normalHints.interview_info.gender = value;
       },
@@ -119,7 +126,7 @@ export class TurnHintsSection implements PromptSection {
     );
     this.partitionScalarField(
       sessionFacts.interview_info.age,
-      highConfidenceFacts.interview_info.age,
+      highConfidenceValues.interview_info.age,
       (value) => {
         normalHints.interview_info.age = value;
       },
@@ -129,7 +136,7 @@ export class TurnHintsSection implements PromptSection {
     );
     this.partitionScalarField(
       sessionFacts.interview_info.applied_store,
-      highConfidenceFacts.interview_info.applied_store,
+      highConfidenceValues.interview_info.applied_store,
       (value) => {
         normalHints.interview_info.applied_store = value;
       },
@@ -139,7 +146,7 @@ export class TurnHintsSection implements PromptSection {
     );
     this.partitionScalarField(
       sessionFacts.interview_info.applied_position,
-      highConfidenceFacts.interview_info.applied_position,
+      highConfidenceValues.interview_info.applied_position,
       (value) => {
         normalHints.interview_info.applied_position = value;
       },
@@ -149,7 +156,7 @@ export class TurnHintsSection implements PromptSection {
     );
     this.partitionScalarField(
       sessionFacts.interview_info.interview_time,
-      highConfidenceFacts.interview_info.interview_time,
+      highConfidenceValues.interview_info.interview_time,
       (value) => {
         normalHints.interview_info.interview_time = value;
       },
@@ -159,7 +166,7 @@ export class TurnHintsSection implements PromptSection {
     );
     this.partitionScalarField(
       sessionFacts.interview_info.is_student,
-      highConfidenceFacts.interview_info.is_student,
+      highConfidenceValues.interview_info.is_student,
       (value) => {
         normalHints.interview_info.is_student = value;
       },
@@ -169,7 +176,7 @@ export class TurnHintsSection implements PromptSection {
     );
     this.partitionScalarField(
       sessionFacts.interview_info.education,
-      highConfidenceFacts.interview_info.education,
+      highConfidenceValues.interview_info.education,
       (value) => {
         normalHints.interview_info.education = value;
       },
@@ -179,7 +186,7 @@ export class TurnHintsSection implements PromptSection {
     );
     this.partitionScalarField(
       sessionFacts.interview_info.has_health_certificate,
-      highConfidenceFacts.interview_info.has_health_certificate,
+      highConfidenceValues.interview_info.has_health_certificate,
       (value) => {
         normalHints.interview_info.has_health_certificate = value;
       },
@@ -190,7 +197,7 @@ export class TurnHintsSection implements PromptSection {
 
     this.partitionArrayField(
       sessionFacts.preferences.brands,
-      highConfidenceFacts.preferences.brands,
+      highConfidenceValues.preferences.brands,
       (value) => {
         normalHints.preferences.brands = value;
       },
@@ -200,7 +207,7 @@ export class TurnHintsSection implements PromptSection {
     );
     this.partitionScalarField(
       sessionFacts.preferences.salary,
-      highConfidenceFacts.preferences.salary,
+      highConfidenceValues.preferences.salary,
       (value) => {
         normalHints.preferences.salary = value;
       },
@@ -210,7 +217,7 @@ export class TurnHintsSection implements PromptSection {
     );
     this.partitionArrayField(
       sessionFacts.preferences.position,
-      highConfidenceFacts.preferences.position,
+      highConfidenceValues.preferences.position,
       (value) => {
         normalHints.preferences.position = value;
       },
@@ -220,7 +227,7 @@ export class TurnHintsSection implements PromptSection {
     );
     this.partitionScalarField(
       sessionFacts.preferences.schedule,
-      highConfidenceFacts.preferences.schedule,
+      highConfidenceValues.preferences.schedule,
       (value) => {
         normalHints.preferences.schedule = value;
       },
@@ -231,7 +238,7 @@ export class TurnHintsSection implements PromptSection {
     // city 是 CityFact 对象，比较 value 字段判断是否冲突。
     this.partitionCityField(
       sessionFacts.preferences.city,
-      highConfidenceFacts.preferences.city,
+      highConfidenceValues.preferences.city,
       (value) => {
         normalHints.preferences.city = value;
       },
@@ -241,7 +248,7 @@ export class TurnHintsSection implements PromptSection {
     );
     this.partitionArrayField(
       sessionFacts.preferences.district,
-      highConfidenceFacts.preferences.district,
+      highConfidenceValues.preferences.district,
       (value) => {
         normalHints.preferences.district = value;
       },
@@ -251,7 +258,7 @@ export class TurnHintsSection implements PromptSection {
     );
     this.partitionArrayField(
       sessionFacts.preferences.location,
-      highConfidenceFacts.preferences.location,
+      highConfidenceValues.preferences.location,
       (value) => {
         normalHints.preferences.location = value;
       },
@@ -261,7 +268,7 @@ export class TurnHintsSection implements PromptSection {
     );
     this.partitionScalarField(
       sessionFacts.preferences.labor_form,
-      highConfidenceFacts.preferences.labor_form,
+      highConfidenceValues.preferences.labor_form,
       (value) => {
         normalHints.preferences.labor_form = value;
       },

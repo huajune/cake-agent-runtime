@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CandidateProfileEnrichmentService } from '@biz/user/services/candidate-profile-enrichment.service';
-import { mergeSupplementalGenderFact, normalizeGenderValue } from '../facts/high-confidence-facts';
+import {
+  mergeSupplementalGenderFact,
+  normalizeGenderValue,
+  unwrapHighConfidenceValue,
+} from '../facts/high-confidence-facts';
 import type { AgentMemoryContext } from '../types/memory-runtime.types';
 
 /**
@@ -70,7 +74,9 @@ export class MemoryEnrichmentService {
     return (
       normalizeGenderValue(snapshot.longTerm.profile?.gender) ??
       normalizeGenderValue(snapshot.sessionMemory?.facts?.interview_info.gender) ??
-      normalizeGenderValue(snapshot.highConfidenceFacts?.interview_info.gender)
+      normalizeGenderValue(
+        unwrapHighConfidenceValue(snapshot.highConfidenceFacts?.interview_info.gender),
+      )
     );
   }
 }

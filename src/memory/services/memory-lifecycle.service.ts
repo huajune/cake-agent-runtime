@@ -12,10 +12,7 @@ import { ShortTermService } from './short-term.service';
 import { extractHighConfidenceFacts } from '../facts/high-confidence-facts';
 import type { AgentMemoryContext } from '../types/memory-runtime.types';
 import type { ShortTermMessage } from '../types/short-term.types';
-import {
-  type EntityExtractionResult,
-  type RecommendedJobSummary,
-} from '../types/session-facts.types';
+import { type HighConfidenceFacts, type RecommendedJobSummary } from '../types/session-facts.types';
 
 export interface MemoryLifecycleTurnContext {
   corpId: string;
@@ -298,7 +295,7 @@ export class MemoryLifecycleService {
 
   private async detectHighConfidenceFacts(
     currentUserMessage?: string,
-  ): Promise<EntityExtractionResult | null> {
+  ): Promise<HighConfidenceFacts | null> {
     const trimmed = currentUserMessage?.trim();
     if (!trimmed) return null;
 

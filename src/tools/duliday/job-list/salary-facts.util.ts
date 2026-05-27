@@ -142,26 +142,20 @@ export function extractSalaryFacts(jobSalary: unknown): SalaryFacts {
  */
 export function renderSalaryFactsBanner(facts: SalaryFacts): string {
   const present: string[] = [];
-  const absent: string[] = [];
 
-  const push = (label: string, has: boolean) => (has ? present : absent).push(label);
-  push('基础/综合薪资', facts.hasBaseSalary || facts.hasComprehensiveSalary);
-  push('阶梯薪资', facts.hasStairSalary);
-  push('节假日薪资差异', facts.hasHolidayBonus);
-  push('加班费', facts.hasOvertimeBonus);
-  push('提成/绩效', facts.hasCommission || facts.hasPerformance);
-  push('全勤奖', facts.hasAttendanceBonus);
-  push('试工/试用期薪资', facts.hasProbationSalary);
+  if (facts.hasBaseSalary || facts.hasComprehensiveSalary) present.push('基础/综合薪资');
+  if (facts.hasStairSalary) present.push('阶梯薪资');
+  if (facts.hasHolidayBonus) present.push('节假日薪资差异');
+  if (facts.hasOvertimeBonus) present.push('加班费');
+  if (facts.hasCommission || facts.hasPerformance) present.push('提成/绩效');
+  if (facts.hasAttendanceBonus) present.push('全勤奖');
+  if (facts.hasProbationSalary) present.push('试工/试用期薪资');
 
-  // 全 false：jobSalary 块整个为空。让上层不渲染 banner（也不渲染 section）。
   if (present.length === 0) return '';
 
   const lines: string[] = [];
-  lines.push('> 💰 **薪资字段速览**（reply 时只能引用"有"的部分，不得编造"没有"的部分）');
-  lines.push(`> - 有：${present.join('、')}`);
-  if (absent.length > 0) {
-    lines.push(`> - 没有：${absent.join('、')}（不得在 reply 里声称岗位有这些）`);
-  }
+  lines.push('> 💰 **薪资字段速览**（仅列出结构化字段已确认的薪资项）');
+  lines.push(`> - 结构化字段确认：${present.join('、')}`);
   if (facts.hasNegotiableHint) {
     lines.push(
       '> - ⚠️ 薪资文本含"面议/电议/详谈"——具体数字以面试时招募经理告知为准，不要在群里复述确定数额',

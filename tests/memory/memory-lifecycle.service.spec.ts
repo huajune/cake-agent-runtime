@@ -192,8 +192,48 @@ describe('MemoryLifecycleService', () => {
       evidence: 'municipality_compact',
     });
     expect(ctx.highConfidenceFacts?.preferences.district).toEqual(['杨浦']);
-    expect(ctx.highConfidenceFacts?.interview_info.gender).toBe('男');
-    expect(ctx.highConfidenceFacts?.interview_info.age).toBe('25');
+    expect(ctx.highConfidenceFacts?.interview_info.gender).toEqual(
+      expect.objectContaining({ value: '男' }),
+    );
+    expect(ctx.highConfidenceFacts?.interview_info.age).toEqual(
+      expect.objectContaining({
+        value: '25',
+        confidence: 'high',
+        source: 'rule',
+        evidence: '年龄识别：25',
+      }),
+    );
+  });
+
+  it('should normalize compact structured age into standard high-confidence facts', async () => {
+    mockShortTerm.getMessages.mockResolvedValue([
+      { role: 'user', content: '姓名：张琰\n电话：19986247174\n年龄24\n明天吧\n有' },
+    ]);
+    mockProcedural.get.mockResolvedValue({
+      currentStage: 'interview_scheduling',
+      fromStage: 'trust_building',
+      advancedAt: null,
+      reason: null,
+    });
+    mockLongTerm.getProfile.mockResolvedValue(null);
+
+    const ctx = await service.onTurnStart(
+      'corp-1',
+      'user-1',
+      'sess-1',
+      '姓名：张琰\n电话：19986247174\n年龄24\n明天吧\n有',
+    );
+
+    expect(ctx.highConfidenceFacts?.interview_info).toEqual(
+      expect.objectContaining({
+        name: expect.objectContaining({ value: '张琰' }),
+        phone: expect.objectContaining({ value: '19986247174' }),
+        age: expect.objectContaining({ value: '24' }),
+      }),
+    );
+    expect(ctx.highConfidenceFacts?.interview_info.age).toEqual(
+      expect.objectContaining({ extractor: 'extractAge' }),
+    );
   });
 
   it('should fallback to current user message when short-term window is empty', async () => {

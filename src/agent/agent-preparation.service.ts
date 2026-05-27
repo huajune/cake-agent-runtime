@@ -9,11 +9,13 @@ import { RecruitmentStageResolverService } from '@biz/recruitment-case/services/
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { formatExtractionFactLines } from '@memory/formatters/fact-lines.formatter';
 import { sanitizeJobDisplayText, sanitizeLaborFormForDisplay } from '@memory/facts/labor-form';
+import { unwrapHighConfidenceFacts } from '@memory/facts/high-confidence-facts';
 import { MemoryService, type CandidateIdentityHint } from '@memory/memory.service';
 import { MemoryConfig } from '@memory/memory.config';
 import type { UserProfile } from '@memory/types/long-term.types';
 import {
   type EntityExtractionResult,
+  type HighConfidenceFacts,
   type RecommendedJobSummary,
   type WeworkSessionState,
 } from '@memory/types/session-facts.types';
@@ -378,6 +380,7 @@ export class AgentPreparationService {
       strategySource: params.strategySource,
       profile: memory.longTerm.profile,
       sessionFacts,
+      highConfidenceFacts: memory.highConfidenceFacts,
       currentFocusJob: memory.sessionMemory?.currentFocusJob ?? null,
       recentBrandPool,
       token: params.token,
@@ -395,16 +398,17 @@ export class AgentPreparationService {
    */
   private mergeSessionFactsWithHighConfidence(
     sessionFacts: EntityExtractionResult | null,
-    highConfidence: EntityExtractionResult | null,
+    highConfidence: HighConfidenceFacts | null,
   ): EntityExtractionResult | null {
-    if (!highConfidence) return sessionFacts;
-    if (!sessionFacts) return highConfidence;
+    const highConfidenceValues = unwrapHighConfidenceFacts(highConfidence);
+    if (!highConfidenceValues) return sessionFacts;
+    if (!sessionFacts) return highConfidenceValues;
 
     const merged = { ...sessionFacts };
 
     // interview_info: 非 null 的高置信值覆盖旧值
     const baseInfo = { ...sessionFacts.interview_info };
-    const hcInfo = highConfidence.interview_info;
+    const hcInfo = highConfidenceValues.interview_info;
     for (const key of Object.keys(hcInfo) as Array<keyof typeof hcInfo>) {
       if (hcInfo[key] != null) {
         (baseInfo as Record<string, unknown>)[key] = hcInfo[key];
@@ -414,7 +418,7 @@ export class AgentPreparationService {
 
     // preferences: 非 null 的高置信值覆盖旧值
     const basePref = { ...sessionFacts.preferences };
-    const hcPref = highConfidence.preferences;
+    const hcPref = highConfidenceValues.preferences;
     for (const key of Object.keys(hcPref) as Array<keyof typeof hcPref>) {
       if (hcPref[key] != null) {
         (basePref as Record<string, unknown>)[key] = hcPref[key];

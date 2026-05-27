@@ -10,7 +10,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync, execSync } = require('child_process');
 const { formatReleaseText, isEmptyReleaseLine } = require('./release-note-formatters');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
@@ -40,6 +40,16 @@ const ENV_RELATED_FILE_PATTERNS = [
   /^\.env(?:\.[^/]+)?(?:\.(?:example|sample|template))?$/,
   /^\.env\.(?:example|sample|template)$/,
   /^src\/infra\/config\/env\.validation\.ts$/,
+];
+const RELEASE_ENTRY_SECTION_KEYS = [
+  'businessUpdates',
+  'summary',
+  'features',
+  'fixes',
+  'optimizations',
+  'ops',
+  'config',
+  'verification',
 ];
 
 // 标题别名按类别归一化。
@@ -191,14 +201,21 @@ function runFinalize({ packageJson, pendingState, historicalSections }) {
 
   const version = packageJson.version || pendingState.nextVersion;
   const releaseDate = formatShanghaiDate();
+  const releasedEntries = pendingState.entries;
   const releaseSection = renderReleaseSection({
     version,
     date: releaseDate,
-    entries: pendingState.entries,
+    entries: releasedEntries,
   });
 
   historicalSections = upsertReleaseSection(historicalSections, releaseSection, version);
   pendingState = createEmptyPendingState(version);
+  pendingState.lastRelease = {
+    version,
+    date: releaseDate,
+    sourceBranch: 'develop',
+    entries: releasedEntries,
+  };
 
   packageJson.version = version;
   writeJson(CONFIG.packageJsonPath, packageJson);
@@ -231,10 +248,11 @@ function syncReleasedStateIfNeeded({ pendingState, latestRelease, historicalSect
 
   // develop 分支在 master 已发布后，下次运行时自动把旧的待发布内容转成历史版本记录。
   if (pendingState.nextVersion === latestRelease.version) {
+    const releasedEntries = pendingState.entries;
     const releaseSection = renderReleaseSection({
       version: latestRelease.version,
       date: latestRelease.date,
-      entries: pendingState.entries,
+      entries: releasedEntries,
     });
     historicalSections = upsertReleaseSection(
       historicalSections,
@@ -242,6 +260,12 @@ function syncReleasedStateIfNeeded({ pendingState, latestRelease, historicalSect
       latestRelease.version,
     );
     pendingState = createEmptyPendingState(latestRelease.version);
+    pendingState.lastRelease = {
+      version: latestRelease.version,
+      date: latestRelease.date,
+      sourceBranch: 'develop',
+      entries: releasedEntries,
+    };
   }
 
   return { pendingState, historicalSections };
@@ -365,6 +389,7 @@ function createEmptyPendingState(baseVersion) {
     updatedAt: formatShanghaiDate(),
     sourceBranch: 'develop',
     entries: [],
+    lastRelease: null,
   };
 }
 
@@ -381,6 +406,7 @@ function loadPendingState(baseVersion, currentVersion) {
       updatedAt: parsed.updatedAt || formatShanghaiDate(),
       sourceBranch: parsed.sourceBranch || 'develop',
       entries: Array.isArray(parsed.entries) ? parsed.entries : [],
+      lastRelease: parsed.lastRelease || null,
     };
   } catch (error) {
     return createEmptyPendingState(baseVersion);
@@ -392,13 +418,27 @@ function savePendingState(state) {
 }
 
 function parsePullRequestEntry() {
-  const rawTitle = (process.env.MERGED_PR_TITLE || '').trim();
-  const rawBody = (process.env.MERGED_PR_BODY || '').trim();
-  const rawNumber = (process.env.MERGED_PR_NUMBER || '').trim();
-  const rawUrl = (process.env.MERGED_PR_URL || '').trim();
-  const rawAuthor = (process.env.MERGED_PR_AUTHOR || '').trim();
-  const rawMergedAt = (process.env.MERGED_PR_MERGED_AT || '').trim();
-  const envFiles = detectEnvRelatedFiles(parseMergedPrFiles(process.env.MERGED_PR_FILES || ''));
+  const context = readMergedPrContext();
+  const rawTitle = (context?.pullRequest?.title || process.env.MERGED_PR_TITLE || '').trim();
+  const rawBody = (context?.body || process.env.MERGED_PR_BODY || '').trim();
+  const rawNumber = String(
+    context?.pullRequest?.number || process.env.MERGED_PR_NUMBER || '',
+  ).trim();
+  const rawUrl = (context?.pullRequest?.url || process.env.MERGED_PR_URL || '').trim();
+  const rawAuthor = (context?.pullRequest?.author || process.env.MERGED_PR_AUTHOR || '').trim();
+  const rawMergedAt = (
+    context?.pullRequest?.mergedAt ||
+    process.env.MERGED_PR_MERGED_AT ||
+    ''
+  ).trim();
+  const files = Array.isArray(context?.files)
+    ? context.files
+    : parseMergedPrFiles(process.env.MERGED_PR_FILES || '');
+  const envFiles = detectEnvRelatedFiles(files);
+  const commitRecords = Array.isArray(context?.commits)
+    ? context.commits
+    : parseMergedPrCommitRecords(process.env.MERGED_PR_COMMITS || '');
+  const commitBullets = extractCommitBullets(commitRecords);
 
   if (!rawTitle && !rawBody && !rawNumber) {
     return null;
@@ -412,8 +452,49 @@ function parsePullRequestEntry() {
   // 同时按关键词分发到具体类别，避免摘要里的 feat/fix/chore 信号丢失。
   const summaryBullets = uniqueList(sections.summary);
   sections.summary = [];
+
+  const llmSections = tryBuildLlmReleaseSections({
+    pullRequest: {
+      number: rawNumber,
+      title: rawTitle || title,
+      url: rawUrl,
+      author: rawAuthor,
+      mergedAt: rawMergedAt,
+    },
+    body: rawBody,
+    files,
+    commits: commitRecords,
+    parsedSections: {
+      summary: summaryBullets,
+      features: sections.features,
+      fixes: sections.fixes,
+      optimizations: sections.optimizations,
+      ops: sections.ops,
+      config: sections.config,
+      verification: sections.verification,
+    },
+  });
+
+  if (llmSections) {
+    return buildPullRequestEntry({
+      rawNumber,
+      rawUrl,
+      title,
+      rawAuthor,
+      rawMergedAt,
+      envFiles,
+      sections: llmSections,
+      fallbackSummary: uniqueList([...commitBullets, ...summaryBullets, title]),
+    });
+  }
+
   for (const bullet of summaryBullets) {
     const key = categorizeBullet(bullet, fallbackKey);
+    sections[key].push(bullet);
+  }
+
+  for (const bullet of commitBullets) {
+    const key = categorizeBullet(bullet, inferPrimaryCategory(bullet) || fallbackKey);
     sections[key].push(bullet);
   }
 
@@ -429,13 +510,38 @@ function parsePullRequestEntry() {
     sections[fallbackKey].push(title);
   }
 
+  return buildPullRequestEntry({
+    rawNumber,
+    rawUrl,
+    title,
+    rawAuthor,
+    rawMergedAt,
+    envFiles,
+    sections,
+    fallbackSummary: uniqueList([...commitBullets, ...summaryBullets, title]),
+  });
+}
+
+function buildPullRequestEntry({
+  rawNumber,
+  rawUrl,
+  title,
+  rawAuthor,
+  rawMergedAt,
+  envFiles,
+  sections,
+  fallbackSummary,
+}) {
+  const summary = uniqueList(sections.summary || []);
+
   return {
     number: rawNumber || '',
     url: rawUrl,
     title,
     author: rawAuthor,
     mergedAt: rawMergedAt ? rawMergedAt.slice(0, 10) : formatShanghaiDate(),
-    summary: summaryBullets.length > 0 ? summaryBullets : [title],
+    businessUpdates: buildBusinessUpdates(sections, fallbackSummary),
+    summary: summary.length > 0 ? summary : uniqueList(fallbackSummary).filter(Boolean),
     features: uniqueList(sections.features),
     fixes: uniqueList(sections.fixes),
     optimizations: uniqueList(sections.optimizations),
@@ -444,6 +550,35 @@ function parsePullRequestEntry() {
     envFiles,
     verification: uniqueList(sections.verification),
   };
+}
+
+function readMergedPrContext() {
+  const contextFile = (process.env.MERGED_PR_CONTEXT_FILE || '').trim();
+  if (!contextFile) {
+    return null;
+  }
+
+  const filePath = path.isAbsolute(contextFile) ? contextFile : path.join(ROOT_DIR, contextFile);
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`MERGED_PR_CONTEXT_FILE not found: ${contextFile}`);
+  }
+
+  return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+}
+
+function buildBusinessUpdates(sections, fallbackSummary) {
+  const directLines = uniqueList(sections.businessUpdates || []);
+
+  if (directLines.length > 0) {
+    return directLines;
+  }
+
+  const categorizedLines = uniqueList([...(sections.features || []), ...(sections.fixes || [])]);
+  if (categorizedLines.length > 0) {
+    return categorizedLines;
+  }
+
+  return uniqueList(fallbackSummary).filter(Boolean).slice(0, 10);
 }
 
 function normalizeTitle(title) {
@@ -552,6 +687,197 @@ function normalizeBodyLine(line) {
   }
 
   return formatReleaseText(content, { includePrReference: false });
+}
+
+function parseMergedPrCommitRecords(rawValue) {
+  const trimmed = rawValue.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  return trimmed
+    .split(/\n---\s*(?:\n|$)/)
+    .map((record) => record.trim())
+    .filter(Boolean)
+    .map(parseMergedPrCommitRecord)
+    .filter((commit) => commit.subject && !shouldSkipReleaseCommit(commit.subject));
+}
+
+function parseMergedPrCommitRecord(record) {
+  const lines = record.split(/\r?\n/);
+  const subject = (lines.shift() || '').trim();
+
+  return {
+    subject,
+    body: lines.join('\n').trim(),
+  };
+}
+
+function extractCommitBullets(commits) {
+  return uniqueList(commits.map(extractCommitReleaseLine).filter(Boolean));
+}
+
+function extractCommitReleaseLine(commit) {
+  if (!commit?.subject || shouldSkipReleaseCommit(commit.subject)) {
+    return '';
+  }
+
+  return normalizeCommitSubject(commit.subject);
+}
+
+function shouldSkipReleaseCommit(subject) {
+  return (
+    !subject ||
+    subject.includes('[skip ci]') ||
+    subject.startsWith('Merge pull request') ||
+    subject.startsWith('chore(release):')
+  );
+}
+
+function normalizeCommitSubject(subject) {
+  return formatReleaseText(subject, { includePrReference: false });
+}
+
+function tryBuildLlmReleaseSections(input) {
+  const generatedSections = readGeneratedLlmReleaseSections();
+  if (generatedSections) {
+    console.log('✅ 已读取 Claude 生成的发布日志');
+    return generatedSections;
+  }
+
+  const config = resolveReleaseNotesLlmConfig();
+  if (!config.enabled) {
+    return null;
+  }
+
+  if (!config.apiKey || !config.baseUrl || !config.model) {
+    console.warn('⚠️ 发布日志 LLM 未配置完整，已回退到规则生成');
+    return null;
+  }
+
+  try {
+    const output = execFileSync(
+      process.execPath,
+      [path.join(__dirname, 'generate-release-entry-with-llm.js')],
+      {
+        cwd: ROOT_DIR,
+        encoding: 'utf-8',
+        input: JSON.stringify(input),
+        maxBuffer: 1024 * 1024,
+        env: {
+          ...process.env,
+          RELEASE_NOTES_LLM_API_KEY: config.apiKey,
+          RELEASE_NOTES_LLM_BASE_URL: config.baseUrl,
+          RELEASE_NOTES_LLM_MODEL: config.model,
+        },
+      },
+    );
+    const parsed = JSON.parse(output);
+    const sections = sanitizeLlmReleaseSections(parsed);
+    if (sections) {
+      console.log('✅ 已使用 LLM 整理发布日志');
+      return sections;
+    }
+    console.warn('⚠️ 发布日志 LLM 返回为空，已回退到规则生成');
+  } catch (error) {
+    const stderr = String(error.stderr || '').trim();
+    console.warn(`⚠️ 发布日志 LLM 生成失败，已回退到规则生成${stderr ? `：${stderr}` : ''}`);
+  }
+
+  return null;
+}
+
+function readGeneratedLlmReleaseSections() {
+  const entryFile = (process.env.RELEASE_NOTES_LLM_ENTRY_FILE || '').trim();
+  if (!entryFile) {
+    return null;
+  }
+
+  const filePath = path.isAbsolute(entryFile) ? entryFile : path.join(ROOT_DIR, entryFile);
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    const sections = sanitizeLlmReleaseSections(parsed);
+    if (sections) {
+      return sections;
+    }
+    console.warn('⚠️ Claude 生成的发布日志为空，已回退到规则生成');
+  } catch (error) {
+    console.warn(`⚠️ Claude 生成的发布日志解析失败，已回退到规则生成：${error.message}`);
+  }
+
+  return null;
+}
+
+function resolveReleaseNotesLlmConfig() {
+  const flag = (process.env.RELEASE_NOTES_LLM_ENABLED || '').trim();
+  const explicitDisabled = /^(?:0|false|no|off)$/i.test(flag);
+  const explicitEnabled = /^(?:1|true|yes|on)$/i.test(flag);
+  const apiKey =
+    process.env.RELEASE_NOTES_LLM_API_KEY ||
+    process.env.OPENAI_API_KEY ||
+    process.env.ANTHROPIC_API_KEY ||
+    '';
+  const baseUrl =
+    process.env.RELEASE_NOTES_LLM_BASE_URL ||
+    process.env.OPENAI_BASE_URL ||
+    (process.env.OPENAI_API_KEY ? 'https://api.openai.com/v1' : '');
+  const model = normalizeLlmModel(
+    process.env.RELEASE_NOTES_LLM_MODEL || process.env.AGENT_EXTRACT_MODEL || 'gpt-5-mini',
+  );
+
+  return {
+    enabled: !explicitDisabled && (explicitEnabled || Boolean(apiKey && baseUrl && model)),
+    apiKey,
+    baseUrl,
+    model,
+  };
+}
+
+function normalizeLlmModel(model) {
+  const value = String(model || '').trim();
+  if (!value.includes('/')) {
+    return value;
+  }
+  return value.split('/').pop();
+}
+
+function sanitizeLlmReleaseSections(value) {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const sections = {};
+  for (const key of RELEASE_ENTRY_SECTION_KEYS) {
+    sections[key] = sanitizeReleaseLines(value[key]);
+  }
+
+  if (sections.summary.length === 0) {
+    sections.summary = uniqueList([
+      ...sections.businessUpdates,
+      ...sections.features,
+      ...sections.fixes,
+      ...sections.optimizations,
+      ...sections.ops,
+      ...sections.config,
+    ]).slice(0, 12);
+  }
+
+  const hasReleaseLine = RELEASE_ENTRY_SECTION_KEYS.some((key) => sections[key].length > 0);
+  return hasReleaseLine ? sections : null;
+}
+
+function sanitizeReleaseLines(value) {
+  const values = Array.isArray(value) ? value : [];
+
+  return uniqueList(
+    values
+      .map((item) => formatReleaseText(item, { includePrReference: false }))
+      .filter((item) => item && !isEmptyReleaseLine(item)),
+  );
 }
 
 function uniqueList(values) {

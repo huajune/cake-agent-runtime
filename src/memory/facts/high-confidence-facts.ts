@@ -4,6 +4,8 @@ import {
   FALLBACK_EXTRACTION,
   type CityFact,
   type EntityExtractionResult,
+  type HighConfidenceFacts,
+  type HighConfidenceValue,
   type InterviewInfo,
   type Preferences,
   type ScheduleConstraintFact,
@@ -190,7 +192,7 @@ function stripQuotedBlocks(message: string): string {
 export function extractHighConfidenceFacts(
   userMessages: string[],
   brandData: BrandItem[],
-): EntityExtractionResult | null {
+): HighConfidenceFacts | null {
   const normalizedMessages = userMessages
     .map((message) => stripQuotedBlocks(message.trim()))
     .filter(Boolean);
@@ -202,6 +204,15 @@ export function extractHighConfidenceFacts(
   const aliasHints = detectBrandAliasHints(normalizedMessages, brandData);
   if (aliasHints.length > 0) {
     facts.preferences.brands = Array.from(new Set(aliasHints.map((hint) => hint.brandName)));
+    markPreferenceMeta(
+      facts,
+      'brands',
+      ruleMeta({
+        evidence: `品牌别名识别：${facts.preferences.brands.join('、')}`,
+        raw: aliasHints.map((hint) => hint.sourceText).join('\n'),
+        extractor: 'detectBrandAliasHints',
+      }),
+    );
     reasons.push(
       ...aliasHints.map(
         (hint) =>
@@ -214,18 +225,45 @@ export function extractHighConfidenceFacts(
     const structuredName = extractStructuredName(message);
     if (structuredName && !facts.interview_info.name) {
       facts.interview_info.name = structuredName;
+      markInterviewInfoMeta(
+        facts,
+        'name',
+        ruleMeta({
+          evidence: `结构化姓名识别：${structuredName}`,
+          raw: message,
+          extractor: 'extractStructuredName',
+        }),
+      );
       reasons.push(`结构化姓名识别：${structuredName}（来源：收资表单键值对）`);
     }
 
     const phone = extractPhone(message);
     if (phone && !facts.interview_info.phone) {
       facts.interview_info.phone = phone;
+      markInterviewInfoMeta(
+        facts,
+        'phone',
+        ruleMeta({
+          evidence: `手机号识别：${phone}`,
+          raw: message,
+          extractor: 'extractPhone',
+        }),
+      );
       reasons.push(`手机号识别：${phone}`);
     }
 
     const age = extractAge(message);
     if (age && !facts.interview_info.age) {
       facts.interview_info.age = age;
+      markInterviewInfoMeta(
+        facts,
+        'age',
+        ruleMeta({
+          evidence: `年龄识别：${age}`,
+          raw: message,
+          extractor: 'extractAge',
+        }),
+      );
       reasons.push(`年龄识别：${age}`);
     }
 
@@ -233,21 +271,57 @@ export function extractHighConfidenceFacts(
     if (gender && !facts.interview_info.gender) {
       facts.interview_info.gender = gender;
       facts.interview_info.gender_source = 'candidate';
+      markInterviewInfoMeta(
+        facts,
+        'gender',
+        ruleMeta({
+          evidence: `性别识别：${gender}`,
+          raw: message,
+          extractor: 'extractGender',
+        }),
+      );
       reasons.push(`性别识别：${gender}`);
     }
 
     const studentInfo = extractStudentInfo(message);
     if (studentInfo.isStudent !== null && facts.interview_info.is_student === null) {
       facts.interview_info.is_student = studentInfo.isStudent;
+      markInterviewInfoMeta(
+        facts,
+        'is_student',
+        ruleMeta({
+          evidence: `学生身份识别：${studentInfo.isStudent ? '是' : '否'}`,
+          raw: message,
+          extractor: 'extractStudentInfo',
+        }),
+      );
       reasons.push(`学生身份识别：${studentInfo.isStudent ? '是' : '否'}`);
     }
     if (studentInfo.education && !facts.interview_info.education) {
       facts.interview_info.education = studentInfo.education;
+      markInterviewInfoMeta(
+        facts,
+        'education',
+        ruleMeta({
+          evidence: `学历识别：${studentInfo.education}`,
+          raw: message,
+          extractor: 'extractStudentInfo',
+        }),
+      );
       reasons.push(`学历识别：${studentInfo.education}`);
     } else if (!studentInfo.education) {
       const explicitEducation = extractEducation(message);
       if (explicitEducation && !facts.interview_info.education) {
         facts.interview_info.education = explicitEducation;
+        markInterviewInfoMeta(
+          facts,
+          'education',
+          ruleMeta({
+            evidence: `学历识别：${explicitEducation}`,
+            raw: message,
+            extractor: 'extractEducation',
+          }),
+        );
         reasons.push(`学历识别：${explicitEducation}`);
       }
     }
@@ -255,18 +329,45 @@ export function extractHighConfidenceFacts(
     const healthCertificate = extractHealthCertificate(message);
     if (healthCertificate && !facts.interview_info.has_health_certificate) {
       facts.interview_info.has_health_certificate = healthCertificate;
+      markInterviewInfoMeta(
+        facts,
+        'has_health_certificate',
+        ruleMeta({
+          evidence: `健康证识别：${healthCertificate}`,
+          raw: message,
+          extractor: 'extractHealthCertificate',
+        }),
+      );
       reasons.push(`健康证识别：${healthCertificate}`);
     }
 
     const laborForm = extractLaborForm(message);
     if (laborForm && !facts.preferences.labor_form) {
       facts.preferences.labor_form = laborForm;
+      markPreferenceMeta(
+        facts,
+        'labor_form',
+        ruleMeta({
+          evidence: `用工形式识别：${laborForm}`,
+          raw: message,
+          extractor: 'extractLaborForm',
+        }),
+      );
       reasons.push(`用工形式识别：${laborForm}`);
     }
 
     const salary = extractSalary(message);
     if (salary && !facts.preferences.salary) {
       facts.preferences.salary = salary;
+      markPreferenceMeta(
+        facts,
+        'salary',
+        ruleMeta({
+          evidence: `薪资识别：${salary}`,
+          raw: message,
+          extractor: 'extractSalary',
+        }),
+      );
       reasons.push(`薪资识别：${salary}`);
     }
 
@@ -275,12 +376,30 @@ export function extractHighConfidenceFacts(
       facts.preferences.position = Array.from(
         new Set([...(facts.preferences.position ?? []), ...positions]),
       );
+      markPreferenceMeta(
+        facts,
+        'position',
+        ruleMeta({
+          evidence: `岗位识别：${positions.join('、')}`,
+          raw: message,
+          extractor: 'extractPositions',
+        }),
+      );
       reasons.push(`岗位识别：${positions.join('、')}`);
     }
 
     const schedule = extractSchedule(message);
     if (schedule && !facts.preferences.schedule) {
       facts.preferences.schedule = schedule;
+      markPreferenceMeta(
+        facts,
+        'schedule',
+        ruleMeta({
+          evidence: `班次识别：${schedule}`,
+          raw: message,
+          extractor: 'extractSchedule',
+        }),
+      );
       reasons.push(`班次识别：${schedule}`);
     }
 
@@ -310,18 +429,45 @@ export function extractHighConfidenceFacts(
       if (merged.onlyEvenings) labelParts.push('只晚班');
       if (merged.onlyMornings) labelParts.push('只早班');
       if (merged.maxDaysPerWeek !== null) labelParts.push(`每周≤${merged.maxDaysPerWeek}天`);
+      markPreferenceMeta(
+        facts,
+        'schedule_constraint',
+        ruleMeta({
+          evidence: `班次硬约束（结构化）：${labelParts.join('、') || '空'}`,
+          raw: message,
+          extractor: 'extractScheduleConstraintStructured',
+        }),
+      );
       reasons.push(`班次硬约束（结构化）：${labelParts.join('、') || '空'}`);
     }
 
     const availableAfter = extractAvailableAfterDate(message, formatLocalDate(new Date()));
     if (availableAfter) {
       facts.preferences.available_after = availableAfter;
+      markPreferenceMeta(
+        facts,
+        'available_after',
+        ruleMeta({
+          evidence: `未来日期硬约束：${availableAfter.date}`,
+          raw: availableAfter.raw,
+          extractor: 'extractAvailableAfterDate',
+        }),
+      );
       reasons.push(`未来日期硬约束：${availableAfter.date}（原话："${availableAfter.raw}"）`);
     }
 
     const location = extractLocation(message);
     if (location.city) {
       facts.preferences.city = location.city;
+      markPreferenceMeta(
+        facts,
+        'city',
+        ruleMeta({
+          evidence: `城市识别：${location.city.value}（${location.city.evidence}）`,
+          raw: message,
+          extractor: 'extractLocation',
+        }),
+      );
       reasons.push(
         `城市识别：${location.city.value}（证据：${location.city.evidence}，置信：${location.city.confidence}）`,
       );
@@ -330,11 +476,29 @@ export function extractHighConfidenceFacts(
       facts.preferences.district = Array.from(
         new Set([...(facts.preferences.district ?? []), ...location.district]),
       );
+      markPreferenceMeta(
+        facts,
+        'district',
+        ruleMeta({
+          evidence: `区域识别：${location.district.join('、')}`,
+          raw: message,
+          extractor: 'extractLocation',
+        }),
+      );
       reasons.push(`区域识别：${location.district.join('、')}`);
     }
     if (location.location.length > 0) {
       facts.preferences.location = Array.from(
         new Set([...(facts.preferences.location ?? []), ...location.location]),
+      );
+      markPreferenceMeta(
+        facts,
+        'location',
+        ruleMeta({
+          evidence: `地点识别：${location.location.join('、')}`,
+          raw: message,
+          extractor: 'extractLocation',
+        }),
       );
       reasons.push(`地点识别：${location.location.join('、')}`);
     }
@@ -421,11 +585,11 @@ export function normalizeGenderValue(value: unknown): '男' | '女' | null {
  * 与 mergeDetectedBrands 同构，都是"补充字段→不可变合并"的合并器。
  */
 export function mergeSupplementalGenderFact(
-  existing: EntityExtractionResult | null,
+  existing: HighConfidenceFacts | null,
   gender: '男' | '女',
   sourceLabel: string,
-): EntityExtractionResult {
-  const base: EntityExtractionResult = existing
+): HighConfidenceFacts {
+  const base: HighConfidenceFacts = existing
     ? {
         ...existing,
         interview_info: { ...existing.interview_info },
@@ -435,10 +599,48 @@ export function mergeSupplementalGenderFact(
 
   base.interview_info.gender = gender;
   base.interview_info.gender_source = 'system';
+  markInterviewInfoMeta(base, 'gender', {
+    confidence: 'low',
+    source: 'system',
+    evidence: `${sourceLabel}补充性别：${gender}`,
+    extractor: 'mergeSupplementalGenderFact',
+  });
   const suffix = `${sourceLabel}补充性别：${gender}`;
   base.reasoning = [base.reasoning?.trim(), suffix].filter(Boolean).join('；');
 
   return base;
+}
+
+export function unwrapHighConfidenceValue<T>(
+  value: HighConfidenceValue<T> | T | null | undefined,
+): T | null {
+  if (value === null || value === undefined) return null;
+  return isHighConfidenceValue(value) ? (value.value as T) : value;
+}
+
+export function unwrapHighConfidenceFacts(
+  facts: HighConfidenceFacts | null | undefined,
+): EntityExtractionResult | null {
+  if (!facts) return null;
+  return {
+    interview_info: {
+      name: unwrapHighConfidenceValue(facts.interview_info.name),
+      phone: unwrapHighConfidenceValue(facts.interview_info.phone),
+      gender: unwrapHighConfidenceValue(facts.interview_info.gender),
+      gender_source: facts.interview_info.gender_source ?? null,
+      age: unwrapHighConfidenceValue(facts.interview_info.age),
+      applied_store: unwrapHighConfidenceValue(facts.interview_info.applied_store),
+      applied_position: unwrapHighConfidenceValue(facts.interview_info.applied_position),
+      interview_time: unwrapHighConfidenceValue(facts.interview_info.interview_time),
+      is_student: unwrapHighConfidenceValue(facts.interview_info.is_student),
+      education: unwrapHighConfidenceValue(facts.interview_info.education),
+      has_health_certificate: unwrapHighConfidenceValue(
+        facts.interview_info.has_health_certificate,
+      ),
+    },
+    preferences: { ...facts.preferences },
+    reasoning: facts.reasoning,
+  };
 }
 
 export function mergeDetectedBrands(
@@ -471,19 +673,85 @@ export function mergeDetectedBrands(
   };
 }
 
-function cloneFallbackExtraction(): EntityExtractionResult {
+function cloneFallbackExtraction(): HighConfidenceFacts {
   return {
-    interview_info: { ...FALLBACK_EXTRACTION.interview_info },
+    interview_info: {
+      name: null,
+      phone: null,
+      gender: null,
+      gender_source: null,
+      age: null,
+      applied_store: null,
+      applied_position: null,
+      interview_time: null,
+      is_student: null,
+      education: null,
+      has_health_certificate: null,
+    },
     preferences: { ...FALLBACK_EXTRACTION.preferences },
     reasoning: FALLBACK_EXTRACTION.reasoning,
   };
 }
 
-function hasAnyExtractedFact(facts: EntityExtractionResult): boolean {
+function markInterviewInfoMeta(
+  facts: HighConfidenceFacts,
+  field: keyof InterviewInfo,
+  meta: Omit<HighConfidenceValue<unknown>, 'value'>,
+): void {
+  if (field === 'gender_source') return;
+  const currentValue = facts.interview_info[field as keyof HighConfidenceFacts['interview_info']];
+  if (currentValue === null || currentValue === undefined) return;
+  if (isHighConfidenceValue(currentValue)) {
+    facts.interview_info[field as keyof HighConfidenceFacts['interview_info']] = {
+      ...currentValue,
+      ...meta,
+    } as never;
+    return;
+  }
+  facts.interview_info[field as keyof HighConfidenceFacts['interview_info']] = {
+    value: currentValue,
+    ...meta,
+  } as never;
+}
+
+function markPreferenceMeta(
+  _facts: HighConfidenceFacts,
+  _field: keyof Preferences,
+  _meta: Omit<HighConfidenceValue<unknown>, 'value'>,
+): void {
+  // preferences.city 已经是 { value, confidence, evidence } 结构；其他偏好字段本轮暂不改结构。
+}
+
+function ruleMeta(params: {
+  evidence: string;
+  raw: string;
+  extractor: string;
+  confidence?: HighConfidenceValue<unknown>['confidence'];
+}): Omit<HighConfidenceValue<unknown>, 'value'> {
+  return {
+    confidence: params.confidence ?? 'high',
+    source: 'rule',
+    evidence: params.evidence,
+    raw: params.raw,
+    extractor: params.extractor,
+  };
+}
+
+function isHighConfidenceValue(value: unknown): value is HighConfidenceValue<unknown> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'value' in value &&
+    'confidence' in value &&
+    'evidence' in value
+  );
+}
+
+function hasAnyExtractedFact(facts: HighConfidenceFacts): boolean {
   return hasAnyValue(facts.interview_info) || hasAnyValue(facts.preferences);
 }
 
-function hasAnyValue(record: InterviewInfo | Preferences): boolean {
+function hasAnyValue(record: object): boolean {
   return Object.values(record).some((value) => {
     if (value === null || value === undefined) return false;
     if (Array.isArray(value)) return value.length > 0;
@@ -515,18 +783,26 @@ function extractPhone(message: string): string | null {
 }
 
 function extractAge(message: string): string | null {
-  // 结构化表单优先：「年龄：22」可信度最高，即使同一消息含要求文本也应提取
-  const structuredAge = message.match(/(?:^|[\n\r])\s*年龄\s*[：:\s]\s*(\d{2})(?=\D|$)/u);
+  // 结构化表单优先：「年龄：22 / 年龄 22 / 年龄22」可信度最高，
+  // 即使同一消息含要求文本也应提取。避免把「年龄25-50岁」范围误当候选人年龄。
+  const structuredAge = message.match(
+    /(?:^|[\n\r])\s*年龄\s*[：:\s]?\s*(\d{2})(?!\s*[-~至到])(?=\D|$)/u,
+  );
   if (structuredAge) return structuredAge[1];
 
-  // 排除岗位要求/范围描述（仅对非结构化提取生效）
-  if (/(?:要求|需要|限|须).{0,6}\d{2}\s*岁/.test(message)) return null;
-  if (/\d{2}\s*[-~至到]\s*\d{2}\s*岁/.test(message)) return null;
+  // 排除岗位要求/范围描述（仅对非结构化提取生效），但保留同句中的候选人自述：
+  // 「岗位要求25-50岁，我24岁」应提取 24；「要求20-35岁」仍应返回 null。
+  const candidateText = message
+    .replace(
+      /(?:岗位)?(?:年龄)?(?:要求|需要|限|须)[^，。！？；;\n\r]*?\d{2}\s*(?:[-~至到]\s*\d{2})?\s*(?:周?岁|岁以上|岁以下|以上|以下)?/g,
+      '',
+    )
+    .replace(/\d{2}\s*[-~至到]\s*\d{2}\s*(?:周?岁|岁)?/g, '');
 
-  const directAge = message.match(/(\d{2})岁/);
+  const directAge = candidateText.match(/(\d{2})岁/);
   if (directAge) return directAge[1];
 
-  const currentAge = message.match(/今年(\d{2})/);
+  const currentAge = candidateText.match(/今年(\d{2})/);
   if (currentAge) return currentAge[1];
 
   return null;

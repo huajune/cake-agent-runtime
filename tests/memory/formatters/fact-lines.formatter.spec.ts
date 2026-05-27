@@ -1,5 +1,5 @@
 import { formatExtractionFactLines } from '@memory/formatters/fact-lines.formatter';
-import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
+import { FALLBACK_EXTRACTION, type HighConfidenceFacts } from '@memory/types/session-facts.types';
 
 describe('formatExtractionFactLines', () => {
   it('should render known interview and preference fields in stable labels', () => {
@@ -33,5 +33,26 @@ describe('formatExtractionFactLines', () => {
 
   it('should skip empty fields', () => {
     expect(formatExtractionFactLines(FALLBACK_EXTRACTION)).toEqual([]);
+  });
+
+  it('should render high-confidence field metadata when present', () => {
+    const facts: HighConfidenceFacts = {
+      ...FALLBACK_EXTRACTION,
+      interview_info: {
+        ...FALLBACK_EXTRACTION.interview_info,
+        age: {
+          value: '24',
+          confidence: 'high',
+          source: 'rule',
+          evidence: '年龄识别：24',
+          extractor: 'extractAge',
+        },
+      },
+    };
+    const lines = formatExtractionFactLines(facts);
+
+    expect(lines).toEqual([
+      '- 年龄: 24（置信度: high，来源: rule，证据: 年龄识别：24，规则: extractAge）',
+    ]);
   });
 });
