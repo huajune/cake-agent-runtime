@@ -692,7 +692,12 @@ export class ReplyWorkflowService {
 
   private collectImageUrls(messages: EnterpriseMessageCallbackDto[]): string[] {
     return messages
-      .map((message) => MessageParser.extractImageUrl(message))
+      .map((message) => {
+        const imgUrl = MessageParser.extractImageUrl(message);
+        if (!imgUrl) return null;
+        const artworkUrl = (message.payload as Record<string, unknown>)?.artworkUrl;
+        return typeof artworkUrl === 'string' ? artworkUrl : imgUrl;
+      })
       .filter((url): url is string => url !== null);
   }
 

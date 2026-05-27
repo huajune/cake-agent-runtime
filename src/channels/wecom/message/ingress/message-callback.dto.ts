@@ -44,10 +44,11 @@ export interface TextPayload {
  */
 export interface ImagePayload {
   url?: string; // 图片地址（小组级回调）
-  imageUrl?: string; // 图片地址（企业级回调）
+  imageUrl?: string; // 压缩图片地址（企业级回调，可能是缩略图）
   size?: number; // 图片大小（字节）
   width?: number; // 图片宽度
   height?: number; // 图片高度
+  artworkUrl?: string; // 原图 URL（通过 loadArtWorkImage API 获取后回写）
 }
 
 /**

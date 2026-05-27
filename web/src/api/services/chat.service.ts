@@ -69,7 +69,15 @@ export async function getChatTrend(days: number = 7) {
 
 export async function getChatSessionMessages(chatId: string) {
   const { data } = await api.get(`/analytics/chat-sessions/${encodeURIComponent(chatId)}/messages`);
-  return unwrapResponse<{ chatId: string; messages: ChatMessage[] }>(data);
+  const response = unwrapResponse<{ chatId: string; messages: ChatMessage[] }>(data);
+  return {
+    ...response,
+    messages: response.messages.map((message) => ({
+      ...message,
+      id: message.id || message.messageId || `${response.chatId}-${message.timestamp}`,
+      chatId: message.chatId || response.chatId,
+    })),
+  };
 }
 
 // ==================== 消息处理记录 API ====================

@@ -174,6 +174,28 @@ export class RoomService {
   }
 
   /**
+   * 触发群聊数据同步（POST /api/v2/groupChat/syncRoom）
+   *
+   * 调用后平台会重新同步指定 bot 的群成员数据，使后续企业级 API
+   * （groupChat/list、groupChat/detail）返回最新的 memberList。
+   * 注意：此同步不影响小组级 API（simpleList）的 memberCount。
+   *
+   * @param token - 企业级 token
+   * @param imBotId - 托管账号系统 ID
+   */
+  async syncRoom(token: string, imBotId: string) {
+    try {
+      const apiUrl = `${this.apiConfig.endpoints.groupChat.syncRoom()}?token=${token}`;
+      const result = await this.httpService.post(apiUrl, { imBotId });
+      this.logger.log(`群聊同步已触发: imBotId=${imBotId}`);
+      return result;
+    } catch (error) {
+      this.logger.error(`群聊同步失败: imBotId=${imBotId}`, error);
+      throw error;
+    }
+  }
+
+  /**
    * 群聊加好友
    * @param data - 加好友参数
    * @returns 加好友结果

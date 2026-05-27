@@ -8,6 +8,56 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.10.1`
+**最近更新**: `2026-05-27`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #224 托管平台回调的 `imageUrl` 是压缩缩略图（96x210, 8.8KB），vision 模型无法读取文字导致 100% 幻觉
+- PR #224 新增 `loadArtWorkImage` API 调用获取原图（1179x2556, 222KB），存入 `payload.artworkUrl`
+- PR #224 全链路只调一次 API，下游三条消费路径（vision 描述 / Agent 对话 / Web 后台）全部读 `payload.artworkUrl`
+- PR #224 **图片原图获取**: `enrichImagePayload` 在存记录前同步获取原图 URL 写入 payload（一次 INSERT 到位）
+- PR #224 **Vision 描述路径**: `describeAndUpdateAsync` 直接使用 artworkUrl，`disableFallbacks: true` 防止降级到纯文本模型
+- PR #224 **Agent vision 路径**: `collectImageUrls` 优先读 `payload.artworkUrl`，传高清原图给 LLM
+- PR #224 **Web 后台**: `getImageUrls` 的 previewUrl 优先查找 `artworkUrl`
+- PR #224 **Vision 降级链**: 新增 `AGENT_VISION_FALLBACKS` 只含 multimodal 模型
+- PR #224 **其他**: reply-fact-guard 误报率优化、Dashboard 趋势图修复、invite-to-group 群人数修复
+
+### 新功能
+- PR #224 新增 `loadArtWorkImage` API 调用获取原图（1179x2556, 222KB），存入 `payload.artworkUrl`
+- PR #224 **Vision 降级链**: 新增 `AGENT_VISION_FALLBACKS` 只含 multimodal 模型
+
+### 问题修复
+- PR #224 托管平台回调的 `imageUrl` 是压缩缩略图（96x210, 8.8KB），vision 模型无法读取文字导致 100% 幻觉
+- PR #224 全链路只调一次 API，下游三条消费路径（vision 描述 / Agent 对话 / Web 后台）全部读 `payload.artworkUrl`
+- PR #224 **图片原图获取**: `enrichImagePayload` 在存记录前同步获取原图 URL 写入 payload（一次 INSERT 到位）
+- PR #224 **Vision 描述路径**: `describeAndUpdateAsync` 直接使用 artworkUrl，`disableFallbacks: true` 防止降级到纯文本模型
+- PR #224 **Agent vision 路径**: `collectImageUrls` 优先读 `payload.artworkUrl`，传高清原图给 LLM
+- PR #224 **Web 后台**: `getImageUrls` 的 previewUrl 优先查找 `artworkUrl`
+- PR #224 **其他**: reply-fact-guard 误报率优化、Dashboard 趋势图修复、invite-to-group 群人数修复
+
+### 优化调整
+- 无
+
+### 运维与流程
+- 无
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- PR #224 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
+
+### 验证记录
+- PR #224 单元测试 11/11 通过（含 4 个新增图片链路测试）
+- PR #224 CI 全量测试通过
+- PR #224 端到端验证：loadArtWorkImage API → 原图 URL → qwen-vl-plus 准确识别 M Stand/店员/26元
+<!-- release:pending:end -->
+
 ## [5.10.0] - 2026-05-26
 
 **来源分支**: `develop`

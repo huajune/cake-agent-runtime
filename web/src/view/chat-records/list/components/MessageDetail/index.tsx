@@ -34,6 +34,23 @@ function formatDate(timestamp: number): string {
   return date.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' });
 }
 
+function isAssistantMessage(message: ChatMessage): boolean {
+  if (typeof message.isSelf === 'boolean') {
+    return message.isSelf;
+  }
+  return message.role === 'assistant';
+}
+
+function getMessageId(message: ChatMessage, fallbackIndex?: number): string | undefined {
+  return (
+    message.id ||
+    message.messageId ||
+    (fallbackIndex !== undefined
+      ? `${message.chatId || 'chat'}-${message.timestamp}-${fallbackIndex}`
+      : undefined)
+  );
+}
+
 interface MessageDetailProps {
   selectedChatId: string | null;
   messages: ChatMessage[];
@@ -80,8 +97,9 @@ export default function MessageDetail({
     () =>
       messages
         .map((msg) => {
+          const isAssistant = isAssistantMessage(msg);
           const displayName =
-            msg.role === 'assistant'
+            isAssistant
               ? msg.managerName || currentSession?.managerName || '招募经理'
               : msg.candidateName || currentSession?.candidateName || '候选人';
           return `[${formatTime(msg.timestamp)} ${displayName}] ${msg.content}`;
@@ -91,17 +109,22 @@ export default function MessageDetail({
   );
 
   const lastUserMessageRecord = useMemo(
-    () => [...messages].reverse().find((msg) => msg.role === 'user' && msg.content.trim()),
+    () => [...messages].reverse().find((msg) => !isAssistantMessage(msg) && msg.content.trim()),
     [messages],
   );
   const lastUserMessage = lastUserMessageRecord?.content;
+  const lastUserMessageId = lastUserMessageRecord
+    ? getMessageId(lastUserMessageRecord)
+    : undefined;
   const sourceTrace = useMemo<FeedbackSourceTrace | undefined>(() => {
     if (!selectedChatId) return undefined;
-    const relatedMessageIds = messages.map((msg) => msg.id).filter(Boolean);
+    const relatedMessageIds = messages
+      .map((msg) => getMessageId(msg))
+      .filter((id): id is string => Boolean(id));
 
     return {
       chatIds: [selectedChatId],
-      anchorMessageIds: lastUserMessageRecord?.id ? [lastUserMessageRecord.id] : undefined,
+      anchorMessageIds: lastUserMessageId ? [lastUserMessageId] : undefined,
       relatedMessageIds,
       raw: {
         source: 'chat-record-detail',
@@ -110,14 +133,14 @@ export default function MessageDetail({
         lastMessageAt: messages[messages.length - 1]?.timestamp,
       },
     };
-  }, [lastUserMessageRecord?.id, messages, selectedChatId]);
+  }, [lastUserMessageId, messages, selectedChatId]);
 
   const handleSubmitFeedback = useCallback(() => {
     void submit({
       chatHistory: chatHistoryPreview,
       userMessage: lastUserMessage,
       chatId: selectedChatId || undefined,
-      messageId: lastUserMessageRecord?.id,
+      messageId: lastUserMessageId,
       sourceTrace,
       candidateName: currentSession?.candidateName,
       managerName: currentSession?.managerName,
@@ -127,7 +150,7 @@ export default function MessageDetail({
     currentSession?.candidateName,
     currentSession?.managerName,
     lastUserMessage,
-    lastUserMessageRecord?.id,
+    lastUserMessageId,
     selectedChatId,
     sourceTrace,
     submit,
@@ -168,8 +191,9 @@ export default function MessageDetail({
             <div className={styles.dateDivider}>
               <span className={styles.dateBadge}>{group.date}</span>
             </div>
-            {group.messages.map((msg) => {
-              const isAssistant = msg.role === 'assistant';
+            {group.messages.map((msg, index) => {
+              const isAssistant = isAssistantMessage(msg);
+              const messageKey = getMessageId(msg, index);
               const displayName = isAssistant
                 ? msg.managerName || currentSession?.managerName || '招募经理'
                 : msg.candidateName || currentSession?.candidateName || '候选人';
@@ -187,7 +211,7 @@ export default function MessageDetail({
 
               return (
                 <div
-                  key={msg.id}
+                  key={messageKey}
                   className={`${styles.messageRow} ${isAssistant ? styles.assistant : ''}`}
                 >
                   {avatarUrl ? (

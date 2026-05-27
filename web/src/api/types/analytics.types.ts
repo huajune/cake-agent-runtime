@@ -44,6 +44,12 @@ export interface FallbackStats {
   successRate: number;
 }
 
+export interface ManualInterventionStats {
+  totalCount: number;
+  handoffCount: number;
+  riskAlertCount: number;
+}
+
 export interface BusinessMetrics {
   consultations: {
     total: number;
@@ -101,6 +107,7 @@ export interface DashboardData {
   alertsSummary: AlertSummary;
   fallback: FallbackStats;
   fallbackDelta: { totalCount: number };
+  manualIntervention: ManualInterventionStats;
   business: BusinessMetrics;
   businessDelta: {
     consultations: number;
@@ -143,6 +150,7 @@ export interface DashboardOverviewData {
   businessDelta: any;
   fallback: any;
   fallbackDelta: any;
+  manualIntervention?: ManualInterventionStats;
 }
 
 export interface SystemMonitoringData {

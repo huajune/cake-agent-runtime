@@ -74,8 +74,11 @@
 | `1688855974513959` | 琪琪组 | 高雅琪 | GAO_YAQI |
 | `1688854747775509` | 艾酱组 | 朱洁 | AI_JIANG |
 | `1688855171908166` | 宇航组 | 李宇杭 | LI_YUHANG |
-
-> 南瓜组暂无托管 bot，添加后在 `BOT_TO_RECEIVER` 补一行即可。
+| `1688854363869800` | 东升组 | 祝东升 | ZHU_DONGSHENG |
+| `1688857592548257` | 东升组 | HeMin | ZHU_DONGSHENG |
+| `1688854359801821` | 南瓜组 | 李涵婷 | NAN_GUA |
+| `1688854263771949` | 盼盼组 | 吴盼盼 | PAN_PAN |
+| `1688855753660960` | 艾酱测试组 | 郭晓阳 | GUO_XIAOYANG |
 
 ### 使用此映射的场景
 
@@ -101,6 +104,9 @@
 | `GAO_YAQI` | `ou_54b8b053840d689ae42d3ab6b61800d8` | 高雅琪 |
 | `NAN_GUA` | `ou_954fb7341fd7fdd320de2d419d26df19` | 南瓜 |
 | `LI_YUHANG` | `ou_e6868065cb0baa3c0304441a6a8c16e7` | 李宇航 |
+| `ZHU_DONGSHENG` | `ou_9834f6ccffb3abdbeeabbc28581af6df` | 祝东升 |
+| `PAN_PAN` | `ou_12cf003c378f89299f8ccf32252c22c0` | 盼盼 |
+| `GUO_XIAOYANG` | `ou_6d3f217a88b5033ff256c64492e52ae7` | 小阳 |
 
 ### 获取 open_id
 

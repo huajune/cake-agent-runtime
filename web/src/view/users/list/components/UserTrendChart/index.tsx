@@ -21,6 +21,7 @@ type MetricBoard = {
   color: string;
   gradientId: string;
   unit: string;
+  totalUnit?: string;
   total: number;
   average: number;
   peak: number;
@@ -32,6 +33,29 @@ const USER_TREND_RANGE_OPTIONS = [
   { days: 180, label: '近180天', totalLabel: '180天累计' },
 ] as const;
 
+function parseDateKey(dateStr: string) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function formatDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function addDays(date: Date, days: number) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+}
+
+function buildDateRange(days: number) {
+  const endDate = new Date();
+  const startDate = addDays(endDate, -(days - 1));
+
+  return Array.from({ length: days }, (_, index) => formatDateKey(addDays(startDate, index)));
+}
+
 export default function UserTrendChart() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedDays, setSelectedDays] = useState<number>(30);
@@ -42,26 +66,29 @@ export default function UserTrendChart() {
 
   // 格式化日期显示（MM-DD）
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
+    const date = parseDateKey(dateStr);
     const month = date.getMonth() + 1;
     const day = date.getDate();
     return `${month}/${day}`;
   };
 
+  const trendDataByDate = new Map(trendData.map((item) => [item.date, item]));
+
   // 准备图表数据
-  const chartData: ChartDataItem[] = [...trendData]
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    .map((item) => ({
-      date: formatDate(item.date),
-      fullDate: item.date,
-      用户数: item.userCount,
-      消息数: item.messageCount,
-    }));
+  const chartData: ChartDataItem[] = buildDateRange(selectedDays).map((date) => {
+    const item = trendDataByDate.get(date);
+    return {
+      date: formatDate(date),
+      fullDate: date,
+      用户数: item?.userCount ?? 0,
+      消息数: item?.messageCount ?? 0,
+    };
+  });
   const xAxisInterval = Math.max(0, Math.ceil(chartData.length / 10) - 1);
 
   // 计算统计数据
-  const totalUsers = chartData.reduce((sum, item) => sum + item.用户数, 0);
-  const avgUsers = chartData.length > 0 ? Math.round(totalUsers / chartData.length) : 0;
+  const totalUserOccurrences = chartData.reduce((sum, item) => sum + item.用户数, 0);
+  const avgUsers = chartData.length > 0 ? Math.round(totalUserOccurrences / chartData.length) : 0;
   const maxUsers = chartData.length > 0 ? Math.max(...chartData.map(item => item.用户数)) : 0;
   const totalMessages = chartData.reduce((sum, item) => sum + item.消息数, 0);
   const avgMessages = chartData.length > 0 ? Math.round(totalMessages / chartData.length) : 0;
@@ -75,7 +102,8 @@ export default function UserTrendChart() {
       color: THEME_COLORS.primary,
       gradientId: 'colorUsers',
       unit: '人',
-      total: totalUsers,
+      totalUnit: '人次',
+      total: totalUserOccurrences,
       average: avgUsers,
       peak: maxUsers,
     },
@@ -157,8 +185,8 @@ export default function UserTrendChart() {
                 <IconUsers style={{ color: 'white' }} />
               </div>
               <div className={styles.statInfo}>
-                <div className={styles.statLabel}>累计托管用户</div>
-                <div className={styles.statValue}>{totalUsers} <span className={styles.unit}>人</span></div>
+                <div className={styles.statLabel}>累计托管人次</div>
+                <div className={styles.statValue}>{totalUserOccurrences} <span className={styles.unit}>人次</span></div>
               </div>
             </div>
             <div className={`${styles.statCard} ${styles.cardSecondary}`}>
@@ -184,7 +212,7 @@ export default function UserTrendChart() {
           {/* 数据说明 */}
           <div className={styles.dataNote}>
             <IconInfo width="16" height="16" />
-            <span>用户数按当日托管独立用户统计，消息数按用户实际发送的消息条数统计。</span>
+            <span>用户数按当日托管独立用户统计，累计托管人次为各日用户数求和，跨天会重复计数；消息数按用户实际发送条数统计。</span>
           </div>
 
           {/* 图表区域 */}
@@ -202,7 +230,7 @@ export default function UserTrendChart() {
                     </div>
                   </div>
                   <div className={styles.boardStats}>
-                    <span>{selectedRange.totalLabel} <strong>{board.total}</strong>{board.unit}</span>
+                    <span>{selectedRange.totalLabel} <strong>{board.total}</strong>{board.totalUnit || board.unit}</span>
                     <span>日均 <strong>{board.average}</strong>{board.unit}</span>
                   </div>
                   <div className={styles.chartContainer}>

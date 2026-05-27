@@ -19,14 +19,41 @@ interface EnterpriseRoomItem {
   [key: string]: unknown;
 }
 
+/**
+ * 通过企业级 API 刷新群的真实成员数。
+ *
+ * 为什么不在 resolveGroups（小组级 simpleList）里完成？
+ * - simpleList 返回的 memberCount 是小组 API 缓存值，经常严重偏低（实测 156 vs 真实 356）
+ * - syncRoom 只刷新企业 API 侧的数据，不影响 simpleList 的 memberCount
+ * - 因此必须：先 syncRoom → 再用企业级 groupChat/list 查，两步配合才能拿到真实人数
+ *
+ * 流程：
+ * 1. 按 imBotId 去重，调 syncRoom 触发平台侧群成员数据同步
+ * 2. 调 groupChat/list(imBotId=xxx) 批量获取同步后的 memberList.length
+ * 3. 用 imRoomId/chatId 匹配回 GroupContext，覆盖 memberCount
+ */
 export async function refreshMemberCountsFromEnterpriseList(params: {
   groups: GroupContext[];
-  roomService: Pick<RoomService, 'getEnterpriseGroupChatList'>;
+  roomService: Pick<RoomService, 'getEnterpriseGroupChatList' | 'syncRoom'>;
   enterpriseToken: string;
   maxPages?: number;
 }): Promise<GroupContext[]> {
   if (params.groups.length === 0) return params.groups;
 
+  // Step 1: 按 imBotId 去重，触发 syncRoom 确保企业 API 侧成员数据是最新的
+  // syncRoom 只影响企业 API（groupChat/list、groupChat/detail），不影响小组 API（simpleList）
+  const uniqueBotIds = [...new Set(params.groups.map((g) => g.imBotId).filter(Boolean))];
+  await Promise.allSettled(
+    uniqueBotIds.map((botId) =>
+      params.roomService.syncRoom(params.enterpriseToken, botId).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn(`syncRoom 失败 (imBotId=${botId})，继续使用可能过期的数据: ${message}`);
+      }),
+    ),
+  );
+
+  // Step 2: 调企业级 groupChat/list 批量获取同步后的真实 memberCount
+  // 传 imBotId 过滤，避免同一群因多个 bot 返回多条记录导致人数被覆盖为错误值
   const groupKeyByRoomIdentifier = new Map<string, string>();
   for (const group of params.groups) {
     for (const id of [group.imRoomId, group.chatId]) {
@@ -45,6 +72,7 @@ export async function refreshMemberCountsFromEnterpriseList(params: {
         params.enterpriseToken,
         current,
         pageSize,
+        uniqueBotIds[0],
       );
       const rooms = extractEnterpriseRooms(result);
       if (rooms.length === 0) break;
@@ -128,7 +156,6 @@ export function extractEnterpriseRoomIds(room: EnterpriseRoomItem): string[] {
 }
 
 export function extractMemberCount(room: EnterpriseRoomItem): number | undefined {
-  // 企微不同接口/版本的群人数命名不一致，按已见字段逐个探测。
   for (const key of [
     'memberCount',
     'member_count',
