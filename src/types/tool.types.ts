@@ -2,6 +2,7 @@ import { Tool, ToolSet } from 'ai';
 import { StageGoalConfig, Threshold } from './strategy-config.types';
 import type {
   EntityExtractionResult,
+  HighConfidenceFacts,
   RecommendedJobSummary,
 } from '@memory/types/session-facts.types';
 import type { UserProfile } from '@memory/types/long-term.types';
@@ -57,6 +58,8 @@ export interface ToolBuildContext {
   profile?: UserProfile | null;
   /** 当前会话已提取事实（用于工具判断已知/缺失字段） */
   sessionFacts?: EntityExtractionResult | null;
+  /** 本轮前置高置信识别结果（含字段级置信度/证据），仅当前轮有效。 */
+  highConfidenceFacts?: HighConfidenceFacts | null;
   /** 当前会话聚焦岗位快照（用于无参复用 jobId 等上下文） */
   currentFocusJob?: RecommendedJobSummary | null;
   /**

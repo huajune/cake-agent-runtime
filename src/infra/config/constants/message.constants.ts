@@ -23,7 +23,7 @@ export const OVERFLOW_STRATEGY: OverflowStrategyType = 'take-latest';
 // ==================== 消息发送配置 ====================
 
 export const ENABLE_MESSAGE_SPLIT_SEND = true; // 启用消息分段发送
-export const MESSAGE_SPLIT_MAX_SEGMENTS = 4; // 单次 AI 回复最多拆成 4 条企微消息
+export const MESSAGE_SPLIT_MAX_SEGMENTS = 6; // 单次 AI 回复最多拆成 6 条企微消息
 
 // ==================== 打字延迟配置（部分硬编码） ====================
 

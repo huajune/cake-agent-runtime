@@ -28,6 +28,12 @@ describe('detectOutputLeak', () => {
     expect(detectOutputLeak('等待候选人确认门店信息')).not.toBeNull();
   });
 
+  it('flags internal sent-status echo after job recommendation tools', () => {
+    expect(detectOutputLeak('已发送岗位推荐，等待候选人回应。')).not.toBeNull();
+    expect(detectOutputLeak('已给出岗位信息，现在等待候选人回复。')).not.toBeNull();
+    expect(detectOutputLeak('岗位推荐已发送，等待候选人确认。')).not.toBeNull();
+  });
+
   it('flags tool-call echo', () => {
     expect(detectOutputLeak('调用 advance_stage 切换阶段')).not.toBeNull();
     expect(detectOutputLeak('我来调用duliday_job_list查一下')).not.toBeNull();

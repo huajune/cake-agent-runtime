@@ -104,7 +104,7 @@ describe('renderWelfareFactsBanner', () => {
     expect(banner).toContain('住宿：❓ 未明确');
     expect(banner).toContain('保险：❓ 未明确');
     expect(banner).toContain('交通补贴：❓ 未明确');
-    expect(banner).toContain('未列出的福利');
+    expect(banner).not.toContain('禁止在 reply 里声称');
   });
 
   it('renders 员工自理 case as ❌ 无, not as 有', () => {
@@ -118,7 +118,7 @@ describe('renderWelfareFactsBanner', () => {
     expect(banner).toContain('员工餐：❌ 无');
     expect(banner).toContain('住宿：❌ 无');
     expect(banner).toContain('保险：❌ 无');
-    expect(banner).toContain('严禁包装成"有"');
+    expect(banner).toContain('不得包装成"有"');
   });
 
   it('renders 仅补贴 path correctly', () => {
@@ -141,5 +141,13 @@ describe('renderWelfareFactsBanner', () => {
     );
     expect(banner).toContain('晋升福利：✅ 有说明');
     expect(banner).toContain('其它福利：年终奖、节日礼品');
+  });
+
+  it('always includes free-text precedence rule', () => {
+    const banner = renderWelfareFactsBanner(
+      extractWelfareFacts({ catering: '员工自理' }),
+    );
+    expect(banner).not.toContain('禁止在 reply 里声称');
+    expect(banner).not.toContain('禁止在 reply 里声称');
   });
 });

@@ -277,6 +277,63 @@ describe('UserHostingRepository', () => {
     });
   });
 
+  // ==================== findDailyActivityStatsByDateRange ====================
+
+  describe('findDailyActivityStatsByDateRange', () => {
+    it('should return empty array when supabase is not available', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(false);
+
+      const result = await repository.findDailyActivityStatsByDateRange(
+        new Date('2026-04-28T00:00:00+08:00'),
+        new Date('2026-04-29T23:59:59+08:00'),
+      );
+
+      expect(result).toEqual([]);
+    });
+
+    it('should aggregate user_activity rows by day', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      const queryMock = makeQueryMock({
+        data: [
+          {
+            activity_date: '2026-04-28',
+            chat_id: 'chat-1',
+            message_count: 3,
+            token_usage: 100,
+          },
+          {
+            activity_date: '2026-04-28',
+            chat_id: 'chat-2',
+            message_count: 5,
+            token_usage: 200,
+          },
+          {
+            activity_date: '2026-04-29',
+            chat_id: 'chat-1',
+            message_count: 2,
+            token_usage: 50,
+          },
+        ],
+        error: null,
+      });
+      mockSupabaseClient.from.mockReturnValue(queryMock);
+
+      const result = await repository.findDailyActivityStatsByDateRange(
+        new Date('2026-04-28T00:00:00+08:00'),
+        new Date('2026-04-29T23:59:59+08:00'),
+      );
+
+      expect(mockSupabaseClient.from).toHaveBeenCalledWith('user_activity');
+      expect(queryMock.gte).toHaveBeenCalledWith('activity_date', '2026-04-28');
+      expect(queryMock.lte).toHaveBeenCalledWith('activity_date', '2026-04-29');
+      expect(result).toEqual([
+        { date: '2026-04-28', userCount: 2, messageCount: 8, tokenUsage: 300 },
+        { date: '2026-04-29', userCount: 1, messageCount: 2, tokenUsage: 50 },
+      ]);
+    });
+  });
+
   // ==================== upsertUserActivity ====================
 
   describe('upsertUserActivity', () => {

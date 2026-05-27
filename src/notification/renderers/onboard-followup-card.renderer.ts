@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { FeishuReceiver } from '@infra/feishu/constants/receivers';
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
+import { unwrapSessionFactValue } from '@memory/types/session-facts.types';
 import { OnboardFollowupNotificationPayload } from '../types/onboard-followup-notification.types';
 
 @Injectable()
@@ -59,11 +60,14 @@ export class OnboardFollowupCardRenderer {
 
   private formatCandidateInfo(payload: OnboardFollowupNotificationPayload): string {
     const interviewInfo = payload.sessionState?.facts?.interview_info;
+    const name = unwrapSessionFactValue(interviewInfo?.name);
+    const phone = unwrapSessionFactValue(interviewInfo?.phone);
+    const age = unwrapSessionFactValue(interviewInfo?.age);
     const lines = [
       payload.contactName ? `微信昵称：${payload.contactName}` : null,
-      interviewInfo?.name ? `姓名：${interviewInfo.name}` : null,
-      interviewInfo?.phone ? `电话：${interviewInfo.phone}` : null,
-      interviewInfo?.age ? `年龄：${interviewInfo.age}` : null,
+      name ? `姓名：${name}` : null,
+      phone ? `电话：${phone}` : null,
+      age ? `年龄：${age}` : null,
       payload.botUserName?.trim() ? `托管账号：${payload.botUserName.trim()}` : null,
       `会话ID：${payload.chatId}`,
       `暂停ID：${payload.pausedUserId}`,

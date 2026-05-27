@@ -1,7 +1,7 @@
-import type { UserProfile } from './long-term.types';
+import type { UserProfileFacts } from './long-term.types';
 import type { ProceduralState } from './procedural.types';
 import type { ShortTermMessage } from './short-term.types';
-import type { EntityExtractionResult, WeworkSessionState } from './session-facts.types';
+import type { HighConfidenceFacts, WeworkSessionState } from './session-facts.types';
 
 /**
  * Agent 运行时记忆上下文 — memory.onTurnStart() 返回值
@@ -25,10 +25,10 @@ export interface MemoryRecallContext {
   _warnings?: string[];
   sessionMemory: WeworkSessionState | null;
   /** 仅对当前轮生效的前置高置信识别结果，不属于持久化会话记忆。 */
-  highConfidenceFacts: EntityExtractionResult | null;
+  highConfidenceFacts: HighConfidenceFacts | null;
   procedural: ProceduralState;
   longTerm: {
-    profile: UserProfile | null;
+    profile: UserProfileFacts | null;
   };
 }
 

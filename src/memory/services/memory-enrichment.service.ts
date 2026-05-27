@@ -1,6 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CandidateProfileEnrichmentService } from '@biz/user/services/candidate-profile-enrichment.service';
-import { mergeSupplementalGenderFact, normalizeGenderValue } from '../facts/high-confidence-facts';
+import {
+  mergeSupplementalGenderFact,
+  normalizeGenderValue,
+  unwrapHighConfidenceValue,
+} from '../facts/high-confidence-facts';
+import { unwrapUserProfileFactValue } from '../types/long-term.types';
+import { unwrapSessionFactValue } from '../types/session-facts.types';
 import type { AgentMemoryContext } from '../types/memory-runtime.types';
 
 /**
@@ -68,9 +74,13 @@ export class MemoryEnrichmentService {
   /** 从快照任一层读取已知性别；profile / facts 均可能存数字或多形态字符串，统一归一化。 */
   private resolveKnownGender(snapshot: AgentMemoryContext): '男' | '女' | null {
     return (
-      normalizeGenderValue(snapshot.longTerm.profile?.gender) ??
-      normalizeGenderValue(snapshot.sessionMemory?.facts?.interview_info.gender) ??
-      normalizeGenderValue(snapshot.highConfidenceFacts?.interview_info.gender)
+      normalizeGenderValue(unwrapUserProfileFactValue(snapshot.longTerm.profile?.gender)) ??
+      normalizeGenderValue(
+        unwrapSessionFactValue(snapshot.sessionMemory?.facts?.interview_info.gender),
+      ) ??
+      normalizeGenderValue(
+        unwrapHighConfidenceValue(snapshot.highConfidenceFacts?.interview_info.gender),
+      )
     );
   }
 }

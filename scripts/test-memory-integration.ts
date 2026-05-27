@@ -267,10 +267,10 @@ async function seedMessage(
   return messageId;
 }
 
-/** 向 agent_memories 写入沉淀边界（lastSettledMessageAt） */
+/** 向 agent_long_term_memories 写入沉淀边界（lastSettledMessageAt） */
 async function seedAgentMemoryBaseline(lastSettledMessageAt: string): Promise<void> {
   const existing = await supabase
-    .from('agent_memories')
+    .from('agent_long_term_memories')
     .select('id')
     .eq('corp_id', TEST_CORP)
     .eq('user_id', TEST_USER)
@@ -280,17 +280,17 @@ async function seedAgentMemoryBaseline(lastSettledMessageAt: string): Promise<vo
 
   if (existing.data) {
     const { error } = await supabase
-      .from('agent_memories')
+      .from('agent_long_term_memories')
       .update({ summary_data: summaryData, updated_at: new Date().toISOString() })
       .eq('id', existing.data.id);
-    if (error) throw new Error(`更新 agent_memories 失败: ${error.message}`);
+    if (error) throw new Error(`更新 agent_long_term_memories 失败: ${error.message}`);
   } else {
-    const { error } = await supabase.from('agent_memories').insert({
+    const { error } = await supabase.from('agent_long_term_memories').insert({
       corp_id: TEST_CORP,
       user_id: TEST_USER,
       summary_data: summaryData,
     });
-    if (error) throw new Error(`插入 agent_memories 失败: ${error.message}`);
+    if (error) throw new Error(`插入 agent_long_term_memories 失败: ${error.message}`);
   }
 }
 
@@ -306,18 +306,18 @@ async function cleanup(): Promise<void> {
   if (e1) console.warn('  ⚠️  清理 chat_messages 失败:', e1.message);
   else console.log('  ✓ chat_messages 已清理');
 
-  // 2. Supabase: agent_memories
+  // 2. Supabase: agent_long_term_memories
   const { error: e2 } = await supabase
-    .from('agent_memories')
+    .from('agent_long_term_memories')
     .delete()
     .eq('corp_id', TEST_CORP)
     .eq('user_id', TEST_USER);
-  if (e2) console.warn('  ⚠️  清理 agent_memories 失败:', e2.message);
-  else console.log('  ✓ agent_memories 已清理');
+  if (e2) console.warn('  ⚠️  清理 agent_long_term_memories 失败:', e2.message);
+  else console.log('  ✓ agent_long_term_memories 已清理');
 
   // 3. Redis: session facts
   const factsKey = `facts:${TEST_CORP}:${TEST_USER}:${TEST_SESSION}`;
-  const profileCacheKey = `profile:${TEST_CORP}:${TEST_USER}`;
+  const profileCacheKey = `long-term:${TEST_CORP}:${TEST_USER}`;
   const shortTermKey = `memory:short_term:chat:${TEST_CHAT}`;
   await redis.del(
     ENV_PREFIX + factsKey,
@@ -463,44 +463,41 @@ async function scenario4_bookingWrite() {
 
   // 读取 Supabase 验证
   const { data, error } = await supabase
-    .from('agent_memories')
-    .select('name,phone,age,gender,profile_fields_meta')
+    .from('agent_long_term_memories')
+    .select('profile_facts')
     .eq('corp_id', TEST_CORP)
     .eq('user_id', TEST_USER)
     .maybeSingle();
 
   if (error || !data) {
-    fail('agent_memories 记录存在', `error: ${error?.message ?? 'not found'}`);
+    fail('agent_long_term_memories 记录存在', `error: ${error?.message ?? 'not found'}`);
     return;
   }
 
-  check('name 写入正确', data.name === '李小花', `got ${data.name}`);
-  check('phone 写入正确', data.phone === '13900139000', `got ${data.phone}`);
-  check('age 写入正确（string）', data.age === '20', `got ${data.age}`);
-  check('gender 写入正确', data.gender === '女', `got ${data.gender}`);
-
-  // 验证 profile_fields_meta
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const meta = data.profile_fields_meta as any;
-  check('profile_fields_meta 存在', meta != null);
-  check('name meta.source = booking', meta?.name?.source === 'booking', `got ${meta?.name?.source}`);
-  check('phone meta.confidence = high', meta?.phone?.confidence === 'high', `got ${meta?.phone?.confidence}`);
-  check('age meta.writtenAt 有值', typeof meta?.age?.writtenAt === 'string');
-  check('gender meta 存在', meta?.gender?.source === 'booking');
+  const profileFacts = data.profile_facts as any;
+  check('profile_facts 存在', profileFacts != null);
+  check('name 写入正确', profileFacts?.name?.value === '李小花', `got ${profileFacts?.name?.value}`);
+  check('phone 写入正确', profileFacts?.phone?.value === '13900139000', `got ${profileFacts?.phone?.value}`);
+  check('age 写入正确（string）', profileFacts?.age?.value === '20', `got ${profileFacts?.age?.value}`);
+  check('gender 写入正确', profileFacts?.gender?.value === '女', `got ${profileFacts?.gender?.value}`);
+  check('name source = booking', profileFacts?.name?.source === 'booking', `got ${profileFacts?.name?.source}`);
+  check('phone confidence = high', profileFacts?.phone?.confidence === 'high', `got ${profileFacts?.phone?.confidence}`);
+  check('age updatedAt 有值', typeof profileFacts?.age?.updatedAt === 'string');
 
   // 通过 LongTermService 读取验证 Redis 失效 + Supabase 回查
-  await redis.del(ENV_PREFIX + `profile:${TEST_CORP}:${TEST_USER}`); // 清 Redis 缓存
+  await redis.del(ENV_PREFIX + `long-term:${TEST_CORP}:${TEST_USER}`); // 清 Redis 缓存
   const profile = await longTermService.getProfile(TEST_CORP, TEST_USER);
 
   check(
     'getProfile 返回正确名字',
-    profile?.name === '李小花',
-    `got ${profile?.name}`,
+    profile?.name?.value === '李小花',
+    `got ${profile?.name?.value}`,
   );
   check(
     'getProfile 返回正确电话',
-    profile?.phone === '13900139000',
-    `got ${profile?.phone}`,
+    profile?.phone?.value === '13900139000',
+    `got ${profile?.phone?.value}`,
   );
 }
 
@@ -533,7 +530,7 @@ async function scenario5_settlement() {
   console.log(`  📝 baseline lastSettledMessageAt = ${baseline}`);
 
   // 清 Redis 缓存避免 Supabase Store 读到旧数据
-  await redis.del(ENV_PREFIX + `profile:${TEST_CORP}:${TEST_USER}`);
+  await redis.del(ENV_PREFIX + `long-term:${TEST_CORP}:${TEST_USER}`);
 
   const result = await settlementService.detectAndSettle(
     TEST_CORP,
@@ -544,9 +541,9 @@ async function scenario5_settlement() {
 
   check('detectAndSettle 返回 true（触发了沉淀）', result === true, `got ${result}`);
 
-  // 验证 Supabase agent_memories 的 summary_data 已更新
+  // 验证 Supabase agent_long_term_memories 的 summary_data 已更新
   const { data } = await supabase
-    .from('agent_memories')
+    .from('agent_long_term_memories')
     .select('summary_data')
     .eq('corp_id', TEST_CORP)
     .eq('user_id', TEST_USER)
@@ -600,26 +597,26 @@ async function scenario6_profileRetainedAfterSettlement() {
 
   // 刚才 Scenario 4 已经写入了 booking profile，Scenario 5 做了 settlement
   // 验证 profile 字段没有被 settlement 覆盖
-  await redis.del(ENV_PREFIX + `profile:${TEST_CORP}:${TEST_USER}`);
+  await redis.del(ENV_PREFIX + `long-term:${TEST_CORP}:${TEST_USER}`);
   const profile = await longTermService.getProfile(TEST_CORP, TEST_USER);
 
-  check('booking 写入的 name 仍然存在', profile?.name === '李小花', `got ${profile?.name}`);
-  check('booking 写入的 phone 仍然存在', profile?.phone === '13900139000', `got ${profile?.phone}`);
+  check('booking 写入的 name 仍然存在', profile?.name?.value === '李小花', `got ${profile?.name?.value}`);
+  check('booking 写入的 phone 仍然存在', profile?.phone?.value === '13900139000', `got ${profile?.phone?.value}`);
 
-  // 验证 profile_fields_meta 也保留
+  // 验证 profile_facts 元数据也保留
   const { data } = await supabase
-    .from('agent_memories')
-    .select('profile_fields_meta')
+    .from('agent_long_term_memories')
+    .select('profile_facts')
     .eq('corp_id', TEST_CORP)
     .eq('user_id', TEST_USER)
     .maybeSingle();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const meta = data?.profile_fields_meta as any;
+  const profileFacts = data?.profile_facts as any;
   check(
-    'profile_fields_meta.name.source = booking（沉淀后未被清除）',
-    meta?.name?.source === 'booking',
-    `got ${meta?.name?.source}`,
+    'profile_facts.name.source = booking（沉淀后未被清除）',
+    profileFacts?.name?.source === 'booking',
+    `got ${profileFacts?.name?.source}`,
   );
 }
 
@@ -640,7 +637,7 @@ async function main() {
   const ping = await redis.ping();
   console.log(`\n✓ Redis ping: ${ping}`);
 
-  const { error: sbErr } = await supabase.from('agent_memories').select('id').limit(1);
+  const { error: sbErr } = await supabase.from('agent_long_term_memories').select('id').limit(1);
   if (sbErr) {
     console.error('✗ Supabase 连接失败:', sbErr.message);
     process.exit(1);

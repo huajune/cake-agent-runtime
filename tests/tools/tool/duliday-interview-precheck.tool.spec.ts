@@ -1,7 +1,54 @@
 import { buildInterviewPrecheckTool } from '@tools/duliday-interview-precheck.tool';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
-import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
+import {
+  FALLBACK_EXTRACTION,
+  type HighConfidenceFacts,
+  type HighConfidenceValue,
+} from '@memory/types/session-facts.types';
+
+function highConfidence<T>(value: T, evidence: string): HighConfidenceValue<T> {
+  return { value, confidence: 'high', source: 'rule', evidence };
+}
+
+function lowConfidence<T>(value: T, evidence: string): HighConfidenceValue<T> {
+  return { value, confidence: 'low', source: 'system', evidence };
+}
+
+function emptyHighConfidenceFacts(): HighConfidenceFacts {
+  return {
+    interview_info: {
+      name: null,
+      phone: null,
+      gender: null,
+      gender_source: null,
+      age: null,
+      applied_store: null,
+      applied_position: null,
+      interview_time: null,
+      is_student: null,
+      education: null,
+      has_health_certificate: null,
+    },
+    preferences: {
+      brands: null,
+      salary: null,
+      position: null,
+      schedule: null,
+      city: null,
+      district: null,
+      location: null,
+      labor_form: null,
+      delayed_intent: null,
+      short_term: null,
+      open_position: null,
+      time_windows: null,
+      schedule_constraint: null,
+      available_after: null,
+    },
+    reasoning: 'test',
+  };
+}
 
 describe('buildInterviewPrecheckTool', () => {
   const mockSpongeService = {
@@ -483,6 +530,339 @@ describe('buildInterviewPrecheckTool', () => {
         starterFields: ['面试时间'],
       }),
     );
+  });
+
+  it('should use candidateAge input as the current turn source of truth', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: {
+            basicPersonalRequirements: {
+              minAge: 25,
+              maxAge: 50,
+              genderRequirement: '男性',
+            },
+            remark: '',
+          },
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-04-08',
+                  interviewStartTime: '13:30',
+                  interviewEndTime: '16:30',
+                },
+              ],
+            },
+            interviewSupplement: [],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      {
+        jobId: 100,
+        requestedDate: '2026-04-08',
+        candidateAge: 24,
+      },
+      {
+        sessionFacts: {
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            age: '30',
+            education: null,
+            has_health_certificate: null,
+          },
+          preferences: FALLBACK_EXTRACTION.preferences,
+          reasoning: 'stale context',
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.ageBoundary).toEqual(
+      expect.objectContaining({
+        candidateAge: 24,
+        requiredMin: 25,
+        requiredMax: 50,
+        side: 'under_min',
+        severity: 'boundary',
+      }),
+    );
+    expect(result.bookingChecklist.templateText).toContain('年龄：24');
+    expect(result.bookingChecklist.templateText).not.toContain('年龄：30');
+  });
+
+  it('should use explicit candidate fields as the current turn source of truth', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-04-08',
+                  interviewStartTime: '13:30',
+                  interviewEndTime: '16:30',
+                },
+              ],
+            },
+            interviewSupplement: [],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      {
+        jobId: 100,
+        requestedDate: '2026-04-08',
+        candidateAge: 24,
+        candidateInterviewTime: '明天吧',
+        candidateGender: '女',
+        candidateEducation: '大专',
+        candidateHasHealthCertificate: '有',
+        candidateIsStudent: true,
+      },
+      {
+        sessionFacts: {
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            age: '30',
+            gender: '男',
+            interview_time: '后天',
+            education: '高中',
+            has_health_certificate: '无',
+            is_student: false,
+          },
+          preferences: FALLBACK_EXTRACTION.preferences,
+          reasoning: 'stale context',
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.bookingChecklist.templateText).toContain('性别：女');
+    expect(result.bookingChecklist.templateText).toContain('年龄：24');
+    expect(result.bookingChecklist.templateText).toContain('面试时间：明天吧');
+    expect(result.bookingChecklist.templateText).toContain('学历：大专');
+    expect(result.bookingChecklist.templateText).toContain('健康证：有');
+    expect(result.bookingChecklist.templateText).toContain('身份（学生/社会人士）：学生');
+    expect(result.bookingChecklist.templateText).not.toContain('性别：男');
+    expect(result.bookingChecklist.templateText).not.toContain('年龄：30');
+    expect(result.bookingChecklist.templateText).not.toContain('面试时间：后天');
+    expect(result.bookingChecklist.missingFields).not.toContain('性别');
+    expect(result.bookingChecklist.missingFields).not.toContain('年龄');
+    expect(result.bookingChecklist.missingFields).not.toContain('面试时间');
+  });
+
+  it('should collect only missing education when candidate passes age boundary with explicit fields', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-27T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          basicInfo: { jobId: 523067 },
+          hiringRequirement: {
+            basicPersonalRequirements: {
+              minAge: 25,
+              maxAge: 50,
+              genderRequirement: '不限',
+            },
+            certificate: {
+              education: '高中',
+              healthCertificate: '食品健康证',
+            },
+            remark: '',
+          },
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-05-28',
+                  interviewStartTime: '13:30',
+                  interviewEndTime: '16:30',
+                },
+              ],
+            },
+            interviewSupplement: [],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      {
+        jobId: 523067,
+        requestedDate: '2026-05-28',
+        candidateAge: 24,
+        candidateInterviewTime: '明天吧',
+        candidateHasHealthCertificate: '有',
+      },
+      {
+        sessionFacts: {
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            name: '张三',
+            phone: '13800138000',
+            gender: '女',
+            education: null,
+          },
+          preferences: FALLBACK_EXTRACTION.preferences,
+          reasoning: 'candidate has provided name, phone and gender',
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.nextAction).toBe('collect_fields');
+    expect(result.ageBoundary).toEqual(
+      expect.objectContaining({
+        candidateAge: 24,
+        requiredMin: 25,
+        requiredMax: 50,
+        side: 'under_min',
+        severity: 'boundary',
+      }),
+    );
+    expect(result.bookingChecklist.missingFields).toEqual(['学历']);
+    expect(result.bookingChecklist.templateText).toContain('姓名：张三');
+    expect(result.bookingChecklist.templateText).toContain('联系方式：13800138000');
+    expect(result.bookingChecklist.templateText).toContain('年龄：24');
+    expect(result.bookingChecklist.templateText).toContain('面试时间：明天吧');
+    expect(result.bookingChecklist.templateText).toContain('健康证：有');
+    expect(result.bookingChecklist.templateText).toContain('学历：');
+  });
+
+  it('should use high-confidence highConfidenceFacts age before stale session facts', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: {
+            basicPersonalRequirements: {
+              minAge: 25,
+              maxAge: 50,
+              genderRequirement: '男性',
+            },
+            remark: '',
+          },
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-04-08',
+                  interviewStartTime: '13:30',
+                  interviewEndTime: '16:30',
+                },
+              ],
+            },
+            interviewSupplement: [],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      {
+        jobId: 100,
+        requestedDate: '2026-04-08',
+      },
+      {
+        sessionFacts: {
+          interview_info: {
+            ...FALLBACK_EXTRACTION.interview_info,
+            age: '30',
+          },
+          preferences: FALLBACK_EXTRACTION.preferences,
+          reasoning: 'stale context',
+        },
+        highConfidenceFacts: {
+          ...emptyHighConfidenceFacts(),
+          interview_info: {
+            ...emptyHighConfidenceFacts().interview_info,
+            age: highConfidence('24', '年龄识别：24'),
+          },
+          reasoning: '年龄识别：24',
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.ageBoundary).toEqual(
+      expect.objectContaining({
+        candidateAge: 24,
+        requiredMin: 25,
+        requiredMax: 50,
+        side: 'under_min',
+        severity: 'boundary',
+      }),
+    );
+    expect(result.bookingChecklist.templateText).toContain('年龄：24');
+    expect(result.bookingChecklist.templateText).not.toContain('年龄：30');
+  });
+
+  it('should ignore low-confidence highConfidenceFacts age for ageBoundary and checklist prefill', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          hiringRequirement: {
+            basicPersonalRequirements: {
+              minAge: 25,
+              maxAge: 50,
+              genderRequirement: '男性',
+            },
+            remark: '',
+          },
+          interviewProcess: {
+            firstInterview: {
+              fixedInterviewTimes: [
+                {
+                  interviewDate: '2026-04-08',
+                  interviewStartTime: '13:30',
+                  interviewEndTime: '16:30',
+                },
+              ],
+            },
+            interviewSupplement: [],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool(
+      {
+        jobId: 100,
+        requestedDate: '2026-04-08',
+      },
+      {
+        sessionFacts: FALLBACK_EXTRACTION,
+        highConfidenceFacts: {
+          ...emptyHighConfidenceFacts(),
+          interview_info: {
+            ...emptyHighConfidenceFacts().interview_info,
+            age: lowConfidence('24', '低置信年龄'),
+          },
+          reasoning: '低置信年龄',
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.ageBoundary).toEqual(
+      expect.objectContaining({
+        requiredMin: 25,
+        requiredMax: 50,
+        severity: 'unknown',
+      }),
+    );
+    expect(result.ageBoundary).not.toHaveProperty('candidateAge');
+    expect(result.bookingChecklist.templateText).toContain('年龄：');
+    expect(result.bookingChecklist.templateText).not.toContain('年龄：24');
+    expect(result.bookingChecklist.missingFields).toContain('年龄');
   });
 
   it('should not prefill manager name as candidate name (badcase m5lpfwi0)', async () => {

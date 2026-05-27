@@ -17,6 +17,7 @@ const SECRET_ENV_KEYS = [
 ];
 const MAX_MARKDOWN_CHARS = 3500;
 const CHANGELOG_PATH = 'CHANGELOG.md';
+const RELEASE_METADATA_PATH = '.release/pending-release.json';
 const PENDING_START = '<!-- release:pending:start -->';
 const PENDING_END = '<!-- release:pending:end -->';
 const DEFAULT_OPERATIONAL_SUMMARY = '- 本次包含体验优化与稳定性修复，技术明细已记录在版本说明中。';
@@ -73,7 +74,7 @@ if (require.main === module) {
 }
 
 async function main() {
-  const webhookUrl = firstEnv(WEBHOOK_ENV_KEYS);
+  const { webhookUrl, secret } = getWebhookConfig();
   const requireNotification = isTruthy(process.env.REQUIRE_DEPLOY_NOTIFICATION);
   const releaseTag = getReleaseTag();
   const deployResult = getDeployResult();
@@ -114,7 +115,6 @@ async function main() {
     },
   };
 
-  const secret = firstEnv(SECRET_ENV_KEYS);
   if (secret) {
     const timestamp = Math.floor(Date.now() / 1000).toString();
     payload.timestamp = timestamp;
@@ -123,7 +123,7 @@ async function main() {
 
   const response = await postJson(webhookUrl, payload);
   assertFeishuResponse(response);
-  console.log('Deploy notification sent to Feishu private domain monitor group.');
+  console.log('Deploy notification sent to Feishu release notification webhook.');
 }
 
 function buildMarkdown(options = {}) {
@@ -132,29 +132,25 @@ function buildMarkdown(options = {}) {
   const deployStatus = getDeployStatusMeta(deployResult);
   const publishedAt = formatShanghaiTime(env('DEPLOY_FINISHED_AT', new Date().toISOString()));
   const releaseNotes = normalizeReleaseNotes(readReleaseNotes());
-  const envReminder = extractEnvReminder(releaseNotes);
+  const structuredBusinessUpdates = readStructuredBusinessUpdates(releaseTag);
 
   const lines = [
     `**版本**：${releaseTag}`,
     `**发布时间**：${publishedAt}`,
     `**发布状态**：${deployStatus.markdown}`,
   ];
-  if (envReminder) {
-    lines.push('', ...renderOptionalSection('需要关注', envReminder));
-  }
 
-  const structured = extractStructuredUpdate(releaseNotes);
-  if (structured) {
-    lines.push('', structured);
-  } else {
-    lines.push('', '**本次更新**', extractUpdateSummary(releaseNotes));
-  }
+  lines.push(
+    '',
+    '**业务改动（候选人/运营可感知）**',
+    renderBusinessUpdateSummary(structuredBusinessUpdates, releaseNotes),
+  );
 
   return truncateText(lines.join('\n'), MAX_MARKDOWN_CHARS);
 }
 
 function extractStructuredUpdate(releaseNotes) {
-  const businessLines = collectSectionLines(releaseNotes, ['新功能', '问题修复']);
+  const businessLines = collectBusinessUpdateLines(releaseNotes);
   const opsLines = collectSectionLines(releaseNotes, ['优化调整', '运维与流程']);
 
   if (businessLines.length === 0 && opsLines.length === 0) {
@@ -172,6 +168,87 @@ function extractStructuredUpdate(releaseNotes) {
     blocks.push(...opsLines.map((line) => `- ${line}`));
   }
   return blocks.join('\n');
+}
+
+function extractBusinessUpdateSummary(releaseNotes) {
+  const businessLines = collectBusinessUpdateLines(releaseNotes);
+  return renderUpdateSummary(businessLines, 10);
+}
+
+function renderBusinessUpdateSummary(structuredBusinessUpdates, releaseNotes) {
+  if (structuredBusinessUpdates.length > 0) {
+    return renderUpdateSummary(structuredBusinessUpdates, 10);
+  }
+  return extractBusinessUpdateSummary(releaseNotes);
+}
+
+function readStructuredBusinessUpdates(releaseTag = getReleaseTag()) {
+  const releaseMetadata = readReleaseMetadata();
+  if (!releaseMetadata) {
+    return [];
+  }
+
+  const version = String(releaseTag || '').replace(/^v/, '');
+  const releaseEntries = resolveReleaseMetadataEntries(releaseMetadata, version);
+  const lines = [];
+  for (const entry of releaseEntries) {
+    const businessUpdates = Array.isArray(entry.businessUpdates) ? entry.businessUpdates : [];
+    const fallbackUpdates = businessUpdates.length
+      ? businessUpdates
+      : [...(entry.features || []), ...(entry.fixes || [])];
+    for (const item of fallbackUpdates) {
+      const text = formatReleaseText(item, { includePrReference: false });
+      if (!text || isEmptyReleaseLine(text)) continue;
+      lines.push(text);
+    }
+  }
+
+  return uniqueList(lines);
+}
+
+function readReleaseMetadata() {
+  const metadataFile = env('RELEASE_METADATA_FILE', RELEASE_METADATA_PATH);
+  if (!metadataFile || !fs.existsSync(metadataFile)) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(fs.readFileSync(metadataFile, 'utf8'));
+  } catch (error) {
+    console.warn(`Release metadata ignored: ${error.message}`);
+    return null;
+  }
+}
+
+function resolveReleaseMetadataEntries(metadata, version) {
+  if (!metadata || typeof metadata !== 'object') {
+    return [];
+  }
+
+  const lastReleaseVersion = String(metadata.lastRelease?.version || '').replace(/^v/, '');
+  if (lastReleaseVersion === version && Array.isArray(metadata.lastRelease.entries)) {
+    return metadata.lastRelease.entries;
+  }
+
+  const nextVersion = String(metadata.nextVersion || '').replace(/^v/, '');
+  if (nextVersion === version && Array.isArray(metadata.entries)) {
+    return metadata.entries;
+  }
+
+  return [];
+}
+
+function collectBusinessUpdateLines(releaseNotes) {
+  const businessLines = collectSectionLines(releaseNotes, ['新功能', '问题修复']);
+  if (businessLines.length > 0) {
+    return businessLines;
+  }
+
+  const summaryLines = parseMarkdownBullets(extractMarkdownSection(releaseNotes, '更新摘要'))
+    .map((line) => formatOperationalReleaseText(line, { includePrReference: false }))
+    .filter(Boolean);
+
+  return uniqueList(summaryLines.filter((line) => !isEmptyReleaseLine(line)));
 }
 
 function collectSectionLines(releaseNotes, sectionTitles) {
@@ -196,6 +273,13 @@ function buildCardTitle(releaseTag = getReleaseTag(), deployResult = getDeployRe
 
 function getCardTemplate(deployResult = getDeployResult()) {
   return getDeployStatusMeta(deployResult).template;
+}
+
+function getWebhookConfig() {
+  return {
+    webhookUrl: firstEnv(WEBHOOK_ENV_KEYS),
+    secret: firstEnv(SECRET_ENV_KEYS),
+  };
 }
 
 function getReleaseTag() {
@@ -306,8 +390,8 @@ function extractPublicUpdateLines(releaseNotes) {
   return uniqueList(lines).slice(0, 10);
 }
 
-function renderUpdateSummary(lines) {
-  const items = uniqueList(lines).slice(0, 6);
+function renderUpdateSummary(lines, limit = 6) {
+  const items = uniqueList(lines).slice(0, limit);
 
   if (items.length === 0) {
     return DEFAULT_OPERATIONAL_SUMMARY;
@@ -473,6 +557,7 @@ module.exports = {
   extractStructuredUpdate,
   extractUpdateSummary,
   getCardTemplate,
+  getWebhookConfig,
   normalizeReleaseNotes,
 };
 

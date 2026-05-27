@@ -1,5 +1,5 @@
 import { Inbox } from 'lucide-react';
-import { formatTime, formatDateTime } from '@/utils/format';
+import { formatDateTime } from '@/utils/format';
 import type { UserTableProps } from '../../types';
 import { AVATAR_GRADIENTS } from '../../constants';
 import { getAvatarStyle, getUserInitial } from '../../utils/helpers';
@@ -84,8 +84,8 @@ export default function UserTable({
                   </td>
                   {!isPausedTab && <td>{user.messageCount}</td>}
                   {!isPausedTab && <td>{user.tokenUsage}</td>}
-                  {!isPausedTab && <td>{formatTime(user.firstActiveAt)}</td>}
-                  {!isPausedTab && <td>{formatTime(user.lastActiveAt)}</td>}
+                  {!isPausedTab && <td>{formatDateTime(user.firstActiveAt)}</td>}
+                  {!isPausedTab && <td>{formatDateTime(user.lastActiveAt)}</td>}
                   {isPausedTab && <td>{formatDateTime(user.firstActiveAt)}</td>}
                   {isPausedTab && (
                     <td>{user.pauseExpiresAt ? formatDateTime(user.pauseExpiresAt) : '-'}</td>

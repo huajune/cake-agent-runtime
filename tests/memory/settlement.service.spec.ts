@@ -306,7 +306,7 @@ describe('SettlementService', () => {
 
     // ==================== Profile 沉淀写入 ====================
 
-    it('should call writeFromSettlement when facts are provided and settlement triggers', async () => {
+    it('should call writeFromSettlement with sessionFacts when facts are provided and settlement triggers', async () => {
       const now = Date.now();
       const lastSettled = new Date(now - 3 * SETTLEMENT_GAP * 1000).toISOString();
       mockLongTermService.getSummaryData.mockResolvedValue({

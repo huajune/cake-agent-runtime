@@ -1,4 +1,8 @@
-import type { EntityExtractionResult } from '@memory/types/session-facts.types';
+import type {
+  EntityExtractionResult,
+  HighConfidenceFacts,
+  SessionFacts,
+} from '@memory/types/session-facts.types';
 import { StrategyConfigRecord } from '@shared-types/strategy-config.types';
 
 /**
@@ -20,9 +24,9 @@ export interface PromptContext {
   /** 候选人意向城市的兼职群资源块；由 ContextService 预渲染。 */
   groupInventoryBlock?: string;
   /** 会话记忆中的已确认提取结果；供 TurnHintsSection 做冲突比对。 */
-  sessionFacts?: EntityExtractionResult | null;
+  sessionFacts?: EntityExtractionResult | SessionFacts | null;
   /** 本轮前置识别得到的高置信结果；由 TurnHintsSection 拆分为普通/待确认线索后渲染。 */
-  highConfidenceFacts?: EntityExtractionResult | null;
+  highConfidenceFacts?: HighConfidenceFacts | null;
 }
 
 /**

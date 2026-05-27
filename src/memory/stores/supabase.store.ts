@@ -4,17 +4,24 @@ import { RedisService } from '@infra/redis/redis.service';
 import { MemoryConfig } from '../memory.config';
 import type {
   UserProfile,
-  UserProfileMeta,
-  ProfileFieldMeta,
+  UserProfileFacts,
+  ProfileFactConfidence,
+  ProfileFactSource,
   SummaryData,
   SummaryEntry,
   MessageMetadata,
-  AgentMemoryRow,
+  AgentLongTermMemoryRow,
 } from '../types/long-term.types';
-import { MAX_RECENT_SUMMARIES, USER_PROFILE_FIELD_KEYS } from '../types/long-term.types';
+import {
+  createEmptyUserProfileFacts,
+  isUserProfileFactValue,
+  MAX_RECENT_SUMMARIES,
+  userProfileFactValue,
+  USER_PROFILE_FIELD_KEYS,
+} from '../types/long-term.types';
 import type { MemoryEntry, MemoryStore } from './store.types';
 
-const TABLE = 'agent_memories';
+const TABLE = 'agent_long_term_memories';
 
 function normalizeSummaryData(data: SummaryData | null | undefined): SummaryData | null {
   if (!data) return null;
@@ -25,17 +32,31 @@ function normalizeSummaryData(data: SummaryData | null | undefined): SummaryData
   };
 }
 
+function normalizeProfileFacts(data: UserProfileFacts | null | undefined): UserProfileFacts | null {
+  if (!data) return null;
+
+  const facts = createEmptyUserProfileFacts();
+  let hasValue = false;
+  const raw = data as Record<string, unknown>;
+
+  for (const key of USER_PROFILE_FIELD_KEYS) {
+    const value = raw[key];
+    if (isUserProfileFactValue(value)) {
+      (facts as Record<string, unknown>)[key] = value;
+      hasValue = true;
+    }
+  }
+
+  return hasValue ? facts : null;
+}
+
 /**
  * Supabase 存储后端 — 长期记忆（每用户一行）
  *
- * 表结构：Profile 平铺列 + summary_data jsonb + message_metadata jsonb
+ * 表结构：profile_facts jsonb + summary_data jsonb + message_metadata jsonb
  * 唯一约束 (corp_id, user_id)，每用户一行。
  * Redis 2h 缓存整行数据。
  * Supabase 不可用时 graceful 降级。
- *
- * 当前这套记忆结构对表结构没有新增列要求：
- * - `summary_data` 里的 `lastSettledMessageAt` 直接放在 jsonb 中
- * - 开发阶段允许旧 json 结构自然被新写入覆盖，不做额外迁移兼容
  */
 @Injectable()
 export class SupabaseStore implements MemoryStore {
@@ -49,36 +70,22 @@ export class SupabaseStore implements MemoryStore {
 
   // ==================== Profile 操作 ====================
 
-  async getProfile(corpId: string, userId: string): Promise<UserProfile | null> {
+  async getProfile(corpId: string, userId: string): Promise<UserProfileFacts | null> {
     const row = await this.getRow(corpId, userId);
     if (!row) return null;
-
-    return {
-      name: row.name ?? null,
-      phone: row.phone ?? null,
-      gender: row.gender ?? null,
-      age: row.age ?? null,
-      is_student: row.is_student ?? null,
-      education: row.education ?? null,
-      has_health_certificate: row.has_health_certificate ?? null,
-    };
+    return normalizeProfileFacts(row.profile_facts ?? null);
   }
 
   /**
-   * 写入 Profile 字段并同时记录来源元数据（profile_fields_meta）。
+   * 写入 Profile facts。每个字段值自身携带 value/confidence/source/evidence/updatedAt。
    *
-   * 置信度守卫由 DB 端 RPC `upsert_profile_with_confidence_guard` 原子保证：
-   * SELECT ... FOR UPDATE 行锁 → 读 existing meta → 逐字段比较 confidence →
-   * high 不被非 high 覆盖 → 单事务写入。
-   *
-   * 解决的竞态：booking（fire-and-forget, high）与 settlement（async, medium）
-   * 交错时，应用层 read-then-write 无法保证 high 不被覆盖。
+   * 置信度守卫由 DB 端 RPC `upsert_long_term_profile_facts` 原子保证：
+   * 已有 high 时，incoming 非 high 不得覆盖。
    */
-  async upsertProfileWithMeta(
+  async upsertProfileFacts(
     corpId: string,
     userId: string,
-    profile: Partial<UserProfile>,
-    meta: UserProfileMeta,
+    profileFacts: Partial<UserProfileFacts>,
     metadata?: MessageMetadata,
   ): Promise<void> {
     const client = this.supabase.getSupabaseClient();
@@ -87,33 +94,31 @@ export class SupabaseStore implements MemoryStore {
       return;
     }
 
-    const profileJson: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(profile)) {
-      if (value != null) profileJson[key] = value;
+    const profileFactsJson: Record<string, unknown> = {};
+    for (const key of USER_PROFILE_FIELD_KEYS) {
+      const fact = profileFacts[key];
+      if (isUserProfileFactValue(fact) && fact.value !== null && fact.value !== undefined) {
+        profileFactsJson[key] = fact;
+      }
     }
-    const mergedMeta = this.withDefaultProfileMeta(profileJson, meta, {
-      source: 'enrichment',
-      confidence: 'medium',
-    });
-    if (Object.keys(profileJson).length === 0 && Object.keys(mergedMeta).length === 0) return;
+    if (Object.keys(profileFactsJson).length === 0 && !metadata) return;
 
-    const { data, error } = await client.rpc('upsert_profile_with_confidence_guard', {
+    const { data, error } = await client.rpc('upsert_long_term_profile_facts', {
       p_corp_id: corpId,
       p_user_id: userId,
-      p_profile: profileJson,
-      p_meta: mergedMeta,
+      p_profile_facts: profileFactsJson,
       p_message_metadata: metadata ?? null,
     });
 
     if (error) {
-      this.logger.warn('[upsertProfileWithMeta] RPC 失败', error.message);
+      this.logger.warn('[upsertProfileFacts] RPC 失败', error.message);
       return;
     }
 
     const result = data as { written_fields: string[]; skipped_fields: string[] } | null;
     if (result?.skipped_fields?.length) {
       this.logger.log(
-        `[upsertProfileWithMeta] 置信度守卫：跳过 ${result.skipped_fields.join(',')}（已有 high，incoming 非 high）`,
+        `[upsertProfileFacts] 置信度守卫：跳过 ${result.skipped_fields.join(',')}（已有 high，incoming 非 high）`,
       );
     }
 
@@ -130,7 +135,7 @@ export class SupabaseStore implements MemoryStore {
   /**
    * 原子追加一条摘要（DB 端 RPC 行锁），自动执行分层压缩。
    *
-   * Phase 1: RPC `append_summary_atomic` 在行锁内追加 entry 到 recent 头部，
+   * Phase 1: RPC `append_long_term_summary_atomic` 在行锁内追加 entry 到 recent 头部，
    *          超限时返回溢出条目但不压缩（压缩需 LLM，不能在 DB 事务里做）。
    * Phase 2: 若有溢出且提供了 compressArchive，在应用层压缩后回写 archive。
    */
@@ -152,10 +157,10 @@ export class SupabaseStore implements MemoryStore {
       return;
     }
 
-    const { data: rpcResult, error } = await client.rpc('append_summary_atomic', {
+    const { data: rpcResult, error } = await client.rpc('append_long_term_summary_atomic', {
       p_corp_id: corpId,
       p_user_id: userId,
-      p_entry: JSON.stringify(entry),
+      p_entry: entry,
       p_last_settled_message_at: options?.lastSettledMessageAt ?? null,
       p_max_recent: MAX_RECENT_SUMMARIES,
     });
@@ -260,7 +265,12 @@ export class SupabaseStore implements MemoryStore {
 
   async set(key: string, content: Record<string, unknown>): Promise<void> {
     const { corpId, userId } = this.parseProfileKey(key);
-    await this.upsertProfileWithMeta(corpId, userId, content as Partial<UserProfile>, {});
+    const profileFacts = this.buildProfileFactsFromPlain(content as Partial<UserProfile>, {
+      source: 'enrichment',
+      confidence: 'medium',
+      evidence: '外部补充字段写入长期档案',
+    });
+    await this.upsertProfileFacts(corpId, userId, profileFacts);
   }
 
   async del(key: string): Promise<boolean> {
@@ -281,10 +291,10 @@ export class SupabaseStore implements MemoryStore {
 
   // ==================== 内部方法 ====================
 
-  private async getRow(corpId: string, userId: string): Promise<AgentMemoryRow | null> {
+  private async getRow(corpId: string, userId: string): Promise<AgentLongTermMemoryRow | null> {
     // Redis 缓存优先
     const cacheKey = this.cacheKey(corpId, userId);
-    const cached = await this.redis.get<AgentMemoryRow>(cacheKey);
+    const cached = await this.redis.get<AgentLongTermMemoryRow>(cacheKey);
     if (cached) return cached;
 
     const client = this.supabase.getSupabaseClient();
@@ -307,7 +317,7 @@ export class SupabaseStore implements MemoryStore {
 
     if (!data) return null;
 
-    const row = data as AgentMemoryRow;
+    const row = data as AgentLongTermMemoryRow;
     await this.redis
       .setex(cacheKey, this.config.longTermCacheTtl, row)
       .catch((err) => this.logger.warn('Redis 缓存回填失败', err));
@@ -343,28 +353,33 @@ export class SupabaseStore implements MemoryStore {
   }
 
   private cacheKey(corpId: string, userId: string): string {
-    return `profile:${corpId}:${userId}`;
+    return `long-term:${corpId}:${userId}`;
   }
 
-  private withDefaultProfileMeta(
-    profileJson: Record<string, unknown>,
-    meta: UserProfileMeta,
-    defaults: Pick<ProfileFieldMeta, 'source' | 'confidence'>,
-  ): UserProfileMeta {
-    const mergedMeta: UserProfileMeta = { ...meta };
-    const writtenAt = new Date().toISOString();
-
+  private buildProfileFactsFromPlain(
+    profile: Partial<UserProfile>,
+    defaults: {
+      source: ProfileFactSource;
+      confidence: ProfileFactConfidence;
+      evidence: string;
+    },
+  ): Partial<UserProfileFacts> {
+    const facts: Partial<UserProfileFacts> = {};
+    const updatedAt = new Date().toISOString();
     for (const key of USER_PROFILE_FIELD_KEYS) {
-      if (profileJson[key] !== undefined && !mergedMeta[key]) {
-        mergedMeta[key] = { ...defaults, writtenAt };
+      const value = profile[key];
+      if (value !== null && value !== undefined) {
+        (facts as Record<string, unknown>)[key] = userProfileFactValue(value, {
+          ...defaults,
+          updatedAt,
+        });
       }
     }
-
-    return mergedMeta;
+    return facts;
   }
 
   private parseProfileKey(key: string): { corpId: string; userId: string } {
-    const parts = key.replace(/^profile:/, '').split(':');
+    const parts = key.replace(/^(profile|long-term):/, '').split(':');
     return { corpId: parts[0] ?? '', userId: parts[1] ?? '' };
   }
 }

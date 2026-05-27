@@ -1,7 +1,50 @@
 import { AgentPreparationService } from '@agent/agent-preparation.service';
 import { InputGuardService } from '@agent/input-guard.service';
 import { CallerKind } from '@enums/agent.enum';
-import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
+import {
+  FALLBACK_EXTRACTION,
+  type HighConfidenceFacts,
+  type HighConfidenceValue,
+} from '@memory/types/session-facts.types';
+
+function highConfidence<T>(value: T, evidence: string): HighConfidenceValue<T> {
+  return { value, confidence: 'high', source: 'rule', evidence };
+}
+
+function emptyHighConfidenceFacts(): HighConfidenceFacts {
+  return {
+    interview_info: {
+      name: null,
+      phone: null,
+      gender: null,
+      gender_source: null,
+      age: null,
+      applied_store: null,
+      applied_position: null,
+      interview_time: null,
+      is_student: null,
+      education: null,
+      has_health_certificate: null,
+    },
+    preferences: {
+      brands: null,
+      salary: null,
+      position: null,
+      schedule: null,
+      city: null,
+      district: null,
+      location: null,
+      labor_form: null,
+      delayed_intent: null,
+      short_term: null,
+      open_position: null,
+      time_windows: null,
+      schedule_constraint: null,
+      available_after: null,
+    },
+    reasoning: 'test',
+  };
+}
 
 describe('AgentPreparationService', () => {
   const mockToolRegistry = {
@@ -71,7 +114,17 @@ describe('AgentPreparationService', () => {
         currentFocusJob: null,
       },
       highConfidenceFacts: null,
-      longTerm: { profile: { name: '张三' } },
+      longTerm: {
+        profile: {
+          name: {
+            value: '张三',
+            confidence: 'high',
+            source: 'booking',
+            evidence: '测试写入',
+            updatedAt: '2026-05-22T10:00:00.000Z',
+          },
+        } as never,
+      },
       procedural: {
         currentStage: 'job_consultation',
         fromStage: null,
@@ -214,7 +267,17 @@ describe('AgentPreparationService', () => {
         currentFocusJob: null,
       },
       highConfidenceFacts: null,
-      longTerm: { profile: { name: '张三' } },
+      longTerm: {
+        profile: {
+          name: {
+            value: '张三',
+            confidence: 'high',
+            source: 'booking',
+            evidence: '测试写入',
+            updatedAt: '2026-05-22T10:00:00.000Z',
+          },
+        } as never,
+      },
       procedural: {
         currentStage: 'job_consultation',
         fromStage: null,
@@ -520,11 +583,11 @@ describe('AgentPreparationService', () => {
         currentFocusJob: null,
       },
       highConfidenceFacts: {
-        ...FALLBACK_EXTRACTION,
+        ...emptyHighConfidenceFacts(),
         preferences: {
-          ...FALLBACK_EXTRACTION.preferences,
-          brands: ['来伊份'],
-          city: { value: '北京', confidence: 'high', evidence: 'explicit_city' },
+          ...emptyHighConfidenceFacts().preferences,
+          brands: highConfidence(['来伊份'], '品牌别名识别：来伊份'),
+          city: highConfidence('北京', 'explicit_city'),
         },
         reasoning: '品牌别名识别，城市识别',
       },
@@ -557,9 +620,12 @@ describe('AgentPreparationService', () => {
     expect(composeArgs.highConfidenceFacts.preferences.city).toEqual({
       value: '北京',
       confidence: 'high',
+      source: 'rule',
       evidence: 'explicit_city',
     });
-    expect(composeArgs.highConfidenceFacts.preferences.brands).toEqual(['来伊份']);
+    expect(composeArgs.highConfidenceFacts.preferences.brands).toEqual(
+      expect.objectContaining({ value: ['来伊份'], source: 'rule' }),
+    );
     // memoryBlock 不再包含本轮线索，交由 TurnHintsSection 渲染。
     expect(composeArgs.memoryBlock).not.toContain('[本轮高置信线索]');
     expect(composeArgs.memoryBlock).not.toContain('[本轮待确认线索]');

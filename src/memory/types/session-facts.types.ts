@@ -237,6 +237,219 @@ export type EntityExtractionResult = z.infer<typeof EntityExtractionResultSchema
 export type InterviewInfo = z.infer<typeof InterviewInfoSchema>;
 export type Preferences = z.infer<typeof PreferencesSchema>;
 
+export const SessionFactConfidenceSchema = z.enum(['high', 'medium', 'low', 'unknown']);
+export const SessionFactSourceSchema = z.enum([
+  'candidate',
+  'llm',
+  'rule',
+  'system',
+  'memory',
+  'derived',
+]);
+
+export type SessionFactConfidence = z.infer<typeof SessionFactConfidenceSchema>;
+export type SessionFactSource = z.infer<typeof SessionFactSourceSchema>;
+
+/** sessionFacts 置信度语义。工具消费默认只信 high；prompt 会展示所有置信度。 */
+export const SESSION_FACT_CONFIDENCE_DESCRIPTIONS: Record<SessionFactConfidence, string> = {
+  high: '可程序化采用。来自确定性规则、明确结构化输入，或经过强校验的事实。',
+  medium: '可给模型参考。通常来自 LLM 结构化提取或会话沉淀，可能需要结合上下文判断。',
+  low: '弱参考。来自系统兜底、弱规则或补充接口，不应直接用于筛人、约面等硬判断。',
+  unknown: '旧数据或缺少元数据的兼容值。只能作为背景信息，工具默认不消费。',
+};
+
+/** sessionFacts 来源语义。source 说明字段如何产生，不等同于字段真假。 */
+export const SESSION_FACT_SOURCE_DESCRIPTIONS: Record<SessionFactSource, string> = {
+  candidate: '候选人直接明示的结构化输入，且写入链路保留了候选人来源。',
+  llm: 'LLM 根据对话做的结构化提取。',
+  rule: '确定性规则、正则、白名单或别名表匹配得到。',
+  system: '外部系统或平台接口补充得到。',
+  memory: '历史记忆或旧结构兼容迁移得到。',
+  derived: '由其他字段推导得到，例如由区/地标白名单反推出城市。',
+};
+
+/** 持久化 sessionFacts 字段值：字段自身携带置信度、来源和证据。 */
+export interface SessionFactValue<T> {
+  value: T;
+  confidence: SessionFactConfidence;
+  source: SessionFactSource;
+  evidence: string;
+}
+
+export type SessionFactMaybeValue<T> = SessionFactValue<T> | null;
+
+/**
+ * 本轮前置线索字段值：字段自身携带 value/confidence/source/evidence。
+ *
+ * highConfidenceFacts 不持久化；它是给本轮模型和工具的 runtime hint。
+ * 未知置信度不进入这里，不确定就不产出字段。
+ */
+export interface HighConfidenceValue<T> {
+  value: T;
+  confidence: 'high' | 'medium' | 'low';
+  source: 'rule' | 'system';
+  evidence: string;
+}
+
+export type HighConfidenceMaybeValue<T> = HighConfidenceValue<T> | null;
+
+export interface HighConfidenceInterviewInfo {
+  name: HighConfidenceMaybeValue<string>;
+  phone: HighConfidenceMaybeValue<string>;
+  gender: HighConfidenceMaybeValue<string>;
+  gender_source: HighConfidenceMaybeValue<'candidate' | 'system'>;
+  age: HighConfidenceMaybeValue<string>;
+  applied_store: HighConfidenceMaybeValue<string>;
+  applied_position: HighConfidenceMaybeValue<string>;
+  interview_time: HighConfidenceMaybeValue<string>;
+  is_student: HighConfidenceMaybeValue<boolean>;
+  education: HighConfidenceMaybeValue<string>;
+  has_health_certificate: HighConfidenceMaybeValue<string>;
+}
+
+export interface HighConfidencePreferences {
+  brands: HighConfidenceMaybeValue<string[]>;
+  salary: HighConfidenceMaybeValue<string>;
+  position: HighConfidenceMaybeValue<string[]>;
+  schedule: HighConfidenceMaybeValue<string>;
+  city: HighConfidenceMaybeValue<string>;
+  district: HighConfidenceMaybeValue<string[]>;
+  location: HighConfidenceMaybeValue<string[]>;
+  labor_form: HighConfidenceMaybeValue<string>;
+  delayed_intent: HighConfidenceMaybeValue<DelayedIntent>;
+  short_term: HighConfidenceMaybeValue<boolean>;
+  open_position: HighConfidenceMaybeValue<boolean>;
+  time_windows: HighConfidenceMaybeValue<string[]>;
+  schedule_constraint: HighConfidenceMaybeValue<ScheduleConstraintFact>;
+  available_after: HighConfidenceMaybeValue<AvailableAfterFact>;
+}
+
+export type HighConfidenceFacts = Omit<EntityExtractionResult, 'interview_info' | 'preferences'> & {
+  interview_info: HighConfidenceInterviewInfo;
+  preferences: HighConfidencePreferences;
+};
+
+export interface SessionInterviewInfo {
+  name: SessionFactMaybeValue<string>;
+  phone: SessionFactMaybeValue<string>;
+  gender: SessionFactMaybeValue<string>;
+  gender_source: SessionFactMaybeValue<'candidate' | 'system'>;
+  age: SessionFactMaybeValue<string>;
+  applied_store: SessionFactMaybeValue<string>;
+  applied_position: SessionFactMaybeValue<string>;
+  interview_time: SessionFactMaybeValue<string>;
+  is_student: SessionFactMaybeValue<boolean>;
+  education: SessionFactMaybeValue<string>;
+  has_health_certificate: SessionFactMaybeValue<string>;
+}
+
+export interface SessionPreferences {
+  brands: SessionFactMaybeValue<string[]>;
+  salary: SessionFactMaybeValue<string>;
+  position: SessionFactMaybeValue<string[]>;
+  schedule: SessionFactMaybeValue<string>;
+  city: SessionFactMaybeValue<string>;
+  district: SessionFactMaybeValue<string[]>;
+  location: SessionFactMaybeValue<string[]>;
+  labor_form: SessionFactMaybeValue<string>;
+  delayed_intent: SessionFactMaybeValue<DelayedIntent>;
+  short_term: SessionFactMaybeValue<boolean>;
+  open_position: SessionFactMaybeValue<boolean>;
+  time_windows: SessionFactMaybeValue<string[]>;
+  schedule_constraint: SessionFactMaybeValue<ScheduleConstraintFact>;
+  available_after: SessionFactMaybeValue<AvailableAfterFact>;
+}
+
+export type SessionFacts = Omit<EntityExtractionResult, 'interview_info' | 'preferences'> & {
+  interview_info: SessionInterviewInfo;
+  preferences: SessionPreferences;
+};
+
+const SessionFactValueSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
+  z.object({
+    value: valueSchema,
+    confidence: SessionFactConfidenceSchema,
+    source: SessionFactSourceSchema,
+    evidence: z.string(),
+  });
+
+function legacySessionFactValue<T>(value: T, evidence?: string): SessionFactValue<T> {
+  return {
+    value,
+    confidence: 'unknown',
+    source: 'memory',
+    evidence: evidence ?? '旧 sessionFacts 兼容迁移：字段缺少置信度元数据',
+  };
+}
+
+const NullableSessionFactSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
+  z
+    .union([SessionFactValueSchema(valueSchema), valueSchema, z.null()])
+    .transform((value): SessionFactValue<z.infer<T>> | null => {
+      if (value === null) return null;
+      return isSessionFactValue(value)
+        ? (value as SessionFactValue<z.infer<T>>)
+        : legacySessionFactValue(value as z.infer<T>);
+    });
+
+function cityEvidenceToString(evidence: CityFactEvidence): string {
+  return evidence;
+}
+
+const NullableSessionCityFactSchema = z
+  .union([SessionFactValueSchema(z.string()), CityFactSchema, z.string(), z.null()])
+  .transform((value): SessionFactValue<string> | null => {
+    if (value === null) return null;
+    if (typeof value === 'string') {
+      const city = value.trim().replace(/市$/, '');
+      return city ? legacySessionFactValue(city, '旧 sessionFacts city 字符串兼容迁移') : null;
+    }
+    if (isSessionFactValue(value)) return value as SessionFactValue<string>;
+    return {
+      value: value.value,
+      confidence: value.confidence,
+      source: 'rule',
+      evidence: cityEvidenceToString(value.evidence),
+    };
+  });
+
+export const SessionInterviewInfoSchema = z.object({
+  name: NullableSessionFactSchema(z.string()),
+  phone: NullableSessionFactSchema(z.string()),
+  gender: NullableSessionFactSchema(z.string()),
+  gender_source: NullableSessionFactSchema(z.enum(['candidate', 'system'])),
+  age: NullableSessionFactSchema(z.string()),
+  applied_store: NullableSessionFactSchema(z.string()),
+  applied_position: NullableSessionFactSchema(z.string()),
+  interview_time: NullableSessionFactSchema(z.string()),
+  is_student: NullableSessionFactSchema(z.boolean()),
+  education: NullableSessionFactSchema(z.string()),
+  has_health_certificate: NullableSessionFactSchema(z.string()),
+});
+
+export const SessionPreferencesSchema = z.object({
+  brands: NullableSessionFactSchema(z.array(z.string())),
+  salary: NullableSessionFactSchema(z.string()),
+  position: NullableSessionFactSchema(z.array(z.string())),
+  schedule: NullableSessionFactSchema(z.string()),
+  city: NullableSessionCityFactSchema,
+  district: NullableSessionFactSchema(z.array(z.string())),
+  location: NullableSessionFactSchema(z.array(z.string())),
+  labor_form: NullableSessionFactSchema(z.string()),
+  delayed_intent: NullableSessionFactSchema(DelayedIntentSchema),
+  short_term: NullableSessionFactSchema(z.boolean()),
+  open_position: NullableSessionFactSchema(z.boolean()),
+  time_windows: NullableSessionFactSchema(z.array(z.string())),
+  schedule_constraint: NullableSessionFactSchema(ScheduleConstraintFactSchema),
+  available_after: NullableSessionFactSchema(AvailableAfterFactSchema),
+});
+
+export const SessionFactsSchema = z.object({
+  interview_info: SessionInterviewInfoSchema,
+  preferences: SessionPreferencesSchema,
+  reasoning: z.string(),
+});
+
 /** 实体提取失败时的降级结果。 */
 export const FALLBACK_EXTRACTION: EntityExtractionResult = {
   interview_info: {
@@ -270,6 +483,161 @@ export const FALLBACK_EXTRACTION: EntityExtractionResult = {
   },
   reasoning: '实体提取失败，使用空值降级',
 };
+
+const CONFIDENCE_RANK: Record<SessionFactConfidence, number> = {
+  unknown: 0,
+  low: 1,
+  medium: 2,
+  high: 3,
+};
+
+export function isSessionFactValue<T = unknown>(value: unknown): value is SessionFactValue<T> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'value' in value &&
+    'confidence' in value &&
+    'source' in value &&
+    'evidence' in value
+  );
+}
+
+export function sessionFactValue<T>(
+  value: T,
+  meta: {
+    confidence: SessionFactConfidence;
+    source: SessionFactSource;
+    evidence: string;
+  },
+): SessionFactValue<T> {
+  return { value, ...meta };
+}
+
+export function unwrapSessionFactValue<T>(
+  value: SessionFactValue<T> | T | null | undefined,
+  options: { minConfidence?: SessionFactConfidence } = {},
+): T | null {
+  if (value === null || value === undefined) return null;
+  if (!isSessionFactValue<T>(value)) return value;
+  const minConfidence = options.minConfidence;
+  if (minConfidence && CONFIDENCE_RANK[value.confidence] < CONFIDENCE_RANK[minConfidence]) {
+    return null;
+  }
+  return value.value;
+}
+
+function cityFactFromSessionValue(value: SessionFactValue<string>): CityFact | null {
+  if (!value.value.trim()) return null;
+  return {
+    value: value.value.trim().replace(/市$/, ''),
+    confidence: value.confidence === 'low' ? 'low' : 'high',
+    evidence: 'explicit_city',
+  };
+}
+
+export function unwrapSessionFacts(
+  facts: SessionFacts | EntityExtractionResult | null | undefined,
+  options: { minConfidence?: SessionFactConfidence } = {},
+): EntityExtractionResult | null {
+  if (!facts) return null;
+
+  const city = facts.preferences.city;
+  const unwrappedCity = isSessionFactValue<string>(city)
+    ? unwrapSessionFactValue(city, options)
+    : null;
+
+  return EntityExtractionResultSchema.parse({
+    interview_info: {
+      name: unwrapSessionFactValue(facts.interview_info.name, options),
+      phone: unwrapSessionFactValue(facts.interview_info.phone, options),
+      gender: unwrapSessionFactValue(facts.interview_info.gender, options),
+      gender_source: unwrapSessionFactValue(facts.interview_info.gender_source, options),
+      age: unwrapSessionFactValue(facts.interview_info.age, options),
+      applied_store: unwrapSessionFactValue(facts.interview_info.applied_store, options),
+      applied_position: unwrapSessionFactValue(facts.interview_info.applied_position, options),
+      interview_time: unwrapSessionFactValue(facts.interview_info.interview_time, options),
+      is_student: unwrapSessionFactValue(facts.interview_info.is_student, options),
+      education: unwrapSessionFactValue(facts.interview_info.education, options),
+      has_health_certificate: unwrapSessionFactValue(
+        facts.interview_info.has_health_certificate,
+        options,
+      ),
+    },
+    preferences: {
+      brands: unwrapSessionFactValue(facts.preferences.brands, options),
+      salary: unwrapSessionFactValue(facts.preferences.salary, options),
+      position: unwrapSessionFactValue(facts.preferences.position, options),
+      schedule: unwrapSessionFactValue(facts.preferences.schedule, options),
+      city: isSessionFactValue<string>(city)
+        ? unwrappedCity
+          ? cityFactFromSessionValue({ ...city, value: unwrappedCity })
+          : null
+        : city,
+      district: unwrapSessionFactValue(facts.preferences.district, options),
+      location: unwrapSessionFactValue(facts.preferences.location, options),
+      labor_form: unwrapSessionFactValue(facts.preferences.labor_form, options),
+      delayed_intent: unwrapSessionFactValue(facts.preferences.delayed_intent, options),
+      short_term: unwrapSessionFactValue(facts.preferences.short_term, options),
+      open_position: unwrapSessionFactValue(facts.preferences.open_position, options),
+      time_windows: unwrapSessionFactValue(facts.preferences.time_windows, options),
+      schedule_constraint: unwrapSessionFactValue(facts.preferences.schedule_constraint, options),
+      available_after: unwrapSessionFactValue(facts.preferences.available_after, options),
+    },
+    reasoning: facts.reasoning,
+  });
+}
+
+export function toSessionFacts(
+  facts: EntityExtractionResult,
+  meta: {
+    confidence: SessionFactConfidence;
+    source: SessionFactSource;
+    evidence: string;
+  },
+): SessionFacts {
+  const wrap = <T>(value: T | null): SessionFactMaybeValue<T> =>
+    value === null || value === undefined ? null : sessionFactValue(value, meta);
+
+  return SessionFactsSchema.parse({
+    interview_info: {
+      name: wrap(facts.interview_info.name),
+      phone: wrap(facts.interview_info.phone),
+      gender: wrap(facts.interview_info.gender),
+      gender_source: wrap(facts.interview_info.gender_source ?? null),
+      age: wrap(facts.interview_info.age),
+      applied_store: wrap(facts.interview_info.applied_store),
+      applied_position: wrap(facts.interview_info.applied_position),
+      interview_time: wrap(facts.interview_info.interview_time),
+      is_student: wrap(facts.interview_info.is_student),
+      education: wrap(facts.interview_info.education),
+      has_health_certificate: wrap(facts.interview_info.has_health_certificate),
+    },
+    preferences: {
+      brands: wrap(facts.preferences.brands),
+      salary: wrap(facts.preferences.salary),
+      position: wrap(facts.preferences.position),
+      schedule: wrap(facts.preferences.schedule),
+      city: facts.preferences.city
+        ? sessionFactValue(facts.preferences.city.value, {
+            ...meta,
+            confidence: facts.preferences.city.confidence,
+            source: meta.source === 'llm' ? 'derived' : meta.source,
+            evidence: cityEvidenceToString(facts.preferences.city.evidence),
+          })
+        : null,
+      district: wrap(facts.preferences.district),
+      location: wrap(facts.preferences.location),
+      labor_form: wrap(facts.preferences.labor_form),
+      delayed_intent: wrap(facts.preferences.delayed_intent),
+      short_term: wrap(facts.preferences.short_term),
+      open_position: wrap(facts.preferences.open_position),
+      time_windows: wrap(facts.preferences.time_windows),
+      schedule_constraint: wrap(facts.preferences.schedule_constraint),
+      available_after: wrap(facts.preferences.available_after),
+    },
+    reasoning: facts.reasoning,
+  }) as SessionFacts;
+}
 
 // ==================== 2. 业务状态（当前会话的结构化短期记忆） ====================
 
@@ -327,7 +695,7 @@ export interface InvitedGroupRecord {
 
 /** 会话事实层 — 当前这次求职会话的结构化状态 */
 export interface WeworkSessionState {
-  facts: EntityExtractionResult | null;
+  facts: SessionFacts | null;
   /** 每轮覆盖：最后一次 duliday_job_list 调用返回的候选岗位池 */
   lastCandidatePool: RecommendedJobSummary[] | null;
   /** 最近几轮真正发给候选人的岗位 */
@@ -346,7 +714,7 @@ export const InvitedGroupRecordSchema = z.object({
 });
 
 export const WeworkSessionStateSchema = z.object({
-  facts: EntityExtractionResultSchema.nullable(),
+  facts: SessionFactsSchema.nullable(),
   lastCandidatePool: z.array(RecommendedJobSummarySchema).nullable(),
   presentedJobs: z.array(RecommendedJobSummarySchema).nullable(),
   currentFocusJob: RecommendedJobSummarySchema.nullable(),

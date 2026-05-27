@@ -12,27 +12,18 @@ describe('buildSaveImageDescriptionTool', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('should return a valid ToolBuilder function', () => {
-    const builder = buildSaveImageDescriptionTool(
-      mockChatSession as never,
-      imageMessageIds,
-    );
+    const builder = buildSaveImageDescriptionTool(mockChatSession as never, imageMessageIds);
     expect(typeof builder).toBe('function');
   });
 
   it('should build a tool that returns a valid tool object', () => {
-    const builder = buildSaveImageDescriptionTool(
-      mockChatSession as never,
-      imageMessageIds,
-    );
+    const builder = buildSaveImageDescriptionTool(mockChatSession as never, imageMessageIds);
     const builtTool = builder({} as never);
     expect(builtTool).toBeDefined();
   });
 
   it('should update message content via chatSession when messageId is valid', async () => {
-    const builder = buildSaveImageDescriptionTool(
-      mockChatSession as never,
-      imageMessageIds,
-    );
+    const builder = buildSaveImageDescriptionTool(mockChatSession as never, imageMessageIds);
     const builtTool = builder({} as never);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -49,10 +40,7 @@ describe('buildSaveImageDescriptionTool', () => {
   });
 
   it('should return success: false when messageId is not in imageMessageIds', async () => {
-    const builder = buildSaveImageDescriptionTool(
-      mockChatSession as never,
-      imageMessageIds,
-    );
+    const builder = buildSaveImageDescriptionTool(mockChatSession as never, imageMessageIds);
     const builtTool = builder({} as never);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -70,21 +58,17 @@ describe('buildSaveImageDescriptionTool', () => {
   });
 
   it('should include imageMessageIds in tool description', () => {
-    const builder = buildSaveImageDescriptionTool(
-      mockChatSession as never,
-      ['id-a', 'id-b'],
-    );
+    const builder = buildSaveImageDescriptionTool(mockChatSession as never, ['id-a', 'id-b']);
     const builtTool = builder({} as never);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((builtTool as any).description).toContain('id-a, id-b');
+    expect((builtTool as any).description).toContain('4-12 个字');
+    expect((builtTool as any).description).toContain('不要描述角色外观');
   });
 
   it('should handle multiple images independently', async () => {
-    const builder = buildSaveImageDescriptionTool(
-      mockChatSession as never,
-      imageMessageIds,
-    );
+    const builder = buildSaveImageDescriptionTool(mockChatSession as never, imageMessageIds);
     const builtTool = builder({} as never);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

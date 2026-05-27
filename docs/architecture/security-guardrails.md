@@ -104,7 +104,7 @@ Winston Logger 配置，日志不记录 API Key、Token 等敏感值；飞书告
 
 位置：`src/agent/runner.service.ts` → `trimMessages()`
 
-消息列表总字符数超过 `AGENT_MAX_INPUT_CHARS`（默认 8000）时，从最早的消息开始丢弃，保留最新的消息，直到总长度满足约束。
+消息列表总字符数超过 `AGENT_MAX_INPUT_CHARS`（默认 12000）时，从最早的消息开始丢弃，保留最新的消息，直到总长度满足约束。
 
 ```typescript
 // 策略：从后往前累加，保留最近的消息
@@ -142,7 +142,7 @@ for (let i = messages.length - 1; i >= 0; i--) {
 |------|--------|------|------|
 | `API_GUARD_TOKEN` | 无 | 可选 | 管理端点 Bearer Token，未配置则不鉴权 |
 | `AGENT_MAX_OUTPUT_TOKENS` | `4096` | 可选 | LLM 单次最大输出 token 数，最小值 100 |
-| `AGENT_MAX_INPUT_CHARS` | `8000` | 可选 | 输入消息总字符上限，最小值 100 |
+| `AGENT_MAX_INPUT_CHARS` | `12000` | 可选 | 输入消息总字符上限，最小值 100 |
 | `AGENT_DEFAULT_FALLBACKS` | 无 | 可选 | 全局模型降级链，逗号分隔，如 `deepseek/deepseek-v4-flash,qwen/qwen-max-latest` |
 | `AGENT_THINKING_BUDGET_TOKENS` | `0` | 可选 | Extended Thinking token 预算，0 为禁用 |
 | `FEISHU_ALERT_WEBHOOK_URL` | 无 | 必填（生产） | 安全告警推送目标 |
@@ -217,8 +217,8 @@ curl http://localhost:8585/wecom/message/health
 curl -X POST http://localhost:8585/agent/debug-chat \
   -H "Authorization: Bearer your-guard-token" \
   -H "Content-Type: application/json" \
-  -d '{"message":"'"$(python3 -c "print('A'*9000)")"'","conversationId":"test-001"}'
-# 日志：输入消息总长度 9000 超过上限 8000，将丢弃最早的消息
+  -d '{"message":"'"$(python3 -c "print('A'*13000)")"'","conversationId":"test-001"}'
+# 日志：输入消息总长度 13000 超过上限 12000，将丢弃最早的消息
 ```
 
 ---

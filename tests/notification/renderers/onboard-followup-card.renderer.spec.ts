@@ -1,6 +1,7 @@
 import { FeishuCardBuilderService } from '@infra/feishu/services/card-builder.service';
 import { OnboardFollowupCardRenderer } from '@notification/renderers/onboard-followup-card.renderer';
 import { RecruitmentCaseRecord } from '@biz/recruitment-case/entities/recruitment-case.entity';
+import { SessionFactsSchema, type SessionFacts } from '@memory/types/session-facts.types';
 
 describe('OnboardFollowupCardRenderer', () => {
   let renderer: OnboardFollowupCardRenderer;
@@ -26,11 +27,12 @@ describe('OnboardFollowupCardRenderer', () => {
       currentMessageContent: '我到店了，但是没人接待',
       recentMessages: [{ role: 'user', content: '我到店了，但是没人接待', timestamp: 1712044860000 }],
       sessionState: {
-        facts: {
+        facts: SessionFactsSchema.parse({
           interview_info: {
             name: '张三',
             phone: '13800000000',
             gender: '男',
+            gender_source: null,
             age: '23',
             applied_store: null,
             applied_position: null,
@@ -56,7 +58,7 @@ describe('OnboardFollowupCardRenderer', () => {
       available_after: null,
           },
           reasoning: 'test',
-        },
+        }) as SessionFacts,
         lastCandidatePool: null,
         presentedJobs: null,
         currentFocusJob: null,

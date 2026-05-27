@@ -214,12 +214,12 @@ onTurnStart → Compose → Execute (LLM + Tools) → onTurnEnd
 └──────────────────────────────────────────────────────────────┘
 
 ┌── 短期 Working ─── chat_messages + Redis 窗口热缓存 ───────┐
-│   读 Redis 优先，DB 兜底；按 sessionTtl 对齐窗口             │
+│   读 Redis 优先，DB 兜底；按 historyWindow 对齐窗口          │
 └──────────────────────────────────────────────────────────────┘
 
 ┌── 会话 Session ─── Redis  facts:{corp}:{user}:{session} ───┐
 │   facts / lastCandidatePool / presentedJobs /                │
-│   currentFocusJob / invitedGroups / lastSessionActiveAt     │
+│   currentFocusJob / invitedGroups                            │
 └──────────────────────────────────────────────────────────────┘
 
 ┌── 程序 Procedural ── Redis  stage:{corp}:{user}:{session} ──┐
@@ -228,8 +228,8 @@ onTurnStart → Compose → Execute (LLM + Tools) → onTurnEnd
 │   唯一写入口：advance_stage 工具                              │
 └──────────────────────────────────────────────────────────────┘
 
-┌── 长期 Long-term ── Supabase agent_memories + Redis 2h 缓存 ┐
-│   profile：姓名/电话/性别/年龄/学生/学历/健康证                 │
+┌── 长期 Long-term ── Supabase agent_long_term_memories + Redis 2h ┐
+│   profile_facts：画像字段 + 置信度/来源/证据/更新时间             │
 │   summary：recent[5] + archive（LLM 分层压缩）                  │
 └──────────────────────────────────────────────────────────────┘
 
@@ -243,13 +243,15 @@ onTurnStart → Compose → Execute (LLM + Tools) → onTurnEnd
 
 1. **编排层固定读写**：LLM 不持有记忆读写权，由 `MemoryService.onTurnStart/onTurnEnd` 统一调度。
 2. **工具仅保留两个触达**：`advance_stage`（写程序记忆）、`recall_history`（读长期摘要）。
-3. **会话沉淀单向搬运**：`SessionService → SettlementService → LongTerm`，超 `sessionTtl` 闲置触发，
-   Redis key 自然过期。
+3. **会话沉淀单向搬运**：`SessionService → SettlementService → LongTerm`，消息间隔达到 `settlementGapSeconds` 触发，Redis key 自然过期。
 
 ### 6.2 时间常量
 
-`sessionTtl`（默认 1 天）一个参数同时决定：
-(1) Redis 会话态过期 (2) 沉淀阈值 (3) 短期窗口 DB fallback 时间边界。
+记忆系统现在拆成三个时间参数：
+
+- `sessionTtl`：Redis 会话态 TTL，默认 2 天，常见环境配置 3 天
+- `settlementGapSeconds`：沉淀间隔阈值，默认 1 天
+- `historyWindowSeconds`：短期窗口 DB fallback 回查范围，默认 7 天
 
 > **延伸阅读**：[memory-system-architecture.md](./architecture/memory-system-architecture.md)
 
@@ -500,7 +502,7 @@ HTTP 请求
 | --- | --- | --- |
 | `API_GUARD_TOKEN` | 无 | 管理端点 Bearer Token，未配置则不鉴权 |
 | `AGENT_MAX_OUTPUT_TOKENS` | 4096 | 单次输出上限 |
-| `AGENT_MAX_INPUT_CHARS` | 8000 | 输入字符上限 |
+| `AGENT_MAX_INPUT_CHARS` | 12000 | 输入字符上限 |
 | `AGENT_DEFAULT_FALLBACKS` | 无 | 全局模型降级链 |
 
 > **延伸阅读**：[security-guardrails.md](./architecture/security-guardrails.md)
@@ -571,7 +573,7 @@ Cron 触发 → GroupTaskScheduler.executeTask()
        │   │   ├─ 短期：最近 60 条对话
        │   │   ├─ 会话：{ preferences: { city: '上海' }, lastCandidatePool }
        │   │   ├─ 程序阶段：'needs_collection'
-       │   │   ├─ 长期档案：{ name: '张三', phone: '138****' }
+       │   │   ├─ 长期档案 facts：{ name: { value: '张三', confidence: 'high', source: 'booking', evidence: '报名成功后写入', updatedAt: '...' } }
        │   │   └─ 高置信识别：{ jobIntent: '收银员' }
        │   ├─ RecruitmentCaseService 查活跃 case → 无
        │   ├─ InputGuard 扫注入 → safe
@@ -595,7 +597,6 @@ Cron 触发 → GroupTaskScheduler.executeTask()
        ├─ 分支 A：settlement（未超阈值 → skipped）
        └─ 分支 B（串行）：
            ├─ save_candidate_pool（3 个岗位 → session）
-           ├─ store_activity（刷新 lastSessionActiveAt）
            ├─ project_assistant_turn（投影 presentedJobs）
            └─ extract_facts（LLM 提取 preferences.salary）
    │
@@ -655,10 +656,12 @@ Cron 触发 → GroupTaskScheduler.executeTask()
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `AGENT_MAX_OUTPUT_TOKENS` | 4096 | 单次输出上限 |
-| `AGENT_MAX_INPUT_CHARS` | 8000 | 输入字符上限 |
+| `AGENT_MAX_INPUT_CHARS` | 12000 | 输入字符上限 |
 | `AGENT_THINKING_BUDGET_TOKENS` | 0 | Extended thinking 预算 |
 | `MAX_HISTORY_PER_CHAT` | 60 | 短期窗口最大消息数 |
-| `MEMORY_SESSION_TTL_DAYS` | 1 | 会话级 TTL + 沉淀阈值 |
+| `MEMORY_SESSION_TTL_DAYS` | 2 | 会话级 Redis TTL |
+| `MEMORY_SETTLEMENT_GAP_DAYS` | 1 | 会话沉淀间隔阈值 |
+| `MEMORY_HISTORY_WINDOW_DAYS` | 7 | 短期记忆 DB fallback 回查窗口 |
 | `MESSAGE_DEDUP_TTL_SECONDS` | 300 | 去重 TTL |
 
 ---

@@ -9,13 +9,23 @@ import { RecruitmentStageResolverService } from '@biz/recruitment-case/services/
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { formatExtractionFactLines } from '@memory/formatters/fact-lines.formatter';
 import { sanitizeJobDisplayText, sanitizeLaborFormForDisplay } from '@memory/facts/labor-form';
+import {
+  filterHighConfidenceFacts,
+  unwrapHighConfidenceFacts,
+} from '@memory/facts/high-confidence-facts';
 import { MemoryService, type CandidateIdentityHint } from '@memory/memory.service';
 import { MemoryConfig } from '@memory/memory.config';
-import type { UserProfile } from '@memory/types/long-term.types';
+import {
+  isUserProfileFactValue,
+  type UserProfileFacts,
+  unwrapUserProfileFacts,
+} from '@memory/types/long-term.types';
 import {
   type EntityExtractionResult,
+  type HighConfidenceFacts,
   type RecommendedJobSummary,
   type WeworkSessionState,
+  unwrapSessionFacts,
 } from '@memory/types/session-facts.types';
 import { ContextService } from './context/context.service';
 import { InputGuardService } from './input-guard.service';
@@ -354,8 +364,11 @@ export class AgentPreparationService {
     const { params, memory, normalizedMessages, entryStage, stageGoals, thresholds, turnState } =
       input;
     const recentBrandPool = this.collectRecentBrandPool(memory.sessionMemory);
+    const highConfidenceSessionFacts = unwrapSessionFacts(memory.sessionMemory?.facts ?? null, {
+      minConfidence: 'high',
+    });
     const sessionFacts = this.mergeSessionFactsWithHighConfidence(
-      memory.sessionMemory?.facts ?? null,
+      highConfidenceSessionFacts,
       memory.highConfidenceFacts,
     );
     return {
@@ -376,8 +389,9 @@ export class AgentPreparationService {
       contactName: params.contactName,
       botImId: params.botImId,
       strategySource: params.strategySource,
-      profile: memory.longTerm.profile,
+      profile: unwrapUserProfileFacts(memory.longTerm.profile, { minConfidence: 'high' }),
       sessionFacts,
+      highConfidenceFacts: memory.highConfidenceFacts,
       currentFocusJob: memory.sessionMemory?.currentFocusJob ?? null,
       recentBrandPool,
       token: params.token,
@@ -395,16 +409,19 @@ export class AgentPreparationService {
    */
   private mergeSessionFactsWithHighConfidence(
     sessionFacts: EntityExtractionResult | null,
-    highConfidence: EntityExtractionResult | null,
+    highConfidence: HighConfidenceFacts | null,
   ): EntityExtractionResult | null {
-    if (!highConfidence) return sessionFacts;
-    if (!sessionFacts) return highConfidence;
+    const highConfidenceValues = unwrapHighConfidenceFacts(
+      filterHighConfidenceFacts(highConfidence),
+    );
+    if (!highConfidenceValues) return sessionFacts;
+    if (!sessionFacts) return highConfidenceValues;
 
     const merged = { ...sessionFacts };
 
     // interview_info: 非 null 的高置信值覆盖旧值
     const baseInfo = { ...sessionFacts.interview_info };
-    const hcInfo = highConfidence.interview_info;
+    const hcInfo = highConfidenceValues.interview_info;
     for (const key of Object.keys(hcInfo) as Array<keyof typeof hcInfo>) {
       if (hcInfo[key] != null) {
         (baseInfo as Record<string, unknown>)[key] = hcInfo[key];
@@ -414,7 +431,7 @@ export class AgentPreparationService {
 
     // preferences: 非 null 的高置信值覆盖旧值
     const basePref = { ...sessionFacts.preferences };
-    const hcPref = highConfidence.preferences;
+    const hcPref = highConfidenceValues.preferences;
     for (const key of Object.keys(hcPref) as Array<keyof typeof hcPref>) {
       if (hcPref[key] != null) {
         (basePref as Record<string, unknown>)[key] = hcPref[key];
@@ -477,7 +494,7 @@ export class AgentPreparationService {
     const profile = memory.longTerm.profile;
     const profileKeys = profile
       ? Object.entries(profile)
-          .filter(([, value]) => value !== null && value !== undefined && value !== '')
+          .filter(([, value]) => isUserProfileFactValue(value))
           .map(([key]) => key)
       : null;
 
@@ -524,20 +541,42 @@ export class AgentPreparationService {
   }
 
   /** 把长期档案渲染成 prompt 片段。 */
-  private formatProfile(profile: UserProfile | null): string {
+  private formatProfile(profile: UserProfileFacts | null): string {
     if (!profile) return '';
 
     const lines: string[] = [];
-    if (profile.name) lines.push(`- 姓名: ${profile.name}`);
-    if (profile.phone) lines.push(`- 联系方式: ${profile.phone}`);
-    if (profile.gender) lines.push(`- 性别: ${profile.gender}`);
-    if (profile.age) lines.push(`- 年龄: ${profile.age}`);
-    if (profile.is_student != null) lines.push(`- 是否学生: ${profile.is_student ? '是' : '否'}`);
-    if (profile.education) lines.push(`- 学历: ${profile.education}`);
-    if (profile.has_health_certificate) lines.push(`- 健康证: ${profile.has_health_certificate}`);
+    if (profile.name)
+      lines.push(`- 姓名: ${profile.name.value}${this.formatProfileFactMeta(profile.name)}`);
+    if (profile.phone)
+      lines.push(`- 联系方式: ${profile.phone.value}${this.formatProfileFactMeta(profile.phone)}`);
+    if (profile.gender)
+      lines.push(`- 性别: ${profile.gender.value}${this.formatProfileFactMeta(profile.gender)}`);
+    if (profile.age)
+      lines.push(`- 年龄: ${profile.age.value}${this.formatProfileFactMeta(profile.age)}`);
+    if (profile.is_student)
+      lines.push(
+        `- 是否学生: ${profile.is_student.value ? '是' : '否'}${this.formatProfileFactMeta(profile.is_student)}`,
+      );
+    if (profile.education)
+      lines.push(
+        `- 学历: ${profile.education.value}${this.formatProfileFactMeta(profile.education)}`,
+      );
+    if (profile.has_health_certificate)
+      lines.push(
+        `- 健康证: ${profile.has_health_certificate.value}${this.formatProfileFactMeta(profile.has_health_certificate)}`,
+      );
 
     if (lines.length === 0) return '';
     return `\n\n[用户档案]\n\n${lines.join('\n')}`;
+  }
+
+  private formatProfileFactMeta(value: {
+    confidence: string;
+    source: string;
+    evidence: string;
+    updatedAt: string;
+  }): string {
+    return `（置信度: ${value.confidence}，来源: ${value.source}，证据: ${value.evidence}，更新时间: ${value.updatedAt}）`;
   }
 
   /** 把会话记忆渲染成 prompt 片段。 */

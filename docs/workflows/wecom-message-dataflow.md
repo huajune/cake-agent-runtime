@@ -104,7 +104,7 @@ callAgent → runner.invoke
 fetchPendingSinceAgentStart(chatId)
 │
 ├─ 无新消息：
-│  ├─ await agentResult.runTurnEnd()  // fire-and-forget 触发 lifecycle
+│  ├─ await agentResult.runTurnEnd()  // 显式执行 lifecycle
 │  └─ 进入 ⑥ 投递
 │
 └─ 有新消息（Agent 生成期间用户又发了）：
@@ -137,17 +137,19 @@ deliveryService.deliverReply
 └─ markMessagesAsProcessed([所有 messageIds])  // dedup 标记
 ```
 
-### ⑦ Turn-end lifecycle（由 ⑤ 触发，fire-and-forget）
+### ⑦ Turn-end lifecycle（由 ⑤ 显式触发）
 
 ```
 memory.onTurnEnd
 │
-├─ 投射到 session memory:
-│  ├─ projectAssistantTurn → presentedJobs / currentFocusJob
-│  ├─ extractAndSave → facts
-│  └─ storeActivity → lastSessionActiveAt
+├─ loadPreviousState
 │
-├─ 达到沉淀阈值 → settlement: session → long-term profile
+├─ 消息间隔达到 settlementGapSeconds → settlement: sessionFacts → long-term profile + summary
+│
+├─ 投射到 session memory:
+│  ├─ saveCandidatePool → lastCandidatePool
+│  ├─ projectAssistantTurn → presentedJobs / currentFocusJob
+│  └─ extractAndSave → facts
 │
 └─ 写 post_processing_status（UI 右侧流水能看到）
 ```

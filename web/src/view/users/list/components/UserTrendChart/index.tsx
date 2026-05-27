@@ -3,6 +3,7 @@ import { useUserTrend } from '@/hooks/user/useUsers';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { IconUsers, IconBarChart, IconFlame, IconTrend, IconEmpty, IconInfo } from '../Icons';
 import { THEME_COLORS } from '@/constants';
+import { USER_RANGE_OPTIONS } from '../../constants';
 import styles from './index.module.scss';
 
 type ChartDataItem = {
@@ -27,11 +28,10 @@ type MetricBoard = {
   peak: number;
 };
 
-const USER_TREND_RANGE_OPTIONS = [
-  { days: 30, label: '近30天', totalLabel: '30天累计' },
-  { days: 90, label: '近90天', totalLabel: '90天累计' },
-  { days: 180, label: '近180天', totalLabel: '180天累计' },
-] as const;
+interface UserTrendChartProps {
+  selectedDays: number;
+  onSelectedDaysChange: (days: number) => void;
+}
 
 function parseDateKey(dateStr: string) {
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -56,13 +56,14 @@ function buildDateRange(days: number) {
   return Array.from({ length: days }, (_, index) => formatDateKey(addDays(startDate, index)));
 }
 
-export default function UserTrendChart() {
+export default function UserTrendChart({
+  selectedDays,
+  onSelectedDaysChange,
+}: UserTrendChartProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [selectedDays, setSelectedDays] = useState<number>(30);
   const { data: trendData = [], isLoading } = useUserTrend(selectedDays);
   const selectedRange =
-    USER_TREND_RANGE_OPTIONS.find((option) => option.days === selectedDays) ||
-    USER_TREND_RANGE_OPTIONS[0];
+    USER_RANGE_OPTIONS.find((option) => option.days === selectedDays) || USER_RANGE_OPTIONS[0];
 
   // 格式化日期显示（MM-DD）
   const formatDate = (dateStr: string) => {
@@ -149,12 +150,12 @@ export default function UserTrendChart() {
               aria-label="趋势时间范围"
               onClick={(event) => event.stopPropagation()}
             >
-              {USER_TREND_RANGE_OPTIONS.map((option) => (
+              {USER_RANGE_OPTIONS.map((option) => (
                 <button
                   key={option.days}
                   type="button"
                   className={option.days === selectedDays ? styles.activeRange : undefined}
-                  onClick={() => setSelectedDays(option.days)}
+                  onClick={() => onSelectedDaysChange(option.days)}
                   aria-pressed={option.days === selectedDays}
                 >
                   {option.label}

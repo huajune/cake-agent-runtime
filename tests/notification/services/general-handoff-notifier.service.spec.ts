@@ -6,6 +6,9 @@ describe('GeneralHandoffNotifierService', () => {
   const mockPrivateChannel = {
     send: jest.fn<Promise<boolean>, [Record<string, unknown>]>(),
   };
+  const mockAlertChannel = {
+    send: jest.fn<Promise<boolean>, [Record<string, unknown>]>(),
+  };
 
   const mockRenderer = {
     buildCard: jest.fn(),
@@ -30,8 +33,13 @@ describe('GeneralHandoffNotifierService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockPrivateChannel.send.mockResolvedValue(true);
+    mockAlertChannel.send.mockResolvedValue(true);
     mockRenderer.buildCard.mockReturnValue({ kind: 'handoff-card' });
-    service = new GeneralHandoffNotifierService(mockPrivateChannel as never, mockRenderer);
+    service = new GeneralHandoffNotifierService(
+      mockPrivateChannel as never,
+      mockAlertChannel as never,
+      mockRenderer,
+    );
   });
 
   it('sends card with @ for real sessions (isTest=false, atAll=true when no receiver)', async () => {
@@ -42,9 +50,10 @@ describe('GeneralHandoffNotifierService', () => {
       expect.objectContaining({ isTest: false, atAll: true }),
     );
     expect(mockPrivateChannel.send).toHaveBeenCalledWith({ kind: 'handoff-card' });
+    expect(mockAlertChannel.send).not.toHaveBeenCalled();
   });
 
-  it('sends card without @ for test-suite sessions (chatId starts with "test-")', async () => {
+  it('sends test-suite sessions to alert channel without @ (chatId starts with "test-")', async () => {
     const result = await service.notify(
       buildPayload({ chatId: 'test-BC-20260511-q3g3mlzo-20260511073840' }),
     );
@@ -54,7 +63,8 @@ describe('GeneralHandoffNotifierService', () => {
     expect(arg.isTest).toBe(true);
     expect(arg.atUsers).toBeUndefined();
     expect(arg.atAll).toBeUndefined();
-    expect(mockPrivateChannel.send).toHaveBeenCalledWith({ kind: 'handoff-card' });
+    expect(mockAlertChannel.send).toHaveBeenCalledWith({ kind: 'handoff-card' });
+    expect(mockPrivateChannel.send).not.toHaveBeenCalled();
   });
 
   it('sends card without @ for badcase regression sessions (p2-fixed-* prefix)', async () => {
@@ -66,6 +76,8 @@ describe('GeneralHandoffNotifierService', () => {
     const arg = mockRenderer.buildCard.mock.calls[0][0] as unknown as Record<string, unknown>;
     expect(arg.isTest).toBe(true);
     expect(arg.atAll).toBeUndefined();
+    expect(mockAlertChannel.send).toHaveBeenCalledWith({ kind: 'handoff-card' });
+    expect(mockPrivateChannel.send).not.toHaveBeenCalled();
   });
 
   it('detects test path by corpId (primary signal, regardless of chatId)', async () => {
@@ -77,6 +89,8 @@ describe('GeneralHandoffNotifierService', () => {
     const arg = mockRenderer.buildCard.mock.calls[0][0] as unknown as Record<string, unknown>;
     expect(arg.isTest).toBe(true);
     expect(arg.atAll).toBeUndefined();
+    expect(mockAlertChannel.send).toHaveBeenCalledWith({ kind: 'handoff-card' });
+    expect(mockPrivateChannel.send).not.toHaveBeenCalled();
   });
 
   it('detects debug path by corpId === "debug"', async () => {
@@ -87,5 +101,7 @@ describe('GeneralHandoffNotifierService', () => {
     expect(result).toBe(true);
     const arg = mockRenderer.buildCard.mock.calls[0][0] as unknown as Record<string, unknown>;
     expect(arg.isTest).toBe(true);
+    expect(mockAlertChannel.send).toHaveBeenCalledWith({ kind: 'handoff-card' });
+    expect(mockPrivateChannel.send).not.toHaveBeenCalled();
   });
 });

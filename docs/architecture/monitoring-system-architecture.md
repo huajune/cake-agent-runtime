@@ -178,7 +178,7 @@ DataCleanupService.cleanupExpiredData()
     ├── cleanupChatMessages(60 d)                — DELETE
     ├── cleanupMessageProcessingRecords(14 d)    — DELETE（已聚合到 monitoring_hourly_stats）
     ├── cleanupErrorLogs(30 d)                   — DELETE
-    └── cleanupUserActivity(35 d)                — DELETE
+    └── cleanupUserActivity(365 d)               — DELETE
 
 monitoring_hourly_stats / monitoring_daily_stats → 永久保留
 ```
@@ -501,7 +501,7 @@ CREATE INDEX idx_monitoring_daily_stats_stat_date ON monitoring_daily_stats(stat
 | `DATA_CLEANUP_AGENT_INVOCATION_DAYS` | 7 | NULL `agent_invocation` |
 | `DATA_CLEANUP_PROCESSING_DAYS` | 14 | DELETE `message_processing_records` |
 | `DATA_CLEANUP_CHAT_DAYS` | 60 | DELETE `chat_messages` |
-| `DATA_CLEANUP_USER_ACTIVITY_DAYS` | 35 | DELETE `user_activity` |
+| `DATA_CLEANUP_USER_ACTIVITY_DAYS` | 365 | DELETE `user_activity` |
 | `DATA_CLEANUP_ERROR_LOGS_DAYS` | 30 | DELETE `monitoring_error_logs` |
 
 ---
