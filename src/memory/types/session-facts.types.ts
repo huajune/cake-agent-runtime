@@ -243,8 +243,6 @@ export interface HighConfidenceValue<T> {
   confidence: 'high' | 'medium' | 'low';
   source: 'rule' | 'system';
   evidence: string;
-  raw?: string;
-  extractor?: string;
 }
 
 export type HighConfidenceMaybeValue<T> = HighConfidenceValue<T> | T | null;

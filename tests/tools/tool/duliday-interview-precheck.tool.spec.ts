@@ -600,8 +600,6 @@ describe('buildInterviewPrecheckTool', () => {
               confidence: 'high',
               source: 'rule',
               evidence: '年龄识别：24',
-              raw: '年龄24',
-              extractor: 'extractAge',
             },
           },
           reasoning: '年龄识别：24',

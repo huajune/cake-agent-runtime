@@ -209,8 +209,6 @@ export function extractHighConfidenceFacts(
       'brands',
       ruleMeta({
         evidence: `品牌别名识别：${facts.preferences.brands.join('、')}`,
-        raw: aliasHints.map((hint) => hint.sourceText).join('\n'),
-        extractor: 'detectBrandAliasHints',
       }),
     );
     reasons.push(
@@ -230,8 +228,6 @@ export function extractHighConfidenceFacts(
         'name',
         ruleMeta({
           evidence: `结构化姓名识别：${structuredName}`,
-          raw: message,
-          extractor: 'extractStructuredName',
         }),
       );
       reasons.push(`结构化姓名识别：${structuredName}（来源：收资表单键值对）`);
@@ -245,8 +241,6 @@ export function extractHighConfidenceFacts(
         'phone',
         ruleMeta({
           evidence: `手机号识别：${phone}`,
-          raw: message,
-          extractor: 'extractPhone',
         }),
       );
       reasons.push(`手机号识别：${phone}`);
@@ -260,8 +254,6 @@ export function extractHighConfidenceFacts(
         'age',
         ruleMeta({
           evidence: `年龄识别：${age}`,
-          raw: message,
-          extractor: 'extractAge',
         }),
       );
       reasons.push(`年龄识别：${age}`);
@@ -276,8 +268,6 @@ export function extractHighConfidenceFacts(
         'gender',
         ruleMeta({
           evidence: `性别识别：${gender}`,
-          raw: message,
-          extractor: 'extractGender',
         }),
       );
       reasons.push(`性别识别：${gender}`);
@@ -291,8 +281,6 @@ export function extractHighConfidenceFacts(
         'is_student',
         ruleMeta({
           evidence: `学生身份识别：${studentInfo.isStudent ? '是' : '否'}`,
-          raw: message,
-          extractor: 'extractStudentInfo',
         }),
       );
       reasons.push(`学生身份识别：${studentInfo.isStudent ? '是' : '否'}`);
@@ -304,8 +292,6 @@ export function extractHighConfidenceFacts(
         'education',
         ruleMeta({
           evidence: `学历识别：${studentInfo.education}`,
-          raw: message,
-          extractor: 'extractStudentInfo',
         }),
       );
       reasons.push(`学历识别：${studentInfo.education}`);
@@ -318,8 +304,6 @@ export function extractHighConfidenceFacts(
           'education',
           ruleMeta({
             evidence: `学历识别：${explicitEducation}`,
-            raw: message,
-            extractor: 'extractEducation',
           }),
         );
         reasons.push(`学历识别：${explicitEducation}`);
@@ -334,8 +318,6 @@ export function extractHighConfidenceFacts(
         'has_health_certificate',
         ruleMeta({
           evidence: `健康证识别：${healthCertificate}`,
-          raw: message,
-          extractor: 'extractHealthCertificate',
         }),
       );
       reasons.push(`健康证识别：${healthCertificate}`);
@@ -349,8 +331,6 @@ export function extractHighConfidenceFacts(
         'labor_form',
         ruleMeta({
           evidence: `用工形式识别：${laborForm}`,
-          raw: message,
-          extractor: 'extractLaborForm',
         }),
       );
       reasons.push(`用工形式识别：${laborForm}`);
@@ -364,8 +344,6 @@ export function extractHighConfidenceFacts(
         'salary',
         ruleMeta({
           evidence: `薪资识别：${salary}`,
-          raw: message,
-          extractor: 'extractSalary',
         }),
       );
       reasons.push(`薪资识别：${salary}`);
@@ -381,8 +359,6 @@ export function extractHighConfidenceFacts(
         'position',
         ruleMeta({
           evidence: `岗位识别：${positions.join('、')}`,
-          raw: message,
-          extractor: 'extractPositions',
         }),
       );
       reasons.push(`岗位识别：${positions.join('、')}`);
@@ -396,8 +372,6 @@ export function extractHighConfidenceFacts(
         'schedule',
         ruleMeta({
           evidence: `班次识别：${schedule}`,
-          raw: message,
-          extractor: 'extractSchedule',
         }),
       );
       reasons.push(`班次识别：${schedule}`);
@@ -434,8 +408,6 @@ export function extractHighConfidenceFacts(
         'schedule_constraint',
         ruleMeta({
           evidence: `班次硬约束（结构化）：${labelParts.join('、') || '空'}`,
-          raw: message,
-          extractor: 'extractScheduleConstraintStructured',
         }),
       );
       reasons.push(`班次硬约束（结构化）：${labelParts.join('、') || '空'}`);
@@ -449,8 +421,6 @@ export function extractHighConfidenceFacts(
         'available_after',
         ruleMeta({
           evidence: `未来日期硬约束：${availableAfter.date}`,
-          raw: availableAfter.raw,
-          extractor: 'extractAvailableAfterDate',
         }),
       );
       reasons.push(`未来日期硬约束：${availableAfter.date}（原话："${availableAfter.raw}"）`);
@@ -464,8 +434,6 @@ export function extractHighConfidenceFacts(
         'city',
         ruleMeta({
           evidence: `城市识别：${location.city.value}（${location.city.evidence}）`,
-          raw: message,
-          extractor: 'extractLocation',
         }),
       );
       reasons.push(
@@ -481,8 +449,6 @@ export function extractHighConfidenceFacts(
         'district',
         ruleMeta({
           evidence: `区域识别：${location.district.join('、')}`,
-          raw: message,
-          extractor: 'extractLocation',
         }),
       );
       reasons.push(`区域识别：${location.district.join('、')}`);
@@ -496,8 +462,6 @@ export function extractHighConfidenceFacts(
         'location',
         ruleMeta({
           evidence: `地点识别：${location.location.join('、')}`,
-          raw: message,
-          extractor: 'extractLocation',
         }),
       );
       reasons.push(`地点识别：${location.location.join('、')}`);
@@ -603,7 +567,6 @@ export function mergeSupplementalGenderFact(
     confidence: 'low',
     source: 'system',
     evidence: `${sourceLabel}补充性别：${gender}`,
-    extractor: 'mergeSupplementalGenderFact',
   });
   const suffix = `${sourceLabel}补充性别：${gender}`;
   base.reasoning = [base.reasoning?.trim(), suffix].filter(Boolean).join('；');
@@ -724,16 +687,12 @@ function markPreferenceMeta(
 
 function ruleMeta(params: {
   evidence: string;
-  raw: string;
-  extractor: string;
   confidence?: HighConfidenceValue<unknown>['confidence'];
 }): Omit<HighConfidenceValue<unknown>, 'value'> {
   return {
     confidence: params.confidence ?? 'high',
     source: 'rule',
     evidence: params.evidence,
-    raw: params.raw,
-    extractor: params.extractor,
   };
 }
 

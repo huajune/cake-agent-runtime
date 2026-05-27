@@ -45,14 +45,13 @@ describe('formatExtractionFactLines', () => {
           confidence: 'high',
           source: 'rule',
           evidence: '年龄识别：24',
-          extractor: 'extractAge',
         },
       },
     };
     const lines = formatExtractionFactLines(facts);
 
     expect(lines).toEqual([
-      '- 年龄: 24（置信度: high，来源: rule，证据: 年龄识别：24，规则: extractAge）',
+      '- 年龄: 24（置信度: high，来源: rule，证据: 年龄识别：24）',
     ]);
   });
 });

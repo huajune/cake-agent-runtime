@@ -231,9 +231,6 @@ describe('MemoryLifecycleService', () => {
         age: expect.objectContaining({ value: '24' }),
       }),
     );
-    expect(ctx.highConfidenceFacts?.interview_info.age).toEqual(
-      expect.objectContaining({ extractor: 'extractAge' }),
-    );
   });
 
   it('should fallback to current user message when short-term window is empty', async () => {

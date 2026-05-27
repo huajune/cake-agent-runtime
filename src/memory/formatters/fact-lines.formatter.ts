@@ -86,7 +86,6 @@ function readFactValue<T>(value: HighConfidenceValue<T> | T | null | undefined):
 function formatInlineFactMeta(value: unknown): string {
   if (!isInlineHighConfidenceValue(value)) return '';
   const parts = [`置信度: ${value.confidence}`, `来源: ${value.source}`, `证据: ${value.evidence}`];
-  if (value.extractor) parts.push(`规则: ${value.extractor}`);
   return `（${parts.join('，')}）`;
 }
 

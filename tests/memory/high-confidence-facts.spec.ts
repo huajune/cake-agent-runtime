@@ -104,10 +104,23 @@ describe('extractHighConfidenceFacts', () => {
         confidence: 'high',
         source: 'rule',
         evidence: '年龄识别：24',
-        raw: '姓名：张琰\n电话：19986247174\n年龄24\n明天吧\n有',
-        extractor: 'extractAge',
       }),
     );
+  });
+
+  it.each([
+    ['年龄24', '24'],
+    ['年龄 24', '24'],
+    ['年龄：24', '24'],
+    ['年龄:24', '24'],
+    ['年龄 24岁', '24'],
+    ['我24岁', '24'],
+    ['今年24', '24'],
+    ['岗位要求25-50岁，我24岁', '24'],
+  ])('should extract candidate age from raw wording: %s', (raw, expectedAge) => {
+    const result = extractHighConfidenceFacts([raw], brandData);
+
+    expect(unwrapHighConfidenceValue(result?.interview_info.age)).toBe(expectedAge);
   });
 
   it('should not extract structured age from age range text without a separator', () => {

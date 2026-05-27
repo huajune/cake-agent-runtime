@@ -214,9 +214,8 @@ export function renderCandidateCardsBanner(jobs: any[]): string {
   if (cards.length === 0) return '';
 
   const lines: string[] = [];
-  lines.push('> 📣 **推荐时必须覆盖的字段：地址、班次、薪资、要求**');
   lines.push(
-    '> 以下方卡片为结构参考，每个字段的取值须结合该岗位下方详情中的所有信息（包括备注/remark）自行组织，不要照抄卡片里的原始值',
+    '> 📣 **推荐对话用模板**（向候选人介绍岗位时按以下卡片格式输出，可微调连接词/语气，**不得删除班次/薪资/地址/要求字段**；每个字段的取值须结合该岗位下方详情中的所有信息（包括备注/remark）自行组织，不要照抄卡片里的原始值）',
   );
   for (const card of cards) {
     for (const line of card.multiLine.split('\n')) {
