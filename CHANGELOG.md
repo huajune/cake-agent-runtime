@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.11.0] - 2026-05-27
 
-**预计版本**: `v5.11.0`
-**最近更新**: `2026-05-27`
 **来源分支**: `develop`
-**累计 PR**: 2
 
 ### 更新摘要
 - PR #229 修复部署通知会过滤中文发布条目的问题：只要有中文，即使包含 loadArtWorkImage、payload.artworkUrl、AGENT_VISION_FALLBACKS 等技术标识，也不再被当作纯技术英文丢弃
@@ -55,7 +51,6 @@
 - PR #230 `pnpm test -- --runInBand --watchman=false`
 - PR #230 `pnpm run ci:check`
 - PR #230 test DB migration 和 RPC 临时写入验证通过并已清理
-<!-- release:pending:end -->
 
 ## [5.10.1] - 2026-05-27
 
