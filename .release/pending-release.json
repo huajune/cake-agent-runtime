@@ -1,50 +1,7 @@
 {
-  "baseVersion": "5.10.0",
+  "baseVersion": "5.10.1",
   "nextVersion": "5.10.1",
   "updatedAt": "2026-05-27",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "224",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/224",
-      "title": "图片消息用原图替代压缩缩略图，消除 vision 幻觉",
-      "author": "ArielZhu",
-      "mergedAt": "2026-05-26",
-      "summary": [
-        "托管平台回调的 `imageUrl` 是压缩缩略图（96x210, 8.8KB），vision 模型无法读取文字导致 100% 幻觉",
-        "新增 `loadArtWorkImage` API 调用获取原图（1179x2556, 222KB），存入 `payload.artworkUrl`",
-        "全链路只调一次 API，下游三条消费路径（vision 描述 / Agent 对话 / Web 后台）全部读 `payload.artworkUrl`",
-        "**图片原图获取**: `enrichImagePayload` 在存记录前同步获取原图 URL 写入 payload（一次 INSERT 到位）",
-        "**Vision 描述路径**: `describeAndUpdateAsync` 直接使用 artworkUrl，`disableFallbacks: true` 防止降级到纯文本模型",
-        "**Agent vision 路径**: `collectImageUrls` 优先读 `payload.artworkUrl`，传高清原图给 LLM",
-        "**Web 后台**: `getImageUrls` 的 previewUrl 优先查找 `artworkUrl`",
-        "**Vision 降级链**: 新增 `AGENT_VISION_FALLBACKS` 只含 multimodal 模型",
-        "**其他**: reply-fact-guard 误报率优化、Dashboard 趋势图修复、invite-to-group 群人数修复"
-      ],
-      "features": [
-        "新增 `loadArtWorkImage` API 调用获取原图（1179x2556, 222KB），存入 `payload.artworkUrl`",
-        "**Vision 降级链**: 新增 `AGENT_VISION_FALLBACKS` 只含 multimodal 模型"
-      ],
-      "fixes": [
-        "托管平台回调的 `imageUrl` 是压缩缩略图（96x210, 8.8KB），vision 模型无法读取文字导致 100% 幻觉",
-        "全链路只调一次 API，下游三条消费路径（vision 描述 / Agent 对话 / Web 后台）全部读 `payload.artworkUrl`",
-        "**图片原图获取**: `enrichImagePayload` 在存记录前同步获取原图 URL 写入 payload（一次 INSERT 到位）",
-        "**Vision 描述路径**: `describeAndUpdateAsync` 直接使用 artworkUrl，`disableFallbacks: true` 防止降级到纯文本模型",
-        "**Agent vision 路径**: `collectImageUrls` 优先读 `payload.artworkUrl`，传高清原图给 LLM",
-        "**Web 后台**: `getImageUrls` 的 previewUrl 优先查找 `artworkUrl`",
-        "**其他**: reply-fact-guard 误报率优化、Dashboard 趋势图修复、invite-to-group 群人数修复"
-      ],
-      "optimizations": [],
-      "ops": [],
-      "config": [],
-      "envFiles": [
-        ".env.example"
-      ],
-      "verification": [
-        "单元测试 11/11 通过（含 4 个新增图片链路测试）",
-        "CI 全量测试通过",
-        "端到端验证：loadArtWorkImage API → 原图 URL → qwen-vl-plus 准确识别 M Stand/店员/26元"
-      ]
-    }
-  ]
+  "entries": []
 }
