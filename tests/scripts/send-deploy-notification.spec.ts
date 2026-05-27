@@ -87,6 +87,31 @@ console.log(extractUpdateSummary(${JSON.stringify(releaseNotes)}));
     expect(summary).not.toContain('Added bookable slot');
   });
 
+  it('keeps Chinese release notes with technical identifiers and rewrites them for operators', () => {
+    const releaseNotes = `
+### 新功能
+- PR #224 新增 \`loadArtWorkImage\` API 调用获取原图（1179x2556, 222KB），存入 \`payload.artworkUrl\`
+- PR #224 **Vision 降级链**: 新增 \`AGENT_VISION_FALLBACKS\` 只含 multimodal 模型
+
+### 问题修复
+- PR #224 托管平台回调的 \`imageUrl\` 是压缩缩略图（96x210, 8.8KB），vision 模型无法读取文字导致 100% 幻觉
+- PR #224 全链路只调一次 API，下游三条消费路径（vision 描述 / Agent 对话 / Web 后台）全部读 \`payload.artworkUrl\`
+- PR #224 **其他**: reply-fact-guard 误报率优化、Dashboard 趋势图修复、invite-to-group 群人数修复
+`;
+
+    const markdown = runNode(`
+process.env.RELEASE_NOTES = ${JSON.stringify(releaseNotes)};
+const { buildMarkdown } = require('./scripts/send-deploy-notification');
+console.log(buildMarkdown({ releaseTag: 'v5.10.1', deployResult: 'success' }));
+`);
+
+    expect(markdown).toContain('候选人发图后会自动获取高清原图，图片识别准确率更高');
+    expect(markdown).toContain('图片识别只降级到支持视觉的模型，避免落到纯文本模型误判');
+    expect(markdown).toContain('图片消息改用高清原图识别，解决收银小票等图片文字识别不准的问题');
+    expect(markdown).toContain('图片原图只获取一次并在识别、Agent 对话和后台展示中复用');
+    expect(markdown).toContain('降低回复事实校验误报，补齐 Dashboard 趋势日期轴，并修复拉群人数判断');
+  });
+
   it('falls back to a readable Chinese summary instead of sending raw English', () => {
     const releaseNotes = `
 ### 更新摘要
