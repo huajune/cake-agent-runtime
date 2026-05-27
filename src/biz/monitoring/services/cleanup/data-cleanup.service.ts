@@ -25,7 +25,7 @@ import { IncidentReporterService } from '@observability/incidents/incident-repor
  * - DATA_CLEANUP_AGENT_INVOCATION_DAYS (默认 7)
  * - DATA_CLEANUP_PROCESSING_DAYS       (默认 14)
  * - DATA_CLEANUP_CHAT_DAYS             (默认 60)
- * - DATA_CLEANUP_USER_ACTIVITY_DAYS    (默认 35)
+ * - DATA_CLEANUP_USER_ACTIVITY_DAYS    (默认 365)
  * - DATA_CLEANUP_ERROR_LOGS_DAYS       (默认 30)
  */
 @Injectable()
@@ -58,7 +58,7 @@ export class DataCleanupService implements OnModuleInit {
     );
     this.chatRetentionDays = parseInt(this.configService.get('DATA_CLEANUP_CHAT_DAYS', '60'), 10);
     this.userActivityRetentionDays = parseInt(
-      this.configService.get('DATA_CLEANUP_USER_ACTIVITY_DAYS', '35'),
+      this.configService.get('DATA_CLEANUP_USER_ACTIVITY_DAYS', '365'),
       10,
     );
     this.errorLogsRetentionDays = parseInt(

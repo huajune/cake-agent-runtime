@@ -75,6 +75,7 @@ describe('AnalyticsQueryService', () => {
   const mockUserHostingService = {
     getUserHostingStatus: jest.fn(),
     getActiveUsersByDateRange: jest.fn(),
+    getDailyActivityStats: jest.fn(),
   };
 
   const mockCacheService = {
@@ -165,6 +166,7 @@ describe('AnalyticsQueryService', () => {
     mockMessageProcessingService.getActiveUsers.mockResolvedValue([]);
     mockMessageProcessingService.getDailyUserStats.mockResolvedValue([]);
     mockUserHostingService.getActiveUsersByDateRange.mockResolvedValue([]);
+    mockUserHostingService.getDailyActivityStats.mockResolvedValue([]);
     mockMonitoringRecordRepository.getDashboardHourlyTrend.mockResolvedValue([]);
     mockHourlyStatsRepository.getRecentHourlyStats.mockResolvedValue([]);
     mockErrorLogRepository.getErrorLogsSince.mockResolvedValue([]);
@@ -605,14 +607,44 @@ describe('AnalyticsQueryService', () => {
   });
 
   // ========================================
+  // getUsersByDays
+  // ========================================
+
+  describe('getUsersByDays', () => {
+    it('should query the requested recent day window', async () => {
+      mockUserHostingService.getActiveUsersByDateRange.mockResolvedValue([]);
+
+      await service.getUsersByDays(60);
+
+      const [startDate, endDate] = mockUserHostingService.getActiveUsersByDateRange.mock.calls[0];
+
+      expect(startDate.toISOString()).toBe(
+        addLocalDays(getLocalDayStart(endDate), -59).toISOString(),
+      );
+    });
+
+    it('should default to 30 days for invalid input', async () => {
+      mockUserHostingService.getActiveUsersByDateRange.mockResolvedValue([]);
+
+      await service.getUsersByDays(Number.NaN);
+
+      const [startDate, endDate] = mockUserHostingService.getActiveUsersByDateRange.mock.calls[0];
+
+      expect(startDate.toISOString()).toBe(
+        addLocalDays(getLocalDayStart(endDate), -29).toISOString(),
+      );
+    });
+  });
+
+  // ========================================
   // getUserTrend
   // ========================================
 
   describe('getUserTrend', () => {
     it('should return user trend data', async () => {
-      mockMessageProcessingService.getDailyUserStats.mockResolvedValue([
-        { date: '2026-03-11', uniqueUsers: 10, messageCount: 50 },
-        { date: '2026-03-10', uniqueUsers: 8, messageCount: 40 },
+      mockUserHostingService.getDailyActivityStats.mockResolvedValue([
+        { date: '2026-03-11', userCount: 10, messageCount: 50, tokenUsage: 1000 },
+        { date: '2026-03-10', userCount: 8, messageCount: 40, tokenUsage: 800 },
       ]);
 
       const result = await service.getUserTrend();
@@ -623,41 +655,41 @@ describe('AnalyticsQueryService', () => {
     });
 
     it('should query last 30 days by default', async () => {
-      mockMessageProcessingService.getDailyUserStats.mockResolvedValue([]);
+      mockUserHostingService.getDailyActivityStats.mockResolvedValue([]);
 
       await service.getUserTrend();
 
-      const [startDate, endDate] = (messageProcessingService.getDailyUserStats as jest.Mock).mock
+      const [startDate, endDate] = (mockUserHostingService.getDailyActivityStats as jest.Mock).mock
         .calls[0];
 
       expect(startDate.toISOString()).toBe(
-        addLocalDays(getLocalDayStart(endDate), -30).toISOString(),
+        addLocalDays(getLocalDayStart(endDate), -29).toISOString(),
       );
     });
 
     it('should query the requested trend window', async () => {
-      mockMessageProcessingService.getDailyUserStats.mockResolvedValue([]);
+      mockUserHostingService.getDailyActivityStats.mockResolvedValue([]);
 
       await service.getUserTrend(90);
 
-      const [startDate, endDate] = (messageProcessingService.getDailyUserStats as jest.Mock).mock
+      const [startDate, endDate] = (mockUserHostingService.getDailyActivityStats as jest.Mock).mock
         .calls[0];
 
       expect(startDate.toISOString()).toBe(
-        addLocalDays(getLocalDayStart(endDate), -90).toISOString(),
+        addLocalDays(getLocalDayStart(endDate), -89).toISOString(),
       );
     });
 
     it('should cap user trend queries at one year', async () => {
-      mockMessageProcessingService.getDailyUserStats.mockResolvedValue([]);
+      mockUserHostingService.getDailyActivityStats.mockResolvedValue([]);
 
       await service.getUserTrend(999);
 
-      const [startDate, endDate] = (messageProcessingService.getDailyUserStats as jest.Mock).mock
+      const [startDate, endDate] = (mockUserHostingService.getDailyActivityStats as jest.Mock).mock
         .calls[0];
 
       expect(startDate.toISOString()).toBe(
-        addLocalDays(getLocalDayStart(endDate), -365).toISOString(),
+        addLocalDays(getLocalDayStart(endDate), -364).toISOString(),
       );
     });
   });

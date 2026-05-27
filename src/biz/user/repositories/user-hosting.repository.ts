@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '@infra/supabase/base.repository';
 import { SupabaseService } from '@infra/supabase/supabase.service';
+import { formatLocalDate } from '@infra/utils/date.util';
 import { UserHostingStatus } from '../entities/user-hosting-status.entity';
-import { UserActivityAggregate, UserProfile } from '../types/user.types';
+import { DailyUserActivityStats, UserActivityAggregate, UserProfile } from '../types/user.types';
 
 /**
  * 用户托管状态 Repository
@@ -185,6 +186,77 @@ export class UserHostingRepository extends BaseRepository {
       }));
     } catch (error) {
       this.logger.error('查询 user_activity 活跃用户失败', error);
+      return [];
+    }
+  }
+
+  /**
+   * 按天聚合 user_activity。
+   *
+   * Dashboard / users 页面展示的是长期趋势；message_processing_records 只保留短期流水，
+   * 所以这里直接读按天保留的活跃表，并用分页避开 PostgREST 默认 1000 行限制。
+   */
+  async findDailyActivityStatsByDateRange(
+    startDate: Date,
+    endDate: Date,
+  ): Promise<DailyUserActivityStats[]> {
+    if (!this.isAvailable()) {
+      return [];
+    }
+
+    const start = formatLocalDate(startDate);
+    const end = formatLocalDate(endDate);
+    const pageSize = 1000;
+    const buckets = new Map<string, DailyUserActivityStats>();
+
+    try {
+      for (let from = 0; ; from += pageSize) {
+        const { data, error } = await this.getClient()
+          .from('user_activity')
+          .select('activity_date,chat_id,message_count,token_usage')
+          .gte('activity_date', start)
+          .lte('activity_date', end)
+          .order('activity_date', { ascending: true })
+          .range(from, from + pageSize - 1);
+
+        if (error) {
+          this.handleError('SELECT daily user_activity', error);
+          return [];
+        }
+
+        const rows =
+          (data as Array<{
+            activity_date: string;
+            chat_id: string;
+            message_count: number | null;
+            token_usage: number | null;
+          }>) ?? [];
+
+        for (const row of rows) {
+          const date = row.activity_date;
+          const bucket =
+            buckets.get(date) ??
+            ({
+              date,
+              userCount: 0,
+              messageCount: 0,
+              tokenUsage: 0,
+            } satisfies DailyUserActivityStats);
+
+          bucket.userCount += 1;
+          bucket.messageCount += row.message_count ?? 0;
+          bucket.tokenUsage += row.token_usage ?? 0;
+          buckets.set(date, bucket);
+        }
+
+        if (rows.length < pageSize) {
+          break;
+        }
+      }
+
+      return Array.from(buckets.values()).sort((a, b) => a.date.localeCompare(b.date));
+    } catch (error) {
+      this.logger.error('查询 user_activity 按天趋势失败', error);
       return [];
     }
   }

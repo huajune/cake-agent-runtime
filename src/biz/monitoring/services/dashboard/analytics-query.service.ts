@@ -300,6 +300,14 @@ export class AnalyticsQueryService {
     return this.buildTodayUsers(startDate, endDate);
   }
 
+  async getUsersByDays(days?: number): Promise<TodayUser[]> {
+    const rangeDays = normalizeUserTrendDays(days);
+    const endDate = new Date();
+    const startDate = addLocalDays(getLocalDayStart(endDate), -(rangeDays - 1));
+
+    return this.buildTodayUsers(startDate, endDate);
+  }
+
   /**
    * 从 user_activity 聚合构建 TodayUser 列表，并叠加暂停托管状态。
    */
@@ -335,11 +343,11 @@ export class AnalyticsQueryService {
   ): Promise<Array<{ date: string; userCount: number; messageCount: number }>> {
     const trendDays = normalizeUserTrendDays(days);
     const endDate = new Date();
-    const startDate = addLocalDays(getLocalDayStart(endDate), -trendDays);
-    const stats = await this.messageProcessingService.getDailyUserStats(startDate, endDate);
+    const startDate = addLocalDays(getLocalDayStart(endDate), -(trendDays - 1));
+    const stats = await this.userHostingService.getDailyActivityStats(startDate, endDate);
     return stats.map((s) => ({
       date: s.date,
-      userCount: s.uniqueUsers,
+      userCount: s.userCount,
       messageCount: s.messageCount,
     }));
   }

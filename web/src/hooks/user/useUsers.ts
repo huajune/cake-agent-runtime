@@ -5,6 +5,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { QueryKey } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import type { PausedUserData, TodayUserData, UserInfo } from '@/api/types/user.types';
 import type { DashboardData } from '@/api/types/analytics.types';
@@ -19,19 +20,25 @@ export type { UserTrendData, TodayUserData, PausedUserData } from '@/api/service
  */
 export function useUserTrend(days = 30, autoRefresh = true) {
   return useQuery({
-    queryKey: ['user-trend', days],
+    queryKey: ['user-trend', 'user-activity-v2', days],
     queryFn: () => userService.getUserTrend(days),
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
     refetchInterval: autoRefresh ? 60000 : false,
   });
 }
 
 /**
- * 获取今日托管用户列表
+ * 获取近期托管用户列表
  */
-export function useTodayUsers(autoRefresh = true) {
+export function useTodayUsers(days = 30, autoRefresh = true) {
   return useQuery({
-    queryKey: ['today-users'],
-    queryFn: () => userService.getTodayUsers(),
+    queryKey: ['today-users', 'user-activity-v2', days],
+    queryFn: () => userService.getTodayUsers(days),
+    staleTime: 0,
+    refetchOnMount: 'always',
     refetchInterval: autoRefresh ? 10000 : false,
   });
 }
@@ -76,7 +83,9 @@ export function useToggleUserHosting() {
       await queryClient.cancelQueries({ queryKey: ['dashboard-overview'] });
 
       const previousUsers = queryClient.getQueryData<UserInfo[]>(['users']);
-      const previousTodayUsers = queryClient.getQueryData<TodayUserData[]>(['today-users']);
+      const previousTodayUsers = queryClient.getQueriesData<TodayUserData[]>({
+        queryKey: ['today-users'],
+      });
       const previousPausedUsers = queryClient.getQueryData<PausedUserData[]>(['paused-users']);
       const previousDashboards: Record<string, DashboardData | undefined> = {};
 
@@ -89,14 +98,9 @@ export function useToggleUserHosting() {
         );
       }
 
-      if (previousTodayUsers) {
-        queryClient.setQueryData<TodayUserData[]>(
-          ['today-users'],
-          previousTodayUsers.map((user) =>
-            user.chatId === chatId ? { ...user, isPaused: !enabled } : user,
-          ),
-        );
-      }
+      queryClient.setQueriesData<TodayUserData[]>({ queryKey: ['today-users'] }, (users) =>
+        users?.map((user) => (user.chatId === chatId ? { ...user, isPaused: !enabled } : user)),
+      );
 
       if (previousPausedUsers && enabled) {
         queryClient.setQueryData<PausedUserData[]>(
@@ -129,7 +133,11 @@ export function useToggleUserHosting() {
         queryClient.setQueryData(['users'], context.previousUsers);
       }
       if (context?.previousTodayUsers) {
-        queryClient.setQueryData(['today-users'], context.previousTodayUsers);
+        for (const [queryKey, data] of context.previousTodayUsers as Array<
+          [QueryKey, TodayUserData[] | undefined]
+        >) {
+          queryClient.setQueryData(queryKey, data);
+        }
       }
       if (context?.previousPausedUsers) {
         queryClient.setQueryData(['paused-users'], context.previousPausedUsers);
