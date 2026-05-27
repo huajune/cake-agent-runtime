@@ -29,7 +29,7 @@ import {
   type HardRequirements,
 } from '@tools/duliday/job-list/hard-requirements.util';
 import { extractSalaryFacts } from '@tools/duliday/job-list/salary-facts.util';
-import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
+import { buildJobPolicyAnalysis, sanitizeConstraintText } from '@tools/utils/job-policy-parser';
 
 export interface CandidateCard {
   jobId: number | string;
@@ -39,14 +39,19 @@ export interface CandidateCard {
   multiLine: string;
 }
 
-function buildAddress(job: any): string {
-  const bi = job?.basicInfo;
-  if (!bi) return '';
-  const rawStore = bi.storeInfo?.storeName;
-  const store = normalizeStoreNameForAgent(rawStore, bi.storeInfo?.storeCityName);
-  const distance =
-    typeof job._distanceKm === 'number' ? `${Math.round(job._distanceKm * 10) / 10}km` : '';
-  return [store, distance].filter(Boolean).join('，');
+const NON_POSITION_PATTERN =
+  /^(日结|周结|月结|小时工|兼职|全职|临时工|短期工|长期工|社会兼职)[\+＋]?$|^(只招|目前只|仅招)/;
+
+function resolvePositionName(bi: any): string {
+  const nick = typeof bi.jobNickName === 'string' ? bi.jobNickName.trim() : '';
+  if (nick && !NON_POSITION_PATTERN.test(nick)) return nick;
+  const cat = bi.jobCategoryName;
+  if (typeof cat === 'string' && cat.includes('/')) {
+    const last = cat.split('/').pop()?.trim();
+    if (last) return last;
+  }
+  if (nick) return nick;
+  return '岗位';
 }
 
 function buildShiftPart(workTime: unknown): string {
@@ -142,9 +147,9 @@ function flattenText(text: unknown): string {
 
 function collectRemarks(job: any): string {
   const parts: string[] = [];
-  const memo = flattenText(job?.welfare?.memo);
+  const memo = sanitizeConstraintText(flattenText(job?.welfare?.memo));
   if (memo) parts.push(`福利备注：${memo}`);
-  const wtRemark = flattenText(job?.workTime?.workTimeRemark);
+  const wtRemark = sanitizeConstraintText(flattenText(job?.workTime?.workTimeRemark));
   if (wtRemark) parts.push(`班次备注：${wtRemark}`);
   return parts.join('\n   ');
 }
@@ -158,9 +163,11 @@ function collectRemarks(job: any): string {
 export function renderCandidateCard(job: any, index?: number): CandidateCard | null {
   if (!job?.basicInfo) return null;
   const bi = job.basicInfo;
-  const jobName = bi.jobName || bi.jobNickName || '岗位';
+  const position = resolvePositionName(bi);
   const brand = bi.brandName || '';
-  const address = buildAddress(job);
+  const store = normalizeStoreNameForAgent(bi.storeInfo?.storeName, bi.storeInfo?.storeCityName);
+  const distance =
+    typeof job._distanceKm === 'number' ? `${Math.round(job._distanceKm * 10) / 10}km` : '';
 
   const policy = buildJobPolicyAnalysis(job);
   const hr = extractHardRequirements(job, policy);
@@ -171,9 +178,10 @@ export function renderCandidateCard(job: any, index?: number): CandidateCard | n
   const remarks = collectRemarks(job);
   const requirement = buildRequirementPart(hr, policy.normalizedRequirements.ageRequirement);
 
-  // 单行：紧凑、用 "｜" 分隔字段，省略空字段
-  const title = [brand, jobName].filter(Boolean).join(' ');
-  const head = address ? `${title} - ${address}` : title;
+  // 标题格式：品牌（门店）- 岗位，距离
+  const storePart = store ? `（${store}）` : '';
+  const distPart = distance ? `，${distance}` : '';
+  const head = `${brand}${storePart} - ${position}${distPart}`;
   const oneParts = [
     typeof index === 'number' ? `${index + 1}. **${head}**` : `**${head}**`,
     shift && `班次：${shift}`,
@@ -215,8 +223,23 @@ export function renderCandidateCardsBanner(jobs: any[]): string {
 
   const lines: string[] = [];
   lines.push(
-    '> 📣 **推荐对话用模板**（向候选人介绍岗位时按以下卡片格式输出，可微调连接词/语气，**不得删除班次/薪资/地址/要求字段**；每个字段的取值须结合该岗位下方详情中的所有信息（包括备注/remark）自行组织，不要照抄卡片里的原始值）',
+    '> 📣 **推荐对话用模板**（向候选人介绍岗位时**严格按以下固定格式输出**，每行的具体取值须结合该岗位下方详情和备注组织完整信息）',
   );
+  lines.push('> **固定格式（四行，不得删除或合并）**：');
+  lines.push('> ```');
+  lines.push('> 品牌（门店）- 岗位，距离km');
+  lines.push('> 班次：具体班次时间');
+  lines.push('> 薪资：完整薪资描述（含阶梯/节假日等备注中的补充薪资）');
+  lines.push('> 要求：年龄、健康证、其他限制');
+  lines.push('> ```');
+  lines.push('> **示例**：');
+  lines.push('> ```');
+  lines.push('> 成都你六姐（佘山旭辉里店）- 前厅服务员，4.9km');
+  lines.push('> 班次：晚班 18:00-22:00');
+  lines.push('> 薪资：24 元/时起，做满 40 小时 26 元，满 80 小时 28 元');
+  lines.push('> 要求：25-45 岁，需办食品健康证');
+  lines.push('> ```');
+  lines.push('> **以下为各岗位的结构化数据参考**（取值时须结合下方详情和备注）：');
   for (const card of cards) {
     for (const line of card.multiLine.split('\n')) {
       lines.push(`> ${line}`);
