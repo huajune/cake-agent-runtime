@@ -89,7 +89,7 @@ function fetchMergedPrContext(prNumber) {
       'view',
       prNumber,
       '--json',
-      'number,title,body,url,author,mergedAt,baseRefName,headRefName,state,merged,files,commits',
+      'number,title,body,url,author,mergedAt,baseRefName,headRefName,state,files,commits',
     ],
     {
       cwd: ROOT_DIR,
@@ -99,7 +99,7 @@ function fetchMergedPrContext(prNumber) {
   );
   const pullRequest = JSON.parse(raw);
 
-  if (!pullRequest.merged) {
+  if (pullRequest.state !== 'MERGED' && !pullRequest.mergedAt) {
     console.warn(`Skipping PR #${prNumber}: not merged`);
     return null;
   }
