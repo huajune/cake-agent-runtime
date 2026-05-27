@@ -702,7 +702,7 @@ function ruleValue<T>(
   return highConfidenceValue(value, ruleMeta(params) as Omit<HighConfidenceValue<T>, 'value'>);
 }
 
-function isHighConfidenceValue(value: unknown): value is HighConfidenceValue<unknown> {
+export function isHighConfidenceValue(value: unknown): value is HighConfidenceValue<unknown> {
   return (
     typeof value === 'object' &&
     value !== null &&

@@ -362,6 +362,8 @@ export class TurnHintsSection implements PromptSection {
       return;
     }
     if (isSameValue(previousValue as T, currentFact.value)) {
+      // Keep current-round confirmations visible in [本轮线索]; sessionFacts stays the durable memory,
+      // while this section tells the model what the candidate just said.
       onNormal(currentFact);
       return;
     }

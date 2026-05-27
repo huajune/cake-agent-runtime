@@ -13,7 +13,6 @@ import {
   SupplementClassification,
 } from '@tools/utils/supplement-label-classifier';
 import { isStrictRealChineseName } from '@memory/facts/name-guard';
-import type { HighConfidenceValue } from '@memory/types/session-facts.types';
 import {
   normalizeEducationValue,
   normalizeGenderValue,
@@ -48,6 +47,7 @@ import {
   buildApiPayloadGuide,
   buildScreeningCriteria,
 } from '@tools/duliday/precheck/screening-criteria.util';
+import { isHighConfidenceValue } from '@memory/facts/high-confidence-facts';
 
 // 保留 age util 的符号 re-export，兼容 tests/tools/tool/duliday-interview-precheck.age-boundary.spec
 export {
@@ -585,15 +585,4 @@ export function buildInterviewPrecheckTool(spongeService: SpongeService): ToolBu
         }
       },
     });
-}
-
-function isHighConfidenceValue(value: unknown): value is HighConfidenceValue<unknown> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'value' in value &&
-    'confidence' in value &&
-    'source' in value &&
-    'evidence' in value
-  );
 }
