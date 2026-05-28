@@ -108,12 +108,10 @@ export default function Users() {
   const [sortMode, setSortMode] = useState<SortMode>('firstActiveDesc');
   const [botFilter, setBotFilter] = useState(ALL_BOTS);
   const [selectedDays, setSelectedDays] = useState<number>(USER_RANGE_OPTIONS[0].days);
-  const { data: todayUsers = [], isLoading: isTodayLoading } = useTodayUsers(selectedDays);
+  const { data: todayUsers = [], isLoading: isTodayLoading } = useTodayUsers();
   const { data: pausedUsers = [], isLoading: isPausedLoading } = usePausedUsers();
   const { data: configuredBots = [], isLoading: isBotsLoading } = useConfiguredBots();
   const toggleHosting = useToggleUserHosting();
-  const selectedRange =
-    USER_RANGE_OPTIONS.find((option) => option.days === selectedDays) || USER_RANGE_OPTIONS[0];
 
   const handleToggleHosting = (chatId: string, enabled: boolean) => {
     toggleHosting.mutate({ chatId, enabled });
@@ -201,7 +199,6 @@ export default function Users() {
       <section className={styles.section}>
         <UserTabNav
           activeTab={activeTab}
-          managedLabel={selectedRange.label}
           todayCount={filteredTodayUsers.length}
           pausedCount={filteredPausedUsers.length}
           onTabChange={setActiveTab}

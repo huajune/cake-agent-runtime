@@ -7,7 +7,6 @@ import styles from './index.module.scss';
 
 interface UserTabNavProps {
   activeTab: TabType;
-  managedLabel: string;
   todayCount: number;
   pausedCount: number;
   onTabChange: (tab: TabType) => void;
@@ -15,7 +14,6 @@ interface UserTabNavProps {
 
 export default function UserTabNav({
   activeTab,
-  managedLabel,
   todayCount,
   pausedCount,
   onTabChange,
@@ -26,7 +24,7 @@ export default function UserTabNav({
         className={`${styles.tab} ${activeTab === 'today' ? styles.active : ''}`}
         onClick={() => onTabChange('today')}
       >
-        <span className={styles.tabLabel}>{managedLabel}托管会话</span>
+        <span className={styles.tabLabel}>今日托管会话</span>
         <span className={styles.tabCount}>({todayCount})</span>
       </button>
       <button
