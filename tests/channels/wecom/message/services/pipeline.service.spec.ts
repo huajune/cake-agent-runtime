@@ -24,6 +24,7 @@ import { FilterReason } from '@wecom/message/application/filter.service';
 import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { PreAgentRiskInterceptService } from '@wecom/message/application/pre-agent-risk-intercept.service';
 import { ReplyFactGuardService } from '@wecom/message/application/reply-fact-guard.service';
+import { LongTermService } from '@memory/services/long-term.service';
 
 describe('MessagePipelineService', () => {
   let service: MessagePipelineService;
@@ -101,20 +102,22 @@ describe('MessagePipelineService', () => {
     markImagePrepared: jest.fn(),
     markQueueAdd: jest.fn(),
     mergePrepTimingsFromSources: jest.fn(),
-    buildFailureMetadata: jest.fn().mockImplementation(
-      (_messageId: string, payload: { errorType?: string }) => ({
+    buildFailureMetadata: jest
+      .fn()
+      .mockImplementation((_messageId: string, payload: { errorType?: string }) => ({
         alertType: payload.errorType,
-      }),
-    ),
+      })),
     updateDispatch: jest.fn(),
     markWorkerStart: jest.fn(),
-    buildSuccessMetadata: jest.fn().mockImplementation(
-      (_messageId: string, payload: { replyPreview?: string; replySegments?: number }) => ({
-        tokenUsage: 30,
-        replyPreview: payload.replyPreview,
-        replySegments: payload.replySegments,
-      }),
-    ),
+    buildSuccessMetadata: jest
+      .fn()
+      .mockImplementation(
+        (_messageId: string, payload: { replyPreview?: string; replySegments?: number }) => ({
+          tokenUsage: 30,
+          replyPreview: payload.replyPreview,
+          replySegments: payload.replySegments,
+        }),
+      ),
     markFallbackStart: jest.fn(),
     markFallbackEnd: jest.fn(),
     markAiStart: jest.fn(),
@@ -126,7 +129,7 @@ describe('MessagePipelineService', () => {
       .mockImplementation((messages: EnterpriseMessageCallbackDto[]) =>
         messages
           .map((message) =>
-            'text' in message.payload ? (message.payload as { text?: string }).text ?? '' : '',
+            'text' in message.payload ? ((message.payload as { text?: string }).text ?? '') : '',
           )
           .filter(Boolean)
           .join('\n'),
@@ -135,6 +138,10 @@ describe('MessagePipelineService', () => {
 
   const mockPreAgentRiskIntercept = {
     precheck: jest.fn(),
+  };
+
+  const mockLongTermService = {
+    updateMessageMetadata: jest.fn(),
   };
 
   const mockSimpleMergeService = {
@@ -184,6 +191,7 @@ describe('MessagePipelineService', () => {
         { provide: AlertNotifierService, useValue: mockAlertService },
         { provide: WecomMessageObservabilityService, useValue: mockWecomObservabilityService },
         { provide: PreAgentRiskInterceptService, useValue: mockPreAgentRiskIntercept },
+        { provide: LongTermService, useValue: mockLongTermService },
         {
           provide: ReplyFactGuardService,
           useValue: { check: jest.fn().mockReturnValue({ hit: false, contradictions: [] }) },
