@@ -90,6 +90,73 @@ describe('buildJobListTool', () => {
     expect(builtTool.description).toContain('不得回复"周末能排"');
     expect(builtTool.description).toContain('推荐 2 个及以上岗位时');
     expect(builtTool.description).toContain('禁止把多个岗位压缩在同一句');
+    expect(builtTool.description).toContain('年龄判断必须沿用 precheck 弹性口径');
+    expect(builtTool.description).toContain('候选人 52 岁遇到 20-50 岁 / 40-50 岁岗位');
+  });
+
+  it('should annotate candidate age boundary results instead of leaving the model to strict-filter ages', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJobData({
+          basicInfo: {
+            jobId: 1,
+            brandName: '史伟莎',
+            jobName: '消杀员',
+            storeInfo: {
+              storeName: '长宁店',
+              storeAddress: '上海市长宁区xx路',
+              storeCityName: '上海',
+              storeRegionName: '长宁区',
+            },
+          },
+          hiringRequirement: {
+            basicPersonalRequirements: { minAge: 20, maxAge: 50 },
+          },
+        }),
+        makeJobData({
+          basicInfo: {
+            jobId: 2,
+            brandName: '奥乐齐',
+            jobName: '理货员',
+            storeInfo: {
+              storeName: '缤谷广场',
+              storeAddress: '上海市长宁区xx路',
+              storeCityName: '上海',
+              storeRegionName: '长宁区',
+            },
+          },
+          hiringRequirement: {
+            basicPersonalRequirements: { minAge: 18, maxAge: 45 },
+          },
+        }),
+      ],
+      total: 2,
+    });
+
+    const result = await executeTool(
+      {
+        ...mockContext,
+        sessionFacts: { interview_info: { age: '52' } } as ToolBuildContext['sessionFacts'],
+      },
+      {
+        ...defaultInput,
+        includeHiringRequirement: true,
+      },
+    );
+
+    expect(result.markdown).toContain('## 候选人年龄筛选提示');
+    expect(result.markdown).toContain('boundary 1 个');
+    expect(result.markdown).toContain('hard_reject 1 个');
+    expect(result.markdown).toContain('禁止回复"没有一个接受 52 岁"');
+    expect(result.queryMeta.ageScreening).toEqual(
+      expect.objectContaining({
+        candidateAge: 52,
+        counts: expect.objectContaining({
+          boundary: 1,
+          hard_reject: 1,
+        }),
+      }),
+    );
   });
 
   it('should return markdown format by default', async () => {
@@ -661,7 +728,10 @@ describe('buildJobListTool', () => {
       responseFormat: ['rawData'],
     });
 
-    const rawData = result.rawData as { result: Array<{ basicInfo?: { jobId?: number } }>; total: number };
+    const rawData = result.rawData as {
+      result: Array<{ basicInfo?: { jobId?: number } }>;
+      total: number;
+    };
     const nearJobIds = rawData.result.map((job) => job.basicInfo?.jobId);
 
     expect(mockSpongeService.fetchJobs).toHaveBeenCalledTimes(2);
@@ -701,10 +771,7 @@ describe('buildJobListTool', () => {
 
     it('emits ⚠️ 同品牌多门店 section in markdown when ≥2 stores share a brand', async () => {
       mockSpongeService.fetchJobs.mockResolvedValue({
-        jobs: [
-          makeKfcJob(1, '绿地缤纷城店', 2.3, 17),
-          makeKfcJob(2, '日月光店', 5.1, 17),
-        ],
+        jobs: [makeKfcJob(1, '绿地缤纷城店', 2.3, 17), makeKfcJob(2, '日月光店', 5.1, 17)],
         total: 2,
       });
 
