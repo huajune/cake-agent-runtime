@@ -515,6 +515,56 @@ describe('buildInviteToGroupTool', () => {
     );
   });
 
+  it('should add the chat bot to the group and retry when chat bot cannot see the room', async () => {
+    mockGroupResolver.resolveGroups.mockResolvedValue([
+      makeGroup({
+        imRoomId: 'room-1',
+        groupName: '上海零售①',
+        imBotId: 'owner-bot-im',
+        botUserId: 'owner-bot-weixin',
+      }),
+    ]);
+    mockRoomService.addMemberEnterprise
+      .mockResolvedValueOnce({ errcode: 400400, errmsg: 'room not found' })
+      .mockResolvedValueOnce({ errcode: 0, errmsg: 'ok' })
+      .mockResolvedValueOnce({ errcode: 0, errmsg: 'ok' });
+    mockMemoryService.saveInvitedGroup.mockResolvedValue(undefined);
+
+    const result = await executeTool({ city: '上海' });
+    await flushAsyncEvents();
+
+    expect(result.success).toBe(true);
+    expect(result.groupName).toBe('上海零售①');
+    expect(mockRoomService.addMemberEnterprise).toHaveBeenCalledTimes(3);
+    expect(mockRoomService.addMemberEnterprise).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        imBotId: 'chat-bot-im-id',
+        botUserId: 'chat-bot-weixin',
+        roomWxid: 'room-1',
+      }),
+    );
+    expect(mockRoomService.addMemberEnterprise).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        imBotId: 'owner-bot-im',
+        botUserId: 'owner-bot-weixin',
+        contactWxid: 'chat-bot-im-id',
+        roomWxid: 'room-1',
+      }),
+    );
+    expect(mockRoomService.addMemberEnterprise).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        imBotId: 'chat-bot-im-id',
+        botUserId: 'chat-bot-weixin',
+        contactWxid: 'user-1',
+        roomWxid: 'room-1',
+      }),
+    );
+    expect(mockOpsNotifier.sendInviteRejectedAlert).not.toHaveBeenCalled();
+  });
+
   it('should try the next candidate when invite API rejects the selected group (e.g. 400400 room not found)', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([
       makeGroup({ imRoomId: 'room-1', groupName: '上海零售①' }),
@@ -536,8 +586,18 @@ describe('buildInviteToGroupTool', () => {
 
   it('should send invite_rejected alert (not group_full) when every candidate is rejected', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([
-      makeGroup({ imRoomId: 'room-1', groupName: '上海零售①', imBotId: 'owner-bot-im' }),
-      makeGroup({ imRoomId: 'room-2', groupName: '上海零售②', imBotId: 'owner-bot-im' }),
+      makeGroup({
+        imRoomId: 'room-1',
+        groupName: '上海零售①',
+        imBotId: 'owner-bot-im',
+        botUserId: 'owner-bot-weixin',
+      }),
+      makeGroup({
+        imRoomId: 'room-2',
+        groupName: '上海零售②',
+        imBotId: 'owner-bot-im',
+        botUserId: 'owner-bot-weixin',
+      }),
     ]);
     mockRoomService.addMemberEnterprise.mockResolvedValue({
       errcode: 400400,
@@ -549,15 +609,23 @@ describe('buildInviteToGroupTool', () => {
 
     expect(result.success).toBe(false);
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_API_REJECTED);
-    expect(mockRoomService.addMemberEnterprise).toHaveBeenCalledTimes(2);
+    expect(mockRoomService.addMemberEnterprise).toHaveBeenCalledTimes(4);
     expect(mockOpsNotifier.sendGroupFullAlert).not.toHaveBeenCalled();
     expect(mockOpsNotifier.sendInviteRejectedAlert).toHaveBeenCalledWith(
       expect.objectContaining({
         city: '上海',
         chatBotImId: 'chat-bot-im-id',
         rejectedGroups: expect.arrayContaining([
-          expect.objectContaining({ name: '上海零售①', ownerBotImId: 'owner-bot-im' }),
-          expect.objectContaining({ name: '上海零售②', ownerBotImId: 'owner-bot-im' }),
+          expect.objectContaining({
+            name: '上海零售①',
+            ownerBotImId: 'owner-bot-im',
+            error: expect.stringContaining('add chat bot to group rejected'),
+          }),
+          expect.objectContaining({
+            name: '上海零售②',
+            ownerBotImId: 'owner-bot-im',
+            error: expect.stringContaining('add chat bot to group rejected'),
+          }),
         ]),
       }),
     );

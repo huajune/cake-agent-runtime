@@ -59,7 +59,11 @@ describe('SupabaseStore', () => {
     jest.clearAllMocks();
     mockSupabaseService.getSupabaseClient.mockReturnValue(mockSupabaseClient);
     const mockConfig = { longTermCacheTtl: 7200 };
-    store = new SupabaseStore(mockSupabaseService as never, mockRedis as never, mockConfig as never);
+    store = new SupabaseStore(
+      mockSupabaseService as never,
+      mockRedis as never,
+      mockConfig as never,
+    );
   });
 
   describe('getProfile', () => {
@@ -183,12 +187,7 @@ describe('SupabaseStore', () => {
 
       const name = profileFact('张三');
       const phone = profileFact('13800138000');
-      await store.upsertProfileFacts(
-        'corp1',
-        'user1',
-        { name, phone },
-        { botId: 'bot-1' },
-      );
+      await store.upsertProfileFacts('corp1', 'user1', { name, phone }, { botId: 'bot-1' });
 
       expect(mockRpc).toHaveBeenCalledWith('upsert_long_term_profile_facts', {
         p_corp_id: 'corp1',
@@ -281,17 +280,13 @@ describe('SupabaseStore', () => {
         error: null,
       });
 
-      await store.upsertProfileFacts(
-        'corp1',
-        'user1',
-        {
-          name: profileFact('李四', { source: 'extraction', confidence: 'medium' }),
-          phone: profileFact('139', { source: 'extraction', confidence: 'medium' }),
-          age: profileFact('25', { source: 'extraction', confidence: 'medium' }),
-          gender: profileFact('女', { source: 'extraction', confidence: 'medium' }),
-          education: profileFact('本科', { source: 'extraction', confidence: 'medium' }),
-        },
-      );
+      await store.upsertProfileFacts('corp1', 'user1', {
+        name: profileFact('李四', { source: 'extraction', confidence: 'medium' }),
+        phone: profileFact('139', { source: 'extraction', confidence: 'medium' }),
+        age: profileFact('25', { source: 'extraction', confidence: 'medium' }),
+        gender: profileFact('女', { source: 'extraction', confidence: 'medium' }),
+        education: profileFact('本科', { source: 'extraction', confidence: 'medium' }),
+      });
 
       // 关键断言：走 RPC（原子），而非 from().upsert()（非原子）
       expect(mockRpc).toHaveBeenCalledTimes(1);
@@ -324,6 +319,45 @@ describe('SupabaseStore', () => {
           },
         }),
       );
+      expect(mockUpsert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('upsertMessageMetadata', () => {
+    it('should upsert compact message metadata and invalidate cache', async () => {
+      await store.upsertMessageMetadata('corp1', 'user1', {
+        botId: 'bot-1',
+        imBotId: 'im-bot-1',
+        imContactId: 'im-contact-1',
+        contactType: 1,
+        contactName: '候选人',
+        externalUserId: '',
+        avatar: undefined,
+      });
+
+      expect(mockUpsert).toHaveBeenCalledWith(
+        {
+          corp_id: 'corp1',
+          user_id: 'user1',
+          message_metadata: {
+            botId: 'bot-1',
+            imBotId: 'im-bot-1',
+            imContactId: 'im-contact-1',
+            contactType: 1,
+            contactName: '候选人',
+          },
+          updated_at: expect.any(String),
+        },
+        { onConflict: 'corp_id,user_id' },
+      );
+      expect(mockRedis.del).toHaveBeenCalledWith('long-term:corp1:user1');
+    });
+
+    it('should skip empty message metadata', async () => {
+      await store.upsertMessageMetadata('corp1', 'user1', {
+        contactName: '',
+      });
+
       expect(mockUpsert).not.toHaveBeenCalled();
     });
   });

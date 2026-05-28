@@ -12,8 +12,14 @@ import { ImageDescriptionService } from './image-description.service';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
 import { MessageParser } from '../utils/message-parser.util';
-import { MessageSource, getMessageSourceDescription } from '@enums/message-callback.enum';
+import {
+  ContactType,
+  MessageSource,
+  getMessageSourceDescription,
+} from '@enums/message-callback.enum';
 import { FilterReason } from '@enums/message-filter.enum';
+import { LongTermService } from '@memory/services/long-term.service';
+import type { MessageMetadata } from '@memory/types/long-term.types';
 
 const FILTERED_HISTORY_ARCHIVE_REASONS = new Set<string>([FilterReason.INVALID_SOURCE]);
 
@@ -36,9 +42,12 @@ export class AcceptInboundMessageService {
     private readonly monitoringService: MessageTrackingService,
     private readonly runtimeConfig: MessageRuntimeConfigService,
     private readonly llm: LlmExecutorService,
+    private readonly longTerm: LongTermService,
   ) {}
 
   async execute(messageData: EnterpriseMessageCallbackDto): Promise<AcceptInboundMessageResult> {
+    await this.initializeLongTermMemoryOnNewCustomerCallback(messageData);
+
     if (messageData.isSelf === true) {
       await this.handleSelfMessage(messageData);
       await this.deduplicationService.markMessageAsProcessedAsync(messageData.messageId);
@@ -178,6 +187,61 @@ export class AcceptInboundMessageService {
       response: { success: true, message: 'Message received' },
       content: filterResult.content,
     };
+  }
+
+  private async initializeLongTermMemoryOnNewCustomerCallback(
+    messageData: EnterpriseMessageCallbackDto,
+  ): Promise<void> {
+    if (messageData.source !== MessageSource.NEW_CUSTOMER_ANSWER_SOP) return;
+    if (messageData.imRoomId) return;
+    if (messageData.contactType !== ContactType.PERSONAL_WECHAT) return;
+
+    const userId = this.resolveLongTermUserId(messageData);
+    if (!userId) {
+      this.logger.warn(`[新好友初始化] 缺少 userId，跳过 [${messageData.messageId}]`);
+      return;
+    }
+
+    const metadata = this.buildMessageMetadata(messageData);
+    if (!metadata) return;
+
+    try {
+      await this.longTerm.updateMessageMetadata(messageData.orgId || 'default', userId, metadata);
+      this.logger.log(
+        `[新好友初始化] 已初始化长期记忆: corpId=${messageData.orgId || 'default'}, userId=${userId}`,
+      );
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `[新好友初始化] 长期记忆初始化失败 [${messageData.messageId}]: ${errorMessage}`,
+      );
+    }
+  }
+
+  private resolveLongTermUserId(messageData: EnterpriseMessageCallbackDto): string | null {
+    return messageData.imContactId || messageData.externalUserId || messageData.chatId || null;
+  }
+
+  private buildMessageMetadata(messageData: EnterpriseMessageCallbackDto): MessageMetadata | null {
+    const metadata: MessageMetadata = {};
+    this.assignIfPresent(metadata, 'botId', messageData.botId);
+    this.assignIfPresent(metadata, 'imBotId', messageData.imBotId);
+    this.assignIfPresent(metadata, 'imContactId', messageData.imContactId);
+    this.assignIfPresent(metadata, 'contactType', messageData.contactType);
+    this.assignIfPresent(metadata, 'contactName', messageData.contactName);
+    this.assignIfPresent(metadata, 'externalUserId', messageData.externalUserId);
+    this.assignIfPresent(metadata, 'avatar', messageData.avatar);
+    return Object.keys(metadata).length > 0 ? metadata : null;
+  }
+
+  private assignIfPresent<K extends keyof MessageMetadata>(
+    target: MessageMetadata,
+    key: K,
+    value: MessageMetadata[K] | undefined,
+  ): void {
+    if (value === null || value === undefined) return;
+    if (typeof value === 'string' && value.trim().length === 0) return;
+    target[key] = value;
   }
 
   private async prepareImageIfNeeded(messageData: EnterpriseMessageCallbackDto): Promise<void> {

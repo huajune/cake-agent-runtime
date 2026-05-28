@@ -36,6 +36,9 @@ describe('AcceptInboundMessageService', () => {
   const llm = {
     supportsVisionInput: jest.fn(),
   };
+  const longTerm = {
+    updateMessageMetadata: jest.fn(),
+  };
 
   let service: AcceptInboundMessageService;
 
@@ -57,8 +60,9 @@ describe('AcceptInboundMessageService', () => {
       overrideModelId: 'gpt-test',
     });
     llm.supportsVisionInput.mockReturnValue(true);
-    imageDescription.resolveArtworkUrl.mockImplementation(
-      (_id: string, url: string) => Promise.resolve(url),
+    longTerm.updateMessageMetadata.mockResolvedValue(undefined);
+    imageDescription.resolveArtworkUrl.mockImplementation((_id: string, url: string) =>
+      Promise.resolve(url),
     );
     service = new AcceptInboundMessageService(
       deduplicationService as never,
@@ -69,6 +73,7 @@ describe('AcceptInboundMessageService', () => {
       monitoringService as never,
       runtimeConfig as never,
       llm as never,
+      longTerm as never,
     );
   });
 
@@ -148,6 +153,37 @@ describe('AcceptInboundMessageService', () => {
     );
     expect(wecomObservability.startRequestTrace).not.toHaveBeenCalled();
     expect(deduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalled();
+  });
+
+  it('should initialize long-term memory for new customer answer SOP callbacks', async () => {
+    filterService.validate.mockResolvedValueOnce({
+      pass: false,
+      reason: FilterReason.INVALID_SOURCE,
+    });
+
+    await expect(
+      service.execute(
+        createMessage({
+          source: MessageSource.NEW_CUSTOMER_ANSWER_SOP,
+          messageId: 'msg-new-friend',
+          externalUserId: 'external-1',
+          avatar: 'https://example.com/avatar.png',
+        }),
+      ),
+    ).resolves.toEqual({
+      shouldDispatch: false,
+      response: { success: true, message: `${FilterReason.INVALID_SOURCE} ignored` },
+    });
+
+    expect(longTerm.updateMessageMetadata).toHaveBeenCalledWith('corp-1', 'im-contact-1', {
+      botId: 'bot-1',
+      imBotId: 'im-bot-1',
+      imContactId: 'im-contact-1',
+      contactType: ContactType.PERSONAL_WECHAT,
+      contactName: '张三',
+      externalUserId: 'external-1',
+      avatar: 'https://example.com/avatar.png',
+    });
   });
 
   it('should not archive terminal filtered reasons outside the allowlist', async () => {

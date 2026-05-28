@@ -36,6 +36,8 @@
     "check:badcase-trace-memory": "node scripts/backfill-badcase-trace-memory.js --check",
     "backfill:long-term-memory:dry-run": "node scripts/backfill-agent-long-term-memories.js --dry-run",
     "backfill:long-term-memory": "node scripts/backfill-agent-long-term-memories.js --apply",
+    "backfill:long-term-message-metadata:dry-run": "node scripts/backfill-agent-long-term-message-metadata.js --dry-run",
+    "backfill:long-term-message-metadata": "node scripts/backfill-agent-long-term-message-metadata.js --apply",
     "release:pr:preview": "node scripts/build-release-pr-body.js --stdout",
     "release:pr:create": "node scripts/create-release-pr.js",
     "deploy": "bash scripts/deploy-local.sh"
