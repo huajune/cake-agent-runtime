@@ -1,9 +1,48 @@
 {
   "baseVersion": "5.11.1",
-  "nextVersion": "5.11.1",
+  "nextVersion": "5.11.2",
   "updatedAt": "2026-05-28",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "240",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/240",
+      "title": "fix elastic age handling in job list",
+      "author": "ArielZhu",
+      "mergedAt": "2026-05-28",
+      "businessUpdates": [
+        "align job list age boundary handling",
+        "Align duliday_job_list age mismatch handling with precheck ageBoundary semantics.",
+        "Add job-list age screening metadata and markdown guidance so boundary ages such as 52 vs 20-50 are not treated as no-match.",
+        "Add regression coverage for the 52-year-old boundary case.",
+        "fix elastic age handling in job list"
+      ],
+      "summary": [
+        "align job list age boundary handling",
+        "Align duliday_job_list age mismatch handling with precheck ageBoundary semantics.",
+        "Add job-list age screening metadata and markdown guidance so boundary ages such as 52 vs 20-50 are not treated as no-match.",
+        "Add regression coverage for the 52-year-old boundary case.",
+        "fix elastic age handling in job list"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "Align duliday_job_list age mismatch handling with precheck ageBoundary semantics.",
+        "Add job-list age screening metadata and markdown guidance so boundary ages such as 52 vs 20-50 are not treated as no-match.",
+        "Add regression coverage for the 52-year-old boundary case.",
+        "align job list age boundary handling"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "./node_modules/.bin/jest tests/tools/tool/duliday-job-list.tool.spec.ts --runInBand",
+        "./node_modules/.bin/eslint src/tools/duliday-job-list.tool.ts tests/tools/tool/duliday-job-list.tool.spec.ts --max-warnings=0",
+        "./node_modules/.bin/prettier --check src/tools/duliday-job-list.tool.ts tests/tools/tool/duliday-job-list.tool.spec.ts",
+        "./node_modules/.bin/tsc --noEmit --pretty false"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "5.11.1",
     "date": "2026-05-28",

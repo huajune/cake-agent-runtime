@@ -8,6 +8,49 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.11.2`
+**最近更新**: `2026-05-28`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #240 align job list age boundary handling
+- PR #240 Align duliday_job_list age mismatch handling with precheck ageBoundary semantics.
+- PR #240 Add job-list age screening metadata and markdown guidance so boundary ages such as 52 vs 20-50 are not treated as no-match.
+- PR #240 Add regression coverage for the 52-year-old boundary case.
+- PR #240 fix elastic age handling in job list
+
+### 新功能
+- 无
+
+### 问题修复
+- 无
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #240 Align duliday_job_list age mismatch handling with precheck ageBoundary semantics.
+- PR #240 Add job-list age screening metadata and markdown guidance so boundary ages such as 52 vs 20-50 are not treated as no-match.
+- PR #240 Add regression coverage for the 52-year-old boundary case.
+- PR #240 align job list age boundary handling
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #240 ./node_modules/.bin/jest tests/tools/tool/duliday-job-list.tool.spec.ts --runInBand
+- PR #240 ./node_modules/.bin/eslint src/tools/duliday-job-list.tool.ts tests/tools/tool/duliday-job-list.tool.spec.ts --max-warnings=0
+- PR #240 ./node_modules/.bin/prettier --check src/tools/duliday-job-list.tool.ts tests/tools/tool/duliday-job-list.tool.spec.ts
+- PR #240 ./node_modules/.bin/tsc --noEmit --pretty false
+<!-- release:pending:end -->
+
 ## [5.11.1] - 2026-05-28
 
 **来源分支**: `develop`
