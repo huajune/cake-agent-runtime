@@ -1,123 +1,88 @@
 {
-  "baseVersion": "5.11.0",
-  "nextVersion": "5.11.1",
+  "baseVersion": "5.11.1",
+  "nextVersion": "5.11.2",
   "updatedAt": "2026-05-28",
   "sourceBranch": "develop",
   "entries": [
     {
-      "number": "235",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/235",
-      "title": "修正托管用户统计日期范围",
-      "author": "huajune",
+      "number": "240",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/240",
+      "title": "fix elastic age handling in job list",
+      "author": "ArielZhu",
       "mergedAt": "2026-05-28",
       "businessUpdates": [
-        "Added a shared web date-range utility for local date key formatting and recent business-day ranges.",
-        "Updated dashboard and user trend charts to use the shared business-day range and exclude weekends from the displayed trend range.",
-        "Changed the managed-user list request so the default view queries today's managed sessions without sending a rolling `days` parameter.",
-        "Restored the managed-user tab label to “今日托管会话” to match the default query scope.",
-        "修正托管用户统计日期范围"
+        "align job list age boundary handling",
+        "Align duliday_job_list age mismatch handling with precheck ageBoundary semantics.",
+        "Add job-list age screening metadata and markdown guidance so boundary ages such as 52 vs 20-50 are not treated as no-match.",
+        "Add regression coverage for the 52-year-old boundary case.",
+        "fix elastic age handling in job list"
       ],
       "summary": [
-        "修正托管用户统计日期范围",
-        "Added a shared web date-range utility for local date key formatting and recent business-day ranges.",
-        "Updated dashboard and user trend charts to use the shared business-day range and exclude weekends from the displayed trend range.",
-        "Changed the managed-user list request so the default view queries today's managed sessions without sending a rolling `days` parameter.",
-        "Restored the managed-user tab label to “今日托管会话” to match the default query scope."
+        "align job list age boundary handling",
+        "Align duliday_job_list age mismatch handling with precheck ageBoundary semantics.",
+        "Add job-list age screening metadata and markdown guidance so boundary ages such as 52 vs 20-50 are not treated as no-match.",
+        "Add regression coverage for the 52-year-old boundary case.",
+        "fix elastic age handling in job list"
       ],
       "features": [],
-      "fixes": [
-        "Added a shared web date-range utility for local date key formatting and recent business-day ranges.",
-        "Updated dashboard and user trend charts to use the shared business-day range and exclude weekends from the displayed trend range.",
-        "Changed the managed-user list request so the default view queries today's managed sessions without sending a rolling `days` parameter.",
-        "Restored the managed-user tab label to “今日托管会话” to match the default query scope.",
-        "修正托管用户统计日期范围"
-      ],
+      "fixes": [],
       "optimizations": [],
-      "ops": [],
+      "ops": [
+        "Align duliday_job_list age mismatch handling with precheck ageBoundary semantics.",
+        "Add job-list age screening metadata and markdown guidance so boundary ages such as 52 vs 20-50 are not treated as no-match.",
+        "Add regression coverage for the 52-year-old boundary case.",
+        "align job list age boundary handling"
+      ],
       "config": [],
       "envFiles": [],
       "verification": [
-        "`pnpm run ci:check`",
-        "`web` build via `tsc -b && vite build` before commit"
+        "./node_modules/.bin/jest tests/tools/tool/duliday-job-list.tool.spec.ts --runInBand",
+        "./node_modules/.bin/eslint src/tools/duliday-job-list.tool.ts tests/tools/tool/duliday-job-list.tool.spec.ts --max-warnings=0",
+        "./node_modules/.bin/prettier --check src/tools/duliday-job-list.tool.ts tests/tools/tool/duliday-job-list.tool.spec.ts",
+        "./node_modules/.bin/tsc --noEmit --pretty false"
       ]
     }
   ],
   "lastRelease": {
-    "version": "5.11.0",
-    "date": "2026-05-27",
+    "version": "5.11.1",
+    "date": "2026-05-28",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "229",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/229",
-        "title": "保留中文技术发布说明",
+        "number": "235",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/235",
+        "title": "修正托管用户统计日期范围",
         "author": "huajune",
-        "mergedAt": "2026-05-27",
+        "mergedAt": "2026-05-28",
         "businessUpdates": [
-          "部署通知会保留中文技术发布说明，包含图片原图、Vision 降级、Dashboard、拉群人数等运营可读改动",
-          "发布通知会把图片识别、事实校验、趋势图和拉群人数修复改写成运营能直接理解的中文说明"
+          "Added a shared web date-range utility for local date key formatting and recent business-day ranges.",
+          "Updated dashboard and user trend charts to use the shared business-day range and exclude weekends from the displayed trend range.",
+          "Changed the managed-user list request so the default view queries today's managed sessions without sending a rolling `days` parameter.",
+          "Restored the managed-user tab label to “今日托管会话” to match the default query scope.",
+          "修正托管用户统计日期范围"
         ],
         "summary": [
-          "修复部署通知会过滤中文发布条目的问题：只要有中文，即使包含 loadArtWorkImage、payload.artworkUrl、AGENT_VISION_FALLBACKS 等技术标识，也不再被当作纯技术英文丢弃",
-          "为图片原图、fact guard、Dashboard、拉群人数修复增加运营可读改写",
-          "补充部署通知回归测试，确保发版通知不会再丢失这类业务改动"
+          "修正托管用户统计日期范围",
+          "Added a shared web date-range utility for local date key formatting and recent business-day ranges.",
+          "Updated dashboard and user trend charts to use the shared business-day range and exclude weekends from the displayed trend range.",
+          "Changed the managed-user list request so the default view queries today's managed sessions without sending a rolling `days` parameter.",
+          "Restored the managed-user tab label to “今日托管会话” to match the default query scope."
         ],
         "features": [],
         "fixes": [
-          "修复部署通知会过滤中文发布条目的问题：只要有中文，即使包含 loadArtWorkImage、payload.artworkUrl、AGENT_VISION_FALLBACKS 等技术标识，也不再被当作纯技术英文丢弃",
-          "为图片原图、fact guard、Dashboard、拉群人数修复增加运营可读改写"
+          "Added a shared web date-range utility for local date key formatting and recent business-day ranges.",
+          "Updated dashboard and user trend charts to use the shared business-day range and exclude weekends from the displayed trend range.",
+          "Changed the managed-user list request so the default view queries today's managed sessions without sending a rolling `days` parameter.",
+          "Restored the managed-user tab label to “今日托管会话” to match the default query scope.",
+          "修正托管用户统计日期范围"
         ],
         "optimizations": [],
-        "ops": [
-          "补充部署通知回归测试，确保发版通知不会再丢失这类业务改动"
-        ],
+        "ops": [],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`pnpm jest tests/scripts/send-deploy-notification.spec.ts --watchman=false`"
-        ]
-      },
-      {
-        "number": "230",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/230",
-        "title": "增强事实置信度和 precheck 年龄链路",
-        "author": "huajune",
-        "mergedAt": "2026-05-27",
-        "businessUpdates": [
-          "precheck 支持模型显式传入候选人年龄等字段，避免模型已经知道年龄但工具仍判断为未知",
-          "候选人事实、线索和长期画像统一带 value、confidence、source、evidence，模型能看到置信度，工具只消费高置信字段",
-          "新增长期画像表和回填脚本，为后续历史画像迁移做准备"
-        ],
-        "summary": [
-          "统一 highConfidenceFacts、sessionFacts、长期 profile_facts 的字段级置信度结构",
-          "precheck 新增候选人年龄、面试时间、性别、学历、健康证、学生身份等显式入参，显式入参优先于记忆",
-          "新增 agent_long_term_memories 表、长期画像 RPC 和历史回填脚本",
-          "补充记忆与线索数据流文档，以及 24 岁候选人触发 ageBoundary 的回归测试"
-        ],
-        "features": [
-          "新增 agent_long_term_memories 表、长期画像 RPC 和历史回填脚本",
-          "precheck 入参新增候选人年龄、面试时间、性别、学历、健康证、学生身份等候选字段"
-        ],
-        "fixes": [
-          "修复 precheck 只依赖 sessionFacts 时读不到候选人本轮年龄，导致 ageBoundary 返回 unknown 的问题",
-          "复用高置信事实 guard，避免 precheck 内部维护重复判断逻辑"
-        ],
-        "optimizations": [
-          "统一记忆、线索、事实的数据流文档与字段置信度展示规则",
-          "本轮线索保留候选人本轮确认过的事实，便于模型理解最新表达"
-        ],
-        "ops": [
-          "补充长期画像回填 dry-run 和 apply 脚本，默认 dry-run"
-        ],
-        "config": [],
-        "envFiles": [
-          ".env.example"
-        ],
-        "verification": [
-          "`pnpm run typecheck`",
-          "`pnpm test -- --runInBand --watchman=false`",
           "`pnpm run ci:check`",
-          "test DB migration 和 RPC 临时写入验证通过并已清理"
+          "`web` build via `tsc -b && vite build` before commit"
         ]
       }
     ]
