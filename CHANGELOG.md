@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.11.1] - 2026-05-28
 
-**预计版本**: `v5.11.1`
-**最近更新**: `2026-05-28`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #235 修正托管用户统计日期范围
@@ -48,7 +44,6 @@
 ### 验证记录
 - PR #235 `pnpm run ci:check`
 - PR #235 `web` build via `tsc -b && vite build` before commit
-<!-- release:pending:end -->
 
 ## [5.11.0] - 2026-05-27
 
