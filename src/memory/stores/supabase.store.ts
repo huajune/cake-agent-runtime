@@ -250,6 +250,17 @@ export class SupabaseStore implements MemoryStore {
     await this.upsertRow(corpId, userId, { summary_data: data });
   }
 
+  async upsertMessageMetadata(
+    corpId: string,
+    userId: string,
+    metadata: MessageMetadata,
+  ): Promise<void> {
+    const cleanMetadata = this.normalizeMessageMetadata(metadata);
+    if (!cleanMetadata) return;
+
+    await this.upsertRow(corpId, userId, { message_metadata: cleanMetadata });
+  }
+
   // ==================== 旧接口（v1 兼容，Phase 6 删除） ====================
 
   async get(key: string): Promise<MemoryEntry | null> {
@@ -346,6 +357,18 @@ export class SupabaseStore implements MemoryStore {
     if (error) this.logger.warn('upsert 长期记忆失败', error.message);
 
     await this.invalidateCache(corpId, userId);
+  }
+
+  private normalizeMessageMetadata(metadata: MessageMetadata): MessageMetadata | null {
+    const clean: MessageMetadata = {};
+    for (const [key, value] of Object.entries(metadata) as Array<
+      [keyof MessageMetadata, MessageMetadata[keyof MessageMetadata]]
+    >) {
+      if (value === null || value === undefined) continue;
+      if (typeof value === 'string' && value.trim().length === 0) continue;
+      (clean as Record<string, unknown>)[key] = value;
+    }
+    return Object.keys(clean).length > 0 ? clean : null;
   }
 
   private async invalidateCache(corpId: string, userId: string): Promise<void> {

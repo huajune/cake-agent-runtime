@@ -26,7 +26,7 @@ export class MessageSplitter {
       .split(/(?:\r?\n){2,}/)
       .map((segment) => segment.trim())
       .filter((segment) => segment.length > 0);
-    const segments = paragraphSegments
+    const segments = this.mergeAdjacentFormBlocks(paragraphSegments)
       .flatMap((segment) => this.splitParagraph(segment))
       .map((segment) => this.stripTrailingPunctuation(segment))
       .filter((segment) => segment.length > 0);
@@ -59,6 +59,25 @@ export class MessageSplitter {
     return result;
   }
 
+  private static mergeAdjacentFormBlocks(segments: string[]): string[] {
+    const result: string[] = [];
+
+    for (let i = 0; i < segments.length; i += 1) {
+      const current = segments[i];
+      const next = segments[i + 1];
+
+      if (next && this.isFormIntroParagraph(current) && this.isFormParagraph(next)) {
+        result.push(`${current}\n${next}`);
+        i += 1;
+        continue;
+      }
+
+      result.push(current);
+    }
+
+    return result;
+  }
+
   /**
    * 普通单行话术按所有可用 "～" / "。" 拆；多行文本里，岗位详情/表单块保持完整。
    */
@@ -79,7 +98,21 @@ export class MessageSplitter {
     for (let i = 0; i < lines.length; i += 1) {
       const line = lines[i];
 
+      const formBlockEnd = this.findFormBlockEnd(lines, i);
+      if (formBlockEnd > i) {
+        result.push(lines.slice(i, formBlockEnd).join('\n'));
+        i = formBlockEnd - 1;
+        continue;
+      }
+
       if (this.isIntroLine(line) && i < lines.length - 1) {
+        const introFormBlockEnd = this.findFormBlockEnd(lines, i + 1);
+        if (introFormBlockEnd > i + 1) {
+          result.push(lines.slice(i, introFormBlockEnd).join('\n'));
+          i = introFormBlockEnd - 1;
+          continue;
+        }
+
         let end = i + 1;
         while (end < lines.length && this.isStructuredLine(lines[end])) {
           end += 1;
@@ -145,10 +178,13 @@ export class MessageSplitter {
     if (!segment || typeof segment !== 'string') {
       return '';
     }
-    return segment
-      .trim()
-      .replace(/[。！？!?；;：:，,、.．～~…]+$/u, '')
-      .trim();
+    const trimmed = segment.trim();
+    const trailingLine = this.getTrailingLine(trimmed);
+    if (this.isBlankFormFieldLine(trailingLine, trimmed)) {
+      return trimmed.replace(/[。！？!?；;，,、.．～~…]+$/u, '').trim();
+    }
+
+    return trimmed.replace(/[。！？!?；;：:，,、.．～~…]+$/u, '').trim();
   }
 
   private static isSentenceBoundary(char: string): boolean {
@@ -171,8 +207,26 @@ export class MessageSplitter {
     return /[：:]$/.test(line.trim());
   }
 
+  private static isFormIntroParagraph(segment: string): boolean {
+    const lines = segment
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    return lines.length === 1 && this.isIntroLine(lines[0]);
+  }
+
+  private static isFormParagraph(segment: string): boolean {
+    const lines = segment
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    return lines.length > 0 && this.findFormBlockEnd(lines, 0) === lines.length;
+  }
+
   private static isStructuredLine(line: string): boolean {
-    return this.isJobLine(line) || this.isDetailLine(line) || this.isFormLine(line);
+    return this.isJobLine(line) || this.isDetailLine(line) || this.isKnownFormLine(line);
   }
 
   private static isJobLine(line: string): boolean {
@@ -241,8 +295,83 @@ export class MessageSplitter {
   }
 
   private static isFormLine(line: string): boolean {
-    return /^(?:姓名|联系方式|联系电话|电话|手机号|性别|年龄|面试时间|应聘门店|学历|健康证|身份|应聘岗位)[：:]/.test(
+    return this.isKnownFormLine(line) || this.isGenericFormFieldLine(line);
+  }
+
+  private static isKnownFormLine(line: string): boolean {
+    return /^(?:姓名|联系方式|联系电话|电话|手机号|性别|年龄|出生日期|生日|出生年月|面试时间|应聘门店|学历|健康证|食品健康证|有无食品健康证|身份|应聘岗位|有无分拣经验|分拣经验|工作经验|过往经历|过往工作经历)(?:[（(][^）)]*[）)])?[：:]/.test(
       line.trim(),
+    );
+  }
+
+  private static isGenericFormFieldLine(line: string): boolean {
+    const normalized = line.trim();
+    if (!normalized) return false;
+
+    const delimiterIndex = this.findFormDelimiterIndex(normalized);
+    if (delimiterIndex <= 0) return false;
+
+    const label = normalized.slice(0, delimiterIndex).replace(/[*_`]/g, '').trim();
+    if (label.length === 0 || label.length > 48) return false;
+    if (/^[\d\s:：./\\-]+$/.test(label)) return false;
+    if (/[，,。！？!?；;]/.test(label)) return false;
+
+    return true;
+  }
+
+  private static findFormDelimiterIndex(line: string): number {
+    if (/[：:]$/.test(line)) {
+      return Math.max(line.lastIndexOf('：'), line.lastIndexOf(':'));
+    }
+
+    const fullWidthIndex = line.indexOf('：');
+    const halfWidthIndex = line.indexOf(':');
+    if (fullWidthIndex < 0) return halfWidthIndex;
+    if (halfWidthIndex < 0) return fullWidthIndex;
+    return Math.min(fullWidthIndex, halfWidthIndex);
+  }
+
+  private static findFormBlockEnd(lines: string[], start: number): number {
+    let end = start;
+    while (end < lines.length && this.isFormLine(lines[end])) {
+      end += 1;
+    }
+
+    const count = end - start;
+    if (count >= 2) return end;
+    if (count === 1 && this.isKnownFormLine(lines[start])) return end;
+    return start;
+  }
+
+  private static getTrailingLine(segment: string): string {
+    const lines = segment
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    return lines[lines.length - 1] ?? '';
+  }
+
+  private static isBlankFormFieldLine(line: string, segment: string): boolean {
+    const normalized = line.trim();
+    if (!/[：:]$/.test(normalized)) return false;
+    if (this.isKnownFormLine(normalized)) return true;
+    return this.isGenericFormFieldLine(normalized) && this.isFormBlockSegment(segment);
+  }
+
+  private static isFormBlockSegment(segment: string): boolean {
+    const lines = segment
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    if (lines.length === 0) return false;
+    if (this.findFormBlockEnd(lines, 0) === lines.length) return true;
+
+    return (
+      lines.length > 1 &&
+      this.isIntroLine(lines[0]) &&
+      this.findFormBlockEnd(lines, 1) === lines.length
     );
   }
 

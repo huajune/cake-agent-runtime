@@ -91,6 +91,17 @@ interface CitySnapshot {
   byIndustry: CitySnapshotIndustry[];
 }
 
+interface InviteApiResult {
+  accepted: boolean;
+  code: number | null;
+  error?: string;
+}
+
+interface CompatibilityRetryOutcome {
+  inviteResult: InviteApiResult;
+  addBotResult: InviteApiResult;
+}
+
 export function buildInviteToGroupTool(
   groupResolver: GroupResolverService,
   roomService: RoomService,
@@ -221,7 +232,7 @@ export function buildInviteToGroupTool(
             error?: string;
           }> = [];
           for (const targetGroup of availableCandidates) {
-            const inviteApiResult = await invokeAddMember({
+            let inviteApiResult = await invokeAddMember({
               roomService,
               token: normalizedEnterpriseToken,
               imBotId: context.botImId,
@@ -229,6 +240,20 @@ export function buildInviteToGroupTool(
               contactWxid: context.userId,
               roomWxid: targetGroup.imRoomId,
             });
+
+            const initialInviteApiResult = inviteApiResult;
+            const compatibilityRetryOutcome = await maybeAddChatBotToGroupAndRetryInvite({
+              roomService,
+              token: normalizedEnterpriseToken,
+              initialResult: inviteApiResult,
+              targetGroup,
+              chatBotImId: context.botImId,
+              chatBotUserId: context.botUserId,
+              contactWxid: context.userId,
+            });
+            if (compatibilityRetryOutcome) {
+              inviteApiResult = compatibilityRetryOutcome.inviteResult;
+            }
 
             if (!inviteApiResult.accepted) {
               if (inviteApiResult.code === -9) {
@@ -283,7 +308,11 @@ export function buildInviteToGroupTool(
               );
               rejectedGroupsDuringInvite.push({
                 group: targetGroup,
-                error: inviteApiResult.error,
+                error: formatInviteRejectionError(
+                  inviteApiResult,
+                  compatibilityRetryOutcome,
+                  initialInviteApiResult,
+                ),
               });
               continue;
             }
@@ -403,11 +432,7 @@ export function buildInviteToGroupTool(
     });
 }
 
-function parseInviteApiResult(result: unknown): {
-  accepted: boolean;
-  code: number | null;
-  error?: string;
-} {
+function parseInviteApiResult(result: unknown): InviteApiResult {
   if (!result || typeof result !== 'object' || Array.isArray(result)) {
     return { accepted: true, code: null };
   }
@@ -523,7 +548,7 @@ async function invokeAddMember(params: {
   botUserId: string;
   contactWxid: string;
   roomWxid: string;
-}): Promise<ReturnType<typeof parseInviteApiResult>> {
+}): Promise<InviteApiResult> {
   const result = await params.roomService.addMemberEnterprise({
     token: params.token,
     imBotId: params.imBotId,
@@ -532,6 +557,126 @@ async function invokeAddMember(params: {
     roomWxid: params.roomWxid,
   });
   return parseInviteApiResult(result);
+}
+
+async function maybeAddChatBotToGroupAndRetryInvite(params: {
+  roomService: RoomService;
+  token: string;
+  initialResult: InviteApiResult;
+  targetGroup: GroupContext;
+  chatBotImId: string;
+  chatBotUserId: string;
+  contactWxid: string;
+}): Promise<CompatibilityRetryOutcome | null> {
+  if (!shouldAddChatBotToGroup(params.initialResult, params.targetGroup, params.chatBotImId)) {
+    return null;
+  }
+
+  const ownerBotUserId = params.targetGroup.botUserId?.trim();
+  if (!ownerBotUserId) return null;
+
+  try {
+    const addBotResult = await invokeAddMember({
+      roomService: params.roomService,
+      token: params.token,
+      imBotId: params.targetGroup.imBotId,
+      botUserId: ownerBotUserId,
+      contactWxid: params.chatBotImId,
+      roomWxid: params.targetGroup.imRoomId,
+    });
+
+    if (!addBotResult.accepted && addBotResult.code !== -9) {
+      logger.warn(
+        `接客 bot 入群补偿失败: ${params.targetGroup.groupName} ` +
+          `(chatBot=${params.chatBotImId}, ownerBot=${params.targetGroup.imBotId}, error=${addBotResult.error})`,
+      );
+      return { inviteResult: addBotResult, addBotResult };
+    }
+
+    if (addBotResult.code === -9) {
+      logger.log(
+        `接客 bot 已在目标群，继续重试拉候选人: ${params.targetGroup.groupName} ` +
+          `(chatBot=${params.chatBotImId}, ownerBot=${params.targetGroup.imBotId})`,
+      );
+    } else {
+      logger.log(
+        `接客 bot 入群补偿成功，继续重试拉候选人: ${params.targetGroup.groupName} ` +
+          `(chatBot=${params.chatBotImId}, ownerBot=${params.targetGroup.imBotId})`,
+      );
+    }
+
+    const retryInviteResult = await invokeAddMember({
+      roomService: params.roomService,
+      token: params.token,
+      imBotId: params.chatBotImId,
+      botUserId: params.chatBotUserId,
+      contactWxid: params.contactWxid,
+      roomWxid: params.targetGroup.imRoomId,
+    });
+
+    if (!retryInviteResult.accepted) {
+      logger.warn(
+        `接客 bot 入群后重试拉候选人仍被拒绝: ${params.targetGroup.groupName} ` +
+          `(chatBot=${params.chatBotImId}, error=${retryInviteResult.error})`,
+      );
+    }
+
+    return { inviteResult: retryInviteResult, addBotResult };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn(
+      `接客 bot 入群补偿异常: ${params.targetGroup.groupName} ` +
+        `(chatBot=${params.chatBotImId}, ownerBot=${params.targetGroup.imBotId}, error=${message})`,
+    );
+    return {
+      inviteResult: {
+        accepted: false,
+        code: null,
+        error: `add chat bot to group exception: ${message}`,
+      },
+      addBotResult: {
+        accepted: false,
+        code: null,
+        error: `add chat bot to group exception: ${message}`,
+      },
+    };
+  }
+}
+
+function shouldAddChatBotToGroup(
+  result: InviteApiResult,
+  targetGroup: GroupContext,
+  chatBotImId: string,
+): boolean {
+  if (result.accepted) return false;
+
+  const ownerBotImId = targetGroup.imBotId?.trim();
+  if (!ownerBotImId || ownerBotImId === chatBotImId) return false;
+
+  return result.code === 400400 || /room not found/i.test(result.error ?? '');
+}
+
+function formatInviteRejectionError(
+  result: InviteApiResult,
+  compatibilityRetryOutcome: CompatibilityRetryOutcome | null,
+  initialResult: InviteApiResult,
+): string | undefined {
+  if (!compatibilityRetryOutcome) return result.error;
+
+  const addBotError = compatibilityRetryOutcome.addBotResult.error;
+  const retryInviteError = compatibilityRetryOutcome.inviteResult.error;
+  if (
+    compatibilityRetryOutcome.addBotResult.accepted ||
+    compatibilityRetryOutcome.addBotResult.code === -9
+  ) {
+    return `candidate retry after adding chat bot rejected: ${
+      retryInviteError ?? 'unknown error'
+    }; initial chat bot error: ${initialResult.error ?? 'unknown error'}`;
+  }
+
+  return `add chat bot to group rejected: ${
+    addBotError ?? 'unknown error'
+  }; initial chat bot error: ${initialResult.error ?? 'unknown error'}`;
 }
 
 async function sendInviteRejectedAlert(params: {

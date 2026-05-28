@@ -188,6 +188,18 @@ export class LongTermService {
     }
   }
 
+  async updateMessageMetadata(
+    corpId: string,
+    userId: string,
+    metadata: MessageMetadata,
+  ): Promise<void> {
+    try {
+      await this.supabaseStore.upsertMessageMetadata(corpId, userId, metadata);
+    } catch (error) {
+      this.logger.warn('更新长期记忆消息元数据失败', error);
+    }
+  }
+
   /**
    * 清理指定用户的长期记忆（profile + summary）
    */

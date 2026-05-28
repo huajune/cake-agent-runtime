@@ -12,6 +12,7 @@ describe('LongTermService', () => {
     getSummaryData: jest.fn(),
     appendSummary: jest.fn().mockResolvedValue(undefined),
     markLastSettledMessageAt: jest.fn().mockResolvedValue(undefined),
+    upsertMessageMetadata: jest.fn().mockResolvedValue(undefined),
   };
 
   let service: LongTermService;
@@ -99,20 +100,16 @@ describe('LongTermService', () => {
         gender: '男',
       });
 
-      expect(mockSupabaseStore.upsertProfileFacts).toHaveBeenCalledWith(
-        'corp1',
-        'user1',
-        {
-          name: expect.objectContaining({ value: '张三', source: 'booking', confidence: 'high' }),
-          phone: expect.objectContaining({
-            value: '13800138000',
-            source: 'booking',
-            confidence: 'high',
-          }),
-          age: expect.objectContaining({ value: '22', source: 'booking', confidence: 'high' }),
-          gender: expect.objectContaining({ value: '男', source: 'booking', confidence: 'high' }),
-        },
-      );
+      expect(mockSupabaseStore.upsertProfileFacts).toHaveBeenCalledWith('corp1', 'user1', {
+        name: expect.objectContaining({ value: '张三', source: 'booking', confidence: 'high' }),
+        phone: expect.objectContaining({
+          value: '13800138000',
+          source: 'booking',
+          confidence: 'high',
+        }),
+        age: expect.objectContaining({ value: '22', source: 'booking', confidence: 'high' }),
+        gender: expect.objectContaining({ value: '男', source: 'booking', confidence: 'high' }),
+      });
     });
 
     it('should convert age from number to string', async () => {
@@ -228,6 +225,20 @@ describe('LongTermService', () => {
       expect(result?.recent).toHaveLength(1);
       expect(result?.archive).toBe('old stuff');
       expect(result?.lastSettledMessageAt).toBe('2026-03-15T10:00:00.000Z');
+    });
+  });
+
+  describe('updateMessageMetadata', () => {
+    it('should delegate metadata updates to store', async () => {
+      await service.updateMessageMetadata('corp1', 'user1', {
+        imBotId: 'im-bot-1',
+        imContactId: 'im-contact-1',
+      });
+
+      expect(mockSupabaseStore.upsertMessageMetadata).toHaveBeenCalledWith('corp1', 'user1', {
+        imBotId: 'im-bot-1',
+        imContactId: 'im-contact-1',
+      });
     });
   });
 });
