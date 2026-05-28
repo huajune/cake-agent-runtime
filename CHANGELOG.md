@@ -8,6 +8,55 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.11.3`
+**最近更新**: `2026-05-28`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #245 Fix group invite retry and memory metadata
+- PR #245 Add operations data product spec
+- PR #245 Fix pipeline spec long-term dependency
+- PR #245 add a compatibility retry for group invites when the current chat bot cannot see the room: add the chat bot to the target group via the owner bot, then retry the candidate invite
+- PR #245 initialize long-term message metadata from new-customer callbacks and add a backfill script for existing rows
+- PR #245 improve message splitting so booking/info form blocks stay together
+- PR #245 add product docs for group invite behavior, ops-data / Sponge integration design, and operations-facing data definitions
+- PR #245 fix the pipeline service spec to provide the new `LongTermService` dependency used by `AcceptInboundMessageService`
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #245 fix the pipeline service spec to provide the new `LongTermService` dependency used by `AcceptInboundMessageService`
+- PR #245 Fix group invite retry and memory metadata
+- PR #245 Fix pipeline spec long-term dependency
+
+### 优化调整
+- PR #245 improve message splitting so booking/info form blocks stay together
+
+### 运维与流程
+- PR #245 add a compatibility retry for group invites when the current chat bot cannot see the room: add the chat bot to the target group via the owner bot, then retry the candidate invite
+- PR #245 initialize long-term message metadata from new-customer callbacks and add a backfill script for existing rows
+- PR #245 add product docs for group invite behavior, ops-data / Sponge integration design, and operations-facing data definitions
+- PR #245 Add operations data product spec
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #245 `./node_modules/.bin/jest tests/channels/wecom/message/services/pipeline.service.spec.ts --runInBand --watchman=false`
+- PR #245 `./node_modules/.bin/jest --watchman=false --runInBand` (261 suites passed, 3441 passed, 1 skipped)
+- PR #245 `./node_modules/.bin/tsc --noEmit`
+- PR #245 `./node_modules/.bin/eslint tests/channels/wecom/message/services/pipeline.service.spec.ts --max-warnings=0`
+- PR #245 Earlier focused checks before the CI fix: invite-to-group, accept-inbound-message, message-splitter, long-term, and supabase-store specs; plus focused ESLint on the changed source/test files
+<!-- release:pending:end -->
+
 ## [5.11.2] - 2026-05-28
 
 **来源分支**: `develop`
