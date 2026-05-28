@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.11.3] - 2026-05-28
 
-**预计版本**: `v5.11.3`
-**最近更新**: `2026-05-28`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #245 Fix group invite retry and memory metadata
@@ -55,7 +51,6 @@
 - PR #245 `./node_modules/.bin/tsc --noEmit`
 - PR #245 `./node_modules/.bin/eslint tests/channels/wecom/message/services/pipeline.service.spec.ts --max-warnings=0`
 - PR #245 Earlier focused checks before the CI fix: invite-to-group, accept-inbound-message, message-splitter, long-term, and supabase-store specs; plus focused ESLint on the changed source/test files
-<!-- release:pending:end -->
 
 ## [5.11.2] - 2026-05-28
 
