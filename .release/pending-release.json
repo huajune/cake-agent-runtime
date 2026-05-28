@@ -1,97 +1,58 @@
 {
-  "baseVersion": "5.11.2",
+  "baseVersion": "5.11.3",
   "nextVersion": "5.11.3",
   "updatedAt": "2026-05-28",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "245",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/245",
-      "title": "Fix group invite retry and memory metadata",
-      "author": "huajune",
-      "mergedAt": "2026-05-28",
-      "businessUpdates": [
-        "fix the pipeline service spec to provide the new `LongTermService` dependency used by `AcceptInboundMessageService`",
-        "Fix group invite retry and memory metadata",
-        "Fix pipeline spec long-term dependency"
-      ],
-      "summary": [
-        "Fix group invite retry and memory metadata",
-        "Add operations data product spec",
-        "Fix pipeline spec long-term dependency",
-        "add a compatibility retry for group invites when the current chat bot cannot see the room: add the chat bot to the target group via the owner bot, then retry the candidate invite",
-        "initialize long-term message metadata from new-customer callbacks and add a backfill script for existing rows",
-        "improve message splitting so booking/info form blocks stay together",
-        "add product docs for group invite behavior, ops-data / Sponge integration design, and operations-facing data definitions",
-        "fix the pipeline service spec to provide the new `LongTermService` dependency used by `AcceptInboundMessageService`"
-      ],
-      "features": [],
-      "fixes": [
-        "fix the pipeline service spec to provide the new `LongTermService` dependency used by `AcceptInboundMessageService`",
-        "Fix group invite retry and memory metadata",
-        "Fix pipeline spec long-term dependency"
-      ],
-      "optimizations": [
-        "improve message splitting so booking/info form blocks stay together"
-      ],
-      "ops": [
-        "add a compatibility retry for group invites when the current chat bot cannot see the room: add the chat bot to the target group via the owner bot, then retry the candidate invite",
-        "initialize long-term message metadata from new-customer callbacks and add a backfill script for existing rows",
-        "add product docs for group invite behavior, ops-data / Sponge integration design, and operations-facing data definitions",
-        "Add operations data product spec"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`./node_modules/.bin/jest tests/channels/wecom/message/services/pipeline.service.spec.ts --runInBand --watchman=false`",
-        "`./node_modules/.bin/jest --watchman=false --runInBand` (261 suites passed, 3441 passed, 1 skipped)",
-        "`./node_modules/.bin/tsc --noEmit`",
-        "`./node_modules/.bin/eslint tests/channels/wecom/message/services/pipeline.service.spec.ts --max-warnings=0`",
-        "Earlier focused checks before the CI fix: invite-to-group, accept-inbound-message, message-splitter, long-term, and supabase-store specs; plus focused ESLint on the changed source/test files"
-      ]
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "5.11.2",
+    "version": "5.11.3",
     "date": "2026-05-28",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "240",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/240",
-        "title": "fix elastic age handling in job list",
-        "author": "ArielZhu",
+        "number": "245",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/245",
+        "title": "Fix group invite retry and memory metadata",
+        "author": "huajune",
         "mergedAt": "2026-05-28",
         "businessUpdates": [
-          "align job list age boundary handling",
-          "Align duliday_job_list age mismatch handling with precheck ageBoundary semantics.",
-          "Add job-list age screening metadata and markdown guidance so boundary ages such as 52 vs 20-50 are not treated as no-match.",
-          "Add regression coverage for the 52-year-old boundary case.",
-          "fix elastic age handling in job list"
+          "fix the pipeline service spec to provide the new `LongTermService` dependency used by `AcceptInboundMessageService`",
+          "Fix group invite retry and memory metadata",
+          "Fix pipeline spec long-term dependency"
         ],
         "summary": [
-          "align job list age boundary handling",
-          "Align duliday_job_list age mismatch handling with precheck ageBoundary semantics.",
-          "Add job-list age screening metadata and markdown guidance so boundary ages such as 52 vs 20-50 are not treated as no-match.",
-          "Add regression coverage for the 52-year-old boundary case.",
-          "fix elastic age handling in job list"
+          "Fix group invite retry and memory metadata",
+          "Add operations data product spec",
+          "Fix pipeline spec long-term dependency",
+          "add a compatibility retry for group invites when the current chat bot cannot see the room: add the chat bot to the target group via the owner bot, then retry the candidate invite",
+          "initialize long-term message metadata from new-customer callbacks and add a backfill script for existing rows",
+          "improve message splitting so booking/info form blocks stay together",
+          "add product docs for group invite behavior, ops-data / Sponge integration design, and operations-facing data definitions",
+          "fix the pipeline service spec to provide the new `LongTermService` dependency used by `AcceptInboundMessageService`"
         ],
         "features": [],
-        "fixes": [],
-        "optimizations": [],
+        "fixes": [
+          "fix the pipeline service spec to provide the new `LongTermService` dependency used by `AcceptInboundMessageService`",
+          "Fix group invite retry and memory metadata",
+          "Fix pipeline spec long-term dependency"
+        ],
+        "optimizations": [
+          "improve message splitting so booking/info form blocks stay together"
+        ],
         "ops": [
-          "Align duliday_job_list age mismatch handling with precheck ageBoundary semantics.",
-          "Add job-list age screening metadata and markdown guidance so boundary ages such as 52 vs 20-50 are not treated as no-match.",
-          "Add regression coverage for the 52-year-old boundary case.",
-          "align job list age boundary handling"
+          "add a compatibility retry for group invites when the current chat bot cannot see the room: add the chat bot to the target group via the owner bot, then retry the candidate invite",
+          "initialize long-term message metadata from new-customer callbacks and add a backfill script for existing rows",
+          "add product docs for group invite behavior, ops-data / Sponge integration design, and operations-facing data definitions",
+          "Add operations data product spec"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "./node_modules/.bin/jest tests/tools/tool/duliday-job-list.tool.spec.ts --runInBand",
-          "./node_modules/.bin/eslint src/tools/duliday-job-list.tool.ts tests/tools/tool/duliday-job-list.tool.spec.ts --max-warnings=0",
-          "./node_modules/.bin/prettier --check src/tools/duliday-job-list.tool.ts tests/tools/tool/duliday-job-list.tool.spec.ts",
-          "./node_modules/.bin/tsc --noEmit --pretty false"
+          "`./node_modules/.bin/jest tests/channels/wecom/message/services/pipeline.service.spec.ts --runInBand --watchman=false`",
+          "`./node_modules/.bin/jest --watchman=false --runInBand` (261 suites passed, 3441 passed, 1 skipped)",
+          "`./node_modules/.bin/tsc --noEmit`",
+          "`./node_modules/.bin/eslint tests/channels/wecom/message/services/pipeline.service.spec.ts --max-warnings=0`",
+          "Earlier focused checks before the CI fix: invite-to-group, accept-inbound-message, message-splitter, long-term, and supabase-store specs; plus focused ESLint on the changed source/test files"
         ]
       }
     ]
