@@ -31,9 +31,9 @@ export function useUserTrend(days = 30, autoRefresh = true) {
 }
 
 /**
- * 获取近期托管用户列表
+ * 获取托管用户列表：默认今日，传入 days 时查询指定近 N 天范围。
  */
-export function useTodayUsers(days = 30, autoRefresh = true) {
+export function useTodayUsers(days?: number, autoRefresh = true) {
   return useQuery({
     queryKey: ['today-users', 'user-activity-v2', days],
     queryFn: () => userService.getTodayUsers(days),

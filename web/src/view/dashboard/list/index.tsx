@@ -18,6 +18,7 @@ import { useHealthStatus } from '@/hooks/analytics/useMetrics';
 import { useWorkerStatus } from '@/hooks/config/useWorker';
 import type { DashboardTimeRange } from '@/api/types/analytics.types';
 import { formatDuration, formatMinuteLabel, formatDayLabel, formatHourLabel } from '@/utils/format';
+import { buildRecentBusinessDateRange, formatDateKey } from '@/utils/date-range';
 import { THEME_COLORS } from '@/constants';
 
 // 组件导入
@@ -56,23 +57,9 @@ const RANGE_DAYS: Record<DashboardTimeRange, number> = {
   threeMonths: 90,
 };
 
-function formatDateKey(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function addDays(date: Date, days: number) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
-}
-
 function buildDateRange(timeRange: DashboardTimeRange) {
   const days = RANGE_DAYS[timeRange];
-  const endDate = new Date();
-  const startDate = addDays(endDate, -(days - 1));
-
-  return Array.from({ length: days }, (_, index) => formatDateKey(addDays(startDate, index)));
+  return buildRecentBusinessDateRange(days);
 }
 
 function toDateKey(value?: string) {
