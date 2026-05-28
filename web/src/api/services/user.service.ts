@@ -10,9 +10,10 @@ export async function getUserTrend(days = 30) {
   return unwrapResponse<UserTrendData[]>(data);
 }
 
-export async function getTodayUsers(days = 30) {
-  const params = new URLSearchParams({ days: String(days) });
-  const { data } = await api.get(`/analytics/users?${params.toString()}`);
+export async function getTodayUsers(days?: number) {
+  const params = Number.isFinite(days) ? new URLSearchParams({ days: String(days) }) : null;
+  const query = params ? `?${params.toString()}` : '';
+  const { data } = await api.get(`/analytics/users${query}`);
   return unwrapResponse<TodayUserData[]>(data);
 }
 

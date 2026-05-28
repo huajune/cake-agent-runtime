@@ -1,9 +1,47 @@
 {
   "baseVersion": "5.11.0",
-  "nextVersion": "5.11.0",
-  "updatedAt": "2026-05-27",
+  "nextVersion": "5.11.1",
+  "updatedAt": "2026-05-28",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "235",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/235",
+      "title": "修正托管用户统计日期范围",
+      "author": "huajune",
+      "mergedAt": "2026-05-28",
+      "businessUpdates": [
+        "Added a shared web date-range utility for local date key formatting and recent business-day ranges.",
+        "Updated dashboard and user trend charts to use the shared business-day range and exclude weekends from the displayed trend range.",
+        "Changed the managed-user list request so the default view queries today's managed sessions without sending a rolling `days` parameter.",
+        "Restored the managed-user tab label to “今日托管会话” to match the default query scope.",
+        "修正托管用户统计日期范围"
+      ],
+      "summary": [
+        "修正托管用户统计日期范围",
+        "Added a shared web date-range utility for local date key formatting and recent business-day ranges.",
+        "Updated dashboard and user trend charts to use the shared business-day range and exclude weekends from the displayed trend range.",
+        "Changed the managed-user list request so the default view queries today's managed sessions without sending a rolling `days` parameter.",
+        "Restored the managed-user tab label to “今日托管会话” to match the default query scope."
+      ],
+      "features": [],
+      "fixes": [
+        "Added a shared web date-range utility for local date key formatting and recent business-day ranges.",
+        "Updated dashboard and user trend charts to use the shared business-day range and exclude weekends from the displayed trend range.",
+        "Changed the managed-user list request so the default view queries today's managed sessions without sending a rolling `days` parameter.",
+        "Restored the managed-user tab label to “今日托管会话” to match the default query scope.",
+        "修正托管用户统计日期范围"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm run ci:check`",
+        "`web` build via `tsc -b && vite build` before commit"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "5.11.0",
     "date": "2026-05-27",

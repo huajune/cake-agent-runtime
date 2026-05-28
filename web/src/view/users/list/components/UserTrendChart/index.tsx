@@ -4,6 +4,7 @@ import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaCh
 import { IconUsers, IconBarChart, IconFlame, IconTrend, IconEmpty, IconInfo } from '../Icons';
 import { THEME_COLORS } from '@/constants';
 import { USER_RANGE_OPTIONS } from '../../constants';
+import { buildRecentBusinessDateRange } from '@/utils/date-range';
 import styles from './index.module.scss';
 
 type ChartDataItem = {
@@ -38,24 +39,6 @@ function parseDateKey(dateStr: string) {
   return new Date(year, month - 1, day);
 }
 
-function formatDateKey(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function addDays(date: Date, days: number) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
-}
-
-function buildDateRange(days: number) {
-  const endDate = new Date();
-  const startDate = addDays(endDate, -(days - 1));
-
-  return Array.from({ length: days }, (_, index) => formatDateKey(addDays(startDate, index)));
-}
-
 export default function UserTrendChart({
   selectedDays,
   onSelectedDaysChange,
@@ -76,7 +59,7 @@ export default function UserTrendChart({
   const trendDataByDate = new Map(trendData.map((item) => [item.date, item]));
 
   // 准备图表数据
-  const chartData: ChartDataItem[] = buildDateRange(selectedDays).map((date) => {
+  const chartData: ChartDataItem[] = buildRecentBusinessDateRange(selectedDays).map((date) => {
     const item = trendDataByDate.get(date);
     return {
       date: formatDate(date),
@@ -213,7 +196,7 @@ export default function UserTrendChart({
           {/* 数据说明 */}
           <div className={styles.dataNote}>
             <IconInfo width="16" height="16" />
-            <span>用户数按当日托管独立用户统计，累计托管人次为各日用户数求和，跨天会重复计数；消息数按用户实际发送条数统计。</span>
+            <span>趋势图已剔除周六、周日；用户数按当日托管独立用户统计，累计托管人次为各日用户数求和，跨天会重复计数；消息数按用户实际发送条数统计。</span>
           </div>
 
           {/* 图表区域 */}
