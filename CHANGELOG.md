@@ -8,6 +8,48 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.11.1`
+**最近更新**: `2026-05-28`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #235 修正托管用户统计日期范围
+- PR #235 Added a shared web date-range utility for local date key formatting and recent business-day ranges.
+- PR #235 Updated dashboard and user trend charts to use the shared business-day range and exclude weekends from the displayed trend range.
+- PR #235 Changed the managed-user list request so the default view queries today's managed sessions without sending a rolling `days` parameter.
+- PR #235 Restored the managed-user tab label to “今日托管会话” to match the default query scope.
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #235 Added a shared web date-range utility for local date key formatting and recent business-day ranges.
+- PR #235 Updated dashboard and user trend charts to use the shared business-day range and exclude weekends from the displayed trend range.
+- PR #235 Changed the managed-user list request so the default view queries today's managed sessions without sending a rolling `days` parameter.
+- PR #235 Restored the managed-user tab label to “今日托管会话” to match the default query scope.
+- PR #235 修正托管用户统计日期范围
+
+### 优化调整
+- 无
+
+### 运维与流程
+- 无
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #235 `pnpm run ci:check`
+- PR #235 `web` build via `tsc -b && vite build` before commit
+<!-- release:pending:end -->
+
 ## [5.11.0] - 2026-05-27
 
 **来源分支**: `develop`
