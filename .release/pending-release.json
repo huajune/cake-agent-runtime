@@ -1,9 +1,47 @@
 {
   "baseVersion": "5.11.3",
-  "nextVersion": "5.11.3",
-  "updatedAt": "2026-05-28",
+  "nextVersion": "5.11.4",
+  "updatedAt": "2026-05-29",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "250",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/250",
+      "title": "兼容苏州兼职群错序标签",
+      "author": "huajune",
+      "mergedAt": "2026-05-29",
+      "businessUpdates": [
+        "修复看板人工介入统计"
+      ],
+      "summary": [
+        "兼容苏州兼职群错序标签",
+        "推荐班次必须列全所有档位",
+        "修复看板人工介入统计",
+        "Added a targeted compatibility override for `独立客&苏州餐饮兼职群` when its labels are returned as `[\"兼职群\", \"餐饮\", \"苏州\"]`.",
+        "Kept the original label parsing contract for all other groups.",
+        "Added a regression test covering the known Suzhou group `wxid` and label order."
+      ],
+      "features": [],
+      "fixes": [
+        "修复看板人工介入统计"
+      ],
+      "optimizations": [],
+      "ops": [
+        "Added a targeted compatibility override for `独立客&苏州餐饮兼职群` when its labels are returned as `[\"兼职群\", \"餐饮\", \"苏州\"]`.",
+        "Kept the original label parsing contract for all other groups.",
+        "Added a regression test covering the known Suzhou group `wxid` and label order.",
+        "兼容苏州兼职群错序标签",
+        "推荐班次必须列全所有档位"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm jest tests/biz/group-task/group-resolver.service.spec.ts --watchman=false`",
+        "`pnpm run typecheck`",
+        "`pnpm exec eslint src/biz/group-task/services/group-resolver.service.ts tests/biz/group-task/group-resolver.service.spec.ts --max-warnings=0`"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "5.11.3",
     "date": "2026-05-28",
