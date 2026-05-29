@@ -424,6 +424,52 @@ describe('MonitoringRecordRepository', () => {
       expect(result[0].toolName).toBe('search');
       expect(result[0].useCount).toBe(25);
     });
+
+    it('should fall back to reading tool_calls when RPC returns empty stats', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      mockSupabaseClient.rpc.mockResolvedValue({ data: [], error: null });
+
+      const query = {
+        select: jest.fn(),
+        gte: jest.fn(),
+        lt: jest.fn(),
+        not: jest.fn(),
+        order: jest.fn(),
+        range: jest.fn(),
+      };
+      query.select.mockReturnValue(query);
+      query.gte.mockReturnValue(query);
+      query.lt.mockReturnValue(query);
+      query.not.mockReturnValue(query);
+      query.order.mockReturnValue(query);
+      query.range.mockResolvedValue({
+        data: [
+          {
+            tool_calls: [
+              { toolName: 'request_handoff' },
+              { toolName: 'raise_risk_alert' },
+            ],
+          },
+          {
+            tool_calls: [
+              { toolName: 'request_handoff' },
+              { toolName: '' },
+              { name: 'legacy-shape' },
+            ],
+          },
+        ],
+        error: null,
+      });
+      mockSupabaseClient.from.mockReturnValue(query);
+
+      const result = await repository.getDashboardToolStats(new Date(), new Date());
+
+      expect(result).toEqual([
+        { toolName: 'request_handoff', useCount: 2 },
+        { toolName: 'raise_risk_alert', useCount: 1 },
+      ]);
+    });
   });
 
   // ==================== aggregateHourlyStats ====================
