@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.11.4] - 2026-05-29
 
-**预计版本**: `v5.11.4`
-**最近更新**: `2026-05-29`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #250 兼容苏州兼职群错序标签
@@ -50,7 +46,6 @@
 - PR #250 `pnpm jest tests/biz/group-task/group-resolver.service.spec.ts --watchman=false`
 - PR #250 `pnpm run typecheck`
 - PR #250 `pnpm exec eslint src/biz/group-task/services/group-resolver.service.ts tests/biz/group-task/group-resolver.service.spec.ts --max-warnings=0`
-<!-- release:pending:end -->
 
 ## [5.11.3] - 2026-05-28
 
