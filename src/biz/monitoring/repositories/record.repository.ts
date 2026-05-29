@@ -121,6 +121,10 @@ const EMPTY_DAILY_AGGREGATE = {
   errorTypeStats: {} as Record<string, number>,
 };
 
+type ToolCallsProjectionRow = {
+  tool_calls?: unknown;
+};
+
 /**
  * 监控数据 Repository
  *
@@ -302,7 +306,7 @@ export class MonitoringRecordRepository extends BaseRepository {
     startDate: Date,
     endDate: Date,
   ): Promise<Array<{ toolName: string; useCount: number }>> {
-    return this.rpcMappedList(
+    const rpcStats = await this.rpcMappedList<{ toolName: string; useCount: number }>(
       'get_dashboard_tool_stats',
       {
         toolName: { field: 'tool_name', type: 'string' as const },
@@ -310,6 +314,12 @@ export class MonitoringRecordRepository extends BaseRepository {
       },
       { p_start_date: startDate.toISOString(), p_end_date: endDate.toISOString() },
     );
+
+    if (rpcStats.length > 0) {
+      return rpcStats;
+    }
+
+    return this.getDashboardToolStatsFromToolCalls(startDate, endDate);
   }
 
   // ==================== 小时聚合 RPC ====================
@@ -578,5 +588,96 @@ export class MonitoringRecordRepository extends BaseRepository {
       this.logger.error(`获取 ${functionName} 失败:`, error);
       return [];
     }
+  }
+
+  /**
+   * Fallback for environments where the DB RPC is still on the pre-tool_calls
+   * version and returns an empty result even though current rows contain tools.
+   */
+  private async getDashboardToolStatsFromToolCalls(
+    startDate: Date,
+    endDate: Date,
+  ): Promise<Array<{ toolName: string; useCount: number }>> {
+    if (!this.isAvailable()) {
+      return [];
+    }
+
+    const toolMap = new Map<string, number>();
+    const pageSize = 1000;
+    let from = 0;
+
+    for (let attempt = 1; attempt <= this.maxReadAttempts; attempt += 1) {
+      try {
+        for (;;) {
+          const { data, error } = await this.getClient()
+            .from(this.tableName)
+            .select('tool_calls')
+            .gte('received_at', startDate.toISOString())
+            .lt('received_at', endDate.toISOString())
+            .not('tool_calls', 'is', null)
+            .order('received_at', { ascending: true })
+            .order('message_id', { ascending: true })
+            .range(from, from + pageSize - 1);
+
+          if (error) {
+            if (this.shouldRetryReadError('SELECT:tool_calls', error, attempt)) {
+              toolMap.clear();
+              from = 0;
+              break;
+            }
+            this.handleError('SELECT:tool_calls', error);
+            return [];
+          }
+
+          const rows = (data as ToolCallsProjectionRow[] | null) ?? [];
+          for (const row of rows) {
+            this.countToolCalls(row.tool_calls, toolMap);
+          }
+
+          if (rows.length < pageSize) {
+            return this.formatToolStats(toolMap);
+          }
+
+          from += pageSize;
+        }
+      } catch (error) {
+        if (this.shouldRetryReadError('SELECT:tool_calls', error, attempt)) {
+          toolMap.clear();
+          from = 0;
+          continue;
+        }
+        this.handleError('SELECT:tool_calls', error);
+        return [];
+      }
+    }
+
+    return this.formatToolStats(toolMap);
+  }
+
+  private countToolCalls(toolCalls: unknown, toolMap: Map<string, number>): void {
+    if (!Array.isArray(toolCalls)) {
+      return;
+    }
+
+    for (const call of toolCalls) {
+      if (!call || typeof call !== 'object') {
+        continue;
+      }
+
+      const toolName = (call as { toolName?: unknown }).toolName;
+      if (typeof toolName !== 'string' || toolName.length === 0) {
+        continue;
+      }
+
+      toolMap.set(toolName, (toolMap.get(toolName) ?? 0) + 1);
+    }
+  }
+
+  private formatToolStats(
+    toolMap: Map<string, number>,
+  ): Array<{ toolName: string; useCount: number }> {
+    return Array.from(toolMap.entries())
+      .map(([toolName, useCount]) => ({ toolName, useCount }))
+      .sort((a, b) => b.useCount - a.useCount);
   }
 }

@@ -115,5 +115,40 @@ describe('GroupResolverService', () => {
       expect(refreshed[0].memberCount).toBe(275);
       expect(mockRoomService.getRoomSimpleList).toHaveBeenCalledTimes(2);
     });
+
+    it('应仅对苏州餐饮兼职群的已知错序标签做兼容', async () => {
+      mockRoomService.getRoomSimpleList.mockResolvedValueOnce({
+        data: {
+          data: [
+            {
+              wxid: 'R:10842449668559208',
+              topic: '独立客&苏州餐饮兼职群',
+              chatId: '6a0d6047536c965402056685',
+              botInfo: { wxid: '1688855974513959', weixin: 'bot-user-1', nickName: '高雅琪' },
+              labels: [
+                { id: '1', name: '兼职群' },
+                { id: '2', name: '餐饮' },
+                { id: '3', name: '苏州' },
+              ],
+              memberCount: 17,
+            },
+          ],
+          page: { total: 1 },
+        },
+      });
+
+      const groups = await service.resolveGroups('兼职群', { forceRefresh: true });
+
+      expect(groups).toHaveLength(1);
+      expect(groups[0]).toMatchObject({
+        imRoomId: 'R:10842449668559208',
+        groupName: '独立客&苏州餐饮兼职群',
+        city: '苏州',
+        industry: '餐饮',
+        tag: '兼职群',
+        labels: ['兼职群', '餐饮', '苏州'],
+        memberCount: 17,
+      });
+    });
   });
 });

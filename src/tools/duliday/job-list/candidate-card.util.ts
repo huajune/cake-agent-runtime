@@ -228,7 +228,7 @@ export function renderCandidateCardsBanner(jobs: any[]): string {
   lines.push('> **固定格式（四行，不得删除或合并）**：');
   lines.push('> ```');
   lines.push('> 品牌（门店）- 岗位，距离km');
-  lines.push('> 班次：具体班次时间');
+  lines.push('> 班次：列全所有档位（不得只挑一档）');
   lines.push('> 薪资：完整薪资描述（含阶梯/节假日等备注中的补充薪资）');
   lines.push('> 要求：年龄、健康证、其他限制');
   lines.push('> ```');
