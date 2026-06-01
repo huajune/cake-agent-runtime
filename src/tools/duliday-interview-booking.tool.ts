@@ -8,7 +8,7 @@ import { Logger } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
-import type { JobDetail } from '@sponge/sponge.types';
+import type { InterviewBookingCustomerLabel, JobDetail } from '@sponge/sponge.types';
 import type { RecruitmentCaseRecord } from '@biz/recruitment-case/entities/recruitment-case.entity';
 import {
   getSpongeGenderLabelById,
@@ -18,7 +18,10 @@ import {
   SPONGE_HEALTH_CERTIFICATE_TYPE_MAPPING,
   SPONGE_OPERATE_TYPE_MAPPING,
 } from '@sponge/sponge.enums';
-import { extractInterviewSupplementDefinitions } from '@sponge/sponge-job.util';
+import {
+  extractInterviewSupplementDefinitions,
+  type SpongeInterviewSupplementDefinition,
+} from '@sponge/sponge-job.util';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
 import { BookingService } from '@biz/message/services/booking.service';
@@ -32,6 +35,7 @@ import {
   buildOnSiteScript,
   formatInterviewTimeForReply,
 } from '@tools/duliday/booking/booking-reply-format.util';
+import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 
 const logger = new Logger('duliday_interview_booking');
@@ -443,6 +447,7 @@ export function buildInterviewBookingTool(
           );
         }
 
+        const resolvedUploadResume = resolveUploadResume(uploadResume, context);
         const genderLabel = getSpongeGenderLabelById(genderId) ?? undefined;
         const ageText = normalizeAgeText(age);
         let interviewType: string | undefined;
@@ -461,7 +466,7 @@ export function buildInterviewBookingTool(
           hasHealthCertificate,
           healthCertificateTypes,
           educationId,
-          uploadResume,
+          uploadResume: resolvedUploadResume,
           supplementAnswers,
           logId,
         };
@@ -510,8 +515,34 @@ export function buildInterviewBookingTool(
             return markBookingFailed(context, guardFailure);
           }
 
+          const supplementDefinitions = extractInterviewSupplementDefinitions(job);
+          const bookingUploadResume = await resolveUploadResumeForBooking(
+            resolvedUploadResume,
+            context,
+            spongeService,
+          );
+          if (isResumeRequiredByJob(job, supplementDefinitions) && !bookingUploadResume) {
+            const missingResumeLabels = getResumeSupplementLabels(supplementDefinitions);
+            return markBookingFailed(
+              context,
+              buildToolError({
+                errorType: TOOL_ERROR_TYPES.BOOKING_MISSING_CUSTOMER_LABEL_VALUES,
+                outcome: '预约失败（岗位要求上传简历附件）',
+                replyInstruction:
+                  '该岗位要求上传简历附件，不能用文字经历或口述工作经历替代。请让候选人发送 PDF 简历文件；收到文件后先按附件上传链路拿到云存储 key，再重新调用 booking。',
+                details: {
+                  missingFields: ['简历附件'],
+                  missingSupplementLabels:
+                    missingResumeLabels.length > 0 ? missingResumeLabels : ['简历附件'],
+                  detailedReason:
+                    '岗位要求上传简历，但 booking 入参、会话记忆和当前文件消息中都没有可提交的 uploadResume/cloudStorageKey。',
+                },
+              }),
+            );
+          }
+
           const customerLabelResolution = buildCustomerLabelList({
-            supplementDefinitions: extractInterviewSupplementDefinitions(job),
+            supplementDefinitions,
             context,
             name,
             phone,
@@ -524,11 +555,13 @@ export function buildInterviewBookingTool(
             hasHealthCertificate,
             healthCertificateTypes,
             educationId,
-            uploadResume,
+            uploadResume: bookingUploadResume,
             supplementAnswers,
           });
 
           if (customerLabelResolution.success === false) {
+            const missingResumeLabels =
+              customerLabelResolution.missingSupplementLabels?.filter(isResumeLabel) ?? [];
             return markBookingFailed(
               context,
               buildToolError({
@@ -539,8 +572,10 @@ export function buildInterviewBookingTool(
                     ? '预约失败（岗位补充标签缺值）'
                     : '预约失败（岗位补充标签取值非法）',
                 replyInstruction:
-                  '岗位补充标签未填齐或取值非法。按 missingSupplementLabels / invalidSupplementLabels 列出的字段名向候选人补问；' +
-                  '不要把字段原文展示给候选人，更不要透露后台规则；补全后重新调用本工具。',
+                  missingResumeLabels.length > 0
+                    ? '岗位要求上传简历附件，不能用文字经历或口述工作经历替代。请让候选人发送 PDF 简历文件；收到文件后先按附件上传链路拿到云存储 key，再重新调用 booking。'
+                    : '岗位补充标签未填齐或取值非法。按 missingSupplementLabels / invalidSupplementLabels 列出的字段名向候选人补问；' +
+                      '不要把字段原文展示给候选人，更不要透露后台规则；补全后重新调用本工具。',
                 details: {
                   missingSupplementLabels: customerLabelResolution.missingSupplementLabels,
                   invalidSupplementLabels: customerLabelResolution.invalidSupplementLabels,
@@ -550,6 +585,11 @@ export function buildInterviewBookingTool(
               }),
             );
           }
+
+          const bookingCustomerLabelList = withBookingUploadResumeCustomerLabels(
+            customerLabelResolution.customerLabelList,
+            bookingUploadResume,
+          );
 
           const resolvedBrandName =
             brandName || normalizeText(job.basicInfo.brandName) || undefined;
@@ -579,8 +619,8 @@ export function buildInterviewBookingTool(
             hasHealthCertificate,
             healthCertificateTypes,
             educationId,
-            uploadResume,
-            customerLabelList: customerLabelResolution.customerLabelList,
+            uploadResume: bookingUploadResume,
+            customerLabelList: bookingCustomerLabelList,
             supplementAnswers,
             logId,
           };
@@ -600,8 +640,8 @@ export function buildInterviewBookingTool(
             hasHealthCertificate,
             healthCertificateTypes,
             educationId,
-            uploadResume,
-            customerLabelList: customerLabelResolution.customerLabelList,
+            uploadResume: bookingUploadResume,
+            customerLabelList: bookingCustomerLabelList,
             logId,
           });
 
@@ -800,6 +840,127 @@ export function resolveInterviewType(job: JobDetail): string | undefined {
 
 function normalizeText(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function isResumeLabel(value: string): boolean {
+  return /简历/.test(value);
+}
+
+function getResumeSupplementLabels(
+  supplementDefinitions: SpongeInterviewSupplementDefinition[],
+): string[] {
+  return supplementDefinitions
+    .map((definition) => definition.labelName)
+    .filter(isResumeLabel);
+}
+
+function isResumeRequiredByJob(
+  job: JobDetail,
+  supplementDefinitions: SpongeInterviewSupplementDefinition[],
+): boolean {
+  if (getResumeSupplementLabels(supplementDefinitions).length > 0) return true;
+
+  const analysis = buildJobPolicyAnalysis(job);
+  if (analysis.fieldGuidance.fieldSignals.some((signal) => signal.field === '简历附件')) {
+    return true;
+  }
+
+  const policyText = collectStringValues({
+    hiringRequirement: job.hiringRequirement,
+    interviewProcess: job.interviewProcess,
+  }).join('\n');
+  if (/不需要.{0,6}简历|无需.{0,6}简历|免.{0,4}简历/.test(policyText)) return false;
+  return /上传简历|简历附件|简历模板|简历.{0,8}审核|审核.{0,8}简历/.test(policyText);
+}
+
+function collectStringValues(value: unknown, depth = 0): string[] {
+  if (depth > 6 || value == null) return [];
+  if (typeof value === 'string') {
+    const text = value.trim();
+    return text ? [text] : [];
+  }
+  if (Array.isArray(value)) return value.flatMap((item) => collectStringValues(item, depth + 1));
+  if (typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>).flatMap((item) =>
+      collectStringValues(item, depth + 1),
+    );
+  }
+  return [];
+}
+
+function resolveUploadResume(uploadResume: unknown, context: ToolBuildContext): string | undefined {
+  const explicit = normalizeText(uploadResume);
+  if (explicit) return explicit;
+
+  const sessionResume = normalizeText(context.sessionFacts?.interview_info.upload_resume);
+  if (sessionResume) return sessionResume;
+
+  const currentTurnResume = context.highConfidenceFacts?.interview_info.upload_resume;
+  if (currentTurnResume && typeof currentTurnResume === 'object' && 'value' in currentTurnResume) {
+    return normalizeText(currentTurnResume.value) ?? undefined;
+  }
+
+  return undefined;
+}
+
+async function resolveUploadResumeForBooking(
+  uploadResume: string | undefined,
+  context: ToolBuildContext,
+  spongeService: SpongeService,
+): Promise<string | undefined> {
+  if (!uploadResume) return undefined;
+  if (!isHttpUrl(uploadResume)) return uploadResume;
+
+  const uploaded = await spongeService.uploadAttachmentFromUrl({
+    fileUrl: uploadResume,
+    fileName: resolveUploadResumeFileName(uploadResume, context),
+  });
+  return uploaded.cloudStorageKey;
+}
+
+function isHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value.trim());
+}
+
+function resolveUploadResumeFileName(
+  uploadResume: string,
+  context: ToolBuildContext,
+): string | undefined {
+  const content = collectTextParts(context.messages).join('\n');
+  for (const match of content.matchAll(
+    /\[文件消息\]\s*文件名\s*[：:]\s*([^；;\n\r]+)[；;]\s*文件地址\s*[：:]\s*([^；;\n\r]+)/gu,
+  )) {
+    const fileName = normalizeText(match[1]);
+    const fileUrl = normalizeText(match[2]);
+    if (fileName && fileUrl === uploadResume) return fileName;
+  }
+  return undefined;
+}
+
+function collectTextParts(value: unknown, depth = 0): string[] {
+  if (depth > 5 || value == null) return [];
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap((item) => collectTextParts(item, depth + 1));
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return [
+      ...collectTextParts(record.text, depth + 1),
+      ...collectTextParts(record.content, depth + 1),
+    ];
+  }
+  return [];
+}
+
+function withBookingUploadResumeCustomerLabels(
+  customerLabelList: InterviewBookingCustomerLabel[],
+  uploadResume: string | undefined,
+): InterviewBookingCustomerLabel[] {
+  if (!uploadResume) return customerLabelList;
+  return customerLabelList.map((label) =>
+    /简历/.test(label.labelName) || /简历/.test(label.name)
+      ? { ...label, value: uploadResume }
+      : label,
+  );
 }
 
 async function sendInterviewBookingNotification(

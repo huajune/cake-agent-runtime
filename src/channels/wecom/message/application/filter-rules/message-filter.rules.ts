@@ -172,6 +172,7 @@ export class RoomMessageFilterRule implements MessageFilterRule {
 export class SupportedMessageTypeFilterRule implements MessageFilterRule {
   private readonly logger = new Logger(SupportedMessageTypeFilterRule.name);
   private readonly supportedMessageTypes = [
+    MessageType.FILE,
     MessageType.TEXT,
     MessageType.LOCATION,
     MessageType.VOICE,

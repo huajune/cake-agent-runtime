@@ -6,6 +6,7 @@ describe('buildInterviewBookingTool', () => {
   const mockSpongeService = {
     fetchJobs: jest.fn(),
     bookInterview: jest.fn(),
+    uploadAttachmentFromUrl: jest.fn(),
   };
 
   const mockPrivateChatNotifier = {
@@ -75,7 +76,13 @@ describe('buildInterviewBookingTool', () => {
     };
   };
 
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockSpongeService.uploadAttachmentFromUrl.mockResolvedValue({
+      fileName: '张三简历.pdf',
+      cloudStorageKey: 'resume/cloud/key.pdf',
+    });
+  });
 
   const flushAsyncEvents = async () => {
     await new Promise((resolve) => setImmediate(resolve));
@@ -574,6 +581,100 @@ describe('buildInterviewBookingTool', () => {
       managerId: 'manager-1',
       managerName: 'manager-1',
     });
+  });
+
+  it('should upload resume URL first and pass cloudStorageKey to entryUser', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            interviewSupplement: [{ interviewSupplementId: 9, interviewSupplement: '简历' }],
+          },
+        }),
+      ],
+    });
+    mockSpongeService.bookInterview.mockResolvedValue({
+      success: true,
+      code: 0,
+      message: '预约成功',
+      notice: null,
+      errorList: null,
+    });
+
+    const result = await executeTool(
+      {
+        ...validInput,
+        uploadResume: 'https://wecom.example.com/file/resume.pdf',
+      },
+      {
+        messages: [
+          {
+            role: 'user',
+            content:
+              '[文件消息] 文件名：张三简历.pdf；文件地址：https://wecom.example.com/file/resume.pdf；文件大小：2KB\n简历附件：https://wecom.example.com/file/resume.pdf',
+          },
+        ],
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(mockSpongeService.uploadAttachmentFromUrl).toHaveBeenCalledWith({
+      fileUrl: 'https://wecom.example.com/file/resume.pdf',
+      fileName: '张三简历.pdf',
+    });
+    expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        uploadResume: 'resume/cloud/key.pdf',
+        customerLabelList: [
+          {
+            labelId: 9,
+            labelName: '简历',
+            name: '简历',
+            value: 'resume/cloud/key.pdf',
+          },
+        ],
+      }),
+    );
+    expect(result.requestInfo).toEqual(
+      expect.objectContaining({
+        uploadResume: 'resume/cloud/key.pdf',
+        customerLabelList: [
+          {
+            labelId: 9,
+            labelName: '简历',
+            name: '简历',
+            value: 'resume/cloud/key.pdf',
+          },
+        ],
+      }),
+    );
+  });
+
+  it('rejects resume-required jobs when only text experience is provided as 上传简历', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            interviewSupplement: [{ interviewSupplementId: 49, interviewSupplement: '上传简历' }],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({
+      ...validInput,
+      supplementAnswers: {
+        上传简历: '南京城市职业学院毕业。高铁检票员1年，蜜雪冰城饮品师8个月',
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_CUSTOMER_LABEL_VALUES);
+    expect(result.missingFields).toEqual(['简历附件']);
+    expect(result.missingSupplementLabels).toEqual(['上传简历']);
+    expect(result._replyInstruction).toContain('PDF 简历文件');
+    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+    expect(mockSpongeService.uploadAttachmentFromUrl).not.toHaveBeenCalled();
   });
 
   it('should return missing_customer_label_values when supplements require unknown answers', async () => {

@@ -233,6 +233,81 @@ describe('SpongeService', () => {
     });
   });
 
+  describe('uploadAttachmentFromUrl', () => {
+    it('should download the source file, upload multipart attachment, and return cloudStorageKey', async () => {
+      const pdfBuffer = Buffer.from('%PDF-1.4\nfake resume');
+      const downloadResponse = {
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        headers: {
+          get: (name: string) => {
+            if (name.toLowerCase() === 'content-length') return String(pdfBuffer.byteLength);
+            if (name.toLowerCase() === 'content-type') return 'application/pdf';
+            return null;
+          },
+        },
+        arrayBuffer: jest
+          .fn()
+          .mockResolvedValue(
+            pdfBuffer.buffer.slice(
+              pdfBuffer.byteOffset,
+              pdfBuffer.byteOffset + pdfBuffer.byteLength,
+            ),
+          ),
+      };
+      const uploadResponse = {
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: jest.fn().mockResolvedValue({
+          code: 0,
+          message: 'success',
+          data: {
+            fileName: '张三简历.pdf',
+            cloudStorageKey: 'resume/cloud/key.pdf',
+          },
+        }),
+      };
+      jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(downloadResponse as unknown as Response)
+        .mockResolvedValueOnce(uploadResponse as unknown as Response);
+
+      const result = await service.uploadAttachmentFromUrl({
+        fileUrl: 'https://wecom.example.com/file/resume.pdf',
+        fileName: '张三简历.pdf',
+      });
+
+      expect(result).toEqual({
+        fileName: '张三简历.pdf',
+        cloudStorageKey: 'resume/cloud/key.pdf',
+      });
+      expect(global.fetch).toHaveBeenNthCalledWith(
+        1,
+        'https://wecom.example.com/file/resume.pdf',
+        expect.objectContaining({
+          method: 'GET',
+        }),
+      );
+      expect(global.fetch).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining('/a/supplier/uploadAttachment'),
+        expect.objectContaining({
+          method: 'POST',
+          headers: {
+            'Duliday-Token': 'test-token',
+          },
+        }),
+      );
+
+      const uploadBody = (global.fetch as jest.Mock).mock.calls[1][1].body as FormData;
+      const file = uploadBody.get('file') as File;
+      expect(file.name).toBe('张三简历.pdf');
+      expect(file.type).toBe('application/pdf');
+    });
+  });
+
   describe('fetchInterviewSchedule', () => {
     it('should tolerate missing gender and age fields in interview schedule response', async () => {
       const mockResponse = {

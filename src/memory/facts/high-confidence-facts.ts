@@ -289,6 +289,14 @@ export function extractHighConfidenceFacts(
       reasons.push(`健康证识别：${healthCertificate}`);
     }
 
+    const uploadResume = extractUploadResume(message);
+    if (uploadResume && !facts.interview_info.upload_resume) {
+      facts.interview_info.upload_resume = ruleValue(uploadResume, {
+        evidence: `简历附件识别：${uploadResume}`,
+      });
+      reasons.push(`简历附件识别：${uploadResume}`);
+    }
+
     const laborForm = extractLaborForm(message);
     if (laborForm && !facts.preferences.labor_form) {
       facts.preferences.labor_form = ruleValue(laborForm, {
@@ -523,6 +531,7 @@ export function filterHighConfidenceFacts(
       is_student: highOnly(facts.interview_info.is_student),
       education: highOnly(facts.interview_info.education),
       has_health_certificate: highOnly(facts.interview_info.has_health_certificate),
+      upload_resume: highOnly(facts.interview_info.upload_resume),
     },
     preferences: {
       brands: highOnly(facts.preferences.brands),
@@ -591,6 +600,7 @@ export function unwrapHighConfidenceFacts(
       has_health_certificate: unwrapHighConfidenceValue(
         facts.interview_info.has_health_certificate,
       ),
+      upload_resume: unwrapHighConfidenceValue(facts.interview_info.upload_resume),
     },
     preferences: {
       brands: unwrapHighConfidenceValue(facts.preferences.brands),
@@ -656,6 +666,7 @@ function cloneFallbackExtraction(): HighConfidenceFacts {
       is_student: null,
       education: null,
       has_health_certificate: null,
+      upload_resume: null,
     },
     preferences: {
       brands: null,
@@ -847,6 +858,29 @@ function extractHealthCertificate(message: string): string | null {
     return '有';
   }
   return null;
+}
+
+function extractUploadResume(message: string): string | null {
+  const labeled = message.match(/简历附件\s*[：:]\s*(\S+)/u)?.[1];
+  if (labeled) return sanitizeResumeUrl(labeled);
+
+  if (!/\[文件消息\]/.test(message)) return null;
+
+  const fileName = message.match(/文件名\s*[：:]\s*([^；;\n\r]+)/u)?.[1] ?? '';
+  if (!isResumeFileName(fileName)) return null;
+
+  const fileUrl = message.match(/文件地址\s*[：:]\s*([^；;\n\r]+)/u)?.[1];
+  return fileUrl ? sanitizeResumeUrl(fileUrl) : null;
+}
+
+function isResumeFileName(fileName: string): boolean {
+  const normalized = fileName.trim().toLowerCase();
+  return /简历|履历|resume/.test(normalized) || /(?:^|[^a-z0-9])cv(?:[^a-z0-9]|$)/.test(normalized);
+}
+
+function sanitizeResumeUrl(value: string): string | null {
+  const trimmed = value.trim().replace(/[，。；;、)）\]]+$/u, '');
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function extractLaborForm(message: string): string | null {

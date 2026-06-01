@@ -53,6 +53,30 @@ describe('extractHighConfidenceFacts', () => {
     expect(unwrapHighConfidenceValue(result?.interview_info.has_health_certificate)).toBe('有');
   });
 
+  it('should extract resume upload URL when the file name looks like a resume', () => {
+    const result = extractHighConfidenceFacts(
+      [
+        '[文件消息] 文件名：张三简历.pdf；文件地址：https://example.com/resume.pdf；文件大小：2KB\n简历附件：https://example.com/resume.pdf',
+      ],
+      brandData,
+    );
+
+    expect(unwrapHighConfidenceValue(result?.interview_info.upload_resume)).toBe(
+      'https://example.com/resume.pdf',
+    );
+  });
+
+  it('should not extract upload resume from unrelated PDF file names', () => {
+    const result = extractHighConfidenceFacts(
+      [
+        '[文件消息] 文件名：入职材料.pdf；文件地址：https://example.com/onboarding.pdf；文件大小：2KB',
+      ],
+      brandData,
+    );
+
+    expect(unwrapHighConfidenceValue(result?.interview_info.upload_resume)).toBeNull();
+  });
+
   it('should keep first scalar values across multiple messages', () => {
     const result = extractHighConfidenceFacts(
       [
@@ -85,10 +109,7 @@ describe('extractHighConfidenceFacts', () => {
   });
 
   it('should extract structured age even when message also contains requirement text', () => {
-    const result = extractHighConfidenceFacts(
-      ['年龄：22，要求：18岁以上'],
-      brandData,
-    );
+    const result = extractHighConfidenceFacts(['年龄：22，要求：18岁以上'], brandData);
 
     expect(unwrapHighConfidenceValue(result?.interview_info.age)).toBe('22');
   });
@@ -378,7 +399,9 @@ describe('extractHighConfidenceFacts', () => {
       source: 'rule',
       evidence: 'unique_district_alias',
     });
-    expect(unwrapHighConfidenceValue(district_plus_town?.preferences.district)).toContain('浦东新区');
+    expect(unwrapHighConfidenceValue(district_plus_town?.preferences.district)).toContain(
+      '浦东新区',
+    );
 
     // 同模式的另一种表达：区 + 街道
     const district_plus_street = extractHighConfidenceFacts(['徐汇区漕河泾街道'], brandData);
@@ -388,7 +411,9 @@ describe('extractHighConfidenceFacts', () => {
     // 同模式的另一种城市：海淀 + 镇
     const beijing_district_plus_town = extractHighConfidenceFacts(['海淀区清河镇'], brandData);
     expect(unwrapHighConfidenceValue(beijing_district_plus_town?.preferences.city)).toBe('北京');
-    expect(unwrapHighConfidenceValue(beijing_district_plus_town?.preferences.district)).toContain('海淀');
+    expect(unwrapHighConfidenceValue(beijing_district_plus_town?.preferences.district)).toContain(
+      '海淀',
+    );
   });
 
   it('should prefer the longest whitelist district when multiple keys could prefix match', () => {

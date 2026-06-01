@@ -23,6 +23,10 @@ import { buildSendStoreLocationTool } from './send-store-location.tool';
 import { buildRaiseRiskAlertTool } from './raise-risk-alert.tool';
 import { buildRequestHandoffTool } from './request-handoff.tool';
 import { buildSkipReplyTool } from './skip-reply.tool';
+import {
+  buildReadResumeAttachmentTool,
+  type ResumeAttachment,
+} from './read-resume-attachment.tool';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { BookingService } from '@biz/message/services/booking.service';
@@ -271,6 +275,15 @@ export class ToolRegistryService {
       );
     }
 
+    const resumeAttachments = this.resolveResumeAttachments(context);
+    if (resumeAttachments.length) {
+      const resumeTool = buildReadResumeAttachmentTool(resumeAttachments);
+      tools['read_resume_attachment'] = resumeTool(context);
+      this.logger.log(
+        `动态注入 read_resume_attachment 工具, resumeCount=${resumeAttachments.length}`,
+      );
+    }
+
     return tools;
   }
 
@@ -296,5 +309,57 @@ export class ToolRegistryService {
     const deleted = this.mcpTools.delete(name);
     if (deleted) this.logger.log('工具已移除: ' + name);
     return deleted;
+  }
+
+  private resolveResumeAttachments(context: ToolBuildContext): ResumeAttachment[] {
+    const urls = [
+      this.normalizeHighConfidenceText(context.highConfidenceFacts?.interview_info.upload_resume),
+      this.normalizeText(context.sessionFacts?.interview_info?.upload_resume),
+    ].filter((value): value is string => Boolean(value));
+
+    const uniqueUrls = Array.from(new Set(urls));
+    return uniqueUrls.map((fileUrl) => ({
+      fileUrl,
+      fileName: this.resolveResumeFileName(context, fileUrl),
+    }));
+  }
+
+  private normalizeHighConfidenceText(value: unknown): string | null {
+    if (value && typeof value === 'object' && 'value' in value) {
+      return this.normalizeText((value as { value?: unknown }).value);
+    }
+    return null;
+  }
+
+  private normalizeText(value: unknown): string | null {
+    return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+  }
+
+  private resolveResumeFileName(context: ToolBuildContext, fileUrl: string): string | undefined {
+    const content = this.collectTextParts(context.messages).join('\n');
+    for (const match of content.matchAll(
+      /\[文件消息\]\s*文件名\s*[：:]\s*([^；;\n\r]+)[；;]\s*文件地址\s*[：:]\s*([^；;\n\r]+)/gu,
+    )) {
+      const fileName = this.normalizeText(match[1]);
+      const matchedUrl = this.normalizeText(match[2]);
+      if (fileName && matchedUrl === fileUrl) return fileName;
+    }
+    return undefined;
+  }
+
+  private collectTextParts(value: unknown, depth = 0): string[] {
+    if (depth > 5 || value == null) return [];
+    if (typeof value === 'string') return [value];
+    if (Array.isArray(value)) {
+      return value.flatMap((item) => this.collectTextParts(item, depth + 1));
+    }
+    if (typeof value === 'object') {
+      const record = value as Record<string, unknown>;
+      return [
+        ...this.collectTextParts(record.text, depth + 1),
+        ...this.collectTextParts(record.content, depth + 1),
+      ];
+    }
+    return [];
   }
 }

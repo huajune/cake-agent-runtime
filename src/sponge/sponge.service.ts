@@ -15,6 +15,9 @@ import {
   BIOrderQueryParams,
   BIOrder,
   JobListApiResponseSchema,
+  UploadAttachmentApiResponseSchema,
+  UploadAttachmentFromUrlParams,
+  UploadAttachmentResult,
 } from './sponge.types';
 import { SpongeBiService } from './sponge-bi.service';
 import { stripNullish } from '@infra/utils/object.util';
@@ -22,6 +25,7 @@ import { stripNullish } from '@infra/utils/object.util';
 const JOB_LIST_API = 'https://k8s.duliday.com/persistence/ai/api/job/list';
 const BRAND_LIST_API = 'https://k8s.duliday.com/persistence/ai/api/brand/list';
 const INTERVIEW_BOOKING_API = 'https://k8s.duliday.com/persistence/a/supplier/entryUser';
+const UPLOAD_ATTACHMENT_API = 'https://k8s.duliday.com/persistence/a/supplier/uploadAttachment';
 const INTERVIEW_SCHEDULE_API = 'https://k8s.duliday.com/persistence/ai/api/interview/schedule';
 
 const DEFAULT_PAGE_NUM = 1;
@@ -29,6 +33,7 @@ const DEFAULT_PAGE_SIZE = 20;
 const DEFAULT_SORT = 'desc';
 const DEFAULT_SORT_FIELD = 'create_time';
 const BRAND_LIST_CACHE_TTL_MS = 30 * 60 * 1000;
+const MAX_ATTACHMENT_UPLOAD_BYTES = 20 * 1024 * 1024;
 
 /**
  * 海绵数据服务 — 杜力岱业务数据 HTTP 客户端
@@ -197,6 +202,71 @@ export class SpongeService {
   }
 
   /**
+   * 上传附件到海绵侧云存储。
+   *
+   * WeCom 回调里的 fileUrl 是临时下载地址，不能直接作为 entryUser.uploadResume。
+   * 报名前必须先上传附件，拿到 cloudStorageKey 后再传给预约接口。
+   */
+  async uploadAttachmentFromUrl(
+    params: UploadAttachmentFromUrlParams,
+  ): Promise<UploadAttachmentResult> {
+    if (!this.token) {
+      throw new Error('缺少 DULIDAY_API_TOKEN');
+    }
+
+    const sourceUrl = params.fileUrl.trim();
+    if (!sourceUrl) {
+      throw new Error('缺少附件下载地址');
+    }
+
+    const downloaded = await this.downloadAttachment(sourceUrl);
+    const fileName = this.resolveAttachmentFileName(
+      params.fileName,
+      sourceUrl,
+      downloaded.contentType,
+    );
+    const formData = new FormData();
+    formData.append(
+      'file',
+      new Blob([downloaded.buffer], { type: downloaded.contentType }),
+      fileName,
+    );
+
+    this.logger.log(`上传附件: ${fileName}, size=${downloaded.buffer.byteLength}`);
+
+    const response = await fetch(UPLOAD_ATTACHMENT_API, {
+      method: 'POST',
+      headers: {
+        'Duliday-Token': this.token,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(`上传附件失败: ${response.status} ${response.statusText}`);
+    }
+
+    const rawData = await response.json();
+    const parsed = UploadAttachmentApiResponseSchema.safeParse(rawData);
+    if (!parsed.success) {
+      throw new Error(
+        `上传附件返回结构异常: ${parsed.error.issues
+          .map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`)
+          .join('; ')}`,
+      );
+    }
+
+    if (parsed.data.code !== 0 || !parsed.data.data?.cloudStorageKey) {
+      throw new Error(`上传附件失败: ${parsed.data.message || `code=${parsed.data.code}`}`);
+    }
+
+    return {
+      fileName: parsed.data.data.fileName,
+      cloudStorageKey: parsed.data.data.cloudStorageKey,
+    };
+  }
+
+  /**
    * 获取品牌列表（含别名）
    *
    * 返回 { name, aliases }[] 格式，供事实提取时品牌别名映射使用。
@@ -287,6 +357,55 @@ export class SpongeService {
 
   async refreshBIDataSourceAndWait(): Promise<boolean> {
     return this.biService.refreshBIDataSourceAndWait();
+  }
+
+  private async downloadAttachment(
+    url: string,
+  ): Promise<{ buffer: Uint8Array; contentType: string }> {
+    const response = await fetch(url, { method: 'GET' });
+    if (!response.ok) {
+      throw new Error(`附件下载失败: ${response.status} ${response.statusText}`);
+    }
+
+    const contentLength = response.headers.get('content-length');
+    if (contentLength && Number(contentLength) > MAX_ATTACHMENT_UPLOAD_BYTES) {
+      throw new Error(`附件超过大小限制: ${contentLength} bytes`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    if (arrayBuffer.byteLength > MAX_ATTACHMENT_UPLOAD_BYTES) {
+      throw new Error(`附件超过大小限制: ${arrayBuffer.byteLength} bytes`);
+    }
+
+    return {
+      buffer: new Uint8Array(arrayBuffer),
+      contentType: response.headers.get('content-type') || 'application/octet-stream',
+    };
+  }
+
+  private resolveAttachmentFileName(
+    explicitName: string | undefined,
+    sourceUrl: string,
+    contentType: string,
+  ): string {
+    const explicit = this.sanitizeFileName(explicitName);
+    if (explicit) return explicit;
+
+    try {
+      const pathname = new URL(sourceUrl).pathname;
+      const fromUrl = this.sanitizeFileName(decodeURIComponent(pathname.split('/').pop() ?? ''));
+      if (fromUrl) return fromUrl;
+    } catch {
+      // ignore invalid source url for filename fallback
+    }
+
+    return contentType.includes('pdf') ? 'resume.pdf' : 'attachment';
+  }
+
+  private sanitizeFileName(value: string | undefined): string | null {
+    if (!value) return null;
+    const sanitized = value.trim().replace(/[\\/]/g, '_');
+    return sanitized.length > 0 ? sanitized : null;
   }
 
   // ==================== 海绵面试名单 ====================

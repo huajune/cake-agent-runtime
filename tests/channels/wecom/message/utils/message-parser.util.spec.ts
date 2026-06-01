@@ -1,5 +1,8 @@
 import { MessageParser } from '@wecom/message/utils/message-parser.util';
-import { EnterpriseMessageCallbackDto, LocationPayload } from '@wecom/message/ingress/message-callback.dto';
+import {
+  EnterpriseMessageCallbackDto,
+  LocationPayload,
+} from '@wecom/message/ingress/message-callback.dto';
 import { MessageType, ContactType, MessageSource } from '@enums/message-callback.enum';
 import { ScenarioType } from '@enums/agent.enum';
 
@@ -134,6 +137,36 @@ describe('MessageParser', () => {
       expect(result.content).toBe('[图片消息]');
     });
 
+    it('should expose fileUrl as a resume attachment when the file name looks like a resume', () => {
+      const messageData = buildMessageData({
+        messageType: MessageType.FILE,
+        payload: {
+          name: '张三简历.pdf',
+          fileUrl: 'https://example.com/resume.pdf',
+          size: 2048,
+        },
+      });
+      const result = MessageParser.parse(messageData);
+      expect(result.content).toBe(
+        '[文件消息] 文件名：张三简历.pdf；文件地址：https://example.com/resume.pdf；文件大小：2KB\n简历附件：https://example.com/resume.pdf',
+      );
+    });
+
+    it('should not treat every PDF file as a resume attachment', () => {
+      const messageData = buildMessageData({
+        messageType: MessageType.FILE,
+        payload: {
+          name: '入职材料.pdf',
+          fileUrl: 'https://example.com/onboarding.pdf',
+          size: 2048,
+        },
+      });
+      const result = MessageParser.parse(messageData);
+      expect(result.content).toBe(
+        '[文件消息] 文件名：入职材料.pdf；文件地址：https://example.com/onboarding.pdf；文件大小：2KB',
+      );
+    });
+
     it('should extract content for voice messages (group-level: url, no STT)', () => {
       const messageData = buildMessageData({
         messageType: MessageType.VOICE,
@@ -146,7 +179,11 @@ describe('MessageParser', () => {
     it('should extract content for voice messages (enterprise-level: voiceUrl + STT)', () => {
       const messageData = buildMessageData({
         messageType: MessageType.VOICE,
-        payload: { voiceUrl: 'http://example.com/voice.mp3', duration: 2.268, text: '分析跟调整那。' },
+        payload: {
+          voiceUrl: 'http://example.com/voice.mp3',
+          duration: 2.268,
+          text: '分析跟调整那。',
+        },
       });
       const result = MessageParser.parse(messageData);
       expect(result.content).toBe('[语音转文字，时长2秒] 分析跟调整那。');
@@ -164,7 +201,13 @@ describe('MessageParser', () => {
     it('should extract content for mini program messages', () => {
       const messageData = buildMessageData({
         messageType: MessageType.MINI_PROGRAM,
-        payload: { appId: 'wx123', username: 'gh_xxx', title: 'Boss直聘', thumbUrl: 'http://thumb.jpg', description: '查看岗位' },
+        payload: {
+          appId: 'wx123',
+          username: 'gh_xxx',
+          title: 'Boss直聘',
+          thumbUrl: 'http://thumb.jpg',
+          description: '查看岗位',
+        },
       });
       const result = MessageParser.parse(messageData);
       expect(result.content).toBe('[小程序] Boss直聘 - 查看岗位');
@@ -288,7 +331,9 @@ describe('MessageParser', () => {
         },
       });
       const result = MessageParser.extractContent(messageData);
-      expect(result).toBe('[位置分享] 上海东方明珠（上海市浦东新区世纪大道1号） [经纬度:31.2397,121.4996]');
+      expect(result).toBe(
+        '[位置分享] 上海东方明珠（上海市浦东新区世纪大道1号） [经纬度:31.2397,121.4996]',
+      );
     });
 
     it('should return empty string for unsupported message types', () => {
