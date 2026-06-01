@@ -235,6 +235,13 @@ export class UserHostingService {
   }
 
   /**
+   * 按日期范围统计去重活跃用户数。
+   */
+  async countActiveUsersByDateRange(startDate: Date, endDate: Date): Promise<number> {
+    return this.repository.countActiveUsersByDateRange(startDate, endDate);
+  }
+
+  /**
    * 按日期范围查询每日托管趋势（从 user_activity 聚合）。
    */
   async getDailyActivityStats(startDate: Date, endDate: Date): Promise<DailyUserActivityStats[]> {

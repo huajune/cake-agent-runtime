@@ -191,6 +191,84 @@ export class UserHostingRepository extends BaseRepository {
   }
 
   /**
+   * 按日期范围统计去重活跃用户数。
+   *
+   * 列表型 RPC 会受 Supabase/PostgREST max_rows 限制；Dashboard 卡片只需要总数，
+   * 因此走数据库侧 COUNT(DISTINCT chat_id)，避免真实用户数超过 1000 时被截断。
+   */
+  async countActiveUsersByDateRange(startDate: Date, endDate: Date): Promise<number> {
+    if (!this.isAvailable()) {
+      return 0;
+    }
+
+    try {
+      const result = await this.rpc<number | string>(
+        'count_active_users_from_user_activity_by_range',
+        {
+          p_start_date: startDate.toISOString(),
+          p_end_date: endDate.toISOString(),
+        },
+      );
+
+      if (result !== null && result !== undefined) {
+        const count = Number(result);
+        if (Number.isFinite(count)) {
+          return count;
+        }
+      }
+
+      return this.countActiveUsersByDateRangeFromTable(startDate, endDate);
+    } catch (error) {
+      this.logger.error('统计 user_activity 活跃用户数失败', error);
+      return this.countActiveUsersByDateRangeFromTable(startDate, endDate);
+    }
+  }
+
+  private async countActiveUsersByDateRangeFromTable(
+    startDate: Date,
+    endDate: Date,
+  ): Promise<number> {
+    const start = formatLocalDate(startDate);
+    const end = formatLocalDate(endDate);
+    const pageSize = 1000;
+    const chatIds = new Set<string>();
+
+    try {
+      for (let from = 0; ; from += pageSize) {
+        const { data, error } = await this.getClient()
+          .from('user_activity')
+          .select('chat_id')
+          .gte('activity_date', start)
+          .lte('activity_date', end)
+          .order('activity_date', { ascending: true })
+          .order('chat_id', { ascending: true })
+          .range(from, from + pageSize - 1);
+
+        if (error) {
+          this.handleError('SELECT count user_activity', error);
+          return chatIds.size;
+        }
+
+        const rows = (data as Array<{ chat_id: string | null }>) ?? [];
+        for (const row of rows) {
+          if (row.chat_id) {
+            chatIds.add(row.chat_id);
+          }
+        }
+
+        if (rows.length < pageSize) {
+          break;
+        }
+      }
+
+      return chatIds.size;
+    } catch (error) {
+      this.logger.error('分页统计 user_activity 活跃用户数失败', error);
+      return chatIds.size;
+    }
+  }
+
+  /**
    * 按天聚合 user_activity。
    *
    * Dashboard / users 页面展示的是长期趋势；message_processing_records 只保留短期流水，
