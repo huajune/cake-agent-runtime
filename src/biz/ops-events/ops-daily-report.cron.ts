@@ -35,6 +35,8 @@ interface ReportColumn {
 const REPORT_COLUMNS: ReportColumn[] = [
   { fieldName: '日期', kind: 'date', value: (r) => r.report_date },
   { fieldName: '招聘经理', kind: 'text', value: (r) => r.manager_name },
+  // 「账号」有意与「招聘经理」同取 manager_name：本系统每个托管账号即以招聘经理命名（wecomUserId 可读名）。
+  // 不取 r.bot_im_id —— 那是数字 wxid，飞书表给人看时不可读。
   { fieldName: '账号', kind: 'text', value: (r) => r.manager_name },
   { fieldName: '小组', kind: 'text', value: (r) => r.group_name },
   { fieldName: '加好友数', kind: 'number', value: (r) => r.friends_added_count },

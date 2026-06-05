@@ -174,6 +174,26 @@ interface BrandCandidate {
   brandName: string;
   alias: string;
   normalized: string;
+  /**
+   * 是否允许子串包含匹配。
+   * 短别称（如 "报""全家""店""mc"）做包含会误命中日常词（"报名""我们全家"），
+   * 因此仅对足够长、辨识度高的别称启用包含：中文 ≥3 字、英数 ≥4 字。
+   */
+  containEligible: boolean;
+}
+
+/**
+ * 通用短语别称黑名单（归一化形态）：这些别称虽然长度达标，但本身是日常用语/同音词，
+ * 做子串包含会把普通句子误判为品牌意向（如 "给我来一份工作" 命中 来伊份 的别称 "来一份"）。
+ * 命中黑名单的别称降级为仅全等匹配——用户单独说 "来一份" 仍能命中，嵌在句子里则不命中。
+ */
+const BRAND_GENERIC_ALIAS_BLOCKLIST = new Set(['来一份', '来1份']);
+
+/** 别称是否长到可以安全地做子串包含匹配。 */
+function isBrandContainEligible(normalized: string): boolean {
+  if (BRAND_GENERIC_ALIAS_BLOCKLIST.has(normalized)) return false;
+  const isCjk = /[一-龥]/.test(normalized);
+  return isCjk ? normalized.length >= 3 : normalized.length >= 4;
 }
 
 interface LocationSignals {
@@ -419,16 +439,24 @@ export function detectBrandAliasHints(
     const tokens = buildExactMatchTokens(message);
     if (tokens.length === 0) continue;
 
-    for (const token of tokens) {
-      const matched = candidates.find((candidate) => candidate.normalized === token);
+    // 整条消息的归一化形态，用于长别称的子串包含匹配，
+    // 这样 "我要瑞幸咖啡兼职" 这类品牌嵌在句子里的说法也能命中，不再依赖降噪表恰好剥干净。
+    const normalizedMessage = normalizeForBrandMatch(message);
+
+    for (const candidate of candidates) {
+      // 短别称：仍走 token 全等，避免 "报"→"报名"、"全家"→"我们全家" 等误命中。
+      // 长别称：在全等之外，额外允许整句包含该别称。
+      const matched =
+        tokens.some((token) => token === candidate.normalized) ||
+        (candidate.containEligible && normalizedMessage.includes(candidate.normalized));
       if (!matched) continue;
 
-      const dedupeKey = `${matched.brandName}::${message}`;
+      const dedupeKey = `${candidate.brandName}::${message}`;
       if (seen.has(dedupeKey)) continue;
 
       hints.push({
-        brandName: matched.brandName,
-        matchedAlias: matched.alias,
+        brandName: candidate.brandName,
+        matchedAlias: candidate.alias,
         sourceText: message,
       });
       seen.add(dedupeKey);
@@ -1270,11 +1298,15 @@ function extractPositionShareLocations(message: string): string[] {
 function buildBrandCandidates(brandData: BrandItem[]): BrandCandidate[] {
   return brandData
     .flatMap((brand) => [brand.name, ...(brand.aliases ?? [])].map((alias) => ({ brand, alias })))
-    .map(({ brand, alias }) => ({
-      brandName: brand.name,
-      alias,
-      normalized: normalizeForBrandMatch(alias),
-    }))
+    .map(({ brand, alias }) => {
+      const normalized = normalizeForBrandMatch(alias);
+      return {
+        brandName: brand.name,
+        alias,
+        normalized,
+        containEligible: isBrandContainEligible(normalized),
+      };
+    })
     .filter((candidate) => candidate.normalized.length > 0)
     .sort((a, b) => b.normalized.length - a.normalized.length);
 }

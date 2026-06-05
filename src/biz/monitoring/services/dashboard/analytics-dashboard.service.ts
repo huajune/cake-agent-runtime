@@ -307,10 +307,10 @@ export class AnalyticsDashboardService {
       const activeUsersLastHour = lastHourOverview.activeUsers;
 
       let dailyTrend: DailyTrendData[];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let minuteTrend: any[];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let tokenTrendData: any[];
+      // minuteTrend / tokenTrendData 按 timeRange 分支承载不同形状（today=分钟/小时趋势，
+      // 其它=日趋势），消费处按分支 as narrowing；故声明为 unknown[]（非 any），强制下游显式断言。
+      let minuteTrend: unknown[];
+      let tokenTrendData: unknown[];
 
       if (timeRange === 'today') {
         dailyTrend = dailyProjectionFresh

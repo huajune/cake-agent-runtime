@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { BotGroupResolverService } from '@biz/ops-events/bot-group-resolver.service';
 import { addLocalDays, formatLocalDate, getLocalDayStart } from '@infra/utils/date.util';
 import { OpsEventsAnalyticsRepository } from './repositories/ops-events-analytics.repository';
@@ -150,6 +150,7 @@ const HANDOFF_REASON_LABELS: Record<string, string> = {
 
 @Injectable()
 export class ConversionAnalyticsService {
+  private readonly logger = new Logger(ConversionAnalyticsService.name);
   private readonly rowCache = new Map<string, RowCacheEntry>();
 
   constructor(
@@ -953,6 +954,9 @@ export class ConversionAnalyticsService {
       if (current?.promise === promise) {
         this.rowCache.delete(cacheKey);
       }
+      this.logger.warn(
+        `转化分析行缓存加载失败 cacheKey=${cacheKey}: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw error;
     });
     this.rowCache.set(cacheKey, { expiresAt: now + ROW_CACHE_TTL_MS, promise });
