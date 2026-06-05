@@ -7,6 +7,7 @@ import {
   formatLocalMinute,
   getLocalDayStart,
   getLocalHourStart,
+  parseLocalDateStart,
 } from '@infra/utils/date.util';
 import {
   MessageProcessingRecord,
@@ -34,6 +35,7 @@ import {
 import { MonitoringCacheService } from '../tracking/monitoring-cache.service';
 import { MessageProcessingService } from '@biz/message/services/message-processing.service';
 import { BookingService } from '@biz/message/services/booking.service';
+import { DailyOpsReportRepository } from '@biz/ops-events/daily-ops-report.repository';
 import { MonitoringHourlyStatsRepository } from '../../repositories/hourly-stats.repository';
 import { MonitoringDailyStatsRepository } from '../../repositories/daily-stats.repository';
 import { MonitoringErrorLogRepository } from '../../repositories/error-log.repository';
@@ -63,7 +65,6 @@ type DashboardOverviewResponse = {
     totalMessages: number;
     successRate: number;
     avgDuration: number;
-    activeUsers: number;
   };
   dailyTrend: DailyStats[];
   tokenTrend: { time: string; tokenUsage: number; messageCount: number }[];
@@ -106,8 +107,10 @@ const TREND_HOURS_BY_RANGE: Record<TimeRange, number> = {
 export class AnalyticsDashboardService {
   private readonly logger = new Logger(AnalyticsDashboardService.name);
   private readonly DEFAULT_WINDOW_HOURS = 24;
+  /** 活跃用户口径：近 1 小时内有消息往来的去重用户（实时脉搏，独立于所选时间范围） */
+  private readonly ACTIVE_USER_WINDOW_MS = 60 * 60 * 1000;
   private readonly overviewCache = new Map<
-    TimeRange,
+    string,
     { expireAt: number; value: DashboardOverviewResponse }
   >();
 
@@ -126,6 +129,7 @@ export class AnalyticsDashboardService {
     private readonly messageProcessor: MessageProcessor,
     private readonly analyticsMetricsService: AnalyticsMetricsService,
     private readonly analyticsTrendBuilder: AnalyticsTrendBuilderService,
+    private readonly dailyOpsReportRepository: DailyOpsReportRepository,
   ) {}
 
   // ========================================
@@ -238,9 +242,15 @@ export class AnalyticsDashboardService {
    */
   async getDashboardOverviewAsync(
     timeRange: TimeRange = 'today',
+    groups: string[] = [],
   ): Promise<DashboardOverviewResponse> {
     try {
-      const cached = this.getCachedDashboardOverview(timeRange);
+      const normalizedGroups = this.normalizeGroups(groups);
+      if (normalizedGroups.length > 0) {
+        return this.getDashboardOverviewByGroups(timeRange, normalizedGroups);
+      }
+
+      const cached = this.getCachedDashboardOverview(timeRange, normalizedGroups);
       if (cached) {
         return cached;
       }
@@ -258,19 +268,43 @@ export class AnalyticsDashboardService {
       const hourlyProjectionFresh = await this.isHourlyProjectionFresh(currentEndDate);
       const dailyProjectionFresh = await this.isDailyProjectionFresh(currentEndDate);
 
+      // 活跃用户口径：近 1 小时内有消息往来的去重用户，与所选时间范围解耦（固定 1h 滚动窗口）
+      const activeUserWindowStart = new Date(Date.now() - this.ACTIVE_USER_WINDOW_MS);
+      const activeUserWindowEnd = new Date();
+
       const [
         currentOverview,
         previousOverview,
         currentFallback,
         previousFallback,
         manualIntervention,
+        lastHourOverview,
       ] = await Promise.all([
-        this.monitoringRepository.getDashboardOverviewStats(currentStartDate, currentEndDate),
-        this.monitoringRepository.getDashboardOverviewStats(previousStartDate, previousEndDate),
+        this.getOverviewStatsForRange(
+          currentStartDate,
+          currentEndDate,
+          timeRange === 'today',
+          dailyProjectionFresh,
+        ),
+        this.getOverviewStatsForRange(
+          previousStartDate,
+          previousEndDate,
+          timeRange === 'today',
+          dailyProjectionFresh,
+        ),
         this.monitoringRepository.getDashboardFallbackStats(currentStartDate, currentEndDate),
         this.monitoringRepository.getDashboardFallbackStats(previousStartDate, previousEndDate),
         this.getManualInterventionStatsFromDatabase(currentStartDate, currentEndDate),
+        // 近 1 小时活跃用户始终走实时（1h 滚动窗口，与所选范围解耦）。
+        this.monitoringRepository.getDashboardOverviewStats(
+          activeUserWindowStart,
+          activeUserWindowEnd,
+        ),
       ]);
+
+      // 卡片展示用「近 1 小时活跃用户」；currentOverview.activeUsers（范围内去重用户数）
+      // 仍保留给业务计算（咨询转化率分母 / 托管用户本日兜底）使用，避免被 1h 口径污染。
+      const activeUsersLastHour = lastHourOverview.activeUsers;
 
       let dailyTrend: DailyTrendData[];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -361,7 +395,7 @@ export class AnalyticsDashboardService {
         failureCount: currentOverview.failureCount,
         successRate: currentOverview.successRate,
         avgDuration: currentOverview.avgDuration,
-        activeUsers: currentOverview.activeUsers,
+        activeUsers: activeUsersLastHour,
         activeChats: currentOverview.activeChats,
         totalTokenUsage: currentOverview.totalTokenUsage,
       };
@@ -377,10 +411,6 @@ export class AnalyticsDashboardService {
         avgDuration: this.calculatePercentChange(
           currentOverview.avgDuration,
           previousOverview.avgDuration,
-        ),
-        activeUsers: this.calculatePercentChange(
-          currentOverview.activeUsers,
-          previousOverview.activeUsers,
         ),
       };
 
@@ -533,7 +563,7 @@ export class AnalyticsDashboardService {
         fallbackDelta,
         manualIntervention,
       };
-      this.setCachedDashboardOverview(timeRange, response);
+      this.setCachedDashboardOverview(timeRange, normalizedGroups, response);
       return response;
     } catch (error) {
       this.logger.error('获取Dashboard概览数据失败:', error);
@@ -541,20 +571,309 @@ export class AnalyticsDashboardService {
     }
   }
 
-  private getCachedDashboardOverview(timeRange: TimeRange): DashboardOverviewResponse | null {
-    const cached = this.overviewCache.get(timeRange);
+  private getCachedDashboardOverview(
+    timeRange: TimeRange,
+    groups: string[] = [],
+  ): DashboardOverviewResponse | null {
+    const cached = this.overviewCache.get(this.getOverviewCacheKey(timeRange, groups));
     if (!cached || cached.expireAt <= Date.now()) {
-      this.overviewCache.delete(timeRange);
+      this.overviewCache.delete(this.getOverviewCacheKey(timeRange, groups));
       return null;
     }
     return cached.value;
   }
 
-  private setCachedDashboardOverview(timeRange: TimeRange, value: DashboardOverviewResponse): void {
-    this.overviewCache.set(timeRange, {
+  private setCachedDashboardOverview(
+    timeRange: TimeRange,
+    groups: string[],
+    value: DashboardOverviewResponse,
+  ): void {
+    this.overviewCache.set(this.getOverviewCacheKey(timeRange, groups), {
       value,
       expireAt: Date.now() + this.getOverviewCacheTtlMs(timeRange),
     });
+  }
+
+  private getOverviewCacheKey(timeRange: TimeRange, groups: string[] = []): string {
+    return groups.length > 0 ? `${timeRange}:${groups.join('|')}` : timeRange;
+  }
+
+  private async getDashboardOverviewByGroups(
+    timeRange: TimeRange,
+    groups: string[],
+  ): Promise<DashboardOverviewResponse> {
+    const cached = this.getCachedDashboardOverview(timeRange, groups);
+    if (cached) {
+      return cached;
+    }
+
+    const timeRanges = calculateDashboardTimeRanges(timeRange);
+    const { currentStart, currentEnd, previousStart, previousEnd } = timeRanges;
+    const currentStartDate = new Date(currentStart);
+    const currentEndDate = new Date(currentEnd);
+    const previousStartDate = new Date(previousStart);
+    const previousEndDate = new Date(previousEnd);
+    const activeUserWindowStart = new Date(Date.now() - this.ACTIVE_USER_WINDOW_MS);
+    const activeUserWindowEnd = new Date();
+
+    // 小组 chat_id 集合按 (start,end,groups) 各算一次即可复用：当前/对比/近1h 三窗口 + 托管用户数
+    // 都从这三个集合派生，避免对 user_activity 重复分页扫描（此前 getGroupActiveUserCount 会再扫一遍）。
+    const [currentChatIds, previousChatIds, activeUserChatIds] = await Promise.all([
+      this.getGroupChatIds(currentStartDate, currentEndDate, groups),
+      this.getGroupChatIds(previousStartDate, previousEndDate, groups),
+      this.getGroupChatIds(activeUserWindowStart, activeUserWindowEnd, groups),
+    ]);
+
+    const [currentRecords, previousRecords, activeUserRecords] = await Promise.all([
+      this.getGroupFilteredRecords(currentChatIds, currentStartDate, currentEndDate, timeRange),
+      this.getGroupFilteredRecords(previousChatIds, previousStartDate, previousEndDate, timeRange),
+      this.getGroupFilteredRecords(
+        activeUserChatIds,
+        activeUserWindowStart,
+        activeUserWindowEnd,
+        'today',
+      ),
+    ]);
+
+    const currentOverview = this.calculateOverviewStatsFromRecords(
+      currentRecords,
+      this.countUniqueUsers(activeUserRecords),
+    );
+    const previousOverview = this.calculateOverviewStatsFromRecords(
+      previousRecords,
+      this.countUniqueUsers(previousRecords),
+    );
+    const currentFallback = this.calculateFallbackStats(currentRecords);
+    const previousFallback = this.calculateFallbackStats(previousRecords);
+    const manualIntervention = this.calculateManualInterventionStats(currentRecords);
+
+    const rawBusinessTrend = this.analyticsTrendBuilder.buildBusinessTrend(
+      currentRecords,
+      timeRange,
+    );
+    const previousBusinessTrend = this.analyticsTrendBuilder.buildBusinessTrend(
+      previousRecords,
+      timeRange,
+    );
+    // 托管用户数 = 该窗口小组去重 chat_id 数，直接复用上面已算好的集合，不再二次扫描。
+    const currentManagedUsers = currentChatIds.size;
+    const previousManagedUsers = previousChatIds.size;
+
+    const business = this.buildBusinessFromTrend(currentManagedUsers, rawBusinessTrend);
+    const previousBusiness = this.buildBusinessFromTrend(
+      previousManagedUsers,
+      previousBusinessTrend,
+    );
+
+    const response: DashboardOverviewResponse = {
+      timeRange,
+      overview: currentOverview,
+      overviewDelta: {
+        totalMessages: this.calculatePercentChange(
+          currentOverview.totalMessages,
+          previousOverview.totalMessages,
+        ),
+        successRate: parseFloat(
+          (currentOverview.successRate - previousOverview.successRate).toFixed(2),
+        ),
+        avgDuration: this.calculatePercentChange(
+          currentOverview.avgDuration,
+          previousOverview.avgDuration,
+        ),
+      },
+      dailyTrend: this.buildDailyTrendFromRecords(currentRecords),
+      tokenTrend: this.buildTokenTrendFromRecords(currentRecords, timeRange),
+      businessTrend: rawBusinessTrend,
+      responseTrend: this.analyticsTrendBuilder.buildResponseTrend(currentRecords, timeRange),
+      business,
+      businessDelta: this.calculateBusinessDelta(business, previousBusiness),
+      fallback: currentFallback,
+      fallbackDelta: this.calculateFallbackDelta(currentFallback, previousFallback),
+      manualIntervention,
+    };
+
+    this.setCachedDashboardOverview(timeRange, groups, response);
+    return response;
+  }
+
+  private normalizeGroups(groups: string[]): string[] {
+    return Array.from(new Set(groups.map((group) => group.trim()).filter(Boolean))).sort();
+  }
+
+  private async getGroupFilteredRecords(
+    allowedChatIds: Set<string>,
+    startDate: Date,
+    endDate: Date,
+    timeRange: TimeRange,
+  ): Promise<MessageProcessingRecord[]> {
+    if (allowedChatIds.size === 0) {
+      return [];
+    }
+
+    // 把小组的 chat_id 过滤下推到 DB：否则会先按 received_at desc 取最近 N 条（跨全部小组）
+    // 再在内存过滤本小组，高流量窗口下本小组偏旧的记录会被 limit 截掉、指标被低估。
+    // 下推后 limit 只约束本小组的记录。内存 filter 保留作兜底。
+    const result = await this.messageProcessingService.getRecordsByTimestamps({
+      startTime: startDate.getTime(),
+      endTime: endDate.getTime(),
+      chatIds: Array.from(allowedChatIds),
+      limit: DETAIL_RECORD_LIMIT_BY_RANGE[timeRange] ?? DETAIL_RECORD_LIMIT_BY_RANGE.today,
+    });
+
+    return toMessageProcessingRecords(result.records).filter((record) =>
+      allowedChatIds.has(record.chatId),
+    );
+  }
+
+  private async getGroupChatIds(
+    startDate: Date,
+    endDate: Date,
+    groups: string[],
+  ): Promise<Set<string>> {
+    // 把 group_name 过滤下推到 DB 并分页：避免「拉全量活跃列表再内存筛」在活跃用户超
+    // PostgREST max_rows(默认 1000) 时被截断，导致本小组 chatIds / 活跃数 / 后续消息统计低估。
+    return this.userHostingService.getActiveChatIdsByGroups(startDate, endDate, groups);
+  }
+
+  private calculateOverviewStatsFromRecords(
+    records: MessageProcessingRecord[],
+    activeUsers: number,
+  ): DashboardOverviewStats & { activeUsers: number; activeChats: number } {
+    const totalMessages = records.length;
+    const successCount = records.filter((record) => record.status === 'success').length;
+    const failureCount = totalMessages - successCount;
+    const durations = records
+      .filter((record) => record.totalDuration !== undefined)
+      .map((record) => record.totalDuration ?? 0);
+    const totalTokenUsage = records.reduce((sum, record) => sum + (record.tokenUsage ?? 0), 0);
+
+    return {
+      totalMessages,
+      successCount,
+      failureCount,
+      successRate:
+        totalMessages > 0 ? parseFloat(((successCount / totalMessages) * 100).toFixed(2)) : 0,
+      avgDuration:
+        durations.length > 0
+          ? parseFloat(
+              (durations.reduce((sum, value) => sum + value, 0) / durations.length).toFixed(0),
+            )
+          : 0,
+      activeUsers,
+      activeChats: new Set(records.map((record) => record.chatId)).size,
+      totalTokenUsage,
+    };
+  }
+
+  private buildDailyTrendFromRecords(records: MessageProcessingRecord[]): DailyStats[] {
+    const buckets = new Map<
+      string,
+      {
+        messageCount: number;
+        successCount: number;
+        totalDuration: number;
+        durationCount: number;
+        tokenUsage: number;
+        users: Set<string>;
+      }
+    >();
+
+    for (const record of records) {
+      const date = formatLocalDate(new Date(record.receivedAt));
+      const bucket =
+        buckets.get(date) ??
+        ({
+          messageCount: 0,
+          successCount: 0,
+          totalDuration: 0,
+          durationCount: 0,
+          tokenUsage: 0,
+          users: new Set<string>(),
+        } satisfies {
+          messageCount: number;
+          successCount: number;
+          totalDuration: number;
+          durationCount: number;
+          tokenUsage: number;
+          users: Set<string>;
+        });
+
+      bucket.messageCount += 1;
+      if (record.status === 'success') bucket.successCount += 1;
+      if (record.totalDuration !== undefined) {
+        bucket.totalDuration += record.totalDuration;
+        bucket.durationCount += 1;
+      }
+      bucket.tokenUsage += record.tokenUsage ?? 0;
+      if (record.userId) bucket.users.add(record.userId);
+      buckets.set(date, bucket);
+    }
+
+    return Array.from(buckets.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, bucket]) => ({
+        date,
+        messageCount: bucket.messageCount,
+        successCount: bucket.successCount,
+        avgDuration:
+          bucket.durationCount > 0 ? Math.round(bucket.totalDuration / bucket.durationCount) : 0,
+        tokenUsage: bucket.tokenUsage,
+        uniqueUsers: bucket.users.size,
+      }));
+  }
+
+  private buildTokenTrendFromRecords(
+    records: MessageProcessingRecord[],
+    timeRange: TimeRange,
+  ): { time: string; tokenUsage: number; messageCount: number }[] {
+    const buckets = new Map<string, { tokenUsage: number; messageCount: number }>();
+
+    for (const record of records) {
+      const date = new Date(record.receivedAt);
+      const key =
+        timeRange === 'today' ? formatLocalMinute(getLocalHourStart(date)) : formatLocalDate(date);
+      const bucket = buckets.get(key) ?? { tokenUsage: 0, messageCount: 0 };
+      bucket.tokenUsage += record.tokenUsage ?? 0;
+      bucket.messageCount += 1;
+      buckets.set(key, bucket);
+    }
+
+    return Array.from(buckets.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([time, bucket]) => ({ time, ...bucket }));
+  }
+
+  private buildBusinessFromTrend(
+    activeUsers: number,
+    trend: BusinessMetricTrendPoint[],
+  ): BusinessMetricsSnapshot {
+    const bookingAttempts = trend.reduce((sum, point) => sum + point.bookingAttempts, 0);
+    const successfulBookings = trend.reduce((sum, point) => sum + point.successfulBookings, 0);
+
+    return {
+      consultations: { total: activeUsers, new: activeUsers },
+      bookings: {
+        attempts: bookingAttempts,
+        successful: successfulBookings,
+        failed: Math.max(0, bookingAttempts - successfulBookings),
+        successRate:
+          bookingAttempts > 0
+            ? parseFloat(((successfulBookings / bookingAttempts) * 100).toFixed(2))
+            : 0,
+      },
+      conversion: {
+        consultationToBooking:
+          activeUsers > 0 ? parseFloat(((successfulBookings / activeUsers) * 100).toFixed(2)) : 0,
+      },
+    };
+  }
+
+  private countUniqueUsers(records: MessageProcessingRecord[]): number {
+    const ids = new Set<string>();
+    for (const record of records) {
+      ids.add(record.userId || record.chatId);
+    }
+    return ids.size;
   }
 
   private getOverviewCacheTtlMs(timeRange: TimeRange): number {
@@ -918,9 +1237,12 @@ export class AnalyticsDashboardService {
     }
 
     try {
-      const users = await this.userHostingService.getActiveUsersByDateRange(startDate, endDate);
-      if (users.length > 0 || fallbackCount === 0) {
-        return users.length;
+      const userCount = await this.userHostingService.countActiveUsersByDateRange(
+        startDate,
+        endDate,
+      );
+      if (userCount > 0 || fallbackCount === 0) {
+        return userCount;
       }
       return fallbackCount;
     } catch (error) {
@@ -1081,7 +1403,118 @@ export class AnalyticsDashboardService {
     };
   }
 
+  /**
+   * 人工介入触发统计（request_handoff + raise_risk_alert 工具调用次数）。
+   *
+   * 性能优化：历史已聚合小时从 monitoring_hourly_stats.tool_stats 汇总，当前未聚合的小时
+   * 用实时查询补尾（窗口小、扫 records 很快），不再对整段范围扫 message_processing_records.tool_calls。
+   * 小时聚合断更时回退到原始查询。
+   *
+   * 注意口径：这里仍是「工具调用次数」（含被 booking 守卫挡掉的 request_handoff）。
+   * 「真实转人工次数」是 daily_ops_report.handoff_count（带守卫后才计），二者语义不同。
+   */
   private async getManualInterventionStatsFromDatabase(
+    startDate: Date,
+    endDate: Date,
+  ): Promise<DashboardManualInterventionStats> {
+    try {
+      const hourlyFresh = await this.isHourlyProjectionFresh(endDate);
+      if (!hourlyFresh) {
+        return this.getManualInterventionStatsFromRecords(startDate, endDate);
+      }
+
+      // 历史小时走聚合表，当前小时（tailStart..endDate）实时补。
+      const hourStart = this.getHourStart(endDate);
+      const tailStart = hourStart > startDate ? hourStart : startDate;
+
+      const [hourlyRows, realtimeTail] = await Promise.all([
+        this.hourlyStatsRepository.getHourlyStatsByDateRange(startDate, tailStart),
+        this.monitoringRepository.getDashboardToolStats(tailStart, endDate),
+      ]);
+
+      let handoffCount = 0;
+      let riskAlertCount = 0;
+      for (const row of hourlyRows) {
+        handoffCount += row.toolStats?.request_handoff ?? 0;
+        riskAlertCount += row.toolStats?.raise_risk_alert ?? 0;
+      }
+      handoffCount +=
+        realtimeTail.find((item) => item.toolName === 'request_handoff')?.useCount ?? 0;
+      riskAlertCount +=
+        realtimeTail.find((item) => item.toolName === 'raise_risk_alert')?.useCount ?? 0;
+
+      return {
+        totalCount: handoffCount + riskAlertCount,
+        handoffCount,
+        riskAlertCount,
+      };
+    } catch (error) {
+      this.logger.warn('[Dashboard] 人工介入聚合查询失败，回退原始查询:', error);
+      return this.getManualInterventionStatsFromRecords(startDate, endDate);
+    }
+  }
+
+  /**
+   * 概览核心统计。
+   *
+   * - 今日 / 日聚合断更 → 实时扫 message_processing_records（保证今日实时性 + 断更兜底）。
+   * - 非今日 → 标量指标从 monitoring_daily_stats 汇总；活跃用户/会话用托管口径
+   *   （user_activity 去重），不再对整段范围扫流水做 COUNT(DISTINCT)。
+   *
+   * 业务口径（运营确认）：非今日范围的「活跃用户 = 活跃会话 = 托管数」。
+   * avg_duration 用 message_count 加权平均（聚合表无 duration_sum，加权是最优近似）。
+   */
+  private async getOverviewStatsForRange(
+    startDate: Date,
+    endDate: Date,
+    isToday: boolean,
+    dailyFresh: boolean,
+  ): Promise<DashboardOverviewStats> {
+    if (isToday || !dailyFresh) {
+      return this.monitoringRepository.getDashboardOverviewStats(startDate, endDate);
+    }
+
+    try {
+      const [rows, managedCount] = await Promise.all([
+        this.dailyStatsRepository.getDailyStatsByDateRange(startDate, endDate),
+        this.userHostingService.countActiveUsersByDateRange(startDate, endDate),
+      ]);
+
+      let totalMessages = 0;
+      let successCount = 0;
+      let failureCount = 0;
+      let totalTokenUsage = 0;
+      let durationWeighted = 0;
+      for (const row of rows) {
+        totalMessages += row.messageCount;
+        successCount += row.successCount;
+        failureCount += row.failureCount;
+        totalTokenUsage += row.tokenUsage;
+        durationWeighted += row.avgDuration * row.messageCount;
+      }
+
+      const successRate =
+        totalMessages > 0 ? parseFloat(((successCount / totalMessages) * 100).toFixed(2)) : 0;
+      const avgDuration = totalMessages > 0 ? Math.round(durationWeighted / totalMessages) : 0;
+
+      return {
+        totalMessages,
+        successCount,
+        failureCount,
+        successRate,
+        avgDuration,
+        activeUsers: managedCount,
+        activeChats: managedCount,
+        totalTokenUsage,
+      };
+    } catch (error) {
+      this.logger.warn('[Dashboard] 概览聚合查询失败，回退原始查询:', error);
+      return this.monitoringRepository.getDashboardOverviewStats(startDate, endDate);
+    }
+  }
+
+  /** 原始查询路径（聚合断更/异常时回退）：扫 message_processing_records.tool_calls。 */
+  private async getManualInterventionStatsFromRecords(
     startDate: Date,
     endDate: Date,
   ): Promise<DashboardManualInterventionStats> {
@@ -1168,14 +1601,62 @@ export class AnalyticsDashboardService {
   /**
    * 轻量查询：获取指定日期范围的预约总数
    */
+  /**
+   * 预约成功数。
+   *
+   * 优先使用 daily_ops_report.booking_success_count（与转化分析页同源）。
+   * 当运营投影只覆盖查询区间后半段时，用 interview_booking_records 填补投影最早日期
+   * 之前的缺口，避免整个区间回退旧源导致新投影数据失效。
+   */
   private async getBookingCount(startDate: string, endDate: string): Promise<number> {
     try {
-      const bookingStats = await this.bookingService.getBookingStats({ startDate, endDate });
-      return bookingStats.reduce((sum, item) => sum + item.bookingCount, 0);
+      const opsBooking = await this.getOpsBookingCountWithLegacyGap(startDate, endDate);
+      if (opsBooking !== null) {
+        return opsBooking;
+      }
+      return this.getLegacyBookingCount(startDate, endDate);
     } catch (error) {
       this.logger.warn('[业务指标] 获取预约统计失败，使用默认值 0:', error);
       return 0;
     }
+  }
+
+  /**
+   * 若 daily_ops_report 与查询范围有交集，则返回「旧源缺口 + 投影覆盖段」的预约成功数。
+   * 若投影表不可用或完全晚于查询范围，则返回 null（上层回退旧源全量范围）。
+   */
+  private async getOpsBookingCountWithLegacyGap(
+    startDate: string,
+    endDate: string,
+  ): Promise<number | null> {
+    try {
+      const earliest = await this.dailyOpsReportRepository.getEarliestReportDate();
+      if (!earliest || earliest > endDate) {
+        return null;
+      }
+
+      const opsStartDate = earliest > startDate ? earliest : startDate;
+      const [opsSums, legacyGapCount] = await Promise.all([
+        this.dailyOpsReportRepository.sumByDateRange(opsStartDate, endDate),
+        earliest > startDate
+          ? this.getLegacyBookingCount(startDate, this.getPreviousLocalDate(earliest))
+          : Promise.resolve(0),
+      ]);
+
+      return legacyGapCount + opsSums.bookingSuccess;
+    } catch (error) {
+      this.logger.warn('[业务指标] daily_ops_report 预约汇总失败，回退旧源全量范围:', error);
+      return null;
+    }
+  }
+
+  private async getLegacyBookingCount(startDate: string, endDate: string): Promise<number> {
+    const bookingStats = await this.bookingService.getBookingStats({ startDate, endDate });
+    return bookingStats.reduce((sum, item) => sum + item.bookingCount, 0);
+  }
+
+  private getPreviousLocalDate(date: string): string {
+    return formatLocalDate(addLocalDays(parseLocalDateStart(date), -1));
   }
 
   private calculateBusinessDelta(

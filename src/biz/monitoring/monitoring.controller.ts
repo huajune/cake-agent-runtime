@@ -24,13 +24,16 @@ export class AnalyticsController {
 
   /**
    * 获取 Dashboard 概览数据
-   * GET /analytics/dashboard/overview?range=today|week|month|twoMonths|threeMonths
+   * GET /analytics/dashboard/overview?range=today|week|month|twoMonths|threeMonths&groups=
    */
   @Get('dashboard/overview')
-  async getDashboardOverview(@Query('range') range?: TimeRange) {
+  async getDashboardOverview(
+    @Query('range') range?: TimeRange,
+    @Query('groups') groups?: string | string[],
+  ) {
     const timeRange = range || 'today';
     this.logger.debug(`获取 Dashboard 概览: ${timeRange}`);
-    return this.dashboardService.getDashboardOverviewAsync(timeRange);
+    return this.dashboardService.getDashboardOverviewAsync(timeRange, this.toList(groups));
   }
 
   /**
@@ -136,6 +139,14 @@ export class AnalyticsController {
     await this.maintenanceService.clearCacheAsync(cacheType);
     return { success: true, message: `缓存 [${cacheType}] 已清除` };
   }
+
+  private toList(value?: string | string[]): string[] {
+    const values = Array.isArray(value) ? value : value ? [value] : [];
+    return values
+      .flatMap((item) => item.split(','))
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
 }
 
 /**
@@ -153,13 +164,16 @@ export class MonitoringController {
   ) {}
 
   /**
-   * GET /monitoring/dashboard?range=today|week|month|twoMonths|threeMonths
+   * GET /monitoring/dashboard?range=today|week|month|twoMonths|threeMonths&groups=
    */
   @Get('dashboard')
-  async getMonitoringDashboard(@Query('range') range?: TimeRange) {
+  async getMonitoringDashboard(
+    @Query('range') range?: TimeRange,
+    @Query('groups') groups?: string | string[],
+  ) {
     const timeRange = range || 'today';
     const [dashboard, globalCounters] = await Promise.all([
-      this.dashboardService.getDashboardOverviewAsync(timeRange),
+      this.dashboardService.getDashboardOverviewAsync(timeRange, this.toList(groups)),
       this.cacheService.getCounters(),
     ]);
 
@@ -177,6 +191,14 @@ export class MonitoringController {
   @Get('global-counters')
   async getGlobalCounters() {
     return this.cacheService.getCounters();
+  }
+
+  private toList(value?: string | string[]): string[] {
+    const values = Array.isArray(value) ? value : value ? [value] : [];
+    return values
+      .flatMap((item) => item.split(','))
+      .map((item) => item.trim())
+      .filter(Boolean);
   }
 
   /**

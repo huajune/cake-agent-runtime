@@ -121,6 +121,10 @@ const EMPTY_DAILY_AGGREGATE = {
   errorTypeStats: {} as Record<string, number>,
 };
 
+type ToolCallsProjectionRow = {
+  tool_calls?: unknown;
+};
+
 /**
  * 监控数据 Repository
  *
@@ -302,7 +306,7 @@ export class MonitoringRecordRepository extends BaseRepository {
     startDate: Date,
     endDate: Date,
   ): Promise<Array<{ toolName: string; useCount: number }>> {
-    return this.rpcMappedList(
+    const rpcStats = await this.rpcMappedListOrNull<{ toolName: string; useCount: number }>(
       'get_dashboard_tool_stats',
       {
         toolName: { field: 'tool_name', type: 'string' as const },
@@ -310,6 +314,15 @@ export class MonitoringRecordRepository extends BaseRepository {
       },
       { p_start_date: startDate.toISOString(), p_end_date: endDate.toISOString() },
     );
+
+    // 仅当 RPC 不可用/缺失（返回 null）才回退全表扫描；RPC 成功返回空数组说明该窗口内
+    // 确实没有工具调用，直接返回空，避免每次刷新都对 message_processing_records 做全表扫描
+    // （历史 bug：length===0 即回退，零工具调用的窗口被反复全扫，重演 DB 过载）。
+    if (rpcStats !== null) {
+      return rpcStats;
+    }
+
+    return this.getDashboardToolStatsFromToolCalls(startDate, endDate);
   }
 
   // ==================== 小时聚合 RPC ====================
@@ -555,28 +568,100 @@ export class MonitoringRecordRepository extends BaseRepository {
   }
 
   /**
-   * 调用 RPC 并转换每一行
+   * 调用 RPC 并转换每一行（不可用/失败时返回空数组）。
    */
   private async rpcMappedList<T>(
     functionName: string,
     mapping: Record<string, { field: string; type: 'int' | 'float' | 'string' }>,
     params: Record<string, unknown>,
   ): Promise<T[]> {
+    return (await this.rpcMappedListOrNull<T>(functionName, mapping, params)) ?? [];
+  }
+
+  /**
+   * 调用 RPC 并转换每一行，区分「RPC 不可用/缺失/失败」与「成功但零行」。
+   *
+   * @returns null 表示 RPC 不可用/缺失/异常（调用方可据此决定是否回退其他数据源）；
+   *          `[]` 表示 RPC 成功执行但该范围确实无数据。
+   */
+  private async rpcMappedListOrNull<T>(
+    functionName: string,
+    mapping: Record<string, { field: string; type: 'int' | 'float' | 'string' }>,
+    params: Record<string, unknown>,
+  ): Promise<T[] | null> {
     if (!this.isAvailable()) {
-      return [];
+      return null;
     }
 
     try {
+      // rpc() 在「不可用 / 熔断 OPEN / 函数缺失 / 重试耗尽」时返回 null；
+      // 成功时返回数组（无数据为空数组）。据此区分失败与零行。
       const result = await this.rpc<Array<Record<string, unknown>>>(functionName, params);
 
-      if (!result) {
-        return [];
+      if (result === null) {
+        return null;
       }
 
       return result.map((row) => this.mapRpcRow<T>(row, mapping));
     } catch (error) {
       this.logger.error(`获取 ${functionName} 失败:`, error);
-      return [];
+      return null;
     }
+  }
+
+  /**
+   * Fallback for environments where the DB RPC is still on the pre-tool_calls
+   * version and returns an empty result even though current rows contain tools.
+   */
+  private async getDashboardToolStatsFromToolCalls(
+    startDate: Date,
+    endDate: Date,
+  ): Promise<Array<{ toolName: string; useCount: number }>> {
+    // 经 selectAllPaged 分页拉全量（统一受熔断器 + 退避重试保护），避免绕过熔断器在 DB 濒死时
+    // 继续全表扫描施压。仅在 RPC 缺失时才触发本回退路径（见 getDashboardToolStats）。
+    const rows = await this.selectAllPaged<ToolCallsProjectionRow>(
+      this.tableName,
+      'tool_calls',
+      (q) =>
+        q
+          .gte('received_at', startDate.toISOString())
+          .lt('received_at', endDate.toISOString())
+          .not('tool_calls', 'is', null)
+          .order('received_at', { ascending: true })
+          .order('message_id', { ascending: true }),
+    );
+
+    const toolMap = new Map<string, number>();
+    for (const row of rows) {
+      this.countToolCalls(row.tool_calls, toolMap);
+    }
+    return this.formatToolStats(toolMap);
+  }
+
+  private countToolCalls(toolCalls: unknown, toolMap: Map<string, number>): void {
+    if (!Array.isArray(toolCalls)) {
+      return;
+    }
+
+    for (const call of toolCalls) {
+      if (!call || typeof call !== 'object') {
+        continue;
+      }
+
+      const toolName = (call as { toolName?: unknown }).toolName;
+      if (typeof toolName !== 'string' || toolName.length === 0) {
+        continue;
+      }
+
+      toolMap.set(toolName, (toolMap.get(toolName) ?? 0) + 1);
+    }
+  }
+
+  private formatToolStats(
+    toolMap: Map<string, number>,
+  ): Array<{ toolName: string; useCount: number }> {
+    return Array.from(toolMap.entries())
+      .map(([toolName, useCount]) => ({ toolName, useCount }))
+      .sort((a, b) => b.useCount - a.useCount);
   }
 }

@@ -424,6 +424,70 @@ describe('MonitoringRecordRepository', () => {
       expect(result[0].toolName).toBe('search');
       expect(result[0].useCount).toBe(25);
     });
+
+    it('should NOT fall back when RPC succeeds with empty stats (genuine zero tool calls)', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      // RPC 成功但零行 → 该窗口确实没有工具调用，应直接返回空，不触发全表扫描回退。
+      mockSupabaseClient.rpc.mockResolvedValue({ data: [], error: null });
+
+      const fromSpy = mockSupabaseClient.from;
+      const result = await repository.getDashboardToolStats(new Date(), new Date());
+
+      expect(result).toEqual([]);
+      // 不应回退去扫 message_processing_records 表。
+      expect(fromSpy).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to reading tool_calls when RPC is unavailable (function missing)', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      // RPC 缺失（PostgREST 42883）→ rpc() 返回 null → 触发 tool_calls 全表扫描回退。
+      mockSupabaseClient.rpc.mockResolvedValue({
+        data: null,
+        error: { code: '42883', message: 'function get_dashboard_tool_stats does not exist' },
+      });
+
+      const query = {
+        select: jest.fn(),
+        gte: jest.fn(),
+        lt: jest.fn(),
+        not: jest.fn(),
+        order: jest.fn(),
+        range: jest.fn(),
+      };
+      query.select.mockReturnValue(query);
+      query.gte.mockReturnValue(query);
+      query.lt.mockReturnValue(query);
+      query.not.mockReturnValue(query);
+      query.order.mockReturnValue(query);
+      query.range.mockResolvedValue({
+        data: [
+          {
+            tool_calls: [
+              { toolName: 'request_handoff' },
+              { toolName: 'raise_risk_alert' },
+            ],
+          },
+          {
+            tool_calls: [
+              { toolName: 'request_handoff' },
+              { toolName: '' },
+              { name: 'legacy-shape' },
+            ],
+          },
+        ],
+        error: null,
+      });
+      mockSupabaseClient.from.mockReturnValue(query);
+
+      const result = await repository.getDashboardToolStats(new Date(), new Date());
+
+      expect(result).toEqual([
+        { toolName: 'request_handoff', useCount: 2 },
+        { toolName: 'raise_risk_alert', useCount: 1 },
+      ]);
+    });
   });
 
   // ==================== aggregateHourlyStats ====================

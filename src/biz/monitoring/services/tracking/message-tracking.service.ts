@@ -102,6 +102,7 @@ export class MessageTrackingService {
       userId,
       userName,
       managerName,
+      botImId: botIdentity?.imBotId,
       receivedAt: now,
       status: 'processing',
       messagePreview: messageContent ? messageContent.substring(0, 50) : undefined,
@@ -366,6 +367,12 @@ export class MessageTrackingService {
       userId: this.asString(request?.userId) ?? params.existingRecord?.userId,
       userName: this.asString(request?.userName) ?? params.existingRecord?.userName,
       managerName: this.asString(request?.managerName) ?? params.existingRecord?.managerName,
+      // botImId 在 intake（recordMessageReceived）即落库，终态回写优先沿用 existingRecord，
+      // 避免 agent invocation request 缺该字段时把 wxid 置空。
+      botImId:
+        this.asString(request?.botImId) ??
+        this.asString(request?.imBotId) ??
+        params.existingRecord?.botImId,
       receivedAt,
       messagePreview: requestContent
         ? requestContent.substring(0, 50)
