@@ -21,6 +21,15 @@ interface SimpleRoomItem {
   memberCount?: number;
 }
 
+const SUZHOU_PART_TIME_COMPAT_ROOM_WXID = 'R:10842449668559208';
+const SUZHOU_PART_TIME_COMPAT_ROOM_TOPIC = '独立客&苏州餐饮兼职群';
+const SUZHOU_PART_TIME_COMPAT_BAD_LABELS = ['兼职群', '餐饮', '苏州'];
+const SUZHOU_PART_TIME_COMPAT_PARSED: ParsedGroupTag = {
+  type: '兼职群',
+  city: '苏州',
+  industry: '餐饮',
+};
+
 /**
  * 群解析服务
  *
@@ -187,7 +196,7 @@ export class GroupResolverService implements OnModuleInit {
         if (seen.has(room.wxid)) continue;
 
         // 解析标签
-        const parsed = this.parseLabels(room.labels || []);
+        const parsed = this.applyKnownLabelCompatibility(room, this.parseLabels(room.labels || []));
         if (!parsed) continue;
 
         seen.set(room.wxid, {
@@ -211,6 +220,30 @@ export class GroupResolverService implements OnModuleInit {
       current++;
       hasMore = current * pageSize < total;
     }
+  }
+
+  private applyKnownLabelCompatibility(
+    room: SimpleRoomItem,
+    parsed: ParsedGroupTag | null,
+  ): ParsedGroupTag | null {
+    if (!parsed) return parsed;
+
+    const labelNames = (room.labels || []).map((label) => label.name);
+    const isKnownSuzhouPartTimeRoom =
+      room.wxid === SUZHOU_PART_TIME_COMPAT_ROOM_WXID ||
+      room.topic === SUZHOU_PART_TIME_COMPAT_ROOM_TOPIC;
+    const hasKnownBadLabels = SUZHOU_PART_TIME_COMPAT_BAD_LABELS.every(
+      (label, index) => labelNames[index] === label,
+    );
+
+    if (!isKnownSuzhouPartTimeRoom || !hasKnownBadLabels) {
+      return parsed;
+    }
+
+    this.logger.warn(
+      `已兼容已知群标签顺序异常: ${room.topic || room.wxid} (${labelNames.join('/')}) -> 苏州/餐饮`,
+    );
+    return { ...SUZHOU_PART_TIME_COMPAT_PARSED };
   }
 
   /**

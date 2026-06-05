@@ -1,58 +1,90 @@
 {
-  "baseVersion": "5.11.3",
-  "nextVersion": "5.11.3",
-  "updatedAt": "2026-05-28",
+  "baseVersion": "5.11.4",
+  "nextVersion": "5.11.5",
+  "updatedAt": "2026-06-05",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "255",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/255",
+      "title": "fix dashboard managed user count",
+      "author": "huajune",
+      "mergedAt": "2026-06-05",
+      "businessUpdates": [
+        "fix dashboard managed user count",
+        "fix resume attachment booking flow",
+        "fix booking tool formatting"
+      ],
+      "summary": [
+        "fix dashboard managed user count",
+        "fix resume attachment booking flow",
+        "fix booking tool formatting",
+        "Add a DB-side `count_active_users_from_user_activity_by_range` RPC using `COUNT(DISTINCT chat_id)`.",
+        "Add `countActiveUsersByDateRange` through the user hosting repository/service, with a paginated table-scan fallback if the new RPC is not available yet.",
+        "Switch Dashboard business totals for non-today ranges to use the distinct count instead of list length.",
+        "Add tests covering the count RPC path, fallback path, and capped-list regression."
+      ],
+      "features": [],
+      "fixes": [
+        "fix dashboard managed user count",
+        "fix resume attachment booking flow",
+        "fix booking tool formatting"
+      ],
+      "optimizations": [],
+      "ops": [
+        "Add a DB-side `count_active_users_from_user_activity_by_range` RPC using `COUNT(DISTINCT chat_id)`.",
+        "Add `countActiveUsersByDateRange` through the user hosting repository/service, with a paginated table-scan fallback if the new RPC is not available yet.",
+        "Switch Dashboard business totals for non-today ranges to use the distinct count instead of list length.",
+        "Add tests covering the count RPC path, fallback path, and capped-list regression."
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm exec jest tests/biz/monitoring/services/dashboard/analytics-dashboard.service.spec.ts tests/biz/user/repositories/user-hosting.repository.spec.ts --watchman=false`",
+        "`pnpm exec tsc --noEmit --pretty false`"
+      ]
+    }
+  ],
   "lastRelease": {
-    "version": "5.11.3",
-    "date": "2026-05-28",
+    "version": "5.11.4",
+    "date": "2026-05-29",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "245",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/245",
-        "title": "Fix group invite retry and memory metadata",
+        "number": "250",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/250",
+        "title": "兼容苏州兼职群错序标签",
         "author": "huajune",
-        "mergedAt": "2026-05-28",
+        "mergedAt": "2026-05-29",
         "businessUpdates": [
-          "fix the pipeline service spec to provide the new `LongTermService` dependency used by `AcceptInboundMessageService`",
-          "Fix group invite retry and memory metadata",
-          "Fix pipeline spec long-term dependency"
+          "修复看板人工介入统计"
         ],
         "summary": [
-          "Fix group invite retry and memory metadata",
-          "Add operations data product spec",
-          "Fix pipeline spec long-term dependency",
-          "add a compatibility retry for group invites when the current chat bot cannot see the room: add the chat bot to the target group via the owner bot, then retry the candidate invite",
-          "initialize long-term message metadata from new-customer callbacks and add a backfill script for existing rows",
-          "improve message splitting so booking/info form blocks stay together",
-          "add product docs for group invite behavior, ops-data / Sponge integration design, and operations-facing data definitions",
-          "fix the pipeline service spec to provide the new `LongTermService` dependency used by `AcceptInboundMessageService`"
+          "兼容苏州兼职群错序标签",
+          "推荐班次必须列全所有档位",
+          "修复看板人工介入统计",
+          "Added a targeted compatibility override for `独立客&苏州餐饮兼职群` when its labels are returned as `[\"兼职群\", \"餐饮\", \"苏州\"]`.",
+          "Kept the original label parsing contract for all other groups.",
+          "Added a regression test covering the known Suzhou group `wxid` and label order."
         ],
         "features": [],
         "fixes": [
-          "fix the pipeline service spec to provide the new `LongTermService` dependency used by `AcceptInboundMessageService`",
-          "Fix group invite retry and memory metadata",
-          "Fix pipeline spec long-term dependency"
+          "修复看板人工介入统计"
         ],
-        "optimizations": [
-          "improve message splitting so booking/info form blocks stay together"
-        ],
+        "optimizations": [],
         "ops": [
-          "add a compatibility retry for group invites when the current chat bot cannot see the room: add the chat bot to the target group via the owner bot, then retry the candidate invite",
-          "initialize long-term message metadata from new-customer callbacks and add a backfill script for existing rows",
-          "add product docs for group invite behavior, ops-data / Sponge integration design, and operations-facing data definitions",
-          "Add operations data product spec"
+          "Added a targeted compatibility override for `独立客&苏州餐饮兼职群` when its labels are returned as `[\"兼职群\", \"餐饮\", \"苏州\"]`.",
+          "Kept the original label parsing contract for all other groups.",
+          "Added a regression test covering the known Suzhou group `wxid` and label order.",
+          "兼容苏州兼职群错序标签",
+          "推荐班次必须列全所有档位"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`./node_modules/.bin/jest tests/channels/wecom/message/services/pipeline.service.spec.ts --runInBand --watchman=false`",
-          "`./node_modules/.bin/jest --watchman=false --runInBand` (261 suites passed, 3441 passed, 1 skipped)",
-          "`./node_modules/.bin/tsc --noEmit`",
-          "`./node_modules/.bin/eslint tests/channels/wecom/message/services/pipeline.service.spec.ts --max-warnings=0`",
-          "Earlier focused checks before the CI fix: invite-to-group, accept-inbound-message, message-splitter, long-term, and supabase-store specs; plus focused ESLint on the changed source/test files"
+          "`pnpm jest tests/biz/group-task/group-resolver.service.spec.ts --watchman=false`",
+          "`pnpm run typecheck`",
+          "`pnpm exec eslint src/biz/group-task/services/group-resolver.service.ts tests/biz/group-task/group-resolver.service.spec.ts --max-warnings=0`"
         ]
       }
     ]
