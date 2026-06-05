@@ -1,90 +1,52 @@
 {
-  "baseVersion": "5.11.4",
+  "baseVersion": "5.11.5",
   "nextVersion": "5.11.5",
   "updatedAt": "2026-06-05",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "255",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/255",
-      "title": "fix dashboard managed user count",
-      "author": "huajune",
-      "mergedAt": "2026-06-05",
-      "businessUpdates": [
-        "fix dashboard managed user count",
-        "fix resume attachment booking flow",
-        "fix booking tool formatting"
-      ],
-      "summary": [
-        "fix dashboard managed user count",
-        "fix resume attachment booking flow",
-        "fix booking tool formatting",
-        "Add a DB-side `count_active_users_from_user_activity_by_range` RPC using `COUNT(DISTINCT chat_id)`.",
-        "Add `countActiveUsersByDateRange` through the user hosting repository/service, with a paginated table-scan fallback if the new RPC is not available yet.",
-        "Switch Dashboard business totals for non-today ranges to use the distinct count instead of list length.",
-        "Add tests covering the count RPC path, fallback path, and capped-list regression."
-      ],
-      "features": [],
-      "fixes": [
-        "fix dashboard managed user count",
-        "fix resume attachment booking flow",
-        "fix booking tool formatting"
-      ],
-      "optimizations": [],
-      "ops": [
-        "Add a DB-side `count_active_users_from_user_activity_by_range` RPC using `COUNT(DISTINCT chat_id)`.",
-        "Add `countActiveUsersByDateRange` through the user hosting repository/service, with a paginated table-scan fallback if the new RPC is not available yet.",
-        "Switch Dashboard business totals for non-today ranges to use the distinct count instead of list length.",
-        "Add tests covering the count RPC path, fallback path, and capped-list regression."
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`pnpm exec jest tests/biz/monitoring/services/dashboard/analytics-dashboard.service.spec.ts tests/biz/user/repositories/user-hosting.repository.spec.ts --watchman=false`",
-        "`pnpm exec tsc --noEmit --pretty false`"
-      ]
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "5.11.4",
-    "date": "2026-05-29",
+    "version": "5.11.5",
+    "date": "2026-06-05",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "250",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/250",
-        "title": "兼容苏州兼职群错序标签",
+        "number": "255",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/255",
+        "title": "fix dashboard managed user count",
         "author": "huajune",
-        "mergedAt": "2026-05-29",
+        "mergedAt": "2026-06-05",
         "businessUpdates": [
-          "修复看板人工介入统计"
+          "fix dashboard managed user count",
+          "fix resume attachment booking flow",
+          "fix booking tool formatting"
         ],
         "summary": [
-          "兼容苏州兼职群错序标签",
-          "推荐班次必须列全所有档位",
-          "修复看板人工介入统计",
-          "Added a targeted compatibility override for `独立客&苏州餐饮兼职群` when its labels are returned as `[\"兼职群\", \"餐饮\", \"苏州\"]`.",
-          "Kept the original label parsing contract for all other groups.",
-          "Added a regression test covering the known Suzhou group `wxid` and label order."
+          "fix dashboard managed user count",
+          "fix resume attachment booking flow",
+          "fix booking tool formatting",
+          "Add a DB-side `count_active_users_from_user_activity_by_range` RPC using `COUNT(DISTINCT chat_id)`.",
+          "Add `countActiveUsersByDateRange` through the user hosting repository/service, with a paginated table-scan fallback if the new RPC is not available yet.",
+          "Switch Dashboard business totals for non-today ranges to use the distinct count instead of list length.",
+          "Add tests covering the count RPC path, fallback path, and capped-list regression."
         ],
         "features": [],
         "fixes": [
-          "修复看板人工介入统计"
+          "fix dashboard managed user count",
+          "fix resume attachment booking flow",
+          "fix booking tool formatting"
         ],
         "optimizations": [],
         "ops": [
-          "Added a targeted compatibility override for `独立客&苏州餐饮兼职群` when its labels are returned as `[\"兼职群\", \"餐饮\", \"苏州\"]`.",
-          "Kept the original label parsing contract for all other groups.",
-          "Added a regression test covering the known Suzhou group `wxid` and label order.",
-          "兼容苏州兼职群错序标签",
-          "推荐班次必须列全所有档位"
+          "Add a DB-side `count_active_users_from_user_activity_by_range` RPC using `COUNT(DISTINCT chat_id)`.",
+          "Add `countActiveUsersByDateRange` through the user hosting repository/service, with a paginated table-scan fallback if the new RPC is not available yet.",
+          "Switch Dashboard business totals for non-today ranges to use the distinct count instead of list length.",
+          "Add tests covering the count RPC path, fallback path, and capped-list regression."
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`pnpm jest tests/biz/group-task/group-resolver.service.spec.ts --watchman=false`",
-          "`pnpm run typecheck`",
-          "`pnpm exec eslint src/biz/group-task/services/group-resolver.service.ts tests/biz/group-task/group-resolver.service.spec.ts --max-warnings=0`"
+          "`pnpm exec jest tests/biz/monitoring/services/dashboard/analytics-dashboard.service.spec.ts tests/biz/user/repositories/user-hosting.repository.spec.ts --watchman=false`",
+          "`pnpm exec tsc --noEmit --pretty false`"
         ]
       }
     ]

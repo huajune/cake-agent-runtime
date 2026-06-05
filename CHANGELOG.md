@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.11.5] - 2026-06-05
 
-**预计版本**: `v5.11.5`
-**最近更新**: `2026-06-05`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #255 fix dashboard managed user count
@@ -51,7 +47,6 @@
 ### 验证记录
 - PR #255 `pnpm exec jest tests/biz/monitoring/services/dashboard/analytics-dashboard.service.spec.ts tests/biz/user/repositories/user-hosting.repository.spec.ts --watchman=false`
 - PR #255 `pnpm exec tsc --noEmit --pretty false`
-<!-- release:pending:end -->
 
 ## [5.11.4] - 2026-05-29
 
