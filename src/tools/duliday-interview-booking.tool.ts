@@ -849,9 +849,7 @@ function isResumeLabel(value: string): boolean {
 function getResumeSupplementLabels(
   supplementDefinitions: SpongeInterviewSupplementDefinition[],
 ): string[] {
-  return supplementDefinitions
-    .map((definition) => definition.labelName)
-    .filter(isResumeLabel);
+  return supplementDefinitions.map((definition) => definition.labelName).filter(isResumeLabel);
 }
 
 function isResumeRequiredByJob(
