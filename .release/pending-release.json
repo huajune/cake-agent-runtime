@@ -1,6 +1,6 @@
 {
   "baseVersion": "5.11.4",
-  "nextVersion": "5.11.5",
+  "nextVersion": "5.12.0",
   "updatedAt": "2026-06-05",
   "sourceBranch": "develop",
   "entries": [
@@ -42,6 +42,95 @@
       "verification": [
         "`pnpm exec jest tests/biz/monitoring/services/dashboard/analytics-dashboard.service.spec.ts tests/biz/user/repositories/user-hosting.repository.spec.ts --watchman=false`",
         "`pnpm exec tsc --noEmit --pretty false`"
+      ]
+    },
+    {
+      "number": "258",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/258",
+      "title": "运营数据底座/转化分析仪表盘 + message_processing 补 bot_im_id",
+      "author": "ArielZhu",
+      "mergedAt": "2026-06-05",
+      "businessUpdates": [
+        "新增客户回调修破冰率反推 + 消息过滤/解析/回复流程调整",
+        "新增集成测试",
+        "Merge origin/develop into codex/fix-bug",
+        "用 const 替代 let 修复 conversion-analytics row 缓存 prefer-const",
+        "处理 PR #258 review should-fix 项"
+      ],
+      "summary": [
+        "推荐班次必须列全所有档位",
+        "运营数据底座/转化分析/active users/handoff/bot_im_id 迁移",
+        "运营事件底账与每日报表投影",
+        "咨询→报名→面试转化漏斗、账号榜单与 KPI",
+        "转人工事件采集与原因分析",
+        "花卷 agentId 漏斗上报集成",
+        "托管成员配置（member config）",
+        "新增客户回调修破冰率反推 + 消息过滤/解析/回复流程调整",
+        "转人工/运营/私聊监控/入职跟进等告警通知拆分",
+        "sponge token 多账号配置与上下文解析",
+        "预约/precheck/拉群/转人工/简历附件等工具调整",
+        "message_processing 补 bot_im_id 修转化榜单同 bot 裂行 + 监控盘调整",
+        "上下文 section、准备流程与编排调整",
+        "长期/会话记忆与高置信事实调整",
+        "supabase 熔断器、base repository 与 date util",
+        "用户托管、干预与报名 case 调整",
+        "海绵手机号回查回填历史 interview.passed",
+        "新增集成测试",
+        "转化分析仪表盘、控制筛选、侧栏与趋势图",
+        "运营数据规格与海绵集成文档",
+        "同步依赖与 .env.example",
+        "Merge origin/develop into codex/fix-bug",
+        "用 const 替代 let 修复 conversion-analytics row 缓存 prefer-const",
+        "处理 PR #258 review should-fix 项",
+        "同城多候选优先取地铁站锚点，避免长路名 POI 锚偏",
+        "品类词识别为相关品牌，杜绝\"咖啡\"被错提成\"咖啡师\"",
+        "转化分析页处理 React Query isError，API 失败时给出反馈",
+        "运营数据底座/转化分析仪表盘 + message_processing 补 bot_im_id"
+      ],
+      "features": [
+        "新增客户回调修破冰率反推 + 消息过滤/解析/回复流程调整",
+        "新增集成测试"
+      ],
+      "fixes": [
+        "Merge origin/develop into codex/fix-bug",
+        "用 const 替代 let 修复 conversion-analytics row 缓存 prefer-const",
+        "处理 PR #258 review should-fix 项"
+      ],
+      "optimizations": [
+        "转人工/运营/私聊监控/入职跟进等告警通知拆分"
+      ],
+      "ops": [
+        "推荐班次必须列全所有档位",
+        "运营数据底座/转化分析/active users/handoff/bot_im_id 迁移",
+        "运营事件底账与每日报表投影",
+        "咨询→报名→面试转化漏斗、账号榜单与 KPI",
+        "转人工事件采集与原因分析",
+        "花卷 agentId 漏斗上报集成",
+        "托管成员配置（member config）",
+        "sponge token 多账号配置与上下文解析",
+        "预约/precheck/拉群/转人工/简历附件等工具调整",
+        "message_processing 补 bot_im_id 修转化榜单同 bot 裂行 + 监控盘调整",
+        "上下文 section、准备流程与编排调整",
+        "长期/会话记忆与高置信事实调整",
+        "supabase 熔断器、base repository 与 date util",
+        "用户托管、干预与报名 case 调整",
+        "海绵手机号回查回填历史 interview.passed",
+        "转化分析仪表盘、控制筛选、侧栏与趋势图",
+        "运营数据规格与海绵集成文档",
+        "同步依赖与 .env.example",
+        "同城多候选优先取地铁站锚点，避免长路名 POI 锚偏",
+        "品类词识别为相关品牌，杜绝\"咖啡\"被错提成\"咖啡师\"",
+        "转化分析页处理 React Query isError，API 失败时给出反馈"
+      ],
+      "config": [],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "`tsc --noEmit`：0 错",
+        "`lint:check` / `format:check`：通过",
+        "全量测试：**284 套件 / 3585 passed**（1 skipped，0 failed）",
+        "pre-push `ci:check`：通过"
       ]
     }
   ],

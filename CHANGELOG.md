@@ -11,10 +11,10 @@
 <!-- release:pending:start -->
 ## 待发布
 
-**预计版本**: `v5.11.5`
+**预计版本**: `v5.12.0`
 **最近更新**: `2026-06-05`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #255 fix dashboard managed user count
@@ -24,33 +24,90 @@
 - PR #255 Add `countActiveUsersByDateRange` through the user hosting repository/service, with a paginated table-scan fallback if the new RPC is not available yet.
 - PR #255 Switch Dashboard business totals for non-today ranges to use the distinct count instead of list length.
 - PR #255 Add tests covering the count RPC path, fallback path, and capped-list regression.
+- PR #258 推荐班次必须列全所有档位
+- PR #258 运营数据底座/转化分析/active users/handoff/bot_im_id 迁移
+- PR #258 运营事件底账与每日报表投影
+- PR #258 咨询→报名→面试转化漏斗、账号榜单与 KPI
+- PR #258 转人工事件采集与原因分析
+- PR #258 花卷 agentId 漏斗上报集成
+- PR #258 托管成员配置（member config）
+- PR #258 新增客户回调修破冰率反推 + 消息过滤/解析/回复流程调整
+- PR #258 转人工/运营/私聊监控/入职跟进等告警通知拆分
+- PR #258 sponge token 多账号配置与上下文解析
+- PR #258 预约/precheck/拉群/转人工/简历附件等工具调整
+- PR #258 message_processing 补 bot_im_id 修转化榜单同 bot 裂行 + 监控盘调整
+- PR #258 上下文 section、准备流程与编排调整
+- PR #258 长期/会话记忆与高置信事实调整
+- PR #258 supabase 熔断器、base repository 与 date util
+- PR #258 用户托管、干预与报名 case 调整
+- PR #258 海绵手机号回查回填历史 interview.passed
+- PR #258 新增集成测试
+- PR #258 转化分析仪表盘、控制筛选、侧栏与趋势图
+- PR #258 运营数据规格与海绵集成文档
+- PR #258 同步依赖与 .env.example
+- PR #258 Merge origin/develop into codex/fix-bug
+- PR #258 用 const 替代 let 修复 conversion-analytics row 缓存 prefer-const
+- PR #258 处理 PR #258 review should-fix 项
+- PR #258 同城多候选优先取地铁站锚点，避免长路名 POI 锚偏
+- PR #258 品类词识别为相关品牌，杜绝"咖啡"被错提成"咖啡师"
+- PR #258 转化分析页处理 React Query isError，API 失败时给出反馈
+- PR #258 运营数据底座/转化分析仪表盘 + message_processing 补 bot_im_id
 
 ### 新功能
-- 无
+- PR #258 新增客户回调修破冰率反推 + 消息过滤/解析/回复流程调整
+- PR #258 新增集成测试
 
 ### 问题修复
 - PR #255 fix dashboard managed user count
 - PR #255 fix resume attachment booking flow
 - PR #255 fix booking tool formatting
+- PR #258 Merge origin/develop into codex/fix-bug
+- PR #258 用 const 替代 let 修复 conversion-analytics row 缓存 prefer-const
+- PR #258 处理 PR #258 review should-fix 项
 
 ### 优化调整
-- 无
+- PR #258 转人工/运营/私聊监控/入职跟进等告警通知拆分
 
 ### 运维与流程
 - PR #255 Add a DB-side `count_active_users_from_user_activity_by_range` RPC using `COUNT(DISTINCT chat_id)`.
 - PR #255 Add `countActiveUsersByDateRange` through the user hosting repository/service, with a paginated table-scan fallback if the new RPC is not available yet.
 - PR #255 Switch Dashboard business totals for non-today ranges to use the distinct count instead of list length.
 - PR #255 Add tests covering the count RPC path, fallback path, and capped-list regression.
+- PR #258 推荐班次必须列全所有档位
+- PR #258 运营数据底座/转化分析/active users/handoff/bot_im_id 迁移
+- PR #258 运营事件底账与每日报表投影
+- PR #258 咨询→报名→面试转化漏斗、账号榜单与 KPI
+- PR #258 转人工事件采集与原因分析
+- PR #258 花卷 agentId 漏斗上报集成
+- PR #258 托管成员配置（member config）
+- PR #258 sponge token 多账号配置与上下文解析
+- PR #258 预约/precheck/拉群/转人工/简历附件等工具调整
+- PR #258 message_processing 补 bot_im_id 修转化榜单同 bot 裂行 + 监控盘调整
+- PR #258 上下文 section、准备流程与编排调整
+- PR #258 长期/会话记忆与高置信事实调整
+- PR #258 supabase 熔断器、base repository 与 date util
+- PR #258 用户托管、干预与报名 case 调整
+- PR #258 海绵手机号回查回填历史 interview.passed
+- PR #258 转化分析仪表盘、控制筛选、侧栏与趋势图
+- PR #258 运营数据规格与海绵集成文档
+- PR #258 同步依赖与 .env.example
+- PR #258 同城多候选优先取地铁站锚点，避免长路名 POI 锚偏
+- PR #258 品类词识别为相关品牌，杜绝"咖啡"被错提成"咖啡师"
+- PR #258 转化分析页处理 React Query isError，API 失败时给出反馈
 
 ### 配置变更
 - 无
 
 ### 环境变量提醒
-- 无
+- PR #258 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
 
 ### 验证记录
 - PR #255 `pnpm exec jest tests/biz/monitoring/services/dashboard/analytics-dashboard.service.spec.ts tests/biz/user/repositories/user-hosting.repository.spec.ts --watchman=false`
 - PR #255 `pnpm exec tsc --noEmit --pretty false`
+- PR #258 `tsc --noEmit`：0 错
+- PR #258 `lint:check` / `format:check`：通过
+- PR #258 全量测试：**284 套件 / 3585 passed**（1 skipped，0 failed）
+- PR #258 pre-push `ci:check`：通过
 <!-- release:pending:end -->
 
 ## [5.11.4] - 2026-05-29
