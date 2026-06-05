@@ -4,6 +4,17 @@ import { RecruitmentCaseRecord } from '../entities/recruitment-case.entity';
 import { RecruitmentCaseRepository } from '../repositories/recruitment-case.repository';
 import type { RecruitmentCaseSnapshot } from '../types/recruitment-case.types';
 
+/**
+ * @deprecated recruitment_cases 状态机（active/handoff/closed）已废弃（P2-3）。
+ * - 预约指针迁到 agent_long_term_memories.latest_booking（{@link LongTermService.setLatestBooking}）。
+ * - handoff 触发分析迁到 handoff_events + ops_events.handoff.triggered。
+ * - 运行时托管状态用 UserHostingService 的 pause/resume 一层表达。
+ *
+ * 本服务的所有方法（openOnBookingSuccess / getActiveOnboardFollowupCase / markHandoff /
+ * closeLatestHandoffCase）当前**无任何调用方**，模块仅被 6 处 import 残留（dead wiring）。
+ * 计划：解除各 module 的 RecruitmentCaseModule import + onboard-followup-notification.types 的
+ * RecruitmentCaseRecord 类型依赖后整体删除（不删表、不迁 262 行历史数据）。
+ */
 @Injectable()
 export class RecruitmentCaseService {
   private readonly logger = new Logger(RecruitmentCaseService.name);
