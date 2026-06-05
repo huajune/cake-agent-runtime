@@ -62,6 +62,22 @@ export function formatExtractionFactLines(
       `- 健康证: ${healthCertificate}${formatInlineFactMeta(info.has_health_certificate)}`,
     );
 
+  const uploadResume = readFactValue(info.upload_resume);
+  if (uploadResume)
+    lines.push(`- 简历附件: ${uploadResume}${formatInlineFactMeta(info.upload_resume)}`);
+
+  const height = readFactValue(info.height);
+  if (height) lines.push(`- 身高: ${height}${formatInlineFactMeta(info.height)}`);
+
+  const weight = readFactValue(info.weight);
+  if (weight) lines.push(`- 体重: ${weight}${formatInlineFactMeta(info.weight)}`);
+
+  const householdProvince = readFactValue(info.household_register_province);
+  if (householdProvince)
+    lines.push(
+      `- 户籍省份: ${householdProvince}${formatInlineFactMeta(info.household_register_province)}`,
+    );
+
   // 历史数据里可能存在 labor_form="兼职"/"全职"，读取时过滤掉（平台全为兼职，这类值无筛选价值）。
   const laborForm = readFactValue(pref.labor_form);
   if (laborForm && isValidLaborForm(laborForm)) {

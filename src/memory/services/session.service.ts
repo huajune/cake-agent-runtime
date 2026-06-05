@@ -465,6 +465,11 @@ export class SessionService {
       'has_health_certificate',
       ruleFacts.interview_info.has_health_certificate,
     );
+    this.applyHighConfidenceField(
+      infoTarget,
+      'upload_resume',
+      ruleFacts.interview_info.upload_resume,
+    );
 
     this.applyHighConfidenceField(prefTarget, 'brands', ruleFacts.preferences.brands);
     this.applyHighConfidenceField(prefTarget, 'salary', ruleFacts.preferences.salary);
@@ -577,6 +582,9 @@ export class SessionService {
       merged.interview_info.education = ruleInfo.education;
     if (!merged.interview_info.has_health_certificate && ruleInfo.has_health_certificate) {
       merged.interview_info.has_health_certificate = ruleInfo.has_health_certificate;
+    }
+    if (!merged.interview_info.upload_resume && ruleInfo.upload_resume) {
+      merged.interview_info.upload_resume = ruleInfo.upload_resume;
     }
 
     const rulePrefs = ruleFacts.preferences;

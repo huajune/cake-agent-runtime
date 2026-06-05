@@ -234,6 +234,16 @@ export interface LongTermMemoryState {
 }
 
 /** agent_long_term_memories 表行类型（每用户一行，Profile facts + Summary jsonb）。 */
+/**
+ * 候选人最近一次预约工单指针（极简，永不清空，新预约 UPSERT 覆盖）。
+ *
+ * 业务字段（状态/品牌/门店/岗位/面试时间）不冗余，每次实时查海绵（Redis 5min 缓存）。
+ */
+export interface LatestBooking {
+  latest_work_order_id: number;
+  linked_at: string;
+}
+
 export interface AgentLongTermMemoryRow {
   id: string;
   corp_id: string;
@@ -241,6 +251,7 @@ export interface AgentLongTermMemoryRow {
   profile_facts?: UserProfileFacts | null;
   summary_data?: SummaryData | null;
   message_metadata?: MessageMetadata | null;
+  latest_booking?: LatestBooking | null;
   created_at: string;
   updated_at: string;
 }
