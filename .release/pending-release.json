@@ -1,9 +1,50 @@
 {
   "baseVersion": "5.11.4",
-  "nextVersion": "5.11.4",
-  "updatedAt": "2026-05-29",
+  "nextVersion": "5.11.5",
+  "updatedAt": "2026-06-05",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "255",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/255",
+      "title": "fix dashboard managed user count",
+      "author": "huajune",
+      "mergedAt": "2026-06-05",
+      "businessUpdates": [
+        "fix dashboard managed user count",
+        "fix resume attachment booking flow",
+        "fix booking tool formatting"
+      ],
+      "summary": [
+        "fix dashboard managed user count",
+        "fix resume attachment booking flow",
+        "fix booking tool formatting",
+        "Add a DB-side `count_active_users_from_user_activity_by_range` RPC using `COUNT(DISTINCT chat_id)`.",
+        "Add `countActiveUsersByDateRange` through the user hosting repository/service, with a paginated table-scan fallback if the new RPC is not available yet.",
+        "Switch Dashboard business totals for non-today ranges to use the distinct count instead of list length.",
+        "Add tests covering the count RPC path, fallback path, and capped-list regression."
+      ],
+      "features": [],
+      "fixes": [
+        "fix dashboard managed user count",
+        "fix resume attachment booking flow",
+        "fix booking tool formatting"
+      ],
+      "optimizations": [],
+      "ops": [
+        "Add a DB-side `count_active_users_from_user_activity_by_range` RPC using `COUNT(DISTINCT chat_id)`.",
+        "Add `countActiveUsersByDateRange` through the user hosting repository/service, with a paginated table-scan fallback if the new RPC is not available yet.",
+        "Switch Dashboard business totals for non-today ranges to use the distinct count instead of list length.",
+        "Add tests covering the count RPC path, fallback path, and capped-list regression."
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm exec jest tests/biz/monitoring/services/dashboard/analytics-dashboard.service.spec.ts tests/biz/user/repositories/user-hosting.repository.spec.ts --watchman=false`",
+        "`pnpm exec tsc --noEmit --pretty false`"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "5.11.4",
     "date": "2026-05-29",
