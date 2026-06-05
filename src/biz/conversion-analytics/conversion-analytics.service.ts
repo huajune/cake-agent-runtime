@@ -948,8 +948,7 @@ export class ConversionAnalyticsService {
       return existing.promise as Promise<T[]>;
     }
 
-    let promise: Promise<T[]>;
-    promise = loadRows().catch((error) => {
+    const promise: Promise<T[]> = loadRows().catch((error) => {
       const current = this.rowCache.get(cacheKey);
       if (current?.promise === promise) {
         this.rowCache.delete(cacheKey);
