@@ -1,20 +1,38 @@
 import type { DashboardData, MetricsData } from '../types/analytics.types';
 import type { MessageRecord } from '../types/chat.types';
 import type { SystemInfo } from '../types/agent.types';
-import type { DashboardOverviewData, SystemMonitoringData, TrendsData } from '../types/analytics.types';
+import type {
+  DashboardOverviewData,
+  SystemMonitoringData,
+  TrendsData,
+} from '../types/analytics.types';
 import { api, unwrapResponse } from '../client';
 
-export type { DashboardOverviewData, SystemMonitoringData, TrendsData } from '../types/analytics.types';
+export type {
+  DashboardOverviewData,
+  SystemMonitoringData,
+  TrendsData,
+} from '../types/analytics.types';
 
 // ==================== Dashboard API ====================
 
-export async function getDashboard(timeRange: string) {
-  const { data } = await api.get(`/analytics/dashboard?range=${timeRange}`);
+function buildDashboardParams(timeRange: string, groups?: string[]) {
+  const params = new URLSearchParams({ range: timeRange });
+  for (const group of groups ?? []) {
+    params.append('groups', group);
+  }
+  return params.toString();
+}
+
+export async function getDashboard(timeRange: string, groups?: string[]) {
+  const { data } = await api.get(`/analytics/dashboard?${buildDashboardParams(timeRange, groups)}`);
   return unwrapResponse<DashboardData>(data);
 }
 
-export async function getDashboardOverview(timeRange: string) {
-  const { data } = await api.get(`/analytics/dashboard/overview?range=${timeRange}`);
+export async function getDashboardOverview(timeRange: string, groups?: string[]) {
+  const { data } = await api.get(
+    `/analytics/dashboard/overview?${buildDashboardParams(timeRange, groups)}`,
+  );
   return unwrapResponse<DashboardOverviewData>(data);
 }
 

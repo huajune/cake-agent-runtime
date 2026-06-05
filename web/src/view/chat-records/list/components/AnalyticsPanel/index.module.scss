@@ -81,24 +81,28 @@
   }
 }
 
-.divider {
-  width: 1px;
-  height: 20px;
-  background: $border;
+// 两张图并排：会话数 / 消息数
+.chartsRow {
+  display: flex;
+  gap: 24px;
+  align-items: stretch;
 }
 
-.legend {
+.chartItem {
+  flex: 1;
+  min-width: 0;
   display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: $font-size-xs;
-  color: $text-muted;
+  flex-direction: column;
+  gap: $spacing-xs;
 }
 
-.legendItem {
+.chartCaption {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-semibold;
+  color: $text-primary;
 }
 
 .legendDot {
@@ -116,7 +120,7 @@
 }
 
 .chartContainer {
-  height: 320px;
+  height: 280px;
 }
 
 .emptyState {

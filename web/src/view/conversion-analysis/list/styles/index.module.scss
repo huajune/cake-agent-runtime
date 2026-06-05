@@ -1,0 +1,2046 @@
+@use '@/assets/styles/variables' as *;
+
+$panel-radius: 20px;
+$soft-top-line: linear-gradient(
+  90deg,
+  $primary-light 0%,
+  $accent-light 38%,
+  $success 68%,
+  $warning 100%
+);
+$chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+
+.page {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-lg;
+  padding: $spacing-md;
+}
+
+.pageRefreshing {
+  .kpiBand,
+  .conversionSection,
+  > .panel {
+    opacity: 0.6;
+    filter: saturate(0.85);
+    transition:
+      opacity $transition-normal,
+      filter $transition-normal;
+  }
+}
+
+// 刷新指示：固定在视口顶部、贯穿整页宽度的滑动进度条——不占布局、不挤动内容，
+// 且滚动到下方切换筛选时依然可见（替代旧的居中大胶囊）。
+.refreshBar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  height: 4px;
+  overflow: hidden;
+  background: rgba($primary, 0.16);
+  pointer-events: none;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 42%;
+    background: linear-gradient(90deg, transparent, $primary 38%, $accent 70%, transparent);
+    box-shadow: 0 0 14px 1px rgba($accent, 0.55);
+    animation: conversionRefreshSlide 0.95s ease-in-out infinite;
+  }
+}
+
+.modeTabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  border: 1px solid $border;
+  border-radius: $radius-lg;
+  background: $bg-secondary;
+  padding: 3px;
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    border: 0;
+    border-radius: $radius-md;
+    background: transparent;
+    color: $text-secondary;
+    padding: 0 16px;
+    font-size: $font-size-sm;
+    font-weight: $font-weight-semibold;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      background $transition-fast,
+      color $transition-fast,
+      box-shadow $transition-fast;
+
+    &:hover:not(.modeTabActive) {
+      color: $text-primary;
+    }
+  }
+}
+
+.modeTabActive {
+  background: $bg-card !important;
+  color: $primary !important;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.08),
+    0 1px 1px rgba(15, 23, 42, 0.04);
+}
+
+@keyframes conversionRefreshSlide {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(390%);
+  }
+}
+
+.heroPanel,
+.panel,
+.kpiCell {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid $border;
+  border-radius: $panel-radius;
+  background: $bg-card;
+  box-shadow: $shadow-sm;
+  transition:
+    border-color $transition-normal,
+    box-shadow $transition-normal,
+    transform $transition-normal;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: $soft-top-line;
+    opacity: 0.84;
+  }
+
+  &:hover {
+    border-color: rgba($primary-light, 0.55);
+    box-shadow: $shadow-md;
+  }
+}
+
+.heroPanel {
+  min-height: 390px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 28px;
+  padding: 42px 44px 46px;
+  isolation: isolate;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.98) 0%,
+      rgba(255, 255, 255, 0.9) 48%,
+      rgba(255, 255, 255, 0.5) 100%
+    ),
+    linear-gradient(180deg, #ffffff 0%, #fbfcff 100%),
+    radial-gradient(circle at right top, $primary-08, transparent 42%);
+  overflow: visible;
+  z-index: 20;
+}
+
+.heroImage {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: right center;
+  opacity: 0.78;
+  filter: saturate(0.82) hue-rotate(8deg) brightness(1.07);
+  mask-image: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.26) 0%,
+    rgba(0, 0, 0, 0.46) 18%,
+    rgba(0, 0, 0, 0.88) 42%,
+    #000 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.26) 0%,
+    rgba(0, 0, 0, 0.46) 18%,
+    rgba(0, 0, 0, 0.88) 42%,
+    #000 100%
+  );
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.heroContent {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 0;
+
+  h1 {
+    margin: 0;
+    max-width: 520px;
+    background: $gradient-primary;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-size: 44px;
+    font-weight: $font-weight-extrabold;
+    line-height: 1.04;
+    letter-spacing: 0;
+  }
+
+  p {
+    max-width: 520px;
+    margin: 0;
+    color: $text-secondary;
+    font-size: $font-size-base;
+    line-height: $line-height-relaxed;
+  }
+}
+
+.heroEyebrow,
+.heroMeta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.heroEyebrow {
+  min-height: 34px;
+  border: 1px solid $primary-20;
+  border-radius: $radius-full;
+  background: rgba(255, 255, 255, 0.76);
+  color: $primary-dark;
+  padding: 0 13px;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-bold;
+  letter-spacing: 0.08em;
+
+  svg {
+    color: $accent;
+  }
+}
+
+.heroMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: wrap;
+
+  span {
+    min-height: 24px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-right: 1px solid rgba($border, 0.9);
+    color: $text-secondary;
+    margin-right: 12px;
+    padding-right: 12px;
+    font-size: $font-size-xs;
+    font-weight: $font-weight-semibold;
+    white-space: nowrap;
+
+    &:last-child {
+      border-right: 0;
+      margin-right: 0;
+      padding-right: 0;
+    }
+  }
+
+  svg {
+    color: $primary;
+  }
+}
+
+.toolbar {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 450px);
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+  align-self: flex-start;
+  justify-self: auto;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  backdrop-filter: none;
+  overflow: visible;
+
+  :global(.filters) {
+    width: auto;
+    max-width: 100%;
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+
+  :global(.filters button) {
+    min-height: 34px;
+    flex: 0 0 auto;
+    min-width: 0;
+    padding: 0 16px;
+    background: rgba(255, 255, 255, 0.68);
+    font-size: 12px;
+    backdrop-filter: blur(10px);
+  }
+
+  :global(.filters button.active) {
+    border-color: transparent;
+    background: $gradient-primary;
+    color: #fff;
+    box-shadow: 0 8px 18px rgba($primary, 0.24);
+  }
+
+  :global(.control-group-dropdown) {
+    width: min(100%, 280px);
+  }
+
+  :global(.control-group-dropdown summary) {
+    min-height: 38px;
+    gap: 8px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.72);
+    padding: 0 12px;
+    font-size: $font-size-xs;
+    backdrop-filter: blur(10px);
+  }
+
+  :global(.control-group-dropdown summary strong) {
+    font-size: $font-size-base;
+  }
+
+  :global(.control-group-dropdown > div) {
+    top: calc(100% + 8px);
+    width: min(100vw - 32px, 280px);
+    max-height: 258px;
+    padding: 6px;
+    border-radius: 14px;
+  }
+
+  :global(.control-group-dropdown label) {
+    min-height: 38px;
+    gap: 10px;
+    border-radius: 10px;
+    padding: 0 9px;
+    font-size: $font-size-sm;
+  }
+
+  :global(.control-group-dropdown input) {
+    width: 16px;
+    height: 16px;
+
+    &[type='radio']:checked::after {
+      width: 6px;
+      height: 6px;
+    }
+  }
+}
+
+.kpiBand {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  gap: $spacing-md;
+}
+
+.caliberNote {
+  margin: 0 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: $text-muted;
+  font-size: $font-size-xs;
+  line-height: $line-height-relaxed;
+
+  &::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: $primary;
+    flex: none;
+  }
+}
+
+.kpiCell {
+  --kpi-tone: #{$primary};
+  --kpi-next: #{$accent};
+  --kpi-soft: #{$primary-10};
+
+  min-height: 174px;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 22px;
+  background: linear-gradient(135deg, #ffffff 0%, rgba($primary, 0.04) 100%);
+
+  &::after {
+    content: '';
+    position: absolute;
+    right: -28px;
+    bottom: -34px;
+    z-index: 0;
+    width: 128px;
+    height: 128px;
+    border-radius: 50%;
+    background: var(--kpi-tone);
+    opacity: 0.12;
+    filter: blur(34px);
+  }
+
+  &:hover {
+    transform: translateY(-4px);
+  }
+
+  &.teal {
+    --kpi-tone: #10b981;
+    --kpi-next: #14b8a6;
+    --kpi-soft: rgba(16, 185, 129, 0.16);
+    background: linear-gradient(135deg, #ffffff 0%, rgba(16, 185, 129, 0.06) 100%);
+  }
+
+  &.sky {
+    --kpi-tone: #0ea5e9;
+    --kpi-next: #60a5fa;
+    --kpi-soft: rgba(14, 165, 233, 0.16);
+    background: linear-gradient(135deg, #ffffff 0%, rgba(14, 165, 233, 0.06) 100%);
+  }
+
+  &.rose {
+    --kpi-tone: #ec4899;
+    --kpi-next: #fb7185;
+    --kpi-soft: rgba(236, 72, 153, 0.16);
+    background: linear-gradient(135deg, #ffffff 0%, rgba(236, 72, 153, 0.055) 100%);
+  }
+
+  &.amber {
+    --kpi-tone: #{$warning};
+    --kpi-next: #{$danger};
+    --kpi-soft: #{$warning-soft};
+    background: linear-gradient(135deg, #ffffff 0%, rgba($warning, 0.055) 100%);
+  }
+
+  &.purple {
+    --kpi-tone: #{$accent};
+    --kpi-next: #{$primary};
+    --kpi-soft: #{$accent-10};
+    background: linear-gradient(135deg, #ffffff 0%, rgba($accent, 0.055) 100%);
+  }
+}
+
+.kpiTop {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  column-gap: 12px;
+}
+
+.kpiIcon {
+  width: 46px;
+  height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--kpi-tone) 0%, var(--kpi-next) 100%);
+  color: $text-on-primary;
+  box-shadow: 0 10px 20px var(--kpi-soft);
+}
+
+.kpiLabel {
+  min-width: 0;
+  color: $text-muted;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-semibold;
+  line-height: $line-height-normal;
+  white-space: nowrap;
+}
+
+.kpiMeaning {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  margin: 8px 0 0;
+  overflow: hidden;
+  color: rgba($text-secondary, 0.86);
+  font-size: 12px;
+  font-weight: $font-weight-medium;
+  line-height: 1.35;
+  letter-spacing: 0;
+  padding: 0;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.kpiValue {
+  position: relative;
+  z-index: 1;
+  margin-top: 16px;
+  background: linear-gradient(120deg, var(--kpi-tone), var(--kpi-next));
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-size: 34px;
+  font-weight: $font-weight-extrabold;
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+
+.kpiMeta {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-sm;
+  margin-top: auto;
+  padding-top: 14px;
+  color: $text-secondary;
+
+  em,
+  span {
+    font-size: $font-size-xs;
+    font-style: normal;
+    font-weight: $font-weight-semibold;
+  }
+
+  em {
+    min-height: 24px;
+    display: inline-flex;
+    align-items: center;
+    border-radius: $radius-full;
+    background: rgba(255, 255, 255, 0.72);
+    padding: 0 9px;
+  }
+}
+
+.kpiBeam {
+  display: none;
+}
+
+.up {
+  color: $success;
+}
+
+.down {
+  color: $danger;
+}
+
+.neutral {
+  color: $text-muted;
+}
+
+.conversionSection {
+  min-width: 0;
+}
+
+.panel {
+  padding: 28px 32px 32px;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+  margin-bottom: 22px;
+
+  h2 {
+    margin: 8px 0 0;
+    color: $text-primary;
+    font-size: $font-size-xl;
+    font-weight: $font-weight-extrabold;
+    line-height: $line-height-tight;
+    letter-spacing: 0;
+  }
+
+  span {
+    display: block;
+    margin-top: 6px;
+    color: $text-muted;
+    font-size: $font-size-sm;
+    line-height: $line-height-normal;
+  }
+}
+
+.panelHeaderActions {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sectionKicker {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  margin: 0 !important;
+  border-radius: $radius-full;
+  background: $primary-08;
+  color: $primary !important;
+  padding: 4px 11px;
+  font-size: $font-size-xs !important;
+  font-weight: $font-weight-bold;
+  letter-spacing: 0.04em;
+
+  &::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+}
+
+.panelTotal {
+  min-width: 134px;
+  border: 1px solid $primary-15;
+  border-radius: $radius-lg;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), $primary-08);
+  padding: 12px 16px;
+  text-align: right;
+  box-shadow: 0 10px 22px $primary-10;
+
+  span {
+    margin: 0;
+    color: $text-secondary;
+    font-size: $font-size-xs;
+    font-weight: $font-weight-semibold;
+  }
+
+  strong {
+    display: block;
+    margin-top: 4px;
+    background: $gradient-primary;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-size: 32px;
+    font-weight: $font-weight-extrabold;
+    line-height: 1;
+  }
+}
+
+.trendPanel {
+  min-width: 0;
+  isolation: isolate;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.96) 0%,
+      rgba(249, 251, 255, 0.92) 48%,
+      rgba(247, 250, 255, 0.96) 100%
+    ),
+    radial-gradient(circle at 86% 8%, rgba($primary-light, 0.12), transparent 30%),
+    radial-gradient(circle at 72% 92%, rgba($accent, 0.08), transparent 32%), $bg-card;
+
+  .panelHeader,
+  .trendGrid,
+  .trendEmpty {
+    position: relative;
+    z-index: 1;
+  }
+}
+
+.trendPanelArt {
+  position: absolute;
+  top: 6px;
+  right: 0;
+  z-index: 0;
+  width: min(860px, 54%);
+  height: min(320px, 48%);
+  object-fit: cover;
+  object-position: right top;
+  opacity: 0.18;
+  filter: saturate(1.02) hue-rotate(8deg) brightness(1.06);
+  mask-image:
+    linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.36) 24%, #000 100%),
+    linear-gradient(180deg, #000 0%, #000 62%, transparent 100%);
+  -webkit-mask-image:
+    linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.36) 24%, #000 100%),
+    linear-gradient(180deg, #000 0%, #000 62%, transparent 100%);
+  mask-composite: intersect;
+  -webkit-mask-composite: source-in;
+  pointer-events: none;
+}
+
+.trendGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: $spacing-md;
+}
+
+.trendCard {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba($border, 0.82);
+  border-radius: $radius-lg;
+  background:
+    radial-gradient(
+      circle at 92% 10%,
+      color-mix(in srgb, var(--trend-tone, #{$primary}) 11%, transparent),
+      transparent 34%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(250, 252, 255, 0.84));
+  padding: 16px 16px 10px;
+  box-shadow:
+    0 10px 24px rgba(15, 23, 42, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(7px);
+  transition:
+    border-color $transition-normal,
+    box-shadow $transition-normal,
+    transform $transition-normal;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    height: 2px;
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--trend-tone, #{$primary}) 72%, #ffffff),
+      rgba(255, 255, 255, 0)
+    );
+    opacity: 0.8;
+    pointer-events: none;
+  }
+
+  &:hover {
+    transform: translateY(-3px);
+    border-color: color-mix(in srgb, var(--trend-tone, #{$primary}) 28%, #{$border});
+    box-shadow:
+      0 16px 30px rgba(15, 23, 42, 0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  }
+}
+
+.trendCardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-sm;
+  margin-bottom: 8px;
+
+  div {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  strong {
+    color: $text-primary;
+    font-size: $font-size-base;
+    font-weight: $font-weight-bold;
+    line-height: 1.2;
+  }
+
+  span {
+    color: $text-muted;
+    font-size: 12px;
+    line-height: 1.3;
+  }
+
+  em {
+    flex: 0 0 auto;
+    font-size: 22px;
+    font-weight: $font-weight-extrabold;
+    font-style: normal;
+    line-height: 1;
+  }
+}
+
+.trendCardStat {
+  flex: 0 0 auto;
+  align-items: flex-end !important;
+  text-align: right;
+
+  small {
+    color: $text-muted;
+    font-size: 11px;
+    font-weight: $font-weight-medium;
+    line-height: 1;
+  }
+}
+
+.trendChartBox {
+  position: relative;
+  width: 100%;
+}
+
+.trendTooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 120px;
+  border: 1px solid rgba($border, 0.8);
+  border-left: 3px solid var(--trend-tone, #{$primary});
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.97);
+  padding: 8px 12px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+
+  strong {
+    color: $text-primary;
+    font-size: 12px;
+    font-weight: $font-weight-bold;
+  }
+
+  span {
+    color: $text-secondary;
+    font-size: 12px;
+
+    em {
+      color: var(--trend-tone, #{$primary});
+      font-style: normal;
+      font-weight: $font-weight-bold;
+    }
+  }
+
+  small {
+    color: $text-muted;
+    font-size: 11px;
+  }
+}
+
+.trendEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  color: $text-muted;
+  font-size: $font-size-sm;
+}
+
+.funnelPanel {
+  isolation: isolate;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.98) 0%,
+      rgba(255, 255, 255, 0.93) 47%,
+      rgba(242, 247, 255, 0.78) 100%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.985), rgba(248, 250, 252, 0.95)), $bg-card;
+
+  .panelHeader,
+  .funnelLayout {
+    position: relative;
+    z-index: 1;
+  }
+}
+
+.funnelPanelArt {
+  position: absolute;
+  top: 8px;
+  right: 0;
+  z-index: 0;
+  width: min(960px, 64%);
+  height: calc(100% - 16px);
+  object-fit: cover;
+  object-position: right center;
+  opacity: 0.23;
+  filter: saturate(0.98) hue-rotate(8deg) brightness(1.06);
+  mask-image:
+    linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.42) 20%, #000 56%, #000 100%),
+    linear-gradient(180deg, #000 0%, #000 72%, transparent 100%);
+  -webkit-mask-image:
+    linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.42) 20%, #000 56%, #000 100%),
+    linear-gradient(180deg, #000 0%, #000 72%, transparent 100%);
+  mask-composite: intersect;
+  -webkit-mask-composite: source-in;
+  pointer-events: none;
+}
+
+.funnelLayout {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.9fr) minmax(420px, 1.1fr);
+  gap: $spacing-lg;
+  align-items: stretch;
+}
+
+.chartFrame {
+  position: relative;
+  min-height: 420px;
+  overflow: hidden;
+  border: 1px solid rgba($border, 0.9);
+  border-radius: $radius-lg;
+  background: $chart-line;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+}
+
+.chartFrame {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: $spacing-md;
+  background:
+    repeating-linear-gradient(90deg, rgba($primary, 0.035) 0 1px, transparent 1px 44px),
+    repeating-linear-gradient(0deg, rgba($accent, 0.03) 0 1px, transparent 1px 44px), $chart-line;
+}
+
+.funnelChart {
+  width: 100%;
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+.funnelShape {
+  position: relative;
+  flex: 1;
+  min-height: 340px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid rgba($border, 0.72);
+  border-radius: $radius-lg;
+  background:
+    radial-gradient(circle at 16% 14%, rgba(99, 102, 241, 0.1), transparent 32%),
+    radial-gradient(circle at 82% 88%, rgba(236, 72, 153, 0.08), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(248, 250, 252, 0.72));
+  padding: 12px;
+}
+
+.funnelSvg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 14px 22px rgba(15, 23, 42, 0.12));
+
+  path,
+  ellipse {
+    transition: filter $transition-fast;
+  }
+
+  g:hover path,
+  g:hover ellipse {
+    filter: brightness(1.05);
+  }
+}
+
+.funnelSvgLabel {
+  fill: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  text-anchor: middle;
+  paint-order: stroke;
+}
+
+.funnelSvgSub {
+  fill: rgba(255, 255, 255, 0.92);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.funnelNote {
+  margin: 16px 0 0;
+  padding-top: 14px;
+  border-top: 1px dashed rgba($border, 0.9);
+  color: $text-muted;
+  font-size: $font-size-xs;
+  line-height: $line-height-relaxed;
+}
+
+.stageStack,
+.reasonList {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.stageStack {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba($border, 0.78);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(248, 250, 252, 0.58)),
+    linear-gradient(135deg, rgba($primary, 0.06), rgba($success, 0.04));
+  padding: 16px;
+  box-shadow:
+    0 16px 32px rgba(15, 23, 42, 0.055),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(8px);
+}
+
+.stageRow {
+  --stage-tone: #{$primary};
+
+  position: relative;
+  z-index: 1;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 132px minmax(120px, 1fr) 118px;
+  align-items: center;
+  gap: 13px;
+  border: 1px solid rgba($border, 0.84);
+  border-radius: $radius-lg;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--stage-tone) 4%, transparent), transparent 34%),
+    rgba(255, 255, 255, 0.88);
+  padding: 0 14px;
+  box-shadow:
+    0 8px 18px rgba(15, 23, 42, 0.045),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  transition:
+    transform $transition-fast,
+    border-color $transition-fast,
+    background $transition-fast;
+
+  &:hover {
+    transform: translateX(3px);
+    border-color: color-mix(in srgb, var(--stage-tone) 42%, #e5e7eb);
+    background: $bg-secondary;
+    box-shadow:
+      0 8px 18px rgba(15, 23, 42, 0.05),
+      0 0 0 1px color-mix(in srgb, var(--stage-tone) 18%, transparent);
+  }
+}
+
+.stageLabel {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  span {
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: $gradient-primary;
+    color: $text-on-primary;
+    font-size: $font-size-xs;
+    font-weight: $font-weight-bold;
+    box-shadow: 0 8px 16px color-mix(in srgb, var(--stage-tone) 28%, transparent);
+  }
+
+  strong {
+    min-width: 0;
+    overflow: hidden;
+    color: $text-primary;
+    font-size: $font-size-sm;
+    font-weight: $font-weight-bold;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.stageMeter {
+  height: 9px;
+  overflow: hidden;
+  border-radius: $radius-full;
+  background: $border;
+
+  i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+  }
+}
+
+.stageMetrics {
+  text-align: right;
+
+  strong {
+    display: block;
+    color: $text-primary;
+    font-size: $font-size-base;
+    font-weight: $font-weight-extrabold;
+  }
+
+  span {
+    color: $text-muted;
+    font-size: $font-size-xs;
+    white-space: nowrap;
+    cursor: help;
+
+    em {
+      font-style: normal;
+      font-weight: $font-weight-bold;
+    }
+  }
+}
+
+// 顶部图例：一句话解释右侧两个百分比的口径。
+.stageLegend {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 2px;
+  padding: 8px 12px;
+  border-radius: $radius-lg;
+  background: rgba($primary, 0.06);
+  color: $text-secondary;
+  font-size: $font-size-xs;
+  line-height: 1.6;
+
+  b {
+    font-weight: $font-weight-bold;
+  }
+}
+
+// 列头：把右侧两个数标注成「占总数 / 阶段率」，与数据行网格对齐。
+.stageHead {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 132px minmax(120px, 1fr) 118px;
+  align-items: center;
+  gap: 13px;
+  padding: 0 14px 2px;
+  color: $text-muted;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+
+  .stageHeadMetrics {
+    text-align: right;
+    white-space: nowrap;
+
+    em {
+      font-style: normal;
+      font-weight: $font-weight-bold;
+    }
+  }
+}
+
+// 两个百分比的语义配色：占总数=主色，阶段率=青绿，与漏斗主链呼应。
+.legendOverall {
+  color: $primary;
+}
+
+.legendStage {
+  color: $success;
+}
+
+.legendSlash {
+  margin: 0 4px;
+  color: $text-muted;
+}
+
+.botPanel {
+  padding-bottom: $spacing-lg;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.94)), $bg-card;
+  isolation: isolate;
+
+  .panelHeader,
+  .tableScroll,
+  .emptyState {
+    position: relative;
+    z-index: 1;
+  }
+}
+
+.botPanelArt {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 0;
+  width: min(440px, 42%);
+  height: 210px;
+  object-fit: cover;
+  object-position: right center;
+  opacity: 0.13;
+  filter: saturate(0.96) hue-rotate(8deg) brightness(1.05);
+  mask-image:
+    linear-gradient(90deg, transparent 0%, #000 32%, #000 100%),
+    linear-gradient(180deg, #000 0%, #000 54%, transparent 100%);
+  -webkit-mask-image:
+    linear-gradient(90deg, transparent 0%, #000 32%, #000 100%),
+    linear-gradient(180deg, #000 0%, #000 54%, transparent 100%);
+  mask-composite: intersect;
+  -webkit-mask-composite: source-in;
+  pointer-events: none;
+}
+
+.botSummary {
+  min-width: min(100%, 360px);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.summaryMetric {
+  --summary-tone: #{$primary};
+  --summary-next: #{$accent};
+  --summary-soft: #{$primary-10};
+
+  position: relative;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--summary-tone) 10%, #e5e7eb);
+  border-radius: 13px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.72)),
+    radial-gradient(
+      circle at 10% 6%,
+      color-mix(in srgb, var(--summary-tone) 6%, transparent),
+      transparent 46%
+    ),
+    radial-gradient(
+      circle at 90% 92%,
+      color-mix(in srgb, var(--summary-next) 5%, transparent),
+      transparent 50%
+    );
+  padding: 8px 11px 9px 9px;
+  box-shadow:
+    0 8px 18px rgba(15, 23, 42, 0.035),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+
+  &::after {
+    content: '';
+    position: absolute;
+    right: 11px;
+    bottom: 6px;
+    left: 41px;
+    height: 2px;
+    border-radius: $radius-full;
+    background: linear-gradient(90deg, var(--summary-tone), var(--summary-next));
+    opacity: 0.32;
+  }
+
+  span {
+    margin: 0;
+    color: $text-muted;
+    font-size: 10.5px;
+    font-weight: $font-weight-semibold;
+    line-height: 1.2;
+  }
+
+  strong {
+    display: block;
+    margin-top: 3px;
+    color: color-mix(in srgb, var(--summary-tone) 34%, $text-primary);
+    font-size: 15px;
+    font-weight: $font-weight-bold;
+    line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.summaryIcon {
+  width: 24px;
+  height: 24px;
+  grid-row: 1 / span 2;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--summary-tone) 18%, #ffffff);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 252, 0.72)),
+    color-mix(in srgb, var(--summary-tone) 9%, transparent);
+  color: color-mix(in srgb, var(--summary-tone) 74%, $text-primary) !important;
+  box-shadow:
+    0 6px 14px var(--summary-soft),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+
+  svg {
+    width: 13px;
+    height: 13px;
+    filter: none;
+  }
+}
+
+.summaryAverage {
+  --summary-tone: #0ea5e9;
+  --summary-next: #38bdf8;
+  --summary-soft: rgba(14, 165, 233, 0.1);
+}
+
+.summaryBest {
+  --summary-tone: #f59e0b;
+  --summary-next: #fb923c;
+  --summary-soft: rgba(245, 158, 11, 0.1);
+}
+
+.summaryLow {
+  --summary-tone: #ec4899;
+  --summary-next: #f472b6;
+  --summary-soft: rgba(236, 72, 153, 0.09);
+}
+
+.tableScroll {
+  overflow-x: auto;
+  border: 1px solid rgba($border, 0.82);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(248, 250, 252, 0.62)),
+    radial-gradient(circle at 18% 0%, rgba($primary, 0.05), transparent 28%),
+    radial-gradient(circle at 86% 8%, rgba($success, 0.06), transparent 24%);
+  padding: 10px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
+  @include custom-scrollbar;
+}
+
+.botTable {
+  width: 100%;
+  min-width: 820px;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0 6px;
+  font-size: $font-size-sm;
+
+  th,
+  td {
+    padding: 9px 10px;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  thead th {
+    border-bottom: 0;
+    background: transparent;
+    color: $text-secondary;
+    font-size: 11px;
+    font-weight: $font-weight-bold;
+    letter-spacing: 0;
+    padding-top: 2px;
+    padding-bottom: 4px;
+
+    button {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      padding: 0;
+      font: inherit;
+      font-weight: $font-weight-bold;
+
+      &:hover {
+        color: $primary;
+      }
+    }
+  }
+
+  tbody tr {
+    --row-tone: #{$primary};
+
+    position: relative;
+    transition:
+      transform $transition-fast,
+      filter $transition-fast;
+
+    &:hover {
+      transform: translateY(-1px);
+
+      td {
+        border-color: rgba($primary-light, 0.22);
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.92)),
+          linear-gradient(90deg, $primary-04, transparent 36%);
+        box-shadow: 0 8px 18px rgba(99, 102, 241, 0.055);
+      }
+    }
+
+    &.statusRowGood {
+      --row-tone: #{$primary};
+    }
+
+    &.statusRowWarning {
+      --row-tone: #{$primary};
+    }
+
+    &.statusRowBad {
+      --row-tone: #{$primary};
+    }
+  }
+
+  tbody td {
+    border-top: 1px solid rgba($border, 0.82);
+    border-bottom: 1px solid rgba($border, 0.82);
+    background: rgba(255, 255, 255, 0.92);
+    color: $text-secondary;
+    transition:
+      border-color $transition-fast,
+      background $transition-fast,
+      box-shadow $transition-fast;
+  }
+
+  tbody td:first-child {
+    border-left: 1px solid rgba($border, 0.82);
+    border-radius: 14px 0 0 14px;
+  }
+
+  tbody td:last-child {
+    border-right: 1px solid rgba($border, 0.82);
+    border-radius: 0 14px 14px 0;
+  }
+}
+
+.numCol {
+  width: 76px;
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.numCol button {
+  flex-direction: row-reverse;
+}
+
+.numActive {
+  color: $text-primary;
+  font-weight: $font-weight-bold;
+}
+
+.sortActive {
+  color: $primary !important;
+}
+
+.sortIdle {
+  opacity: 0.4;
+}
+
+.rankCol {
+  width: 58px;
+  color: $text-muted;
+  text-align: center !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.accountCol {
+  width: 156px;
+  max-width: 156px;
+}
+
+.rateCol {
+  width: 108px;
+}
+
+.statusCol {
+  width: 76px;
+}
+
+.rankBadge {
+  width: 28px;
+  height: 28px;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--row-tone, #{$primary}) 10%, #ffffff);
+  color: color-mix(in srgb, var(--row-tone, #{$primary}) 72%, #0f172a);
+  font-size: $font-size-xs;
+  font-weight: $font-weight-extrabold;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--row-tone, #{$primary}) 18%, transparent);
+}
+
+.rankTop {
+  width: 42px;
+  height: 42px;
+  overflow: hidden;
+  isolation: isolate;
+  border: 1px solid var(--rank-ring, rgba(99, 102, 241, 0.2));
+  border-radius: 15px;
+  color: #fff;
+  box-shadow:
+    0 12px 24px var(--rank-shadow, rgba(15, 23, 42, 0.1)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -10px 18px rgba(15, 23, 42, 0.035);
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: inherit;
+    background:
+      radial-gradient(circle at 28% 22%, rgba(255, 255, 255, 0.9), transparent 42%),
+      radial-gradient(
+        circle at 78% 84%,
+        var(--rank-glow, rgba(99, 102, 241, 0.08)),
+        transparent 52%
+      );
+    opacity: 0.9;
+    pointer-events: none;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 1px 4px auto;
+    z-index: 2;
+    height: 34%;
+    border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.58), transparent);
+    pointer-events: none;
+  }
+}
+
+.rankIcon {
+  position: relative;
+  z-index: 1;
+  width: 36px;
+  height: 36px;
+  overflow: visible;
+  filter: drop-shadow(0 2px 2px rgba(15, 23, 42, 0.15));
+}
+
+.rankGold {
+  --rank-ring: rgba(245, 158, 11, 0.34);
+  --rank-shadow: rgba(245, 158, 11, 0.2);
+  --rank-glow: rgba(245, 158, 11, 0.2);
+
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 251, 235, 0.78)),
+    linear-gradient(145deg, rgba(254, 243, 199, 0.8), rgba(245, 158, 11, 0.3));
+}
+
+.rankSilver {
+  --rank-ring: rgba(14, 165, 233, 0.26);
+  --rank-shadow: rgba(14, 165, 233, 0.16);
+  --rank-glow: rgba(14, 165, 233, 0.17);
+
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(240, 249, 255, 0.78)),
+    linear-gradient(145deg, rgba(14, 165, 233, 0.08), rgba(129, 140, 248, 0.13));
+  color: #334155;
+}
+
+.rankBronze {
+  --rank-ring: rgba(249, 115, 22, 0.3);
+  --rank-shadow: rgba(249, 115, 22, 0.17);
+  --rank-glow: rgba(249, 115, 22, 0.17);
+
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 247, 237, 0.76)),
+    linear-gradient(145deg, rgba(249, 115, 22, 0.1), rgba(245, 158, 11, 0.2));
+}
+
+.accountCell {
+  width: 156px;
+  min-width: 0;
+  max-width: 156px;
+
+  strong {
+    display: block;
+    max-width: 136px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    color: $text-primary;
+    font-size: 14px;
+    font-weight: $font-weight-extrabold;
+  }
+}
+
+.accountGroup {
+  width: fit-content;
+  max-width: 136px;
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid rgba($border, 0.74);
+  border-radius: 9px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.82)),
+    color-mix(in srgb, var(--row-tone, #{$primary}) 5%, transparent);
+  color: $text-secondary;
+  padding: 0 8px;
+  margin-top: 5px;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-bold;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
+}
+
+.groupTag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  border: 1px solid rgba($border, 0.74);
+  border-radius: 9px;
+  background: rgba(248, 250, 252, 0.86);
+  color: $text-secondary;
+  padding: 0 9px;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-bold;
+}
+
+.metricCount {
+  color: $text-secondary;
+  font-weight: $font-weight-bold;
+  font-variant-numeric: tabular-nums;
+}
+
+.rateCell {
+  min-width: 124px;
+
+  strong {
+    color: $text-primary;
+    font-size: $font-size-lg;
+    font-weight: $font-weight-extrabold;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.rateBar {
+  display: block;
+  width: 86px;
+  height: 5px;
+  margin-top: 7px;
+  margin-left: auto;
+  overflow: hidden;
+  border-radius: $radius-full;
+  background: rgba($border, 0.82);
+
+  b {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, $primary, $accent);
+    box-shadow: 0 0 12px $primary-20;
+  }
+}
+
+.rateBarBooking b {
+  background: linear-gradient(90deg, #0ea5e9, #38bdf8);
+  box-shadow: 0 0 12px rgba(14, 165, 233, 0.2);
+}
+
+.rateBarInterview b {
+  background: linear-gradient(90deg, #f59e0b, #fb923c);
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.2);
+}
+
+.statusCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  border: 1px solid rgba($border, 0.84);
+  border-radius: 9px;
+  background: rgba(248, 250, 252, 0.86);
+  color: $text-secondary;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-bold;
+  padding: 0 9px;
+
+  &.statusGood {
+    border-color: rgba($success, 0.18);
+    background: rgba($success, 0.07);
+    color: color-mix(in srgb, $success 54%, $text-primary);
+  }
+
+  &.statusWarning {
+    border-color: rgba($warning, 0.18);
+    background: rgba($warning, 0.07);
+    color: color-mix(in srgb, $warning 48%, $text-primary);
+  }
+
+  &.statusBad {
+    border-color: rgba(236, 72, 153, 0.18);
+    background: rgba(236, 72, 153, 0.065);
+    color: color-mix(in srgb, #ec4899 50%, $text-primary);
+  }
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 14%, transparent);
+
+  &.statusGood {
+    background: $success;
+  }
+
+  &.statusWarning {
+    background: $warning;
+  }
+
+  &.statusBad {
+    background: #ec4899;
+  }
+}
+
+.handoffLayout {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: $spacing-lg;
+  align-items: start;
+}
+
+.handoffStandalone {
+  .reasonRow {
+    min-height: 66px;
+  }
+}
+
+.handoffChartCard {
+  position: relative;
+  min-height: 320px;
+  overflow: hidden;
+  border: 1px solid rgba($border, 0.88);
+  border-radius: $radius-lg;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.78)),
+    linear-gradient(135deg, $primary-08, $accent-08);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.045);
+
+  &::before {
+    content: '';
+    position: absolute;
+    right: -60px;
+    top: -60px;
+    width: 180px;
+    height: 180px;
+    border-radius: 50%;
+    background: $accent-15;
+    filter: blur(28px);
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    left: -54px;
+    bottom: -62px;
+    width: 170px;
+    height: 170px;
+    border-radius: 50%;
+    background: $info-soft;
+    filter: blur(26px);
+  }
+}
+
+.handoffDonutWrap {
+  position: relative;
+  z-index: 1;
+  width: min(250px, 100%);
+  aspect-ratio: 1;
+}
+
+.handoffDonut {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 18px 24px $primary-10);
+}
+
+.handoffDonutTrack {
+  fill: none;
+  stroke: $border;
+  stroke-width: 30;
+}
+
+.handoffDonutCenter {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 116px;
+  height: 116px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  border: 1px solid $border;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.05);
+  transform: translate(-50%, -50%);
+
+  span,
+  em {
+    display: block;
+    color: $text-muted;
+    font-size: $font-size-xs;
+    font-style: normal;
+    font-weight: $font-weight-bold;
+  }
+
+  strong {
+    display: block;
+    margin: 4px 0 2px;
+    background: $gradient-primary;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-size: 34px;
+    font-weight: $font-weight-extrabold;
+    line-height: 1;
+  }
+}
+
+.handoffTopReason {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  border: 1px solid rgba($border, 0.82);
+  border-radius: $radius-lg;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 13px 14px;
+  text-align: center;
+
+  span {
+    color: $primary;
+    font-size: $font-size-xs;
+    font-weight: $font-weight-bold;
+  }
+
+  strong {
+    display: block;
+    margin-top: 5px;
+    color: $text-primary;
+    font-size: $font-size-base;
+    font-weight: $font-weight-extrabold;
+  }
+
+  p {
+    margin: 5px 0 0;
+    color: $text-secondary;
+    font-size: $font-size-xs;
+  }
+}
+
+.reasonRow {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-height: 70px;
+  border: 1px solid rgba($border, 0.9);
+  border-radius: $radius-lg;
+  background: linear-gradient(135deg, #ffffff 0%, #fbfcff 100%);
+  padding: 12px 14px;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.035);
+}
+
+.reasonRank {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  color: $text-on-primary;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-extrabold;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.reasonContent {
+  min-width: 0;
+}
+
+.reasonMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-sm;
+  margin-bottom: 8px;
+
+  strong {
+    min-width: 0;
+    overflow: hidden;
+    color: $text-primary;
+    font-size: $font-size-sm;
+    font-weight: $font-weight-bold;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  em {
+    color: $text-secondary;
+    flex: 0 0 auto;
+    font-size: $font-size-sm;
+    font-style: normal;
+    font-weight: $font-weight-extrabold;
+  }
+}
+
+.reasonMeterRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.reasonMeter {
+  flex: 1;
+  height: 10px;
+  overflow: hidden;
+  border-radius: $radius-full;
+  background: $border;
+
+  i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+  }
+}
+
+.reasonMeterRow > span {
+  flex: 0 0 auto;
+  min-width: 46px;
+  color: $text-muted;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  text-align: right;
+}
+
+.emptyState {
+  min-height: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: $text-muted;
+  font-size: $font-size-sm;
+  font-weight: $font-weight-semibold;
+}
+
+@media (max-width: $breakpoint-xl) {
+  .kpiBand {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .funnelLayout,
+  .handoffLayout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: $breakpoint-lg) {
+  .kpiBand {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stageStack {
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .stageRow,
+  .stageHead {
+    min-width: 620px;
+  }
+}
+
+@media (max-width: $breakpoint-sm) {
+  .page {
+    padding: $spacing-sm;
+  }
+
+  .heroPanel,
+  .panel {
+    padding: $spacing-md;
+    border-radius: $radius-lg;
+  }
+
+  .heroPanel {
+    align-items: flex-start;
+  }
+
+  .heroContent,
+  .panelHeader {
+    align-items: flex-start;
+  }
+
+  .heroContent,
+  .panelHeader {
+    flex-direction: column;
+  }
+
+  .modeTabs {
+    width: 100%;
+
+    button {
+      flex: 1 1 0;
+    }
+  }
+
+  .panelHeaderActions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .toolbar {
+    width: 100%;
+    height: auto;
+    padding: 0;
+  }
+
+  .toolbar :global(.filters) {
+    width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+
+    button {
+      flex: 0 0 auto;
+    }
+  }
+
+  .toolbar :global(.control-group-dropdown) {
+    width: 100%;
+  }
+
+  .kpiBand {
+    grid-template-columns: 1fr;
+  }
+
+  .panelTotal {
+    width: 100%;
+    text-align: left;
+  }
+}

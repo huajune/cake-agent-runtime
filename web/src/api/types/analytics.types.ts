@@ -15,7 +15,6 @@ export interface OverviewDelta {
   totalMessages: number;
   successRate: number;
   avgDuration: number;
-  activeUsers: number;
 }
 
 export interface QueueInfo {
