@@ -1,179 +1,97 @@
 {
-  "baseVersion": "5.11.4",
+  "baseVersion": "5.11.5",
   "nextVersion": "5.12.0",
   "updatedAt": "2026-06-05",
   "sourceBranch": "develop",
   "entries": [
     {
-      "number": "255",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/255",
-      "title": "fix dashboard managed user count",
-      "author": "huajune",
-      "mergedAt": "2026-06-05",
-      "businessUpdates": [
-        "fix dashboard managed user count",
-        "fix resume attachment booking flow",
-        "fix booking tool formatting"
-      ],
-      "summary": [
-        "fix dashboard managed user count",
-        "fix resume attachment booking flow",
-        "fix booking tool formatting",
-        "Add a DB-side `count_active_users_from_user_activity_by_range` RPC using `COUNT(DISTINCT chat_id)`.",
-        "Add `countActiveUsersByDateRange` through the user hosting repository/service, with a paginated table-scan fallback if the new RPC is not available yet.",
-        "Switch Dashboard business totals for non-today ranges to use the distinct count instead of list length.",
-        "Add tests covering the count RPC path, fallback path, and capped-list regression."
-      ],
-      "features": [],
-      "fixes": [
-        "fix dashboard managed user count",
-        "fix resume attachment booking flow",
-        "fix booking tool formatting"
-      ],
-      "optimizations": [],
-      "ops": [
-        "Add a DB-side `count_active_users_from_user_activity_by_range` RPC using `COUNT(DISTINCT chat_id)`.",
-        "Add `countActiveUsersByDateRange` through the user hosting repository/service, with a paginated table-scan fallback if the new RPC is not available yet.",
-        "Switch Dashboard business totals for non-today ranges to use the distinct count instead of list length.",
-        "Add tests covering the count RPC path, fallback path, and capped-list regression."
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`pnpm exec jest tests/biz/monitoring/services/dashboard/analytics-dashboard.service.spec.ts tests/biz/user/repositories/user-hosting.repository.spec.ts --watchman=false`",
-        "`pnpm exec tsc --noEmit --pretty false`"
-      ]
-    },
-    {
       "number": "258",
       "url": "https://github.com/huajune/cake-agent-runtime/pull/258",
       "title": "运营数据底座/转化分析仪表盘 + message_processing 补 bot_im_id",
-      "author": "ArielZhu",
+      "author": "huajune",
       "mergedAt": "2026-06-05",
       "businessUpdates": [
-        "新增客户回调修破冰率反推 + 消息过滤/解析/回复流程调整",
-        "新增集成测试",
-        "Merge origin/develop into codex/fix-bug",
-        "用 const 替代 let 修复 conversion-analytics row 缓存 prefer-const",
-        "处理 PR #258 review should-fix 项"
+        "运营数据底座 + 转化分析仪表盘：咨询→报名→面试漏斗、账号榜单、KPI、控制筛选与趋势图",
+        "转人工事件采集与原因分析",
+        "破冰率/转化榜单数据修复：新增客户回调反推、message_processing 补 bot_im_id 修同 bot 裂行",
+        "Agent 调整：品类词识别为相关品牌（“咖啡”不再被错提成“咖啡师”）、推荐班次列全所有档位"
       ],
-      "summary": [
-        "推荐班次必须列全所有档位",
-        "运营数据底座/转化分析/active users/handoff/bot_im_id 迁移",
-        "运营事件底账与每日报表投影",
-        "咨询→报名→面试转化漏斗、账号榜单与 KPI",
+      "summary": [],
+      "features": [
+        "运营数据底座与运营事件底账、每日报表投影",
+        "咨询→报名→面试转化分析仪表盘：转化漏斗、账号榜单、KPI、控制筛选、侧栏与趋势图",
         "转人工事件采集与原因分析",
         "花卷 agentId 漏斗上报集成",
         "托管成员配置（member config）",
-        "新增客户回调修破冰率反推 + 消息过滤/解析/回复流程调整",
-        "转人工/运营/私聊监控/入职跟进等告警通知拆分",
         "sponge token 多账号配置与上下文解析",
-        "预约/precheck/拉群/转人工/简历附件等工具调整",
-        "message_processing 补 bot_im_id 修转化榜单同 bot 裂行 + 监控盘调整",
-        "上下文 section、准备流程与编排调整",
-        "长期/会话记忆与高置信事实调整",
-        "supabase 熔断器、base repository 与 date util",
-        "用户托管、干预与报名 case 调整",
-        "海绵手机号回查回填历史 interview.passed",
-        "新增集成测试",
-        "转化分析仪表盘、控制筛选、侧栏与趋势图",
-        "运营数据规格与海绵集成文档",
-        "同步依赖与 .env.example",
-        "Merge origin/develop into codex/fix-bug",
-        "用 const 替代 let 修复 conversion-analytics row 缓存 prefer-const",
-        "处理 PR #258 review should-fix 项",
-        "同城多候选优先取地铁站锚点，避免长路名 POI 锚偏",
-        "品类词识别为相关品牌，杜绝\"咖啡\"被错提成\"咖啡师\"",
-        "转化分析页处理 React Query isError，API 失败时给出反馈",
-        "运营数据底座/转化分析仪表盘 + message_processing 补 bot_im_id"
-      ],
-      "features": [
-        "新增客户回调修破冰率反推 + 消息过滤/解析/回复流程调整",
-        "新增集成测试"
+        "告警通知按转人工/运营/私聊监控/入职跟进拆分"
       ],
       "fixes": [
-        "Merge origin/develop into codex/fix-bug",
-        "用 const 替代 let 修复 conversion-analytics row 缓存 prefer-const",
-        "处理 PR #258 review should-fix 项"
+        "修复转化榜单同 bot 裂成两行：message_processing 补 bot_im_id",
+        "修复破冰率恒 100%：接入新增客户回调反推",
+        "海绵手机号回查回填历史 interview.passed",
+        "品类词识别为相关品牌：“咖啡”等品类词不再被错提成“咖啡师”工种",
+        "推荐班次必须列全所有档位",
+        "转化分析页 API 失败时给出错误反馈与重试",
+        "同城多候选优先取地铁站锚点，避免长路名 POI 锚偏"
       ],
       "optimizations": [
-        "转人工/运营/私聊监控/入职跟进等告警通知拆分"
+        "长期/会话记忆与高置信事实提取调整",
+        "预约/precheck/拉群/转人工/简历附件等工具调整"
       ],
       "ops": [
-        "推荐班次必须列全所有档位",
-        "运营数据底座/转化分析/active users/handoff/bot_im_id 迁移",
-        "运营事件底账与每日报表投影",
-        "咨询→报名→面试转化漏斗、账号榜单与 KPI",
-        "转人工事件采集与原因分析",
-        "花卷 agentId 漏斗上报集成",
-        "托管成员配置（member config）",
-        "sponge token 多账号配置与上下文解析",
-        "预约/precheck/拉群/转人工/简历附件等工具调整",
-        "message_processing 补 bot_im_id 修转化榜单同 bot 裂行 + 监控盘调整",
-        "上下文 section、准备流程与编排调整",
-        "长期/会话记忆与高置信事实调整",
-        "supabase 熔断器、base repository 与 date util",
-        "用户托管、干预与报名 case 调整",
-        "海绵手机号回查回填历史 interview.passed",
-        "转化分析仪表盘、控制筛选、侧栏与趋势图",
-        "运营数据规格与海绵集成文档",
-        "同步依赖与 .env.example",
-        "同城多候选优先取地铁站锚点，避免长路名 POI 锚偏",
-        "品类词识别为相关品牌，杜绝\"咖啡\"被错提成\"咖啡师\"",
-        "转化分析页处理 React Query isError，API 失败时给出反馈"
+        "active users / handoff / bot_im_id 数据库迁移"
       ],
       "config": [],
       "envFiles": [
         ".env.example"
       ],
-      "verification": [
-        "`tsc --noEmit`：0 错",
-        "`lint:check` / `format:check`：通过",
-        "全量测试：**284 套件 / 3585 passed**（1 skipped，0 failed）",
-        "pre-push `ci:check`：通过"
-      ]
+      "verification": []
     }
   ],
   "lastRelease": {
-    "version": "5.11.4",
-    "date": "2026-05-29",
+    "version": "5.11.5",
+    "date": "2026-06-05",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "250",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/250",
-        "title": "兼容苏州兼职群错序标签",
+        "number": "255",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/255",
+        "title": "fix dashboard managed user count",
         "author": "huajune",
-        "mergedAt": "2026-05-29",
+        "mergedAt": "2026-06-05",
         "businessUpdates": [
-          "修复看板人工介入统计"
+          "fix dashboard managed user count",
+          "fix resume attachment booking flow",
+          "fix booking tool formatting"
         ],
         "summary": [
-          "兼容苏州兼职群错序标签",
-          "推荐班次必须列全所有档位",
-          "修复看板人工介入统计",
-          "Added a targeted compatibility override for `独立客&苏州餐饮兼职群` when its labels are returned as `[\"兼职群\", \"餐饮\", \"苏州\"]`.",
-          "Kept the original label parsing contract for all other groups.",
-          "Added a regression test covering the known Suzhou group `wxid` and label order."
+          "fix dashboard managed user count",
+          "fix resume attachment booking flow",
+          "fix booking tool formatting",
+          "Add a DB-side `count_active_users_from_user_activity_by_range` RPC using `COUNT(DISTINCT chat_id)`.",
+          "Add `countActiveUsersByDateRange` through the user hosting repository/service, with a paginated table-scan fallback if the new RPC is not available yet.",
+          "Switch Dashboard business totals for non-today ranges to use the distinct count instead of list length.",
+          "Add tests covering the count RPC path, fallback path, and capped-list regression."
         ],
         "features": [],
         "fixes": [
-          "修复看板人工介入统计"
+          "fix dashboard managed user count",
+          "fix resume attachment booking flow",
+          "fix booking tool formatting"
         ],
         "optimizations": [],
         "ops": [
-          "Added a targeted compatibility override for `独立客&苏州餐饮兼职群` when its labels are returned as `[\"兼职群\", \"餐饮\", \"苏州\"]`.",
-          "Kept the original label parsing contract for all other groups.",
-          "Added a regression test covering the known Suzhou group `wxid` and label order.",
-          "兼容苏州兼职群错序标签",
-          "推荐班次必须列全所有档位"
+          "Add a DB-side `count_active_users_from_user_activity_by_range` RPC using `COUNT(DISTINCT chat_id)`.",
+          "Add `countActiveUsersByDateRange` through the user hosting repository/service, with a paginated table-scan fallback if the new RPC is not available yet.",
+          "Switch Dashboard business totals for non-today ranges to use the distinct count instead of list length.",
+          "Add tests covering the count RPC path, fallback path, and capped-list regression."
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "`pnpm jest tests/biz/group-task/group-resolver.service.spec.ts --watchman=false`",
-          "`pnpm run typecheck`",
-          "`pnpm exec eslint src/biz/group-task/services/group-resolver.service.ts tests/biz/group-task/group-resolver.service.spec.ts --max-warnings=0`"
+          "`pnpm exec jest tests/biz/monitoring/services/dashboard/analytics-dashboard.service.spec.ts tests/biz/user/repositories/user-hosting.repository.spec.ts --watchman=false`",
+          "`pnpm exec tsc --noEmit --pretty false`"
         ]
       }
     ]
