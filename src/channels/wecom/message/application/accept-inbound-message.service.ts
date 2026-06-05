@@ -12,14 +12,17 @@ import { ImageDescriptionService } from './image-description.service';
 import { WecomMessageObservabilityService } from '../telemetry/wecom-message-observability.service';
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
 import { MessageParser } from '../utils/message-parser.util';
-import {
-  ContactType,
-  MessageSource,
-  getMessageSourceDescription,
-} from '@enums/message-callback.enum';
+import { isPureFriendAddGreeting } from '../utils/friend-add-greeting.util';
+import { MessageSource, getMessageSourceDescription } from '@enums/message-callback.enum';
 import { FilterReason } from '@enums/message-filter.enum';
 import { LongTermService } from '@memory/services/long-term.service';
 import type { MessageMetadata } from '@memory/types/long-term.types';
+import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
+import { BotGroupResolverService } from '@biz/ops-events/bot-group-resolver.service';
+import { HuajuneReporterService } from '@biz/huajune/huajune-reporter.service';
+
+/** source_channel 暂不可用，统一写 'unknown'（上游接入后再带真实渠道）。 */
+const UNKNOWN_SOURCE_CHANNEL = 'unknown';
 
 const FILTERED_HISTORY_ARCHIVE_REASONS = new Set<string>([FilterReason.INVALID_SOURCE]);
 
@@ -43,11 +46,12 @@ export class AcceptInboundMessageService {
     private readonly runtimeConfig: MessageRuntimeConfigService,
     private readonly llm: LlmExecutorService,
     private readonly longTerm: LongTermService,
+    private readonly opsEventsRecorder: OpsEventsRecorderService,
+    private readonly botGroupResolver: BotGroupResolverService,
+    private readonly huajuneReporter: HuajuneReporterService,
   ) {}
 
   async execute(messageData: EnterpriseMessageCallbackDto): Promise<AcceptInboundMessageResult> {
-    await this.initializeLongTermMemoryOnNewCustomerCallback(messageData);
-
     if (messageData.isSelf === true) {
       await this.handleSelfMessage(messageData);
       await this.deduplicationService.markMessageAsProcessedAsync(messageData.messageId);
@@ -75,6 +79,11 @@ export class AcceptInboundMessageService {
         response: { success: true, message: 'Duplicate message ignored' },
       };
     }
+
+    // 候选人入站事件（非 self、过滤通过、非重复、非群聊）：friend.added（首次插入时开户长期记忆）
+    // + candidate.message_received + 原子检测首条破冰（candidate.engaged）+ 花卷 message_received。
+    // 微信「加好友纯默认招呼语」不计候选人消息/破冰。全部 fire-and-forget。
+    this.recordInboundCandidateEvents(messageData, filterResult.content);
 
     return this.prepareForDispatch(messageData, filterResult);
   }
@@ -189,37 +198,130 @@ export class AcceptInboundMessageService {
     };
   }
 
-  private async initializeLongTermMemoryOnNewCustomerCallback(
+  private resolveLongTermUserId(messageData: EnterpriseMessageCallbackDto): string | null {
+    return messageData.imContactId || messageData.externalUserId || messageData.chatId || null;
+  }
+
+  /**
+   * 候选人入站事件（仅个人单聊）。
+   *
+   * 生产实测：候选人加好友时微信会以普通 user 消息（MOBILE_PUSH）推送握手语
+   * （「我是{昵称}」「请求添加你为朋友」「我通过了你的…验证请求」），Agent 直接回它即开场白；
+   * 不存在独立的「新增客户回调 / NEW_CUSTOMER_ANSWER_SOP」入口（线上未配 SOP）。因此：
+   * - **friend.added（加好友数）**：任何候选人首条消息都代表新好友，幂等键 `userId:friend_added`
+   *   去重 → 每候选人一次；为省 RPC，仅在「握手语」或「首条真实消息(破冰)」时尝试。首次真正插入时
+   *   顺带开户长期记忆元数据。
+   * - **candidate.message_received + 破冰(candidate.engaged)**：排除「加好友纯默认招呼语」
+   *   （见 isPureFriendAddGreeting）——这些不算候选人真实开口；带求职意图的「我是找工作的」仍计入。
+   * - **花卷 message_received**：与 candidate.message_received 同条件。
+   *
+   * 仅在 execute() 里「非 self + 过滤通过 + 非重复」路径调用。全部 fire-and-forget，失败不影响主流程。
+   */
+  private recordInboundCandidateEvents(
     messageData: EnterpriseMessageCallbackDto,
-  ): Promise<void> {
-    if (messageData.source !== MessageSource.NEW_CUSTOMER_ANSWER_SOP) return;
-    if (messageData.imRoomId) return;
-    if (messageData.contactType !== ContactType.PERSONAL_WECHAT) return;
-
+    content: string | undefined,
+  ): void {
+    if (messageData.imRoomId) return; // 群聊不计入候选人漏斗
     const userId = this.resolveLongTermUserId(messageData);
-    if (!userId) {
-      this.logger.warn(`[新好友初始化] 缺少 userId，跳过 [${messageData.messageId}]`);
-      return;
-    }
+    if (!userId) return;
 
+    const corpId = messageData.orgId || 'default';
+    const botImId = messageData.imBotId;
+    const isGreeting = isPureFriendAddGreeting(content);
+
+    void (async () => {
+      try {
+        if (isGreeting) {
+          // 纯握手语：只代表「加好友」，不算候选人真实开口 → 兜底记 friend.added + 开户长期记忆，不记消息/破冰
+          await this.recordFriendAddedOnFirstContact(messageData, corpId, botImId, userId);
+          await this.ensureLongTermProfile(messageData, corpId, userId);
+          this.logger.log(
+            `[漏斗] 加好友握手语不计候选人消息/破冰 [${messageData.messageId}] chatId=${messageData.chatId}`,
+          );
+          return;
+        }
+
+        // 候选人真实消息：candidate.message_received + 原子破冰检测
+        const result = await this.opsEventsRecorder.recordCandidateMessage({
+          corpId,
+          chatId: messageData.chatId,
+          messageId: messageData.messageId,
+          botImId,
+          managerName: messageData.botUserId,
+          sourceChannel: UNKNOWN_SOURCE_CHANNEL,
+          userId,
+        });
+
+        // 首条真实消息（破冰）即新好友首次接触 → 兜底补记 friend.added（幂等）+ 开户长期记忆
+        if (result.engaged) {
+          await this.recordFriendAddedOnFirstContact(messageData, corpId, botImId, userId);
+          await this.ensureLongTermProfile(messageData, corpId, userId);
+        }
+
+        const agentId = this.botGroupResolver.resolveAgentId(botImId);
+        if (agentId && messageData.contactName) {
+          this.huajuneReporter.reportMessageReceived({
+            agentId,
+            candidateName: messageData.contactName,
+            idempotencyKey: messageData.messageId,
+          });
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.warn(
+          `[漏斗] 候选人入站事件记录失败 [${messageData.messageId}]: ${errorMessage}`,
+        );
+      }
+    })();
+  }
+
+  /**
+   * friend.added（幂等键 `userId:friend_added` → 每候选人一次）。
+   *
+   * 这是**兜底**信号：主信号来自「新增客户回调—RPA」(NewCustomerCallbackService)，它在真实加好友时
+   * 即触发、含从不发消息的沉默僵尸。两者共用同一幂等键，谁先到算谁。长期记忆开户已解耦到
+   * ensureLongTermProfile——否则回调抢先插入 friend.added 后，消息路径就再也不会开户。
+   */
+  private async recordFriendAddedOnFirstContact(
+    messageData: EnterpriseMessageCallbackDto,
+    corpId: string,
+    botImId: string | undefined,
+    userId: string,
+  ): Promise<void> {
+    await this.opsEventsRecorder.recordEvent({
+      corpId,
+      eventName: 'friend.added',
+      idempotencyKey: `${userId}:friend_added`,
+      botImId,
+      managerName: messageData.botUserId,
+      sourceChannel: UNKNOWN_SOURCE_CHANNEL,
+      userId,
+      chatId: messageData.chatId,
+    });
+  }
+
+  /**
+   * 开户长期记忆元数据。与 friend.added 是否新插入解耦：新增客户回调可能已抢先记了 friend.added，
+   * 此时消息路径仍需在候选人首次接触时开户。updateMessageMetadata 底层为 upsert，重复调用幂等。
+   */
+  private async ensureLongTermProfile(
+    messageData: EnterpriseMessageCallbackDto,
+    corpId: string,
+    userId: string,
+  ): Promise<void> {
     const metadata = this.buildMessageMetadata(messageData);
     if (!metadata) return;
-
     try {
-      await this.longTerm.updateMessageMetadata(messageData.orgId || 'default', userId, metadata);
+      await this.longTerm.updateMessageMetadata(corpId, userId, metadata);
       this.logger.log(
-        `[新好友初始化] 已初始化长期记忆: corpId=${messageData.orgId || 'default'}, userId=${userId}`,
+        `[新好友] 已开户长期记忆元数据: userId=${userId}, chatId=${messageData.chatId}`,
       );
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.warn(
-        `[新好友初始化] 长期记忆初始化失败 [${messageData.messageId}]: ${errorMessage}`,
+        `[新好友] 长期记忆元数据开户失败 [${messageData.messageId}]: ${errorMessage}`,
       );
     }
-  }
-
-  private resolveLongTermUserId(messageData: EnterpriseMessageCallbackDto): string | null {
-    return messageData.imContactId || messageData.externalUserId || messageData.chatId || null;
   }
 
   private buildMessageMetadata(messageData: EnterpriseMessageCallbackDto): MessageMetadata | null {

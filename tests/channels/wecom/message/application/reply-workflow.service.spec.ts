@@ -49,6 +49,17 @@ describe('ReplyWorkflowService', () => {
   const imageDescription = {
     awaitVision: jest.fn().mockResolvedValue(undefined),
   };
+  const opsEventsRecorder = {
+    recordEvent: jest.fn(),
+    recordEventDetailed: jest.fn(),
+  };
+  const botGroupResolver = {
+    resolveAgentId: jest.fn(),
+  };
+  const huajuneReporter = {
+    reportCandidateContacted: jest.fn(),
+    reportMessageSent: jest.fn(),
+  };
 
   let service: ReplyWorkflowService;
 
@@ -119,6 +130,9 @@ describe('ReplyWorkflowService', () => {
     preAgentRiskIntercept.precheck.mockResolvedValue({ hit: false });
 
     const replyFactGuard = { check: jest.fn().mockReturnValue({ hit: false, contradictions: [] }) };
+    opsEventsRecorder.recordEvent.mockResolvedValue(true);
+    opsEventsRecorder.recordEventDetailed.mockResolvedValue('inserted');
+    botGroupResolver.resolveAgentId.mockReturnValue(null);
 
     service = new ReplyWorkflowService(
       deduplicationService as never,
@@ -132,6 +146,9 @@ describe('ReplyWorkflowService', () => {
       replyFactGuard as never,
       simpleMergeService as never,
       imageDescription as never,
+      opsEventsRecorder as never,
+      botGroupResolver as never,
+      huajuneReporter as never,
     );
   });
 
@@ -182,6 +199,36 @@ describe('ReplyWorkflowService', () => {
     );
     expect(monitoringService.recordSuccess).toHaveBeenCalledWith('msg-1', { ok: true });
     expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');
+  });
+
+  it('reports the first outbound reply to Huajune as candidate_contacted', async () => {
+    botGroupResolver.resolveAgentId.mockReturnValueOnce('gaoyaqi-cake-1');
+
+    await service.processSingleMessage(createMessage());
+    await flushMicrotasks();
+
+    expect(huajuneReporter.reportCandidateContacted).toHaveBeenCalledWith({
+      agentId: 'gaoyaqi-cake-1',
+      candidateName: '张三',
+      idempotencyKey: 'chat-1:first_contact',
+    });
+    expect(huajuneReporter.reportMessageSent).not.toHaveBeenCalled();
+  });
+
+  it('reports later outbound replies to Huajune as message_sent', async () => {
+    opsEventsRecorder.recordEventDetailed.mockResolvedValueOnce('duplicate');
+    botGroupResolver.resolveAgentId.mockReturnValueOnce('gaoyaqi-cake-1');
+
+    await service.processSingleMessage(createMessage());
+    await flushMicrotasks();
+
+    expect(huajuneReporter.reportMessageSent).toHaveBeenCalledWith({
+      agentId: 'gaoyaqi-cake-1',
+      candidateName: '张三',
+      idempotencyKey: 'msg-1:replied',
+      content: '我来帮你看一下',
+    });
+    expect(huajuneReporter.reportCandidateContacted).not.toHaveBeenCalled();
   });
 
   it('should persist empty Agent telemetry before delegating failure handling', async () => {
@@ -241,6 +288,53 @@ describe('ReplyWorkflowService', () => {
       }),
     );
     expect(deliveryService.deliverReply).not.toHaveBeenCalled();
+  });
+
+  it('request_handoff 正常短路（shortCircuited:true）→ 跳过发送', async () => {
+    runner.invoke.mockResolvedValueOnce({
+      text: '',
+      reasoning: undefined,
+      responseMessages: [],
+      toolCalls: [
+        {
+          toolName: 'request_handoff',
+          args: { reasonCode: 'onboarding_paperwork', reason: '候选人办入职' },
+          result: { dispatched: true, shortCircuited: true },
+        },
+      ],
+      usage: { inputTokens: 1, outputTokens: 0, totalTokens: 1 },
+    });
+
+    await service.processSingleMessage(createMessage());
+
+    expect(wecomObservability.markReplySkipped).toHaveBeenCalledWith('msg-1');
+    expect(deliveryService.deliverReply).not.toHaveBeenCalled();
+  });
+
+  it('request_handoff(HANDOFF_NO_BOOKING, shortCircuited:false) → 不短路，正常投递 Agent 继续生成的回复（回归 Finding 1）', async () => {
+    runner.invoke.mockResolvedValueOnce({
+      text: '你还没有已确认的面试预约，我先帮你约首次面试哈',
+      reasoning: undefined,
+      responseMessages: [],
+      toolCalls: [
+        {
+          toolName: 'request_handoff',
+          args: { reasonCode: 'modify_appointment', reason: '候选人要改期但无预约' },
+          // HANDOFF_NO_BOOKING：工具返回 shortCircuited:false（不短路），Agent 已按首次约面继续生成回复
+          result: { dispatched: false, errorType: 'handoff.no_booking', shortCircuited: false },
+        },
+      ],
+      usage: { inputTokens: 1, outputTokens: 5, totalTokens: 6 },
+    });
+
+    await service.processSingleMessage(createMessage());
+
+    expect(wecomObservability.markReplySkipped).not.toHaveBeenCalled();
+    expect(deliveryService.deliverReply).toHaveBeenCalledWith(
+      expect.objectContaining({ content: '你还没有已确认的面试预约，我先帮你约首次面试哈' }),
+      expect.anything(),
+      true,
+    );
   });
 
   describe('投递前重跑（replay）', () => {
@@ -578,7 +672,9 @@ describe('ReplyWorkflowService', () => {
       }),
     ];
 
-    await expect(service.processMergedMessages(messages, 'batch-1', messages.length)).rejects.toThrow('agent boom');
+    await expect(
+      service.processMergedMessages(messages, 'batch-1', messages.length),
+    ).rejects.toThrow('agent boom');
 
     expect(processingFailureService.inferErrorType).toHaveBeenCalledWith(error, 'merge');
     expect(processingFailureService.handleProcessingError).toHaveBeenCalledWith(
@@ -595,6 +691,11 @@ describe('ReplyWorkflowService', () => {
     );
   });
 });
+
+/** 刷新 fire-and-forget 异步事件记录的微任务队列，便于断言。 */
+function flushMicrotasks(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
 
 function createMessage(
   overrides: Partial<EnterpriseMessageCallbackDto> = {},
