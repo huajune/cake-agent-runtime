@@ -148,6 +148,27 @@ export function parseLocalDateStart(date: string): Date {
 }
 
 /**
+ * 将「YYYY-MM-DD HH:mm:ss」（或 'T' 分隔、可省略秒）按 Asia/Shanghai 本地时间解析为真实时间点。
+ *
+ * 用于解析外部系统（如海绵）返回的**无时区**本地时间字符串：直接 `new Date(str)` 会被
+ * UTC 容器当成 UTC，导致据此（按上海日期）计算的 report_date 等字段错天（傍晚事件跨到次日）。
+ * 解析失败返回 null，由调用方决定回退策略。
+ */
+export function parseLocalDateTime(value: string): Date | null {
+  const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!match) return null;
+  const [, y, mo, d, h, mi, s] = match;
+  return createShanghaiDate(
+    Number(y),
+    Number(mo),
+    Number(d),
+    Number(h),
+    Number(mi),
+    Number(s ?? 0),
+  );
+}
+
+/**
  * 获取 Asia/Shanghai 时区的"明天"日期字符串 YYYY-MM-DD
  */
 export function getTomorrowDate(): string {

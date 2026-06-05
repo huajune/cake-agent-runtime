@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SupabaseService } from './supabase.service';
+import { supabaseCircuitBreaker } from './supabase-circuit-breaker';
 
 /**
  * Query modifier callback for applying filters, ordering, and pagination to Supabase queries
@@ -37,6 +38,13 @@ export interface UpsertOptions {
  * 2. 通用 CRUD 操作使用 callback filter 模式实现类型安全的链式查询
  * 3. 错误处理标准化 - PostgrestError 统一处理
  * 4. 类型安全 - 泛型支持强类型操作
+ *
+ * 韧性（2026-06-04 事故后加固）：
+ * - 瞬时网关错误（522/503/cloudflare/fetch failed…）重试时加「指数退避 + 抖动」，
+ *   不再零间隔疯狂重打。
+ * - 所有调用前经过「进程级共享熔断器」：任一 Repository 连续观察到瞬时故障即跳闸，
+ *   冷却窗口内所有 Repository 快速失败、停止打 DB，从根上阻断重试风暴；DB 恢复后
+ *   自动半开试探恢复。详见 supabase-circuit-breaker.ts。
  */
 export abstract class BaseRepository {
   protected readonly logger: Logger;
@@ -72,6 +80,44 @@ export abstract class BaseRepository {
     return this.supabaseService.isClientInitialized();
   }
 
+  /**
+   * 调用前的熔断检查。熔断 OPEN 期间快速跳过（不打 DB），语义上与
+   * 「客户端未初始化」等同 —— 返回各方法的空值兜底，避免对濒死的 DB 继续施压。
+   */
+  protected circuitBlocked(operation: string): boolean {
+    if (supabaseCircuitBreaker.canRequest()) {
+      return false;
+    }
+    if (supabaseCircuitBreaker.shouldLogRejection()) {
+      this.logger.warn(`[${this.tableName}] Supabase 熔断器 OPEN，快速跳过 ${operation}`);
+    }
+    return true;
+  }
+
+  /**
+   * 根据错误类型更新熔断器：瞬时/连接类故障记失败（可能跳闸），
+   * 其余（业务错误，说明 DB 可达）记成功。
+   */
+  private noteOutcome(error: unknown): void {
+    if (this.isTransientReadError(error)) {
+      supabaseCircuitBreaker.recordFailure();
+    } else {
+      supabaseCircuitBreaker.recordSuccess();
+    }
+  }
+
+  /** 指数退避（含抖动）：150ms、300ms…，上限 1s，用于瞬时网关错误的重试间隔 */
+  private getBackoffMs(attempt: number): number {
+    const base = 150;
+    const exp = base * Math.pow(2, attempt - 1);
+    const jitter = Math.floor(Math.random() * 100);
+    return Math.min(exp + jitter, 1000);
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
   // ==================== 通用 CRUD 操作 ====================
 
   /**
@@ -80,36 +126,130 @@ export abstract class BaseRepository {
    * @param modifier 查询修饰回调（过滤、排序、分页等）
    */
   protected async select<T>(columns: string = '*', modifier?: QueryModifier): Promise<T[]> {
+    return this.selectFrom<T>(this.tableName, columns, modifier);
+  }
+
+  /**
+   * 通用 SELECT 查询（可指定表名）。
+   *
+   * 与 {@link select} 共享同一套「熔断 + 退避重试」韧性逻辑，但允许查询非本仓储默认表
+   * （如监控仓储读 user_activity）。所有跨表只读查询都应走这里，确保统一受熔断器保护，
+   * 避免绕过熔断器在 DB 濒死时继续施压（2026-06-04 事故根因之一）。
+   */
+  protected async selectFrom<T>(
+    table: string,
+    columns: string = '*',
+    modifier?: QueryModifier,
+  ): Promise<T[]> {
     if (!this.isAvailable()) {
-      this.logger.warn(`Supabase 未初始化，跳过 ${this.tableName} 查询`);
+      this.logger.warn(`Supabase 未初始化，跳过 ${table} 查询`);
+      return [];
+    }
+    if (this.circuitBlocked(`SELECT:${table}`)) {
       return [];
     }
 
     for (let attempt = 1; attempt <= this.maxReadAttempts; attempt += 1) {
       try {
-        let query = this.getClient().from(this.tableName).select(columns);
+        let query = this.getClient().from(table).select(columns);
         if (modifier) query = modifier(query);
 
         const { data, error } = await query;
         if (error) {
-          if (this.shouldRetryReadError('SELECT', error, attempt)) {
+          if (this.shouldRetryReadError(`SELECT:${table}`, error, attempt)) {
+            await this.sleep(this.getBackoffMs(attempt));
             continue;
           }
-          this.handleError('SELECT', error);
+          this.noteOutcome(error);
+          this.handleError(`SELECT:${table}`, error);
           return [];
         }
 
+        supabaseCircuitBreaker.recordSuccess();
         return (data as T[]) ?? [];
       } catch (error) {
-        if (this.shouldRetryReadError('SELECT', error, attempt)) {
+        if (this.shouldRetryReadError(`SELECT:${table}`, error, attempt)) {
+          await this.sleep(this.getBackoffMs(attempt));
           continue;
         }
-        this.handleError('SELECT', error);
+        this.noteOutcome(error);
+        this.handleError(`SELECT:${table}`, error);
         return [];
       }
     }
 
     return [];
+  }
+
+  /**
+   * 分页拉全量 SELECT：复用 {@link selectFrom} 的熔断 + 退避重试，按 range 翻页直到取尽，
+   * 绕开 PostgREST 默认 max_rows(1000) 截断。任一页失败即停止并返回已累积结果。
+   *
+   * @param table 目标表名（可为非默认表）
+   * @param columns 查询列
+   * @param modifier 过滤/排序回调（**必须包含稳定 ORDER BY**，否则分页可能漏行/重复）
+   * @param pageSize 每页行数，默认 1000
+   */
+  protected async selectAllPaged<T>(
+    table: string,
+    columns: string = '*',
+    modifier?: QueryModifier,
+    pageSize = 1000,
+  ): Promise<T[]> {
+    const rows: T[] = [];
+    for (let from = 0; ; from += pageSize) {
+      const page = await this.selectFrom<T>(table, columns, (q) => {
+        const base = modifier ? modifier(q) : q;
+        return base.range(from, from + pageSize - 1);
+      });
+      rows.push(...page);
+      // page 不足一页：取尽（或中途出错返回 []）→ 结束分页。
+      if (page.length < pageSize) break;
+    }
+    return rows;
+  }
+
+  /**
+   * 分页拉全量「列表型 RPC（RETURNS TABLE）」：经熔断器保护后按 range 翻页，绕开 PostgREST
+   * max_rows(1000) 截断。任一页失败即停止并返回已累积结果。
+   */
+  protected async rpcAllPaged<T>(
+    functionName: string,
+    params?: Record<string, unknown>,
+    pageSize = 1000,
+  ): Promise<T[]> {
+    if (!this.isAvailable()) {
+      this.logger.warn(`Supabase 未初始化，跳过 RPC 分页调用 ${functionName}`);
+      return [];
+    }
+    if (this.circuitBlocked(`RPC:${functionName}`)) {
+      return [];
+    }
+
+    const rows: T[] = [];
+    for (let from = 0; ; from += pageSize) {
+      try {
+        const { data, error } = await this.getClient()
+          .rpc(functionName, params)
+          .range(from, from + pageSize - 1);
+
+        if (error) {
+          this.noteOutcome(error);
+          this.handleError(`RPC:${functionName}`, error);
+          break;
+        }
+
+        supabaseCircuitBreaker.recordSuccess();
+        const page = (data as T[]) ?? [];
+        rows.push(...page);
+        if (page.length < pageSize) break;
+      } catch (error) {
+        this.noteOutcome(error);
+        this.handleError(`RPC:${functionName}`, error);
+        break;
+      }
+    }
+    return rows;
   }
 
   /**
@@ -135,6 +275,9 @@ export abstract class BaseRepository {
       this.logger.warn(`Supabase 未初始化，跳过 ${this.tableName} 插入`);
       return null;
     }
+    if (this.circuitBlocked('INSERT')) {
+      return null;
+    }
 
     try {
       const returnData = options?.returnData !== false;
@@ -146,19 +289,24 @@ export abstract class BaseRepository {
 
       if (error) {
         if (this.isConflictError(error)) {
+          supabaseCircuitBreaker.recordSuccess();
           this.logger.debug(`${this.tableName} 记录已存在，跳过插入`);
           return null;
         }
+        this.noteOutcome(error);
         this.handleError('INSERT', error);
         return null;
       }
 
+      supabaseCircuitBreaker.recordSuccess();
       return returnData ? ((result as T[])?.[0] ?? null) : null;
     } catch (error) {
       if (this.isConflictError(error)) {
+        supabaseCircuitBreaker.recordSuccess();
         this.logger.debug(`${this.tableName} 记录已存在，跳过插入`);
         return null;
       }
+      this.noteOutcome(error);
       this.handleError('INSERT', error);
       return null;
     }
@@ -172,6 +320,9 @@ export abstract class BaseRepository {
     if (!this.isAvailable() || data.length === 0) {
       return 0;
     }
+    if (this.circuitBlocked('INSERT_BATCH')) {
+      return 0;
+    }
 
     try {
       const { error } = await this.getClient()
@@ -180,15 +331,19 @@ export abstract class BaseRepository {
 
       if (error) {
         if (this.isConflictError(error)) {
+          supabaseCircuitBreaker.recordSuccess();
           this.logger.debug(`${this.tableName} 批量插入部分记录已存在`);
           return data.length;
         }
+        this.noteOutcome(error);
         this.handleError('INSERT_BATCH', error);
         return 0;
       }
 
+      supabaseCircuitBreaker.recordSuccess();
       return data.length;
     } catch (error) {
+      this.noteOutcome(error);
       this.handleError('INSERT_BATCH', error);
       return 0;
     }
@@ -204,6 +359,9 @@ export abstract class BaseRepository {
       this.logger.warn(`Supabase 未初始化，跳过 ${this.tableName} 更新`);
       return [];
     }
+    if (this.circuitBlocked('UPDATE')) {
+      return [];
+    }
 
     try {
       let query = this.getClient()
@@ -213,12 +371,15 @@ export abstract class BaseRepository {
 
       const { data: result, error } = await query.select();
       if (error) {
+        this.noteOutcome(error);
         this.handleError('UPDATE', error);
         return [];
       }
 
+      supabaseCircuitBreaker.recordSuccess();
       return (result as T[]) ?? [];
     } catch (error) {
+      this.noteOutcome(error);
       this.handleError('UPDATE', error);
       return [];
     }
@@ -232,6 +393,9 @@ export abstract class BaseRepository {
   protected async upsert<T>(data: Partial<T>, options?: UpsertOptions): Promise<T | null> {
     if (!this.isAvailable()) {
       this.logger.warn(`Supabase 未初始化，跳过 ${this.tableName} upsert`);
+      return null;
+    }
+    if (this.circuitBlocked('UPSERT')) {
       return null;
     }
 
@@ -248,12 +412,15 @@ export abstract class BaseRepository {
       const { data: result, error } = returnData ? await query.select() : await query;
 
       if (error) {
+        this.noteOutcome(error);
         this.handleError('UPSERT', error);
         return null;
       }
 
+      supabaseCircuitBreaker.recordSuccess();
       return returnData ? ((result as T[])?.[0] ?? null) : null;
     } catch (error) {
+      this.noteOutcome(error);
       this.handleError('UPSERT', error);
       return null;
     }
@@ -268,6 +435,9 @@ export abstract class BaseRepository {
     if (!this.isAvailable() || data.length === 0) {
       return 0;
     }
+    if (this.circuitBlocked('UPSERT_BATCH')) {
+      return 0;
+    }
 
     try {
       const upsertOpts: { onConflict?: string; ignoreDuplicates?: boolean } = {};
@@ -279,12 +449,15 @@ export abstract class BaseRepository {
         .upsert(data as Record<string, unknown>[], upsertOpts);
 
       if (error) {
+        this.noteOutcome(error);
         this.handleError('UPSERT_BATCH', error);
         return 0;
       }
 
+      supabaseCircuitBreaker.recordSuccess();
       return data.length;
     } catch (error) {
+      this.noteOutcome(error);
       this.handleError('UPSERT_BATCH', error);
       return 0;
     }
@@ -303,6 +476,9 @@ export abstract class BaseRepository {
       this.logger.warn(`Supabase 未初始化，跳过 ${this.tableName} 删除`);
       return [];
     }
+    if (this.circuitBlocked('DELETE')) {
+      return [];
+    }
 
     try {
       const base = modifier(this.getClient().from(this.tableName).delete());
@@ -310,19 +486,24 @@ export abstract class BaseRepository {
       if (returnDeleted) {
         const { data, error } = await base.select();
         if (error) {
+          this.noteOutcome(error);
           this.handleError('DELETE', error);
           return [];
         }
+        supabaseCircuitBreaker.recordSuccess();
         return (data as T[]) ?? [];
       }
 
       const { error } = await base;
       if (error) {
+        this.noteOutcome(error);
         this.handleError('DELETE', error);
         return [];
       }
+      supabaseCircuitBreaker.recordSuccess();
       return [];
     } catch (error) {
+      this.noteOutcome(error);
       this.handleError('DELETE', error);
       return [];
     }
@@ -341,6 +522,9 @@ export abstract class BaseRepository {
       this.logger.warn(`Supabase 未初始化，跳过 RPC 调用 ${functionName}`);
       return null;
     }
+    if (this.circuitBlocked(`RPC:${functionName}`)) {
+      return null;
+    }
 
     for (let attempt = 1; attempt <= this.maxReadAttempts; attempt += 1) {
       try {
@@ -348,21 +532,27 @@ export abstract class BaseRepository {
 
         if (error) {
           if (this.isNotFoundError(error)) {
+            supabaseCircuitBreaker.recordSuccess();
             this.logger.warn(`RPC 函数 ${functionName} 不存在，请检查数据库迁移`);
             return null;
           }
           if (this.shouldRetryReadError(`RPC:${functionName}`, error, attempt)) {
+            await this.sleep(this.getBackoffMs(attempt));
             continue;
           }
+          this.noteOutcome(error);
           this.handleError(`RPC:${functionName}`, error);
           return null;
         }
 
+        supabaseCircuitBreaker.recordSuccess();
         return data as T;
       } catch (error) {
         if (this.shouldRetryReadError(`RPC:${functionName}`, error, attempt)) {
+          await this.sleep(this.getBackoffMs(attempt));
           continue;
         }
+        this.noteOutcome(error);
         this.handleError(`RPC:${functionName}`, error);
         return null;
       }
@@ -379,6 +569,9 @@ export abstract class BaseRepository {
     if (!this.isAvailable()) {
       return 0;
     }
+    if (this.circuitBlocked('COUNT')) {
+      return 0;
+    }
 
     for (let attempt = 1; attempt <= this.maxReadAttempts; attempt += 1) {
       try {
@@ -390,17 +583,22 @@ export abstract class BaseRepository {
         const { count, error } = await query;
         if (error) {
           if (this.shouldRetryReadError('COUNT', error, attempt)) {
+            await this.sleep(this.getBackoffMs(attempt));
             continue;
           }
+          this.noteOutcome(error);
           this.handleError('COUNT', error);
           return 0;
         }
 
+        supabaseCircuitBreaker.recordSuccess();
         return count ?? 0;
       } catch (error) {
         if (this.shouldRetryReadError('COUNT', error, attempt)) {
+          await this.sleep(this.getBackoffMs(attempt));
           continue;
         }
+        this.noteOutcome(error);
         this.handleError('COUNT', error);
         return 0;
       }
