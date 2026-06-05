@@ -918,9 +918,12 @@ export class AnalyticsDashboardService {
     }
 
     try {
-      const users = await this.userHostingService.getActiveUsersByDateRange(startDate, endDate);
-      if (users.length > 0 || fallbackCount === 0) {
-        return users.length;
+      const userCount = await this.userHostingService.countActiveUsersByDateRange(
+        startDate,
+        endDate,
+      );
+      if (userCount > 0 || fallbackCount === 0) {
+        return userCount;
       }
       return fallbackCount;
     } catch (error) {

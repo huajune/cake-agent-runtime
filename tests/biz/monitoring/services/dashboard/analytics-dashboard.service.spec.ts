@@ -115,6 +115,7 @@ describe('AnalyticsDashboardService', () => {
   const mockUserHostingService = {
     getUserHostingStatus: jest.fn(),
     getActiveUsersByDateRange: jest.fn(),
+    countActiveUsersByDateRange: jest.fn(),
     getDailyActivityStats: jest.fn(),
   };
 
@@ -247,6 +248,7 @@ describe('AnalyticsDashboardService', () => {
     mockMessageProcessingService.getBusinessTrendRecordsByTimeRange.mockResolvedValue([]);
     mockMessageProcessingService.getActiveUsers.mockResolvedValue([]);
     mockUserHostingService.getActiveUsersByDateRange.mockResolvedValue([]);
+    mockUserHostingService.countActiveUsersByDateRange.mockResolvedValue(0);
     mockUserHostingService.getDailyActivityStats.mockResolvedValue([]);
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     mockDailyStatsRepository.getLatestDailyStat.mockResolvedValue({ date: yesterday });
@@ -964,9 +966,9 @@ describe('AnalyticsDashboardService', () => {
           activeUsers: 999,
         })
         .mockResolvedValueOnce(defaultOverview);
-      mockUserHostingService.getActiveUsersByDateRange
-        .mockResolvedValueOnce([{ chatId: 'chat-1' }, { chatId: 'chat-2' }])
-        .mockResolvedValueOnce([]);
+      mockUserHostingService.countActiveUsersByDateRange
+        .mockResolvedValueOnce(2)
+        .mockResolvedValueOnce(0);
       mockUserHostingService.getDailyActivityStats.mockResolvedValue([
         { date: '2026-05-21', userCount: 10, messageCount: 30, tokenUsage: 3000 },
       ]);
@@ -992,6 +994,8 @@ describe('AnalyticsDashboardService', () => {
         const result = await service.getDashboardOverviewAsync('week');
 
         expect(monitoringRepository.getDashboardBusinessTrend).not.toHaveBeenCalled();
+        expect(mockUserHostingService.getActiveUsersByDateRange).not.toHaveBeenCalled();
+        expect(mockUserHostingService.countActiveUsersByDateRange).toHaveBeenCalledTimes(2);
         expect(result.business.consultations.total).toBe(2);
         expect(result.business.bookings.successful).toBe(2);
         expect(result.businessTrend).toEqual([
@@ -1004,6 +1008,30 @@ describe('AnalyticsDashboardService', () => {
             bookingSuccessRate: 100,
           },
         ]);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('should use distinct user count for non-today business total instead of capped user list', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-05-27T11:00:00+08:00'));
+      mockDailyStatsRepository.getLatestDailyStat.mockResolvedValue({ date: '2026-05-26' });
+      mockMonitoringRecordRepository.getDashboardOverviewStats
+        .mockResolvedValueOnce({
+          ...defaultOverview,
+          activeUsers: 1000,
+        })
+        .mockResolvedValueOnce(defaultOverview);
+      mockUserHostingService.countActiveUsersByDateRange
+        .mockResolvedValueOnce(1234)
+        .mockResolvedValueOnce(987);
+
+      try {
+        const result = await service.getDashboardOverviewAsync('month');
+
+        expect(result.business.consultations.total).toBe(1234);
+        expect(result.businessDelta.consultations).toBe(25.03);
+        expect(mockUserHostingService.getActiveUsersByDateRange).not.toHaveBeenCalled();
       } finally {
         jest.useRealTimers();
       }

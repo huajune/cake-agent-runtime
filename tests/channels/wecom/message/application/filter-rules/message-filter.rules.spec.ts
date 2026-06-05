@@ -46,9 +46,7 @@ describe('MessageFilterRules', () => {
 
   it('PausedUserFilterRule should downgrade paused users to history-only handling', async () => {
     const userHostingService = {
-      isAnyPaused: jest
-        .fn()
-        .mockResolvedValue({ paused: true, matchedId: 'external-user-1' }),
+      isAnyPaused: jest.fn().mockResolvedValue({ paused: true, matchedId: 'external-user-1' }),
     };
     const rule = new PausedUserFilterRule(userHostingService as never);
 
@@ -106,10 +104,27 @@ describe('MessageFilterRules', () => {
     });
   });
 
+  it('SupportedMessageTypeFilterRule should allow file messages', () => {
+    const rule = new SupportedMessageTypeFilterRule();
+
+    expect(
+      rule.evaluate(
+        createMessage({
+          messageType: MessageType.FILE,
+          payload: {
+            name: '张三简历.pdf',
+            fileUrl: 'https://example.com/resume.pdf',
+            size: 1024,
+          },
+        }),
+      ),
+    ).toBeNull();
+  });
+
   it('SupportedMessageTypeFilterRule should reject unsupported message types', () => {
     const rule = new SupportedMessageTypeFilterRule();
 
-    expect(rule.evaluate(createMessage({ messageType: MessageType.FILE }))).toEqual(
+    expect(rule.evaluate(createMessage({ messageType: MessageType.VIDEO }))).toEqual(
       expect.objectContaining({
         pass: false,
         reason: FilterReason.UNSUPPORTED_MESSAGE_TYPE,

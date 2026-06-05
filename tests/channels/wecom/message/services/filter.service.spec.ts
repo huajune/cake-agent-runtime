@@ -227,6 +227,22 @@ describe('MessageFilterService', () => {
       expect(result.pass).toBe(true);
     });
 
+    it('should allow file messages through', async () => {
+      const messageData = {
+        ...validMessageData,
+        messageType: MessageType.FILE,
+        payload: {
+          name: '张三简历.pdf',
+          fileUrl: 'https://example.com/resume.pdf',
+          size: 1024,
+        },
+      };
+
+      const result = await service.validate(messageData);
+
+      expect(result.pass).toBe(true);
+    });
+
     it('should filter out empty content messages', async () => {
       const messageData = {
         ...validMessageData,

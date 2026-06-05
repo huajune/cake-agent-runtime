@@ -1246,6 +1246,9 @@ describe('buildInterviewPrecheckTool', () => {
         '过往公司+岗位+年限',
       ]),
     );
+    expect(result.bookingChecklist.requiredFields).toContain('简历附件');
+    expect(result.bookingChecklist.requiredFields).not.toContain('上传简历');
+    expect(result.bookingChecklist.templateText).toContain('简历附件：');
     expect(result.bookingChecklist.enumHints.healthCertificateTypes).toEqual([
       '食品健康证',
       '零售健康证',

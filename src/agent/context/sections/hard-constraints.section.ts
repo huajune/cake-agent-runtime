@@ -318,6 +318,7 @@ export class HardConstraintsSection implements PromptSection {
       is_student: null,
       education: null,
       has_health_certificate: null,
+      upload_resume: null,
     };
   }
 }

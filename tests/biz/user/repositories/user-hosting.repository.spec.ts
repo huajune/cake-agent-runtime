@@ -279,6 +279,63 @@ describe('UserHostingRepository', () => {
 
   // ==================== findDailyActivityStatsByDateRange ====================
 
+  describe('countActiveUsersByDateRange', () => {
+    it('should return 0 when supabase is not available', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(false);
+
+      const result = await repository.countActiveUsersByDateRange(
+        new Date('2026-04-28T00:00:00+08:00'),
+        new Date('2026-04-29T23:59:59+08:00'),
+      );
+
+      expect(result).toBe(0);
+      expect(mockSupabaseClient.rpc).not.toHaveBeenCalled();
+    });
+
+    it('should count active users via database-side RPC', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+      mockSupabaseClient.rpc.mockResolvedValue({ data: 1234, error: null });
+
+      const startDate = new Date('2026-04-28T00:00:00+08:00');
+      const endDate = new Date('2026-04-29T23:59:59+08:00');
+
+      const result = await repository.countActiveUsersByDateRange(startDate, endDate);
+
+      expect(result).toBe(1234);
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledWith(
+        'count_active_users_from_user_activity_by_range',
+        {
+          p_start_date: startDate.toISOString(),
+          p_end_date: endDate.toISOString(),
+        },
+      );
+    });
+
+    it('should fall back to paginated table scan when count RPC is unavailable', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+      mockSupabaseClient.rpc.mockResolvedValue({ data: null, error: null });
+
+      const queryMock = makeQueryMock({
+        data: [
+          { chat_id: 'chat-1' },
+          { chat_id: 'chat-2' },
+          { chat_id: 'chat-1' },
+        ],
+        error: null,
+      });
+      mockSupabaseClient.from.mockReturnValue(queryMock);
+
+      const result = await repository.countActiveUsersByDateRange(
+        new Date('2026-04-28T00:00:00+08:00'),
+        new Date('2026-04-29T23:59:59+08:00'),
+      );
+
+      expect(result).toBe(2);
+      expect(mockSupabaseClient.from).toHaveBeenCalledWith('user_activity');
+      expect(queryMock.range).toHaveBeenCalledWith(0, 999);
+    });
+  });
+
   describe('findDailyActivityStatsByDateRange', () => {
     it('should return empty array when supabase is not available', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(false);

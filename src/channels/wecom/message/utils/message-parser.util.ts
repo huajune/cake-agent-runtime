@@ -5,9 +5,11 @@ import {
   isVoicePayload,
   isEmotionPayload,
   isImagePayload,
+  isFilePayload,
   isMiniProgramPayload,
   LocationPayload,
   VoicePayload,
+  FilePayload,
   MiniProgramPayload,
   QuoteMessage,
   TextPayload,
@@ -64,7 +66,7 @@ export class MessageParser {
 
   /**
    * 提取消息文本内容
-   * 支持：文本、位置、语音、表情、图片、小程序
+   * 支持：文本、位置、语音、表情、图片、文件、小程序
    */
   static extractContent(messageData: EnterpriseMessageCallbackDto): string {
     const { messageType, payload } = messageData;
@@ -95,6 +97,11 @@ export class MessageParser {
     // 图片消息 - 文字标记（同上，role 由 chat_messages.role 区分，不放在内容里）
     if (isImagePayload(messageType, payload)) {
       return '[图片消息]';
+    }
+
+    // 文件消息 - 只有文件名明确像简历时，才把 fileUrl 暴露给收资/报名工具
+    if (isFilePayload(messageType, payload)) {
+      return this.formatFileAsText(payload);
     }
 
     // 小程序消息
@@ -189,6 +196,40 @@ export class MessageParser {
     }
     const duration = payload.duration ? `${Math.round(payload.duration)}秒` : '未知时长';
     return `[语音消息] 时长${duration}`;
+  }
+
+  /**
+   * 将文件消息格式化为自然语言文本。
+   *
+   * 文件名明确像简历时额外输出 "简历附件"，便于 facts 与 booking.uploadResume 复用。
+   */
+  static formatFileAsText(payload: FilePayload): string {
+    const name = payload.name?.trim() || '未命名文件';
+    const fileUrl = payload.fileUrl.trim();
+    const sizeText =
+      Number.isFinite(payload.size) && payload.size > 0
+        ? `；文件大小：${this.formatFileSize(payload.size)}`
+        : '';
+    const lines = [`[文件消息] 文件名：${name}；文件地址：${fileUrl}${sizeText}`];
+
+    if (this.isLikelyResumeFile(name)) {
+      lines.push(`简历附件：${fileUrl}`);
+    }
+
+    return lines.join('\n');
+  }
+
+  private static isLikelyResumeFile(fileName: string): boolean {
+    const normalized = fileName.trim().toLowerCase();
+    return (
+      /简历|履历|resume/.test(normalized) || /(?:^|[^a-z0-9])cv(?:[^a-z0-9]|$)/.test(normalized)
+    );
+  }
+
+  private static formatFileSize(size: number): string {
+    if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)}MB`;
+    if (size >= 1024) return `${Math.round(size / 1024)}KB`;
+    return `${size}B`;
   }
 
   /**

@@ -20,6 +20,7 @@ export const InterviewInfoSchema = z.object({
   is_student: z.boolean().nullable().describe('是否学生'),
   education: z.string().nullable().describe('学历'),
   has_health_certificate: z.string().nullable().describe('健康证'),
+  upload_resume: z.string().nullable().optional().describe('简历附件 URL'),
 });
 
 /**
@@ -305,6 +306,7 @@ export interface HighConfidenceInterviewInfo {
   is_student: HighConfidenceMaybeValue<boolean>;
   education: HighConfidenceMaybeValue<string>;
   has_health_certificate: HighConfidenceMaybeValue<string>;
+  upload_resume?: HighConfidenceMaybeValue<string>;
 }
 
 export interface HighConfidencePreferences {
@@ -341,6 +343,7 @@ export interface SessionInterviewInfo {
   is_student: SessionFactMaybeValue<boolean>;
   education: SessionFactMaybeValue<string>;
   has_health_certificate: SessionFactMaybeValue<string>;
+  upload_resume?: SessionFactMaybeValue<string>;
 }
 
 export interface SessionPreferences {
@@ -425,6 +428,7 @@ export const SessionInterviewInfoSchema = z.object({
   is_student: NullableSessionFactSchema(z.boolean()),
   education: NullableSessionFactSchema(z.string()),
   has_health_certificate: NullableSessionFactSchema(z.string()),
+  upload_resume: NullableSessionFactSchema(z.string()).optional(),
 });
 
 export const SessionPreferencesSchema = z.object({
@@ -464,6 +468,7 @@ export const FALLBACK_EXTRACTION: EntityExtractionResult = {
     is_student: null,
     education: null,
     has_health_certificate: null,
+    upload_resume: null,
   },
   preferences: {
     brands: null,
@@ -562,6 +567,7 @@ export function unwrapSessionFacts(
         facts.interview_info.has_health_certificate,
         options,
       ),
+      upload_resume: unwrapSessionFactValue(facts.interview_info.upload_resume, options),
     },
     preferences: {
       brands: unwrapSessionFactValue(facts.preferences.brands, options),
@@ -611,6 +617,7 @@ export function toSessionFacts(
       is_student: wrap(facts.interview_info.is_student),
       education: wrap(facts.interview_info.education),
       has_health_certificate: wrap(facts.interview_info.has_health_certificate),
+      upload_resume: wrap(facts.interview_info.upload_resume),
     },
     preferences: {
       brands: wrap(facts.preferences.brands),

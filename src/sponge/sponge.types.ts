@@ -265,6 +265,16 @@ export interface InterviewBookingCustomerLabel {
   value?: string;
 }
 
+export interface UploadAttachmentFromUrlParams {
+  fileUrl: string;
+  fileName?: string;
+}
+
+export interface UploadAttachmentResult {
+  fileName: string;
+  cloudStorageKey: string;
+}
+
 export interface InterviewBookingErrorItem {
   field: string;
   msg: string;
@@ -307,6 +317,20 @@ export const InterviewBookingApiResponseSchema = z
       .object({
         notice: z.string().nullable().optional(),
         errorList: z.array(InterviewBookingErrorItemSchema).nullable().optional(),
+      })
+      .nullable()
+      .optional(),
+  })
+  .passthrough();
+
+export const UploadAttachmentApiResponseSchema = z
+  .object({
+    code: z.number(),
+    message: z.string().optional(),
+    data: z
+      .object({
+        fileName: z.string(),
+        cloudStorageKey: z.string().min(1),
       })
       .nullable()
       .optional(),

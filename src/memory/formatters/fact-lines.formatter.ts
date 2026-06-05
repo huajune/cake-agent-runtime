@@ -62,6 +62,10 @@ export function formatExtractionFactLines(
       `- 健康证: ${healthCertificate}${formatInlineFactMeta(info.has_health_certificate)}`,
     );
 
+  const uploadResume = readFactValue(info.upload_resume);
+  if (uploadResume)
+    lines.push(`- 简历附件: ${uploadResume}${formatInlineFactMeta(info.upload_resume)}`);
+
   // 历史数据里可能存在 labor_form="兼职"/"全职"，读取时过滤掉（平台全为兼职，这类值无筛选价值）。
   const laborForm = readFactValue(pref.labor_form);
   if (laborForm && isValidLaborForm(laborForm)) {
