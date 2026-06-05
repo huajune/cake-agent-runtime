@@ -19,6 +19,60 @@ $chart-line: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
   padding: $spacing-md;
 }
 
+// 全部数据请求失败时的整页错误态（替代空白/加载态）
+.errorState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: $spacing-sm;
+  padding: $spacing-xl $spacing-md;
+  border-radius: $panel-radius;
+  background: rgba($danger, 0.06);
+  border: 1px solid rgba($danger, 0.2);
+  text-align: center;
+}
+
+.errorTitle {
+  margin: 0;
+  font-weight: 600;
+  color: $danger;
+}
+
+.errorHint {
+  margin: 0;
+  color: $text-secondary;
+}
+
+// 部分数据失败时的非阻断错误条
+.errorBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-sm;
+  padding: $spacing-sm $spacing-md;
+  border-radius: $radius-md;
+  background: rgba($warning, 0.1);
+  border: 1px solid rgba($warning, 0.28);
+  color: $text-primary;
+}
+
+.errorRetry,
+.errorBannerRetry {
+  cursor: pointer;
+  padding: 6px 16px;
+  border-radius: $radius-md;
+  border: 1px solid rgba($primary, 0.4);
+  background: $primary;
+  color: #fff;
+  font-size: 13px;
+  transition: opacity $transition-fast;
+
+  &:hover {
+    opacity: 0.88;
+  }
+}
+
 .pageRefreshing {
   .kpiBand,
   .conversionSection,

@@ -34,6 +34,8 @@ export default function ConversionAnalysis() {
     isLoading: kpisLoading,
     isFetching: kpisFetching,
     isPlaceholderData: kpisPlaceholder,
+    isError: kpisError,
+    refetch: refetchKpis,
     dataUpdatedAt,
   } = useConversionKpis(query, 'period', true);
   const {
@@ -41,24 +43,32 @@ export default function ConversionAnalysis() {
     isLoading: trendsLoading,
     isFetching: trendsFetching,
     isPlaceholderData: trendsPlaceholder,
+    isError: trendsError,
+    refetch: refetchTrends,
   } = useConversionTrends(query, trendMode, true);
   const {
     data: funnel,
     isLoading: funnelLoading,
     isFetching: funnelFetching,
     isPlaceholderData: funnelPlaceholder,
+    isError: funnelError,
+    refetch: refetchFunnel,
   } = useConversionFunnel(query, 'friend_added', funnelMode, true);
   const {
     data: bots,
     isLoading: botsLoading,
     isFetching: botsFetching,
     isPlaceholderData: botsPlaceholder,
+    isError: botsError,
+    refetch: refetchBots,
   } = useConversionBots(query, botsMode, true);
   const {
     data: handoff,
     isLoading: handoffLoading,
     isFetching: handoffFetching,
     isPlaceholderData: handoffPlaceholder,
+    isError: handoffError,
+    refetch: refetchHandoff,
     dataUpdatedAt: handoffUpdatedAt,
   } = useHandoffReasons({ range, groups }, true);
   const lastUpdate = Math.max(dataUpdatedAt ?? 0, handoffUpdatedAt ?? 0) || null;
@@ -68,6 +78,20 @@ export default function ConversionAnalysis() {
     (funnelFetching && funnelPlaceholder) ||
     (botsFetching && botsPlaceholder) ||
     (handoffFetching && handoffPlaceholder);
+
+  // 错误反馈：任一面板请求失败时给出可见提示与重试，全部失败时整页降级为错误态，
+  // 避免 API 全挂时页面只剩空白/加载态而无任何反馈。
+  const hasError = kpisError || trendsError || funnelError || botsError || handoffError;
+  const allError = kpisError && trendsError && funnelError && botsError && handoffError;
+  const anyLoading =
+    kpisLoading || trendsLoading || funnelLoading || botsLoading || handoffLoading;
+  const refetchAll = () => {
+    void refetchKpis();
+    void refetchTrends();
+    void refetchFunnel();
+    void refetchBots();
+    void refetchHandoff();
+  };
 
   const sortedBots = useMemo(() => {
     const rows = [...(bots?.bots ?? [])];
@@ -104,44 +128,65 @@ export default function ConversionAnalysis() {
         onGroupsChange={setGroups}
       />
 
-      {filterRefreshing ? (
-        <div
-          className={styles.refreshBar}
-          role="status"
-          aria-live="polite"
-          aria-label="正在刷新当前筛选的数据"
-        />
-      ) : null}
+      {allError && !anyLoading ? (
+        <div className={styles.errorState} role="alert">
+          <p className={styles.errorTitle}>数据加载失败</p>
+          <p className={styles.errorHint}>转化分析数据暂时无法获取，请检查网络或稍后重试。</p>
+          <button type="button" className={styles.errorRetry} onClick={refetchAll}>
+            重试
+          </button>
+        </div>
+      ) : (
+        <>
+          {hasError ? (
+            <div className={styles.errorBanner} role="alert">
+              <span>部分数据加载失败，下方展示可能不完整。</span>
+              <button type="button" className={styles.errorBannerRetry} onClick={refetchAll}>
+                重试
+              </button>
+            </div>
+          ) : null}
 
-      <KpiCards data={kpis} loading={kpisLoading} />
+          {filterRefreshing ? (
+            <div
+              className={styles.refreshBar}
+              role="status"
+              aria-live="polite"
+              aria-label="正在刷新当前筛选的数据"
+            />
+          ) : null}
 
-      <KpiTrendChart
-        data={trends}
-        loading={trendsLoading}
-        mode={trendMode}
-        onModeChange={setTrendMode}
-      />
+          <KpiCards data={kpis} loading={kpisLoading} />
 
-      <section className={styles.conversionSection}>
-        <CohortFunnel
-          data={funnel}
-          loading={funnelLoading}
-          mode={funnelMode}
-          onModeChange={setFunnelMode}
-        />
-      </section>
+          <KpiTrendChart
+            data={trends}
+            loading={trendsLoading}
+            mode={trendMode}
+            onModeChange={setTrendMode}
+          />
 
-      <BotComparisonTable
-        rows={sortedBots}
-        loading={botsLoading}
-        mode={botsMode}
-        sortKey={sortKey}
-        sortDirection={sortDirection}
-        onModeChange={setBotsMode}
-        onSort={handleSort}
-      />
+          <section className={styles.conversionSection}>
+            <CohortFunnel
+              data={funnel}
+              loading={funnelLoading}
+              mode={funnelMode}
+              onModeChange={setFunnelMode}
+            />
+          </section>
 
-      <HandoffPieChart data={handoff} loading={handoffLoading} standalone />
+          <BotComparisonTable
+            rows={sortedBots}
+            loading={botsLoading}
+            mode={botsMode}
+            sortKey={sortKey}
+            sortDirection={sortDirection}
+            onModeChange={setBotsMode}
+            onSort={handleSort}
+          />
+
+          <HandoffPieChart data={handoff} loading={handoffLoading} standalone />
+        </>
+      )}
     </main>
   );
 }
