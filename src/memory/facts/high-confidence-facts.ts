@@ -117,7 +117,8 @@ const POSITION_KEYWORDS = [
   '打包',
   '配送员',
   '骑手',
-  '咖啡师',
+  // 不收录 "咖啡师"：咖啡是品类/行业词（见 BRAND_CATEGORIES），用户说咖啡指的是咖啡类品牌，
+  // 不应被识别成 "咖啡师" 工种再窄化成 jobCategoryList。
   '厨工',
   '洗碗工',
   '保洁',
@@ -517,8 +518,16 @@ export function detectBrandAliasHints(
   if (userMessages.length === 0 || brandData.length === 0) return [];
 
   const candidates = buildBrandCandidates(brandData);
+  const categories = buildResolvedCategories(brandData);
   const hints: BrandAliasHint[] = [];
   const seen = new Set<string>();
+
+  const pushHint = (brandName: string, matchedAlias: string, sourceText: string): void => {
+    const dedupeKey = `${brandName}::${sourceText}`;
+    if (seen.has(dedupeKey)) return;
+    hints.push({ brandName, matchedAlias, sourceText });
+    seen.add(dedupeKey);
+  };
 
   for (const message of userMessages) {
     const tokens = buildExactMatchTokens(message);
@@ -528,6 +537,7 @@ export function detectBrandAliasHints(
     // 这样 "我要瑞幸咖啡兼职" 这类品牌嵌在句子里的说法也能命中，不再依赖降噪表恰好剥干净。
     const normalizedMessage = normalizeForBrandMatch(message);
 
+    let matchedSpecificBrand = false;
     for (const candidate of candidates) {
       // 短别称：仍走 token 全等，避免 "报"→"报名"、"全家"→"我们全家" 等误命中。
       // 长别称：在全等之外，额外允许整句包含该别称。
@@ -536,15 +546,19 @@ export function detectBrandAliasHints(
         (candidate.containEligible && normalizedMessage.includes(candidate.normalized));
       if (!matched) continue;
 
-      const dedupeKey = `${candidate.brandName}::${message}`;
-      if (seen.has(dedupeKey)) continue;
+      matchedSpecificBrand = true;
+      pushHint(candidate.brandName, candidate.alias, message);
+    }
 
-      hints.push({
-        brandName: candidate.brandName,
-        matchedAlias: candidate.alias,
-        sourceText: message,
-      });
-      seen.add(dedupeKey);
+    // 品类兜底：用户说"咖啡"等品类词（且未指名某个具体品牌）时，
+    // 展开为该品类下的全部相关品牌——真实场景里品类词指的就是相关品牌，而非"咖啡师"工种。
+    if (!matchedSpecificBrand) {
+      for (const category of categories) {
+        if (!category.keywords.some((keyword) => normalizedMessage.includes(keyword))) continue;
+        for (const brandName of category.brands) {
+          pushHint(brandName, `${category.label}(品类)`, message);
+        }
+      }
     }
   }
 
@@ -1392,7 +1406,11 @@ function buildBrandCandidates(brandData: BrandItem[]): BrandCandidate[] {
         containEligible: isBrandContainEligible(normalized),
       };
     })
-    .filter((candidate) => candidate.normalized.length > 0)
+    .filter(
+      (candidate) =>
+        // 预留品类词给品类展开：泛词别称（如 Tims咖啡 的别称"咖啡"）不参与单一品牌精确匹配
+        candidate.normalized.length > 0 && !CATEGORY_KEYWORD_NORMALIZED.has(candidate.normalized),
+    )
     .sort((a, b) => b.normalized.length - a.normalized.length);
 }
 

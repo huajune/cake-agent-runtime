@@ -228,7 +228,7 @@ export class HardConstraintsSection implements PromptSection {
     }
     if (pref.position?.length) {
       lines.push(
-        `- 意向岗位: ${pref.position.join('、')}（建议填 jobCategoryList；注意只接受具体工种如"咖啡师"、"服务员"，严禁填入用工形式词；若搜索结果全部不匹配候选人的时间/年龄等硬约束，应清空 jobCategoryList 放宽重查一次）`,
+        `- 意向岗位: ${pref.position.join('、')}（仅当候选人**明确点名某个具体工种**时才填 jobCategoryList，且只接受具体工种如"服务员"、"收银员"，严禁填入用工形式词；这是强过滤会大幅收窄结果，宁可不填靠品牌+区域召回；若搜索结果全部不匹配候选人的时间/年龄等硬约束，应清空 jobCategoryList 放宽重查一次）`,
       );
     }
     if (pref.labor_form && isValidLaborForm(pref.labor_form)) {

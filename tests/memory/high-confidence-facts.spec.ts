@@ -41,6 +41,24 @@ describe('extractHighConfidenceFacts', () => {
     expect(unwrapHighConfidenceValue(result?.preferences.brands) ?? []).not.toContain('报亭咖啡');
   });
 
+  it('should expand a category word (咖啡) to related brands, not a position', () => {
+    // 品类词"咖啡"指的是相关品牌，应展开为咖啡类品牌走品牌召回，而非提取为 position "咖啡师"。
+    const result = extractHighConfidenceFacts(['我要咖啡兼职'], brandData);
+
+    const brands = unwrapHighConfidenceValue(result?.preferences.brands) ?? [];
+    expect(brands).toEqual(expect.arrayContaining(['瑞幸咖啡', '报亭咖啡']));
+    // 规则层绝不能把品类词识别成具体岗位
+    expect(unwrapHighConfidenceValue(result?.preferences.position) ?? []).not.toContain('咖啡师');
+  });
+
+  it('should prefer the specific brand over category expansion when one is named', () => {
+    // 指名"瑞幸咖啡"时只取该品牌，不应再展开成整个咖啡品类。
+    const result = extractHighConfidenceFacts(['我要瑞幸咖啡兼职'], brandData);
+
+    const brands = unwrapHighConfidenceValue(result?.preferences.brands) ?? [];
+    expect(brands).toEqual(['瑞幸咖啡']);
+  });
+
   it('should not match conjunction chars as brand alias', () => {
     const brands = [{ name: '和府捞面', aliases: ['和'] }];
     const result = extractHighConfidenceFacts(['肯德基和星巴克'], brands);
