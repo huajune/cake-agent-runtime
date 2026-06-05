@@ -8,6 +8,51 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.11.5`
+**最近更新**: `2026-06-05`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #255 fix dashboard managed user count
+- PR #255 fix resume attachment booking flow
+- PR #255 fix booking tool formatting
+- PR #255 Add a DB-side `count_active_users_from_user_activity_by_range` RPC using `COUNT(DISTINCT chat_id)`.
+- PR #255 Add `countActiveUsersByDateRange` through the user hosting repository/service, with a paginated table-scan fallback if the new RPC is not available yet.
+- PR #255 Switch Dashboard business totals for non-today ranges to use the distinct count instead of list length.
+- PR #255 Add tests covering the count RPC path, fallback path, and capped-list regression.
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #255 fix dashboard managed user count
+- PR #255 fix resume attachment booking flow
+- PR #255 fix booking tool formatting
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #255 Add a DB-side `count_active_users_from_user_activity_by_range` RPC using `COUNT(DISTINCT chat_id)`.
+- PR #255 Add `countActiveUsersByDateRange` through the user hosting repository/service, with a paginated table-scan fallback if the new RPC is not available yet.
+- PR #255 Switch Dashboard business totals for non-today ranges to use the distinct count instead of list length.
+- PR #255 Add tests covering the count RPC path, fallback path, and capped-list regression.
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #255 `pnpm exec jest tests/biz/monitoring/services/dashboard/analytics-dashboard.service.spec.ts tests/biz/user/repositories/user-hosting.repository.spec.ts --watchman=false`
+- PR #255 `pnpm exec tsc --noEmit --pretty false`
+<!-- release:pending:end -->
+
 ## [5.11.4] - 2026-05-29
 
 **来源分支**: `develop`
