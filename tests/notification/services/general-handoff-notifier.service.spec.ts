@@ -14,6 +14,11 @@ describe('GeneralHandoffNotifierService', () => {
     buildCard: jest.fn(),
   } as unknown as jest.Mocked<GeneralHandoffCardRenderer>;
 
+  // 该用例 payload 不带 botImId，恒回退 undefined（→ atAll）。
+  const mockHostingMemberConfig = {
+    resolveFeishuReceiver: jest.fn(async () => undefined),
+  };
+
   let service: GeneralHandoffNotifierService;
 
   const buildPayload = (
@@ -39,6 +44,7 @@ describe('GeneralHandoffNotifierService', () => {
       mockPrivateChannel as never,
       mockAlertChannel as never,
       mockRenderer,
+      mockHostingMemberConfig as never,
     );
   });
 
@@ -94,9 +100,7 @@ describe('GeneralHandoffNotifierService', () => {
   });
 
   it('detects debug path by corpId === "debug"', async () => {
-    const result = await service.notify(
-      buildPayload({ corpId: 'debug', chatId: 'whatever' }),
-    );
+    const result = await service.notify(buildPayload({ corpId: 'debug', chatId: 'whatever' }));
 
     expect(result).toBe(true);
     const arg = mockRenderer.buildCard.mock.calls[0][0] as unknown as Record<string, unknown>;

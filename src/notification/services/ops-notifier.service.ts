@@ -1,9 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import {
-  BOT_TO_RECEIVER,
-  FEISHU_RECEIVER_USERS,
-  FeishuReceiver,
-} from '@infra/feishu/constants/receivers';
+import { FEISHU_RECEIVER_USERS, FeishuReceiver } from '@infra/feishu/constants/receivers';
+import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { FeishuOpsChannel } from '../channels/feishu-ops.channel';
 import {
   GroupTaskExecutionDetail,
@@ -18,6 +15,7 @@ export class OpsNotifierService {
   constructor(
     private readonly opsChannel: FeishuOpsChannel,
     private readonly opsCardRenderer: OpsCardRenderer,
+    private readonly hostingMemberConfig: HostingMemberConfigService,
   ) {}
 
   async sendGroupTaskPreview(params: {
@@ -96,7 +94,7 @@ export class OpsNotifierService {
     // 同时 @ 接客 bot 负责人和 GAO_YAQI（群主固定为琪琪），让两边都能跟进
     const atUsers = new Set<FeishuReceiver>([FEISHU_RECEIVER_USERS.GAO_YAQI]);
     if (params.chatBotImId) {
-      const chatReceiver = BOT_TO_RECEIVER[params.chatBotImId];
+      const chatReceiver = await this.hostingMemberConfig.resolveFeishuReceiver(params.chatBotImId);
       if (chatReceiver) atUsers.add(chatReceiver);
     }
     const card = this.opsCardRenderer.buildInviteRejectedAlertCard({

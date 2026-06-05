@@ -1,4 +1,4 @@
-import { FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
+import { BOT_TO_RECEIVER, FEISHU_RECEIVER_USERS } from '@infra/feishu/constants/receivers';
 import { OpsCardRenderer } from '@notification/renderers/ops-card.renderer';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
 
@@ -14,6 +14,12 @@ describe('OpsNotifierService', () => {
     buildGroupFullAlertCard: jest.fn(),
   } as unknown as jest.Mocked<OpsCardRenderer>;
 
+  const mockHostingMemberConfig = {
+    resolveFeishuReceiver: jest.fn(async (botImId?: string) =>
+      botImId ? BOT_TO_RECEIVER[botImId] : undefined,
+    ),
+  };
+
   let service: OpsNotifierService;
 
   beforeEach(() => {
@@ -23,7 +29,11 @@ describe('OpsNotifierService', () => {
     mockRenderer.buildGroupTaskPreviewCard.mockReturnValue({ kind: 'preview-card' });
     mockRenderer.buildGroupTaskReportCard.mockReturnValue({ kind: 'report-card' });
     mockRenderer.buildGroupFullAlertCard.mockReturnValue({ kind: 'group-full-card' });
-    service = new OpsNotifierService(mockOpsChannel as never, mockRenderer);
+    service = new OpsNotifierService(
+      mockOpsChannel as never,
+      mockRenderer,
+      mockHostingMemberConfig as never,
+    );
   });
 
   it('should use sendOrThrow for dry-run group task previews', async () => {
