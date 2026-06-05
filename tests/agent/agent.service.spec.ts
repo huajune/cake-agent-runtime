@@ -268,6 +268,112 @@ describe('AgentRunnerService', () => {
     );
   });
 
+  it('should recover empty text after request_handoff when the tool did not short-circuit', async () => {
+    mockLlm.generate
+      .mockResolvedValueOnce({
+        text: '',
+        response: {
+          messages: [{ role: 'assistant', content: [{ type: 'reasoning', text: 'need answer' }] }],
+        },
+        steps: [
+          {
+            reasoningText: '候选人要改期，但没有预约记录',
+            finishReason: 'tool-calls',
+            toolCalls: [
+              {
+                toolCallId: 'tool-1',
+                toolName: 'request_handoff',
+                input: { reasonCode: 'modify_appointment' },
+              },
+            ],
+            toolResults: [
+              {
+                toolCallId: 'tool-1',
+                output: {
+                  dispatched: false,
+                  errorType: 'handoff.no_booking',
+                  shortCircuited: false,
+                },
+              },
+            ],
+            usage: { inputTokens: 80, outputTokens: 20, totalTokens: 100 },
+          },
+        ],
+        usage: { inputTokens: 80, outputTokens: 20, totalTokens: 100 },
+      })
+      .mockResolvedValueOnce({
+        text: '你这边还没有已确认的面试，我先帮你重新约一次。',
+        response: {
+          messages: [
+            {
+              role: 'assistant',
+              content: [{ type: 'text', text: '你这边还没有已确认的面试，我先帮你重新约一次。' }],
+            },
+          ],
+        },
+        steps: [
+          {
+            text: '你这边还没有已确认的面试，我先帮你重新约一次。',
+            finishReason: 'stop',
+            usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+          },
+        ],
+        usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+      });
+
+    const result = await service.invoke(invokeParams);
+
+    expect(mockLlm.generate).toHaveBeenCalledTimes(2);
+    expect(result.text).toBe('你这边还没有已确认的面试，我先帮你重新约一次。');
+    expect(result.agentSteps.at(-1)).toEqual(
+      expect.objectContaining({ finishReason: 'empty-text-recovery' }),
+    );
+  });
+
+  it('should not recover empty text after request_handoff when the tool short-circuited', async () => {
+    mockLlm.generate.mockResolvedValueOnce({
+      text: '',
+      response: {
+        messages: [{ role: 'assistant', content: [{ type: 'reasoning', text: 'handoff' }] }],
+      },
+      steps: [
+        {
+          reasoningText: '候选人办理入职，需要人工接管',
+          finishReason: 'tool-calls',
+          toolCalls: [
+            {
+              toolCallId: 'tool-1',
+              toolName: 'request_handoff',
+              input: { reasonCode: 'onboarding_paperwork' },
+            },
+          ],
+          toolResults: [
+            {
+              toolCallId: 'tool-1',
+              output: {
+                dispatched: true,
+                shortCircuited: true,
+              },
+            },
+          ],
+          usage: { inputTokens: 80, outputTokens: 20, totalTokens: 100 },
+        },
+      ],
+      usage: { inputTokens: 80, outputTokens: 20, totalTokens: 100 },
+    });
+
+    const result = await service.invoke(invokeParams);
+
+    expect(mockLlm.generate).toHaveBeenCalledTimes(1);
+    expect(result.text).toBe('');
+    expect(result.toolCalls).toEqual([
+      expect.objectContaining({
+        toolName: 'request_handoff',
+        result: expect.objectContaining({ shortCircuited: true }),
+      }),
+    ]);
+  });
+
   it('should enrich thrown model errors with agent metadata', async () => {
     mockLlm.generate.mockRejectedValue(new Error('Network timeout'));
 

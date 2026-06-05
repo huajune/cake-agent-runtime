@@ -6,6 +6,7 @@ import { BizMessageModule } from './message/message.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { GroupTaskModule } from './group-task/group-task.module';
 import { RecruitmentCaseModule } from './recruitment-case/recruitment-case.module';
+import { ConversionAnalyticsModule } from './conversion-analytics/conversion-analytics.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { RecruitmentCaseModule } from './recruitment-case/recruitment-case.modul
     UserModule,
     BizMessageModule,
     MonitoringModule,
+    ConversionAnalyticsModule,
     GroupTaskModule,
     RecruitmentCaseModule,
   ],
@@ -23,6 +25,7 @@ import { RecruitmentCaseModule } from './recruitment-case/recruitment-case.modul
     UserModule,
     BizMessageModule,
     MonitoringModule,
+    ConversionAnalyticsModule,
     GroupTaskModule,
     RecruitmentCaseModule,
   ],

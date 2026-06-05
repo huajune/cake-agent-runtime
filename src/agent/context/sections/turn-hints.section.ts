@@ -197,6 +197,16 @@ export class TurnHintsSection implements PromptSection {
         pendingHints.interview_info.has_health_certificate = value;
       },
     );
+    this.partitionHighValue(
+      comparableSessionFacts.interview_info.upload_resume,
+      highInfo.upload_resume,
+      (value) => {
+        normalHints.interview_info.upload_resume = value;
+      },
+      (value) => {
+        pendingHints.interview_info.upload_resume = value;
+      },
+    );
 
     this.partitionHighArrayValue(
       comparableSessionFacts.preferences.brands,
@@ -459,6 +469,7 @@ export class TurnHintsSection implements PromptSection {
         is_student: null,
         education: null,
         has_health_certificate: null,
+        upload_resume: null,
       },
       preferences: {
         brands: null,

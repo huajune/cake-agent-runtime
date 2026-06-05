@@ -3,9 +3,6 @@ import { ModelMessage, ToolSet } from 'ai';
 import { CallerKind } from '@/enums/agent.enum';
 import { MessageType } from '@enums/message-callback.enum';
 import { ToolRegistryService } from '@tools/tool-registry.service';
-import { RecruitmentCaseRecord } from '@biz/recruitment-case/entities/recruitment-case.entity';
-import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
-import { RecruitmentStageResolverService } from '@biz/recruitment-case/services/recruitment-stage-resolver.service';
 import { ToolBuildContext } from '@shared-types/tool.types';
 import { formatExtractionFactLines } from '@memory/formatters/fact-lines.formatter';
 import { sanitizeJobDisplayText, sanitizeLaborFormForDisplay } from '@memory/facts/labor-form';
@@ -15,6 +12,9 @@ import {
 } from '@memory/facts/high-confidence-facts';
 import { MemoryService, type CandidateIdentityHint } from '@memory/memory.service';
 import { MemoryConfig } from '@memory/memory.config';
+import { LongTermService } from '@memory/services/long-term.service';
+import { SpongeService } from '@sponge/sponge.service';
+import type { SignupWorkOrderItem } from '@sponge/sponge.types';
 import {
   isUserProfileFactValue,
   type UserProfileFacts,
@@ -60,12 +60,12 @@ export class AgentPreparationService {
 
   constructor(
     private readonly toolRegistry: ToolRegistryService,
-    private readonly recruitmentCaseService: RecruitmentCaseService,
-    private readonly recruitmentStageResolver: RecruitmentStageResolverService,
     private readonly memoryService: MemoryService,
     private readonly memoryConfig: MemoryConfig,
     private readonly context: ContextService,
     private readonly inputGuard: InputGuardService,
+    private readonly longTermService: LongTermService,
+    private readonly spongeService: SpongeService,
   ) {}
 
   async prepare(
@@ -92,17 +92,15 @@ export class AgentPreparationService {
     const truncatedMessages = this.truncateToCharBudget(params.messages);
     const currentUserMessage = this.trailingUserContent(truncatedMessages);
 
-    // 并行拉取本轮依赖：四类记忆快照 + 仍在跟进的招聘 case。
-    const [memory, activeRecruitmentCase] = await Promise.all([
+    // 并行拉取本轮依赖：四类记忆快照 + 当前预约工单上下文。
+    const [memory, bookingContext] = await Promise.all([
       this.memoryService.onTurnStart(corpId, userId, sessionId, currentUserMessage, {
         includeShortTerm: callerKind === CallerKind.WECOM,
         shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
         enrichmentIdentity: this.buildEnrichmentIdentity(params),
       }),
-      this.recruitmentCaseService.getActiveOnboardFollowupCase({
-        corpId,
-        chatId: sessionId,
-      }),
+      // [当前预约信息] 改由 latest_booking 指针 + 海绵工单实时状态渲染（不再依赖 recruitment_cases 本地字段）。
+      this.loadBookingContext(corpId, userId, this.buildSpongeTokenContext(params)),
     ]);
 
     // 对话消息归一化为 AI SDK ModelMessage[]（含多模态图片/表情注入）。
@@ -119,13 +117,10 @@ export class AgentPreparationService {
     // 输入安全检查：扫 prompt injection → 异步告警 → 返回需要追加到 system prompt 的 guard suffix。
     const guardSuffix = this.applyInputGuard(normalizedMessages, currentUserMessage, userId);
 
-    // Compose 的输入：memoryBlock 渲染 + 当前阶段推导（procedural > case > 当前用户输入）
-    const memoryBlock = this.buildMemoryBlock(memory, activeRecruitmentCase);
-    const stageFromResolver = this.recruitmentStageResolver.resolve({
-      proceduralStage: memory.procedural.currentStage ?? undefined,
-      recruitmentCase: activeRecruitmentCase,
-      currentMessageContent: currentUserMessage ?? '',
-    });
+    // Compose 的输入：memoryBlock 渲染 + 当前阶段（直接取程序性记忆 currentStage；
+    // recruitment_cases 已废弃，不再由 case 推导 onboard_followup）。
+    const memoryBlock = this.buildMemoryBlock(memory, bookingContext);
+    const stageFromResolver = memory.procedural.currentStage ?? undefined;
 
     // System prompt 组装（委托 ContextService.compose）
     const { systemPrompt, stageGoals, thresholds } = await this.context.compose({
@@ -288,6 +283,17 @@ export class AgentPreparationService {
     };
   }
 
+  private buildSpongeTokenContext(
+    params: AgentInvokeParams,
+  ): { botImId?: string; botUserId?: string; groupId?: string } | undefined {
+    if (!params.botImId && !params.botUserId && !params.groupId) return undefined;
+    return {
+      botImId: params.botImId,
+      botUserId: params.botUserId,
+      groupId: params.groupId,
+    };
+  }
+
   /**
    * 把本轮对话归一化为 AI SDK 的 ModelMessage[]：
    *   1. 按 callerKind 选定消息源（WECOM 用 memory 历史，其他用调用方直传的）
@@ -339,12 +345,12 @@ export class AgentPreparationService {
    */
   private buildMemoryBlock(
     memory: Awaited<ReturnType<MemoryService['onTurnStart']>>,
-    activeRecruitmentCase: RecruitmentCaseRecord | null,
+    bookingContext: string,
   ): string {
     return (
       this.formatProfile(memory.longTerm.profile) +
       (memory.sessionMemory ? this.formatSessionFacts(memory.sessionMemory) : '') +
-      this.formatRecruitmentCase(activeRecruitmentCase)
+      bookingContext
     );
   }
 
@@ -388,6 +394,7 @@ export class AgentPreparationService {
       botUserId: params.botUserId,
       contactName: params.contactName,
       botImId: params.botImId,
+      groupId: params.groupId,
       strategySource: params.strategySource,
       profile: unwrapUserProfileFacts(memory.longTerm.profile, { minConfidence: 'high' }),
       sessionFacts,
@@ -399,6 +406,7 @@ export class AgentPreparationService {
       imRoomId: params.imRoomId,
       chatId: params.sessionId,
       apiType: params.apiType,
+      turnId: params.messageId,
     };
   }
 
@@ -621,20 +629,50 @@ export class AgentPreparationService {
     return `\n\n[会话记忆]\n\n${sections.join('\n\n')}`;
   }
 
-  private formatRecruitmentCase(recruitmentCase: RecruitmentCaseRecord | null): string {
-    if (!recruitmentCase) return '';
+  /**
+   * 渲染 [当前预约信息]：latest_booking 指针 + 海绵工单实时状态。
+   *
+   * 不再读 recruitment_cases 本地字段（历史 booking_id 全 NULL、状态与海绵脱节）。
+   * 任意一步失败/无指针/查不到工单时返回空串（优雅降级，不阻断本轮）。
+   */
+  private async loadBookingContext(
+    corpId: string,
+    userId: string,
+    tokenContext?: { botImId?: string; botUserId?: string; groupId?: string },
+  ): Promise<string> {
+    try {
+      const latestBooking = await this.longTermService.getLatestBooking(corpId, userId);
+      const workOrderId = latestBooking?.latest_work_order_id;
+      if (workOrderId == null) return '';
 
-    const displayJobName = sanitizeJobDisplayText(recruitmentCase.job_name);
+      const workOrder = tokenContext
+        ? await this.spongeService.getCachedWorkOrderById(workOrderId, tokenContext)
+        : await this.spongeService.getCachedWorkOrderById(workOrderId);
+      if (!workOrder) return '';
+
+      return this.formatBookingContext(workOrder);
+    } catch (error) {
+      this.logger.warn(
+        `加载预约上下文失败: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return '';
+    }
+  }
+
+  private formatBookingContext(workOrder: SignupWorkOrderItem): string {
+    const displayJobName = sanitizeJobDisplayText(workOrder.jobName ?? null);
     const lines = [
-      '当前存在一个仍在进行中的面试/上岗跟进 case。',
-      recruitmentCase.brand_name ? `品牌: ${recruitmentCase.brand_name}` : null,
-      recruitmentCase.store_name ? `门店: ${recruitmentCase.store_name}` : null,
+      '当前存在一个仍在进行中的面试/上岗跟进 case（状态实时取自海绵工单系统）。',
+      workOrder.brandName ? `品牌: ${workOrder.brandName}` : null,
+      workOrder.projectName ? `门店/项目: ${workOrder.projectName}` : null,
       displayJobName ? `岗位: ${displayJobName}` : null,
-      recruitmentCase.interview_time ? `面试时间: ${recruitmentCase.interview_time}` : null,
-      recruitmentCase.booking_id ? `预约编号: ${recruitmentCase.booking_id}` : null,
+      workOrder.currentStatus ? `当前状态: ${workOrder.currentStatus}` : null,
+      workOrder.signUpTime ? `报名时间: ${workOrder.signUpTime}` : null,
+      workOrder.interviewPassTime ? `面试通过时间: ${workOrder.interviewPassTime}` : null,
     ].filter((line): line is string => Boolean(line));
 
-    if (lines.length === 0) return '';
+    // 仅有标题行（无任何业务字段）时不渲染，避免给 Agent 一个空壳 case。
+    if (lines.length <= 1) return '';
     lines.push(
       '当该 case 出现无法推进的阻塞（找不到门店/到店无人接待/预约信息冲突/入职办理异常等）时，必须调用 request_handoff 工具触发人工介入。',
     );

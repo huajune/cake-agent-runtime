@@ -20,6 +20,10 @@ import { ObservabilityModule } from '@/observability/observability.module';
 import { AgentModule } from './agent/agent.module';
 import { WecomModule } from '@channels/wecom/wecom.module';
 import { BizModule } from '@biz/biz.module';
+import { OpsEventsModule } from '@biz/ops-events/ops-events.module';
+import { HostingMemberConfigModule } from '@biz/hosting-config/hosting-member-config.module';
+import { HandoffEventsModule } from '@biz/handoff-events/handoff-events.module';
+import { HuajuneModule } from '@biz/huajune/huajune.module';
 import { TestSuiteModule } from '@biz/test-suite/test-suite.module';
 import { EvaluationModule } from './evaluation/evaluation.module';
 import { validate } from './infra/config/env.validation';
@@ -64,6 +68,10 @@ import { HttpExceptionFilter } from '@infra/server/response/filters/http-excepti
 
     // ==================== 业务逻辑层 (Business Logic Layer) ====================
     BizModule,
+    OpsEventsModule, // 运营事件底账（@Global，写入侧统一入口 OpsEventsRecorderService）
+    HostingMemberConfigModule, // 托管成员统一配置（@Global，飞书接收人 + 海绵 token，按经理索引）
+    HandoffEventsModule, // 转人工触发底账（@Global，写入侧入口 HandoffRecorderService）
+    HuajuneModule, // 花卷招聘事件上报（@Global，fire-and-forget）
 
     // ==================== AI 基础设施 (AI Infrastructure) ====================
     ProvidersModule, // 多模型 Provider（@Global，三层架构）
