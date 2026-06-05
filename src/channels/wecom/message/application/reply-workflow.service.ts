@@ -18,6 +18,9 @@ import { MessageProcessingFailureService } from './message-processing-failure.se
 import { PreAgentRiskInterceptService } from './pre-agent-risk-intercept.service';
 import { ReplyFactGuardService } from './reply-fact-guard.service';
 import { ImageDescriptionService } from './image-description.service';
+import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
+import { BotGroupResolverService } from '@biz/ops-events/bot-group-resolver.service';
+import { HuajuneReporterService } from '@biz/huajune/huajune-reporter.service';
 import type { AgentThinkingConfig } from '@agent/agent-run.types';
 
 /**
@@ -79,6 +82,9 @@ export class ReplyWorkflowService {
     private readonly replyFactGuard: ReplyFactGuardService,
     private readonly simpleMergeService: SimpleMergeService,
     private readonly imageDescription: ImageDescriptionService,
+    private readonly opsEventsRecorder: OpsEventsRecorderService,
+    private readonly botGroupResolver: BotGroupResolverService,
+    private readonly huajuneReporter: HuajuneReporterService,
   ) {}
 
   async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
@@ -244,6 +250,7 @@ export class ReplyWorkflowService {
       botUserId: params.primaryMessage.botUserId,
       contactName: parsed.contactName,
       botImId: params.primaryMessage.imBotId,
+      groupId: params.primaryMessage.groupId,
       externalUserId: parsed.externalUserId,
       token: parsed.token,
       imContactId: parsed.imContactId,
@@ -362,7 +369,7 @@ export class ReplyWorkflowService {
     }
 
     if (agentResult.isFallback) {
-      this.processingFailureService.sendFallbackAlert({
+      void this.processingFailureService.sendFallbackAlert({
         contactName,
         botUserName: parsed.managerName,
         userMessage: content,
@@ -400,6 +407,10 @@ export class ReplyWorkflowService {
       deliveryContext,
       true,
     );
+
+    // Agent 回复成功投递 → agent.replied + 花卷 message_sent（仅个人单聊；fire-and-forget）。
+    // 已过 skip_reply/handoff 短路早返回，到这里一定是真实对外回复。
+    this.recordAgentReplied(params.primaryMessage, parsed, traceId, agentResult.reply.content);
 
     const successMetadata = await this.buildSuccessMetadata(
       traceId,
@@ -558,10 +569,21 @@ export class ReplyWorkflowService {
 
       const processingTime = Date.now() - startTime;
       const content = this.normalizeContent(result.text);
+      // 短路判定必须与 runner 的 stopWhen 一致（见 runner.service shortCircuitByToolResult）：
+      // - skip_reply：无条件短路 → 跳过发送
+      // - request_handoff：仅当工具返回 shortCircuited===true 才短路；HANDOFF_NO_BOOKING
+      //   返回 shortCircuited:false（不短路），此时 Agent 已按首次约面继续生成了回复，
+      //   必须正常投递，不能因为"调用过 request_handoff"就吞掉回复。
       const isSkipped =
-        result.toolCalls?.some(
-          (call) => call.toolName === 'skip_reply' || call.toolName === 'request_handoff',
-        ) ?? false;
+        result.toolCalls?.some((call) => {
+          if (call.toolName === 'skip_reply') return true;
+          if (call.toolName === 'request_handoff') {
+            return (
+              (call.result as { shortCircuited?: unknown } | undefined)?.shortCircuited === true
+            );
+          }
+          return false;
+        }) ?? false;
 
       // Phase 1：reply 后置事实对账——命中即日志告警，不改写文本
       // 历史 badcase i41pab8n：invite_to_group 成功后下一轮 Agent 无 tool 调用
@@ -665,6 +687,92 @@ export class ReplyWorkflowService {
 
   private resolveCorpId(messageData: EnterpriseMessageCallbackDto): string {
     return messageData.orgId || 'default';
+  }
+
+  /**
+   * 记录 Agent 对外回复事件（仅个人单聊）。本会话**首条**对外回复 = 开场白：
+   * - 开场白：agent.opening_sent（每会话一次，投影 agent_opening_sent_count）+ 花卷 candidate_contacted
+   * - 普通回复：agent.replied（投影 agent_reply_count）+ 花卷 message_sent（content 必填）
+   *
+   * 线上未配平台 SOP，开场白就是 Agent 回候选人首条消息（多为微信加好友握手语「我是xx」）。
+   * 用「首条」判定开场白：以 `chatId:opening` 幂等插入的返回值为准——首次插入成功即开场白，
+   * 之后插入冲突即普通回复。agent.replied 幂等键用 traceId（每轮一次，Bull retry 不重复计数）。
+   * 全程 fire-and-forget。
+   */
+  private recordAgentReplied(
+    primaryMessage: EnterpriseMessageCallbackDto,
+    parsed: ReturnType<typeof MessageParser.parse>,
+    traceId: string,
+    replyContent: string,
+  ): void {
+    if (primaryMessage.imRoomId) return; // 群聊不计入候选人漏斗
+    const botImId = primaryMessage.imBotId;
+    const corpId = this.resolveCorpId(primaryMessage);
+    const userId = this.resolveAgentUserId(primaryMessage, parsed);
+    const chatId = parsed.chatId;
+    const agentId = this.botGroupResolver.resolveAgentId(botImId);
+    const candidateName = primaryMessage.contactName || parsed.contactName;
+    const content = replyContent?.trim();
+
+    void (async () => {
+      try {
+        const openingResult = await this.opsEventsRecorder.recordEventDetailed({
+          corpId,
+          eventName: 'agent.opening_sent',
+          idempotencyKey: `${chatId}:opening`,
+          botImId,
+          managerName: primaryMessage.botUserId,
+          sourceChannel: 'unknown',
+          userId,
+          chatId,
+        });
+
+        // 写入失败（DB 不可用 / 熔断 OPEN / RPC 异常）时，无法判定本条是否开场白：
+        // 不能据此误记为 agent.replied（否则开场白行永远缺失、candidate_contacted 漏报且不可恢复）。
+        // 跳过本轮分类——开场白行未写入，后续回复会再次尝试插入并正确判定。
+        if (openingResult === 'failed') {
+          this.logger.warn(
+            `[漏斗] 开场白事件写入失败，跳过本轮开场白/回复分类，等待后续重试 [${traceId}]`,
+          );
+          return;
+        }
+
+        const isOpening = openingResult === 'inserted';
+        if (isOpening) {
+          // 开场白：花卷只报 candidate_contacted（主动触达），不报 message_sent
+          if (agentId && candidateName) {
+            this.huajuneReporter.reportCandidateContacted({
+              agentId,
+              candidateName,
+              idempotencyKey: `${chatId}:first_contact`,
+            });
+          }
+          return;
+        }
+
+        await this.opsEventsRecorder.recordEvent({
+          corpId,
+          eventName: 'agent.replied',
+          idempotencyKey: `${traceId}:replied`,
+          botImId,
+          managerName: primaryMessage.botUserId,
+          sourceChannel: 'unknown',
+          userId,
+          chatId,
+        });
+        if (agentId && candidateName && content) {
+          this.huajuneReporter.reportMessageSent({
+            agentId,
+            candidateName,
+            idempotencyKey: `${traceId}:replied`,
+            content,
+          });
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`[漏斗] agent 回复事件记录失败 [${traceId}]: ${errorMessage}`);
+      }
+    })();
   }
 
   /**

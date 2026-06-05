@@ -15,6 +15,7 @@ function makeCandidate(overrides: Partial<GeocodeCandidate> = {}): GeocodeCandid
     longitude: 121.27,
     latitude: 31.32,
     poiName: '马陆镇',
+    typecode: '',
     ...overrides,
   };
 }
@@ -65,6 +66,70 @@ describe('geocode tool', () => {
       expect(result.resolution).toBe('unique');
       expect((result.result as Record<string, unknown>).city).toBe('上海市');
       expect(mockGeocodingService.searchCandidates).toHaveBeenCalledWith('马陆', null);
+    });
+  });
+
+  describe('同城道路名 vs 地铁站（锚点择优）', () => {
+    // 线上 case：候选人说"七莘路"（实指 12 号线七莘路站），高德 POI 把「道路」排第一，
+    // 其代表点落在路北端华漕，距真实站点 ~10km；收敛逻辑应改取同名地铁站。
+    it('首条是道路名 + 同城存在地铁站 → 采纳地铁站坐标，而非道路代表点', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({
+          poiName: '七莘路',
+          typecode: '190301', // 交通地名;道路名
+          district: '闵行区',
+          longitude: 121.327282,
+          latitude: 31.192294, // 道路北端（华漕）
+        }),
+        makeCandidate({
+          poiName: '七莘路(地铁站)',
+          typecode: '150500', // 地铁站
+          district: '闵行区',
+          longitude: 121.355,
+          latitude: 31.108, // 12 号线七莘路站（莘庄）
+        }),
+      ]);
+
+      const result = (await execute({ address: '七莘路', city: '上海' })) as Record<string, unknown>;
+
+      expect(result.resolution).toBe('unique');
+      expect(result.result).toMatchObject({
+        longitude: 121.355,
+        latitude: 31.108,
+      });
+    });
+
+    it('首条已是地铁站 → 直接采纳，不受道路降级影响', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({ poiName: '马陆地铁站', typecode: '150500', longitude: 121.28, latitude: 31.33 }),
+        makeCandidate({ poiName: '马陆路', typecode: '190301', longitude: 121.27, latitude: 31.32 }),
+      ]);
+
+      const result = (await execute({ address: '马陆', city: '上海' })) as Record<string, unknown>;
+
+      expect(result.result).toMatchObject({ longitude: 121.28, latitude: 31.33 });
+    });
+
+    it('首条是道路名但无地铁站 → 退而取更具体的非道路 POI', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({ poiName: '解放路', typecode: '190301', longitude: 121.4, latitude: 31.2 }),
+        makeCandidate({ poiName: '解放路商业广场', typecode: '060101', longitude: 121.41, latitude: 31.21 }),
+      ]);
+
+      const result = (await execute({ address: '解放路', city: '上海' })) as Record<string, unknown>;
+
+      expect(result.result).toMatchObject({ longitude: 121.41, latitude: 31.21 });
+    });
+
+    it('全部都是道路名（无更优候选）→ 兜底沿用首条', async () => {
+      (mockGeocodingService.searchCandidates as jest.Mock).mockResolvedValue([
+        makeCandidate({ poiName: '某条路', typecode: '190301', longitude: 121.5, latitude: 31.3 }),
+        makeCandidate({ poiName: '某条路辅路', typecode: '190301', longitude: 121.6, latitude: 31.4 }),
+      ]);
+
+      const result = (await execute({ address: '某条路', city: '上海' })) as Record<string, unknown>;
+
+      expect(result.result).toMatchObject({ longitude: 121.5, latitude: 31.3 });
     });
   });
 

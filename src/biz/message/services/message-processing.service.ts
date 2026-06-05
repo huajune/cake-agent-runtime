@@ -143,6 +143,7 @@ export class MessageProcessingService {
     startTime?: number;
     endTime?: number;
     status?: 'processing' | 'success' | 'failure' | 'timeout';
+    chatIds?: string[];
     limit?: number;
     offset?: number;
   }) {

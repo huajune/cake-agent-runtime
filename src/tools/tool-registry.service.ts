@@ -23,19 +23,26 @@ import { buildSendStoreLocationTool } from './send-store-location.tool';
 import { buildRaiseRiskAlertTool } from './raise-risk-alert.tool';
 import { buildRequestHandoffTool } from './request-handoff.tool';
 import { buildSkipReplyTool } from './skip-reply.tool';
+import {
+  buildReadResumeAttachmentTool,
+  type ResumeAttachment,
+} from './read-resume-attachment.tool';
 import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { BookingService } from '@biz/message/services/booking.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { RoomService } from '@channels/wecom/room/room.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
-import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { InterventionService } from '@biz/intervention/intervention.service';
 import { MessageSenderService } from '@channels/wecom/message-sender/message-sender.service';
 import { SessionService } from '@memory/services/session.service';
 import { LongTermService } from '@memory/services/long-term.service';
+import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
+import { BotGroupResolverService } from '@biz/ops-events/bot-group-resolver.service';
+import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
+import { HuajuneReporterService } from '@biz/huajune/huajune-reporter.service';
 
 /**
  * 统一工具注册表
@@ -71,11 +78,14 @@ export class ToolRegistryService {
     private readonly chatSessionService: ChatSessionService,
     bookingService: BookingService,
     userHostingService: UserHostingService,
-    recruitmentCaseService: RecruitmentCaseService,
     configService: ConfigService,
     interventionService: InterventionService,
     sessionService: SessionService,
     longTermService: LongTermService,
+    opsEventsRecorder: OpsEventsRecorderService,
+    handoffRecorder: HandoffRecorderService,
+    botGroupResolver: BotGroupResolverService,
+    huajuneReporter: HuajuneReporterService,
   ) {
     const memberLimit = parseInt(configService.get('GROUP_MEMBER_LIMIT', '200'), 10);
     const enterpriseToken = configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim();
@@ -99,7 +109,7 @@ export class ToolRegistryService {
         name: 'duliday_job_list',
         description:
           '查询在招岗位列表（负责推荐阶段的数据查询与摘要；传入 location 后会做位置筛选，并基于经纬度按距离排序和按业务阈值过滤）',
-        create: buildJobListTool(spongeService),
+        create: buildJobListTool(spongeService, opsEventsRecorder),
       }),
 
       duliday_interview_booking: createToolDefinition({
@@ -109,9 +119,11 @@ export class ToolRegistryService {
           spongeService,
           privateChatMonitorNotifier,
           userHostingService,
-          recruitmentCaseService,
           bookingService,
           longTermService,
+          opsEventsRecorder,
+          botGroupResolver,
+          huajuneReporter,
         ),
       }),
 
@@ -119,7 +131,7 @@ export class ToolRegistryService {
         name: 'duliday_interview_precheck',
         description:
           '面试前置校验（按岗位返回可约日期/时段、备注解析后的字段建议、报名补充信息；不真正提交预约）',
-        create: buildInterviewPrecheckTool(spongeService),
+        create: buildInterviewPrecheckTool(spongeService, opsEventsRecorder),
       }),
 
       geocode: createToolDefinition({
@@ -142,6 +154,7 @@ export class ToolRegistryService {
           roomService,
           opsNotifier,
           memoryService,
+          opsEventsRecorder,
           memberLimit,
           enterpriseToken,
         ),
@@ -165,9 +178,10 @@ export class ToolRegistryService {
           '面试/入职跟进阶段遇到需要人工处理的问题（找不到门店、无人接待、预约冲突、办理入职等）时调用。**调用即短路 Agent**：runtime 立即结束本轮，候选人本次不会收到任何回复；副作用（暂停托管+case 改为 handoff+飞书告警）全部异步执行。',
         create: buildRequestHandoffTool(
           interventionService,
-          recruitmentCaseService,
           this.chatSessionService,
           sessionService,
+          longTermService,
+          handoffRecorder,
         ),
       }),
 
@@ -271,6 +285,15 @@ export class ToolRegistryService {
       );
     }
 
+    const resumeAttachments = this.resolveResumeAttachments(context);
+    if (resumeAttachments.length) {
+      const resumeTool = buildReadResumeAttachmentTool(resumeAttachments);
+      tools['read_resume_attachment'] = resumeTool(context);
+      this.logger.log(
+        `动态注入 read_resume_attachment 工具, resumeCount=${resumeAttachments.length}`,
+      );
+    }
+
     return tools;
   }
 
@@ -296,5 +319,25 @@ export class ToolRegistryService {
     const deleted = this.mcpTools.delete(name);
     if (deleted) this.logger.log('工具已移除: ' + name);
     return deleted;
+  }
+
+  private resolveResumeAttachments(context: ToolBuildContext): ResumeAttachment[] {
+    const urls = [
+      this.normalizeHighConfidenceText(context.highConfidenceFacts?.interview_info.upload_resume),
+      this.normalizeText(context.sessionFacts?.interview_info?.upload_resume),
+    ].filter((value): value is string => Boolean(value));
+
+    return [...new Set(urls)].map((fileUrl) => ({ fileUrl }));
+  }
+
+  private normalizeHighConfidenceText(value: unknown): string | null {
+    if (value && typeof value === 'object' && 'value' in value) {
+      return this.normalizeText((value as { value?: unknown }).value);
+    }
+    return this.normalizeText(value);
+  }
+
+  private normalizeText(value: unknown): string | null {
+    return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
   }
 }

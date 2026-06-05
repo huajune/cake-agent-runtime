@@ -39,6 +39,8 @@ describe('checklist.util', () => {
     it('canonicalizes 简历 / 简历附件', () => {
       expect(normalizeChecklistField('简历')).toBe('简历附件');
       expect(normalizeChecklistField('简历附件')).toBe('简历附件');
+      expect(normalizeChecklistField('上传简历')).toBe('简历附件');
+      expect(normalizeChecklistField('PDF简历文件')).toBe('简历附件');
     });
 
     it('canonicalizes experience variants', () => {

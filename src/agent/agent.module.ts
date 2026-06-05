@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { BizModule } from '@biz/biz.module';
 import { ToolModule } from '@tools/tool.module';
 import { MemoryModule } from '@memory/memory.module';
+import { SpongeModule } from '@sponge/sponge.module';
 import { LlmModule } from '@/llm/llm.module';
 import { NotificationModule } from '@notification/notification.module';
 import { CustomerModule } from '@wecom/customer/customer.module';
@@ -20,6 +21,7 @@ import { InputGuardService } from './input-guard.service';
     BizModule,
     ToolModule,
     MemoryModule,
+    SpongeModule,
     LlmModule,
     NotificationModule,
     CustomerModule,

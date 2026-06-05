@@ -117,7 +117,8 @@ const POSITION_KEYWORDS = [
   '打包',
   '配送员',
   '骑手',
-  '咖啡师',
+  // 不收录 "咖啡师"：咖啡是品类/行业词（见 BRAND_CATEGORIES），用户说咖啡指的是咖啡类品牌，
+  // 不应被识别成 "咖啡师" 工种再窄化成 jobCategoryList。
   '厨工',
   '洗碗工',
   '保洁',
@@ -174,6 +175,111 @@ interface BrandCandidate {
   brandName: string;
   alias: string;
   normalized: string;
+  /**
+   * 是否允许子串包含匹配。
+   * 短别称（如 "报""全家""店""mc"）做包含会误命中日常词（"报名""我们全家"），
+   * 因此仅对足够长、辨识度高的别称启用包含：中文 ≥3 字、英数 ≥4 字。
+   */
+  containEligible: boolean;
+}
+
+/**
+ * 通用短语别称黑名单（归一化形态）：这些别称虽然长度达标，但本身是日常用语/同音词，
+ * 做子串包含会把普通句子误判为品牌意向（如 "给我来一份工作" 命中 来伊份 的别称 "来一份"）。
+ * 命中黑名单的别称降级为仅全等匹配——用户单独说 "来一份" 仍能命中，嵌在句子里则不命中。
+ */
+const BRAND_GENERIC_ALIAS_BLOCKLIST = new Set(['来一份', '来1份']);
+
+/** 别称是否长到可以安全地做子串包含匹配。 */
+function isBrandContainEligible(normalized: string): boolean {
+  if (BRAND_GENERIC_ALIAS_BLOCKLIST.has(normalized)) return false;
+  const isCjk = /[一-龥]/.test(normalized);
+  return isCjk ? normalized.length >= 3 : normalized.length >= 4;
+}
+
+/**
+ * 品类（行业）配置。
+ *
+ * 真实场景中候选人说"咖啡"等品类词，指的是**该品类的相关品牌**（想去咖啡店），
+ * 而不是"咖啡师"这个工种。因此命中品类词时，应展开为该品类下的全部品牌走品牌召回，
+ * 不能窄化成 jobCategoryList=["咖啡师"]。
+ *
+ * 成员品牌的解析规则（见 resolveCategoryBrands）：
+ *   名称/别名（归一化后）包含 keywords 任一的品牌（数据驱动，新品牌自动纳入）
+ *   ∪ extraBrands（名字不含品类词但确属该品类，如「拉瓦萨」是咖啡品牌但名称无"咖啡"）
+ *   − excludeBrands（名字含关键词但其实不属该品类，如早茶店"得闲饮茶"不是奶茶）
+ *
+ * keywords 同时用于：① 识别用户消息里的品类意图；② 从品牌库筛选成员品牌。
+ *
+ * 注意：只收录已人工核对过的品类。奶茶/火锅等品类纯靠子串会误纳（如"得闲饮茶"是早茶
+ * 而非奶茶），需逐一核对 extraBrands/excludeBrands 后再开启，避免召回噪音。
+ */
+interface BrandCategory {
+  /** 品类显示名，用于 evidence/日志 */
+  label: string;
+  /** 触发词 & 成员筛选词（原文，匹配时统一归一化） */
+  keywords: string[];
+  /** 名字不含品类词但确属该品类的品牌，手工补录 */
+  extraBrands: string[];
+  /** 名字含关键词但实际不属该品类的品牌，手工排除 */
+  excludeBrands: string[];
+}
+
+const BRAND_CATEGORIES: BrandCategory[] = [
+  {
+    label: '咖啡',
+    keywords: ['咖啡', 'coffee'],
+    extraBrands: ['拉瓦萨'],
+    excludeBrands: [],
+  },
+];
+
+/**
+ * 所有品类关键词的归一化集合。
+ * 这些词被"预留"给品类展开，不再作为单一品牌的别称参与精确匹配——
+ * 否则像 Tims咖啡 把泛词"咖啡"挂成自己别称，会导致"咖啡"被错配成单一品牌。
+ */
+const CATEGORY_KEYWORD_NORMALIZED = new Set(
+  BRAND_CATEGORIES.flatMap((category) =>
+    category.keywords.map((keyword) => normalizeForBrandMatch(keyword)).filter(Boolean),
+  ),
+);
+
+interface ResolvedBrandCategory {
+  label: string;
+  /** 归一化后的触发词 */
+  keywords: string[];
+  /** 该品类下的成员品牌标准名 */
+  brands: string[];
+}
+
+/** 按品牌库解析每个品类的成员品牌（数据驱动 + 手工补录/排除）。 */
+function resolveCategoryBrands(category: BrandCategory, brandData: BrandItem[]): string[] {
+  const keywords = category.keywords.map((k) => normalizeForBrandMatch(k)).filter(Boolean);
+  const brands = new Set<string>();
+
+  for (const brand of brandData) {
+    const fields = [brand.name, ...(brand.aliases ?? [])].map((v) => normalizeForBrandMatch(v));
+    if (fields.some((field) => keywords.some((kw) => field.includes(kw)))) {
+      brands.add(brand.name);
+    }
+  }
+  for (const extra of category.extraBrands) {
+    if (brandData.some((brand) => brand.name === extra)) brands.add(extra);
+  }
+  for (const excluded of category.excludeBrands) {
+    brands.delete(excluded);
+  }
+
+  return Array.from(brands);
+}
+
+function buildResolvedCategories(brandData: BrandItem[]): ResolvedBrandCategory[] {
+  return BRAND_CATEGORIES.map((category) => ({
+    label: category.label,
+    keywords: category.keywords.map((k) => normalizeForBrandMatch(k)).filter(Boolean),
+    brands: resolveCategoryBrands(category, brandData),
+  })).filter((category) => category.keywords.length > 0 && category.brands.length > 0);
 }
 
 interface LocationSignals {
@@ -287,6 +393,14 @@ export function extractHighConfidenceFacts(
         evidence: `健康证识别：${healthCertificate}`,
       });
       reasons.push(`健康证识别：${healthCertificate}`);
+    }
+
+    const uploadResume = extractUploadResume(message);
+    if (uploadResume && !facts.interview_info.upload_resume) {
+      facts.interview_info.upload_resume = ruleValue(uploadResume, {
+        evidence: `简历附件识别：${uploadResume}`,
+      });
+      reasons.push(`简历附件识别：${uploadResume}`);
     }
 
     const laborForm = extractLaborForm(message);
@@ -404,26 +518,47 @@ export function detectBrandAliasHints(
   if (userMessages.length === 0 || brandData.length === 0) return [];
 
   const candidates = buildBrandCandidates(brandData);
+  const categories = buildResolvedCategories(brandData);
   const hints: BrandAliasHint[] = [];
   const seen = new Set<string>();
+
+  const pushHint = (brandName: string, matchedAlias: string, sourceText: string): void => {
+    const dedupeKey = `${brandName}::${sourceText}`;
+    if (seen.has(dedupeKey)) return;
+    hints.push({ brandName, matchedAlias, sourceText });
+    seen.add(dedupeKey);
+  };
 
   for (const message of userMessages) {
     const tokens = buildExactMatchTokens(message);
     if (tokens.length === 0) continue;
 
-    for (const token of tokens) {
-      const matched = candidates.find((candidate) => candidate.normalized === token);
+    // 整条消息的归一化形态，用于长别称的子串包含匹配，
+    // 这样 "我要瑞幸咖啡兼职" 这类品牌嵌在句子里的说法也能命中，不再依赖降噪表恰好剥干净。
+    const normalizedMessage = normalizeForBrandMatch(message);
+
+    let matchedSpecificBrand = false;
+    for (const candidate of candidates) {
+      // 短别称：仍走 token 全等，避免 "报"→"报名"、"全家"→"我们全家" 等误命中。
+      // 长别称：在全等之外，额外允许整句包含该别称。
+      const matched =
+        tokens.some((token) => token === candidate.normalized) ||
+        (candidate.containEligible && normalizedMessage.includes(candidate.normalized));
       if (!matched) continue;
 
-      const dedupeKey = `${matched.brandName}::${message}`;
-      if (seen.has(dedupeKey)) continue;
+      matchedSpecificBrand = true;
+      pushHint(candidate.brandName, candidate.alias, message);
+    }
 
-      hints.push({
-        brandName: matched.brandName,
-        matchedAlias: matched.alias,
-        sourceText: message,
-      });
-      seen.add(dedupeKey);
+    // 品类兜底：用户说"咖啡"等品类词（且未指名某个具体品牌）时，
+    // 展开为该品类下的全部相关品牌——真实场景里品类词指的就是相关品牌，而非"咖啡师"工种。
+    if (!matchedSpecificBrand) {
+      for (const category of categories) {
+        if (!category.keywords.some((keyword) => normalizedMessage.includes(keyword))) continue;
+        for (const brandName of category.brands) {
+          pushHint(brandName, `${category.label}(品类)`, message);
+        }
+      }
     }
   }
 
@@ -523,6 +658,7 @@ export function filterHighConfidenceFacts(
       is_student: highOnly(facts.interview_info.is_student),
       education: highOnly(facts.interview_info.education),
       has_health_certificate: highOnly(facts.interview_info.has_health_certificate),
+      upload_resume: highOnly(facts.interview_info.upload_resume),
     },
     preferences: {
       brands: highOnly(facts.preferences.brands),
@@ -591,6 +727,7 @@ export function unwrapHighConfidenceFacts(
       has_health_certificate: unwrapHighConfidenceValue(
         facts.interview_info.has_health_certificate,
       ),
+      upload_resume: unwrapHighConfidenceValue(facts.interview_info.upload_resume),
     },
     preferences: {
       brands: unwrapHighConfidenceValue(facts.preferences.brands),
@@ -656,6 +793,7 @@ function cloneFallbackExtraction(): HighConfidenceFacts {
       is_student: null,
       education: null,
       has_health_certificate: null,
+      upload_resume: null,
     },
     preferences: {
       brands: null,
@@ -847,6 +985,29 @@ function extractHealthCertificate(message: string): string | null {
     return '有';
   }
   return null;
+}
+
+function extractUploadResume(message: string): string | null {
+  const labeled = message.match(/简历附件\s*[：:]\s*(\S+)/u)?.[1];
+  if (labeled) return sanitizeResumeUrl(labeled);
+
+  if (!/\[文件消息\]/.test(message)) return null;
+
+  const fileName = message.match(/文件名\s*[：:]\s*([^；;\n\r]+)/u)?.[1] ?? '';
+  if (!isResumeFileName(fileName)) return null;
+
+  const fileUrl = message.match(/文件地址\s*[：:]\s*([^；;\n\r]+)/u)?.[1];
+  return fileUrl ? sanitizeResumeUrl(fileUrl) : null;
+}
+
+function isResumeFileName(fileName: string): boolean {
+  const normalized = fileName.trim().toLowerCase();
+  return /简历|履历|resume/.test(normalized) || /(?:^|[^a-z0-9])cv(?:[^a-z0-9]|$)/.test(normalized);
+}
+
+function sanitizeResumeUrl(value: string): string | null {
+  const trimmed = value.trim().replace(/[，。；;、)）\]]+$/u, '');
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function extractLaborForm(message: string): string | null {
@@ -1236,12 +1397,20 @@ function extractPositionShareLocations(message: string): string[] {
 function buildBrandCandidates(brandData: BrandItem[]): BrandCandidate[] {
   return brandData
     .flatMap((brand) => [brand.name, ...(brand.aliases ?? [])].map((alias) => ({ brand, alias })))
-    .map(({ brand, alias }) => ({
-      brandName: brand.name,
-      alias,
-      normalized: normalizeForBrandMatch(alias),
-    }))
-    .filter((candidate) => candidate.normalized.length > 0)
+    .map(({ brand, alias }) => {
+      const normalized = normalizeForBrandMatch(alias);
+      return {
+        brandName: brand.name,
+        alias,
+        normalized,
+        containEligible: isBrandContainEligible(normalized),
+      };
+    })
+    .filter(
+      (candidate) =>
+        // 预留品类词给品类展开：泛词别称（如 Tims咖啡 的别称"咖啡"）不参与单一品牌精确匹配
+        candidate.normalized.length > 0 && !CATEGORY_KEYWORD_NORMALIZED.has(candidate.normalized),
+    )
     .sort((a, b) => b.normalized.length - a.normalized.length);
 }
 

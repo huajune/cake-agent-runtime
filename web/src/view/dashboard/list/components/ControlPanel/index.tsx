@@ -1,3 +1,6 @@
+import AnalyticsControlFilters, {
+  type AnalyticsRangeOption,
+} from '@/components/AnalyticsControlFilters';
 import { formatDateTime } from '@/utils/format';
 import type { DashboardTimeRange } from '@/api/types/analytics.types';
 // import styles from './index.module.scss';
@@ -7,13 +10,15 @@ interface ControlPanelProps {
   onTimeRangeChange: (range: DashboardTimeRange) => void;
   autoRefresh: boolean;
   onAutoRefreshChange: (enabled: boolean) => void;
+  groups: string[];
+  onGroupsChange: (groups: string[]) => void;
   healthStatus: 'healthy' | 'warning' | 'error' | 'loading';
   healthMessage: string;
   lastUpdate: number | null;
   children?: React.ReactNode;
 }
 
-const TIME_RANGE_OPTIONS: Array<{ key: DashboardTimeRange; label: string }> = [
+const TIME_RANGE_OPTIONS: Array<AnalyticsRangeOption<DashboardTimeRange>> = [
   { key: 'today', label: '本日' },
   { key: 'week', label: '近7天' },
   { key: 'month', label: '近30天' },
@@ -26,6 +31,8 @@ export default function ControlPanel({
   onTimeRangeChange,
   autoRefresh,
   onAutoRefreshChange,
+  groups,
+  onGroupsChange,
   healthStatus,
   healthMessage,
   lastUpdate,
@@ -40,18 +47,13 @@ export default function ControlPanel({
       <div className="control-panel-header">
         <div className="control-panel-left">
           <div className="control-panel-title">系统控制</div>
-          <div className="filters">
-            {TIME_RANGE_OPTIONS.map((option) => (
-              <button
-                key={option.key}
-                type="button"
-                className={timeRange === option.key ? 'active' : ''}
-                onClick={() => onTimeRangeChange(option.key)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+          <AnalyticsControlFilters
+            range={timeRange}
+            rangeOptions={TIME_RANGE_OPTIONS}
+            onRangeChange={onTimeRangeChange}
+            groups={groups}
+            onGroupsChange={onGroupsChange}
+          />
         </div>
 
         <div className="control-panel-right">

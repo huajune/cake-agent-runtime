@@ -265,6 +265,16 @@ export interface InterviewBookingCustomerLabel {
   value?: string;
 }
 
+export interface UploadAttachmentFromUrlParams {
+  fileUrl: string;
+  fileName?: string;
+}
+
+export interface UploadAttachmentResult {
+  fileName: string;
+  cloudStorageKey: string;
+}
+
 export interface InterviewBookingErrorItem {
   field: string;
   msg: string;
@@ -277,6 +287,14 @@ export interface InterviewBookingResult {
   message?: string;
   notice?: string | null;
   errorList?: InterviewBookingErrorItem[] | null;
+  /**
+   * 海绵工单 ID（预约成功时返回）。
+   *
+   * ⚠️ 历史 bug：旧 schema 未解析 `data.workOrder`，导致 recruitment_cases.booking_id
+   * 全部为 NULL、本地状态与海绵脱节。修复后这里携带真正的 workOrderId，
+   * 供 latest_booking 指针与 ops_events(booking.succeeded) 使用。
+   */
+  workOrderId?: number | null;
 }
 
 /**
@@ -307,6 +325,29 @@ export const InterviewBookingApiResponseSchema = z
       .object({
         notice: z.string().nullable().optional(),
         errorList: z.array(InterviewBookingErrorItemSchema).nullable().optional(),
+        // 预约成功时海绵返回的工单对象。int64，可能以 number 或 string 形式下发，
+        // 统一 coerce 成 number；缺失时为 null（不阻断解析）。
+        workOrder: z
+          .object({
+            workOrderId: z.coerce.number().int().nullable().optional(),
+          })
+          .passthrough()
+          .nullable()
+          .optional(),
+      })
+      .nullable()
+      .optional(),
+  })
+  .passthrough();
+
+export const UploadAttachmentApiResponseSchema = z
+  .object({
+    code: z.number(),
+    message: z.string().optional(),
+    data: z
+      .object({
+        fileName: z.string(),
+        cloudStorageKey: z.string().min(1),
       })
       .nullable()
       .optional(),
@@ -380,3 +421,100 @@ export const BI_FILTER_TYPES = {
   EQUAL: 'EQ',
   CONTAINS: 'CONTAINS',
 } as const;
+
+// ==================== 海绵工单查询 signup/list ====================
+
+/**
+ * 海绵工单查询参数（POST ${SPONGE_API_BASE_URL}/ai/api/workorder/signup/list）。
+ *
+ * 两条硬约束：
+ * 1. 必须按候选人定位：workOrderId / phone 至少传一个（没有"全局列出所有工单"的查法）。
+ * 2. 响应是该候选人**全部**工单列表 → 用 workOrderId 定位时仍要在 workOrders[] 里挑出目标那条。
+ */
+export interface SignupWorkOrdersParams {
+  /** 定位键：定位到某候选人；与 phone 至少传一个 */
+  workOrderId?: number;
+  /** 定位键：定位到某候选人；与 workOrderId 至少传一个 */
+  phone?: string;
+  queryParam?: {
+    signUpStartTime?: string;
+    signUpEndTime?: string;
+    interviewPassStartTime?: string;
+    interviewPassEndTime?: string;
+    /** 当前状态中文列表过滤（9 态之一） */
+    currentStatus?: string[];
+  };
+}
+
+/** 单个工单（候选人维度响应的 workOrders[] 元素）。 */
+export interface SignupWorkOrderItem {
+  workOrderId: number;
+  signUpTime?: string | null;
+  /** 面试通过时间；非空即视为"面试成功"（interview.passed 判定依据）。 */
+  interviewPassTime?: string | null;
+  brandId?: number | null;
+  brandName?: string | null;
+  companyId?: number | null;
+  companyName?: string | null;
+  projectId?: number | null;
+  projectName?: string | null;
+  jobId?: number | null;
+  jobBasicInfoId?: number | null;
+  jobName?: string | null;
+  /** 当前状态中文：约面待确认/约面失败/约面取消/约面成功/面试失败/面试成功/上岗失败/上岗成功/已离职 */
+  currentStatus?: string | null;
+  workOrderStatus?: number | null;
+  salary?: number | string | null;
+  salaryUnit?: string | null;
+  salaryPeriod?: string | null;
+}
+
+/** 候选人维度的工单查询结果。 */
+export interface SignupWorkOrdersResult {
+  candidateName?: string | null;
+  gender?: string | number | null;
+  phone?: string | null;
+  age?: number | null;
+  total: number;
+  workOrders: SignupWorkOrderItem[];
+}
+
+export const SignupWorkOrderItemSchema = z
+  .object({
+    workOrderId: z.coerce.number().int(),
+    signUpTime: z.string().nullable().optional(),
+    interviewPassTime: z.string().nullable().optional(),
+    brandId: z.number().nullable().optional(),
+    brandName: z.string().nullable().optional(),
+    companyId: z.number().nullable().optional(),
+    companyName: z.string().nullable().optional(),
+    projectId: z.number().nullable().optional(),
+    projectName: z.string().nullable().optional(),
+    jobId: z.number().nullable().optional(),
+    jobBasicInfoId: z.number().nullable().optional(),
+    jobName: z.string().nullable().optional(),
+    currentStatus: z.string().nullable().optional(),
+    workOrderStatus: z.number().nullable().optional(),
+    salary: z.union([z.number(), z.string()]).nullable().optional(),
+    salaryUnit: z.string().nullable().optional(),
+    salaryPeriod: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+export const SignupWorkOrdersApiResponseSchema = z
+  .object({
+    code: z.number(),
+    message: z.string().optional(),
+    data: z
+      .object({
+        candidateName: z.string().nullable().optional(),
+        gender: z.union([z.string(), z.number()]).nullable().optional(),
+        phone: z.string().nullable().optional(),
+        age: z.number().nullable().optional(),
+        total: z.number().nullable().optional(),
+        workOrders: z.array(SignupWorkOrderItemSchema).nullable().optional(),
+      })
+      .nullable()
+      .optional(),
+  })
+  .passthrough();

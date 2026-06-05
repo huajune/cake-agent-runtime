@@ -12,13 +12,23 @@ describe('OnboardFollowupNotifierService', () => {
     buildCard: jest.fn(),
   } as unknown as jest.Mocked<OnboardFollowupCardRenderer>;
 
+  const mockHostingMemberConfig = {
+    resolveFeishuReceiver: jest.fn(async (botImId?: string) =>
+      botImId ? BOT_TO_RECEIVER[botImId] : undefined,
+    ),
+  };
+
   let service: OnboardFollowupNotifierService;
 
   beforeEach(() => {
     jest.clearAllMocks();
     mockPrivateChatChannel.send.mockResolvedValue(true);
     mockRenderer.buildCard.mockReturnValue({ kind: 'onboard-followup-card' });
-    service = new OnboardFollowupNotifierService(mockPrivateChatChannel as never, mockRenderer);
+    service = new OnboardFollowupNotifierService(
+      mockPrivateChatChannel as never,
+      mockRenderer,
+      mockHostingMemberConfig as never,
+    );
   });
 
   it('should mention the mapped receiver when bot id is known', async () => {

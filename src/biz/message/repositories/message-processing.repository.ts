@@ -28,6 +28,7 @@ export class MessageProcessingRepository extends BaseRepository {
     'user_id',
     'user_name',
     'manager_name',
+    'bot_im_id',
     'received_at',
     'message_preview',
     'reply_preview',
@@ -143,6 +144,8 @@ export class MessageProcessingRepository extends BaseRepository {
     endDate?: Date;
     status?: 'processing' | 'success' | 'failure' | 'timeout';
     chatId?: string;
+    /** 多 chatId 过滤（小组筛选下推 DB，避免先 limit 截断再内存过滤导致小组指标被低估）。 */
+    chatIds?: string[];
     userName?: string;
     managerNames?: string[];
     limit?: number;
@@ -153,6 +156,13 @@ export class MessageProcessingRepository extends BaseRepository {
   }> {
     if (!this.isAvailable()) {
       return { records: [], total: 0 };
+    }
+
+    // 大群筛选时 chatIds 可能上千：单条 .in('chat_id', [...]) 会把全部 id 编进 GET query string，
+    // 触发 PostgREST/Cloudflare 的 URI 长度上限（414/520），错误被吞后静默返回空、仪表盘归零。
+    // 超过批量阈值时分批查询再合并去重，避免 URL 超长。
+    if (options.chatIds && options.chatIds.length > MessageProcessingRepository.CHAT_ID_IN_BATCH) {
+      return this.getRecordsByChatIdBatches(options);
     }
 
     try {
@@ -166,6 +176,7 @@ export class MessageProcessingRepository extends BaseRepository {
         else if (options.endTime) r = r.lte('received_at', new Date(options.endTime).toISOString());
         if (options.status) r = r.eq('status', options.status);
         if (options.chatId) r = r.eq('chat_id', options.chatId);
+        if (options.chatIds && options.chatIds.length > 0) r = r.in('chat_id', options.chatIds);
         r = this.applyTextFilters(r, {
           userName: options.userName,
           managerNames: options.managerNames,
@@ -191,6 +202,56 @@ export class MessageProcessingRepository extends BaseRepository {
       this.logger.error('获取消息处理记录失败:', error);
       return { records: [], total: 0 };
     }
+  }
+
+  /** chatIds 单批上限：超过则分批 .in() 查询，避免 GET query string 触发 URI 长度上限。 */
+  private static readonly CHAT_ID_IN_BATCH = 300;
+
+  /**
+   * chatIds 超量时分批查询并合并：每批走常规 getMessageProcessingRecords（batch <= 阈值，不再递归），
+   * 按 messageId 去重、按 receivedAt 倒序，最后按 limit 截断。total 为各批之和（近似上界）。
+   */
+  private async getRecordsByChatIdBatches(options: {
+    startTime?: number;
+    endTime?: number;
+    startDate?: Date;
+    endDate?: Date;
+    status?: 'processing' | 'success' | 'failure' | 'timeout';
+    chatId?: string;
+    chatIds?: string[];
+    userName?: string;
+    managerNames?: string[];
+    limit?: number;
+    offset?: number;
+  }): Promise<{ records: MessageProcessingRecordInput[]; total: number }> {
+    const chatIds = options.chatIds ?? [];
+    const batchSize = MessageProcessingRepository.CHAT_ID_IN_BATCH;
+    const batches: string[][] = [];
+    for (let i = 0; i < chatIds.length; i += batchSize) {
+      batches.push(chatIds.slice(i, i + batchSize));
+    }
+
+    // offset 在分批合并语义下无法精确，统一从 0 取再内存截断；调用方（小组筛选）只用 limit。
+    const perBatch = { ...options, offset: undefined };
+    const results = await Promise.all(
+      batches.map((batch) => this.getMessageProcessingRecords({ ...perBatch, chatIds: batch })),
+    );
+
+    const merged = new Map<string, MessageProcessingRecordInput>();
+    let total = 0;
+    for (const result of results) {
+      total += result.total;
+      for (const record of result.records) {
+        merged.set(record.messageId, record);
+      }
+    }
+
+    let records = Array.from(merged.values()).sort((a, b) => b.receivedAt - a.receivedAt);
+    if (options.limit && records.length > options.limit) {
+      records = records.slice(0, options.limit);
+    }
+
+    return { records, total };
   }
 
   /**
@@ -737,6 +798,7 @@ export class MessageProcessingRepository extends BaseRepository {
       user_id: record.userId,
       user_name: record.userName,
       manager_name: record.managerName,
+      bot_im_id: record.botImId,
       received_at: new Date(record.receivedAt).toISOString(),
       message_preview: record.messagePreview,
       reply_preview: record.replyPreview,
@@ -777,6 +839,7 @@ export class MessageProcessingRepository extends BaseRepository {
       userId: record.user_id,
       userName: record.user_name,
       managerName: record.manager_name,
+      botImId: record.bot_im_id,
       receivedAt: new Date(record.received_at).getTime(),
       messagePreview: record.message_preview,
       replyPreview: record.reply_preview,

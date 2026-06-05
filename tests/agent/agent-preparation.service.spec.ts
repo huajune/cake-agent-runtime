@@ -51,14 +51,6 @@ describe('AgentPreparationService', () => {
     buildForScenario: jest.fn().mockReturnValue({ duliday_job_list: {} }),
   };
 
-  const mockRecruitmentCaseService = {
-    getActiveOnboardFollowupCase: jest.fn(),
-  };
-
-  const mockRecruitmentStageResolver = {
-    resolve: jest.fn(),
-  };
-
   const mockMemoryService = {
     onTurnStart: jest.fn(),
     saveProfile: jest.fn(),
@@ -88,15 +80,21 @@ describe('AgentPreparationService', () => {
     alertInjection: jest.fn().mockResolvedValue(undefined),
   };
 
+  const mockLongTermService = {
+    getLatestBooking: jest.fn(),
+  };
+
+  const mockSpongeService = {
+    getCachedWorkOrderById: jest.fn(),
+  };
+
   let service: AgentPreparationService;
 
   beforeEach(() => {
     jest.clearAllMocks();
     mockToolRegistry.buildForScenario.mockReturnValue({ duliday_job_list: {} });
-    mockRecruitmentCaseService.getActiveOnboardFollowupCase.mockResolvedValue(null);
-    mockRecruitmentStageResolver.resolve.mockImplementation(
-      ({ proceduralStage }: { proceduralStage?: string | null }) => proceduralStage,
-    );
+    mockLongTermService.getLatestBooking.mockResolvedValue(null);
+    mockSpongeService.getCachedWorkOrderById.mockResolvedValue(null);
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: {
         messageWindow: [{ role: 'user', content: '短期里的当前消息' }],
@@ -149,12 +147,12 @@ describe('AgentPreparationService', () => {
 
     service = new AgentPreparationService(
       mockToolRegistry as never,
-      mockRecruitmentCaseService as never,
-      mockRecruitmentStageResolver as never,
       mockMemoryService as never,
       mockMemoryConfig as never,
       mockContext as never,
       mockInputGuard as never,
+      mockLongTermService as never,
+      mockSpongeService as never,
     );
   });
 
@@ -192,15 +190,8 @@ describe('AgentPreparationService', () => {
         highConfidenceFacts: null,
       }),
     );
-    expect(mockRecruitmentCaseService.getActiveOnboardFollowupCase).toHaveBeenCalledWith({
-      corpId: 'corp-1',
-      chatId: 'sess-1',
-    });
-    expect(mockRecruitmentStageResolver.resolve).toHaveBeenCalledWith({
-      proceduralStage: 'job_consultation',
-      recruitmentCase: null,
-      currentMessageContent: '当前用户消息',
-    });
+    // 阶段直接取程序性记忆 currentStage（recruitment_cases 已废弃，不再由 case 推导）
+    expect(mockContext.compose.mock.calls[0][0].currentStage).toBe('job_consultation');
     expect(mockContext.compose.mock.calls[0][0].memoryBlock).toContain('[会话记忆]');
     expect(result.finalPrompt).toContain('SYSTEM_PROMPT');
     expect(result.finalPrompt).toContain('[用户档案]');
@@ -413,29 +404,38 @@ describe('AgentPreparationService', () => {
     expect(result.finalPrompt).toContain('用工:小时工');
   });
 
-  it('should switch to onboard_followup when active recruitment case exists', async () => {
-    mockRecruitmentCaseService.getActiveOnboardFollowupCase.mockResolvedValue({
-      id: 'case-1',
-      corp_id: 'corp-1',
-      chat_id: 'sess-1',
-      user_id: 'user-1',
-      case_type: 'onboard_followup',
-      status: 'active',
-      booking_id: 'BK-1001',
-      booked_at: '2026-04-15T08:00:00.000Z',
-      interview_time: '2026-04-16 14:00:00',
-      job_id: 527349,
-      job_name: '店员',
-      brand_name: '瑞幸',
-      store_name: '陆家嘴店',
-      bot_im_id: 'bot-im-1',
-      followup_window_ends_at: '2026-04-23T08:00:00.000Z',
-      last_relevant_at: '2026-04-15T08:00:00.000Z',
-      metadata: {},
-      created_at: '2026-04-15T08:00:00.000Z',
-      updated_at: '2026-04-15T08:00:00.000Z',
+  it('uses procedural stage + renders [当前预约信息] from latest_booking + sponge', async () => {
+    // 阶段直接取程序性记忆（onboard_followup 不再由 recruitment_cases 推导）。
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      shortTerm: { messageWindow: [{ role: 'user', content: '我到店了' }] },
+      sessionMemory: null,
+      highConfidenceFacts: null,
+      longTerm: { profile: null },
+      procedural: {
+        currentStage: 'onboard_followup',
+        fromStage: null,
+        advancedAt: null,
+        reason: null,
+      },
     });
-    mockRecruitmentStageResolver.resolve.mockReturnValue('onboard_followup');
+    mockContext.compose.mockImplementation(async (params?: { memoryBlock?: string }) => ({
+      systemPrompt: ['SYSTEM_PROMPT', params?.memoryBlock].filter(Boolean).join('\n\n'),
+      stageGoals: { onboard_followup: { stage: 'onboard_followup' } },
+      thresholds: [],
+    }));
+    // [当前预约信息] 现由 latest_booking 指针 + 海绵工单实时状态渲染（不再来自 recruitment_cases）。
+    mockLongTermService.getLatestBooking.mockResolvedValue({
+      latest_work_order_id: 88001,
+      linked_at: '2026-04-15T08:00:00.000Z',
+    });
+    mockSpongeService.getCachedWorkOrderById.mockResolvedValue({
+      workOrderId: 88001,
+      brandName: '瑞幸',
+      projectName: '陆家嘴店',
+      jobName: '店员',
+      currentStatus: '约面成功',
+      signUpTime: '2026-04-15 16:00:00',
+    });
 
     const result = await service.prepare(
       {
@@ -454,8 +454,10 @@ describe('AgentPreparationService', () => {
         memoryBlock: expect.stringContaining('[当前预约信息]'),
       }),
     );
+    expect(mockSpongeService.getCachedWorkOrderById).toHaveBeenCalledWith(88001);
     expect(result.entryStage).toBe('onboard_followup');
-    expect(result.finalPrompt).toContain('预约编号: BK-1001');
+    expect(result.finalPrompt).toContain('品牌: 瑞幸');
+    expect(result.finalPrompt).toContain('当前状态: 约面成功');
   });
 
   it('should trim passed messages when they exceed max chars', async () => {

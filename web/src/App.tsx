@@ -5,6 +5,7 @@ import {
   AgentTest,
   ChatRecords,
   Config,
+  ConversionAnalysis,
   Dashboard,
   Hosting,
   MessageProcessing,
@@ -43,6 +44,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<Dashboard />} />
+          <Route path="conversion-analysis" element={<ConversionAnalysis />} />
           <Route path="users" element={<Users />} />
           <Route path="hosting" element={<Hosting />} />
           <Route path="config" element={<Config />} />

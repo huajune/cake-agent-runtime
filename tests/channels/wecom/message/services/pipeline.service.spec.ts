@@ -25,6 +25,10 @@ import { SystemConfigService } from '@biz/hosting-config/services/system-config.
 import { PreAgentRiskInterceptService } from '@wecom/message/application/pre-agent-risk-intercept.service';
 import { ReplyFactGuardService } from '@wecom/message/application/reply-fact-guard.service';
 import { LongTermService } from '@memory/services/long-term.service';
+import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
+import { BotGroupResolverService } from '@biz/ops-events/bot-group-resolver.service';
+import { HuajuneReporterService } from '@biz/huajune/huajune-reporter.service';
+import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 
 describe('MessagePipelineService', () => {
   let service: MessagePipelineService;
@@ -144,6 +148,10 @@ describe('MessagePipelineService', () => {
     updateMessageMetadata: jest.fn(),
   };
 
+  const mockHostingMemberConfigService = {
+    resolveFeishuReceiver: jest.fn().mockResolvedValue(undefined),
+  };
+
   const mockSimpleMergeService = {
     claimPendingSnapshot: jest
       .fn()
@@ -192,9 +200,28 @@ describe('MessagePipelineService', () => {
         { provide: WecomMessageObservabilityService, useValue: mockWecomObservabilityService },
         { provide: PreAgentRiskInterceptService, useValue: mockPreAgentRiskIntercept },
         { provide: LongTermService, useValue: mockLongTermService },
+        { provide: HostingMemberConfigService, useValue: mockHostingMemberConfigService },
         {
           provide: ReplyFactGuardService,
           useValue: { check: jest.fn().mockReturnValue({ hit: false, contradictions: [] }) },
+        },
+        {
+          provide: OpsEventsRecorderService,
+          useValue: {
+            recordEvent: jest.fn().mockResolvedValue(true),
+            recordCandidateMessage: jest
+              .fn()
+              .mockResolvedValue({ messageRecorded: true, engaged: false }),
+          },
+        },
+        { provide: BotGroupResolverService, useValue: { resolveAgentId: jest.fn() } },
+        {
+          provide: HuajuneReporterService,
+          useValue: {
+            reportMessageReceived: jest.fn(),
+            reportMessageSent: jest.fn(),
+            reportCandidateContacted: jest.fn(),
+          },
         },
       ],
     }).compile();

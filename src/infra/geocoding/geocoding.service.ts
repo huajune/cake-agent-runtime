@@ -174,6 +174,7 @@ export class GeocodingService {
           longitude: lng,
           latitude: lat,
           poiName,
+          typecode: str(poi.typecode),
         });
       }
 

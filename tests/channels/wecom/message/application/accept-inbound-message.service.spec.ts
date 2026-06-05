@@ -39,6 +39,17 @@ describe('AcceptInboundMessageService', () => {
   const longTerm = {
     updateMessageMetadata: jest.fn(),
   };
+  const opsEventsRecorder = {
+    recordEvent: jest.fn().mockResolvedValue(true),
+    recordCandidateMessage: jest.fn().mockResolvedValue({ messageRecorded: true, engaged: false }),
+  };
+  const botGroupResolver = {
+    resolveAgentId: jest.fn().mockReturnValue(null),
+  };
+  const huajuneReporter = {
+    reportMessageReceived: jest.fn(),
+    reportCandidateContacted: jest.fn(),
+  };
 
   let service: AcceptInboundMessageService;
 
@@ -74,6 +85,9 @@ describe('AcceptInboundMessageService', () => {
       runtimeConfig as never,
       llm as never,
       longTerm as never,
+      opsEventsRecorder as never,
+      botGroupResolver as never,
+      huajuneReporter as never,
     );
   });
 
@@ -155,26 +169,31 @@ describe('AcceptInboundMessageService', () => {
     expect(deduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalled();
   });
 
-  it('should initialize long-term memory for new customer answer SOP callbacks', async () => {
-    filterService.validate.mockResolvedValueOnce({
-      pass: false,
-      reason: FilterReason.INVALID_SOURCE,
+  it('首条真实消息（破冰）触发 friend.added 并开户长期记忆', async () => {
+    opsEventsRecorder.recordCandidateMessage.mockResolvedValueOnce({
+      messageRecorded: true,
+      engaged: true,
     });
 
-    await expect(
-      service.execute(
-        createMessage({
-          source: MessageSource.NEW_CUSTOMER_ANSWER_SOP,
-          messageId: 'msg-new-friend',
-          externalUserId: 'external-1',
-          avatar: 'https://example.com/avatar.png',
-        }),
-      ),
-    ).resolves.toEqual({
-      shouldDispatch: false,
-      response: { success: true, message: `${FilterReason.INVALID_SOURCE} ignored` },
-    });
+    await service.execute(
+      createMessage({
+        messageId: 'msg-first',
+        externalUserId: 'external-1',
+        avatar: 'https://example.com/avatar.png',
+      }),
+    );
+    await flushMicrotasks();
 
+    // 候选人首条真实消息（破冰）即新好友首次接触 → friend.added（每候选人一次）
+    expect(opsEventsRecorder.recordEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventName: 'friend.added',
+        idempotencyKey: 'im-contact-1:friend_added',
+        userId: 'im-contact-1',
+        sourceChannel: 'unknown',
+      }),
+    );
+    // friend.added 首次插入时开户长期记忆元数据
     expect(longTerm.updateMessageMetadata).toHaveBeenCalledWith('corp-1', 'im-contact-1', {
       botId: 'bot-1',
       imBotId: 'im-bot-1',
@@ -184,6 +203,64 @@ describe('AcceptInboundMessageService', () => {
       externalUserId: 'external-1',
       avatar: 'https://example.com/avatar.png',
     });
+    // 不应再记 agent.opening_sent（开场白改由 reply-workflow 在首条对外回复时记）
+    expect(opsEventsRecorder.recordEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ eventName: 'agent.opening_sent' }),
+    );
+  });
+
+  it('records candidate.message_received for a real inbound candidate message', async () => {
+    await service.execute(createMessage());
+
+    expect(opsEventsRecorder.recordCandidateMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        corpId: 'corp-1',
+        messageId: 'msg-1',
+        userId: 'im-contact-1',
+        sourceChannel: 'unknown',
+      }),
+    );
+  });
+
+  it('reports real inbound candidate messages to Huajune when bot has agent mapping', async () => {
+    botGroupResolver.resolveAgentId.mockReturnValueOnce('gaoyaqi-cake-1');
+
+    await service.execute(createMessage({ messageId: 'msg-huajune-inbound' }));
+    await flushMicrotasks();
+
+    expect(huajuneReporter.reportMessageReceived).toHaveBeenCalledWith({
+      agentId: 'gaoyaqi-cake-1',
+      candidateName: '张三',
+      idempotencyKey: 'msg-huajune-inbound',
+    });
+  });
+
+  it('加好友纯默认招呼语只记 friend.added，不记候选人消息/破冰', async () => {
+    filterService.validate.mockResolvedValueOnce({ pass: true, content: '我是🍪' });
+
+    await service.execute(createMessage({ messageId: 'msg-greet' }));
+    await flushMicrotasks();
+
+    expect(opsEventsRecorder.recordCandidateMessage).not.toHaveBeenCalled();
+    expect(opsEventsRecorder.recordEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventName: 'friend.added',
+        idempotencyKey: 'im-contact-1:friend_added',
+      }),
+    );
+    // 握手语首次插入 friend.added → 同样开户长期记忆
+    expect(longTerm.updateMessageMetadata).toHaveBeenCalled();
+  });
+
+  it('带求职意图的「我是…」按真实候选人消息计入（不当作握手语）', async () => {
+    filterService.validate.mockResolvedValueOnce({ pass: true, content: '我是找工作的' });
+
+    await service.execute(createMessage({ messageId: 'msg-intent' }));
+    await flushMicrotasks();
+
+    expect(opsEventsRecorder.recordCandidateMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ messageId: 'msg-intent', userId: 'im-contact-1' }),
+    );
   });
 
   it('should not archive terminal filtered reasons outside the allowlist', async () => {
@@ -310,6 +387,11 @@ describe('AcceptInboundMessageService', () => {
     });
   });
 });
+
+/** 刷新 fire-and-forget 异步事件记录的微任务队列，便于断言。 */
+function flushMicrotasks(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
 
 function createMessage(
   overrides: Partial<EnterpriseMessageCallbackDto> = {},

@@ -7,6 +7,7 @@ import { SpongeService } from '@sponge/sponge.service';
 import type { JobDetail } from '@sponge/sponge.types';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
+import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
 
 const logger = new Logger('send_store_location');
 
@@ -134,14 +135,17 @@ export function buildSendStoreLocationTool(
         }
 
         try {
-          const { jobs } = await spongeService.fetchJobs({
-            jobIdList: [resolvedJobId],
-            pageNum: 1,
-            pageSize: 1,
-            options: {
-              includeBasicInfo: true,
+          const { jobs } = await spongeService.fetchJobs(
+            {
+              jobIdList: [resolvedJobId],
+              pageNum: 1,
+              pageSize: 1,
+              options: {
+                includeBasicInfo: true,
+              },
             },
-          });
+            buildSpongeTokenContext(context),
+          );
 
           const matchedJob = jobs.find((job) => job.basicInfo?.jobId === resolvedJobId) ?? jobs[0];
           if (!matchedJob) {

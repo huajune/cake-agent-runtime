@@ -180,6 +180,47 @@ describe('SessionService', () => {
       );
     });
 
+    it('should persist optional interview fields used by booking precheck', async () => {
+      mockRedisStore.get.mockResolvedValue({
+        content: {
+          facts: null,
+          lastCandidatePool: null,
+          presentedJobs: null,
+          currentFocusJob: null,
+        },
+      });
+
+      const newFacts: EntityExtractionResult = {
+        ...FALLBACK_EXTRACTION,
+        interview_info: {
+          ...FALLBACK_EXTRACTION.interview_info,
+          height: '170',
+          weight: '60',
+          household_register_province: '安徽',
+        },
+      };
+
+      await service.saveFacts('corp1', 'user1', 'session1', newFacts);
+
+      expect(mockRedisStore.set).toHaveBeenCalledWith(
+        expect.stringContaining('corp1:user1:session1'),
+        expect.objectContaining({
+          facts: expect.objectContaining({
+            interview_info: expect.objectContaining({
+              height: factValue('170', { confidence: 'unknown', source: 'memory' }),
+              weight: factValue('60', { confidence: 'unknown', source: 'memory' }),
+              household_register_province: factValue('安徽', {
+                confidence: 'unknown',
+                source: 'memory',
+              }),
+            }),
+          }),
+        }),
+        86400,
+        false,
+      );
+    });
+
     it('should overwrite merged interview_info field when forceNullFields is passed', async () => {
       // 回归 badcase batch_69e9bba2536c9654026522da_*：deepMerge 的 null 不覆盖语义
       // 会让污染的昵称卡在 Redis 里，sanitizer 需要通过 forceNullFields 显式清除。

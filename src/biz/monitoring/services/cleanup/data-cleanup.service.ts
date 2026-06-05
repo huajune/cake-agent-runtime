@@ -23,7 +23,7 @@ import { IncidentReporterService } from '@observability/incidents/incident-repor
  *
  * 保留天数通过环境变量配置（Layer 2，有默认值）：
  * - DATA_CLEANUP_AGENT_INVOCATION_DAYS (默认 7)
- * - DATA_CLEANUP_PROCESSING_DAYS       (默认 14)
+ * - DATA_CLEANUP_PROCESSING_DAYS       (默认 30)
  * - DATA_CLEANUP_CHAT_DAYS             (默认 60)
  * - DATA_CLEANUP_USER_ACTIVITY_DAYS    (默认 365)
  * - DATA_CLEANUP_ERROR_LOGS_DAYS       (默认 30)
@@ -53,7 +53,7 @@ export class DataCleanupService implements OnModuleInit {
       10,
     );
     this.processingRetentionDays = parseInt(
-      this.configService.get('DATA_CLEANUP_PROCESSING_DAYS', '14'),
+      this.configService.get('DATA_CLEANUP_PROCESSING_DAYS', '30'),
       10,
     );
     this.chatRetentionDays = parseInt(this.configService.get('DATA_CLEANUP_CHAT_DAYS', '60'), 10);

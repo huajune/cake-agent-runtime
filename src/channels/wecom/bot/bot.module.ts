@@ -8,5 +8,6 @@ import { ApiConfigModule } from '@infra/config/api-config.module';
   imports: [HttpModule, ApiConfigModule],
   controllers: [BotController],
   providers: [BotService],
+  exports: [BotService],
 })
 export class BotModule {}

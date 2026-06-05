@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { BOT_TO_RECEIVER } from '@infra/feishu/constants/receivers';
+import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { FeishuPrivateChatChannel } from '../channels/feishu-private-chat.channel';
 import { ConversationRiskCardRenderer } from '../renderers/conversation-risk-card.renderer';
 import { ConversationRiskNotificationPayload } from '../types/conversation-risk-notification.types';
@@ -11,10 +11,11 @@ export class ConversationRiskNotifierService {
   constructor(
     private readonly privateChatChannel: FeishuPrivateChatChannel,
     private readonly cardRenderer: ConversationRiskCardRenderer,
+    private readonly hostingMemberConfig: HostingMemberConfigService,
   ) {}
 
   async notifyConversationRisk(payload: ConversationRiskNotificationPayload): Promise<boolean> {
-    const receiver = payload.botImId ? BOT_TO_RECEIVER[payload.botImId] : undefined;
+    const receiver = await this.hostingMemberConfig.resolveFeishuReceiver(payload.botImId);
     const card = this.cardRenderer.buildConversationRiskCard({
       ...payload,
       ...(receiver ? { atUsers: [receiver] } : { atAll: true }),

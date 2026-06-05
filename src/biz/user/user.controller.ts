@@ -1,5 +1,4 @@
 import { Controller, Get, Post, HttpCode, Logger, Body, Param } from '@nestjs/common';
-import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
 import { UserHostingService } from './services/user-hosting.service';
 
 /**
@@ -10,10 +9,7 @@ import { UserHostingService } from './services/user-hosting.service';
 export class UserController {
   private readonly logger = new Logger(UserController.name);
 
-  constructor(
-    private readonly userHostingService: UserHostingService,
-    private readonly recruitmentCaseService: RecruitmentCaseService,
-  ) {}
+  constructor(private readonly userHostingService: UserHostingService) {}
 
   @Post('users/:userId/pause')
   @HttpCode(200)
@@ -32,7 +28,6 @@ export class UserController {
   async resumeUserHosting(@Param('userId') userId: string) {
     this.logger.log(`恢复用户托管: ${userId}`);
     await this.userHostingService.resumeUser(userId);
-    await this.recruitmentCaseService.closeLatestHandoffCase(userId);
     return {
       userId,
       isPaused: false,
@@ -60,7 +55,6 @@ export class UserController {
     this.logger.log(`切换用户托管状态: ${chatId}, enabled=${enabled}`);
     if (enabled) {
       await this.userHostingService.resumeUser(chatId);
-      await this.recruitmentCaseService.closeLatestHandoffCase(chatId);
       return { chatId, hostingEnabled: true, message: `用户 ${chatId} 的托管已启用` };
     } else {
       await this.userHostingService.pauseUser(chatId);

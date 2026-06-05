@@ -253,13 +253,28 @@ describe('buildCustomerLabelList', () => {
     it('resolves 简历 from uploadResume', () => {
       const result = buildCustomerLabelList(
         baseParams({
-          supplementDefinitions: [def('简历')],
+          supplementDefinitions: [def('上传简历')],
           uploadResume: 'http://example.com/cv.pdf',
         }),
       );
 
       expectSuccess(result);
       expect(result.customerLabelList[0].value).toBe('http://example.com/cv.pdf');
+    });
+
+    it('does not allow text supplementAnswers to satisfy resume upload labels', () => {
+      const result = buildCustomerLabelList(
+        baseParams({
+          supplementDefinitions: [def('上传简历')],
+          supplementAnswers: {
+            上传简历: '南京城市职业学院毕业，高铁检票员一年',
+          },
+        }),
+      );
+
+      expectFailure(result);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_CUSTOMER_LABEL_VALUES);
+      expect(result.missingSupplementLabels).toEqual(['上传简历']);
     });
   });
 });

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { BOT_TO_RECEIVER } from '@infra/feishu/constants/receivers';
+import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { FeishuAlertChannel } from '../channels/feishu-alert.channel';
 import { FeishuPrivateChatChannel } from '../channels/feishu-private-chat.channel';
 import { GeneralHandoffCardRenderer } from '../renderers/general-handoff-card.renderer';
@@ -31,11 +31,14 @@ export class GeneralHandoffNotifierService {
     private readonly privateChatChannel: FeishuPrivateChatChannel,
     private readonly alertChannel: FeishuAlertChannel,
     private readonly cardRenderer: GeneralHandoffCardRenderer,
+    private readonly hostingMemberConfig: HostingMemberConfigService,
   ) {}
 
   async notify(payload: GeneralHandoffNotificationPayload): Promise<boolean> {
     const isTest = isTestSession(payload.corpId, payload.chatId);
-    const receiver = !isTest && payload.botImId ? BOT_TO_RECEIVER[payload.botImId] : undefined;
+    const receiver = isTest
+      ? undefined
+      : await this.hostingMemberConfig.resolveFeishuReceiver(payload.botImId);
 
     const card = this.cardRenderer.buildCard({
       ...payload,

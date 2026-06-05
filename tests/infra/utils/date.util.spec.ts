@@ -8,6 +8,7 @@ import {
   getLocalWeekStart,
   getTomorrowDate,
   parseLocalDateStart,
+  parseLocalDateTime,
 } from '@infra/utils/date.util';
 
 describe('date.util (Asia/Shanghai)', () => {
@@ -87,9 +88,7 @@ describe('date.util (Asia/Shanghai)', () => {
     });
 
     it('should parse YYYY-MM-DD as Shanghai day start', () => {
-      expect(parseLocalDateStart('2026-04-28').toISOString()).toBe(
-        '2026-04-27T16:00:00.000Z',
-      );
+      expect(parseLocalDateStart('2026-04-28').toISOString()).toBe('2026-04-27T16:00:00.000Z');
     });
   });
 
@@ -107,6 +106,37 @@ describe('date.util (Asia/Shanghai)', () => {
       const tomorrowMs = new Date(tomorrow).getTime();
 
       expect(tomorrowMs - todayMs).toBe(24 * 60 * 60 * 1000);
+    });
+  });
+
+  describe('parseLocalDateTime（无时区字符串按 Asia/Shanghai 解析）', () => {
+    it('应把「YYYY-MM-DD HH:mm:ss」当成上海时间，而非 UTC', () => {
+      const d = parseLocalDateTime('2026-06-01 22:00:00');
+      // 上海 2026-06-01 22:00 = UTC 14:00
+      expect(d?.toISOString()).toBe('2026-06-01T14:00:00.000Z');
+      // 关键：report_date 仍应是 06-01（不会被 UTC 误算到次日）
+      expect(formatLocalDate(d as Date)).toBe('2026-06-01');
+    });
+
+    it('傍晚通过时间不应跨天到次日（回归 Finding 6）', () => {
+      // 若按 UTC 解析，22:00 会被当成 UTC → 上海次日 06:00 → report_date 错成 06-02
+      const d = parseLocalDateTime('2026-06-01 22:30:00');
+      expect(formatLocalDate(d as Date)).toBe('2026-06-01');
+    });
+
+    it('支持 T 分隔与省略秒', () => {
+      expect(parseLocalDateTime('2026-06-01T09:05:00')?.toISOString()).toBe(
+        '2026-06-01T01:05:00.000Z',
+      );
+      expect(parseLocalDateTime('2026-06-01 09:05')?.toISOString()).toBe(
+        '2026-06-01T01:05:00.000Z',
+      );
+    });
+
+    it('非法字符串返回 null', () => {
+      expect(parseLocalDateTime('')).toBeNull();
+      expect(parseLocalDateTime('not-a-date')).toBeNull();
+      expect(parseLocalDateTime('2026/06/01 09:00:00')).toBeNull();
     });
   });
 });

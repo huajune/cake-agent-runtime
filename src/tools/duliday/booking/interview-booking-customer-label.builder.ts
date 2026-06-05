@@ -114,6 +114,8 @@ function resolveCustomerLabelValue(
   labelName: string,
   params: BuildCustomerLabelListParams,
 ): string | null {
+  if (/简历/.test(labelName)) return normalizeText(params.uploadResume);
+
   const directAnswer = getSupplementAnswerValue(params.supplementAnswers, labelName);
   if (directAnswer) return directAnswer;
 
@@ -152,8 +154,6 @@ function resolveCustomerLabelValue(
   if (/性别/.test(labelName)) return getSpongeGenderLabelById(params.genderId);
   if (/年龄/.test(labelName)) return String(params.age);
   if (/面试时间/.test(labelName)) return normalizeText(params.interviewTime);
-  if (/简历/.test(labelName)) return normalizeText(params.uploadResume);
-
   return null;
 }
 

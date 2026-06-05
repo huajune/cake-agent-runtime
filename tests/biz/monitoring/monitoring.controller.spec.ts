@@ -63,7 +63,8 @@ describe('AnalyticsController', () => {
 
       const result = await controller.getDashboardOverview();
 
-      expect(dashboardService.getDashboardOverviewAsync).toHaveBeenCalledWith('today');
+      // groups 过滤上线后，controller 透传第二个参数（无 group 时为空数组）
+      expect(dashboardService.getDashboardOverviewAsync).toHaveBeenCalledWith('today', []);
       expect(result).toEqual(mockResult);
     });
 
@@ -73,7 +74,7 @@ describe('AnalyticsController', () => {
 
       const result = await controller.getDashboardOverview('week');
 
-      expect(dashboardService.getDashboardOverviewAsync).toHaveBeenCalledWith('week');
+      expect(dashboardService.getDashboardOverviewAsync).toHaveBeenCalledWith('week', []);
       expect(result).toEqual(mockResult);
     });
 
@@ -82,7 +83,7 @@ describe('AnalyticsController', () => {
 
       await controller.getDashboardOverview('month');
 
-      expect(dashboardService.getDashboardOverviewAsync).toHaveBeenCalledWith('month');
+      expect(dashboardService.getDashboardOverviewAsync).toHaveBeenCalledWith('month', []);
     });
 
     it('should support multi-month ranges', async () => {
@@ -90,7 +91,7 @@ describe('AnalyticsController', () => {
 
       await controller.getDashboardOverview('twoMonths');
 
-      expect(dashboardService.getDashboardOverviewAsync).toHaveBeenCalledWith('twoMonths');
+      expect(dashboardService.getDashboardOverviewAsync).toHaveBeenCalledWith('twoMonths', []);
     });
 
     it('should propagate errors from dashboardService', async () => {
@@ -390,7 +391,7 @@ describe('MonitoringController', () => {
 
     const result = await controller.getMonitoringDashboard();
 
-    expect(mockDashboardService.getDashboardOverviewAsync).toHaveBeenCalledWith('today');
+    expect(mockDashboardService.getDashboardOverviewAsync).toHaveBeenCalledWith('today', []);
     expect(result).toMatchObject({
       timeRange: 'today',
       globalCounters: counters,

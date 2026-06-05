@@ -85,6 +85,8 @@ export interface MessageProcessingRecordInput {
   userId?: string;
   userName?: string;
   managerName?: string;
+  /** 托管账号系统 wxid（= bot_im_id），取自 botIdentity.imBotId */
+  botImId?: string;
   receivedAt: number;
   messagePreview?: string;
   replyPreview?: string;
