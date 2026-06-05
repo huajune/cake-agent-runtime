@@ -99,10 +99,23 @@ export const TOOL_ERROR_TYPES = {
   SAVE_IMAGE_INVALID_MESSAGE_ID: 'save_image.invalid_message_id',
 
   // ============================================================
+  // read_resume_attachment
+  // ============================================================
+  READ_RESUME_NO_ATTACHMENT: 'read_resume.no_attachment',
+  READ_RESUME_FORBIDDEN_URL: 'read_resume.forbidden_url',
+  READ_RESUME_TOO_LARGE: 'read_resume.too_large',
+  READ_RESUME_DOWNLOAD_FAILED: 'read_resume.download_failed',
+  READ_RESUME_NOT_PDF: 'read_resume.not_pdf',
+  READ_RESUME_PARSE_FAILED: 'read_resume.parse_failed',
+  READ_RESUME_EMPTY_TEXT: 'read_resume.empty_text',
+
+  // ============================================================
   // 跨工具共享（涉及通用前置/上下文）
   // ============================================================
   MISSING_CHAT_ID: 'shared.missing_chat_id',
   NO_ACTIVE_CASE: 'shared.no_active_case',
+  /** request_handoff(modify_appointment) 但候选人并无已确认预约 → 不短路，让 Agent 按首次约面继续。 */
+  HANDOFF_NO_BOOKING: 'handoff.no_booking',
 } as const;
 
 /** 所有合法的 errorType 字符串值的联合类型 */

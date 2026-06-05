@@ -54,7 +54,7 @@ export const FIELD_LABELS: Record<string, string> = {
   联系电话: '联系方式',
   健康证情况: '健康证',
   户籍省份: '籍贯/户籍',
-  简历附件: '简历',
+  简历附件: '简历附件',
   // 历史 badcase：候选人看到"身份："以为是要身份证号。带括号说明枚举消歧。
   身份: '身份（学生/社会人士）',
 };
@@ -87,7 +87,7 @@ export function normalizeChecklistField(field: string | null | undefined): strin
     return '户籍省份';
   }
   if (normalized === '身份' || normalized === '是否学生') return '身份';
-  if (normalized === '简历' || normalized === '简历附件') return '简历附件';
+  if (/简历/.test(normalized)) return '简历附件';
   if (normalized === '过往公司+岗位+年限' || /工作经历|工作经验|过往公司/.test(normalized)) {
     return '过往公司+岗位+年限';
   }

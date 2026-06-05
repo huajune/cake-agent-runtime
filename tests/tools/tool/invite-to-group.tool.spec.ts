@@ -35,6 +35,7 @@ describe('buildInviteToGroupTool', () => {
     sendInviteRejectedAlert: jest.fn(),
   };
   const mockMemoryService = { saveInvitedGroup: jest.fn() };
+  const mockOpsEventsRecorder = { recordEvent: jest.fn().mockResolvedValue(true) };
   const MEMBER_LIMIT = 200;
 
   beforeEach(() => {
@@ -59,6 +60,7 @@ describe('buildInviteToGroupTool', () => {
       mockRoomService as any,
       mockOpsNotifier as any,
       mockMemoryService as any,
+      mockOpsEventsRecorder as any,
       MEMBER_LIMIT,
       'enterprise-token-test',
     );
@@ -77,10 +79,18 @@ describe('buildInviteToGroupTool', () => {
     mockMemoryService.saveInvitedGroup.mockResolvedValue(undefined);
 
     const result = await executeTool({ city: '上海' });
+    await flushAsyncEvents();
 
     expect(result.success).toBe(true);
     expect(result.inviteMode).toBe('direct');
     expect(result.groupName).toBe('上海兼职群1号');
+    // 拉群成功 → group.invited（按本轮 turn + 群去重，幂等键含 chatId:group:<群名>）
+    expect(mockOpsEventsRecorder.recordEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventName: 'group.invited',
+        idempotencyKey: expect.stringContaining(':group:'),
+      }),
+    );
     expect(result.city).toBe('上海');
     expect(result.selectionReason).toBe('only_option');
     expect(result.fallbackUsed).toBe(false);
@@ -123,6 +133,7 @@ describe('buildInviteToGroupTool', () => {
       mockRoomService as any,
       mockOpsNotifier as any,
       mockMemoryService as any,
+      { recordEvent: jest.fn() } as any,
       MEMBER_LIMIT,
       'enterprise-token-test',
     );
@@ -660,6 +671,7 @@ describe('buildInviteToGroupTool', () => {
       mockRoomService as any,
       mockOpsNotifier as any,
       mockMemoryService as any,
+      { recordEvent: jest.fn() } as any,
       MEMBER_LIMIT,
       undefined,
     );
