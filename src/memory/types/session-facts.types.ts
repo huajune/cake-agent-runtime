@@ -21,6 +21,13 @@ export const InterviewInfoSchema = z.object({
   education: z.string().nullable().describe('学历'),
   has_health_certificate: z.string().nullable().describe('健康证'),
   upload_resume: z.string().nullable().optional().describe('简历附件 URL'),
+  height: z.string().nullable().optional().describe('身高（cm，如 "170"）'),
+  weight: z.string().nullable().optional().describe('体重（kg，如 "60"）'),
+  household_register_province: z
+    .string()
+    .nullable()
+    .optional()
+    .describe('户籍省份（如 "安徽"、"安徽省"）'),
 });
 
 /**
@@ -307,6 +314,9 @@ export interface HighConfidenceInterviewInfo {
   education: HighConfidenceMaybeValue<string>;
   has_health_certificate: HighConfidenceMaybeValue<string>;
   upload_resume?: HighConfidenceMaybeValue<string>;
+  height?: HighConfidenceMaybeValue<string>;
+  weight?: HighConfidenceMaybeValue<string>;
+  household_register_province?: HighConfidenceMaybeValue<string>;
 }
 
 export interface HighConfidencePreferences {
@@ -344,6 +354,9 @@ export interface SessionInterviewInfo {
   education: SessionFactMaybeValue<string>;
   has_health_certificate: SessionFactMaybeValue<string>;
   upload_resume?: SessionFactMaybeValue<string>;
+  height?: SessionFactMaybeValue<string>;
+  weight?: SessionFactMaybeValue<string>;
+  household_register_province?: SessionFactMaybeValue<string>;
 }
 
 export interface SessionPreferences {
@@ -429,6 +442,9 @@ export const SessionInterviewInfoSchema = z.object({
   education: NullableSessionFactSchema(z.string()),
   has_health_certificate: NullableSessionFactSchema(z.string()),
   upload_resume: NullableSessionFactSchema(z.string()).optional(),
+  height: NullableSessionFactSchema(z.string()).optional(),
+  weight: NullableSessionFactSchema(z.string()).optional(),
+  household_register_province: NullableSessionFactSchema(z.string()).optional(),
 });
 
 export const SessionPreferencesSchema = z.object({
@@ -469,6 +485,9 @@ export const FALLBACK_EXTRACTION: EntityExtractionResult = {
     education: null,
     has_health_certificate: null,
     upload_resume: null,
+    height: null,
+    weight: null,
+    household_register_province: null,
   },
   preferences: {
     brands: null,
@@ -568,6 +587,12 @@ export function unwrapSessionFacts(
         options,
       ),
       upload_resume: unwrapSessionFactValue(facts.interview_info.upload_resume, options),
+      height: unwrapSessionFactValue(facts.interview_info.height, options),
+      weight: unwrapSessionFactValue(facts.interview_info.weight, options),
+      household_register_province: unwrapSessionFactValue(
+        facts.interview_info.household_register_province,
+        options,
+      ),
     },
     preferences: {
       brands: unwrapSessionFactValue(facts.preferences.brands, options),
@@ -618,6 +643,9 @@ export function toSessionFacts(
       education: wrap(facts.interview_info.education),
       has_health_certificate: wrap(facts.interview_info.has_health_certificate),
       upload_resume: wrap(facts.interview_info.upload_resume),
+      height: wrap(facts.interview_info.height),
+      weight: wrap(facts.interview_info.weight),
+      household_register_province: wrap(facts.interview_info.household_register_province),
     },
     preferences: {
       brands: wrap(facts.preferences.brands),

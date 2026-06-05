@@ -114,6 +114,8 @@ export const TOOL_ERROR_TYPES = {
   // ============================================================
   MISSING_CHAT_ID: 'shared.missing_chat_id',
   NO_ACTIVE_CASE: 'shared.no_active_case',
+  /** request_handoff(modify_appointment) 但候选人并无已确认预约 → 不短路，让 Agent 按首次约面继续。 */
+  HANDOFF_NO_BOOKING: 'handoff.no_booking',
 } as const;
 
 /** 所有合法的 errorType 字符串值的联合类型 */

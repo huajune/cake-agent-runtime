@@ -352,6 +352,26 @@ describe('GeocodingService', () => {
       );
     });
 
+    it('透传高德 typecode（供上层按精度择优）', async () => {
+      redisService.get.mockResolvedValue(null);
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue(mockPlaceResponse([makePoi({ name: '七莘路(地铁站)', typecode: '150500' })]));
+
+      const candidates = await service.searchCandidates('七莘路', '上海');
+
+      expect(candidates[0].typecode).toBe('150500');
+    });
+
+    it('高德缺省 typecode 时映射为空字符串', async () => {
+      redisService.get.mockResolvedValue(null);
+      global.fetch = jest.fn().mockResolvedValue(mockPlaceResponse([makePoi()]));
+
+      const candidates = await service.searchCandidates('马陆', '上海');
+
+      expect(candidates[0].typecode).toBe('');
+    });
+
     it('location 字段非法的 POI 会被跳过', async () => {
       redisService.get.mockResolvedValue(null);
       global.fetch = jest.fn().mockResolvedValue(

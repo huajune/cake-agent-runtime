@@ -71,7 +71,7 @@ describe('buildJobListTool', () => {
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const executeTool = async (ctx: ToolBuildContext = mockContext, input = defaultInput) => {
-    const builder = buildJobListTool(mockSpongeService as never);
+    const builder = buildJobListTool(mockSpongeService as never, { recordEvent: jest.fn() } as never);
     const builtTool = builder(ctx);
     return builtTool.execute(input as any, {
       toolCallId: 'test',
@@ -82,7 +82,7 @@ describe('buildJobListTool', () => {
   /* eslint-enable @typescript-eslint/no-explicit-any */
 
   it('should describe schedule mismatch and multi-job formatting guardrails', () => {
-    const builder = buildJobListTool(mockSpongeService as never);
+    const builder = buildJobListTool(mockSpongeService as never, { recordEvent: jest.fn() } as never);
     const builtTool = builder(mockContext);
 
     expect(builtTool.description).toContain('只周末');

@@ -91,12 +91,13 @@ ChartJS.register(
 export default function Dashboard() {
   const [timeRange, setTimeRange] = useState<DashboardTimeRange>('today');
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [groups, setGroups] = useState<string[]>([]);
 
   const {
     data: rawDashboard,
     isLoading: dashboardInitialLoading,
     dataUpdatedAt,
-  } = useDashboardOverview(timeRange, autoRefresh);
+  } = useDashboardOverview(timeRange, autoRefresh, groups);
   const dashboard = rawDashboard?.timeRange === timeRange ? rawDashboard : undefined;
   const dashboardLoading = dashboardInitialLoading || !dashboard;
   const { data: health } = useHealthStatus(autoRefresh);
@@ -362,7 +363,6 @@ export default function Dashboard() {
   const totalMessages = overview?.totalMessages ?? 0;
   const successCount = overview?.successCount ?? 0;
   const failureCount = overview?.failureCount ?? 0;
-  const activeChats = overview?.activeChats ?? 0;
   const manualInterventionTotal = dashboard?.manualIntervention?.totalCount ?? 0;
   const handoffCount = dashboard?.manualIntervention?.handoffCount ?? 0;
   const riskAlertCount = dashboard?.manualIntervention?.riskAlertCount ?? 0;
@@ -387,9 +387,9 @@ export default function Dashboard() {
       : '暂无有效响应';
   const activeUserSubtitle = dashboardLoading
     ? '加载中'
-    : activeChats > 0
-      ? `${activeChats} 个会话`
-      : '暂无会话';
+    : (overview?.activeUsers ?? 0) > 0
+      ? '近 1 小时有对话往来'
+      : '近 1 小时暂无活跃';
   const manualInterventionSubtitle = dashboardLoading
     ? '加载中'
     : manualInterventionTotal > 0
@@ -421,6 +421,8 @@ export default function Dashboard() {
         onTimeRangeChange={setTimeRange}
         autoRefresh={autoRefresh}
         onAutoRefreshChange={setAutoRefresh}
+        groups={groups}
+        onGroupsChange={setGroups}
         healthStatus={healthStatus}
         healthMessage={healthMessage}
         lastUpdate={dataUpdatedAt ?? null}
@@ -461,8 +463,7 @@ export default function Dashboard() {
           label="活跃用户"
           value={dashboardLoading ? '-' : (overview?.activeUsers ?? 0)}
           subtitle={activeUserSubtitle}
-          delta={hideEmptyDelta(overview?.activeUsers ?? 0, overviewDelta?.activeUsers)}
-          deltaLabel={comparisonLabel}
+          timeRangeBadge="近1h"
         />
         <MetricCard
           label="人工介入触发次数"

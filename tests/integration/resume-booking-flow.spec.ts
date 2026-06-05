@@ -1,7 +1,10 @@
 import { MessageParser } from '@wecom/message/utils/message-parser.util';
 import { EnterpriseMessageCallbackDto } from '@wecom/message/ingress/message-callback.dto';
 import { ContactType, MessageSource, MessageType } from '@enums/message-callback.enum';
-import { extractHighConfidenceFacts, unwrapHighConfidenceValue } from '@memory/facts/high-confidence-facts';
+import {
+  extractHighConfidenceFacts,
+  unwrapHighConfidenceValue,
+} from '@memory/facts/high-confidence-facts';
 import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
 import { buildInterviewPrecheckTool } from '@tools/duliday-interview-precheck.tool';
 import { buildInterviewBookingTool } from '@tools/duliday-interview-booking.tool';
@@ -26,11 +29,6 @@ describe('resume booking flow', () => {
     pauseUser: jest.fn().mockResolvedValue(undefined),
   };
 
-  const mockRecruitmentCaseService = {
-    openOnBookingSuccess: jest.fn().mockResolvedValue(undefined),
-    getActiveOnboardFollowupCase: jest.fn().mockResolvedValue(null),
-  };
-
   const mockBookingService = {
     incrementBookingCount: jest.fn().mockResolvedValue(undefined),
   };
@@ -38,6 +36,17 @@ describe('resume booking flow', () => {
   const mockLongTermService = {
     writeFromBooking: jest.fn().mockResolvedValue(undefined),
     setLatestBooking: jest.fn().mockResolvedValue(undefined),
+    getLatestBooking: jest.fn().mockResolvedValue(null),
+  };
+
+  const mockOpsEventsRecorder = {
+    recordEvent: jest.fn().mockResolvedValue(undefined),
+  };
+  const mockBotGroupResolver = {
+    resolveAgentId: jest.fn().mockReturnValue(null),
+  };
+  const mockHuajuneReporter = {
+    reportInterviewBooked: jest.fn(),
   };
 
   beforeEach(() => {
@@ -117,10 +126,13 @@ describe('resume booking flow', () => {
     );
 
     expect(bookingResult.success).toBe(true);
-    expect(mockSpongeService.uploadAttachmentFromUrl).toHaveBeenCalledWith({
-      fileUrl: resumeFileUrl,
-      fileName: '任博文简历.pdf',
-    });
+    expect(mockSpongeService.uploadAttachmentFromUrl).toHaveBeenCalledWith(
+      {
+        fileUrl: resumeFileUrl,
+        fileName: '任博文简历.pdf',
+      },
+      expect.objectContaining({ botUserId: 'manager-1' }),
+    );
     expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
       expect.objectContaining({
         uploadResume: cloudStorageKey,
@@ -133,6 +145,7 @@ describe('resume booking flow', () => {
           },
         ],
       }),
+      expect.objectContaining({ botUserId: 'manager-1' }),
     );
     expect(bookingResult.requestInfo.uploadResume).toBe(cloudStorageKey);
     expect(bookingResult.requestInfo.customerLabelList[0].value).toBe(cloudStorageKey);
@@ -233,7 +246,10 @@ describe('resume booking flow', () => {
   }
 
   async function executePrecheck(input: Record<string, unknown>, context: ToolBuildContext) {
-    const builtTool = buildInterviewPrecheckTool(mockSpongeService as never)(context);
+    const builtTool = buildInterviewPrecheckTool(
+      mockSpongeService as never,
+      { recordEvent: jest.fn() } as never,
+    )(context);
     return builtTool.execute(input as never, {
       toolCallId: 'precheck-test',
       messages: [],
@@ -246,9 +262,11 @@ describe('resume booking flow', () => {
       mockSpongeService as never,
       mockPrivateChatNotifier as never,
       mockUserHostingService as never,
-      mockRecruitmentCaseService as never,
       mockBookingService as never,
       mockLongTermService as never,
+      mockOpsEventsRecorder as never,
+      mockBotGroupResolver as never,
+      mockHuajuneReporter as never,
     )(context);
 
     return builtTool.execute(input as never, {
@@ -259,7 +277,10 @@ describe('resume booking flow', () => {
   }
 });
 
-function buildFileCallback(payload: { name: string; fileUrl: string }): EnterpriseMessageCallbackDto {
+function buildFileCallback(payload: {
+  name: string;
+  fileUrl: string;
+}): EnterpriseMessageCallbackDto {
   return {
     orgId: 'org_001',
     token: 'tok_abc123',

@@ -17,10 +17,10 @@ function getOverviewRefetchInterval(timeRange: string): number {
 }
 
 /** @deprecated 使用 useDashboardOverview 替代 */
-export function useDashboard(timeRange: string, autoRefresh = true) {
+export function useDashboard(timeRange: string, autoRefresh = true, groups: string[] = []) {
   return useQuery({
-    queryKey: ['dashboard', timeRange],
-    queryFn: () => analyticsService.getDashboard(timeRange),
+    queryKey: ['dashboard', timeRange, groups],
+    queryFn: () => analyticsService.getDashboard(timeRange, groups),
     refetchInterval: autoRefresh ? getOverviewRefetchInterval(timeRange) : false,
     staleTime: autoRefresh ? 10000 : 60000,
     refetchOnWindowFocus: false,
@@ -28,10 +28,10 @@ export function useDashboard(timeRange: string, autoRefresh = true) {
   });
 }
 
-export function useDashboardOverview(timeRange: string, autoRefresh = true) {
+export function useDashboardOverview(timeRange: string, autoRefresh = true, groups: string[] = []) {
   return useQuery({
-    queryKey: ['dashboard-overview', timeRange],
-    queryFn: () => analyticsService.getDashboardOverview(timeRange),
+    queryKey: ['dashboard-overview', timeRange, groups],
+    queryFn: () => analyticsService.getDashboardOverview(timeRange, groups),
     refetchInterval: autoRefresh ? getOverviewRefetchInterval(timeRange) : false,
     staleTime: autoRefresh ? 10000 : 60000,
     refetchOnWindowFocus: false,
@@ -71,7 +71,8 @@ export function useClearData() {
 export function useClearCache() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (type: 'metrics' | 'history' | 'agent' | 'all') => analyticsService.clearCache(type),
+    mutationFn: (type: 'metrics' | 'history' | 'agent' | 'all') =>
+      analyticsService.clearCache(type),
     onSuccess: (_data, type) => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['metrics'] });

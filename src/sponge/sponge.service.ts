@@ -15,12 +15,26 @@ import {
   BIOrderQueryParams,
   BIOrder,
   JobListApiResponseSchema,
+  SignupWorkOrdersParams,
+  SignupWorkOrdersResult,
+  SignupWorkOrderItem,
+  SignupWorkOrdersApiResponseSchema,
   UploadAttachmentApiResponseSchema,
   UploadAttachmentFromUrlParams,
   UploadAttachmentResult,
 } from './sponge.types';
 import { SpongeBiService } from './sponge-bi.service';
+import { RedisService } from '@infra/redis/redis.service';
 import { stripNullish } from '@infra/utils/object.util';
+import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
+import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
+import {
+  SPONGE_TOKEN_CONFIG_KEY,
+  SpongeTokenAccountConfig,
+  SpongeTokenConfig,
+  SpongeTokenResolveContext,
+  SpongeTokenValue,
+} from './sponge-token.config';
 
 const JOB_LIST_API = 'https://k8s.duliday.com/persistence/ai/api/job/list';
 const BRAND_LIST_API = 'https://k8s.duliday.com/persistence/ai/api/brand/list';
@@ -28,12 +42,18 @@ const INTERVIEW_BOOKING_API = 'https://k8s.duliday.com/persistence/a/supplier/en
 const UPLOAD_ATTACHMENT_API = 'https://k8s.duliday.com/persistence/a/supplier/uploadAttachment';
 const INTERVIEW_SCHEDULE_API = 'https://k8s.duliday.com/persistence/ai/api/interview/schedule';
 
+/** 海绵网关默认 base url（可被 SPONGE_API_BASE_URL 覆盖）。 */
+const DEFAULT_SPONGE_API_BASE_URL = 'https://gateway.duliday.com/sponge';
+
 const DEFAULT_PAGE_NUM = 1;
 const DEFAULT_PAGE_SIZE = 20;
 const DEFAULT_SORT = 'desc';
 const DEFAULT_SORT_FIELD = 'create_time';
 const BRAND_LIST_CACHE_TTL_MS = 30 * 60 * 1000;
+/** Agent 上下文按 workOrderId 查工单的 Redis 缓存 TTL（秒）。 */
+const WORKORDER_CACHE_TTL_SECONDS = 5 * 60;
 const MAX_ATTACHMENT_UPLOAD_BYTES = 20 * 1024 * 1024;
+const TOKEN_CONFIG_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
  * 海绵数据服务 — 杜力岱业务数据 HTTP 客户端
@@ -45,22 +65,33 @@ const MAX_ATTACHMENT_UPLOAD_BYTES = 20 * 1024 * 1024;
 @Injectable()
 export class SpongeService {
   private readonly logger = new Logger(SpongeService.name);
-  private readonly token: string;
+  private readonly fallbackToken: string;
+  private readonly signupListApi: string;
+  private tokenConfigCache: { value: SpongeTokenConfig | null; expiresAt: number } | null = null;
+  private tokenConfigLoadPromise: Promise<SpongeTokenConfig | null> | null = null;
   private brandListCache: { data: BrandItem[]; fetchedAt: number } | null = null;
   private brandListFetchPromise: Promise<BrandItem[]> | null = null;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly biService: SpongeBiService,
+    private readonly redisService: RedisService,
+    private readonly systemConfigService: SystemConfigService,
+    private readonly hostingMemberConfig: HostingMemberConfigService,
   ) {
-    this.token = this.configService.get<string>('DULIDAY_API_TOKEN', '');
+    this.fallbackToken = this.configService.get<string>('DULIDAY_API_TOKEN', '');
+    const spongeBaseUrl = this.configService
+      .get<string>('SPONGE_API_BASE_URL', DEFAULT_SPONGE_API_BASE_URL)
+      .replace(/\/+$/, '');
+    this.signupListApi = `${spongeBaseUrl}/ai/api/workorder/signup/list`;
   }
 
   /** 查询在招岗位列表 */
-  async fetchJobs(params: JobListQueryParams): Promise<JobListResult> {
-    if (!this.token) {
-      throw new Error('缺少 DULIDAY_API_TOKEN');
-    }
+  async fetchJobs(
+    params: JobListQueryParams,
+    tokenContext?: SpongeTokenResolveContext,
+  ): Promise<JobListResult> {
+    const token = await this.resolveDulidayToken(tokenContext);
 
     const requestBody = {
       pageNum: params.pageNum ?? DEFAULT_PAGE_NUM,
@@ -94,7 +125,7 @@ export class SpongeService {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Duliday-Token': this.token,
+        'Duliday-Token': token,
       },
       body: JSON.stringify(requestBody),
     });
@@ -129,10 +160,11 @@ export class SpongeService {
   }
 
   /** 预约面试 */
-  async bookInterview(params: InterviewBookingParams): Promise<InterviewBookingResult> {
-    if (!this.token) {
-      throw new Error('缺少 DULIDAY_API_TOKEN');
-    }
+  async bookInterview(
+    params: InterviewBookingParams,
+    tokenContext?: SpongeTokenResolveContext,
+  ): Promise<InterviewBookingResult> {
+    const token = await this.resolveDulidayToken(tokenContext);
 
     this.logger.log(`预约面试: ${params.name}, jobId=${params.jobId}`);
 
@@ -160,7 +192,7 @@ export class SpongeService {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Duliday-Token': this.token,
+        'Duliday-Token': token,
       },
       body: JSON.stringify(payload),
     });
@@ -192,12 +224,19 @@ export class SpongeService {
       this.logger.warn('预约失败: ' + (parsed.data.message || '未知错误'));
     }
 
+    const workOrderId = parsed.data.data?.workOrder?.workOrderId ?? null;
+    if (isSuccess && workOrderId == null) {
+      // 成功但未拿到 workOrderId：上游可能改了结构，记一笔便于排查（不阻断流程）
+      this.logger.warn('预约成功但响应未携带 workOrderId，请检查海绵返回结构');
+    }
+
     return {
       success: isSuccess,
       code: parsed.data.code,
       message: parsed.data.message,
       notice: parsed.data.data?.notice ?? null,
       errorList: parsed.data.data?.errorList ?? null,
+      workOrderId,
     };
   }
 
@@ -209,10 +248,9 @@ export class SpongeService {
    */
   async uploadAttachmentFromUrl(
     params: UploadAttachmentFromUrlParams,
+    tokenContext?: SpongeTokenResolveContext,
   ): Promise<UploadAttachmentResult> {
-    if (!this.token) {
-      throw new Error('缺少 DULIDAY_API_TOKEN');
-    }
+    const token = await this.resolveDulidayToken(tokenContext);
 
     const sourceUrl = params.fileUrl.trim();
     if (!sourceUrl) {
@@ -237,7 +275,7 @@ export class SpongeService {
     const response = await fetch(UPLOAD_ATTACHMENT_API, {
       method: 'POST',
       headers: {
-        'Duliday-Token': this.token,
+        'Duliday-Token': token,
       },
       body: formData,
     });
@@ -267,6 +305,292 @@ export class SpongeService {
   }
 
   /**
+   * 查询候选人工单（海绵 signup/list，source of truth）。
+   *
+   * 约束：workOrderId / phone 至少传一个；响应为该候选人**全部**工单列表。
+   * 失败时抛错由调用方决定降级（cron 容忍、Agent 上下文不渲染）。
+   */
+  async fetchSignupWorkOrders(
+    params: SignupWorkOrdersParams,
+    tokenContext?: SpongeTokenResolveContext,
+  ): Promise<SignupWorkOrdersResult> {
+    const token = await this.resolveDulidayToken(tokenContext);
+    if (params.workOrderId == null && !params.phone) {
+      throw new Error('fetchSignupWorkOrders 需至少传 workOrderId 或 phone');
+    }
+
+    const payload = stripNullish({
+      workOrderId: params.workOrderId,
+      phone: params.phone,
+      queryParam: params.queryParam,
+    });
+
+    const response = await fetch(this.signupListApi, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Duliday-Token': token,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(`海绵工单查询失败: ${response.status} ${response.statusText}`);
+    }
+
+    const rawData = await response.json();
+    const parsed = SignupWorkOrdersApiResponseSchema.safeParse(rawData);
+    if (!parsed.success) {
+      this.logger.warn(
+        `海绵工单查询返回结构异常: ${parsed.error.issues
+          .map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`)
+          .join('; ')}`,
+      );
+      return { total: 0, workOrders: [] };
+    }
+
+    if (parsed.data.code !== 0) {
+      this.logger.warn(`海绵工单查询业务失败: ${parsed.data.message || '未知错误'}`);
+      return { total: 0, workOrders: [] };
+    }
+
+    const data = parsed.data.data;
+    const workOrders: SignupWorkOrderItem[] = (data?.workOrders ?? []) as SignupWorkOrderItem[];
+    return {
+      candidateName: data?.candidateName ?? null,
+      gender: data?.gender ?? null,
+      phone: data?.phone ?? null,
+      age: data?.age ?? null,
+      total: data?.total ?? workOrders.length,
+      workOrders,
+    };
+  }
+
+  private async downloadAttachment(
+    fileUrl: string,
+  ): Promise<{ buffer: ArrayBuffer; contentType: string }> {
+    const response = await fetch(fileUrl, {
+      method: 'GET',
+      headers: { Accept: 'application/pdf,application/octet-stream,*/*' },
+    });
+
+    if (!response.ok) {
+      throw new Error(`下载附件失败: ${response.status} ${response.statusText}`);
+    }
+
+    const contentLength = Number(response.headers.get('content-length') ?? 0);
+    if (Number.isFinite(contentLength) && contentLength > MAX_ATTACHMENT_UPLOAD_BYTES) {
+      throw new Error(`附件过大: ${contentLength} bytes`);
+    }
+
+    const buffer = await response.arrayBuffer();
+    if (buffer.byteLength > MAX_ATTACHMENT_UPLOAD_BYTES) {
+      throw new Error(`附件过大: ${buffer.byteLength} bytes`);
+    }
+
+    return {
+      buffer,
+      contentType: response.headers.get('content-type') || 'application/octet-stream',
+    };
+  }
+
+  private resolveAttachmentFileName(
+    explicitFileName: string | undefined,
+    fileUrl: string,
+    contentType: string,
+  ): string {
+    const explicit = this.sanitizeFileName(explicitFileName);
+    if (explicit) return explicit;
+
+    try {
+      const pathname = new URL(fileUrl).pathname;
+      const fromPath = this.sanitizeFileName(decodeURIComponent(pathname.split('/').pop() ?? ''));
+      if (fromPath) return fromPath;
+    } catch {
+      // Ignore invalid URL path parsing; fall back below.
+    }
+
+    return contentType.includes('pdf') ? 'resume.pdf' : 'attachment';
+  }
+
+  private sanitizeFileName(value: string | undefined): string | null {
+    const sanitized = value?.trim().replace(/[\\/]/g, '_');
+    return sanitized && sanitized.length > 0 ? sanitized : null;
+  }
+
+  /**
+   * 按 workOrderId 取单个工单当前状态（Agent 上下文用，带 5min Redis 缓存）。
+   *
+   * 命中缓存直接返回；miss 调海绵、从候选人工单列表里挑出该条、写缓存。
+   * 海绵失败返回 null，由上层决定不渲染。
+   */
+  async getCachedWorkOrderById(
+    workOrderId: number,
+    tokenContext?: SpongeTokenResolveContext,
+  ): Promise<SignupWorkOrderItem | null> {
+    const cacheKey = `sponge:workorder:${workOrderId}`;
+
+    try {
+      const cached = await this.redisService.get<SignupWorkOrderItem>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    } catch (error) {
+      this.logger.warn(`读取工单缓存失败 workOrderId=${workOrderId}: ${this.errorMessage(error)}`);
+    }
+
+    let result: SignupWorkOrdersResult;
+    try {
+      result = await this.fetchSignupWorkOrders({ workOrderId }, tokenContext);
+    } catch (error) {
+      this.logger.warn(`查询工单失败 workOrderId=${workOrderId}: ${this.errorMessage(error)}`);
+      return null;
+    }
+
+    const target = result.workOrders.find((wo) => wo.workOrderId === workOrderId) ?? null;
+    if (target) {
+      try {
+        await this.redisService.setex(cacheKey, WORKORDER_CACHE_TTL_SECONDS, target);
+      } catch (error) {
+        this.logger.warn(
+          `写入工单缓存失败 workOrderId=${workOrderId}: ${this.errorMessage(error)}`,
+        );
+      }
+    }
+    return target;
+  }
+
+  private async resolveDulidayToken(
+    tokenContext?: SpongeTokenResolveContext,
+    options?: { allowMissing?: boolean },
+  ): Promise<string> {
+    const configuredToken = await this.resolveConfiguredDulidayToken(tokenContext);
+    const token = configuredToken ?? this.fallbackToken.trim();
+
+    if (!token && !options?.allowMissing) {
+      throw new Error('缺少 DULIDAY_API_TOKEN');
+    }
+
+    return token;
+  }
+
+  private async resolveConfiguredDulidayToken(
+    tokenContext?: SpongeTokenResolveContext,
+  ): Promise<string | null> {
+    // 统一配置优先：hosting_member_config（按 botImId）→ 回退既有 sponge_token_config / env。
+    const memberToken = await this.hostingMemberConfig.resolveDulidayToken(tokenContext?.botImId);
+    if (memberToken) return memberToken;
+
+    const config = await this.loadSpongeTokenConfig();
+    if (!config) return null;
+
+    const botImId = tokenContext?.botImId?.trim();
+    const botUserId = tokenContext?.botUserId?.trim();
+    const groupId = tokenContext?.groupId?.trim();
+
+    return (
+      this.resolveAccountToken(config, 'botImId', botImId) ??
+      this.resolveMappedToken(config.byBotImId, botImId) ??
+      this.resolveAccountToken(config, 'botUserId', botUserId) ??
+      this.resolveMappedToken(config.byBotUserId, botUserId) ??
+      this.resolveAccountToken(config, 'groupId', groupId) ??
+      this.resolveMappedToken(config.byGroupId, groupId) ??
+      this.resolveTokenValue({
+        token: config.defaultToken,
+        tokenEnv: config.defaultTokenEnv,
+      })
+    );
+  }
+
+  private async loadSpongeTokenConfig(): Promise<SpongeTokenConfig | null> {
+    if (this.tokenConfigCache && Date.now() < this.tokenConfigCache.expiresAt) {
+      return this.tokenConfigCache.value;
+    }
+
+    if (this.tokenConfigLoadPromise) {
+      return this.tokenConfigLoadPromise;
+    }
+
+    this.tokenConfigLoadPromise = this.reloadSpongeTokenConfig();
+    try {
+      return await this.tokenConfigLoadPromise;
+    } finally {
+      this.tokenConfigLoadPromise = null;
+    }
+  }
+
+  private async reloadSpongeTokenConfig(): Promise<SpongeTokenConfig | null> {
+    try {
+      const value = await this.systemConfigService.getConfigValue<unknown>(SPONGE_TOKEN_CONFIG_KEY);
+      const config = this.normalizeSpongeTokenConfig(value);
+      this.tokenConfigCache = {
+        value: config,
+        expiresAt: Date.now() + TOKEN_CONFIG_CACHE_TTL_MS,
+      };
+      return config;
+    } catch (error) {
+      this.logger.warn(
+        `读取海绵 token 配置失败，回退 DULIDAY_API_TOKEN: ${this.errorMessage(error)}`,
+      );
+      this.tokenConfigCache = {
+        value: null,
+        expiresAt: Date.now() + TOKEN_CONFIG_CACHE_TTL_MS,
+      };
+      return null;
+    }
+  }
+
+  private normalizeSpongeTokenConfig(value: unknown): SpongeTokenConfig | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+    return value as SpongeTokenConfig;
+  }
+
+  private resolveAccountToken(
+    config: SpongeTokenConfig,
+    field: 'botImId' | 'botUserId' | 'groupId',
+    value: string | undefined,
+  ): string | null {
+    if (!value || !Array.isArray(config.accounts)) return null;
+    const account = config.accounts.find((item) => {
+      if (!item || item.enabled === false) return false;
+      const candidate = item[field]?.trim();
+      return Boolean(candidate) && candidate === value;
+    });
+    return this.resolveTokenValue(account);
+  }
+
+  private resolveMappedToken(
+    map: Record<string, SpongeTokenValue> | undefined,
+    key: string | undefined,
+  ): string | null {
+    if (!map || !key) return null;
+    return this.resolveTokenValue(map[key]);
+  }
+
+  private resolveTokenValue(
+    value: SpongeTokenValue | SpongeTokenAccountConfig | undefined | null,
+  ): string | null {
+    if (!value) return null;
+    if (typeof value === 'string') {
+      return value.trim() || null;
+    }
+
+    const token = value.token?.trim();
+    if (token) return token;
+
+    const tokenEnv = value.tokenEnv?.trim();
+    if (!tokenEnv) return null;
+
+    return this.configService.get<string>(tokenEnv, '')?.trim() || null;
+  }
+
+  private errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  /**
    * 获取品牌列表（含别名）
    *
    * 返回 { name, aliases }[] 格式，供事实提取时品牌别名映射使用。
@@ -282,7 +606,8 @@ export class SpongeService {
       return this.brandListCache.data;
     }
 
-    if (!this.token) {
+    const token = await this.resolveDulidayToken(undefined, { allowMissing: true });
+    if (!token) {
       this.logger.warn('缺少 DULIDAY_API_TOKEN，品牌列表不可用');
       return this.brandListCache?.data ?? [];
     }
@@ -297,7 +622,7 @@ export class SpongeService {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Duliday-Token': this.token,
+            'Duliday-Token': token,
           },
           body: JSON.stringify({ pageNum: 1, pageSize: 1000 }),
         });
@@ -359,55 +684,6 @@ export class SpongeService {
     return this.biService.refreshBIDataSourceAndWait();
   }
 
-  private async downloadAttachment(
-    url: string,
-  ): Promise<{ buffer: Uint8Array; contentType: string }> {
-    const response = await fetch(url, { method: 'GET' });
-    if (!response.ok) {
-      throw new Error(`附件下载失败: ${response.status} ${response.statusText}`);
-    }
-
-    const contentLength = response.headers.get('content-length');
-    if (contentLength && Number(contentLength) > MAX_ATTACHMENT_UPLOAD_BYTES) {
-      throw new Error(`附件超过大小限制: ${contentLength} bytes`);
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
-    if (arrayBuffer.byteLength > MAX_ATTACHMENT_UPLOAD_BYTES) {
-      throw new Error(`附件超过大小限制: ${arrayBuffer.byteLength} bytes`);
-    }
-
-    return {
-      buffer: new Uint8Array(arrayBuffer),
-      contentType: response.headers.get('content-type') || 'application/octet-stream',
-    };
-  }
-
-  private resolveAttachmentFileName(
-    explicitName: string | undefined,
-    sourceUrl: string,
-    contentType: string,
-  ): string {
-    const explicit = this.sanitizeFileName(explicitName);
-    if (explicit) return explicit;
-
-    try {
-      const pathname = new URL(sourceUrl).pathname;
-      const fromUrl = this.sanitizeFileName(decodeURIComponent(pathname.split('/').pop() ?? ''));
-      if (fromUrl) return fromUrl;
-    } catch {
-      // ignore invalid source url for filename fallback
-    }
-
-    return contentType.includes('pdf') ? 'resume.pdf' : 'attachment';
-  }
-
-  private sanitizeFileName(value: string | undefined): string | null {
-    if (!value) return null;
-    const sanitized = value.trim().replace(/[\\/]/g, '_');
-    return sanitized.length > 0 ? sanitized : null;
-  }
-
   // ==================== 海绵面试名单 ====================
 
   /**
@@ -417,7 +693,8 @@ export class SpongeService {
    * 认证方式与岗位接口一致（Duliday-Token）
    */
   async fetchInterviewSchedule(params: InterviewScheduleParams): Promise<InterviewScheduleItem[]> {
-    if (!this.token) {
+    const token = await this.resolveDulidayToken(undefined, { allowMissing: true });
+    if (!token) {
       this.logger.warn('缺少 DULIDAY_API_TOKEN，面试名单不可用');
       return [];
     }
@@ -438,7 +715,7 @@ export class SpongeService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Duliday-Token': this.token,
+          'Duliday-Token': token,
         },
         body: JSON.stringify(requestBody),
       });

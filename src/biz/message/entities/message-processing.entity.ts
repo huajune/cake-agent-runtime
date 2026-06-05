@@ -8,6 +8,8 @@ export interface MessageProcessingDbRecord {
   user_id?: string;
   user_name?: string;
   manager_name?: string;
+  /** 托管账号系统 wxid（= bot_im_id），与 user_activity/chat_messages 同一形态 */
+  bot_im_id?: string;
   received_at: string;
   message_preview?: string;
   reply_preview?: string;

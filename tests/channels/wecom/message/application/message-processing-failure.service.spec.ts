@@ -25,6 +25,11 @@ describe('MessageProcessingFailureService', () => {
     markFallbackEnd: jest.fn(),
     buildFailureMetadata: jest.fn(),
   };
+  const hostingMemberConfig = {
+    resolveFeishuReceiver: jest.fn(async (botImId?: string) =>
+      botImId ? BOT_TO_RECEIVER[botImId] : undefined,
+    ),
+  };
 
   let service: MessageProcessingFailureService;
 
@@ -45,6 +50,7 @@ describe('MessageProcessingFailureService', () => {
       monitoringService as never,
       alertService as never,
       wecomObservability as never,
+      hostingMemberConfig as never,
     );
   });
 
@@ -101,19 +107,17 @@ describe('MessageProcessingFailureService', () => {
         }),
       }),
     );
-    expect(monitoringService.recordFailure).toHaveBeenCalledWith(
-      'trace-1',
-      'partial delivery',
-      { traceId: 'trace-1' },
-    );
+    expect(monitoringService.recordFailure).toHaveBeenCalledWith('trace-1', 'partial delivery', {
+      traceId: 'trace-1',
+    });
     expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');
     expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-2');
   });
 
-  it('should route fallback alerts to the mapped receiver when bot id is known', () => {
+  it('should route fallback alerts to the mapped receiver when bot id is known', async () => {
     const botImId = '1688855974513959';
 
-    service.sendFallbackAlert({
+    await service.sendFallbackAlert({
       contactName: '张三',
       userMessage: '在吗',
       fallbackMessage: '我确认下哈，马上回你~',

@@ -9,6 +9,7 @@ import type {
   SummaryData,
   SummaryEntry,
   MessageMetadata,
+  LatestBooking,
 } from '../types/long-term.types';
 import { userProfileFactValue, USER_PROFILE_FIELD_KEYS } from '../types/long-term.types';
 import {
@@ -197,6 +198,32 @@ export class LongTermService {
       await this.supabaseStore.upsertMessageMetadata(corpId, userId, metadata);
     } catch (error) {
       this.logger.warn('更新长期记忆消息元数据失败', error);
+    }
+  }
+
+  // ==================== latest_booking ====================
+
+  /**
+   * 读取候选人最近一次预约工单指针。
+   * Agent 上下文渲染 / request_handoff(modify_appointment) 守卫使用。
+   */
+  async getLatestBooking(corpId: string, userId: string): Promise<LatestBooking | null> {
+    try {
+      return await this.supabaseStore.getLatestBooking(corpId, userId);
+    } catch (error) {
+      this.logger.warn('获取 latest_booking 失败', error);
+      return null;
+    }
+  }
+
+  /**
+   * 预约成功时写入最近预约工单指针（永不清空，新预约覆盖）。
+   */
+  async setLatestBooking(corpId: string, userId: string, workOrderId: number): Promise<void> {
+    try {
+      await this.supabaseStore.setLatestBooking(corpId, userId, workOrderId);
+    } catch (error) {
+      this.logger.warn('写入 latest_booking 失败', error);
     }
   }
 

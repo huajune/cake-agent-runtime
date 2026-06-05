@@ -9,6 +9,7 @@ import { normalizeCity } from '@biz/group-task/utils/city-normalize.util';
 import { RoomService } from '@channels/wecom/room/room.service';
 import { MemoryService } from '@memory/memory.service';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
+import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
 import { refreshMemberCountsFromEnterpriseList } from '@tools/utils/enterprise-room-count.util';
 import { resolveCityFromDistrict } from '@memory/facts/geo-mappings';
 
@@ -107,6 +108,7 @@ export function buildInviteToGroupTool(
   roomService: RoomService,
   opsNotifier: OpsNotifierService,
   memoryService: MemoryService,
+  opsEventsRecorder: OpsEventsRecorderService,
   memberLimit: number,
   enterpriseToken?: string | null,
 ): ToolBuilder {
@@ -115,6 +117,24 @@ export function buildInviteToGroupTool(
       description: DESCRIPTION,
       inputSchema,
       execute: async ({ city, industry }) => {
+        // group.invited：候选人本轮成功进群/已在群 → 记一次。fire-and-forget。
+        // 幂等键按「本轮 turn + 群」而非「每候选人一次」：daily_ops_report 是当天事件数，
+        // 若用 userId 终身键，同一候选人后续天数/换群再次进群会被压成 0。turnId 缺省（test/debug）回退时间戳。
+        const recordGroupInvited = (groupName: string): void => {
+          const turnId = context.turnId ?? Date.now().toString();
+          void opsEventsRecorder.recordEvent({
+            corpId: context.corpId,
+            eventName: 'group.invited',
+            idempotencyKey: `${context.sessionId}:group:${groupName}:${turnId}`,
+            botImId: context.botImId,
+            managerName: context.botUserId,
+            sourceChannel: 'unknown',
+            userId: context.userId,
+            chatId: context.sessionId,
+            payload: { group_name: groupName, city },
+          });
+        };
+
         try {
           if (context.bookingSucceeded === false) {
             logger.log(`本轮预约失败，跳过拉群: city=${city}, user=${context.userId}`);
@@ -277,6 +297,7 @@ export function buildInviteToGroupTool(
                 logger.log(
                   `用户已在群中，记入记忆并静默跳过: ${targetGroup.groupName} (user=${context.userId})`,
                 );
+                recordGroupInvited(targetGroup.groupName);
                 return {
                   success: true,
                   alreadyInGroup: true,
@@ -335,6 +356,7 @@ export function buildInviteToGroupTool(
               `拉群成功: ${targetGroup.groupName} (user=${context.userId}, city=${city}, industry=${industry ?? '-'}, matched=${targetGroup.industry ?? '-'}, fallback=${fallbackUsed})`,
             );
 
+            recordGroupInvited(targetGroup.groupName);
             return {
               success: true,
               groupName: targetGroup.groupName,

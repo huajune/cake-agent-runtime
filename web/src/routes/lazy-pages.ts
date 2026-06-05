@@ -4,6 +4,7 @@ type RouteLoader = () => Promise<unknown>;
 
 export type AppRoutePath =
   | '/'
+  | '/conversion-analysis'
   | '/users'
   | '/hosting'
   | '/config'
@@ -15,6 +16,7 @@ export type AppRoutePath =
   | '/strategy';
 
 const dashboardLoader = () => import('@/view/dashboard/list');
+const conversionAnalysisLoader = () => import('@/view/conversion-analysis/list');
 const usersLoader = () => import('@/view/users/list');
 const hostingLoader = () => import('@/view/hosting/list');
 const configLoader = () => import('@/view/config/list');
@@ -26,6 +28,7 @@ const testSuiteLoader = () => import('@/view/test-suite/list');
 const strategyLoader = () => import('@/view/strategy/list');
 
 export const Dashboard = lazy(dashboardLoader);
+export const ConversionAnalysis = lazy(conversionAnalysisLoader);
 export const Users = lazy(usersLoader);
 export const Hosting = lazy(hostingLoader);
 export const Config = lazy(configLoader);
@@ -38,6 +41,7 @@ export const Strategy = lazy(strategyLoader);
 
 export const ALL_ROUTE_PATHS: AppRoutePath[] = [
   '/',
+  '/conversion-analysis',
   '/users',
   '/hosting',
   '/config',
@@ -51,6 +55,7 @@ export const ALL_ROUTE_PATHS: AppRoutePath[] = [
 
 const routeLoaders: Record<AppRoutePath, RouteLoader> = {
   '/': dashboardLoader,
+  '/conversion-analysis': conversionAnalysisLoader,
   '/users': usersLoader,
   '/hosting': hostingLoader,
   '/config': configLoader,

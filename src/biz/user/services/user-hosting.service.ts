@@ -242,6 +242,19 @@ export class UserHostingService {
   }
 
   /**
+   * 按日期范围 + 小组过滤拉取去重活跃 chat_id 集合（DB 侧过滤 + 分页，避免列表 RPC 1000 行截断）。
+   *
+   * 供 Dashboard 小组筛选用：替代「拉全量活跃列表再内存筛 group」，否则全量超 1000 时会被截断、小组指标低估。
+   */
+  async getActiveChatIdsByGroups(
+    startDate: Date,
+    endDate: Date,
+    groups: string[],
+  ): Promise<Set<string>> {
+    return this.repository.findActiveChatIdsByGroups(startDate, endDate, groups);
+  }
+
+  /**
    * 按日期范围查询每日托管趋势（从 user_activity 聚合）。
    */
   async getDailyActivityStats(startDate: Date, endDate: Date): Promise<DailyUserActivityStats[]> {

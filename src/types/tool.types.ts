@@ -52,6 +52,8 @@ export interface ToolBuildContext {
   contactName?: string;
   /** 当前与候选人聊天的托管账号系统 wxid（企业级 addMember 的 imBotId） */
   botImId?: string;
+  /** 当前消息所属小组 ID（企业级回调有值时用于账号级配置兜底） */
+  groupId?: string;
   /** 策略来源：testing 链路默认禁用外部副作用工具（如真实拉群）。 */
   strategySource?: 'released' | 'testing';
   /** 长期记忆中的用户档案（姓名/电话/性别/年龄/学历/健康证） */
@@ -80,6 +82,14 @@ export interface ToolBuildContext {
   chatId?: string;
   /** 当前消息发送链路使用的 API 类型 */
   apiType?: 'enterprise' | 'group';
+  /**
+   * 本轮稳定 trace/turn ID（= 触发本轮的企微 messageId 或聚合 batchId）。
+   *
+   * 同一批输入重跑（Bull 重试）会得到相同值，故可作运营事件「单次事件」幂等键的稳定种子：
+   * 既能区分同一候选人不同轮次/不同天的重复事件（不再被压成每候选人一次），
+   * 又能在重试时去重（不会重复 +1）。缺省（test/debug 链路）时由工具回退到时间戳。
+   */
+  turnId?: string;
 }
 
 /** 工具构建函数。 */

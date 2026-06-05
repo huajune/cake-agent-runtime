@@ -17,7 +17,8 @@ interface AnalyticsPanelProps {
     totalSessions: number;
     totalMessages: number;
   };
-  chartData: ChartData<'line'> | null;
+  sessionsChartData: ChartData<'line'> | null;
+  messagesChartData: ChartData<'line'> | null;
   chartOptions: ChartOptions<'line'>;
   isLoading: boolean;
 }
@@ -28,10 +29,20 @@ export default function AnalyticsPanel({
   monthIndex,
   onMonthChange,
   stats,
-  chartData,
+  sessionsChartData,
+  messagesChartData,
   chartOptions,
   isLoading,
 }: AnalyticsPanelProps) {
+  const renderChart = (chartData: ChartData<'line'> | null) =>
+    chartData ? (
+      <Line data={chartData} options={chartOptions} />
+    ) : (
+      <div className={styles.emptyState}>
+        {isLoading ? <div className="loading-spinner"></div> : '暂无趋势数据'}
+      </div>
+    );
+
   return (
     <div className={`${styles.panelWrapper} ${show ? styles.show : ''}`}>
       <div className={styles.panel}>
@@ -53,7 +64,7 @@ export default function AnalyticsPanel({
             </div>
           </div>
 
-          {/* 右侧：统计 + 图例 */}
+          {/* 右侧：统计 */}
           <div className={styles.rightSection}>
             <div className={styles.stats}>
               <span className={styles.statItem}>
@@ -65,29 +76,25 @@ export default function AnalyticsPanel({
                 <span className={styles.primary}>{stats.totalMessages}</span>
               </span>
             </div>
-            <div className={styles.divider} />
-            <div className={styles.legend}>
-              <span className={styles.legendItem}>
-                <span className={`${styles.legendDot} ${styles.success}`} />
-                会话数
-              </span>
-              <span className={styles.legendItem}>
-                <span className={`${styles.legendDot} ${styles.primary}`} />
-                消息数
-              </span>
-            </div>
           </div>
         </div>
 
-        {/* 图表 */}
-        <div className={styles.chartContainer}>
-          {chartData ? (
-            <Line data={chartData} options={chartOptions} />
-          ) : (
-            <div className={styles.emptyState}>
-              {isLoading ? <div className="loading-spinner"></div> : '暂无趋势数据'}
+        {/* 图表：会话数 / 消息数 分开两张 */}
+        <div className={styles.chartsRow}>
+          <div className={styles.chartItem}>
+            <div className={styles.chartCaption}>
+              <span className={`${styles.legendDot} ${styles.success}`} />
+              <span>会话数</span>
             </div>
-          )}
+            <div className={styles.chartContainer}>{renderChart(sessionsChartData)}</div>
+          </div>
+          <div className={styles.chartItem}>
+            <div className={styles.chartCaption}>
+              <span className={`${styles.legendDot} ${styles.primary}`} />
+              <span>消息数</span>
+            </div>
+            <div className={styles.chartContainer}>{renderChart(messagesChartData)}</div>
+          </div>
         </div>
       </div>
     </div>

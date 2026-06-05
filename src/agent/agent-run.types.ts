@@ -77,6 +77,8 @@ export interface AgentInvokeParams {
   contactName?: string;
   /** 当前与候选人聊天的托管账号系统 wxid（拉群时作为 imBotId） */
   botImId?: string;
+  /** 当前消息所属小组 ID（企业级回调有值时用于配置兜底） */
+  groupId?: string;
   /** 当前客户的企微 externalUserId（企业级客户详情等接口使用） */
   externalUserId?: string;
   /** 当前消息发送链路 token（供主动发送富消息的工具使用） */

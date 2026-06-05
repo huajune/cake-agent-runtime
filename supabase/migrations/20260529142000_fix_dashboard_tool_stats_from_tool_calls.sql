@@ -1,17 +1,24 @@
--- Ensure dashboard tool stats read the current observability column.
--- Some environments still have the pre-observability RPC that reads the legacy tools array,
--- which makes manual intervention stats show 0 even when tool_calls contains request_handoff.
+-- ============================================================
+-- fix_dashboard_tool_stats_from_tool_calls
+-- 2026-05-29
+--
+-- get_dashboard_tool_stats 改为从 message_processing_records.tool_calls
+-- （jsonb 数组）逐个工具调用聚合「工具使用次数」，而非旧版的口径。
+--
+-- ⚠️ 溯源说明：此迁移此前被直接应用到生产（uvmbxcilpteaiizplcyp），但迁移
+--    文件从未提交进仓库 —— 导致远端迁移历史有 20260529142000、本地任何分支却无
+--    对应文件，`supabase db push` 因一致性校验失败。本文件按生产当前的函数定义
+--    （pg_get_functiondef）如实补档，使本地与远端对齐；CREATE OR REPLACE 幂等，
+--    重复应用无副作用。
+-- ============================================================
 
-CREATE OR REPLACE FUNCTION get_dashboard_tool_stats(
+CREATE OR REPLACE FUNCTION public.get_dashboard_tool_stats(
   p_start_date timestamp with time zone,
   p_end_date timestamp with time zone
 )
-RETURNS TABLE(
-  tool_name text,
-  use_count bigint
-)
+RETURNS TABLE(tool_name text, use_count bigint)
 LANGUAGE plpgsql
-AS $$
+AS $function$
 BEGIN
   RETURN QUERY
   SELECT
@@ -29,5 +36,4 @@ BEGIN
   GROUP BY call_entry->>'toolName'
   ORDER BY use_count DESC;
 END;
-$$;
-
+$function$;

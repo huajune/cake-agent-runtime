@@ -145,49 +145,84 @@ export class UserHostingRepository extends BaseRepository {
     startDate: Date,
     endDate: Date,
   ): Promise<UserActivityAggregate[]> {
-    if (!this.isAvailable()) {
-      return [];
+    // 列表型 RPC（RETURNS TABLE）经 PostgREST 受 max_rows(默认 1000) 限制：单次调用在活跃用户
+    // 超 1000 时会被截断，导致托管用户列表与「列表长度型」计数都停在 1000。RPC 内已稳定 ORDER BY，
+    // 经 rpcAllPaged 按 range 分页拉全量（统一受熔断器保护）。卡片纯计数请走
+    // countActiveUsersByDateRange（DB 侧 COUNT，无截断）。
+    const rows = await this.rpcAllPaged<{
+      chat_id: string;
+      od_id: string | null;
+      od_name: string | null;
+      group_id: string | null;
+      group_name: string | null;
+      bot_user_id: string | null;
+      im_bot_id: string | null;
+      message_count: string;
+      token_usage: string;
+      first_active_at: string;
+      last_active_at: string;
+    }>('get_active_users_from_user_activity_by_range', {
+      p_start_date: startDate.toISOString(),
+      p_end_date: endDate.toISOString(),
+    });
+
+    return rows.map((row) => ({
+      chatId: row.chat_id,
+      odId: row.od_id ?? undefined,
+      odName: row.od_name ?? undefined,
+      groupId: row.group_id ?? undefined,
+      groupName: row.group_name ?? undefined,
+      botUserId: row.bot_user_id ?? undefined,
+      imBotId: row.im_bot_id ?? undefined,
+      messageCount: parseInt(row.message_count, 10),
+      tokenUsage: parseInt(row.token_usage, 10),
+      firstActiveAt: new Date(row.first_active_at).getTime(),
+      lastActiveAt: new Date(row.last_active_at).getTime(),
+    }));
+  }
+
+  /**
+   * 按日期范围 + 小组过滤，分页拉取去重 chat_id 集合（Dashboard 小组筛选用）。
+   *
+   * 直接把 group_name 过滤下推到 DB 并分页，避开列表型 RPC 的 PostgREST max_rows(默认 1000)
+   * 截断——否则活跃用户超 1000 时本小组靠后的 chat_id 会被丢掉，导致小组活跃数 / chatIds /
+   * 后续消息统计被低估。一个 chat_id 在多天会有多行，靠 Set 去重；按 (activity_date, chat_id)
+   * 稳定排序分页，不会漏行。
+   */
+  async findActiveChatIdsByGroups(
+    startDate: Date,
+    endDate: Date,
+    groups: string[],
+  ): Promise<Set<string>> {
+    const chatIds = new Set<string>();
+    if (groups.length === 0) {
+      return chatIds;
     }
 
-    try {
-      const result = await this.rpc<
-        Array<{
-          chat_id: string;
-          od_id: string | null;
-          od_name: string | null;
-          group_id: string | null;
-          group_name: string | null;
-          bot_user_id: string | null;
-          im_bot_id: string | null;
-          message_count: string;
-          token_usage: string;
-          first_active_at: string;
-          last_active_at: string;
-        }>
-      >('get_active_users_from_user_activity_by_range', {
-        p_start_date: startDate.toISOString(),
-        p_end_date: endDate.toISOString(),
-      });
+    const start = formatLocalDate(startDate);
+    const end = formatLocalDate(endDate);
 
-      if (!result) return [];
+    // 经 selectAllPaged 分页拉全量（统一受熔断器保护），避免活跃用户超 max_rows 时本小组靠后的
+    // chat_id 被截断；一个 chat_id 多天多行靠 Set 去重；按 (activity_date, chat_id) 稳定排序分页。
+    const rows = await this.selectAllPaged<{ chat_id: string | null }>(
+      'user_activity',
+      'chat_id',
+      (q) =>
+        q
+          .in('group_name', groups)
+          .gte('activity_date', start)
+          .lte('activity_date', end)
+          .order('activity_date', { ascending: true })
+          .order('chat_id', { ascending: true }),
+    );
 
-      return result.map((row) => ({
-        chatId: row.chat_id,
-        odId: row.od_id ?? undefined,
-        odName: row.od_name ?? undefined,
-        groupId: row.group_id ?? undefined,
-        groupName: row.group_name ?? undefined,
-        botUserId: row.bot_user_id ?? undefined,
-        imBotId: row.im_bot_id ?? undefined,
-        messageCount: parseInt(row.message_count, 10),
-        tokenUsage: parseInt(row.token_usage, 10),
-        firstActiveAt: new Date(row.first_active_at).getTime(),
-        lastActiveAt: new Date(row.last_active_at).getTime(),
-      }));
-    } catch (error) {
-      this.logger.error('查询 user_activity 活跃用户失败', error);
-      return [];
+    for (const row of rows) {
+      if (row.chat_id) {
+        chatIds.add(row.chat_id);
+      }
     }
+
+    return chatIds;
   }
 
   /**
@@ -230,42 +265,26 @@ export class UserHostingRepository extends BaseRepository {
   ): Promise<number> {
     const start = formatLocalDate(startDate);
     const end = formatLocalDate(endDate);
-    const pageSize = 1000;
     const chatIds = new Set<string>();
 
-    try {
-      for (let from = 0; ; from += pageSize) {
-        const { data, error } = await this.getClient()
-          .from('user_activity')
-          .select('chat_id')
+    const rows = await this.selectAllPaged<{ chat_id: string | null }>(
+      'user_activity',
+      'chat_id',
+      (q) =>
+        q
           .gte('activity_date', start)
           .lte('activity_date', end)
           .order('activity_date', { ascending: true })
-          .order('chat_id', { ascending: true })
-          .range(from, from + pageSize - 1);
+          .order('chat_id', { ascending: true }),
+    );
 
-        if (error) {
-          this.handleError('SELECT count user_activity', error);
-          return chatIds.size;
-        }
-
-        const rows = (data as Array<{ chat_id: string | null }>) ?? [];
-        for (const row of rows) {
-          if (row.chat_id) {
-            chatIds.add(row.chat_id);
-          }
-        }
-
-        if (rows.length < pageSize) {
-          break;
-        }
+    for (const row of rows) {
+      if (row.chat_id) {
+        chatIds.add(row.chat_id);
       }
-
-      return chatIds.size;
-    } catch (error) {
-      this.logger.error('分页统计 user_activity 活跃用户数失败', error);
-      return chatIds.size;
     }
+
+    return chatIds.size;
   }
 
   /**
@@ -284,59 +303,39 @@ export class UserHostingRepository extends BaseRepository {
 
     const start = formatLocalDate(startDate);
     const end = formatLocalDate(endDate);
-    const pageSize = 1000;
     const buckets = new Map<string, DailyUserActivityStats>();
 
-    try {
-      for (let from = 0; ; from += pageSize) {
-        const { data, error } = await this.getClient()
-          .from('user_activity')
-          .select('activity_date,chat_id,message_count,token_usage')
-          .gte('activity_date', start)
-          .lte('activity_date', end)
-          .order('activity_date', { ascending: true })
-          .range(from, from + pageSize - 1);
+    const rows = await this.selectAllPaged<{
+      activity_date: string;
+      chat_id: string;
+      message_count: number | null;
+      token_usage: number | null;
+    }>('user_activity', 'activity_date,chat_id,message_count,token_usage', (q) =>
+      q
+        .gte('activity_date', start)
+        .lte('activity_date', end)
+        .order('activity_date', { ascending: true })
+        .order('chat_id', { ascending: true }),
+    );
 
-        if (error) {
-          this.handleError('SELECT daily user_activity', error);
-          return [];
-        }
+    for (const row of rows) {
+      const date = row.activity_date;
+      const bucket =
+        buckets.get(date) ??
+        ({
+          date,
+          userCount: 0,
+          messageCount: 0,
+          tokenUsage: 0,
+        } satisfies DailyUserActivityStats);
 
-        const rows =
-          (data as Array<{
-            activity_date: string;
-            chat_id: string;
-            message_count: number | null;
-            token_usage: number | null;
-          }>) ?? [];
-
-        for (const row of rows) {
-          const date = row.activity_date;
-          const bucket =
-            buckets.get(date) ??
-            ({
-              date,
-              userCount: 0,
-              messageCount: 0,
-              tokenUsage: 0,
-            } satisfies DailyUserActivityStats);
-
-          bucket.userCount += 1;
-          bucket.messageCount += row.message_count ?? 0;
-          bucket.tokenUsage += row.token_usage ?? 0;
-          buckets.set(date, bucket);
-        }
-
-        if (rows.length < pageSize) {
-          break;
-        }
-      }
-
-      return Array.from(buckets.values()).sort((a, b) => a.date.localeCompare(b.date));
-    } catch (error) {
-      this.logger.error('查询 user_activity 按天趋势失败', error);
-      return [];
+      bucket.userCount += 1;
+      bucket.messageCount += row.message_count ?? 0;
+      bucket.tokenUsage += row.token_usage ?? 0;
+      buckets.set(date, bucket);
     }
+
+    return Array.from(buckets.values()).sort((a, b) => a.date.localeCompare(b.date));
   }
 
   /**

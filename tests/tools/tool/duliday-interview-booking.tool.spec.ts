@@ -17,11 +17,6 @@ describe('buildInterviewBookingTool', () => {
     pauseUser: jest.fn().mockResolvedValue(undefined),
   };
 
-  const mockRecruitmentCaseService = {
-    openOnBookingSuccess: jest.fn().mockResolvedValue(undefined),
-    getActiveOnboardFollowupCase: jest.fn().mockResolvedValue(null),
-  };
-
   const mockBookingService = {
     incrementBookingCount: jest.fn().mockResolvedValue(undefined),
   };
@@ -92,17 +87,34 @@ describe('buildInterviewBookingTool', () => {
   const executeToolWithContext = async (
     input: Record<string, any>,
     contextOverride: Partial<ToolBuildContext> = {},
+    dependencyOverride: {
+      botGroupResolver?: { resolveAgentId: jest.Mock };
+      huajuneReporter?: { reportInterviewBooked: jest.Mock };
+    } = {},
   ) => {
     const mockLongTermService = {
       writeFromBooking: jest.fn().mockResolvedValue(undefined),
+      setLatestBooking: jest.fn().mockResolvedValue(undefined),
+      getLatestBooking: jest.fn().mockResolvedValue(null),
+    };
+    const mockOpsEventsRecorder = {
+      recordEvent: jest.fn().mockResolvedValue(undefined),
+    };
+    const mockBotGroupResolver = dependencyOverride.botGroupResolver ?? {
+      resolveAgentId: jest.fn().mockReturnValue(null),
+    };
+    const mockHuajuneReporter = dependencyOverride.huajuneReporter ?? {
+      reportInterviewBooked: jest.fn(),
     };
     const builder = buildInterviewBookingTool(
       mockSpongeService as never,
       mockPrivateChatNotifier as never,
       mockUserHostingService as never,
-      mockRecruitmentCaseService as never,
       mockBookingService as never,
       mockLongTermService as never,
+      mockOpsEventsRecorder as never,
+      mockBotGroupResolver as never,
+      mockHuajuneReporter as never,
     );
     const toolContext = {
       ...mockContext,
@@ -114,7 +126,16 @@ describe('buildInterviewBookingTool', () => {
       messages: [],
       abortSignal: undefined as any,
     })) as any;
-    return { result, context: toolContext };
+    return {
+      result,
+      context: toolContext,
+      mocks: {
+        mockLongTermService,
+        mockOpsEventsRecorder,
+        mockBotGroupResolver,
+        mockHuajuneReporter,
+      },
+    };
   };
 
   const executeTool = async (
@@ -145,54 +166,6 @@ describe('buildInterviewBookingTool', () => {
       'genderId',
       'operateType',
     ]);
-    expect(mockPrivateChatNotifier.notifyInterviewBookingResult).not.toHaveBeenCalled();
-  });
-
-  it('should skip external booking when an active appointment case already exists', async () => {
-    mockRecruitmentCaseService.getActiveOnboardFollowupCase.mockResolvedValueOnce({
-      id: 'case-1',
-      corp_id: 'corp-1',
-      chat_id: 'sess-1',
-      user_id: 'user-1',
-      case_type: 'onboard_followup',
-      status: 'active',
-      booking_id: 'BK-1001',
-      booked_at: '2026-03-19T08:00:00.000Z',
-      interview_time: '2026-03-20 14:00:00',
-      job_id: 100,
-      job_name: '后厨-小时工',
-      brand_name: '成都你六姐',
-      store_name: '上海浦江城市生活广场店',
-      bot_im_id: 'bot-1',
-      followup_window_ends_at: null,
-      last_relevant_at: null,
-      metadata: {},
-      created_at: '2026-03-19T08:00:00.000Z',
-      updated_at: '2026-03-19T08:00:00.000Z',
-    });
-
-    const context: Partial<ToolBuildContext> = {};
-    const result = await executeTool(validInput, context);
-
-    expect(result.success).toBe(false);
-    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
-    expect(result.currentBooking).toEqual(
-      expect.objectContaining({
-        bookingId: 'BK-1001',
-        interviewTime: '2026-03-20 14:00:00',
-        jobId: 100,
-        jobName: '后厨-小时工',
-        brandName: '成都你六姐',
-        storeName: '上海浦江城市生活广场店',
-      }),
-    );
-    expect(mockRecruitmentCaseService.getActiveOnboardFollowupCase).toHaveBeenCalledWith({
-      corpId: 'corp-1',
-      chatId: 'sess-1',
-    });
-    expect(mockSpongeService.fetchJobs).not.toHaveBeenCalled();
-    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-    expect(mockRecruitmentCaseService.openOnBookingSuccess).not.toHaveBeenCalled();
     expect(mockPrivateChatNotifier.notifyInterviewBookingResult).not.toHaveBeenCalled();
   });
 
@@ -248,7 +221,6 @@ describe('buildInterviewBookingTool', () => {
       expect(result._outcome).toContain('未先调');
       expect(result._replyInstruction).toContain('duliday_interview_precheck');
       expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
-      expect(mockRecruitmentCaseService.openOnBookingSuccess).not.toHaveBeenCalled();
     });
   });
 
@@ -433,7 +405,72 @@ describe('buildInterviewBookingTool', () => {
       expect.objectContaining({
         interviewTime: '2026-03-20 14:00:00',
       }),
+      expect.objectContaining({ botUserId: 'manager-1' }),
     );
+  });
+
+  it('reports successful bookings to Huajune when bot has agent mapping', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            interviewSupplement: [],
+            firstInterview: {
+              periodicInterviewTimes: [
+                {
+                  interviewWeekday: '每周五',
+                  interviewTimes: [
+                    {
+                      interviewStartTime: '13:30',
+                      interviewEndTime: '16:30',
+                      cycleDeadlineDay: '当天',
+                      cycleDeadlineEnd: '12:00',
+                    },
+                  ],
+                },
+              ],
+              fixedInterviewTimes: [],
+            },
+          },
+        }),
+      ],
+    });
+    mockSpongeService.bookInterview.mockResolvedValue({
+      success: true,
+      code: 0,
+      message: '预约成功',
+      notice: null,
+      errorList: null,
+    });
+    const mockBotGroupResolver = {
+      resolveAgentId: jest.fn().mockReturnValue('gaoyaqi-cake-1'),
+    };
+    const mockHuajuneReporter = {
+      reportInterviewBooked: jest.fn(),
+    };
+
+    const { result } = await executeToolWithContext(
+      {
+        ...validInput,
+        interviewTime: '2026-03-20 14:00:00',
+      },
+      { botImId: '1688855974513959' },
+      {
+        botGroupResolver: mockBotGroupResolver,
+        huajuneReporter: mockHuajuneReporter,
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(mockBotGroupResolver.resolveAgentId).toHaveBeenCalledWith('1688855974513959');
+    expect(mockHuajuneReporter.reportInterviewBooked).toHaveBeenCalledWith({
+      agentId: 'gaoyaqi-cake-1',
+      candidateName: '张三',
+      idempotencyKey: 'sess-1:booking_success:100:2026-03-20 14:00:00',
+      interviewTime: '2026-03-20 14:00:00',
+      candidatePhone: '13800138000',
+      job: { jobId: 100, jobName: '后厨-小时工' },
+    });
   });
 
   it('should build customerLabelList from real job supplements and candidate info', async () => {
@@ -472,59 +509,65 @@ describe('buildInterviewBookingTool', () => {
 
     expect(result.success).toBe(true);
     expect(result.notice).toBe('请准时到达');
-    expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith({
-      jobIdList: [100],
-      pageNum: 1,
-      pageSize: 1,
-      options: {
-        includeBasicInfo: true,
-        includeInterviewProcess: true,
+    expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
+      {
+        jobIdList: [100],
+        pageNum: 1,
+        pageSize: 1,
+        options: {
+          includeBasicInfo: true,
+          includeInterviewProcess: true,
+        },
       },
-    });
-    expect(mockSpongeService.bookInterview).toHaveBeenCalledWith({
-      jobId: 100,
-      interviewTime: '2026-03-20 14:00:00',
-      name: '张三',
-      phone: '13800138000',
-      age: 25,
-      genderId: 1,
-      operateType: 6,
-      avatar: undefined,
-      householdRegisterProvinceId: 310000,
-      height: 172,
-      weight: undefined,
-      hasHealthCertificate: undefined,
-      healthCertificateTypes: undefined,
-      educationId: 2,
-      uploadResume: undefined,
-      customerLabelList: [
-        {
-          labelId: 2,
-          labelName: '学历',
-          name: '学历',
-          value: '本科',
-        },
-        {
-          labelId: 3,
-          labelName: '籍贯',
-          name: '籍贯',
-          value: '上海市',
-        },
-        {
-          labelId: 4,
-          labelName: '身高',
-          name: '身高',
-          value: '172',
-        },
-        {
-          labelId: 190,
-          labelName: '爱好',
-          name: '爱好',
-          value: '打篮球',
-        },
-      ],
-      logId: undefined,
-    });
+      expect.objectContaining({ botUserId: 'manager-1' }),
+    );
+    expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
+      {
+        jobId: 100,
+        interviewTime: '2026-03-20 14:00:00',
+        name: '张三',
+        phone: '13800138000',
+        age: 25,
+        genderId: 1,
+        operateType: 6,
+        avatar: undefined,
+        householdRegisterProvinceId: 310000,
+        height: 172,
+        weight: undefined,
+        hasHealthCertificate: undefined,
+        healthCertificateTypes: undefined,
+        educationId: 2,
+        uploadResume: undefined,
+        customerLabelList: [
+          {
+            labelId: 2,
+            labelName: '学历',
+            name: '学历',
+            value: '本科',
+          },
+          {
+            labelId: 3,
+            labelName: '籍贯',
+            name: '籍贯',
+            value: '上海市',
+          },
+          {
+            labelId: 4,
+            labelName: '身高',
+            name: '身高',
+            value: '172',
+          },
+          {
+            labelId: 190,
+            labelName: '爱好',
+            name: '爱好',
+            value: '打篮球',
+          },
+        ],
+        logId: undefined,
+      },
+      expect.objectContaining({ botUserId: 'manager-1' }),
+    );
     expect(mockPrivateChatNotifier.notifyInterviewBookingResult).toHaveBeenCalledWith(
       expect.objectContaining({
         candidateName: '张三',
@@ -557,21 +600,6 @@ describe('buildInterviewBookingTool', () => {
       }),
     );
     expect(mockUserHostingService.pauseUser).not.toHaveBeenCalled();
-    expect(mockRecruitmentCaseService.openOnBookingSuccess).toHaveBeenCalledWith({
-      corpId: 'corp-1',
-      chatId: 'sess-1',
-      userId: 'user-1',
-      snapshot: expect.objectContaining({
-        bookingId: null,
-        interviewTime: '2026-03-20 14:00:00',
-        jobId: 100,
-        jobName: '后厨-小时工',
-        brandName: '成都你六姐',
-        storeName: '上海浦江城市生活广场店',
-        botImId: undefined,
-        metadata: { tool: 'duliday_interview_booking' },
-      }),
-    });
     expect(mockBookingService.incrementBookingCount).toHaveBeenCalledWith({
       brandName: '成都你六姐',
       storeName: '上海浦江城市生活广场店',
@@ -618,10 +646,13 @@ describe('buildInterviewBookingTool', () => {
     );
 
     expect(result.success).toBe(true);
-    expect(mockSpongeService.uploadAttachmentFromUrl).toHaveBeenCalledWith({
-      fileUrl: 'https://wecom.example.com/file/resume.pdf',
-      fileName: '张三简历.pdf',
-    });
+    expect(mockSpongeService.uploadAttachmentFromUrl).toHaveBeenCalledWith(
+      {
+        fileUrl: 'https://wecom.example.com/file/resume.pdf',
+        fileName: '张三简历.pdf',
+      },
+      expect.objectContaining({ botUserId: 'manager-1' }),
+    );
     expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
       expect.objectContaining({
         uploadResume: 'resume/cloud/key.pdf',
@@ -634,6 +665,7 @@ describe('buildInterviewBookingTool', () => {
           },
         ],
       }),
+      expect.objectContaining({ botUserId: 'manager-1' }),
     );
     expect(result.requestInfo).toEqual(
       expect.objectContaining({
@@ -756,7 +788,6 @@ describe('buildInterviewBookingTool', () => {
       }),
     );
     expect(mockUserHostingService.pauseUser).toHaveBeenCalledWith('sess-1');
-    expect(mockRecruitmentCaseService.openOnBookingSuccess).not.toHaveBeenCalled();
     expect(mockBookingService.incrementBookingCount).not.toHaveBeenCalled();
   });
 

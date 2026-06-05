@@ -117,7 +117,7 @@ describe('buildInterviewPrecheckTool', () => {
     input: Record<string, any>,
     contextOverride: Partial<ToolBuildContext> = {},
   ) => {
-    const builder = buildInterviewPrecheckTool(mockSpongeService as never);
+    const builder = buildInterviewPrecheckTool(mockSpongeService as never, { recordEvent: jest.fn() } as never);
     const builtTool = builder({
       ...mockContext,
       ...contextOverride,

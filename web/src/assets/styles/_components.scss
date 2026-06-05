@@ -501,12 +501,18 @@
 
 // ========== 控制面板 ==========
 .control-panel {
-  background: linear-gradient(135deg, $primary-06 0%, $accent-06 50%, rgba(236, 72, 153, 0.04) 100%);
+  background: linear-gradient(
+    135deg,
+    $primary-06 0%,
+    $accent-06 50%,
+    rgba(236, 72, 153, 0.04) 100%
+  );
   border: 1px solid $border;
   border-radius: 20px;
   padding: 24px 32px;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
+  z-index: 20;
   margin-bottom: 20px;
 
   &::before {
@@ -594,13 +600,244 @@
   margin-bottom: 20px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   position: relative;
-  z-index: 1;
+  z-index: $z-dropdown + 20;
 }
 
 .control-panel-left {
   display: flex;
   align-items: center;
   gap: 24px;
+  flex-wrap: wrap;
+}
+
+.control-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: $text-secondary;
+  font-size: 13px;
+
+  select {
+    min-height: 36px;
+    border: 1px solid $border;
+    border-radius: 10px;
+    background: $bg-card;
+    color: $text-primary;
+    padding: 0 12px;
+    cursor: pointer;
+
+    &:focus {
+      outline: 2px solid $primary-20;
+      border-color: $primary;
+    }
+  }
+}
+
+.control-group-dropdown {
+  position: relative;
+  width: 136px;
+  z-index: $z-dropdown + 20;
+
+  &[open] summary {
+    border-color: rgba($primary, 0.78);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba($primary, 0.045));
+    box-shadow:
+      0 0 0 3px rgba($primary, 0.1),
+      0 14px 26px rgba($primary, 0.12);
+  }
+
+  &[open] summary svg {
+    transform: rotate(180deg);
+  }
+
+  summary {
+    min-height: 44px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid rgba($border, 0.95);
+    border-radius: 14px;
+    background: rgba($bg-card, 0.88);
+    color: $text-muted;
+    cursor: pointer;
+    list-style: none;
+    padding: 0 14px;
+    font-size: 13px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+    transition:
+      border-color 0.2s ease,
+      background 0.2s ease,
+      box-shadow 0.2s ease,
+      transform 0.2s ease;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    &:hover {
+      border-color: rgba($primary, 0.42);
+      background: rgba(255, 255, 255, 0.94);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.9),
+        0 10px 22px rgba(15, 23, 42, 0.08);
+    }
+
+    &:focus-visible {
+      outline: 3px solid rgba($primary, 0.18);
+      outline-offset: 3px;
+    }
+
+    > span {
+      font-weight: 600;
+      letter-spacing: 0;
+    }
+
+    strong {
+      overflow: hidden;
+      color: $text-primary;
+      font-size: 15px;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    svg {
+      color: $text-muted;
+      transition:
+        color 0.18s ease,
+        transform 0.18s ease;
+    }
+  }
+
+  > div {
+    position: absolute;
+    top: calc(100% + 10px);
+    left: 0;
+    z-index: $z-dropdown + 30;
+    width: max(220px, 100%);
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 8px;
+    border: 1px solid rgba($border, 0.78);
+    border-radius: 16px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 255, 0.94)), $bg-card;
+    box-shadow:
+      0 22px 50px rgba(15, 23, 42, 0.15),
+      0 6px 16px rgba($primary, 0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(16px);
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 3px;
+      border-radius: 16px 16px 0 0;
+      background: linear-gradient(90deg, $primary, $info, $success, $warning);
+      opacity: 0.72;
+      pointer-events: none;
+    }
+  }
+
+  label {
+    position: relative;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    color: $text-secondary;
+    cursor: pointer;
+    padding: 0 10px;
+    font-size: 14px;
+    font-weight: 500;
+    transition:
+      border-color 0.18s ease,
+      background 0.18s ease,
+      color 0.18s ease,
+      transform 0.18s ease;
+
+    &:hover {
+      border-color: rgba($primary, 0.12);
+      background: rgba($primary, 0.055);
+      color: $text-primary;
+      transform: translateX(2px);
+    }
+
+    &:has(input:checked) {
+      border-color: rgba($primary, 0.16);
+      background: linear-gradient(135deg, rgba($primary, 0.1), rgba($info, 0.06));
+      color: $text-primary;
+    }
+
+    &:has(input:checked)::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 10px;
+      bottom: 10px;
+      width: 3px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, $primary, $info);
+    }
+  }
+
+  input {
+    position: relative;
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    appearance: none;
+    border: 1.5px solid rgba($text-muted, 0.62);
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.86);
+    cursor: pointer;
+    transition:
+      border-color 0.18s ease,
+      background 0.18s ease,
+      box-shadow 0.18s ease;
+
+    &:checked {
+      border-color: transparent;
+      background: linear-gradient(135deg, $primary, $accent);
+      box-shadow: 0 6px 14px rgba($primary, 0.22);
+    }
+
+    &:checked::after {
+      content: '';
+      position: absolute;
+      left: 5px;
+      top: 2px;
+      width: 5px;
+      height: 10px;
+      border: solid #fff;
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg);
+    }
+
+    &[type='radio'] {
+      border-radius: 50%;
+
+      &:checked::after {
+        left: 50%;
+        top: 50%;
+        width: 7px;
+        height: 7px;
+        border: 0;
+        border-radius: 50%;
+        background: #fff;
+        transform: translate(-50%, -50%);
+      }
+    }
+
+    &:focus-visible {
+      outline: 3px solid rgba($primary, 0.16);
+      outline-offset: 2px;
+    }
+  }
 }
 
 .control-panel-right {
@@ -714,7 +951,7 @@
   background: white;
   top: 3px;
   left: 3px;
-  transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 
   .control-toggle-btn.active & {
@@ -761,7 +998,9 @@
   width: 90%;
   max-width: 800px;
   max-height: 85vh;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.15),
+    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
   display: flex;
   flex-direction: column;
   animation: modalSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
@@ -1270,10 +1509,22 @@ tbody tr:hover {
   font-size: 26px;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
 
-  &.primary-bg { background: $primary-10; color: $primary; }
-  &.success-bg { background: rgba(16, 185, 129, 0.1); color: $success; }
-  &.warning-bg { background: rgba(245, 158, 11, 0.1); color: $warning; }
-  &.info-bg { background: $primary-10; color: $primary; }
+  &.primary-bg {
+    background: $primary-10;
+    color: $primary;
+  }
+  &.success-bg {
+    background: rgba(16, 185, 129, 0.1);
+    color: $success;
+  }
+  &.warning-bg {
+    background: rgba(245, 158, 11, 0.1);
+    color: $warning;
+  }
+  &.info-bg {
+    background: $primary-10;
+    color: $primary;
+  }
 }
 
 .stat-content {
@@ -1292,9 +1543,15 @@ tbody tr:hover {
   font-weight: 700;
   color: $text-primary;
 
-  &.primary { color: $primary; }
-  &.success { color: $success; }
-  &.warning { color: $warning; }
+  &.primary {
+    color: $primary;
+  }
+  &.success {
+    color: $success;
+  }
+  &.warning {
+    color: $warning;
+  }
 }
 
 // ========== 玻璃面板 ==========
@@ -1405,11 +1662,21 @@ tbody tr:hover {
   border-radius: 3px;
   transition: width 0.3s ease;
 
-  &.agent { background: $danger; }
-  &.message { background: $warning; }
-  &.delivery { background: $primary; }
-  &.merge { background: #a855f7; }
-  &.unknown { background: $text-muted; }
+  &.agent {
+    background: $danger;
+  }
+  &.message {
+    background: $warning;
+  }
+  &.delivery {
+    background: $primary;
+  }
+  &.merge {
+    background: #a855f7;
+  }
+  &.unknown {
+    background: $text-muted;
+  }
 }
 
 .alert-type-stats {
@@ -1447,7 +1714,7 @@ tbody tr:hover {
     @extend .control-panel-title;
     border-right: none;
     padding-right: 0;
-    
+
     // Icon size override
     span {
       font-size: 18px;
@@ -1466,13 +1733,13 @@ tbody tr:hover {
     &.connected {
       background: rgba(16, 185, 129, 0.12);
       border-color: rgba(16, 185, 129, 0.3);
-      
+
       .dot {
         background: $success;
         box-shadow: 0 0 8px $success;
         animation: pulse-dot 2s infinite;
       }
-      
+
       .text {
         color: $success;
       }
@@ -1481,12 +1748,12 @@ tbody tr:hover {
     &.disconnected {
       background: rgba(239, 68, 68, 0.12);
       border-color: rgba(239, 68, 68, 0.3);
-      
+
       .dot {
         background: $danger;
         box-shadow: 0 0 8px $danger;
       }
-      
+
       .text {
         color: $danger;
       }
@@ -1536,12 +1803,12 @@ tbody tr:hover {
     display: flex;
     align-items: center;
     gap: 6px;
-    
+
     .label {
       font-size: 13px;
       color: $text-muted;
     }
-    
+
     select {
       padding: 8px 14px;
       background: rgba(255, 255, 255, 0.7);
@@ -1553,8 +1820,9 @@ tbody tr:hover {
       cursor: pointer;
       transition: all 0.2s ease;
       outline: none;
-      
-      &:hover, &:focus {
+
+      &:hover,
+      &:focus {
         border-color: $primary;
         background: #fff;
       }
@@ -1606,12 +1874,12 @@ tbody tr:hover {
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
-    
+
     &.pause-btn {
       background: rgba(255, 255, 255, 0.7);
       border: 1px solid $border;
       color: $text-primary;
-      
+
       &.paused {
         background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
         border: none;
@@ -1619,12 +1887,12 @@ tbody tr:hover {
         box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
       }
     }
-    
+
     &.clear-btn {
       background: rgba(255, 255, 255, 0.7);
       border: 1px solid $border;
       color: $text-secondary;
-      
+
       &:hover {
         background: #fff;
         color: $danger;
@@ -1644,10 +1912,22 @@ tbody tr:hover {
   margin-left: 4px;
   font-weight: 500;
 
-  &.personal { color: #16a34a; background: rgba(22, 163, 74, 0.1); }
-  &.enterprise { color: #2563eb; background: rgba(37, 99, 235, 0.1); }
-  &.official { color: $accent; background: $accent-10; }
-  &.unknown { color: #6b7280; background: rgba(107, 114, 128, 0.1); }
+  &.personal {
+    color: #16a34a;
+    background: rgba(22, 163, 74, 0.1);
+  }
+  &.enterprise {
+    color: #2563eb;
+    background: rgba(37, 99, 235, 0.1);
+  }
+  &.official {
+    color: $accent;
+    background: $accent-10;
+  }
+  &.unknown {
+    color: #6b7280;
+    background: rgba(107, 114, 128, 0.1);
+  }
 }
 
 // ========== 响应式 (PC端) ==========
@@ -1968,4 +2248,3 @@ tbody tr:hover {
     }
   }
 }
-

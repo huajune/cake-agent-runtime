@@ -2,6 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { SpongeService } from '@sponge/sponge.service';
 import { SpongeBiService } from '@sponge/sponge-bi.service';
+import { RedisService } from '@infra/redis/redis.service';
+import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
+import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 
 describe('SpongeService', () => {
   let service: SpongeService;
@@ -10,8 +13,21 @@ describe('SpongeService', () => {
     refreshBIDataSource: jest.Mock;
     refreshBIDataSourceAndWait: jest.Mock;
   };
+  let systemConfigService: {
+    getConfigValue: jest.Mock;
+  };
+  let hostingMemberConfigService: {
+    resolveDulidayToken: jest.Mock;
+  };
 
   beforeEach(async () => {
+    systemConfigService = {
+      getConfigValue: jest.fn().mockResolvedValue(null),
+    };
+    hostingMemberConfigService = {
+      resolveDulidayToken: jest.fn().mockResolvedValue(null),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SpongeService,
@@ -26,6 +42,22 @@ describe('SpongeService', () => {
             refreshBIDataSource: jest.fn(),
             refreshBIDataSourceAndWait: jest.fn(),
           },
+        },
+        {
+          provide: RedisService,
+          useValue: {
+            get: jest.fn(),
+            setex: jest.fn(),
+          },
+        },
+        {
+          provide: SystemConfigService,
+          useValue: systemConfigService,
+        },
+        {
+          // token→null：保持走既有 sponge_token_config / env 解析链不变。
+          provide: HostingMemberConfigService,
+          useValue: hostingMemberConfigService,
         },
       ],
     }).compile();
@@ -154,6 +186,137 @@ describe('SpongeService', () => {
       const result = await service.fetchJobs({});
 
       expect(result).toEqual({ jobs: [], total: 0 });
+    });
+
+    it('should prefer system_config token mapped by botImId', async () => {
+      systemConfigService.getConfigValue.mockResolvedValue({
+        accounts: [{ botImId: 'bot-im-1', token: 'mapped-token' }],
+      });
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          code: 0,
+          data: { result: [], total: 0 },
+        }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      await service.fetchJobs({}, { botImId: 'bot-im-1' });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('job/list'),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'Duliday-Token': 'mapped-token',
+          }),
+        }),
+      );
+    });
+
+    it('should prefer hosting_member_config token before legacy sponge token config', async () => {
+      hostingMemberConfigService.resolveDulidayToken.mockResolvedValueOnce('member-token');
+      systemConfigService.getConfigValue.mockResolvedValue({
+        accounts: [{ botImId: 'bot-im-1', token: 'legacy-token' }],
+      });
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          code: 0,
+          data: { result: [], total: 0 },
+        }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      await service.fetchJobs({}, { botImId: 'bot-im-1' });
+
+      expect(hostingMemberConfigService.resolveDulidayToken).toHaveBeenCalledWith('bot-im-1');
+      expect(systemConfigService.getConfigValue).not.toHaveBeenCalled();
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('job/list'),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'Duliday-Token': 'member-token',
+          }),
+        }),
+      );
+    });
+
+    it('should cache sponge token config for repeated requests', async () => {
+      systemConfigService.getConfigValue.mockResolvedValue({
+        accounts: [{ botImId: 'bot-im-1', token: 'cached-token' }],
+      });
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          code: 0,
+          data: { result: [], total: 0 },
+        }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      await service.fetchJobs({}, { botImId: 'bot-im-1' });
+      await service.fetchJobs({}, { botImId: 'bot-im-1' });
+
+      expect(systemConfigService.getConfigValue).toHaveBeenCalledTimes(1);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+      expect(global.fetch).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining('job/list'),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'Duliday-Token': 'cached-token',
+          }),
+        }),
+      );
+    });
+
+    it('should share a pending sponge token config load across concurrent requests', async () => {
+      let resolveConfig!: (value: unknown) => void;
+      systemConfigService.getConfigValue.mockReturnValue(
+        new Promise((resolve) => {
+          resolveConfig = resolve;
+        }),
+      );
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          code: 0,
+          data: { result: [], total: 0 },
+        }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      const first = service.fetchJobs({}, { botImId: 'bot-im-1' });
+      const second = service.fetchJobs({}, { botImId: 'bot-im-1' });
+
+      await Promise.resolve();
+      expect(systemConfigService.getConfigValue).toHaveBeenCalledTimes(1);
+
+      resolveConfig({
+        accounts: [{ botImId: 'bot-im-1', token: 'shared-token' }],
+      });
+
+      await Promise.all([first, second]);
+
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+      expect(global.fetch).toHaveBeenNthCalledWith(
+        1,
+        expect.stringContaining('job/list'),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'Duliday-Token': 'shared-token',
+          }),
+        }),
+      );
+      expect(global.fetch).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining('job/list'),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'Duliday-Token': 'shared-token',
+          }),
+        }),
+      );
     });
   });
 

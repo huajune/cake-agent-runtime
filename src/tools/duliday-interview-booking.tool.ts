@@ -9,7 +9,6 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { SpongeService } from '@sponge/sponge.service';
 import type { InterviewBookingCustomerLabel, JobDetail } from '@sponge/sponge.types';
-import type { RecruitmentCaseRecord } from '@biz/recruitment-case/entities/recruitment-case.entity';
 import {
   getSpongeGenderLabelById,
   SPONGE_EDUCATION_MAPPING,
@@ -22,11 +21,14 @@ import {
   extractInterviewSupplementDefinitions,
   type SpongeInterviewSupplementDefinition,
 } from '@sponge/sponge-job.util';
+import { buildSpongeTokenContext } from '@tools/utils/sponge-token-context.util';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
-import { RecruitmentCaseService } from '@biz/recruitment-case/services/recruitment-case.service';
 import { BookingService } from '@biz/message/services/booking.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { LongTermService } from '@memory/services/long-term.service';
+import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
+import { BotGroupResolverService } from '@biz/ops-events/bot-group-resolver.service';
+import { HuajuneReporterService } from '@biz/huajune/huajune-reporter.service';
 import { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import { API_BOOKING_REQUIRED_PAYLOAD_FIELDS } from '@tools/duliday/booking/job-booking.contract';
 import { buildCustomerLabelList } from '@tools/duliday/booking/interview-booking-customer-label.builder';
@@ -41,26 +43,12 @@ import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types'
 const logger = new Logger('duliday_interview_booking');
 const INTERVIEW_TIME_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 
-function buildAlreadyBookedResult(activeCase: RecruitmentCaseRecord): Record<string, unknown> {
-  return buildToolError({
-    errorType: TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED,
-    outcome: '当前会话已存在面试预约，本次未重复提交',
-    replyInstruction:
-      '当前会话已有面试预约。请直接基于 currentBooking 里的时间、门店、岗位等信息回答候选人；不要说"重新约好了"。若候选人要求改期/取消，或反馈门店查不到预约、预约信息冲突，请调用 request_handoff 转人工处理。',
-    details: {
-      currentBooking: {
-        bookingId: activeCase.booking_id,
-        bookedAt: activeCase.booked_at,
-        interviewTime: activeCase.interview_time,
-        jobId: activeCase.job_id,
-        jobName: activeCase.job_name,
-        brandName: activeCase.brand_name,
-        storeName: activeCase.store_name,
-        status: activeCase.status,
-      },
-    },
-  });
-}
+/**
+ * 预约软查重时间窗：候选人在此窗口内已有 latest_booking 时，再次提交视为重复（Bull 重试 /
+ * Agent 同会话重复调用），直接拦截，避免在海绵生成第二张工单。
+ * 用时间窗而非「只要存在就拦」：避免永久阻断候选人日后合理的重新预约（真正改约走 request_handoff）。
+ */
+const BOOKING_DEDUP_WINDOW_MS = 30 * 60 * 1000;
 
 function markBookingFailed<T extends Record<string, unknown>>(
   context: ToolBuildContext,
@@ -226,11 +214,14 @@ export function buildInterviewBookingTool(
   spongeService: SpongeService,
   privateChatNotifier: PrivateChatMonitorNotifierService,
   userHostingService: UserHostingService,
-  recruitmentCaseService: RecruitmentCaseService,
   bookingService: BookingService,
   longTermService: LongTermService,
+  opsEventsRecorder: OpsEventsRecorderService,
+  botGroupResolver: BotGroupResolverService,
+  huajuneReporter: HuajuneReporterService,
 ): ToolBuilder {
   return (context) => {
+    const spongeTokenContext = buildSpongeTokenContext(context);
     return tool({
       description: DESCRIPTION,
       inputSchema,
@@ -307,22 +298,8 @@ export function buildInterviewBookingTool(
         }
         logger.log(`预约面试: ${name}, jobId=${jobId}`);
 
-        try {
-          const activeCase = await recruitmentCaseService.getActiveOnboardFollowupCase({
-            corpId: context.corpId,
-            chatId: context.sessionId,
-          });
-          if (activeCase) {
-            logger.warn(
-              `检测到已存在 active 面试 case，跳过重复预约: chatId=${context.sessionId}, caseId=${activeCase.id}`,
-            );
-            return markBookingFailed(context, buildAlreadyBookedResult(activeCase));
-          }
-        } catch (caseLookupError: unknown) {
-          const message =
-            caseLookupError instanceof Error ? caseLookupError.message : String(caseLookupError);
-          logger.warn(`查询 active 面试 case 失败，继续执行预约流程: ${message}`);
-        }
+        // recruitment_cases 已废弃：不再用 active case 查重。重复预约由海绵侧约束 +
+        // latest_booking 指针体现；提交前的本地软查重见下方 spongeService.bookInterview 调用前。
 
         const missingFields = [
           { field: 'jobId', value: jobId },
@@ -472,15 +449,18 @@ export function buildInterviewBookingTool(
         };
 
         try {
-          const { jobs } = await spongeService.fetchJobs({
-            jobIdList: [jobId],
-            pageNum: 1,
-            pageSize: 1,
-            options: {
-              includeBasicInfo: true,
-              includeInterviewProcess: true,
+          const { jobs } = await spongeService.fetchJobs(
+            {
+              jobIdList: [jobId],
+              pageNum: 1,
+              pageSize: 1,
+              options: {
+                includeBasicInfo: true,
+                includeInterviewProcess: true,
+              },
             },
-          });
+            spongeTokenContext,
+          );
 
           const job = jobs[0];
           if (!job?.basicInfo) {
@@ -625,40 +605,79 @@ export function buildInterviewBookingTool(
             logId,
           };
 
-          const result = await spongeService.bookInterview({
-            jobId,
-            interviewTime,
-            name,
-            phone,
-            age,
-            genderId,
-            operateType,
-            avatar,
-            householdRegisterProvinceId,
-            height,
-            weight,
-            hasHealthCertificate,
-            healthCertificateTypes,
-            educationId,
-            uploadResume: bookingUploadResume,
-            customerLabelList: bookingCustomerLabelList,
-            logId,
-          });
+          // 提交前软查重：recruitment_cases 废弃后，重复预约仅靠海绵约束 + latest_booking 指针体现。
+          // 这里补一道本地兜底——若候选人窗口内已有 latest_booking，本次极可能是 Bull 重试或 Agent
+          // 同会话重复调用导致的重复提交，直接拦截，避免在海绵再生成一张工单。候选人若要改时间/取消，
+          // 走 request_handoff(modify_appointment) 人工改约，不再走本工具。
+          const existingBooking = await longTermService
+            .getLatestBooking(context.corpId, context.userId)
+            .catch(() => null);
+          if (existingBooking?.latest_work_order_id != null) {
+            const linkedAtMs = Date.parse(existingBooking.linked_at);
+            if (Number.isFinite(linkedAtMs) && Date.now() - linkedAtMs < BOOKING_DEDUP_WINDOW_MS) {
+              logger.warn(
+                `[booking] 命中近期 latest_booking 软查重，跳过重复提交: chatId=${context.sessionId}, workOrderId=${existingBooking.latest_work_order_id}`,
+              );
+              // 候选人确已预约 → bookingSucceeded 置 true（不阻断后续拉群等流程）。
+              context.bookingSucceeded = true;
+              return buildToolError({
+                errorType: TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED,
+                outcome: '候选人近期已有预约工单，跳过重复预约',
+                replyInstruction:
+                  '该候选人近期已成功预约过面试，不要重复提交预约，也不要再次调用本工具。若候选人要改时间或取消，请调用 request_handoff(reasonCode="modify_appointment") 转人工改约；否则按已预约状态正常衔接（可复述面试安排）。',
+                details: { existingWorkOrderId: existingBooking.latest_work_order_id },
+              });
+            }
+          }
+
+          const result = await spongeService.bookInterview(
+            {
+              jobId,
+              interviewTime,
+              name,
+              phone,
+              age,
+              genderId,
+              operateType,
+              avatar,
+              householdRegisterProvinceId,
+              height,
+              weight,
+              hasHealthCertificate,
+              healthCertificateTypes,
+              educationId,
+              uploadResume: bookingUploadResume,
+              customerLabelList: bookingCustomerLabelList,
+              logId,
+            },
+            spongeTokenContext,
+          );
 
           context.bookingSucceeded = result.success;
 
           if (!result.success) {
+            void opsEventsRecorder.recordEvent({
+              corpId: context.corpId,
+              eventName: 'booking.failed',
+              idempotencyKey: `${context.sessionId}:booking_fail:${jobId}:${interviewTime}`,
+              botImId: context.botImId,
+              managerName: context.botUserId,
+              userId: context.userId,
+              chatId: context.sessionId,
+              payload: {
+                job_id: jobId,
+                interview_time: interviewTime,
+                reason: result.message ?? null,
+              },
+            });
+
             pauseUserHostingAsync(
               userHostingService,
               context.sessionId,
               `[自动暂停] 预约失败，已暂停托管: chatId=${context.sessionId}`,
             );
           } else {
-            const resultRecord = result as unknown as Record<string, unknown>;
-            const bookingId =
-              typeof resultRecord.booking_id === 'string' && resultRecord.booking_id.trim()
-                ? resultRecord.booking_id.trim()
-                : null;
+            const workOrderId = result.workOrderId ?? null;
 
             // Path A: 预约成功 → 将高置信度候选人信息写入长期记忆 Profile。
             // 报名数据是候选人自主填写并经 precheck 校验的，是所有来源中置信度最高的。
@@ -680,28 +699,63 @@ export function buildInterviewBookingTool(
               storeName: resolvedStoreName,
             });
 
-            void recruitmentCaseService
-              .openOnBookingSuccess({
-                corpId: context.corpId,
-                chatId: context.sessionId,
-                userId: context.userId,
-                snapshot: {
-                  bookingId,
-                  bookedAt: new Date().toISOString(),
-                  interviewTime,
-                  jobId,
-                  jobName: resolvedJobName,
-                  brandName: resolvedBrandName,
-                  storeName: resolvedStoreName,
-                  botImId: context.botImId,
-                  metadata: {
-                    tool: 'duliday_interview_booking',
-                  },
-                },
-              })
-              .catch((caseError) => {
-                logger.error('写入 recruitmentCase 失败', caseError);
+            // 预约信息挂候选人画像：latest_booking 极简指针 + booking.succeeded 事件底账。
+            // 不再写 recruitment_cases（已废弃，状态全部实时查海绵）。
+            //
+            // booking.succeeded 幂等键：优先用 workOrderId（跨 Bull 重试稳定）；海绵偶发「成功但
+            // 未返回 workOrderId」（结构漂移）时回退会话级稳定键，确保成功事件 / 花卷仍照常记录，
+            // 不因缺字段把整笔成功预约漏计（KPI undercount）。latest_booking 指针本身依赖 workOrderId，
+            // 仅在可用时写。
+            const bookingSuccessKey =
+              workOrderId != null
+                ? String(workOrderId)
+                : `${context.sessionId}:booking_success:${jobId}:${interviewTime}`;
+
+            if (workOrderId != null) {
+              void longTermService
+                .setLatestBooking(context.corpId, context.userId, workOrderId)
+                .catch((err: unknown) => {
+                  logger.warn(
+                    `[booking] setLatestBooking 失败，不影响主流程: ${err instanceof Error ? err.message : String(err)}`,
+                  );
+                });
+            } else {
+              logger.warn(
+                '[booking] 预约成功但缺少 workOrderId，跳过 latest_booking 指针写入（ops_events / 花卷仍照常记录）',
+              );
+            }
+
+            void opsEventsRecorder.recordEvent({
+              corpId: context.corpId,
+              eventName: 'booking.succeeded',
+              idempotencyKey: bookingSuccessKey,
+              botImId: context.botImId,
+              managerName: context.botUserId,
+              userId: context.userId,
+              chatId: context.sessionId,
+              payload: {
+                work_order_id: workOrderId,
+                candidate_name: name,
+                phone,
+                brand_name: resolvedBrandName,
+                store_name: resolvedStoreName,
+                job_name: resolvedJobName,
+                interview_time: interviewTime,
+              },
+            });
+
+            // 花卷上报 interview_booked（幂等键与 booking.succeeded 对齐；fire-and-forget）。
+            const huajuneAgentId = botGroupResolver.resolveAgentId(context.botImId);
+            if (huajuneAgentId) {
+              huajuneReporter.reportInterviewBooked({
+                agentId: huajuneAgentId,
+                candidateName: name,
+                idempotencyKey: bookingSuccessKey,
+                interviewTime,
+                candidatePhone: phone,
+                job: { jobId, jobName: resolvedJobName ?? undefined },
               });
+            }
           }
 
           const toolResult = result.success
@@ -754,6 +808,24 @@ export function buildInterviewBookingTool(
         } catch (err) {
           logger.error('预约面试失败', err);
           context.bookingSucceeded = false;
+
+          // 幂等键与上面「result.success===false」路径保持一致（去掉 :err 后缀）：
+          // 同一 (session, job, interviewTime) 预约无论走「海绵返回失败」还是「抛异常」，
+          // 都共用同一 key，Bull 重试多次失败只计一次 booking.failed，不重复 +1。
+          void opsEventsRecorder.recordEvent({
+            corpId: context.corpId,
+            eventName: 'booking.failed',
+            idempotencyKey: `${context.sessionId}:booking_fail:${jobId}:${interviewTime}`,
+            botImId: context.botImId,
+            managerName: context.botUserId,
+            userId: context.userId,
+            chatId: context.sessionId,
+            payload: {
+              job_id: jobId,
+              interview_time: interviewTime,
+              reason: err instanceof Error ? err.message : String(err),
+            },
+          });
 
           pauseUserHostingAsync(
             userHostingService,
@@ -909,10 +981,13 @@ async function resolveUploadResumeForBooking(
   if (!uploadResume) return undefined;
   if (!isHttpUrl(uploadResume)) return uploadResume;
 
-  const uploaded = await spongeService.uploadAttachmentFromUrl({
-    fileUrl: uploadResume,
-    fileName: resolveUploadResumeFileName(uploadResume, context),
-  });
+  const uploaded = await spongeService.uploadAttachmentFromUrl(
+    {
+      fileUrl: uploadResume,
+      fileName: resolveUploadResumeFileName(uploadResume, context),
+    },
+    buildSpongeTokenContext(context),
+  );
   return uploaded.cloudStorageKey;
 }
 

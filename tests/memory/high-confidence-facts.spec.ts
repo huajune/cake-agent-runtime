@@ -8,6 +8,8 @@ describe('extractHighConfidenceFacts', () => {
   const brandData = [
     { name: '来伊份', aliases: ['来一份', '来1份'] },
     { name: '肯德基', aliases: ['KFC'] },
+    { name: '瑞幸咖啡', aliases: ['瑞幸', 'luckin'] },
+    { name: '报亭咖啡', aliases: ['报', '报亭'] },
   ];
 
   it('should normalize brand aliases from user messages', () => {
@@ -22,6 +24,39 @@ describe('extractHighConfidenceFacts', () => {
     const result = extractHighConfidenceFacts(['给我来一份工作'], brandData);
 
     expect(result).toBeNull();
+  });
+
+  it('should match a distinctive brand embedded in a sentence (containment)', () => {
+    // 旧的全等匹配会因为 "我要"/"兼职" 未被恰好剥离而漏掉品牌；
+    // 长别称改为子串包含后，品牌嵌在句子里也能命中。
+    const result = extractHighConfidenceFacts(['我要瑞幸咖啡兼职'], brandData);
+
+    expect(unwrapHighConfidenceValue(result?.preferences.brands) ?? []).toContain('瑞幸咖啡');
+  });
+
+  it('should not let short generic aliases false-match common words (报名)', () => {
+    // 报亭咖啡 的短别称 "报" 不可被 "报名" 命中。
+    const result = extractHighConfidenceFacts(['我要报名面试'], brandData);
+
+    expect(unwrapHighConfidenceValue(result?.preferences.brands) ?? []).not.toContain('报亭咖啡');
+  });
+
+  it('should expand a category word (咖啡) to related brands, not a position', () => {
+    // 品类词"咖啡"指的是相关品牌，应展开为咖啡类品牌走品牌召回，而非提取为 position "咖啡师"。
+    const result = extractHighConfidenceFacts(['我要咖啡兼职'], brandData);
+
+    const brands = unwrapHighConfidenceValue(result?.preferences.brands) ?? [];
+    expect(brands).toEqual(expect.arrayContaining(['瑞幸咖啡', '报亭咖啡']));
+    // 规则层绝不能把品类词识别成具体岗位
+    expect(unwrapHighConfidenceValue(result?.preferences.position) ?? []).not.toContain('咖啡师');
+  });
+
+  it('should prefer the specific brand over category expansion when one is named', () => {
+    // 指名"瑞幸咖啡"时只取该品牌，不应再展开成整个咖啡品类。
+    const result = extractHighConfidenceFacts(['我要瑞幸咖啡兼职'], brandData);
+
+    const brands = unwrapHighConfidenceValue(result?.preferences.brands) ?? [];
+    expect(brands).toEqual(['瑞幸咖啡']);
   });
 
   it('should not match conjunction chars as brand alias', () => {

@@ -85,14 +85,17 @@ describe('buildSendStoreLocationTool', () => {
 
     expect(result.success).toBe(true);
     expect(result._fixedReply).toBe('门店位置我发你了，你点开就能看导航。');
-    expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith({
-      jobIdList: [100],
-      pageNum: 1,
-      pageSize: 1,
-      options: {
-        includeBasicInfo: true,
+    expect(mockSpongeService.fetchJobs).toHaveBeenCalledWith(
+      {
+        jobIdList: [100],
+        pageNum: 1,
+        pageSize: 1,
+        options: {
+          includeBasicInfo: true,
+        },
       },
-    });
+      expect.objectContaining({ botImId: 'bot-im-1' }),
+    );
     expect(mockMessageSenderService.sendMessage).toHaveBeenCalledWith({
       token: 'token-1',
       imBotId: 'bot-im-1',
@@ -124,6 +127,7 @@ describe('buildSendStoreLocationTool', () => {
       expect.objectContaining({
         jobIdList: [100],
       }),
+      expect.objectContaining({ botImId: 'bot-im-1' }),
     );
   });
 
@@ -147,8 +151,7 @@ describe('buildSendStoreLocationTool', () => {
         makeJob({
           storeInfo: {
             storeName: '上海置汇旭辉店',
-            storeAddress:
-              '上海市-浦东新区-张杨路2389弄1-2号LCM置汇旭辉广场B1层48-50号成都你六姐',
+            storeAddress: '上海市-浦东新区-张杨路2389弄1-2号LCM置汇旭辉广场B1层48-50号成都你六姐',
             latitude: 31.2421,
             longitude: 121.5557,
           },

@@ -11,13 +11,24 @@ describe('ConversationRiskNotifierService', () => {
     buildConversationRiskCard: jest.fn(),
   } as unknown as jest.Mocked<ConversationRiskCardRenderer>;
 
+  // 复刻原硬编码行为：resolveFeishuReceiver = botImId ? BOT_TO_RECEIVER[botImId] : undefined。
+  const mockHostingMemberConfig = {
+    resolveFeishuReceiver: jest.fn(async (botImId?: string) =>
+      botImId ? BOT_TO_RECEIVER[botImId] : undefined,
+    ),
+  };
+
   let service: ConversationRiskNotifierService;
 
   beforeEach(() => {
     jest.clearAllMocks();
     mockPrivateChatChannel.send.mockResolvedValue(true);
     mockRenderer.buildConversationRiskCard.mockReturnValue({ kind: 'risk-card' });
-    service = new ConversationRiskNotifierService(mockPrivateChatChannel as never, mockRenderer);
+    service = new ConversationRiskNotifierService(
+      mockPrivateChatChannel as never,
+      mockRenderer,
+      mockHostingMemberConfig as never,
+    );
   });
 
   it('should mention mapped owner when bot id is known', async () => {

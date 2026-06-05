@@ -11,6 +11,12 @@ describe('PrivateChatMonitorNotifierService', () => {
     buildInterviewBookingCard: jest.fn(),
   } as unknown as jest.Mocked<BookingCardRenderer>;
 
+  const mockHostingMemberConfig = {
+    resolveFeishuReceiver: jest.fn(async (botImId?: string) =>
+      botImId ? BOT_TO_RECEIVER[botImId] : undefined,
+    ),
+  };
+
   let service: PrivateChatMonitorNotifierService;
 
   beforeEach(() => {
@@ -20,7 +26,11 @@ describe('PrivateChatMonitorNotifierService', () => {
       isFailure: false,
       card: { kind: 'booking-card' },
     });
-    service = new PrivateChatMonitorNotifierService(mockPrivateChatChannel as never, mockRenderer);
+    service = new PrivateChatMonitorNotifierService(
+      mockPrivateChatChannel as never,
+      mockRenderer,
+      mockHostingMemberConfig as never,
+    );
   });
 
   it('should mention mapped owner when bot id is known', async () => {

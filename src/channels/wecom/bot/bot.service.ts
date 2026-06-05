@@ -50,11 +50,54 @@ interface GroupBotsResponse {
 export class BotService {
   private readonly logger = new Logger(BotService.name);
 
+  // imBotId(系统 wxid) → 所属企业 corpId 缓存（托管账号列表是小而稳的数据，30min 刷新）。
+  private corpIdByWxid = new Map<string, string>();
+  private corpMapExpireAt = 0;
+  private readonly CORP_MAP_TTL_MS = 30 * 60 * 1000;
+
   constructor(
     private readonly httpService: HttpService,
     private readonly apiConfig: ApiConfigService,
     private readonly configService: ConfigService,
   ) {}
+
+  /**
+   * imBotId（托管账号系统 wxid）→ 所属企业 corpId。
+   * 从企业托管账号列表（getConfiguredBotList）解析并缓存；缺 imBotId / 查不到返回 null。
+   */
+  async resolveCorpIdByImBotId(imBotId?: string | null): Promise<string | null> {
+    const wxid = imBotId?.trim();
+    if (!wxid) return null;
+    await this.ensureCorpMap();
+    return this.corpIdByWxid.get(wxid) ?? null;
+  }
+
+  /** 构建/刷新 wxid→corpId 缓存；失败时保留旧缓存（不抛）。 */
+  private async ensureCorpMap(): Promise<void> {
+    if (this.corpMapExpireAt > Date.now() && this.corpIdByWxid.size > 0) {
+      return;
+    }
+
+    try {
+      const bots = await this.getConfiguredBotList();
+      const map = new Map<string, string>();
+      for (const bot of bots) {
+        const wxid = bot.wxid?.trim();
+        const corpId = bot.corpId?.trim();
+        if (wxid && corpId) {
+          map.set(wxid, corpId);
+        }
+      }
+      if (map.size > 0) {
+        this.corpIdByWxid = map;
+        this.corpMapExpireAt = Date.now() + this.CORP_MAP_TTL_MS;
+      }
+    } catch (error) {
+      this.logger.warn(
+        `构建 bot→corp 映射失败，沿用旧缓存: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
 
   /**
    * 获取托管账号列表

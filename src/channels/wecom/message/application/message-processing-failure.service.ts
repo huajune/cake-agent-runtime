@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { AlertLevel } from '@infra/feishu/interfaces/interface';
-import { BOT_TO_RECEIVER } from '@infra/feishu/constants/receivers';
+import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { maskApiKey } from '@infra/utils/string.util';
 import { ScenarioType } from '@enums/agent.enum';
 import { MessageDeduplicationService } from '../runtime/deduplication.service';
@@ -38,6 +38,7 @@ export class MessageProcessingFailureService {
     private readonly monitoringService: MessageTrackingService,
     private readonly alertService: AlertNotifierService,
     private readonly wecomObservability: WecomMessageObservabilityService,
+    private readonly hostingMemberConfig: HostingMemberConfigService,
   ) {}
 
   inferErrorType(error: unknown, defaultErrorType: 'message' | 'merge'): AlertErrorType {
@@ -95,7 +96,7 @@ export class MessageProcessingFailureService {
     const diagnosticPayload: Record<string, unknown> = {};
     if (maskedApiKey) diagnosticPayload.apiKey = maskedApiKey;
 
-    const errorReceiver = imBotId ? BOT_TO_RECEIVER[imBotId] : undefined;
+    const errorReceiver = await this.hostingMemberConfig.resolveFeishuReceiver(imBotId);
 
     if (!deliveryError) {
       this.alertService
@@ -272,7 +273,7 @@ export class MessageProcessingFailureService {
     }
   }
 
-  sendFallbackAlert(params: {
+  async sendFallbackAlert(params: {
     contactName: string;
     botUserName?: string;
     userMessage: string;
@@ -281,7 +282,7 @@ export class MessageProcessingFailureService {
     scenario: ScenarioType;
     chatId: string;
     imBotId?: string;
-  }): void {
+  }): Promise<void> {
     const {
       contactName,
       botUserName,
@@ -295,7 +296,7 @@ export class MessageProcessingFailureService {
 
     this.logger.warn(`[${contactName}] Agent 降级响应，原因: ${fallbackReason}，需要人工介入`);
 
-    const receiver = imBotId ? BOT_TO_RECEIVER[imBotId] : undefined;
+    const receiver = await this.hostingMemberConfig.resolveFeishuReceiver(imBotId);
 
     this.alertService
       .sendAlert({

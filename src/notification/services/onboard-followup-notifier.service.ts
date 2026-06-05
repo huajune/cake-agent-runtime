@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { BOT_TO_RECEIVER } from '@infra/feishu/constants/receivers';
+import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { FeishuPrivateChatChannel } from '../channels/feishu-private-chat.channel';
 import { OnboardFollowupCardRenderer } from '../renderers/onboard-followup-card.renderer';
 import { OnboardFollowupNotificationPayload } from '../types/onboard-followup-notification.types';
@@ -11,10 +11,11 @@ export class OnboardFollowupNotifierService {
   constructor(
     private readonly privateChatChannel: FeishuPrivateChatChannel,
     private readonly cardRenderer: OnboardFollowupCardRenderer,
+    private readonly hostingMemberConfig: HostingMemberConfigService,
   ) {}
 
   async notify(payload: OnboardFollowupNotificationPayload): Promise<boolean> {
-    const receiver = payload.botImId ? BOT_TO_RECEIVER[payload.botImId] : undefined;
+    const receiver = await this.hostingMemberConfig.resolveFeishuReceiver(payload.botImId);
     const card = this.cardRenderer.buildCard({
       ...payload,
       ...(receiver ? { atUsers: [receiver] } : { atAll: true }),

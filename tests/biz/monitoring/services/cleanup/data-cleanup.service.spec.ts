@@ -118,8 +118,8 @@ describe('DataCleanupService', () => {
       expect(messageProcessingService.nullAgentInvocations).toHaveBeenCalledWith(7);
       // 2. DELETE chat_messages (>60 天)
       expect(chatSessionService.cleanupChatMessages).toHaveBeenCalledWith(60);
-      // 3. DELETE message_processing_records (>14 天)
-      expect(messageProcessingService.cleanupRecords).toHaveBeenCalledWith(14);
+      // 3. DELETE message_processing_records (>30 天，默认 DATA_CLEANUP_PROCESSING_DAYS)
+      expect(messageProcessingService.cleanupRecords).toHaveBeenCalledWith(30);
       // 4. DELETE monitoring_error_logs (>30 天)
       expect(mockErrorLogRepository.cleanupErrorLogs).toHaveBeenCalledWith(30);
       // 5. DELETE user_activity (>365 天)

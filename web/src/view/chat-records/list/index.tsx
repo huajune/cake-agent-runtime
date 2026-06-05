@@ -10,6 +10,7 @@ import {
   Legend,
   Filler,
 } from 'chart.js';
+import type { ChartData } from 'chart.js';
 import {
   useChatSessionsOptimized,
   useChatSessionMessages,
@@ -144,8 +145,8 @@ export default function ChatRecords() {
     };
   }, [dailyStats]);
 
-  // 基于数据库聚合结果计算趋势图数据
-  const dailyTrendData = useMemo(() => {
+  // 基于数据库聚合结果计算趋势图数据（会话数 / 消息数 拆成两张图）
+  const trendCharts = useMemo(() => {
     if (dailyStats.length === 0) return null;
 
     // 格式化日期为 "月/日" 格式
@@ -159,32 +160,36 @@ export default function ChatRecords() {
       };
     });
 
+    const labels = formattedData.map((d) => d.date);
+    const baseDataset = { fill: true, tension: 0.4, pointRadius: 4, pointHoverRadius: 6 };
+
     return {
-      labels: formattedData.map((d) => d.date),
-      datasets: [
-        {
-          label: '消息数',
-          data: formattedData.map((d) => d.messages),
-          borderColor: THEME_COLORS.primary,
-          backgroundColor: THEME_COLORS.primary10,
-          fill: true,
-          tension: 0.4,
-          pointRadius: 4,
-          pointHoverRadius: 6,
-          pointBackgroundColor: THEME_COLORS.primary,
-        },
-        {
-          label: '会话数',
-          data: formattedData.map((d) => d.sessions),
-          borderColor: '#10b981',
-          backgroundColor: 'rgba(16, 185, 129, 0.1)',
-          fill: true,
-          tension: 0.4,
-          pointRadius: 4,
-          pointHoverRadius: 6,
-          pointBackgroundColor: '#10b981',
-        },
-      ],
+      sessions: {
+        labels,
+        datasets: [
+          {
+            label: '会话数',
+            data: formattedData.map((d) => d.sessions),
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            pointBackgroundColor: '#10b981',
+            ...baseDataset,
+          },
+        ],
+      } as ChartData<'line'>,
+      messages: {
+        labels,
+        datasets: [
+          {
+            label: '消息数',
+            data: formattedData.map((d) => d.messages),
+            borderColor: THEME_COLORS.primary,
+            backgroundColor: THEME_COLORS.primary10,
+            pointBackgroundColor: THEME_COLORS.primary,
+            ...baseDataset,
+          },
+        ],
+      } as ChartData<'line'>,
     };
   }, [dailyStats]);
 
@@ -244,14 +249,15 @@ export default function ChatRecords() {
         onToggleAnalytics={() => setShowAnalytics(!showAnalytics)}
       />
 
-      {/* 可展开的数据分析面板 */}
+      {/* 可展开的数据分析面板（顶部「消息趋势」按钮控制，默认折叠） */}
       <AnalyticsPanel
         show={showAnalytics}
         monthOptions={ANALYTICS_MONTH_OPTIONS}
         monthIndex={analyticsMonthIndex}
         onMonthChange={setAnalyticsMonthIndex}
         stats={analyticsStats}
-        chartData={dailyTrendData}
+        sessionsChartData={trendCharts?.sessions ?? null}
+        messagesChartData={trendCharts?.messages ?? null}
         chartOptions={chartOptions}
         isLoading={analyticsLoading}
       />

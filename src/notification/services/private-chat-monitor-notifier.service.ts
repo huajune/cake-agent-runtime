@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { BOT_TO_RECEIVER } from '@infra/feishu/constants/receivers';
+import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 import { FeishuPrivateChatChannel } from '../channels/feishu-private-chat.channel';
 import {
   BookingCardRenderer,
@@ -18,12 +18,13 @@ export class PrivateChatMonitorNotifierService {
   constructor(
     private readonly privateChatChannel: FeishuPrivateChatChannel,
     private readonly bookingCardRenderer: BookingCardRenderer,
+    private readonly hostingMemberConfig: HostingMemberConfigService,
   ) {}
 
   async notifyInterviewBookingResult(
     bookingInfo: InterviewBookingNotificationInfo,
   ): Promise<boolean> {
-    const receiver = bookingInfo.botImId ? BOT_TO_RECEIVER[bookingInfo.botImId] : undefined;
+    const receiver = await this.hostingMemberConfig.resolveFeishuReceiver(bookingInfo.botImId);
     const { isFailure, card } = this.bookingCardRenderer.buildInterviewBookingCard({
       ...bookingInfo,
       ...(receiver ? { atUsers: [receiver] } : { atAll: true }),

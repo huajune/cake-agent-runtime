@@ -51,6 +51,7 @@ export class MessageParser {
       botWxid: messageData.imBotId, // 兼容字段
       botId: messageData.botId,
       orgId: messageData.orgId,
+      groupId: messageData.groupId,
       managerName: messageData.botUserId, // 企微回调中的 botUserId 即招募经理昵称
       isSelf: messageData.isSelf,
       timestamp: parseInt(messageData.timestamp),
