@@ -40,9 +40,7 @@ import { MessageSenderService } from '@channels/wecom/message-sender/message-sen
 import { SessionService } from '@memory/services/session.service';
 import { LongTermService } from '@memory/services/long-term.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
-import { BotGroupResolverService } from '@biz/ops-events/bot-group-resolver.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
-import { HuajuneReporterService } from '@biz/huajune/huajune-reporter.service';
 
 /**
  * 统一工具注册表
@@ -84,8 +82,6 @@ export class ToolRegistryService {
     longTermService: LongTermService,
     opsEventsRecorder: OpsEventsRecorderService,
     handoffRecorder: HandoffRecorderService,
-    botGroupResolver: BotGroupResolverService,
-    huajuneReporter: HuajuneReporterService,
   ) {
     const memberLimit = parseInt(configService.get('GROUP_MEMBER_LIMIT', '200'), 10);
     const enterpriseToken = configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim();
@@ -122,8 +118,6 @@ export class ToolRegistryService {
           bookingService,
           longTermService,
           opsEventsRecorder,
-          botGroupResolver,
-          huajuneReporter,
         ),
       }),
 

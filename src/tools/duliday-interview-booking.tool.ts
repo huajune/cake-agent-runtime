@@ -27,8 +27,6 @@ import { BookingService } from '@biz/message/services/booking.service';
 import { PrivateChatMonitorNotifierService } from '@notification/services/private-chat-monitor-notifier.service';
 import { LongTermService } from '@memory/services/long-term.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
-import { BotGroupResolverService } from '@biz/ops-events/bot-group-resolver.service';
-import { HuajuneReporterService } from '@biz/huajune/huajune-reporter.service';
 import { ToolBuildContext, ToolBuilder } from '@shared-types/tool.types';
 import { API_BOOKING_REQUIRED_PAYLOAD_FIELDS } from '@tools/duliday/booking/job-booking.contract';
 import { buildCustomerLabelList } from '@tools/duliday/booking/interview-booking-customer-label.builder';
@@ -217,8 +215,6 @@ export function buildInterviewBookingTool(
   bookingService: BookingService,
   longTermService: LongTermService,
   opsEventsRecorder: OpsEventsRecorderService,
-  botGroupResolver: BotGroupResolverService,
-  huajuneReporter: HuajuneReporterService,
 ): ToolBuilder {
   return (context) => {
     const spongeTokenContext = buildSpongeTokenContext(context);
@@ -703,7 +699,7 @@ export function buildInterviewBookingTool(
             // 不再写 recruitment_cases（已废弃，状态全部实时查海绵）。
             //
             // booking.succeeded 幂等键：优先用 workOrderId（跨 Bull 重试稳定）；海绵偶发「成功但
-            // 未返回 workOrderId」（结构漂移）时回退会话级稳定键，确保成功事件 / 花卷仍照常记录，
+            // 未返回 workOrderId」（结构漂移）时回退会话级稳定键，确保成功事件仍照常记录，
             // 不因缺字段把整笔成功预约漏计（KPI undercount）。latest_booking 指针本身依赖 workOrderId，
             // 仅在可用时写。
             const bookingSuccessKey =
@@ -721,7 +717,7 @@ export function buildInterviewBookingTool(
                 });
             } else {
               logger.warn(
-                '[booking] 预约成功但缺少 workOrderId，跳过 latest_booking 指针写入（ops_events / 花卷仍照常记录）',
+                '[booking] 预约成功但缺少 workOrderId，跳过 latest_booking 指针写入（ops_events 仍照常记录）',
               );
             }
 
@@ -743,19 +739,6 @@ export function buildInterviewBookingTool(
                 interview_time: interviewTime,
               },
             });
-
-            // 花卷上报 interview_booked（幂等键与 booking.succeeded 对齐；fire-and-forget）。
-            const huajuneAgentId = botGroupResolver.resolveAgentId(context.botImId);
-            if (huajuneAgentId) {
-              huajuneReporter.reportInterviewBooked({
-                agentId: huajuneAgentId,
-                candidateName: name,
-                idempotencyKey: bookingSuccessKey,
-                interviewTime,
-                candidatePhone: phone,
-                job: { jobId, jobName: resolvedJobName ?? undefined },
-              });
-            }
           }
 
           const toolResult = result.success

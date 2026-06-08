@@ -19,8 +19,6 @@ import { PreAgentRiskInterceptService } from './pre-agent-risk-intercept.service
 import { ReplyFactGuardService } from './reply-fact-guard.service';
 import { ImageDescriptionService } from './image-description.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
-import { BotGroupResolverService } from '@biz/ops-events/bot-group-resolver.service';
-import { HuajuneReporterService } from '@biz/huajune/huajune-reporter.service';
 import type { AgentThinkingConfig } from '@agent/agent-run.types';
 
 /**
@@ -83,8 +81,6 @@ export class ReplyWorkflowService {
     private readonly simpleMergeService: SimpleMergeService,
     private readonly imageDescription: ImageDescriptionService,
     private readonly opsEventsRecorder: OpsEventsRecorderService,
-    private readonly botGroupResolver: BotGroupResolverService,
-    private readonly huajuneReporter: HuajuneReporterService,
   ) {}
 
   async processSingleMessage(messageData: EnterpriseMessageCallbackDto): Promise<void> {
@@ -408,9 +404,9 @@ export class ReplyWorkflowService {
       true,
     );
 
-    // Agent 回复成功投递 → agent.replied + 花卷 message_sent（仅个人单聊；fire-and-forget）。
+    // Agent 回复成功投递 → agent.replied（仅个人单聊；fire-and-forget）。
     // 已过 skip_reply/handoff 短路早返回，到这里一定是真实对外回复。
-    this.recordAgentReplied(params.primaryMessage, parsed, traceId, agentResult.reply.content);
+    this.recordAgentReplied(params.primaryMessage, parsed, traceId);
 
     const successMetadata = await this.buildSuccessMetadata(
       traceId,
@@ -691,8 +687,8 @@ export class ReplyWorkflowService {
 
   /**
    * 记录 Agent 对外回复事件（仅个人单聊）。本会话**首条**对外回复 = 开场白：
-   * - 开场白：agent.opening_sent（每会话一次，投影 agent_opening_sent_count）+ 花卷 candidate_contacted
-   * - 普通回复：agent.replied（投影 agent_reply_count）+ 花卷 message_sent（content 必填）
+   * - 开场白：agent.opening_sent（每会话一次，投影 agent_opening_sent_count）
+   * - 普通回复：agent.replied（投影 agent_reply_count）
    *
    * 线上未配平台 SOP，开场白就是 Agent 回候选人首条消息（多为微信加好友握手语「我是xx」）。
    * 用「首条」判定开场白：以 `chatId:opening` 幂等插入的返回值为准——首次插入成功即开场白，
@@ -703,16 +699,12 @@ export class ReplyWorkflowService {
     primaryMessage: EnterpriseMessageCallbackDto,
     parsed: ReturnType<typeof MessageParser.parse>,
     traceId: string,
-    replyContent: string,
   ): void {
     if (primaryMessage.imRoomId) return; // 群聊不计入候选人漏斗
     const botImId = primaryMessage.imBotId;
     const corpId = this.resolveCorpId(primaryMessage);
     const userId = this.resolveAgentUserId(primaryMessage, parsed);
     const chatId = parsed.chatId;
-    const agentId = this.botGroupResolver.resolveAgentId(botImId);
-    const candidateName = primaryMessage.contactName || parsed.contactName;
-    const content = replyContent?.trim();
 
     void (async () => {
       try {
@@ -728,7 +720,7 @@ export class ReplyWorkflowService {
         });
 
         // 写入失败（DB 不可用 / 熔断 OPEN / RPC 异常）时，无法判定本条是否开场白：
-        // 不能据此误记为 agent.replied（否则开场白行永远缺失、candidate_contacted 漏报且不可恢复）。
+        // 不能据此误记为 agent.replied（否则开场白行永远缺失且不可恢复）。
         // 跳过本轮分类——开场白行未写入，后续回复会再次尝试插入并正确判定。
         if (openingResult === 'failed') {
           this.logger.warn(
@@ -739,14 +731,7 @@ export class ReplyWorkflowService {
 
         const isOpening = openingResult === 'inserted';
         if (isOpening) {
-          // 开场白：花卷只报 candidate_contacted（主动触达），不报 message_sent
-          if (agentId && candidateName) {
-            this.huajuneReporter.reportCandidateContacted({
-              agentId,
-              candidateName,
-              idempotencyKey: `${chatId}:first_contact`,
-            });
-          }
+          // 开场白已记录（agent.opening_sent），本轮无需再记 agent.replied
           return;
         }
 
@@ -760,14 +745,6 @@ export class ReplyWorkflowService {
           userId,
           chatId,
         });
-        if (agentId && candidateName && content) {
-          this.huajuneReporter.reportMessageSent({
-            agentId,
-            candidateName,
-            idempotencyKey: `${traceId}:replied`,
-            content,
-          });
-        }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         this.logger.warn(`[漏斗] agent 回复事件记录失败 [${traceId}]: ${errorMessage}`);

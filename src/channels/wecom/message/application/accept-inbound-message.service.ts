@@ -18,8 +18,6 @@ import { FilterReason } from '@enums/message-filter.enum';
 import { LongTermService } from '@memory/services/long-term.service';
 import type { MessageMetadata } from '@memory/types/long-term.types';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
-import { BotGroupResolverService } from '@biz/ops-events/bot-group-resolver.service';
-import { HuajuneReporterService } from '@biz/huajune/huajune-reporter.service';
 
 /** source_channel 暂不可用，统一写 'unknown'（上游接入后再带真实渠道）。 */
 const UNKNOWN_SOURCE_CHANNEL = 'unknown';
@@ -47,8 +45,6 @@ export class AcceptInboundMessageService {
     private readonly llm: LlmExecutorService,
     private readonly longTerm: LongTermService,
     private readonly opsEventsRecorder: OpsEventsRecorderService,
-    private readonly botGroupResolver: BotGroupResolverService,
-    private readonly huajuneReporter: HuajuneReporterService,
   ) {}
 
   async execute(messageData: EnterpriseMessageCallbackDto): Promise<AcceptInboundMessageResult> {
@@ -81,7 +77,7 @@ export class AcceptInboundMessageService {
     }
 
     // 候选人入站事件（非 self、过滤通过、非重复、非群聊）：friend.added（首次插入时开户长期记忆）
-    // + candidate.message_received + 原子检测首条破冰（candidate.engaged）+ 花卷 message_received。
+    // + candidate.message_received + 原子检测首条破冰（candidate.engaged）。
     // 微信「加好友纯默认招呼语」不计候选人消息/破冰。全部 fire-and-forget。
     this.recordInboundCandidateEvents(messageData, filterResult.content);
 
@@ -213,7 +209,6 @@ export class AcceptInboundMessageService {
    *   顺带开户长期记忆元数据。
    * - **candidate.message_received + 破冰(candidate.engaged)**：排除「加好友纯默认招呼语」
    *   （见 isPureFriendAddGreeting）——这些不算候选人真实开口；带求职意图的「我是找工作的」仍计入。
-   * - **花卷 message_received**：与 candidate.message_received 同条件。
    *
    * 仅在 execute() 里「非 self + 过滤通过 + 非重复」路径调用。全部 fire-and-forget，失败不影响主流程。
    */
@@ -256,15 +251,6 @@ export class AcceptInboundMessageService {
         if (result.engaged) {
           await this.recordFriendAddedOnFirstContact(messageData, corpId, botImId, userId);
           await this.ensureLongTermProfile(messageData, corpId, userId);
-        }
-
-        const agentId = this.botGroupResolver.resolveAgentId(botImId);
-        if (agentId && messageData.contactName) {
-          this.huajuneReporter.reportMessageReceived({
-            agentId,
-            candidateName: messageData.contactName,
-            idempotencyKey: messageData.messageId,
-          });
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);

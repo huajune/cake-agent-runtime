@@ -53,13 +53,6 @@ describe('ReplyWorkflowService', () => {
     recordEvent: jest.fn(),
     recordEventDetailed: jest.fn(),
   };
-  const botGroupResolver = {
-    resolveAgentId: jest.fn(),
-  };
-  const huajuneReporter = {
-    reportCandidateContacted: jest.fn(),
-    reportMessageSent: jest.fn(),
-  };
 
   let service: ReplyWorkflowService;
 
@@ -132,7 +125,6 @@ describe('ReplyWorkflowService', () => {
     const replyFactGuard = { check: jest.fn().mockReturnValue({ hit: false, contradictions: [] }) };
     opsEventsRecorder.recordEvent.mockResolvedValue(true);
     opsEventsRecorder.recordEventDetailed.mockResolvedValue('inserted');
-    botGroupResolver.resolveAgentId.mockReturnValue(null);
 
     service = new ReplyWorkflowService(
       deduplicationService as never,
@@ -147,8 +139,6 @@ describe('ReplyWorkflowService', () => {
       simpleMergeService as never,
       imageDescription as never,
       opsEventsRecorder as never,
-      botGroupResolver as never,
-      huajuneReporter as never,
     );
   });
 
@@ -199,36 +189,6 @@ describe('ReplyWorkflowService', () => {
     );
     expect(monitoringService.recordSuccess).toHaveBeenCalledWith('msg-1', { ok: true });
     expect(deduplicationService.markMessageAsProcessedAsync).toHaveBeenCalledWith('msg-1');
-  });
-
-  it('reports the first outbound reply to Huajune as candidate_contacted', async () => {
-    botGroupResolver.resolveAgentId.mockReturnValueOnce('gaoyaqi-cake-1');
-
-    await service.processSingleMessage(createMessage());
-    await flushMicrotasks();
-
-    expect(huajuneReporter.reportCandidateContacted).toHaveBeenCalledWith({
-      agentId: 'gaoyaqi-cake-1',
-      candidateName: '张三',
-      idempotencyKey: 'chat-1:first_contact',
-    });
-    expect(huajuneReporter.reportMessageSent).not.toHaveBeenCalled();
-  });
-
-  it('reports later outbound replies to Huajune as message_sent', async () => {
-    opsEventsRecorder.recordEventDetailed.mockResolvedValueOnce('duplicate');
-    botGroupResolver.resolveAgentId.mockReturnValueOnce('gaoyaqi-cake-1');
-
-    await service.processSingleMessage(createMessage());
-    await flushMicrotasks();
-
-    expect(huajuneReporter.reportMessageSent).toHaveBeenCalledWith({
-      agentId: 'gaoyaqi-cake-1',
-      candidateName: '张三',
-      idempotencyKey: 'msg-1:replied',
-      content: '我来帮你看一下',
-    });
-    expect(huajuneReporter.reportCandidateContacted).not.toHaveBeenCalled();
   });
 
   it('should persist empty Agent telemetry before delegating failure handling', async () => {
@@ -691,11 +651,6 @@ describe('ReplyWorkflowService', () => {
     );
   });
 });
-
-/** 刷新 fire-and-forget 异步事件记录的微任务队列，便于断言。 */
-function flushMicrotasks(): Promise<void> {
-  return new Promise((resolve) => setImmediate(resolve));
-}
 
 function createMessage(
   overrides: Partial<EnterpriseMessageCallbackDto> = {},

@@ -42,12 +42,6 @@ describe('resume booking flow', () => {
   const mockOpsEventsRecorder = {
     recordEvent: jest.fn().mockResolvedValue(undefined),
   };
-  const mockBotGroupResolver = {
-    resolveAgentId: jest.fn().mockReturnValue(null),
-  };
-  const mockHuajuneReporter = {
-    reportInterviewBooked: jest.fn(),
-  };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -265,8 +259,6 @@ describe('resume booking flow', () => {
       mockBookingService as never,
       mockLongTermService as never,
       mockOpsEventsRecorder as never,
-      mockBotGroupResolver as never,
-      mockHuajuneReporter as never,
     )(context);
 
     return builtTool.execute(input as never, {
