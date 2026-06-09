@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.13.0] - 2026-06-09
 
-**预计版本**: `v5.13.0`
-**最近更新**: `2026-06-09`
 **来源分支**: `develop`
-**累计 PR**: 1
 
 ### 更新摘要
 - PR #265 取消运营事件上报到花卷，保留模块待用
@@ -66,7 +62,6 @@
 - PR #265 pre-commit lint / format hook
 - PR #265 pre-push `pnpm run ci:check`
 - PR #265 关键链路已人工验证
-<!-- release:pending:end -->
 
 ## [5.12.0] - 2026-06-05
 
