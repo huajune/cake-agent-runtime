@@ -180,9 +180,19 @@ function makeJob(jobId: number) {
       figure: '不限',
     },
     workTime: {
-      dailyShiftSchedule: {
-        arrangementType: '固定排班制',
-        fixedScheduleList: [{ fixedShiftStartTime: '18:00', fixedShiftEndTime: '22:00' }],
+      employmentForm: '长期用工',
+      weekAndMonthWorkTime: {
+        arrangementCycleType: '每周',
+        weekMonthArrangementMode: '做几休几',
+        perWeekWorkDays: 6,
+        perWeekRestDays: 1,
+      },
+      dayWorkTime: {
+        arrangementType: '满足其中一个时段即可安排上岗',
+        combinedArrangement: [
+          { combinedArrangementStartTime: '18:00', combinedArrangementEndTime: '22:00' },
+        ],
+        fixedTime: null,
       },
     },
   };

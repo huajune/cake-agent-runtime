@@ -5,6 +5,40 @@
   padding: $spacing-md;
 }
 
+// 刷新/加载指示：固定在视口顶部、贯穿整页宽度的滑动进度条（不占布局、不挤动内容）。
+.refreshBar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  height: 4px;
+  overflow: hidden;
+  background: rgba($primary, 0.16);
+  pointer-events: none;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 42%;
+    background: linear-gradient(90deg, transparent, $primary 38%, $accent 70%, transparent);
+    box-shadow: 0 0 14px 1px rgba($accent, 0.55);
+    animation: dashboardRefreshSlide 0.95s ease-in-out infinite;
+  }
+}
+
+@keyframes dashboardRefreshSlide {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(390%);
+  }
+}
+
 // 圣诞装饰
 .christmasSticker {
   position: absolute;

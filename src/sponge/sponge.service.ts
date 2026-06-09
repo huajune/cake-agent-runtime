@@ -15,6 +15,7 @@ import {
   BIOrderQueryParams,
   BIOrder,
   JobListApiResponseSchema,
+  SelfSignupWorkOrdersParams,
   SignupWorkOrdersParams,
   SignupWorkOrdersResult,
   SignupWorkOrderItem,
@@ -22,6 +23,12 @@ import {
   UploadAttachmentApiResponseSchema,
   UploadAttachmentFromUrlParams,
   UploadAttachmentResult,
+  CancelWorkOrderParams,
+  ModifyInterviewTimeParams,
+  WorkOrderMutationResult,
+  WorkOrderMutationApiResponseSchema,
+  FailureReasonItem,
+  FailureReasonsByPidsApiResponseSchema,
 } from './sponge.types';
 import { SpongeBiService } from './sponge-bi.service';
 import { RedisService } from '@infra/redis/redis.service';
@@ -36,11 +43,9 @@ import {
   SpongeTokenValue,
 } from './sponge-token.config';
 
-const JOB_LIST_API = 'https://k8s.duliday.com/persistence/ai/api/job/list';
-const BRAND_LIST_API = 'https://k8s.duliday.com/persistence/ai/api/brand/list';
+// 报名/上传仍走旧的 supplier 域（a/supplier/*，非 海绵2.0 ai接口，未随网关迁移）。
 const INTERVIEW_BOOKING_API = 'https://k8s.duliday.com/persistence/a/supplier/entryUser';
 const UPLOAD_ATTACHMENT_API = 'https://k8s.duliday.com/persistence/a/supplier/uploadAttachment';
-const INTERVIEW_SCHEDULE_API = 'https://k8s.duliday.com/persistence/ai/api/interview/schedule';
 
 /** 海绵网关默认 base url（可被 SPONGE_API_BASE_URL 覆盖）。 */
 const DEFAULT_SPONGE_API_BASE_URL = 'https://gateway.duliday.com/sponge';
@@ -50,10 +55,27 @@ const DEFAULT_PAGE_SIZE = 20;
 const DEFAULT_SORT = 'desc';
 const DEFAULT_SORT_FIELD = 'create_time';
 const BRAND_LIST_CACHE_TTL_MS = 30 * 60 * 1000;
+const FAILURE_REASONS_CACHE_TTL_MS = 30 * 60 * 1000;
+const FAILURE_REASONS_CACHE_MAX_ENTRIES = 50;
 /** Agent 上下文按 workOrderId 查工单的 Redis 缓存 TTL（秒）。 */
 const WORKORDER_CACHE_TTL_SECONDS = 5 * 60;
 const MAX_ATTACHMENT_UPLOAD_BYTES = 20 * 1024 * 1024;
-const TOKEN_CONFIG_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const TOKEN_CONFIG_CACHE_TTL_MS = 5 * 60 * 1000;
+const SYNC_BOT_PREFIX = 'prod-sync:';
+
+/**
+ * 海绵网关在每个响应头里下发的链路追踪 ID。
+ *
+ * 预约失败时（如"麻麻呀，服务器暂时跑丢了～"这类网关兜底报错），后端需要凭
+ * traceId 去查海绵侧日志定位。实测 k8s.duliday.com 网关固定下发 `Traceid` 头
+ * （Headers.get 大小写不敏感）；无论成功/失败/坏请求都会带。
+ */
+const SPONGE_TRACE_HEADER_NAME = 'traceid';
+
+/** 从响应头里提取海绵链路 traceId，取不到返回 null。 */
+function extractSpongeTraceId(headers: Headers): string | null {
+  return headers.get(SPONGE_TRACE_HEADER_NAME)?.trim() || null;
+}
 
 /**
  * 海绵数据服务 — 杜力岱业务数据 HTTP 客户端
@@ -66,11 +88,23 @@ const TOKEN_CONFIG_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export class SpongeService {
   private readonly logger = new Logger(SpongeService.name);
   private readonly fallbackToken: string;
+  private readonly jobListApi: string;
+  private readonly brandListApi: string;
+  private readonly interviewScheduleApi: string;
   private readonly signupListApi: string;
+  private readonly selfSignupListApi: string;
+  private readonly cancelWorkOrderApi: string;
+  private readonly modifyInterviewTimeApi: string;
+  private readonly failureReasonsApi: string;
   private tokenConfigCache: { value: SpongeTokenConfig | null; expiresAt: number } | null = null;
   private tokenConfigLoadPromise: Promise<SpongeTokenConfig | null> | null = null;
   private brandListCache: { data: BrandItem[]; fetchedAt: number } | null = null;
   private brandListFetchPromise: Promise<BrandItem[]> | null = null;
+  /** 失败原因字典缓存（key=排序后的 pidList），字典稳定，缓存避免每次取消都打接口。 */
+  private readonly failureReasonsCache = new Map<
+    string,
+    { data: FailureReasonItem[]; fetchedAt: number }
+  >();
 
   constructor(
     private readonly configService: ConfigService,
@@ -83,7 +117,15 @@ export class SpongeService {
     const spongeBaseUrl = this.configService
       .get<string>('SPONGE_API_BASE_URL', DEFAULT_SPONGE_API_BASE_URL)
       .replace(/\/+$/, '');
+    // 海绵2.0 ai接口统一走网关 base（k8s.duliday.com/persistence → gateway.duliday.com/sponge）。
+    this.jobListApi = `${spongeBaseUrl}/ai/api/job/list`;
+    this.brandListApi = `${spongeBaseUrl}/ai/api/brand/list`;
+    this.interviewScheduleApi = `${spongeBaseUrl}/ai/api/interview/schedule`;
     this.signupListApi = `${spongeBaseUrl}/ai/api/workorder/signup/list`;
+    this.selfSignupListApi = `${spongeBaseUrl}/ai/api/workorder/signup/self/list`;
+    this.cancelWorkOrderApi = `${spongeBaseUrl}/ai/api/workorder/cancel`;
+    this.modifyInterviewTimeApi = `${spongeBaseUrl}/ai/api/workorder/interviewTime/modify`;
+    this.failureReasonsApi = `${spongeBaseUrl}/ai/api/workorder/failureReasons/byPids`;
   }
 
   /** 查询在招岗位列表 */
@@ -108,6 +150,11 @@ export class SpongeService {
         ...(params.storeNameList?.length && { storeNameList: params.storeNameList }),
         ...(params.jobCategoryList?.length && { jobCategoryList: params.jobCategoryList }),
         ...(params.jobIdList?.length && { jobIdList: params.jobIdList }),
+        ...(params.salaryPeriodNameList?.length && {
+          salaryPeriodNameList: params.salaryPeriodNameList,
+        }),
+        // 海绵侧默认 onlySignableJobs=true（仅可报名岗位），仅在显式传入时下发以覆盖默认。
+        ...(params.onlySignableJobs != null && { onlySignableJobs: params.onlySignableJobs }),
         ...((params.location?.longitude != null ||
           params.location?.latitude != null ||
           params.location?.range != null) && {
@@ -121,7 +168,7 @@ export class SpongeService {
       options: params.options ?? { includeBasicInfo: true },
     };
 
-    const response = await fetch(JOB_LIST_API, {
+    const response = await fetch(this.jobListApi, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -197,6 +244,9 @@ export class SpongeService {
       body: JSON.stringify(payload),
     });
 
+    // traceId 在 fetch 一拿到响应就抓，无论后续 body 解析成败都能带给排障同学。
+    const traceId = extractSpongeTraceId(response.headers);
+
     if (!response.ok) {
       throw new Error(`API请求失败: ${response.status} ${response.statusText}`);
     }
@@ -215,13 +265,16 @@ export class SpongeService {
         message: '预约接口返回结构异常',
         notice: null,
         errorList: null,
+        traceId,
       };
     }
 
     const isSuccess = parsed.data.code === 0;
 
     if (!isSuccess) {
-      this.logger.warn('预约失败: ' + (parsed.data.message || '未知错误'));
+      this.logger.warn(
+        `预约失败: ${parsed.data.message || '未知错误'}${traceId ? ` (traceId=${traceId})` : ''}`,
+      );
     }
 
     const workOrderId = parsed.data.data?.workOrder?.workOrderId ?? null;
@@ -237,6 +290,7 @@ export class SpongeService {
       notice: parsed.data.data?.notice ?? null,
       errorList: parsed.data.data?.errorList ?? null,
       workOrderId,
+      traceId,
     };
   }
 
@@ -314,7 +368,6 @@ export class SpongeService {
     params: SignupWorkOrdersParams,
     tokenContext?: SpongeTokenResolveContext,
   ): Promise<SignupWorkOrdersResult> {
-    const token = await this.resolveDulidayToken(tokenContext);
     if (params.workOrderId == null && !params.phone) {
       throw new Error('fetchSignupWorkOrders 需至少传 workOrderId 或 phone');
     }
@@ -325,7 +378,43 @@ export class SpongeService {
       queryParam: params.queryParam,
     });
 
-    const response = await fetch(this.signupListApi, {
+    return this.postSignupWorkOrders(this.signupListApi, payload, tokenContext, '海绵工单查询');
+  }
+
+  /**
+   * 查询当前供应商账号提交的报名工单（海绵 signup/self/list）。
+   *
+   * 该接口不需要 workOrderId / phone，用 Duliday-Token 识别当前供应商账号。运营日报按
+   * botImId 解析托管账号 token 后，用时间段筛选直接取该账号当天报名/通过数据。
+   */
+  async fetchSelfSignupWorkOrders(
+    params: SelfSignupWorkOrdersParams,
+    tokenContext?: SpongeTokenResolveContext,
+  ): Promise<SignupWorkOrdersResult> {
+    const payload = stripNullish({
+      queryParam: params.queryParam,
+    });
+
+    return this.postSignupWorkOrders(
+      this.selfSignupListApi,
+      payload,
+      tokenContext,
+      '海绵当前供应商工单查询',
+      { allowDefaultToken: false },
+    );
+  }
+
+  private async postSignupWorkOrders(
+    url: string,
+    payload: Record<string, unknown>,
+    tokenContext: SpongeTokenResolveContext | undefined,
+    label: string,
+    options?: { allowDefaultToken?: boolean },
+  ): Promise<SignupWorkOrdersResult> {
+    const token = await this.resolveDulidayToken(tokenContext, {
+      allowDefaultToken: options?.allowDefaultToken ?? true,
+    });
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -335,14 +424,14 @@ export class SpongeService {
     });
 
     if (!response.ok) {
-      throw new Error(`海绵工单查询失败: ${response.status} ${response.statusText}`);
+      throw new Error(`${label}失败: ${response.status} ${response.statusText}`);
     }
 
     const rawData = await response.json();
     const parsed = SignupWorkOrdersApiResponseSchema.safeParse(rawData);
     if (!parsed.success) {
       this.logger.warn(
-        `海绵工单查询返回结构异常: ${parsed.error.issues
+        `${label}返回结构异常: ${parsed.error.issues
           .map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`)
           .join('; ')}`,
       );
@@ -350,7 +439,7 @@ export class SpongeService {
     }
 
     if (parsed.data.code !== 0) {
-      this.logger.warn(`海绵工单查询业务失败: ${parsed.data.message || '未知错误'}`);
+      this.logger.warn(`${label}业务失败: ${parsed.data.message || '未知错误'}`);
       return { total: 0, workOrders: [] };
     }
 
@@ -428,7 +517,7 @@ export class SpongeService {
     workOrderId: number,
     tokenContext?: SpongeTokenResolveContext,
   ): Promise<SignupWorkOrderItem | null> {
-    const cacheKey = `sponge:workorder:${workOrderId}`;
+    const cacheKey = this.workOrderCacheKey(workOrderId);
 
     try {
       const cached = await this.redisService.get<SignupWorkOrderItem>(cacheKey);
@@ -460,12 +549,204 @@ export class SpongeService {
     return target;
   }
 
+  private workOrderCacheKey(workOrderId: number): string {
+    return `sponge:workorder:${workOrderId}`;
+  }
+
+  /**
+   * 失效单个工单的实时状态缓存。
+   *
+   * 工单状态变更（取消 / 改约）成功后调用：清掉 5min 缓存，确保下一轮 [当前预约信息]
+   * 重新拉取到最新状态，不会继续渲染旧态。失败仅 warn，不阻断主流程。
+   */
+  private async invalidateWorkOrderCache(workOrderId: number): Promise<void> {
+    try {
+      await this.redisService.del(this.workOrderCacheKey(workOrderId));
+    } catch (error) {
+      this.logger.warn(`失效工单缓存失败 workOrderId=${workOrderId}: ${this.errorMessage(error)}`);
+    }
+  }
+
+  /**
+   * 取消工单（海绵 ai/api/workorder/cancel）。
+   *
+   * 成功后失效该工单的状态缓存。接口非 2xx 抛错由调用方兜底（自助失败再转人工）；
+   * 业务 code≠0 返回 success:false（不抛），让工具按失败话术处理。
+   */
+  async cancelWorkOrder(
+    params: CancelWorkOrderParams,
+    tokenContext?: SpongeTokenResolveContext,
+  ): Promise<WorkOrderMutationResult> {
+    const token = await this.resolveDulidayToken(tokenContext);
+
+    this.logger.log(
+      `取消工单: workOrderId=${params.workOrderId}, cancelReasonId=${params.cancelReasonId}`,
+    );
+
+    const payload = stripNullish({
+      workOrderId: params.workOrderId,
+      cancelReasonId: params.cancelReasonId,
+      cancelReasonDesc: params.cancelReasonDesc,
+    });
+
+    const result = await this.mutateWorkOrder(this.cancelWorkOrderApi, payload, '取消工单', token);
+    if (result.success) {
+      await this.invalidateWorkOrderCache(params.workOrderId);
+    }
+    return result;
+  }
+
+  /**
+   * 修改约面时间（海绵 ai/api/workorder/interviewTime/modify）。
+   *
+   * 成功后失效该工单的状态缓存。newInterviewTime 格式 yyyy-MM-dd HH:mm，由工具层校验。
+   */
+  async modifyInterviewTime(
+    params: ModifyInterviewTimeParams,
+    tokenContext?: SpongeTokenResolveContext,
+  ): Promise<WorkOrderMutationResult> {
+    const token = await this.resolveDulidayToken(tokenContext);
+
+    this.logger.log(
+      `修改约面时间: workOrderId=${params.workOrderId}, newInterviewTime=${params.newInterviewTime}`,
+    );
+
+    const payload = {
+      workOrderId: params.workOrderId,
+      newInterviewTime: params.newInterviewTime,
+    };
+
+    const result = await this.mutateWorkOrder(
+      this.modifyInterviewTimeApi,
+      payload,
+      '修改约面时间',
+      token,
+    );
+    if (result.success) {
+      await this.invalidateWorkOrderCache(params.workOrderId);
+    }
+    return result;
+  }
+
+  /**
+   * 工单变更类接口的统一 POST 执行（cancel / interviewTime/modify 同形返回）。
+   * 接口非 2xx 抛错；结构异常 / 业务 code≠0 返回 success:false。
+   */
+  private async mutateWorkOrder(
+    url: string,
+    payload: Record<string, unknown>,
+    label: string,
+    token: string,
+  ): Promise<WorkOrderMutationResult> {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Duliday-Token': token,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(`${label}失败: ${response.status} ${response.statusText}`);
+    }
+
+    const rawData = await response.json();
+    const parsed = WorkOrderMutationApiResponseSchema.safeParse(rawData);
+    if (!parsed.success) {
+      this.logger.warn(
+        `${label}接口返回结构异常: ${parsed.error.issues
+          .map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`)
+          .join('; ')}`,
+      );
+      return { success: false, code: -1, message: `${label}接口返回结构异常` };
+    }
+
+    const isSuccess = parsed.data.code === 0;
+    if (!isSuccess) {
+      this.logger.warn(`${label}失败: ${parsed.data.message || '未知错误'}`);
+    }
+
+    return { success: isSuccess, code: parsed.data.code, message: parsed.data.message };
+  }
+
+  /**
+   * 按父级原因 ID 列表查询失败原因字典（海绵 ai/api/workorder/failureReasons/byPids）。
+   *
+   * 返回扁平化的叶子原因列表（{ id, info }）。取消工单时用某父级 pid 拉取候选取消原因，
+   * 由 LLM 据候选人原话挑选 id 作为 cancelReasonId。字典稳定，带 30min 进程内缓存。
+   * 接口非 2xx 抛错；结构异常 / 业务 code≠0 返回空数组（由调用方决定降级）。
+   */
+  async fetchFailureReasonsByPids(
+    pidList: number[],
+    tokenContext?: SpongeTokenResolveContext,
+  ): Promise<FailureReasonItem[]> {
+    const cacheKey = [...pidList].sort((a, b) => a - b).join(',');
+    const cached = this.failureReasonsCache.get(cacheKey);
+    if (cached && Date.now() - cached.fetchedAt < FAILURE_REASONS_CACHE_TTL_MS) {
+      return cached.data;
+    }
+
+    const token = await this.resolveDulidayToken(tokenContext);
+
+    const response = await fetch(this.failureReasonsApi, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Duliday-Token': token,
+      },
+      body: JSON.stringify({ pidList }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`失败原因字典查询失败: ${response.status} ${response.statusText}`);
+    }
+
+    const rawData = await response.json();
+    const parsed = FailureReasonsByPidsApiResponseSchema.safeParse(rawData);
+    if (!parsed.success) {
+      this.logger.warn(
+        `失败原因字典返回结构异常: ${parsed.error.issues
+          .map((issue) => `${issue.path.join('.') || '<root>'}: ${issue.message}`)
+          .join('; ')}`,
+      );
+      return [];
+    }
+
+    if (parsed.data.code !== 0) {
+      this.logger.warn(`失败原因字典业务失败: ${parsed.data.message || '未知错误'}`);
+      return [];
+    }
+
+    const reasons: FailureReasonItem[] = (parsed.data.data ?? []).flatMap((group) =>
+      (group.failureReasonsDTOList ?? [])
+        .filter((item): item is { id: number; info?: string | null } => item.id != null)
+        .map((item) => ({ id: item.id, info: item.info ?? '' })),
+    );
+
+    this.setFailureReasonsCache(cacheKey, reasons);
+    return reasons;
+  }
+
+  private setFailureReasonsCache(cacheKey: string, data: FailureReasonItem[]): void {
+    if (
+      !this.failureReasonsCache.has(cacheKey) &&
+      this.failureReasonsCache.size >= FAILURE_REASONS_CACHE_MAX_ENTRIES
+    ) {
+      this.failureReasonsCache.clear();
+    }
+    this.failureReasonsCache.set(cacheKey, { data, fetchedAt: Date.now() });
+  }
+
   private async resolveDulidayToken(
     tokenContext?: SpongeTokenResolveContext,
-    options?: { allowMissing?: boolean },
+    options?: { allowMissing?: boolean; allowDefaultToken?: boolean },
   ): Promise<string> {
-    const configuredToken = await this.resolveConfiguredDulidayToken(tokenContext);
-    const token = configuredToken ?? this.fallbackToken.trim();
+    const allowDefaultToken = options?.allowDefaultToken !== false;
+    const configuredToken = await this.resolveConfiguredDulidayToken(tokenContext, {
+      allowDefaultToken,
+    });
+    const token = configuredToken ?? (allowDefaultToken ? this.fallbackToken.trim() : '');
 
     if (!token && !options?.allowMissing) {
       throw new Error('缺少 DULIDAY_API_TOKEN');
@@ -476,30 +757,42 @@ export class SpongeService {
 
   private async resolveConfiguredDulidayToken(
     tokenContext?: SpongeTokenResolveContext,
+    options?: { allowDefaultToken?: boolean },
   ): Promise<string | null> {
-    // 统一配置优先：hosting_member_config（按 botImId）→ 回退既有 sponge_token_config / env。
-    const memberToken = await this.hostingMemberConfig.resolveDulidayToken(tokenContext?.botImId);
-    if (memberToken) return memberToken;
-
+    // 主配置源：system_config.sponge_token_config（按 botImId / botUserId / groupId）。
+    // hosting_member_config 仅作为旧配置兜底，避免两个来源同时存在时覆盖 sponge_token_config。
     const config = await this.loadSpongeTokenConfig();
-    if (!config) return null;
 
-    const botImId = tokenContext?.botImId?.trim();
-    const botUserId = tokenContext?.botUserId?.trim();
-    const groupId = tokenContext?.groupId?.trim();
-
-    return (
-      this.resolveAccountToken(config, 'botImId', botImId) ??
-      this.resolveMappedToken(config.byBotImId, botImId) ??
-      this.resolveAccountToken(config, 'botUserId', botUserId) ??
-      this.resolveMappedToken(config.byBotUserId, botUserId) ??
-      this.resolveAccountToken(config, 'groupId', groupId) ??
-      this.resolveMappedToken(config.byGroupId, groupId) ??
-      this.resolveTokenValue({
-        token: config.defaultToken,
-        tokenEnv: config.defaultTokenEnv,
-      })
+    const botImIdKeys = this.buildTokenLookupKeys(tokenContext?.botImId);
+    const botUserIdKeys = this.mergeTokenLookupKeys(
+      this.buildTokenLookupKeys(tokenContext?.botUserId),
+      // daily_ops_report.bot_im_id may store either numeric wxid or Stride wecomUserId.
+      botImIdKeys,
     );
+    const groupIdKeys = this.buildTokenLookupKeys(tokenContext?.groupId);
+
+    const mappedToken = config
+      ? (this.resolveAccountToken(config, 'botImId', botImIdKeys) ??
+        this.resolveMappedToken(config.byBotImId, botImIdKeys) ??
+        this.resolveAccountToken(config, 'botUserId', botUserIdKeys) ??
+        this.resolveMappedToken(config.byBotUserId, botUserIdKeys) ??
+        this.resolveAccountToken(config, 'groupId', groupIdKeys) ??
+        this.resolveMappedToken(config.byGroupId, groupIdKeys))
+      : null;
+
+    if (mappedToken) return mappedToken;
+
+    for (const key of botImIdKeys) {
+      const memberToken = await this.hostingMemberConfig.resolveDulidayToken(key);
+      if (memberToken) return memberToken;
+    }
+
+    if (options?.allowDefaultToken === false) return null;
+
+    return this.resolveTokenValue({
+      token: config?.defaultToken,
+      tokenEnv: config?.defaultTokenEnv,
+    });
   }
 
   private async loadSpongeTokenConfig(): Promise<SpongeTokenConfig | null> {
@@ -547,26 +840,51 @@ export class SpongeService {
     return value as SpongeTokenConfig;
   }
 
+  private buildTokenLookupKeys(value: string | null | undefined): string[] {
+    const trimmed = value?.trim();
+    if (!trimmed) return [];
+
+    const normalized = trimmed.startsWith(SYNC_BOT_PREFIX)
+      ? trimmed.slice(SYNC_BOT_PREFIX.length).trim()
+      : trimmed;
+
+    return this.mergeTokenLookupKeys([trimmed], normalized ? [normalized] : []);
+  }
+
+  private mergeTokenLookupKeys(...groups: string[][]): string[] {
+    const keys: string[] = [];
+    for (const group of groups) {
+      for (const key of group) {
+        if (key && !keys.includes(key)) keys.push(key);
+      }
+    }
+    return keys;
+  }
+
   private resolveAccountToken(
     config: SpongeTokenConfig,
     field: 'botImId' | 'botUserId' | 'groupId',
-    value: string | undefined,
+    values: string[],
   ): string | null {
-    if (!value || !Array.isArray(config.accounts)) return null;
+    if (values.length === 0 || !Array.isArray(config.accounts)) return null;
     const account = config.accounts.find((item) => {
       if (!item || item.enabled === false) return false;
       const candidate = item[field]?.trim();
-      return Boolean(candidate) && candidate === value;
+      return Boolean(candidate) && values.includes(candidate);
     });
     return this.resolveTokenValue(account);
   }
 
   private resolveMappedToken(
     map: Record<string, SpongeTokenValue> | undefined,
-    key: string | undefined,
+    keys: string[],
   ): string | null {
-    if (!map || !key) return null;
-    return this.resolveTokenValue(map[key]);
+    if (!map || keys.length === 0) return null;
+    for (const key of keys) {
+      const token = this.resolveTokenValue(map[key]);
+      if (token) return token;
+    }
+    return null;
   }
 
   private resolveTokenValue(
@@ -618,7 +936,7 @@ export class SpongeService {
 
     this.brandListFetchPromise = (async () => {
       try {
-        const response = await fetch(BRAND_LIST_API, {
+        const response = await fetch(this.brandListApi, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -649,6 +967,7 @@ export class SpongeService {
         }
 
         const brandList = (parsed.data.data.result as RawBrandItem[]).map((item) => ({
+          id: item.id,
           name: item.name,
           aliases: (item.aliases ?? []).filter((a: string) => a !== item.name),
         }));
@@ -711,7 +1030,7 @@ export class SpongeService {
         },
       };
 
-      const response = await fetch(INTERVIEW_SCHEDULE_API, {
+      const response = await fetch(this.interviewScheduleApi, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

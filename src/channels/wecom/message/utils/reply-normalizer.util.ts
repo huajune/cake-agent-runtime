@@ -14,11 +14,25 @@ export class ReplyNormalizer {
   private static readonly TIME_MARKER_PATTERN =
     /\[消息发送时间：[^\]]+\]|\[t:[^\]]+\]|\[当前时间:[^\]]+\]/g;
 
+  /**
+   * 推理/思考标签正则。
+   *
+   * 业务背景：badcase `recvlEM9V4vBhP`——模型把推理标签 `</think>` 直接作为一条消息
+   * 发给候选人（候选人视角是「乱码」）。模型偶发会把 `<think>...</think>` 思考块或落单的
+   * 开/闭标签漏进回复，必须在投递层剥离。
+   *
+   * 处理：成对的 `<think>...</think>` 块整体删除；落单的开/闭标签删除标签本身。
+   */
+  private static readonly THINK_BLOCK_PATTERN = /<think>[\s\S]*?<\/think>/gi;
+  private static readonly THINK_TAG_PATTERN = /<\/?think\s*>/gi;
+
   static normalize(text: string): string {
     if (!text || typeof text !== 'string') return text;
 
-    // 首先移除时间标记与 Markdown 装饰符（防御性处理：模型可能模仿历史消息格式/Markdown）
-    const cleaned = this.removeMarkdownDecoration(this.removeTimeMarkers(text));
+    // 首先移除推理标签、时间标记与 Markdown 装饰符（防御性处理：模型可能漏出思考块/模仿历史格式/Markdown）
+    const cleaned = this.removeMarkdownDecoration(
+      this.removeTimeMarkers(this.removeThinkTags(text)),
+    );
 
     if (this.containsListMarkers(cleaned)) return this.normalizeComplexStructure(cleaned);
     return this.cleanWhitespace(cleaned);
@@ -30,6 +44,13 @@ export class ReplyNormalizer {
    */
   private static removeTimeMarkers(text: string): string {
     return text.replace(this.TIME_MARKER_PATTERN, '').trim();
+  }
+
+  /**
+   * 移除推理/思考标签：先删成对的 `<think>...</think>` 块，再清落单的开/闭标签。
+   */
+  private static removeThinkTags(text: string): string {
+    return text.replace(this.THINK_BLOCK_PATTERN, '').replace(this.THINK_TAG_PATTERN, '').trim();
   }
 
   private static removeMarkdownDecoration(text: string): string {
@@ -172,6 +193,8 @@ export class ReplyNormalizer {
 
   static needsNormalization(text: string): boolean {
     if (!text) return false;
+    // 推理/思考标签需要剥离（用非全局字面量，避免 /g 的 lastIndex 副作用）
+    if (/<\/?think\s*>/i.test(text)) return true;
     // 时间标记需要清理
     if (this.TIME_MARKER_PATTERN.test(text)) return true;
     // Markdown 装饰符需要清理

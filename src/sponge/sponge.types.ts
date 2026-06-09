@@ -11,6 +11,10 @@ export interface JobListQueryParams {
   projectNameList?: string[];
   projectIdList?: number[];
   jobIdList?: number[];
+  /** 结算周期名称列表（取 salary_period 字典名称，如 日结算/周结算/月结算/半月结/完结） */
+  salaryPeriodNameList?: string[];
+  /** 是否仅查询可报名岗位；不传时海绵侧默认为 true */
+  onlySignableJobs?: boolean;
   pageNum?: number;
   pageSize?: number;
   sort?: string;
@@ -34,7 +38,16 @@ export interface JobListOptions {
   includeInterviewProcess?: boolean;
 }
 
-/** 岗位基础信息（从 API 返回中提取的常用字段） */
+/**
+ * 岗位基础信息（从 API 返回中提取的常用字段）
+ *
+ * ⚠️ 现网（海绵 ai/api/job/list）实测：basicInfo 顶层**不返回** requirementNum / minAge /
+ * maxAge / storeName / storeAddress / cityName / regionName。它们的真实位置：
+ *  - minAge / maxAge → hiringRequirement.basicPersonalRequirements.{minAge,maxAge}
+ *  - storeName / storeAddress / 城市 / 大区 → basicInfo.storeInfo.{storeName,storeAddress,storeCityName,storeRegionName}
+ *  - requirementNum（招聘人数）→ 当前接口无此字段
+ * 下列声明保留仅为前向兼容（万一上游补回）+ 历史 fixture，**不要据此从 basicInfo 顶层取值**。
+ */
 export interface JobBasicInfo {
   jobId: number;
   jobName?: string;
@@ -42,14 +55,21 @@ export interface JobBasicInfo {
   jobCategoryName?: string;
   jobContent?: string;
   laborForm?: string;
+  /** @deprecated 现网不返回，见上方说明 */
   requirementNum?: number;
+  /** @deprecated 现网在 hiringRequirement.basicPersonalRequirements.minAge */
   minAge?: number;
+  /** @deprecated 现网在 hiringRequirement.basicPersonalRequirements.maxAge */
   maxAge?: number;
+  /** @deprecated 现网在 storeInfo.storeName */
   storeName?: string;
+  /** @deprecated 现网在 storeInfo.storeAddress */
   storeAddress?: string;
   storeInfo?: Record<string, unknown>;
   brandName?: string;
+  /** @deprecated 现网在 storeInfo.storeCityName */
   cityName?: string;
+  /** @deprecated 现网在 storeInfo.storeRegionName */
   regionName?: string;
   [key: string]: unknown;
 }
@@ -149,12 +169,15 @@ export const JobListApiResponseSchema = z
 
 /** 品牌列表 API 原始响应项 */
 export interface RawBrandItem {
+  /** 品牌ID（海绵2.0 新增） */
+  id?: number;
   name: string;
   aliases: string[];
   projectIdList: number[];
 }
 
 export const RawBrandItemSchema = z.object({
+  id: z.number().nullish(),
   name: z.string().min(1),
   aliases: z.array(z.string()).default([]),
   projectIdList: z.array(z.number()).default([]),
@@ -162,6 +185,8 @@ export const RawBrandItemSchema = z.object({
 
 /** 品牌（精简，供事实提取使用） */
 export interface BrandItem {
+  /** 品牌ID（海绵2.0 新增；旧响应缺失时为空） */
+  id?: number;
   name: string;
   aliases: string[];
 }
@@ -173,6 +198,7 @@ export const BrandListApiResponseSchema = z
     data: z
       .object({
         result: z.array(RawBrandItemSchema).default([]),
+        total: z.number().nullish(),
       })
       .optional(),
   })
@@ -295,6 +321,12 @@ export interface InterviewBookingResult {
    * 供 latest_booking 指针与 ops_events(booking.succeeded) 使用。
    */
   workOrderId?: number | null;
+  /**
+   * 海绵网关响应头里的链路追踪 ID（取不到为 null）。
+   *
+   * 预约失败时透传到「面试预约失败」告警卡片，方便后端凭此查海绵侧日志排障。
+   */
+  traceId?: string | null;
 }
 
 /**
@@ -446,9 +478,17 @@ export interface SignupWorkOrdersParams {
   };
 }
 
+/** 当前供应商账号提交的工单查询参数（POST /ai/api/workorder/signup/self/list）。 */
+export interface SelfSignupWorkOrdersParams {
+  queryParam?: SignupWorkOrdersParams['queryParam'];
+}
+
 /** 单个工单（候选人维度响应的 workOrders[] 元素）。 */
 export interface SignupWorkOrderItem {
   workOrderId: number;
+  /** self/list 可能把候选人信息下发在工单行上；signup/list 通常下发在顶层。 */
+  candidateName?: string | null;
+  phone?: string | null;
   signUpTime?: string | null;
   /** 面试通过时间；非空即视为"面试成功"（interview.passed 判定依据）。 */
   interviewPassTime?: string | null;
@@ -463,7 +503,7 @@ export interface SignupWorkOrderItem {
   jobName?: string | null;
   /** 当前状态中文：约面待确认/约面失败/约面取消/约面成功/面试失败/面试成功/上岗失败/上岗成功/已离职 */
   currentStatus?: string | null;
-  workOrderStatus?: number | null;
+  workOrderStatus?: number | string | null;
   salary?: number | string | null;
   salaryUnit?: string | null;
   salaryPeriod?: string | null;
@@ -482,6 +522,8 @@ export interface SignupWorkOrdersResult {
 export const SignupWorkOrderItemSchema = z
   .object({
     workOrderId: z.coerce.number().int(),
+    candidateName: z.string().nullable().optional(),
+    phone: z.string().nullable().optional(),
     signUpTime: z.string().nullable().optional(),
     interviewPassTime: z.string().nullable().optional(),
     brandId: z.number().nullable().optional(),
@@ -494,7 +536,7 @@ export const SignupWorkOrderItemSchema = z
     jobBasicInfoId: z.number().nullable().optional(),
     jobName: z.string().nullable().optional(),
     currentStatus: z.string().nullable().optional(),
-    workOrderStatus: z.number().nullable().optional(),
+    workOrderStatus: z.union([z.number(), z.string()]).nullable().optional(),
     salary: z.union([z.number(), z.string()]).nullable().optional(),
     salaryUnit: z.string().nullable().optional(),
     salaryPeriod: z.string().nullable().optional(),
@@ -514,6 +556,81 @@ export const SignupWorkOrdersApiResponseSchema = z
         total: z.number().nullable().optional(),
         workOrders: z.array(SignupWorkOrderItemSchema).nullable().optional(),
       })
+      .nullable()
+      .optional(),
+  })
+  .passthrough();
+
+// ==================== 海绵工单变更 cancel / interviewTime/modify ====================
+
+/** 取消工单参数（POST ${SPONGE_API_BASE_URL}/ai/api/workorder/cancel）。 */
+export interface CancelWorkOrderParams {
+  /** 工单 ID */
+  workOrderId: number;
+  /** 取消原因 ID（来自失败原因字典）。 */
+  cancelReasonId: number;
+  /** 取消原因具体描述（候选人原话，可选）。 */
+  cancelReasonDesc?: string;
+}
+
+/** 修改约面时间参数（POST ${SPONGE_API_BASE_URL}/ai/api/workorder/interviewTime/modify）。 */
+export interface ModifyInterviewTimeParams {
+  /** 工单 ID */
+  workOrderId: number;
+  /** 新约面时间，格式 yyyy-MM-dd HH:mm。 */
+  newInterviewTime: string;
+}
+
+/** 工单变更类接口的统一返回（cancel / interviewTime/modify 同形：code/message/data）。 */
+export interface WorkOrderMutationResult {
+  success: boolean;
+  code: number;
+  message?: string;
+}
+
+/** cancel / interviewTime/modify 响应结构（data 为字符串，不承载业务数据）。 */
+export const WorkOrderMutationApiResponseSchema = z
+  .object({
+    code: z.number(),
+    message: z.string().optional(),
+    data: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+// ==================== 海绵失败原因字典 failureReasons/byPids ====================
+
+/** 单个失败原因（字典叶子项）。 */
+export interface FailureReasonItem {
+  /** 失败原因 ID（取消工单时作为 cancelReasonId）。 */
+  id: number;
+  /** 失败原因描述。 */
+  info: string;
+}
+
+export const FailureReasonsByPidsApiResponseSchema = z
+  .object({
+    code: z.number(),
+    message: z.string().optional(),
+    data: z
+      .array(
+        z
+          .object({
+            pid: z.number(),
+            info: z.string().nullable().optional(),
+            failureReasonsDTOList: z
+              .array(
+                z
+                  .object({
+                    id: z.coerce.number().int(),
+                    info: z.string().nullable().optional(),
+                  })
+                  .passthrough(),
+              )
+              .nullable()
+              .optional(),
+          })
+          .passthrough(),
+      )
       .nullable()
       .optional(),
   })

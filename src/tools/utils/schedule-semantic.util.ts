@@ -57,6 +57,7 @@ const WEEKEND_ONLY_PATTERNS = [
 const EVENING_PATTERNS = [
   /晚班/,
   /夜班/,
+  /通宵/,
   /17[:：]\d{2}.*23[:：]\d{2}/,
   /18[:：]\d{2}.*22[:：]\d{2}/,
 ];
@@ -69,8 +70,6 @@ const MORNING_PATTERNS = [
 ];
 
 const FLEXIBLE_PATTERNS = [/自定义工时/, /可选时段/, /灵活排班/, /短班/, /午高峰/];
-const WEEKDAY_CHARS = ['一', '二', '三', '四', '五', '六', '日', '天'] as const;
-const WEEKEND_CHARS = new Set(['六', '日', '天']);
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -90,86 +89,62 @@ export function classifyScheduleSemantic(input: {
   const out = new Set<ScheduleSemantic>();
   if (FULL_WEEK_PATTERNS.some((p) => p.test(haystack))) out.add('requires_full_week');
   if (MANDATORY_WEEKEND_PATTERNS.some((p) => p.test(haystack))) out.add('mandatory_weekend_days');
-  if (
-    WEEKEND_ONLY_PATTERNS.some((p) => p.test(haystack)) ||
-    hasStructuredWeekendOnlySchedule(input.workTimeText)
-  ) {
+  if (WEEKEND_ONLY_PATTERNS.some((p) => p.test(haystack))) {
     out.add('weekend_only_compatible');
   }
   if (EVENING_PATTERNS.some((p) => p.test(haystack))) out.add('evening_compatible');
   if (MORNING_PATTERNS.some((p) => p.test(haystack))) out.add('morning_compatible');
   if (FLEXIBLE_PATTERNS.some((p) => p.test(haystack))) out.add('flexible');
 
+  // 海绵2.0 结构化补充：从 weekAndMonthWorkTime 派生"全周强排班"等无法靠文本识别的语义。
+  for (const semantic of deriveStructuredScheduleSemantics(input.workTimeText)) {
+    out.add(semantic);
+  }
+
   if (out.size === 0) out.add('unknown');
   return Array.from(out);
 }
 
-function hasStructuredWeekendOnlySchedule(workTimeText: string | null | undefined): boolean {
-  if (!workTimeText) return false;
+/**
+ * 从海绵2.0 结构化 workTime 派生排班语义。
+ *
+ * 新结构不再下发具体星期分配（combinedArrangement 无星期、无 customnWorkTimeList），
+ * 因此"只做周末"这种正向兼容信号无法从结构判定（保守起见不再 add weekend_only_compatible，
+ * 候选人"只周末"时会被 matchScheduleConstraint 保守排除，方向安全）。
+ *
+ * 但每周出勤天数仍可从 weekAndMonthWorkTime 读出：
+ * - perWeekWorkDays（如 6 = 做六休一）
+ * - 或 onWorkLimitType="至少上岗" + onWorkTimeUnit="天" + onWorkTime（每周至少 N 天）
+ * 出勤 ≥5 天即视为全周强排班（requires_full_week），用于拦截"只周末/每周最多两天"。
+ */
+function deriveStructuredScheduleSemantics(
+  workTimeText: string | null | undefined,
+): ScheduleSemantic[] {
+  if (!workTimeText) return [];
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(workTimeText);
   } catch {
-    return false;
+    return [];
+  }
+  if (!isRecord(parsed)) return [];
+
+  const wm = asRecord(parsed.weekAndMonthWorkTime);
+  if (!wm) return [];
+
+  const limitType = typeof wm.onWorkLimitType === 'string' ? wm.onWorkLimitType : '';
+  const unit = typeof wm.onWorkTimeUnit === 'string' ? wm.onWorkTimeUnit : '';
+
+  let weeklyWorkDays = numberOf(wm.perWeekWorkDays);
+  if (weeklyWorkDays === null && unit === '天' && /至少/.test(limitType)) {
+    weeklyWorkDays = numberOf(wm.onWorkTime);
   }
 
-  if (!isRecord(parsed)) return false;
-
-  const weekdayGroups = [
-    ...extractCustomWorkWeekdayGroups(parsed),
-    ...extractCombinedArrangementWeekdayGroups(parsed),
-  ];
-  if (weekdayGroups.length === 0) return false;
-
-  return weekdayGroups.every((weekdays) => isWeekendOnlyWeekdaySet(weekdays));
-}
-
-function extractCustomWorkWeekdayGroups(workTime: UnknownRecord): string[][] {
-  const weekWorkTime = asRecord(workTime.weekWorkTime);
-  const customList = Array.isArray(weekWorkTime?.customnWorkTimeList)
-    ? weekWorkTime.customnWorkTimeList
-    : [];
-
-  return customList
-    .map((item) => {
-      const custom = asRecord(item);
-      return Array.isArray(custom?.customWorkWeekdays)
-        ? custom.customWorkWeekdays.filter((day): day is string => typeof day === 'string')
-        : [];
-    })
-    .filter((weekdays) => weekdays.length > 0);
-}
-
-function extractCombinedArrangementWeekdayGroups(workTime: UnknownRecord): string[][] {
-  const schedule = asRecord(workTime.dailyShiftSchedule);
-  const arrangements = Array.isArray(schedule?.combinedArrangement)
-    ? schedule.combinedArrangement
-    : [];
-
-  return arrangements
-    .map((item) => {
-      const arrangement = asRecord(item);
-      const weekdays = arrangement?.combinedArrangementWeekdays;
-      return typeof weekdays === 'string' ? splitWeekdayText(weekdays) : [];
-    })
-    .filter((weekdays) => weekdays.length > 0);
-}
-
-function splitWeekdayText(text: string): string[] {
-  return text
-    .split(/[,\s，、/]+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-}
-
-function isWeekendOnlyWeekdaySet(weekdays: string[]): boolean {
-  const normalized = weekdays.flatMap(extractWeekdayChars);
-  return normalized.length > 0 && normalized.every((day) => WEEKEND_CHARS.has(day));
-}
-
-function extractWeekdayChars(text: string): string[] {
-  return WEEKDAY_CHARS.filter((day) => text.includes(`周${day}`) || text.includes(`星期${day}`));
+  if (weeklyWorkDays !== null && weeklyWorkDays >= 5) {
+    return ['requires_full_week'];
+  }
+  return [];
 }
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -178,6 +153,15 @@ function isRecord(value: unknown): value is UnknownRecord {
 
 function asRecord(value: unknown): UnknownRecord | null {
   return isRecord(value) ? value : null;
+}
+
+function numberOf(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
 }
 
 /**

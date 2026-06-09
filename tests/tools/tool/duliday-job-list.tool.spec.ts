@@ -487,11 +487,18 @@ describe('buildJobListTool', () => {
       workTime: {
         employmentForm: '长期用工',
         minWorkMonths: 3,
-        dayWorkTime: { perDayMinWorkHours: '3.0' },
-        dailyShiftSchedule: { arrangementType: '固定排班制' },
-        monthWorkTime: {
-          perMonthMaxRestTime: 4,
-          perMonthMaxRestTimeUnit: '天',
+        weekAndMonthWorkTime: {
+          arrangementCycleType: '每月',
+          onWorkLimitType: '至多上岗',
+          onWorkTimeUnit: '天',
+          onWorkTime: 26,
+        },
+        dayWorkTime: {
+          arrangementType: '满足其中一个时段即可安排上岗',
+          combinedArrangement: [
+            { combinedArrangementStartTime: '11:00', combinedArrangementEndTime: '14:00' },
+          ],
+          fixedTime: { perDayMinWorkHours: '3.0' },
         },
       },
     });
@@ -515,8 +522,8 @@ describe('buildJobListTool', () => {
     expect(result.markdown).toContain('**坐标**: 116.1, 39.9');
     expect(result.markdown).toContain('**最少工作月数**: 3 个月');
     expect(result.markdown).toContain('**每日工时**: 最少 3 小时');
-    expect(result.markdown).toContain('**每月工时**: 最多休息 4 天');
-    expect(result.markdown).toContain('**排班类型**: 固定排班制');
+    expect(result.markdown).toContain('**排班周期**: 每月: 至多上岗 26 天');
+    expect(result.markdown).toContain('**排班类型**: 满足其中一个时段即可安排上岗');
 
     // No legacy projection block artifacts
     expect(result.markdown).not.toContain('字段投影');
@@ -565,23 +572,22 @@ describe('buildJobListTool', () => {
     expect(result.markdown).not.toContain('已省略未设置字段');
   });
 
-  it('should render combined arrangement schedule with compressed weekdays', async () => {
+  it('should render 组合排班(满足所有时段) slots + full-week hint', async () => {
     const job = makeJobData({
       workTime: {
-        dailyShiftSchedule: {
-          arrangementType: '组合排班制',
+        weekAndMonthWorkTime: {
+          arrangementCycleType: '每周',
+          weekMonthArrangementMode: '做几休几',
+          perWeekWorkDays: 7,
+          perWeekRestDays: 0,
+        },
+        dayWorkTime: {
+          arrangementType: '满足所有时段才可安排上岗',
           combinedArrangement: [
-            {
-              combinedArrangementWeekdays: '每周一,每周二,每周三,每周四,每周五,每周六,每周日',
-              combinedArrangementStartTime: '09:00',
-              combinedArrangementEndTime: '18:30',
-            },
-            {
-              combinedArrangementWeekdays: '每周一,每周二,每周三,每周四,每周五,每周六,每周日',
-              combinedArrangementStartTime: '13:00',
-              combinedArrangementEndTime: '22:30',
-            },
+            { combinedArrangementStartTime: '09:00', combinedArrangementEndTime: '18:30' },
+            { combinedArrangementStartTime: '13:00', combinedArrangementEndTime: '22:30' },
           ],
+          fixedTime: null,
         },
       },
     });
@@ -592,10 +598,12 @@ describe('buildJobListTool', () => {
       includeWorkTime: true,
     });
 
-    expect(result.markdown).toContain('**排班类型**: 组合排班制');
-    expect(result.markdown).toContain('**组合排班**');
-    expect(result.markdown).toContain('班次 1: 09:00 - 18:30（每天）');
-    expect(result.markdown).toContain('班次 2: 13:00 - 22:30（每天）');
+    expect(result.markdown).toContain('**排班类型**: 满足所有时段才可安排上岗');
+    expect(result.markdown).toContain('**可排时段**');
+    expect(result.markdown).toContain('时段 1: 09:00 - 18:30');
+    expect(result.markdown).toContain('时段 2: 13:00 - 22:30');
+    // 组合排班制 → 全部出勤；perWeekWorkDays=7 → 全周强排班
+    expect(result.markdown).toContain('**班次硬约束提示**');
     expect(result.markdown).toContain('**排班硬约束提示**');
     expect(result.markdown).toContain('不能把该岗位说成"周末能排"');
   });

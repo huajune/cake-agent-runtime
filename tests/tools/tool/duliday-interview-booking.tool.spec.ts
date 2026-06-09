@@ -87,10 +87,6 @@ describe('buildInterviewBookingTool', () => {
   const executeToolWithContext = async (
     input: Record<string, any>,
     contextOverride: Partial<ToolBuildContext> = {},
-    dependencyOverride: {
-      botGroupResolver?: { resolveAgentId: jest.Mock };
-      huajuneReporter?: { reportInterviewBooked: jest.Mock };
-    } = {},
   ) => {
     const mockLongTermService = {
       writeFromBooking: jest.fn().mockResolvedValue(undefined),
@@ -100,12 +96,6 @@ describe('buildInterviewBookingTool', () => {
     const mockOpsEventsRecorder = {
       recordEvent: jest.fn().mockResolvedValue(undefined),
     };
-    const mockBotGroupResolver = dependencyOverride.botGroupResolver ?? {
-      resolveAgentId: jest.fn().mockReturnValue(null),
-    };
-    const mockHuajuneReporter = dependencyOverride.huajuneReporter ?? {
-      reportInterviewBooked: jest.fn(),
-    };
     const builder = buildInterviewBookingTool(
       mockSpongeService as never,
       mockPrivateChatNotifier as never,
@@ -113,8 +103,6 @@ describe('buildInterviewBookingTool', () => {
       mockBookingService as never,
       mockLongTermService as never,
       mockOpsEventsRecorder as never,
-      mockBotGroupResolver as never,
-      mockHuajuneReporter as never,
     );
     const toolContext = {
       ...mockContext,
@@ -132,8 +120,6 @@ describe('buildInterviewBookingTool', () => {
       mocks: {
         mockLongTermService,
         mockOpsEventsRecorder,
-        mockBotGroupResolver,
-        mockHuajuneReporter,
       },
     };
   };
@@ -407,70 +393,6 @@ describe('buildInterviewBookingTool', () => {
       }),
       expect.objectContaining({ botUserId: 'manager-1' }),
     );
-  });
-
-  it('reports successful bookings to Huajune when bot has agent mapping', async () => {
-    mockSpongeService.fetchJobs.mockResolvedValue({
-      jobs: [
-        makeJob({
-          interviewProcess: {
-            interviewSupplement: [],
-            firstInterview: {
-              periodicInterviewTimes: [
-                {
-                  interviewWeekday: '每周五',
-                  interviewTimes: [
-                    {
-                      interviewStartTime: '13:30',
-                      interviewEndTime: '16:30',
-                      cycleDeadlineDay: '当天',
-                      cycleDeadlineEnd: '12:00',
-                    },
-                  ],
-                },
-              ],
-              fixedInterviewTimes: [],
-            },
-          },
-        }),
-      ],
-    });
-    mockSpongeService.bookInterview.mockResolvedValue({
-      success: true,
-      code: 0,
-      message: '预约成功',
-      notice: null,
-      errorList: null,
-    });
-    const mockBotGroupResolver = {
-      resolveAgentId: jest.fn().mockReturnValue('gaoyaqi-cake-1'),
-    };
-    const mockHuajuneReporter = {
-      reportInterviewBooked: jest.fn(),
-    };
-
-    const { result } = await executeToolWithContext(
-      {
-        ...validInput,
-        interviewTime: '2026-03-20 14:00:00',
-      },
-      { botImId: '1688855974513959' },
-      {
-        botGroupResolver: mockBotGroupResolver,
-        huajuneReporter: mockHuajuneReporter,
-      },
-    );
-
-    expect(result.success).toBe(true);
-    expect(mockBotGroupResolver.resolveAgentId).toHaveBeenCalledWith('1688855974513959');
-    expect(mockHuajuneReporter.reportInterviewBooked).toHaveBeenCalledWith({
-      agentId: 'gaoyaqi-cake-1',
-      candidateName: '张三',
-      idempotencyKey: 'sess-1:booking_success:100:2026-03-20 14:00:00',
-      interviewTime: '2026-03-20 14:00:00',
-      candidatePhone: '13800138000',
-      job: { jobId: 100, jobName: '后厨-小时工' },
-    });
   });
 
   it('should build customerLabelList from real job supplements and candidate info', async () => {

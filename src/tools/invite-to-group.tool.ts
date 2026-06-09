@@ -18,6 +18,11 @@ const logger = new Logger('invite_to_group');
 const UNDELIVERED_INVITE_HANDOFF_INSTRUCTION =
   '如果候选人本轮是在同意入群/后续通知，或当前意向已无匹配而需要群维护，请立即调用 request_handoff(reasonCode="other") 转人工跟进；调用后不得再输出文本。';
 
+// 无群（区别于群满）：业务要求"推荐无岗且没有兼职群（群满场景除外）不再转人工"。
+// 该城市/平台本就没有可对接的兼职群时，不触发人工介入，Agent 自然收口并继续托管。
+const NO_GROUP_CONTINUE_INSTRUCTION =
+  '该城市/平台本就没有可对接的兼职群（注意：这不是群满，而是没有群）。这种情况不要调用 request_handoff 转人工，也不要向候选人提及群相关内容。请自然收口：礼貌告知候选人当前暂时没有合适岗位、后续有匹配会主动联系，然后正常结束本轮、保持托管。';
+
 const DESCRIPTION = `邀请候选人加入企微兼职群。
 
 ## 触发场景（满足任一即可）
@@ -36,6 +41,7 @@ const DESCRIPTION = `邀请候选人加入企微兼职群。
 - 本会话已经成功拉过群时（查看 [会话记忆] 中的 invitedGroups）
 - 尚未做过任何岗位检索、还完全没判断过是否有匹配时
 - [兼职群资源] 段已注明该城市无可用群时
+- **候选人正在推进某个已匹配岗位的收资/约面/确认面试时** — 候选人已接受某岗位、正在回填资料、追问"明天能面试吗/几点面试/怎么报名"等推进信号时，说明当前有匹配在走报名流程，**禁止**此时拉群打断（拉群是"无岗维护"场景，不是"有岗推进"场景）。应继续把这单约面收尾；只有等本次预约成功（走场景 1）或确认该岗位无法继续（如失败/不符）才考虑拉群
 
 ## 参数
 - city（必填）：候选人所在**城市级**名称，从 [会话记忆] / [本轮查询硬约束] 的"城市"字段获取，例如"上海"、"北京"、"武汉"。
@@ -59,7 +65,8 @@ const DESCRIPTION = `邀请候选人加入企微兼职群。
 ## 失败处理
 - success: false 时静默跳过，不向候选人提及群相关内容
 - 若 errorType=invite.invalid_city_scope，说明你把区域/区县误传给了 city。必须立即用工具返回的 expectedCity 重新调用 invite_to_group；不要调用 request_handoff，也不要说"该区域暂无兼职群"
-- 若候选人本轮是在同意入群/后续通知，或当前意向已无匹配而需要群维护，但工具返回 success: false，必须立刻调用 request_handoff(reasonCode="other") 转人工跟进；不要自然语言收尾把候选人晾住
+- 若候选人本轮是在同意入群/后续通知，或当前意向已无匹配而需要群维护，但工具返回 success: false，多数情况要立刻调用 request_handoff(reasonCode="other") 转人工跟进；不要自然语言收尾把候选人晾住
+  - **例外（不转人工）**：失败原因是"该城市/平台本就没有兼职群"（errorType=invite.no_group_in_city / invite.no_group_available）时，**不要**转人工——按工具返回的 replyInstruction 自然收口并继续托管即可；只有"群满"（invite.group_full）或接口/结构性失败才转人工
 - 只有 success: true 时才能说"已拉群/已发入群邀请"；无群、群满、接口拒绝、未调用工具时，都不要承诺群相关动作
 - 严禁在未调用本工具、或本工具返回 success: false 时说"我先拉你进群/后面群里通知/已发群邀请"
 
@@ -190,7 +197,7 @@ export function buildInviteToGroupTool(
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.INVITE_NO_GROUP_AVAILABLE,
               outcome: '暂无可用群',
-              replyInstruction: `当前平台无可用兼职群数据，本次不向候选人提及群相关内容。${UNDELIVERED_INVITE_HANDOFF_INSTRUCTION}`,
+              replyInstruction: `当前平台无可用兼职群数据，本次不向候选人提及群相关内容。${NO_GROUP_CONTINUE_INSTRUCTION}`,
             });
           }
 
@@ -205,7 +212,7 @@ export function buildInviteToGroupTool(
             return buildToolError({
               errorType: TOOL_ERROR_TYPES.INVITE_NO_GROUP_IN_CITY,
               outcome: '该城市无匹配群',
-              replyInstruction: `该候选人所在城市暂无兼职群，本次不向候选人提及群相关内容。${UNDELIVERED_INVITE_HANDOFF_INSTRUCTION}`,
+              replyInstruction: `该候选人所在城市暂无兼职群，本次不向候选人提及群相关内容。${NO_GROUP_CONTINUE_INSTRUCTION}`,
               details: { city },
             });
           }

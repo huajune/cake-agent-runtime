@@ -1,5 +1,5 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
-import { BotService } from '@channels/wecom/bot/bot.service';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { BOT_ACCOUNT_PROVIDER, type BotAccountProvider } from './bot-account.provider';
 
 export interface BotGroupInfo {
   managerName: string;
@@ -80,7 +80,7 @@ export function normalizeBotImId(botImId: string): string {
  * 从 botImId 解析招聘经理 + 小组（事件埋点的 manager/group 反范式来源）。
  *
  * 数据源优先级：Stride 动态表（getGroupBots，30min 缓存，wxid 与 wecomUserId 双键索引）
- * → 硬编码兜底表。BotService 用 @Optional 注入：单测裸 new 时为空，自动只走兜底表。
+ * → 硬编码兜底表。BotAccountProvider 用 @Optional 注入：单测裸 new 时为空，自动只走兜底表。
  */
 @Injectable()
 export class BotGroupResolverService {
@@ -95,14 +95,18 @@ export class BotGroupResolverService {
   private refreshing = false;
   private readonly DYNAMIC_TTL_MS = 30 * 60 * 1000;
 
-  constructor(@Optional() private readonly botService?: BotService) {}
+  constructor(
+    @Optional()
+    @Inject(BOT_ACCOUNT_PROVIDER)
+    private readonly botAccountProvider?: BotAccountProvider,
+  ) {}
 
   /**
    * 确保动态映射已就绪（供仪表盘等读取侧在处理前 await，保证首次请求即用动态数据）。
-   * 缓存有效或无 BotService 时立即返回；过期则同步等待一次刷新。
+   * 缓存有效或无 provider 时立即返回；过期则同步等待一次刷新。
    */
   async warmUp(): Promise<void> {
-    if (!this.botService) return;
+    if (!this.botAccountProvider) return;
     if (this.dynamicMapExpireAt > Date.now() && this.dynamicMap.size > 0) return;
     await this.refreshGroupMap();
   }
@@ -142,17 +146,17 @@ export class BotGroupResolverService {
 
   /** 过期则后台异步刷新（非阻塞）：当前调用先用旧/兜底数据，下次调用用新数据。 */
   private scheduleRefreshIfStale(): void {
-    if (!this.botService || this.refreshing) return;
+    if (!this.botAccountProvider || this.refreshing) return;
     if (this.dynamicMapExpireAt > Date.now() && this.dynamicMap.size > 0) return;
     void this.refreshGroupMap();
   }
 
   /** 从 Stride getGroupBots 重建 wxid/wecomUserId → 组 映射；失败保留旧映射、不抛。 */
   private async refreshGroupMap(): Promise<void> {
-    if (!this.botService || this.refreshing) return;
+    if (!this.botAccountProvider || this.refreshing) return;
     this.refreshing = true;
     try {
-      const bots = await this.botService.getConfiguredBotList();
+      const bots = await this.botAccountProvider.getConfiguredBotList();
       const map = new Map<string, BotGroupInfo>();
       for (const bot of bots) {
         const groupName = bot.groupName?.trim();

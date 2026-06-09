@@ -162,7 +162,9 @@ describe('buildInviteToGroupTool', () => {
 
     expect(result.success).toBe(false);
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_NO_GROUP_AVAILABLE);
-    expect(result._replyInstruction).toContain('request_handoff');
+    // 推荐无岗且本就没有兼职群（非群满）：不转人工，继续托管
+    expect(result._replyInstruction).toContain('不要调用 request_handoff');
+    expect(result._replyInstruction).toContain('保持托管');
   });
 
   it('should block invite when booking failed in same turn', async () => {
@@ -190,6 +192,9 @@ describe('buildInviteToGroupTool', () => {
     expect(result.success).toBe(false);
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_NO_GROUP_IN_CITY);
     expect(result.availableCities).toBeUndefined();
+    // 该城市本就没有兼职群（非群满）：不转人工，继续托管
+    expect(result._replyInstruction).toContain('不要调用 request_handoff');
+    expect(result._replyInstruction).toContain('保持托管');
     expect(mockRoomService.addMemberEnterprise).not.toHaveBeenCalled();
   });
 

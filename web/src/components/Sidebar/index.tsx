@@ -247,8 +247,8 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       </div>
 
       <div className="sidebar-menu">
-        {/* 概览 */}
-        {!isCollapsed && <div className="group-title">概览</div>}
+        {/* 数据概览 */}
+        {!isCollapsed && <div className="group-title">数据概览</div>}
         <NavLink
           to="/"
           end
@@ -285,8 +285,8 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           {!isCollapsed && <span className="nav-text">运营日报</span>}
         </a>
 
-        {/* 管理 */}
-        {!isCollapsed && <div className="group-title">管理</div>}
+        {/* 客户运营 */}
+        {!isCollapsed && <div className="group-title">客户运营</div>}
         <NavLink
           to="/users"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
@@ -322,8 +322,8 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           {!isCollapsed && <span className="nav-text">聊天记录</span>}
         </NavLink>
 
-        {/* 运营 */}
-        {!isCollapsed && <div className="group-title">运营</div>}
+        {/* 策略与质量 */}
+        {!isCollapsed && <div className="group-title">策略与质量</div>}
 
         <NavLink
           to="/strategy"

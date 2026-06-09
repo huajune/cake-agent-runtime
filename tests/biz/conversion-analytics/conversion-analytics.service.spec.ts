@@ -1,6 +1,7 @@
 import { ConversionAnalyticsService } from '@biz/conversion-analytics/conversion-analytics.service';
 import { OpsEventsAnalyticsRepository } from '@biz/conversion-analytics/repositories/ops-events-analytics.repository';
 import { BotGroupResolverService } from '@biz/ops-events/bot-group-resolver.service';
+import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import type { ConversionFilter } from '@biz/conversion-analytics/types/conversion-analytics.types';
 import { addLocalDays, formatLocalDate, getLocalDayStart } from '@infra/utils/date.util';
 
@@ -96,6 +97,12 @@ function fakeOpsRepo(
   } as unknown as OpsEventsAnalyticsRepository;
 }
 
+function fakeSystemConfig(value: unknown = null): SystemConfigService {
+  return {
+    getConfigValue: jest.fn().mockResolvedValue(value),
+  } as unknown as SystemConfigService;
+}
+
 describe('ConversionAnalyticsService — conversion analysis', () => {
   const filter: ConversionFilter = { range: 'month', groups: [], channels: [] };
 
@@ -141,6 +148,7 @@ describe('ConversionAnalyticsService — conversion analysis', () => {
     new ConversionAnalyticsService(
       fakeOpsRepo([...currentEvents, ...previousEvents]),
       new BotGroupResolverService(),
+      fakeSystemConfig(),
     );
 
   it('KPI 按期间事件快照去重，报名不受新增好友 cohort 过滤', async () => {
@@ -220,7 +228,7 @@ describe('ConversionAnalyticsService — conversion analysis', () => {
     expect(kpis.passRate.numerator).toBe(2);
   });
 
-  it('同一时段漏斗按期间发生量展示，但仍保留加群侧支分母=破冰', async () => {
+  it('同一时段漏斗按期间发生量展示，加群侧支不在漏斗里占一层', async () => {
     const funnel = await buildService().getFunnel('friend_added', filter, 'period');
     const stage = (name: string) => funnel.stages.find((s) => s.stage === name);
 
@@ -228,14 +236,13 @@ describe('ConversionAnalyticsService — conversion analysis', () => {
     expect(funnel.stages.map((s) => s.stage)).toEqual([
       'friend_added',
       'break_ice',
-      'group_invite',
       'booking',
       'interview_pass',
     ]);
+    expect(stage('group_invite')).toBeUndefined();
     expect(stage('friend_added')?.count).toBe(6);
     expect(stage('booking')?.count).toBe(4);
     expect(stage('booking')?.stageRate).toBeCloseTo(4 / 4, 4);
-    expect(stage('group_invite')?.stageRate).toBeCloseTo(3 / 4, 4);
   });
 
   it('趋势 summary 在同一时段口径下与 KPI 分子分母对齐', async () => {
@@ -297,11 +304,37 @@ describe('ConversionAnalyticsService — conversion analysis', () => {
     });
   });
 
-  it('漏斗中加群是侧支，不会成为报名成功的阶段分母', async () => {
+  it('账号对比合并取消/改约的 period 计数（运营侧支，不进漏斗）', async () => {
+    const service = new ConversionAnalyticsService(
+      fakeOpsRepo([
+        ev('friend.added', 'U1', today, 0),
+        ev('candidate.engaged', 'U1', today, 1),
+        ev('booking.canceled', 'U1', today, 2),
+        ev('booking.canceled', 'U2', today, 0),
+        ev('booking.interview_modified', 'U3', today, 0),
+      ]),
+      new BotGroupResolverService(),
+      fakeSystemConfig(),
+    );
+
+    const { bots } = await service.getBots(filter, 'period');
+    const row = bots.find((b) => b.botImId === 'unknown');
+
+    expect(row?.eventCounts).toMatchObject({
+      friends_added: 1,
+      break_ice: 1,
+      booking_cancel: 2,
+      interview_modified: 1,
+    });
+    // 取消/改约不进 overallRate（= 面试通过 / 新增好友）。
+    expect(row?.eventCounts.interview_pass).toBe(0);
+  });
+
+  it('漏斗中加群是侧支，不在漏斗里占一层，也不影响报名阶段分母', async () => {
     const funnel = await buildService().getFunnel('friend_added', filter);
     const stage = (name: string) => funnel.stages.find((s) => s.stage === name);
 
-    expect(stage('group_invite')?.stageRate).toBeCloseTo(3 / 4, 4);
+    expect(stage('group_invite')).toBeUndefined();
     expect(stage('booking')?.stageRate).toBeCloseTo(2 / 4, 4);
   });
 
@@ -323,6 +356,7 @@ describe('ConversionAnalyticsService — conversion analysis', () => {
         ],
       ),
       new BotGroupResolverService(),
+      fakeSystemConfig(),
     );
 
     const allBots = await service.getBots(filter);
@@ -334,6 +368,52 @@ describe('ConversionAnalyticsService — conversion analysis', () => {
     const yuhangBots = await service.getBots({ ...filter, groups: ['宇航组'] });
     expect(yuhangBots.bots).toHaveLength(1);
     expect(yuhangBots.bots[0].botImId).toBe('prod-sync:CongLingKaiShiDeXianShiShiJie');
+  });
+
+  it('账号换 bot id 后按动态身份别名配置合并为同一身份行（计数相加）', async () => {
+    const service = new ConversionAnalyticsService(
+      fakeOpsRepo(
+        [],
+        [
+          {
+            bot_im_id: 'bot-old',
+            manager_name: 'Old Manager',
+            group_name: '测试组',
+            friends_added_count: 5,
+            break_ice_count: 4,
+            booking_success_count: 1,
+            group_invite_count: 2,
+            interview_pass_count: 0,
+          },
+          {
+            bot_im_id: 'bot-new',
+            manager_name: 'New Manager',
+            group_name: '测试组',
+            friends_added_count: 2,
+            break_ice_count: 1,
+            booking_success_count: 0,
+            group_invite_count: 1,
+            interview_pass_count: 0,
+          },
+        ],
+      ),
+      new BotGroupResolverService(),
+      fakeSystemConfig({
+        'bot-new': { canonicalBotImId: 'bot-old', managerName: 'Merged Manager' },
+      }),
+    );
+
+    const { bots } = await service.getBots(filter);
+    expect(bots.some((row) => row.botImId === 'bot-new')).toBe(false);
+    const merged = bots.find((row) => row.botImId === 'bot-old');
+    expect(merged?.managerName).toBe('Merged Manager');
+    expect(merged?.eventCounts).toMatchObject({
+      friends_added: 7,
+      break_ice: 5,
+      booking_success: 1,
+      group_invite: 3,
+      interview_pass: 0,
+    });
   });
 
   it('cohort 匹配在 user_id 缺失时回退 chat_id，不漏算（§3）', async () => {
@@ -351,6 +431,7 @@ describe('ConversionAnalyticsService — conversion analysis', () => {
     const service = new ConversionAnalyticsService(
       fakeOpsRepo(events),
       new BotGroupResolverService(),
+      fakeSystemConfig(),
     );
 
     const kpis = await service.getKpis({ range: 'month', groups: [], channels: [] }, 'cohort');
@@ -370,6 +451,7 @@ describe('ConversionAnalyticsService — conversion analysis', () => {
     const service = new ConversionAnalyticsService(
       fakeOpsRepo(events),
       new BotGroupResolverService(),
+      fakeSystemConfig(),
     );
 
     const handoff = await service.getHandoff({ range: 'month', groups: [], channels: [] });

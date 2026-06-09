@@ -5,7 +5,13 @@
  * 事件清单与 idempotency_key 设计见 docs/product/ops-data-and-sponge-integration.md 三、四章。
  */
 
-/** 13 个蛋糕产品事件名。 */
+/**
+ * 蛋糕产品事件名。
+ *
+ * 前 13 个进 daily_ops_report 投影（见 ops_event_projection_column RPC）。
+ * booking.canceled / booking.interview_modified 为工单自助变更事件，目前只写 ops_events 底账、
+ * 暂未建 daily_ops_report 投影列（不影响现有漏斗卡片）。
+ */
 export const OPS_EVENT_NAMES = [
   'friend.added',
   'agent.opening_sent',
@@ -20,6 +26,8 @@ export const OPS_EVENT_NAMES = [
   'handoff.triggered',
   'interview.passed',
   'candidate.hired',
+  'booking.canceled',
+  'booking.interview_modified',
 ] as const;
 
 export type OpsEventName = (typeof OPS_EVENT_NAMES)[number];

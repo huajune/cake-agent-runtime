@@ -96,10 +96,14 @@ export default function Dashboard() {
   const {
     data: rawDashboard,
     isLoading: dashboardInitialLoading,
+    isFetching: dashboardFetching,
+    isPlaceholderData: dashboardPlaceholder,
     dataUpdatedAt,
   } = useDashboardOverview(timeRange, autoRefresh, groups);
   const dashboard = rawDashboard?.timeRange === timeRange ? rawDashboard : undefined;
   const dashboardLoading = dashboardInitialLoading || !dashboard;
+  // 刷新/加载指示：初次加载（含整页刷新）或后台刷新（已有占位数据）时，顶部显示滑动进度条。
+  const showRefreshBar = dashboardLoading || (dashboardFetching && dashboardPlaceholder);
   const { data: health } = useHealthStatus(autoRefresh);
 
   // 卡片装饰贴纸
@@ -415,6 +419,15 @@ export default function Dashboard() {
 
   return (
     <div className={styles.page}>
+      {showRefreshBar ? (
+        <div
+          className={styles.refreshBar}
+          role="status"
+          aria-live="polite"
+          aria-label="正在加载数据"
+        />
+      ) : null}
+
       {/* 控制面板 */}
       <ControlPanel
         timeRange={timeRange}

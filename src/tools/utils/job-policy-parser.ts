@@ -101,6 +101,46 @@ function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
+/**
+ * 汇总"要求/注意事项"类自由文本。
+ *
+ * 海绵实际把硬条件、健康证时机、学生/经验/户籍等要求写在 firstInterview.firstInterviewDesc
+ * 与 interviewProcess.processDesc 里；旧结构的 hiringRequirement.remark 现网已不返回，但保留
+ * 读取以兼容历史 fixture / 万一上游回灌。三者取并集后供关键词信号与 highlights 扫描。
+ */
+function collectRequirementFreeText(
+  hiringRequirement: UnknownRecord | null,
+  firstInterview: UnknownRecord | null,
+  interviewProcess: UnknownRecord | null,
+): string {
+  return [
+    asString(hiringRequirement?.remark),
+    asString(firstInterview?.firstInterviewDesc),
+    asString(interviewProcess?.processDesc),
+  ]
+    .filter((t): t is string => Boolean(t))
+    .join('\n');
+}
+
+/**
+ * 汇总"面试流程/时效"类自由文本。
+ *
+ * 真实来源是 firstInterview.firstInterviewDesc（含报名方式/截止/健康证最迟时机）与
+ * interviewProcess.processDesc；旧的 interviewProcess.remark 已不返回，保留兼容。
+ */
+function collectInterviewFreeText(
+  firstInterview: UnknownRecord | null,
+  interviewProcess: UnknownRecord | null,
+): string {
+  return [
+    asString(interviewProcess?.remark),
+    asString(firstInterview?.firstInterviewDesc),
+    asString(interviewProcess?.processDesc),
+  ]
+    .filter((t): t is string => Boolean(t))
+    .join('\n');
+}
+
 export function normalizePolicyText(value: string | null | undefined): string {
   if (!value) return '';
   return value.trim();
@@ -345,7 +385,11 @@ function buildFieldSignals(job: JobDetail): PolicyFieldSignal[] {
   const basic = asRecord(hiringRequirement?.basicPersonalRequirements);
   const cert = asRecord(hiringRequirement?.certificate);
   const interviewProcess = asRecord(job.interviewProcess);
-  const remark = normalizePolicyText(asString(hiringRequirement?.remark));
+  const firstInterview = asRecord(interviewProcess?.firstInterview);
+  // 要求类自由文本：firstInterviewDesc / processDesc（+ 兼容旧 remark），见 collectRequirementFreeText。
+  const remark = normalizePolicyText(
+    collectRequirementFreeText(hiringRequirement, firstInterview, interviewProcess),
+  );
   const figure = normalizePolicyText(asString(hiringRequirement?.figure));
 
   if (asNumber(basic?.minAge) != null || asNumber(basic?.maxAge) != null) {
@@ -358,11 +402,9 @@ function buildFieldSignals(job: JobDetail): PolicyFieldSignal[] {
   }
 
   const genderRequirement = normalizePolicyText(asString(basic?.genderRequirement));
-  if (
-    genderRequirement &&
-    genderRequirement !== '不限' &&
-    !genderRequirement.includes('男性,女性')
-  ) {
+  // 海绵用逗号串表达多选："男性,女性" / "女性,男性" 两种顺序都代表不限，含男女两性即跳过性别信号。
+  const isBothGenders = /男/.test(genderRequirement) && /女/.test(genderRequirement);
+  if (genderRequirement && genderRequirement !== '不限' && !isBothGenders) {
     signals.push({
       field: '性别',
       sourceField: 'basic_personal_requirements',
@@ -470,7 +512,8 @@ function extractInterviewTimeHint(job: JobDetail): string | null {
     asString(first?.interviewTime),
     asString(first?.interviewDate),
     asString(first?.interviewDemand),
-    asString(interviewProcess.remark),
+    // 真实流程时间在 firstInterviewDesc / processDesc（+ 兼容旧 remark）。
+    collectInterviewFreeText(first, interviewProcess),
   ];
   const fragments = collectPolicyFragments(texts);
 
@@ -493,7 +536,8 @@ function extractRegistrationDeadlineHint(job: JobDetail): string | null {
   const fragments = collectPolicyFragments([
     asString(first?.interviewTime),
     asString(first?.interviewDemand),
-    asString(interviewProcess.remark),
+    // 真实报名截止信息在 firstInterviewDesc / processDesc（+ 兼容旧 remark）。
+    collectInterviewFreeText(first, interviewProcess),
   ]);
 
   const deadlines = dedupeStrings(
@@ -629,11 +673,19 @@ export function buildJobPolicyAnalysis(job: JobDetail): JobPolicyAnalysis {
     .map((item) => normalizePolicyText(asString(asRecord(item)?.interviewSupplement)))
     .filter(Boolean);
 
-  const requirementRemark = sanitizeConstraintText(asString(hiringRequirement?.remark));
-  const interviewRemark = sanitizeConstraintText(asString(interviewProcess?.remark));
+  // 要求/流程类自由文本的真实来源是 firstInterviewDesc / processDesc（旧 remark 已不返回，兼容保留）。
+  const requirementFreeText = collectRequirementFreeText(
+    hiringRequirement,
+    firstInterview,
+    interviewProcess,
+  );
+  const interviewFreeText = collectInterviewFreeText(firstInterview, interviewProcess);
+
+  const requirementRemark = sanitizeConstraintText(requirementFreeText);
+  const interviewRemark = sanitizeConstraintText(interviewFreeText);
   const interviewDemand = sanitizeConstraintText(asString(firstInterview?.interviewDemand));
 
-  const requirementHighlights = pickKeySentences(asString(hiringRequirement?.remark), [
+  const requirementHighlights = pickKeySentences(requirementFreeText, [
     /经验/,
     /体力/,
     /分拣/,
@@ -645,7 +697,7 @@ export function buildJobPolicyAnalysis(job: JobDetail): JobPolicyAnalysis {
     .map((fragment) => sanitizeConstraintText(fragment))
     .filter((fragment): fragment is string => Boolean(fragment));
 
-  const timingHighlights = pickKeySentences(asString(interviewProcess?.remark), [
+  const timingHighlights = pickKeySentences(interviewFreeText, [
     /健康证/,
     /最迟/,
     /最后/,
