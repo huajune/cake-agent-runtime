@@ -456,6 +456,7 @@ describe('AgentPreparationService', () => {
     );
     expect(mockSpongeService.getCachedWorkOrderById).toHaveBeenCalledWith(88001);
     expect(result.entryStage).toBe('onboard_followup');
+    expect(result.finalPrompt).toContain('工单号: 88001');
     expect(result.finalPrompt).toContain('品牌: 瑞幸');
     expect(result.finalPrompt).toContain('当前状态: 约面成功');
   });

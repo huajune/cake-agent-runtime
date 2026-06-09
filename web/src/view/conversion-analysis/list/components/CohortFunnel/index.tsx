@@ -276,7 +276,7 @@ function formatPercent(value?: number) {
 function metricTooltip(stage: ConversionFunnelStage, total: number, subject: string): string {
   return [
     `占总数 ${formatPercent(stage.overallRate)}：${stage.count} ÷ ${total}（${subject}总数），看从头到此还剩多少人`,
-    `阶段率 ${formatPercent(stage.stageRate)}：相对上一阶段的转化率（邀请进群、报名的分母均为破冰）`,
+    `阶段率 ${formatPercent(stage.stageRate)}：相对上一阶段的转化率`,
   ].join('\n');
 }
 
@@ -304,8 +304,8 @@ function funnelDescription(mode: ConversionMetricMode, total: number, loading: b
 
 function funnelNote(mode: ConversionMetricMode, subject: string) {
   if (mode === 'period') {
-    return '口径：同一时段发生量快照。新增好友、破冰、邀请进群、报名、面试通过分别取本时间窗内去重事件（均按人去重）；邀请进群是破冰后的运营侧支，阶段率分母=破冰，不进入线性单调链。注意：各阶段独立计数，下游可能超过上一阶段（如窗口外加的好友在本期破冰/报名），故本图非严格收口漏斗、阶段率可能 >100%；如需「同一批人逐级 ⊆」请切到同批追踪。';
+    return '口径：同一时段发生量快照。新增好友、破冰、报名、面试通过分别取本时间窗内去重事件（均按人去重）。注意：各阶段独立计数，下游可能超过上一阶段（如窗口外加的好友在本期破冰/报名），故本图非严格收口漏斗、阶段率可能 >100%；如需「同一批人逐级 ⊆」请切到同批追踪。';
   }
 
-  return `口径：以本期${subject}为同一批人逐级追踪（按人去重、线性阶段每级 ⊆ 上一级，比率天然 ≤100%）。邀请进群是破冰后的运营侧支，阶段率分母=破冰，不影响报名阶段分母；无入职级。注意：下游只统计落在所选时间窗内的事件，越靠近今天的批次后续转化可能尚未发生（右侧截断），近几日数值偏低属正常；时间窗越长该影响越小。`;
+  return `口径：以本期${subject}为同一批人逐级追踪（按人去重、线性阶段每级 ⊆ 上一级，比率天然 ≤100%）；收口到面试通过，无入职级。注意：下游只统计落在所选时间窗内的事件，越靠近今天的批次后续转化可能尚未发生（右侧截断），近几日数值偏低属正常；时间窗越长该影响越小。`;
 }

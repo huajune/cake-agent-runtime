@@ -26,8 +26,6 @@ import { PreAgentRiskInterceptService } from '@wecom/message/application/pre-age
 import { ReplyFactGuardService } from '@wecom/message/application/reply-fact-guard.service';
 import { LongTermService } from '@memory/services/long-term.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
-import { BotGroupResolverService } from '@biz/ops-events/bot-group-resolver.service';
-import { HuajuneReporterService } from '@biz/huajune/huajune-reporter.service';
 import { HostingMemberConfigService } from '@biz/hosting-config/services/hosting-member-config.service';
 
 describe('MessagePipelineService', () => {
@@ -212,15 +210,6 @@ describe('MessagePipelineService', () => {
             recordCandidateMessage: jest
               .fn()
               .mockResolvedValue({ messageRecorded: true, engaged: false }),
-          },
-        },
-        { provide: BotGroupResolverService, useValue: { resolveAgentId: jest.fn() } },
-        {
-          provide: HuajuneReporterService,
-          useValue: {
-            reportMessageReceived: jest.fn(),
-            reportMessageSent: jest.fn(),
-            reportCandidateContacted: jest.fn(),
           },
         },
       ],

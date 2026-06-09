@@ -43,13 +43,6 @@ describe('AcceptInboundMessageService', () => {
     recordEvent: jest.fn().mockResolvedValue(true),
     recordCandidateMessage: jest.fn().mockResolvedValue({ messageRecorded: true, engaged: false }),
   };
-  const botGroupResolver = {
-    resolveAgentId: jest.fn().mockReturnValue(null),
-  };
-  const huajuneReporter = {
-    reportMessageReceived: jest.fn(),
-    reportCandidateContacted: jest.fn(),
-  };
 
   let service: AcceptInboundMessageService;
 
@@ -86,8 +79,6 @@ describe('AcceptInboundMessageService', () => {
       llm as never,
       longTerm as never,
       opsEventsRecorder as never,
-      botGroupResolver as never,
-      huajuneReporter as never,
     );
   });
 
@@ -220,19 +211,6 @@ describe('AcceptInboundMessageService', () => {
         sourceChannel: 'unknown',
       }),
     );
-  });
-
-  it('reports real inbound candidate messages to Huajune when bot has agent mapping', async () => {
-    botGroupResolver.resolveAgentId.mockReturnValueOnce('gaoyaqi-cake-1');
-
-    await service.execute(createMessage({ messageId: 'msg-huajune-inbound' }));
-    await flushMicrotasks();
-
-    expect(huajuneReporter.reportMessageReceived).toHaveBeenCalledWith({
-      agentId: 'gaoyaqi-cake-1',
-      candidateName: '张三',
-      idempotencyKey: 'msg-huajune-inbound',
-    });
   });
 
   it('加好友纯默认招呼语只记 friend.added，不记候选人消息/破冰', async () => {

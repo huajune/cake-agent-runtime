@@ -77,3 +77,4 @@ supabase/.temp/
 supabase/.env
 .claude/worktrees/
 .claude/*.lock
+.scratch/

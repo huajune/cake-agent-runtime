@@ -50,6 +50,19 @@ function normalizeGender(raw: unknown): GenderRequirement {
   if (typeof raw !== 'string') return 'unspecified';
   const trimmed = raw.trim();
   if (!trimmed) return 'unspecified';
+  // sponge 实际用逗号串表达多选，如 "男性,女性" / "女性,男性"（=不限）。
+  // 先按分隔符拆分，命中男女两性即视为不限。
+  const parts = trimmed
+    .split(/[,，、/\s]+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length > 1) {
+    const hasMale = parts.some((p) => MALE_TOKENS.has(p) || /男/.test(p));
+    const hasFemale = parts.some((p) => FEMALE_TOKENS.has(p) || /女/.test(p));
+    if (hasMale && hasFemale) return 'any';
+    if (hasFemale) return 'female';
+    if (hasMale) return 'male';
+  }
   if (FEMALE_TOKENS.has(trimmed)) return 'female';
   if (MALE_TOKENS.has(trimmed)) return 'male';
   if (ANY_TOKENS.has(trimmed)) return 'any';

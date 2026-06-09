@@ -15,46 +15,45 @@
 interface ShiftSlot {
   start: string; // HH:MM
   end: string; // HH:MM
-  weekdays?: string; // 来自 combinedArrangement.combinedArrangementWeekdays（如"每周一,每周二"）
+  weekdays?: string; // 海绵2.0 新结构 combinedArrangement 已不带星期，保留字段供格式化层兼容
 }
 
+/**
+ * 海绵2.0 岗位 workTime 结构（dayWorkTime + weekAndMonthWorkTime）。
+ *
+ * 旧结构（dailyShiftSchedule / weekWorkTime / monthWorkTime / fixedScheduleList）已废弃，
+ * 由网关迁移后统一返回本结构。
+ */
 interface WorkTimeInput {
-  dailyShiftSchedule?: DailyShiftScheduleInput;
-  monthWorkTime?: MonthWorkTimeInput;
   dayWorkTime?: DayWorkTimeInput;
+  weekAndMonthWorkTime?: WeekAndMonthWorkTimeInput;
 }
 
-interface DailyShiftScheduleInput {
+interface DayWorkTimeInput {
+  /** 排班类型描述：满足其中一个时段即可安排上岗(固定) / 满足所有时段才可安排上岗(组合) / 灵活排班 */
   arrangementType?: unknown;
-  fixedScheduleList?: FixedScheduleInput[];
+  /** 固定/组合排班的多时段；灵活排班通常为 null */
   combinedArrangement?: CombinedArrangementInput[];
+  /** 灵活排班的上下班区间 + 每日最少工时 + 班次名 */
   fixedTime?: FixedTimeInput;
-}
-
-interface FixedScheduleInput {
-  fixedShiftStartTime?: unknown;
-  fixedShiftEndTime?: unknown;
 }
 
 interface CombinedArrangementInput {
   combinedArrangementStartTime?: unknown;
   combinedArrangementEndTime?: unknown;
-  combinedArrangementWeekdays?: unknown;
 }
 
 interface FixedTimeInput {
-  goToWorkStartTime?: unknown;
-  goToWorkEndTime?: unknown;
-  goOffWorkStartTime?: unknown;
-  goOffWorkEndTime?: unknown;
-}
-
-interface MonthWorkTimeInput {
-  perMonthMinWorkTime?: unknown;
-}
-
-interface DayWorkTimeInput {
   perDayMinWorkHours?: unknown;
+  shiftCodes?: unknown;
+  goToWorkStartTime?: unknown;
+  goOffWorkEndTime?: unknown;
+  goOffWorkTimeType?: unknown; // 当日 / 次日
+}
+
+interface WeekAndMonthWorkTimeInput {
+  perMonthMinWorkTime?: unknown;
+  perWeekWorkDays?: unknown;
 }
 
 /** 主入口：从 workTime 产出可对外展示的班次文案。null = 没有具体班次。 */
@@ -62,22 +61,28 @@ export function composeShiftTimeText(workTime: unknown): string | null {
   if (!isNonEmpty(workTime)) return null;
   const input = workTime as WorkTimeInput;
 
-  if (looksLikeFlexibleArrangement(input)) {
-    // 弹性排班 → 不强行展示具体时段，按候选人自定义/门店排返回简短描述
-    return composeFlexibleSummary(input);
+  const slots = collectShiftSlots(input);
+  if (slots.length === 0) {
+    // 灵活排班且无可用时段 → 弹性概要；其余无具体班次数据 → null（调用方不显示该字段）
+    if (looksLikeFlexibleArrangement(input)) return composeFlexibleSummary(input);
+    return null;
   }
 
-  const slots = collectShiftSlots(input);
-  if (slots.length === 0) return null;
+  const flexible = looksLikeFlexibleArrangement(input);
+  const dayMin = dayMinHours(input);
 
-  // 单条 fixedShift 且跨度 ≥ 12 小时时，该条目通常是"排班窗口"而非真实班次时长。
-  // 此时用 perDayMinWorkHours 描述实际每日出勤时长，避免把窗口跨度（如 15h）输出成
-  // "全天班，约 15 小时"误导 LLM（badcase：候选人问"做一整天吗"，LLM 看到 15h 后
-  // 反而用通识补"4-8 小时"，造成空头承诺）。
+  // 单条宽跨度时段通常是"排班窗口"而非真实班次时长。用 perDayMinWorkHours 描述实际
+  // 每日出勤时长，避免把窗口跨度（如 15h）输出成"全天班，约 15 小时"误导 LLM
+  // （badcase：候选人问"做一整天吗"，LLM 看到 15h 后反而补"4-8 小时"，造成空头承诺）。
+  // 灵活排班的 fixedTime 区间天然是窗口，跨度比最少工时大 ≥2h 即按窗口呈现。
   if (slots.length === 1) {
     const slotHours = durationMinutes(slots[0].start, slots[0].end) / 60;
-    const dayMin = numberOf(input?.dayWorkTime?.perDayMinWorkHours);
-    if (slotHours >= 12 && dayMin !== null && dayMin < slotHours) {
+    if (
+      dayMin !== null &&
+      dayMin > 0 &&
+      dayMin < slotHours &&
+      (slotHours >= 12 || (flexible && slotHours - dayMin >= 2))
+    ) {
       return formatWindowSlot(slots[0], dayMin);
     }
   }
@@ -87,115 +92,93 @@ export function composeShiftTimeText(workTime: unknown): string | null {
 }
 
 /**
- * 排班窗口格式：API 只记了一条宽跨度 fixedShift（如 07:00-22:00），
+ * 排班窗口格式：API 只记了一条宽跨度时段（如 07:00-22:00），
  * 实际排班在窗口内进行，每日最少工时由 perDayMinWorkHours 决定。
  * 输出示例："07:00-22:00 排班窗口（每日至少 10 小时）"
  */
-function formatWindowSlot(slot: ShiftSlot, dayMinHours: number): string {
+function formatWindowSlot(slot: ShiftSlot, dayMin: number): string {
   const range = formatTimeRange(slot.start, slot.end);
-  return `${range} 排班窗口（每日至少 ${dayMinHours} 小时）`;
+  return `${range} 排班窗口（每日至少 ${dayMin} 小时）`;
 }
 
-/** 收集所有候选 slot，按优先级：fixedScheduleList > combinedArrangement > fixedTime（窄区间）。 */
+/** 海绵2.0 排班类型字符串（满足其中一个.../满足所有.../灵活排班）。 */
+function arrangementTypeOf(workTime: WorkTimeInput): string {
+  const t = workTime?.dayWorkTime?.arrangementType;
+  return typeof t === 'string' ? t : '';
+}
+
+/** 每日最少工时（海绵2.0 落在 dayWorkTime.fixedTime.perDayMinWorkHours，可能为字符串）。 */
+function dayMinHours(workTime: WorkTimeInput): number | null {
+  return numberOf(workTime?.dayWorkTime?.fixedTime?.perDayMinWorkHours);
+}
+
+/**
+ * 收集候选 slot：
+ * - 固定/组合排班 → dayWorkTime.combinedArrangement[] 多时段
+ * - 灵活排班 → dayWorkTime.fixedTime 的上下班区间（单时段，含跨次日）
+ */
 function collectShiftSlots(workTime: WorkTimeInput): ShiftSlot[] {
-  const schedule = workTime?.dailyShiftSchedule;
-  if (!schedule) return [];
+  const day = workTime?.dayWorkTime;
+  if (!day) return [];
 
-  // 1) fixedScheduleList: 多档班次
-  const fixedList = Array.isArray(schedule.fixedScheduleList) ? schedule.fixedScheduleList : [];
-  const fromFixedList: ShiftSlot[] = fixedList
-    .map((sh) => ({
-      start: normalizeHm(sh?.fixedShiftStartTime),
-      end: normalizeHm(sh?.fixedShiftEndTime),
-    }))
-    .filter((s: ShiftSlot) => isValidSlot(s));
-  if (fromFixedList.length > 0) return fromFixedList;
-
-  // 2) combinedArrangement: 带星期的时段
-  const combined = Array.isArray(schedule.combinedArrangement) ? schedule.combinedArrangement : [];
+  // 1) combinedArrangement: 固定/组合排班的多时段（新结构不再带星期）
+  const combined = Array.isArray(day.combinedArrangement) ? day.combinedArrangement : [];
   const fromCombined: ShiftSlot[] = combined
     .map((ca) => ({
       start: normalizeHm(ca?.combinedArrangementStartTime),
       end: normalizeHm(ca?.combinedArrangementEndTime),
-      weekdays:
-        typeof ca?.combinedArrangementWeekdays === 'string'
-          ? ca.combinedArrangementWeekdays
-          : undefined,
     }))
     .filter((s: ShiftSlot) => isValidSlot(s));
   if (fromCombined.length > 0) return fromCombined;
 
-  // 3) fixedTime: 仅当上班区间 < 2h 时视为"班次起止"
-  const ft = schedule.fixedTime;
+  // 2) fixedTime: 灵活排班的上下班区间 → 单时段（goToWorkStartTime~goOffWorkEndTime）
+  const ft = day.fixedTime;
   if (!ft) return [];
-  const goUpStart = normalizeHm(ft.goToWorkStartTime);
-  const goUpEnd = normalizeHm(ft.goToWorkEndTime);
-  const goOffStart = normalizeHm(ft.goOffWorkStartTime);
-  const goOffEnd = normalizeHm(ft.goOffWorkEndTime);
-  if (goUpStart && goOffEnd) {
-    const upRangeMinutes = goUpEnd ? minutesBetween(goUpStart, goUpEnd) : 0;
-    if (upRangeMinutes < 120) {
-      // 窄上班区间，认为是固定班次：取上班开始 + 下班结束
-      return [
-        {
-          start: goUpStart,
-          end: goOffEnd,
-        },
-      ];
-    }
-    // 上班区间 ≥ 2h（如 5:00-23:00 营业时段范围）→ 视为非具体班次
-    return [];
-  }
-  if (goUpStart && goOffStart) {
-    // 没有 endTime，但能凭起始构造单点
-    return [];
-  }
-
-  return [];
+  const slot: ShiftSlot = {
+    start: normalizeHm(ft.goToWorkStartTime),
+    end: normalizeHm(ft.goOffWorkEndTime),
+  };
+  return isValidSlot(slot) ? [slot] : [];
 }
 
-/** 选择关系：由 workTime 形态推断。 */
+/** 选择关系：由 arrangementType + perDayMinWorkHours 推断。 */
 type SelectionMode = 'single' | 'pick_one' | 'by_weekday' | 'all_required';
 
 function inferSelectionMode(workTime: WorkTimeInput, slots: ShiftSlot[]): SelectionMode {
   if (slots.length === 1) return 'single';
 
-  // combinedArrangement 多条且每条带 weekdays → 按星期排班
-  const allHaveWeekdays = slots.every((s) => Boolean(s.weekdays));
-  if (allHaveWeekdays) return 'by_weekday';
+  // arrangementType="满足所有时段才可安排上岗"（组合排班制）→ 全部需出勤
+  if (/所有/.test(arrangementTypeOf(workTime))) return 'all_required';
 
-  // 如果 perDayMinWorkHours 超过任意单段时长，说明单选一段不足以满足最低工时，
+  // 兜底：perDayMinWorkHours 超过任意单段时长，说明单选一段不足以满足最低工时，
   // 所有班次都必须出勤（典型：两段各 2h + perDayMinWorkHours=4 → 全部都要做）。
-  const dayMin = numberOf(workTime?.dayWorkTime?.perDayMinWorkHours);
+  const dayMin = dayMinHours(workTime);
   if (dayMin !== null && dayMin > 0) {
     const maxSingleSlotHours = Math.max(...slots.map((s) => durationMinutes(s.start, s.end))) / 60;
     if (dayMin > maxSingleSlotHours) return 'all_required';
   }
 
-  // 多档 fixedScheduleList 的默认业务语义就是"候选人选其一"。
+  // "满足其中一个时段即可安排上岗"（固定排班制）默认语义=候选人选其一。
   return 'pick_one';
 }
 
 /**
- * 弹性排班识别 — 收紧到只识别"弹性/灵活"两个关键词，避免误判。
+ * 灵活排班识别 — arrangementType 含"灵活/弹性"。
  *
- * 已知 arrangementType 真实值（来自代码内 fixture）：
- * - '固定排班制' / '组合排班制' / '弹性'
- * 这里**只**当 arrangementType 含 弹性 / 灵活 时走 flexible 分支；
- * 其他值（含未来未知值）一律按数据形态判断（fixedScheduleList → combinedArrangement → fixedTime）。
- * 没具体班次数据时上层会自然返回 null，不会误显示。
+ * 海绵2.0 已知 arrangementType 取值：
+ * - '满足其中一个时段即可安排上岗'（固定排班制）
+ * - '满足所有时段才可安排上岗'（组合排班制）
+ * - '灵活排班'
+ * 只有"灵活排班"在缺少具体 fixedTime 时段时才回退到弹性概要。
  */
 function looksLikeFlexibleArrangement(workTime: WorkTimeInput): boolean {
-  const arrangementType = workTime?.dailyShiftSchedule?.arrangementType;
-  if (typeof arrangementType === 'string' && /弹性|灵活/.test(arrangementType)) return true;
-  return false;
+  return /弹性|灵活/.test(arrangementTypeOf(workTime));
 }
 
 function composeFlexibleSummary(workTime: WorkTimeInput): string | null {
-  const month = workTime?.monthWorkTime;
-  const day = workTime?.dayWorkTime;
-  const monthMin = numberOf(month?.perMonthMinWorkTime);
-  const dayMin = numberOf(day?.perDayMinWorkHours);
+  const wm = workTime?.weekAndMonthWorkTime;
+  const monthMin = numberOf(wm?.perMonthMinWorkTime);
+  const dayMin = dayMinHours(workTime);
   const parts: string[] = ['弹性排班，按门店实际安排'];
   if (monthMin) parts.push(`每月最少 ${monthMin} 小时`);
   if (dayMin) parts.push(`每天最少 ${dayMin} 小时`);
@@ -248,6 +231,10 @@ function formatDurationHint(start: string, end: string): string {
   if (minutes <= 0) return '';
   const hours = Math.round((minutes / 60) * 10) / 10;
   if (hours <= 3) return `短班，约 ${hours} 小时`;
+  // 跨度 ≥12h 不可能是连续工时（人一天上不了 16-19 小时），必是营业/排班窗口。
+  // 此前误输出"全天班约19小时"，候选人以为要连上一整天而流失
+  // （badcase recvkHHRbA0toe 05:00-次日00:00、recvkjGiU7oSL9 05:00-23:00）。
+  if (hours >= 12) return `排班窗口，实际每日工时按门店排班`;
   if (hours >= 9) return `全天班，约 ${hours} 小时`;
   return `约 ${hours} 小时`;
 }
@@ -335,13 +322,6 @@ function isValidSlot(slot: ShiftSlot): boolean {
   if (slot.start === slot.end) return false;
   if (slot.start === '00:00' && slot.end === '00:00') return false;
   return true;
-}
-
-function minutesBetween(a: string, b: string): number {
-  const pa = parseHm(a);
-  const pb = parseHm(b);
-  if (!pa || !pb) return 0;
-  return pb.h * 60 + pb.m - (pa.h * 60 + pa.m);
 }
 
 function crossesMidnight(start: string, end: string): boolean {

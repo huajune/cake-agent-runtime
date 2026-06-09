@@ -22,8 +22,6 @@ function buildRegistry() {
     {} as never,
     {} as never,
     {} as never,
-    {} as never,
-    {} as never,
   );
 }
 

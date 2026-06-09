@@ -166,7 +166,7 @@ export class HardConstraintsSection implements PromptSection {
 
     if (pref.city?.value) {
       lines.push(
-        `- 城市: ${pref.city.value}（必填到 duliday_job_list.cityNameList；调用 invite_to_group 时也必须用这个城市级名称）`,
+        `- 城市: ${pref.city.value}（必填到 duliday_job_list.cityNameList；调用 invite_to_group 时也必须用这个城市级名称；若本轮需要对商圈/地标/街道调 geocode，也必须把该城市作为 geocode.city 传入，不要留空）`,
       );
     }
     if (pref.district?.length) {

@@ -86,12 +86,22 @@ function classifyWelfareValue(raw: unknown, hasAllowance: boolean): WelfareKind 
     return hasAllowance ? 'allowance' : 'self_or_none';
   }
 
-  // 包含关键词（如 "包吃 + 包住" / "公司购买社保"）
-  if (/(包吃|包住|公司(提供|购买|缴纳|承担)|免费(工作|员工)?餐|免费住宿)/.test(text)) {
-    return 'company';
-  }
-  if (/(不包|员工自理|^无$|^没有|不(购买|提供|缴纳|承担))/.test(text)) {
+  // 负向优先：sponge 实际用 "无餐饮福利"/"无住宿福利"/"独立日不购买" 这类完整描述串，
+  // 必须在正向 "购买" 命中前先判否定（否则 "不购买" 会被 "购买" 误判为公司提供）。
+  if (/^无|^没有|不包|员工自理|不(购买|提供|缴纳|承担)/.test(text)) {
     return hasAllowance ? 'allowance' : 'self_or_none';
+  }
+  // 仅补贴：catering/accommodation 取值 "餐饮补贴"/"住宿补贴"
+  if (/补贴/.test(text)) {
+    return 'allowance';
+  }
+  // 正向：包吃/包住、公司或"独立日/独立客"(本公司)购买/缴纳社保保险、免费餐宿
+  if (
+    /(包吃|包住|(公司|独立[日客])(提供|购买|缴纳|承担)|购买|缴纳|免费(工作|员工)?餐|免费住宿)/.test(
+      text,
+    )
+  ) {
+    return 'company';
   }
   return hasAllowance ? 'allowance' : 'unspecified';
 }

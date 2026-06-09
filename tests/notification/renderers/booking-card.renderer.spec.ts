@@ -93,6 +93,7 @@ describe('BookingCardRenderer', () => {
         error: '名额已满',
         errorList: ['门店无可约时间', { code: 'CAPACITY_FULL' }],
         notice: '请人工跟进',
+        traceId: 'trace-xyz-789',
       },
       atAll: true,
     });
@@ -113,5 +114,6 @@ describe('BookingCardRenderer', () => {
     expect((result.card.content as string)).toContain('返回信息：请人工跟进');
     expect((result.card.content as string)).toContain('门店无可约时间');
     expect((result.card.content as string)).toContain('CAPACITY_FULL');
+    expect((result.card.content as string)).toContain('traceId：trace-xyz-789');
   });
 });

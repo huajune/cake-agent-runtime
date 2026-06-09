@@ -16,6 +16,8 @@ import { buildRecallHistoryTool } from './recall-history.tool';
 import { buildJobListTool } from './duliday-job-list.tool';
 import { buildInterviewPrecheckTool } from './duliday-interview-precheck.tool';
 import { buildInterviewBookingTool } from './duliday-interview-booking.tool';
+import { buildCancelWorkOrderTool } from './duliday-cancel-work-order.tool';
+import { buildModifyInterviewTimeTool } from './duliday-modify-interview-time.tool';
 import { buildGeocodeTool } from './geocode.tool';
 import { buildSaveImageDescriptionTool } from './save-image-description.tool';
 import { buildInviteToGroupTool } from './invite-to-group.tool';
@@ -40,9 +42,7 @@ import { MessageSenderService } from '@channels/wecom/message-sender/message-sen
 import { SessionService } from '@memory/services/session.service';
 import { LongTermService } from '@memory/services/long-term.service';
 import { OpsEventsRecorderService } from '@biz/ops-events/ops-events-recorder.service';
-import { BotGroupResolverService } from '@biz/ops-events/bot-group-resolver.service';
 import { HandoffRecorderService } from '@biz/handoff-events/handoff-recorder.service';
-import { HuajuneReporterService } from '@biz/huajune/huajune-reporter.service';
 
 /**
  * 统一工具注册表
@@ -84,8 +84,6 @@ export class ToolRegistryService {
     longTermService: LongTermService,
     opsEventsRecorder: OpsEventsRecorderService,
     handoffRecorder: HandoffRecorderService,
-    botGroupResolver: BotGroupResolverService,
-    huajuneReporter: HuajuneReporterService,
   ) {
     const memberLimit = parseInt(configService.get('GROUP_MEMBER_LIMIT', '200'), 10);
     const enterpriseToken = configService.get<string>('STRIDE_ENTERPRISE_TOKEN')?.trim();
@@ -122,8 +120,6 @@ export class ToolRegistryService {
           bookingService,
           longTermService,
           opsEventsRecorder,
-          botGroupResolver,
-          huajuneReporter,
         ),
       }),
 
@@ -132,6 +128,20 @@ export class ToolRegistryService {
         description:
           '面试前置校验（按岗位返回可约日期/时段、备注解析后的字段建议、报名补充信息；不真正提交预约）',
         create: buildInterviewPrecheckTool(spongeService, opsEventsRecorder),
+      }),
+
+      duliday_cancel_work_order: createToolDefinition({
+        name: 'duliday_cancel_work_order',
+        description:
+          '取消工单（候选人主动要求取消已确认的面试预约时调用，真正调海绵取消接口；workOrderId 取自 [当前预约信息]）',
+        create: buildCancelWorkOrderTool(spongeService, opsEventsRecorder),
+      }),
+
+      duliday_modify_interview_time: createToolDefinition({
+        name: 'duliday_modify_interview_time',
+        description:
+          '修改约面时间（候选人主动要求把已确认的面试改到新时间时调用，真正调海绵改约接口；workOrderId 取自 [当前预约信息]）',
+        create: buildModifyInterviewTimeTool(spongeService, opsEventsRecorder),
       }),
 
       geocode: createToolDefinition({
@@ -206,6 +216,8 @@ export class ToolRegistryService {
       'duliday_job_list',
       'duliday_interview_precheck',
       'duliday_interview_booking',
+      'duliday_cancel_work_order',
+      'duliday_modify_interview_time',
       'geocode',
       'send_store_location',
       'invite_to_group',

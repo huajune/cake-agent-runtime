@@ -56,11 +56,7 @@ export function cleanMultilineText(text: string): string {
 // ==================== 投影渲染 helpers ====================
 
 /** 把 `- **label**: value` 推入行数组；value 为空时跳过 */
-export function pushField(
-  lines: string[],
-  label: string,
-  value: string | number | null | undefined,
-): void {
+export function pushField(lines: string[], label: string, value: unknown): void {
   if (value === null || value === undefined) return;
   let text: string;
   if (typeof value === 'number') {
@@ -76,11 +72,7 @@ export function pushField(
 }
 
 /** 推入长文本字段，保留原始换行，多行时换行后缩进 2 格 */
-export function pushLongText(
-  lines: string[],
-  label: string,
-  text: string | null | undefined,
-): void {
+export function pushLongText(lines: string[], label: string, text: unknown): void {
   if (!text || typeof text !== 'string') return;
   const cleaned = cleanMultilineText(text);
   if (!cleaned) return;
