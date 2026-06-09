@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { BotGroupResolverService } from '@biz/ops-events/bot-group-resolver.service';
+import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import { addLocalDays, formatLocalDate, getLocalDayStart } from '@infra/utils/date.util';
 import { OpsEventsAnalyticsRepository } from './repositories/ops-events-analytics.repository';
 import {
@@ -139,6 +140,13 @@ const GROUP_INVITE_STAGE = 'group_invite';
 // 直接按 period 计数 ops_events，不参与 cohort/funnel 计算，避免污染转化口径。
 const BOOKING_CANCEL_EVENT = 'booking.canceled';
 const INTERVIEW_MODIFIED_EVENT = 'booking.interview_modified';
+const BOT_IDENTITY_ALIASES_CONFIG_KEY = 'conversion_bot_identity_aliases';
+const BOT_IDENTITY_ALIASES_CACHE_TTL_MS = 60 * 1000;
+
+interface BotIdentityAlias {
+  canonicalBotImId: string;
+  managerName: string | null;
+}
 
 const HANDOFF_REASON_LABELS: Record<string, string> = {
   cannot_find_store: '找不到候选人想去的门店',
@@ -157,18 +165,15 @@ const HANDOFF_REASON_LABELS: Record<string, string> = {
 export class ConversionAnalyticsService {
   private readonly logger = new Logger(ConversionAnalyticsService.name);
   private readonly rowCache = new Map<string, RowCacheEntry>();
-
-  // 临时止血：账号重新登录/换设备/绑定后底层 wxid 会变，看板按 bot_im_id(wxid) 去重会把
-  // 同一个人裂成两行。这里登记「易变 wxid → 归并身份」，读取侧聚合完成后合并展示。
-  // 注：仅手工登记已确认的换号对；根治方案是写入侧落库稳定的 wecomUserId 再按它去重。
-  private readonly BOT_IDENTITY_ALIASES: Record<string, { id: string; managerName: string }> = {
-    // 盼盼组 吴盼盼：2026-06-05 换号 1688854747775509(WuPanPan) → 1688854263771949(吴盼盼)
-    '1688854263771949': { id: '1688854747775509', managerName: '吴盼盼' },
-  };
+  private botIdentityAliasesCache: {
+    value: Record<string, BotIdentityAlias>;
+    expiresAt: number;
+  } | null = null;
 
   constructor(
     private readonly opsEventsRepository: OpsEventsAnalyticsRepository,
     private readonly botGroupResolver: BotGroupResolverService,
+    private readonly systemConfigService: SystemConfigService,
   ) {}
 
   async getKpis(
@@ -744,9 +749,10 @@ export class ConversionAnalyticsService {
 
     // 工单自助变更（取消/改约）按 period 直接计数 ops_events，合并到各 bot 行（不参与 cohort/漏斗）。
     const withMutations = await this.applyMutationCounts(fallbackRows, filter, period);
+    const botIdentityAliases = await this.getBotIdentityAliases();
 
     return {
-      bots: this.mergeAliasedBots(withMutations).sort((a, b) => {
+      bots: this.mergeAliasedBots(withMutations, botIdentityAliases).sort((a, b) => {
         if (b.overallRate !== a.overallRate) return b.overallRate - a.overallRate;
         return b.eventCounts.friends_added - a.eventCounts.friends_added;
       }),
@@ -786,14 +792,83 @@ export class ConversionAnalyticsService {
     return Array.from(byBot.values()).map((row) => this.finalizeBotRow(row));
   }
 
-  // 临时止血：把 BOT_IDENTITY_ALIASES 登记的换号 wxid 合并到同一身份行（计数相加）。
+  /**
+   * 临时止血：读取 system_config.conversion_bot_identity_aliases，把换号 bot 合并到同一身份行。
+   *
+   * 配置形态：
+   * {
+   *   "newBotImId": { "canonicalBotImId": "oldOrStableBotImId", "managerName": "展示名" }
+   * }
+   *
+   * 根治方案仍是写入侧落库稳定 wecomUserId，并改为按稳定身份聚合；这里避免真实账号映射硬编码在代码中。
+   */
+  private async getBotIdentityAliases(): Promise<Record<string, BotIdentityAlias>> {
+    if (this.botIdentityAliasesCache && Date.now() < this.botIdentityAliasesCache.expiresAt) {
+      return this.botIdentityAliasesCache.value;
+    }
+
+    try {
+      const raw = await this.systemConfigService.getConfigValue<unknown>(
+        BOT_IDENTITY_ALIASES_CONFIG_KEY,
+      );
+      const value = this.parseBotIdentityAliases(raw);
+      this.botIdentityAliasesCache = {
+        value,
+        expiresAt: Date.now() + BOT_IDENTITY_ALIASES_CACHE_TTL_MS,
+      };
+      return value;
+    } catch (error) {
+      this.logger.warn(
+        `读取 bot 身份别名配置失败，跳过合并: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return {};
+    }
+  }
+
+  private parseBotIdentityAliases(raw: unknown): Record<string, BotIdentityAlias> {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return {};
+    }
+
+    const aliases: Record<string, BotIdentityAlias> = {};
+    for (const [aliasBotImId, value] of Object.entries(raw as Record<string, unknown>)) {
+      const aliasKey = aliasBotImId.trim();
+      if (!aliasKey || !value || typeof value !== 'object' || Array.isArray(value)) {
+        continue;
+      }
+
+      const record = value as Record<string, unknown>;
+      const canonical =
+        typeof record.canonicalBotImId === 'string'
+          ? record.canonicalBotImId.trim()
+          : typeof record.id === 'string'
+            ? record.id.trim()
+            : '';
+      if (!canonical) {
+        continue;
+      }
+
+      const managerName =
+        typeof record.managerName === 'string' && record.managerName.trim()
+          ? record.managerName.trim()
+          : null;
+      aliases[aliasKey] = { canonicalBotImId: canonical, managerName };
+    }
+
+    return aliases;
+  }
+
+  // 临时止血：把动态配置登记的换号 bot 合并到同一身份行（计数相加）。
   // 换号前后服务的候选人基本不重叠，相加即同一人完整漏斗；个别跨换号日的会话可能微量重复，
   // 作为止血可接受。无别名登记时此函数等价于原样返回。
-  private mergeAliasedBots(rows: ConversionBotRow[]): ConversionBotRow[] {
+  private mergeAliasedBots(
+    rows: ConversionBotRow[],
+    aliases: Record<string, BotIdentityAlias>,
+  ): ConversionBotRow[] {
     const byId = new Map<string, ConversionBotRow>();
     for (const row of rows) {
-      const alias = this.BOT_IDENTITY_ALIASES[row.botImId];
-      const canonicalId = alias?.id ?? row.botImId;
+      const alias = aliases[row.botImId];
+      const canonicalId = alias?.canonicalBotImId ?? row.botImId;
       const existing = byId.get(canonicalId);
       if (!existing) {
         byId.set(canonicalId, {

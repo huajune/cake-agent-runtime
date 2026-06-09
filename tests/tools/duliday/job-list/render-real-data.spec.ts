@@ -1,11 +1,15 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import type { JobDetail } from '@sponge/sponge.types';
 import { composeShiftTimeText } from '@tools/utils/format-shift-time.util';
 import {
   classifyScheduleSemantic,
   matchScheduleConstraint,
 } from '@tools/utils/schedule-semantic.util';
-import { formatJobsToMarkdown, ProgressiveDisclosureFlags } from '@tools/duliday/job-list/render.util';
+import {
+  formatJobsToMarkdown,
+  ProgressiveDisclosureFlags,
+} from '@tools/duliday/job-list/render.util';
 import { buildJobPolicyAnalysis } from '@tools/utils/job-policy-parser';
 
 /**
@@ -32,8 +36,9 @@ const ALL_FLAGS: ProgressiveDisclosureFlags = {
 };
 
 describeIf('real gateway job data (full inventory)', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const jobs: any[] = hasRealData ? JSON.parse(fs.readFileSync(REAL_DATA_PATH, 'utf8')) : [];
+  const jobs: JobDetail[] = hasRealData
+    ? (JSON.parse(fs.readFileSync(REAL_DATA_PATH, 'utf8')) as JobDetail[])
+    : [];
 
   it('loaded a non-trivial number of real jobs', () => {
     expect(jobs.length).toBeGreaterThan(100);

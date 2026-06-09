@@ -57,6 +57,7 @@ const inputSchema = z.object({
   cancelReasonId: z
     .number()
     .int()
+    .positive()
     .optional()
     .describe('取消原因 ID：取自第一步返回的 availableReasons，按候选人原话挑选；首次调用可不传'),
   cancelReasonDesc: z.string().optional().describe('取消原因描述：结合候选人原话简述（可选）'),

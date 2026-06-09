@@ -55,6 +55,7 @@ const DEFAULT_SORT = 'desc';
 const DEFAULT_SORT_FIELD = 'create_time';
 const BRAND_LIST_CACHE_TTL_MS = 30 * 60 * 1000;
 const FAILURE_REASONS_CACHE_TTL_MS = 30 * 60 * 1000;
+const FAILURE_REASONS_CACHE_MAX_ENTRIES = 50;
 /** Agent 上下文按 workOrderId 查工单的 Redis 缓存 TTL（秒）。 */
 const WORKORDER_CACHE_TTL_SECONDS = 5 * 60;
 const MAX_ATTACHMENT_UPLOAD_BYTES = 20 * 1024 * 1024;
@@ -663,8 +664,18 @@ export class SpongeService {
         .map((item) => ({ id: item.id, info: item.info ?? '' })),
     );
 
-    this.failureReasonsCache.set(cacheKey, { data: reasons, fetchedAt: Date.now() });
+    this.setFailureReasonsCache(cacheKey, reasons);
     return reasons;
+  }
+
+  private setFailureReasonsCache(cacheKey: string, data: FailureReasonItem[]): void {
+    if (
+      !this.failureReasonsCache.has(cacheKey) &&
+      this.failureReasonsCache.size >= FAILURE_REASONS_CACHE_MAX_ENTRIES
+    ) {
+      this.failureReasonsCache.clear();
+    }
+    this.failureReasonsCache.set(cacheKey, { data, fetchedAt: Date.now() });
   }
 
   private async resolveDulidayToken(

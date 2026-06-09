@@ -17,6 +17,7 @@
  */
 
 import { sanitizeJobDisplayText, sanitizeLaborFormForDisplay } from '@memory/facts/labor-form';
+import type { JobDetail } from '@sponge/sponge.types';
 import { composeShiftTimeText } from '@tools/utils/format-shift-time.util';
 import {
   buildJobPolicyAnalysis,
@@ -183,23 +184,44 @@ function renderHardRequirementsBanner(hr: HardRequirements): string {
   ].join('\n');
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+type UnknownRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): UnknownRecord | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as UnknownRecord)
+    : null;
+}
+
+function asRecordArray(value: unknown): UnknownRecord[] {
+  return Array.isArray(value)
+    ? value.map(asRecord).filter((item): item is UnknownRecord => !!item)
+    : [];
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === 'number' && !Number.isNaN(value) ? value : null;
+}
 
 // ==================== 模块 1：基本信息 ====================
 
-function renderBasicInfoSection(bi: any, distanceKm: number | null | undefined): string {
+function renderBasicInfoSection(basicInfo: unknown, distanceKm: number | null | undefined): string {
+  const bi = asRecord(basicInfo);
   if (!bi) return '';
   const lines: string[] = [];
 
   // jobName / jobNickName / jobCategoryName 在渲染前剔除 "全职/正式工/临时工" 残留
   // （badcase nwr0i50f：奥乐齐分拣岗 jobName 含"全职"，Agent 转述给用户后产生混乱）。
   // 平台所有岗位都是兼职，这些词在岗位名里没有业务含义。
-  pushField(lines, '岗位名称', sanitizeJobDisplayText(bi.jobName));
-  pushField(lines, '岗位简称', sanitizeJobDisplayText(bi.jobNickName));
-  pushField(lines, '岗位类型', sanitizeJobDisplayText(bi.jobCategoryName));
+  pushField(lines, '岗位名称', sanitizeJobDisplayText(asString(bi.jobName)));
+  pushField(lines, '岗位简称', sanitizeJobDisplayText(asString(bi.jobNickName)));
+  pushField(lines, '岗位类型', sanitizeJobDisplayText(asString(bi.jobCategoryName)));
   // 渲染前 sanitize：API 偶发回 "全职/正式工" 等反向词，直接渲染会让 LLM 把岗位
   // 描述成"全职"，违反"统一按兼职口径沟通"红线（badcase #17）。
-  pushField(lines, '用工形式', sanitizeLaborFormForDisplay(bi.laborForm));
+  pushField(lines, '用工形式', sanitizeLaborFormForDisplay(asString(bi.laborForm)));
   pushLongText(lines, '工作内容', bi.jobContent);
 
   const brand = formatNameWithId(bi.brandName, bi.brandId);
@@ -207,8 +229,11 @@ function renderBasicInfoSection(bi: any, distanceKm: number | null | undefined):
   const project = formatNameWithId(bi.projectName, bi.projectId);
   if (project) lines.push(`- **项目**: ${project}`);
 
-  const store = bi.storeInfo || {};
-  const displayStoreName = normalizeStoreNameForAgent(store.storeName, store.storeCityName);
+  const store = asRecord(bi.storeInfo) ?? {};
+  const displayStoreName = normalizeStoreNameForAgent(
+    asString(store.storeName),
+    asString(store.storeCityName),
+  );
   const storeLine = formatNameWithId(displayStoreName, store.storeId);
   if (storeLine) lines.push(`- **门店**: ${storeLine}`);
   pushField(lines, '城市', store.storeCityName);
@@ -232,7 +257,11 @@ function renderBasicInfoSection(bi: any, distanceKm: number | null | undefined):
 
 // ==================== 模块 2：薪资信息 ====================
 
-function renderHolidayOrOvertimeLine(salaryObj: any, prefix: '节假日' | '加班'): string | null {
+function renderHolidayOrOvertimeLine(
+  salaryInput: unknown,
+  prefix: '节假日' | '加班',
+): string | null {
+  const salaryObj = asRecord(salaryInput);
   if (!salaryObj || !isNonEmpty(salaryObj)) return null;
   const typeField = prefix === '节假日' ? 'holidaySalaryType' : 'overtimeSalaryType';
   const fixedField = prefix === '节假日' ? 'holidayFixedSalary' : 'overtimeFixedSalary';
@@ -262,7 +291,8 @@ function renderHolidayOrOvertimeLine(salaryObj: any, prefix: '节假日' | '加�
   return `- **${prefix}薪资**: ${valueStr}${desc}`;
 }
 
-function renderSalaryScenario(scenario: any, index: number): string {
+function renderSalaryScenario(scenarioInput: unknown, index: number): string {
+  const scenario = asRecord(scenarioInput);
   if (!scenario || !isNonEmpty(scenario)) return '';
   const title = hasValue(scenario.salaryType) ? String(scenario.salaryType) : `方案 ${index}`;
   const lines: string[] = [];
@@ -272,13 +302,13 @@ function renderSalaryScenario(scenario: any, index: number): string {
   if (hasValue(scenario.payday)) periodParts.push(`${scenario.payday}发薪`);
   if (periodParts.length) lines.push(`- **结算周期**: ${periodParts.join(', ')}`);
 
-  const basic = scenario.basicSalary;
+  const basic = asRecord(scenario.basicSalary);
   if (basic && hasValue(basic.basicSalary)) {
     const s = formatValueWithUnit(basic.basicSalary, basic.basicSalaryUnit);
     if (s) lines.push(`- **基础薪资**: ${s}`);
   }
 
-  const comp = scenario.comprehensiveSalary;
+  const comp = asRecord(scenario.comprehensiveSalary);
   if (comp && (hasValue(comp.minComprehensiveSalary) || hasValue(comp.maxComprehensiveSalary))) {
     const r = formatRange(
       comp.minComprehensiveSalary,
@@ -291,9 +321,10 @@ function renderSalaryScenario(scenario: any, index: number): string {
   if (hasValue(scenario.hasStairSalary)) {
     lines.push(`- **是否阶梯薪资**: ${scenario.hasStairSalary}`);
   }
-  if (Array.isArray(scenario.stairSalaries) && scenario.stairSalaries.length > 0) {
+  const stairSalaries = asRecordArray(scenario.stairSalaries);
+  if (stairSalaries.length > 0) {
     const stairLines: string[] = [];
-    scenario.stairSalaries.forEach((stair: any) => {
+    stairSalaries.forEach((stair) => {
       if (!isNonEmpty(stair)) return;
       const salaryStr = formatValueWithUnit(stair.salary, stair.salaryUnit);
       if (!salaryStr) return;
@@ -319,7 +350,7 @@ function renderSalaryScenario(scenario: any, index: number): string {
   const overtimeLine = renderHolidayOrOvertimeLine(scenario.overtimeSalary, '加班');
   if (overtimeLine) lines.push(overtimeLine);
 
-  const other = scenario.otherSalary;
+  const other = asRecord(scenario.otherSalary);
   if (other) {
     if (hasValue(other.commission)) pushField(lines, '提成', other.commission);
     if (hasValue(other.attendanceSalary)) {
@@ -329,8 +360,9 @@ function renderSalaryScenario(scenario: any, index: number): string {
     if (hasValue(other.performance)) pushField(lines, '绩效', other.performance);
   }
 
-  if (Array.isArray(scenario.customSalaries) && scenario.customSalaries.length > 0) {
-    scenario.customSalaries.forEach((custom: any) => {
+  const customSalaries = asRecordArray(scenario.customSalaries);
+  if (customSalaries.length > 0) {
+    customSalaries.forEach((custom) => {
       if (!isNonEmpty(custom) || !hasValue(custom.name)) return;
       const salaryPart = hasValue(custom.salary)
         ? formatValueWithUnit(custom.salary, custom.salaryUnit)
@@ -347,7 +379,8 @@ function renderSalaryScenario(scenario: any, index: number): string {
   return `#### 薪资方案 ${index}（${title}）\n${lines.join('\n')}\n`;
 }
 
-function renderProbationSalary(probation: any): string {
+function renderProbationSalary(probationInput: unknown): string {
+  const probation = asRecord(probationInput);
   if (!probation || !isNonEmpty(probation)) return '';
   const lines: string[] = [];
   if (hasValue(probation.salary)) {
@@ -361,12 +394,13 @@ function renderProbationSalary(probation: any): string {
   return `#### 试工薪资\n${lines.join('\n')}\n`;
 }
 
-function renderSalarySection(salary: any): string {
+function renderSalarySection(salaryInput: unknown): string {
+  const salary = asRecord(salaryInput);
   if (!salary) return '';
   const blocks: string[] = [];
 
   const scenarios = Array.isArray(salary.salaryScenarioList) ? salary.salaryScenarioList : [];
-  scenarios.forEach((scenario: any, idx: number) => {
+  scenarios.forEach((scenario, idx: number) => {
     const block = renderSalaryScenario(scenario, idx + 1);
     if (block) blocks.push(block);
   });
@@ -382,7 +416,8 @@ function renderSalarySection(salary: any): string {
 
 // ==================== 模块 3：福利信息 ====================
 
-function renderWelfareSection(welfare: any): string {
+function renderWelfareSection(welfareInput: unknown): string {
+  const welfare = asRecord(welfareInput);
   if (!welfare) return '';
   const lines: string[] = [];
 
@@ -443,13 +478,14 @@ function renderWelfareSection(welfare: any): string {
 
 // ==================== 模块 4：招聘要求 ====================
 
-function renderHiringRequirementSection(req: any, policy: JobPolicyAnalysis): string {
+function renderHiringRequirementSection(reqInput: unknown, policy: JobPolicyAnalysis): string {
+  const req = asRecord(reqInput);
   if (!req) return '';
   const lines: string[] = [];
 
   pushField(lines, 'figure', req.figure);
 
-  const basic = req.basicPersonalRequirements || {};
+  const basic = asRecord(req.basicPersonalRequirements) ?? {};
   pushField(lines, '性别', basic.genderRequirement);
   if (hasValue(basic.minAge) || hasValue(basic.maxAge)) {
     const range = formatRange(basic.minAge, basic.maxAge, '岁');
@@ -464,7 +500,7 @@ function renderHiringRequirementSection(req: any, policy: JobPolicyAnalysis): st
     if (r) lines.push(`- **女性身高**: ${r}`);
   }
 
-  const hometown = req.requirementsForHometown || {};
+  const hometown = asRecord(req.requirementsForHometown) ?? {};
   pushField(lines, '国籍要求', hometown.countryRequirementType);
   pushField(lines, '民族要求', hometown.nationRequirementType);
   if (Array.isArray(hometown.nations) && hometown.nations.length > 0) {
@@ -475,7 +511,7 @@ function renderHiringRequirementSection(req: any, policy: JobPolicyAnalysis): st
     lines.push(`- **籍贯**: ${hometown.nativePlaces.join(', ')}`);
   }
 
-  const mb = req.marriageBearingAndSocialSecurity || {};
+  const mb = asRecord(req.marriageBearingAndSocialSecurity) ?? {};
   pushField(lines, '婚育要求', mb.marriageBearingType);
   pushField(lines, '婚育状态', mb.marriageBearing);
   pushField(lines, '社保要求', mb.socialSecurityRequirementType);
@@ -483,14 +519,14 @@ function renderHiringRequirementSection(req: any, policy: JobPolicyAnalysis): st
     lines.push(`- **社保列表**: ${mb.socialSecurityList.join(', ')}`);
   }
 
-  const comp = req.competencyRequirements || {};
+  const comp = asRecord(req.competencyRequirements) ?? {};
   if (hasValue(comp.minWorkTime)) {
     const s = formatValueWithUnit(comp.minWorkTime, comp.minWorkTimeUnit);
     if (s) lines.push(`- **最低工作经验**: ${s}`);
   }
   pushField(lines, '经验岗位类型', comp.workExperienceJobType);
 
-  const lang = req.language || {};
+  const lang = asRecord(req.language) ?? {};
   if (Array.isArray(lang.languages)) {
     if (lang.languages.length > 0) {
       lines.push(`- **语言**: ${lang.languages.join(', ')}`);
@@ -500,7 +536,7 @@ function renderHiringRequirementSection(req: any, policy: JobPolicyAnalysis): st
   }
   pushField(lines, '语言备注', lang.languageRemark);
 
-  const cert = req.certificate || {};
+  const cert = asRecord(req.certificate) ?? {};
   pushField(lines, '学历', cert.education);
   if (Array.isArray(cert.certificates) && cert.certificates.length > 0) {
     lines.push(`- **证件**: ${cert.certificates.join(', ')}`);
@@ -512,7 +548,7 @@ function renderHiringRequirementSection(req: any, policy: JobPolicyAnalysis): st
 
   // 其他要求：优先使用 policy 清洗后的 remark（已剔除过期时效约束）
   const sanitizedRemark =
-    policy.normalizedRequirements.remark ?? sanitizeConstraintText(req.remark);
+    policy.normalizedRequirements.remark ?? sanitizeConstraintText(asString(req.remark));
   if (sanitizedRemark) pushLongText(lines, '其他要求', sanitizedRemark);
 
   return lines.length ? '### 招聘要求\n' + lines.join('\n') + '\n\n' : '';
@@ -528,7 +564,8 @@ function toCnNum(value: unknown): string {
     : String(value);
 }
 
-function renderWorkTimeSection(wt: any): string {
+function renderWorkTimeSection(workTimeInput: unknown): string {
+  const wt = asRecord(workTimeInput);
   if (!wt) return '';
   const lines: string[] = [];
 
@@ -538,7 +575,7 @@ function renderWorkTimeSection(wt: any): string {
   }
 
   // 阶段用工时间窗
-  const tempEmp = wt.temporaryEmployment || {};
+  const tempEmp = asRecord(wt.temporaryEmployment) ?? {};
   if (
     hasValue(tempEmp.temporaryEmploymentStartTime) ||
     hasValue(tempEmp.temporaryEmploymentEndTime)
@@ -553,7 +590,7 @@ function renderWorkTimeSection(wt: any): string {
   }
 
   // 每周/每月排班（海绵2.0 weekAndMonthWorkTime）
-  const wm = wt.weekAndMonthWorkTime || {};
+  const wm = asRecord(wt.weekAndMonthWorkTime) ?? {};
   const cycleLabel = hasValue(wm.arrangementCycleType) ? String(wm.arrangementCycleType) : '';
   const wmParts: string[] = [];
   // 做X休Y（用中文数字以触发"做六休一"等全周强排班识别）
@@ -579,7 +616,7 @@ function renderWorkTimeSection(wt: any): string {
   }
 
   // 每日排班（海绵2.0 dayWorkTime）
-  const day = wt.dayWorkTime || {};
+  const day = asRecord(wt.dayWorkTime) ?? {};
   const arrangementType = hasValue(day.arrangementType) ? String(day.arrangementType) : '';
   if (arrangementType) {
     pushField(lines, '排班类型', arrangementType);
@@ -598,7 +635,7 @@ function renderWorkTimeSection(wt: any): string {
   }
 
   // 每日最少工时 + 班次名 + 上下班区间（灵活排班 fixedTime）
-  const ft = day.fixedTime || {};
+  const ft = asRecord(day.fixedTime) ?? {};
   if (hasValue(ft.perDayMinWorkHours)) {
     const n = cleanNumber(ft.perDayMinWorkHours);
     if (n !== null) lines.push(`- **每日工时**: 最少 ${n} 小时`);
@@ -615,9 +652,10 @@ function renderWorkTimeSection(wt: any): string {
   }
 
   // 固定/组合排班的可排时段（dayWorkTime.combinedArrangement，新结构不带星期）
-  if (Array.isArray(day.combinedArrangement) && day.combinedArrangement.length > 0) {
+  const combinedArrangement = asRecordArray(day.combinedArrangement);
+  if (combinedArrangement.length > 0) {
     const caLines: string[] = [];
-    day.combinedArrangement.forEach((ca: any, idx: number) => {
+    combinedArrangement.forEach((ca, idx: number) => {
       if (!isNonEmpty(ca)) return;
       const s = hasValue(ca.combinedArrangementStartTime)
         ? String(ca.combinedArrangementStartTime)
@@ -635,7 +673,7 @@ function renderWorkTimeSection(wt: any): string {
 
   // 自由文本（休息说明/工时备注）——新结构未必下发，存在则保留（自由文本优先于结构化字段）。
   pushLongText(lines, '休息说明', wt.restTimeDesc);
-  pushLongText(lines, '工时备注', sanitizeConstraintText(wt.workTimeRemark));
+  pushLongText(lines, '工时备注', sanitizeConstraintText(asString(wt.workTimeRemark)));
 
   // 全周强排班提示：文本命中（做六休一/固定排班...）或结构化每周出勤≥5 天。
   const weeklyWorkDays = cleanNumber(wm.perWeekWorkDays);
@@ -652,32 +690,35 @@ function renderWorkTimeSection(wt: any): string {
 // ==================== 模块 6：面试流程 ====================
 
 function renderInterviewRound(
-  round: any,
+  roundInput: unknown,
   roundLabel: string,
   wayField: string,
   addressField: string,
   demandField: string,
   descField?: string,
 ): string[] {
+  const round = asRecord(roundInput);
   if (!round || !isNonEmpty(round)) return [];
   const sub: string[] = [];
   pushField(sub, '面试方式', round[wayField]);
   pushField(sub, '面试地址', round[addressField]);
   // demand 可能含过期时效约束，统一清洗
-  pushField(sub, '面试要求', sanitizeConstraintText(round[demandField]));
+  pushField(sub, '面试要求', sanitizeConstraintText(asString(round[demandField])));
   if (descField) pushLongText(sub, '说明', round[descField]);
 
   // 一面独有：时间模式 + 固定/周期面试时间
   if (roundLabel === '一轮面试') {
     pushField(sub, '时间模式', round.interviewTimeMode);
 
-    if (Array.isArray(round.fixedInterviewTimes) && round.fixedInterviewTimes.length > 0) {
+    const fixedInterviewTimes = asRecordArray(round.fixedInterviewTimes);
+    if (fixedInterviewTimes.length > 0) {
       const fixedLines: string[] = [];
-      round.fixedInterviewTimes.forEach((ft: any) => {
+      fixedInterviewTimes.forEach((ft) => {
         if (!isNonEmpty(ft)) return;
         const date = hasValue(ft.interviewDate) ? String(ft.interviewDate) : '';
-        if (Array.isArray(ft.interviewTimes) && ft.interviewTimes.length > 0) {
-          ft.interviewTimes.forEach((t: any) => {
+        const interviewTimes = asRecordArray(ft.interviewTimes);
+        if (interviewTimes.length > 0) {
+          interviewTimes.forEach((t) => {
             if (!isNonEmpty(t)) return;
             const s = hasValue(t.interviewStartTime) ? String(t.interviewStartTime) : '?';
             const e = hasValue(t.interviewEndTime) ? String(t.interviewEndTime) : '?';
@@ -696,13 +737,15 @@ function renderInterviewRound(
       }
     }
 
-    if (Array.isArray(round.periodicInterviewTimes) && round.periodicInterviewTimes.length > 0) {
+    const periodicInterviewTimes = asRecordArray(round.periodicInterviewTimes);
+    if (periodicInterviewTimes.length > 0) {
       const periodicLines: string[] = [];
-      round.periodicInterviewTimes.forEach((pt: any) => {
+      periodicInterviewTimes.forEach((pt) => {
         if (!isNonEmpty(pt)) return;
         const weekday = hasValue(pt.interviewWeekday) ? String(pt.interviewWeekday) : '';
-        if (Array.isArray(pt.interviewTimes) && pt.interviewTimes.length > 0) {
-          pt.interviewTimes.forEach((t: any) => {
+        const interviewTimes = asRecordArray(pt.interviewTimes);
+        if (interviewTimes.length > 0) {
+          interviewTimes.forEach((t) => {
             if (!isNonEmpty(t)) return;
             const s = hasValue(t.interviewStartTime) ? String(t.interviewStartTime) : '?';
             const e = hasValue(t.interviewEndTime) ? String(t.interviewEndTime) : '?';
@@ -729,7 +772,11 @@ function renderInterviewRound(
   return [header, ...sub.map((l) => `  ${l}`)];
 }
 
-function renderInterviewProcessSection(ip: any, policy: JobPolicyAnalysis): string {
+function renderInterviewProcessSection(
+  interviewProcessInput: unknown,
+  policy: JobPolicyAnalysis,
+): string {
+  const ip = asRecord(interviewProcessInput);
   if (!ip) return '';
   const lines: string[] = [];
 
@@ -767,12 +814,12 @@ function renderInterviewProcessSection(ip: any, policy: JobPolicyAnalysis): stri
 
   if (Array.isArray(ip.interviewSupplement) && ip.interviewSupplement.length > 0) {
     const items = ip.interviewSupplement
-      .map((s: any) => s?.interviewSupplement)
+      .map((item) => asRecord(item)?.interviewSupplement)
       .filter((s: unknown) => hasValue(s));
     if (items.length) lines.push(`- **面试补充项**: ${items.join('；')}`);
   }
 
-  const probation = ip.probationWork;
+  const probation = asRecord(ip.probationWork);
   if (probation && isNonEmpty(probation)) {
     const sub: string[] = [];
     if (hasValue(probation.probationWorkPeriod)) {
@@ -791,7 +838,7 @@ function renderInterviewProcessSection(ip: any, policy: JobPolicyAnalysis): stri
     }
   }
 
-  const training = ip.training;
+  const training = asRecord(ip.training);
   if (training && isNonEmpty(training)) {
     const sub: string[] = [];
     pushField(sub, '培训地址', training.trainingAddress);
@@ -818,14 +865,21 @@ function renderInterviewProcessSection(ip: any, policy: JobPolicyAnalysis): stri
 
 // ==================== 岗位格式化 ====================
 
-function formatJobToOneLine(job: any, index: number): string {
-  const bi = job.basicInfo;
-  const store = bi.storeInfo;
-  const parts = [`${index + 1}. **${bi.brandName || ''} - ${bi.jobName || '未命名'}**`];
-  const displayStoreName = normalizeStoreNameForAgent(store?.storeName, store?.storeCityName);
+function formatJobToOneLine(jobInput: unknown, index: number): string {
+  const job = asRecord(jobInput) ?? {};
+  const bi = asRecord(job.basicInfo) ?? {};
+  const store = asRecord(bi.storeInfo) ?? {};
+  const brandName = hasValue(bi.brandName) ? String(bi.brandName) : '';
+  const jobName = hasValue(bi.jobName) ? String(bi.jobName) : '未命名';
+  const parts = [`${index + 1}. **${brandName} - ${jobName}**`];
+  const displayStoreName = normalizeStoreNameForAgent(
+    asString(store.storeName),
+    asString(store.storeCityName),
+  );
   if (displayStoreName) parts.push(displayStoreName);
-  if (store?.storeAddress) parts.push(store.storeAddress);
-  if (job._distanceKm != null) parts.push(`距离 ${job._distanceKm.toFixed(1)}km`);
+  if (hasValue(store.storeAddress)) parts.push(String(store.storeAddress));
+  const distanceKm = asNumber(job._distanceKm);
+  if (distanceKm != null) parts.push(`距离 ${distanceKm.toFixed(1)}km`);
   return parts.join(' | ');
 }
 
@@ -840,10 +894,16 @@ function isMinimalMode(flags: ProgressiveDisclosureFlags): boolean {
   );
 }
 
-function formatJobToMarkdown(job: any, index: number, flags: ProgressiveDisclosureFlags): string {
-  const bi = job.basicInfo;
-  const policy = buildJobPolicyAnalysis(job);
-  const titleParts = [bi.jobName || '未命名岗位'];
+function formatJobToMarkdown(
+  jobInput: unknown,
+  index: number,
+  flags: ProgressiveDisclosureFlags,
+): string {
+  const job = asRecord(jobInput) ?? {};
+  const bi = asRecord(job.basicInfo) ?? {};
+  const policy = buildJobPolicyAnalysis(job as JobDetail);
+  const jobName = hasValue(bi.jobName) ? String(bi.jobName) : '未命名岗位';
+  const titleParts = [jobName];
   if (hasValue(bi.jobNickName) && bi.jobNickName !== bi.jobName) {
     titleParts.push(`(${bi.jobNickName})`);
   }
@@ -862,7 +922,7 @@ function formatJobToMarkdown(job: any, index: number, flags: ProgressiveDisclosu
     md += formatInterviewDecisionSummary(policy, shiftTimeText);
   }
   if (flags.includeBasicInfo) {
-    md += renderBasicInfoSection(job.basicInfo, job._distanceKm);
+    md += renderBasicInfoSection(job.basicInfo, asNumber(job._distanceKm));
   }
   if (flags.includeJobSalary) {
     md += renderSalarySection(job.jobSalary);
@@ -881,12 +941,12 @@ function formatJobToMarkdown(job: any, index: number, flags: ProgressiveDisclosu
   }
 
   md += '### 岗位标识\n';
-  md += `- **jobId**: ${bi.jobId}\n\n`;
+  md += `- **jobId**: ${hasValue(bi.jobId) ? bi.jobId : '未知'}\n\n`;
   return md;
 }
 
 export function formatJobsToMarkdown(
-  jobs: any[],
+  jobs: unknown[],
   total: number,
   pageNum: number,
   pageSize: number,

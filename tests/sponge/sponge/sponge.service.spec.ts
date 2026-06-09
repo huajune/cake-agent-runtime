@@ -694,6 +694,24 @@ describe('SpongeService', () => {
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
+    it('clears the local failure-reasons cache when pid combinations exceed the cap', async () => {
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          code: 0,
+          data: [{ pid: 1, failureReasonsDTOList: [{ id: 12010, info: '候选人主动取消' }] }],
+        }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      for (let pid = 1; pid <= 51; pid++) {
+        await service.fetchFailureReasonsByPids([pid]);
+      }
+      await service.fetchFailureReasonsByPids([1]);
+
+      expect(global.fetch).toHaveBeenCalledTimes(52);
+    });
+
     it('returns [] on business code != 0', async () => {
       const mockResponse = {
         ok: true,
