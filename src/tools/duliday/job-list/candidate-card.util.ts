@@ -62,13 +62,15 @@ function buildShiftPart(workTime: unknown): string {
   // 时间段：海绵2.0 优先取 dayWorkTime.combinedArrangement（固定/组合排班的多时段），
   // 灵活排班则取 fixedTime 的上下班区间。不做计算，直接展示。
   const day = wt?.dayWorkTime ?? {};
-  const combined = Array.isArray(day.combinedArrangement) ? day.combinedArrangement : [];
+  const combined: Array<{
+    combinedArrangementStartTime?: string;
+    combinedArrangementEndTime?: string;
+  }> = Array.isArray(day.combinedArrangement) ? day.combinedArrangement : [];
   const ranges = combined
     .filter(
-      (s: any) =>
-        hasValue(s?.combinedArrangementStartTime) && hasValue(s?.combinedArrangementEndTime),
+      (s) => hasValue(s?.combinedArrangementStartTime) && hasValue(s?.combinedArrangementEndTime),
     )
-    .map((s: any) => `${s.combinedArrangementStartTime}-${s.combinedArrangementEndTime}`);
+    .map((s) => `${s.combinedArrangementStartTime}-${s.combinedArrangementEndTime}`);
   const ft = day.fixedTime ?? {};
   if (ranges.length === 0 && hasValue(ft.goToWorkStartTime) && hasValue(ft.goOffWorkEndTime)) {
     const nextDay = /次日/.test(String(ft.goOffWorkTimeType ?? '')) ? '次日' : '';

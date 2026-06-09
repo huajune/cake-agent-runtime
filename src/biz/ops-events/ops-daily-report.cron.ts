@@ -1,7 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
-import { BotService, type BotAccount } from '@channels/wecom/bot/bot.service';
+import {
+  BOT_ACCOUNT_PROVIDER,
+  type BotAccountInfo,
+  type BotAccountProvider,
+} from './bot-account.provider';
 import {
   FeishuBitableApiService,
   type BitableField,
@@ -146,7 +150,7 @@ export class OpsDailyReportCronService {
     private readonly dailyOpsReportRepository: DailyOpsReportRepository,
     private readonly bitableApi: FeishuBitableApiService,
     private readonly spongeService: SpongeService,
-    private readonly botService: BotService,
+    @Inject(BOT_ACCOUNT_PROVIDER) private readonly botAccountProvider: BotAccountProvider,
   ) {
     // 默认值来自 wiki 节点解析出的「运营日报」bitable（obj_token）+ URL 里的 table。
     this.appToken = this.configService
@@ -247,7 +251,7 @@ export class OpsDailyReportCronService {
   ): Promise<DailyOpsReportRow[]> {
     if (rows.length === 0) return rows;
 
-    let botByKey: Map<string, BotAccount>;
+    let botByKey: Map<string, BotAccountInfo>;
     try {
       botByKey = await this.buildCurrentBotLookup();
     } catch (error) {
@@ -306,9 +310,9 @@ export class OpsDailyReportCronService {
     );
   }
 
-  private async buildCurrentBotLookup(): Promise<Map<string, BotAccount>> {
-    const bots = await this.botService.getConfiguredBotList();
-    const map = new Map<string, BotAccount>();
+  private async buildCurrentBotLookup(): Promise<Map<string, BotAccountInfo>> {
+    const bots = await this.botAccountProvider.getConfiguredBotList();
+    const map = new Map<string, BotAccountInfo>();
     for (const bot of bots) {
       for (const rawKey of [bot.wxid, bot.wecomUserId]) {
         const key = rawKey?.trim() ? normalizeBotImId(rawKey) : '';
