@@ -297,6 +297,31 @@ describe('ConversionAnalyticsService — conversion analysis', () => {
     });
   });
 
+  it('账号对比合并取消/改约的 period 计数（运营侧支，不进漏斗）', async () => {
+    const service = new ConversionAnalyticsService(
+      fakeOpsRepo([
+        ev('friend.added', 'U1', today, 0),
+        ev('candidate.engaged', 'U1', today, 1),
+        ev('booking.canceled', 'U1', today, 2),
+        ev('booking.canceled', 'U2', today, 0),
+        ev('booking.interview_modified', 'U3', today, 0),
+      ]),
+      new BotGroupResolverService(),
+    );
+
+    const { bots } = await service.getBots(filter, 'period');
+    const row = bots.find((b) => b.botImId === 'unknown');
+
+    expect(row?.eventCounts).toMatchObject({
+      friends_added: 1,
+      break_ice: 1,
+      booking_cancel: 2,
+      interview_modified: 1,
+    });
+    // 取消/改约不进 overallRate（= 面试通过 / 新增好友）。
+    expect(row?.eventCounts.interview_pass).toBe(0);
+  });
+
   it('漏斗中加群是侧支，不会成为报名成功的阶段分母', async () => {
     const funnel = await buildService().getFunnel('friend_added', filter);
     const stage = (name: string) => funnel.stages.find((s) => s.stage === name);
@@ -334,6 +359,50 @@ describe('ConversionAnalyticsService — conversion analysis', () => {
     const yuhangBots = await service.getBots({ ...filter, groups: ['宇航组'] });
     expect(yuhangBots.bots).toHaveLength(1);
     expect(yuhangBots.bots[0].botImId).toBe('prod-sync:CongLingKaiShiDeXianShiShiJie');
+  });
+
+  it('账号换 wxid 后按 BOT_IDENTITY_ALIASES 合并为同一身份行（计数相加）', async () => {
+    // 盼盼组 6-05 换号：老 wxid WuPanPan + 新 wxid 吴盼盼 应合并为一行
+    const service = new ConversionAnalyticsService(
+      fakeOpsRepo(
+        [],
+        [
+          {
+            bot_im_id: '1688854747775509',
+            manager_name: 'WuPanPan',
+            group_name: '盼盼组',
+            friends_added_count: 5,
+            break_ice_count: 4,
+            booking_success_count: 1,
+            group_invite_count: 2,
+            interview_pass_count: 0,
+          },
+          {
+            bot_im_id: '1688854263771949',
+            manager_name: '吴盼盼',
+            group_name: '盼盼组',
+            friends_added_count: 2,
+            break_ice_count: 1,
+            booking_success_count: 0,
+            group_invite_count: 1,
+            interview_pass_count: 0,
+          },
+        ],
+      ),
+      new BotGroupResolverService(),
+    );
+
+    const { bots } = await service.getBots(filter);
+    expect(bots.some((row) => row.botImId === '1688854263771949')).toBe(false);
+    const merged = bots.find((row) => row.botImId === '1688854747775509');
+    expect(merged?.managerName).toBe('吴盼盼');
+    expect(merged?.eventCounts).toMatchObject({
+      friends_added: 7,
+      break_ice: 5,
+      booking_success: 1,
+      group_invite: 3,
+      interview_pass: 0,
+    });
   });
 
   it('cohort 匹配在 user_id 缺失时回退 chat_id，不漏算（§3）', async () => {

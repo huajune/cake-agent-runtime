@@ -135,6 +135,11 @@ const BOOKING_STAGE_DEFS: StageDef[] = [
 const GROUP_INVITE_EVENT = 'group.invited';
 const GROUP_INVITE_STAGE = 'group_invite';
 
+// 工单自助变更（取消 / 改约）是运营侧支动作，不进漏斗：在 bot 表里作为原始计数列单独展示。
+// 直接按 period 计数 ops_events，不参与 cohort/funnel 计算，避免污染转化口径。
+const BOOKING_CANCEL_EVENT = 'booking.canceled';
+const INTERVIEW_MODIFIED_EVENT = 'booking.interview_modified';
+
 const HANDOFF_REASON_LABELS: Record<string, string> = {
   cannot_find_store: '找不到候选人想去的门店',
   no_reception: '到店无人接待',
@@ -152,6 +157,14 @@ const HANDOFF_REASON_LABELS: Record<string, string> = {
 export class ConversionAnalyticsService {
   private readonly logger = new Logger(ConversionAnalyticsService.name);
   private readonly rowCache = new Map<string, RowCacheEntry>();
+
+  // 临时止血：账号重新登录/换设备/绑定后底层 wxid 会变，看板按 bot_im_id(wxid) 去重会把
+  // 同一个人裂成两行。这里登记「易变 wxid → 归并身份」，读取侧聚合完成后合并展示。
+  // 注：仅手工登记已确认的换号对；根治方案是写入侧落库稳定的 wecomUserId 再按它去重。
+  private readonly BOT_IDENTITY_ALIASES: Record<string, { id: string; managerName: string }> = {
+    // 盼盼组 吴盼盼：2026-06-05 换号 1688854747775509(WuPanPan) → 1688854263771949(吴盼盼)
+    '1688854263771949': { id: '1688854747775509', managerName: '吴盼盼' },
+  };
 
   constructor(
     private readonly opsEventsRepository: OpsEventsAnalyticsRepository,
@@ -662,6 +675,9 @@ export class ConversionAnalyticsService {
       booking_success: counts.booking,
       group_invite: counts.groupInvite,
       interview_pass: counts.interviewPass,
+      // 取消/改约不在 cohort/period 漏斗口径内，统一由 applyMutationCounts 后置合并。
+      booking_cancel: 0,
+      interview_modified: 0,
     };
   }
 
@@ -726,12 +742,78 @@ export class ConversionAnalyticsService {
         ? await this.getBotRowsFromDailyReports(filter, period)
         : rows;
 
+    // 工单自助变更（取消/改约）按 period 直接计数 ops_events，合并到各 bot 行（不参与 cohort/漏斗）。
+    const withMutations = await this.applyMutationCounts(fallbackRows, filter, period);
+
     return {
-      bots: fallbackRows.sort((a, b) => {
+      bots: this.mergeAliasedBots(withMutations).sort((a, b) => {
         if (b.overallRate !== a.overallRate) return b.overallRate - a.overallRate;
         return b.eventCounts.friends_added - a.eventCounts.friends_added;
       }),
     };
+  }
+
+  /**
+   * 把工单自助变更计数（取消/改约）按 bot 合并进已算好的 bot 行。
+   *
+   * 这两个事件是运营侧支动作，不属于 cohort/漏斗口径，故无论 mode 都统一按 period 计数 ops_events，
+   * 单独并入；只有取消/改约、无漏斗事件的 bot 也会补一行，避免漏计。
+   */
+  private async applyMutationCounts(
+    rows: ConversionBotRow[],
+    filter: ConversionFilter,
+    period: ConversionPeriod,
+  ): Promise<ConversionBotRow[]> {
+    const events = await this.fetchOpsEvents(
+      filter,
+      period,
+      [BOOKING_CANCEL_EVENT, INTERVIEW_MODIFIED_EVENT],
+      'current',
+      { applyGroupFilter: true },
+    );
+    if (events.length === 0) return rows;
+
+    const byBot = new Map(rows.map((row) => [row.botImId, row]));
+    for (const event of events) {
+      const botImId = event.bot_im_id || 'unknown';
+      const row =
+        byBot.get(botImId) ?? this.createBotRow(botImId, event.manager_name, event.group_name);
+      if (event.event_name === BOOKING_CANCEL_EVENT) row.eventCounts.booking_cancel += 1;
+      else row.eventCounts.interview_modified += 1;
+      byBot.set(botImId, row);
+    }
+    // 补行不会改 overallRate（取消/改约不进 ratio），但仍统一 finalize 一遍保持状态字段一致。
+    return Array.from(byBot.values()).map((row) => this.finalizeBotRow(row));
+  }
+
+  // 临时止血：把 BOT_IDENTITY_ALIASES 登记的换号 wxid 合并到同一身份行（计数相加）。
+  // 换号前后服务的候选人基本不重叠，相加即同一人完整漏斗；个别跨换号日的会话可能微量重复，
+  // 作为止血可接受。无别名登记时此函数等价于原样返回。
+  private mergeAliasedBots(rows: ConversionBotRow[]): ConversionBotRow[] {
+    const byId = new Map<string, ConversionBotRow>();
+    for (const row of rows) {
+      const alias = this.BOT_IDENTITY_ALIASES[row.botImId];
+      const canonicalId = alias?.id ?? row.botImId;
+      const existing = byId.get(canonicalId);
+      if (!existing) {
+        byId.set(canonicalId, {
+          ...row,
+          botImId: canonicalId,
+          managerName: alias?.managerName ?? row.managerName,
+          eventCounts: { ...row.eventCounts },
+        });
+        continue;
+      }
+      existing.eventCounts.friends_added += row.eventCounts.friends_added;
+      existing.eventCounts.break_ice += row.eventCounts.break_ice;
+      existing.eventCounts.booking_success += row.eventCounts.booking_success;
+      existing.eventCounts.group_invite += row.eventCounts.group_invite;
+      existing.eventCounts.interview_pass += row.eventCounts.interview_pass;
+      existing.eventCounts.booking_cancel += row.eventCounts.booking_cancel;
+      existing.eventCounts.interview_modified += row.eventCounts.interview_modified;
+      if (alias?.managerName) existing.managerName = alias.managerName;
+    }
+    return Array.from(byId.values()).map((row) => this.finalizeBotRow(row));
   }
 
   async getHandoff(filter: ConversionFilter): Promise<ConversionHandoffResponse> {
@@ -1058,6 +1140,8 @@ export class ConversionAnalyticsService {
         booking_success: 0,
         group_invite: 0,
         interview_pass: 0,
+        booking_cancel: 0,
+        interview_modified: 0,
       },
       overallRate: 0,
       status: 'bad',

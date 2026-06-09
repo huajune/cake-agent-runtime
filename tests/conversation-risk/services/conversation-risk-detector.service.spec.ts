@@ -49,6 +49,59 @@ describe('ConversationRiskDetectorService', () => {
     expect(result.hit).toBe(false);
   });
 
+  it('does NOT flag blessing phrases containing "滚滚来" as abuse', () => {
+    const result = service.detect({
+      ...baseContext,
+      currentMessageContent: '我是好运滚滚来o',
+      recentMessages: [
+        ...baseContext.recentMessages,
+        { role: 'user', content: '我是好运滚滚来o', timestamp: 1712044920000 },
+      ],
+    });
+
+    expect(result.hit).toBe(false);
+  });
+
+  it('does NOT flag ordinary rolling words as abuse', () => {
+    const result = service.detect({
+      ...baseContext,
+      currentMessageContent: '麻烦把页面滚动一下，我看不到下面',
+      recentMessages: [
+        ...baseContext.recentMessages,
+        {
+          role: 'user',
+          content: '麻烦把页面滚动一下，我看不到下面',
+          timestamp: 1712044920000,
+        },
+      ],
+    });
+
+    expect(result.hit).toBe(false);
+  });
+
+  it.each(['滚', '滚开，别烦我', '滚犊子，这么多信息，太麻烦了', '你给我滚出去'])(
+    'should detect abusive "滚" context: %s',
+    (content) => {
+      const result = service.detect({
+        ...baseContext,
+        currentMessageContent: content,
+        recentMessages: [
+          ...baseContext.recentMessages,
+          { role: 'user', content, timestamp: 1712044920000 },
+        ],
+      });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          hit: true,
+          riskType: 'abuse',
+          riskLabel: '辱骂/攻击',
+        }),
+      );
+      expect(result.reason).toContain('滚');
+    },
+  );
+
   it('should detect abuse keywords', () => {
     const result = service.detect({
       ...baseContext,

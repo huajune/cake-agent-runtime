@@ -19,6 +19,7 @@ describe('SpongeService', () => {
   let hostingMemberConfigService: {
     resolveDulidayToken: jest.Mock;
   };
+  let redisService: { get: jest.Mock; setex: jest.Mock; del: jest.Mock };
 
   beforeEach(async () => {
     systemConfigService = {
@@ -48,6 +49,7 @@ describe('SpongeService', () => {
           useValue: {
             get: jest.fn(),
             setex: jest.fn(),
+            del: jest.fn(),
           },
         },
         {
@@ -64,6 +66,7 @@ describe('SpongeService', () => {
 
     service = module.get<SpongeService>(SpongeService);
     biService = module.get(SpongeBiService);
+    redisService = module.get(RedisService);
   });
 
   it('should be defined', () => {
@@ -560,6 +563,147 @@ describe('SpongeService', () => {
 
       expect(result).toBe(true);
       expect(biService.refreshBIDataSourceAndWait).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('cancelWorkOrder', () => {
+    it('posts to the cancel endpoint and invalidates the work order cache on success', async () => {
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({ code: 0, message: 'ok', data: 'done' }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      const result = await service.cancelWorkOrder({
+        workOrderId: 88001,
+        cancelReasonId: 12001,
+        cancelReasonDesc: '当天有事',
+      });
+
+      expect(result).toEqual({ success: true, code: 0, message: 'ok' });
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/ai/api/workorder/cancel'),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            workOrderId: 88001,
+            cancelReasonId: 12001,
+            cancelReasonDesc: '当天有事',
+          }),
+        }),
+      );
+      expect(redisService.del).toHaveBeenCalledWith('sponge:workorder:88001');
+    });
+
+    it('returns success:false (no cache invalidation) on business code != 0', async () => {
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({ code: 500, message: 'busy' }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      const result = await service.cancelWorkOrder({ workOrderId: 88001, cancelReasonId: 12001 });
+
+      expect(result).toEqual({ success: false, code: 500, message: 'busy' });
+      expect(redisService.del).not.toHaveBeenCalled();
+    });
+
+    it('throws when the cancel endpoint returns non-2xx', async () => {
+      const mockResponse = { ok: false, status: 502, statusText: 'Bad Gateway' };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      await expect(
+        service.cancelWorkOrder({ workOrderId: 88001, cancelReasonId: 12001 }),
+      ).rejects.toThrow('取消工单失败');
+    });
+  });
+
+  describe('modifyInterviewTime', () => {
+    it('posts to the modify endpoint and invalidates the work order cache on success', async () => {
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({ code: 0, message: 'ok' }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      const result = await service.modifyInterviewTime({
+        workOrderId: 88001,
+        newInterviewTime: '2026-06-20 14:00',
+      });
+
+      expect(result).toEqual({ success: true, code: 0, message: 'ok' });
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/ai/api/workorder/interviewTime/modify'),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ workOrderId: 88001, newInterviewTime: '2026-06-20 14:00' }),
+        }),
+      );
+      expect(redisService.del).toHaveBeenCalledWith('sponge:workorder:88001');
+    });
+  });
+
+  describe('fetchFailureReasonsByPids', () => {
+    it('flattens leaf reasons from grouped dictionary response', async () => {
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          code: 0,
+          data: [
+            {
+              pid: 12001,
+              info: '约面取消',
+              failureReasonsDTOList: [
+                { id: 12010, info: '候选人主动取消' },
+                { id: 12011, info: '时间冲突' },
+              ],
+            },
+          ],
+        }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      const result = await service.fetchFailureReasonsByPids([12001]);
+
+      expect(result).toEqual([
+        { id: 12010, info: '候选人主动取消' },
+        { id: 12011, info: '时间冲突' },
+      ]);
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/ai/api/workorder/failureReasons/byPids'),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ pidList: [12001] }),
+        }),
+      );
+    });
+
+    it('serves the second call from cache (no second fetch)', async () => {
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          code: 0,
+          data: [{ pid: 12001, failureReasonsDTOList: [{ id: 12010, info: '候选人主动取消' }] }],
+        }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      await service.fetchFailureReasonsByPids([12001]);
+      await service.fetchFailureReasonsByPids([12001]);
+
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns [] on business code != 0', async () => {
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({ code: 1, message: 'bad' }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      const result = await service.fetchFailureReasonsByPids([99999]);
+
+      expect(result).toEqual([]);
     });
   });
 

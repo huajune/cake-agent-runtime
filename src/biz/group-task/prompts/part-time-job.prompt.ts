@@ -263,7 +263,23 @@ function extractWorkTime(job: JobDetail): string {
     );
   }
 
-  return '';
+  // 海绵2.0 结构：dayWorkTime.combinedArrangement（固定/组合排班多时段）→ 灵活排班 fixedTime 区间
+  const day = prop(workTime, 'dayWorkTime') as Record<string, unknown> | undefined;
+  const combined = Array.isArray(day?.combinedArrangement) ? day?.combinedArrangement : [];
+  const ranges = (combined as Record<string, string>[])
+    .map((s) => {
+      const start = s?.combinedArrangementStartTime || '';
+      const end = s?.combinedArrangementEndTime || '';
+      return start && end ? `${start}-${end}` : '';
+    })
+    .filter(Boolean);
+  if (ranges.length === 0) {
+    const ft = (day?.fixedTime as Record<string, string>) || {};
+    if (ft.goToWorkStartTime && ft.goOffWorkEndTime) {
+      ranges.push(`${ft.goToWorkStartTime}-${ft.goOffWorkEndTime}`);
+    }
+  }
+  return ranges.length > 0 ? ranges.join(';') + ';' : '';
 }
 
 /** 安全读取嵌套属性 */

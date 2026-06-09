@@ -78,6 +78,38 @@ describe('ReplyNormalizer', () => {
       expect(ReplyNormalizer.needsNormalization('**重点**：附近有岗位')).toBe(true);
       expect(ReplyNormalizer.needsNormalization('`重点`：附近有岗位')).toBe(true);
     });
+
+    it('含推理/思考标签需要规范化', () => {
+      expect(ReplyNormalizer.needsNormalization('</think>')).toBe(true);
+      expect(ReplyNormalizer.needsNormalization('<think>先想想</think>好的')).toBe(true);
+      // 多次调用结果稳定（防 /g lastIndex 副作用）
+      expect(ReplyNormalizer.needsNormalization('</think>')).toBe(true);
+    });
+  });
+
+  describe('normalize - 推理/思考标签剥离（badcase recvlEM9V4vBhP）', () => {
+    it('应删除落单的闭合标签 </think>', () => {
+      expect(ReplyNormalizer.normalize('</think>')).toBe('');
+      expect(ReplyNormalizer.normalize('好的，你先看看哈\n\n</think>')).toBe('好的，你先看看哈');
+    });
+
+    it('应整体删除成对的 <think>...</think> 思考块', () => {
+      const input = '<think>候选人在宝山，先查附近岗位</think>你好呀，帮你看下附近的岗位';
+      expect(ReplyNormalizer.normalize(input)).toBe('你好呀，帮你看下附近的岗位');
+    });
+
+    it('应删除跨行的思考块', () => {
+      const input = `<think>
+这里是模型的推理
+分了好几行
+</think>
+你好呀`;
+      expect(ReplyNormalizer.normalize(input)).toBe('你好呀');
+    });
+
+    it('大小写不敏感', () => {
+      expect(ReplyNormalizer.normalize('<THINK>x</THINK>正文')).toBe('正文');
+    });
   });
 
   describe('normalize - Markdown 装饰符清理', () => {

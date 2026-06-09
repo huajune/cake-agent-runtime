@@ -45,6 +45,25 @@ export const TOOL_ERROR_TYPES = {
   PRECHECK_FAILED: 'precheck.failed',
 
   // ============================================================
+  // duliday_cancel_work_order
+  // ============================================================
+  CANCEL_MISSING_WORK_ORDER_ID: 'cancel.missing_work_order_id',
+  /** 未传/传错 cancelReasonId：返回可选取消原因列表，让 LLM 据候选人原话选一个 id 重试。 */
+  CANCEL_REASON_REQUIRED: 'cancel.reason_required',
+  /** 取消原因字典拉取失败：无法确定 cancelReasonId，转人工。 */
+  CANCEL_REASON_FETCH_FAILED: 'cancel.reason_fetch_failed',
+  CANCEL_REJECTED: 'cancel.rejected',
+  CANCEL_REQUEST_FAILED: 'cancel.request_failed',
+
+  // ============================================================
+  // duliday_modify_interview_time
+  // ============================================================
+  MODIFY_INTERVIEW_MISSING_WORK_ORDER_ID: 'modify_interview.missing_work_order_id',
+  MODIFY_INTERVIEW_INVALID_TIME: 'modify_interview.invalid_time',
+  MODIFY_INTERVIEW_REJECTED: 'modify_interview.rejected',
+  MODIFY_INTERVIEW_REQUEST_FAILED: 'modify_interview.request_failed',
+
+  // ============================================================
   // duliday_job_list
   // ============================================================
   JOB_LIST_MISSING_CITY_CONTEXT: 'job_list.missing_city_context',

@@ -26,52 +26,54 @@ describe('classifyScheduleSemantic', () => {
     );
   });
 
-  it('detects structured weekend-only weekdays from custom work time fields', () => {
+  it('derives requires_full_week from weekAndMonthWorkTime.perWeekWorkDays >= 5 (做六休一)', () => {
     const workTimeText = JSON.stringify({
-      weekWorkTime: {
-        weekWorkTimeRequirement: '自定义时间',
-        customnWorkTimeList: [
-          {
-            customWorkWeekdays: ['每周六', '每周日'],
-          },
-        ],
+      weekAndMonthWorkTime: {
+        weekMonthArrangementMode: '做几休几',
+        perWeekWorkDays: 6,
+        perWeekRestDays: 1,
       },
-      dailyShiftSchedule: {
-        arrangementType: '组合排班制',
-        combinedArrangement: [
-          {
-            combinedArrangementWeekdays: '每周六,每周日',
-            combinedArrangementStartTime: '10:00',
-            combinedArrangementEndTime: '12:00',
-          },
-        ],
+      dayWorkTime: { arrangementType: '灵活排班' },
+    });
+
+    expect(classifyScheduleSemantic({ workTimeText })).toEqual(
+      expect.arrayContaining(['requires_full_week']),
+    );
+  });
+
+  it('derives requires_full_week from 至少上岗 N 天 (onWorkTime/onWorkLimitType)', () => {
+    const workTimeText = JSON.stringify({
+      weekAndMonthWorkTime: {
+        onWorkLimitType: '至少上岗',
+        onWorkTimeUnit: '天',
+        onWorkTime: 5,
       },
     });
 
     expect(classifyScheduleSemantic({ workTimeText })).toEqual(
-      expect.arrayContaining(['weekend_only_compatible']),
+      expect.arrayContaining(['requires_full_week']),
     );
   });
 
-  it('does not treat structured weekdays that include workdays as weekend-only', () => {
+  it('does not mark low per-week days as full week', () => {
     const workTimeText = JSON.stringify({
-      weekWorkTime: {
-        customnWorkTimeList: [
-          {
-            customWorkWeekdays: ['每周五', '每周六', '每周日'],
-          },
-        ],
-      },
-      dailyShiftSchedule: {
-        combinedArrangement: [
-          {
-            combinedArrangementWeekdays: '每周六,每周日',
-          },
-        ],
+      weekAndMonthWorkTime: { perWeekWorkDays: 3, perWeekRestDays: 4 },
+    });
+
+    expect(classifyScheduleSemantic({ workTimeText })).not.toContain('requires_full_week');
+  });
+
+  it('detects 通宵 shift code as evening_compatible', () => {
+    const workTimeText = JSON.stringify({
+      dayWorkTime: {
+        arrangementType: '灵活排班',
+        fixedTime: { shiftCodes: ['通宵班'], goToWorkStartTime: '22:00', goOffWorkEndTime: '07:00' },
       },
     });
 
-    expect(classifyScheduleSemantic({ workTimeText })).not.toContain('weekend_only_compatible');
+    expect(classifyScheduleSemantic({ workTimeText })).toEqual(
+      expect.arrayContaining(['evening_compatible']),
+    );
   });
 
   it('also reads interview and requirement remarks', () => {

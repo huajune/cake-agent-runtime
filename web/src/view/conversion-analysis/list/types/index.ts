@@ -52,6 +52,8 @@ export type BotSortKey =
   | 'booking_success'
   | 'group_invite'
   | 'interview_pass'
+  | 'booking_cancel'
+  | 'interview_modified'
   | 'booking_rate'
   | 'interview_rate';
 

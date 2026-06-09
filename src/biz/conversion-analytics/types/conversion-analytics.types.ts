@@ -91,6 +91,10 @@ export interface ConversionBotCounts {
   booking_success: number;
   group_invite: number;
   interview_pass: number;
+  /** 自助取消工单数（booking.canceled）；运营侧支，不进线性漏斗。 */
+  booking_cancel: number;
+  /** 自助改约面时间数（booking.interview_modified）；运营侧支，不进线性漏斗。 */
+  interview_modified: number;
 }
 
 export interface ConversionBotRow {

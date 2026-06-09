@@ -17,11 +17,14 @@ function makeJob(overrides: Record<string, unknown> = {}): Record<string, unknow
     },
     _distanceKm: 2.31,
     workTime: {
-      dailyShiftSchedule: {
-        arrangementType: '固定排班制',
-        fixedScheduleList: [{ fixedShiftStartTime: '11:00', fixedShiftEndTime: '15:00' }],
+      dayWorkTime: {
+        arrangementType: '满足其中一个时段即可安排上岗',
+        combinedArrangement: [
+          { combinedArrangementStartTime: '11:00', combinedArrangementEndTime: '15:00' },
+        ],
+        fixedTime: null,
       },
-      weekWorkTime: { perWeekWorkDays: 4 },
+      weekAndMonthWorkTime: { perWeekWorkDays: 4 },
     },
     jobSalary: {
       salaryScenarioList: [

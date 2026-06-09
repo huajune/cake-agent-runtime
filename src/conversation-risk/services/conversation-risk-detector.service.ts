@@ -197,10 +197,85 @@ export class ConversationRiskDetectorService {
 
   private findMatchedKeywords(content: string, keywords: readonly string[]): string[] {
     const normalized = this.normalize(content);
-    return keywords.filter((keyword) => normalized.includes(this.normalize(keyword)));
+    return keywords.filter((keyword) => {
+      const normalizedKeyword = this.normalize(keyword);
+      if (normalizedKeyword === '滚') {
+        return this.matchesAbusiveGun(normalized);
+      }
+      return normalized.includes(normalizedKeyword);
+    });
   }
 
   private normalize(content: string): string {
     return content.trim().toLowerCase();
+  }
+
+  private matchesAbusiveGun(content: string): boolean {
+    const compact = content.replace(/\s+/g, '');
+    if (!compact) {
+      return false;
+    }
+
+    // "滚" is a high-risk single-character keyword, but it also appears in benign
+    // phrases like "好运滚滚来" or words like "滚动". Only treat it as abuse when
+    // it is standalone or attached to common imperative/insult suffixes.
+    const punctuation = '[!！?？。.,，、~～]*';
+    if (new RegExp(`^滚${punctuation}$`).test(compact)) {
+      return true;
+    }
+
+    const abusiveSuffixes = [
+      '出去',
+      '远一点',
+      '一边去',
+      '犊子',
+      '回去',
+      '开',
+      '蛋',
+      '出',
+      '远点',
+      '吧',
+      '啊',
+      '呀',
+      '啦',
+      '呢',
+      '你',
+      '尼玛',
+      'nmd',
+      'nm',
+      '妈',
+    ];
+    const suffixPattern = `(?:${abusiveSuffixes.join('|')}|[!！?？。.,，、~～]|$)`;
+
+    if (new RegExp(`(?:^|[!！?？。.,，、~～])滚${suffixPattern}`).test(compact)) {
+      return true;
+    }
+
+    const imperativePrefixes = [
+      '你',
+      '你们',
+      '妳',
+      '您',
+      '他',
+      '她',
+      '它',
+      '给我',
+      '让你',
+      '让你们',
+      '让他',
+      '让她',
+      '让它',
+      '叫你',
+      '叫你们',
+      '叫他',
+      '叫她',
+      '叫它',
+      '快',
+      '快点',
+      '赶紧',
+      '马上',
+      '都',
+    ];
+    return new RegExp(`(?:${imperativePrefixes.join('|')})滚${suffixPattern}`).test(compact);
   }
 }

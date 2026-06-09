@@ -16,6 +16,8 @@ import { buildRecallHistoryTool } from './recall-history.tool';
 import { buildJobListTool } from './duliday-job-list.tool';
 import { buildInterviewPrecheckTool } from './duliday-interview-precheck.tool';
 import { buildInterviewBookingTool } from './duliday-interview-booking.tool';
+import { buildCancelWorkOrderTool } from './duliday-cancel-work-order.tool';
+import { buildModifyInterviewTimeTool } from './duliday-modify-interview-time.tool';
 import { buildGeocodeTool } from './geocode.tool';
 import { buildSaveImageDescriptionTool } from './save-image-description.tool';
 import { buildInviteToGroupTool } from './invite-to-group.tool';
@@ -128,6 +130,20 @@ export class ToolRegistryService {
         create: buildInterviewPrecheckTool(spongeService, opsEventsRecorder),
       }),
 
+      duliday_cancel_work_order: createToolDefinition({
+        name: 'duliday_cancel_work_order',
+        description:
+          '取消工单（候选人主动要求取消已确认的面试预约时调用，真正调海绵取消接口；workOrderId 取自 [当前预约信息]）',
+        create: buildCancelWorkOrderTool(spongeService, opsEventsRecorder),
+      }),
+
+      duliday_modify_interview_time: createToolDefinition({
+        name: 'duliday_modify_interview_time',
+        description:
+          '修改约面时间（候选人主动要求把已确认的面试改到新时间时调用，真正调海绵改约接口；workOrderId 取自 [当前预约信息]）',
+        create: buildModifyInterviewTimeTool(spongeService, opsEventsRecorder),
+      }),
+
       geocode: createToolDefinition({
         name: 'geocode',
         description: '地理编码（将地名解析为标准化地址 + 经纬度；做附近推荐或距离过滤前优先调用）',
@@ -200,6 +216,8 @@ export class ToolRegistryService {
       'duliday_job_list',
       'duliday_interview_precheck',
       'duliday_interview_booking',
+      'duliday_cancel_work_order',
+      'duliday_modify_interview_time',
       'geocode',
       'send_store_location',
       'invite_to_group',

@@ -11,6 +11,10 @@ export interface JobListQueryParams {
   projectNameList?: string[];
   projectIdList?: number[];
   jobIdList?: number[];
+  /** 结算周期名称列表（取 salary_period 字典名称，如 日结算/周结算/月结算/半月结/完结） */
+  salaryPeriodNameList?: string[];
+  /** 是否仅查询可报名岗位；不传时海绵侧默认为 true */
+  onlySignableJobs?: boolean;
   pageNum?: number;
   pageSize?: number;
   sort?: string;
@@ -149,12 +153,15 @@ export const JobListApiResponseSchema = z
 
 /** 品牌列表 API 原始响应项 */
 export interface RawBrandItem {
+  /** 品牌ID（海绵2.0 新增） */
+  id?: number;
   name: string;
   aliases: string[];
   projectIdList: number[];
 }
 
 export const RawBrandItemSchema = z.object({
+  id: z.number().nullish(),
   name: z.string().min(1),
   aliases: z.array(z.string()).default([]),
   projectIdList: z.array(z.number()).default([]),
@@ -162,6 +169,8 @@ export const RawBrandItemSchema = z.object({
 
 /** 品牌（精简，供事实提取使用） */
 export interface BrandItem {
+  /** 品牌ID（海绵2.0 新增；旧响应缺失时为空） */
+  id?: number;
   name: string;
   aliases: string[];
 }
@@ -173,6 +182,7 @@ export const BrandListApiResponseSchema = z
     data: z
       .object({
         result: z.array(RawBrandItemSchema).default([]),
+        total: z.number().nullish(),
       })
       .optional(),
   })
@@ -514,6 +524,81 @@ export const SignupWorkOrdersApiResponseSchema = z
         total: z.number().nullable().optional(),
         workOrders: z.array(SignupWorkOrderItemSchema).nullable().optional(),
       })
+      .nullable()
+      .optional(),
+  })
+  .passthrough();
+
+// ==================== 海绵工单变更 cancel / interviewTime/modify ====================
+
+/** 取消工单参数（POST ${SPONGE_API_BASE_URL}/ai/api/workorder/cancel）。 */
+export interface CancelWorkOrderParams {
+  /** 工单 ID */
+  workOrderId: number;
+  /** 取消原因 ID（来自失败原因字典）。 */
+  cancelReasonId: number;
+  /** 取消原因具体描述（候选人原话，可选）。 */
+  cancelReasonDesc?: string;
+}
+
+/** 修改约面时间参数（POST ${SPONGE_API_BASE_URL}/ai/api/workorder/interviewTime/modify）。 */
+export interface ModifyInterviewTimeParams {
+  /** 工单 ID */
+  workOrderId: number;
+  /** 新约面时间，格式 yyyy-MM-dd HH:mm。 */
+  newInterviewTime: string;
+}
+
+/** 工单变更类接口的统一返回（cancel / interviewTime/modify 同形：code/message/data）。 */
+export interface WorkOrderMutationResult {
+  success: boolean;
+  code: number;
+  message?: string;
+}
+
+/** cancel / interviewTime/modify 响应结构（data 为字符串，不承载业务数据）。 */
+export const WorkOrderMutationApiResponseSchema = z
+  .object({
+    code: z.number(),
+    message: z.string().optional(),
+    data: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+// ==================== 海绵失败原因字典 failureReasons/byPids ====================
+
+/** 单个失败原因（字典叶子项）。 */
+export interface FailureReasonItem {
+  /** 失败原因 ID（取消工单时作为 cancelReasonId）。 */
+  id: number;
+  /** 失败原因描述。 */
+  info: string;
+}
+
+export const FailureReasonsByPidsApiResponseSchema = z
+  .object({
+    code: z.number(),
+    message: z.string().optional(),
+    data: z
+      .array(
+        z
+          .object({
+            pid: z.number(),
+            info: z.string().nullable().optional(),
+            failureReasonsDTOList: z
+              .array(
+                z
+                  .object({
+                    id: z.coerce.number().int(),
+                    info: z.string().nullable().optional(),
+                  })
+                  .passthrough(),
+              )
+              .nullable()
+              .optional(),
+          })
+          .passthrough(),
+      )
       .nullable()
       .optional(),
   })

@@ -59,23 +59,30 @@ function buildShiftPart(workTime: unknown): string {
   if (!wt) return '';
   const parts: string[] = [];
 
-  // 时间段：直接读 fixedScheduleList，不做计算
-  const slots = wt?.dailyShiftSchedule?.fixedScheduleList;
-  if (Array.isArray(slots) && slots.length > 0) {
-    const ranges = slots
-      .filter((s: any) => hasValue(s?.fixedShiftStartTime) && hasValue(s?.fixedShiftEndTime))
-      .map((s: any) => `${s.fixedShiftStartTime}-${s.fixedShiftEndTime}`);
-    if (ranges.length > 0) parts.push(ranges.join(' / '));
+  // 时间段：海绵2.0 优先取 dayWorkTime.combinedArrangement（固定/组合排班的多时段），
+  // 灵活排班则取 fixedTime 的上下班区间。不做计算，直接展示。
+  const day = wt?.dayWorkTime ?? {};
+  const combined = Array.isArray(day.combinedArrangement) ? day.combinedArrangement : [];
+  const ranges = combined
+    .filter(
+      (s: any) =>
+        hasValue(s?.combinedArrangementStartTime) && hasValue(s?.combinedArrangementEndTime),
+    )
+    .map((s: any) => `${s.combinedArrangementStartTime}-${s.combinedArrangementEndTime}`);
+  const ft = day.fixedTime ?? {};
+  if (ranges.length === 0 && hasValue(ft.goToWorkStartTime) && hasValue(ft.goOffWorkEndTime)) {
+    const nextDay = /次日/.test(String(ft.goOffWorkTimeType ?? '')) ? '次日' : '';
+    ranges.push(`${ft.goToWorkStartTime}-${nextDay}${ft.goOffWorkEndTime}`);
   }
+  if (ranges.length > 0) parts.push(ranges.join(' / '));
 
   // 每日最少工时（有则展示，不推断）
-  const dayMin = wt?.dayWorkTime?.perDayMinWorkHours;
+  const dayMin = ft.perDayMinWorkHours;
   if (hasValue(dayMin)) parts.push(`每日至少 ${dayMin} 小时`);
 
   // 每周天数
-  const week = wt?.weekWorkTime ?? {};
-  if (hasValue(week.perWeekWorkDays)) parts.push(`每周 ${week.perWeekWorkDays} 天`);
-  else if (hasValue(week.perWeekNeedWorkDays)) parts.push(`每周 ${week.perWeekNeedWorkDays} 天`);
+  const wm = wt?.weekAndMonthWorkTime ?? {};
+  if (hasValue(wm.perWeekWorkDays)) parts.push(`每周 ${wm.perWeekWorkDays} 天`);
 
   return parts.join('，');
 }

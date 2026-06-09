@@ -27,10 +27,8 @@ import {
 import {
   cleanNumber,
   cleanSingleLineText,
-  compressWeekdays,
   formatNameWithId,
   formatRange,
-  formatTimeRange,
   formatValueWithUnit,
   hasFullWeekOrRigidSchedule,
   hasValue,
@@ -522,16 +520,24 @@ function renderHiringRequirementSection(req: any, policy: JobPolicyAnalysis): st
 
 // ==================== 模块 5：工作时间 ====================
 
+const CN_NUM = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+function toCnNum(value: unknown): string {
+  const n = cleanNumber(value);
+  return typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 10
+    ? CN_NUM[n]
+    : String(value);
+}
+
 function renderWorkTimeSection(wt: any): string {
   if (!wt) return '';
   const lines: string[] = [];
 
   pushField(lines, '就业形式', wt.employmentForm);
-  pushField(lines, '就业形式说明', wt.employmentDescription);
   if (hasValue(wt.minWorkMonths)) {
     lines.push(`- **最少工作月数**: ${wt.minWorkMonths} 个月`);
   }
 
+  // 阶段用工时间窗
   const tempEmp = wt.temporaryEmployment || {};
   if (
     hasValue(tempEmp.temporaryEmploymentStartTime) ||
@@ -543,134 +549,98 @@ function renderWorkTimeSection(wt: any): string {
     const e = hasValue(tempEmp.temporaryEmploymentEndTime)
       ? String(tempEmp.temporaryEmploymentEndTime)
       : '?';
-    lines.push(`- **短期用工**: ${s} 至 ${e}`);
+    lines.push(`- **阶段用工**: ${s} 至 ${e}`);
   }
 
-  // 每周工时
-  const week = wt.weekWorkTime || {};
-  const weekParts: string[] = [];
-  if (hasValue(week.weekWorkTimeRequirement)) weekParts.push(String(week.weekWorkTimeRequirement));
-  const daySegs: string[] = [];
-  if (hasValue(week.perWeekWorkDays)) daySegs.push(`出勤 ${week.perWeekWorkDays} 天`);
-  if (hasValue(week.perWeekRestDays)) daySegs.push(`休 ${week.perWeekRestDays} 天`);
-  if (hasValue(week.perWeekNeedWorkDays)) daySegs.push(`需出勤 ${week.perWeekNeedWorkDays} 天`);
-  if (daySegs.length) {
-    if (weekParts.length) {
-      weekParts.push(`(${daySegs.join(', ')})`);
-    } else {
-      weekParts.push(daySegs.join(', '));
-    }
+  // 每周/每月排班（海绵2.0 weekAndMonthWorkTime）
+  const wm = wt.weekAndMonthWorkTime || {};
+  const cycleLabel = hasValue(wm.arrangementCycleType) ? String(wm.arrangementCycleType) : '';
+  const wmParts: string[] = [];
+  // 做X休Y（用中文数字以触发"做六休一"等全周强排班识别）
+  if (hasValue(wm.perWeekWorkDays) && hasValue(wm.perWeekRestDays)) {
+    wmParts.push(`做${toCnNum(wm.perWeekWorkDays)}休${toCnNum(wm.perWeekRestDays)}`);
+  } else if (hasValue(wm.perWeekWorkDays)) {
+    wmParts.push(`每周出勤 ${wm.perWeekWorkDays} 天`);
+  } else if (hasValue(wm.perWeekRestDays)) {
+    wmParts.push(`每周休 ${wm.perWeekRestDays} 天`);
   }
-  if (weekParts.length) lines.push(`- **每周工时**: ${weekParts.join(' ')}`);
-  pushField(lines, '单双休', week.workSingleDouble);
-
-  if (Array.isArray(week.customnWorkTimeList) && week.customnWorkTimeList.length > 0) {
-    week.customnWorkTimeList.forEach((cw: any, idx: number) => {
-      if (!isNonEmpty(cw)) return;
-      const parts: string[] = [];
-      if (hasValue(cw.customMinWorkDays) || hasValue(cw.customMaxWorkDays)) {
-        const r = formatRange(cw.customMinWorkDays, cw.customMaxWorkDays, '天');
-        if (r) parts.push(`出勤 ${r}`);
-      }
-      if (Array.isArray(cw.customWorkWeekdays) && cw.customWorkWeekdays.length > 0) {
-        parts.push(`可出勤: ${compressWeekdays(cw.customWorkWeekdays.join(','))}`);
-      }
-      if (parts.length) lines.push(`- **自定义工时 ${idx + 1}**: ${parts.join(', ')}`);
-    });
+  // 至少/至多上岗 N 天/小时
+  if (hasValue(wm.onWorkTime) && hasValue(wm.onWorkTimeUnit)) {
+    const limit = hasValue(wm.onWorkLimitType) ? String(wm.onWorkLimitType) : '上岗';
+    wmParts.push(`${limit} ${wm.onWorkTime} ${wm.onWorkTimeUnit}`);
+  }
+  // 休息模式（周中休/周末休）
+  if (hasValue(wm.weekMonthRestMode)) wmParts.push(String(wm.weekMonthRestMode));
+  // 单双号
+  if (hasValue(wm.workSingleDouble)) wmParts.push(`仅${wm.workSingleDouble}`);
+  if (wmParts.length) {
+    const cyclePrefix = cycleLabel ? `${cycleLabel}: ` : '';
+    lines.push(`- **排班周期**: ${cyclePrefix}${wmParts.join('，')}`);
   }
 
-  // 每月工时
-  const month = wt.monthWorkTime || {};
-  const monthParts: string[] = [];
-  if (hasValue(month.monthWorkTimeRequirement)) {
-    monthParts.push(String(month.monthWorkTimeRequirement));
-  }
-  if (hasValue(month.perMonthMinWorkTime)) {
-    const s = formatValueWithUnit(month.perMonthMinWorkTime, month.perMonthMinWorkTimeUnit);
-    if (s) monthParts.push(`最少 ${s}`);
-  }
-  if (hasValue(month.perMonthMaxRestTime)) {
-    const s = formatValueWithUnit(month.perMonthMaxRestTime, month.perMonthMaxRestTimeUnit);
-    if (s) monthParts.push(`最多休息 ${s}`);
-  }
-  if (monthParts.length) lines.push(`- **每月工时**: ${monthParts.join(', ')}`);
-
-  // 每日工时
+  // 每日排班（海绵2.0 dayWorkTime）
   const day = wt.dayWorkTime || {};
-  if (hasValue(day.perDayMinWorkHours)) {
-    const n = cleanNumber(day.perDayMinWorkHours);
-    if (n !== null) lines.push(`- **每日工时**: 最少 ${n} 小时`);
-  }
-  pushField(lines, '每日工时要求', day.dayWorkTimeRequirement);
-
-  // 排班
-  const schedule = wt.dailyShiftSchedule;
-  if (schedule) {
-    pushField(lines, '排班类型', schedule.arrangementType);
-    // 固定排班制特别提示：候选人不能自由挑时段，必须从固定班次里选
-    // historical badcase jj2zct43：六姐兼职 arrangementType="固定排班制"，
-    // Agent 答"按排班的不是每天必去，面试时沟通你想排哪些时段"，让候选人误以为可以自选时段。
-    if (typeof schedule.arrangementType === 'string' && /固定排班/.test(schedule.arrangementType)) {
+  const arrangementType = hasValue(day.arrangementType) ? String(day.arrangementType) : '';
+  if (arrangementType) {
+    pushField(lines, '排班类型', arrangementType);
+    // 组合排班制（满足所有时段）：下列时段全部都要出勤，不能只挑一段。
+    if (/所有/.test(arrangementType)) {
       lines.push(
-        '- **班次自选边界**: 该岗位为固定排班制，候选人**只能在下面列出的「固定班次」里选**，不能自由挑选 11:00-14:00 / 18:00-22:00 之外的时段；门店会按候选人在已开班次里的可上班时间排班，不允许自定义时段',
+        '- **班次硬约束提示**: 该岗位为组合排班制，下面列出的「可排时段」**全部都要出勤**，候选人不能只挑其中一段',
+      );
+    } else if (/其中一个|其中一/.test(arrangementType)) {
+      // 固定排班制（满足其中一个时段即可）：候选人只能从已开时段里选，不能自定义时段。
+      // historical badcase jj2zct43：固定排班制被答成"面试时沟通你想排哪些时段"，让候选人误以为可自选。
+      lines.push(
+        '- **班次自选边界**: 该岗位为固定排班制，候选人**只能在下面列出的「可排时段」里选**，不能自由挑选未列出的时段；门店按候选人可上班时间在已开时段里排班',
       );
     }
+  }
 
-    if (Array.isArray(schedule.fixedScheduleList) && schedule.fixedScheduleList.length > 0) {
-      const shiftLines: string[] = [];
-      schedule.fixedScheduleList.forEach((sh: any, idx: number) => {
-        if (!isNonEmpty(sh)) return;
-        const s = hasValue(sh.fixedShiftStartTime) ? String(sh.fixedShiftStartTime) : '?';
-        const e = hasValue(sh.fixedShiftEndTime) ? String(sh.fixedShiftEndTime) : '?';
-        shiftLines.push(`  - 班次 ${idx + 1}: ${s} - ${e}`);
-      });
-      if (shiftLines.length) {
-        lines.push(`- **固定班次**:`);
-        lines.push(...shiftLines);
-      }
-    }
+  // 每日最少工时 + 班次名 + 上下班区间（灵活排班 fixedTime）
+  const ft = day.fixedTime || {};
+  if (hasValue(ft.perDayMinWorkHours)) {
+    const n = cleanNumber(ft.perDayMinWorkHours);
+    if (n !== null) lines.push(`- **每日工时**: 最少 ${n} 小时`);
+  }
+  if (Array.isArray(ft.shiftCodes)) {
+    const codes = ft.shiftCodes.filter((c: unknown) => hasValue(c)).map((c: unknown) => String(c));
+    if (codes.length) lines.push(`- **班次**: ${codes.join('、')}`);
+  }
+  if (hasValue(ft.goToWorkStartTime) || hasValue(ft.goOffWorkEndTime)) {
+    const s = hasValue(ft.goToWorkStartTime) ? String(ft.goToWorkStartTime) : '?';
+    const e = hasValue(ft.goOffWorkEndTime) ? String(ft.goOffWorkEndTime) : '?';
+    const nextDay = /次日/.test(String(ft.goOffWorkTimeType ?? '')) ? '次日 ' : '';
+    lines.push(`- **上下班时间**: ${s} - ${nextDay}${e}`);
+  }
 
-    const ft = schedule.fixedTime || {};
-    if (
-      hasValue(ft.goToWorkStartTime) ||
-      hasValue(ft.goToWorkEndTime) ||
-      hasValue(ft.goOffWorkStartTime) ||
-      hasValue(ft.goOffWorkEndTime)
-    ) {
-      const up = formatTimeRange(ft.goToWorkStartTime, ft.goToWorkEndTime);
-      if (up) lines.push(`- **上班时间**: ${up}`);
-      const off = formatTimeRange(ft.goOffWorkStartTime, ft.goOffWorkEndTime);
-      if (off) lines.push(`- **下班时间**: ${off}`);
-    }
-
-    if (Array.isArray(schedule.combinedArrangement) && schedule.combinedArrangement.length > 0) {
-      const caLines: string[] = [];
-      schedule.combinedArrangement.forEach((ca: any, idx: number) => {
-        if (!isNonEmpty(ca)) return;
-        const s = hasValue(ca.combinedArrangementStartTime)
-          ? String(ca.combinedArrangementStartTime)
-          : '?';
-        const e = hasValue(ca.combinedArrangementEndTime)
-          ? String(ca.combinedArrangementEndTime)
-          : '?';
-        const daysSrc = hasValue(ca.combinedArrangementWeekdays)
-          ? String(ca.combinedArrangementWeekdays)
-          : '';
-        const daysCompressed = daysSrc ? compressWeekdays(daysSrc) : '';
-        const daysStr = daysCompressed ? `（${daysCompressed}）` : '';
-        caLines.push(`  - 班次 ${idx + 1}: ${s} - ${e}${daysStr}`);
-      });
-      if (caLines.length) {
-        lines.push(`- **组合排班**:`);
-        lines.push(...caLines);
-      }
+  // 固定/组合排班的可排时段（dayWorkTime.combinedArrangement，新结构不带星期）
+  if (Array.isArray(day.combinedArrangement) && day.combinedArrangement.length > 0) {
+    const caLines: string[] = [];
+    day.combinedArrangement.forEach((ca: any, idx: number) => {
+      if (!isNonEmpty(ca)) return;
+      const s = hasValue(ca.combinedArrangementStartTime)
+        ? String(ca.combinedArrangementStartTime)
+        : '?';
+      const e = hasValue(ca.combinedArrangementEndTime)
+        ? String(ca.combinedArrangementEndTime)
+        : '?';
+      caLines.push(`  - 时段 ${idx + 1}: ${s} - ${e}`);
+    });
+    if (caLines.length) {
+      lines.push(`- **可排时段**:`);
+      lines.push(...caLines);
     }
   }
 
+  // 自由文本（休息说明/工时备注）——新结构未必下发，存在则保留（自由文本优先于结构化字段）。
   pushLongText(lines, '休息说明', wt.restTimeDesc);
   pushLongText(lines, '工时备注', sanitizeConstraintText(wt.workTimeRemark));
 
-  if (hasFullWeekOrRigidSchedule(lines)) {
+  // 全周强排班提示：文本命中（做六休一/固定排班...）或结构化每周出勤≥5 天。
+  const weeklyWorkDays = cleanNumber(wm.perWeekWorkDays);
+  const structuralRigid = typeof weeklyWorkDays === 'number' && weeklyWorkDays >= 5;
+  if (structuralRigid || hasFullWeekOrRigidSchedule(lines)) {
     lines.push(
       '- **排班硬约束提示**: "每天/做六休一/周一至周日/固定排班"表示工作日也要配合；候选人只做周末、每周最多几天、做一休一、下班后或只做晚班时，不能把该岗位说成"周末能排"或"晚班能排"。',
     );

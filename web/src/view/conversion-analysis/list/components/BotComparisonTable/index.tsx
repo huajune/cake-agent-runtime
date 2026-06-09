@@ -27,6 +27,8 @@ const COLUMNS: Array<{ key: BotSortKey; label: string; type: ColumnType }> = [
   { key: 'group_invite', label: '邀请进群', type: 'num' },
   { key: 'booking_success', label: '报名成功', type: 'num' },
   { key: 'interview_pass', label: '面试通过', type: 'num' },
+  { key: 'booking_cancel', label: '取消', type: 'num' },
+  { key: 'interview_modified', label: '改约', type: 'num' },
   { key: 'booking_rate', label: '报名成功率', type: 'rate' },
   { key: 'interview_rate', label: '面试通过率', type: 'rate' },
 ];
@@ -432,6 +434,8 @@ function metricValue(bot: ConversionBotRow, key: BotSortKey): number {
     case 'booking_success':
     case 'group_invite':
     case 'interview_pass':
+    case 'booking_cancel':
+    case 'interview_modified':
       return bot.eventCounts[key];
     default:
       return 0;
