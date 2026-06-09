@@ -8,6 +8,66 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.13.0`
+**最近更新**: `2026-06-09`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #265 取消运营事件上报到花卷，保留模块待用
+- PR #265 支持自助取消与改约工单
+- PR #265 处理发版前 review 建议
+- PR #265 面试预约失败告警展示海绵 traceId
+- PR #265 收敛多条运营反馈 badcase 话术红线
+- PR #265 侧边栏菜单分组重命名 + 清理一次性 resync 脚本
+- PR #265 依赖倒置消除 biz→channels/wecom 层违规
+- PR #265 新增 `duliday_cancel_work_order` / `duliday_modify_interview_time` 两个工单自助变更工具，接入海绵取消、改约、失败原因字典接口，并在成功后写入 `ops_events`。
+- PR #265 将工单变更计数接入运营投影和转化看板，同时补充自助取消/改约的 Supabase migration。
+- PR #265 优化岗位列表新网关数据渲染、排班语义、飞书 webhook 重试告警、辱骂关键词误判和 dashboard 刷新态。
+
+### 新功能
+- PR #265 Agent 可基于当前预约信息自助取消已确认面试，或修改约面时间；失败时按现有转人工链路兜底。
+- PR #265 转化分析 bot 表新增自助取消、自助改约计数列，作为运营侧支指标展示。
+- PR #265 新增 `duliday_cancel_work_order` / `duliday_modify_interview_time` 两个工单自助变更工具，接入海绵取消、改约、失败原因字典接口，并在成功后写入 `ops_events`。
+- PR #265 将工单变更计数接入运营投影和转化看板，同时补充自助取消/改约的 Supabase migration。
+- PR #265 支持自助取消与改约工单
+
+### 问题修复
+- PR #265 修正 `滚` 单字关键词在友好/中性语境中的误伤。
+- PR #265 修正岗位新结构下工作时间、排班周期、可排时段等字段的渲染与测试覆盖。
+- PR #265 优化岗位列表新网关数据渲染、排班语义、飞书 webhook 重试告警、辱骂关键词误判和 dashboard 刷新态。
+
+### 优化调整
+- PR #265 海绵岗位/品牌/面试排期接口统一走 gateway base，可通过 `SPONGE_API_BASE_URL` 覆盖。
+- PR #265 飞书 webhook 发送增加可重试判定、退避重试和最终失败告警。
+- PR #265 dashboard 数据加载时增加顶部刷新进度态。
+- PR #265 依赖倒置消除 biz→channels/wecom 层违规
+
+### 运维与流程
+- PR #265 新增 `supabase/migrations/20260608120000_ops_workorder_mutation_events.sql`，为 `daily_ops_report` 增加 `booking_cancel_count` 与 `interview_modified_count` 投影。
+- PR #265 新增 ops_events 断档回灌、job/list 网关探针与基准脚本，便于发版前后核查。
+- PR #265 取消运营事件上报到花卷，保留模块待用
+- PR #265 处理发版前 review 建议
+- PR #265 面试预约失败告警展示海绵 traceId
+- PR #265 收敛多条运营反馈 badcase 话术红线
+- PR #265 侧边栏菜单分组重命名 + 清理一次性 resync 脚本
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- PR #265 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
+
+### 验证记录
+- PR #265 `pnpm run ci:check`
+- PR #265 pre-commit lint / format hook
+- PR #265 pre-push `pnpm run ci:check`
+- PR #265 关键链路已人工验证
+<!-- release:pending:end -->
+
 ## [5.12.0] - 2026-06-05
 
 **来源分支**: `develop`

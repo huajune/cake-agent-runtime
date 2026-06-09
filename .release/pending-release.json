@@ -1,9 +1,76 @@
 {
   "baseVersion": "5.12.0",
-  "nextVersion": "5.12.0",
-  "updatedAt": "2026-06-05",
+  "nextVersion": "5.13.0",
+  "updatedAt": "2026-06-09",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "265",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/265",
+      "title": "支持自助取消与改约工单",
+      "author": "huajune",
+      "mergedAt": "2026-06-09",
+      "businessUpdates": [
+        "Agent 可基于当前预约信息自助取消已确认面试，或修改约面时间；失败时按现有转人工链路兜底。",
+        "转化分析 bot 表新增自助取消、自助改约计数列，作为运营侧支指标展示。",
+        "新增 `duliday_cancel_work_order` / `duliday_modify_interview_time` 两个工单自助变更工具，接入海绵取消、改约、失败原因字典接口，并在成功后写入 `ops_events`。",
+        "将工单变更计数接入运营投影和转化看板，同时补充自助取消/改约的 Supabase migration。",
+        "支持自助取消与改约工单",
+        "修正 `滚` 单字关键词在友好/中性语境中的误伤。",
+        "修正岗位新结构下工作时间、排班周期、可排时段等字段的渲染与测试覆盖。",
+        "优化岗位列表新网关数据渲染、排班语义、飞书 webhook 重试告警、辱骂关键词误判和 dashboard 刷新态。"
+      ],
+      "summary": [
+        "取消运营事件上报到花卷，保留模块待用",
+        "支持自助取消与改约工单",
+        "处理发版前 review 建议",
+        "面试预约失败告警展示海绵 traceId",
+        "收敛多条运营反馈 badcase 话术红线",
+        "侧边栏菜单分组重命名 + 清理一次性 resync 脚本",
+        "依赖倒置消除 biz→channels/wecom 层违规",
+        "新增 `duliday_cancel_work_order` / `duliday_modify_interview_time` 两个工单自助变更工具，接入海绵取消、改约、失败原因字典接口，并在成功后写入 `ops_events`。",
+        "将工单变更计数接入运营投影和转化看板，同时补充自助取消/改约的 Supabase migration。",
+        "优化岗位列表新网关数据渲染、排班语义、飞书 webhook 重试告警、辱骂关键词误判和 dashboard 刷新态。"
+      ],
+      "features": [
+        "Agent 可基于当前预约信息自助取消已确认面试，或修改约面时间；失败时按现有转人工链路兜底。",
+        "转化分析 bot 表新增自助取消、自助改约计数列，作为运营侧支指标展示。",
+        "新增 `duliday_cancel_work_order` / `duliday_modify_interview_time` 两个工单自助变更工具，接入海绵取消、改约、失败原因字典接口，并在成功后写入 `ops_events`。",
+        "将工单变更计数接入运营投影和转化看板，同时补充自助取消/改约的 Supabase migration。",
+        "支持自助取消与改约工单"
+      ],
+      "fixes": [
+        "修正 `滚` 单字关键词在友好/中性语境中的误伤。",
+        "修正岗位新结构下工作时间、排班周期、可排时段等字段的渲染与测试覆盖。",
+        "优化岗位列表新网关数据渲染、排班语义、飞书 webhook 重试告警、辱骂关键词误判和 dashboard 刷新态。"
+      ],
+      "optimizations": [
+        "海绵岗位/品牌/面试排期接口统一走 gateway base，可通过 `SPONGE_API_BASE_URL` 覆盖。",
+        "飞书 webhook 发送增加可重试判定、退避重试和最终失败告警。",
+        "dashboard 数据加载时增加顶部刷新进度态。",
+        "依赖倒置消除 biz→channels/wecom 层违规"
+      ],
+      "ops": [
+        "新增 `supabase/migrations/20260608120000_ops_workorder_mutation_events.sql`，为 `daily_ops_report` 增加 `booking_cancel_count` 与 `interview_modified_count` 投影。",
+        "新增 ops_events 断档回灌、job/list 网关探针与基准脚本，便于发版前后核查。",
+        "取消运营事件上报到花卷，保留模块待用",
+        "处理发版前 review 建议",
+        "面试预约失败告警展示海绵 traceId",
+        "收敛多条运营反馈 badcase 话术红线",
+        "侧边栏菜单分组重命名 + 清理一次性 resync 脚本"
+      ],
+      "config": [],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "`pnpm run ci:check`",
+        "pre-commit lint / format hook",
+        "pre-push `pnpm run ci:check`",
+        "关键链路已人工验证"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "5.12.0",
     "date": "2026-06-05",
