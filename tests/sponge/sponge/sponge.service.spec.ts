@@ -216,10 +216,69 @@ describe('SpongeService', () => {
       );
     });
 
-    it('should prefer hosting_member_config token before legacy sponge token config', async () => {
+    it('should resolve botUserId aliases stored in bot_im_id with prod sync prefix', async () => {
+      systemConfigService.getConfigValue.mockResolvedValue({
+        accounts: [
+          {
+            botImId: '1688855171908166',
+            botUserId: 'CongLingKaiShiDeXianShiShiJie',
+            token: 'alias-token',
+          },
+        ],
+      });
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          code: 0,
+          data: { result: [], total: 0 },
+        }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      await service.fetchJobs({}, { botImId: 'prod-sync:CongLingKaiShiDeXianShiShiJie' });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('job/list'),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'Duliday-Token': 'alias-token',
+          }),
+        }),
+      );
+    });
+
+    it('should prefer sponge_token_config before hosting_member_config token', async () => {
       hostingMemberConfigService.resolveDulidayToken.mockResolvedValueOnce('member-token');
       systemConfigService.getConfigValue.mockResolvedValue({
-        accounts: [{ botImId: 'bot-im-1', token: 'legacy-token' }],
+        accounts: [{ botImId: 'bot-im-1', token: 'sponge-token' }],
+      });
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          code: 0,
+          data: { result: [], total: 0 },
+        }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      await service.fetchJobs({}, { botImId: 'bot-im-1' });
+
+      expect(systemConfigService.getConfigValue).toHaveBeenCalled();
+      expect(hostingMemberConfigService.resolveDulidayToken).not.toHaveBeenCalled();
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('job/list'),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'Duliday-Token': 'sponge-token',
+          }),
+        }),
+      );
+    });
+
+    it('should fall back to hosting_member_config when sponge_token_config has no match', async () => {
+      hostingMemberConfigService.resolveDulidayToken.mockResolvedValueOnce('member-token');
+      systemConfigService.getConfigValue.mockResolvedValue({
+        accounts: [{ botImId: 'other-bot', token: 'sponge-token' }],
       });
       const mockResponse = {
         ok: true,
@@ -233,7 +292,6 @@ describe('SpongeService', () => {
       await service.fetchJobs({}, { botImId: 'bot-im-1' });
 
       expect(hostingMemberConfigService.resolveDulidayToken).toHaveBeenCalledWith('bot-im-1');
-      expect(systemConfigService.getConfigValue).not.toHaveBeenCalled();
       expect(global.fetch).toHaveBeenCalledWith(
         expect.stringContaining('job/list'),
         expect.objectContaining({
@@ -323,10 +381,81 @@ describe('SpongeService', () => {
     });
   });
 
+  describe('fetchSelfSignupWorkOrders', () => {
+    it('uses the hosting-member Duliday token and posts only time filters', async () => {
+      hostingMemberConfigService.resolveDulidayToken.mockResolvedValueOnce('member-token');
+      const mockResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          code: 0,
+          data: {
+            total: 1,
+            workOrders: [
+              {
+                workOrderId: 9001,
+                candidateName: '张三',
+                phone: '13800138000',
+                signUpTime: '2026-06-09 20:10:00',
+              },
+            ],
+          },
+        }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      const result = await service.fetchSelfSignupWorkOrders(
+        {
+          queryParam: {
+            signUpStartTime: '2026-06-09 00:00:00',
+            signUpEndTime: '2026-06-09 23:59:59',
+          },
+        },
+        { botImId: 'bot-im-1' },
+      );
+
+      expect(result.total).toBe(1);
+      expect(result.workOrders[0].candidateName).toBe('张三');
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/ai/api/workorder/signup/self/list'),
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'Duliday-Token': 'member-token',
+          }),
+          body: JSON.stringify({
+            queryParam: {
+              signUpStartTime: '2026-06-09 00:00:00',
+              signUpEndTime: '2026-06-09 23:59:59',
+            },
+          }),
+        }),
+      );
+    });
+
+    it('does not fall back to the global token for self/list', async () => {
+      const fetchSpy = jest.spyOn(global, 'fetch');
+
+      await expect(
+        service.fetchSelfSignupWorkOrders(
+          {
+            queryParam: {
+              signUpStartTime: '2026-06-09 00:00:00',
+              signUpEndTime: '2026-06-09 23:59:59',
+            },
+          },
+          { botImId: 'unknown-bot' },
+        ),
+      ).rejects.toThrow('缺少 DULIDAY_API_TOKEN');
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+  });
+
   describe('bookInterview', () => {
     it('should call booking API and return result', async () => {
       const mockResponse = {
         ok: true,
+        headers: new Headers({ Traceid: 'trace-success-1' }),
         json: jest.fn().mockResolvedValue({
           code: 0,
           message: 'success',
@@ -349,6 +478,7 @@ describe('SpongeService', () => {
 
       expect(result.success).toBe(true);
       expect(result.notice).toBe('预约成功');
+      expect(result.traceId).toBe('trace-success-1');
       expect(global.fetch).toHaveBeenCalledWith(
         expect.stringContaining('/a/supplier/entryUser'),
         expect.objectContaining({
@@ -375,6 +505,7 @@ describe('SpongeService', () => {
     it('should return failure result when booking response shape is invalid', async () => {
       const mockResponse = {
         ok: true,
+        headers: new Headers({ Traceid: 'trace-invalid-1' }),
         json: jest.fn().mockResolvedValue({
           code: '0',
           data: 'invalid',
@@ -396,6 +527,37 @@ describe('SpongeService', () => {
 
       expect(result.success).toBe(false);
       expect(result.message).toBe('预约接口返回结构异常');
+      // traceId 在结构解析失败时仍要带出来，方便后端定位是哪次海绵请求返回了坏结构。
+      expect(result.traceId).toBe('trace-invalid-1');
+    });
+
+    it('should carry traceId from response header into failure result', async () => {
+      const mockResponse = {
+        ok: true,
+        headers: new Headers({ Traceid: 'trace-fail-1' }),
+        json: jest.fn().mockResolvedValue({
+          code: 500,
+          message: '麻麻呀，服务器暂时跑丢了～',
+          data: null,
+        }),
+      };
+      jest.spyOn(global, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      const result = await service.bookInterview({
+        name: '张三',
+        phone: '13800138000',
+        age: 22,
+        genderId: 1,
+        jobId: 100,
+        interviewTime: '2026-04-01 10:00:00',
+        operateType: 6,
+        educationId: 5,
+        hasHealthCertificate: 1,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.message).toBe('麻麻呀，服务器暂时跑丢了～');
+      expect(result.traceId).toBe('trace-fail-1');
     });
   });
 

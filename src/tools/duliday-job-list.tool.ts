@@ -78,6 +78,13 @@ const inputSchema = z.object({
   projectNameList: z.array(z.string()).optional().default([]).describe('项目名称列表'),
   projectIdList: z.array(z.number().int()).optional().default([]).describe('项目ID列表'),
   jobIdList: z.array(z.number().int()).optional().default([]).describe('岗位ID列表'),
+  settlementPeriodList: z
+    .array(z.string())
+    .optional()
+    .default([])
+    .describe(
+      '结算周期筛选（取 salary_period 字典名称，如 "日结算"、"周结算"、"月结算"、"半月结"）。仅当候选人**明确点名要某种结算周期**（如"想找日结的""有没有日结岗"）时填；平时留空。注意结算周期是薪资属性，不是岗位工种，不要塞进 jobCategoryList。',
+    ),
 
   location: z
     .object({
@@ -427,6 +434,7 @@ export function buildJobListTool(
         storeNameList = [],
         jobCategoryList = [],
         jobIdList = [],
+        settlementPeriodList = [],
         location,
         responseFormat = ['markdown'],
         includeBasicInfo = true,
@@ -538,6 +546,7 @@ export function buildJobListTool(
           storeNameList,
           jobCategoryList: sanitizedJobCategoryList,
           jobIdList,
+          salaryPeriodNameList: settlementPeriodList.map((p) => p.trim()).filter(Boolean),
           location: effectiveLocation,
           options,
         };

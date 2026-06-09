@@ -13,6 +13,9 @@ describe('extractHardRequirements', () => {
       ['只要男生', 'male'],
       ['不限', 'any'],
       ['男女不限', 'any'],
+      // 海绵真实取值：逗号串表达多选，两种顺序都代表不限。
+      ['男性,女性', 'any'],
+      ['女性,男性', 'any'],
       ['', 'unspecified'],
       ['未填写', 'unspecified'],
     ])('classifies "%s" as %s', (input, expected) => {

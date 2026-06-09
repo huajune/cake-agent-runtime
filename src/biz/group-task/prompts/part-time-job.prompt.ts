@@ -529,8 +529,11 @@ function extractHiringRequirement(job: JobDetail): string {
     items.push('年龄18-50岁');
   }
 
-  if (basic?.genderRequirement && basic.genderRequirement !== '男性,女性') {
-    items.push(`${basic.genderRequirement}`);
+  // 海绵用逗号串表达多选，"男性,女性"/"女性,男性" 两种顺序都代表不限，含男女两性时不作为限制项输出。
+  const genderReq = typeof basic?.genderRequirement === 'string' ? basic.genderRequirement : '';
+  const isBothGenders = /男/.test(genderReq) && /女/.test(genderReq);
+  if (genderReq && genderReq !== '不限' && !isBothGenders) {
+    items.push(genderReq);
   }
 
   const cert = prop(hr, 'certificate') as Record<string, unknown> | undefined;

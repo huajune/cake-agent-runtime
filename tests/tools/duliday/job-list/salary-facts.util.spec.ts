@@ -33,9 +33,10 @@ describe('extractSalaryFacts', () => {
   });
 
   describe('stair salary detection', () => {
-    it('flags when hasStairSalary=是', () => {
+    it('flags when hasStairSalary=有阶梯薪资', () => {
+      // 海绵实际取值是 "有阶梯薪资"/"无阶梯薪资"（非 "是"/"否"）。
       const facts = extractSalaryFacts({
-        salaryScenarioList: [{ hasStairSalary: '是' }],
+        salaryScenarioList: [{ hasStairSalary: '有阶梯薪资' }],
       });
       expect(facts.hasStairSalary).toBe(true);
     });
@@ -47,9 +48,9 @@ describe('extractSalaryFacts', () => {
       expect(facts.hasStairSalary).toBe(true);
     });
 
-    it('does not flag when hasStairSalary=否 and array empty', () => {
+    it('does not flag when hasStairSalary=无阶梯薪资 and array empty', () => {
       const facts = extractSalaryFacts({
-        salaryScenarioList: [{ hasStairSalary: '否', stairSalaries: [] }],
+        salaryScenarioList: [{ hasStairSalary: '无阶梯薪资', stairSalaries: [] }],
       });
       expect(facts.hasStairSalary).toBe(false);
     });
@@ -109,6 +110,21 @@ describe('extractSalaryFacts', () => {
     it('does not flag when probationSalary empty/null', () => {
       expect(extractSalaryFacts({ probationSalary: {} }).hasProbationSalary).toBe(false);
       expect(extractSalaryFacts({ probationSalary: null }).hasProbationSalary).toBe(false);
+    });
+
+    it('flags scenario-form probation/training salary (salaryType=试用期/培训期)', () => {
+      // 试用期/培训期薪资常仅以 salaryScenarioList 条目出现（顶层 probationSalary 为 null），旧逻辑漏判。
+      expect(
+        extractSalaryFacts({
+          probationSalary: null,
+          salaryScenarioList: [{ salaryType: '培训期', basicSalary: { basicSalary: 11.7 } }],
+        }).hasProbationSalary,
+      ).toBe(true);
+      expect(
+        extractSalaryFacts({
+          salaryScenarioList: [{ salaryType: '试用期' }],
+        }).hasProbationSalary,
+      ).toBe(true);
     });
   });
 

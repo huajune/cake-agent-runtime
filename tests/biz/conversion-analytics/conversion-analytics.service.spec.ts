@@ -228,7 +228,7 @@ describe('ConversionAnalyticsService — conversion analysis', () => {
     expect(kpis.passRate.numerator).toBe(2);
   });
 
-  it('同一时段漏斗按期间发生量展示，但仍保留加群侧支分母=破冰', async () => {
+  it('同一时段漏斗按期间发生量展示，加群侧支不在漏斗里占一层', async () => {
     const funnel = await buildService().getFunnel('friend_added', filter, 'period');
     const stage = (name: string) => funnel.stages.find((s) => s.stage === name);
 
@@ -236,14 +236,13 @@ describe('ConversionAnalyticsService — conversion analysis', () => {
     expect(funnel.stages.map((s) => s.stage)).toEqual([
       'friend_added',
       'break_ice',
-      'group_invite',
       'booking',
       'interview_pass',
     ]);
+    expect(stage('group_invite')).toBeUndefined();
     expect(stage('friend_added')?.count).toBe(6);
     expect(stage('booking')?.count).toBe(4);
     expect(stage('booking')?.stageRate).toBeCloseTo(4 / 4, 4);
-    expect(stage('group_invite')?.stageRate).toBeCloseTo(3 / 4, 4);
   });
 
   it('趋势 summary 在同一时段口径下与 KPI 分子分母对齐', async () => {
@@ -331,11 +330,11 @@ describe('ConversionAnalyticsService — conversion analysis', () => {
     expect(row?.eventCounts.interview_pass).toBe(0);
   });
 
-  it('漏斗中加群是侧支，不会成为报名成功的阶段分母', async () => {
+  it('漏斗中加群是侧支，不在漏斗里占一层，也不影响报名阶段分母', async () => {
     const funnel = await buildService().getFunnel('friend_added', filter);
     const stage = (name: string) => funnel.stages.find((s) => s.stage === name);
 
-    expect(stage('group_invite')?.stageRate).toBeCloseTo(3 / 4, 4);
+    expect(stage('group_invite')).toBeUndefined();
     expect(stage('booking')?.stageRate).toBeCloseTo(2 / 4, 4);
   });
 

@@ -600,8 +600,9 @@ export function buildInterviewPrecheckTool(
               upcomingTimeOptions,
               bookableSlots,
               // 面试流程描述：原岗位数据里已经写了"线上 AI 面试 / 收到二维码 /
-              // 保持电话畅通"等流程信息（在 firstInterview.interviewDemand 与
-              // interviewProcess.remark 里），把它直接抛给模型让其按事实转述，
+              // 保持电话畅通"等流程信息（真实位置在 firstInterview.interviewDemand 与
+              // firstInterview.firstInterviewDesc / interviewProcess.processDesc，由 parser 汇总
+              // 进 interviewRemark），把它直接抛给模型让其按事实转述，
               // 而不是凭"线上面试"四个字自己编流程。
               flowDescription: analysis.interviewMeta.demand,
               processRemark: analysis.normalizedRequirements.interviewRemark,

@@ -35,6 +35,12 @@ describe('extractWelfareFacts', () => {
     it('classifies unrecognized text as unspecified', () => {
       expect(extractWelfareFacts({ catering: '面议' }).meals).toBe('unspecified');
     });
+
+    it('classifies real sponge enum strings (无餐饮福利/餐饮补贴)', () => {
+      // 海绵真实取值是完整描述串，旧逻辑会误判为 unspecified。
+      expect(extractWelfareFacts({ catering: '无餐饮福利' }).meals).toBe('self_or_none');
+      expect(extractWelfareFacts({ catering: '餐饮补贴' }).meals).toBe('allowance');
+    });
   });
 
   describe('accommodation classification', () => {
@@ -61,6 +67,12 @@ describe('extractWelfareFacts', () => {
     it('classifies 不购买/员工自理 as self_or_none (no allowance concept for insurance)', () => {
       expect(extractWelfareFacts({ haveInsurance: '不购买' }).insurance).toBe('self_or_none');
       expect(extractWelfareFacts({ haveInsurance: '员工自理' }).insurance).toBe('self_or_none');
+    });
+
+    it('classifies real sponge enum strings (独立日购买/独立日不购买)', () => {
+      // "独立日/独立客" = 本公司，"独立日购买" 表示公司参保；旧逻辑误判为 unspecified。
+      expect(extractWelfareFacts({ haveInsurance: '独立日购买' }).insurance).toBe('company');
+      expect(extractWelfareFacts({ haveInsurance: '独立日不购买' }).insurance).toBe('self_or_none');
     });
   });
 

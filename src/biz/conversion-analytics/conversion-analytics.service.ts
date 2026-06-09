@@ -284,27 +284,15 @@ export class ConversionAnalyticsService {
     // cohort：严格单调子集的漏斗（按人去重，逐级 ⊆ 上一级）。
     const stageSets = await this.computeStageSets(cohort, filter, period, 'current');
 
-    // friend_added 漏斗额外展示「邀请进群」（破冰侧支），插在候选人回复之后。
-    // 仅用于展示：计数取侧支去重人数，不进入线性链路，故不改变报名/面试阶段分母。
-    const displayDefs: StageDef[] =
-      cohort === 'friend_added'
-        ? [
-            stageDefs[0],
-            stageDefs[1],
-            { stage: GROUP_INVITE_STAGE, eventName: GROUP_INVITE_EVENT, displayName: '邀请进群' },
-            stageDefs[2],
-            stageDefs[3],
-          ]
-        : stageDefs;
+    // 加群是破冰后的运营侧支，不进漏斗：仅作为独立 KPI 展示，不在漏斗里占一层。
+    const displayDefs: StageDef[] = stageDefs;
 
     const totalCohort = stageSets.get(displayDefs[0].stage)?.size ?? 0;
     let previousCount = totalCohort;
     const stages = displayDefs.map((def, index) => {
       const count = stageSets.get(def.stage)?.size ?? 0;
       const stageRate = index === 0 ? 1 : this.ratio(count, previousCount);
-      if (def.stage !== GROUP_INVITE_STAGE) {
-        previousCount = count;
-      }
+      previousCount = count;
       return {
         stage: def.stage,
         displayName: def.displayName,
@@ -323,16 +311,9 @@ export class ConversionAnalyticsService {
     period: ConversionPeriod,
   ): Promise<ConversionFunnelResponse> {
     const counts = await this.computePeriodCounts(filter, period, 'current');
+    // 加群是破冰后的运营侧支，不进漏斗：仅作为独立 KPI 展示，不在漏斗里占一层。
     const displayDefs: StageDef[] =
-      cohort === 'friend_added'
-        ? [
-            FRIEND_ADDED_STAGE_DEFS[0],
-            FRIEND_ADDED_STAGE_DEFS[1],
-            { stage: GROUP_INVITE_STAGE, eventName: GROUP_INVITE_EVENT, displayName: '邀请进群' },
-            FRIEND_ADDED_STAGE_DEFS[2],
-            FRIEND_ADDED_STAGE_DEFS[3],
-          ]
-        : BOOKING_STAGE_DEFS;
+      cohort === 'friend_added' ? FRIEND_ADDED_STAGE_DEFS : BOOKING_STAGE_DEFS;
     const totalCohort = cohort === 'booking' ? counts.booking : counts.friendAdded;
     const stages = displayDefs.map((def, index) => {
       const count = this.countForStage(def.stage, counts);

@@ -88,11 +88,18 @@ export function extractSalaryFacts(jobSalary: unknown): SalaryFacts {
     ) {
       facts.hasComprehensiveSalary = true;
     }
+    // sponge 实际取值是 "有阶梯薪资"/"无阶梯薪资"（非 "是"/"否"）。
     if (
-      s.hasStairSalary === '是' ||
+      (typeof s.hasStairSalary === 'string' && s.hasStairSalary.includes('有阶梯')) ||
       (Array.isArray(s.stairSalaries) && s.stairSalaries.length > 0)
     ) {
       facts.hasStairSalary = true;
+    }
+
+    // 试用期/培训期薪资既可能出现在顶层 probationSalary 块，也可能仅作为
+    // salaryScenarioList 里的一条（salaryType="试用期"/"培训期"），后者此前被漏判。
+    if (typeof s.salaryType === 'string' && /试用期|培训期|试工/.test(s.salaryType)) {
+      facts.hasProbationSalary = true;
     }
 
     const holidayType = s.holidaySalary?.holidaySalaryType;

@@ -38,7 +38,16 @@ export interface JobListOptions {
   includeInterviewProcess?: boolean;
 }
 
-/** 岗位基础信息（从 API 返回中提取的常用字段） */
+/**
+ * 岗位基础信息（从 API 返回中提取的常用字段）
+ *
+ * ⚠️ 现网（海绵 ai/api/job/list）实测：basicInfo 顶层**不返回** requirementNum / minAge /
+ * maxAge / storeName / storeAddress / cityName / regionName。它们的真实位置：
+ *  - minAge / maxAge → hiringRequirement.basicPersonalRequirements.{minAge,maxAge}
+ *  - storeName / storeAddress / 城市 / 大区 → basicInfo.storeInfo.{storeName,storeAddress,storeCityName,storeRegionName}
+ *  - requirementNum（招聘人数）→ 当前接口无此字段
+ * 下列声明保留仅为前向兼容（万一上游补回）+ 历史 fixture，**不要据此从 basicInfo 顶层取值**。
+ */
 export interface JobBasicInfo {
   jobId: number;
   jobName?: string;
@@ -46,14 +55,21 @@ export interface JobBasicInfo {
   jobCategoryName?: string;
   jobContent?: string;
   laborForm?: string;
+  /** @deprecated 现网不返回，见上方说明 */
   requirementNum?: number;
+  /** @deprecated 现网在 hiringRequirement.basicPersonalRequirements.minAge */
   minAge?: number;
+  /** @deprecated 现网在 hiringRequirement.basicPersonalRequirements.maxAge */
   maxAge?: number;
+  /** @deprecated 现网在 storeInfo.storeName */
   storeName?: string;
+  /** @deprecated 现网在 storeInfo.storeAddress */
   storeAddress?: string;
   storeInfo?: Record<string, unknown>;
   brandName?: string;
+  /** @deprecated 现网在 storeInfo.storeCityName */
   cityName?: string;
+  /** @deprecated 现网在 storeInfo.storeRegionName */
   regionName?: string;
   [key: string]: unknown;
 }
@@ -305,6 +321,12 @@ export interface InterviewBookingResult {
    * 供 latest_booking 指针与 ops_events(booking.succeeded) 使用。
    */
   workOrderId?: number | null;
+  /**
+   * 海绵网关响应头里的链路追踪 ID（取不到为 null）。
+   *
+   * 预约失败时透传到「面试预约失败」告警卡片，方便后端凭此查海绵侧日志排障。
+   */
+  traceId?: string | null;
 }
 
 /**
@@ -456,9 +478,17 @@ export interface SignupWorkOrdersParams {
   };
 }
 
+/** 当前供应商账号提交的工单查询参数（POST /ai/api/workorder/signup/self/list）。 */
+export interface SelfSignupWorkOrdersParams {
+  queryParam?: SignupWorkOrdersParams['queryParam'];
+}
+
 /** 单个工单（候选人维度响应的 workOrders[] 元素）。 */
 export interface SignupWorkOrderItem {
   workOrderId: number;
+  /** self/list 可能把候选人信息下发在工单行上；signup/list 通常下发在顶层。 */
+  candidateName?: string | null;
+  phone?: string | null;
   signUpTime?: string | null;
   /** 面试通过时间；非空即视为"面试成功"（interview.passed 判定依据）。 */
   interviewPassTime?: string | null;
@@ -473,7 +503,7 @@ export interface SignupWorkOrderItem {
   jobName?: string | null;
   /** 当前状态中文：约面待确认/约面失败/约面取消/约面成功/面试失败/面试成功/上岗失败/上岗成功/已离职 */
   currentStatus?: string | null;
-  workOrderStatus?: number | null;
+  workOrderStatus?: number | string | null;
   salary?: number | string | null;
   salaryUnit?: string | null;
   salaryPeriod?: string | null;
@@ -492,6 +522,8 @@ export interface SignupWorkOrdersResult {
 export const SignupWorkOrderItemSchema = z
   .object({
     workOrderId: z.coerce.number().int(),
+    candidateName: z.string().nullable().optional(),
+    phone: z.string().nullable().optional(),
     signUpTime: z.string().nullable().optional(),
     interviewPassTime: z.string().nullable().optional(),
     brandId: z.number().nullable().optional(),
@@ -504,7 +536,7 @@ export const SignupWorkOrderItemSchema = z
     jobBasicInfoId: z.number().nullable().optional(),
     jobName: z.string().nullable().optional(),
     currentStatus: z.string().nullable().optional(),
-    workOrderStatus: z.number().nullable().optional(),
+    workOrderStatus: z.union([z.number(), z.string()]).nullable().optional(),
     salary: z.union([z.number(), z.string()]).nullable().optional(),
     salaryUnit: z.string().nullable().optional(),
     salaryPeriod: z.string().nullable().optional(),

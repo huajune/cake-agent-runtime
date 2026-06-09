@@ -461,7 +461,10 @@
       "Bash(sips -g pixelWidth -g pixelHeight /tmp/artwork_original.jpg)",
       "Bash(SUPABASE_URL=https://uvmbxcilpteaiizplcyp.supabase.co SUPABASE_KEY=\"$SUPABASE_SERVICE_ROLE_KEY\" node -e ' *)",
       "Bash(PORT=8586 pnpm run start:dev)",
-      "mcp__feishu-mcp__get_feishu_folder_files"
+      "mcp__feishu-mcp__get_feishu_folder_files",
+      "Bash(python3 -c \"import json; d=json.load\\(open\\('.release/pending-release.json'\\)\\); print\\('✅ JSON 合法; next:', d['nextVersion'], '; entries:', [e['number'] for e in d['entries']], '; lastRelease:', d['lastRelease']['version']\\)\")",
+      "Bash(git check-ignore *)",
+      "Bash(perl -0pi -e 's/\\\\n      const redisService = module\\\\.get\\\\\\(RedisService\\\\\\);//g' tests/sponge/sponge/sponge.service.spec.ts)"
     ],
     "deny": [
       "Bash(git restore:*)",

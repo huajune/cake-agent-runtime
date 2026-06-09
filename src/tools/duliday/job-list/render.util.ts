@@ -318,8 +318,10 @@ function renderSalaryScenario(scenarioInput: unknown, index: number): string {
     if (r) lines.push(`- **综合薪资**: ${r}`);
   }
 
-  if (hasValue(scenario.hasStairSalary)) {
-    lines.push(`- **是否阶梯薪资**: ${scenario.hasStairSalary}`);
+  // hasStairSalary 取值是 "有阶梯薪资"/"无阶梯薪资"，仅在"有"时提示（下方会列明细），
+  // 避免把"无阶梯薪资"渲染成一条看似有内容的字段误导 LLM。
+  if (typeof scenario.hasStairSalary === 'string' && scenario.hasStairSalary.includes('有阶梯')) {
+    lines.push(`- **是否阶梯薪资**: 有阶梯薪资`);
   }
   const stairSalaries = asRecordArray(scenario.stairSalaries);
   if (stairSalaries.length > 0) {
@@ -360,19 +362,33 @@ function renderSalaryScenario(scenarioInput: unknown, index: number): string {
     if (hasValue(other.performance)) pushField(lines, '绩效', other.performance);
   }
 
-  const customSalaries = asRecordArray(scenario.customSalaries);
-  if (customSalaries.length > 0) {
-    customSalaries.forEach((custom) => {
-      if (!isNonEmpty(custom) || !hasValue(custom.name)) return;
-      const salaryPart = hasValue(custom.salary)
-        ? formatValueWithUnit(custom.salary, custom.salaryUnit)
+  // 特殊时段薪资（夜班津贴等）：真实字段是 jobSpecialSalaryList（旧的 customSalaries 现网不返回）。
+  const specialSalaries = asRecordArray(scenario.jobSpecialSalaryList);
+  if (specialSalaries.length > 0) {
+    const specialLines: string[] = [];
+    specialSalaries.forEach((special) => {
+      if (!isNonEmpty(special)) return;
+      const salaryPart = hasValue(special.specialSalary)
+        ? formatValueWithUnit(special.specialSalary, special.specialSalaryUnit)
         : null;
-      const descPart = hasValue(custom.description)
-        ? cleanSingleLineText(String(custom.description))
-        : null;
-      const valueParts = [salaryPart, descPart].filter(Boolean).join('；');
-      if (valueParts) lines.push(`- **${custom.name}**: ${valueParts}`);
+      const timeRange =
+        hasValue(special.startTime) && hasValue(special.endTime)
+          ? `${special.startTime}-${special.endTime}`
+          : '';
+      const remark = hasValue(special.specialSalaryRemark)
+        ? cleanSingleLineText(String(special.specialSalaryRemark))
+        : '';
+      const parts = [
+        salaryPart ? `+${salaryPart}` : null,
+        timeRange ? `（${timeRange}）` : null,
+        remark || null,
+      ].filter(Boolean);
+      if (parts.length) specialLines.push(`  - ${parts.join(' ')}`);
     });
+    if (specialLines.length) {
+      lines.push(`- **特殊时段薪资**:`);
+      lines.push(...specialLines);
+    }
   }
 
   if (lines.length === 0) return '';
@@ -514,9 +530,13 @@ function renderHiringRequirementSection(reqInput: unknown, policy: JobPolicyAnal
   const mb = asRecord(req.marriageBearingAndSocialSecurity) ?? {};
   pushField(lines, '婚育要求', mb.marriageBearingType);
   pushField(lines, '婚育状态', mb.marriageBearing);
-  pushField(lines, '社保要求', mb.socialSecurityRequirementType);
+  // socialSecurityList 现网是字符串（如"公司缴纳本地社保"/"无公司在缴社保流水"），
+  // 旧代码按数组读会整段丢失；这里兼容字符串与历史数组两种形态。
+  // socialSecurityRequirementType 现网不返回，已移除。
   if (Array.isArray(mb.socialSecurityList) && mb.socialSecurityList.length > 0) {
-    lines.push(`- **社保列表**: ${mb.socialSecurityList.join(', ')}`);
+    lines.push(`- **社保**: ${mb.socialSecurityList.join(', ')}`);
+  } else {
+    pushField(lines, '社保', mb.socialSecurityList);
   }
 
   const comp = asRecord(req.competencyRequirements) ?? {};
@@ -689,6 +709,21 @@ function renderWorkTimeSection(workTimeInput: unknown): string {
 
 // ==================== 模块 6：面试流程 ====================
 
+/**
+ * 格式化面试时段，过滤海绵的 00:00 占位值。
+ *
+ * 现网大量岗位的 interviewStartTime/EndTime 是占位 "00:00"（表示"当天任意时段/以沟通为准"），
+ * 直接渲染会得到 "00:00-00:00" 这类误导信息。起止均为占位（空/00:00）时返回空串，由调用方决定不渲染时段。
+ */
+function formatInterviewTimeRange(start: unknown, end: unknown): string {
+  const s = hasValue(start) ? String(start).trim() : '';
+  const e = hasValue(end) ? String(end).trim() : '';
+  const isPlaceholder = (v: string) => v === '' || v === '00:00';
+  if (isPlaceholder(s) && isPlaceholder(e)) return '';
+  if (s && e) return `${s}-${e}`;
+  return s || e;
+}
+
 function renderInterviewRound(
   roundInput: unknown,
   roundLabel: string,
@@ -720,9 +755,12 @@ function renderInterviewRound(
         if (interviewTimes.length > 0) {
           interviewTimes.forEach((t) => {
             if (!isNonEmpty(t)) return;
-            const s = hasValue(t.interviewStartTime) ? String(t.interviewStartTime) : '?';
-            const e = hasValue(t.interviewEndTime) ? String(t.interviewEndTime) : '?';
-            fixedLines.push(`    - ${`${date} ${s}-${e}`.trim()}`);
+            const range = formatInterviewTimeRange(t.interviewStartTime, t.interviewEndTime);
+            // fixedDeadline 真实位置在每个 interviewTimes 项内（旧代码错读 round 顶层，恒空）。
+            const deadline = hasValue(t.fixedDeadline) ? String(t.fixedDeadline) : '';
+            let line = [date, range].filter(Boolean).join(' ').trim();
+            if (deadline) line += `（报名截止: ${deadline}）`;
+            if (line) fixedLines.push(`    - ${line}`);
           });
         } else if (date) {
           fixedLines.push(`    - ${date}`);
@@ -731,9 +769,6 @@ function renderInterviewRound(
       if (fixedLines.length) {
         sub.push(`- **固定面试时间**:`);
         sub.push(...fixedLines);
-      }
-      if (hasValue(round.fixedDeadline)) {
-        sub.push(`- **固定报名截止**: ${round.fixedDeadline}`);
       }
     }
 
@@ -747,16 +782,15 @@ function renderInterviewRound(
         if (interviewTimes.length > 0) {
           interviewTimes.forEach((t) => {
             if (!isNonEmpty(t)) return;
-            const s = hasValue(t.interviewStartTime) ? String(t.interviewStartTime) : '?';
-            const e = hasValue(t.interviewEndTime) ? String(t.interviewEndTime) : '?';
-            let line = `${weekday} ${s}-${e}`.trim();
+            const range = formatInterviewTimeRange(t.interviewStartTime, t.interviewEndTime);
+            let line = [weekday, range].filter(Boolean).join(' ').trim();
             if (hasValue(t.cycleDeadlineDay) || hasValue(t.cycleDeadlineEnd)) {
               const dd = hasValue(t.cycleDeadlineDay) ? String(t.cycleDeadlineDay) : '';
               const de = hasValue(t.cycleDeadlineEnd) ? String(t.cycleDeadlineEnd) : '';
               const deadline = `${dd} ${de}`.trim();
               if (deadline) line += `（报名截止: ${deadline}）`;
             }
-            periodicLines.push(`    - ${line}`);
+            if (line) periodicLines.push(`    - ${line}`);
           });
         }
       });

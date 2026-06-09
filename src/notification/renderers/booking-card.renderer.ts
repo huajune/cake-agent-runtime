@@ -34,6 +34,7 @@ export class BookingCardRenderer {
     const bookingId = this.pickString(toolOutput.booking_id);
     const failureReason = this.pickString(toolOutput.error);
     const failureDetails = this.stringifyErrorList(toolOutput.errorList);
+    const traceId = this.pickString(toolOutput.traceId);
     const sections: string[] = [];
 
     if (isFailure) {
@@ -67,6 +68,7 @@ export class BookingCardRenderer {
         failureReason ? `原因：${failureReason}` : null,
         failureDetails ? `明细：${failureDetails}` : null,
         resultMessage ? `返回信息：${resultMessage}` : null,
+        traceId ? `traceId：${traceId}` : null,
       ].filter((line): line is string => Boolean(line));
       if (resultLines.length > 0) {
         sections.push(`**失败详情**\n${resultLines.join('\n')}`);

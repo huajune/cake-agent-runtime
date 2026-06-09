@@ -16,7 +16,7 @@
 > 5. **handoff 原因 10 类**（非 8 类）：新增 `no_match_or_group_full`、`system_blocked`；见 [`request-handoff.tool.ts`](../../src/tools/request-handoff.tool.ts) 与迁移 `20260603120000_reclassify_handoff_other_reasons.sql`。
 > 6. **轮询窗口 60 天**（非 30 天）：`sponge-status-poll.cron.ts` 的 `lookbackDays = 60`。
 > 7. **cohort 漏斗实际阶段**：加好友 cohort = 新增好友 → 破冰 → 邀请进群 → 报名 → 面试通过（5 级，进群为破冰侧支）；报名 cohort = 报名 → 面试通过（2 级）。均**无"入职"**。
-> 8. **已完成**（本文"实施顺序"曾列为后续）：P1-8 飞书 9:00 日报 cron（[`ops-daily-report.cron.ts`](../../src/biz/ops-events/ops-daily-report.cron.ts)）、P2-2 huajune 埋点（[`huajune-reporter.service.ts`](../../src/biz/huajune/huajune-reporter.service.ts)）均已实现。
+> 8. **已完成**（本文"实施顺序"曾列为后续）：P1-8 飞书 21:00 日报 cron（[`ops-daily-report.cron.ts`](../../src/biz/ops-events/ops-daily-report.cron.ts)）、P2-2 huajune 埋点（[`huajune-reporter.service.ts`](../../src/biz/huajune/huajune-reporter.service.ts)）均已实现。
 
 ---
 
@@ -543,24 +543,28 @@ Block 4: Handoff 原因分布
 现有 dashboard 顶部 ControlPanel 加"小组"筛选下拉。
 后端 `AnalyticsController` 接受 `groups?` 参数过滤所有现有指标。
 
-### F. 飞书日报同步（每日 9:00 cron）
+### F. 飞书日报同步（每日 21:00 cron）
 
 **每日一次性快照推送**，不回写、不增量、不管飞书侧后续变更：
 
 ```
-9:00 cron:
-  SELECT daily_ops_report WHERE report_date = T-1
+21:00 cron:
+  SELECT daily_ops_report WHERE report_date = today
+  → 按每行 bot_im_id 解析托管账号 Duliday-Token
+  → 调海绵 /ai/api/workorder/signup/self/list：
+      signUpStartTime/signUpEndTime             → 覆盖成功报名数、候选人基本信息、报名品牌
+      interviewPassStartTime/interviewPassEndTime → 覆盖通过数
   → 每个 bot 一行，推 5 列到飞书 bitable:
       friends_added_count   → 添加好友数
       break_ice_count       → 破冰数
-      booking_success_count → 成功报名数
+      booking_success_count → 成功报名数（海绵覆盖）
       group_invite_count    → 邀请进群数
-      interview_pass_count  → 通过数
-  → 另带 candidate_summary + booking_brands
+      interview_pass_count  → 通过数（海绵覆盖）
+  → 另带 candidate_summary（海绵录入姓名）+ booking_brands
   其余字段不推飞书（仅服务 Web 分析页）
 ```
 
-⚠️ **迟到事件不补飞书**：9:00 之后才从海绵同步过来的 interview.passed，会照常更新 daily_ops_report 的 T-1 行（按 occurred_at 落到正确 report_date）→ **Web 分析页始终准**；但当天飞书快照不再补——飞书定位为"当日 9:00 的一次性快照"，接受这点偏差，换取零同步状态、零增量逻辑。
+⚠️ **飞书为 21:00 当天快照**：21:00 之后才发生的报名/通过会在 Web 分析页继续更新；飞书日报定位为当天晚 9 点的一次性快照。
 ⚠️ 不存 feishu_record_id / synced_at；cron 一天跑一次。若手动重跑会在飞书重复建记录（可接受，不做去重）。
 
 ---
@@ -571,7 +575,7 @@ Block 4: Handoff 原因分布
 |------|------|------|
 | 事件驱动写入 | 实时 | 11 个事件 → INSERT ops_events + 投影 daily_ops_report |
 | 海绵 poll | 每 15min | 从 ops_events.booking.succeeded 扫近 **60 天**工单 → 查海绵 → INSERT ops_events(**仅 interview.passed**；candidate.hired 已废弃) → 投影 daily_ops_report |
-| 飞书同步 | 每日 9:00 | T-1 数据 → 飞书 bitable |
+| 飞书同步 | 每日 21:00 | 当天数据 → 飞书 bitable |
 
 ---
 
@@ -852,8 +856,8 @@ P1-7. handoff 流程简化
   - 移除 markHandoff(caseId) 调用
   - 移除 closeLatestHandoffCase() 调用
 
-P1-8. 飞书日报同步（cron 9:00）
-  - 读 daily_ops_report WHERE report_date = T-1
+P1-8. 飞书日报同步（cron 21:00）
+  - 读 daily_ops_report WHERE report_date = today
   - 每日一次性推 5 列到飞书 bitable（不回写、不增量）
 
 P1-9. 海绵 15min cron poll（✅ 已实施，sponge-status-poll.cron.ts）
@@ -953,7 +957,7 @@ P2-3. 测试 + 废弃标记 recruitment_cases
 - [ ] 本会话首条对外回复 → ops_events 有 agent.opening_sent；后续回复 → agent.replied
 - [ ] request_handoff 触发 → handoff_events + ops_events 都有记录（共享 idempotency_key）
 - [ ] 每 15 分钟 cron 轮询海绵 → ops_events.interview.passed / candidate.hired 写入成功，且 interview.passed 投影更新 daily_ops_report.interview_pass_count
-- [ ] 9:00 cron 同步 T-1 数据到飞书 bitable（每 bot 一行 + 5 列指标）
+- [ ] 21:00 cron 同步当天数据到飞书 bitable（每 bot 一行 + 5 列指标）
 
 ### P2 验证
 - [ ] Web 转化分析页 cohort 漏斗能跨越 180 天（从 ops_events 取数，不受 mpr 30 天（1 个月）清理影响）
@@ -982,7 +986,7 @@ P2-3. 测试 + 废弃标记 recruitment_cases
 
 | 页面 | 用途 |
 |------|------|
-| 飞书运营日报 | 每天每号的成绩单（流水，T-1）|
+| 飞书运营日报 | 每天每号的成绩单（当天快照）|
 | 现有仪表盘 | 系统健康度（real-time）|
 | **转化分析页**（新增）| **业务转化复盘**（漏斗 + 账号对比 + Handoff 原因）|
 
