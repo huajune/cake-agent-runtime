@@ -1,220 +1,153 @@
 {
-  "baseVersion": "5.13.0",
+  "baseVersion": "5.13.1",
   "nextVersion": "5.13.1",
   "updatedAt": "2026-06-10",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "270",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/270",
-      "title": "precheck 支持补充标签答案回填 + 简历附件只认 URL/云存储 key",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-10",
-      "businessUpdates": [
-        "precheck 支持候选人补充标签答案回填，修复配置 collect 型 supplement label 的岗位整条预约链路卡死、只能转人工补录的问题",
-        "简历附件只认 http(s) URL 或云存储 key，候选人自由文字不再被当作简历提交导致海绵侧打不开；已预约后补发简历改走人工补传指引"
-      ],
-      "summary": [
-        "precheck 支持补充标签答案回填，打通 collect 型 supplement label 岗位的预约链路",
-        "简历附件只认 URL/云存储 key，杜绝脏数据提交（工单 438358 事故修复）"
-      ],
-      "features": [],
-      "fixes": [
-        "precheck 新增 candidateSupplementAnswers 入参并回填 collect 标签，避免 missingFields 永远不清空导致 booking 闸门拒绝",
-        "事实提取与 booking 简历链路统一过滤：仅放行 http(s) URL 或云存储 key 形态"
-      ],
-      "optimizations": [],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "全量套件 287 suites / 3645 tests 通过",
-        "新增回归：precheck supplement 回填 ×1、简历 URL 守卫 ×5（含工单 438358 复现用例）",
-        "tsc --noEmit + eslint + prettier 通过"
-      ]
-    },
-    {
-      "number": "271",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/271",
-      "title": "发版重启不再永久丢失在途消息",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-10",
-      "businessUpdates": [
-        "发版重启不再吞掉正在处理或刚到达的候选人消息（2026-06-09 v5.13.0 发版事故复盘修复）"
-      ],
-      "summary": [
-        "优雅停机：发版 SIGTERM 后排空 in-flight 消息再退出",
-        "锁冲突补建延迟重检并续期 pending，孤悬锁过期后消息仍可接手",
-        "卡住的 processing 记录改为每小时标记 timeout"
-      ],
-      "features": [],
-      "fixes": [
-        "开启 enableShutdownHooks，MessageProcessor 收到 SIGTERM 后先排空 in-flight 任务再退出（排空上限 SHUTDOWN_DRAIN_TIMEOUT_MS，默认 60s）",
-        "锁冲突时补建 30s 延迟重检任务并续期 pending TTL，持锁进程被杀后消息不再随 TTL 过期丢失",
-        "卡住的 processing 记录由每日凌晨一次改为每小时标记 timeout，看板不再长时间显示假\"处理中\""
-      ],
-      "optimizations": [],
-      "ops": [],
-      "config": [
-        "新增可选环境变量 SHUTDOWN_DRAIN_TIMEOUT_MS（默认 60000ms，应小于部署平台强杀宽限期）"
-      ],
-      "envFiles": [
-        ".env.example"
-      ],
-      "verification": [
-        "相关 spec 41 个用例全部通过（新增 9 个）",
-        "eslint / tsc --noEmit 通过"
-      ]
-    },
-    {
-      "number": "273",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/273",
-      "title": "接客 bot 入群补偿后按退避间隔重试拉候选人",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-10",
-      "businessUpdates": [
-        "接客 bot 入群补偿后按退避间隔重试拉候选人，修复企微入群生效延迟导致候选人没能入群的问题"
-      ],
-      "summary": [
-        "接客 bot 入群补偿后按退避间隔重试拉候选人"
-      ],
-      "features": [],
-      "fixes": [
-        "每轮重试前先 syncRoom 刷新接客 bot 群数据，再按 3s/5s/8s 退避重试；仅 room not found 瞬态错误参与重试"
-      ],
-      "optimizations": [],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "invite-to-group spec 27 个用例全部通过",
-        "eslint 通过"
-      ]
-    },
-    {
-      "number": "274",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/274",
-      "title": "无面试时段岗位支持等通知模式自助约面",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-10",
-      "businessUpdates": [
-        "`interviewWindows` 为空 → 进入 `wait_notice` 模式：",
-        "\"面试时间\"不进收资清单（含 `TEMPLATE_CORE_FIELDS` 强制骨架与 `apiPayloadGuide.requiredFields`）",
-        "字段收齐即 `ready_to_book`，不需要 `confirm_date`",
-        "新增返回 `interview.interviewTimeMode = \"wait_notice\"` + `interviewTimeModeNote` 话术指引（\"报名后面试官会直接打电话联系，保持电话畅通\"），并在工具 DESCRIPTION 硬规则中禁止因\"没有时段\"转人工",
-        "`interviewTime` 改为可选：**仅**等通知岗位（无窗口）允许缺省；带窗口岗位缺省仍报 `BOOKING_MISSING_FIELDS`（指引回 precheck 拿 slot）",
-        "缺省时：sponge payload 不带 `interviewTime`（与平台表单一致）、\"面试时间\"补充标签回填\"等待通知\"",
-        "成功回复切换为\"面试官电话联系\"指引，不再输出到店脚本 `_onSiteScript`（电话面试无到店环节）",
-        "无面试时段岗位支持等通知模式自助约面",
-        "不评估 `requestedDate`（不再误判 `date_unavailable`）",
-        "监控通知 / ops 事件幂等键用 `wait_notice` 兜底"
-      ],
-      "summary": [
-        "无面试时段岗位支持等通知模式自助约面",
-        "`interviewWindows` 为空 → 进入 `wait_notice` 模式：",
-        "不评估 `requestedDate`（不再误判 `date_unavailable`）",
-        "\"面试时间\"不进收资清单（含 `TEMPLATE_CORE_FIELDS` 强制骨架与 `apiPayloadGuide.requiredFields`）",
-        "字段收齐即 `ready_to_book`，不需要 `confirm_date`",
-        "新增返回 `interview.interviewTimeMode = \"wait_notice\"` + `interviewTimeModeNote` 话术指引（\"报名后面试官会直接打电话联系，保持电话畅通\"），并在工具 DESCRIPTION 硬规则中禁止因\"没有时段\"转人工",
-        "`interviewTime` 改为可选：**仅**等通知岗位（无窗口）允许缺省；带窗口岗位缺省仍报 `BOOKING_MISSING_FIELDS`（指引回 precheck 拿 slot）",
-        "缺省时：sponge payload 不带 `interviewTime`（与平台表单一致）、\"面试时间\"补充标签回填\"等待通知\"",
-        "成功回复切换为\"面试官电话联系\"指引，不再输出到店脚本 `_onSiteScript`（电话面试无到店环节）",
-        "监控通知 / ops 事件幂等键用 `wait_notice` 兜底"
-      ],
-      "features": [
-        "`interviewWindows` 为空 → 进入 `wait_notice` 模式：",
-        "\"面试时间\"不进收资清单（含 `TEMPLATE_CORE_FIELDS` 强制骨架与 `apiPayloadGuide.requiredFields`）",
-        "字段收齐即 `ready_to_book`，不需要 `confirm_date`",
-        "新增返回 `interview.interviewTimeMode = \"wait_notice\"` + `interviewTimeModeNote` 话术指引（\"报名后面试官会直接打电话联系，保持电话畅通\"），并在工具 DESCRIPTION 硬规则中禁止因\"没有时段\"转人工",
-        "`interviewTime` 改为可选：**仅**等通知岗位（无窗口）允许缺省；带窗口岗位缺省仍报 `BOOKING_MISSING_FIELDS`（指引回 precheck 拿 slot）",
-        "缺省时：sponge payload 不带 `interviewTime`（与平台表单一致）、\"面试时间\"补充标签回填\"等待通知\"",
-        "成功回复切换为\"面试官电话联系\"指引，不再输出到店脚本 `_onSiteScript`（电话面试无到店环节）",
-        "无面试时段岗位支持等通知模式自助约面"
-      ],
-      "fixes": [
-        "不评估 `requestedDate`（不再误判 `date_unavailable`）",
-        "监控通知 / ops 事件幂等键用 `wait_notice` 兜底"
-      ],
-      "optimizations": [],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "新增 precheck wait_notice 用例 ×2（不判 date_unavailable / 收齐即 ready_to_book）",
-        "新增 booking wait_notice 用例 ×2（无 interviewTime 成功提交 + 标签回填 / 带窗口岗位缺省仍拒）",
-        "全量 `jest`：287 suites / 3648 tests 全绿；`tsc --noEmit` + ESLint 通过"
-      ]
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "5.13.0",
-    "date": "2026-06-09",
+    "version": "5.13.1",
+    "date": "2026-06-10",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "265",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/265",
-        "title": "支持自助取消与改约工单",
-        "author": "huajune",
-        "mergedAt": "2026-06-09",
+        "number": "270",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/270",
+        "title": "precheck 支持补充标签答案回填 + 简历附件只认 URL/云存储 key",
+        "author": "ArielZhu",
+        "mergedAt": "2026-06-10",
         "businessUpdates": [
-          "Agent 可基于当前预约信息自助取消已确认面试，或修改约面时间；失败时按现有转人工链路兜底。",
-          "转化分析 bot 表新增自助取消、自助改约计数列，作为运营侧支指标展示。",
-          "新增 `duliday_cancel_work_order` / `duliday_modify_interview_time` 两个工单自助变更工具，接入海绵取消、改约、失败原因字典接口，并在成功后写入 `ops_events`。",
-          "将工单变更计数接入运营投影和转化看板，同时补充自助取消/改约的 Supabase migration。",
-          "支持自助取消与改约工单",
-          "修正 `滚` 单字关键词在友好/中性语境中的误伤。",
-          "修正岗位新结构下工作时间、排班周期、可排时段等字段的渲染与测试覆盖。",
-          "优化岗位列表新网关数据渲染、排班语义、飞书 webhook 重试告警、辱骂关键词误判和 dashboard 刷新态。"
+          "precheck 支持候选人补充标签答案回填，修复配置 collect 型 supplement label 的岗位整条预约链路卡死、只能转人工补录的问题",
+          "简历附件只认 http(s) URL 或云存储 key，候选人自由文字不再被当作简历提交导致海绵侧打不开；已预约后补发简历改走人工补传指引"
         ],
         "summary": [
-          "取消运营事件上报到花卷，保留模块待用",
-          "支持自助取消与改约工单",
-          "处理发版前 review 建议",
-          "面试预约失败告警展示海绵 traceId",
-          "收敛多条运营反馈 badcase 话术红线",
-          "侧边栏菜单分组重命名 + 清理一次性 resync 脚本",
-          "依赖倒置消除 biz→channels/wecom 层违规",
-          "新增 `duliday_cancel_work_order` / `duliday_modify_interview_time` 两个工单自助变更工具，接入海绵取消、改约、失败原因字典接口，并在成功后写入 `ops_events`。",
-          "将工单变更计数接入运营投影和转化看板，同时补充自助取消/改约的 Supabase migration。",
-          "优化岗位列表新网关数据渲染、排班语义、飞书 webhook 重试告警、辱骂关键词误判和 dashboard 刷新态。"
+          "precheck 支持补充标签答案回填，打通 collect 型 supplement label 岗位的预约链路",
+          "简历附件只认 URL/云存储 key，杜绝脏数据提交（工单 438358 事故修复）"
         ],
-        "features": [
-          "Agent 可基于当前预约信息自助取消已确认面试，或修改约面时间；失败时按现有转人工链路兜底。",
-          "转化分析 bot 表新增自助取消、自助改约计数列，作为运营侧支指标展示。",
-          "新增 `duliday_cancel_work_order` / `duliday_modify_interview_time` 两个工单自助变更工具，接入海绵取消、改约、失败原因字典接口，并在成功后写入 `ops_events`。",
-          "将工单变更计数接入运营投影和转化看板，同时补充自助取消/改约的 Supabase migration。",
-          "支持自助取消与改约工单"
-        ],
+        "features": [],
         "fixes": [
-          "修正 `滚` 单字关键词在友好/中性语境中的误伤。",
-          "修正岗位新结构下工作时间、排班周期、可排时段等字段的渲染与测试覆盖。",
-          "优化岗位列表新网关数据渲染、排班语义、飞书 webhook 重试告警、辱骂关键词误判和 dashboard 刷新态。"
+          "precheck 新增 candidateSupplementAnswers 入参并回填 collect 标签，避免 missingFields 永远不清空导致 booking 闸门拒绝",
+          "事实提取与 booking 简历链路统一过滤：仅放行 http(s) URL 或云存储 key 形态"
         ],
-        "optimizations": [
-          "海绵岗位/品牌/面试排期接口统一走 gateway base，可通过 `SPONGE_API_BASE_URL` 覆盖。",
-          "飞书 webhook 发送增加可重试判定、退避重试和最终失败告警。",
-          "dashboard 数据加载时增加顶部刷新进度态。",
-          "依赖倒置消除 biz→channels/wecom 层违规"
-        ],
-        "ops": [
-          "新增 `supabase/migrations/20260608120000_ops_workorder_mutation_events.sql`，为 `daily_ops_report` 增加 `booking_cancel_count` 与 `interview_modified_count` 投影。",
-          "新增 ops_events 断档回灌、job/list 网关探针与基准脚本，便于发版前后核查。",
-          "取消运营事件上报到花卷，保留模块待用",
-          "处理发版前 review 建议",
-          "面试预约失败告警展示海绵 traceId",
-          "收敛多条运营反馈 badcase 话术红线",
-          "侧边栏菜单分组重命名 + 清理一次性 resync 脚本"
-        ],
+        "optimizations": [],
+        "ops": [],
         "config": [],
+        "envFiles": [],
+        "verification": [
+          "全量套件 287 suites / 3645 tests 通过",
+          "新增回归：precheck supplement 回填 ×1、简历 URL 守卫 ×5（含工单 438358 复现用例）",
+          "tsc --noEmit + eslint + prettier 通过"
+        ]
+      },
+      {
+        "number": "271",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/271",
+        "title": "发版重启不再永久丢失在途消息",
+        "author": "ArielZhu",
+        "mergedAt": "2026-06-10",
+        "businessUpdates": [
+          "发版重启不再吞掉正在处理或刚到达的候选人消息（2026-06-09 v5.13.0 发版事故复盘修复）"
+        ],
+        "summary": [
+          "优雅停机：发版 SIGTERM 后排空 in-flight 消息再退出",
+          "锁冲突补建延迟重检并续期 pending，孤悬锁过期后消息仍可接手",
+          "卡住的 processing 记录改为每小时标记 timeout"
+        ],
+        "features": [],
+        "fixes": [
+          "开启 enableShutdownHooks，MessageProcessor 收到 SIGTERM 后先排空 in-flight 任务再退出（排空上限 SHUTDOWN_DRAIN_TIMEOUT_MS，默认 60s）",
+          "锁冲突时补建 30s 延迟重检任务并续期 pending TTL，持锁进程被杀后消息不再随 TTL 过期丢失",
+          "卡住的 processing 记录由每日凌晨一次改为每小时标记 timeout，看板不再长时间显示假\"处理中\""
+        ],
+        "optimizations": [],
+        "ops": [],
+        "config": [
+          "新增可选环境变量 SHUTDOWN_DRAIN_TIMEOUT_MS（默认 60000ms，应小于部署平台强杀宽限期）"
+        ],
         "envFiles": [
           ".env.example"
         ],
         "verification": [
-          "`pnpm run ci:check`",
-          "pre-commit lint / format hook",
-          "pre-push `pnpm run ci:check`",
-          "关键链路已人工验证"
+          "相关 spec 41 个用例全部通过（新增 9 个）",
+          "eslint / tsc --noEmit 通过"
+        ]
+      },
+      {
+        "number": "273",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/273",
+        "title": "接客 bot 入群补偿后按退避间隔重试拉候选人",
+        "author": "ArielZhu",
+        "mergedAt": "2026-06-10",
+        "businessUpdates": [
+          "接客 bot 入群补偿后按退避间隔重试拉候选人，修复企微入群生效延迟导致候选人没能入群的问题"
+        ],
+        "summary": [
+          "接客 bot 入群补偿后按退避间隔重试拉候选人"
+        ],
+        "features": [],
+        "fixes": [
+          "每轮重试前先 syncRoom 刷新接客 bot 群数据，再按 3s/5s/8s 退避重试；仅 room not found 瞬态错误参与重试"
+        ],
+        "optimizations": [],
+        "ops": [],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "invite-to-group spec 27 个用例全部通过",
+          "eslint 通过"
+        ]
+      },
+      {
+        "number": "274",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/274",
+        "title": "无面试时段岗位支持等通知模式自助约面",
+        "author": "ArielZhu",
+        "mergedAt": "2026-06-10",
+        "businessUpdates": [
+          "`interviewWindows` 为空 → 进入 `wait_notice` 模式：",
+          "\"面试时间\"不进收资清单（含 `TEMPLATE_CORE_FIELDS` 强制骨架与 `apiPayloadGuide.requiredFields`）",
+          "字段收齐即 `ready_to_book`，不需要 `confirm_date`",
+          "新增返回 `interview.interviewTimeMode = \"wait_notice\"` + `interviewTimeModeNote` 话术指引（\"报名后面试官会直接打电话联系，保持电话畅通\"），并在工具 DESCRIPTION 硬规则中禁止因\"没有时段\"转人工",
+          "`interviewTime` 改为可选：**仅**等通知岗位（无窗口）允许缺省；带窗口岗位缺省仍报 `BOOKING_MISSING_FIELDS`（指引回 precheck 拿 slot）",
+          "缺省时：sponge payload 不带 `interviewTime`（与平台表单一致）、\"面试时间\"补充标签回填\"等待通知\"",
+          "成功回复切换为\"面试官电话联系\"指引，不再输出到店脚本 `_onSiteScript`（电话面试无到店环节）",
+          "无面试时段岗位支持等通知模式自助约面",
+          "不评估 `requestedDate`（不再误判 `date_unavailable`）",
+          "监控通知 / ops 事件幂等键用 `wait_notice` 兜底"
+        ],
+        "summary": [
+          "无面试时段岗位支持等通知模式自助约面",
+          "`interviewWindows` 为空 → 进入 `wait_notice` 模式：",
+          "不评估 `requestedDate`（不再误判 `date_unavailable`）",
+          "\"面试时间\"不进收资清单（含 `TEMPLATE_CORE_FIELDS` 强制骨架与 `apiPayloadGuide.requiredFields`）",
+          "字段收齐即 `ready_to_book`，不需要 `confirm_date`",
+          "新增返回 `interview.interviewTimeMode = \"wait_notice\"` + `interviewTimeModeNote` 话术指引（\"报名后面试官会直接打电话联系，保持电话畅通\"），并在工具 DESCRIPTION 硬规则中禁止因\"没有时段\"转人工",
+          "`interviewTime` 改为可选：**仅**等通知岗位（无窗口）允许缺省；带窗口岗位缺省仍报 `BOOKING_MISSING_FIELDS`（指引回 precheck 拿 slot）",
+          "缺省时：sponge payload 不带 `interviewTime`（与平台表单一致）、\"面试时间\"补充标签回填\"等待通知\"",
+          "成功回复切换为\"面试官电话联系\"指引，不再输出到店脚本 `_onSiteScript`（电话面试无到店环节）",
+          "监控通知 / ops 事件幂等键用 `wait_notice` 兜底"
+        ],
+        "features": [
+          "`interviewWindows` 为空 → 进入 `wait_notice` 模式：",
+          "\"面试时间\"不进收资清单（含 `TEMPLATE_CORE_FIELDS` 强制骨架与 `apiPayloadGuide.requiredFields`）",
+          "字段收齐即 `ready_to_book`，不需要 `confirm_date`",
+          "新增返回 `interview.interviewTimeMode = \"wait_notice\"` + `interviewTimeModeNote` 话术指引（\"报名后面试官会直接打电话联系，保持电话畅通\"），并在工具 DESCRIPTION 硬规则中禁止因\"没有时段\"转人工",
+          "`interviewTime` 改为可选：**仅**等通知岗位（无窗口）允许缺省；带窗口岗位缺省仍报 `BOOKING_MISSING_FIELDS`（指引回 precheck 拿 slot）",
+          "缺省时：sponge payload 不带 `interviewTime`（与平台表单一致）、\"面试时间\"补充标签回填\"等待通知\"",
+          "成功回复切换为\"面试官电话联系\"指引，不再输出到店脚本 `_onSiteScript`（电话面试无到店环节）",
+          "无面试时段岗位支持等通知模式自助约面"
+        ],
+        "fixes": [
+          "不评估 `requestedDate`（不再误判 `date_unavailable`）",
+          "监控通知 / ops 事件幂等键用 `wait_notice` 兜底"
+        ],
+        "optimizations": [],
+        "ops": [],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "新增 precheck wait_notice 用例 ×2（不判 date_unavailable / 收齐即 ready_to_book）",
+          "新增 booking wait_notice 用例 ×2（无 interviewTime 成功提交 + 标签回填 / 带窗口岗位缺省仍拒）",
+          "全量 `jest`：287 suites / 3648 tests 全绿；`tsc --noEmit` + ESLint 通过"
         ]
       }
     ]
