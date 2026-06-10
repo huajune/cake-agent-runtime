@@ -8,13 +8,9 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.13.2] - 2026-06-10
 
-**预计版本**: `v5.13.2`
-**最近更新**: `2026-06-10`
 **来源分支**: `develop`
-**累计 PR**: 3
 
 ### 更新摘要
 - PR #280 修正元数据 push 的 force-with-lease stale info
@@ -49,7 +45,6 @@
 - PR #279 两个 workflow YAML 通过 yaml.safe_load 校验
 - PR #279 build-release-pr-body.js 干跑输出正确包含合并方式提示行
 - PR #279 node --check 通过
-<!-- release:pending:end -->
 
 ## [5.13.1] - 2026-06-10
 
