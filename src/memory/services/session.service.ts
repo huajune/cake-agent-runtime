@@ -364,11 +364,11 @@ export class SessionService {
     userId: string,
     sessionId: string,
     messages: { role: string; content: string }[],
-  ): Promise<void> {
+  ): Promise<{ llmDegraded: boolean }> {
     const dialogueMessages = messages.filter(
       (m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim().length > 0,
     );
-    if (dialogueMessages.length === 0) return;
+    if (dialogueMessages.length === 0) return { llmDegraded: false };
 
     // 会话段切割：短期窗口跨 7 天，可能包含已了结的旧会话。旧会话的报名/约面
     // 事务字段一旦被重新提取，会"复活"成当前会话事实（生产 badcase：chat
@@ -422,7 +422,7 @@ export class SessionService {
       const currentTurnRuleHits = extractHighConfidenceFacts([lastUserText], brandData);
       if (!currentTurnRuleHits) {
         this.logger.log(`[extractFacts] 纯应答轮无新信号，跳过 LLM 提取：「${lastUserText}」`);
-        return;
+        return { llmDegraded: false };
       }
     }
 
@@ -439,7 +439,11 @@ export class SessionService {
       MessageParser.formatCurrentTime(),
       previousFacts,
     );
-    const { facts: llmRaw, explicitProvenance } = await this.callLLM(prompt);
+    const {
+      facts: llmRaw,
+      explicitProvenance,
+      degraded: llmDegraded,
+    } = await this.callLLM(prompt);
     const llmFacts = mergeDetectedBrands(llmRaw, aliasHints);
     // 先 sanitize LLM 输出，再 merge 规则 — 确保 LLM 昵称被 drop 后规则的结构化姓名能补位
     const { sanitized: sanitizedLlm, droppedName } = sanitizeInterviewName(llmFacts, userMessages);
@@ -469,11 +473,16 @@ export class SessionService {
     await this.saveFacts(corpId, userId, sessionId, newFacts, {
       forceNullFields: nameStillNull ? ['name'] : undefined,
     });
+
+    return { llmDegraded };
   }
 
-  private async callLLM(
-    prompt: string,
-  ): Promise<{ facts: EntityExtractionResult; explicitProvenance: ExplicitProvenanceEntry[] }> {
+  private async callLLM(prompt: string): Promise<{
+    facts: EntityExtractionResult;
+    explicitProvenance: ExplicitProvenanceEntry[];
+    /** true = LLM 调用或 schema 解析失败，已降级为空提取（本轮新事实丢失，旧值不受影响）。 */
+    degraded: boolean;
+  }> {
     try {
       const result = await this.llm.generateStructured({
         role: ModelRole.Extract,
@@ -496,10 +505,13 @@ export class SessionService {
 
       // 归一化：LLM 输出的 city 字符串经 EntityExtractionResultSchema 转为 CityFact 对象
       const parsed = EntityExtractionResultSchema.parse(result.output);
-      return { facts: this.backfillCityFromWhitelist(parsed), explicitProvenance };
+      return { facts: this.backfillCityFromWhitelist(parsed), explicitProvenance, degraded: false };
     } catch (err) {
+      // 降级影响：本轮新事实丢失（下一轮增量窗口可自然补回），旧 facts 经
+      // deepMerge "null 不覆盖"不受影响。调用方据 degraded 标记把
+      // post_processing_status 标成降级，使提取实际成功率可观测。
       this.logger.warn('[extractFacts] LLM extraction failed, using fallback', err);
-      return { facts: FALLBACK_EXTRACTION, explicitProvenance: [] };
+      return { facts: FALLBACK_EXTRACTION, explicitProvenance: [], degraded: true };
     }
   }
 
