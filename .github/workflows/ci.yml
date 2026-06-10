@@ -5,6 +5,11 @@ on:
     branches:
       - develop
       - master
+  # bot 用 GITHUB_TOKEN 推的分支不触发 pull_request 事件（GitHub 防递归），
+  # required check "CI Checks" 会一直 pending、bot PR 无法合并。
+  # version-changelog.yml 在创建/更新 bot PR 后用 workflow_dispatch 派发到
+  # bot 分支，使检查落在 PR head SHA 上（v5.13.1 发版只能靠人工 close/reopen）。
+  workflow_dispatch:
 
 permissions:
   contents: read
