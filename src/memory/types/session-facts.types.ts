@@ -282,6 +282,24 @@ export interface SessionFactValue<T> {
   confidence: SessionFactConfidence;
   source: SessionFactSource;
   evidence: string;
+  /** 该值被提取/写入的时刻（ISO8601）。时间敏感字段（如面试时间）渲染时据此标注陈旧度。 */
+  extractedAt?: string;
+}
+
+/**
+ * evidence 入库前截断。
+ *
+ * evidence 只服务排障（memory_snapshot / Supabase 查询），不是给模型看的。
+ * 历史问题：LLM 提取 reasoning 全文（600+ 字）被当 evidence 存进每个字段，
+ * 再经沉淀永久写入长期画像，最终整段重复注入 system prompt（张漪 case，
+ * chat 69a13e919d6d3a463b0a37c6，单轮 system prompt 被撑到 27K+ 字符）。
+ */
+export const MAX_FACT_EVIDENCE_CHARS = 200;
+
+export function truncateEvidence(evidence: string, maxChars = MAX_FACT_EVIDENCE_CHARS): string {
+  const trimmed = evidence.trim();
+  if (trimmed.length <= maxChars) return trimmed;
+  return `${trimmed.slice(0, maxChars)}…`;
 }
 
 export type SessionFactMaybeValue<T> = SessionFactValue<T> | null;
@@ -387,6 +405,7 @@ const SessionFactValueSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
     confidence: SessionFactConfidenceSchema,
     source: SessionFactSourceSchema,
     evidence: z.string(),
+    extractedAt: z.string().optional(),
   });
 
 function legacySessionFactValue<T>(value: T, evidence?: string): SessionFactValue<T> {
@@ -515,6 +534,11 @@ const CONFIDENCE_RANK: Record<SessionFactConfidence, number> = {
   high: 3,
 };
 
+/** 置信度排序值。供跨轮合并守卫比较新旧事实的可信级别。 */
+export function sessionFactConfidenceRank(confidence: SessionFactConfidence): number {
+  return CONFIDENCE_RANK[confidence] ?? 0;
+}
+
 export function isSessionFactValue<T = unknown>(value: unknown): value is SessionFactValue<T> {
   return (
     typeof value === 'object' &&
@@ -532,6 +556,7 @@ export function sessionFactValue<T>(
     confidence: SessionFactConfidence;
     source: SessionFactSource;
     evidence: string;
+    extractedAt?: string;
   },
 ): SessionFactValue<T> {
   return { value, ...meta };
@@ -624,6 +649,7 @@ export function toSessionFacts(
     confidence: SessionFactConfidence;
     source: SessionFactSource;
     evidence: string;
+    extractedAt?: string;
   },
 ): SessionFacts {
   const wrap = <T>(value: T | null): SessionFactMaybeValue<T> =>

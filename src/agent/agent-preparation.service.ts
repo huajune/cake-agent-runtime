@@ -584,7 +584,11 @@ export class AgentPreparationService {
     evidence: string;
     updatedAt: string;
   }): string {
-    return `（置信度: ${value.confidence}，来源: ${value.source}，证据: ${value.evidence}，更新时间: ${value.updatedAt}）`;
+    // evidence 是排障字段，不注入 prompt：提取 reasoning 全文曾随每个字段重复注入，
+    // 单轮 system prompt 被撑到 27K+ 字符（张漪 case）。更新时间保留日期部分，
+    // 让模型能判断档案信息的新旧。
+    const updatedDate = value.updatedAt?.slice(0, 10) || value.updatedAt;
+    return `（置信度: ${value.confidence}，来源: ${value.source}，更新于: ${updatedDate}）`;
   }
 
   /** 把会话记忆渲染成 prompt 片段。 */

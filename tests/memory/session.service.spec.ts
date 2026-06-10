@@ -20,7 +20,11 @@ describe('SessionService', () => {
     set: jest.fn().mockResolvedValue(undefined),
   };
 
-  const mockConfig = { sessionTtl: 86400, sessionExtractionIncrementalMessages: 10 };
+  const mockConfig = {
+    sessionTtl: 86400,
+    sessionExtractionIncrementalMessages: 10,
+    settlementGapSeconds: 86400,
+  };
 
   const mockLlm = {
     generateStructured: jest.fn(),
@@ -266,6 +270,161 @@ describe('SessionService', () => {
         86400,
         false,
       );
+    });
+
+    it('should not let lower-confidence new value overwrite higher-confidence old value', async () => {
+      // 回归张漪 case（chat 69a13e919d6d3a463b0a37c6）：用户明确确认的
+      // applied_position="后厨"（rule/high）被后续轮 LLM 推断 "内场"（llm/medium）覆盖。
+      mockRedisStore.get.mockResolvedValue({
+        content: {
+          facts: {
+            ...FALLBACK_EXTRACTION,
+            interview_info: {
+              ...FALLBACK_EXTRACTION.interview_info,
+              applied_position: {
+                value: '后厨',
+                confidence: 'high',
+                source: 'rule',
+                evidence: '候选人明确选择后厨',
+              },
+            },
+          },
+          lastCandidatePool: null,
+          presentedJobs: null,
+          currentFocusJob: null,
+        },
+      });
+
+      const incoming = {
+        ...FALLBACK_EXTRACTION,
+        interview_info: {
+          ...FALLBACK_EXTRACTION.interview_info,
+          applied_position: {
+            value: '内场',
+            confidence: 'medium',
+            source: 'llm',
+            evidence: 'LLM 推断',
+          },
+        },
+      };
+
+      await service.saveFacts('corp1', 'user1', 'session1', incoming as never);
+
+      expect(mockRedisStore.set).toHaveBeenCalledWith(
+        expect.stringContaining('corp1:user1:session1'),
+        expect.objectContaining({
+          facts: expect.objectContaining({
+            interview_info: expect.objectContaining({
+              applied_position: factValue('后厨', { confidence: 'high', source: 'rule' }),
+            }),
+          }),
+        }),
+        86400,
+        false,
+      );
+    });
+
+    it('should allow same-or-higher confidence new value to overwrite old value', async () => {
+      mockRedisStore.get.mockResolvedValue({
+        content: {
+          facts: {
+            ...FALLBACK_EXTRACTION,
+            interview_info: {
+              ...FALLBACK_EXTRACTION.interview_info,
+              applied_position: {
+                value: '后厨',
+                confidence: 'medium',
+                source: 'llm',
+                evidence: 'LLM 提取',
+              },
+            },
+          },
+          lastCandidatePool: null,
+          presentedJobs: null,
+          currentFocusJob: null,
+        },
+      });
+
+      const incoming = {
+        ...FALLBACK_EXTRACTION,
+        interview_info: {
+          ...FALLBACK_EXTRACTION.interview_info,
+          applied_position: {
+            value: '前厅',
+            confidence: 'high',
+            source: 'rule',
+            evidence: '候选人明确改口',
+          },
+        },
+      };
+
+      await service.saveFacts('corp1', 'user1', 'session1', incoming as never);
+
+      expect(mockRedisStore.set).toHaveBeenCalledWith(
+        expect.stringContaining('corp1:user1:session1'),
+        expect.objectContaining({
+          facts: expect.objectContaining({
+            interview_info: expect.objectContaining({
+              applied_position: factValue('前厅', { confidence: 'high', source: 'rule' }),
+            }),
+          }),
+        }),
+        86400,
+        false,
+      );
+    });
+  });
+
+  describe('session segment trimming', () => {
+    it('should drop messages from an older session segment (gap >= settlementGap) on extraction', async () => {
+      // 回归张漪 case：session facts 过期后首次提取吃了 5 天前的旧会话历史，
+      // 把已了结的报名信息"复活"成当前会话事实。按消息时间间隙切割后，
+      // 提取窗口只保留最近一段连续会话。
+      mockRedisStore.get.mockResolvedValue(null); // cache miss → 首次提取
+      mockLlm.generateStructured.mockResolvedValue(mockStructured(FALLBACK_EXTRACTION));
+
+      const old = '\n[消息发送时间：2026-06-03 12:11 星期三]';
+      const recent = '\n[消息发送时间：2026-06-08 11:16 星期一]';
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: `我想报名日月光店后厨${old}` },
+        { role: 'assistant', content: `好的已为你预约${old}` },
+        { role: 'user', content: `你好，看看肯德基${recent}` },
+        { role: 'assistant', content: `肯德基有这些岗位${recent}` },
+        { role: 'user', content: `工作要求是什么${recent}` },
+      ]);
+
+      const prompt = mockLlm.generateStructured.mock.calls[0][0].prompt as string;
+      expect(prompt).toContain('看看肯德基');
+      expect(prompt).not.toContain('日月光店后厨');
+    });
+
+    it('should keep all messages when no gap exceeds settlementGap', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(mockStructured(FALLBACK_EXTRACTION));
+
+      const t1 = '\n[消息发送时间：2026-06-08 10:00 星期一]';
+      const t2 = '\n[消息发送时间：2026-06-08 11:16 星期一]';
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: `我想报名日月光店后厨${t1}` },
+        { role: 'user', content: `看看肯德基${t2}` },
+      ]);
+
+      const prompt = mockLlm.generateStructured.mock.calls[0][0].prompt as string;
+      expect(prompt).toContain('日月光店后厨');
+      expect(prompt).toContain('看看肯德基');
+    });
+
+    it('should treat messages without time context as the same session', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(mockStructured(FALLBACK_EXTRACTION));
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '我想报名日月光店后厨' },
+        { role: 'user', content: '看看肯德基' },
+      ]);
+
+      const prompt = mockLlm.generateStructured.mock.calls[0][0].prompt as string;
+      expect(prompt).toContain('日月光店后厨');
     });
   });
 

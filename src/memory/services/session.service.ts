@@ -22,10 +22,14 @@ import {
   type WeworkSessionState,
   EMPTY_SESSION_STATE,
   FALLBACK_EXTRACTION,
+  isSessionFactValue,
+  sessionFactConfidenceRank,
   sessionFactValue,
   toSessionFacts,
+  truncateEvidence,
   unwrapSessionFactValue,
 } from '../types/session-facts.types';
+import { MessageParser } from '@channels/wecom/message/utils/message-parser.util';
 import {
   buildSessionExtractionPrompt,
   SESSION_EXTRACTION_SYSTEM_PROMPT,
@@ -129,7 +133,9 @@ export class SessionService {
     const key = this.buildKey(corpId, userId, sessionId);
     const state = await this.getSessionState(corpId, userId, sessionId);
     const sessionFacts = this.ensureSessionFacts(facts);
-    const baseMerge = state.facts ? deepMerge(state.facts, sessionFacts) : sessionFacts;
+    const baseMerge = state.facts
+      ? this.mergeFactsWithConfidenceGuard(state.facts, sessionFacts)
+      : sessionFacts;
     const forcedMerge = this.applyForceNullFields(
       baseMerge as SessionFacts,
       options?.forceNullFields,
@@ -162,6 +168,47 @@ export class SessionService {
       ...facts,
       interview_info: interview as SessionFacts['interview_info'],
     };
+  }
+
+  /**
+   * 跨轮合并 + 置信度守卫。
+   *
+   * deepMerge 对 SessionFactValue 是逐 key 递归：新值非空就连 value 带 confidence 一起
+   * 覆盖，完全不比较新旧置信度。生产 badcase（chat 69a13e919d6d3a463b0a37c6）：候选人
+   * 明确确认的 applied_position="后厨" 被后续轮 LLM 推断 "内场"(medium) 覆盖。
+   * Profile 层（Supabase RPC）有 "high 不被非 high 覆盖" 守卫，session 层此前没有——
+   * 这里补齐同等语义：新值置信度严格低于旧值时，保留旧值整体（含元数据）。
+   * 数组字段维持累积语义，不受守卫影响。
+   */
+  private mergeFactsWithConfidenceGuard(prev: SessionFacts, incoming: SessionFacts): SessionFacts {
+    const merged = deepMerge(prev, incoming) as SessionFacts;
+
+    for (const group of ['interview_info', 'preferences'] as const) {
+      const prevGroup = prev[group] as unknown as Record<string, unknown>;
+      const incomingGroup = incoming[group] as unknown as Record<string, unknown>;
+      const mergedGroup = merged[group] as unknown as Record<string, unknown>;
+
+      for (const field of Object.keys(prevGroup)) {
+        const prevVal = prevGroup[field];
+        const incomingVal = incomingGroup[field];
+        if (!isSessionFactValue(prevVal) || !isSessionFactValue(incomingVal)) continue;
+        if (Array.isArray(prevVal.value) || Array.isArray(incomingVal.value)) continue;
+        if (this.isSameFactValue(prevVal.value, incomingVal.value)) continue;
+
+        if (
+          sessionFactConfidenceRank(incomingVal.confidence) <
+          sessionFactConfidenceRank(prevVal.confidence)
+        ) {
+          mergedGroup[field] = prevVal;
+          this.logger.log(
+            `[saveFacts] 置信度守卫：${group}.${field} 保留旧值（${prevVal.confidence}/${prevVal.source}），` +
+              `拒绝低置信新值（${incomingVal.confidence}/${incomingVal.source}）覆盖`,
+          );
+        }
+      }
+    }
+
+    return merged;
   }
 
   async saveLastCandidatePool(
@@ -315,26 +362,33 @@ export class SessionService {
     sessionId: string,
     messages: { role: string; content: string }[],
   ): Promise<void> {
+    const dialogueMessages = messages.filter(
+      (m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim().length > 0,
+    );
+    if (dialogueMessages.length === 0) return;
+
+    // 会话段切割：短期窗口跨 7 天，可能包含已了结的旧会话。旧会话的报名/约面
+    // 事务字段一旦被重新提取，会"复活"成当前会话事实（生产 badcase：chat
+    // 69a13e919d6d3a463b0a37c6，session facts 过期后首次提取吃了 5 天前的历史，
+    // 把已作废的 applied_store/interview_time 拉回当前记忆）。
+    // 这里按消息时间间隙（≥ settlementGap，与沉淀边界同语义）截断到最近一段
+    // 连续会话；旧会话知识走 settlement → 长期画像/摘要通道，不进 session facts。
+    const scopedMessages = this.trimToCurrentSessionSegment(dialogueMessages);
+
     // conversationHistory 是“本轮最后一条消息之前的历史”，
     // currentMessage 是“本轮最后一条消息”。
     // 这样做是为了让提取 prompt 明确区分“新信息”与“历史上下文”。
-    const allHistory = messages
-      .filter((m) => m.role === 'user' || m.role === 'assistant')
-      .map((m) => `${m.role === 'user' ? '用户' : '助手'}: ${m.content}`)
-      .filter((s) => s.trim().length > 0);
-
-    if (allHistory.length === 0) return;
+    const allHistory = scopedMessages.map(
+      (m) => `${m.role === 'user' ? '用户' : '助手'}: ${m.content}`,
+    );
 
     const currentMessage = allHistory.at(-1) ?? '';
     const conversationHistory = allHistory.slice(0, -1);
-    const userMessages = messages
-      .filter((m) => m.role === 'user')
-      .map((m) => m.content)
-      .filter((content) => content.trim().length > 0);
+    const userMessages = scopedMessages.filter((m) => m.role === 'user').map((m) => m.content);
 
     const previousFacts = await this.getFacts(corpId, userId, sessionId);
     // 事实提取每轮都会触发，但不是每轮都全量重算：
-    // - 首次提取：使用当前短期窗口里的全部历史
+    // - 首次提取：使用当前会话段里的全部历史
     // - 增量提取：只回看最近 N 条历史，降低 token 成本
     const messagesToProcess = previousFacts
       ? conversationHistory.slice(-this.config.sessionExtractionIncrementalMessages)
@@ -348,6 +402,7 @@ export class SessionService {
 
     this.logger.log(
       `[extractFacts] Cache ${previousFacts ? 'hit' : 'miss'}, ` +
+        `sessionSegment ${scopedMessages.length}/${dialogueMessages.length} messages, ` +
         `processing ${processedCount}/${conversationHistory.length} history messages ` +
         `(token saving: ${savingPercent}%)`,
     );
@@ -363,6 +418,7 @@ export class SessionService {
       messagesToProcess,
       aliasHints,
       ruleFacts,
+      MessageParser.formatCurrentTime(),
     );
     const llmFacts = mergeDetectedBrands(await this.callLLM(prompt), aliasHints);
     // 先 sanitize LLM 输出，再 merge 规则 — 确保 LLM 昵称被 drop 后规则的结构化姓名能补位
@@ -378,6 +434,7 @@ export class SessionService {
         confidence: 'medium',
         source: 'llm',
         evidence: this.buildLlmFactEvidence(mergedFactValues.reasoning),
+        extractedAt: new Date().toISOString(),
       }),
       highConfidenceRuleFacts,
     );
@@ -417,7 +474,40 @@ export class SessionService {
 
   private buildLlmFactEvidence(reasoning: string | null | undefined): string {
     const trimmed = reasoning?.trim();
-    return trimmed ? `LLM 结构化提取：${trimmed}` : 'LLM 结构化提取';
+    // evidence 只服务排障，入库前截断；reasoning 全文曾把每个字段的 evidence 撑到
+    // 600+ 字并经沉淀永久污染长期画像、重复注入 prompt。
+    return trimmed ? truncateEvidence(`LLM 结构化提取：${trimmed}`) : 'LLM 结构化提取';
+  }
+
+  /**
+   * 把对话裁剪到"当前会话段"：从最后一条消息往回扫，相邻消息时间差 ≥ settlementGap
+   * 即视为旧会话边界并截断（与 SettlementService 的断层语义一致）。
+   *
+   * 时间戳从消息内容的 `[消息发送时间：…]` 后缀解析（短期记忆注入，见
+   * MessageParser.injectTimeContext）；无法解析的消息保守视为同一会话。
+   */
+  private trimToCurrentSessionSegment<T extends { content: string }>(messages: T[]): T[] {
+    const gapMs = this.config.settlementGapSeconds * 1000;
+    let laterTs: number | null = null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const ts = this.parseMessageSentAt(messages[i].content);
+      if (ts === null) continue;
+      if (laterTs !== null && laterTs - ts >= gapMs) {
+        return messages.slice(i + 1);
+      }
+      laterTs = ts;
+    }
+    return messages;
+  }
+
+  /** 解析 `[消息发送时间：2026-06-03 12:11 星期三]` 后缀（北京时间）为毫秒时间戳。 */
+  private parseMessageSentAt(content: string): number | null {
+    const match = /\[消息发送时间：(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/.exec(content);
+    if (!match) return null;
+    const parsed = Date.parse(
+      `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:00+08:00`,
+    );
+    return Number.isFinite(parsed) ? parsed : null;
   }
 
   private applyHighConfidenceMetadata(
@@ -516,7 +606,8 @@ export class SessionService {
     target[field] = sessionFactValue(fact.value, {
       confidence: fact.confidence,
       source: fact.source,
-      evidence: fact.evidence,
+      evidence: truncateEvidence(fact.evidence),
+      extractedAt: new Date().toISOString(),
     });
   }
 

@@ -17,6 +17,7 @@ import {
   type SessionFacts,
   type SessionFactValue,
   isSessionFactValue,
+  truncateEvidence,
   unwrapSessionFactValue,
 } from '../types/session-facts.types';
 
@@ -304,6 +305,8 @@ export class LongTermService {
       `原字段置信度=${rawValue.confidence}`,
       rawValue.evidence?.trim() ? `原证据=${rawValue.evidence.trim()}` : null,
     ].filter(Boolean);
-    return `${prefix}；${parts.join('；')}`;
+    // 截断后再入库：长期画像 evidence 是永久数据，曾被 600+ 字提取 reasoning 污染
+    // 并随每轮注入 prompt（张漪 case）。
+    return truncateEvidence(`${prefix}；${parts.join('；')}`);
   }
 }
