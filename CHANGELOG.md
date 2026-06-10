@@ -11,21 +11,35 @@
 <!-- release:pending:start -->
 ## 待发布
 
-**预计版本**: `v5.13.2`
+**预计版本**: `v5.14.0`
 **最近更新**: `2026-06-10`
 **来源分支**: `develop`
-**累计 PR**: 3
+**累计 PR**: 5
 
 ### 更新摘要
 - PR #280 修正元数据 push 的 force-with-lease stale info
 - PR #279 修复 v5.13.1 发版全程暴露的四个自动化缺陷，此后 bot PR 不再需要人工 close/reopen 触发检查，元数据条目不再丢失，补偿模式推送认证正常，release PR 合并方式有明确引导
 - PR #282 dispatch 模式下用 commit status 满足必需检查
+- PR #278 记忆注入瘦身、时间锚定、会话段切割与置信度守卫
+- PR #278 存量长期画像超长 evidence 清洗脚本
+- PR #278 记忆生命周期并发与沉淀边界修复
+- PR #278 求职意向沉淀到长期记忆（preference_facts）
+- PR #278 老用户回访阶段兜底 + dashboard 最终提示词可读视图
+- PR #278 来源声明置信度升级（candidate_explicit → high）
+- PR #284 工具观测语义修复 + 清理任务分批化与收尾兜底
+- PR #284 副作用工具成功后屏蔽重复调用
+- PR #284 名额承诺/距离编造双红线 + 门店模糊回退保留筛选条件
+- PR #284 按 review 意见收敛副作用屏蔽语义并补测试覆盖
+- PR #284 工具观测语义修复 + 清理任务分批化 + 副作用工具防重复执行
 
 ### 新功能
 - 无
 
 ### 问题修复
 - PR #280 修正元数据 push 的 force-with-lease stale info
+- PR #278 记忆生命周期并发与沉淀边界修复
+- PR #278 老用户回访阶段兜底 + dashboard 最终提示词可读视图
+- PR #284 工具观测语义修复 + 清理任务分批化与收尾兜底
 
 ### 优化调整
 - 无
@@ -36,6 +50,13 @@
 - PR #279 补偿模式（from_pr/to_pr）推送改为显式携带 GH_TOKEN 的 URL，修复 claude-code-action OIDC 模式覆写本地 git 凭证导致的推送认证失败
 - PR #279 release PR 与固化 PR body 明确标注必须使用 Squash and merge，避免因 master 线性历史规则导致 merge commit 被拒
 - PR #282 dispatch 模式下用 commit status 满足必需检查
+- PR #278 记忆注入瘦身、时间锚定、会话段切割与置信度守卫
+- PR #278 存量长期画像超长 evidence 清洗脚本
+- PR #278 求职意向沉淀到长期记忆（preference_facts）
+- PR #278 来源声明置信度升级（candidate_explicit → high）
+- PR #284 副作用工具成功后屏蔽重复调用
+- PR #284 名额承诺/距离编造双红线 + 门店模糊回退保留筛选条件
+- PR #284 按 review 意见收敛副作用屏蔽语义并补测试覆盖
 
 ### 配置变更
 - 无
@@ -49,6 +70,8 @@
 - PR #279 两个 workflow YAML 通过 yaml.safe_load 校验
 - PR #279 build-release-pr-body.js 干跑输出正确包含合并方式提示行
 - PR #279 node --check 通过
+- PR #284 全量 jest：287 suites / 3,677 tests 通过
+- PR #284 新增：buildToolError 形态、geocode resolution、resultCount 自报、narrow 收敛、分批循环、interrupted 标记等用例
 <!-- release:pending:end -->
 
 ## [5.13.1] - 2026-06-10
