@@ -548,15 +548,21 @@ export class MessageProcessingRepository extends BaseRepository {
 
     const maxBatches = 100;
     let total = 0;
+    let lastBatchCount = 0;
     try {
       for (let batch = 0; batch < maxBatches; batch += 1) {
         const result = await this.rpc<number>('null_agent_invocation', {
           p_days_old: daysOld,
           p_limit: batchLimit,
         });
-        const updated = this.asRpcCount(result, 'null_agent_invocation');
-        total += updated;
-        if (updated < batchLimit) break;
+        lastBatchCount = this.asRpcCount(result, 'null_agent_invocation');
+        total += lastBatchCount;
+        if (lastBatchCount < batchLimit) break;
+      }
+      if (lastBatchCount === batchLimit) {
+        this.logger.warn(
+          `[消息处理记录] NULL agent_invocation 达到分批上限 ${maxBatches}×${batchLimit}，可能仍有积压，待下次清理继续`,
+        );
       }
       return total;
     } catch (error) {
@@ -584,15 +590,21 @@ export class MessageProcessingRepository extends BaseRepository {
 
     const maxBatches = 20;
     let total = 0;
+    let lastBatchCount = 0;
     try {
       for (let batch = 0; batch < maxBatches; batch += 1) {
         const result = await this.rpc<number>('interrupt_stale_post_processing', {
           p_stale_minutes: staleMinutes,
           p_limit: batchLimit,
         });
-        const updated = this.asRpcCount(result, 'interrupt_stale_post_processing');
-        total += updated;
-        if (updated < batchLimit) break;
+        lastBatchCount = this.asRpcCount(result, 'interrupt_stale_post_processing');
+        total += lastBatchCount;
+        if (lastBatchCount < batchLimit) break;
+      }
+      if (lastBatchCount === batchLimit) {
+        this.logger.warn(
+          `[消息处理记录] 标记 interrupted 达到分批上限 ${maxBatches}×${batchLimit}，可能仍有积压，待下次清理继续`,
+        );
       }
       return total;
     } catch (error) {

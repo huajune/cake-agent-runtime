@@ -240,6 +240,16 @@ describe('tool-call-analysis', () => {
       expect(findSucceededSideEffectTools(steps)).toEqual([]);
     });
 
+    it('does not block when result status is unknown or empty (conservative retry)', () => {
+      const steps = [
+        // 结构不可识别 → unknown：不视为成功，放行重试
+        { toolResults: [{ toolName: 'duliday_interview_booking', output: { foo: 'bar' } }] },
+        // resultCount 0 → empty：同样不视为副作用已生效
+        { toolResults: [{ toolName: 'invite_to_group', output: { resultCount: 0 } }] },
+      ];
+      expect(findSucceededSideEffectTools(steps)).toEqual([]);
+    });
+
     it('dedupes across steps and covers all registered side-effect tools', () => {
       const steps = [
         { toolResults: [{ toolName: 'invite_to_group', output: { accepted: true } }] },

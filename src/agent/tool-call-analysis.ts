@@ -167,8 +167,11 @@ export function countToolCallsByName(steps: StepLike[]): Map<string, number> {
 /**
  * 找出本轮已**成功**执行过的副作用工具。
  *
- * 判定口径与 computeToolCallStatus 一致：返回非 error 即视为副作用已生效。
- * 失败调用（buildToolError 形态）不计入——允许模型修正参数后重试。
+ * 判定口径与 computeToolCallStatus 一致：仅明确成功（ok/narrow，工具的
+ * success/accepted 标记为 true 都会映射到 ok）才视为副作用已生效。
+ * 失败（buildToolError 形态）与不可判定（unknown/empty）均不屏蔽——
+ * 允许模型修正参数后重试；真实工具的成功返回都带显式成功标记，
+ * unknown 只会出现在结构不可识别的边缘形态，保守放行。
  */
 export function findSucceededSideEffectTools(steps: StepLike[]): string[] {
   const succeeded = new Set<string>();
@@ -179,7 +182,7 @@ export function findSucceededSideEffectTools(steps: StepLike[]): string[] {
       const name = tr.toolName;
       if (typeof name !== 'string' || !SIDE_EFFECT_TOOLS.has(name)) continue;
       const status = computeToolCallStatus(tr.output, computeResultCount(tr.output));
-      if (status !== 'error') succeeded.add(name);
+      if (status === 'ok' || status === 'narrow') succeeded.add(name);
     }
   }
   return [...succeeded];

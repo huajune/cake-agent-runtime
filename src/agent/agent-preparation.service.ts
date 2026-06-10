@@ -202,6 +202,12 @@ export class AgentPreparationService {
             const options = args[1] as { toolCallId?: string } | undefined;
             if (options?.toolCallId) {
               timings.set(options.toolCallId, Date.now() - startedAt);
+            } else {
+              // AI SDK execute(input, options) 签名变更会走到这里：计时静默失效，
+              // durationMs 退回墙钟近似。打日志便于升级 SDK 后发现。
+              this.logger.warn(
+                `[tool-timing] 工具 ${name} 执行选项缺少 toolCallId，真实计时未记录`,
+              );
             }
           }
         },

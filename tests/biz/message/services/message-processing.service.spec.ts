@@ -10,6 +10,7 @@ describe('MessageProcessingService', () => {
     getSlowestMessages: jest.fn(),
     getMessageProcessingRecords: jest.fn(),
     getMessageProcessingRecordById: jest.fn(),
+    interruptStalePostProcessing: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -290,6 +291,35 @@ describe('MessageProcessingService', () => {
       );
 
       await expect(service.getMessageProcessingRecordById('msg-123')).rejects.toThrow('DB error');
+    });
+  });
+
+  // ==================== interruptStalePostProcessing ====================
+
+  describe('interruptStalePostProcessing', () => {
+    it('should delegate to repository with given staleMinutes', async () => {
+      mockMessageProcessingRepository.interruptStalePostProcessing.mockResolvedValue(3);
+
+      const result = await service.interruptStalePostProcessing(45);
+
+      expect(result).toBe(3);
+      expect(mockMessageProcessingRepository.interruptStalePostProcessing).toHaveBeenCalledWith(45);
+    });
+
+    it('should default staleMinutes to 30', async () => {
+      mockMessageProcessingRepository.interruptStalePostProcessing.mockResolvedValue(0);
+
+      await service.interruptStalePostProcessing();
+
+      expect(mockMessageProcessingRepository.interruptStalePostProcessing).toHaveBeenCalledWith(30);
+    });
+
+    it('should pass through repository errors', async () => {
+      mockMessageProcessingRepository.interruptStalePostProcessing.mockRejectedValue(
+        new Error('DB error'),
+      );
+
+      await expect(service.interruptStalePostProcessing()).rejects.toThrow('DB error');
     });
   });
 });
