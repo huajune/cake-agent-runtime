@@ -101,10 +101,6 @@ export class DataCleanupService implements OnModuleInit {
       return;
     }
 
-    // 0. 将卡住的 processing 记录标记为 timeout（>30 分钟）
-    // 与 onModuleInit 中的调用不冲突：onModuleInit 处理启动时遗留，此处处理日间新卡住记录
-    await this.timeoutStuckProcessingRecords();
-
     // 1. NULL agent_invocation（>7 天）— 释放 TOAST 空间
     await this.nullAgentInvocations();
 
@@ -119,6 +115,21 @@ export class DataCleanupService implements OnModuleInit {
 
     // 5. 清理过期用户活跃记录（默认 >365 天）
     await this.cleanupUserActivity();
+  }
+
+  /**
+   * 每小时兜底：将卡住的 processing 记录标记为 timeout（>30 分钟）。
+   *
+   * 原先仅在启动时与每日凌晨 3 点执行，发版重启时被杀死的 in-flight 记录
+   * 会在看板上以「处理中」挂最长一天，运营误以为消息还会被处理。
+   * 与 onModuleInit 中的调用不冲突：onModuleInit 处理启动时遗留，此处兜底日间新卡住记录。
+   */
+  @Cron('0 * * * *')
+  async timeoutStuckRecordsHourly(): Promise<void> {
+    if (!this.supabaseService.isAvailable()) {
+      return;
+    }
+    await this.timeoutStuckProcessingRecords();
   }
 
   /**

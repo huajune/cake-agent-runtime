@@ -29,6 +29,7 @@ describe('DataCleanupService', () => {
     nullAgentInvocations: jest.fn(),
     cleanupRecords: cleanupRecordsMock,
     cleanupMessageProcessingRecords: cleanupRecordsMock,
+    timeoutStuckRecords: jest.fn(),
   };
 
   const mockUserHostingService = {
@@ -151,6 +152,32 @@ describe('DataCleanupService', () => {
       await expect(service.cleanupExpiredData()).resolves.not.toThrow();
       // Should continue to next steps even after error
       expect(chatSessionService.cleanupChatMessages).toHaveBeenCalled();
+    });
+  });
+
+  describe('timeoutStuckRecordsHourly', () => {
+    it('should mark stuck processing records as timeout (>30 min)', async () => {
+      mockSupabaseService.isAvailable.mockReturnValue(true);
+      mockMessageProcessingService.timeoutStuckRecords.mockResolvedValue(3);
+
+      await service.timeoutStuckRecordsHourly();
+
+      expect(mockMessageProcessingService.timeoutStuckRecords).toHaveBeenCalledWith(30);
+    });
+
+    it('should skip when Supabase is not available', async () => {
+      mockSupabaseService.isAvailable.mockReturnValue(false);
+
+      await service.timeoutStuckRecordsHourly();
+
+      expect(mockMessageProcessingService.timeoutStuckRecords).not.toHaveBeenCalled();
+    });
+
+    it('should swallow repository errors', async () => {
+      mockSupabaseService.isAvailable.mockReturnValue(true);
+      mockMessageProcessingService.timeoutStuckRecords.mockRejectedValue(new Error('DB error'));
+
+      await expect(service.timeoutStuckRecordsHourly()).resolves.not.toThrow();
     });
   });
 

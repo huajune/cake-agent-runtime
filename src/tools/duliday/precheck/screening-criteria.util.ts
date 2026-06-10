@@ -94,9 +94,15 @@ export function buildScreeningCriteria(analysis: JobPolicyAnalysis): Record<stri
 export function buildApiPayloadGuide(
   jobId: number,
   customerLabelDefinitions: Array<{ labelId: number; labelName: string; name: string }>,
+  options?: {
+    /** 无面试时段（等通知）岗位：interviewTime 不进必填清单，booking 不传该字段 */
+    interviewTimeWaitNotice?: boolean;
+  },
 ) {
   return {
-    requiredFields: [...API_BOOKING_REQUIRED_PAYLOAD_FIELDS],
+    requiredFields: options?.interviewTimeWaitNotice
+      ? API_BOOKING_REQUIRED_PAYLOAD_FIELDS.filter((field) => field !== 'interviewTime')
+      : [...API_BOOKING_REQUIRED_PAYLOAD_FIELDS],
     optionalFields: [...API_BOOKING_OPTIONAL_PAYLOAD_FIELDS],
     fixedValues: {
       jobId,

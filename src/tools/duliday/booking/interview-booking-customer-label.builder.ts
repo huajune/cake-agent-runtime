@@ -20,7 +20,8 @@ export interface BuildCustomerLabelListParams {
   phone: string;
   age: number;
   genderId: number;
-  interviewTime: string;
+  /** 面试时间；无面试时段（等通知）岗位缺省，对应标签回填"等待通知" */
+  interviewTime?: string;
   householdRegisterProvinceId?: number;
   height?: number;
   weight?: number;
@@ -153,11 +154,12 @@ function resolveCustomerLabelValue(
   if (/电话|联系方式/.test(labelName)) return normalizeText(params.phone);
   if (/性别/.test(labelName)) return getSpongeGenderLabelById(params.genderId);
   if (/年龄/.test(labelName)) return String(params.age);
-  if (/面试时间/.test(labelName)) return normalizeText(params.interviewTime);
+  // 等通知岗位 interviewTime 缺省：与平台名单录入表单一致，回填"等待通知"
+  if (/面试时间/.test(labelName)) return normalizeText(params.interviewTime) ?? '等待通知';
   return null;
 }
 
-function getSupplementAnswerValue(
+export function getSupplementAnswerValue(
   supplementAnswers: Record<string, string> | undefined,
   labelName: string,
 ): string | null {
