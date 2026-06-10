@@ -5,6 +5,93 @@
   "sourceBranch": "develop",
   "entries": [
     {
+      "number": "270",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/270",
+      "title": "precheck 支持补充标签答案回填 + 简历附件只认 URL/云存储 key",
+      "author": "ArielZhu",
+      "mergedAt": "2026-06-10",
+      "businessUpdates": [
+        "precheck 支持候选人补充标签答案回填，修复配置 collect 型 supplement label 的岗位整条预约链路卡死、只能转人工补录的问题",
+        "简历附件只认 http(s) URL 或云存储 key，候选人自由文字不再被当作简历提交导致海绵侧打不开；已预约后补发简历改走人工补传指引"
+      ],
+      "summary": [
+        "precheck 支持补充标签答案回填，打通 collect 型 supplement label 岗位的预约链路",
+        "简历附件只认 URL/云存储 key，杜绝脏数据提交（工单 438358 事故修复）"
+      ],
+      "features": [],
+      "fixes": [
+        "precheck 新增 candidateSupplementAnswers 入参并回填 collect 标签，避免 missingFields 永远不清空导致 booking 闸门拒绝",
+        "事实提取与 booking 简历链路统一过滤：仅放行 http(s) URL 或云存储 key 形态"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "全量套件 287 suites / 3645 tests 通过",
+        "新增回归：precheck supplement 回填 ×1、简历 URL 守卫 ×5（含工单 438358 复现用例）",
+        "tsc --noEmit + eslint + prettier 通过"
+      ]
+    },
+    {
+      "number": "271",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/271",
+      "title": "发版重启不再永久丢失在途消息",
+      "author": "ArielZhu",
+      "mergedAt": "2026-06-10",
+      "businessUpdates": [
+        "发版重启不再吞掉正在处理或刚到达的候选人消息（2026-06-09 v5.13.0 发版事故复盘修复）"
+      ],
+      "summary": [
+        "优雅停机：发版 SIGTERM 后排空 in-flight 消息再退出",
+        "锁冲突补建延迟重检并续期 pending，孤悬锁过期后消息仍可接手",
+        "卡住的 processing 记录改为每小时标记 timeout"
+      ],
+      "features": [],
+      "fixes": [
+        "开启 enableShutdownHooks，MessageProcessor 收到 SIGTERM 后先排空 in-flight 任务再退出（排空上限 SHUTDOWN_DRAIN_TIMEOUT_MS，默认 60s）",
+        "锁冲突时补建 30s 延迟重检任务并续期 pending TTL，持锁进程被杀后消息不再随 TTL 过期丢失",
+        "卡住的 processing 记录由每日凌晨一次改为每小时标记 timeout，看板不再长时间显示假\"处理中\""
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [
+        "新增可选环境变量 SHUTDOWN_DRAIN_TIMEOUT_MS（默认 60000ms，应小于部署平台强杀宽限期）"
+      ],
+      "envFiles": [
+        ".env.example"
+      ],
+      "verification": [
+        "相关 spec 41 个用例全部通过（新增 9 个）",
+        "eslint / tsc --noEmit 通过"
+      ]
+    },
+    {
+      "number": "273",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/273",
+      "title": "接客 bot 入群补偿后按退避间隔重试拉候选人",
+      "author": "ArielZhu",
+      "mergedAt": "2026-06-10",
+      "businessUpdates": [
+        "接客 bot 入群补偿后按退避间隔重试拉候选人，修复企微入群生效延迟导致候选人没能入群的问题"
+      ],
+      "summary": [
+        "接客 bot 入群补偿后按退避间隔重试拉候选人"
+      ],
+      "features": [],
+      "fixes": [
+        "每轮重试前先 syncRoom 刷新接客 bot 群数据，再按 3s/5s/8s 退避重试；仅 room not found 瞬态错误参与重试"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "invite-to-group spec 27 个用例全部通过",
+        "eslint 通过"
+      ]
+    },
+    {
       "number": "274",
       "url": "https://github.com/huajune/cake-agent-runtime/pull/274",
       "title": "无面试时段岗位支持等通知模式自助约面",

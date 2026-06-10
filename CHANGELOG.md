@@ -14,9 +14,13 @@
 **预计版本**: `v5.13.1`
 **最近更新**: `2026-06-10`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 4
 
 ### 更新摘要
+- PR #270 precheck 支持补充标签答案回填，打通 collect 型 supplement label 岗位的预约链路
+- PR #270 简历附件只认 URL/云存储 key，杜绝脏数据提交（工单 438358 事故修复）
+- PR #271 发版重启不再永久丢失在途消息（优雅停机 + 锁冲突重检 + 小时级超时兜底）
+- PR #273 接客 bot 入群补偿后按退避间隔重试拉候选人
 - PR #274 无面试时段岗位支持等通知模式自助约面
 - PR #274 `interviewWindows` 为空 → 进入 `wait_notice` 模式：
 - PR #274 不评估 `requestedDate`（不再误判 `date_unavailable`）
@@ -39,6 +43,12 @@
 - PR #274 无面试时段岗位支持等通知模式自助约面
 
 ### 问题修复
+- PR #270 precheck 新增 candidateSupplementAnswers 入参并回填 collect 标签，避免 missingFields 永远不清空导致 booking 闸门拒绝
+- PR #270 事实提取与 booking 简历链路统一过滤：仅放行 http(s) URL 或云存储 key 形态
+- PR #271 开启 enableShutdownHooks，发版 SIGTERM 后先排空 in-flight 消息再退出
+- PR #271 锁冲突时补建 30s 延迟重检任务并续期 pending TTL，持锁进程被杀后消息不再丢失
+- PR #271 卡住的 processing 记录由每日一次改为每小时标记 timeout
+- PR #273 接客 bot 入群补偿后先 syncRoom 再按 3s/5s/8s 退避重试拉候选人
 - PR #274 不评估 `requestedDate`（不再误判 `date_unavailable`）
 - PR #274 监控通知 / ops 事件幂等键用 `wait_notice` 兜底
 
@@ -49,12 +59,15 @@
 - 无
 
 ### 配置变更
-- 无
+- PR #271 新增可选环境变量 SHUTDOWN_DRAIN_TIMEOUT_MS（默认 60000ms）
 
 ### 环境变量提醒
-- 无
+- PR #271 .env.example
 
 ### 验证记录
+- PR #270 全量套件 287 suites / 3645 tests 通过；新增回归：precheck supplement 回填 ×1、简历 URL 守卫 ×5
+- PR #271 相关 spec 41 个用例全部通过（新增 9 个）
+- PR #273 invite-to-group spec 27 个用例全部通过
 - PR #274 新增 precheck wait_notice 用例 ×2（不判 date_unavailable / 收齐即 ready_to_book）
 - PR #274 新增 booking wait_notice 用例 ×2（无 interviewTime 成功提交 + 标签回填 / 带窗口岗位缺省仍拒）
 - PR #274 全量 `jest`：287 suites / 3648 tests 全绿；`tsc --noEmit` + ESLint 通过
