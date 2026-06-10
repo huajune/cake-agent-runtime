@@ -1,298 +1,89 @@
 {
-  "baseVersion": "5.13.1",
+  "baseVersion": "5.13.2",
   "nextVersion": "5.14.0",
   "updatedAt": "2026-06-10",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "280",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/280",
-      "title": "修正元数据 push 的 force-with-lease stale info",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-10",
-      "businessUpdates": [
-        "修正元数据 push 的 force-with-lease stale info"
-      ],
-      "summary": [
-        "修正元数据 push 的 force-with-lease stale info"
-      ],
-      "features": [],
-      "fixes": [
-        "修正元数据 push 的 force-with-lease stale info"
-      ],
-      "optimizations": [],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "YAML 通过 safe_load 校验",
-        "合并后将用 workflow_dispatch（pr_number=279）补跑元数据，同时实测修复 3 的补偿链路"
-      ]
-    },
-    {
-      "number": "279",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/279",
-      "title": "修复发版自动化的四个流程缺陷",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-10",
-      "businessUpdates": [
-        "修复发版自动化的四个流程缺陷"
-      ],
-      "summary": [
-        "修复 v5.13.1 发版全程暴露的四个自动化缺陷，此后 bot PR 不再需要人工 close/reopen 触发检查，元数据条目不再丢失，补偿模式推送认证正常，release PR 合并方式有明确引导"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "ci.yml 新增 workflow_dispatch 触发器；元数据 PR、固化 PR、回同步 PR 创建后主动在 bot 分支上派发 ci.yml，使 required check 正确落在 PR head SHA，不再依赖人工 close/reopen",
-        "分支重建前先从未合并的元数据 PR 分支恢复三个元数据文件再追加，防止累计发版条目被覆盖丢失（v5.13.1 期间 #270/#271 曾两次丢失需手工补录）",
-        "补偿模式（from_pr/to_pr）推送改为显式携带 GH_TOKEN 的 URL，修复 claude-code-action OIDC 模式覆写本地 git 凭证导致的推送认证失败",
-        "release PR 与固化 PR body 明确标注必须使用 Squash and merge，避免因 master 线性历史规则导致 merge commit 被拒"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "两个 workflow YAML 通过 yaml.safe_load 校验",
-        "build-release-pr-body.js 干跑输出正确包含合并方式提示行",
-        "node --check 通过"
-      ]
-    },
-    {
-      "number": "282",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/282",
-      "title": "dispatch 模式下用 commit status 满足必需检查",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-10",
-      "businessUpdates": [
-        "dispatch 模式下用 commit status 满足必需检查"
-      ],
-      "summary": [
-        "dispatch 模式下用 commit status 满足必需检查"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "dispatch 模式下用 commit status 满足必需检查"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    },
-    {
-      "number": "278",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/278",
-      "title": "记忆注入瘦身、时间锚定、会话段切割与置信度守卫",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-10",
-      "businessUpdates": [
-        "记忆生命周期并发与沉淀边界修复",
-        "老用户回访阶段兜底 + dashboard 最终提示词可读视图"
-      ],
-      "summary": [
-        "记忆注入瘦身、时间锚定、会话段切割与置信度守卫",
-        "存量长期画像超长 evidence 清洗脚本",
-        "记忆生命周期并发与沉淀边界修复",
-        "求职意向沉淀到长期记忆（preference_facts）",
-        "老用户回访阶段兜底 + dashboard 最终提示词可读视图",
-        "来源声明置信度升级（candidate_explicit → high）"
-      ],
-      "features": [],
-      "fixes": [
-        "记忆生命周期并发与沉淀边界修复",
-        "老用户回访阶段兜底 + dashboard 最终提示词可读视图"
-      ],
-      "optimizations": [],
-      "ops": [
-        "记忆注入瘦身、时间锚定、会话段切割与置信度守卫",
-        "存量长期画像超长 evidence 清洗脚本",
-        "求职意向沉淀到长期记忆（preference_facts）",
-        "来源声明置信度升级（candidate_explicit → high）"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    },
-    {
-      "number": "284",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/284",
-      "title": "工具观测语义修复 + 清理任务分批化 + 副作用工具防重复执行",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-10",
-      "businessUpdates": [
-        "工具观测语义修复 + 清理任务分批化与收尾兜底"
-      ],
-      "summary": [
-        "工具观测语义修复 + 清理任务分批化与收尾兜底",
-        "副作用工具成功后屏蔽重复调用",
-        "名额承诺/距离编造双红线 + 门店模糊回退保留筛选条件",
-        "按 review 意见收敛副作用屏蔽语义并补测试覆盖",
-        "工具观测语义修复 + 清理任务分批化 + 副作用工具防重复执行"
-      ],
-      "features": [],
-      "fixes": [
-        "工具观测语义修复 + 清理任务分批化与收尾兜底"
-      ],
-      "optimizations": [],
-      "ops": [
-        "副作用工具成功后屏蔽重复调用",
-        "名额承诺/距离编造双红线 + 门店模糊回退保留筛选条件",
-        "按 review 意见收敛副作用屏蔽语义并补测试覆盖"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "全量 jest：287 suites / 3,677 tests 通过",
-        "新增：buildToolError 形态、geocode resolution、resultCount 自报、narrow 收敛、分批循环、interrupted 标记等用例"
-      ]
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "5.13.1",
+    "version": "5.13.2",
     "date": "2026-06-10",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "270",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/270",
-        "title": "precheck 支持补充标签答案回填 + 简历附件只认 URL/云存储 key",
+        "number": "280",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/280",
+        "title": "修正元数据 push 的 force-with-lease stale info",
         "author": "ArielZhu",
         "mergedAt": "2026-06-10",
         "businessUpdates": [
-          "precheck 支持候选人补充标签答案回填，修复配置 collect 型 supplement label 的岗位整条预约链路卡死、只能转人工补录的问题",
-          "简历附件只认 http(s) URL 或云存储 key，候选人自由文字不再被当作简历提交导致海绵侧打不开；已预约后补发简历改走人工补传指引"
+          "修正元数据 push 的 force-with-lease stale info"
         ],
         "summary": [
-          "precheck 支持补充标签答案回填，打通 collect 型 supplement label 岗位的预约链路",
-          "简历附件只认 URL/云存储 key，杜绝脏数据提交（工单 438358 事故修复）"
+          "修正元数据 push 的 force-with-lease stale info"
         ],
         "features": [],
         "fixes": [
-          "precheck 新增 candidateSupplementAnswers 入参并回填 collect 标签，避免 missingFields 永远不清空导致 booking 闸门拒绝",
-          "事实提取与 booking 简历链路统一过滤：仅放行 http(s) URL 或云存储 key 形态"
+          "修正元数据 push 的 force-with-lease stale info"
         ],
         "optimizations": [],
         "ops": [],
         "config": [],
         "envFiles": [],
         "verification": [
-          "全量套件 287 suites / 3645 tests 通过",
-          "新增回归：precheck supplement 回填 ×1、简历 URL 守卫 ×5（含工单 438358 复现用例）",
-          "tsc --noEmit + eslint + prettier 通过"
+          "YAML 通过 safe_load 校验",
+          "合并后将用 workflow_dispatch（pr_number=279）补跑元数据，同时实测修复 3 的补偿链路"
         ]
       },
       {
-        "number": "271",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/271",
-        "title": "发版重启不再永久丢失在途消息",
+        "number": "279",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/279",
+        "title": "修复发版自动化的四个流程缺陷",
         "author": "ArielZhu",
         "mergedAt": "2026-06-10",
         "businessUpdates": [
-          "发版重启不再吞掉正在处理或刚到达的候选人消息（2026-06-09 v5.13.0 发版事故复盘修复）"
+          "修复发版自动化的四个流程缺陷"
         ],
         "summary": [
-          "优雅停机：发版 SIGTERM 后排空 in-flight 消息再退出",
-          "锁冲突补建延迟重检并续期 pending，孤悬锁过期后消息仍可接手",
-          "卡住的 processing 记录改为每小时标记 timeout"
+          "修复 v5.13.1 发版全程暴露的四个自动化缺陷，此后 bot PR 不再需要人工 close/reopen 触发检查，元数据条目不再丢失，补偿模式推送认证正常，release PR 合并方式有明确引导"
         ],
         "features": [],
-        "fixes": [
-          "开启 enableShutdownHooks，MessageProcessor 收到 SIGTERM 后先排空 in-flight 任务再退出（排空上限 SHUTDOWN_DRAIN_TIMEOUT_MS，默认 60s）",
-          "锁冲突时补建 30s 延迟重检任务并续期 pending TTL，持锁进程被杀后消息不再随 TTL 过期丢失",
-          "卡住的 processing 记录由每日凌晨一次改为每小时标记 timeout，看板不再长时间显示假\"处理中\""
-        ],
+        "fixes": [],
         "optimizations": [],
-        "ops": [],
-        "config": [
-          "新增可选环境变量 SHUTDOWN_DRAIN_TIMEOUT_MS（默认 60000ms，应小于部署平台强杀宽限期）"
+        "ops": [
+          "ci.yml 新增 workflow_dispatch 触发器；元数据 PR、固化 PR、回同步 PR 创建后主动在 bot 分支上派发 ci.yml，使 required check 正确落在 PR head SHA，不再依赖人工 close/reopen",
+          "分支重建前先从未合并的元数据 PR 分支恢复三个元数据文件再追加，防止累计发版条目被覆盖丢失（v5.13.1 期间 #270/#271 曾两次丢失需手工补录）",
+          "补偿模式（from_pr/to_pr）推送改为显式携带 GH_TOKEN 的 URL，修复 claude-code-action OIDC 模式覆写本地 git 凭证导致的推送认证失败",
+          "release PR 与固化 PR body 明确标注必须使用 Squash and merge，避免因 master 线性历史规则导致 merge commit 被拒"
         ],
-        "envFiles": [
-          ".env.example"
-        ],
-        "verification": [
-          "相关 spec 41 个用例全部通过（新增 9 个）",
-          "eslint / tsc --noEmit 通过"
-        ]
-      },
-      {
-        "number": "273",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/273",
-        "title": "接客 bot 入群补偿后按退避间隔重试拉候选人",
-        "author": "ArielZhu",
-        "mergedAt": "2026-06-10",
-        "businessUpdates": [
-          "接客 bot 入群补偿后按退避间隔重试拉候选人，修复企微入群生效延迟导致候选人没能入群的问题"
-        ],
-        "summary": [
-          "接客 bot 入群补偿后按退避间隔重试拉候选人"
-        ],
-        "features": [],
-        "fixes": [
-          "每轮重试前先 syncRoom 刷新接客 bot 群数据，再按 3s/5s/8s 退避重试；仅 room not found 瞬态错误参与重试"
-        ],
-        "optimizations": [],
-        "ops": [],
         "config": [],
         "envFiles": [],
         "verification": [
-          "invite-to-group spec 27 个用例全部通过",
-          "eslint 通过"
+          "两个 workflow YAML 通过 yaml.safe_load 校验",
+          "build-release-pr-body.js 干跑输出正确包含合并方式提示行",
+          "node --check 通过"
         ]
       },
       {
-        "number": "274",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/274",
-        "title": "无面试时段岗位支持等通知模式自助约面",
+        "number": "282",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/282",
+        "title": "dispatch 模式下用 commit status 满足必需检查",
         "author": "ArielZhu",
         "mergedAt": "2026-06-10",
         "businessUpdates": [
-          "`interviewWindows` 为空 → 进入 `wait_notice` 模式：",
-          "\"面试时间\"不进收资清单（含 `TEMPLATE_CORE_FIELDS` 强制骨架与 `apiPayloadGuide.requiredFields`）",
-          "字段收齐即 `ready_to_book`，不需要 `confirm_date`",
-          "新增返回 `interview.interviewTimeMode = \"wait_notice\"` + `interviewTimeModeNote` 话术指引（\"报名后面试官会直接打电话联系，保持电话畅通\"），并在工具 DESCRIPTION 硬规则中禁止因\"没有时段\"转人工",
-          "`interviewTime` 改为可选：**仅**等通知岗位（无窗口）允许缺省；带窗口岗位缺省仍报 `BOOKING_MISSING_FIELDS`（指引回 precheck 拿 slot）",
-          "缺省时：sponge payload 不带 `interviewTime`（与平台表单一致）、\"面试时间\"补充标签回填\"等待通知\"",
-          "成功回复切换为\"面试官电话联系\"指引，不再输出到店脚本 `_onSiteScript`（电话面试无到店环节）",
-          "无面试时段岗位支持等通知模式自助约面",
-          "不评估 `requestedDate`（不再误判 `date_unavailable`）",
-          "监控通知 / ops 事件幂等键用 `wait_notice` 兜底"
+          "dispatch 模式下用 commit status 满足必需检查"
         ],
         "summary": [
-          "无面试时段岗位支持等通知模式自助约面",
-          "`interviewWindows` 为空 → 进入 `wait_notice` 模式：",
-          "不评估 `requestedDate`（不再误判 `date_unavailable`）",
-          "\"面试时间\"不进收资清单（含 `TEMPLATE_CORE_FIELDS` 强制骨架与 `apiPayloadGuide.requiredFields`）",
-          "字段收齐即 `ready_to_book`，不需要 `confirm_date`",
-          "新增返回 `interview.interviewTimeMode = \"wait_notice\"` + `interviewTimeModeNote` 话术指引（\"报名后面试官会直接打电话联系，保持电话畅通\"），并在工具 DESCRIPTION 硬规则中禁止因\"没有时段\"转人工",
-          "`interviewTime` 改为可选：**仅**等通知岗位（无窗口）允许缺省；带窗口岗位缺省仍报 `BOOKING_MISSING_FIELDS`（指引回 precheck 拿 slot）",
-          "缺省时：sponge payload 不带 `interviewTime`（与平台表单一致）、\"面试时间\"补充标签回填\"等待通知\"",
-          "成功回复切换为\"面试官电话联系\"指引，不再输出到店脚本 `_onSiteScript`（电话面试无到店环节）",
-          "监控通知 / ops 事件幂等键用 `wait_notice` 兜底"
+          "dispatch 模式下用 commit status 满足必需检查"
         ],
-        "features": [
-          "`interviewWindows` 为空 → 进入 `wait_notice` 模式：",
-          "\"面试时间\"不进收资清单（含 `TEMPLATE_CORE_FIELDS` 强制骨架与 `apiPayloadGuide.requiredFields`）",
-          "字段收齐即 `ready_to_book`，不需要 `confirm_date`",
-          "新增返回 `interview.interviewTimeMode = \"wait_notice\"` + `interviewTimeModeNote` 话术指引（\"报名后面试官会直接打电话联系，保持电话畅通\"），并在工具 DESCRIPTION 硬规则中禁止因\"没有时段\"转人工",
-          "`interviewTime` 改为可选：**仅**等通知岗位（无窗口）允许缺省；带窗口岗位缺省仍报 `BOOKING_MISSING_FIELDS`（指引回 precheck 拿 slot）",
-          "缺省时：sponge payload 不带 `interviewTime`（与平台表单一致）、\"面试时间\"补充标签回填\"等待通知\"",
-          "成功回复切换为\"面试官电话联系\"指引，不再输出到店脚本 `_onSiteScript`（电话面试无到店环节）",
-          "无面试时段岗位支持等通知模式自助约面"
-        ],
-        "fixes": [
-          "不评估 `requestedDate`（不再误判 `date_unavailable`）",
-          "监控通知 / ops 事件幂等键用 `wait_notice` 兜底"
-        ],
+        "features": [],
+        "fixes": [],
         "optimizations": [],
-        "ops": [],
+        "ops": [
+          "dispatch 模式下用 commit status 满足必需检查"
+        ],
         "config": [],
         "envFiles": [],
-        "verification": [
-          "新增 precheck wait_notice 用例 ×2（不判 date_unavailable / 收齐即 ready_to_book）",
-          "新增 booking wait_notice 用例 ×2（无 interviewTime 成功提交 + 标签回填 / 带窗口岗位缺省仍拒）",
-          "全量 `jest`：287 suites / 3648 tests 全绿；`tsc --noEmit` + ESLint 通过"
-        ]
+        "verification": []
       }
     ]
   }
