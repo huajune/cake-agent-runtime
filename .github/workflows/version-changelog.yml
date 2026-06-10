@@ -152,6 +152,21 @@ jobs:
           git fetch origin "${BASE_BRANCH}"
           git checkout -B "${BOT_BRANCH}" "origin/${BASE_BRANCH}"
 
+          # 分支每轮都从 develop 重建。若该分支上还挂着未合并的元数据 PR，
+          # 不先恢复其元数据文件的话，已累计的条目会被本轮覆盖丢失
+          # （v5.13.1 发版时 #270/#271 的条目就这样丢过两次，靠手工补录）。
+          # update-version-changelog.js 内部按 PR 号 upsert，恢复后重复处理是幂等的。
+          EXISTING_OPEN_PR=$(gh pr list \
+            --base "${BASE_BRANCH}" \
+            --head "${BOT_BRANCH}" \
+            --state open \
+            --json number \
+            --jq '.[0].number // ""')
+          if [ -n "${EXISTING_OPEN_PR}" ] && git fetch origin "${BOT_BRANCH}"; then
+            git checkout FETCH_HEAD -- package.json CHANGELOG.md .release/pending-release.json
+            echo "ℹ️ 已从未合并的元数据 PR #${EXISTING_OPEN_PR} 恢复累计条目"
+          fi
+
           while IFS= read -r SOURCE_PR_NUMBER; do
             [ -n "${SOURCE_PR_NUMBER}" ] || continue
             MERGED_PR_CONTEXT_FILE=".release/merged-pr-context-${SOURCE_PR_NUMBER}.json" \
@@ -170,7 +185,12 @@ jobs:
 
           git add package.json CHANGELOG.md .release/pending-release.json
           git commit -m "chore(release): 更新待发布版本信息 [skip ci]"
-          git push --force-with-lease origin "HEAD:${BOT_BRANCH}"
+          # 不依赖 checkout 持久化的凭证：上游 claude-code-action（OIDC 模式）会
+          # 覆写本地 git 凭证，workflow_dispatch 补偿模式实测 push 报
+          # "Invalid username or token"（2026-06-10）。显式带 GH_TOKEN 推送。
+          git push --force-with-lease \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "HEAD:${BOT_BRANCH}"
 
           PR_TITLE="chore(release): 更新待发布版本信息（v${VERSION}）"
           PR_BODY=$(cat <<EOF
@@ -230,6 +250,20 @@ jobs:
             -f pr_number="${PR_NUMBER}"
           echo "🚀 已派发 ai-code-review.yml 给 PR #${PR_NUMBER}"
 
+      # required check "CI Checks"（ci.yml）同样不会被 bot push 触发，导致 bot PR
+      # 永远满足不了分支保护（v5.13.1 发版只能人工 close/reopen 触发）。
+      # 注意必须 --ref 到 bot 分支：check run 挂在所派发 ref 的 head SHA 上，
+      # 派发到 develop 的话检查不会出现在 PR 上。
+      - name: Dispatch CI Checks for bot PR
+        if: steps.bot_pr.outputs.pr_number != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh workflow run ci.yml --ref chore/release-metadata/develop
+          echo "🚀 已在 bot 分支上派发 ci.yml"
+
       - name: Reminder for branch protection
         run: |
           echo "ℹ️ 如果 develop 开启严格分支保护，请合并机器人创建的版本元数据 PR，而不是依赖工作流直推。"
@@ -280,6 +314,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      # gh workflow run ci.yml 需要 actions:write
+      actions: write
     steps:
       - name: Checkout master
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -334,6 +370,7 @@ jobs:
           - 触发来源: #${SOURCE_PR_NUMBER}
           - 目标分支: \`${BASE_BRANCH}\`
           - 发布版本: \`v${VERSION}\`
+          - ⚠️ 合并方式: master 要求线性历史，请使用 **Squash and merge**（merge commit 会被拒绝）
           - 合并后动作:
             - 创建 Git Tag
             - 创建 GitHub Release
@@ -351,14 +388,18 @@ jobs:
           if [ -n "${EXISTING_PR_NUMBER}" ]; then
             gh pr edit "${EXISTING_PR_NUMBER}" --title "${PR_TITLE}" --body "${PR_BODY}"
             echo "✅ 已更新 master 发布固化 PR: #${EXISTING_PR_NUMBER}"
-            exit 0
+          else
+            gh pr create \
+              --base "${BASE_BRANCH}" \
+              --head "${BOT_BRANCH}" \
+              --title "${PR_TITLE}" \
+              --body "${PR_BODY}"
           fi
 
-          gh pr create \
-            --base "${BASE_BRANCH}" \
-            --head "${BOT_BRANCH}" \
-            --title "${PR_TITLE}" \
-            --body "${PR_BODY}"
+          # bot push 不触发 pull_request 事件，主动在 bot 分支上派发 required check。
+          # ci.yml 的 workflow_dispatch 触发器需已存在于该分支（随发版进入 master 后生效）。
+          gh workflow run ci.yml --ref "${BOT_BRANCH}" || \
+            echo "⚠️ ci.yml 派发失败（分支上可能还没有 workflow_dispatch 触发器），需人工 close/reopen 触发 CI"
 
   publish-master-release:
     if: >
@@ -457,6 +498,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      # gh workflow run ci.yml 需要 actions:write
+      actions: write
     steps:
       - name: Checkout develop
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -555,13 +598,16 @@ jobs:
           if [ -n "${EXISTING_PR_NUMBER}" ]; then
             gh pr edit "${EXISTING_PR_NUMBER}" --title "${PR_TITLE}" --body "${PR_BODY}"
             echo "✅ 已更新 master → develop 同步 PR: #${EXISTING_PR_NUMBER}"
-            exit 0
+          else
+            PR_URL=$(gh pr create \
+              --base "${BASE_BRANCH}" \
+              --head "${BOT_BRANCH}" \
+              --title "${PR_TITLE}" \
+              --body "${PR_BODY}")
+            NEW_PR_NUMBER="${PR_URL##*/}"
+            echo "✅ 已创建 master → develop 同步 PR: #${NEW_PR_NUMBER}"
           fi
 
-          PR_URL=$(gh pr create \
-            --base "${BASE_BRANCH}" \
-            --head "${BOT_BRANCH}" \
-            --title "${PR_TITLE}" \
-            --body "${PR_BODY}")
-          NEW_PR_NUMBER="${PR_URL##*/}"
-          echo "✅ 已创建 master → develop 同步 PR: #${NEW_PR_NUMBER}"
+          # bot push 不触发 pull_request 事件，主动在 bot 分支上派发 required check
+          gh workflow run ci.yml --ref "${BOT_BRANCH}" || \
+            echo "⚠️ ci.yml 派发失败（分支上可能还没有 workflow_dispatch 触发器），需人工 close/reopen 触发 CI"

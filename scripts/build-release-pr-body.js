@@ -51,6 +51,7 @@ function buildReleasePrContent({ base, head }) {
       '',
       `- 发布版本：\`${version}\``,
       `- 合并方向：\`${head}\` → \`${base}\``,
+      '- ⚠️ 合并方式：master 要求线性历史，请使用 **Squash and merge**（merge commit 会被拒绝）',
       '- 合并后动作：固化正式版本记录、创建 Git Tag / GitHub Release，并触发部署工作流',
       '',
       '## 更新摘要',
