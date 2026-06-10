@@ -8,18 +8,16 @@
 
 ---
 
-<!-- release:pending:start -->
-## 待发布
+## [5.13.1] - 2026-06-10
 
-**预计版本**: `v5.13.1`
-**最近更新**: `2026-06-10`
 **来源分支**: `develop`
-**累计 PR**: 4
 
 ### 更新摘要
 - PR #270 precheck 支持补充标签答案回填，打通 collect 型 supplement label 岗位的预约链路
 - PR #270 简历附件只认 URL/云存储 key，杜绝脏数据提交（工单 438358 事故修复）
-- PR #271 发版重启不再永久丢失在途消息（优雅停机 + 锁冲突重检 + 小时级超时兜底）
+- PR #271 优雅停机：发版 SIGTERM 后排空 in-flight 消息再退出
+- PR #271 锁冲突补建延迟重检并续期 pending，孤悬锁过期后消息仍可接手
+- PR #271 卡住的 processing 记录改为每小时标记 timeout
 - PR #273 接客 bot 入群补偿后按退避间隔重试拉候选人
 - PR #274 无面试时段岗位支持等通知模式自助约面
 - PR #274 `interviewWindows` 为空 → 进入 `wait_notice` 模式：
@@ -45,10 +43,10 @@
 ### 问题修复
 - PR #270 precheck 新增 candidateSupplementAnswers 入参并回填 collect 标签，避免 missingFields 永远不清空导致 booking 闸门拒绝
 - PR #270 事实提取与 booking 简历链路统一过滤：仅放行 http(s) URL 或云存储 key 形态
-- PR #271 开启 enableShutdownHooks，发版 SIGTERM 后先排空 in-flight 消息再退出
-- PR #271 锁冲突时补建 30s 延迟重检任务并续期 pending TTL，持锁进程被杀后消息不再丢失
-- PR #271 卡住的 processing 记录由每日一次改为每小时标记 timeout
-- PR #273 接客 bot 入群补偿后先 syncRoom 再按 3s/5s/8s 退避重试拉候选人
+- PR #271 开启 enableShutdownHooks，MessageProcessor 收到 SIGTERM 后先排空 in-flight 任务再退出（排空上限 SHUTDOWN_DRAIN_TIMEOUT_MS，默认 60s）
+- PR #271 锁冲突时补建 30s 延迟重检任务并续期 pending TTL，持锁进程被杀后消息不再随 TTL 过期丢失
+- PR #271 卡住的 processing 记录由每日凌晨一次改为每小时标记 timeout，看板不再长时间显示假"处理中"
+- PR #273 每轮重试前先 syncRoom 刷新接客 bot 群数据，再按 3s/5s/8s 退避重试；仅 room not found 瞬态错误参与重试
 - PR #274 不评估 `requestedDate`（不再误判 `date_unavailable`）
 - PR #274 监控通知 / ops 事件幂等键用 `wait_notice` 兜底
 
@@ -59,19 +57,22 @@
 - 无
 
 ### 配置变更
-- PR #271 新增可选环境变量 SHUTDOWN_DRAIN_TIMEOUT_MS（默认 60000ms）
+- PR #271 新增可选环境变量 SHUTDOWN_DRAIN_TIMEOUT_MS（默认 60000ms，应小于部署平台强杀宽限期）
 
 ### 环境变量提醒
-- PR #271 .env.example
+- PR #271 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
 
 ### 验证记录
-- PR #270 全量套件 287 suites / 3645 tests 通过；新增回归：precheck supplement 回填 ×1、简历 URL 守卫 ×5
+- PR #270 全量套件 287 suites / 3645 tests 通过
+- PR #270 新增回归：precheck supplement 回填 ×1、简历 URL 守卫 ×5（含工单 438358 复现用例）
+- PR #270 tsc --noEmit + eslint + prettier 通过
 - PR #271 相关 spec 41 个用例全部通过（新增 9 个）
+- PR #271 eslint / tsc --noEmit 通过
 - PR #273 invite-to-group spec 27 个用例全部通过
+- PR #273 eslint 通过
 - PR #274 新增 precheck wait_notice 用例 ×2（不判 date_unavailable / 收齐即 ready_to_book）
 - PR #274 新增 booking wait_notice 用例 ×2（无 interviewTime 成功提交 + 标签回填 / 带窗口岗位缺省仍拒）
 - PR #274 全量 `jest`：287 suites / 3648 tests 全绿；`tsc --noEmit` + ESLint 通过
-<!-- release:pending:end -->
 
 ## [5.13.0] - 2026-06-09
 
