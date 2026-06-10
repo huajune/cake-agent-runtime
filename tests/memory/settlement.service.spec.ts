@@ -54,6 +54,7 @@ describe('SettlementService', () => {
         'corp1',
         'user1',
         new Date(now - 1800 * 1000).toISOString(),
+        'sess1',
       );
       expect(mockLongTermService.appendSummary).not.toHaveBeenCalled();
     });
@@ -80,7 +81,11 @@ describe('SettlementService', () => {
         lastSettledMessageAt: null,
       });
 
-      const oldMsg = { role: 'user' as const, content: '找工作', timestamp: now - 3 * 86400 * 1000 };
+      const oldMsg = {
+        role: 'user' as const,
+        content: '找工作',
+        timestamp: now - 3 * 86400 * 1000,
+      };
       const oldMsg2 = {
         role: 'assistant' as const,
         content: '好的',
@@ -98,6 +103,7 @@ describe('SettlementService', () => {
         'corp1',
         'user1',
         new Date(newMsg.timestamp).toISOString(),
+        'sess1',
       );
       expect(mockLongTermService.appendSummary).not.toHaveBeenCalled();
     });
@@ -169,9 +175,21 @@ describe('SettlementService', () => {
         lastSettledMessageAt: lastSettled,
       });
 
-      const oldMsg1 = { role: 'user' as const, content: '我想找工作', timestamp: now - 3 * 86400 * 1000 };
-      const oldMsg2 = { role: 'assistant' as const, content: '好的', timestamp: now - 3 * 86400 * 1000 + 60000 };
-      const newMsg1 = { role: 'user' as const, content: '还在么', timestamp: now - 1 * 86400 * 1000 };
+      const oldMsg1 = {
+        role: 'user' as const,
+        content: '我想找工作',
+        timestamp: now - 3 * 86400 * 1000,
+      };
+      const oldMsg2 = {
+        role: 'assistant' as const,
+        content: '好的',
+        timestamp: now - 3 * 86400 * 1000 + 60000,
+      };
+      const newMsg1 = {
+        role: 'user' as const,
+        content: '还在么',
+        timestamp: now - 1 * 86400 * 1000,
+      };
 
       mockChatSession.getChatHistoryInRange.mockResolvedValue([oldMsg1, oldMsg2, newMsg1]);
 
@@ -185,7 +203,9 @@ describe('SettlementService', () => {
           sessionId: 'sess1',
           endTime: new Date(oldMsg2.timestamp).toISOString(),
         }),
-        expect.objectContaining({ lastSettledMessageAt: new Date(oldMsg2.timestamp).toISOString() }),
+        expect.objectContaining({
+          lastSettledMessageAt: new Date(oldMsg2.timestamp).toISOString(),
+        }),
       );
     });
 
@@ -201,10 +221,18 @@ describe('SettlementService', () => {
       });
 
       const s1m1 = { role: 'user' as const, content: 'day1', timestamp: now - 5 * 86400 * 1000 };
-      const s1m2 = { role: 'assistant' as const, content: 'ok', timestamp: now - 5 * 86400 * 1000 + 60000 };
+      const s1m2 = {
+        role: 'assistant' as const,
+        content: 'ok',
+        timestamp: now - 5 * 86400 * 1000 + 60000,
+      };
       // gap ~2 days (> sessionTtl)
       const s2m1 = { role: 'user' as const, content: 'day3', timestamp: now - 3 * 86400 * 1000 };
-      const s2m2 = { role: 'assistant' as const, content: 'ok', timestamp: now - 3 * 86400 * 1000 + 60000 };
+      const s2m2 = {
+        role: 'assistant' as const,
+        content: 'ok',
+        timestamp: now - 3 * 86400 * 1000 + 60000,
+      };
       // gap ~1.5 days (> sessionTtl)
       const s3m1 = { role: 'user' as const, content: 'today', timestamp: now - 1.5 * 86400 * 1000 };
 
@@ -236,7 +264,11 @@ describe('SettlementService', () => {
       });
 
       const msg1 = { role: 'user' as const, content: 'old', timestamp: now - 2 * 86400 * 1000 };
-      const msg2 = { role: 'user' as const, content: 'new', timestamp: msg1.timestamp + SETTLEMENT_GAP * 1000 };
+      const msg2 = {
+        role: 'user' as const,
+        content: 'new',
+        timestamp: msg1.timestamp + SETTLEMENT_GAP * 1000,
+      };
 
       mockChatSession.getChatHistoryInRange.mockResolvedValue([msg1, msg2]);
 
@@ -261,7 +293,11 @@ describe('SettlementService', () => {
       });
 
       const msg1 = { role: 'user' as const, content: 'old', timestamp: now - 2 * 86400 * 1000 };
-      const msg2 = { role: 'user' as const, content: 'new', timestamp: msg1.timestamp + SETTLEMENT_GAP * 1000 - 1 };
+      const msg2 = {
+        role: 'user' as const,
+        content: 'new',
+        timestamp: msg1.timestamp + SETTLEMENT_GAP * 1000 - 1,
+      };
 
       mockChatSession.getChatHistoryInRange.mockResolvedValue([msg1, msg2]);
 
@@ -315,7 +351,11 @@ describe('SettlementService', () => {
         lastSettledMessageAt: lastSettled,
       });
 
-      const oldMsg = { role: 'user' as const, content: '我叫张三', timestamp: now - 3 * 86400 * 1000 };
+      const oldMsg = {
+        role: 'user' as const,
+        content: '我叫张三',
+        timestamp: now - 3 * 86400 * 1000,
+      };
       const newMsg = { role: 'user' as const, content: '还在么', timestamp: now - 3600 * 1000 };
       mockChatSession.getChatHistoryInRange.mockResolvedValue([oldMsg, newMsg]);
 
@@ -355,6 +395,100 @@ describe('SettlementService', () => {
       await service.detectAndSettle('corp1', 'user1', 'sess1', null);
 
       expect(mockLongTermService.writeFromSettlement).not.toHaveBeenCalled();
+    });
+
+    // ==================== 边界维度隔离（双 bot） ====================
+
+    it('should prefer per-session boundary over user-level boundary', async () => {
+      const now = Date.now();
+      // 用户级边界被另一个 bot 推到很近（会触发快速跳过），
+      // 但本会话自己的边界还很旧——必须按本会话边界继续检测。
+      mockLongTermService.getSummaryData.mockResolvedValue({
+        recent: [],
+        archive: null,
+        lastSettledMessageAt: new Date(now - 3600 * 1000).toISOString(),
+        lastSettledBySession: {
+          sess1: new Date(now - 5 * 86400 * 1000).toISOString(),
+        },
+      });
+
+      const oldMsg = {
+        role: 'user' as const,
+        content: '旧会话',
+        timestamp: now - 3 * 86400 * 1000,
+      };
+      const newMsg = { role: 'user' as const, content: '新会话', timestamp: now - 3600 * 1000 };
+      mockChatSession.getChatHistoryInRange.mockResolvedValue([oldMsg, newMsg]);
+
+      const result = await service.detectAndSettle('corp1', 'user1', 'sess1', null);
+
+      expect(result).toBe(true);
+      expect(mockLongTermService.appendSummary).toHaveBeenCalledWith(
+        'corp1',
+        'user1',
+        expect.objectContaining({ sessionId: 'sess1' }),
+        expect.objectContaining({ sessionId: 'sess1' }),
+      );
+    });
+
+    it('should skip when user-level boundary is recent and no per-session boundary exists', async () => {
+      const now = Date.now();
+      mockLongTermService.getSummaryData.mockResolvedValue({
+        recent: [],
+        archive: null,
+        lastSettledMessageAt: new Date(now - 3600 * 1000).toISOString(),
+        lastSettledBySession: null,
+      });
+
+      const result = await service.detectAndSettle('corp1', 'user1', 'sess1', null);
+
+      expect(result).toBe(false);
+      expect(mockChatSession.getChatHistoryInRange).not.toHaveBeenCalled();
+    });
+
+    // ==================== 分页扫描（>500 条不再永不沉淀） ====================
+
+    it('should find session gap beyond the first 500-message page', async () => {
+      const now = Date.now();
+      const lastSettled = new Date(now - 10 * 86400 * 1000).toISOString();
+      mockLongTermService.getSummaryData.mockResolvedValue({
+        recent: [],
+        archive: null,
+        lastSettledMessageAt: lastSettled,
+      });
+
+      // 第一页：500 条密集消息（无断层），旧实现在此返回 false 永不沉淀
+      const pageStart = now - 9 * 86400 * 1000;
+      const page1 = Array.from({ length: 500 }, (_, i) => ({
+        role: 'user' as const,
+        content: `msg-${i}`,
+        timestamp: pageStart + i * 1000,
+      }));
+      // 第二页：旧会话尾巴 + 断层 + 新会话
+      const tailTs = pageStart + 500 * 1000;
+      const page2 = [
+        { role: 'user' as const, content: '旧会话最后一条', timestamp: tailTs },
+        { role: 'user' as const, content: '隔了三天回来', timestamp: tailTs + 3 * 86400 * 1000 },
+      ];
+      mockChatSession.getChatHistoryInRange
+        .mockResolvedValueOnce(page1)
+        .mockResolvedValueOnce(page2);
+
+      const result = await service.detectAndSettle('corp1', 'user1', 'sess1', null);
+
+      expect(result).toBe(true);
+      expect(mockChatSession.getChatHistoryInRange).toHaveBeenCalledTimes(2);
+      // 第二页查询的起点应是第一页最后一条消息的时间戳
+      expect(mockChatSession.getChatHistoryInRange.mock.calls[1][1]).toEqual(
+        expect.objectContaining({ startTimeExclusive: page1.at(-1)!.timestamp }),
+      );
+      // 沉淀边界推进到断层前最后一条消息
+      expect(mockLongTermService.appendSummary).toHaveBeenCalledWith(
+        'corp1',
+        'user1',
+        expect.objectContaining({ endTime: new Date(tailTs).toISOString() }),
+        expect.objectContaining({ lastSettledMessageAt: new Date(tailTs).toISOString() }),
+      );
     });
   });
 });

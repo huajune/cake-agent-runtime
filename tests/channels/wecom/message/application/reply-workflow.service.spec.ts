@@ -360,7 +360,8 @@ describe('ReplyWorkflowService', () => {
       await service.processSingleMessage(primary);
 
       expect(runner.invoke).toHaveBeenCalledTimes(2);
-      // 首次启用 deferTurnEnd；第二次采用默认（runner 自动 dispatch）
+      // 两次都启用 deferTurnEnd：第二次结果必然被采纳，由 workflow 启动并在
+      // 方法返回（处理锁释放）前 await，保证记忆写入相对锁串行。
       expect(runner.invoke.mock.calls[0][0]).toEqual(
         expect.objectContaining({
           deferTurnEnd: true,
@@ -369,7 +370,7 @@ describe('ReplyWorkflowService', () => {
       );
       expect(runner.invoke.mock.calls[1][0]).toEqual(
         expect.objectContaining({
-          deferTurnEnd: undefined,
+          deferTurnEnd: true,
           shortTermEndTimeInclusive: 1713168002000,
         }),
       );

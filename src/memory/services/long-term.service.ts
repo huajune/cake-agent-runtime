@@ -165,6 +165,8 @@ export class LongTermService {
     entry: SummaryEntry,
     options?: {
       lastSettledMessageAt?: string | null;
+      /** 沉淀边界的会话维度 key（sessionId=chatId）；双 bot 场景按会话隔离边界。 */
+      sessionId?: string | null;
       compressArchive?: (
         overflow: SummaryEntry[],
         existingArchive: string | null,
@@ -182,9 +184,15 @@ export class LongTermService {
     corpId: string,
     userId: string,
     lastSettledMessageAt: string,
+    sessionId?: string | null,
   ): Promise<void> {
     try {
-      await this.supabaseStore.markLastSettledMessageAt(corpId, userId, lastSettledMessageAt);
+      await this.supabaseStore.markLastSettledMessageAt(
+        corpId,
+        userId,
+        lastSettledMessageAt,
+        sessionId,
+      );
     } catch (error) {
       this.logger.warn('更新沉淀边界失败', error);
     }

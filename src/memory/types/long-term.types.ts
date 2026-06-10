@@ -215,8 +215,17 @@ export interface SummaryData {
   recent: SummaryEntry[];
   /** 更早的摘要被 LLM 压缩合并成的总结 */
   archive: string | null;
-  /** 最近一次已沉淀到长期记忆的消息边界。 */
+  /**
+   * 最近一次已沉淀到长期记忆的消息边界（用户维度，跨 bot 共享）。
+   * 历史字段：双 bot 服务同一候选人时会互相推进，仅作为 lastSettledBySession
+   * 缺失时的回退基准。
+   */
   lastSettledMessageAt: string | null;
+  /**
+   * 按会话（sessionId=chatId，bot 维度）隔离的沉淀边界。
+   * 修复双 bot 场景：bot A 推进用户级边界后，bot B 边界之前的消息永不沉淀。
+   */
+  lastSettledBySession?: Record<string, string> | null;
 }
 
 /** agent_long_term_memories 行中的回调元信息。 */

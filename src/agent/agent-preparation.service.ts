@@ -604,8 +604,16 @@ export class AgentPreparationService {
     }
 
     if (state.lastCandidatePool?.length) {
-      const jobLines = state.lastCandidatePool.map((j, i) => this.formatJobMemoryLine(j, i + 1));
-      sections.push(`## 上轮候选岗位池\n${jobLines.join('\n')}`);
+      // 渲染上限对齐 presentedJobs 的 slice(0,10)：候选池是唯一写入端无 cap 的池子
+      // （工具单页 20 条且可能放宽），全量渲染会让 memoryBlock 无界膨胀。
+      // Redis 中仍保留全量池供 jobId 复用/品牌回指匹配。
+      const MAX_POOL_LINES = 10;
+      const pool = state.lastCandidatePool.slice(0, MAX_POOL_LINES);
+      const jobLines = pool.map((j, i) => this.formatJobMemoryLine(j, i + 1));
+      const omitted = state.lastCandidatePool.length - pool.length;
+      const omittedNote =
+        omitted > 0 ? `\n（另有 ${omitted} 个候选岗位未展示，可通过工具重新查询）` : '';
+      sections.push(`## 上轮候选岗位池\n${jobLines.join('\n')}${omittedNote}`);
     }
 
     if (state.presentedJobs?.length) {
