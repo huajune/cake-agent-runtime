@@ -231,10 +231,31 @@ export const EntityExtractionResultSchema = z.object({
     .describe('提取与推理说明：列出每个字段的来源（直接提取/推理得出），推理字段需说明推理链'),
 });
 
+/** LLM 声明的"候选人明确提供"字段及其原文证据。 */
+export const ExplicitProvenanceEntrySchema = z.object({
+  field: z
+    .string()
+    .describe('interview_info 下的字段名，如 "phone"、"age"、"has_health_certificate"'),
+  quote: z
+    .string()
+    .describe('候选人原话中的逐字片段（必须能在候选人消息里原样找到，否则该声明无效）'),
+});
+
+export type ExplicitProvenanceEntry = z.infer<typeof ExplicitProvenanceEntrySchema>;
+
 /** LLM 结构化输出 schema — city 字段为字符串 */
 export const LLMEntityExtractionResultSchema = z.object({
   interview_info: InterviewInfoSchema,
   preferences: LLMPreferencesSchema,
+  explicit_provenance: z
+    .array(ExplicitProvenanceEntrySchema)
+    .nullable()
+    .optional()
+    .describe(
+      '候选人明确提供的 interview_info 字段清单：仅当字段值来自结构化表单回填（「年龄：37」）' +
+        '或候选人直接自陈（"我有健康证""我今年37"）时列入，并附逐字原文片段；' +
+        '由上下文推断、或助手提及后候选人仅附和的字段一律不列',
+    ),
   reasoning: z
     .string()
     .describe('提取与推理说明：列出每个字段的来源（直接提取/推理得出），推理字段需说明推理链'),

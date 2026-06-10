@@ -5,8 +5,11 @@ import { SpongeService } from '@/sponge/sponge.service';
 import { RedisStore } from '../stores/redis.store';
 import { MemoryConfig } from '../memory.config';
 import { deepMerge } from '../stores/deep-merge.util';
+import { z } from 'zod';
 import {
   EntityExtractionResultSchema,
+  ExplicitProvenanceEntrySchema,
+  type ExplicitProvenanceEntry,
   LLMEntityExtractionResultSchema,
   type EntityExtractionResult,
   type HighConfidenceFacts,
@@ -420,7 +423,8 @@ export class SessionService {
       ruleFacts,
       MessageParser.formatCurrentTime(),
     );
-    const llmFacts = mergeDetectedBrands(await this.callLLM(prompt), aliasHints);
+    const { facts: llmRaw, explicitProvenance } = await this.callLLM(prompt);
+    const llmFacts = mergeDetectedBrands(llmRaw, aliasHints);
     // 先 sanitize LLM 输出，再 merge 规则 — 确保 LLM 昵称被 drop 后规则的结构化姓名能补位
     const { sanitized: sanitizedLlm, droppedName } = sanitizeInterviewName(llmFacts, userMessages);
     if (droppedName) {
@@ -429,14 +433,18 @@ export class SessionService {
       );
     }
     const mergedFactValues = this.mergeHighConfidenceRuleFacts(sanitizedLlm, ruleFactValues);
-    const newFacts = this.applyHighConfidenceMetadata(
-      toSessionFacts(mergedFactValues, {
-        confidence: 'medium',
-        source: 'llm',
-        evidence: this.buildLlmFactEvidence(mergedFactValues.reasoning),
-        extractedAt: new Date().toISOString(),
-      }),
-      highConfidenceRuleFacts,
+    const newFacts = this.applyExplicitProvenanceUpgrade(
+      this.applyHighConfidenceMetadata(
+        toSessionFacts(mergedFactValues, {
+          confidence: 'medium',
+          source: 'llm',
+          evidence: this.buildLlmFactEvidence(mergedFactValues.reasoning),
+          extractedAt: new Date().toISOString(),
+        }),
+        highConfidenceRuleFacts,
+      ),
+      explicitProvenance,
+      userMessages,
     );
 
     // sanitizer 命中且规则也没补上真名时，用 forceNullFields 显式覆盖
@@ -447,7 +455,9 @@ export class SessionService {
     });
   }
 
-  private async callLLM(prompt: string): Promise<EntityExtractionResult> {
+  private async callLLM(
+    prompt: string,
+  ): Promise<{ facts: EntityExtractionResult; explicitProvenance: ExplicitProvenanceEntry[] }> {
     try {
       const result = await this.llm.generateStructured({
         role: ModelRole.Extract,
@@ -459,13 +469,102 @@ export class SessionService {
         prompt,
       });
 
+      // explicit_provenance 不属于存储态 schema，归一化前单独取出。
+      const rawOutput = result.output as { explicit_provenance?: unknown };
+      const provenanceParse = z
+        .array(ExplicitProvenanceEntrySchema)
+        .nullable()
+        .optional()
+        .safeParse(rawOutput?.explicit_provenance);
+      const explicitProvenance = provenanceParse.success ? (provenanceParse.data ?? []) : [];
+
       // 归一化：LLM 输出的 city 字符串经 EntityExtractionResultSchema 转为 CityFact 对象
       const parsed = EntityExtractionResultSchema.parse(result.output);
-      return this.backfillCityFromWhitelist(parsed);
+      return { facts: this.backfillCityFromWhitelist(parsed), explicitProvenance };
     } catch (err) {
       this.logger.warn('[extractFacts] LLM extraction failed, using fallback', err);
-      return FALLBACK_EXTRACTION;
+      return { facts: FALLBACK_EXTRACTION, explicitProvenance: [] };
     }
+  }
+
+  /**
+   * 候选人明确提供的字段，置信度可由 LLM 来源声明升级到 high 的白名单。
+   *
+   * 刻意排除：
+   * - name：报名真名校验红线，升级通道仍只走规则的结构化姓名识别；
+   * - applied_store / applied_position / interview_time：事务字段升 high 后，
+   *   候选人改约时新一轮 medium 提取会被置信度守卫拒绝覆盖，反而制造新 bug。
+   */
+  private static readonly EXPLICIT_UPGRADE_FIELDS = new Set([
+    'phone',
+    'gender',
+    'age',
+    'education',
+    'has_health_certificate',
+    'height',
+    'weight',
+    'is_student',
+    'household_register_province',
+  ]);
+
+  /**
+   * 按 LLM 的来源声明升级置信度：candidate_explicit（表单回填/直接自陈）→ high/candidate。
+   *
+   * 背景：LLM 提取整组统一打 medium，候选人在收资表单明确回填的字段（仅因规则正则
+   * 没接住）也被一刀切成 medium，工具预填（只信 high）拿不到 → 重复收资。
+   * 防 LLM 高报：声明必须附逐字 quote，且 quote 能在候选人消息原文中找到才生效；
+   * phone 额外做手机号格式校验。
+   */
+  private applyExplicitProvenanceUpgrade(
+    facts: SessionFacts,
+    provenance: ExplicitProvenanceEntry[],
+    userMessages: string[],
+  ): SessionFacts {
+    if (provenance.length === 0) return facts;
+
+    const result: SessionFacts = {
+      ...facts,
+      interview_info: { ...facts.interview_info },
+    };
+    const target = result.interview_info as unknown as Record<string, unknown>;
+
+    for (const entry of provenance) {
+      // 容忍 "interview_info.phone" 与 "phone" 两种写法
+      const field = entry.field.includes('.') ? entry.field.split('.').pop()! : entry.field;
+      if (!SessionService.EXPLICIT_UPGRADE_FIELDS.has(field)) continue;
+
+      const quote = entry.quote?.trim();
+      if (!quote || quote.length < 2) continue;
+      if (!userMessages.some((message) => message.includes(quote))) {
+        this.logger.debug(
+          `[extractFacts] explicit_provenance quote 未在候选人消息中找到，拒绝升级 ${field}`,
+        );
+        continue;
+      }
+
+      const current = target[field];
+      if (!isSessionFactValue(current)) continue;
+      if (sessionFactConfidenceRank(current.confidence) >= sessionFactConfidenceRank('high')) {
+        continue;
+      }
+      if (field === 'phone' && !/^1\d{10}$/.test(String(current.value))) continue;
+
+      const meta = {
+        confidence: 'high' as const,
+        source: 'candidate' as const,
+        evidence: truncateEvidence(`候选人明确提供："${quote}"`),
+        extractedAt: new Date().toISOString(),
+      };
+      target[field] = { ...current, ...meta };
+      if (field === 'gender') {
+        target.gender_source = sessionFactValue('candidate' as const, meta);
+      }
+      this.logger.log(
+        `[extractFacts] 来源声明升级：${field} medium→high（候选人明确提供，quote 已验证）`,
+      );
+    }
+
+    return result;
   }
 
   private ensureSessionFacts(facts: EntityExtractionResult | SessionFacts): SessionFacts {

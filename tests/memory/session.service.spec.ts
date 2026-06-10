@@ -375,6 +375,125 @@ describe('SessionService', () => {
     });
   });
 
+  describe('explicit provenance confidence upgrade', () => {
+    const llmOutputWith = (
+      info: Partial<EntityExtractionResult['interview_info']>,
+      provenance: Array<{ field: string; quote: string }> | null,
+    ) => ({
+      ...FALLBACK_EXTRACTION,
+      interview_info: { ...FALLBACK_EXTRACTION.interview_info, ...info },
+      explicit_provenance: provenance,
+      reasoning: 'test',
+    });
+
+    const savedInterviewInfo = () => {
+      const saved = mockRedisStore.set.mock.calls.at(-1)?.[1] as {
+        facts: { interview_info: Record<string, { confidence: string; source: string } | null> };
+      };
+      return saved.facts.interview_info;
+    };
+
+    it('upgrades form-filled fields to high/candidate when quote is verified', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured(
+          llmOutputWith({ has_health_certificate: '有', age: '37' }, [
+            { field: 'has_health_certificate', quote: '健康证：有' },
+            { field: 'age', quote: '年龄：37' },
+          ]),
+        ),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '姓名：张三\n年龄：37\n健康证：有' },
+      ]);
+
+      const info = savedInterviewInfo();
+      // 健康证："健康证：有" 规则层无结构化提取器，靠来源声明升级通道
+      expect(info.has_health_certificate).toEqual(
+        expect.objectContaining({ confidence: 'high', source: 'candidate' }),
+      );
+      // 年龄：标准表单格式规则层本就接得住（high/rule），升级通道正确跳过已 high 字段；
+      // 业务语义断言是 confidence=high（工具可消费），不锁定通道
+      expect(info.age).toEqual(expect.objectContaining({ confidence: 'high' }));
+    });
+
+    it('rejects upgrade when quote is not found in candidate messages (anti over-claim)', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured(
+          llmOutputWith({ has_health_certificate: '有' }, [
+            { field: 'has_health_certificate', quote: '我有健康证' },
+          ]),
+        ),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '应该是有证的吧' },
+      ]);
+
+      const info = savedInterviewInfo();
+      expect(info.has_health_certificate).toEqual(
+        expect.objectContaining({ confidence: 'medium', source: 'llm' }),
+      );
+    });
+
+    it('never upgrades name or transactional fields even when claimed', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured(
+          llmOutputWith({ applied_store: '日月光店', interview_time: '6月11日 14:00' }, [
+            { field: 'applied_store', quote: '日月光店' },
+            { field: 'interview_time', quote: '明天下午两点' },
+          ]),
+        ),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '就报日月光店，明天下午两点面试' },
+      ]);
+
+      const info = savedInterviewInfo();
+      expect(info.applied_store).toEqual(
+        expect.objectContaining({ confidence: 'medium', source: 'llm' }),
+      );
+      expect(info.interview_time).toEqual(
+        expect.objectContaining({ confidence: 'medium', source: 'llm' }),
+      );
+    });
+
+    it('rejects phone upgrade when value is not a valid mobile number', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured(
+          llmOutputWith({ phone: '021-1234567' }, [{ field: 'phone', quote: '021-1234567' }]),
+        ),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '电话 021-1234567' },
+      ]);
+
+      const info = savedInterviewInfo();
+      expect(info.phone).toEqual(expect.objectContaining({ confidence: 'medium', source: 'llm' }));
+    });
+
+    it('marks gender_source candidate alongside gender upgrade', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(
+        mockStructured(llmOutputWith({ gender: '女' }, [{ field: 'gender', quote: '性别：女' }])),
+      );
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '性别：女' },
+      ]);
+
+      const info = savedInterviewInfo();
+      expect(info.gender).toEqual(expect.objectContaining({ confidence: 'high' }));
+      expect(info.gender_source).toEqual(expect.objectContaining({ value: 'candidate' }));
+    });
+  });
+
   describe('session segment trimming', () => {
     it('should drop messages from an older session segment (gap >= settlementGap) on extraction', async () => {
       // 回归张漪 case：session facts 过期后首次提取吃了 5 天前的旧会话历史，
