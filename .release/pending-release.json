@@ -1,9 +1,86 @@
 {
   "baseVersion": "5.13.1",
-  "nextVersion": "5.13.1",
+  "nextVersion": "5.13.2",
   "updatedAt": "2026-06-10",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "280",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/280",
+      "title": "修正元数据 push 的 force-with-lease stale info",
+      "author": "ArielZhu",
+      "mergedAt": "2026-06-10",
+      "businessUpdates": [
+        "修正元数据 push 的 force-with-lease stale info"
+      ],
+      "summary": [
+        "修正元数据 push 的 force-with-lease stale info"
+      ],
+      "features": [],
+      "fixes": [
+        "修正元数据 push 的 force-with-lease stale info"
+      ],
+      "optimizations": [],
+      "ops": [],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "YAML 通过 safe_load 校验",
+        "合并后将用 workflow_dispatch（pr_number=279）补跑元数据，同时实测修复 3 的补偿链路"
+      ]
+    },
+    {
+      "number": "279",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/279",
+      "title": "修复发版自动化的四个流程缺陷",
+      "author": "ArielZhu",
+      "mergedAt": "2026-06-10",
+      "businessUpdates": [
+        "修复发版自动化的四个流程缺陷"
+      ],
+      "summary": [
+        "修复 v5.13.1 发版全程暴露的四个自动化缺陷，此后 bot PR 不再需要人工 close/reopen 触发检查，元数据条目不再丢失，补偿模式推送认证正常，release PR 合并方式有明确引导"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "ci.yml 新增 workflow_dispatch 触发器；元数据 PR、固化 PR、回同步 PR 创建后主动在 bot 分支上派发 ci.yml，使 required check 正确落在 PR head SHA，不再依赖人工 close/reopen",
+        "分支重建前先从未合并的元数据 PR 分支恢复三个元数据文件再追加，防止累计发版条目被覆盖丢失（v5.13.1 期间 #270/#271 曾两次丢失需手工补录）",
+        "补偿模式（from_pr/to_pr）推送改为显式携带 GH_TOKEN 的 URL，修复 claude-code-action OIDC 模式覆写本地 git 凭证导致的推送认证失败",
+        "release PR 与固化 PR body 明确标注必须使用 Squash and merge，避免因 master 线性历史规则导致 merge commit 被拒"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "两个 workflow YAML 通过 yaml.safe_load 校验",
+        "build-release-pr-body.js 干跑输出正确包含合并方式提示行",
+        "node --check 通过"
+      ]
+    },
+    {
+      "number": "282",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/282",
+      "title": "dispatch 模式下用 commit status 满足必需检查",
+      "author": "ArielZhu",
+      "mergedAt": "2026-06-10",
+      "businessUpdates": [
+        "dispatch 模式下用 commit status 满足必需检查"
+      ],
+      "summary": [
+        "dispatch 模式下用 commit status 满足必需检查"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "dispatch 模式下用 commit status 满足必需检查"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    }
+  ],
   "lastRelease": {
     "version": "5.13.1",
     "date": "2026-06-10",
