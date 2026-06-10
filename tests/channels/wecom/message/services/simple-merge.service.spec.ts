@@ -158,11 +158,7 @@ describe('SimpleMergeService', () => {
       expect(result.messages).toHaveLength(2);
       expect(result.snapshotSize).toBe(2);
       expect(result.batchId).toMatch(/^batch_chat-123_\d+$/);
-      expect(mockRedisService.lrange).toHaveBeenCalledWith(
-        'wecom:message:pending:chat-123',
-        0,
-        -1,
-      );
+      expect(mockRedisService.lrange).toHaveBeenCalledWith('wecom:message:pending:chat-123', 0, -1);
       // 关键改动：claim 阶段不再 LTRIM，只有显式 ack 才裁掉
       expect(mockRedisService.ltrim).not.toHaveBeenCalled();
     });
@@ -175,11 +171,7 @@ describe('SimpleMergeService', () => {
       expect(result.messages).toHaveLength(1);
       expect(result.snapshotSize).toBe(1);
       expect(result.batchId).toBe('');
-      expect(mockRedisService.lrange).toHaveBeenCalledWith(
-        'wecom:message:pending:chat-123',
-        2,
-        -1,
-      );
+      expect(mockRedisService.lrange).toHaveBeenCalledWith('wecom:message:pending:chat-123', 2, -1);
     });
 
     it('should return empty messages and snapshotSize=0 when queue is empty', async () => {
@@ -219,11 +211,7 @@ describe('SimpleMergeService', () => {
     it('should LTRIM the first count items from pending', async () => {
       await service.ackPendingMessages('chat-123', 3);
 
-      expect(mockRedisService.ltrim).toHaveBeenCalledWith(
-        'wecom:message:pending:chat-123',
-        3,
-        -1,
-      );
+      expect(mockRedisService.ltrim).toHaveBeenCalledWith('wecom:message:pending:chat-123', 3, -1);
     });
 
     it('should be a no-op when count <= 0', async () => {
@@ -269,6 +257,45 @@ describe('SimpleMergeService', () => {
       const result = await service.checkAndProcessNewMessages('chat-error');
 
       expect(result).toBe(false);
+    });
+  });
+
+  describe('scheduleLockRetryCheck', () => {
+    it('should refresh pending TTL and schedule a delayed re-check when pending exists', async () => {
+      mockRedisService.llen.mockResolvedValue(2);
+
+      await service.scheduleLockRetryCheck('chat-123');
+
+      // 续期 pending / lastMessageAt，保证消息能活到孤悬锁过期之后
+      expect(mockRedisService.expire).toHaveBeenCalledWith('wecom:message:pending:chat-123', 300);
+      expect(mockRedisService.expire).toHaveBeenCalledWith(
+        'wecom:message:last-message-at:chat-123',
+        300,
+      );
+      expect(mockMessageQueue.add).toHaveBeenCalledWith(
+        'process',
+        { chatId: 'chat-123' },
+        expect.objectContaining({
+          delay: 30000,
+          jobId: expect.stringContaining('chat-123:lockretry:'),
+        }),
+      );
+    });
+
+    it('should be a no-op when pending queue is empty', async () => {
+      mockRedisService.llen.mockResolvedValue(0);
+
+      await service.scheduleLockRetryCheck('chat-empty');
+
+      expect(mockRedisService.expire).not.toHaveBeenCalled();
+      expect(mockMessageQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('should swallow queue errors instead of failing the caller', async () => {
+      mockRedisService.llen.mockResolvedValue(1);
+      mockMessageQueue.add.mockRejectedValue(new Error('Queue error'));
+
+      await expect(service.scheduleLockRetryCheck('chat-err')).resolves.not.toThrow();
     });
   });
 
