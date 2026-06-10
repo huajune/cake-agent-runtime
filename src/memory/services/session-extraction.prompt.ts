@@ -1,13 +1,17 @@
 import type { BrandItem } from '@/sponge/sponge.types';
 import type { BrandAliasHint } from '../facts/high-confidence-facts';
 import { formatExtractionFactLines } from '../formatters/fact-lines.formatter';
-import type { EntityExtractionResult, HighConfidenceFacts } from '../types/session-facts.types';
+import type {
+  EntityExtractionResult,
+  HighConfidenceFacts,
+  SessionFacts,
+} from '../types/session-facts.types';
 
 /** 结构化事实提取的系统提示词。 */
 export const SESSION_EXTRACTION_SYSTEM_PROMPT = `你是结构化事实提取引擎，从招募经理与候选人的对话历史中提取结构化事实信息。
 
 ## 提取原则
-- 累积式：从整个对话历史中累积提取，不只看最后一轮
+- 增量式：[已确认事实] 是此前轮次已提取的结果，无需重复输出未变化的字段；你只需从本轮对话窗口中**补充新信息、纠正已确认事实中的错误**（用户改口/纠正时以最新表述为准）。没有 [已确认事实] 时按全量提取处理
 - 保留原话：除非有特殊说明，字段值保留用户的原始表述
 - 合理推理：可以根据上下文语境和常识知识进行合理推断，但不要凭空编造
 - 省略缺失：对话中未提及且无法合理推断的字段省略
@@ -137,6 +141,41 @@ function formatRuleFactsSection(
   return lines.length > 0 ? lines.join('\n') : '无';
 }
 
+/**
+ * 品牌信息注入瘦身：命中别名的品牌列全量条目（含别名，归一化需要），
+ * 其余品牌只列名称（保留"全量品牌词典"的归一化能力，砍掉别名占的大头——
+ * 全量含别名注入曾是单次提取 prompt 里最大的固定成本块，估 3-8K tokens）。
+ */
+function formatBrandSection(brandData: BrandItem[], aliasHints: BrandAliasHint[]): string {
+  if (brandData.length === 0) return '暂无品牌数据';
+
+  const hintBrandNames = new Set(aliasHints.map((hint) => hint.brandName));
+  const detailed = brandData.filter((b) => hintBrandNames.has(b.name));
+  const namesOnly = brandData.filter((b) => !hintBrandNames.has(b.name)).map((b) => b.name);
+
+  const parts: string[] = [];
+  if (detailed.length > 0) {
+    parts.push(
+      detailed
+        .map((b) => `- ${b.name}${b.aliases.length > 0 ? `（别称：${b.aliases.join('、')}）` : ''}`)
+        .join('\n'),
+    );
+  }
+  if (namesOnly.length > 0) {
+    parts.push(
+      `其余合作品牌（仅名称，brands 字段只能填这些标准名或上面的命中品牌）：${namesOnly.join('、')}`,
+    );
+  }
+  return parts.join('\n');
+}
+
+/** 已确认事实注入：让增量提取真正"在已知事实基础上补充/纠正"，而不是盲提。 */
+function formatKnownFactsSection(previousFacts: SessionFacts | null): string | null {
+  if (!previousFacts) return null;
+  const lines = formatExtractionFactLines(previousFacts);
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
 /** 组装结构化事实提取的用户提示词。 */
 export function buildSessionExtractionPrompt(
   brandData: BrandItem[],
@@ -145,15 +184,9 @@ export function buildSessionExtractionPrompt(
   aliasHints: BrandAliasHint[] = [],
   ruleFacts: EntityExtractionResult | HighConfidenceFacts | null = null,
   currentTime?: string,
+  previousFacts: SessionFacts | null = null,
 ): string {
-  const brandInfo =
-    brandData.length > 0
-      ? brandData
-          .map(
-            (b) => `- ${b.name}${b.aliases.length > 0 ? `（别称：${b.aliases.join('、')}）` : ''}`,
-          )
-          .join('\n')
-      : '暂无品牌数据';
+  const brandInfo = formatBrandSection(brandData, aliasHints);
 
   const aliasHintInfo =
     aliasHints.length > 0
@@ -165,6 +198,8 @@ export function buildSessionExtractionPrompt(
           .join('\n')
       : '无';
 
+  const knownFacts = formatKnownFactsSection(previousFacts);
+
   return [
     ...(currentTime ? ['[当前时间]', currentTime, ''] : []),
     '[可用品牌信息]',
@@ -173,6 +208,9 @@ export function buildSessionExtractionPrompt(
     '[品牌别名命中提示]',
     aliasHintInfo,
     '',
+    ...(knownFacts
+      ? ['[已确认事实（此前轮次提取，沿用即可；本轮只需补充新信息或纠正错误）]', knownFacts, '']
+      : []),
     '[规则模式匹配线索（供参考，结合上下文判断是否准确）]',
     formatRuleFactsSection(ruleFacts),
     '',

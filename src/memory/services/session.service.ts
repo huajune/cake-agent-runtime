@@ -411,6 +411,21 @@ export class SessionService {
     );
 
     const brandData = await this.sponge.fetchBrandList();
+
+    // 纯应答闸门：已有 facts、本轮最后一条用户消息是纯应答词（"好的/嗯嗯/谢谢"）、
+    // 且对该消息的规则提取零命中时，跳过本轮 LLM 提取——这类轮次没有新事实，
+    // 却要支付完整的提取调用（品牌列表 + 规则线索 + 历史，数千 tokens）。
+    // 信息不会永久丢失：下一轮非应答消息的增量窗口仍覆盖本轮上下文（含助手
+    // 推荐 + 本次应答），"嗯嗯确认岗位"语义会在下一轮被补提取。
+    const lastUserText = MessageParser.stripTimeContext(userMessages.at(-1) ?? '').trim();
+    if (previousFacts && this.isPureAcknowledgment(lastUserText)) {
+      const currentTurnRuleHits = extractHighConfidenceFacts([lastUserText], brandData);
+      if (!currentTurnRuleHits) {
+        this.logger.log(`[extractFacts] 纯应答轮无新信号，跳过 LLM 提取：「${lastUserText}」`);
+        return;
+      }
+    }
+
     const aliasHints = detectBrandAliasHints(userMessages, brandData);
     const ruleFacts = extractHighConfidenceFacts(userMessages, brandData);
     const highConfidenceRuleFacts = filterHighConfidenceFacts(ruleFacts);
@@ -422,6 +437,7 @@ export class SessionService {
       aliasHints,
       ruleFacts,
       MessageParser.formatCurrentTime(),
+      previousFacts,
     );
     const { facts: llmRaw, explicitProvenance } = await this.callLLM(prompt);
     const llmFacts = mergeDetectedBrands(llmRaw, aliasHints);
@@ -569,6 +585,19 @@ export class SessionService {
 
   private ensureSessionFacts(facts: EntityExtractionResult | SessionFacts): SessionFacts {
     return SessionFactsSchema.parse(facts) as SessionFacts;
+  }
+
+  /**
+   * 纯应答词判定：整条消息（去时间后缀）由 1-3 个应答/寒暄词 + 标点构成。
+   * 用白名单而非长度判断，避免把"好的约明天"这类短但有信息的消息误判。
+   */
+  private isPureAcknowledgment(text: string): boolean {
+    if (!text) return false;
+    if (text.length > 12) return false;
+    const ackWord =
+      '(?:好的|好滴|好嘞|好呀|好|嗯+|嗯呢|可以|行|没事|没问题|是的|对的|对|ok|okk|👌|收到|知道了|明白了?|了解|谢谢你?|谢了|麻烦了|辛苦了|在吗|在不在|你好|您好|哦+|噢|嗷|哈+)';
+    const pattern = new RegExp(`^(?:${ackWord}[~～。.!！?？，,、\\s]*){1,3}$`, 'i');
+    return pattern.test(text);
   }
 
   private buildLlmFactEvidence(reasoning: string | null | undefined): string {

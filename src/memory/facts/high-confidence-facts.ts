@@ -517,8 +517,7 @@ export function detectBrandAliasHints(
 ): BrandAliasHint[] {
   if (userMessages.length === 0 || brandData.length === 0) return [];
 
-  const candidates = buildBrandCandidates(brandData);
-  const categories = buildResolvedCategories(brandData);
+  const { candidates, categories } = getBrandMatchAssets(brandData);
   const hints: BrandAliasHint[] = [];
   const seen = new Set<string>();
 
@@ -913,8 +912,27 @@ function extractAge(message: string): string | null {
 }
 
 function extractGender(message: string): string | null {
-  if (/(我是|本人|性别)[：: ]?(男生|男)/.test(message) || /男的/.test(message)) return '男';
-  if (/(我是|本人|性别)[：: ]?(女生|女)/.test(message) || /女的/.test(message)) return '女';
+  // 裸 /男的/ /女的/ 误捕面太大（"我朋友是男的""你们要男的女的吗"）。收紧为：
+  // 1) 明确自陈/表单前缀照旧；
+  // 2) "男的/女的"仅在【独立短语段】（标点/句首分隔，如"我25岁，男的，本科"）按自述接受；
+  // 3) 询问/岗位要求/第三人称/并提语境一律排除。
+  if (/男的女的|女的男的/.test(message)) return null;
+  if (/(?:要|招|找|限|收)\s*(?:男|女)的/.test(message)) return null;
+  if (
+    /(?:朋友|对象|老公|老婆|男朋友|女朋友|孩子|儿子|女儿|同学|室友|他|她)[^，,。;；]{0,4}[男女]的/.test(
+      message,
+    )
+  ) {
+    return null;
+  }
+
+  if (/(我是|本人|性别)[：: ]?(男生|男)/.test(message)) return '男';
+  if (/(我是|本人|性别)[：: ]?(女生|女)/.test(message)) return '女';
+
+  const standalone = /(?:^|[，,。;；！!\s])(?:就?是)?([男女])的(?=[，,。;；！!~～\s]|$)/.exec(
+    message,
+  );
+  if (standalone) return standalone[1];
   return null;
 }
 
@@ -1375,6 +1393,26 @@ function normalizeRawDistrict(candidate: string): string {
   return normalizeDistrictForLookup(withoutPrefix);
 }
 
+/** "X附近"里 X 是泛指而非地名的停用词：这些词入库只会污染 pref.location。 */
+const NEARBY_LOCATION_STOPWORDS = new Set([
+  '公司',
+  '学校',
+  '单位',
+  '宿舍',
+  '小区',
+  '我家',
+  '你家',
+  '我们家',
+  '这边',
+  '那边',
+  '这里',
+  '那里',
+  '门店',
+  '店里',
+  '住的地方',
+  '上班的地方',
+]);
+
 function extractNearbyLocations(message: string, districts: string[]): string[] {
   const nearbyMatch = message.match(
     /(?:我在|人在|在|住在)?([\u4e00-\u9fa5A-Za-z0-9]{2,20})(?:附近|旁边)/,
@@ -1383,6 +1421,9 @@ function extractNearbyLocations(message: string, districts: string[]): string[] 
 
   const location = nearbyMatch[1].trim();
   if (!location) return [];
+  // 泛指词（"公司附近/家附近"）不是地名直接丢弃；带前缀的（"我公司附近"）按后缀命中也丢
+  if (NEARBY_LOCATION_STOPWORDS.has(location)) return [];
+  if ([...NEARBY_LOCATION_STOPWORDS].some((word) => location.endsWith(word))) return [];
   if (districts.some((district) => location.includes(district))) return [];
   return [location];
 }
@@ -1398,6 +1439,34 @@ function extractPositionShareLocations(message: string): string[] {
   if (address) locations.push(address);
 
   return Array.from(new Set(locations.filter(Boolean)));
+}
+
+/**
+ * 品牌匹配资产（候选别名表 + 品类展开）按 brandData 引用 memoize。
+ *
+ * brandData 来自 SpongeService 的 30 分钟缓存，引用在缓存有效期内稳定；
+ * 此前每轮对话（且一轮内最多两次：lifecycle 前置识别 + extraction）都对
+ * 全量品牌做 normalize + sort 全量重建，纯 CPU 浪费且随品牌规模线性放大。
+ */
+let brandAssetsCache: {
+  source: BrandItem[];
+  candidates: BrandCandidate[];
+  categories: ResolvedBrandCategory[];
+} | null = null;
+
+function getBrandMatchAssets(brandData: BrandItem[]): {
+  candidates: BrandCandidate[];
+  categories: ResolvedBrandCategory[];
+} {
+  if (brandAssetsCache && brandAssetsCache.source === brandData) {
+    return brandAssetsCache;
+  }
+  brandAssetsCache = {
+    source: brandData,
+    candidates: buildBrandCandidates(brandData),
+    categories: buildResolvedCategories(brandData),
+  };
+  return brandAssetsCache;
 }
 
 function buildBrandCandidates(brandData: BrandItem[]): BrandCandidate[] {

@@ -375,6 +375,72 @@ describe('SessionService', () => {
     });
   });
 
+  describe('pure-acknowledgment gate', () => {
+    const existingFactsState = () => ({
+      content: {
+        facts: {
+          ...FALLBACK_EXTRACTION,
+          interview_info: { ...FALLBACK_EXTRACTION.interview_info, age: '25' },
+        },
+        lastCandidatePool: null,
+        presentedJobs: null,
+        currentFocusJob: null,
+      },
+    });
+
+    it('skips LLM extraction when last user message is a pure acknowledgment with no rule hits', async () => {
+      mockRedisStore.get.mockResolvedValue(existingFactsState());
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '我25岁' },
+        { role: 'assistant', content: '好的，帮你看看' },
+        { role: 'user', content: '好的 谢谢' },
+      ]);
+
+      expect(mockLlm.generateStructured).not.toHaveBeenCalled();
+      expect(mockRedisStore.set).not.toHaveBeenCalled();
+    });
+
+    it('still extracts when acknowledgment carries a rule signal (e.g. brand mention)', async () => {
+      mockRedisStore.get.mockResolvedValue(existingFactsState());
+      mockLlm.generateStructured.mockResolvedValue(mockStructured(FALLBACK_EXTRACTION));
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '我25岁' },
+        { role: 'assistant', content: '推荐你看看' },
+        { role: 'user', content: '好的，13800138000' },
+      ]);
+
+      expect(mockLlm.generateStructured).toHaveBeenCalled();
+    });
+
+    it('does not skip on first extraction (no previous facts) even for short messages', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(mockStructured(FALLBACK_EXTRACTION));
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '你好' },
+      ]);
+
+      expect(mockLlm.generateStructured).toHaveBeenCalled();
+    });
+
+    it('injects previously confirmed facts into the incremental extraction prompt', async () => {
+      mockRedisStore.get.mockResolvedValue(existingFactsState());
+      mockLlm.generateStructured.mockResolvedValue(mockStructured(FALLBACK_EXTRACTION));
+
+      await service.extractAndSave('corp1', 'user1', 'session1', [
+        { role: 'user', content: '我25岁' },
+        { role: 'assistant', content: '好的' },
+        { role: 'user', content: '我想找浦东的工作' },
+      ]);
+
+      const prompt = mockLlm.generateStructured.mock.calls[0][0].prompt as string;
+      expect(prompt).toContain('[已确认事实');
+      expect(prompt).toContain('年龄: 25');
+    });
+  });
+
   describe('explicit provenance confidence upgrade', () => {
     const llmOutputWith = (
       info: Partial<EntityExtractionResult['interview_info']>,
@@ -1136,12 +1202,31 @@ describe('SessionService', () => {
         }),
       );
 
-      await service.extractAndSave('corp1', 'user1', 'sess1', [{ role: 'user', content: '你好' }]);
+      await service.extractAndSave('corp1', 'user1', 'sess1', [
+        { role: 'user', content: '想找工作' },
+      ]);
 
+      // 无品牌命中时只注入名称清单（瘦身），别名不注入
       const callArgs = mockLlm.generateStructured.mock.calls[0][0];
       expect(callArgs.prompt).toContain('海底捞');
       expect(callArgs.prompt).toContain('肯德基');
-      expect(callArgs.prompt).toContain('KFC');
+      expect(callArgs.prompt).toContain('其余合作品牌（仅名称');
+      expect(callArgs.prompt).not.toContain('KFC');
+    });
+
+    it('should include full alias entry for brands hit by alias detection', async () => {
+      mockRedisStore.get.mockResolvedValue(null);
+      mockLlm.generateStructured.mockResolvedValue(mockStructured(FALLBACK_EXTRACTION));
+
+      await service.extractAndSave('corp1', 'user1', 'sess1', [
+        { role: 'user', content: '来一份' },
+      ]);
+
+      const callArgs = mockLlm.generateStructured.mock.calls[0][0];
+      // 命中品牌列全量条目（含别名），供 LLM 做归一化；未命中品牌仍只列名称
+      expect(callArgs.prompt).toContain('来伊份（别称：来一份');
+      expect(callArgs.prompt).toContain('其余合作品牌（仅名称');
+      expect(callArgs.prompt).not.toContain('KFC');
     });
 
     it('should normalize brand aliases into standard brand names before saving facts', async () => {
