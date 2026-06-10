@@ -44,7 +44,8 @@ import {
 export interface BookingGuardInput {
   job: JobDetail;
   name: string;
-  interviewTime: string;
+  /** 面试时间；无面试时段（等通知）岗位合法缺省，缺省时跳过时段校验 */
+  interviewTime?: string;
   supplementAnswers?: Record<string, string>;
   /** 候选人性别：1=男，2=女（来自 booking 工具入参） */
   candidateGenderId?: number;
@@ -180,13 +181,15 @@ function detectHealthCertConflict(
 }
 
 function validateInterviewTimeAgainstSchedule(
-  interviewTime: string,
+  interviewTime: string | undefined,
   job: JobDetail,
 ): ToolErrorReturn | null {
   const analysis = buildJobPolicyAnalysis(job);
   const windows = analysis.interviewWindows;
-  // 该岗位没配面试窗口——无校验源，跳过（保留旧行为）
+  // 该岗位没配面试窗口（等通知岗位）——无校验源，跳过
   if (windows.length === 0) return null;
+  // interviewTime 缺省：booking 入口已对有窗口岗位强制必填，这里只是类型防御
+  if (!interviewTime) return null;
 
   const [date, hms] = interviewTime.split(' ');
   if (!date || !hms) return null;
