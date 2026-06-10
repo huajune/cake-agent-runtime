@@ -112,4 +112,55 @@ export const EXTRACTION_BADCASES: ExtractionBadcaseFixture[] = [
     input: '有小时工吗',
     shouldExtract: { 'preferences.labor_form': '小时工' },
   },
+
+  // ==================== height：表单回填 vs 岗位要求 ====================
+  {
+    description: 'height：表单回填「身高：170」应提取',
+    input: '姓名：张三\n身高：170\n体重：60',
+    shouldExtract: { 'interview_info.height': '170' },
+  },
+  {
+    description: 'height：自述「身高175cm」应提取',
+    input: '我身高175cm，体重68kg',
+    shouldExtract: { 'interview_info.height': '175' },
+  },
+  {
+    description: 'height：岗位要求「身高要求165以上」不得提取',
+    input: '这个岗位身高要求165以上吗',
+    shouldNotExtract: ['interview_info.height'],
+  },
+
+  // ==================== weight：表单回填 vs 岗位要求 ====================
+  {
+    description: 'weight：表单回填「体重：60」应提取',
+    input: '姓名：张三\n体重：60',
+    shouldExtract: { 'interview_info.weight': '60' },
+  },
+  {
+    description: 'weight：自述「体重 68kg」应提取',
+    input: '我身高175cm，体重68kg',
+    shouldExtract: { 'interview_info.weight': '68' },
+  },
+  {
+    description: 'weight：岗位要求「体重不低于50」不得提取',
+    input: '岗位体重不低于50公斤',
+    shouldNotExtract: ['interview_info.weight'],
+  },
+
+  // ==================== household_register_province：仅表单键值对 ====================
+  {
+    description: 'household_register_province：表单回填「户籍：安徽」应提取',
+    input: '姓名：张三\n户籍：安徽',
+    shouldExtract: { 'interview_info.household_register_province': '安徽' },
+  },
+  {
+    description: 'household_register_province：表单回填「籍贯：四川省」应提取省份',
+    input: '姓名：李四\n籍贯：四川省',
+    shouldExtract: { 'interview_info.household_register_province': '四川省' },
+  },
+  {
+    description: 'household_register_province：自由文本「我是安徽人」不做推断不得提取',
+    input: '我是安徽人，想在上海找工作',
+    shouldNotExtract: ['interview_info.household_register_province'],
+  },
 ];

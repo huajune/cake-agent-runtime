@@ -439,11 +439,7 @@ export class SessionService {
       MessageParser.formatCurrentTime(),
       previousFacts,
     );
-    const {
-      facts: llmRaw,
-      explicitProvenance,
-      degraded: llmDegraded,
-    } = await this.callLLM(prompt);
+    const { facts: llmRaw, explicitProvenance, degraded: llmDegraded } = await this.callLLM(prompt);
     const llmFacts = mergeDetectedBrands(llmRaw, aliasHints);
     // 先 sanitize LLM 输出，再 merge 规则 — 确保 LLM 昵称被 drop 后规则的结构化姓名能补位
     const { sanitized: sanitizedLlm, droppedName } = sanitizeInterviewName(llmFacts, userMessages);
@@ -700,6 +696,13 @@ export class SessionService {
       'upload_resume',
       ruleFacts.interview_info.upload_resume,
     );
+    this.applyHighConfidenceField(infoTarget, 'height', ruleFacts.interview_info.height);
+    this.applyHighConfidenceField(infoTarget, 'weight', ruleFacts.interview_info.weight);
+    this.applyHighConfidenceField(
+      infoTarget,
+      'household_register_province',
+      ruleFacts.interview_info.household_register_province,
+    );
 
     this.applyHighConfidenceField(prefTarget, 'brands', ruleFacts.preferences.brands);
     this.applyHighConfidenceField(prefTarget, 'salary', ruleFacts.preferences.salary);
@@ -816,6 +819,16 @@ export class SessionService {
     }
     if (!merged.interview_info.upload_resume && ruleInfo.upload_resume) {
       merged.interview_info.upload_resume = ruleInfo.upload_resume;
+    }
+    if (!merged.interview_info.height && ruleInfo.height)
+      merged.interview_info.height = ruleInfo.height;
+    if (!merged.interview_info.weight && ruleInfo.weight)
+      merged.interview_info.weight = ruleInfo.weight;
+    if (
+      !merged.interview_info.household_register_province &&
+      ruleInfo.household_register_province
+    ) {
+      merged.interview_info.household_register_province = ruleInfo.household_register_province;
     }
 
     const rulePrefs = ruleFacts.preferences;
