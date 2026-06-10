@@ -130,6 +130,7 @@ export class DataCleanupService implements OnModuleInit {
       return;
     }
     await this.timeoutStuckProcessingRecords();
+    await this.interruptStalePostProcessing();
   }
 
   /**
@@ -250,6 +251,26 @@ export class DataCleanupService implements OnModuleInit {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`[数据清理] 标记超时记录失败: ${message}`);
       this.notifyCleanupFailure('timeout-stuck-processing-records', '标记超时记录失败', error);
+    }
+  }
+
+  /**
+   * 将卡死在 running 的 post_processing_status 标记为 interrupted。
+   * turn-end 收尾中途进程被杀时终态不会落库，没有这步兜底，
+   * 记录会永久显示"收尾进行中"，无法区分收尾丢失与正在执行。
+   */
+  private async interruptStalePostProcessing(): Promise<void> {
+    try {
+      const updatedCount = await this.messageProcessingService.interruptStalePostProcessing(30);
+      if (updatedCount > 0) {
+        this.logger.log(
+          `[数据清理] 已将 ${updatedCount} 条收尾丢失的 post_processing_status 标记为 interrupted`,
+        );
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[数据清理] 标记 interrupted 失败: ${message}`);
+      this.notifyCleanupFailure('interrupt-stale-post-processing', '标记收尾丢失记录失败', error);
     }
   }
 

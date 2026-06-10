@@ -8,6 +8,49 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.13.2`
+**最近更新**: `2026-06-10`
+**来源分支**: `develop`
+**累计 PR**: 3
+
+### 更新摘要
+- PR #280 修正元数据 push 的 force-with-lease stale info
+- PR #279 修复 v5.13.1 发版全程暴露的四个自动化缺陷，此后 bot PR 不再需要人工 close/reopen 触发检查，元数据条目不再丢失，补偿模式推送认证正常，release PR 合并方式有明确引导
+- PR #282 dispatch 模式下用 commit status 满足必需检查
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #280 修正元数据 push 的 force-with-lease stale info
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #279 ci.yml 新增 workflow_dispatch 触发器；元数据 PR、固化 PR、回同步 PR 创建后主动在 bot 分支上派发 ci.yml，使 required check 正确落在 PR head SHA，不再依赖人工 close/reopen
+- PR #279 分支重建前先从未合并的元数据 PR 分支恢复三个元数据文件再追加，防止累计发版条目被覆盖丢失（v5.13.1 期间 #270/#271 曾两次丢失需手工补录）
+- PR #279 补偿模式（from_pr/to_pr）推送改为显式携带 GH_TOKEN 的 URL，修复 claude-code-action OIDC 模式覆写本地 git 凭证导致的推送认证失败
+- PR #279 release PR 与固化 PR body 明确标注必须使用 Squash and merge，避免因 master 线性历史规则导致 merge commit 被拒
+- PR #282 dispatch 模式下用 commit status 满足必需检查
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #280 YAML 通过 safe_load 校验
+- PR #280 合并后将用 workflow_dispatch（pr_number=279）补跑元数据，同时实测修复 3 的补偿链路
+- PR #279 两个 workflow YAML 通过 yaml.safe_load 校验
+- PR #279 build-release-pr-body.js 干跑输出正确包含合并方式提示行
+- PR #279 node --check 通过
+<!-- release:pending:end -->
+
 ## [5.13.1] - 2026-06-10
 
 **来源分支**: `develop`

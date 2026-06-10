@@ -145,7 +145,11 @@ describe('SupabaseStore', () => {
 
       const result = await store.getSummaryData('corp1', 'user1');
 
-      expect(result).toEqual({ ...summaryData, lastSettledMessageAt: null });
+      expect(result).toEqual({
+        ...summaryData,
+        lastSettledMessageAt: null,
+        lastSettledBySession: null,
+      });
     });
   });
 
@@ -173,6 +177,7 @@ describe('SupabaseStore', () => {
         p_entry: entry,
         p_last_settled_message_at: entry.endTime,
         p_max_recent: 5,
+        p_session_id: null,
       });
       expect(mockRedis.del).toHaveBeenCalledWith('long-term:corp1:user1');
     });

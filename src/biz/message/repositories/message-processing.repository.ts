@@ -533,26 +533,99 @@ export class MessageProcessingRepository extends BaseRepository {
 
   /**
    * 将过期的 agent_invocation 字段置为 NULL（释放 TOAST 空间）
+   *
+   * 分批执行：PostgREST 连接角色 authenticator 有 statement_timeout=8s，
+   * 单次全量 UPDATE 数千行 TOAST 大字段必然超时（生产曾因此积压数周未清理）。
+   * 每批 p_limit 行，循环到一批不满即清完；maxBatches 防御 RPC 异常时死循环。
+   *
    * @param daysOld 超过多少天的记录将被清理
    * @returns 更新的记录数
    */
-  async nullAgentInvocations(daysOld: number = 7): Promise<number> {
+  async nullAgentInvocations(daysOld: number = 7, batchLimit: number = 200): Promise<number> {
     if (!this.isAvailable()) {
       return 0;
     }
 
+    const maxBatches = 100;
+    let total = 0;
+    let lastBatchCount = 0;
     try {
-      const result = await this.rpc<Array<{ null_agent_invocation: string }>>(
-        'null_agent_invocation',
-        { p_days_old: daysOld },
-      );
-
-      const updatedCount = parseInt(result?.[0]?.null_agent_invocation ?? '0', 10);
-      return updatedCount;
+      for (let batch = 0; batch < maxBatches; batch += 1) {
+        const result = await this.rpc<number>('null_agent_invocation', {
+          p_days_old: daysOld,
+          p_limit: batchLimit,
+        });
+        lastBatchCount = this.asRpcCount(result, 'null_agent_invocation');
+        total += lastBatchCount;
+        if (lastBatchCount < batchLimit) break;
+      }
+      if (lastBatchCount === batchLimit) {
+        this.logger.warn(
+          `[消息处理记录] NULL agent_invocation 达到分批上限 ${maxBatches}×${batchLimit}，可能仍有积压，待下次清理继续`,
+        );
+      }
+      return total;
     } catch (error) {
-      this.logger.error(`[消息处理记录] NULL agent_invocation 失败:`, error);
+      this.logger.error(`[消息处理记录] NULL agent_invocation 失败 (已清理 ${total} 条):`, error);
       throw error;
     }
+  }
+
+  /**
+   * 将卡死在 running 状态的 post_processing_status 标记为 interrupted。
+   *
+   * turn-end 记忆收尾中途进程被杀（发版 SIGTERM/崩溃）时终态永远不会落库，
+   * 记录会永久显示"收尾进行中"。该方法由小时级 cron 兜底调用。
+   *
+   * @param staleMinutes 超过多少分钟仍为 running 视为已丢失（默认 30）
+   * @returns 更新的记录数
+   */
+  async interruptStalePostProcessing(
+    staleMinutes: number = 30,
+    batchLimit: number = 200,
+  ): Promise<number> {
+    if (!this.isAvailable()) {
+      return 0;
+    }
+
+    const maxBatches = 20;
+    let total = 0;
+    let lastBatchCount = 0;
+    try {
+      for (let batch = 0; batch < maxBatches; batch += 1) {
+        const result = await this.rpc<number>('interrupt_stale_post_processing', {
+          p_stale_minutes: staleMinutes,
+          p_limit: batchLimit,
+        });
+        lastBatchCount = this.asRpcCount(result, 'interrupt_stale_post_processing');
+        total += lastBatchCount;
+        if (lastBatchCount < batchLimit) break;
+      }
+      if (lastBatchCount === batchLimit) {
+        this.logger.warn(
+          `[消息处理记录] 标记 interrupted 达到分批上限 ${maxBatches}×${batchLimit}，可能仍有积压，待下次清理继续`,
+        );
+      }
+      return total;
+    } catch (error) {
+      this.logger.error(`[消息处理记录] 标记 interrupted 失败 (已标记 ${total} 条):`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 解析 RPC 计数返回：returns integer 的函数 supabase-js 返回裸数字；
+   * 兼容历史上 `[{ fn_name: '12' }]` 形态的行集返回。
+   */
+  private asRpcCount(result: unknown, fieldName: string): number {
+    if (typeof result === 'number' && Number.isFinite(result)) return result;
+    if (Array.isArray(result)) {
+      const value = (result[0] as Record<string, unknown> | undefined)?.[fieldName];
+      const parsed = Number(value ?? 0);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    const parsed = Number(result ?? 0);
+    return Number.isFinite(parsed) ? parsed : 0;
   }
 
   /**

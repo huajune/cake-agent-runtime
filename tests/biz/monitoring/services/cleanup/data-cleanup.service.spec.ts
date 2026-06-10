@@ -30,6 +30,7 @@ describe('DataCleanupService', () => {
     cleanupRecords: cleanupRecordsMock,
     cleanupMessageProcessingRecords: cleanupRecordsMock,
     timeoutStuckRecords: jest.fn(),
+    interruptStalePostProcessing: jest.fn().mockResolvedValue(0),
   };
 
   const mockUserHostingService = {
@@ -176,6 +177,26 @@ describe('DataCleanupService', () => {
     it('should swallow repository errors', async () => {
       mockSupabaseService.isAvailable.mockReturnValue(true);
       mockMessageProcessingService.timeoutStuckRecords.mockRejectedValue(new Error('DB error'));
+
+      await expect(service.timeoutStuckRecordsHourly()).resolves.not.toThrow();
+    });
+
+    it('should also sweep stale running post-processing as interrupted', async () => {
+      mockSupabaseService.isAvailable.mockReturnValue(true);
+      mockMessageProcessingService.timeoutStuckRecords.mockResolvedValue(0);
+      mockMessageProcessingService.interruptStalePostProcessing.mockResolvedValue(2);
+
+      await service.timeoutStuckRecordsHourly();
+
+      expect(mockMessageProcessingService.interruptStalePostProcessing).toHaveBeenCalledWith(30);
+    });
+
+    it('should swallow interruptStalePostProcessing errors', async () => {
+      mockSupabaseService.isAvailable.mockReturnValue(true);
+      mockMessageProcessingService.timeoutStuckRecords.mockResolvedValue(0);
+      mockMessageProcessingService.interruptStalePostProcessing.mockRejectedValue(
+        new Error('DB error'),
+      );
 
       await expect(service.timeoutStuckRecordsHourly()).resolves.not.toThrow();
     });

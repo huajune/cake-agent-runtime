@@ -41,9 +41,12 @@ export interface PostProcessingStepStatus {
 }
 
 export interface PostProcessingStatus {
-  status: 'running' | 'completed' | 'completed_with_errors' | 'skipped';
+  /** interrupted: 收尾中途进程被杀，由小时级 cron 兜底标记（interrupt_stale_post_processing RPC） */
+  status: 'running' | 'completed' | 'completed_with_errors' | 'skipped' | 'interrupted';
   startedAt: string;
   completedAt?: string;
+  /** cron 兜底标记 interrupted 的时间（由 RPC 写入） */
+  interruptedAt?: string;
   durationMs?: number;
   counts: {
     total: number;

@@ -614,7 +614,7 @@ describe('MessageProcessingRepository', () => {
       expect(result).toBe(0);
     });
 
-    it('should return updated count from RPC', async () => {
+    it('should return updated count from RPC (legacy row-set shape)', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
       mockSupabaseClient.rpc.mockResolvedValue({
@@ -627,18 +627,58 @@ describe('MessageProcessingRepository', () => {
       expect(result).toBe(20);
     });
 
-    it('should use default daysOld of 7', async () => {
+    it('should loop batches until a batch returns less than the limit', async () => {
       mockSupabaseService.isClientInitialized.mockReturnValue(true);
 
-      mockSupabaseClient.rpc.mockResolvedValue({
-        data: [{ null_agent_invocation: '0' }],
-        error: null,
-      });
+      // returns integer 的函数 supabase-js 返回裸数字
+      mockSupabaseClient.rpc
+        .mockResolvedValueOnce({ data: 200, error: null })
+        .mockResolvedValueOnce({ data: 200, error: null })
+        .mockResolvedValueOnce({ data: 35, error: null });
+
+      const result = await repository.nullAgentInvocations(7);
+
+      expect(result).toBe(435);
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledTimes(3);
+    });
+
+    it('should use default daysOld of 7 and pass batch limit', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      mockSupabaseClient.rpc.mockResolvedValue({ data: 0, error: null });
 
       await repository.nullAgentInvocations();
 
       expect(mockSupabaseClient.rpc).toHaveBeenCalledWith('null_agent_invocation', {
         p_days_old: 7,
+        p_limit: 200,
+      });
+    });
+  });
+
+  // ==================== interruptStalePostProcessing ====================
+
+  describe('interruptStalePostProcessing', () => {
+    it('should skip when supabase is not available', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(false);
+
+      const result = await repository.interruptStalePostProcessing();
+
+      expect(result).toBe(0);
+      expect(mockSupabaseClient.rpc).not.toHaveBeenCalled();
+    });
+
+    it('should mark stale running post-processing as interrupted', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      mockSupabaseClient.rpc.mockResolvedValue({ data: 3, error: null });
+
+      const result = await repository.interruptStalePostProcessing(30);
+
+      expect(result).toBe(3);
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledWith('interrupt_stale_post_processing', {
+        p_stale_minutes: 30,
+        p_limit: 200,
       });
     });
   });

@@ -71,7 +71,10 @@ describe('buildJobListTool', () => {
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const executeTool = async (ctx: ToolBuildContext = mockContext, input = defaultInput) => {
-    const builder = buildJobListTool(mockSpongeService as never, { recordEvent: jest.fn() } as never);
+    const builder = buildJobListTool(
+      mockSpongeService as never,
+      { recordEvent: jest.fn() } as never,
+    );
     const builtTool = builder(ctx);
     return builtTool.execute(input as any, {
       toolCallId: 'test',
@@ -82,7 +85,10 @@ describe('buildJobListTool', () => {
   /* eslint-enable @typescript-eslint/no-explicit-any */
 
   it('should describe schedule mismatch and multi-job formatting guardrails', () => {
-    const builder = buildJobListTool(mockSpongeService as never, { recordEvent: jest.fn() } as never);
+    const builder = buildJobListTool(
+      mockSpongeService as never,
+      { recordEvent: jest.fn() } as never,
+    );
     const builtTool = builder(mockContext);
 
     expect(builtTool.description).toContain('只周末');
@@ -748,6 +754,42 @@ describe('buildJobListTool', () => {
     expect(result.queryMeta.distanceThresholdKm).toBe(10);
     expect(result.queryMeta.distanceScanPages).toBe(2);
     expect(result.queryMeta.distanceScanTruncated).toBe(false);
+  });
+
+  it('should keep base filters when store-name fuzzy fallback re-queries (badcase 6a266b51536c9654027cbf40)', async () => {
+    const storeJob = makeJobData({
+      basicInfo: {
+        jobId: 7,
+        brandName: '成都你六姐',
+        storeInfo: {
+          storeName: '上海宝山正大乐城店',
+          storeAddress: '上海市宝山区陆翔路111号',
+          storeCityName: '上海',
+          storeRegionName: '宝山区',
+        },
+      },
+    });
+    mockSpongeService.fetchJobs
+      .mockResolvedValueOnce({ jobs: [], total: 0 })
+      .mockResolvedValueOnce({ jobs: [storeJob], total: 1 });
+
+    const result = await executeTool(mockContext, {
+      ...defaultInput,
+      cityNameList: ['上海'],
+      regionNameList: ['宝山'],
+      brandAliasList: ['成都你六姐'],
+      storeNameList: ['正大乐城'],
+    });
+
+    expect(mockSpongeService.fetchJobs).toHaveBeenCalledTimes(2);
+    // 上游要求至少一个筛选条件：回退查询必须保留城市/品牌等范围筛选，只去掉门店名
+    const fallbackParams = mockSpongeService.fetchJobs.mock.calls[1][0];
+    expect(fallbackParams.cityNameList).toEqual(['上海']);
+    expect(fallbackParams.regionNameList).toEqual(['宝山']);
+    expect(fallbackParams.brandAliasList).toEqual(['成都你六姐']);
+    expect(fallbackParams.storeNameList).toEqual([]);
+    expect(result.queryMeta.storeMatchStrategy).toBe('local_fuzzy_match');
+    expect(result.resultCount).toBe(1);
   });
 
   describe('multi-store same-brand rendering (badcase laybqxn4)', () => {

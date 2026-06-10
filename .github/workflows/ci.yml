@@ -5,6 +5,11 @@ on:
     branches:
       - develop
       - master
+  # bot 用 GITHUB_TOKEN 推的分支不触发 pull_request 事件（GitHub 防递归），
+  # required check "CI Checks" 会一直 pending、bot PR 无法合并。
+  # version-changelog.yml 在创建/更新 bot PR 后用 workflow_dispatch 派发到
+  # bot 分支，使检查落在 PR head SHA 上（v5.13.1 发版只能靠人工 close/reopen）。
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -13,6 +18,10 @@ jobs:
   ci:
     name: CI Checks
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # dispatch 模式下回报 commit status 需要
+      statuses: write
 
     steps:
       - name: Checkout code
@@ -65,3 +74,23 @@ jobs:
           name: coverage-report
           path: coverage/
           retention-days: 7
+
+      # workflow_dispatch 产生的 check run 不会计入 ruleset 的必需检查
+      # （实测：PR #281 head 上有同名成功 check run 仍 BLOCKED；statusCheckRollup
+      # 只聚合 pull_request 系列事件的 suite）。这里改用 commit status 回报：
+      # status 没有事件归属概念、由 github-actions app 创建（匹配 ruleset 的
+      # integration_id），必然计入 required check "CI Checks"。
+      - name: Report commit status for dispatch runs
+        if: always() && github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          STATE="failure"
+          [ "${JOB_STATUS}" = "success" ] && STATE="success"
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state="${STATE}" \
+            -f context="CI Checks" \
+            -f description="CI Checks (workflow_dispatch on $(echo "${GITHUB_REF_NAME}" | cut -c1-80))"
+          echo "✅ 已回报 commit status: ${STATE} @ ${GITHUB_SHA}"

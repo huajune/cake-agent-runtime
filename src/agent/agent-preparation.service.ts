@@ -17,6 +17,7 @@ import { SpongeService } from '@sponge/sponge.service';
 import type { SignupWorkOrderItem } from '@sponge/sponge.types';
 import {
   isUserProfileFactValue,
+  type LongTermPreferenceFacts,
   type UserProfileFacts,
   unwrapUserProfileFacts,
 } from '@memory/types/long-term.types';
@@ -52,6 +53,13 @@ export interface PreparedAgentContext {
   };
   /** 本轮触发时的记忆上下文快照（写入 message_processing_records.memory_snapshot 用于排障） */
   memorySnapshot?: AgentMemorySnapshot;
+  /**
+   * toolCallId → 工具 execute 的真实执行耗时（毫秒）。
+   * 由 prepare 阶段的 timing wrapper 在每次工具执行时写入；
+   * runner.buildRunResult 按 toolCallId 合并进 AgentToolCall.durationMs，
+   * 与"步骤墙钟"（含 LLM 思考/输出时间）区分开。
+   */
+  toolExecutionTimings: Map<string, number>;
 }
 
 @Injectable()
@@ -120,7 +128,15 @@ export class AgentPreparationService {
     // Compose 的输入：memoryBlock 渲染 + 当前阶段（直接取程序性记忆 currentStage；
     // recruitment_cases 已废弃，不再由 case 推导 onboard_followup）。
     const memoryBlock = this.buildMemoryBlock(memory, bookingContext);
-    const stageFromResolver = memory.procedural.currentStage ?? undefined;
+    const persistedStage = memory.procedural.currentStage ?? undefined;
+    // 程序性阶段存 Redis（TTL 2 天），过期后此前隐式兜底到策略第一个阶段——
+    // 已服务过的老候选人回访被当新客从 trust_building 重走（张漪 case：6-03 已
+    // 约面，6-08/6-10 回访都从信任建立重来）。长期画像已有身份字段即视为老用户，
+    // 回访直接进入岗位咨询阶段。
+    const returningUserStage = persistedStage
+      ? undefined
+      : this.resolveReturningUserStage(memory.longTerm.profile);
+    const stageFromResolver = persistedStage ?? returningUserStage;
 
     // System prompt 组装（委托 ContextService.compose）
     const { systemPrompt, stageGoals, thresholds } = await this.context.compose({
@@ -132,8 +148,18 @@ export class AgentPreparationService {
       strategySource: params.strategySource,
     });
 
-    // 本轮入口阶段：resolver 能给值就用，否则兜底到策略里第一个 stage（对应"新会话的起点"）
-    const entryStage = stageFromResolver ?? Object.keys(stageGoals)[0] ?? null;
+    // 本轮入口阶段：持久化阶段优先；老用户兜底阶段需在策略阶段表中存在才采用；
+    // 都没有则回到策略第一个 stage（"新会话的起点"）。
+    const entryStage =
+      persistedStage ??
+      (returningUserStage && stageGoals[returningUserStage] ? returningUserStage : undefined) ??
+      Object.keys(stageGoals)[0] ??
+      null;
+    if (!persistedStage && returningUserStage && stageGoals[returningUserStage]) {
+      this.logger.log(
+        `[prepare] 老用户回访阶段兜底: userId=${params.userId}, entryStage=${returningUserStage}（程序性阶段已过期，长期画像存在）`,
+      );
+    }
 
     // 工具上下文 + 观测快照（都消费 entryStage）。
     const turnState: PreparedAgentContext['turnState'] = { candidatePool: null };
@@ -146,7 +172,11 @@ export class AgentPreparationService {
       thresholds,
       turnState,
     });
-    const tools = this.toolRegistry.buildForScenario(scenario, toolContext) as ToolSet;
+    const toolExecutionTimings = new Map<string, number>();
+    const tools = this.wrapToolsWithTiming(
+      this.toolRegistry.buildForScenario(scenario, toolContext) as ToolSet,
+      toolExecutionTimings,
+    );
     const memorySnapshot = this.buildMemorySnapshot(memory, entryStage);
 
     const criticalTurnGuard = this.buildCriticalTurnGuard(currentUserMessage, truncatedMessages);
@@ -163,7 +193,46 @@ export class AgentPreparationService {
       entryStage,
       turnState,
       memorySnapshot,
+      toolExecutionTimings,
     };
+  }
+
+  /**
+   * 给工具集的 execute 包一层真实计时（按 AI SDK 传入的 toolCallId 记录）。
+   *
+   * 没有这层时，观测里的工具耗时只能用"步骤墙钟"近似——它包含 LLM 思考与输出时间，
+   * 曾导致 skip_reply 这类纯本地工具在流水里显示平均 7s+，无法区分模型慢还是外部 API 慢。
+   */
+  private wrapToolsWithTiming(tools: ToolSet, timings: Map<string, number>): ToolSet {
+    const wrapped: ToolSet = {};
+    for (const [name, toolDef] of Object.entries(tools)) {
+      const execute = (toolDef as { execute?: unknown }).execute;
+      if (typeof execute !== 'function') {
+        wrapped[name] = toolDef;
+        continue;
+      }
+      wrapped[name] = {
+        ...toolDef,
+        execute: async (...args: unknown[]) => {
+          const startedAt = Date.now();
+          try {
+            return await (execute as (...callArgs: unknown[]) => unknown).apply(toolDef, args);
+          } finally {
+            const options = args[1] as { toolCallId?: string } | undefined;
+            if (options?.toolCallId) {
+              timings.set(options.toolCallId, Date.now() - startedAt);
+            } else {
+              // AI SDK execute(input, options) 签名变更会走到这里：计时静默失效，
+              // durationMs 退回墙钟近似。打日志便于升级 SDK 后发现。
+              this.logger.warn(
+                `[tool-timing] 工具 ${name} 执行选项缺少 toolCallId，真实计时未记录`,
+              );
+            }
+          }
+        },
+      } as ToolSet[string];
+    }
+    return wrapped;
   }
 
   /**
@@ -349,6 +418,7 @@ export class AgentPreparationService {
   ): string {
     return (
       this.formatProfile(memory.longTerm.profile) +
+      this.formatLongTermPreferences(memory.longTerm.preferences ?? null) +
       (memory.sessionMemory ? this.formatSessionFacts(memory.sessionMemory) : '') +
       bookingContext
     );
@@ -548,6 +618,22 @@ export class AgentPreparationService {
     return '';
   }
 
+  /** 老用户回访的入口阶段（需在场景策略阶段表中存在才生效）。 */
+  private static readonly RETURNING_USER_ENTRY_STAGE = 'job_consultation';
+
+  /**
+   * 老用户回访的入口阶段兜底。
+   *
+   * 长期画像里有身份字段（姓名/电话，主要来自报名成功或会话沉淀写入）即视为
+   * 服务过的老用户——回访时跳过信任建立，直接进入岗位咨询。
+   * 返回 undefined 表示按新用户处理（兜底到策略第一个阶段）。
+   */
+  private resolveReturningUserStage(profile: UserProfileFacts | null): string | undefined {
+    if (!profile) return undefined;
+    const hasIdentity = Boolean(profile.name?.value || profile.phone?.value);
+    return hasIdentity ? AgentPreparationService.RETURNING_USER_ENTRY_STAGE : undefined;
+  }
+
   /** 把长期档案渲染成 prompt 片段。 */
   private formatProfile(profile: UserProfileFacts | null): string {
     if (!profile) return '';
@@ -584,7 +670,95 @@ export class AgentPreparationService {
     evidence: string;
     updatedAt: string;
   }): string {
-    return `（置信度: ${value.confidence}，来源: ${value.source}，证据: ${value.evidence}，更新时间: ${value.updatedAt}）`;
+    // evidence 是排障字段，不注入 prompt：提取 reasoning 全文曾随每个字段重复注入，
+    // 单轮 system prompt 被撑到 27K+ 字符（张漪 case）。更新时间保留日期部分，
+    // 让模型能判断档案信息的新旧。
+    const updatedDate = value.updatedAt?.slice(0, 10) || value.updatedAt;
+    return `（置信度: ${value.confidence}，来源: ${value.source}，更新于: ${updatedDate}）`;
+  }
+
+  /**
+   * 把长期求职意向渲染成 prompt 片段。
+   *
+   * 这是 settlement 沉淀的上一段求职会话的意向快照——历史参考，不是当前事实：
+   * 标注记录日期并明确"以本次会话为准"，避免重蹈旧会话事实复活的覆辙。
+   * available_after 已过期（日期早于今天）的直接不渲染。
+   */
+  private formatLongTermPreferences(preferences: LongTermPreferenceFacts | null): string {
+    if (!preferences) return '';
+
+    const labels: Record<string, string> = {
+      city: '意向城市',
+      district: '意向区域',
+      location: '意向地点',
+      brands: '意向品牌',
+      position: '意向岗位',
+      schedule: '意向班次',
+      salary: '意向薪资',
+      labor_form: '用工形式',
+      schedule_constraint: '排班硬约束',
+      delayed_intent: '推迟意向',
+      available_after: '最早可面日期',
+    };
+
+    const lines: string[] = [];
+    let latestUpdatedAt = '';
+    for (const [key, label] of Object.entries(labels)) {
+      const fact = preferences[key as keyof LongTermPreferenceFacts];
+      if (!fact || fact.value === null || fact.value === undefined) continue;
+
+      const rendered = this.renderPreferenceValue(key, fact.value);
+      if (!rendered) continue;
+
+      lines.push(`- ${label}: ${rendered}`);
+      if (fact.updatedAt > latestUpdatedAt) latestUpdatedAt = fact.updatedAt;
+    }
+
+    if (lines.length === 0) return '';
+    const recordedDate = latestUpdatedAt ? latestUpdatedAt.slice(0, 10) : '未知时间';
+    return (
+      `\n\n[历史求职意向]\n\n` +
+      `_以下是候选人上一段求职会话沉淀的意向（记录于 ${recordedDate}），仅供参考承接；` +
+      `候选人本次会话表达的新意向一律优先，不一致时以本次为准，不要拿旧意向反驳候选人。_\n` +
+      lines.join('\n')
+    );
+  }
+
+  /** 渲染单个长期意向值；返回 null 表示该字段不应注入（如已过期）。 */
+  private renderPreferenceValue(key: string, value: unknown): string | null {
+    if (Array.isArray(value)) {
+      return value.length > 0 ? value.map(String).join('、') : null;
+    }
+    if (key === 'available_after' && typeof value === 'object' && value !== null) {
+      const fact = value as { date?: string; raw?: string };
+      if (!fact.date) return null;
+      // 过期的"最早可面日期"不再注入
+      const today = new Date().toISOString().slice(0, 10);
+      if (fact.date < today) return null;
+      return `${fact.date}（原话: ${fact.raw ?? ''}）`;
+    }
+    if (key === 'delayed_intent' && typeof value === 'object' && value !== null) {
+      const fact = value as { until?: string; raw?: string };
+      if (!fact.until) return null;
+      return `${fact.until}（原话: ${fact.raw ?? ''}）`;
+    }
+    if (key === 'schedule_constraint' && typeof value === 'object' && value !== null) {
+      const c = value as {
+        onlyWeekends?: boolean | null;
+        onlyEvenings?: boolean | null;
+        onlyMornings?: boolean | null;
+        maxDaysPerWeek?: number | null;
+      };
+      const parts: string[] = [];
+      if (c.onlyWeekends) parts.push('只周末');
+      if (c.onlyEvenings) parts.push('只晚班');
+      if (c.onlyMornings) parts.push('只早班');
+      if (c.maxDaysPerWeek) parts.push(`每周最多${c.maxDaysPerWeek}天`);
+      return parts.length > 0 ? parts.join('、') : null;
+    }
+    if (typeof value === 'string') return value.trim() || null;
+    if (typeof value === 'boolean' || typeof value === 'number') return String(value);
+    return null;
   }
 
   /** 把会话记忆渲染成 prompt 片段。 */
@@ -600,8 +774,16 @@ export class AgentPreparationService {
     }
 
     if (state.lastCandidatePool?.length) {
-      const jobLines = state.lastCandidatePool.map((j, i) => this.formatJobMemoryLine(j, i + 1));
-      sections.push(`## 上轮候选岗位池\n${jobLines.join('\n')}`);
+      // 渲染上限对齐 presentedJobs 的 slice(0,10)：候选池是唯一写入端无 cap 的池子
+      // （工具单页 20 条且可能放宽），全量渲染会让 memoryBlock 无界膨胀。
+      // Redis 中仍保留全量池供 jobId 复用/品牌回指匹配。
+      const MAX_POOL_LINES = 10;
+      const pool = state.lastCandidatePool.slice(0, MAX_POOL_LINES);
+      const jobLines = pool.map((j, i) => this.formatJobMemoryLine(j, i + 1));
+      const omitted = state.lastCandidatePool.length - pool.length;
+      const omittedNote =
+        omitted > 0 ? `\n（另有 ${omitted} 个候选岗位未展示，可通过工具重新查询）` : '';
+      sections.push(`## 上轮候选岗位池\n${jobLines.join('\n')}${omittedNote}`);
     }
 
     if (state.presentedJobs?.length) {

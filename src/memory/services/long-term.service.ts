@@ -10,13 +10,19 @@ import type {
   SummaryEntry,
   MessageMetadata,
   LatestBooking,
+  LongTermPreferenceFacts,
 } from '../types/long-term.types';
-import { userProfileFactValue, USER_PROFILE_FIELD_KEYS } from '../types/long-term.types';
+import {
+  LONG_TERM_PREFERENCE_FIELD_KEYS,
+  userProfileFactValue,
+  USER_PROFILE_FIELD_KEYS,
+} from '../types/long-term.types';
 import {
   type EntityExtractionResult,
   type SessionFacts,
   type SessionFactValue,
   isSessionFactValue,
+  truncateEvidence,
   unwrapSessionFactValue,
 } from '../types/session-facts.types';
 
@@ -131,14 +137,34 @@ export class LongTermService {
   ): Promise<void> {
     try {
       const profileFacts = this.buildProfileFactsFromSettlement(facts);
-      if (Object.keys(profileFacts).length === 0) return;
+      if (Object.keys(profileFacts).length > 0) {
+        await this.supabaseStore.upsertProfileFacts(corpId, userId, profileFacts);
+        this.logger.log(
+          `[writeFromSettlement] Profile 写入: userId=${userId}, fields=${Object.keys(profileFacts).join(',')}`,
+        );
+      }
 
-      await this.supabaseStore.upsertProfileFacts(corpId, userId, profileFacts);
-      this.logger.log(
-        `[writeFromSettlement] Profile 写入: userId=${userId}, fields=${Object.keys(profileFacts).join(',')}`,
-      );
+      // 求职意向同样跨会话有价值（城市/品牌/岗位/班次等），此前只活在 Redis
+      // session facts（TTL 2 天）里，候选人隔几天回来意向全部丢失、只剩摘要叙述。
+      const preferenceFacts = this.buildPreferenceFactsFromSettlement(facts);
+      if (Object.keys(preferenceFacts).length > 0) {
+        await this.supabaseStore.upsertPreferenceFacts(corpId, userId, preferenceFacts);
+        this.logger.log(
+          `[writeFromSettlement] Preference 写入: userId=${userId}, fields=${Object.keys(preferenceFacts).join(',')}`,
+        );
+      }
     } catch (error) {
       this.logger.warn('[writeFromSettlement] 写入 Profile 失败', error);
+    }
+  }
+
+  /** 读取长期求职意向（settlement 沉淀的跨会话偏好快照）。 */
+  async getPreferences(corpId: string, userId: string): Promise<LongTermPreferenceFacts | null> {
+    try {
+      return await this.supabaseStore.getPreferenceFacts(corpId, userId);
+    } catch (error) {
+      this.logger.warn('获取长期求职意向失败', error);
+      return null;
     }
   }
 
@@ -164,6 +190,8 @@ export class LongTermService {
     entry: SummaryEntry,
     options?: {
       lastSettledMessageAt?: string | null;
+      /** 沉淀边界的会话维度 key（sessionId=chatId）；双 bot 场景按会话隔离边界。 */
+      sessionId?: string | null;
       compressArchive?: (
         overflow: SummaryEntry[],
         existingArchive: string | null,
@@ -181,9 +209,15 @@ export class LongTermService {
     corpId: string,
     userId: string,
     lastSettledMessageAt: string,
+    sessionId?: string | null,
   ): Promise<void> {
     try {
-      await this.supabaseStore.markLastSettledMessageAt(corpId, userId, lastSettledMessageAt);
+      await this.supabaseStore.markLastSettledMessageAt(
+        corpId,
+        userId,
+        lastSettledMessageAt,
+        sessionId,
+      );
     } catch (error) {
       this.logger.warn('更新沉淀边界失败', error);
     }
@@ -288,6 +322,43 @@ export class LongTermService {
     return profileFacts;
   }
 
+  /**
+   * 从 sessionFacts.preferences 构建长期求职意向快照。
+   *
+   * - 只取 LONG_TERM_PREFERENCE_FIELD_KEYS 中的稳定意向字段
+   * - 快照式：不与既有长期意向 merge，由 store 整列覆盖（最新一段会话赢）
+   * - confidence 固定 medium（与 Profile 沉淀路径一致），evidence 截断保留一跳来源
+   */
+  private buildPreferenceFactsFromSettlement(
+    facts: EntityExtractionResult | SessionFacts,
+  ): LongTermPreferenceFacts {
+    const updatedAt = new Date().toISOString();
+    const preferenceFacts: LongTermPreferenceFacts = {};
+    const prefs = facts.preferences as unknown as Record<string, unknown>;
+
+    for (const key of LONG_TERM_PREFERENCE_FIELD_KEYS) {
+      const rawValue = prefs[key];
+      const value = unwrapSessionFactValue(rawValue as SessionFactValue<unknown> | null);
+      if (!this.hasPreferenceValue(value)) continue;
+
+      preferenceFacts[key] = userProfileFactValue(value, {
+        source: 'extraction',
+        confidence: 'medium',
+        evidence: this.buildSettlementEvidence(rawValue),
+        updatedAt,
+      });
+    }
+
+    return preferenceFacts;
+  }
+
+  private hasPreferenceValue(value: unknown): boolean {
+    if (value === null || value === undefined) return false;
+    if (typeof value === 'string') return value.trim().length > 0;
+    if (Array.isArray(value)) return value.length > 0;
+    return true;
+  }
+
   private hasProfileValue(value: unknown): value is string | boolean {
     if (value === null || value === undefined) return false;
     if (typeof value === 'boolean') return true;
@@ -304,6 +375,8 @@ export class LongTermService {
       `原字段置信度=${rawValue.confidence}`,
       rawValue.evidence?.trim() ? `原证据=${rawValue.evidence.trim()}` : null,
     ].filter(Boolean);
-    return `${prefix}；${parts.join('；')}`;
+    // 截断后再入库：长期画像 evidence 是永久数据，曾被 600+ 字提取 reasoning 污染
+    // 并随每轮注入 prompt（张漪 case）。
+    return truncateEvidence(`${prefix}；${parts.join('；')}`);
   }
 }

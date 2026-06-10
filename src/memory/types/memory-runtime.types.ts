@@ -1,4 +1,4 @@
-import type { UserProfileFacts } from './long-term.types';
+import type { LongTermPreferenceFacts, UserProfileFacts } from './long-term.types';
 import type { ProceduralState } from './procedural.types';
 import type { ShortTermMessage } from './short-term.types';
 import type { HighConfidenceFacts, WeworkSessionState } from './session-facts.types';
@@ -29,6 +29,8 @@ export interface MemoryRecallContext {
   procedural: ProceduralState;
   longTerm: {
     profile: UserProfileFacts | null;
+    /** 跨会话沉淀的求职意向快照（settlement 写入，仅供模型参考，不进工具预填）。 */
+    preferences?: LongTermPreferenceFacts | null;
   };
 }
 

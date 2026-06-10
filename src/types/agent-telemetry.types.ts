@@ -7,11 +7,11 @@
 
 /**
  * 工具调用状态
- * - ok: 正常返回，结果条数 >= 2
+ * - ok: 正常返回（结果条数 >= 1 且非搜索类单结果，或工具成功标记为 true）
  * - empty: 返回 0 条（工具命中逻辑失败或过滤过严）
- * - narrow: 仅返回 1 条（候选人可能没的选）
+ * - narrow: 搜索类工具仅返回 1 条（候选人可能没的选；非搜索类单结果记 ok）
  * - unknown: 返回成功但结果结构无法推断条数
- * - error: 工具抛异常 / 返回 error 字段
+ * - error: 工具抛异常 / 返回 errorType、error 字段或成功标记为 false
  */
 export type AgentToolCallStatus = 'ok' | 'empty' | 'narrow' | 'unknown' | 'error';
 
@@ -19,11 +19,14 @@ export interface AgentToolCall {
   toolName: string;
   args: Record<string, unknown>;
   result?: unknown;
-  /** 结果条数（从 result 数组 length / items / data / total / count 推断，推断不出则 undefined） */
+  /** 结果条数（优先取工具自报的 resultCount 字段，其次从数组/items/total 等形态推断，推断不出则 undefined） */
   resultCount?: number;
   /** 调用状态分类 */
   status?: AgentToolCallStatus;
-  /** 调用耗时（毫秒，best-effort；单工具/单步时较可靠） */
+  /**
+   * 工具 execute 真实执行耗时（毫秒，由 timing wrapper 按 toolCallId 记录）。
+   * 历史数据/wrapper 缺失时退化为步骤墙钟近似（含 LLM 思考时间，偏大）。
+   */
   durationMs?: number;
 }
 

@@ -95,7 +95,7 @@ describe('TurnHintsSection', () => {
     });
 
     expect(output).toContain('[本轮高置信线索]');
-    expect(output).toContain('意向城市: 上海（置信度: high，来源: rule，证据: unique_district_alias）');
+    expect(output).toContain('意向城市: 上海（置信度: high，来源: rule）');
   });
 
   it('should render low-confidence facts to LLM with labels instead of filtering them out', () => {
@@ -115,7 +115,7 @@ describe('TurnHintsSection', () => {
 
     expect(output).toContain('[本轮高置信线索]');
     expect(output).toContain(
-      '性别: 女（系统标签，未经候选人自陈，不得用于直接排除候选人）（置信度: low，来源: system，证据: 客户详情接口补充性别：女）',
+      '性别: 女（系统标签，未经候选人自陈，不得用于直接排除候选人）（置信度: low，来源: system）',
     );
   });
 
@@ -124,7 +124,10 @@ describe('TurnHintsSection', () => {
       ...baseCtx,
       sessionFacts: {
         ...FALLBACK_EXTRACTION,
-        preferences: { ...FALLBACK_EXTRACTION.preferences, city: { value: '上海', confidence: 'high', evidence: 'explicit_city' } },
+        preferences: {
+          ...FALLBACK_EXTRACTION.preferences,
+          city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
+        },
       },
       highConfidenceFacts: {
         ...emptyHighConfidenceFacts(),
@@ -154,7 +157,10 @@ describe('TurnHintsSection', () => {
       ...baseCtx,
       sessionFacts: {
         ...FALLBACK_EXTRACTION,
-        preferences: { ...FALLBACK_EXTRACTION.preferences, city: { value: '上海', confidence: 'high', evidence: 'explicit_city' } },
+        preferences: {
+          ...FALLBACK_EXTRACTION.preferences,
+          city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
+        },
       },
       highConfidenceFacts: {
         ...emptyHighConfidenceFacts(),
@@ -167,7 +173,7 @@ describe('TurnHintsSection', () => {
     });
 
     expect(output).toContain('[本轮高置信线索]');
-    expect(output).toContain('意向城市: 上海（置信度: high，来源: rule，证据: explicit_city）');
+    expect(output).toContain('意向城市: 上海（置信度: high，来源: rule）');
     expect(output).not.toContain('[本轮待确认线索]');
   });
 });

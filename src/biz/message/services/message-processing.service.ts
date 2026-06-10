@@ -178,10 +178,17 @@ export class MessageProcessingService {
   }
 
   /**
-   * 将过期的 agent_invocation 字段置为 NULL（释放 TOAST 空间）
+   * 将过期的 agent_invocation 字段置为 NULL（释放 TOAST 空间，分批执行）
    */
   async nullAgentInvocations(daysOld: number): Promise<number> {
     return this.messageProcessingRepository.nullAgentInvocations(daysOld);
+  }
+
+  /**
+   * 将卡死在 running 的 post_processing_status 标记为 interrupted（小时级兜底）
+   */
+  async interruptStalePostProcessing(staleMinutes: number = 30): Promise<number> {
+    return this.messageProcessingRepository.interruptStalePostProcessing(staleMinutes);
   }
 
   /**
