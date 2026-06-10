@@ -12,6 +12,7 @@ import type {
   MessageMetadata,
   AgentLongTermMemoryRow,
   LatestBooking,
+  LongTermPreferenceFacts,
 } from '../types/long-term.types';
 import {
   createEmptyUserProfileFacts,
@@ -125,6 +126,34 @@ export class SupabaseStore implements MemoryStore {
     }
 
     await this.invalidateCache(corpId, userId);
+  }
+
+  // ==================== Preference 操作 ====================
+
+  /** 读取长期求职意向（settlement 沉淀的跨会话偏好快照）。 */
+  async getPreferenceFacts(
+    corpId: string,
+    userId: string,
+  ): Promise<LongTermPreferenceFacts | null> {
+    const row = await this.getRow(corpId, userId);
+    const facts = row?.preference_facts;
+    if (!facts || typeof facts !== 'object') return null;
+    return Object.keys(facts).length > 0 ? facts : null;
+  }
+
+  /**
+   * 写入长期求职意向 — 快照式整列覆盖（最新一段会话的意向赢）。
+   *
+   * 不做字段级 merge/数组累积：累积语义会让错值与错字变体永远清不掉。
+   * settlement 是唯一写方，且同 chat 的回合收尾已被处理锁串行化。
+   */
+  async upsertPreferenceFacts(
+    corpId: string,
+    userId: string,
+    preferenceFacts: LongTermPreferenceFacts,
+  ): Promise<void> {
+    if (Object.keys(preferenceFacts).length === 0) return;
+    await this.upsertRow(corpId, userId, { preference_facts: preferenceFacts });
   }
 
   // ==================== Summary 操作 ====================

@@ -17,6 +17,7 @@ import { SpongeService } from '@sponge/sponge.service';
 import type { SignupWorkOrderItem } from '@sponge/sponge.types';
 import {
   isUserProfileFactValue,
+  type LongTermPreferenceFacts,
   type UserProfileFacts,
   unwrapUserProfileFacts,
 } from '@memory/types/long-term.types';
@@ -349,6 +350,7 @@ export class AgentPreparationService {
   ): string {
     return (
       this.formatProfile(memory.longTerm.profile) +
+      this.formatLongTermPreferences(memory.longTerm.preferences ?? null) +
       (memory.sessionMemory ? this.formatSessionFacts(memory.sessionMemory) : '') +
       bookingContext
     );
@@ -589,6 +591,90 @@ export class AgentPreparationService {
     // 让模型能判断档案信息的新旧。
     const updatedDate = value.updatedAt?.slice(0, 10) || value.updatedAt;
     return `（置信度: ${value.confidence}，来源: ${value.source}，更新于: ${updatedDate}）`;
+  }
+
+  /**
+   * 把长期求职意向渲染成 prompt 片段。
+   *
+   * 这是 settlement 沉淀的上一段求职会话的意向快照——历史参考，不是当前事实：
+   * 标注记录日期并明确"以本次会话为准"，避免重蹈旧会话事实复活的覆辙。
+   * available_after 已过期（日期早于今天）的直接不渲染。
+   */
+  private formatLongTermPreferences(preferences: LongTermPreferenceFacts | null): string {
+    if (!preferences) return '';
+
+    const labels: Record<string, string> = {
+      city: '意向城市',
+      district: '意向区域',
+      location: '意向地点',
+      brands: '意向品牌',
+      position: '意向岗位',
+      schedule: '意向班次',
+      salary: '意向薪资',
+      labor_form: '用工形式',
+      schedule_constraint: '排班硬约束',
+      delayed_intent: '推迟意向',
+      available_after: '最早可面日期',
+    };
+
+    const lines: string[] = [];
+    let latestUpdatedAt = '';
+    for (const [key, label] of Object.entries(labels)) {
+      const fact = preferences[key as keyof LongTermPreferenceFacts];
+      if (!fact || fact.value === null || fact.value === undefined) continue;
+
+      const rendered = this.renderPreferenceValue(key, fact.value);
+      if (!rendered) continue;
+
+      lines.push(`- ${label}: ${rendered}`);
+      if (fact.updatedAt > latestUpdatedAt) latestUpdatedAt = fact.updatedAt;
+    }
+
+    if (lines.length === 0) return '';
+    const recordedDate = latestUpdatedAt ? latestUpdatedAt.slice(0, 10) : '未知时间';
+    return (
+      `\n\n[历史求职意向]\n\n` +
+      `_以下是候选人上一段求职会话沉淀的意向（记录于 ${recordedDate}），仅供参考承接；` +
+      `候选人本次会话表达的新意向一律优先，不一致时以本次为准，不要拿旧意向反驳候选人。_\n` +
+      lines.join('\n')
+    );
+  }
+
+  /** 渲染单个长期意向值；返回 null 表示该字段不应注入（如已过期）。 */
+  private renderPreferenceValue(key: string, value: unknown): string | null {
+    if (Array.isArray(value)) {
+      return value.length > 0 ? value.map(String).join('、') : null;
+    }
+    if (key === 'available_after' && typeof value === 'object' && value !== null) {
+      const fact = value as { date?: string; raw?: string };
+      if (!fact.date) return null;
+      // 过期的"最早可面日期"不再注入
+      const today = new Date().toISOString().slice(0, 10);
+      if (fact.date < today) return null;
+      return `${fact.date}（原话: ${fact.raw ?? ''}）`;
+    }
+    if (key === 'delayed_intent' && typeof value === 'object' && value !== null) {
+      const fact = value as { until?: string; raw?: string };
+      if (!fact.until) return null;
+      return `${fact.until}（原话: ${fact.raw ?? ''}）`;
+    }
+    if (key === 'schedule_constraint' && typeof value === 'object' && value !== null) {
+      const c = value as {
+        onlyWeekends?: boolean | null;
+        onlyEvenings?: boolean | null;
+        onlyMornings?: boolean | null;
+        maxDaysPerWeek?: number | null;
+      };
+      const parts: string[] = [];
+      if (c.onlyWeekends) parts.push('只周末');
+      if (c.onlyEvenings) parts.push('只晚班');
+      if (c.onlyMornings) parts.push('只早班');
+      if (c.maxDaysPerWeek) parts.push(`每周最多${c.maxDaysPerWeek}天`);
+      return parts.length > 0 ? parts.join('、') : null;
+    }
+    if (typeof value === 'string') return value.trim() || null;
+    if (typeof value === 'boolean' || typeof value === 'number') return String(value);
+    return null;
   }
 
   /** 把会话记忆渲染成 prompt 片段。 */

@@ -90,14 +90,16 @@ export class MemoryLifecycleService {
   ): Promise<AgentMemoryContext> {
     const includeShortTerm = options?.includeShortTerm ?? true;
 
-    const [rawShortTermMessages, sessionState, proceduralState, profile] = await Promise.all([
-      includeShortTerm
-        ? this.loadShortTermMessages(sessionId, options?.shortTermEndTimeInclusive)
-        : Promise.resolve([]),
-      this.session.getSessionState(corpId, userId, sessionId),
-      this.procedural.get(corpId, userId, sessionId),
-      this.longTerm.getProfile(corpId, userId),
-    ]);
+    const [rawShortTermMessages, sessionState, proceduralState, profile, longTermPreferences] =
+      await Promise.all([
+        includeShortTerm
+          ? this.loadShortTermMessages(sessionId, options?.shortTermEndTimeInclusive)
+          : Promise.resolve([]),
+        this.session.getSessionState(corpId, userId, sessionId),
+        this.procedural.get(corpId, userId, sessionId),
+        this.longTerm.getProfile(corpId, userId),
+        this.longTerm.getPreferences(corpId, userId),
+      ]);
 
     const shortTermMessages = this.applyShortTermFallback(
       rawShortTermMessages,
@@ -119,7 +121,7 @@ export class MemoryLifecycleService {
       sessionMemory: this.hasStructuredSessionMemoryState(sessionState) ? sessionState : null,
       highConfidenceFacts,
       procedural: proceduralState,
-      longTerm: { profile },
+      longTerm: { profile, preferences: longTermPreferences },
     };
 
     if (options?.enrichmentIdentity) {

@@ -72,6 +72,7 @@ describe('MemoryLifecycleService', () => {
 
   const mockLongTerm = {
     getProfile: jest.fn(),
+    getPreferences: jest.fn().mockResolvedValue(null),
   };
 
   const mockSponge = {
