@@ -8,6 +8,58 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.13.1`
+**最近更新**: `2026-06-10`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #274 无面试时段岗位支持等通知模式自助约面
+- PR #274 `interviewWindows` 为空 → 进入 `wait_notice` 模式：
+- PR #274 不评估 `requestedDate`（不再误判 `date_unavailable`）
+- PR #274 "面试时间"不进收资清单（含 `TEMPLATE_CORE_FIELDS` 强制骨架与 `apiPayloadGuide.requiredFields`）
+- PR #274 字段收齐即 `ready_to_book`，不需要 `confirm_date`
+- PR #274 新增返回 `interview.interviewTimeMode = "wait_notice"` + `interviewTimeModeNote` 话术指引（"报名后面试官会直接打电话联系，保持电话畅通"），并在工具 DESCRIPTION 硬规则中禁止因"没有时段"转人工
+- PR #274 `interviewTime` 改为可选：**仅**等通知岗位（无窗口）允许缺省；带窗口岗位缺省仍报 `BOOKING_MISSING_FIELDS`（指引回 precheck 拿 slot）
+- PR #274 缺省时：sponge payload 不带 `interviewTime`（与平台表单一致）、"面试时间"补充标签回填"等待通知"
+- PR #274 成功回复切换为"面试官电话联系"指引，不再输出到店脚本 `_onSiteScript`（电话面试无到店环节）
+- PR #274 监控通知 / ops 事件幂等键用 `wait_notice` 兜底
+
+### 新功能
+- PR #274 `interviewWindows` 为空 → 进入 `wait_notice` 模式：
+- PR #274 "面试时间"不进收资清单（含 `TEMPLATE_CORE_FIELDS` 强制骨架与 `apiPayloadGuide.requiredFields`）
+- PR #274 字段收齐即 `ready_to_book`，不需要 `confirm_date`
+- PR #274 新增返回 `interview.interviewTimeMode = "wait_notice"` + `interviewTimeModeNote` 话术指引（"报名后面试官会直接打电话联系，保持电话畅通"），并在工具 DESCRIPTION 硬规则中禁止因"没有时段"转人工
+- PR #274 `interviewTime` 改为可选：**仅**等通知岗位（无窗口）允许缺省；带窗口岗位缺省仍报 `BOOKING_MISSING_FIELDS`（指引回 precheck 拿 slot）
+- PR #274 缺省时：sponge payload 不带 `interviewTime`（与平台表单一致）、"面试时间"补充标签回填"等待通知"
+- PR #274 成功回复切换为"面试官电话联系"指引，不再输出到店脚本 `_onSiteScript`（电话面试无到店环节）
+- PR #274 无面试时段岗位支持等通知模式自助约面
+
+### 问题修复
+- PR #274 不评估 `requestedDate`（不再误判 `date_unavailable`）
+- PR #274 监控通知 / ops 事件幂等键用 `wait_notice` 兜底
+
+### 优化调整
+- 无
+
+### 运维与流程
+- 无
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #274 新增 precheck wait_notice 用例 ×2（不判 date_unavailable / 收齐即 ready_to_book）
+- PR #274 新增 booking wait_notice 用例 ×2（无 interviewTime 成功提交 + 标签回填 / 带窗口岗位缺省仍拒）
+- PR #274 全量 `jest`：287 suites / 3648 tests 全绿；`tsc --noEmit` + ESLint 通过
+<!-- release:pending:end -->
+
 ## [5.13.0] - 2026-06-09
 
 **来源分支**: `develop`
