@@ -157,7 +157,7 @@ function resolveCustomerLabelValue(
   return null;
 }
 
-function getSupplementAnswerValue(
+export function getSupplementAnswerValue(
   supplementAnswers: Record<string, string> | undefined,
   labelName: string,
 ): string | null {

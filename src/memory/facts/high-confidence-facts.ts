@@ -988,8 +988,14 @@ function extractHealthCertificate(message: string): string | null {
 }
 
 function extractUploadResume(message: string): string | null {
+  // "简历附件："分支只认 URL：候选人回填模板时常把别的内容连在这一行后面
+  // （如"简历附件：过往公司+岗位+年限：…"），这类文字一旦入档会被 booking
+  // 当作云存储 key 提交，海绵侧简历直接打不开（工单 438358 事故）。
   const labeled = message.match(/简历附件\s*[：:]\s*(\S+)/u)?.[1];
-  if (labeled) return sanitizeResumeUrl(labeled);
+  if (labeled) {
+    const sanitized = sanitizeResumeUrl(labeled);
+    if (sanitized && /^https?:\/\//i.test(sanitized)) return sanitized;
+  }
 
   if (!/\[文件消息\]/.test(message)) return null;
 

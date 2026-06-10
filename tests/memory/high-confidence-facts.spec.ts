@@ -101,6 +101,30 @@ describe('extractHighConfidenceFacts', () => {
     );
   });
 
+  it('should ignore non-URL text glued after 简历附件 label (工单 438358 badcase)', () => {
+    // 候选人回填模板时把下一项内容连在"简历附件："后面，这段文字不得入档为简历，
+    // 否则会被 booking 当作云存储 key 提交，海绵侧简历打不开。
+    const result = extractHighConfidenceFacts(
+      ['姓名：喻某\n简历附件：过往公司+岗位+年限：某建设集团有限公司+管理+5年\n居住地址：'],
+      brandData,
+    );
+
+    expect(unwrapHighConfidenceValue(result?.interview_info.upload_resume) ?? null).toBeNull();
+  });
+
+  it('should fall back to file message URL when 简历附件 label holds non-URL text', () => {
+    const result = extractHighConfidenceFacts(
+      [
+        '简历附件：见文件\n[文件消息] 文件名：张三简历.pdf；文件地址：https://example.com/resume.pdf；文件大小：2KB',
+      ],
+      brandData,
+    );
+
+    expect(unwrapHighConfidenceValue(result?.interview_info.upload_resume)).toBe(
+      'https://example.com/resume.pdf',
+    );
+  });
+
   it('should not extract upload resume from unrelated PDF file names', () => {
     const result = extractHighConfidenceFacts(
       [

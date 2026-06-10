@@ -617,12 +617,28 @@ export function buildInterviewBookingTool(
               );
               // 候选人确已预约 → bookingSucceeded 置 true（不阻断后续拉群等流程）。
               context.bookingSucceeded = true;
+              // 候选人在预约成功后才补发简历的场景：工单已存在、系统没有补挂附件的接口，
+              // 若按普通 already_booked 收口，这份真简历会被静默丢弃（工单 438358 事故的
+              // 第二段）。识别到"本轮新收到简历"时改走人工补传指引。
+              const freshResumeThisTurn = getCurrentTurnResume(context);
               return buildToolError({
                 errorType: TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED,
-                outcome: '候选人近期已有预约工单，跳过重复预约',
-                replyInstruction:
-                  '该候选人近期已成功预约过面试，不要重复提交预约，也不要再次调用本工具。若候选人要改时间或取消，请调用 request_handoff(reasonCode="modify_appointment") 转人工改约；否则按已预约状态正常衔接（可复述面试安排）。',
-                details: { existingWorkOrderId: existingBooking.latest_work_order_id },
+                outcome: freshResumeThisTurn
+                  ? '候选人近期已有预约工单，跳过重复预约；本轮新收到的简历需人工补传到原工单'
+                  : '候选人近期已有预约工单，跳过重复预约',
+                replyInstruction: freshResumeThisTurn
+                  ? '该候选人近期已成功预约过面试，不要重复提交预约，也不要再次调用本工具。' +
+                    '但候选人本轮补发了简历文件，系统无法把简历补挂到已有工单上：请调用 ' +
+                    'request_handoff(reasonCode="system_blocked")，reason 写明"候选人预约后补发简历，' +
+                    `需人工将简历补传到工单 ${existingBooking.latest_work_order_id}"。` +
+                    '对候选人只说简历已收到、会帮他跟进，不要说简历已提交成功。'
+                  : '该候选人近期已成功预约过面试，不要重复提交预约，也不要再次调用本工具。若候选人要改时间或取消，请调用 request_handoff(reasonCode="modify_appointment") 转人工改约；否则按已预约状态正常衔接（可复述面试安排）。',
+                details: {
+                  existingWorkOrderId: existingBooking.latest_work_order_id,
+                  ...(freshResumeThisTurn
+                    ? { pendingUploadResume: bookingUploadResume ?? freshResumeThisTurn }
+                    : {}),
+                },
               });
             }
           }
@@ -942,19 +958,40 @@ function collectStringValues(value: unknown, depth = 0): string[] {
   return [];
 }
 
-function resolveUploadResume(uploadResume: unknown, context: ToolBuildContext): string | undefined {
-  const explicit = normalizeText(uploadResume);
-  if (explicit) return explicit;
+/**
+ * uploadResume 只有两种合法形态：http(s) URL（待上传的文件地址）或海绵 uploadAttachment
+ * 返回的云存储 key（文件名形态，如 刘渔林_20260609135452_20260610095630.docx）。
+ * 候选人回填模板时写在"简历附件："后的自由文字会经会话事实流入这里——若原样放行，
+ * 会被当作云存储 key 提交给 entryUser，海绵侧简历直接打不开（工单 438358 事故）。
+ */
+function isLikelyCloudStorageKey(value: string): boolean {
+  if (value.length > 200 || /[\s：，。；、！？（）]/u.test(value)) return false;
+  return /\.(pdf|docx?|xlsx?|pptx?|jpe?g|png|webp|txt)$/i.test(value);
+}
 
-  const sessionResume = normalizeText(context.sessionFacts?.interview_info.upload_resume);
-  if (sessionResume) return sessionResume;
+function normalizeResumeValue(value: unknown): string | undefined {
+  const text = normalizeText(value);
+  if (!text) return undefined;
+  return isHttpUrl(text) || isLikelyCloudStorageKey(text) ? text : undefined;
+}
 
+/** 本轮高置信识别出的简历（候选人当轮刚发的文件/链接），仅当前轮有效。 */
+function getCurrentTurnResume(context: ToolBuildContext): string | undefined {
   const currentTurnResume = context.highConfidenceFacts?.interview_info.upload_resume;
   if (currentTurnResume && typeof currentTurnResume === 'object' && 'value' in currentTurnResume) {
-    return normalizeText(currentTurnResume.value) ?? undefined;
+    return normalizeResumeValue(currentTurnResume.value);
   }
-
   return undefined;
+}
+
+function resolveUploadResume(uploadResume: unknown, context: ToolBuildContext): string | undefined {
+  const explicit = normalizeResumeValue(uploadResume);
+  if (explicit) return explicit;
+
+  const sessionResume = normalizeResumeValue(context.sessionFacts?.interview_info.upload_resume);
+  if (sessionResume) return sessionResume;
+
+  return getCurrentTurnResume(context);
 }
 
 async function resolveUploadResumeForBooking(
@@ -963,7 +1000,9 @@ async function resolveUploadResumeForBooking(
   spongeService: SpongeService,
 ): Promise<string | undefined> {
   if (!uploadResume) return undefined;
-  if (!isHttpUrl(uploadResume)) return uploadResume;
+  if (!isHttpUrl(uploadResume)) {
+    return isLikelyCloudStorageKey(uploadResume) ? uploadResume : undefined;
+  }
 
   const uploaded = await spongeService.uploadAttachmentFromUrl(
     {

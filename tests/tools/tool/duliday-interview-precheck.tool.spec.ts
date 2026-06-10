@@ -968,6 +968,80 @@ describe('buildInterviewPrecheckTool', () => {
     // 年龄 < 25 的情况下，identity 应仍然缺失 —— 对照用例见下
   });
 
+  it('should clear collect-type supplement labels from missingFields when candidate已答 are passed via candidateSupplementAnswers', async () => {
+    // 复现 badcase（chat 6a27d9fe…）：collect 型 supplement label 进了 requiredFields，
+    // 但既无专属 candidate* 入参、buildKnownFieldMap 也不映射，候选人即便答了也永远卡在
+    // missingFields → nextAction 永远 collect_fields → booking 闸门永远拒 → handoff。
+    const buildJobWithCollectLabels = () =>
+      makeJob({
+        // 清掉默认 remark "有餐饮经验优先"，避免引入"过往公司+岗位+年限"干扰本用例断言
+        hiringRequirement: { remark: '' },
+        interviewProcess: {
+          firstInterview: {
+            fixedInterviewTimes: [
+              { interviewDate: '2026-04-08', interviewStartTime: '13:30', interviewEndTime: '16:30' },
+            ],
+          },
+          interviewSupplement: [
+            { interviewSupplementId: 57, interviewSupplement: '居住地址' },
+            { interviewSupplementId: 207, interviewSupplement: '意向区域' },
+          ],
+        },
+      });
+    const knownStandardFields = {
+      profile: {
+        name: '惠梓航',
+        phone: '13800138000',
+        gender: '男',
+        age: '22',
+        is_student: false,
+        education: '本科',
+        has_health_certificate: '有',
+      },
+      sessionFacts: {
+        interview_info: {
+          name: '惠梓航',
+          phone: '13800138000',
+          gender: '男',
+          age: '22',
+          education: '本科',
+          has_health_certificate: '有',
+          interview_time: '2026-04-08 13:30:00',
+        },
+        preferences: FALLBACK_EXTRACTION.preferences,
+        reasoning: 'test',
+      },
+    };
+
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
+
+    // 不传 candidateSupplementAnswers：居住地址/意向区域 仍滞留 missingFields
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [buildJobWithCollectLabels()] });
+    const without = await executeTool(
+      { jobId: 100, requestedDate: '2026-04-08' },
+      knownStandardFields,
+    );
+    expect(without.bookingChecklist.missingFields).toContain('居住地址');
+    expect(without.bookingChecklist.missingFields).toContain('意向区域');
+
+    // 传入候选人已答的 supplement label：两者从 missingFields 清除，达成 ready_to_book
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [buildJobWithCollectLabels()] });
+    const withAnswers = await executeTool(
+      {
+        jobId: 100,
+        requestedDate: '2026-04-08',
+        candidateSupplementAnswers: { 居住地址: '南京信息工程大学', 意向区域: '浦口' },
+      },
+      knownStandardFields,
+    );
+    // missingFields 收齐后为空数组，会被 stripNullish 剔除（key 不再存在）
+    const remaining = withAnswers.bookingChecklist?.missingFields ?? [];
+    expect(remaining).not.toContain('居住地址');
+    expect(remaining).not.toContain('意向区域');
+    expect(remaining).toEqual([]);
+    expect(withAnswers.nextAction).toBe('ready_to_book');
+  });
+
   it('should keep ambiguous gender text unfilled instead of coercing it to 女', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-04-07T02:30:00.000Z'));
     mockSpongeService.fetchJobs.mockResolvedValue({
