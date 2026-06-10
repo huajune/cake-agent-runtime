@@ -1,6 +1,7 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue, Job } from 'bull';
+import { ConfigService } from '@nestjs/config';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { EnterpriseMessageCallbackDto } from '../ingress/message-callback.dto';
 
@@ -21,8 +22,10 @@ import { MessageWorkerManagerService } from './message-worker-manager.service';
  * Job name: 'process'（由 SimpleMergeService 创建）
  */
 @Injectable()
-export class MessageProcessor implements OnModuleInit {
+export class MessageProcessor implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MessageProcessor.name);
+
+  private readonly drainTimeoutMs: number;
 
   constructor(
     @InjectQueue('message-merge') private readonly messageQueue: Queue,
@@ -31,7 +34,13 @@ export class MessageProcessor implements OnModuleInit {
     private readonly workerManager: MessageWorkerManagerService,
     private readonly userHostingService: UserHostingService,
     private readonly deduplicationService: MessageDeduplicationService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    this.drainTimeoutMs = parseInt(
+      this.configService.get('SHUTDOWN_DRAIN_TIMEOUT_MS', '60000'),
+      10,
+    );
+  }
 
   async onModuleInit() {
     await this.workerManager.initialize();
@@ -45,6 +54,47 @@ export class MessageProcessor implements OnModuleInit {
     this.logger.log(
       `MessageProcessor 已初始化（简化版，并发数: ${this.workerManager.getCurrentConcurrency()}）`,
     );
+  }
+
+  /**
+   * 发版/重启收到 SIGTERM 时优雅排空（需 main.ts 开启 enableShutdownHooks）。
+   *
+   * queue.close() 默认会先停止领取新任务，再等待 active 任务执行完成——让正在
+   * 调 Agent / 投递中的消息走完整个流程（含 ack pending 与终态落库），而不是被
+   * 半路杀死后永久卡在 processing（2026-06-09 v5.13.0 发版事故）。
+   *
+   * 超过 drainTimeoutMs 仍未排空则放弃等待：此时未 ack 的 pending 保留在 Redis，
+   * 锁冲突重检机制会让新实例接手重放，不能为等待拖垮部署平台的强杀窗口。
+   */
+  async onModuleDestroy(): Promise<void> {
+    this.logger.log(
+      `[Shutdown] 停止领取新任务，等待 in-flight 消息处理完成（最长 ${this.drainTimeoutMs}ms）...`,
+    );
+
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      const result = await Promise.race([
+        this.messageQueue.close().then(() => 'drained' as const),
+        new Promise<'timeout'>((resolve) => {
+          timer = setTimeout(() => resolve('timeout'), this.drainTimeoutMs);
+        }),
+      ]);
+
+      if (result === 'drained') {
+        this.logger.log('[Shutdown] ✅ 队列已排空并关闭');
+      } else {
+        this.logger.warn(
+          `[Shutdown] ⚠️ ${this.drainTimeoutMs}ms 内仍有任务未完成，放弃等待（未 ack 的 pending 将由新实例重放）`,
+        );
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`[Shutdown] 排空队列失败: ${errorMessage}`);
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    }
   }
 
   private async waitForQueueReady(): Promise<void> {
@@ -154,6 +204,10 @@ export class MessageProcessor implements OnModuleInit {
       lockAcquired = await this.simpleMergeService.acquireProcessingLock(chatId, lockOwner);
       if (!lockAcquired) {
         this.logger.debug(`[Bull] chatId=${chatId} 已有任务在处理中，跳过当前任务 ${job.id}`);
+        // 持锁进程可能已被发版重启杀死（孤悬锁最长存活到 TTL 过期），若只是静默
+        // 跳过，pending 会跟着自身 TTL 过期、消息永久丢失。补建延迟重检任务并
+        // 续期 pending，确保锁过期后仍有任务接手。
+        await this.simpleMergeService.scheduleLockRetryCheck(chatId);
         return;
       }
 

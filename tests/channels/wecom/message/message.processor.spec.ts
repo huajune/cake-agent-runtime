@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bull';
+import { ConfigService } from '@nestjs/config';
 import { MessageProcessor } from '@wecom/message/runtime/message.processor';
 import { MessagePipelineService } from '@wecom/message/application/pipeline.service';
 import { SimpleMergeService } from '@wecom/message/runtime/simple-merge.service';
@@ -14,6 +15,7 @@ describe('MessageProcessor', () => {
   const mockQueue = {
     on: jest.fn(),
     process: jest.fn(),
+    close: jest.fn().mockResolvedValue(undefined),
     getWaitingCount: jest.fn().mockResolvedValue(0),
     getActiveCount: jest.fn().mockResolvedValue(0),
     getCompletedCount: jest.fn().mockResolvedValue(0),
@@ -33,6 +35,14 @@ describe('MessageProcessor', () => {
     claimPendingSnapshot: jest.fn(),
     ackPendingMessages: jest.fn().mockResolvedValue(undefined),
     checkAndProcessNewMessages: jest.fn().mockResolvedValue(false),
+    scheduleLockRetryCheck: jest.fn().mockResolvedValue(undefined),
+  };
+
+  const mockConfigService = {
+    // 排空超时压到 100ms，避免 close 挂起的用例拖慢测试
+    get: jest.fn((key: string, defaultValue?: string) =>
+      key === 'SHUTDOWN_DRAIN_TIMEOUT_MS' ? '100' : defaultValue,
+    ),
   };
 
   const mockSystemConfigService = {
@@ -60,6 +70,7 @@ describe('MessageProcessor', () => {
         { provide: SystemConfigService, useValue: mockSystemConfigService },
         { provide: UserHostingService, useValue: mockUserHostingService },
         { provide: MessageDeduplicationService, useValue: mockDeduplicationService },
+        { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
 
@@ -91,11 +102,7 @@ describe('MessageProcessor', () => {
         { chatId: 'chat-123', messageId: 'msg-2', imContactId: 'c-1' },
       ];
 
-      const dropped = await (processor as any).dropIfHostingPaused(
-        'chat-123',
-        messages,
-        'job-9',
-      );
+      const dropped = await (processor as any).dropIfHostingPaused('chat-123', messages, 'job-9');
 
       expect(dropped).toBe(true);
       expect(mockUserHostingService.isAnyPaused).toHaveBeenCalledWith([
@@ -116,6 +123,41 @@ describe('MessageProcessor', () => {
 
       expect(dropped).toBe(false);
       expect(mockDeduplicationService.markMessageAsProcessedAsync).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('onModuleDestroy (优雅排空)', () => {
+    it('closes the queue and waits for in-flight jobs to finish', async () => {
+      mockQueue.close.mockResolvedValueOnce(undefined);
+
+      await processor.onModuleDestroy();
+
+      expect(mockQueue.close).toHaveBeenCalled();
+    });
+
+    it('gives up waiting after drain timeout when close hangs', async () => {
+      mockQueue.close.mockReturnValueOnce(new Promise(() => undefined));
+
+      await expect(processor.onModuleDestroy()).resolves.toBeUndefined();
+    });
+
+    it('swallows close errors instead of blocking shutdown', async () => {
+      mockQueue.close.mockRejectedValueOnce(new Error('redis gone'));
+
+      await expect(processor.onModuleDestroy()).resolves.toBeUndefined();
+    });
+  });
+
+  describe('handleProcessJob 锁冲突', () => {
+    it('schedules a lock-retry check instead of silently dropping (2026-06-09 发版事故)', async () => {
+      mockSimpleMergeService.acquireProcessingLock.mockResolvedValueOnce(false);
+
+      await (processor as any).handleProcessJob({ id: 'job-1', data: { chatId: 'chat-123' } });
+
+      expect(mockSimpleMergeService.scheduleLockRetryCheck).toHaveBeenCalledWith('chat-123');
+      expect(mockSimpleMergeService.claimPendingSnapshot).not.toHaveBeenCalled();
+      // 没拿到锁就不该去释放别人的锁
+      expect(mockSimpleMergeService.releaseProcessingLock).not.toHaveBeenCalled();
     });
   });
 

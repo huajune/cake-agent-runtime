@@ -29,6 +29,7 @@ export class SimpleMergeService implements OnModuleInit {
   private readonly PENDING_TTL_SECONDS = 300; // 5分钟过期兜底
   private readonly PROCESSING_LOCK_TTL_SECONDS = 300;
   private readonly QUIET_WINDOW_FOLLOWUP_DELAY_MS = 200;
+  private readonly LOCK_RETRY_DELAY_MS = 30000;
 
   constructor(
     private readonly redisService: RedisService,
@@ -167,6 +168,57 @@ export class SimpleMergeService implements OnModuleInit {
       ownerToken,
       this.PROCESSING_LOCK_TTL_SECONDS,
     );
+  }
+
+  /**
+   * 锁冲突时的兜底重检。
+   *
+   * 正常情况下锁由同 chat 的另一个存活 worker 持有，它处理完会自查新消息，
+   * 冲突任务静默跳过是安全的。但持锁进程被发版重启杀死时，锁会孤悬到 TTL
+   * 过期（最长 PROCESSING_LOCK_TTL_SECONDS），期间所有检查任务若只是跳过，
+   * pending 会跟着自身 TTL 过期、消息永久丢失（2026-06-09 v5.13.0 发版事故）。
+   *
+   * 这里做两件事：
+   * 1. 续期 pending / lastMessageAt，保证消息能活到孤悬锁过期之后；
+   * 2. 补建一个延迟重检任务（按时间桶去重，同窗口内只建一个），锁过期后接手处理。
+   */
+  async scheduleLockRetryCheck(chatId: string): Promise<void> {
+    try {
+      const pendingKey = RedisKeyBuilder.pending(chatId);
+      const queueLength = await this.redisService.llen(pendingKey);
+      if (queueLength === 0) {
+        return;
+      }
+
+      await this.redisService.expire(pendingKey, this.PENDING_TTL_SECONDS);
+      await this.redisService.expire(
+        RedisKeyBuilder.lastMessageAt(chatId),
+        this.PENDING_TTL_SECONDS,
+      );
+
+      const bucket = Math.floor(Date.now() / this.LOCK_RETRY_DELAY_MS);
+      await this.messageQueue.add(
+        'process',
+        { chatId },
+        {
+          jobId: `${chatId}:lockretry:${bucket}`,
+          delay: this.LOCK_RETRY_DELAY_MS,
+          removeOnComplete: true,
+          removeOnFail: false,
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 2000,
+          },
+        },
+      );
+      this.logger.debug(
+        `[${chatId}] 锁冲突，已补建重检任务（delay=${this.LOCK_RETRY_DELAY_MS}ms, pending=${queueLength}）`,
+      );
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[${chatId}] 创建锁冲突重检任务失败: ${errorMessage}`);
+    }
   }
 
   async releaseProcessingLock(chatId: string, ownerToken: string): Promise<void> {

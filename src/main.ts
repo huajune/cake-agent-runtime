@@ -127,6 +127,10 @@ async function bootstrap() {
   // 全局注册异常过滤器（统一处理所有异常）
   app.useGlobalFilters(app.get(HttpExceptionFilter));
 
+  // 启用关停钩子：发版 SIGTERM 时触发各模块生命周期钩子，
+  // 让 MessageProcessor 排空 in-flight 消息后再退出，避免候选人消息被吞
+  app.enableShutdownHooks();
+
   // 从配置服务获取端口和环境
   const configService = app.get(ConfigService);
   const nodeEnv = configService.get<string>('NODE_ENV')!;
