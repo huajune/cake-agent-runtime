@@ -215,8 +215,17 @@ export interface SummaryData {
   recent: SummaryEntry[];
   /** 更早的摘要被 LLM 压缩合并成的总结 */
   archive: string | null;
-  /** 最近一次已沉淀到长期记忆的消息边界。 */
+  /**
+   * 最近一次已沉淀到长期记忆的消息边界（用户维度，跨 bot 共享）。
+   * 历史字段：双 bot 服务同一候选人时会互相推进，仅作为 lastSettledBySession
+   * 缺失时的回退基准。
+   */
   lastSettledMessageAt: string | null;
+  /**
+   * 按会话（sessionId=chatId，bot 维度）隔离的沉淀边界。
+   * 修复双 bot 场景：bot A 推进用户级边界后，bot B 边界之前的消息永不沉淀。
+   */
+  lastSettledBySession?: Record<string, string> | null;
 }
 
 /** agent_long_term_memories 行中的回调元信息。 */
@@ -249,6 +258,7 @@ export interface AgentLongTermMemoryRow {
   corp_id: string;
   user_id: string;
   profile_facts?: UserProfileFacts | null;
+  preference_facts?: LongTermPreferenceFacts | null;
   summary_data?: SummaryData | null;
   message_metadata?: MessageMetadata | null;
   latest_booking?: LatestBooking | null;
@@ -262,6 +272,42 @@ export interface LongTermStorageResult {
   table: 'agent_long_term_memories';
   row: AgentLongTermMemoryRow | null;
 }
+
+// ==================== 长期求职意向（preference_facts） ====================
+
+/**
+ * 跨会话沉淀的求职意向字段。
+ *
+ * 只收跨会话稳定的意向：城市/区域/地点/品牌/岗位/班次/薪资/用工形式/排班硬约束，
+ * 以及带日期锚的推迟意向与最早可面日期。
+ * short_term / time_windows / open_position 是单次求职 episode 的临时态，不沉淀。
+ */
+export const LONG_TERM_PREFERENCE_FIELD_KEYS = [
+  'city',
+  'district',
+  'location',
+  'brands',
+  'position',
+  'schedule',
+  'salary',
+  'labor_form',
+  'schedule_constraint',
+  'delayed_intent',
+  'available_after',
+] as const;
+
+export type LongTermPreferenceFieldKey = (typeof LONG_TERM_PREFERENCE_FIELD_KEYS)[number];
+
+/**
+ * 长期求职意向集合。
+ *
+ * 覆盖语义是**快照式整组覆盖**（最新一段会话的意向赢），与 session facts 的
+ * deepMerge 累积不同——累积语义会让错值/错字变体永远清不掉（张漪 case 的
+ * pref.location 教训）。settlement 是唯一写方。
+ */
+export type LongTermPreferenceFacts = Partial<
+  Record<LongTermPreferenceFieldKey, UserProfileFactValue<unknown>>
+>;
 
 /** 便于复用的长期记忆 upsert payload。 */
 export type ProfileUpsertPayload = Partial<UserProfile>;

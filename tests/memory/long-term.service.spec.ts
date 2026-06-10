@@ -9,6 +9,8 @@ describe('LongTermService', () => {
   const mockSupabaseStore = {
     getProfile: jest.fn(),
     upsertProfileFacts: jest.fn().mockResolvedValue(undefined),
+    getPreferenceFacts: jest.fn(),
+    upsertPreferenceFacts: jest.fn().mockResolvedValue(undefined),
     getSummaryData: jest.fn(),
     appendSummary: jest.fn().mockResolvedValue(undefined),
     markLastSettledMessageAt: jest.fn().mockResolvedValue(undefined),
@@ -198,6 +200,63 @@ describe('LongTermService', () => {
           evidence: expect.stringContaining('原字段来源=llm'),
         }),
       );
+    });
+
+    it('should settle stable preferences into long-term preference facts', async () => {
+      const sessionFacts = toSessionFacts(
+        {
+          ...FALLBACK_EXTRACTION,
+          preferences: {
+            ...FALLBACK_EXTRACTION.preferences,
+            brands: ['肯德基', '必胜客'],
+            position: ['后厨'],
+            schedule: '下午',
+            city: { value: '上海', confidence: 'high', evidence: 'explicit_city' },
+            district: ['浦东新区'],
+            // 单次求职 episode 的临时态：不应沉淀
+            short_term: true,
+            time_windows: ['17点后'],
+            open_position: false,
+          },
+          reasoning: '候选人意向提取',
+        },
+        { confidence: 'medium', source: 'llm', evidence: 'LLM 结构化提取' },
+      );
+
+      await service.writeFromSettlement('corp1', 'user1', sessionFacts);
+
+      expect(mockSupabaseStore.upsertPreferenceFacts).toHaveBeenCalledTimes(1);
+      const saved = mockSupabaseStore.upsertPreferenceFacts.mock.calls[0][2];
+      expect(saved.brands).toEqual(
+        expect.objectContaining({
+          value: ['肯德基', '必胜客'],
+          source: 'extraction',
+          confidence: 'medium',
+        }),
+      );
+      expect(saved.city).toEqual(expect.objectContaining({ value: '上海' }));
+      expect(saved.position).toEqual(expect.objectContaining({ value: ['后厨'] }));
+      expect(saved.schedule).toEqual(expect.objectContaining({ value: '下午' }));
+      expect(saved.district).toEqual(expect.objectContaining({ value: ['浦东新区'] }));
+      // 临时态字段不沉淀
+      expect(saved.short_term).toBeUndefined();
+      expect(saved.time_windows).toBeUndefined();
+      expect(saved.open_position).toBeUndefined();
+    });
+
+    it('should skip preference write when no stable preferences exist', async () => {
+      const sessionFacts = toSessionFacts(
+        {
+          ...FALLBACK_EXTRACTION,
+          interview_info: { ...FALLBACK_EXTRACTION.interview_info, name: '张三' },
+          reasoning: '仅身份信息',
+        },
+        { confidence: 'medium', source: 'llm', evidence: 'LLM 结构化提取' },
+      );
+
+      await service.writeFromSettlement('corp1', 'user1', sessionFacts);
+
+      expect(mockSupabaseStore.upsertPreferenceFacts).not.toHaveBeenCalled();
     });
   });
 

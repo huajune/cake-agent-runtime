@@ -12,6 +12,7 @@ import type {
   MessageMetadata,
   AgentLongTermMemoryRow,
   LatestBooking,
+  LongTermPreferenceFacts,
 } from '../types/long-term.types';
 import {
   createEmptyUserProfileFacts,
@@ -30,6 +31,7 @@ function normalizeSummaryData(data: SummaryData | null | undefined): SummaryData
     recent: data.recent ?? [],
     archive: data.archive ?? null,
     lastSettledMessageAt: data.lastSettledMessageAt ?? null,
+    lastSettledBySession: data.lastSettledBySession ?? null,
   };
 }
 
@@ -126,6 +128,34 @@ export class SupabaseStore implements MemoryStore {
     await this.invalidateCache(corpId, userId);
   }
 
+  // ==================== Preference 操作 ====================
+
+  /** 读取长期求职意向（settlement 沉淀的跨会话偏好快照）。 */
+  async getPreferenceFacts(
+    corpId: string,
+    userId: string,
+  ): Promise<LongTermPreferenceFacts | null> {
+    const row = await this.getRow(corpId, userId);
+    const facts = row?.preference_facts;
+    if (!facts || typeof facts !== 'object') return null;
+    return Object.keys(facts).length > 0 ? facts : null;
+  }
+
+  /**
+   * 写入长期求职意向 — 快照式整列覆盖（最新一段会话的意向赢）。
+   *
+   * 不做字段级 merge/数组累积：累积语义会让错值与错字变体永远清不掉。
+   * settlement 是唯一写方，且同 chat 的回合收尾已被处理锁串行化。
+   */
+  async upsertPreferenceFacts(
+    corpId: string,
+    userId: string,
+    preferenceFacts: LongTermPreferenceFacts,
+  ): Promise<void> {
+    if (Object.keys(preferenceFacts).length === 0) return;
+    await this.upsertRow(corpId, userId, { preference_facts: preferenceFacts });
+  }
+
   // ==================== Summary 操作 ====================
 
   async getSummaryData(corpId: string, userId: string): Promise<SummaryData | null> {
@@ -146,6 +176,8 @@ export class SupabaseStore implements MemoryStore {
     entry: SummaryEntry,
     options?: {
       lastSettledMessageAt?: string | null;
+      /** 沉淀边界的会话维度 key；提供时同步写 lastSettledBySession[sessionId]。 */
+      sessionId?: string | null;
       compressArchive?: (
         overflow: SummaryEntry[],
         existingArchive: string | null,
@@ -164,6 +196,7 @@ export class SupabaseStore implements MemoryStore {
       p_entry: entry,
       p_last_settled_message_at: options?.lastSettledMessageAt ?? null,
       p_max_recent: MAX_RECENT_SUMMARIES,
+      p_session_id: options?.sessionId ?? null,
     });
 
     if (error) {
@@ -201,6 +234,7 @@ export class SupabaseStore implements MemoryStore {
     entry: SummaryEntry,
     options?: {
       lastSettledMessageAt?: string | null;
+      sessionId?: string | null;
       compressArchive?: (
         overflow: SummaryEntry[],
         existingArchive: string | null,
@@ -230,6 +264,12 @@ export class SupabaseStore implements MemoryStore {
 
     if (options?.lastSettledMessageAt !== undefined) {
       data.lastSettledMessageAt = options.lastSettledMessageAt;
+      if (options.sessionId && options.lastSettledMessageAt) {
+        data.lastSettledBySession = {
+          ...(data.lastSettledBySession ?? {}),
+          [options.sessionId]: options.lastSettledMessageAt,
+        };
+      }
     }
 
     await this.upsertRow(corpId, userId, { summary_data: data });
@@ -239,7 +279,24 @@ export class SupabaseStore implements MemoryStore {
     corpId: string,
     userId: string,
     lastSettledMessageAt: string,
+    sessionId?: string | null,
   ): Promise<void> {
+    const client = this.supabase.getSupabaseClient();
+    if (client) {
+      // 优先走行锁 RPC，避免应用层 read-then-write 与并发 appendSummary 互相覆盖。
+      const { error } = await client.rpc('mark_long_term_settled_boundary', {
+        p_corp_id: corpId,
+        p_user_id: userId,
+        p_last_settled_message_at: lastSettledMessageAt,
+        p_session_id: sessionId ?? null,
+      });
+      if (!error) {
+        await this.invalidateCache(corpId, userId);
+        return;
+      }
+      this.logger.warn('[markLastSettledMessageAt] RPC 失败，降级到应用层写入', error.message);
+    }
+
     const existing = await this.getSummaryData(corpId, userId);
     const data: SummaryData = existing ?? {
       recent: [],
@@ -248,6 +305,12 @@ export class SupabaseStore implements MemoryStore {
     };
 
     data.lastSettledMessageAt = lastSettledMessageAt;
+    if (sessionId) {
+      data.lastSettledBySession = {
+        ...(data.lastSettledBySession ?? {}),
+        [sessionId]: lastSettledMessageAt,
+      };
+    }
     await this.upsertRow(corpId, userId, { summary_data: data });
   }
 

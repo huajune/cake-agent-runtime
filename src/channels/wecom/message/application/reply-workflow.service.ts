@@ -279,149 +279,161 @@ export class ReplyWorkflowService {
         `tokens=${agentResult.reply.usage?.totalTokens || 'N/A'}`,
     );
 
-    // 副作用工具短路：首次调用若命中 advance_stage / invite_to_group /
-    // duliday_interview_booking 中任一个，就视为本轮已经在外部系统留下了
-    // 不可撤销的痕迹——不去 drain pending，直接投递首次回复。
-    // Agent 生成期间到达的新消息仍留在 Redis pending list 里，由
-    // MessageProcessor 末尾的 checkAndProcessNewMessages 补建 follow-up
-    // job 在下一轮独立处理。
-    const blockingTools = collectBlockingTools(agentResult.toolCalls);
-    const replayBlocked = blockingTools.length > 0;
-
-    if (replayBlocked) {
-      this.logger.warn(
-        `${logPrefix}[${contactName}][Replay-Skip] 首次调用命中不可逆工具 [${blockingTools.join(
-          ',',
-        )}]，跳过 replay 检测，直接投递首次回复 (chatId=${chatId})`,
-      );
-      if (agentResult.runTurnEnd) {
-        void agentResult.runTurnEnd().catch((err) => {
-          const errorMessage = err instanceof Error ? err.message : String(err);
-          this.logger.warn(`[${contactName}] turn-end lifecycle 执行失败: ${errorMessage}`);
-        });
-        agentResult.runTurnEnd = undefined;
-      }
-    } else {
-      // 投递前重跑：Agent 生成期间若用户又发了新消息，丢弃本次回复，合并新消息重跑一次。
-      // 只允许一次重跑——第二次生成期间到的新消息交给投递后的 follow-up job 处理，避免无限重跑。
-      // 注意 fromIndex 必须是 worker 持有的 consumedPending 偏移，否则会把已经在 allMessages
-      // 里的消息再读一遍。
-      const { messages: newMessages, snapshotSize: replaySnapshotSize } =
-        await this.fetchPendingSinceAgentStart(chatId, consumedPending);
-      consumedPending += replaySnapshotSize;
-      if (newMessages.length > 0) {
-        this.logger.warn(
-          `${logPrefix}[${contactName}][Replay] 检测到 ${newMessages.length} 条新消息，丢弃首次回复并重新调用 Agent (chatId=${chatId})`,
-        );
-        // 丢弃首次的 runTurnEnd——它承载了将首次回复写入 session 记忆的副作用。
-        // 下面第二次 callAgent 使用默认 deferTurnEnd=false，runner 内部会 fire-and-forget 触发。
-        agentResult.runTurnEnd = undefined;
-
-        allMessages = [...allMessages, ...newMessages];
-        content = this.wecomObservability.buildMergedRequestContent(allMessages);
-        imageUrls = this.collectImageUrls(allMessages);
-        imageMessageIds = this.collectImageMessageIds(allMessages);
-        visualMessageTypes = this.buildVisualMessageTypes(allMessages);
-        shortTermEndTimeInclusive = this.resolveShortTermEndTimeInclusive(allMessages);
-        await this.wecomObservability.updateRequestMessages(traceId, {
-          messages: allMessages,
-          content,
-          mergeWindowMs: this.runtimeConfig.getMergeDelayMs(),
-        });
-
-        // Replay 合入的新消息在 intake 时已写了一条 processing 流水，本轮的终态只会
-        // 回写到 traceId 那一行。若不在这里回收，这些源记录会一直停在「处理中」，
-        // 只能等 30 分钟的 timeoutStuckRecords 兜底清理。
-        await this.wecomObservability.mergePrepTimingsFromSources(
-          traceId,
-          newMessages.map((message) => message.messageId),
-        );
-
-        // 等 replay 合入的新消息（可能含图片）的 vision 描述完成后再重跑 Agent
-        await this.ensureVisionDescriptionsReady(imageMessageIds, contactName, logPrefix);
-
-        agentResult = await this.callAgent({
-          ...agentCallParams,
-          userMessage: content,
-          imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
-          imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
-          visualMessageTypes:
-            Object.keys(visualMessageTypes).length > 0 ? visualMessageTypes : undefined,
-          shortTermEndTimeInclusive,
-        });
-
-        this.logger.log(
-          `${logPrefix}[${contactName}][Replay] 重跑 Agent 完成，耗时 ${agentResult.processingTime}ms，` +
-            `tokens=${agentResult.reply.usage?.totalTokens || 'N/A'}`,
-        );
-      } else if (agentResult.runTurnEnd) {
-        // 首次结果被最终采纳，显式触发 turn-end lifecycle（与默认路径语义对齐：fire-and-forget）。
-        void agentResult.runTurnEnd().catch((err) => {
-          const errorMessage = err instanceof Error ? err.message : String(err);
-          this.logger.warn(`[${contactName}] turn-end lifecycle 执行失败: ${errorMessage}`);
-        });
-        agentResult.runTurnEnd = undefined;
-      }
-    }
-
-    if (agentResult.isFallback) {
-      void this.processingFailureService.sendFallbackAlert({
-        contactName,
-        botUserName: parsed.managerName,
-        userMessage: content,
-        fallbackMessage: agentResult.reply.content,
-        fallbackReason: 'Agent 返回降级响应',
-        scenario,
-        chatId,
-        imBotId: params.primaryMessage.imBotId,
+    // 回合收尾（记忆投影/事实提取/沉淀）与后续投递并行执行，但必须在本方法返回前
+    // 完成（见末尾 finally）：方法返回即 MessageProcessor 释放 chat 处理锁，若收尾
+    // 仍在异步写 session state，会与下一个 job 的读写并发，整份覆盖写互相丢更新。
+    let turnEndPromise: Promise<void> | undefined;
+    const startTurnEnd = (result: { runTurnEnd?: () => Promise<void> }) => {
+      const run = result.runTurnEnd;
+      if (!run) return;
+      result.runTurnEnd = undefined;
+      turnEndPromise = run().catch((err) => {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`[${contactName}] turn-end lifecycle 执行失败: ${errorMessage}`);
       });
-    }
+    };
 
-    const processedMessageIds = allMessages.map((message) => message.messageId);
+    try {
+      // 副作用工具短路：首次调用若命中 advance_stage / invite_to_group /
+      // duliday_interview_booking 中任一个，就视为本轮已经在外部系统留下了
+      // 不可撤销的痕迹——不去 drain pending，直接投递首次回复。
+      // Agent 生成期间到达的新消息仍留在 Redis pending list 里，由
+      // MessageProcessor 末尾的 checkAndProcessNewMessages 补建 follow-up
+      // job 在下一轮独立处理。
+      const blockingTools = collectBlockingTools(agentResult.toolCalls);
+      const replayBlocked = blockingTools.length > 0;
 
-    // Agent 主动沉默 / 转人工短路：跳过 WeCom 发送，但仍完成本轮流水与观测。
-    if (agentResult.isSkipped) {
-      const skipReason = this.extractSkipReason(agentResult) || '本轮无需回复';
-      this.logger.log(`${logPrefix}[${contactName}] Agent 短路，跳过消息发送 (${skipReason})`);
-      await this.wecomObservability.markReplySkipped(traceId);
-      const skippedMetadata = await this.buildSuccessMetadata(
+      if (replayBlocked) {
+        this.logger.warn(
+          `${logPrefix}[${contactName}][Replay-Skip] 首次调用命中不可逆工具 [${blockingTools.join(
+            ',',
+          )}]，跳过 replay 检测，直接投递首次回复 (chatId=${chatId})`,
+        );
+        startTurnEnd(agentResult);
+      } else {
+        // 投递前重跑：Agent 生成期间若用户又发了新消息，丢弃本次回复，合并新消息重跑一次。
+        // 只允许一次重跑——第二次生成期间到的新消息交给投递后的 follow-up job 处理，避免无限重跑。
+        // 注意 fromIndex 必须是 worker 持有的 consumedPending 偏移，否则会把已经在 allMessages
+        // 里的消息再读一遍。
+        const { messages: newMessages, snapshotSize: replaySnapshotSize } =
+          await this.fetchPendingSinceAgentStart(chatId, consumedPending);
+        consumedPending += replaySnapshotSize;
+        if (newMessages.length > 0) {
+          this.logger.warn(
+            `${logPrefix}[${contactName}][Replay] 检测到 ${newMessages.length} 条新消息，丢弃首次回复并重新调用 Agent (chatId=${chatId})`,
+          );
+          // 丢弃首次的 runTurnEnd——它承载了将首次回复写入 session 记忆的副作用。
+          // 第二次 callAgent 同样 deferTurnEnd，结果必然被采纳，返回后立即 startTurnEnd。
+          agentResult.runTurnEnd = undefined;
+
+          allMessages = [...allMessages, ...newMessages];
+          content = this.wecomObservability.buildMergedRequestContent(allMessages);
+          imageUrls = this.collectImageUrls(allMessages);
+          imageMessageIds = this.collectImageMessageIds(allMessages);
+          visualMessageTypes = this.buildVisualMessageTypes(allMessages);
+          shortTermEndTimeInclusive = this.resolveShortTermEndTimeInclusive(allMessages);
+          await this.wecomObservability.updateRequestMessages(traceId, {
+            messages: allMessages,
+            content,
+            mergeWindowMs: this.runtimeConfig.getMergeDelayMs(),
+          });
+
+          // Replay 合入的新消息在 intake 时已写了一条 processing 流水，本轮的终态只会
+          // 回写到 traceId 那一行。若不在这里回收，这些源记录会一直停在「处理中」，
+          // 只能等 30 分钟的 timeoutStuckRecords 兜底清理。
+          await this.wecomObservability.mergePrepTimingsFromSources(
+            traceId,
+            newMessages.map((message) => message.messageId),
+          );
+
+          // 等 replay 合入的新消息（可能含图片）的 vision 描述完成后再重跑 Agent
+          await this.ensureVisionDescriptionsReady(imageMessageIds, contactName, logPrefix);
+
+          agentResult = await this.callAgent({
+            ...agentCallParams,
+            userMessage: content,
+            imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+            imageMessageIds: imageMessageIds.length > 0 ? imageMessageIds : undefined,
+            visualMessageTypes:
+              Object.keys(visualMessageTypes).length > 0 ? visualMessageTypes : undefined,
+            shortTermEndTimeInclusive,
+            deferTurnEnd: true,
+          });
+
+          this.logger.log(
+            `${logPrefix}[${contactName}][Replay] 重跑 Agent 完成，耗时 ${agentResult.processingTime}ms，` +
+              `tokens=${agentResult.reply.usage?.totalTokens || 'N/A'}`,
+          );
+          startTurnEnd(agentResult);
+        } else {
+          // 首次结果被最终采纳，触发 turn-end lifecycle（与投递并行，方法返回前 await）。
+          startTurnEnd(agentResult);
+        }
+      }
+
+      if (agentResult.isFallback) {
+        void this.processingFailureService.sendFallbackAlert({
+          contactName,
+          botUserName: parsed.managerName,
+          userMessage: content,
+          fallbackMessage: agentResult.reply.content,
+          fallbackReason: 'Agent 返回降级响应',
+          scenario,
+          chatId,
+          imBotId: params.primaryMessage.imBotId,
+        });
+      }
+
+      const processedMessageIds = allMessages.map((message) => message.messageId);
+
+      // Agent 主动沉默 / 转人工短路：跳过 WeCom 发送，但仍完成本轮流水与观测。
+      if (agentResult.isSkipped) {
+        const skipReason = this.extractSkipReason(agentResult) || '本轮无需回复';
+        this.logger.log(`${logPrefix}[${contactName}] Agent 短路，跳过消息发送 (${skipReason})`);
+        await this.wecomObservability.markReplySkipped(traceId);
+        const skippedMetadata = await this.buildSuccessMetadata(
+          traceId,
+          agentResult,
+          { segmentCount: 0 },
+          scenario,
+          batchContext?.batchId,
+        );
+        this.monitoringService.recordSuccess(traceId, skippedMetadata);
+        await this.markMessagesAsProcessed(processedMessageIds);
+        await this.ackPendingIfMerged(chatId, consumedPending);
+        return;
+      }
+
+      const deliveryContext = this.buildDeliveryContext(parsed, traceId);
+      const deliveryResult = await this.deliveryService.deliverReply(
+        agentResult.reply,
+        deliveryContext,
+        true,
+      );
+
+      // Agent 回复成功投递 → agent.replied（仅个人单聊；fire-and-forget）。
+      // 已过 skip_reply/handoff 短路早返回，到这里一定是真实对外回复。
+      this.recordAgentReplied(params.primaryMessage, parsed, traceId);
+
+      const successMetadata = await this.buildSuccessMetadata(
         traceId,
         agentResult,
-        { segmentCount: 0 },
+        deliveryResult,
         scenario,
         batchContext?.batchId,
       );
-      this.monitoringService.recordSuccess(traceId, skippedMetadata);
+
+      this.monitoringService.recordSuccess(traceId, successMetadata);
       await this.markMessagesAsProcessed(processedMessageIds);
       await this.ackPendingIfMerged(chatId, consumedPending);
-      return;
-    }
 
-    const deliveryContext = this.buildDeliveryContext(parsed, traceId);
-    const deliveryResult = await this.deliveryService.deliverReply(
-      agentResult.reply,
-      deliveryContext,
-      true,
-    );
-
-    // Agent 回复成功投递 → agent.replied（仅个人单聊；fire-and-forget）。
-    // 已过 skip_reply/handoff 短路早返回，到这里一定是真实对外回复。
-    this.recordAgentReplied(params.primaryMessage, parsed, traceId);
-
-    const successMetadata = await this.buildSuccessMetadata(
-      traceId,
-      agentResult,
-      deliveryResult,
-      scenario,
-      batchContext?.batchId,
-    );
-
-    this.monitoringService.recordSuccess(traceId, successMetadata);
-    await this.markMessagesAsProcessed(processedMessageIds);
-    await this.ackPendingIfMerged(chatId, consumedPending);
-
-    if (!batchContext) {
-      this.logger.debug(`[${contactName}] 请求流水 [${traceId}] 已标记为已处理`);
+      if (!batchContext) {
+        this.logger.debug(`[${contactName}] 请求流水 [${traceId}] 已标记为已处理`);
+      }
+    } finally {
+      // 在方法返回（→ MessageProcessor 释放 chat 处理锁）前等待回合收尾落盘，
+      // 保证同一 chat 的记忆写入相对处理锁串行，杜绝跨 job 并发覆盖。
+      if (turnEndPromise) await turnEndPromise;
     }
   }
 

@@ -21,6 +21,9 @@ const SUMMARY_SYSTEM_PROMPT = `你是对话摘要生成器。将招募经理与�
 
 const SETTLEMENT_FETCH_LIMIT = 500;
 
+/** 摘要 LLM 输入的消息条数上限：分页扫描后旧会话段可能远超单页。 */
+const SUMMARY_MAX_MESSAGES = 120;
+
 const ARCHIVE_COMPRESS_PROMPT = `你是记忆压缩器。将多条历史求职摘要合并为一段简洁的总结。
 
 要求：
@@ -80,7 +83,11 @@ export class SettlementService {
   ): Promise<boolean> {
     try {
       const summaryData = await this.longTerm.getSummaryData(corpId, userId);
-      const lastSettledAt = summaryData?.lastSettledMessageAt ?? null;
+      // 边界按会话（sessionId=chatId，bot 维度）隔离读取；旧的用户级边界仅作回退。
+      // 否则双 bot 服务同一候选人时，bot A 推进用户级边界后，bot B 边界之前的
+      // 会话消息会被快速跳过/查询起点裁掉，永不沉淀。
+      const lastSettledAt =
+        summaryData?.lastSettledBySession?.[sessionId] ?? summaryData?.lastSettledMessageAt ?? null;
 
       // 快速跳过：若上次沉淀边界距今 < settlementGapSeconds，不可能存在闭合断层
       if (lastSettledAt) {
@@ -91,41 +98,24 @@ export class SettlementService {
       }
 
       const effectiveSettledMs = lastSettledAt ? new Date(lastSettledAt).getTime() : 0;
+      const scan = await this.scanForSessionGap(sessionId, effectiveSettledMs);
 
-      const messagesSince = await this.chatSession.getChatHistoryInRange(sessionId, {
-        startTimeExclusive: effectiveSettledMs,
-        limit: SETTLEMENT_FETCH_LIMIT,
-      });
-
-      if (messagesSince.length === 0) return false;
-
-      const sorted = [...messagesSince].sort((a, b) => a.timestamp - b.timestamp);
+      if (scan.messages.length === 0) return false;
 
       // 冷启动：首次无沉淀基准时，将边界初始化到最新消息，跳过历史全量沉淀
       if (!lastSettledAt) {
-        const latestTs = new Date(sorted.at(-1)!.timestamp).toISOString();
-        await this.longTerm.markLastSettledMessageAt(corpId, userId, latestTs);
+        const latestTs = new Date(scan.messages.at(-1)!.timestamp).toISOString();
+        await this.longTerm.markLastSettledMessageAt(corpId, userId, latestTs, sessionId);
         this.logger.log(
-          `[detectAndSettle] 冷启动初始化边界: userId=${userId}, boundary=${latestTs}`,
+          `[detectAndSettle] 冷启动初始化边界: userId=${userId}, sessionId=${sessionId}, boundary=${latestTs}`,
         );
         return false;
       }
 
-      const SESSION_GAP_MS = this.config.settlementGapSeconds * 1000;
-
-      let gapBeforeIndex = -1;
-      for (let i = 1; i < sorted.length; i++) {
-        const gap = sorted[i].timestamp - sorted[i - 1].timestamp;
-        if (gap >= SESSION_GAP_MS) {
-          gapBeforeIndex = i;
-          break;
-        }
-      }
-
-      if (gapBeforeIndex === -1) return false;
+      if (scan.gapBeforeIndex === -1) return false;
 
       // gapBeforeIndex 之前的消息属于待沉淀的旧会话
-      const prevSessionMessages = sorted.slice(0, gapBeforeIndex);
+      const prevSessionMessages = scan.messages.slice(0, scan.gapBeforeIndex);
       const prevSessionEndMessage = prevSessionMessages.at(-1);
       if (!prevSessionEndMessage) return false;
 
@@ -152,6 +142,51 @@ export class SettlementService {
 
   // ==================== 内部方法 ====================
 
+  /**
+   * 从沉淀边界开始分页扫描消息，寻找首个会话断层（相邻消息间隔 ≥ settlementGap）。
+   *
+   * 修复：旧实现只取边界后最旧的 500 条，长会话（边界后 >500 条且断层在更后面）
+   * 永远扫不到断层，`lastSettledMessageAt` 不再前进，该用户从此永不沉淀，
+   * 且每轮重复拉同样 500 条做无效扫描。
+   */
+  private async scanForSessionGap(
+    sessionId: string,
+    startTimeExclusive: number,
+  ): Promise<{
+    messages: Array<{ role: 'user' | 'assistant'; content: string; timestamp: number }>;
+    gapBeforeIndex: number;
+  }> {
+    const SESSION_GAP_MS = this.config.settlementGapSeconds * 1000;
+    const MAX_PAGES = 10;
+
+    const scanned: Array<{ role: 'user' | 'assistant'; content: string; timestamp: number }> = [];
+    let cursor = startTimeExclusive;
+
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const batch = await this.chatSession.getChatHistoryInRange(sessionId, {
+        startTimeExclusive: cursor,
+        limit: SETTLEMENT_FETCH_LIMIT,
+      });
+      if (batch.length === 0) break;
+
+      const sortedBatch = [...batch].sort((a, b) => a.timestamp - b.timestamp);
+      const offset = scanned.length;
+      scanned.push(...sortedBatch);
+
+      // 从上一页与本页的衔接处开始找断层（i 从 max(1, offset) 起，覆盖跨页间隔）
+      for (let i = Math.max(1, offset); i < scanned.length; i++) {
+        if (scanned[i].timestamp - scanned[i - 1].timestamp >= SESSION_GAP_MS) {
+          return { messages: scanned, gapBeforeIndex: i };
+        }
+      }
+
+      if (batch.length < SETTLEMENT_FETCH_LIMIT) break;
+      cursor = sortedBatch.at(-1)!.timestamp;
+    }
+
+    return { messages: scanned, gapBeforeIndex: -1 };
+  }
+
   private async generateAndSaveSummary(
     corpId: string,
     userId: string,
@@ -167,12 +202,14 @@ export class SettlementService {
       const { facts, lastSettledMessageAt, sessionEndAt, messages } = params;
 
       if (messages.length === 0) {
-        await this.longTerm.markLastSettledMessageAt(corpId, userId, sessionEndAt);
+        await this.longTerm.markLastSettledMessageAt(corpId, userId, sessionEndAt, sessionId);
         this.logger.debug('[settlement] 无对话记录，仅更新沉淀边界');
         return;
       }
 
+      // 分页扫描后旧会话段可能很长，摘要只取末尾一段，避免 LLM prompt 失控。
       const conversationText = messages
+        .slice(-SUMMARY_MAX_MESSAGES)
         .map((m) => `${m.role === 'user' ? '用户' : '助手'}: ${m.content}`)
         .join('\n');
 
@@ -200,6 +237,7 @@ export class SettlementService {
 
       await this.longTerm.appendSummary(corpId, userId, summaryEntry, {
         lastSettledMessageAt: sessionEndAt,
+        sessionId,
         compressArchive: (overflow, existingArchive) =>
           this.compressArchive(overflow, existingArchive),
       });

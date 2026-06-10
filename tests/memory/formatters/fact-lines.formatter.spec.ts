@@ -69,7 +69,7 @@ describe('formatExtractionFactLines', () => {
       '- 年龄: 25',
       '- 是否学生: 否',
       '- 意向品牌: 来伊份、奥乐齐',
-      '- 意向城市: 上海（置信度: high，证据: explicit_city）',
+      '- 意向城市: 上海（置信度: high）',
       '- 意向区域: 杨浦区',
     ]);
   });
@@ -78,7 +78,7 @@ describe('formatExtractionFactLines', () => {
     expect(formatExtractionFactLines(FALLBACK_EXTRACTION)).toEqual([]);
   });
 
-  it('should render high-confidence field metadata when present', () => {
+  it('should render high-confidence field metadata without evidence by default', () => {
     const facts: HighConfidenceFacts = {
       ...emptyHighConfidenceFacts(),
       interview_info: {
@@ -88,8 +88,40 @@ describe('formatExtractionFactLines', () => {
     };
     const lines = formatExtractionFactLines(facts);
 
-    expect(lines).toEqual([
-      '- 年龄: 24（置信度: high，来源: rule，证据: 年龄识别：24）',
-    ]);
+    expect(lines).toEqual(['- 年龄: 24（置信度: high，来源: rule）']);
+  });
+
+  it('should render evidence only when includeEvidence is set (extraction prompt path)', () => {
+    const facts: HighConfidenceFacts = {
+      ...emptyHighConfidenceFacts(),
+      interview_info: {
+        ...emptyHighConfidenceFacts().interview_info,
+        age: highConfidence('24', '年龄识别：24'),
+      },
+    };
+    const lines = formatExtractionFactLines(facts, { includeEvidence: true });
+
+    expect(lines).toEqual(['- 年龄: 24（置信度: high，来源: rule，证据: 年龄识别：24）']);
+  });
+
+  it('should warn when a time-sensitive fact is stale (extractedAt > 24h ago)', () => {
+    const staleAt = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const lines = formatExtractionFactLines({
+      ...FALLBACK_EXTRACTION,
+      interview_info: {
+        ...FALLBACK_EXTRACTION.interview_info,
+        interview_time: {
+          value: '明天下午2点',
+          confidence: 'medium',
+          source: 'llm',
+          evidence: 'LLM 结构化提取',
+          extractedAt: staleAt,
+        },
+      },
+    } as unknown as Parameters<typeof formatExtractionFactLines>[0]);
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('- 面试时间: 明天下午2点');
+    expect(lines[0]).toContain('可能已失效');
   });
 });
