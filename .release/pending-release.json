@@ -1,6 +1,6 @@
 {
   "baseVersion": "5.13.1",
-  "nextVersion": "5.13.2",
+  "nextVersion": "5.14.0",
   "updatedAt": "2026-06-10",
   "sourceBranch": "develop",
   "entries": [
@@ -79,6 +79,73 @@
       "config": [],
       "envFiles": [],
       "verification": []
+    },
+    {
+      "number": "278",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/278",
+      "title": "记忆注入瘦身、时间锚定、会话段切割与置信度守卫",
+      "author": "ArielZhu",
+      "mergedAt": "2026-06-10",
+      "businessUpdates": [
+        "记忆生命周期并发与沉淀边界修复",
+        "老用户回访阶段兜底 + dashboard 最终提示词可读视图"
+      ],
+      "summary": [
+        "记忆注入瘦身、时间锚定、会话段切割与置信度守卫",
+        "存量长期画像超长 evidence 清洗脚本",
+        "记忆生命周期并发与沉淀边界修复",
+        "求职意向沉淀到长期记忆（preference_facts）",
+        "老用户回访阶段兜底 + dashboard 最终提示词可读视图",
+        "来源声明置信度升级（candidate_explicit → high）"
+      ],
+      "features": [],
+      "fixes": [
+        "记忆生命周期并发与沉淀边界修复",
+        "老用户回访阶段兜底 + dashboard 最终提示词可读视图"
+      ],
+      "optimizations": [],
+      "ops": [
+        "记忆注入瘦身、时间锚定、会话段切割与置信度守卫",
+        "存量长期画像超长 evidence 清洗脚本",
+        "求职意向沉淀到长期记忆（preference_facts）",
+        "来源声明置信度升级（candidate_explicit → high）"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": []
+    },
+    {
+      "number": "284",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/284",
+      "title": "工具观测语义修复 + 清理任务分批化 + 副作用工具防重复执行",
+      "author": "ArielZhu",
+      "mergedAt": "2026-06-10",
+      "businessUpdates": [
+        "工具观测语义修复 + 清理任务分批化与收尾兜底"
+      ],
+      "summary": [
+        "工具观测语义修复 + 清理任务分批化与收尾兜底",
+        "副作用工具成功后屏蔽重复调用",
+        "名额承诺/距离编造双红线 + 门店模糊回退保留筛选条件",
+        "按 review 意见收敛副作用屏蔽语义并补测试覆盖",
+        "工具观测语义修复 + 清理任务分批化 + 副作用工具防重复执行"
+      ],
+      "features": [],
+      "fixes": [
+        "工具观测语义修复 + 清理任务分批化与收尾兜底"
+      ],
+      "optimizations": [],
+      "ops": [
+        "副作用工具成功后屏蔽重复调用",
+        "名额承诺/距离编造双红线 + 门店模糊回退保留筛选条件",
+        "按 review 意见收敛副作用屏蔽语义并补测试覆盖"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "全量 jest：287 suites / 3,677 tests 通过",
+        "新增：buildToolError 形态、geocode resolution、resultCount 自报、narrow 收敛、分批循环、interrupted 标记等用例"
+      ]
     }
   ],
   "lastRelease": {
