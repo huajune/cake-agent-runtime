@@ -18,6 +18,11 @@ const logger = new Logger('invite_to_group');
 const UNDELIVERED_INVITE_HANDOFF_INSTRUCTION =
   '如果候选人本轮是在同意入群/后续通知，或当前意向已无匹配而需要群维护，请立即调用 request_handoff(reasonCode="other") 转人工跟进；调用后不得再输出文本。';
 
+// 接客 bot 入群补偿后的重试退避间隔。企微入群与平台侧群数据同步都不是即时生效的
+// （2026-06-10 杭州餐饮群 case：addBot 接口受理后约 6s 才真正入群），立即重试必然
+// 再报 room not found，必须等待并触发 syncRoom 后再试。
+const COMPAT_RETRY_DELAYS_MS = [3000, 5000, 8000];
+
 // 无群（区别于群满）：业务要求"推荐无岗且没有兼职群（群满场景除外）不再转人工"。
 // 该城市/平台本就没有可对接的兼职群时，不触发人工介入，Agent 自然收口并继续托管。
 const NO_GROUP_CONTINUE_INSTRUCTION =
@@ -108,6 +113,8 @@ interface InviteApiResult {
 interface CompatibilityRetryOutcome {
   inviteResult: InviteApiResult;
   addBotResult: InviteApiResult;
+  /** 接客 bot 入群后重试拉候选人的总次数（含首次立即重试） */
+  retryAttempts?: number;
 }
 
 export function buildInviteToGroupTool(
@@ -634,23 +641,53 @@ async function maybeAddChatBotToGroupAndRetryInvite(params: {
       );
     }
 
-    const retryInviteResult = await invokeAddMember({
-      roomService: params.roomService,
-      token: params.token,
-      imBotId: params.chatBotImId,
-      botUserId: params.chatBotUserId,
-      contactWxid: params.contactWxid,
-      roomWxid: params.targetGroup.imRoomId,
-    });
+    // 企微入群 + 平台数据同步有数秒延迟，立即重试大概率仍报 room not found。
+    // 每轮重试前先 syncRoom 刷新接客 bot 的群数据，再按退避间隔重试。
+    const syncChatBotRooms = async (): Promise<void> => {
+      try {
+        await params.roomService.syncRoom(params.token, params.chatBotImId);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn(`syncRoom 失败（忽略，继续重试拉人）: ${message}`);
+      }
+    };
+
+    const retryInviteCandidate = (): Promise<InviteApiResult> =>
+      invokeAddMember({
+        roomService: params.roomService,
+        token: params.token,
+        imBotId: params.chatBotImId,
+        botUserId: params.chatBotUserId,
+        contactWxid: params.contactWxid,
+        roomWxid: params.targetGroup.imRoomId,
+      });
+
+    await syncChatBotRooms();
+    let retryInviteResult = await retryInviteCandidate();
+    let retryAttempts = 1;
+
+    for (const delayMs of COMPAT_RETRY_DELAYS_MS) {
+      // 只有 room not found 是"入群尚未生效"的瞬态错误才值得等待重试；
+      // 已受理或其他错误（群满 -10、已在群 -9 等）交回上层按原逻辑处理。
+      if (retryInviteResult.accepted || !isRoomNotFoundError(retryInviteResult)) break;
+      logger.log(
+        `接客 bot 入群可能尚未生效，${delayMs}ms 后重试拉候选人: ${params.targetGroup.groupName} ` +
+          `(chatBot=${params.chatBotImId}, attempt=${retryAttempts})`,
+      );
+      await sleep(delayMs);
+      await syncChatBotRooms();
+      retryInviteResult = await retryInviteCandidate();
+      retryAttempts++;
+    }
 
     if (!retryInviteResult.accepted) {
       logger.warn(
         `接客 bot 入群后重试拉候选人仍被拒绝: ${params.targetGroup.groupName} ` +
-          `(chatBot=${params.chatBotImId}, error=${retryInviteResult.error})`,
+          `(chatBot=${params.chatBotImId}, attempts=${retryAttempts}, error=${retryInviteResult.error})`,
       );
     }
 
-    return { inviteResult: retryInviteResult, addBotResult };
+    return { inviteResult: retryInviteResult, addBotResult, retryAttempts };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     logger.warn(
@@ -672,6 +709,14 @@ async function maybeAddChatBotToGroupAndRetryInvite(params: {
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRoomNotFoundError(result: InviteApiResult): boolean {
+  return result.code === 400400 || /room not found/i.test(result.error ?? '');
+}
+
 function shouldAddChatBotToGroup(
   result: InviteApiResult,
   targetGroup: GroupContext,
@@ -682,7 +727,7 @@ function shouldAddChatBotToGroup(
   const ownerBotImId = targetGroup.imBotId?.trim();
   if (!ownerBotImId || ownerBotImId === chatBotImId) return false;
 
-  return result.code === 400400 || /room not found/i.test(result.error ?? '');
+  return isRoomNotFoundError(result);
 }
 
 function formatInviteRejectionError(
@@ -698,7 +743,8 @@ function formatInviteRejectionError(
     compatibilityRetryOutcome.addBotResult.accepted ||
     compatibilityRetryOutcome.addBotResult.code === -9
   ) {
-    return `candidate retry after adding chat bot rejected: ${
+    const attempts = compatibilityRetryOutcome.retryAttempts ?? 1;
+    return `candidate retry after adding chat bot rejected (${attempts} attempts with backoff): ${
       retryInviteError ?? 'unknown error'
     }; initial chat bot error: ${initialResult.error ?? 'unknown error'}`;
   }
