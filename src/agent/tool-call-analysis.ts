@@ -28,6 +28,14 @@ const NARROW_SEMANTIC_TOOLS = new Set(['duliday_job_list']);
  */
 const SUCCESS_FLAG_KEYS = ['success', 'accepted', 'dispatched', 'found'] as const;
 
+/**
+ * 语义上属于"查询成功但零结果"的 errorType：虽走 buildToolError 通道，
+ * 但应映射为 empty 而非 error——v5.13.2 上线后两小时 job_list.no_results
+ * 占 job_list "错误"的 24/27，把业务空态和系统故障混在一起会让错误率失真，
+ * 也让 tool_empty_result 异常旗标失去本职信号。
+ */
+const EMPTY_RESULT_ERROR_TYPES = new Set(['job_list.no_results', 'job_list.schedule_filter_empty']);
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   return value as Record<string, unknown>;
@@ -90,6 +98,9 @@ export function computeToolCallStatus(
 
   const obj = asRecord(result);
   if (obj) {
+    if (typeof obj.errorType === 'string' && EMPTY_RESULT_ERROR_TYPES.has(obj.errorType)) {
+      return 'empty';
+    }
     if (typeof obj.errorType === 'string' && obj.errorType.length > 0) return 'error';
     const errorField = obj.error;
     if (errorField !== null && errorField !== undefined && errorField !== false) return 'error';

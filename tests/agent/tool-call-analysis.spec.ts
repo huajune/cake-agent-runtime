@@ -113,6 +113,29 @@ describe('tool-call-analysis', () => {
       );
     });
 
+    it('maps zero-result errorTypes to empty instead of error', () => {
+      // 查询成功但零结果的业务空态：走 buildToolError 通道但语义是 empty
+      expect(
+        computeToolCallStatus(
+          { success: false, errorType: 'job_list.no_results', _replyInstruction: '...' },
+          undefined,
+          undefined,
+          undefined,
+          'duliday_job_list',
+        ),
+      ).toBe('empty');
+      expect(
+        computeToolCallStatus(
+          { success: false, errorType: 'job_list.schedule_filter_empty' },
+          undefined,
+        ),
+      ).toBe('empty');
+      // 系统级失败仍是 error
+      expect(computeToolCallStatus({ success: false, errorType: 'job_list.fetch_failed' }, undefined)).toBe(
+        'error',
+      );
+    });
+
     it('maps success flags to ok when count is not inferable', () => {
       expect(
         computeToolCallStatus({ success: true, newStage: 'job_consultation' }, undefined),
