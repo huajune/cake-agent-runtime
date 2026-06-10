@@ -581,6 +581,74 @@ describe('buildInviteToGroupTool', () => {
     expect(mockOpsNotifier.sendInviteRejectedAlert).not.toHaveBeenCalled();
   });
 
+  it('should retry with backoff after adding chat bot when room data has not synced yet', async () => {
+    jest.useFakeTimers();
+    try {
+      mockGroupResolver.resolveGroups.mockResolvedValue([
+        makeGroup({
+          imRoomId: 'room-1',
+          groupName: '上海零售①',
+          imBotId: 'owner-bot-im',
+          botUserId: 'owner-bot-weixin',
+        }),
+      ]);
+      mockRoomService.addMemberEnterprise
+        .mockResolvedValueOnce({ errcode: 400400, errmsg: 'room not found' }) // 初次拉候选人
+        .mockResolvedValueOnce({ errcode: 0, errmsg: 'ok' }) // 群主 bot 拉接客 bot 入群
+        .mockResolvedValueOnce({ errcode: 400400, errmsg: 'room not found' }) // 立即重试：入群尚未生效
+        .mockResolvedValueOnce({ errcode: 0, errmsg: 'ok' }); // 退避后重试成功
+      mockMemoryService.saveInvitedGroup.mockResolvedValue(undefined);
+
+      const promise = executeTool({ city: '上海' });
+      await jest.runAllTimersAsync();
+      const result = await promise;
+
+      expect(result.success).toBe(true);
+      expect(result.groupName).toBe('上海零售①');
+      expect(mockRoomService.addMemberEnterprise).toHaveBeenCalledTimes(4);
+      // 每轮重试前都触发接客 bot 的 syncRoom 刷新平台侧群数据
+      expect(mockRoomService.syncRoom).toHaveBeenCalledWith(
+        'enterprise-token-test',
+        'chat-bot-im-id',
+      );
+      expect(mockOpsNotifier.sendInviteRejectedAlert).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('should give up after exhausting backoff retries and report attempt count', async () => {
+    jest.useFakeTimers();
+    try {
+      mockGroupResolver.resolveGroups.mockResolvedValue([
+        makeGroup({
+          imRoomId: 'room-1',
+          groupName: '上海零售①',
+          imBotId: 'owner-bot-im',
+          botUserId: 'owner-bot-weixin',
+        }),
+      ]);
+      mockRoomService.addMemberEnterprise
+        .mockResolvedValueOnce({ errcode: 400400, errmsg: 'room not found' }) // 初次拉候选人
+        .mockResolvedValueOnce({ errcode: 0, errmsg: 'ok' }) // 群主 bot 拉接客 bot 入群
+        .mockResolvedValue({ errcode: 400400, errmsg: 'room not found' }); // 全部重试均未生效
+
+      const promise = executeTool({ city: '上海' });
+      await jest.runAllTimersAsync();
+      const result = await promise;
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.INVITE_API_REJECTED);
+      // 1 次立即重试 + 3 次退避重试
+      expect(result.reason).toContain('4 attempts with backoff');
+      // 1 初次 + 1 addBot + 4 重试
+      expect(mockRoomService.addMemberEnterprise).toHaveBeenCalledTimes(6);
+      expect(mockOpsNotifier.sendInviteRejectedAlert).toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('should try the next candidate when invite API rejects the selected group (e.g. 400400 room not found)', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([
       makeGroup({ imRoomId: 'room-1', groupName: '上海零售①' }),
