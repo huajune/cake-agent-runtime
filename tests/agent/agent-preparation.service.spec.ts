@@ -222,6 +222,55 @@ describe('AgentPreparationService', () => {
     ]);
   });
 
+  it('falls back returning user (with long-term identity) to job_consultation when procedural stage expired', async () => {
+    // 张漪 case：程序性阶段 TTL 过期后老用户回访被兜底到 trust_building 重走信任建立。
+    const base = await mockMemoryService.onTurnStart();
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      ...base,
+      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+    });
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '你好还有岗位吗' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+        strategySource: 'testing',
+      },
+      'invoke',
+    );
+
+    expect(result.entryStage).toBe('job_consultation');
+    expect(mockContext.compose).toHaveBeenCalledWith(
+      expect.objectContaining({ currentStage: 'job_consultation' }),
+    );
+  });
+
+  it('keeps first-stage fallback for brand-new user (no long-term identity) when stage expired', async () => {
+    const base = await mockMemoryService.onTurnStart();
+    mockMemoryService.onTurnStart.mockResolvedValue({
+      ...base,
+      longTerm: { profile: null },
+      procedural: { currentStage: null, fromStage: null, advancedAt: null, reason: null },
+    });
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '你好' }],
+        userId: 'user-2',
+        corpId: 'corp-1',
+        sessionId: 'sess-2',
+        strategySource: 'testing',
+      },
+      'invoke',
+    );
+
+    expect(result.entryStage).toBe('trust_building');
+  });
+
   it('should include enriched job memory fields in prompt block', async () => {
     mockMemoryService.onTurnStart.mockResolvedValue({
       shortTerm: {

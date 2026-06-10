@@ -121,7 +121,15 @@ export class AgentPreparationService {
     // Compose 的输入：memoryBlock 渲染 + 当前阶段（直接取程序性记忆 currentStage；
     // recruitment_cases 已废弃，不再由 case 推导 onboard_followup）。
     const memoryBlock = this.buildMemoryBlock(memory, bookingContext);
-    const stageFromResolver = memory.procedural.currentStage ?? undefined;
+    const persistedStage = memory.procedural.currentStage ?? undefined;
+    // 程序性阶段存 Redis（TTL 2 天），过期后此前隐式兜底到策略第一个阶段——
+    // 已服务过的老候选人回访被当新客从 trust_building 重走（张漪 case：6-03 已
+    // 约面，6-08/6-10 回访都从信任建立重来）。长期画像已有身份字段即视为老用户，
+    // 回访直接进入岗位咨询阶段。
+    const returningUserStage = persistedStage
+      ? undefined
+      : this.resolveReturningUserStage(memory.longTerm.profile);
+    const stageFromResolver = persistedStage ?? returningUserStage;
 
     // System prompt 组装（委托 ContextService.compose）
     const { systemPrompt, stageGoals, thresholds } = await this.context.compose({
@@ -133,8 +141,18 @@ export class AgentPreparationService {
       strategySource: params.strategySource,
     });
 
-    // 本轮入口阶段：resolver 能给值就用，否则兜底到策略里第一个 stage（对应"新会话的起点"）
-    const entryStage = stageFromResolver ?? Object.keys(stageGoals)[0] ?? null;
+    // 本轮入口阶段：持久化阶段优先；老用户兜底阶段需在策略阶段表中存在才采用；
+    // 都没有则回到策略第一个 stage（"新会话的起点"）。
+    const entryStage =
+      persistedStage ??
+      (returningUserStage && stageGoals[returningUserStage] ? returningUserStage : undefined) ??
+      Object.keys(stageGoals)[0] ??
+      null;
+    if (!persistedStage && returningUserStage && stageGoals[returningUserStage]) {
+      this.logger.log(
+        `[prepare] 老用户回访阶段兜底: userId=${params.userId}, entryStage=${returningUserStage}（程序性阶段已过期，长期画像存在）`,
+      );
+    }
 
     // 工具上下文 + 观测快照（都消费 entryStage）。
     const turnState: PreparedAgentContext['turnState'] = { candidatePool: null };
@@ -548,6 +566,22 @@ export class AgentPreparationService {
         .join(' ');
     }
     return '';
+  }
+
+  /** 老用户回访的入口阶段（需在场景策略阶段表中存在才生效）。 */
+  private static readonly RETURNING_USER_ENTRY_STAGE = 'job_consultation';
+
+  /**
+   * 老用户回访的入口阶段兜底。
+   *
+   * 长期画像里有身份字段（姓名/电话，主要来自报名成功或会话沉淀写入）即视为
+   * 服务过的老用户——回访时跳过信任建立，直接进入岗位咨询。
+   * 返回 undefined 表示按新用户处理（兜底到策略第一个阶段）。
+   */
+  private resolveReturningUserStage(profile: UserProfileFacts | null): string | undefined {
+    if (!profile) return undefined;
+    const hasIdentity = Boolean(profile.name?.value || profile.phone?.value);
+    return hasIdentity ? AgentPreparationService.RETURNING_USER_ENTRY_STAGE : undefined;
   }
 
   /** 把长期档案渲染成 prompt 片段。 */

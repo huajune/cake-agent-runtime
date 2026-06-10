@@ -568,6 +568,44 @@ export function getResponseText(message: MessageRecord): string {
   return message.replyPreview || '(无响应内容)';
 }
 
+/**
+ * 把 agentRequest 还原成可读的最终提示词全文。
+ *
+ * agent_invocation.request.agentRequest 里存了完整的 system prompt（含注入的
+ * [用户档案] / [会话记忆] / [历史求职意向] 等记忆段）和消息序列，但 "LLM 请求"
+ * tab 以 JSON 展示，长文本被转义成单行没法读——排障时"模型到底看到了什么记忆"
+ * 一直回答不了（张漪 case 排查时只能去库里 substring）。这里拼成纯文本面板。
+ */
+function buildFinalPromptText(agentRequest?: AnyRecord): string | undefined {
+  if (!agentRequest) return undefined;
+
+  const sections: string[] = [];
+
+  const modelId = asString(agentRequest.modelId);
+  if (modelId) {
+    sections.push(`模型: ${modelId}`);
+  }
+
+  const system = asString(agentRequest.system);
+  if (system) {
+    sections.push(`━━━━━━━━━━ System Prompt（${system.length} 字符） ━━━━━━━━━━\n\n${system}`);
+  }
+
+  const messages = asArray<AnyRecord>(agentRequest.messages);
+  if (messages.length > 0) {
+    const rendered = messages
+      .map((item, index) => {
+        const role = asString(item.role) ?? 'unknown';
+        const text = extractMessageContent(item) || '（非文本内容，见 LLM 请求 tab）';
+        return `#${index + 1} [${role}]\n${text}`;
+      })
+      .join('\n\n');
+    sections.push(`━━━━━━━━━━ Messages（${messages.length} 条） ━━━━━━━━━━\n\n${rendered}`);
+  }
+
+  return sections.length > 0 ? sections.join('\n\n') : undefined;
+}
+
 export function getRawPayloadPanels(message: MessageRecord): RawPayloadPanel[] {
   const request = getInvocationRequest(message);
   const response = getInvocationResponse(message);
@@ -586,6 +624,17 @@ export function getRawPayloadPanels(message: MessageRecord): RawPayloadPanel[] {
       label: agentRequest ? 'LLM 请求' : '请求体',
       description: agentRequest ? '实际发往大模型的请求快照' : '发送到 Agent 的完整业务请求',
       data: requestPayload,
+    });
+  }
+
+  const finalPromptText = buildFinalPromptText(agentRequest);
+  if (finalPromptText) {
+    panels.push({
+      key: 'final-prompt',
+      label: '最终提示词',
+      description:
+        '发往大模型的完整 system prompt（含 [用户档案]/[会话记忆]/[历史求职意向] 等注入的记忆段）与消息序列，纯文本可读视图',
+      data: finalPromptText,
     });
   }
 

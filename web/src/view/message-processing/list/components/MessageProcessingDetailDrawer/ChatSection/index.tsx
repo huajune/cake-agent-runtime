@@ -30,6 +30,10 @@ interface ChatSectionProps {
 }
 
 function stringifyPayload(data: unknown): string {
+  // 纯文本面板（如"最终提示词"）直接原文展示，不走 JSON.stringify——
+  // 否则长文本被转义成带 \n 的单行字符串没法读。
+  if (typeof data === 'string') return data;
+
   try {
     const serialized = JSON.stringify(data, null, 2);
     if (serialized !== undefined) return serialized;
@@ -37,7 +41,6 @@ function stringifyPayload(data: unknown): string {
     // 某些处理中记录可能包含暂时不可序列化的片段，降级为字符串避免整页崩溃。
   }
 
-  if (typeof data === 'string') return data;
   if (data === undefined) return 'undefined';
   if (data === null) return 'null';
   return String(data);
