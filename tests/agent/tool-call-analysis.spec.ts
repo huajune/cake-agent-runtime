@@ -1,11 +1,14 @@
 import {
+  buildSideEffectBlockNotice,
   buildToolCallLimitNotice,
   collectCalledToolNames,
   computeResultCount,
   computeToolCallStatus,
   countToolCallsByName,
+  findSucceededSideEffectTools,
   findToolsExceedingLimit,
   MAX_SAME_TOOL_CALLS_PER_TURN,
+  SIDE_EFFECT_TOOLS,
 } from '@agent/tool-call-analysis';
 
 describe('tool-call-analysis', () => {
@@ -200,6 +203,63 @@ describe('tool-call-analysis', () => {
     it('defaults to MAX_SAME_TOOL_CALLS_PER_TURN', () => {
       const steps = Array.from({ length: MAX_SAME_TOOL_CALLS_PER_TURN }, () => callStep('x'));
       expect(findToolsExceedingLimit(steps)).toEqual(['x']);
+    });
+  });
+
+  describe('findSucceededSideEffectTools', () => {
+    it('returns empty when no side-effect tools were called', () => {
+      const steps = [
+        { toolResults: [{ toolName: 'duliday_job_list', output: { resultCount: 3 } }] },
+      ];
+      expect(findSucceededSideEffectTools(steps)).toEqual([]);
+    });
+
+    it('returns side-effect tools that succeeded', () => {
+      const steps = [
+        {
+          toolResults: [
+            { toolName: 'duliday_interview_booking', output: { success: true, workOrderId: 1 } },
+          ],
+        },
+      ];
+      expect(findSucceededSideEffectTools(steps)).toEqual(['duliday_interview_booking']);
+    });
+
+    it('does not block retry after a failed side-effect call', () => {
+      // buildToolError 形态：失败调用允许模型修正参数后重试
+      const steps = [
+        {
+          toolResults: [
+            {
+              toolName: 'duliday_interview_booking',
+              output: { success: false, errorType: 'booking.missing_fields' },
+            },
+          ],
+        },
+      ];
+      expect(findSucceededSideEffectTools(steps)).toEqual([]);
+    });
+
+    it('dedupes across steps and covers all registered side-effect tools', () => {
+      const steps = [
+        { toolResults: [{ toolName: 'invite_to_group', output: { accepted: true } }] },
+        { toolResults: [{ toolName: 'invite_to_group', output: { accepted: true } }] },
+      ];
+      expect(findSucceededSideEffectTools(steps)).toEqual(['invite_to_group']);
+      expect(SIDE_EFFECT_TOOLS.has('duliday_cancel_work_order')).toBe(true);
+      expect(SIDE_EFFECT_TOOLS.has('duliday_modify_interview_time')).toBe(true);
+    });
+  });
+
+  describe('buildSideEffectBlockNotice', () => {
+    it('returns empty string when nothing blocked', () => {
+      expect(buildSideEffectBlockNotice([])).toBe('');
+    });
+
+    it('renders one line per blocked tool', () => {
+      const notice = buildSideEffectBlockNotice(['duliday_interview_booking']);
+      expect(notice).toContain('duliday_interview_booking');
+      expect(notice).toContain('不可重复调用');
     });
   });
 

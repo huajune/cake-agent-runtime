@@ -116,9 +116,22 @@ export function computeToolCallStatus(
   return 'unknown';
 }
 
+/**
+ * 副作用工具：调用会改变外部系统状态（提交预约/拉群/取消/改约）。
+ * 本轮已成功执行过一次后必须屏蔽，防止模型重复提交（线上观测到同 turn
+ * booking 连续调用 2 次的样本）；失败后的重试不受此限制（自纠错合法）。
+ */
+export const SIDE_EFFECT_TOOLS = new Set([
+  'duliday_interview_booking',
+  'invite_to_group',
+  'duliday_cancel_work_order',
+  'duliday_modify_interview_time',
+]);
+
 /** prepareStep 入参中 step 的最小子集；这里只关心 toolCalls 的 toolName。 */
 interface StepLike {
   toolCalls?: Array<{ toolName: string }>;
+  toolResults?: Array<{ toolName?: string; output?: unknown }>;
 }
 
 /** 本轮 prior steps 已调用过的所有工具名（去重）。 */
@@ -149,6 +162,40 @@ export function countToolCallsByName(steps: StepLike[]): Map<string, number> {
     }
   }
   return counts;
+}
+
+/**
+ * 找出本轮已**成功**执行过的副作用工具。
+ *
+ * 判定口径与 computeToolCallStatus 一致：返回非 error 即视为副作用已生效。
+ * 失败调用（buildToolError 形态）不计入——允许模型修正参数后重试。
+ */
+export function findSucceededSideEffectTools(steps: StepLike[]): string[] {
+  const succeeded = new Set<string>();
+  for (const step of steps) {
+    const results = step.toolResults;
+    if (!Array.isArray(results)) continue;
+    for (const tr of results) {
+      const name = tr.toolName;
+      if (typeof name !== 'string' || !SIDE_EFFECT_TOOLS.has(name)) continue;
+      const status = computeToolCallStatus(tr.output, computeResultCount(tr.output));
+      if (status !== 'error') succeeded.add(name);
+    }
+  }
+  return [...succeeded];
+}
+
+/**
+ * 构造副作用工具的拦截提示（拼到 system prompt 末尾）。
+ */
+export function buildSideEffectBlockNotice(blockedTools: string[]): string {
+  if (blockedTools.length === 0) return '';
+  return blockedTools
+    .map(
+      (name) =>
+        `⚠️ 系统拦截：工具 \`${name}\` 本轮已成功执行（副作用已生效），不可重复调用。请基于已有结果直接收敛回复；如需对其他岗位/群执行同类操作，等候选人下一轮消息再进行。`,
+    )
+    .join('\n');
 }
 
 /**
