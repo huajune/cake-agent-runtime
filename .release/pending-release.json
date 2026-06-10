@@ -3,7 +3,41 @@
   "nextVersion": "5.14.0",
   "updatedAt": "2026-06-10",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "289",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/289",
+      "title": "零结果类 errorType 映射为 empty 而非 error",
+      "author": "ArielZhu",
+      "mergedAt": "2026-06-10",
+      "businessUpdates": [
+        "`job_list.no_results` / `job_list.schedule_filter_empty` → `empty`",
+        "`job_list.fetch_failed` 等系统级失败保持 `error`",
+        "副作用屏蔽逻辑不受影响（其只认 ok/narrow）"
+      ],
+      "summary": [
+        "零结果类 errorType 映射为 empty 而非 error",
+        "`job_list.no_results` / `job_list.schedule_filter_empty` → `empty`",
+        "`job_list.fetch_failed` 等系统级失败保持 `error`",
+        "副作用屏蔽逻辑不受影响（其只认 ok/narrow）"
+      ],
+      "features": [],
+      "fixes": [
+        "`job_list.no_results` / `job_list.schedule_filter_empty` → `empty`",
+        "`job_list.fetch_failed` 等系统级失败保持 `error`",
+        "副作用屏蔽逻辑不受影响（其只认 ok/narrow）"
+      ],
+      "optimizations": [],
+      "ops": [
+        "零结果类 errorType 映射为 empty 而非 error"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "tool-call-analysis.spec：38/38 通过（新增零结果映射 3 个断言）"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "5.13.2",
     "date": "2026-06-10",
