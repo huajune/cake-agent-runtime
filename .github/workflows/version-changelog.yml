@@ -185,12 +185,15 @@ jobs:
 
           git add package.json CHANGELOG.md .release/pending-release.json
           git commit -m "chore(release): 更新待发布版本信息 [skip ci]"
-          # 不依赖 checkout 持久化的凭证：上游 claude-code-action（OIDC 模式）会
-          # 覆写本地 git 凭证，workflow_dispatch 补偿模式实测 push 报
-          # "Invalid username or token"（2026-06-10）。显式带 GH_TOKEN 推送。
-          git push --force-with-lease \
-            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
-            "HEAD:${BOT_BRANCH}"
+          # 显式重设 push 凭证：上游 claude-code-action（OIDC 模式）会覆写
+          # checkout 持久化的凭证，补偿模式实测 push 报 "Invalid username or
+          # token"（2026-06-10）。注意必须仍推送到 origin 而不是裸 URL——
+          # --force-with-lease 依赖 origin 的 remote-tracking 信息，推裸 URL
+          # 会直接报 "stale info"（run 27255*，第一版修复踩过）。
+          git config --local --unset-all "http.https://github.com/.extraheader" || true
+          git config --local "http.https://github.com/.extraheader" \
+            "AUTHORIZATION: basic $(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)"
+          git push --force-with-lease origin "HEAD:${BOT_BRANCH}"
 
           PR_TITLE="chore(release): 更新待发布版本信息（v${VERSION}）"
           PR_BODY=$(cat <<EOF
