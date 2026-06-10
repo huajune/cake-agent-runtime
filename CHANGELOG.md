@@ -8,6 +8,44 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.14.0`
+**最近更新**: `2026-06-10`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #289 零结果类 errorType 映射为 empty 而非 error
+- PR #289 `job_list.no_results` / `job_list.schedule_filter_empty` → `empty`
+- PR #289 `job_list.fetch_failed` 等系统级失败保持 `error`
+- PR #289 副作用屏蔽逻辑不受影响（其只认 ok/narrow）
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #289 `job_list.no_results` / `job_list.schedule_filter_empty` → `empty`
+- PR #289 `job_list.fetch_failed` 等系统级失败保持 `error`
+- PR #289 副作用屏蔽逻辑不受影响（其只认 ok/narrow）
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #289 零结果类 errorType 映射为 empty 而非 error
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #289 tool-call-analysis.spec：38/38 通过（新增零结果映射 3 个断言）
+<!-- release:pending:end -->
+
 ## [5.13.2] - 2026-06-10
 
 **来源分支**: `develop`
