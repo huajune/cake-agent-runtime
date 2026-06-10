@@ -52,6 +52,13 @@ export interface PreparedAgentContext {
   };
   /** 本轮触发时的记忆上下文快照（写入 message_processing_records.memory_snapshot 用于排障） */
   memorySnapshot?: AgentMemorySnapshot;
+  /**
+   * toolCallId → 工具 execute 的真实执行耗时（毫秒）。
+   * 由 prepare 阶段的 timing wrapper 在每次工具执行时写入；
+   * runner.buildRunResult 按 toolCallId 合并进 AgentToolCall.durationMs，
+   * 与"步骤墙钟"（含 LLM 思考/输出时间）区分开。
+   */
+  toolExecutionTimings: Map<string, number>;
 }
 
 @Injectable()
@@ -146,7 +153,11 @@ export class AgentPreparationService {
       thresholds,
       turnState,
     });
-    const tools = this.toolRegistry.buildForScenario(scenario, toolContext) as ToolSet;
+    const toolExecutionTimings = new Map<string, number>();
+    const tools = this.wrapToolsWithTiming(
+      this.toolRegistry.buildForScenario(scenario, toolContext) as ToolSet,
+      toolExecutionTimings,
+    );
     const memorySnapshot = this.buildMemorySnapshot(memory, entryStage);
 
     const criticalTurnGuard = this.buildCriticalTurnGuard(currentUserMessage, truncatedMessages);
@@ -163,7 +174,40 @@ export class AgentPreparationService {
       entryStage,
       turnState,
       memorySnapshot,
+      toolExecutionTimings,
     };
+  }
+
+  /**
+   * 给工具集的 execute 包一层真实计时（按 AI SDK 传入的 toolCallId 记录）。
+   *
+   * 没有这层时，观测里的工具耗时只能用"步骤墙钟"近似——它包含 LLM 思考与输出时间，
+   * 曾导致 skip_reply 这类纯本地工具在流水里显示平均 7s+，无法区分模型慢还是外部 API 慢。
+   */
+  private wrapToolsWithTiming(tools: ToolSet, timings: Map<string, number>): ToolSet {
+    const wrapped: ToolSet = {};
+    for (const [name, toolDef] of Object.entries(tools)) {
+      const execute = (toolDef as { execute?: unknown }).execute;
+      if (typeof execute !== 'function') {
+        wrapped[name] = toolDef;
+        continue;
+      }
+      wrapped[name] = {
+        ...toolDef,
+        execute: async (...args: unknown[]) => {
+          const startedAt = Date.now();
+          try {
+            return await (execute as (...callArgs: unknown[]) => unknown).apply(toolDef, args);
+          } finally {
+            const options = args[1] as { toolCallId?: string } | undefined;
+            if (options?.toolCallId) {
+              timings.set(options.toolCallId, Date.now() - startedAt);
+            }
+          }
+        },
+      } as ToolSet[string];
+    }
+    return wrapped;
   }
 
   /**

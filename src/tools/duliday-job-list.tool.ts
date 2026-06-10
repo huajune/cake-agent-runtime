@@ -883,6 +883,8 @@ export function buildJobListTool(
           if (formatSet.has('rawData')) {
             result.rawData = { result: jobs, total };
           }
+          // 观测自报口径：tool-call-analysis 优先读该字段推断 empty/narrow/ok
+          result.resultCount = total;
           result.queryMeta = {
             storeMatchStrategy,
             jobCategoryMatchStrategy,

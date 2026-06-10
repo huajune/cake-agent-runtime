@@ -17,19 +17,47 @@ import type { AgentToolCallStatus } from '@shared-types/agent-telemetry.types';
 export const MAX_SAME_TOOL_CALLS_PER_TURN = 3;
 
 /**
+ * "narrow（仅 1 条结果）"语义只对搜索类工具有意义：
+ * 查岗只命中 1 个岗位值得标记复查；geocode unique / booking 成功等单结果是正常形态。
+ */
+const NARROW_SEMANTIC_TOOLS = new Set(['duliday_job_list']);
+
+/**
+ * buildToolError 的成功标记键（见 tools/types/tool-error-types.ts）：
+ * 各工具用其中一个键表达成功/失败（success/accepted/dispatched/found）。
+ */
+const SUCCESS_FLAG_KEYS = ['success', 'accepted', 'dispatched', 'found'] as const;
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  return value as Record<string, unknown>;
+}
+
+/**
  * 从工具返回值推断"结果条数"，判不出返回 undefined。
  *
- * 常见工具返回约定：
+ * 识别顺序（与各内置工具的真实返回形态对齐，曾因只认 items/total 等键
+ * 导致线上 status 全量 unknown、empty/narrow 异常旗标永不触发）：
+ * - 对象里显式的 `resultCount` 数字字段（工具自报，最可靠）
+ * - geocode 形态：`resolution: 'unique'` → 1；`'ambiguous'` → candidates.length
  * - 数组直接 length
- * - 对象里 items / data / results / list / jobs / records 任一数组字段
+ * - 对象里 items / data / results / list / jobs / records / candidates 任一数组字段
  * - 对象里 total / count 任一数字字段
  */
 export function computeResultCount(result: unknown): number | undefined {
   if (result === undefined || result === null) return undefined;
   if (Array.isArray(result)) return result.length;
-  if (typeof result !== 'object') return undefined;
-  const obj = result as Record<string, unknown>;
-  for (const key of ['items', 'data', 'results', 'list', 'jobs', 'records']) {
+  const obj = asRecord(result);
+  if (!obj) return undefined;
+
+  if (typeof obj.resultCount === 'number' && Number.isFinite(obj.resultCount)) {
+    return obj.resultCount;
+  }
+  if (obj.resolution === 'unique') return 1;
+  if (obj.resolution === 'ambiguous' && Array.isArray(obj.candidates)) {
+    return obj.candidates.length;
+  }
+  for (const key of ['items', 'data', 'results', 'list', 'jobs', 'records', 'candidates']) {
     const value = obj[key];
     if (Array.isArray(value)) return value.length;
   }
@@ -41,30 +69,51 @@ export function computeResultCount(result: unknown): number | undefined {
 }
 
 /**
- * 基于 resultCount + error/state 推断工具调用状态。
+ * 基于 resultCount + error/state + buildToolError 约定推断工具调用状态。
  *
- * - error: result 对象含 error 字段，或外部 errorText/state 指示失败
+ * - error: 外部 errorText/state 指示失败；result 含 errorType / error 字段；
+ *          或 success/accepted/dispatched/found 任一标记为 false（buildToolError 约定）
  * - empty: resultCount === 0
- * - narrow: resultCount === 1
- * - unknown: 返回成功但无法推断结果条数
- * - ok: 其他（结果条数 >= 2）
+ * - narrow: resultCount === 1 且工具属于搜索类（NARROW_SEMANTIC_TOOLS）
+ * - ok: resultCount >= 1（非搜索类含单结果），或成功标记为 true
+ * - unknown: 以上都判不出
  */
 export function computeToolCallStatus(
   result: unknown,
   resultCount: number | undefined,
   errorText?: string,
   state?: string,
+  toolName?: string,
 ): AgentToolCallStatus {
   if (errorText && errorText.trim().length > 0) return 'error';
   if (state && /error|fail/i.test(state)) return 'error';
-  if (result && typeof result === 'object' && !Array.isArray(result)) {
-    const errorField = (result as Record<string, unknown>).error;
+
+  const obj = asRecord(result);
+  if (obj) {
+    if (typeof obj.errorType === 'string' && obj.errorType.length > 0) return 'error';
+    const errorField = obj.error;
     if (errorField !== null && errorField !== undefined && errorField !== false) return 'error';
+    for (const key of SUCCESS_FLAG_KEYS) {
+      if (obj[key] === false) return 'error';
+    }
   }
-  if (resultCount === undefined) return 'unknown';
+
   if (resultCount === 0) return 'empty';
-  if (resultCount === 1) return 'narrow';
-  return 'ok';
+  if (resultCount !== undefined && resultCount >= 1) {
+    if (resultCount === 1 && toolName !== undefined && NARROW_SEMANTIC_TOOLS.has(toolName)) {
+      return 'narrow';
+    }
+    return 'ok';
+  }
+
+  if (obj) {
+    for (const key of SUCCESS_FLAG_KEYS) {
+      if (obj[key] === true) return 'ok';
+    }
+    // skip_reply 等本地工具的轻量成功形态
+    if (obj.skipped === true) return 'ok';
+  }
+  return 'unknown';
 }
 
 /** prepareStep 入参中 step 的最小子集；这里只关心 toolCalls 的 toolName。 */

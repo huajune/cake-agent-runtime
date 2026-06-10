@@ -443,7 +443,13 @@ export class AiStreamTrace {
           args: (tool.input ?? {}) as Record<string, unknown>,
           result: tool.output,
           resultCount,
-          status: computeToolCallStatus(tool.output, resultCount, tool.errorText, tool.state),
+          status: computeToolCallStatus(
+            tool.output,
+            resultCount,
+            tool.errorText,
+            tool.state,
+            tool.toolName,
+          ),
         };
       });
   }

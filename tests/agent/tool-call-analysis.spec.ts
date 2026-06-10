@@ -40,6 +40,21 @@ describe('tool-call-analysis', () => {
       expect(computeResultCount({ message: 'ok' })).toBeUndefined();
       expect(computeResultCount({ total: 'not-a-number' })).toBeUndefined();
     });
+
+    it('prefers explicit resultCount field over other heuristics', () => {
+      // duliday_job_list 自报口径：{ markdown, queryMeta, resultCount }
+      expect(computeResultCount({ resultCount: 5, items: [1] })).toBe(5);
+      expect(computeResultCount({ resultCount: 0, markdown: '# 在招岗位（共 0 个）' })).toBe(0);
+    });
+
+    it('infers count from geocode resolution shape', () => {
+      expect(computeResultCount({ resolution: 'unique', result: { city: '北京市' } })).toBe(1);
+      expect(computeResultCount({ resolution: 'ambiguous', candidates: [{}, {}, {}] })).toBe(3);
+    });
+
+    it('reads candidates array container', () => {
+      expect(computeResultCount({ candidates: [{}, {}] })).toBe(2);
+    });
   });
 
   describe('computeToolCallStatus', () => {
@@ -62,10 +77,45 @@ describe('tool-call-analysis', () => {
       expect(computeToolCallStatus({ error: false }, 3)).toBe('ok');
     });
 
-    it('maps resultCount 0 → empty, 1 → narrow, ≥2 → ok', () => {
+    it('maps resultCount 0 → empty, ≥2 → ok', () => {
       expect(computeToolCallStatus({ items: [] }, 0)).toBe('empty');
-      expect(computeToolCallStatus({ items: [{}] }, 1)).toBe('narrow');
       expect(computeToolCallStatus({ items: [{}, {}] }, 2)).toBe('ok');
+    });
+
+    it('narrow only applies to search tools; single result elsewhere is ok', () => {
+      expect(
+        computeToolCallStatus({ resultCount: 1 }, 1, undefined, undefined, 'duliday_job_list'),
+      ).toBe('narrow');
+      // geocode unique 命中 1 条是正常形态，不应标 narrow
+      expect(
+        computeToolCallStatus({ resolution: 'unique' }, 1, undefined, undefined, 'geocode'),
+      ).toBe('ok');
+      // 未传 toolName 时保守不标 narrow
+      expect(computeToolCallStatus({ items: [{}] }, 1)).toBe('ok');
+    });
+
+    it('detects buildToolError shape as error', () => {
+      // buildToolError: { [successKey]: false, errorType, _replyInstruction }
+      expect(
+        computeToolCallStatus(
+          { success: false, errorType: 'precheck.job_not_found', _replyInstruction: '...' },
+          undefined,
+        ),
+      ).toBe('error');
+      expect(
+        computeToolCallStatus({ accepted: false, errorType: 'invite.no_group' }, undefined),
+      ).toBe('error');
+      expect(computeToolCallStatus({ errorType: 'geocode.unresolved_address' }, undefined)).toBe(
+        'error',
+      );
+    });
+
+    it('maps success flags to ok when count is not inferable', () => {
+      expect(
+        computeToolCallStatus({ success: true, newStage: 'job_consultation' }, undefined),
+      ).toBe('ok');
+      expect(computeToolCallStatus({ accepted: true, code: null }, undefined)).toBe('ok');
+      expect(computeToolCallStatus({ skipped: true, reason: '纯确认词' }, undefined)).toBe('ok');
     });
 
     it('returns unknown when resultCount cannot be inferred', () => {
@@ -118,10 +168,7 @@ describe('tool-call-analysis', () => {
     });
 
     it('ignores steps without toolCalls and invalid entries', () => {
-      const steps = [
-        {},
-        { toolCalls: [{ toolName: '' }, { toolName: 'skip_reply' }] },
-      ];
+      const steps = [{}, { toolCalls: [{ toolName: '' }, { toolName: 'skip_reply' }] }];
       expect(collectCalledToolNames(steps)).toEqual(new Set(['skip_reply']));
     });
   });

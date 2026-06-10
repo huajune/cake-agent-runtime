@@ -169,6 +169,7 @@ export class AgentRunnerService {
         memorySnapshot: ctx.memorySnapshot,
         stepStartMs,
         stepEndWallclocks,
+        toolExecutionTimings: ctx.toolExecutionTimings,
       });
 
       result = await this.recoverEmptyTextResult(result, ctx, params);
@@ -241,6 +242,7 @@ export class AgentRunnerService {
             memorySnapshot: ctx.memorySnapshot,
             stepStartMs,
             stepEndWallclocks,
+            toolExecutionTimings: ctx.toolExecutionTimings,
           });
           this.attachTurnEnd(result, ctx, params.messageId, text, params.deferTurnEnd);
           if (params.onFinish) {
@@ -436,6 +438,11 @@ export class AgentRunnerService {
      * 导致 durationMs 出现 1000ms 整数倍的假象）。
      */
     stepEndWallclocks?: number[];
+    /**
+     * toolCallId → 工具 execute 真实耗时（由 preparation 的 timing wrapper 记录）。
+     * 命中时 AgentToolCall.durationMs 用真实执行时间；缺失时退回步骤墙钟近似。
+     */
+    toolExecutionTimings?: Map<string, number>;
   }): AgentRunResult {
     const agentSteps: AgentStepDetail[] = [];
     const toolCalls: AgentToolCall[] = [];
@@ -455,12 +462,21 @@ export class AgentRunnerService {
           const tr = step.toolResults?.find((t) => t.toolCallId === tc.toolCallId);
           const result = (tr as { output?: unknown } | undefined)?.output;
           const resultCount = computeResultCount(result);
-          const status = computeToolCallStatus(result, resultCount);
-          // 单步中只有一个工具时，把 stepDurationMs 归给这个工具
+          const status = computeToolCallStatus(
+            result,
+            resultCount,
+            undefined,
+            undefined,
+            tc.toolName,
+          );
+          // 优先用 timing wrapper 记录的真实执行耗时；
+          // 缺失时退回旧近似（单工具步的步骤墙钟，含 LLM 思考时间）
+          const executionMs = params.toolExecutionTimings?.get(tc.toolCallId);
           const durationMs =
-            stepDurationMs !== undefined && step.toolCalls.length === 1
+            executionMs ??
+            (stepDurationMs !== undefined && step.toolCalls.length === 1
               ? stepDurationMs
-              : undefined;
+              : undefined);
 
           const call: AgentToolCall = {
             toolName: tc.toolName,
