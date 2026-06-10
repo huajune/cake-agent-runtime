@@ -87,11 +87,12 @@ describe('buildInterviewBookingTool', () => {
   const executeToolWithContext = async (
     input: Record<string, any>,
     contextOverride: Partial<ToolBuildContext> = {},
+    options: { latestBooking?: Record<string, unknown> | null } = {},
   ) => {
     const mockLongTermService = {
       writeFromBooking: jest.fn().mockResolvedValue(undefined),
       setLatestBooking: jest.fn().mockResolvedValue(undefined),
-      getLatestBooking: jest.fn().mockResolvedValue(null),
+      getLatestBooking: jest.fn().mockResolvedValue(options.latestBooking ?? null),
     };
     const mockOpsEventsRecorder = {
       recordEvent: jest.fn().mockResolvedValue(undefined),
@@ -127,8 +128,9 @@ describe('buildInterviewBookingTool', () => {
   const executeTool = async (
     input: Record<string, any>,
     contextOverride: Partial<ToolBuildContext> = {},
+    options: { latestBooking?: Record<string, unknown> | null } = {},
   ) => {
-    const { result } = await executeToolWithContext(input, contextOverride);
+    const { result } = await executeToolWithContext(input, contextOverride, options);
     return result;
   };
   /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -629,6 +631,158 @@ describe('buildInterviewBookingTool', () => {
     expect(result._replyInstruction).toContain('PDF 简历文件');
     expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
     expect(mockSpongeService.uploadAttachmentFromUrl).not.toHaveBeenCalled();
+  });
+
+  it('rejects free-text uploadResume on resume-required jobs (工单 438358 badcase)', async () => {
+    // 自由文字既不是 URL 也不是云存储 key，不得被当作简历附件提交，
+    // 否则海绵侧工单的"上传简历"会存一段文字、附件打不开。
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            interviewSupplement: [{ interviewSupplementId: 49, interviewSupplement: '上传简历' }],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool({
+      ...validInput,
+      uploadResume: '过往公司+岗位+年限：通州一建建设集团有限公司+管理+5年',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_CUSTOMER_LABEL_VALUES);
+    expect(result.missingFields).toEqual(['简历附件']);
+    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+    expect(mockSpongeService.uploadAttachmentFromUrl).not.toHaveBeenCalled();
+  });
+
+  it('rejects free-text resume polluted into session facts (工单 438358 badcase)', async () => {
+    // 438358 实际链路：booking 入参没传 uploadResume，文字经会话事实兜底流入。
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            interviewSupplement: [{ interviewSupplementId: 49, interviewSupplement: '上传简历' }],
+          },
+        }),
+      ],
+    });
+
+    const result = await executeTool(validInput, {
+      sessionFacts: {
+        interview_info: {
+          upload_resume: '过往公司+岗位+年限：通州一建建设集团有限公司+管理+5年',
+        },
+      } as never,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_CUSTOMER_LABEL_VALUES);
+    expect(result.missingFields).toEqual(['简历附件']);
+    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+  });
+
+  it('passes through cloudStorageKey-shaped uploadResume without re-uploading', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({
+      jobs: [
+        makeJob({
+          interviewProcess: {
+            interviewSupplement: [{ interviewSupplementId: 49, interviewSupplement: '上传简历' }],
+          },
+        }),
+      ],
+    });
+    mockSpongeService.bookInterview.mockResolvedValue({
+      success: true,
+      code: 0,
+      message: '预约成功',
+      notice: null,
+      errorList: null,
+    });
+
+    const result = await executeTool({
+      ...validInput,
+      uploadResume: '刘渔林_20260609135452_20260610095630.docx',
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockSpongeService.uploadAttachmentFromUrl).not.toHaveBeenCalled();
+    expect(mockSpongeService.bookInterview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        uploadResume: '刘渔林_20260609135452_20260610095630.docx',
+      }),
+      expect.objectContaining({ botUserId: 'manager-1' }),
+    );
+  });
+
+  it('instructs handoff when a fresh resume arrives after the candidate is already booked', async () => {
+    // 438358 第二段：预约成功 23 秒后候选人补发真简历，命中 already_booked 短路，
+    // 真简历被静默丢弃且 Agent 回复"已提交"。现在应指示转人工补传。
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+
+    const result = await executeTool(
+      {
+        ...validInput,
+        educationId: 2,
+        householdRegisterProvinceId: 310000,
+        height: 172,
+        uploadResume: 'https://wecom.example.com/file/resume.pdf',
+      },
+      {
+        highConfidenceFacts: {
+          interview_info: {
+            upload_resume: {
+              value: 'https://wecom.example.com/file/resume.pdf',
+              confidence: 'high',
+              source: 'rule',
+            },
+          },
+        } as never,
+      },
+      {
+        latestBooking: {
+          latest_work_order_id: 438358,
+          linked_at: new Date().toISOString(),
+        },
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
+    expect(result.existingWorkOrderId).toBe(438358);
+    expect(result._replyInstruction).toContain('system_blocked');
+    expect(result._replyInstruction).toContain('补传');
+    expect(result._replyInstruction).toContain('438358');
+    expect(result.pendingUploadResume).toBe('resume/cloud/key.pdf');
+    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+  });
+
+  it('keeps the plain already-booked instruction when no fresh resume arrived this turn', async () => {
+    mockSpongeService.fetchJobs.mockResolvedValue({ jobs: [makeJob()] });
+
+    const result = await executeTool(
+      {
+        ...validInput,
+        educationId: 2,
+        householdRegisterProvinceId: 310000,
+        height: 172,
+      },
+      {},
+      {
+        latestBooking: {
+          latest_work_order_id: 438358,
+          linked_at: new Date().toISOString(),
+        },
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_ALREADY_BOOKED);
+    expect(result._replyInstruction).toContain('modify_appointment');
+    expect(result.pendingUploadResume).toBeUndefined();
+    expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
   });
 
   it('should return missing_customer_label_values when supplements require unknown answers', async () => {
