@@ -60,9 +60,10 @@ const DESCRIPTION = `邀请候选人加入企微兼职群。
   - 仅当候选人跨行业或完全没表达过行业偏好时才可以不传
 
 ## 返回字段
-- inviteMode：拉群方式
-  - "direct"（群<40人，已直接拉入）→ 告知候选人"已帮你加入了XX群"
-  - "link"（群>=40人，已发送入群邀请卡片）→ 告知候选人"已发了入群邀请，点一下就能进群"
+- inviteDelivery：拉群投递方式
+  - "direct_add"（群<40人，已直接拉入）→ 告知候选人"已帮你加入了XX群"
+  - "invite_card"（群>=40人，企微已自动发送入群邀请卡片）→ 告知候选人"入群邀请已经发你了，点一下卡片就能进群"
+- _replyInstruction：成功后必须严格遵守的话术指令；尤其 inviteDelivery="invite_card" 时，禁止输出、编造或粘贴任何群链接 / URL
 - matchedIndustry：实际命中群的行业；与入参 industry 不一致说明触发了回退
 - fallbackUsed：是否触发行业回退（入参 industry 在该城市无匹配群时为 true）
 - selectionReason：选群原因（lowest_member_count / only_option）
@@ -407,6 +408,7 @@ export function buildInviteToGroupTool(
             );
 
             const isDirectAdd = (targetGroup.memberCount ?? 0) < 40;
+            const inviteDelivery = isDirectAdd ? 'direct_add' : 'invite_card';
 
             logger.log(
               `拉群成功: ${targetGroup.groupName} (user=${context.userId}, city=${city}, industry=${industry ?? '-'}, matched=${targetGroup.industry ?? '-'}, fallback=${fallbackUsed})`,
@@ -418,11 +420,15 @@ export function buildInviteToGroupTool(
               groupName: targetGroup.groupName,
               city,
               industry: industry ?? undefined,
-              inviteMode: isDirectAdd ? 'direct' : 'link',
+              inviteDelivery,
               matchedIndustry: targetGroup.industry,
               fallbackUsed,
               selectionReason,
               citySnapshot,
+              _outcome: isDirectAdd ? '候选人已被直接加入目标兼职群' : '已向候选人发送入群邀请卡片',
+              _replyInstruction: isDirectAdd
+                ? `候选人已被直接加入"${targetGroup.groupName}"。回复时可以说"已帮你加入了${targetGroup.groupName}"；不要输出任何群链接或二维码。`
+                : '企微已向候选人发送入群邀请卡片。回复时只能说"入群邀请已经发你了，点一下卡片就能进群"；禁止输出、编造或粘贴任何 work.weixin.qq.com 群链接 / URL。',
             };
           }
 
