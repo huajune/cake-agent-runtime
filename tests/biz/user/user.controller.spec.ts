@@ -40,11 +40,37 @@ describe('UserController (biz/user)', () => {
 
       const result = await controller.pauseUserHosting(userId);
 
-      expect(userHostingService.pauseUser).toHaveBeenCalledWith(userId);
+      expect(userHostingService.pauseUser).toHaveBeenCalledWith(userId, {
+        permanent: undefined,
+        reason: undefined,
+        operator: undefined,
+        source: 'manual',
+      });
       expect(result).toEqual({
         userId,
         isPaused: true,
+        isPermanent: false,
         message: `用户 ${userId} 的托管已暂停`,
+      });
+    });
+
+    it('should support permanent pause with reason', async () => {
+      const userId = 'user-123';
+      mockUserHostingService.pauseUser.mockResolvedValue(undefined);
+
+      const result = await controller.pauseUserHosting(userId, true, '店长微信');
+
+      expect(userHostingService.pauseUser).toHaveBeenCalledWith(userId, {
+        permanent: true,
+        reason: '店长微信',
+        operator: undefined,
+        source: 'manual',
+      });
+      expect(result).toEqual({
+        userId,
+        isPaused: true,
+        isPermanent: true,
+        message: `用户 ${userId} 已永久禁止托管`,
       });
     });
 
@@ -173,7 +199,7 @@ describe('UserController (biz/user)', () => {
 
       const result = await controller.toggleUserHosting(chatId, false);
 
-      expect(userHostingService.pauseUser).toHaveBeenCalledWith(chatId);
+      expect(userHostingService.pauseUser).toHaveBeenCalledWith(chatId, { source: 'manual' });
       expect(userHostingService.resumeUser).not.toHaveBeenCalled();
       expect(result).toEqual({
         chatId,

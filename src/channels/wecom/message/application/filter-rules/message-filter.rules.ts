@@ -8,7 +8,11 @@ import {
 } from '@enums/message-callback.enum';
 import { MessageParser } from '../../utils/message-parser.util';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
+import { CandidateBlacklistService } from '@biz/hosting-config/services/candidate-blacklist.service';
+import { CandidateBlacklistRecord } from '@biz/hosting-config/entities/candidate-blacklist.entity';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
+import { AlertNotifierService } from '@notification/services/alert-notifier.service';
+import { AlertLevel } from '@enums/alert.enum';
 import { FilterReason } from '@enums/message-filter.enum';
 import { FilterResult } from '../../types';
 
@@ -111,6 +115,144 @@ export class PausedUserFilterRule implements MessageFilterRule {
         userId: hit.matchedId!,
       },
     };
+  }
+}
+
+/**
+ * 候选人黑名单过滤规则
+ *
+ * 运营拉黑候选人后，任一托管账号再次收到该候选人消息时：
+ * 1. 飞书告警（附拉黑理由）；
+ * 2. 对该会话永久暂停托管（取消托管，不自动解禁）；
+ * 3. 消息仅记录历史，不触发 AI 回复。
+ *
+ * 本规则排在 PausedUserFilterRule 之后：命中后会话被永久暂停，
+ * 后续消息由暂停规则短路，保证同一会话只告警一次。
+ */
+@Injectable()
+export class CandidateBlacklistFilterRule implements MessageFilterRule {
+  private readonly logger = new Logger(CandidateBlacklistFilterRule.name);
+
+  constructor(
+    private readonly candidateBlacklistService: CandidateBlacklistService,
+    private readonly userHostingService: UserHostingService,
+    private readonly alertNotifier: AlertNotifierService,
+  ) {}
+
+  async evaluate(messageData: EnterpriseMessageCallbackDto): Promise<FilterResult | null> {
+    const hit = await this.candidateBlacklistService.matchBlacklisted([
+      messageData.chatId,
+      messageData.imContactId,
+      messageData.externalUserId,
+    ]);
+    if (!hit) return null;
+
+    const content = MessageParser.extractContent(messageData);
+    this.logger.warn(
+      `[过滤-候选人黑名单] 候选人已被拉黑，告警并取消托管 [${messageData.messageId}], ` +
+        `chatId=${messageData.chatId}, targetId=${hit.target_id}, 理由=${hit.reason}`,
+    );
+
+    await this.enforceBlacklist(messageData, hit);
+
+    return {
+      pass: true,
+      content,
+      historyOnly: true,
+      reason: FilterReason.CANDIDATE_BLACKLISTED,
+      details: {
+        targetId: hit.target_id,
+        blacklistReason: hit.reason,
+        chatId: messageData.chatId,
+      },
+    };
+  }
+
+  /**
+   * 命中黑名单的处置：永久暂停该会话托管 + 命中回溯落库 + 飞书告警（附拉黑理由）
+   *
+   * 各步互不阻塞过滤主流程：失败仅记日志，消息仍按 historyOnly 处理。
+   */
+  private async enforceBlacklist(
+    messageData: EnterpriseMessageCallbackDto,
+    hit: CandidateBlacklistRecord,
+  ): Promise<void> {
+    // 三步互不依赖，并行执行减少过滤延迟；各自兜底记日志，不影响其余步骤
+    await Promise.allSettled([
+      this.pauseHosting(messageData, hit),
+      this.recordBlacklistHit(messageData, hit),
+      this.sendBlacklistAlert(messageData, hit),
+    ]);
+  }
+
+  private async pauseHosting(
+    messageData: EnterpriseMessageCallbackDto,
+    hit: CandidateBlacklistRecord,
+  ): Promise<void> {
+    try {
+      await this.userHostingService.pauseUser(messageData.chatId, {
+        permanent: true,
+        reason: `候选人黑名单：${hit.reason}`,
+        source: 'candidate_blacklist',
+      });
+    } catch (error) {
+      this.logger.error(`候选人黑名单命中后暂停托管失败 chatId=${messageData.chatId}`, error);
+    }
+  }
+
+  private async recordBlacklistHit(
+    messageData: EnterpriseMessageCallbackDto,
+    hit: CandidateBlacklistRecord,
+  ): Promise<void> {
+    try {
+      await this.candidateBlacklistService.recordHit(hit.target_id, {
+        chatId: messageData.chatId,
+        botId: messageData.imBotId,
+        messageId: messageData.messageId,
+      });
+    } catch (error) {
+      this.logger.error(`候选人黑名单命中回溯落库失败 targetId=${hit.target_id}`, error);
+    }
+  }
+
+  private async sendBlacklistAlert(
+    messageData: EnterpriseMessageCallbackDto,
+    hit: CandidateBlacklistRecord,
+  ): Promise<void> {
+    try {
+      await this.alertNotifier.sendAlert({
+        code: 'hosting.candidate-blacklist.hit',
+        severity: AlertLevel.WARNING,
+        summary: `候选人黑名单命中：已取消该会话托管（拉黑理由：${hit.reason}）`,
+        source: {
+          subsystem: 'wecom',
+          component: 'CandidateBlacklistFilterRule',
+          action: 'evaluate',
+          trigger: 'queue',
+        },
+        scope: {
+          chatId: messageData.chatId,
+          contactName: messageData.contactName,
+          userId: hit.target_id,
+        },
+        impact: {
+          userVisible: false,
+          requiresHumanIntervention: true,
+        },
+        diagnostics: {
+          payload: {
+            targetId: hit.target_id,
+            blacklistReason: hit.reason,
+            operator: hit.operator,
+            imBotId: messageData.imBotId,
+            messageId: messageData.messageId,
+          },
+        },
+        dedupe: { key: `candidate-blacklist:${messageData.chatId}` },
+      });
+    } catch (error) {
+      this.logger.error(`候选人黑名单命中告警发送失败 chatId=${messageData.chatId}`, error);
+    }
   }
 }
 

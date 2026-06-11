@@ -3,6 +3,7 @@ import { EnterpriseMessageCallbackDto, isTextPayload } from '../ingress/message-
 import { MessageParser } from '../utils/message-parser.util';
 import { FilterResult } from '../types';
 import {
+  CandidateBlacklistFilterRule,
   ContactTypeFilterRule,
   EmptyContentFilterRule,
   GroupBlacklistFilterRule,
@@ -31,16 +32,20 @@ export class MessageFilterService {
     sourceMessageFilterRule: SourceMessageFilterRule,
     contactTypeFilterRule: ContactTypeFilterRule,
     pausedUserFilterRule: PausedUserFilterRule,
+    candidateBlacklistFilterRule: CandidateBlacklistFilterRule,
     groupBlacklistFilterRule: GroupBlacklistFilterRule,
     roomMessageFilterRule: RoomMessageFilterRule,
     supportedMessageTypeFilterRule: SupportedMessageTypeFilterRule,
     emptyContentFilterRule: EmptyContentFilterRule,
   ) {
+    // 候选人黑名单规则必须排在暂停托管规则之后：命中后会话被永久暂停，
+    // 后续消息由暂停规则短路，保证同一会话只告警一次
     this.rules = [
       selfMessageFilterRule,
       sourceMessageFilterRule,
       contactTypeFilterRule,
       pausedUserFilterRule,
+      candidateBlacklistFilterRule,
       groupBlacklistFilterRule,
       roomMessageFilterRule,
       supportedMessageTypeFilterRule,

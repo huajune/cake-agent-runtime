@@ -11,7 +11,11 @@ import type { UserData } from '../types';
 export interface PausedUserRaw {
   chatId: string;
   pausedAt: number;
-  pauseExpiresAt: number;
+  pauseExpiresAt: number | null;
+  isPermanent?: boolean;
+  pauseReason?: string;
+  pauseOperator?: string;
+  pauseSource?: string;
   odName?: string;
   groupName?: string;
   botUserId?: string;
@@ -36,5 +40,9 @@ export function transformPausedUsers(pausedUsers: PausedUserRaw[]): UserData[] {
     lastActiveAt: user.pausedAt, // 直接使用时间戳
     isPaused: true,
     pauseExpiresAt: user.pauseExpiresAt,
+    isPermanent: user.isPermanent,
+    pauseReason: user.pauseReason,
+    pauseOperator: user.pauseOperator,
+    pauseSource: user.pauseSource,
   }));
 }

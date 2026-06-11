@@ -273,3 +273,49 @@
     white-space: nowrap;
   }
 }
+
+.permanentBadge {
+  display: inline-block;
+  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 10px;
+  background: rgba($danger, 0.1);
+  color: $danger;
+  border: 1px solid rgba($danger, 0.2);
+  letter-spacing: 0.5px;
+}
+
+.pauseInfoCell {
+  max-width: 260px;
+}
+
+.sourceTag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 10px;
+  background: rgba(100, 116, 139, 0.1);
+  color: #64748b;
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  white-space: nowrap;
+}
+
+.sourceBlacklist {
+  background: rgba($danger, 0.08);
+  color: $danger;
+  border-color: rgba($danger, 0.2);
+}
+
+.pauseReason {
+  display: inline-block;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  color: #64748b;
+  font-size: 13px;
+}

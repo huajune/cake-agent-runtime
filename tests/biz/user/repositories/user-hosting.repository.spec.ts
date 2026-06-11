@@ -127,7 +127,11 @@ describe('UserHostingRepository', () => {
 
       const pausedAt = new Date().toISOString();
       const pauseExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
-      await repository.upsertPause('user_001', pausedAt, pauseExpiresAt);
+      await repository.upsertPause('user_001', {
+        pausedAt,
+        pauseExpiresAt,
+        isPermanent: false,
+      });
 
       expect(mockSupabaseClient.from).not.toHaveBeenCalled();
     });
@@ -140,9 +144,49 @@ describe('UserHostingRepository', () => {
 
       const pausedAt = new Date().toISOString();
       const pauseExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
-      await repository.upsertPause('user_001', pausedAt, pauseExpiresAt);
+      await repository.upsertPause('user_001', {
+        pausedAt,
+        pauseExpiresAt,
+        isPermanent: false,
+      });
 
       expect(mockSupabaseClient.from).toHaveBeenCalledWith('user_hosting_status');
+      expect(upsertResult.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          user_id: 'user_001',
+          is_paused: true,
+          pause_expires_at: pauseExpiresAt,
+          is_permanent: false,
+          pause_reason: null,
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('should upsert permanent pause with null expiry and reason', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      const upsertResult = makeQueryMock({ data: null, error: null });
+      mockSupabaseClient.from.mockReturnValue(upsertResult);
+
+      const pausedAt = new Date().toISOString();
+      await repository.upsertPause('user_001', {
+        pausedAt,
+        pauseExpiresAt: null,
+        isPermanent: true,
+        reason: '候选人黑名单：恶意刷岗',
+      });
+
+      expect(upsertResult.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          user_id: 'user_001',
+          is_paused: true,
+          pause_expires_at: null,
+          is_permanent: true,
+          pause_reason: '候选人黑名单：恶意刷岗',
+        }),
+        expect.anything(),
+      );
     });
 
     it('should not throw on upsert error', async () => {
@@ -157,7 +201,7 @@ describe('UserHostingRepository', () => {
       const pausedAt = new Date().toISOString();
       const pauseExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
       await expect(
-        repository.upsertPause('user_001', pausedAt, pauseExpiresAt),
+        repository.upsertPause('user_001', { pausedAt, pauseExpiresAt, isPermanent: false }),
       ).resolves.not.toThrow();
     });
   });
@@ -316,11 +360,7 @@ describe('UserHostingRepository', () => {
       mockSupabaseClient.rpc.mockResolvedValue({ data: null, error: null });
 
       const queryMock = makeQueryMock({
-        data: [
-          { chat_id: 'chat-1' },
-          { chat_id: 'chat-2' },
-          { chat_id: 'chat-1' },
-        ],
+        data: [{ chat_id: 'chat-1' }, { chat_id: 'chat-2' }, { chat_id: 'chat-1' }],
         error: null,
       });
       mockSupabaseClient.from.mockReturnValue(queryMock);

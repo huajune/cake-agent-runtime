@@ -9,6 +9,13 @@ function getBotLabel(user: { botUserId?: string; imBotId?: string }) {
   return user.botUserId || user.imBotId || '-';
 }
 
+const PAUSE_SOURCE_LABELS: Record<string, string> = {
+  manual: '手动',
+  candidate_blacklist: '黑名单',
+  interview_booking: '约面',
+  intervention: '人工介入',
+};
+
 export default function UserTable({
   users,
   isLoading,
@@ -18,7 +25,7 @@ export default function UserTable({
   emptyMessage = '暂无数据',
   resolveBotLabel,
 }: UserTableProps) {
-  const columnCount = isPausedTab ? 6 : 8;
+  const columnCount = isPausedTab ? 7 : 8;
 
   return (
     <div className={styles.tableWrapper}>
@@ -34,6 +41,7 @@ export default function UserTable({
             {!isPausedTab && <th>最后活跃</th>}
             {isPausedTab && <th>禁止时间</th>}
             {isPausedTab && <th>解禁时间</th>}
+            {isPausedTab && <th>理由 / 来源</th>}
             <th>托管状态</th>
           </tr>
         </thead>
@@ -88,7 +96,38 @@ export default function UserTable({
                   {!isPausedTab && <td>{formatDateTime(user.lastActiveAt)}</td>}
                   {isPausedTab && <td>{formatDateTime(user.firstActiveAt)}</td>}
                   {isPausedTab && (
-                    <td>{user.pauseExpiresAt ? formatDateTime(user.pauseExpiresAt) : '-'}</td>
+                    <td>
+                      {user.isPermanent ? (
+                        <span className={styles.permanentBadge}>永久</span>
+                      ) : user.pauseExpiresAt ? (
+                        formatDateTime(user.pauseExpiresAt)
+                      ) : (
+                        '-'
+                      )}
+                    </td>
+                  )}
+                  {isPausedTab && (
+                    <td className={styles.pauseInfoCell}>
+                      {user.pauseSource && (
+                        <span
+                          className={`${styles.sourceTag} ${
+                            user.pauseSource === 'candidate_blacklist'
+                              ? styles.sourceBlacklist
+                              : ''
+                          }`}
+                        >
+                          {PAUSE_SOURCE_LABELS[user.pauseSource] || user.pauseSource}
+                        </span>
+                      )}
+                      <span
+                        className={styles.pauseReason}
+                        title={[user.pauseReason, user.pauseOperator && `操作人：${user.pauseOperator}`]
+                          .filter(Boolean)
+                          .join('\n')}
+                      >
+                        {user.pauseReason || '-'}
+                      </span>
+                    </td>
                   )}
                   <td>
                     <label

@@ -25,34 +25,67 @@ export class UserHostingRepository extends BaseRepository {
   // ==================== user_hosting_status 操作 ====================
 
   /**
-   * 查询所有未过期的暂停用户 ID、暂停时间与解禁时间
+   * 查询所有生效中的暂停用户 ID、暂停时间、解禁时间与永久标记
    *
-   * 只返回 pause_expires_at > now() 的记录；过期记录由 expirePausedUsers 回写恢复。
+   * 返回永久暂停（is_permanent = true）或未过期（pause_expires_at > now()）的记录；
+   * 过期的临时暂停由 expirePausedUsers 回写恢复。
    */
   async findPausedUserIds(): Promise<
-    { user_id: string; paused_at: string; pause_expires_at: string | null }[]
+    {
+      user_id: string;
+      paused_at: string;
+      pause_expires_at: string | null;
+      is_permanent: boolean | null;
+      pause_reason: string | null;
+      pause_operator: string | null;
+      pause_source: string | null;
+    }[]
   > {
     const nowIso = new Date().toISOString();
-    return this.select<{ user_id: string; paused_at: string; pause_expires_at: string | null }>(
-      'user_id,paused_at,pause_expires_at',
+    return this.select<{
+      user_id: string;
+      paused_at: string;
+      pause_expires_at: string | null;
+      is_permanent: boolean | null;
+      pause_reason: string | null;
+      pause_operator: string | null;
+      pause_source: string | null;
+    }>(
+      'user_id,paused_at,pause_expires_at,is_permanent,pause_reason,pause_operator,pause_source',
       (q) =>
         q
           .eq('is_paused', true)
-          .gt('pause_expires_at', nowIso)
+          .or(`is_permanent.eq.true,pause_expires_at.gt.${nowIso}`)
           .order('paused_at', { ascending: false }),
     );
   }
 
   /**
-   * UPSERT 暂停状态（按 user_id 冲突时更新），同时写入解禁时间
+   * UPSERT 暂停状态（按 user_id 冲突时更新），同时写入解禁时间、永久标记与理由
+   *
+   * 永久暂停时 pauseExpiresAt 传 null。
    */
-  async upsertPause(userId: string, pausedAt: string, pauseExpiresAt: string): Promise<void> {
+  async upsertPause(
+    userId: string,
+    params: {
+      pausedAt: string;
+      pauseExpiresAt: string | null;
+      isPermanent: boolean;
+      reason?: string;
+      operator?: string;
+      source?: string;
+    },
+  ): Promise<void> {
     await this.upsert(
       {
         user_id: userId,
         is_paused: true,
-        paused_at: pausedAt,
-        pause_expires_at: pauseExpiresAt,
+        paused_at: params.pausedAt,
+        pause_expires_at: params.pauseExpiresAt,
+        is_permanent: params.isPermanent,
+        pause_reason: params.reason ?? null,
+        pause_operator: params.operator ?? null,
+        pause_source: params.source ?? null,
         pause_count: 1,
       },
       { onConflict: 'user_id', returnData: false },
@@ -60,7 +93,7 @@ export class UserHostingRepository extends BaseRepository {
   }
 
   /**
-   * 更新用户为恢复托管状态（清空解禁时间）
+   * 更新用户为恢复托管状态（清空解禁时间、永久标记、理由与审计字段）
    */
   async updateResume(userId: string): Promise<void> {
     await this.update<UserHostingStatus>(
@@ -68,13 +101,18 @@ export class UserHostingRepository extends BaseRepository {
         is_paused: false,
         resumed_at: new Date().toISOString(),
         pause_expires_at: null,
+        is_permanent: false,
+        pause_reason: null,
+        pause_operator: null,
+        pause_source: null,
       },
       (q) => q.eq('user_id', userId),
     );
   }
 
   /**
-   * 批量将已过期（pause_expires_at <= now()）的暂停记录回写为恢复状态
+   * 批量将已过期（pause_expires_at <= now()）的临时暂停记录回写为恢复状态
+   * 永久暂停（is_permanent = true）不参与自动解禁。
    * 返回被回写的 user_id 列表，供调用方做日志或缓存清理。
    */
   async expirePausedUsers(): Promise<string[]> {
@@ -87,6 +125,7 @@ export class UserHostingRepository extends BaseRepository {
         pause_expires_at: null,
       })
       .eq('is_paused', true)
+      .eq('is_permanent', false)
       .lte('pause_expires_at', nowIso)
       .select('user_id');
 
