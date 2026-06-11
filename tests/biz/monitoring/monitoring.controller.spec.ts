@@ -6,6 +6,7 @@ import { AnalyticsQueryService } from '@biz/monitoring/services/dashboard/analyt
 import { AnalyticsMaintenanceService } from '@biz/monitoring/services/maintenance/analytics-maintenance.service';
 import { MonitoringCacheService } from '@biz/monitoring/services/tracking/monitoring-cache.service';
 import { MessageTrackingService } from '@biz/monitoring/services/tracking/message-tracking.service';
+import { ExtractionAccuracyService } from '@biz/monitoring/services/dashboard/extraction-accuracy.service';
 import { ApiTokenGuard } from '@infra/server/guards/api-token.guard';
 
 describe('AnalyticsController', () => {
@@ -359,6 +360,10 @@ describe('MonitoringController', () => {
     recordReplySkipped: jest.fn(),
   };
 
+  const mockExtractionAccuracyService = {
+    getReport: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [MonitoringController],
@@ -366,6 +371,7 @@ describe('MonitoringController', () => {
         { provide: AnalyticsDashboardService, useValue: mockDashboardService },
         { provide: MonitoringCacheService, useValue: mockCacheService },
         { provide: MessageTrackingService, useValue: mockMessageTrackingService },
+        { provide: ExtractionAccuracyService, useValue: mockExtractionAccuracyService },
       ],
     })
       .overrideGuard(ApiTokenGuard)
@@ -418,5 +424,26 @@ describe('MonitoringController', () => {
       'output_leak',
     );
     expect(result.totalOutputLeakSkipped).toBe(3);
+  });
+
+  it('delegates extraction accuracy with a parsed days query', async () => {
+    const report = { days: 7, start: 's', end: 'e', fields: [] };
+    mockExtractionAccuracyService.getReport.mockResolvedValue(report);
+
+    await expect(controller.getExtractionAccuracy('7')).resolves.toBe(report);
+    expect(mockExtractionAccuracyService.getReport).toHaveBeenCalledWith(7);
+  });
+
+  it('passes undefined days when query is absent', async () => {
+    mockExtractionAccuracyService.getReport.mockResolvedValue({
+      days: 14,
+      start: 's',
+      end: 'e',
+      fields: [],
+    });
+
+    await controller.getExtractionAccuracy();
+
+    expect(mockExtractionAccuracyService.getReport).toHaveBeenCalledWith(undefined);
   });
 });

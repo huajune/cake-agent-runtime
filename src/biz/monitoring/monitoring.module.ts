@@ -19,6 +19,7 @@ import { AnalyticsMaintenanceService } from './services/maintenance/analytics-ma
 import { DailyStatsAggregatorService } from './services/projections/daily-stats-aggregator.service';
 import { HourlyStatsAggregatorService } from './services/projections/hourly-stats-aggregator.service';
 import { AnalyticsAlertService } from './services/alerts/analytics-alert.service';
+import { ExtractionAccuracyService } from './services/dashboard/extraction-accuracy.service';
 
 // Cleanup (数据清理)
 import { DataCleanupService } from './services/cleanup/data-cleanup.service';
@@ -31,6 +32,7 @@ import { MonitoringRecordRepository } from './repositories/record.repository';
 import { MonitoringDailyStatsRepository } from './repositories/daily-stats.repository';
 import { MonitoringHourlyStatsRepository } from './repositories/hourly-stats.repository';
 import { MonitoringErrorLogRepository } from './repositories/error-log.repository';
+import { ExtractionAccuracyRepository } from './repositories/extraction-accuracy.repository';
 
 /**
  * 业务监控模块 (Business Layer)
@@ -62,6 +64,7 @@ import { MonitoringErrorLogRepository } from './repositories/error-log.repositor
     MonitoringDailyStatsRepository,
     MonitoringHourlyStatsRepository,
     MonitoringErrorLogRepository,
+    ExtractionAccuracyRepository,
     // Tracking
     MonitoringCacheService,
     MessageTrackingService,
@@ -72,6 +75,7 @@ import { MonitoringErrorLogRepository } from './repositories/error-log.repositor
     DailyStatsAggregatorService,
     HourlyStatsAggregatorService,
     AnalyticsAlertService,
+    ExtractionAccuracyService,
     // Cleanup
     DataCleanupService,
   ],

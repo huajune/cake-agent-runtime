@@ -33,6 +33,7 @@ import { GeocodingService } from '@infra/geocoding/geocoding.service';
 import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { BookingService } from '@biz/message/services/booking.service';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
+import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
 import { RoomService } from '@channels/wecom/room/room.service';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { OpsNotifierService } from '@notification/services/ops-notifier.service';
@@ -71,6 +72,7 @@ export class ToolRegistryService {
     spongeService: SpongeService,
     geocodingService: GeocodingService,
     groupResolverService: GroupResolverService,
+    groupMembershipService: GroupMembershipService,
     roomService: RoomService,
     messageSenderService: MessageSenderService,
     opsNotifier: OpsNotifierService,
@@ -167,6 +169,7 @@ export class ToolRegistryService {
           opsEventsRecorder,
           memberLimit,
           enterpriseToken,
+          groupMembershipService,
         ),
       }),
 

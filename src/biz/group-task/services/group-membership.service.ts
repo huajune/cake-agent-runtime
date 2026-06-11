@@ -100,6 +100,47 @@ export class GroupMembershipService {
   }
 
   /**
+   * 反查候选人当前实际在哪些群（relevantRoomIds 范围内）。
+   *
+   * 供回合开始时注入"实时群状态"：拉群记忆此前只存会话层（TTL 2 天），过期后
+   * Agent 不知道候选人已在群、可能重复邀请；且候选人可能自行退群，记忆会反向
+   * 过期。实时成员关系（10 分钟缓存）是唯一可靠事实源。
+   *
+   * 任何一步失败返回空数组（调用方按"未知"降级，不阻断主流程）。
+   */
+  async listUserRooms(
+    userImContactId: string,
+    relevantRoomIds: Iterable<string>,
+  ): Promise<string[]> {
+    if (!userImContactId) return [];
+    const whitelist = new Set(relevantRoomIds);
+    if (whitelist.size === 0) return [];
+
+    try {
+      // 任一目标群缓存缺失 → 预热（一次 API 调用填充全部白名单群）
+      for (const roomId of whitelist) {
+        if ((await this.redisService.exists(this.buildKey(roomId))) === 0) {
+          await this.hydrateCache(whitelist, roomId);
+          break;
+        }
+      }
+
+      const checks = await Promise.all(
+        Array.from(whitelist, async (roomId) => ({
+          roomId,
+          isMember:
+            (await this.redisService.sismember(this.buildKey(roomId), userImContactId)) === 1,
+        })),
+      );
+      return checks.filter((c) => c.isMember).map((c) => c.roomId);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`反查候选人群状态失败 (user=${userImContactId}): ${message}`);
+      return [];
+    }
+  }
+
+  /**
    * 手动标记用户已进入群（用于拉人成功后即时更新缓存）
    */
   async markUserInRoom(imRoomId: string, userImContactId: string): Promise<void> {
