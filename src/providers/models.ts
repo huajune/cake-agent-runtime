@@ -1,5 +1,5 @@
 /**
- * 模型数据字典 — 所有已知模型的静态目录 (2026.04 更新版)
+ * 模型数据字典 — 所有已知模型的静态目录 (2026.06 更新版)
  *
  * RegistryService 根据已注册 Provider 过滤出当前可用模型。
  * 新增模型只需在对应 Provider 下加一行。
@@ -18,6 +18,12 @@ export interface ModelEntry {
 
 export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
   // ==================== Anthropic ====================
+  'anthropic/claude-opus-4-8': {
+    provider: 'anthropic',
+    name: 'Claude Opus 4.8',
+    description: 'Anthropic 旗舰模型 (长程自治 Agent / 知识工作 SOTA)',
+    capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
+  },
   'anthropic/claude-opus-4-7': {
     provider: 'anthropic',
     name: 'Claude Opus 4.7',
@@ -38,6 +44,12 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
   },
 
   // ==================== OpenAI ====================
+  'openai/gpt-5.5': {
+    provider: 'openai',
+    name: 'GPT-5.5',
+    description: 'OpenAI 最新旗舰 (复杂专业工作)',
+    capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
+  },
   'openai/gpt-5.4-thinking': {
     provider: 'openai',
     name: 'GPT-5.4 Thinking',
@@ -76,6 +88,18 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
     description: 'Google 多模态极速版',
     capabilities: ['tool-use', 'multimodal'],
   },
+  'google/gemini-3.5-flash': {
+    provider: 'google',
+    name: 'Gemini 3.5 Flash',
+    description: 'Google 新一代极速版 (2026-05 I/O 发布)',
+    capabilities: ['tool-use', 'multimodal'],
+  },
+  'google/gemini-3.1-flash-lite-preview': {
+    provider: 'google',
+    name: 'Gemini 3.1 Flash-Lite Preview',
+    description: 'Google 低成本轻量版 Preview (当前 evaluate 角色在用；GA 后迁正式 id)',
+    capabilities: ['tool-use'],
+  },
   'google/gemini-3.1-flash-lite': {
     provider: 'google',
     name: 'Gemini 3.1 Flash-Lite',
@@ -98,6 +122,19 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
   },
 
   // ==================== 通义千问 (Qwen) ====================
+  'qwen/qwen3.7-plus': {
+    provider: 'qwen',
+    name: 'Qwen3.7 Plus',
+    description:
+      '通义千问 3.7 增强版 (多模态 Agent / GUI grounding / 1M 上下文；需在阿里云控制台开通)',
+    capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
+  },
+  'qwen/qwen3.7-max': {
+    provider: 'qwen',
+    name: 'Qwen3.7 Max',
+    description: '通义千问 3.7 旗舰 (万亿 MoE / Agentic Coding 国产第一；需在阿里云控制台开通)',
+    capabilities: ['thinking', 'tool-use', 'long-context'],
+  },
   'qwen/qwen3.6-max-preview': {
     provider: 'qwen',
     name: 'qwen3.6-max-preview',

@@ -14,6 +14,7 @@ import { LongTermService } from './services/long-term.service';
 import { SettlementService } from './services/settlement.service';
 import { MemoryEnrichmentService } from './services/memory-enrichment.service';
 import { MemoryLifecycleService } from './services/memory-lifecycle.service';
+import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
 
 /**
  * Memory 模块
@@ -24,7 +25,7 @@ import { MemoryLifecycleService } from './services/memory-lifecycle.service';
  * - stores: Redis / Supabase 基础设施
  */
 @Module({
-  imports: [BizMessageModule, SpongeModule, UserModule, LlmModule],
+  imports: [BizMessageModule, SpongeModule, UserModule, LlmModule, HostingConfigModule],
   providers: [
     MemoryConfig,
     RedisStore,

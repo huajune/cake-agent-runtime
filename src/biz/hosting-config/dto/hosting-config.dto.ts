@@ -15,6 +15,10 @@ export class UpdateAgentReplyConfigDto {
   wecomCallbackModelId?: string;
 
   @IsOptional()
+  @IsString()
+  extractModelId?: string;
+
+  @IsOptional()
   @IsIn(['fast', 'deep'])
   wecomCallbackThinkingMode?: 'fast' | 'deep';
 

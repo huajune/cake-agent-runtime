@@ -15,6 +15,7 @@ export interface AgentReplyConfig {
   // 模型配置
   wecomCallbackModelId: string;
   wecomCallbackThinkingMode: AgentReplyThinkingMode;
+  extractModelId: string;
 
   // 消息聚合配置
   initialMergeWindowMs: number;

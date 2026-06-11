@@ -70,6 +70,10 @@ export class SystemConfigService {
           ? config.wecomCallbackModelId.trim()
           : DEFAULT_AGENT_REPLY_CONFIG.wecomCallbackModelId,
       wecomCallbackThinkingMode: config?.wecomCallbackThinkingMode === 'deep' ? 'deep' : 'fast',
+      extractModelId:
+        typeof config?.extractModelId === 'string'
+          ? config.extractModelId.trim()
+          : DEFAULT_AGENT_REPLY_CONFIG.extractModelId,
       initialMergeWindowMs:
         typeof config?.initialMergeWindowMs === 'number'
           ? config.initialMergeWindowMs
@@ -228,6 +232,14 @@ export class SystemConfigService {
    *
    * 本地热缓存有效期内直接返回，否则按 Redis → DB 顺序回源
    */
+  /**
+   * 事实提取模型覆盖：后台配置非空时返回该模型 ID，否则 undefined（走 extract 角色路由）。
+   */
+  async getExtractModelOverride(): Promise<string | undefined> {
+    const config = await this.getAgentReplyConfig();
+    return config.extractModelId?.trim() || undefined;
+  }
+
   async getAgentReplyConfig(): Promise<AgentReplyConfig> {
     if (this.agentReplyConfig && Date.now() < this.agentReplyConfigExpiry) {
       return this.agentReplyConfig;

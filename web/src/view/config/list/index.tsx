@@ -196,6 +196,12 @@ export default function Config() {
   const modelDefaultLabel = modelDefaultOption
     ? modelDefaultOption.name || modelDefaultOption.id
     : modelDefaultValue || '默认角色路由';
+  const extractModelValue = String(getCurrentValue('extractModelId') ?? '');
+  const extractModelDefaultValue = String(getDefaultValue('extractModelId') ?? '');
+  const extractModelDefaultOption = modelOptions.find((o) => o.id === extractModelDefaultValue);
+  const extractModelDefaultLabel = extractModelDefaultOption
+    ? extractModelDefaultOption.name || extractModelDefaultOption.id
+    : extractModelDefaultValue || '默认角色路由';
   const thinkingModeValue = String(
     getCurrentValue('wecomCallbackThinkingMode') ?? 'fast',
   ) as AgentReplyThinkingMode;
@@ -264,6 +270,38 @@ export default function Config() {
                     placeholder={isLoadingModels ? '加载模型列表中...' : '默认角色路由'}
                     defaultOptionLabel="默认角色路由"
                     defaultOptionDesc="留空则走后端 AGENT_CHAT_MODEL 角色路由"
+                  />
+                </div>
+              </div>
+
+              <div
+                className={`${styles.settingRow} ${isModified('extractModelId') ? styles.settingRowModified : ''}`}
+              >
+                <div className={styles.settingBody}>
+                  <div className={styles.settingHeading}>
+                    <span className={styles.settingLabel}>事实提取模型</span>
+                    {isModified('extractModelId') ? (
+                      <span className={styles.modifiedBadge}>已修改</span>
+                    ) : null}
+                  </div>
+                  <p className={styles.settingDescription}>
+                    控制会话事实提取与沉淀摘要使用的模型。留空时走后端 AGENT_EXTRACT_MODEL
+                    角色路由。切换后请在系统监控页观察"提取质量对账"卡片，准确率下滑即回退。
+                  </p>
+                  <div className={styles.settingMeta}>
+                    <span>适用于新的提取/沉淀请求</span>
+                    <span>默认: {extractModelDefaultLabel}</span>
+                  </div>
+                </div>
+                <div className={styles.controlBlock}>
+                  <ModelSelector
+                    value={extractModelValue}
+                    options={modelOptions}
+                    onChange={(next) => handleConfigChange('extractModelId', next)}
+                    disabled={isLoadingModels}
+                    placeholder={isLoadingModels ? '加载模型列表中...' : '默认角色路由'}
+                    defaultOptionLabel="默认角色路由"
+                    defaultOptionDesc="留空则走后端 AGENT_EXTRACT_MODEL 角色路由"
                   />
                 </div>
               </div>
