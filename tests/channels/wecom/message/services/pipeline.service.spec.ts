@@ -442,6 +442,8 @@ describe('MessagePipelineService', () => {
             }),
           }),
         }),
+        // 消息失败路径由 recordFailure 落库，告警不重复持久化
+        { persist: false },
       );
     });
 

@@ -4,6 +4,30 @@ import type { AgentReplyConfig } from '@/api/types/config.types';
 import type { AlertTypeItem } from '@/api/types/analytics.types';
 import styles from './index.module.scss';
 
+/**
+ * 错误分布维度的友好名：后端按 subsystem 优先聚合（group-task/cron/infra…），
+ * 老消息失败回退 alertType（agent/message/delivery）。这里映射成中文展示名，
+ * 未覆盖的子系统原样显示，空值兜底"未知子系统"。
+ */
+const ALERT_DIMENSION_LABELS: Record<string, string> = {
+  'group-task': '群任务',
+  cron: '定时任务',
+  infra: '基础设施',
+  monitoring: '监控',
+  notification: '通知',
+  wecom: '企微消息',
+  agent: 'Agent 调用',
+  message: '消息处理',
+  delivery: '消息投递',
+  merge: '消息聚合',
+  system: '系统',
+  unknown: '未知子系统',
+};
+
+function alertDimensionLabel(type: string): string {
+  return ALERT_DIMENSION_LABELS[type] ?? type ?? '未知子系统';
+}
+
 interface ConsolePanelProps {
   alertConfig: {
     businessAlertEnabled: boolean;
@@ -199,7 +223,7 @@ export default function ConsolePanel({
         {/* 图表区 */}
         <div className={styles.chartArea}>
           <div className={styles.areaHeader}>
-            <h4>错误趋势（24小时）</h4>
+            <h4>错误趋势（今日）</h4>
             <div className={styles.kpiBadge}>
               近1小时: <strong>{recentAlertCount ?? '-'}</strong>
             </div>
@@ -221,7 +245,7 @@ export default function ConsolePanel({
               alertTypes.slice(0, 6).map((item, i) => (
                 <div key={i} className={styles.alertRow}>
                   <div className={styles.alertRowInfo}>
-                    <span className={styles.alertName}>{item.type}</span>
+                    <span className={styles.alertName}>{alertDimensionLabel(item.type)}</span>
                     <span className={styles.alertCount}>{item.count}</span>
                   </div>
                   <div className={styles.progressBg}>

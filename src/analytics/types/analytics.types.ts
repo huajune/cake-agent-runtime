@@ -1,8 +1,4 @@
-import {
-  AlertErrorType,
-  MessageProcessingRecord,
-  MonitoringErrorLog,
-} from '@shared-types/tracking.types';
+import { MessageProcessingRecord, MonitoringErrorLog } from '@shared-types/tracking.types';
 
 export type AnalyticsTimeRange = 'today' | 'week' | 'month' | 'twoMonths' | 'threeMonths';
 
@@ -28,7 +24,8 @@ export interface BusinessMetricTrendPoint {
 }
 
 export interface AlertTypeMetric {
-  type: AlertErrorType | 'unknown';
+  /** 子系统名（group-task/cron/infra…）或回退的 alertType（agent/message/delivery）或 'unknown' */
+  type: string;
   count: number;
   percentage: number;
 }

@@ -149,10 +149,20 @@ export interface MessageProcessingRecord {
  * 错误日志
  */
 export interface MonitoringErrorLog {
-  messageId: string;
+  messageId?: string;
   timestamp: number;
   error: string;
   alertType?: AlertErrorType;
+  // 子系统告警来源与投递状态（告警持久化统一；消息处理失败链路不填）
+  subsystem?: string;
+  component?: string;
+  action?: string;
+  severity?: string;
+  summary?: string;
+  code?: string;
+  dedupeKey?: string;
+  throttled?: boolean;
+  delivered?: boolean;
 }
 
 /**

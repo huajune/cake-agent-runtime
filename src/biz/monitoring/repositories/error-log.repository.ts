@@ -93,19 +93,37 @@ export class MonitoringErrorLogRepository extends BaseRepository {
 
   private toDbRecord(log: ErrorLogRecord): ErrorLogDbRecord {
     return {
-      message_id: log.messageId,
+      message_id: log.messageId ?? null,
       timestamp: new Date(log.timestamp).toISOString(), // Unix ms → ISO 8601
       error: log.error,
       alert_type: log.alertType,
+      subsystem: log.subsystem ?? null,
+      component: log.component ?? null,
+      action: log.action ?? null,
+      severity: log.severity ?? null,
+      summary: log.summary ?? null,
+      code: log.code ?? null,
+      dedupe_key: log.dedupeKey ?? null,
+      throttled: log.throttled ?? null,
+      delivered: log.delivered ?? null,
     };
   }
 
   private fromDbRecord(row: ErrorLogDbRecord): ErrorLogRecord {
     return {
-      messageId: row.message_id,
+      messageId: row.message_id ?? undefined,
       timestamp: new Date(row.timestamp).getTime(), // ISO 8601 → Unix ms
       error: row.error,
       alertType: row.alert_type as AlertErrorType | undefined,
+      subsystem: row.subsystem ?? undefined,
+      component: row.component ?? undefined,
+      action: row.action ?? undefined,
+      severity: row.severity ?? undefined,
+      summary: row.summary ?? undefined,
+      code: row.code ?? undefined,
+      dedupeKey: row.dedupe_key ?? undefined,
+      throttled: row.throttled ?? undefined,
+      delivered: row.delivered ?? undefined,
     };
   }
 }
