@@ -3,7 +3,44 @@
   "nextVersion": "5.16.0",
   "updatedAt": "2026-06-11",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "308",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/308",
+      "title": "明确 invite_to_group 拉群投递契约",
+      "author": "huajune",
+      "mergedAt": "2026-06-11",
+      "businessUpdates": [
+        "明确拉群投递契约",
+        "将 `invite_to_group` 成功返回从 `inviteMode` 改为 `inviteDelivery: direct_add | invite_card`。",
+        "增加 `_outcome` 和 `_replyInstruction`，明确 `invite_card` 是企微邀请卡片，不返回也不应编造 URL。",
+        "更新单测覆盖 `direct_add` / `invite_card`，并断言旧的 `inviteMode` 不再返回。",
+        "明确 invite_to_group 拉群投递契约"
+      ],
+      "summary": [
+        "明确拉群投递契约",
+        "将 `invite_to_group` 成功返回从 `inviteMode` 改为 `inviteDelivery: direct_add | invite_card`。",
+        "增加 `_outcome` 和 `_replyInstruction`，明确 `invite_card` 是企微邀请卡片，不返回也不应编造 URL。",
+        "更新单测覆盖 `direct_add` / `invite_card`，并断言旧的 `inviteMode` 不再返回。",
+        "明确 invite_to_group 拉群投递契约"
+      ],
+      "features": [],
+      "fixes": [],
+      "optimizations": [],
+      "ops": [
+        "将 `invite_to_group` 成功返回从 `inviteMode` 改为 `inviteDelivery: direct_add | invite_card`。",
+        "增加 `_outcome` 和 `_replyInstruction`，明确 `invite_card` 是企微邀请卡片，不返回也不应编造 URL。",
+        "更新单测覆盖 `direct_add` / `invite_card`，并断言旧的 `inviteMode` 不再返回。",
+        "明确拉群投递契约"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "`pnpm test -- tests/tools/tool/invite-to-group.tool.spec.ts`",
+        "pre-push `pnpm run ci:check` passed: lint, format, typecheck, build, full Jest CI"
+      ]
+    }
+  ],
   "lastRelease": {
     "version": "5.15.0",
     "date": "2026-06-11",

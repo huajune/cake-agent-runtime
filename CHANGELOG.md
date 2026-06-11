@@ -8,6 +8,47 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.16.0`
+**最近更新**: `2026-06-11`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #308 明确拉群投递契约
+- PR #308 将 `invite_to_group` 成功返回从 `inviteMode` 改为 `inviteDelivery: direct_add | invite_card`。
+- PR #308 增加 `_outcome` 和 `_replyInstruction`，明确 `invite_card` 是企微邀请卡片，不返回也不应编造 URL。
+- PR #308 更新单测覆盖 `direct_add` / `invite_card`，并断言旧的 `inviteMode` 不再返回。
+- PR #308 明确 invite_to_group 拉群投递契约
+
+### 新功能
+- 无
+
+### 问题修复
+- 无
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #308 将 `invite_to_group` 成功返回从 `inviteMode` 改为 `inviteDelivery: direct_add | invite_card`。
+- PR #308 增加 `_outcome` 和 `_replyInstruction`，明确 `invite_card` 是企微邀请卡片，不返回也不应编造 URL。
+- PR #308 更新单测覆盖 `direct_add` / `invite_card`，并断言旧的 `inviteMode` 不再返回。
+- PR #308 明确拉群投递契约
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #308 `pnpm test -- tests/tools/tool/invite-to-group.tool.spec.ts`
+- PR #308 pre-push `pnpm run ci:check` passed: lint, format, typecheck, build, full Jest CI
+<!-- release:pending:end -->
+
 ## [5.15.0] - 2026-06-11
 
 **来源分支**: `develop`
