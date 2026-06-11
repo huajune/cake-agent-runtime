@@ -71,6 +71,13 @@
   font-size: $font-size-sm;
 }
 
+.error {
+  @include flex-center;
+  padding: $spacing-xl 0;
+  color: $danger;
+  font-size: $font-size-sm;
+}
+
 .tableScroll {
   overflow-x: auto;
 }

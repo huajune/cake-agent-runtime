@@ -75,6 +75,9 @@ import {
 export class SessionService {
   private readonly logger = new Logger(SessionService.name);
 
+  /** 纯应答词判定的最大文本长度：超过即认为携带额外信息，不可跳过提取。 */
+  private static readonly MAX_ACK_TEXT_LENGTH = 12;
+
   constructor(
     private readonly redisStore: RedisStore,
     private readonly config: MemoryConfig,
@@ -598,7 +601,7 @@ export class SessionService {
    */
   private isPureAcknowledgment(text: string): boolean {
     if (!text) return false;
-    if (text.length > 12) return false;
+    if (text.length > SessionService.MAX_ACK_TEXT_LENGTH) return false;
     const ackWord =
       '(?:好的|好滴|好嘞|好呀|好|嗯+|嗯呢|可以|行|没事|没问题|是的|对的|对|ok|okk|👌|收到|知道了|明白了?|了解|谢谢你?|谢了|麻烦了|辛苦了|在吗|在不在|你好|您好|哦+|噢|嗷|哈+)';
     const pattern = new RegExp(`^(?:${ackWord}[~～。.!！?？，,、\\s]*){1,3}$`, 'i');

@@ -20,7 +20,7 @@ export default function ExtractionAccuracyCard({
   days,
   onDaysChange,
 }: ExtractionAccuracyCardProps) {
-  const { data, isLoading } = useExtractionAccuracy(days);
+  const { data, isLoading, isError } = useExtractionAccuracy(days);
   const fields = data?.fields ?? [];
 
   return (
@@ -48,7 +48,9 @@ export default function ExtractionAccuracyCard({
         </div>
       </div>
 
-      {isLoading && fields.length === 0 ? (
+      {isError && fields.length === 0 ? (
+        <div className={styles.error}>对账数据加载失败，请稍后重试</div>
+      ) : isLoading && fields.length === 0 ? (
         <div className={styles.empty}>加载中</div>
       ) : fields.length === 0 ? (
         <div className={styles.empty}>该时间窗内暂无对账样本（需新版 booking 事件）</div>

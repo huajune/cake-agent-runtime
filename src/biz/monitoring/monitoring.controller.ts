@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Logger, Query, Post, HttpCode, UseGuards } from '@nestjs/common';
+import { ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { AnalyticsDashboardService } from './services/dashboard/analytics-dashboard.service';
 import { AnalyticsQueryService } from './services/dashboard/analytics-query.service';
 import { AnalyticsMaintenanceService } from './services/maintenance/analytics-maintenance.service';
@@ -200,6 +201,15 @@ export class MonitoringController {
    * GET /monitoring/extraction-accuracy?days=7|14|30
    */
   @Get('extraction-accuracy')
+  @ApiOperation({
+    summary: '提取质量对账（逐字段覆盖率/准确率）',
+    description: '真值=报名提交字段；提取值=报名前最近一轮记忆快照。',
+  })
+  @ApiQuery({
+    name: 'days',
+    required: false,
+    description: '统计天数，1-90，默认 14；非法值回退默认并 clamp 到上界',
+  })
   async getExtractionAccuracy(@Query('days') days?: string) {
     const parsedDays = days ? Number.parseInt(days, 10) : undefined;
     const reportDays = Number.isFinite(parsedDays) ? parsedDays : undefined;

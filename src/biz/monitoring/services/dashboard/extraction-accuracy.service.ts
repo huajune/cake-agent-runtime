@@ -51,8 +51,9 @@ export class ExtractionAccuracyService {
     };
   }
 
-  private normalizeDays(days?: number): number {
-    if (!Number.isFinite(days) || days === undefined || days < 1) {
+  /** 归一化统计天数：非法值回退默认 14 天，并 clamp 到 1-90 上下界。 */
+  private normalizeDays(days: number = DEFAULT_WINDOW_DAYS): number {
+    if (!Number.isFinite(days) || days < 1) {
       return DEFAULT_WINDOW_DAYS;
     }
 
