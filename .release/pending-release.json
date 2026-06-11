@@ -1,385 +1,308 @@
 {
-  "baseVersion": "5.13.2",
+  "baseVersion": "5.14.0",
   "nextVersion": "5.14.0",
   "updatedAt": "2026-06-11",
   "sourceBranch": "develop",
-  "entries": [
-    {
-      "number": "289",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/289",
-      "title": "零结果类 errorType 映射为 empty 而非 error",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-10",
-      "businessUpdates": [
-        "`job_list.no_results` / `job_list.schedule_filter_empty` → `empty`",
-        "`job_list.fetch_failed` 等系统级失败保持 `error`",
-        "副作用屏蔽逻辑不受影响（其只认 ok/narrow）"
-      ],
-      "summary": [
-        "零结果类 errorType 映射为 empty 而非 error",
-        "`job_list.no_results` / `job_list.schedule_filter_empty` → `empty`",
-        "`job_list.fetch_failed` 等系统级失败保持 `error`",
-        "副作用屏蔽逻辑不受影响（其只认 ok/narrow）"
-      ],
-      "features": [],
-      "fixes": [
-        "`job_list.no_results` / `job_list.schedule_filter_empty` → `empty`",
-        "`job_list.fetch_failed` 等系统级失败保持 `error`",
-        "副作用屏蔽逻辑不受影响（其只认 ok/narrow）"
-      ],
-      "optimizations": [],
-      "ops": [
-        "零结果类 errorType 映射为 empty 而非 error"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "tool-call-analysis.spec：38/38 通过（新增零结果映射 3 个断言）"
-      ]
-    },
-    {
-      "number": "291",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/291",
-      "title": "删除 recruitment_cases 死代码与废弃表",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-11",
-      "businessUpdates": [
-        "删除 recruitment_cases 死代码与废弃表",
-        "删 `src/biz/recruitment-case/` 整个模块（entity/repo/service/stage-resolver/types/module）+ 对应 spec",
-        "删 onboard-followup 通知三件套（notifier service / card renderer / payload types）+ spec — 同样零调用方",
-        "清 6 处 dead wiring import（tool / hosting-config / user / biz / intervention / message module），user.module 顺带移除不再使用的 `forwardRef`",
-        "`DROP TABLE recruitment_cases`（已用 MCP 应用至生产 + db:push:test，附 migration）",
-        "关闭已完成的 todo `llm-structured-output-optimization`（评估服务早已迁 `Output.object()`，文档描述的 80 行防御解析代码已不存在）"
-      ],
-      "summary": [
-        "删除 recruitment_cases 死代码与废弃表",
-        "删 `src/biz/recruitment-case/` 整个模块（entity/repo/service/stage-resolver/types/module）+ 对应 spec",
-        "删 onboard-followup 通知三件套（notifier service / card renderer / payload types）+ spec — 同样零调用方",
-        "清 6 处 dead wiring import（tool / hosting-config / user / biz / intervention / message module），user.module 顺带移除不再使用的 `forwardRef`",
-        "`DROP TABLE recruitment_cases`（已用 MCP 应用至生产 + db:push:test，附 migration）",
-        "关闭已完成的 todo `llm-structured-output-optimization`（评估服务早已迁 `Output.object()`，文档描述的 80 行防御解析代码已不存在）"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "删 `src/biz/recruitment-case/` 整个模块（entity/repo/service/stage-resolver/types/module）+ 对应 spec",
-        "删 onboard-followup 通知三件套（notifier service / card renderer / payload types）+ spec — 同样零调用方",
-        "清 6 处 dead wiring import（tool / hosting-config / user / biz / intervention / message module），user.module 顺带移除不再使用的 `forwardRef`",
-        "`DROP TABLE recruitment_cases`（已用 MCP 应用至生产 + db:push:test，附 migration）",
-        "关闭已完成的 todo `llm-structured-output-optimization`（评估服务早已迁 `Output.object()`，文档描述的 80 行防御解析代码已不存在）",
-        "删除 recruitment_cases 死代码与废弃表"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "`pnpm build` 通过（DI 接线无断裂）",
-        "全量测试 282 suites / 3698 passed"
-      ]
-    },
-    {
-      "number": "293",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/293",
-      "title": "修复三个让业务告警半瘫痪的阈值 bug",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-11",
-      "businessUpdates": [
-        "修复三个让业务告警半瘫痪的阈值 bug"
-      ],
-      "summary": [
-        "修复三个让业务告警半瘫痪的阈值 bug"
-      ],
-      "features": [],
-      "fixes": [
-        "修复三个让业务告警半瘫痪的阈值 bug"
-      ],
-      "optimizations": [],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    },
-    {
-      "number": "292",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/292",
-      "title": "timeout 阶段归因 + 投递分段退避重试",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-11",
-      "businessUpdates": [
-        "timeout 阶段归因 + 投递分段退避重试",
-        "适配分段退避重试的部分失败语义"
-      ],
-      "summary": [
-        "timeout 阶段归因 + 投递分段退避重试",
-        "适配分段退避重试的部分失败语义"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "timeout 阶段归因 + 投递分段退避重试",
-        "适配分段退避重试的部分失败语义"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "timeout_stuck_records RPC 已应用至生产 + 测试库",
-        "仓库层补 4 个用例（分批/归因/错误吞掉）；build + 相关 spec 通过"
-      ]
-    },
-    {
-      "number": "299",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/299",
-      "title": "assistant 消息持久化——数据验证后决定不改造",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-11",
-      "businessUpdates": [
-        "assistant 消息持久化——数据验证丢失率 0.02%，决定不改造",
-        "assistant 消息持久化——数据验证后决定不改造"
-      ],
-      "summary": [
-        "assistant 消息持久化——数据验证丢失率 0.02%，决定不改造",
-        "assistant 消息持久化——数据验证后决定不改造"
-      ],
-      "features": [],
-      "fixes": [],
-      "optimizations": [],
-      "ops": [
-        "assistant 消息持久化——数据验证丢失率 0.02%，决定不改造"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    },
-    {
-      "number": "298",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/298",
-      "title": "子系统告警持久化到 monitoring_error_logs",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-11",
-      "businessUpdates": [
-        "**IAlertLogPersister 接口 + ALERT_LOG_PERSISTER token** 放 `notification/types`（notification 对 biz 零依赖）；`AlertLogPersisterService` 实现放 `biz/monitoring`，由 @Global MonitoringModule 绑定，AlertNotifierService @Optional 注入。",
-        "**双写规避**：`message-processing-failure` 的 2 处 sendAlert（与 recordFailure 同路径成对触发）传 `{ persist:false }`，由 recordFailure 作为这些消息失败的唯一落库点；`sendFallbackAlert` 等独立告警与所有子系统告警默认 persist:true。**link A（消息失败链路）零行为变更、零双计数**。",
-        "补 AlertLogPersisterService 单测 + review 修正"
-      ],
-      "summary": [
-        "子系统告警持久化到 monitoring_error_logs",
-        "补 AlertLogPersisterService 单测 + review 修正",
-        "错误分布按 subsystem 聚合 + dashboard 前端展示子系统",
-        "**migration 20260611120000**：`monitoring_error_logs` 加 subsystem/component/action/severity/summary/code/dedupe_key/throttled/delivered 9 列 + `message_id` 改可空（系统告警无 messageId）+ subsystem 索引。全 additive，老数据新列 NULL 兼容。**生产库已应用**；测试库因并发会话迁移占位待后续 `db:push:test`。",
-        "**IAlertLogPersister 接口 + ALERT_LOG_PERSISTER token** 放 `notification/types`（notification 对 biz 零依赖）；`AlertLogPersisterService` 实现放 `biz/monitoring`，由 @Global MonitoringModule 绑定，AlertNotifierService @Optional 注入。",
-        "**sendAlert 重构**：无论节流 / 发送结果 / 非生产都先持久化（标 throttled/delivered），持久化失败不阻塞发送 → 子系统告警从此进 \"今日错误\" 总数与错误列表。",
-        "**双写规避**：`message-processing-failure` 的 2 处 sendAlert（与 recordFailure 同路径成对触发）传 `{ persist:false }`，由 recordFailure 作为这些消息失败的唯一落库点；`sendFallbackAlert` 等独立告警与所有子系统告警默认 persist:true。**link A（消息失败链路）零行为变更、零双计数**。"
-      ],
-      "features": [
-        "**IAlertLogPersister 接口 + ALERT_LOG_PERSISTER token** 放 `notification/types`（notification 对 biz 零依赖）；`AlertLogPersisterService` 实现放 `biz/monitoring`，由 @Global MonitoringModule 绑定，AlertNotifierService @Optional 注入。",
-        "**双写规避**：`message-processing-failure` 的 2 处 sendAlert（与 recordFailure 同路径成对触发）传 `{ persist:false }`，由 recordFailure 作为这些消息失败的唯一落库点；`sendFallbackAlert` 等独立告警与所有子系统告警默认 persist:true。**link A（消息失败链路）零行为变更、零双计数**。"
-      ],
-      "fixes": [
-        "补 AlertLogPersisterService 单测 + review 修正"
-      ],
-      "optimizations": [
-        "**sendAlert 重构**：无论节流 / 发送结果 / 非生产都先持久化（标 throttled/delivered），持久化失败不阻塞发送 → 子系统告警从此进 \"今日错误\" 总数与错误列表。"
-      ],
-      "ops": [
-        "**migration 20260611120000**：`monitoring_error_logs` 加 subsystem/component/action/severity/summary/code/dedupe_key/throttled/delivered 9 列 + `message_id` 改可空（系统告警无 messageId）+ subsystem 索引。全 additive，老数据新列 NULL 兼容。**生产库已应用**；测试库因并发会话迁移占位待后续 `db:push:test`。",
-        "子系统告警持久化到 monitoring_error_logs",
-        "错误分布按 subsystem 聚合 + dashboard 前端展示子系统"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "alert-notifier 12 passed（新增持久化 5 例：成功/节流/异常/非生产/persist:false）",
-        "pipeline.service spec 适配 sendAlert 第二参",
-        "monitoring 套件 277 passed；ci:check（lint+format+typecheck+build+全量测试）绿"
-      ]
-    },
-    {
-      "number": "297",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/297",
-      "title": "渐进式披露——全文限最近 6 家，其余降摘要行",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-11",
-      "businessUpdates": [
-        "职位列表展示优化：超过 6 家门店时，前 6 家保持全文（薪资阶梯、招聘要求、工作时间），其余门店仅显示摘要行（店名/距离/薪资/年龄），候选人可通过 jobId 按需查询详情",
-        "对话响应速度提升：大量门店场景下 AI 回复 token 消耗削减约 70-80%，p90 延迟显著改善"
-      ],
-      "summary": [
-        "职位列表渐进式披露：全文展示限最近 6 家（FULL_DETAIL_CAP），其余降为摘要行，解决多步工具调用反复回灌导致的高延迟（生产 p90 79s / 3-6 万 token/turn）问题"
-      ],
-      "features": [
-        "新增摘要行格式 formatJobToSummaryLine：包含店名、距离、薪资、年龄、jobId，支持候选人通过 jobId 走 jobIdList 单查获取完整岗位信息"
-      ],
-      "fixes": [],
-      "optimizations": [
-        "职位列表 render 路径按 FULL_DETAIL_CAP=6 分流：≤6 家结果零变化，>6 家 p90/max 场景削减约 70-80%（最大 173k → ~33k 字符）",
-        "同品牌多门店 brandGroups 摘要逻辑不受影响，保持在 cap 分流之前渲染",
-        "工具 description 补充约束：更远门店摘要行不得凭摘要编造未列字段，需用 jobId 走 jobIdList 查询"
-      ],
-      "ops": [],
-      "config": [],
-      "envFiles": [],
-      "verification": [
-        "render 套件 151 个测试全部通过",
-        "新增 2 个 cap 分流用例（≤6 家全文场景、>6 家摘要尾含 jobId 场景）",
-        "build 和 lint 通过"
-      ]
-    },
-    {
-      "number": "295",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/295",
-      "title": "永久禁止托管 + 候选人黑名单（命中告警并取消托管）",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-11",
-      "businessUpdates": [
-        "补 candidate-blacklist.repository 单测 + review 修正"
-      ],
-      "summary": [
-        "永久禁止托管 + 候选人黑名单（命中告警并取消托管）",
-        "黑名单/暂停记录改独立表存储，补操作审计与命中回溯字段",
-        "候选人黑名单管理页 + 暂停列表展示永久标记/理由/来源",
-        "补 candidate-blacklist.repository 单测 + review 修正"
-      ],
-      "features": [],
-      "fixes": [
-        "补 candidate-blacklist.repository 单测 + review 修正"
-      ],
-      "optimizations": [],
-      "ops": [
-        "永久禁止托管 + 候选人黑名单（命中告警并取消托管）",
-        "黑名单/暂停记录改独立表存储，补操作审计与命中回溯字段",
-        "候选人黑名单管理页 + 暂停列表展示永久标记/理由/来源"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    },
-    {
-      "number": "296",
-      "url": "https://github.com/huajune/cake-agent-runtime/pull/296",
-      "title": "提取管线降本、质量反馈环与三项结构性重构（PR #278 续）",
-      "author": "ArielZhu",
-      "mergedAt": "2026-06-11",
-      "businessUpdates": [
-        "Merge remote-tracking branch 'origin/develop' into fix/memory-hygiene",
-        "补 fact-merge.util 单测 + review 修正",
-        "Merge branch 'develop' into fix/memory-hygiene"
-      ],
-      "summary": [
-        "提取管线降本与误捕修补（架构 review 第一档落地）",
-        "提取降级可观测 + booking 真值对账字段",
-        "规则提取层注册表化 + 补三个结构化提取器",
-        "提取质量对账报表 SQL",
-        "同轮事实合并三层收敛为单遍合并器",
-        "session facts schema 单清单收敛 + 完备性自检",
-        "记忆系统文档同步至最新实现",
-        "Merge remote-tracking branch 'origin/develop' into fix/memory-hygiene",
-        "拉群状态实时化——记忆只做参考，群成员关系以实时核验为准",
-        "提取质量对账指标监控展示",
-        "补 fact-merge.util 单测 + review 修正",
-        "Merge branch 'develop' into fix/memory-hygiene",
-        "提取管线降本、质量反馈环与三项结构性重构（PR #278 续）"
-      ],
-      "features": [],
-      "fixes": [
-        "Merge remote-tracking branch 'origin/develop' into fix/memory-hygiene",
-        "补 fact-merge.util 单测 + review 修正",
-        "Merge branch 'develop' into fix/memory-hygiene"
-      ],
-      "optimizations": [
-        "同轮事实合并三层收敛为单遍合并器"
-      ],
-      "ops": [
-        "提取管线降本与误捕修补（架构 review 第一档落地）",
-        "提取降级可观测 + booking 真值对账字段",
-        "规则提取层注册表化 + 补三个结构化提取器",
-        "提取质量对账报表 SQL",
-        "session facts schema 单清单收敛 + 完备性自检",
-        "记忆系统文档同步至最新实现",
-        "拉群状态实时化——记忆只做参考，群成员关系以实时核验为准",
-        "提取质量对账指标监控展示"
-      ],
-      "config": [],
-      "envFiles": [],
-      "verification": []
-    }
-  ],
+  "entries": [],
   "lastRelease": {
-    "version": "5.13.2",
-    "date": "2026-06-10",
+    "version": "5.14.0",
+    "date": "2026-06-11",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "280",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/280",
-        "title": "修正元数据 push 的 force-with-lease stale info",
+        "number": "289",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/289",
+        "title": "零结果类 errorType 映射为 empty 而非 error",
         "author": "ArielZhu",
         "mergedAt": "2026-06-10",
         "businessUpdates": [
-          "修正元数据 push 的 force-with-lease stale info"
+          "`job_list.no_results` / `job_list.schedule_filter_empty` → `empty`",
+          "`job_list.fetch_failed` 等系统级失败保持 `error`",
+          "副作用屏蔽逻辑不受影响（其只认 ok/narrow）"
         ],
         "summary": [
-          "修正元数据 push 的 force-with-lease stale info"
+          "零结果类 errorType 映射为 empty 而非 error",
+          "`job_list.no_results` / `job_list.schedule_filter_empty` → `empty`",
+          "`job_list.fetch_failed` 等系统级失败保持 `error`",
+          "副作用屏蔽逻辑不受影响（其只认 ok/narrow）"
         ],
         "features": [],
         "fixes": [
-          "修正元数据 push 的 force-with-lease stale info"
+          "`job_list.no_results` / `job_list.schedule_filter_empty` → `empty`",
+          "`job_list.fetch_failed` 等系统级失败保持 `error`",
+          "副作用屏蔽逻辑不受影响（其只认 ok/narrow）"
+        ],
+        "optimizations": [],
+        "ops": [
+          "零结果类 errorType 映射为 empty 而非 error"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "tool-call-analysis.spec：38/38 通过（新增零结果映射 3 个断言）"
+        ]
+      },
+      {
+        "number": "291",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/291",
+        "title": "删除 recruitment_cases 死代码与废弃表",
+        "author": "ArielZhu",
+        "mergedAt": "2026-06-11",
+        "businessUpdates": [
+          "删除 recruitment_cases 死代码与废弃表",
+          "删 `src/biz/recruitment-case/` 整个模块（entity/repo/service/stage-resolver/types/module）+ 对应 spec",
+          "删 onboard-followup 通知三件套（notifier service / card renderer / payload types）+ spec — 同样零调用方",
+          "清 6 处 dead wiring import（tool / hosting-config / user / biz / intervention / message module），user.module 顺带移除不再使用的 `forwardRef`",
+          "`DROP TABLE recruitment_cases`（已用 MCP 应用至生产 + db:push:test，附 migration）",
+          "关闭已完成的 todo `llm-structured-output-optimization`（评估服务早已迁 `Output.object()`，文档描述的 80 行防御解析代码已不存在）"
+        ],
+        "summary": [
+          "删除 recruitment_cases 死代码与废弃表",
+          "删 `src/biz/recruitment-case/` 整个模块（entity/repo/service/stage-resolver/types/module）+ 对应 spec",
+          "删 onboard-followup 通知三件套（notifier service / card renderer / payload types）+ spec — 同样零调用方",
+          "清 6 处 dead wiring import（tool / hosting-config / user / biz / intervention / message module），user.module 顺带移除不再使用的 `forwardRef`",
+          "`DROP TABLE recruitment_cases`（已用 MCP 应用至生产 + db:push:test，附 migration）",
+          "关闭已完成的 todo `llm-structured-output-optimization`（评估服务早已迁 `Output.object()`，文档描述的 80 行防御解析代码已不存在）"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "删 `src/biz/recruitment-case/` 整个模块（entity/repo/service/stage-resolver/types/module）+ 对应 spec",
+          "删 onboard-followup 通知三件套（notifier service / card renderer / payload types）+ spec — 同样零调用方",
+          "清 6 处 dead wiring import（tool / hosting-config / user / biz / intervention / message module），user.module 顺带移除不再使用的 `forwardRef`",
+          "`DROP TABLE recruitment_cases`（已用 MCP 应用至生产 + db:push:test，附 migration）",
+          "关闭已完成的 todo `llm-structured-output-optimization`（评估服务早已迁 `Output.object()`，文档描述的 80 行防御解析代码已不存在）",
+          "删除 recruitment_cases 死代码与废弃表"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "`pnpm build` 通过（DI 接线无断裂）",
+          "全量测试 282 suites / 3698 passed"
+        ]
+      },
+      {
+        "number": "293",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/293",
+        "title": "修复三个让业务告警半瘫痪的阈值 bug",
+        "author": "ArielZhu",
+        "mergedAt": "2026-06-11",
+        "businessUpdates": [
+          "修复三个让业务告警半瘫痪的阈值 bug"
+        ],
+        "summary": [
+          "修复三个让业务告警半瘫痪的阈值 bug"
+        ],
+        "features": [],
+        "fixes": [
+          "修复三个让业务告警半瘫痪的阈值 bug"
         ],
         "optimizations": [],
         "ops": [],
         "config": [],
         "envFiles": [],
-        "verification": [
-          "YAML 通过 safe_load 校验",
-          "合并后将用 workflow_dispatch（pr_number=279）补跑元数据，同时实测修复 3 的补偿链路"
-        ]
+        "verification": []
       },
       {
-        "number": "279",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/279",
-        "title": "修复发版自动化的四个流程缺陷",
+        "number": "292",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/292",
+        "title": "timeout 阶段归因 + 投递分段退避重试",
         "author": "ArielZhu",
-        "mergedAt": "2026-06-10",
+        "mergedAt": "2026-06-11",
         "businessUpdates": [
-          "修复发版自动化的四个流程缺陷"
+          "timeout 阶段归因 + 投递分段退避重试",
+          "适配分段退避重试的部分失败语义"
         ],
         "summary": [
-          "修复 v5.13.1 发版全程暴露的四个自动化缺陷，此后 bot PR 不再需要人工 close/reopen 触发检查，元数据条目不再丢失，补偿模式推送认证正常，release PR 合并方式有明确引导"
+          "timeout 阶段归因 + 投递分段退避重试",
+          "适配分段退避重试的部分失败语义"
         ],
         "features": [],
         "fixes": [],
         "optimizations": [],
         "ops": [
-          "ci.yml 新增 workflow_dispatch 触发器；元数据 PR、固化 PR、回同步 PR 创建后主动在 bot 分支上派发 ci.yml，使 required check 正确落在 PR head SHA，不再依赖人工 close/reopen",
-          "分支重建前先从未合并的元数据 PR 分支恢复三个元数据文件再追加，防止累计发版条目被覆盖丢失（v5.13.1 期间 #270/#271 曾两次丢失需手工补录）",
-          "补偿模式（from_pr/to_pr）推送改为显式携带 GH_TOKEN 的 URL，修复 claude-code-action OIDC 模式覆写本地 git 凭证导致的推送认证失败",
-          "release PR 与固化 PR body 明确标注必须使用 Squash and merge，避免因 master 线性历史规则导致 merge commit 被拒"
+          "timeout 阶段归因 + 投递分段退避重试",
+          "适配分段退避重试的部分失败语义"
         ],
         "config": [],
         "envFiles": [],
         "verification": [
-          "两个 workflow YAML 通过 yaml.safe_load 校验",
-          "build-release-pr-body.js 干跑输出正确包含合并方式提示行",
-          "node --check 通过"
+          "timeout_stuck_records RPC 已应用至生产 + 测试库",
+          "仓库层补 4 个用例（分批/归因/错误吞掉）；build + 相关 spec 通过"
         ]
       },
       {
-        "number": "282",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/282",
-        "title": "dispatch 模式下用 commit status 满足必需检查",
+        "number": "299",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/299",
+        "title": "assistant 消息持久化——数据验证后决定不改造",
         "author": "ArielZhu",
-        "mergedAt": "2026-06-10",
+        "mergedAt": "2026-06-11",
         "businessUpdates": [
-          "dispatch 模式下用 commit status 满足必需检查"
+          "assistant 消息持久化——数据验证丢失率 0.02%，决定不改造",
+          "assistant 消息持久化——数据验证后决定不改造"
         ],
         "summary": [
-          "dispatch 模式下用 commit status 满足必需检查"
+          "assistant 消息持久化——数据验证丢失率 0.02%，决定不改造",
+          "assistant 消息持久化——数据验证后决定不改造"
         ],
         "features": [],
         "fixes": [],
         "optimizations": [],
         "ops": [
-          "dispatch 模式下用 commit status 满足必需检查"
+          "assistant 消息持久化——数据验证丢失率 0.02%，决定不改造"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": []
+      },
+      {
+        "number": "298",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/298",
+        "title": "子系统告警持久化到 monitoring_error_logs",
+        "author": "ArielZhu",
+        "mergedAt": "2026-06-11",
+        "businessUpdates": [
+          "**IAlertLogPersister 接口 + ALERT_LOG_PERSISTER token** 放 `notification/types`（notification 对 biz 零依赖）；`AlertLogPersisterService` 实现放 `biz/monitoring`，由 @Global MonitoringModule 绑定，AlertNotifierService @Optional 注入。",
+          "**双写规避**：`message-processing-failure` 的 2 处 sendAlert（与 recordFailure 同路径成对触发）传 `{ persist:false }`，由 recordFailure 作为这些消息失败的唯一落库点；`sendFallbackAlert` 等独立告警与所有子系统告警默认 persist:true。**link A（消息失败链路）零行为变更、零双计数**。",
+          "补 AlertLogPersisterService 单测 + review 修正"
+        ],
+        "summary": [
+          "子系统告警持久化到 monitoring_error_logs",
+          "补 AlertLogPersisterService 单测 + review 修正",
+          "错误分布按 subsystem 聚合 + dashboard 前端展示子系统",
+          "**migration 20260611120000**：`monitoring_error_logs` 加 subsystem/component/action/severity/summary/code/dedupe_key/throttled/delivered 9 列 + `message_id` 改可空（系统告警无 messageId）+ subsystem 索引。全 additive，老数据新列 NULL 兼容。**生产库已应用**；测试库因并发会话迁移占位待后续 `db:push:test`。",
+          "**IAlertLogPersister 接口 + ALERT_LOG_PERSISTER token** 放 `notification/types`（notification 对 biz 零依赖）；`AlertLogPersisterService` 实现放 `biz/monitoring`，由 @Global MonitoringModule 绑定，AlertNotifierService @Optional 注入。",
+          "**sendAlert 重构**：无论节流 / 发送结果 / 非生产都先持久化（标 throttled/delivered），持久化失败不阻塞发送 → 子系统告警从此进 \"今日错误\" 总数与错误列表。",
+          "**双写规避**：`message-processing-failure` 的 2 处 sendAlert（与 recordFailure 同路径成对触发）传 `{ persist:false }`，由 recordFailure 作为这些消息失败的唯一落库点；`sendFallbackAlert` 等独立告警与所有子系统告警默认 persist:true。**link A（消息失败链路）零行为变更、零双计数**。"
+        ],
+        "features": [
+          "**IAlertLogPersister 接口 + ALERT_LOG_PERSISTER token** 放 `notification/types`（notification 对 biz 零依赖）；`AlertLogPersisterService` 实现放 `biz/monitoring`，由 @Global MonitoringModule 绑定，AlertNotifierService @Optional 注入。",
+          "**双写规避**：`message-processing-failure` 的 2 处 sendAlert（与 recordFailure 同路径成对触发）传 `{ persist:false }`，由 recordFailure 作为这些消息失败的唯一落库点；`sendFallbackAlert` 等独立告警与所有子系统告警默认 persist:true。**link A（消息失败链路）零行为变更、零双计数**。"
+        ],
+        "fixes": [
+          "补 AlertLogPersisterService 单测 + review 修正"
+        ],
+        "optimizations": [
+          "**sendAlert 重构**：无论节流 / 发送结果 / 非生产都先持久化（标 throttled/delivered），持久化失败不阻塞发送 → 子系统告警从此进 \"今日错误\" 总数与错误列表。"
+        ],
+        "ops": [
+          "**migration 20260611120000**：`monitoring_error_logs` 加 subsystem/component/action/severity/summary/code/dedupe_key/throttled/delivered 9 列 + `message_id` 改可空（系统告警无 messageId）+ subsystem 索引。全 additive，老数据新列 NULL 兼容。**生产库已应用**；测试库因并发会话迁移占位待后续 `db:push:test`。",
+          "子系统告警持久化到 monitoring_error_logs",
+          "错误分布按 subsystem 聚合 + dashboard 前端展示子系统"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "alert-notifier 12 passed（新增持久化 5 例：成功/节流/异常/非生产/persist:false）",
+          "pipeline.service spec 适配 sendAlert 第二参",
+          "monitoring 套件 277 passed；ci:check（lint+format+typecheck+build+全量测试）绿"
+        ]
+      },
+      {
+        "number": "297",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/297",
+        "title": "渐进式披露——全文限最近 6 家，其余降摘要行",
+        "author": "ArielZhu",
+        "mergedAt": "2026-06-11",
+        "businessUpdates": [
+          "职位列表展示优化：超过 6 家门店时，前 6 家保持全文（薪资阶梯、招聘要求、工作时间），其余门店仅显示摘要行（店名/距离/薪资/年龄），候选人可通过 jobId 按需查询详情",
+          "对话响应速度提升：大量门店场景下 AI 回复 token 消耗削减约 70-80%，p90 延迟显著改善"
+        ],
+        "summary": [
+          "职位列表渐进式披露：全文展示限最近 6 家（FULL_DETAIL_CAP），其余降为摘要行，解决多步工具调用反复回灌导致的高延迟（生产 p90 79s / 3-6 万 token/turn）问题"
+        ],
+        "features": [
+          "新增摘要行格式 formatJobToSummaryLine：包含店名、距离、薪资、年龄、jobId，支持候选人通过 jobId 走 jobIdList 单查获取完整岗位信息"
+        ],
+        "fixes": [],
+        "optimizations": [
+          "职位列表 render 路径按 FULL_DETAIL_CAP=6 分流：≤6 家结果零变化，>6 家 p90/max 场景削减约 70-80%（最大 173k → ~33k 字符）",
+          "同品牌多门店 brandGroups 摘要逻辑不受影响，保持在 cap 分流之前渲染",
+          "工具 description 补充约束：更远门店摘要行不得凭摘要编造未列字段，需用 jobId 走 jobIdList 查询"
+        ],
+        "ops": [],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "render 套件 151 个测试全部通过",
+          "新增 2 个 cap 分流用例（≤6 家全文场景、>6 家摘要尾含 jobId 场景）",
+          "build 和 lint 通过"
+        ]
+      },
+      {
+        "number": "295",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/295",
+        "title": "永久禁止托管 + 候选人黑名单（命中告警并取消托管）",
+        "author": "ArielZhu",
+        "mergedAt": "2026-06-11",
+        "businessUpdates": [
+          "补 candidate-blacklist.repository 单测 + review 修正"
+        ],
+        "summary": [
+          "永久禁止托管 + 候选人黑名单（命中告警并取消托管）",
+          "黑名单/暂停记录改独立表存储，补操作审计与命中回溯字段",
+          "候选人黑名单管理页 + 暂停列表展示永久标记/理由/来源",
+          "补 candidate-blacklist.repository 单测 + review 修正"
+        ],
+        "features": [],
+        "fixes": [
+          "补 candidate-blacklist.repository 单测 + review 修正"
+        ],
+        "optimizations": [],
+        "ops": [
+          "永久禁止托管 + 候选人黑名单（命中告警并取消托管）",
+          "黑名单/暂停记录改独立表存储，补操作审计与命中回溯字段",
+          "候选人黑名单管理页 + 暂停列表展示永久标记/理由/来源"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": []
+      },
+      {
+        "number": "296",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/296",
+        "title": "提取管线降本、质量反馈环与三项结构性重构（PR #278 续）",
+        "author": "ArielZhu",
+        "mergedAt": "2026-06-11",
+        "businessUpdates": [
+          "Merge remote-tracking branch 'origin/develop' into fix/memory-hygiene",
+          "补 fact-merge.util 单测 + review 修正",
+          "Merge branch 'develop' into fix/memory-hygiene"
+        ],
+        "summary": [
+          "提取管线降本与误捕修补（架构 review 第一档落地）",
+          "提取降级可观测 + booking 真值对账字段",
+          "规则提取层注册表化 + 补三个结构化提取器",
+          "提取质量对账报表 SQL",
+          "同轮事实合并三层收敛为单遍合并器",
+          "session facts schema 单清单收敛 + 完备性自检",
+          "记忆系统文档同步至最新实现",
+          "Merge remote-tracking branch 'origin/develop' into fix/memory-hygiene",
+          "拉群状态实时化——记忆只做参考，群成员关系以实时核验为准",
+          "提取质量对账指标监控展示",
+          "补 fact-merge.util 单测 + review 修正",
+          "Merge branch 'develop' into fix/memory-hygiene",
+          "提取管线降本、质量反馈环与三项结构性重构（PR #278 续）"
+        ],
+        "features": [],
+        "fixes": [
+          "Merge remote-tracking branch 'origin/develop' into fix/memory-hygiene",
+          "补 fact-merge.util 单测 + review 修正",
+          "Merge branch 'develop' into fix/memory-hygiene"
+        ],
+        "optimizations": [
+          "同轮事实合并三层收敛为单遍合并器"
+        ],
+        "ops": [
+          "提取管线降本与误捕修补（架构 review 第一档落地）",
+          "提取降级可观测 + booking 真值对账字段",
+          "规则提取层注册表化 + 补三个结构化提取器",
+          "提取质量对账报表 SQL",
+          "session facts schema 单清单收敛 + 完备性自检",
+          "记忆系统文档同步至最新实现",
+          "拉群状态实时化——记忆只做参考，群成员关系以实时核验为准",
+          "提取质量对账指标监控展示"
         ],
         "config": [],
         "envFiles": [],
