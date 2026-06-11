@@ -87,11 +87,19 @@ src/
 │
 ├── memory/                         # 四层记忆系统
 │   ├── memory.service.ts           # 统一读取 API (recallAll)
-│   ├── short-term.service.ts       # 短期：对话窗口
-│   ├── session-facts.service.ts    # 会话事实：意向/推荐记录
-│   ├── procedural.service.ts       # 程序性：阶段追踪
-│   ├── long-term.service.ts        # 长期：用户画像 (Supabase)
-│   └── settlement.service.ts       # 空闲沉淀 (Session → Profile)
+│   ├── memory.config.ts            # 记忆系统配置常量
+│   ├── services/                   # 各层服务实现
+│   │   ├── short-term.service.ts       # 短期：对话窗口
+│   │   ├── session.service.ts          # 会话事实：意向/推荐记录
+│   │   ├── procedural.service.ts       # 程序性：阶段追踪
+│   │   ├── long-term.service.ts        # 长期：用户画像 (Supabase)
+│   │   ├── settlement.service.ts       # 空闲沉淀 (Session → Profile)
+│   │   ├── memory-lifecycle.service.ts # 回合收尾/沉淀生命周期
+│   │   └── memory-enrichment.service.ts# 记忆补全/事实丰富
+│   ├── facts/                      # 规则层事实提取与合并原语
+│   ├── formatters/                 # 注入文案格式化 (fact-lines 等)
+│   ├── stores/                     # Redis/Supabase 存储适配
+│   └── types/                      # 记忆系统类型定义
 │
 ├── mcp/                            # MCP 客户端 (动态工具扩展)
 ├── sponge/                         # 外部数据服务
