@@ -13,6 +13,8 @@ export enum FilterReason {
   USER_PAUSED = 'user-paused',
   /** 小组在黑名单中（仅记录历史） */
   GROUP_BLACKLISTED = 'group-blacklisted',
+  /** 候选人在黑名单中（告警并永久取消该会话托管，仅记录历史） */
+  CANDIDATE_BLACKLISTED = 'candidate-blacklisted',
   /** 群聊消息（暂不处理） */
   ROOM_MESSAGE = 'room-message',
   /** 不支持的消息类型 */

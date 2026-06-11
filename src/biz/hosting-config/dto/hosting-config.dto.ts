@@ -109,6 +109,11 @@ export class AddToBlacklistDto {
   @IsOptional()
   @IsString()
   reason?: string;
+
+  /** 仅 type=chatId 生效：永久暂停托管（不自动解禁），如店长微信、客户微信 */
+  @IsOptional()
+  @IsBoolean()
+  permanent?: boolean;
 }
 
 export class RemoveFromBlacklistDto {
@@ -117,4 +122,25 @@ export class RemoveFromBlacklistDto {
 
   @IsIn(['chatId', 'groupId'])
   type: 'chatId' | 'groupId';
+}
+
+// ==================== 候选人黑名单 ====================
+
+export class AddCandidateBlacklistDto {
+  /** 候选人标识：chatId / imContactId / externalUserId 任一均可 */
+  @IsString()
+  targetId: string;
+
+  /** 拉黑理由（命中告警与暂停记录中展示，必填） */
+  @IsString()
+  reason: string;
+
+  @IsOptional()
+  @IsString()
+  operator?: string;
+}
+
+export class RemoveCandidateBlacklistDto {
+  @IsString()
+  targetId: string;
 }

@@ -13,14 +13,15 @@ describe('HostingConfigController', () => {
     getBlacklist: jest.fn(),
     addToBlacklist: jest.fn(),
     removeFromBlacklist: jest.fn(),
+    getCandidateBlacklist: jest.fn(),
+    addCandidateToBlacklist: jest.fn(),
+    removeCandidateFromBlacklist: jest.fn(),
   };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [HostingConfigController],
-      providers: [
-        { provide: HostingConfigFacadeService, useValue: mockFacadeService },
-      ],
+      providers: [{ provide: HostingConfigFacadeService, useValue: mockFacadeService }],
     }).compile();
 
     controller = module.get<HostingConfigController>(HostingConfigController);
@@ -115,8 +116,17 @@ describe('HostingConfigController', () => {
 
       const result = await controller.addToBlacklist(body);
 
-      expect(facade.addToBlacklist).toHaveBeenCalledWith('chat-123', 'chatId', 'Spam');
+      expect(facade.addToBlacklist).toHaveBeenCalledWith('chat-123', 'chatId', 'Spam', undefined);
       expect(result).toEqual(mockResult);
+    });
+
+    it('should add chatId to blacklist permanently', async () => {
+      const body = { id: 'chat-123', type: 'chatId' as const, reason: '店长微信', permanent: true };
+      mockFacadeService.addToBlacklist.mockResolvedValue({ success: true });
+
+      await controller.addToBlacklist(body);
+
+      expect(facade.addToBlacklist).toHaveBeenCalledWith('chat-123', 'chatId', '店长微信', true);
     });
 
     it('should add groupId to blacklist without reason', async () => {
@@ -125,7 +135,42 @@ describe('HostingConfigController', () => {
 
       await controller.addToBlacklist(body);
 
-      expect(facade.addToBlacklist).toHaveBeenCalledWith('group-456', 'groupId', undefined);
+      expect(facade.addToBlacklist).toHaveBeenCalledWith(
+        'group-456',
+        'groupId',
+        undefined,
+        undefined,
+      );
+    });
+  });
+
+  describe('candidate blacklist endpoints', () => {
+    it('should return candidate blacklist from facade', async () => {
+      const mockResult = { candidates: [{ target_id: 'c-1', reason: '恶意刷岗', added_at: 1 }] };
+      mockFacadeService.getCandidateBlacklist.mockResolvedValue(mockResult);
+
+      const result = await controller.getCandidateBlacklist();
+
+      expect(facade.getCandidateBlacklist).toHaveBeenCalled();
+      expect(result).toEqual(mockResult);
+    });
+
+    it('should add candidate to blacklist via facade', async () => {
+      const body = { targetId: 'c-1', reason: '恶意刷岗', operator: '小王' };
+      mockFacadeService.addCandidateToBlacklist.mockResolvedValue({ message: 'ok' });
+
+      await controller.addCandidateToBlacklist(body);
+
+      expect(facade.addCandidateToBlacklist).toHaveBeenCalledWith('c-1', '恶意刷岗', '小王');
+    });
+
+    it('should remove candidate from blacklist via facade', async () => {
+      const body = { targetId: 'c-1' };
+      mockFacadeService.removeCandidateFromBlacklist.mockResolvedValue({ message: 'ok' });
+
+      await controller.removeCandidateFromBlacklist(body);
+
+      expect(facade.removeCandidateFromBlacklist).toHaveBeenCalledWith('c-1');
     });
   });
 

@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AgentReplyConfig, DEFAULT_AGENT_REPLY_CONFIG } from '../types/hosting-config.types';
 import { SystemConfigService } from './system-config.service';
 import { GroupBlacklistService } from './group-blacklist.service';
+import { CandidateBlacklistService } from './candidate-blacklist.service';
+import { CandidateBlacklistItem } from '../entities/candidate-blacklist.entity';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { GroupTaskConfig } from '@biz/group-task/group-task.types';
 
@@ -19,6 +21,7 @@ export class HostingConfigFacadeService {
   constructor(
     private readonly systemConfigService: SystemConfigService,
     private readonly groupBlacklistService: GroupBlacklistService,
+    private readonly candidateBlacklistService: CandidateBlacklistService,
     private readonly userHostingService: UserHostingService,
   ) {}
 
@@ -82,14 +85,20 @@ export class HostingConfigFacadeService {
 
   // ==================== 黑名单 ====================
 
-  async getBlacklist(): Promise<{ chatIds: string[]; groupIds: string[] }> {
-    const [pausedUsers, groupBlacklist] = await Promise.all([
+  async getBlacklist(): Promise<{
+    chatIds: string[];
+    groupIds: string[];
+    candidates: CandidateBlacklistItem[];
+  }> {
+    const [pausedUsers, groupBlacklist, candidateBlacklist] = await Promise.all([
       this.userHostingService.getPausedUsersWithProfiles(),
       this.groupBlacklistService.getGroupBlacklist(),
+      this.candidateBlacklistService.getCandidateBlacklist(),
     ]);
     return {
       chatIds: pausedUsers.map((u) => u.userId),
       groupIds: groupBlacklist.map((g) => g.group_id),
+      candidates: candidateBlacklist,
     };
   }
 
@@ -97,10 +106,13 @@ export class HostingConfigFacadeService {
     id: string,
     type: 'chatId' | 'groupId',
     reason?: string,
+    permanent?: boolean,
   ): Promise<{ message: string }> {
     if (type === 'chatId') {
-      await this.userHostingService.pauseUser(id);
-      return { message: `用户 ${id} 已添加到黑名单` };
+      await this.userHostingService.pauseUser(id, { permanent, reason });
+      return {
+        message: permanent ? `用户 ${id} 已永久禁止托管` : `用户 ${id} 已添加到黑名单`,
+      };
     } else {
       await this.groupBlacklistService.addGroupToBlacklist(id, reason);
       return { message: `小组 ${id} 已添加到黑名单` };
@@ -115,5 +127,29 @@ export class HostingConfigFacadeService {
       await this.groupBlacklistService.removeGroupFromBlacklist(id);
       return { message: `小组 ${id} 已从黑名单移除` };
     }
+  }
+
+  // ==================== 候选人黑名单 ====================
+
+  async getCandidateBlacklist(): Promise<{ candidates: CandidateBlacklistItem[] }> {
+    return { candidates: await this.candidateBlacklistService.getCandidateBlacklist() };
+  }
+
+  async addCandidateToBlacklist(
+    targetId: string,
+    reason: string,
+    operator?: string,
+  ): Promise<{ message: string }> {
+    await this.candidateBlacklistService.addCandidateToBlacklist(targetId, reason, operator);
+    return { message: `候选人 ${targetId} 已拉黑，托管账号再次收到其消息时将告警并取消托管` };
+  }
+
+  async removeCandidateFromBlacklist(targetId: string): Promise<{ message: string }> {
+    const removed = await this.candidateBlacklistService.removeCandidateFromBlacklist(targetId);
+    return {
+      message: removed
+        ? `候选人 ${targetId} 已从黑名单移除（命中时产生的永久暂停需在暂停托管列表中手动恢复）`
+        : `候选人 ${targetId} 不在黑名单中`,
+    };
   }
 }
