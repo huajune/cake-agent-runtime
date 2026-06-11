@@ -1,4 +1,5 @@
-import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
+import { Injectable, Logger, Optional, type OnApplicationBootstrap } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { Environment } from '@enums/environment.enum';
 import { FEISHU_RECEIVER_USERS, type FeishuReceiver } from '@infra/feishu/constants/receivers';
@@ -24,21 +25,35 @@ interface ThrottleState {
 }
 
 @Injectable()
-export class AlertNotifierService {
+export class AlertNotifierService implements OnApplicationBootstrap {
   private readonly logger = new Logger(AlertNotifierService.name);
   private readonly throttleWindowMs = ALERT_THROTTLE.WINDOW_MS;
   private readonly throttleMaxCount = ALERT_THROTTLE.MAX_COUNT;
   private readonly throttleMap = new Map<string, ThrottleState>();
   private hasWarnedNonProdSuppression = false;
+  // 不能在构造器注入 ALERT_LOG_PERSISTER：token 由 @Global MonitoringModule 提供，
+  // 而 MonitoringModule 又 imports NotificationModule，构造期注入会形成
+  // provider 级循环依赖，Nest 实例加载静默死锁（v5.14.0 生产启动卡死事故）。
+  // 改为应用装配完成后经 ModuleRef 懒解析。
+  private alertLogPersister?: AlertLogPersister;
 
   constructor(
     private readonly alertChannel: FeishuAlertChannel,
     private readonly alertCardRenderer: AlertCardRenderer,
+    private readonly moduleRef: ModuleRef,
     @Optional() private readonly configService?: ConfigService,
-    @Optional()
-    @Inject(ALERT_LOG_PERSISTER)
-    private readonly alertLogPersister?: AlertLogPersister,
   ) {}
+
+  onApplicationBootstrap(): void {
+    try {
+      this.alertLogPersister = this.moduleRef.get<AlertLogPersister>(ALERT_LOG_PERSISTER, {
+        strict: false,
+      });
+    } catch {
+      // 监控模块未装配（如部分单测/工具进程）时降级为仅发送，不持久化
+      this.logger.warn('ALERT_LOG_PERSISTER 未注册，告警将不写入 monitoring_error_logs');
+    }
+  }
 
   /**
    * 发送告警。无论是否节流、是否发送成功、飞书是否启用，都先持久化一条到

@@ -47,6 +47,7 @@ import {
 } from '../facts/high-confidence-facts';
 import { resolveCityFromGeoSignals } from '../facts/geo-mappings';
 import { sanitizeInterviewName } from '../facts/name-guard';
+import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import {
   hasMeaningfulValue,
   isSameFactValue,
@@ -83,6 +84,7 @@ export class SessionService {
     private readonly config: MemoryConfig,
     private readonly llm: LlmExecutorService,
     private readonly sponge: SpongeService,
+    private readonly systemConfig: SystemConfigService,
   ) {}
 
   // ==================== store ====================
@@ -482,6 +484,7 @@ export class SessionService {
     try {
       const result = await this.llm.generateStructured({
         role: ModelRole.Extract,
+        modelId: await this.systemConfig.getExtractModelOverride(),
         // LLM 输出使用简单 schema（city 为 string），避免 Zod union/transform 产生
         // 的复杂 JSON schema 让 LLM 误解结构；service 层再归一化为 CityFact。
         schema: LLMEntityExtractionResultSchema,
