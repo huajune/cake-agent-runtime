@@ -683,6 +683,54 @@ describe('MessageProcessingRepository', () => {
     });
   });
 
+  // ==================== timeoutStuckRecords ====================
+
+  describe('timeoutStuckRecords', () => {
+    it('should return 0 when supabase is not available', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(false);
+
+      const result = await repository.timeoutStuckRecords(30);
+
+      expect(result).toBe(0);
+      expect(mockSupabaseClient.rpc).not.toHaveBeenCalled();
+    });
+
+    it('should mark stuck records via stage-attribution RPC', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      mockSupabaseClient.rpc.mockResolvedValue({ data: 4, error: null });
+
+      const result = await repository.timeoutStuckRecords(30);
+
+      expect(result).toBe(4);
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledWith('timeout_stuck_records', {
+        p_stuck_minutes: 30,
+        p_limit: 500,
+      });
+    });
+
+    it('should loop batches until a batch returns less than the limit', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      mockSupabaseClient.rpc
+        .mockResolvedValueOnce({ data: 500, error: null })
+        .mockResolvedValueOnce({ data: 12, error: null });
+
+      const result = await repository.timeoutStuckRecords(30);
+
+      expect(result).toBe(512);
+      expect(mockSupabaseClient.rpc).toHaveBeenCalledTimes(2);
+    });
+
+    it('should return 0 (not throw) on RPC error', async () => {
+      mockSupabaseService.isClientInitialized.mockReturnValue(true);
+
+      mockSupabaseClient.rpc.mockRejectedValue(new Error('DB error'));
+
+      await expect(repository.timeoutStuckRecords(30)).resolves.toBe(0);
+    });
+  });
+
   // ==================== clearAllRecords ====================
 
   describe('clearAllRecords', () => {
