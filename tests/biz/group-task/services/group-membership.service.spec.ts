@@ -29,12 +29,12 @@ describe('GroupMembershipService', () => {
         keys.forEach((key) => setStore.delete(key));
         return keys.length;
       }),
-    } as unknown as jest.Mocked<RedisService>);
+    }) as unknown as jest.Mocked<RedisService>;
 
   const createRoomServiceMock = (): jest.Mocked<RoomService> =>
     ({
       getEnterpriseGroupChatList: jest.fn(),
-    } as unknown as jest.Mocked<RoomService>);
+    }) as unknown as jest.Mocked<RoomService>;
 
   beforeEach(() => {
     setStore = new Map<string, Set<string>>();
@@ -140,6 +140,49 @@ describe('GroupMembershipService', () => {
       const result = await service.isUserInRoom('room-1', 'user-1', ['room-1']);
 
       expect(result).toBe(false);
+    });
+  });
+
+  describe('listUserRooms', () => {
+    it('should return rooms the user belongs to from warm cache without hydrating', async () => {
+      setStore.set('room:members:room-1', new Set(['user-1']));
+      setStore.set('room:members:room-2', new Set(['user-2']));
+
+      const result = await service.listUserRooms('user-1', ['room-1', 'room-2']);
+
+      expect(result).toEqual(['room-1']);
+      expect(roomService.getEnterpriseGroupChatList).not.toHaveBeenCalled();
+    });
+
+    it('should return empty array for empty inputs without touching redis', async () => {
+      await expect(service.listUserRooms('', ['room-1'])).resolves.toEqual([]);
+      await expect(service.listUserRooms('user-1', [])).resolves.toEqual([]);
+      expect(redisService.exists).not.toHaveBeenCalled();
+    });
+
+    it('should hydrate once when any whitelisted room cache is missing', async () => {
+      setStore.set('room:members:room-1', new Set(['user-1']));
+      roomService.getEnterpriseGroupChatList.mockResolvedValue({
+        data: [
+          {
+            imRoomId: 'room-2',
+            memberList: [{ imContactId: 'user-1' }, { imContactId: 'user-2' }],
+          },
+        ],
+      });
+
+      const result = await service.listUserRooms('user-1', ['room-1', 'room-2']);
+
+      expect(result).toEqual(expect.arrayContaining(['room-1', 'room-2']));
+      expect(result).toHaveLength(2);
+      expect(roomService.getEnterpriseGroupChatList).toHaveBeenCalledTimes(1);
+      expect(setStore.get('room:members:room-2')).toEqual(new Set(['user-1', 'user-2']));
+    });
+
+    it('should degrade to empty array when redis throws', async () => {
+      redisService.exists.mockRejectedValue(new Error('redis down'));
+
+      await expect(service.listUserRooms('user-1', ['room-1'])).resolves.toEqual([]);
     });
   });
 

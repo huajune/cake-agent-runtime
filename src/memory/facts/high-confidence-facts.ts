@@ -303,6 +303,167 @@ function stripQuotedBlocks(message: string): string {
     .trim();
 }
 
+// ── per-field 提取器注册表 ───────────────────────────────────────────────────
+
+type FieldGroup = 'interview_info' | 'preferences';
+
+/**
+ * 单字段提取器声明（无字段间联动）。
+ *
+ * 设计目标：把"提取函数 → 主循环八股 → 各处镜像清单"的六处散布收敛到一处。
+ * 新增一个普通字段只需在 FIELD_EXTRACTORS 追加一项，主循环、字段完备性校验
+ * 自动覆盖；带联动/自定义合并的字段（gender、is_student、schedule_constraint、
+ * city/district/location、brands、available_after）不强塞进来，保留在循环内手写。
+ *
+ * merge 语义：
+ *   - 'first-scalar'：先到先得，已有非空值则忽略本条（name/phone/age/... 等）
+ *   - 'union-array' ：累积去重，每条命中都并入已有数组（position 等）
+ */
+interface FieldExtractorBase {
+  group: FieldGroup;
+  field: string;
+  /** evidence 文案（入库到字段元数据，服务排障）。 */
+  evidence: (value: string) => string;
+  /** reasoning 文案（拼进对外 reasoning 串）；缺省与 evidence 同文。 */
+  reason?: (value: string) => string;
+}
+
+interface ScalarFieldExtractor extends FieldExtractorBase {
+  merge: 'first-scalar';
+  extract: (message: string) => string | null;
+}
+
+interface ArrayFieldExtractor extends FieldExtractorBase {
+  merge: 'union-array';
+  /** 数组提取器：evidence/reason 接收原始命中片段（join('、') 后），merge 内部累积去重。 */
+  extract: (message: string) => string[];
+}
+
+type FieldExtractor = ScalarFieldExtractor | ArrayFieldExtractor;
+
+const FIELD_EXTRACTORS: FieldExtractor[] = [
+  {
+    group: 'interview_info',
+    field: 'name',
+    merge: 'first-scalar',
+    extract: extractStructuredName,
+    evidence: (value) => `结构化姓名识别：${value}`,
+    reason: (value) => `结构化姓名识别：${value}（来源：收资表单键值对）`,
+  },
+  {
+    group: 'interview_info',
+    field: 'phone',
+    merge: 'first-scalar',
+    extract: extractPhone,
+    evidence: (value) => `手机号识别：${value}`,
+  },
+  {
+    group: 'interview_info',
+    field: 'age',
+    merge: 'first-scalar',
+    extract: extractAge,
+    evidence: (value) => `年龄识别：${value}`,
+  },
+  {
+    group: 'interview_info',
+    field: 'has_health_certificate',
+    merge: 'first-scalar',
+    extract: extractHealthCertificate,
+    evidence: (value) => `健康证识别：${value}`,
+  },
+  {
+    group: 'interview_info',
+    field: 'upload_resume',
+    merge: 'first-scalar',
+    extract: extractUploadResume,
+    evidence: (value) => `简历附件识别：${value}`,
+  },
+  {
+    group: 'interview_info',
+    field: 'height',
+    merge: 'first-scalar',
+    extract: extractHeight,
+    evidence: (value) => `身高识别：${value}`,
+  },
+  {
+    group: 'interview_info',
+    field: 'weight',
+    merge: 'first-scalar',
+    extract: extractWeight,
+    evidence: (value) => `体重识别：${value}`,
+  },
+  {
+    group: 'interview_info',
+    field: 'household_register_province',
+    merge: 'first-scalar',
+    extract: extractHouseholdRegisterProvince,
+    evidence: (value) => `户籍识别：${value}`,
+  },
+  {
+    group: 'preferences',
+    field: 'labor_form',
+    merge: 'first-scalar',
+    extract: extractLaborForm,
+    evidence: (value) => `用工形式识别：${value}`,
+  },
+  {
+    group: 'preferences',
+    field: 'salary',
+    merge: 'first-scalar',
+    extract: extractSalary,
+    evidence: (value) => `薪资识别：${value}`,
+  },
+  {
+    group: 'preferences',
+    field: 'schedule',
+    merge: 'first-scalar',
+    extract: extractSchedule,
+    evidence: (value) => `班次识别：${value}`,
+  },
+  {
+    group: 'preferences',
+    field: 'position',
+    merge: 'union-array',
+    extract: extractPositions,
+    evidence: (value) => `岗位识别：${value}`,
+  },
+];
+
+/** 注册表声明的字段清单：供下游镜像清单做编译期/测试期完备性校验。 */
+export const REGISTRY_FIELD_PATHS: readonly string[] = FIELD_EXTRACTORS.map(
+  (extractor) => `${extractor.group}.${extractor.field}`,
+);
+
+function applyFieldExtractor(
+  extractor: FieldExtractor,
+  message: string,
+  facts: HighConfidenceFacts,
+  reasons: string[],
+): void {
+  const group = facts[extractor.group] as unknown as Record<
+    string,
+    HighConfidenceValue<unknown> | null
+  >;
+  const toReason = extractor.reason ?? extractor.evidence;
+
+  if (extractor.merge === 'first-scalar') {
+    const value = extractor.extract(message);
+    if (!value || group[extractor.field]) return;
+    group[extractor.field] = ruleValue(value, { evidence: extractor.evidence(value) });
+    reasons.push(toReason(value));
+    return;
+  }
+
+  // union-array：每条命中并入已有数组并去重
+  const values = extractor.extract(message);
+  if (values.length === 0) return;
+  const existing = (unwrapHighConfidenceValue(group[extractor.field]) as string[] | null) ?? [];
+  const merged = Array.from(new Set([...existing, ...values]));
+  const label = values.join('、');
+  group[extractor.field] = ruleValue(merged, { evidence: extractor.evidence(label) });
+  reasons.push(toReason(label));
+}
+
 export function extractHighConfidenceFacts(
   userMessages: string[],
   brandData: BrandItem[],
@@ -330,30 +491,14 @@ export function extractHighConfidenceFacts(
   }
 
   for (const message of normalizedMessages) {
-    const structuredName = extractStructuredName(message);
-    if (structuredName && !facts.interview_info.name) {
-      facts.interview_info.name = ruleValue(structuredName, {
-        evidence: `结构化姓名识别：${structuredName}`,
-      });
-      reasons.push(`结构化姓名识别：${structuredName}（来源：收资表单键值对）`);
+    // 注册表驱动：统一应用所有"无字段间联动"的标量/数组提取器（见 FIELD_EXTRACTORS）。
+    for (const extractor of FIELD_EXTRACTORS) {
+      applyFieldExtractor(extractor, message, facts, reasons);
     }
 
-    const phone = extractPhone(message);
-    if (phone && !facts.interview_info.phone) {
-      facts.interview_info.phone = ruleValue(phone, {
-        evidence: `手机号识别：${phone}`,
-      });
-      reasons.push(`手机号识别：${phone}`);
-    }
+    // ── 以下为带字段间联动 / 自定义合并语义的特殊字段，保留在循环内手写 ──
 
-    const age = extractAge(message);
-    if (age && !facts.interview_info.age) {
-      facts.interview_info.age = ruleValue(age, {
-        evidence: `年龄识别：${age}`,
-      });
-      reasons.push(`年龄识别：${age}`);
-    }
-
+    // gender：提取成功时联动写入 gender_source='candidate'，注册表的单字段模型表达不了。
     const gender = extractGender(message);
     if (gender && !facts.interview_info.gender) {
       facts.interview_info.gender = ruleValue(gender, {
@@ -365,6 +510,8 @@ export function extractHighConfidenceFacts(
       reasons.push(`性别识别：${gender}`);
     }
 
+    // is_student + education：一次 extractStudentInfo 同时产出两个字段（且 is_student 走
+    // boolean null 判定，education 在缺失时还有 extractEducation 兜底），强耦合不拆。
     const studentInfo = extractStudentInfo(message);
     if (studentInfo.isStudent !== null && facts.interview_info.is_student === null) {
       facts.interview_info.is_student = ruleValue(studentInfo.isStudent, {
@@ -385,57 +532,6 @@ export function extractHighConfidenceFacts(
         });
         reasons.push(`学历识别：${explicitEducation}`);
       }
-    }
-
-    const healthCertificate = extractHealthCertificate(message);
-    if (healthCertificate && !facts.interview_info.has_health_certificate) {
-      facts.interview_info.has_health_certificate = ruleValue(healthCertificate, {
-        evidence: `健康证识别：${healthCertificate}`,
-      });
-      reasons.push(`健康证识别：${healthCertificate}`);
-    }
-
-    const uploadResume = extractUploadResume(message);
-    if (uploadResume && !facts.interview_info.upload_resume) {
-      facts.interview_info.upload_resume = ruleValue(uploadResume, {
-        evidence: `简历附件识别：${uploadResume}`,
-      });
-      reasons.push(`简历附件识别：${uploadResume}`);
-    }
-
-    const laborForm = extractLaborForm(message);
-    if (laborForm && !facts.preferences.labor_form) {
-      facts.preferences.labor_form = ruleValue(laborForm, {
-        evidence: `用工形式识别：${laborForm}`,
-      });
-      reasons.push(`用工形式识别：${laborForm}`);
-    }
-
-    const salary = extractSalary(message);
-    if (salary && !facts.preferences.salary) {
-      facts.preferences.salary = ruleValue(salary, {
-        evidence: `薪资识别：${salary}`,
-      });
-      reasons.push(`薪资识别：${salary}`);
-    }
-
-    const positions = extractPositions(message);
-    if (positions.length > 0) {
-      const mergedPositions = Array.from(
-        new Set([...(unwrapHighConfidenceValue(facts.preferences.position) ?? []), ...positions]),
-      );
-      facts.preferences.position = ruleValue(mergedPositions, {
-        evidence: `岗位识别：${positions.join('、')}`,
-      });
-      reasons.push(`岗位识别：${positions.join('、')}`);
-    }
-
-    const schedule = extractSchedule(message);
-    if (schedule && !facts.preferences.schedule) {
-      facts.preferences.schedule = ruleValue(schedule, {
-        evidence: `班次识别：${schedule}`,
-      });
-      reasons.push(`班次识别：${schedule}`);
     }
 
     const scheduleConstraint = extractScheduleConstraintStructured(message);
@@ -517,8 +613,7 @@ export function detectBrandAliasHints(
 ): BrandAliasHint[] {
   if (userMessages.length === 0 || brandData.length === 0) return [];
 
-  const candidates = buildBrandCandidates(brandData);
-  const categories = buildResolvedCategories(brandData);
+  const { candidates, categories } = getBrandMatchAssets(brandData);
   const hints: BrandAliasHint[] = [];
   const seen = new Set<string>();
 
@@ -659,6 +754,9 @@ export function filterHighConfidenceFacts(
       education: highOnly(facts.interview_info.education),
       has_health_certificate: highOnly(facts.interview_info.has_health_certificate),
       upload_resume: highOnly(facts.interview_info.upload_resume),
+      height: highOnly(facts.interview_info.height),
+      weight: highOnly(facts.interview_info.weight),
+      household_register_province: highOnly(facts.interview_info.household_register_province),
     },
     preferences: {
       brands: highOnly(facts.preferences.brands),
@@ -728,6 +826,11 @@ export function unwrapHighConfidenceFacts(
         facts.interview_info.has_health_certificate,
       ),
       upload_resume: unwrapHighConfidenceValue(facts.interview_info.upload_resume),
+      height: unwrapHighConfidenceValue(facts.interview_info.height),
+      weight: unwrapHighConfidenceValue(facts.interview_info.weight),
+      household_register_province: unwrapHighConfidenceValue(
+        facts.interview_info.household_register_province,
+      ),
     },
     preferences: {
       brands: unwrapHighConfidenceValue(facts.preferences.brands),
@@ -779,41 +882,61 @@ export function mergeDetectedBrands(
   };
 }
 
+/**
+ * 全字段 null 的高置信事实空模板。
+ *
+ * 不再手写镜像清单：直接深拷贝 FALLBACK_EXTRACTION（其 interview_info/preferences 的
+ * 字段集由 session-facts.types 的单一字段清单生成，且加载期自检保证与各 schema 一致），
+ * 所有字段值均为 null，结构上同时满足 HighConfidenceFacts；reasoning 也随之同步。
+ */
 function cloneFallbackExtraction(): HighConfidenceFacts {
-  return {
-    interview_info: {
-      name: null,
-      phone: null,
-      gender: null,
-      gender_source: null,
-      age: null,
-      applied_store: null,
-      applied_position: null,
-      interview_time: null,
-      is_student: null,
-      education: null,
-      has_health_certificate: null,
-      upload_resume: null,
-    },
-    preferences: {
-      brands: null,
-      salary: null,
-      position: null,
-      schedule: null,
-      city: null,
-      district: null,
-      location: null,
-      labor_form: null,
-      delayed_intent: null,
-      short_term: null,
-      open_position: null,
-      time_windows: null,
-      schedule_constraint: null,
-      available_after: null,
-    },
-    reasoning: FALLBACK_EXTRACTION.reasoning,
-  };
+  return structuredClone(FALLBACK_EXTRACTION) as unknown as HighConfidenceFacts;
 }
+
+/**
+ * 注册表完备性自检：每个 FIELD_EXTRACTORS 声明的字段路径，必须在三处手工镜像
+ * 清单（cloneFallbackExtraction 的 null 初始化、filterHighConfidenceFacts 的 highOnly、
+ * unwrapHighConfidenceFacts 的 unwrap）里都存在 key，否则该字段会被静默丢弃。
+ *
+ * 这里在模块加载时即刻校验，任何注册表/镜像清单失配会立即抛错（被测试或启动捕获），
+ * 把"漏一处静默丢字段"从运行期隐患提前到编译/加载期失败。
+ */
+function assertRegistryFieldsMirrored(): void {
+  // 用一个"所有注册表字段都填了 high 占位值"的样本驱动校验：
+  // filter/unwrap 在有事实时返回非 null，逐字段检查 key 是否被保留。
+  const probe = cloneFallbackExtraction();
+  for (const extractor of FIELD_EXTRACTORS) {
+    const group = probe[extractor.group] as unknown as Record<
+      string,
+      HighConfidenceValue<unknown> | null
+    >;
+    const placeholder = extractor.merge === 'union-array' ? ['__probe__'] : '__probe__';
+    group[extractor.field] = ruleValue(placeholder, { evidence: 'registry probe' });
+  }
+
+  const filtered = filterHighConfidenceFacts(probe);
+  const unwrapped = unwrapHighConfidenceFacts(probe);
+  const missing: string[] = [];
+
+  const keysOf = (record: object): Record<string, unknown> =>
+    record as unknown as Record<string, unknown>;
+
+  for (const extractor of FIELD_EXTRACTORS) {
+    const path = `${extractor.group}.${extractor.field}`;
+    const inClone = extractor.field in keysOf(probe[extractor.group]);
+    const inFilter = !!filtered && extractor.field in keysOf(filtered[extractor.group]);
+    const inUnwrap = !!unwrapped && extractor.field in keysOf(unwrapped[extractor.group]);
+    if (!inClone || !inFilter || !inUnwrap) missing.push(path);
+  }
+
+  if (missing.length > 0) {
+    throw new Error(
+      `[high-confidence-facts] 注册表字段未在镜像清单中完整登记，会被静默丢弃：${missing.join(', ')}`,
+    );
+  }
+}
+
+assertRegistryFieldsMirrored();
 
 function ruleMeta(params: {
   evidence: string;
@@ -886,6 +1009,97 @@ function extractPhone(message: string): string | null {
   return message.match(/(?<!\d)1[3-9]\d{9}(?!\d)/)?.[0] ?? null;
 }
 
+/**
+ * 身高提取：候选人主动给出或表单回填「身高：170 / 身高 175cm」→ 数字字符串。
+ *
+ * 与 STRUCTURED_NAME_REGEX 同构的键值对模式：值取紧跟标签的 2-3 位数字，
+ * 落在合理人类身高区间（100-250cm）才接受，避免「身高要求165以上」这类岗位
+ * 要求被误捕——要求/限制语境（要求/限/需/不低于/以上/以下）一律不提取。
+ */
+function extractHeight(message: string): string | null {
+  if (/身高\s*(?:要求|需要|限|须|不低于|不高于|至少|最低|最高)/.test(message)) return null;
+  const match = message.match(
+    /身高\s*[：:\s]?\s*(\d{2,3})(?=\s*(?:cm|厘米|公分)?(?![0-9-~至到以])|$)/u,
+  );
+  if (!match) return null;
+  const value = Number(match[1]);
+  if (value < 100 || value > 250) return null;
+  return match[1];
+}
+
+/**
+ * 体重提取：候选人主动给出或表单回填「体重：60 / 体重 60kg」→ 数字字符串。
+ *
+ * 同身高，落在合理区间（30-200kg）才接受；要求/限制语境一律不提取。
+ */
+function extractWeight(message: string): string | null {
+  if (/体重\s*(?:要求|需要|限|须|不低于|不高于|至少|最低|最高)/.test(message)) return null;
+  const match = message.match(
+    /体重\s*[：:\s]?\s*(\d{2,3})(?=\s*(?:kg|公斤|千克|斤)?(?![0-9-~至到以])|$)/u,
+  );
+  if (!match) return null;
+  const value = Number(match[1]);
+  if (value < 30 || value > 200) return null;
+  return match[1];
+}
+
+/**
+ * 户籍省份提取（敏感字段）：仅接受表单回填的键值对形态「户籍：安徽 / 籍贯：四川省」。
+ *
+ * 不做自由文本推断（"我是安徽人"不提取），值延伸到行尾，经省份白名单校验后返回。
+ */
+const HOUSEHOLD_REGISTER_REGEX =
+  /(?:^|[\n\r])\s*(?:户籍|籍贯)(?:所在地|地)?\s*[：:\s]\s*([^\n\r。，,！!？?；;]+?)(?=[\n\r]|$)/u;
+
+const PROVINCE_NAMES = [
+  '北京',
+  '天津',
+  '上海',
+  '重庆',
+  '河北',
+  '山西',
+  '辽宁',
+  '吉林',
+  '黑龙江',
+  '江苏',
+  '浙江',
+  '安徽',
+  '福建',
+  '江西',
+  '山东',
+  '河南',
+  '湖北',
+  '湖南',
+  '广东',
+  '海南',
+  '四川',
+  '贵州',
+  '云南',
+  '陕西',
+  '甘肃',
+  '青海',
+  '台湾',
+  '内蒙古',
+  '广西',
+  '西藏',
+  '宁夏',
+  '新疆',
+  '香港',
+  '澳门',
+] as const;
+
+function extractHouseholdRegisterProvince(message: string): string | null {
+  const match = HOUSEHOLD_REGISTER_REGEX.exec(message);
+  if (!match?.[1]) return null;
+  const candidate = match[1].trim();
+  if (!candidate) return null;
+  // 取最长匹配省份名（"黑龙江"优先于子串），校验后返回原文片段（保留"省"等后缀语义）。
+  const matchedProvince = [...PROVINCE_NAMES]
+    .sort((a, b) => b.length - a.length)
+    .find((province) => candidate.includes(province));
+  return matchedProvince ? candidate : null;
+}
+
 function extractAge(message: string): string | null {
   // 结构化表单优先：「年龄：22 / 年龄 22 / 年龄22」可信度最高，
   // 即使同一消息含要求文本也应提取。避免把「年龄25-50岁」范围误当候选人年龄。
@@ -913,8 +1127,27 @@ function extractAge(message: string): string | null {
 }
 
 function extractGender(message: string): string | null {
-  if (/(我是|本人|性别)[：: ]?(男生|男)/.test(message) || /男的/.test(message)) return '男';
-  if (/(我是|本人|性别)[：: ]?(女生|女)/.test(message) || /女的/.test(message)) return '女';
+  // 裸 /男的/ /女的/ 误捕面太大（"我朋友是男的""你们要男的女的吗"）。收紧为：
+  // 1) 明确自陈/表单前缀照旧；
+  // 2) "男的/女的"仅在【独立短语段】（标点/句首分隔，如"我25岁，男的，本科"）按自述接受；
+  // 3) 询问/岗位要求/第三人称/并提语境一律排除。
+  if (/男的女的|女的男的/.test(message)) return null;
+  if (/(?:要|招|找|限|收)\s*(?:男|女)的/.test(message)) return null;
+  if (
+    /(?:朋友|对象|老公|老婆|男朋友|女朋友|孩子|儿子|女儿|同学|室友|他|她)[^，,。;；]{0,4}[男女]的/.test(
+      message,
+    )
+  ) {
+    return null;
+  }
+
+  if (/(我是|本人|性别)[：: ]?(男生|男)/.test(message)) return '男';
+  if (/(我是|本人|性别)[：: ]?(女生|女)/.test(message)) return '女';
+
+  const standalone = /(?:^|[，,。;；！!\s])(?:就?是)?([男女])的(?=[，,。;；！!~～\s]|$)/.exec(
+    message,
+  );
+  if (standalone) return standalone[1];
   return null;
 }
 
@@ -1375,6 +1608,26 @@ function normalizeRawDistrict(candidate: string): string {
   return normalizeDistrictForLookup(withoutPrefix);
 }
 
+/** "X附近"里 X 是泛指而非地名的停用词：这些词入库只会污染 pref.location。 */
+const NEARBY_LOCATION_STOPWORDS = new Set([
+  '公司',
+  '学校',
+  '单位',
+  '宿舍',
+  '小区',
+  '我家',
+  '你家',
+  '我们家',
+  '这边',
+  '那边',
+  '这里',
+  '那里',
+  '门店',
+  '店里',
+  '住的地方',
+  '上班的地方',
+]);
+
 function extractNearbyLocations(message: string, districts: string[]): string[] {
   const nearbyMatch = message.match(
     /(?:我在|人在|在|住在)?([\u4e00-\u9fa5A-Za-z0-9]{2,20})(?:附近|旁边)/,
@@ -1383,6 +1636,9 @@ function extractNearbyLocations(message: string, districts: string[]): string[] 
 
   const location = nearbyMatch[1].trim();
   if (!location) return [];
+  // 泛指词（"公司附近/家附近"）不是地名直接丢弃；带前缀的（"我公司附近"）按后缀命中也丢
+  if (NEARBY_LOCATION_STOPWORDS.has(location)) return [];
+  if ([...NEARBY_LOCATION_STOPWORDS].some((word) => location.endsWith(word))) return [];
   if (districts.some((district) => location.includes(district))) return [];
   return [location];
 }
@@ -1398,6 +1654,34 @@ function extractPositionShareLocations(message: string): string[] {
   if (address) locations.push(address);
 
   return Array.from(new Set(locations.filter(Boolean)));
+}
+
+/**
+ * 品牌匹配资产（候选别名表 + 品类展开）按 brandData 引用 memoize。
+ *
+ * brandData 来自 SpongeService 的 30 分钟缓存，引用在缓存有效期内稳定；
+ * 此前每轮对话（且一轮内最多两次：lifecycle 前置识别 + extraction）都对
+ * 全量品牌做 normalize + sort 全量重建，纯 CPU 浪费且随品牌规模线性放大。
+ */
+let brandAssetsCache: {
+  source: BrandItem[];
+  candidates: BrandCandidate[];
+  categories: ResolvedBrandCategory[];
+} | null = null;
+
+function getBrandMatchAssets(brandData: BrandItem[]): {
+  candidates: BrandCandidate[];
+  categories: ResolvedBrandCategory[];
+} {
+  if (brandAssetsCache && brandAssetsCache.source === brandData) {
+    return brandAssetsCache;
+  }
+  brandAssetsCache = {
+    source: brandData,
+    candidates: buildBrandCandidates(brandData),
+    categories: buildResolvedCategories(brandData),
+  };
+  return brandAssetsCache;
 }
 
 function buildBrandCandidates(brandData: BrandItem[]): BrandCandidate[] {

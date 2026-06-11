@@ -1,8 +1,16 @@
 import type { WorkerStatus } from '../types/monitoring.types';
-import type { WorkerConcurrencyResponse, GroupInfo } from '../types/monitoring.types';
+import type {
+  WorkerConcurrencyResponse,
+  GroupInfo,
+  ExtractionAccuracyReport,
+} from '../types/monitoring.types';
 import { api, unwrapResponse } from '../client';
 
 export type { WorkerConcurrencyResponse, GroupInfo } from '../types/monitoring.types';
+export type {
+  ExtractionAccuracyReport,
+  ExtractionAccuracyField,
+} from '../types/monitoring.types';
 
 // ==================== 开关控制 API ====================
 
@@ -37,4 +45,11 @@ export async function getGroupList() {
   const { data } = await api.get('/group/list');
   const groups = unwrapResponse<GroupInfo[]>(data);
   return groups || [];
+}
+
+// ==================== 提取质量对账 API ====================
+
+export async function getExtractionAccuracy(days: number) {
+  const { data } = await api.get(`/monitoring/extraction-accuracy?days=${days}`);
+  return unwrapResponse<ExtractionAccuracyReport>(data);
 }

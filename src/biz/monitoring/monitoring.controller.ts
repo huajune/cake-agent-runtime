@@ -1,7 +1,9 @@
 import { Body, Controller, Get, Logger, Query, Post, HttpCode, UseGuards } from '@nestjs/common';
+import { ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { AnalyticsDashboardService } from './services/dashboard/analytics-dashboard.service';
 import { AnalyticsQueryService } from './services/dashboard/analytics-query.service';
 import { AnalyticsMaintenanceService } from './services/maintenance/analytics-maintenance.service';
+import { ExtractionAccuracyService } from './services/dashboard/extraction-accuracy.service';
 import { MonitoringCacheService } from './services/tracking/monitoring-cache.service';
 import { MessageTrackingService } from './services/tracking/message-tracking.service';
 import { MetricsData, TimeRange } from './types/analytics.types';
@@ -161,6 +163,7 @@ export class MonitoringController {
     private readonly dashboardService: AnalyticsDashboardService,
     private readonly cacheService: MonitoringCacheService,
     private readonly messageTrackingService: MessageTrackingService,
+    private readonly extractionAccuracyService: ExtractionAccuracyService,
   ) {}
 
   /**
@@ -191,6 +194,26 @@ export class MonitoringController {
   @Get('global-counters')
   async getGlobalCounters() {
     return this.cacheService.getCounters();
+  }
+
+  /**
+   * 提取质量对账：booking 真值 vs 报名前最近一轮记忆快照的提取值，逐字段覆盖率/准确率。
+   * GET /monitoring/extraction-accuracy?days=7|14|30
+   */
+  @Get('extraction-accuracy')
+  @ApiOperation({
+    summary: '提取质量对账（逐字段覆盖率/准确率）',
+    description: '真值=报名提交字段；提取值=报名前最近一轮记忆快照。',
+  })
+  @ApiQuery({
+    name: 'days',
+    required: false,
+    description: '统计天数，1-90，默认 14；非法值回退默认并 clamp 到上界',
+  })
+  async getExtractionAccuracy(@Query('days') days?: string) {
+    const parsedDays = days ? Number.parseInt(days, 10) : undefined;
+    const reportDays = Number.isFinite(parsedDays) ? parsedDays : undefined;
+    return this.extractionAccuracyService.getReport(reportDays);
   }
 
   private toList(value?: string | string[]): string[] {

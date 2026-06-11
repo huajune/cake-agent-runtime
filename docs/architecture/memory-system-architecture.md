@@ -1,6 +1,6 @@
 # Agent 记忆系统架构
 
-**最后更新**：2026-05-27
+**最后更新**：2026-06-11
 
 > 这份文档描述当前主链路中真正生效的实现。模块内部的详细职责分解参见
 > [`src/memory/README.md`](../../src/memory/README.md)。
@@ -53,10 +53,13 @@
 │                                                                     │
 │  ┌── 长期记忆 (Long-term Memory) ─────────────────────────────────┐  │
 │  │  profile_facts：跨会话稳定身份，字段级携带置信度/来源/证据          │  │
+│  │  preference_facts：跨会话稳定求职意向（快照式整组覆盖）            │  │
 │  │  summary：recent[] + archive（分层压缩）+ lastSettledMessageAt   │  │
+│  │           + lastSettledBySession（按会话隔离的沉淀边界）          │  │
 │  │  → Supabase agent_long_term_memories 每用户一行 + Redis 2h 缓存   │  │
 │  │  → 来源：SettlementService 在空闲超时触发时写入                   │  │
-│  │  → 读取：profile_facts 固定注入；summary 通过 recall_history 按需读 │  │
+│  │  → 读取：profile_facts + preference_facts 固定注入；               │  │
+│  │         summary 通过 recall_history 按需读                       │  │
 │  └────────────────────────────────────────────────────────────────┘  │
 │                                                                     │
 ├──────────── 旁路解析（非持久化）──────────────────────────────────────┤
@@ -141,7 +144,9 @@ interface EntityExtractionResult {
 **读写时机**：
 - 读取：每回合 `onTurnStart` 固定拉取
 - 写入：每回合 `onTurnEnd` 串行写候选池 / 岗位投影 / 后置事实提取
-- 合并策略：`deep-merge.util` —— null/undefined/空串不覆盖旧值，对象递归合并，数组去重合并
+- 提取范围：`trimToCurrentSessionSegment()` 按消息间隙（≥`settlementGapSeconds`）截到最近连续会话段，避免跨会话串味
+- 合并策略：`deep-merge.util` —— null/undefined/空串不覆盖旧值，对象递归合并，数组去重合并；`saveFacts` 经 `mergeFactsWithConfidenceGuard`，跨轮低置信不覆盖高置信
+- 时间锚：每个字段写入时打 `extractedAt`；evidence 入库经 `truncateEvidence()` 截断 `MAX_FACT_EVIDENCE_CHARS=200` 字
 - 沉淀：`chat_messages` 中出现消息间隔 ≥ `settlementGapSeconds` 时，上一段旧会话沉淀到 Summary；画像字段从当前 Redis `sessionFacts` 抽取
 
 ### 2.3 程序记忆 (Procedural Memory)
@@ -173,11 +178,11 @@ trust_building → needs_collection → job_recommendation → interview_arrange
 
 ### 2.4 长期记忆 (Long-term Memory)
 
-**定义**：跨会话复用的用户稳定信息 + 历次求职经历摘要。
+**定义**：跨会话复用的用户稳定信息、稳定求职意向 + 历次求职经历摘要。
 
 **存储**：Supabase `agent_long_term_memories` 表（每用户一行）+ Redis 整行 2h 缓存。
 
-**两部分**（[`long-term.types.ts`](../../src/memory/types/long-term.types.ts)）：
+**三部分**（[`long-term.types.ts`](../../src/memory/types/long-term.types.ts)）：
 
 #### Profile Facts（身份信息）
 
@@ -210,9 +215,26 @@ interface UserProfileFacts {
 }
 ```
 
-- 读取：每回合 `onTurnStart` 固定注入 `[用户档案]`，保留字段值、置信度、来源、证据和更新时间
+- 读取：每回合 `onTurnStart` 固定注入 `[用户档案]`，**只保留字段值、置信度、来源、更新日期**（注入瘦身，不带 evidence 全文；evidence 是排障字段）
 - 工具消费：进入工具上下文时统一 unwrap，只传高置信字段，低/中/未知置信字段交给大模型判断是否追问
 - 写入：`SettlementService` 在沉淀时从 session facts 抽身份字段；预约成功通过 `writeFromBooking()` 写入 `booking/high`；外部补充通过 `MemoryService.saveProfile()` 写入
+
+#### Preference Facts（跨会话稳定求职意向）
+
+存于 `preference_facts` 列（[`LONG_TERM_PREFERENCE_FIELD_KEYS`](../../src/memory/types/long-term.types.ts)）：
+
+```typescript
+// 只收跨会话稳定的意向，排除单次 episode 临时态（short_term/time_windows/open_position）
+const LONG_TERM_PREFERENCE_FIELD_KEYS = [
+  'city', 'district', 'location', 'brands', 'position', 'schedule',
+  'salary', 'labor_form', 'schedule_constraint', 'delayed_intent', 'available_after',
+];
+```
+
+- 覆盖语义：**快照式整组覆盖**（最新一段会话的意向赢），与 session facts 的 deepMerge 累积不同——累积会让错值/错字变体永远清不掉
+- 唯一写方：`SettlementService`
+- 读取：注入为 prompt 的 `[历史求职意向]` 段（`formatLongTermPreferences`），带更新日期与“本次优先”指引；过期的 `available_after` 不渲染
+- **不进工具预填**：仅供大模型参考，不参与程序化判断
 
 #### Summary（分层压缩的对话摘要）
 
@@ -220,7 +242,8 @@ interface UserProfileFacts {
 interface SummaryData {
   recent: SummaryEntry[];        // 最近 N 条详细摘要（MAX_RECENT_SUMMARIES = 5）
   archive: string | null;        // 更早的被 LLM 压缩合并成一段自然语言总结
-  lastSettledMessageAt: string | null;  // 最近一次已沉淀的消息边界
+  lastSettledMessageAt: string | null;  // 全局兜底的已沉淀消息边界
+  lastSettledBySession?: Record<string, string> | null; // 按会话隔离的沉淀边界（sessionId → 边界时间）
 }
 
 interface SummaryEntry {
@@ -243,9 +266,11 @@ interface SummaryEntry {
 **定义**：针对"本轮 user 最新消息"的规则 + 别名前置识别结果。
 
 **能力**（[`facts/high-confidence-facts.ts`](../../src/memory/facts/high-confidence-facts.ts)）：
-- 品牌规范化（基于 sponge 品牌表 alias 匹配）
-- 城市识别（直辖市简写 / 明确城市 / 唯一区域别名 / 商圈 alias）
-- 用工形式 / 年龄等规则字段
+- 品牌规范化（基于 sponge 品牌表 alias 匹配，资产经 `getBrandMatchAssets` memoize）
+- 城市识别（直辖市简写 / 明确城市 / 唯一区域别名 / 商圈 alias），“X 附近”停用词见 `NEARBY_LOCATION_STOPWORDS`
+- 用工形式 / 年龄 / 身高 / 体重 / 户籍省份等规则字段
+
+**规则层注册表化**：无字段间联动的标量/数组字段统一走 `FIELD_EXTRACTORS` 注册表（主循环遍历应用）；联动字段（gender 联动 / city 三件套 / brands 品类展开 / schedule_constraint / available_after / is_student+education）仍保留手写。模块加载期 `assertRegistryFieldsMirrored()` 自检注册表字段在各处镜像一致。
 
 **关键边界**：
 - 只看**当前轮新消息**，不 fallback 到历史窗口
@@ -283,6 +308,7 @@ interface SummaryEntry {
   │         highConfidenceFacts,
   │         procedural,
   │         longTerm.profile,
+  │         longTerm.preferences,
   │         _warnings?
   │       }
   │
@@ -311,6 +337,8 @@ interface SummaryEntry {
 
 **关键点**：settlement 使用 `load_previous_state` 读到的原始 `sessionFacts`，保留字段 metadata，写长期画像时会把原字段 source/confidence/evidence 带入长期 evidence。
 
+**回合收尾纳入处理锁**：WeCom 链路用 `deferTurnEnd=true` 让回合收尾延迟到投递阶段——turn-end 与后续投递并行执行，但必须在释放 chat 处理锁前 `await` 完成（`reply-workflow` 的 finally）。否则收尾仍在异步写 session state 时，会与下一个 job 的读写并发，整份覆盖写互相丢更新。首次调用若被 replay 丢弃，记忆投影/事实提取也一同被丢弃，避免「未发出的回复」污染 session 记忆。
+
 ### 3.3 会话沉淀 — Settlement
 
 [`settlement.service.ts`](../../src/memory/services/settlement.service.ts)
@@ -318,19 +346,28 @@ interface SummaryEntry {
 ```
 detectAndSettle(): chat_messages 中出现 gap ≥ settlementGapSeconds
   │
+  ├── 边界判定：取 summary_data.lastSettledBySession[sessionId]，
+  │   缺失再回退全局 lastSettledMessageAt
+  │   → 分页扫描边界后消息（每页 SETTLEMENT_FETCH_LIMIT=500，最多 MAX_PAGES=10）
+  │
   ├── 身份字段沉淀 → profile_facts
   │   使用 Redis sessionFacts 中已校验/清洗过的结构化事实
   │   从 facts.interview_info 抽 name/phone/gender/age/is_student/education/has_health_certificate
   │   → Supabase agent_long_term_memories.profile_facts 字段级合并
   │   → 已有 high 字段不会被非 high 覆盖
   │
-  ├── 对话摘要 → Summary
-  │   读 chat_messages 中 lastSettledMessageAt → 旧会话断点之间的消息
-  │   + facts 中的求职意向 → LLM 生成 ≤100 字摘要
-  │   → 追加到 summary_data.recent；溢出部分 LLM 合并进 archive（≤200 字）
-  │   → 更新 lastSettledMessageAt
+  ├── 稳定意向沉淀 → preference_facts
+  │   从 LONG_TERM_PREFERENCE_FIELD_KEYS 抽稳定意向，整组覆盖写入
   │
-  └── 不反写 Redis 会话态；Redis key 自然过期
+  ├── 对话摘要 → Summary
+  │   读边界后到旧会话断点之间的消息（输入截尾最近 SUMMARY_MAX_MESSAGES=120 条）
+  │   + facts 中的求职意向 → LLM 生成 ≤100 字摘要
+  │   → 通过 RPC append_long_term_summary_atomic（行锁内）追加到 summary_data.recent；
+  │     溢出部分 LLM 合并进 archive（≤200 字）；带 p_session_id 同步写 lastSettledBySession
+  │   → 通过 RPC mark_long_term_settled_boundary（带 p_session_id）原子更新沉淀边界
+  │
+  └── 不反写 Redis 会话态；Redis key 自然过期；沉淀边界按会话隔离，
+      双 bot 服务同一候选人时不再互相推进彼此边界
 ```
 
 ---
@@ -413,8 +450,10 @@ detectAndSettle(): chat_messages 中出现 gap ≥ settlementGapSeconds
 | `user_id` | string | 用户 ID |
 | **Profile Facts（jsonb）** | | |
 | `profile_facts` | jsonb | `{ name, phone, gender, age, is_student, education, has_health_certificate }`，每个字段为 fact wrapper 或 null |
+| **Preference Facts（jsonb）** | | |
+| `preference_facts` | jsonb? | 跨会话稳定求职意向，键见 `LONG_TERM_PREFERENCE_FIELD_KEYS`，快照式整组覆盖 |
 | **Summary（jsonb）** | | |
-| `summary_data` | jsonb? | `{ recent: SummaryEntry[], archive, lastSettledMessageAt }` |
+| `summary_data` | jsonb? | `{ recent: SummaryEntry[], archive, lastSettledMessageAt, lastSettledBySession }` |
 | **消息元数据（jsonb）** | | |
 | `message_metadata` | jsonb? | `{ botId, imBotId, imContactId, contactType, contactName, externalUserId, avatar }` |
 | **时间戳** | | |
@@ -480,7 +519,7 @@ FACTS 提取的字段按稳定性拆分到不同记忆层。
 | `education` | 半稳定 | **Profile facts** | Supabase 永久 |
 | `has_health_certificate` | 半稳定 | **Profile facts** | Supabase 永久 |
 | `applied_store` / `applied_position` / `interview_time` | 每次不同 | **Session facts.interview_info** | Redis `sessionTtl` |
-| `labor_form` / `brands` / `salary` / `position` / `schedule` / `city` / `district` / `location` | 每次不同 | **Session facts.preferences** | Redis `sessionTtl` |
+| `labor_form` / `brands` / `salary` / `position` / `schedule` / `city` / `district` / `location` 等 | 每次不同（但有跨会话稳定意向） | **Session facts.preferences**；稳定意向沉淀到 **Long-term preference_facts** | Redis `sessionTtl` / Supabase 永久 |
 | `lastCandidatePool` / `presentedJobs` / `currentFocusJob` | 会话级推导 | **Session Memory 顶层** | Redis `sessionTtl` |
 | `invitedGroups` | 会话级副作用 | **Session Memory 顶层** | Redis `sessionTtl` |
 
@@ -503,6 +542,7 @@ src/memory/
 │   ├── long-term.service.ts          # profile_facts / summary 持久化
 │   ├── settlement.service.ts         # 会话沉淀
 │   ├── memory-enrichment.service.ts  # 外部系统补全身份字段
+│   ├── session-job-matching.ts       # 岗位投影匹配
 │   └── session-extraction.prompt.ts  # 后置事实提取 prompt
 │
 ├── stores/                           # 基础设施
@@ -519,7 +559,8 @@ src/memory/
 │   └── long-term.types.ts
 │
 ├── facts/                            # 规则 / 别名识别
-│   ├── high-confidence-facts.ts      # 当前轮高置信识别（旁路）
+│   ├── high-confidence-facts.ts      # 当前轮高置信识别（旁路），含 FIELD_EXTRACTORS 注册表
+│   ├── fact-merge.util.ts            # 规则/LLM 合并 + 跨轮置信度守卫共享原语
 │   ├── geo-mappings.ts               # 城市 / 区域 / 商圈别名
 │   ├── labor-form.ts                 # 用工形式规范化
 │   └── name-guard.ts                 # 姓名真伪判定

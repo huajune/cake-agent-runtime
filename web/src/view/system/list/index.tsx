@@ -22,6 +22,7 @@ import type { AgentReplyConfig } from '@/api/types/config.types';
 // 组件导入
 import KpiCard, { KpiGrid } from './components/KpiCard';
 import ConsolePanel from './components/ConsolePanel';
+import ExtractionAccuracyCard from './components/ExtractionAccuracyCard';
 
 // 样式导入
 import styles from './styles/index.module.scss';
@@ -45,6 +46,9 @@ export default function System() {
   // 获取真实数据
   const { data: dashboard } = useSystemMonitoring();
   const { data: metrics } = useMetrics();
+
+  // 提取质量对账时间窗
+  const [extractionDays, setExtractionDays] = useState(14);
 
   // 告警配置本地状态
   const [alertConfig, setAlertConfig] = useState({
@@ -234,6 +238,9 @@ export default function System() {
         recentAlertCount={recentAlertCount}
         alertTypes={alerts?.byType}
       />
+
+      {/* 提取质量对账 */}
+      <ExtractionAccuracyCard days={extractionDays} onDaysChange={setExtractionDays} />
     </div>
   );
 }
