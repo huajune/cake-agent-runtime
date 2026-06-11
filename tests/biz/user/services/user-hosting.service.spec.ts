@@ -91,6 +91,22 @@ describe('UserHostingService', () => {
       expect(mockUserHostingRepository.findPausedUserIds).toHaveBeenCalledTimes(1);
     });
 
+    it('should treat permanent pause rows (null expiry) as paused', async () => {
+      mockUserHostingRepository.findPausedUserIds.mockResolvedValue([
+        {
+          user_id: 'user1',
+          paused_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+          pause_expires_at: null,
+          is_permanent: true,
+          pause_reason: '客户微信',
+        },
+      ]);
+
+      const result = await service.isUserPaused('user1');
+
+      expect(result).toBe(true);
+    });
+
     it('should return false and set backoff expiry when DB load fails', async () => {
       mockUserHostingRepository.findPausedUserIds.mockRejectedValue(new Error('DB error'));
 
@@ -162,11 +178,32 @@ describe('UserHostingService', () => {
       expect(entry.isPaused).toBe(true);
       expect(entry.pausedAt).toBeLessThanOrEqual(Date.now());
 
-      expect(mockUserHostingRepository.upsertPause).toHaveBeenCalledWith(
-        'user1',
-        expect.any(String),
-        expect.any(String),
-      );
+      expect(mockUserHostingRepository.upsertPause).toHaveBeenCalledWith('user1', {
+        pausedAt: expect.any(String),
+        pauseExpiresAt: expect.any(String),
+        isPermanent: false,
+        reason: undefined,
+      });
+    });
+
+    it('should persist permanent pause with null expiry and reason', async () => {
+      mockUserHostingRepository.upsertPause.mockResolvedValue(undefined);
+
+      await service.pauseUser('user1', { permanent: true, reason: '店长微信' });
+
+      const entry = (service as any).pausedUsersCache.get('user1');
+      expect(entry.permanent).toBe(true);
+      expect(entry.reason).toBe('店长微信');
+
+      expect(mockUserHostingRepository.upsertPause).toHaveBeenCalledWith('user1', {
+        pausedAt: expect.any(String),
+        pauseExpiresAt: null,
+        isPermanent: true,
+        reason: '店长微信',
+      });
+
+      // 永久暂停立即生效且不会因解禁期限失效
+      await expect(service.isUserPaused('user1')).resolves.toBe(true);
     });
 
     it('should handle DB failure gracefully without affecting memory cache', async () => {
@@ -291,6 +328,29 @@ describe('UserHostingService', () => {
       expect(result).toHaveLength(1);
       expect(result[0].userId).toBe('user1');
       expect(mockUserHostingRepository.findPausedUserIds).not.toHaveBeenCalled();
+    });
+
+    it('should expose isPermanent and pauseReason with null expiry for permanent pauses', async () => {
+      mockUserHostingRepository.findPausedUserIds.mockResolvedValue([
+        {
+          user_id: 'user1',
+          paused_at: new Date().toISOString(),
+          pause_expires_at: null,
+          is_permanent: true,
+          pause_reason: '候选人黑名单：恶意刷岗',
+        },
+      ]);
+      mockUserHostingRepository.findUserProfiles.mockResolvedValue([]);
+
+      const result = await service.getPausedUsersWithProfiles();
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        userId: 'user1',
+        isPermanent: true,
+        pauseReason: '候选人黑名单：恶意刷岗',
+        pauseExpiresAt: null,
+      });
     });
 
     it('should handle missing profile for some users gracefully', async () => {

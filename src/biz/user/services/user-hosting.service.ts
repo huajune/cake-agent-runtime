@@ -11,12 +11,47 @@ interface PausedUserCacheEntry {
   isPaused: boolean;
   pausedAt: number;
   expiresAt: number;
+  permanent?: boolean;
+  reason?: string;
+  operator?: string;
+  source?: string;
+}
+
+/**
+ * Redis 共享快照中的单个暂停用户条目
+ */
+interface SharedCacheEntry {
+  userId: string;
+  pausedAt: number;
+  expiresAt?: number;
+  permanent?: boolean;
+  reason?: string;
+  operator?: string;
+  source?: string;
+}
+
+/**
+ * 暂停托管选项
+ */
+export interface PauseUserOptions {
+  /** 永久暂停（不自动解禁），如店长微信、客户微信、黑名单候选人 */
+  permanent?: boolean;
+  /** 暂停理由（如候选人黑名单的拉黑理由），供运营查看 */
+  reason?: string;
+  /** 操作人（运营手动暂停时记录，供回溯） */
+  operator?: string;
+  /** 暂停来源：manual / candidate_blacklist / interview_booking 等 */
+  source?: string;
 }
 
 /**
  * 暂停托管的自动解禁期限：3 天（硬编码）
  */
 const PAUSE_DURATION_MS = 3 * 24 * 60 * 60 * 1000;
+/**
+ * 永久暂停在缓存中的解禁时间哨兵值：所有 expiresAt > now 的比较天然成立
+ */
+const PERMANENT_EXPIRES_AT = Number.MAX_SAFE_INTEGER;
 const EXPIRE_CRON_LOCK_TTL_SECONDS = 55;
 
 /**
@@ -96,26 +131,43 @@ export class UserHostingService {
   /**
    * 暂停用户托管
    *
+   * 默认 3 天后自动解禁；permanent=true 时永久暂停（不自动解禁），
+   * 适用于店长微信、客户微信等永久禁止托管的联系人，以及黑名单候选人。
+   *
    * 同步写入内存缓存，异步持久化到数据库。
    * 数据库写入失败不影响缓存，调用方仍可继续运行。
    */
-  async pauseUser(userId: string): Promise<void> {
+  async pauseUser(userId: string, options?: PauseUserOptions): Promise<void> {
     await this.ensureFreshPausedUsers();
 
     const now = Date.now();
-    const expiresAt = now + PAUSE_DURATION_MS;
+    const permanent = options?.permanent === true;
+    const expiresAt = permanent ? PERMANENT_EXPIRES_AT : now + PAUSE_DURATION_MS;
 
-    this.pausedUsersCache.set(userId, { isPaused: true, pausedAt: now, expiresAt });
+    this.pausedUsersCache.set(userId, {
+      isPaused: true,
+      pausedAt: now,
+      expiresAt,
+      permanent,
+      reason: options?.reason,
+      operator: options?.operator,
+      source: options?.source,
+    });
     this.cacheExpiry = Date.now() + this.CACHE_TTL_MS;
 
     try {
-      await this.repository.upsertPause(
-        userId,
-        new Date(now).toISOString(),
-        new Date(expiresAt).toISOString(),
-      );
+      await this.repository.upsertPause(userId, {
+        pausedAt: new Date(now).toISOString(),
+        pauseExpiresAt: permanent ? null : new Date(expiresAt).toISOString(),
+        isPermanent: permanent,
+        reason: options?.reason,
+        operator: options?.operator,
+        source: options?.source,
+      });
       this.logger.log(
-        `[托管暂停] 用户 ${userId} 已暂停托管，自动解禁时间 ${new Date(expiresAt).toISOString()}`,
+        permanent
+          ? `[托管暂停] 用户 ${userId} 已永久暂停托管${options?.reason ? `，理由：${options.reason}` : ''}`
+          : `[托管暂停] 用户 ${userId} 已暂停托管，自动解禁时间 ${new Date(expiresAt).toISOString()}`,
       );
     } catch (error) {
       this.logger.error(`暂停用户 ${userId} 托管失败`, error);
@@ -163,7 +215,11 @@ export class UserHostingService {
     {
       userId: string;
       pausedAt: number;
-      pauseExpiresAt: number;
+      pauseExpiresAt: number | null;
+      isPermanent: boolean;
+      pauseReason?: string;
+      pauseOperator?: string;
+      pauseSource?: string;
       odName?: string;
       groupName?: string;
       botUserId?: string;
@@ -178,7 +234,12 @@ export class UserHostingService {
       .map(([userId, entry]) => ({
         userId,
         pausedAt: entry.pausedAt,
-        pauseExpiresAt: entry.expiresAt,
+        // 永久暂停无解禁时间，返回 null 避免前端渲染哨兵时间戳
+        pauseExpiresAt: entry.permanent ? null : entry.expiresAt,
+        isPermanent: entry.permanent === true,
+        pauseReason: entry.reason,
+        pauseOperator: entry.operator,
+        pauseSource: entry.source,
       }));
 
     if (pausedEntries.length === 0) {
@@ -206,9 +267,7 @@ export class UserHostingService {
       }
 
       return pausedEntries.map((entry) => ({
-        userId: entry.userId,
-        pausedAt: entry.pausedAt,
-        pauseExpiresAt: entry.pauseExpiresAt,
+        ...entry,
         odName: profileMap.get(entry.userId)?.odName,
         groupName: profileMap.get(entry.userId)?.groupName,
         botUserId: profileMap.get(entry.userId)?.botUserId,
@@ -359,13 +418,20 @@ export class UserHostingService {
       this.pausedUsersCache.clear();
       for (const row of rows) {
         const pausedAt = new Date(row.paused_at).getTime();
-        const expiresAt = row.pause_expires_at
-          ? new Date(row.pause_expires_at).getTime()
-          : pausedAt + PAUSE_DURATION_MS;
+        const permanent = row.is_permanent === true;
+        const expiresAt = permanent
+          ? PERMANENT_EXPIRES_AT
+          : row.pause_expires_at
+            ? new Date(row.pause_expires_at).getTime()
+            : pausedAt + PAUSE_DURATION_MS;
         this.pausedUsersCache.set(row.user_id, {
           isPaused: true,
           pausedAt,
           expiresAt,
+          permanent,
+          reason: row.pause_reason ?? undefined,
+          operator: row.pause_operator ?? undefined,
+          source: row.pause_source ?? undefined,
         });
       }
 
@@ -392,30 +458,29 @@ export class UserHostingService {
     await this.loadPausedUsers();
   }
 
-  private populatePausedUsersCache(
-    entries: Array<{ userId: string; pausedAt: number; expiresAt?: number }>,
-  ): void {
+  private populatePausedUsersCache(entries: SharedCacheEntry[]): void {
     this.pausedUsersCache.clear();
     for (const entry of entries) {
       this.pausedUsersCache.set(entry.userId, {
         isPaused: true,
         pausedAt: entry.pausedAt,
         // 兼容旧版 Redis 快照（无 expiresAt）：以 pausedAt + 3 天兜底
-        expiresAt: entry.expiresAt ?? entry.pausedAt + PAUSE_DURATION_MS,
+        expiresAt: entry.permanent
+          ? PERMANENT_EXPIRES_AT
+          : (entry.expiresAt ?? entry.pausedAt + PAUSE_DURATION_MS),
+        permanent: entry.permanent,
+        reason: entry.reason,
+        operator: entry.operator,
+        source: entry.source,
       });
     }
     this.cacheExpiry = Date.now() + this.CACHE_TTL_MS;
   }
 
-  private async readSharedCache(): Promise<Array<{
-    userId: string;
-    pausedAt: number;
-    expiresAt?: number;
-  }> | null> {
+  private async readSharedCache(): Promise<SharedCacheEntry[] | null> {
     try {
       const cached = await this.redisService.get<
-        | Array<{ userId: string; pausedAt: number; expiresAt?: number }>
-        | { users: Array<{ userId: string; pausedAt: number; expiresAt?: number }> }
+        SharedCacheEntry[] | { users: SharedCacheEntry[] }
       >(UserHostingService.SHARED_CACHE_KEY);
       if (!cached) {
         return null;
@@ -442,6 +507,10 @@ export class UserHostingService {
             userId,
             pausedAt: entry.pausedAt,
             expiresAt: entry.expiresAt,
+            permanent: entry.permanent,
+            reason: entry.reason,
+            operator: entry.operator,
+            source: entry.source,
           })),
         updatedAt: now,
       });

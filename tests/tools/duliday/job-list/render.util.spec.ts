@@ -132,6 +132,43 @@ describe('job-list render util', () => {
     });
   });
 
+  describe('progressive disclosure (full-detail cap)', () => {
+    const detailFlags: ProgressiveDisclosureFlags = {
+      includeBasicInfo: true,
+      includeJobSalary: true,
+      includeWelfare: false,
+      includeHiringRequirement: true,
+      includeWorkTime: true,
+      includeInterviewProcess: false,
+    };
+
+    it('renders full detail for all jobs when count <= cap (6)', () => {
+      const jobs = [1, 2, 3, 4, 5, 6].map((id) => makeJob(id));
+      const markdown = formatJobsToMarkdown(jobs, 6, 1, 10, detailFlags);
+
+      // 6 个全文标题（## 1. ~ ## 6.），无摘要尾
+      expect(markdown).toContain('## 1. 服务员');
+      expect(markdown).toContain('## 6. 服务员');
+      expect(markdown).not.toContain('### 更远的');
+    });
+
+    it('caps full detail to nearest 6 and summarizes the rest with jobId', () => {
+      const jobs = [1, 2, 3, 4, 5, 6, 7, 8].map((id) => makeJob(id));
+      const markdown = formatJobsToMarkdown(jobs, 8, 1, 10, detailFlags);
+
+      // 前 6 家全文
+      expect(markdown).toContain('## 6. 服务员');
+      // 第 7 家不再有全文详情标题
+      expect(markdown).not.toContain('## 7. 服务员');
+      // 摘要尾出现，带数量与 jobId 重查引导
+      expect(markdown).toContain('### 更远的 2 家');
+      expect(markdown).toContain('jobId:7');
+      expect(markdown).toContain('jobId:8');
+      // 摘要行带薪资（来自 formatSalarySummary）
+      expect(markdown).toMatch(/7\. \*\*肯德基 - 服务员\*\*.*jobId:7/);
+    });
+  });
+
   it('infers student requirement from normalized policy text and field signals', () => {
     expect(inferStudentRequirement(makePolicy({ remark: '仅限非学生，需要已毕业' }))).toBe(
       '不接受学生',

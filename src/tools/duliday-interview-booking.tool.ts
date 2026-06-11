@@ -62,7 +62,7 @@ function pauseUserHostingAsync(
   successMessage: string,
 ): void {
   void userHostingService
-    .pauseUser(chatId)
+    .pauseUser(chatId, { source: 'interview_booking', reason: '约面成功自动暂停' })
     .then(() => {
       logger.log(successMessage);
     })

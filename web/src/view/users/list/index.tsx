@@ -208,7 +208,8 @@ export default function Users() {
           <div className={styles.tabHint}>
             <Info className={styles.tabHintIcon} aria-hidden="true" />
             <span>
-              禁止托管后，系统将在 3 天后自动恢复托管；如需提前恢复，请手动切换上方"托管状态"开关。
+              禁止托管后，系统将在 3
+              天后自动恢复托管（标记为"永久"的不会自动恢复，如店长微信、黑名单候选人）；如需提前恢复，请手动切换"托管状态"开关。
             </span>
           </div>
         )}

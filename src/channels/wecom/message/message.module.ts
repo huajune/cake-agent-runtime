@@ -37,6 +37,7 @@ import { PreAgentRiskInterceptService } from './application/pre-agent-risk-inter
 import { ReplyFactGuardService } from './application/reply-fact-guard.service';
 import { TypingPolicyService } from './delivery/typing-policy.service';
 import {
+  CandidateBlacklistFilterRule,
   ContactTypeFilterRule,
   EmptyContentFilterRule,
   GroupBlacklistFilterRule,
@@ -94,6 +95,7 @@ import {
     SourceMessageFilterRule,
     ContactTypeFilterRule,
     PausedUserFilterRule,
+    CandidateBlacklistFilterRule,
     GroupBlacklistFilterRule,
     RoomMessageFilterRule,
     SupportedMessageTypeFilterRule,
