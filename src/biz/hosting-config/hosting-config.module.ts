@@ -6,10 +6,9 @@ import { GroupBlacklistService } from './services/group-blacklist.service';
 import { HostingConfigFacadeService } from './services/hosting-config-facade.service';
 import { HostingConfigController } from './hosting-config.controller';
 import { UserModule } from '../user/user.module';
-import { RecruitmentCaseModule } from '../recruitment-case/recruitment-case.module';
 
 @Module({
-  imports: [UserModule, RecruitmentCaseModule],
+  imports: [UserModule],
   providers: [
     // repositories
     SystemConfigRepository,
