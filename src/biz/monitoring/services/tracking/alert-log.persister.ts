@@ -6,6 +6,12 @@ import type {
 import { MonitoringErrorLogRepository } from '../../repositories/error-log.repository';
 
 /**
+ * 子系统告警在老 alert_type 维度统一归为 'system'（便于老前端按 type 聚合不落空）；
+ * 子系统细分走新增的 subsystem 列。提取为常量便于后续重构。
+ */
+const SUBSYSTEM_ALERT_TYPE = 'system' as const;
+
+/**
  * AlertLogPersister 的 biz/monitoring 实现：把 AlertNotifierService 发出的告警
  * 写入 monitoring_error_logs，让 dashboard "今日错误" / 错误列表能看到子系统告警
  * （群任务/Cron/Infra/Incident），不再只有消息处理失败链路。
@@ -25,8 +31,7 @@ export class AlertLogPersisterService implements AlertLogPersister {
         messageId: entry.messageId,
         timestamp: entry.timestamp,
         error: entry.error,
-        // alert_type 老语义保留：子系统告警归到 'system'，便于老前端按 type 聚合时不落空
-        alertType: 'system',
+        alertType: SUBSYSTEM_ALERT_TYPE,
         subsystem: entry.subsystem,
         component: entry.component,
         action: entry.action,

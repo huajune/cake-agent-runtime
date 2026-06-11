@@ -90,7 +90,7 @@ export class AlertNotifierService {
       .persist({
         messageId: context.scope?.messageId,
         timestamp: Date.now(),
-        error: context.diagnostics?.errorMessage || context.summary || context.code,
+        error: context.diagnostics?.errorMessage ?? context.summary ?? context.code ?? '',
         code: context.code,
         severity: context.severity,
         summary: context.summary,
