@@ -4,7 +4,6 @@
  */
 
 import {
-  AlertErrorType,
   MessageProcessingRecord,
   MonitoringErrorLog,
   MonitoringGlobalCounters,
@@ -104,7 +103,8 @@ export interface ScenarioUsageMetric {
 }
 
 export interface AlertTypeMetric {
-  type: AlertErrorType | 'unknown';
+  /** 子系统名（group-task/cron/infra…）或回退的 alertType 或 'unknown' */
+  type: string;
   count: number;
   percentage: number;
 }

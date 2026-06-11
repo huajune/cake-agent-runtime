@@ -1,9 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import {
-  AlertErrorType,
-  MessageProcessingRecord,
-  MonitoringErrorLog,
-} from '@shared-types/tracking.types';
+import { MessageProcessingRecord, MonitoringErrorLog } from '@shared-types/tracking.types';
 import { AlertTypeMetric, AlertsSummary, QueueMetrics } from '../types/analytics.types';
 
 @Injectable()
@@ -65,11 +61,17 @@ export class AnalyticsMetricsService {
     };
   }
 
+  /**
+   * 错误分布按"子系统优先"聚合：新告警有 subsystem（group-task/cron/infra…）就按
+   * subsystem 分组，让 dashboard 区分到具体子系统；老的消息处理失败无 subsystem，
+   * 回退到 alertType（agent/message/delivery）保留原粒度；都没有归 'unknown'。
+   * 这样既新增子系统维度又不丢失存量消息失败的分类。
+   */
   buildAlertTypeMetrics(errorLogs: MonitoringErrorLog[]): AlertTypeMetric[] {
-    const typeMap = new Map<AlertErrorType | 'unknown', number>();
+    const typeMap = new Map<string, number>();
     for (const log of errorLogs) {
-      const type = log.alertType || 'unknown';
-      typeMap.set(type, (typeMap.get(type) || 0) + 1);
+      const key = log.subsystem || log.alertType || 'unknown';
+      typeMap.set(key, (typeMap.get(key) || 0) + 1);
     }
     const total = Array.from(typeMap.values()).reduce((sum, count) => sum + count, 0);
     if (total === 0) return [];
