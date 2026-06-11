@@ -21,6 +21,7 @@
     "test": "jest",
     "test:badcase:p1": "jest tests/badcase/p1-curated-badcase-regression.spec.ts --watchman=false",
     "test:ci": "jest --coverage --watchman=false",
+    "test:di-smoke": "jest -c jest.di-smoke.config.ts --watchman=false --forceExit",
     "test:cov": "jest --coverage",
     "typecheck": "tsc --noEmit",
     "db:pull": "supabase db pull",
