@@ -122,19 +122,6 @@ export const MODEL_DICTIONARY: Record<string, ModelEntry> = {
   },
 
   // ==================== 通义千问 (Qwen) ====================
-  'qwen/qwen3.7-plus': {
-    provider: 'qwen',
-    name: 'Qwen3.7 Plus',
-    description:
-      '通义千问 3.7 增强版 (多模态 Agent / GUI grounding / 1M 上下文；需在阿里云控制台开通)',
-    capabilities: ['thinking', 'tool-use', 'multimodal', 'long-context'],
-  },
-  'qwen/qwen3.7-max': {
-    provider: 'qwen',
-    name: 'Qwen3.7 Max',
-    description: '通义千问 3.7 旗舰 (万亿 MoE / Agentic Coding 国产第一；需在阿里云控制台开通)',
-    capabilities: ['thinking', 'tool-use', 'long-context'],
-  },
   'qwen/qwen3.6-max-preview': {
     provider: 'qwen',
     name: 'qwen3.6-max-preview',
