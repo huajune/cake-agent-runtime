@@ -32,6 +32,7 @@ describe('MessageFilterService', () => {
 
   const mockCandidateBlacklistService = {
     matchBlacklisted: jest.fn(),
+    recordHit: jest.fn(),
   };
 
   const mockAlertNotifier = {
@@ -81,6 +82,7 @@ describe('MessageFilterService', () => {
     mockUserHostingService.isAnyPaused.mockResolvedValue({ paused: false });
     mockGroupBlacklistService.isGroupBlacklisted.mockResolvedValue(false);
     mockCandidateBlacklistService.matchBlacklisted.mockResolvedValue(null);
+    mockCandidateBlacklistService.recordHit.mockResolvedValue(undefined);
     mockAlertNotifier.sendAlert.mockResolvedValue(true);
   });
 
@@ -201,7 +203,7 @@ describe('MessageFilterService', () => {
       mockCandidateBlacklistService.matchBlacklisted.mockResolvedValue({
         target_id: 'contact-123',
         reason: '恶意刷岗',
-        added_at: 1700000000000,
+        operator: '小王',
       });
 
       const result = await service.validate(validMessageData);
@@ -219,10 +221,17 @@ describe('MessageFilterService', () => {
         'contact-123',
         undefined,
       ]);
-      // 取消托管：对该会话永久暂停，理由带拉黑原因
+      // 取消托管：对该会话永久暂停，理由带拉黑原因，来源标记为黑名单
       expect(mockUserHostingService.pauseUser).toHaveBeenCalledWith('chat-123', {
         permanent: true,
         reason: '候选人黑名单：恶意刷岗',
+        source: 'candidate_blacklist',
+      });
+      // 命中回溯：记录哪个托管号在哪个会话聊到了该候选人
+      expect(mockCandidateBlacklistService.recordHit).toHaveBeenCalledWith('contact-123', {
+        chatId: 'chat-123',
+        botId: 'wxid-bot-123',
+        messageId: 'msg-123',
       });
       // 飞书告警：附拉黑理由
       expect(mockAlertNotifier.sendAlert).toHaveBeenCalledWith(
@@ -243,7 +252,6 @@ describe('MessageFilterService', () => {
       mockCandidateBlacklistService.matchBlacklisted.mockResolvedValue({
         target_id: 'contact-123',
         reason: '恶意刷岗',
-        added_at: 1700000000000,
       });
 
       const result = await service.validate(validMessageData);
@@ -257,9 +265,9 @@ describe('MessageFilterService', () => {
       mockCandidateBlacklistService.matchBlacklisted.mockResolvedValue({
         target_id: 'contact-123',
         reason: '恶意刷岗',
-        added_at: 1700000000000,
       });
       mockUserHostingService.pauseUser.mockRejectedValue(new Error('db down'));
+      mockCandidateBlacklistService.recordHit.mockRejectedValue(new Error('db down'));
       mockAlertNotifier.sendAlert.mockRejectedValue(new Error('feishu down'));
 
       const result = await service.validate(validMessageData);

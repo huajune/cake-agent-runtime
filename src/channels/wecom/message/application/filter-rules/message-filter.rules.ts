@@ -9,7 +9,7 @@ import {
 import { MessageParser } from '../../utils/message-parser.util';
 import { GroupBlacklistService } from '@biz/hosting-config/services/group-blacklist.service';
 import { CandidateBlacklistService } from '@biz/hosting-config/services/candidate-blacklist.service';
-import { CandidateBlacklistItem } from '@biz/hosting-config/entities/candidate-blacklist.entity';
+import { CandidateBlacklistRecord } from '@biz/hosting-config/entities/candidate-blacklist.entity';
 import { UserHostingService } from '@biz/user/services/user-hosting.service';
 import { AlertNotifierService } from '@notification/services/alert-notifier.service';
 import { AlertLevel } from '@enums/alert.enum';
@@ -169,21 +169,32 @@ export class CandidateBlacklistFilterRule implements MessageFilterRule {
   }
 
   /**
-   * 命中黑名单的处置：永久暂停该会话托管 + 飞书告警（附拉黑理由）
+   * 命中黑名单的处置：永久暂停该会话托管 + 命中回溯落库 + 飞书告警（附拉黑理由）
    *
-   * 两步互不阻塞过滤主流程：失败仅记日志，消息仍按 historyOnly 处理。
+   * 各步互不阻塞过滤主流程：失败仅记日志，消息仍按 historyOnly 处理。
    */
   private async enforceBlacklist(
     messageData: EnterpriseMessageCallbackDto,
-    hit: CandidateBlacklistItem,
+    hit: CandidateBlacklistRecord,
   ): Promise<void> {
     try {
       await this.userHostingService.pauseUser(messageData.chatId, {
         permanent: true,
         reason: `候选人黑名单：${hit.reason}`,
+        source: 'candidate_blacklist',
       });
     } catch (error) {
       this.logger.error(`候选人黑名单命中后暂停托管失败 chatId=${messageData.chatId}`, error);
+    }
+
+    try {
+      await this.candidateBlacklistService.recordHit(hit.target_id, {
+        chatId: messageData.chatId,
+        botId: messageData.imBotId,
+        messageId: messageData.messageId,
+      });
+    } catch (error) {
+      this.logger.error(`候选人黑名单命中回溯落库失败 targetId=${hit.target_id}`, error);
     }
 
     try {

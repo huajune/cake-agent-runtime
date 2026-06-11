@@ -17,9 +17,15 @@ export class UserController {
     @Param('userId') userId: string,
     @Body('permanent') permanent?: boolean,
     @Body('reason') reason?: string,
+    @Body('operator') operator?: string,
   ) {
     this.logger.log(`暂停用户托管: ${userId}${permanent ? '（永久）' : ''}`);
-    await this.userHostingService.pauseUser(userId, { permanent, reason });
+    await this.userHostingService.pauseUser(userId, {
+      permanent,
+      reason,
+      operator,
+      source: 'manual',
+    });
     return {
       userId,
       isPaused: true,
@@ -62,7 +68,7 @@ export class UserController {
       await this.userHostingService.resumeUser(chatId);
       return { chatId, hostingEnabled: true, message: `用户 ${chatId} 的托管已启用` };
     } else {
-      await this.userHostingService.pauseUser(chatId);
+      await this.userHostingService.pauseUser(chatId, { source: 'manual' });
       return { chatId, hostingEnabled: false, message: `用户 ${chatId} 的托管已暂停` };
     }
   }

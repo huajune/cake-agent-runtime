@@ -37,6 +37,8 @@ export class UserHostingRepository extends BaseRepository {
       pause_expires_at: string | null;
       is_permanent: boolean | null;
       pause_reason: string | null;
+      pause_operator: string | null;
+      pause_source: string | null;
     }[]
   > {
     const nowIso = new Date().toISOString();
@@ -46,11 +48,15 @@ export class UserHostingRepository extends BaseRepository {
       pause_expires_at: string | null;
       is_permanent: boolean | null;
       pause_reason: string | null;
-    }>('user_id,paused_at,pause_expires_at,is_permanent,pause_reason', (q) =>
-      q
-        .eq('is_paused', true)
-        .or(`is_permanent.eq.true,pause_expires_at.gt.${nowIso}`)
-        .order('paused_at', { ascending: false }),
+      pause_operator: string | null;
+      pause_source: string | null;
+    }>(
+      'user_id,paused_at,pause_expires_at,is_permanent,pause_reason,pause_operator,pause_source',
+      (q) =>
+        q
+          .eq('is_paused', true)
+          .or(`is_permanent.eq.true,pause_expires_at.gt.${nowIso}`)
+          .order('paused_at', { ascending: false }),
     );
   }
 
@@ -66,6 +72,8 @@ export class UserHostingRepository extends BaseRepository {
       pauseExpiresAt: string | null;
       isPermanent: boolean;
       reason?: string;
+      operator?: string;
+      source?: string;
     },
   ): Promise<void> {
     await this.upsert(
@@ -76,6 +84,8 @@ export class UserHostingRepository extends BaseRepository {
         pause_expires_at: params.pauseExpiresAt,
         is_permanent: params.isPermanent,
         pause_reason: params.reason ?? null,
+        pause_operator: params.operator ?? null,
+        pause_source: params.source ?? null,
         pause_count: 1,
       },
       { onConflict: 'user_id', returnData: false },
@@ -83,7 +93,7 @@ export class UserHostingRepository extends BaseRepository {
   }
 
   /**
-   * 更新用户为恢复托管状态（清空解禁时间、永久标记与理由）
+   * 更新用户为恢复托管状态（清空解禁时间、永久标记、理由与审计字段）
    */
   async updateResume(userId: string): Promise<void> {
     await this.update<UserHostingStatus>(
@@ -93,6 +103,8 @@ export class UserHostingRepository extends BaseRepository {
         pause_expires_at: null,
         is_permanent: false,
         pause_reason: null,
+        pause_operator: null,
+        pause_source: null,
       },
       (q) => q.eq('user_id', userId),
     );

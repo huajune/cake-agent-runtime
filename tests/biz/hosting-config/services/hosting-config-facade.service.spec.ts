@@ -189,6 +189,8 @@ describe('HostingConfigFacadeService', () => {
       expect(mockUserHostingService.pauseUser).toHaveBeenCalledWith('user1', {
         permanent: undefined,
         reason: undefined,
+        operator: undefined,
+        source: 'manual',
       });
       expect(mockGroupBlacklistService.addGroupToBlacklist).not.toHaveBeenCalled();
     });
@@ -196,12 +198,14 @@ describe('HostingConfigFacadeService', () => {
     it('should pause user permanently when permanent flag is set', async () => {
       mockUserHostingService.pauseUser.mockResolvedValue(undefined);
 
-      const result = await service.addToBlacklist('user1', 'chatId', '店长微信', true);
+      const result = await service.addToBlacklist('user1', 'chatId', '店长微信', true, '小王');
 
       expect(result.message).toBe('用户 user1 已永久禁止托管');
       expect(mockUserHostingService.pauseUser).toHaveBeenCalledWith('user1', {
         permanent: true,
         reason: '店长微信',
+        operator: '小王',
+        source: 'manual',
       });
     });
 
@@ -267,16 +271,22 @@ describe('HostingConfigFacadeService', () => {
       expect(result.candidates).toHaveLength(1);
     });
 
-    it('should add candidate to blacklist with reason and operator', async () => {
+    it('should add candidate to blacklist with reason and audit snapshot', async () => {
       mockCandidateBlacklistService.addCandidateToBlacklist.mockResolvedValue(undefined);
 
-      const result = await service.addCandidateToBlacklist('contact-1', '恶意刷岗', '小王');
+      const result = await service.addCandidateToBlacklist({
+        targetId: 'contact-1',
+        reason: '恶意刷岗',
+        operator: '小王',
+        chatId: 'chat-1',
+      });
 
-      expect(mockCandidateBlacklistService.addCandidateToBlacklist).toHaveBeenCalledWith(
-        'contact-1',
-        '恶意刷岗',
-        '小王',
-      );
+      expect(mockCandidateBlacklistService.addCandidateToBlacklist).toHaveBeenCalledWith({
+        targetId: 'contact-1',
+        reason: '恶意刷岗',
+        operator: '小王',
+        chatId: 'chat-1',
+      });
       expect(result.message).toContain('contact-1');
     });
 

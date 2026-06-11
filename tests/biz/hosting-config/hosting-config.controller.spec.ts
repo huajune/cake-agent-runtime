@@ -116,7 +116,13 @@ describe('HostingConfigController', () => {
 
       const result = await controller.addToBlacklist(body);
 
-      expect(facade.addToBlacklist).toHaveBeenCalledWith('chat-123', 'chatId', 'Spam', undefined);
+      expect(facade.addToBlacklist).toHaveBeenCalledWith(
+        'chat-123',
+        'chatId',
+        'Spam',
+        undefined,
+        undefined,
+      );
       expect(result).toEqual(mockResult);
     });
 
@@ -126,7 +132,13 @@ describe('HostingConfigController', () => {
 
       await controller.addToBlacklist(body);
 
-      expect(facade.addToBlacklist).toHaveBeenCalledWith('chat-123', 'chatId', '店长微信', true);
+      expect(facade.addToBlacklist).toHaveBeenCalledWith(
+        'chat-123',
+        'chatId',
+        '店长微信',
+        true,
+        undefined,
+      );
     });
 
     it('should add groupId to blacklist without reason', async () => {
@@ -138,6 +150,7 @@ describe('HostingConfigController', () => {
       expect(facade.addToBlacklist).toHaveBeenCalledWith(
         'group-456',
         'groupId',
+        undefined,
         undefined,
         undefined,
       );
@@ -156,12 +169,19 @@ describe('HostingConfigController', () => {
     });
 
     it('should add candidate to blacklist via facade', async () => {
-      const body = { targetId: 'c-1', reason: '恶意刷岗', operator: '小王' };
+      const body = { targetId: 'c-1', reason: '恶意刷岗', operator: '小王', chatId: 'chat-1' };
       mockFacadeService.addCandidateToBlacklist.mockResolvedValue({ message: 'ok' });
 
       await controller.addCandidateToBlacklist(body);
 
-      expect(facade.addCandidateToBlacklist).toHaveBeenCalledWith('c-1', '恶意刷岗', '小王');
+      expect(facade.addCandidateToBlacklist).toHaveBeenCalledWith({
+        targetId: 'c-1',
+        reason: '恶意刷岗',
+        operator: '小王',
+        chatId: 'chat-1',
+        imContactId: undefined,
+        contactName: undefined,
+      });
     });
 
     it('should remove candidate from blacklist via facade', async () => {

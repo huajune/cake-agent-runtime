@@ -87,7 +87,10 @@ export class InterventionService {
       };
     }
 
-    await this.userHostingService.pauseUser(payload.pauseTargetId);
+    await this.userHostingService.pauseUser(payload.pauseTargetId, {
+      source: 'intervention',
+      reason: payload.kind === 'conversation_risk' ? '会话风险人工介入' : '人工介入暂停',
+    });
 
     // handoff 运行时状态只用 pause 一层（recruitment_cases 状态机已废弃，不再 markHandoff）。
     // 触发分析价值沉到 handoff_events + ops_events.handoff.triggered。

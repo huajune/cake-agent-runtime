@@ -114,6 +114,11 @@ export class AddToBlacklistDto {
   @IsOptional()
   @IsBoolean()
   permanent?: boolean;
+
+  /** 操作人（供回溯） */
+  @IsOptional()
+  @IsString()
+  operator?: string;
 }
 
 export class RemoveFromBlacklistDto {
@@ -138,6 +143,19 @@ export class AddCandidateBlacklistDto {
   @IsOptional()
   @IsString()
   operator?: string;
+
+  /** 拉黑时的会话快照（可选，供回溯） */
+  @IsOptional()
+  @IsString()
+  chatId?: string;
+
+  @IsOptional()
+  @IsString()
+  imContactId?: string;
+
+  @IsOptional()
+  @IsString()
+  contactName?: string;
 }
 
 export class RemoveCandidateBlacklistDto {

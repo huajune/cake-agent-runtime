@@ -1,7 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '@infra/redis/redis.service';
 import { CandidateBlacklistRepository } from '../repositories/candidate-blacklist.repository';
-import { CandidateBlacklistItem } from '../entities/candidate-blacklist.entity';
+import {
+  AddCandidateBlacklistParams,
+  CandidateBlacklistHit,
+  CandidateBlacklistRecord,
+} from '../entities/candidate-blacklist.entity';
 
 /**
  * 候选人黑名单 Service
@@ -9,21 +13,23 @@ import { CandidateBlacklistItem } from '../entities/candidate-blacklist.entity';
  * 运营拉黑候选人微信后，任一托管账号再次收到该候选人消息时，
  * 消息过滤层会命中黑名单 → 飞书告警（附拉黑理由）+ 永久取消该会话托管。
  *
- * 缓存结构与小组黑名单一致：
+ * 数据持久化在独立表 candidate_blacklist（含操作人/拉黑快照/命中回溯字段）。
+ * 命中判定走读路径缓存（每条入站消息都会查询）：
  * - L1：本地内存 Map（1 秒热缓存）
  * - L2：Redis 共享快照
- * - L3：Supabase system_config 表（持久化）
+ * - L3：Supabase candidate_blacklist 表
+ * 管理列表（getCandidateBlacklist）直接读 DB，保证命中回溯字段实时。
  */
 @Injectable()
 export class CandidateBlacklistService {
   private readonly logger = new Logger(CandidateBlacklistService.name);
 
-  private static readonly SHARED_CACHE_KEY = 'hosting:blacklist:candidates:v1';
+  private static readonly SHARED_CACHE_KEY = 'hosting:blacklist:candidates:v2';
 
   private readonly CACHE_TTL_MS = 1_000; // 1 second local hot cache
 
-  // L1: Memory cache
-  private readonly memoryCache = new Map<string, CandidateBlacklistItem>();
+  // L1: Memory cache (target_id -> record)
+  private readonly memoryCache = new Map<string, CandidateBlacklistRecord>();
   private memoryCacheExpiry = 0;
 
   constructor(
@@ -41,7 +47,7 @@ export class CandidateBlacklistService {
    */
   async matchBlacklisted(
     targetIds: ReadonlyArray<string | null | undefined>,
-  ): Promise<CandidateBlacklistItem | null> {
+  ): Promise<CandidateBlacklistRecord | null> {
     await this.ensureFreshCache();
 
     for (const id of targetIds) {
@@ -55,45 +61,32 @@ export class CandidateBlacklistService {
   }
 
   /**
-   * 获取完整黑名单列表（带内存缓存）
+   * 获取完整黑名单列表（直接读 DB，保证命中回溯字段实时），并顺手回填缓存
    */
-  async getCandidateBlacklist(): Promise<CandidateBlacklistItem[]> {
-    await this.ensureFreshCache();
-
-    return Array.from(this.memoryCache.values());
+  async getCandidateBlacklist(): Promise<CandidateBlacklistRecord[]> {
+    const items = await this.candidateBlacklistRepository.findAll();
+    this.populateMemoryCache(items);
+    await this.persistSharedCache();
+    return items;
   }
 
   // ==================== 黑名单写操作 ====================
 
   /**
-   * 拉黑候选人，同步更新内存和数据库
+   * 拉黑候选人（记录操作人与会话快照），写库后刷新缓存
    */
-  async addCandidateToBlacklist(
-    targetId: string,
-    reason: string,
-    operator?: string,
-  ): Promise<void> {
-    await this.ensureFreshCache();
-
-    const item: CandidateBlacklistItem = {
-      target_id: targetId,
-      reason,
-      operator,
-      added_at: Date.now(),
-    };
-
-    this.memoryCache.set(targetId, item);
-    this.memoryCacheExpiry = Date.now() + this.CACHE_TTL_MS;
-    await this.persistCache();
-    await this.persistSharedCache();
+  async addCandidateToBlacklist(params: AddCandidateBlacklistParams): Promise<void> {
+    await this.candidateBlacklistRepository.upsertItem(params);
+    await this.refreshCache();
 
     this.logger.log(
-      `[候选人黑名单] 已拉黑 ${targetId} (理由: ${reason}${operator ? `, 操作人: ${operator}` : ''})`,
+      `[候选人黑名单] 已拉黑 ${params.targetId} (理由: ${params.reason}` +
+        `${params.operator ? `, 操作人: ${params.operator}` : ''})`,
     );
   }
 
   /**
-   * 从黑名单移除候选人，同步更新内存和数据库
+   * 从黑名单移除候选人，写库后刷新缓存
    *
    * 注意：命中黑名单时对会话施加的永久暂停不会随之解除，
    * 需运营在暂停托管列表中手动恢复。
@@ -101,19 +94,23 @@ export class CandidateBlacklistService {
    * @returns 如果候选人原本在黑名单中则返回 true，否则返回 false
    */
   async removeCandidateFromBlacklist(targetId: string): Promise<boolean> {
-    await this.ensureFreshCache();
+    const deleted = await this.candidateBlacklistRepository.deleteByTargetId(targetId);
+    await this.refreshCache();
 
-    if (!this.memoryCache.has(targetId)) {
-      return false;
+    if (deleted > 0) {
+      this.logger.log(`[候选人黑名单] 已移除 ${targetId}`);
+      return true;
     }
+    return false;
+  }
 
-    this.memoryCache.delete(targetId);
-    this.memoryCacheExpiry = Date.now() + this.CACHE_TTL_MS;
-    await this.persistCache();
-    await this.persistSharedCache();
-
-    this.logger.log(`[候选人黑名单] 已移除 ${targetId}`);
-    return true;
+  /**
+   * 记录一次命中（哪个托管号在哪个会话聊到了该候选人），供回溯
+   *
+   * 仅更新 DB，命中字段不参与命中判定，缓存延迟可接受。
+   */
+  async recordHit(targetId: string, hit: CandidateBlacklistHit): Promise<void> {
+    await this.candidateBlacklistRepository.recordHit(targetId, hit);
   }
 
   // ==================== 缓存管理 ====================
@@ -124,7 +121,6 @@ export class CandidateBlacklistService {
   async refreshCache(): Promise<void> {
     this.memoryCacheExpiry = 0;
     await this.loadCandidateBlacklist();
-    this.logger.log('候选人黑名单缓存已刷新');
   }
 
   /**
@@ -132,10 +128,10 @@ export class CandidateBlacklistService {
    */
   async loadCandidateBlacklist(): Promise<void> {
     try {
-      const items = await this.candidateBlacklistRepository.loadBlacklistFromDb();
+      const items = await this.candidateBlacklistRepository.findAll();
       this.populateMemoryCache(items);
       await this.persistSharedCache();
-      this.logger.log(`已加载 ${this.memoryCache.size} 个黑名单候选人`);
+      this.logger.debug(`已加载 ${this.memoryCache.size} 个黑名单候选人`);
     } catch (error) {
       this.logger.error('加载候选人黑名单失败', error);
       // Back off for 30 seconds before the next retry attempt
@@ -163,7 +159,7 @@ export class CandidateBlacklistService {
     await this.loadCandidateBlacklist();
   }
 
-  private populateMemoryCache(items: CandidateBlacklistItem[]): void {
+  private populateMemoryCache(items: CandidateBlacklistRecord[]): void {
     this.memoryCache.clear();
     for (const item of items) {
       this.memoryCache.set(item.target_id, item);
@@ -171,30 +167,13 @@ export class CandidateBlacklistService {
     this.memoryCacheExpiry = Date.now() + this.CACHE_TTL_MS;
   }
 
-  /**
-   * 将当前内存缓存持久化到数据库
-   */
-  private async persistCache(): Promise<void> {
-    const blacklistArray = Array.from(this.memoryCache.values());
-
+  private async readSharedCache(): Promise<CandidateBlacklistRecord[] | null> {
     try {
-      await this.candidateBlacklistRepository.saveBlacklistToDb(blacklistArray);
-    } catch (error) {
-      this.logger.error('保存候选人黑名单到数据库失败', error);
-    }
-  }
-
-  private async readSharedCache(): Promise<CandidateBlacklistItem[] | null> {
-    try {
-      const cached = await this.redisService.get<
-        CandidateBlacklistItem[] | { items: CandidateBlacklistItem[] }
-      >(CandidateBlacklistService.SHARED_CACHE_KEY);
+      const cached = await this.redisService.get<{ items: CandidateBlacklistRecord[] }>(
+        CandidateBlacklistService.SHARED_CACHE_KEY,
+      );
       if (!cached) {
         return null;
-      }
-
-      if (Array.isArray(cached)) {
-        return cached;
       }
 
       return Array.isArray(cached.items) ? cached.items : null;

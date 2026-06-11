@@ -13,6 +13,8 @@ interface PausedUserCacheEntry {
   expiresAt: number;
   permanent?: boolean;
   reason?: string;
+  operator?: string;
+  source?: string;
 }
 
 /**
@@ -24,6 +26,8 @@ interface SharedCacheEntry {
   expiresAt?: number;
   permanent?: boolean;
   reason?: string;
+  operator?: string;
+  source?: string;
 }
 
 /**
@@ -34,6 +38,10 @@ export interface PauseUserOptions {
   permanent?: boolean;
   /** 暂停理由（如候选人黑名单的拉黑理由），供运营查看 */
   reason?: string;
+  /** 操作人（运营手动暂停时记录，供回溯） */
+  operator?: string;
+  /** 暂停来源：manual / candidate_blacklist / interview_booking 等 */
+  source?: string;
 }
 
 /**
@@ -142,6 +150,8 @@ export class UserHostingService {
       expiresAt,
       permanent,
       reason: options?.reason,
+      operator: options?.operator,
+      source: options?.source,
     });
     this.cacheExpiry = Date.now() + this.CACHE_TTL_MS;
 
@@ -151,6 +161,8 @@ export class UserHostingService {
         pauseExpiresAt: permanent ? null : new Date(expiresAt).toISOString(),
         isPermanent: permanent,
         reason: options?.reason,
+        operator: options?.operator,
+        source: options?.source,
       });
       this.logger.log(
         permanent
@@ -206,6 +218,8 @@ export class UserHostingService {
       pauseExpiresAt: number | null;
       isPermanent: boolean;
       pauseReason?: string;
+      pauseOperator?: string;
+      pauseSource?: string;
       odName?: string;
       groupName?: string;
       botUserId?: string;
@@ -224,6 +238,8 @@ export class UserHostingService {
         pauseExpiresAt: entry.permanent ? null : entry.expiresAt,
         isPermanent: entry.permanent === true,
         pauseReason: entry.reason,
+        pauseOperator: entry.operator,
+        pauseSource: entry.source,
       }));
 
     if (pausedEntries.length === 0) {
@@ -414,6 +430,8 @@ export class UserHostingService {
           expiresAt,
           permanent,
           reason: row.pause_reason ?? undefined,
+          operator: row.pause_operator ?? undefined,
+          source: row.pause_source ?? undefined,
         });
       }
 
@@ -452,6 +470,8 @@ export class UserHostingService {
           : (entry.expiresAt ?? entry.pausedAt + PAUSE_DURATION_MS),
         permanent: entry.permanent,
         reason: entry.reason,
+        operator: entry.operator,
+        source: entry.source,
       });
     }
     this.cacheExpiry = Date.now() + this.CACHE_TTL_MS;
@@ -489,6 +509,8 @@ export class UserHostingService {
             expiresAt: entry.expiresAt,
             permanent: entry.permanent,
             reason: entry.reason,
+            operator: entry.operator,
+            source: entry.source,
           })),
         updatedAt: now,
       });

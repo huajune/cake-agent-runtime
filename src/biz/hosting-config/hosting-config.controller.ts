@@ -80,7 +80,13 @@ export class HostingConfigController {
   @Post('blacklist')
   @HttpCode(200)
   async addToBlacklist(@Body() body: AddToBlacklistDto) {
-    return this.facade.addToBlacklist(body.id, body.type, body.reason, body.permanent);
+    return this.facade.addToBlacklist(
+      body.id,
+      body.type,
+      body.reason,
+      body.permanent,
+      body.operator,
+    );
   }
 
   @Delete('blacklist')
@@ -98,7 +104,14 @@ export class HostingConfigController {
   @Post('candidate-blacklist')
   @HttpCode(200)
   async addCandidateToBlacklist(@Body() body: AddCandidateBlacklistDto) {
-    return this.facade.addCandidateToBlacklist(body.targetId, body.reason, body.operator);
+    return this.facade.addCandidateToBlacklist({
+      targetId: body.targetId,
+      reason: body.reason,
+      operator: body.operator,
+      chatId: body.chatId,
+      imContactId: body.imContactId,
+      contactName: body.contactName,
+    });
   }
 
   @Delete('candidate-blacklist')

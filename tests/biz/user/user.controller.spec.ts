@@ -43,6 +43,8 @@ describe('UserController (biz/user)', () => {
       expect(userHostingService.pauseUser).toHaveBeenCalledWith(userId, {
         permanent: undefined,
         reason: undefined,
+        operator: undefined,
+        source: 'manual',
       });
       expect(result).toEqual({
         userId,
@@ -61,6 +63,8 @@ describe('UserController (biz/user)', () => {
       expect(userHostingService.pauseUser).toHaveBeenCalledWith(userId, {
         permanent: true,
         reason: '店长微信',
+        operator: undefined,
+        source: 'manual',
       });
       expect(result).toEqual({
         userId,
@@ -195,7 +199,7 @@ describe('UserController (biz/user)', () => {
 
       const result = await controller.toggleUserHosting(chatId, false);
 
-      expect(userHostingService.pauseUser).toHaveBeenCalledWith(chatId);
+      expect(userHostingService.pauseUser).toHaveBeenCalledWith(chatId, { source: 'manual' });
       expect(userHostingService.resumeUser).not.toHaveBeenCalled();
       expect(result).toEqual({
         chatId,

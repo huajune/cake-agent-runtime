@@ -82,7 +82,7 @@ describe('InterventionService', () => {
   it('pauses and notifies risk via ConversationRiskNotifierService', async () => {
     const result = await service.dispatch(riskPayload);
 
-    expect(userHostingService.pauseUser).toHaveBeenCalledWith('chat-1');
+    expect(userHostingService.pauseUser).toHaveBeenCalledWith('chat-1', expect.any(Object));
     expect(riskNotifier.notifyConversationRisk).toHaveBeenCalledWith(
       expect.objectContaining({
         riskLabel: '辱骂/攻击',
@@ -121,7 +121,7 @@ describe('InterventionService', () => {
 
     const result = await service.dispatch(generalPayload);
 
-    expect(userHostingService.pauseUser).toHaveBeenCalledWith('chat-1');
+    expect(userHostingService.pauseUser).toHaveBeenCalledWith('chat-1', expect.any(Object));
     expect(generalHandoffNotifier.notify).toHaveBeenCalledWith(
       expect.objectContaining({
         alertLabel: '需人工跟进',
