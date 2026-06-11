@@ -8,6 +8,148 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.14.0`
+**最近更新**: `2026-06-10`
+**来源分支**: `develop`
+**累计 PR**: 1
+
+### 更新摘要
+- PR #289 零结果类 errorType 映射为 empty 而非 error
+- PR #289 `job_list.no_results` / `job_list.schedule_filter_empty` → `empty`
+- PR #289 `job_list.fetch_failed` 等系统级失败保持 `error`
+- PR #289 副作用屏蔽逻辑不受影响（其只认 ok/narrow）
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #289 `job_list.no_results` / `job_list.schedule_filter_empty` → `empty`
+- PR #289 `job_list.fetch_failed` 等系统级失败保持 `error`
+- PR #289 副作用屏蔽逻辑不受影响（其只认 ok/narrow）
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #289 零结果类 errorType 映射为 empty 而非 error
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #289 tool-call-analysis.spec：38/38 通过（新增零结果映射 3 个断言）
+<!-- release:pending:end -->
+
+## [5.13.2] - 2026-06-10
+
+**来源分支**: `develop`
+
+### 更新摘要
+- PR #280 修正元数据 push 的 force-with-lease stale info
+- PR #279 修复 v5.13.1 发版全程暴露的四个自动化缺陷，此后 bot PR 不再需要人工 close/reopen 触发检查，元数据条目不再丢失，补偿模式推送认证正常，release PR 合并方式有明确引导
+- PR #282 dispatch 模式下用 commit status 满足必需检查
+
+### 新功能
+- 无
+
+### 问题修复
+- PR #280 修正元数据 push 的 force-with-lease stale info
+
+### 优化调整
+- 无
+
+### 运维与流程
+- PR #279 ci.yml 新增 workflow_dispatch 触发器；元数据 PR、固化 PR、回同步 PR 创建后主动在 bot 分支上派发 ci.yml，使 required check 正确落在 PR head SHA，不再依赖人工 close/reopen
+- PR #279 分支重建前先从未合并的元数据 PR 分支恢复三个元数据文件再追加，防止累计发版条目被覆盖丢失（v5.13.1 期间 #270/#271 曾两次丢失需手工补录）
+- PR #279 补偿模式（from_pr/to_pr）推送改为显式携带 GH_TOKEN 的 URL，修复 claude-code-action OIDC 模式覆写本地 git 凭证导致的推送认证失败
+- PR #279 release PR 与固化 PR body 明确标注必须使用 Squash and merge，避免因 master 线性历史规则导致 merge commit 被拒
+- PR #282 dispatch 模式下用 commit status 满足必需检查
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #280 YAML 通过 safe_load 校验
+- PR #280 合并后将用 workflow_dispatch（pr_number=279）补跑元数据，同时实测修复 3 的补偿链路
+- PR #279 两个 workflow YAML 通过 yaml.safe_load 校验
+- PR #279 build-release-pr-body.js 干跑输出正确包含合并方式提示行
+- PR #279 node --check 通过
+
+## [5.13.1] - 2026-06-10
+
+**来源分支**: `develop`
+
+### 更新摘要
+- PR #270 precheck 支持补充标签答案回填，打通 collect 型 supplement label 岗位的预约链路
+- PR #270 简历附件只认 URL/云存储 key，杜绝脏数据提交（工单 438358 事故修复）
+- PR #271 优雅停机：发版 SIGTERM 后排空 in-flight 消息再退出
+- PR #271 锁冲突补建延迟重检并续期 pending，孤悬锁过期后消息仍可接手
+- PR #271 卡住的 processing 记录改为每小时标记 timeout
+- PR #273 接客 bot 入群补偿后按退避间隔重试拉候选人
+- PR #274 无面试时段岗位支持等通知模式自助约面
+- PR #274 `interviewWindows` 为空 → 进入 `wait_notice` 模式：
+- PR #274 不评估 `requestedDate`（不再误判 `date_unavailable`）
+- PR #274 "面试时间"不进收资清单（含 `TEMPLATE_CORE_FIELDS` 强制骨架与 `apiPayloadGuide.requiredFields`）
+- PR #274 字段收齐即 `ready_to_book`，不需要 `confirm_date`
+- PR #274 新增返回 `interview.interviewTimeMode = "wait_notice"` + `interviewTimeModeNote` 话术指引（"报名后面试官会直接打电话联系，保持电话畅通"），并在工具 DESCRIPTION 硬规则中禁止因"没有时段"转人工
+- PR #274 `interviewTime` 改为可选：**仅**等通知岗位（无窗口）允许缺省；带窗口岗位缺省仍报 `BOOKING_MISSING_FIELDS`（指引回 precheck 拿 slot）
+- PR #274 缺省时：sponge payload 不带 `interviewTime`（与平台表单一致）、"面试时间"补充标签回填"等待通知"
+- PR #274 成功回复切换为"面试官电话联系"指引，不再输出到店脚本 `_onSiteScript`（电话面试无到店环节）
+- PR #274 监控通知 / ops 事件幂等键用 `wait_notice` 兜底
+
+### 新功能
+- PR #274 `interviewWindows` 为空 → 进入 `wait_notice` 模式：
+- PR #274 "面试时间"不进收资清单（含 `TEMPLATE_CORE_FIELDS` 强制骨架与 `apiPayloadGuide.requiredFields`）
+- PR #274 字段收齐即 `ready_to_book`，不需要 `confirm_date`
+- PR #274 新增返回 `interview.interviewTimeMode = "wait_notice"` + `interviewTimeModeNote` 话术指引（"报名后面试官会直接打电话联系，保持电话畅通"），并在工具 DESCRIPTION 硬规则中禁止因"没有时段"转人工
+- PR #274 `interviewTime` 改为可选：**仅**等通知岗位（无窗口）允许缺省；带窗口岗位缺省仍报 `BOOKING_MISSING_FIELDS`（指引回 precheck 拿 slot）
+- PR #274 缺省时：sponge payload 不带 `interviewTime`（与平台表单一致）、"面试时间"补充标签回填"等待通知"
+- PR #274 成功回复切换为"面试官电话联系"指引，不再输出到店脚本 `_onSiteScript`（电话面试无到店环节）
+- PR #274 无面试时段岗位支持等通知模式自助约面
+
+### 问题修复
+- PR #270 precheck 新增 candidateSupplementAnswers 入参并回填 collect 标签，避免 missingFields 永远不清空导致 booking 闸门拒绝
+- PR #270 事实提取与 booking 简历链路统一过滤：仅放行 http(s) URL 或云存储 key 形态
+- PR #271 开启 enableShutdownHooks，MessageProcessor 收到 SIGTERM 后先排空 in-flight 任务再退出（排空上限 SHUTDOWN_DRAIN_TIMEOUT_MS，默认 60s）
+- PR #271 锁冲突时补建 30s 延迟重检任务并续期 pending TTL，持锁进程被杀后消息不再随 TTL 过期丢失
+- PR #271 卡住的 processing 记录由每日凌晨一次改为每小时标记 timeout，看板不再长时间显示假"处理中"
+- PR #273 每轮重试前先 syncRoom 刷新接客 bot 群数据，再按 3s/5s/8s 退避重试；仅 room not found 瞬态错误参与重试
+- PR #274 不评估 `requestedDate`（不再误判 `date_unavailable`）
+- PR #274 监控通知 / ops 事件幂等键用 `wait_notice` 兜底
+
+### 优化调整
+- 无
+
+### 运维与流程
+- 无
+
+### 配置变更
+- PR #271 新增可选环境变量 SHUTDOWN_DRAIN_TIMEOUT_MS（默认 60000ms，应小于部署平台强杀宽限期）
+
+### 环境变量提醒
+- PR #271 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
+
+### 验证记录
+- PR #270 全量套件 287 suites / 3645 tests 通过
+- PR #270 新增回归：precheck supplement 回填 ×1、简历 URL 守卫 ×5（含工单 438358 复现用例）
+- PR #270 tsc --noEmit + eslint + prettier 通过
+- PR #271 相关 spec 41 个用例全部通过（新增 9 个）
+- PR #271 eslint / tsc --noEmit 通过
+- PR #273 invite-to-group spec 27 个用例全部通过
+- PR #273 eslint 通过
+- PR #274 新增 precheck wait_notice 用例 ×2（不判 date_unavailable / 收齐即 ready_to_book）
+- PR #274 新增 booking wait_notice 用例 ×2（无 interviewTime 成功提交 + 标签回填 / 带窗口岗位缺省仍拒）
+- PR #274 全量 `jest`：287 suites / 3648 tests 全绿；`tsc --noEmit` + ESLint 通过
+
 ## [5.13.0] - 2026-06-09
 
 **来源分支**: `develop`

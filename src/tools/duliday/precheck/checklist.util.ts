@@ -206,13 +206,22 @@ export function formatTemplateFieldLabel(field: string): string {
 export function buildChecklistTemplate(params: {
   requiredFields: string[];
   knownFieldMap: Record<string, string>;
+  /**
+   * 不进入收资清单的字段（已做 normalizeChecklistField 归一后比对）。
+   * 无面试时段（等通知）岗位用它剔除"面试时间"——该字段属于 TEMPLATE_CORE_FIELDS
+   * 强制骨架，仅从 requiredFields 过滤挡不住。
+   */
+  excludeFields?: readonly string[];
 }): {
   requiredFields: string[];
   displayOrder: string[];
   missingFields: string[];
   templateText: string;
 } {
-  const requiredFields = canonicalizeChecklistFields(params.requiredFields);
+  const excludedFields = new Set((params.excludeFields ?? []).map(normalizeChecklistField));
+  const requiredFields = canonicalizeChecklistFields(params.requiredFields).filter(
+    (field) => !excludedFields.has(field),
+  );
   const knownOptionalFields = Object.keys(params.knownFieldMap).filter(
     (field) =>
       !requiredFields.includes(field) &&
@@ -222,7 +231,7 @@ export function buildChecklistTemplate(params: {
   // 即使岗位 API 没把这些字段写进 requiredFields，也必须强制纳入展示——
   // badcase #2：API 漏了"姓名"，模板就把姓名整行删掉了，候选人按模板填一堆资料没填名字。
   const orderedFields = orderFields([
-    ...TEMPLATE_CORE_FIELDS,
+    ...TEMPLATE_CORE_FIELDS.filter((field) => !excludedFields.has(field)),
     ...requiredFields,
     ...knownOptionalFields,
   ]);

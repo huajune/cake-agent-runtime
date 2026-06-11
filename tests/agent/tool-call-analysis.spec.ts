@@ -1,11 +1,14 @@
 import {
+  buildSideEffectBlockNotice,
   buildToolCallLimitNotice,
   collectCalledToolNames,
   computeResultCount,
   computeToolCallStatus,
   countToolCallsByName,
+  findSucceededSideEffectTools,
   findToolsExceedingLimit,
   MAX_SAME_TOOL_CALLS_PER_TURN,
+  SIDE_EFFECT_TOOLS,
 } from '@agent/tool-call-analysis';
 
 describe('tool-call-analysis', () => {
@@ -40,6 +43,21 @@ describe('tool-call-analysis', () => {
       expect(computeResultCount({ message: 'ok' })).toBeUndefined();
       expect(computeResultCount({ total: 'not-a-number' })).toBeUndefined();
     });
+
+    it('prefers explicit resultCount field over other heuristics', () => {
+      // duliday_job_list 自报口径：{ markdown, queryMeta, resultCount }
+      expect(computeResultCount({ resultCount: 5, items: [1] })).toBe(5);
+      expect(computeResultCount({ resultCount: 0, markdown: '# 在招岗位（共 0 个）' })).toBe(0);
+    });
+
+    it('infers count from geocode resolution shape', () => {
+      expect(computeResultCount({ resolution: 'unique', result: { city: '北京市' } })).toBe(1);
+      expect(computeResultCount({ resolution: 'ambiguous', candidates: [{}, {}, {}] })).toBe(3);
+    });
+
+    it('reads candidates array container', () => {
+      expect(computeResultCount({ candidates: [{}, {}] })).toBe(2);
+    });
   });
 
   describe('computeToolCallStatus', () => {
@@ -62,10 +80,68 @@ describe('tool-call-analysis', () => {
       expect(computeToolCallStatus({ error: false }, 3)).toBe('ok');
     });
 
-    it('maps resultCount 0 → empty, 1 → narrow, ≥2 → ok', () => {
+    it('maps resultCount 0 → empty, ≥2 → ok', () => {
       expect(computeToolCallStatus({ items: [] }, 0)).toBe('empty');
-      expect(computeToolCallStatus({ items: [{}] }, 1)).toBe('narrow');
       expect(computeToolCallStatus({ items: [{}, {}] }, 2)).toBe('ok');
+    });
+
+    it('narrow only applies to search tools; single result elsewhere is ok', () => {
+      expect(
+        computeToolCallStatus({ resultCount: 1 }, 1, undefined, undefined, 'duliday_job_list'),
+      ).toBe('narrow');
+      // geocode unique 命中 1 条是正常形态，不应标 narrow
+      expect(
+        computeToolCallStatus({ resolution: 'unique' }, 1, undefined, undefined, 'geocode'),
+      ).toBe('ok');
+      // 未传 toolName 时保守不标 narrow
+      expect(computeToolCallStatus({ items: [{}] }, 1)).toBe('ok');
+    });
+
+    it('detects buildToolError shape as error', () => {
+      // buildToolError: { [successKey]: false, errorType, _replyInstruction }
+      expect(
+        computeToolCallStatus(
+          { success: false, errorType: 'precheck.job_not_found', _replyInstruction: '...' },
+          undefined,
+        ),
+      ).toBe('error');
+      expect(
+        computeToolCallStatus({ accepted: false, errorType: 'invite.no_group' }, undefined),
+      ).toBe('error');
+      expect(computeToolCallStatus({ errorType: 'geocode.unresolved_address' }, undefined)).toBe(
+        'error',
+      );
+    });
+
+    it('maps zero-result errorTypes to empty instead of error', () => {
+      // 查询成功但零结果的业务空态：走 buildToolError 通道但语义是 empty
+      expect(
+        computeToolCallStatus(
+          { success: false, errorType: 'job_list.no_results', _replyInstruction: '...' },
+          undefined,
+          undefined,
+          undefined,
+          'duliday_job_list',
+        ),
+      ).toBe('empty');
+      expect(
+        computeToolCallStatus(
+          { success: false, errorType: 'job_list.schedule_filter_empty' },
+          undefined,
+        ),
+      ).toBe('empty');
+      // 系统级失败仍是 error
+      expect(computeToolCallStatus({ success: false, errorType: 'job_list.fetch_failed' }, undefined)).toBe(
+        'error',
+      );
+    });
+
+    it('maps success flags to ok when count is not inferable', () => {
+      expect(
+        computeToolCallStatus({ success: true, newStage: 'job_consultation' }, undefined),
+      ).toBe('ok');
+      expect(computeToolCallStatus({ accepted: true, code: null }, undefined)).toBe('ok');
+      expect(computeToolCallStatus({ skipped: true, reason: '纯确认词' }, undefined)).toBe('ok');
     });
 
     it('returns unknown when resultCount cannot be inferred', () => {
@@ -118,10 +194,7 @@ describe('tool-call-analysis', () => {
     });
 
     it('ignores steps without toolCalls and invalid entries', () => {
-      const steps = [
-        {},
-        { toolCalls: [{ toolName: '' }, { toolName: 'skip_reply' }] },
-      ];
+      const steps = [{}, { toolCalls: [{ toolName: '' }, { toolName: 'skip_reply' }] }];
       expect(collectCalledToolNames(steps)).toEqual(new Set(['skip_reply']));
     });
   });
@@ -153,6 +226,73 @@ describe('tool-call-analysis', () => {
     it('defaults to MAX_SAME_TOOL_CALLS_PER_TURN', () => {
       const steps = Array.from({ length: MAX_SAME_TOOL_CALLS_PER_TURN }, () => callStep('x'));
       expect(findToolsExceedingLimit(steps)).toEqual(['x']);
+    });
+  });
+
+  describe('findSucceededSideEffectTools', () => {
+    it('returns empty when no side-effect tools were called', () => {
+      const steps = [
+        { toolResults: [{ toolName: 'duliday_job_list', output: { resultCount: 3 } }] },
+      ];
+      expect(findSucceededSideEffectTools(steps)).toEqual([]);
+    });
+
+    it('returns side-effect tools that succeeded', () => {
+      const steps = [
+        {
+          toolResults: [
+            { toolName: 'duliday_interview_booking', output: { success: true, workOrderId: 1 } },
+          ],
+        },
+      ];
+      expect(findSucceededSideEffectTools(steps)).toEqual(['duliday_interview_booking']);
+    });
+
+    it('does not block retry after a failed side-effect call', () => {
+      // buildToolError 形态：失败调用允许模型修正参数后重试
+      const steps = [
+        {
+          toolResults: [
+            {
+              toolName: 'duliday_interview_booking',
+              output: { success: false, errorType: 'booking.missing_fields' },
+            },
+          ],
+        },
+      ];
+      expect(findSucceededSideEffectTools(steps)).toEqual([]);
+    });
+
+    it('does not block when result status is unknown or empty (conservative retry)', () => {
+      const steps = [
+        // 结构不可识别 → unknown：不视为成功，放行重试
+        { toolResults: [{ toolName: 'duliday_interview_booking', output: { foo: 'bar' } }] },
+        // resultCount 0 → empty：同样不视为副作用已生效
+        { toolResults: [{ toolName: 'invite_to_group', output: { resultCount: 0 } }] },
+      ];
+      expect(findSucceededSideEffectTools(steps)).toEqual([]);
+    });
+
+    it('dedupes across steps and covers all registered side-effect tools', () => {
+      const steps = [
+        { toolResults: [{ toolName: 'invite_to_group', output: { accepted: true } }] },
+        { toolResults: [{ toolName: 'invite_to_group', output: { accepted: true } }] },
+      ];
+      expect(findSucceededSideEffectTools(steps)).toEqual(['invite_to_group']);
+      expect(SIDE_EFFECT_TOOLS.has('duliday_cancel_work_order')).toBe(true);
+      expect(SIDE_EFFECT_TOOLS.has('duliday_modify_interview_time')).toBe(true);
+    });
+  });
+
+  describe('buildSideEffectBlockNotice', () => {
+    it('returns empty string when nothing blocked', () => {
+      expect(buildSideEffectBlockNotice([])).toBe('');
+    });
+
+    it('renders one line per blocked tool', () => {
+      const notice = buildSideEffectBlockNotice(['duliday_interview_booking']);
+      expect(notice).toContain('duliday_interview_booking');
+      expect(notice).toContain('不可重复调用');
     });
   });
 

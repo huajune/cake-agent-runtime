@@ -9,10 +9,12 @@ import { MemoryService } from '@memory/memory.service';
 import { AgentPreparationService, type PreparedAgentContext } from './agent-preparation.service';
 import type { AgentError } from '@shared-types/agent-error.types';
 import {
+  buildSideEffectBlockNotice,
   buildToolCallLimitNotice,
   collectCalledToolNames,
   computeResultCount,
   computeToolCallStatus,
+  findSucceededSideEffectTools,
   findToolsExceedingLimit,
   MAX_SAME_TOOL_CALLS_PER_TURN,
 } from './tool-call-analysis';
@@ -169,6 +171,7 @@ export class AgentRunnerService {
         memorySnapshot: ctx.memorySnapshot,
         stepStartMs,
         stepEndWallclocks,
+        toolExecutionTimings: ctx.toolExecutionTimings,
       });
 
       result = await this.recoverEmptyTextResult(result, ctx, params);
@@ -241,6 +244,7 @@ export class AgentRunnerService {
             memorySnapshot: ctx.memorySnapshot,
             stepStartMs,
             stepEndWallclocks,
+            toolExecutionTimings: ctx.toolExecutionTimings,
           });
           this.attachTurnEnd(result, ctx, params.messageId, text, params.deferTurnEnd);
           if (params.onFinish) {
@@ -271,11 +275,13 @@ export class AgentRunnerService {
   /**
    * 构造 prepareStep 钩子：动态屏蔽工具以收敛本轮行为。
    *
-   * 两类屏蔽规则：
+   * 三类屏蔽规则：
    * 1. **同名工具调用超限**：单轮同一工具 ≥ MAX_SAME_TOOL_CALLS_PER_TURN 次时屏蔽
    *    （典型如 duliday_job_list 用不稳定字段反复扩面）。
    * 2. **skip_reply 互斥**：本轮只要已经调用过任何其它工具，禁止再调 skip_reply——
    *    沉默只能发生在完全没有业务动作的轮次，已有动作后的沉默属于误用。
+   * 3. **副作用工具成功后屏蔽**：booking/invite/cancel/modify 本轮已成功执行一次后
+   *    禁止重复调用（防重复提交预约等）；失败后的重试不受限（允许修正参数自纠错）。
    *
    * 屏蔽方式 = activeTools 白名单移除 + system 末尾拼拦截说明。备选方案 stopWhen
    * 会直接结束整轮，可能导致没有最终回复输出；prepareStep 让模型仍能用其他工具或
@@ -297,18 +303,28 @@ export class AgentRunnerService {
       const skipReplyBlocked =
         hasBusinessAction && baseTools.includes(SKIP_REPLY_TOOL_NAME) ? [SKIP_REPLY_TOOL_NAME] : [];
 
-      const blocked = Array.from(new Set([...overused, ...skipReplyBlocked]));
+      // 副作用工具本轮已成功执行 → 屏蔽，防止重复提交
+      const sideEffectBlocked = findSucceededSideEffectTools(steps).filter((name) =>
+        baseTools.includes(name),
+      );
+
+      const blocked = Array.from(new Set([...overused, ...skipReplyBlocked, ...sideEffectBlocked]));
       if (blocked.length === 0) return {};
 
       const activeTools = baseTools.filter((name) => !blocked.includes(name));
       const noticeParts: string[] = [];
-      const overuseNotice = buildToolCallLimitNotice(overused, MAX_SAME_TOOL_CALLS_PER_TURN);
+      const overuseNotice = buildToolCallLimitNotice(
+        overused.filter((name) => !sideEffectBlocked.includes(name)),
+        MAX_SAME_TOOL_CALLS_PER_TURN,
+      );
       if (overuseNotice) noticeParts.push(overuseNotice);
       if (skipReplyBlocked.length > 0) {
         noticeParts.push(
           `⚠️ 系统拦截：本轮已发生业务工具调用，不可再调用 \`${SKIP_REPLY_TOOL_NAME}\`。沉默仅适用于本轮完全无业务动作且候选人仅发确认词的场景。`,
         );
       }
+      const sideEffectNotice = buildSideEffectBlockNotice(sideEffectBlocked);
+      if (sideEffectNotice) noticeParts.push(sideEffectNotice);
       const system =
         noticeParts.length > 0 ? `${baseSystem}\n\n${noticeParts.join('\n')}` : baseSystem;
 
@@ -436,6 +452,11 @@ export class AgentRunnerService {
      * 导致 durationMs 出现 1000ms 整数倍的假象）。
      */
     stepEndWallclocks?: number[];
+    /**
+     * toolCallId → 工具 execute 真实耗时（由 preparation 的 timing wrapper 记录）。
+     * 命中时 AgentToolCall.durationMs 用真实执行时间；缺失时退回步骤墙钟近似。
+     */
+    toolExecutionTimings?: Map<string, number>;
   }): AgentRunResult {
     const agentSteps: AgentStepDetail[] = [];
     const toolCalls: AgentToolCall[] = [];
@@ -455,12 +476,21 @@ export class AgentRunnerService {
           const tr = step.toolResults?.find((t) => t.toolCallId === tc.toolCallId);
           const result = (tr as { output?: unknown } | undefined)?.output;
           const resultCount = computeResultCount(result);
-          const status = computeToolCallStatus(result, resultCount);
-          // 单步中只有一个工具时，把 stepDurationMs 归给这个工具
+          const status = computeToolCallStatus(
+            result,
+            resultCount,
+            undefined,
+            undefined,
+            tc.toolName,
+          );
+          // 优先用 timing wrapper 记录的真实执行耗时；
+          // 缺失时退回旧近似（单工具步的步骤墙钟，含 LLM 思考时间）
+          const executionMs = params.toolExecutionTimings?.get(tc.toolCallId);
           const durationMs =
-            stepDurationMs !== undefined && step.toolCalls.length === 1
+            executionMs ??
+            (stepDurationMs !== undefined && step.toolCalls.length === 1
               ? stepDurationMs
-              : undefined;
+              : undefined);
 
           const call: AgentToolCall = {
             toolName: tc.toolName,

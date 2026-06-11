@@ -8,12 +8,10 @@ import { AlertCardRenderer } from './renderers/alert-card.renderer';
 import { BookingCardRenderer } from './renderers/booking-card.renderer';
 import { ConversationRiskCardRenderer } from './renderers/conversation-risk-card.renderer';
 import { GeneralHandoffCardRenderer } from './renderers/general-handoff-card.renderer';
-import { OnboardFollowupCardRenderer } from './renderers/onboard-followup-card.renderer';
 import { OpsCardRenderer } from './renderers/ops-card.renderer';
 import { AlertNotifierService } from './services/alert-notifier.service';
 import { ConversationRiskNotifierService } from './services/conversation-risk-notifier.service';
 import { GeneralHandoffNotifierService } from './services/general-handoff-notifier.service';
-import { OnboardFollowupNotifierService } from './services/onboard-followup-notifier.service';
 import { OpsNotifierService } from './services/ops-notifier.service';
 import { PrivateChatMonitorNotifierService } from './services/private-chat-monitor-notifier.service';
 import { ReplyFactGuardNotifierService } from './services/reply-fact-guard-notifier.service';
@@ -29,12 +27,10 @@ import { ReplyFactGuardNotifierService } from './services/reply-fact-guard-notif
     BookingCardRenderer,
     ConversationRiskCardRenderer,
     GeneralHandoffCardRenderer,
-    OnboardFollowupCardRenderer,
     OpsCardRenderer,
     AlertNotifierService,
     ConversationRiskNotifierService,
     GeneralHandoffNotifierService,
-    OnboardFollowupNotifierService,
     OpsNotifierService,
     PrivateChatMonitorNotifierService,
     ReplyFactGuardNotifierService,
@@ -43,7 +39,6 @@ import { ReplyFactGuardNotifierService } from './services/reply-fact-guard-notif
     AlertNotifierService,
     ConversationRiskNotifierService,
     GeneralHandoffNotifierService,
-    OnboardFollowupNotifierService,
     OpsNotifierService,
     PrivateChatMonitorNotifierService,
     ReplyFactGuardNotifierService,

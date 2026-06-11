@@ -397,6 +397,89 @@ describe('buildInterviewBookingTool', () => {
     );
   });
 
+  describe('wait_notice（岗位未配置面试时段，等通知）', () => {
+    it('should book without interviewTime for jobs without interview windows', async () => {
+      // 默认 makeJob 无任何面试窗口（等通知岗位）；带"面试时间"标签验证回填"等待通知"
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJob({
+            interviewProcess: {
+              interviewSupplement: [{ interviewSupplementId: 5, interviewSupplement: '面试时间' }],
+            },
+          }),
+        ],
+      });
+      mockSpongeService.bookInterview.mockResolvedValue({
+        success: true,
+        code: 0,
+        message: '预约成功',
+        notice: null,
+        errorList: null,
+      });
+
+      const { interviewTime, ...inputWithoutTime } = validInput;
+      void interviewTime;
+      const result = await executeTool(inputWithoutTime);
+      await flushAsyncEvents();
+
+      expect(result.success).toBe(true);
+      const bookingPayload = mockSpongeService.bookInterview.mock.calls[0][0];
+      expect(bookingPayload.interviewTime).toBeUndefined();
+      // "面试时间"补充标签按平台口径回填"等待通知"
+      expect(bookingPayload.customerLabelList).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ labelName: '面试时间', value: '等待通知' }),
+        ]),
+      );
+      // 回复指引切换为"面试官电话联系"，没有时间点和到店脚本可复述
+      expect(result._confirmedInterviewTimeHuman).toContain('电话');
+      expect(result._waitNoticeReplyGuide).toContain('保持电话畅通');
+      expect(result._onSiteScript).toBeUndefined();
+      expect(mockPrivateChatNotifier.notifyInterviewBookingResult).toHaveBeenCalledWith(
+        expect.objectContaining({
+          interviewTime: '等待通知（面试官电话联系）',
+        }),
+      );
+    });
+
+    it('should still require interviewTime for jobs that have interview windows', async () => {
+      mockSpongeService.fetchJobs.mockResolvedValue({
+        jobs: [
+          makeJob({
+            interviewProcess: {
+              interviewSupplement: [],
+              firstInterview: {
+                periodicInterviewTimes: [
+                  {
+                    interviewWeekday: '每周五',
+                    interviewTimes: [
+                      {
+                        interviewStartTime: '13:30',
+                        interviewEndTime: '16:30',
+                        cycleDeadlineDay: '当天',
+                        cycleDeadlineEnd: '12:00',
+                      },
+                    ],
+                  },
+                ],
+                fixedInterviewTimes: [],
+              },
+            },
+          }),
+        ],
+      });
+
+      const { interviewTime, ...inputWithoutTime } = validInput;
+      void interviewTime;
+      const result = await executeTool(inputWithoutTime);
+
+      expect(result.success).toBe(false);
+      expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_MISSING_FIELDS);
+      expect(result.missingFields).toEqual(['interviewTime']);
+      expect(mockSpongeService.bookInterview).not.toHaveBeenCalled();
+    });
+  });
+
   it('should build customerLabelList from real job supplements and candidate info', async () => {
     mockSpongeService.fetchJobs.mockResolvedValue({
       jobs: [

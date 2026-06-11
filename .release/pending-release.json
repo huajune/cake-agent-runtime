@@ -1,79 +1,123 @@
 {
-  "baseVersion": "5.13.0",
-  "nextVersion": "5.13.0",
-  "updatedAt": "2026-06-09",
+  "baseVersion": "5.13.2",
+  "nextVersion": "5.14.0",
+  "updatedAt": "2026-06-10",
   "sourceBranch": "develop",
-  "entries": [],
+  "entries": [
+    {
+      "number": "289",
+      "url": "https://github.com/huajune/cake-agent-runtime/pull/289",
+      "title": "零结果类 errorType 映射为 empty 而非 error",
+      "author": "ArielZhu",
+      "mergedAt": "2026-06-10",
+      "businessUpdates": [
+        "`job_list.no_results` / `job_list.schedule_filter_empty` → `empty`",
+        "`job_list.fetch_failed` 等系统级失败保持 `error`",
+        "副作用屏蔽逻辑不受影响（其只认 ok/narrow）"
+      ],
+      "summary": [
+        "零结果类 errorType 映射为 empty 而非 error",
+        "`job_list.no_results` / `job_list.schedule_filter_empty` → `empty`",
+        "`job_list.fetch_failed` 等系统级失败保持 `error`",
+        "副作用屏蔽逻辑不受影响（其只认 ok/narrow）"
+      ],
+      "features": [],
+      "fixes": [
+        "`job_list.no_results` / `job_list.schedule_filter_empty` → `empty`",
+        "`job_list.fetch_failed` 等系统级失败保持 `error`",
+        "副作用屏蔽逻辑不受影响（其只认 ok/narrow）"
+      ],
+      "optimizations": [],
+      "ops": [
+        "零结果类 errorType 映射为 empty 而非 error"
+      ],
+      "config": [],
+      "envFiles": [],
+      "verification": [
+        "tool-call-analysis.spec：38/38 通过（新增零结果映射 3 个断言）"
+      ]
+    }
+  ],
   "lastRelease": {
-    "version": "5.13.0",
-    "date": "2026-06-09",
+    "version": "5.13.2",
+    "date": "2026-06-10",
     "sourceBranch": "develop",
     "entries": [
       {
-        "number": "265",
-        "url": "https://github.com/huajune/cake-agent-runtime/pull/265",
-        "title": "支持自助取消与改约工单",
-        "author": "huajune",
-        "mergedAt": "2026-06-09",
+        "number": "280",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/280",
+        "title": "修正元数据 push 的 force-with-lease stale info",
+        "author": "ArielZhu",
+        "mergedAt": "2026-06-10",
         "businessUpdates": [
-          "Agent 可基于当前预约信息自助取消已确认面试，或修改约面时间；失败时按现有转人工链路兜底。",
-          "转化分析 bot 表新增自助取消、自助改约计数列，作为运营侧支指标展示。",
-          "新增 `duliday_cancel_work_order` / `duliday_modify_interview_time` 两个工单自助变更工具，接入海绵取消、改约、失败原因字典接口，并在成功后写入 `ops_events`。",
-          "将工单变更计数接入运营投影和转化看板，同时补充自助取消/改约的 Supabase migration。",
-          "支持自助取消与改约工单",
-          "修正 `滚` 单字关键词在友好/中性语境中的误伤。",
-          "修正岗位新结构下工作时间、排班周期、可排时段等字段的渲染与测试覆盖。",
-          "优化岗位列表新网关数据渲染、排班语义、飞书 webhook 重试告警、辱骂关键词误判和 dashboard 刷新态。"
+          "修正元数据 push 的 force-with-lease stale info"
         ],
         "summary": [
-          "取消运营事件上报到花卷，保留模块待用",
-          "支持自助取消与改约工单",
-          "处理发版前 review 建议",
-          "面试预约失败告警展示海绵 traceId",
-          "收敛多条运营反馈 badcase 话术红线",
-          "侧边栏菜单分组重命名 + 清理一次性 resync 脚本",
-          "依赖倒置消除 biz→channels/wecom 层违规",
-          "新增 `duliday_cancel_work_order` / `duliday_modify_interview_time` 两个工单自助变更工具，接入海绵取消、改约、失败原因字典接口，并在成功后写入 `ops_events`。",
-          "将工单变更计数接入运营投影和转化看板，同时补充自助取消/改约的 Supabase migration。",
-          "优化岗位列表新网关数据渲染、排班语义、飞书 webhook 重试告警、辱骂关键词误判和 dashboard 刷新态。"
+          "修正元数据 push 的 force-with-lease stale info"
         ],
-        "features": [
-          "Agent 可基于当前预约信息自助取消已确认面试，或修改约面时间；失败时按现有转人工链路兜底。",
-          "转化分析 bot 表新增自助取消、自助改约计数列，作为运营侧支指标展示。",
-          "新增 `duliday_cancel_work_order` / `duliday_modify_interview_time` 两个工单自助变更工具，接入海绵取消、改约、失败原因字典接口，并在成功后写入 `ops_events`。",
-          "将工单变更计数接入运营投影和转化看板，同时补充自助取消/改约的 Supabase migration。",
-          "支持自助取消与改约工单"
-        ],
+        "features": [],
         "fixes": [
-          "修正 `滚` 单字关键词在友好/中性语境中的误伤。",
-          "修正岗位新结构下工作时间、排班周期、可排时段等字段的渲染与测试覆盖。",
-          "优化岗位列表新网关数据渲染、排班语义、飞书 webhook 重试告警、辱骂关键词误判和 dashboard 刷新态。"
+          "修正元数据 push 的 force-with-lease stale info"
         ],
-        "optimizations": [
-          "海绵岗位/品牌/面试排期接口统一走 gateway base，可通过 `SPONGE_API_BASE_URL` 覆盖。",
-          "飞书 webhook 发送增加可重试判定、退避重试和最终失败告警。",
-          "dashboard 数据加载时增加顶部刷新进度态。",
-          "依赖倒置消除 biz→channels/wecom 层违规"
+        "optimizations": [],
+        "ops": [],
+        "config": [],
+        "envFiles": [],
+        "verification": [
+          "YAML 通过 safe_load 校验",
+          "合并后将用 workflow_dispatch（pr_number=279）补跑元数据，同时实测修复 3 的补偿链路"
+        ]
+      },
+      {
+        "number": "279",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/279",
+        "title": "修复发版自动化的四个流程缺陷",
+        "author": "ArielZhu",
+        "mergedAt": "2026-06-10",
+        "businessUpdates": [
+          "修复发版自动化的四个流程缺陷"
         ],
+        "summary": [
+          "修复 v5.13.1 发版全程暴露的四个自动化缺陷，此后 bot PR 不再需要人工 close/reopen 触发检查，元数据条目不再丢失，补偿模式推送认证正常，release PR 合并方式有明确引导"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [],
         "ops": [
-          "新增 `supabase/migrations/20260608120000_ops_workorder_mutation_events.sql`，为 `daily_ops_report` 增加 `booking_cancel_count` 与 `interview_modified_count` 投影。",
-          "新增 ops_events 断档回灌、job/list 网关探针与基准脚本，便于发版前后核查。",
-          "取消运营事件上报到花卷，保留模块待用",
-          "处理发版前 review 建议",
-          "面试预约失败告警展示海绵 traceId",
-          "收敛多条运营反馈 badcase 话术红线",
-          "侧边栏菜单分组重命名 + 清理一次性 resync 脚本"
+          "ci.yml 新增 workflow_dispatch 触发器；元数据 PR、固化 PR、回同步 PR 创建后主动在 bot 分支上派发 ci.yml，使 required check 正确落在 PR head SHA，不再依赖人工 close/reopen",
+          "分支重建前先从未合并的元数据 PR 分支恢复三个元数据文件再追加，防止累计发版条目被覆盖丢失（v5.13.1 期间 #270/#271 曾两次丢失需手工补录）",
+          "补偿模式（from_pr/to_pr）推送改为显式携带 GH_TOKEN 的 URL，修复 claude-code-action OIDC 模式覆写本地 git 凭证导致的推送认证失败",
+          "release PR 与固化 PR body 明确标注必须使用 Squash and merge，避免因 master 线性历史规则导致 merge commit 被拒"
         ],
         "config": [],
-        "envFiles": [
-          ".env.example"
-        ],
+        "envFiles": [],
         "verification": [
-          "`pnpm run ci:check`",
-          "pre-commit lint / format hook",
-          "pre-push `pnpm run ci:check`",
-          "关键链路已人工验证"
+          "两个 workflow YAML 通过 yaml.safe_load 校验",
+          "build-release-pr-body.js 干跑输出正确包含合并方式提示行",
+          "node --check 通过"
         ]
+      },
+      {
+        "number": "282",
+        "url": "https://github.com/huajune/cake-agent-runtime/pull/282",
+        "title": "dispatch 模式下用 commit status 满足必需检查",
+        "author": "ArielZhu",
+        "mergedAt": "2026-06-10",
+        "businessUpdates": [
+          "dispatch 模式下用 commit status 满足必需检查"
+        ],
+        "summary": [
+          "dispatch 模式下用 commit status 满足必需检查"
+        ],
+        "features": [],
+        "fixes": [],
+        "optimizations": [],
+        "ops": [
+          "dispatch 模式下用 commit status 满足必需检查"
+        ],
+        "config": [],
+        "envFiles": [],
+        "verification": []
       }
     ]
   }

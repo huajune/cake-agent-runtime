@@ -266,7 +266,8 @@ export interface InterviewScheduleResult {
 /** 面试预约请求参数 */
 export interface InterviewBookingParams {
   jobId: number;
-  interviewTime: string;
+  /** 面试时间；无面试时段（等通知）岗位不传，stripNullish 会将其从 payload 中剔除 */
+  interviewTime?: string;
   name: string;
   phone: string;
   age: number;

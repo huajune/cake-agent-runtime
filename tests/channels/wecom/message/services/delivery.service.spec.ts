@@ -346,10 +346,13 @@ describe('MessageDeliveryService', () => {
       );
     });
 
-    it('should expose delivered segment count for partial failures', async () => {
+    it('should expose delivered segment count for partial failures (retry exhausted)', async () => {
+      // 段 1 成功；段 2 两次都失败（重试耗尽）；段 3 成功。
+      // 调用序：seg1=call1, seg2=call2(失败)+call3(重试失败), seg3=call4。
       mockMessageSenderService.sendMessage
         .mockResolvedValueOnce({ success: true })
         .mockRejectedValueOnce(new Error('Segment 2 failed'))
+        .mockRejectedValueOnce(new Error('Segment 2 retry failed'))
         .mockResolvedValueOnce({ success: true });
 
       let error: DeliveryFailureError | null = null;
@@ -367,6 +370,27 @@ describe('MessageDeliveryService', () => {
       expect(error?.result.segmentCount).toBe(3);
       expect(error?.result.failedSegments).toBe(1);
       expect(error?.result.deliveredSegments).toBe(2);
+    });
+
+    it('should recover a transient segment failure via one retry', async () => {
+      // 段 2 首次失败、重试成功 → 整体投递成功,不抛 DeliveryFailureError。
+      mockMessageSenderService.sendMessage
+        .mockResolvedValueOnce({ success: true }) // seg1
+        .mockRejectedValueOnce(new Error('transient')) // seg2 first attempt
+        .mockResolvedValueOnce({ success: true }) // seg2 retry
+        .mockResolvedValueOnce({ success: true }); // seg3
+
+      const result = await service.deliverReply(
+        { content: 'First part\n\nSecond part\n\nThird part' },
+        deliveryContext,
+        true,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.failedSegments).toBe(0);
+      expect(result.deliveredSegments).toBe(3);
+      // 4 次调用 = 3 段 + 1 次重试
+      expect(mockMessageSenderService.sendMessage).toHaveBeenCalledTimes(4);
     });
   });
 
