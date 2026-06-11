@@ -14,6 +14,10 @@ function factValue<T>(value: T, extra: Record<string, unknown> = {}) {
   return expect.objectContaining({ value, ...extra });
 }
 
+const mockSystemConfig = {
+  getExtractModelOverride: jest.fn().mockResolvedValue(undefined),
+};
+
 describe('SessionService', () => {
   const mockRedisStore = {
     get: jest.fn(),
@@ -73,6 +77,7 @@ describe('SessionService', () => {
       mockConfig as never,
       mockLlm as never,
       mockSponge as never,
+      mockSystemConfig as never,
     );
   });
 

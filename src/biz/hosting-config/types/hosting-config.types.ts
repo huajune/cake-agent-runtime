@@ -14,6 +14,7 @@ export interface AgentReplyConfig {
   // 模型配置
   wecomCallbackModelId: string; // 企微消息回调使用的聊天模型 ID；空字符串表示走默认角色路由
   wecomCallbackThinkingMode: AgentThinkingMode; // 企微消息回调使用的思考模式
+  extractModelId: string; // 事实提取/沉淀摘要使用的模型 ID；空字符串表示走 extract 角色路由（AGENT_EXTRACT_MODEL）
 
   // 消息聚合配置
   initialMergeWindowMs: number; // 距离最后一条用户消息静默多久后触发一次 Agent 请求（毫秒）
@@ -45,6 +46,7 @@ export interface AgentReplyConfig {
 export const DEFAULT_AGENT_REPLY_CONFIG: AgentReplyConfig = {
   wecomCallbackModelId: '',
   wecomCallbackThinkingMode: 'fast',
+  extractModelId: '',
   initialMergeWindowMs: 3000, // 默认 3000ms
   typingDelayPerCharMs: 125, // 兼容旧字段 (1000/8)
   typingSpeedCharsPerSec: 8, // 默认 8 字符/秒

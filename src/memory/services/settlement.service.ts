@@ -5,6 +5,7 @@ import { ChatSessionService } from '@biz/message/services/chat-session.service';
 import { MemoryConfig } from '../memory.config';
 import { LongTermService } from './long-term.service';
 import type { SummaryEntry } from '../types/long-term.types';
+import { SystemConfigService } from '@biz/hosting-config/services/system-config.service';
 import {
   type EntityExtractionResult,
   type SessionFacts,
@@ -65,6 +66,7 @@ export class SettlementService {
     private readonly longTerm: LongTermService,
     private readonly chatSession: ChatSessionService,
     private readonly llm: LlmExecutorService,
+    private readonly systemConfig: SystemConfigService,
   ) {}
 
   /**
@@ -220,6 +222,7 @@ export class SettlementService {
 
       const result = await this.llm.generate({
         role: ModelRole.Extract,
+        modelId: await this.systemConfig.getExtractModelOverride(),
         system: SUMMARY_SYSTEM_PROMPT,
         prompt: `[对话记录]\n${conversationText}\n\n[提取信息]\n${factsText}`,
       });
@@ -265,6 +268,7 @@ export class SettlementService {
 
     const result = await this.llm.generate({
       role: ModelRole.Extract,
+      modelId: await this.systemConfig.getExtractModelOverride(),
       system: ARCHIVE_COMPRESS_PROMPT,
       prompt: parts.join('\n\n'),
     });

@@ -181,6 +181,40 @@ describe('SystemConfigService', () => {
     });
   });
 
+  // ==================== getExtractModelOverride ====================
+
+  describe('getExtractModelOverride', () => {
+    it('returns trimmed model id when configured', async () => {
+      (service as any).agentReplyConfig = {
+        ...DEFAULT_AGENT_REPLY_CONFIG,
+        extractModelId: '  deepseek/deepseek-v4-flash  ',
+      };
+      (service as any).agentReplyConfigExpiry = Date.now() + 60_000;
+
+      await expect(service.getExtractModelOverride()).resolves.toBe('deepseek/deepseek-v4-flash');
+    });
+
+    it('returns undefined when not configured (falls back to role routing)', async () => {
+      (service as any).agentReplyConfig = { ...DEFAULT_AGENT_REPLY_CONFIG, extractModelId: '' };
+      (service as any).agentReplyConfigExpiry = Date.now() + 60_000;
+
+      await expect(service.getExtractModelOverride()).resolves.toBeUndefined();
+    });
+
+    it('normalizes non-string extractModelId from legacy DB rows to default', async () => {
+      (service as any).agentReplyConfig = null;
+      (service as any).agentReplyConfigExpiry = 0;
+      mockSystemConfigRepository.getConfigValue.mockResolvedValue({
+        ...DEFAULT_AGENT_REPLY_CONFIG,
+        extractModelId: 123,
+      });
+
+      const result = await service.getAgentReplyConfig();
+
+      expect(result.extractModelId).toBe('');
+    });
+  });
+
   // ==================== getAgentReplyConfig ====================
 
   describe('getAgentReplyConfig', () => {

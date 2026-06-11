@@ -1,6 +1,10 @@
 import { SettlementService } from '@memory/services/settlement.service';
 import { FALLBACK_EXTRACTION } from '@memory/types/session-facts.types';
 
+const mockSystemConfig = {
+  getExtractModelOverride: jest.fn().mockResolvedValue(undefined),
+};
+
 describe('SettlementService', () => {
   const SETTLEMENT_GAP = 86400; // 1 day in seconds
   const mockConfig = { settlementGapSeconds: SETTLEMENT_GAP };
@@ -29,6 +33,7 @@ describe('SettlementService', () => {
       mockLongTermService as never,
       mockChatSession as never,
       mockLlm as never,
+      mockSystemConfig as never,
     );
   });
 
