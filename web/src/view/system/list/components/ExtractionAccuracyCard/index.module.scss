@@ -1,0 +1,149 @@
+// 提取质量对账卡片样式
+@use '@/assets/styles/variables' as *;
+
+.card {
+  @include card();
+  padding: $spacing-lg;
+  margin-top: $spacing-lg;
+}
+
+.header {
+  @include flex-between;
+  align-items: flex-start;
+  gap: $spacing-md;
+  margin-bottom: $spacing-md;
+
+  @include respond-to(sm) {
+    flex-direction: column;
+  }
+}
+
+.title {
+  font-size: $font-size-lg;
+  font-weight: $font-weight-bold;
+  color: $text-primary;
+  margin: 0 0 $spacing-xs;
+}
+
+.subtitle {
+  font-size: $font-size-xs;
+  color: $text-muted;
+  line-height: $line-height-normal;
+  margin: 0;
+  max-width: 640px;
+}
+
+.daysTabs {
+  display: inline-flex;
+  gap: $spacing-xs;
+  padding: 3px;
+  background: $bg-secondary;
+  border-radius: $radius-md;
+  flex-shrink: 0;
+}
+
+.daysTab {
+  border: none;
+  background: transparent;
+  color: $text-secondary;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-medium;
+  padding: 5px 12px;
+  border-radius: $radius-sm;
+  cursor: pointer;
+  transition: background $transition-fast, color $transition-fast;
+
+  &:hover {
+    color: $text-primary;
+  }
+}
+
+.daysTabActive {
+  background: $bg-card;
+  color: $primary;
+  box-shadow: $shadow-sm;
+}
+
+.empty {
+  @include flex-center;
+  padding: $spacing-xl 0;
+  color: $text-muted;
+  font-size: $font-size-sm;
+}
+
+.tableScroll {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: $font-size-sm;
+
+  thead th {
+    text-align: right;
+    font-weight: $font-weight-semibold;
+    color: $text-muted;
+    font-size: $font-size-xs;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: $spacing-sm $spacing-md;
+    border-bottom: 1px solid $border;
+    white-space: nowrap;
+  }
+
+  tbody td {
+    padding: $spacing-sm $spacing-md;
+    border-bottom: 1px solid $border;
+    text-align: right;
+    color: $text-primary;
+    white-space: nowrap;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  tbody tr:hover {
+    background: $bg-hover;
+  }
+}
+
+.fieldCol {
+  text-align: left !important;
+  font-weight: $font-weight-semibold;
+}
+
+.numCol {
+  text-align: right;
+}
+
+.subValue {
+  margin-left: $spacing-xs;
+  font-size: $font-size-xs;
+  color: $text-muted;
+}
+
+.rateGood {
+  color: $success;
+  font-weight: $font-weight-semibold;
+}
+
+.rateWarn {
+  color: $warning;
+  font-weight: $font-weight-semibold;
+}
+
+.rateBad {
+  color: $danger;
+  font-weight: $font-weight-semibold;
+}
+
+.rateMuted {
+  color: $text-muted;
+}
+
+.mismatch {
+  color: $danger;
+  font-weight: $font-weight-semibold;
+}
