@@ -73,7 +73,7 @@ describe('buildInviteToGroupTool', () => {
   };
   /* eslint-enable @typescript-eslint/no-explicit-any */
 
-  it('should return direct invite mode for small group (<40)', async () => {
+  it('should return direct_add delivery for small group (<40)', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup({ memberCount: 30 })]);
     mockRoomService.addMemberEnterprise.mockResolvedValue({ errcode: 0, errmsg: 'ok' });
     mockMemoryService.saveInvitedGroup.mockResolvedValue(undefined);
@@ -82,8 +82,12 @@ describe('buildInviteToGroupTool', () => {
     await flushAsyncEvents();
 
     expect(result.success).toBe(true);
-    expect(result.inviteMode).toBe('direct');
+    expect(result.inviteDelivery).toBe('direct_add');
+    expect(result.inviteMode).toBeUndefined();
     expect(result.groupName).toBe('上海兼职群1号');
+    expect(result._outcome).toContain('直接加入');
+    expect(result._replyInstruction).toContain('已帮你加入了');
+    expect(result._replyInstruction).toContain('不要输出任何群链接');
     // 拉群成功 → group.invited（按本轮 turn + 群去重，幂等键含 chatId:group:<群名>）
     expect(mockOpsEventsRecorder.recordEvent).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -144,7 +148,7 @@ describe('buildInviteToGroupTool', () => {
     expect(builtTool.description).toContain('city="上海"');
   });
 
-  it('should return link invite mode for group with 40+ members', async () => {
+  it('should return invite_card delivery for group with 40+ members', async () => {
     mockGroupResolver.resolveGroups.mockResolvedValue([makeGroup({ memberCount: 50 })]);
     mockRoomService.addMemberEnterprise.mockResolvedValue({ errcode: 0, errmsg: 'ok' });
     mockMemoryService.saveInvitedGroup.mockResolvedValue(undefined);
@@ -152,7 +156,13 @@ describe('buildInviteToGroupTool', () => {
     const result = await executeTool({ city: '上海' });
 
     expect(result.success).toBe(true);
-    expect(result.inviteMode).toBe('link');
+    expect(result.inviteDelivery).toBe('invite_card');
+    expect(result.inviteMode).toBeUndefined();
+    expect(result._outcome).toContain('邀请卡片');
+    expect(result._replyInstruction).toContain('入群邀请已经发你了');
+    expect(result._replyInstruction).toContain(
+      '禁止输出、编造或粘贴任何 work.weixin.qq.com 群链接',
+    );
   });
 
   it('should return error when no groups available', async () => {
@@ -482,7 +492,8 @@ describe('buildInviteToGroupTool', () => {
     expect(result.groupName).toBe('上海零售③');
     expect(result.matchedIndustry).toBe('零售');
     expect(result.fallbackUsed).toBe(false);
-    expect(result.inviteMode).toBe('direct');
+    expect(result.inviteDelivery).toBe('direct_add');
+    expect(result.inviteMode).toBeUndefined();
     expect(result.citySnapshot).toEqual({
       totalGroups: 9,
       memberLimit: MEMBER_LIMIT,
