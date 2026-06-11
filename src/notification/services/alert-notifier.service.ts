@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Environment } from '@enums/environment.enum';
 import { FEISHU_RECEIVER_USERS, type FeishuReceiver } from '@infra/feishu/constants/receivers';
@@ -7,6 +7,15 @@ import { AlertLevel } from '@enums/alert.enum';
 import { FeishuAlertChannel } from '../channels/feishu-alert.channel';
 import { AlertCardRenderer } from '../renderers/alert-card.renderer';
 import { AlertContext } from '../types/alert.types';
+import {
+  ALERT_LOG_PERSISTER,
+  type AlertLogPersister,
+} from '../types/alert-log-persister.interface';
+
+/** sendAlert 选项：persist=false 用于已由 recordFailure 落库的消息失败路径，避免双写。 */
+export interface SendAlertOptions {
+  persist?: boolean;
+}
 
 interface ThrottleState {
   count: number;
@@ -26,30 +35,75 @@ export class AlertNotifierService {
     private readonly alertChannel: FeishuAlertChannel,
     private readonly alertCardRenderer: AlertCardRenderer,
     @Optional() private readonly configService?: ConfigService,
+    @Optional()
+    @Inject(ALERT_LOG_PERSISTER)
+    private readonly alertLogPersister?: AlertLogPersister,
   ) {}
 
-  async sendAlert(context: AlertContext): Promise<boolean> {
-    if (!this.isFeishuDeliveryEnabled()) {
-      return false;
-    }
-
+  /**
+   * 发送告警。无论是否节流、是否发送成功、飞书是否启用，都先持久化一条到
+   * monitoring_error_logs（dashboard "今日错误" 才能看到子系统告警），
+   * 持久化失败不影响发送。options.persist=false 用于消息处理失败路径
+   * （已由 recordFailure→saveErrorLog 落库），避免双写重复计数。
+   */
+  async sendAlert(context: AlertContext, options?: SendAlertOptions): Promise<boolean> {
     const throttleKey = context.dedupe?.key || context.code;
+    const feishuEnabled = this.isFeishuDeliveryEnabled();
+    const willThrottle = !this.shouldSend(throttleKey);
 
-    if (!this.shouldSend(throttleKey)) {
+    let delivered = false;
+    let sendError: unknown;
+
+    if (feishuEnabled && !willThrottle) {
+      try {
+        const card = this.alertCardRenderer.buildAlertCard(context);
+        delivered = await this.alertChannel.send(card);
+        if (delivered) this.recordSent(throttleKey);
+      } catch (error) {
+        sendError = error;
+      }
+    }
+
+    if (options?.persist !== false) {
+      this.persistAlertLog(context, { throttled: willThrottle, delivered });
+    }
+
+    if (sendError) {
+      this.logger.error(
+        `发送告警失败: ${sendError instanceof Error ? sendError.message : String(sendError)}`,
+      );
+      return false;
+    }
+    if (willThrottle) {
       this.logger.warn(`告警被节流: ${throttleKey}`);
-      return false;
     }
+    return delivered;
+  }
 
-    try {
-      const card = this.alertCardRenderer.buildAlertCard(context);
-      const success = await this.alertChannel.send(card);
-      if (success) this.recordSent(throttleKey);
-      return success;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`发送告警失败: ${message}`);
-      return false;
-    }
+  /** 把告警写入错误日志表（fire-and-forget，失败仅告警不阻塞）。 */
+  private persistAlertLog(
+    context: AlertContext,
+    flags: { throttled: boolean; delivered: boolean },
+  ): void {
+    if (!this.alertLogPersister) return;
+    void this.alertLogPersister
+      .persist({
+        messageId: context.scope?.messageId,
+        timestamp: Date.now(),
+        error: context.diagnostics?.errorMessage || context.summary || context.code,
+        code: context.code,
+        severity: context.severity,
+        summary: context.summary,
+        subsystem: context.source?.subsystem,
+        component: context.source?.component,
+        action: context.source?.action,
+        dedupeKey: context.dedupe?.key,
+        throttled: flags.throttled,
+        delivered: flags.delivered,
+      })
+      .catch((err) => {
+        this.logger.warn(`持久化告警日志失败: ${err instanceof Error ? err.message : String(err)}`);
+      });
   }
 
   async sendSimpleAlert(

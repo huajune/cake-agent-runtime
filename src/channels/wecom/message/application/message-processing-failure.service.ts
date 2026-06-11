@@ -100,48 +100,52 @@ export class MessageProcessingFailureService {
 
     if (!deliveryError) {
       this.alertService
-        .sendAlert({
-          code: alertCode,
-          severity: alertLevel,
-          source: {
-            subsystem: 'wecom',
-            component: 'MessagePipelineService',
-            action: 'handleProcessingFailure',
-            trigger: 'http',
+        .sendAlert(
+          {
+            code: alertCode,
+            severity: alertLevel,
+            source: {
+              subsystem: 'wecom',
+              component: 'MessagePipelineService',
+              action: 'handleProcessingFailure',
+              trigger: 'http',
+            },
+            scope: {
+              scenario,
+              contactName,
+              managerName: parsed.managerName,
+              chatId,
+              sessionId: agentMeta?.sessionId,
+              messageId: traceId,
+              batchId: options?.batchId,
+              userId: imContactId,
+              corpId: parsed.orgId,
+            },
+            impact: {
+              userMessage: content,
+              fallbackMessage,
+              userVisible: true,
+              deliveryState: 'fallback_sent',
+              requiresHumanIntervention: true,
+            },
+            diagnostics: {
+              error: error instanceof Error ? error : new Error(errorMessage),
+              category: agentMeta?.lastCategory,
+              modelChain: agentMeta?.modelsAttempted,
+              totalAttempts: agentMeta?.totalAttempts,
+              messageCount: agentMeta?.messageCount,
+              memoryWarning: agentMeta?.memoryLoadWarning,
+              dispatchMode: options?.dispatchMode,
+              payload: Object.keys(diagnosticPayload).length > 0 ? diagnosticPayload : undefined,
+            },
+            routing: errorReceiver ? { atUsers: [errorReceiver] } : undefined,
+            dedupe: {
+              key: `${alertCode}:${scenario}`,
+            },
+            // 本路径稍后会 recordFailure→saveErrorLog 落库，告警不重复持久化避免双计数
           },
-          scope: {
-            scenario,
-            contactName,
-            managerName: parsed.managerName,
-            chatId,
-            sessionId: agentMeta?.sessionId,
-            messageId: traceId,
-            batchId: options?.batchId,
-            userId: imContactId,
-            corpId: parsed.orgId,
-          },
-          impact: {
-            userMessage: content,
-            fallbackMessage,
-            userVisible: true,
-            deliveryState: 'fallback_sent',
-            requiresHumanIntervention: true,
-          },
-          diagnostics: {
-            error: error instanceof Error ? error : new Error(errorMessage),
-            category: agentMeta?.lastCategory,
-            modelChain: agentMeta?.modelsAttempted,
-            totalAttempts: agentMeta?.totalAttempts,
-            messageCount: agentMeta?.messageCount,
-            memoryWarning: agentMeta?.memoryLoadWarning,
-            dispatchMode: options?.dispatchMode,
-            payload: Object.keys(diagnosticPayload).length > 0 ? diagnosticPayload : undefined,
-          },
-          routing: errorReceiver ? { atUsers: [errorReceiver] } : undefined,
-          dedupe: {
-            key: `${alertCode}:${scenario}`,
-          },
-        })
+          { persist: false },
+        )
         .catch((alertError) => {
           const alertErrorMessage =
             alertError instanceof Error ? alertError.message : String(alertError);
@@ -214,43 +218,47 @@ export class MessageProcessingFailureService {
       this.logger.error(`[${contactName}] 发送降级回复失败: ${sendErrorMessage}`);
 
       this.alertService
-        .sendAlert({
-          code: 'message.delivery_failed',
-          summary: '消息发送失败 - 用户无响应',
-          severity: AlertLevel.CRITICAL,
-          source: {
-            subsystem: 'wecom',
-            component: 'MessagePipelineService',
-            action: 'deliverFallbackReply',
-            trigger: 'http',
-          },
-          scope: {
-            scenario,
-            contactName,
-            managerName: parsed.managerName,
-            chatId,
-            messageId: traceId,
-            batchId: options?.batchId,
-            userId: imContactId,
-            corpId: parsed.orgId,
-          },
-          impact: {
-            userMessage: content,
-            fallbackMessage,
-            userVisible: false,
-            deliveryState: 'failed',
-            requiresHumanIntervention: true,
-          },
-          diagnostics: {
-            error: sendError instanceof Error ? sendError : new Error(sendErrorMessage),
-            payload: {
-              originalError: errorMessage,
+        .sendAlert(
+          {
+            code: 'message.delivery_failed',
+            summary: '消息发送失败 - 用户无响应',
+            severity: AlertLevel.CRITICAL,
+            source: {
+              subsystem: 'wecom',
+              component: 'MessagePipelineService',
+              action: 'deliverFallbackReply',
+              trigger: 'http',
             },
+            scope: {
+              scenario,
+              contactName,
+              managerName: parsed.managerName,
+              chatId,
+              messageId: traceId,
+              batchId: options?.batchId,
+              userId: imContactId,
+              corpId: parsed.orgId,
+            },
+            impact: {
+              userMessage: content,
+              fallbackMessage,
+              userVisible: false,
+              deliveryState: 'failed',
+              requiresHumanIntervention: true,
+            },
+            diagnostics: {
+              error: sendError instanceof Error ? sendError : new Error(sendErrorMessage),
+              payload: {
+                originalError: errorMessage,
+              },
+            },
+            dedupe: {
+              key: `message.delivery_failed:${scenario}`,
+            },
+            // 本路径稍后会 recordFailure→saveErrorLog 落库，告警不重复持久化避免双计数
           },
-          dedupe: {
-            key: `message.delivery_failed:${scenario}`,
-          },
-        })
+          { persist: false },
+        )
         .catch((alertError) => {
           const alertErrorMessage =
             alertError instanceof Error ? alertError.message : String(alertError);
