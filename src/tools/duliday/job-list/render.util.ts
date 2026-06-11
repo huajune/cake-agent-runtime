@@ -39,6 +39,7 @@ import {
 } from '@tools/duliday/job-list/helpers.util';
 import {
   renderMultiStoreBrandWarning,
+  formatSalarySummary,
   type BrandNearestStoresGroup,
 } from '@tools/duliday/job-list/brand-stores.util';
 import { normalizeStoreNameForAgent } from '@tools/duliday/job-list/sanitize.util';
@@ -917,6 +918,45 @@ function formatJobToOneLine(jobInput: unknown, index: number): string {
   return parts.join(' | ');
 }
 
+/**
+ * 渐进式披露：单页内只对最近 N 个岗位渲染全文详情，其余降为摘要行。
+ *
+ * 岗位列表在有位置时已按距离升序，候选人当下只会考虑最近的一两家；
+ * 把第 N+1 家之后的薪资阶梯/招聘要求/工作时间整段全文回灌纯属浪费
+ * （生产 p90 markdown 4.3 万字符、最大 17 万，且多步工具调用每步重复计费）。
+ * 摘要行保留店名/距离/薪资/年龄 + jobId，候选人后续问到更远的店，
+ * Agent 用该 jobId 走 jobIdList 重查拿全文（既有路径）。
+ */
+export const FULL_DETAIL_CAP = 6;
+
+/**
+ * 摘要行：比 minimal 模式的 formatJobToOneLine 多带薪资 + 年龄 + jobId，
+ * 让 Agent 能直接转述"还有 X 家更远的（店名/距离/薪资）"并按 jobId 取详情。
+ * 班次文本常多行，摘要行不含，需详情时由 jobIdList 全文给出。
+ */
+function formatJobToSummaryLine(jobInput: unknown, index: number): string {
+  const job = asRecord(jobInput) ?? {};
+  const bi = asRecord(job.basicInfo) ?? {};
+  const store = asRecord(bi.storeInfo) ?? {};
+  const policy = buildJobPolicyAnalysis(job as JobDetail);
+  const brandName = hasValue(bi.brandName) ? String(bi.brandName) : '';
+  const jobName = hasValue(bi.jobName) ? String(bi.jobName) : '未命名';
+  const parts = [`${index + 1}. **${brandName} - ${jobName}**`];
+  const displayStoreName = normalizeStoreNameForAgent(
+    asString(store.storeName),
+    asString(store.storeCityName),
+  );
+  if (displayStoreName) parts.push(displayStoreName);
+  const distanceKm = asNumber(job._distanceKm);
+  if (distanceKm != null) parts.push(`${distanceKm.toFixed(1)}km`);
+  const salary = formatSalarySummary(job);
+  if (salary) parts.push(salary);
+  const age = policy.normalizedRequirements.ageRequirement;
+  if (age && age !== '不限') parts.push(age);
+  parts.push(`jobId:${hasValue(bi.jobId) ? bi.jobId : '未知'}`);
+  return parts.join(' | ');
+}
+
 function isMinimalMode(flags: ProgressiveDisclosureFlags): boolean {
   return (
     flags.includeBasicInfo &&
@@ -1012,10 +1052,22 @@ export function formatJobsToMarkdown(
   }
 
   md += `当前显示第 ${start}-${end} 条\n\n---\n\n`;
-  jobs.forEach((job, index) => {
+
+  // 渐进式披露：最近 FULL_DETAIL_CAP 家全文，其余降摘要行（详情走 jobIdList 重查）。
+  const fullCount = Math.min(jobs.length, FULL_DETAIL_CAP);
+  jobs.slice(0, fullCount).forEach((job, index) => {
     md += formatJobToMarkdown(job, index, flags);
     md += '---\n\n';
   });
+
+  const tail = jobs.slice(fullCount);
+  if (tail.length > 0) {
+    md += `### 更远的 ${tail.length} 家（仅摘要，候选人问到具体某家详情时用其 jobId 走 jobIdList 重查）\n`;
+    tail.forEach((job, i) => {
+      md += formatJobToSummaryLine(job, fullCount + i) + '\n';
+    });
+    md += '\n';
+  }
   return md;
 }
 
