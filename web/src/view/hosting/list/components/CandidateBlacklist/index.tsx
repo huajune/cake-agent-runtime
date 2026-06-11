@@ -38,6 +38,7 @@ export default function CandidateBlacklist({
     });
     setTargetId('');
     setReason('');
+    setOperator('');
   };
 
   const handleRemove = (item: CandidateBlacklistItem) => {

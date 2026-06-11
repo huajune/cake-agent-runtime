@@ -1,4 +1,13 @@
-import { IsBoolean, IsOptional, IsNumber, IsString, IsIn, Min, Max } from 'class-validator';
+import {
+  IsBoolean,
+  IsOptional,
+  IsNumber,
+  IsString,
+  IsIn,
+  IsNotEmpty,
+  Min,
+  Max,
+} from 'class-validator';
 
 // ==================== 运行时开关 ====================
 
@@ -136,8 +145,9 @@ export class AddCandidateBlacklistDto {
   @IsString()
   targetId: string;
 
-  /** 拉黑理由（命中告警与暂停记录中展示，必填） */
+  /** 拉黑理由（命中告警与暂停记录中展示，必填且不可为空字符串） */
   @IsString()
+  @IsNotEmpty()
   reason: string;
 
   @IsOptional()

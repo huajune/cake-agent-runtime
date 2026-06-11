@@ -177,6 +177,18 @@ export class CandidateBlacklistFilterRule implements MessageFilterRule {
     messageData: EnterpriseMessageCallbackDto,
     hit: CandidateBlacklistRecord,
   ): Promise<void> {
+    // 三步互不依赖，并行执行减少过滤延迟；各自兜底记日志，不影响其余步骤
+    await Promise.allSettled([
+      this.pauseHosting(messageData, hit),
+      this.recordBlacklistHit(messageData, hit),
+      this.sendBlacklistAlert(messageData, hit),
+    ]);
+  }
+
+  private async pauseHosting(
+    messageData: EnterpriseMessageCallbackDto,
+    hit: CandidateBlacklistRecord,
+  ): Promise<void> {
     try {
       await this.userHostingService.pauseUser(messageData.chatId, {
         permanent: true,
@@ -186,7 +198,12 @@ export class CandidateBlacklistFilterRule implements MessageFilterRule {
     } catch (error) {
       this.logger.error(`候选人黑名单命中后暂停托管失败 chatId=${messageData.chatId}`, error);
     }
+  }
 
+  private async recordBlacklistHit(
+    messageData: EnterpriseMessageCallbackDto,
+    hit: CandidateBlacklistRecord,
+  ): Promise<void> {
     try {
       await this.candidateBlacklistService.recordHit(hit.target_id, {
         chatId: messageData.chatId,
@@ -196,7 +213,12 @@ export class CandidateBlacklistFilterRule implements MessageFilterRule {
     } catch (error) {
       this.logger.error(`候选人黑名单命中回溯落库失败 targetId=${hit.target_id}`, error);
     }
+  }
 
+  private async sendBlacklistAlert(
+    messageData: EnterpriseMessageCallbackDto,
+    hit: CandidateBlacklistRecord,
+  ): Promise<void> {
     try {
       await this.alertNotifier.sendAlert({
         code: 'hosting.candidate-blacklist.hit',
