@@ -882,43 +882,15 @@ export function mergeDetectedBrands(
   };
 }
 
+/**
+ * 全字段 null 的高置信事实空模板。
+ *
+ * 不再手写镜像清单：直接深拷贝 FALLBACK_EXTRACTION（其 interview_info/preferences 的
+ * 字段集由 session-facts.types 的单一字段清单生成，且加载期自检保证与各 schema 一致），
+ * 所有字段值均为 null，结构上同时满足 HighConfidenceFacts；reasoning 也随之同步。
+ */
 function cloneFallbackExtraction(): HighConfidenceFacts {
-  return {
-    interview_info: {
-      name: null,
-      phone: null,
-      gender: null,
-      gender_source: null,
-      age: null,
-      applied_store: null,
-      applied_position: null,
-      interview_time: null,
-      is_student: null,
-      education: null,
-      has_health_certificate: null,
-      upload_resume: null,
-      height: null,
-      weight: null,
-      household_register_province: null,
-    },
-    preferences: {
-      brands: null,
-      salary: null,
-      position: null,
-      schedule: null,
-      city: null,
-      district: null,
-      location: null,
-      labor_form: null,
-      delayed_intent: null,
-      short_term: null,
-      open_position: null,
-      time_windows: null,
-      schedule_constraint: null,
-      available_after: null,
-    },
-    reasoning: FALLBACK_EXTRACTION.reasoning,
-  };
+  return structuredClone(FALLBACK_EXTRACTION) as unknown as HighConfidenceFacts;
 }
 
 /**

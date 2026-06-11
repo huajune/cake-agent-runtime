@@ -266,6 +266,58 @@ export type EntityExtractionResult = z.infer<typeof EntityExtractionResultSchema
 export type InterviewInfo = z.infer<typeof InterviewInfoSchema>;
 export type Preferences = z.infer<typeof PreferencesSchema>;
 
+/**
+ * ==================== 单一字段清单（schema 体系的唯一字段来源） ====================
+ *
+ * session facts 的同一批字段过去在 8-10 处各声明一遍（FALLBACK_EXTRACTION 的逐字段 null、
+ * toSessionFacts 的 wrap 块、unwrapSessionFacts 的 unwrap 块、turn-hints 的空模板……），
+ * 新增字段要改 8-10 处且任何一处漏改都会静默丢字段。
+ *
+ * 这里把字段清单收敛成两个常量，作为所有"纯样板"（null 模板 / wrap-unwrap 循环）的
+ * 唯一驱动来源；并在模块加载期用 assertFieldKeysMirrorSchemas 校验清单与各 zod schema
+ * 的 shape keys 完全一致，任何字段漂移（清单漏字段 / schema 多字段）立即抛错。
+ *
+ * `as const satisfies readonly (keyof ...)[]`：satisfies 锁住"列出的每个 key 都是合法
+ * 字段名"（拼错立即编译报错）；完备性（不漏字段）由加载期自检兜底。
+ */
+export const INTERVIEW_INFO_FIELD_KEYS = [
+  'name',
+  'phone',
+  'gender',
+  'gender_source',
+  'age',
+  'applied_store',
+  'applied_position',
+  'interview_time',
+  'is_student',
+  'education',
+  'has_health_certificate',
+  'upload_resume',
+  'height',
+  'weight',
+  'household_register_province',
+] as const satisfies readonly (keyof InterviewInfo)[];
+
+export const PREFERENCE_FIELD_KEYS = [
+  'brands',
+  'salary',
+  'position',
+  'schedule',
+  'city',
+  'district',
+  'location',
+  'labor_form',
+  'delayed_intent',
+  'short_term',
+  'open_position',
+  'time_windows',
+  'schedule_constraint',
+  'available_after',
+] as const satisfies readonly (keyof Preferences)[];
+
+export type InterviewInfoFieldKey = (typeof INTERVIEW_INFO_FIELD_KEYS)[number];
+export type PreferenceFieldKey = (typeof PREFERENCE_FIELD_KEYS)[number];
+
 export const SessionFactConfidenceSchema = z.enum(['high', 'medium', 'low', 'unknown']);
 export const SessionFactSourceSchema = z.enum([
   'candidate',
@@ -510,43 +562,86 @@ export const SessionFactsSchema = z.object({
   reasoning: z.string(),
 });
 
-/** 实体提取失败时的降级结果。 */
+/** 由字段清单生成"逐字段 null"对象（所有字段 schema 均 nullable，null 是合法降级值）。 */
+function nullFieldRecord<K extends string>(keys: readonly K[]): Record<K, null> {
+  return Object.fromEntries(keys.map((key) => [key, null])) as Record<K, null>;
+}
+
+/**
+ * 实体提取失败时的降级结果。
+ *
+ * interview_info / preferences 的逐字段 null 由单一字段清单生成，不再手写；
+ * 加载期 assertFieldKeysMirrorSchemas 保证清单与 schema 一致，因此生成结果与
+ * 各 schema 的字段集完全对齐。`satisfies` 锁住整体形状仍符合 EntityExtractionResult。
+ */
 export const FALLBACK_EXTRACTION: EntityExtractionResult = {
-  interview_info: {
-    name: null,
-    phone: null,
-    gender: null,
-    gender_source: null,
-    age: null,
-    applied_store: null,
-    applied_position: null,
-    interview_time: null,
-    is_student: null,
-    education: null,
-    has_health_certificate: null,
-    upload_resume: null,
-    height: null,
-    weight: null,
-    household_register_province: null,
-  },
-  preferences: {
-    brands: null,
-    salary: null,
-    position: null,
-    schedule: null,
-    city: null,
-    district: null,
-    location: null,
-    labor_form: null,
-    delayed_intent: null,
-    short_term: null,
-    open_position: null,
-    time_windows: null,
-    schedule_constraint: null,
-    available_after: null,
-  },
+  interview_info: nullFieldRecord(INTERVIEW_INFO_FIELD_KEYS),
+  preferences: nullFieldRecord(PREFERENCE_FIELD_KEYS),
   reasoning: '实体提取失败，使用空值降级',
-};
+} satisfies EntityExtractionResult;
+
+/**
+ * 字段清单完备性自检（加载期执行）。
+ *
+ * 单一字段清单（INTERVIEW_INFO_FIELD_KEYS / PREFERENCE_FIELD_KEYS）驱动所有纯样板，
+ * 但 `as const satisfies` 只能保证"列出的 key 合法"，不能保证"没漏字段"。
+ * 这里把清单与所有承载同批字段的 zod schema 的 shape keys 做集合比对：
+ * 任一 schema 多出或缺少字段、或清单漏字段，都会在模块加载（任意测试运行 / 启动）时抛错，
+ * 把"新增字段漏改某处"从运行期静默丢字段提前到加载期失败。
+ *
+ * 参考 high-confidence-facts.ts 的 assertRegistryFieldsMirrored 模式。
+ */
+function assertFieldKeysMirrorSchemas(): void {
+  const sameKeySet = (expected: readonly string[], actual: readonly string[]): string[] => {
+    const expectedSet = new Set(expected);
+    const actualSet = new Set(actual);
+    const missing = expected.filter((key) => !actualSet.has(key)).map((key) => `-${key}`);
+    const extra = actual.filter((key) => !expectedSet.has(key)).map((key) => `+${key}`);
+    return [...missing, ...extra];
+  };
+
+  const checks: { label: string; expected: readonly string[]; shape: Record<string, unknown> }[] = [
+    {
+      label: 'InterviewInfoSchema',
+      expected: INTERVIEW_INFO_FIELD_KEYS,
+      shape: InterviewInfoSchema.shape,
+    },
+    {
+      label: 'SessionInterviewInfoSchema',
+      expected: INTERVIEW_INFO_FIELD_KEYS,
+      shape: SessionInterviewInfoSchema.shape,
+    },
+    {
+      label: 'PreferencesSchema',
+      expected: PREFERENCE_FIELD_KEYS,
+      shape: PreferencesSchema.shape,
+    },
+    {
+      label: 'LLMPreferencesSchema',
+      expected: PREFERENCE_FIELD_KEYS,
+      shape: LLMPreferencesSchema.shape,
+    },
+    {
+      label: 'SessionPreferencesSchema',
+      expected: PREFERENCE_FIELD_KEYS,
+      shape: SessionPreferencesSchema.shape,
+    },
+  ];
+
+  const failures: string[] = [];
+  for (const { label, expected, shape } of checks) {
+    const diff = sameKeySet(expected, Object.keys(shape));
+    if (diff.length > 0) failures.push(`${label}: ${diff.join(' ')}`);
+  }
+
+  if (failures.length > 0) {
+    throw new Error(
+      `[session-facts.types] 字段清单与 schema shape 失配（-缺失/+多余），新增字段须同步字段清单：\n${failures.join('\n')}`,
+    );
+  }
+}
+
+assertFieldKeysMirrorSchemas();
 
 const CONFIDENCE_RANK: Record<SessionFactConfidence, number> = {
   unknown: 0,
@@ -616,49 +711,32 @@ export function unwrapSessionFacts(
     ? unwrapSessionFactValue(city, options)
     : null;
 
+  // 字段清单驱动：interview_info 全字段 + preferences 非 city 字段统一 unwrap；
+  // city 携带 CityFact 结构（confidence/evidence），保留下方显式分支单独处理。
+  const interviewInfoSource = facts.interview_info as Record<string, unknown>;
+  const preferencesSource = facts.preferences as Record<string, unknown>;
+  const interview_info = Object.fromEntries(
+    INTERVIEW_INFO_FIELD_KEYS.map((key) => [
+      key,
+      unwrapSessionFactValue(interviewInfoSource[key], options),
+    ]),
+  );
+  const preferences = Object.fromEntries(
+    PREFERENCE_FIELD_KEYS.filter((key) => key !== 'city').map((key) => [
+      key,
+      unwrapSessionFactValue(preferencesSource[key], options),
+    ]),
+  );
+
   return EntityExtractionResultSchema.parse({
-    interview_info: {
-      name: unwrapSessionFactValue(facts.interview_info.name, options),
-      phone: unwrapSessionFactValue(facts.interview_info.phone, options),
-      gender: unwrapSessionFactValue(facts.interview_info.gender, options),
-      gender_source: unwrapSessionFactValue(facts.interview_info.gender_source, options),
-      age: unwrapSessionFactValue(facts.interview_info.age, options),
-      applied_store: unwrapSessionFactValue(facts.interview_info.applied_store, options),
-      applied_position: unwrapSessionFactValue(facts.interview_info.applied_position, options),
-      interview_time: unwrapSessionFactValue(facts.interview_info.interview_time, options),
-      is_student: unwrapSessionFactValue(facts.interview_info.is_student, options),
-      education: unwrapSessionFactValue(facts.interview_info.education, options),
-      has_health_certificate: unwrapSessionFactValue(
-        facts.interview_info.has_health_certificate,
-        options,
-      ),
-      upload_resume: unwrapSessionFactValue(facts.interview_info.upload_resume, options),
-      height: unwrapSessionFactValue(facts.interview_info.height, options),
-      weight: unwrapSessionFactValue(facts.interview_info.weight, options),
-      household_register_province: unwrapSessionFactValue(
-        facts.interview_info.household_register_province,
-        options,
-      ),
-    },
+    interview_info,
     preferences: {
-      brands: unwrapSessionFactValue(facts.preferences.brands, options),
-      salary: unwrapSessionFactValue(facts.preferences.salary, options),
-      position: unwrapSessionFactValue(facts.preferences.position, options),
-      schedule: unwrapSessionFactValue(facts.preferences.schedule, options),
+      ...preferences,
       city: isSessionFactValue<string>(city)
         ? unwrappedCity
           ? cityFactFromSessionValue({ ...city, value: unwrappedCity })
           : null
         : city,
-      district: unwrapSessionFactValue(facts.preferences.district, options),
-      location: unwrapSessionFactValue(facts.preferences.location, options),
-      labor_form: unwrapSessionFactValue(facts.preferences.labor_form, options),
-      delayed_intent: unwrapSessionFactValue(facts.preferences.delayed_intent, options),
-      short_term: unwrapSessionFactValue(facts.preferences.short_term, options),
-      open_position: unwrapSessionFactValue(facts.preferences.open_position, options),
-      time_windows: unwrapSessionFactValue(facts.preferences.time_windows, options),
-      schedule_constraint: unwrapSessionFactValue(facts.preferences.schedule_constraint, options),
-      available_after: unwrapSessionFactValue(facts.preferences.available_after, options),
     },
     reasoning: facts.reasoning,
   });
@@ -676,29 +754,24 @@ export function toSessionFacts(
   const wrap = <T>(value: T | null): SessionFactMaybeValue<T> =>
     value === null || value === undefined ? null : sessionFactValue(value, meta);
 
+  // 字段清单驱动：interview_info 全字段 + preferences 非 city 字段统一 wrap；
+  // city 需要带上 CityFact 的 confidence/evidence 与 llm→derived 来源改写，保留显式分支。
+  const interviewInfoSource = facts.interview_info as Record<string, unknown>;
+  const preferencesSource = facts.preferences as Record<string, unknown>;
+  const interview_info = Object.fromEntries(
+    INTERVIEW_INFO_FIELD_KEYS.map((key) => [key, wrap(interviewInfoSource[key] ?? null)]),
+  );
+  const preferences = Object.fromEntries(
+    PREFERENCE_FIELD_KEYS.filter((key) => key !== 'city').map((key) => [
+      key,
+      wrap(preferencesSource[key] ?? null),
+    ]),
+  );
+
   return SessionFactsSchema.parse({
-    interview_info: {
-      name: wrap(facts.interview_info.name),
-      phone: wrap(facts.interview_info.phone),
-      gender: wrap(facts.interview_info.gender),
-      gender_source: wrap(facts.interview_info.gender_source ?? null),
-      age: wrap(facts.interview_info.age),
-      applied_store: wrap(facts.interview_info.applied_store),
-      applied_position: wrap(facts.interview_info.applied_position),
-      interview_time: wrap(facts.interview_info.interview_time),
-      is_student: wrap(facts.interview_info.is_student),
-      education: wrap(facts.interview_info.education),
-      has_health_certificate: wrap(facts.interview_info.has_health_certificate),
-      upload_resume: wrap(facts.interview_info.upload_resume),
-      height: wrap(facts.interview_info.height),
-      weight: wrap(facts.interview_info.weight),
-      household_register_province: wrap(facts.interview_info.household_register_province),
-    },
+    interview_info,
     preferences: {
-      brands: wrap(facts.preferences.brands),
-      salary: wrap(facts.preferences.salary),
-      position: wrap(facts.preferences.position),
-      schedule: wrap(facts.preferences.schedule),
+      ...preferences,
       city: facts.preferences.city
         ? sessionFactValue(facts.preferences.city.value, {
             ...meta,
@@ -707,15 +780,6 @@ export function toSessionFacts(
             evidence: cityEvidenceToString(facts.preferences.city.evidence),
           })
         : null,
-      district: wrap(facts.preferences.district),
-      location: wrap(facts.preferences.location),
-      labor_form: wrap(facts.preferences.labor_form),
-      delayed_intent: wrap(facts.preferences.delayed_intent),
-      short_term: wrap(facts.preferences.short_term),
-      open_position: wrap(facts.preferences.open_position),
-      time_windows: wrap(facts.preferences.time_windows),
-      schedule_constraint: wrap(facts.preferences.schedule_constraint),
-      available_after: wrap(facts.preferences.available_after),
     },
     reasoning: facts.reasoning,
   }) as SessionFacts;

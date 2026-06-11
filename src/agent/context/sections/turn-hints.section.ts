@@ -1,10 +1,14 @@
 import { formatExtractionFactLines } from '@memory/formatters/fact-lines.formatter';
 import {
+  INTERVIEW_INFO_FIELD_KEYS,
+  PREFERENCE_FIELD_KEYS,
   type AvailableAfterFact,
   type CityFact,
   type DelayedIntent,
   type EntityExtractionResult,
   type HighConfidenceFacts,
+  type HighConfidenceInterviewInfo,
+  type HighConfidencePreferences,
   type HighConfidenceValue,
   type ScheduleConstraintFact,
   type SessionFacts,
@@ -455,38 +459,20 @@ export class TurnHintsSection implements PromptSection {
     return formatExtractionFactLines(facts).length > 0;
   }
 
+  /**
+   * 由单一字段清单生成全字段 null 的空模板（不再手写镜像清单）。
+   *
+   * 字段清单与各 schema 的一致性由 session-facts.types 的加载期自检兜底，
+   * 因此这里生成的 key 集合与 HighConfidenceInterviewInfo / HighConfidencePreferences 对齐，
+   * 不会再出现"漏写某字段导致 partition 无法写入"的静默缺口。
+   */
   private createEmptyHighConfidenceFacts(): HighConfidenceFacts {
+    const nullFields = <K extends string>(keys: readonly K[]): Record<K, null> =>
+      Object.fromEntries(keys.map((key) => [key, null])) as Record<K, null>;
+
     return {
-      interview_info: {
-        name: null,
-        phone: null,
-        gender: null,
-        gender_source: null,
-        age: null,
-        applied_store: null,
-        applied_position: null,
-        interview_time: null,
-        is_student: null,
-        education: null,
-        has_health_certificate: null,
-        upload_resume: null,
-      },
-      preferences: {
-        brands: null,
-        salary: null,
-        position: null,
-        schedule: null,
-        city: null,
-        district: null,
-        location: null,
-        labor_form: null,
-        delayed_intent: null,
-        short_term: null,
-        open_position: null,
-        time_windows: null,
-        schedule_constraint: null,
-        available_after: null,
-      },
+      interview_info: nullFields(INTERVIEW_INFO_FIELD_KEYS) as HighConfidenceInterviewInfo,
+      preferences: nullFields(PREFERENCE_FIELD_KEYS) as HighConfidencePreferences,
       reasoning: '',
     };
   }
