@@ -19,6 +19,7 @@ import { AnalyticsMaintenanceService } from './services/maintenance/analytics-ma
 import { DailyStatsAggregatorService } from './services/projections/daily-stats-aggregator.service';
 import { HourlyStatsAggregatorService } from './services/projections/hourly-stats-aggregator.service';
 import { AnalyticsAlertService } from './services/alerts/analytics-alert.service';
+import { ExtractionAccuracyService } from './services/dashboard/extraction-accuracy.service';
 
 // Cleanup (数据清理)
 import { DataCleanupService } from './services/cleanup/data-cleanup.service';
@@ -31,6 +32,9 @@ import { MonitoringRecordRepository } from './repositories/record.repository';
 import { MonitoringDailyStatsRepository } from './repositories/daily-stats.repository';
 import { MonitoringHourlyStatsRepository } from './repositories/hourly-stats.repository';
 import { MonitoringErrorLogRepository } from './repositories/error-log.repository';
+import { ExtractionAccuracyRepository } from './repositories/extraction-accuracy.repository';
+import { AlertLogPersisterService } from './services/tracking/alert-log.persister';
+import { ALERT_LOG_PERSISTER } from '@notification/types/alert-log-persister.interface';
 
 /**
  * 业务监控模块 (Business Layer)
@@ -62,9 +66,15 @@ import { MonitoringErrorLogRepository } from './repositories/error-log.repositor
     MonitoringDailyStatsRepository,
     MonitoringHourlyStatsRepository,
     MonitoringErrorLogRepository,
+    ExtractionAccuracyRepository,
     // Tracking
     MonitoringCacheService,
     MessageTrackingService,
+    // 告警持久化：把 AlertNotifierService 的告警写入 monitoring_error_logs。
+    // 接口 token 在 @Global 模块导出，AlertNotifierService（notification 层）
+    // 通过 @Optional() @Inject(ALERT_LOG_PERSISTER) 解析，保持 notification 对 biz 零依赖。
+    AlertLogPersisterService,
+    { provide: ALERT_LOG_PERSISTER, useExisting: AlertLogPersisterService },
     // Dashboard / Alerts / Maintenance / Projections
     AnalyticsDashboardService,
     AnalyticsQueryService,
@@ -72,6 +82,7 @@ import { MonitoringErrorLogRepository } from './repositories/error-log.repositor
     DailyStatsAggregatorService,
     HourlyStatsAggregatorService,
     AnalyticsAlertService,
+    ExtractionAccuracyService,
     // Cleanup
     DataCleanupService,
   ],
@@ -85,6 +96,7 @@ import { MonitoringErrorLogRepository } from './repositories/error-log.repositor
     HourlyStatsAggregatorService,
     AnalyticsAlertService,
     DataCleanupService,
+    ALERT_LOG_PERSISTER,
   ],
 })
 export class MonitoringModule {}

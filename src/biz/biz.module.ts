@@ -5,7 +5,6 @@ import { UserModule } from './user/user.module';
 import { BizMessageModule } from './message/message.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { GroupTaskModule } from './group-task/group-task.module';
-import { RecruitmentCaseModule } from './recruitment-case/recruitment-case.module';
 import { ConversionAnalyticsModule } from './conversion-analytics/conversion-analytics.module';
 
 @Module({
@@ -17,7 +16,6 @@ import { ConversionAnalyticsModule } from './conversion-analytics/conversion-ana
     MonitoringModule,
     ConversionAnalyticsModule,
     GroupTaskModule,
-    RecruitmentCaseModule,
   ],
   exports: [
     StrategyModule,
@@ -27,7 +25,6 @@ import { ConversionAnalyticsModule } from './conversion-analytics/conversion-ana
     MonitoringModule,
     ConversionAnalyticsModule,
     GroupTaskModule,
-    RecruitmentCaseModule,
   ],
 })
 export class BizModule {}

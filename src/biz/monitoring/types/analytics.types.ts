@@ -4,7 +4,6 @@
  */
 
 import {
-  AlertErrorType,
   MessageProcessingRecord,
   MonitoringErrorLog,
   MonitoringGlobalCounters,
@@ -104,7 +103,8 @@ export interface ScenarioUsageMetric {
 }
 
 export interface AlertTypeMetric {
-  type: AlertErrorType | 'unknown';
+  /** 子系统名（group-task/cron/infra…）或回退的 alertType 或 'unknown' */
+  type: string;
   count: number;
   percentage: number;
 }
@@ -282,4 +282,29 @@ export interface MetricsData {
   percentiles: { p50: number; p95: number; p99: number; p999: number };
   slowestRecords: MessageProcessingRecord[];
   recentAlertCount: number;
+}
+
+/**
+ * 提取质量对账：单字段一行。
+ *
+ * 真值 = booking 提交字段；提取值 = 报名前最近一轮记忆快照。
+ * coverage 低 = 靠现收（提取层没贡献）；accuracy 低 = 提取在污染预填。
+ */
+export interface ExtractionAccuracyFieldRow {
+  /** 字段名：name / phone / age / gender */
+  field: string;
+  /** 有真值的 booking 样本数 */
+  bookings: number;
+  /** 提取侧有值（无论对错）的样本数 */
+  extracted: number;
+  /** 覆盖率 %：extracted / bookings */
+  coveragePct: number;
+  /** 准确率 %：covered 且 matched / covered */
+  accuracyPct: number;
+  /** 提取有值但与真值不一致的样本数 */
+  mismatches: number;
+  /** 提取置信度为 high 的样本数 */
+  highConf: number;
+  /** 高置信准确率 %：high 且 matched / high */
+  highConfAccuracyPct: number;
 }

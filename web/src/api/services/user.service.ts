@@ -23,7 +23,11 @@ export async function getPausedUsers() {
     users: Array<{
       userId: string;
       pausedAt: number;
-      pauseExpiresAt: number;
+      pauseExpiresAt: number | null;
+      isPermanent?: boolean;
+      pauseReason?: string;
+      pauseOperator?: string;
+      pauseSource?: string;
       odName?: string;
       groupName?: string;
       botUserId?: string;
@@ -33,7 +37,11 @@ export async function getPausedUsers() {
   return response.users.map((user) => ({
     chatId: user.userId,
     pausedAt: user.pausedAt,
-    pauseExpiresAt: user.pauseExpiresAt,
+    pauseExpiresAt: user.pauseExpiresAt ?? null,
+    isPermanent: user.isPermanent === true,
+    pauseReason: user.pauseReason,
+    pauseOperator: user.pauseOperator,
+    pauseSource: user.pauseSource,
     odName: user.odName,
     groupName: user.groupName,
     botUserId: user.botUserId,

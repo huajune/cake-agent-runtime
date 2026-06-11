@@ -57,4 +57,24 @@ describe('AnalyticsMetricsService', () => {
       { type: 'delivery', count: 1, percentage: 33.3 },
     ]);
   });
+
+  it('groups by subsystem when present, falling back to alertType for legacy rows', () => {
+    const now = Date.now();
+    const logs: MonitoringErrorLog[] = [
+      // 新子系统告警：按 subsystem 分组
+      { timestamp: now, error: 'a', alertType: 'system', subsystem: 'group-task' },
+      { timestamp: now, error: 'b', alertType: 'system', subsystem: 'group-task' },
+      { timestamp: now, error: 'c', alertType: 'system', subsystem: 'cron' },
+      // 老消息失败无 subsystem：回退 alertType 保留粒度
+      { messageId: '1', timestamp: now, error: 'd', alertType: 'agent' },
+    ];
+
+    const summary = service.calculateAlertsSummary(logs);
+
+    expect(summary.byType).toEqual([
+      { type: 'group-task', count: 2, percentage: 50 },
+      { type: 'cron', count: 1, percentage: 25 },
+      { type: 'agent', count: 1, percentage: 25 },
+    ]);
+  });
 });

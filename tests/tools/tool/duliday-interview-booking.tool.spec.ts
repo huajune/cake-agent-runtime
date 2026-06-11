@@ -946,7 +946,7 @@ describe('buildInterviewBookingTool', () => {
         }),
       }),
     );
-    expect(mockUserHostingService.pauseUser).toHaveBeenCalledWith('sess-1');
+    expect(mockUserHostingService.pauseUser).toHaveBeenCalledWith('sess-1', expect.any(Object));
     expect(mockBookingService.incrementBookingCount).not.toHaveBeenCalled();
   });
 
@@ -972,6 +972,6 @@ describe('buildInterviewBookingTool', () => {
 
     expect(result.success).toBe(false);
     expect(result.errorType).toBe(TOOL_ERROR_TYPES.BOOKING_REJECTED);
-    expect(mockUserHostingService.pauseUser).toHaveBeenCalledWith('sess-1');
+    expect(mockUserHostingService.pauseUser).toHaveBeenCalledWith('sess-1', expect.any(Object));
   });
 });

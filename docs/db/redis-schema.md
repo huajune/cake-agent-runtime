@@ -2,7 +2,7 @@
 
 > Cake Agent Runtime - Redis (Upstash) 缓存层设计文档
 
-**最后更新**：2026-04-20
+**最后更新**：2026-06-11
 
 **Redis 客户端**：`@upstash/redis`（REST）+ `ioredis`（Bull Queue TCP）
 
@@ -203,9 +203,11 @@
 | 存储内容 | `WeworkSessionState`（已展示岗位、当前焦点岗位、已入群记录、品牌别名命中、抽取出的结构化事实等） |
 | TTL | `MEMORY_SESSION_TTL_DAYS` 天（默认 2 天） |
 
+`facts` 中每个结构化事实字段是 `SessionFactValue` wrapper：`{ value, confidence, source, evidence, extractedAt? }`。`extractedAt` 是提取时间锚（ISO 字符串），时间敏感字段注入 prompt 时据此带记录日期、超 24h 失效告警；`evidence` 入库前经 `truncateEvidence()` 截断至 200 字。
+
 注意：`facts:*` 的 TTL 只控制 Redis 会话事实的存活时间；会话沉淀阈值由 `MEMORY_SETTLEMENT_GAP_DAYS` 控制。
 
-**操作**：`GET` / `SET EX`（支持 deepMerge） / `DEL`
+**操作**：`GET` / `SET EX`（写入经跨轮置信度守卫 + deepMerge） / `DEL`
 
 ### 9. `stage:{corpId}:{userId}:{sessionId}` — 程序性记忆
 

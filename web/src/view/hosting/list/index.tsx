@@ -2,6 +2,9 @@ import {
   useBlacklist,
   useAddToBlacklist,
   useRemoveFromBlacklist,
+  useCandidateBlacklist,
+  useAddCandidateToBlacklist,
+  useRemoveCandidateFromBlacklist,
   useAiReplyStatus,
   useToggleAiReply,
 } from '@/hooks/config/useSystemConfig';
@@ -10,6 +13,7 @@ import { useGroupList } from '@/hooks/config/useWorker';
 // 组件导入
 import GlobalSwitch from './components/GlobalSwitch';
 import GroupTable from './components/GroupTable';
+import CandidateBlacklist from './components/CandidateBlacklist';
 import InfoCard from './components/InfoCard';
 
 // 样式导入
@@ -21,6 +25,9 @@ export default function Hosting() {
   const { data: groupList, isLoading: isLoadingGroups } = useGroupList();
   const addToBlacklist = useAddToBlacklist();
   const removeFromBlacklist = useRemoveFromBlacklist();
+  const { data: candidateBlacklist, isLoading: isLoadingCandidates } = useCandidateBlacklist();
+  const addCandidate = useAddCandidateToBlacklist();
+  const removeCandidate = useRemoveCandidateFromBlacklist();
   const { data: aiStatus } = useAiReplyStatus();
   const toggleAiReply = useToggleAiReply();
 
@@ -57,6 +64,15 @@ export default function Hosting() {
         isLoading={isLoadingGroups || isLoadingBlacklist}
         isPending={addToBlacklist.isPending || removeFromBlacklist.isPending}
         onToggleBlacklist={handleToggleBlacklist}
+      />
+
+      {/* 候选人黑名单 */}
+      <CandidateBlacklist
+        candidates={candidateBlacklist?.candidates || []}
+        isLoading={isLoadingCandidates}
+        isPending={addCandidate.isPending || removeCandidate.isPending}
+        onAdd={(params) => addCandidate.mutate(params)}
+        onRemove={(targetId) => removeCandidate.mutate({ targetId })}
       />
 
       {/* 说明卡片 */}

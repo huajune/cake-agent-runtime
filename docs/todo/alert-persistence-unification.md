@@ -1,5 +1,20 @@
 # TODO: 告警持久化入口统一 + 监控 KPI 修正
 
+> ## 进展（2026-06-11）
+>
+> 分两批落地，本 todo 的主体已完成：
+>
+> - **3 个阈值 bug → PR #293（已合 develop）**：hourlyRate 真 1h 窗口、warning=critical×0.7、avgDurationCritical 默认 90s。
+> - **告警持久化 + 子系统聚合 + 前端 → PR #298（已 approve）**：
+>   - `AlertNotifierService.sendAlert` 持久化所有告警（含节流 throttled、未投递 delivered），子系统告警（群任务/Cron/Infra/Incident）进 `monitoring_error_logs` → "今日错误" 总数与错误列表可见。
+>   - migration `20260611120000`：加 subsystem/component/action/severity/summary/code/dedupe_key/throttled/delivered 9 列 + message_id 可空 + subsystem 索引（**生产已应用**；测试库待补 db:push）。
+>   - 跨模块用 `IAlertLogPersister` 接口 + token 反转（notification 对 biz 零依赖）。
+>   - `buildAlertTypeMetrics` 改为 subsystem 优先聚合（回退 alertType）；前端 ConsolePanel 展示子系统中文友好名 + "错误趋势(24小时)" 文案改 "今日"（与数据源对齐）。
+>
+> **与本文档原方案的偏离（有意为之）**：未采用"删 MessageTrackingService.saveErrorLog + 全 recordFailure 补 sendAlert"的单一写入点方案——audit 发现 `message.service`(merge) 与 `accept-inbound`(pre-dispatch) 两路径只 recordFailure 不 sendAlert，删除会丢日志。改用 `sendAlert(ctx, { persist:false })` 让消息失败路径由 recordFailure 单独落库，零双写零回归。link A 完全未动。
+>
+> **仍未做（低优，后续按需）**：① 节流告警的前端 badge 区分；② 错误分布按 code 钻取二级页；③ 告警节流改按 subsystem+severity 分维度；④ throttled 行的分级保留策略。
+
 ## 问题背景
 
 `monitoring_error_logs` 表是 dashboard "今日错误" KPI、错误分布列表、错误趋势图的唯一数据源，但**只有消息处理失败链路在写入**，子系统告警（群任务、Cron、Infra 异常等）全部丢失。

@@ -13,13 +13,24 @@ export class UserController {
 
   @Post('users/:userId/pause')
   @HttpCode(200)
-  async pauseUserHosting(@Param('userId') userId: string) {
-    this.logger.log(`暂停用户托管: ${userId}`);
-    await this.userHostingService.pauseUser(userId);
+  async pauseUserHosting(
+    @Param('userId') userId: string,
+    @Body('permanent') permanent?: boolean,
+    @Body('reason') reason?: string,
+    @Body('operator') operator?: string,
+  ) {
+    this.logger.log(`暂停用户托管: ${userId}${permanent ? '（永久）' : ''}`);
+    await this.userHostingService.pauseUser(userId, {
+      permanent,
+      reason,
+      operator,
+      source: 'manual',
+    });
     return {
       userId,
       isPaused: true,
-      message: `用户 ${userId} 的托管已暂停`,
+      isPermanent: permanent === true,
+      message: permanent ? `用户 ${userId} 已永久禁止托管` : `用户 ${userId} 的托管已暂停`,
     };
   }
 
@@ -57,7 +68,7 @@ export class UserController {
       await this.userHostingService.resumeUser(chatId);
       return { chatId, hostingEnabled: true, message: `用户 ${chatId} 的托管已启用` };
     } else {
-      await this.userHostingService.pauseUser(chatId);
+      await this.userHostingService.pauseUser(chatId, { source: 'manual' });
       return { chatId, hostingEnabled: false, message: `用户 ${chatId} 的托管已暂停` };
     }
   }

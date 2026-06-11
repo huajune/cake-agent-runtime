@@ -16,6 +16,7 @@ import {
   type HighConfidenceValue,
   type RecommendedJobSummary,
   RecommendedJobSummarySchema,
+  type ScheduleConstraintFact,
   type InvitedGroupRecord,
   InvitedGroupRecordSchema,
   SessionFactsSchema,
@@ -47,6 +48,12 @@ import {
 import { resolveCityFromGeoSignals } from '../facts/geo-mappings';
 import { sanitizeInterviewName } from '../facts/name-guard';
 import {
+  hasMeaningfulValue,
+  isSameFactValue,
+  mergeNullableStringArrays,
+  shouldAdoptRuleMeta,
+} from '../facts/fact-merge.util';
+import {
   extractPresentedJobs,
   resolveAssistantAnchoredFocusJob,
   resolveCurrentFocusJob,
@@ -67,6 +74,9 @@ import {
 @Injectable()
 export class SessionService {
   private readonly logger = new Logger(SessionService.name);
+
+  /** 纯应答词判定的最大文本长度：超过即认为携带额外信息，不可跳过提取。 */
+  private static readonly MAX_ACK_TEXT_LENGTH = 12;
 
   constructor(
     private readonly redisStore: RedisStore,
@@ -196,7 +206,7 @@ export class SessionService {
         const incomingVal = incomingGroup[field];
         if (!isSessionFactValue(prevVal) || !isSessionFactValue(incomingVal)) continue;
         if (Array.isArray(prevVal.value) || Array.isArray(incomingVal.value)) continue;
-        if (this.isSameFactValue(prevVal.value, incomingVal.value)) continue;
+        if (isSameFactValue(prevVal.value, incomingVal.value)) continue;
 
         if (
           sessionFactConfidenceRank(incomingVal.confidence) <
@@ -364,11 +374,11 @@ export class SessionService {
     userId: string,
     sessionId: string,
     messages: { role: string; content: string }[],
-  ): Promise<void> {
+  ): Promise<{ llmDegraded: boolean }> {
     const dialogueMessages = messages.filter(
       (m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim().length > 0,
     );
-    if (dialogueMessages.length === 0) return;
+    if (dialogueMessages.length === 0) return { llmDegraded: false };
 
     // 会话段切割：短期窗口跨 7 天，可能包含已了结的旧会话。旧会话的报名/约面
     // 事务字段一旦被重新提取，会"复活"成当前会话事实（生产 badcase：chat
@@ -411,10 +421,24 @@ export class SessionService {
     );
 
     const brandData = await this.sponge.fetchBrandList();
+
+    // 纯应答闸门：已有 facts、本轮最后一条用户消息是纯应答词（"好的/嗯嗯/谢谢"）、
+    // 且对该消息的规则提取零命中时，跳过本轮 LLM 提取——这类轮次没有新事实，
+    // 却要支付完整的提取调用（品牌列表 + 规则线索 + 历史，数千 tokens）。
+    // 信息不会永久丢失：下一轮非应答消息的增量窗口仍覆盖本轮上下文（含助手
+    // 推荐 + 本次应答），"嗯嗯确认岗位"语义会在下一轮被补提取。
+    const lastUserText = MessageParser.stripTimeContext(userMessages.at(-1) ?? '').trim();
+    if (previousFacts && this.isPureAcknowledgment(lastUserText)) {
+      const currentTurnRuleHits = extractHighConfidenceFacts([lastUserText], brandData);
+      if (!currentTurnRuleHits) {
+        this.logger.log(`[extractFacts] 纯应答轮无新信号，跳过 LLM 提取：「${lastUserText}」`);
+        return { llmDegraded: false };
+      }
+    }
+
     const aliasHints = detectBrandAliasHints(userMessages, brandData);
     const ruleFacts = extractHighConfidenceFacts(userMessages, brandData);
     const highConfidenceRuleFacts = filterHighConfidenceFacts(ruleFacts);
-    const ruleFactValues = unwrapHighConfidenceFacts(highConfidenceRuleFacts);
     const prompt = buildSessionExtractionPrompt(
       brandData,
       currentMessage,
@@ -422,8 +446,9 @@ export class SessionService {
       aliasHints,
       ruleFacts,
       MessageParser.formatCurrentTime(),
+      previousFacts,
     );
-    const { facts: llmRaw, explicitProvenance } = await this.callLLM(prompt);
+    const { facts: llmRaw, explicitProvenance, degraded: llmDegraded } = await this.callLLM(prompt);
     const llmFacts = mergeDetectedBrands(llmRaw, aliasHints);
     // 先 sanitize LLM 输出，再 merge 规则 — 确保 LLM 昵称被 drop 后规则的结构化姓名能补位
     const { sanitized: sanitizedLlm, droppedName } = sanitizeInterviewName(llmFacts, userMessages);
@@ -432,17 +457,8 @@ export class SessionService {
         `[extractFacts] 丢弃来自"我是xx"打招呼语的昵称"${droppedName}"，不写入 interview_info.name`,
       );
     }
-    const mergedFactValues = this.mergeHighConfidenceRuleFacts(sanitizedLlm, ruleFactValues);
     const newFacts = this.applyExplicitProvenanceUpgrade(
-      this.applyHighConfidenceMetadata(
-        toSessionFacts(mergedFactValues, {
-          confidence: 'medium',
-          source: 'llm',
-          evidence: this.buildLlmFactEvidence(mergedFactValues.reasoning),
-          extractedAt: new Date().toISOString(),
-        }),
-        highConfidenceRuleFacts,
-      ),
+      this.mergeRuleAndLlmFacts(sanitizedLlm, highConfidenceRuleFacts),
       explicitProvenance,
       userMessages,
     );
@@ -453,11 +469,16 @@ export class SessionService {
     await this.saveFacts(corpId, userId, sessionId, newFacts, {
       forceNullFields: nameStillNull ? ['name'] : undefined,
     });
+
+    return { llmDegraded };
   }
 
-  private async callLLM(
-    prompt: string,
-  ): Promise<{ facts: EntityExtractionResult; explicitProvenance: ExplicitProvenanceEntry[] }> {
+  private async callLLM(prompt: string): Promise<{
+    facts: EntityExtractionResult;
+    explicitProvenance: ExplicitProvenanceEntry[];
+    /** true = LLM 调用或 schema 解析失败，已降级为空提取（本轮新事实丢失，旧值不受影响）。 */
+    degraded: boolean;
+  }> {
     try {
       const result = await this.llm.generateStructured({
         role: ModelRole.Extract,
@@ -480,10 +501,13 @@ export class SessionService {
 
       // 归一化：LLM 输出的 city 字符串经 EntityExtractionResultSchema 转为 CityFact 对象
       const parsed = EntityExtractionResultSchema.parse(result.output);
-      return { facts: this.backfillCityFromWhitelist(parsed), explicitProvenance };
+      return { facts: this.backfillCityFromWhitelist(parsed), explicitProvenance, degraded: false };
     } catch (err) {
+      // 降级影响：本轮新事实丢失（下一轮增量窗口可自然补回），旧 facts 经
+      // deepMerge "null 不覆盖"不受影响。调用方据 degraded 标记把
+      // post_processing_status 标成降级，使提取实际成功率可观测。
       this.logger.warn('[extractFacts] LLM extraction failed, using fallback', err);
-      return { facts: FALLBACK_EXTRACTION, explicitProvenance: [] };
+      return { facts: FALLBACK_EXTRACTION, explicitProvenance: [], degraded: true };
     }
   }
 
@@ -571,6 +595,19 @@ export class SessionService {
     return SessionFactsSchema.parse(facts) as SessionFacts;
   }
 
+  /**
+   * 纯应答词判定：整条消息（去时间后缀）由 1-3 个应答/寒暄词 + 标点构成。
+   * 用白名单而非长度判断，避免把"好的约明天"这类短但有信息的消息误判。
+   */
+  private isPureAcknowledgment(text: string): boolean {
+    if (!text) return false;
+    if (text.length > SessionService.MAX_ACK_TEXT_LENGTH) return false;
+    const ackWord =
+      '(?:好的|好滴|好嘞|好呀|好|嗯+|嗯呢|可以|行|没事|没问题|是的|对的|对|ok|okk|👌|收到|知道了|明白了?|了解|谢谢你?|谢了|麻烦了|辛苦了|在吗|在不在|你好|您好|哦+|噢|嗷|哈+)';
+    const pattern = new RegExp(`^(?:${ackWord}[~～。.!！?？，,、\\s]*){1,3}$`, 'i');
+    return pattern.test(text);
+  }
+
   private buildLlmFactEvidence(reasoning: string | null | undefined): string {
     const trimmed = reasoning?.trim();
     // evidence 只服务排障，入库前截断；reasoning 全文曾把每个字段的 evidence 撑到
@@ -609,224 +646,138 @@ export class SessionService {
     return Number.isFinite(parsed) ? parsed : null;
   }
 
-  private applyHighConfidenceMetadata(
-    sessionFacts: SessionFacts,
+  /**
+   * 同轮 rule × LLM 统一合并（取代旧 [c] mergeHighConfidenceRuleFacts +
+   * [d] applyHighConfidenceMetadata 的两次遍历）。
+   *
+   * 一次遍历对每个字段决定胜者值与最终元数据：
+   * - 标量：LLM 非空优先取 LLM；LLM 空时 rule 补位（boolean 的「空」= null，
+   *   故 LLM 给出 false 也算有值，与旧实现的 `=== null` 判定等价）。
+   * - 数组（brands/position/district/location/time_windows）：LLM 与 rule 累积去重。
+   * - 元数据：rule 该字段高置信有值，且 LLM 无值（rule 补位）或与 rule 同值（二者一致）时，
+   *   最终元数据采用 rule（high/rule）；否则保留 LLM（medium/llm）。这是旧 [c]+[d]
+   *   叠加后的实际语义（先值合并，再用规则高置信值重打元数据）。
+   *
+   * gender/gender_source（联动）、schedule_constraint（逐子字段 ?? 合并）、city
+   * （CityFact 值合并 + 经 toSessionFacts 的 derived/CityFact 归一化）行为难以套进
+   * 统一标量/数组形态，保留为下方手写分支；它们仍共用同一套「rule 元数据归属」判定。
+   *
+   * reasoning：追加规则参考线索，并作为 LLM 取胜字段的 evidence（与旧实现一致）。
+   */
+  private mergeRuleAndLlmFacts(
+    llmFacts: EntityExtractionResult,
     ruleFacts: HighConfidenceFacts | null,
   ): SessionFacts {
-    if (!ruleFacts) return sessionFacts;
-
-    const result: SessionFacts = {
-      ...sessionFacts,
-      interview_info: { ...sessionFacts.interview_info },
-      preferences: { ...sessionFacts.preferences },
-    };
-    const infoTarget = result.interview_info as unknown as Record<string, unknown>;
-    const prefTarget = result.preferences as unknown as Record<string, unknown>;
-
-    this.applyHighConfidenceField(infoTarget, 'name', ruleFacts.interview_info.name);
-    this.applyHighConfidenceField(infoTarget, 'phone', ruleFacts.interview_info.phone);
-    this.applyHighConfidenceField(infoTarget, 'gender', ruleFacts.interview_info.gender);
-    this.applyHighConfidenceField(
-      infoTarget,
-      'gender_source',
-      ruleFacts.interview_info.gender_source,
-    );
-    this.applyHighConfidenceField(infoTarget, 'age', ruleFacts.interview_info.age);
-    this.applyHighConfidenceField(
-      infoTarget,
-      'applied_store',
-      ruleFacts.interview_info.applied_store,
-    );
-    this.applyHighConfidenceField(
-      infoTarget,
-      'applied_position',
-      ruleFacts.interview_info.applied_position,
-    );
-    this.applyHighConfidenceField(
-      infoTarget,
-      'interview_time',
-      ruleFacts.interview_info.interview_time,
-    );
-    this.applyHighConfidenceField(infoTarget, 'is_student', ruleFacts.interview_info.is_student);
-    this.applyHighConfidenceField(infoTarget, 'education', ruleFacts.interview_info.education);
-    this.applyHighConfidenceField(
-      infoTarget,
-      'has_health_certificate',
-      ruleFacts.interview_info.has_health_certificate,
-    );
-    this.applyHighConfidenceField(
-      infoTarget,
-      'upload_resume',
-      ruleFacts.interview_info.upload_resume,
-    );
-
-    this.applyHighConfidenceField(prefTarget, 'brands', ruleFacts.preferences.brands);
-    this.applyHighConfidenceField(prefTarget, 'salary', ruleFacts.preferences.salary);
-    this.applyHighConfidenceField(prefTarget, 'position', ruleFacts.preferences.position);
-    this.applyHighConfidenceField(prefTarget, 'schedule', ruleFacts.preferences.schedule);
-    this.applyHighConfidenceField(prefTarget, 'city', ruleFacts.preferences.city);
-    this.applyHighConfidenceField(prefTarget, 'district', ruleFacts.preferences.district);
-    this.applyHighConfidenceField(prefTarget, 'location', ruleFacts.preferences.location);
-    this.applyHighConfidenceField(prefTarget, 'labor_form', ruleFacts.preferences.labor_form);
-    this.applyHighConfidenceField(
-      prefTarget,
-      'delayed_intent',
-      ruleFacts.preferences.delayed_intent,
-    );
-    this.applyHighConfidenceField(prefTarget, 'short_term', ruleFacts.preferences.short_term);
-    this.applyHighConfidenceField(prefTarget, 'open_position', ruleFacts.preferences.open_position);
-    this.applyHighConfidenceField(prefTarget, 'time_windows', ruleFacts.preferences.time_windows);
-    this.applyHighConfidenceField(
-      prefTarget,
-      'schedule_constraint',
-      ruleFacts.preferences.schedule_constraint,
-    );
-    this.applyHighConfidenceField(
-      prefTarget,
-      'available_after',
-      ruleFacts.preferences.available_after,
-    );
-
-    return result;
-  }
-
-  private applyHighConfidenceField<T>(
-    target: Record<string, unknown>,
-    field: string,
-    fact: HighConfidenceValue<T> | null,
-  ): void {
-    if (!fact || !this.hasMeaningfulValue(fact.value)) return;
-
-    const currentValue = unwrapSessionFactValue(target[field] as SessionFactValue<T> | T | null);
-    if (this.hasMeaningfulValue(currentValue) && !this.isSameFactValue(currentValue, fact.value)) {
-      return;
+    if (!ruleFacts) {
+      return toSessionFacts(llmFacts, {
+        confidence: 'medium',
+        source: 'llm',
+        evidence: this.buildLlmFactEvidence(llmFacts.reasoning),
+        extractedAt: new Date().toISOString(),
+      });
     }
-
-    target[field] = sessionFactValue(fact.value, {
-      confidence: fact.confidence,
-      source: fact.source,
-      evidence: truncateEvidence(fact.evidence),
-      extractedAt: new Date().toISOString(),
-    });
-  }
-
-  private hasMeaningfulValue(value: unknown): boolean {
-    if (value === null || value === undefined) return false;
-    if (typeof value === 'boolean') return true;
-    if (typeof value === 'string') return value.trim().length > 0;
-    if (Array.isArray(value)) return value.length > 0;
-    return true;
-  }
-
-  private isSameFactValue(left: unknown, right: unknown): boolean {
-    if (Array.isArray(left) && Array.isArray(right)) {
-      const normalize = (values: unknown[]) =>
-        values
-          .map((value) => String(value).trim())
-          .filter(Boolean)
-          .sort();
-      return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right));
-    }
-    if (typeof left === 'string' || typeof right === 'string') {
-      return String(left).trim() === String(right).trim();
-    }
-    return JSON.stringify(left) === JSON.stringify(right);
-  }
-
-  /**
-   * 规则提取作为 LLM 的参考依据，已通过 prompt 注入。
-   * 此处做兜底合并：LLM 输出为主，规则仅在 LLM 未提取到时补位。
-   * 数组字段仍做累积合并（品牌别名归一化等规则独有的映射能力）。
-   */
-  private mergeHighConfidenceRuleFacts(
-    llmFacts: EntityExtractionResult,
-    ruleFacts: EntityExtractionResult | null,
-  ): EntityExtractionResult {
-    if (!ruleFacts) return llmFacts;
 
     const merged: EntityExtractionResult = {
       ...llmFacts,
       interview_info: { ...llmFacts.interview_info },
       preferences: { ...llmFacts.preferences },
     };
+    const infoMerge = merged.interview_info as unknown as Record<string, unknown>;
+    const prefMerge = merged.preferences as unknown as Record<string, unknown>;
+    const ruleInfo = ruleFacts.interview_info as unknown as Record<
+      string,
+      HighConfidenceValue<unknown> | null
+    >;
+    const rulePref = ruleFacts.preferences as unknown as Record<
+      string,
+      HighConfidenceValue<unknown> | null
+    >;
 
-    const ruleInfo = ruleFacts.interview_info;
-    if (!merged.interview_info.name && ruleInfo.name) merged.interview_info.name = ruleInfo.name;
-    if (!merged.interview_info.phone && ruleInfo.phone)
-      merged.interview_info.phone = ruleInfo.phone;
-    if (!merged.interview_info.gender && ruleInfo.gender) {
-      merged.interview_info.gender = ruleInfo.gender;
+    // 收集最终应采用 rule 高置信元数据的字段：`{group}.{field}` → rule 事实。
+    const ruleMetaFields = new Map<string, HighConfidenceValue<unknown>>();
+    const noteRuleMeta = (
+      groupKey: 'interview_info' | 'preferences',
+      field: string,
+      ruleFact: HighConfidenceValue<unknown> | null,
+      currentValue: unknown,
+    ): void => {
+      if (ruleFact && shouldAdoptRuleMeta(currentValue, ruleFact.value)) {
+        ruleMetaFields.set(`${groupKey}.${field}`, ruleFact);
+      }
+    };
+
+    // ── 标量字段：LLM 非空优先，rule 补位 ──
+    for (const [groupKey, target, ruleGroup] of [
+      ['interview_info', infoMerge, ruleInfo],
+      ['preferences', prefMerge, rulePref],
+    ] as const) {
+      const fields =
+        groupKey === 'interview_info'
+          ? SessionService.SCALAR_INFO_FIELDS
+          : SessionService.SCALAR_PREF_FIELDS;
+      for (const field of fields) {
+        const ruleFact = ruleGroup[field];
+        if (!hasMeaningfulValue(target[field]) && ruleFact && hasMeaningfulValue(ruleFact.value)) {
+          target[field] = ruleFact.value;
+        }
+        noteRuleMeta(groupKey, field, ruleFact, target[field]);
+      }
+    }
+
+    // ── 数组字段：LLM 与 rule 累积去重 ──
+    for (const field of SessionService.ARRAY_PREF_FIELDS) {
+      const ruleFact = rulePref[field];
+      const mergedArray = mergeNullableStringArrays(
+        prefMerge[field] as string[] | null,
+        ruleFact && hasMeaningfulValue(ruleFact.value) ? (ruleFact.value as string[]) : null,
+      );
+      prefMerge[field] = mergedArray;
+      noteRuleMeta('preferences', field, ruleFact, mergedArray);
+    }
+
+    // ── gender + gender_source：联动补位（注册表单字段模型表达不了） ──
+    const ruleGender = ruleInfo.gender;
+    if (!merged.interview_info.gender && ruleGender && hasMeaningfulValue(ruleGender.value)) {
+      merged.interview_info.gender = ruleGender.value as string;
       merged.interview_info.gender_source =
-        ruleInfo.gender_source ?? merged.interview_info.gender_source;
+        (ruleInfo.gender_source?.value as 'candidate' | 'system' | undefined) ??
+        merged.interview_info.gender_source;
     }
-    if (!merged.interview_info.age && ruleInfo.age) merged.interview_info.age = ruleInfo.age;
-    if (!merged.interview_info.applied_store && ruleInfo.applied_store)
-      merged.interview_info.applied_store = ruleInfo.applied_store;
-    if (!merged.interview_info.applied_position && ruleInfo.applied_position)
-      merged.interview_info.applied_position = ruleInfo.applied_position;
-    if (!merged.interview_info.interview_time && ruleInfo.interview_time)
-      merged.interview_info.interview_time = ruleInfo.interview_time;
-    if (merged.interview_info.is_student === null && ruleInfo.is_student !== null)
-      merged.interview_info.is_student = ruleInfo.is_student;
-    if (!merged.interview_info.education && ruleInfo.education)
-      merged.interview_info.education = ruleInfo.education;
-    if (!merged.interview_info.has_health_certificate && ruleInfo.has_health_certificate) {
-      merged.interview_info.has_health_certificate = ruleInfo.has_health_certificate;
-    }
-    if (!merged.interview_info.upload_resume && ruleInfo.upload_resume) {
-      merged.interview_info.upload_resume = ruleInfo.upload_resume;
-    }
+    noteRuleMeta('interview_info', 'gender', ruleGender, merged.interview_info.gender);
+    noteRuleMeta(
+      'interview_info',
+      'gender_source',
+      ruleInfo.gender_source,
+      merged.interview_info.gender_source,
+    );
 
-    const rulePrefs = ruleFacts.preferences;
-    merged.preferences.brands = this.mergeNullableStringArrays(
-      merged.preferences.brands,
-      rulePrefs.brands,
-    );
-    if (!merged.preferences.salary && rulePrefs.salary)
-      merged.preferences.salary = rulePrefs.salary;
-    merged.preferences.position = this.mergeNullableStringArrays(
-      merged.preferences.position,
-      rulePrefs.position,
-    );
-    if (!merged.preferences.schedule && rulePrefs.schedule)
-      merged.preferences.schedule = rulePrefs.schedule;
-    if (!merged.preferences.city && rulePrefs.city) merged.preferences.city = rulePrefs.city;
-    merged.preferences.district = this.mergeNullableStringArrays(
-      merged.preferences.district,
-      rulePrefs.district,
-    );
-    merged.preferences.location = this.mergeNullableStringArrays(
-      merged.preferences.location,
-      rulePrefs.location,
-    );
-    if (!merged.preferences.labor_form && rulePrefs.labor_form)
-      merged.preferences.labor_form = rulePrefs.labor_form;
-    if (!merged.preferences.delayed_intent && rulePrefs.delayed_intent)
-      merged.preferences.delayed_intent = rulePrefs.delayed_intent;
-    if (merged.preferences.short_term === null && rulePrefs.short_term !== null)
-      merged.preferences.short_term = rulePrefs.short_term;
-    if (merged.preferences.open_position === null && rulePrefs.open_position !== null)
-      merged.preferences.open_position = rulePrefs.open_position;
-    merged.preferences.time_windows = this.mergeNullableStringArrays(
-      merged.preferences.time_windows,
-      rulePrefs.time_windows,
-    );
-    if (rulePrefs.schedule_constraint) {
+    // ── schedule_constraint：逐子字段 ?? 合并（LLM 优先，rule 补缺） ──
+    const ruleConstraint = rulePref.schedule_constraint;
+    if (ruleConstraint && ruleConstraint.value) {
+      const r = ruleConstraint.value as ScheduleConstraintFact;
       const llmConstraint = merged.preferences.schedule_constraint;
       merged.preferences.schedule_constraint = {
-        onlyWeekends:
-          llmConstraint?.onlyWeekends ?? rulePrefs.schedule_constraint.onlyWeekends ?? null,
-        onlyEvenings:
-          llmConstraint?.onlyEvenings ?? rulePrefs.schedule_constraint.onlyEvenings ?? null,
-        onlyMornings:
-          llmConstraint?.onlyMornings ?? rulePrefs.schedule_constraint.onlyMornings ?? null,
-        maxDaysPerWeek:
-          llmConstraint?.maxDaysPerWeek ?? rulePrefs.schedule_constraint.maxDaysPerWeek ?? null,
+        onlyWeekends: llmConstraint?.onlyWeekends ?? r.onlyWeekends ?? null,
+        onlyEvenings: llmConstraint?.onlyEvenings ?? r.onlyEvenings ?? null,
+        onlyMornings: llmConstraint?.onlyMornings ?? r.onlyMornings ?? null,
+        maxDaysPerWeek: llmConstraint?.maxDaysPerWeek ?? r.maxDaysPerWeek ?? null,
       };
     }
-    if (!merged.preferences.available_after && rulePrefs.available_after)
-      merged.preferences.available_after = rulePrefs.available_after;
+    noteRuleMeta(
+      'preferences',
+      'schedule_constraint',
+      ruleConstraint,
+      merged.preferences.schedule_constraint,
+    );
 
+    // ── city：CityFact 值合并（LLM 空时 rule 补位），元数据按 city 字符串比较 ──
+    const ruleCity = rulePref.city;
+    if (!merged.preferences.city && ruleCity && hasMeaningfulValue(ruleCity.value)) {
+      merged.preferences.city = unwrapHighConfidenceFacts(ruleFacts)?.preferences.city ?? null;
+    }
+    noteRuleMeta('preferences', 'city', ruleCity, merged.preferences.city?.value ?? null);
+
+    // reasoning：追加规则参考线索（同时作为 LLM 取胜字段的 evidence）。
     const ruleReasoning = ruleFacts.reasoning?.trim();
     if (ruleReasoning) {
       merged.reasoning = [merged.reasoning?.trim(), `规则模式匹配参考线索：\n${ruleReasoning}`]
@@ -834,15 +785,89 @@ export class SessionService {
         .join('\n');
     }
 
-    return merged;
+    // 先整体打 medium/llm，再把 rule 取胜字段重打 high/rule。
+    const sessionFacts = toSessionFacts(merged, {
+      confidence: 'medium',
+      source: 'llm',
+      evidence: this.buildLlmFactEvidence(merged.reasoning),
+      extractedAt: new Date().toISOString(),
+    });
+    return this.stampRuleMetadata(sessionFacts, ruleMetaFields);
   }
 
-  private mergeNullableStringArrays(
-    first: string[] | null | undefined,
-    second: string[] | null | undefined,
-  ): string[] | null {
-    const merged = Array.from(new Set([...(first ?? []), ...(second ?? [])]));
-    return merged.length > 0 ? merged : null;
+  /** interview_info 下走「先到先得」标量合并的字段（gender/gender_source 因联动单列）。 */
+  private static readonly SCALAR_INFO_FIELDS: readonly string[] = [
+    'name',
+    'phone',
+    'age',
+    'applied_store',
+    'applied_position',
+    'interview_time',
+    'is_student',
+    'education',
+    'has_health_certificate',
+    'upload_resume',
+    'height',
+    'weight',
+    'household_register_province',
+  ];
+
+  /** preferences 下走「先到先得」标量合并的字段（city/schedule_constraint 单列）。 */
+  private static readonly SCALAR_PREF_FIELDS: readonly string[] = [
+    'salary',
+    'schedule',
+    'labor_form',
+    'delayed_intent',
+    'short_term',
+    'open_position',
+    'available_after',
+  ];
+
+  /** preferences 下走「累积去重」数组合并的字段。 */
+  private static readonly ARRAY_PREF_FIELDS: readonly string[] = [
+    'brands',
+    'position',
+    'district',
+    'location',
+    'time_windows',
+  ];
+
+  /** 把 ruleMetaFields 列出的字段从 medium/llm 重打为 rule 的 high/rule 元数据。 */
+  private stampRuleMetadata(
+    sessionFacts: SessionFacts,
+    ruleMetaFields: Map<string, HighConfidenceValue<unknown>>,
+  ): SessionFacts {
+    if (ruleMetaFields.size === 0) return sessionFacts;
+
+    const result: SessionFacts = {
+      ...sessionFacts,
+      interview_info: { ...sessionFacts.interview_info },
+      preferences: { ...sessionFacts.preferences },
+    };
+    const groups: Record<string, Record<string, unknown>> = {
+      interview_info: result.interview_info as unknown as Record<string, unknown>,
+      preferences: result.preferences as unknown as Record<string, unknown>,
+    };
+
+    for (const [path, ruleFact] of ruleMetaFields) {
+      const [groupKey, field] = path.split('.');
+      const target = groups[groupKey];
+      const current = unwrapSessionFactValue(
+        target[field] as SessionFactValue<unknown> | unknown | null,
+      );
+      // 防御：medium/llm 重打前再校验一次值未被偏移（与旧 applyHighConfidenceField 一致）。
+      if (!hasMeaningfulValue(ruleFact.value)) continue;
+      if (hasMeaningfulValue(current) && !isSameFactValue(current, ruleFact.value)) continue;
+
+      target[field] = sessionFactValue(ruleFact.value, {
+        confidence: ruleFact.confidence,
+        source: ruleFact.source,
+        evidence: truncateEvidence(ruleFact.evidence),
+        extractedAt: new Date().toISOString(),
+      });
+    }
+
+    return result;
   }
 
   /**

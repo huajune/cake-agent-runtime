@@ -12,7 +12,6 @@ import {
   MessageProcessingRecord,
   MonitoringErrorLog,
   MonitoringGlobalCounters,
-  AlertErrorType,
 } from '@shared-types/tracking.types';
 import {
   HourlyStats,
@@ -647,9 +646,10 @@ export class AnalyticsQueryService {
   }
 
   private buildAlertTypeMetrics(errorLogs: MonitoringErrorLog[]): AlertTypeMetric[] {
-    const typeMap = new Map<AlertErrorType | 'unknown', number>();
+    // 子系统优先聚合：新告警按 subsystem（group-task/cron/infra…），老消息失败回退 alertType。
+    const typeMap = new Map<string, number>();
     for (const log of errorLogs) {
-      const type = log.alertType || 'unknown';
+      const type = log.subsystem || log.alertType || 'unknown';
       typeMap.set(type, (typeMap.get(type) || 0) + 1);
     }
     const total = Array.from(typeMap.values()).reduce((acc, v) => acc + v, 0);

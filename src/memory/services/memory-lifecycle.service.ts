@@ -353,8 +353,19 @@ export class MemoryLifecycleService {
       content: this.extractTextFromContent(m.content),
     }));
     const extractFactsResult = await this.runMeasuredStep('extract_facts', async () => {
-      await this.session.extractAndSave(ctx.corpId, ctx.userId, ctx.sessionId, flatMessages);
+      return await this.session.extractAndSave(ctx.corpId, ctx.userId, ctx.sessionId, flatMessages);
     });
+    // LLM 提取降级（fallback 空值）此前被吞掉、step 仍标 success，提取实际成功率
+    // 不可观测。这里把降级显式标成 failure step，使整轮落 completed_with_errors。
+    if (extractFactsResult.step.status === 'success' && extractFactsResult.value?.llmDegraded) {
+      steps.push(
+        this.buildFailureStep(
+          'extract_facts_llm_degraded',
+          'LLM 提取失败已降级为空值，本轮新事实丢失',
+          0,
+        ),
+      );
+    }
     steps.push(extractFactsResult.step);
 
     return steps;

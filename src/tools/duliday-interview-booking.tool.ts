@@ -62,7 +62,7 @@ function pauseUserHostingAsync(
   successMessage: string,
 ): void {
   void userHostingService
-    .pauseUser(chatId)
+    .pauseUser(chatId, { source: 'interview_booking', reason: '约面成功自动暂停' })
     .then(() => {
       logger.log(successMessage);
     })
@@ -776,6 +776,12 @@ export function buildInterviewBookingTool(
                 work_order_id: workOrderId,
                 candidate_name: name,
                 phone,
+                // candidate_age / candidate_gender：booking 提交值是经业务校验的
+                // ground truth。与 message_processing_records.memory_snapshot 里
+                // 同 chat 的提取值 join，即可零标注成本计算逐字段提取准确率
+                // （提取质量对账基线）。
+                candidate_age: age,
+                candidate_gender: getSpongeGenderLabelById(genderId) ?? String(genderId),
                 brand_name: resolvedBrandName,
                 store_name: resolvedStoreName,
                 job_name: resolvedJobName,

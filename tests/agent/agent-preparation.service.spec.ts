@@ -88,6 +88,14 @@ describe('AgentPreparationService', () => {
     getCachedWorkOrderById: jest.fn(),
   };
 
+  const mockGroupResolver = {
+    resolveGroups: jest.fn().mockResolvedValue([]),
+  };
+
+  const mockGroupMembership = {
+    listUserRooms: jest.fn().mockResolvedValue([]),
+  };
+
   let service: AgentPreparationService;
 
   beforeEach(() => {
@@ -153,6 +161,8 @@ describe('AgentPreparationService', () => {
       mockInputGuard as never,
       mockLongTermService as never,
       mockSpongeService as never,
+      mockGroupResolver as never,
+      mockGroupMembership as never,
     );
   });
 
@@ -220,6 +230,50 @@ describe('AgentPreparationService', () => {
     expect(result.turnState.candidatePool).toEqual([
       expect.objectContaining({ jobId: 1, storeName: '长白' }),
     ]);
+  });
+
+  it('injects realtime group membership into memory block and never relies on session memory alone', async () => {
+    mockGroupResolver.resolveGroups.mockResolvedValue([
+      { imRoomId: 'room-1', groupName: '上海餐饮兼职群1群', city: '上海' },
+      { imRoomId: 'room-2', groupName: '北京餐饮兼职群', city: '北京' },
+    ]);
+    mockGroupMembership.listUserRooms.mockResolvedValue(['room-1']);
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '群里有岗位吗' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+        imContactId: 'contact-1',
+        strategySource: 'testing',
+      },
+      'invoke',
+    );
+
+    expect(mockGroupMembership.listUserRooms).toHaveBeenCalledWith('contact-1', expect.anything());
+    expect(result.finalPrompt).toContain('[候选人当前所在兼职群]');
+    expect(result.finalPrompt).toContain('上海餐饮兼职群1群');
+    expect(result.finalPrompt).not.toContain('北京餐饮兼职群');
+  });
+
+  it('skips realtime group section when membership check fails or returns empty', async () => {
+    mockGroupResolver.resolveGroups.mockRejectedValue(new Error('api down'));
+
+    const result = await service.prepare(
+      {
+        callerKind: CallerKind.WECOM,
+        messages: [{ role: 'user', content: '你好' }],
+        userId: 'user-1',
+        corpId: 'corp-1',
+        sessionId: 'sess-1',
+        strategySource: 'testing',
+      },
+      'invoke',
+    );
+
+    expect(result.finalPrompt).not.toContain('[候选人当前所在兼职群]');
   });
 
   it('falls back returning user (with long-term identity) to job_consultation when procedural stage expired', async () => {

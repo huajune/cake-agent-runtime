@@ -1,0 +1,192 @@
+// CandidateBlacklist 组件样式
+@use '@/assets/styles/variables' as *;
+
+.section {
+  @include glass-panel;
+  padding: $spacing-lg;
+  border-radius: $radius-xl;
+  margin-bottom: $spacing-lg;
+}
+
+.sectionHeader {
+  margin-bottom: $spacing-md;
+
+  h3 {
+    margin: 0;
+    font-size: $font-size-lg;
+    font-weight: $font-weight-semibold;
+    color: $text-primary;
+    display: flex;
+    align-items: center;
+    gap: $spacing-sm;
+  }
+}
+
+.headerCount {
+  font-size: $font-size-sm;
+  color: $text-secondary;
+  font-weight: $font-weight-normal;
+  background: rgba($text-secondary, 0.1);
+  padding: 2px 8px;
+  border-radius: $radius-full;
+}
+
+.sectionDesc {
+  margin: 4px 0 0 0;
+  font-size: $font-size-sm;
+  color: $text-secondary;
+}
+
+.addForm {
+  display: flex;
+  gap: $spacing-sm;
+  margin-top: $spacing-md;
+  flex-wrap: wrap;
+
+  input {
+    @include input-base;
+    font-size: $font-size-sm;
+  }
+}
+
+.targetInput {
+  flex: 2 1 240px;
+}
+
+.reasonInput {
+  flex: 2 1 240px;
+}
+
+.operatorInput {
+  flex: 1 1 120px;
+}
+
+.addButton {
+  @include button-primary;
+  padding: 0 $spacing-lg;
+  white-space: nowrap;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.tableWrapper {
+  margin-top: $spacing-lg;
+  overflow-x: auto;
+  border-radius: $radius-lg;
+  border: 1px solid rgba($border, 0.5);
+}
+
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+
+  th,
+  td {
+    padding: $spacing-md;
+    text-align: left;
+    border-bottom: 1px solid rgba($border, 0.5);
+  }
+
+  th {
+    font-size: $font-size-xs;
+    font-weight: $font-weight-semibold;
+    color: $text-secondary;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: rgba($bg-secondary, 0.5);
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+}
+
+.loadingCell {
+  text-align: center;
+  color: $text-secondary;
+  padding: $spacing-xl;
+}
+
+.targetName {
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+  font-weight: $font-weight-medium;
+  color: $text-primary;
+}
+
+.sourceTag {
+  font-size: 11px;
+  color: $text-secondary;
+  background: rgba($text-secondary, 0.1);
+  padding: 1px 6px;
+  border-radius: $radius-full;
+}
+
+.targetId {
+  font-size: $font-size-xs;
+  color: $text-muted;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reasonCell {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: $text-primary;
+}
+
+.timeCell {
+  white-space: nowrap;
+  color: $text-secondary;
+  font-size: $font-size-sm;
+}
+
+.hitCell {
+  white-space: nowrap;
+}
+
+.hitCount {
+  color: $danger;
+  font-weight: $font-weight-medium;
+}
+
+.hitDetail {
+  font-size: $font-size-xs;
+  color: $text-muted;
+  margin-top: 2px;
+}
+
+.noHit {
+  color: $text-muted;
+  font-size: $font-size-sm;
+}
+
+.removeButton {
+  border: 1px solid rgba($danger, 0.4);
+  color: $danger;
+  background: transparent;
+  padding: 4px 12px;
+  border-radius: $radius-md;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  transition: all $transition-normal;
+
+  &:hover:not(:disabled) {
+    background: rgba($danger, 0.08);
+    border-color: $danger;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}

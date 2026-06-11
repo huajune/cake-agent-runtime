@@ -8,6 +8,125 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.14.0`
+**最近更新**: `2026-06-11`
+**来源分支**: `develop`
+**累计 PR**: 9
+
+### 更新摘要
+- PR #289 零结果类 errorType 映射为 empty 而非 error
+- PR #289 `job_list.no_results` / `job_list.schedule_filter_empty` → `empty`
+- PR #289 `job_list.fetch_failed` 等系统级失败保持 `error`
+- PR #289 副作用屏蔽逻辑不受影响（其只认 ok/narrow）
+- PR #291 删除 recruitment_cases 死代码与废弃表
+- PR #291 删 `src/biz/recruitment-case/` 整个模块（entity/repo/service/stage-resolver/types/module）+ 对应 spec
+- PR #291 删 onboard-followup 通知三件套（notifier service / card renderer / payload types）+ spec — 同样零调用方
+- PR #291 清 6 处 dead wiring import（tool / hosting-config / user / biz / intervention / message module），user.module 顺带移除不再使用的 `forwardRef`
+- PR #291 `DROP TABLE recruitment_cases`（已用 MCP 应用至生产 + db:push:test，附 migration）
+- PR #291 关闭已完成的 todo `llm-structured-output-optimization`（评估服务早已迁 `Output.object()`，文档描述的 80 行防御解析代码已不存在）
+- PR #293 修复三个让业务告警半瘫痪的阈值 bug
+- PR #292 timeout 阶段归因 + 投递分段退避重试
+- PR #292 适配分段退避重试的部分失败语义
+- PR #299 assistant 消息持久化——数据验证丢失率 0.02%，决定不改造
+- PR #299 assistant 消息持久化——数据验证后决定不改造
+- PR #298 子系统告警持久化到 monitoring_error_logs
+- PR #298 补 AlertLogPersisterService 单测 + review 修正
+- PR #298 错误分布按 subsystem 聚合 + dashboard 前端展示子系统
+- PR #298 **migration 20260611120000**：`monitoring_error_logs` 加 subsystem/component/action/severity/summary/code/dedupe_key/throttled/delivered 9 列 + `message_id` 改可空（系统告警无 messageId）+ subsystem 索引。全 additive，老数据新列 NULL 兼容。**生产库已应用**；测试库因并发会话迁移占位待后续 `db:push:test`。
+- PR #298 **IAlertLogPersister 接口 + ALERT_LOG_PERSISTER token** 放 `notification/types`（notification 对 biz 零依赖）；`AlertLogPersisterService` 实现放 `biz/monitoring`，由 @Global MonitoringModule 绑定，AlertNotifierService @Optional 注入。
+- PR #298 **sendAlert 重构**：无论节流 / 发送结果 / 非生产都先持久化（标 throttled/delivered），持久化失败不阻塞发送 → 子系统告警从此进 "今日错误" 总数与错误列表。
+- PR #298 **双写规避**：`message-processing-failure` 的 2 处 sendAlert（与 recordFailure 同路径成对触发）传 `{ persist:false }`，由 recordFailure 作为这些消息失败的唯一落库点；`sendFallbackAlert` 等独立告警与所有子系统告警默认 persist:true。**link A（消息失败链路）零行为变更、零双计数**。
+- PR #297 职位列表渐进式披露：全文展示限最近 6 家（FULL_DETAIL_CAP），其余降为摘要行，解决多步工具调用反复回灌导致的高延迟（生产 p90 79s / 3-6 万 token/turn）问题
+- PR #295 永久禁止托管 + 候选人黑名单（命中告警并取消托管）
+- PR #295 黑名单/暂停记录改独立表存储，补操作审计与命中回溯字段
+- PR #295 候选人黑名单管理页 + 暂停列表展示永久标记/理由/来源
+- PR #295 补 candidate-blacklist.repository 单测 + review 修正
+- PR #296 提取管线降本与误捕修补（架构 review 第一档落地）
+- PR #296 提取降级可观测 + booking 真值对账字段
+- PR #296 规则提取层注册表化 + 补三个结构化提取器
+- PR #296 提取质量对账报表 SQL
+- PR #296 同轮事实合并三层收敛为单遍合并器
+- PR #296 session facts schema 单清单收敛 + 完备性自检
+- PR #296 记忆系统文档同步至最新实现
+- PR #296 Merge remote-tracking branch 'origin/develop' into fix/memory-hygiene
+- PR #296 拉群状态实时化——记忆只做参考，群成员关系以实时核验为准
+- PR #296 提取质量对账指标监控展示
+- PR #296 补 fact-merge.util 单测 + review 修正
+- PR #296 Merge branch 'develop' into fix/memory-hygiene
+- PR #296 提取管线降本、质量反馈环与三项结构性重构（PR #278 续）
+
+### 新功能
+- PR #298 **IAlertLogPersister 接口 + ALERT_LOG_PERSISTER token** 放 `notification/types`（notification 对 biz 零依赖）；`AlertLogPersisterService` 实现放 `biz/monitoring`，由 @Global MonitoringModule 绑定，AlertNotifierService @Optional 注入。
+- PR #298 **双写规避**：`message-processing-failure` 的 2 处 sendAlert（与 recordFailure 同路径成对触发）传 `{ persist:false }`，由 recordFailure 作为这些消息失败的唯一落库点；`sendFallbackAlert` 等独立告警与所有子系统告警默认 persist:true。**link A（消息失败链路）零行为变更、零双计数**。
+- PR #297 新增摘要行格式 formatJobToSummaryLine：包含店名、距离、薪资、年龄、jobId，支持候选人通过 jobId 走 jobIdList 单查获取完整岗位信息
+
+### 问题修复
+- PR #289 `job_list.no_results` / `job_list.schedule_filter_empty` → `empty`
+- PR #289 `job_list.fetch_failed` 等系统级失败保持 `error`
+- PR #289 副作用屏蔽逻辑不受影响（其只认 ok/narrow）
+- PR #293 修复三个让业务告警半瘫痪的阈值 bug
+- PR #298 补 AlertLogPersisterService 单测 + review 修正
+- PR #295 补 candidate-blacklist.repository 单测 + review 修正
+- PR #296 Merge remote-tracking branch 'origin/develop' into fix/memory-hygiene
+- PR #296 补 fact-merge.util 单测 + review 修正
+- PR #296 Merge branch 'develop' into fix/memory-hygiene
+
+### 优化调整
+- PR #298 **sendAlert 重构**：无论节流 / 发送结果 / 非生产都先持久化（标 throttled/delivered），持久化失败不阻塞发送 → 子系统告警从此进 "今日错误" 总数与错误列表。
+- PR #297 职位列表 render 路径按 FULL_DETAIL_CAP=6 分流：≤6 家结果零变化，>6 家 p90/max 场景削减约 70-80%（最大 173k → ~33k 字符）
+- PR #297 同品牌多门店 brandGroups 摘要逻辑不受影响，保持在 cap 分流之前渲染
+- PR #297 工具 description 补充约束：更远门店摘要行不得凭摘要编造未列字段，需用 jobId 走 jobIdList 查询
+- PR #296 同轮事实合并三层收敛为单遍合并器
+
+### 运维与流程
+- PR #289 零结果类 errorType 映射为 empty 而非 error
+- PR #291 删 `src/biz/recruitment-case/` 整个模块（entity/repo/service/stage-resolver/types/module）+ 对应 spec
+- PR #291 删 onboard-followup 通知三件套（notifier service / card renderer / payload types）+ spec — 同样零调用方
+- PR #291 清 6 处 dead wiring import（tool / hosting-config / user / biz / intervention / message module），user.module 顺带移除不再使用的 `forwardRef`
+- PR #291 `DROP TABLE recruitment_cases`（已用 MCP 应用至生产 + db:push:test，附 migration）
+- PR #291 关闭已完成的 todo `llm-structured-output-optimization`（评估服务早已迁 `Output.object()`，文档描述的 80 行防御解析代码已不存在）
+- PR #291 删除 recruitment_cases 死代码与废弃表
+- PR #292 timeout 阶段归因 + 投递分段退避重试
+- PR #292 适配分段退避重试的部分失败语义
+- PR #299 assistant 消息持久化——数据验证丢失率 0.02%，决定不改造
+- PR #298 **migration 20260611120000**：`monitoring_error_logs` 加 subsystem/component/action/severity/summary/code/dedupe_key/throttled/delivered 9 列 + `message_id` 改可空（系统告警无 messageId）+ subsystem 索引。全 additive，老数据新列 NULL 兼容。**生产库已应用**；测试库因并发会话迁移占位待后续 `db:push:test`。
+- PR #298 子系统告警持久化到 monitoring_error_logs
+- PR #298 错误分布按 subsystem 聚合 + dashboard 前端展示子系统
+- PR #295 永久禁止托管 + 候选人黑名单（命中告警并取消托管）
+- PR #295 黑名单/暂停记录改独立表存储，补操作审计与命中回溯字段
+- PR #295 候选人黑名单管理页 + 暂停列表展示永久标记/理由/来源
+- PR #296 提取管线降本与误捕修补（架构 review 第一档落地）
+- PR #296 提取降级可观测 + booking 真值对账字段
+- PR #296 规则提取层注册表化 + 补三个结构化提取器
+- PR #296 提取质量对账报表 SQL
+- PR #296 session facts schema 单清单收敛 + 完备性自检
+- PR #296 记忆系统文档同步至最新实现
+- PR #296 拉群状态实时化——记忆只做参考，群成员关系以实时核验为准
+- PR #296 提取质量对账指标监控展示
+
+### 配置变更
+- 无
+
+### 环境变量提醒
+- 无
+
+### 验证记录
+- PR #289 tool-call-analysis.spec：38/38 通过（新增零结果映射 3 个断言）
+- PR #291 `pnpm build` 通过（DI 接线无断裂）
+- PR #291 全量测试 282 suites / 3698 passed
+- PR #292 timeout_stuck_records RPC 已应用至生产 + 测试库
+- PR #292 仓库层补 4 个用例（分批/归因/错误吞掉）；build + 相关 spec 通过
+- PR #298 alert-notifier 12 passed（新增持久化 5 例：成功/节流/异常/非生产/persist:false）
+- PR #298 pipeline.service spec 适配 sendAlert 第二参
+- PR #298 monitoring 套件 277 passed；ci:check（lint+format+typecheck+build+全量测试）绿
+- PR #297 render 套件 151 个测试全部通过
+- PR #297 新增 2 个 cap 分流用例（≤6 家全文场景、>6 家摘要尾含 jobId 场景）
+- PR #297 build 和 lint 通过
+<!-- release:pending:end -->
+
 ## [5.13.2] - 2026-06-10
 
 **来源分支**: `develop`

@@ -13,7 +13,8 @@ export interface BusinessMetricSnapshot {
   successRate: number;
   avgDuration: number;
   activeRequests: number;
-  errorCountLast24Hours: number;
+  /** 最近 1 小时错误数。错误率告警用真 1h 窗口判定（阈值语义即 X 次/小时）。 */
+  errorCountLastHour: number;
 }
 
 export interface BusinessMetricAlert {
@@ -43,7 +44,7 @@ export class BusinessMetricRuleEngine {
     }
 
     alerts.push(...this.checkQueueDepth(snapshot.activeRequests, thresholds));
-    alerts.push(...this.checkErrorRate(snapshot.errorCountLast24Hours, thresholds));
+    alerts.push(...this.checkErrorRate(snapshot.errorCountLastHour, thresholds));
 
     return alerts;
   }
@@ -91,7 +92,7 @@ export class BusinessMetricRuleEngine {
     if (!Number.isFinite(currentValue) || currentValue <= 0) return [];
 
     const critical = thresholds.avgDurationCritical;
-    const warning = Math.floor(critical / 2);
+    const warning = Math.floor(critical * 0.7);
 
     if (currentValue > critical) {
       return [
@@ -151,30 +152,32 @@ export class BusinessMetricRuleEngine {
   }
 
   private checkErrorRate(
-    errorCount: number,
+    errorCountLastHour: number,
     thresholds: BusinessMetricThresholds,
   ): BusinessMetricAlert[] {
     const critical = thresholds.errorRateCritical;
-    const warning = Math.floor(critical / 2);
-    const hourlyRate = errorCount / 24;
+    const warning = Math.floor(critical * 0.7);
 
-    if (hourlyRate > critical) {
+    // 阈值语义是「X 次/小时」，直接用真 1h 窗口判定。
+    // 旧实现用 errorCountLast24Hours/24（24h 均值），把"10/h"实际门槛抬成 240/天，
+    // 日均个位数错误下永不触发。
+    if (errorCountLastHour > critical) {
       return [
         {
           key: 'error-rate',
           title: '错误率过高',
-          message: `24h错误数: ${errorCount}\n平均: ${hourlyRate.toFixed(1)}/h\n阈值: ${critical}/h`,
+          message: `近 1h 错误数: ${errorCountLastHour}\n阈值: ${critical}/h`,
           level: AlertLevel.CRITICAL,
         },
       ];
     }
 
-    if (hourlyRate > warning) {
+    if (errorCountLastHour > warning) {
       return [
         {
           key: 'error-rate',
           title: '错误率偏高',
-          message: `24h错误数: ${errorCount}\n平均: ${hourlyRate.toFixed(1)}/h\n阈值: ${warning}/h`,
+          message: `近 1h 错误数: ${errorCountLastHour}\n阈值: ${warning}/h`,
           level: AlertLevel.WARNING,
         },
       ];

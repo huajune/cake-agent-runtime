@@ -1,5 +1,25 @@
 # TODO: assistant 消息主动写入 chat_messages，不再依赖 WeCom 回调
 
+> ## 结论（2026-06-11，已用数据验证，暂不改造）
+>
+> 按本文档"决策标记"的要求先做可观测性——直接用生产 7 天数据对账丢失率：
+> 对每个 `message_processing_records` 中 `status='success' AND reply_segments>0`
+> 的 turn，检查其 chat 在回复时间 −30s ～ +10min 窗口内是否出现了对应的
+> `chat_messages.role='assistant'` 落库行。
+>
+> **结果：4374 个成功回复中仅 1 个未对上 → 丢失率 0.02%**，远低于本文档隐含的
+> 改造门槛（"回调丢失率 > 0.1% 才值得做发送即落库"）。企微 `isSelf=true` 回调
+> 在生产是可靠的，"Agent 失忆/对话错乱"在数据上不是系统性问题。
+>
+> 因此**暂不做"主动写入 + 幂等回调"改造**（避免为 0.02% 引入双写、分段落盘、
+> UPSERT 迁移、Redis 双写失效等一连串复杂度与新风险）。若未来企微回调通道
+> 劣化（该对账 SQL 可随时复跑监控），再重启本改造。
+>
+> 对账 SQL 与判定见 memory `pipeline-observability-findings`。
+>
+> - [x] 先做可观测性补齐（已用对账 SQL 量化丢失率 0.02%）
+> - [x] 再决定是否改造 → **结论：不改造**
+
 ## 问题背景
 
 当前 `chat_messages` 表里 **assistant 角色消息的写入**不走主流程，而是依赖 WeCom 把我们刚刚发送的消息作为 `isSelf=true` 再回调过来，由 [`accept-inbound-message.handleSelfMessage`](../../src/channels/wecom/message/application/accept-inbound-message.service.ts) 写入。

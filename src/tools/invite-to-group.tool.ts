@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { ToolBuilder } from '@shared-types/tool.types';
 import { buildToolError, TOOL_ERROR_TYPES } from '@tools/types/tool-error-types';
 import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
+import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
 import { GroupContext } from '@biz/group-task/group-task.types';
 import { normalizeCity } from '@biz/group-task/utils/city-normalize.util';
 import { RoomService } from '@channels/wecom/room/room.service';
@@ -125,6 +126,7 @@ export function buildInviteToGroupTool(
   opsEventsRecorder: OpsEventsRecorderService,
   memberLimit: number,
   enterpriseToken?: string | null,
+  groupMembership?: GroupMembershipService,
 ): ToolBuilder {
   return (context) =>
     tool({
@@ -222,6 +224,46 @@ export function buildInviteToGroupTool(
               replyInstruction: `该候选人所在城市暂无兼职群，本次不向候选人提及群相关内容。${NO_GROUP_CONTINUE_INSTRUCTION}`,
               details: { city },
             });
+          }
+
+          // 实时成员预检：候选人已在该城市任一兼职群 → 业务目标已达成，直接短路。
+          // 此前只能靠拉群接口的 -9 错误码事后发现（实测单次 20-30s），且拉群记忆
+          // 存会话层（TTL 2 天）过期后会重复发起邀请；实时成员关系（10 分钟缓存）
+          // 是唯一可靠事实源，候选人退群后缓存过期也会自然恢复可邀请状态。
+          if (groupMembership) {
+            const cityRoomIds = cityGroups.map((group) => group.imRoomId).filter(Boolean);
+            const roomsUserIn = await groupMembership.listUserRooms(context.userId, cityRoomIds);
+            const existingGroup =
+              roomsUserIn.length > 0
+                ? cityGroups.find((group) => group.imRoomId === roomsUserIn[0])
+                : undefined;
+            if (existingGroup) {
+              await memoryService
+                .saveInvitedGroup(context.corpId, context.userId, context.sessionId, {
+                  groupName: existingGroup.groupName,
+                  city,
+                  industry: industry ?? undefined,
+                  invitedAt: new Date().toISOString(),
+                })
+                .catch((err: unknown) => {
+                  const msg = err instanceof Error ? err.message : String(err);
+                  logger.warn(`写入 invitedGroups 失败（忽略）: ${msg}`);
+                });
+              logger.log(
+                `实时预检命中：候选人已在群 ${existingGroup.groupName}，跳过拉群 (user=${context.userId})`,
+              );
+              recordGroupInvited(existingGroup.groupName);
+              return {
+                success: true,
+                alreadyInGroup: true,
+                groupName: existingGroup.groupName,
+                city,
+                industry: industry ?? undefined,
+                _outcome: '候选人已在该群中（实时核验）',
+                _replyInstruction:
+                  '候选人已在目标群里，本次不向候选人提及群相关内容，也不要承诺拉群；记忆已写入，同会话后续不再重复触发本工具。',
+              };
+            }
           }
 
           const groupsWithFreshCounts = await refreshMemberCountsFromEnterpriseList({

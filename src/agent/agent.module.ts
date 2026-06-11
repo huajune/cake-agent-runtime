@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { BizModule } from '@biz/biz.module';
 import { ToolModule } from '@tools/tool.module';
+import { GroupTaskModule } from '@biz/group-task/group-task.module';
 import { MemoryModule } from '@memory/memory.module';
 import { SpongeModule } from '@sponge/sponge.module';
 import { LlmModule } from '@/llm/llm.module';
@@ -20,6 +21,7 @@ import { InputGuardService } from './input-guard.service';
     ConfigModule,
     BizModule,
     ToolModule,
+    GroupTaskModule,
     MemoryModule,
     SpongeModule,
     LlmModule,

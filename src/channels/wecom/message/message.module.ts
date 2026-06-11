@@ -12,7 +12,6 @@ import { BizMessageModule } from '@biz/message/message.module';
 import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
 import { UserModule } from '@biz/user/user.module';
 import { MonitoringModule } from '@biz/monitoring/monitoring.module';
-import { RecruitmentCaseModule } from '@biz/recruitment-case/recruitment-case.module';
 import { InterventionModule } from '@biz/intervention/intervention.module';
 import { MemoryModule } from '@memory/memory.module';
 
@@ -38,6 +37,7 @@ import { PreAgentRiskInterceptService } from './application/pre-agent-risk-inter
 import { ReplyFactGuardService } from './application/reply-fact-guard.service';
 import { TypingPolicyService } from './delivery/typing-policy.service';
 import {
+  CandidateBlacklistFilterRule,
   ContactTypeFilterRule,
   EmptyContentFilterRule,
   GroupBlacklistFilterRule,
@@ -61,7 +61,6 @@ import {
     BizMessageModule,
     HostingConfigModule,
     UserModule,
-    RecruitmentCaseModule,
     forwardRef(() => MonitoringModule),
     NotificationModule,
     InterventionModule,
@@ -96,6 +95,7 @@ import {
     SourceMessageFilterRule,
     ContactTypeFilterRule,
     PausedUserFilterRule,
+    CandidateBlacklistFilterRule,
     GroupBlacklistFilterRule,
     RoomMessageFilterRule,
     SupportedMessageTypeFilterRule,

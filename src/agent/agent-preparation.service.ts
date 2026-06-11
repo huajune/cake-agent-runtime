@@ -13,6 +13,8 @@ import {
 import { MemoryService, type CandidateIdentityHint } from '@memory/memory.service';
 import { MemoryConfig } from '@memory/memory.config';
 import { LongTermService } from '@memory/services/long-term.service';
+import { GroupMembershipService } from '@biz/group-task/services/group-membership.service';
+import { GroupResolverService } from '@biz/group-task/services/group-resolver.service';
 import { SpongeService } from '@sponge/sponge.service';
 import type { SignupWorkOrderItem } from '@sponge/sponge.types';
 import {
@@ -35,6 +37,11 @@ import {
   type AgentInvokeParams,
   type AgentMemorySnapshot,
 } from './agent-run.types';
+
+interface RealtimeGroupStatus {
+  groupName: string;
+  city: string;
+}
 
 export interface PreparedAgentContext {
   finalPrompt: string;
@@ -74,6 +81,8 @@ export class AgentPreparationService {
     private readonly inputGuard: InputGuardService,
     private readonly longTermService: LongTermService,
     private readonly spongeService: SpongeService,
+    private readonly groupResolver: GroupResolverService,
+    private readonly groupMembership: GroupMembershipService,
   ) {}
 
   async prepare(
@@ -100,8 +109,8 @@ export class AgentPreparationService {
     const truncatedMessages = this.truncateToCharBudget(params.messages);
     const currentUserMessage = this.trailingUserContent(truncatedMessages);
 
-    // 并行拉取本轮依赖：四类记忆快照 + 当前预约工单上下文。
-    const [memory, bookingContext] = await Promise.all([
+    // 并行拉取本轮依赖：四类记忆快照 + 当前预约工单上下文 + 实时群状态。
+    const [memory, bookingContext, realtimeGroups] = await Promise.all([
       this.memoryService.onTurnStart(corpId, userId, sessionId, currentUserMessage, {
         includeShortTerm: callerKind === CallerKind.WECOM,
         shortTermEndTimeInclusive: params.shortTermEndTimeInclusive,
@@ -109,6 +118,7 @@ export class AgentPreparationService {
       }),
       // [当前预约信息] 改由 latest_booking 指针 + 海绵工单实时状态渲染（不再依赖 recruitment_cases 本地字段）。
       this.loadBookingContext(corpId, userId, this.buildSpongeTokenContext(params)),
+      this.loadRealtimeGroupStatus(params),
     ]);
 
     // 对话消息归一化为 AI SDK ModelMessage[]（含多模态图片/表情注入）。
@@ -127,7 +137,7 @@ export class AgentPreparationService {
 
     // Compose 的输入：memoryBlock 渲染 + 当前阶段（直接取程序性记忆 currentStage；
     // recruitment_cases 已废弃，不再由 case 推导 onboard_followup）。
-    const memoryBlock = this.buildMemoryBlock(memory, bookingContext);
+    const memoryBlock = this.buildMemoryBlock(memory, bookingContext, realtimeGroups);
     const persistedStage = memory.procedural.currentStage ?? undefined;
     // 程序性阶段存 Redis（TTL 2 天），过期后此前隐式兜底到策略第一个阶段——
     // 已服务过的老候选人回访被当新客从 trust_building 重走（张漪 case：6-03 已
@@ -415,12 +425,55 @@ export class AgentPreparationService {
   private buildMemoryBlock(
     memory: Awaited<ReturnType<MemoryService['onTurnStart']>>,
     bookingContext: string,
+    realtimeGroups: RealtimeGroupStatus[] = [],
   ): string {
     return (
       this.formatProfile(memory.longTerm.profile) +
       this.formatLongTermPreferences(memory.longTerm.preferences ?? null) +
       (memory.sessionMemory ? this.formatSessionFacts(memory.sessionMemory) : '') +
+      this.formatRealtimeGroups(realtimeGroups) +
       bookingContext
+    );
+  }
+
+  /**
+   * 实时核验候选人当前在哪些兼职群。
+   *
+   * 拉群记忆存会话层（TTL 2 天）：过期后 Agent 不知道候选人已在群，可能重复
+   * 邀请/重复承诺；候选人也可能自行退群，记忆会反向过期。实时成员关系
+   * （GroupMembershipService，10 分钟缓存）是唯一可靠事实源——这里与记忆召回
+   * 并行加载，失败返回空（按"未知"降级，不阻断主流程）。
+   */
+  private async loadRealtimeGroupStatus(params: AgentInvokeParams): Promise<RealtimeGroupStatus[]> {
+    const contactId = params.imContactId || params.userId;
+    if (!contactId || params.callerKind !== CallerKind.WECOM) return [];
+
+    try {
+      const groups = await this.groupResolver.resolveGroups('兼职群');
+      if (groups.length === 0) return [];
+      const idToGroup = new Map(groups.map((group) => [group.imRoomId, group]));
+      const roomIds = await this.groupMembership.listUserRooms(contactId, idToGroup.keys());
+      return roomIds
+        .map((roomId) => idToGroup.get(roomId))
+        .filter((group): group is NonNullable<typeof group> => Boolean(group))
+        .map((group) => ({ groupName: group.groupName, city: group.city }));
+    } catch (error) {
+      this.logger.warn('实时群状态核验失败（按未知降级）', error);
+      return [];
+    }
+  }
+
+  /** 渲染实时群状态段；空数组（含核验失败）不渲染。 */
+  private formatRealtimeGroups(groups: RealtimeGroupStatus[]): string {
+    if (groups.length === 0) return '';
+    const lines = groups.map(
+      (group, index) => `${index + 1}. ${group.groupName}（城市: ${group.city}）`,
+    );
+    return (
+      `\n\n[候选人当前所在兼职群]\n\n` +
+      `_以下为实时核验结果（非记忆）。候选人已在这些群内：禁止调用 invite_to_group 再次邀请，` +
+      `也不要承诺"拉你进群"；候选人问群相关问题时直接按"你已经在 X 群里了"口径回应。_\n` +
+      lines.join('\n')
     );
   }
 

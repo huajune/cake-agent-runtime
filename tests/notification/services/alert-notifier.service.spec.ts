@@ -16,18 +16,27 @@ describe('AlertNotifierService', () => {
   const mockConfigService = {
     get: jest.fn(),
   };
+  const mockPersister = {
+    persist: jest.fn<Promise<void>, [unknown]>().mockResolvedValue(undefined),
+  };
 
   let service: AlertNotifierService;
 
   beforeEach(() => {
     jest.clearAllMocks();
     mockAlertChannel.send.mockResolvedValue(true);
+    mockPersister.persist.mockResolvedValue(undefined);
     mockConfigService.get.mockImplementation((key: string, defaultValue?: unknown) => {
       if (key === 'NODE_ENV') return Environment.Production;
       return defaultValue;
     });
     const renderer = new AlertCardRenderer(mockCardBuilder as never);
-    service = new AlertNotifierService(mockAlertChannel as never, renderer, mockConfigService as never);
+    service = new AlertNotifierService(
+      mockAlertChannel as never,
+      renderer,
+      mockConfigService as never,
+      mockPersister as never,
+    );
   });
 
   it('should render urgent alerts with inline structured diagnostics', async () => {
@@ -197,6 +206,75 @@ describe('AlertNotifierService', () => {
 
     const payload = mockCardBuilder.buildMarkdownCard.mock.calls[0][0];
     expect(payload.title).toBe('🚨 需要人工介入');
+  });
+
+  describe('alert log persistence (告警持久化统一)', () => {
+    const subsystemAlert: AlertContext = {
+      code: 'group_task.preview_failed',
+      summary: '群任务飞书预览发送失败',
+      severity: AlertLevel.ERROR,
+      source: {
+        subsystem: 'group-task',
+        component: 'NotificationSenderService',
+        action: 'sendPreview',
+        trigger: 'cron',
+      },
+      diagnostics: { errorMessage: 'feishu 5xx' },
+      dedupe: { key: 'group_task.preview_failed' },
+    };
+
+    it('persists on successful delivery (throttled=false, delivered=true)', async () => {
+      await service.sendAlert(subsystemAlert);
+      expect(mockPersister.persist).toHaveBeenCalledTimes(1);
+      expect(mockPersister.persist).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subsystem: 'group-task',
+          code: 'group_task.preview_failed',
+          throttled: false,
+          delivered: true,
+        }),
+      );
+    });
+
+    it('persists throttled alerts too (throttled=true, delivered=false)', async () => {
+      await service.sendAlert(subsystemAlert);
+      await service.sendAlert(subsystemAlert);
+      await service.sendAlert(subsystemAlert);
+      mockPersister.persist.mockClear();
+      await service.sendAlert(subsystemAlert); // 第 4 次被节流
+
+      expect(mockPersister.persist).toHaveBeenCalledTimes(1);
+      expect(mockPersister.persist).toHaveBeenCalledWith(
+        expect.objectContaining({ throttled: true, delivered: false }),
+      );
+    });
+
+    it('persists even when channel throws (delivered=false)', async () => {
+      mockAlertChannel.send.mockRejectedValueOnce(new Error('network boom'));
+      await service.sendAlert(subsystemAlert);
+      expect(mockPersister.persist).toHaveBeenCalledWith(
+        expect.objectContaining({ delivered: false }),
+      );
+    });
+
+    it('persists in non-production even when Feishu delivery is suppressed', async () => {
+      mockConfigService.get.mockImplementation((key: string, defaultValue?: unknown) => {
+        if (key === 'NODE_ENV') return Environment.Development;
+        return defaultValue;
+      });
+      await service.sendAlert(subsystemAlert);
+      expect(mockAlertChannel.send).not.toHaveBeenCalled();
+      expect(mockPersister.persist).toHaveBeenCalledWith(
+        expect.objectContaining({ delivered: false }),
+      );
+    });
+
+    it('does NOT persist when options.persist=false (消息失败路径已 recordFailure 落库)', async () => {
+      await service.sendAlert(subsystemAlert, { persist: false });
+      expect(mockPersister.persist).not.toHaveBeenCalled();
+      // 但飞书仍正常发送
+      expect(mockAlertChannel.send).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('should suppress Feishu delivery in non-production by default', async () => {

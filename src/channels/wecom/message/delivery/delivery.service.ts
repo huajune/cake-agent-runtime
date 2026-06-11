@@ -20,6 +20,10 @@ import { TypingPolicyService } from './typing-policy.service';
  * - 记录发送监控指标
  * - 处理发送失败重试
  */
+/** 单段发送瞬时失败后的重试次数与退避（WeCom 接口偶发抖动,一次重试即可覆盖绝大多数）。 */
+const SEGMENT_SEND_RETRIES = 1;
+const SEGMENT_SEND_RETRY_DELAY_MS = 800;
+
 @Injectable()
 export class MessageDeliveryService implements OnModuleInit {
   private readonly logger = new Logger(MessageDeliveryService.name);
@@ -146,20 +150,11 @@ export class MessageDeliveryService implements OnModuleInit {
   }
 
   private async deliverSingle(content: string, context: DeliveryContext): Promise<DeliveryResult> {
-    const { token, imBotId, imContactId, imRoomId, contactName, chatId, _apiType } = context;
+    const { contactName } = context;
     const outboundContent = MessageSplitter.stripTrailingPunctuation(content) || content.trim();
 
     try {
-      await this.messageSenderService.sendMessage({
-        token,
-        imBotId,
-        imContactId,
-        imRoomId,
-        chatId,
-        messageType: SendMessageType.TEXT,
-        payload: { text: outboundContent },
-        _apiType,
-      });
+      await this.sendTextSegment(context, outboundContent);
       await this.wecomObservability.markFirstSegmentSent(context.messageId);
 
       this.logger.log(`[${contactName}] 单条消息发送成功: "${this.truncate(outboundContent)}"`);
@@ -181,7 +176,7 @@ export class MessageDeliveryService implements OnModuleInit {
     content: string,
     context: DeliveryContext,
   ): Promise<DeliveryResult> {
-    const { token, imBotId, imContactId, imRoomId, contactName, chatId, _apiType } = context;
+    const { contactName, chatId } = context;
     const segments = MessageSplitter.split(content, MESSAGE_SPLIT_MAX_SEGMENTS);
 
     this.logger.log(`[${contactName}] 消息触发分段发送，拆分为 ${segments.length} 条消息发送`);
@@ -220,16 +215,7 @@ export class MessageDeliveryService implements OnModuleInit {
       );
 
       try {
-        await this.messageSenderService.sendMessage({
-          token,
-          imBotId,
-          imContactId,
-          imRoomId,
-          chatId,
-          messageType: SendMessageType.TEXT,
-          payload: { text: segment },
-          _apiType,
-        });
+        await this.sendTextSegment(context, segment);
         successCount++;
         if (!firstSegmentSent) {
           firstSegmentSent = true;
@@ -239,7 +225,7 @@ export class MessageDeliveryService implements OnModuleInit {
         failedCount++;
         const errorMessage = error instanceof Error ? error.message : String(error);
         this.logger.error(
-          `[${contactName}] 第 ${i + 1}/${segments.length} 条消息发送失败: ${errorMessage}`,
+          `[${contactName}] 第 ${i + 1}/${segments.length} 条消息发送失败（含重试）: ${errorMessage}`,
         );
       }
     }
@@ -288,6 +274,46 @@ export class MessageDeliveryService implements OnModuleInit {
 
   private async sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * 发送单段文本,瞬时失败后退避重试。
+   *
+   * 线上 14 天有 20 条「N/N 段全部发送失败」——Agent 算完、token 已花、候选人一字未收,
+   * 多为 WeCom 接口瞬时抖动。补一次退避重试覆盖绝大多数瞬时失败;仍失败才上抛由调用方计入
+   * failedCount,交后续 fallback / 告警链路兜底。
+   */
+  private async sendTextSegment(context: DeliveryContext, text: string): Promise<void> {
+    const { token, imBotId, imContactId, imRoomId, chatId, _apiType } = context;
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= SEGMENT_SEND_RETRIES; attempt += 1) {
+      try {
+        await this.messageSenderService.sendMessage({
+          token,
+          imBotId,
+          imContactId,
+          imRoomId,
+          chatId,
+          messageType: SendMessageType.TEXT,
+          payload: { text },
+          _apiType,
+        });
+        if (attempt > 0) {
+          this.logger.log(`[${context.contactName}] 单段重试第 ${attempt} 次发送成功`);
+        }
+        return;
+      } catch (error) {
+        lastError = error;
+        if (attempt < SEGMENT_SEND_RETRIES) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          this.logger.warn(
+            `[${context.contactName}] 单段发送失败,${SEGMENT_SEND_RETRY_DELAY_MS}ms 后重试: ${errorMessage}`,
+          );
+          await this.sleep(SEGMENT_SEND_RETRY_DELAY_MS);
+        }
+      }
+    }
+    throw lastError;
   }
 
   private truncate(text: string, maxLength: number = 50): string {
