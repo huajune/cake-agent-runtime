@@ -8,6 +8,46 @@
 
 ---
 
+<!-- release:pending:start -->
+## 待发布
+
+**预计版本**: `v5.15.0`
+**最近更新**: `2026-06-11`
+**来源分支**: `develop`
+**累计 PR**: 2
+
+### 更新摘要
+- PR #300 事实提取模型支持后台动态切换，默认改用 deepseek-v4-flash，推理成本降至原来的约 1/15；同步更新模型字典至 2026.06
+- PR #304 告警持久化 token 改 ModuleRef 懒解析，修复启动死锁
+- PR #304 告警持久化 token 改 ModuleRef 懒解析，修复 v5.14.0 启动死锁
+
+### 新功能
+- PR #300 AgentReplyConfig 新增 extractModelId 字段，session 事实提取、settlement 摘要及归档压缩三个调用点统一消费，空值时回退至 AGENT_EXTRACT_MODEL 角色路由
+- PR #300 Dashboard 配置页新增「事实提取模型」下拉，支持后台一键换模/回滚，不依赖发版
+
+### 问题修复
+- PR #304 告警持久化 token 改 ModuleRef 懒解析，修复启动死锁
+
+### 优化调整
+- PR #300 事实提取默认模型切换至 deepseek-v4-flash，推理成本约为 gpt-5.4-mini 的 1/15（实测 4.8s / 787 tokens，提取字段全对）
+
+### 运维与流程
+- 无
+
+### 配置变更
+- PR #300 .env.example 中事实提取模型默认值更新为 deepseek/deepseek-v4-flash
+- PR #300 模型字典补录 2026.06 现役型号：claude-opus-4-8、gpt-5.5、gemini-3.5-flash、gemini-3.1-flash-lite-preview；移除账号未开通的 qwen3.7 系列条目，避免后台误选导致降级
+
+### 环境变量提醒
+- PR #300 检测到环境变量相关文件变更：`.env.example`。请手动同步远程服务器 `/data/cake/.env.production`。
+
+### 验证记录
+- PR #300 deepseek-v4-flash 真实 API 调用验证通过（AI SDK generateObject + zod schema，提取字段全对，4.8s / 787 tokens）
+- PR #300 全量 jest 3717 用例通过，tsc / eslint 双端检查干净
+- PR #304 本地 boot 冒烟：develop+修复 健康 200，persister 解析成功
+- PR #304 `tests/notification` 63/63 通过（新增 token 未注册降级用例）
+<!-- release:pending:end -->
+
 ## [5.14.0] - 2026-06-11
 
 **来源分支**: `develop`
