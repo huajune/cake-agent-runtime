@@ -19,6 +19,9 @@ describe('AlertNotifierService', () => {
   const mockPersister = {
     persist: jest.fn<Promise<void>, [unknown]>().mockResolvedValue(undefined),
   };
+  const mockModuleRef = {
+    get: jest.fn().mockImplementation(() => mockPersister),
+  };
 
   let service: AlertNotifierService;
 
@@ -34,9 +37,10 @@ describe('AlertNotifierService', () => {
     service = new AlertNotifierService(
       mockAlertChannel as never,
       renderer,
+      mockModuleRef as never,
       mockConfigService as never,
-      mockPersister as never,
     );
+    service.onApplicationBootstrap();
   });
 
   it('should render urgent alerts with inline structured diagnostics', async () => {
@@ -274,6 +278,24 @@ describe('AlertNotifierService', () => {
       expect(mockPersister.persist).not.toHaveBeenCalled();
       // 但飞书仍正常发送
       expect(mockAlertChannel.send).toHaveBeenCalledTimes(1);
+    });
+
+    it('degrades gracefully when ALERT_LOG_PERSISTER is not registered (ModuleRef 懒解析失败)', async () => {
+      mockModuleRef.get.mockImplementation(() => {
+        throw new Error('No provider for ALERT_LOG_PERSISTER');
+      });
+      const renderer = new AlertCardRenderer(mockCardBuilder as never);
+      const degraded = new AlertNotifierService(
+        mockAlertChannel as never,
+        renderer,
+        mockModuleRef as never,
+        mockConfigService as never,
+      );
+      degraded.onApplicationBootstrap();
+
+      const delivered = await degraded.sendAlert(subsystemAlert);
+      expect(delivered).toBe(true);
+      expect(mockPersister.persist).not.toHaveBeenCalled();
     });
   });
 
