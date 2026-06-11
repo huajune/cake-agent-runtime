@@ -56,7 +56,7 @@ export const DEFAULT_AGENT_REPLY_CONFIG: AgentReplyConfig = {
   alertIntervalMinutes: 30, // 同类告警间隔 30 分钟
   // 告警阈值默认值
   successRateCritical: 80, // 成功率低于 80% 触发告警
-  avgDurationCritical: 60000, // 响应时间高于 60 秒触发告警
+  avgDurationCritical: 90000, // 响应时间高于 90 秒触发告警（totalMs 含 ~3s 合并窗口 + 真实 p50≈52s，60s 阈值会近乎常报）
   queueDepthCritical: 20, // 队列深度高于 20 条触发告警
   errorRateCritical: 10, // 每小时错误超过 10 次触发告警
 };
