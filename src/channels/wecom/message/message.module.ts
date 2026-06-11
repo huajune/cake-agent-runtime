@@ -12,7 +12,6 @@ import { BizMessageModule } from '@biz/message/message.module';
 import { HostingConfigModule } from '@biz/hosting-config/hosting-config.module';
 import { UserModule } from '@biz/user/user.module';
 import { MonitoringModule } from '@biz/monitoring/monitoring.module';
-import { RecruitmentCaseModule } from '@biz/recruitment-case/recruitment-case.module';
 import { InterventionModule } from '@biz/intervention/intervention.module';
 import { MemoryModule } from '@memory/memory.module';
 
@@ -61,7 +60,6 @@ import {
     BizMessageModule,
     HostingConfigModule,
     UserModule,
-    RecruitmentCaseModule,
     forwardRef(() => MonitoringModule),
     NotificationModule,
     InterventionModule,
