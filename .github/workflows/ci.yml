@@ -67,6 +67,10 @@ jobs:
       - name: Unit tests with coverage
         run: pnpm run test:ci
 
+      # AppModule 全量装配冒烟：捕获 DI 循环依赖/缺失（v5.14.0 启动死锁事故的回归防线）
+      - name: AppModule DI smoke test
+        run: pnpm run test:di-smoke
+
       - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
