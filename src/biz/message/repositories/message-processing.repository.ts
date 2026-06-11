@@ -629,37 +629,42 @@ export class MessageProcessingRepository extends BaseRepository {
   }
 
   /**
-   * 将超时的 processing 记录标记为 timeout
-   * 用于兜底清理长期停留在 processing 状态的请求记录
+   * 将超时的 processing 记录标记为 timeout（带阶段归因 + 分批）。
+   *
+   * 走 RPC timeout_stuck_records：按 message_id 形态把统一的「处理超时」拆成
+   * 「已进入处理（Agent/投递中断）」与「未进入处理（入站/队列/锁丢失）」两类,
+   * 让高峰期静默丢消息的发生段位可被直接区分。分批避免一次命中过多行触发
+   * PostgREST 8s statement_timeout。
+   *
    * @param stuckMinutes 超过多少分钟的 processing 记录视为卡住（默认 30 分钟）
    * @returns 更新的记录数
    */
-  async timeoutStuckRecords(stuckMinutes = 30): Promise<number> {
+  async timeoutStuckRecords(stuckMinutes = 30, batchLimit = 500): Promise<number> {
     if (!this.isAvailable()) {
       return 0;
     }
 
+    const maxBatches = 20;
+    let total = 0;
+    let lastBatchCount = 0;
     try {
-      const cutoff = new Date(Date.now() - stuckMinutes * 60 * 1000).toISOString();
-      const client = this.getClient();
-      const { data, error } = await client
-        .from(this.tableName)
-        .update({
-          status: 'timeout',
-          error: `处理超时（超过 ${stuckMinutes} 分钟未完成）`,
-        })
-        .eq('status', 'processing')
-        .lt('received_at', cutoff)
-        .select('message_id');
-
-      if (error) {
-        this.logger.error(`[消息处理记录] 超时标记失败:`, error);
-        return 0;
+      for (let batch = 0; batch < maxBatches; batch += 1) {
+        const result = await this.rpc<number>('timeout_stuck_records', {
+          p_stuck_minutes: stuckMinutes,
+          p_limit: batchLimit,
+        });
+        lastBatchCount = this.asRpcCount(result, 'timeout_stuck_records');
+        total += lastBatchCount;
+        if (lastBatchCount < batchLimit) break;
       }
-
-      return data?.length ?? 0;
+      if (lastBatchCount === batchLimit) {
+        this.logger.warn(
+          `[消息处理记录] 超时标记达到分批上限 ${maxBatches}×${batchLimit}，可能仍有积压，待下次清理继续`,
+        );
+      }
+      return total;
     } catch (error) {
-      this.logger.error(`[消息处理记录] 超时标记异常:`, error);
+      this.logger.error(`[消息处理记录] 超时标记异常 (已标记 ${total} 条):`, error);
       return 0;
     }
   }
