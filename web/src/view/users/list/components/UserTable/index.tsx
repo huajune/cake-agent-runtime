@@ -9,6 +9,13 @@ function getBotLabel(user: { botUserId?: string; imBotId?: string }) {
   return user.botUserId || user.imBotId || '-';
 }
 
+/** 紧凑时间（MM/DD HH:mm），完整时间放 title 悬浮展示 */
+function formatCompactTime(timestamp: number) {
+  const d = new Date(timestamp);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 const PAUSE_SOURCE_LABELS: Record<string, string> = {
   manual: '手动',
   candidate_blacklist: '黑名单',
@@ -59,8 +66,11 @@ export default function UserTable({
             <tr>
               <td colSpan={columnCount} className={styles.loadingCell}>
                 <div className={styles.emptyStateContainer}>
-                  <Inbox className={styles.emptyIcon} aria-hidden="true" />
+                  <div className={styles.emptyIconHalo}>
+                    <Inbox className={styles.emptyIcon} aria-hidden="true" />
+                  </div>
                   <p>{emptyMessage}</p>
+                  <span className={styles.emptyHint}>列表会自动刷新，有新数据时即刻展示</span>
                 </div>
               </td>
             </tr>
@@ -90,7 +100,7 @@ export default function UserTable({
                   <td className={styles.botCell} title={botTitle || botLabel}>
                     {botLabel}
                   </td>
-                  <td className={styles.chatIdCell}>
+                  <td className={styles.chatIdCell} title={user.chatId}>
                     {user.chatId}
                     {user.groupName && <span className={styles.groupBadge}>群</span>}
                   </td>
@@ -103,20 +113,29 @@ export default function UserTable({
                     <td className={styles.tokenText}>{user.tokenUsage.toLocaleString()}</td>
                   )}
                   {!isPausedTab && (
-                    <td className={styles.timeCell}>{formatDateTime(user.firstActiveAt)}</td>
+                    <td className={styles.timeCell} title={formatDateTime(user.firstActiveAt)}>
+                      {formatCompactTime(user.firstActiveAt)}
+                    </td>
                   )}
                   {!isPausedTab && (
-                    <td className={styles.timeCell}>{formatDateTime(user.lastActiveAt)}</td>
+                    <td className={styles.timeCell} title={formatDateTime(user.lastActiveAt)}>
+                      {formatCompactTime(user.lastActiveAt)}
+                    </td>
                   )}
                   {isPausedTab && (
-                    <td className={styles.timeCell}>{formatDateTime(user.firstActiveAt)}</td>
+                    <td className={styles.timeCell} title={formatDateTime(user.firstActiveAt)}>
+                      {formatCompactTime(user.firstActiveAt)}
+                    </td>
                   )}
                   {isPausedTab && (
-                    <td className={styles.timeCell}>
+                    <td
+                      className={styles.timeCell}
+                      title={user.pauseExpiresAt ? formatDateTime(user.pauseExpiresAt) : undefined}
+                    >
                       {user.isPermanent ? (
                         <span className={styles.permanentBadge}>永久</span>
                       ) : user.pauseExpiresAt ? (
-                        formatDateTime(user.pauseExpiresAt)
+                        formatCompactTime(user.pauseExpiresAt)
                       ) : (
                         '-'
                       )}
@@ -127,9 +146,7 @@ export default function UserTable({
                       {user.pauseSource && (
                         <span
                           className={`${styles.sourceTag} ${
-                            user.pauseSource === 'candidate_blacklist'
-                              ? styles.sourceBlacklist
-                              : ''
+                            user.pauseSource === 'candidate_blacklist' ? styles.sourceBlacklist : ''
                           }`}
                         >
                           {PAUSE_SOURCE_LABELS[user.pauseSource] || user.pauseSource}
@@ -137,7 +154,10 @@ export default function UserTable({
                       )}
                       <span
                         className={styles.pauseReason}
-                        title={[user.pauseReason, user.pauseOperator && `操作人：${user.pauseOperator}`]
+                        title={[
+                          user.pauseReason,
+                          user.pauseOperator && `操作人：${user.pauseOperator}`,
+                        ]
                           .filter(Boolean)
                           .join('\n')}
                       >

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ShieldCheck } from 'lucide-react';
 import { formatDateTime } from '@/utils/format';
 import type { CandidateBlacklistItem } from '@/api/types/candidate-blacklist.types';
 import styles from './index.module.scss';
@@ -98,13 +99,21 @@ export default function CandidateBlacklist({
             {isLoading ? (
               <tr>
                 <td colSpan={6} className={styles.loadingCell}>
-                  加载中...
+                  <div className={styles.emptyState}>
+                    <p>加载中...</p>
+                  </div>
                 </td>
               </tr>
             ) : candidates.length === 0 ? (
               <tr>
                 <td colSpan={6} className={styles.loadingCell}>
-                  暂无被拉黑的候选人
+                  <div className={styles.emptyState}>
+                    <div className={styles.emptyIconHalo}>
+                      <ShieldCheck className={styles.emptyIcon} aria-hidden="true" />
+                    </div>
+                    <p>暂无被拉黑的候选人</p>
+                    <span className={styles.emptyHint}>一切正常，没有需要拦截的候选人</span>
+                  </div>
                 </td>
               </tr>
             ) : (

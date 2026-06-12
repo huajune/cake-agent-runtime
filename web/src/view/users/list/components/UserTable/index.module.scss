@@ -4,19 +4,19 @@
 .tableWrapper {
   overflow-x: auto;
   border: none;
-  padding: 32px;
+  padding: 20px 24px 24px;
 }
 
 .table {
   width: 100%;
-  min-width: 1080px;
+  min-width: 960px;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 14px;
   background: #fff;
 
   th {
-    padding: 14px 24px;
+    padding: 14px 16px;
     text-align: left;
     background: #f8fafc;
     color: #94a3b8;
@@ -41,7 +41,7 @@
   }
 
   td {
-    padding: 14px 24px;
+    padding: 14px 16px;
     text-align: left;
     border-bottom: 1px solid #f1f5f9;
     color: #334155;
@@ -80,7 +80,7 @@
 
     td:first-child {
       // 悬停时左侧光标条占位，内容轻微右移制造"被点亮"的动感
-      padding-left: 27px;
+      padding-left: 19px;
     }
   }
 }
@@ -143,11 +143,58 @@
   }
 }
 
+.emptyIconHalo {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 88px;
+  height: 88px;
+  margin-bottom: 18px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 38% 32%,
+    rgba($primary, 0.12),
+    rgba($primary, 0.04) 62%,
+    transparent 78%
+  );
+  animation: emptyFloat 3.2s ease-in-out infinite;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: -10px;
+    border-radius: 50%;
+    border: 1px dashed rgba($primary, 0.18);
+  }
+}
+
 .emptyIcon {
-  width: 44px;
-  height: 44px;
-  margin-bottom: 14px;
-  color: #cbd5e1;
+  width: 36px;
+  height: 36px;
+  color: rgba($primary, 0.55);
+}
+
+.emptyHint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+@keyframes emptyFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .emptyIconHalo {
+    animation: none;
+  }
 }
 
 .userCell {
@@ -209,6 +256,10 @@
   font-size: 11px;
   color: #94a3b8;
   letter-spacing: 0.02em;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .countPill {
@@ -253,6 +304,7 @@
   align-items: center;
   gap: 8px;
   cursor: pointer;
+  white-space: nowrap;
 
   input[type='checkbox'] {
     position: relative;
@@ -305,6 +357,7 @@
   border-radius: 999px;
   font-size: $font-size-xs;
   font-weight: $font-weight-medium;
+  white-space: nowrap;
   transition:
     background 0.2s ease,
     color 0.2s ease;
