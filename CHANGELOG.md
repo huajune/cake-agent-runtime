@@ -14,7 +14,7 @@
 **预计版本**: `v5.18.0`
 **最近更新**: `2026-06-12`
 **来源分支**: `develop`
-**累计 PR**: 1
+**累计 PR**: 2
 
 ### 更新摘要
 - PR #318 候选人黑名单独立为 biz/candidate-blacklist 模块
@@ -32,6 +32,8 @@
 - PR #318 HeroParticles 粒子背景（新增依赖 `three` / `@types/three`）、useCountUp 数字滚动
 - PR #318 KPI 卡片 / 漏斗 / 机器人对比表 / 控制面板视觉与交互更新
 - PR #318 候选人黑名单独立模块 + 聊天记录实时化 + 转化分析页改版
+- PR #324 转化分析页视觉与动效升级
+- PR #324 merge develop into feat/conversion-analysis-visual-polish，转化分析…
 
 ### 新功能
 - PR #318 后端从 `hosting-config` 拆出 `biz/candidate-blacklist` 独立模块（controller / module / dto / service / repository / entity）
@@ -42,6 +44,7 @@
 - PR #318 KPI 卡片 / 漏斗 / 机器人对比表 / 控制面板视觉与交互更新
 - PR #318 聊天记录页接入 Supabase Realtime 实时刷新
 - PR #318 支持图片格式简历（手写简历/简历拍照）识别为简历附件
+- PR #324 merge develop into feat/conversion-analysis-visual-polish，转化分析…
 
 ### 问题修复
 - PR #318 托管用户页整体视觉升级与适配修复
@@ -55,6 +58,7 @@
 - PR #318 vite 代理白名单补充 /candidate-blacklist 前缀
 - PR #318 托管用户列表灵动化动效，趋势卡片默认收起
 - PR #318 黑名单展示候选人昵称与所在托管账号
+- PR #324 转化分析页视觉与动效升级
 
 ### 配置变更
 - 无
@@ -64,6 +68,8 @@
 
 ### 验证记录
 - PR #318 本地 pre-push CI 被另一并发会话的 WIP 文件（不在本 PR 内）的 lint 错误卡住，已 `--no-verify` 推送，以 GitHub CI 为准
+- PR #324 `tsc -b && vite build` 通过
+- PR #324 Chrome 实测：demo 模式全模块渲染正常、动画逐项验证挂载、无 console 报错
 <!-- release:pending:end -->
 
 ## [5.17.0] - 2026-06-12
